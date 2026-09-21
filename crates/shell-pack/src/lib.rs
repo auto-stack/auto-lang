@@ -125,17 +125,17 @@ impl Component for Desktop {
     fn on(&mut self, msg: Self::Msg) {
         match msg {
             DesktopMsg::ActivateApp(app) => {
-                self.on(DesktopMsg::SendCmd(format!("{}{}", "activate	", app)));
+                self.on(DesktopMsg::SendCmd(format!("{}{}", "activate\t", app)));
             }
             DesktopMsg::DashboardToggle => {
                 self.on(DesktopMsg::SendCmd("dashboard_toggle".to_string()));
             }
             DesktopMsg::DockPin(app) => {
-                self.on(DesktopMsg::SendCmd(format!("{}{}", "dock_pin	", app)));
+                self.on(DesktopMsg::SendCmd(format!("{}{}", "dock_pin\t", app)));
                 self.win_menu = "".to_string();
             }
             DesktopMsg::DockUnpin(app) => {
-                self.on(DesktopMsg::SendCmd(format!("{}{}", "dock_unpin	", app)));
+                self.on(DesktopMsg::SendCmd(format!("{}{}", "dock_unpin\t", app)));
                 self.win_menu = "".to_string();
             }
             DesktopMsg::HoverLeave => {
@@ -145,17 +145,17 @@ impl Component for Desktop {
                 self.dock_hover = wid.to_string();
             }
             DesktopMsg::LayoutGrid => {
-                self.on(DesktopMsg::SendCmd("layout_toggle	grid".to_string()));
+                self.on(DesktopMsg::SendCmd("layout_toggle\tgrid".to_string()));
             }
             DesktopMsg::LayoutStack => {
-                self.on(DesktopMsg::SendCmd("layout_toggle	master-stack".to_string()));
+                self.on(DesktopMsg::SendCmd("layout_toggle\tmaster-stack".to_string()));
             }
             DesktopMsg::NativeClose(wid) => {
-                self.on(DesktopMsg::SendCmd(format!("{}{}", "close_native	", wid)));
+                self.on(DesktopMsg::SendCmd(format!("{}{}", "close_native\t", wid)));
                 self.win_menu = "".to_string();
             }
             DesktopMsg::NativeFocus(wid) => {
-                self.on(DesktopMsg::SendCmd(format!("{}{}", "focus_native	", wid)));
+                self.on(DesktopMsg::SendCmd(format!("{}{}", "focus_native\t", wid)));
                 self.win_menu = "".to_string();
             }
             DesktopMsg::NotificationToggle => {
@@ -165,12 +165,11 @@ impl Component for Desktop {
                 self.on(DesktopMsg::SendCmd("open_settings".to_string()));
             }
             DesktopMsg::SendCmd(rec) => {
-                if self.__desktop_cmd != "".to_string() { self.__desktop_cmd = format!("{}{}", self.__desktop_cmd, "
-"); };
+                if self.__desktop_cmd != "".to_string() { self.__desktop_cmd = format!("{}{}", self.__desktop_cmd, "\n"); };
                 self.__desktop_cmd = format!("{}{}", self.__desktop_cmd, rec);
             }
             DesktopMsg::SetWorkspace(id) => {
-                self.on(DesktopMsg::SendCmd(format!("{}{}", "workspace	", id)));
+                self.on(DesktopMsg::SendCmd(format!("{}{}", "workspace\t", id)));
                 self.switcher_open = "".to_string();
             }
             DesktopMsg::ShowDesktopToggle => {
@@ -193,17 +192,17 @@ impl Component for Desktop {
                 self.sliver_hover = "".to_string();
             }
             DesktopMsg::SummonLauncher => {
-                self.on(DesktopMsg::SendCmd("summon	launcher".to_string()));
+                self.on(DesktopMsg::SendCmd("summon\tlauncher".to_string()));
             }
             DesktopMsg::SwitcherToggle => {
                 if self.switcher_open == "1".to_string() { self.switcher_open = "".to_string(); } else { self.switcher_open = "1".to_string(); };
             }
             DesktopMsg::WinClose(wid) => {
-                self.on(DesktopMsg::SendCmd(format!("{}{}", "close	", wid)));
+                self.on(DesktopMsg::SendCmd(format!("{}{}", "close\t", wid)));
                 self.win_menu = "".to_string();
             }
             DesktopMsg::WinFocus(wid) => {
-                self.on(DesktopMsg::SendCmd(format!("{}{}", "focus	", wid)));
+                self.on(DesktopMsg::SendCmd(format!("{}{}", "focus\t", wid)));
                 self.win_menu = "".to_string();
             }
             DesktopMsg::WinMenu(wid) => {
@@ -213,7 +212,7 @@ impl Component for Desktop {
                 self.win_menu = "".to_string();
             }
             DesktopMsg::WinMin(wid) => {
-                self.on(DesktopMsg::SendCmd(format!("{}{}", "win_min	", wid)));
+                self.on(DesktopMsg::SendCmd(format!("{}{}", "win_min\t", wid)));
                 self.win_menu = "".to_string();
             }
             DesktopMsg::WorkspaceAdd => {
@@ -229,7 +228,7 @@ impl Component for Desktop {
     }
 
     fn view(&self) -> View<Self::Msg> {
-        View::col().style(if self.__dock_position == "top".to_string() { "w-full h-full".to_string() } else { "w-full h-full flex-col-reverse".to_string() }.as_str()).child(if self.__dock_enabled == "1" { View::row().style(format!("{}{}", "h-14 w-full flex items-center gap-2 pl-2 bg-card/95 ", self.__dock_border).as_str()).child(View::button("\u{EE01}iconfile:launcher\u{EE02}".to_string()).style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50").on_click(|_| DesktopMsg::SummonLauncher).build()).child(View::col().children(self.__dock_pinned.iter().map(|p| { View::col().style("h-14 items-center justify-start pt-1.5").child(View::Popover { anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new(View::button("".to_string()).style(if (self.__wm_focused_app) == ((p["id"].as_i64().unwrap_or(0) as i32).to_string()) { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::ActivateApp(p["id"].as_str().unwrap_or_default().to_string())).on_right_click(|_| DesktopMsg::WinMenu(p["id"].as_str().unwrap_or_default().to_string())).build())), content: Box::new(View::col().child(View::col().style("w-40 gap-1").child(View::button("取消固定").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left").on_click(|_| DesktopMsg::DockUnpin(p["id"].as_str().unwrap_or_default().to_string())).build()).child(View::col().children(self.__wm_wins.iter().map(|w| { if w["app"].as_str().unwrap_or_default().to_string() == (p["id"].as_i64().unwrap_or(0) as i32).to_string() { View::col().child(View::button(format!("{}{}", "聚焦 ", w["title"].as_str().unwrap_or_default().to_string())).style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left truncate max-w-full").on_click(|_| DesktopMsg::WinFocus(w["wid"].as_str().unwrap_or_default().to_string())).build()).child(View::button(format!("{}{}", "关闭 ", w["title"].as_str().unwrap_or_default().to_string())).style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-error hover:bg-primary/10 text-left truncate max-w-full").on_click(|_| DesktopMsg::WinClose(w["wid"].as_str().unwrap_or_default().to_string())).build()).build() } else { View::Empty } }).collect::<Vec<_>>()).build()).build()).style("p-1 border rounded bg-card w-auto").build()), placement: auto_lang::ui::view::PopoverPlacement::Top, open: (self.win_menu) == ((p["id"].as_i64().unwrap_or(0) as i32).to_string()), on_dismiss: Some(DesktopMsg::WinMenuClose) }).child(if self.__wm_focused_app == (p["id"].as_i64().unwrap_or(0) as i32).to_string() { View::col().style("h-1 w-6 rounded-full bg-primary mt-[3px]").build() } else { if p["running"].as_str().unwrap_or_default().to_string() == "1" { View::col().style("h-1 w-6 rounded-full bg-muted-foreground/60 mt-[3px]").build() } else { View::col().style("h-1 w-6 mt-[3px]").build() } }).build() }).collect::<Vec<_>>()).build()).child(View::col().children(self.__wm_wins.iter().map(|w| { if w["native"].as_str().unwrap_or_default().to_string() == "1" { View::row().style("items-center gap-1").child(View::MouseArea { content: Box::new(View::Popover { anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new(View::button(w["title"].as_str().unwrap_or_default().to_string()).style("bg-muted border border-border text-foreground font-medium rounded-md hover:bg-muted/70 h-10 px-4 h-10 max-w-32 truncate px-2 text-sm rounded-xl bg-transparent text-foreground hover:bg-white/50").on_click(|_| DesktopMsg::NativeFocus(w["wid"].as_str().unwrap_or_default().to_string())).on_right_click(|_| DesktopMsg::WinMenu(w["wid"].as_str().unwrap_or_default().to_string())).build())), content: Box::new(View::col().child(View::col().style("w-36 gap-1").child(View::button("聚焦").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left").on_click(|_| DesktopMsg::NativeFocus(w["wid"].as_str().unwrap_or_default().to_string())).build()).child(View::button("关闭").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-error hover:bg-primary/10 text-left").on_click(|_| DesktopMsg::NativeClose(w["wid"].as_str().unwrap_or_default().to_string())).build()).build()).style("p-1 border rounded bg-card w-auto").build()), placement: auto_lang::ui::view::PopoverPlacement::Top, open: self.win_menu == w["wid"].as_str().unwrap_or_default().to_string(), on_dismiss: Some(DesktopMsg::WinMenuClose) }), on_enter: None, on_exit: None, on_double_click: None, on_click: None, on_context_menu: None, on_release: None, on_move: None, logical_extent: None, style: None }).build() } else { if w["pinned"].as_str().unwrap_or_default().to_string() == "1" || w["dup_app"].as_str().unwrap_or_default().to_string() == "1" { View::col().build() } else { View::col().style("h-14 items-center justify-start pt-1.5").child(View::MouseArea { content: Box::new(View::Popover { anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new(View::button("".to_string()).style(if w["focused"].as_str().unwrap_or_default().to_string() == "1".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::WinFocus(w["wid"].as_str().unwrap_or_default().to_string())).on_right_click(|_| DesktopMsg::WinMenu(w["wid"].as_str().unwrap_or_default().to_string())).build())), content: Box::new(View::col().child(if self.win_menu == w["wid"].as_str().unwrap_or_default().to_string() { View::col().style("w-36 gap-1").child(View::button("聚焦").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left").on_click(|_| DesktopMsg::WinFocus(w["wid"].as_str().unwrap_or_default().to_string())).build()).child(View::button("最小化").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left").on_click(|_| DesktopMsg::WinMin(w["wid"].as_str().unwrap_or_default().to_string())).build()).child(View::button("关闭").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-error hover:bg-primary/10 text-left").on_click(|_| DesktopMsg::WinClose(w["wid"].as_str().unwrap_or_default().to_string())).build()).child(if w["app"].as_str().unwrap_or_default().to_string() != "" { View::button("固定到任务栏").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left").on_click(|_| DesktopMsg::DockPin(w["app"].as_str().unwrap_or_default().to_string())).build() } else { View::Empty }).build() } else { View::WindowThumbnail { wid: w["wid"].as_str().unwrap_or_default().to_string(), fallback_icon: w["icon"].as_str().unwrap_or_default().to_string(), style: auto_lang::ui::style::Style::parse("w-48 h-28 rounded").ok() } }).style("p-1 border rounded bg-card w-auto").build()), placement: auto_lang::ui::view::PopoverPlacement::Top, open: self.dock_hover == w["wid"].as_str().unwrap_or_default().to_string() && self.win_menu == "".to_string() || self.win_menu == w["wid"].as_str().unwrap_or_default().to_string(), on_dismiss: Some(DesktopMsg::WinMenuClose) }), on_enter: Some(DesktopMsg::HoverWin(w["wid"].as_str().unwrap_or_default().to_string())), on_exit: Some(DesktopMsg::HoverLeave), on_double_click: None, on_click: None, on_context_menu: None, on_release: None, on_move: None, logical_extent: None, style: None }).child(if w["focused"].as_str().unwrap_or_default().to_string() == "1" { View::col().style("h-1 w-6 rounded-full bg-primary mt-[3px]").build() } else { View::col().style("h-1 w-6 rounded-full bg-muted-foreground/60 mt-[3px]").build() }).build() } } }).collect::<Vec<_>>()).build()).child(View::container(View::Empty).style("flex-1 h-8").build()).child(View::Popover { anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new(View::button("\u{EE01}iconfile:desktop-switch\u{EE02}".to_string()).style(if self.switcher_open == "1".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::SwitcherToggle).build())), content: Box::new(View::col().child(View::row().style("items-center gap-2 px-1 pb-1").children(self.__wm_workspaces.iter().map(|ws| { View::MouseArea { content: Box::new(View::col().style(if ws["current"].as_str().unwrap_or_default().to_string() == "1".to_string() { "w-44 p-2 rounded-xl border-2 border-primary bg-card/95 text-foreground hover:bg-white/50".to_string() } else { "w-44 p-2 rounded-xl border bg-card/95 text-foreground hover:bg-white/50".to_string() }.as_str()).child(View::text_styled(ws["label"].as_str().unwrap_or_default().to_string(), "text-xs text-muted-foreground")).child(View::WorkspacePreview { ws: (ws["id"].as_i64().unwrap_or(0) as i32).to_string(), fallback_icon: "app-window".to_string(), style: auto_lang::ui::style::Style::parse("w-44 h-16 rounded-lg").ok() }).build()), on_enter: None, on_exit: None, on_double_click: None, on_click: Some(DesktopMsg::SetWorkspace(ws["id"].as_str().unwrap_or_default().to_string())), on_context_menu: None, on_release: None, on_move: None, logical_extent: None, style: None } }).collect::<Vec<_>>()).child(View::MouseArea { content: Box::new(View::col().style("w-12 h-[88px] rounded-xl border bg-card/95 text-muted-foreground items-center justify-center hover:bg-white/50 cursor-pointer").child(View::text_styled("+".to_string(), "text-xl text-muted-foreground")).build()), on_enter: None, on_exit: None, on_double_click: None, on_click: Some(DesktopMsg::WorkspaceAdd), on_context_menu: None, on_release: None, on_move: None, logical_extent: None, style: None }).build()).style("p-2 border rounded bg-card w-auto").build()), placement: auto_lang::ui::view::PopoverPlacement::TopEnd, open: self.switcher_open == "1".to_string(), on_dismiss: Some(DesktopMsg::SwitcherToggle) }).child(View::button("\u{EE01}iconfile:layout-grid\u{EE02}".to_string()).style(if self.__wm_layout == "grid".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::LayoutGrid).build()).child(View::button("\u{EE01}iconfile:layout-stack\u{EE02}".to_string()).style(if self.__wm_layout == "master-stack".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::LayoutStack).build()).child(View::row().style("items-center gap-0").child(View::col().style("relative").child(View::button("\u{EE01}iconfile:notification\u{EE02}".to_string()).style(if self.__wm_notes_visible == "1".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::NotificationToggle).build()).child(if self.__wm_notes_badge != "" { View::text_styled(format!("{}", self.__wm_notes_badge), "absolute -top-1 -right-1 h-4 min-w-4 px-1 rounded-full bg-error text-primary-foreground text-[10px] font-semibold flex items-center justify-center") } else { View::Empty }).build()).build()).child(View::button("\u{EE01}iconfile:widgets-gallery\u{EE02}".to_string()).style(if self.__wm_dashboard == "1".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::DashboardToggle).build()).child(View::button("\u{EE01}iconfile:config\u{EE02}".to_string()).style(if self.__wm_settings_open == "1".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::OpenSettingsPanel).build()).child(View::Popover { anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new(View::button("\u{EE01}iconfile:shutdown\u{EE02}".to_string()).style(if self.shutdown_ask == "1".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::ShutdownRequest).build())), content: Box::new(View::col().child(View::col().style("w-52 gap-2").child(View::text_styled("退出 Auto 桌面？".to_string(), "text-sm text-foreground")).child(View::row().style("gap-2").child(View::button("取消").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-3 text-sm rounded-md bg-transparent text-foreground hover:bg-white/50").on_click(|_| DesktopMsg::ShutdownCancel).build()).child(View::button("退出").style("bg-primary text-primary-foreground font-medium rounded-md hover:bg-primary/90 h-10 px-4 h-8 px-3 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90").on_click(|_| DesktopMsg::ShutdownConfirm).build()).build()).build()).style("p-3 border rounded bg-card w-auto").build()), placement: auto_lang::ui::view::PopoverPlacement::Top, open: self.shutdown_ask == "1".to_string(), on_dismiss: Some(DesktopMsg::ShutdownCancel) }).child(View::row().style("items-center gap-0").build()).child(View::col().style("items-center px-2").child(View::text_styled(format!("{}", self.__wm_clock), "text-xs text-muted-foreground tabular-nums leading-tight")).child(View::text_styled(format!("{}", self.__wm_date), "text-[10px] text-muted-foreground leading-tight")).build()).child(View::MouseArea { content: Box::new(View::col().style(if self.sliver_hover == "1".to_string() { "w-2 h-full border-l border-border bg-foreground/10".to_string() } else { "w-2 h-full border-l border-border".to_string() }.as_str()).build()), on_enter: Some(DesktopMsg::SliverHover), on_exit: Some(DesktopMsg::SliverUnhover), on_double_click: None, on_click: Some(DesktopMsg::ShowDesktopToggle), on_context_menu: None, on_release: None, on_move: None, logical_extent: None, style: None }).child(View::Popover { anchor: auto_lang::ui::view::PopoverAnchor::Point { x: (self.__sliver_tip_x ) as f32, y: (self.__sliver_tip_y ) as f32 }, content: Box::new(View::col().child(if self.__wm_showdesk == "1" { View::text_styled("恢复桌面".to_string(), "text-xs text-muted-foreground") } else { View::text_styled("显示桌面".to_string(), "text-xs text-muted-foreground") }).style("px-2 py-1 rounded bg-card border w-auto").build()), placement: auto_lang::ui::view::PopoverPlacement::BottomStart, open: self.sliver_hover == "1".to_string(), on_dismiss: None }).build() } else { View::Empty }).child(View::container(View::Empty).style("w-full h-full").build()).build()
+        View::col().style(if self.__dock_position == "top".to_string() { "w-full h-full".to_string() } else { "w-full h-full flex-col-reverse".to_string() }.as_str()).child(if self.__dock_enabled == "1" { View::row().style(format!("{}{}", "h-14 w-full flex items-center gap-2 pl-2 bg-card/95 ", self.__dock_border).as_str()).child(View::button("\u{EE01}iconfile:launcher\u{EE02}".to_string()).style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50").on_click(|_| DesktopMsg::SummonLauncher).build()).child(View::col().children(self.__dock_pinned.iter().map(|p| { View::col().style("h-14 items-center justify-start pt-1.5").child(View::Popover { anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new(View::button("".to_string()).style(if (self.__wm_focused_app) == ((p["id"].as_i64().unwrap_or(0) as i32).to_string()) { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::ActivateApp(p["id"].as_str().unwrap_or_default().to_string())).on_right_click(|_| DesktopMsg::WinMenu(p["id"].as_str().unwrap_or_default().to_string())).build())), content: Box::new(View::col().child(View::col().style("w-40 gap-1").child(View::button("取消固定").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left").on_click(|_| DesktopMsg::DockUnpin(p["id"].as_str().unwrap_or_default().to_string())).build()).child(View::col().children(self.__wm_wins.iter().map(|w| { if w["app"].as_str().unwrap_or_default().to_string() == (p["id"].as_i64().unwrap_or(0) as i32).to_string() { View::col().child(View::button(format!("{}", format!("{}{}", "聚焦 ", w["title"].as_str().unwrap_or_default().to_string()))).style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left truncate max-w-full").on_click(|_| DesktopMsg::WinFocus(w["wid"].as_str().unwrap_or_default().to_string())).build()).child(View::button(format!("{}", format!("{}{}", "关闭 ", w["title"].as_str().unwrap_or_default().to_string()))).style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-error hover:bg-primary/10 text-left truncate max-w-full").on_click(|_| DesktopMsg::WinClose(w["wid"].as_str().unwrap_or_default().to_string())).build()).build() } else { View::Empty } }).collect::<Vec<_>>()).build()).build()).style("p-1 border rounded bg-card w-auto").build()), placement: auto_lang::ui::view::PopoverPlacement::Top, open: (self.win_menu) == ((p["id"].as_i64().unwrap_or(0) as i32).to_string()), on_dismiss: Some(DesktopMsg::WinMenuClose) }).child(if self.__wm_focused_app == (p["id"].as_i64().unwrap_or(0) as i32).to_string() { View::col().style("h-1 w-6 rounded-full bg-primary mt-[3px]").build() } else { if p["running"].as_str().unwrap_or_default().to_string() == "1" { View::col().style("h-1 w-6 rounded-full bg-muted-foreground/60 mt-[3px]").build() } else { View::col().style("h-1 w-6 mt-[3px]").build() } }).build() }).collect::<Vec<_>>()).build()).child(View::col().children(self.__wm_wins.iter().map(|w| { if w["native"].as_str().unwrap_or_default().to_string() == "1" { View::row().style("items-center gap-1").child(View::MouseArea { content: Box::new(View::Popover { anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new(View::button(format!("{}", w["title"].as_str().unwrap_or_default().to_string())).style("bg-muted border border-border text-foreground font-medium rounded-md hover:bg-muted/70 h-10 px-4 h-10 max-w-32 truncate px-2 text-sm rounded-xl bg-transparent text-foreground hover:bg-white/50").on_click(|_| DesktopMsg::NativeFocus(w["wid"].as_str().unwrap_or_default().to_string())).on_right_click(|_| DesktopMsg::WinMenu(w["wid"].as_str().unwrap_or_default().to_string())).build())), content: Box::new(View::col().child(View::col().style("w-36 gap-1").child(View::button("聚焦").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left").on_click(|_| DesktopMsg::NativeFocus(w["wid"].as_str().unwrap_or_default().to_string())).build()).child(View::button("关闭").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-error hover:bg-primary/10 text-left").on_click(|_| DesktopMsg::NativeClose(w["wid"].as_str().unwrap_or_default().to_string())).build()).build()).style("p-1 border rounded bg-card w-auto").build()), placement: auto_lang::ui::view::PopoverPlacement::Top, open: self.win_menu == w["wid"].as_str().unwrap_or_default().to_string(), on_dismiss: Some(DesktopMsg::WinMenuClose) }), on_enter: None, on_exit: None, on_double_click: None, on_click: None, on_context_menu: None, on_release: None, on_move: None, logical_extent: None, style: None }).build() } else { if w["pinned"].as_str().unwrap_or_default().to_string() == "1" || w["dup_app"].as_str().unwrap_or_default().to_string() == "1" { View::col().build() } else { View::col().style("h-14 items-center justify-start pt-1.5").child(View::MouseArea { content: Box::new(View::Popover { anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new(View::button("".to_string()).style(if w["focused"].as_str().unwrap_or_default().to_string() == "1".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::WinFocus(w["wid"].as_str().unwrap_or_default().to_string())).on_right_click(|_| DesktopMsg::WinMenu(w["wid"].as_str().unwrap_or_default().to_string())).build())), content: Box::new(View::col().child(if self.win_menu == w["wid"].as_str().unwrap_or_default().to_string() { View::col().style("w-36 gap-1").child(View::button("聚焦").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left").on_click(|_| DesktopMsg::WinFocus(w["wid"].as_str().unwrap_or_default().to_string())).build()).child(View::button("最小化").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left").on_click(|_| DesktopMsg::WinMin(w["wid"].as_str().unwrap_or_default().to_string())).build()).child(View::button("关闭").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-error hover:bg-primary/10 text-left").on_click(|_| DesktopMsg::WinClose(w["wid"].as_str().unwrap_or_default().to_string())).build()).child(if w["app"].as_str().unwrap_or_default().to_string() != "" { View::button("固定到任务栏").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left").on_click(|_| DesktopMsg::DockPin(w["app"].as_str().unwrap_or_default().to_string())).build() } else { View::Empty }).build() } else { View::WindowThumbnail { wid: w["wid"].as_str().unwrap_or_default().to_string(), fallback_icon: w["icon"].as_str().unwrap_or_default().to_string(), style: auto_lang::ui::style::Style::parse("w-48 h-28 rounded").ok() } }).style("p-1 border rounded bg-card w-auto").build()), placement: auto_lang::ui::view::PopoverPlacement::Top, open: self.dock_hover == w["wid"].as_str().unwrap_or_default().to_string() && self.win_menu == "".to_string() || self.win_menu == w["wid"].as_str().unwrap_or_default().to_string(), on_dismiss: Some(DesktopMsg::WinMenuClose) }), on_enter: Some(DesktopMsg::HoverWin(w["wid"].as_str().unwrap_or_default().to_string())), on_exit: Some(DesktopMsg::HoverLeave), on_double_click: None, on_click: None, on_context_menu: None, on_release: None, on_move: None, logical_extent: None, style: None }).child(if w["focused"].as_str().unwrap_or_default().to_string() == "1" { View::col().style("h-1 w-6 rounded-full bg-primary mt-[3px]").build() } else { View::col().style("h-1 w-6 rounded-full bg-muted-foreground/60 mt-[3px]").build() }).build() } } }).collect::<Vec<_>>()).build()).child(View::container(View::Empty).style("flex-1 h-8").build()).child(View::Popover { anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new(View::button("\u{EE01}iconfile:desktop-switch\u{EE02}".to_string()).style(if self.switcher_open == "1".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::SwitcherToggle).build())), content: Box::new(View::col().child(View::row().style("items-center gap-2 px-1 pb-1").children(self.__wm_workspaces.iter().map(|ws| { View::MouseArea { content: Box::new(View::col().style(if ws["current"].as_str().unwrap_or_default().to_string() == "1".to_string() { "w-44 p-2 rounded-xl border-2 border-primary bg-card/95 text-foreground hover:bg-white/50".to_string() } else { "w-44 p-2 rounded-xl border bg-card/95 text-foreground hover:bg-white/50".to_string() }.as_str()).child(View::text_styled(ws["label"].as_str().unwrap_or_default().to_string(), "text-xs text-muted-foreground")).child(View::WorkspacePreview { ws: (ws["id"].as_i64().unwrap_or(0) as i32).to_string(), fallback_icon: "app-window".to_string(), style: auto_lang::ui::style::Style::parse("w-44 h-16 rounded-lg").ok() }).build()), on_enter: None, on_exit: None, on_double_click: None, on_click: Some(DesktopMsg::SetWorkspace(ws["id"].as_str().unwrap_or_default().to_string())), on_context_menu: None, on_release: None, on_move: None, logical_extent: None, style: None } }).collect::<Vec<_>>()).child(View::MouseArea { content: Box::new(View::col().style("w-12 h-[88px] rounded-xl border bg-card/95 text-muted-foreground items-center justify-center hover:bg-white/50 cursor-pointer").child(View::text_styled("+".to_string(), "text-xl text-muted-foreground")).build()), on_enter: None, on_exit: None, on_double_click: None, on_click: Some(DesktopMsg::WorkspaceAdd), on_context_menu: None, on_release: None, on_move: None, logical_extent: None, style: None }).build()).style("p-2 border rounded bg-card w-auto").build()), placement: auto_lang::ui::view::PopoverPlacement::TopEnd, open: self.switcher_open == "1".to_string(), on_dismiss: Some(DesktopMsg::SwitcherToggle) }).child(View::button("\u{EE01}iconfile:layout-grid\u{EE02}".to_string()).style(if self.__wm_layout == "grid".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::LayoutGrid).build()).child(View::button("\u{EE01}iconfile:layout-stack\u{EE02}".to_string()).style(if self.__wm_layout == "master-stack".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::LayoutStack).build()).child(View::row().style("items-center gap-0").child(View::col().style("relative").child(View::button("\u{EE01}iconfile:notification\u{EE02}".to_string()).style(if self.__wm_notes_visible == "1".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::NotificationToggle).build()).child(if self.__wm_notes_badge != "" { View::text_styled(format!("{}", self.__wm_notes_badge), "absolute -top-1 -right-1 h-4 min-w-4 px-1 rounded-full bg-error text-primary-foreground text-[10px] font-semibold flex items-center justify-center") } else { View::Empty }).build()).build()).child(View::button("\u{EE01}iconfile:widgets-gallery\u{EE02}".to_string()).style(if self.__wm_dashboard == "1".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::DashboardToggle).build()).child(View::button("\u{EE01}iconfile:config\u{EE02}".to_string()).style(if self.__wm_settings_open == "1".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::OpenSettingsPanel).build()).child(View::Popover { anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new(View::button("\u{EE01}iconfile:shutdown\u{EE02}".to_string()).style(if self.shutdown_ask == "1".to_string() { "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50".to_string() } else { "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50".to_string() }.as_str()).on_click(|_| DesktopMsg::ShutdownRequest).build())), content: Box::new(View::col().child(View::col().style("w-52 gap-2").child(View::text_styled("退出 Auto 桌面？".to_string(), "text-sm text-foreground")).child(View::row().style("gap-2").child(View::button("取消").style("rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4 h-8 px-3 text-sm rounded-md bg-transparent text-foreground hover:bg-white/50").on_click(|_| DesktopMsg::ShutdownCancel).build()).child(View::button("退出").style("bg-primary text-primary-foreground font-medium rounded-md hover:bg-primary/90 h-10 px-4 h-8 px-3 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90").on_click(|_| DesktopMsg::ShutdownConfirm).build()).build()).build()).style("p-3 border rounded bg-card w-auto").build()), placement: auto_lang::ui::view::PopoverPlacement::Top, open: self.shutdown_ask == "1".to_string(), on_dismiss: Some(DesktopMsg::ShutdownCancel) }).child(View::row().style("items-center gap-0").build()).child(View::col().style("items-center px-2").child(View::text_styled(format!("{}", self.__wm_clock), "text-xs text-muted-foreground tabular-nums leading-tight")).child(View::text_styled(format!("{}", self.__wm_date), "text-[10px] text-muted-foreground leading-tight")).build()).child(View::MouseArea { content: Box::new(View::col().style(if self.sliver_hover == "1".to_string() { "w-2 h-full border-l border-border bg-foreground/10".to_string() } else { "w-2 h-full border-l border-border".to_string() }.as_str()).build()), on_enter: Some(DesktopMsg::SliverHover), on_exit: Some(DesktopMsg::SliverUnhover), on_double_click: None, on_click: Some(DesktopMsg::ShowDesktopToggle), on_context_menu: None, on_release: None, on_move: None, logical_extent: None, style: None }).child(View::Popover { anchor: auto_lang::ui::view::PopoverAnchor::Point { x: (self.__sliver_tip_x ) as f32, y: (self.__sliver_tip_y ) as f32 }, content: Box::new(View::col().child(if self.__wm_showdesk == "1" { View::text_styled("恢复桌面".to_string(), "text-xs text-muted-foreground") } else { View::text_styled("显示桌面".to_string(), "text-xs text-muted-foreground") }).style("px-2 py-1 rounded bg-card border w-auto").build()), placement: auto_lang::ui::view::PopoverPlacement::BottomStart, open: self.sliver_hover == "1".to_string(), on_dismiss: None }).build() } else { View::Empty }).child(View::container(View::Empty).style("w-full h-full").build()).build()
     }
 
     fn state_snapshot(&self) -> std::collections::HashMap<String, auto_lang::ui::auto_val::Value> {
@@ -380,14 +379,14 @@ impl Component for DesktopSurface {
     fn on(&mut self, msg: Self::Msg) {
         match msg {
             DesktopSurfaceMsg::ActivateApp(app) => {
-                self.on(DesktopSurfaceMsg::SendCmd(format!("{}{}", "activate	", app)));
+                self.on(DesktopSurfaceMsg::SendCmd(format!("{}{}", "activate\t", app)));
                 self.launching = app.to_string();
             }
             DesktopSurfaceMsg::BlankClose => {
                 self.blank_menu = "".to_string();
             }
             DesktopSurfaceMsg::BlankDrop => {
-                if self.drag_id != "".to_string() { self.on(DesktopSurfaceMsg::SendCmd(format!("{}{}", "desktop_icon_drop_at	", self.drag_id))); self.drag_id = "".to_string(); };
+                if self.drag_id != "".to_string() { self.on(DesktopSurfaceMsg::SendCmd(format!("{}{}", "desktop_icon_drop_at\t", self.drag_id))); self.drag_id = "".to_string(); };
             }
             DesktopSurfaceMsg::BlankMenu => {
                 self.blank_menu = "1".to_string();
@@ -402,16 +401,16 @@ impl Component for DesktopSurface {
             }
             DesktopSurfaceMsg::IconPress(id) => {
                 self.sel_id = id.to_string();
-                if self.drag_id == "".to_string() { self.drag_id = id.to_string(); self.on(DesktopSurfaceMsg::SendCmd(format!("{}{}", "desktop_icon_drag_start	", id))); };
+                if self.drag_id == "".to_string() { self.drag_id = id.to_string(); self.on(DesktopSurfaceMsg::SendCmd(format!("{}{}", "desktop_icon_drag_start\t", id))); };
             }
             DesktopSurfaceMsg::MenuClose => {
                 self.menu_id = "".to_string();
             }
             DesktopSurfaceMsg::MenuOpen => {
-                if self.menu_id != "".to_string() { self.on(DesktopSurfaceMsg::SendCmd(format!("{}{}", "activate	", self.menu_id))); self.menu_id = "".to_string(); };
+                if self.menu_id != "".to_string() { self.on(DesktopSurfaceMsg::SendCmd(format!("{}{}", "activate\t", self.menu_id))); self.menu_id = "".to_string(); };
             }
             DesktopSurfaceMsg::MenuRemove => {
-                if self.menu_id != "".to_string() { let mut hay = format!("{}{}", format!("{}{}", ",", self.__desktop_hidden), ","); let mut needle = format!("{}{}", format!("{}{}", ",", self.menu_id), ","); if hay.contains((needle).as_str()) == false { if self.__desktop_hidden == "".to_string() { self.__desktop_hidden = self.menu_id.clone(); } else { self.__desktop_hidden = format!("{}{}", format!("{}{}", self.__desktop_hidden, ","), self.menu_id); }; auto_lang::vm::ffi::stdlib::shim_storage_set(("shell.desktop.hidden".to_string()).to_string(), (self.__desktop_hidden.clone()).to_string()); }; self.menu_id = "".to_string(); };
+                if self.menu_id != "".to_string() { let mut hay = format!("{}{}", format!("{}{}", ",", self.__desktop_hidden), ","); let mut needle = format!("{}{}", format!("{}{}", ",", self.menu_id), ","); if (hay).contains(&needle) == false { if self.__desktop_hidden == "".to_string() { self.__desktop_hidden = self.menu_id.clone(); } else { self.__desktop_hidden = format!("{}{}", format!("{}{}", self.__desktop_hidden, ","), self.menu_id); }; auto_lang::vm::ffi::stdlib::shim_storage_set(("shell.desktop.hidden".to_string()).to_string(), (self.__desktop_hidden.clone()).to_string()); }; self.menu_id = "".to_string(); };
             }
             DesktopSurfaceMsg::MenuWallpaper => {
                 self.menu_id = "".to_string();
@@ -426,10 +425,10 @@ impl Component for DesktopSurface {
                 self.on(DesktopSurfaceMsg::SendCmd("open_settings".to_string()));
             }
             DesktopSurfaceMsg::PickerApply(path) => {
-                self.on(DesktopSurfaceMsg::SendCmd(format!("{}{}", "set_wallpaper	", path)));
+                self.on(DesktopSurfaceMsg::SendCmd(format!("{}{}", "set_wallpaper\t", path)));
             }
             DesktopSurfaceMsg::PickerBack => {
-                self.on(DesktopSurfaceMsg::SendCmd("wallpaper_preview	".to_string()));
+                self.on(DesktopSurfaceMsg::SendCmd("wallpaper_preview\t".to_string()));
             }
             DesktopSurfaceMsg::PickerBrowse => {
                 self.on(DesktopSurfaceMsg::SendCmd("wallpaper_browse_dir".to_string()));
@@ -438,10 +437,10 @@ impl Component for DesktopSurface {
                 self.on(DesktopSurfaceMsg::SendCmd("wallpaper_close".to_string()));
             }
             DesktopSurfaceMsg::PickerNav(dir) => {
-                self.on(DesktopSurfaceMsg::SendCmd(format!("{}{}", "wallpaper_nav	", dir)));
+                self.on(DesktopSurfaceMsg::SendCmd(format!("{}{}", "wallpaper_nav\t", dir)));
             }
             DesktopSurfaceMsg::PickerPreview(path) => {
-                self.on(DesktopSurfaceMsg::SendCmd(format!("{}{}", "wallpaper_preview	", path)));
+                self.on(DesktopSurfaceMsg::SendCmd(format!("{}{}", "wallpaper_preview\t", path)));
             }
             DesktopSurfaceMsg::ResetIconsBlank => {
                 self.blank_menu = "".to_string();
@@ -450,11 +449,10 @@ impl Component for DesktopSurface {
                 self.on(DesktopSurfaceMsg::SendCmd("refresh_desktop_icons".to_string()));
             }
             DesktopSurfaceMsg::RunningSync => {
-                if self.launching != "".to_string() { if self.__wm_running.contains(format!("{}{}", format!("{}{}", ",", self.launching), ",").as_str()) { self.launching = "".to_string(); }; };
+                if self.launching != "".to_string() { if (self.__wm_running).contains(&format!("{}{}", format!("{}{}", ",", self.launching), ",")) { self.launching = "".to_string(); }; };
             }
             DesktopSurfaceMsg::SendCmd(rec) => {
-                if self.__desktop_cmd != "".to_string() { self.__desktop_cmd = format!("{}{}", self.__desktop_cmd, "
-"); };
+                if self.__desktop_cmd != "".to_string() { self.__desktop_cmd = format!("{}{}", self.__desktop_cmd, "\n"); };
                 self.__desktop_cmd = format!("{}{}", self.__desktop_cmd, rec);
             }
             DesktopSurfaceMsg::ToggleDashboardBlank => {
@@ -464,7 +462,7 @@ impl Component for DesktopSurface {
             DesktopSurfaceMsg::Init => {
                 self.menu_id = "".to_string();
                 self.blank_menu = "".to_string();
-                if self.launching != "".to_string() { if self.__wm_running.contains(format!("{}{}", format!("{}{}", ",", self.launching), ",").as_str()) == false { self.launching = "".to_string(); }; };
+                if self.launching != "".to_string() { if (self.__wm_running).contains(&format!("{}{}", format!("{}{}", ",", self.launching), ",")) == false { self.launching = "".to_string(); }; };
             }
         }
     }
@@ -573,7 +571,7 @@ impl Component for Switcher {
                 if self.visible == "1".to_string() { self.visible = "0".to_string(); };
             }
             SwitcherMsg::Focus(wid) => {
-                self.on(SwitcherMsg::SendCmd(format!("{}{}", "focus	", wid)));
+                self.on(SwitcherMsg::SendCmd(format!("{}{}", "focus\t", wid)));
                 self.visible = "0".to_string();
             }
             SwitcherMsg::HoverSel(i) => {
@@ -587,13 +585,12 @@ impl Component for Switcher {
                 self.nres = 0;
                 self.sel = 0;
                 let mut idx = 0;
-                while idx < self.mru_wids.len() as i32 { let mut row = serde_json::json!({"i": idx, "wid": self.mru_wids[(idx) as usize], "title": self.mru_titles[(idx) as usize], "icon": self.mru_icons[(idx) as usize], "thumb": self.mru_thumbs[(idx) as usize]}); self.rows.push(row); idx = idx + 1; };
-                self.nres = self.rows.len() as i32;
+                while idx < ((self.mru_wids).len() as i32) { let mut row = serde_json::json!({"i": idx, "wid": self.mru_wids[(idx) as usize], "title": self.mru_titles[(idx) as usize], "icon": self.mru_icons[(idx) as usize], "thumb": self.mru_thumbs[(idx) as usize]}); (self.rows).push(serde_json::json!(row)); idx = idx + 1; };
+                self.nres = ((self.rows).len() as i32);
                 if self.nres > 1 { self.sel = 1; };
             }
             SwitcherMsg::SendCmd(rec) => {
-                if self.__desktop_cmd != "".to_string() { self.__desktop_cmd = format!("{}{}", self.__desktop_cmd, "
-"); };
+                if self.__desktop_cmd != "".to_string() { self.__desktop_cmd = format!("{}{}", self.__desktop_cmd, "\n"); };
                 self.__desktop_cmd = format!("{}{}", self.__desktop_cmd, rec);
             }
             SwitcherMsg::Init => {
@@ -709,24 +706,23 @@ impl Component for NotificationCenter {
                 if self.visible == "1".to_string() { self.visible = "0".to_string(); };
             }
             NotificationCenterMsg::Dismiss(id) => {
-                self.on(NotificationCenterMsg::SendCmd(format!("{}{}", "notes_dismiss	", id)));
+                self.on(NotificationCenterMsg::SendCmd(format!("{}{}", "notes_dismiss\t", id)));
             }
             NotificationCenterMsg::Escape => {
                 if self.visible == "1".to_string() { self.visible = "0".to_string(); };
             }
             NotificationCenterMsg::OpenSource(app) => {
-                if app != "".to_string() { self.on(NotificationCenterMsg::SendCmd(format!("{}{}", "activate	", app))); self.visible = "0".to_string(); };
+                if app != "".to_string() { self.on(NotificationCenterMsg::SendCmd(format!("{}{}", "activate\t", app))); self.visible = "0".to_string(); };
             }
             NotificationCenterMsg::RebuildNotes => {
                 self.rows = vec![];
                 self.nrows = 0;
                 let mut idx = 0;
-                while idx < self.note_ids.len() as i32 { let mut src = "".to_string(); if idx < self.note_apps.len() as i32 { src = self.note_apps[(idx) as usize].as_str().unwrap_or_default().to_string(); }; let mut row = serde_json::json!({"i": idx, "id": self.note_ids[(idx) as usize], "kind": self.note_kinds[(idx) as usize], "msg": self.note_msgs[(idx) as usize], "at": self.note_ats[(idx) as usize], "app": src}); self.rows.push(row); idx = idx + 1; };
-                self.nrows = self.rows.len() as i32;
+                while idx < ((self.note_ids).len() as i32) { let mut src = "".to_string(); if idx < ((self.note_apps).len() as i32) { src = self.note_apps[(idx) as usize].as_str().unwrap_or_default().to_string(); }; let mut row = serde_json::json!({"i": idx, "id": self.note_ids[(idx) as usize], "kind": self.note_kinds[(idx) as usize], "msg": self.note_msgs[(idx) as usize], "at": self.note_ats[(idx) as usize], "app": src}); (self.rows).push(serde_json::json!(row)); idx = idx + 1; };
+                self.nrows = ((self.rows).len() as i32);
             }
             NotificationCenterMsg::SendCmd(rec) => {
-                if self.__desktop_cmd != "".to_string() { self.__desktop_cmd = format!("{}{}", self.__desktop_cmd, "
-"); };
+                if self.__desktop_cmd != "".to_string() { self.__desktop_cmd = format!("{}{}", self.__desktop_cmd, "\n"); };
                 self.__desktop_cmd = format!("{}{}", self.__desktop_cmd, rec);
             }
             NotificationCenterMsg::Init => {
@@ -837,20 +833,18 @@ impl Component for DashboardPanel {
     fn on(&mut self, msg: Self::Msg) {
         match msg {
             DashboardPanelMsg::Close => {
-                self.__dashboard_cmd = format!("{}{}", self.__dashboard_cmd, "dashboard_close
-");
+                self.__dashboard_cmd = format!("{}{}", self.__dashboard_cmd, "dashboard_close\n");
                 self.visible = "0".to_string();
             }
             DashboardPanelMsg::Escape => {
-                self.__dashboard_cmd = format!("{}{}", self.__dashboard_cmd, "dashboard_close
-");
+                self.__dashboard_cmd = format!("{}{}", self.__dashboard_cmd, "dashboard_close\n");
                 self.visible = "0".to_string();
             }
             DashboardPanelMsg::HideClose => {
                 self.show_close = "0".to_string();
             }
             DashboardPanelMsg::RebuildFaces => {
-                self.nrows = self.face_ids.len() as i32;
+                self.nrows = ((self.face_ids).len() as i32);
             }
             DashboardPanelMsg::SelectTab(t) => {
                 self.active_tab = t.to_string();

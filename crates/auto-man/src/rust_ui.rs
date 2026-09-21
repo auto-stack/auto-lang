@@ -95,6 +95,27 @@ fn needs_regeneration(project_dir: &Path, rust_dir: &Path) -> (bool, bool) {
     (false, false)
 }
 
+/// PLAN-039 T-14（组件传型）：WidgetDecl view 树是否含 PascalCase
+/// 子件引用（CHILD_MSG_TYPES 预注册的口径面）。
+fn view_decl_has_pascal_child(node: &auto_lang::ast::ui::ViewNode) -> bool {
+    use auto_lang::ast::ui::ViewNode;
+    match node {
+        ViewNode::Element { tag, children, .. } => {
+            if tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                return true;
+            }
+            children.iter().any(view_decl_has_pascal_child)
+        }
+        ViewNode::Component { .. } => true,
+        ViewNode::ForLoop { body, .. } => body.iter().any(view_decl_has_pascal_child),
+        ViewNode::Conditional { then_body, else_body, .. } => {
+            then_body.iter().any(view_decl_has_pascal_child)
+                || else_body.as_ref().map(|e| e.iter().any(view_decl_has_pascal_child)).unwrap_or(false)
+        }
+        _ => false,
+    }
+}
+
 /// PLAN-039 T-14（批次 E，组件传型）：预扫各 .at 文件 widget props
 /// 声明序 → WIDGET_PROP_ORDERS 预注册（app.at 字母序先于 components/
 /// 编译，调用点按声明序重排需要跨文件视图；生成期组件自注册仍在 =
@@ -118,6 +139,49 @@ fn collect_component_prop_orders(at_files: &[std::path::PathBuf]) {
                                     .insert(widget_decl.name.as_str().to_string(), order);
                             });
                         }
+                        // PLAN-039 T-14（组件传型）：子组件 prop 型预注册
+                        // （构造参数按目标 prop 型强转的查表面）。
+                        {
+                            let mut prop_tys = std::collections::HashMap::new();
+                            for pd in &widget_decl.props {
+                                let kind = match pd.ty {
+                                    auto_lang::ast::Type::Int
+                                    | auto_lang::ast::Type::I64
+                                    | auto_lang::ast::Type::Uint
+                                    | auto_lang::ast::Type::U64 => "int",
+                                    auto_lang::ast::Type::Bool => "bool",
+                                    auto_lang::ast::Type::StrFixed(_)
+                                    | auto_lang::ast::Type::StrOwned
+                                    | auto_lang::ast::Type::StrSlice => "str",
+                                    _ => "",
+                                };
+                                if !kind.is_empty() {
+                                    prop_tys.insert(pd.name.as_str().to_string(), kind.to_string());
+                                }
+                            }
+                            if !prop_tys.is_empty() {
+                                auto_lang::ui_gen::rust::CHILD_PROP_TYPES.with(|m| {
+                                    m.borrow_mut()
+                                        .insert(widget_decl.name.as_str().to_string(), prop_tys);
+                                });
+                            }
+                        }
+                        // PLAN-039 T-14（组件传型）：子组件 Msg 型预注册——
+                        // 无 msg 块**且 view 无 PascalCase 子件引用** → "()"；
+                        // 有子件引用 → {}Msg（生成期 child gate 同口径——
+                        // CardFace 无 msg 但有 CardSuit/CourtBadge 子件）。
+                        let has_child_ref = widget_decl.view.as_ref()
+                            .map(|v| view_decl_has_pascal_child(&v.root))
+                            .unwrap_or(false);
+                        let msg_ty = if widget_decl.messages.is_empty() && !has_child_ref {
+                            "()".to_string()
+                        } else {
+                            format!("{}Msg", widget_decl.name.as_str())
+                        };
+                        auto_lang::ui_gen::rust::CHILD_MSG_TYPES.with(|m| {
+                            m.borrow_mut()
+                                .insert(widget_decl.name.as_str().to_string(), msg_ty);
+                        });
                     }
                 }
             }
