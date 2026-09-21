@@ -44,6 +44,7 @@ mod memory_tests;
 mod ownership_tests;
 mod phase3_tests; // Plan 125: Phase 3 polymorphic routing tests
 mod pointer_tests; // Plan 052: Pointer type tests
+mod read_text_range_parity; // Plan 673 T-03: 分块读 VM/a2r-std 双轨逐字节对拍 (P670-D1)
 mod stdlib_tests;
 mod storage_integration_tests;
 mod storage_tests;

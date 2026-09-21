@@ -1969,6 +1969,21 @@ fn cg_expr(mut c CG, mut p P, min int) {
                                 dot_seq = dot_seq + 1
                                 continue
                             }
+                            if recv_ty2 == "File" && mname2 == "read_text_range" {
+                                // Plan 673 T-03:File.read_text_range → nat#1016
+                                p.next()
+                                p.next()
+                                cg_call_args(c, p)
+                                c.emit(OpCode.CallNat, "nat#1016", 1016)
+                                dot_done = true
+                                c.str_flag = 1
+                                c.arr_flag = 0
+                                c.inst_ty = "str"
+                                c.recv_ty = "str"
+                                c.primary_tyname = ""
+                                dot_seq = dot_seq + 1
+                                continue
+                            }
                             if recv_ty2 == "int" {
                                 // P532 W1 G9:int.str() → nat#174(宿主
                                 // auto.int.str;t.line.str() dump 形态锚)

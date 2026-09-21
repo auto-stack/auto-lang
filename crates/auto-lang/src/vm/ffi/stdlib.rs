@@ -339,6 +339,63 @@ pub fn shim_file_read_text(path: String) -> String {
     fs::read_to_string(&path).unwrap_or_default()
 }
 
+/// Plan 673 §5 chunked-read envelope — the serde shape shared verbatim with
+/// the a2r-std mirror (`a2r_std::fs::read_text_range`): same field order,
+/// same EOF/error rules. P670-D1: both tracks emit byte-identical JSON.
+#[derive(serde::Serialize)]
+struct ReadTextRangeOut {
+    text: String,
+    total: i64,
+    next_offset: Option<u64>,
+}
+
+fn read_text_range_json(text: String, total: i64, next_offset: Option<u64>) -> String {
+    serde_json::to_string(&ReadTextRangeOut { text, total, next_offset })
+        .expect("read_text_range envelope serialization cannot fail")
+}
+
+/// Read at most `limit` bytes of UTF-8 text from `path` starting at byte
+/// `offset` (Plan 673 §5 chunked read).
+///
+/// Shapes: success `{"text":...,"total":<file byte len>,"next_offset":
+/// <offset+text.len()>|null}`; EOF / parameter / IO error per the design
+/// table (`next_offset` null ONLY at true EOF — disk-tail short reads must
+/// not fake EOF; `offset<0` or `limit<=0` → `total:-1`). Chunk edges never
+/// split a char: a mid-char `offset` walks back to the preceding boundary,
+/// and the chunk end backs off likewise. Invalid UTF-8 → error shape.
+#[auto_macros::rust_fn("File.read_text_range", "auto.file.read_text_range")]
+pub fn shim_file_read_text_range(path: String, offset: i32, limit: i32) -> String {
+    let err = || read_text_range_json(String::new(), -1, None);
+    if offset < 0 || limit <= 0 {
+        return err();
+    }
+    let bytes = match fs::read(&path) {
+        Ok(b) => b,
+        Err(_) => return err(),
+    };
+    let total = bytes.len() as i64;
+    let text = match String::from_utf8(bytes) {
+        Ok(t) => t,
+        Err(_) => return err(),
+    };
+    let len = text.len();
+    let mut start = (offset as usize).min(len);
+    while !text.is_char_boundary(start) {
+        start -= 1;
+    }
+    if start >= len {
+        // offset past end (empty file included): EOF shape, real total.
+        return read_text_range_json(String::new(), total, None);
+    }
+    let mut end = start.saturating_add(limit as usize).min(len);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let chunk = text[start..end].to_string();
+    let next_offset = if end >= len { None } else { Some(end as u64) };
+    read_text_range_json(chunk, total, next_offset)
+}
+
 /// Write text content to a file
 #[auto_macros::rust_fn("File.write_text", "auto.file.write_text", "auto.fs.write_text", "auto.fs.write")]
 pub fn shim_file_write_text(path: String, content: String) -> i32 {

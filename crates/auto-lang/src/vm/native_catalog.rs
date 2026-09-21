@@ -2103,6 +2103,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.file.read_lines", 1012),
     ("auto.file.remove_dir", 1014),
     ("auto.file.remove_dir_all", 1015),
+    ("auto.file.read_text_range", 1016),
     ("auto.fs.read_text", 1000),
     ("auto.fs.read", 1000),
     ("auto.fs.write_text", 1001),

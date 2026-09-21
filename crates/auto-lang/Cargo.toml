@@ -298,6 +298,10 @@ insta = { version = "1", features = ["yaml"] }
 # iced_test（其 matches_image 即用 png 落盘/读盘），不新增编译单元。
 png = "0.18"
 
+# Plan 673 T-03：read_text_range 分块读 VM/a2r-std 双轨逐字节对拍
+# （P670-D1 纪律：两侧 serde 形状一致，测试断言 byte-identical）。
+a2r-std = { path = "../a2r-std" }
+
 [[bench]]
 name = "incremental_transpile_bench"
 harness = false

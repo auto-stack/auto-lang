@@ -26,6 +26,62 @@ pub fn read_text(path: impl AsRef<Path>) -> String {
     std::fs::read_to_string(path.as_ref()).unwrap_or_default()
 }
 
+/// Read at most `limit` bytes of UTF-8 text starting at byte `offset`,
+/// returned as the Plan 673 §5 JSON envelope
+/// (`{"text":...,"total":<file byte len>,"next_offset":<bytes>|null}`).
+///
+/// P670-D1 (dual-track parity): byte-identical with the AutoVM
+/// `auto.file.read_text_range` native (`shim_file_read_text_range`) — same
+/// serde shape and field order, same EOF/error rules (`next_offset` null
+/// ONLY at true EOF so disk-tail short reads are not mistaken for EOF;
+/// IO error or invalid UTF-8 → `total:-1` shape). Chunk edges never split
+/// a char: a mid-char `offset` walks back to the preceding boundary and the
+/// chunk end backs off likewise. Plan 368 parity note applies as well: the
+/// `.at` source is written once and must behave identically across
+/// VM/a2r/Rust.
+pub fn read_text_range(path: impl AsRef<Path>, offset: usize, limit: usize) -> String {
+    #[derive(serde::Serialize)]
+    struct ReadTextRangeOut {
+        text: String,
+        total: i64,
+        next_offset: Option<u64>,
+    }
+    let err = || {
+        serde_json::to_string(&ReadTextRangeOut { text: String::new(), total: -1, next_offset: None })
+            .expect("read_text_range envelope serialization cannot fail")
+    };
+    if limit == 0 {
+        return err();
+    }
+    let bytes = match std::fs::read(path.as_ref()) {
+        Ok(b) => b,
+        Err(_) => return err(),
+    };
+    let total = bytes.len() as i64;
+    let text = match String::from_utf8(bytes) {
+        Ok(t) => t,
+        Err(_) => return err(),
+    };
+    let len = text.len();
+    let mut start = offset.min(len);
+    while !text.is_char_boundary(start) {
+        start -= 1;
+    }
+    if start >= len {
+        // offset past end (empty file included): EOF shape, real total.
+        return serde_json::to_string(&ReadTextRangeOut { text: String::new(), total, next_offset: None })
+            .expect("read_text_range envelope serialization cannot fail");
+    }
+    let mut end = start.saturating_add(limit).min(len);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let chunk = text[start..end].to_string();
+    let next_offset = if end >= len { None } else { Some(end as u64) };
+    serde_json::to_string(&ReadTextRangeOut { text: chunk, total, next_offset })
+        .expect("read_text_range envelope serialization cannot fail")
+}
+
 /// Write text content to a file, returns true on success
 pub fn write(path: &str, content: &str) -> bool {
     std::fs::write(path, content).is_ok()

@@ -9,6 +9,11 @@
 #[vm]
 fn read_text(path str) str
 
+/// Read at most `limit` bytes of UTF-8 text starting at byte `offset`,
+/// returned as a JSON envelope ({"text":...,"total":...,"next_offset":...|null})
+#[vm]
+fn read_text_range(path str, offset int, limit int) str
+
 /// Write text content to a file
 #[vm]
 fn write_text(path str, content str) int

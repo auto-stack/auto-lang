@@ -12,6 +12,13 @@
 /// Example: let content = read_text("hello.txt")
 pub fn read_text(path str) str;
 
+/// Read at most `limit` bytes of UTF-8 text starting at byte `offset`,
+/// returned as a JSON envelope: {"text":...,"total":<file byte len>,
+/// "next_offset":<offset+text.len()>|null}. next_offset is null only at
+/// true EOF; error shapes carry "total":-1. Chunk edges never split a char.
+/// Example: let chunk = read_text_range("big.txt", 0, 4096)
+pub fn read_text_range(path str, offset int, limit int) str;
+
 /// Write text content to a file
 /// Returns 0 on success, -1 on error
 /// Example: write_text("output.txt", "Hello World")
