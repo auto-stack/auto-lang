@@ -335,7 +335,10 @@ fixture 验证链（tests/ 通用 .at 语料 + a2r 生成 + cargo check）；消
     P674-1/P674-2 读回验证；ui/plans.md 表行在库；INDEX 项目级零差。
   - **archived**：git mv → docs/plans/archive/674-rq-codeeditor-a2r-vocab.md，
     status: archived，completion_kind: delivered。
-  - **cleaned**：待记（guard+移除在下一步执行后回填）。
+  - **cleaned**：wt-guard clean ×2（lang-674/auto-lang + lang-674/auto-down
+    依赖位）；worktree 双移除（auto-down 经属主仓）；分支 plan-674-dev
+    -d（was 20282e252）；组目录 .wt/lang-674 删除；prune 零残留
+    （双仓 worktree list/branch 复核零命中）。
 
 ## 10. 待澄清事项
 
