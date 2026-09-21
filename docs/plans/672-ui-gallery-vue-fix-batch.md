@@ -273,9 +273,9 @@ demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切�
       （env 条目未设不出现）。—— 结构性满足：/apps 条目 env 门控（未设即
       零条目）；无 api 源 fullstack 直接回退独立提示（047 实测）；代理死时
       fetch 失败走错误横幅（实测窗口期现过 500 横幅，页面不崩）。
-- [ ] AC-13（条目 6 延伸）嵌入态 016 挂载即跟随宿主主题（宿主深色→视口
+- [x] AC-13（条目 6 延伸）嵌入态 016 挂载即跟随宿主主题（宿主深色→视口
       内直接深色，不再先浅后切）；demo 内切换仍限视口；重置状态后回到
-      跟随宿主。
+      跟随宿主。——证据：T-15。
 - [ ] AC-11（条目 6）画廊（深色宿主）中打开 016-calendar：宿主 `<html>`
       的 `.dark` 不被摘除（页面保持深色）；016 视口内主题按其自身默认渲染，
       在 016 内切主题仅作用于该视口。
@@ -369,8 +369,13 @@ demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切�
   无效——PLAN-658 会话面从未被真实消费过，非本计划回归）；UI Enter 新增
   待 standalone 差分=P672-N4（IAB 只发 input 不发 keyup，合成事件亦未触
   发 Vue handler，疑 codegen 层 keyup 绑定问题，与嵌入无关）。
-- [ ] T-15（条目 6 延伸）gallery_scope_theme_runtime 增加跟随宿主回填
+- [x] T-15（条目 6 延伸）gallery_scope_theme_runtime 增加跟随宿主回填
       （onMounted Init 序列改写）+ 单测扩面 + 门禁 + 端到端复验。
+  [✅ 已完成] worktree db70ea98c——无门槛改写（序列不匹配原样，非主题
+  demo 零变化）；单测扩「无 accent 运行时仅 Init 序列」形态。端到端
+  （重启画廊实测）：016 挂载即深色（containerDark=true、卡片
+  rgb(14,21,37)、宿主 header 同调色板、html .dark 保持），AC-13 ✓。
+  截图在档（深色日历与宿主一体）。
 - [x] T-13（条目 6）AppViewport 资产注入 __AUTO_UI_EMBED__ 标记 +
       gallery_scope_theme_runtime 后处理 + 单测/契约测试扩面。
   [✅ 已完成] worktree 90fe19990——资产 script setup 注入标记；后处理=
