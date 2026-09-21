@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-680
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # 终态（2026-09-21 delivered，五 checkpoint 闭环）
 feature_name: vue-gallery-fix-batch
 author: [agent]
 created_at: 2026-09-21
@@ -293,6 +293,25 @@ AppViewport 错误横幅 → 文件浏览内容（列表/快捷访问引导）�
   测试断言，折叠仅限字面量键（Expr::Str gate）、守卫纯包裹不误伤 VM、id 9907 无碰撞、
   15 文件=3 代码+9 截图+2 文档恰为交付面无超范围改动；门禁 tv/tf 复跑绿 |
   next=merge（/auto-plan:merge；先清 027 gen/ pnpm junction 再 wt-guard）。
+
+- 2026-09-21 merge 收据（PLAN-680:r1，completion_kind=delivered，五 checkpoint 闭环）：
+  - **prepared**：reviewed 基线 a9b45b7d7（worktree plan-680-dev）；spec 增量已备于
+    worktree（app-generation.md 契约第 5 条+027 SPEC §5.5）；账本条目 P680-1(designs)/
+    P680-2(reviews) 外科插入+ui/plans.md 680 表行+spec-index 再生（commit 8e9b0fabd）。
+  - **landed**：rebase master 两轮（中途 master 增 39c34de6e 674 簿记，零交叠重放）；
+    range-diff 5/5 全等两证（旧 8be1e48e1..8e9b0fabd → b32116388..9cd0f4345 →
+    6a3742392..7170a9494）；ff-only 落地 master=**7170a9494**，零合并提交。
+    映射：8be1e48e1→6a3742392 / 9602dab19→6edf68f7b / 29d2b4ce4→7f640e6ce /
+    a9b45b7d7→b1aa18a57 / 8e9b0fabd→7170a9494。
+  - **ledger_refreshed**：master 落地后读回验证——specs.json designs 尾 P671-1→P680-1、
+    reviews 尾 P677-1→P680-2（P673-1/2 architecture 段并发条目无损共存）；INDEX 再生
+    零 diff；cargo check -p auto-lang 绿、落地文件零告警。
+  - **archived**：本文档 git mv 至 docs/plans/archive/ + status: archived。
+  - **cleaned**：027 gen/ 整树（pnpm junction）+deps/stylekit 单链 cmd rmdir 摘除 →
+    wt-guard clean → worktree/分支/组目录移除（收据回填见下）。
+  - 并发事故留档：master 3f7a4af1c 提交信息称"reviews 段拼接 P672-1"但实际内容为
+    P673-1/2（architecture 段）——P672-1 从未入库（git log -S 零命中），系 672 账本
+    会话簿记事故，非本计划范围，已呈报用户。
 
 ## 待澄清事项
 
