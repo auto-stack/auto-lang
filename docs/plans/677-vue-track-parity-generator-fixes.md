@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-677
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-track-parity-generator-fixes
 author: [zcode]
 created_at: 2026-09-21
@@ -12,7 +12,7 @@ new_spec_components: [SD-01 vue 轨视图 menubar 族 lowering 契约, SD-02 vue
 touched_goals: []
 
 affects: [docs/specs/auto-lang/ui/design/app-generation.md, docs/specs/auto-lang/ui/overview.md]
-current_step: 0
+current_step: 5
 total_steps: 7
 ---
 
@@ -233,20 +233,20 @@ crates/auto-man/src/vue.rs (模板集)      ← ⑤ editorBridge.ts 新模板 + 
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- **T-01 for 透明包装**（AC-01）：`crates/auto-lang/src/ui_gen/vue.rs`
+- **T-01 for 透明包装**[✅ 已完成 85bd9068e：template v-for 单-if 体透明化,测试 test_plan677_single_if_loop_wraps_in_template_not_div+plan008 回归绿]（AC-01）：`crates/auto-lang/src/ui_gen/vue.rs`
   for-lowering——识别循环体为单 if 语句时发 `<template v-for :key>`。
   含既有 test_plan008 族平移 + 新快照测试。
-- **T-02 CodeEditor 主题+折叠**（AC-02/03 UI 面）：
+- **T-02 CodeEditor 主题+折叠**[✅ 已完成 dbd939541：CSS 变量主题+foldGutter/foldKeymap+旧版自有脚手架覆写路径,测试两件绿]（AC-02/03 UI 面）：
   `crates/auto-man/src/vue.rs` generate_code_editor 模板——深色主题
   （CSS 变量 + HighlightStyle）+ foldGutter/foldKeymap。模板断言测试。
-- **T-03 menubar 族 lowering**（AC-04）：`crates/auto-lang/src/ui_gen/
+- **T-03 menubar 族 lowering**[✅ 已完成 25d3ff30c：registry 双形态别名+MenuBarCheckboxItem spec+generate_menubar_view_node 发射器,plan630 既有测试绿,失败集与 master 比对零回归]（AC-04）：`crates/auto-lang/src/ui_gen/
   vue.rs` 视图组件发射增 menubar* kind 映射,复用/镜像
   generate_actions_menubar_html 的项渲染；lucide 导入走既有 helper。
   快照测试。
-- **T-04 natives 三层**（AC-05）：`crates/auto-man/src/vue.rs`
+- **T-04 natives 三层**[✅ 已完成 T-04 提交：R 层 file_basename/console_* 真实现（语义镜像 native.rs/ui_console.rs）,S 层桩不变,plan677_natives_r_tier_real_impls 绿]（AC-05）：`crates/auto-man/src/vue.rs`
   ensure_natives_layer——R 层（file_basename/console 三件真实现）、
   S 层保持;分层结构为 T-05 的 B 层预留挂点。单测。
-- **T-05 editorBridge**（AC-03 菜单折叠/AC-06）：auto-man 新增
+- **T-05 editorBridge**[✅ 已完成 4a09aa7b9：bridge 模板+CodeEditor editorKey 注册+natives B 层 13 内建路由+:editor-key 动态绑定,测试四件绿,失败集与 master 比对零回归]（AC-03 菜单折叠/AC-06）：auto-man 新增
   editorBridge.ts 模板 + CodeEditor editorKey 注册 + ensure_natives_layer
   B 层路由；auto-lang ui_gen/vue.rs code_editor 发射透传 DSL key。
   单测（桥语义换算：0-based cursor/1-based fold/隐藏行计数）。
