@@ -42,3 +42,6 @@ pub use component_registry::{
 pub use registry::WidgetRegistry;
 pub use registry::AUTO_IMPORTED_WIDGETS;
 pub use spec::{BackendMapping, WidgetCategory, WidgetSpec};
+
+#[cfg(test)]
+mod plan677_probe_tests;

@@ -6351,6 +6351,174 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         Ok(html)
     }
 
+    /// PLAN-677 T-03: 视图声明式 menubar 族（PLAN-630）→ shadcn Menubar
+    /// 组件树。视图 DSL 的 menubar-menu/trigger/content/item/separator/
+    /// checkbox-item 节点在 Element 通用发射里曾因 registry 查找键 miss
+    /// 退化裸 div（下拉不可用），补齐别名后也只剩 :title 裸属性——
+    /// 项内 icon/标题/快捷键需要真正的子组件组装。本发射器逐 kind 组装
+    /// （镜像 generate_actions_menubar_html 的项渲染：icon→lucide 子组件、
+    /// title→span、shortcut→右对齐 span、enabled→:disabled 取反；
+    /// checkbox 的 checked→:checked 单向绑定，视觉随 store 态刷新——
+    /// 与 vm convert_menubar_component 语义同源）。
+    /// 返回 None = 非 menubar 族 kind，调用方落回通用发射。
+    fn generate_menubar_view_node(
+        &mut self,
+        kind: &str,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<Option<String>> {
+        // Element 路径 props 形态：HashMap<String, AuraPropValue>。
+        // 嵌套 fn——闭包形式在返回借用时生命周期推不动。
+        fn prop_str<'a>(
+            props: &'a HashMap<String, AuraPropValue>,
+            name: &str,
+        ) -> Option<&'a str> {
+            props.get(name).and_then(|v| match v {
+                AuraPropValue::Expr(crate::ast::Expr::Str(s2)) => Some(s2.as_str()),
+                _ => None,
+            })
+        }
+        fn prop_expr<'a>(
+            props: &'a HashMap<String, AuraPropValue>,
+            name: &str,
+        ) -> Option<&'a crate::ast::Expr> {
+            props.get(name).and_then(|v| match v {
+                AuraPropValue::Expr(e) => Some(e),
+                _ => None,
+            })
+        }
+        let norm = kind.replace('-', "_");
+        if !matches!(
+            norm.as_str(),
+            "menubar_menu"
+                | "menubar_trigger"
+                | "menubar_content"
+                | "menubar_item"
+                | "menubar_separator"
+                | "menubar_checkbox_item"
+        ) {
+            return Ok(None);
+        }
+        let ind = "  ".repeat(indent);
+        let inner_ind = "  ".repeat(indent + 1);
+
+        // onclick → @click + handler 注册（与通用 Component 臂同法）。
+        let mut click_attr = String::new();
+        if let Some(aura_event) = events.get("onclick") {
+            let handler_fn =
+                self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+            let handler_name = self.handler_to_function_call(&aura_event.handler);
+            self.used_handlers.insert(handler_name);
+            click_attr = format!("@click=\"{}\" ", handler_fn);
+        }
+
+        let html = match norm.as_str() {
+            "menubar_menu" => {
+                self.shadcn_components_used.insert("MenubarMenu".to_string());
+                let value_attr = match prop_str(props, "value") {
+                    Some(v) => format!(" value=\"{}\"", Self::escape_html_attr(v)),
+                    None => String::new(),
+                };
+                let mut out = format!("{}<MenubarMenu{}>\n", ind, value_attr);
+                for child in children {
+                    out.push_str(&self.node_to_html(child, indent + 1)?);
+                }
+                out.push_str(&format!("{}</MenubarMenu>\n", ind));
+                out
+            }
+            "menubar_trigger" => {
+                self.shadcn_components_used
+                    .insert("MenubarTrigger".to_string());
+                let inner = match prop_str(props, "text") {
+                    Some(t) => Self::escape_html_text(t),
+                    None => {
+                        let mut s = String::new();
+                        for child in children {
+                            s.push_str(&self.node_to_html(child, indent + 1)?);
+                        }
+                        s
+                    }
+                };
+                format!("{}<MenubarTrigger>{}</MenubarTrigger>\n", ind, inner)
+            }
+            "menubar_content" => {
+                self.shadcn_components_used
+                    .insert("MenubarContent".to_string());
+                let mut out = format!("{}<MenubarContent>\n", ind);
+                for child in children {
+                    out.push_str(&self.node_to_html(child, indent + 1)?);
+                }
+                out.push_str(&format!("{}</MenubarContent>\n", ind));
+                out
+            }
+            "menubar_separator" => {
+                self.shadcn_components_used
+                    .insert("MenubarSeparator".to_string());
+                format!("{}<MenubarSeparator />\n", ind)
+            }
+            item_kind => {
+                // menubar_item / menubar_checkbox_item 共用项渲染。
+                let (tag, is_checkbox) = if item_kind == "menubar_checkbox_item" {
+                    ("MenubarCheckboxItem", true)
+                } else {
+                    ("MenubarItem", false)
+                };
+                self.shadcn_components_used.insert(tag.to_string());
+                let mut open = format!("{}<{} {}{}", ind, tag, click_attr, {
+                    let mut s = String::new();
+                    if let Some(v) = prop_expr(props, "enabled") {
+                        let expr = self.expr_to_vue_bound_value(v)?;
+                        s.push_str(&format!(":disabled=\"!({})\" ", expr));
+                    }
+                    if is_checkbox {
+                        if let Some(v) = prop_expr(props, "checked") {
+                            let expr = self.expr_to_vue_bound_value(v)?;
+                            s.push_str(&format!(":checked=\"{}\" ", expr));
+                        }
+                    }
+                    s
+                });
+                if open.ends_with(' ') {
+                    open.pop();
+                }
+                let mut out = format!("{}>\n", open);
+                if let Some(v) = prop_str(props, "icon") {
+                    let lucide = Self::kebab_to_pascal(v);
+                    self.lucide_icons.insert(lucide.clone());
+                    out.push_str(&format!(
+                        "{}  <{} class=\"mr-2 h-4 w-4\" />\n",
+                        inner_ind, lucide
+                    ));
+                }
+                match prop_str(props, "title") {
+                    Some(t) => out.push_str(&format!(
+                        "{}  <span>{}</span>\n",
+                        inner_ind,
+                        Self::escape_html_text(t)
+                    )),
+                    None => {
+                        for child in children {
+                            out.push_str(&self.node_to_html(child, indent + 1)?);
+                        }
+                    }
+                }
+                if let Some(v) = prop_str(props, "shortcut")
+                {
+                    out.push_str(&format!(
+                        "{}  <span class=\"ml-auto pl-5 text-[11px] text-zinc-500 tracking-widest\">{}</span>\n",
+                        inner_ind,
+                        Self::escape_html_text(v)
+                    ));
+                }
+                out.push_str(&format!("{}</{}>\n", ind, tag));
+                out
+            }
+        };
+        Ok(Some(html))
+    }
+
     /// Plan 451 P2: `toolbar {}` 占位标签 → 从声明合成的工具栏（镜像 vm
     /// convert_toolbar）：图标按钮（lucide 组件 + title 原生 tooltip，
     /// enabled_if → :disabled），无图标则文本按钮；sep 为细分隔线。
@@ -6933,6 +7101,18 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 if tag == "nav-group" || tag == "nav_group" {
                     return self.generate_nav_group_html(props, events, children, indent);
                 }
+                // PLAN-677 T-03: 视图声明式 menubar 族（menubar-menu/
+                // trigger/content/item/separator/checkbox-item）→ shadcn
+                // 组件树（registry 别名补齐 + 专用项渲染;外层 `menubar`
+                // 容器不受此臂影响,照走通用路径）。非族内 kind 返回 None。
+                if tag.starts_with("menubar") && tag != "menubar" {
+                    if let Some(html) =
+                        self.generate_menubar_view_node(tag, props, events, children, indent)?
+                    {
+                        return Ok(html);
+                    }
+                }
+
                 if tag == "nav" {
                     let search = props.get("search")
                         .and_then(|v| match v {
@@ -23664,6 +23844,112 @@ widget L {
         assert!(
             sfc.contains("ActConsole") && sfc.contains("ActSelectAll"),
             "onclick handlers wired:\n{}",
+            sfc
+        );
+    }
+
+    /// PLAN-677 T-03: 视图声明式 menubar 族项渲染契约——icon→lucide
+    /// 子组件、title→span、shortcut→右对齐 span、enabled→:disabled 取反、
+    /// checkbox→:checked 单向绑定、分隔线自闭合。消费方 auto-edit 源形态。
+    #[test]
+    fn plan677_view_menubar_item_composition() {
+        let src = concat!(
+            "widget App {
+",
+            "    model {
+",
+            "        var console_open bool = false
+",
+            "        var tab_count int = 0
+",
+            "    }
+",
+            "    view {
+",
+            "        col {
+",
+            "            menubar {
+",
+            "                menubar-menu (value: \"view\") {
+",
+            "                    menubar-trigger \"视图\"
+",
+            "                    menubar-content {
+",
+            "                        menubar-checkbox-item (title: \"切换 Console\", icon: \"terminal\", shortcut: \"Ctrl+J\", checked: .console_open) { onclick: .ActConsole }
+",
+            "                        menubar-separator
+",
+            "                        menubar-item (title: \"保存\", icon: \"save\", shortcut: \"Ctrl+S\", enabled: .tab_count > 0) { onclick: .ActSave }
+",
+            "                    }
+",
+            "                }
+",
+            "            }
+",
+            "        }
+",
+            "    }
+",
+            "    on { .ActConsole -> { } .ActSave -> { } }
+",
+            "}
+",
+        );
+        let sfc = gen_sfc_from_widget_src_shadcn(src);
+        assert!(
+            sfc.contains("<MenubarCheckboxItem @click=\"ActConsole\" :checked=\"console_open\">"),
+            "checkbox item opens with one-way checked + click:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<Terminal class=\"mr-2 h-4 w-4\" />"),
+            "icon prop lowers to lucide child:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<span>切换 Console</span>"),
+            "title renders as slot text:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(">Ctrl+J</span>"),
+            "shortcut renders right-aligned hint:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<MenubarSeparator />"),
+            "separator self-closes:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(":disabled=\"!(tab_count > 0)\""),
+            "enabled prop negates to :disabled:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<Save class=\"mr-2 h-4 w-4\" />") && sfc.contains("<span>保存</span>"),
+            "plain item composes icon + title:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator, MenubarTrigger"),
+            "full family imported from ui/menubar:
+{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("<div :title="),
+            "no bare div fallback remains for family tags:
+{}",
             sfc
         );
     }

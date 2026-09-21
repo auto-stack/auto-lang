@@ -1393,35 +1393,60 @@ impl WidgetRegistry {
         menu_bar.has_children = true;
         self.register(menu_bar);
 
+        // PLAN-677 T-03: 视图声明式 menubar 族（PLAN-630）的 DSL tag 既有
+        // 连字符（menubar-menu）也有下划线（menubar_menu）两形态——注册表
+        // 查找是字面键，此前仅 menu-bar-* 别名可命中，视图 DSL tag 全部
+        // miss（消费方 auto-edit menubar 子树退化裸 div 实测）。按两形态
+        // 补齐别名；MenuBarCheckboxItem 此前完全无 spec（schema vue 行
+        // 无法挂靠）。
         // MenuBarMenu
         let mut menu_bar_menu = WidgetSpec::new("MenuBarMenu", WidgetCategory::Navigation)
-            .with_alias("menu-bar-menu");
+            .with_alias("menu-bar-menu")
+            .with_alias("menubar_menu")
+            .with_alias("menubar-menu");
         menu_bar_menu.has_children = true;
         self.register(menu_bar_menu);
 
         // MenuBarTrigger
         let mut menu_bar_trigger = WidgetSpec::new("MenuBarTrigger", WidgetCategory::Navigation)
-            .with_alias("menu-bar-trigger");
+            .with_alias("menu-bar-trigger")
+            .with_alias("menubar_trigger")
+            .with_alias("menubar-trigger");
         menu_bar_trigger.has_children = true;
         self.register(menu_bar_trigger);
 
         // MenuBarContent
         let mut menu_bar_content = WidgetSpec::new("MenuBarContent", WidgetCategory::Navigation)
-            .with_alias("menu-bar-content");
+            .with_alias("menu-bar-content")
+            .with_alias("menubar_content")
+            .with_alias("menubar-content");
         menu_bar_content.has_children = true;
         self.register(menu_bar_content);
 
         // MenuBarItem
         let mut menu_bar_item = WidgetSpec::new("MenuBarItem", WidgetCategory::Navigation)
-            .with_alias("menubar_item");
+            .with_alias("menu-bar-item")
+            .with_alias("menubar_item")
+            .with_alias("menubar-item");
         menu_bar_item.has_children = true;
         self.register(menu_bar_item);
 
         // Plan 451 P2: MenuBarSeparator — `actions {}` 合成的 menubar 树用
         // （此前无 spec，vue import 无从解析）。
         let menu_bar_separator = WidgetSpec::new("MenuBarSeparator", WidgetCategory::Navigation)
-            .with_alias("menubar_separator");
+            .with_alias("menubar_separator")
+            .with_alias("menubar-separator");
         self.register(menu_bar_separator);
+
+        // PLAN-677 T-03: MenuBarCheckboxItem — 视图勾选型菜单项
+        // （`menubar-checkbox-item`/`menubar_checkbox_item`），vue 映射随
+        // schema/aura.at overlay（menubar_checkbox_item 行）挂靠。
+        let menu_bar_checkbox_item =
+            WidgetSpec::new("MenuBarCheckboxItem", WidgetCategory::Navigation)
+                .with_alias("menu-bar-checkbox-item")
+                .with_alias("menubar_checkbox_item")
+                .with_alias("menubar-checkbox-item");
+        self.register(menu_bar_checkbox_item);
 
         // DropdownMenu
         let mut dropdown_menu = WidgetSpec::new("DropdownMenu", WidgetCategory::Navigation)
