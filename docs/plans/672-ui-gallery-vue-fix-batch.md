@@ -203,9 +203,13 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
       证据：T-06 计算样式+截图。
 - [ ] AC-7（条目 4）013-todo 在 Vue 臂画廊内加载且 CRUD 可用（新增/勾选待办
       经 vite `/apps` 代理 → back-proxy 会话持久生效）；015-notes 同面加载。
+      —— **部分达成**：加载/读/创建/持久 ✓（T-10 证据）；删除与更新受阻于
+      P672-N5（proxy 会话路径参数绑定，非本计划回归），修复后闭环。
 - [ ] AC-8（条目 4）代理未运行时（env 未注入）fullstack demo 降级为错误横幅
       或空态，不崩溃、不影响其他 demo；standalone 项目 vite.config 零变化
-      （env 条目未设不出现）。
+      （env 条目未设不出现）。—— 结构性满足：/apps 条目 env 门控（未设即
+      零条目）；无 api 源 fullstack 直接回退独立提示（047 实测）；代理死时
+      fetch 失败走错误横幅（实测窗口期现过 500 横幅，页面不崩）。
 
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
@@ -256,6 +260,40 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
   半宽（预期几何，非缺陷）；截图右缘细圆角拇指在档。门禁复跑：gallery_assets
   契约测试绿，auto-man 315 例唯一红仍为预存 plan593_index_css_golden。
   附带证据：HMR 全量重载后 002-counter 居中保持（条目 1 修复对重载鲁棒）。
+- [x] T-07（条目 4）run_vue_project 画廊分支启 proxy + env 注入；
+  generate_vite_config 加 /apps 条目；vite.config 每 run 自愈。
+  [✅ 已完成] worktree 46abb6565——gallery 分支 `generate_gallery_host` 后调
+  `start_gallery_back_proxy`（行缓存热），端口 set_var
+  `AUTO_GALLERY_BACK_PROXY`（失败 remove_var 降级）；vite.config 追加
+  env 门控 `/apps` 条目；自愈块（Plan 548 同律）补 vite.config.ts 每 run
+  重写（实测增量路径不重写导致 `/apps` 丢失 → proxy 起了也 404）。
+- [x] T-08（条目 4）fullstack 语料发射 + api.ts 路径改写 + TS registry 翻转。
+  [✅ 已完成] worktree 46abb6565——发射循环 `row.loadable || row.fullstack`；
+  fullstack 语料 `@/lib/api` → `@/apps/<id>/lib_api`（单/双引号双改写）；
+  api.ts 源=gen api.ts（回落 src/back/api.ts 胶水），fetch 路径
+  `` `/api/ `` → `` `/apps/<id>/api/ ``，落盘 apps/<id>/lib_api.ts；
+  **无 api 源的 fullstack demo 回退独立提示**（实测 047-bp-admin 无源，
+  首版发射致 vite build lib_api 断链，改判不可内嵌后消解）；TS registry
+  在发射成功分支置 `row.loadable = true`（generate_demos_registry 单看
+  loadable；registry.at VM 侧 loadable||fullstack 并集语义不变）。
+  proxy 会话准入扩 fullstack（`back_needs_session || fullstack`——普通
+  CRUD back 此前不建 session 因 VM 臂走 inproc；Vue 臂 fetch 必须有会话）。
+- [x] T-09（条目 4）门禁复跑 + 重建二进制。
+  [✅ 已完成] `cargo check -p auto-man` 干净；auto-man 315 例 314 绿
+  （唯一红=预存 plan593）；plan633_fullstack 4/4 绿（--features ui-iced）；
+  back_proxy_tests（th 档真 TCP）未跑——back_proxy.rs 本体零改动，proxy
+  行为由 T-10 实机覆盖。
+- [x] T-10（条目 4）端到端：013/015 经 vite /apps 代理 CRUD 实测。
+  [✅ 已完成] 实测（worktree 二进制重启画廊）：`Gallery back-proxy:
+  http://127.0.0.1:3358 (33 apps, 6 sessions)`（013-todo 5 路由/015-notes
+  8 路由/017-chat/047/025/031 会话全起）；vite.config 带 `/apps` env 条目；
+  `POST /apps/013-todo/api/todos → 200` 且持久（后续 GET/Init 返回探针
+  条目）；013 内嵌渲染种子+居中 0/0+交互底栏（3 items left/筛选器）；
+  015-notes GET 200 种子返回。**AC-7 部分达成**：加载/读/创建 ✓，删除/
+  更新受阻=P672-N5（proxy 会话路径参数 `:id` 疑 str 绑定，DELETE 200 但
+  无效——PLAN-658 会话面从未被真实消费过，非本计划回归）；UI Enter 新增
+  待 standalone 差分=P672-N4（IAB 只发 input 不发 keyup，合成事件亦未触
+  发 Vue handler，疑 codegen 层 keyup 绑定问题，与嵌入无关）。
 
 ## 复审记录
 
@@ -270,9 +308,25 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
   （疑似近期 P025/671 相邻提交的漂移，建议另开小修或并入 671 批）。
 - **P672-N2（观察）**：`auto run` 的 auto.exe 包装进程在 vite 就绪后 exit 1
   （vite 子进程存活照常服务）。本次两 run 均现。不影响功能，归因未勘定。
-- **P672-N3（条目 3 候选，待用户裁定）**：027-file-manager 在 Vue 画廊内加载
+- **P672-N3（观察，待用户裁定）**：027-file-manager 在 Vue 画廊内加载
   后报「Env is not defined」运行错误横幅（原生 Env 依赖未守门/未降级；025
   档位=registry-only 的同类问题）。修复方向：加载前探测/降级为非 loadable。
+- **P672-N4（观察，条目 4 伴随）**：013 UI 的 Enter 新增在嵌入态未触发
+  （IAB 自动化只发 `input` 不发键盘事件为已知限制，但合成 keyup 亦未触发
+  Vue handler、CUA 真实键盘同）——疑 codegen 层 `@keyup.enter` 绑定问题，
+  与画廊嵌入无关。待 standalone 差分定位后决定归属（可能并入 671 批
+  vue 生成器缺口账）。
+- **P672-N5（观察，条目 4 伴随，阻断 AC-7 闭环）**：back-proxy 会话的
+  路径参数路由（`/api/todos/:id` DELETE/PUT）返回 200 但变更不生效——
+  `:id` 疑以 str 参与比较（同 PLAN-669 vm-server 实参绑定同族问题）；
+  POST/GET（无路径参数）完全正常。PLAN-658 会话面此前无真实消费方，
+  条目 4 首次点亮即暴露。修复方向：back_proxy 会话分派的路径参数按
+  #[api] 签名类型绑定（669 先例）。
+- **P672-N2（升级）**：托管后台下 `auto run` 包装进程不定时 exit（本次
+  多轮复现，exit 1/0xC00004），**in-process back-proxy 随之死亡**——
+  条目 4 前包装进程退出无害（仅丢 watcher），此后 N2 升级为「代理随宿主
+  亡」的结构性弱点。用户终端前台跑不受影响（进程常驻）；根治方向=proxy
+  独立子进程化或 N2 归因，另账处理。
 - **P672-D1（债，双物化路径漂移）**：AppViewport.vue 存在两条物化路径——
   `gallery_assets::materialize` 每 run 刷新 `gen/src/gallery/`（**无消费者**），
   而 App 实际 import 的 `gen/src/ext/src/gallery/` 由 `copy_ext_files` 从
