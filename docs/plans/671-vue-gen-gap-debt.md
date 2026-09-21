@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-671
-status: execution_done    # drafting → executing → execution_done → reviewed → archived
+status: reviewed          # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-gen-gap-debt
 author: [zcode]
 created_at: 2026-09-21
@@ -12,7 +12,7 @@ base_commit: ebfeef30c
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components: [SD-01 ui overview vue 生成器自完备契约, SD-02 aura schema menubar 族 props 吸收]
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN（review 时定）
+touched_goals: [GOAL-007]      # AutoUI 跨端视觉一致（vue 轨生成自完备/双端 parity 锁定面）
 
 affects: [docs/specs/auto-lang/ui/overview.md]
 current_step: 14
@@ -375,6 +375,61 @@ menubar_item 发射为裸 `<div :title=...>`（仅外层 Menubar 组件，:15046
      再生成（d21bee3）golden 如受影响按围栏提示重采样。
   冷重生成等价收据（供料 §8 复验条形态）：本计划 T-12 已以 worktree
   二进制冷重生成 + build 退出码 0 实证；消费方正式复跑窗口 = merge 后。
+
+
+- 2026-09-21 stage: review / PLAN-671 r2 / outcome: **pass**。
+  reviewed_commit: 102818dc58238ba21bf2bd46ae42a03c60fdb810（worktree
+  plan-671-dev；r1 = c1f986110 实现+fixture、7a34a1a67 specs，Phase 2 =
+  102818dc5；diff 15 文件 +687/−102）。
+  base_commit: ebfeef30c。dependency_revisions: auto-os d21bee3
+  （kitchen-sink 围栏联动再生成成物，已落 auto-os main）。
+  spec_inputs: docs/specs/auto-lang/ui/overview.md（SD-01 §「vue 生成工程
+  自完备契约」/ SD-02 §「menubar 族 props schema 吸收」，worktree 提交在案）。
+  独立性声明：与实施同会话——结论自工件重建（关键验证全部在 reviewed
+  commit 上重跑），不采信执行侧叙述。
+
+  acceptance_results（复审重跑实证）：
+  - AC-01 pass：§4.1 九类三态决策档（生成物证据+锚点行号）+ §4.2 Phase 2
+    增补与 T-11 勘定回填在档。
+  - AC-02 pass：`git diff ebfeef30c..HEAD` 15 文件 grep 消费方特定标识符
+    （EditorCtx/useEditorStore/confirm_idx/SyncCursor/toggle_id 等）——仅
+    2 行注释层案例引注（repo 惯例形态），可执行逻辑零命中。
+  - AC-03 pass：fixture 冷重跑 strict gen EXIT=0 + pnpm build EXIT=0 零 TS
+    错；natives.d.ts `declare const Env/Process` 双对象形态 + 22/23 函数
+    形态声明实证；②④⑦已清偿类 fixture 复验在 T-09 记录。
+  - AC-04 pass：auto-edit 冷树（rm gen/ 后裸 strict 生成）EXIT=0——消费方
+    widget 零 S001/S002（20 条 S001 全在 bps 依赖 reference 语料，Warning
+    容忍面）；pnpm build EXIT=0 零 TS 错；生成物断言全中（EditorCtx(x,y)
+    签名 + $event.x/y 实参 / toggle_id 内联 / {{line}}:{{col}} 界段 /
+    text:"" variant / ref<number>(-1) / auto-sources+vite-env /
+    __vmOnly('Process.exit') ×3）。
+  - AC-05 pass：**cargo tf 3685/3685、cargo tv 3832/3832、cargo tb
+    3732/3739**（tb 7 红 = book_listing ch02_05/ch03_08/ch06_05/06/08/09/
+    ch09_02，**detached ebfeef30c 基线同红实证=全预存**）；日常档 cargo t
+    对基线 diff 零新增红；examples 面 = 002-counter strict gen EXIT=0 抽检
+    （natives 层空用面干净清退）+ docs_gen/schema_drift 围栏绿。
+  - AC-06 pass：SD-01/SD-02 落账（worktree 提交）；通知留档 §9 强化版
+    （发出时点 = merge 后，669 §10-4 模式即计划设计）。
+  - AC-07 pass：覆盖判定在案（r1 部分覆盖：调用点改写在/声明发射缺）+
+    T-12 补修 + ①button 撤回项归属登记（1631 已自带，TS1117=下游非幂等）。
+  - AC-08 pass：强化版通知（冷重生成 + 七类补件全摘，1b 撞 TS2300 警示）
+    + 冷重生成等价收据（worktree 二进制冷重生成 build 退出码 0）+ 复跑
+    窗口登记（merge 后）。
+
+  findings（全部非阻塞，已处置）：
+  - F-1（info）：master 预存红三簇（日常档 20 = musk_vm_track×7 +
+    ui::layout×13，full 配置下不存在；tb book_listing×7）——668 全绿口径
+    后引入，非本批（对基线零新增）→ 债册 P671 条目在案，需独立归因计划。
+  - F-2（enhancement）：menubar 族 vue 渲染保真（裸 div 发射）→ 债册登记。
+  - F-3（enhancement）：bps reference 语料 S001 容忍面 → 债册登记。
+  - F-4（process）：复审期裸 `git stash` 共享栈事故——干净树上 pop 弹掉他
+    人 stash@{0}（plan-637 026-final）留 UU 冲突态；已 `git restore` 还原
+    HEAD、stash 栈三条原样保全（冲突 pop 不消费栈条目）。教训与既有记忆
+    「裸 git stash 共享栈禁用」一致：基线比对一律用 detached checkout。
+
+  evidence: 门禁数字与生成物断言已内联上文（持久于本计划文件）；tmp 日志
+  为辅助。auto-edit/fixture 复跑命令与退出码见 §9 work 记录 + 本记录。
+  next: merge（/auto-plan:merge 五 checkpoint）。
 
 ## 10. 待澄清事项
 
