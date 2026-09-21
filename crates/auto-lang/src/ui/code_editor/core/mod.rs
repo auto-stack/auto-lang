@@ -2988,6 +2988,155 @@ let beta = alpha + 2;
         assert!(rendered.as_secs() < 10, "render took {rendered:?}");
         eprintln!("large file: set={set:?} render1={rendered:?} render2={rendered2:?}");
     }
+
+    /// Plan 673 T-05 S3 — 100MB smoke receipt (AC-05 material for plan §9).
+    /// Ignored by default (CI unaffected, no heavy-tier registration); run
+    /// manually and capture the printed receipts:
+    ///   cargo test -p auto-lang --lib --features ui-iced smoke_100mb -- --ignored --nocapture
+    ///
+    /// Generates ~100MB of varied-length code-ish lines in the system temp
+    /// dir (deleted after). Phase receipts:
+    ///   1. open        — rope build + full initial buffer materialization
+    ///   2. summaries   — O(1) root accessors under repetition
+    ///   3. locate      — line_start_byte + byte_to_point at 100 depths
+    ///   4. typed edit  — ONE keystroke via handle_input (the wrapper's
+    ///                    before/after snapshots are the honest current-state
+    ///                    per-keystroke cost — windowing/local-diff deferred)
+    ///   5. agent edit  — code_editor_edit path (full O(n) rewrite receipt)
+    ///   6. save        — text() readout through the rope
+    ///   7. concurrency — snapshot to_string on a worker thread while the
+    ///                    main rope takes edits (snapshot isolation receipt)
+    ///
+    /// No cross-platform RSS in-repo: peak is approximated by holding the
+    /// corpus (100MB) + rope + buffer + one readout copy, and reported as
+    /// the corpus size + phase notes instead.
+    #[test]
+    #[ignore = "100MB smoke: manual receipt run only (Plan 673 T-05 S3)"]
+    fn smoke_100mb_rope_receipts() {
+        use std::time::Instant;
+
+        // ── corpus generation (~100MB, varied line lengths) ──
+        let t_gen = Instant::now();
+        let target_bytes = 100 * 1024 * 1024usize;
+        let templates = [
+            "    let value_{i} = compute_something(x_{i} + y_{i} * 3) / total_{i};",
+            "    if value_{i} > threshold {{ return fallback({i}); }}",
+            "    // comment line padding to vary lengths a bit more {i}",
+            "fn helper_{i}(a int, b int) int {{",
+            "    return a + b - {i}",
+            "}}",
+        ];
+        let mut text = String::with_capacity(target_bytes + 4096);
+        let mut i = 0usize;
+        while text.len() < target_bytes {
+            let t = templates[i % templates.len()];
+            let mut line = t.replace("{i}", &i.to_string());
+            // Vary length deterministically within a small band.
+            let extra = i % 17;
+            line.push_str(&" ".repeat(extra));
+            line.push('\n');
+            text.push_str(&line);
+            i += 1;
+        }
+        let path = std::env::temp_dir().join("auto_lang_673_smoke_100mb.txt");
+        std::fs::write(&path, &text).unwrap();
+        println!(
+            "[receipt] corpus: {} bytes, {} lines (gen {:?}, {:?} avg/line)",
+            text.len(),
+            text.bytes().filter(|&b| b == b'\n').count() + 1,
+            t_gen.elapsed(),
+            t_gen.elapsed() / i.max(1) as u32,
+        );
+
+        let mut fs = FontSystem::new();
+        let config = CodeEditorConfig { lang: "rust".to_owned(), ..CodeEditorConfig::default() };
+        let core = CodeEditorCore::new("smoke-100mb", config, &mut fs);
+
+        // ── Phase 1: open (rope build + full buffer materialization) ──
+        let t = Instant::now();
+        core.set_text(&text, &mut fs);
+        let open = t.elapsed();
+        let lines = core.doc.lock().unwrap().line_count();
+        println!("[receipt] phase 1 open: {open:?} (rope build + materialize {lines} lines)");
+
+        // ── Phase 2: O(1) summaries ──
+        let t = Instant::now();
+        for _ in 0..100_000 {
+            std::hint::black_box(core.doc.lock().unwrap().line_count());
+            std::hint::black_box(core.doc.lock().unwrap().len_bytes());
+        }
+        println!("[receipt] phase 2 summaries: {:?} for 100k×(line_count+len_bytes)", t.elapsed());
+
+        // ── Phase 3: locate at 100 depths (O(log n) each) ──
+        let t = Instant::now();
+        let mut check = 0usize;
+        {
+            let doc = core.doc.lock().unwrap();
+            for k in 0..100 {
+                let line = (lines - 2) * k / 100;
+                let b = doc.line_start_byte(line);
+                assert_eq!(doc.byte_to_point(b), (line, 0));
+                check += b;
+            }
+        }
+        println!("[receipt] phase 3 locate: {:?} for 100×(line_start_byte+byte_to_point) (checksum {check})", t.elapsed());
+
+        // ── Phase 4: one typed keystroke at EOF (wrapper snapshot cost) ──
+        core.set_focused(true);
+        let t = Instant::now();
+        core.handle_input(
+            &mut fs,
+            EditorInput::KeyPressed {
+                key: EditorKey::Char('!'),
+                text: Some("!".to_owned()),
+                modifiers: EditorModifiers::none(),
+            },
+            &mut NullClipboard,
+        );
+        println!("[receipt] phase 4 typed edit (1 keystroke, incl. O(n) snapshots): {:?}", t.elapsed());
+
+        // ── Phase 5: agent edit (code_editor_edit = full rewrite path) ──
+        let mid = text.len() / 2;
+        let t = Instant::now();
+        assert!(core.edit(mid, mid, "// agent\n", &mut fs));
+        let agent = t.elapsed();
+        assert!(core.edit(mid, mid + 9, "", &mut fs));
+        println!("[receipt] phase 5 agent edit: {agent:?} (edit + inverse, full O(n) rewrite each)");
+
+        // ── Phase 6: save readout through the rope ──
+        let expected_len = core.text().len(); // corpus + phase-4 '!' (phase 5 cancels out)
+        let t = Instant::now();
+        let saved = core.text();
+        let save = t.elapsed();
+        assert_eq!(saved.len(), expected_len, "save readout must match the live document");
+        println!("[receipt] phase 6 save readout: {save:?} for {} bytes", saved.len());
+
+        // ── Phase 7: snapshot isolation under concurrent edits ──
+        let snap = core.doc.lock().unwrap().snapshot();
+        let t = Instant::now();
+        let worker = std::thread::spawn(move || {
+            let tw = Instant::now();
+            let s = snap.to_string();
+            (s.len(), tw.elapsed())
+        });
+        {
+            let mut doc = core.doc.lock().unwrap();
+            for k in 0..100 {
+                let at = doc.line_start_byte(k * 1000);
+                doc.insert_bytes(at, "// x\n");
+                doc.delete_bytes(at, at + 5);
+            }
+        }
+        let (snap_len, snap_time) = worker.join().unwrap();
+        assert_eq!(snap_len, expected_len, "snapshot sees the frozen pre-edit document");
+        println!(
+            "[receipt] phase 7 concurrency: worker to_string({} bytes) {:?} WHILE main rope applied 100 edit pairs ({:?} total)",
+            snap_len, snap_time, t.elapsed()
+        );
+
+        std::fs::remove_file(&path).ok();
+        println!("[receipt] cleanup: corpus file deleted; corpus was {:.1} MB on disk", target_bytes as f64 / 1024.0 / 1024.0);
+    }
     // ── Plan 428: folding render + interaction integration ──────────────
 
     const FOLD_SRC: &str = "// header
