@@ -2393,6 +2393,7 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **P039-D2 [编译 exe 深树 MCP 快照仅根节点]**：klondike 编译 exe 的 autoui_snapshot 树 81 字节（根 col 即止）——RqProjector/snapshot 深树面；minesweeper 浅树正常、VM/Vue 双轨全渲染、state_snapshot 全量存活。树交互段（click 定位）与 D1 双击编译轨实机验证待偿（PLAN-039 T-04 记账 F-04a）。
 - **P039-D3 [pac.at 注释 `#[` 起首撞 annotation 解析]**：pac 注释行 `# [ ...` 被 #[annotation] 语法面吃掉（tetris desktop_exe 注释实测毒行，build abort "Expected 'fn' ... after annotation"）——注释剥离修复属 P037 annotation 域；PLAN-039 绕开（注释避免 `[` 起首）。
 - **P039-D4 [api 桩通用 CRUD 假设性签名对真实 back 漂移]**（P666-D1 关联归因）：merged 桩 path 参数恒 i32/POST·PUT 丢 path 参数——PLAN-039 T-13 声明对齐臂清偿返回 user 型端点+DELETE 桩；通用桩对其他 back 形态的假设性签名面未全清（属主 666）。
+- **P039-D5 [.auto/ui-cache 对生成器版本变化的失效机制缺位]**（复审 R1 F-R1，2026-09-21）：生成器演进后旧 `.auto/ui-cache` 被复用致 VM 轨运行时崩（minesweeper T4 点雷段双 binary 复现；清 `.auto/` 即愈，代码无回归）——cache freshness 无版本指纹（生成器变化不触发失效重建）；修法=cache 头携带生成器版本 hash，不匹配即重建。PLAN-039 复审抓出（执行记录曾复用旧证据漏检）。
 - ~~**P036-D4 [编译臂 key_message（shell_key）未生成]**~~ **已核销（PLAN-039 T-07，2026-09-21）**：launcher 生成物 key_bindings/key_message 双 fn 在役（project 形态生成后编译臂产物面实证）；完整键盘流（overlay→broker→exe）实路验证随 PLAN-039 T-10 e2e 批。
 - **P036-D5 [跨进程色彩解析差（parity 发现）]**：p036 腿2 实测 child 帧色彩 token 与本地渲染差 ±3/255（`text-muted-foreground` 151,163,181 vs 148,163,183——疑主题感知解析进程初始化差；wire f32 量化 ±1 另在）。parity 准则 = 结构全等（色彩豁免）；根因细究归复审。
 - **P036-D6 [launcher 自隐宿主镜像同步]**：child 侧关闭（Launch 后 visible=0/点击 scrim Close）宿主 launcher_open 镜像不同步——层序推空层无害 + 焦点滞留伪窗（键盘 no-op 无害）；宿主侧路径（Esc/启动动词）已自置。观察面随 M7-c 实机走查评估。
