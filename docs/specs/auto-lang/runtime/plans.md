@@ -59,3 +59,4 @@
 |------|------|------|------|-----------|
 | 442 | cross-platform-closure | 🟡（C3 观察期） | archive/ | musk 五域接线：Http.set_default_header 等 native 桥 + 平台 adapter 显式降级 |
 | 458 | auto-ui-theme-system | 🟡 | archive/ | theme/accent 经 env（AUTO_UI_THEME/ACCENT）横切三 crate 注入 |
+| 675 | routes-in-embed（back-proxy 侧） | ✅（reviewed→archived） | archive/ | 路径/query 参数按 #[api] 签名类型绑定（669 push_typed_string_arg 共用+ApiParamSig session 自持+坏值 400 同 http_server 语义）+lazy 按需装载（目录表/ensure_session 锁内防重/degraded 503/remove_app 自愈重载）；详档见 vm/back-proxy.md（PLAN-669/675 节） |

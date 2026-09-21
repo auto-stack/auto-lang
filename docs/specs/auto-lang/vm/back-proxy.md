@@ -103,6 +103,30 @@
 | `auto.http.sse_poll` | 3146 | 非阻塞 try_recv：Data→载荷 / 空→"" / 终→"[DONE]" |
 | `auto.sys.panic_hard` | 3147 | 测试面：真 Rust panic（隔离路径驱动） |
 
+## 参数绑定（PLAN-669/675）
+
+`#[api]` 端点实参按名绑定：**body 字段**走 `json_to_vm_value`（本征保型）；
+**路径占位符与 query 段**（本征字符串）经 `push_typed_string_arg` 按
+`ApiTyKind`（int/float/bool）转型压栈，str 走 push_str_arg 咽喉——字符串源
+与 JSON 源落位同构；不可转型值 → `400 BadRequest`（与 standalone
+http_server 同语义，`bind_api_args_by_name` 共用实现）。会话签名表
+`fn_params` 为 `Vec<ApiParamSig>`（名 + `Param.ty` Display），从本 session
+AST **自持**——不读 http_server 全局 sigs 注册表（多 session 同进程裸名
+撞键）。生成客户端两种线格式皆可服务：占位符名对齐（真值入路径）与错位
+（字面 `:id` 留路径、形参走 query）。
+
+## lazy 按需装载（PLAN-675）
+
+`BackProxyConfig.lazy_sessions = true`（画廊消费点）时启动**零预
+spawning**：spec 入只读目录表（catalog）。首个命中某 app 的请求未命中
+会话表时，`ensure_session` 在会话表锁内「查目录 → spawn → 插表」（并发
+首击串行化防重），请求随即在 mpsc 排队至装载就绪（`REQUEST_TIMEOUT_SECS`
+= 30s 窗，装载期数秒充裕）；装载失败走既有 **degraded 503**（诚实诊断，
+非死锁/超时）。`remove_app` 摘会话后目录仍在——下一请求自愈重载。eager
+档（false）行为与 PLAN-658 全量装载逐字节一致。lazy 治「全量装载队列
+赶不上点击」（画廊走查实证：N2 死亡窗口内后序会话永远轮空）；不治包装
+进程死亡本身（P672-N2，根治方向 = proxy 独立子进程化）。
+
 ## 已知边界与债
 
 - `json.encode` 对 VM 对象字面量降格池索引串（占位 shim，PLAN-053 家族）

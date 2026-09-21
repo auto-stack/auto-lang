@@ -130,3 +130,32 @@ graph LR
 | api_gen / tauri_backend / vscode / pkg | API/后端/扩展代码生成器，包管理器抽象（bun/npm）；api_gen server 生成器状态种子契约（**Plan 670 F-R1-A**）：`use api::Db`/`State<Db>` 种子仅当契约实际定义 Db（primary 类型存在，api.rs 才发 `pub type Db`）时发射，无 Db 标量契约走无状态退化路径（镜像 db_full_cover 分支形态）——生成物必须可编译（E0432 契约）；端点 fn 体降体（route A）仍未建，无 db 覆盖的端点生成为空体桩（P670-D1 在册） | active |
 | asset / fs / util / version / error 等 | 基础设施与公共类型 | active |
 | up | 升级功能 | disabled（zip 依赖已移除，模块注释停用） |
+
+## 画廊 host 内嵌四档与 routable 档（PLAN-675 SD-01）
+
+`gallery_demo_row` 判四内嵌档，web 臂消费。`loadable`/`fullstack`
+（PLAN-633/672）与 `route_stub`（PLAN-642 T-14a，VM 臂专属）语义不变
+（routes 一票否决照旧）；**routable（PLAN-675）** = `vp.has_routes` 且除
+routes 外无其余内嵌否决（vm-only/ext/locales/i18n；`vp` None → false）。
+
+- **routable 发射**：fullstack 管线全复用（App/lib_api/api 三级瀑布解析
+  `resolve_demo_api_client_ts`/组件与 store 共享池/shadcn/npm_merge）+
+  per-demo 路由面 `emit_demo_route_face`——`pages/`（per-demo 命名空间，
+  防 pages/home 异容撞）、`router.ts`（**createMemoryHistory 工厂**，每
+  挂载 fresh 路由态，含参路由 props:true）、`main.ts`（mount/unmount
+  入口契约）。无 api 消费不阻断内嵌；消费 api 而无源 → 诚实回退（翻
+  routable=false 维持独立提示）。VM 臂不消费本档（仍 route_stub）；
+  registry.at 不序列化。
+- **注册表与视口契约**：demos-registry routable 行发
+  `load: import('./apps/<id>/main')` + `routed: true` + `loadable: true`
+  （视口门）；`DemoModule` 接口（mount/unmount 可选，default App 兼容旧
+  createApp 路径）。AppViewport：mod.mount/unmount 在册走 entry 工厂
+  （os scaffold 源副本与 auto-lang rust_embed 资产字节对齐纪律）。
+- **嵌入态改写闭包**（rewrite_api_import，三档通用）：`@/lib/api` 导入改
+  指 per-demo lib_api、EventSource 前缀化（672 条目4/5）+ 裸
+  `fetch('/api/`、`fetch("/api/` 字面量前缀化（020 媒体面；幂等）。
+- **会话准入**：`start_gallery_back_proxy` 对 `needs_session ||
+  fullstack || routable` 且有 back/api.at 者建 back_proxy 会话（routable
+  臂为 675 补——缺则路由 demo API 404 unknown app）。
+- **依赖注入**：任一 routable 行 → npm_merge 通道注入 vue-router ^4.2.0。
+
