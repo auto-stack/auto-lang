@@ -893,14 +893,6 @@ pub fn terminal_set_history(core: &TerminalCore, rows: usize) {
     core.history.store(rows, Ordering::Relaxed);
 }
 
-/// PLAN-024:虚拟画布总高(px;widget canvas_height 的 glue 侧镜像,
-/// 写臂 bind 无 widget self 时换算贴底钳位位置用)。与
-/// `Terminal::canvas_height` 虚拟分支同式(rows+history)×CELL_H+2PAD。
-pub fn terminal_canvas_height(core: &TerminalCore) -> f32 {
-    use crate::ui::terminal::iced::widget::{CELL_H, PAD};
-    (core.rows as usize + core.history.load(Ordering::Relaxed)) as f32 * CELL_H + 2.0 * PAD
-}
-
 // ============================================================================
 // PLAN-025 T-02/T-03:快照窗绝对行锚 + 预取窗存储
 // ============================================================================
@@ -957,6 +949,19 @@ pub fn terminal_window_row(core: &TerminalCore, id: i64) -> Option<WindowRow> {
         .unwrap()
         .get(&id)
         .map(|r| WindowRow { cells: r.cells.clone(), digest: r.digest })
+}
+
+/// PLAN-024:虚拟画布总高(px;widget canvas_height 的 glue 侧镜像,
+/// 写臂 bind 无 widget self 时换算贴底钳位位置用)。与
+/// `Terminal::canvas_height` 虚拟分支同式(rows+history)×CELL_H+2PAD。
+/// PLAN-025 合并修:引用 `terminal::iced`(ui-iced 门控模块)——无
+/// iced 档(ui-only back 生成体)编译炸,方法随特性门控(component.rs
+/// drain_bitmap_uploads 同款收口);消费面(bind 写臂)在 widget 侧
+/// 恒 ui-iced。
+#[cfg(feature = "ui-iced")]
+pub fn terminal_canvas_height(core: &TerminalCore) -> f32 {
+    use crate::ui::terminal::iced::widget::{CELL_H, PAD};
+    (core.rows as usize + core.history.load(Ordering::Relaxed)) as f32 * CELL_H + 2.0 * PAD
 }
 
 /// 焦点空闲(无任何 terminal 持有):启动自动聚焦的门控。
