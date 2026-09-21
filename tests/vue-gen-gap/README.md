@@ -5,7 +5,7 @@ AC-02 的产品面），一个工程覆盖全部七类 + 附a/附b 特性：
 
 | 特性 | 落点（src/front/） | 验证面 |
 |---|---|---|
-| ① 平名内建声明层 | gap_store.at `console_log` + `Process.exit` | 生成 `src/natives.d.ts`（注册表∩裸用）+ `src/lib/natives.ts` 抛错桩 + main.ts 装载；`Process.exit` 走 ts_adapter `__vmOnly` 白名单 |
+| ① 平名内建声明层 | gap_store.at `console_log` + `Process.exit` + `Env.get` | 生成 `src/natives.d.ts`（注册表∩裸用）+ `src/lib/natives.ts` 抛错桩 + main.ts 装载；对象形态（Process/Env）走 ts_adapter `__vmOnly` 白名单改写 **+ Phase 2 防御性 `declare const`（单源五名表∩成员访问用面）+ globalThis Proxy 抛错桩**（兜底未改写裸引用位） |
 | ② store 自调 | gap_store.at `.Reset` 内 `store.Bump()` | 生成 composable 内改写为裸调 `Bump()` |
 | ③ bp use-fn 于 store 文件 | gap_store.at `use bps...tree_util: toggle_id` + `.Bump` 内消费 | store 文件尾内联 `function toggle_id` |
 | ④ 负标量初值 | gap_store.at `var neg_idx int = -1` | `ref<number>(-1)`（668 R-23 复验） |

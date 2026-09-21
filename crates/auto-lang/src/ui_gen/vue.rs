@@ -11027,11 +11027,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             match expr {
                 Expr::Call(call) => {
                     if let Expr::Dot(obj, _) = call.name.as_ref() {
-                        // PLAN-671 ①：与 ts_adapter 对象级 VM-only 白名单
-                        // 同表（fs/File/image + Env/Process）——lifecycle 体
-                        // 在 stub 发射后才转译，须从原始 AST 预检；漏名
-                        // 会落 TS2304。
-                        if matches!(obj.as_ref(), Expr::Ident(n) if matches!(n.as_str(), "fs" | "File" | "image" | "Env" | "Process")) {
+                        // PLAN-671 ①/Phase 2：与 ts_adapter 对象级 VM-only
+                        // 白名单同表（单源 VM_ONLY_OBJECT_NATIVES：fs/File/
+                        // image + Env/Process）——lifecycle 体在 stub 发射后
+                        // 才转译，须从原始 AST 预检；漏名会落 TS2304。
+                        if matches!(obj.as_ref(), Expr::Ident(n) if crate::ui_gen::ts_adapter::VM_ONLY_OBJECT_NATIVES.contains(&n.as_str())) {
                             return true;
                         }
                     }

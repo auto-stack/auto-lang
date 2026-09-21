@@ -1627,10 +1627,13 @@ fn ensure_vue_type_stubs(output_dir: &Path) {
 /// - `src/natives.d.ts`：`declare function NAME(...args: any[]): any`
 ///   （vue-tsc 构建绿；签名泛化 any——不逐名手写签名表。落 src 根——
 ///   实测 vue-tsc 对 `src/**/*.ts` include 只收根级 .d.ts，不收子目录
-///   的；vite-env.d.ts 同位先例）
+///   的；vite-env.d.ts 同位先例）+ Phase 2 对象形态
+///   `declare const NAME: { [key: string]: (...args: any[]) => any }`
+///   （单源五名表 VM_ONLY_OBJECT_NATIVES ∩ 「标识符+成员访问」用面）
 /// - `src/lib/natives.ts`：globalThis 抛错桩——§10-1 裁定（fail-fast，
 ///   报错带内建名与「vue 轨运行期缺口」指引，优于裸 ReferenceError；
-///   与对象级 fs/File/image/Env/Process 的 __vmOnly 桩同一哲学）
+///   函数形态直装抛错函数，对象形态 Proxy 桩——任取成员即抛错，防御
+///   ts_adapter 改写未覆盖的裸引用位）
 /// - `main.ts` 顶部 `import './lib/natives'`（模块执行才装全局绑定）
 ///
 /// 对象级（Env.get/fs.*）不在此层——ts_adapter 已改写为内联 __vmOnly
@@ -1647,6 +1650,9 @@ fn ensure_natives_layer(output_dir: &Path) {
 
     // 1. 裸用面扫描：src/**/*.{ts,vue} 的标识符 token ∩ 注册表。
     let mut used: std::collections::BTreeSet<&str> = Default::default();
+    // PLAN-671 Phase 2：对象形态用面（单源五名表 ts_adapter
+    // VM_ONLY_OBJECT_NATIVES ∩ 生成文件「标识符 + 成员访问」出现面）。
+    let mut obj_used: std::collections::BTreeSet<&str> = Default::default();
     let mut stack = vec![src.clone()];
     let mut files: Vec<std::path::PathBuf> = Vec::new();
     while let Some(dir) = stack.pop() {
@@ -1678,6 +1684,26 @@ fn ensure_natives_layer(output_dir: &Path) {
                 used.insert(name);
             }
         }
+        // 对象形态扫描：ts_adapter 改写后的 `__vmOnly('Process.exit'` 串
+        // 同样命中（防御性声明——模板表达式位等未走改写的裸引用由此兜底
+        // 类型 + 运行期抛错）；注释/字符串误报仅多一条无害声明。
+        for name in auto_lang::ui_gen::ts_adapter::VM_ONLY_OBJECT_NATIVES {
+            let pat = format!("{}.", name);
+            let bytes = content.as_bytes();
+            let mut from = 0usize;
+            while let Some(hit) = content[from..].find(&pat) {
+                let at = from + hit;
+                let boundary_ok = at == 0
+                    || !(bytes[at - 1].is_ascii_alphanumeric()
+                        || bytes[at - 1] == b'_'
+                        || bytes[at - 1] == b'$');
+                if boundary_ok {
+                    obj_used.insert(name);
+                    break;
+                }
+                from = at + pat.len();
+            }
+        }
     }
 
     let dts_path = src.join("natives.d.ts");
@@ -1697,8 +1723,8 @@ fn ensure_natives_layer(output_dir: &Path) {
     ];
     used.retain(|n| !JS_RESERVED.contains(n));
 
-    // 2. 空集清退。
-    if used.is_empty() {
+    // 2. 空集清退（函数形态与对象形态双空）。
+    if used.is_empty() && obj_used.is_empty() {
         for p in [&dts_path, &stub_path] {
             if p.exists() {
                 let _ = fs::remove_file(p);
@@ -1720,7 +1746,7 @@ fn ensure_natives_layer(output_dir: &Path) {
     // 3. 发射（BTreeSet 序 = 稳定输出，diff 友好）。
     fs::create_dir_all(&lib).ok();
     let mut dts = String::from(
-        "// natives.d.ts — PLAN-671 ①: vm-host bare natives, type layer.\n// Registry-driven (vm codegen bare_native_intrinsics ∩ bare usage in\n// generated sources). The vue track has NO runtime for these names — calls\n// reach the throwing stubs installed by natives.ts.\n",
+        "// natives.d.ts — PLAN-671 ①(+Phase 2): vm-host bare natives, type layer.\n// Registry-driven: function forms = vm codegen bare_native_intrinsics ∩\n// bare usage; object forms = VM_ONLY_OBJECT_NATIVES ∩ member-access usage.\n// The vue track has NO runtime for these names — calls reach the throwing\n// stubs installed by natives.ts.\n",
     );
     let mut stub = String::from(
         "// natives.ts — PLAN-671 ①: vm-host bare natives, runtime fail-fast stubs.\n// Registers throwing globalThis bindings for the names declared in\n// natives.d.ts — an honest error naming the native beats a bare\n// ReferenceError when a vm-only path runs on the vue track.\nconst names: string[] = [\n",
@@ -1730,8 +1756,28 @@ fn ensure_natives_layer(output_dir: &Path) {
         stub.push_str(&format!("  '{}',\n", name));
     }
     stub.push_str(
-        "]\nfor (const n of names) {\n  const g = globalThis as unknown as Record<string, unknown>\n  if (!(n in g)) {\n    g[n] = (..._args: unknown[]) => {\n      throw new Error('[auto-gen] VM-only native \"' + n + '\" has no Vue/JS build — this path only runs in VM mode')\n    }\n  }\n}\nexport {}\n",
+        "]\nfor (const n of names) {\n  const g = globalThis as unknown as Record<string, unknown>\n  if (!(n in g)) {\n    g[n] = (..._args: unknown[]) => {\n      throw new Error('[auto-gen] VM-only native \"' + n + '\" has no Vue/JS build — this path only runs in VM mode')\n    }\n  }\n}\n",
     );
+    // PLAN-671 Phase 2：对象形态声明 + Proxy 抛错桩——索引签名形态
+    //（注册表驱动，不手写方法面）；运行期 Proxy 任取属性即返回带
+    // 「对象名.成员名」指引的抛错函数（防御 ts_adapter 改写未覆盖的
+    // 裸引用位——模板表达式/未来发射缝）。
+    for name in &obj_used {
+        dts.push_str(&format!(
+            "declare const {}: {{ [key: string]: (...args: any[]) => any }}\n",
+            name
+        ));
+    }
+    if !obj_used.is_empty() {
+        stub.push_str("const objects: string[] = [\n");
+        for name in &obj_used {
+            stub.push_str(&format!("  '{}',\n", name));
+        }
+        stub.push_str(
+            "]\nfor (const n of objects) {\n  const g = globalThis as unknown as Record<string, unknown>\n  if (!(n in g)) {\n    g[n] = new Proxy({}, {\n      get: (_t, k) => (..._args: unknown[]) => {\n        throw new Error('[auto-gen] VM-only native \"' + n + '.' + String(k) + '\" has no Vue/JS build — this path only runs in VM mode')\n      },\n    })\n  }\n}\n",
+        );
+    }
+    stub.push_str("export {}\n");
     for (path, content) in [(&dts_path, dts), (&stub_path, stub)] {
         let unchanged = matches!(fs::read_to_string(path), Ok(ref existing) if *existing == content);
         if !unchanged {

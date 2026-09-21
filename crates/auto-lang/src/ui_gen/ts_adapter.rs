@@ -9,6 +9,15 @@
 //! Everything else (control flow, types, closures, pattern matching)
 //! is delegated to the a2ts transpiler for standard expressions.
 
+/// PLAN-671 ①/Phase 2：对象形态 VM-only 内建单源表。
+///
+/// 这些宿主全局对象在 vue 轨无运行时：ts_adapter 把成员调用改写为内联
+/// `__vmOnly('X.y', ...)` 抛错桩（Plan 444 fs/File 先例，PLAN-023 image，
+/// Phase 2 Env/Process），vue.rs 的 lifecycle AST 预检 walker 与 auto-man
+/// 的 natives 声明层（`declare const` + globalThis Proxy 抛错桩）消费同一
+/// 表——**新增对象形态内建只改此一处**，不得在消费方另立名单。
+pub const VM_ONLY_OBJECT_NATIVES: &[&str] = &["fs", "File", "image", "Env", "Process"];
+
 use crate::ast::*;
 use crate::trans::Sink;
 use crate::trans::typescript::TypeScriptTrans;
@@ -1033,7 +1042,7 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     // vue 轨无运行时——`Env.get(...)` 裸发射落 TS2304；
                     // 与 fs/File/image 同一机制承载）。
                     if let crate::ast::Expr::Ident(recv) = object.as_ref() {
-                        if matches!(recv.as_str(), "fs" | "File" | "image" | "Env" | "Process") {
+                        if VM_ONLY_OBJECT_NATIVES.contains(&recv.as_str()) {
                             let qualified = format!("{}.{}", recv.as_str(), method.as_str());
                             ctx.note_warning(format!(
                                 "VM-only native `{}` has no Vue/JS build — emitted as a throwing __vmOnly stub",

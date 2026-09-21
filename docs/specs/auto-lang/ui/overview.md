@@ -965,8 +965,12 @@ vue 轨生成工程的**裸产出即自完备可构建**——`auto build --gen-
      与"vue 轨运行期缺口"指引）+ main.ts `import './lib/natives'` 装载；
      空集清退三件（防陈旧 import 悬挂）。
    - 对象级（`Env.get`/`Process.exit`/`fs.*`/`File.*`/`image.*`）：ts_adapter
-     对象级白名单改写为内联 `__vmOnly('X.y', ...)` 抛错桩（含内联声明
-     发射；lifecycle 预检 walker 同表五名）。
+     对象级白名单（单源 `VM_ONLY_OBJECT_NATIVES` 五名表）改写为内联
+     `__vmOnly('X.y', ...)` 抛错桩（含内联声明发射；lifecycle 预检 walker
+     同表）+ Phase 2 防御层——natives 声明层对「标识符+成员访问」用面
+     发射 `declare const NAME: { [key: string]: (...args: any[]) => any }`
+     与 globalThis Proxy 抛错桩（任取成员即抛错，兜底改写未覆盖的裸
+     引用位：模板表达式等）。
 2. **gen-only 工程完整**：gen-only 与 build/run 共走 `prepare_vue_sources`
    共享段——auto-sources 真值/占位 + vite-env.d.ts + tsconfig
    `types:["vite/client"]`（038 Phase B T8 / P657-D2 / 668 R-21）。

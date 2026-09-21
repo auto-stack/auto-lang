@@ -29,8 +29,12 @@ store gap {
             .neg_idx = -1
         }
 
-        .Quit -> {
-            Process.exit(0)
-        }
+    .Quit -> {
+        Process.exit(0)
     }
+
+    .Where -> {
+        console_log(Env.get("HOME"))
+    }
+}
 }
