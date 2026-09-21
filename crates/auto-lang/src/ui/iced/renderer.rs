@@ -34743,6 +34743,24 @@ This is a **bold** and *italic* paragraph with `code` and [link](https://x).
                 "表格 cell「{cell}」必须存活（Rich 承载），rich={rich:?}"
             );
         }
+        // PLAN-082 review 补强：引用正文/列表项正文与段落同走 render_inlines
+        // →Rich→convert 单点（AC-03 离线面）。
+        let doc2 = "> 引用正文存活。
+
+- 列表项甲：正文
+- 列表项乙：正文
+";
+        let view2 = crate::ui::autodown_render::render_document::<DynamicMessage>(doc2, true);
+        let converted2 = convert_view_messages(view2);
+        let mut rich2 = Vec::new();
+        let mut text2 = Vec::new();
+        collect(&converted2, &mut rich2, &mut text2);
+        for piece in ["引用正文存活。", "列表项甲：正文", "列表项乙：正文"] {
+            assert!(
+                rich2.iter().any(|t| t.contains(piece)) || text2.iter().any(|t| t.contains(piece)),
+                "「{piece}」必须存活（引用/列表正文 Rich 承载），rich={rich2:?} text={text2:?}"
+            );
+        }
     }
 
     /// PLAN-082 T-05 回归钉：自然宽表格跨行列对齐——同列 cell 的 x 坐标
