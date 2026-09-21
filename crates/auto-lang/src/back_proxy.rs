@@ -73,6 +73,13 @@ pub struct BackProxyConfig {
     /// 自动回退）。
     pub port: u16,
     pub sessions: Vec<SessionSpec>,
+    /// PLAN-675 T-08: lazy 档——启动零预 spawning，`sessions` 退化为目录表
+    /// （spec 仅登记不装载）；首个打到某 app 的请求未命中时同步装载该会话
+    /// （装载期请求在 mpsc 排队，REQUEST_TIMEOUT_SECS 窗口内应答；装载失败
+    /// 走既有 degraded 503）。动机=画廊走查实证：全量顺序装载赶不上点击
+    /// （N2 死亡窗口内路由 demo 会话永远轮空）+ 内存按访问付费。eager 档
+    /// （false）行为与 658 全量装载完全一致。
+    pub lazy_sessions: bool,
     /// 原生 media 路由（cfg ui；无 root 的 app 也注册——诚实空列表语义
     /// 与生成器一致）。
     #[cfg(feature = "ui")]
@@ -98,6 +105,12 @@ struct ProxyShared {
     /// 线程（运行期 add/remove）双写，Mutex 化（658 boot 期单写者免锁形态
     /// 随桌面按需装载退役）。
     sessions: std::sync::Mutex<HashMap<String, SessionHandle>>,
+    /// PLAN-675 T-08: lazy 目录表（app_id → spec，启动后只读）。lazy 档下
+    /// 会话未命中时由此 spawn；eager 档恒空。remove_app 摘会话后目录仍在
+    /// ——下一请求自愈重载。
+    catalog: std::sync::Mutex<HashMap<String, SessionSpec>>,
+    /// PLAN-675 T-08: lazy 档开关（见 BackProxyConfig.lazy_sessions）。
+    lazy: bool,
     /// PLAN-658 T-03: 宿主原生 media 路由状态（cfg ui）。PLAN-037 T-01:
     /// 同上 Mutex 化（add_native_media/remove_app 运行期写）。
     #[cfg(feature = "ui")]
@@ -160,8 +173,9 @@ impl ProxyReply {
     }
 }
 
-/// 启动 back proxy：绑定端口、装载全部 session、进入 accept 循环
-/// （listener 线程后台运行）。
+/// 启动 back proxy：绑定端口、装载全部 session（lazy 档=只登记目录零预
+/// spawning，见 BackProxyConfig.lazy_sessions）、进入 accept 循环（listener
+/// 线程后台运行）。
 pub fn start(config: BackProxyConfig) -> std::io::Result<RunningProxy> {
     let want_port = if config.port != 0 {
         config.port
@@ -174,27 +188,22 @@ pub fn start(config: BackProxyConfig) -> std::io::Result<RunningProxy> {
     let (listener, port) = bind_with_fallback(want_port)?;
 
     let mut sessions = HashMap::new();
+    let mut catalog: HashMap<String, SessionSpec> = HashMap::new();
     for spec in &config.sessions {
-        let (tx, rx) = mpsc::channel::<ProxyRequest>();
-        let app_id = spec.app_id.clone();
-        let entry = spec.back_entry.clone();
-        let spawn_name = format!("back-proxy-session:{app_id}");
-        let spawn_app_id = app_id.clone();
-        let join = std::thread::Builder::new()
-            .name(spawn_name)
-            .stack_size(16 * 1024 * 1024)
-            .spawn(move || session_main(spawn_app_id, entry, rx))
-            .map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("spawn session thread for {app_id} failed: {e}"),
-                )
-            })?;
-        sessions.insert(app_id, SessionHandle { tx, join: Some(join) });
+        // PLAN-675 T-08: lazy 档零预 spawning——spec 进目录表，首个请求
+        // 未命中时 ensure_session 同步装载。
+        if config.lazy_sessions {
+            catalog.insert(spec.app_id.clone(), spec.clone());
+            continue;
+        }
+        let handle = spawn_session(spec)?;
+        sessions.insert(spec.app_id.clone(), handle);
     }
 
     let shared = Arc::new(ProxyShared {
         sessions: std::sync::Mutex::new(sessions),
+        lazy: config.lazy_sessions,
+        catalog: std::sync::Mutex::new(catalog),
         #[cfg(feature = "ui")]
         native_media: std::sync::Mutex::new({
             let base = format!("http://127.0.0.1:{port}");
@@ -243,10 +252,60 @@ fn bind_with_fallback(want: u16) -> std::io::Result<(TcpListener, u16)> {
     }))
 }
 
+/// PLAN-675 T-08: 会话线程 spawn 提取共用（start eager 循环 / add_session /
+/// ensure_session 三臂同款——16MB 栈 + 线程名）。装载本身在会话线程进行，
+/// spawn 即返。
+fn spawn_session(spec: &SessionSpec) -> std::io::Result<SessionHandle> {
+    let (tx, rx) = mpsc::channel::<ProxyRequest>();
+    let spawn_app_id = spec.app_id.clone();
+    let entry = spec.back_entry.clone();
+    let join = std::thread::Builder::new()
+        .name(format!("back-proxy-session:{}", spec.app_id))
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || session_main(spawn_app_id, entry, rx))
+        .map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("spawn session thread for {} failed: {e}", spec.app_id),
+            )
+        })?;
+    Ok(SessionHandle { tx, join: Some(join) })
+}
+
+/// PLAN-675 T-08: lazy 档未命中即载——会话表锁内完成「查目录→spawn→插表」
+/// （spawn 廉价、装载在会话线程进行；并发首击串行化在锁上，后到者见现成
+/// 表项不重载）。返回 true = 表内有该 app，请求将在 mpsc 上排队至装载就绪；
+/// 目录无此 app 或 spawn 失败 → false（调用侧落既有 404 面）。
+fn ensure_session(shared: &ProxyShared, app_id: &str) -> bool {
+    let mut sessions = shared.sessions.lock().unwrap();
+    if sessions.contains_key(app_id) {
+        return true;
+    }
+    let Some(spec) = shared.catalog.lock().unwrap().get(app_id).cloned() else {
+        return false;
+    };
+    match spawn_session(&spec) {
+        Ok(handle) => {
+            log::info!("[back-proxy:{app_id}] lazy session spawning on first request");
+            sessions.insert(app_id.to_string(), handle);
+            true
+        }
+        Err(e) => {
+            log::error!("[back-proxy:{app_id}] lazy session spawn failed: {e}");
+            false
+        }
+    }
+}
+
 impl RunningProxy {
     /// app 是否已注册 session（020 这类仅宿主原生路由的 app 无 session）。
+    /// PLAN-675 T-08: lazy 档下目录在册即可服务（未装载——首个请求触发
+    /// ensure_session 同步装载），与 eager 的"已 spawn"并义。
     pub fn has_session(&self, app_id: &str) -> bool {
-        self.shared.sessions.lock().unwrap().contains_key(app_id)
+        if self.shared.sessions.lock().unwrap().contains_key(app_id) {
+            return true;
+        }
+        self.shared.lazy && self.shared.catalog.lock().unwrap().contains_key(app_id)
     }
 
     /// PLAN-037 T-01: 运行期装载一个 app 的 back 链为 VM session（桌面
@@ -261,20 +320,8 @@ impl RunningProxy {
                 format!("back-proxy: session for `{}` already registered", spec.app_id),
             ));
         }
-        let (tx, rx) = mpsc::channel::<ProxyRequest>();
-        let spawn_app_id = spec.app_id.clone();
-        let entry = spec.back_entry.clone();
-        let join = std::thread::Builder::new()
-            .name(format!("back-proxy-session:{}", spec.app_id))
-            .stack_size(16 * 1024 * 1024)
-            .spawn(move || session_main(spawn_app_id, entry, rx))
-            .map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("spawn session thread for {} failed: {e}", spec.app_id),
-                )
-            })?;
-        sessions.insert(spec.app_id.clone(), SessionHandle { tx, join: Some(join) });
+        let handle = spawn_session(&spec)?;
+        sessions.insert(spec.app_id.clone(), handle);
         Ok(())
     }
 
@@ -480,7 +527,15 @@ fn route_request(shared: &ProxyShared, req: &ParsedRequest) -> ProxyReply {
         }
     }
     // PLAN-037 T-01: sessions 已 Mutex 化——锁内克隆 sender 即放（send
-    // 非阻塞，reply 等待不持锁）。
+    // 非阻塞，reply 等待不持锁）。PLAN-675 T-08: lazy 档未命中 → 同步装载
+    // （ensure_session 锁内查目录 spawn），请求随即在 mpsc 排队至装载就绪
+    // ——「点开 demo 即载」语义；装载失败走既有 degraded 503。
+    if shared.lazy {
+        let live = shared.sessions.lock().unwrap().contains_key(&app_id);
+        if !live {
+            ensure_session(shared, &app_id);
+        }
+    }
     let tx = shared
         .sessions
         .lock()

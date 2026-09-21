@@ -121,6 +121,7 @@ pub fn create_note(title str) Note {
 fn fixture_config(tag: &str, port: u16) -> (BackProxyConfig, PathBuf) {
     let dir = write_fixture(tag);
     let config = BackProxyConfig {
+        lazy_sessions: false,
         port,
         sessions: vec![SessionSpec {
             app_id: "fixture".to_string(),
@@ -263,6 +264,7 @@ pub fn post_by_slug(slug str) str {
 fn path_param_config(tag: &str, port: u16) -> (BackProxyConfig, PathBuf) {
     let dir = write_fixture_path_params(tag);
     let config = BackProxyConfig {
+        lazy_sessions: false,
         port,
         sessions: vec![SessionSpec {
             app_id: "p675".to_string(),
@@ -322,6 +324,76 @@ fn http_e2e_back_proxy_bad_path_param_is_400() {
     assert_eq!(body.trim().parse::<i64>().ok(), Some(0), "ledger body: {body}");
 }
 
+/// PLAN-675 T-08: lazy 档按需装载——启动零预 spawning;首击同步装载并在
+/// 超时窗内应答(装载期请求在 mpsc 排队);次击复用现成会话;坏语料首击
+/// degraded 503 诚实诊断;未编入目录的 app 维持 404。
+#[test]
+fn http_e2e_back_proxy_lazy_sessions_load_on_demand() {
+    let good = write_fixture_path_params("lazy-good");
+    // 坏语料:`use db` 断链(无 db.at)→ 会话装载失败 → degraded 503 面。
+    // (注:语法级垃圾会被宽容 parser 解析成零路由会话——那是 404 非 503;
+    // 断链才是 load_back_session 的真失败面。)
+    let baddir = std::env::temp_dir().join(format!(
+        "p675-back-proxy-lazy-bad-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&baddir);
+    std::fs::create_dir_all(&baddir).expect("create bad fixture dir");
+    std::fs::write(
+        baddir.join("api.at"),
+        r#"
+use db
+
+#[api(method = "GET", path = "/api/echo/:n")]
+pub fn echo(n int) int {
+    return db.bump(n)
+}
+"#,
+    )
+    .expect("write bad api.at");
+
+    let config = BackProxyConfig {
+        lazy_sessions: true,
+        port: 3960,
+        sessions: vec![
+            SessionSpec {
+                app_id: "good".to_string(),
+                back_entry: good.join("api.at"),
+            },
+            SessionSpec {
+                app_id: "broken".to_string(),
+                back_entry: baddir.join("api.at"),
+            },
+        ],
+        #[cfg(feature = "ui")]
+        native_media: Vec::new(),
+    };
+    let proxy = start(config).expect("lazy start");
+
+    // 目录在册即可服务(lazy 语义;此刻尚未装载)。
+    assert!(proxy.has_session("good"), "cataloged app must report has_session");
+    assert!(proxy.has_session("broken"), "cataloged app must report has_session");
+
+    // 首击:装载 + 应答(int 路径参数类型绑定照常生效)。
+    let (status, body) = http_request(proxy.port, "GET", "/apps/good/api/echo/21", None);
+    assert_eq!(status, 200, "lazy first-hit load+serve, body: {body}");
+    assert_eq!(body.trim().parse::<i64>().ok(), Some(21), "echo body: {body}");
+
+    // 次击:复用现成会话(模块态延续——ledger 累计 21)。
+    let (status, body) = http_request(proxy.port, "GET", "/apps/good/api/ledger", None);
+    assert_eq!(status, 200, "lazy second hit, body: {body}");
+    assert_eq!(body.trim().parse::<i64>().ok(), Some(21), "ledger body: {body}");
+
+    // 坏语料首击 → degraded 503(诚实诊断,非死锁/超时)。
+    let (status, body) = http_request(proxy.port, "GET", "/apps/broken/api/echo/1", None);
+    assert_eq!(status, 503, "broken lazy session must degrade: {body}");
+    assert!(body.contains("failed to load"), "body: {body}");
+
+    // 未编入目录的 app 维持 404。
+    let (status, body) = http_request(proxy.port, "GET", "/apps/ghost/api/echo/1", None);
+    assert_eq!(status, 404, "uncataloged app, body: {body}");
+}
+
 /// PLAN-675 T-06: 五家真实路由语料（018/019/021/022/023）的数据面探针——
 /// back_proxy 会话直接装载各 demo 的 back 链，绕开 auto run 包装进程的
 /// N2 死亡窗口（活体走查数据卡死的根因：会话顺序装载每家数秒，包装进程
@@ -337,6 +409,9 @@ fn http_e2e_back_proxy_real_routes_corpora_data_face() {
         back_entry: ui.join(id).join("src").join("back").join("api.at"),
     };
     let config = BackProxyConfig {
+        // PLAN-675 T-08: lazy 档即证——冷代理零预装载,五家随探针首击
+        // 逐家按需装载(活体 N2 场景的确定性镜像)。
+        lazy_sessions: true,
         port: 3959,
         sessions: vec![
             spec("018-book-reader"),
@@ -428,6 +503,7 @@ fn http_e2e_back_proxy_real_020_status_route() {
         return;
     }
     let config = BackProxyConfig {
+        lazy_sessions: false,
         port: 3988,
         sessions: vec![SessionSpec {
             app_id: "020-music-player".to_string(),
@@ -458,6 +534,7 @@ fn http_e2e_back_proxy_native_media_routes() {
     std::fs::write(dir.join("song.mp3"), &payload).expect("write mp3");
 
     let config = BackProxyConfig {
+        lazy_sessions: false,
         port: 3998,
         sessions: Vec::new(),
         native_media: vec![crate::back_proxy::NativeMediaApp {
@@ -530,6 +607,7 @@ fn http_e2e_back_proxy_native_media_routes() {
 #[test]
 fn http_e2e_back_proxy_native_media_no_root_honest_empty() {
     let config = BackProxyConfig {
+        lazy_sessions: false,
         port: 3999,
         sessions: Vec::new(),
         native_media: vec![crate::back_proxy::NativeMediaApp {
@@ -555,6 +633,7 @@ fn http_e2e_back_proxy_real_017_crud_probe() {
         return;
     }
     let config = BackProxyConfig {
+        lazy_sessions: false,
         port: 3978,
         sessions: vec![SessionSpec {
             app_id: "017-chat".to_string(),
@@ -593,6 +672,7 @@ fn http_e2e_back_proxy_real_017_sse_stream() {
         return;
     }
     let config = BackProxyConfig {
+        lazy_sessions: false,
         port: 3968,
         sessions: vec![SessionSpec {
             app_id: "017-chat".to_string(),
@@ -683,6 +763,7 @@ fn http_e2e_back_proxy_real_031_native_ns_session() {
         return;
     }
     let config = BackProxyConfig {
+        lazy_sessions: false,
         port: 3958,
         sessions: vec![SessionSpec {
             app_id: "031-image-viewer".to_string(),
@@ -755,6 +836,7 @@ fn http_e2e_back_proxy_media_uri_byte_fidelity() {
         .unwrap();
 
     let config = BackProxyConfig {
+        lazy_sessions: false,
         port: 3938,
         sessions: Vec::new(),
         native_media: Vec::new(),
@@ -836,6 +918,7 @@ pub fn boom() str {
     };
 
     let config = BackProxyConfig {
+        lazy_sessions: false,
         port: 3928,
         sessions: vec![
             SessionSpec {
@@ -898,6 +981,7 @@ pub fn boom() str {
 fn http_e2e_back_proxy_runtime_add_remove_and_join_exit() {
     let dir = write_fixture("p037-rt");
     let config = BackProxyConfig {
+        lazy_sessions: false,
         port: 4018,
         sessions: Vec::new(),
         #[cfg(feature = "ui")]
@@ -968,6 +1052,7 @@ fn http_e2e_back_proxy_runtime_native_media_add_remove() {
     std::fs::write(dir.join("song.mp3"), &payload).expect("write mp3");
 
     let config = BackProxyConfig {
+        lazy_sessions: false,
         port: 4028,
         sessions: Vec::new(),
         native_media: Vec::new(),

@@ -7140,6 +7140,10 @@ pub fn start_gallery_back_proxy(project_dir: &Path) -> Option<u16> {
     let config = auto_lang::back_proxy::BackProxyConfig {
         port: 0,
         sessions,
+        // PLAN-675 T-08: lazy 档——点开 demo 即载对应会话（全量预装载
+        // 赶不上点击：走查实证 N2 死亡窗口内路由 demo 会话永远轮空，
+        // 且 12 家 VM 常驻改为按访问付费更省）。
+        lazy_sessions: true,
         native_media,
     };
     match auto_lang::back_proxy::start(config) {
