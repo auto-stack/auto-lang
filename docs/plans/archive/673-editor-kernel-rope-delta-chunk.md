@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-673
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
+completion_kind: delivered
 feature_name: editor-kernel-rope-delta-chunk
 author: [zcode]
 created_at: 2026-09-21
@@ -329,6 +330,20 @@ JSON 形状逐字节对齐纪律）。
   > （`test_vm_mcp.py --app-dir examples/ui/041-auto-edit`）。延后项：视口
   > 物化与视口局部 diff（逐击键 O(n) 快照基线仍在，100MB 下单键 25.3s，
   > 债候选已入册）；vue/ts_adapter 分块端点不发射，需要时另立计划。
+- 2026-09-22 · stage: merge · PLAN-673:r1 · outcome: **pass** · delivery
+  commit `7e0fae63e`（rebase 自 dbf7ef788，range-diff 11/11 "=" 等价证明；
+  base `069c9cc4b`）· 归档 `docs/plans/archive/673-editor-kernel-rope-delta-chunk.md` ·
+  consolidation receipt：
+  | checkpoint | evidence |
+  |---|---|
+  | prepared | review pass @`dbf7ef788`（F-1 注释修正后复审关闭）；冻结 Spec delta=SD-01/SD-02 @`12b764f48`；canonical 目标=`docs/specs/auto-lang/ui/overview.md` + `runtime/overview.md` |
+  | landed | master tip = `7e0fae63e`（`git merge --ff-only plan-673-dev`，无 merge commit；旧→新映射 dbf7ef788→7e0fae63e 全分支 range-diff 等价）；落地时主检出他会话 WIP（design-32 注册）stash/pop 环绕，两边 00-intro 行共存 |
+  | ledger_refreshed | `docs/specs/auto-lang/ui/plans.md`+`runtime/plans.md` 回写（commit 2d6639c0d）；`spec-index.py` 再生 INDEX.md（无变化）；`.autoos/specs.json` upsert P673-1/P673-2=published（readback 验证；本地投影 git-ignored） |
+  | archived | 本文件 `docs/plans/archive/673-editor-kernel-rope-delta-chunk.md`，status/completion_kind 翻转，provenance 链接（design/specs/debt）均可解析 |
+  | cleaned | （见文末补记） |
+  遗留人工动作：消费方复跑通知（通知稿在 §9 T-07 记录）由用户发往
+  auto-edit 仓（669 §10-4 模式）；S2 视口物化等债在 KNOWN-DEBT
+  P673-D1/D2/D3 在册。
 - 2026-09-22 · stage: review · PLAN-673 · r1 · outcome: **needs_fix** ·
   reviewed_commit `12b764f48` · base_commit `069c9cc4b` ·
   dependency_revisions: 组内兄弟 worktree `lang-673/auto-down`@fba6563
