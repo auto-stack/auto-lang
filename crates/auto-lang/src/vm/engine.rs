@@ -2199,6 +2199,10 @@ impl AutoVM {
                         while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
                             if std::time::Instant::now() > deadline {
                                 task.waiting_http_request_id = None;
+                                // PLAN-027 缺陷 A:超时放弃必须同步回收
+                                // ASYNC_RESULTS 条目——worker 迟到完成的
+                                // 完整响应体会永驻(每超时泄漏一个 body)。
+                                crate::vm::ffi::stdlib::drop_async_result(req_id);
                                 return Err(VMError::RuntimeError(
                                     "async http request timed out in call_fn_by_name".into(),
                                 ));
@@ -7027,6 +7031,9 @@ impl AutoVM {
                                             while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
                                                 if std::time::Instant::now() > deadline {
                                                     task.waiting_http_request_id = None;
+                                                    // PLAN-027 缺陷 A:同构超时回收
+                                                    //(与 call_fn_by_name drain 臂同修)。
+                                                    crate::vm::ffi::stdlib::drop_async_result(req_id);
                                                     return Err(VMError::RuntimeError(
                                                         "http request-builder send timed out (plan-446 E2)".into(),
                                                     ));

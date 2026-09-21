@@ -1600,7 +1600,7 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         }
     });
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None);
+        map.entry(req_id).or_insert(None);
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -1643,7 +1643,7 @@ pub fn shim_io_write_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
         }
     });
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None);
+        map.entry(req_id).or_insert(None);
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -5321,7 +5321,7 @@ pub fn shim_http_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let req_id = alloc_async_id();
     spawn_async_http_handle("GET".into(), resolve_http_base_url(&url), None, req_id);
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None);
+        map.entry(req_id).or_insert(None);
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -5345,7 +5345,7 @@ pub fn shim_http_post(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let req_id = alloc_async_id();
     spawn_async_http_handle("POST".into(), url, Some(body), req_id);
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None);
+        map.entry(req_id).or_insert(None);
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -5369,7 +5369,7 @@ pub fn shim_http_put(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let req_id = alloc_async_id();
     spawn_async_http_handle("PUT".into(), url, Some(body), req_id);
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None);
+        map.entry(req_id).or_insert(None);
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -5391,7 +5391,7 @@ pub fn shim_http_delete(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let req_id = alloc_async_id();
     spawn_async_http_handle("DELETE".into(), url, None, req_id);
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None);
+        map.entry(req_id).or_insert(None);
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -5650,7 +5650,7 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
         }
     });
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None); // Mark pending.
+        map.entry(req_id).or_insert(None); // Mark pending.
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -6759,7 +6759,13 @@ fn simple_http_json(method: &str, url: &str, body: Option<&str>) -> String {
     // PLAN-648 T-00 仪器:AUTO_LANG_HTTP_TRACE=1 时在 stderr 打印每次
     // api-改写家族请求的方法/URL/状态/响应摘要(split 模式排障用)。
     let trace = std::env::var("AUTO_LANG_HTTP_TRACE").ok().as_deref() == Some("1");
-    let result = std::thread::spawn(move || {
+    // PLAN-027(线程 churn 坍缩):原实现此处 std::thread::spawn().join()
+    // 为 panic 边界——但调用方(spawn_async_http worker)本就是专职线程,
+    // 每请求双层线程 = 160 线程/s churn(split 前端内存缓升主嫌)。
+    // 换 catch_unwind 保留同等 panic 隔离契约(Err(_) → 错误 body),
+    // 零额外线程。闭包不可 UnwindSafe(reqwest 内部非 RefUnwindSafe),
+    // AssertUnwindSafe 与原线程边界语义等价(panic 后现场整体弃置)。
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         if trace {
             eprintln!("[HTTP-TRACE] {} {} body={:?}", method, url, body.as_deref().unwrap_or(""));
         }
@@ -6806,11 +6812,11 @@ fn simple_http_json(method: &str, url: &str, body: Option<&str>) -> String {
                 format!(r#"{{"error":"HTTP {}","status":{}}}"#, status, status)
             }
         })
-    }).join();
+    }));
     match result {
         Ok(Ok(text)) => text,
         Ok(Err(e)) => format!(r#"{{"error":"{}","status":0}}"#, escape_json(&e.to_string())),
-        Err(_) => r#"{"error":"HTTP thread panicked","status":0}"#.to_string(),
+        Err(_) => r#"{"error":"HTTP request panicked","status":0}"#.to_string(),
     }
 }
 
@@ -6823,13 +6829,30 @@ fn escape_json(s: &str) -> String {
 /// Helper: check if a previously spawned async HTTP request has completed.
 /// Returns Some(body_string) if ready, None if still pending.
 /// Plan 349: reads from the unified ASYNC_RESULTS table (Body variant).
+/// PLAN-027 缺陷 C:Err 条目不再走 `.ok()`→None——remove 已经发生,返回
+/// None 会被 shim 判为"仍在等待"而永远 Waiting。镜像 simple_http_json 的
+/// 错误 body 契约(`{"error":..,"status":0}`),让调用方拿到可解析对象。
 fn check_async_http_result(request_id: u64) -> Option<String> {
     ASYNC_RESULTS.lock().ok().and_then(|mut map| {
         map.remove(&request_id).and_then(|opt| opt)
-    }).and_then(|result| result.ok()).and_then(|ar| match ar {
-        AsyncResult::Body(s) => Some(s),
-        _ => None,
+    }).map(|result| match result {
+        Ok(AsyncResult::Body(s)) => s,
+        Ok(_) => r#"{"error":"unexpected async result variant","status":0}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{}","status":0}}"#, escape_json(&e)),
     })
+}
+
+/// PLAN-027 缺陷 A:超时放弃路径的条目回收。engine 的同步 drain
+/// (call_fn_by_name Yield 臂 / request-builder send 臂)30s 超时后只清
+/// `task.waiting_http_request_id`,ASYNC_RESULTS 条目残留——worker 完成
+/// 时还会写入完整响应体,每次超时泄漏一个 body。本函数在超时臂调用,
+/// 与迟到的完成写入之间无同步(race 后条目要么已被此函数移除,要么
+/// 移除失败留给下一次 alloc 复用安全检查;req_id 单调不复用,残留即
+/// 永驻)——超时即删,泄漏面归零。
+pub(crate) fn drop_async_result(request_id: u64) {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
+        map.remove(&request_id);
+    }
 }
 
 /// Plan 446 批二 E2: 非夺取式就绪探测（供 engine 的 CALL_SPEC 同步 drain 用）。
@@ -6869,15 +6892,71 @@ fn resolve_http_base_url(url: &str) -> String {
     url.to_string()
 }
 
+/// PLAN-027(线程 churn 归零):api.* json 请求的发射路径。原为每请求
+/// `std::thread::spawn`(双层线程时代 160 线程/s;PLAN-027 内层坍缩后
+/// 仍 80/s)——L1 修复验证实测斜率 ∝ 线程创建数(2→1 线程,
+/// 2.23→~1.3MB/min,量值见 evidence/027)。本池化彻底归零 churn:
+/// 常驻 2 worker + 容量 64 的 mpsc 队列;队满(突发)退化为按需
+/// spawn 兜底,语义不变。完成仍写 `ASYNC_RESULTS[req_id]`,消费协议
+/// (async_http_result_ready / check_async_http_result)零变。
+struct HttpJsonJob {
+    method: String,
+    url: String,
+    body: Option<String>,
+    req_id: u64,
+}
+
+static HTTP_JSON_JOB_TX: std::sync::OnceLock<std::sync::mpsc::SyncSender<HttpJsonJob>> =
+    std::sync::OnceLock::new();
+
+fn run_http_json_job(job: HttpJsonJob) {
+    let result = simple_http_json(&job.method, &resolve_http_base_url(&job.url), job.body.as_deref());
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
+        map.insert(job.req_id, Some(Ok(AsyncResult::Body(result))));
+    }
+}
+
+fn http_json_job_sender() -> &'static std::sync::mpsc::SyncSender<HttpJsonJob> {
+    HTTP_JSON_JOB_TX.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<HttpJsonJob>(64);
+        let rx = std::sync::Arc::new(std::sync::Mutex::new(rx));
+        for _ in 0..2 {
+            let rx = std::sync::Arc::clone(&rx);
+            std::thread::spawn(move || loop {
+                // recv 持锁仅覆盖出队;HTTP 执行在锁外,两 worker 并行。
+                let job = {
+                    let guard = match rx.lock() {
+                        Ok(g) => g,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    guard.recv()
+                };
+                match job {
+                    Ok(job) => run_http_json_job(job),
+                    Err(_) => break,
+                }
+            });
+        }
+        tx
+    })
+}
+
 /// Helper: spawn an async HTTP request on a dedicated thread.
 /// Result is stored in ASYNC_RESULTS[request_id] as the Body variant.
+/// PLAN-027:dedicated thread 已池化(见 http_json_job_sender);
+/// 队满兜底保留原 spawn 形态(job 从 TrySendError::Full 取回)。
 fn spawn_async_http(method: String, url: String, body: Option<String>, request_id: u64) {
-    std::thread::spawn(move || {
-        let result = simple_http_json(&method, &resolve_http_base_url(&url), body.as_deref());
-        if let Ok(mut map) = ASYNC_RESULTS.lock() {
-            map.insert(request_id, Some(Ok(AsyncResult::Body(result))));
+    let job = HttpJsonJob { method, url, body, req_id: request_id };
+    match http_json_job_sender().try_send(job) {
+        Ok(()) => {}
+        Err(std::sync::mpsc::TrySendError::Full(job)) => {
+            std::thread::spawn(move || run_http_json_job(job));
         }
-    });
+        // 池通道断开(理论不可达:tx 存活期间 worker 不退出):job 丢弃,
+        // 条目留 None → 调用方 30s 超时 → PLAN-027 A 的 drop_async_result
+        // 回收,无泄漏面。
+        Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {}
+    }
 }
 
 // ============================================================================
@@ -7301,7 +7380,7 @@ pub fn shim_http_get_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let req_id = alloc_async_id();
     spawn_async_http("GET".into(), url, None, req_id);
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None); // Mark as pending.
+        map.entry(req_id).or_insert(None); // Mark as pending.
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -7328,7 +7407,7 @@ pub fn shim_http_post_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     let req_id = alloc_async_id();
     spawn_async_http("POST".into(), url, Some(body), req_id);
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None);
+        map.entry(req_id).or_insert(None);
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -7355,7 +7434,7 @@ pub fn shim_http_put_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let req_id = alloc_async_id();
     spawn_async_http("PUT".into(), url, Some(body), req_id);
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None);
+        map.entry(req_id).or_insert(None);
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -7380,7 +7459,7 @@ pub fn shim_http_delete_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     let req_id = alloc_async_id();
     spawn_async_http("DELETE".into(), url, None, req_id);
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None);
+        map.entry(req_id).or_insert(None);
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -7412,7 +7491,7 @@ pub fn shim_http_patch_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let req_id = alloc_async_id();
     spawn_async_http("PATCH".into(), url, Some(body), req_id);
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None);
+        map.entry(req_id).or_insert(None);
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -7575,7 +7654,7 @@ pub fn shim_http_post_sync(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     let req_id = alloc_async_id();
     spawn_async_http_auth("POST".into(), url, Some(body), key_opt, req_id);
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None);
+        map.entry(req_id).or_insert(None);
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -7604,7 +7683,7 @@ pub fn shim_http_post_bearer(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     let req_id = alloc_async_id();
     spawn_async_http_bearer("POST".into(), url, Some(body), key_opt, req_id);
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None);
+        map.entry(req_id).or_insert(None);
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -7636,7 +7715,7 @@ pub fn shim_http_get_sync(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let req_id = alloc_async_id();
     spawn_async_http_auth("GET".into(), url, None, None, req_id);
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(req_id, None);
+        map.entry(req_id).or_insert(None);
     }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -10299,6 +10378,34 @@ mod tests {
         assert_eq!(resolve_http_base_url("/api/x"), "/api/x");
         std::env::remove_var("AUTO_HTTP_BASE");
         assert_eq!(resolve_http_base_url("/api/x"), "/api/x");
+    }
+
+    /// PLAN-027 缺陷 C:Err 条目必须映射为可解析错误 body——remove 已在
+    /// check 内发生,返回 None 会让 shim 重入分支判"仍在等待"而永远挂起。
+    #[test]
+    fn p027_check_async_result_err_maps_to_error_body() {
+        let id = 0x027C_0000u64;
+        if let Ok(mut map) = ASYNC_RESULTS.lock() {
+            map.insert(id, Some(Err("conn refused".to_string())));
+        }
+        let body = check_async_http_result(id).expect("Err entry must resolve, not None");
+        assert!(body.contains("\"error\"") && body.contains("conn refused"), "got: {body}");
+        // 条目已被消费(二次 check 无结果)。
+        assert!(check_async_http_result(id).is_none());
+    }
+
+    /// PLAN-027 缺陷 A:超时回收——drop_async_result 移除条目,缺席时幂等
+    /// (engine drain 超时臂调用,防 worker 迟到 body 永驻)。
+    #[test]
+    fn p027_drop_async_result_removes_entry() {
+        let id = 0x027A_0000u64;
+        if let Ok(mut map) = ASYNC_RESULTS.lock() {
+            map.insert(id, None);
+        }
+        assert!(!async_http_result_ready(id));
+        drop_async_result(id);
+        assert!(check_async_http_result(id).is_none());
+        drop_async_result(id);
     }
 
     /// Plan 524 三态：process.args() = [程序路径] + CLI 透传参数（List 契约，
