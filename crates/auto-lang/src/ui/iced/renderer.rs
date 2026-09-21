@@ -5429,6 +5429,32 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     )
                     .into();
                 }
+                // Plan 045 T3: 拖拽表格分派——on_col_resize Some 走 TableResize
+                // widget（自持网格布局 + Drag 临时宽实时重排 + 松手 publish）；
+                // None 且无固定列宽走 TableAlign（PLAN-082 T-05：自持整表布局，
+                // 每列宽=该列 header+body 最大内容宽——旧 per-row Row lowering
+                // 各行独立 hug，行与行列 x 不对齐，截图实证）；有固定列宽时
+                // 走旧 lowering（Fixed 列宽本就对齐，保留 col_fixed_width 尾列
+                // 回退语义零改动）。
+                if col_widths.is_none() {
+                    let header_cells: Vec<_> = headers
+                        .into_iter()
+                        .map(|mut h| {
+                            apply_table_header_style(&mut h);
+                            h.into_iced()
+                        })
+                        .collect();
+                    let body_rows: Vec<Vec<_>> = rows
+                        .into_iter()
+                        .map(|r| r.into_iter().map(|c| c.into_iced()).collect())
+                        .collect();
+                    return crate::ui::iced::table_align::table_align(
+                        header_cells,
+                        body_rows,
+                        col_spacing as f32,
+                    )
+                    .into();
+                }
                 // Plan 411 P2-A④: vue 表格细节——表头 font-medium +
                 // text-muted-foreground、行 border-b、单元格 px-4/py-3。
                 // 行距改由 py-3 padding 提供(规则线与行贴合才是 border-b 语义),
@@ -34776,6 +34802,73 @@ This is a **bold** and *italic* paragraph with `code` and [link](https://x).
                 "表格 cell「{cell}」必须存活（Rich 承载），rich={rich:?}"
             );
         }
+    }
+
+    /// PLAN-082 T-05 回归钉：自然宽表格跨行列对齐——同列 cell 的 x 坐标
+    /// 必须一致。旧 per-row Row lowering 各行独立 hug（用户截图实证列
+    /// 错位：表头「类型/名称/说明」与数据行的列起点逐行漂移）；现在
+    /// col_widths/on_col_resize 皆 None 分派 TableAlign 自持整表布局
+    /// （每列宽=该列 header+body 最大内容宽）。直构 AbstractView::Table
+    /// （cell 用 Text——autodown 链的 cell 是 Rich，iced_test 候选盲区，
+    /// 见模块头②；本钉断言 lowering 层的几何）。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn plan082_table_columns_align_across_rows() {
+        let cell = |s: &str| AbstractView::Text {
+            content: s.to_string(),
+            style: None,
+            selectable: false,
+        };
+        let view = AbstractView::Table {
+            headers: vec![cell("类型"), cell("名称"), cell("说明")],
+            rows: vec![
+                vec![cell("DIR"), cell("crates/"), cell("Rust workspace 子 crate")],
+                vec![cell("FILE"), cell("README.md"), cell("项目说明")],
+            ],
+            spacing: 0,
+            col_spacing: 8,
+            style: None,
+            table_key: None,
+            col_widths: None,
+            on_col_resize: None,
+        };
+        let el = render_dynamic_view(view, None, &mut Vec::new());
+        let mut ui = iced_test::simulator(el);
+        let seen = std::sync::Mutex::new(Vec::new());
+        let dump = |c: iced_test::selector::Candidate<'_>| -> Option<()> {
+            use iced_test::selector::Candidate::*;
+            match c {
+                Text { bounds, content, .. } => {
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{}@{},{}", content, bounds.x, bounds.y));
+                }
+                _ => {}
+            }
+            None
+        };
+        let _ = ui.find(dump);
+        let texts = seen.lock().unwrap();
+        let x_of = |label: &str| {
+            texts
+                .iter()
+                .find(|s| s.contains(label))
+                .and_then(|s| s.rsplit('@').next())
+                .and_then(|xy| xy.split(',').next())
+                .and_then(|x| x.parse::<f32>().ok())
+                .unwrap_or_else(|| panic!("cell {label:?} not found, texts={texts:?}"))
+        };
+        // 第 2 列：crates/ 与 README.md 同列 x。
+        assert_eq!(
+            x_of("crates/"),
+            x_of("README.md"),
+            "第 2 列跨行 x 必须对齐，texts={texts:?}"
+        );
+        // 第 3 列：两行说明同列 x，且在名称列右侧。
+        let dx1 = x_of("Rust workspace");
+        let dx2 = x_of("项目说明");
+        assert_eq!(dx1, dx2, "第 3 列跨行 x 必须对齐，texts={texts:?}");
+        assert!(dx1 > x_of("crates/"), "说明列必须在名称列右侧");
     }
 
     /// 文档化（无断言）：MaxWidthPct 子树 text 节点对 Find 操作不可见、
