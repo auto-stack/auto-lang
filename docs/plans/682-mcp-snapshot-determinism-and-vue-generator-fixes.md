@@ -122,6 +122,22 @@ detect 并集 + 直接调 `crate::vue_shadcn::materialize(&output_dir,
 
 - 2026-09-22 work 入场（auto-plan-work，用户直接授权上游修复批）：
   根因分析 + 修复设计见 §2（jade-edit 四路勘察报告在案），T-01 起步。
+- 2026-09-22 T-01..T-04 实施完成（commit 5f46d99fb）+ 验证实录：
+  - **AC-01 (F1)**：新 exe 下三全新实例快照恒带 style/onclick、逐字节
+    同尺寸（5201B×3——旧双态消失）；jade vm_matrix 双臂对新 exe
+    10/10+9/9 ALL GREEN，基线 v2（id 序列）零漂移。
+  - **AC-02 (F2)**：裸 gen-only 产物 App.vue 编辑器原生发射
+    `:key="store.active_key"`（零补件状态）。
+  - **AC-03 (F3)**：生成 natives.ts 含 6 处先到先得守卫（S-tier 2 +
+    R-tier 4）+ `join('
+')` 真换行。
+  - **AC-04 (F4)**：冷删 popover/ 后 gen-only 重新物化（Popover 三件 +
+    index.ts）；裸产物 vue-tsc 出现 3×TS1117（DataTableCrud 族 dep
+    demo 组件）——**归属界定**：worktree 基点 3f2eb0b56 落后主检出
+    dirty 态中另一会话的未提交生成器修复，与本批四修复正交（四修复
+    产物面各自直验通过）；主检出会话落地后 rebase 复验。
+  - cargo check auto-lang + auto-man lib 绿（auto-man bin 空壳为上游
+    既有态）。
 
 ## 7. 待澄清事项
 
