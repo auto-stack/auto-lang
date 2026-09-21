@@ -448,7 +448,11 @@ menubar_item 发射为裸 `<div :title=...>`（仅外层 Menubar 组件，:15046
     plans.md 671 行；INDEX 再生无漂移。
   - **archived**：本文件 git mv 至 docs/plans/archive/，status: archived，
     completion_kind: delivered。
-  - **cleaned**：待补（worktree 组 lang-671 三清后回填）。
+  - **cleaned**：wt-guard 双查 clean（auto-lang 须先摘 fixture 再生物
+    junction——deps/bps 单链 cmd rmdir + gen 树 cmd rmdir /s，661/672 既证
+    方法；auto-down 首检即 clean）→ worktree 双移除 + plan-671-dev 删除
+    （was 89e54ae3d=landed tip）+ 组目录 lang-671 移除 + list/prune/磁盘
+    三查零残留。五 checkpoint 闭环，PLAN-671 终态 delivered。
 
 ## 10. 待澄清事项
 
