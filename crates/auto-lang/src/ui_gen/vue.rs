@@ -13115,6 +13115,16 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 if let Some(value) = props.get("key").or_else(|| props.get("id")) {
                     if let Some(k) = self.extract_string_value(value) {
                         attrs.push(format!("data-editor-key=\"{}\"", k));
+                    } else {
+                        // PLAN-677 T-05: 动态 key（循环内 `key: t.key` 等
+                        // 表达式形态）→ 绑定 editor-key。store 侧
+                        // code_editor_* 内建按同一键经 editorBridge 路由到
+                        // 对应 CodeMirror 实例（vm 侧按键寻址的同构臂）。
+                        if let Some(AuraPropValue::Expr(e)) = Some(value) {
+                            if let Ok(expr) = self.expr_to_vue_bound_value(e) {
+                                attrs.push(format!(":editor-key=\"{}\"", expr));
+                            }
+                        }
                     }
                 }
             }
@@ -22463,6 +22473,60 @@ widget Rows {
 --- keylines: {:?}",
             wrapper,
             keylines
+        );
+    }
+
+    /// PLAN-677 T-05: code_editor 动态 key（循环内表达式）发
+    /// :editor-key 绑定，供 editorBridge 按键寻址；字面量 key 维持
+    /// data-editor-key 既有契约。
+    #[test]
+    fn test_plan677_code_editor_emits_dynamic_editor_key() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget Ed {
+    msg M { }
+    model {
+        var tabs Array<str> = []
+        var active str = ""
+    }
+    view {
+        col {
+            for i, t in .tabs {
+                if t == .active {
+                    code_editor (key: t.key, lang: "auto", style: "flex-1 w-full") {
+                        content: t.src
+                    }
+                }
+            }
+        }
+    }
+    on { .X -> { } }
+}
+"#);
+        assert!(
+            sfc.contains(":editor-key="),
+            "dynamic key must emit :editor-key binding:
+{}",
+            sfc
+        );
+        let sfc2 = gen_sfc_from_widget_src_shadcn(r#"
+widget Ed2 {
+    msg M { }
+    model { var doc str = "" }
+    view {
+        col {
+            code_editor (key: "tab-main", lang: "auto") {
+                content: .doc
+            }
+        }
+    }
+    on { .X -> { } }
+}
+"#);
+        assert!(
+            sfc2.contains("data-editor-key=\"tab-main\""),
+            "literal key keeps data-editor-key contract:
+{}",
+            sfc2
         );
     }
 

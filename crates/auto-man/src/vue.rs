@@ -240,6 +240,9 @@ const OPTIONAL_DEPS: &[(&str, &str)] = &[
     ("@codemirror/state", "^6.4.1"),
     ("@codemirror/language", "^6.10.1"),
     ("@codemirror/search", "^6.5.6"),
+    // PLAN-677 T-05: editorBridge undo/redo/selectAll（commands 随
+    // codemirror 元包已在锁文件，此处升为直依赖供 vue-tsc 解析）。
+    ("@codemirror/commands", "^6.11.1"),
     ("@codemirror/lang-rust", "^6.0.1"),
     ("@codemirror/lang-python", "^6.1.6"),
     ("@codemirror/lang-javascript", "^6.2.2"),
@@ -492,6 +495,144 @@ fn sync_code_editor_shell(output_path: &Path, usage: &VueDependencyUsage) -> Res
     Ok(())
 }
 
+/// PLAN-677 T-05: editorBridge —— code_editor_* vm 内建的 vue 侧路由层。
+/// CodeEditor 壳以 DSL editor key 注册 EditorView；natives.ts 的 B 层内建
+/// 经此桥按键寻址（vm 侧按键寻址的同构臂）。使用 code_editor 的工程恒
+/// 覆写（本文件是脚手架资产，无用户手写位）。
+fn ensure_editor_bridge(output_path: &Path, usage: &VueDependencyUsage) -> Result<(), String> {
+    if !usage.code_editor {
+        return Ok(());
+    }
+    let path = output_path.join("src").join("lib").join("editorBridge.ts");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create lib dir: {}", e))?;
+    }
+    std::fs::write(&path, generate_editor_bridge())
+        .map_err(|e| format!("Failed to write editorBridge.ts: {}", e))?;
+    Ok(())
+}
+
+fn generate_editor_bridge() -> String {
+    r#"// editorBridge.ts — PLAN-677 T-05: vue-side bridge for code_editor_* vm
+// builtins. CodeEditor shells register their EditorView under the DSL
+// editor key; the B-tier natives route here by that key (the vue-track
+// analogue of the vm's key-addressed editor builtins). Semantics mirror
+// the vm builds: cursor line/col are 0-based, fold line numbers are
+// 1-based, fold_hidden_count is the number of lines hidden by folds.
+import { EditorView } from '@codemirror/view'
+import { foldable, foldEffect, unfoldEffect, foldedRanges } from '@codemirror/language'
+import { undo, redo, selectAll } from '@codemirror/commands'
+
+const views = new Map<string, EditorView>()
+
+export function registerEditor(key: string, view: EditorView): void {
+  views.set(key, view)
+}
+export function unregisterEditor(key: string, view: EditorView): void {
+  if (views.get(key) === view) views.delete(key)
+}
+function withView<T>(key: string, fn: (v: EditorView) => T, fallback: T): T {
+  const v = views.get(key)
+  return v ? fn(v) : fallback
+}
+export function codeEditorSetText(key: string, text: string): void {
+  withView(key, (v) => v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: text } }), undefined)
+}
+export function codeEditorText(key: string): string {
+  return withView(key, (v) => v.state.doc.toString(), '')
+}
+export function codeEditorCursorLine(key: string): number {
+  return withView(key, (v) => v.state.doc.lineAt(v.state.selection.main.head).number - 1, 0)
+}
+export function codeEditorCursorCol(key: string): number {
+  return withView(
+    key,
+    (v) => {
+      const h = v.state.selection.main.head
+      return h - v.state.doc.lineAt(h).from
+    },
+    0,
+  )
+}
+export function codeEditorSelectionLen(key: string): number {
+  return withView(
+    key,
+    (v) => {
+      const s = v.state.selection.main
+      return s.to - s.from
+    },
+    0,
+  )
+}
+export function codeEditorUndo(key: string): void {
+  withView(key, (v) => {
+    undo(v)
+  }, undefined)
+}
+export function codeEditorRedo(key: string): void {
+  withView(key, (v) => {
+    redo(v)
+  }, undefined)
+}
+export function codeEditorSelectAll(key: string): void {
+  withView(key, (v) => {
+    selectAll(v)
+  }, undefined)
+}
+// Cut/copy/paste are best-effort: browsers gate programmatic clipboard
+// access outside user gestures; a denied call is a silent no-op
+// (registered limitation, PLAN-677 S5).
+export function codeEditorCut(key: string): void {
+  withView(key, (v) => {
+    v.focus()
+    document.execCommand('cut')
+  }, undefined)
+}
+export function codeEditorCopy(key: string): void {
+  withView(key, (v) => {
+    v.focus()
+    document.execCommand('copy')
+  }, undefined)
+}
+export function codeEditorPaste(key: string): void {
+  withView(key, (v) => {
+    v.focus()
+    document.execCommand('paste')
+  }, undefined)
+}
+export function codeEditorFoldToggle(key: string, line: number): void {
+  withView(key, (v) => {
+    const n = Math.max(1, Math.min(Math.trunc(Number(line) || 1), v.state.doc.lines))
+    const l = v.state.doc.line(n)
+    const range = foldable(v.state, l.from, l.to)
+    if (!range) return
+    let isFolded = false
+    foldedRanges(v.state).between(range.from, range.to, () => {
+      isFolded = true
+      return false
+    })
+    v.dispatch(isFolded ? { effects: unfoldEffect.of(range) } : { effects: foldEffect.of(range) })
+  }, undefined)
+}
+export function codeEditorFoldHiddenCount(key: string): number {
+  return withView(
+    key,
+    (v) => {
+      let hidden = 0
+      foldedRanges(v.state).between(0, v.state.doc.length, (r) => {
+        hidden += v.state.doc.lineAt(r.to).number - v.state.doc.lineAt(r.from).number
+        return false
+      })
+      return hidden
+    },
+    0,
+  )
+}
+"#
+    .to_string()
+}
+
 // Template generators
 
 /// PLAN-063 Phase B T12 (KD 061 D27): 重生成 package.json 时保留既有
@@ -637,10 +778,11 @@ fn generate_code_editor_component() -> String {
     r#"<script setup lang="ts">
 // Plan 421: props 消费 + oncursor/oncontextmenu 事件契约(vue 端实现)。
 // vi 模式降级:本组件接受 :vi 但不实现(见上方 auto-man 注释),iced 端不受影响。
-import { computed, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, shallowRef, watch } from 'vue'
 import { Codemirror } from 'vue-codemirror'
 import { EditorView, keymap } from '@codemirror/view'
 import { StreamLanguage, foldGutter, foldKeymap } from '@codemirror/language'
+import { registerEditor, unregisterEditor } from '../lib/editorBridge'
 import { SearchQuery, setSearchQuery, search as searchPanel } from '@codemirror/search'
 import type { Extension } from '@codemirror/state'
 import { rust } from '@codemirror/lang-rust'
@@ -660,6 +802,9 @@ const props = defineProps({
   tabSize: { type: Number, default: 4 },
   fontSize: { type: Number, default: 14 },
   search: { type: String, default: '' },
+  // PLAN-677 T-05: DSL editor key —— code_editor_* 内建经 editorBridge
+  // 按此键寻址到本实例（vm 按键寻址同构）。
+  editorKey: { type: String, default: '' },
 })
 
 const emit = defineEmits(['update:modelValue', 'cursor', 'contextmenu'])
@@ -768,10 +913,15 @@ const emitCursor = (v: EditorView) => {
 
 const on_ready = (payload: { view: EditorView }) => {
   view.value = payload.view
+  // PLAN-677 T-05: 以 DSL editor key 注册到桥（code_editor_* 内建路由）。
+  if (props.editorKey) registerEditor(props.editorKey, payload.view)
   // 初始光标位置(状态栏类 UI 直接可用)。
   emitCursor(payload.view)
   if (props.search) applySearch(props.search)
 }
+onBeforeUnmount(() => {
+  if (props.editorKey && view.value) unregisterEditor(props.editorKey, view.value)
+})
 
 // Plan 421 P1: search prop(正则)→ setSearchQuery,全量 live-highlight
 // 所有匹配(iced 端 418 §8.8 的 live-highlight 语义)。
@@ -1730,7 +1880,7 @@ fn ensure_natives_layer(output_dir: &Path) {
     }
     for path in &files {
         let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if fname == "auto-sources.ts" || fname.starts_with("natives.") {
+        if fname == "auto-sources.ts" || fname == "editorBridge.ts" || fname.starts_with("natives.") {
             continue;
         }
         let Ok(content) = fs::read_to_string(path) else { continue };
@@ -1805,14 +1955,61 @@ fn ensure_natives_layer(output_dir: &Path) {
     // 实现体）不再进抛错桩名单；S 层维持 fail-fast 桩（PLAN-671 §10-1
     // 裁定不变）；B 层（editorBridge 路由）由 T-05 在此挂靠。
     const R_TIER: &[&str] = &["file_basename", "console_log", "console_lines", "console_clear"];
-    let stub_names: Vec<&&str> = used.iter().filter(|n| !R_TIER.contains(n)).collect();
+    // PLAN-677 T-05: B 层——code_editor_* 内建经 editorBridge 按 DSL
+    // editor key 寻址（vm 按键寻址同构臂），不再抛错。
+    const B_TIER: &[&str] = &[
+        "code_editor_set_text",
+        "code_editor_text",
+        "code_editor_cursor_line",
+        "code_editor_cursor_col",
+        "code_editor_selection_len",
+        "code_editor_fold_toggle",
+        "code_editor_fold_hidden_count",
+        "code_editor_undo",
+        "code_editor_redo",
+        "code_editor_select_all",
+        "code_editor_cut",
+        "code_editor_copy",
+        "code_editor_paste",
+    ];
+    let b_names: Vec<&&str> = used.iter().filter(|n| B_TIER.contains(n)).collect();
+    let stub_names: Vec<&&str> = used
+        .iter()
+        .filter(|n| !R_TIER.contains(n) && !B_TIER.contains(n))
+        .collect();
     fs::create_dir_all(&lib).ok();
     let mut dts = String::from(
         "// natives.d.ts — PLAN-671 ①(+Phase 2): vm-host bare natives, type layer.\n// Registry-driven: function forms = vm codegen bare_native_intrinsics ∩\n// bare usage; object forms = VM_ONLY_OBJECT_NATIVES ∩ member-access usage.\n// The vue track has NO runtime for these names — calls reach the throwing\n// stubs installed by natives.ts.\n",
     );
     let mut stub = String::from(
-        "// natives.ts — PLAN-671 ①: vm-host bare natives, runtime fail-fast stubs.\n// Registers throwing globalThis bindings for the names declared in\n// natives.d.ts — an honest error naming the native beats a bare\n// ReferenceError when a vm-only path runs on the vue track.\nconst names: string[] = [\n",
+        "// natives.ts — PLAN-671 ① + PLAN-677: vm-host bare natives.\n// S tier: throwing fail-fast stubs (honest error naming the native beats\n// a bare ReferenceError when a vm-only path runs on the vue track).\n// R tier: real JS builds (bottom block). B tier: editorBridge routes by\n// DSL editor key (PLAN-677 T-05).\n",
     );
+    if !b_names.is_empty() {
+        let fns: Vec<&str> = b_names
+            .iter()
+            .map(|n| match **n {
+                "code_editor_set_text" => "codeEditorSetText",
+                "code_editor_text" => "codeEditorText",
+                "code_editor_cursor_line" => "codeEditorCursorLine",
+                "code_editor_cursor_col" => "codeEditorCursorCol",
+                "code_editor_selection_len" => "codeEditorSelectionLen",
+                "code_editor_fold_toggle" => "codeEditorFoldToggle",
+                "code_editor_fold_hidden_count" => "codeEditorFoldHiddenCount",
+                "code_editor_undo" => "codeEditorUndo",
+                "code_editor_redo" => "codeEditorRedo",
+                "code_editor_select_all" => "codeEditorSelectAll",
+                "code_editor_cut" => "codeEditorCut",
+                "code_editor_copy" => "codeEditorCopy",
+                "code_editor_paste" => "codeEditorPaste",
+                other => unreachable!("unmapped B-tier native {}", other),
+            })
+            .collect();
+        stub.push_str(&format!(
+            "import {{ {} }} from './editorBridge'\n",
+            fns.join(", ")
+        ));
+    }
+    stub.push_str("const names: string[] = [\n");
     for name in &used {
         dts.push_str(&format!("declare function {}(...args: any[]): any\n", name));
     }
@@ -1844,6 +2041,11 @@ fn ensure_natives_layer(output_dir: &Path) {
     stub.push_str(
         "// PLAN-677 T-04: R tier - real JS builds (semantics mirror vm impls).\n{\n  const g = globalThis as unknown as Record<string, unknown>\n  // file_basename: final path segment, '/' and backslash both separators\n  // (vm native.rs shim_file_basename rsplit semantics).\n  g['file_basename'] = (p: unknown) => {\n    const s2 = String(p ?? '')\n    const parts = s2.split(/[/\\\\]/)\n    return parts[parts.length - 1] ?? ''\n  }\n  // console_*: in-memory buffer - one entry per log call, cap 500,\n  // lines(n=200) newest-first joined with a newline (vm ui_console.rs).\n  const buf: string[] = []\n  g['console_log'] = (line: unknown) => {\n    buf.push(String(line ?? ''))\n    if (buf.length > 500) buf.shift()\n  }\n  g['console_lines'] = (n?: number) => {\n    const take = Math.min(n ?? 200, buf.length)\n    const out: string[] = []\n    for (let i = buf.length - 1; i >= buf.length - take; i--) out.push(buf[i])\n    return out.join('\\\\n')\n  }\n  g['console_clear'] = () => {\n    buf.length = 0\n  }\n}\n"
     );
+    if !b_names.is_empty() {
+        stub.push_str(
+            "// PLAN-677 T-05: B tier - code_editor_* routed by DSL editor key.\n{\n  const g = globalThis as unknown as Record<string, unknown>\n  g['code_editor_set_text'] = (k: unknown, t: unknown) => codeEditorSetText(String(k ?? ''), String(t ?? ''))\n  g['code_editor_text'] = (k: unknown) => codeEditorText(String(k ?? ''))\n  g['code_editor_cursor_line'] = (k: unknown) => codeEditorCursorLine(String(k ?? ''))\n  g['code_editor_cursor_col'] = (k: unknown) => codeEditorCursorCol(String(k ?? ''))\n  g['code_editor_selection_len'] = (k: unknown) => codeEditorSelectionLen(String(k ?? ''))\n  g['code_editor_undo'] = (k: unknown) => codeEditorUndo(String(k ?? ''))\n  g['code_editor_redo'] = (k: unknown) => codeEditorRedo(String(k ?? ''))\n  g['code_editor_select_all'] = (k: unknown) => codeEditorSelectAll(String(k ?? ''))\n  g['code_editor_cut'] = (k: unknown) => codeEditorCut(String(k ?? ''))\n  g['code_editor_copy'] = (k: unknown) => codeEditorCopy(String(k ?? ''))\n  g['code_editor_paste'] = (k: unknown) => codeEditorPaste(String(k ?? ''))\n  g['code_editor_fold_toggle'] = (k: unknown, line: unknown) => codeEditorFoldToggle(String(k ?? ''), Number(line) || 0)\n  g['code_editor_fold_hidden_count'] = (k: unknown) => codeEditorFoldHiddenCount(String(k ?? ''))\n}\n"
+        );
+    }
     stub.push_str("export {}\n");
     for (path, content) in [(&dts_path, dts), (&stub_path, stub)] {
         let unchanged = matches!(fs::read_to_string(path), Ok(ref existing) if *existing == content);
@@ -2135,6 +2337,7 @@ fn write_project_files(
     // pruned, else vue-tsc breaks on its codemirror imports once the
     // deps are no longer declared).
     sync_code_editor_shell(output_path, usage)?;
+    ensure_editor_bridge(output_path, usage)?;
 
     // vite.config.ts
     let vite_config = generate_vite_config();
@@ -10282,6 +10485,41 @@ export default {{ }}
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// PLAN-677 T-05: 使用 code_editor 的工程发 editorBridge.ts，内容
+    /// 含注册/注销/折叠按行语义；不使用时不发。
+    #[test]
+    fn plan677_editor_bridge_emitted_when_code_editor_used() {
+        let dir = std::env::temp_dir().join(format!("plan677_bridge_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let usage = VueDependencyUsage {
+            code_editor: true,
+            ..Default::default()
+        };
+        ensure_editor_bridge(&dir, &usage).unwrap();
+        let bridge = std::fs::read_to_string(dir.join("src").join("lib").join("editorBridge.ts")).unwrap();
+        assert!(bridge.contains("export function registerEditor"), "{bridge}");
+        assert!(bridge.contains("export function unregisterEditor"), "{bridge}");
+        assert!(bridge.contains("codeEditorFoldToggle"), "{bridge}");
+        assert!(bridge.contains("foldable(v.state, l.from, l.to)"), "{bridge}");
+        // 不使用 code_editor：不发。
+        let dir2 = std::env::temp_dir().join(format!("plan677_bridge_off_{}", std::process::id()));
+        std::fs::create_dir_all(&dir2).unwrap();
+        ensure_editor_bridge(&dir2, &VueDependencyUsage::default()).unwrap();
+        assert!(!dir2.join("src").join("lib").join("editorBridge.ts").exists());
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::remove_dir_all(&dir2).ok();
+    }
+
+    /// PLAN-677 T-05: CodeEditor 模板消费 editorKey prop 并注册桥。
+    #[test]
+    fn plan677_code_editor_template_registers_bridge() {
+        let component = generate_code_editor_component();
+        assert!(component.contains("editorKey: { type: String, default: '' }"), "{component}");
+        assert!(component.contains("from '../lib/editorBridge'"), "{component}");
+        assert!(component.contains("if (props.editorKey) registerEditor(props.editorKey, payload.view)"), "{component}");
+        assert!(component.contains("unregisterEditor(props.editorKey, view.value)"), "{component}");
+    }
+
     /// PLAN-677 T-04: natives 三层发射——R 层名（file_basename/console_*）
     /// 不进抛错桩名单而是发真实现体；S 层名（dialog_open）维持桩；
     /// d.ts 对全部用面名声明。
@@ -10302,7 +10540,7 @@ export default {{ }}
 <script setup lang=\"ts\">
 const b = file_basename(ws + '/' + id)
 console_log('open: ' + b)
-const willOpen = dialog_open()\nconst ls = console_lines()
+const willOpen = dialog_open()\nconst ed = code_editor_set_text('tab-1', '')\nconst ls = console_lines()
 console_clear()
 </script>
 ",
@@ -10326,6 +10564,14 @@ console_clear()
             );
         }
         assert!(stub.contains("g['file_basename']"), "{stub}");
+        // B 层：bridge import + 按键路由赋值 + 不进桩名单。
+        assert!(
+            stub.contains("import { codeEditorSetText } from './editorBridge'"),
+            "{stub}"
+        );
+        assert!(stub.contains("g['code_editor_set_text']"), "{stub}");
+        assert!(!stub.contains("  'code_editor_set_text',
+"), "{stub}");
         assert!(stub.contains("g['console_log']"), "{stub}");
         assert!(stub.contains("g['console_lines']"), "{stub}");
         assert!(stub.contains("g['console_clear']"), "{stub}");
