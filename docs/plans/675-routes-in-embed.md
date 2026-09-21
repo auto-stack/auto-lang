@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-man, auto-lang] # gallery host 生成器(auto-man)+ back_proxy 参数绑定(auto-lang)
-current_step: 2
+current_step: 5
 total_steps: 7
 ---
 
@@ -229,14 +229,19 @@ pub routable: bool,
 - **T-02**(C-1)P672-N5 清偿:auto-lang back_proxy 路径参数按签名类型绑定(先定点→修→语料测试)。文件:`crates/auto-lang/src/back_proxy.rs`(绑定位点执行期确认)。验证:`cargo nextest run -p auto-lang back_proxy` 全绿。AC:AC-02/AC-03 数据面前置。
   [✅ 已完成 2026-09-21] 定点=`SessionRuntime::handle_request` 绑定环(back_proxy.rs:1180 无条件 `Value::String` 压栈=int 形参 VM 内比较永假,与 P672-N5 症状吻合);修法=路径/query 段经 669 `push_typed_string_arg`(升 pub(crate))按 `ApiTyKind` 压栈,body 字段保持 `json_to_vm_value`;`fn_params` 升格 `Vec<ApiParamSig>`(名+`p.ty` Display)从本 session AST 自持,不读全局 sigs 表(多 session 裸名撞键)。e2e 两例新增(3948/3949 端口):`http_e2e_back_proxy_path_param_typed_binding`(int 三动词累计 21→28→30+slug 保形)+`http_e2e_back_proxy_bad_path_param_is_400`(坏值 400+态零污染);`cargo nextest run -p auto-lang --lib --features test-http-e2e http_e2e_back_proxy` **10/10 全绿**(ui 门控 4 例与 th 档同口径不在集)。worktree 提交 `65fd1883a`。
 - **T-03**(C-2)routable 档判定与注册表面:`GalleryDemoRow.routable` 字段+判定;`generate_demos_registry` routable 行发射(load+routed+loadable);画廊 package.json vue-router 注入。文件:`crates/auto-man/src/vue.rs`。验证:判定/registry 单测绿。AC:AC-01(判定面)、AC-07 守卫。
+  [✅ 已完成 2026-09-21] `routable`(serde default 兼容盘缓存)=vp.has_routes 且除 routes 外无内嵌否决;三既有档语义零变化(route_stub 共存,vp None→false 不硬崩);registry routable 行发 `load: import('./apps/<id>/main')`+`routed: true`+loadable 视口门,DemoModule 接口(mount/unmount 可选+default App 兼容);vue-router ^4.2.0 经 npm_merge 注入。单测 `test_gallery_demo_row_routable`:五家 routable+vp 健康(**from_workspace 在隔离进程全过——018 strict 失败仅在画廊扫描进程内复现**,见 T-06)+对照组零误翻。提交 `495ac1389`。
 - **T-04**(C-2)per-demo routable 发射管线:pages/router.ts(memory 工厂)/main.ts 入口三件套发射,App.vue 复用。文件:`crates/auto-man/src/vue.rs`。验证:`test_emit_gallery_routable_apps` 绿 + standalone hash 守卫绿。AC:AC-01..AC-05 产物面。
+  [✅ 已完成 2026-09-21] 发射循环扩 routable(fullstack 管线全复用:App/lib_api/组件与 store 共享池/shadcn/npm_merge;api 三级瀑布提取 `resolve_demo_api_client_ts` 共用;纯前端路由语料无 api 消费不阻断)+无源诚实回退翻 `row.routable=false`(镜像 fullstack 不翻转纪律);`emit_demo_route_face`=pages/(per-demo 命名空间防 019/021/023 三家 pages/home 异容撞)+router.ts(**memory 工厂** createAppRouter,每挂载 fresh 态,含参 props:true)+main.ts(mount/unmount 入口+errorHandler)。**附带修复两枚构建阻断**:①store 依赖启发式扫描(lib.rs extract_store_deps_from_file+api.rs ui_build 管线两处)不剥注释——022 app.at 首行注释示例 `use book_store: BooksStore` 进 deps 生成幽灵 useBooksStore import(vite ENOENT 全构建断链;022 standalone 同病,从未被查过因画廊此前不生成 routes demo 的 App),修复=strip_line_block_comments(双引号字符串面保护,pub(crate) 共用)+在册单测 extract_store_deps_ignores_comment_examples;②018 语料三处 `theme-toggle {}` 逃生舱(.at 管线从未解析,strict 硬错,018 web 臂 standalone 一直断链)摘除记债(schema 原生 toggle 元素=后续债)。standalone hash 守卫=generate_router_file(self 版)零接触。提交 `828bdce61`。
 - **T-05**(C-3)消费契约:AppViewport.vue entry 工厂分支(mount/unmount 优先,兼容路径保留)+ demos-registry TS 类型放宽;**os 源副本与 gen ext 副本字节对齐提交**(P672-D1 纪律)。文件:`D:/autostack/auto-os/ui-gallery/src/gallery/AppViewport.vue` + `gen/front/vue/src/ext/src/gallery/AppViewport.vue`(+ 如涉 demos-registry.d.ts 类型,同纪律)。验证:前台 build 绿。AC:AC-06 消费面。
+  [✅ 已完成 2026-09-21] AppViewport 增 entry 分支(mod.mount/unmount 在册走工厂,路由态随卸载重置;default-App 旧 createApp 路径,28 条既有 load 条目零改动)+releaseMounted 统一卸载柄(entryUnmount 与 currentApp 互斥)+onBeforeUnmount 收口。三副本对齐:os 源=gen ext=auto-lang rust_embed 资产(md5 唯一)。lang `8a4648a78`/os `a9ebc77`(os 仓仅定向提交自己改的 AppViewport.vue,registry.at 等他会话 WIP 未触碰)。
 - **T-06**(C-4)端到端验证:前台 `auto build` 产物五件套清点 + 用户活体走查五家(022→021→019→018→023),宿主 URL 零变化观察;走查发现的问题按「修复或记债」逐条裁定入档。AC:AC-01..AC-06 全过。
+  [⏳ 进行中 2026-09-21] build 半闭环已证:前台 `auto build`(AUTO_GALLERY_APPS 钉 worktree 语料+worktree auto.exe)全 pipeline 绿(vue-tsc+vite 12.8s),摘要行 **35 demos, 28 loadable, 5 routable, 30 VM-live**——五家注册表 load(import main)+routed 全在档,apps/<id> 五件套(App/pages/router.ts/main.ts/lib_api.ts)齐,018 双动态段 `/book/:id/chapter/:ch` props:true 在档,dist 路由 chunk(board/bookshelf/reading/watch/editor)全产出。**活体走查待用户终端**(见 handoff)。发现并修复的走查前置阻断见 T-04 附带修复两枚。
 - **T-07**(C-5)复审与沉淀:`/auto-plan:review` 全清单核对;债册处置——P672-D2 销号、P670-D1 家族误注更正、走查新增观察项登记;SD-01/SD-02 规范落档 + specs.json/spec-index 再生;`cargo tf` 兜底后按仓规 merge/归档/清 worktree。AC:AC-07/AC-08 门禁 + 沉淀收据。
 
 ## 复审记录
 
 - [2026-09-21] draft handoff(/auto-plan:new):stage: new,PLAN-675 revision 1。勘定四路(计划史 642/670/672、demo 名单、生成器现状、os 消费端)已回填 §需求分析;候选方案五选一裁定 memory history(§架构方案);P670-D1 关系裁定=独立无依赖。**outcome: blocked**——待用户确认方案(尤其 T-02 纳入与否、023 验收口径)且 PLAN-672 先落 master。next: 用户确认后 `/auto-plan:work`(worktree lang-675)。
+- [2026-09-21] work handoff(T-01..T-05 完成+T-06 build 半闭环):stage: work | plan_id: PLAN-675 | plan_revision: 1 | outcome: pass(走查待用户)/余项 T-06 走查+T-07 | code_commit: 65fd1883a/495ac1389/8a4648a78/828bdce61(lang worktree plan-675-dev)+a9ebc77(auto-os)+merge 2d41a5a27(摘入 plan-672-dev @29ed6926b 基座) | task_ids: T-01..T-05 done, T-06 half | evidence: 门禁 auto-man 319 全量 317 绿(2 红=master 预存 plan593_index_css+shell_pack_lib_freshness,后者 672 时代基线清单外新预存红待入册);auto-lang back_proxy e2e 10/10;store_deps/api 31+1 全绿;画廊 build 5 routable 全内嵌 | blockers: ①活体走查待用户终端 ②**N5 双修冲突待裁定**——P672 并行会话亦修 N5(其 T-18"worktree N5 提交"),plan-675-dev T-02 与 plan-672-dev 新提交在 back_proxy.rs 必撞,T-07 合并时二选一(语义应近同,均镜像 669) ③023 VM 臂 route_stub 多 store 降级为既有边界(不变) | next: 用户终端活体走查五家(022→021→019→018→023)→ `/auto-plan:review`(T-07:债册 P672-D2 销号+P670-D1 家族误注更正+shell_pack 预存红入册+672/675 落序裁定)。
 
 ## 待澄清事项
 
@@ -245,3 +250,6 @@ pub routable: bool,
 - **Q-3(验收口径,请确认)**:023-realworld(7 路由 + 26 端点)建议纳入首批验收(AC-05);若用户希望缩面,可降为走查项 + 记债(发射管线无差别,纯验收深度问题)。
 - **Q-4(路由态策略,请确认)**:每次挂载 fresh memory history(推荐——实现最简、无跨 demo 泄漏,代价是切回不保留页内状态)vs 会话内保留路由态(模块级 router 单例,切回还原,但跨挂载状态残留需解释)。默认按推荐执行,活体走查后可反悔改单例(改动面 ~10 行)。
 - **Q-5(记录)**:browser 前进/后退不驱动内嵌路由(memory history 既定取舍);内嵌 demo 页内刷新无意义(gen 树刷新回画廊首页)——均为既定行为,不走查不算缺陷。
+- **Q-6(N5 双修,请裁定)**:P672 并行会话按"用户裁定随批修复"也修了 N5(其 T-18,worktree N5 提交在 plan-672-dev);本计划 T-02(65fd1883a)在 plan-675-dev 独立修复同面。两实现均镜像 669 但落点细节或有差(back_proxy.rs 同函数域)。→ T-07 合并时:对比两 patch,**二选一保留**(建议保本计划版=含 fn_params 升格 ApiParamSig 的 session 自持化+坏值 400 语义;他版若含额外测试面则择优并集),删除另一方,并在被裁删方计划档注记"由对侧清偿"。
+- **Q-7(落序,请裁定)**:plan-675-dev 已含 plan-672-dev 全部提交(merge 2d41a5a27),且 P672 会话在其后仍有新提交(T-17/T-18)。→ 落 master 顺序建议 **672 先(含其 T-18)→ 675 rebase/merge 最新 plan-672-dev → 解 Q-6 冲突 → 675 落**;若 675 先落则连带 672 提交一并入库,672 计划的 merge 收据需注记。T-07 复审时定。
+- **Q-8(记录)**:shell_pack_lib_freshness=master 预存红(672 时代基线清单外新增第 5 条),本计划两度全量复现,T-07 入册 KNOWN-DEBT。018 语料 theme-toggle 摘除致 VM 臂视觉零变化(元素本不渲染);schema 原生 theme-toggle 元素+sidebar_menu_button to/exact 声明滞后(S001 劝告级,生成器实态健康)均记债待后续。
