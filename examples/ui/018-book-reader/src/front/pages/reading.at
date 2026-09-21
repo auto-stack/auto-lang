@@ -63,7 +63,6 @@ widget reading {
                 } else {
                     text "Loading…" { style: "font-medium text-muted-foreground flex-1 truncate" }
                 }
-                theme-toggle {}
             }
 
             // Chapter body — left chapter-nav tree + scrollable body

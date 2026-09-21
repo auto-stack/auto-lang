@@ -657,11 +657,17 @@ pub fn generate_component_from_file(
     });
     // PLAN-048 (auto-musk A 线): Display 化的 AST 省略 handler 体,限定调用
     // (`ForgeStore.X(...)`)不可见——改扫源文件文本,跨 store 引用并入 deps。
+    // PLAN-675 (T-04 附带修复): 扫描前剥注释（与 lib.rs extract_store_deps_
+    // from_file 同根同修）——注释里的示例标识符（022 app.at 首行
+    // `cf. 018 app.at \`use book_store: BooksStore\``）曾进 deps → 生成幽灵
+    // useBooksStore import → vite ENOENT 构建断链（022 standalone 与画廊
+    // routable 臂同病）。
     {
         if let Ok(raw) = std::fs::read_to_string(at_path) {
+            let scan_text = crate::strip_line_block_comments(&raw);
             let mut cur = String::new();
             let mut extra: Vec<String> = Vec::new();
-            for ch in raw.chars() {
+            for ch in scan_text.chars() {
                 if ch.is_alphanumeric() || ch == '_' {
                     cur.push(ch);
                 } else {

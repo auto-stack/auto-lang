@@ -6834,9 +6834,15 @@ pub fn extract_store_deps_from_file(path: &str) -> Vec<String> {
     // PLAN-048 (auto-musk A 线): 跨 store 限定调用 (`ForgeStore.X(...)`) 也构成
     // store 依赖——否则 vue 产物裸发 `ForgeStore` 无 import(TS2304)。按生态命名
     // 约定(XxxStore)扫全文的限定引用;去重后并入。
+    // PLAN-675 (T-04 附带修复): 扫描前剥注释——启发式扫的是裸文本，注释里的
+    // 示例标识符一并命中（022 app.at 首行 `// … (cf. 018 app.at
+    // \`use book_store: BooksStore\`).` 曾整体进 store_deps → 生成幽灵
+    // `useBooksStore` import → vite ENOENT 全构建断链；022 standalone 与
+    // 画廊 routable 臂同病）。字符串面内的 `//` 不当注释剥。
+    let scan_text = strip_line_block_comments(&code);
     let mut hits: Vec<String> = Vec::new();
     let mut cur = String::new();
-    for ch in code.chars() {
+    for ch in scan_text.chars() {
         if ch.is_alphanumeric() || ch == '_' {
             cur.push(ch);
         } else {
@@ -6854,6 +6860,92 @@ pub fn extract_store_deps_from_file(path: &str) -> Vec<String> {
         }
     }
     deps
+}
+
+/// PLAN-675: 注释剥离（store 依赖启发式扫描的预处理，lib.rs/api.rs 两处
+/// 扫描共用）——`//` 行注释与 `/* */` 块注释整体移除，换行保留；双引号
+/// 字符串面内的 `//`、`/*` 不触发（.at 字符串字面量双引号定界）。
+pub(crate) fn strip_line_block_comments(code: &str) -> String {
+    let mut out = String::with_capacity(code.len());
+    let mut chars = code.chars().peekable();
+    let mut in_str = false;
+    let mut str_escape = false;
+    while let Some(c) = chars.next() {
+        if in_str {
+            out.push(c);
+            if str_escape {
+                str_escape = false;
+            } else if c == '\\' {
+                str_escape = true;
+            } else if c == '"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match c {
+            '"' => {
+                in_str = true;
+                out.push(c);
+            }
+            '/' if chars.peek() == Some(&'/') => {
+                chars.next();
+                for n in chars.by_ref() {
+                    if n == '\n' {
+                        out.push('\n');
+                        break;
+                    }
+                }
+            }
+            '/' if chars.peek() == Some(&'*') => {
+                chars.next();
+                while let Some(n) = chars.next() {
+                    if n == '*' && chars.peek() == Some(&'/') {
+                        chars.next();
+                        break;
+                    }
+                    if n == '\n' {
+                        out.push('\n');
+                    }
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod store_deps_scan_tests {
+    /// PLAN-675: 注释里的示例 store 名不进依赖（022 幽灵 useBooksStore 回归），
+    /// 真实 use 声明与代码内限定调用照常命中。
+    #[test]
+    fn extract_store_deps_ignores_comment_examples() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("app.at");
+        std::fs::write(
+            &path,
+            r#"// store import at the top (cf. 018 app.at `use book_store: BooksStore`).
+use board_store: BoardStore
+
+widget App {
+    view {
+        // AnotherStore.X() mentioned in a comment must not count.
+        button "go" .OnGo -> { store.Init() }
+    }
+}
+"#,
+        )
+        .unwrap();
+        let deps = super::extract_store_deps_from_file(path.to_str().unwrap());
+        assert!(
+            deps.iter().any(|d| d == "BoardStore"),
+            "real use-decl must hit: {deps:?}"
+        );
+        assert!(
+            !deps.iter().any(|d| d == "BooksStore" || d == "AnotherStore"),
+            "comment examples must not leak into deps: {deps:?}"
+        );
+    }
 }
 
 /// // Check if any widget has routes

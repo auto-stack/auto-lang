@@ -4872,6 +4872,13 @@ export default router
                     };
                 let embed_this =
                     (!is_fullstack_embed && !routable_needs_api) || fullstack_api_ts.is_some();
+                if is_routable_embed && !embed_this {
+                    // PLAN-675: 诚实回退——routable 消费 api 语料而无源，翻回
+                    // routable=false（demos-registry 不发 load/routed，维持
+                    // 「独立运行」提示），镜像 fullstack 的 loadable 不翻转
+                    // 纪律；否则注册表指向未发射的 apps/<id> 必断链。
+                    row.routable = false;
+                }
                 if (is_fullstack_embed || routable_needs_api) && fullstack_api_ts.is_none() {
                     println!(
                         "  {} gallery demo {} fullstack/routes: no api client source (gen api.ts / src/back/api.ts / api.at gen) — stays standalone",
@@ -11675,6 +11682,35 @@ mod gallery_registry_at_tests {
             let (row, _) = gallery_demo_row(&examples, e);
             assert!(!row.routable, "{id}: no routes → not routable");
         }
+    }
+
+    /// PLAN-675 T-06 探针（转在册回归）: 018 api.at 的轻量解析链
+    /// （try_full_parse = Parser + ApiExtractor）必须产出端点——画廊 routable
+    /// 臂的 api client 现生成兜底靠它（018 无历史 gen 树时唯一来源）。
+    /// 失败 → 018 诚实回退独立提示（AC-03 降级）。
+    #[test]
+    fn test_try_full_parse_018_api() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples")
+            .join("ui")
+            .join("018-book-reader")
+            .join("src")
+            .join("back")
+            .join("api.at");
+        let content = std::fs::read_to_string(&path).expect("read 018 api.at");
+        let mut parser = auto_lang::Parser::from(content.as_str());
+        let ast = parser
+            .parse()
+            .unwrap_or_else(|e| panic!("018 api.at parse failed: {e:?}"));
+        let module = auto_lang::api::ApiExtractor::new().extract("api", &ast.stmts);
+        assert!(
+            !module.endpoints.is_empty() && !module.types.is_empty(),
+            "018 api extraction empty: endpoints={} types={}",
+            module.endpoints.len(),
+            module.types.len()
+        );
     }
 
     /// PLAN-642 T-14a: routes 首页 stub 档——routes 块剔除 + outlet 行替换

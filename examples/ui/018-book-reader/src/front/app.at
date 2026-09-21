@@ -50,11 +50,11 @@ widget App {
                         }
                     }
                 }
-                // Runtime dark/light toggle (handmade ThemeToggle.vue escape hatch).
-                row {
-                    style: "p-4 border-t border-border justify-end"
-                    theme-toggle {}
-                }
+                // Theme toggle withdrawn (PLAN-675 T-06): the handmade
+                // ThemeToggle.vue escape hatch never resolved in the .at
+                // pipeline (strict builds hard-fail on the unknown element;
+                // the web arm has been broken standalone all along). A
+                // schema-native theme-toggle element is deferred debt.
             }
 
             // Main content
@@ -67,7 +67,6 @@ widget App {
                     row { style: "flex-1" }
                     link (to: "/") { text "Library" { style: sub_text } }
                     link (to: "/settings") { text "Settings" { style: sub_text } }
-                    theme-toggle {}
                 }
                 outlet
             }
