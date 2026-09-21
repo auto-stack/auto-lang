@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-673
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done       # drafting → executing → execution_done → reviewed → archived
 feature_name: editor-kernel-rope-delta-chunk
 author: [zcode]
 created_at: 2026-09-21
-updated_at: 2026-09-21
+updated_at: 2026-09-22
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -12,11 +12,16 @@ new_spec_components: [SD-01 ui overview code_editor 缓冲/事件契约, SD-02 �
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/runtime/overview.md]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
 # [PLAN-673] 编辑器内核件：rope 单写者版 + 统一 delta + back 分块读
+
+> 执行环境：worktree `D:/autostack/.wt/lang-673/auto-lang`（branch `plan-673-dev`，
+> base commit 069c9cc4b，master@2026-09-21）；2026-09-21 用户指令授权 work。
+> 主检出 preflight：`examples/rust-workspace/**` 有他人未提交 WIP（015-notes 等），
+> 非本计划所有，已 surface、未触碰。
 
 > 来源：auto-edit 上游供料包（2026-09-21 M1 批）
 > `docs/plans/attachments/673-674-m1-supply.md` §1/§2/§3（auto-edit 仓
@@ -209,20 +214,141 @@ JSON 形状逐字节对齐纪律）。
   拆两件，本件=内核件；供料原件附件 `673-674-m1-supply.md` §1/§2/§3）·
   outcome: **pass（待执行授权）** · next: **work**（授权后自 T-00 起；
   §10-1 rope 路线为开工前最大待裁项）。
+- 2026-09-21 · stage: work · PLAN-673 · r1 · outcome: **T-00 pass** ·
+  code_commit `e6ad58962`（worktree `D:/autostack/.wt/lang-673/auto-lang`）
+  · task_ids: T-00 · evidence: 设计档
+  `docs/design/autoui/editor-kernel.md` 落盘（rope 路线裁定 (a) 窗口化包装
+  + 自实现轻量 rope 不引依赖；delta `{revision,deltas[]}` JSON 字符串面 /
+  `code_editor_edit` 单 API 三形态；分块读 `read_text_range` 三件套 +
+  EOF/错误形状；SD-01/SD-02 锚点钉死）+ `00-intro.md` 注册（注意：主检出
+  00-intro.md 有他会话未提交改动，merge 时需对账）· blockers: 无 ·
+  next: T-01。实勘副产物：codegen.rs 表二手工同步副本（待 T-01 修单源）。
+- 2026-09-21 · stage: work · PLAN-673 · r1 · outcome: **T-01 pass** ·
+  code_commit `0d61bf599` · task_ids: T-01 · evidence: `code_editor_delta`
+  nat#**2939** 读面落地（core delta 队列 destructive read + set_text 全量
+  delta 产线 + registry JSON 面 `{"revision","deltas"}`）；**codegen 表二
+  已改克隆表一**（两表 diff 验证 56 键等价，−89 行手工副本）；e2e 测试
+  `vm_code_editor_delta_end_to_end` + 3 core 单测 · 验证：`cargo check -p
+  auto-lang`（含 `--features ui-iced`）绿；`cargo t code_editor` 53/0；
+  `cargo t catalog` 4/0 · blockers: 无 · next: T-02。副产物登记：①2930/2931
+  实被 auto.host.call 族占用（2939 为下一个空闲 id，catalog 注释在案）——
+  nat id 唯一性守卫债 review 时入 KNOWN-DEBT；②跨仓依赖组内兄弟 worktree
+  `D:/autostack/.wt/lang-673/auto-down`（真 worktree 非 junction，
+  master@fba6563，清理时随组移除）。
+- 2026-09-21 · stage: work · PLAN-673 · r1 · outcome: **T-02 pass** ·
+  code_commit `ebfeeae33` · task_ids: T-02 · evidence:
+  `code_editor_edit` nat#**9906** 写面（三形态单 API；char-boundary 违反
+  eprintln+false 不静默 clamp；走 rewrite 共享件防双推 delta）；击键
+  handle_key 包装（`key_may_mutate` 门控 O(N) 快照）+ ImeCommit + do_undo/
+  redo/cut/paste 埋点，`push_delta_from_texts` 前缀/后缀 char_indices 差集；
+  三来源同流单测 + e2e · 验证：`cargo check`（默认+ui-iced）绿；`cargo t
+  code_editor` 57/57；`cargo t catalog` 4/4 · blockers: 无 · next: T-03。
+  副产物登记：①29xx 带三表全满（catalog/BIGVM/NATIVE_ID_ENTRIES），
+  9906 沿 PLAN-656 高位带先例；T-01 的 2939 补钉 NATIVE_ID_ENTRIES（原
+  靠运气未撞）；②undo/redo 键臂历史不走 bump_after_edit（:1052-1070），
+  水位法不可用作变更检测（已用文本比较）；③NATIVE_ID_ENTRIES 新增 2 键
+  使排序靠后的动态 stdlib id 漂移 +1——T-06/review 须跑 `cargo t` 全量档
+  兜；④code_editor 族 2910-2933 仍裸钉（预存暴露面，KNOWN-DEBT 候选）。
+- 2026-09-21 · stage: work · PLAN-673 · r1 · outcome: **T-03 pass** ·
+  code_commit `43876251f` · task_ids: T-03 · evidence:
+  `read_text_range` nat#**1016**（stdlib #[vm] 声明轨：file.at/file.vm.at/
+  rs.at + ffi/stdlib.rs + NATIVE_ID_ENTRIES 钉死）；a2r-std fs.rs 逐字节镜像；
+  aavm 双臂（engine.at:1016 臂 + codegen.at 发射臂）；fixture
+  `test/vm/18_ffi/058_read_text_range/`（10 打印边界矩阵：中读/EOF/越界/
+  limit≤0/缺文件/CJK 三边缘/CJK EOF/空文件）；对拍测试
+  `read_text_range_parity.rs` 14 例双轨逐字节一致 · 验证：`cargo check` 绿；
+  `cargo t read_text_range` 1/1；fixture `--include-ignored` 1/1；`cargo t
+  catalog` 4/4；`a2r_std_signature_parity` 1/1；`cargo taa aavm2_m4` 3/3 ·
+  blockers: 无 · next: T-04。gate 备忘（T-06/review 补）：①`cargo tv`/
+  nextest 不跑 `#[ignore]` fixture（全 18_ffi 语料预存怪癖，未动）；②
+  engine.at 语义腿 Windows 本地 skip（P574 裁定，Linux CI 兜）；③stdlib
+  面变更 → review/fold 须补 `docs_gen`（Category C）；④full `cargo taa`
+  兜底归 T-06；⑤新增 dev-dep a2r-std（path）。
+- 2026-09-21 · stage: work · PLAN-673 · r1 · outcome: **T-04 pass** ·
+  code_commit `f654a221d` · task_ids: T-04 · evidence: rope 模块
+  `core/rope.rs`（909 行，独立未接线——T-05 全链）落地：AVL 高度平衡
+  （LEAF_MAX 4096/LEAF_TARGET 1024，拒绝权重比+repack 方案的理由在案）；
+  摘要=bytes/chars/newlines/start_chars/end_chars/height 根 O(1)；
+  `RopeSnapshot` COW O(1) 快照、Send+Sync 编译断言、后台只读查询面齐；
+  `byte_to_point` 纯 O(log n)（差分测试首跑抓到 leaf 臂 newline 漏数真
+  bug）· 验证：`cargo check --features ui-iced` 绿；`cargo t rope` 17/17；
+  `cargo t code_editor` 67/67 · blockers: 无 · next: T-05。诚实记注：
+  `point_to_byte` 为 O(log n)+O(char_col) 前进（字符点→字节的天生语义，
+  方法注释在案）。
+- 2026-09-21 · stage: work · PLAN-673 · r1 · outcome: **T-05 pass
+  （S1 落地 / S2 视口物化按预案延后 / S3 冒烟收据入册）** · code_commit
+  `ee36a7446`（S1）+ `8d736dd30`（S2 延后记录）+ `4c152418d`（S3）·
+  task_ids: T-05 · evidence: S1——`CodeEditorCore.doc: Mutex<Rope>` 为文档
+  事实源（锁序：不持 editor guard 锁 doc）；单一提交路径
+  derive_interval→rope.replace_bytes→push delta 三者不可漂移；
+  text()/fresh_fold_map（不再触 editor 锁）/content_height（O(1) 摘要）/
+  find_next（RopeSnapshot——快照隔离首次进真实路径）全 rope 化；顺带抓到
+  真回归隐患：T-02 的 key_may_mutate 门漏 Ctrl+Backspace/Enter（旧架构
+  下隐形，rope 化后= desync），已修。S2——**延后裁定**：Buffer 无行窗 API、
+  窗移=全量 re-set_text= defeat 目的；阈值门控中间态被否（15+ 分支点、
+  小文件测试零覆盖）；延后理由入 doc 注释+commit+KNOWN-DEBT 候选（S2 与
+  击键 O(n) 快照同批落地，视口局部 diff 是窗移便宜的前提）。S3——100MB
+  冒烟收据（debug 档，verbatim）：
+  open 7.76s（rope build+物化 1,930,954 行）/ 摘要 100k 查询 6.6ms /
+  定位 100 次 1.07ms / 击键 25.3s（含 O(n) 快照基线）/ agent edit 8.1s /
+  保存读出 40.3ms / 并发：worker to_string 46.7ms 与主线程 100 编辑对
+  51.4ms 并发零干扰 · 验证：`cargo check --features ui-iced` 绿；`cargo t
+  code_editor` 68/68（含 G5 large_file_renders）；`cargo t rope` 18/18 ·
+  blockers: 无（S2 为显式延后非阻塞）· next: T-06。
+- 2026-09-21 · stage: work · PLAN-673 · r1 · outcome: **T-06 pass** ·
+  code_commit `18c80c3ad`（分支共 9 commit）· task_ids: T-06 · evidence:
+  ①grep 门 PASS——43 命中全为 master 预存（git diff 基线对比，673 新增零
+  消费方标识符）；②`cargo t` 全量 5403 跑/5382 过/**21 红全预存**（p053/
+  p054×6、desktop_protocol×1、layout×14，逐族 master 实测复现；3142 硬编码
+  警讯排查排除）·0 新增；③`cargo tv` 3853/3853 + fixture 058 显式
+  `--include-ignored` PASS；④裸 `cargo taa` 首轮抓到**真回归**（T-03 涟漪：
+  engine.at 臂经 a2r 映射的关联 fn 在 aavm2_bin 零依赖 prelude 缺失 →
+  E0599）——修 `18c80c3ad`（prelude 补编译态 shim，手写 serde 同形 JSON 保
+  P670-D1）后复跑 3864/3865，余红=master 预存（`005_transitive_init` Rust
+  参考腿，master 同 panic 位点）；⑤docs_gen 4/4；⑥041 VM 冒烟 PASS
+  （test_vm_mcp.py，rope 全链下编辑器树渲染正常、干净终止）；⑦T-03 三件套
+  复确认 6/6 · blockers: 无 · next: T-07。
+- 2026-09-22 · stage: work · PLAN-673 · r1 · outcome: **T-07 pass ·
+  全部 8 任务完成 → execution_done** · code_commit `12b764f48`（分支共
+  11 commit：e6ad58962 T-00 / 0d61bf599 T-01 / ebfeeae33 T-02 /
+  43876251f T-03 / f654a221d T-04 / ee36a7446+8d736dd30+4c152418d T-05 /
+  18c80c3ad T-06 修 / 12b764f48 T-07）· task_ids: T-07 · evidence:
+  SD-01 落账 `docs/specs/auto-lang/ui/overview.md:32`（缓冲架构契约+
+  编辑事件契约，视口物化延后如实记录）；SD-02 落账
+  `docs/specs/auto-lang/runtime/overview.md:29`（File 内建契约 VM/a2r
+  双轨节）· blockers: 无 · next: **review**（/auto-plan:review）。
+  消费方复跑通知稿（669 §10-4，merge 后发往 auto-edit）：
+  > Plan 673 已落地，消费方复跑通知：内建 code_editor 新增增量面——
+  > `code_editor_delta(key)`（nat#2939，destructive read，恒定 JSON
+  > `{"revision","deltas":[{start,end,replacement}]}`，UTF-8 字节偏移）与
+  > `code_editor_edit(key,start,end,replacement)`（nat#9906，单 API 三形态，
+  > 非法入参报错返 false）。内核已 rope 化（文档事实源 + COW 快照，`text()`
+  > 全链走 rope），人/agent/undo 三来源 delta 同流；`File.read_text_range`
+  > （nat#1016）分块读双轨（VM/a2r 逐字节一致）。复跑：`cargo t code_editor`
+  > （68 绿）+ `cargo taa`（3864/3865，余 1 主存红）+ 041 冒烟
+  > （`test_vm_mcp.py --app-dir examples/ui/041-auto-edit`）。延后项：视口
+  > 物化与视口局部 diff（逐击键 O(n) 快照基线仍在，100MB 下单键 25.3s，
+  > 债候选已入册）；vue/ts_adapter 分块端点不发射，需要时另立计划。
 
 ## 10. 待澄清事项
 
-1. **rope 路线三选一**（阻塞 T-04/T-05，T-00 裁定）：(a) 窗口化包装——
-   rope 事实源 + ViEditor 只装视口行（改动面最小，双引擎并存的复杂度）；
-   (b) 引擎替换/内 fork（自由度最高，工程量与 cosmic-text 生态脱钩成本）；
-   (c) 上游贡献 cosmic-text（最正统，节奏不可控）。供料不预设；T-00 勘定
-   Buffer 实际瓶颈（set_text 全量 / 布局重排 / 保存读出）后裁定。
-2. **delta 偏移口径**（T-00 定）：UTF-8 字节偏移（与分块读同口径、消费方
-   back 面友好）vs 字符/行-列偏移（编辑器语义友好）。倾向字节偏移。
-3. **分块读返回形状**（T-00 定）：`{text,total,next_offset}` 三件套 vs
-   简化两件；EOF 判据（next_offset==null vs total 比较）。
-4. **预算数字归属**：100 MB ≤1s / 1 GB / ≤60 MB 为消费方产品预算；本仓
-   冒烟只记实测收据不设通过线（通过线归消费方测量计划定标）——上游如需
-   自设门，review 时定。
-5. **消费方复跑时点**（不可控）：本计划 G5 零回归为上游侧验收；消费方
-   矩阵复跑按 669 §10-4 模式 merge 后通知，不阻塞本计划终态。
+1. **rope 路线三选一**（阻塞 T-04/T-05）——**T-00 已裁定 (a) 窗口化包装**：
+   rope 事实源（自实现轻量 rope，不引新依赖）+ ViEditor 只装视口行；
+   依据：渲染契约已自有件化（428 P2，iced 不持 live Buffer）、cosmic 0.15
+   与 iced 0.14 单实例约束保留、(b) 复刻成本 disproportionate、(c) 节奏
+   不可控。M1 显式限制：undo 为视口局部（rope 级文档 undo 列债务）；
+   (b) 重启评估条件=窗口同步协议实证不可行。详见设计档 §3。
+2. **delta 偏移口径**——**T-00 已定：UTF-8 字节偏移**（与分块读同口径）；
+   端点必须 char boundary，写面违反报错不静默。
+3. **分块读返回形状**——**T-00 已定 `{text,total,next_offset}` 三件套**：
+   EOF 判据 `next_offset == null`（且仅当 `offset+text.len() >= total`）；
+   短读不误判 EOF；错误形状 `total=-1`（沿 read_text 错误先例）。命名
+   定案 `read_text_range(path, offset, limit)`。
+4. **预算数字归属**：维持原裁定——本仓冒烟只记实测收据不设通过线。
+5. **消费方复跑时点**（不可控）：维持原裁定——merge 后按 669 §10-4 通知。
+6. **T-00 新增裁定（ts_adapter）**：分块读 M1 不向 vue/split client 发射
+   （natives.d.ts 为 fail-fast 声明层，vue 轨无运行时；消费方 M1 性能主路径
+   = VM/iced + a2r merged）。该轨需要真实端点时另立计划。
+7. **T-00 新增发现**：`vm/codegen.rs` 内建注册**表二**（`with_type_store`
+   :896-966）是手工同步副本（注释自认 keep in sync），非真单源——T-01
+   顺手改为克隆表一（先验证两表等价）。
