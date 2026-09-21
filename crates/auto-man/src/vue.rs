@@ -780,7 +780,7 @@ fn generate_code_editor_component() -> String {
 import { computed, onBeforeUnmount, shallowRef, watch } from 'vue'
 import { Codemirror } from 'vue-codemirror'
 import { EditorView, keymap } from '@codemirror/view'
-import { StreamLanguage, foldGutter, foldKeymap } from '@codemirror/language'
+import { StreamLanguage, foldGutter, foldKeymap, foldService } from '@codemirror/language'
 import { registerEditor, unregisterEditor } from '../lib/editorBridge'
 import { SearchQuery, setSearchQuery, search as searchPanel } from '@codemirror/search'
 import type { Extension } from '@codemirror/state'
@@ -881,7 +881,24 @@ const extensions = computed(() => {
     '& .cm-activeLineGutter': { backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--foreground))' },
   }))
   // PLAN-677 T-02: 折叠 gutter + 快捷键(对齐 iced 端 Plan 428 折叠;
-  // @codemirror/language 既有依赖,零新增 npm 包)。
+  // @codemirror/language 既有依赖,零新增 npm 包)。StreamLanguage 词法
+  // 无语法折叠区间,补按缩进的 foldService——块内行缩进大于块首行即
+  // 可折(与 iced 端 fn 块折叠观感对齐;AutoLang/缩进语言通用)。
+  ext.push(foldService.of((state, start, end) => {
+    const startLine = state.doc.lineAt(start)
+    const startIndent = (/^\s*/.exec(startLine.text) ?? [''])[0].length
+    let last = -1
+    for (let pos = start; pos < end; ) {
+      const l = state.doc.lineAt(pos)
+      if (l.number > startLine.number && l.text.trim().length > 0) {
+        const ind = (/^\s*/.exec(l.text) ?? [''])[0].length
+        if (ind <= startIndent) break
+        last = l.to
+      }
+      pos = l.to + 1
+    }
+    return last > start ? { from: start, to: last } : null
+  }))
   ext.push(foldGutter())
   ext.push(keymap.of(foldKeymap))
   // Plan 421 P1: 搜索面板(basicSetup 只带 searchKeymap,不带面板本体);
@@ -4572,10 +4589,12 @@ export default router
         fs::write(&main_ts_path, &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
         println!("{}", "  ✓ Regenerated main.ts".bright_green());
-        // PLAN-677 T-05: 桥文件随源文件再生成同步（gen-only 管线的
-        // 实际入口——新建工程走 project.generate，已有工程走本函数）。
-        ensure_editor_bridge(&self.output_dir, &self.dependency_usage())
-            .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
+        // PLAN-677 T-02/T-05: CodeEditor 壳与桥文件随源文件再生成同步
+        // （gen-only 管线对已有工程的实际入口；新建工程走
+        // project.generate → write_project_files 同样已挂）。同步含
+        // 旧版自有脚手架覆写——生成器模板修复必须能传播到
+        // 既有工程，否则 write-if-missing 让旧壳存活到天荒地老。
+        self.ensure_code_editor_component()?;
 
         // P660-D1（PLAN-080 F-R2 收口）：main.ts 的 import.meta.env 需 vite/client
         // 环境类型，否则 vue-tsc TS2339——write-if-missing src/vite-env.d.ts

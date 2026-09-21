@@ -232,7 +232,7 @@ onMounted(() => {
       <div class="w-full h-full" @click="BlankPress" @contextmenu.prevent="BlankMenu" @mouseup="BlankDrop">
         <div class="flex flex-col w-full h-full">
           <div class="grid grid-cols-8 gap-2 w-[696px]">
-            <div v-for="(e, __for_idx) in __desktop_cells" :key="__for_idx">
+            <template v-for="(e, __for_idx) in __desktop_cells" :key="__for_idx">
               <template v-if="e.spacer == '1'">
                 <div class="w-20 h-[72px]" />
               </template>
@@ -266,7 +266,7 @@ onMounted(() => {
                   </div>
                 </div>
               </template>
-            </div>
+            </template>
           </div>
 <div v-if="drag_moved == '1'" class="fixed z-50 p-0 bg-transparent" :style="{ left: __desktop_cursor_x + 'px', top: __desktop_cursor_y + 'px' }">
             <template v-if="drag_moved == '1'">
