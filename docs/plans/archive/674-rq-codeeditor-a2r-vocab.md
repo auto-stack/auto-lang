@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-674
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: rq-codeeditor-a2r-vocab
 author: [zcode]
 created_at: 2026-09-21
@@ -319,6 +319,23 @@ fixture 验证链（tests/ 通用 .at 语料 + a2r 生成 + cargo check）；消
   沿 6939feb82 等价复用（树差异仅注释行——tf 3715/tv 3857/tt 4084/
   消费方双探针收据不失效）；P674-D4 已入册（KNOWN-DEBT :2595）·
   next = **merge**（/auto-plan:merge——SD-01/SD-02 随库落账）。
+
+
+- 2026-09-22 · stage: merge · PLAN-674:r1 · outcome: **pass（delivered）** ·
+  合并收据（五 checkpoint）：
+  - **prepared**：reviewed 基线 = 1f8828d19（rebase 后 R-1 修正提交；range-diff 2/2 全等
+    旧 ebdadc2cb/6939feb82→新 1f8828d19/e4c2e45c6，rebase 零冲突）；账本预备 =
+    20282e252（specs.json 外科插入 P674-1〔designs〕/P674-2〔reviews〕，indent=1
+    字节格式验、round-trip 验；ui/plans.md 674 表行；spec-index.py 再生 INDEX
+    零内容差还原）——对 reviewed 提交为纯簿记增量 ⇒ delivery_commit。
+  - **landed**：master `git merge --ff-only plan-674-dev` → tip ==
+    20282e252（无 merge commit）；主检出冒烟 4/4 绿（041 门/键入闭环/
+    plan039 19/19/勘定仪器）。
+  - **ledger_refreshed**：.autoos/specs.json（tracked，随 delivery 落库）
+    P674-1/P674-2 读回验证；ui/plans.md 表行在库；INDEX 项目级零差。
+  - **archived**：git mv → docs/plans/archive/674-rq-codeeditor-a2r-vocab.md，
+    status: archived，completion_kind: delivered。
+  - **cleaned**：待记（guard+移除在下一步执行后回填）。
 
 ## 10. 待澄清事项
 
