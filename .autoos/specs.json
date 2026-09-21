@@ -4390,6 +4390,11 @@
      "id": "P670-1",
      "title": "auto-edit-integration-gaps — a2r server 生成器状态种子契约（SD-01）+code_editor 事件参数绑定（SD-02）",
      "content": "PLAN-670 承接 PLAN-669 §10-1 两缺口：F-R1-A=generate_main_rs legacy 种子路径无条件 use api::Db（:2637）在无类型标量契约（无 primary 类型块→api.rs 不发 pub type Db）下产 E0432——修=has_db_type（primary_type_name_pub().is_some()）门种子路径，无 Db 契约走无状态退化形态（镜像 db_full_cover 分支），生成物必须可编译（scratch 工程现场 cargo build 零 error 实证）；F-W3=convert_code_editor on_change/on_cursor 光杆 event_to_message 不解析绑定→.SrcChanged(i) 循环变量落 Str(\"\") 派发 int 形参 IndexError（auto-edit 矩阵 18 次）——修=换 event_to_message_with（Plan 062 T9 input 逐字镜像，循环变量/字面量/前导点路径三类实参按视图绑定解析，vm_bridge 零硬编码=单点烘焙 VM/vue 两模式同愈；041 语料级 comp.on 生产派发入口 edits+1/tabs[0].dirty 置真验证）。F-R1-B 勘定=S-重活缩面（P670-D1 在册：route A 端点 fn 体降体未接线+伴生模块通用化+Env.get/fs.tree 转译面+a2r-std tree 宿主，docs/reports/p670-fr1b-survey.md 四缺口表）。规范增量：SD-01 auto-man/project.md api_gen 行+SD-02 auto-lang/ui/overview.md code_editor 段。详档：archive/670 计划。"
+    },
+    {
+     "id": "P671-1",
+     "title": "vue-gen-gap-debt — vue 生成工程自完备契约（SD-01）+menubar 族 props schema 吸收（SD-02）",
+     "content": "PLAN-671 把 auto-edit vue 轨七类生成后补件在上游按通用机制清偿（用户裁定：注册表/形参表/类型系统/值域映射，非函数名单），裸产出即自完备可构建。三态勘定：②store自调/④负标量/⑦gen-only完整=668R-23+038T8 既有清偿复验；六执行类修复：①natives 声明层（vm codegen 55 项平名 intrinsics 单源抽取 bare_native_intrinsics + auto-man ensure_natives_layer 注册表∩裸用面发射 src/natives.d.ts〔落 src 根——vue-tsc include 只收根级 .d.ts〕+src/lib/natives.ts globalThis 抛错桩+main.ts 装载，JS 保留字过滤；对象级 Env/Process 并入 ts_adapter __vmOnly 白名单〔单源 VM_ONLY_OBJECT_NATIVES 五名表三消费同源〕+Phase 2 防御层 declare const 索引签名+globalThis Proxy 抛错桩——兜底改写未覆盖的裸引用位）；③store composable 复用 use-fn 池拉取内联（generate_store_composable_full 池参数，stash 同串双写路径字节一致）；⑤载荷事件优先于循环参（code_editor_event_payload_call 循环早退删除——声明形参的 cursor/contextmenu 走 $event.x/y 载荷，列表语义循环参仍权威）；附a 多段插值 strip 收窄单段；⑥button text variant 双面 cva 扩 text:''（chromeless 与 Rust preset 互锁，variants.ts+shadcn 资产双面）；附b menubar 族 props+menubar_checkbox_item 入册（sub_widgets/element_coverage/docs 三围栏同步）。端到端：auto-edit 冷树裸 strict 生成（无 --lenient）EXIT=0 + pnpm build 零 TS 错；通用 fixture tests/vue-gen-gap 九特性双绿。详档：archive/671 计划。"
     }
    ]
   },
@@ -6898,6 +6903,11 @@
      "id": "P670-2",
      "title": "auto-edit-integration-gaps 复审与合并收据",
      "content": "review pass@plan-670-dev（同会话工件重建式复审，全部证据并流树重建）：AC-01..05 全 pass（api_gen 30/30+scratch 编译证据重现 Finished 33.71s 零 error+plan670_code_editor_event_tests 3/3 含 041 语料烘焙/派发双证+红相位双向在案〔旧码 loop-var/corpus 双红、无参绿〕+input 062 守护/059/063 回归批+tf 3685/3685+tv 3832/3832 绝对全绿）。执行期 PLAN-037 并行落 master 9 提交→复审内 rebase 零冲突（文件面仅 lib.rs 交叠区域不相邻），分支 vs master cargo t 失败集 20/20 逐名相等零新增红（musk 6 域外+ui::layout 14 环境豁免=037 后现行基线）。findings 全 info：F-RV1 基线漂移裁定内消化/F-RV2 corpus 测试内层 cfg 冗余无害/F-RV3 oncontextmenu 保持光杆=计划 §5.3 范围裁定。跨仓交接：auto-edit 复跑（rust 轨编译过/矩阵 SrcChanged-CursorMoved 收 Int）归 merge 后通知。"
+    },
+    {
+     "id": "P671-2",
+     "title": "vue-gen-gap-debt 复审与合并收据",
+     "content": "review pass@plan-671-dev r1+Phase 2 全范围（同会话工件重建式复审，关键验证全部在 reviewed commit 重跑）：AC-01..08 全 pass——AC-04 冷树 strict gen EXIT=0（消费方 widget 零 S001/S002；20 条 S001 全在 bps 依赖语料 Warning 容忍）+pnpm build EXIT=0 零 TS 错+生成物断言全中；门禁 tf 3685/3685+tv 3832/3832+tb 7 红全预存（detached ebfeef30c 基线同红铁证；日常档 20 红=670 在册豁免勘正）；AC-02 grep 门可执行面零消费方名单。findings：F-1 基线预存红（tb book_listing×7 真未归档→债册）/F-2 menubar vue 渲染保真（裸 div）→债册/F-3 bps 语料 S001→债册/F-4 复审期裸 stash 共享栈事故（他人 stash@{0} 误弹留 UU 已还原，教训=基线比对用 detached checkout）。Phase 2（r2）=消费方 1631 复验增补：e82b95b22 为缺白名单的 671 中间态（×3 裸 Process.exit 真身），r1 调用点改写已在、补声明发射；①button TS1117=下游补件非幂等撤回。rebase 落地：c1f986110→82743854c/7a34a1a67→0c6a2c8e6/102818dc5→409f35661 range-diff 3/3 全等零冲突。跨仓交接：auto-edit 冷重生成+七类补件全摘（1b typed declare const 撞 TS2300 须摘）归 merge 后通知。"
     }
    ]
   }
