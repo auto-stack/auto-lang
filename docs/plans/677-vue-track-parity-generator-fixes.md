@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-677
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: executing             # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-track-parity-generator-fixes
 author: [zcode]
 created_at: 2026-09-21
@@ -13,7 +13,7 @@ touched_goals: []
 
 affects: [docs/specs/auto-lang/ui/design/app-generation.md, docs/specs/auto-lang/ui/overview.md]
 current_step: 7
-total_steps: 7
+total_steps: 8
 ---
 
 # [PLAN-677] vue 轨跨平台一致性五连修（生成器侧）
@@ -227,6 +227,7 @@ crates/auto-man/src/vue.rs (模板集)      ← ⑤ editorBridge.ts 新模板 + 
   菜单行为与基线一致（发射面改动全在 vue 路径,此项为保险探针）。
   验证：`auto run -r vm` + MCP 快照/手工冒烟。
 - **AC-09（本仓门禁）**：新增单测全绿 + `cargo tt` 作用域门禁绿 +
+- **AC-10（选中色 r2）**：编辑器内选中文字的背景为半透明微亮层（非亮白块），与背景同令牌源。验证：浏览器选中文字截图。
   gallery vue 构建绿。验证：cargo 输出 + gallery 构建 exit 0。
 
 ## 执行步骤
@@ -254,6 +255,7 @@ crates/auto-man/src/vue.rs (模板集)      ← ⑤ editorBridge.ts 新模板 + 
   auto-edit 冷双跑再生成 + pnpm build → 双终端起服 → 浏览器五点
   实测（截图留档 docs/plans/evidence/）+ vm 轻探针（AC-08）。
 - **T-07 门禁收口**[✅ 已完成 2a69327eb：cargo tt 4063/4063 全绿(金样 desktop_surface_asset 经 bless 同步 T-01 透明包装)；ui_gen::vue 与 auto-man 失败集与 master 逐一比对零回归；稳态二跑生成零漂移]（AC-09）：`cargo tt` 作用域 + 全量 cargo t 一跑 +
+- **T-08 编辑器选中色 r2**[⬜]（AC-10）：CodeEditor 模板主题块补 `.cm-selectionBackground`（hsl(var(--foreground) / 0.14)——比背景 稍亮且透明,双主题自适应）+ 光标色；用户 r2 实测反馈：选中框太白。
   gallery vue 构建;核对 PLAN-672 在 auto-man/src/vue.rs 的在途冲突
   （先落者为准）。
 
@@ -262,7 +264,7 @@ crates/auto-man/src/vue.rs (模板集)      ← ⑤ editorBridge.ts 新模板 + 
 - 2026-09-21 drafting 完成（/auto-plan:new）。授权依据：用户同日指令
   「综合成一个 vue 版改进计划,一起改进；要改就改 Auto 代码或生成器」。
   outcome: pass（范围内无阻塞决策）→ next: work。
-- 2026-09-21 stage: work | plan_id: PLAN-677 | plan_revision: 1 |
+- 2026-09-21 stage: work | plan_id: PLAN-677 | plan_revision: 2 |
   outcome: pass | code_commit: 85bd9068e..2a69327eb（worktree
   plan-677-dev，基线 c8bdffa32）| task_ids: T-01..T-07 全闭环 |
   evidence: cargo tt 4063/4063 全绿；cargo t --no-fail-fast 失败集
