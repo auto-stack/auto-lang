@@ -14,6 +14,9 @@
 pub mod fold;
 pub mod highlight;
 pub mod render;
+// Plan 673 T-04: self-implemented lightweight rope (document source of
+// truth, §3.1/§3.2). Standalone in T-04 — not yet wired into the editor.
+pub mod rope;
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
