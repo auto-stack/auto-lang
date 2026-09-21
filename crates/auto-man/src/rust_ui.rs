@@ -2564,6 +2564,11 @@ fn resolve_bps_dependencies(
             }
         }
         let Some((mod_name, content)) = module_src else { continue };
+        // PLAN-681 T-05（N3）：依赖模块源先过 BARE_FN_SIGS 注册（返回型/
+        // 形参 kind/bare List 元素形状）——ui_gen 的 computed 返回型推断、
+        // 调用实参收口、view 迭代 Value 判定按表消费（先注册后转译,顺序
+        // 无关——registry 是 thread_local 静态表）。
+        RustGenerator::new().register_bare_fn_sigs_from_source(&content);
         match crate::api_gen::transpile_back_module_to_rs(&mod_name, &content) {
             Ok(rs) => {
                 let rs = crate::api_gen::post_process_companion_rs(rs);

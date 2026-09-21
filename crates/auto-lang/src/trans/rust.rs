@@ -4515,6 +4515,18 @@ impl RustTrans {
                     _ => {}
                 }
 
+                // PLAN-681 T-05（N2/P2）：Value 基座字段访问——base 为局部
+                // Value 型（bare List 元素动态桶,P1a/P1b 派生登记）时,字段读
+                // 直发 `name["field"]` 索引形。裸 Value 读不加访问器：后续 ==
+                // 与 json! 经 serde_json PartialEq/to_value 直通;typed 收口
+                // （P4）与形参收口（P5）在消费点按判定叠加降链。
+                if let Expr::Ident(base) = object.as_ref() {
+                    if self.local_is_json_value(base) {
+                        write!(out, "{}[\"{}\"]", Self::rust_ident(base.as_str()), field)?;
+                        return Ok(());
+                    }
+                }
+
                 // Check if this is an enum access or static method: Enum.Value -> Enum::Value
                 // Use heuristic: if object is an identifier starting with uppercase or a known module
                 // Also handle module.Type.method() where object is a nested Dot chain
@@ -6069,9 +6081,15 @@ impl RustTrans {
                             "tree" => {
                                 // PLAN-681: fs.tree(path, depth) → a2r_std::fs::tree
                                 // (JSON aligned with the VM fs_tree_walk shape).
+                                // PLAN-681 T-05: host 签名 max_depth: i32——Auto
+                                // int 实参（i64）窄化 as i32（宿主契约对齐）。
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::tree(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
-                                if let Some(arg) = call.args.args.get(1) { write!(out, ", ")?; self.arg(arg, out)?; }
+                                if let Some(arg) = call.args.args.get(1) {
+                                    write!(out, ", (")?;
+                                    self.arg(arg, out)?;
+                                    write!(out, ") as i32")?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -8126,9 +8144,15 @@ impl RustTrans {
                         // PLAN-681: fs.tree(path, depth) → a2r_std::fs::tree —
                         // nested-JSON tree aligned byte-for-byte with the VM
                         // fs_tree_walk shape (TreeView node schema).
+                        // PLAN-681 T-05: host 签名 max_depth: i32——Auto int
+                        // 实参（i64）窄化 as i32（宿主契约对齐）。
                         self.a2r_std_used.set(true); write!(out, "a2r_std::fs::tree(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        if let Some(Arg::Pos(a)) = call.args.args.get(1) { write!(out, ", ")?; self.expr(a, out)?; }
+                        if let Some(Arg::Pos(a)) = call.args.args.get(1) {
+                            write!(out, ", (")?;
+                            self.expr(a, out)?;
+                            write!(out, ") as i32")?;
+                        }
                         write!(out, ")")?;
                         return Ok(());
                     }
@@ -8555,10 +8579,24 @@ impl RustTrans {
                     Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
                 ) || matches!(object.as_ref(), Expr::Unary(Op::Mul, _))
                 || Self::is_char_at_call(object.as_ref());
+                // PLAN-681 T-05（N2）：str 族方法的接收器是 Value 读
+                // （`nd.label.contains(kw)`——P2 发射 nd["label"] 为 Value,
+                // Value 自身无 contains/starts_with 等 str 方法）——接收器
+                // 与方法之间插 as_str 降链。仅 str 方法族触发,其余方法
+                // （Value/JSON 语义）直发。
+                let recv_is_value_read_str_method = matches!(method_name.as_str(),
+                    "contains" | "contains_key" | "starts_with" | "ends_with"
+                    | "to_lower" | "lower" | "to_upper" | "upper"
+                    | "trim" | "trim_left" | "trim_right" | "split" | "replace"
+                    | "replace_first" | "find_last" | "is_empty" | "length" | "len")
+                    && self.expr_is_json_value_read(object);
                 if needs_i32_cast && !self.len_i32_cast_suppressed { write!(out, "(")?; }
                 if obj_parens { write!(out, "(")?; }
                 self.expr(object, out)?;
                 if obj_parens { write!(out, ")")?; }
+                if recv_is_value_read_str_method {
+                    write!(out, ".as_str().unwrap_or_default()")?;
+                }
                 write!(out, ".{}", rust_name)?;
                 // Plan 395: explicit generic type args → Rust turbofish
                 self.emit_turbofish_args(call, out)?;
@@ -8659,15 +8697,32 @@ impl RustTrans {
                         // serde_json::Value) has no Rust struct to name — emit
                         // it as a serde_json::json! invocation instead of bare
                         // braces ("struct literal body without path").
+                        // PLAN-681 T-05（N2/P3）：扩容——标量/串字面量与
+                        // 非 Value 型表达式（String/int 局部、Vec 局部、算术）
+                        // 同样包 json! 构造 Value；Value 型读（推断 Value）
+                        // 与 Unknown（可能是 Value 读）保持直发。
                         let is_json_value_push = is_push_or_insert && !is_insert
-                            && matches!(arg, Arg::Pos(e) if matches!(e, Expr::Object(_) | Expr::Array(_)))
-                            && self.receiver_elem_is_json_value(object);
+                            && self.receiver_elem_is_json_value(object)
+                            && matches!(arg, Arg::Pos(e) if self.value_push_arg_needs_json_wrap(e));
                         if is_json_value_push {
                             if let Arg::Pos(e) = arg {
                                 self.emit_json_macro(e, out)?;
                             }
                         } else {
                             self.arg(arg, out)?;
+                            // PLAN-681 T-05（N2）：Value 读实参直发（未包
+                            // json!）是索引位 place——move 出共享引用索引即
+                            // E0507（`out.push(nd["id"])` 株），补 .clone()
+                            //（arg() 已带 .clone() 尾缀的索引克隆形不叠加）。
+                            if is_push_or_insert
+                                && matches!(arg, Arg::Pos(e)
+                                    if self.expr_is_json_value_read(e)
+                                        && !matches!(e, Expr::Call(c)
+                                            if matches!(c.name.as_ref(),
+                                                Expr::Dot(_, m) if m.as_str() == "clone")))
+                            {
+                                write!(out, ".clone()")?;
+                            }
                         }
                         // set(idx, val) -> insert(idx, val): add 'as usize' for int-typed idx
                         if is_insert && i == 0 {
@@ -8685,7 +8740,9 @@ impl RustTrans {
                             }
                         }
                         // push/insert with string literal -> .to_string() for Vec<String>/HashMap<String,_>
-                        if is_push_or_insert {
+                        // PLAN-681 T-05（N2/P3）：json! 包裹已产 Value,外层
+                        // .to_string() 会把 Value 序列化成 String（E0308）——跳过。
+                        if is_push_or_insert && !is_json_value_push {
                             if let Arg::Pos(expr) = arg {
                                 if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
                                     write!(out, ".to_string()")?;
@@ -8694,7 +8751,9 @@ impl RustTrans {
                         }
                         // Auto-clone: .push() and .insert() take ownership, clone non-Copy ident args
                         // Conservative: unknown types are treated as non-Copy (safer for ownership)
-                        if is_push_or_insert {
+                        // PLAN-681 T-05（N2/P3）：同上,json! 包裹（借用语义,
+                        // to_value(&$e)）后不得再叠 .to_string()/.clone()。
+                        if is_push_or_insert && !is_json_value_push {
                             if let Arg::Pos(Expr::Ident(name)) = arg {
                                 // Plan 434 (242 #18-2): a str-typed ident is
                                 // &str at runtime when it's a `str` param /
@@ -9302,9 +9361,11 @@ impl RustTrans {
                         // default bare-brace emission is invalid Rust ("struct
                         // literal body without path"). Emit it as a
                         // serde_json::json! invocation instead.
+                        // PLAN-681 T-05（N2/P3）：同 :8676 主门扩容——
+                        // 标量/串字面量与非 Value 型表达式同包 json!。
                         if method_name.as_str() == "push"
-                            && matches!(expr, Expr::Object(_) | Expr::Array(_))
                             && self.receiver_elem_is_json_value(object)
+                            && self.value_push_arg_needs_json_wrap(expr)
                         {
                             self.emit_json_macro(expr, out)?;
                         } else if !m_str_stringified_here {
@@ -10333,6 +10394,32 @@ impl RustTrans {
                 write!(out, ".as_str()")?;
             }
 
+            // PLAN-681 T-05（N2/P5）：Value 读实参按形参型收口——实参为
+            // Value 读（Value 局部字段读/bare List 索引读,P2 已发射
+            // name["field"]/list[i] 索引形）而形参是标量/List 声明型时,
+            // 按形参型追加降链。仅 bare fn（Ident callee,形参表在档）触发。
+            if let Arg::Pos(vexpr) = arg {
+                if self.expr_is_json_value_read(vexpr) {
+                    if let Some(pt) = param_types.as_ref().and_then(|pts| pts.get(i)) {
+                        match pt {
+                            Type::StrSlice | Type::CStrLit | Type::StrFixed(_) => {
+                                write!(out, ".as_str().unwrap_or_default()")?;
+                            }
+                            Type::Int | Type::I64 => {
+                                write!(out, ".as_i64().unwrap_or(0)")?;
+                            }
+                            Type::Bool => {
+                                write!(out, ".as_bool().unwrap_or(false)")?;
+                            }
+                            Type::List(_) | Type::Array(_) => {
+                                write!(out, ".as_array().cloned().unwrap_or_default()")?;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+
             // Plan 376 Pass 5: &str → String conversion when param expects owned
             // String (StrOwned/StrFixed). Auto-detect from param_types: if param
             // is StrOwned and arg is &str (StrSlice param or string literal), add .to_string().
@@ -10640,6 +10727,61 @@ impl RustTrans {
             }
         }
         false
+    }
+
+    /// PLAN-681 T-05（N2）：局部是否 Value 型——bare List 元素的动态记录桶
+    /// （User("Value")/GenericInstance("Value") 占位型,经 P1a/P1b 派生登记
+    /// 或既有 Value 语境登记）。字段读（P2）与收口判定（P4/P5）按此触发。
+    fn local_is_json_value(&self, name: &AutoStr) -> bool {
+        match self.local_var_types.get(name.as_str()) {
+            Some(Type::User(td)) => td.name.as_str() == "Value",
+            Some(Type::GenericInstance(g)) => g.base_name.as_str() == "Value",
+            _ => false,
+        }
+    }
+
+    /// PLAN-681 T-05（N2）：表达式是否 Value 读——Value 型局部的字段读
+    /// （nd.field），或 bare List（元素 Value 桶，含 Unknown 元素）的索引
+    /// 读（stack[i]），含 .clone() 链。typed let 收口（P4）与调用实参收口
+    /// （P5）按此判定叠加访问器。
+    fn expr_is_json_value_read(&self, e: &Expr) -> bool {
+        match e {
+            Expr::Dot(obj, _) => {
+                matches!(obj.as_ref(), Expr::Ident(n) if self.local_is_json_value(n))
+            }
+            Expr::Index(base, _) => {
+                matches!(base.as_ref(), Expr::Ident(n)
+                    if self.receiver_elem_is_json_value(&Expr::Ident(n.clone())))
+            }
+            Expr::Call(call) => {
+                if let Expr::Dot(obj, m) = call.name.as_ref() {
+                    m.as_str() == "clone" && self.expr_is_json_value_read(obj)
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// PLAN-681 T-05（N2/P3）：Value 桶 push 实参是否需 json! 包裹——
+    /// 字面量（str/int/float/bool/记录/数组）与已知非 Value 型表达式
+    /// （String 局部、int 算术、Vec 局部等）包裹成 Value；Value 型读
+    /// （Value 局部字段读/bare List 索引读,推断为 Value）与 Unknown
+    /// （可能是 Value 读,如动态字段链）保持直发。
+    fn value_push_arg_needs_json_wrap(&self, e: &Expr) -> bool {
+        match e {
+            Expr::Object(_) | Expr::Array(_) => true,
+            Expr::Str(_) | Expr::CStr(_) | Expr::Int(_) | Expr::I64(_)
+            | Expr::Uint(_) | Expr::U64(_) | Expr::Float(_, _) | Expr::Double(_, _)
+            | Expr::Bool(_) => true,
+            _ => match self.infer_type_from_expr(e) {
+                Type::Unknown => false,
+                Type::User(td) if td.name.as_str() == "Value" => false,
+                Type::GenericInstance(g) if g.base_name.as_str() == "Value" => false,
+                _ => true,
+            },
+        }
     }
 
     /// 2026-08-23 auto-ai report defect 3: emit an object/array record literal
@@ -12983,6 +13125,16 @@ impl RustTrans {
         } else {
             effective_ty
         };
+        // PLAN-681 T-05（N2/P1a）：无注解 let 从 bare List 索引派生（含
+        // .clone() 链）或 Value 局部字段读——元素是动态记录桶,登记
+        // User("Value") 占位（后续字段读走 name["field"] 索引形,P2）。
+        let effective_ty = if matches!(effective_ty, Type::Unknown)
+            && self.expr_is_json_value_read(&store.expr)
+        {
+            Self::placeholder_user_type("Value".into())
+        } else {
+            effective_ty
+        };
         // Plan 433 A1: a prior fn-call-inferred entry (scan_call_init_bindings
         // at fn_decl) is more precise than a fresh Unknown inference — keep it.
         let keep_existing = matches!(effective_ty, Type::Unknown)
@@ -13623,6 +13775,29 @@ impl RustTrans {
         // self.field assignment in &self context needs .clone()
         if Self::is_self_dot(&store.expr) {
             write!(out, ".clone()")?;
+        }
+
+        // PLAN-681 T-05（N2/P4）：typed let 收 Value 读收口——声明型与
+        // Value 读不配时按目标型降链（str→as_str、int→as_i64、bool→
+        // as_bool、List→as_array；bare List 已映射 Vec<Value>）。发射尾端
+        // 追加,与既有 auto-clone 尾缀共存（Value 读自身无 String 语义,
+        // 先前的 .clone() 包在降链内侧仍合法）。
+        if !matches!(store.ty, Type::Unknown) && self.expr_is_json_value_read(&store.expr) {
+            match &store.ty {
+                Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit => {
+                    write!(out, ".as_str().unwrap_or_default().to_string()")?;
+                }
+                Type::Int | Type::I64 => {
+                    write!(out, ".as_i64().unwrap_or(0)")?;
+                }
+                Type::Bool => {
+                    write!(out, ".as_bool().unwrap_or(false)")?;
+                }
+                Type::List(_) | Type::Array(_) => {
+                    write!(out, ".as_array().cloned().unwrap_or_default()")?;
+                }
+                _ => {}
+            }
         }
 
         // Plan 376F: Integer type conversion for Store assignments.
@@ -15242,6 +15417,20 @@ pub use auto_cabi_kit::*;"#
                             if !is_str {
                                 self.local_var_types.insert(name.clone(), elem_ty);
                             }
+                        }
+                        // PLAN-681 T-05（N2/P1b）：bare List 迭代元素=动态记录
+                        // 桶——循环变量登记 Value 占位（str 例外逻辑在前,
+                        // 已登记者不受影响；字段读经 P2 走 name["field"]）。
+                        if matches!(
+                            self.local_var_types.get(name.as_str()),
+                            None | Some(Type::Unknown)
+                        ) && matches!(&for_stmt.range, Expr::Ident(_)
+                            if self.receiver_elem_is_json_value(&for_stmt.range))
+                        {
+                            self.local_var_types.insert(
+                                name.clone(),
+                                Self::placeholder_user_type("Value".into()),
+                            );
                         }
                     }
                     self.expr(&for_stmt.range, &mut sink.body)?;

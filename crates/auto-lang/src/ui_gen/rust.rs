@@ -129,6 +129,10 @@ pub struct RustGenerator {
 
     /// Computed property method names (for adding () in dot access)
     computed_names: std::collections::HashSet<String>,
+    /// PLAN-681 T-05（N3）：返回 Vec<Value> 的 computed 名集（BARE_FN_SIGS
+    /// 判得）——view 迭代（`for r in .rows`）的 Value 格判定与循环变量
+    /// 元素形状查询键。
+    computed_value_rets: std::collections::HashSet<String>,
 
     /// Loop variables that iterate over Value-type collections (need ["field"] access)
     value_loop_vars: std::collections::HashSet<String>,
@@ -219,6 +223,27 @@ thread_local! {
             std::collections::HashMap<String, std::collections::HashMap<String, String>>,
         >,
     > = std::cell::RefCell::new(std::collections::HashMap::new());
+    /// PLAN-681 T-05（N3/P6）：store list-of-record 字段的元素形状表
+    /// （store 名 → List 字段名 → 子字段 → int/str/bool/list）——沿
+    /// STORE_RECORD_SHAPES（E-D2）先例扩到列表元素：`tabs = [{…, dirty:
+    /// false, …}]` 的元素字段读（`tabs[i].dirty` 的 bool 语境、循环变量
+    /// `t.dirty`）按表型选访问器（as_bool/as_i64/as_str/as_array），
+    /// 未知子字段回落启发式（动态容差）。
+    pub static STORE_LIST_ELEM_SHAPES: std::cell::RefCell<
+        std::collections::HashMap<
+            String,
+            std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+        >,
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
+    /// PLAN-681 T-05（N3）：伴生依赖裸 fn（bps use-fn 内联模块）的签名
+    /// registry——fn 名 → (Rust 返回型, 形参 kind 序列, List 元素形状)。
+    /// build 入口（auto-man resolve_bps_dependencies）转译依赖模块时预填，
+    /// ui_gen 消费：computed 返回型推断（`rows => flatten_tree(…)`）、
+    /// 调用实参按形参型收口（str ← String/.as_str()）、view 迭代 Value
+    /// 判定与循环变量元素形状。跨文件可见性同 STORE_FIELD_TYPES 纪律。
+    pub static BARE_FN_SIGS: std::cell::RefCell<
+        std::collections::HashMap<String, BareFnSig>,
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
     /// PLAN-039 T-13（批次 E，E-D5-A 配套）：返回类型化 user 型的 api 桩
     /// 函数名集（rust_ui.rs parse_api_module 后注册）——此类调用的赋值
     /// 局部是 typed（CardsResult 等），scan 收格与类型格判定不得收 Value。
@@ -249,6 +274,20 @@ struct InitApiInfo {
     state_var: String,
 }
 
+/// PLAN-681 T-05（N3）：伴生依赖裸 fn 的签名面——返回型（Rust 型名）、
+/// 形参 kind 序列（"int"|"str"|"bool"|"list"|…）、bare List 返回的元素
+/// 形状（fn 体内 push 的记录字面量推得,子字段 → int/str/bool/list）。
+/// 消费面：computed 返回型/调用实参收口/view 迭代 Value 判定。
+#[derive(Clone, Debug)]
+pub struct BareFnSig {
+    /// Rust 返回型（"Vec<serde_json::Value>"|"String"|"i32"|"bool"|"f64"…）。
+    pub ret_rust_type: String,
+    /// 形参 kind 序列（与位置实参对位）。
+    pub param_kinds: Vec<String>,
+    /// bare List 返回的元素形状（None = 非记录列表/不可推）。
+    pub list_elem_shape: Option<std::collections::HashMap<String, String>>,
+}
+
 impl RustGenerator {
     /// Create a new Rust generator
     pub fn new() -> Self {
@@ -270,6 +309,7 @@ impl RustGenerator {
             prop_types: std::collections::HashMap::new(),
             value_prop_names: std::collections::HashSet::new(),
             computed_names: std::collections::HashSet::new(),
+            computed_value_rets: std::collections::HashSet::new(),
             value_loop_vars: std::collections::HashSet::new(),
             handler_int_list_vars: std::cell::RefCell::new(std::collections::HashSet::new()),
             value_locals: std::collections::HashSet::new(),
@@ -328,11 +368,33 @@ impl RustGenerator {
             }
         }
         let store_name = decl.name.as_str().to_string();
+        // PLAN-681 T-05（N3/P6）：list-of-record 字段的元素形状——Array
+        // 初始式首元素为记录字面量时,登记元素子字段型（tabs = [{…,
+        // dirty: false}] → dirty:bool）;view/update 的元素字段读按表型
+        // 选访问器（bool 语境 as_bool——N3 株根因）。
+        let mut list_elem_shapes: std::collections::HashMap<
+            String,
+            std::collections::HashMap<String, String>,
+        > = std::collections::HashMap::new();
+        if let Some(model) = &decl.model {
+            for field in &model.fields {
+                if let crate::ast::Expr::Array(elems) = &field.init {
+                    if let Some(crate::ast::Expr::Object(_)) = elems.first() {
+                        if let Some(shape) = self.object_literal_shape(elems.first().unwrap()) {
+                            list_elem_shapes.insert(field.name.as_str().to_string(), shape);
+                        }
+                    }
+                }
+            }
+        }
         STORE_FIELD_TYPES.with(|m| {
             m.borrow_mut().insert(store_name.clone(), fields);
         });
         STORE_RECORD_SHAPES.with(|m| {
-            m.borrow_mut().insert(store_name, shapes);
+            m.borrow_mut().insert(store_name.clone(), shapes);
+        });
+        STORE_LIST_ELEM_SHAPES.with(|m| {
+            m.borrow_mut().insert(store_name, list_elem_shapes);
         });
     }
 
@@ -387,9 +449,13 @@ impl RustGenerator {
                     // PLAN-039 T-14（E-D2）：非字面量值按声明/态型推
                     // （`score: score` 局部 int → int——此前恒 str，
                     // launcher scored 行收集株的字段访问器错源）。
+                    // PLAN-681 T-05（N3/P6）：数组字面量值 → list
+                    // （嵌套列表字段,如 tree 记录的 children——迭代语境
+                    // 按表型走 as_array 形）。
                     let kind = match p.value.as_ref() {
                         crate::ast::Expr::Int(_) | crate::ast::Expr::I64(_) => "int",
                         crate::ast::Expr::Bool(_) => "bool",
+                        crate::ast::Expr::Array(_) => "list",
                         crate::ast::Expr::Str(_) | crate::ast::Expr::CStr(_)
                         | crate::ast::Expr::FStr(_) => "str",
                         crate::ast::Expr::Ident(n) => {
@@ -401,6 +467,9 @@ impl RustGenerator {
                                 match ty.as_str() {
                                     "i32" | "i64" | "u32" | "u64" | "f32" | "f64" => "int",
                                     "bool" => "bool",
+                                    // PLAN-681 T-05（N3/P6）：列表态标识值
+                                    // （flatten_tree 记录的 guides: g）→ list。
+                                    t if t.starts_with("Vec<") => "list",
                                     _ => "str",
                                 }
                             } else {
@@ -452,10 +521,199 @@ impl RustGenerator {
         })
     }
 
+    /// PLAN-681 T-05（N3/P6）：list-of-record 集合的元素形状查询——本
+    /// widget 态（array_element_shapes）优先,store 字段经静态表跨 widget
+    /// 可见（app.at 与 *_store.at 分文件编译,同 STORE_FIELD_TYPES 纪律）。
+    /// None = 非记录列表/未知形状 → 访问器回落启发式（动态容差）。
+    fn list_elem_shape(
+        &self,
+        collection: &str,
+    ) -> Option<std::collections::HashMap<String, String>> {
+        if let Some(shape) = self.array_element_shapes.get(collection) {
+            return Some(shape.clone());
+        }
+        STORE_NAMES.with(|sn| {
+            let names: Vec<String> = sn.borrow().values().cloned().collect();
+            STORE_LIST_ELEM_SHAPES.with(|m| {
+                let m = m.borrow();
+                names
+                    .iter()
+                    .find_map(|s| m.get(s).and_then(|f| f.get(collection)).cloned())
+            })
+        })
+    }
+
+    /// PLAN-681 T-05（N3）：伴生依赖裸 fn 签名查询（BARE_FN_SIGS）。
+    fn bare_fn_sig(&self, name: &str) -> Option<BareFnSig> {
+        BARE_FN_SIGS.with(|m| m.borrow().get(name).cloned())
+    }
+
+    /// PLAN-681 T-05（N3）：解析伴生依赖模块源,预填 BARE_FN_SIGS——
+    /// build 入口（auto-man resolve_bps_dependencies）在依赖模块内联
+    /// 转译时调用。返回型 Rust 名按模块转译同型映射（bare List →
+    /// Vec<Value>、int → i64、str → String、bool/float 直名）；bare
+    /// List 返回的元素形状从 fn 体内 `X.push({记录字面量})` 按值形态推
+    /// （子字段 → int/str/bool/list;动态字段读默认 str——与
+    /// object_literal_shape 容错口径一致）。机制通用,零消费方标识符。
+    pub fn register_bare_fn_sigs_from_source(&mut self, code: &str) {
+        let session = crate::session::CompilerSession::ui().with_backend("rust");
+        let mut parser = crate::Parser::from(code).with_session(session);
+        let Ok(ast) = parser.parse() else { return };
+        use crate::ast::{Expr, Stmt, Type};
+        // Auto 型 → 形参/局部 kind。
+        let ty_kind = |ty: &Type| -> String {
+            match ty {
+                Type::Int | Type::I64 | Type::Uint | Type::U64 | Type::USize => "int".into(),
+                Type::Bool => "bool".into(),
+                Type::List(_) | Type::Array(_) => "list".into(),
+                _ => "str".into(),
+            }
+        };
+        // Auto 型 → 模块转译同型 Rust 返回名。
+        let ret_rust = |ty: &Type| -> String {
+            match ty {
+                Type::List(_) | Type::Array(_) => "Vec<serde_json::Value>".into(),
+                Type::Int | Type::I64 => "i64".into(),
+                Type::Uint | Type::U64 | Type::USize => "u64".into(),
+                Type::Bool => "bool".into(),
+                Type::Float | Type::Double => "f64".into(),
+                _ => "String".into(),
+            }
+        };
+        // 递归收集 fn 体内声明局部的 kind（`var d int` 族——记录字面量
+        // 值形态推型的依据；while 糖解为 Iter::Cond 的 For,同程覆盖）。
+        fn collect_local_kinds(
+            stmts: &[crate::ast::Stmt],
+            out: &mut std::collections::HashMap<String, String>,
+        ) {
+            use crate::ast::Stmt;
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Store(s) => {
+                        let k = match &s.ty {
+                            crate::ast::Type::Int | crate::ast::Type::I64
+                            | crate::ast::Type::Uint | crate::ast::Type::U64
+                            | crate::ast::Type::USize => "int",
+                            crate::ast::Type::Bool => "bool",
+                            crate::ast::Type::List(_) | crate::ast::Type::Array(_) => "list",
+                            _ => continue,
+                        };
+                        out.insert(s.name.as_str().to_string(), k.to_string());
+                    }
+                    Stmt::If(i) => {
+                        for b in &i.branches {
+                            collect_local_kinds(&b.body.stmts, out);
+                        }
+                        if let Some(e) = &i.else_ {
+                            collect_local_kinds(&e.stmts, out);
+                        }
+                    }
+                    Stmt::For(f) => collect_local_kinds(&f.body.stmts, out),
+                    Stmt::Block(b) => collect_local_kinds(&b.stmts, out),
+                    _ => {}
+                }
+            }
+        }
+        // 记录字面量值表达式 → kind（局部声明优先,动态读默认 str）。
+        fn value_kind_of(
+            e: &Expr,
+            locals: &std::collections::HashMap<String, String>,
+        ) -> String {
+            match e {
+                Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => "str".into(),
+                Expr::Int(_) | Expr::I64(_) | Expr::Uint(_) | Expr::U64(_) => "int".into(),
+                Expr::Bool(_) => "bool".into(),
+                Expr::Array(_) => "list".into(),
+                Expr::Ident(n) => {
+                    locals.get(n.as_str()).cloned().unwrap_or_else(|| "str".into())
+                }
+                Expr::Unary(op, inner) if matches!(op, auto_val::Op::Not) => {
+                    let k = value_kind_of(inner, locals);
+                    if k == "bool" { "bool".into() } else { "str".into() }
+                }
+                _ => "str".into(),
+            }
+        }
+        // 递归扫描 `X.push({记录})` 调用收集元素形状（先登记者胜——
+        // 同名子字段以首个字面量为准）。
+        fn collect_push_shapes(
+            stmts: &[Stmt],
+            locals: &std::collections::HashMap<String, String>,
+            value_kind: &dyn Fn(&Expr, &std::collections::HashMap<String, String>) -> String,
+            out: &mut std::collections::HashMap<String, String>,
+        ) {
+            use crate::ast::Stmt;
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Expr(Expr::Call(c)) => {
+                        if let Expr::Dot(_, m) = c.name.as_ref() {
+                            if m.as_str() == "push" {
+                                if let Some(crate::ast::Arg::Pos(Expr::Object(pairs))) =
+                                    c.args.args.first()
+                                {
+                                    for p in pairs {
+                                        let key = match &p.key {
+                                            crate::ast::Key::NamedKey(n) => {
+                                                n.as_str().to_string()
+                                            }
+                                            crate::ast::Key::StrKey(s) => s.to_string(),
+                                            _ => continue,
+                                        };
+                                        if out.contains_key(&key) {
+                                            continue;
+                                        }
+                                        out.insert(key, value_kind(&p.value, locals));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Stmt::If(i) => {
+                        for b in &i.branches {
+                            collect_push_shapes(&b.body.stmts, locals, value_kind, out);
+                        }
+                        if let Some(e) = &i.else_ {
+                            collect_push_shapes(&e.stmts, locals, value_kind, out);
+                        }
+                    }
+                    Stmt::For(f) => {
+                        collect_push_shapes(&f.body.stmts, locals, value_kind, out)
+                    }
+                    Stmt::Block(b) => collect_push_shapes(&b.stmts, locals, value_kind, out),
+                    _ => {}
+                }
+            }
+        }
+        for stmt in &ast.stmts {
+            if let Stmt::Fn(f) = stmt {
+                let param_kinds: Vec<String> =
+                    f.params.iter().map(|p| ty_kind(&p.ty)).collect();
+                let ret = ret_rust(&f.ret);
+                let list_elem_shape = if matches!(f.ret, Type::List(_) | Type::Array(_)) {
+                    let mut locals = std::collections::HashMap::new();
+                    collect_local_kinds(&f.body.stmts, &mut locals);
+                    let mut shape = std::collections::HashMap::new();
+                    collect_push_shapes(&f.body.stmts, &locals, &value_kind_of, &mut shape);
+                    if shape.is_empty() { None } else { Some(shape) }
+                } else {
+                    None
+                };
+                BARE_FN_SIGS.with(|m| {
+                    m.borrow_mut().insert(
+                        f.name.as_str().to_string(),
+                        BareFnSig { ret_rust_type: ret, param_kinds, list_elem_shape },
+                    );
+                });
+            }
+        }
+    }
+
     /// PLAN-039 T-13（批次 E，E-D2）：Value 字段访问的形状型访问器——
     /// 按子字段表型选 as_i64/as_bool/as_str（klondike waste_card.rank
     /// int 株：启发式名单外字段此前恒 as_str → CardFace 参数错位）；
     /// 无形状回落 value_field_access 启发式（未知字段动态容差）。
+    /// PLAN-681 T-05（N3/P6）：list 型子字段 → as_array 形（迭代语境,
+    /// 如 rows 元素的 guides）。
     fn value_field_access_shaped(
         &self,
         obj_expr: &str,
@@ -467,6 +725,10 @@ impl RustGenerator {
                 format!("({}[\"{}\"].as_i64().unwrap_or(0) as i32)", obj_expr, field)
             }
             Some("bool") => format!("({}[\"{}\"].as_bool().unwrap_or(false))", obj_expr, field),
+            Some("list") => format!(
+                "{}[\"{}\"].as_array().cloned().unwrap_or_default()",
+                obj_expr, field
+            ),
             _ => self.value_field_access(obj_expr, field),
         }
     }
@@ -534,6 +796,7 @@ impl RustGenerator {
         self.prop_types.clear();
         self.value_prop_names.clear();
         self.computed_names.clear();
+        self.computed_value_rets.clear();
         self.value_loop_vars.clear();
         self.value_locals.clear();
         self.array_locals.clear();
@@ -782,6 +1045,18 @@ impl RustGenerator {
                 self.auto_type_to_rust(&state.type_info)
             };
             self.state_types.insert(state.name.clone(), ty);
+            // PLAN-681 T-05（N3/P6）：list-of-record 态的元素形状登记
+            // （Array 初始式首元素为记录字面量 → 子字段型表）——本
+            // widget 内 `state[i].field` 访问器选型；store 态另经
+            // STORE_LIST_ELEM_SHAPES 跨 widget 可见（prime_store_field_
+            // types 同源登记）。
+            if let crate::ast::Expr::Array(elems) = &state.initial {
+                if let Some(crate::ast::Expr::Object(_)) = elems.first() {
+                    if let Some(shape) = self.object_literal_shape(elems.first().unwrap()) {
+                        self.array_element_shapes.insert(state.name.clone(), shape);
+                    }
+                }
+            }
         }
 
         // Populate prop_names and prop_types for self. prefix resolution and type checking
@@ -816,6 +1091,25 @@ impl RustGenerator {
         // Plan 374: Collect computed property names for method-call syntax
         for computed in &widget.computed {
             self.computed_names.insert(computed.name.clone());
+            // PLAN-681 T-05（N3）：computed 表达式是伴生依赖裸 fn 调用且
+            // 返回 bare List——元素形状（BARE_FN_SIGS,fn 体内 push 记录
+            // 字面量推得）按 computed 名登记,view 迭代（`for r in .rows`）
+            // 的循环变量字段读按表型选访问器;返回 Vec<Value> 的 computed
+            // 名另入 computed_value_rets（Value 格判定）。机制通用,零消费
+            // 方标识符。
+            if let crate::ast::Expr::Call(c) = &computed.expr {
+                if let crate::ast::Expr::Ident(fname) = c.name.as_ref() {
+                    if let Some(sig) = self.bare_fn_sig(fname.as_str()) {
+                        if sig.ret_rust_type == "Vec<serde_json::Value>" {
+                            self.computed_value_rets.insert(computed.name.clone());
+                            if let Some(shape) = &sig.list_elem_shape {
+                                self.array_element_shapes
+                                    .insert(computed.name.clone(), shape.clone());
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // PLAN-039 T-14（组件传型）：自注册 Msg 型（无 msg 块且无子件
@@ -1245,16 +1539,30 @@ impl RustGenerator {
             // PLAN-039 T-12（批次 E）：Vec<Value> 态的数组字面量初始式
             // 逐元素 json! 包裹（launcher `var cats = ["all", …]` 株——
             // 此前元素按 String 发射，vec! 类型与 Vec<Value> 字段断）。
+            // PLAN-681 T-05（N2 配套）：Object/Array 元素经 json 体发射
+            //（单层 json!,嵌套数组 `[...]` 原生）——此前外层再包一次产
+            // `json!(json!(…))` 双层且内层空数组落 `vec![]`（to_value 元素
+            // 型不可推 E0282,tree_nodes 初始式 children: [] 株）。
             let init = if self.state_rust_type(state) == "Vec<serde_json::Value>" {
                 match &state.initial {
                     crate::ast::Expr::Array(elems) => format!(
                         "vec![{}]",
                         elems
                             .iter()
-                            .map(|e| format!(
-                                "serde_json::json!({})",
-                                self.ast_expr_to_rust_no_to_string(e)
-                            ))
+                            .map(|e| match e {
+                                crate::ast::Expr::Object(_) => {
+                                    // ast_expr_to_json_value 已产单层 json!(…)。
+                                    self.ast_expr_to_json_value(e)
+                                }
+                                crate::ast::Expr::Array(_) => format!(
+                                    "serde_json::json!({})",
+                                    self.ast_expr_to_json_value(e)
+                                ),
+                                _ => format!(
+                                    "serde_json::json!({})",
+                                    self.ast_expr_to_rust_no_to_string(e)
+                                ),
+                            })
                             .collect::<Vec<_>>()
                             .join(", ")
                     ),
@@ -1428,6 +1736,10 @@ impl RustGenerator {
                         "i32" | "u32" | "i64" | "u64" => "0",
                         "f32" | "f64" => "0.0",
                         "bool" => "false",
+                        // PLAN-681 T-05（N2 配套）：bare List prop（Vec<Value>）
+                        // 的占位是空列表——Value::Null 与 Vec<Value> 参数位
+                        // 不配（TreeView::default 株）。
+                        t if t == "Vec<serde_json::Value>" || t.starts_with("Vec<") => "vec![]",
                         _ => "serde_json::Value::Null",
                     }.to_string()
                 })
@@ -2069,6 +2381,23 @@ impl RustGenerator {
             // - If expr is a self.field that's typed String → String
             // - Otherwise default to String (safer than Vec for scalar computed).
             let needs_collect = expr_rust.contains(".iter().") || expr_rust.contains(".filter(") || expr_rust.contains(".map(");
+            // PLAN-681 T-05（N3）：computed 表达式是伴生依赖裸 fn 调用
+            //（`rows => flatten_tree(…)`）——返回型经 BARE_FN_SIGS registry
+            // 判定（bare List → Vec<Value>;元素形状已在 generate_rust 的
+            // computed 扫描处登记 array_element_shapes）。
+            let bare_fn_ret = match &computed_prop.expr {
+                crate::ast::Expr::Call(c)
+                    if matches!(c.name.as_ref(), crate::ast::Expr::Ident(_))
+                        && c.args.args.iter().all(|a| matches!(a, crate::ast::Arg::Pos(_))) =>
+                {
+                    if let crate::ast::Expr::Ident(fname) = c.name.as_ref() {
+                        self.bare_fn_sig(fname.as_str())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
             let is_string_expr = !needs_collect && (
                 expr_rust.contains("\"")  // string literal
                 || expr_rust.contains(".to_string()")
@@ -2088,6 +2417,11 @@ impl RustGenerator {
                     expr_rust.clone()
                 };
                 (rt, fe)
+            } else if let Some(sig) = &bare_fn_ret {
+                // PLAN-681 T-05（N3）：registry 返回型直判（默认 String 兜底
+                // 此前把 `rows => flatten_tree(…)` 发成 `-> String`,view
+                // `.rows().iter()` 即 E0599 株）。
+                (sig.ret_rust_type.as_str(), expr_rust.clone())
             } else if is_string_expr {
                 ("String", expr_rust.clone())
             } else {
@@ -5430,16 +5764,32 @@ impl RustGenerator {
 
             AuraNode::ForLoop { var, index, iterable, body, .. } => {
                 // Plan 371 步骤3: Sanitize loop var to avoid Rust keyword/macro
-                // conflicts (e.g. `for todo in ...` collides with `todo!()` macro).
+                // conflicts (e.g., `for todo in ...` collides with `todo!()` macro).
                 let var = sanitize_rust_ident(var);
                 let index = index.as_ref().map(|i| sanitize_rust_ident(i));
                 // Generate iterator-based view construction
                 let iter_name = iterable.trim_start_matches('.');
                 // Plan 374: Check if the last component is a computed property (needs ()).
                 let last_component = iter_name.rsplit('.').next().unwrap_or(iter_name);
-                let needs_method_call = self.computed_names.contains(last_component)
-                    || STORE_COMPUTED_NAMES.with(|sn| sn.borrow().contains(last_component));
-                let iter_expr = if iterable.starts_with('.') {
+                // PLAN-681 T-05（N3）：Value 循环变量的字段迭代——
+                // `for g in r.guides`（r 是 Value 迭代变量）的 iterable 是
+                // 记录字段读（带/不带 `.` 前缀两形态）,发射 `{var}["{field}"]
+                // .as_array().cloned().unwrap_or_default()`（Value 字段无
+                // .iter,降链到 Vec<Value>）。
+                let iter_on_value_loop_var_field = matches!(iter_name.split_once('.'),
+                    Some((base, field))
+                        if !field.contains('.')
+                            && !field.is_empty()
+                            && self.value_loop_vars.contains(base));
+                let iter_expr = if iter_on_value_loop_var_field {
+                    let (base, field) = iter_name.split_once('.').unwrap();
+                    format!(
+                        "{}[\"{}\"].as_array().cloned().unwrap_or_default()",
+                        base, field
+                    )
+                } else if iterable.starts_with('.') {
+                    let needs_method_call = self.computed_names.contains(last_component)
+                        || STORE_COMPUTED_NAMES.with(|sn| sn.borrow().contains(last_component));
                     let base = if needs_method_call {
                         format!("self.{}()", iter_name)
                     } else {
@@ -5465,6 +5815,11 @@ impl RustGenerator {
                 };
                 let store_typed_iter = store_field_ty
                     .map_or(false, |t| t != "Vec<serde_json::Value>" && t != "serde_json::Value");
+                // PLAN-681 T-05（N3）：返回 Vec<Value> 的 computed（BARE_
+                // FN_SIGS 判得,computed_value_rets 在 generate_rust 的
+                // computed 扫描处登记）——`.rows` 迭代按 Value 格消费,
+                // 循环变量元素形状经 array_element_shapes[computed 名]。
+                let computed_iter_is_value = self.computed_value_rets.contains(last_component);
                 let is_value_iter = self.state_types.get(iter_name)
                     .map(|ty| ty.contains("serde_json::Value"))
                     .or_else(|| self.state_types.get(iter_last_name)
@@ -5472,15 +5827,26 @@ impl RustGenerator {
                     .unwrap_or(false)
                     // Plan 374: If we can't determine the type, assume Value (most
                     // data from API/store is serde_json::Value in this system).
-                    || (iter_name.contains('.') 
+                    || (iter_name.contains('.')
                         && !self.state_types.contains_key(iter_name)
                         && !self.state_types.contains_key(iter_last_name)
-                        && !store_typed_iter);
+                        && !store_typed_iter)
+                    // PLAN-681 T-05（N3）：见上——registry 判定追加。
+                    || computed_iter_is_value
+                    // PLAN-681 T-05（N3）：Value 循环变量的字段迭代
+                    //（`for g in r.guides`）——g 同为 Value 格。
+                    || iter_on_value_loop_var_field;
 
                 // Push loop vars into scope
                 self.push_loop_vars(&var, index.as_deref());
                 if is_value_iter {
                     self.value_loop_vars.insert(var.clone());
+                    // PLAN-681 T-05（N3/P6）：循环变量 → 集合名映射——
+                    // 元素字段读（r.label/t.dirty）按 list_elem_shape 表型
+                    // 选访问器（bool→as_bool,int→as_i64,str→as_str,
+                    // list→as_array;store 字段跨 widget 可见）。
+                    self.loop_var_collections
+                        .insert(var.clone(), iter_last_name.to_string());
                 }
 
                 // Generate body with loop vars in scope
@@ -5491,6 +5857,8 @@ impl RustGenerator {
                 // Pop loop vars from scope
                 self.pop_loop_vars(&var, index.as_deref());
                 self.value_loop_vars.remove(&var);
+                // PLAN-681 T-05（N3/P6）：同生命周期回收循环变量 → 集合映射。
+                self.loop_var_collections.remove(&var);
 
                 // Auto-generate search filter: if the widget has a "search" state var
                 // and we're iterating a Value collection, insert .filter() before .map()
@@ -5519,7 +5887,35 @@ impl RustGenerator {
                 let map_expr = if let Some(idx) = index {
                     // Cast the usize index to i32 so comparisons with state
                     // fields (typically i32) type-check.
-                    format!("{}.iter().enumerate(){}{}.map(|({}, {})| {{ let {} = {} as i32; {} }})", iter_expr, search_filter.as_ref().map_or(String::new(), |f| f.clone()), "", idx, var, idx, idx, body_code.join("\n"))
+                    // PLAN-681 T-05（N3 配套）：循环体多个并列视图子节点
+                    //（`for (i,t) in tabs { if … {row} if … {row} }`）——map
+                    // 闭包体内首个 if 落语句位（非尾表达式有值即 E0308
+                    // "expected ()" 株,tab 栏双行）。多子节点改 flat_map +
+                    // 每迭代 vec![…]（扁平语义保形）;单子节点维持 map。
+                    if body_code.len() > 1 {
+                        format!(
+                            "{}.iter().enumerate(){}{}.flat_map(|({}, {})| {{ let {} = {} as i32; vec![{}] }})",
+                            iter_expr,
+                            search_filter.as_ref().map_or(String::new(), |f| f.clone()),
+                            "",
+                            idx,
+                            var,
+                            idx,
+                            idx,
+                            body_code.join(", ")
+                        )
+                    } else {
+                        format!("{}.iter().enumerate(){}{}.map(|({}, {})| {{ let {} = {} as i32; {} }})", iter_expr, search_filter.as_ref().map_or(String::new(), |f| f.clone()), "", idx, var, idx, idx, body_code.join("\n"))
+                    }
+                } else if body_code.len() > 1 {
+                    format!(
+                        "{}.iter(){}{}.flat_map(|{}| {{ vec![{}] }})",
+                        iter_expr,
+                        search_filter.as_ref().map_or(String::new(), |f| f.clone()),
+                        "",
+                        var,
+                        body_code.join(", ")
+                    )
                 } else {
                     format!("{}.iter(){}{}.map(|{}| {{ {} }})", iter_expr, search_filter.as_ref().map_or(String::new(), |f| f.clone()), "", var, body_code.join("\n"))
                 };
@@ -6883,7 +7279,19 @@ impl RustGenerator {
                             // Replace var.field with bracket access, converting the result
                             // Remove the var.field from output and replace with bracket access
                             let output_var_name = var_name.to_string();
-                            let bracket_access = self.value_field_access(&output_var_name, field_name);
+                            // PLAN-681 T-05（N3/P6）：循环变量元素形状——按
+                            // list_elem_shape 表型选访问器（bool→as_bool——
+                            // tabs 元素 dirty 株；int/list 同理），未知回落
+                            // value_field_access 启发式（动态容差）。
+                            let elem_shape = self
+                                .loop_var_collections
+                                .get(var_name)
+                                .and_then(|coll| self.list_elem_shape(coll));
+                            let bracket_access = self.value_field_access_shaped(
+                                &output_var_name,
+                                field_name,
+                                elem_shape.as_ref(),
+                            );
                             // Remove the already-pushed var name and replace with bracket access
                             output.truncate(output.len() - var_name.len());
                             output.push_str(&bracket_access);
@@ -8176,6 +8584,30 @@ impl RustGenerator {
                                 return format!("let mut {} = {}.clone()", name, value);
                             }
                         }
+                        // PLAN-681 T-05（N2 配套）：非 Copy 态字段读入局部
+                        // let 的 move 收口——`let p str = .auto_open_path`
+                        // 此前裸 move 出 &mut self 字段（borrowck 潜伏错,
+                        // 前序类型错清零后显形）。方法调用/字面量/索引位
+                        //（前述分支）不在此列。
+                        let rhs_state_non_copy = matches!(
+                            &store.expr,
+                            crate::ast::Expr::Ident(_) | crate::ast::Expr::Dot(..)
+                        ) && self
+                            .resolve_expr_name(&store.expr)
+                            .and_then(|n| self.state_types.get(&n))
+                            .map_or(false, |ty| {
+                                !matches!(
+                                    ty.as_str(),
+                                    "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool"
+                                )
+                            })
+                            && !value.contains('[')
+                            && !value.starts_with('"')
+                            && !value.contains(".clone()")
+                            && !value.contains('(');
+                        if rhs_state_non_copy {
+                            value = format!("{}.clone()", value);
+                        }
                         format!("let {} = {}", name, value)
                     }
                     crate::ast::StoreKind::Var => {
@@ -9234,9 +9666,11 @@ impl RustGenerator {
                     // PLAN-039 T-14（E-D2）：循环变量的元素形状——
                     // `scard.rank` 按集合元素形状选访问器（showcase_cards
                     // 记录集合株：rank 启发式名单外恒 as_str）。
+                    // PLAN-681 T-05（N3/P6）：形状查询经 list_elem_shape
+                    // （store list-of-record 字段跨 widget 可见）。
                     if let Some(coll) = self.loop_var_collections.get(resolved) {
-                        if let Some(shape) = self.array_element_shapes.get(coll) {
-                            return self.value_field_access_shaped(resolved, field_str, Some(shape));
+                        if let Some(shape) = self.list_elem_shape(coll) {
+                            return self.value_field_access_shaped(resolved, field_str, Some(&shape));
                         }
                     }
                     if self.needs_index_access(resolved) {
@@ -9293,10 +9727,10 @@ impl RustGenerator {
                             };
                             // PLAN-039 T-13（E-D2）：集合局部元素形状——
                             // scored[i].score 按形状型选访问器。
-                            let elem_shape = self
-                                .array_element_shapes
-                                .get(resolved_coll)
-                                .cloned();
+                            // PLAN-681 T-05（N3/P6）：形状查询经
+                            // list_elem_shape（store list-of-record 字段
+                            // 跨 widget 可见——tabs[i].dirty bool 株）。
+                            let elem_shape = self.list_elem_shape(resolved_coll);
                             return self.value_field_access_shaped(
                                 &format!("{}[{}]", target_str, idx_cast),
                                 field_str,
@@ -9531,6 +9965,32 @@ impl RustGenerator {
                             .resolve_expr_name(left)
                             .and_then(|n| self.state_types.get(&n).cloned());
                         if let Some(ty) = l_ty {
+                            // PLAN-681 T-05（N2 配套）：json.to_value(...) 入
+                            // Vec<Value> 态——from_str 直接解析成 Vec<Value> +
+                            // unwrap_or_default（此前 Value → Vec<Value> E0308,
+                            // `tree_nodes = json.to_value(tree(...))` 株）。
+                            if ty == "Vec<serde_json::Value>"
+                                && value.contains("serde_json::from_str::<serde_json::Value>")
+                            {
+                                value = value
+                                    .replace(
+                                        "serde_json::from_str::<serde_json::Value>",
+                                        "serde_json::from_str::<Vec<serde_json::Value>>",
+                                    )
+                                    .replace(
+                                        ".unwrap_or(serde_json::Value::Null)",
+                                        ".unwrap_or_default()",
+                                    );
+                            }
+                            // PLAN-681 T-05（F1 配套）：i32 态字段 ← VM 内建
+                            // int 读数（fold_hidden_count 的 `as i64` 尾缀）
+                            // ——窄化 as i32（ui 域 int 模型字段位）。
+                            else if ty == "i32" && value.ends_with(" as i64") {
+                                value = format!(
+                                    "{} as i32",
+                                    &value[..value.len() - " as i64".len()]
+                                );
+                            }
                             let has_str_accessor =
                                 value.contains(".as_str().unwrap_or_default().to_string()");
                             if has_str_accessor {
@@ -9907,6 +10367,34 @@ impl RustGenerator {
                     }
                 }
                 let args: Vec<String> = self.rust_call_args_with_clone(call);
+                // PLAN-681 T-05（N3/P5-ui）：伴生依赖裸 fn（bps use-fn 内联，
+                // BARE_FN_SIGS 在档）实参按形参 kind 收口——str 形参收 String
+                // 形实参的 &str 借用（`id.clone()` → `.as_str()`；Value 读链
+                // 的 as_str().to_string() 尾同理）；list 形参收 Value 读实参
+                // 的 as_array 降链（`nd["children"].clone()` 株）。字面量/其余
+                // kind 不动。
+                let args: Vec<String> = if !fn_name.contains('.') && !args.is_empty() {
+                    match self.bare_fn_sig(&fn_name) {
+                        Some(sig) => args
+                            .iter()
+                            .enumerate()
+                            .map(|(i, a)| match sig.param_kinds.get(i).map(|s| s.as_str()) {
+                                Some("str") if !a.starts_with('"') => {
+                                    format!("{}.as_str()", a)
+                                }
+                                Some("list")
+                                    if a.contains("[\"") && a.ends_with(".clone()") =>
+                                {
+                                    format!("{}.as_array().cloned().unwrap_or_default()", a)
+                                }
+                                _ => a.clone(),
+                            })
+                            .collect(),
+                        None => args,
+                    }
+                } else {
+                    args
+                };
                 match fn_name.as_str() {
                     "print" => {
                         let print_args: Vec<String> = args.iter()
@@ -10240,6 +10728,18 @@ impl RustGenerator {
                     .collect();
                 format!("serde_json::json!({{{}}})", fields.join(", "))
             }
+            // PLAN-681 T-05（N2 配套）：json! 体内的数组值 → `[...]` 体形
+            // 而非 `vec![...]`——空数组 `vec![]` 的元素型不可推（to_value
+            // 序列化 E0282,tree_nodes 初始式 `children: []` 株）；json!
+            // 数组语法原生收 `[]` 与任意 Serialize 表达式。
+            Expr::Array(elems) => format!(
+                "[{}]",
+                elems
+                    .iter()
+                    .map(|e| self.ast_expr_to_json_value(e))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             _ => self.ast_expr_to_rust(expr),
         }
     }
