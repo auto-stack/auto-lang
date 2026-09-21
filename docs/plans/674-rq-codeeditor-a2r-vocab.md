@@ -198,7 +198,7 @@ fixture 验证链（tests/ 通用 .at 语料 + a2r 生成 + cargo check）；消
 | T-03 | 词汇表机制：单源抽取 + per-kind prop→iced builder 映射表 + `add_prop_to_builder` 改表驱动（拒绝臂保留，文案补 kind） | T-00 | ui_gen/rust.rs + view.rs 单源 | 机制扩容 | AC-03/04 | [x] view.rs `view_prop_vocab`/`ViewPropShape` 单源 + 表驱动臂 + menubar 族降层臂（合成变体+on() 臂+action_config 全局开合态）；`vocab_gate_per_kind_prop_table`/`menubar_family_lowers_to_popover_row` 绿；**消费方实测 23 compile_error! → 0**（auto-edit main@dc99328 重生成）|
 | T-04 | 事件面同步扩容：`add_event_to_builder` 补 View 事件槽族（载荷语义与 vue 侧对齐注记） | T-03 | ui_gen/rust.rs + view.rs | 事件面 | AC-03/04 | [x] `view_event_vocab`（Closure/Msg 双槽形）+ 拒绝文案补 kind；`vocab_gate_unknown_keeps_rejection_with_kind` 绿（prop+event 双断言）|
 | T-05 | fixture+回归+grep 门：tests/ 通用 fixture 双绿（codeeditor RQ + 非基础 prop）；cargo t/tt；PLAN-027 拒绝门测试零回退 | T-01..T-04 | tests/ + capability-tests | 证明集中 | AC-04/05 | [x] capability-tests/codeeditor-rq 入运行时门绿 + 实机 `-q`（adopt→window→**first frame**→稳定帧）；plan039 族 19/19 零回退；grep 门零消费方标识符（首跑 ActOpen 撞门已改泛化名）；**cargo t 5394/5415（21 红全数归因：musk 5=master 全等证 + ui::layout 15=在册环境豁免 + projector_counter=在册预存；顺带治愈 master 红 icon_component_class）；cargo tt 4084/4084 全绿**（test-trans 无 ui 组合编译修复=词汇表迁 ui_gen/vocab.rs 的组合律动因）|
-| T-06 | spec 落账+交接：SD-01/SD-02 落盘；消费方复跑通知（perf.py smoke/a2r exit 0 判据） | T-05 | docs/specs/ + §9 记录 | 收口 | AC-06 | [x] SD-01（overview 覆盖集段 v1.9）/SD-02（seams 词汇门节转正）落盘；**消费方实测：perf.py smoke exit 0·双实例 2/2 存活**（供料 §6 的 0/2 清偿）；a2r 段 BLOCKED 首错移位 E0425（P670-D1 族=P674-D3 登记，全编译过需该族清偿——交接上报）|
+| T-06 | spec 落账+交接：SD-01/SD-02 落盘；消费方复跑通知（perf.py smoke/a2r exit 0 判据） | T-05 | docs/specs/ + §9 记录 | 收口 | AC-06 | [x] SD-01（overview 覆盖集段 v1.9）/SD-02（seams 词汇门节转正）落盘；**消费方实测：perf.py smoke exit 0·双实例 2/2 存活**（供料 §6 的 0/2 清偿）；a2r 段 BLOCKED 首错移位 E0425（P670-D1 族=P674-D3 登记——**2026-09-22 用户裁定：扩 P670-D1 并入其清偿面**，债册两条已同步）|
 
 ## 9. 复审记录
 
@@ -258,7 +258,7 @@ fixture 验证链（tests/ 通用 .at 语料 + a2r 生成 + cargo check）；消
   worktree `feat(ui): PLAN-674 RQ codeeditor 覆盖…`（12 文件：coverage/
   native_projector/editor_frame/code_editor core+mod/ui_gen mod+rust+
   vocab 新增/specs 两件/capability-tests codeeditor-rq 新增）·
-  task_ids = T-01..T-06 · blockers = 无（P674-D3 上报待裁非阻塞）·
+  task_ids = T-01..T-06 · blockers = 无（P674-D3 处置已裁：2026-09-22 用户「括P670」=扩 P670-D1 并入清偿面，债册 P670-D1/P674-D3 双条同步）·
   next: **review**。
   - **证据摘要**：041 运行时钉翻绿；矩阵钉/键入闭环绿；双根勘定
     （全集两项登记 P674-D1/D2）；消费方实测两连——**perf.py smoke
@@ -266,7 +266,7 @@ fixture 验证链（tests/ 通用 .at 语料 + a2r 生成 + cargo check）；消
     compile_error! → 0（供料 §7 判据达成；a2r 段整体 BLOCKED 首错
     移位 E0425 = P670-D1 族 = P674-D3 登记，全编译过需该族清偿——
     **消费方复跑通知**：auto-edit 侧可复验 smoke（已绿）；a2r exit 0
-    须等 P670-D1 族另立/扩册后复跑）；回归 cargo t 21 红全数预存
+    须等 P670-D1 族清偿后复跑——处置已裁 2026-09-22：扩 P670-D1）；回归 cargo t 21 红全数预存
     归因（musk 5=master 全等 + layout 15=在册豁免 + projector=在册
     预存）+ tt 4084/4084 全绿；grep 门零消费方标识符。
   - **执行期裁定/调整记录**：①§10-1/§10-2/§10-3 三裁定（T-00，见上
