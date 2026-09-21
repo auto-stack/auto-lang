@@ -303,6 +303,8 @@ demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切�
 - [ ] AC-11（条目 6）画廊（深色宿主）中打开 016-calendar：宿主 `<html>`
       的 `.dark` 不被摘除（页面保持深色）；016 视口内主题按其自身默认渲染，
       在 016 内切主题仅作用于该视口。
+- [ ] AC-16（N5 闭环）013 会话 DELETE /api/todos/:id 后 GET 反映删除；
+      PUT 更新同理；013/015 UI 删改经 /apps 代理闭环。
 - [ ] AC-15（条目 7）画廊中 016 无异色带：根 bg 透明、收缩到卡片范围、
       窗口内居中；无标记语料零变化。
 - [ ] AC-14（条目 6 延伸二）未声明 theme 的 standalone demo（013）index.html
@@ -401,6 +403,8 @@ demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切�
 - [x] T-17（条目 7）根净化 + 单测 + 端到端。
   [✅ 已完成] worktree（本次提交）——剥 token 实测：rootBg 透明、rootH
   491<frameH 720、居中 ✓、截图在档（平板视口无异色带）。
+- [x] T-18（N5 闭环）proxy 会话路径参数按 #[api] 签名类型绑定，删改实测。
+
 - [x] T-16（条目 6 延伸二）继承链 OS 层。
   [✅ 已完成] worktree 29ed6926b——theme.rs（THEME_PREFS/passthrough/
   system_theme_bootstrap_js+单测）+ 三生成点分支；实测 013 standalone
