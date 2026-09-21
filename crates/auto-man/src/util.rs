@@ -174,6 +174,44 @@ pub fn http_port() -> u16 {
 
 /// Kill any process listening on the given port (Plan 354).
 /// Uses `netstat` + `taskkill` on Windows, `lsof`/`fuser` on Unix.
+/// 杀前验明正身的保护名单（小写进程名）——跨项目启动链互杀防线
+/// （PLAN-082 附带，用户目击定案 2026-09-21：兄弟 agent 启动 app 的
+/// `kill_process_on_port` 清场杀掉了端口撞车的 musk serve）。名单成员=
+/// 全 autostack 生态共享的常驻后端/守护，任何 auto app 的清场都无权
+/// 清掉它们：musk.exe（musk 产品后端，8080/17201 等多端口形态）、
+/// aaid.exe（AI daemon，全员共享 17654，误杀断所有 agent）。
+pub const PROTECTED_PROCESS_NAMES: &[&str] = &["musk.exe", "aaid.exe"];
+
+/// 纯函数：进程名是否受保护（大小写不敏感；空名不受保护——查名的
+/// 失败不阻断清理，未知进程照杀）。
+pub fn should_skip_kill(process_name: &str) -> bool {
+    let lower = process_name.to_ascii_lowercase();
+    PROTECTED_PROCESS_NAMES.iter().any(|p| lower == *p)
+}
+
+/// 解析 `tasklist /FO CSV /NH` 行的首列进程名：`"musk.exe","1234",…`。
+pub fn parse_tasklist_name(csv_line: &str) -> Option<String> {
+    let trimmed = csv_line.trim();
+    let rest = trimmed.strip_prefix('"')?;
+    let name = rest.split('"').next()?;
+    if name.is_empty() { None } else { Some(name.to_string()) }
+}
+
+/// 按 PID 查进程名（Windows: tasklist CSV；查不到返回空串=未知，照杀）。
+#[cfg(target_os = "windows")]
+fn process_name_of(pid: u32) -> String {
+    use std::process::Command;
+    Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
+        .output()
+        .ok()
+        .and_then(|out| {
+            let text = String::from_utf8_lossy(&out.stdout);
+            text.lines().find_map(parse_tasklist_name)
+        })
+        .unwrap_or_default()
+}
+
 pub fn kill_process_on_port(port: u16) {
     #[cfg(target_os = "windows")]
     {
@@ -190,6 +228,22 @@ pub fn kill_process_on_port(port: u16) {
                 // Last column is the PID
                 if let Some(pid_str) = line.split_whitespace().last() {
                     if let Ok(pid) = pid_str.parse::<u32>() {
+                        // PLAN-082 附带：杀前验明正身——保护名单进程跳过
+                        // （防兄弟 agent/项目启动清场互杀，用户目击实证）。
+                        let name = process_name_of(pid);
+                        if should_skip_kill(&name) {
+                            println!(
+                                "  {} Port {}: protected process {} (PID {}) left alone — cross-project backend",
+                                "⚠".bright_yellow(), port, name, pid
+                            );
+                            continue;
+                        }
+                        println!(
+                            "  {} Port {}: killing {} (PID {})",
+                            "⚠".bright_yellow(), port,
+                            if name.is_empty() { "<unknown>".to_string() } else { name },
+                            pid
+                        );
                         let _ = Command::new("taskkill")
                             .args(["/F", "/PID", &pid.to_string()])
                             .output();
@@ -197,7 +251,7 @@ pub fn kill_process_on_port(port: u16) {
                 }
             }
             if !stdout.is_empty() {
-                println!("  {} Killed stale process on port {}", "⚠".bright_yellow(), port);
+                println!("  {} Stale-process cleanup on port {} done", "⚠".bright_yellow(), port);
                 std::thread::sleep(std::time::Duration::from_millis(500));
             }
         }
@@ -211,6 +265,20 @@ pub fn kill_process_on_port(port: u16) {
             .and_then(|out| {
                 let pids = String::from_utf8_lossy(&out.stdout);
                 for pid in pids.split_whitespace() {
+                    // 杀前验明正身（PROTECTED_PROCESS_NAMES，与 Windows 臂同源）。
+                    let name = std::process::Command::new("ps")
+                        .args(["-p", pid, "-o", "comm="])
+                        .output()
+                        .ok()
+                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                        .unwrap_or_default();
+                    if should_skip_kill(&name) {
+                        println!(
+                            "  {} Port {}: protected process {} (PID {}) left alone — cross-project backend",
+                            "⚠".bright_yellow(), port, name, pid
+                        );
+                        continue;
+                    }
                     let _ = std::process::Command::new("kill")
                         .args(["-9", pid])
                         .output();
@@ -229,6 +297,30 @@ pub fn http_base_url() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_should_skip_kill_protects_shared_backends() {
+        // 保护名单：大小写不敏感精确名匹配。
+        assert!(should_skip_kill("musk.exe"));
+        assert!(should_skip_kill("MUSK.EXE"));
+        assert!(should_skip_kill("aaid.exe"));
+        // 非保护：本工程 stub/未知/空名照杀。
+        assert!(!should_skip_kill("015-notes-back.exe"));
+        assert!(!should_skip_kill("cargo.exe"));
+        assert!(!should_skip_kill(""));
+        // 子串不算（my-musk.exe ≠ musk.exe）。
+        assert!(!should_skip_kill("my-musk.exe"));
+    }
+
+    #[test]
+    fn test_parse_tasklist_name() {
+        assert_eq!(
+            parse_tasklist_name(r#""musk.exe","1234","Console","1","45,678 K""#),
+            Some("musk.exe".to_string())
+        );
+        assert_eq!(parse_tasklist_name("INFO: no tasks"), None);
+        assert_eq!(parse_tasklist_name(""), None);
+    }
 
     #[test]
     fn test_split_once() {
