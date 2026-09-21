@@ -231,6 +231,16 @@ contains 判断）。各层现状：gallery 嵌入继承=T-15 ✓；VM/桌面=�
 隐式继承+PLAN-615 OS 回退（既有）；显式声明（如 016 `theme: "light"`）=
 作者意图优先 ✓（既有）。
 
+### T-17 嵌入态根净化（条目 7，用户提出「只留圆角卡片范围」）
+
+016 根声明 `min-h-screen bg-muted/30`（standalone 全幅页面底正当）——嵌入
+画廊后全幅底色在卡片四周画出异色带（平板视口上下实测）。实现=
+`gallery_strip_root_page_chrome`：剥 aura_0 根的 `min-h-screen`/`h-screen`/
+`w-screen`/`bg-*` token（卡片自带居中 items-center/justify-center 保留），
+接入发射循环 app 通道；无标记语料零变化。**虚拟桌面侧的自适应窗口**
+（calculator 式 content-sized 窗口）= 桌面宿主行为，记 **P672-D3** 指向
+auto-os 侧跟进，不在本仓批内。
+
 ### T-13/T-14 嵌入态主题作用域化（条目 6，用户裁定方向）
 
 机制：宿主（AppViewport.vue 资产）注入 `window.__AUTO_UI_EMBED__ = true`；
@@ -293,6 +303,8 @@ demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切�
 - [ ] AC-11（条目 6）画廊（深色宿主）中打开 016-calendar：宿主 `<html>`
       的 `.dark` 不被摘除（页面保持深色）；016 视口内主题按其自身默认渲染，
       在 016 内切主题仅作用于该视口。
+- [ ] AC-15（条目 7）画廊中 016 无异色带：根 bg 透明、收缩到卡片范围、
+      窗口内居中；无标记语料零变化。
 - [ ] AC-14（条目 6 延伸二）未声明 theme 的 standalone demo（013）index.html
       内置 OS resolver 且实时跟随；显式声明者（016 light）维持声明；继承链
       三层语义闭合。
@@ -386,6 +398,9 @@ demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切�
   无效——PLAN-658 会话面从未被真实消费过，非本计划回归）；UI Enter 新增
   待 standalone 差分=P672-N4（IAB 只发 input 不发 keyup，合成事件亦未触
   发 Vue handler，疑 codegen 层 keyup 绑定问题，与嵌入无关）。
+- [x] T-17（条目 7）根净化 + 单测 + 端到端。
+  [✅ 已完成] worktree（本次提交）——剥 token 实测：rootBg 透明、rootH
+  491<frameH 720、居中 ✓、截图在档（平板视口无异色带）。
 - [x] T-16（条目 6 延伸二）继承链 OS 层。
   [✅ 已完成] worktree 29ed6926b——theme.rs（THEME_PREFS/passthrough/
   system_theme_bootstrap_js+单测）+ 三生成点分支；实测 013 standalone
@@ -446,6 +461,9 @@ demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切�
 - **P672-N3（观察，待用户裁定）**：027-file-manager 在 Vue 画廊内加载
   后报「Env is not defined」运行错误横幅（原生 Env 依赖未守门/未降级；025
   档位=registry-only 的同类问题）。修复方向：加载前探测/降级为非 loadable。
+- **P672-D3（债，条目 7 延伸，auto-os 桌面侧）**：016 类应用在虚拟桌面
+  中应为 calculator 式 content-sized 自适应窗口——桌面宿主的窗口 sizing
+  行为，需 auto-os 侧跟进（参照桌面既有 calculator 窗口先例）。
 - **P672-D2（债，条目 5 勘定，待用户裁定立项）**：018-book-reader 与
   019-video-app 为 `routes {}` 档（PLAN-642 route_stub tier，仅 VM 臂可
   交互）。Vue 臂内嵌需 routes-in-embed 能力（路由 demo 的多页挂载/跳转
