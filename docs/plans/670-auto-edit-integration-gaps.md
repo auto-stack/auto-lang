@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-670
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed             # drafting → executing → execution_done → reviewed → archived
 feature_name: auto-edit-integration-gaps
 author: [zcode]
 created_at: 2026-09-21
@@ -283,6 +283,35 @@ db_full_cover 既有两路不回归。
   回归批+cargo t 减在册豁免零新增红+tf 3684/3684 绝对全绿） |
   blockers: 无阻塞项；**呈报待裁**（§10-1 F-R1-B 拆计划） | next: review
   （execution_done 已置；F-R1-B 走向不阻塞本批复审——B 半已按预授权缩面）。
+
+- 2026-09-21（review）：`stage: review` | PLAN-670 | rev 1 | `outcome: pass`
+  | reviewed_commit: plan-670-dev@53fbba5ad（rebase 后 tip：a44f2cad7→
+  b003a7eed→53fbba5ad；原执行链 14522af28→51421cbe8→49b02517c 基于
+  b6ed53d61）| base_commit: 66d3aee7d（复审基=master 现行 HEAD）|
+  dependency_revisions: auto-down@fba6563（组内依赖位，未动）；**并行
+  会话 PLAN-037（back-proxy 供给层 9 提交）于执行后落 master**——复审内
+  rebase 对齐，零冲突（文件面仅 lib.rs 交叠且区域不相邻），全部证据在
+  并流树重建 | spec_inputs: SD-01 auto-man/project.md api_gen 行+SD-02
+  auto-lang/ui/overview.md code_editor 段（worktree 提交内 diff 复核：
+  均描述现行行为与恒定契约，非执行日记）| acceptance_results: AC-01
+  pass / AC-02 pass / AC-03 pass / AC-04 pass / AC-05 pass | findings:
+  **F-RV1**（info，复审裁定内消化）：执行期基线漂移——037 并入使
+  master 失败集较执行期扩大，复审以"分支 vs master 同命令失败集逐名
+  相等"为判据（20/20 名全同，零新增红）；tf/tv 在并流树重跑绝对全绿
+  （3685/3685、3832/3832）。**F-RV2**（info）：corpus 测试内层
+  `#[cfg(feature = "ui-iced")]` 与模块级 cfg 冗余（无害，不返工）。
+  **F-RV3**（info，认可）：oncontextmenu 保持光杆版=计划 §5.3 显式范围
+  裁定（只修 on_change/on_cursor），非遗漏 | evidence: 本 review 独立
+  重验（同会话但全部从工件重建，不采信 work 总结）——①api_gen 30/30
+  +plan670 3/3+input 062 守护 1/1+plan063 4/4（并流树重跑）；②AC-01
+  编译证据重现：临时探针再生 scratch 工程 cargo build **Finished 33.71s
+  零 error**（探针跑后即删，diff 零残留）；③实现 diff 逐 hunk 复核
+  （两处 _with 镜像+has_db_type 门+stateless 臂，四象限边界推演正确）；
+  ④红相位证据复核（执行期双跑：旧码 loop-var+corpus 双红、无参绿）；
+  ⑤cargo t --no-fail-fast 双侧失败集采集 diff 逐名相等；⑥diff 增行
+  debug/workaround 扫描净（唯一 eprintln=语料缺席优雅跳过，plan370
+  先例形态）；⑦diff 范围=8 文件与 affects 面一致，零 auto-edit 仓路径
+  | next: merge（037 并流已对齐，ff 可达性由 merge 侧裁定）。
 
 ## 10. 待澄清事项
 
