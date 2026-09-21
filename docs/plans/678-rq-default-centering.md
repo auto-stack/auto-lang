@@ -177,6 +177,15 @@ MARGIN`，非零则全部 op/hit 坐标平移。要点：
       （examples 根全扫：满幅集=显式类集，α/β 收敛单方案；embed pre-pass
       判定位 iced_adapter.rs:1412 复用）。
 - [ ] T-02 RqProjector 根平移通道 + 单测四件（§5）。
+      [✅ 已完成] 2026-09-21 plan-678-dev 3b2fe0ee0——通道落地（§4.1 全
+      项：实测 bbox/视口类豁免/env 门/全变体 rect 平移/视口锚定豁免）+
+      四单测绿。**执行期发现（测试缝分层纪律）**：命中坐标耦合面分两类
+      ——①自闭环管道环（counter_projector/stress 子体/reconnect 管道）
+      钉预居中坐标→`proj_autocenter_off` 关通道；②生产孪生配对面
+      （t3_child_body↔remote_twin_hits、twins vec、g2_counter_twin——
+      后者视口 900→320 修正为与 incubate 子进程同构）保持常开同态。
+      门：desktop_protocol 191/192（唯一红=master 预存 counter）+daily
+      cargo t 零新增红。
 - [ ] T-03 iced 窗口根改造（按 §2.2 单方案）+ embed 豁免 + 单测。
 - [ ] T-04 env 逃生门双轨接线 + gallery 全量走查矩阵（AC-03）。
 - [ ] T-05 复审收口：specs 沉淀（ui/overview + desktop-protocol-v1 增补）、
