@@ -30,9 +30,9 @@
 use std::time::Instant;
 
 use super::client_runtime::{
-    dim_if, measure_text, NodeStyle, BG, BUTTON_BG, BUTTON_H, BUTTON_MIN_W, BUTTON_PAD,
-    DISABLED_ALPHA, IMAGE_PLACEHOLDER, INPUT_BG, INPUT_BORDER, LABEL_FG, LINE_H_FACTOR, MARGIN,
-    PLACEHOLDER_FG, PROGRESS_TRACK, TEXT_FG, TEXT_SIZE,
+    dim_if, measure_text, NodeStyle, bg, button_bg, input_bg, input_border, image_placeholder,
+    placeholder_fg, primary_fill, accent_fill, progress_track, text_fg, BUTTON_H, BUTTON_MIN_W,
+    BUTTON_PAD, DISABLED_ALPHA, LINE_H_FACTOR, MARGIN, TEXT_SIZE,
 };
 // PLAN-674 T-01：codeeditor 投影臂/键入回传面（CODE_EDITORS 注册表 +
 // core handle_input 全键面——ui-iced ⊇ code-editor，无 cfg 面）。
@@ -52,7 +52,6 @@ use crate::ui::view::{
 const INPUT_H: f32 = 32.0;
 const INPUT_PAD: f32 = 10.0;
 /// 聚焦描边色（解释态 `resolve_color("blue-500")` 的常量形态）。
-const FOCUS_BORDER: Rgba8 = Rgba8::new(59, 130, 246, 255);
 /// checkbox/radio 勾选盒标签与盒体的间距。
 const CHECK_LABEL_GAP: f32 = 6.0;
 /// slider 几何（轨道厚 / knob 边 / 命中带高——v1 常量档，样式类可覆高宽）。
@@ -66,9 +65,14 @@ const POP_GAP: f32 = 6.0;
 const POP_MARGIN: f32 = 8.0;
 /// Modal scrim 半透明全屏层（RGB 0 + alpha 120）。
 const POP_SCRIM: Rgba8 = Rgba8::new(0, 0, 0, 120);
-/// 面板底/边（select 选项列同视觉族）。
-const POP_BG: Rgba8 = Rgba8::new(30, 30, 36, 255);
-const POP_BORDER: Rgba8 = Rgba8::new(90, 90, 100, 255);
+/// 面板底/边（select 选项列同视觉族）——PLAN-679：Surface/Border 槽
+/// （shadcn popover 面），随主题双盘。
+fn pop_bg() -> Rgba8 {
+    super::client_runtime::semantic_rgb(crate::ui::style::Color::Surface)
+}
+fn pop_border() -> Rgba8 {
+    super::client_runtime::border_slot()
+}
 
 /// 分型命中表项（PLAN-025 T-01 D1/D3 定形态）：零参物化消息直入；payload
 /// 族携派发材料（输入闭环身份/slider 几何/…——随覆盖爬坡扩臂）。
@@ -634,13 +638,13 @@ impl<C: Component> FrameSource for RqProjector<C> {
             let mut oy = ov.rect.y + ov.rect.h;
             for (i, opt) in ov.options.iter().enumerate() {
                 let or = WRect::new(ov.rect.x, oy, ov.rect.w, INPUT_H);
-                ctx.push_quad(or, if ov.selected_index == Some(i) { BUTTON_BG } else { INPUT_BG });
+                ctx.push_quad(or, if ov.selected_index == Some(i) { accent_fill() } else { input_bg() });
                 ctx.ops.push(DrawOp::Text {
                     x: or.x + INPUT_PAD,
                     y: or.y + (INPUT_H - line_h) / 2.0,
                     size,
                     line_height: line_h,
-                    color: TEXT_FG,
+                    color: text_fg(),
                     text: opt.clone(),
                 });
                 if let Some(cb) = &ov.on_select {
@@ -658,8 +662,8 @@ impl<C: Component> FrameSource for RqProjector<C> {
             if po.modal {
                 ctx.push_quad(WRect::new(0.0, 0.0, self.width, self.height), POP_SCRIM);
             }
-            ctx.push_quad(po.rect, POP_BG);
-            ctx.push_border(po.rect, POP_BORDER);
+            ctx.push_quad(po.rect, pop_bg());
+            ctx.push_border(po.rect, pop_border());
             ctx.ops.extend(po.ops);
             ctx.hits.push(HitEntry::PopoverDismiss {
                 rect: WRect::new(0.0, 0.0, self.width, self.height),
@@ -719,7 +723,7 @@ impl<C: Component> FrameSource for RqProjector<C> {
         // 都过线，宿主后到者胜；同签名场景已被臂内去重）。
         self.pending_bitmaps.extend(ctx.pending_bitmaps);
         self.canvas_scene_sig = ctx.canvas_scene_sig;
-        DrawList { clear: Some(BG), ops: ctx.ops }
+        DrawList { clear: Some(bg()), ops: ctx.ops }
     }
 
     fn on_input(&mut self, input: &InputMsg) {
@@ -1547,7 +1551,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                     y,
                     size,
                     line_height: line_h,
-                    color: style.fg.unwrap_or(TEXT_FG),
+                    color: style.fg.unwrap_or(text_fg()),
                     weight: 700,
                     italic: false,
                     text,
@@ -1558,7 +1562,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                     y,
                     size,
                     line_height: line_h,
-                    color: style.fg.unwrap_or(TEXT_FG),
+                    color: style.fg.unwrap_or(text_fg()),
                     text,
                 });
             }
@@ -1572,7 +1576,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 .unwrap_or((label_w + BUTTON_PAD * 2.0).max(BUTTON_MIN_W))
                 .min(avail_w.max(0.0));
             let h = style.fixed_h().unwrap_or(BUTTON_H);
-            let bg = dim_if(*disabled, style.bg.unwrap_or(BUTTON_BG));
+            let bg = dim_if(*disabled, style.bg.unwrap_or(button_bg()));
             ctx.push_quad(WRect::new(x, y, w, h), bg);
             if let Some(border) = style.border {
                 ctx.push_border(WRect::new(x, y, w, h), border);
@@ -1596,7 +1600,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                     y: y + (h - line_h) / 2.0,
                     size,
                     line_height: line_h,
-                    color: dim_if(*disabled, style.fg.unwrap_or(LABEL_FG)),
+                    color: dim_if(*disabled, style.fg.unwrap_or(text_fg())),
                     text: label.clone(),
                 });
             }
@@ -1676,13 +1680,13 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 0.0
             };
             let vx = x + w * t;
-            ctx.push_quad(WRect::new(x, cy - SLIDER_TRACK_H / 2.0, w, SLIDER_TRACK_H), INPUT_BORDER);
+            ctx.push_quad(WRect::new(x, cy - SLIDER_TRACK_H / 2.0, w, SLIDER_TRACK_H), progress_track());
             if vx > x {
-                ctx.push_quad(WRect::new(x, cy - SLIDER_TRACK_H / 2.0, vx - x, SLIDER_TRACK_H), BUTTON_BG);
+                ctx.push_quad(WRect::new(x, cy - SLIDER_TRACK_H / 2.0, vx - x, SLIDER_TRACK_H), primary_fill());
             }
             ctx.push_quad(
                 WRect::new(vx - SLIDER_KNOB / 2.0, cy - SLIDER_KNOB / 2.0, SLIDER_KNOB, SLIDER_KNOB),
-                LABEL_FG,
+                text_fg(),
             );
             // None 不登记（无动作面——HitEntry::Slider 文档同口径）。
             if on_change.is_some() {
@@ -1704,8 +1708,8 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             let slot = ctx.select_slots;
             ctx.select_slots += 1;
             let open = ctx.select_open == Some(slot);
-            ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(INPUT_BG));
-            ctx.push_border(WRect::new(x, y, w, h), style.border.unwrap_or(INPUT_BORDER));
+            ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(input_bg()));
+            ctx.push_border(WRect::new(x, y, w, h), style.border.unwrap_or(input_border()));
             let size = style.font_size.unwrap_or(14.0);
             let line_h = size * LINE_H_FACTOR;
             if let Some(label) = selected_index.and_then(|i| options.get(i)) {
@@ -1714,7 +1718,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                     y: y + (h - line_h) / 2.0,
                     size,
                     line_height: line_h,
-                    color: style.fg.unwrap_or(TEXT_FG),
+                    color: style.fg.unwrap_or(text_fg()),
                     text: label.clone(),
                 });
             }
@@ -1723,7 +1727,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 y: y + (h - line_h) / 2.0,
                 size,
                 line_height: line_h,
-                color: PLACEHOLDER_FG,
+                color: placeholder_fg(),
                 text: '\u{25be}'.to_string(),
             });
             if !open {
@@ -1751,7 +1755,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             let w = style.fixed_w().unwrap_or(avail_w.min(96.0)).min(avail_w.max(0.0));
             let h = style.fixed_h().unwrap_or(w);
             if src.is_empty() {
-                ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(IMAGE_PLACEHOLDER));
+                ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(image_placeholder()));
             } else {
                 ctx.ops.push(DrawOp::Image {
                     rect: WRect::new(x, y, w, h),
@@ -1833,9 +1837,9 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             let frac = progress.clamp(0.0, 1.0);
             let w = style.fixed_w().unwrap_or(avail_w).min(avail_w.max(0.0));
             let h = style.fixed_h().unwrap_or(8.0);
-            ctx.push_quad(WRect::new(x, y, w, h), PROGRESS_TRACK);
+            ctx.push_quad(WRect::new(x, y, w, h), progress_track());
             if frac > 0.0 {
-                ctx.push_quad(WRect::new(x, y, w * frac, h), style.bg.unwrap_or(BUTTON_BG));
+                ctx.push_quad(WRect::new(x, y, w * frac, h), style.bg.unwrap_or(primary_fill()));
             }
             Laid { size: (w, h) }
         }
@@ -2117,18 +2121,18 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                         TabsVariant::Default => {
                             ctx.push_quad(
                                 rect,
-                                if active { style.bg.unwrap_or(BUTTON_BG) } else { INPUT_BG },
+                                if active { style.bg.unwrap_or(primary_fill()) } else { input_bg() },
                             );
                             if let Some(border) = style.border {
                                 ctx.push_border(rect, border);
                             }
                         }
                         TabsVariant::Enclosed => {
-                            ctx.push_quad(rect, INPUT_BG);
+                            ctx.push_quad(rect, input_bg());
                             if active {
                                 ctx.push_quad(
                                     WRect::new(tx, tray_y + tab_h - 2.0, tab_w, 2.0),
-                                    style.bg.unwrap_or(BUTTON_BG),
+                                    style.bg.unwrap_or(primary_fill()),
                                 );
                             }
                         }
@@ -2140,9 +2144,9 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                         size: font,
                         line_height: line_h,
                         color: if active {
-                            style.fg.unwrap_or(LABEL_FG)
+                            style.fg.unwrap_or(text_fg())
                         } else {
-                            PLACEHOLDER_FG
+                            placeholder_fg()
                         },
                         text: label.clone(),
                     });
@@ -2260,13 +2264,13 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             ctx.uncovered.push(kind.to_string());
             let w = avail_w.min(160.0).max(40.0);
             let h = 24.0;
-            ctx.push_quad(WRect::new(x, y, w, h), INPUT_BG);
+            ctx.push_quad(WRect::new(x, y, w, h), input_bg());
             ctx.ops.push(DrawOp::Text {
                 x: x + 6.0,
                 y: y + 5.0,
                 size: 12.0,
                 line_height: 16.0,
-                color: PLACEHOLDER_FG,
+                color: placeholder_fg(),
                 text: format!("not-rendered: {kind}"),
             });
             Laid { size: (w, h) }
@@ -2444,10 +2448,10 @@ fn layout_view_input<M: Clone + std::fmt::Debug>(
     })
     .min(avail_w.max(0.0));
     let h = h_override.unwrap_or(INPUT_H);
-    ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(INPUT_BG));
+    ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(input_bg()));
     let slot = ctx.input_slots;
     let focused = ctx.focused_input == Some(slot);
-    let border = if focused { FOCUS_BORDER } else { INPUT_BORDER };
+    let border = if focused { primary_fill() } else { input_border() };
     ctx.push_border(WRect::new(x, y, w, h), style.border.unwrap_or(border));
     ctx.input_slots += 1;
     // 显示面（D2）：聚焦框显 buffer（编辑面——解析失败时组件状态不变，
@@ -2458,11 +2462,11 @@ fn layout_view_input<M: Clone + std::fmt::Debug>(
     let preedit_tail =
         if focused { ctx.ime_preedit.clone().unwrap_or_default() } else { String::new() };
     let (text, color) = if shown.is_empty() && preedit_tail.is_empty() {
-        (placeholder.to_string(), PLACEHOLDER_FG)
+        (placeholder.to_string(), placeholder_fg())
     } else if multiline && !preedit_tail.is_empty() {
-        (format!("{shown}{preedit_tail}"), style.fg.unwrap_or(TEXT_FG))
+        (format!("{shown}{preedit_tail}"), style.fg.unwrap_or(text_fg()))
     } else {
-        (shown.clone(), style.fg.unwrap_or(TEXT_FG))
+        (shown.clone(), style.fg.unwrap_or(text_fg()))
     };
     let size = style.font_size.unwrap_or(14.0);
     let line_h = size * LINE_H_FACTOR;
@@ -2499,7 +2503,7 @@ fn layout_view_input<M: Clone + std::fmt::Debug>(
                 y: y + (h - line_h) / 2.0,
                 size,
                 line_height: line_h,
-                color: PLACEHOLDER_FG,
+                color: placeholder_fg(),
                 text: tail,
             });
         }
@@ -2539,13 +2543,13 @@ fn layout_view_toggle<M: Clone + std::fmt::Debug>(
     };
     let w = style.fixed_w().unwrap_or(box_w).min(avail_w.max(0.0));
     let h = style.fixed_h().unwrap_or(w);
-    ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(INPUT_BG));
-    ctx.push_border(WRect::new(x, y, w, h), style.border.unwrap_or(INPUT_BORDER));
+    ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(input_bg()));
+    ctx.push_border(WRect::new(x, y, w, h), style.border.unwrap_or(input_border()));
     if checked {
         let inset = (w.min(h) * inset_factor).clamp(1.5, inset_clamp);
         ctx.push_quad(
             WRect::new(x + inset, y + inset, w - inset * 2.0, h - inset * 2.0),
-            style.fg.unwrap_or(BUTTON_BG),
+            style.fg.unwrap_or(primary_fill()),
         );
     }
     let mut outer_w = w;
@@ -2559,7 +2563,7 @@ fn layout_view_toggle<M: Clone + std::fmt::Debug>(
             y: y + (h - line_h) / 2.0,
             size,
             line_height: line_h,
-            color: style.fg.unwrap_or(TEXT_FG),
+            color: style.fg.unwrap_or(text_fg()),
             text: label.to_string(),
         });
         outer_w = w + CHECK_LABEL_GAP + label_w;
@@ -2636,7 +2640,7 @@ fn apply_style_class(class: &StyleClass, s: &mut NodeStyle) {
         StyleClass::GradientFrom(c) => s.bg = s.bg.or(resolve_typed_color(c)),
         StyleClass::TextColor(c) => s.fg = resolve_typed_color(c).or(s.fg),
         StyleClass::Border | StyleClass::Border0 | StyleClass::BorderWidth(_) => {
-            s.border = s.border.or(Some(super::client_runtime::INPUT_BORDER));
+            s.border = s.border.or(Some(input_border()));
         }
         StyleClass::BorderColor(c) => s.border = resolve_typed_color(c).or(s.border),
         StyleClass::TextXs => s.font_size = Some(12.0),
@@ -3107,7 +3111,7 @@ mod tests {
     fn golden_counter_frame_shape() {
         let mut p = counter();
         let frame = p.render_frame();
-        assert_eq!(frame.clear, Some(BG));
+        assert_eq!(frame.clear, Some(bg()));
         // col(8) { text, button } → [Text(count: 0), Quad(按钮底), Text(+)]。
         assert_eq!(texts_of(&frame), vec!["count: 0", "+"]);
         assert!(
@@ -3838,8 +3842,6 @@ mod tests {
 
     // —— PLAN-025 T-02 form 族单测（golden + 聚焦编辑闭环 + toggle）——
 
-    const FOC: Rgba8 = Rgba8::new(59, 130, 246, 255);
-
     /// 双 input 换算组件（a2r 生成物最小同构——on() 读 INPUT_TEXT 写绑定
     /// 字段 + 内联换算；003-converter 同构）。
     #[derive(Debug)]
@@ -3908,7 +3910,7 @@ mod tests {
         // preedit 独立 op（差分色 = PLACEHOLDER_FG 近似下划线）。
         let preedit_op = frame.ops.iter().any(|op| {
             matches!(op, DrawOp::Text { color, text, .. }
-                if *color == PLACEHOLDER_FG && text.contains("中文"))
+                if *color == placeholder_fg() && text.contains("中文"))
         });
         assert!(preedit_op, "preedit 尾拼差分色 op 在场");
         // ② ImeCancelled：组合取消 → preedit 消解（帧面回退）。
@@ -4003,7 +4005,7 @@ mod tests {
             DrawOp::Text { color, text, .. } if text == "your name" => Some(*color),
             _ => None,
         });
-        assert_eq!(ph_color, Some(PLACEHOLDER_FG), "placeholder 灰");
+        assert_eq!(ph_color, Some(placeholder_fg()), "placeholder 灰");
         // 聚焦 → 描边变蓝（FOCUS_BORDER 顶边 quad）。
         let mut p = proj_center_off(OneInput, 480.0, 320.0);
         let _ = p.render_frame(); // 首帧建命中表（点击寻址前提）。
@@ -4015,8 +4017,10 @@ mod tests {
                 .any(|r| r.x == 10.0 && r.y == 10.0 && r.w == 320.0 && r.h == 1.0),
             "顶边 1px 边框在册"
         );
+        // PLAN-679：聚焦描边 = Primary 槽（accent 驱动，原硬编码 blue-500）。
+        let foc = primary_fill();
         let has_focus_border = frame.ops.iter().any(|op| match op {
-            DrawOp::Quad { color: c, .. } => *c == FOC,
+            DrawOp::Quad { color: c, .. } => *c == foc,
             _ => false,
         });
         assert!(has_focus_border, "聚焦描边 blue-500");
@@ -4223,7 +4227,7 @@ mod tests {
             DrawOp::Quad { rect, color } if *rect == WRect::new(10.0, 42.0, 320.0, 32.0) => Some(*color),
             _ => None,
         });
-        assert_eq!(hl, Some(BUTTON_BG), "当前项高亮");
+        assert_eq!(hl, Some(accent_fill()), "当前项高亮");
     }
 
     #[test]
@@ -5315,7 +5319,7 @@ mod tests {
             .ops
             .iter()
             .filter_map(|op| match op {
-                DrawOp::Quad { rect, color } if *color == POP_BG => Some(*rect),
+                DrawOp::Quad { rect, color } if *color == pop_bg() => Some(*rect),
                 _ => None,
             })
             .collect();
@@ -5346,7 +5350,7 @@ mod tests {
         // 应用态自关 → 闭帧行零面板。
         let closed = p.render_frame();
         assert!(
-            !closed.ops.iter().any(|op| matches!(op, DrawOp::Quad { color, .. } if *color == POP_BG)),
+            !closed.ops.iter().any(|op| matches!(op, DrawOp::Quad { color, .. } if *color == pop_bg())),
             "闭态零面板 ops（open 随帧）"
         );
         assert!(!p.hits.iter().any(|e| matches!(e, HitEntry::PopoverDismiss { .. })));
@@ -5397,7 +5401,7 @@ mod tests {
         let panel_idx = frame
             .ops
             .iter()
-            .position(|op| matches!(op, DrawOp::Quad { color, .. } if *color == POP_BG))
+            .position(|op| matches!(op, DrawOp::Quad { color, .. } if *color == pop_bg()))
             .expect("面板底");
         assert!(scrim_idx < panel_idx, "scrim 先于面板（paint order）");
     }

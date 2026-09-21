@@ -27,34 +27,77 @@ use crate::ui::dynamic::DynamicComponent;
 // AppProjector：AuraNode → DrawList 投影器 v1.3（Plan 500 步骤 7 爬坡）
 // ---------------------------------------------------------------------------
 
-/// 背景 clears 色（深灰，与 demo/直挂同一暗色基调）。
-pub(crate) const BG: Rgba8 = Rgba8::new(24, 24, 28, 255);
-/// 按钮底色（未声明样式时的缺省）。
-pub(crate) const BUTTON_BG: Rgba8 = Rgba8::new(48, 96, 200, 255);
-/// 常规文本色（未声明样式时的缺省）。
-pub(crate) const TEXT_FG: Rgba8 = Rgba8::new(220, 220, 220, 255);
-/// 按钮/文本共用的白色前景。
-pub(crate) const LABEL_FG: Rgba8 = Rgba8::new(255, 255, 255, 255);
-/// 输入框边框色。
-pub(crate) const INPUT_BORDER: Rgba8 = Rgba8::new(90, 90, 100, 255);
-/// placeholder 前景色。
-pub(crate) const PLACEHOLDER_FG: Rgba8 = Rgba8::new(130, 130, 140, 255);
-/// 输入框底色（未声明样式时）。
-pub(crate) const INPUT_BG: Rgba8 = Rgba8::new(30, 30, 36, 255);
-/// image 占位底色（PLAN-028 起转**降级兜底语义**：src 在场即发 Image op
-/// 真图，本占位 = src 缺/空投影容差 + 宿主侧未解析降级同色；PLAN-026
-/// T-03 pub(crate) 化——native_projector display 臂复用（同值镜像禁再立））。
-pub(crate) const IMAGE_PLACEHOLDER: Rgba8 = Rgba8::new(60, 60, 70, 255);
+// PLAN-679：缺省调色板 = theme 语义 token（Design 22 §3/PLAN-571 单源）。
+// 历史：本块曾为硬编码暗色 RGB 常量（"深灰暗色基调"）——绕过 theme 体系,
+// 与 VM iced 轨（resolve_semantic_rgb + 变体 preset 注入）同源 View 渲染出
+// 两套观感（RQHost"iced 原生控件感"的根因）。现全部回退走
+// `theme::resolve_semantic_rgb`（stella registry 单源，dark/accent 感知）,
+// 与 VM 轨同构；语义映射逐点对表 Design 22 §3 行值。
+//
+// 形态注记：const → fn——theme 值是运行时态（dark_mode thread-local +
+// accent 名），编译期常量承载不了。DISABLED_ALPHA 保留 const（行为系数
+// 非色值）。
 
-// Plan 507 T3 —— Tier1 display 族常量（未声明样式时的缺省观感）。
-/// badge 药丸底（accent 基调，与按钮同族）。
-const BADGE_BG: Rgba8 = Rgba8::new(48, 96, 200, 255);
-/// avatar 占位底（圆角直角化——保真边界同 image）。
-const AVATAR_BG: Rgba8 = Rgba8::new(70, 70, 82, 255);
-/// progress 轨道底。PLAN-026 T-03 pub(crate) 化（native 臂复用）。
-pub(crate) const PROGRESS_TRACK: Rgba8 = Rgba8::new(45, 45, 52, 255);
-/// divider/分隔线。
-const DIVIDER_BG: Rgba8 = Rgba8::new(80, 80, 90, 255);
+use crate::ui::style::theme as style_theme;
+use crate::ui::style::Color;
+
+/// 语义 token → Rgba8（resolve 失败兜底黑——registry 内建表由
+/// themes_core_complete 钉死，实战不可达）。
+pub(crate) fn semantic_rgb(c: Color) -> Rgba8 {
+    let (r, g, b) = style_theme::resolve_semantic_rgb(&c)
+        .unwrap_or((0, 0, 0));
+    Rgba8::new(r, g, b, 255)
+}
+
+/// 主题 Border 槽（resolve_border_rgb 直达——divider/边框回退同源）。
+pub(crate) fn border_slot() -> Rgba8 {
+    let (r, g, b) = style_theme::resolve_border_rgb();
+    Rgba8::new(r, g, b, 255)
+}
+
+/// 背景 clears 色（= VM iced 窗底 `Color::Background`）。
+pub(crate) fn bg() -> Rgba8 {
+    semantic_rgb(Color::Background)
+}
+/// 按钮底色回退（无类时 = Design 22 §3 default 变体 `bg-muted`）。
+pub(crate) fn button_bg() -> Rgba8 {
+    semantic_rgb(Color::Muted)
+}
+/// 常规文本色（= `Color::OnBackground`，即 shadcn foreground）。
+pub(crate) fn text_fg() -> Rgba8 {
+    semantic_rgb(Color::OnBackground)
+}
+/// 交互填充色（slider 已填轨/progress 已填/tabs 选中/badge——iced 语义
+/// = Primary accent 驱动）。
+pub(crate) fn primary_fill() -> Rgba8 {
+    semantic_rgb(Color::Primary)
+}
+/// 交互高亮面（= `Color::Accent`，PLAN-601 shadcn accent 槽——select
+/// 选中项等）。
+pub(crate) fn accent_fill() -> Rgba8 {
+    semantic_rgb(Color::Accent)
+}
+/// 输入框边框色（= `resolve_border_rgb()`，§3 border-input 行）。
+pub(crate) fn input_border() -> Rgba8 {
+    border_slot()
+}
+/// placeholder 前景（= `Color::OnSurface`，shadcn muted-foreground 槽）。
+pub(crate) fn placeholder_fg() -> Rgba8 {
+    semantic_rgb(Color::OnSurface)
+}
+/// 输入框底色（§3 input 行 `bg-background`）。
+pub(crate) fn input_bg() -> Rgba8 {
+    semantic_rgb(Color::Background)
+}
+/// image 占位底色（PLAN-028 起转**降级兜底语义**：src 在场即发 Image op
+/// 真图，本占位 = src 缺/空投影容差 + 宿主侧未解析降级同色）。
+pub(crate) fn image_placeholder() -> Rgba8 {
+    semantic_rgb(Color::Muted)
+}
+/// progress 轨道底（muted 槽）。
+pub(crate) fn progress_track() -> Rgba8 {
+    semantic_rgb(Color::Muted)
+}
 /// 禁用态前景（前景/底色统一乘暗系数的近似——命令差分见 form 族）。
 pub(crate) const DISABLED_ALPHA: u8 = 110;
 
@@ -874,7 +917,7 @@ pub(crate) mod tests {
             crate::ui::desktop_protocol::native_projector::RqProjector::new(component, 480.0, 320.0);
         let frame = p.render_frame();
 
-        assert_eq!(frame.clear, Some(BG));
+        assert_eq!(frame.clear, Some(bg()));
         // native 重录：按钮 = 底盒 Quad + 四边描边 Quad（5 面）——AppProjector
         // 块流的单 Quad 形退役；按钮盒 = 最大面积 Quad。
         let quads: Vec<&WRect> = frame

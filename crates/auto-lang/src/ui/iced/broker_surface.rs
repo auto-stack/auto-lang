@@ -503,7 +503,7 @@ fn paint_ops(frame: &mut iced::widget::canvas::Frame, ops: &[DrawOp]) {
                         at,
                         size,
                         to_color(
-                            crate::ui::desktop_protocol::client_runtime::IMAGE_PLACEHOLDER,
+                            crate::ui::desktop_protocol::client_runtime::image_placeholder(),
                         ),
                     ),
                 }
