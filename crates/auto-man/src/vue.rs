@@ -392,7 +392,8 @@ impl VueDependencyUsage {
         if self.code_editor {
             pkgs.extend([
                 "vue-codemirror", "codemirror", "@codemirror/view", "@codemirror/state",
-                "@codemirror/language", "@codemirror/search", "@codemirror/lang-rust",
+                "@codemirror/language", "@codemirror/search", "@codemirror/commands",
+                "@codemirror/lang-rust",
                 "@codemirror/lang-python", "@codemirror/lang-javascript",
                 "@codemirror/lang-markdown", "@codemirror/lang-json",
             ]);
@@ -610,7 +611,6 @@ export function codeEditorFoldToggle(key: string, line: number): void {
     let isFolded = false
     foldedRanges(v.state).between(range.from, range.to, () => {
       isFolded = true
-      return false
     })
     v.dispatch(isFolded ? { effects: unfoldEffect.of(range) } : { effects: foldEffect.of(range) })
   }, undefined)
@@ -620,9 +620,8 @@ export function codeEditorFoldHiddenCount(key: string): number {
     key,
     (v) => {
       let hidden = 0
-      foldedRanges(v.state).between(0, v.state.doc.length, (r) => {
-        hidden += v.state.doc.lineAt(r.to).number - v.state.doc.lineAt(r.from).number
-        return false
+      foldedRanges(v.state).between(0, v.state.doc.length, (f2, t2) => {
+        hidden += v.state.doc.lineAt(t2).number - v.state.doc.lineAt(f2).number
       })
       return hidden
     },
@@ -4407,8 +4406,16 @@ export default router
     /// code_editor widget get no shell (and its codemirror deps), and a
     /// previously scaffolded untouched shell is pruned.
     pub fn ensure_code_editor_component(&self) -> AutoResult<()> {
-        sync_code_editor_shell(&self.output_dir, &self.dependency_usage())
-            .map_err(|e| e.into())
+        // PLAN-677 T-05: 桥文件与壳同步发射（此为 auto build -r vue
+        // 的实际入口路径；write_project_files 旁的调用位同样已挂）。
+        // 错误映射显式构造 Box<dyn Error>（into() 在多 crate 的
+        // Box From 实现下推断不出源型）。
+        let usage = self.dependency_usage();
+        sync_code_editor_shell(&self.output_dir, &usage)
+            .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
+        ensure_editor_bridge(&self.output_dir, &usage)
+            .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
+        Ok(())
     }
 
     pub fn ensure_router_file(&self) -> AutoResult<()> {
@@ -4565,6 +4572,10 @@ export default router
         fs::write(&main_ts_path, &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
         println!("{}", "  ✓ Regenerated main.ts".bright_green());
+        // PLAN-677 T-05: 桥文件随源文件再生成同步（gen-only 管线的
+        // 实际入口——新建工程走 project.generate，已有工程走本函数）。
+        ensure_editor_bridge(&self.output_dir, &self.dependency_usage())
+            .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
 
         // P660-D1（PLAN-080 F-R2 收口）：main.ts 的 import.meta.env 需 vite/client
         // 环境类型，否则 vue-tsc TS2339——write-if-missing src/vite-env.d.ts
