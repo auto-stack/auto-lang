@@ -3259,7 +3259,24 @@ impl RustTrans {
                                 if self.local_var_types.get(n)
                                     .map(|t| matches!(t, Type::U64 | Type::I64 | Type::USize))
                                     .unwrap_or(false));
+                        // PLAN-026 T-03 配套: int 语境赋值 + List<int> 索引
+                        // rhs —— as i32 窄化(lhs 为 int 局部或字段;字段情形
+                        // 由 rhs 语义保证为 int 字段)。
+                        let narrow_asn = self.expr_has_int_list_index(rhs)
+                            && match lhs.as_ref() {
+                                Expr::Ident(n) => matches!(
+                                    self.local_var_types.get(n.as_str()),
+                                    Some(Type::Int)),
+                                Expr::Dot(_, _) => true,
+                                _ => false,
+                            };
+                        if narrow_asn {
+                            write!(out, "(")?;
+                        }
                         self.expr(rhs, out)?;
+                        if narrow_asn {
+                            write!(out, ") as i32")?;
+                        }
                         self.len_i32_cast_suppressed = saved_suppress;
                         // When assigning &str literal to a variable, add .to_string()
                         // In Auto, all str variables are String in Rust, so this is always correct
@@ -3347,16 +3364,25 @@ impl RustTrans {
                         }
                         // Plan 433 A1: int vs char-literal mix → cast char side to i64
                         let (char_l, char_r) = self.bina_char_cast(lhs, rhs);
-                        if char_l { write!(out, "(")?; }
+                        // PLAN-026 T-03 配套: 比较一侧为 List<int> 索引、
+                        // 另一侧为 i32 语境 —— 索引侧 as i32(两侧同为索引
+                        // 时不窄化,i64 域自洽)。
+                        let li = self.expr_has_int_list_index(lhs);
+                        let ri = self.expr_has_int_list_index(rhs);
+                        let narrow_l = li && !ri;
+                        let narrow_r = ri && !li;
+                        if char_l || narrow_l { write!(out, "(")?; }
                         self.expr(lhs, out)?;
                         if char_l { write!(out, ") as i64")?; }
+                        else if narrow_l { write!(out, ") as i32")?; }
                         if let Some(c) = lhs_cast {
                             write!(out, "{}", c)?;
                         }
                         write!(out, " {} ", op_str)?;
-                        if char_r { write!(out, "(")?; }
+                        if char_r || narrow_r { write!(out, "(")?; }
                         self.expr(rhs, out)?;
                         if char_r { write!(out, ") as i64")?; }
+                        else if narrow_r { write!(out, ") as i32")?; }
                         if let Some(c) = rhs_cast {
                             write!(out, "{}", c)?;
                         }
@@ -12843,6 +12869,28 @@ impl RustTrans {
         })
     }
 
+    /// PLAN-026 T-03 配套: List<int> 变量判定(db 层 List<int> 惯例发射
+    /// Vec<i64>,元素 i64;进入 i32 语境需 as i32 窄化)。
+    fn expr_is_int_list_var(&self, e: &Expr) -> bool {
+        if let Expr::Ident(n) = e {
+            matches!(self.local_var_types.get(n.as_str()),
+                Some(Type::List(inner)) if matches!(**inner, Type::Int))
+        } else {
+            false
+        }
+    }
+
+    /// 表达式树含 List<int> 变量的索引消费(Bina 递归)。
+    fn expr_has_int_list_index(&self, e: &Expr) -> bool {
+        match e {
+            Expr::Index(base, _) => self.expr_is_int_list_var(base),
+            Expr::Bina(l, _, r) => {
+                self.expr_has_int_list_index(l) || self.expr_has_int_list_index(r)
+            }
+            _ => false,
+        }
+    }
+
     fn expr_is_len_call(expr: &Expr) -> bool {
         if let Expr::Call(call) = expr {
             return match call.name.as_ref() {
@@ -13444,7 +13492,18 @@ impl RustTrans {
                 store.ty,
                 Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit
             ) && matches!(store.expr, Expr::If(_));
+            // PLAN-026 T-03 配套: int let 绑定 + List<int> 索引 rhs ——
+            // db 层元素 i64,窄化 as i32(否则 let x = ns[i] 推断 i64,
+            // 与 i32 语境(模型字段/字面比较)连环 E0308/E0277)。
+            let narrow_i32 = matches!(store.ty, Type::Int)
+                && self.expr_has_int_list_index(&store.expr);
+            if narrow_i32 {
+                write!(out, "(")?;
+            }
             self.expr(&store.expr, out)?;
+            if narrow_i32 {
+                write!(out, ") as i32")?;
+            }
             self.let_init_str_coercion = saved_let_coerce;
             self.len_i32_cast_suppressed = saved_suppress;
             // Auto-clone: when assigning from a non-Copy struct field (e.g., let path = node.name)

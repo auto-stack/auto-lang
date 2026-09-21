@@ -1669,6 +1669,11 @@ fn generate_api_rs(
                     let ret = endpoint.return_type.trim();
                     let (ret_clause, call_suffix) = if ret == "void" || ret.is_empty() {
                         (" -> axum::http::StatusCode".to_string(), String::new())
+                    } else if ret.contains("[]int") || ret.contains("List<int>") {
+                        // PLAN-026 T-02: []int 数值面端点(Vec<i64>;先于
+                        // 通用 [] 分支——其模板恒 Vec<String>,mux_tick_nums
+                        // 实证 E0308)。
+                        (" -> JsonResponse<Vec<i64>>".to_string(), String::new())
                     } else if ret.contains("[]") || ret.contains("List") {
                         (" -> JsonResponse<Vec<String>>".to_string(), String::new())
                     } else if ret.contains("bool") {

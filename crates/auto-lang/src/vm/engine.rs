@@ -1637,6 +1637,16 @@ impl AutoVM {
     /// 抹平新旧编码(存量持久化字段兼容)。
     /// Plan 539 W2 (T19): numeric tag test for mixed-type comparisons
     /// (f64/f32/i32 — bools excluded, they have their own bit-compare).
+    /// PLAN-026 T-03 配套: 宽整数值归一(i32/i64 tag → i64 按值;算术
+    /// 兜底臂与序比较宽整臂共用)。
+    fn nv_int_as_i64(nv: auto_val::NanoValue) -> i64 {
+        if auto_val::is_i64(nv) {
+            auto_val::decode_i64(nv)
+        } else {
+            auto_val::decode_i32(nv) as i64
+        }
+    }
+
     fn nv_is_numeric(nv: auto_val::NanoValue) -> bool {
         // PLAN-591 T9:补 is_i64——dep 方法返回的宽整型走 push_i64_vm
         // (TAG_I64),此前 EQ/数值谓词恒 false(uuid 勘测 get_version_num
@@ -3401,6 +3411,14 @@ impl AutoVM {
                             if auto_val::is_f64(nv) {
                                 let val = auto_val::decode_f64(task.ram.pop_nv());
                                 format!("{}", val)
+                            } else if auto_val::is_i64(nv) {
+                                // PLAN-026 T-03 配套: i64 插值串化(tag 8
+                                // 此前缺分支,兜底 pop_tagged 的 Int(bits)
+                                // ≥4000000 启发式把 i64 位型当 heap id 走
+                                // 对象格式化 = 垃圾串/越界;快照消费模型
+                                // 字段(px 几何)全 i64,受害面 = 布局串)。
+                                let val = auto_val::decode_i64(task.ram.pop_nv());
+                                format!("{}", val)
                             } else if auto_val::is_f32(nv) {
                                 let val = auto_val::decode_f32(task.ram.pop_nv());
                                 format!("{}", val)
@@ -3834,8 +3852,16 @@ impl AutoVM {
                     task.last_result_type = ResultType::Uint;
                 }
                 OpCode::TYPE_CAST_I64 => {
-                    let v = task.ram.pop_i32();
-                    task.ram.push_i32(v);
+                    // PLAN-026 T-03 配套: 宽整入参 sign-extend → i64 TAG 单槽。
+                    // 原为 no-op(push_i32 回填)——i64 var 持 i32 tag,与 I64
+                    // 语义链(GET_ELEM 下标/串化/数值比较)全不接;且入参
+                    // 可能已是 TAG_I64(loop 内赋值位 contains_u64 判定随
+                    // 作用域波动,此时 pop_i32 位读 = 0x8000_000x 垃圾,
+                    // i64_probe24 "2147483649u" 实证)。nv_int_as_i64 按 tag
+                    // 归一,双形态幂等。
+                    let nv = task.ram.pop_nv();
+                    let v = Self::nv_int_as_i64(nv).clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+                    task.ram.push_i64(v as i64);
                     task.last_result_type = ResultType::Int;
                 }
                 OpCode::TYPE_CAST_U64 => {
@@ -5239,7 +5265,17 @@ impl AutoVM {
                     // 的 key 是 string-tagged；i32 路径行为不变（位模式解码同旧
                     // pop_i32）。
                     let index_nv = task.ram.pop_nv();
-                    let index_i32 = auto_val::decode_i32(index_nv);
+                    // PLAN-026 T-03 配套: i64 索引下标按 i64 数值解码
+                    // (tag 8)。此前恒 decode_i32 位模式解码——i64 值的位模
+                    // 式当 i32 = 垃圾下标(evidence/026/probe i64_probe2
+                    // "c index=-3" 负索引泄漏实证;快照消费循环的 i64 游标
+                    // 全体受害)。超 i32 域夹取到负哨兵走越界路径。
+                    let index_i32 = if auto_val::is_i64(index_nv) {
+                        auto_val::decode_i64(index_nv).clamp(i32::MIN as i64, i32::MAX as i64)
+                            as i32
+                    } else {
+                        auto_val::decode_i32(index_nv)
+                    };
                     // Pop array_id/list_id or str_id (tagged)
                     let obj_or_str_nv = task.ram.pop_nv();
 
@@ -6311,9 +6347,19 @@ impl AutoVM {
                         let new_idx = self.add_string(combined);
                         self.rc_push_str_idx(task, new_idx as usize);
                     } else {
-                        let a = auto_val::decode_i32(a_bits);
-                        let b = auto_val::decode_i32(b_bits);
-                        task.ram.push_i32(a.wrapping_add(b));
+                        // PLAN-026 T-03 配套: i64 参与时按 i64 值算并
+                        // push_i64(纯 i32 对保持 i32 通路,既有程序零变化);
+                        // 此前 i64 位模式被 decode_i32 = 垃圾(i64_probe2
+                        // "mix sum=63" 实证)。
+                        if auto_val::is_i64(a_bits) || auto_val::is_i64(b_bits) {
+                            let a = Self::nv_int_as_i64(a_bits);
+                            let b = Self::nv_int_as_i64(b_bits);
+                            task.ram.push_i64(a.wrapping_add(b));
+                        } else {
+                            let a = auto_val::decode_i32(a_bits);
+                            let b = auto_val::decode_i32(b_bits);
+                            task.ram.push_i32(a.wrapping_add(b));
+                        }
                     }
                     }
                 }
@@ -6343,9 +6389,19 @@ impl AutoVM {
                         let b = nanbox_single_to_f32(b_bits);
                         task.ram.push_f32(a - b);
                     } else {
-                        let a = auto_val::decode_i32(a_bits);
-                        let b = auto_val::decode_i32(b_bits);
-                        task.ram.push_i32(a.wrapping_sub(b));
+                        // PLAN-026 T-03 配套: i64 参与时按 i64 值算并
+                        // push_i64(纯 i32 对保持 i32 通路,既有程序零变化);
+                        // 此前 i64 位模式被 decode_i32 = 垃圾(i64_probe2
+                        // "mix sum=63" 实证)。
+                        if auto_val::is_i64(a_bits) || auto_val::is_i64(b_bits) {
+                            let a = Self::nv_int_as_i64(a_bits);
+                            let b = Self::nv_int_as_i64(b_bits);
+                            task.ram.push_i64(a.wrapping_sub(b));
+                        } else {
+                            let a = auto_val::decode_i32(a_bits);
+                            let b = auto_val::decode_i32(b_bits);
+                            task.ram.push_i32(a.wrapping_sub(b));
+                        }
                     }
                     }
                 }
@@ -6375,9 +6431,19 @@ impl AutoVM {
                         let b = nanbox_single_to_f32(b_bits);
                         task.ram.push_f32(a * b);
                     } else {
-                        let a = auto_val::decode_i32(a_bits);
-                        let b = auto_val::decode_i32(b_bits);
-                        task.ram.push_i32(a.wrapping_mul(b));
+                        // PLAN-026 T-03 配套: i64 参与时按 i64 值算并
+                        // push_i64(纯 i32 对保持 i32 通路,既有程序零变化);
+                        // 此前 i64 位模式被 decode_i32 = 垃圾(i64_probe2
+                        // "mix sum=63" 实证)。
+                        if auto_val::is_i64(a_bits) || auto_val::is_i64(b_bits) {
+                            let a = Self::nv_int_as_i64(a_bits);
+                            let b = Self::nv_int_as_i64(b_bits);
+                            task.ram.push_i64(a.wrapping_mul(b));
+                        } else {
+                            let a = auto_val::decode_i32(a_bits);
+                            let b = auto_val::decode_i32(b_bits);
+                            task.ram.push_i32(a.wrapping_mul(b));
+                        }
                     }
                     }
                 }
@@ -6522,12 +6588,20 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     null_guard_peek_pair(task, "%")?;
-                    let b = task.ram.pop_i32();
-                    let a = task.ram.pop_i32();
+                    // PLAN-026 T-03 配套: 宽整取模(i32/i64 tag 归一;含
+                    // i64 时 push_i64,纯 i32 对保持 i32 通路)。
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    let a = Self::nv_int_as_i64(a_nv);
+                    let b = Self::nv_int_as_i64(b_nv);
                     if b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
-                    task.ram.push_i32(a % b);
+                    if auto_val::is_i64(a_nv) || auto_val::is_i64(b_nv) {
+                        task.ram.push_i64(a % b);
+                    } else {
+                        task.ram.push_i32((a % b) as i32);
+                    }
                 }
                 OpCode::MOD_F => {
                     null_guard_peek_pair(task, "%")?;
@@ -6918,6 +6992,11 @@ impl AutoVM {
                             Some(format!("{}", auto_val::decode_f64(receiver_nv)))
                         } else if auto_val::is_f32(receiver_nv) {
                             Some(format!("{}", auto_val::decode_f32(receiver_nv)))
+                        } else if auto_val::is_i64(receiver_nv) {
+                            // PLAN-026 T-03 配套: i64 标量串化(tag 8 此前
+                            // 缺分支,接收者落 heap 查找路径 = 垃圾串;
+                            // i64_probe "tab 2"/"sum=63" 实证)。
+                            Some(format!("{}", auto_val::decode_i64(receiver_nv)))
                         } else if auto_val::is_i32(receiver_nv) {
                             let v = auto_val::decode_i32(receiver_nv);
                             if v >= 4_000_000 { None } else { Some(format!("{}", v)) }
@@ -9551,15 +9630,17 @@ self.rc_release(a_nv);
                     } else {
                         // Plan 390 §15 H3b: heap refs are TAG_OBJECT — decode
                         // explicitly (same id value as the old low-32 trick).
+                        // PLAN-026 T-03 配套: 宽整兜底(object ref 旧路
+                        // 保留;i32/i64 tag 归一按值;纯 i32 语义等价)。
                         let a = if auto_val::is_object(a_nv) {
-                            auto_val::decode_object(a_nv) as i32
+                            auto_val::decode_object(a_nv) as i64
                         } else {
-                            auto_val::decode_i32(a_nv)
+                            Self::nv_int_as_i64(a_nv)
                         };
                         let b = if auto_val::is_object(b_nv) {
-                            auto_val::decode_object(b_nv) as i32
+                            auto_val::decode_object(b_nv) as i64
                         } else {
-                            auto_val::decode_i32(b_nv)
+                            Self::nv_int_as_i64(b_nv)
                         };
                         a < b
                     };
@@ -9622,10 +9703,12 @@ self.rc_release(a_nv);
                         // 32 位、f32 取 payload 位型）就此收口。
                         Self::nv_as_f64(a_nv) > Self::nv_as_f64(b_nv)
                     } else {
-                        // Fallback: decode as i32 (covers f64 values that land in GT
-                        // instead of GT_D when type inference misses the double type)
-                        let a = auto_val::decode_i32(a_nv);
-                        let b = auto_val::decode_i32(b_nv);
+                        // Fallback (covers f64 values that land in GT instead
+                        // of GT_D when type inference misses the double type).
+                        // PLAN-026 T-03 配套: 宽整兜底(i32/i64 tag 归一按值;
+                        // 纯 i32 语义等价)。
+                        let a = Self::nv_int_as_i64(a_nv);
+                        let b = Self::nv_int_as_i64(b_nv);
                         a > b
                     };
                     task.ram.push_nv(auto_val::encode_bool(result));
@@ -9658,8 +9741,10 @@ self.rc_release(a_nv);
                         // Plan 576: float×(int|float) 按值比较（同 LT 注记）。
                         Self::nv_as_f64(a_nv) <= Self::nv_as_f64(b_nv)
                     } else {
-                        let a = auto_val::decode_i32(a_nv);
-                        let b = auto_val::decode_i32(b_nv);
+                        // PLAN-026 T-03 配套: 宽整兜底(i32/i64 tag
+                        // 归一按值;纯 i32 语义等价)。
+                        let a = Self::nv_int_as_i64(a_nv);
+                        let b = Self::nv_int_as_i64(b_nv);
                         a <= b
                     };
                     task.ram.push_nv(auto_val::encode_bool(result));
@@ -9692,8 +9777,10 @@ self.rc_release(a_nv);
                         // Plan 576: float×(int|float) 按值比较（同 LT 注记）。
                         Self::nv_as_f64(a_nv) >= Self::nv_as_f64(b_nv)
                     } else {
-                        let a = auto_val::decode_i32(a_nv);
-                        let b = auto_val::decode_i32(b_nv);
+                        // PLAN-026 T-03 配套: 宽整兜底(i32/i64 tag
+                        // 归一按值;纯 i32 语义等价)。
+                        let a = Self::nv_int_as_i64(a_nv);
+                        let b = Self::nv_int_as_i64(b_nv);
                         a >= b
                     };
                     task.ram.push_nv(auto_val::encode_bool(result));

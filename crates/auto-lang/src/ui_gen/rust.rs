@@ -132,6 +132,9 @@ pub struct RustGenerator {
 
     /// Loop variables that iterate over Value-type collections (need ["field"] access)
     value_loop_vars: std::collections::HashSet<String>,
+    /// PLAN-026 T-03 配套: handler 局部 List<int> 变量(db 层惯例发射
+    /// Vec<i64>;元素消费统一窄化 as i32,与 i32 模型字段/字面语境对齐)。
+    handler_int_list_vars: std::cell::RefCell<std::collections::HashSet<String>>,
 
     /// Local variables in handler bodies that hold serde_json::Value results
     /// (from API function calls like `let note = create_note(...)`)
@@ -260,6 +263,7 @@ impl RustGenerator {
             value_prop_names: std::collections::HashSet::new(),
             computed_names: std::collections::HashSet::new(),
             value_loop_vars: std::collections::HashSet::new(),
+            handler_int_list_vars: std::cell::RefCell::new(std::collections::HashSet::new()),
             value_locals: std::collections::HashSet::new(),
             array_locals: std::collections::HashSet::new(),
             local_record_shapes: std::collections::HashMap::new(),
@@ -7803,6 +7807,16 @@ impl RustGenerator {
                             }
                             format!("self.{} = {}", resolved, value)
                         } else {
+                            // PLAN-026 T-03 配套: 登记 handler 局部
+                            // List<int> 变量(索引消费窄化依据;同名再绑定
+                            // 非 int-list 清出防跨声明误伤)。
+                            if matches!(&store.ty, crate::ast::Type::List(inner)
+                                if matches!(**inner, crate::ast::Type::Int))
+                            {
+                                self.handler_int_list_vars.borrow_mut().insert(name.to_string());
+                            } else {
+                                self.handler_int_list_vars.borrow_mut().remove(&name.to_string());
+                            }
                             // Local mutable var in handler context.
                             // PLAN-039 T-14（E-D3 第二轨）：Value 联合局部
                             // 的标量字面量初始式 json! 化——`var card = 999`
@@ -9501,6 +9515,14 @@ impl RustGenerator {
                     // to the whole index, not just the last operand.
                     format!("({}) as usize", index_str)
                 };
+                // PLAN-026 T-03 配套: List<int> 局部变量元素窄化 as i32
+                // (db 层 Vec<i64> 惯例;与 i32 模型/字面语境对齐,值域
+                // 终端尺度,截断无损)。
+                if let crate::ast::Expr::Ident(n) = target.as_ref() {
+                    if self.handler_int_list_vars.borrow().contains(n.as_str()) {
+                        return format!("({}[{}] as i32)", target_str, index_cast);
+                    }
+                }
                 format!("{}[{}]", target_str, index_cast)
             }
             Expr::Unary(op, operand) => {

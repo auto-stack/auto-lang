@@ -2215,7 +2215,12 @@ impl Codegen {
 
                 // Promote i32 to u64 if variable type is u64/i64 but expression is not 64-bit
                 let stored_type = self.var_types.get(&name_str).cloned();
-                if matches!(stored_type, Some(Type::U64 | Type::I64))
+                // PLAN-026 T-03 配套: I64 目标走 TYPE_CAST_I64(sign-extend +
+                // TAG_I64);U64 保持零扩展。此前共用 TYPE_CAST_U64——i64 var
+                // 持 U64 tag,I64 语义链(下标/串化/数值比较)全不接。
+                if matches!(stored_type, Some(Type::I64)) && !self.contains_u64(&store.expr) {
+                    self.emit(OpCode::TYPE_CAST_I64);
+                } else if matches!(stored_type, Some(Type::U64))
                     && !self.contains_u64(&store.expr)
                 {
                     self.emit(OpCode::TYPE_CAST_U64);
@@ -6851,7 +6856,10 @@ impl Codegen {
 
                         // Coerce RHS to match LHS type if needed
                         let asn_stored_type = self.var_types.get(&name_str).cloned();
-                        if matches!(asn_stored_type, Some(Type::U64 | Type::I64))
+                        // PLAN-026 T-03 配套: 同声明位分流(I64 sign-extend)。
+                        if matches!(asn_stored_type, Some(Type::I64)) && !self.contains_u64(rhs.as_ref()) {
+                            self.emit(OpCode::TYPE_CAST_I64);
+                        } else if matches!(asn_stored_type, Some(Type::U64))
                             && !self.contains_u64(rhs.as_ref())
                         {
                             self.emit(OpCode::TYPE_CAST_U64);
