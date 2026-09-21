@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-676
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: gallery-shell-bp
 author: [agent]
 created_at: 2026-09-21
@@ -392,6 +392,19 @@ registry view"语义（SD-01）。
   （F-1）②摘 examples/bps-gallery/{deps,gen} junction 过 wt-guard
   ③SD-01/SD-02 按已定稿文本落库 + F-4 债务候选登记 ④AC-06 CI 首跑
   确证。
+- 2026-09-21 merge 收据（PLAN-676:r1）：**prepared**——规范增量 worktree
+  提交 665493c46（SD-01 contract Q5#5+SD-02 project 行；docs-only 后裔核验：
+  实现/依赖零变更）；**landed**——rebase 当前 master 6a4556751 零冲突，
+  range-diff 7/7 全等（571893947→ca765a07c/cda85a826→e23158c5c/
+  8a03a5c95→b5b5d01a7/ae01fed23→5bab717c8/7720c05fe→bae8b9320/
+  805cf936c→137625e3a/8b7ca6dda→bca5c7694 + docs-only 新增 7d882cf96），
+  `git merge --ff-only` 落地，master tip=**7d882cf96**（delivery commit），
+  落地后冒烟 cargo t bp 47/47；**ledger_refreshed**——e0144d678：
+  specs.json P676-1@reports+P676-2@reviews（回读验证）+ui/plans.md 行 676
+  +INDEX 再生（26 projects）+P676-D1 债登记；**archived**——本提交
+  （git mv+status archived）。**cleaned**——见后续清仓收据。遗留 watch：
+  AC-06 build-bps-gallery.yml GitHub 首跑绿（下次触碰 paths 的 push 确证；
+  lone checkout 缺 auto-down 兄弟位则为与 build-ui-examples 共同既有面）。
 
 ## 10. 待澄清事项
 
