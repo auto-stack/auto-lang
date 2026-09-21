@@ -3289,6 +3289,24 @@
      "status": "published",
      "created": "2026-09-20",
      "last_modified": "2026-09-20"
+    },
+    {
+     "id": "P673-1",
+     "title": "code_editor 缓冲架构契约（rope 单写者版+快照隔离）+统一 delta 事件契约（SD-01）",
+     "file": "docs/specs/auto-lang/ui/overview.md",
+     "related": "['PLAN-673']",
+     "status": "published",
+     "created": "2026-09-22",
+     "last_modified": "2026-09-22"
+    },
+    {
+     "id": "P673-2",
+     "title": "File 内建契约（VM/a2r 双轨）——read_text_range 分块读形状/EOF/错误语义（SD-02）",
+     "file": "docs/specs/auto-lang/runtime/overview.md",
+     "related": "['PLAN-673']",
+     "status": "published",
+     "created": "2026-09-22",
+     "last_modified": "2026-09-22"
     }
    ]
   },
