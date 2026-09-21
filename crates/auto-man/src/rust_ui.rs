@@ -95,6 +95,29 @@ fn needs_regeneration(project_dir: &Path, rust_dir: &Path) -> (bool, bool) {
     (false, false)
 }
 
+/// PLAN-039 T-13（批次 E，E-D5-A 配套）：注册返回类型化 user 型的 api
+/// 桩函数集到 RustGenerator 全局表（scan 收格门——typed 返回的调用
+/// 局部不收 Value 格，`r.cards` 直达字段）。两 build 入口在逐文件
+/// 编译前调用（thread-local 进程内持久，幂等重注册）。
+fn register_api_typed_fns_for(project_dir: &Path) {
+    if let Some(module) = parse_api_module(project_dir) {
+        let known: std::collections::HashSet<&str> =
+            module.types.iter().map(|t| t.name.as_str()).collect();
+        let typed_fns: std::collections::HashSet<String> = module
+            .endpoints
+            .iter()
+            .filter(|e| {
+                let ret = e.return_type.trim();
+                let base = ret.trim_start_matches("[]").trim_end_matches(']');
+                !ret.is_empty() && ret != "void" && known.contains(base)
+            })
+            .map(|e| e.fn_name.clone())
+            .collect();
+        let mut primer = RustGenerator::new();
+        primer.register_api_typed_fns(typed_fns);
+    }
+}
+
 /// Plan 374 / Plan 371 Task 22a: pre-scan `.at` files for `StoreDecl`s.
 ///
 /// Shared by both `generate_rust_ui` (full regen) and `regenerate_code_only`
@@ -295,6 +318,8 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     if !all_stores.is_empty() {
         println!("  {} {} store composable(s) found", "Found".bright_green(), all_stores.len());
     }
+    // PLAN-039 T-13（E-D5-A 配套）：api 桩 typed 返回集注册（scan 门）。
+    register_api_typed_fns_for(project_dir);
     // Plan 371 Task 22c: cross-file component state fields.
     let component_fields = collect_component_state_fields(&at_files);
     // Plan 371 L1: cross-file component semantics (written props).
@@ -406,6 +431,9 @@ pub fn generate_rust_ui(
     if !all_stores.is_empty() {
         println!("  {} {} store composable(s) found", "Found".bright_green(), all_stores.len());
     }
+
+    // PLAN-039 T-13（E-D5-A 配套）：api 桩 typed 返回集注册（scan 门）。
+    register_api_typed_fns_for(project_dir);
 
     // Plan 371 Task 22c: cross-file component state fields.
     let component_fields = collect_component_state_fields(&at_files);
@@ -834,13 +862,23 @@ fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
     // Try to parse api.at to get real endpoint definitions
     let api_module = parse_api_module(project_dir);
 
+    // PLAN-039 T-13（批次 E，E-D5-A 类型化株）：back api.at `pub type` →
+    // Rust struct 发射（serde derive + Default）——kanban BoardsStore 的
+    // `Vec<Card>`/`Meta` 字段此前找不到类型本体（E0425 ×4：类型声明在
+    // back 文件，compile_at_file 只扫 front .at 的 TypeDecl 且 Value 化）。
+    // 类型化发射后 `.cards[i].column` 直达字段（E-D2 字段表配套）。
+    let api_type_structs = api_module
+        .as_ref()
+        .map(generate_api_type_structs)
+        .unwrap_or_default();
+
     // Plan 347: In merged mode (AUTO_VM_MERGE != "0", the default), generate
     // in-process direct-call functions instead of HTTP client code.
     let merged_mode = std::env::var("AUTO_VM_MERGE").as_deref() != Ok("0");
 
     if merged_mode {
         if let Some(module) = &api_module {
-            return generate_merged_api_client(module, project_dir);
+            return format!("{}{}", api_type_structs, generate_merged_api_client(module, project_dir));
         }
         // Fallback to stubs if no api.at found
         return generate_api_stubs(api_imports);
@@ -855,11 +893,12 @@ fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
     // 优先走 merged 直调;吸收不可用才回落 split-HTTP。
     if let Some(module) = &api_module {
         if merged_db_impl(project_dir, module).is_some() {
-            return generate_merged_api_client(module, project_dir);
+            return format!("{}{}", api_type_structs, generate_merged_api_client(module, project_dir));
         }
     }
     if let Some(module) = &api_module {
         let mut code = String::new();
+        code.push_str(&api_type_structs);
         // Plan 349 step 1: Generate a TLS-aware HTTP client helper.
         code.push_str(&generate_http_client_helper());
         // Plan 349 step 2-3: Generate upload/download utility functions.
@@ -876,6 +915,29 @@ fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
 
     // Fallback: heuristic stubs based on function name convention
     generate_api_stubs(api_imports)
+}
+
+/// PLAN-039 T-13（批次 E，E-D5-A 类型化株）：back api.at `pub type` →
+/// Rust struct 发射（serde derive + Default）。字段型走 auto_type_to_rust
+/// （`[]Card` → `Vec<Card>` 递归；user 型透传=同批 struct 前置声明序由
+/// ApiModule.types 的声明序保证——.at 文件内 CardsResult 引用 Card 时
+/// Card 已先声明，Rust 项序无关）。Default：数值 0/串空/bool false/
+/// Vec 空——kanban 空态引导（empty 判据）与 back 缺席容差兼容。
+fn generate_api_type_structs(module: &ApiModule) -> String {
+    let mut code = String::new();
+    for t in &module.types {
+        let fields: Vec<String> = t
+            .fields
+            .iter()
+            .map(|f| format!("    pub {}: {},", f.name, auto_type_to_rust(&f.ty)))
+            .collect();
+        code.push_str(&format!(
+            "#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]\npub struct {} {{\n{}\n}}\n\n",
+            t.name,
+            fields.join("\n")
+        ));
+    }
+    code
 }
 
 /// Parse the API module from src/back/api.at
@@ -1326,6 +1388,51 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
             continue;
         }
 
+        // PLAN-039 T-13（批次 E，E-D5-A）：声明对齐臂——返回型是本批
+        // back `pub type`（或其 Vec）时，签名/返回按 back 声明直译
+        // （path+body 参数全量、str→String——通用 CRUD 桩此前 path 参数
+        // 恒 i32 且 POST/PUT 丢 path 参数，kanban 六端点全面错位=E0061
+        // ×5 + Option 索引 ×7 的根因，P666-D1 关联归因）。体 = 空态
+        // Default（编译轨生成门形态；此类 app 运行轨在役 = VM 解释，
+        // 空态与 kanban empty 判据兼容）。
+        {
+            let known_types: std::collections::HashSet<&str> =
+                module.types.iter().map(|t| t.name.as_str()).collect();
+            let ret = endpoint.return_type.trim();
+            let base = ret.trim_start_matches("[]").trim_end_matches(']');
+            if !ret.is_empty()
+                && ret != "void"
+                && known_types.contains(base)
+            {
+                let sig = endpoint
+                    .params
+                    .iter()
+                    .map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let rt = auto_type_to_rust(ret);
+                let default_expr = if rt.starts_with("Vec<") {
+                    "Vec::new()".to_string()
+                } else {
+                    format!("{}::default()", rt)
+                };
+                // 空参端点（list_boards）不发 discard——`(,)` 是语法错。
+                let discard = if endpoint.params.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "    let _ = ({});\n",
+                        endpoint.params.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
+                    )
+                };
+                code.push_str(&format!(
+                    "fn {}({}) -> {} {{\n{}    {}\n}}\n\n",
+                    fn_name, sig, rt, discard, default_expr
+                ));
+                continue;
+            }
+        }
+
         // Plan 547: the image viewer's merged Rust arm shares the host-owned
         // media control plane with VM instead of manufacturing JSON CRUD
         // records. Keep the generated signatures strongly typed so the Rust
@@ -1474,10 +1581,43 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
                         ));
                     }
                 } else {
-                    let id_param = path_params.first().map(|p| p.name.as_str()).unwrap_or("id");
+                    // PLAN-039 T-13（E-D5-A）：签名按声明全参（path 参数
+                    // 全量、型按声明 str→String——`delete_card(id str,
+                    // cid str)` 此前 `(id: i32)` 丢 cid=E0061 株）；
+                    // 体维持 fire-and-forget 内存删（编译轨生成门形态），
+                    // id 过滤按首个 path 参数声明型选串/数比较。
+                    let all_sig: Vec<String> = endpoint
+                        .params
+                        .iter()
+                        .map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty)))
+                        .collect();
+                    let first_path = path_params.first();
+                    let id_param = first_path.map(|p| p.name.as_str()).unwrap_or("id");
+                    let id_is_str = first_path
+                        .map(|p| p.ty.trim() == "str")
+                        .unwrap_or(false);
+                    let retain = if id_is_str {
+                        format!("n[\"id\"].as_str() != Some({}.as_str())", id_param)
+                    } else {
+                        format!("n[\"id\"].as_i64() != Some({} as i64)", id_param)
+                    };
+                    let extra_discard = path_params
+                        .iter()
+                        .skip(1)
+                        .map(|p| p.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let discard = if extra_discard.is_empty() {
+                        String::new()
+                    } else {
+                        format!("    let _ = ({});\n", extra_discard)
+                    };
                     code.push_str(&format!(
-                        "fn {}({}: i32) {{\n    let mut data = API_DATA.lock().unwrap();\n    data.retain(|n| n[\"id\"].as_i64() != Some({} as i64));\n}}\n\n",
-                        fn_name, id_param, id_param
+                        "fn {}({}) {{\n{}    let mut data = API_DATA.lock().unwrap();\n    data.retain(|n| {});\n}}\n\n",
+                        fn_name,
+                        all_sig.join(", "),
+                        discard,
+                        retain
                     ));
                 }
             }
@@ -2196,6 +2336,8 @@ default = ["ui-iced", "auto-lang/default"]
 [dependencies]
 auto-lang.workspace = true
 serde_json.workspace = true
+# PLAN-039 T-13（E-D5-A）：back `pub type` struct 发射的 serde derive 依赖。
+serde.workspace = true
 # PLAN-018:a2r 全局 List 字面量(非 const 初始化)走 once_cell::Lazy 形态
 # (trans/rust.rs global_lazy_used;api_gen.rs db 路径同款先例)。
 once_cell = "1"

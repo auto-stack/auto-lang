@@ -139,6 +139,14 @@ pub struct RustGenerator {
     /// PLAN-039 T-12（批次 E）：无类型集合局部（`var scored = []`）——
     /// Vec<Value> 格（原生 push/pop/len；元素索引/字段访问降链）。
     array_locals: std::collections::HashSet<String>,
+    /// PLAN-039 T-13（批次 E，E-D2）：局部记录字面量的子字段形状
+    /// （局部名 → 子字段 → int/str/bool）——`row.score` 访问器选型。
+    local_record_shapes:
+        std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+    /// PLAN-039 T-13（E-D2）：无类型集合局部的元素形状（数组名 → 子字段
+    /// 表）——`scored[i].score` 元素字段访问器选型（push 实参/字面量推）。
+    array_element_shapes:
+        std::collections::HashMap<String, std::collections::HashMap<String, String>>,
 
     /// Whether the widget has an .Init lifecycle handler
     has_init: bool,
@@ -183,6 +191,22 @@ thread_local! {
     pub static STORE_FIELD_TYPES: std::cell::RefCell<
         std::collections::HashMap<String, std::collections::HashMap<String, String>>,
     > = std::cell::RefCell::new(std::collections::HashMap::new());
+    /// PLAN-039 T-13（批次 E，E-D2 记录形状注册表）：store 记录字段的
+    /// 子字段型表（store 名 → 记录字段名 → 子字段 → int/str/bool）——
+    /// 记录字面量默认值推断（`waste_card = { id: 0, rank: 0, svg_src: "" }`
+    /// → id:int/rank:int/svg_src:str）。字段访问按表型选访问器
+    /// （as_i64/as_bool/as_str），未知子字段回落启发式（E-D2 动态容差）。
+    pub static STORE_RECORD_SHAPES: std::cell::RefCell<
+        std::collections::HashMap<
+            String,
+            std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+        >,
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
+    /// PLAN-039 T-13（批次 E，E-D5-A 配套）：返回类型化 user 型的 api 桩
+    /// 函数名集（rust_ui.rs parse_api_module 后注册）——此类调用的赋值
+    /// 局部是 typed（CardsResult 等），scan 收格与类型格判定不得收 Value。
+    pub static API_TYPED_FNS: std::cell::RefCell<std::collections::HashSet<String>> =
+        std::cell::RefCell::new(std::collections::HashSet::new());
     /// Plan 374: widget prop declaration order (widget_name → ordered prop names).
     /// Used to ensure constructor args are emitted in the correct order.
     pub static WIDGET_PROP_ORDERS: std::cell::RefCell<std::collections::HashMap<String, Vec<String>>> =
@@ -219,6 +243,8 @@ impl RustGenerator {
             value_loop_vars: std::collections::HashSet::new(),
             value_locals: std::collections::HashSet::new(),
             array_locals: std::collections::HashSet::new(),
+            local_record_shapes: std::collections::HashMap::new(),
+            array_element_shapes: std::collections::HashMap::new(),
             has_init: false,
             init_api_info: None,
             outlet_route: OutletRoute::None,
@@ -237,8 +263,11 @@ impl RustGenerator {
     /// generate_rust 的 state_types 填充同型（Unknown 时按初始式
     /// Array→Vec<Value>/Object→Value/…），保证 `.store.x.y` 降链判定
     /// 与 store 本体生成物的字段型一字不差。
+    /// PLAN-039 T-13（E-D2）：记录字面量初始式同时登记子字段形状表
+    /// （默认值字面量推 int/str/bool）——字段访问按表型选访问器。
     pub fn prime_store_field_types(&mut self, decl: &crate::ast::ui::StoreDecl) {
         let mut fields = std::collections::HashMap::new();
+        let mut shapes = std::collections::HashMap::new();
         if let Some(model) = &decl.model {
             for field in &model.fields {
                 let ty = if matches!(field.ty, crate::ast::Type::Unknown) {
@@ -256,12 +285,33 @@ impl RustGenerator {
                 } else {
                     self.auto_type_to_rust(&field.ty)
                 };
+                // E-D2：记录字面量子字段形状（waste_card = { id: 0, … }）。
+                if ty == "serde_json::Value" {
+                    if let Some(shape) = Self::object_literal_shape(&field.init) {
+                        shapes.insert(field.name.as_str().to_string(), shape);
+                    }
+                }
                 fields.insert(field.name.as_str().to_string(), ty);
             }
         }
+        let store_name = decl.name.as_str().to_string();
         STORE_FIELD_TYPES.with(|m| {
-            m.borrow_mut()
-                .insert(decl.name.as_str().to_string(), fields);
+            m.borrow_mut().insert(store_name.clone(), fields);
+        });
+        STORE_RECORD_SHAPES.with(|m| {
+            m.borrow_mut().insert(store_name, shapes);
+        });
+    }
+
+    /// PLAN-039 T-13（批次 E，E-D5-A 配套）：注册返回类型化 user 型的
+    /// api 桩函数名（rust_ui.rs parse 后调用）——此类调用的赋值局部是
+    /// typed，scan 收格不收 Value（kanban `let r = board_cards(..)` 的
+    /// r.cards 直达字段株）。
+    pub fn register_api_typed_fns(&mut self, fns: std::collections::HashSet<String>) {
+        API_TYPED_FNS.with(|m| {
+            let mut m = m.borrow_mut();
+            m.clear();
+            m.extend(fns);
         });
     }
 
@@ -279,10 +329,80 @@ impl RustGenerator {
         })
     }
 
-    /// PLAN-039 T-12：store 字段是否 Value 型（多级点链降链判据）。
+    /// PLAN-039 T-13：store 字段是否 Value 型（多级点链降链判据）。
     fn store_field_is_value(&self, field: &str) -> bool {
         self.store_field_rust_type(field)
             .map_or(false, |ty| ty == "serde_json::Value")
+    }
+
+    /// PLAN-039 T-13（批次 E，E-D2）：记录字面量的子字段形状——默认值
+    /// 字面量推型（Int/I64→int、Bool→bool、其余含 Str→str 容错）。
+    /// 非记录字面量返回 None。
+    fn object_literal_shape(
+        expr: &crate::ast::Expr,
+    ) -> Option<std::collections::HashMap<String, String>> {
+        if let crate::ast::Expr::Object(pairs) = expr {
+            let shape: std::collections::HashMap<String, String> = pairs
+                .iter()
+                .filter_map(|p| {
+                    let key = match &p.key {
+                        crate::ast::Key::NamedKey(n) => n.as_str().to_string(),
+                        crate::ast::Key::StrKey(s) => s.to_string(),
+                        _ => return None,
+                    };
+                    let kind = match p.value.as_ref() {
+                        crate::ast::Expr::Int(_) | crate::ast::Expr::I64(_) => "int",
+                        crate::ast::Expr::Bool(_) => "bool",
+                        _ => "str",
+                    };
+                    Some((key, kind.to_string()))
+                })
+                .collect();
+            if shape.is_empty() {
+                None
+            } else {
+                Some(shape)
+            }
+        } else {
+            None
+        }
+    }
+
+    /// PLAN-039 T-13（批次 E，E-D2）：store 记录字段的子字段形状表查询
+    /// （按 STORE_NAMES 注册的 store 名限域）。None = 非记录字段/未知
+    /// 形状 → 访问器回落启发式（动态容差）。
+    fn store_record_shape(
+        &self,
+        field: &str,
+    ) -> Option<std::collections::HashMap<String, String>> {
+        STORE_NAMES.with(|sn| {
+            let names: Vec<String> = sn.borrow().values().cloned().collect();
+            STORE_RECORD_SHAPES.with(|m| {
+                let m = m.borrow();
+                names
+                    .iter()
+                    .find_map(|s| m.get(s).and_then(|f| f.get(field)).cloned())
+            })
+        })
+    }
+
+    /// PLAN-039 T-13（批次 E，E-D2）：Value 字段访问的形状型访问器——
+    /// 按子字段表型选 as_i64/as_bool/as_str（klondike waste_card.rank
+    /// int 株：启发式名单外字段此前恒 as_str → CardFace 参数错位）；
+    /// 无形状回落 value_field_access 启发式（未知字段动态容差）。
+    fn value_field_access_shaped(
+        &self,
+        obj_expr: &str,
+        field: &str,
+        shape: Option<&std::collections::HashMap<String, String>>,
+    ) -> String {
+        match shape.and_then(|s| s.get(field)).map(|s| s.as_str()) {
+            Some("int") => {
+                format!("({}[\"{}\"].as_i64().unwrap_or(0) as i32)", obj_expr, field)
+            }
+            Some("bool") => format!("({}[\"{}\"].as_bool().unwrap_or(false))", obj_expr, field),
+            _ => self.value_field_access(obj_expr, field),
+        }
     }
 
     /// PLAN-039 T-12（批次 E）：Dot 真链接收者的 store Value 基座判定——
@@ -290,7 +410,11 @@ impl RustGenerator {
     /// Value 字段时返回 `self.store.<F>` 基座串（E-D1 使用点包裹的访问
     /// 接收者）。收 Dot(Dot(self, store), F) 三层与 Dot(store, F) 双层
     /// 两形态；更深/非 Value 返回 None 落回默认路径。
-    fn dot_chain_store_value_base(&self, obj: &crate::ast::Expr) -> Option<String> {
+    /// PLAN-039 T-13（E-D2）：同程返回记录形状表（F 的子字段型）。
+    fn dot_chain_store_value_base(
+        &self,
+        obj: &crate::ast::Expr,
+    ) -> Option<(String, Option<std::collections::HashMap<String, String>>)> {
         use crate::ast::Expr;
         if let Expr::Dot(mid, f) = obj {
             let base_is_store = match mid.as_ref() {
@@ -304,7 +428,8 @@ impl RustGenerator {
             };
             let field = f.as_str();
             if base_is_store && !field.contains('.') && self.store_field_is_value(field) {
-                return Some(format!("self.store.{}", field));
+                let shape = self.store_record_shape(field);
+                return Some((format!("self.store.{}", field), shape));
             }
         }
         None
@@ -346,6 +471,8 @@ impl RustGenerator {
         self.value_loop_vars.clear();
         self.value_locals.clear();
         self.array_locals.clear();
+        self.local_record_shapes.clear();
+        self.array_element_shapes.clear();
         self.child_components.clear();
         self.loop_child_components.clear();
         self.has_init = false;
@@ -1864,7 +1991,15 @@ impl RustGenerator {
                             if let crate::ast::Expr::Call(call) = &store.expr {
                                 let call_name = call.get_name_text_safe()
                                     .map(|n| n.as_str().to_string());
-                                if call_name.as_deref() != Some("names") {
+                                // PLAN-039 T-13（E-D5-A 配套）：返回类型化
+                                // user 型的 api 桩调用不收 Value 格——
+                                // `let r = board_cards(..)` 的 r.cards 直达
+                                // （typed 局部形态，Object/Array 分支天然
+                                // 不命中 Call 形态）。
+                                let api_typed = API_TYPED_FNS.with(|m| {
+                                    call_name.as_deref().map_or(false, |n| m.borrow().contains(n))
+                                });
+                                if !api_typed && call_name.as_deref() != Some("names") {
                                     self.value_locals.insert(name.to_string());
                                 }
                                 // PLAN-039 T-12（批次 E）：内建表方法调用赋值
@@ -1893,9 +2028,21 @@ impl RustGenerator {
                         if untyped {
                             if let crate::ast::Expr::Object(_) = &store.expr {
                                 self.value_locals.insert(name.to_string());
+                                // E-D2：局部记录形状（row.score 访问器选型）。
+                                if let Some(shape) = Self::object_literal_shape(&store.expr) {
+                                    self.local_record_shapes
+                                        .insert(name.to_string(), shape);
+                                }
                             }
-                            if let crate::ast::Expr::Array(_) = &store.expr {
+                            if let crate::ast::Expr::Array(elems) = &store.expr {
                                 self.array_locals.insert(name.to_string());
+                                // E-D2：字面量数组的元素形状（记录元素首位推）。
+                                if let Some(first) = elems.first() {
+                                    if let Some(shape) = Self::object_literal_shape(first) {
+                                        self.array_element_shapes
+                                            .insert(name.to_string(), shape);
+                                    }
+                                }
                             }
                         }
                         // Check if the value is an index into a state Vec<Value>
@@ -1908,7 +2055,10 @@ impl RustGenerator {
                                     Some(s.strip_prefix('.').unwrap_or(s))
                                 }
                                 crate::ast::Expr::Dot(inner, field) => {
-                                    if matches!(inner.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") {
+                                    if matches!(inner.as_ref(), crate::ast::Expr::Ident(_)) {
+                                        // PLAN-039 T-13：任意 Ident 基座
+                                        // （r.cards 局部集合 → "cards"，
+                                        // state/local 判定随后收口）。
                                         Some(field.as_str())
                                     } else { None }
                                 }
@@ -1916,7 +2066,9 @@ impl RustGenerator {
                             };
                             if let Some(coll) = coll_stripped {
                                 if self.state_types.get(coll)
-                                    .map(|ty| ty.starts_with("Vec<"))
+                                    // PLAN-039 T-13（E-D5-A）：收窄为
+                                    // Vec<Value> 专属（typed Vec 元素是 typed）。
+                                    .map(|ty| ty == "Vec<serde_json::Value>")
                                     .unwrap_or(false)
                                 {
                                     self.value_locals.insert(name.to_string());
@@ -1928,13 +2080,17 @@ impl RustGenerator {
                 }
                 crate::ast::Stmt::For(for_stmt) => {
                     // Register loop variable as value var if iterating over a Value collection
+                    // PLAN-039 T-13（E-D5-A）：收窄为 Vec<serde_json::Value>
+                    // 专属——typed Vec（Vec<Card>，back 型发射后）的循环变量
+                    // 是 typed，`c.column` 直达字段（此前 starts_with("Vec<")
+                    // 误收致 typed 元素被索引访问 ×42）。
                     match &for_stmt.iter {
                         crate::ast::Iter::Named(name) => {
                             // `for todo in .todos` — check if .todos is Vec<Value>
                             if let crate::ast::Expr::Dot(obj, field) = &for_stmt.range {
                                 if let crate::ast::Expr::Ident(_) = obj.as_ref() {
                                     if self.state_types.get(field.as_str())
-                                        .map(|ty| ty.starts_with("Vec<"))
+                                        .map(|ty| ty == "Vec<serde_json::Value>")
                                         .unwrap_or(false)
                                     {
                                         self.value_loop_vars.insert(name.as_str().to_string());
@@ -1943,7 +2099,7 @@ impl RustGenerator {
                             } else if let crate::ast::Expr::Ident(name_expr) = &for_stmt.range {
                                 let coll = name_expr.as_str();
                                 if self.state_types.get(coll)
-                                    .map(|ty| ty.starts_with("Vec<"))
+                                    .map(|ty| ty == "Vec<serde_json::Value>")
                                     .unwrap_or(false)
                                 {
                                     self.value_loop_vars.insert(name.as_str().to_string());
@@ -1954,7 +2110,7 @@ impl RustGenerator {
                             if let crate::ast::Expr::Dot(obj, field) = &for_stmt.range {
                                 if let crate::ast::Expr::Ident(_) = obj.as_ref() {
                                     if self.state_types.get(field.as_str())
-                                        .map(|ty| ty.starts_with("Vec<"))
+                                        .map(|ty| ty == "Vec<serde_json::Value>")
                                         .unwrap_or(false)
                                     {
                                         self.value_loop_vars.insert(name.as_str().to_string());
@@ -1963,7 +2119,7 @@ impl RustGenerator {
                             } else if let crate::ast::Expr::Ident(name_expr) = &for_stmt.range {
                                 let coll = name_expr.as_str();
                                 if self.state_types.get(coll)
-                                    .map(|ty| ty.starts_with("Vec<"))
+                                    .map(|ty| ty == "Vec<serde_json::Value>")
                                     .unwrap_or(false)
                                 {
                                     self.value_loop_vars.insert(name.as_str().to_string());
@@ -1981,6 +2137,37 @@ impl RustGenerator {
                     }
                     if let Some(else_body) = &if_stmt.else_ {
                         self.scan_ast_stmts_for_value_locals(&else_body.stmts);
+                    }
+                }
+                // PLAN-039 T-13（批次 E，E-D2）：`arr.push(x)` 数组局部元素
+                // 形状登记——实参是记录字面量或已知形状局部时，数组的
+                // 元素字段访问（scored[i].score）按形状选访问器
+                // （launcher ranked 行收集株：score 启发式名单外恒 as_str）。
+                crate::ast::Stmt::Expr(expr) => {
+                    if let crate::ast::Expr::Call(call) = expr {
+                        if let crate::ast::Expr::Dot(obj, m) = call.name.as_ref() {
+                            if m.as_str() == "push" {
+                                if let crate::ast::Expr::Ident(n) = obj.as_ref() {
+                                    let arr = n.as_str().trim_start_matches('.').to_string();
+                                    if let Some(arg0) = call.args.args.first() {
+                                        let e = arg0.get_expr();
+                                        let shape = Self::object_literal_shape(&e).or_else(|| {
+                                            if let crate::ast::Expr::Ident(an) = e {
+                                                let an = an.as_str().trim_start_matches('.');
+                                                self.local_record_shapes.get(an).cloned()
+                                            } else {
+                                                None
+                                            }
+                                        });
+                                        if let Some(shape) = shape {
+                                            self.array_element_shapes
+                                                .entry(arr)
+                                                .or_insert(shape);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 _ => {}
@@ -4734,6 +4921,18 @@ impl RustGenerator {
                 // Check if iterable is a Value-type collection.
                 // Handle both simple names ("notes") and compound paths ("store.notes").
                 let iter_last_name = iter_name.rsplit('.').next().unwrap_or(iter_name);
+                // PLAN-039 T-13（E-D5-A）：store 字段 typed 短路——
+                // `.store.cards`（Vec<Card>）迭代变量是 typed（元素字段
+                // 直达），fallback 兜底臂不再误收 Value 格（×25 株）。
+                let store_field_ty = if iter_name.starts_with("store.")
+                    || iter_name.starts_with(".store.")
+                {
+                    self.store_field_rust_type(iter_last_name)
+                } else {
+                    None
+                };
+                let store_typed_iter = store_field_ty
+                    .map_or(false, |t| t != "Vec<serde_json::Value>" && t != "serde_json::Value");
                 let is_value_iter = self.state_types.get(iter_name)
                     .map(|ty| ty.contains("serde_json::Value"))
                     .or_else(|| self.state_types.get(iter_last_name)
@@ -4743,7 +4942,8 @@ impl RustGenerator {
                     // data from API/store is serde_json::Value in this system).
                     || (iter_name.contains('.') 
                         && !self.state_types.contains_key(iter_name)
-                        && !self.state_types.contains_key(iter_last_name));
+                        && !self.state_types.contains_key(iter_last_name)
+                        && !store_typed_iter);
 
                 // Push loop vars into scope
                 self.push_loop_vars(&var, index.as_deref());
@@ -5814,7 +6014,8 @@ impl RustGenerator {
     fn rust_call_args_with_clone(&self, call: &crate::ast::Call) -> Vec<String> {
         call.args.args.iter()
             .map(|a| {
-                let expr = self.ast_expr_to_rust(&a.get_expr());
+                let arg_expr = a.get_expr();
+                let expr = self.ast_expr_to_rust(&arg_expr);
                 if expr.starts_with("self.") {
                     let field_name = &expr[5..];
                     // Don't clone for index access patterns like self.note["id"]
@@ -5825,6 +6026,16 @@ impl RustGenerator {
                             }
                         }
                     }
+                }
+                // PLAN-039 T-13（批次 E）：消息构造/调用的标识符与字段访问
+                // 参数补 clone——VM 参数拷贝语义的编译等价（kanban cid
+                // 双用 moved 株：`MoveCard(cid, ..)` 两处发送）。字面量/
+                // 调用/索引形态不动；数值参数 clone 冗余但合法（Copy 型）。
+                if matches!(arg_expr, crate::ast::Expr::Ident(_) | crate::ast::Expr::Dot(..))
+                    && !expr.starts_with('"')
+                    && !expr.contains('[')
+                {
+                    return format!("{}.clone()", expr);
                 }
                 expr
             })
@@ -6734,6 +6945,19 @@ impl RustGenerator {
         if payload_ty.as_deref() == Some("String") && param.starts_with('"') && !param.contains(".to_string()") {
             return format!("{}.to_string()", param);
         }
+        // PLAN-039 T-13（批次 E）：typed 循环变量的字段访问参数补 clone
+        // ——闭包内 move 出借用（kanban `SelectBoard(b.id)`：boards 迭代
+        // b:&BoardDef，b.id String move 出 Fn 闭包 ×1 株）。数值参数
+        // clone 冗余但合法（Copy 型）。
+        if param.contains('.')
+            && !param.starts_with('"')
+            && !param.contains('[')
+            && payload_ty
+                .as_deref()
+                .map_or(false, |t| !matches!(t, "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool"))
+        {
+            return format!("{}.clone()", param);
+        }
         param.to_string()
     }
 
@@ -7042,19 +7266,30 @@ impl RustGenerator {
                                     Some(s.strip_prefix('.').unwrap_or(s))
                                 }
                                 crate::ast::Expr::Dot(inner, field) => {
-                                    if matches!(inner.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") {
+                                    if matches!(inner.as_ref(), crate::ast::Expr::Ident(_)) {
+                                        // PLAN-039 T-13：任意 Ident 基座
+                                        // （r.cards 局部集合 → "cards"，
+                                        // state/local 判定随后收口）。
                                         Some(field.as_str())
                                     } else { None }
                                 }
                                 _ => None,
                             };
-                            if let Some(resolved_coll) = coll_stripped {
-                                if self.state_types.get(resolved_coll)
-                                    .map(|ty| ty.starts_with("Vec<"))
-                                    .unwrap_or(false)
-                                {
-                                    return format!("let mut {} = {}.clone()", name, value);
-                                }
+                            // PLAN-039 T-13（批次 E）：局部集合（typed Vec<Card>
+                            // 如 r.cards——api 返回局部不在 state_types）元素
+                            // 索引同 clone（Var 分支同款；let c = r.cards[i]
+                            // move 株）。
+                            let state_vec = coll_stripped
+                                .and_then(|coll| self.state_types.get(coll))
+                                .map(|ty| ty.starts_with("Vec<"))
+                                .unwrap_or(false);
+                            let local_index_rhs = coll_stripped
+                                .map(|coll| {
+                                    self.array_locals.contains(coll) || self.value_locals.contains(coll)
+                                })
+                                .unwrap_or(false);
+                            if state_vec || local_index_rhs {
+                                return format!("let mut {} = {}.clone()", name, value);
                             }
                         }
                         format!("let {} = {}", name, value)
@@ -7072,23 +7307,36 @@ impl RustGenerator {
                             let coll_stripped: Option<&str> = match target.as_ref() {
                                 crate::ast::Expr::Ident(c) => Some(c.as_str().strip_prefix('.').unwrap_or(c.as_str())),
                                 crate::ast::Expr::Dot(inner, field) => {
-                                    if matches!(inner.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") {
+                                    if matches!(inner.as_ref(), crate::ast::Expr::Ident(_)) {
+                                        // PLAN-039 T-13：任意 Ident 基座
+                                        // （r.cards 局部集合 → "cards"，
+                                        // state/local 判定随后收口）。
                                         Some(field.as_str())
                                     } else { None }
                                 }
                                 _ => None,
                             };
-                            if let Some(coll) = coll_stripped {
-                                if self.state_types.get(coll).map(|t| t.starts_with("Vec<")).unwrap_or(false) {
-                                    // 强转形态自带所有权（as_str→to_string 拷贝）；
-                                    // 未强转维持 clone（&mut 借用语义，Plan 407）。
-                                    let rhs = if coerced == value {
-                                        format!("{}.clone()", value)
-                                    } else {
-                                        coerced
-                                    };
-                                    return format!("let mut {} = {}", name, rhs);
-                                }
+                            let state_vec = coll_stripped
+                                .and_then(|coll| self.state_types.get(coll))
+                                .map(|t| t.starts_with("Vec<"))
+                                .unwrap_or(false);
+                            // PLAN-039 T-13（批次 E）：局部集合（typed Vec<Card>
+                            // 如 r.cards——api 返回局部不在 state_types）的元素
+                            // 索引同样 clone——`let c = r.cards[i]` move 出
+                            // Vec<Card> 索引位 ×株（VM 拷贝语义；Value 元素
+                            // clone 语义同）。
+                            let local_index_rhs = coll_stripped
+                                .map(|coll| self.array_locals.contains(coll) || self.value_locals.contains(coll))
+                                .unwrap_or(false);
+                            if state_vec || local_index_rhs {
+                                // 强转形态自带所有权（as_str→to_string 拷贝）；
+                                // 未强转维持 clone（&mut 借用语义，Plan 407）。
+                                let rhs = if coerced == value {
+                                    format!("{}.clone()", value)
+                                } else {
+                                    coerced
+                                };
+                                return format!("let mut {} = {}", name, rhs);
                             }
                         }
                         if self.state_types.contains_key(resolved) {
@@ -7097,6 +7345,26 @@ impl RustGenerator {
                                 && !self.ast_expr_is_string(&store.expr)
                             {
                                 value = format!("{}.to_string()", value);
+                            }
+                            // PLAN-039 T-13（批次 E）：非 Copy 态字段的局部
+                            // 字段访问 RHS 补 clone——`self.cards = r.cards`
+                            // move 后 r.meta/r.cards 复用株（VM 拷贝语义的
+                            // 编译等价）。数值/布尔态（Copy）不动。
+                            let state_non_copy = self
+                                .state_types
+                                .get(resolved)
+                                .map_or(false, |ty| {
+                                    !matches!(ty.as_str(), "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool")
+                                });
+                            if state_non_copy
+                                && matches!(
+                                    &store.expr,
+                                    crate::ast::Expr::Ident(_) | crate::ast::Expr::Dot(..)
+                                )
+                                && !value.contains('[')
+                                && !value.starts_with('"')
+                            {
+                                value = format!("{}.clone()", value);
                             }
                             format!("self.{} = {}", resolved, value)
                         } else {
@@ -7800,6 +8068,32 @@ impl RustGenerator {
                 if s.contains('.') { s } else { format!("{}.0", n) }
             }
             Expr::Bool(b) => b.to_string(),
+            // PLAN-039 T-13（批次 E，E-D5-A）：用户型构造字面量
+            // （`Meta { source_root: "", count_active: 0 }` 解析为
+            // Expr::Node——kanban store model 初始式株，此前落 `/* expr */`
+            // 占位）。字段按 Pair 直发 + `..Default::default()` 兜底
+            // （back 型 struct 已 derive Default）；无字段 = ::default()。
+            crate::ast::Expr::Node(node) => {
+                if node.args.args.is_empty() {
+                    format!("{}::default()", node.name.as_str())
+                } else {
+                    let fields: Vec<String> = node.args.args.iter()
+                        .filter_map(|a| match a {
+                            crate::ast::Arg::Pair(n, e) => Some(format!(
+                                "{}: {}",
+                                n.as_str(),
+                                self.ast_expr_to_rust(e)
+                            )),
+                            _ => None,
+                        })
+                        .collect();
+                    format!(
+                        "{} {{ {}, ..Default::default() }}",
+                        node.name.as_str(),
+                        fields.join(", ")
+                    )
+                }
+            }
             Expr::Ident(name) => {
                 let s = name.as_str();
                 // Plan 374 Task 2: store composable rewriting
@@ -7813,13 +8107,18 @@ impl RustGenerator {
                     // `self.store.<field>["<sub>"]…`；首级直访（`.store.x`）
                     // 与非 Value 中间级维持直发。更深链（sub 含点）不在
                     // 认知面，直发交由下游编译错误显式拦截。
+                    // T-13（E-D2）：形状表切换访问器（rank:int → as_i64）。
                     let path = &s[".store.".len()..];
                     if let Some(dot_pos) = path.find('.') {
                         let field = &path[..dot_pos];
                         let sub = &path[dot_pos + 1..];
                         if !sub.contains('.') && self.store_field_is_value(field) {
-                            return self
-                                .value_field_access(&format!("self.store.{}", field), sub);
+                            let shape = self.store_record_shape(field);
+                            return self.value_field_access_shaped(
+                                &format!("self.store.{}", field),
+                                sub,
+                                shape.as_ref(),
+                            );
                         }
                     }
                     return format!("self.{}", &s[1..]);
@@ -7875,8 +8174,9 @@ impl RustGenerator {
                 // 形态通用判定——obj 剥层后基座是 `.store`/`self.store` 且其
                 // 尾字段为 store Value 字段（parser 三层 Dot 形态的主消费
                 // 面，probe 实证 Dot(Dot(Dot(self, store), F), sub)）。
-                if let Some(base) = self.dot_chain_store_value_base(obj) {
-                    return self.value_field_access(&base, field_str);
+                // T-13（E-D2）：形状表切换访问器（rank:int → as_i64）。
+                if let Some((base, shape)) = self.dot_chain_store_value_base(obj) {
+                    return self.value_field_access_shaped(&base, field_str, shape.as_ref());
                 }
                 // If accessing a field on a Value-type prop directly: obj.field where obj is a prop
                 if let Expr::Ident(name) = obj.as_ref() {
@@ -7890,7 +8190,10 @@ impl RustGenerator {
                         } else {
                             resolved.to_string()
                         };
-                        return self.value_field_access(&obj_str, field_str);
+                        // PLAN-039 T-13（E-D2）：局部记录形状优先——
+                        // row.score 按形状型选访问器，未知回落启发式。
+                        let shape = self.local_record_shapes.get(resolved).cloned();
+                        return self.value_field_access_shaped(&obj_str, field_str, shape.as_ref());
                     }
                 }
                 // Check if object is an index into a Vec<Value>: todos[idx].field
@@ -7902,8 +8205,10 @@ impl RustGenerator {
                     if let Some(coll_name) = coll_name {
                         let resolved_coll = &coll_name;
                         // Check if this is a Vec<Value> collection
+                        // PLAN-039 T-13（E-D5-A）：收窄为 Vec<Value> 专属
+                        // ——typed Vec（Vec<Card>）元素字段直达，不降链。
                         let is_vec_value = self.state_types.get(resolved_coll)
-                            .map(|ty| ty.starts_with("Vec<"))
+                            .map(|ty| ty == "Vec<serde_json::Value>")
                             .unwrap_or(false)
                             // Also check store fields and compound paths
                             || resolved_coll.contains("notes")
@@ -7929,7 +8234,17 @@ impl RustGenerator {
                             } else {
                                 idx_str
                             };
-                            return self.value_field_access(&format!("{}[{}]", target_str, idx_cast), field_str);
+                            // PLAN-039 T-13（E-D2）：集合局部元素形状——
+                            // scored[i].score 按形状型选访问器。
+                            let elem_shape = self
+                                .array_element_shapes
+                                .get(resolved_coll)
+                                .cloned();
+                            return self.value_field_access_shaped(
+                                &format!("{}[{}]", target_str, idx_cast),
+                                field_str,
+                                elem_shape.as_ref(),
+                            );
                         }
                     }
                 }
@@ -8032,6 +8347,39 @@ impl RustGenerator {
                         // that already produce owned String values.
                         let needs_clone = self.resolve_expr_name(right).is_some();
                         if needs_clone {
+                            value = format!("{}.clone()", value);
+                        }
+                    } else {
+                        // PLAN-039 T-13（批次 E）：非 Copy 态字段（Vec<Card>/
+                        // Meta 等 back 型）的局部字段访问 RHS 补 clone——
+                        // `.cards = r.cards` move 后 r.meta 复用株（VM 拷贝
+                        // 语义的编译等价）。数值/布尔态（Copy）不动。
+                        let l_state_non_copy = self
+                            .resolve_expr_name(left)
+                            .and_then(|n| self.state_types.get(&n))
+                            .map_or(false, |ty| {
+                                !matches!(ty.as_str(), "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool")
+                            });
+                        if l_state_non_copy
+                            && matches!(
+                                right.as_ref(),
+                                Expr::Ident(_) | Expr::Dot(..)
+                            )
+                            && !value.contains('[')
+                            && !value.starts_with('"')
+                            && !value.contains(".clone()")
+                        {
+                            value = format!("{}.clone()", value);
+                        }
+                        // PLAN-039 T-13（批次 E）：typed 集合元素字段访问
+                        // RHS 补 clone——`col = self.cards[i].column` move
+                        // 出 Vec<Card> 索引位（String 字段株；数值字段
+                        // clone 冗余但合法）。
+                        if matches!(
+                            right.as_ref(),
+                            Expr::Dot(obj, _) if matches!(obj.as_ref(), Expr::Index(..))
+                        ) && !value.contains(".clone()")
+                        {
                             value = format!("{}.clone()", value);
                         }
                     }
@@ -12150,6 +12498,84 @@ widget Demo {
         assert!(
             code.contains(".waste_card[\"suit\"]"),
             "store Value 字段多级链降链发射:\n{code}"
+        );
+    }
+
+    /// PLAN-039 T-13（批次 E，E-D5-A）：用户型构造字面量（`Meta { … }`
+    /// 解析为 Expr::Node）发射 struct 初始化 + Default 兜底——此前落
+    /// `/* expr */` 占位（kanban store model meta 初始式株）。
+    #[test]
+    fn user_type_constructor_literal_emits_struct_init() {
+        let code = gen_first_widget(r#"
+widget Demo {
+    msg { Tap }
+    model {
+        var meta Meta = Meta { source_root: "", count_active: 0 }
+    }
+    view { col { text "t" } }
+    on { .Tap -> { .meta = .meta } }
+}
+"#);
+        assert!(
+            code.contains("Meta { source_root:"),
+            "Node 构造字面量必须发射 struct 初始化:
+{code}"
+        );
+        assert!(
+            code.contains("..Default::default()"),
+            "字段缺漏由 Default 兜底:
+{code}"
+        );
+    }
+
+    /// PLAN-039 T-13（批次 E，E-D2）：记录形状注册表——store 记录字面量
+    /// 的 int 子字段访问按形状发射 as_i64（启发式名单外字段此前恒
+    /// as_str——klondike waste_card.rank 株）。
+    #[test]
+    fn record_shape_int_field_access() {
+        let src = r#"
+store DemoStore {
+    model {
+        var waste_card = { id: 0, rank: 7, svg_src: "" }
+    }
+    msg { Tap }
+    on { .Tap -> { .id = 1 } }
+}
+widget Demo {
+    msg { Tap }
+    view {
+        col { text .store.waste_card.rank  text .store.waste_card.svg_src }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut code = String::new();
+        let mut gen = RustGenerator::new();
+        for stmt in &ast.stmts {
+            match stmt {
+                crate::ast::Stmt::StoreDecl(store) => {
+                    gen.register_store("store", store.name.as_str());
+                    gen.prime_store_field_types(store);
+                }
+                crate::ast::Stmt::WidgetDecl(decl) => {
+                    let widget = crate::aura::extract::extract_widget_from_decl(decl)
+                        .unwrap_or_else(|e| panic!("extract: {e:?}"));
+                    code = gen.generate(&widget).expect("generate");
+                }
+                _ => {}
+            }
+        }
+        assert!(
+            code.contains(".waste_card[\"rank\"].as_i64()"),
+            "int 子字段按形状走 as_i64:
+{code}"
+        );
+        assert!(
+            code.contains(".waste_card[\"svg_src\"].as_str()"),
+            "str 子字段保持 as_str:
+{code}"
         );
     }
 }
