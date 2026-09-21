@@ -20,6 +20,9 @@ pub mod ts_adapter;
 pub mod vue;
 pub mod bp;
 pub mod rust;
+// PLAN-674 T-03/T-04：a2r codegen prop/event 词汇单源（per-kind
+// builder 方法面；表体落 ui_gen 的组合律依据见 vocab.rs 头注）。
+pub mod vocab;
 pub mod style;
 pub mod jet;
 pub mod ark;

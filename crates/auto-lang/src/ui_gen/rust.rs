@@ -931,6 +931,30 @@ impl RustGenerator {
             }
         }
 
+        // PLAN-674 T-03：menubar 族降层臂的合成变体（开合态走
+        /// action_config 全局面——与 VM 轨 renderer __menubar_toggle 同
+        /// 机制非消费方补丁；族折叠契约镜像解释态
+        /// convert_menubar_component）。枚举先于 view 树生成——变体在
+        /// 此预扫描推送（scan_input_fields 同序先例）。
+        if self.view_tree_has_menubar(&widget.view_tree) {
+            if !self.message_variants.iter().any(|v| v.name == "__MenubarToggle") {
+                self.message_variants.push(AuraMsgVariant {
+                    name: "__MenubarToggle".to_string(),
+                    quoted: false,
+                    payload: vec![crate::ast::Type::StrOwned],
+                    payload_names: vec![Some("id".to_string())],
+                });
+            }
+            if !self.message_variants.iter().any(|v| v.name == "__MenubarClose") {
+                self.message_variants.push(AuraMsgVariant {
+                    name: "__MenubarClose".to_string(),
+                    quoted: false,
+                    payload: vec![],
+                    payload_names: vec![],
+                });
+            }
+        }
+
         // Message enum (includes wrapper variants for child components + Init lifecycle)
         if !self.message_variants.is_empty() || !self.child_components.is_empty() {
             code.push_str(&self.generate_msg_enum()?);
@@ -1601,6 +1625,21 @@ impl RustGenerator {
 
         if !self.message_variants.is_empty() {
             code.push_str("        match msg {\n");
+
+            // PLAN-674 T-03：menubar 合成变体臂（开合态 = action_config
+            // 全局面——与 VM 轨 renderer.rs __menubar_toggle/__menubar_close
+            // 同机制；toggle 同 id 关/异 id 开，view() 每帧读
+            // menubar_open() 复帧）。
+            if self.message_variants.iter().any(|v| v.name == "__MenubarToggle") {
+                code.push_str(&format!(
+                    "            {}::__MenubarToggle(id) => {{\n                let __open = auto_lang::ui::action_config::menubar_open();\n                auto_lang::ui::action_config::set_menubar_open(if __open.as_deref() == Some(id.as_str()) {{ None }} else {{ Some(id.clone()) }});\n            }}\n",
+                    msg_name
+                ));
+                code.push_str(&format!(
+                    "            {}::__MenubarClose => {{\n                auto_lang::ui::action_config::set_menubar_open(None);\n            }}\n",
+                    msg_name
+                ));
+            }
 
             // Generate match arms from handlers
             for (pattern, payload) in &widget.handlers {
@@ -3596,7 +3635,7 @@ impl RustGenerator {
                     // Other props (class, style, width — skip placeholder, value, type)
                     for (key, value) in props_sorted.clone() {
                         if key == "placeholder" || key == "value" || key == "type" { continue; }
-                        builder = self.add_prop_to_builder(&builder, key, value);
+                        builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
 
                     // Events: oninput/onchange → on_change (takes M, not a closure)
@@ -3675,7 +3714,7 @@ impl RustGenerator {
                     // Other props (skip placeholder, value)
                     for (key, value) in props_sorted.clone() {
                         if key == "placeholder" || key == "value" { continue; }
-                        builder = self.add_prop_to_builder(&builder, key, value);
+                        builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
 
                     // Events: oninput/onchange → on_change
@@ -3890,10 +3929,10 @@ impl RustGenerator {
                         if matches!(key.as_str(), "icon" | "text") {
                             continue;
                         }
-                        builder = self.add_prop_to_builder(&builder, key, value);
+                        builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
                     for (event, handler) in events_sorted.clone() {
-                        builder = self.add_event_to_builder(&builder, event, handler);
+                        builder = self.add_event_to_builder(&builder, tag, event, handler);
                     }
                     if !events.iter().any(|(e, _)| e == "onclick" || e == "onClick") {
                         builder = format!("{}.on_click(|_| ())", builder);
@@ -4563,7 +4602,7 @@ impl RustGenerator {
                     }
                     for (key, value) in props_sorted.clone() {
                         if key == "min" || key == "max" || key == "value" || key == "step" { continue; }
-                        builder = self.add_prop_to_builder(&builder, key, value);
+                        builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
                     return format!("{builder}.build()");
                 }
@@ -4615,7 +4654,7 @@ impl RustGenerator {
                     }
                     for (key, value) in props_sorted.clone() {
                         if key == "options" || key == "selected" { continue; }
-                        builder = self.add_prop_to_builder(&builder, key, value);
+                        builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
                     // View::select 直返 View（链式 self）——无 .build()。
                     return builder;
@@ -4906,6 +4945,144 @@ impl RustGenerator {
                     return format!("{builder}.build()");
                 }
 
+                // PLAN-674 T-03：menubar 组件族降层臂（折叠契约镜像解释态
+                // convert_menubar_component，aura_view_builder.rs:7486）：
+                // menubar → Row of Popover（BottomStart + open =
+                // action_config::menubar_open()==menu_id + on_dismiss =
+                // __MenubarClose）；trigger = Button（onclick =
+                // __MenubarToggle(menu_id)——合成变体，on() 臂同机制翻转
+                // 全局开合态）；item = menu-item Button（title/icon/
+                // shortcut/checked/enabled 族 props 本臂整体消费——不经
+                // 词汇门）；separator = h-px container。VM 轨差异随注：
+                // ①items 无条件发射（VM 按开态条件构建——Popover 闭态
+                // 不渲染面板，发射面等价且 handler 常在树）；②disabled
+                // 项 v1 隐藏非置灰（I3——Button builder 无 disabled 通道）；
+                // ③trigger/面板静态样式（VM 开态差分色 not-yet）。
+                if tag == "menubar" {
+                    let msg_name = self.current_msg_name();
+                    let str_lit = |v: Option<&AuraPropValue>| -> Option<String> {
+                        match v {
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => Some(s.to_string()),
+                            _ => None,
+                        }
+                    };
+                    let node_text = |n: &crate::aura::AuraNode| -> Option<String> {
+                        match n {
+                            crate::aura::AuraNode::Text(crate::aura::AuraTextContent::Literal(s)) => Some(s.clone()),
+                            _ => None,
+                        }
+                    };
+                    let mut root = String::from("View::row()");
+                    let mut menu_index = 0usize;
+                    for menu_node in children {
+                        let crate::aura::AuraNode::Element { tag: mtag, props: mprops, children: mkids, .. } =
+                            menu_node
+                        else { continue };
+                        if mtag.replace('_', "-") != "menubar-menu" {
+                            continue;
+                        }
+                        let menu_id = str_lit(mprops.get("value"))
+                            .unwrap_or_else(|| format!("menu-{menu_index}"));
+                        menu_index += 1;
+                        let mut trigger_title = String::new();
+                        let mut content_nodes: Vec<&AuraNode> = Vec::new();
+                        for kid in mkids {
+                            let crate::aura::AuraNode::Element { tag: ktag, props: kprops, children: kkids, .. } =
+                                kid
+                            else { continue };
+                            match ktag.replace('_', "-").as_str() {
+                                "menubar-trigger" => {
+                                    trigger_title = str_lit(kprops.get("text"))
+                                        .or_else(|| kkids.iter().find_map(node_text))
+                                        .unwrap_or_default();
+                                }
+                                "menubar-content" => {
+                                    content_nodes = kkids.iter().collect();
+                                }
+                                _ => {}
+                            }
+                        }
+                        let trigger = format!(
+                            "View::button(\"{}\".to_string()).on_click(|_| {}::__MenubarToggle(\"{}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 px-3 text-[12px]\").unwrap_or_default()).build()",
+                            trigger_title, msg_name, menu_id
+                        );
+                        let mut panel = String::from(
+                            "View::col().with_style(auto_lang::ui::style::Style::parse(\"w-44 bg-[#16171B] border border-zinc-700 shadow-md py-1\").unwrap_or_default())",
+                        );
+                        for item in &content_nodes {
+                            let crate::aura::AuraNode::Element { tag: itag, props: iprops, events: ievents, children: ikids, .. } =
+                                item
+                            else { continue };
+                            let itag = itag.replace('_', "-");
+                            match itag.as_str() {
+                                "menubar-separator" => {
+                                    panel = format!(
+                                        "{panel}.child(View::container(View::Empty).with_style(auto_lang::ui::style::Style::parse(\"h-px my-1 bg-zinc-700\").unwrap_or_default()).build())"
+                                    );
+                                }
+                                "menubar-item" | "menubar-checkbox-item" => {
+                                    let is_checkbox = itag == "menubar-checkbox-item";
+                                    let title = str_lit(iprops.get("title"))
+                                        .or_else(|| ikids.iter().find_map(node_text))
+                                        .unwrap_or_default();
+                                    let icon = str_lit(iprops.get("icon"));
+                                    let shortcut = str_lit(iprops.get("shortcut"));
+                                    let check_expr = if is_checkbox {
+                                        match iprops.get("checked") {
+                                            Some(AuraPropValue::Expr(e)) => {
+                                                let cond = self.ast_expr_to_rust(e);
+                                                format!("if {cond} {{ \"✓ \" }} else {{ \"\" }}")
+                                            }
+                                            _ => "\"\"".to_string(),
+                                        }
+                                    } else {
+                                        "\"\"".to_string()
+                                    };
+                                    // onclick 缺席 = 不发射（VM 轨同款 continue）。
+                                    let Some(onclick) = ievents
+                                        .get("onclick")
+                                        .or_else(|| crate::aura::aura_events_get_base(ievents, "onclick"))
+                                    else { continue };
+                                    let handler_fn =
+                                        self.handler_to_rust_closure_with_params(&onclick.handler, &onclick.params);
+                                    let icon_pua = icon
+                                        .map(|i| format!("\\u{{EE01}}{i}\\u{{EE02}}"))
+                                        .unwrap_or_default();
+                                    let sc = shortcut
+                                        .map(|s| format!("    {s}"))
+                                        .unwrap_or_default();
+                                    let item_btn = format!(
+                                        "View::button(format!(\"{icon_pua}{{}}{{}}{{}}\", {check_expr}, \"{title}\".to_string(), \"{sc}\".to_string())).on_click({handler_fn}).build()"
+                                    );
+                                    let item_expr = match iprops.get("enabled") {
+                                        Some(AuraPropValue::Expr(e)) => {
+                                            let cond = self.ast_expr_to_rust(e);
+                                            format!("{{ if {cond} {{ {item_btn} }} else {{ View::Empty }} }}")
+                                        }
+                                        _ => item_btn,
+                                    };
+                                    panel = format!("{panel}.child({item_expr})");
+                                }
+                                _ => {}
+                            }
+                        }
+                        let popover = format!(
+                            "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({trigger})), content: Box::new({panel}.build()), placement: auto_lang::ui::view::PopoverPlacement::BottomStart, open: auto_lang::ui::action_config::menubar_open().as_deref() == Some(\"{menu_id}\"), on_dismiss: Some({msg_name}::__MenubarClose) }}"
+                        );
+                        root = format!("{root}.child({popover})");
+                    }
+                    let user_class = str_lit(props.get("class").or(props.get("style")))
+                        .unwrap_or_default();
+                    let root = if user_class.is_empty() {
+                        format!("{root}.build()")
+                    } else {
+                        format!(
+                            "{root}.with_style(auto_lang::ui::style::Style::parse(\"{user_class}\").unwrap_or_default()).build()"
+                        )
+                    };
+                    return root;
+                }
+
                 let builder_start = if self.is_leaf_tag(tag.as_str()) {
                     if let Some(ref name) = text_state_ref {
                         if tag == "button" {
@@ -5097,12 +5274,12 @@ impl RustGenerator {
                     // Add props (skip "text" if already used as constructor arg)
                     for (key, value) in props_sorted.clone() {
                         if text_prop_consumed && key == "text" { continue; }
-                        builder = self.add_prop_to_builder(&builder, key, value);
+                        builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
 
                     // Add events
                     for (event, handler) in events_sorted.clone() {
-                        builder = self.add_event_to_builder(&builder, event, handler);
+                        builder = self.add_event_to_builder(&builder, tag, event, handler);
                     }
 
                     // Button without onclick — add no-op handler to prevent panic
@@ -5121,10 +5298,10 @@ impl RustGenerator {
                     let mut builder = format!("View::button({})", label_expr);
                     for (key, value) in props_sorted.clone() {
                         if key == "text" { continue; }
-                        builder = self.add_prop_to_builder(&builder, key, value);
+                        builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
                     for (event, handler) in events_sorted.clone() {
-                        builder = self.add_event_to_builder(&builder, event, handler);
+                        builder = self.add_event_to_builder(&builder, tag, event, handler);
                     }
                     if !events.iter().any(|(e, _)| e == "onclick" || e == "onClick") {
                         builder = format!("{}.on_click(|_| ())", builder);
@@ -5137,7 +5314,7 @@ impl RustGenerator {
                     // Add props (skip "text" if already used as constructor arg)
                     for (key, value) in props_sorted.clone() {
                         if text_prop_consumed && key == "text" { continue; }
-                        builder = self.add_prop_to_builder(&builder, key, value);
+                        builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
 
                     // Add children — use .children() for for-loops (which produce Vec<View>),
@@ -5162,7 +5339,7 @@ impl RustGenerator {
 
                     // Add events last
                     for (event, handler) in events_sorted.clone() {
-                        builder = self.add_event_to_builder(&builder, event, handler);
+                        builder = self.add_event_to_builder(&builder, tag, event, handler);
                     }
 
                     // Button without onclick — add no-op handler to prevent panic
@@ -7142,7 +7319,13 @@ impl RustGenerator {
     }
 
     /// Add property to builder
-    fn add_prop_to_builder(&self, builder: &str, key: &str, value: &AuraPropValue) -> String {
+    ///
+    /// PLAN-674 T-03（§10-2 裁定 B）：识别面从「四 prop 白名单」扩为
+    /// **per-kind 词汇表**（单源 = `crate::ui_gen::vocab::view_prop_vocab`——
+    /// View IR builder 方法面）；真未知仍显式拒绝（PLAN-027 原则不
+    /// 回退），拒绝文案补 `on <kind>` 上下文。复合族 props 由族降层臂
+    /// 消费，不经此门。
+    fn add_prop_to_builder(&self, builder: &str, tag: &str, key: &str, value: &AuraPropValue) -> String {
         match value {
             AuraPropValue::Expr(expr) => {
                 let value_str = self.ast_expr_to_rust(expr);
@@ -7193,15 +7376,47 @@ impl RustGenerator {
                     "aria-label" | "aria-labelledby" | "aria-describedby"
                     | "aria-hidden" | "aria-expanded" | "aria-controls"
                     | "role" | "tabindex" | "alt" => builder.to_string(),
+                    // PLAN-674 T-03：per-kind 词汇表命中——发射
+                    // `.{prop}({coerced})`（Flag 形零参方法，字面量 false
+                    // 跳过，非字面量落拒绝门——链式面无条件发射通道，
+                    /// 显式拒绝非静默）。
                     _ => {
+                        let kind = self.tag_to_view_fn(tag);
+                        let hit = crate::ui_gen::vocab::view_prop_vocab(kind)
+                            .iter()
+                            .find(|(p, _)| *p == key);
+                        if let Some((prop, shape)) = hit {
+                            use crate::ui_gen::vocab::ViewPropShape as S;
+                            return match shape {
+                                S::Flag => match expr {
+                                    crate::ast::Expr::Bool(true) => {
+                                        format!("{}.{}()", builder, prop)
+                                    }
+                                    crate::ast::Expr::Bool(false) => builder.to_string(),
+                                    _ => {
+                                        let msg = format!(
+                                            "a2r codegen: prop `{key}` on <{kind}> accepts only a literal bool (flag method has no conditional chain face; PLAN-674 vocab gate)"
+                                        );
+                                        format!("{{ std::compile_error!(\"{msg}\"); unreachable!() }}")
+                                    }
+                                },
+                                _ => format!(
+                                    "{}.{}({})",
+                                    builder,
+                                    prop,
+                                    self.coerce_vocab_value(expr, *shape)
+                                ),
+                            };
+                        }
                         // PLAN-027 T-04: 显式拒绝门（设计 §3a-a4）——未知
                         // prop 由静默丢弃改编译期错（防"看似编译过实缺件"
                         // 的 shell 生成物）。编译期错形态 = 表达式位
                         // compile_error! 块（generate_view_tree 为 String
                         // 管线，生成期 hard error 需全链 Result 化——
                         // 成本不成比例，且编译期错同样拦截产物入库）。
+                        // PLAN-674 T-03：文案补 kind 上下文（排障友好）。
                         let msg = format!(
-                            "a2r codegen: prop `{key}` not in the recognized vocabulary (PLAN-027 explicit rejection gate)"
+                            "a2r codegen: prop `{key}` not in the recognized vocabulary on <{kind}> (PLAN-027 explicit rejection gate)"
                         );
                         format!("{{ std::compile_error!(\"{msg}\"); unreachable!() }}")
                     }
@@ -7238,6 +7453,56 @@ impl RustGenerator {
         }
     }
 
+    /// PLAN-674 T-03：view 树是否含 menubar 族根（合成变体预扫描——
+    /// 枚举生成先于 view 树生成，变体推送须在此前判定）。
+    fn view_tree_has_menubar(&self, node: &crate::aura::AuraNode) -> bool {
+        match node {
+            crate::aura::AuraNode::Element { tag, children, .. } => {
+                if tag == "menubar" {
+                    return true;
+                }
+                children.iter().any(|c| self.view_tree_has_menubar(c))
+            }
+            crate::aura::AuraNode::ForLoop { body, .. } => {
+                body.iter().any(|c| self.view_tree_has_menubar(c))
+            }
+            crate::aura::AuraNode::Conditional { then_body, else_body, .. } => {
+                then_body.iter().any(|c| self.view_tree_has_menubar(c))
+                    || else_body
+                        .as_ref()
+                        .map(|bs| bs.iter().any(|c| self.view_tree_has_menubar(c)))
+                        .unwrap_or(false)
+            }
+            _ => false,
+        }
+    }
+
+    /// PLAN-674 T-03：词汇值形强转（.at 字面量/表达式 → builder 形参
+    /// 类型面）。Str 字面量经 ast_expr_to_rust 已是 `"…".to_string()`；
+    /// Str 表达式 `format!("{}", expr)` Display 包裹（String 与数值型
+    /// 字段同形治愈）；F32 int 字面量 `as f32`；U16/Usize 数值直发。
+    fn coerce_vocab_value(
+        &self,
+        expr: &crate::ast::Expr,
+        shape: crate::ui_gen::vocab::ViewPropShape,
+    ) -> String {
+        use crate::ui_gen::vocab::ViewPropShape as S;
+        let raw = self.ast_expr_to_rust(expr);
+        match shape {
+            S::Str => match expr {
+                crate::ast::Expr::Str(_) => raw,
+                _ => format!("format!(\"{{}}\", {})", raw),
+            },
+            S::Bool => raw,
+            S::F32 => match expr {
+                crate::ast::Expr::Int(n) => format!("{} as f32", n),
+                _ => raw,
+            },
+            S::U16 | S::Usize => raw,
+            S::Flag => String::new(), // Flag 形在词汇命中处特判（零参/拒绝）
+        }
+    }
+
     /// PLAN-039 D1-A（§5.1 定案记录）：button `ondblclick` = MouseArea
     /// 包裹降级。View::Button 无双击事件槽（view.rs:1650-1657 仅
     /// onclick/on_right_click），MouseArea.on_double_click 为既有原语
@@ -7260,7 +7525,12 @@ impl RustGenerator {
     }
 
     /// Add event to builder
-    fn add_event_to_builder(&self, builder: &str, event: &str, aura_event: &AuraEvent) -> String {
+    /// PLAN-674 T-04：事件面同款表驱动化（单源 =
+    /// `crate::ui_gen::vocab::view_event_vocab`——View builder 事件槽面；
+    /// 槽形 Closure/Msg 双态发射）。全局族（onclick/oncontextmenu/
+    /// onchange + drag not-yet + hover 双轨同弃）维持独立臂；真未知
+    /// 仍显式拒绝，文案补 `on <kind>` 上下文。
+    fn add_event_to_builder(&self, builder: &str, tag: &str, event: &str, aura_event: &AuraEvent) -> String {
         let handler_fn = self.handler_to_rust_closure_with_params(&aura_event.handler, &aura_event.params);
         match event {
             "onclick" | "onClick" | "on_click" => {
@@ -7292,11 +7562,30 @@ impl RustGenerator {
             // onmouseenter 两轨一致落空（parity 锚）——非拒绝面。
             "onmouseenter" | "onmouseleave" | "onhover" | "onhoverout" => builder.to_string(),
             _ => {
+                // PLAN-674 T-04：per-kind 事件词汇命中——Closure 槽发
+                /// handler 闭包，Msg 槽发直消息（Option<M> 面无闭包包装）。
+                let kind = self.tag_to_view_fn(tag);
+                if let Some((_, slot)) = crate::ui_gen::vocab::view_event_vocab(kind)
+                    .iter()
+                    .find(|(name, _)| *name == event)
+                {
+                    return match slot {
+                        crate::ui_gen::vocab::ViewEventSlot::Closure(method) => {
+                            format!("{}.{}({})", builder, method, handler_fn)
+                        }
+                        crate::ui_gen::vocab::ViewEventSlot::Msg(method) => {
+                            let direct =
+                                self.handler_to_rust_direct_msg(&aura_event.handler, &aura_event.params);
+                            format!("{}.{}({})", builder, method, direct)
+                        }
+                    };
+                }
                 // PLAN-027 T-04: 显式拒绝门（同 add_prop_to_builder 臂注）
                 // ——未知事件不再静默丢弃（shell 依赖的 ondismiss 等此前
                 // 无译无警；视图事件槽丢失 = 交互缺件编译不可见）。
+                // PLAN-674 T-04：文案补 kind 上下文。
                 let msg = format!(
-                    "a2r codegen: event `{event}` not in the recognized vocabulary (PLAN-027 explicit rejection gate)"
+                    "a2r codegen: event `{event}` not in the recognized vocabulary on <{kind}> (PLAN-027 explicit rejection gate)"
                 );
                 format!("{{ std::compile_error!(\"{msg}\"); unreachable!() }}")
             }
@@ -12916,6 +13205,135 @@ widget Demo {
         assert!(
             code.contains("not in the recognized vocabulary"),
             "非 button ondblclick 维持响亮拒:\n{code}"
+        );
+    }
+
+    /// PLAN-674 T-03：per-kind 词汇表机制测试（单源 =
+    /// `crate::ui_gen::vocab::view_prop_vocab`——View builder 方法面）——
+    /// 通用 fixture（零消费方业务名）：textarea height/ghost 与 input
+    /// width 经词汇门发射 builder 调用（此前四 prop 白名单外即拒）。
+    #[test]
+    fn vocab_gate_per_kind_prop_table() {
+        let code = gen_first_widget(r#"
+widget Demo {
+    msg { Nop }
+    view {
+        col {
+            textarea (placeholder: "p", height: 8, ghost: "g") { oninput: .Nop }
+            input (value: "v", width: 220, placeholder: "q") { oninput: .Nop }
+        }
+    }
+}
+"#);
+        assert!(
+            code.contains(".height(8)"),
+            "textarea height 经词汇表发射:\n{code}"
+        );
+        assert!(
+            code.contains(".ghost(\"g\".to_string())"),
+            "textarea ghost 经词汇表发射:\n{code}"
+        );
+        assert!(
+            code.contains(".width(220)"),
+            "input width 经词汇表发射:\n{code}"
+        );
+        assert!(
+            !code.contains("not in the recognized vocabulary"),
+            "表内 prop 不得落拒绝门:\n{code}"
+        );
+    }
+
+    /// PLAN-674 T-03/T-04：拒绝门不回退（PLAN-027 原则）——真未知
+    /// prop/event 仍 compile_error!，文案补 `on <kind>` 上下文
+    ///（排障友好）。prop 载体 = slider（专用臂透传未消费 prop 入
+    /// 门）；event 载体 = button（全事件透传门）；col 布局臂/slider
+    /// 事件臂的既有短路行为不经过门，随注维持。
+    #[test]
+    fn vocab_gate_unknown_keeps_rejection_with_kind() {
+        let code = gen_first_widget(r#"
+widget Demo {
+    msg { Nop }
+    view {
+        col {
+            slider (min: 0, max: 10, value: 5, mystery: 1) { onchange: .Nop }
+            button "b" { onfrobnicate: .Nop }
+        }
+    }
+}
+"#);
+        assert!(
+            code.contains("prop `mystery` not in the recognized vocabulary on <slider>"),
+            "未知 prop 拒绝文案含 kind:\n{code}"
+        );
+        assert!(
+            code.contains("event `onfrobnicate` not in the recognized vocabulary on <button>"),
+            "未知 event 拒绝文案含 kind:\n{code}"
+        );
+    }
+
+    /// PLAN-674 T-03：menubar 组件族降层臂（折叠契约镜像解释态
+    /// convert_menubar_component）——Row of Popover（open =
+    /// action_config::menubar_open()==menu_id + on_dismiss =
+    /// __MenubarClose）+ trigger Button（__MenubarToggle）+ item
+    /// Button（title/icon/shortcut/enabled 族 props 臂内消费）+ 合成
+    /// 变体与 on() 臂；族 props 零拒绝门命中。
+    #[test]
+    fn menubar_family_lowers_to_popover_row() {
+        let code = gen_first_widget(r#"
+widget Demo {
+    msg { PickOpen, PickToggle }
+    model { var tab_count int = 0 }
+    view {
+        col {
+            menubar (class: "items-center") {
+                menubar-menu (value: "file") {
+                    menubar-trigger "文件"
+                    menubar-content {
+                        menubar-item (title: "打开", icon: "folder-open", shortcut: "Ctrl+O") { onclick: .PickOpen }
+                        menubar-separator
+                        menubar-checkbox-item (title: "控制台", checked: .tab_count > 0) { onclick: .PickToggle }
+                    }
+                }
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            code.contains("__MenubarToggle(\"file\".to_string())"),
+            "trigger 合成开合消息:\n{code}"
+        );
+        assert!(
+            code.contains("auto_lang::ui::action_config::menubar_open().as_deref() == Some(\"file\")"),
+            "open 态 = 全局面比对:\n{code}"
+        );
+        assert!(
+            code.contains("on_dismiss: Some(DemoMsg::__MenubarClose)"),
+            "on_dismiss 合成关闭消息:\n{code}"
+        );
+        assert!(
+            code.contains("PopoverPlacement::BottomStart"),
+            "面板定位 BottomStart（VM 轨同款）:\n{code}"
+        );
+        assert!(
+            code.contains("on_click(|_| DemoMsg::PickOpen)"),
+            "item onclick 物化派发:\n{code}"
+        );
+        assert!(
+            code.contains("if self.tab_count > 0 {"),
+            "checkbox checked 条件前缀:\n{code}"
+        );
+        assert!(
+            code.contains("DemoMsg::__MenubarToggle(id) => {"),
+            "on() 合成 Toggle 臂:\n{code}"
+        );
+        assert!(
+            code.contains("DemoMsg::__MenubarClose => {"),
+            "on() 合成 Close 臂:\n{code}"
+        );
+        assert!(
+            !code.contains("not in the recognized vocabulary"),
+            "族 props 臂内消费零拒绝门:\n{code}"
         );
     }
 

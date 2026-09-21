@@ -210,7 +210,9 @@ impl FrameSource for EditorFrameSource {
 }
 
 /// 线格式修饰位（bit0 shift / bit1 ctrl / bit2 alt / bit3 logo）→ core 修饰。
-fn wire_mods(bits: u8) -> EditorModifiers {
+/// PLAN-674 T-01：转 pub——native_projector 编辑器键入分派臂复用
+/// （InputMsg::KeyPressed 修饰位 → EditorModifiers，单源免复刻）。
+pub fn wire_mods(bits: u8) -> EditorModifiers {
     EditorModifiers {
         shift: bits & 1 != 0,
         control: bits & 2 != 0,

@@ -225,6 +225,14 @@ impl Coverage {
         // 坐标回传/labels = M7-c 撞面批随注）。像素原生族首个经位图
         // 通道过线的 kind（043 样板验证）。
         "canvas",
+        // PLAN-674 T-01（§10-1 裁定 A：结构 DrawOps）：codeeditor 过线
+        // ——View::CodeEditor 投影臂（CODE_EDITORS 注册表 get-or-create，
+        // inproc iced widget 同源）→ core::render 视口虚拟化
+        // EditorDrawList → lower_editor_frame（Plan 386 降层，gutter/
+        // 当前行/选区/搜索/caret/preedit/滚动条全 op 面）；键入/IME/箭标
+        // 走 core handle_input 全键面（editor_frame.rs EditorFrameSource
+        // 映射先例）。041 案册翻案（"两真 not-yet 家族"清偿件）。
+        "codeeditor",
         ]
         .into_iter()
         .map(String::from)
@@ -1381,10 +1389,11 @@ mod tests {
     /// PLAN-032 T-07：六例**运行时视图**（path 上下文装载 + Component::
     /// view()——路由解析后子树含页组件样式）覆盖判定钉——与仪器静态
     /// App 壳扫描（native_flip_coverage_data_row，026 D3 口径）的差在
-    /// 案：018 truncate（文本裁剪）/ 041 codeeditor（整 kind）两真
-    /// not-yet 家族运行时拒收（I3 留痕腿——queue 门拒绝退出，AC-04）；
-    /// D5 族运行时面补臂（Inset/LineClamp/FlexWrap）后 021/024 亦
-    /// Covered。生产 auto 裁决（a2r main resolve_native_frame_mode 消费
+    /// 案：018 truncate / 041 codeeditor 两真 not-yet 家族运行时拒收
+    /// （I3 留痕腿——queue 门拒绝退出，AC-04）先后清偿（018=PLAN-036
+    /// T-02 truncate 真渲；041=PLAN-674 T-01 codeeditor 扩册）；D5 族
+    /// 运行时面补臂（Inset/LineClamp/FlexWrap）后 021/024 亦 Covered。
+    /// 生产 auto 裁决（a2r main resolve_native_frame_mode 消费
     /// component.view()）即本口径。
     #[test]
     fn native_gate_runtime_views_of_six() {
@@ -1398,8 +1407,13 @@ mod tests {
             ("018-book-reader", None),
             ("021-blog-viewer", None),
             ("024-charts", None),
-            ("041-auto-edit", Some("tag:codeeditor")),
+            // PLAN-674 T-01：codeeditor 入册（结构 DrawOps 投影臂）——
+            // 041 翻 Covered（原缺项 tag:codeeditor 清偿）。
+            ("041-auto-edit", None),
             ("tabs-variants", None),
+            // PLAN-674 T-05：codeeditor RQ 形态 fixture 入运行时门
+            //（capability-tests 根）。
+            ("codeeditor-rq", None),
         ];
         for (dir, missing) in expect {
             let path = ["examples/ui", "examples/capability-tests"]
@@ -1558,6 +1572,114 @@ mod tests {
         // 缺项清单非空不变式（NotCovered 行必载缺项载荷）。
         for (name, covered_row, why) in &rows {
             assert!(!(!covered_row && why.is_empty()), "{name} NotCovered 缺项空载荷");
+        }
+    }
+
+    /// PLAN-674 T-02（§10-3 裁定 C）：not-yet kind 全集勘定仪器——
+    /// examples/ui + examples/capability-tests **双根**全量 .at →
+    /// AuraViewBuilder → scan_native_view × judge(native_queue_set)，
+    /// 逐 kind 聚合缺项（kind → 出现目录集）。输出 = 三态分流决策档
+    /// 数据源（本批修/登记另立/降级归一）；断言仅非空健全性（仪器
+    /// 非 gate——judged 阈值门在 native_flip_coverage_data_row）。
+    #[test]
+    fn native_not_yet_kind_inventory() {
+        use crate::ui::aura_view_builder::AuraViewBuilder;
+        use crate::ui::vm_bridge::VmBridge;
+        use std::collections::BTreeMap;
+
+        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        let mut roots: Vec<(String, std::path::PathBuf)> = Vec::new();
+        for root in ["ui", "capability-tests"] {
+            let p = base.join(root);
+            if p.is_dir() {
+                roots.push((root.to_string(), p));
+            }
+        }
+        assert!(!roots.is_empty(), "examples 根缺席");
+        // kind/style/event 缺项 → (root, dir) 集（聚合视图）。
+        let mut census: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut judged_samples = 0usize;
+        for (root, root_dir) in &roots {
+            let mut dirs: Vec<std::path::PathBuf> = std::fs::read_dir(root_dir)
+                .expect("root dir")
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| p.is_dir())
+                .collect();
+            dirs.sort();
+            for dir in dirs {
+                let front = dir.join("src/front");
+                if !front.is_dir() {
+                    continue;
+                }
+                let name = format!("{root}/{}", dir.file_name().unwrap().to_string_lossy());
+                let mut srcs: Vec<std::path::PathBuf> = std::fs::read_dir(&front)
+                    .expect("front dir")
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.path())
+                    .filter(|p| p.extension().is_some_and(|x| x == "at"))
+                    .collect();
+                srcs.sort();
+                if srcs.is_empty() {
+                    continue;
+                }
+                let mut combined = String::new();
+                for s in &srcs {
+                    combined.push_str(&std::fs::read_to_string(s).unwrap_or_default());
+                    combined.push('\n');
+                }
+                let session = crate::session::CompilerSession::ui();
+                let mut parser = crate::Parser::from(combined.as_str()).with_session(session);
+                let Ok(ast) = parser.parse() else {
+                    eprintln!("[p674-not-yet] {name}: parse-fail（仪器桶——非覆盖缺项）");
+                    continue;
+                };
+                let mut app_decl: Option<&crate::ast::WidgetDecl> = None;
+                for st in &ast.stmts {
+                    if let crate::ast::Stmt::WidgetDecl(d) = st {
+                        if app_decl.is_none() || d.name.as_str() == "App" {
+                            app_decl = Some(d);
+                        }
+                        if d.name.as_str() == "App" {
+                            break;
+                        }
+                    }
+                }
+                let Some(decl) = app_decl else {
+                    eprintln!("[p674-not-yet] {name}: no-widget（仪器桶）");
+                    continue;
+                };
+                let Ok(widget) = crate::aura::extract::extract_widget_from_decl(decl) else {
+                    eprintln!("[p674-not-yet] {name}: extract-fail（仪器桶）");
+                    continue;
+                };
+                let bridge = VmBridge::new_from_decls(
+                    decl,
+                    &[],
+                    vec![],
+                    &std::collections::HashMap::new(),
+                    false,
+                );
+                let Ok(bridge) = bridge else {
+                    eprintln!("[p674-not-yet] {name}: bridge-fail（仪器桶）");
+                    continue;
+                };
+                let view = AuraViewBuilder::new(&bridge, &widget.name).build(&widget.view_tree);
+                let scan = scan_native_view(&view);
+                judged_samples += 1;
+                if let Verdict::NotCovered(missing) = judge(&scan, &Coverage::native_queue_set()) {
+                    for m in missing {
+                        census.entry(m).or_default().push(name.clone());
+                    }
+                }
+            }
+        }
+        assert!(judged_samples > 0, "judged 样本非空");
+        if census.is_empty() {
+            eprintln!("[p674-not-yet] 全集空：双根 judged 样本全覆盖");
+        }
+        for (kind, dirs) in &census {
+            eprintln!("[p674-not-yet] {kind}: {} 处（{}）", dirs.len(), dirs.join(", "));
         }
     }
 

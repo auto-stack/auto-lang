@@ -1,0 +1,25 @@
+// codeeditor-rq —— PLAN-674 T-05：codeeditor kind 的 RQ 形态 fixture
+//（§10-1 裁定 A：结构 DrawOps 投影臂）。VM+RQ（`auto run -r vm -q`）
+// 实跑达 Active 可渲染；键入经 core handle_input 全键面回传 oninput。
+widget App {
+    model {
+        var src str = "fn main() {\n    println!(\"hello\");\n}"
+        var rev int = 0
+    }
+
+    msg { SrcChanged(int) }
+
+    on {
+        .SrcChanged(i) -> { .rev = .rev + 1 }
+    }
+
+    view {
+        col {
+            style: "p-4 gap-4"
+            text "codeeditor-rq"
+            code_editor (key: "main", value: .src, lang: "rust") {
+                oninput: .SrcChanged(0)
+            }
+        }
+    }
+}

@@ -128,13 +128,24 @@ handler 侧用 `Time.now_sec()`；desktop dock 仍用分钟级 `__wm_clock`。�
 **编译 exe 桌面客户端面（PLAN-020/025/026，provisional）**：desktop_protocol
 客户端臂自解释态 `DynamicComponent` 泛化到 `Component` seam——a2r 编译 exe
 经 `RqProjector<C>`（View 运行期投影）作 compositor 一等客户端，native
-覆盖集（v1.8：form/payload 族 input/textarea/checkbox/radio/slider/select
+覆盖集（v1.9：form/payload 族 input/textarea/checkbox/radio/slider/select
 （slider 三轨已由 PLAN-661 补全：VM/aura 臂 SliderChangeHandler + vue 原生
 range（R-5，shadcn 组件路径退役）+ MCP set_value 闭环，2026-09-19）
-+ display 族 image/progress 占位保真 + layouts scroll/grid + 样式降级放行
++ display 族 image/progress 占位保真 + **codeeditor（PLAN-674 T-01，结构
+DrawOps 投影：CODE_EDITORS 注册表 get-or-create 同源 inproc iced widget
+（storage_key 键 + `code_editor_set_text` 外部值差分）→ `core::render`
+视口虚拟化 EditorDrawList → `lower_editor_frame`（Plan 386 降层）平移入流；
+键入/IME/箭标/滚轮走 core `handle_input` 全键面（INPUT_TEXT 全文代写 +
+on_change 零参派发——解释态 on() 单参注入臂与注册表读面
+`code_editor_text(key)` 同进程双消费；无 iced 宿主经
+`ensure_font_system_call` 幂等装缺省字体系统源）；折叠 gutter/搜索面板
+跳转等宿主面板族 not-yet 随注）** + layouts scroll/grid + 样式降级放行
 批（flex-1/shadow/overflow-/min-w-/min-h-/leading- 等——逐类随注
 `native_queue_set`）；icon/badge/avatar/divider/separator/spacer/a 经 a2r
-codegen 降级归一——分表非缺口；imagesurface 整 kind not-yet）与
+codegen 降级归一——分表非缺口；imagesurface 整 kind not-yet；not-yet 全集
+勘定仪器 = `native_not_yet_kind_inventory`（双根聚合，PLAN-674 T-02——现余
+style:native-unstyled token 面（capability-tests CSS 专用，P674-D1）与
+tag:managed_content（PLAN-656 合成基准件，P674-D2）两登记项）与
 `auto`=independent 缺省裁定（026 复测 judged 76.2% < 95%，翻转点已备）、
 宿主 `desktop_exe:` 孵化分流、输入路由两端（投影器右键/滚轮/聚焦编辑/IME
 闭环消费 + 宿主 `broker_key_event/broker_char/broker_scroll/broker_ime_*`

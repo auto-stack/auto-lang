@@ -21,8 +21,8 @@ pub use core::{
     code_editor_edit, code_editor_find,
     code_editor_caret_offset_y, code_editor_redo, code_editor_select_all,
     code_editor_set_text, code_editor_text,
-    code_editor_undo, code_editor_with, set_font_system_call, storage_key, with_font_system,
-    CodeEditorConfig,
+    code_editor_undo, code_editor_with, ensure_font_system_call, set_font_system_call, storage_key,
+    with_font_system, CodeEditorConfig,
     CodeEditorCore, CoreOutput, EditorButton, EditorClipboard, EditorInput, EditorKey,
     EditorModifiers, NullClipboard, TextDelta,
 };

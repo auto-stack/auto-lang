@@ -1,11 +1,13 @@
 # Shell a2r 接缝面（S1 生成域 + S2 typed 接缝）
 
-> **Status**: provisional（PLAN-027 rev2 交付面；B 形态程序落地后随其
-> review 升格/修订）
+> **Status**: S1 词汇门节已转正（PLAN-674 T-03/T-04 per-kind 词汇表化，
+> 2026-09-21）；其余 provisional（PLAN-027 rev2 交付面；B 形态程序落地后
+> 随其 review 升格/修订）
 > 来源：PLAN-027（2026-09-18，auto-os `docs/plans/027-desktop-shell-a2r.md`
 > rev 2）；设计依据 `docs/design/autoui/desktop-shell-a2r.md`（裁定落定
 > = B 形态 + 双轨常驻）。
-> 提交锚：plan-027-dev 97d0bb75d / 274265345 / 611fbff2f / T-05 / d6e8da838。
+> 提交锚：plan-027-dev 97d0bb75d / 274265345 / 611fbff2f / T-05 / d6e8da838；
+> 词汇门扩容 = PLAN-674（auto-lang docs/plans/674-rq-codeeditor-a2r-vocab.md）。
 
 ## 范围
 
@@ -32,9 +34,22 @@ RenderQueue）直接承继本面——typed 载体即 wire payload 词汇。
   onmousedown|onclick→on_click、onmouseup→on_release、
   oncontextmenu(.prevent)→on_context_menu）。
 - **tag 映射补齐**：`div`→container、`taskbar`→row（解释臂同源）。
-- **显式拒绝门**：`add_prop_to_builder`/`add_event_to_builder` 未知键
-  emit `compile_error!`（静默丢弃退役）。认知且双轨同弃层 = 布局 hover
-  事件（View IR 布局件无 hover 槽，解释 `set_layout_events` 同弃）。
+- **显式拒绝门（per-kind 词汇表化，PLAN-674 T-03/T-04）**：
+  `add_prop_to_builder`/`add_event_to_builder` 未知键 emit `compile_error!`
+  （静默丢弃退役）。识别面 = **per-kind 词汇表**（单源 =
+  `ui_gen/vocab.rs::view_prop_vocab`/`view_event_vocab`——语义源 = View
+  IR builder 方法面（`ui/view.rs` 各 `View*Builder`；表体落 ui_gen 是
+  组合律：view 域整树挂 `ui` feature 门后，a2r codegen 须在无 ui 组合
+  （`test-trans` 档）可编译；新 builder setter 扩容同步表；aura schema
+  对齐随收口另立）：命中发射 `.{prop}({coerced})`（值形
+  Str/Bool/F32/U16/Usize/Flag 强转；事件槽 Closure/Msg 双态），真未知
+  仍显式拒绝且文案含 `on <kind>` 上下文。复合组件族（menubar 族
+  value/title/icon/shortcut/enabled/checked）由族降层臂整体消费
+  （折叠契约镜像解释态 `convert_menubar_component`；开合态走
+  `action_config::MENUBAR_OPEN` 全局面 + 合成变体 `__MenubarToggle(String)`
+  /`__MenubarClose`——与 VM 轨 renderer 同机制），不经词汇门。认知且
+  双轨同弃层 = 布局 hover 事件（View IR 布局件无 hover 槽，解释
+  `set_layout_events` 同弃）。
 - **shell 全量词汇门**：`test_shell_pack_codegen_vocabulary_gate`——
   真源五件每对 (tag, prop/event-base) 对表断言；表即合同，pack 新词汇
   须同步扩臂 + 扩表。

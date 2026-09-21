@@ -34,6 +34,9 @@ use super::client_runtime::{
     DISABLED_ALPHA, IMAGE_PLACEHOLDER, INPUT_BG, INPUT_BORDER, LABEL_FG, LINE_H_FACTOR, MARGIN,
     PLACEHOLDER_FG, PROGRESS_TRACK, TEXT_FG, TEXT_SIZE,
 };
+// PLAN-674 T-01：codeeditor 投影臂/键入回传面（CODE_EDITORS 注册表 +
+// core handle_input 全键面——ui-iced ⊇ code-editor，无 cfg 面）。
+use crate::ui::code_editor as ce;
 use super::coverage::{self, Coverage, Verdict};
 use super::endpoint::FrameSource;
 use super::message::{ControlMsg, DrawList, DrawOp, ImageFit, InputMsg, MouseButton, Rgba8, WRect};
@@ -78,7 +81,14 @@ enum HitEntry<M: Clone + std::fmt::Debug> {
     /// `value` = 布局期视图值（聚焦时 buffer 初始化源，D2）；`slot` =
     /// 聚焦身份（Input/Textarea 合一计数，D1-A）；`on_change` = 键入
     /// 回写物化消息（None = 只显不编——登记省略）。
-    Input { rect: WRect, value: String, on_change: Option<M>, slot: usize },
+    /// PLAN-674 T-01：codeeditor 复用本槽位族——`editor` = CODE_EDITORS
+    /// 注册表存储键（storage_key(key)；None = 平面 input/textarea）。
+    /// 编辑器键入不走 input_buffer，走 core `handle_input` 全键面
+    /// （光标/选区/undo/IME 引擎态在 core），INPUT_TEXT 通道携带
+    /// 键入后全文（on_change 零参派发前代写）。编辑器恒登记命中
+    /// （聚焦/光标定位即交互面——on_change 缺席不省略，与平面 input
+    /// 的"登记省略"差分随注）。
+    Input { rect: WRect, value: String, on_change: Option<M>, slot: usize, editor: Option<String> },
     /// slider：轨道点击 → 几何换算 f32（min..=max 线性 + step 取整）→
     /// 回调物化派发（T-01 附带定案：v1 点击定位，拖拽 not-yet；
     /// PLAN-661 T-02：on_change 转 `Option<SliderChangeHandler>`——None
@@ -177,9 +187,29 @@ impl<M: Clone + std::fmt::Debug> HitEntry<M> {
     }
 }
 
+/// PLAN-674 T-01：协议键码（宿主 VK 形态——on_input 既有 8/27 同码制）
+/// → 编辑器非打印键。打印字符走 CharTyped 字符道，未列键位（F 族/
+/// 修饰裸键等）不映射（编辑器不消费）。
+fn editor_key_of(vk: u32) -> Option<ce::EditorKey> {
+    Some(match vk {
+        13 => ce::EditorKey::Enter,
+        8 => ce::EditorKey::Backspace,
+        9 => ce::EditorKey::Tab,
+        46 => ce::EditorKey::Delete,
+        36 => ce::EditorKey::Home,
+        35 => ce::EditorKey::End,
+        33 => ce::EditorKey::PageUp,
+        34 => ce::EditorKey::PageDown,
+        37 => ce::EditorKey::Left,
+        38 => ce::EditorKey::Up,
+        39 => ce::EditorKey::Right,
+        40 => ce::EditorKey::Down,
+        _ => return None,
+    })
+}
+
 /// DrawOp 原点平移（popover 面板子树走线产物同移——全部坐标字段绝对制）。
-fn shift_draw_op(op: &DrawOp, dx: f32, dy: f32) -> DrawOp {
-    match op {
+fn shift_draw_op(op: &DrawOp, dx: f32, dy: f32) -> DrawOp {    match op {
         DrawOp::Quad { rect, color } => DrawOp::Quad {
             rect: WRect::new(rect.x + dx, rect.y + dy, rect.w, rect.h),
             color: *color,
@@ -599,14 +629,38 @@ impl<C: Component> FrameSource for RqProjector<C> {
                 }
             }
             InputMsg::CharTyped { ch, .. } => self.char_typed(*ch),
+            // PLAN-674 T-01：聚焦编辑器的非打印键（Enter/箭标/Home/End/
+            // PageUp·Down/Delete/Tab/Backspace）→ core handle_input 键面
+            //（修饰位随行；Esc 仍走下方 select/popover 关闭臂——编辑器
+            // Esc 语义 not-yet 随注）。
+            InputMsg::KeyPressed { key, modifiers, .. }
+                if self.focused_editor_key().is_some() && editor_key_of(*key).is_some() =>
+            {
+                let sk = self.focused_editor_key().expect("guard 已验");
+                let input = ce::EditorInput::KeyPressed {
+                    key: editor_key_of(*key).expect("guard 已验"),
+                    text: None,
+                    modifiers: super::editor_frame::wire_mods(*modifiers),
+                };
+                self.feed_editor_input(&sk, input);
+            }
             // IME 闭环（PLAN-026 T-05，D2 定案）：Commit = 聚焦 buffer
             // 追加 → INPUT_TEXT 代写 → on_change 派发；Cancelled =
             // preedit 消解；Preedit = 暂存（渲染尾拼）。消费先例 =
-            // editor_frame.rs:195-199（wire v1.0 在册变体）。
+            // editor_frame.rs:195-199（wire v1.0 在册变体）。PLAN-674
+            // T-01：聚焦编辑器优先走 core IME 面（preedit 经
+            // EditorDrawList 自渲，不经 input 尾拼道）。
             InputMsg::ImeCommit { text, .. } => self.ime_commit(text),
-            InputMsg::ImeCancelled { .. } => self.ime_preedit = None,
+            InputMsg::ImeCancelled { .. } => {
+                if let Some(sk) = self.focused_editor_key() {
+                    self.feed_editor_input(&sk, ce::EditorInput::ImeClosed);
+                }
+                self.ime_preedit = None;
+            }
             InputMsg::ImePreedit { text, .. } => {
-                if self.focused_input.is_some() {
+                if let Some(sk) = self.focused_editor_key() {
+                    self.feed_editor_input(&sk, ce::EditorInput::ImePreedit(text.clone()));
+                } else if self.focused_input.is_some() {
                     self.ime_preedit = Some(text.clone());
                 } else {
                     self.ime_dropped += 1;
@@ -729,7 +783,24 @@ impl<C: Component> RqProjector<C> {
             // 聚焦（T-01 D1/D2）：记槽位 + buffer 自视图值初始化。聚焦
             // 改变帧面（焦点描边）→ rev 前进（解释态不推版——native 帧
             // 面全由 rev 驱动，差异随注）。
-            Some(HitEntry::Input { value, slot, .. }) => {
+            // PLAN-674 T-01：编辑器槽位（editor = 存储键）——旧编辑器
+            // FocusLost → FocusGained + 光标定位（局部坐标 = 命中点 -
+            // rect 原点；core handle_mouse_press 引擎态光标/选区）。
+            Some(HitEntry::Input { rect, value, slot, editor, .. }) => {
+                if let Some(sk) = editor {
+                    let prev = self.focused_editor_key();
+                    if prev.as_deref() != Some(sk.as_str()) {
+                        if let Some(old) = prev {
+                            self.feed_editor_input(&old, ce::EditorInput::FocusLost);
+                        }
+                        self.feed_editor_input(sk.as_str(), ce::EditorInput::FocusGained);
+                    }
+                    let (lx, ly) = (x - rect.x, y - rect.y);
+                    self.feed_editor_input(
+                        sk.as_str(),
+                        ce::EditorInput::MousePressed { button: ce::EditorButton::Left, x: lx, y: ly },
+                    );
+                }
                 self.focused_input = Some(slot);
                 self.input_buffer = value;
                 self.ime_preedit = None;
@@ -789,6 +860,42 @@ impl<C: Component> RqProjector<C> {
         })
     }
 
+    /// PLAN-674 T-01：聚焦槽位的编辑器存储键（平面 input/textarea =
+    /// None）。命中表为最近一帧快照——编辑器随视图消失后此处返回 None，
+    /// 键入自然 no-op（槽位失配）。
+    fn focused_editor_key(&self) -> Option<String> {
+        let slot = self.focused_input?;
+        self.hits.iter().find_map(|e| match e {
+            HitEntry::Input { editor: Some(sk), slot: s, .. } if *s == slot => Some(sk.clone()),
+            _ => None,
+        })
+    }
+
+    /// PLAN-674 T-01：编辑器 core 输入馈送——`handle_input` 全键面
+    /// （光标/选区/undo/IME 引擎态在 core，NullClipboard = 剪贴板族
+    /// not-yet 随注）→ text_changed 时 INPUT_TEXT 全文代写 +
+    /// on_change 零参派发。INPUT_TEXT 即 inproc 侧
+    /// `IcedMessage.input_value: Some(text)` 的 RQ 通道等价（泛型
+    /// Component::on 无参数面——解释态 on() 单参注入臂与注册表读面
+    /// `code_editor_text(key)`（同进程）皆可消费）；cursor/redraw 变化
+    /// 亦推 rev（当前行高亮/caret 帧面）。
+    fn feed_editor_input(&mut self, sk: &str, input: ce::EditorInput) {
+        let out = ce::code_editor_with(sk, |core| {
+            ce::with_font_system(|fs| core.handle_input(fs, input, &mut ce::NullClipboard))
+        });
+        let Some(out) = out else { return };
+        if out.text_changed {
+            let text = ce::code_editor_text(sk).unwrap_or_default();
+            if let Some(msg) = self.focused_on_change() {
+                crate::ui::iced::store_input_text(&text);
+                self.component.on(msg);
+            }
+        }
+        if out.text_changed || out.cursor_changed || out.request_redraw {
+            self.rev += 1;
+        }
+    }
+
     /// 键入回写（T-01 D2 定案 A）：编辑 buffer → INPUT_TEXT thread-local
     /// 代写（与 a2r 生成 on() 的 `last_input_text()` 读面同线程接驳——
     /// ClientPump 单线程泵）→ on_change 派发 → rev 前进。
@@ -799,9 +906,24 @@ impl<C: Component> RqProjector<C> {
     }
 
     /// CharTyped：聚焦框 buffer 追加 → 回写（控制字符不过——Enter/
-    /// on_submit not-yet，T-01 D2 随注）。
+    /// on_submit not-yet，T-01 D2 随注）。PLAN-674 T-01：聚焦编辑器
+    /// 优先走 core 键入（光标处插入——Engine 层完整编辑语义）。
     fn char_typed(&mut self, ch: char) {
-        if ch.is_control() || self.focused_input.is_none() {
+        if ch.is_control() {
+            return;
+        }
+        if let Some(sk) = self.focused_editor_key() {
+            self.feed_editor_input(
+                &sk,
+                ce::EditorInput::KeyPressed {
+                    key: ce::EditorKey::Char(ch),
+                    text: Some(ch.to_string()),
+                    modifiers: ce::EditorModifiers::none(),
+                },
+            );
+            return;
+        }
+        if self.focused_input.is_none() {
             return;
         }
         let Some(msg) = self.focused_on_change() else { return };
@@ -823,8 +945,13 @@ impl<C: Component> RqProjector<C> {
     /// ImeCommit（PLAN-026 T-05）：组合串并入聚焦 buffer → 同 CharTyped
     /// 通道回写（INPUT_TEXT 代写 + on_change 派发 + rev 前进）。无聚焦 /
     /// 无 handler = 丢弃 + ime_dropped 留痕（I3）。preedit 暂存随并入
-    /// 消解（组合终态 = Commit）。
+    /// 消解（组合终态 = Commit）。PLAN-674 T-01：聚焦编辑器走 core
+    /// ImeCommit（insert_string + delta 同流——人/agent 写无差别）。
     fn ime_commit(&mut self, text: &str) {
+        if let Some(sk) = self.focused_editor_key() {
+            self.feed_editor_input(&sk, ce::EditorInput::ImeCommit(text.to_string()));
+            return;
+        }
         if self.focused_input.is_none() {
             self.ime_dropped += 1;
             return;
@@ -845,7 +972,22 @@ impl<C: Component> RqProjector<C> {
 
     /// 滚轮路由（T-01 D5）：内层命中胜 → 唯一 Scrollable 兜底；不命中
     /// 且非唯一 = 静默不路由（多 Scrollable 且指针缺席 → 目标歧义，I3）。
+    /// PLAN-674 T-01：指针位编辑器优先——core 内部滚动（cosmic-text
+    /// buffer scroll + 归一钳制，render 视口虚拟化消费；无需聚焦——
+    /// 悬停滚动即编辑器惯例），无编辑器命中走既有 Scrollable 路由。
     fn wheel(&mut self, dx: f32, dy: f32) {
+        let editor_hit = self.hits.iter().rev().find_map(|e| match e {
+            HitEntry::Input { rect, editor: Some(sk), .. }
+                if rect_contains(rect, self.pointer.0, self.pointer.1) =>
+            {
+                Some(sk.clone())
+            }
+            _ => None,
+        });
+        if let Some(sk) = editor_hit {
+            self.feed_editor_input(&sk, ce::EditorInput::WheelScrolled { dx, dy, shift: false });
+            return;
+        }
         let entry = {
             let containing = self.hits.iter().enumerate().rev().find_map(|(i, e)| match e {
                 HitEntry::Scroll { .. } if rect_contains(e.rect(), self.pointer.0, self.pointer.1) => Some(i),
@@ -1915,6 +2057,80 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             let outer_w = style.fixed_w().unwrap_or(avail_w.max(0.0));
             Laid { size: (outer_w, tab_h + content_h) }
         }
+        // PLAN-674 T-01（§10-1 裁定 A：结构 DrawOps）：codeeditor 投影臂。
+        // 状态面 = CODE_EDITORS 注册表 get-or-create（`code_editor(sk,
+        // &config)`——inproc iced widget 同源同键，renderer.rs VM 路径
+        // 同款）；外部值经 `code_editor_set_text` 差分推入（last_external
+        // 差分——视图值回推不覆写用户进行中编辑）。渲染面 =
+        // `core::render::render`（视口虚拟化：text_runs 按可见 run ×
+        // syntax span 发射——op 流有界）→ `lower_editor_frame`（Plan
+        // 386 降层：gutter/当前行/选区/搜索/caret/preedit/滚动条全 op
+        // 面）→ 平移 (x, y) 入流。命中 = Input 槽位族复用（editor =
+        // 存储键——点击聚焦 + 光标定位，键入/IME/箭标走 core
+        // handle_input，见 on_input 编辑器分派臂）；on_context_menu →
+        // 右键表（MouseArea 同律）。折叠 gutter 点击/搜索面板跳转等
+        // 宿主面板族 not-yet（I3 随注——消费方 L1/L2 结构+存活+满帧
+        // 不依赖）。
+        View::CodeEditor {
+            key,
+            value,
+            lang,
+            line_numbers,
+            wrap,
+            vi,
+            highlight_current_line,
+            tab_width,
+            font_size,
+            on_change,
+            on_cursor: _,
+            on_context_menu,
+            search,
+            style: _,
+        } => {
+            // 无 iced 宿主（VM/RQ 进程）的字体系统源安装（幂等——已装
+            // 零影响；CODE_EDITORS 注册表触达前置）。
+            ce::ensure_font_system_call();
+            let config = ce::CodeEditorConfig {
+                lang: lang.clone(),
+                line_numbers: *line_numbers,
+                wrap: *wrap,
+                vi: *vi,
+                highlight_current_line: *highlight_current_line,
+                tab_width: *tab_width as u16,
+                font_size: *font_size,
+            };
+            let sk = ce::storage_key(key);
+            let core = ce::code_editor(&sk, &config);
+            ce::code_editor_set_text(&sk, value);
+            if !search.is_empty() {
+                core.set_search(search);
+            }
+            let w = style.fixed_w().unwrap_or(avail_w.max(0.0)).max(1.0);
+            let h = style.fixed_h().unwrap_or(240.0).max(1.0);
+            let rect = WRect::new(x, y, w, h);
+            let list =
+                ce::with_font_system(|fs| crate::ui::code_editor::core::render::render(core, fs, w, h, None));
+            let frame = super::editor_frame::lower_editor_frame(&list);
+            for op in &frame.ops {
+                ctx.ops.push(shift_draw_op(op, x, y));
+            }
+            // 编辑器恒登记 Input 命中（聚焦/光标定位即交互面——on_change
+            // 缺席不省略；平面 input 的"登记省略"差分见 HitEntry::Input
+            // 随注）。
+            let slot = ctx.input_slots;
+            ctx.input_slots += 1;
+            ctx.hits.push(HitEntry::Input {
+                rect,
+                value: value.clone(),
+                on_change: on_change.clone(),
+                slot,
+                editor: Some(sk),
+            });
+            if let Some(msg) = on_context_menu {
+                ctx.right_hits.push((rect, msg.clone()));
+            }
+            Laid { size: (w, h) }
+        }
         // —— 覆盖门后动态分支防线：占位盒 + 留痕（I3：非静默错绘）。
         other => {
             let kind = coverage::native_kind_of(other);
@@ -2171,6 +2387,7 @@ fn layout_view_input<M: Clone + std::fmt::Debug>(
             value: value.to_string(),
             on_change: Some(msg.clone()),
             slot,
+            editor: None,
         });
     }
     Laid { size: (w, h) }
@@ -2266,6 +2483,9 @@ fn node_style_of_view<M: Clone + std::fmt::Debug>(view: &View<M>) -> NodeStyle {
         // PLAN-032 T-03：Tabs 托盘视觉消费（bg/fg/border/font——variant
         // 差分见 View::Tabs 臂）。
         | View::Tabs { style, .. } => style.as_ref(),
+        // PLAN-674 T-01：codeeditor 尺寸面（w-/h- 定尺寸——臂内
+        // fixed_w/fixed_h 消费；缺省 avail_w × 240）。
+        | View::CodeEditor { style, .. } => style.as_ref(),
         _ => None,
     };
     node_style_of(style)
@@ -4034,6 +4254,16 @@ mod tests {
                         on_hit: None,
                         style: None,
                     })
+                    // PLAN-674 T-01 codeeditor kind 夹具（§10-1 裁定 A：
+                    // 结构 DrawOps——防漏钉矩阵双向更新；builder 形态
+                    // 产 View::CodeEditor 变体）。
+                    .child(
+                        View::<MMsg>::code_editor("matrix-674")
+                            .value("let x = 1;")
+                            .lang("rust")
+                            .line_numbers(true)
+                            .build(),
+                    )
                     .child(View::grid().cols(2).spacing(8).child(View::text("g1")).child(View::text("g2")).build())
                     .child(View::row().child(View::text("r1")).build())
                     .child(View::container(View::text("c")).build())
@@ -4079,6 +4309,76 @@ mod tests {
         for layout in &set.layouts {
             assert!(produced.contains(layout), "表内 layout 无投影臂夹具: {layout}");
         }
+    }
+
+    /// PLAN-674 T-01：codeeditor 投影/键入回传闭环（§10-1 裁定 A：结构
+    /// DrawOps + core handle_input 全键面）——渲染面 = EditorDrawList 降层
+    /// op（文本 run 入帧）；键入 = 注册表文本增长 + on_change 派发 +
+    /// INPUT_TEXT 全文代写；退格/回车同律（key 8/13 编辑器键面）。
+    #[test]
+    fn codeeditor_rq_typing_roundtrip() {
+        use crate::ui::code_editor as ce;
+        #[derive(Debug)]
+        struct Ed {
+            changed: u32,
+        }
+        #[derive(Debug, Clone)]
+        enum EMsg {
+            Changed,
+        }
+        impl Component for Ed {
+            type Msg = EMsg;
+            fn on(&mut self, _m: Self::Msg) {
+                self.changed += 1;
+            }
+            fn view(&self) -> View<Self::Msg> {
+                View::code_editor("rq-674-typing")
+                    .value("let x = 1;")
+                    .lang("rust")
+                    .line_numbers(true)
+                    .on_change(EMsg::Changed)
+                    .build()
+            }
+        }
+        let key = ce::storage_key("rq-674-typing");
+        let _ = ce::code_editor_dispose(&key);
+        let mut p = RqProjector::new(Ed { changed: 0 }, 480.0, 320.0);
+        p.ensure_covered().expect("codeeditor 入覆盖集");
+        let frame = p.render_frame();
+        assert!(
+            texts_of(&frame).iter().any(|t| t.contains("let") || t.contains("x")),
+            "codeeditor 文本 run 入帧: {:?}",
+            texts_of(&frame)
+        );
+        let before = ce::code_editor_text(&key).expect("注册表键在场");
+        assert_eq!(before, "let x = 1;", "外部值差分推入");
+        // 聚焦（点击编辑器矩形内）+ 键入 '0'。
+        click(&mut p, 240.0, 100.0);
+        p.on_input(&InputMsg::CharTyped { wid: 1, ch: '0' });
+        let after = ce::code_editor_text(&key).expect("注册表键在场");
+        assert_eq!(after.len(), before.len() + 1, "键入 1 字符入注册表: {after:?}");
+        assert_eq!(p.component().changed, 1, "on_change 派发 1 次");
+        assert_eq!(crate::ui::iced::last_input_text(), after, "INPUT_TEXT 全文代写");
+        // 退格回原长 + 同通道派发。
+        p.on_input(&InputMsg::KeyPressed { wid: 1, key: 8, modifiers: 0 });
+        assert_eq!(ce::code_editor_text(&key).unwrap().len(), before.len());
+        assert_eq!(p.component().changed, 2, "退格同通道派发");
+        // 回车 = 换行插入（key 13 编辑器键面——平面 input 的 Enter
+        // not-yet 不受影响，编辑器键位表先行）。
+        p.on_input(&InputMsg::KeyPressed { wid: 1, key: 13, modifiers: 0 });
+        assert_eq!(
+            ce::code_editor_text(&key).unwrap().matches('\n').count(),
+            1,
+            "回车换行入缓冲"
+        );
+        assert_eq!(p.component().changed, 3, "回车文本变化同通道派发");
+        // IME 提交 = 组合串并入（同流）。
+        p.on_input(&InputMsg::ImeCommit { wid: 1, text: "字".to_string() });
+        assert!(ce::code_editor_text(&key).unwrap().ends_with('字'), "IME 提交并入");
+        // 复帧（rev 前进——换行后两行仍入帧）。
+        let frame2 = p.render_frame();
+        assert!(!frame2.ops.is_empty());
+        let _ = ce::code_editor_dispose(&key);
     }
 
     /// native queue 金样（003-converter 形态——双 input + 换算文本，

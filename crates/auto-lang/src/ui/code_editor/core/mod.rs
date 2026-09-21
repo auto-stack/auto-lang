@@ -423,6 +423,24 @@ pub fn set_font_system_call(call: FontSystemCall) {
     let _ = FONT_SYSTEM_CALL.set(call);
 }
 
+/// PLAN-674 T-01：缺省字体系统安装（幂等）——无 iced 后端的宿主（RQ
+/// 投影器/VM 进程：`auto run -r vm -q` 的 native-queue 臂）在注册表
+/// 首次触达前安装进程级 FontSystem 源。OnceLock 语义：已装零影响
+/// （不覆盖——混合进程先装缺省后 iced 同装不生效，双栈各自整形
+/// 功能等价）。
+pub fn ensure_font_system_call() {
+    let _ = FONT_SYSTEM_CALL.set(default_font_system);
+}
+
+/// 缺省源：进程级单例 FontSystem（首次触达惰性建——FontSystem::new
+/// 载字体表较贵，测试/无编辑器进程零成本）。
+fn default_font_system(with: &mut dyn FnMut(&mut FontSystem)) {
+    static DEFAULT: std::sync::Mutex<Option<FontSystem>> = std::sync::Mutex::new(None);
+    let mut guard = DEFAULT.lock().unwrap();
+    let fs = guard.get_or_insert_with(FontSystem::new);
+    with(fs);
+}
+
 /// Run `f` with the shared font system (locks for the duration). Core code
 /// never nests this call — input/render paths receive `&mut FontSystem`
 /// from their callers.

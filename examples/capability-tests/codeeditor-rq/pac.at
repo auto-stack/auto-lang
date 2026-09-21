@@ -1,0 +1,6 @@
+name: "codeeditor-rq"
+version: "1.0.0"
+scene: "ui"
+render: ["vm"]
+title: "CodeEditor RQ"
+title_zh: "代码编辑器 RQ 形态"
