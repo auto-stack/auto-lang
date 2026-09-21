@@ -119,7 +119,8 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
   a2ui-composer-analysis(原25)、image-viewer-pipeline(Plan 547)、025-gap-enumeration(16a)、
   **vm-frame-budget(VM 帧预算/空转渲染，PLAN-650 设计层)**、
   **component-time-and-events(嵌套组件时间源/多层交互契约，PLAN-652 设计层)**、
-  **universal-scroll-architecture(通用滚动架构 ScrollPane/ScrollContent 契约，设计先行 draft；Phase A+B+C 已立项 PLAN-656)**
+  **universal-scroll-architecture(通用滚动架构 ScrollPane/ScrollContent 契约，设计先行 draft；Phase A+B+C 已立项 PLAN-656)**、
+  **editor-kernel(编辑器内核：rope 单写者版+统一 delta+back 分块读，PLAN-673 T-00 设计先行)**
   ——**L8 留架历史文档（归档不回改）；新增桌面程序设计一律落 auto-os
   `docs/design/`**（Stage B P-5 指针登记，2026-09-07；首例即 auto-os Design 01
   Stage B 迁移定案，资产去向见 [docs/plans/INDEX.md](../plans/INDEX.md)）
