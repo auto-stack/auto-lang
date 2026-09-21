@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-673
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: editor-kernel-rope-delta-chunk
 author: [zcode]
 created_at: 2026-09-21
@@ -360,6 +360,14 @@ JSON 形状逐字节对齐纪律）。
   docs/plans/KNOWN-DEBT-AND-RISKS.md · evidence: 本记录+复审复跑 tf 输出
   （3706/3706, 39.1s）· next: **work**（修复 F-1 后回本记录复审——除 F-1
   外代码/依赖/测试配置不变，门证据按规复用）。
+- 2026-09-22 · stage: review · PLAN-673 · r1 · outcome: **pass（复审关闭）** ·
+  reviewed_commit `dbf7ef788`（= 12b764f48 + F-1 注释修正，documentation-only
+  后裔）· base_commit `069c9cc4b` · findings: **F-1 已修**（
+  `crates/auto-lang/Cargo.toml:224-228` cosmic-text pin 注释更正：删失效
+  Weak<Buffer>→fill_raw 理由（Plan 428 已移该 handoff），保留 0.15 单实例
+  约束；`cargo check -p auto-lang` 绿）· evidence: F-1 为注释改动、实现/
+  依赖/测试配置零变更——按复审记录复用条款，tf 3706/3706、tv 3853/3853、
+  taa 3864/3865、041 冒烟、grep 门证据全部复用有效 · next: **merge**。
 
 ## 10. 待澄清事项
 
