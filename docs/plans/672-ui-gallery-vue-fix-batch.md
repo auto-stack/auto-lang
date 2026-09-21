@@ -28,8 +28,18 @@ total_steps: 6
 - **条目 2（本会话发现 2026-09-21）**：027-file-manager 触发 vite `vue-sonner`
   解析失败 → dev server 整站崩溃。根因 = PLAN-528 W6 宿主自愈重写冲掉画廊合并依赖。
 - **条目 3（用户提出 2026-09-21）**：内容超高出现滚动条时（滚动行为本身 ✓），
-  Vue 臂视口用的是浏览器默认滚动条（宽轨+箭头，暗色主题下突兀），应为 AutoUI
+  Vue 臂用的是浏览器默认滚动条（宽轨+箭头，暗色主题下突兀），应为 AutoUI
   风格滚动条（细/半透明/圆角，与 reka-ui ScrollArea 观感一致）。
+- **条目 4（用户提出 2026-09-21，诊断完成、修法待裁定）**：013-todo 在 Vue 臂
+  显示「全栈/原生应用」独立运行提示，用户预期可内嵌，疑 pac.at 配置问题。
+  **诊断：不是配置问题**。链路：`gallery_demo_row`（vue.rs:8151-8171）依
+  PLAN-633 裁定 `loadable = base_ok && !has_back_corpus`；013 前端
+  `todo_store.at:4 use back.api:` 五个 CRUD → 生成 Vue store 含
+  `@/lib/api`（fetch `/api/todos` 族）且 Init `await list_todos()` 无 catch
+  → 嵌入态画廊无 per-demo 后端进程，Init 必炸。「独立 vue 能跑」=
+  `auto run` 拉起 rust sidecar（pac `api: "rust"`）+ vite 代理，与「可嵌入」
+  是两件事。VM 臂已内嵌 013（AppViewport.vm.at Demo013Todo，merged 进程内
+  CALL reloc，PLAN-633 T-01 实证）。
 
 ## 目标
 
