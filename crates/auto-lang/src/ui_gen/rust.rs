@@ -5015,10 +5015,12 @@ impl RustGenerator {
             AuraNode::Component { name, props, .. } => {
                 // Generate component instantiation with message wrapping
                 let msg_name = self.current_msg_name();
-                // Plan 374: Sort props alphabetically for deterministic
-                // constructor argument ordering (matches alphabetical source decl).
-                let mut sorted_props: Vec<_> = props.iter().collect();
-                sorted_props.sort_by_key(|(k, _)| k.as_str());
+                // Plan 374: Sort props for deterministic constructor
+                // argument ordering. PLAN-039 T-14：优先 props 声明序
+                // （组件 new 签名序——字母序调用=参数错位株）；未注册
+                // 组件保持字母序（确定性）。
+                let collected: Vec<_> = props.iter().collect();
+                let sorted_props = self.order_component_props_by_decl(collected, name);
                 let mut constructor_args: Vec<String> = Vec::new();
                 for (_key, value) in sorted_props {
                     constructor_args.push(self.arg_to_rust(value));
@@ -5926,11 +5928,13 @@ impl RustGenerator {
         let msg_name = self.current_msg_name();
 
         // Build constructor arguments from props (for loop children or prop sync).
+        // PLAN-039 T-14（组件传型）：按 props 声明序（未注册回落字母序）
+        // ——组件 new 签名按声明序，字母序调用 = 参数错位株。
         let mut constructor_args: Vec<String> = Vec::new();
         let mut sorted_keys: Vec<&String> = props.keys()
             .filter(|k| *k != "style" && *k != "class")
             .collect();
-        sorted_keys.sort();
+        self.sort_prop_keys_by_decl_order(&mut sorted_keys, tag);
         for key in sorted_keys {
             if let crate::aura::AuraPropValue::Expr(expr) = &props[key] {
                 constructor_args.push(self.arg_to_rust(expr));
@@ -5945,10 +5949,12 @@ impl RustGenerator {
         if self.is_persistent_child(tag) {
             let field = Self::child_field_name(tag);
             // Collect prop sync assignments for the cloned instance.
+            // PLAN-039 T-14：声明序（同构造参数口径；字母序 = 重复/错位
+            // 同步株——court_badge specified more than once 家族）。
             let mut prop_keys: Vec<&String> = props.keys()
                 .filter(|k| *k != "style" && *k != "class")
                 .collect();
-            prop_keys.sort();
+            self.sort_prop_keys_by_decl_order(&mut prop_keys, tag);
             let mut sync_code = String::new();
             for key in &prop_keys {
                 if let crate::aura::AuraPropValue::Expr(expr) = &props[*key] {
@@ -6155,19 +6161,61 @@ impl RustGenerator {
         }
     }
 
+    /// PLAN-039 T-14（组件传型）：Element 形态（HashMap props）的键按
+    /// 声明序排——未注册组件回落字母序（确定性保持）。
+    fn sort_prop_keys_by_decl_order(&self, keys: &mut Vec<&String>, component: &str) {
+        let order = WIDGET_PROP_ORDERS.with(|po| po.borrow().get(component).cloned());
+        match order {
+            Some(order) => {
+                keys.sort_by_key(|k| order.iter().position(|p| p.as_str() == k.as_str()).unwrap_or(usize::MAX));
+            }
+            None => {
+                keys.sort();
+            }
+        }
+    }
+
+    /// PLAN-039 T-14（批次 E，组件传型）：构造参数按 props 声明序排
+    /// ——组件 new 签名按声明序发射，字母序调用 = 参数错位株（klondike
+    /// CardFace argument #1 i32 missing/bool↔String 错序 ×N 根因；
+    /// WIDGET_PROP_ORDERS 此前只写不读）。未注册组件保持字母序
+    /// （freshness 字节对拍的确定性不变）；声明序外的 prop 稳定垫尾。
+    fn order_component_props_by_decl<'a>(
+        &self,
+        mut entries: Vec<&'a (String, crate::ast::Expr)>,
+        component: &str,
+    ) -> Vec<&'a (String, crate::ast::Expr)> {
+        let order = WIDGET_PROP_ORDERS.with(|po| po.borrow().get(component).cloned());
+        match order {
+            Some(order) => {
+                entries.sort_by_key(|(k, _)| {
+                    order.iter().position(|p| *p == **k).unwrap_or(usize::MAX)
+                });
+                entries
+            }
+            None => {
+                entries.sort_by_key(|(k, _)| k.as_str());
+                entries
+            }
+        }
+    }
+
     /// Build sorted constructor args for an Element node (HashMap props).
-    /// Sorts alphabetically by key for deterministic order.
+    /// Sorts by declaration order when the widget's prop order is registered
+    /// (PLAN-039 T-14：声明序——字母序调用 = 参数错位株); otherwise
+    /// alphabetically by key for deterministic order.
     fn build_sorted_constructor_args_for_element(
         &self,
         props: &std::collections::HashMap<String, crate::aura::AuraPropValue>,
-        _widget_name: &str,
+        widget_name: &str,
     ) -> String {
-        let mut entries: Vec<(&String, &crate::aura::AuraPropValue)> = props.iter().collect();
-        entries.sort_by_key(|(k, _)| k.as_str());
-        entries.iter()
-            .filter(|(k, _)| *k != "style" && *k != "class")
-            .filter_map(|(_, v)| {
-                if let crate::aura::AuraPropValue::Expr(expr) = v {
+        let mut keys: Vec<&String> = props.keys()
+            .filter(|k| *k != "style" && *k != "class")
+            .collect();
+        self.sort_prop_keys_by_decl_order(&mut keys, widget_name);
+        keys.iter()
+            .filter_map(|k| {
+                if let crate::aura::AuraPropValue::Expr(expr) = &props[*k] {
                     Some(self.arg_to_rust(expr))
                 } else {
                     None
@@ -6182,11 +6230,12 @@ impl RustGenerator {
     fn build_sorted_constructor_args_for_component(
         &self,
         props: &[(String, crate::ast::Expr)],
-        _widget_name: &str,
+        widget_name: &str,
     ) -> String {
-        let mut entries: Vec<&(String, crate::ast::Expr)> = props.iter().collect();
-        entries.sort_by_key(|(k, _)| k.as_str());
-        entries.iter()
+        let entries: Vec<&(String, crate::ast::Expr)> = props.iter().collect();
+        // PLAN-039 T-14：声明序（未注册回落字母序）。
+        let ordered = self.order_component_props_by_decl(entries, widget_name);
+        ordered.iter()
             .map(|(_, v)| self.arg_to_rust(v))
             .collect::<Vec<_>>()
             .join(", ")

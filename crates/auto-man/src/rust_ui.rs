@@ -95,6 +95,36 @@ fn needs_regeneration(project_dir: &Path, rust_dir: &Path) -> (bool, bool) {
     (false, false)
 }
 
+/// PLAN-039 T-14（批次 E，组件传型）：预扫各 .at 文件 widget props
+/// 声明序 → WIDGET_PROP_ORDERS 预注册（app.at 字母序先于 components/
+/// 编译，调用点按声明序重排需要跨文件视图；生成期组件自注册仍在 =
+/// 双保险，幂等）。klondike CardFace 参数错位株的配套面。
+fn collect_component_prop_orders(at_files: &[std::path::PathBuf]) {
+    for at_path in at_files {
+        if let Ok(code) = std::fs::read_to_string(at_path) {
+            let session = CompilerSession::ui().with_backend("rust");
+            let mut parser = Parser::from(code.as_str()).with_session(session);
+            if let Ok(ast) = parser.parse() {
+                for stmt in &ast.stmts {
+                    if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+                        let order: Vec<String> = widget_decl
+                            .props
+                            .iter()
+                            .map(|p| p.name.as_str().to_string())
+                            .collect();
+                        if !order.is_empty() {
+                            auto_lang::ui_gen::rust::WIDGET_PROP_ORDERS.with(|po| {
+                                po.borrow_mut()
+                                    .insert(widget_decl.name.as_str().to_string(), order);
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// PLAN-039 T-13（批次 E，E-D5-A 配套）：注册返回类型化 user 型的 api
 /// 桩函数集到 RustGenerator 全局表（scan 收格门——typed 返回的调用
 /// 局部不收 Value 格，`r.cards` 直达字段）。两 build 入口在逐文件
@@ -322,6 +352,8 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     register_api_typed_fns_for(project_dir);
     // Plan 371 Task 22c: cross-file component state fields.
     let component_fields = collect_component_state_fields(&at_files);
+    // PLAN-039 T-14（组件传型）：props 声明序预注册（构造参数重排）。
+    collect_component_prop_orders(&at_files);
     // Plan 371 L1: cross-file component semantics (written props).
     let component_semantics = collect_component_semantics(&at_files);
 
@@ -437,6 +469,8 @@ pub fn generate_rust_ui(
 
     // Plan 371 Task 22c: cross-file component state fields.
     let component_fields = collect_component_state_fields(&at_files);
+    // PLAN-039 T-14（组件传型）：props 声明序预注册（构造参数重排）。
+    collect_component_prop_orders(&at_files);
     // Plan 371 L1: cross-file component semantics (written props).
     let component_semantics = collect_component_semantics(&at_files);
 
