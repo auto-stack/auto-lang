@@ -236,6 +236,7 @@ pub routable: bool,
   [✅ 已完成 2026-09-21] AppViewport 增 entry 分支(mod.mount/unmount 在册走工厂,路由态随卸载重置;default-App 旧 createApp 路径,28 条既有 load 条目零改动)+releaseMounted 统一卸载柄(entryUnmount 与 currentApp 互斥)+onBeforeUnmount 收口。三副本对齐:os 源=gen ext=auto-lang rust_embed 资产(md5 唯一)。lang `8a4648a78`/os `a9ebc77`(os 仓仅定向提交自己改的 AppViewport.vue,registry.at 等他会话 WIP 未触碰)。
 - **T-06**(C-4)端到端验证:前台 `auto build` 产物五件套清点 + 用户活体走查五家(022→021→019→018→023),宿主 URL 零变化观察;走查发现的问题按「修复或记债」逐条裁定入档。AC:AC-01..AC-06 全过。
   [⏳ 进行中 2026-09-21] build 半闭环已证:前台 `auto build`(AUTO_GALLERY_APPS 钉 worktree 语料+worktree auto.exe)全 pipeline 绿(vue-tsc+vite 12.8s),摘要行 **35 demos, 28 loadable, 5 routable, 30 VM-live**——五家注册表 load(import main)+routed 全在档,apps/<id> 五件套(App/pages/router.ts/main.ts/lib_api.ts)齐,018 双动态段 `/book/:id/chapter/:ch` props:true 在档,dist 路由 chunk(board/bookshelf/reading/watch/editor)全产出。**活体走查待用户终端**(见 handoff)。发现并修复的走查前置阻断见 T-04 附带修复两枚。
+  [✅ 合并准备完成 2026-09-21] Q-6/Q-7 按推荐落定后即摘最新 plan-672-dev(ed1d5fadf:条目7 根净化+其 N5 版)进 plan-675-dev:唯一冲突=back_proxy.rs 四块,按 Q-6 裁定 `--ours` 整取本计划 T-02 版(其 N5 版 fn_param_types+coerce_scalar 弃,解析失败静默回退原值 vs 本版 400 BadRequest 与 http_server 同语义);合并提交 `c8e6687d8`。合并后门禁:build 0 error、back_proxy e2e 10/10、auto-man 320 全量 318 绿(2 红=预存);画廊前台 build 复跑全绿(12.6s),条目7 根净化 × routable 发射共存无碍(018 双动态段路由在档、5 条 main load 齐)。672 计划档的"由对侧清偿"注记延至 T-07 落笔(P672 会话仍在活跃编辑其档,避碰撞)。
 - **T-07**(C-5)复审与沉淀:`/auto-plan:review` 全清单核对;债册处置——P672-D2 销号、P670-D1 家族误注更正、走查新增观察项登记;SD-01/SD-02 规范落档 + specs.json/spec-index 再生;`cargo tf` 兜底后按仓规 merge/归档/清 worktree。AC:AC-07/AC-08 门禁 + 沉淀收据。
 
 ## 复审记录
@@ -250,6 +251,6 @@ pub routable: bool,
 - **Q-3(验收口径,请确认)**:023-realworld(7 路由 + 26 端点)建议纳入首批验收(AC-05);若用户希望缩面,可降为走查项 + 记债(发射管线无差别,纯验收深度问题)。
 - **Q-4(路由态策略,请确认)**:每次挂载 fresh memory history(推荐——实现最简、无跨 demo 泄漏,代价是切回不保留页内状态)vs 会话内保留路由态(模块级 router 单例,切回还原,但跨挂载状态残留需解释)。默认按推荐执行,活体走查后可反悔改单例(改动面 ~10 行)。
 - **Q-5(记录)**:browser 前进/后退不驱动内嵌路由(memory history 既定取舍);内嵌 demo 页内刷新无意义(gen 树刷新回画廊首页)——均为既定行为,不走查不算缺陷。
-- **Q-6(N5 双修,请裁定)**:P672 并行会话按"用户裁定随批修复"也修了 N5(其 T-18,worktree N5 提交在 plan-672-dev);本计划 T-02(65fd1883a)在 plan-675-dev 独立修复同面。两实现均镜像 669 但落点细节或有差(back_proxy.rs 同函数域)。→ T-07 合并时:对比两 patch,**二选一保留**(建议保本计划版=含 fn_params 升格 ApiParamSig 的 session 自持化+坏值 400 语义;他版若含额外测试面则择优并集),删除另一方,并在被裁删方计划档注记"由对侧清偿"。
-- **Q-7(落序,请裁定)**:plan-675-dev 已含 plan-672-dev 全部提交(merge 2d41a5a27),且 P672 会话在其后仍有新提交(T-17/T-18)。→ 落 master 顺序建议 **672 先(含其 T-18)→ 675 rebase/merge 最新 plan-672-dev → 解 Q-6 冲突 → 675 落**;若 675 先落则连带 672 提交一并入库,672 计划的 merge 收据需注记。T-07 复审时定。
+- **Q-6(N5 双修,已裁定 2026-09-21 用户:按推荐)**:P672 并行会话按"用户裁定随批修复"也修了 N5(其 T-18,worktree N5 提交在 plan-672-dev);本计划 T-02(65fd1883a)在 plan-675-dev 独立修复同面。两实现均镜像 669 但落点细节或有差(back_proxy.rs 同函数域)。→ T-07 合并时:对比两 patch,**二选一保留**(建议保本计划版=含 fn_params 升格 ApiParamSig 的 session 自持化+坏值 400 语义;他版若含额外测试面则择优并集),删除另一方,并在被裁删方计划档注记"由对侧清偿"。
+- **Q-7(落序,已裁定 2026-09-21 用户:按推荐)**:plan-675-dev 已含 plan-672-dev 全部提交(merge 2d41a5a27),且 P672 会话在其后仍有新提交(T-17/T-18)。→ 落 master 顺序建议 **672 先(含其 T-18)→ 675 rebase/merge 最新 plan-672-dev → 解 Q-6 冲突 → 675 落**;若 675 先落则连带 672 提交一并入库,672 计划的 merge 收据需注记。T-07 复审时定。
 - **Q-8(记录)**:shell_pack_lib_freshness=master 预存红(672 时代基线清单外新增第 5 条),本计划两度全量复现,T-07 入册 KNOWN-DEBT。018 语料 theme-toggle 摘除致 VM 臂视觉零变化(元素本不渲染);schema 原生 theme-toggle 元素+sidebar_menu_button to/exact 声明滞后(S001 劝告级,生成器实态健康)均记债待后续。
