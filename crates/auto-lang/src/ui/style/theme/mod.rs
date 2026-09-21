@@ -218,21 +218,51 @@ fn hsl_to_rgb(h: u16, s: u8, l: u8) -> (u8, u8, u8) {
 // Plan 458: theme preference + accent preset single source. The CLI
 // (`auto run --theme/--accent`), pac.at parsing, VM env injection and the
 // vue index.html generator all validate against / read from here.
-pub const THEME_PREFS: [&str; 2] = ["dark", "light"];
+// Plan 672 条目 6 继承链: "system" = 跟随 OS prefers-color-scheme
+// （standalone 进程的宿主即操作系统；index.html 生成器据此前缀内联
+// matchMedia 解析脚本，见 system_theme_bootstrap_js）。
+pub const THEME_PREFS: [&str; 3] = ["dark", "light", "system"];
 /// PLAN-593：预设名单值源自 registry（单一事实源）。
 pub const ACCENT_PRESETS: [&str; 5] = registry::ACCENT_NAMES;
 
 /// Effective theme preference injected by `auto run` (AUTO_UI_THEME env,
 /// validated), or the built-in default "dark". Read by the vue/tauri
 /// index.html generators so all scaffolding paths agree on the theme.
+/// "system" 原样返回（调用方据此不发静态 dark class、改发内联解析脚本）。
 pub fn theme_pref_from_env() -> &'static str {
     match std::env::var("AUTO_UI_THEME").as_deref() {
         Ok(t) if THEME_PREFS.contains(&t) => match t {
             "light" => "light",
+            "system" => "system",
             _ => "dark",
         },
         _ => "dark",
     }
+}
+
+/// Plan 672 条目 6 继承链: theme="system" 的 index.html 内联解析脚本——
+/// matchMedia 读取 OS prefers-color-scheme，把解析结果写入
+/// `__AUTO_UI_THEME__` 并同步 `<html>` 的 dark class，且实时跟随 OS 切换。
+/// `indent` 对齐各生成器的缩进（auto-man 4 空格 / auto cmd 2 空格）。
+pub fn system_theme_bootstrap_js(indent: &str) -> String {
+    let mut s = String::new();
+    s.push_str(&format!("{indent}(function () {{\n"));
+    s.push_str(&format!(
+        "{indent}  var md = window.matchMedia('(prefers-color-scheme: dark)');\n"
+    ));
+    s.push_str(&format!("{indent}  var apply = function () {{\n"));
+    s.push_str(&format!("{indent}    var t = md.matches ? 'dark' : 'light';\n"));
+    s.push_str(&format!("{indent}    window.__AUTO_UI_THEME__ = t;\n"));
+    s.push_str(&format!(
+        "{indent}    document.documentElement.classList.toggle('dark', t === 'dark');\n"
+    ));
+    s.push_str(&format!("{indent}  }};\n"));
+    s.push_str(&format!("{indent}  apply();\n"));
+    s.push_str(&format!(
+        "{indent}  if (md.addEventListener) md.addEventListener('change', apply);\n"
+    ));
+    s.push_str(&format!("{indent}}})();\n"));
+    s
 }
 
 /// Effective accent preset injected by `auto run` (AUTO_UI_ACCENT env,
@@ -349,6 +379,24 @@ pub fn resolve_border_rgb() -> (u8, u8, u8) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Plan 672 条目 6 继承链: "system" 预设全链路——env 校验通过且原样
+    /// 透传；resolver 脚本含 matchMedia/实时跟随/回填三要素。
+    #[test]
+    fn theme_pref_system_passthrough_and_bootstrap_js() {
+        // THEME_PREFS 名单校验（不 set env，只测名单包含性）
+        assert!(THEME_PREFS.contains(&"system"));
+        let js = system_theme_bootstrap_js("    ");
+        assert!(js.contains("matchMedia('(prefers-color-scheme: dark)')"), "{js}");
+        assert!(js.contains("__AUTO_UI_THEME__ = t"), "{js}");
+        assert!(js.contains("classList.toggle('dark'"), "{js}");
+        assert!(js.contains("addEventListener('change', apply)"), "{js}");
+        // env 透传（串行竞争面小：仅此测设 system，结束即移除）
+        std::env::set_var("AUTO_UI_THEME", "system");
+        assert_eq!(theme_pref_from_env(), "system");
+        std::env::remove_var("AUTO_UI_THEME");
+        assert_eq!(theme_pref_from_env(), "dark");
+    }
 
     /// PLAN-020 T-00b:窗口尺寸面金样——height 与 width 同规约(线程局部
     /// 全局,renderer 每帧 set;分屏矩形投影 px 类几何的标定源)。防回退:

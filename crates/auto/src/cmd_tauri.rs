@@ -687,11 +687,26 @@ fn generate_index_html(name: &str) -> String {
     let accent_env = std::env::var("AUTO_UI_ACCENT").ok().filter(|a| {
         auto_lang::ui::style::theme::ACCENT_PRESETS.contains(&a.as_str())
     });
-    let accent_bootstrap = if theme_env.is_some() || accent_env.is_some() {
+    // Plan 672 条目 6 继承链: env 链未解析 → OS 回退（与 iced PLAN-615
+    // T-04 / auto-man generate_index_html 对称）。
+    let system_fallback = theme_env.is_none();
+    let accent_bootstrap = if theme_env.is_some() || accent_env.is_some() || system_fallback {
         let dark = theme_env.as_deref() != Some("light");
         let mut lines = String::from("  <script>\n");
         if let Some(t) = &theme_env {
-            lines.push_str(&format!("    window.__AUTO_UI_THEME__ = '{}';\n", t));
+            if t == "system" {
+                // Plan 672 条目 6 继承链: standalone 宿主即 OS，matchMedia
+                // 解析并实时跟随（见 auto-man generate_index_html 同款）。
+                lines.push_str(&auto_lang::ui::style::theme::system_theme_bootstrap_js(
+                    "  ",
+                ));
+            } else {
+                lines.push_str(&format!("    window.__AUTO_UI_THEME__ = '{}';\n", t));
+            }
+        } else if system_fallback {
+            lines.push_str(&auto_lang::ui::style::theme::system_theme_bootstrap_js(
+                "  ",
+            ));
         }
         if let Some(a) = &accent_env {
             let hsl = auto_lang::ui::style::theme::accent_primary_hsl(a, dark)

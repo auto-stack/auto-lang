@@ -1035,11 +1035,29 @@ fn generate_index_html(
     let accent_env = std::env::var("AUTO_UI_ACCENT").ok().filter(|a| {
         auto_lang::ui::style::theme::ACCENT_PRESETS.contains(&a.as_str())
     });
-    let accent_bootstrap = if theme_env.is_some() || accent_env.is_some() {
+    // Plan 672 条目 6 继承链: env 链（CLI > os-config > pac.at）未解析任何
+    // theme 值 → OS 系统主题回退（与 iced PLAN-615 T-04 对称）——内联
+    // matchMedia 解析脚本实时跟随；dark class 保留 dark 缺省（resolver 立即
+    // 纠正，浅色 OS 下闪一帧可接受）。
+    let system_fallback = theme_env.is_none();
+    let accent_bootstrap = if theme_env.is_some() || accent_env.is_some() || system_fallback {
         let dark = theme_env.as_deref() != Some("light");
         let mut lines = String::from("    <script>\n");
         if let Some(t) = &theme_env {
-            lines.push_str(&format!("    window.__AUTO_UI_THEME__ = '{}';\n", t));
+            if t == "system" {
+                // Plan 672 条目 6 继承链: standalone 进程的宿主即 OS——
+                // matchMedia 解析 prefers-color-scheme 并实时跟随（静态
+                // dark class 不可知，故不发，由本脚本立即回填）。
+                lines.push_str(&auto_lang::ui::style::theme::system_theme_bootstrap_js(
+                    "    ",
+                ));
+            } else {
+                lines.push_str(&format!("    window.__AUTO_UI_THEME__ = '{}';\n", t));
+            }
+        } else if system_fallback {
+            lines.push_str(&auto_lang::ui::style::theme::system_theme_bootstrap_js(
+                "    ",
+            ));
         }
         if let Some(a) = &accent_env {
             let hsl = auto_lang::ui::style::theme::accent_primary_hsl(a, dark)
@@ -8476,7 +8494,7 @@ pub fn gallery_scope_theme_runtime(sfc: &str) -> String {
         "store.Init();\n  dark_mode.value = store.dark_mode;",
         concat!(
             "store.Init();\n",
-            "  if (window.__AUTO_UI_EMBED__ && window.__AUTO_UI_THEME__) { const __hd = window.__AUTO_UI_THEME__ === 'dark'; store.dark_mode = __hd; dark_mode.value = __hd; } else { dark_mode.value = store.dark_mode; }",
+            "  if ((window as any).__AUTO_UI_EMBED__ && (window as any).__AUTO_UI_THEME__) { const __hd = (window as any).__AUTO_UI_THEME__ === 'dark'; store.dark_mode = __hd; dark_mode.value = __hd; } else { dark_mode.value = store.dark_mode; }",
         ),
     );
     if !out.contains("function applyAccent") {
