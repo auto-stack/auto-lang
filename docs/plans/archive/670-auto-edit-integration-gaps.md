@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-670
-status: reviewed             # drafting → executing → execution_done → reviewed → archived
+status: archived             # drafting → executing → execution_done → reviewed → archived
 feature_name: auto-edit-integration-gaps
 author: [zcode]
 created_at: 2026-09-21
@@ -312,6 +312,23 @@ db_full_cover 既有两路不回归。
   debug/workaround 扫描净（唯一 eprintln=语料缺席优雅跳过，plan370
   先例形态）；⑦diff 范围=8 文件与 affects 面一致，零 auto-edit 仓路径
   | next: merge（037 并流已对齐，ff 可达性由 merge 侧裁定）。
+
+- 2026-09-21（merge 收据）`PLAN-670:r1`：
+  - **prepared** ✓：账本四件在 worktree 提交 bc1528b4c（specs.json 外科插入
+    P670-1/P670-2——620→622 items；auto-man plans.md 670 表行+auto-lang
+    ui/plans.md 670 表行；spec-index.py 再生 INDEX——api_gen 行随 SD-01 源
+    外科更新，664 ui 注记源化后零冲掉复现）。prepared=reviewed tip
+    （53fbba5ad）纯账本后裔，实现/依赖零变化。
+  - **landed** ✓：wt-guard clean → rebase onto master（9763cf697）零冲突
+    → 主检出 `git merge --ff-only plan-670-dev` → **master tip=037afb190
+    =delivery commit**（零 merge commit）。旧→新映射：a44f2cad7→aedaa617f /
+    b003a7eed→a006792c7 / 53fbba5ad→cb0effd5c / bc1528b4c→037afb190
+    （rebase 重放补丁等价）。主检出烟囱 plan670 3/3+api_gen 30/30 绿。
+  - **ledger_refreshed** ✓：master 回读——P670-1/P670-2 在册（622 items）、
+    两 plans.md 表行各 1、INDEX 含 SD-01 内容。
+  - **archived** ✓：git mv → docs/plans/archive/670-auto-edit-integration-gaps.md，
+    status: archived，`completion_kind: delivered`。
+  - **cleaned** ✓：见下（本行收据随归档提交后回填）。
 
 ## 10. 待澄清事项
 
