@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-675
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: routes-in-embed
 author: [agent]
 created_at: 2026-09-21
@@ -13,7 +13,7 @@ new_spec_components: []  # 无新组件;SD-01→auto-man/project.md 画廊节、
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-man, auto-lang] # gallery host 生成器(auto-man)+ back_proxy 参数绑定(auto-lang)
-current_step: 6
+current_step: 7
 total_steps: 8
 ---
 
@@ -241,7 +241,7 @@ pub routable: bool,
   [✅ 已完成 2026-09-21] 走查收官:用户活体走查五家——**UI/挂载/路由面全通**(五截图:022 看板/021 博客/019 视频壳/018 书架+侧栏/023 conduit 全渲染),数据面全冻结。归因链(run1 日志+沙箱 2/2 复现):N2 包装进程 vite 就绪后静默 exit 1 → in-process 代理随之亡,而**会话顺序装载每家数秒**,死亡窗口只够前 ~6 家(013/015/017/031/047),五家路由 demo 的会话从未轮到。数据面已由确定性探针收口(`http_e2e_back_proxy_real_routes_corpora_data_face`,efc27ff84):五家语料会话直载,列表/int-:id/str-slug/路径+body 混合 PUT 全数 200 带真种子。走查观察项 disposition:①022 视口上方大片空白+018 侧栏漂移 → 嵌入布局债 **P675-D1** 入册;②theme-toggle schema 原生元素+sidebar_menu_button to/exact 声明滞后 → **P675-D2** 入册;③数据冻结根因 → P672-N2 既有债,本次强化证据(2/2 沙箱确定性+会话顺序装载洞察)注回 672 档。
   [✅ 合并准备完成 2026-09-21] Q-6/Q-7 按推荐落定后即摘最新 plan-672-dev(ed1d5fadf:条目7 根净化+其 N5 版)进 plan-675-dev:唯一冲突=back_proxy.rs 四块,按 Q-6 裁定 `--ours` 整取本计划 T-02 版(其 N5 版 fn_param_types+coerce_scalar 弃,解析失败静默回退原值 vs 本版 400 BadRequest 与 http_server 同语义);合并提交 `c8e6687d8`。合并后门禁:build 0 error、back_proxy e2e 10/10、auto-man 320 全量 318 绿(2 红=预存);画廊前台 build 复跑全绿(12.6s),条目7 根净化 × routable 发射共存无碍(018 双动态段路由在档、5 条 main load 齐)。672 计划档的"由对侧清偿"注记延至 T-07 落笔(P672 会话仍在活跃编辑其档,避碰撞)。
 - **T-08**(rev2)back_proxy lazy 会话按需装载:`BackProxyConfig.lazy_sessions` 档——启动零预 spawning,spec 进目录表;`ensure_session` 在会话表锁内完成「查目录→spawn→插表」(并发首击串行化防重),请求在 mpsc 排队至装载就绪(装载失败=既有 degraded 503);`has_session` 语义=在册或已载。画廊消费点(rust_ui start_gallery_back_proxy)置 lazy=true。动机=走查实证的 N2 竞速面(会话装载赶不上点击)+内存按访问付费。文件:`crates/auto-lang/src/back_proxy.rs`+`rust_ui.rs` 一行。验证:lazy e2e 新测+五家语料探针翻 lazy 全绿+既有 e2e 回归。AC:AC-09。
-  [⏳] rev2 执行中。
+  [✅ 已完成 2026-09-21] 实施=`BackProxyConfig.lazy_sessions` 档(start 零预 spawning,spec 进只读目录表;eager 档逐字节一致);`ensure_session` 会话表锁内「查目录→spawn→插表」(并发首击串行化防重),请求在 mpsc 排队至装载就绪(30s 窗,装载期数秒充裕);装载失败=既有 degraded 503;`remove_app` 后目录仍在→下一请求自愈重载;`spawn_session` 提取三臂共用;`has_session` 扩义(在册或已载)。画廊消费点置 lazy=true,13 处测试构造点补 false 保持 eager 语义。测试:`http_e2e_back_proxy_lazy_sessions_load_on_demand`(首击装载应答 int 绑定/次击复用模块态/断链坏语料 degraded 503/ghost 404——注:语法级垃圾会被宽容 parser 解析成零路由 404,断链才是真装载失败面)+五家真实语料探针翻 lazy 档(冷代理逐家按需装载全 200=N2 场景确定性镜像)。门禁:back_proxy e2e **12/12**、auto-man 318/320(2 预存红)、cargo tf **3690/3690**。提交 `b9178c9b3`。
 - **T-07**(C-5)复审与沉淀:`/auto-plan:review` 全清单核对;债册处置——P672-D2 销号、P670-D1 家族误注更正、走查新增观察项登记;SD-01/SD-02 规范落档 + specs.json/spec-index 再生;`cargo tf` 兜底后按仓规 merge/归档/清 worktree。AC:AC-07/AC-08 门禁 + 沉淀收据。
 
 ## 复审记录
@@ -254,6 +254,7 @@ pub routable: bool,
   **健康检查**:游离调试打印 0(diff 扫描);cargo tf **3690/3690 全绿**(含 1M churn);auto-man 320 全量 318 绿(2 红=master 预存 plan593_index_css+shell_pack_lib_freshness,后者已实测 master 复现入册);back_proxy e2e 11/11;build 0 error。
   **规范增量**:SD-01/SD-02 经实做验证成立;canonical 落档(specs.json+auto-man/auto-lang project.md)随 /auto-plan:merge 执行。
   **rev2 增补授权(2026-09-21 用户)**:走查数据冻结归因后用户提议「打开 demo 时再装载对应代理会话」——评估结论=基建已在档(658 运行期 add_session)+收益(点击即载/内存按访问付费/N2 竞速面缩到单家 3s)+边界(lazy 不治 N2 进程死亡本身,根治仍属 P672-N2 独立账)。用户批准按 rev2 增补,翻回 executing。
+**rev2 复审(2026-09-21)**:T-08 逐项核对——AC-09 四断言全过(首击装载应答+次击复用+坏语料 503+ghost 404);eager 语义零漂移(13 构造点 false+既有 e2e 12/12);画廊消费点已切 lazy。门禁同 rev1 口径全绿(back_proxy 12/12、auto-man 318/320 仅 2 预存红、tf 3690/3690)。**outcome: pass**,status 翻回 reviewed。
 - [2026-09-21] rev2 复审预定:T-08 完成后按同门禁(lazy e2e+五家探针+tf)复核后翻回 reviewed。**遗留**(不阻断 reviewed):①落库按 Q-7 序(672 先落→675 摘最终态→落库),merge 动作随两计划协调;②022/018 布局观察=P675-D1;③P672 档注记本次落笔(见下)。
 
 ## 待澄清事项
