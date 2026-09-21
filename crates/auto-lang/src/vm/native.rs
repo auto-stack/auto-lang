@@ -687,6 +687,32 @@ pub fn shim_code_editor_delta(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
     }
 }
 
+/// `code_editor_edit(key, start, end, replacement) -> Bool` — Plan 673 §4.3
+/// structured write (insert/delete/replace per the interval shape). False on
+/// invalid input (unknown key, start > end, out of bounds, non-char-boundary
+/// offsets); the delta enters the same queue human typing uses.
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_edit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Args push left-to-right: pop the LAST (replacement) first.
+    let replacement = pop_string_arg(task, vm);
+    let end = task.ram.pop_i32();
+    let start = task.ram.pop_i32();
+    let key = pop_string_arg(task, vm);
+    let ok = if start < 0 || end < 0 {
+        eprintln!("code_editor_edit: negative offsets [{start}, {end})");
+        false
+    } else {
+        crate::ui::code_editor::code_editor_edit(
+            &key,
+            start as usize,
+            end as usize,
+            &replacement,
+        )
+    };
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
 /// `code_editor_cursor_line(key) -> Int` (0-based line)
 #[cfg(feature = "code-editor")]
 pub fn shim_code_editor_cursor_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
@@ -1617,6 +1643,12 @@ pub fn shim_code_editor_text(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 pub fn shim_code_editor_delta(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_delta: the `code-editor` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_edit(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_edit: the `code-editor` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "code-editor"))]
@@ -10380,6 +10412,62 @@ print(d2)
                     r#"{"revision":1,"deltas":[]}"#,
                 ],
                 "destructive read roundtrip: {out}"
+            );
+        }
+
+        /// Plan 673 T-02: `code_editor_edit` end-to-end — structured write
+        /// (replace form) through the full pipeline; the queued delta carries
+        /// the exact caller interval in the same stream as set_text.
+        #[test]
+        fn vm_code_editor_edit_end_to_end() {
+            use crate::ui::code_editor as ce;
+            use std::sync::{OnceLock, RwLock};
+
+            let _guard = crate::ui::code_editor::core::REGISTRY_TEST_LOCK
+                .lock()
+                .unwrap();
+
+            fn install_fs(with: &mut dyn FnMut(&mut cosmic_text::FontSystem)) {
+                static FS: OnceLock<RwLock<cosmic_text::FontSystem>> = OnceLock::new();
+                let fs = FS.get_or_init(|| RwLock::new(cosmic_text::FontSystem::new()));
+                let mut guard = fs.write().unwrap();
+                with(&mut guard);
+            }
+            ce::set_font_system_call(install_fs);
+
+            let key = ce::storage_key("vm-native-edit-test");
+            ce::code_editor_dispose(&key);
+            let config = ce::CodeEditorConfig::default();
+            ce::code_editor(&key, &config);
+            assert!(ce::code_editor_set_text(&key, "hello world"));
+
+            let (_result, out) = crate::run_with_capture(
+                r#"
+let d0 = code_editor_delta("__code_editor_vm-native-edit-test")
+print(d0)
+let ok = code_editor_edit("__code_editor_vm-native-edit-test", 0, 5, "goodbye")
+print(ok)
+let t = code_editor_text("__code_editor_vm-native-edit-test")
+print(t)
+let d = code_editor_delta("__code_editor_vm-native-edit-test")
+print(d)
+let bad = code_editor_edit("__code_editor_vm-native-edit-test", -1, 2, "x")
+print(bad)
+"#,
+            )
+            .unwrap();
+            assert_eq!(
+                out.lines().collect::<Vec<_>>(),
+                vec![
+                    // set_text full-replace delta (revision 1).
+                    r#"{"revision":1,"deltas":[{"start":0,"end":0,"replacement":"hello world"}]}"#,
+                    "true",
+                    "goodbye world",
+                    // The edit's exact caller interval, next watermark (2).
+                    r#"{"revision":2,"deltas":[{"start":0,"end":5,"replacement":"goodbye"}]}"#,
+                    "false",
+                ],
+                "structured write roundtrip: {out}"
             );
         }
     }

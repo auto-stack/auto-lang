@@ -33,6 +33,11 @@ macro_rules! for_each_native {
             // NB: 2930/2931 are taken by auto.host.call/_value (Plan 060 M3,
             // below in this catalog) — 2939 is the next free 29xx id.
             (2939, NATIVE_CODE_EDITOR_DELTA, shim_code_editor_delta, "auto.code_editor.delta"),
+            // === Plan 673 T-02: structured write — write side ===
+            // 29xx 带已耗尽(2940-2999 全被 image/term/rc/autodown 族占满,
+            // 2960=auto.image.queue)——沿 PLAN-656 scroll 族先例取 9900+
+            // 高段(dynamic shim 自 10000 起,stdlib 动态计数永不达此)。
+            (9906, NATIVE_CODE_EDITOR_EDIT, shim_code_editor_edit, "auto.code_editor.edit"),
             // === Plan 413 follow-up: console natives (in-app Console panel) ===
             (2916, NATIVE_CONSOLE_LOG, shim_console_log, "auto.console.log"),
             (2917, NATIVE_CONSOLE_LINES, shim_console_lines, "auto.console.lines"),
@@ -797,6 +802,9 @@ macro_rules! for_each_bigvm_native {
             // === Plan 673 T-01: unified delta queue — read side (nat 2939;
             // 2930/2931 already taken by auto.host.call/_value) ===
             ("auto.code_editor.delta", 2939, String),
+            // === Plan 673 T-02: structured write — write side (nat 9906;
+            // 29xx band exhausted, 9900+ high band per PLAN-656 precedent) ===
+            ("auto.code_editor.edit", 9906, Bool),
             // === Plan 413 follow-up: console natives (in-app Console panel) ===
             ("auto.console.log", 2916, Bool),
             ("auto.console.lines", 2917, String),
@@ -1900,6 +1908,15 @@ pub static NATIVE_RET_ENTRIES: &[(&str, crate::vm::native_registry::NativeRetTyp
 // Used by resolve_qualified() for lazy registration.
 // IDs must match NATIVE_* constants in for_each_native! (shim bindings).
 pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
+    // Plan 673: code_editor delta/edit fixed IDs. 2939 pins the delta read
+    // side against register_vm_declarations' dynamic #[vm] id counter (which
+    // walks up from 100 through the 29xx band — T-02 e2e caught a stdlib
+    // #[vm] fn landing on a catalog id and its inventory shim overwriting the
+    // static binding). 9906 sits in the 9900+ high band (PLAN-656 scroll
+    // family precedent; dynamic shims start at 10000, the counter never
+    // reaches it) but is pinned here for a uniform ownership record.
+    ("auto.code_editor.delta", 2939),
+    ("auto.code_editor.edit", 9906),
     // Plan 555 T06: 分发组合子（interop.* 限定名 + 裸名别名——裸名
     // resolve_qualified 经 NATIVE_ID_MAP 惰性注册命中）。
     ("interop.obj_get", 1860),

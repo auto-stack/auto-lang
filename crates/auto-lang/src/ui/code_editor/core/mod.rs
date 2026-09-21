@@ -580,6 +580,59 @@ impl CodeEditorCore {
         if current == text {
             return;
         }
+        self.rewrite(text, font_system);
+        self.revision.fetch_add(1, Ordering::Relaxed);
+        // Plan 673 §4: a whole-document rewrite is one full-replace delta
+        // (old_len measured from the pre-rewrite text; the equality guard
+        // above already guarantees the text changed).
+        self.push_delta(TextDelta { start: 0, end: current.len(), replacement: text.to_string() });
+    }
+
+    /// Plan 673 §4.3 structured write (agent/programmatic edit). Splices
+    /// `old[..start] + replacement + old[end..]` through the same rewrite
+    /// machinery `set_text` uses, but queues the EXACT caller interval
+    /// (the caller's offsets are authoritative — 报错不静默: invalid input
+    /// logs the reason and returns false, never clamped). Returns true when
+    /// the edit was applied (including a valid no-op edit).
+    pub fn edit(
+        &self,
+        start: usize,
+        end: usize,
+        replacement: &str,
+        font_system: &mut FontSystem,
+    ) -> bool {
+        let old = self.text();
+        let old_len = old.len();
+        if start > end || end > old_len {
+            eprintln!(
+                "code_editor_edit: invalid range [{start}, {end}) for {old_len}-byte document"
+            );
+            return false;
+        }
+        if !old.is_char_boundary(start) || !old.is_char_boundary(end) {
+            eprintln!("code_editor_edit: offsets [{start}, {end}) are not char boundaries");
+            return false;
+        }
+        let mut new = String::with_capacity(old_len - (end - start) + replacement.len());
+        new.push_str(&old[..start]);
+        new.push_str(replacement);
+        new.push_str(&old[end..]);
+        if new == old {
+            // Valid but effect-free (replacement == replaced span): nothing
+            // to rewrite, nothing to queue.
+            return true;
+        }
+        self.rewrite(&new, font_system);
+        self.revision.fetch_add(1, Ordering::Relaxed);
+        self.push_delta(TextDelta { start, end, replacement: replacement.to_string() });
+        true
+    }
+
+    /// Rewrite the buffer with new content: viewport-presizing (lazy
+    /// shaping), `Buffer::set_text`, cursor clamp/reset. Shared by
+    /// `set_text` and `edit`; does NOT bump the revision or queue a delta —
+    /// callers own both (they queue different delta shapes).
+    fn rewrite(&self, text: &str, font_system: &mut FontSystem) {
         let attrs = Attrs::new().family(mono_family());
         // Give the buffer a viewport before rewriting: with no size set,
         // Buffer::set_text's internal shape_until_scroll treats the scroll
@@ -614,11 +667,6 @@ impl CodeEditorCore {
             cursor.index = index;
         });
         editor.set_cursor(cursor);
-        self.revision.fetch_add(1, Ordering::Relaxed);
-        // Plan 673 §4: a whole-document rewrite is one full-replace delta
-        // (old_len measured from the pre-rewrite text; the equality guard
-        // above already guarantees the text changed).
-        self.push_delta(TextDelta { start: 0, end: current.len(), replacement: text.to_string() });
     }
 
     /// Plan 673 §4: append one delta to the unified queue. T-01 producer is
@@ -626,6 +674,43 @@ impl CodeEditorCore {
     /// undo/redo, cut/paste).
     pub(crate) fn push_delta(&self, d: TextDelta) {
         self.delta_queue.lock().unwrap().push(d);
+    }
+
+    /// Plan 673 §4.3: derive the single minimal contiguous interval between
+    /// a pre-edit and post-edit snapshot and queue it. Prefix/suffix scans
+    /// walk char boundaries only (never slice mid-char). Identical texts
+    /// queue nothing. This one-interval form is exact for any single
+    /// localized edit — keystroke, IME commit, undo/redo, cut/paste — and
+    /// needs no diff dependency.
+    fn push_delta_from_texts(&self, old: &str, new: &str) {
+        if old == new {
+            return;
+        }
+        let old_len = old.len();
+        let new_len = new.len();
+        // Common prefix, char-boundary exclusive end.
+        let mut prefix = 0;
+        for ((_, oc), (ni, nc)) in old.char_indices().zip(new.char_indices()) {
+            if oc != nc {
+                break;
+            }
+            prefix = ni + nc.len_utf8();
+        }
+        // Common suffix (byte length), char-boundary start; never overlaps
+        // the prefix region on EITHER string (the replacement slice is
+        // new[prefix..new_len - suffix] — both guards keep it valid).
+        let mut suffix = 0;
+        for ((oi, oc), (ni, nc)) in old.char_indices().rev().zip(new.char_indices().rev()) {
+            if oc != nc || oi < prefix || ni < prefix {
+                break;
+            }
+            suffix += oc.len_utf8();
+        }
+        self.push_delta(TextDelta {
+            start: prefix,
+            end: old_len - suffix,
+            replacement: new[prefix..new_len - suffix].to_string(),
+        });
     }
 
     /// Plan 673 §4: destructive read — drain everything queued since the
@@ -989,10 +1074,13 @@ impl CodeEditorCore {
             }
             EditorInput::ImeCommit(content) => {
                 *self.preedit.lock().unwrap() = None;
+                // Plan 673 §4.3: IME commits are typed edits — same stream.
+                let old = self.text();
                 let mut editor = self.editor_lock();
                 editor.insert_string(&content, None);
                 drop(editor);
                 self.bump_after_edit();
+                self.push_delta_from_texts(&old, &self.text());
                 CoreOutput {
                     text_changed: true,
                     cursor_changed: true,
@@ -1007,7 +1095,56 @@ impl CodeEditorCore {
         }
     }
 
+    /// Plan 673 §4.3 三来源同流: typed keys join the same delta queue as
+    /// agent writes and set_text. Wraps `handle_key_inner` with a
+    /// before/after text snapshot, deriving one minimal interval delta per
+    /// actual mutation. Pure motions/selection keys skip the O(N) read
+    /// (`key_may_mutate`). Texts are compared rather than the revision
+    /// watermark: the Ctrl+Z/Y undo/redo arms historically do NOT bump the
+    /// revision, so it cannot serve as the changed-signal here.
     fn handle_key(
+        &self,
+        font_system: &mut FontSystem,
+        key: EditorKey,
+        text: Option<String>,
+        modifiers: EditorModifiers,
+        clipboard: &mut dyn EditorClipboard,
+    ) -> CoreOutput {
+        if !Self::key_may_mutate(&key, text.as_deref(), modifiers) {
+            return self.handle_key_inner(font_system, key, text, modifiers, clipboard);
+        }
+        let old = self.text();
+        let out = self.handle_key_inner(font_system, key, text, modifiers, clipboard);
+        self.push_delta_from_texts(&old, &self.text());
+        out
+    }
+
+    /// Whether a key event can mutate the buffer text — motions, selection
+    /// and scroll inputs are excluded (delta snapshot skipped).
+    fn key_may_mutate(key: &EditorKey, text: Option<&str>, modifiers: EditorModifiers) -> bool {
+        if modifiers.control() {
+            // Only the X/V/Z/Y chords mutate (cut/paste/undo/redo); C/A are
+            // copy/select-all and unhandled ctrl+letters bubble out.
+            return matches!(
+                key,
+                EditorKey::Char('x' | 'X' | 'v' | 'V' | 'z' | 'Z' | 'y' | 'Y')
+            );
+        }
+        match key {
+            EditorKey::Enter | EditorKey::Backspace | EditorKey::Delete => true,
+            // Ctrl/Alt+Tab bubbles without an action (handled above too).
+            EditorKey::Tab => !(modifiers.control() || modifiers.alt()),
+            EditorKey::Char(c) => !c.is_control(),
+            // Non-character keys mutate only when carrying a text payload
+            // (the Char/Other arm inserts it).
+            EditorKey::Other(_) => text
+                .map(|t| !t.is_empty() && !t.chars().any(|c| c.is_control()))
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
+
+    fn handle_key_inner(
         &self,
         font_system: &mut FontSystem,
         key: EditorKey,
@@ -1614,6 +1751,8 @@ impl CodeEditorCore {
     // context has no iced clipboard handle to pass as EditorClipboard.
 
     fn do_undo(&self) {
+        // Plan 673 §4.3: native-driven edits join the same delta queue.
+        let old = self.text();
         let mut editor = self.editor_lock();
         // Clear the selection first: a selection spanning text that undo is
         // about to remove would panic the engine's delete_range later.
@@ -1621,14 +1760,17 @@ impl CodeEditorCore {
         editor.undo();
         drop(editor);
         self.bump_after_edit();
+        self.push_delta_from_texts(&old, &self.text());
     }
 
     fn do_redo(&self) {
+        let old = self.text();
         let mut editor = self.editor_lock();
         editor.set_selection(Selection::None);
         editor.redo();
         drop(editor);
         self.bump_after_edit();
+        self.push_delta_from_texts(&old, &self.text());
     }
 
     fn do_select_all(&self) {
@@ -1652,20 +1794,24 @@ impl CodeEditorCore {
 
     #[cfg(feature = "ui-clipboard")]
     fn do_cut(&self, font_system: &mut FontSystem) {
+        let old = self.text();
         let mut editor = self.editor_lock();
         if let Some(selection) = editor.copy_selection() {
             crate::ui::clipboard::clipboard_set(&selection);
             editor.action(font_system, Action::Backspace);
             drop(editor);
             self.bump_after_edit();
+            self.push_delta_from_texts(&old, &self.text());
         }
     }
 
     #[cfg(feature = "ui-clipboard")]
     fn do_paste(&self) {
         if let Some(contents) = crate::ui::clipboard::clipboard_get() {
+            let old = self.text();
             self.editor_lock().insert_string(&contents, None);
             self.bump_after_edit();
+            self.push_delta_from_texts(&old, &self.text());
         }
     }
 }
@@ -1825,6 +1971,30 @@ pub fn code_editor_set_text(key: &str, text: &str) -> bool {
         true
     } else {
         false
+    }
+}
+
+/// Plan 673 §4.3 structured write (agent edit): `code_editor_edit(key,
+/// start, end, replacement)` — one API, three forms (insert/delete/replace
+/// per the interval shape). Returns false on invalid input (no such editor,
+/// start > end, out of bounds, or offsets not on char boundaries — 报错不
+/// 静默) and queues nothing.
+///
+/// This path intentionally does NOT touch `last_external` (the registry
+/// `code_editor_set_text` diff guard): after an agent edit, a view rebuild
+/// re-pushing the stale DSL value hits the `last_external` equality
+/// early-return at `code_editor_set_text` and does not clobber the edit.
+/// The queued delta enters the SAME stream as human typing — consumers of
+/// `code_editor_delta` see agent and human writes identically.
+pub fn code_editor_edit(key: &str, start: usize, end: usize, replacement: &str) -> bool {
+    let key = normalize_payload_key(key);
+    let map = CODE_EDITORS.lock().unwrap();
+    match map.get(&key) {
+        Some(core) => with_font_system(|fs| core.edit(start, end, replacement, fs)),
+        None => {
+            eprintln!("code_editor_edit: no editor registered for key {key:?}");
+            false
+        }
     }
 }
 
@@ -2562,6 +2732,152 @@ let beta = alpha + 2;
             v3["deltas"],
             serde_json::json!([{"start": 0, "end": 5, "replacement": "hello!"}])
         );
+    }
+
+    // ── Plan 673 T-02: write side + three-source same stream ───────────
+
+    /// `push_delta_from_texts`: the single minimal contiguous interval,
+    /// scanned on char boundaries only — mid-string insertion, multi-byte
+    /// CJK deletion, 4-byte emoji replacement, append, whole-doc replace,
+    /// and no-change → nothing.
+    #[test]
+    fn push_delta_from_texts_interval_derivation() {
+        let mut fs = FontSystem::new();
+        let core =
+            CodeEditorCore::new("test-delta-derive", CodeEditorConfig::default(), &mut fs);
+        let take = |core: &CodeEditorCore| core.take_deltas().1;
+
+        // Mid-string insertion (suffix absorbs the shared " world").
+        core.push_delta_from_texts("hello world", "hello brave world");
+        assert_eq!(
+            take(&core),
+            vec![TextDelta { start: 6, end: 6, replacement: "brave ".to_string() }]
+        );
+        // Deletion of a CJK char (3-byte boundaries).
+        core.push_delta_from_texts("你好world", "你world");
+        assert_eq!(
+            take(&core),
+            vec![TextDelta { start: 3, end: 6, replacement: "".to_string() }]
+        );
+        // Replacement touching a 4-byte emoji.
+        core.push_delta_from_texts("a😀b", "a🎉b");
+        assert_eq!(
+            take(&core),
+            vec![TextDelta { start: 1, end: 5, replacement: "🎉".to_string() }]
+        );
+        // Append at the end.
+        core.push_delta_from_texts("abc", "abc!");
+        assert_eq!(
+            take(&core),
+            vec![TextDelta { start: 3, end: 3, replacement: "!".to_string() }]
+        );
+        // Whole-document replace.
+        core.push_delta_from_texts("old", "new");
+        assert_eq!(
+            take(&core),
+            vec![TextDelta { start: 0, end: 3, replacement: "new".to_string() }]
+        );
+        // No change → nothing queued.
+        core.push_delta_from_texts("same", "same");
+        assert!(take(&core).is_empty());
+    }
+
+    /// `code_editor_edit` three forms produce the EXACT caller-interval delta
+    /// (not a prefix/suffix derivation); invalid input is refused and queues
+    /// nothing (报错不静默).
+    #[test]
+    fn registry_code_editor_edit_forms_and_validation() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-edit-registry");
+        code_editor_dispose(&key);
+        let config = CodeEditorConfig { lang: "rust".to_owned(), ..CodeEditorConfig::default() };
+        let _core = code_editor(&key, &config);
+        assert!(code_editor_set_text(&key, "hello world"));
+        // Drain the seeding full-replace delta.
+        let (_, initial) = code_editor_with(&key, |c| c.take_deltas()).unwrap();
+        assert_eq!(initial.len(), 1);
+
+        // Insert form (start == end).
+        assert!(code_editor_edit(&key, 5, 5, ","));
+        let (_, d) = code_editor_with(&key, |c| c.take_deltas()).unwrap();
+        assert_eq!(d, vec![TextDelta { start: 5, end: 5, replacement: ",".to_string() }]);
+        assert_eq!(code_editor_text(&key).as_deref(), Some("hello, world"));
+
+        // Replace form.
+        assert!(code_editor_edit(&key, 0, 5, "goodbye"));
+        let (_, d) = code_editor_with(&key, |c| c.take_deltas()).unwrap();
+        assert_eq!(d, vec![TextDelta { start: 0, end: 5, replacement: "goodbye".to_string() }]);
+        assert_eq!(code_editor_text(&key).as_deref(), Some("goodbye, world"));
+
+        // Delete form (empty replacement): drop ", world" (bytes 7..14).
+        assert!(code_editor_edit(&key, 7, 14, ""));
+        let (_, d) = code_editor_with(&key, |c| c.take_deltas()).unwrap();
+        assert_eq!(d, vec![TextDelta { start: 7, end: 14, replacement: "".to_string() }]);
+        assert_eq!(code_editor_text(&key).as_deref(), Some("goodbye"));
+
+        // Invalid: start > end, out of bounds, non-char boundary on CJK —
+        // all refused, queue untouched.
+        assert!(!code_editor_edit(&key, 4, 2, "x"));
+        assert!(!code_editor_edit(&key, 0, 99, "x"));
+        assert!(code_editor_set_text(&key, "你好"));
+        let _ = code_editor_with(&key, |c| c.take_deltas()); // drain the reseed
+        assert!(!code_editor_edit(&key, 1, 3, "x"));
+        assert!(!code_editor_edit(&key, 3, 1, "x"));
+        let (_, d) = code_editor_with(&key, |c| c.take_deltas()).unwrap();
+        assert!(d.is_empty(), "invalid edits must queue nothing");
+        // Unknown key → false.
+        assert!(!code_editor_edit("no-such-editor-673", 0, 0, "x"));
+    }
+
+    /// Plan 673 §4.3 三来源同流: an agent structured write, a human typed
+    /// keystroke, and an undo land in ONE ordered delta queue — the exact
+    /// interval sequence a consumer of `code_editor_delta` would apply.
+    #[test]
+    fn three_sources_share_one_delta_stream() {
+        let mut fs = FontSystem::new();
+        let core =
+            CodeEditorCore::new("test-delta-3src", CodeEditorConfig::default(), &mut fs);
+        core.set_text("fn main() {", &mut fs);
+        core.take_deltas(); // drain the seeding full-replace
+
+        // Source 1: agent structured write (insert at the top).
+        assert!(core.edit(0, 0, "// ", &mut fs));
+        // Source 2: human typing — End, then '!'.
+        core.set_focused(true);
+        let mut clip = NullClipboard;
+        core.handle_input(
+            &mut fs,
+            EditorInput::KeyPressed {
+                key: EditorKey::End,
+                text: None,
+                modifiers: EditorModifiers::none(),
+            },
+            &mut clip,
+        );
+        core.handle_input(
+            &mut fs,
+            EditorInput::KeyPressed {
+                key: EditorKey::Char('!'),
+                text: Some("!".to_owned()),
+                modifiers: EditorModifiers::none(),
+            },
+            &mut clip,
+        );
+        // Source 3: undo (native menu path) removes the typed '!'.
+        core.do_undo();
+
+        let (_, deltas) = core.take_deltas();
+        assert_eq!(
+            deltas,
+            vec![
+                TextDelta { start: 0, end: 0, replacement: "// ".to_string() },
+                TextDelta { start: 14, end: 14, replacement: "!".to_string() },
+                TextDelta { start: 14, end: 15, replacement: "".to_string() },
+            ],
+            "agent write, typed keystroke and undo must share one ordered stream"
+        );
+        assert_eq!(core.text(), "// fn main() {");
     }
 
     /// Plan 413 §6.4 performance criterion: a ~1MB source shapes and renders
