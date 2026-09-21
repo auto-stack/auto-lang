@@ -308,7 +308,9 @@ AppViewport 错误横幅 → 文件浏览内容（列表/快捷访问引导）�
     零 diff；cargo check -p auto-lang 绿、落地文件零告警。
   - **archived**：本文档 git mv 至 docs/plans/archive/ + status: archived。
   - **cleaned**：027 gen/ 整树（pnpm junction）+deps/stylekit 单链 cmd rmdir 摘除 →
-    wt-guard clean → worktree/分支/组目录移除（收据回填见下）。
+    wt-guard clean → auto-lang worktree remove+branch -d（was 7170a9494）；
+    组内 auto-down 依赖位（detached fba6563）guard clean 后 remove；
+    组目录 D:/autostack/.wt/lang-680 rmdir 空删；worktree list 零 680 残留。
   - 并发事故留档：master 3f7a4af1c 提交信息称"reviews 段拼接 P672-1"但实际内容为
     P673-1/2（architecture 段）——P672-1 从未入库（git log -S 零命中），系 672 账本
     会话簿记事故，非本计划范围，已呈报用户。
