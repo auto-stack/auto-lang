@@ -207,6 +207,16 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
 - 门禁同 T-09；端到端=017 内嵌加载、消息列表渲染、发消息写路径、SSE
   打字/机器人回复（经代理流，N5 不阻塞 SSE 观测）。
 
+### T-15 嵌入态主题跟随宿主（条目 6 延伸，用户问询裁定「适配宿主」语义）
+
+用户问询：demo 默认主题=全深色？宿主浅色时强制跟变？还是仅「适配系统」才
+继承？**裁定=隐式跟随宿主**（适配系统在嵌入语境的形态，无需 per-demo 声明）：
+嵌入态 store Init 的主题重置不再覆盖宿主 bootstrap 播种（Plan 458 语义本就
+如此，只是被 Init 重置打断）；demo 内切换仍有效、作用域限视口；standalone
+路径零变化。实现=gallery_scope_theme_runtime 无门槛扩展：onMounted 的
+`store.Init(); dark_mode.value = store.dark_mode;` 序列在嵌入标记下改为
+按 `__AUTO_UI_THEME__` 回填 store 与 ref。
+
 ### T-13/T-14 嵌入态主题作用域化（条目 6，用户裁定方向）
 
 机制：宿主（AppViewport.vue 资产）注入 `window.__AUTO_UI_EMBED__ = true`；
@@ -263,6 +273,9 @@ demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切�
       （env 条目未设不出现）。—— 结构性满足：/apps 条目 env 门控（未设即
       零条目）；无 api 源 fullstack 直接回退独立提示（047 实测）；代理死时
       fetch 失败走错误横幅（实测窗口期现过 500 横幅，页面不崩）。
+- [ ] AC-13（条目 6 延伸）嵌入态 016 挂载即跟随宿主主题（宿主深色→视口
+      内直接深色，不再先浅后切）；demo 内切换仍限视口；重置状态后回到
+      跟随宿主。
 - [ ] AC-11（条目 6）画廊（深色宿主）中打开 016-calendar：宿主 `<html>`
       的 `.dark` 不被摘除（页面保持深色）；016 视口内主题按其自身默认渲染，
       在 016 内切主题仅作用于该视口。
@@ -356,6 +369,8 @@ demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切�
   无效——PLAN-658 会话面从未被真实消费过，非本计划回归）；UI Enter 新增
   待 standalone 差分=P672-N4（IAB 只发 input 不发 keyup，合成事件亦未触
   发 Vue handler，疑 codegen 层 keyup 绑定问题，与嵌入无关）。
+- [ ] T-15（条目 6 延伸）gallery_scope_theme_runtime 增加跟随宿主回填
+      （onMounted Init 序列改写）+ 单测扩面 + 门禁 + 端到端复验。
 - [x] T-13（条目 6）AppViewport 资产注入 __AUTO_UI_EMBED__ 标记 +
       gallery_scope_theme_runtime 后处理 + 单测/契约测试扩面。
   [✅ 已完成] worktree 90fe19990——资产 script setup 注入标记；后处理=
