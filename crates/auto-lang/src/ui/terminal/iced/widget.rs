@@ -1028,10 +1028,21 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         // 未锚/非虚拟 = 槽位语义(id = 槽位,位 = shift + 槽位×CELL_H,
         // 019 形态与 vm 臂泵零回归回退)。
         let anchor = crate::ui::terminal::terminal_window_anchor(self.core);
+        // 退化防护(合并 024 后启动无响应实录):视口非有限/区间超界
+        // (布局期/离屏阶段的退化 viewport;024 launch 期几何注入改变
+        // 首帧布局序列)时,id 枚举不可进(天文迭代=帧内死循环,tick 仍
+        // 跑而窗口失响应)——回退槽位臂。
+        let view_top = viewport.y - bounds.y;
+        let span_sane = view_top.is_finite()
+            && viewport.height.is_finite()
+            && viewport.height >= 0.0
+            && ((view_top + viewport.height) / CELL_H).ceil() as i64
+                - (view_top / CELL_H).floor() as i64
+                <= 4096;
         let anchored = self.virtual_scroll
-            && anchor != crate::ui::terminal::WINDOW_ANCHOR_UNSET;
+            && anchor != crate::ui::terminal::WINDOW_ANCHOR_UNSET
+            && span_sane;
         let visible: Vec<VisibleRow> = if anchored {
-            let view_top = viewport.y - bounds.y;
             let id0 = (view_top / CELL_H).floor() as i64;
             let id1 = ((view_top + viewport.height) / CELL_H).ceil() as i64;
             let slot_lo = anchor;
