@@ -6952,6 +6952,17 @@
      ],
      "status": "published",
      "created": "2026-09-21"
+    },
+    {
+     "id": "P677-1",
+     "title": "vue-track-parity-generator-fixes — vue 轨跨平台一致性五连修（生成器侧）",
+     "content": "五项发射层缺口修复+code_editor 桥：①单 Conditional 体 for 循环透明包装（template v-for，修 flex 高度链塌缩）；②视图声明式 menubar 族→shadcn 组件树（registry 双形态别名+专用发射器，icon/title/shortcut/enabled→disabled/checked）；③CodeEditor 模板深色主题（shadcn CSS 变量）+foldGutter/foldKeymap+缩进 foldService；④natives 三层发射（R=file_basename/console_* 真实现语义镜像 vm，B=editorBridge 按键寻址 code_editor_* 13 内建，S=fail-fast 桩）；⑤T-08 选中色（cm-selectionBackground 前景令牌 0.14，focused 全链选择器压 baseTheme）。追问修复：json.to_value(api 调用)→JSON.parse（恒等映射毒化渲染树根因）+ regenerate_source_files 挂 shell 全量同步（模板修复可传播）。消费方 auto-edit 冷再生成+浏览器五点实测全过（docs/plans/evidence/677/）；门禁 cargo tf 3694/3694+tt 4063/4063 全绿，全量失败集与 master 一致。交付 36d75036f，规范增量落 ui/design/app-generation.md。",
+     "file": "docs/specs/auto-lang/ui/design/app-generation.md",
+     "related": [
+      "PLAN-677"
+     ],
+     "status": "delivered",
+     "created": "2026-09-21"
     }
    ]
   }
