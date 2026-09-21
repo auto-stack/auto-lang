@@ -207,6 +207,21 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
 - 门禁同 T-09；端到端=017 内嵌加载、消息列表渲染、发消息写路径、SSE
   打字/机器人回复（经代理流，N5 不阻塞 SSE 观测）。
 
+### T-13/T-14 嵌入态主题作用域化（条目 6，用户裁定方向）
+
+机制：宿主（AppViewport.vue 资产）注入 `window.__AUTO_UI_EMBED__ = true`；
+生成语料后处理 `gallery_scope_theme_runtime`（仅画廊发射面，standalone 零
+变化）：语料含主题运行时（`function applyAccent`）时——
+1. 全量替换 `document.documentElement` → `__autoThemeRoot()`；
+2. 在 applyAccent 前注入 helper：嵌入态返回 `.demo-mount-root` 挂载容器
+  （demo 挂载前即存在于 DOM，setup 期 immediate watch 也可安全解析），
+   非嵌入态原样返回 `<html>`（行为不变）；
+3. `localStorage.setItem(ACCENT_STORAGE_KEY, ...)` 包 `if (!__autoEmbed)`
+   （嵌入态不污染宿主偏好；读保留）。
+效果：016 挂载/切主题只作用于自己视口容器，宿主页面保持深色；视口内
+demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切深色，作用域
+仍限视口）。AC-11/12 入册；契约测试扩 AppViewport 注入标记。
+
 ### T-09/T-10 门禁与端到端（条目 4）
 
 - Category B（局部 Rust 改动）：`cargo check -p auto-man`；
@@ -248,6 +263,11 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
       （env 条目未设不出现）。—— 结构性满足：/apps 条目 env 门控（未设即
       零条目）；无 api 源 fullstack 直接回退独立提示（047 实测）；代理死时
       fetch 失败走错误横幅（实测窗口期现过 500 横幅，页面不崩）。
+- [ ] AC-11（条目 6）画廊（深色宿主）中打开 016-calendar：宿主 `<html>`
+      的 `.dark` 不被摘除（页面保持深色）；016 视口内主题按其自身默认渲染，
+      在 016 内切主题仅作用于该视口。
+- [ ] AC-12（条目 6）standalone 016 产物字节零变化（后处理仅在画廊发射面
+      启用）；无主题运行时的 demo 语料零变化。
 - [ ] AC-9（条目 5）017-chat 在 Vue 臂画廊内嵌加载：消息种子渲染、发消息
       200、SSE 流经 /apps 代理可达（打字指示或机器人回复至少一项实证）。
 - [ ] AC-10（条目 5）api client 现生成兜底不破坏 047 回退语义（解析失败
@@ -336,6 +356,10 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
   无效——PLAN-658 会话面从未被真实消费过，非本计划回归）；UI Enter 新增
   待 standalone 差分=P672-N4（IAB 只发 input 不发 keyup，合成事件亦未触
   发 Vue handler，疑 codegen 层 keyup 绑定问题，与嵌入无关）。
+- [ ] T-13（条目 6）AppViewport 资产注入 __AUTO_UI_EMBED__ 标记 +
+      gallery_scope_theme_runtime 后处理 + 单测/契约测试扩面。
+- [ ] T-14（条目 6）门禁 + 重建 + 端到端（016 打开宿主保持深色/视口内
+      切主题作用域收口）+ os 副本同步提交。
 - [x] T-11（条目 5）api client 现生成兜底 + store EventSource 前缀化。
   [✅ 已完成] worktree bdcbddae2——api 源解析第三优先级（gen api.ts →
   src/back/api.ts 胶水 → `try_full_parse`+`generate_simple_client` 现生成，
