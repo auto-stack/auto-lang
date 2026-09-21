@@ -275,6 +275,19 @@ pub fn is_vm_trace_ops() -> bool {
     })
 }
 
+/// PLAN-026 needs_fix(用户实机反馈):AUTO_VM_TRACE=1 — 热路径成功日志
+/// 门控([UI_EVENT]/[VM_HANDLER_CALL]/[VM_EXEC]/[VM_HANDLER_OK])。
+/// 挂起根修后 tick 0.7/s→20/s,这四类无条件 eprintln 被放大 ~30 倍
+/// (实测 106 行/s ≈ 5.4KB/s 持续写盘,空闲期磁盘噪声;读侧为零)。
+/// 缺省静默;失败路径([VM-HANDLER] failed/[CALL_HANDLER_ERR])与
+/// 预算超阈 warn 不受本门控(错误面恒出)。
+pub fn is_vm_hot_trace() -> bool {
+    static ENV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENV.get_or_init(|| {
+        std::env::var("AUTO_VM_TRACE").map(|v| v != "0" && !v.is_empty()).unwrap_or(false)
+    })
+}
+
 /// Plan 423 P5 续修(诊断设施):P419_TRACE_POOL=<idx> —— 只 trace 指定
 /// 字符串池索引的 retain/release/free(定位悬垂池索引的生死链)。
 /// 返回 None 表示未启用。

@@ -2264,7 +2264,9 @@ impl DynamicComponent {
             stripped_payloads.push((sc.callback.clone(), payload));
         }
         if !clean_name.starts_with("__") {
-            eprintln!("[VM_HANDLER_CALL] widget={} event={} args={:?}", widget_name, clean_name, args);
+            if crate::is_vm_hot_trace() {
+                eprintln!("[VM_HANDLER_CALL] widget={} event={} args={:?}", widget_name, clean_name, args);
+            }
         }
         // PLAN-576 G4 (D4): 派发实参数与 handler 形参数失配诊断——此前静默
         // 错位执行（调用帧 [__state, args…] 与形参槽错位，函数体读垃圾或
@@ -2287,7 +2289,9 @@ impl DynamicComponent {
         match self.bridge.call_handler_for(widget_name, &clean_name, state_obj_id, &args) {
             Ok(()) => {
                 if !clean_name.starts_with("__") {
-                    eprintln!("[VM_HANDLER_OK] widget={} event={}", widget_name, clean_name);
+                    if crate::is_vm_hot_trace() {
+                        eprintln!("[VM_HANDLER_OK] widget={} event={}", widget_name, clean_name);
+                    }
                 }
                 if is_trace {
                     let _post_notes = self.bridge.read_state_as_vec("notes").map(|v| v.len()).unwrap_or(999);

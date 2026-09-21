@@ -16108,7 +16108,9 @@ fn compare_pngs(
             None => return iced::Task::none(),
         };
         if !msg.event.starts_with("__") {
-            eprintln!("[UI_EVENT] widget={:?} event={:?} input_val={:?}", msg.widget, msg.event, msg.input_value);
+            if crate::is_vm_hot_trace() {
+                eprintln!("[UI_EVENT] widget={:?} event={:?} input_val={:?}", msg.widget, msg.event, msg.input_value);
+            }
         }
         // PLAN-623: test-only VM fixture channel. It is deliberately handled
         // before normal event dispatch so a fixture can seed state and then
