@@ -1,0 +1,25 @@
+// pac.at - bps-gallery（PLAN-676 Auto 化改造）
+//
+// 蓝图画廊：浏览 blueprints/ 目录的 spec / 变体 reference 源码 / gotchas。
+// 壳消费 layout/gallery-shell BP（L1 通道，dep bps）；目录发现数据源 =
+// 生成的 src/front/registry.at（`auto bp list --format at` 产物，SD-01，
+// 取代 PLAN-640 import.meta.glob 零产物裁定——VM 臂无法读盘，双臂同源
+// 要求静态表）。手写 Vue 壳（App.vue/vue-router/Prism）已退役（T-07）。
+//
+// 双臂：`auto run`（vue）/ `auto run -r vm`（VM iced）同一 .at 源。
+
+name: "bps-gallery"
+version: "2.0.0"
+description: "Blueprint catalog gallery — spec / reference source / gotchas browser"
+scene: "ui"
+render: "vue"
+front_port: 4046
+title: "Blueprints Gallery"
+title_zh: "蓝图画廊"
+
+theme: "dark"
+accent: "indigo"
+
+dep bps {
+    path: "../../blueprints"
+}

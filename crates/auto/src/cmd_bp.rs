@@ -124,9 +124,11 @@ fn emit_catalog_at(reg: &BlueprintRegistry) -> String {
     out.push_str("// 零产物裁定——Auto 化后 VM 臂无法读盘，双臂同源要求静态表；PLAN-625\n");
     out.push_str("// registry.at 生成产物先例）。漂移校验：重跑本命令与提交产物 diff，非空即红。\n");
     out.push_str("// 记录 schema（Obj 全键书写——VM 缺键访问=硬错）：\n");
-    out.push_str("//   { kind: str, name: str, spec: str, gotchas: str,\n");
+    out.push_str("//   { kind: str, name: str, spec_text: str, gotchas: str,\n");
     out.push_str("//     references: List[{ variant: str, source: str }] }\n");
-    out.push_str("// 查询侧 VM 纪律：List 遍历一律 while+索引（for-in 参数列表零迭代陷阱）。\n");
+    out.push_str("// spec 是 .at 保留字——字段避名 spec_text（ui-gallery registry.at\n");
+    out.push_str("// pac→pac_text 先例同型）。查询侧 VM 纪律：List 遍历一律 while+索引\n");
+    out.push_str("// （for-in 参数列表零迭代陷阱）。\n");
     out.push_str("\npub fn all_bps() List {\n    return [\n");
     for pkg in reg.iter() {
         let spec = read_lf(&pkg.dir.join("spec.md"));
@@ -147,7 +149,7 @@ fn emit_catalog_at(reg: &BlueprintRegistry) -> String {
             .collect::<Vec<_>>()
             .join(", ");
         out.push_str(&format!(
-            "    {{ kind: \"{}\", name: \"{}\", spec: \"{}\", gotchas: \"{}\", references: [{}] }},\n",
+            "    {{ kind: \"{}\", name: \"{}\", spec_text: \"{}\", gotchas: \"{}\", references: [{}] }},\n",
             escape_at_string(&pkg.spec.kind),
             escape_at_string(&pkg.spec.name),
             escape_at_string(&spec),

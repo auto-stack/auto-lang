@@ -1,0 +1,239 @@
+// catalog.at — bps-gallery 查询辅助（手写面；数据面=生成的 registry.at，
+// 勿把本文件内容写进 registry.at——重生成会覆盖）。
+//
+// 形态纪律（vue 臂转译边界，PLAN-676 T-03 实勘）：
+// - helpers 一律收 `bps List` 参数，不 use registry——vue 臂跨模块 fn
+//   内联只走一跳（use catalog 直呼），app.at 自行 `use registry: all_bps`
+//   直调（ui-gallery 单文件先例同构）；
+// - int→str（.to_str()）与 view 内对 computed 列表的 .len() 无 vue 转译，
+//   全部收进 fn 体内（参数 .len() 有 filter_demos 先例）；
+// - VM 轨纪律（P614/P625）：List 遍历一律 while+索引（for-in 参数列表
+//   零迭代陷阱）；Obj 字面量全键书写（缺键字段访问=VM 硬错）。
+// 原 bps.ts（vue-router 手写壳）的 kindOrder/分组/查询逻辑在此收编。
+
+// kind 偏好序（原 bps.ts kindPreference；契约 Q5 kind 词表 governs）。
+fn kind_preference() List {
+    return ["form", "navigation", "dashboard", "data-display", "feedback", "editor", "layout", "composite"]
+}
+
+fn str_list_contains(list List, s str) bool {
+    var i int = 0
+    while i < list.len() {
+        if list[i] == s {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fn kind_exists(bps List, k str) bool {
+    var i int = 0
+    while i < bps.len() {
+        if bps[i].kind == k {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+// kind 序：偏好序中有实体的在前；未列 kind 按发现序（registry 的
+// kind/name 字节序首现）尾随——与退役 bps.ts 的 sort() 尾随语义一致。
+fn kind_ordered(bps List) List {
+    var out List = []
+    var pref List = kind_preference()
+    var i int = 0
+    while i < pref.len() {
+        if kind_exists(bps, pref[i]) {
+            out.push(pref[i])
+        }
+        i = i + 1
+    }
+    i = 0
+    while i < bps.len() {
+        if str_list_contains(pref, bps[i].kind) == false {
+            if str_list_contains(out, bps[i].kind) == false {
+                out.push(bps[i].kind)
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// 首个变体名（条目副标题/label；避开 int→str 转译缺口）。
+fn first_variant_name(refs List) str {
+    if refs.len() == 0 {
+        return "no references"
+    }
+    return refs[0].variant
+}
+
+// 侧栏条目（GalleryShell items prop 记录形态，全键 schema）：
+// { id: "kind/name", title: <首个变体名>, category: kind, badge: "" }
+// 搜索匹配 id（kind/name）小写包含；kind == "all" 全量。
+fn gallery_items(bps List, needle str, kind str) List {
+    var out List = []
+    var q str = query.to_lower()
+    var i int = 0
+    while i < bps.len() {
+        var id str = bps[i].kind + "/" + bps[i].name
+        var kind_ok bool = kind == "all" || bps[i].kind == kind
+        var q_ok bool = q.len() == 0 || id.to_lower().contains(q)
+        if kind_ok && q_ok {
+            out.push({ id: id, title: first_variant_name(bps[i].references), category: bps[i].kind, badge: "" })
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// spec.md = `+++` frontmatter + NL body；正文视图剥壳（BpPage 同语义）。
+fn spec_body(spec str) str {
+    if spec.startsWith("+++") == false {
+        return spec
+    }
+    var close int = spec.indexOf("\n+++")
+    if close < 0 {
+        return spec
+    }
+    return spec.substring(close + 4).trim()
+}
+
+// ---- 按 key（kind/name）取数；key == "" 落首个条目（无 Init 时序依赖）----
+
+fn bp_key(b str, n str) str {
+    return b + "/" + n
+}
+
+fn bp_spec(bps List, key str) str {
+    if bps.len() == 0 {
+        return ""
+    }
+    if key == "" {
+        return spec_body(bps[0].spec_text)
+    }
+    var i int = 0
+    while i < bps.len() {
+        if bp_key(bps[i].kind, bps[i].name) == key {
+            return spec_body(bps[i].spec_text)
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+fn bp_gotchas(bps List, key str) str {
+    if bps.len() == 0 {
+        return ""
+    }
+    if key == "" {
+        return bps[0].gotchas
+    }
+    var i int = 0
+    while i < bps.len() {
+        if bp_key(bps[i].kind, bps[i].name) == key {
+            return bps[i].gotchas
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+fn bp_refs(bps List, key str) List {
+    if bps.len() == 0 {
+        return []
+    }
+    if key == "" {
+        return bps[0].references
+    }
+    var i int = 0
+    while i < bps.len() {
+        if bp_key(bps[i].kind, bps[i].name) == key {
+            return bps[i].references
+        }
+        i = i + 1
+    }
+    return []
+}
+
+// ---- 变体切换 ----
+
+fn variant_names(refs List) List {
+    var out List = []
+    var i int = 0
+    while i < refs.len() {
+        out.push(refs[i].variant)
+        i = i + 1
+    }
+    return out
+}
+
+fn variant_source(refs List, variant str) str {
+    if refs.len() == 0 {
+        return ""
+    }
+    if variant != "" {
+        var i int = 0
+        while i < refs.len() {
+            if refs[i].variant == variant {
+                return refs[i].source
+            }
+            i = i + 1
+        }
+    }
+    return refs[0].source
+}
+
+fn variant_active(selected str, names List) str {
+    if names.len() == 0 {
+        return ""
+    }
+    if selected != "" && str_list_contains(names, selected) {
+        return selected
+    }
+    return names[0]
+}
+
+// ---- 选区解析（selected_id == "" 时落当前筛选下首个）----
+// computed 全部单 fn 直呼 model 变量与 all_bps()——不链 computed。
+
+fn resolve_key(bps List, selected str, needle str, kind str) str {
+    if selected != "" {
+        return selected
+    }
+    var rows List = gallery_items(bps, needle, kind)
+    if rows.len() == 0 {
+        return ""
+    }
+    return rows[0].id
+}
+
+fn sel_variant_names(bps List, selected str, needle str, kind str) List {
+    return variant_names(bp_refs(bps, resolve_key(bps, selected, needle, kind)))
+}
+
+fn sel_variant(bps List, variant_pref str, selected str, needle str, kind str) str {
+    return variant_active(variant_pref, sel_variant_names(bps, selected, needle, kind))
+}
+
+fn sel_source(bps List, variant_pref str, selected str, needle str, kind str) str {
+    return variant_source(bp_refs(bps, resolve_key(bps, selected, needle, kind)), sel_variant(bps, variant_pref, selected, needle, kind))
+}
+
+fn sel_spec(bps List, selected str, needle str, kind str) str {
+    return bp_spec(bps, resolve_key(bps, selected, needle, kind))
+}
+
+fn sel_gotchas(bps List, selected str, needle str, kind str) str {
+    return bp_gotchas(bps, resolve_key(bps, selected, needle, kind))
+}
+
+fn sel_multi_variant(bps List, selected str, needle str, kind str) bool {
+    return variant_names(bp_refs(bps, resolve_key(bps, selected, needle, kind))).len() > 1
+}
+
+fn sel_first_variant(bps List, selected str, needle str, kind str) str {
+    return first_variant_name(bp_refs(bps, resolve_key(bps, selected, needle, kind)))
+}

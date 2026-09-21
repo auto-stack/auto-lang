@@ -1,0 +1,170 @@
+// front/app.at — bps-gallery 壳主体（PLAN-676 T-03/T-04）。
+//
+// 壳 = layout/gallery-shell BP（L1 通道零副本导入）；目录/内容三区
+// （spec 正文 / 变体切换 / 参考源码 / gotchas）由生成的 registry.at
+// 数据面驱动（SD-01）。导航形态 = selected_id 状态切换（非 routes，
+// ui-gallery 先例，PLAN-676 D1 裁定）。
+//
+// 装配纪律（vue 臂转译边界，T-03 实勘）：`use registry: all_bps` 与
+// `use catalog: …` 各一跳直呼——跨模块 fn 内联只走一跳；computed 全部
+// 单 fn 直呼 model 变量与 all_bps()，不链 computed、view 内不裸用
+// .len()/.to_str()（组合与度量收进 catalog.at fn 体内）。
+
+use bps.layout.gallery_shell.reference.default: GalleryShell
+use registry: all_bps
+use catalog: gallery_items, kind_ordered, resolve_key, sel_variant_names, sel_variant, sel_source, sel_spec, sel_gotchas, sel_multi_variant, sel_first_variant
+
+widget App {
+    msg {
+        SelectBp(str),
+        Search(str),
+        SetTheme(str),
+        SetAccent(str),
+        SelectKind(str),
+        SelectVariant(str),
+    }
+
+    model {
+        // 选中态（契约 Q3：选中项属 app 状态，不落 bp 私有 store）
+        var selected_id str = ""
+        // 搜索词镜像（壳内 search_query 持显示值；query 经 action 上抛）
+        var query str = ""
+        var active_kind str = "all"
+        // 主题态（契约 #3 平台服务归宿主单例；Plan 458 声明即翻转）
+        var dark_mode bool = true
+        var accent_color str = "indigo"
+        // 变体 tab（"" = 首个）
+        var active_variant str = ""
+    }
+
+    computed {
+        items => gallery_items(all_bps(), .query, .active_kind)
+        kinds => kind_ordered(all_bps())
+        shell_active => resolve_key(all_bps(), .selected_id, .query, .active_kind)
+        multi_variant => sel_multi_variant(all_bps(), .selected_id, .query, .active_kind)
+        variant_list => sel_variant_names(all_bps(), .selected_id, .query, .active_kind)
+        cur_variant => sel_variant(all_bps(), .active_variant, .selected_id, .query, .active_kind)
+        cur_source => sel_source(all_bps(), .active_variant, .selected_id, .query, .active_kind)
+        cur_spec => sel_spec(all_bps(), .selected_id, .query, .active_kind)
+        cur_gotchas => sel_gotchas(all_bps(), .selected_id, .query, .active_kind)
+        first_variant => sel_first_variant(all_bps(), .selected_id, .query, .active_kind)
+    }
+
+    view {
+        GalleryShell (items: .items, active_id: .shell_active, dark_mode: .dark_mode, accent_color: .accent_color, on_select: .SelectBp, on_search: .Search, on_set_theme: .SetTheme, on_set_accent: .SetAccent) {
+            // ── brand slot：画廊标牌
+            slot(name: "brand") {
+                row {
+                    style: "items-center gap-2 min-w-0"
+                    icon (name: "layers", size: 18, style: "text-primary shrink-0")
+                    col {
+                        text "AutoUI Blueprints" { style: "text-sm font-bold tracking-tight truncate" }
+                        text "bp catalog · as-authored" { style: "text-[10px] text-muted-foreground truncate" }
+                    }
+                }
+            }
+
+            // ── filters slot：kind 偏好序 pills（原 bps.ts kindOrder）
+            slot(name: "filters") {
+                row {
+                    style: "gap-1 flex-wrap pb-2 border-b border-border/50 text-xs"
+                    button "All" {
+                        style: if .active_kind == "all" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
+                        onclick: () => { .active_kind = "all" }
+                    }
+                    for k in .kinds {
+                        button k {
+                            style: if .active_kind == k { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
+                            onclick: .SelectKind(k)
+                        }
+                    }
+                }
+            }
+
+            // ── content 默认出口（裸子）：选中 bp 的三区详情
+            col {
+                style: "w-full max-w-5xl mx-auto gap-6"
+
+                // 标题区
+                col {
+                    style: "gap-1"
+                    row {
+                        style: "items-center gap-3"
+                        text .shell_active { style: "text-2xl font-bold tracking-tight" }
+                        text .first_variant { style: "text-sm text-muted-foreground" }
+                    }
+                }
+
+                // Spec 区（正文视图，frontmatter 已剥壳）
+                col {
+                    style: "gap-3 border border-border rounded-xl bg-card p-6 shadow-sm"
+                    text "Spec" { style: "text-sm font-semibold uppercase tracking-wider text-muted-foreground" }
+                    pre {
+                        style: "p-4 rounded-lg bg-muted text-xs font-mono whitespace-pre-wrap border border-border leading-relaxed"
+                        text .cur_spec {}
+                    }
+                }
+
+                // Reference implementation 区（变体 tab + 源码）
+                col {
+                    style: "gap-3 border border-border rounded-xl bg-card p-6 shadow-sm"
+                    text "Reference implementation" { style: "text-sm font-semibold uppercase tracking-wider text-muted-foreground" }
+                    if .multi_variant {
+                        row {
+                            style: "gap-2 border-b border-border pb-3"
+                            for v in .variant_list {
+                                button v {
+                                    style: if .cur_variant == v { "px-3 py-1 rounded-md text-xs font-bold bg-primary text-primary-foreground" } else { "px-3 py-1 rounded-md text-xs text-muted-foreground hover:bg-muted" }
+                                    onclick: .SelectVariant(v)
+                                }
+                            }
+                        }
+                    }
+                    row {
+                        style: "items-center gap-1.5"
+                        text "Source of" { style: "text-xs text-muted-foreground" }
+                        text .cur_variant { style: "text-xs font-mono text-foreground" }
+                        text ".at — live render via a2vue is deferred; authored source shown." { style: "text-xs text-muted-foreground" }
+                    }
+                    pre {
+                        style: "p-4 rounded-lg bg-muted text-xs font-mono overflow-x-auto border border-border leading-relaxed"
+                        text .cur_source {}
+                    }
+                }
+
+                // Gotchas 区
+                col {
+                    style: "gap-3 border border-border rounded-xl bg-card p-6 shadow-sm"
+                    text "Gotchas" { style: "text-sm font-semibold uppercase tracking-wider text-muted-foreground" }
+                    pre {
+                        style: "p-4 rounded-lg bg-muted text-xs font-mono whitespace-pre-wrap border border-border leading-relaxed"
+                        text .cur_gotchas {}
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .SelectBp(id) -> {
+            .selected_id = id
+            .active_variant = ""
+        }
+        .Search(q) -> { .query = q }
+        .SetTheme(mode) -> {
+            if mode == "light" {
+                .dark_mode = false
+            }
+            if mode == "dark" {
+                .dark_mode = true
+            }
+        }
+        .SetAccent(name) -> { .accent_color = name }
+        .SelectKind(k) -> {
+            .active_kind = k
+            .selected_id = ""
+            .active_variant = ""
+        }
+        .SelectVariant(v) -> { .active_variant = v }
+    }
+}
