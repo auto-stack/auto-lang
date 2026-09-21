@@ -2578,3 +2578,9 @@ R-03=R-10+A-05）——"需维护者排查归位"注销。**P667-D2/P661-D7 基�
 | P673-D1 | medium | code_editor 内核 | **视口物化（T-05 S2）延后——与视口局部 diff 同批前提**——cosmic Buffer 无行窗口 API，窗移=全量 re-set_text 会 defeat 目的；渲染/命中/滚动/fold 15+ 触点需 doc↔viewport 行映射。延后副作用=逐击键 before/after 全文快照维持 O(n) 基线（100MB 冒烟单键 25.3s/debug，收据在册 plan 673 §9）。两债必须同批落地（视口局部 diff 是窗移便宜的前提）。重启评估条件：窗口同步协议实证不可行 → 设计档 §3 路线 (b) 重评 | `core/mod.rs` doc 字段注释；plan 673 T-05 S2 提交 8d736dd30；设计档 `docs/design/autoui/editor-kernel.md` §3/§7 |
 | P673-D2 | low | nat 注册 | **nat id 带管理三暴露面（T-01/T-02 实勘）**——①29xx 带在 catalog/BIGVM/NATIVE_ID_ENTRIES **三表全满**，新 UI 内建被迫走 9900+ 高位带（沿 PLAN-656 先例）；②code_editor 族 2910-2933 仍未钉 NATIVE_ID_ENTRIES（动态 id 运行时覆盖 static_shims 的暴露面，T-02 实测撞过一次）；③无唯一性守卫——靠 catalog 测试事后发现。候选修法：id 分配集中器（编译期宏或 catalog 单源生成三表） | `vm/native_catalog.rs`（2939/9906/1016 注释在案）；plan 673 §9 T-01/T-02 记录 |
 | P673-D3 | low | aavm 测试基线 | **`test_aavm2_compile_use_corpus` 的 `005_transitive_init` Rust 参考腿预存红**（T-06 裸 taa 3864/3865 余红，master 同 panic 位点实测复现，非本批引入）——与 P671-D「tb book_listing ×7 真未归档预存红」同性质，需独立归因计划 | plan 673 §9 T-06 记录 |
+
+### P679（2026-09-21，Plan 679 RQ 臂样式 parity 双轨对拍发现）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P679-D1 | medium | iced 独立轨 fit 窗 | **003-converter standalone fit 窗内容测量塌缩（双轨对拍实机发现，A/B 铁证非新回归）**——`window: "fit"`（Plan 506 S4 加于 002/003/012/038）下 `auto run -r vm`：LayoutCollector 对 fit 锚点的自然尺寸测量把 max-w-md 卡片量到 ~135×240（子级 title/inputs 近零贡献），窗收缩至 213×396 物理且内容不可见；MCP autoui_snapshot 树完整（数据面在）= 纯 iced 布局/测量面塌缩。**A/B 实证**：master 旧二进制（pre-678/679）同象复现；RQ 轨（RqProjector 定宽块流）同 app 正常渲染。同族风险面=002/012/038（同为 Plan 506 fit 批）未勘。疑点=max-w-md+mx-auto 卡片根在 LayoutCollector/fit 测量链的自然尺寸计算（Plan 512 remeasure 打标链）；与 gallery-vm-embed-layout-collapse/P663 视口边界家族相邻但触发位不同（standalone fit 窗） | crates/auto-lang/src/ui/iced/renderer.rs:13684 fit_measure_task/:13707 apply_fit_measured；A/B 截图 .wt/lang-679/shots/{master_003,rq_003}.png |
