@@ -1,0 +1,224 @@
+---
+plan_id: PLAN-674
+status: drafting               # drafting → executing → execution_done → reviewed → archived
+feature_name: rq-codeeditor-a2r-vocab
+author: [zcode]
+created_at: 2026-09-21
+updated_at: 2026-09-21
+
+# /auto-plan:review 结束时填写：
+supersedes_spec_components: []
+new_spec_components: [SD-01 ui overview native queue 覆盖集 codeeditor 扩册, SD-02 shell-a2r-seams 词汇门扩容契约]
+touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+
+affects: [docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/design/shell-a2r-seams.md]
+current_step: 0
+total_steps: 7
+---
+
+# [PLAN-674] 生成器件：RQ 渲染臂 codeeditor 覆盖 + a2r codegen 词汇门扩容
+
+> 来源：auto-edit 上游供料包（2026-09-21 M1 批）
+> `docs/plans/attachments/673-674-m1-supply.md` §6/§7（auto-edit 仓
+> plan-004-dev @ 44e3a74/ab57177 实勘登记）。两缺口同族——**生成/投影面的
+> 覆盖词汇不足**，阻消费方 L1/L2 性能测量阶梯（RQ 路与 a2r 主形态）。
+
+## 0. 变更摘要
+
+两件生成面覆盖扩容：
+
+1. **§6 RQ 渲染臂覆盖缺口**——`Coverage::native_queue_set()` 无
+   `codeeditor`：`auto run -r vm -q`（VM+RQ）实例即退（拒绝渲染语义报
+   `native queue 臂视图未覆盖: tag:codeeditor`），rqhost 侧
+   `adoption 未达 Active`。扩册 + 投影臂落地，并勘定其余 not-yet kind
+   全集（tree/menubar 族等）。
+2. **§7 a2r codegen 词汇门**——`add_prop_to_builder` 识别面仅
+   class/style/padding/spacing 四 prop（事件面 onclick/oncontextmenu/
+   onchange 族），其余 prop 一律 `compile_error!`（PLAN-027 显式拒绝门）。
+   消费方视图 DSL 的 `value`/`text`/`title` 等合法 prop 全被拒（实测 23
+   错）——`auto build -r rust` merged 主形态被阻。按**机制扩容**（per-kind
+   prop/event 表驱动），非消费方名单。
+
+## 1. 目标
+
+- **G1（codeeditor 过线）**：`native_queue_set` 增补 codeeditor +
+   native_projector 投影/命中臂落地；examples 041 运行时拒收钉
+   （coverage.rs:1399 `Some("tag:codeeditor")` 期望）翻 Covered；消费方
+   `auto run -r vm -q` 实例达 Active 可渲染。
+- **G2（not-yet 全集勘定）**：以 coverage 判据自动列出未覆盖 kind 全集，
+   逐 kind 三态勘定（本批修/登记另立/降级归一），产决策档。
+- **G3（词汇门扩容）**：prop/event 识别面按 View IR builder 能力表驱动
+   扩容（单源纪律）；真未知仍显式拒绝（防静默缺件原则不回退）；消费方
+   `auto build -r rust` 生成物可编译。
+- **G4（交接）**：消费方复跑解阻通知（669 §10-4 模式；复验判据 =
+   `perf.py smoke` exit 0 与 `perf.py a2r` exit 0——供料 §6/§7 各自
+   复验条）。
+
+**非目标（Non-goals）**：
+
+- 不动 a2r **server 模板**缺口（`use api::Db` 硬编码 + 契约 fn 空体桩
+  ——P670-D1 在册，供料 §4 另行）；词汇门与 P670-D1 三支路无重叠
+  （那是 server 端点转译，这是 app 级视图 codegen）。
+- 不动 vue 轨（PLAN-671 域）；不动编辑器内核（PLAN-673 域）。
+- RQ 覆盖扩册只做**渲染/命中过线**；codeeditor 在 RQ 形态下的完整交互
+  保真（IME/折叠/搜索面板等深水区）按投影策略允许显式降级登记（I3
+  留痕纪律），不静默缺件。
+
+## 2. 架构方案
+
+| 件 | 现状锚点（本仓实读） | 目标形态 |
+|---|---|---|
+| RQ 覆盖 | `ui/desktop_protocol/coverage.rs:184` `native_queue_set` 现集 = text/button/form 族（input/textarea/checkbox/radio）/slider/select/image/progress/popover/mousearea/windowthumbnail/workspacepreview/tabs/canvas——**codeeditor 不在列**；scan 侧映射已在（:528 `View::CodeEditor{..} => "codeeditor"`）；启动覆盖门 `native_projector.rs:363-369` + `client_entry.rs:189`（judge 拒绝即退，AC-04 拒绝渲染语义）；041 拒收钉测试 `coverage.rs:1382-1399` | kind 入册 + 投影臂（策略 §10-1 裁定：canvas 先例〔PLAN-034 D4 位图快照通道〕vs 结构 DrawOps）+ 键入/命中回传面；041 钉翻 `None` |
+| 词汇门 | `ui_gen/rust.rs:6177` `add_prop_to_builder` 识别 = class/className/style/padding/spacing（:6182-6215），余者 `compile_error!`（:6218-6227，PLAN-027 T-04 显式拒绝门——历史动机：shell 生成物防"看似编译过实缺件"）；事件 `add_event_to_builder`（:6263）识别 onclick 族/oncontextmenu/onchange 族，onmouseenter 族双轨同弃（:6275-6279），余者拒（:6281-6287） | 识别面从「四 prop 白名单」扩为**per-kind 词汇表**（源 = View IR builder 方法面/aura schema 单源驱动），映射到 iced builder 调用；未知 prop/event 拒绝门语义保留（真未知仍 compile_error） |
+
+**机制红线**（沿 671 用户裁定同款）：扩容一律按机制（builder 能力表/
+schema 单源/事件类型映射），**不针对消费方 prop 名单打补丁**——
+`value`/`text`/`title` 只是通用机制的项目投影。
+
+## 3. 技术栈
+
+Rust（crates/auto-lang ui/desktop_protocol + ui_gen/rust.rs）；aura schema
+（schema/aura.at）与 View IR（ui/view.rs builder 面）为词汇单源候选；
+fixture 验证链（tests/ 通用 .at 语料 + a2r 生成 + cargo check）；消费方
+复跑面 = auto-edit `tools/perf/perf.py`（smoke/a2r 两段，退出码 0/3/1
+约定——3=blocked-on-upstream 归因即当前实测态）。
+
+## 4. 需求分析与背景调查
+
+**授权记录**：2026-09-21 用户指令（auto-edit 会话任务②）——供料包发往
+本仓立上游计划，拆两件（本件=生成器件）。授权范围 = **立项起草**
+（drafting）；执行另行授权。
+
+**消费方证据**（供料包 §6/§7 原文 + 本仓独立复核）：
+
+- §6 实测（auto-edit PLAN-004 T-06，2026-09-21 11:03/11:07 两轮）：
+  `auto run -r vm -q` 双实例派发后 0/2 存活，app 日志死因
+  `native queue 臂视图未覆盖: tag:codeeditor`；rqhost 侧
+  `adopt App→…app-1/-2` 后 `adoption 未达 Active（预算耗尽弃置）`。
+  编排链（rq-up/run/rq-down）验证在位——阻塞纯在渲染覆盖面。
+- §7 实测（T-07，11:09/11:15 两轮）：`auto build -r rust` 生成物 23 错，
+  全为词汇拒绝门 compile_error!（首错 prop `value`，另见 `text`/`title`
+  ——消费方 menubar/tab/actions DSL prop 面）。
+
+**本仓独立复核**（2026-09-21，master@20f79de62）：
+
+- coverage.rs 现集逐 kind 核对（:184-231 kinds + :232-245 layouts）——
+  codeeditor 确不在列；canvas 为最近扩册先例（PLAN-034 T-05 D4：位图
+  快照通道 + on_hit 节点命中——codeeditor 投影策略的直接参照系）。
+- coverage.rs:1379-1400 `native_gate_runtime_views_of_six` 六例运行时
+  视图覆盖钉：041-auto-edit 期望 `Some("tag:codeeditor")` 拒收——
+  **上游已把该缺口登记为已知 not-yet 家族**（注释 :1382「041 codeeditor
+  （整 kind）两真 not-yet 家族运行时拒收」），本计划即其清偿件。
+- ui_gen/rust.rs 词汇门两处（prop :6218 / event :6281）拒绝臂注释明示
+  PLAN-027 T-04 设计（§3a-a4）——扩容不动该设计原则，只扩识别面。
+- PLAN-027 rev2 spec 面（ui/overview.md:4 在册）：shell a2r 接缝面
+  S1/S2 + 显式拒绝门/词汇门，详见 `design/shell-a2r-seams.md`
+  （provisional）——SD-02 落点。
+
+**先例与交集**：PLAN-025/026/028/029/032/034（native_queue_set 逐批
+扩册史，每批 = 覆盖集 + 投影臂 + 命中面 + 钉测试同步）；PLAN-027（拒绝
+门设计原案）；671（机制红线同款裁定 + T-06 单源注册表先例）；P670-D1
+（server 端点面，非重叠，防误并）。
+
+## 5. 详细设计
+
+### 5.1 RQ 渲染臂 codeeditor 扩册
+
+- **投影策略**（§10-1 裁定，T-00 产决策档）：(a) canvas 先例——场景
+  栅格化位图快照 + 命中回传（过线快，文本交互经宿主合成）；(b) 结构
+  DrawOps（文本 op 族逐行发射——保真好，行数大时 op 流量风险）。倾向
+  (a) 起步 + 交互键入回传最小面（消费方 L1 结构探针只需结构+存活，
+  L2 测量需稳定满帧）。
+- **扩册四件套**（沿 025-034 惯例）：kind 入 `native_queue_set`；投影臂
+  入 native_projector；键入/命中回传面；041 钉期望翻 `None` +
+  capability-tests 增 RQ 形态 fixture。
+- **not-yet 全集勘定**：以 scan_native_view × native_queue_set 判据跑
+  examples/capability-tests 全语料，自动列出未覆盖 kind 全集（供料 §6
+  推测 tree/menubar 族同缺——以勘定为准），逐 kind 三态分流（本批修/
+  登记另立/降级归一），决策档入计划 §9。
+
+### 5.2 a2r codegen 词汇门扩容
+
+- **单源驱动**：per-kind prop 词汇表源 = View IR builder 方法面
+  （ui/view.rs 各 View*Builder——解释态已消费的同一能力面）或 aura
+  schema（schema/aura.at）——单源裁定 §10-2；发射映射 = prop → iced
+  builder 调用（.value(...)→binding、.text(...)、.title(...) 等，逐
+  kind 映射表）。
+- **事件面同步扩**：`add_event_to_builder` 补 on_change 载荷族/
+  on_contextmenu 等既有 View 槽（与 671 T-03 vue 侧形参装配同族——
+  两侧机制各自落地，语义对齐）。
+- **拒绝门保留**：词汇表外仍 compile_error!（PLAN-027 原则：未知 =
+  显式缺件，不静默丢弃）；错误文案带 kind 名（现文案只报 prop 名，
+  扩容后补 `on <kind>` 上下文——排障友好）。
+- **互锁**：词汇表若源 aura schema，schema_drift 围栏同步（671 T-08
+  先例）。
+
+### 规范增量
+
+| delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
+| --- | --- | --- | --- | --- | --- |
+| SD-01 | modify | docs/specs/auto-lang/ui/overview.md（native queue 覆盖集段） | before：覆盖集 = 基础 kind + tabs/canvas（041 codeeditor 在 not-yet 案册）/ after：codeeditor 过线契约（投影策略、交互回传面、降级显式登记）+ not-yet 全集勘定档指针 | 覆盖集是 spec 级事实（025-034 每批同步），041 案册翻案须回写 | AC-01/02/06 |
+| SD-02 | modify | docs/specs/auto-lang/ui/design/shell-a2r-seams.md（词汇门节；provisional 档随扩容转正） | before：词汇门 = 四 prop 白名单 + 拒绝语义（PLAN-027 rev2）/ after：per-kind 词汇表契约（单源、映射表、拒绝门保留、错误文案含 kind） | 词汇面契约化，防"识别面=名单"回潮 | AC-03/05/06 |
+
+## 6. 测试设计
+
+- **覆盖**：041 钉翻 `None` 后 `native_gate_runtime_views_of_six` 绿；
+  全语料 scan×judge 勘定脚本收据入计划；capability-tests 增 codeeditor
+  RQ fixture（VM+RQ 实跑达 Active）。
+- **词汇门**：fixture .at 语料（含 value/text/title 等合法 prop + 一个
+  真未知 prop）——合法面生成物 `cargo check` 过；真未知仍 compile_error
+  且文案含 kind。逐 kind 映射表单测。
+- **通用性静态门**：修复面 grep 零消费方特定标识符（auto-edit/
+  editor_store/menubar_item 消费方命名等——机制投影除外，同 671 §6）。
+- **回归**：`cargo t` + 改 a2r/trans 面按 AGENTS.md 作用域 `cargo tt`；
+  PLAN-027 既有拒绝门测试零回退。
+
+## 7. 验收标准
+
+- **AC-01（codeeditor 过线）**：`native_queue_set` 含 codeeditor + 投影/
+  命中臂落地；041 运行时钉翻 `None`；本机 `-q` 实例渲染存活（达 Active）。
+- **AC-02（not-yet 全集决策档）**：全语料勘定清单在档，逐 kind 三态分流
+  （修/另立/降级登记），无"未知"残留。
+- **AC-03（词汇门机制扩容）**：per-kind 词汇表单源驱动落地；消费方
+  `auto build -r rust` 生成物编译过（供料 §7 复验：23 错清零）。
+- **AC-04（拒绝门不回退）**：真未知 prop/event 仍 compile_error!（文案
+  含 kind）；PLAN-027 既有测试绿。
+- **AC-05（fixture+grep 门）**：通用 fixture（零消费方业务名）双绿；
+  grep 门零命中。
+- **AC-06（spec+交接）**：SD-01/SD-02 落账；消费方复跑通知发出（复验判据
+  perf.py smoke/a2r exit 0；669 §10-4 模式）。
+
+## 8. 执行步骤
+
+| ID | 任务 | 依赖 | 落点（文件/符号） | 意图 | AC | 验证命令/预期 |
+|---|---|---|---|---|---|---|
+| T-00 | 双勘定：①codeeditor 投影策略裁定（canvas 位图先例 vs 结构 DrawOps）+ not-yet 全集自动列举；②词汇表单源裁定（View builder 面 vs aura schema）——决策档入 §9 | — | coverage.rs 判据 + 本计划 §9 | 设计先行 | AC-01/02/03 | 决策档两裁定在档 |
+| T-01 | codeeditor 扩册四件套：入册 + 投影臂 + 键入/命中回传 + 041 钉翻 `None` | T-00 | coverage.rs:184 / native_projector.rs / coverage.rs:1399 | 过线 | AC-01 | 041 钉绿 + 本机 `-q` 存活 |
+| T-02 | not-yet 全集三态分流执行：本批修项（按 T-00 分流）逐 kind 落臂；另立/降级项登记 KNOWN-DEBT | T-00 | 同 T-01 面扩 | 全集收口 | AC-02 | 勘定清单零"未知" |
+| T-03 | 词汇表机制：单源抽取 + per-kind prop→iced builder 映射表 + `add_prop_to_builder` 改表驱动（拒绝臂保留，文案补 kind） | T-00 | ui_gen/rust.rs:6177 + 单源（T-00 裁定） | 机制扩容 | AC-03/04 | 映射表单测 + fixture cargo check 过 |
+| T-04 | 事件面同步扩容：`add_event_to_builder` 补 View 事件槽族（载荷语义与 vue 侧对齐注记） | T-03 | ui_gen/rust.rs:6263 | 事件面 | AC-03/04 | fixture 事件 prop 生成编译过 |
+| T-05 | fixture+回归+grep 门：tests/ 通用 fixture 双绿（codeeditor RQ + 非基础 prop）；cargo t/tt；PLAN-027 拒绝门测试零回退 | T-01..T-04 | tests/ 新 fixture | 证明集中 | AC-04/05 | 全绿 + grep 零命中 |
+| T-06 | spec 落账+交接：SD-01/SD-02 落盘；消费方复跑通知（perf.py smoke/a2r exit 0 判据） | T-05 | docs/specs/ + §9 记录 | 收口 | AC-06 | spec 回读 + 通知留档 |
+
+## 9. 复审记录
+
+- 2026-09-21 · stage: new · r1 起草 · 授权=用户指令（auto-edit 供料包
+  发车拆两件，本件=生成器件；供料原件附件 `673-674-m1-supply.md`
+  §6/§7）· outcome: **pass（待执行授权）** · next: **work**（授权后自
+  T-00 起；§10-1 投影策略与 §10-2 单源为开工前待裁项）。
+
+## 10. 待澄清事项
+
+1. **codeeditor 投影策略**（阻塞 T-01，T-00 裁定）：canvas 位图快照通道
+   （PLAN-034 D4 先例——过线快、文本交互合成）vs 结构 DrawOps（保真好、
+   op 流量风险）。倾向位图起步（消费方 L1 只需结构+存活、L2 需稳定满帧）。
+2. **词汇表单源**（阻塞 T-03，T-00 裁定）：View IR builder 方法面
+   （能力即词汇，解释态同源）vs aura schema（声明即词汇，schema_drift
+   围栏可依）。倾向 builder 面（a2r 发射的语义本源），schema 侧随收口
+   对齐。
+3. **not-yet 全集批次边界**（T-00 勘定后定）：全集中本批修多少 vs 登记
+   另立——按消费方解阻最小集（codeeditor 必修）+ 顺手族（tree/menubar
+   如同根）划界，其余登记。
+4. **交互回传深度**：RQ 形态 codeeditor 键入回传最小面（消费方 smoke
+   探针所需）vs 完整交互保真——允许显式降级登记（I3 留痕），review 时
+   定边界。
