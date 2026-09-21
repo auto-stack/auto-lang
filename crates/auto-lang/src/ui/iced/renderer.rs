@@ -3599,30 +3599,23 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // PLAN-080 UAT F-UAT-2: Rich 段落——单段落跨 span 连续折行
             // （markdown 行内序列唯一正确承载；Row 摆多 Text 不回流）。
             AbstractView::Rich { spans, style } => {
-                // F-UAT-2 勘误：Rich 不参与 iced 祖先文字色继承链（裸 span
-                // 落主题缺省色=深底黑字不可见，真机表格/段落文字消失实证
-                // 2026-09-21）。回退链：span 显式色 → Rich 基础样式色 →
-                // 语义 OnBackground → 白（text_input 值色同款口径）。
-                let base_color = style
-                    .as_ref()
-                    .and_then(|s| IcedStyle::from_style(s).text_color);
+                // F-UAT-2 勘误②：span 颜色仅在显式声明时设置（mark 类如
+                // text-primary/foreground），否则**不设色走 iced 祖先继承**
+                // ——与普通 Text 同链。曾加 OnBackground 强制回退，实测该
+                // 语义解析疑落深色 → 深底深字整段不可见（用户"一度解决又
+                // 乱回去"的分界=本回退层引入），移除后恢复 b3ab1520 的
+                // 用户验证态。
                 let mut spans_vec: Vec<iced::widget::text::Span<'static, ()>> = Vec::new();
                 for sp in spans {
                     let mut span = iced::widget::text::Span::new(sp.content.clone());
-                    let span_color = sp
-                        .style
-                        .as_ref()
-                        .and_then(|st| IcedStyle::from_style(st).text_color)
-                        .or(base_color)
-                        .or_else(|| {
-                            crate::ui::style::iced_adapter::resolve_semantic_rgb(
-                                &crate::ui::style::Color::OnBackground,
-                            )
-                            .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
-                        })
-                        .unwrap_or(iced::Color::WHITE);
-                    span = span.color(span_color);
                     if let Some(ref st) = sp.style {
+                        let is = IcedStyle::from_style(st);
+                        if let Some(color) = is.text_color {
+                            span = span.color(color);
+                        }
+                        if let Some(fs) = effective_font_size(&is) {
+                            span = span.size(fs);
+                        }
                         let is = IcedStyle::from_style(st);
                         if let Some(fs) = effective_font_size(&is) {
                             span = span.size(fs);
