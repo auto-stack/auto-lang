@@ -322,6 +322,99 @@ fn http_e2e_back_proxy_bad_path_param_is_400() {
     assert_eq!(body.trim().parse::<i64>().ok(), Some(0), "ledger body: {body}");
 }
 
+/// PLAN-675 T-06: 五家真实路由语料（018/019/021/022/023）的数据面探针——
+/// back_proxy 会话直接装载各 demo 的 back 链，绕开 auto run 包装进程的
+/// N2 死亡窗口（活体走查数据卡死的根因：会话顺序装载每家数秒，包装进程
+/// 在 vite 就绪后退出，路由 demo 的会话常未轮到）。断言列表/路径参数
+/// （int 与 str slug）/路径+body 混合绑定三面在真实语料上健康。
+#[test]
+fn http_e2e_back_proxy_real_routes_corpora_data_face() {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest.ancestors().nth(2).expect("repo root").to_path_buf();
+    let ui = repo_root.join("examples").join("ui");
+    let spec = |id: &str| SessionSpec {
+        app_id: id.to_string(),
+        back_entry: ui.join(id).join("src").join("back").join("api.at"),
+    };
+    let config = BackProxyConfig {
+        port: 3959,
+        sessions: vec![
+            spec("018-book-reader"),
+            spec("019-video-app"),
+            spec("021-blog-viewer"),
+            spec("022-kanban"),
+            spec("023-realworld"),
+        ],
+        #[cfg(feature = "ui")]
+        native_media: Vec::new(),
+    };
+    let proxy = start(config).expect("start back proxy for routes corpora");
+
+    // 018：列表种子 + int :id GET（N5 主面）+ 章节子路径 + 路径/body 混合 PUT。
+    let (status, body) = http_request(proxy.port, "GET", "/apps/018-book-reader/api/books", None);
+    assert_eq!(status, 200, "018 list: {body}");
+    assert!(body.contains("The Silent Garden"), "018 seed: {body}");
+
+    let (status, body) = http_request(proxy.port, "GET", "/apps/018-book-reader/api/books/1", None);
+    assert_eq!(status, 200, "018 get book 1 (int :id): {body}");
+    assert!(body.contains("The Silent Garden"), "018 book 1: {body}");
+
+    // 生成客户端的线格式：路径模板里占位符字面保留(`:id`)、fn 形参走 query
+    // （api_gen/generate_simple_client 同构）——探针镜像真实调用形态。
+    let (status, body) = http_request(
+        proxy.port,
+        "GET",
+        "/apps/018-book-reader/api/books/:id/chapters?book_id=1",
+        None,
+    );
+    assert_eq!(status, 200, "018 chapters of book 1: {body}");
+    assert!(body.contains("chapter") || body.contains("title"), "018 chapters: {body}");
+
+    let (status, body) = http_request(
+        proxy.port,
+        "PUT",
+        "/apps/018-book-reader/api/books/1/progress",
+        Some(r#"{"progress":55}"#),
+    );
+    assert_eq!(status, 200, "018 PUT progress (path :id + body field): {body}");
+    assert!(body.contains("55"), "018 progress echoed: {body}");
+
+    // 019：列表种子 + int :id GET。
+    let (status, body) = http_request(proxy.port, "GET", "/apps/019-video-app/api/videos?category=All&tab=Recommend&q=", None);
+    assert_eq!(status, 200, "019 list: {body}");
+    assert!(body.contains("Learn Rust"), "019 seed: {body}");
+    let (status, body) = http_request(proxy.port, "GET", "/apps/019-video-app/api/videos/1", None);
+    assert_eq!(status, 200, "019 get video 1 (int :id): {body}");
+
+    // 021：列表 + int :id GET（种子首条 id=6）。
+    let (status, body) = http_request(proxy.port, "GET", "/apps/021-blog-viewer/api/posts?category=All", None);
+    assert_eq!(status, 200, "021 list: {body}");
+    let (status, body) = http_request(proxy.port, "GET", "/apps/021-blog-viewer/api/posts/6", None);
+    assert_eq!(status, 200, "021 get post 6 (int :id): {body}");
+    assert!(body.contains("Getting Started"), "021 post 6: {body}");
+
+    // 022：看板卡片种子。
+    let (status, body) = http_request(proxy.port, "GET", "/apps/022-kanban/api/cards", None);
+    assert_eq!(status, 200, "022 list: {body}");
+    assert!(body.contains("Design landing page"), "022 seed: {body}");
+
+    // 023：文章列表 + str slug GET（str 保形面）。
+    let (status, body) = http_request(proxy.port, "GET", "/apps/023-realworld/api/articles", None);
+    assert_eq!(status, 200, "023 list: {body}");
+    assert!(
+        body.contains("understanding-react-server-components"),
+        "023 seed slug: {body}"
+    );
+    let (status, body) = http_request(
+        proxy.port,
+        "GET",
+        "/apps/023-realworld/api/articles/understanding-react-server-components",
+        None,
+    );
+    assert_eq!(status, 200, "023 get by slug (str :slug): {body}");
+    assert!(body.contains("Server Components"), "023 article body: {body}");
+}
+
 /// 真实语料冒烟（T-01 验收）：020-music-player 的 #[api] status 路由经
 /// 子前缀返回真实状态（该 fn 返回空 PlayerInfo 列表——真实执行语义）。
 #[test]
