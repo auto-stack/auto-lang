@@ -3730,6 +3730,56 @@ fn spawn_shell_outproc(
     /// PLAN-036 T-07（B3，D3-C）：launcher 独立 exe spawner——re-exec
     /// auto 本体（`run --autodesk-launcher --autodesk-broker=<pipe>`）+
     /// 注册表源/几何 env 注入（launcher_entry boot 扫描在案）。
+    /// PLAN-039 T-07（D2-A 编译轨优先）：launcher 的 a2r 编译产物发现
+    /// ——entry .at 路径 → app root → `rust-workspace/target/{release,
+    /// debug}/<exe>.exe`（T-05 ⑤ 后 workspace 本地 target 布局；exe 名
+    /// 先 pac name snake 化后目录名）。None = 产物缺席 → 调用侧回退
+    /// 解释装载（I3 双轨）。
+    fn launcher_compiled_exe(entry: &std::path::Path) -> Option<std::path::PathBuf> {
+        // entry = <app-root>/src/front/app.at → nth(3) = app root（pac.at
+        // 与 rust-workspace 都在 app root 本层——无再上溯）。
+        let root = entry.ancestors().nth(3)?;
+        let dir_name = root.file_name()?.to_string_lossy().to_string();
+        let mut candidates: Vec<String> = Vec::new();
+        if let Ok(text) = std::fs::read_to_string(root.join("pac.at")) {
+            if let Some(idx) = text.find("name:") {
+                let rest = &text[idx + 5..];
+                if let Some(q1) = rest.find('"') {
+                    if let Some(q2) = rest[q1 + 1..].find('"') {
+                        let nm = &rest[q1 + 1..q1 + 1 + q2];
+                        let snake: String = nm
+                            .chars()
+                            .map(|c| {
+                                if c == '-' || c == ' ' {
+                                    '_'
+                                } else {
+                                    c.to_ascii_lowercase()
+                                }
+                            })
+                            .collect();
+                        if !snake.is_empty() {
+                            candidates.push(snake);
+                        }
+                    }
+                }
+            }
+        }
+        candidates.push(dir_name);
+        for build in ["release", "debug"] {
+            for exe_name in &candidates {
+                let cand = root
+                    .join("rust-workspace")
+                    .join("target")
+                    .join(build)
+                    .join(format!("{exe_name}.exe"));
+                if cand.is_file() {
+                    return Some(cand);
+                }
+            }
+        }
+        None
+    }
+
     pub(crate) fn spawn_launcher_outproc(&mut self) -> std::io::Result<()> {
         // e2e 注入臂（T-08）：测试体 spawn（env 已含源/几何）。
         if let Some(spawn) = self.desktop.launcher_spawner.clone() {
@@ -3744,17 +3794,31 @@ fn spawn_shell_outproc(
         let Some(geometry) = self.desktop.shell_geometry else {
             return Err(std::io::Error::other("launcher spawn 缺几何（未开桌面壳）"));
         };
-        let exe = Self::outproc_auto_binary()?;
         let broker_pipe = self
             .broker_pipe
             .clone()
             .ok_or_else(|| std::io::Error::other("broker 未启动（enable_broker 先行）"))?;
-        let mut cmd = std::process::Command::new(&exe);
-        cmd.args([
-            "run",
-            "--autodesk-launcher",
-            &format!("--autodesk-broker={broker_pipe}"),
-        ]);
+        // PLAN-039 T-07（D2-A 编译轨优先）：a2r 编译产物在场 → 直 spawn
+        // exe（参数面 `--autodesk-launcher` + broker 同形——生成 main 的
+        // autodesk gate 收 --autodesk-launcher 走 broker client 臂）；
+        // 缺席回退解释 re-exec（I3 双轨零删除）。
+        let mut cmd = if let Some(compiled) = Self::launcher_compiled_exe(&entry) {
+            let mut c = std::process::Command::new(&compiled);
+            c.args([
+                "--autodesk-launcher",
+                &format!("--autodesk-broker={broker_pipe}"),
+            ]);
+            c
+        } else {
+            let exe = Self::outproc_auto_binary()?;
+            let mut c = std::process::Command::new(&exe);
+            c.args([
+                "run",
+                "--autodesk-launcher",
+                &format!("--autodesk-broker={broker_pipe}"),
+            ]);
+            c
+        };
         cmd.env("AUTO_SHELL_GEOM", geometry.encode());
         cmd.env("AUTO_LAUNCHER_ENTRY", entry);
         for (key, _) in std::env::vars() {
@@ -5781,6 +5845,40 @@ impl HostStorage for ShimHostStorage {
 
 #[cfg(test)]
 mod tests {
+
+    /// PLAN-039 T-07（D2-A 编译轨优先）：launcher 编译产物发现——
+    /// T-05 ⑤ 后 workspace 本地 target 布局（rust-workspace/target/
+    /// debug/<pac-name-snake>.exe），pac name 优先/目录名垫底；产物
+    /// 缺席返回 None（调用侧回退解释装载 I3）。
+    #[test]
+    fn launcher_compiled_exe_discovery() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app_root = tmp.path().join("028-launcher");
+        let front = app_root.join("src").join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        let entry = front.join("app.at");
+        std::fs::write(&entry, "widget Launcher {}").unwrap();
+        // pac name wins over dir name; debug build found.
+        std::fs::write(
+            app_root.join("pac.at"),
+            "name: \"my-launcher\"
+",
+        )
+        .unwrap();
+        let exe = app_root
+            .join("rust-workspace")
+            .join("target")
+            .join("debug")
+            .join("my_launcher.exe");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, b"MZ").unwrap();
+        let found = crate::ui::session::DesktopSession::launcher_compiled_exe(&entry)
+            .expect("compiled exe should be discovered");
+        assert!(found.ends_with("my_launcher.exe"), "{found:?}");
+        // No product -> None (fallback to interpreter re-exec).
+        std::fs::remove_file(&exe).unwrap();
+        assert!(crate::ui::session::DesktopSession::launcher_compiled_exe(&entry).is_none());
+    }
 
     /// PLAN-030 T-07：双轨开关解析——缺省 inproc（I1：既有路径零漂移的
     /// 配置面锚点）、outproc 显式、坏值/缺席回退（472 同型）。

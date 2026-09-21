@@ -2069,7 +2069,11 @@ fn wrap_example(project_name: &str, components: &str, project_dir: &Path) -> Str
         r#"let __autodesk_args: Vec<String> = std::env::args().collect();
         let __has_client = __autodesk_args.iter().any(|a| a.starts_with("--autodesk-client="));
         let __has_incubate = __autodesk_args.iter().any(|a| a == "--autodesk-incubate");
-        if __has_client || __has_incubate {{
+        // PLAN-039 T-07（D2-A）：`--autodesk-launcher` = 宿主召唤链的
+        // 编译轨 spawn 形态（spawn_launcher_outproc 编译产物优先臂）——
+        // 与 incubate 同走 broker client（pipe 经 --autodesk-broker 传入）。
+        let __has_launcher = __autodesk_args.iter().any(|a| a == "--autodesk-launcher");
+        if __has_client || __has_incubate || __has_launcher {{
             let mut __pipe: Option<String> = None;
             let mut __broker = auto_lang::ui::desktop_protocol::broker::BROKER_PIPE.to_string();
             let mut __render: Option<String> = None;
