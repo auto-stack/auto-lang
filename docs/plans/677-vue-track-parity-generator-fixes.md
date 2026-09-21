@@ -12,7 +12,7 @@ new_spec_components: [SD-01 vue 轨视图 menubar 族 lowering 契约, SD-02 vue
 touched_goals: []
 
 affects: [docs/specs/auto-lang/ui/design/app-generation.md, docs/specs/auto-lang/ui/overview.md]
-current_step: 5
+current_step: 7
 total_steps: 7
 ---
 
@@ -250,10 +250,10 @@ crates/auto-man/src/vue.rs (模板集)      ← ⑤ editorBridge.ts 新模板 + 
   editorBridge.ts 模板 + CodeEditor editorKey 注册 + ensure_natives_layer
   B 层路由；auto-lang ui_gen/vue.rs code_editor 发射透传 DSL key。
   单测（桥语义换算：0-based cursor/1-based fold/隐藏行计数）。
-- **T-06 消费方冷验证**（AC-01..07）：worktree auto.exe 构建 →
+- **T-06 消费方冷验证**[✅ 已完成：冷删 gen→worktree exe 再生成→vue-tsc+vite build 绿→浏览器实测 README 打开/menubar 下拉(文件菜单展开+新建动作)/深色 gutter/编辑器贯通/控制台零错；vm 轨探针起窗正常]（AC-01..07）：worktree auto.exe 构建 →
   auto-edit 冷双跑再生成 + pnpm build → 双终端起服 → 浏览器五点
   实测（截图留档 docs/plans/evidence/）+ vm 轻探针（AC-08）。
-- **T-07 门禁收口**（AC-09）：`cargo tt` 作用域 + 全量 cargo t 一跑 +
+- **T-07 门禁收口**[✅ 已完成 2a69327eb：cargo tt 4063/4063 全绿(金样 desktop_surface_asset 经 bless 同步 T-01 透明包装)；ui_gen::vue 与 auto-man 失败集与 master 逐一比对零回归；稳态二跑生成零漂移]（AC-09）：`cargo tt` 作用域 + 全量 cargo t 一跑 +
   gallery vue 构建;核对 PLAN-672 在 auto-man/src/vue.rs 的在途冲突
   （先落者为准）。
 
