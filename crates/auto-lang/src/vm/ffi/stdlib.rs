@@ -6666,6 +6666,26 @@ pub fn shim_sse_parse(chunk: String) -> Vec<String> {
 /// split-mode failures (backend down, wrong port, 404) very hard to debug. The
 /// codegen path feeds this into `auto.json.to_value`, which parses it into a
 /// VM object with an `error` field the app can surface.
+/// PLAN-025 修:split 形态 api.* 家族共享 keep-alive 客户端(10s 超时)。
+/// 原每请求 `Client::new()` = 每调用一条新 TCP 连接:高频轮询应用
+/// (auto-term 每 tick 数十次 api 调用)TIME_WAIT 风暴打爆临时端口池
+/// (2026-09-21 实录 6986 条 TIME_WAIT),端口耗尽后 reqwest 无默认
+/// 超时 → 请求线程永久挂起 → tick task 无限堆积 = 前端"没有响应"
+/// + 内存爬升(泄漏修后仍复现的另一半根因)。共享连接池复用连接
+/// (稳态 ~数条 ESTABLISHED),超时兜底保证 task 必然终结。
+static SHARED_API_HTTP_CLIENT: std::sync::OnceLock<reqwest::blocking::Client> =
+    std::sync::OnceLock::new();
+
+fn shared_api_http_client() -> &'static reqwest::blocking::Client {
+    SHARED_API_HTTP_CLIENT.get_or_init(|| {
+        reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .pool_max_idle_per_host(8)
+            .build()
+            .unwrap_or_default()
+    })
+}
+
 fn simple_http_json(method: &str, url: &str, body: Option<&str>) -> String {
     let method = method.to_string();
     let url = url.to_string();
@@ -6677,7 +6697,7 @@ fn simple_http_json(method: &str, url: &str, body: Option<&str>) -> String {
         if trace {
             eprintln!("[HTTP-TRACE] {} {} body={:?}", method, url, body.as_deref().unwrap_or(""));
         }
-        let client = reqwest::blocking::Client::new();
+        let client = shared_api_http_client().clone();
         // Plan 446 E4 / PLAN-048: get_json/post_json 是 #[api] 契约改写
         // (emit_api_http_call)的两条主臂,必须与通用 request 汇聚点同样应用
         // 进程级默认头/默认查询(musk: Authorization Bearer + workspace)。
