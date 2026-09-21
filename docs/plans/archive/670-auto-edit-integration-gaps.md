@@ -328,7 +328,12 @@ db_full_cover 既有两路不回归。
     两 plans.md 表行各 1、INDEX 含 SD-01 内容。
   - **archived** ✓：git mv → docs/plans/archive/670-auto-edit-integration-gaps.md，
     status: archived，`completion_kind: delivered`。
-  - **cleaned** ✓：见下（本行收据随归档提交后回填）。
+  - **cleaned** ✓：分支尾=master tip（037afb190 全落地）→ wt-guard 双查
+    clean（lang-670/auto-lang + 组兄弟 auto-down）→ 双 worktree remove +
+    `git branch -d plan-670-dev`（was 037afb190）+ 组目录清除（含 scratch
+    期绝对路径解析残留 autostack/ 空缓存树——经查非 junction/非注册树，
+    主检出 target 完好复核在案）→ worktree list/prune/磁盘三查零残留。
+    五 checkpoint 闭环，`completion_kind: delivered`。
 
 ## 10. 待澄清事项
 
