@@ -4843,8 +4843,25 @@ export default router
                     } else {
                         None
                     };
-                    api_src.map(|src| {
-                        let raw = fs::read_to_string(&src).unwrap_or_default();
+                    // Plan 672 条目 5: 第三优先级=现生成——api.at 是源真相，
+                    // 前两级只覆盖「曾跑过 auto gen 的 demo」（013 有源纯因
+                    // 历史 gen 树）。流端点由 generate_simple_client 出 stub
+                    // 注释（Plan 043：流消费走 store 的 EventSource），CRUD
+                    // 端点出真 fetch 函数。解析失败 → None → 回退独立提示。
+                    let api_ts_raw: Option<String> = match api_src {
+                        Some(src) => Some(fs::read_to_string(&src).unwrap_or_default()),
+                        None => {
+                            let api_at = app_root.join("src").join("back").join("api.at");
+                            fs::read_to_string(&api_at)
+                                .ok()
+                                .and_then(|content| crate::api_gen::try_full_parse(&content))
+                                .map(|module| {
+                                    auto_lang::api::TypeScriptGenerator::new()
+                                        .generate_simple_client(&module)
+                                })
+                        }
+                    };
+                    api_ts_raw.map(|raw| {
                         // fetch 路径字面量前缀化 `/apps/<id>/`（生成模板定
                         // 格式 backtick/单引号两种），经 vite `/apps` 代理
                         // 透传到 back-proxy 会话分派。
@@ -4874,7 +4891,18 @@ export default router
                 let rewrite_api_import = |s: String| -> String {
                     if is_fullstack_embed {
                         s.replace("from '@/lib/api'", &format!("from '{}'", api_import_target))
-                            .replace("from \"@/lib/api\"", &format!("from \"{}\"", api_import_target))
+                            .replace(
+                                "from \"@/lib/api\"",
+                                &format!("from \"{}\"", api_import_target),
+                            )
+                            // Plan 672 条目 5: SSE 流端点字面量同通道前缀化
+                            // （codegen 注入形态 `new EventSource('/api/..')`，
+                            // ui_gen/vue.rs:17566），经 vite /apps 代理透传到
+                            // proxy 会话流端点。
+                            .replace(
+                                "new EventSource('/api/",
+                                &format!("new EventSource('/apps/{}/api/", e.id),
+                            )
                     } else {
                         s
                     }
