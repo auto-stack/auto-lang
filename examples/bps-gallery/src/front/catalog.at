@@ -75,7 +75,7 @@ fn first_variant_name(refs List) str {
 // 搜索匹配 id（kind/name）小写包含；kind == "all" 全量。
 fn gallery_items(bps List, needle str, kind str) List {
     var out List = []
-    var q str = query.to_lower()
+    var q str = needle.to_lower()
     var i int = 0
     while i < bps.len() {
         var id str = bps[i].kind + "/" + bps[i].name
