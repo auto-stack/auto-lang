@@ -340,7 +340,7 @@ JSON 形状逐字节对齐纪律）。
   | landed | master tip = `7e0fae63e`（`git merge --ff-only plan-673-dev`，无 merge commit；旧→新映射 dbf7ef788→7e0fae63e 全分支 range-diff 等价）；落地时主检出他会话 WIP（design-32 注册）stash/pop 环绕，两边 00-intro 行共存 |
   | ledger_refreshed | `docs/specs/auto-lang/ui/plans.md`+`runtime/plans.md` 回写（commit 2d6639c0d）；`spec-index.py` 再生 INDEX.md（无变化）；`.autoos/specs.json` upsert P673-1/P673-2=published（readback 验证；本地投影 git-ignored） |
   | archived | 本文件 `docs/plans/archive/673-editor-kernel-rope-delta-chunk.md`，status/completion_kind 翻转，provenance 链接（design/specs/debt）均可解析 |
-  | cleaned | （见文末补记） |
+  | cleaned | wt-guard 双 clean（lang-673/auto-lang + auto-down）→ `git worktree remove` 双移除（auto-down 经属主仓 D:/autostack/auto-down 注册表移除——依赖兄弟 worktree，随组清理）→ `git branch -d plan-673-dev`（was 7e0fae63e）→ 组目录 `D:/autostack/.wt/lang-673` 已删；`git worktree list`/branch 列表 0 残留 |
   遗留人工动作：消费方复跑通知（通知稿在 §9 T-07 记录）由用户发往
   auto-edit 仓（669 §10-4 模式）；S2 视口物化等债在 KNOWN-DEBT
   P673-D1/D2/D3 在册。
