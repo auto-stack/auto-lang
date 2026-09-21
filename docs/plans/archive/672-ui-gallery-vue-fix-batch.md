@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-672
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: archived                      # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-gallery-vue-fix-batch
 author: [zhaopuming]
 created_at: 2026-09-21
@@ -17,6 +17,8 @@ total_steps: 6
 ---
 
 # [PLAN-672] ui-gallery-vue-fix-batch（画廊修复批·滚动跟踪）
+
+> completion_kind: delivered。收据：代码经 plan-672-dev（ed1d5fadf 基系 8 提交）已入 master（branch --merged 实证；N5 与 675 T-02 2c13e6020 重复，rebase 取 master 侧）；门禁 auto-man 失败集与 master 一致（3 预存）+back_proxy_tests 12/12 绿；账本由并发整合会话代管（P672-1 未单列，N5 入 P675-2 口径）；N4 入债册待勘。本收据由 677 会话代记，并发竞态已声明。
 
 ## 变更摘要
 
