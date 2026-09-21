@@ -263,6 +263,72 @@ impl File {
     pub fn read_text(p: impl AsRef<std::path::Path>) -> String {
         std::fs::read_to_string(p).unwrap_or_default()
     }
+
+    /// Plan 673 T-03 bin 层直通(read_text 同款先例;语料不触达,仅为可
+    /// 编译——engine.at nat#1016 臂的 .at 级 File.read_text_range 调用
+    /// 被 a2r 直映成此关联函数)。语义仍逐字节对齐 VM 侧
+    /// `shim_file_read_text_range`(P670-D1):错误形 total:-1(offset<0 /
+    /// limit<=0 / IO 错 / 无效 UTF-8);next_offset=null 仅真 EOF;块两缘
+    /// char boundary 回退。serde 不可用(零依赖 crate),JSON 手卷,
+    /// __esc 与 serde_json 字符串转义同形。
+    pub fn read_text_range<Off: Into<i128>, Lim: Into<i128>>(
+        p: impl AsRef<std::path::Path>,
+        offset: Off,
+        limit: Lim,
+    ) -> String {
+        fn esc(s: &str) -> String {
+            let mut o = String::with_capacity(s.len() + 2);
+            for c in s.chars() {
+                let k = c as u32;
+                if k == 34 || k == 92 {
+                    o.push((92u8) as char);
+                    o.push(c);
+                } else if k == 8 || k == 9 || k == 10 || k == 12 || k == 13 {
+                    o.push((92u8) as char);
+                    o.push(match k { 8 => 'b', 9 => 't', 10 => 'n', 12 => 'f', _ => 'r' });
+                } else if k < 32 {
+                    o.push_str(&format!("\\u{:04x}", k));
+                } else {
+                    o.push(c);
+                }
+            }
+            o
+        }
+        let err = || String::from("{\"text\":\"\",\"total\":-1,\"next_offset\":null}");
+        let offset = offset.into();
+        let limit = limit.into();
+        if offset < 0 || limit <= 0 {
+            return err();
+        }
+        let bytes = match std::fs::read(p) {
+            Ok(b) => b,
+            Err(_) => return err(),
+        };
+        let total = bytes.len() as i64;
+        let text = match String::from_utf8(bytes) {
+            Ok(t) => t,
+            Err(_) => return err(),
+        };
+        let len = text.len();
+        let mut start = (offset as usize).min(len);
+        while !text.is_char_boundary(start) {
+            start -= 1;
+        }
+        if start >= len {
+            return format!("{{\"text\":\"\",\"total\":{},\"next_offset\":null}}", total);
+        }
+        let mut end = start.saturating_add(limit as usize).min(len);
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        let next = if end >= len { "null".to_string() } else { end.to_string() };
+        format!(
+            "{{\"text\":\"{}\",\"total\":{},\"next_offset\":{}}}",
+            esc(&text[start..end]),
+            total,
+            next
+        )
+    }
 }
 "#;
     // harness main:读 .at → ev_run → stdout
