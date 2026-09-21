@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-677
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed                     # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-track-parity-generator-fixes
 author: [zcode]
 created_at: 2026-09-21
@@ -280,6 +280,24 @@ crates/auto-man/src/vue.rs (模板集)      ← ⑤ editorBridge.ts 新模板 + 
   未物化的 ui/popover,vue-tsc TS2307 挡 pnpm build(与 677 零关系:
   master 工具链同现;dev 运行不受影响,因应用源码无引用,模块不入
   图) | unblock: 676 落其物化修复或移除该未用依赖 | next: review。
+
+- 2026-09-21 stage: review | plan_id: PLAN-677 | plan_revision: 2 |
+  outcome: pass | reviewed_commit: 5d2e2a464 (worktree plan-677-dev) |
+  base_commit: c8bdffa32 | dependency_revisions: auto-down fba6563
+  (sibling detached) | spec_inputs:
+  docs/specs/auto-lang/ui/design/app-generation.md @ 5d2e2a464 |
+  acceptance_results: AC-01..AC-10 全 pass——AC-01 高度(template v-for
+  +shell 630/720 截图)/AC-02 深色 gutter(截图)/AC-03 foldGutter marker
+  渲染+foldKeymap+桥 fold_toggle(合成事件点击在 IAB 不可信=工具链限制,
+  非阻塞登记)/AC-04 menubar 下拉+动作(快照 expanded+新建触发)/AC-05
+  README 打开(后端 read_text 200+tab+内容)/AC-06 主流程零 vmOnly 抛错
+  (errs=[])/AC-07 稳态二跑零漂移/AC-08 vm 轨探针起窗/AC-09 门禁
+  (cargo tf 3694/3694 全绿+cargo tt 4063/4063 全绿+cargo t 失败集
+  与 master 一致 21 预存)/AC-10 选中色 rgba(248,250,252,0.14) |
+  findings: 无阻塞;独立性限制=实现会话自审,结论由重跑门禁
+  (tf/tt/t 三档)与消费方产物重建,不依赖执行摘要 |
+  evidence: docs/plans/evidence/677/*.png(终态/选中色/工具链回退恢复
+  三张)+各提交内测试名 | next: merge。
 - 追加修复（执行期实勘发现,均在授权范围内）：①`json.to_value(api
   调用)` 恒等映射错误（wire JSON 串未 parse,渲染树毒化=tab 不上屏
   真根因）→ T-05b；②gen-only 管线 shell 不同步致模板修复不可传播
