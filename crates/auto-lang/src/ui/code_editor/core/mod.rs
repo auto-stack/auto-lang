@@ -296,6 +296,14 @@ pub struct CodeEditorCore {
     /// Monotonic revision — bumped on every text change; adapters key
     /// raster caches on it.
     revision: AtomicU64,
+    /// Plan 673 T-05: the rope is the DOCUMENT SOURCE OF TRUTH (design §3.1):
+    /// O(1) summaries (bytes/chars/lines), O(log n) point↔offset conversion,
+    /// and COW snapshots for background readers. The cosmic Buffer below is
+    /// the materialized VIEW of the full document (windowing it into a
+    /// viewport is Stage 2); every mutation funnel keeps the two in sync —
+    /// full rebuilds on `rewrite` (set_text/agent edit, low frequency),
+    /// interval edits on the typed/native paths (per keystroke).
+    doc: Mutex<rope::Rope>,
     /// Plan 673 §4: unified delta queue (read side). Producers push on every
     /// text-changing edit; `code_editor_delta` drains it (destructive read).
     delta_queue: Mutex<Vec<TextDelta>>,
@@ -494,6 +502,7 @@ impl CodeEditorCore {
             search: Mutex::new(SearchState::default()),
             revision: AtomicU64::new(0),
             delta_queue: Mutex::new(Vec::new()),
+            doc: Mutex::new(rope::Rope::new()),
             external_dirty: std::sync::atomic::AtomicBool::new(false),
             last_used: AtomicU64::new(0),
             gutter_width_cache: Mutex::new((0, 0.0)),
@@ -570,8 +579,18 @@ impl CodeEditorCore {
     // ── text access ──────────────────────────────────────────────────────
 
     /// Full text (lines joined with `\n`; buffer lines never contain their
-    /// line endings).
+    /// line endings). Reads the ROPE — the document source of truth (T-05):
+    /// O(n), same as the previous buffer join, but no editor lock and the
+    /// save/readout path benefits from the rope's contiguous leaves.
     pub fn text(&self) -> String {
+        self.doc.lock().unwrap().to_string()
+    }
+
+    /// Full text read from the cosmic BUFFER view (lines joined with `\n`).
+    /// T-05: only the mutation funnels read this — it is the post-edit state
+    /// the interval derivation diffs against the pre-edit rope snapshot.
+    /// Everyone else goes through `text()` (rope).
+    fn buffer_text(&self) -> String {
         self.editor_lock()
             .with_buffer(|b| b.lines.iter().map(|l| l.text()).collect::<Vec<_>>().join("\n"))
     }
@@ -670,6 +689,15 @@ impl CodeEditorCore {
             cursor.index = index;
         });
         editor.set_cursor(cursor);
+        drop(editor);
+        // Plan 673 T-05: the rope is the document source of truth — rebuild
+        // it from the rewritten text. `rewrite` serves the LOW-frequency
+        // full-document paths (set_text re-sync, agent `code_editor_edit`),
+        // which already pay an O(n) buffer rewrite, so the O(n) rope rebuild
+        // is the same asymptotics (justified per design §3.2: the per-
+        // keystroke paths go through the interval edit instead). Lock
+        // order: the editor guard is dropped before the doc lock.
+        *self.doc.lock().unwrap() = rope::Rope::from_str(text);
     }
 
     /// Plan 673 §4: append one delta to the unified queue. T-01 producer is
@@ -680,14 +708,15 @@ impl CodeEditorCore {
     }
 
     /// Plan 673 §4.3: derive the single minimal contiguous interval between
-    /// a pre-edit and post-edit snapshot and queue it. Prefix/suffix scans
-    /// walk char boundaries only (never slice mid-char). Identical texts
-    /// queue nothing. This one-interval form is exact for any single
-    /// localized edit — keystroke, IME commit, undo/redo, cut/paste — and
-    /// needs no diff dependency.
-    fn push_delta_from_texts(&self, old: &str, new: &str) {
+    /// a pre-edit and post-edit text (PURE — no rope side effects; the unit
+    /// test drives it with arbitrary pairs). Prefix/suffix scans walk char
+    /// boundaries only (never slice mid-char). Identical texts give None.
+    /// The one-interval form is exact for any single localized edit —
+    /// keystroke, IME commit, undo/redo, cut/paste — and needs no diff
+    /// dependency.
+    fn derive_interval(old: &str, new: &str) -> Option<TextDelta> {
         if old == new {
-            return;
+            return None;
         }
         let old_len = old.len();
         let new_len = new.len();
@@ -709,11 +738,27 @@ impl CodeEditorCore {
             }
             suffix += oc.len_utf8();
         }
-        self.push_delta(TextDelta {
+        Some(TextDelta {
             start: prefix,
             end: old_len - suffix,
             replacement: new[prefix..new_len - suffix].to_string(),
-        });
+        })
+    }
+
+    /// Plan 673 T-05: the single commit path for typed/native edits — derive
+    /// the interval (pure), apply it to the ROPE (the document source of
+    /// truth — one code path keeps interval derivation, rope mutation, and
+    /// delta emission consistent by construction), and queue the delta.
+    ///
+    /// Callers pass `old` = the pre-edit ROPE text and `new` = the post-edit
+    /// BUFFER text (`buffer_text()`), so the rope stays the diff baseline.
+    fn push_delta_from_texts(&self, old: &str, new: &str) {
+        let Some(d) = Self::derive_interval(old, new) else {
+            return;
+        };
+        // The delta interval IS the rope edit — O(log n) locate + O(k).
+        self.doc.lock().unwrap().replace_bytes(d.start, d.end, &d.replacement);
+        self.push_delta(d);
     }
 
     /// Plan 673 §4: destructive read — drain everything queued since the
@@ -825,23 +870,27 @@ impl CodeEditorCore {
     /// Jump to the next regex match after the caret, selecting it and
     /// scrolling it into view (wraps around). Returns false when there is
     /// no active search or no match.
+    ///
+    /// Plan 673 T-05: the line scan runs over a ROPE SNAPSHOT taken before
+    /// the editor lock — snapshot isolation (design §3.1) in a real path:
+    /// the search reads a stable document while edits proceed, and never
+    /// competes for the editor lock.
     pub fn find_next(&self, font_system: &mut FontSystem) -> bool {
         let regex = match self.search.lock().unwrap().regex.clone() {
             Some(r) => r,
             None => return false,
         };
+        let snap = self.doc.lock().unwrap().snapshot();
         let mut editor = self.editor_lock();
         let start = editor.cursor();
-        let line_count = editor.with_buffer(|b| b.lines.len());
+        let line_count = snap.line_count();
 
         // (line, byte start, byte end) of the next match at-or-after the
         // caret, wrapping around the document.
         let mut found: Option<(usize, usize, usize)> = None;
         for offset in 0..=line_count {
             let line_i = (start.line + offset) % line_count.max(1);
-            let text = editor
-                .with_buffer(|b| b.lines.get(line_i).map(|l| l.text().to_owned()))
-                .unwrap_or_default();
+            let text = snap.line(line_i).into_owned();
             let from = if offset == 0 { start.index } else { 0 };
             let hit = regex.find_iter(&text[from.min(text.len())..]).next().map(|m| {
                 let s = from + m.start();
@@ -926,16 +975,15 @@ impl CodeEditorCore {
 
     /// Regions + merged bodies computed from the CURRENT text (the render
     /// map may be stale or absent — natives and tests toggle headless).
+    /// Plan 673 T-05: reads the rope (document source of truth) — O(n) line
+    /// walk over rope slices without touching the editor lock.
     fn fresh_fold_map(&self) -> fold::FoldMap {
         let folded = self.folds.lock().unwrap().clone();
         let line_height = self.config.lock().unwrap().line_height();
-        let editor = self.editor_lock();
-        editor.with_buffer(|b| {
-            let texts: Vec<&str> = b.lines.iter().map(|l| l.text()).collect();
-            let regions = fold::regions_from_texts(&texts);
-            drop(texts);
-            fold::FoldMap::build(regions, &folded, line_height)
-        })
+        let doc = self.doc.lock().unwrap();
+        let owned: Vec<String> = doc.lines().map(|l| l.into_owned()).collect();
+        let texts: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
+        fold::FoldMap::build(fold::regions_from_texts(&texts), &folded, line_height)
     }
 
     /// Whether `line_0` currently opens a folded region.
@@ -1083,7 +1131,7 @@ impl CodeEditorCore {
                 editor.insert_string(&content, None);
                 drop(editor);
                 self.bump_after_edit();
-                self.push_delta_from_texts(&old, &self.text());
+                self.push_delta_from_texts(&old, &self.buffer_text());
                 CoreOutput {
                     text_changed: true,
                     cursor_changed: true,
@@ -1118,25 +1166,33 @@ impl CodeEditorCore {
         }
         let old = self.text();
         let out = self.handle_key_inner(font_system, key, text, modifiers, clipboard);
-        self.push_delta_from_texts(&old, &self.text());
+        self.push_delta_from_texts(&old, &self.buffer_text());
         out
     }
 
     /// Whether a key event can mutate the buffer text — motions, selection
     /// and scroll inputs are excluded (delta snapshot skipped).
     fn key_may_mutate(key: &EditorKey, text: Option<&str>, modifiers: EditorModifiers) -> bool {
-        if modifiers.control() {
+        // These map to buffer-mutating actions REGARDLESS of modifiers — the
+        // action mapping below ignores modifiers for them (Ctrl+Backspace/
+        // Delete = word delete, Ctrl+Enter still inserts a newline). T-05:
+        // an over-strict gate here desyncs the rope (the document source of
+        // truth) from the buffer, since text() now reads the rope.
+        match key {
+            EditorKey::Enter | EditorKey::Backspace | EditorKey::Delete => return true,
+            _ => {}
+        }
+        if modifiers.control() || modifiers.alt() || modifiers.logo {
             // Only the X/V/Z/Y chords mutate (cut/paste/undo/redo); C/A are
-            // copy/select-all and unhandled ctrl+letters bubble out.
+            // copy/select-all and unhandled chords bubble out.
             return matches!(
                 key,
                 EditorKey::Char('x' | 'X' | 'v' | 'V' | 'z' | 'Z' | 'y' | 'Y')
             );
         }
         match key {
-            EditorKey::Enter | EditorKey::Backspace | EditorKey::Delete => true,
-            // Ctrl/Alt+Tab bubbles without an action (handled above too).
-            EditorKey::Tab => !(modifiers.control() || modifiers.alt()),
+            // Ctrl/Alt+Tab bubbles without an action (early return inside).
+            EditorKey::Tab => true,
             EditorKey::Char(c) => !c.is_control(),
             // Non-character keys mutate only when carrying a text payload
             // (the Char/Other arm inserts it).
@@ -1675,7 +1731,8 @@ impl CodeEditorCore {
     /// degrades to the full line count. The scroller re-measures whenever
     /// this changes (folds toggling → request_layout → 高度变化通知).
     pub fn content_height(&self) -> f32 {
-        let total = self.editor_lock().with_buffer(|b| b.lines.len()).max(1);
+        // Plan 673 T-05: total from the rope summary — O(1), no editor lock.
+        let total = self.doc.lock().unwrap().line_count().max(1);
         // Fresh fold map (not the last render's snapshot): folds toggle in
         // update — the height report must be current by the time the next
         // layout pass queries it, one frame earlier than a render would be.
@@ -1763,7 +1820,7 @@ impl CodeEditorCore {
         editor.undo();
         drop(editor);
         self.bump_after_edit();
-        self.push_delta_from_texts(&old, &self.text());
+        self.push_delta_from_texts(&old, &self.buffer_text());
     }
 
     fn do_redo(&self) {
@@ -1773,7 +1830,7 @@ impl CodeEditorCore {
         editor.redo();
         drop(editor);
         self.bump_after_edit();
-        self.push_delta_from_texts(&old, &self.text());
+        self.push_delta_from_texts(&old, &self.buffer_text());
     }
 
     fn do_select_all(&self) {
@@ -1804,7 +1861,7 @@ impl CodeEditorCore {
             editor.action(font_system, Action::Backspace);
             drop(editor);
             self.bump_after_edit();
-            self.push_delta_from_texts(&old, &self.text());
+            self.push_delta_from_texts(&old, &self.buffer_text());
         }
     }
 
@@ -1814,7 +1871,7 @@ impl CodeEditorCore {
             let old = self.text();
             self.editor_lock().insert_string(&contents, None);
             self.bump_after_edit();
-            self.push_delta_from_texts(&old, &self.text());
+            self.push_delta_from_texts(&old, &self.buffer_text());
         }
     }
 }
@@ -2739,50 +2796,64 @@ let beta = alpha + 2;
 
     // ── Plan 673 T-02: write side + three-source same stream ───────────
 
-    /// `push_delta_from_texts`: the single minimal contiguous interval,
+    /// `derive_interval` (pure): the single minimal contiguous interval,
     /// scanned on char boundaries only — mid-string insertion, multi-byte
     /// CJK deletion, 4-byte emoji replacement, append, whole-doc replace,
-    /// and no-change → nothing.
+    /// and no-change → None.
     #[test]
     fn push_delta_from_texts_interval_derivation() {
-        let mut fs = FontSystem::new();
-        let core =
-            CodeEditorCore::new("test-delta-derive", CodeEditorConfig::default(), &mut fs);
-        let take = |core: &CodeEditorCore| core.take_deltas().1;
+        let d = |old: &str, new: &str| CodeEditorCore::derive_interval(old, new);
 
         // Mid-string insertion (suffix absorbs the shared " world").
-        core.push_delta_from_texts("hello world", "hello brave world");
         assert_eq!(
-            take(&core),
-            vec![TextDelta { start: 6, end: 6, replacement: "brave ".to_string() }]
+            d("hello world", "hello brave world"),
+            Some(TextDelta { start: 6, end: 6, replacement: "brave ".to_string() })
         );
         // Deletion of a CJK char (3-byte boundaries).
-        core.push_delta_from_texts("你好world", "你world");
         assert_eq!(
-            take(&core),
-            vec![TextDelta { start: 3, end: 6, replacement: "".to_string() }]
+            d("你好world", "你world"),
+            Some(TextDelta { start: 3, end: 6, replacement: "".to_string() })
         );
         // Replacement touching a 4-byte emoji.
-        core.push_delta_from_texts("a😀b", "a🎉b");
         assert_eq!(
-            take(&core),
-            vec![TextDelta { start: 1, end: 5, replacement: "🎉".to_string() }]
+            d("a😀b", "a🎉b"),
+            Some(TextDelta { start: 1, end: 5, replacement: "🎉".to_string() })
         );
         // Append at the end.
-        core.push_delta_from_texts("abc", "abc!");
         assert_eq!(
-            take(&core),
-            vec![TextDelta { start: 3, end: 3, replacement: "!".to_string() }]
+            d("abc", "abc!"),
+            Some(TextDelta { start: 3, end: 3, replacement: "!".to_string() })
         );
         // Whole-document replace.
-        core.push_delta_from_texts("old", "new");
         assert_eq!(
-            take(&core),
-            vec![TextDelta { start: 0, end: 3, replacement: "new".to_string() }]
+            d("old", "new"),
+            Some(TextDelta { start: 0, end: 3, replacement: "new".to_string() })
         );
-        // No change → nothing queued.
-        core.push_delta_from_texts("same", "same");
-        assert!(take(&core).is_empty());
+        // No change → None.
+        assert_eq!(d("same", "same"), None);
+    }
+
+    /// T-05: the commit path applies the derived interval to the ROPE
+    /// (document source of truth) and queues the same interval as the delta —
+    /// rope, buffer view, and delta stream cannot drift by construction.
+    #[test]
+    fn commit_derived_edit_syncs_rope_and_delta() {
+        let mut fs = FontSystem::new();
+        let core =
+            CodeEditorCore::new("test-delta-commit", CodeEditorConfig::default(), &mut fs);
+        core.set_text("hello world", &mut fs);
+        core.take_deltas();
+        // Simulate a typed edit: pre-edit rope text + post-edit buffer text.
+        core.push_delta_from_texts("hello world", "hello brave world");
+        assert_eq!(core.text(), "hello brave world", "rope must receive the derived interval");
+        assert_eq!(
+            core.take_deltas().1,
+            vec![TextDelta { start: 6, end: 6, replacement: "brave ".to_string() }]
+        );
+        // No-change commit: rope untouched, nothing queued.
+        core.push_delta_from_texts(core.text().as_str(), "hello brave world");
+        assert_eq!(core.text(), "hello brave world");
+        assert!(core.take_deltas().1.is_empty());
     }
 
     /// `code_editor_edit` three forms produce the EXACT caller-interval delta
