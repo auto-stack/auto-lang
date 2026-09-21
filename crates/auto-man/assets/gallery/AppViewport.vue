@@ -2,6 +2,11 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, createApp, type App } from 'vue'
 import { findDemo } from '@/demos-registry'
 
+// Plan 672 条目 6: 嵌入态标记——demo 生成语料的主题运行时据此把 .dark
+// class 与主题变量施加到视口挂载容器而非 <html>（见 gallery 发射面的
+// __autoThemeRoot 后处理），防止 demo 劫持宿主页面主题。
+;(window as any).__AUTO_UI_EMBED__ = true
+
 const props = defineProps<{
   app: string
   reloadKey?: number

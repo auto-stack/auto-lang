@@ -4908,9 +4908,15 @@ export default router
                     }
                 };
                 let rewritten_app_vue = rewrite_api_import(vp.app_vue_code.clone());
+                // Plan 672 条目 6: 嵌入态主题作用域化（016-calendar 劫持宿主
+                // 主题实证）——含主题运行时的语料重定向全局施加到视口容器。
+                let rewritten_app_vue =
+                    gallery_scope_theme_runtime(&rewritten_app_vue);
                 let mut corpus = rewritten_app_vue.clone();
                 for (_, _, code, _) in &vp.components {
-                    corpus.push_str(&rewrite_api_import(code.clone()));
+                    corpus.push_str(&gallery_scope_theme_runtime(&rewrite_api_import(
+                        code.clone(),
+                    )));
                 }
                 for (_, code) in &vp.store_files {
                     corpus.push_str(&rewrite_api_import(code.clone()));
@@ -4933,7 +4939,10 @@ export default router
                     let _ = fs::create_dir_all(&components_dir);
                     let file = components_dir.join(format!("{}.vue", widget_name));
                     if claimed_components.insert(widget_name.clone()) {
-                        let _ = fs::write(&file, rewrite_api_import(code.clone()));
+                        let _ = fs::write(
+                            &file,
+                            gallery_scope_theme_runtime(&rewrite_api_import(code.clone())),
+                        );
                     }
                     for comp in detect_shadcn_components(code) {
                         if !shadcn_needed.contains(&comp) {
@@ -8452,6 +8461,36 @@ fn collect_back_chain(
 /// generate_gallery_host 与 VM 臂 refresh_gallery_registry 共用,消
 /// category/tags/loadable 双处漂移。返回 (row, vp);vp=None 表示
 /// from_workspace 失败(web 装配跳过臂,row.loadable=false)。
+/// Plan 672 条目 6: 嵌入态主题作用域化——画廊发射的 demo 语料若含主题
+/// 运行时（`function applyAccent` 族），把其中对 `document.documentElement`
+/// 的全局施加重定向到 `__autoThemeRoot()`（嵌入态=视口挂载容器
+/// `.demo-mount-root`，standalone=原样 `<html>`），并停写 localStorage
+/// 主题偏好（不污染宿主）。仅画廊发射面调用：standalone 产物字节零变化。
+/// 非 demo 根因——demo 独占页面时全局施加正当；嵌入态才需要隔离。
+pub fn gallery_scope_theme_runtime(sfc: &str) -> String {
+    if !sfc.contains("function applyAccent") {
+        return sfc.to_string();
+    }
+    let scoped = sfc.replace("document.documentElement", "__autoThemeRoot()");
+    // 嵌入态停写主题偏好（不污染宿主 localStorage；读取保留，无害个性化）。
+    let scoped = scoped.replace(
+        "try { localStorage.setItem(ACCENT_STORAGE_KEY, name) } catch {}",
+        "if (!__autoEmbed) { try { localStorage.setItem(ACCENT_STORAGE_KEY, name) } catch {} }",
+    );
+    let helper = concat!(
+        "// Plan 672 条目 6: 嵌入态主题隔离——宿主（画廊 AppViewport）注入\n",
+        "// __AUTO_UI_EMBED__ 时，主题 class/变量施加到视口挂载容器而非 <html>，\n",
+        "// 防止 demo 劫持宿主页面主题；standalone（无标记）行为不变。\n",
+        "const __autoEmbed = typeof window !== 'undefined' && !!(window as any).__AUTO_UI_EMBED__\n",
+        "function __autoThemeRoot(): HTMLElement {\n",
+        "  if (!__autoEmbed) return document.documentElement\n",
+        "  return (document.querySelector('.demo-mount-root') as HTMLElement | null) || document.documentElement\n",
+        "}\n",
+    );
+    // helper 本身含 document.documentElement 字面量，故在替换之后注入。
+    scoped.replacen("function applyAccent", &format!("{}function applyAccent", helper), 1)
+}
+
 fn gallery_demo_row(
     apps_dir: &Path,
     e: &auto_lang::ui::app_registry::AppRegistryEntry,
@@ -9554,6 +9593,32 @@ render: \"vm\"
         );
         assert!(ts.contains("appId: \"002-counter\""), "{ts}");
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Plan 672 条目 6: 嵌入态主题作用域化后处理——含主题运行时的语料
+    /// 重定向全局施加并注入 helper；无主题运行时的语料与 standalone 路径
+    /// 零变化。
+    #[test]
+    fn gallery_scope_theme_runtime_redirects_global_apply() {
+        let themed = "watch(dark_mode, (v) => {\n  document.documentElement.classList.toggle('dark', v)\n})\nfunction applyAccent(name: string, isDark = false): void {\n  const root = document.documentElement\n  try { localStorage.setItem(ACCENT_STORAGE_KEY, name) } catch {}\n}";
+        let out = crate::vue::gallery_scope_theme_runtime(themed);
+        assert!(out.contains("function __autoThemeRoot()"), "helper injected: {out}");
+        assert!(out.contains("__autoThemeRoot().classList.toggle('dark', v)"), "{out}");
+        assert!(out.contains("__AUTO_UI_EMBED__"), "{out}");
+        assert!(
+            out.contains("if (!__autoEmbed) { try { localStorage.setItem"),
+            "localStorage write must be embed-guarded: {out}"
+        );
+        // helper 之外（applyAccent 起）不得残留裸 document.documentElement
+        //（helper 体内两处为回退字面量，属预期）
+        let after_helper = out.split("function applyAccent").nth(1).unwrap();
+        assert!(
+            !after_helper.contains("document.documentElement"),
+            "all global applies redirected: {after_helper}"
+        );
+        // 无主题运行时的语料原样返回
+        let plain = "const a = 1\n";
+        assert_eq!(crate::vue::gallery_scope_theme_runtime(plain), plain);
     }
 
     /// Plan 442 P0-1: apps that consume none of the optional features

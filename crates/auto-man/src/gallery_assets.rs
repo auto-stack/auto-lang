@@ -56,5 +56,17 @@ mod tests {
             "direct children must keep margin:auto safe centering:\n{text}"
         );
     }
+
+    /// Plan 672 条目 6: AppViewport 必须注入嵌入态标记——demo 主题运行时
+    /// 据此把主题施加收口到视口容器（否则 016 族劫持宿主页面主题）。
+    #[test]
+    fn app_viewport_template_injects_embed_marker() {
+        let file = GalleryAssets::get("AppViewport.vue").expect("embedded AppViewport.vue");
+        let text = std::str::from_utf8(&file.data).expect("utf8");
+        assert!(
+            text.contains("__AUTO_UI_EMBED__"),
+            "AppViewport must set the __AUTO_UI_EMBED__ embed marker:\n{text}"
+        );
+    }
 }
 
