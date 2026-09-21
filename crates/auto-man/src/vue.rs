@@ -4896,7 +4896,7 @@ export default router
                 let api_import_target =
                     format!("@/apps/{}/lib_api", e.id);
                 let rewrite_api_import = |s: String| -> String {
-                    if is_fullstack_embed || routable_needs_api {
+                    let s = if is_fullstack_embed || routable_needs_api {
                         s.replace("from '@/lib/api'", &format!("from '{}'", api_import_target))
                             .replace(
                                 "from \"@/lib/api\"",
@@ -4912,7 +4912,23 @@ export default router
                             )
                     } else {
                         s
-                    }
+                    };
+                    // PLAN-675 T-08 补遗: 嵌入态裸 fetch 相对 /api/ 字面量
+                    // 前缀化（三档通用，独立于上方 api-import 臂——020
+                    // music-player 是 loadable 档，其 player_store 的
+                    // `Http.get_json("/api/media/scan")` 经转译为
+                    // `fetch('/api/media/scan')` 打到宿主根 404，代理侧
+                    // /apps/<id>/api/media/* 真歌单无人消费；媒体面由 658
+                    // 原生 media 路由供数）。单双引号两形态；已前缀产物不含
+                    // `fetch('/api/` 字面量，天然幂等。
+                    s.replace(
+                        "fetch('/api/",
+                        &format!("fetch('/apps/{}/api/", e.id),
+                    )
+                    .replace(
+                        "fetch(\"/api/",
+                        &format!("fetch(\"/apps/{}/api/", e.id),
+                    )
                 };
                 let rewritten_app_vue = rewrite_api_import(vp.app_vue_code.clone());
                 // Plan 672 条目 6: 嵌入态主题作用域化（016-calendar 劫持宿主
