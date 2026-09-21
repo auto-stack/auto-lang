@@ -325,6 +325,20 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
   无效——PLAN-658 会话面从未被真实消费过，非本计划回归）；UI Enter 新增
   待 standalone 差分=P672-N4（IAB 只发 input 不发 keyup，合成事件亦未触
   发 Vue handler，疑 codegen 层 keyup 绑定问题，与嵌入无关）。
+- [x] T-11（条目 5）api client 现生成兜底 + store EventSource 前缀化。
+  [✅ 已完成] worktree bdcbddae2——api 源解析第三优先级（gen api.ts →
+  src/back/api.ts 胶水 → `try_full_parse`+`generate_simple_client` 现生成，
+  流端点出 stub 注释）；rewrite 通道扩 `new EventSource('/api/` 前缀化。
+- [x] T-12（条目 5）端到端：017 内嵌验证。
+  [✅ 已完成] **前台 build 确定性验证**（托管后台 N2 不稳定改道）：017 翻转
+  `loadable: true`、总可嵌入 22→28（023-realworld 亦被现生成捞起；VM 侧
+  023 route-stub 多 store skip 为另一码事）、017「stays standalone」警告
+  消失；产物=lib_api.ts 5 处 `/apps/017-chat/api` fetch 前缀 +
+  useChatStore `new EventSource('/apps/017-chat/api/stream'` SSE 前缀；
+  vite 直启模块解析 App.vue/lib_api.ts/useChatStore.ts 全 200 零断链。
+  **AC-9 的 UI 活体走查留待用户终端**（N2：托管后台 proxy 随包装进程亡，
+  用户前台 `auto run` 常驻不受影响）；AC-10 ✓（047 类无源 demo 仍回退，
+  013/015 发射面零变化——gen api.ts 优先级未动）。
 
 ## 复审记录
 
@@ -342,6 +356,11 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
 - **P672-N3（观察，待用户裁定）**：027-file-manager 在 Vue 画廊内加载
   后报「Env is not defined」运行错误横幅（原生 Env 依赖未守门/未降级；025
   档位=registry-only 的同类问题）。修复方向：加载前探测/降级为非 loadable。
+- **P672-D2（债，条目 5 勘定，待用户裁定立项）**：018-book-reader 与
+  019-video-app 为 `routes {}` 档（PLAN-642 route_stub tier，仅 VM 臂可
+  交互）。Vue 臂内嵌需 routes-in-embed 能力（路由 demo 的多页挂载/跳转
+  塞进单视口），属 P670-D1「route A 未接线四缺口」家族。非小修，需独立
+  勘定尺寸。
 - **P672-N4（观察，条目 4 伴随）**：013 UI 的 Enter 新增在嵌入态未触发
   （IAB 自动化只发 `input` 不发键盘事件为已知限制，但合成 keyup 亦未触发
   Vue handler、CUA 真实键盘同）——疑 codegen 层 `@keyup.enter` 绑定问题，
