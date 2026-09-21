@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-672
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-gallery-vue-fix-batch
 author: [zhaopuming]
 created_at: 2026-09-21
@@ -13,7 +13,7 @@ touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/auto-man]  # 主修面；auto-os 侧仅参照副本同步（不涉 specs）
 current_step: 4
-total_steps: 4
+total_steps: 6
 ---
 
 # [PLAN-672] ui-gallery-vue-fix-batch（画廊修复批·滚动跟踪）
@@ -27,6 +27,9 @@ total_steps: 4
 - **条目 1（用户提出 2026-09-21）**：Vue 臂画廊中 app 未在视口内居中（VM 臂已居中）。
 - **条目 2（本会话发现 2026-09-21）**：027-file-manager 触发 vite `vue-sonner`
   解析失败 → dev server 整站崩溃。根因 = PLAN-528 W6 宿主自愈重写冲掉画廊合并依赖。
+- **条目 3（用户提出 2026-09-21）**：内容超高出现滚动条时（滚动行为本身 ✓），
+  Vue 臂视口用的是浏览器默认滚动条（宽轨+箭头，暗色主题下突兀），应为 AutoUI
+  风格滚动条（细/半透明/圆角，与 reka-ui ScrollArea 观感一致）。
 
 ## 目标
 
@@ -104,6 +107,24 @@ Plan 662/666 同款双仓收尾）。
 （备选方案已否决：改 `package_json_deps_drifted` 去掉 leftover 清除方向——影响
 standalone 清洁性契约；传聚合 usage 进 W6——侵入面大。调序为最小正确修。）
 
+### T-05 视口滚动条 AutoUI 化（条目 3）
+
+现状：`.demo-mount-root` 的 `overflow-auto` 出浏览器默认滚动条。宿主
+`generate_index_css`（vue.rs:1710-1720，Plan 053 后续）已内置 AutoUI 风格
+滚动条类 `.ash-scroll`（8px/透明轨/`--border` 圆角拇指/hover `--muted-foreground`，
+Firefox `scrollbar-width: thin`+`scrollbar-color`）——注释载明其视觉对齐
+reka-ui ScrollArea 且随明暗主题。画廊 gen index.css 已含全套（实测 16 处），
+os 仓无 handmade 覆盖。
+
+修法：模板 `AppViewport.vue` 的 demo-mount-root div 追加 `ash-scroll` 类
+（零 CSS 重复，纯复用宿主样式）。范围限视口自身滚动条；demo 内部滚动容器
+为 demo 代码自身职责，不在本条目。
+
+（`.ash-scroll-fade` 悬浮淡入变体已否决：VM 臂 iced ScrollArea 滚动条常显，
+demo 展示窗保留滚动可供性更利于两臂观感一致。）
+
+同步 os 参照副本 + gen ext 副本字节对齐（同 T-04 收口路径，P672-D1 债仍在册）。
+
 ### 门禁与端到端
 
 - Category B（局部 Rust 改动）：`cargo check -p auto-man`；
@@ -133,6 +154,8 @@ standalone 清洁性契约；传聚合 usage 进 W6——侵入面大。调序�
       gen package.json 且已安装；dev server 不再崩溃。
 - [ ] AC-5 standalone（非 gallery）项目 package.json 生成/自愈行为零变化
       （W6 调序为 gallery-only 影响面，既有 vue.rs 测试组全绿为证）。
+- [ ] AC-6 内容超高时视口滚动条为 AutoUI 风格（细 8px/圆角/`--border` 主题色
+      拇指），不再是浏览器默认宽轨；滚动行为本身不回归（AC-3 复验）。
 
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
@@ -167,7 +190,11 @@ standalone 清洁性契约；传聚合 usage 进 W6——侵入面大。调序�
   - AC-3 009-article-feed：scrollDelta=247 可滚、topGap=1、marginTop=0px
     （溢出 auto 归零不裁顶）；
   - AC-4 027-file-manager：模块加载成功（vue-sonner import 解析，服务存活
-    200）；横幅「Env is not defined」= 独立预存缺陷（P672-N3，条目 3 候选）。
+    200）；横幅「Env is not defined」= 独立预存缺陷（P672-N3，条目 3 候选，
+    后用户提出条目 3 为滚动条样式，Env 守门改列 P672-N3 观察）。
+- [ ] T-05（条目 3）模板 demo-mount-root 追加 `ash-scroll` 类 + 契约测试扩面。
+- [ ] T-06（条目 3）os 参照副本/gen ext 副本对齐 → 浏览器复验 AC-6（滚动条
+  计算样式+截图）→ 门禁复跑 → 提交。
 
 ## 复审记录
 
