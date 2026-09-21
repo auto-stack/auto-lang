@@ -65,7 +65,11 @@ fn pairs() -> Vec<(&'static str, PairOpt)> {
                 qualified_methods: false,
                 renames: &[],
                 allow_only_at: &[],
-                allow_only_rs: &["mkdir_all"],
+                // PLAN-681: tree/basename 宿主在 a2r-std，VM 侧本体是
+                // vm/native.rs shim（fs_tree_walk / shim_file_basename），
+                //不在本对 .rs.at 镜像面——双轨逐字节对齐由
+                // tests/fs_tree_parity.rs 钉（强于本名/元数兜带）。
+                allow_only_rs: &["mkdir_all", "tree", "basename"],
             },
         ),
         (
