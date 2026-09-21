@@ -4441,6 +4441,12 @@
      "title": "vue-gallery-fix-batch — Env 轨别原语与字面量折叠契约（SD-01）+027 vue 轨降级口径（SD-02）",
      "content": "PLAN-680 滚动批首项 Q1：027-file-manager vue 轨挂载即抛 __vmOnly('Env.get') 横幅、内容不加载。三件套交付：①生成期折叠——vue 轨 Env.get(\"字面量键\") 折叠为 gen 机 env 快照字符串字面量（ts_adapter VM-only gate 内前置；gen 产物 git-ignored 不泄机器值；非字面量键与其余 Env.*/Process.* 维持 __vmOnly fail-fast，671 诚实抛错裁定不动）；②Env.track() 轨别原语（native 9907 高段沿 PLAN-656 先例；VM shim 恒 \"vm\"，vue 轨折叠 'vue' 字面量；inventory 双表登记=NATIVE_ID_ENTRIES 二元组+ret-type 三元组，非 for_each_native）；③027 四点 FS 守卫（Tick bootstrap/NavTo 汇聚点〔排序/搜索/隐藏/地址/GoUp 全汇聚〕/GoUp〔fs.parent 先于 NavTo〕/CommitNew〔空列表下新建仍可达〕）+轨别分派双空态文案（列表/网格；storage 持久化不门控保调试价值）。执行期附带发现：sidebar-in-row 布局塌陷（上游 SidebarProvider 默认 w-full 在 flex row 内吃满宽→flex-1 兄弟 0 宽，027 补 w-auto 沿 018 先例，滚动项 Q4 登记 015/017/022 未排查）；file.* 小写不在 VM_ONLY 白名单裸标识雷（Q5 在册，027 已被守卫规避）。spec 增量：app-generation.md PLAN-677 契约列表第 5 条+027 SPEC §5.5。Q2=041 同款判定折叠即消除（三键全字面量，实机挂 auto-edit 冷重生成待办）；Q3=vue fs 桥候选 L2 待裁定。",
      "created": "2026-09-21"
+    },
+    {
+     "id": "P674-1",
+     "title": "rq-codeeditor-a2r-vocab — RQ codeeditor 覆盖契约（SD-01，覆盖集 v1.9）+ a2r 词汇门 per-kind 表驱动契约（SD-02）",
+     "content": "PLAN-674 两件生成面覆盖扩容。SD-01（ui/overview.md 覆盖集段 v1.8→v1.9）：codeeditor 入 native_queue_set——投影=结构 DrawOps（T-00 裁定 A：rasterize_canvas_scene 无文本面证伪位图通道；CODE_EDITORS 注册表 get-or-create 同源 inproc iced widget〔storage_key 键+code_editor_set_text 外部值差分〕→core::render 视口虚拟化 EditorDrawList→lower_editor_frame〔Plan 386 降层〕平移入流）；键入/IME/箭标/滚轮走 core handle_input 全键面（INPUT_TEXT 全文代写+on_change 零参派发；ensure_font_system_call 幂等缺省字体源=无 iced 宿主必需）；折叠 gutter/搜索面板/on_cursor 等宿主面板与事件族显式 not-yet（I3 随注，P674-D4）；not-yet 全集勘定仪器 native_not_yet_kind_inventory 双根聚合（现余 style:native-unstyled ×12=P674-D1 与 tag:managed_content=P674-D2 两登记项；tree/menubar 同缺推测证伪）。SD-02（ui/design/shell-a2r-seams.md S1 词汇门节转正）：识别面从四 prop 白名单扩为 per-kind 词汇表（单源=ui_gen/vocab.rs view_prop_vocab/view_event_vocab——语义源=View IR builder 方法面，表体落 ui_gen 是组合律〔view 域挂 ui feature 门，test-trans 无 ui 组合须可编译〕；值形 Str/Bool/F32/U16/Usize/Flag 强转+事件槽 Closure/Msg 双态）；拒绝门保留（PLAN-027 原则）文案补 on <kind>；复合族（menubar value/title/icon/shortcut/enabled/checked）由族降层臂整体消费（镜像解释态 convert_menubar_component；开合态=action_config::MENUBAR_OPEN 全局面+合成变体 __MenubarToggle(String)/__MenubarClose——与 VM 轨 renderer 同机制）。验收：041 运行时钉翻 Covered+消费方 perf.py smoke exit 0 双实例 2/2（供料 §6 0/2 清偿）+a2r 词汇门 23 compile_error!→0（供料 §7 判据；整段 BLOCKED 移位=P670-D1 家族，PLAN-681 承接）。",
+     "created": "2026-09-22"
     }
    ]
   },
@@ -6993,6 +6999,12 @@
      "title": "vue-gallery-fix-batch 复审与合并收据",
      "content": "review pass@plan-680-dev r1 a9b45b7d7（独立复审代理只读工件审计+实现侧门禁复跑双轨）：AC-01..06 全 pass——vue 走查无横幅+空态提示居中（empty-state2/grid-search 实拍）+VM 主目录/快捷访问/盘符/62 项列表零漂移（vm-027-booted 实拍）；折叠仅限字面量键（Expr::Str gate 有测）、守卫纯包裹不误伤 VM、9907 无碰撞（9900-9906=scroll/code_editor）；15 文件=3 代码+9 截图+2 文档无超范围。门禁：ts_adapter 21/21（新 5 测）+ffi 170/170（新 shim 测）+tv 3865/3865+tf 3718/3718（tf 在 reviewed_commit 上跑，tv 复审基线复跑绿）。findings：截图三帧同 md5 重复误标（low，证据链完整留档）/SD-01 表落点回写（low，已清偿）。",
      "created": "2026-09-21"
+    },
+    {
+     "id": "P674-2",
+     "title": "rq-codeeditor-a2r-vocab 复审与合并收据",
+     "content": "review pass@plan-674-dev r1（实施会话内复审，证据自工件重建）：needs_fix R-1=on_cursor 静默弃置违 I3 留痕纪律→注释修正+P674-D4 债→pass 复裁（树差异仅注释行）。AC-01..06 全 pass：作用域 7 测（041 翻 None/矩阵钉/键入闭环/双根勘定/plan039 19/19/vocab 双测/menubar 降层）+tf 3715/3715+tv 3857/3857（排除域 dep_parity=PLAN-596 预存 scratch 慢测，tf full 配置滤除口径）+tt 4084/4084+消费方 HEAD 双探针（perf smoke exit 0 双实例 2/2〔2026-09-22 00:51，auto.exe=reviewed HEAD〕+a2r 词汇门 0 错首错 E0425=P670-D1 族）。T-00 三裁定（A=结构 DrawOps；B=builder 面单源，表体迁 ui_gen/vocab.rs=组合律；C=批次边界）+T-02 勘定（全集两项 P674-D1/D2，tree/menubar 证伪）。P674-D3 处置=2026-09-22 用户裁定扩 P670-D1（PLAN-681 承接）。债册 P674-D1/D2/D3/D4 四条在册。",
+     "created": "2026-09-22"
     }
    ]
   }
