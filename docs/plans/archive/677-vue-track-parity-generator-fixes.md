@@ -18,6 +18,8 @@ total_steps: 8
 
 # [PLAN-677] vue 轨跨平台一致性五连修（生成器侧）
 
+> completion_kind: delivered。合并收据：PLAN-677:r2 prepared 4b1f4916a（规范增量落 app-generation.md）→ 重基 4b1f4916a→36d75036f（range-diff 等价，旧新映射在案）→ landed ff-only master@36d75036f → ledger_refreshed P677-1（reviews 纯增量 11 行）→ archived 本提交 → cleaned 待记。
+
 > 来源：消费方 auto-edit（M1 编辑器）vue/vm 双轨对照实测（2026-09-21，
 > 工具链 v0.4.2-1652，PLAN-671 补件链退役后首轮真实使用反馈）。
 > **用户裁定（2026-09-21）**：vue/vm 跨平台一致性问题**禁走生成物补件路线**
