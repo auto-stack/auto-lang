@@ -475,11 +475,13 @@ demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切�
 - **P672-D3（债，条目 7 延伸，auto-os 桌面侧）**：016 类应用在虚拟桌面
   中应为 calculator 式 content-sized 自适应窗口——桌面宿主的窗口 sizing
   行为，需 auto-os 侧跟进（参照桌面既有 calculator 窗口先例）。
-- **P672-D2（债，条目 5 勘定，待用户裁定立项）**：018-book-reader 与
+- **P672-D2（债，已清偿→PLAN-675，2026-09-21 复审销号）**：018-book-reader 与
   019-video-app 为 `routes {}` 档（PLAN-642 route_stub tier，仅 VM 臂可
   交互）。Vue 臂内嵌需 routes-in-embed 能力（路由 demo 的多页挂载/跳转
-  塞进单视口），属 P670-D1「route A 未接线四缺口」家族。非小修，需独立
-  勘定尺寸。
+  塞进单视口），~~属 P670-D1「route A 未接线四缺口」家族~~（**更正：P670-D1
+  的「route A」是 a2r codegen 的 API 端点体策略（A=fn 体直降/B=db 委托），
+  与前端路由无关——名字撞车误注；PLAN-675 与 P670-D1 零依赖**）。
+  **已由 PLAN-675 清偿**（五家 routes demo 全量 routable 内嵌，reviewed 待落库）。
 - **P672-N4（观察，条目 4 伴随）**：013 UI 的 Enter 新增在嵌入态未触发
   （IAB 自动化只发 `input` 不发键盘事件为已知限制，但合成 keyup 亦未触发
   Vue handler、CUA 真实键盘同）——疑 codegen 层 `@keyup.enter` 绑定问题，
@@ -491,11 +493,19 @@ demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切�
   POST/GET（无路径参数）完全正常。PLAN-658 会话面此前无真实消费方，
   条目 4 首次点亮即暴露。修复方向：back_proxy 会话分派的路径参数按
   #[api] 签名类型绑定（669 先例）。
+  **双修裁定（2026-09-21 用户 Q-6）**：T-18 与 PLAN-675 T-02 各自独立修复同面，
+  落库保 **PLAN-675 T-02 版**（65fd1883a：ApiParamSig session 自持+669
+  push_typed_string_arg 共用+坏值 400 与 http_server 同语义）；本 plan-672-dev
+  的 T-18 版（fn_param_types+coerce_scalar 静默回退）由对侧清偿，落库时弃用。
 - **P672-N2（升级）**：托管后台下 `auto run` 包装进程不定时 exit（本次
   多轮复现，exit 1/0xC00004），**in-process back-proxy 随之死亡**——
   条目 4 前包装进程退出无害（仅丢 watcher），此后 N2 升级为「代理随宿主
   亡」的结构性弱点。用户终端前台跑不受影响（进程常驻）；根治方向=proxy
   独立子进程化或 N2 归因，另账处理。
+  **证据强化（2026-09-21 PLAN-675 T-06）**：托管后台 2/2 确定性复现（非「不定时」）；
+  机制洞察=**会话顺序装载每家数秒**，死亡窗口只够前 ~6 家会话起
+  （013/015/017/031/047…），后序（含五家路由 demo）永远轮空——活体走查
+  「UI 活数据死」形态的直接根因。
 - **P672-D1（债，双物化路径漂移）**：AppViewport.vue 存在两条物化路径——
   `gallery_assets::materialize` 每 run 刷新 `gen/src/gallery/`（**无消费者**），
   而 App 实际 import 的 `gen/src/ext/src/gallery/` 由 `copy_ext_files` 从
