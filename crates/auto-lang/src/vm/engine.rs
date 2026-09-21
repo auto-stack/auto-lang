@@ -2248,6 +2248,25 @@ impl AutoVM {
         task.current_fn_n_args = saved_fn_n_args;
         // PLAN-026 T-04: handler 粒度预算报告(api.* 忙等观测护栏)。
         Self::api_budget_report(&fn_name);
+        // PLAN-026 needs_fix3(内存爬升分流):AUTO_VM_MEM=1 时每 500 次
+        // 调用打印 VM 侧池/堆规模(strings 池字节数近似 = Σ len)——
+        // 区分"VM 层泄漏(池/堆线性涨)"与"rust 层(HTTP/渲染)"。
+        if std::env::var("AUTO_VM_MEM").as_deref() == Ok("1") {
+            static MEM_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let n = MEM_N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if n % 500 == 0 {
+                let pool_len = self.strings.read().map(|p| p.len()).unwrap_or(0);
+                let pool_bytes: usize = self
+                    .strings
+                    .read()
+                    .map(|p| p.iter().map(|v| v.len()).sum())
+                    .unwrap_or(0);
+                eprintln!(
+                    "[VM-MEM] calls={} strings_pool={} pool_bytes={} heap_objs={}",
+                    n, pool_len, pool_bytes, self.heap_objects.len()
+                );
+            }
+        }
         Ok(())
     }
 
