@@ -3512,7 +3512,23 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
         );
     }
 
+    // PLAN-080 §10-9 足迹桩：静默 exit 1 定位（真机多例死亡，输出无声截断）。
+    // ①panic 钩子带 backtrace 落 stderr（防丢失）；②30s 存活心跳；③run_file
+    // 返回值显式标记——死亡在循环内/外由此二分。
+    {
+        std::panic::set_hook(Box::new(|info| {
+            eprintln!("[X9-PANIC] {info}
+backtrace:
+{}", std::backtrace::Backtrace::force_capture());
+        }));
+        std::thread::spawn(|| loop {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            eprintln!("[X9-ALIVE] {}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0));
+        });
+    }
+    eprintln!("[X9] entering vm interpreter");
     let result = auto_lang::run_file(entry.to_str().unwrap_or("src/front/app.at"));
+    eprintln!("[X9] vm interpreter returned ok={}", result.is_ok());
 
     // Restore original CWD
     if let Some(dir) = original_dir {
