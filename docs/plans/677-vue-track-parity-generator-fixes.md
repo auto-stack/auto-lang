@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-677
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-track-parity-generator-fixes
 author: [zcode]
 created_at: 2026-09-21
@@ -262,6 +262,19 @@ crates/auto-man/src/vue.rs (模板集)      ← ⑤ editorBridge.ts 新模板 + 
 - 2026-09-21 drafting 完成（/auto-plan:new）。授权依据：用户同日指令
   「综合成一个 vue 版改进计划,一起改进；要改就改 Auto 代码或生成器」。
   outcome: pass（范围内无阻塞决策）→ next: work。
+- 2026-09-21 stage: work | plan_id: PLAN-677 | plan_revision: 1 |
+  outcome: pass | code_commit: 85bd9068e..2a69327eb（worktree
+  plan-677-dev，基线 c8bdffa32）| task_ids: T-01..T-07 全闭环 |
+  evidence: cargo tt 4063/4063 全绿；cargo t --no-fail-fast 失败集
+  21 项与 master 逐一比对完全一致（全预存红，零新增）；消费方
+  auto-edit 冷双跑再生成稳态零漂移 + vue-tsc/vite build 绿 +
+  浏览器实测（README 树点击开 tab、menubar 四菜单下拉+动作、
+  编辑器高度贯通、深色 gutter、控制台零 vmOnly 抛错）；vm 轨
+  探针起窗正常 | blockers: 无 | next: review。
+- 追加修复（执行期实勘发现,均在授权范围内）：①`json.to_value(api
+  调用)` 恒等映射错误（wire JSON 串未 parse,渲染树毒化=tab 不上屏
+  真根因）→ T-05b；②gen-only 管线 shell 不同步致模板修复不可传播
+  → regenerate_source_files 挂 ensure_code_editor_component。
 
 ## 待澄清事项
 
