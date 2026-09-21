@@ -13707,6 +13707,15 @@ fn apply_fit_measured(
     let bounds: std::collections::HashMap<String, (f32, f32, f32, f32)> = payload
         .and_then(|p| serde_json::from_str(p).ok())
         .unwrap_or_default();
+    // P679-D1 诊断 trace（AUTO_FIT_TRACE=1）：测量回执全量 bounds——
+    // fit 塌缩定位面（锚点量到什么/其余 widget 量到什么）。
+    if std::env::var("AUTO_FIT_TRACE").as_deref() == Ok("1") {
+        let mut rows: Vec<(&String, &(f32, f32, f32, f32))> = bounds.iter().collect();
+        rows.sort_by(|a, b| a.0.cmp(b.0));
+        for (k, (x, y, w, h)) in &rows {
+            eprintln!("[fit-trace] {k} = ({x:.0},{y:.0}) {w:.0}x{h:.0}");
+        }
+    }
     let mut task = iced::Task::none();
     let mut measured_any = false;
     for (key, (_x, _y, w, h)) in &bounds {
@@ -21757,7 +21766,10 @@ fn dynamic_view_impl(
     }
     let rendered: iced::Element<'static, IcedMessage> = if fit_pending {
         stack
-            .width(iced::Length::Shrink)
+            // P679-D1：宽 = Fill（同锚点——Shrink 宽会零化 Fill 后代），
+            // 高 = Shrink（自然高测量；toast Fill 高在 fit 窗塌 0 = 登记
+            // 边界：fit 窗内 toast 不显示）。
+            .width(iced::Length::Fill)
             .height(iced::Length::Shrink)
             .into()
     } else {
@@ -21920,19 +21932,23 @@ fn fit_aware_root(
         container(
             scrollable(
                 container(content)
-                    .width(iced::Length::Shrink)
+                    // P679-D1 终版：锚点宽 = Fill（视口钳制）。规则（003
+                    // fit-trace 实测）：iced 里 mx-auto 包装器/容器缺省宽
+                    // 都是 Fill，而 Fill 后代在 Shrink 祖先下解析为 0——
+                    // 原 Shrink 锚点把整条宽度链打成 0（锚点量到 64=p-8
+                    // 纯内边距、行/列 0 宽、fit 窗缩成窄条空卡）。Fill 化
+                    // 后宽度方向全链视口钳制（Plan 512 成文的 v1 语义），
+                    // 卡片收窄交给内容自己的 max-w-*/mx-auto；高度保持
+                    // Shrink = 512 S3 自然高测量（scrollable 无限高约束）。
+                    .width(iced::Length::Fill)
                     .height(iced::Length::Shrink)
                     .id(iced::widget::Id::from(format!("aura_fit_root_{}", app_id.0))),
             )
-            // The fit wrapper is an internal measurement surface. Keep its
-            // vertical scrolling behavior for natural-height measurement, but
-            // do not expose a scrollbar while the window is settling on its
-            // intrinsic size.
             .direction(scrollable::Direction::Vertical(
                 scrollable::Scrollbar::hidden(),
             ))
-            .width(iced::Length::Shrink)
-            .height(iced::Length::Shrink),
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill),
         )
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)
