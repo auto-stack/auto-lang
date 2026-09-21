@@ -1674,9 +1674,30 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             ctx.int_locals.borrow_mut().remove(n.as_str());
                         }
                     }
+                    // PLAN-677 T-05b: api fn 在 wire 上返回 str(结构化负载是
+                    // JSON-in-string);赋给 Array 声明态必须 parse——vm 侧交付
+                    // 类型化数组,此处是 vue 轨数据边界的同构补齐(消费方
+                    // auto-edit `tree_nodes = tree(...)` 赋串致 flatten_tree
+                    // 崩、渲染树毒化、tab 永不上屏实测)。
+                    let wrap_json_parse = match (lhs.as_ref(), rhs.as_ref()) {
+                        (Expr::Ident(n), Expr::Call(call)) => {
+                            let fn_name = match call.name.as_ref() {
+                                Expr::Ident(id) => id.as_str(),
+                                _ => "",
+                            };
+                            ctx.typed_arrays.contains(n.as_str()) && ctx.is_api(fn_name)
+                        }
+                        _ => false,
+                    };
                     transpile_assign_target(lhs, ctx, out);
                     write!(out, " = ").ok();
+                    if wrap_json_parse {
+                        write!(out, "JSON.parse(").ok();
+                    }
                     transpile_expr(rhs, ctx, out);
+                    if wrap_json_parse {
+                        write!(out, ")").ok();
+                    }
                 }
                 Op::AddEq => {
                     transpile_assign_target(lhs, ctx, out);
@@ -2057,7 +2078,30 @@ fn try_transpile_builtin_call(
             if method == "to_value" {
                 match args.args.first() {
                     Some(a) => {
-                        transpile_expr(&a.get_expr().clone(), ctx, out);
+                        // PLAN-677 T-05b: 实参是 api 契约调用时恒等映射是错的——
+                        // api 客户端 response.json() 解出的是 wire 上的 JSON
+                        // 字符串本体（api fn 声明返回 str），VM 侧 json.to_value
+                        // 对字符串是「解析为 Value」，vue 侧必须 JSON.parse 对齐
+                        // （消费方 auto-edit `json.to_value(tree(...))` 恒等后把
+                        // 串赋给 tree_nodes 致 flatten_tree 崩、渲染树毒化实测）。
+                        // Http.get_json 等已解析对象场景维持恒等（PLAN-617 配方）。
+                        let is_api_call = match a.get_expr() {
+                            Expr::Call(call) => {
+                                let fn_name = match call.name.as_ref() {
+                                    Expr::Ident(id) => id.as_str(),
+                                    _ => "",
+                                };
+                                ctx.is_api(fn_name)
+                            }
+                            _ => false,
+                        };
+                        if is_api_call {
+                            write!(out, "JSON.parse(").ok();
+                            transpile_expr(&a.get_expr().clone(), ctx, out);
+                            write!(out, ")").ok();
+                        } else {
+                            transpile_expr(&a.get_expr().clone(), ctx, out);
+                        }
                         true
                     }
                     None => false, // 无参的畸形调用走通用路径（错误照常上报）

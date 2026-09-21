@@ -22476,6 +22476,51 @@ widget Rows {
         );
     }
 
+    /// PLAN-677 T-05b: `json.to_value(<api call>)` 在 vue 轨必须发
+    /// JSON.parse——api 客户端 response.json() 解出的是 wire 上的 JSON
+    /// 字符串本体（api fn 声明返回 str），恒等映射会把串赋给 Array
+    /// 声明态（消费方 auto-edit tree_nodes 崩实测）。
+    #[test]
+    fn plan677_json_to_value_of_api_call_wraps_parse() {
+        let src = r#"
+use back.api: tree
+store S {
+    model {
+        var nodes list = []
+        var ws str = ""
+    }
+    on {
+        .Load -> {
+            .nodes = json.to_value(tree(.ws, 4))
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::StoreDecl(d) => Some(d.clone()),
+            _ => None,
+        }).expect("store decl");
+        let mut store = crate::aura::extract::extract_store_from_decl(&decl).expect("extract store");
+        // 文件级 use back.api 由真实管线注入 api_imports；本测试直填。
+        store.api_imports = vec!["tree".to_string()];
+        let out = crate::ui_gen::vue::VueGenerator::generate_store_composable(&store);
+        assert!(
+            out.contains("JSON.parse(await tree("),
+            "json.to_value(api call) must emit JSON.parse:
+{}",
+            out
+        );
+        assert!(
+            !out.contains("= await tree(ws_dir.value, 4);"),
+            "raw string assignment must not survive:
+{}",
+            out
+        );
+    }
+
     /// PLAN-677 T-05: code_editor 动态 key（循环内表达式）发
     /// :editor-key 绑定，供 editorBridge 按键寻址；字面量 key 维持
     /// data-editor-key 既有契约。
