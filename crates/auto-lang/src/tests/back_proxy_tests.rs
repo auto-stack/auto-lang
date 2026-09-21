@@ -202,6 +202,126 @@ fn http_e2e_back_proxy_missing_param_is_400() {
     assert!(body.contains("missing param `title`"), "body: {body}");
 }
 
+/// PLAN-675 T-02 语料：路径参数端点（int `:n`/`:id` 三动词 + str `:slug`）
+/// + 跨请求 int 态。N5 症状面——str 绑定下 int 形参参与 VM 运算/比较全数
+/// 空转（018/019 实证 GET 落空、PUT/DELETE 200 无效）。
+fn write_fixture_path_params(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("p675-back-proxy-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create fixture dir");
+    std::fs::write(
+        dir.join("db.at"),
+        r#"
+var ledger int = 0
+
+pub fn bump(n int) int {
+    ledger = ledger + n
+    return ledger
+}
+
+pub fn ledger_now() int {
+    return ledger
+}
+"#,
+    )
+    .expect("write db.at");
+    std::fs::write(
+        dir.join("api.at"),
+        r#"
+use db
+
+#[api(method = "GET", path = "/api/echo/:n")]
+pub fn echo(n int) int {
+    return db.bump(n)
+}
+
+#[api(method = "GET", path = "/api/ledger")]
+pub fn ledger_now() int {
+    return db.ledger_now()
+}
+
+#[api(method = "PUT", path = "/api/notes/:id")]
+pub fn rename_note(id int) int {
+    return db.bump(id)
+}
+
+#[api(method = "DELETE", path = "/api/notes/:id")]
+pub fn drop_note(id int) int {
+    return db.bump(id)
+}
+
+#[api(method = "GET", path = "/api/posts/:slug")]
+pub fn post_by_slug(slug str) str {
+    return slug
+}
+"#,
+    )
+    .expect("write api.at");
+    dir
+}
+
+fn path_param_config(tag: &str, port: u16) -> (BackProxyConfig, PathBuf) {
+    let dir = write_fixture_path_params(tag);
+    let config = BackProxyConfig {
+        port,
+        sessions: vec![SessionSpec {
+            app_id: "p675".to_string(),
+            back_entry: dir.join("api.at"),
+        }],
+        #[cfg(feature = "ui")]
+        native_media: Vec::new(),
+    };
+    (config, dir)
+}
+
+/// 路径参数按 #[api] 签名类型绑定（N5 清偿主断言）：int `:n` 进 int 运算
+/// 得真值、跨请求 int 态按序累计（GET 21 → PUT 7 → DELETE 2 = 30）；
+/// str `:slug` 保形透传不受转型影响。
+#[test]
+fn http_e2e_back_proxy_path_param_typed_binding() {
+    let (config, _dir) = path_param_config("typed", 3948);
+    let proxy = start(config).expect("start back proxy");
+
+    let (status, body) = http_request(proxy.port, "GET", "/apps/p675/api/echo/21", None);
+    assert_eq!(status, 200, "int path param echo, body: {body}");
+    assert_eq!(body.trim().parse::<i64>().ok(), Some(21), "echo body: {body}");
+
+    let (status, body) = http_request(proxy.port, "PUT", "/apps/p675/api/notes/7", None);
+    assert_eq!(status, 200, "PUT int path param, body: {body}");
+    assert_eq!(body.trim().parse::<i64>().ok(), Some(28), "PUT body: {body}");
+
+    let (status, body) = http_request(proxy.port, "DELETE", "/apps/p675/api/notes/2", None);
+    assert_eq!(status, 200, "DELETE int path param, body: {body}");
+    assert_eq!(body.trim().parse::<i64>().ok(), Some(30), "DELETE body: {body}");
+
+    // 跨请求 session 态与绑定值一致（21+7+2，证明三次都按 int 落账）。
+    let (status, body) = http_request(proxy.port, "GET", "/apps/p675/api/ledger", None);
+    assert_eq!(status, 200, "ledger, body: {body}");
+    assert_eq!(body.trim().parse::<i64>().ok(), Some(30), "ledger body: {body}");
+
+    // str `:slug` 保形（ApiTyKind::Str 走 push_str_arg 咽喉，零转型）。
+    let (status, body) = http_request(proxy.port, "GET", "/apps/p675/api/posts/my-slug", None);
+    assert_eq!(status, 200, "str slug, body: {body}");
+    assert_eq!(body.trim().trim_matches('"'), "my-slug", "slug body: {body}");
+}
+
+/// 不可转型的路径段 → 400（客户端错，非服务端 500），且 session 态不被
+/// 半途压参污染。
+#[test]
+fn http_e2e_back_proxy_bad_path_param_is_400() {
+    let (config, _dir) = path_param_config("badval", 3949);
+    let proxy = start(config).expect("start back proxy");
+
+    let (status, body) = http_request(proxy.port, "GET", "/apps/p675/api/echo/abc", None);
+    assert_eq!(status, 400, "bad int path param, body: {body}");
+    assert!(body.contains("invalid value"), "body: {body}");
+    assert!(body.contains("expected int"), "body: {body}");
+
+    let (status, body) = http_request(proxy.port, "GET", "/apps/p675/api/ledger", None);
+    assert_eq!(status, 200, "ledger after rejection, body: {body}");
+    assert_eq!(body.trim().parse::<i64>().ok(), Some(0), "ledger body: {body}");
+}
+
 /// 真实语料冒烟（T-01 验收）：020-music-player 的 #[api] status 路由经
 /// 子前缀返回真实状态（该 fn 返回空 PlayerInfo 列表——真实执行语义）。
 #[test]

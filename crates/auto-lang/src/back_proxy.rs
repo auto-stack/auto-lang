@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use crate::ast::Stmt;
 use crate::vm::engine::AutoVM;
-use crate::vm::ffi::http_server::{match_route, HttpRoute};
+use crate::vm::ffi::http_server::{match_route, ApiArgBindError, ApiParamSig, HttpRoute};
 use crate::vm::loader::Linker;
 use crate::vm::task::AutoTask;
 use crate::vm::virt_memory::VirtualFlash;
@@ -767,8 +767,11 @@ struct SessionRuntime {
     app_id: String,
     vm: AutoVM,
     routes: Vec<HttpRoute>,
-    /// fn 名 → 声明参数名有序表（按名绑定 body/query 用）。
-    fn_params: HashMap<String, Vec<String>>,
+    /// fn 名 → 声明参数有序表（名+类型 Display，669 ApiParamSig 同源；按名
+    /// 绑定 body/query 用，PLAN-675 T-02: 路径/query 段按签名类型转型压栈）。
+    /// 从本 session 的 AST 签名自持——不读 http_server 的全局 sigs 注册表
+    /// （多 session 同进程共享全局表，fn 名裸名可能跨 app 撞键）。
+    fn_params: HashMap<String, Vec<ApiParamSig>>,
     /// PLAN-658 T-04: #[api] fn 名 → (HTTP method, 返回类型 Display 形)。
     /// ~Stream 判定（含 "Stream<"）与 POST 广播判别（void/typing/New<Type>）
     /// 都读它——镜像 api_gen broadcast_event_name 约定。
@@ -1049,14 +1052,20 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
     //    用）+ 主类型名（POST 广播 "New<Type>" 判别用——Display 对 User 类型
     //    印声明文本，不可直接抽名））。
     let api_routes: Vec<(String, String, String)> = codegen.api_routes.clone();
-    let mut fn_params: HashMap<String, Vec<String>> = HashMap::new();
+    let mut fn_params: HashMap<String, Vec<ApiParamSig>> = HashMap::new();
     let mut fn_meta: HashMap<String, (String, String)> = HashMap::new();
     for stmt in &import_stmts {
         if let Stmt::Fn(f) = stmt {
             if f.api_attrs.is_some() {
                 fn_params.insert(
                     f.name.to_string(),
-                    f.params.iter().map(|p| p.name.to_string()).collect(),
+                    f.params
+                        .iter()
+                        .map(|p| ApiParamSig {
+                            name: p.name.to_string(),
+                            ty: p.ty.to_string(),
+                        })
+                        .collect(),
                 );
                 let method = f
                     .api_attrs
@@ -1137,7 +1146,7 @@ impl SessionRuntime {
                 )),
             );
         };
-        let Some(param_names) = self.fn_params.get(&route_match.fn_name).cloned() else {
+        let Some(param_sigs) = self.fn_params.get(&route_match.fn_name).cloned() else {
             return ProxyReply::json(
                 500,
                 error_json(&format!(
@@ -1173,26 +1182,41 @@ impl SessionRuntime {
         };
         let query_map = parse_query(&req.query);
 
-        // 按名绑定参数：路径占位符 → body 字段 → query 参数。
-        let mut bound: Vec<serde_json::Value> = Vec::with_capacity(param_names.len());
-        for name in &param_names {
-            if let Some((_, v)) = route_match.path_params.iter().find(|(n, _)| n == name) {
+        // 按名绑定参数：路径占位符 → body 字段 → query 参数。PLAN-675 T-02
+        // （P672-N5 清偿）：路径/query 源是本征字符串，压栈时按 #[api] 签名
+        // 类型转型（669 push_typed_string_arg 先例，与 standalone http_server
+        // 同源同语义）——此前无条件 String 压栈，int 形参在 VM 内与实体 id
+        // 比较永假（GET 落空 / PUT·DELETE 200 空转，018/019 实证）。
+        enum ArgSrc {
+            /// body JSON 值（本征已带类型），json_to_vm_value 原样压制。
+            Json(serde_json::Value),
+            /// 路径/query 字符串按签名类型压栈（int/float/bool 转型，str 走
+            /// G1-1 push_str_arg 咽喉）。
+            TypedString(ApiParamSig, String),
+        }
+        let mut bound: Vec<serde_json::Value> = Vec::with_capacity(param_sigs.len());
+        let mut arg_srcs: Vec<ArgSrc> = Vec::with_capacity(param_sigs.len());
+        for sig in &param_sigs {
+            if let Some((_, v)) = route_match.path_params.iter().find(|(n, _)| n == &sig.name) {
                 bound.push(serde_json::Value::String(v.clone()));
+                arg_srcs.push(ArgSrc::TypedString(sig.clone(), v.clone()));
                 continue;
             }
-            if let Some(v) = body_json.as_ref().and_then(|b| b.get(name)) {
+            if let Some(v) = body_json.as_ref().and_then(|b| b.get(&sig.name)) {
                 bound.push(v.clone());
+                arg_srcs.push(ArgSrc::Json(v.clone()));
                 continue;
             }
-            if let Some(v) = query_map.get(name) {
+            if let Some(v) = query_map.get(&sig.name) {
                 bound.push(serde_json::Value::String(v.clone()));
+                arg_srcs.push(ArgSrc::TypedString(sig.clone(), v.clone()));
                 continue;
             }
             return ProxyReply::json(
                 400,
                 error_json(&format!(
-                    "back-proxy:{}: missing param `{name}` for {} {}",
-                    self.app_id, req.method, req.path
+                    "back-proxy:{}: missing param `{}` for {} {}",
+                    self.app_id, sig.name, req.method, req.path
                 )),
             );
         }
@@ -1201,16 +1225,31 @@ impl SessionRuntime {
         // call_fn_by_name + 结果弹出 + 整栈 rc 清账）。
         let mut task = AutoTask::new(0, 4096, 0);
         let pre_args_sp = task.ram.sp;
-        for v in &bound {
-            if let Err(e) =
-                crate::vm::ffi::stdlib::json_to_vm_value(&mut task, &self.vm, v, 0)
-            {
+        for src in &arg_srcs {
+            let pushed: Result<(), ApiArgBindError> = match src {
+                ArgSrc::Json(v) => {
+                    crate::vm::ffi::stdlib::json_to_vm_value(&mut task, &self.vm, v, 0)
+                        .map_err(|e| {
+                            ApiArgBindError::Internal(format!("arg marshal failed: {e:?}"))
+                        })
+                }
+                ArgSrc::TypedString(sig, s) => crate::vm::ffi::http_server::push_typed_string_arg(
+                    &self.vm,
+                    &mut task,
+                    sig,
+                    s,
+                    &req.method,
+                    &req.path,
+                ),
+            };
+            if let Err(e) = pushed {
+                let (status, detail) = match e {
+                    ApiArgBindError::BadRequest(m) => (400u16, m),
+                    ApiArgBindError::Internal(m) => (500u16, m),
+                };
                 return ProxyReply::json(
-                    500,
-                    error_json(&format!(
-                        "back-proxy:{}: arg marshal failed: {e:?}",
-                        self.app_id
-                    )),
+                    status,
+                    error_json(&format!("back-proxy:{}: {detail}", self.app_id)),
                 );
             }
         }

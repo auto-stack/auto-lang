@@ -3445,8 +3445,10 @@ impl ApiTyKind {
 /// Mirrors json_to_vm_value's marshalling exactly (int → encode_i32(i64 as
 /// i32), float → push_f64, bool → encode_bool) so body- and string-sourced
 /// params land in identical VM slots; strings go through the Plan 510 G1-1
-/// push_str_arg throat.
-fn push_typed_string_arg(
+/// push_str_arg throat. PLAN-675 T-02: back_proxy session dispatch consumes
+/// this too (crate-internal) so gallery proxy path params coerce per `#[api]`
+/// signature — the standalone-server semantics, one implementation.
+pub(crate) fn push_typed_string_arg(
     vm: &crate::vm::engine::AutoVM,
     task: &mut crate::vm::task::AutoTask,
     sig: &ApiParamSig,
