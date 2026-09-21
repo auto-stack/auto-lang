@@ -7117,7 +7117,14 @@ pub fn start_gallery_back_proxy(project_dir: &Path) -> Option<u16> {
             // 无会话即 404。VM 臂侧多出的空闲 session 无害（demo 语料
             // 仍走 inproc，不经 proxy 路由）。
             let fullstack_session = row.fullstack && back_api.is_file();
-            if (needs_session || fullstack_session) && back_api.is_file() {
+            // PLAN-675 T-08: routable 档会话准入——路由 demo 的 back 链同为
+            // 普通 CRUD（needs_session 谓词只认 ~Stream/~Promise/use auto.），
+            // 不补此臂则五家路由 demo 的 API 全数 `404 unknown app`（走查
+            // 数据冻结真身之二，与 N2 死亡窗口叠加）。
+            let routable_session = row.routable && back_api.is_file();
+            if (needs_session || fullstack_session || routable_session)
+                && back_api.is_file()
+            {
                 sessions.push(auto_lang::back_proxy::SessionSpec {
                     app_id: row.id.clone(),
                     back_entry: back_api,
