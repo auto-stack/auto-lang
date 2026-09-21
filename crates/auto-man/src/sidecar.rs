@@ -184,7 +184,13 @@ pub fn apply_sidecar_to_crate(
                 .lines()
                 .any(|l| l.starts_with(name.as_str()) && l.contains(version.as_str()));
             if !already && !cargo.lines().any(|l| l.starts_with(&format!("{name} ="))) {
-                missing.push_str(&format!("{name} = \"{version}\"\n"));
+                // PLAN-024 续:`{ ... }` 形态值 = 完整 toml 表达式
+                // (path 依赖,见 fill),裸写;版本依赖加引号。
+                if version.starts_with('{') {
+                    missing.push_str(&format!("{name} = {version}\n"));
+                } else {
+                    missing.push_str(&format!("{name} = \"{version}\"\n"));
+                }
             }
         }
         if !missing.is_empty() {
