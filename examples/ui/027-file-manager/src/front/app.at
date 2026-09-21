@@ -67,6 +67,7 @@ widget App {
 
         // ---- 真实文件系统导航状态（T-05）----
         var home str = ""                   // Env USERPROFILE/HOME，Init 解析
+        var is_vm str = ""                  // PLAN-680 Q1：轨别（Env.track），FS 能力守卫
         var current_path str = ""
         var history = []
         var history_idx int = -1
@@ -321,7 +322,7 @@ widget App {
 
                 // ---- 左侧导航栏（Sidebar 组件族；PLAN-016 用户反馈换装——
                 // 手搓 button 列退役。015-notes NavTree 同款形态）----
-                sidebar_provider (class: "min-h-0 shrink-0") {
+                sidebar_provider (class: "min-h-0 w-auto shrink-0") {
                     col {
                         style: "w-56 h-full flex flex-col overflow-hidden bg-card border-r border-border"
 
@@ -558,7 +559,11 @@ widget App {
                                     style: empty_state
                                     icon (name: "folder-open", size: 44, style: fade_text) {}
                                     if .booted {
+                                        if .is_vm == "vm" {
                                             text "此目录为空" { style: breadcrumb_label }
+                                        } else {
+                                            text "vue 调试轨无文件系统访问 — 完整功能请使用 auto run -r vm" { style: breadcrumb_label }
+                                        }
                                         } else {
                                             text "正在加载..." { style: breadcrumb_label }
                                         }
@@ -607,7 +612,11 @@ widget App {
                                     style: empty_state
                                     icon (name: "folder-open", size: 44, style: fade_text) {}
                                     if .booted {
+                                        if .is_vm == "vm" {
                                             text "此目录为空" { style: breadcrumb_label }
+                                        } else {
+                                            text "vue 调试轨无文件系统访问 — 完整功能请使用 auto run -r vm" { style: breadcrumb_label }
+                                        }
                                         } else {
                                             text "正在加载..." { style: breadcrumb_label }
                                         }
@@ -715,6 +724,9 @@ widget App {
 
     on {
         .Init -> {
+            // ---- 轨别识别（PLAN-680 Q1：VM 轨 "vm" / vue 轨 "vue"）----
+            .is_vm = Env.track()
+
             // ---- 真实主目录解析（轻量；重活延后到 Tick）----
             .home = Env.get("USERPROFILE")
             if .home == "" {
@@ -749,6 +761,9 @@ widget App {
             .tick_count = .tick_count + 1
             if !.booted && .tick_count > 8 {
                 .booted = true
+                // PLAN-680 Q1：vue 调试轨无 FS 能力——跳过引导（列表区渲染
+                // 空态提示），重 FS 活全在 VM 轨执行。
+                if .is_vm == "vm" {
                 if .home != "" {
                     .quick.push({ path: .home, label: "主目录", is_home: true })
                     var names = ["桌面", "文档", "下载", "图片", "音乐"]
@@ -780,11 +795,15 @@ widget App {
                 } else {
                     toast.error("无法定位主目录（USERPROFILE/HOME 均为空）")
                 }
+                }
             }
         }
 
         // ---- 目录导航（真实 FS；T-05）----
         .NavTo(target_path) -> {
+            // PLAN-680 Q1：vue 调试轨无 FS 能力——导航/排序/搜索/隐藏切换
+            // 全汇聚本 handler，单点守卫保住纯视图交互与 storage 持久化。
+            if .is_vm == "vm" {
             let can str = fs.canonical(target_path)
             if can == "" {
                 toast.error("无法打开: " + target_path)
@@ -1016,6 +1035,7 @@ widget App {
                     .total_size_str = format_size(total_bytes)
                 }
             }
+            }
         }
 
         .GoBack -> {
@@ -1039,9 +1059,12 @@ widget App {
         }
 
         .GoUp -> {
+            // PLAN-680 Q1：fs.parent 先于 NavTo 执行，vue 轨须同点守卫。
+            if .is_vm == "vm" {
             let up str = fs.parent(.current_path)
             if up != "" && up != .current_path {
                 .NavTo(up)
+            }
             }
         }
 
@@ -1331,6 +1354,10 @@ widget App {
         .CommitNew -> {
             let name str = .new_modal_name
             .new_modal_open = false
+            // PLAN-680 Q1：vue 调试轨无 FS 能力——提示后保留现视图。
+            if .is_vm != "vm" {
+                toast("vue 调试轨无文件系统访问 — 请使用 auto run -r vm")
+            } else {
             if name != "" {
                 let p str = fs.join(.current_path, name)
                 if file.exists(p) {
@@ -1345,6 +1372,7 @@ widget App {
                     }
                     .NavTo(.current_path)
                 }
+            }
             }
         }
 
