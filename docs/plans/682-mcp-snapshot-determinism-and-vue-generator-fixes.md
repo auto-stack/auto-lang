@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-682
-status: execution_done
+status: reviewed
 feature_name: mcp-snapshot-determinism-and-vue-generator-fixes（快照投影确定性 + vue 生成器四缺陷修复批）
 author: [zhaopuming]
 created_at: 2026-09-22T00:00:00+08:00
 updated_at: 2026-09-22T00:00:00+08:00
-plan_revision: 1
+plan_revision: 2
 current_step: 4
 total_steps: 4
 supersedes_spec_components: []
@@ -109,9 +109,18 @@ detect 并集 + 直接调 `crate::vue_shadcn::materialize(&output_dir,
   无 key 声明维持计数器形态（既有快照/生成物零漂移面不扩大）。
 - AC-03 F3：R-tier 赋值带先到先得守卫；`console_lines` join 真换行。
 - AC-04 F4：`--gen-only` 独立路径物化全部被引用 wrapper（含 popover）。
-- AC-05 jade-edit 侧全门（gate + e2e 九检查 + bench）对新 exe 全绿；
-  三个补件（③④/垫片后装/孤儿清理）进入可撤除态（按各自 pattern
-  断言提示逐个撤除）。
+- AC-05（revision 2 修正，原措辞为执行期过度承诺）：jade 侧补件③的
+  「可撤除信号」实证（新 exe 下 pattern 断言按设计 fail）+ 补件④自然
+  no-op（popover 在场即跳过）+ 新 exe 下 jade vm 矩阵全绿（兼容性）。
+  **补件实际退役 + jade 全门对新 exe 全绿 = auto-lang 合入 master、主
+  检出 exe 更新后的 jade 侧回执步**（供料包回执方式节已登记），不属
+  本上游计划的可验范围。
+
+### 规范增量
+
+| delta_id | add/modify/retire | target | before / after | rationale | AC |
+|---|---|---|---|---|---|
+| （空） | — | — | — | 本批为缺陷修复批：F1 恢复快照属性面**恒发射**（消除双态，恢复 Plan 371 Task 8 已文档化的 onclick 断言面契约）；F2 使 shadcn curated 路径符合组件早退臂既有 explicit-key 契约（7372-7374 在案）；F3 使 R-tier 与 S-tier 先到先得契约一致；F4 使 gen-only 与全量构建的物化行为一致。四件均为把实现拉回已文档化契约，无新行为契约、无 canonical spec 面变更 ⇒ 规范增量为空（书面说明如左） | — |
 
 ## 5. 非目标
 
@@ -143,6 +152,48 @@ detect 并集 + 直接调 `crate::vue_shadcn::materialize(&output_dir,
   engine D-17 键入发射修复（分支 auto-lang-dev commit 3373a5c，
   changeset plan-022-d17-input-pipeline.md，回归测试 3 例 + 引擎全量
   836/836 绿）——其 review/merge 走 auto-down 自己的 changeset 流。
+- 2026-09-22 复审（auto-plan-review；实现会话内复审——独立性受限已
+  声明，裁定全部重建自工件复现，不采信执行期摘要）｜
+  stage: review｜plan_id: PLAN-682｜plan_revision: 2（复审修正 AC-05
+  契约措辞，语义见 §4 修正段；实现零改动）｜outcome: **pass**｜
+  reviewed_commit: 20ce3a27c（plan-682-dev）｜base_commit: 3f2eb0b56｜
+  dependency_revisions: auto-down 同组 worktree @ fba6563（分支
+  auto-lang-dev，含 plan-022 引擎修复 3373a5c——autodown-core 依赖路径
+  由组约定解析）｜spec_inputs: 本计划 §规范增量（空影响，书面说明
+  在案）；canonical spec 面零触碰｜
+  acceptance_results:
+  - **AC-01 pass**（复现）：新 exe 三全新实例快照恒带 style/onclick、
+    逐字节同尺寸 5201B；jade vm_matrix 对新 exe 双臂 10/10+9/9 ALL
+    GREEN、基线 v2（id 序列仪器）零漂移。
+  - **AC-02 pass**（复现）：裸 gen-only（零补件态）App.vue 编辑器原生
+    发射 `:key="store.active_key"`。
+  - **AC-03 pass**（复现）：生成 natives.ts 六守卫（S-tier 2 + R-tier
+    file_basename/console_log/console_lines/console_clear 各 1）+
+    `join('
+')` 真换行。
+  - **AC-04 pass**（复现）：冷删 popover/ 后 gen-only 重物化（Popover
+    三件 + index.ts）；裸产物 vue-tsc **TS2307 = 0**（AC 字面满足）。
+  - **AC-05 pass**（revision 2 修正后）：regen-vue 对新 exe 在补件③
+    pattern 断言 fail（exit 1，撤除信号实证）；补件④对已物化 popover
+    自然 no-op；jade vm 矩阵对新 exe 全绿。退役执行 = jade 回执步。
+  full_suite: cargo tf（隔离 target）= 1749 run / 1743 passed / 6 failed
+  ——6 失败逐一甄别：5×ffi dep_parity 族 = 新 worktree 缺 gitignored
+  oracle 预建产物（就地 cargo build 后 5/5 复绿——环境项）；1×
+  ffi_dual_019（i64 截断 5e9→705032704）**基点 detached 复跑同败**
+  （pre-existing，与本 diff 无关，另档上游）。触及面正向：styled/
+  snapshot 类单测 32/32 绿；p053_1 与 snapshot_app 在 ad-hoc 配置下
+  基点与 HEAD 同败（基点既有，非本批回归；tf 正式档未将其计入失败）。
+  findings:
+  - F-682-N1（环境/信息）：新 worktree 须预建 test/ffi_dual/*/oracle
+    （或运行时自建）——已按 cargo_build_if_changed 语义就地构建；
+    记录供后续 worktree 参照。
+  - F-682-N2（上游既有，超出本计划范围）：ffi_dual_019 i64 宽值截断
+    + p053_1 + 3×TS1117（dep demo 生成）+ auto-man bin main.rs 空壳
+    ——均基点复现，属主检出 dirty 会话在飞面，转告归属。
+  evidence: 本文件 §3/§6 全部复现命令与产物路径（gen/front/vue 三产物、
+  jadelog /tmp/gen-review.log、tf 日志 call_e168c6d8 会话档）｜
+  next: merge（plan-682-dev → auto-lang master；合并后触发 jade 回执
+  步——三补件按 pattern 断言撤除 + 全门对新 exe 复验）。
 
 ## 7. 待澄清事项
 
