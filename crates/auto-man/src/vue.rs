@@ -4837,62 +4837,44 @@ export default router
             // 随 loadable 档一并发射——T-07 的 Vue 臂 back-proxy 已可达其
             // /apps/<id>/ 会话。api import 改指 per-demo 落盘位
             // apps/<id>/lib_api.ts（跨 demo 不共享 lib/api.ts 命名空间）。
-            if row.loadable || row.fullstack {
+            // PLAN-675 T-04: routable 档随行——五家 routes demo = fullstack
+            // 管线（App/lib_api/前缀化/组件与 store 共享池）+ per-demo 路由
+            // 面（pages/ router.ts main.ts）；纯前端路由语料（无 api 消费）
+            // 不需要 lib_api，源缺失不阻断内嵌。
+            if row.loadable || row.fullstack || row.routable {
                 let is_fullstack_embed = row.fullstack && !row.loadable;
-                // api client 源先行解析（api_gen 产物 gen/front/vue/src/lib/
-                // api.ts，桌面宿主循环同源先例；缺则回落项目胶水
-                // src/back/api.ts）。fullstack 无源 = 不可内嵌（不发射、不翻
-                // 注册表，维持「独立运行」提示）——否则 App.vue 指向缺失的
+                let is_routable_embed = row.routable && !row.loadable && !row.fullstack;
+                // routable 前端语料是否消费 api client（store composable 引
+                // '@/lib/api' 为主通道）——无消费的纯前端路由 demo 无需
+                // lib_api，api 源缺失不阻断内嵌。
+                let routable_needs_api = is_routable_embed
+                    && (vp.app_vue_code.contains("@/lib/api")
+                        || vp.app_vue_code.contains("from '@/api")
+                        || vp.components.iter().any(|(_, _, c, _)| {
+                            c.contains("@/lib/api") || c.contains("from '@/api")
+                        })
+                        || vp
+                            .store_files
+                            .iter()
+                            .any(|(_, c)| c.contains("@/lib/api") || c.contains("from '@/api")));
+                // api client 源先行解析（672 条目4/5 的三级瀑布提取为
+                // resolve_demo_api_client_ts 共用：api_gen 产物 gen/front/
+                // vue/src/lib/api.ts → 项目胶水 src/back/api.ts → 现生成
+                // try_full_parse + generate_simple_client）。
+                // fullstack/routable 消费 api 语料而无源 = 不可内嵌（不发射、
+                // 不翻注册表，维持「独立运行」提示）——否则指向缺失的
                 // lib_api 造成 vite 断链（实测 047-bp-admin）。
-                let fullstack_api_ts: Option<String> = if is_fullstack_embed {
-                    let app_root = apps_dir.join(&e.id);
-                    let generated_api = app_root
-                        .join("gen")
-                        .join("front")
-                        .join("vue")
-                        .join("src")
-                        .join("lib")
-                        .join("api.ts");
-                    let project_glue = app_root.join("src").join("back").join("api.ts");
-                    let api_src = if generated_api.is_file() {
-                        Some(generated_api)
-                    } else if project_glue.is_file() {
-                        Some(project_glue)
+                let fullstack_api_ts: Option<String> =
+                    if is_fullstack_embed || routable_needs_api {
+                        resolve_demo_api_client_ts(&apps_dir, &e.id)
                     } else {
                         None
                     };
-                    // Plan 672 条目 5: 第三优先级=现生成——api.at 是源真相，
-                    // 前两级只覆盖「曾跑过 auto gen 的 demo」（013 有源纯因
-                    // 历史 gen 树）。流端点由 generate_simple_client 出 stub
-                    // 注释（Plan 043：流消费走 store 的 EventSource），CRUD
-                    // 端点出真 fetch 函数。解析失败 → None → 回退独立提示。
-                    let api_ts_raw: Option<String> = match api_src {
-                        Some(src) => Some(fs::read_to_string(&src).unwrap_or_default()),
-                        None => {
-                            let api_at = app_root.join("src").join("back").join("api.at");
-                            fs::read_to_string(&api_at)
-                                .ok()
-                                .and_then(|content| crate::api_gen::try_full_parse(&content))
-                                .map(|module| {
-                                    auto_lang::api::TypeScriptGenerator::new()
-                                        .generate_simple_client(&module)
-                                })
-                        }
-                    };
-                    api_ts_raw.map(|raw| {
-                        // fetch 路径字面量前缀化 `/apps/<id>/`（生成模板定
-                        // 格式 backtick/单引号两种），经 vite `/apps` 代理
-                        // 透传到 back-proxy 会话分派。
-                        raw.replace("(`/api/", &format!("(`/apps/{}/api/", e.id))
-                            .replace("('/api/", &format!("('/apps/{}/api/", e.id))
-                    })
-                } else {
-                    None
-                };
-                let embed_this = !is_fullstack_embed || fullstack_api_ts.is_some();
-                if is_fullstack_embed && fullstack_api_ts.is_none() {
+                let embed_this =
+                    (!is_fullstack_embed && !routable_needs_api) || fullstack_api_ts.is_some();
+                if (is_fullstack_embed || routable_needs_api) && fullstack_api_ts.is_none() {
                     println!(
-                        "  {} gallery demo {} fullstack: no api client source (gen api.ts / src/back/api.ts) — stays standalone",
+                        "  {} gallery demo {} fullstack/routes: no api client source (gen api.ts / src/back/api.ts / api.at gen) — stays standalone",
                         "⚠".bright_yellow(),
                         e.id
                     );
@@ -4907,7 +4889,7 @@ export default router
                 let api_import_target =
                     format!("@/apps/{}/lib_api", e.id);
                 let rewrite_api_import = |s: String| -> String {
-                    if is_fullstack_embed {
+                    if is_fullstack_embed || routable_needs_api {
                         s.replace("from '@/lib/api'", &format!("from '{}'", api_import_target))
                             .replace(
                                 "from \"@/lib/api\"",
@@ -4986,6 +4968,20 @@ export default router
                     if let Some(api_ts) = &fullstack_api_ts {
                         let _ = fs::write(app_dir.join("lib_api.ts"), api_ts);
                     }
+                    // PLAN-675 T-04: 路由面三件套——pages/（vp components 的
+                    // pages 面，per-demo 命名空间防跨 demo 页名撞：019/021/
+                    // 023 三家 pages/home 异容）、router.ts（memory 工厂，
+                    // 每挂载 fresh 路由态）、main.ts（mount/unmount 入口
+                    // 契约，AppViewport 优先消费；export default 兼容旧路）。
+                    if is_routable_embed {
+                        emit_demo_route_face(&app_dir, &vp, &e.id, &rewrite_api_import);
+                    }
+                }
+                // PLAN-675: 画廊 package.json 依赖注入（任一 routable 行）——
+                // standalone 面按 has_routes 注入 scaffold 依赖，画廊宿主
+                // 走 npm_merge 通道（merge_host_npm_deps 消费）。
+                if is_routable_embed && !npm_merge.iter().any(|(n, _)| n == "vue-router") {
+                    npm_merge.push(("vue-router".to_string(), "^4.2.0".to_string()));
                 }
                 }
             }
@@ -5033,10 +5029,11 @@ export default router
         }
 
         println!(
-            "  {} Gallery host: src/demos-registry.ts ({} demos, {} loadable, {} VM-live)",
+            "  {} Gallery host: src/demos-registry.ts ({} demos, {} loadable, {} routable, {} VM-live)",
             "✓".bright_green(),
             demo_rows.len(),
             demo_rows.iter().filter(|r| r.loadable).count(),
+            demo_rows.iter().filter(|r| r.routable).count(),
             vm_live
         );
         Ok(())
@@ -8574,27 +8571,29 @@ fn gallery_demo_row(
     // 前端为 `use back.api:` 裸函数直调，VM merged 臂下即进程内 CALL reloc，
     // 可经发射器唯一 stem 级联安全内嵌）。loadable 维持 Vue 臂原语义；
     // fullstack = 有 back 语料且无其余否决项（routes/i18n/ext/vm-only 对
-    // 两档同等否决）。
-    let (loadable, fullstack) = match &vp {
-        Some(vp) => {
-            let mut corpus = vp.app_vue_code.clone();
-            for (_, _, code, _) in &vp.components {
-                corpus.push_str(code);
-            }
-            for (_, code) in &vp.store_files {
-                corpus.push_str(code);
-            }
-            let is_vm_only = pac.contains("render: \"vm\"") || pac.contains("render: 'vm'");
-            let has_back_corpus =
-                corpus.contains("@/lib/api") || corpus.contains("from '@/api");
-            let base_ok = !is_vm_only
-                && !vp.has_routes
-                && !corpus.contains("@/ext/")
-                && !corpus.contains("@/locales/")
-                && !vp.i18n.enabled;
-            (base_ok && !has_back_corpus, base_ok && has_back_corpus)
+    // 两档同等否决）。PLAN-675: 语料提至判定群共用（routable 同面扫描）。
+    let mut vp_corpus = String::new();
+    if let Some(vp) = &vp {
+        vp_corpus.push_str(&vp.app_vue_code);
+        for (_, _, code, _) in &vp.components {
+            vp_corpus.push_str(code);
         }
-        None => (false, false),
+        for (_, code) in &vp.store_files {
+            vp_corpus.push_str(code);
+        }
+    }
+    let is_vm_only = pac.contains("render: \"vm\"") || pac.contains("render: 'vm'");
+    let (loadable, fullstack) = if let Some(vp) = &vp {
+        let has_back_corpus =
+            vp_corpus.contains("@/lib/api") || vp_corpus.contains("from '@/api");
+        let base_ok = !is_vm_only
+            && !vp.has_routes
+            && !vp_corpus.contains("@/ext/")
+            && !vp_corpus.contains("@/locales/")
+            && !vp.i18n.enabled;
+        (base_ok && !has_back_corpus, base_ok && has_back_corpus)
+    } else {
+        (false, false)
     };
 
     // PLAN-642 T-14a: routes 首页 stub 档判定——app.at 声明 `routes {}` 块
@@ -8603,11 +8602,27 @@ fn gallery_demo_row(
     // 需要 .at 源（五家实证均无 i18n/ext 面——`t("` 命中为 SetAccent(
     // 误配，src/locales 无一存在）。
     let route_stub = {
-        let is_vm_only = pac.contains("render: \"vm\"") || pac.contains("render: 'vm'");
         let has_routes_block = source
             .lines()
             .any(|l| l.trim_start() == "routes {" || l.trim_start().starts_with("routes {"));
         has_routes_block && !is_vm_only
+    };
+
+    // PLAN-675 T-03: 路由整体内嵌档（web 臂专属）——vp.has_routes 且除
+    // routes 外无其余内嵌否决（vm-only/ext/locales/i18n）。loadable/
+    // fullstack 的 routes 否决维持原样（三档语义零变化）；routable 与
+    // route_stub 可同时为真（两臂各走各档）。vp 为 None（from_workspace
+    // 失败，如 642 时代的 018）→ false：发射面需要 components/pages/routes，
+    // 装配臂坏掉的 demo 维持 VM stub 档现状不硬崩。
+    let routable = match &vp {
+        Some(vp) => {
+            !is_vm_only
+                && vp.has_routes
+                && !vp_corpus.contains("@/ext/")
+                && !vp_corpus.contains("@/locales/")
+                && !vp.i18n.enabled
+        }
+        None => false,
     };
 
     (
@@ -8625,6 +8640,7 @@ fn gallery_demo_row(
             loadable,
             fullstack,
             route_stub,
+            routable,
         },
         vp,
     )
@@ -8654,6 +8670,164 @@ pub struct GalleryDemoRow {
     /// stub（路由语义进 VM 仍为非目标）；Vue 臂语义不变（web 端维持
     /// 静态面板）。registry.at 的 loadable 取 loadable||fullstack||本档。
     pub route_stub: bool,
+    /// PLAN-675: 路由整体内嵌档（web 臂专属）——vp.has_routes 且除 routes
+    /// 外无其余内嵌否决（vm-only/ext/locales/i18n）。发射 per-demo
+    /// memory-history router（apps/<id>/{App.vue,pages/,router.ts,main.ts}）；
+    /// TS 注册表发 load（import main 入口）+routed 标记+loadable 翻转（视口
+    /// 门）；VM 臂不消费（仍走 route_stub），registry.at 不序列化本字段。
+    /// serde default 兼容 gallery_cache 旧盘缓存（缺字段反序列化）。
+    #[serde(default)]
+    pub routable: bool,
+}
+
+/// PLAN-675 T-04: per-demo api client 源解析——672 条目4/5 三级瀑布提取
+/// 共用（fullstack 与 routable 两臂同语义）：api_gen 产物 gen/front/vue/
+/// src/lib/api.ts → 项目胶水 src/back/api.ts → 现生成（try_full_parse +
+/// generate_simple_client，流端点出 stub 注释，CRUD 出真 fetch）。命中后
+/// fetch/EventSource 字面量前缀化 `/apps/<id>/`（经 vite /apps 代理透传
+/// back-proxy 会话分派）。None = 无源。
+fn resolve_demo_api_client_ts(apps_dir: &Path, demo_id: &str) -> Option<String> {
+    let app_root = apps_dir.join(demo_id);
+    let generated_api = app_root
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("lib")
+        .join("api.ts");
+    let project_glue = app_root.join("src").join("back").join("api.ts");
+    let api_src = if generated_api.is_file() {
+        Some(generated_api)
+    } else if project_glue.is_file() {
+        Some(project_glue)
+    } else {
+        None
+    };
+    let api_ts_raw: Option<String> = match api_src {
+        Some(src) => Some(fs::read_to_string(&src).unwrap_or_default()),
+        None => {
+            let api_at = app_root.join("src").join("back").join("api.at");
+            fs::read_to_string(&api_at)
+                .ok()
+                .and_then(|content| crate::api_gen::try_full_parse(&content))
+                .map(|module| {
+                    auto_lang::api::TypeScriptGenerator::new()
+                        .generate_simple_client(&module)
+                })
+        }
+    };
+    api_ts_raw.map(|raw| {
+        raw.replace("(`/api/", &format!("(`/apps/{}/api/", demo_id))
+            .replace("('/api/", &format!("('/apps/{}/api/", demo_id))
+    })
+}
+
+/// PLAN-675 T-04: routable demo 的 per-demo 路由面发射——
+/// - `pages/<stem>.vue`：vp components 的 pages 面（保持 pages/<sub> 子目录
+///   形态；per-demo 命名空间——019/021/023 三家 pages/home 异容，共享池必
+///   撞 claim）。页面内 `@/components/...`/`@/stores/...` 绝对别名导入不因
+///   落盘位变化（共享池照常供应）；api import 走 rewrite 通道前缀化。
+/// - `router.ts`：与 generate_router_file 同构的路由表（module→pages 子路径
+///   映射、含参路由 props:true），history=**memory 工厂**——工厂形态保证
+///   每挂载 fresh 路由态（单例会在卸载/重挂间残留 location），路由态与宿主
+///   URL 严格隔离。
+/// - `main.ts`：AppViewport entry 契约——mount(el) 装新 router 挂载、
+///   unmount() 释放实例；export default 仍是 App 组件（旧 createApp 路径
+///   兼容，28 条既有 load 条目零改动）。
+fn emit_demo_route_face(
+    app_dir: &Path,
+    vp: &VueProject,
+    demo_id: &str,
+    rewrite: &dyn Fn(String) -> String,
+) {
+    for (rel, stem, code, _widget) in &vp.components {
+        let sub = if rel == "pages" {
+            String::new()
+        } else if let Some(s) = rel.strip_prefix("pages/") {
+            s.to_string()
+        } else {
+            continue;
+        };
+        let page_dir = if sub.is_empty() {
+            app_dir.join("pages")
+        } else {
+            app_dir.join("pages").join(&sub)
+        };
+        let _ = fs::create_dir_all(&page_dir);
+        let page_vue = gallery_scope_theme_runtime(&rewrite(code.clone()));
+        let _ = fs::write(page_dir.join(format!("{stem}.vue")), page_vue);
+    }
+
+    let mut page_paths: HashMap<String, String> = HashMap::new();
+    for (rel, stem, _code, _widget) in &vp.components {
+        if rel == "pages" {
+            page_paths.insert(stem.clone(), stem.clone());
+        } else if let Some(s) = rel.strip_prefix("pages/") {
+            page_paths.insert(stem.clone(), format!("{}/{}", s, stem));
+        }
+    }
+    let mut route_defs: Vec<String> = Vec::new();
+    for route in &vp.routes {
+        let import_path = page_paths
+            .get(&route.module)
+            .cloned()
+            .unwrap_or_else(|| route.module.clone());
+        if route.params.is_empty() {
+            route_defs.push(format!(
+                "  {{ path: '{}', name: '{}', component: () => import('@/apps/{}/pages/{}.vue') }}",
+                route.path, route.module, demo_id, import_path
+            ));
+        } else {
+            route_defs.push(format!(
+                "  {{ path: '{}', name: '{}', component: () => import('@/apps/{}/pages/{}.vue'), props: true }}",
+                route.path, route.module, demo_id, import_path
+            ));
+        }
+    }
+    let router_ts = format!(
+        r#"// Generated by auto-man (PLAN-675 routes-in-embed) — DO NOT EDIT.
+// Per-demo router: memory history keeps route state off the host URL; the
+// factory shape gives every mount a fresh history (unmount resets state).
+import {{ createRouter, createMemoryHistory }} from 'vue-router'
+import type {{ RouteRecordRaw }} from 'vue-router'
+
+const routes: RouteRecordRaw[] = [
+{}
+]
+
+export function createAppRouter() {{
+  return createRouter({{
+    history: createMemoryHistory(),
+    routes,
+  }})
+}}
+"#,
+        route_defs.join(",\n")
+    );
+    let _ = fs::write(app_dir.join("router.ts"), router_ts);
+
+    let main_ts = r#"// Generated by auto-man (PLAN-675 routes-in-embed) — DO NOT EDIT.
+// Entry factory consumed by AppViewport: mount() installs a fresh router per
+// mount; unmount() releases the instance. export default stays the App
+// component for the legacy createApp path.
+import { createApp } from 'vue'
+import App from './App.vue'
+import { createAppRouter } from './router'
+
+export default App
+
+let app: ReturnType<typeof createApp> | null = null
+export function mount(el: HTMLElement) {
+  app = createApp(App)
+  app.use(createAppRouter())
+  app.mount(el)
+}
+export function unmount() {
+  app?.unmount()
+  app = null
+}
+"#;
+    let _ = fs::write(app_dir.join("main.ts"), main_ts);
 }
 
 fn generate_demos_registry(rows: &[GalleryDemoRow]) -> String {
@@ -8672,8 +8846,16 @@ fn generate_demos_registry(rows: &[GalleryDemoRow]) -> String {
         // Plan 672 条目 4: fullstack 档的 TS 注册表翻转在发射循环内完成
         // （api client 源解析成功才置 row.loadable = true；无源 demo 维持
         // false = 独立运行提示，避免 lib_api 断链）。此处单看 loadable。
+        // PLAN-675: routable 档不发 loadable 翻转（VM 侧语义保持三档并集
+        // 不掺 routable），注册表面自行翻：load 指 main 入口 + routed 标记
+        // + loadable 视口门（AppViewport v-show 读它）。
         let load_prop = if r.loadable {
             format!("\n    load: () => import('./apps/{}/App.vue'),", r.id)
+        } else if r.routable {
+            format!(
+                "\n    load: () => import('./apps/{}/main'),\n    routed: true,",
+                r.id
+            )
         } else {
             String::new()
         };
@@ -8692,7 +8874,7 @@ fn generate_demos_registry(rows: &[GalleryDemoRow]) -> String {
     loadable: {loadable},{load_prop}
   }},
 "#,
-            loadable = r.loadable
+            loadable = r.loadable || r.routable
         ));
     }
 
@@ -8700,6 +8882,15 @@ fn generate_demos_registry(rows: &[GalleryDemoRow]) -> String {
         r#"// Generated by auto-man — build-time demos registry (Plan 549). DO NOT EDIT.
 // Regenerated on every `auto run` for ui-gallery from the scanned apps directory.
 import type {{ Component }} from 'vue'
+
+// PLAN-675: routable demo 的 load 指 entry 工厂模块（main.ts）——mount()
+// 每挂载装一个 fresh memory-history router，unmount() 释放实例；
+// export default 仍是 App 组件（旧 createApp 路径兼容）。
+export interface DemoModule {{
+  default: Component
+  mount?: (el: HTMLElement) => void
+  unmount?: () => void
+}}
 
 export interface DemoMeta {{
   id: string
@@ -8712,7 +8903,8 @@ export interface DemoMeta {{
   source: string
   pac: string
   loadable: boolean
-  load?: () => Promise<{{ default: Component }}>
+  routed?: boolean
+  load?: () => Promise<DemoModule>
 }}
 
 export const DEMOS: DemoMeta[] = [
@@ -10997,6 +11189,7 @@ fn p515_host_wallpaper_layer_branches() {
             loadable: true,
             fullstack: false,
             route_stub: false,
+            routable: false,
         }
     }
 
@@ -11115,6 +11308,7 @@ fn test_plan_549_ui_gallery_registry_and_package_json() {
             loadable: true,
             fullstack: false,
             route_stub: false,
+            routable: false,
         },
         GalleryDemoRow {
             id: "041-auto-edit".to_string(),
@@ -11129,6 +11323,7 @@ fn test_plan_549_ui_gallery_registry_and_package_json() {
             loadable: false,
             fullstack: false,
             route_stub: false,
+            routable: false,
         },
     ];
 
@@ -11282,6 +11477,7 @@ mod gallery_registry_at_tests {
                 loadable: true,
                 fullstack: false,
                 route_stub: false,
+                routable: false,
             },
             GalleryDemoRow {
                 id: "024-charts".into(),
@@ -11296,6 +11492,7 @@ mod gallery_registry_at_tests {
                 loadable: false,
                 fullstack: false,
                 route_stub: false,
+                routable: false,
             },
         ]
     }
@@ -11359,6 +11556,7 @@ mod gallery_registry_at_tests {
             loadable,
             fullstack: false,
             route_stub: false,
+            routable: false,
         }
     }
 
@@ -11416,6 +11614,64 @@ mod gallery_registry_at_tests {
             assert!(vm_at.contains(needle), "missing `{needle}`");
         }
         assert!(!gallery.join("demos").join("024-charts.at").exists(), "non-loadable not emitted");
+    }
+
+    /// PLAN-675 T-03: routable 档判定——五家 routes 语料 routable=true 且
+    /// from_workspace 健康（发射面依赖 vp 的 components/pages/routes），
+    /// loadable/fullstack/route_stub 既有语义零漂移（route_stub 共存、
+    /// loadable/fullstack 维持 false）；对照组 013/015/017（已内嵌
+    /// fullstack，无 routes）不误翻。
+    #[test]
+    fn test_gallery_demo_row_routable() {
+        let examples = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples")
+            .join("ui");
+        let entries = auto_lang::ui::app_registry::scan_apps(
+            &examples,
+            &auto_lang::ui::app_registry::ScanOptions::default(),
+        );
+        let find = |id: &str| {
+            entries
+                .iter()
+                .find(|e| e.id == id)
+                .unwrap_or_else(|| panic!("demo {id} not in examples/ui scan"))
+        };
+        for id in [
+            "018-book-reader",
+            "019-video-app",
+            "021-blog-viewer",
+            "022-kanban",
+            "023-realworld",
+        ] {
+            let e = find(id);
+            let (row, vp) = gallery_demo_row(&examples, e);
+            assert!(row.routable, "{id}: routable expected");
+            assert!(row.route_stub, "{id}: route_stub co-tier expected");
+            assert!(
+                !row.loadable && !row.fullstack,
+                "{id}: legacy tiers must stay false (routes veto intact)"
+            );
+            let vp = vp.unwrap_or_else(|| {
+                panic!(
+                    "{id}: from_workspace must succeed — routable emit needs components/pages/routes"
+                )
+            });
+            assert!(vp.has_routes, "{id}: vp.has_routes");
+            assert!(!vp.routes.is_empty(), "{id}: vp.routes");
+            assert!(
+                vp.components
+                    .iter()
+                    .any(|(rel, _, _, _)| rel == "pages" || rel.starts_with("pages/")),
+                "{id}: pages face present"
+            );
+        }
+        for id in ["013-todo", "015-notes", "017-chat"] {
+            let e = find(id);
+            let (row, _) = gallery_demo_row(&examples, e);
+            assert!(!row.routable, "{id}: no routes → not routable");
+        }
     }
 
     /// PLAN-642 T-14a: routes 首页 stub 档——routes 块剔除 + outlet 行替换
