@@ -347,16 +347,17 @@ fn p025_pump_lag_model_blank_band_extent() {
         "预取 8 行对快速速率严格收窄: {}→{} 行,{}→{} 帧",
         fast.0, fast.2, fast.1, fast.3
     );
-    // T-04 落地(2026-09-20 二轮实机:快拖半屏空白):滚动期泵 16ms +
-    // 预取 N=24 → 两档速率空白带均清零。
-    let gated_slow = run_with(30, 16, 24);
-    let gated_fast = run_with(10, 16, 24);
+    // 终态(2026-09-20 三轮修正:分离轨 16ms 计时器=每拍 HTTP 同步
+    // 往返,占死 VM 前端 UI 线程 → 回 50ms 节拍;快滚覆盖由预取 N=24
+    // 承担):50ms 泵 + N=24 → 模型内两档速率空白带均清零。
+    let fixed_slow = run_with(30, 50, 24);
+    let fixed_fast = run_with(10, 50, 24);
     eprintln!(
-        "[P025-LAG] 门控泵 16ms + N=24:常规 {}行 {}帧 / 快速 {}行 {}帧",
-        gated_slow.2, gated_slow.3, gated_fast.2, gated_fast.3
+        "[P025-LAG] 50ms 泵 + N=24:常规 {}行 {}帧 / 快速 {}行 {}帧",
+        fixed_slow.2, fixed_slow.3, fixed_fast.2, fixed_fast.3
     );
-    assert_eq!((gated_slow.2, gated_slow.3), (0, 0), "门控+预取:常规速率零空白");
-    assert_eq!((gated_fast.2, gated_fast.3), (0, 0), "门控+预取:快速速率零空白");
+    assert_eq!((fixed_slow.2, fixed_slow.3), (0, 0), "50ms+预取 24:常规速率零空白");
+    assert_eq!((fixed_fast.2, fixed_fast.3), (0, 0), "50ms+预取 24:快速速率零空白");
 }
 
 /// T-04 即时泵探针:queue 后 pending ≠ 0(peek 不排空);drain 后归零。
