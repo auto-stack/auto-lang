@@ -402,7 +402,12 @@ registry view"语义（SD-01）。
   落地后冒烟 cargo t bp 47/47；**ledger_refreshed**——e0144d678：
   specs.json P676-1@reports+P676-2@reviews（回读验证）+ui/plans.md 行 676
   +INDEX 再生（26 projects）+P676-D1 债登记；**archived**——本提交
-  （git mv+status archived）。**cleaned**——见后续清仓收据。遗留 watch：
+  （git mv+status archived）。**cleaned**——清仓收据：examples/bps-gallery/{deps,gen}+bp-gate/node_modules
+  junction 三处 `cmd /c rmdir /s /q` 摘净→`wt-guard.sh` 报 clean→
+  auto-lang worktree 移除（移除前核 0 脏面+tip=master 7d882cf96）→
+  auto-down 依赖位经 auto-down 仓注销→branch plan-676-dev 删除
+  （was 7d882cf96）→组目录 .wt/lang-676 rmdir；双仓 worktree 注册零残留。
+  遗留 watch：
   AC-06 build-bps-gallery.yml GitHub 首跑绿（下次触碰 paths 的 push 确证；
   lone checkout 缺 auto-down 兄弟位则为与 build-ui-examples 共同既有面）。
 
