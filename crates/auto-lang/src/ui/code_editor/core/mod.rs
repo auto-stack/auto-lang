@@ -248,6 +248,16 @@ struct SendEditor(ViEditor<'static, 'static>);
 // containing Mutex; the value is never touched from two threads at once.
 unsafe impl Send for SendEditor {}
 
+/// Plan 673 §4: one entry of the unified delta queue (read side). Offsets
+/// are UTF-8 byte offsets into the document BEFORE the edit; both endpoints
+/// are char boundaries by construction (producers only cut at boundaries).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct TextDelta {
+    pub start: usize,
+    pub end: usize,
+    pub replacement: String,
+}
+
 /// The editor state machine. Shared through the global registry as
 /// `&'static CodeEditorCore` (interior mutability via Mutex/atomics — iced
 /// is single-threaded on the UI thread, and MCP automation may call the
@@ -283,6 +293,9 @@ pub struct CodeEditorCore {
     /// Monotonic revision — bumped on every text change; adapters key
     /// raster caches on it.
     revision: AtomicU64,
+    /// Plan 673 §4: unified delta queue (read side). Producers push on every
+    /// text-changing edit; `code_editor_delta` drains it (destructive read).
+    delta_queue: Mutex<Vec<TextDelta>>,
     /// Set by native-driven edits (menu/toolbar handlers: undo/redo/cut/
     /// paste) — they mutate the buffer outside the widget event flow, so
     /// the widget consumes this flag on its next `update` and republishes
@@ -477,6 +490,7 @@ impl CodeEditorCore {
             applied_theme: Mutex::new(None),
             search: Mutex::new(SearchState::default()),
             revision: AtomicU64::new(0),
+            delta_queue: Mutex::new(Vec::new()),
             external_dirty: std::sync::atomic::AtomicBool::new(false),
             last_used: AtomicU64::new(0),
             gutter_width_cache: Mutex::new((0, 0.0)),
@@ -601,6 +615,25 @@ impl CodeEditorCore {
         });
         editor.set_cursor(cursor);
         self.revision.fetch_add(1, Ordering::Relaxed);
+        // Plan 673 §4: a whole-document rewrite is one full-replace delta
+        // (old_len measured from the pre-rewrite text; the equality guard
+        // above already guarantees the text changed).
+        self.push_delta(TextDelta { start: 0, end: current.len(), replacement: text.to_string() });
+    }
+
+    /// Plan 673 §4: append one delta to the unified queue. T-01 producer is
+    /// `set_text`; T-02 instruments the remaining edit sites (keystrokes,
+    /// undo/redo, cut/paste).
+    pub(crate) fn push_delta(&self, d: TextDelta) {
+        self.delta_queue.lock().unwrap().push(d);
+    }
+
+    /// Plan 673 §4: destructive read — drain everything queued since the
+    /// last call, paired with the current revision (post-consumption
+    /// watermark). A same-watermark re-read returns empty deltas.
+    pub fn take_deltas(&self) -> (u64, Vec<TextDelta>) {
+        let deltas = std::mem::take(&mut *self.delta_queue.lock().unwrap());
+        (self.revision.load(Ordering::Relaxed), deltas)
     }
 
     /// Mark that a native-driven edit (undo/redo/cut/paste from a menu or
@@ -1723,6 +1756,25 @@ pub fn code_editor_text(key: &str) -> Option<String> {
     map.get(&key).map(|core| core.text())
 }
 
+/// Plan 673 §4.2: destructive read of the unified delta queue, serialized
+/// as `{"revision":N,"deltas":[{"start":n,"end":n,"replacement":"s"},...]}`.
+/// Shape is constant — an empty queue yields `"deltas":[]` at the current
+/// watermark. None = no editor registered for `key`.
+pub fn code_editor_delta(key: &str) -> Option<String> {
+    #[derive(serde::Serialize)]
+    struct Envelope {
+        revision: u64,
+        deltas: Vec<TextDelta>,
+    }
+    let key = normalize_payload_key(key);
+    let map = CODE_EDITORS.lock().unwrap();
+    map.get(&key).map(|core| {
+        let (revision, deltas) = core.take_deltas();
+        serde_json::to_string(&Envelope { revision, deltas })
+            .expect("delta envelope serialization cannot fail")
+    })
+}
+
 /// PLAN-629 T-01: caret top in content space (hosted-scroller scroll-to-
 /// caret command target). None = unknown editor or no layout record yet.
 pub fn code_editor_caret_offset_y(key: &str) -> Option<f32> {
@@ -2425,6 +2477,91 @@ let beta = alpha + 2;
         // A genuinely changed external value still rewrites.
         assert!(code_editor_set_text(&key, "reset"));
         assert_eq!(core.text(), "reset");
+    }
+
+    // ── Plan 673 T-01: unified delta queue (read side) ─────────────────
+
+    /// A successful `set_text` rewrite pushes exactly one full-replace
+    /// delta: `start: 0`, `end` = byte length of the pre-rewrite text,
+    /// `replacement` = the new text (§4.3).
+    #[test]
+    fn set_text_pushes_full_replace_delta() {
+        let mut fs = FontSystem::new();
+        let core =
+            CodeEditorCore::new("test-delta-set-text", CodeEditorConfig::default(), &mut fs);
+        // Fresh core: old text is empty → old_len 0.
+        core.set_text("hello world", &mut fs);
+        let (rev, deltas) = core.take_deltas();
+        assert_eq!(rev, 1, "one edit bumps the watermark to 1");
+        assert_eq!(
+            deltas,
+            vec![TextDelta { start: 0, end: 0, replacement: "hello world".to_string() }]
+        );
+        // Second rewrite: end = byte length of the PREVIOUS text (11 bytes).
+        core.set_text("héllo", &mut fs);
+        let (rev2, deltas2) = core.take_deltas();
+        assert_eq!(rev2, 2);
+        assert_eq!(
+            deltas2,
+            vec![TextDelta { start: 0, end: 11, replacement: "héllo".to_string() }]
+        );
+    }
+
+    /// Core-level no-change `set_text` (same text twice) rewrites nothing
+    /// and therefore pushes nothing — no noise deltas.
+    #[test]
+    fn set_text_no_change_pushes_nothing() {
+        let mut fs = FontSystem::new();
+        let core =
+            CodeEditorCore::new("test-delta-no-change", CodeEditorConfig::default(), &mut fs);
+        core.set_text("same", &mut fs);
+        let (_, deltas) = core.take_deltas();
+        assert_eq!(deltas.len(), 1);
+        core.set_text("same", &mut fs); // early return — no rewrite
+        let (_, deltas) = core.take_deltas();
+        assert!(deltas.is_empty(), "no-change set_text must not push a delta");
+    }
+
+    /// Plan 673 §4.2 registry read面: `code_editor_delta` serializes
+    /// `{"revision":N,"deltas":[...]}`, drains destructively (a second call
+    /// at the same watermark returns `"deltas":[]`), and tracks old_len
+    /// across successive edits.
+    #[test]
+    fn registry_code_editor_delta_destructive_read() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-delta-registry");
+        code_editor_dispose(&key);
+        let config = CodeEditorConfig { lang: "rust".to_owned(), ..CodeEditorConfig::default() };
+        let _core = code_editor(&key, &config);
+
+        // Unknown key → None (mirrors code_editor_text).
+        assert!(code_editor_delta("no-such-editor-673").is_none());
+
+        assert!(code_editor_set_text(&key, "hello"));
+        let json = code_editor_delta(&key).expect("delta envelope");
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["revision"], serde_json::json!(1));
+        assert_eq!(
+            v["deltas"],
+            serde_json::json!([{"start": 0, "end": 0, "replacement": "hello"}])
+        );
+
+        // Destructive read: second call drains nothing new, same watermark,
+        // shape恒定 (no special-casing to an empty string).
+        let json2 = code_editor_delta(&key).expect("delta envelope");
+        assert_eq!(json2, r#"{"revision":1,"deltas":[]}"#);
+
+        // The next edit queues the next delta at the next watermark
+        // (old_len = 5 bytes of "hello").
+        assert!(code_editor_set_text(&key, "hello!"));
+        let json3 = code_editor_delta(&key).expect("delta envelope");
+        let v3: serde_json::Value = serde_json::from_str(&json3).unwrap();
+        assert_eq!(v3["revision"], serde_json::json!(2));
+        assert_eq!(
+            v3["deltas"],
+            serde_json::json!([{"start": 0, "end": 5, "replacement": "hello!"}])
+        );
     }
 
     /// Plan 413 §6.4 performance criterion: a ~1MB source shapes and renders

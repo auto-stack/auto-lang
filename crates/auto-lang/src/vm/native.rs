@@ -669,6 +669,24 @@ pub fn shim_code_editor_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     }
 }
 
+/// `code_editor_delta(key) -> String` — Plan 673 §4.2: destructive read of
+/// the unified delta queue as `{"revision":N,"deltas":[...]}` (empty queue →
+/// `"deltas":[]` at the current watermark).
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_delta(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
+    match crate::ui::code_editor::code_editor_delta(&key) {
+        Some(json) => {
+            let idx = vm.add_string(json.into_bytes());
+            vm.rc_push_str_idx(task, idx as usize);
+            Ok(())
+        }
+        None => Err(VMError::RuntimeError(format!(
+            "code_editor_delta: no editor registered for key {key:?}"
+        ))),
+    }
+}
+
 /// `code_editor_cursor_line(key) -> Int` (0-based line)
 #[cfg(feature = "code-editor")]
 pub fn shim_code_editor_cursor_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
@@ -1593,6 +1611,12 @@ pub fn shim_sys_users(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_code_editor_text(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_text: the `code-editor` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_delta(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_delta: the `code-editor` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "code-editor"))]
@@ -10309,6 +10333,54 @@ print(hidden2)
             // Missing editor key raises a runtime error (not a panic).
             let err = crate::run(r#"let x = code_editor_text("__code_editor_no-such")"#);
             assert!(err.is_err());
+        }
+
+        /// Plan 673 T-01: `code_editor_delta` end-to-end through the full
+        /// Codegen → VM → shim pipeline — destructive read with a constant
+        /// JSON shape (`{"revision":N,"deltas":[...]}`, empty → `"deltas":[]`).
+        #[test]
+        fn vm_code_editor_delta_end_to_end() {
+            use crate::ui::code_editor as ce;
+            use std::sync::{OnceLock, RwLock};
+
+            // Serialize against the registry-touching tests (LRU sweep).
+            let _guard = crate::ui::code_editor::core::REGISTRY_TEST_LOCK
+                .lock()
+                .unwrap();
+
+            fn install_fs(with: &mut dyn FnMut(&mut cosmic_text::FontSystem)) {
+                static FS: OnceLock<RwLock<cosmic_text::FontSystem>> = OnceLock::new();
+                let fs = FS.get_or_init(|| RwLock::new(cosmic_text::FontSystem::new()));
+                let mut guard = fs.write().unwrap();
+                with(&mut guard);
+            }
+            ce::set_font_system_call(install_fs);
+
+            let key = ce::storage_key("vm-native-delta-test");
+            ce::code_editor_dispose(&key);
+            let config = ce::CodeEditorConfig::default();
+            ce::code_editor(&key, &config);
+            assert!(ce::code_editor_set_text(&key, "hello"));
+
+            let (_result, out) = crate::run_with_capture(
+                r#"
+let d = code_editor_delta("__code_editor_vm-native-delta-test")
+print(d)
+let d2 = code_editor_delta("__code_editor_vm-native-delta-test")
+print(d2)
+"#,
+            )
+            .unwrap();
+            // First call drains the set_text full-replace delta; the second
+            // call at the same watermark returns empty deltas (shape恒定).
+            assert_eq!(
+                out.lines().collect::<Vec<_>>(),
+                vec![
+                    r#"{"revision":1,"deltas":[{"start":0,"end":0,"replacement":"hello"}]}"#,
+                    r#"{"revision":1,"deltas":[]}"#,
+                ],
+                "destructive read roundtrip: {out}"
+            );
         }
     }
 

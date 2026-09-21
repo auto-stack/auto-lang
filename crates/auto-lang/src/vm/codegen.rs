@@ -4,7 +4,7 @@ use crate::error::{AutoError, AutoResult};
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::ffi::stdlib::NATIVE_RUST_STDLIB_DISPATCH;
-use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_AUTODOWN_EDITOR_TEXT, NATIVE_DND_START, NATIVE_AUTODOWN_FIND_BLOCK, NATIVE_AUTODOWN_INSERT_TEMPLATE, NATIVE_AUTODOWN_INSERT_TEXT, NATIVE_AUTODOWN_PARSE, NATIVE_AUTODOWN_SERIALIZE, NATIVE_AUTODOWN_TEXT, NATIVE_CLIPBOARD_FILES_GET, NATIVE_CLIPBOARD_FILES_SET, NATIVE_CLIPBOARD_IMAGE_GET, NATIVE_CLIPBOARD_IMAGE_SET, NATIVE_CLIPBOARD_SET_TEXT, NATIVE_CLIPBOARD_TEXT, NATIVE_CODE_EDITOR_COPY, NATIVE_CODE_EDITOR_CUT, NATIVE_CODE_EDITOR_CURSOR_COL, NATIVE_CODE_EDITOR_CURSOR_LINE, NATIVE_CODE_EDITOR_FIND, NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT, NATIVE_CODE_EDITOR_FOLD_TOGGLE, NATIVE_CODE_EDITOR_PASTE, NATIVE_CODE_EDITOR_REDO, NATIVE_CODE_EDITOR_SELECT_ALL, NATIVE_CODE_EDITOR_UNDO, NATIVE_CONSOLE_CLEAR, NATIVE_CONSOLE_LINES, NATIVE_CONSOLE_LOG, NATIVE_CODE_EDITOR_SELECTION_LEN, NATIVE_CODE_EDITOR_SET_TEXT, NATIVE_CODE_EDITOR_TEXT, NATIVE_DIALOG_OPEN, NATIVE_DIALOG_SAVE, NATIVE_FILE_BASENAME, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_PRINT_UNIFIED, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC, NATIVE_SCROLL_BY, NATIVE_SCROLL_CONTROLLER, NATIVE_SCROLL_STATE, NATIVE_SCROLL_TO, NATIVE_SCROLL_TO_END, NATIVE_SCROLL_TO_START, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS, NATIVE_SHELL_EXPORT, NATIVE_SHELL_EXIT};
+use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_AUTODOWN_EDITOR_TEXT, NATIVE_DND_START, NATIVE_AUTODOWN_FIND_BLOCK, NATIVE_AUTODOWN_INSERT_TEMPLATE, NATIVE_AUTODOWN_INSERT_TEXT, NATIVE_AUTODOWN_PARSE, NATIVE_AUTODOWN_SERIALIZE, NATIVE_AUTODOWN_TEXT, NATIVE_CLIPBOARD_FILES_GET, NATIVE_CLIPBOARD_FILES_SET, NATIVE_CLIPBOARD_IMAGE_GET, NATIVE_CLIPBOARD_IMAGE_SET, NATIVE_CLIPBOARD_SET_TEXT, NATIVE_CLIPBOARD_TEXT, NATIVE_CODE_EDITOR_COPY, NATIVE_CODE_EDITOR_CUT, NATIVE_CODE_EDITOR_CURSOR_COL, NATIVE_CODE_EDITOR_CURSOR_LINE, NATIVE_CODE_EDITOR_DELTA, NATIVE_CODE_EDITOR_FIND, NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT, NATIVE_CODE_EDITOR_FOLD_TOGGLE, NATIVE_CODE_EDITOR_PASTE, NATIVE_CODE_EDITOR_REDO, NATIVE_CODE_EDITOR_SELECT_ALL, NATIVE_CODE_EDITOR_UNDO, NATIVE_CONSOLE_CLEAR, NATIVE_CONSOLE_LINES, NATIVE_CONSOLE_LOG, NATIVE_CODE_EDITOR_SELECTION_LEN, NATIVE_CODE_EDITOR_SET_TEXT, NATIVE_CODE_EDITOR_TEXT, NATIVE_DIALOG_OPEN, NATIVE_DIALOG_SAVE, NATIVE_FILE_BASENAME, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_PRINT_UNIFIED, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC, NATIVE_SCROLL_BY, NATIVE_SCROLL_CONTROLLER, NATIVE_SCROLL_STATE, NATIVE_SCROLL_TO, NATIVE_SCROLL_TO_END, NATIVE_SCROLL_TO_START, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS, NATIVE_SHELL_EXPORT, NATIVE_SHELL_EXIT};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 
@@ -535,6 +535,8 @@ fn build_bare_native_intrinsics() -> HashMap<String, u16> {
     intrinsics.insert("code_editor_selection_len".to_string(), NATIVE_CODE_EDITOR_SELECTION_LEN);
     intrinsics.insert("code_editor_find".to_string(), NATIVE_CODE_EDITOR_FIND);
     intrinsics.insert("code_editor_set_text".to_string(), NATIVE_CODE_EDITOR_SET_TEXT);
+    // Plan 673 T-01: unified delta queue read side.
+    intrinsics.insert("code_editor_delta".to_string(), NATIVE_CODE_EDITOR_DELTA);
     // Plan 019 批次八: autodown 文档 natives（.at handler 可编程操作文档）。
     intrinsics.insert("autodown_parse".to_string(), NATIVE_AUTODOWN_PARSE);
     intrinsics.insert("autodown_serialize".to_string(), NATIVE_AUTODOWN_SERIALIZE);
@@ -893,82 +895,12 @@ impl Codegen {
                 .store(true, std::sync::atomic::Ordering::SeqCst);
         }
 
-        let mut intrinsics = HashMap::new();
-        // Register intrinsics - only built-in print functions
-        // "print" defaults to print_str since most print calls are for strings
-        intrinsics.insert("print".to_string(), NATIVE_PRINT_STR);
-        intrinsics.insert("print_i32".to_string(), NATIVE_PRINT_I32);
-        intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);
-        intrinsics.insert("print_str".to_string(), NATIVE_PRINT_STR);
-        intrinsics.insert("write".to_string(), NATIVE_WRITE_STR);
-        intrinsics.insert("assert".to_string(), NATIVE_ASSERT);
-        intrinsics.insert("assert_eq".to_string(), NATIVE_ASSERT_EQ);
-        intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
-        intrinsics.insert("panic".to_string(), NATIVE_RUNTIME_PANIC);
-        // Plan 011 (MS3-B): shell-host bridge functions.
-        intrinsics.insert("system".to_string(), NATIVE_SHELL_SYSTEM);
-        intrinsics.insert("system_status".to_string(), NATIVE_SHELL_SYSTEM_STATUS);
-        intrinsics.insert("export".to_string(), NATIVE_SHELL_EXPORT);
-        intrinsics.insert("exit".to_string(), NATIVE_SHELL_EXIT);
-        // Plan 413: code editor payload accessors (UI bridge).
-        intrinsics.insert("code_editor_text".to_string(), NATIVE_CODE_EDITOR_TEXT);
-        intrinsics.insert("code_editor_cursor_line".to_string(), NATIVE_CODE_EDITOR_CURSOR_LINE);
-        intrinsics.insert("code_editor_cursor_col".to_string(), NATIVE_CODE_EDITOR_CURSOR_COL);
-        intrinsics.insert("code_editor_selection_len".to_string(), NATIVE_CODE_EDITOR_SELECTION_LEN);
-        intrinsics.insert("code_editor_find".to_string(), NATIVE_CODE_EDITOR_FIND);
-        intrinsics.insert("code_editor_set_text".to_string(), NATIVE_CODE_EDITOR_SET_TEXT);
-        // Plan 019 批次八: autodown 文档 natives（.at handler 可编程操作文档）。
-        intrinsics.insert("autodown_parse".to_string(), NATIVE_AUTODOWN_PARSE);
-        intrinsics.insert("autodown_serialize".to_string(), NATIVE_AUTODOWN_SERIALIZE);
-        intrinsics.insert("autodown_text".to_string(), NATIVE_AUTODOWN_TEXT);
-        intrinsics.insert("autodown_find_block".to_string(), NATIVE_AUTODOWN_FIND_BLOCK);
-        intrinsics.insert("autodown_insert_text".to_string(), NATIVE_AUTODOWN_INSERT_TEXT);
-        intrinsics.insert("autodown_insert_template".to_string(), NATIVE_AUTODOWN_INSERT_TEMPLATE);
-        // Plan 019 批次九: 编辑壳全文回读。
-        intrinsics.insert("autodown_editor_text".to_string(), NATIVE_AUTODOWN_EDITOR_TEXT);
-        // Plan 413 follow-up: console natives (in-app Console panel).
-        intrinsics.insert("console_log".to_string(), NATIVE_CONSOLE_LOG);
-        intrinsics.insert("console_lines".to_string(), NATIVE_CONSOLE_LINES);
-        intrinsics.insert("console_clear".to_string(), NATIVE_CONSOLE_CLEAR);
-        // Plan 418: editor actions + clipboard + dialogs (menu/toolbar handlers).
-        intrinsics.insert("code_editor_undo".to_string(), NATIVE_CODE_EDITOR_UNDO);
-        intrinsics.insert("code_editor_redo".to_string(), NATIVE_CODE_EDITOR_REDO);
-        intrinsics.insert("code_editor_select_all".to_string(), NATIVE_CODE_EDITOR_SELECT_ALL);
-        intrinsics.insert("code_editor_cut".to_string(), NATIVE_CODE_EDITOR_CUT);
-        intrinsics.insert("code_editor_copy".to_string(), NATIVE_CODE_EDITOR_COPY);
-        intrinsics.insert("code_editor_paste".to_string(), NATIVE_CODE_EDITOR_PASTE);
-        // Plan 428 P1: code folding natives (view state).
-        intrinsics.insert("code_editor_fold_toggle".to_string(), NATIVE_CODE_EDITOR_FOLD_TOGGLE);
-        intrinsics.insert("code_editor_fold_hidden_count".to_string(), NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT);
-        intrinsics.insert("clipboard_text".to_string(), NATIVE_CLIPBOARD_TEXT);
-        intrinsics.insert("clipboard_set_text".to_string(), NATIVE_CLIPBOARD_SET_TEXT);
-        // Plan 485: native clipboard files/images bare-name intrinsics.
-        intrinsics.insert("clipboard_files_get".to_string(), NATIVE_CLIPBOARD_FILES_GET);
-        intrinsics.insert("clipboard_files_set".to_string(), NATIVE_CLIPBOARD_FILES_SET);
-        intrinsics.insert("clipboard_image_get".to_string(), NATIVE_CLIPBOARD_IMAGE_GET);
-        intrinsics.insert("clipboard_image_set".to_string(), NATIVE_CLIPBOARD_IMAGE_SET);
-        // Plan 488: OLE 拖出（DoDragDrop 调用线程内联阻塞；效果经
-        // on_dnd_finished 事件回注）。
-        intrinsics.insert("dnd_start".to_string(), NATIVE_DND_START);
-        // PLAN-656: scroll-pane controller 原生族（bare-name intrinsics）。
-        intrinsics.insert("scroll_controller".to_string(), NATIVE_SCROLL_CONTROLLER);
-        intrinsics.insert("scroll_to_start".to_string(), NATIVE_SCROLL_TO_START);
-        intrinsics.insert("scroll_to_end".to_string(), NATIVE_SCROLL_TO_END);
-        intrinsics.insert("scroll_by".to_string(), NATIVE_SCROLL_BY);
-        intrinsics.insert("scroll_to".to_string(), NATIVE_SCROLL_TO);
-        intrinsics.insert("scroll_state".to_string(), NATIVE_SCROLL_STATE);
-        intrinsics.insert("dialog_open".to_string(), NATIVE_DIALOG_OPEN);
-        intrinsics.insert("dialog_save".to_string(), NATIVE_DIALOG_SAVE);
-        intrinsics.insert("file_basename".to_string(), NATIVE_FILE_BASENAME);
+        // Plan 673 T-01 single-source fix: this table was a hand-synced copy
+        // of build_bare_native_intrinsics (verified key+value identical,
+        // 56 entries, only insertion order differed). Clone the bare table
+        // instead — Codegen::new() has done the same since PLAN-671.
+        let intrinsics = bare_native_intrinsics().clone();
 
-        // Plan 442 C2: keep in sync with Codegen::new()'s table (dep-module
-        // compiles go through THIS constructor — musk corpus bare-name
-        // aliases must exist here too).
-        intrinsics.insert("encodeURIComponent".to_string(), crate::vm::native::NATIVE_URL_ENCODE);
-        if let Some(&id) = crate::vm::native_registry::NATIVE_ID_MAP.get("auto.fs.read_text") {
-            intrinsics.insert("read_text".to_string(), id);
-        }
-        intrinsics.insert("format".to_string(), crate::vm::native::NATIVE_FMT_SPRINTF);
         // Register return types for native functions (used for type inference in let bindings)
         let mut fn_return_types = Self::build_fn_return_types();
         // Plan 198 Phase 1: Enrich with TypeStore-derived return types (authoritative)
@@ -9578,6 +9510,9 @@ impl Codegen {
                             self.last_expr_type = ObjectType::String;
                         } else if name == "code_editor_text" {
                             // Plan 413: code_editor_text(key) -> String
+                            self.last_expr_type = ObjectType::String;
+                        } else if name == "code_editor_delta" {
+                            // Plan 673 T-01: code_editor_delta(key) -> String (JSON)
                             self.last_expr_type = ObjectType::String;
                         } else if name == "code_editor_cursor_line"
                             || name == "code_editor_cursor_col"

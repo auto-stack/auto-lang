@@ -29,6 +29,10 @@ macro_rules! for_each_native {
             (2913, NATIVE_CODE_EDITOR_SELECTION_LEN, shim_code_editor_selection_len, "auto.code_editor.selection_len"),
             (2914, NATIVE_CODE_EDITOR_FIND, shim_code_editor_find, "auto.code_editor.find"),
             (2915, NATIVE_CODE_EDITOR_SET_TEXT, shim_code_editor_set_text, "auto.code_editor.set_text"),
+            // === Plan 673 T-01: unified delta queue — read side ===
+            // NB: 2930/2931 are taken by auto.host.call/_value (Plan 060 M3,
+            // below in this catalog) — 2939 is the next free 29xx id.
+            (2939, NATIVE_CODE_EDITOR_DELTA, shim_code_editor_delta, "auto.code_editor.delta"),
             // === Plan 413 follow-up: console natives (in-app Console panel) ===
             (2916, NATIVE_CONSOLE_LOG, shim_console_log, "auto.console.log"),
             (2917, NATIVE_CONSOLE_LINES, shim_console_lines, "auto.console.lines"),
@@ -790,6 +794,9 @@ macro_rules! for_each_bigvm_native {
             ("auto.code_editor.selection_len", 2913, Int),
             ("auto.code_editor.find", 2914, Bool),
             ("auto.code_editor.set_text", 2915, Void),
+            // === Plan 673 T-01: unified delta queue — read side (nat 2939;
+            // 2930/2931 already taken by auto.host.call/_value) ===
+            ("auto.code_editor.delta", 2939, String),
             // === Plan 413 follow-up: console natives (in-app Console panel) ===
             ("auto.console.log", 2916, Bool),
             ("auto.console.lines", 2917, String),
