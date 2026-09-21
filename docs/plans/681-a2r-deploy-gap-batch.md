@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-681
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done           # drafting → executing → execution_done → reviewed → archived
 feature_name: a2r-deploy-gap-batch
 author: [zcode]
 created_at: 2026-09-22
@@ -12,7 +12,7 @@ new_spec_components: [SD-01 shell-a2r-seams S1 生成域扩容（handler 体语�
 touched_goals: []
 
 affects: [docs/specs/auto-lang/ui/design/shell-a2r-seams.md, docs/specs/auto-lang/trans/overview.md]
-current_step: 1
+current_step: 7
 total_steps: 7
 ---
 
@@ -176,13 +176,13 @@ S1 生成域（PLAN-674 刚转正词汇门节——本批扩 handler 体面）�
 | ID | 任务 | 依赖 | 落点（文件/符号） | 意图 | AC | 验证命令/预期 |
 |---|---|---|---|---|---|---|
 | T-00 | 全错误集勘定：E0308/E0599 大桶逐错归类 + console_*/file_basename/code_editor_* 声明位归因 + 映射表三层分工（ui_gen/trans/a2r-std）裁定——决策档入 §9 | — | 消费方 workspace + 本计划 §9 | 设计先行 | AC-02/04 | [✅ 已完成] 2026-09-22 勘定：基=plan-681-dev@1f8828d19（叠 674 reviewed），消费方 auto-edit@dc99328 再生成 cargo check=**134 错**（E0425×86/E0308×33/E0599×8/E0618×3/E0433×2/E0277×1/E0061×1，全在 front main.rs，back 骨架桩编译干净）；六族谱系+三层分工裁定入 §9 决策档（含计划外发现：bps 依赖解析面 F2 + front CRUD mock 桩契约错配 F4） |
-| T-01 | 伴生模块通用转译（`src/back/*.at` 扫描通用化，db.at 零回归） | T-00 | auto-man/src/api_gen.rs:657 邻域 | server ① | AC-01 | db 既有测试绿 + fsys 进转译面 |
-| T-02 | route A 接线：`ApiEndpoint.body` 消费 + no-types 有体契约降体 | T-01 | api_gen.rs + api/types.rs | server ② | AC-01 | fsys 端点体非 TODO 金样 |
-| T-03 | trans 内建面：`Env.get` 大写别名 + `fs.tree` 映射（动 trans 本体） | T-00 | auto-lang/src/trans/rust.rs:5687 邻域 | server ③/front 共基 | AC-01 | 映射单测 + `cargo tt` 绿 |
-| T-04 | a2r-std 宿主族：`fs.tree` + console_*/file_basename/code_editor_* 宿主函数 | T-00 | a2r-std/src/fs.rs 等 | server ④/front 宿主 | AC-01/02/05 | 宿主单测 + JSON 逐字节对拍绿 |
-| T-05 | front 转译面接线 + 生成器型面根修：ui_gen handler 体内建映射表 + 循环变量作用域/list·TreeIcon 类型/E0618 带参/E0308 逐族 | T-00..T-04 | ui_gen/rust.rs generate_handler_body 等 | front 全清 | AC-02/04 | 消费方 cargo check 错误数递减收据 → 0 |
-| T-06 | 消费方终验 + 回归 + grep 门：`auto build -r rust` exit 0；perf.py a2r exit 0；cargo t/tt；grep 门 | T-05 | 消费方仓 + 本仓门禁 | 终判据 | AC-03/04/05 | 全绿收据 |
-| T-07 | spec 落账 + 债清偿标记 + 交接：SD-01/SD-02；P670-D1/P674-D3 销账；消费方通知 | T-06 | docs/specs/ + KNOWN-DEBT | 收口 | AC-06 | spec 回读 + 账本回读 |
+| T-01 | 伴生模块通用转译（`src/back/*.at` 扫描通用化，db.at 零回归） | T-00 | auto-man/src/api_gen.rs:657 邻域 | server ① | AC-01 | [✅ 已完成] 2026-09-22：tt 4091/4091 含 db 面零回归 + fsys.rs/api_impl.rs 双发射位在档（back crate 文件+merged 内嵌） |
+| T-02 | route A 接线：`ApiEndpoint.body` 消费 + no-types 有体契约降体 | T-01 | api_gen.rs + api/types.rs | server ② | AC-01 | [✅ 已完成] 2026-09-22：api.at 剥属性行转译 api_impl 端点体真降体（back 委托 handler+front 真契约桩双位；CRUD mock 兜底降末位） |
+| T-03 | trans 内建面：`Env.get` 大写别名 + `fs.tree` 映射（动 trans 本体） | T-00 | auto-lang/src/trans/rust.rs:5687 邻域 | server ③/front 共基 | AC-01 | [✅ 已完成] 2026-09-22：Env→env 归一化+两派发表 tree 臂；cargo tt 4091/4091 绿 |
+| T-04 | a2r-std 宿主族：`fs.tree` + console_*/file_basename/code_editor_* 宿主函数 | T-00 | a2r-std/src/fs.rs 等 | server ④/front 宿主 | AC-01/02/05 | [✅ 已完成] 2026-09-22：fs_tree_parity 双轨逐字节对拍 2/2 绿+迷你库 re-export+console/code_editor=auto_lang 直连+dialog rfd 宿主 |
+| T-05 | front 转译面接线 + 生成器型面根修：ui_gen handler 体内建映射表 + 循环变量作用域/list·TreeIcon 类型/E0618 带参/E0308 逐族 | T-00..T-04 | ui_gen/rust.rs generate_handler_body 等 | front 全清 | AC-02/04 | [✅ 已完成] 2026-09-22：134→72→55→49→**0** 递减收据（F1 映射表/F2 bps 解析/F3 载荷推断/F4 真契约桩/F6/N1/N2 动态记录面 P1-P5/N3 形状表；子代理专段 f12574230） |
+| T-06 | 消费方终验 + 回归 + grep 门：`auto build -r rust` exit 0；perf.py a2r exit 0；cargo t/tt；grep 门 | T-05 | 消费方仓 + 本仓门禁 | 终判据 | AC-03/04/05 | [✅ 已完成] 2026-09-22：auto build -r rust exit 0 + perf.py a2r「a2r 绿」EXIT=0 + cargo t 唯一停跑红=musk p053_4（P645-D2 在册预存豁免）+ signature parity 兜带扩容绿 + grep 门代码位零消费方标识符 |
+| T-07 | spec 落账 + 债清偿标记 + 交接：SD-01/SD-02；P670-D1/P674-D3 销账；消费方通知 | T-06 | docs/specs/ + KNOWN-DEBT | 收口 | AC-06 | [✅ 已完成] 2026-09-22：SD-01/SD-02 worktree 落盘提交；P670-D1/P674-D3 债册清偿标记 master 在案；消费方复跑通知=merge 后以新 master 重建 auto.exe 复跑 perf.py a2r |
 
 ## 9. 复审记录
 
@@ -258,6 +258,7 @@ route A 不止 back 端点真体，还包括 front merged 桩的真契约化（�
   主检出预检=WIP 三簇（examples/rust-workspace 再生成漂移 015-notes 族 +
   examples/ui 001/003 两行变 + Design 32 拆仓调研未提交文档）——他会话所有，
   本计划不动不并 · outcome: 执行中 · next: T-00 全错误集勘定。
+- 2026-09-22 · stage: work · r1 收口 · outcome: **pass → execution_done** · code_commit=worktree plan-681-dev（主体批 + N2/N3 f12574230 + spec 增量 + 兜带扩容；基=plan-674-dev@1f8828d19 叠基） · task_ids=T-00..T-07 全勾 · evidence=`auto build -r rust` exit 0 / perf.py a2r「a2r 绿」EXIT=0 / cargo tt 4091/4091 / cargo t 唯一停跑红=musk p053_4（P645-D2 在册预存豁免）/ fs_tree parity 2/2 / signature parity 绿 / grep 门代码位零消费方标识符（命中仅映射表 VM 内建名位=机制本体） · blockers=无 · next=review（/auto-plan:review；worktree 叠基于 plan-674-dev——674 先 merge 则本支 rebase master 干净，否则携带 674 两 commit 顺延）· 边界登记：dialog 父窗锚 v1 从简（674 降级同族）；--server rust 运行期 HTTP 对拍不在本批（计划非目标）；code_editor View 预制槽载荷参型默认值（事件真值 store 臂自查，坐标默认化=674 I3 同族）；AUTO_LANG_CRATE=PLAN-025 dev 环路口子（merge 后自然解除）
 - 2026-09-22 · stage: work · r1 主体批落地 · worktree=lang-681 ·
   探针递减收据：**134 →(F1 映射表+back route A)→ 72 →(E 载荷推断+F2 bps
   解析+F4 merged 真契约桩+宿主直连)→ 55 →(N1 写臂 Dot 基座形态+F6 借用
