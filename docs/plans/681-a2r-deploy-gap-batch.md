@@ -258,6 +258,15 @@ route A 不止 back 端点真体，还包括 front merged 桩的真契约化（�
   主检出预检=WIP 三簇（examples/rust-workspace 再生成漂移 015-notes 族 +
   examples/ui 001/003 两行变 + Design 32 拆仓调研未提交文档）——他会话所有，
   本计划不动不并 · outcome: 执行中 · next: T-00 全错误集勘定。
+- 2026-09-22 · stage: work · r1 主体批落地 · worktree=lang-681 ·
+  探针递减收据：**134 →(F1 映射表+back route A)→ 72 →(E 载荷推断+F2 bps
+  解析+F4 merged 真契约桩+宿主直连)→ 55 →(N1 写臂 Dot 基座形态+F6 借用
+  收缩+A1 裸 List→Vec<Value>+json! push gate)→ 49**（E0070/E0425/E0433/
+  E0618 全清；余=E0308×25/E0609×22/E0599×1/E0282×1——纯 trans 动态记录
+  面 N2 残差 + N3 view bool 读 ×5）· 实现批已提交 worktree（T-01..T-05
+  主体+fs_tree 对拍 2/2 绿）· N2 五子机制（P1 Value 派生推断/P2 字段索引
+  访问/P3 push json! 包裹/P4 typed 收口/P5 形参收口）+N3 形状表已派
+  专段子代理执行中 · outcome: 执行中 · next: 子代理收敛 → T-06 终验。
 
 ## 10. 待澄清事项
 
