@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-681
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: a2r-deploy-gap-batch
 author: [zcode]
 created_at: 2026-09-22
@@ -12,7 +12,7 @@ new_spec_components: [SD-01 shell-a2r-seams S1 生成域扩容（handler 体语�
 touched_goals: []
 
 affects: [docs/specs/auto-lang/ui/design/shell-a2r-seams.md, docs/specs/auto-lang/trans/overview.md]
-current_step: 0
+current_step: 1
 total_steps: 7
 ---
 
@@ -175,7 +175,7 @@ S1 生成域（PLAN-674 刚转正词汇门节——本批扩 handler 体面）�
 
 | ID | 任务 | 依赖 | 落点（文件/符号） | 意图 | AC | 验证命令/预期 |
 |---|---|---|---|---|---|---|
-| T-00 | 全错误集勘定：E0308/E0599 大桶逐错归类 + console_*/file_basename/code_editor_* 声明位归因 + 映射表三层分工（ui_gen/trans/a2r-std）裁定——决策档入 §9 | — | 消费方 workspace + 本计划 §9 | 设计先行 | AC-02/04 | 决策档在档（子族 × 修法 × 落点） |
+| T-00 | 全错误集勘定：E0308/E0599 大桶逐错归类 + console_*/file_basename/code_editor_* 声明位归因 + 映射表三层分工（ui_gen/trans/a2r-std）裁定——决策档入 §9 | — | 消费方 workspace + 本计划 §9 | 设计先行 | AC-02/04 | [✅ 已完成] 2026-09-22 勘定：基=plan-681-dev@1f8828d19（叠 674 reviewed），消费方 auto-edit@dc99328 再生成 cargo check=**134 错**（E0425×86/E0308×33/E0599×8/E0618×3/E0433×2/E0277×1/E0061×1，全在 front main.rs，back 骨架桩编译干净）；六族谱系+三层分工裁定入 §9 决策档（含计划外发现：bps 依赖解析面 F2 + front CRUD mock 桩契约错配 F4） |
 | T-01 | 伴生模块通用转译（`src/back/*.at` 扫描通用化，db.at 零回归） | T-00 | auto-man/src/api_gen.rs:657 邻域 | server ① | AC-01 | db 既有测试绿 + fsys 进转译面 |
 | T-02 | route A 接线：`ApiEndpoint.body` 消费 + no-types 有体契约降体 | T-01 | api_gen.rs + api/types.rs | server ② | AC-01 | fsys 端点体非 TODO 金样 |
 | T-03 | trans 内建面：`Env.get` 大写别名 + `fs.tree` 映射（动 trans 本体） | T-00 | auto-lang/src/trans/rust.rs:5687 邻域 | server ③/front 共基 | AC-01 | 映射单测 + `cargo tt` 绿 |
@@ -186,22 +186,88 @@ S1 生成域（PLAN-674 刚转正词汇门节——本批扩 handler 体面）�
 
 ## 9. 复审记录
 
+### T-00 决策档：全错误集勘定（2026-09-22）
+
+**基线复现**：消费方 auto-edit@dc99328 + worktree auto.exe（plan-681-dev@1f8828d19
+= plan-674-dev reviewed tip 叠基）再生成 → rust-workspace cargo check = **134 错**
+（E0425×86 / E0308×33 / E0599×8 / E0618×3 / E0433×2 / E0277×1 / E0061×1），
+与立项基线一致；词汇门 0（674 覆盖生效）。**全部错误在 front
+`auto-edit/src/main.rs`；back `auto-edit-back` 骨架空体桩编译干净**。
+
+**六族谱系（子族 × 根因 × 修法 × 落点）**：
+
+| 族 | 错误面 | 根因（实读锚点） | 修法 | 落点 |
+|---|---|---|---|---|
+| **F1 内建函数面** | E0425×62：console_log ×23/console_lines ×25/console_clear ×1/file_basename ×6/code_editor 8 成员 ×11/dialog_open·save ×2/Process ×3/json ×1 | VM 内建（vm/native.rs shim 族 + native_catalog 词位）在 ui_gen 发射器裸函数名零映射 | **映射表单源**（VM 内建名→宿主调用，per-name 表驱动）挂 ui_gen `ast_expr_to_rust` 调用臂 | ui_gen/rust.rs（发射）+ 宿主见三层分工 |
+| **F2 bps 依赖解析面**（计划外） | E0425 toggle_id/flatten_tree ×2 + E0433 TreeIcon ×2 | `use bps.navigation.filetree.tree_util: flatten_tree/toggle_id`（pac.at `dep bps{path:../../../auto-lang/blueprints}`）与裸 widget `TreeIcon`（bps tree_icon.at 70 行）——生成器只收集本地 `src/front/**.at`（rust_ui.rs:2278），bps 依赖面零解析（vue 轨靠 regen 补件、VM 轨 import_aliases 各自为政） | 生成器依赖解析扩域：pac.at dep 声明 → bps 包按名解析 use-fn 源与 widget 源 → 转译内联进生成物（**通用机制，消费方名零硬编码**） | auto-man/rust_ui.rs 收集面 + ui_gen 转译面 |
+| **F3 生成器型面/作用域** | E0425 循环变量 i×4/id×2/x·y×1（main.rs:188-224 根视图闭包）+ E0618×3（:250 TabActivate/CloseTab unit 变体带参）+ E0308×2（:250 expected () found View） | for 索引/嵌套闭包参数未绑定（enumerate 缺失）；msg 枚举载荷判定与 on_click 发射点不一致；view 链 if/else 臂型 | 逐点根修：索引绑定/变体载荷契约对齐/臂型收口 | ui_gen/rust.rs 视图发射 |
+| **F4 front api 桩契约错配**（route A 前半） | E0308 大桶主体（:660/:661/:696/:699/:703/:748）+ E0599/E0277 Display 级联 ×7 + E0061×1 | `generate_merged_api_client` CRUD 兜底臂（PLAN-648 T-03 明示保留，优先级①db ②viewer ③CRUD）把标量服务端点发成 `fn tree(id: i32)->Option<Value>` API_DATA mock——与真契约（`tree(path str, depth int) str`）错配 | CRUD 兜底前插**伴生模块吸收臂**（merged_db_impl `pub mod db` 先例同款 → `pub mod fsys`）+ 端点真契约桩（参数/返回型取 ApiEndpoint，体=api.at 端点体转译委派 fsys::*） | auto-man/rust_ui.rs + api_gen.rs（route A） |
+| **F5 server 四缺口** | （back 编译过但六端点空体桩——AC-01 非编译错） | survey §2 表：伴生模块只认 db.at/route A 未建/Env.get·fs.tree 零映射/a2r-std 无 tree | 照 survey 执行（T-01..T-04） | api_gen.rs + trans/rust.rs + a2r-std |
+| **F6 实参形态** | E0308 ×3-4（:729-731 code_editor_cursor String→&str） | 既有映射（code_editor_cursor）实参发射缺借用收缩 | 映射表实参形状统一（&str 位 `.as_str()`/`&`） | ui_gen/rust.rs |
+
+**三层分工裁定（§10-1 落定）**：
+
+1. **ui_gen/rust.rs**（handler 体域，**裸函数名**内建映射表单源）：console 族
+   （→`auto_lang::vm::ui_console::{ui_console_push/ui_console_lines(DEFAULT_LINES)/ui_console_clear}`
+   ——**§10-3 裁定：宿主=auto_lang 直连**，VM shim 与 a2r 生成物同一实现零分叉，
+   code_editor 先例同款；console_log 块表达式 `{push; true}` 保 bool 语义）；
+   file_basename（→`a2r_std::fs::basename`，rsplit(['/','\\']) 同式）；
+   code_editor 8 成员（→`auto_lang::ui::code_editor::<同名>` 直连，生成物已依赖
+   auto_lang，code_editor_text :1678 先例）；dialog_open/save（→新增
+   `auto_lang::ui::dialog::{open/save}` 宿主，rfd 同式——VM shim 体上提为宿主
+   fn 双消费；attach 父窗锚 a2r 形态 v1 从简，边界登记）；Process.exit
+   （→`std::process::exit`，auto.process.exit 语义直连）；json.to_value
+   （→`serde_json::from_str::<Value>(x).unwrap_or(Value::Null)`，VM 无效串
+   行为实现期核对）。
+2. **trans/rust.rs**（obj.method 跨层共用名，server 伴生模块转译面）：`Env.get`
+   大写别名（`File`/`fs` delete 别名先例 :5792/:8132）+ `("fs","tree")` 映射
+   （两族派发表 :5713/:5914/:5965/:8032-8141 均补）。**tt 档门**。
+3. **a2r-std 独立 crate 宿主**：`fs::tree`（JSON 逐字节对齐 VM `fs_tree_walk`
+   ：{id,label,children,kind,icon,is_leaf,badge} 嵌套、dirs-first+大小写不敏感
+   排序、跳过表 .git/target/build/node_modules/gen/dist/__pycache__+dotfile、
+   depth clamp 1-8、空→`[]`）+ `fs::basename`；console/code_editor/dialog 宿主
+   =auto_lang 直连（零分叉优先，**不落 a2r-std**）。
+
+**⚠️ qualify_a2r_std 保护**：api_gen 后处理把裸 `a2r_std::` 重限定进
+auto_lang::a2r_std **迷你库**（仅 List/May/StringAsStr）——`a2r_std::{env,fs}::`
+须沿 `sys` 先例（rust_ui.rs PLAN-668 R-24）保护直连独立 crate（back 模板已含
+a2r-std dep :801；front 模板实现期核对）。
+
+**E0308 ×33 大桶归因（§10-2 落定）**：主根=F4 桩契约错配（级联 Display
+Option<Value> ×7 + E0061）+ F1 映射缺失类型回落（String.iter :320=flatten_tree
+缺席级联）；独立型面残余=F3（闭包绑定 ×8/E0618 ×3/View 臂 ×2）+ F6 实参
+形态 ×3——分流在册，无计划外独立型面缺口族。
+
+**工作量注记**：F2（bps 依赖解析）为计划外新增面（原计划把 toggle_id 等 4 名
+宽归"内建函数面"桶），预估 +100-200 行；F4 修正了 route A 的形状认知——
+route A 不止 back 端点真体，还包括 front merged 桩的真契约化（同一转译源
+两发射位）。
+
+
 - 2026-09-22 · stage: new · r1 起草 · 授权=用户指令（「括P670吧」
   裁定 P674-D3 并入 P670-D1 清偿面 + 「走 /auto-plan:new」立项）·
   范围=**立项起草（drafting）；执行另行授权** · outcome: **pass
   （待执行授权）** · next: **work**（授权后自 T-00 起；§10-1 映射
   分工与 §10-2 E0308 大桶根因 T-00 勘定后定）。
+- 2026-09-22 · stage: work · r1 开工 · 授权=用户指令「计划681: auto-plan-work 开工」·
+  worktree=`D:/autostack/.wt/lang-681/auto-lang` branch=`plan-681-dev` ·
+  **基=plan-674-dev@1f8828d19（叠基裁定**：错误基线"词汇门 23→0 后 ~135 错"依赖
+  PLAN-674 reviewed 实现，674 未 merge 前唯一可复现基线；674 先 merge 则本支
+  顺延干净**）** · 代码落点确认=三 crate 全在本仓 workspace
+  （crates/auto-man、crates/auto-lang、crates/a2r-std）单仓计划 ·
+  主检出预检=WIP 三簇（examples/rust-workspace 再生成漂移 015-notes 族 +
+  examples/ui 001/003 两行变 + Design 32 拆仓调研未提交文档）——他会话所有，
+  本计划不动不并 · outcome: 执行中 · next: T-00 全错误集勘定。
 
 ## 10. 待澄清事项
 
-1. **映射表三层分工**（T-00 裁定）：front handler 体内建函数转译落
-   ui_gen 映射表 vs trans 面（与 server 缺口③同表）vs 全落 a2r-std
-   宿主——倾向：转译发射在 ui_gen（handler 体域）+ 宿主实现集中
-   a2r-std + 跨层共用名（Env.get/fs.tree）走 trans 面，T-00 依
-   `generate_handler_body` 结构实勘定。
-2. **E0308 ×33 大桶根因**（T-00 归类）：预期与内建面缺映射同根
-   （类型推断回落 f64 缺省——ui_gen 既有注释在档），若含独立型面
-   缺口则分流登记。
-3. **console 缓冲宿主形态**（T-00 附带）：console_lines 读面在 a2r
-   编译进程的承载（线程本地 ring vs 进程级——消费方 console_panel
-   挂载形态实勘）。
+1. ~~映射表三层分工~~ **已裁定（T-00 §9 决策档）**：ui_gen 裸函数名映射表
+   （console/code_editor/dialog/Process/json.to_value/file_basename 发射）+
+   trans 跨层共用名（Env.get/fs.tree）+ a2r-std 宿主（fs.tree/basename）；
+   console/code_editor/dialog 宿主=auto_lang 直连（零分叉优先）。
+2. ~~E0308 ×33 大桶根因~~ **已归因（T-00）**：主根=front CRUD mock 桩契约
+   错配（generate_merged_api_client 兜底臂，PLAN-648 T-03 保留契约的错配面）
+   + 内建缺失类型回落级联；独立残余=闭包绑定/E0618/实参形态（F3/F6 在册）。
+3. ~~console 缓冲宿主形态~~ **已裁定（T-00）**：auto_lang::vm::ui_console 直连
+   （VM shim 同一 ring，DEFAULT_LINES=200 newest-first '\n' join，进程级
+   Mutex<VecDeque> CAP=500——a2r 生成物进程内同语义）。
