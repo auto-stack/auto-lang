@@ -1118,6 +1118,9 @@ fn layout_view_block<M: Clone + std::fmt::Debug>(
     let mut cursor = 0.0f32;
     let mut cross_max = 0.0f32;
     let mut first = true;
+    // 交叉轴居中（列臂 items-center）首轮自然宽录制——仅 parent 声明
+    // 居中时收集（热路径零余账；Horizontal 主轴臂不需要逐子宽）。
+    let mut child_widths: Vec<f32> = Vec::new();
     for view in views {
         // PLAN-032 T-02（D3）：hidden 子级整段跳过——不占主轴 cursor 也
         // 不参与 gap 序（CSS display:none：兄弟间只留一个 gap，非每
@@ -1146,6 +1149,9 @@ fn layout_view_block<M: Clone + std::fmt::Debug>(
                     x
                 };
                 let laid = layout_view_node(ctx, view, child_x, y + cursor + my, inner_w);
+                if parent.center_children {
+                    child_widths.push(laid.size.0);
+                }
                 cursor += my + laid.size.1 + style.box_layout.margin_bottom.unwrap_or(0.0);
                 cross_max = cross_max.max(laid.size.0);
             }
@@ -1180,6 +1186,39 @@ fn layout_view_block<M: Clone + std::fmt::Debug>(
             cross_max = cross_max.max(my + laid.size.1);
         }
         let size = (w.max(cursor - slack), cross_max);
+        place_absolute_children(ctx, &absolute_children, x, y, w, size.1);
+        return Laid { size };
+    }
+    if dir == Dir::Vertical && parent.center_children && !child_widths.is_empty() {
+        // 交叉轴居中（items-center 列臂）：首轮自然宽已录 → 撤产物后以
+        // (w - natural_w)/2 起点重排（Horizontal 主轴两遍法同构；块流
+        // 无 Fill——自然宽 = 首轮 laid.size.0，重排零测量漂移；固定宽
+        // 子级的自身居中臂与本通道偏移恒等，双录不冲突）。
+        ctx.ops.truncate(ops_mark);
+        ctx.hits.truncate(hits_mark);
+        let mut cursor = 0.0f32;
+        let mut cross_max = 0.0f32;
+        let mut first = true;
+        let mut wi = 0usize;
+        for view in views {
+            let style = node_style_of_view(view);
+            if style.hidden || style.absolute {
+                continue;
+            }
+            if !first {
+                cursor += gap;
+            }
+            first = false;
+            let my = style.margin_y();
+            let inner_w = style.fixed_w().unwrap_or(w);
+            let natural_w = child_widths[wi];
+            wi += 1;
+            let child_x = x + (w - natural_w).max(0.0) / 2.0;
+            let laid = layout_view_node(ctx, view, child_x, y + cursor + my, inner_w);
+            cursor += my + laid.size.1 + style.box_layout.margin_bottom.unwrap_or(0.0);
+            cross_max = cross_max.max(laid.size.0);
+        }
+        let size = (cross_max.max(0.0), cursor.max(0.0));
         place_absolute_children(ctx, &absolute_children, x, y, w, size.1);
         return Laid { size };
     }
@@ -2514,6 +2553,50 @@ mod tests {
 
     fn counter() -> RqProjector<Counter> {
         RqProjector::new(Counter { count: 0 }, 480.0, 320.0)
+    }
+
+    /// 列臂 items-center 探针（无事件面，() 消息即足）。
+    #[derive(Debug)]
+    struct CenterProbe;
+
+    impl Component for CenterProbe {
+        type Msg = ();
+
+        fn on(&mut self, _msg: ()) {}
+
+        fn view(&self) -> View<Self::Msg> {
+            View::col()
+                .style("items-center")
+                .child(View::text_styled("abcd", "text-base"))
+                .build()
+        }
+    }
+
+    /// 交叉轴居中（列臂 items-center）：parent.center_children 在
+    /// Vertical 块的消费通道——自然宽文本以 (w-自然宽)/2 起点放置。
+    /// 修复前该标志仅 Horizontal 臂消费（:Horizontal 两遍法），列内
+    /// 恒左贴 x=MARGIN（001-helloworld 实机分歧面）。
+    #[test]
+    fn vertical_items_center_centers_natural_width_children() {
+        let mut p = RqProjector::new(CenterProbe, 480.0, 320.0);
+        let frame = p.render_frame();
+        let xs: Vec<f32> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text { x, .. } | DrawOp::TextStyled { x, .. } => Some(*x),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(xs.len(), 1, "单文本 op 形态: {xs:?}");
+        let w = 480.0 - MARGIN * 2.0;
+        let natural = measure_text("abcd", TEXT_SIZE);
+        let want = MARGIN + (w - natural).max(0.0) / 2.0;
+        assert!(
+            (xs[0] - want).abs() < 1.0,
+            "items-center 列的文本应居中于 {want}，实得 {}（修复前恒左贴 {MARGIN}）",
+            xs[0]
+        );
     }
 
     fn texts_of(frame: &DrawList) -> Vec<&str> {
