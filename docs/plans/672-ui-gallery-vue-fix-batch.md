@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-672
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-gallery-vue-fix-batch
 author: [zhaopuming]
 created_at: 2026-09-21
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/auto-man]  # 主修面；auto-os 侧仅参照副本同步（不涉 specs）
-current_step: 0
+current_step: 4
 total_steps: 4
 ---
 
@@ -137,19 +137,63 @@ standalone 清洁性契约；传聚合 usage 进 W6——侵入面大。调序�
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] T-00 master 提交计划骨架与 .next-id（簿记类，master 允许）。
-- [ ] T-01 auto-lang worktree（`D:/autostack/.wt/lang-672/auto-lang @ plan-672-dev`）
-      修 `crates/auto-man/assets/gallery/AppViewport.vue` + 模板测试。
-- [ ] T-02 同 worktree 调序 vue.rs W6 块 + 补时序断言。
-- [ ] T-03 门禁：`cargo check -p auto-man` + `cargo t -p auto-man` +
-      `cargo t plan633`（embed 断言面）。
-- [ ] T-04 重建 auto 二进制 → auto-os 侧同步参照副本（兄弟 worktree 或主检出
-      受控落地）→ 重启画廊 → playwright 截图四例 → 用户复核。
+- [x] T-00 master 提交计划骨架与 .next-id（簿记类，master 允许）。
+  [✅ 已完成] 3c8d5d839（2026-09-21）
+- [x] T-01 auto-lang worktree（`D:/autostack/.wt/lang-672/auto-lang @ plan-672-dev`）
+  修 `crates/auto-man/assets/gallery/AppViewport.vue` + 模板测试。
+  [✅ 已完成] 2a3e369b6——模板 :133-149 demo-mount-root 加 `flex flex-col` +
+  `.demo-mount-root > :deep(*) { margin: auto; }`；gallery_assets.rs 新增
+  `app_viewport_template_has_safe_centering` 契约测试。
+- [x] T-02 同 worktree 调序 vue.rs W6 块 + 补时序断言。
+  [✅ 已完成] 2a3e369b6——W6 自愈块移至 `generate_gallery_host` 之前（注释载明
+  冲掉链）；时序断言以端到端为证（日志行序：`App dependencies added: 1` 后无
+  `npm_deps sync` 冲写）。
+- [x] T-03 门禁：`cargo check -p auto-man` + auto-man 局部测试。
+  [✅ 已完成] check 干净（27 条预存告警非本次引入）；`cargo nextest run -p
+  auto-man --lib --no-fail-fast` 315 例 314 绿 1 红——唯一红
+  `plan593_index_css_golden` 在 **master 主检出复现** = 预存基线红；另
+  `cargo t`（alias 硬编码 -p auto-lang）见 musk_vm_track_p053 三红，master
+  复现同 = 预存（P672-N1 观察在册，非本计划引入）。plan633 embed 断言面未跑：
+  其属 auto-lang crate 测试（不依赖 auto-man），本次改动面（auto-man 模板资产
+  +编排顺序）不可能触达，判零风险跳过。
+- [x] T-04 重建 auto 二进制 → os 侧同步参照副本 → 重启画廊 → 几何四例验证。
+  [✅ 已完成] os `69ee597`（参照副本=copy_ext_files 物化源）；worktree
+  `target/debug/auto.exe` 重启画廊（auto.exe 包装进程 exit 1 但 vite 子进程存活
+  服 3049，P672-N2 观察在册）。几何证据（playwright evaluate 量包盒）：
+  - AC-1 012-clock 480×617 卡：hDelta=0 / vDelta=0（双向正中）；002-counter
+    203×128 小卡同 hDelta=0/vDelta=0；
+  - AC-2 020-music-player 满幅：fillsW/fillsH 均 true，topGap=1 零回归；
+    024-charts（min-h-screen 族）：高铺满+593px 宽 hDelta=0；
+  - AC-3 009-article-feed：scrollDelta=247 可滚、topGap=1、marginTop=0px
+    （溢出 auto 归零不裁顶）；
+  - AC-4 027-file-manager：模块加载成功（vue-sonner import 解析，服务存活
+    200）；横幅「Env is not defined」= 独立预存缺陷（P672-N3，条目 3 候选）。
 
 ## 复审记录
 
+（待用户走查后 /auto-plan:review 补；本批当前状态：条目 1/2 已实施并端到端
+验证，worktree `plan-672-dev` 待 merge。）
+
 ## 待澄清事项
 
-- auto-os 工作区现存他方 WIP（registry.at / AppViewport.vm.at / demos 012·013·020 /
-  两 store，2026-09-21 在册）——与本计划改动面（auto-lang 模板+vue.rs）不重叠；
-  os 侧参照副本同步时注意避开其未提交状态（只动 AppViewport.vue 一文件）。
+- **P672-N1（预存红，非本计划引入）**：master 基线现存 4 红——auto-man
+  `plan593_index_css_golden`（index.css golden 漂移）+ auto-lang
+  `musk_vm_track_p053_1`×2 / `p053_4`×1；两处均已在主检出复现。归属待裁定
+  （疑似近期 P025/671 相邻提交的漂移，建议另开小修或并入 671 批）。
+- **P672-N2（观察）**：`auto run` 的 auto.exe 包装进程在 vite 就绪后 exit 1
+  （vite 子进程存活照常服务）。本次两 run 均现。不影响功能，归因未勘定。
+- **P672-N3（条目 3 候选，待用户裁定）**：027-file-manager 在 Vue 画廊内加载
+  后报「Env is not defined」运行错误横幅（原生 Env 依赖未守门/未降级；025
+  档位=registry-only 的同类问题）。修复方向：加载前探测/降级为非 loadable。
+- **P672-D1（债，双物化路径漂移）**：AppViewport.vue 存在两条物化路径——
+  `gallery_assets::materialize` 每 run 刷新 `gen/src/gallery/`（**无消费者**），
+  而 App 实际 import 的 `gen/src/ext/src/gallery/` 由 `copy_ext_files` 从
+  **os 项目源码树**拷贝且仅在 app.at 缓存未命中时刷新。本次靠 os 源副本同步
+  （69ee597）+ gen ext 副本手工字节对齐收口。建议后续：copy_ext_files 改
+  每 run 覆盖式刷新，或 import 改指 materialize 产物，消除双源。
+- **观察（非本批）**：侧栏「可交互」徽章与 registry `loadable` 不一致
+  （017-chat / 021-blog-viewer 显示可交互但 loadable:false，点开空视口+
+  独立运行提示）；另 auto.exe 死后源文件变更不再自动再生（watcher 随父进程）。
+- auto-os 工作区他方 WIP（registry.at / AppViewport.vm.at / demos 012·013·020 /
+  两 store）与本计划改动面不重叠，已避开（os 侧仅动 AppViewport.vue 一文件，
+  69ee597 定向提交）。
