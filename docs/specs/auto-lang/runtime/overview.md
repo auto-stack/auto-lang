@@ -26,6 +26,29 @@
 - 网络栈按 docs/design/13 的层次落地在 `stdlib/auto/`：`http.at`+`http.vm.at`、
   `net.at`、`async.at`+`async.vm.at`、`json/url/log/env/sse` 等，双文件（部分三文件 `.rs.at`）模式真实存在。
 
+## File 内建契约（VM/a2r 双轨）（PLAN-673 SD-02）
+
+File 面此前未细化，本节为新增（契约详档 `design/autoui/editor-kernel.md` §5）：
+
+- **`read_text(path)`**：整串读，错误（缺文件/IO）→ 空串（沿 `unwrap_or_default` 先例）。
+- **`read_text_range(path, offset, limit)`**（nat#1016，`auto.file.read_text_range`）：
+  stdlib `#[vm]` 声明 + `rust_fn` inventory 轨道（非 for_each_native catalog）。返回 JSON 信封：
+  - 成功 `{"text":…,"total":<文件字节数>,"next_offset":<offset+text.len()>}`；
+  - **EOF**：`offset >= total`（空文件同）→ `{"text":"","total":<实际值>,"next_offset":null}`；
+    `next_offset` **仅在真 EOF**（`offset+text.len() >= total`）时为 null——磁盘尾短读
+    不得伪 EOF（消费方只凭 `next_offset == null` 判 EOF）；
+  - **错误形**（IO 错/无效 UTF-8/`offset<0`/`limit<=0`）→
+    `{"text":"","total":-1,"next_offset":null}`（消费方以 `total < 0` 判错）。
+  - 块两缘绝不半字符：`offset` 落 mid-char 回退前缘，limit 截断回退后缘（char boundary）。
+- **P670-D1 双轨逐字节纪律**：VM 侧 `vm/ffi/stdlib.rs:shim_file_read_text_range` ↔ a2r 侧
+  `a2r-std/src/fs.rs:read_text_range` 同一 serde 形状/字段序/边界语义；对拍测试
+  `tests/read_text_range_parity.rs`（14 组边界矩阵断言 byte-identical；a2r 侧 usize 无负数
+  面，负数错误形仅 VM i32 可达，两侧注释互标注）。aavm 自举双臂在册：
+  `auto/lib/engine.at` nat#1016 CallNat 臂 + `auto/lib/codegen.at` 发射臂
+  （aavm2_bin prelude File shim 补同名直通，语料不触达、仅为可编译）。
+- **M1 不发射面**：ts_adapter/vue client 不发射本内建（vue 轨对这些内建无运行时，
+  consumers.d.ts 为 fail-fast 声明层）；vue/split 轨需真实分块端点时另立计划。
+
 ## 关键入口
 
 - `crates/auto-lang/src/runtime.rs:ExecutionEngine` — 运行期状态容器（每次执行 ephemeral）

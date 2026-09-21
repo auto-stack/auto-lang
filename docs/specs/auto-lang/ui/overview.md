@@ -29,6 +29,47 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
   DesktopBus v0——单 OS 窗口内多 App 虚拟桌面。
 - **a2ui 协议** 与 **`#[api]` 前后端契约**（`src/api/`）。
 
+## 现状（2026-09-22）——code_editor 内核 rope 化 + 统一 delta 流（PLAN-673）
+
+内建编辑器存储/事件底座换代（契约详档 `design/autoui/editor-kernel.md`）：
+
+### 缓冲架构契约（SD-01）
+
+- **rope = 文档事实源**：`CodeEditorCore` 持 `doc: Mutex<rope::Rope>`（自实现 AVL
+  rope，`core/rope.rs`，零新依赖）；cosmic Buffer 暂为全量物化视图。锁序纪律：
+  **永不持编辑器守卫锁 doc**（rewrite 末尾显式 drop 后重建 rope）。
+- **摘要层**：根节点缓存 bytes/chars/newlines（+首末行长/高），`len_bytes`/
+  `len_chars`/`line_count` O(1)；`byte_to_point`/`point_to_byte`/`line_start_byte`/
+  `line_end_byte` O(log n) locate（复杂度表 design §3.2）。
+- **快照隔离（COW）**：`RopeSnapshot`（节点 Arc 不可变，变异只拷脊柱）——后台
+  只读读者（`find_next` 行扫描已走快照）与主线程编辑零锁并发；Send+Sync；
+  单写者纪律（UI 线程写，后台持快照读）。
+- **同步路径**：`rewrite`（set_text/agent edit 低频全量路）自新文重建 rope；
+  击键/IME/undo/cut/paste 走单一提交路径（derive 区间 → `rope.replace_bytes`
+  O(log n)+O(k) → 推 delta），区间推导/rope 变异/delta 发射同一码路径不漂移。
+- **现状限制（延后，债候选）**：视口物化（Buffer 窗口化装载 rope 视口行）延后
+  ——cosmic Buffer 无行窗口 API + 渲染/命中/滚动 15+ 触点需 doc↔viewport 映射
+  （裁定记录见 plan 673 T-05 S2 提交）；逐击键 before/after 全文快照维持 O(n)
+  基线（100MB 冒烟单键 25.3s/debug，收据在册），视口局部 diff 与窗口平移同批后续。
+
+### 编辑事件契约（SD-01）
+
+- **统一 delta 队列**：三来源同流——人击键（`handle_key` 包装 + ImeCommit）、
+  agent 结构化写、undo/redo/cut/paste——消费方无差别。
+- **读面**：`code_editor_delta(key)`（nat#2939，destructive read）回 JSON
+  `{"revision":N,"deltas":[{"start","end","replacement"}]}`；UTF-8 字节偏移、端点
+  char boundary；空队列回 `"deltas":[]` 形状恒定；revision=既有 AtomicU64 水位，
+  跳变=漏窗，消费方兜底整串 `code_editor_text` 重同步（本面不重放历史）。
+- **写面**：`code_editor_edit(key,start,end,replacement)`（nat#9906）单 API 三形态
+  （start==end 插入 / replacement=="" 删除 / 其余替换）；非法入参（越界/start>end/
+  非 char boundary）→ false + eprintln 报错不静默、不猜边界；推调用方精确区间 delta。
+- **set_text**：整串改写=单条全量 delta `{0, old_len, new_text}`；registry 层
+  `last_external` 差分守卫不变（agent 写不触碰——视图重建推陈旧 DSL 值命中
+  等值早退，不覆盖编辑）。
+- **双通道**：delta=数据面，external_dirty=widget 重发布信号面，二者并存
+  （undo/redo/cut/paste 埋点后 mark_external_dirty 全保留）。
+- `code_editor_text` 整串读保留兼容，文档注明为非推荐路径（推荐 delta 增量面）。
+
 ## 现状（2026-09-20）——menubar 快照可见性与开合持久性（PLAN-664 U-1）
 
 041 矩阵六失败根修：MCP 打开 menubar 后展开项不进 `autoui_snapshot` 的
