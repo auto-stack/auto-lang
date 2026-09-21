@@ -2071,6 +2071,10 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
         // 右键表（MouseArea 同律）。折叠 gutter 点击/搜索面板跳转等
         // 宿主面板族 not-yet（I3 随注——消费方 L1/L2 结构+存活+满帧
         // 不依赖）。
+        // 复审 R-1（§10-4 定边界）：`on_cursor` 显式降级弃置（I3 留痕）
+        //——最小键入面之外（消费方声明位如 auto-edit oncursor:
+        // .CursorMoved；inproc 轨经 widget on_cursor 派发，RQ 轨 v1
+        // 不回传 caret 移动事件），接线随消费方需要另立（P674-D4）。
         View::CodeEditor {
             key,
             value,
@@ -2082,7 +2086,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             tab_width,
             font_size,
             on_change,
-            on_cursor: _,
+            on_cursor: _,   // R-1：显式降级弃置（见上注/P674-D4），非静默
             on_context_menu,
             search,
             style: _,
