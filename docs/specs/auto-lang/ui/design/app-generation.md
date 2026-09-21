@@ -42,6 +42,17 @@
 
 **评测度量**：AI 从 spec 达到 green build + 功能对等所需的修复轮次 N；N 不降之处 = 下一波该吸收进语言的能力。
 
+## vue 轨发射一致性契约（PLAN-677）
+
+双轨（vm/vue）渲染与交互语义必须同源；vue 轨缺口修复一律落在生成器/模板层（消费方禁止补件生成物，2026-09-21 裁定）。以下四条为经复审的永久契约：
+
+1. **视图声明式 menubar 族 lowering**：`menubar-menu/trigger/content/item/separator/checkbox-item` 必须 lower 到 shadcn Menubar 组件树（项渲染=icon(lucide 子组件)+title(span)+MenubarShortcut 右对齐 span；`enabled: expr`→`:disabled="!(expr)"`取反；`checked: expr`→MenubarCheckboxItem `:checked` 单向；`onclick`→契约事件），语义与 vm 侧 convert_menubar_component 同源；registry 查找键同时接受连字符与下划线两形态。验收 AC-04（消费方 auto-edit 浏览器实测）。
+2. **for 循环透明包装**：fallback v-for 包装对单 Conditional 体循环发 `<template v-for :key>`（不产盒，内容直接参与父弹性布局）；多语句体维持 div 包装（多子迭代的块级布局语义不变）；SVG 子树维持 Plan 502 先例。验收 AC-01。
+3. **natives 三层发射**：R 层真实现（`file_basename` rsplit 末段/双分隔符；`console_*` 内存 buffer，cap 500、lines(n=200) 最新在前——语义镜像 vm native.rs/ui_console.rs）；B 层 editorBridge 按 DSL editor key 寻址 code_editor_* 内建（光标 0-based、折叠行号 1-based、隐藏行计数；非活动编辑器静默 no-op = vm 单活动编辑器语义）；S 层维持 fail-fast 桩（671 §10-1）。验收 AC-05/06。
+4. **脚手架修复可传播**：CodeEditor 壳与 editorBridge 同步发射于新建（generate）与再生成（regenerate_source_files）两管线；使用中的旧版自有脚手架（codemirror import 签名可识别）覆写为最新模板，手写文件零碰。验收 AC-07（稳态二跑零漂移）。
+
+> 证据：消费方 auto-edit 冷再生成+浏览器五点实测（docs/plans/evidence/677/）；门禁 cargo tf 3694/3694 + tt 4063/4063。
+
 ## 显式非目标
 
 - 不做 Vue→Auto 反向转译（lossy，背离"AI 直写 Auto、编译到 Vue"的方向）。
