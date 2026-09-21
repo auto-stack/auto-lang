@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-682
-status: executing
+status: execution_done
 feature_name: mcp-snapshot-determinism-and-vue-generator-fixes（快照投影确定性 + vue 生成器四缺陷修复批）
 author: [zhaopuming]
 created_at: 2026-09-22T00:00:00+08:00
 updated_at: 2026-09-22T00:00:00+08:00
 plan_revision: 1
-current_step: 0
+current_step: 4
 total_steps: 4
 supersedes_spec_components: []
 new_spec_components: []
@@ -138,6 +138,11 @@ detect 并集 + 直接调 `crate::vue_shadcn::materialize(&output_dir,
     产物面各自直验通过）；主检出会话落地后 rebase 复验。
   - cargo check auto-lang + auto-man lib 绿（auto-man bin 空壳为上游
     既有态）。
+- 2026-09-22 work 收口：T-01..T-04 全数完成，AC-01..04 逐条证据见上，
+  outcome=pass，next=review。同批同组 worktree 附带件：auto-down
+  engine D-17 键入发射修复（分支 auto-lang-dev commit 3373a5c，
+  changeset plan-022-d17-input-pipeline.md，回归测试 3 例 + 引擎全量
+  836/836 绿）——其 review/merge 走 auto-down 自己的 changeset 流。
 
 ## 7. 待澄清事项
 
