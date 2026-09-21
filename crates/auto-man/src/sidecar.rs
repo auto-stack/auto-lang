@@ -91,6 +91,21 @@ fn fill(spec: &mut SidecarSpec, modules: Vec<String>, deps: Vec<String>) {
         if let Some((name, version)) = entry.split_once(':') {
             let name = name.trim();
             if !name.is_empty() && !version.trim().is_empty() {
+                // PLAN-025 续(024 顺带根修):name:path:REL 形态 = path
+                // 依赖(025 pac.at 注入约定;注入器此前未实现该分支,
+                // 生成 `name = "path:REL"` 畸形 toml 挡死 cargo build)。
+                // 值存最终 toml 表达式:版本依赖原样;path 依赖展开
+                // `{ path = "REL" }`。幂等检查按行前缀 name 仍命中。
+                if let Some(rel) = version.strip_prefix("path:") {
+                    let rel = rel.trim();
+                    if !rel.is_empty() {
+                        spec.deps.push((
+                            name.to_string(),
+                            format!("{{ path = \"{rel}\" }}"),
+                        ));
+                        continue;
+                    }
+                }
                 spec.deps.push((name.to_string(), version.trim().to_string()));
             }
         }
@@ -212,6 +227,39 @@ rust_sidecar {
         assert_eq!(spec.modules[0].1, PathBuf::from("term.rs"));
         assert_eq!(spec.modules[1].0, "glue");
         assert_eq!(spec.deps, vec![("libloading".to_string(), "0.8".to_string())]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// PLAN-025 续(024 顺带根修):deps 的 name:path:REL 形态 = path
+    /// 依赖,值展开为 `{ path = "REL" }` toml 表达式(注入器此前未实现,
+    /// 生成 `name = "path:REL"` 畸形 toml 挡死 cargo build——auto-term
+    /// rust 载具实录)。
+    #[test]
+    fn sidecar_spec_parses_path_deps() {
+        let dir = std::env::temp_dir().join(format!("auto_sidecar_path_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("pac.at"),
+            r#"name: "demo"
+rust_sidecar {
+    deps: ["libloading:0.8", "autoterm-config:path:../../../crates/autoterm-config"]
+}
+"#,
+        )
+        .unwrap();
+        let spec = load_sidecar(&dir);
+        assert_eq!(
+            spec.deps,
+            vec![
+                ("libloading".to_string(), "0.8".to_string()),
+                (
+                    "autoterm-config".to_string(),
+                    "{ path = \"../../../crates/autoterm-config\" }".to_string()
+                ),
+            ],
+            "{spec:?}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
