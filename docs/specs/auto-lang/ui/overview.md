@@ -946,6 +946,61 @@ headless 像素产物字节面绑定三张环境敏感牌：wgpu 适配器/后�
 金样留档+审计制（超 5% 预算仅告警）。像素/可见性测试一律 nextest 跑
 （裸 cargo test 单进程共享注册表/静态缓存会互踩——634 实证）。
 
+## vue 生成工程自完备契约（PLAN-671）
+
+### 自完备三条规则（SD-01）
+
+vue 轨生成工程的**裸产出即自完备可构建**——`auto build --gen-only -r vue`
+（无 `--lenient`、无消费方补件）产出的工程 vue-tsc + vite build 绿。三条
+规则 + 机制归属（修复一律按机制：注册表/形参表/类型系统/值域映射，不针对
+消费方函数名单打补丁）：
+
+1. **声明层完备**：vm 宿主内建在 vue 生成面的引用必须可解析。
+   - 函数级（`console_log` 等平名）：声明候选集 = vm codegen
+     `bare_native_intrinsics()` 注册表（`Codegen::new` intrinsics 单源）
+     ∩ 生成文件实际裸用 token 面 → 发射 `src/natives.d.ts`
+     （`declare function NAME(...args: any[]): any`，JS 保留字过滤；
+     **落 src 根**——vue-tsc 对 `src/**/*.ts` include 只收根级 .d.ts）
+     + `src/lib/natives.ts` globalThis 抛错桩（fail-fast：报错带内建名
+     与"vue 轨运行期缺口"指引）+ main.ts `import './lib/natives'` 装载；
+     空集清退三件（防陈旧 import 悬挂）。
+   - 对象级（`Env.get`/`Process.exit`/`fs.*`/`File.*`/`image.*`）：ts_adapter
+     对象级白名单改写为内联 `__vmOnly('X.y', ...)` 抛错桩（含内联声明
+     发射；lifecycle 预检 walker 同表五名）。
+2. **gen-only 工程完整**：gen-only 与 build/run 共走 `prepare_vue_sources`
+   共享段——auto-sources 真值/占位 + vite-env.d.ts + tsconfig
+   `types:["vite/client"]`（038 Phase B T8 / P657-D2 / 668 R-21）。
+3. **转译保真**：
+   - 事件 handler 签名按 on 声明形参表发射；实参按**事件类型→载荷映射**
+     装配（code_editor cursor/contextmenu → `$event.line/column`、
+     `$event.x/y` 载荷优先于循环参——声明形参的载荷事件不被 v-for 循环参
+     抢占；未声明形参的列表语义循环参仍权威；input 走 Plan 062 T9 语义）。
+   - store/composable 文件与组件 SFC 同权：use 导入 fn 池拉取内联
+     （`generate_store_composable_full` 池参数，闭包传递）、store 自调
+     裸调改写（self_bare）、负标量初值（`store_init_to_js` Unary 臂）。
+   - 多段插值界符完整：文本模板转 `{{ a }}:{{ b }}` 后**仅当整串恰一段
+     插值**才剥外层界符供裸表达式消费位复用。
+   - variant 值域：vm 侧 `button_variant_preset` 的每个键在 vue cva 联合
+     有镜像键（`text` = `''` 空差量类，chromeless 互锁；双面 =
+     WidgetTemplate variants.ts + 脚手架资产 assets/shadcn-ui/button）。
+
+验证面：`tests/vue-gen-gap/`（九特性集中的通用 fixture，零消费方业务名）。
+脚手架 ui 组件为 write-if-missing（PLAN-457 契约，用户补丁不被覆写）——
+存量树的陈旧脚手架资产需冷重生成（rm gen/ 后 regen）取新版。
+
+### menubar 族 props schema 吸收（SD-02）
+
+PLAN-630 menubar 组件族 props 进 `schema/aura.at`：`menubar_item` /
+`menubar_checkbox_item` 声明 title/icon/shortcut/checked/enabled
+（union:string|state_ref / union:bool,state_ref）+ text/disabled/onclick/
+class；`menubar_checkbox_item` 为 vm view_builder 既有臂的 schema 补册
+（menubar sub_widgets 收编、element_coverage 登记、render_support 对齐族
+惯例 iced:none、docs 三围栏同步）。`element text` 增 `text` prop（位置内容
+伪 prop）。strict 模式（无 `--lenient`）消费方生成零 S001/S002——
+`--lenient` 围栏可摘。范围外登记：menubar 族 vue 渲染保真（子件发射为
+裸 div 而非 Menubar* 组件）为后续计划候选；bps reference 语料的既有
+S001 漂移（select.value/skeleton.lines 等）为容忍面非本契约。
+
 ## 已知坑
 
 - **`video` 元素：Vue 是原生 `<video>`，iced 是原生命中播放面（PLAN-617；SD-05）**：
