@@ -1502,7 +1502,7 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     if let Some(req_id) = task.waiting_http_request_id {
         let result = ASYNC_RESULTS.lock()
             .ok()
-            .and_then(|mut map| map.get_mut(&req_id).and_then(|opt| opt.take()));
+            .and_then(|mut map| map.remove(&req_id).and_then(|opt| opt));
         if let Some(Ok(AsyncResult::Body(content))) = result {
             task.waiting_http_request_id = None;
             let idx = vm.add_string(content.into_bytes());
@@ -1550,7 +1550,7 @@ pub fn shim_io_write_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     if let Some(req_id) = task.waiting_http_request_id {
         let result = ASYNC_RESULTS.lock()
             .ok()
-            .and_then(|mut map| map.get_mut(&req_id).and_then(|opt| opt.take()));
+            .and_then(|mut map| map.remove(&req_id).and_then(|opt| opt));
         if let Some(result) = result {
             task.waiting_http_request_id = None;
             let ok = result.is_ok();
@@ -6739,7 +6739,7 @@ fn escape_json(s: &str) -> String {
 /// Plan 349: reads from the unified ASYNC_RESULTS table (Body variant).
 fn check_async_http_result(request_id: u64) -> Option<String> {
     ASYNC_RESULTS.lock().ok().and_then(|mut map| {
-        map.get_mut(&request_id).and_then(|opt| opt.take())
+        map.remove(&request_id).and_then(|opt| opt)
     }).and_then(|result| result.ok()).and_then(|ar| match ar {
         AsyncResult::Body(s) => Some(s),
         _ => None,
@@ -6807,7 +6807,7 @@ fn check_async_http_result_handle(
     request_id: u64,
 ) -> Option<Result<(u16, Vec<(String, String)>, Vec<u8>), String>> {
     ASYNC_RESULTS.lock().ok().and_then(|mut map| {
-        map.get_mut(&request_id).and_then(|opt| opt.take())
+        map.remove(&request_id).and_then(|opt| opt)
     }).map(|r| r.and_then(|ar| match ar {
         AsyncResult::Structured { status, headers, body } => Ok((status, headers, body)),
         _ => Err("expected Structured async result".to_string()),
@@ -7230,7 +7230,7 @@ fn check_async_http_result_auth(
     request_id: u64,
 ) -> Option<Result<(i32, String), String>> {
     ASYNC_RESULTS.lock().ok().and_then(|mut map| {
-        map.get_mut(&request_id).and_then(|opt| opt.take())
+        map.remove(&request_id).and_then(|opt| opt)
     }).map(|r| r.and_then(|ar| match ar {
         AsyncResult::Auth { status, body } => Ok((status, body)),
         _ => Err("expected Auth async result".to_string()),
