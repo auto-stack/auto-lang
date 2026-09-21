@@ -6666,7 +6666,7 @@ pub fn shim_sse_parse(chunk: String) -> Vec<String> {
 /// split-mode failures (backend down, wrong port, 404) very hard to debug. The
 /// codegen path feeds this into `auto.json.to_value`, which parses it into a
 /// VM object with an `error` field the app can surface.
-/// PLAN-025 修:split 形态 api.* 家族共享 keep-alive 客户端(10s 超时)。
+/// PLAN-025 修:split 形态 api.* 家族共享 keep-alive 客户端(30s 超时——back 引导期(等 shell banner 轮询 ~10s)合法长尾,10s 实测误杀冷启 Init)。
 /// 原每请求 `Client::new()` = 每调用一条新 TCP 连接:高频轮询应用
 /// (auto-term 每 tick 数十次 api 调用)TIME_WAIT 风暴打爆临时端口池
 /// (2026-09-21 实录 6986 条 TIME_WAIT),端口耗尽后 reqwest 无默认
@@ -6679,7 +6679,7 @@ static SHARED_API_HTTP_CLIENT: std::sync::OnceLock<reqwest::blocking::Client> =
 fn shared_api_http_client() -> &'static reqwest::blocking::Client {
     SHARED_API_HTTP_CLIENT.get_or_init(|| {
         reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(30))
             .pool_max_idle_per_host(8)
             .build()
             .unwrap_or_default()
