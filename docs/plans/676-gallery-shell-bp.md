@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-676
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: gallery-shell-bp
 author: [agent]
 created_at: 2026-09-21
 updated_at: 2026-09-21
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: [blueprint/project#gallery-discovery-PLAN-640]
+supersedes_spec_components: [blueprint/contract#q5-gallery-discovery-PLAN-640]
 new_spec_components: [blueprint/layout-gallery-shell]
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
@@ -192,7 +192,7 @@ registry view"语义（SD-01）。
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 | --- | --- | --- | --- | --- | --- |
-| SD-01 | modify | docs/specs/blueprint/contract.md（Q5#5 邻接，发现机制注记） | before: bps-gallery 目录发现=Vite import.meta.glob 零产物（PLAN-640）；after: bps-gallery 目录发现=`auto bp list --format at` 生成产物 registry.at（提交+CI 漂移校验），PLAN-640 裁定就此退役并注记原因 | Auto 化后 VM 臂无法 glob 磁盘，双臂同源要求静态表（PLAN-625 先例） | AC-05 |
+| SD-01 | modify | docs/specs/blueprint/contract.md（Q5#5 邻接，发现机制注记） | before: bps-gallery 目录发现=Vite import.meta.glob 零产物（PLAN-640）；after: bps-gallery 目录发现=`auto bp list --format at` 生成产物 registry.at（提交+CI 漂移校验），PLAN-640 裁定就此退役并注记原因；**随文修正 Q5#5 kind 治理规则内的 kindOrder 同步指针**——`examples/bps-gallery/src/bps.ts` 已随 T-07 退役，同步面改为 `src/front/catalog.at` 的 `kind_preference()`（复审 F-2 定稿补入） | Auto 化后 VM 臂无法 glob 磁盘，双臂同源要求静态表（PLAN-625 先例） | AC-05 |
 | SD-02 | add | docs/specs/blueprint/project.md（包目录清单） | 新增 `layout/gallery-shell` 条目（18/18），骨架家族 + Q5 六问自答摘录 | BP 入册惯例 | AC-01 |
 
 ## 6. 测试设计
@@ -329,6 +329,69 @@ registry view"语义（SD-01）。
   merge 纪律注记：worktree 内 examples/bps-gallery/{deps,gen} 有构建
   产物，合并前 `cmd /c rmdir /s /q` 摘 deps/bps junction 再过 wt-guard
   （bp-gate R-B/P661 先例）。
+- 2026-09-21 review 复审：stage=review, plan_id=PLAN-676, plan_revision=rev1,
+  outcome=**pass**。reviewed_commit=8b7ca6dda（worktree plan-676-dev，
+  零脏面），base_commit=4469076e9，dependency_revisions=auto-down@fba6563
+  （组内兄弟位 detached），spec_inputs=docs/specs/blueprint/{contract,project}.md
+  当前版（增量冻结=本计划 §5 规范增量表，文件哈希见下）。
+  **独立性声明**：复审在实现会话内进行，以下全部由工件重建——门禁现场
+  重跑、diff 逐文件追查、规范目标文件 before 态重读；未采信执行阶段摘要。
+
+  acceptance_results（全部现场复现）：
+  - **AC-01 pass** — `cargo t bp` 47/47（palette_has_no_drift 覆盖
+    gallery-shell 19 项 palette；scans_default_packages 含
+    layout/gallery-shell）+ `auto bp list` 含该包（grep 1 命中）。
+  - **AC-02 pass** — `gate.mjs` 全量重跑 exit=0：vue✓ vm✓，gallery_shell
+    state（gs_active/gs_dark/gs_accent）+ snapshot（bp 子树 slot 填充
+    needle）复现。
+  - **AC-03 pass** — `auto build` 复跑零 error（T-07 退役后终态）+ 功能面
+    走查证据在档（docs/reports/p676/vue-walkthrough-login.png，已提交）。
+  - **AC-04 pass** — 双端 parity 证据在档且已提交（vue 交互链走查 + VM
+    iced 截图 docs/reports/p676/{vue-walkthrough-login,
+    vm-walkthrough}.png；bp-gate 基线 gallery-shell.png 等 5 张在
+    git ls-files）。
+  - **AC-05 pass** — 发射器 golden（bp_list_at_golden_stable /
+    bp_list_at_escapes_strings，auto bin 12/12）+ 漂移校验现场复现
+    零 diff（且 work 阶段已实证拦截面：reference 修复→diff 非空→
+    再生成 8b7ca6dda）。
+  - **AC-06 pass(条件证据)** — workflow 结构就绪且**每一步均已本地等价
+    跑绿**（cargo build -p auto 经 tf 链、漂移 diff 步、auto build 全链、
+    pnpm 面）；GitHub Actions 运行记录为 merge 后补证项（§10.5），
+    合并清单必含。
+  - **AC-07 pass** — 手写壳 14 文件删除在 diff 可证；`import.meta.glob(`
+    调用形态仓内零命中（残余=退役注记文本）。
+  review 档全量门禁：**cargo tf 3689/3689 绿**（99 skipped=heavy_gate
+  自守设计内）。
+
+  findings：
+  - **F-1 (info)**：base 滑后——master 在执行期间推进 13 提交（PLAN-672/
+    675 落库，含 55d5b04e7 等）；与本分支 7 提交**零文件交集**
+    （`git diff --name-only 4469076e9 master` 与本计划触达面无重叠），
+    registry.at 对当前 master blueprints/ 仍零漂移。merge 时以当前
+    master 为基 rebase/ff 即可，门禁证据不受影响。
+  - **F-2 (minor→已定稿)**：contract.md Q5#5 kind 治理规则的 kindOrder
+    同步指针指向已退役的 `src/bps.ts`（T-07 删除）——SD-01 after 文本
+    已补入该指针修正（→ `src/front/catalog.at` kind_preference()），
+    随 merge 落库。
+  - **F-3 (minor→已定稿)**：frontmatter supersedes 锚原写
+    `blueprint/project#gallery-discovery-PLAN-640` 定位失准（project.md
+    无发现机制专节，PLAN-640 裁定散落 contract.md Q5#5）——已改为
+    `blueprint/contract#q5-gallery-discovery-PLAN-640`。
+  - **F-4 (info, 先存)**：project.md active 包表 15 行 vs registry 18 包
+    的计数漂移先于本计划存在；SD-02 仅按惯例新增 gallery-shell 行，
+    全表对账不在本计划范围（债务候选，merge 时可入 KNOWN-DEBT）。
+  - 预存噪音（非本计划引入）：S003 WARNING（dashboard/overview
+    with_charts reference/components 目录缺失）在 gate/gen 阶段出现，
+    属 blueprints 既有面。
+
+  evidence：本记录所引全部命令与结果可于 plan-676-dev@8b7ca6dda 重放；
+  持久工件=docs/reports/p676/{vue-walkthrough-login,vm-walkthrough}.png
+  + examples/bp-gate/e2e/baselines/gallery-shell.png（均已提交）；
+  增量冻结=§5 规范增量表（本文件修订版 SHA-256 于提交时由 git 承载）。
+  next=**merge**（/auto-plan:merge）：合并清单=①以当前 master 重放
+  （F-1）②摘 examples/bps-gallery/{deps,gen} junction 过 wt-guard
+  ③SD-01/SD-02 按已定稿文本落库 + F-4 债务候选登记 ④AC-06 CI 首跑
+  确证。
 
 ## 10. 待澄清事项
 
