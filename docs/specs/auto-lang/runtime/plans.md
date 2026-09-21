@@ -60,3 +60,4 @@
 | 442 | cross-platform-closure | 🟡（C3 观察期） | archive/ | musk 五域接线：Http.set_default_header 等 native 桥 + 平台 adapter 显式降级 |
 | 458 | auto-ui-theme-system | 🟡 | archive/ | theme/accent 经 env（AUTO_UI_THEME/ACCENT）横切三 crate 注入 |
 | 675 | routes-in-embed（back-proxy 侧） | ✅（reviewed→archived） | archive/ | 路径/query 参数按 #[api] 签名类型绑定（669 push_typed_string_arg 共用+ApiParamSig session 自持+坏值 400 同 http_server 语义）+lazy 按需装载（目录表/ensure_session 锁内防重/degraded 503/remove_app 自愈重载）；详档见 vm/back-proxy.md（PLAN-669/675 节） |
+| 673 | editor-kernel-rope-delta-chunk（back 分块读） | ✅（reviewed→archived） | archive/ | File.read_text_range(path,offset,limit) nat#1016 分块读双轨（stdlib #[vm] 声明轨+a2r-std fs.rs 逐字节镜像，14 例对拍 harness read_text_range_parity；成功/EOF/错误形 total=-1/char 边界回退/短读≠EOF 语义成文 SD-02）+aavm 双臂（engine.at:1016 臂+codegen.at 发射臂+bin prelude 编译态直通）+fixture 058 十打印边界矩阵；ts_adapter/vue client M1 不发射（消费方该轨需要时另立计划）；详档 design/autoui/editor-kernel.md §5 |
