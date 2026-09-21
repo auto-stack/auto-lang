@@ -128,6 +128,14 @@ pub(crate) struct NodeStyle {
     /// Horizontal 行的宽度份额分配消费（iced 行为对齐：flex 子级均分
     /// 扣除非伸缩子级与 gap 后的剩余宽）。Vertical 列暂不消费（登记边界）。
     pub(crate) flex: Option<f32>,
+    /// PLAN-679 Phase 2：圆角半径 px（rounded-lg=8 等；RoundedFull =
+    /// 9999.0 哨兵，发射端解析 min(w,h)/2）。None = 直角。
+    pub(crate) radius: Option<f32>,
+    /// PLAN-679 Phase 2：线性渐变（bg-gradient-to-* + from-*/to-*）——
+    /// (垂直方向?, 起色, 止色)。发射端 N 条带近似（wire 无渐变 op）。
+    pub(crate) grad_dir: Option<bool>,
+    pub(crate) grad_from: Option<Rgba8>,
+    pub(crate) grad_to: Option<Rgba8>,
     /// 背景底色（bg-*/渐变 from 端）。
     pub(crate) bg: Option<Rgba8>,
     /// 边框（border/border-<color>）。
@@ -906,6 +914,10 @@ pub(crate) mod tests {
                     rect.x, rect.y, rect.w, rect.h,
                     fit.as_u8(),
                     src
+                )),
+                DrawOp::QuadR { rect, color, radius } => out.push_str(&format!(
+                    "quad-r {:.1},{:.1} {:.1}x{:.1} r={:.1} {},{},{},{}\n",
+                    rect.x, rect.y, rect.w, rect.h, radius, color.r, color.g, color.b, color.a
                 )),
             }
         }

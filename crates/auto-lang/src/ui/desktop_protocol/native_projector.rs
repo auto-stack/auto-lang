@@ -235,6 +235,11 @@ fn shift_draw_op(op: &DrawOp, dx: f32, dy: f32) -> DrawOp {    match op {
             rect: WRect::new(rect.x + dx, rect.y + dy, rect.w, rect.h),
             color: *color,
         },
+        DrawOp::QuadR { rect, color, radius } => DrawOp::QuadR {
+            rect: WRect::new(rect.x + dx, rect.y + dy, rect.w, rect.h),
+            color: *color,
+            radius: *radius,
+        },
         DrawOp::Text { x, y, size, line_height, color, text } => DrawOp::Text {
             x: x + dx,
             y: y + dy,
@@ -1203,6 +1208,43 @@ impl<M: Clone + std::fmt::Debug> NativeCtx<M> {
         self.ops.push(DrawOp::Quad { rect, color });
     }
 
+    /// PLAN-679 Phase 2：带圆角发射——radius Some 且 >0.5 → QuadR
+    /// （rounded-full 哨兵 9999 在此解析 min(w,h)/2），否则普通 Quad。
+    fn push_quad_rounded(&mut self, rect: WRect, color: Rgba8, radius: Option<f32>) {
+        match radius {
+            Some(r) if r > 0.5 => {
+                let r = r.min(rect.w.min(rect.h) / 2.0);
+                self.ops.push(DrawOp::QuadR { rect, color, radius: r });
+            }
+            _ => self.push_quad(rect, color),
+        }
+    }
+
+    /// PLAN-679 Phase 2：线性渐变 N 条带近似（wire 无渐变 op；24 条带
+    /// 在 480 宽下每条 20px——观感连续度对 004 头带足够，真渐变 op
+    /// 另立 wire 提案）。
+    fn push_gradient(&mut self, rect: WRect, vertical: bool, from: Rgba8, to: Rgba8) {
+        const STEPS: usize = 24;
+        let n = STEPS as f32;
+        for i in 0..STEPS {
+            let t = i as f32 / n;
+            let frac = 1.0 / n;
+            let mid = t + frac / 2.0;
+            let c = Rgba8::new(
+                (from.r as f32 + (to.r as f32 - from.r as f32) * mid) as u8,
+                (from.g as f32 + (to.g as f32 - from.g as f32) * mid) as u8,
+                (from.b as f32 + (to.b as f32 - from.b as f32) * mid) as u8,
+                255,
+            );
+            let sub = if vertical {
+                WRect::new(rect.x, rect.y + rect.h * t, rect.w, rect.h * frac + 0.5)
+            } else {
+                WRect::new(rect.x + rect.w * t, rect.y, rect.w * frac + 0.5, rect.h)
+            };
+            self.push_quad(sub, c);
+        }
+    }
+
     /// 1px 边框（四边细条——client_runtime::push_border 同型）。
     fn push_border(&mut self, rect: WRect, color: Rgba8) {
         let t = 1.0;
@@ -1606,33 +1648,99 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             // PLAN-032 T-02（D5）：text_center 之外，center_children
             //（SelfCenter/mx-auto 族）同作水平居中——收缩文本（自然宽）
             // 的居中在臂内消费（块流 center_children 通道只覆盖固定宽子级）。
-            let tx = if style.text_center || style.center_children {
-                x + (avail_w - w).max(0.0) / 2.0
+            // P679-D1③：文本换行（wire 无富排——投影端按 avail_w 预折行，
+            // 逐行发射同款 op；词优先 + CJK 字符兜底）。truncate 档维持
+            // 单行省略号语义不折行。
+            let mut lines: Vec<(String, f32)> = Vec::new();
+            if !style.truncate && avail_w > 0.0 && w > avail_w {
+                let mut cur = String::new();
+                let mut cur_w = 0.0f32;
+                let mut max_w = 0.0f32;
+                for word in text.split(' ') {
+                    if word.is_empty() {
+                        continue;
+                    }
+                    let pw = measure_text(word, size);
+                    let sep = if cur.is_empty() { 0.0 } else { measure_text(" ", size) };
+                    if cur_w + sep + pw <= avail_w {
+                        if !cur.is_empty() {
+                            cur.push(' ');
+                            cur_w += sep;
+                        }
+                        cur.push_str(word);
+                        cur_w += pw;
+                    } else if pw > avail_w {
+                        if !cur.is_empty() {
+                            max_w = max_w.max(cur_w);
+                            lines.push((core::mem::take(&mut cur), cur_w));
+                            cur_w = 0.0;
+                        }
+                        for ch in word.chars() {
+                            let cw = measure_text(&ch.to_string(), size);
+                            if cur_w + cw > avail_w && !cur.is_empty() {
+                                max_w = max_w.max(cur_w);
+                                lines.push((core::mem::take(&mut cur), cur_w));
+                                cur_w = 0.0;
+                            }
+                            cur.push(ch);
+                            cur_w += cw;
+                        }
+                    } else {
+                        max_w = max_w.max(cur_w);
+                        lines.push((core::mem::take(&mut cur), cur_w));
+                        cur.push_str(word);
+                        cur_w = pw;
+                    }
+                }
+                max_w = max_w.max(cur_w);
+                lines.push((cur, cur_w));
+                w = max_w;
             } else {
-                x
-            };
-            if style.font_bold {
-                ctx.ops.push(DrawOp::TextStyled {
-                    x: tx,
-                    y,
-                    size,
-                    line_height: line_h,
-                    color: style.fg.unwrap_or(text_fg()),
-                    weight: 700,
-                    italic: false,
-                    text,
-                });
-            } else {
-                ctx.ops.push(DrawOp::Text {
-                    x: tx,
-                    y,
-                    size,
-                    line_height: line_h,
-                    color: style.fg.unwrap_or(text_fg()),
-                    text,
-                });
+                lines.push((text.clone(), w));
             }
-            Laid { size: (w, line_h) }
+            let line_n = lines.len().max(1) as f32;
+            let tx = x;
+            // bg 徽章面（bg-secondary rounded-full px-3 py-1 形态——004
+            // role 徽章）：文本自带 bg 时先垫底盒（圆角随 style；宽 =
+            // 自然宽 + px-3 等效 24）。
+            if let Some(bg) = style.bg {
+                let box_w = (w + 24.0).min(if avail_w > 0.0 { avail_w } else { w + 24.0 });
+                ctx.push_quad_rounded(
+                    WRect::new(tx, y - 4.0, box_w, line_n * line_h + 8.0),
+                    bg,
+                    style.radius,
+                );
+            }
+            for (li, (line, lw)) in lines.iter().enumerate() {
+                let ltx = if style.text_center || style.center_children {
+                    tx + (avail_w - lw).max(0.0) / 2.0
+                } else {
+                    tx
+                };
+                let ly = y + li as f32 * line_h;
+                if style.font_bold {
+                    ctx.ops.push(DrawOp::TextStyled {
+                        x: ltx,
+                        y: ly,
+                        size,
+                        line_height: line_h,
+                        color: style.fg.unwrap_or(text_fg()),
+                        weight: 700,
+                        italic: false,
+                        text: line.clone(),
+                    });
+                } else {
+                    ctx.ops.push(DrawOp::Text {
+                        x: ltx,
+                        y: ly,
+                        size,
+                        line_height: line_h,
+                        color: style.fg.unwrap_or(text_fg()),
+                        text: line.clone(),
+                    });
+                }
+            }
+            Laid { size: (w, line_n * line_h) }
         }
         View::Button { label, onclick, on_right_click, content, disabled, .. } => {
             let size = style.font_size.unwrap_or(14.0);
@@ -1643,7 +1751,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 .min(avail_w.max(0.0));
             let h = style.fixed_h().unwrap_or(BUTTON_H);
             let bg = dim_if(*disabled, style.bg.unwrap_or(button_bg()));
-            ctx.push_quad(WRect::new(x, y, w, h), bg);
+            ctx.push_quad_rounded(WRect::new(x, y, w, h), bg, style.radius);
             if let Some(border) = style.border {
                 ctx.push_border(WRect::new(x, y, w, h), border);
             }
@@ -1774,7 +1882,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             let slot = ctx.select_slots;
             ctx.select_slots += 1;
             let open = ctx.select_open == Some(slot);
-            ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(input_bg()));
+            ctx.push_quad_rounded(WRect::new(x, y, w, h), style.bg.unwrap_or(input_bg()), style.radius);
             ctx.push_border(WRect::new(x, y, w, h), style.border.unwrap_or(input_border()));
             let size = style.font_size.unwrap_or(14.0);
             let line_h = size * LINE_H_FACTOR;
@@ -2375,7 +2483,68 @@ fn layout_view_group<M: Clone + std::fmt::Debug>(
         group_style.box_layout.padding_left = Some(p);
         group_style.box_layout.padding_right = Some(p);
     }
-    let laid = layout_view_block(ctx, children, x, y, avail_w, dir, &group_style);
+    // PLAN-679 Phase 2ï¼max_width é³å¶ï¼max-w-md å¡çæ¶çªï¼ã
+    let avail_w = group_style
+        .box_layout
+        .max_width
+        .map_or(avail_w, |mw| avail_w.min(mw));
+    // PLAN-679 Phase 2ï¼groupï¼Row/Column/Listï¼è¡¥é½ container åæ¬¾
+    // è§è§é¢ï¼padding æ¶è´¹ + bg/æ¸å/åè§/borderï¼ï¼îï¼æ­¤å group èªèº«ä¸ç» bgï¼
+    // bg-card å¡çå¨ RQ è½¨ä¸å¯è§ï¼ãæ¨¡å¼å containerï¼éå°ºå¯¸ â æ¤äº§ç© â
+    // bg/æ¸å â éæå­çº§ â borderã
+    let pad = (
+        group_style.pad_left(),
+        group_style.pad_top(),
+        group_style.pad_right(),
+        group_style.pad_bottom(),
+    );
+    let inner_w = (avail_w - pad.0 - pad.2).max(0.0);
+    let has_visual = group_style.bg.is_some()
+        || group_style.border.is_some()
+        || group_style.radius.is_some()
+        || group_style.grad_dir.is_some();
+    let ops_mark = ctx.ops.len();
+    let hits_mark = ctx.hits.len();
+    let laid = layout_view_block(
+        ctx,
+        children,
+        x + pad.0,
+        y + pad.1,
+        inner_w,
+        dir,
+        &group_style,
+    );
+    let mut laid = laid;
+    if has_visual {
+        let outer_w = laid.size.0 + pad.0 + pad.2;
+        let outer_h = laid.size.1 + pad.1 + pad.3;
+        let outer = WRect::new(x, y, outer_w, outer_h);
+        ctx.ops.truncate(ops_mark);
+        ctx.hits.truncate(hits_mark);
+        if let (Some(vertical), Some(from), Some(to)) =
+            (group_style.grad_dir, group_style.grad_from, group_style.grad_to)
+        {
+            ctx.push_gradient(outer, vertical, from, to);
+        } else if let Some(bg) = group_style.bg {
+            ctx.push_quad_rounded(outer, bg, group_style.radius);
+        }
+        let relaid = layout_view_block(
+            ctx,
+            children,
+            x + pad.0,
+            y + pad.1,
+            inner_w,
+            dir,
+            &group_style,
+        );
+        laid = relaid;
+        if let Some(border) = group_style.border {
+            ctx.push_border(outer, border);
+        }
+        laid.size.0 = outer_w;
+        laid.size.1 = outer_h;
+    }
+    // å³é®å½ä¸­ï¼T-05ï¼ï¼å¸å±ä»¶æ´æ¡ç»è®°ï¼Row/Column `on_right_click`ï¼ã
     // 右键命中（T-05）：布局件整框登记（Row/Column `on_right_click`）。
     let rc = match view {
         View::Row { on_right_click, .. } | View::Column { on_right_click, .. } => {
@@ -2460,8 +2629,14 @@ fn layout_view_container<M: Clone + std::fmt::Debug>(
     {
         ctx.ops.truncate(ops_mark);
         ctx.hits.truncate(hits_mark);
-        if let Some(bg) = style.bg {
-            ctx.push_quad(WRect::new(x, y, outer_w, outer_h), bg);
+        // PLAN-679 Phase 2：渐变优先（bg-gradient+from+to 三类齐备）→
+        // 条带近似；否则普通/圆角 quad。
+        if let (Some(vertical), Some(from), Some(to)) =
+            (style.grad_dir, style.grad_from, style.grad_to)
+        {
+            ctx.push_gradient(WRect::new(x, y, outer_w, outer_h), vertical, from, to);
+        } else if let Some(bg) = style.bg {
+            ctx.push_quad_rounded(WRect::new(x, y, outer_w, outer_h), bg, style.radius);
         }
         let _ = layout_view_block(
             ctx,
@@ -2722,6 +2897,24 @@ fn apply_style_class(class: &StyleClass, s: &mut NodeStyle) {
         // P679-D1②：flex 伸缩因子入 NodeStyle（Horizontal 行份额分配）。
         StyleClass::Flex1 | StyleClass::FlexAuto => s.flex = Some(1.0),
         StyleClass::FlexInitial | StyleClass::FlexNone => {}
+        // PLAN-679 Phase 2：圆角档 + 渐变族入 NodeStyle。
+        StyleClass::Rounded => s.radius = Some(4.0),
+        StyleClass::RoundedSm => s.radius = Some(2.0),
+        StyleClass::RoundedMd => s.radius = Some(6.0),
+        StyleClass::RoundedLg => s.radius = Some(8.0),
+        StyleClass::RoundedXl => s.radius = Some(12.0),
+        StyleClass::Rounded2Xl => s.radius = Some(16.0),
+        StyleClass::Rounded3Xl => s.radius = Some(24.0),
+        StyleClass::RoundedFull => s.radius = Some(9999.0),
+        StyleClass::RoundedNone => s.radius = None,
+        StyleClass::BgGradient(d) => {
+            s.grad_dir = Some(matches!(d, crate::ui::style::GradientDir::ToB
+                | crate::ui::style::GradientDir::ToT
+                | crate::ui::style::GradientDir::ToTR
+                | crate::ui::style::GradientDir::ToTL));
+        }
+        StyleClass::GradientFrom(c) => s.grad_from = resolve_typed_color(c),
+        StyleClass::GradientTo(c) => s.grad_to = resolve_typed_color(c),
         StyleClass::ItemsCenter | StyleClass::JustifyCenter | StyleClass::MarginXAuto => {
             s.center_children = true;
         }

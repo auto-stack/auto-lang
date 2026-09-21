@@ -4079,6 +4079,10 @@ mod tests {
             .nth(2)
             .expect("002 '+' 命中区");
         let handler = kind.strip_prefix("button:").expect("button kind").to_string();
+        if std::env::var("AUTO_FIT_TRACE").as_deref() == Ok("1") {
+            eprintln!("[p508-dbg] twin + rect = {:?} center=({},{})",
+                (r.x, r.y, r.w, r.h), r.x + r.w / 2.0, r.y + r.h / 2.0);
+        }
         ((r.x + r.w / 2.0, r.y + r.h / 2.0), handler)
     }
 
@@ -4371,7 +4375,21 @@ mod tests {
                     if hit(&session) {
                         break;
                     }
-                    assert!(std::time::Instant::now() < deadline, "点击 {k} 帧超时");
+                    if std::time::Instant::now() > deadline {
+                        if std::env::var("AUTO_FIT_TRACE").as_deref() == Ok("1") {
+                            if let Some(c) = session.broker_clients.values()
+                                .find(|c| c.app_name.as_deref() == Some("002-counter")) {
+                                if let Some(list) = c.composed() {
+                                    for op in &list.ops {
+                                        if let DrawOp::Text { x, y, text, .. } = op {
+                                            eprintln!("[p508-dbg] child text ({x},{y}) {text:?}");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        panic!("点击 {k} 帧超时");
+                    }
                     std::thread::yield_now();
                 }
                 if k >= 3 {

@@ -109,6 +109,11 @@ pub enum DrawOp {
     /// Linear/方形，视觉与占位零差）——**op 字段定长不可尾部追加**
     /// （解码共享 Reader 无载荷尾判据），未来呈现参数 = 新 tag。
     Image { rect: WRect, src: String, fit: ImageFit },
+    /// 圆角矩形（PLAN-679 Phase 2，tag 7 追加式）：radius = 圆角半径 px
+    ///（rounded-full 语义由编码端解析为 min(w,h)/2 后下发——wire 只收
+    /// 具体值）。旧端未知 tag = Err（仓内双端同版发布；跨版本远程端
+    /// 升级纪律见协议文档 §1 追加式）。
+    QuadR { rect: WRect, color: Rgba8, radius: f32 },
 }
 
 /// 图像适配语义（PLAN-028 D1 定案：v1 最小集）。线格式 u8：1 Stretch。
@@ -185,6 +190,12 @@ impl DrawList {
                     put_string(out, src);
                     put_u8(out, fit.as_u8());
                 }
+                DrawOp::QuadR { rect, color, radius } => {
+                    put_u8(out, 7);
+                    rect.encode(out);
+                    color.encode(out);
+                    put_f32(out, *radius);
+                }
             }
         }
     }
@@ -234,6 +245,12 @@ impl DrawList {
                     let src = r.string()?;
                     let fit = ImageFit::from_u8(r.u8()?)?;
                     ops.push(DrawOp::Image { rect, src, fit });
+                }
+                7 => {
+                    let rect = WRect::decode(r)?;
+                    let color = Rgba8::decode(r)?;
+                    let radius = r.f32()?;
+                    ops.push(DrawOp::QuadR { rect, color, radius });
                 }
                 tag => return Err(CodecError::UnknownTag(tag)),
             }

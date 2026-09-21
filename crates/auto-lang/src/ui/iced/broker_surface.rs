@@ -450,6 +450,28 @@ fn paint_ops(frame: &mut iced::widget::canvas::Frame, ops: &[DrawOp]) {
                 );
                 i += 1;
             }
+            DrawOp::QuadR { rect, color, radius } => {
+                // PLAN-679 Phase 2：圆角矩形（radius 编码端解析具值；
+                // rounded-full = min(w,h)/2 亦在编码端解析；此处再钳半边
+                // 防御）。r ≤ 0.5 退化直角。
+                let radius = (*radius).min(rect.w.min(rect.h) / 2.0).max(0.0);
+                if radius <= 0.5 {
+                    let at = iced::Point::new(rect.x, rect.y);
+                    frame.fill_rectangle(
+                        at,
+                        iced::Size::new(rect.w, rect.h),
+                        to_color(*color),
+                    );
+                } else {
+                    let path = iced::widget::canvas::Path::rounded_rectangle(
+                        iced::Point::new(rect.x, rect.y),
+                        iced::Size::new(rect.w.max(0.0), rect.h.max(0.0)),
+                        iced::border::Radius::from(radius),
+                    );
+                    frame.fill(&path, to_color(*color));
+                }
+                i += 1;
+            }
             DrawOp::Text { x, y, size, line_height, color, text } => {
                 frame.fill_text(Text {
                     content: text.clone(),
