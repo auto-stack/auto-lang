@@ -124,6 +124,10 @@ pub(crate) const LINE_H_FACTOR: f32 = 1.35;
 pub(crate) struct NodeStyle {
     /// 盒模（p/m/gap/w/h/max_w——`ui/style::layout_extract` 同源解析）。
     pub(crate) box_layout: crate::ui::style::BoxLayout,
+    /// P679-D1②：flex 伸缩因子（flex-1/flex-auto → 1.0；其余 None）——
+    /// Horizontal 行的宽度份额分配消费（iced 行为对齐：flex 子级均分
+    /// 扣除非伸缩子级与 gap 后的剩余宽）。Vertical 列暂不消费（登记边界）。
+    pub(crate) flex: Option<f32>,
     /// 背景底色（bg-*/渐变 from 端）。
     pub(crate) bg: Option<Rgba8>,
     /// 边框（border/border-<color>）。

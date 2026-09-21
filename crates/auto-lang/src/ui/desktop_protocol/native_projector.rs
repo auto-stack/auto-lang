@@ -1386,6 +1386,9 @@ fn layout_view_block<M: Clone + std::fmt::Debug>(
     // 交叉轴居中（列臂 items-center）首轮自然宽录制——仅 parent 声明
     // 居中时收集（热路径零余账；Horizontal 主轴臂不需要逐子宽）。
     let mut child_widths: Vec<f32> = Vec::new();
+    // P679-D1②：Horizontal 行（natural_w, flex 因子）逐可见子录制——
+    // flex 份额分配的消费源。
+    let mut h_meta: Vec<(f32, f32)> = Vec::new();
     for view in views {
         // PLAN-032 T-02（D3）：hidden 子级整段跳过——不占主轴 cursor 也
         // 不参与 gap 序（CSS display:none：兄弟间只留一个 gap，非每
@@ -1422,12 +1425,75 @@ fn layout_view_block<M: Clone + std::fmt::Debug>(
             }
             Dir::Horizontal => {
                 let laid = layout_view_node(ctx, view, x + cursor, y + my, w);
+                h_meta.push((laid.size.0, style.flex.unwrap_or(0.0)));
                 cursor += laid.size.0;
                 cross_max = cross_max.max(my + laid.size.1);
             }
         }
     }
-    if dir == Dir::Horizontal && parent.center_children && !views.is_empty() {
+    // P679-D1②：Horizontal 行 flex 份额分配——flex 子级（flex-1/flex-auto）
+    // 按因子均分「行宽 − gap 总额 − 非伸缩子级自然宽」，非伸缩子级维持
+    // 首轮自然宽（iced Row 行为对齐：003 双 flex-1 字段列 200+200 而非
+    // 各自全宽横向溢出）。弃置首轮重排会二次累加槽位计数/位图/覆盖层
+    // 登记——全套快照回滚后以同一槽序重注册（聚焦身份不变）。Vertical
+    // 列 flex 暂不消费（登记边界）。
+    let mut flex_applied = false;
+    if dir == Dir::Horizontal && h_meta.iter().any(|(_, f)| *f > 0.0) {
+        let gaps_total = gap * h_meta.len().saturating_sub(1) as f32;
+        let fixed_total: f32 = h_meta.iter().filter(|(_, f)| *f == 0.0).map(|(n, _)| *n).sum();
+        let flex_total: f32 = h_meta.iter().filter(|m| m.1 > 0.0).map(|m| m.1).sum();
+        let share = ((w - gaps_total - fixed_total) / flex_total.max(1.0)).max(0.0);
+        let snap = (
+            ctx.input_slots,
+            ctx.select_slots,
+            ctx.canvas_slots,
+            ctx.pending_bitmaps.len(),
+            ctx.overlays.len(),
+            ctx.popover_overlays.len(),
+            ctx.right_hits.len(),
+            ctx.uncovered.len(),
+            ctx.canvas_scene_sig.clone(),
+        );
+        ctx.ops.truncate(ops_mark);
+        ctx.hits.truncate(hits_mark);
+        ctx.right_hits.truncate(snap.6);
+        ctx.overlays.truncate(snap.4);
+        ctx.popover_overlays.truncate(snap.5);
+        ctx.pending_bitmaps.truncate(snap.3);
+        ctx.uncovered.truncate(snap.7);
+        ctx.canvas_scene_sig = snap.8;
+        ctx.input_slots = snap.0;
+        ctx.select_slots = snap.1;
+        ctx.canvas_slots = snap.2;
+        let mut cursor2 = 0.0f32;
+        let mut cross2 = 0.0f32;
+        let mut first2 = true;
+        let mut mi = 0usize;
+        for view in views {
+            let style = node_style_of_view(view);
+            if style.hidden || style.absolute {
+                continue;
+            }
+            if !first2 {
+                cursor2 += gap;
+            }
+            first2 = false;
+            let my = style.margin_y();
+            let (natural, flex) = h_meta[mi];
+            mi += 1;
+            let inner = if flex > 0.0 { share * flex } else { natural };
+            let laid = layout_view_node(ctx, view, x + cursor2, y + my, inner);
+            cursor2 += laid.size.0;
+            cross2 = cross2.max(my + laid.size.1);
+        }
+        cursor = cursor2.max(0.0);
+        cross_max = cross2;
+        flex_applied = true;
+        if std::env::var("AUTO_FIT_TRACE").as_deref() == Ok("1") {
+            eprintln!("[rq-flex] w={w} gaps={gaps_total} fixed={fixed_total} share={share} meta={h_meta:?}");
+        }
+    }
+    if dir == Dir::Horizontal && parent.center_children && !views.is_empty() && !flex_applied {
         // 主轴居中：撤首轮产物后以居中起点重排（client_runtime 同款两遍法）。
         let used = cursor;
         ctx.ops.truncate(ops_mark);
@@ -2653,6 +2719,9 @@ fn apply_style_class(class: &StyleClass, s: &mut NodeStyle) {
         StyleClass::Text4Xl => s.font_size = Some(36.0),
         StyleClass::Text5Xl => s.font_size = Some(48.0),
         StyleClass::FontBold | StyleClass::FontMedium => s.font_bold = true,
+        // P679-D1②：flex 伸缩因子入 NodeStyle（Horizontal 行份额分配）。
+        StyleClass::Flex1 | StyleClass::FlexAuto => s.flex = Some(1.0),
+        StyleClass::FlexInitial | StyleClass::FlexNone => {}
         StyleClass::ItemsCenter | StyleClass::JustifyCenter | StyleClass::MarginXAuto => {
             s.center_children = true;
         }

@@ -1904,7 +1904,9 @@ mod tests {
             .ops
             .iter()
             .find_map(|op| match op {
-                DrawOp::Quad { rect, .. } if rect.w == 320.0 && rect.h == 32.0 => {
+                // P679-D1②：flex 份额后输入盒宽 = 行份额（非旧 320 定宽）
+                // ——按输入盒高度定位（首个 h=32 bg quad = celsius，LTR 序）。
+                DrawOp::Quad { rect, .. } if rect.h == 32.0 => {
                     Some((rect.x, rect.y))
                 }
                 _ => None,
