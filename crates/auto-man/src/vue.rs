@@ -2064,7 +2064,7 @@ fn ensure_natives_layer(output_dir: &Path) {
         );
     }
     stub.push_str(
-        "// PLAN-677 T-04: R tier - real JS builds (semantics mirror vm impls).\n{\n  const g = globalThis as unknown as Record<string, unknown>\n  // file_basename: final path segment, '/' and backslash both separators\n  // (vm native.rs shim_file_basename rsplit semantics).\n  g['file_basename'] = (p: unknown) => {\n    const s2 = String(p ?? '')\n    const parts = s2.split(/[/\\\\]/)\n    return parts[parts.length - 1] ?? ''\n  }\n  // console_*: in-memory buffer - one entry per log call, cap 500,\n  // lines(n=200) newest-first joined with a newline (vm ui_console.rs).\n  const buf: string[] = []\n  g['console_log'] = (line: unknown) => {\n    buf.push(String(line ?? ''))\n    if (buf.length > 500) buf.shift()\n  }\n  g['console_lines'] = (n?: number) => {\n    const take = Math.min(n ?? 200, buf.length)\n    const out: string[] = []\n    for (let i = buf.length - 1; i >= buf.length - take; i--) out.push(buf[i])\n    return out.join('\\\\n')\n  }\n  g['console_clear'] = () => {\n    buf.length = 0\n  }\n}\n"
+        "// PLAN-677 T-04: R tier - real JS builds (semantics mirror vm impls).\n// PLAN-682 F3: first-write-wins guards (same contract as S tier); join emits a real newline.\n{\n  const g = globalThis as unknown as Record<string, unknown>\n  // file_basename: final path segment, '/' and backslash both separators\n  // (vm native.rs shim_file_basename rsplit semantics).\n  if (!('file_basename' in g)) {\n  g['file_basename'] = (p: unknown) => {\n    const s2 = String(p ?? '')\n    const parts = s2.split(/[/\\\\]/)\n    return parts[parts.length - 1] ?? ''\n  }\n  }\n  // console_*: in-memory buffer - one entry per log call, cap 500,\n  // lines(n=200) newest-first joined with a newline (vm ui_console.rs).\n  const buf: string[] = []\n  if (!('console_log' in g)) {\n  g['console_log'] = (line: unknown) => {\n    buf.push(String(line ?? ''))\n    if (buf.length > 500) buf.shift()\n  }\n  }\n  if (!('console_lines' in g)) {\n  g['console_lines'] = (n?: number) => {\n    const take = Math.min(n ?? 200, buf.length)\n    const out: string[] = []\n    for (let i = buf.length - 1; i >= buf.length - take; i--) out.push(buf[i])\n    return out.join('\\n')\n  }\n  }\n  if (!('console_clear' in g)) {\n  g['console_clear'] = () => {\n    buf.length = 0\n  }\n  }\n}\n"
     );
     if !b_names.is_empty() {
         stub.push_str(
@@ -5669,6 +5669,48 @@ pub fn gen_vue_project(root_dir: &Path) -> AutoResult<()> {
         "Generating Vue project (backend: vue, gen-only)".bright_cyan()
     );
     let project = prepare_vue_sources(root_dir)?;
+
+    // PLAN-682 F4: gen-only wrapper materialization. Detection + materialize
+    // were only wired on the full build path; `--gen-only` wrote dep-leg SFCs
+    // (e.g. GalleryShell.vue importing `@/components/ui/popover`) to disk
+    // without ever feeding the detector, so vue-tsc failed with TS2307
+    // (bd64d8df6, Plan 676 external blocker). Scan the generated tree for
+    // `@/components/ui/*` imports and materialize write-if-missing (bundle
+    // carries the full wrapper set; idempotent, no npm steps).
+    {
+        let vue_root = root_dir.join("gen").join("front").join("vue");
+        let src_dir = vue_root.join("src");
+        let mut needed: Vec<String> = Vec::new();
+        fn walk_collect(dir: &Path, needed: &mut Vec<String>) {
+            if let Ok(rd) = fs::read_dir(dir) {
+                for e in rd.flatten() {
+                    let p = e.path();
+                    if p.is_dir() {
+                        walk_collect(&p, needed);
+                    } else if p.extension().map(|x| x == "vue" || x == "ts").unwrap_or(false) {
+                        if let Ok(code) = fs::read_to_string(&p) {
+                            for comp in detect_shadcn_components(&code) {
+                                if !needed.contains(&comp) {
+                                    needed.push(comp);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        walk_collect(&src_dir, &mut needed);
+        if !needed.is_empty() {
+            let report = crate::vue_shadcn::materialize(&vue_root, &needed)?;
+            if report.written > 0 {
+                println!(
+                    "  ✓ {} shadcn wrapper(s) materialized (gen-only scan)",
+                    report.written
+                );
+            }
+        }
+    }
+
     println!(
         "{}",
         format!(

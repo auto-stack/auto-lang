@@ -21515,7 +21515,35 @@ fn dynamic_view_impl(
         // view 构建中派发并写根态，先采后建会把 Init 写入漏在本帧快照外，
         // 且 view_dirty 门控使其后无再同步帧 → MCP 快照永久滞留挂载前空值
         // （013 todos=[] 实证；白盒直读同刻为 4 条）。
-        let (view, id_map, _probe) = state.component.view_with_debug_gated(false);
+        // PLAN-682 F1a：同步块自带属性面。此前探针被丢弃（_probe）且
+        // computed 恒写空 map，styled_vtree 的属性面（style/onclick 行）
+        // 只能靠 __bounds_collected 回路的 from_live 覆盖——该回路仅脏帧
+        // 运行，纯 resize 等非脏帧冻结为空属性态 ⇒ 快照投影双态（jade
+        // D-18 / auto-edit F-RV6 家族，字节基线间歇漂移）。此处接住探针，
+        // 按与 live_cache 合并（Plan 309 Phase 2b / Plan 371 Task 8）同构
+        // 的 path→VNodeId 派生填充 raw_class/events；bounds 等测量字段仍
+        // 由 bounds 回路回填（ComputedNodeLite 全 Option，缺失即省略）。
+        // 代价：本块原本就在重建视图，门 false → true 只是把既有构建的
+        // 探针记录打开（record_* 为纯内存写入，无额外遍历）。
+        let (view, id_map, sync_probe) = state.component.view_with_debug_gated(true);
+        let mut computed: HashMap<crate::ui::vnode::VNodeId, crate::ui::mcp_server::ComputedNodeLite> =
+            HashMap::new();
+        for (path_u16, entry) in sync_probe.snapshot() {
+            let vid = crate::ui::vnode::VNodeId::new(crate::ui::vnode::id_from_path(path_u16));
+            let node = computed.entry(vid).or_default();
+            if entry.raw_class.is_some() {
+                node.raw_class = entry.raw_class.clone();
+            }
+            if !entry.events.is_empty() {
+                // ComputedNodeLite.events 是 (event, handler) 元组面——
+                // 探针的 EventHandlerInfo 经 from_computed 同款映射转换。
+                node.events = entry
+                    .events
+                    .iter()
+                    .map(|e| (e.event.clone(), e.handler.clone()))
+                    .collect();
+            }
+        }
         let state_vals = state.component.read_all_state_materialized();
         let input_map = state.component.input_state_map().clone();
         let view_template = Some(state.component.view_template().clone());
@@ -21540,7 +21568,7 @@ fn dynamic_view_impl(
             mcp.set_styled_vtree(crate::ui::mcp_server::StyledNodeSnapshot {
                 widget_name: state.component.widget_name().to_string(),
                 vtree: vtree.clone(),
-                computed: std::collections::HashMap::new(),
+                computed,
             });
             // Plan 483 D4：缓存这份与 shared.view 同源的 vtree，供
             // `__bounds_collected` 回路覆盖 styled_vtree 时取用（见

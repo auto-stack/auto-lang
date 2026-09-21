@@ -374,7 +374,23 @@ impl SharedState {
     /// PLAN-066 T-02a：帧快照以 Arc 发布——读取方 clone 即 O(1) 指针拷贝，
     /// 深序列化可在锁外进行，UI 线程发帧不再被 MCP 端长持有顶停
     /// （P625-D1 AppHang 结构面孔：tool_snapshot 曾持锁深拷贝+全树序列化）。
+    ///
+    /// PLAN-682 F1b：拒绝「降级覆盖」——同一 vtree 下 computed 从非空被打回
+    /// 空的写入直接跳过（D-18 双态的防御性兜底：即使未来再出现空 computed
+    /// 写入者，也不能把属性态打回空态）。合法的全量属性清空必然伴随重建帧
+    /// ——F1a 后同步块即权威写入者，computed 非空时守卫恒放行。
     pub fn set_styled_vtree(&mut self, snap: StyledNodeSnapshot) {
+        if snap.computed.is_empty() {
+            if let Some(prev) = &self.styled_vtree {
+                if !prev.computed.is_empty() {
+                    // VTree 未 derive PartialEq——守卫走 Debug 串比较（冷路径：
+                    // 仅新 computed 为空时触发；正常帧带属性恒放行）。
+                    if format!("{:?}", prev.vtree) == format!("{:?}", snap.vtree) {
+                        return;
+                    }
+                }
+            }
+        }
         self.styled_vtree = Some(std::sync::Arc::new(snap));
     }
 

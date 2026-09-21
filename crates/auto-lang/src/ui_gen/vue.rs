@@ -12196,6 +12196,23 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         let mut slot_content: Option<String> = None;
         let mut slot_children: Option<String> = None;
 
+        // PLAN-682 F2: explicit `key: <expr>` forwards as a dynamic `:key`
+        // binding. The early-exit component arm's explicit-key contract
+        // (`has_explicit_key`) never reached the shadcn curated path:
+        // curated arms are prop whitelists, so `key` was silently dropped
+        // and the Plan 360 catch-all only saw no `:key=` in the emitted
+        // string and appended a counter literal (`:key="'Tag-N'"`) —
+        // declarative bindings (e.g. an editor's `key: .store.active_key`,
+        // the key-change-remounts seeding semantics) broke and hosts lost
+        // remount-on-switch (jade D-03/D-17 generator half). Emitting here
+        // (single point for every curated arm) makes Plan 360's
+        // `contains(":key=")` check skip the counter naturally.
+        if let Some(AuraPropValue::Expr(key_expr)) = props.get("key") {
+            if let Ok(key_bound) = self.expr_to_vue_bound_value(key_expr) {
+                attrs.push(format!(":key=\"{}\"", key_bound));
+            }
+        }
+
         // Template ref escape hatch: `ref: "menuEl"` → static `ref="menuEl"`
         // attribute + a `const menuEl = ref<HTMLElement | null>(null)` in
         // <script setup> (from self.template_refs). Handled generically so
