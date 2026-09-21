@@ -1149,7 +1149,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.file.write_handle", 1012, Void),
             ("auto.file.try_clone", 1013, Void),
 
-            // === Env (1100-1104) ===
+            // === Env (1100-1105, 9907) ===
             ("auto.env.get", 1100, Void),
             ("auto.env.set", 1101, Void),
             ("auto.env.remove", 1102, Void),
@@ -1159,6 +1159,11 @@ macro_rules! for_each_bigvm_native {
             ("env.local_data_dir", 1104, Void),
             ("auto.env.home_dir", 1105, Void),
             ("env.home_dir", 1105, Void),
+            // PLAN-680 Q1: track identification — VM runtime "vm"; the vue
+            // generator folds `Env.track()` to the "vue" literal (9900+ high
+            // band per PLAN-656 precedent; 9900-9906 taken by scroll/code_editor).
+            ("auto.env.track", 9907, String),
+            ("Env.track", 9907, String),
 
             // === Storage (1106-1108) — Plan 401: localStorage-style KV store ===
             ("auto.storage.get", 1106, String),
@@ -2137,6 +2142,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("env.local_data_dir", 1104),
     ("auto.env.home_dir", 1105),
     ("env.home_dir", 1105),
+    // PLAN-680 Q1: track identification (see ret-type table Env block).
+    ("auto.env.track", 9907),
+    ("Env.track", 9907),
     ("auto.storage.get", 1106),
     ("Storage.get", 1106),
     ("storage.get", 1106),

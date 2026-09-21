@@ -1041,8 +1041,44 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     // PLAN-671 ①：`Env`/`Process` 并入（宿主全局对象，
                     // vue 轨无运行时——`Env.get(...)` 裸发射落 TS2304；
                     // 与 fs/File/image 同一机制承载）。
+                    // PLAN-680 Q1：两个生成期可确证的形态在抛错桩前折叠——
+                    // ① `Env.track()`：生成器即轨别事实源，发射 "vue" 字面量
+                    //    （VM 侧 shim 恒返 "vm"，同一 .at 源双轨取各自真值）；
+                    // ② `Env.get("字面量")`：折叠为 gen 机 env 快照字面量
+                    //    （同机 `auto run -r vm` 运行时读到同一 env，调试轨
+                    //    语义一致；gen 产物不入库，不泄漏机器值）。
+                    // PLAN-671 的诚实抛错裁定不变：非字面量键与其余
+                    // Env.*/Process.* 仍走 __vmOnly。
                     if let crate::ast::Expr::Ident(recv) = object.as_ref() {
                         if VM_ONLY_OBJECT_NATIVES.contains(&recv.as_str()) {
+                            if recv.as_str() == "Env" {
+                                if method.as_str() == "track" && call.args.args.is_empty() {
+                                    ctx.note_warning(
+                                        "Env.track() folded to 'vue' (vue-track build)".to_string(),
+                                    );
+                                    write!(out, "'vue'").ok();
+                                    return;
+                                }
+                                if method.as_str() == "get" {
+                                    if let Some(crate::ast::Arg::Pos(e)) = call.args.args.first() {
+                                        if let crate::ast::Expr::Str(key) = e {
+                                            let value =
+                                                std::env::var(key.as_str()).unwrap_or_default();
+                                            let escaped = value
+                                                .replace("\\", "\\\\")
+                                                .replace("'", "\\'")
+                                                .replace("\n", "\\n")
+                                                .replace("\r", "\\r")
+                                                .replace("\t", "\\t");
+                                            ctx.note_warning(format!(
+                                                "Env.get(\"{key}\") folded at generation time (host env snapshot)"
+                                            ));
+                                            write!(out, "'{}'", escaped).ok();
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
                             let qualified = format!("{}.{}", recv.as_str(), method.as_str());
                             ctx.note_warning(format!(
                                 "VM-only native `{}` has no Vue/JS build — emitted as a throwing __vmOnly stub",
@@ -2690,6 +2726,97 @@ mod tests {
             js2.contains("localStorage.setItem(") && !js2.contains("??"),
             "output: {js2}"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // PLAN-680 Q1: Env.get literal fold + Env.track track identification
+    // -----------------------------------------------------------------------
+
+    fn env_call(method: &str, args: Args) -> Expr {
+        Expr::Call(Call {
+            name: Box::new(Expr::Dot(
+                Box::new(Expr::Ident("Env".into())),
+                method.into(),
+            )),
+            args,
+            ret: Type::Unknown,
+            type_args: vec![],
+            generic_args: Vec::new(),
+            pos: None,
+        })
+    }
+
+    fn transpile_one(expr: Expr) -> String {
+        transpile_handler_body(&[Stmt::Expr(expr)], &test_ctx())
+    }
+
+    /// T1: literal-key Env.get folds to the gen-machine env snapshot.
+    #[test]
+    fn env_get_literal_key_folds_to_host_snapshot() {
+        let mut args = Args::new();
+        args.args.push(Arg::Pos(Expr::Str("PATH".into())));
+        let js = transpile_one(env_call("get", args));
+        let expected = std::env::var("PATH").unwrap_or_default()
+            .replace("\\", "\\\\")
+            .replace("'", "\\'")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t");
+        assert_eq!(js.trim_end().trim_end_matches(';'), format!("'{expected}'"), "output: {js}");
+        assert!(!js.contains("__vmOnly"), "output: {js}");
+    }
+
+    /// T1b: unset literal key folds to the empty string (unwrap_or_default 对齐).
+    #[test]
+    fn env_get_unset_literal_key_folds_to_empty() {
+        let mut args = Args::new();
+        args.args.push(Arg::Pos(Expr::Str("PLAN680 surely unset key".into())));
+        let js = transpile_one(env_call("get", args));
+        assert!(js.contains("''"), "output: {js}");
+        assert!(!js.contains("__vmOnly"), "output: {js}");
+    }
+
+    /// T2: non-literal key keeps the honest __vmOnly degrade.
+    #[test]
+    fn env_get_non_literal_key_stays_vm_only() {
+        let mut args = Args::new();
+        args.args.push(Arg::Pos(Expr::Ident("key_var".into())));
+        let js = transpile_one(env_call("get", args));
+        assert!(js.contains("__vmOnly('Env.get'"), "output: {js}");
+    }
+
+    /// T3: Env.set / Process.* unaffected by the fold (PLAN-671 ruling stands).
+    #[test]
+    fn env_set_and_process_stay_vm_only() {
+        let mut args = Args::new();
+        args.args.push(Arg::Pos(Expr::Str("K".into())));
+        args.args.push(Arg::Pos(Expr::Str("V".into())));
+        let js = transpile_one(env_call("set", args));
+        assert!(js.contains("__vmOnly('Env.set'"), "output: {js}");
+
+        let mut pargs = Args::new();
+        pargs.args.push(Arg::Pos(Expr::Str("pid".into())));
+        let pcall = Expr::Call(Call {
+            name: Box::new(Expr::Dot(
+                Box::new(Expr::Ident("Process".into())),
+                "get".into(),
+            )),
+            args: pargs,
+            ret: Type::Unknown,
+            type_args: vec![],
+            generic_args: Vec::new(),
+            pos: None,
+        });
+        let pjs = transpile_one(pcall);
+        assert!(pjs.contains("__vmOnly('Process.get'"), "output: {pjs}");
+    }
+
+    /// T4: Env.track() folds to the "vue" literal on the vue track.
+    #[test]
+    fn env_track_folds_to_vue_literal() {
+        let js = transpile_one(env_call("track", Args::new()));
+        assert!(js.contains("'vue'"), "output: {js}");
+        assert!(!js.contains("__vmOnly"), "output: {js}");
     }
 
     // -----------------------------------------------------------------------

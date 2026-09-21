@@ -590,6 +590,15 @@ pub fn shim_env_get_or(key: String, default: String) -> String {
     std::env::var(&key).unwrap_or(default)
 }
 
+/// Track identification (PLAN-680 Q1): the VM runtime IS the vm track.
+/// The vue generator folds `Env.track()` to the "vue" literal at generation
+/// time, so the same `.at` source yields its track's true value on both
+/// sides — the degradation-guard signal for demo corpora (027 file-manager).
+#[auto_macros::rust_fn("Env.track")]
+pub fn shim_env_track() -> String {
+    "vm".to_string()
+}
+
 // ── Plan 401: localStorage-style key/value store (Storage module) ────────
 // The VM/iced path has no browser, so back storage.get/set by an in-process
 // HashMap (session-scoped persistence). vue implements these against the real
@@ -10406,6 +10415,13 @@ fn main() {
         assert!((2300..2400).contains(&NATIVE_TASK_HANDLE_TYPE));
         assert!((2300..2400).contains(&NATIVE_TASK_HANDLE_ID));
         assert!((2300..2400).contains(&NATIVE_TASK_SYSTEM_START));
+    }
+
+    /// PLAN-680 Q1: track identification — the VM runtime is the "vm" track
+    /// (the vue generator folds `Env.track()` to "vue" at generation time).
+    #[test]
+    fn env_track_shim_returns_vm() {
+        assert_eq!(shim_env_track(), "vm");
     }
 
     // Plan 121: Task spawn tests
