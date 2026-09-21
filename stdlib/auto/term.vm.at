@@ -8,6 +8,9 @@ fn engine_spawn(cols int, rows int) int
 fn engine_write_line(handle int, line str) void
 
 #[vm]
+fn engine_write_raw(handle int, vt str) void
+
+#[vm]
 fn engine_rows(handle int) []str
 
 #[vm]

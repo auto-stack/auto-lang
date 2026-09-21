@@ -2156,6 +2156,22 @@ impl DynamicComponent {
         };
         let (clean_name, mut payload) = decode_payload(event_name);
 
+        // PLAN-026 needs_fix: terminal 键入载荷侧车——$event 实参存在而
+        // input_value 为空(textinput 之外组件,如 terminal oninput)时,
+        // 从键入队列 drain 全量作载荷(split 形态键入跨进程通道;组件
+        // 消息本体无载荷,publish→dispatch 同线程配对)。
+        let input_value = if input_value.is_none()
+            && payload.iter().any(|a| matches!(a, auto_val::Value::Str(s)
+                if s.as_str().starts_with("$event")))
+        {
+            // PLAN-026 needs_fix: 复用既有广播排空(terminal_drain_all_
+            // inputs → Vec<String>);空 = None,非空 = 拼接串载荷。
+            let keys = crate::ui::terminal::terminal_drain_all_inputs();
+            if keys.is_empty() { None } else { Some(keys.concat()) }
+        } else {
+            input_value
+        };
+
         // Plan 446 批五 U2: `$event` 标记实参替换。内联调用形态
         // `onchange: .TableCell(i, ri, c.name, $event.target.value)` 的
         // $event 实参在视图构建期无法求值，被冻结成字面量字符串随

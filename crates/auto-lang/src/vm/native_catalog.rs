@@ -540,6 +540,8 @@ macro_rules! for_each_native {
             // 耦合;vue back 无窗口降级返缺省槽位值。
             (2998, NATIVE_TERM_WINDOW_WIDTH, shim_term_window_width, "auto.term.window_width"),
             (2999, NATIVE_TERM_WINDOW_HEIGHT, shim_term_window_height, "auto.term.window_height"),
+            // PLAN-026 needs_fix: engine_write_raw(键入 VT 裸写;id 3000 起)。
+            (3000, NATIVE_TERM_ENGINE_WRITE_RAW, shim_term_write_raw, "auto.term.engine_write_raw"),
             (2995, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2996, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             // 2026-09-14(PLAN-016 T-05):mtime 走 rust_fn 宏自注册
@@ -1110,6 +1112,8 @@ macro_rules! for_each_bigvm_native {
             ("auto.term.engine_backlog_dropped", 2982, Int),
             ("auto.term.window_width", 2998, Int),
             ("auto.term.window_height", 2999, Int),
+            // PLAN-026 needs_fix: 键入 VT 裸写(void 返回)。
+            ("auto.term.engine_write_raw", 3000, Void),
             ("auto.term.config_profiles", 2988, List),
             ("auto.term.config_default_profile", 2989, String),
             ("auto.term.config_profiles_full", 2990, List),
@@ -2732,6 +2736,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.term.engine_pump_for", 2985),
     ("auto.term.engine_apply_resize_for", 2986),
     ("auto.term.engine_menu_take", 2987),
+    // PLAN-026 needs_fix: 键入 VT 裸写(qualified 名表——engine_write_raw
+    // 的 term. 前缀限定解析经此;主表之外的第二登记面)。
+    ("auto.term.engine_write_raw", 3000),
     ("auto.term.config_profiles", 2988),
     ("auto.term.config_default_profile", 2989),
     ("auto.term.config_profiles_full", 2990),

@@ -3422,7 +3422,15 @@ impl RustGenerator {
                         .find_map(|k| events.get(*k))
                         .map(|h| self.handler_to_rust_direct_msg(&h.handler, &h.params));
                     let on_input_expr = match on_input {
-                        Some(msg) => format!("Some({msg})"),
+                        Some(msg) => {
+                            // PLAN-026 needs_fix: `$event` 实参(VM/dynamic
+                            // 侧键入载荷通道)在 rust 静态生成无运行期替
+                            // 换源——占位 String::new() 保编译;rust 轨
+                            // split 键入载荷断裂与 025 期同态,ui_gen 带参
+                            // oninput 生成器另档(记 Plan 026 §10)。
+                            let msg = msg.replace("$event", "String::new()");
+                            format!("Some({msg})")
+                        }
                         None => "None".to_string(),
                     };
                     // PLAN-015 D3:onmenu 信号位——右键菜单项选择(载荷走

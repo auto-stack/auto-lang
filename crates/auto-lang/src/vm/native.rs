@@ -33,6 +33,7 @@ use crate::vm::ffi::term_engine::{
     shim_term_resize, shim_term_rows, shim_term_rows_for, shim_term_spawn,
     shim_term_spawn_ex, shim_term_viewport_cols, shim_term_viewport_rows,
     shim_term_write_line,
+    shim_term_write_raw,
 };
 
 /// Decode a tagged string index from a NanoValue popped from the stack.

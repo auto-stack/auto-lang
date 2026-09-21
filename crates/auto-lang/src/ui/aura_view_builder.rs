@@ -10191,10 +10191,14 @@ let tabs_inner = View::Row {
             .map(|event| self.event_to_message(&event.handler));
         // 014 直键入:oninput 信号位(载荷走 TerminalCore 键入队列,宿主
         // 引擎泵排空裸写;消息只当触发器——scalar 消息不带载荷)。
+        // PLAN-026 needs_fix: 改带参编码(event_to_message_with,捷径表
+        // 同款)——`oninput: .KeyIn($event)` 的 $event 实参随消息编码,
+        // dispatch 期由键入队列侧车替换(split 形态键入跨进程载荷通道);
+        // 无参 .KeyIn 旧形态编码不变(零参消息,行为同旧)。
         let on_input = aura_events_get_base(events, "oninput")
             .or_else(|| aura_events_get_base(events, "input"))
             .or_else(|| aura_events_get_base(events, "onkey"))
-            .map(|event| self.event_to_message(&event.handler));
+            .map(|event| self.event_to_message_with(event, bindings));
         // 014 光标格:app 每拍从引擎回读喂入(0,0 = 未喂入占位)。
         let cursor_row = self
             .extract_u16(props, "cursor_row")

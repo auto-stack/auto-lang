@@ -231,6 +231,34 @@ fn engine_write_line(handle: i64, line: &str) {
     }
 }
 
+/// PLAN-026 needs_fix:engine_write_raw(handle int, vt str)——键入 VT 串
+/// 原样裸写引擎(无行补缀;split 形态键入载荷经 HTTP 抵达后由
+/// term_send_keys 端点直写焦点 Pane;与 engine_write_line 的"行"语义
+/// 相对,pump_inner 同款写面)。
+fn engine_write_raw(handle: i64, vt: &str) {
+    let Some(lib) = lib() else { return };
+    let h = ptr_of(handle);
+    if h.is_null() {
+        return;
+    }
+    let bytes = vt.as_bytes();
+    unsafe {
+        let write: libloading::Symbol<
+            unsafe extern "C" fn(*mut core::ffi::c_void, *const u8, usize),
+        > = lib.get(b"autoterm_engine_write_input\0").expect("autoterm_engine_write_input symbol");
+        write(h, bytes.as_ptr(), bytes.len());
+    }
+}
+
+/// PLAN-026 needs_fix:VM shim 壳(栈参序:vt 顶,handle 次)。
+pub fn shim_term_write_raw(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let vt: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    engine_write_raw(handle, &vt);
+    Ok(())
+}
+
 /// 014 直键入泵:排空 terminal 组件键入队列(同进程注册表
 /// `ui::terminal`,iced widget 键盘捕获入队),逐键**裸写**引擎(无
 /// \r\n 补缀——VT 串里 Enter 已是 \r、控制码/CSI 原样)。返回泵送键数
