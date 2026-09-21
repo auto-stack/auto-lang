@@ -5973,6 +5973,35 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         project.generate_desktop_host()?;
     }
 
+    // PLAN-528 W6: pac.at npm_deps（如 @autodown/* link 依赖）必须每次 run
+    // 自愈进 package.json——增量路径不走 regenerate_source_files 的漂移重写，
+    // 只在 pac.at 新增的依赖永远不会被安装。自愈理由同上方 index.html。
+    //
+    // Plan 672: 此块必须在 generate_gallery_host **之前**执行——W6 以宿主单项目
+    // usage 整体重写 package.json，会把画廊刚合并的跨 demo 依赖当作残留清除
+    // （实测 vue-sonner 被冲掉 → vite 解析失败整站崩溃）。gallery 场景让
+    // merge_host_npm_deps 做最后写入者；非 gallery 项目本块与下方 no-op 无序依赖。
+    {
+        let pkg_path = project.output_dir.join("package.json");
+        if pkg_path.exists() {
+            let existing = fs::read_to_string(&pkg_path).unwrap_or_default();
+            let usage = project.dependency_usage();
+            if package_json_deps_drifted(&existing, &usage, &project.npm_deps) {
+                let new_pkg = generate_package_json(
+                    &project.name,
+                    project.has_routes,
+                    project.i18n.enabled,
+                    &project.npm_deps,
+                    &usage,
+                );
+                match fs::write(&pkg_path, new_pkg) {
+                    Ok(_) => println!("{}", "  ✓ Updated package.json (npm_deps sync)".bright_green()),
+                    Err(e) => println!("  ⚠ package.json refresh skipped: {}", e),
+                }
+            }
+        }
+    }
+
     // Plan 549: UI gallery host + demos registry refresh on EVERY run
     if project.is_ui_gallery() || gallery_mode() {
         project.generate_gallery_host()?;
@@ -6012,30 +6041,6 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         if index_css_path.exists() {
             if let Err(e) = fs::write(&index_css_path, generate_index_css(project.theme.as_ref())) {
                 println!("  ⚠ index.css refresh skipped: {}", e);
-            }
-        }
-    }
-
-    // PLAN-528 W6: pac.at npm_deps（如 @autodown/* link 依赖）必须每次 run
-    // 自愈进 package.json——增量路径不走 regenerate_source_files 的漂移重写，
-    // 只在 pac.at 新增的依赖永远不会被安装。自愈理由同上方 index.html。
-    {
-        let pkg_path = project.output_dir.join("package.json");
-        if pkg_path.exists() {
-            let existing = fs::read_to_string(&pkg_path).unwrap_or_default();
-            let usage = project.dependency_usage();
-            if package_json_deps_drifted(&existing, &usage, &project.npm_deps) {
-                let new_pkg = generate_package_json(
-                    &project.name,
-                    project.has_routes,
-                    project.i18n.enabled,
-                    &project.npm_deps,
-                    &usage,
-                );
-                match fs::write(&pkg_path, new_pkg) {
-                    Ok(_) => println!("{}", "  ✓ Updated package.json (npm_deps sync)".bright_green()),
-                    Err(e) => println!("  ⚠ package.json refresh skipped: {}", e),
-                }
             }
         }
     }

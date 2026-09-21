@@ -131,12 +131,18 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Real App Container -->
-      <div v-show="activeDemo && activeDemo.loadable" ref="containerRef" class="demo-mount-root w-full h-full flex-1 overflow-auto relative"></div>
+      <!-- Plan 672: flex 容器 + 直接子项 margin:auto = 安全居中（对齐 VM 臂 m-auto
+           语义）：小于视口时双向居中；溢出时 auto 归零不裁顶；满幅 demo（上方
+           h-screen→100% 覆盖）自由空间为零，观感不变。 -->
+      <div v-show="activeDemo && activeDemo.loadable" ref="containerRef" class="demo-mount-root w-full h-full flex flex-col flex-1 overflow-auto relative"></div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.demo-mount-root > :deep(*) {
+  margin: auto;
+}
 .demo-mount-root :deep(.h-screen) {
   height: 100% !important;
 }
