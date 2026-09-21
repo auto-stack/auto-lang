@@ -3616,10 +3616,6 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         if let Some(fs) = effective_font_size(&is) {
                             span = span.size(fs);
                         }
-                        let is = IcedStyle::from_style(st);
-                        if let Some(fs) = effective_font_size(&is) {
-                            span = span.size(fs);
-                        }
                         if is.underline {
                             span = span.underline(true);
                         }
@@ -7794,6 +7790,14 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             style,
             variant,
         },
+
+        // PLAN-082 T-01：Rich 段落显式直通——此前漏臂被下方 `_ => Empty`
+        // 兜底摊平，markdown 段落/表格单元格/引用正文/列表项正文（autodown
+        // render_inlines 的 Rich 承载）在 VM 动态路径整体不可见（080 期
+        // 「into_iced Rich 臂零命中」的真因：Rich 在本函数上游臂就被吞，
+        // 永远到不了 into_iced）。RichSpanView 仅 content+style，无消息
+        // 载荷需要转换，原样透传即可。
+        AbstractView::Rich { spans, style } => AbstractView::Rich { spans, style },
 
         // Select, Slider, Accordion, Sidebar, NavigationRail use
         // callback types (SelectCallback, fn pointers, Arc<...>) that
@@ -34697,6 +34701,81 @@ This is a **bold** and *italic* paragraph with `code` and [link](https://x).
         };
         let _ = ui.find(dump);
         eprintln!("[F-UAT-2] tree={:?}", seen.lock().unwrap());
+        // PLAN-082 T-02 升断言：文档列几何下限——两段落 Rich 各占一行高
+        // （~20.8px），列高应 ≥90；Rich 被吞成 Empty（零高 Space）时列高
+        // 塌到 heading 附近（~69）。iced_test 对 Rich 无 text 候选（模块头
+        // ②观测盲区），几何是本探针可断言的存活信号。
+        let max_h = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|s| {
+                s.strip_prefix("container@")?
+                    .split("height: ")
+                    .nth(1)?
+                    .split(' ')
+                    .next()?
+                    .trim_end_matches(|c: char| !c.is_ascii_digit() && c != '.')
+                    .parse::<f32>()
+                    .ok()
+            })
+            .fold(0.0f32, |a, b| a.max(b));
+        assert!(
+            max_h >= 90.0,
+            "文档列高 {max_h} < 90：Rich 段落疑似被吞（Empty 化），tree={:?}",
+            seen.lock().unwrap()
+        );
+    }
+
+    /// PLAN-082 T-02 回归钉：VM 动态主链的 convert_view_messages 必须保
+    /// Rich——漏臂曾落 `_ => Empty` 兜底，markdown 段落/表格单元格/引用
+    /// 正文在 VM 动态路径整体不可见（080 KNOWN-DEBT ②「表格单元格空文本」
+    /// + 081 r6「粗体 CJK 段落不进逻辑树」的统一根因；View 新变体四站点
+    /// 显式臂定律的转换链站点）。生产链形态：render_document（Dynamic）
+    /// → convert_view_messages（Iced）。
+    #[test]
+    #[cfg(feature = "autodown")]
+    fn plan082_convert_view_messages_preserves_rich() {
+        let doc = "中文 **粗体** 与 `码`。\n\n| 名 | 值 |\n| --- | --- |\n| 甲 | 乙 |\n";
+        let view = crate::ui::autodown_render::render_document::<DynamicMessage>(doc, true);
+        let converted = convert_view_messages(view);
+        fn collect(v: &AbstractView<IcedMessage>, rich: &mut Vec<String>, text: &mut Vec<String>) {
+            match v {
+                AbstractView::Rich { spans, .. } => {
+                    rich.push(spans.iter().map(|s| s.content.clone()).collect())
+                }
+                AbstractView::Text { content, .. } => text.push(content.clone()),
+                AbstractView::AnchorSlot { child, .. } => collect(child, rich, text),
+                AbstractView::Container { child, .. } => collect(child, rich, text),
+                AbstractView::Column { children, .. } | AbstractView::Row { children, .. } => {
+                    children.iter().for_each(|c| collect(c, rich, text))
+                }
+                AbstractView::Table { headers, rows, .. } => {
+                    for h in headers {
+                        collect(h, rich, text);
+                    }
+                    for row in rows {
+                        for cell in row {
+                            collect(cell, rich, text);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut rich = Vec::new();
+        let mut text = Vec::new();
+        collect(&converted, &mut rich, &mut text);
+        assert!(
+            rich.iter().any(|t| t == "中文 粗体 与 码。"),
+            "段落 Rich 必须存活且 spans 全文保留，rich={rich:?} text={text:?}"
+        );
+        for cell in ["名", "值", "甲", "乙"] {
+            assert!(
+                rich.iter().any(|t| t == cell),
+                "表格 cell「{cell}」必须存活（Rich 承载），rich={rich:?}"
+            );
+        }
     }
 
     /// 文档化（无断言）：MaxWidthPct 子树 text 节点对 Find 操作不可见、
