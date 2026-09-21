@@ -526,7 +526,13 @@ impl IcedStyle {
 
     /// Calculate the effective 4-corner iced border radius
     pub fn effective_border_radius(&self) -> iced::border::Radius {
-        let base = self.border_radius.unwrap_or(if self.rounded { 4.0 } else { 0.0 });
+        // 方向性圆角类(RoundedT/B/L/R/TL/TR/BL/BR)只设对角字段、不设
+        // 标量:未指定角必须为 0,不得被 `rounded` 布尔的默认抬高——
+        // 修复前 base 回退 4.0 使 rounded-b-[15px] 的上角被凭空圆 ~4px
+        // (VM 轨状态栏实测上角 ~6 物理 px ≈ 4 逻辑 × DPI)。
+        // 命名族(rounded/sm/md/.../full)全部成对携带标量,无消费方
+        // 依赖"布尔真而无标量"的 4.0 回退。
+        let base = self.border_radius.unwrap_or(0.0);
         let tl = self.border_radius_tl.unwrap_or(base);
         let tr = self.border_radius_tr.unwrap_or(base);
         let br = self.border_radius_br.unwrap_or(base);
@@ -1472,6 +1478,23 @@ mod tests {
         let iced_style = IcedStyle::from_style(&style);
 
         assert_eq!(iced_style.padding, Some(16.0));
+    }
+
+    /// fix-statusbar-style:方向性圆角类只圆指定角——未指定角必须为 0
+    /// (修复前 `rounded` 布尔把 base 抬到 4.0,rounded-b-[15px] 的上角
+    /// 被凭空圆 4px;VM 轨状态栏实录,PLAN-027 会话诊断)。
+    #[test]
+    fn directional_rounded_leaves_unspecified_corners_square() {
+        let style = Style::parse("rounded-b-[15px]").unwrap();
+        let is = IcedStyle::from_style(&style);
+        let r = is.effective_border_radius();
+        assert_eq!((r.top_left, r.top_right), (0.0, 0.0), "上角必须方");
+        assert_eq!((r.bottom_left, r.bottom_right), (15.0, 15.0));
+        assert!(is.has_border_radius());
+        // 命名族回归钉:裸 rounded 仍全角 4.0(自带标量,不受回退改动影响)。
+        let bare = IcedStyle::from_style(&Style::parse("rounded").unwrap());
+        let rb = bare.effective_border_radius();
+        assert_eq!((rb.top_left, rb.bottom_right), (4.0, 4.0));
     }
 
     /// PLAN-625 T-05: bg-clip-text + text-transparent + 渐变 → 文字回落
