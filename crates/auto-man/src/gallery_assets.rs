@@ -47,8 +47,9 @@ mod tests {
         let file = GalleryAssets::get("AppViewport.vue").expect("embedded AppViewport.vue");
         let text = std::str::from_utf8(&file.data).expect("utf8");
         assert!(
-            text.contains("demo-mount-root w-full h-full flex flex-col"),
-            "demo-mount-root must stay a flex column container:\n{text}"
+            text.contains("demo-mount-root ash-scroll w-full h-full flex flex-col"),
+            "demo-mount-root must stay a flex column container carrying the \
+             ash-scroll AutoUI scrollbar class:\n{text}"
         );
         assert!(
             text.contains(".demo-mount-root > :deep(*)") && text.contains("margin: auto;"),
