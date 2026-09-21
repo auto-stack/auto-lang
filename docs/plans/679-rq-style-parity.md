@@ -68,6 +68,28 @@ total_steps: 3
 
 ## 5. 待办
 
+### Phase 2（2026-09-21 立项并实施，004-profile-card 双轨对拍驱动，用户验收 003 后裁定）
+
+**004 差距分析**（RQ vs VM 实机截图逐项）：
+
+| # | 差距 | 根因 | 处置 |
+|---|---|---|---|
+| 1 | 按钮/卡片直角、状态点方块 | DrawOp wire 无圆角通道 | **tag 7 QuadR**（rect+color+radius 追加式），daemon 走 Path::rounded_rectangle；rounded-full 哨兵 9999 编码端解析 min(w,h)/2 |
+| 2 | bio 单行溢出右缘 | 文本不折行（单行 Text op） | 投影端按 avail_w 预折行（词优先+CJK 兜底），逐行发射、text_center 逐行居中 |
+| 3 | 渐变头带缺失 | bg-gradient/from/to 未消费 | NodeStyle 三件齐判定 → 24 条带近似（wire 无渐变 op，真 op 另立提案） |
+| 4 | 卡片无边界/不满宽/不居中 | **group（Row/Column/List）臂不画 bg/border/圆角/渐变、不消费 padding/max_width** | group 补齐 container 同款视觉面（003 的 bg-card 同根因一并解决） |
+| 5 | 头像方形不叠压 | Image 无圆角裁剪 wire + -mt 负边距 | v1 登记：方图+负边距叠加可用；圆裁需 Image 半径语义（wire 提案另立） |
+| 6 | 按钮宽大、无 rounded-lg | 桶定宽 BUTTON_MIN_W + 无圆角 | radius 通道覆盖圆角；宽度 v1 维持 |
+
+**落地**（plan-679-dev，Phase 2 提交）：①wire QuadR+broker_surface 栅格+serializer/shift_draw_op 全消费者；②NodeStyle radius/grad 三件+解析；③文本换行+badge 垫底盒；④group 视觉面（padding 消费+max_width 钳制+渐变/圆角/border）。门禁：desktop_protocol 187/188（唯一红=master 预存 counter）。
+
+**执行期发现**：group 补丁后 p508 孵化子 auto.exe 陈旧（stale guard 的测试内嵌套 cargo build 不可行）→ twin/child 几何错位假红；手动 cargo build 刷新即绿——e2e 前置纪律 = **先 cargo build -p auto 再跑 stage3 族**（登记为测试基建边界）。
+
+**残余边界（v1 登记）**：fit 窗 toast 不显示；fit 宽度视口钳制不收窄；渐变=条带近似；头像方形无圆裁；Vertical 列 flex 不消费；hover 态无。
+
+- [ ] T-2 实机双轨对拍（001/002/003/004，用户验收）。
+- [ ] T-3 复审 + specs 沉淀（Design 22 增 RQ 臂锚点列 + desktop-protocol-v1 tag 7 增补）。
+
 - [ ] T-2 实机双轨对拍（001/003/012 三例 `auto run -r vm` vs `-r vm -q`
       截图对表，用户验收）。
 - [ ] T-3 复审 + specs 沉淀（Design 22 增 RQ 臂锚点列）。
