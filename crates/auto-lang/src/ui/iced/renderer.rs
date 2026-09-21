@@ -5405,90 +5405,31 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 col_widths,
                 on_col_resize,
             } => {
-                // Plan 045 T3: 拖拽表格分派——on_col_resize Some 走 TableResize
-                // widget（自持网格布局 + Drag 临时宽实时重排 + 松手 publish）；
-                // None 走既有 lowering（零回归）。
-                if let Some(cb) = on_col_resize {
-                    let header_cells: Vec<_> = headers
-                        .into_iter()
-                        .map(|mut h| {
-                            apply_table_header_style(&mut h);
-                            h.into_iced()
-                        })
-                        .collect();
-                    let body_rows: Vec<Vec<_>> = rows
-                        .into_iter()
-                        .map(|r| r.into_iter().map(|c| c.into_iced()).collect())
-                        .collect();
-                    return crate::ui::iced::table_resize::table_resize(
-                        header_cells,
-                        body_rows,
-                        col_spacing as f32,
-                        col_widths,
-                        cb,
-                    )
-                    .into();
-                }
-                // Plan 045 T3: 拖拽表格分派——on_col_resize Some 走 TableResize
-                // widget（自持网格布局 + Drag 临时宽实时重排 + 松手 publish）；
-                // None 且无固定列宽走 TableAlign（PLAN-082 T-05：自持整表布局，
-                // 每列宽=该列 header+body 最大内容宽——旧 per-row Row lowering
-                // 各行独立 hug，行与行列 x 不对齐，截图实证）；有固定列宽时
-                // 走旧 lowering（Fixed 列宽本就对齐，保留 col_fixed_width 尾列
-                // 回退语义零改动）。
-                if col_widths.is_none() {
-                    let header_cells: Vec<_> = headers
-                        .into_iter()
-                        .map(|mut h| {
-                            apply_table_header_style(&mut h);
-                            h.into_iced()
-                        })
-                        .collect();
-                    let body_rows: Vec<Vec<_>> = rows
-                        .into_iter()
-                        .map(|r| r.into_iter().map(|c| c.into_iced()).collect())
-                        .collect();
-                    return crate::ui::iced::table_align::table_align(
-                        header_cells,
-                        body_rows,
-                        col_spacing as f32,
-                    )
-                    .into();
-                }
-                // Plan 411 P2-A④: vue 表格细节——表头 font-medium +
-                // text-muted-foreground、行 border-b、单元格 px-4/py-3。
-                // 行距改由 py-3 padding 提供(规则线与行贴合才是 border-b 语义),
-                // 原 spacing 参数被 padding 取代。
-                let mut table_widget = column([]);
-                table_widget = table_widget.spacing(0.0);
-
-                let mut header_row_widget = row([]);
-                header_row_widget = header_row_widget.spacing(col_spacing as f32);
-                for (ci, header) in headers.into_iter().enumerate() {
-                    let mut h = header;
-                    apply_table_header_style(&mut h);
-                    // Plan 045 T2: 固定列宽应用——有值列 Fixed(w)，无值列
-                    //（col_widths None 或长度不足的尾列）维持自然宽；超长
-                    // 尾值无消费方自然截断。表头与体列同源（同一分派函数）。
-                    let w = col_fixed_width(col_widths.as_deref(), ci);
-                    header_row_widget =
-                        header_row_widget.push(table_cell_container(h.into_iced(), w));
-                }
-                table_widget = table_widget.push(header_row_widget);
-                table_widget = table_widget.push(table_row_rule());
-
-                for row_data in rows {
-                    let mut row_widget = row([]);
-                    row_widget = row_widget.spacing(col_spacing as f32);
-                    for (ci, cell) in row_data.into_iter().enumerate() {
-                        let w = col_fixed_width(col_widths.as_deref(), ci);
-                        row_widget = row_widget.push(table_cell_container(cell.into_iced(), w));
-                    }
-                    table_widget = table_widget.push(row_widget);
-                    table_widget = table_widget.push(table_row_rule());
-                }
-
-                table_widget.into()
+                // Plan 045 T3 + PLAN-082 T-05: 表格统一分派 TableResize 自持
+                // 网格 widget——on_col_resize Some=拖拽臂（临时宽实时重排 +
+                // 松手 publish）；None=纯展示臂（自然宽列对齐——每列宽=该列
+                // header+body 最大内容宽，跨行严格对齐。旧 per-row Row
+                // lowering 各行独立 hug，行间列 x 漂移，截图实证）。
+                // applied_widths（tablewidths 状态通道）两臂同样生效。
+                let header_cells: Vec<_> = headers
+                    .into_iter()
+                    .map(|mut h| {
+                        apply_table_header_style(&mut h);
+                        h.into_iced()
+                    })
+                    .collect();
+                let body_rows: Vec<Vec<_>> = rows
+                    .into_iter()
+                    .map(|r| r.into_iter().map(|c| c.into_iced()).collect())
+                    .collect();
+                return crate::ui::iced::table_resize::table_resize(
+                    header_cells,
+                    body_rows,
+                    col_spacing as f32,
+                    col_widths,
+                    on_col_resize,
+                )
+                .into();
             }
 
             AbstractView::Slider {

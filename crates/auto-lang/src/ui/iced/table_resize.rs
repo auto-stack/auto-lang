@@ -68,17 +68,21 @@ pub struct TableResize<'a, Message: 'static> {
     body_rows: Vec<Vec<Element<'a, Message>>>,
     col_spacing: f32,
     applied_widths: Option<Vec<f32>>,
-    on_resize: ColResizeCallback<Message>,
+    on_resize: Option<ColResizeCallback<Message>>,
 }
 
-/// Plan 045 T3: 构造列宽拖拽表格 widget（renderer Table 臂 on_col_resize
-/// Some 时分派至此；None 走既有 lowering，零回归）。
+/// Plan 045 T3 + PLAN-082 T-05: 构造自持网格表格 widget。on_resize
+/// Some=拖拽臂（临时宽实时重排 + 松手 publish 落定消息）；None=纯展示
+/// 臂（自然宽列对齐——每列宽=该列 header+body 最大内容宽，跨行严格
+/// 对齐；无命中带/指示线/消息）。PLAN-082 曾以独立 table_align widget
+/// 承载纯展示臂，实机 cell 绘制缺失（截图实证）回退本 widget——布局核
+/// 实机验证过（045 拖拽表格），只关交互不动布局。
 pub fn table_resize<'a, Message: Clone + 'static>(
     header_cells: Vec<Element<'a, Message>>,
     body_rows: Vec<Vec<Element<'a, Message>>>,
     col_spacing: f32,
     applied_widths: Option<Vec<f32>>,
-    on_resize: ColResizeCallback<Message>,
+    on_resize: Option<ColResizeCallback<Message>>,
 ) -> TableResize<'a, Message> {
     TableResize { header_cells, body_rows, col_spacing, applied_widths, on_resize }
 }
@@ -289,6 +293,36 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
+        // PLAN-082 T-05：纯展示臂（无回调）不进任何交互状态（命中带/
+        // 指示线/拖拽），直接走尾部子树事件转发。
+        if self.on_resize.is_none() {
+            let child_layouts: Vec<Layout<'_>> = layout.children().collect();
+            let mut ci = 0usize;
+            let mut forward = |cells: &mut dyn Iterator<Item = &mut Element<'_, Message>>,
+                               tree: &mut Tree,
+                               ci: &mut usize| {
+                for cell in cells {
+                    if let (Some(cl), true) = (child_layouts.get(*ci), *ci < tree.children.len()) {
+                        cell.as_widget_mut().update(
+                            &mut tree.children[*ci],
+                            event,
+                            *cl,
+                            cursor,
+                            renderer,
+                            clipboard,
+                            shell,
+                            viewport,
+                        );
+                    }
+                    *ci += 1;
+                }
+            };
+            forward(&mut self.header_cells.iter_mut(), tree, &mut ci);
+            for r in self.body_rows.iter_mut() {
+                forward(&mut r.iter_mut(), tree, &mut ci);
+            }
+            return;
+        }
         let bounds = layout.bounds();
         // 事件现场坐标（PointerArea 先例）：CursorMoved 用事件自带全局位
         //（拖拽出界仍连续），其余用 runtime cursor。
@@ -348,10 +382,12 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
                 let state = tree.state.downcast_mut::<State>();
                 if let Some(d) = state.drag.take() {
                     // 松手才发落定消息（clamp min 40 在 drag_width 内）。
-                    shell.publish(self.on_resize.call(ColResizeMetrics {
-                        col: d.col,
-                        width: clamp_col_width(d.current_w),
-                    }));
+                    if let Some(cb) = &self.on_resize {
+                        shell.publish(cb.call(ColResizeMetrics {
+                            col: d.col,
+                            width: clamp_col_width(d.current_w),
+                        }));
+                    }
                     shell.invalidate_layout();
                 }
                 state.hover_col = None;
