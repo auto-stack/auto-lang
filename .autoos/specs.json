@@ -1125,6 +1125,17 @@
      ],
      "status": "published",
      "created": "2026-09-21"
+    },
+    {
+     "id": "P676-1",
+     "title": "gallery-shell-bp — 画廊壳 BP+--format at 发射器+bps-gallery Auto 化（SD-01/SD-02）",
+     "content": "综合 widgets/ui/charts 三画廊框架成 layout/gallery-shell BP（header brand slot+搜索+设置 popover/aside w-72 筛选+双行卡条目/content 出口；on_* msg-ref 回调契约 TREEVIEW/SettingsPanel 同款；主题态归宿主契约#3；palette 19 项零漂移）+`auto bp list --format at` 发射器（全局 --format 旗加 At 变体；PLAN-625 registry.at 函数表形态，记录避名 spec_text——spec 是 .at 保留字 pac_text 同型；变体排序+LF 规范化双保字节稳定）+bps-gallery Auto 化双臂（pac.at dep bps+registry.at 生成产物 188KB+catalog.at helpers+app.at 壳消费 GalleryShell；手写 Vue 壳 14 文件退役，import.meta.glob 调用面零残留）。SD-01 落 contract Q5#5（发现机制注记+kindOrder 指针 bps.ts→catalog.at）；SD-02 落 project.md 包行。执行期七枚坑入档：spec 保留字/slot 直挂 widget 被转译成填组件具名槽/循环变量括号形态 text 错合并/vue 臂跨模块 fn 内联一跳/SFC 响应式同名加 .value/闭包侥幸 VM 硬错/gate 沙箱 install 步失配——catalog.at 头注+gotchas+计划在案。",
+     "file": "docs/plans/archive/676-gallery-shell-bp.md",
+     "related": [
+      "PLAN-676"
+     ],
+     "status": "published",
+     "created": "2026-09-21"
     }
    ]
   },
@@ -6927,6 +6938,17 @@
      "file": "docs/plans/archive/675-routes-in-embed.md",
      "related": [
       "PLAN-675"
+     ],
+     "status": "published",
+     "created": "2026-09-21"
+    },
+    {
+     "id": "P676-2",
+     "title": "gallery-shell-bp 复审与合并收据",
+     "content": "review pass@plan-676-dev rev1（同会话工件重建式复审，门禁全部现场重跑）：七 AC 复现全绿——tf 3689/3689+bp 47/47（palette 零漂移+新包在册）+auto bin 12/12（发射器 golden）+漂移校验零 diff（work 期实证拦截面：reference 修复→diff 非空→再生成）+auto build 零 error+gate.mjs 双臂✓（gallery_shell state/snapshot，新基线仅 1 张旧 4 张零扰动）+AC-07 调用形态 grep 零命中。findings：F-1 base 滑后 master 推进 13 提交零文件交集（rebase 7/7 range-diff 全等）；F-2 SD-01 补 kindOrder 指针修正（bps.ts→catalog.at）；F-3 supersedes 锚改 contract#q5-gallery-discovery-PLAN-640；F-4 project.md active 表 15 vs registry 18 先存计数漂移=债候选。AC-06 条件证据：workflow 每步本地等价绿，GitHub 首跑=merge 后 watch 项。",
+     "file": "docs/plans/archive/676-gallery-shell-bp.md",
+     "related": [
+      "PLAN-676"
      ],
      "status": "published",
      "created": "2026-09-21"

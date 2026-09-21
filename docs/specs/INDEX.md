@@ -250,7 +250,7 @@
 | lab-ui | active | 5 | [lab-ui/project.md](lab-ui/project.md) |
 | playground-vue | active | 5 | [playground-vue/project.md](playground-vue/project.md) |
 | website | active | 8 | [website/project.md](website/project.md) |
-| blueprint | active | 15 | [blueprint/project.md](blueprint/project.md) |
+| blueprint | active | 16 | [blueprint/project.md](blueprint/project.md) |
 | autoui-skill | active | 2 | [autoui-skill/project.md](autoui-skill/project.md) |
 
 <details><summary>auto-playground 模块明细</summary>
@@ -343,6 +343,7 @@
 | navigation/sidebar-nav | 侧边导航（三段式内容）blueprint | active |
 | navigation/sidebar-shell | 应用壳 blueprint（header + sidebar + 内容槽 + user menu） | active |
 | layout/sandwich | 桌面三层壳骨架 blueprint（toolbar/sidebar/content/statusbar 四 slot 出口；default/full，PLAN-665） | active |
+| layout/gallery-shell | 画廊/文档站三段壳 blueprint（header brand slot+搜索+设置 popover / aside w-72 筛选+双行卡条目 / content 出口；on_* msg-ref 回调契约，主题态归宿主；PLAN-676） | active |
 | dashboard/overview | 仪表盘总览 blueprint | active |
 | data-display/note-list | 笔记列表展示 blueprint | active |
 | data-display/data-table-crud | 查询表格 CRUD blueprint | active |
