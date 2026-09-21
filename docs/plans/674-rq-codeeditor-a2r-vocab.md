@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-674
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: rq-codeeditor-a2r-vocab
 author: [zcode]
 created_at: 2026-09-21
@@ -12,7 +12,7 @@ new_spec_components: [SD-01 ui overview native queue 覆盖集 codeeditor 扩册
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/design/shell-a2r-seams.md]
-current_step: 0
+current_step: 6
 total_steps: 7
 ---
 
@@ -192,13 +192,13 @@ fixture 验证链（tests/ 通用 .at 语料 + a2r 生成 + cargo check）；消
 
 | ID | 任务 | 依赖 | 落点（文件/符号） | 意图 | AC | 验证命令/预期 |
 |---|---|---|---|---|---|---|
-| T-00 | 双勘定：①codeeditor 投影策略裁定（canvas 位图先例 vs 结构 DrawOps）+ not-yet 全集自动列举；②词汇表单源裁定（View builder 面 vs aura schema）——决策档入 §9 | — | coverage.rs 判据 + 本计划 §9 | 设计先行 | AC-01/02/03 | 决策档两裁定在档 |
-| T-01 | codeeditor 扩册四件套：入册 + 投影臂 + 键入/命中回传 + 041 钉翻 `None` | T-00 | coverage.rs:184 / native_projector.rs / coverage.rs:1399 | 过线 | AC-01 | 041 钉绿 + 本机 `-q` 存活 |
-| T-02 | not-yet 全集三态分流执行：本批修项（按 T-00 分流）逐 kind 落臂；另立/降级项登记 KNOWN-DEBT | T-00 | 同 T-01 面扩 | 全集收口 | AC-02 | 勘定清单零"未知" |
-| T-03 | 词汇表机制：单源抽取 + per-kind prop→iced builder 映射表 + `add_prop_to_builder` 改表驱动（拒绝臂保留，文案补 kind） | T-00 | ui_gen/rust.rs:6177 + 单源（T-00 裁定） | 机制扩容 | AC-03/04 | 映射表单测 + fixture cargo check 过 |
-| T-04 | 事件面同步扩容：`add_event_to_builder` 补 View 事件槽族（载荷语义与 vue 侧对齐注记） | T-03 | ui_gen/rust.rs:6263 | 事件面 | AC-03/04 | fixture 事件 prop 生成编译过 |
-| T-05 | fixture+回归+grep 门：tests/ 通用 fixture 双绿（codeeditor RQ + 非基础 prop）；cargo t/tt；PLAN-027 拒绝门测试零回退 | T-01..T-04 | tests/ 新 fixture | 证明集中 | AC-04/05 | 全绿 + grep 零命中 |
-| T-06 | spec 落账+交接：SD-01/SD-02 落盘；消费方复跑通知（perf.py smoke/a2r exit 0 判据） | T-05 | docs/specs/ + §9 记录 | 收口 | AC-06 | spec 回读 + 通知留档 |
+| T-00 | 双勘定：①codeeditor 投影策略裁定（canvas 位图先例 vs 结构 DrawOps）+ not-yet 全集自动列举；②词汇表单源裁定（View builder 面 vs aura schema）——决策档入 §9 | — | coverage.rs 判据 + 本计划 §9 | 设计先行 | AC-01/02/03 | [x] 三裁定入 §9（A=结构 DrawOps·位图不适用证据=rasterize 无文本面+Plan 386 现成降层；B=builder 面·schema 残缺证据 code_editor 元素缺 value/font_size；C=批次边界）|
+| T-01 | codeeditor 扩册四件套：入册 + 投影臂 + 键入/命中回传 + 041 钉翻 `None` | T-00 | coverage.rs:184 / native_projector.rs / coverage.rs:1399 | 过线 | AC-01 | [x] `native_gate_runtime_views_of_six` 绿（041 翻 None）+ 矩阵钉/键入闭环 `codeeditor_rq_typing_roundtrip` 绿 + 实机 `-q`：adopt→window opened→**first frame**→稳定帧（净态复跑收据 2026-09-21 22:48）|
+| T-02 | not-yet 全集三态分流执行：本批修项（按 T-00 分流）逐 kind 落臂；另立/降级项登记 KNOWN-DEBT | T-00 | 同 T-01 面扩 | 全集收口 | AC-02 | [x] 双根勘定仪器 `native_not_yet_kind_inventory` 在档：全集仅两项（style:native-unstyled ×12 capability-tests CSS 面 → P674-D1；tag:managed_content ×1 PLAN-656 合成件 → P674-D2），双双登记另立；tree/menubar 推测证伪（语料零出现）；examples/ui judged 24/24=100% |
+| T-03 | 词汇表机制：单源抽取 + per-kind prop→iced builder 映射表 + `add_prop_to_builder` 改表驱动（拒绝臂保留，文案补 kind） | T-00 | ui_gen/rust.rs + view.rs 单源 | 机制扩容 | AC-03/04 | [x] view.rs `view_prop_vocab`/`ViewPropShape` 单源 + 表驱动臂 + menubar 族降层臂（合成变体+on() 臂+action_config 全局开合态）；`vocab_gate_per_kind_prop_table`/`menubar_family_lowers_to_popover_row` 绿；**消费方实测 23 compile_error! → 0**（auto-edit main@dc99328 重生成）|
+| T-04 | 事件面同步扩容：`add_event_to_builder` 补 View 事件槽族（载荷语义与 vue 侧对齐注记） | T-03 | ui_gen/rust.rs + view.rs | 事件面 | AC-03/04 | [x] `view_event_vocab`（Closure/Msg 双槽形）+ 拒绝文案补 kind；`vocab_gate_unknown_keeps_rejection_with_kind` 绿（prop+event 双断言）|
+| T-05 | fixture+回归+grep 门：tests/ 通用 fixture 双绿（codeeditor RQ + 非基础 prop）；cargo t/tt；PLAN-027 拒绝门测试零回退 | T-01..T-04 | tests/ + capability-tests | 证明集中 | AC-04/05 | [x] capability-tests/codeeditor-rq 入运行时门绿 + 实机 `-q`（adopt→window→**first frame**→稳定帧）；plan039 族 19/19 零回退；grep 门零消费方标识符（首跑 ActOpen 撞门已改泛化名）；**cargo t 5394/5415（21 红全数归因：musk 5=master 全等证 + ui::layout 15=在册环境豁免 + projector_counter=在册预存；顺带治愈 master 红 icon_component_class）；cargo tt 4084/4084 全绿**（test-trans 无 ui 组合编译修复=词汇表迁 ui_gen/vocab.rs 的组合律动因）|
+| T-06 | spec 落账+交接：SD-01/SD-02 落盘；消费方复跑通知（perf.py smoke/a2r exit 0 判据） | T-05 | docs/specs/ + §9 记录 | 收口 | AC-06 | [x] SD-01（overview 覆盖集段 v1.9）/SD-02（seams 词汇门节转正）落盘；**消费方实测：perf.py smoke exit 0·双实例 2/2 存活**（供料 §6 的 0/2 清偿）；a2r 段 BLOCKED 首错移位 E0425（P670-D1 族=P674-D3 登记，全编译过需该族清偿——交接上报）|
 
 ## 9. 复审记录
 
@@ -206,6 +206,81 @@ fixture 验证链（tests/ 通用 .at 语料 + a2r 生成 + cargo check）；消
   发车拆两件，本件=生成器件；供料原件附件 `673-674-m1-supply.md`
   §6/§7）· outcome: **pass（待执行授权）** · next: **work**（授权后自
   T-00 起；§10-1 投影策略与 §10-2 单源为开工前待裁项）。
+- 2026-09-21 · stage: work · T-00 双勘定（决策档）· 授权=用户指令
+  「计划674: 实施它」（auto-plan-work 入场，drafting→executing）·
+  outcome: **pass（裁定三项）** · 证据=master@f2e1aa9a1 实读 · next:
+  T-01 起。
+  - **裁定 A（§10-1 投影策略）= 结构 DrawOps**（否决计划倾向的位图
+    起步）：①`rasterize_canvas_scene`（native_projector.rs:2422）纯
+    矢量栅格（tiny_skia 图元族，**无文本整形面**）——codeeditor 主
+    载荷是文本，位图通道产空帧，canvas 先例不迁移；②Plan 386 已有
+    全链降层 `core::render::render(&core, fs, w, h, None)` →
+    EditorDrawList → `lower_editor_frame`（editor_frame.rs:32，gutter/
+    当前行/选区/搜索/文本 run/caret/preedit/滚动条全 op 面）——结构
+    通道现成非新建；③流量风险消解：text_runs = "per visible run ×
+    syntax span" 视口虚拟化，op 流天然有界；④键入回传走 core
+    `handle_input` 全键面（含 IME/undo/箭标，EditorInput 族），RQ 臂
+    与 inproc iced widget **同源**（CODE_EDITORS 注册表 keyed by
+    storage_key + `with_font_system`——renderer.rs:25181 同款
+    get-or-create + `code_editor_set_text` 外部值差分）。
+  - **裁定 B（§10-2 词汇表单源）= View IR builder 方法面**：①schema/
+    aura.at code_editor 元素 props 残缺（:335-351 缺
+    value/font_size/highlight_current_line——convert_code_editor 实际
+    消费面，"props TBD" 在案）——schema 今天**不是完备单源**；②
+    builder 面 = a2r 发射语义本源（发射物即 builder 调用链，如
+    ViewCodeEditorBuilder .value/.lang/.line_numbers/.wrap/.vi/
+    .highlight_current_line/.tab_width/.font_size/.search，view.rs
+    :3003-3081 实读），解释态 convert_* 同源消费；③schema 侧对齐随
+    收口另行登记（SD-02 注记）。落地：view.rs 单源表
+    `view_prop_vocab(kind)`（kind 归一走既有 tag_to_view_fn），
+    `add_prop_to_builder` 改表驱动（拒绝门保留+文案补 kind）；**复合
+    族（menubar 族 value/title/icon/shortcut/enabled/checked）非
+    View kind**——由 a2r 族降层臂消费（降层契约 = 解释态
+    convert_menubar_component（aura_view_builder.rs:7486）镜像：
+    menubar→Row of Popover{BottomStart, open=action_config::
+    menubar_open()==menu_id, on_dismiss=__MenubarClose}，trigger=
+    Button(onclick=__MenubarToggle(menu_id))，item=menu_item_button
+    同律——**开合态走 action_config 全局面**（MENUBAR_OPEN 进程级
+    Mutex，a2r 生成物同可读写——与 VM 轨同机制非消费方补丁）），不
+    经词汇门。
+  - **裁定 C（§10-3 批次边界）**：本批修 = codeeditor（T-01）+
+    not-yet 全集勘定后「examples 语料实际出现且同根顺手族」（T-02，
+    worktree 跑 `native_flip_coverage_data_row` 勘定后定）+ 词汇门
+    机制面（T-03/T-04，含 menubar 族降层臂——AC-03 编译过线必须）；
+    登记另立 = 勘定出的深水区 kind（autodowneditor/terminal/
+    imagesurface 等交互深水族，若非消费方解阻最小集）。
+
+
+- 2026-09-21 · stage: work · r1 T-01..T-06 全量执行 · plan-674-dev
+  @ worktree `D:/autostack/.wt/lang-674/auto-lang`（auto-down 依赖位
+  `D:/autostack/.wt/lang-674/auto-down` @ fba6563ed detached）·
+  outcome: **pass（execution_done 待 review）** · code_commit =
+  worktree `feat(ui): PLAN-674 RQ codeeditor 覆盖…`（12 文件：coverage/
+  native_projector/editor_frame/code_editor core+mod/ui_gen mod+rust+
+  vocab 新增/specs 两件/capability-tests codeeditor-rq 新增）·
+  task_ids = T-01..T-06 · blockers = 无（P674-D3 上报待裁非阻塞）·
+  next: **review**。
+  - **证据摘要**：041 运行时钉翻绿；矩阵钉/键入闭环绿；双根勘定
+    （全集两项登记 P674-D1/D2）；消费方实测两连——**perf.py smoke
+    exit 0 双实例 2/2 存活**（供料 §6 清偿）+ a2r 词汇门 23
+    compile_error! → 0（供料 §7 判据达成；a2r 段整体 BLOCKED 首错
+    移位 E0425 = P670-D1 族 = P674-D3 登记，全编译过需该族清偿——
+    **消费方复跑通知**：auto-edit 侧可复验 smoke（已绿）；a2r exit 0
+    须等 P670-D1 族另立/扩册后复跑）；回归 cargo t 21 红全数预存
+    归因（musk 5=master 全等 + layout 15=在册豁免 + projector=在册
+    预存）+ tt 4084/4084 全绿；grep 门零消费方标识符。
+  - **执行期裁定/调整记录**：①§10-1/§10-2/§10-3 三裁定（T-00，见上
+    条）；②词汇表物理落位 view.rs → **ui_gen/vocab.rs**（组合律：view
+    域整树挂 `ui` feature 门后，`test-trans` 无 ui 组合编译断——语义
+    源仍在 builder 面，SD-02 文案同步）；③§10-4 交互回传深度落位
+    review 待核面：core handle_input 全键面已达（键入/退格/回车/箭标/
+    Home/End/PageUp·Down/Delete/Tab/IME/滚轮/光标点击定位）；vi 模式
+    键面自然可达；**not-yet 边界**（I3 随注）= 剪贴板族
+    （NullClipboard——Ctrl+C/V 经宿主剪贴板 not-yet）、折叠 gutter
+    点击/搜索面板跳转（宿主面板族）、Esc 编辑器语义（select/popover
+    关闭臂优先）；④menubar 族 a2r 降层 v1 边界：disabled 项隐藏非置灰
+    （Button builder 无 disabled 通道）+ trigger/面板静态样式（VM 开态
+    差分色 not-yet）。
 
 ## 10. 待澄清事项
 

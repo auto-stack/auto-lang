@@ -2584,3 +2584,11 @@ R-03=R-10+A-05）——"需维护者排查归位"注销。**P667-D2/P661-D7 基�
 | id | 级别 | 领域 | 内容 | 锚点 |
 |---|---|---|---|---|
 | P679-D1 | ~~medium~~ **已清偿** | iced 独立轨 fit 窗 | **fit 窗内容测量塌缩（已修，plan-679-dev）**——根因=fit 测量链任一层 iced Shrink 宽把 Fill 后代解析为 0（mx-auto 包装器/容器缺省宽都是 Fill→整链打 0：003 锚点量到 64=p-8、行/列 0 宽、窗缩 213x396 空卡；A/B master 同象=既有缺陷）。修=fit 宽度链全程 Fill（视口钳制，Plan 512 成文 v1 语义的真正实现）+高度链保 512 S3 自然高；Stack fit 分支同修。验证：003 锚点 64x360→480x217/行 0x77→416x58、001/003 实机内容完整渲染（截图 .wt/lang-679/shots/）；fit 单测 5/5。**残余边界**：fit 窗 toast 层 Fill 高塌 0（fit 窗内 toast 不显示，v1 登记）；fit 宽度不再收窄到内容（视口钳制语义，卡片收窄靠 max-w-*） | crates/auto-lang/src/ui/iced/renderer.rs fit_aware_root/Stack fit 分支；AUTO_FIT_TRACE=1 诊断面 |
+
+### P674（2026-09-21，Plan 674 RQ codeeditor 覆盖 + a2r 词汇门 执行登记）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P674-D1 | low | RQ 覆盖 | **style:native-unstyled token 表未映射类 ×12**（T-02 双根勘定：capability-tests 026-039/p1-toggle-array-rerender/p518-glass-sample 携未映射 StyleClass → 扫描 token 落 `native-unstyled` 兜底 → judge NotCovered）。逐类保真决策另立（capability-tests CSS 面专用，非消费方解阻面）；仪器 `native_not_yet_kind_inventory` 输出在案 | coverage.rs native_style_token 兜底臂（:864）；勘定输出 plan 674 §9 |
+| P674-D2 | low | RQ 覆盖 | **tag:managed_content ×1**（p656-scroll-pane）——View::ManagedScrollContent 为 PLAN-656 T-06 合成基准件（"capability-test 专用，非正式 public widget"），RQ 投影臂归属 PLAN-656 域裁定（host 注册表单源持有 offset/extent——非透传壳可归一） | view.rs :757 变体注释；PLAN-656 域 |
+| P674-D3 | medium | a2r codegen | **auto-edit main 新演进 a2r 余错（词汇门外家族，~135 错实测 2026-09-21）**——供料 §7 测量后 auto-edit 演进至 PLAN-005 后：E0425 循环变量/子件转发（`i`/`id`/`TreeIconMsg`/`toggle_id` 伴生 fn）、native 对象面（`Process`/`json`）、`list` 类型、tab 条 unit 变体带参（`TabActivate(i)`）——与 P670-D1 三支路（伴生转译/route A/内建面）同族。词汇门 23 错已清零（本批）；消费方 `auto build -r rust` 全编译过需此族清偿，须用户裁定扩 P670-D1 或另立 | auto-edit rust-workspace cargo check 实测（main@dc99328）；P670-D1 条目 |
