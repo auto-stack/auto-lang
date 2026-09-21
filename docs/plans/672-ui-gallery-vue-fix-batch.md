@@ -43,6 +43,20 @@ total_steps: 6
   （prefix_api_url_literals）不适用于浏览器 fetch（跨源）；Vue 臂走
   vite 代理透传（同源）→ 保持 demo 语料相对路径风格，api.ts 内路径前缀
   改写为 `/apps/<id>/api/`。
+- **条目 5（用户提出 2026-09-21，三家分流勘定）**：017/018/019 同样显示
+  「独立运行」提示。**三家根因不同**：
+  - **017-chat = fullstack 无 api client 源**（run 日志
+    `fullstack: no api client source`）——013 有源纯因历史上跑过 `auto gen`
+    留下 gen api.ts，017 从未生成。修法=T-11 api client 按需现生成
+    （`try_full_parse` + `TypeScriptGenerator::generate_simple_client` 皆为
+    auto-man 既有机器，api_gen.rs:143/:304 先例）；SSE 流端点按 Plan 043
+    语义由 generate_simple_client 生成 stub 注释（流消费走 store 内
+    codegen 注入的 EventSource，ui_gen/vue.rs:17566 单引号字面量），store
+    语料的 `new EventSource('/api/` 字面量同步前缀化 `/apps/<id>/api/`。
+  - **018-book-reader / 019-video-app = `routes {}` 档**（两家 app.at 均有
+    routes 块 → `vp.has_routes` 否决 → PLAN-642 route_stub tier，仅 VM 臂
+    可交互）。Vue 臂嵌套路由 demo = routes-in-embed 能力缺口，属
+    P670-D1「route A 未接线」家族，**非本批尺寸** → 记 P672-D2 债待裁定。
 
 ## 目标
 
@@ -169,6 +183,19 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
   一并发射，但流消费在 Vue 臂未经 PLAN-658 的 Tick 注入改造——若运行期断流
   降级为错误横幅（与 658「失败降级不阻断」同语义），不强保。
 
+### T-11/T-12 api client 按需现生成 + 017 内嵌（条目 5）
+
+- `generate_gallery_host` fullstack api 源解析追加第三优先级：gen api.ts →
+  src/back/api.ts 胶水 → **现生成**（读 `src/back/api.at` →
+  `crate::api_gen::try_full_parse` → `TypeScriptGenerator::generate_simple_client`；
+  流端点自动出 stub 注释，CRUD 端点出真 fetch 函数）。解析失败维持回退
+  独立提示。
+- fullstack 语料改写扩展：store/app/components 语料中
+  `new EventSource('/api/` → `new EventSource('/apps/<id>/api/`（与 api.ts
+  前缀化同通道，SSE 经 vite /apps 代理透传到 proxy 会话流端点）。
+- 门禁同 T-09；端到端=017 内嵌加载、消息列表渲染、发消息写路径、SSE
+  打字/机器人回复（经代理流，N5 不阻塞 SSE 观测）。
+
 ### T-09/T-10 门禁与端到端（条目 4）
 
 - Category B（局部 Rust 改动）：`cargo check -p auto-man`；
@@ -210,6 +237,10 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
       （env 条目未设不出现）。—— 结构性满足：/apps 条目 env 门控（未设即
       零条目）；无 api 源 fullstack 直接回退独立提示（047 实测）；代理死时
       fetch 失败走错误横幅（实测窗口期现过 500 横幅，页面不崩）。
+- [ ] AC-9（条目 5）017-chat 在 Vue 臂画廊内嵌加载：消息种子渲染、发消息
+      200、SSE 流经 /apps 代理可达（打字指示或机器人回复至少一项实证）。
+- [ ] AC-10（条目 5）api client 现生成兜底不破坏 047 回退语义（解析失败
+      仍回退独立提示），既有 013/015 发射面零变化。
 
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
