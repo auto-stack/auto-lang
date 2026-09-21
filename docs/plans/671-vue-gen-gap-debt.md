@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-671
-status: executing          # drafting → executing → execution_done → reviewed → archived
+status: execution_done    # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-gen-gap-debt
 author: [zcode]
 created_at: 2026-09-21
@@ -15,7 +15,7 @@ new_spec_components: [SD-01 ui overview vue 生成器自完备契约, SD-02 aura
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN（review 时定）
 
 affects: [docs/specs/auto-lang/ui/overview.md]
-current_step: 11
+current_step: 14
 total_steps: 14
 ---
 
@@ -182,6 +182,16 @@ menubar_item 发射为裸 `<div :title=...>`（仅外层 Menubar 组件，:15046
     「d.ts 落 src 根」实测一致）。**诉求 = r1 T-06 natives 吸收须覆盖
     对象形态内建**（声明发射 + 抛错桩/调用点改写）；下游过渡补件
     （regen 1b 追加式）已先行修复，上游落地后退化为 no-op。
+- **T-11 勘定回填（2026-09-21，r1 worktree 7a34a1a67 冷重生成实测）**：
+  r1 对 ②症状 = **部分覆盖**——调用点改写在（`__vmOnly('Process.exit', 0)`
+  ×3 于 useEditorStore.ts:156/241/249，与消费方 1631 实测 ×3 TS2304 逐一
+  对应——其 e82b95b22 二进制为缺白名单改写的 671 中间态，裸
+  `Process.exit` 残留即其红面真身）；声明发射缺（`src/natives.d.ts` 零
+  `declare const`，对象形态不在函数形态注册表面内）。Env 在 auto-edit
+  生成面零真实引用（PLAN-003 T-02 已改道 back api），诉求为前瞻覆盖。
+  ①button 撤回项归属：1631 生成器已自带 text variant（= 本计划 ⑥ 形态），
+  TS1117 为下游补件非幂等双插（消费方 b0b4676 已修），**上游无动作项，
+  登记在案**。→ T-12 执行补修（对象形态声明发射 + 抛错桩，单源五名表）。
 - **Phase 2 范围**：核对 r1 T-06 修面对对象形态内建的覆盖完整性 →
   缺则补 → 消费方冷重生成+摘补件复收口（含 1b 退化 no-op 验证）。
 - **用户裁定（2026-09-21）**：671 已 execution_done，新需求**不回改已
@@ -277,9 +287,9 @@ menubar_item 发射为裸 `<div :title=...>`（仅外层 Menubar 组件，:15046
 | T-09 | [x] 测试/fixture 收口：tests/vue-gen-gap 通用 fixture（九特性集中、零消费方业务名）strict gen EXIT=0 + pnpm build 双绿；AC-02 grep 门通过（命中全为注释层案例引注或先在内容，可执行逻辑零名单）；cargo t 全量对基线 diff = 零新增红（预存红 20 = musk_vm_track×7 + ui::layout×13，干净 HEAD 同红在案）；docs_gen/schema_drift 四围栏绿 | T-01..T-08 | tests/ fixture 目录 + crates 内嵌测试 | 证明集中 | AC-03/05 | cargo test 绿 + fixture 矩阵绿 |
 | T-10 | [x] 文档收口 + 交接：SD-01/SD-02 落 docs/specs/auto-lang/ui/overview.md（worktree 提交，随 merge 落账）；auto-edit 交接通知留档 §9（669 §10-4 模式：merge 后通知消费方复跑摘补件，见复跑要点） | T-09 | docs/specs/auto-lang/ui/overview.md + 交接记录 | 规范落账 | AC-06 | spec 回读 + 通知留档 |
 | **—— Phase 2 分界（r2，2026-09-21 供料 §8 增补批；r1 以上零改动）——** | | | | | | |
-| T-11 | [ ] 对象形态内建覆盖勘定：r1 worktree（plan-671-dev @ 7a34a1a67）构建生成消费方 vue 工程，核 `src/natives.d.ts` 是否含 `Process`/`Env` **对象形态**声明（+ `__vmOnly` 抛错桩/调用点改写）——1631 实测只覆盖函数形态；①button 项按勘误撤回，仅登记归属（1631 已自带 text variant，冲突为下游补件非幂等）。覆盖判定（r1 已覆盖 / 残缺）回填 §4.2 | — | r1 worktree 生成物 diff + auto-man natives 层代码 | 覆盖勘定 | AC-07 | 结论在档（§4.2 回填） |
-| T-12 | [ ] 残缺补修（条件任务，§2 分流规则同款）：若 r1 T-06 注册表驱动发射只覆盖函数形态（intrinsics 平名表无对象形态面），补对象形态发射（单源纪律：与 ts_adapter 对象级 `__vmOnly` 白名单五名表同源，不手写名单）；已覆盖则标 [x] 已覆盖跳过（证据注记） | T-11 | auto-man natives 层 + ts_adapter.rs | 补修/分流 | AC-07 | 分流记录入 §9 |
-| T-13 | [ ] 消费方复跑收口强化（G4 增量）：交接通知更新为「**冷重生成**（rm gen/front/vue 后 `auto build --gen-only -r vue`，可摘 --lenient）+ 七类补件全摘（含新增 1b——上游落地后应退化 no-op，一并验证）」形态——补件链重跑在生成器漂移后不可靠（TS1117 形态即证据）；复跑收据回传（解阻判据 = 供料 §8 复验条冷重生成等价形态，build 退出码 0）或复跑窗口登记 | T-12 | §9 交接通知更新 | 复收口 | AC-08 | 通知留档 + 收据/窗口登记 |
+| T-11 | [x] 对象形态内建覆盖勘定（2026-09-21，r1 worktree 7a34a1a67 冷重生成实测，§4.2 已回填）：r1 = **部分覆盖**——调用点改写在（`__vmOnly('Process.exit', 0)` ×3，与消费方 1631 实测 ×3 症状逐一对应，其 e82b95b22 二进制为缺白名单的 671 中间态）；声明发射缺（natives.d.ts 零 `declare const`）；Env 在 auto-edit 生成面零真实引用（PLAN-003 T-02 改道 back）；①button 撤回项归属登记（1631 已自带 text variant = 本计划 ⑥ 形态，TS1117 为下游补件非幂等，上游无动作项） |r1 worktree（plan-671-dev @ 7a34a1a67）构建生成消费方 vue 工程，核 `src/natives.d.ts` 是否含 `Process`/`Env` **对象形态**声明（+ `__vmOnly` 抛错桩/调用点改写）——1631 实测只覆盖函数形态；①button 项按勘误撤回，仅登记归属（1631 已自带 text variant，冲突为下游补件非幂等）。覆盖判定（r1 已覆盖 / 残缺）回填 §4.2 | — | r1 worktree 生成物 diff + auto-man natives 层代码 | 覆盖勘定 | AC-07 | 结论在档（§4.2 回填） |
+| T-12 | [x] 残缺补修：ts_adapter 白名单五名表单源化 `VM_ONLY_OBJECT_NATIVES`（matches! 臂 / vue.rs lifecycle walker / auto-man 声明层三消费同源）+ `ensure_natives_layer` 增对象形态面（「标识符+成员访问」用面扫描，改写后 `__vmOnly('X.y'` 串同样命中）→ `declare const NAME: { [key: string]: (...args: any[]) => any }` 索引签名（注册表驱动不手写方法面）+ globalThis Proxy 抛错桩（任取成员即抛错带「对象名.成员名」指引）；SD-01 规范面同步增补；验证 = auto-edit 冷重生成 strict gen EXIT=0 + pnpm build EXIT=0（`declare const Process` 实证）+ fixture 增 Env.get 用例双绿（Env+Process 双声明 + `__vmOnly('Env.get','HOME')` 实证）+ cargo t 全量对基线零新增红 |若 r1 T-06 注册表驱动发射只覆盖函数形态（intrinsics 平名表无对象形态面），补对象形态发射（单源纪律：与 ts_adapter 对象级 `__vmOnly` 白名单五名表同源，不手写名单）；已覆盖则标 [x] 已覆盖跳过（证据注记） | T-11 | auto-man natives 层 + ts_adapter.rs | 补修/分流 | AC-07 | 分流记录入 §9 |
+| T-13 | [x] 消费方复跑收口强化：§9 交接通知更新为强化版（冷重生成 + 七类补件全摘，含 1b——上游落地后其 typed `declare const Env/Process` 追加与上游索引签名声明会撞重复标识符 TS2300，必须随补件链一并摘除，退化 no-op 验证）；冷重生成等价收据 = T-12 验证（worktree 二进制冷重生成 build 退出码 0，即供料 §8 复验条等价形态）；复跑窗口登记：r1+Phase 2 merge 后消费方执行 |交接通知更新为「**冷重生成**（rm gen/front/vue 后 `auto build --gen-only -r vue`，可摘 --lenient）+ 七类补件全摘（含新增 1b——上游落地后应退化 no-op，一并验证）」形态——补件链重跑在生成器漂移后不可靠（TS1117 形态即证据）；复跑收据回传（解阻判据 = 供料 §8 复验条冷重生成等价形态，build 退出码 0）或复跑窗口登记 | T-12 | §9 交接通知更新 | 复收口 | AC-08 | 通知留档 + 收据/窗口登记 |
 
 ## 9. 复审记录
 
@@ -294,8 +304,8 @@ menubar_item 发射为裸 `<div :title=...>`（仅外层 Menubar 组件，:15046
 - 2026-09-21 stage: work / PLAN-671 r1 / outcome: pass（全部 11 任务闭环，
   T-01/T-04 显式分流为已清偿跳过）。
   code_commit: worktree plan-671-dev @
-  D:/autostack/.wt/lang-671/auto-lang（实现批 + fixture 批 + specs 批三提交，
-  base ebfeef30c）+ auto-os d21bee3（kitchen-sink 围栏联动再生成成物）。
+  D:/autostack/.wt/lang-671/auto-lang（c1f986110 实现批+fixture 批 +
+  7a34a1a67 specs 批两提交，base ebfeef30c）+ auto-os d21bee3（kitchen-sink 围栏联动再生成成物）。
   task_ids: T-00..T-10（T-00 勘定 §4.1；T-01/T-04 已清偿标注；T-02/03/05/06/07/08
   执行修复；T-09 fixture+回归；T-10 文档+交接）。
   evidence: auto-edit 冷树裸 `auto build --gen-only -r vue`（无 --lenient）
@@ -328,6 +338,43 @@ menubar_item 发射为裸 `<div :title=...>`（仅外层 Menubar 组件，:15046
   status: execution_done → executing（语义修订回退规则）· outcome:
   pass（r2 待执行）· next: **review（r1 范围 T-00..T-10 / AC-01..06）
   → merge → work（Phase 2 自 T-11 起）**。
+
+
+- 2026-09-21 stage: work / PLAN-671 **r2（Phase 2）** / outcome: pass
+  （T-11..T-13 全闭环）。
+  code_commit: worktree plan-671-dev 追加 Phase 2 提交 102818dc5（单源
+  五名表 + 对象形态声明/Proxy 桩 + fixture Env 用例 + SD-01 增补；r1 两
+  提交之后）。
+  task_ids: T-11（勘定：部分覆盖结论 §4.2 回填）/ T-12（补修：对象形态
+  声明发射 + 抛错桩，单源纪律）/ T-13（交接强化 + 冷重生成等价收据）。
+  evidence: auto-edit 冷重生成 strict gen EXIT=0 + pnpm build EXIT=0
+  （`declare const Process` + Proxy 桩实证）；fixture 双绿（Env+Process 双
+  对象形态声明 + `__vmOnly('Env.get','HOME')` 改写实证）；cargo t 全量对
+  基线 diff 零新增红（同 20 预存红）。AC-07（覆盖判定+补修+撤回项登记）
+  / AC-08（通知强化+等价收据+窗口登记）达成。
+  blockers: 无。
+  next: review（r1+Phase 2 全范围 T-00..T-13 / AC-01..08）→ merge。
+
+  **auto-edit 交接通知（G4 强化版，取代 r1 版——merge 后发出）**：
+  PLAN-671 r1+Phase 2 已清偿 vue 生成器七类缺口（六执行类修复 + ②④⑦
+  既有清偿复验）**及 1631 复验的对象形态残缺**（Process/Env：调用点
+  `__vmOnly` 改写 + 防御性 `declare const` 索引签名 + globalThis Proxy
+  抛错桩）。复跑要点：
+  1. upstream merge 后**冷重生成**（rm gen/front/vue 后 `auto build
+     --gen-only -r vue`，**可摘 --lenient**）——补件链重跑在生成器漂移后
+     不可靠（TS1117 形态即证据：下游补件⑥对已自带 text variant 的 1631
+     生成器非幂等双插）。
+  2. **七类补件全摘**（含 PLAN-004 新增 1b）：natives.d.ts/store 别名/
+     toggle_id 内联/null→-1/EditorCtx 签名/button text variant/
+     auto-sources+env.d.ts 上游均自备；**1b 的 typed `declare const
+     Env/Process` 追加必须摘除**——与上游索引签名声明撞重复标识符
+     TS2300；摘除后 regen 退化 no-op 一并验证。
+  3. vue 轨运行期内建缺口仍按 README 登记限制（natives.ts/Proxy 为抛错
+     桩非实现）；存量树脚手架资产 write-if-missing（PLAN-457 契约）。
+  4. jade-edit 同款补件链（646 同型）同受惠；auto-os 侧 kitchen-sink
+     再生成（d21bee3）golden 如受影响按围栏提示重采样。
+  冷重生成等价收据（供料 §8 复验条形态）：本计划 T-12 已以 worktree
+  二进制冷重生成 + build 退出码 0 实证；消费方正式复跑窗口 = merge 后。
 
 ## 10. 待澄清事项
 
