@@ -335,29 +335,25 @@ fn render_inlines<M: Clone + std::fmt::Debug>(inlines: &[InlineSpan]) -> View<M>
     let line_views: Vec<View<M>> = lines
         .iter()
         .map(|spans| {
-            // PLAN-080 UAT F-UAT-2: 段落行 = View::Rich 单段落（跨 span 连续
-            // 折行）。此前为 Row 摆多 Text——iced Row 不回流，长段落各 span
-            // 在自身窄列内独立折行=排版散架（真机截图实证 2026-09-21）；
-            // Rich 跨 span 连续折行=web 段落语义。空行保留空 Text 占位。
-            let rich_spans: Vec<crate::ui::view::RichSpanView> = spans
+            let parts: Vec<View<M>> = spans
                 .iter()
                 .filter(|s| !s.text.is_empty())
-                .map(|s| crate::ui::view::RichSpanView {
-                    content: s.text.clone(),
-                    style: Style::parse(&span_class(s)).ok(),
-                })
+                .map(|s| inline_span_view(s))
                 .collect();
-            if rich_spans.is_empty() {
-                View::Text {
+            match parts.len() {
+                0 => View::Text {
                     content: String::new(),
                     style: None,
                     selectable: false,
-                }
-            } else {
-                View::Rich {
-                    spans: rich_spans,
+                },
+                1 => parts.into_iter().next().unwrap(),
+                _ => View::Row {
+                    children: parts,
+                    spacing: 0,
+                    padding: 0,
                     style: None,
-                }
+                    onclick: None, on_right_click: None,
+                },
             }
         })
         .collect();

@@ -34581,7 +34581,59 @@ mod plan080_uat_cjk_bubble_tests {
         }
     }
 
+    /// F-UAT-2 探针：Rich 段落布局尺寸（容器包 Rich，dump 容器 bounds）。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn plan080_uat_fuat2_rich_layout_bounds() {
+        for (label, spans) in [
+            ("latin-rich", vec![("This is a bold paragraph with code.", false), (" tail", false)]),
+            ("cjk-rich", vec![("这是中文段落加粗测试。", false)]),
+        ] {
+            let rich_spans: Vec<crate::ui::view::RichSpanView> = spans
+                .into_iter()
+                .map(|(c, _)| crate::ui::view::RichSpanView {
+                    content: c.to_string(),
+                    style: None,
+                })
+                .collect();
+            let el = render_dynamic_view(
+                AbstractView::Column {
+                    children: vec![AbstractView::Rich {
+                        spans: rich_spans,
+                        style: None,
+                    }],
+                    spacing: 0,
+                    padding: 0,
+                    style: Style::parse("w-full").ok(),
+                    onclick: None,
+                    on_right_click: None,
+                },
+                None,
+                &mut Vec::new(),
+            );
+            let mut ui = iced_test::simulator(el);
+            let seen = std::sync::Mutex::new(Vec::new());
+            let dump = |c: iced_test::selector::Candidate<'_>| -> Option<()> {
+                use iced_test::selector::Candidate::*;
+                match c {
+                    Container { bounds, .. } => {
+                        seen.lock().unwrap().push(format!("container@{bounds:?}"));
+                        None
+                    }
+                    Text { bounds, content, .. } => {
+                        seen.lock().unwrap().push(format!("text@{bounds:?}={}", content.chars().take(16).collect::<String>()));
+                        None
+                    }
+                    _ => None,
+                }
+            };
+            let _ = ui.find(dump);
+            eprintln!("[RICH-GEOM] {label:?} -> {:?}", seen.lock().unwrap());
+        }
+    }
+
     /// 回归钉：pct-hug 路径 CJK 测宽必须与 latin 同量级（全角 ≈ 2× 半角）。
+    /// 读法用闭包收集器（不走 text 选择器——见模块头②）。    /// 回归钉：pct-hug 路径 CJK 测宽必须与 latin 同量级（全角 ≈ 2× 半角）。
     /// 读法用闭包收集器（不走 text 选择器——见模块头②）。
     #[test]
     #[cfg(feature = "iced-layout-tests")]
