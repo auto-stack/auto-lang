@@ -2184,7 +2184,24 @@ fn main() -> auto_lang::ui::AppResult<()> {{
 {env_inits}        // Plan 020 T-05：孵化参数在册 → native 协议 client 臂（返回即走）；
         // 无标记 → 独立窗（下行 iced_entry 现行行为零变化）。
         {native_client_gate}
-        {iced_entry}
+        // PLAN-039 T-04（批次 E 连带）：深视图 app 的运行线程栈扩容——
+        // klondike 7 列×嵌套条件视图的构造/求值深递归 + iced 大帧溢出
+        // 默认主栈（PE /STACK 提至 256MB 后仍溢；minesweeper 浅视图无
+        // 此面）。闭包返回 unit（AppResult 的 Error 非 Send）——退出码
+        // 语义不变面：ices run 正常路径不依赖返回值传播。
+        let __stack_handle = std::thread::Builder::new()
+            .stack_size(1024 * 1024 * 1024)
+            .spawn(move || {{
+                // 内闭包吞 AppResult（Error 非 Send，不跨线程传播——
+                // ices run 正常路径不依赖返回值，异常以 panic/进程退出显形）。
+                let __run = || -> auto_lang::ui::AppResult<()> {{
+                    {iced_entry}
+                }};
+                let _ = __run();
+            }})
+            .expect("spawn iced main thread");
+        __stack_handle.join().expect("iced main thread panicked");
+        return Ok(());
     }}
     #[cfg(feature = "ui-gpui")]
     {{
@@ -3172,10 +3189,14 @@ tower-http = {{ version = "0.5", features = ["cors"] }}
     // Always rewrite to update members list
     let _ = fs::write(&ws_cargo, &content);
 
-    // Write .cargo/config.toml with target-dir
+    // Write .cargo/config.toml with target-dir.
+    // PLAN-039 T-04（批次 E 连带）：MSVC 主线程栈扩至 256MB——深视图
+    // app（klondike 7 列×嵌套条件）的视图构造/drop 递归溢出默认栈
+    // （minesweeper 浅视图无此面）；栈是上限非预留，浅 app 无扰。
     let config_dir = ws_dir.join(".cargo");
     fs::create_dir_all(&config_dir).ok();
-    let config = format!("[build]\ntarget-dir = \"{}\"\n", target_rel.replace('\\', "/"));
+    let mut config = format!("[build]\ntarget-dir = \"{}\"\n", target_rel.replace('\\', "/"));
+    config.push_str("\n[target.x86_64-pc-windows-msvc]\nrustflags = [\"-C\", \"link-arg=/STACK:268435456\"]\n");
     let _ = fs::write(config_dir.join("config.toml"), config);
 
     ws_dir
