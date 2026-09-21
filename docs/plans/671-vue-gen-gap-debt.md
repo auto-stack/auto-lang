@@ -28,9 +28,11 @@ auto-edit PLAN-003（已 delivered）vue 轨以 `specs/auto-edit/scripts/regen_v
 （其内置再生成会静默覆盖补件）。本计划把七类缺口在上游**按通用机制清偿**，
 使 vue 生成器裸产出即自完备可构建，regen 补件逐段退化直至摘除。
 
-> **r2（2026-09-21）**：附加 **Phase 2——1631 漂移增补批**（供料 §8 承接，
-> 见 §4.2 + T-11..T-13 + AC-07/08）；r1（T-00..T-10 / AC-01..06）任务与
-> AC 零改动，其 review/merge 先行。
+> **r2（2026-09-21）**：附加 **Phase 2——1631 漂移增补批**（供料 §8
+> 承接；F-1 勘误收窄后实际范围 = **natives 吸收覆盖对象形态内建
+> （Process/Env）** + 消费方冷重生成复收口，见 §4.2 + T-11..T-13 +
+> AC-07/08）；r1（T-00..T-10 / AC-01..06）任务与 AC 零改动，其
+> review/merge 先行。
 
 用户裁定（2026-09-21）：**修复一律按机制（内建注册表/形参表/类型系统/值域
 映射），不针对特殊函数名单打补丁**——auto-edit 的 21 个内建清单、四个自调
@@ -160,26 +162,28 @@ menubar_item 发射为裸 `<div :title=...>`（仅外层 Menubar 组件，:15046
 仅处理 text/disabled/onclick），构建绿不受影响、消费方从未补件此面，属
 渲染保真债（vue 轨 menubar 组件化映射），非本计划七类范围，后续计划候选。
 
-### 4.2 证据增补与 Phase 2 立项（2026-09-21 r2，供料 §8 承接）
+### 4.2 证据增补与 Phase 2 立项（2026-09-21 r2，供料 §8 承接；同日 F-1 勘误收窄）
 
-- **来源**：auto-edit 上游供料包（M1 批 2026-09-21）§8 附记
-  （`docs/plans/attachments/673-674-m1-supply.md`）+ 其 PLAN-004 T-04
-  复验收据（vue 轨 1631 红，两轮含 `auto fetch` 刷新后复跑——排除缓存
-  陈旧）。
-- **实测**（工具链 `v0.4.2-1631-ge82b95b22` = 本仓 master@e82b95b22，
-  **不含 r1 修面**〔plan-671-dev 未 merge〕；1588+669 时代绿 → 1631 红）：
-  - ① `src/components/ui/button/index.ts` **TS1117**（对象字面量重复
-    属性）——消费方补件⑥「button text variant」与 1631 新生成物**冲突
-    形态**：1589–1631 区间生成器/资产输出漂移使补件链失配（补件叠加
-    漂移后输出 → 重复属性）。
-  - ② `src/stores/useEditorStore.ts` **TS2304 `Cannot find name
-    'Process'` ×3**——natives 声明面缺 Process（退出确认三 handler
-    触发）；r1 T-06 修面（Process 进对象级 `__vmOnly` 白名单 +
-    natives.d.ts 注册表驱动发射）未含于 1631，与症状自洽。
-- **定性**：两症状均属「七类补件在生成器漂移下失配/不足」族——**Phase 1
-  修面按设计覆盖**（T-06/T-07 即两症状对应修面）；Phase 2 = 勘定确认
-  覆盖完整性 + 消费方复跑收口（冷重生成 + 全摘补件形态——补件链重跑
-  在漂移后已不可靠，TS1117 即其形态）。
+- **来源**：auto-edit 上游供料包（M1 批 2026-09-21）§8 附记（原件
+  `docs/plans/attachments/673-674-m1-supply.md`，勘误版）+ 其 PLAN-004
+  T-04 复验收据与复审 F-1 勘误（commit b0b4676，vue exit 0 修复后
+  诉求收窄）。
+- **勘误后双症状定性**（工具链 `v0.4.2-1631-ge82b95b22` 实测；1588+669
+  时代绿 → 1631 红）：
+  - ① **TS1117 button——上游无诉求（撤回）**：1631 生成器**已自带**
+    text variant（空预设语义 + "Keep in sync with ui_gen/vue.rs"
+    注释——本计划 ⑥ 修面形态）；重复属性是**下游补件⑥非幂等双插**，
+    消费方已加在场守卫修复（b0b4676）。本计划仅登记归属，无动作项。
+  - ② **TS2304 `Cannot find name 'Process'` ×3——真实上游缺口
+    （保留）**：1631 生成器已自发射 `src/natives.d.ts`（函数形态内建，
+    `(...args: any[])` 宽松签名——671 中间态），但**漏对象形态内建
+    `Process`/`Env`**；且 tsc 程序只收录 src 根该文件（下游
+    `src/lib/natives.d.ts` 不入程序，listFilesOnly 实证——与 r1 T-06
+    「d.ts 落 src 根」实测一致）。**诉求 = r1 T-06 natives 吸收须覆盖
+    对象形态内建**（声明发射 + 抛错桩/调用点改写）；下游过渡补件
+    （regen 1b 追加式）已先行修复，上游落地后退化为 no-op。
+- **Phase 2 范围**：核对 r1 T-06 修面对对象形态内建的覆盖完整性 →
+  缺则补 → 消费方冷重生成+摘补件复收口（含 1b 退化 no-op 验证）。
 - **用户裁定（2026-09-21）**：671 已 execution_done，新需求**不回改已
   完成任务/AC，以附加 Phase 2 承接**（T-11..T-13 + AC-07/08）；r1 的
   review/merge 先行，Phase 2 随后执行。
@@ -249,9 +253,9 @@ menubar_item 发射为裸 `<div :title=...>`（仅外层 Menubar 组件，:15046
   S001 不再触发（附b 清偿实证）。
 - **AC-05（回归）**：cargo test ui_gen 面绿；examples vue 生成面无回退。
 - **AC-06（spec/交接收口）**：SD-01/SD-02 落账；auto-edit 复跑通知发出。
-- **AC-07（Phase 2：1631 漂移归属）**：§4.2 两症状各有 commit 级/机制级
-  归属结论与 r1 覆盖判定（已覆盖/残缺）；残缺项已补修或按分流规则记录
-  在案。
+- **AC-07（Phase 2：对象形态内建覆盖）**：§4.2 ②症状（Process/Env
+  对象形态）有 r1 覆盖判定结论；残缺项已补修或按分流规则记录在案；
+  ①button 撤回项归属登记在档（1631 已自带，无动作项）。
 - **AC-08（Phase 2：消费方复跑收口强化）**：交接通知更新为「冷重生成 +
   七类补件全摘」形态并发出；auto-edit 复跑收据回传（build 绿）或复跑
   窗口登记在案（669 §10-4 模式——通知即达标，跨仓收据不阻塞本计划
@@ -273,9 +277,9 @@ menubar_item 发射为裸 `<div :title=...>`（仅外层 Menubar 组件，:15046
 | T-09 | [x] 测试/fixture 收口：tests/vue-gen-gap 通用 fixture（九特性集中、零消费方业务名）strict gen EXIT=0 + pnpm build 双绿；AC-02 grep 门通过（命中全为注释层案例引注或先在内容，可执行逻辑零名单）；cargo t 全量对基线 diff = 零新增红（预存红 20 = musk_vm_track×7 + ui::layout×13，干净 HEAD 同红在案）；docs_gen/schema_drift 四围栏绿 | T-01..T-08 | tests/ fixture 目录 + crates 内嵌测试 | 证明集中 | AC-03/05 | cargo test 绿 + fixture 矩阵绿 |
 | T-10 | [x] 文档收口 + 交接：SD-01/SD-02 落 docs/specs/auto-lang/ui/overview.md（worktree 提交，随 merge 落账）；auto-edit 交接通知留档 §9（669 §10-4 模式：merge 后通知消费方复跑摘补件，见复跑要点） | T-09 | docs/specs/auto-lang/ui/overview.md + 交接记录 | 规范落账 | AC-06 | spec 回读 + 通知留档 |
 | **—— Phase 2 分界（r2，2026-09-21 供料 §8 增补批；r1 以上零改动）——** | | | | | | |
-| T-11 | [ ] 1631 漂移勘定：两症状归属钉到 commit/机制——①TS1117：勘 1589–1631 区间 button cva/资产漂移源（发射器 vue.rs vs 脚手架资产 write-if-missing 存量树——PLAN-457 契约面）与 r1 T-07 双面同步修面的覆盖关系；②TS2304：确认 Process 缺声明 = T-06 未含于 1631（非 r1 残缺）。产出归属结论（r1 已覆盖 / 残缺需补）回填 §4.2 | — | master 区间 log 对照 + worktree 生成物 diff | 归属勘定 | AC-07 | 结论在档（§4.2 回填） |
-| T-12 | [ ] 残缺补修（条件任务，§2 分流规则同款）：T-11 判 r1 修面未覆盖的残缺（如存量树资产不刷新类）补齐；已覆盖则标 [x] 已覆盖跳过（证据注记） | T-11 | 随勘定落点 | 补修/分流 | AC-07 | 分流记录入 §9 |
-| T-13 | [ ] 消费方复跑收口强化（G4 增量）：交接通知更新为「**冷重生成**（rm gen/front/vue 后 `auto build --gen-only -r vue`，可摘 --lenient）+ 七类补件全摘」形态——补件链重跑在 1631 漂移后不可靠（TS1117 形态即证据）；复跑收据回传（解阻判据 = 供料 §8 复验条的冷重生成等价形态，build 退出码 0）或复跑窗口登记 | T-12 | §9 交接通知更新 | 复收口 | AC-08 | 通知留档 + 收据/窗口登记 |
+| T-11 | [ ] 对象形态内建覆盖勘定：r1 worktree（plan-671-dev @ 7a34a1a67）构建生成消费方 vue 工程，核 `src/natives.d.ts` 是否含 `Process`/`Env` **对象形态**声明（+ `__vmOnly` 抛错桩/调用点改写）——1631 实测只覆盖函数形态；①button 项按勘误撤回，仅登记归属（1631 已自带 text variant，冲突为下游补件非幂等）。覆盖判定（r1 已覆盖 / 残缺）回填 §4.2 | — | r1 worktree 生成物 diff + auto-man natives 层代码 | 覆盖勘定 | AC-07 | 结论在档（§4.2 回填） |
+| T-12 | [ ] 残缺补修（条件任务，§2 分流规则同款）：若 r1 T-06 注册表驱动发射只覆盖函数形态（intrinsics 平名表无对象形态面），补对象形态发射（单源纪律：与 ts_adapter 对象级 `__vmOnly` 白名单五名表同源，不手写名单）；已覆盖则标 [x] 已覆盖跳过（证据注记） | T-11 | auto-man natives 层 + ts_adapter.rs | 补修/分流 | AC-07 | 分流记录入 §9 |
+| T-13 | [ ] 消费方复跑收口强化（G4 增量）：交接通知更新为「**冷重生成**（rm gen/front/vue 后 `auto build --gen-only -r vue`，可摘 --lenient）+ 七类补件全摘（含新增 1b——上游落地后应退化 no-op，一并验证）」形态——补件链重跑在生成器漂移后不可靠（TS1117 形态即证据）；复跑收据回传（解阻判据 = 供料 §8 复验条冷重生成等价形态，build 退出码 0）或复跑窗口登记 | T-12 | §9 交接通知更新 | 复收口 | AC-08 | 通知留档 + 收据/窗口登记 |
 
 ## 9. 复审记录
 
@@ -318,11 +322,12 @@ menubar_item 发射为裸 `<div :title=...>`（仅外层 Menubar 组件，:15046
 
 - 2026-09-21 stage: revision / PLAN-671 **r2（Phase 2 附加）** / 授权=
   用户指令（"上游的计划 671 已经做完了，我们要加新修改需求得在后面附加
-  新的 phase"）· 依据 = auto-edit 供料 §8 + PLAN-004 T-04 收据（1631
-  实测两症状，§4.2）· 变更 = **仅追加**（§4.2 + T-11..T-13 + AC-07/08；
-  r1 任务/AC 零改动）· status: execution_done → executing（语义修订
-  回退规则）· outcome: pass（r2 待执行）· next: **review（r1 范围
-  T-00..T-10 / AC-01..06）→ merge → work（Phase 2 自 T-11 起）**。
+  新的 phase"）· 依据 = auto-edit 供料 §8（**勘误版**，F-1/b0b4676 收窄：
+  button 撤回、Process/Env 对象形态保留）+ PLAN-004 T-04 收据（§4.2）·
+  变更 = **仅追加**（§4.2 + T-11..T-13 + AC-07/08；r1 任务/AC 零改动）·
+  status: execution_done → executing（语义修订回退规则）· outcome:
+  pass（r2 待执行）· next: **review（r1 范围 T-00..T-10 / AC-01..06）
+  → merge → work（Phase 2 自 T-11 起）**。
 
 ## 10. 待澄清事项
 
