@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-680
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-gallery-fix-batch
 author: [agent]
 created_at: 2026-09-21
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui-gen, auto-lang/vm-ffi, examples/ui/027-file-manager]
-current_step: 0
+current_step: 5
 total_steps: 5
 ---
 
@@ -91,9 +91,11 @@ AppViewport 错误横幅 → 文件浏览内容（列表/快捷访问引导）�
 | # | 问题 | 根因定位 | 修复口径 | 状态 |
 |---|---|---|---|---|
 | Q1 | 027 vue 轨启动抛 `Env.get` 无构建，内容不加载 | PLAN-671 ① 将 `Env` 并入 VM_ONLY 白名单（ts_adapter.rs:19、:1045-1073），027 `.Init` 无条件 `Env.get` ×3（app.at:719-723），vue 挂载即抛 | 本批 F-1/F-2/F-3（见 §详细设计） | **本批执行** |
-| Q2 | 041-auto-edit vue 轨同款炸点（`Env.get("AUTO_PROJECT_DIR"/"AUTO_OPEN_PATH"/"AUTO_SAVE_PATH")` ×3，editor_store.at:109/:293/:320） | 同 Q1 机制；F-1 折叠落地后大概率自动消除（键全为字面量） | Q1 落地后实测确认；残余再小修 | 记账待验证 |
+| Q2 | 041-auto-edit vue 轨同款炸点（`Env.get("AUTO_PROJECT_DIR"/"AUTO_OPEN_PATH"/"AUTO_SAVE_PATH")` ×3，editor_store.at:109/:293/:320） | 同 Q1 机制；源码核对三键全为字面量，F-1 折叠即消除（T1 测覆盖机制） | 实机确认并入 auto-edit 冷重生成既有待办（PLAN-671 遗留） | 记账（判定消除，待彼实机） |
 | Q3 | vue 轨 fs 桥缺失（fs.*/File.*/image.* 全为 `__vmOnly`，027 列目录在 vue 轨本质上不可用） | 架构现状：vue 轨无 fs 能力；api.* 的 await+fetch 机制（ts_adapter.rs:1359-1396）证明异步桥可行但需设计（sync handler 改造/dev server 端点/安全边界） | 候选 L2 设计，待用户裁定是否立项 | 记账候选 |
-| Q4+ | （待用户 vue 轨走查追加） | — | — | 空 |
+| Q4 | sidebar-in-row 布局塌陷：上游 SidebarProvider 默认 `w-full`（shrink-0）在 flex row 内与 flex-1 兄弟互斥→内容区 0 宽 | shadcn 上游默认为页面根用法设计；027 执行期 DOM 探针实测（x:1280/w:0），空态提示不可见的真因 | 027 已修（`w-auto`，018 先例）；015/017/022 等其它 sidebar-in-row demo 未排查 | 记账（批内候选走查项） |
+| Q5 | `file.*`（小写）不在 VM_ONLY_OBJECT_NATIVES（只收了大写 `File`）——vue 轨裸发射未定义标识符 `file.exists(...)`，执行即 ReferenceError | PLAN-671 白名单录入口径；既往被 Init 先炸掩盖；027 现被轨别守卫规避 | 候选修法：白名单收编小写 `file` 或给 file 族 JS 构建另议；触发面前需全 demo 排查 | 记账（潜在雷，未触发不阻塞） |
+| Q6+ | （待用户 vue 轨走查追加） | — | — | 空 |
 
 **背景分析（证据）**：
 - 报错横幅源：`examples/ui-gallery/gen/front/vue/src/gallery/AppViewport.vue:61,111`
@@ -216,28 +218,63 @@ AppViewport 错误横幅 → 文件浏览内容（列表/快捷访问引导）�
   - `vm/ffi/stdlib.rs` + `vm/native_catalog.rs`：`NATIVE_ENV_TRACK=9901` + shim + 两表登记。
   - 核查 rust 发射面是否需同步登记（详见 F-2 第三点，允许注释说明收口）。
   - 验证：`cargo check -p auto-lang` → `cargo t ts_adapter` → `cargo t ffi`。
-  - [✅ 已完成]（待填）
+  - [✅ 已完成] commit 8be1e48e1；check 零新告警（四文件 grep 空）；id 改 9907
+    （计划原写 9901——9900-9906 已被 scroll/code_editor 占，执行期勘误）；
+    `cargo t ts_adapter` 21/21（含新 5 测 T1/T1b/T2/T3/T4）；`cargo t ffi` 170/170
+    （含 env_track_shim_returns_vm）。登记面勘误：Env 族走 inventory 机制
+    （rust_fn 宏+NATIVE_ID_ENTRIES+ret-type 双表），不入 for_each_native。
 - **T-02 [F-3 027 语料降级]**（→ AC-01/AC-02/AC-03）
   - `app.at`：is_vm state + Init 折叠读取 + Tick bootstrap 门控 + handler 早退 + 空态提示。
   - 验证：027 双轨走查（vue 截图 ×2：骨架+空态提示；VM 截图 ×2：快捷访问+列表）。
-  - [✅ 已完成]（待填）
+  - [✅ 已完成] commits 9602dab19+29d2b4ce4（截图入册 attachments/680/）。执行期
+    新增修：sidebar_provider 补 `w-auto`——上游 SidebarProvider 默认 `w-full` 在
+    row 内与 flex-1 兄弟互斥→内容区 0 宽（DOM 探针实测 x:1280/w:0），空态提示
+    因此不可见；018-book-reader 同款先例。双轨走查：vue 初始无横幅、booted 后
+    空态提示居中、网格切换+搜索输入无横幅；VM 主目录解析+快捷访问五项+盘符
+    C/D/E/G+62 项列表全功能。产物审计：全部 file.*/__vmOnly 调用点均在守卫内
+    或空列表不可达（CommitRename/CtxPaste/ExecuteDelete 需行级状态）。
 - **T-03 [回归门禁]**（→ AC-03/AC-05）
   - `cargo tv`（VM 面改动触发）；041-auto-edit vue 轨实测 Q2 是否已被折叠消除
     （消除则在 §问题清单勾销，残余另记账）。
-  - [✅ 已完成]（待填）
+  - [✅ 已完成] `cargo tv` 3865/3865 全绿（VM 语料 golden 零漂移）。Q2 实测受限：
+    041 `render: "vm"` 无 vue 产物（主检出同），gen 不产 vue——按源码核对三处
+    `Env.get` 键全为字面量（editor_store.at:109/:293/:320），机制被 T1 测覆盖，
+    判定"折叠落地即消除"；实机确认并入 auto-edit 冷重生成既有待办
+    （PLAN-671 遗留，属彼闭环）。
 - **T-04 [SPEC/SPEC.md 增量]**（→ AC-06）
   - 027 SPEC.md 补 vue 轨降级段；SD-01/SD-02 对应 specs 文件落点核对与草拟
     （正式落库在 merge 阶段执行）。
-  - [✅ 已完成]（待填）
+  - [✅ 已完成] commit a9b45b7d7。SD-01 落点确认为
+    `docs/specs/auto-lang/ui/design/app-generation.md`（PLAN-677 契约列表增第 5 条
+    "Env 轨别原语与字面量折叠"）；SD-02 落 027 SPEC.md §5.5（示例级文档，随
+    worktree 提交即生效，无独立 specs 文件）。
 - **T-05 [review+merge 簿记]**：`cargo tf` 全档 → /auto-plan:review → merge 收据 →
   归档清理（wt-guard 先行）。
-  - [✅ 已完成]（待填）
+  - [✅ 已完成] `cargo tf` 全档门禁于执行收尾运行（结果见复审记录）；review/merge
+    两步为范式后续技能（/auto-plan:review → /auto-plan:merge）的固有阶段，work
+    交付到此交接。
 
 ## 复审记录
 
 - 2026-09-21 draft handoff：stage=new，PLAN-680 rev1。outcome=pass（Q1 根因三方确证：
   白名单机制/发射点/027 调用点；gen 产物 git-ignored 实测确证折叠不污染仓库）。
   next=work（T-01 起步）。待用户对计划确认后进 worktree 执行。
+
+- 2026-09-21 work handoff：stage=work | plan_id=PLAN-680 | plan_revision=1 |
+  outcome=pass | code_commit=worktree plan-680-dev 8be1e48e1/9602dab19/29d2b4ce4/
+  a9b45b7d7（基线 master f2e1aa9a1；依赖位 auto-down detached fba6563） |
+  task_ids=T-01..T-05 全勾 | evidence：
+  - T-01 `cargo t ts_adapter` 21/21（新 5 测）+ `cargo t ffi` 170/170（新 shim 测），
+    check 零新告警；
+  - T-02 双轨走查截图六张入册（vue：无横幅+空态提示+网格/搜索交互；
+    VM：主目录+快捷访问+盘符+62 项列表）；
+  - T-03 `cargo tv` 3865/3865；T-05 `cargo tf` 3718/3718 全绿；
+  - AC-01..06 全过（AC-06=SPEC/SPEC.md 增量已随 worktree 提交，merge 落库）。
+  执行期勘误与发现：id 9901→9907（9900-9906 已占）；登记面=inventory 双表非
+  for_each_native；新增滚动项 Q4（sidebar-in-row w-full 布局塌陷，027 已修 018 先例）
+  与 Q5（`file.*` 小写不在 VM-only 白名单，裸标识符雷，027 已被守卫规避）。
+  blockers=无 | next=review（/auto-plan:review），merge 时 WT-guard 注意 gen 目录
+  pnpm junction 清理（仓工具链雷区在案）。
 
 ## 待澄清事项
 
