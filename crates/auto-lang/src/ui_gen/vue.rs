@@ -8183,7 +8183,16 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // <div> 会破坏 SVG 命名空间(rect/text 等 svg 子元素在
                 // div 容器内不渲染;diagram 节点循环实测)。<template>
                 // 是 Vue 无 DOM 包装正解,HTML 上下文行为等价。
-                let (wrap_open, wrap_close) = if self.in_svg_subtree {
+                // PLAN-677 T-01: 单 Conditional 体循环同样透明化——
+                // div 包装自身是 flex item,内容被隔在包装盒内,flex-1/
+                // h-full 够不着祖父弹性容器(消费方 auto-edit 编辑器
+                // `for i, t in .tabs { if t.key == .active_key { code_editor } }`
+                // 高度塌缩实测);单 if 的 v-if 已在子 <template> 上,
+                // 包装层无盒化不改作用域。多语句体维持 div 包装(多子
+                // 迭代依赖包装盒的块级布局语义,防既有消费方回归)。
+                let transparent_wrap =
+                    body.len() == 1 && matches!(body[0], AuraNode::Conditional { .. });
+                let (wrap_open, wrap_close) = if self.in_svg_subtree || transparent_wrap {
                     (format!("<template {}{}>", v_for, key_attr), "</template>")
                 } else {
                     (format!("<div {}{}>", v_for, key_attr), "</div>")
@@ -22274,6 +22283,70 @@ widget Rows {
 --- keylines: {:?}",
             wrapper,
             keylines
+        );
+    }
+
+    #[test]
+    fn test_plan677_single_if_loop_wraps_in_template_not_div() {
+        // PLAN-677 T-01: 单 Conditional 体循环的 fallback 包装必须透明
+        // (<template v-for>)——div 包装盒斩断 flex 高度链(auto-edit
+        // 编辑器循环实测塌缩)。多语句体维持 div 包装(块级布局语义)。
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Ed {
+    msg M { }
+    model {
+        var tabs Array<str> = []
+        var active str = ""
+    }
+    view {
+        col {
+            for i, t in .tabs {
+                if t == .active {
+                    text (text: t, key: t) {}
+                }
+            }
+        }
+    }
+    on { .X -> { } }
+}
+"#);
+        assert!(
+            sfc.contains("<template v-for=\"(t, i) in"),
+            "single-if loop must emit transparent <template v-for>:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("<div v-for="),
+            "single-if loop must not emit a div wrapper:\n{}",
+            sfc
+        );
+
+        // 负例:多语句体(two ifs)维持 div 包装——Plan 008 既有语义。
+        let sfc2 = gen_sfc_from_widget_src(r#"
+widget Rows {
+    msg Msg { Go(str) }
+    model { var items Array<str> = [] }
+    view {
+        col {
+            for e in .items {
+                if e.kind == "text" {
+                    text (text: e.label, key: e.key) {}
+                }
+                if e.kind == "toggle" {
+                    text (text: e.label, key: e.key) {}
+                }
+            }
+        }
+    }
+    on {
+        .Go(k) -> { }
+    }
+}
+"#);
+        assert!(
+            sfc2.contains("<div v-for=\"e in"),
+            "multi-statement body must keep the div wrapper:\n{}",
+            sfc2
         );
     }
 
