@@ -2387,9 +2387,13 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **P030-D2 [壳表面 resize not-yet]**：壳双表面尺寸 boot 定档（AUTO_SHELL_GEOM）；视口运行期变更随 respawn 生效（ControlMsg::Resize 壳臂显式 no-op 留痕）。
 - **P030-D3 [overlay 三面 + launcher outproc 化 not-yet（D6 边界裁定）]✅ 已核销（PLAN-036 T-04..T-07，2026-09-20）**：四面全 outproc（switcher/通知/dashboard 并壳 exe 多表面[OVERLAY/DASHBOARD role 扩档] + launcher 一面一 exe[注册表源]）；键盘动词事件位（ShellEvent tag 6-9）+ D5 聚焦链 child 化（focus_first_input + 伪窗可聚焦 + bind 路由臂）；p036 六腿 e2e + p030 回归全绿。核销收据 = §1.16。
 - **P036-D1 [face:// 虚拟引用全下放 not-yet（D1-C+ 演进位）]**：dashboard face 卡 v1 = 宿主 iced 叠层（两轨共用卡循环，视觉零差）；child 全自渲 face 需宿主 DrawList→位图栅格化器（文本字形缺位——034 canvas 栅格化为 child 侧，宿主侧无先例）。前置立项后翻案。
-- **P036-D2 [编译轨 launcher exe not-yet]**：launcher 独立 exe v1 = 解释装载（AUTO_LAUNCHER_ENTRY 注册表源 read_to_string + build_dynamic_component）；a2r 编译 exe（launcher.at 非 pack 源——需 project 形态生成或 pack 收编）另立。
+- ~~**P036-D2 [编译轨 launcher exe not-yet]**~~ **已核销（PLAN-039 T-07，2026-09-21）**：launcher project 形态生成（批次 E 后生成门 0）+ `desktop_exe:` 声明 + spawn_launcher_outproc 编译产物优先臂（launcher_compiled_exe 发现——产物缺席回退解释装载 I3 双轨）+ 生成 main autodesk gate 认 `--autodesk-launcher`。实路召唤实机确认与 p036 e2e 复跑随 PLAN-039 T-10。
 - **P036-D3 [launcher 看门兵缺失]**：launcher exe 死亡 → pump 回收 + 下次召唤重 spawn（spawned 复位）；无退避/预算链（壳看门兵不覆盖独立管线）。崩溃连坐已隔离（p036 腿4 断言），自动恢复缺位。
-- **P036-D4 [编译臂 key_message（shell_key）未生成]**：ShellStateAccess::shell_key 编译臂（a2r key_message 直派）未入 codegen——编译轨 overlay 键盘 bind 路由 no-op（v1 消费面 = 解释 launcher child；编译轨 launcher 记 P036-D2 同册）。
+- **P039-D1 [kanban in-app drag 家族 not-yet]**：ondragover(.prevent)/ondragstart/ondragend/ondrop/ondragenter/ondragleave 显式拒绝门（compile_error 带 P039 指针）——kanban 生成门唯一预期红（ondrop×3）；完整 in-app DnD 语义另立（PLAN-039 §5.1 D3-A 用户确认 2026-09-21）。
+- **P039-D2 [编译 exe 深树 MCP 快照仅根节点]**：klondike 编译 exe 的 autoui_snapshot 树 81 字节（根 col 即止）——RqProjector/snapshot 深树面；minesweeper 浅树正常、VM/Vue 双轨全渲染、state_snapshot 全量存活。树交互段（click 定位）与 D1 双击编译轨实机验证待偿（PLAN-039 T-04 记账 F-04a）。
+- **P039-D3 [pac.at 注释 `#[` 起首撞 annotation 解析]**：pac 注释行 `# [ ...` 被 #[annotation] 语法面吃掉（tetris desktop_exe 注释实测毒行，build abort "Expected 'fn' ... after annotation"）——注释剥离修复属 P037 annotation 域；PLAN-039 绕开（注释避免 `[` 起首）。
+- **P039-D4 [api 桩通用 CRUD 假设性签名对真实 back 漂移]**（P666-D1 关联归因）：merged 桩 path 参数恒 i32/POST·PUT 丢 path 参数——PLAN-039 T-13 声明对齐臂清偿返回 user 型端点+DELETE 桩；通用桩对其他 back 形态的假设性签名面未全清（属主 666）。
+- ~~**P036-D4 [编译臂 key_message（shell_key）未生成]**~~ **已核销（PLAN-039 T-07，2026-09-21）**：launcher 生成物 key_bindings/key_message 双 fn 在役（project 形态生成后编译臂产物面实证）；完整键盘流（overlay→broker→exe）实路验证随 PLAN-039 T-10 e2e 批。
 - **P036-D5 [跨进程色彩解析差（parity 发现）]**：p036 腿2 实测 child 帧色彩 token 与本地渲染差 ±3/255（`text-muted-foreground` 151,163,181 vs 148,163,183——疑主题感知解析进程初始化差；wire f32 量化 ±1 另在）。parity 准则 = 结构全等（色彩豁免）；根因细究归复审。
 - **P036-D6 [launcher 自隐宿主镜像同步]**：child 侧关闭（Launch 后 visible=0/点击 scrim Close）宿主 launcher_open 镜像不同步——层序推空层无害 + 焦点滞留伪窗（键盘 no-op 无害）；宿主侧路径（Esc/启动动词）已自置。观察面随 M7-c 实机走查评估。
 - **P030-D4 [TS decode tag 12-14 not-yet]**：v1.11 三变体无 TS 消费面（远程镜像线不转发壳投影）；drawlist-renderer 接入时补。
