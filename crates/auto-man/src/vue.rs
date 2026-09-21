@@ -4919,6 +4919,10 @@ export default router
                 // 主题实证）——含主题运行时的语料重定向全局施加到视口容器。
                 let rewritten_app_vue =
                     gallery_scope_theme_runtime(&rewritten_app_vue);
+                // Plan 672 条目 7: 根净化——剥页面级全幅底色/尺寸（016
+                // bg-muted/30 色带实证），卡片范围 + 窗口内居中。
+                let rewritten_app_vue =
+                    gallery_strip_root_page_chrome(&rewritten_app_vue);
                 let mut corpus = rewritten_app_vue.clone();
                 for (_, _, code, _) in &vp.components {
                     corpus.push_str(&gallery_scope_theme_runtime(&rewrite_api_import(
@@ -8524,6 +8528,41 @@ pub fn gallery_scope_theme_runtime(sfc: &str) -> String {
     scoped.replacen("function applyAccent", &format!("{}function applyAccent", helper), 1)
 }
 
+/// Plan 672 条目 7: 嵌入态根净化——demo App 根元素（`data-auto-id="aura_0"`）
+/// 的页面级全幅声明（`min-h-screen`/`h-screen`/`w-screen`/`bg-*`）在嵌入态
+/// 剥除：standalone 时根独占窗口、全幅底色正当；嵌入画廊视口后全幅底色
+/// 会在卡片四周画出异色带（016-calendar `bg-muted/30` 实证），用户裁定
+/// 「只留圆角卡片范围、窗口内居中」。无 aura_0 标记的语料原样返回。
+pub fn gallery_strip_root_page_chrome(sfc: &str) -> String {
+    let marker = "data-auto-id=\"aura_0\"";
+    let Some(mpos) = sfc.find(marker) else {
+        return sfc.to_string();
+    };
+    let Some(cls_rel) = sfc[..mpos].rfind("class=\"") else {
+        return sfc.to_string();
+    };
+    let cls_start = cls_rel + "class=\"".len();
+    let Some(cls_off) = sfc[cls_start..].find('"') else {
+        return sfc.to_string();
+    };
+    let cls_end = cls_start + cls_off;
+    if cls_end > mpos {
+        return sfc.to_string();
+    }
+    let cls = &sfc[cls_start..cls_end];
+    let kept: Vec<&str> = cls
+        .split_whitespace()
+        .filter(|t| {
+            *t != "min-h-screen" && *t != "h-screen" && *t != "w-screen" && !t.starts_with("bg-")
+        })
+        .collect();
+    let mut out = String::with_capacity(sfc.len());
+    out.push_str(&sfc[..cls_start]);
+    out.push_str(&kept.join(" "));
+    out.push_str(&sfc[cls_end..]);
+    out
+}
+
 fn gallery_demo_row(
     apps_dir: &Path,
     e: &auto_lang::ui::app_registry::AppRegistryEntry,
@@ -9858,6 +9897,25 @@ render: \"vm\"
             "follow-host rewrite applies without accent runtime: {out2}"
         );
         assert_eq!(crate::vue::gallery_scope_theme_runtime(plain), plain);
+    }
+
+    /// Plan 672 条目 7: 根净化——aura_0 根的页面级全幅 token 剥除
+    /// （min-h/h-screen/w-screen/bg-*），其余 token 与属性原样；无标记
+    /// 语料零变化。
+    #[test]
+    fn gallery_strip_root_page_chrome_strips_full_bleed() {
+        let sfc = "<template>\n<div class=\"flex flex-col min-h-screen bg-muted/30 p-4 items-center justify-center\" data-auto-tag=\"col\" data-auto-src=\"app\" data-auto-id=\"aura_0\"><div class=\"w-[448px] p-6 bg-card border rounded-2xl\" data-auto-id=\"aura_1\"></div></div>\n</template>";
+        let out = crate::vue::gallery_strip_root_page_chrome(sfc);
+        assert!(
+            out.contains("class=\"flex flex-col p-4 items-center justify-center\" data-auto-tag=\"col\""),
+            "root chrome stripped: {out}"
+        );
+        assert!(out.contains("bg-card"), "inner card bg untouched: {out}");
+        assert_eq!(
+            crate::vue::gallery_strip_root_page_chrome("const a = 1"),
+            "const a = 1",
+            "no marker → unchanged"
+        );
     }
 
     /// Plan 442 P0-1: apps that consume none of the optional features
