@@ -2188,24 +2188,11 @@ fn main() -> auto_lang::ui::AppResult<()> {{
 {env_inits}        // Plan 020 T-05：孵化参数在册 → native 协议 client 臂（返回即走）；
         // 无标记 → 独立窗（下行 iced_entry 现行行为零变化）。
         {native_client_gate}
-        // PLAN-039 T-04（批次 E 连带）：深视图 app 的运行线程栈扩容——
-        // klondike 7 列×嵌套条件视图的构造/求值深递归 + iced 大帧溢出
-        // 默认主栈（PE /STACK 提至 256MB 后仍溢；minesweeper 浅视图无
-        // 此面）。闭包返回 unit（AppResult 的 Error 非 Send）——退出码
-        // 语义不变面：ices run 正常路径不依赖返回值传播。
-        let __stack_handle = std::thread::Builder::new()
-            .stack_size(1024 * 1024 * 1024)
-            .spawn(move || {{
-                // 内闭包吞 AppResult（Error 非 Send，不跨线程传播——
-                // ices run 正常路径不依赖返回值，异常以 panic/进程退出显形）。
-                let __run = || -> auto_lang::ui::AppResult<()> {{
-                    {iced_entry}
-                }};
-                let _ = __run();
-            }})
-            .expect("spawn iced main thread");
-        __stack_handle.join().expect("iced main thread panicked");
-        return Ok(());
+        // PLAN-039 T-04（批次 E 连带）：深视图 app 的栈扩容走 PE
+        // /STACK（workspace .cargo/config rustflags）——winit 的
+        // Windows EventLoop 要求主线程（any_thread 不可用，线程包裹
+        // 形态在 tetris 实测确定性 panic，弃）。
+        {iced_entry}
     }}
     #[cfg(feature = "ui-gpui")]
     {{

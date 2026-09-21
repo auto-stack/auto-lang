@@ -7175,6 +7175,12 @@ impl RustGenerator {
                     // 惯用）——a2r 编译轨无 diff/reconcile 面，认知且双轨
                     // 同弃（onmouseenter 先例同款 parity 锚），非拒绝面。
                     "key" => builder.to_string(),
+                    // PLAN-039 T-06（发现臂同款）：`aria-label`/ARIA 族 =
+                    // a11y 提示词（tetris app.at 惯用）——a2r 编译轨无
+                    // ARIA 面，认知且双轨同弃（key/onmouseenter parity）。
+                    "aria-label" | "aria-labelledby" | "aria-describedby"
+                    | "aria-hidden" | "aria-expanded" | "aria-controls"
+                    | "role" | "tabindex" | "alt" => builder.to_string(),
                     _ => {
                         // PLAN-027 T-04: 显式拒绝门（设计 §3a-a4）——未知
                         // prop 由静默丢弃改编译期错（防"看似编译过实缺件"
