@@ -4435,6 +4435,12 @@
      "id": "P671-1",
      "title": "vue-gen-gap-debt — vue 生成工程自完备契约（SD-01）+menubar 族 props schema 吸收（SD-02）",
      "content": "PLAN-671 把 auto-edit vue 轨七类生成后补件在上游按通用机制清偿（用户裁定：注册表/形参表/类型系统/值域映射，非函数名单），裸产出即自完备可构建。三态勘定：②store自调/④负标量/⑦gen-only完整=668R-23+038T8 既有清偿复验；六执行类修复：①natives 声明层（vm codegen 55 项平名 intrinsics 单源抽取 bare_native_intrinsics + auto-man ensure_natives_layer 注册表∩裸用面发射 src/natives.d.ts〔落 src 根——vue-tsc include 只收根级 .d.ts〕+src/lib/natives.ts globalThis 抛错桩+main.ts 装载，JS 保留字过滤；对象级 Env/Process 并入 ts_adapter __vmOnly 白名单〔单源 VM_ONLY_OBJECT_NATIVES 五名表三消费同源〕+Phase 2 防御层 declare const 索引签名+globalThis Proxy 抛错桩——兜底改写未覆盖的裸引用位）；③store composable 复用 use-fn 池拉取内联（generate_store_composable_full 池参数，stash 同串双写路径字节一致）；⑤载荷事件优先于循环参（code_editor_event_payload_call 循环早退删除——声明形参的 cursor/contextmenu 走 $event.x/y 载荷，列表语义循环参仍权威）；附a 多段插值 strip 收窄单段；⑥button text variant 双面 cva 扩 text:''（chromeless 与 Rust preset 互锁，variants.ts+shadcn 资产双面）；附b menubar 族 props+menubar_checkbox_item 入册（sub_widgets/element_coverage/docs 三围栏同步）。端到端：auto-edit 冷树裸 strict 生成（无 --lenient）EXIT=0 + pnpm build 零 TS 错；通用 fixture tests/vue-gen-gap 九特性双绿。详档：archive/671 计划。"
+    },
+    {
+     "id": "P680-1",
+     "title": "vue-gallery-fix-batch — Env 轨别原语与字面量折叠契约（SD-01）+027 vue 轨降级口径（SD-02）",
+     "content": "PLAN-680 滚动批首项 Q1：027-file-manager vue 轨挂载即抛 __vmOnly('Env.get') 横幅、内容不加载。三件套交付：①生成期折叠——vue 轨 Env.get(\"字面量键\") 折叠为 gen 机 env 快照字符串字面量（ts_adapter VM-only gate 内前置；gen 产物 git-ignored 不泄机器值；非字面量键与其余 Env.*/Process.* 维持 __vmOnly fail-fast，671 诚实抛错裁定不动）；②Env.track() 轨别原语（native 9907 高段沿 PLAN-656 先例；VM shim 恒 \"vm\"，vue 轨折叠 'vue' 字面量；inventory 双表登记=NATIVE_ID_ENTRIES 二元组+ret-type 三元组，非 for_each_native）；③027 四点 FS 守卫（Tick bootstrap/NavTo 汇聚点〔排序/搜索/隐藏/地址/GoUp 全汇聚〕/GoUp〔fs.parent 先于 NavTo〕/CommitNew〔空列表下新建仍可达〕）+轨别分派双空态文案（列表/网格；storage 持久化不门控保调试价值）。执行期附带发现：sidebar-in-row 布局塌陷（上游 SidebarProvider 默认 w-full 在 flex row 内吃满宽→flex-1 兄弟 0 宽，027 补 w-auto 沿 018 先例，滚动项 Q4 登记 015/017/022 未排查）；file.* 小写不在 VM_ONLY 白名单裸标识雷（Q5 在册，027 已被守卫规避）。spec 增量：app-generation.md PLAN-677 契约列表第 5 条+027 SPEC §5.5。Q2=041 同款判定折叠即消除（三键全字面量，实机挂 auto-edit 冷重生成待办）；Q3=vue fs 桥候选 L2 待裁定。",
+     "created": "2026-09-21"
     }
    ]
   },
@@ -6980,6 +6986,12 @@
       "PLAN-677"
      ],
      "status": "delivered",
+     "created": "2026-09-21"
+    },
+    {
+     "id": "P680-2",
+     "title": "vue-gallery-fix-batch 复审与合并收据",
+     "content": "review pass@plan-680-dev r1 a9b45b7d7（独立复审代理只读工件审计+实现侧门禁复跑双轨）：AC-01..06 全 pass——vue 走查无横幅+空态提示居中（empty-state2/grid-search 实拍）+VM 主目录/快捷访问/盘符/62 项列表零漂移（vm-027-booted 实拍）；折叠仅限字面量键（Expr::Str gate 有测）、守卫纯包裹不误伤 VM、9907 无碰撞（9900-9906=scroll/code_editor）；15 文件=3 代码+9 截图+2 文档无超范围。门禁：ts_adapter 21/21（新 5 测）+ffi 170/170（新 shim 测）+tv 3865/3865+tf 3718/3718（tf 在 reviewed_commit 上跑，tv 复审基线复跑绿）。findings：截图三帧同 md5 重复误标（low，证据链完整留档）/SD-01 表落点回写（low，已清偿）。",
      "created": "2026-09-21"
     }
    ]
