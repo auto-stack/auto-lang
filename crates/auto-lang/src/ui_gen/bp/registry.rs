@@ -266,6 +266,7 @@ mod scan_tests {
         let reg = BlueprintRegistry::with_defaults();
         let keys: Vec<String> = reg.iter().map(|p| p.key()).collect();
         // PLAN-640 Tier-0 catalog: all 13 official packages must scan clean.
+        // PLAN-676: layout/gallery-shell (三画廊框架综合骨架) 入册同验。
         for key in [
             "dashboard/overview",
             "data-display/data-table-crud",
@@ -278,6 +279,7 @@ mod scan_tests {
             "form/settings",
             "form/signup",
             "form/wizard",
+            "layout/gallery-shell",
             "navigation/sidebar-nav",
             "navigation/sidebar-shell",
         ] {
