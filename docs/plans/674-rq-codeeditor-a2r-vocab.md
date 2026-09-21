@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-674
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: rq-codeeditor-a2r-vocab
 author: [zcode]
 created_at: 2026-09-21
@@ -193,7 +193,7 @@ fixture 验证链（tests/ 通用 .at 语料 + a2r 生成 + cargo check）；消
 | ID | 任务 | 依赖 | 落点（文件/符号） | 意图 | AC | 验证命令/预期 |
 |---|---|---|---|---|---|---|
 | T-00 | 双勘定：①codeeditor 投影策略裁定（canvas 位图先例 vs 结构 DrawOps）+ not-yet 全集自动列举；②词汇表单源裁定（View builder 面 vs aura schema）——决策档入 §9 | — | coverage.rs 判据 + 本计划 §9 | 设计先行 | AC-01/02/03 | [x] 三裁定入 §9（A=结构 DrawOps·位图不适用证据=rasterize 无文本面+Plan 386 现成降层；B=builder 面·schema 残缺证据 code_editor 元素缺 value/font_size；C=批次边界）|
-| T-01 | codeeditor 扩册四件套：入册 + 投影臂 + 键入/命中回传 + 041 钉翻 `None` | T-00 | coverage.rs:184 / native_projector.rs / coverage.rs:1399 | 过线 | AC-01 | [x] `native_gate_runtime_views_of_six` 绿（041 翻 None）+ 矩阵钉/键入闭环 `codeeditor_rq_typing_roundtrip` 绿 + 实机 `-q`：adopt→window opened→**first frame**→稳定帧（净态复跑收据 2026-09-21 22:48）|
+| T-01 | codeeditor 扩册四件套：入册 + 投影臂 + 键入/命中回传 + 041 钉翻 `None` | T-00 | coverage.rs:184 / native_projector.rs / coverage.rs:1399 | 过线 | AC-01 | [x]（复审 R-1 修正收口：on_cursor I3 注记+P674-D4 在册；余证据同前） `native_gate_runtime_views_of_six` 绿（041 翻 None）+ 矩阵钉/键入闭环 `codeeditor_rq_typing_roundtrip` 绿 + 实机 `-q`：adopt→window opened→**first frame**→稳定帧（净态复跑收据 2026-09-21 22:48）|
 | T-02 | not-yet 全集三态分流执行：本批修项（按 T-00 分流）逐 kind 落臂；另立/降级项登记 KNOWN-DEBT | T-00 | 同 T-01 面扩 | 全集收口 | AC-02 | [x] 双根勘定仪器 `native_not_yet_kind_inventory` 在档：全集仅两项（style:native-unstyled ×12 capability-tests CSS 面 → P674-D1；tag:managed_content ×1 PLAN-656 合成件 → P674-D2），双双登记另立；tree/menubar 推测证伪（语料零出现）；examples/ui judged 24/24=100% |
 | T-03 | 词汇表机制：单源抽取 + per-kind prop→iced builder 映射表 + `add_prop_to_builder` 改表驱动（拒绝臂保留，文案补 kind） | T-00 | ui_gen/rust.rs + view.rs 单源 | 机制扩容 | AC-03/04 | [x] view.rs `view_prop_vocab`/`ViewPropShape` 单源 + 表驱动臂 + menubar 族降层臂（合成变体+on() 臂+action_config 全局开合态）；`vocab_gate_per_kind_prop_table`/`menubar_family_lowers_to_popover_row` 绿；**消费方实测 23 compile_error! → 0**（auto-edit main@dc99328 重生成）|
 | T-04 | 事件面同步扩容：`add_event_to_builder` 补 View 事件槽族（载荷语义与 vue 侧对齐注记） | T-03 | ui_gen/rust.rs + view.rs | 事件面 | AC-03/04 | [x] `view_event_vocab`（Closure/Msg 双槽形）+ 拒绝文案补 kind；`vocab_gate_unknown_keeps_rejection_with_kind` 绿（prop+event 双断言）|
@@ -281,6 +281,44 @@ fixture 验证链（tests/ 通用 .at 语料 + a2r 生成 + cargo check）；消
     关闭臂优先）；④menubar 族 a2r 降层 v1 边界：disabled 项隐藏非置灰
     （Button builder 无 disabled 通道）+ trigger/面板静态样式（VM 开态
     差分色 not-yet）。
+
+
+- 2026-09-22 · stage: review · r1 复审（实施会话内复审——独立性声明：
+  裁决自工件重建：diff/测试复跑/消费方双探针，不以执行者自述为凭）·
+  plan_revision r1 · outcome: **needs_fix（仅 R-1 轻量）** ·
+  reviewed_commit = 6939feb82（plan-674-dev）· base = f2e1aa9a1 ·
+  dep = auto-down fba6563ed detached · spec_inputs = ui/overview.md
+  （SD-01 段）+ ui/design/shell-a2r-seams.md（SD-02 段）·
+  acceptance_results = AC-01 PASS / AC-02 PASS / AC-03 PASS（含已裁
+  偏差：23 错清零双复现，整段编译过移 P670-D1——2026-09-22 用户裁定
+  在案）/ AC-04 PASS / AC-05 PASS / AC-06 PASS ·
+  findings = R-1（low·T-01）：RQ codeeditor 臂 `on_cursor: _` 静默
+  弃置**消费方声明事件**（auto-edit app.at:176 `oncursor:
+  .CursorMoved(i)`）——无 I3 注记无债登记，违计划 §0"允许显式降级
+  登记（I3 留痕），不静默缺件"纪律。修正=臂内注释留痕 + P674-D4 债
+  登记（§10-4 复审定边界：on_cursor = 最小键入面之外，降级+登记为
+  规划内路径；接线随消费方需要另立）。R-2（观察·非阻塞）：tv 档含
+  PLAN-596 dep_parity scratch 冷编译族（dep_parity_018 单测本机
+  >30min——a2r 腿 env 门关/VM·oracle 腿不涉本批 diff；tf full 配置
+  滤除）——预存环境项，无行动。· evidence = 作用域 7 测全绿复现
+  （041 翻 None/矩阵/键入闭环/双根勘定/plan039 19/19/vocab 双测/
+  menubar 降层）；**tf 3715/3715 全绿**；**tv 3857/3857 全绿**
+  （排除域 -E 'not test(dep_parity)'，23.2s 贴基线刻度；排除理由
+  如上）；tt 4084/4084 全绿（tt2 后仅 spec 文本变更——树等价复用，
+  理由在案）；**消费方 HEAD 二进制双探针**：perf smoke exit 0 双
+  实例 2/2（2026-09-22 00:51，auto.exe mtime 00:50=reviewed HEAD）+
+  a2r 词汇门 0（grep compile_error 零 + "recognized vocabulary" 零
+  命中；首错 E0425=P670-D1 族与记录一致）· next = **work（R-1
+  修正）→ 复验 → reviewed**。
+
+
+- 2026-09-22 · stage: review · r1 复审复裁（R-1 修正后）· outcome:
+  **pass** · reviewed_commit = R-1 修正提交（plan-674-dev @
+  6939feb82+1，仅 native_projector.rs 注释 4 行——行为零变化）·
+  evidence = 修正后作用域三测复绿（键入闭环/矩阵/041 门）；全量证据
+  沿 6939feb82 等价复用（树差异仅注释行——tf 3715/tv 3857/tt 4084/
+  消费方双探针收据不失效）；P674-D4 已入册（KNOWN-DEBT :2595）·
+  next = **merge**（/auto-plan:merge——SD-01/SD-02 随库落账）。
 
 ## 10. 待澄清事项
 
