@@ -915,7 +915,7 @@ Menubar container
 |------|------|---------|-------------|
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 
-子件:`menubar_content` `menubar_item` `menubar_menu` `menubar_separator` `menubar_trigger`
+子件:`menubar_checkbox_item` `menubar_content` `menubar_item` `menubar_menu` `menubar_separator` `menubar_trigger`
 
 ---
 
@@ -1648,6 +1648,7 @@ Text content (literal or interpolated)
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
+| `text` | `union: string|state_ref` | — | Text content (positional `text \ |
 | `selectable` | `bool` | false | Opt-in selection &amp; copy (VM: drag/double-click/Ctrl+C; Plan 481) |
 
 ---

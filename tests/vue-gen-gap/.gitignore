@@ -1,0 +1,3 @@
+# PLAN-671 fixture 生成物（可再生）
+gen/
+deps/

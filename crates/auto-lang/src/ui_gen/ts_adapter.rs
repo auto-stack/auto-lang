@@ -1029,8 +1029,11 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     // the host process pipeline; vue-track callers must guard
                     // the call site (027 gates on vm_track) and fall back to
                     // their icon branch.
+                    // PLAN-671 ①：`Env`/`Process` 并入（宿主全局对象，
+                    // vue 轨无运行时——`Env.get(...)` 裸发射落 TS2304；
+                    // 与 fs/File/image 同一机制承载）。
                     if let crate::ast::Expr::Ident(recv) = object.as_ref() {
-                        if matches!(recv.as_str(), "fs" | "File" | "image") {
+                        if matches!(recv.as_str(), "fs" | "File" | "image" | "Env" | "Process") {
                             let qualified = format!("{}.{}", recv.as_str(), method.as_str());
                             ctx.note_warning(format!(
                                 "VM-only native `{}` has no Vue/JS build — emitted as a throwing __vmOnly stub",

@@ -1,0 +1,17 @@
+name: "vue-gap-fixture"
+version: "1.0.0"
+scene: "ui"
+render: "vue"
+title: "VueGapFixture"
+title_zh: "生成缺口样板"
+desktop: "false"
+
+// PLAN-671 T-09：vue 生成器缺口批的最小通用 fixture（零消费方业务名）。
+// 覆盖：①平名内建+对象级 Env/Process ②store 自调 ③bp use-fn 于 store 文件
+// ④负标量初值 ⑤v-for 内双参 contextmenu 载荷 ⑥button variant "text"
+// 附a 多段插值 附b menubar 族 props ⑦gen-only 工程完整（auto-sources/vite-env）。
+// 验证：本目录跑 `auto build --gen-only -r vue`（无 --lenient）→
+// gen/front/vue 下 `pnpm install && pnpm build` 绿。
+dep bps {
+    path: "../../../../blueprints"
+}

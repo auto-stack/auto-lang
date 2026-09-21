@@ -11027,7 +11027,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             match expr {
                 Expr::Call(call) => {
                     if let Expr::Dot(obj, _) = call.name.as_ref() {
-                        if matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "fs" || n.as_str() == "File") {
+                        // PLAN-671 ①：与 ts_adapter 对象级 VM-only 白名单
+                        // 同表（fs/File/image + Env/Process）——lifecycle 体
+                        // 在 stub 发射后才转译，须从原始 AST 预检；漏名
+                        // 会落 TS2304。
+                        if matches!(obj.as_ref(), Expr::Ident(n) if matches!(n.as_str(), "fs" | "File" | "image" | "Env" | "Process")) {
                             return true;
                         }
                     }
@@ -11293,8 +11297,15 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         match expr {
             Expr::Str(s) | Expr::CStr(s) => {
                 let vue = self.convert_template_to_vue(s.as_str());
-                let vue = vue.strip_prefix("{{ ")
+                // PLAN-671 附a（626 vm 侧同型的 vue 残留）：strip 仅当
+                // 整串恰一段插值（产物供属性绑定等裸表达式消费位复用）。
+                // 多段模板（`"${a}:${b}"`）转出的 `{{ a }}:{{ b }}` 外层
+                // 界符是内容本身——剥掉即发射残缺（auto-edit StatusBar
+                // `store.line }}:{{ store.col` 实案）。
+                let vue = vue
+                    .strip_prefix("{{ ")
                     .and_then(|v| v.strip_suffix(" }}"))
+                    .filter(|inner| !inner.contains("{{") && !inner.contains("}}"))
                     .map(|v| v.to_string())
                     .unwrap_or(vue);
                 Ok(vue)
@@ -16769,10 +16780,12 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         if !aura_event.params.is_empty() {
             return None;
         }
-        // Inside a for-loop the loop-var forwarding below stays authoritative.
-        if self.current_loop_var.is_some() {
-            return None;
-        }
+        // PLAN-671 ⑤：声明了形参的载荷事件，载荷转发优先于循环参。此前
+        // v-for 内绑定的 cursor/contextmenu（`.EditorCtx(x, y)` 双参形）
+        // 被此处早退让位给循环参——调用点发 `EditorCtx(i)`、签名随之
+        // `(i: any)`，而 body 引用未绑定的声明形参 x/y（TS2304）。循环参
+        // 仅对未声明形参的 handler 保持权威（下方 `(0, _) => None` 自然
+        // 落回发射点的循环参臂，列表语义不变）。
         let bare = Self::base_pattern(&aura_event.handler);
         let name = bare.split("::").last().unwrap_or(bare);
         let key = format!(".{}", name.trim_start_matches('.'));
@@ -17121,7 +17134,7 @@ export function cn(...inputs: ClassValue[]) {
     /// (Plan 351 / Design 18). Produces module-level `ref`s + an exported
     /// `useXxxStore()` function returning state refs and action functions.
     pub fn generate_store_composable(store: &crate::aura::AuraStore) -> String {
-        Self::generate_store_composable_full(store).0
+        Self::generate_store_composable_full(store, &[], &Default::default()).0
     }
 
     /// Plan 028 M1: generate a standalone fn-module `.ts` file from an .at
@@ -17263,6 +17276,8 @@ export function cn(...inputs: ClassValue[]) {
     /// unified entry point can surface them through the validation channel.
     pub fn generate_store_composable_full(
         store: &crate::aura::AuraStore,
+        use_module_fns: &[crate::aura::AuraModuleFn],
+        use_imported_names: &std::collections::HashSet<String>,
     ) -> (String, Vec<crate::ui_gen::validators::ValidationWarning>) {
         use crate::ui_gen::ts_adapter::{transpile_handler_body, AuraTsContext};
 
@@ -17789,9 +17804,132 @@ export function cn(...inputs: ClassValue[]) {
             );
         }
 
+        // PLAN-671 ③：use 导入 fn 池拉取内联——组件 SFC 的
+        // `emit_use_module_fns` 同机制覆盖 store composable。store 体
+        //（handler/watcher/computed/module_fn）引用的显式导入裸名按池
+        // 闭包拉取，模块级 function 声明（提升语义，位置在文件尾无碍）。
+        // 此前 bp helper 只在组件文件内联，store 文件残留裸调（TS2304）。
+        let mut pull_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = Vec::new();
+        if !use_module_fns.is_empty() {
+            use std::collections::{HashMap, HashSet};
+            let mut referenced: HashSet<String> = HashSet::new();
+            for payload in store.handlers.values() {
+                if let crate::aura::LogicPayload::AstStmts(stmts) = payload {
+                    collect_called_bare_names_stmts(stmts, &mut referenced);
+                }
+            }
+            for w in &store.watchers {
+                if let crate::aura::LogicPayload::AstStmts(stmts) = &w.payload {
+                    collect_called_bare_names_stmts(stmts, &mut referenced);
+                }
+            }
+            for c in &store.computed {
+                collect_called_bare_names_expr(&c.expr, &mut referenced);
+            }
+            for mfn in &store.module_fns {
+                collect_called_bare_names_stmts(&mfn.body, &mut referenced);
+            }
+            // 池内按名定位 + 入口门控（仅显式导入名）+ 闭包拉取到不动点。
+            let mut pool_position: HashMap<&str, usize> = HashMap::new();
+            for (i, mfn) in use_module_fns.iter().enumerate() {
+                pool_position.entry(mfn.name.as_str()).or_insert(i);
+            }
+            let mut pulled_idx: Vec<usize> = Vec::new();
+            let mut pulled_names: HashSet<String> = HashSet::new();
+            let mut frontier: Vec<String> = referenced
+                .into_iter()
+                .filter(|n| use_imported_names.contains(n.as_str()))
+                .collect();
+            while let Some(name) = frontier.pop() {
+                if !pulled_names.insert(name.clone()) {
+                    continue;
+                }
+                let Some(&idx) = pool_position.get(name.as_str()) else {
+                    continue;
+                };
+                pulled_idx.push(idx);
+                let mut called: HashSet<String> = HashSet::new();
+                collect_called_bare_names_stmts(&use_module_fns[idx].body, &mut called);
+                for dep in called {
+                    if !pulled_names.contains(&dep) && pool_position.contains_key(dep.as_str()) {
+                        frontier.push(dep);
+                    }
+                }
+            }
+            // 冲突面：本文件已有同名绑定（state ref / action / module fn）
+            // 的跳过发射，R013 同款警告形态。
+            let mut conflict_names: HashSet<&str> = HashSet::new();
+            conflict_names.extend(store.state_vars.iter().map(|s| s.name.as_str()));
+            conflict_names.extend(store.handlers.keys().map(|p| {
+                let after_dot = p.trim_start_matches('.');
+                match after_dot.find('(') {
+                    Some(paren) => &after_dot[..paren],
+                    None => after_dot,
+                }
+            }));
+            conflict_names.extend(store.module_fns.iter().map(|f| f.name.as_str()));
+            pulled_idx.sort_unstable();
+            pulled_idx.dedup();
+            for idx in pulled_idx {
+                let mfn = &use_module_fns[idx];
+                if let Some(reason) = use_fn_body_unsupported(&mfn.body) {
+                    pull_warnings.push(
+                        crate::ui_gen::validators::ValidationWarning::new(
+                            "R013",
+                            crate::ui_gen::validators::Severity::Warning,
+                            &store.name,
+                            &format!(
+                                "use-imported fn `{}` not emitted into the store composable: {} — falls back to no emission",
+                                mfn.name, reason
+                            ),
+                        ),
+                    );
+                    continue;
+                }
+                if conflict_names.contains(mfn.name.as_str()) {
+                    pull_warnings.push(
+                        crate::ui_gen::validators::ValidationWarning::new(
+                            "R013",
+                            crate::ui_gen::validators::Severity::Warning,
+                            &store.name,
+                            &format!(
+                                "use-imported fn `{}` collides with an existing store symbol (state/action/module fn) — skipped emission",
+                                mfn.name
+                            ),
+                        ),
+                    );
+                    continue;
+                }
+                let param_list = mfn
+                    .params
+                    .iter()
+                    .map(|p| format!("{}: any", p))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let ret_anno = if mfn.ret_ts.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {}", mfn.ret_ts)
+                };
+                code.push_str(&format!(
+                    "\n// PLAN-671 ③: use-imported fn inlined (module scope).\nfunction {}({}){} {{\n",
+                    mfn.name, param_list, ret_anno
+                ));
+                // Auto fn 体尾表达式即返回值（VM 侧语义）——与组件路径
+                // emit_use_module_fns 同款 return 化转译。
+                let body = crate::ui_gen::ts_adapter::transpile_body_as_return(&mfn.body, &ctx);
+                for line in body.lines() {
+                    code.push_str("    ");
+                    code.push_str(line);
+                    code.push('\n');
+                }
+                code.push_str("}\n");
+            }
+        }
+
         // Plan 012 Batch A: drain ts_adapter passthrough notes into the
         // unified validation warning channel (R010, advisory).
-        let warnings: Vec<crate::ui_gen::validators::ValidationWarning> = ctx
+        let mut warnings: Vec<crate::ui_gen::validators::ValidationWarning> = ctx
             .take_warnings()
             .into_iter()
             .map(|msg| {
@@ -17803,6 +17941,7 @@ export function cn(...inputs: ClassValue[]) {
                 )
             })
             .collect();
+        warnings.extend(pull_warnings);
 
         (code, warnings)
     }
@@ -18396,6 +18535,12 @@ export const buttonVariants = cva(
         secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
         ghost: 'hover:bg-accent hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
+        // PLAN-671 ⑥：`text` variant 值域吸收——vm 侧 ui/style/variants.rs
+        // button_variant_preset("text") == ""（chromeless，用户 class 主导）。
+        // 此前联合缺该值，vm 轨合法的 variant: "text" 在 vue-tsc 面落
+        // TS2322（封闭联合外）。空差量类 = 与 vm 侧零附加样式互锁等价
+        //（双轨视觉零回退；改任一侧须同步）。
+        text: '',
       },
       size: {
         default: 'h-10 px-4 py-2',

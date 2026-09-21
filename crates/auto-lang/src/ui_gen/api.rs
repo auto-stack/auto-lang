@@ -700,6 +700,9 @@ pub fn generate_component_from_file(
     // Plan 522: use 导入模块的 fn 池 + 显式导入裸名 —— vue 生成器按需把
     // computed/handler 体引用的 helper fn 转译进消费方 SFC。
     let (use_module_fns, use_imported_names) = collect_use_module_fns(at_path, &code);
+    // PLAN-671 ③：store 路径用集合形态（widget 路径 :998/:1037 保持 Vec 传参）。
+    let use_imported_set: std::collections::HashSet<String> =
+        use_imported_names.iter().cloned().collect();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
             let mut store = extract_store_from_decl(store_decl)
@@ -708,23 +711,22 @@ pub fn generate_component_from_file(
             store.stream_endpoints = opts.stream_endpoints.clone().unwrap_or_default();
             store.module_fns = module_fns.clone();
             store.sibling_stores = collect_store_siblings(at_path, &code);
-            let (composable, warnings) = VueGenerator::generate_store_composable_full(&store);
+            // PLAN-671 ③：use 导入 fn 池传进 store 发射器（与组件路径
+            // :995/:1034 的 with_use_module_fns 同源）。
+            let (composable, warnings) =
+                VueGenerator::generate_store_composable_full(&store, &use_module_fns, &use_imported_set);
             store_warnings.extend(warnings);
             // PLAN-063 Phase B T15 (KD 061 D13): 归一命名(AuthStore→useAuthStore)。
             let filename = format!(
                 "stores/{}.ts",
                 crate::ui_gen::vue::store_composable_name(&store.name)
             );
-            store_composables.push((filename, composable));
+            store_composables.push((filename.clone(), composable.clone()));
             // Also stash via thread-local for callers that use STORE_EXTRA_FILES
+            //（PLAN-671 ③：stash 复用同一份生成串——主路/线程局部双写路径
+            // 字节一致，否则 drain 落盘会覆盖掉池拉取内联体）。
             crate::STORE_EXTRA_FILES.with(|cell| {
-                cell.borrow_mut().push((
-                    format!(
-                        "stores/{}.ts",
-                        crate::ui_gen::vue::store_composable_name(&store.name)
-                    ),
-                    VueGenerator::generate_store_composable(&store),
-                ));
+                cell.borrow_mut().push((filename, composable));
             });
         }
     }

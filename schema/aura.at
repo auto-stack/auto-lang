@@ -876,7 +876,7 @@ element menubar {
     tier: "builtin_widget"
     backends: { web: "component", iced: "unknown", gpui: "unknown" }
     vue: { component: "Menubar", import: "@/components/ui/menubar" }
-    sub_widgets: ["menubar_content", "menubar_item", "menubar_menu", "menubar_separator", "menubar_trigger"]
+    sub_widgets: ["menubar_checkbox_item", "menubar_content", "menubar_item", "menubar_menu", "menubar_separator", "menubar_trigger"]
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -1556,6 +1556,7 @@ element text {
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "span" }
     props: [
+        { name: "text", type: "union:string,state_ref", description: "Text content (positional `text \"...\"` lands here; PLAN-671 附b — previously S001 drift, schema declared only selectable)" }
         { name: "selectable", type: "bool", default: "false", description: "Opt-in selection & copy (VM: drag/double-click/Ctrl+C; Plan 481)" }
     ]
     allows_children: false
@@ -4502,12 +4503,39 @@ element menubar_item {
     vue: { component: "MenubarItem", import: "@/components/ui/menubar" }
     props: [
         { name: "text", type: "string", description: "Item text" }
+        { name: "title", type: "union:string,state_ref", description: "Item label (PLAN-630 menubar family; PLAN-671 附b schema absorption — previously S001 drift papered over with --lenient)" }
+        { name: "icon", type: "union:string,state_ref", description: "Item icon name (lucide kebab, PLAN-630 family)" }
+        { name: "shortcut", type: "union:string,state_ref", description: "Shortcut hint text (e.g. 'Ctrl+N', PLAN-630 family)" }
+        { name: "checked", type: "union:bool,state_ref", default: "false", description: "Checkmark/toggle state (view-type menu items, PLAN-630 family)" }
+        { name: "enabled", type: "union:bool,state_ref", default: "true", description: "Enabled state (bool expr binding, PLAN-630 family)" }
         { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
         { name: "onclick", type: "msg_ref", description: "Click handler" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
     description: "Menubar item"
+}
+
+element menubar_checkbox_item {
+    tag: "menubar_checkbox_item"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["menubarcheckboxitem"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "MenubarCheckboxItem", import: "@/components/ui/menubar" }
+    props: [
+        { name: "text", type: "string", description: "Item text" }
+        { name: "title", type: "union:string,state_ref", description: "Item label (PLAN-630 menubar family; PLAN-671 附b schema absorption)" }
+        { name: "icon", type: "union:string,state_ref", description: "Item icon name (lucide kebab, PLAN-630 family)" }
+        { name: "shortcut", type: "union:string,state_ref", description: "Shortcut hint text (PLAN-630 family)" }
+        { name: "checked", type: "union:bool,state_ref", default: "false", description: "Checkmark/toggle state (view-type menu items, PLAN-630 family; vm 侧 aura_view_builder menubar-checkbox-item 臂)" }
+        { name: "enabled", type: "union:bool,state_ref", default: "true", description: "Enabled state (PLAN-630 family)" }
+        { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Menubar checkbox item (toggle-type view menu entry, PLAN-630 family)"
 }
 
 element menubar_label {

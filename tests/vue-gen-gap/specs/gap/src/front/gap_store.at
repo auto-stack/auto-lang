@@ -1,0 +1,36 @@
+// gap_store.at — PLAN-671 fixture：store 面缺口特性集中（②自调/③bp 消费/
+// ④负标量/①平名+对象级内建）。
+use bps.navigation.filetree.tree_util: toggle_id
+
+store gap {
+    model {
+        var count int = 0
+        var show bool = true
+        var line int = 12
+        var col int = 34
+        var neg_idx int = -1
+        var flags list = ["a", "b"]
+        var docs list = [{ key: "d1", src: "alpha" }, { key: "d2", src: "beta" }]
+    }
+    on {
+        .Bump -> {
+            .count = .count + 1
+            console_log("bumped")
+            .flags = toggle_id(.flags, "c")
+        }
+
+        .OnCtx(x, y) -> {
+            .line = x
+            .col = y
+        }
+
+        .Reset -> {
+            store.Bump()
+            .neg_idx = -1
+        }
+
+        .Quit -> {
+            Process.exit(0)
+        }
+    }
+}

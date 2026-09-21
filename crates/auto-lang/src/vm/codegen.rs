@@ -486,93 +486,110 @@ pub struct Codegen {
     pub source_text: Option<String>,
 }
 
+/// PLAN-671 (1): vm plain-name builtin registry (single source for the bare-call surface) — the intrinsics
+/// constructor body of Codegen::new. The vue-track declaration layer (natives.d.ts) consumes the same
+/// registry via [`bare_native_intrinsics`] (intersected with the actual bare-usage surface of generated files);
+/// do not maintain a separate hand-copied name list.
+pub fn bare_native_intrinsics() -> &'static HashMap<String, u16> {
+    static MAP: std::sync::OnceLock<HashMap<String, u16>> = std::sync::OnceLock::new();
+    MAP.get_or_init(build_bare_native_intrinsics)
+}
+
+fn build_bare_native_intrinsics() -> HashMap<String, u16> {
+    let mut intrinsics = HashMap::new();
+    // Register intrinsics - only built-in print functions
+    // "print" defaults to print_str since most print calls are for strings
+    intrinsics.insert("print".to_string(), NATIVE_PRINT_STR);
+    intrinsics.insert("print_i32".to_string(), NATIVE_PRINT_I32);
+    intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);
+    intrinsics.insert("print_str".to_string(), NATIVE_PRINT_STR);
+    intrinsics.insert("write".to_string(), NATIVE_WRITE_STR);
+    intrinsics.insert("assert".to_string(), NATIVE_ASSERT);
+    intrinsics.insert("assert_eq".to_string(), NATIVE_ASSERT_EQ);
+    intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
+    intrinsics.insert("panic".to_string(), NATIVE_RUNTIME_PANIC);
+    // Plan 442 B-support: JS web-compat alias — musk sources call the
+    // browser global; route to the VM's percent-encoding native.
+    intrinsics.insert("encodeURIComponent".to_string(), crate::vm::native::NATIVE_URL_ENCODE);
+    // Plan 442 C2: bare `read_text(path)` — musk backend's comptime
+    // `#{ read_text("../workflows/...") }` (workflow.at) compiles the
+    // inner expr as a runtime call on the VM path; route to the fs
+    // read native (a2r bakes the content at transpile time instead —
+    // the VM-side value is cwd-relative and may differ, documented).
+    if let Some(&id) = crate::vm::native_registry::NATIVE_ID_MAP.get("auto.fs.read_text") {
+        intrinsics.insert("read_text".to_string(), id);
+    }
+    // Plan 442 C2: bare `format(fmt, args...)` — the Rust macro form
+    // `format!(...)` (parser keeps the Ident, see the bang arm) routes to
+    // the fmt.sprintf native ({} placeholder replacement).
+    intrinsics.insert("format".to_string(), crate::vm::native::NATIVE_FMT_SPRINTF);
+    // Plan 011 (MS3-B): shell-host bridge functions.
+    intrinsics.insert("system".to_string(), NATIVE_SHELL_SYSTEM);
+    intrinsics.insert("system_status".to_string(), NATIVE_SHELL_SYSTEM_STATUS);
+    intrinsics.insert("export".to_string(), NATIVE_SHELL_EXPORT);
+    intrinsics.insert("exit".to_string(), NATIVE_SHELL_EXIT);
+    // Plan 413: code editor payload accessors (UI bridge).
+    intrinsics.insert("code_editor_text".to_string(), NATIVE_CODE_EDITOR_TEXT);
+    intrinsics.insert("code_editor_cursor_line".to_string(), NATIVE_CODE_EDITOR_CURSOR_LINE);
+    intrinsics.insert("code_editor_cursor_col".to_string(), NATIVE_CODE_EDITOR_CURSOR_COL);
+    intrinsics.insert("code_editor_selection_len".to_string(), NATIVE_CODE_EDITOR_SELECTION_LEN);
+    intrinsics.insert("code_editor_find".to_string(), NATIVE_CODE_EDITOR_FIND);
+    intrinsics.insert("code_editor_set_text".to_string(), NATIVE_CODE_EDITOR_SET_TEXT);
+    // Plan 019 批次八: autodown 文档 natives（.at handler 可编程操作文档）。
+    intrinsics.insert("autodown_parse".to_string(), NATIVE_AUTODOWN_PARSE);
+    intrinsics.insert("autodown_serialize".to_string(), NATIVE_AUTODOWN_SERIALIZE);
+    intrinsics.insert("autodown_text".to_string(), NATIVE_AUTODOWN_TEXT);
+    intrinsics.insert("autodown_find_block".to_string(), NATIVE_AUTODOWN_FIND_BLOCK);
+    intrinsics.insert("autodown_insert_text".to_string(), NATIVE_AUTODOWN_INSERT_TEXT);
+    intrinsics.insert("autodown_insert_template".to_string(), NATIVE_AUTODOWN_INSERT_TEMPLATE);
+    // Plan 019 批次九: 编辑壳全文回读。
+    intrinsics.insert("autodown_editor_text".to_string(), NATIVE_AUTODOWN_EDITOR_TEXT);
+    // Plan 413 follow-up: console natives (in-app Console panel).
+    intrinsics.insert("console_log".to_string(), NATIVE_CONSOLE_LOG);
+    intrinsics.insert("console_lines".to_string(), NATIVE_CONSOLE_LINES);
+    intrinsics.insert("console_clear".to_string(), NATIVE_CONSOLE_CLEAR);
+    // Plan 418: editor actions + clipboard + dialogs (menu/toolbar handlers).
+    intrinsics.insert("code_editor_undo".to_string(), NATIVE_CODE_EDITOR_UNDO);
+    intrinsics.insert("code_editor_redo".to_string(), NATIVE_CODE_EDITOR_REDO);
+    intrinsics.insert("code_editor_select_all".to_string(), NATIVE_CODE_EDITOR_SELECT_ALL);
+    intrinsics.insert("code_editor_cut".to_string(), NATIVE_CODE_EDITOR_CUT);
+    intrinsics.insert("code_editor_copy".to_string(), NATIVE_CODE_EDITOR_COPY);
+    intrinsics.insert("code_editor_paste".to_string(), NATIVE_CODE_EDITOR_PASTE);
+    // Plan 428 P1: code folding natives (view state).
+    intrinsics.insert("code_editor_fold_toggle".to_string(), NATIVE_CODE_EDITOR_FOLD_TOGGLE);
+    intrinsics.insert("code_editor_fold_hidden_count".to_string(), NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT);
+    intrinsics.insert("clipboard_text".to_string(), NATIVE_CLIPBOARD_TEXT);
+    intrinsics.insert("clipboard_set_text".to_string(), NATIVE_CLIPBOARD_SET_TEXT);
+    // Plan 485: native clipboard files/images bare-name intrinsics.
+    intrinsics.insert("clipboard_files_get".to_string(), NATIVE_CLIPBOARD_FILES_GET);
+    intrinsics.insert("clipboard_files_set".to_string(), NATIVE_CLIPBOARD_FILES_SET);
+    intrinsics.insert("clipboard_image_get".to_string(), NATIVE_CLIPBOARD_IMAGE_GET);
+    intrinsics.insert("clipboard_image_set".to_string(), NATIVE_CLIPBOARD_IMAGE_SET);
+    // Plan 488: OLE 拖出（DoDragDrop 调用线程内联阻塞；效果经
+    // on_dnd_finished 事件回注）。
+    intrinsics.insert("dnd_start".to_string(), NATIVE_DND_START);
+    // PLAN-656: scroll-pane controller 原生族（bare-name intrinsics）。
+    intrinsics.insert("scroll_controller".to_string(), NATIVE_SCROLL_CONTROLLER);
+    intrinsics.insert("scroll_to_start".to_string(), NATIVE_SCROLL_TO_START);
+    intrinsics.insert("scroll_to_end".to_string(), NATIVE_SCROLL_TO_END);
+    intrinsics.insert("scroll_by".to_string(), NATIVE_SCROLL_BY);
+    intrinsics.insert("scroll_to".to_string(), NATIVE_SCROLL_TO);
+    intrinsics.insert("scroll_state".to_string(), NATIVE_SCROLL_STATE);
+    intrinsics.insert("dialog_open".to_string(), NATIVE_DIALOG_OPEN);
+    intrinsics.insert("dialog_save".to_string(), NATIVE_DIALOG_SAVE);
+    intrinsics.insert("file_basename".to_string(), NATIVE_FILE_BASENAME);
+    intrinsics
+}
+
 impl Codegen {
     pub fn new() -> Self {
         // Initialize the global native registry
         crate::vm::native_registry::register_builtin_natives();
 
-        let mut intrinsics = HashMap::new();
-        // Register intrinsics - only built-in print functions
-        // "print" defaults to print_str since most print calls are for strings
-        intrinsics.insert("print".to_string(), NATIVE_PRINT_STR);
-        intrinsics.insert("print_i32".to_string(), NATIVE_PRINT_I32);
-        intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);
-        intrinsics.insert("print_str".to_string(), NATIVE_PRINT_STR);
-        intrinsics.insert("write".to_string(), NATIVE_WRITE_STR);
-        intrinsics.insert("assert".to_string(), NATIVE_ASSERT);
-        intrinsics.insert("assert_eq".to_string(), NATIVE_ASSERT_EQ);
-        intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
-        intrinsics.insert("panic".to_string(), NATIVE_RUNTIME_PANIC);
-        // Plan 442 B-support: JS web-compat alias — musk sources call the
-        // browser global; route to the VM's percent-encoding native.
-        intrinsics.insert("encodeURIComponent".to_string(), crate::vm::native::NATIVE_URL_ENCODE);
-        // Plan 442 C2: bare `read_text(path)` — musk backend's comptime
-        // `#{ read_text("../workflows/...") }` (workflow.at) compiles the
-        // inner expr as a runtime call on the VM path; route to the fs
-        // read native (a2r bakes the content at transpile time instead —
-        // the VM-side value is cwd-relative and may differ, documented).
-        if let Some(&id) = crate::vm::native_registry::NATIVE_ID_MAP.get("auto.fs.read_text") {
-            intrinsics.insert("read_text".to_string(), id);
-        }
-        // Plan 442 C2: bare `format(fmt, args...)` — the Rust macro form
-        // `format!(...)` (parser keeps the Ident, see the bang arm) routes to
-        // the fmt.sprintf native ({} placeholder replacement).
-        intrinsics.insert("format".to_string(), crate::vm::native::NATIVE_FMT_SPRINTF);
-        // Plan 011 (MS3-B): shell-host bridge functions.
-        intrinsics.insert("system".to_string(), NATIVE_SHELL_SYSTEM);
-        intrinsics.insert("system_status".to_string(), NATIVE_SHELL_SYSTEM_STATUS);
-        intrinsics.insert("export".to_string(), NATIVE_SHELL_EXPORT);
-        intrinsics.insert("exit".to_string(), NATIVE_SHELL_EXIT);
-        // Plan 413: code editor payload accessors (UI bridge).
-        intrinsics.insert("code_editor_text".to_string(), NATIVE_CODE_EDITOR_TEXT);
-        intrinsics.insert("code_editor_cursor_line".to_string(), NATIVE_CODE_EDITOR_CURSOR_LINE);
-        intrinsics.insert("code_editor_cursor_col".to_string(), NATIVE_CODE_EDITOR_CURSOR_COL);
-        intrinsics.insert("code_editor_selection_len".to_string(), NATIVE_CODE_EDITOR_SELECTION_LEN);
-        intrinsics.insert("code_editor_find".to_string(), NATIVE_CODE_EDITOR_FIND);
-        intrinsics.insert("code_editor_set_text".to_string(), NATIVE_CODE_EDITOR_SET_TEXT);
-        // Plan 019 批次八: autodown 文档 natives（.at handler 可编程操作文档）。
-        intrinsics.insert("autodown_parse".to_string(), NATIVE_AUTODOWN_PARSE);
-        intrinsics.insert("autodown_serialize".to_string(), NATIVE_AUTODOWN_SERIALIZE);
-        intrinsics.insert("autodown_text".to_string(), NATIVE_AUTODOWN_TEXT);
-        intrinsics.insert("autodown_find_block".to_string(), NATIVE_AUTODOWN_FIND_BLOCK);
-        intrinsics.insert("autodown_insert_text".to_string(), NATIVE_AUTODOWN_INSERT_TEXT);
-        intrinsics.insert("autodown_insert_template".to_string(), NATIVE_AUTODOWN_INSERT_TEMPLATE);
-        // Plan 019 批次九: 编辑壳全文回读。
-        intrinsics.insert("autodown_editor_text".to_string(), NATIVE_AUTODOWN_EDITOR_TEXT);
-        // Plan 413 follow-up: console natives (in-app Console panel).
-        intrinsics.insert("console_log".to_string(), NATIVE_CONSOLE_LOG);
-        intrinsics.insert("console_lines".to_string(), NATIVE_CONSOLE_LINES);
-        intrinsics.insert("console_clear".to_string(), NATIVE_CONSOLE_CLEAR);
-        // Plan 418: editor actions + clipboard + dialogs (menu/toolbar handlers).
-        intrinsics.insert("code_editor_undo".to_string(), NATIVE_CODE_EDITOR_UNDO);
-        intrinsics.insert("code_editor_redo".to_string(), NATIVE_CODE_EDITOR_REDO);
-        intrinsics.insert("code_editor_select_all".to_string(), NATIVE_CODE_EDITOR_SELECT_ALL);
-        intrinsics.insert("code_editor_cut".to_string(), NATIVE_CODE_EDITOR_CUT);
-        intrinsics.insert("code_editor_copy".to_string(), NATIVE_CODE_EDITOR_COPY);
-        intrinsics.insert("code_editor_paste".to_string(), NATIVE_CODE_EDITOR_PASTE);
-        // Plan 428 P1: code folding natives (view state).
-        intrinsics.insert("code_editor_fold_toggle".to_string(), NATIVE_CODE_EDITOR_FOLD_TOGGLE);
-        intrinsics.insert("code_editor_fold_hidden_count".to_string(), NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT);
-        intrinsics.insert("clipboard_text".to_string(), NATIVE_CLIPBOARD_TEXT);
-        intrinsics.insert("clipboard_set_text".to_string(), NATIVE_CLIPBOARD_SET_TEXT);
-        // Plan 485: native clipboard files/images bare-name intrinsics.
-        intrinsics.insert("clipboard_files_get".to_string(), NATIVE_CLIPBOARD_FILES_GET);
-        intrinsics.insert("clipboard_files_set".to_string(), NATIVE_CLIPBOARD_FILES_SET);
-        intrinsics.insert("clipboard_image_get".to_string(), NATIVE_CLIPBOARD_IMAGE_GET);
-        intrinsics.insert("clipboard_image_set".to_string(), NATIVE_CLIPBOARD_IMAGE_SET);
-        // Plan 488: OLE 拖出（DoDragDrop 调用线程内联阻塞；效果经
-        // on_dnd_finished 事件回注）。
-        intrinsics.insert("dnd_start".to_string(), NATIVE_DND_START);
-        // PLAN-656: scroll-pane controller 原生族（bare-name intrinsics）。
-        intrinsics.insert("scroll_controller".to_string(), NATIVE_SCROLL_CONTROLLER);
-        intrinsics.insert("scroll_to_start".to_string(), NATIVE_SCROLL_TO_START);
-        intrinsics.insert("scroll_to_end".to_string(), NATIVE_SCROLL_TO_END);
-        intrinsics.insert("scroll_by".to_string(), NATIVE_SCROLL_BY);
-        intrinsics.insert("scroll_to".to_string(), NATIVE_SCROLL_TO);
-        intrinsics.insert("scroll_state".to_string(), NATIVE_SCROLL_STATE);
-        intrinsics.insert("dialog_open".to_string(), NATIVE_DIALOG_OPEN);
-        intrinsics.insert("dialog_save".to_string(), NATIVE_DIALOG_SAVE);
-        intrinsics.insert("file_basename".to_string(), NATIVE_FILE_BASENAME);
+        // PLAN-671 (1): plain-name builtin registry moved to build_bare_native_intrinsics
+        // (single source; the vue-track natives.d.ts declaration layer consumes the same registry
+        // via bare_native_intrinsics(), so new plain-name builtins automatically enter the declaration candidate set).
+        let intrinsics = bare_native_intrinsics().clone();
 
         // Register return types for native functions (used for type inference in let bindings)
         // Plan 378: actually use the built map (previously discarded as `_fn_return_types`,

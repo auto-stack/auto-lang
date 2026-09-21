@@ -305,6 +305,7 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("media", QueueStatus::NotYet("媒体/动态内容——位图帧归 Stage 5 后续（image 占位先例）")),
         ("menu-item", QueueStatus::NotYet("复合导航族——后续专项（Stage 6 路由/远程端消费）")),
         ("menubar", QueueStatus::NotYet("复合导航族——后续专项（Stage 6 路由/远程端消费）")),
+        ("menubar_checkbox_item", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记（PLAN-671 附b 入册）")),
         ("menubar_content", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("menubar_item", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("menubar_label", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),

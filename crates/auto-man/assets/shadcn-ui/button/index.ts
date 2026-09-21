@@ -21,6 +21,12 @@ export const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
+        // PLAN-671 ⑥: `text` variant absorbed — Rust button_variant_preset("text")
+        // is chromeless ("" preset, user classes dominate). An empty delta-class
+        // entry mirrors that zero-preset semantics (no visual regression vs the
+        // vm track) while widening the closed cva union so `variant: "text"`
+        // stops tripping vue-tsc TS2322. Keep in sync with ui_gen/vue.rs cva.
+        text: "",
       },
       size: {
         "default": "h-10 px-4 py-2",

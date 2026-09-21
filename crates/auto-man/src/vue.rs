@@ -1618,6 +1618,137 @@ fn ensure_vue_type_stubs(output_dir: &Path) {
     }
 }
 
+/// PLAN-671 ①：函数级 vm 平名内建声明层 + 运行期 fail-fast 桩。
+///
+/// 声明候选集 = `auto_lang::vm::codegen::bare_native_intrinsics()` 注册表
+/// （Codegen::new 的 intrinsics 单源）∩ 生成文件实际裸用面（词法 token
+/// 交集；`auto-sources.ts` 是 .at 源文映射表、`natives.*` 是本层自身
+/// 产物，均排除）。产物三件：
+/// - `src/natives.d.ts`：`declare function NAME(...args: any[]): any`
+///   （vue-tsc 构建绿；签名泛化 any——不逐名手写签名表。落 src 根——
+///   实测 vue-tsc 对 `src/**/*.ts` include 只收根级 .d.ts，不收子目录
+///   的；vite-env.d.ts 同位先例）
+/// - `src/lib/natives.ts`：globalThis 抛错桩——§10-1 裁定（fail-fast，
+///   报错带内建名与「vue 轨运行期缺口」指引，优于裸 ReferenceError；
+///   与对象级 fs/File/image/Env/Process 的 __vmOnly 桩同一哲学）
+/// - `main.ts` 顶部 `import './lib/natives'`（模块执行才装全局绑定）
+///
+/// 对象级（Env.get/fs.*）不在此层——ts_adapter 已改写为内联 __vmOnly
+/// 桩（ts_adapter.rs 对象级白名单）。空集时清退三件（防陈旧 import
+/// 悬挂）；内容不变不写（沿 write_auto_sources_ts 增量安静惯例）。
+fn ensure_natives_layer(output_dir: &Path) {
+    let src = output_dir.join("src");
+    let lib = src.join("lib");
+    let reg_set: std::collections::HashSet<&str> =
+        auto_lang::vm::codegen::bare_native_intrinsics()
+            .keys()
+            .map(|s| s.as_str())
+            .collect();
+
+    // 1. 裸用面扫描：src/**/*.{ts,vue} 的标识符 token ∩ 注册表。
+    let mut used: std::collections::BTreeSet<&str> = Default::default();
+    let mut stack = vec![src.clone()];
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    while let Some(dir) = stack.pop() {
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path
+                    .extension()
+                    .map(|e| e == "ts" || e == "vue")
+                    .unwrap_or(false)
+                {
+                    files.push(path);
+                }
+            }
+        }
+    }
+    for path in &files {
+        let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if fname == "auto-sources.ts" || fname.starts_with("natives.") {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(path) else { continue };
+        for tok in content.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')) {
+            // 插入注册表的 &'static 名（而非文件内容 token）——used 不借
+            // 每文件 content。
+            if let Some(&name) = reg_set.get(tok) {
+                used.insert(name);
+            }
+        }
+    }
+
+    let dts_path = src.join("natives.d.ts");
+    let stub_path = lib.join("natives.ts");
+    let main_path = src.join("main.ts");
+
+    // 1b. JS 保留字过滤：注册表含 shell 宿主桥名（如 `export`）——保留字
+    // 不能作裸函数声明名（TS1359）；UI 生成面用到此类名会以各自的 TS
+    // 报错显式暴露，不在声明层兜底。
+    const JS_RESERVED: &[&str] = &[
+        "break", "case", "catch", "class", "const", "continue", "debugger",
+        "default", "delete", "do", "else", "enum", "export", "extends",
+        "false", "finally", "for", "function", "if", "import", "in",
+        "instanceof", "new", "null", "return", "super", "switch", "this",
+        "throw", "true", "try", "typeof", "var", "void", "while", "with",
+        "yield", "await",
+    ];
+    used.retain(|n| !JS_RESERVED.contains(n));
+
+    // 2. 空集清退。
+    if used.is_empty() {
+        for p in [&dts_path, &stub_path] {
+            if p.exists() {
+                let _ = fs::remove_file(p);
+            }
+        }
+        if let Ok(main) = fs::read_to_string(&main_path) {
+            if main.contains("import './lib/natives'") {
+                let cleaned = main
+                    .lines()
+                    .filter(|l| l.trim() != "import './lib/natives'")
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let _ = fs::write(&main_path, cleaned);
+            }
+        }
+        return;
+    }
+
+    // 3. 发射（BTreeSet 序 = 稳定输出，diff 友好）。
+    fs::create_dir_all(&lib).ok();
+    let mut dts = String::from(
+        "// natives.d.ts — PLAN-671 ①: vm-host bare natives, type layer.\n// Registry-driven (vm codegen bare_native_intrinsics ∩ bare usage in\n// generated sources). The vue track has NO runtime for these names — calls\n// reach the throwing stubs installed by natives.ts.\n",
+    );
+    let mut stub = String::from(
+        "// natives.ts — PLAN-671 ①: vm-host bare natives, runtime fail-fast stubs.\n// Registers throwing globalThis bindings for the names declared in\n// natives.d.ts — an honest error naming the native beats a bare\n// ReferenceError when a vm-only path runs on the vue track.\nconst names: string[] = [\n",
+    );
+    for name in &used {
+        dts.push_str(&format!("declare function {}(...args: any[]): any\n", name));
+        stub.push_str(&format!("  '{}',\n", name));
+    }
+    stub.push_str(
+        "]\nfor (const n of names) {\n  const g = globalThis as unknown as Record<string, unknown>\n  if (!(n in g)) {\n    g[n] = (..._args: unknown[]) => {\n      throw new Error('[auto-gen] VM-only native \"' + n + '\" has no Vue/JS build — this path only runs in VM mode')\n    }\n  }\n}\nexport {}\n",
+    );
+    for (path, content) in [(&dts_path, dts), (&stub_path, stub)] {
+        let unchanged = matches!(fs::read_to_string(path), Ok(ref existing) if *existing == content);
+        if !unchanged {
+            if let Err(e) = fs::write(path, &content) {
+                println!("{}", format!("⚠ natives layer write failed ({}): {}", path.display(), e).yellow());
+            }
+        }
+    }
+    if let Ok(main) = fs::read_to_string(&main_path) {
+        if !main.contains("import './lib/natives'") {
+            if let Err(e) = fs::write(&main_path, format!("import './lib/natives'\n{}", main)) {
+                println!("{}", format!("⚠ main.ts natives import failed: {}", e).yellow());
+            }
+        }
+    }
+}
+
 
 fn generate_app_vue(vue_code: &str) -> String {
     vue_code.to_string()
@@ -1954,6 +2085,8 @@ fn write_project_files(
     // PLAN-646/038 Phase B T8: Select Anything overlay + vite-env + auto-sources
     // 全路径落盘（P657-D2：build 不再依赖 auto run 预生成或手工 stub）。
     ensure_vue_type_stubs(output_path);
+    // PLAN-671 ①：平名内建声明层（注册表 ∩ 裸用面）。
+    ensure_natives_layer(output_path);
     // write_project_files 无 front_dir 时 overlay 仍可 import 空 map。
     let sources_path = output_path.join("src").join("auto-sources.ts");
     if !sources_path.exists() {
@@ -4058,6 +4191,8 @@ export default router
 
         // PLAN-038 Phase B T8 (P657-D2): vite-env + overlay + auto-sources on scaffold path.
         ensure_vue_type_stubs(output_path);
+        // PLAN-671 ①：平名内建声明层（注册表 ∩ 裸用面）。
+        ensure_natives_layer(output_path);
 
         // Router file — main.ts imports './router' whenever routes exist.
         self.ensure_router_file()?;
@@ -4142,6 +4277,8 @@ export default router
             .map_err(|e| format!("Failed to write tailwind.config.cjs: {}", e))?;
         println!("{}", "  ✓ Regenerated tailwind.config.cjs".bright_green());
         ensure_vue_type_stubs(&self.output_dir);
+        // PLAN-671 ①：平名内建声明层（注册表 ∩ 裸用面）。
+        ensure_natives_layer(&self.output_dir);
         {
             let front = self.output_dir
                 .ancestors()
@@ -5086,6 +5223,9 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
     // 源映射（overlay 硬依赖 auto-sources，此前仅 auto run 写入 → vue-tsc 红）。
     write_auto_sources_ts(&resolve_front_dir(root_dir), &project.output_dir);
     ensure_vue_type_stubs(&project.output_dir);
+    // PLAN-671 ①：平名内建声明层（注册表 ∩ 裸用面）——gen-only 与
+    // build 共走此共享段，裸产出即自完备。
+    ensure_natives_layer(&project.output_dir);
 
     // Step 2: Generate API client code (if api.at exists)
     println!();

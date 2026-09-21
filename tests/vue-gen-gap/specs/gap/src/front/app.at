@@ -1,0 +1,39 @@
+// app.at — PLAN-671 fixture：视图面缺口特性集中（⑤双参载荷/⑥text variant/
+// 附a 多段插值/附b menubar 族 props）。
+use store: gap
+
+widget App {
+    model { var dummy int = 0 }
+    on {
+        .Bump -> { store.Bump() }
+        .Reset -> { store.Reset() }
+        .Quit -> { store.Quit() }
+        .OnCtx(x, y) -> { store.OnCtx(x, y) }
+    }
+    view {
+        col {
+            menubar {
+                menubar-menu (value: "file") {
+                    menubar-trigger "文件"
+                    menubar-content {
+                        menubar-item (title: "触发", icon: "sparkles", shortcut: "Ctrl+K", enabled: .store.count > 0) { onclick: .Bump }
+                        menubar-separator {}
+                        menubar-checkbox-item (title: "显示状态", checked: .store.show) { onclick: .Reset }
+                    }
+                }
+            }
+            row (style: "gap-2 p-2 items-center") {
+                button "纯文本按钮" (variant: "text") { onclick: .Bump }
+                text "${.store.line}:${.store.col}" { style: "text-xs text-muted-foreground" }
+            }
+            col {
+                for i, d in .store.docs {
+                    code_editor (key: d.key, lang: "auto", style: "h-24 w-full") {
+                        content: d.src
+                        oncontextmenu: .OnCtx
+                    }
+                }
+            }
+        }
+    }
+}
