@@ -1801,6 +1801,11 @@ fn ensure_natives_layer(output_dir: &Path) {
     }
 
     // 3. 发射（BTreeSet 序 = 稳定输出，diff 友好）。
+    // PLAN-677 T-04: natives 三层化——R 层（vue/JS 可真实现，语义对齐 vm
+    // 实现体）不再进抛错桩名单；S 层维持 fail-fast 桩（PLAN-671 §10-1
+    // 裁定不变）；B 层（editorBridge 路由）由 T-05 在此挂靠。
+    const R_TIER: &[&str] = &["file_basename", "console_log", "console_lines", "console_clear"];
+    let stub_names: Vec<&&str> = used.iter().filter(|n| !R_TIER.contains(n)).collect();
     fs::create_dir_all(&lib).ok();
     let mut dts = String::from(
         "// natives.d.ts — PLAN-671 ①(+Phase 2): vm-host bare natives, type layer.\n// Registry-driven: function forms = vm codegen bare_native_intrinsics ∩\n// bare usage; object forms = VM_ONLY_OBJECT_NATIVES ∩ member-access usage.\n// The vue track has NO runtime for these names — calls reach the throwing\n// stubs installed by natives.ts.\n",
@@ -1810,6 +1815,8 @@ fn ensure_natives_layer(output_dir: &Path) {
     );
     for name in &used {
         dts.push_str(&format!("declare function {}(...args: any[]): any\n", name));
+    }
+    for name in &stub_names {
         stub.push_str(&format!("  '{}',\n", name));
     }
     stub.push_str(
@@ -1834,6 +1841,9 @@ fn ensure_natives_layer(output_dir: &Path) {
             "]\nfor (const n of objects) {\n  const g = globalThis as unknown as Record<string, unknown>\n  if (!(n in g)) {\n    g[n] = new Proxy({}, {\n      get: (_t, k) => (..._args: unknown[]) => {\n        throw new Error('[auto-gen] VM-only native \"' + n + '.' + String(k) + '\" has no Vue/JS build — this path only runs in VM mode')\n      },\n    })\n  }\n}\n",
         );
     }
+    stub.push_str(
+        "// PLAN-677 T-04: R tier - real JS builds (semantics mirror vm impls).\n{\n  const g = globalThis as unknown as Record<string, unknown>\n  // file_basename: final path segment, '/' and backslash both separators\n  // (vm native.rs shim_file_basename rsplit semantics).\n  g['file_basename'] = (p: unknown) => {\n    const s2 = String(p ?? '')\n    const parts = s2.split(/[/\\\\]/)\n    return parts[parts.length - 1] ?? ''\n  }\n  // console_*: in-memory buffer - one entry per log call, cap 500,\n  // lines(n=200) newest-first joined with a newline (vm ui_console.rs).\n  const buf: string[] = []\n  g['console_log'] = (line: unknown) => {\n    buf.push(String(line ?? ''))\n    if (buf.length > 500) buf.shift()\n  }\n  g['console_lines'] = (n?: number) => {\n    const take = Math.min(n ?? 200, buf.length)\n    const out: string[] = []\n    for (let i = buf.length - 1; i >= buf.length - take; i--) out.push(buf[i])\n    return out.join('\\\\n')\n  }\n  g['console_clear'] = () => {\n    buf.length = 0\n  }\n}\n"
+    );
     stub.push_str("export {}\n");
     for (path, content) in [(&dts_path, dts), (&stub_path, stub)] {
         let unchanged = matches!(fs::read_to_string(path), Ok(ref existing) if *existing == content);
@@ -10269,6 +10279,63 @@ export default {{ }}
         let after2 = std::fs::read_to_string(comps.join("CodeEditor.vue")).unwrap();
         assert_eq!(after2, handwritten, "hand-written shell must stay untouched");
 
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// PLAN-677 T-04: natives 三层发射——R 层名（file_basename/console_*）
+    /// 不进抛错桩名单而是发真实现体；S 层名（dialog_open）维持桩；
+    /// d.ts 对全部用面名声明。
+    #[test]
+    fn plan677_natives_r_tier_real_impls() {
+        let dir = std::env::temp_dir().join(format!("plan677_nat_{}", std::process::id()));
+        let src = dir.join("src");
+        std::fs::create_dir_all(src.join("lib")).unwrap();
+        std::fs::write(
+            src.join("main.ts"),
+            "import { createApp } from 'vue'
+",
+        )
+        .unwrap();
+        std::fs::write(
+            src.join("App.vue"),
+            "<template><div /></template>
+<script setup lang=\"ts\">
+const b = file_basename(ws + '/' + id)
+console_log('open: ' + b)
+const willOpen = dialog_open()\nconst ls = console_lines()
+console_clear()
+</script>
+",
+        )
+        .unwrap();
+        ensure_natives_layer(&dir);
+
+        let stub = std::fs::read_to_string(src.join("lib").join("natives.ts")).unwrap();
+        // S 层：dialog_open 仍在抛错桩名单。
+        assert!(stub.contains("  'dialog_open',
+"), "{stub}");
+        // R 层：不进桩名单，有真实现体。
+        for name in ["file_basename", "console_log", "console_lines", "console_clear"] {
+            assert!(
+                !stub.contains(&format!("  '{}',
+", name)),
+                "{} must not be a throwing stub:
+{}",
+                name,
+                stub
+            );
+        }
+        assert!(stub.contains("g['file_basename']"), "{stub}");
+        assert!(stub.contains("g['console_log']"), "{stub}");
+        assert!(stub.contains("g['console_lines']"), "{stub}");
+        assert!(stub.contains("g['console_clear']"), "{stub}");
+        // d.ts 对全部用面名声明（含 R 层）。
+        let dts = std::fs::read_to_string(src.join("natives.d.ts")).unwrap();
+        assert!(dts.contains("declare function file_basename("), "{dts}");
+        assert!(dts.contains("declare function dialog_open("), "{dts}");
+        // main.ts 装载 import 仍在。
+        let main = std::fs::read_to_string(src.join("main.ts")).unwrap();
+        assert!(main.contains("import './lib/natives'"), "{main}");
         std::fs::remove_dir_all(&dir).ok();
     }
 
