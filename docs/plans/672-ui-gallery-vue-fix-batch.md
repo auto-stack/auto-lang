@@ -30,16 +30,19 @@ total_steps: 6
 - **条目 3（用户提出 2026-09-21）**：内容超高出现滚动条时（滚动行为本身 ✓），
   Vue 臂用的是浏览器默认滚动条（宽轨+箭头，暗色主题下突兀），应为 AutoUI
   风格滚动条（细/半透明/圆角，与 reka-ui ScrollArea 观感一致）。
-- **条目 4（用户提出 2026-09-21，诊断完成、修法待裁定）**：013-todo 在 Vue 臂
-  显示「全栈/原生应用」独立运行提示，用户预期可内嵌，疑 pac.at 配置问题。
-  **诊断：不是配置问题**。链路：`gallery_demo_row`（vue.rs:8151-8171）依
-  PLAN-633 裁定 `loadable = base_ok && !has_back_corpus`；013 前端
-  `todo_store.at:4 use back.api:` 五个 CRUD → 生成 Vue store 含
-  `@/lib/api`（fetch `/api/todos` 族）且 Init `await list_todos()` 无 catch
-  → 嵌入态画廊无 per-demo 后端进程，Init 必炸。「独立 vue 能跑」=
-  `auto run` 拉起 rust sidecar（pac `api: "rust"`）+ vite 代理，与「可嵌入」
-  是两件事。VM 臂已内嵌 013（AppViewport.vm.at Demo013Todo，merged 进程内
-  CALL reloc，PLAN-633 T-01 实证）。
+- **条目 4（用户提出 2026-09-21，诊断+修法定稿）**：013-todo 在 Vue 臂显示
+  「全栈/原生应用」独立运行提示，用户预期可内嵌。**用户追问 proxy 机制裁定
+  修法方向：Vue 臂接线 PLAN-658 back-proxy**。诊断补充：PLAN-658 多后端
+  proxy 已实现且在档（delivered/archived）——`start_gallery_back_proxy`
+  （vue.rs:6710）按 `src/back/api.at` needs_session 为 013/015 等建 VM 会话，
+  按 `/apps/<app_id>/api/*` 前缀分派——但**唯一调用点在 rust_ui.rs:3444
+  （VM 臂宿主）**。Vue 臂三缺：① proxy 未启动；② vite `/api` 代理指向
+  宿主自身 api 端口（画廊无 api → 死端口），且无 `/apps` 路由；③ fullstack
+  语料未发射（generate_gallery_host 仅 `row.loadable` 档写 App/stores/
+  components，画廊 `lib/` 连 api.ts 都没有）。VM 臂源侧前缀化
+  （prefix_api_url_literals）不适用于浏览器 fetch（跨源）；Vue 臂走
+  vite 代理透传（同源）→ 保持 demo 语料相对路径风格，api.ts 内路径前缀
+  改写为 `/apps/<id>/api/`。
 
 ## 目标
 
@@ -135,7 +138,38 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
 
 同步 os 参照副本 + gen ext 副本字节对齐（同 T-04 收口路径，P672-D1 债仍在册）。
 
-### 门禁与端到端
+### T-07/T-08 Vue 臂 back-proxy 接线（条目 4）
+
+复用 PLAN-658 全套（proxy 会话分派/行缓存/降级语义），三处接线全在 auto-man：
+
+**T-07 proxy 启动 + vite 路由**
+- `run_vue_project`（vue.rs:5694）gallery 分支（`is_ui_gallery || gallery_mode`）：
+  在 `generate_gallery_host` **之后**（行缓存热）调 `start_gallery_back_proxy`，
+  拿端口后为 vite 子进程注入 env `AUTO_GALLERY_BACK_PROXY=http://127.0.0.1:<port>`；
+  proxy 启动失败照 658 语义降级不阻断（env 不注入，fullstack demo 走错误横幅）。
+- `generate_vite_config`（vue.rs:790）：追加条件条目——env 存在时
+  `'/apps': { target: env, changeOrigin: true }`（spread 写法，未设=零条目，
+  standalone 项目 vite.config 零变化）。
+
+**T-08 fullstack 语料发射 + 注册表翻转**
+- `generate_gallery_host` 发射循环（vue.rs:4605 `if row.loadable`）→
+  `if row.loadable || row.fullstack`；fullstack demo 追加两步：
+  - 语料改写：`from '@/lib/api'` → `from '@/apps/<id>/lib_api'`（app/store/
+    components 三处语料同改）；
+  - api.ts 落盘：读 `<app_root>/gen/front/vue/src/lib/api.ts`（api_gen 产物，
+    桌面宿主循环 :4376 同源先例；缺则回落 `src/back/api.ts` 胶水，再缺则
+    该 demo 跳过并告警），fetch 路径改写 `` `/api/ `` → `` `/apps/<id>/api/ ``
+    （生成模板定格式，单replace；写入 `apps_src/<id>/lib_api.ts`，per-demo
+    隔离避免共享池撞名）。
+- `generate_demos_registry`：TS registry `loadable` 字段写
+  `row.loadable || row.fullstack`（侧栏「可交互」徽章随之翻转，AppViewport
+  mountApp 放行）。registry.at / AppViewport.vm.at 的 VM 侧语义**不动**
+  （:6441 VM 早已按 loadable||fullstack||route_stub）。
+- 边界：本条目验证面 = 013/015（纯 CRUD）。SSE 流 demo（017-chat 族）随档位
+  一并发射，但流消费在 Vue 臂未经 PLAN-658 的 Tick 注入改造——若运行期断流
+  降级为错误横幅（与 658「失败降级不阻断」同语义），不强保。
+
+### T-09/T-10 门禁与端到端（条目 4）
 
 - Category B（局部 Rust 改动）：`cargo check -p auto-man`；
   局部测试 `cargo t -p auto-man`（vue.rs 内嵌 package_json 断言组 + gallery_assets）；
@@ -167,6 +201,11 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
 - [x] AC-6 内容超高时视口滚动条为 AutoUI 风格（细 8px/圆角/`--border` 主题色
       拇指），不再是浏览器默认宽轨；滚动行为本身不回归（AC-3 复验）。——
       证据：T-06 计算样式+截图。
+- [ ] AC-7（条目 4）013-todo 在 Vue 臂画廊内加载且 CRUD 可用（新增/勾选待办
+      经 vite `/apps` 代理 → back-proxy 会话持久生效）；015-notes 同面加载。
+- [ ] AC-8（条目 4）代理未运行时（env 未注入）fullstack demo 降级为错误横幅
+      或空态，不崩溃、不影响其他 demo；standalone 项目 vite.config 零变化
+      （env 条目未设不出现）。
 
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
