@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-671
-status: reviewed          # drafting → executing → execution_done → reviewed → archived
+status: archived          # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-gen-gap-debt
 author: [zcode]
 created_at: 2026-09-21
@@ -13,6 +13,7 @@ base_commit: ebfeef30c
 supersedes_spec_components: []
 new_spec_components: [SD-01 ui overview vue 生成器自完备契约, SD-02 aura schema menubar 族 props 吸收]
 touched_goals: [GOAL-007]      # AutoUI 跨端视觉一致（vue 轨生成自完备/双端 parity 锁定面）
+completion_kind: delivered
 
 affects: [docs/specs/auto-lang/ui/overview.md]
 current_step: 14
@@ -430,6 +431,24 @@ menubar_item 发射为裸 `<div :title=...>`（仅外层 Menubar 组件，:15046
   evidence: 门禁数字与生成物断言已内联上文（持久于本计划文件）；tmp 日志
   为辅助。auto-edit/fixture 复跑命令与退出码见 §9 work 记录 + 本记录。
   next: merge（/auto-plan:merge 五 checkpoint）。
+
+
+- 2026-09-21 stage: merge / PLAN-671:r2 / outcome: pass（五 checkpoint 闭环）。
+  - **prepared**：delivery_commit 89e54ae3d（纯投影增量——specs.json 外科
+    插入 P671-1/P671-2〔622→624 items，JSON 校验过〕+auto-lang ui/plans.md
+    与 auto-man/plans.md 671 表行+spec-index.py 再生 INDEX 字节等价零变化）；
+    实现/依赖未变——rebase 后 range-diff 3/3 全等（c1f986110→82743854c、
+    7a34a1a67→0c6a2c8e6、102818dc5→409f35661），rebase 零冲突（与 master
+    ebfeef30c..tip 交集为空）。
+  - **landed**：main `git merge --ff-only plan-671-dev` → tip=89e54ae3d
+    （与 dev tip 同一 commit，uniq=1 实证；无 merge commit）；烟测：SD 段/
+    VM_ONLY_OBJECT_NATIVES/specs.json 624/cargo check -p auto-man 全过。
+  - **ledger_refreshed**：.autoos/specs.json P671-1（designs）+P671-2
+    （reviews）；docs/specs/auto-lang/ui/plans.md + docs/specs/auto-man/
+    plans.md 671 行；INDEX 再生无漂移。
+  - **archived**：本文件 git mv 至 docs/plans/archive/，status: archived，
+    completion_kind: delivered。
+  - **cleaned**：待补（worktree 组 lang-671 三清后回填）。
 
 ## 10. 待澄清事项
 
