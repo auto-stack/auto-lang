@@ -233,6 +233,15 @@ where
         // Plan 422: 弹层在 VNode 里作为容器节点(anchor/content 为子)。
         View::Popover { .. } => (VNodeKind::Column, VNodeProps::Layout { spacing: 0, padding: 0 }),
 
+        // F-UAT-2: Rich 段落在 VNode 面为拼接文本（快照/MCP 文本可见性；
+        // span 级样式不进 vtree——检视粒度=段落文本）。
+        View::Rich { spans, .. } => (
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: spans.iter().map(|sp| sp.content.clone()).collect::<String>(),
+                selectable: false,
+            },
+        ),
         View::Text { content, selectable, .. } => (
             VNodeKind::Text,
             VNodeProps::Text {

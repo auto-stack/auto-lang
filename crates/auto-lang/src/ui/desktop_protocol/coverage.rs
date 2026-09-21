@@ -518,6 +518,7 @@ pub fn native_kind_of<M: Clone + std::fmt::Debug>(view: &crate::ui::view::View<M
         View::Empty => "empty",
         View::AnchorSlot { .. } => "anchorslot",
         View::Text { .. } => "text",
+        View::Rich { .. } => "text",
         View::Button { .. } => "button",
         View::Row { .. } => "row",
         View::Column { .. } => "col",
@@ -577,6 +578,7 @@ fn scan_native_node<M: Clone + std::fmt::Debug>(
         View::ManagedScrollContent { .. } => vec![],
         View::Popover { .. } | View::Overlay { .. } => vec![],
         View::Text { style, .. }
+        | View::Rich { style, .. }
         | View::Button { style, .. }
         | View::Input { style, .. }
         | View::Textarea { style, .. }

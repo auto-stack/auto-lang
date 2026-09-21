@@ -523,6 +523,14 @@ impl<M> ColResizeCallback<M> {
 /// **Styling**: All variants support optional `style` field for unified styling system.
 /// - Style field takes priority over legacy hardcoded fields (spacing, padding, etc.)
 /// - Backward compatible: legacy fields still work when style is None
+
+/// PLAN-080 UAT F-UAT-2: [`View::Rich`] 的行内 span（文本 + 独立样式）。
+#[derive(Debug, Clone)]
+pub struct RichSpanView {
+    pub content: String,
+    pub style: Option<Style>,
+}
+
 #[derive(Debug, Clone)]
 pub enum View<M: Clone + Debug> {
     /// Empty placeholder
@@ -543,6 +551,15 @@ pub enum View<M: Clone + Debug> {
         /// Plan 481: opt-in selection & copy (drag/double-click/Ctrl+C on
         /// iced via SelectableText). Default false; vue 端仅作语义声明。
         selectable: bool,
+    },
+
+    /// PLAN-080 UAT F-UAT-2: 富文本段落——单段落内跨 span 连续折行的行内
+    /// 序列（markdown 段落 VM 面）。此前 autodown 段落=Row 摆多 Text，iced
+    /// Row 不回流，长段落各 span 在自身窄列内独立折行=排版散架；Rich 单
+    /// 段落跨 span 连续折行=web 段落语义（VM 侧唯一正确承载）。
+    Rich {
+        spans: Vec<RichSpanView>,
+        style: Option<Style>,
     },
 
     /// Button with label, click handler, and optional styling
@@ -2213,6 +2230,8 @@ impl<M: Clone + Debug> View<M> {
     {
         match self {
             View::Empty => View::Empty,
+            // F-UAT-2: Rich 无消息载荷（spans 纯内容），恒等映射。
+            View::Rich { spans, style } => View::Rich { spans, style },
             // PLAN-066: Custom 事件消息同源映射（name/props/style 原样透传）。
             View::Custom { name, props, events, style } => View::Custom {
                 name,

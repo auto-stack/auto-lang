@@ -3596,6 +3596,71 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .into()
             }
 
+            // PLAN-080 UAT F-UAT-2: Rich 段落——单段落跨 span 连续折行
+            // （markdown 行内序列唯一正确承载；Row 摆多 Text 不回流）。
+            AbstractView::Rich { spans, style } => {
+                // F-UAT-2 勘误：Rich 不参与 iced 祖先文字色继承链（裸 span
+                // 落主题缺省色=深底黑字不可见，真机表格/段落文字消失实证
+                // 2026-09-21）。回退链：span 显式色 → Rich 基础样式色 →
+                // 语义 OnBackground → 白（text_input 值色同款口径）。
+                let base_color = style
+                    .as_ref()
+                    .and_then(|s| IcedStyle::from_style(s).text_color);
+                let mut spans_vec: Vec<iced::widget::text::Span<'static, ()>> = Vec::new();
+                for sp in spans {
+                    let mut span = iced::widget::text::Span::new(sp.content.clone());
+                    let span_color = sp
+                        .style
+                        .as_ref()
+                        .and_then(|st| IcedStyle::from_style(st).text_color)
+                        .or(base_color)
+                        .or_else(|| {
+                            crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                &crate::ui::style::Color::OnBackground,
+                            )
+                            .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                        })
+                        .unwrap_or(iced::Color::WHITE);
+                    span = span.color(span_color);
+                    if let Some(ref st) = sp.style {
+                        let is = IcedStyle::from_style(st);
+                        if let Some(fs) = effective_font_size(&is) {
+                            span = span.size(fs);
+                        }
+                        if is.underline {
+                            span = span.underline(true);
+                        }
+                        if is.line_through {
+                            span = span.strikethrough(true);
+                        }
+                        if is.font_family.as_deref() == Some("mono") {
+                            span = span.font(iced::Font {
+                                family: iced::font::Family::Monospace,
+                                ..iced::Font::DEFAULT
+                            });
+                        }
+                        if matches!(is.font_weight, Some(IcedFontWeight::Bold)) {
+                            span = span.font(iced::Font {
+                                weight: iced::font::Weight::Bold,
+                                ..iced::Font::DEFAULT
+                            });
+                        }
+                    }
+                    spans_vec.push(span);
+                }
+                let mut rich = iced::widget::text::Rich::<(), M>::with_spans(spans_vec);
+                if let Some(ref s) = style {
+                    let is = IcedStyle::from_style(s);
+                    if let Some(fs) = effective_font_size(&is) {
+                        rich = rich.size(fs);
+                    }
+                }
+                let mut el: iced::Element<'static, M> = rich.into();
+                if let Some(ref s) = style {
+                    el = wrap_with_margin(el, &IcedStyle::from_style(s));
+                }
+                el
+            }
             AbstractView::Text { content, style, selectable, .. } => {
                 // Plan 409 §10 续 20: font-mono 的 Text 当代码 → Rich 语法高亮。
                 let is_code = style.as_ref()
@@ -24345,6 +24410,8 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Overlay { .. } => None,
         // PLAN-063 T-04d-2: 锚槽无自有样式，读子件。
         AbstractView::AnchorSlot { child, .. } => extract_view_style(child),
+        // F-UAT-2: Rich 自带 style（段落级 base 尺寸/色）。
+        AbstractView::Rich { style, .. } => style.as_ref(),
         // Plan 422: Popover 的 chrome 在 content 上(anchor 各自带)。
         AbstractView::Popover { .. } => None,
         // Plan 484: MouseArea 的 style(尺寸/定位类)参与 absolute/z 判定。
@@ -24459,6 +24526,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::MouseArea { .. } => "mouse_area",
         AbstractView::Canvas { .. } => "canvas",
         AbstractView::Text { .. } => "text",
+        AbstractView::Rich { .. } => "rich",
         AbstractView::Button { .. } => "button",
         AbstractView::Checkbox { .. } => "checkbox",
         AbstractView::Slider { .. } => "slider",
@@ -34550,6 +34618,38 @@ mod plan080_uat_cjk_bubble_tests {
                 "F-UAT-1 回归钉：{label:?} 泡宽 {width} < 下限 {floor}（测宽塌缩）"
             );
         }
+    }
+
+    /// F-UAT-2 复现探针：autodown 文档（标题+段落+行内 marks）→
+    /// simulator 布局，dump 全部候选 bounds——验证 Rich 段落是否零尺寸。
+    #[test]
+    #[cfg(all(feature = "iced-layout-tests", feature = "autodown"))]
+    fn plan080_uat_fuat2_rich_paragraph_geometry() {
+        let doc = "# Heading
+
+This is a **bold** and *italic* paragraph with `code` and [link](https://x).
+
+这是中文段落，**加粗**测试。
+";
+        let view = crate::ui::autodown_render::render_document::<IcedMessage>(doc, true);
+        let el = render_dynamic_view(view, None, &mut Vec::new());
+        let mut ui = iced_test::simulator(el);
+        let seen = std::sync::Mutex::new(Vec::new());
+        let dump = |c: iced_test::selector::Candidate<'_>| -> Option<()> {
+            use iced_test::selector::Candidate::*;
+            match c {
+                Text { bounds, content, .. } => {
+                    seen.lock().unwrap().push(format!("text@{bounds:?}={}", content.chars().take(24).collect::<String>()));
+                }
+                Container { bounds, .. } => {
+                    seen.lock().unwrap().push(format!("container@{bounds:?}"));
+                }
+                _ => {}
+            }
+            None
+        };
+        let _ = ui.find(dump);
+        eprintln!("[F-UAT-2] tree={:?}", seen.lock().unwrap());
     }
 
     /// 文档化（无断言）：MaxWidthPct 子树 text 节点对 Find 操作不可见、
