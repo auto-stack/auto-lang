@@ -8468,10 +8468,21 @@ fn collect_back_chain(
 /// 主题偏好（不污染宿主）。仅画廊发射面调用：standalone 产物字节零变化。
 /// 非 demo 根因——demo 独占页面时全局施加正当；嵌入态才需要隔离。
 pub fn gallery_scope_theme_runtime(sfc: &str) -> String {
-    if !sfc.contains("function applyAccent") {
-        return sfc.to_string();
+    // Plan 672 条目 6 延伸: 嵌入态主题跟随宿主——store Init 的主题重置不再
+    // 覆盖宿主 bootstrap 播种（Plan 458 语义）：挂载后按 __AUTO_UI_THEME__
+    // 回填 store 与 ref，demo 内切换仍有效（作用域限视口）。无门槛应用：
+    // 序列不匹配（无 dark_mode 的 demo）即原样。
+    let out = sfc.replace(
+        "store.Init();\n  dark_mode.value = store.dark_mode;",
+        concat!(
+            "store.Init();\n",
+            "  if (window.__AUTO_UI_EMBED__ && window.__AUTO_UI_THEME__) { const __hd = window.__AUTO_UI_THEME__ === 'dark'; store.dark_mode = __hd; dark_mode.value = __hd; } else { dark_mode.value = store.dark_mode; }",
+        ),
+    );
+    if !out.contains("function applyAccent") {
+        return out;
     }
-    let scoped = sfc.replace("document.documentElement", "__autoThemeRoot()");
+    let scoped = out.replace("document.documentElement", "__autoThemeRoot()");
     // 嵌入态停写主题偏好（不污染宿主 localStorage；读取保留，无害个性化）。
     let scoped = scoped.replace(
         "try { localStorage.setItem(ACCENT_STORAGE_KEY, name) } catch {}",
@@ -9618,6 +9629,14 @@ render: \"vm\"
         );
         // 无主题运行时的语料原样返回
         let plain = "const a = 1\n";
+        // 无主题运行时的语料：跟随宿主回填仍生效（watch 族无 applyAccent 的
+        // 形态），其余原样
+        let init_only = "onMounted(() => {\n  store.Init();\n  dark_mode.value = store.dark_mode;\n})";
+        let out2 = crate::vue::gallery_scope_theme_runtime(init_only);
+        assert!(
+            out2.contains("__AUTO_UI_THEME__") && out2.contains("__hd"),
+            "follow-host rewrite applies without accent runtime: {out2}"
+        );
         assert_eq!(crate::vue::gallery_scope_theme_runtime(plain), plain);
     }
 
