@@ -19,6 +19,7 @@ on:
       - 'crates/auto-man/**'
       - 'crates/auto/**'
       - 'examples/ui/**'
+      - 'examples/bp-admin/**'
       - '.github/workflows/build-ui-examples.yml'
   pull_request:
     paths:
@@ -26,6 +27,7 @@ on:
       - 'crates/auto-man/**'
       - 'crates/auto/**'
       - 'examples/ui/**'
+      - 'examples/bp-admin/**'
       - '.github/workflows/build-ui-examples.yml'
 
 jobs:
@@ -34,20 +36,25 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      # PLAN-689：matrix 项为仓根相对全路径（examples/ui/… +
+      # examples/bp-admin），working-directory 直接取 ${{ matrix.example }}
+      # ——047 迁出后若沿用 "examples/ui/${{…}}" 前缀会复刻 PLAN-657 T-04
+      # 清掉的四条同型死目录项。
       matrix:
         example:
           # Baseline smoke coverage
-          - 001-helloworld
-          - 002-counter
+          - examples/ui/001-helloworld
+          - examples/ui/002-counter
           # Classic CRUD
-          - 013-todo
+          - examples/ui/013-todo
           # Most complete app; link: npm_deps are fine here because
           # --gen-only never reaches the npm install phase
-          - 015-notes
+          - examples/ui/015-notes
           # PLAN-657: L1 multi-package blueprint assembly sample (four bp
           # packages, zero copy) — keeps the bps dep-scan + back #[api]
-          # generation under CI.
-          - 047-bp-admin
+          # generation under CI. PLAN-689: migrated to a standalone
+          # examples/bp-admin (no longer under examples/ui).
+          - examples/bp-admin
           # NOTE (PLAN-657 T-04 hygiene): entries 026-keyboard-mouse-events /
           # 027-native-css / 028-dom-escape / 029-external-imports were removed
           # — those examples moved to examples/capability-tests/ in the
@@ -60,5 +67,8 @@ jobs:
       - name: Build auto CLI
         run: cargo build -p auto
       - name: auto build --gen-only (${{ matrix.example }})
-        working-directory: examples/ui/${{ matrix.example }}
-        run: ../../../target/debug/auto build --gen-only
+        working-directory: ${{ matrix.example }}
+        # PLAN-689：matrix 项现为不同深度的仓根相对路径（examples/ui/X
+        # 两层 / examples/bp-admin 一层），exe 路径用 $GITHUB_WORKSPACE
+        # 绝对形态，不再依赖固定层级数的 ../ 回退。
+        run: $GITHUB_WORKSPACE/target/debug/auto build --gen-only

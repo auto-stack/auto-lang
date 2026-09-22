@@ -21,8 +21,10 @@ fn repo_root() -> PathBuf {
         .expect("CARGO_MANIFEST_DIR has a repo-root ancestor")
 }
 
+/// PLAN-689：047-bp-admin 迁出 examples/ui 升格独立示例 examples/bp-admin，
+/// 回归锚随迁新路径（语料本身零改动，历史随行 git mv）。
 fn example_047() -> PathBuf {
-    repo_root().join("examples/ui/047-bp-admin")
+    repo_root().join("examples/bp-admin")
 }
 
 /// Runtime View 收集器（文本面）——plan649 同款。

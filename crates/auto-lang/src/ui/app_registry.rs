@@ -685,9 +685,11 @@ mod tests {
         // auto-os apps/ 分道扬镳）。实测定数 32+3=35——590 注记的"36"含
         // 后续 ui 轨整编（043-046 迁 capability-tests，355948894）前的
         // 旧基数，重基线以当前净盘为准。
+        // PLAN-689：047-bp-admin 升格 examples/bp-admin 独立示例迁出，
+        // 35→34（PLAN-666 基线 35 的后继）。
         assert!(
-            apps.len() >= 35,
-            "examples/ui 扫描数应 ≥35（PLAN-666 三 demo 复刻回源，实测定数），实际 {}",
+            apps.len() >= 34,
+            "examples/ui 扫描数应 ≥34（PLAN-666 三 demo 复刻回源 35；PLAN-689 047 迁出独立示例），实际 {}",
             apps.len()
         );
         // 011-calculator：pac.at 形态，render=vue；Plan 504 起 title 字段
@@ -752,13 +754,13 @@ mod tests {
             // PLAN-666：三 demo 复刻回源（17→20），上两条 590 注记作历史。
             "038-minesweeper",
             "041-auto-edit",
-            // PLAN-657 落 047-bp-admin（desktop: "true"）但 want 漏更——
-            // master 预存红，PLAN-666 重基线一并补 want（9c6c27e86 同型）。
-            "047-bp-admin",
+            // PLAN-689：047-bp-admin 升格独立示例 examples/bp-admin 迁出
+            // examples/ui（022-kanban 同型），C 档 21→20；plan657 回归锚
+            // 与 CI gen-only 覆盖随迁新路径。
         ];
         assert_eq!(
             curated, want,
-            "策展集（desktop_visible）应恰为 C 档 21 id（PLAN-552 三档清单；045 退役/PLAN-553 增 031-paint/PLAN-590 桌面域三 app 迁出/PLAN-008 022-kanban 退策展/9c6c27e86 增 031-image-viewer——PLAN-015 补 want/PLAN-666 三 demo 复刻回源+补 047 want——17→21）"
+            "策展集（desktop_visible）应恰为 C 档 20 id（PLAN-552 三档清单；045 退役/PLAN-553 增 031-paint/PLAN-590 桌面域三 app 迁出/PLAN-008 022-kanban 退策展/9c6c27e86 增 031-image-viewer——PLAN-015 补 want/PLAN-666 三 demo 复刻回源+补 047 want——17→21/PLAN-689 047-bp-admin 迁出 examples/ui——21→20）"
         );
     }
 

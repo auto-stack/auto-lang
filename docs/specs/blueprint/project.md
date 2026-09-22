@@ -133,7 +133,8 @@ graph LR
 
 ## 消费面与组装样板（PLAN-657）
 
-**L1 组装样板**：`examples/ui/047-bp-admin` 是 L1 主通道的首次**多包**直连
+**L1 组装样板**：`examples/bp-admin`（PLAN-689 迁出画廊轨道升格独立示例）
+是 L1 主通道的首次**多包**直连
 实证——`navigation/sidebar-shell`(default) + `data-display/data-table-crud`
 (with_dialog) + `form/settings`(default) + `feedback/empty-state`
 (first_use/no_result) 四包五变体全部经 `use bps.<kind>.<name>.reference.<variant>`

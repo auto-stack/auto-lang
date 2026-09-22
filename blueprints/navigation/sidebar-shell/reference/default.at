@@ -5,7 +5,7 @@
 //
 // PLAN-657 参数化修整（reference 实现对齐 frontmatter 契约面，frontmatter
 // 零改动）：nav_tree/user props 经 widget 参数接入（047-bp-admin 首次多包
-// L1 直连消费）；actions.sign_out 经 `on_sign_out: msg` 回调上抛（契约 Q2
+// L1 直连消费；PLAN-689 该样板迁出为 examples/bp-admin 独立示例）；actions.sign_out 经 `on_sign_out: msg` 回调上抛（契约 Q2
 // action 点，k2/k3 回调契约形态）；dataSource.counts 无 L1 逆向调用通道，
 // 由消费方烘焙进 nav_tree 节点的 badge 字段（组装摩擦记录于 PLAN-657）。
 // content EDIT 区改为 slot 出口（fallback 保留原占位文案——裸实例化
