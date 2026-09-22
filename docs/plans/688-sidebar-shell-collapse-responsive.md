@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-688
-status: executing             # drafting → executing → execution_done → reviewed → archived
+status: execution_done       # drafting → executing → execution_done → reviewed → archived
 feature_name: sidebar-shell-collapse-responsive
 author: [agent]
 created_at: 2026-09-22
@@ -318,12 +318,19 @@ T-01(c) 勘定：已接线→仅记录；缺失→T-04 在按钮转换臂加 too
     here 全命中）；**顺序微调**：t09 `.nav` fixture 补 `icon:"⌂"` 键自 T-07 前置
     到本任务（reference 读 `node.icon` 后不补即硬错）。实机宽/rail 两态走查
     见 T-06。
+  - [✅ 已完成 r2] 用户走查裁定后重写为双 pane 形态（见 T-03 r2 注记；
+    commit d4f7630eb）——单树版（06e792d2e）为 r1 中间态。
 - **T-03 双树回退**（**条件任务**：仅 T-01(a)/(b) 判 D1 不可行时执行；否则标注
   skipped+原因，不计入完成度缺口）
   - 文件：同 T-02
   - 操作：宽/rail 两棵子树 + `hidden lg:flex`/`flex lg:hidden` 互斥可见性
   - 关联：AC-03/AC-04
-  - [⏭ skipped] T-01(a)/(b) 均通过（单测+实机），D1 单树组合成立，回退不触发。
+  - [✅ 已完成 r2] r1 时 skipped（D1 成立）；**2026-09-22 用户走查裁定返场激活**：
+    双 pane 形态取代 D1 单树逐元素 label 面切换——宽/rail 两棵独立子树互斥可见，
+    宽栏 nav=icon+标题一体单按钮，rail icon 大一号。**实现勘正**：原 T-03 草案的
+    `flex lg:hidden` 不可行（is_hidden 的 display 覆盖语义使带 display 类的 pane
+    永显）——rail 根禁 display 类、宽根用 lg:block（gotchas #5 配方）。
+    commit d4f7630eb；r2 双臂走查全过（见 T-06 r2 证据）。
 - **T-04 VM 轨 button title→tooltip 臂**（**条件任务**：仅 T-01(c) 判未接线时执行）
   - 文件：`crates/auto-lang/src/ui/aura_view_builder.rs`（按钮转换臂读 `title` →
     tooltip 包裹；EE03 先例 `iced/renderer.rs:4479`，`iced::widget::tooltip` 已导入）
@@ -361,6 +368,13 @@ T-01(c) 勘定：已接线→仅记录；缺失→T-04 在按钮转换臂加 too
     EE03 链路见 T-01）。Vue 臂（`AUTO_BACKEND_IMPL=vm auto run`，vite
     localhost:4788）：1280 视口宽栏三段式 / 768 视口 icon rail——与 VM 臂
     同页同断点行为 ✓（AC-08）。
+  - [✅ 已完成 r2] 双 pane 形态重走查（commit d4f7630eb）：VM 轨宽栏 nav 为
+    icon+标题一体单按钮（`⌂  Home` 形态快照实证）/选中/◂ 收缩→rail pane
+    （大一号 icon text-lg w-10）/▲ 回宽栏/OS resize 960↔1280 两 pane 实时
+    互换（不重启零交互）/768x1024 首绘即 rail pane ✓；Vue 臂 1280 宽 pane
+    一体行 / 768 rail pane 大 icon 同构 ✓。新增测试面修复：nav 容器
+    overflow-y-auto 落 View::Scrollable，plan649/657 两处
+    collect_view_texts 补 Scrollable 穿透臂（对齐 snapshot v2 口径）。
 - **T-07 测试收口 + 门禁 + 落账**（依赖 T-02..T-06 全部定稿）
   - 文件：`crates/auto-lang/src/plan649_bp_tests.rs`（`.nav` fixture 补 `icon` 键 + needle 复核）、
     `docs/plans/KNOWN-DEBT-AND-RISKS.md`（P548-D2 处置注记，若 T-04 执行）
@@ -376,6 +390,25 @@ T-01(c) 勘定：已接线→仅记录；缺失→T-04 在按钮转换臂加 too
 （每步完成后在对应任务下追加 `[✅ 已完成] <证据>` 一行。）
 
 ## 9. 复审记录
+
+### work handoff r2（2026-09-22，用户走查裁定返场）
+
+- stage: work | PLAN-688 | revision 2 | outcome: **pass** |
+  code_commit: plan-688-dev d4f7630eb（r1 链 06e792d2e+a4ad7f2e1 之上）|
+  task_ids: T-03 r2 激活（双 pane 勘正版）+T-02/T-05/T-06 r2 重写重走查 |
+  evidence: **用户裁定**（2026-09-22 走查反馈）：D1 单树逐元素 label 面切换
+  的观感不佳（icon/标题两钮分离错位）——收缩/展开各为独立 pane 互斥显示、
+  展开 pane 每 item icon+标题一体、收缩 pane icon 大一号。实现：宽根
+  `hidden lg:block` / rail 根 `lg:hidden`+禁 display 类（原 T-03 草案
+  `flex lg:hidden` 不可行的勘正入 gotchas #5）；宽栏 nav 单按钮
+  `f"${node.icon}  ${node.label}"`；rail `text-lg w-10 h-10` vs 宽 `text-sm`。
+  测试面附带修复：plan649/657 collect_view_texts 补 Scrollable 穿透臂。
+  门禁全绿：640 5/5、649 10/10、657 3/3、样式锚 1/1、check 零 error、
+  iced 271/271；r2 双臂实机走查全过（互斥换 pane/resize 实时/768 首绘/
+  Vue 同构）|
+  blockers: 无 |
+  next: review（在 r1 关注点之外新增：④T-03 草案 flex lg:hidden 语义勘正的
+  复核；⑤收集器 Scrollable 穿透臂是否需在其他 bp 测试同款普查）。
 
 ### work handoff（2026-09-22）
 
