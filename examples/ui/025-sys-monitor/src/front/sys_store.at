@@ -104,7 +104,7 @@ store SysStore {
         SelectTab(str), SelectPerfTab(str),
         SelectProc(int), RequestKill, CancelKill, ConfirmKill,
         RowCtx(int), CloseCtx,
-        Sort(str), SortName, SortCpu, SortMem, SortDisk, SortNet, SortPid
+        Sort(str), ApplySort, SortName, SortCpu, SortMem, SortDisk, SortNet, SortPid
     }
 
     on {
@@ -231,33 +231,25 @@ store SysStore {
 
         .Sort(col) -> {
             if .sortColumn == col {
-                if .sortDir == "desc" {
-                    .sortDir = "asc"
-                } else {
-                    .sortDir = "desc"
-                }
+                if .sortDir == "desc" { .sortDir = "asc" } else { .sortDir = "desc" }
             } else {
                 .sortColumn = col
-                if col == "name" || col == "pid" {
-                    .sortDir = "asc"
-                } else {
-                    .sortDir = "desc"
-                }
+                if col == "name" || col == "pid" { .sortDir = "asc" } else { .sortDir = "desc" }
             }
             storage.set("sysmon.sort_column", .sortColumn)
             storage.set("sysmon.sort_dir", .sortDir)
+            .ApplySort()
+        }
 
-            // Update column header arrows
+        .ApplySort -> {
             .nameH = "名称"
             .cpuH = "CPU %"
             .memH = "内存"
             .diskH = "磁盘"
             .netH = "网络"
             .pidH = "PID"
-
             var arrow = " ↓"
             if .sortDir == "asc" { arrow = " ↑" }
-
             if .sortColumn == "name" { .nameH = f"名称${arrow}" }
             if .sortColumn == "cpu" { .cpuH = f"CPU %${arrow}" }
             if .sortColumn == "mem" { .memH = f"内存${arrow}" }
@@ -265,85 +257,75 @@ store SysStore {
             if .sortColumn == "net" { .netH = f"网络${arrow}" }
             if .sortColumn == "pid" { .pidH = f"PID${arrow}" }
 
-            // Rebuild procsView
-            var pv []ProcInfo = []
-            if .sortColumn == "cpu" && .sortDir == "desc" {
-                for p in .procs { pv.push(p) }
-            } else if .sortColumn == "cpu" && .sortDir == "asc" {
-                var ri = .procs.len() - 1
-                while ri >= 0 {
-                    pv.push(.procs[ri])
-                    ri = ri - 1
-                }
-            } else {
-                // Sorting for other columns: take procs
-                var remaining []ProcInfo = []
-                for p in .procs { remaining.push(p) }
-                var out []ProcInfo = []
-                var n = remaining.len()
-                if n > 120 { n = 120 }
-                var k = 0
-                while k < n {
-                    var bi = 0
-                    var first = true
-                    var bCpu float = 0.0
-                    var bMem = 0
-                    var bDisk float = 0.0
-                    var bNet float = 0.0
-                    var bPid = 0
-                    var bName = ""
-                    var idx = 0
-                    for q in remaining {
-                        var take = false
-                        if first {
-                            take = true
-                        } else {
-                            if .sortColumn == "mem" {
-                                if .sortDir == "desc" { if q.mem_mb > bMem { take = true } }
-                                else { if q.mem_mb < bMem { take = true } }
-                            }
-                            if .sortColumn == "pid" {
-                                if .sortDir == "desc" { if q.pid > bPid { take = true } }
-                                else { if q.pid < bPid { take = true } }
-                            }
-                            if .sortColumn == "disk" {
-                                if .sortDir == "desc" { if q.disk_kbs > bDisk { take = true } }
-                                else { if q.disk_kbs < bDisk { take = true } }
-                            }
-                            if .sortColumn == "net" {
-                                if .sortDir == "desc" { if q.net_kbs > bNet { take = true } }
-                                else { if q.net_kbs < bNet { take = true } }
-                            }
-                            if .sortColumn == "name" {
-                                if .sortDir == "desc" { if q.name > bName { take = true } }
-                                else { if q.name < bName { take = true } }
-                            }
+            var remaining []ProcInfo = []
+            for p in .procs { remaining.push(p) }
+            var out []ProcInfo = []
+            var n = remaining.len()
+            if n > 120 { n = 120 }
+            var k = 0
+            while k < n {
+                var bi = 0
+                var first = true
+                var bCpu float = 0.0
+                var bMem = 0
+                var bDisk float = 0.0
+                var bNet float = 0.0
+                var bPid = 0
+                var bName = ""
+                var idx = 0
+                for q in remaining {
+                    var take = false
+                    if first {
+                        take = true
+                    } else {
+                        if .sortColumn == "cpu" {
+                            if .sortDir == "desc" { if q.cpu > bCpu { take = true } }
+                            else { if q.cpu < bCpu { take = true } }
                         }
-                        if take {
-                            bi = idx
-                            bCpu = q.cpu
-                            bMem = q.mem_mb
-                            bDisk = q.disk_kbs
-                            bNet = q.net_kbs
-                            bPid = q.pid
-                            bName = q.name
-                            first = false
+                        if .sortColumn == "mem" {
+                            if .sortDir == "desc" { if q.mem_mb > bMem { take = true } }
+                            else { if q.mem_mb < bMem { take = true } }
                         }
-                        idx = idx + 1
+                        if .sortColumn == "pid" {
+                            if .sortDir == "desc" { if q.pid > bPid { take = true } }
+                            else { if q.pid < bPid { take = true } }
+                        }
+                        if .sortColumn == "disk" {
+                            if .sortDir == "desc" { if q.disk_kbs > bDisk { take = true } }
+                            else { if q.disk_kbs < bDisk { take = true } }
+                        }
+                        if .sortColumn == "net" {
+                            if .sortDir == "desc" { if q.net_kbs > bNet { take = true } }
+                            else { if q.net_kbs < bNet { take = true } }
+                        }
+                        if .sortColumn == "name" {
+                            if .sortDir == "desc" { if q.name > bName { take = true } }
+                            else { if q.name < bName { take = true } }
+                        }
                     }
-                    out.push(remaining[bi])
-                    var r2 []ProcInfo = []
-                    var j = 0
-                    for q in remaining {
-                        if j != bi { r2.push(q) }
-                        j = j + 1
+                    if take {
+                        bi = idx
+                        bCpu = q.cpu
+                        bMem = q.mem_mb
+                        bDisk = q.disk_kbs
+                        bNet = q.net_kbs
+                        bPid = q.pid
+                        bName = q.name
+                        first = false
                     }
-                    remaining = r2
-                    k = k + 1
+                    idx = idx + 1
                 }
-                pv = out
+                out.push(remaining[bi])
+                var r2 []ProcInfo = []
+                var j = 0
+                for q in remaining {
+                    if j != bi { r2.push(q) }
+                    j = j + 1
+                }
+                remaining = r2
+                k = k + 1
             }
-            .procsView = pv
+            .procsView = out
         }
 
         .Refresh -> {
@@ -579,7 +561,7 @@ store SysStore {
                 .netArea = pn + " L 540 120 L 36 120 Z"
 
                 // ---- Update Procs View（始终重排，刷新不丢排序）----
-                .Sort(.sortColumn)
+                .ApplySort()
             }
         }
     }
