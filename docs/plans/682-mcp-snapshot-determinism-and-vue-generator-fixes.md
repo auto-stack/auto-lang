@@ -195,6 +195,40 @@ detect 并集 + 直接调 `crate::vue_shadcn::materialize(&output_dir,
   next: merge（plan-682-dev → auto-lang master；合并后触发 jade 回执
   步——三补件按 pattern 断言撤除 + 全门对新 exe 复验）。
 
+### §6.1 合并期记录（merge session，独立于实现会话）
+
+- **rebase**：plan-682-dev 4 提交 rebase 到 master bbb1618e5（基点
+  3f2eb0b56 落后 78 提交；含 683 本体 renderer.rs +435/−135 与 F1 修复
+  区零冲突——分支侧仅 +30/−2 且目标行完好）。range-diff 4/4 全等
+  （映射 5f46d99fb→17857beb7 / 67ffb5312→4ac6ca87a / 20ce3a27c→
+  a76c1bb37 / 2f8630e67→4c0c66f00）。
+- **门禁复跑（新 feature 集，ui-iced 已入 default）**：cargo check
+  auto-lang + auto-man lib 绿；触及面 styled 10/10 + snapshot 24/24 绿。
+- **AC-04 rebase 复验（复审挂账项清偿）**：新 exe 对 bps-gallery
+  gen-only——popover 三件+index.ts 冷删重物化 ✓（「4 shadcn
+  wrapper(s) materialized (gen-only scan)」命中）；产物级 DataTableCrud
+  族重复对象键扫描 0（3×TS1117 归因确证=master 已落地生成器修复）；
+  natives.ts 守卫在场（S-tier 循环 1 语句罩 3 名 + R-tier 4 语句，复
+  审"六守卫"为旧基计数口径，R-tier 4 精确吻合）+ join('\n') 真换行 ✓。
+- **F-682-M1（合并期发现→当修→复验，findings 级）**：AC-04 探针中
+  DataTableCrud 行 div 出现**同元素双 `:key="row.id"`**。对照矩阵：master
+  exe（无本分支）单 key；rebase 后分支双 key。根因=F2 的
+  generate_shadcn_attrs 顶部单点 `:key` 转发 + layout 臂（row/col）
+  `push_passthrough_attrs` 既有透传叠加（该透传基点即有、master 单 key
+  即来自它；F2 修复设计时只探了组件臂/纯元素臂，未探 layout 臂）。
+  双 `:key` 属性=Vue 编译器 X_DUPLICATE_ATTRIBUTE 拒收整文件——真缺
+  陷，非风格问题。**修**：push_passthrough_attrs 与 `_ =>` 默认臂透传
+  环双漏斗各加「attrs 已含 `:key=` 则跳过」守卫（保留顶部转发失败时的
+  透传兜底）。**验**：回归钉 test_vfor_explicit_key_on_layout_widget_
+  single_emission（shadcn 模式=CLI 真实路由；关守卫必红/开守卫绿的双
+  态已证）；探针矩阵 row/col/div/span/card 全单发；bps-gallery 产物级
+  dup-key 扫描 0；ui_gen 全域 844/844 绿；tf 复跑见 §6.2。
+- **p508_g2_outproc_arm 归因**（tf 9 红之一）：exe 定位器钉 worktree
+  本地 target（e2e_exe::locate_with_stale_guard 硬编码 CARGO_MANIFEST_
+  DIR/../../target）与本会话 CARGO_TARGET_DIR 重定向不合——exe 落位后
+  单跑即绿（36.8s PASS），环境项非回归。musk×6 + counter×1 =
+  repo 在案预存；ffi_dual_019 = 复审在案基点既有/满载 flake。
+
 ## 7. 待澄清事项
 
 - F1a 的 `view_with_debug_gated(true)` 会让每次 view() 都启用探针

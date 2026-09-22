@@ -12045,6 +12045,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 | "h" | "w" | "size") {
                 continue;
             }
+            // PLAN-682 F2：显式 `key:` 已在 generate_shadcn_attrs 顶部单点
+            // 转发为 `:key` 绑定；layout 臂（row/col）的透传不再重发——
+            // 同元素双 `:key` 属性会被 Vue 编译器 X_DUPLICATE_ATTRIBUTE
+            // 拒收（bps-gallery DataTableCrud 行 div 实证）。attrs 尚无
+            // `:key=` 时维持透传（兜住顶部转发失败的表情态）。
+            if key == "key" && attrs.iter().any(|a| a.starts_with(":key=")) {
+                continue;
+            }
             match value {
                 AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
                     attrs.push(format!("{}=\"{}\"", key, Self::escape_js_string(s.as_str())));
@@ -15511,6 +15519,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     sorted_bind.sort_by(|a, b| a.0.cmp(b.0));
                     for (key, value) in sorted_bind {
                         if matches!(key.as_str(), "class" | "style" | "style_obj") {
+                            continue;
+                        }
+                        // PLAN-682 F2：显式 `key:` 已在函数顶部单点转发为
+                        // `:key` 绑定；本透明转发环（无专用臂的注册部件
+                        // 走此处，与 layout 臂的 push_passthrough_attrs
+                        // 双漏斗同契约）不再重发 `:key`——同元素双 key
+                        // 会被 Vue 编译器 X_DUPLICATE_ATTRIBUTE 拒收。
+                        if key == "key" && attrs.iter().any(|a| a.starts_with(":key=")) {
                             continue;
                         }
                         let value_str = match value {
@@ -25480,6 +25496,37 @@ widget App {
         assert!(
             sfc.contains(r#"<span :key="name" v-for="name in names">"#),
             "explicit key on plain element:\n{}",
+            sfc
+        );
+    }
+
+    /// PLAN-682 F2 合并期回归钉：layout 伪映射部件（row/col）走
+    /// generate_shadcn_attrs 的 layout 臂，其 `push_passthrough_attrs`
+    /// 透传曾把 `key` prop 在函数顶部单点转发之后**再发一次** `:key`
+    /// ——同一元素双 `:key` 属性，Vue 编译器 X_DUPLICATE_ATTRIBUTE 拒收
+    /// （bps-gallery DataTableCrud 行 div 实证）。透传环内现按「attrs
+    /// 已含 `:key=` 则跳过」去重。shadcn 模式=CLI 真实路由（plain 模式
+    /// 走 plain 臂不经过此路径）。
+    #[test]
+    fn test_vfor_explicit_key_on_layout_widget_single_emission() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget App {
+    model { var rows list = [] }
+    view {
+        for row in .rows {
+            row (key: row.id) { text "x" }
+        }
+    }
+}
+"#);
+        let head = sfc
+            .lines()
+            .find(|l| l.contains("v-for="))
+            .unwrap_or_else(|| panic!("no v-for line:\n{}", sfc));
+        assert_eq!(
+            head.matches(":key=").count(),
+            1,
+            "layout widget explicit key must emit exactly one :key:\n{}",
             sfc
         );
     }
