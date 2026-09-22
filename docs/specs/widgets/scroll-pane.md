@@ -93,14 +93,21 @@ scroll-pane(onscroll: |ox, oy, vw, vh, cw, ch, px, py| { ... }) { ... }
   `.ash-scroll` 类（原生滚动条统一皮肤），与 ScrollArea 同视觉参数；
 - shadcn 模式：axis y/x → ScrollArea orientation；**both/hidden 表达受限**
   （语义完整形态在 plain 模式——已知限制，后续 plain 降级或 ScrollArea 定制另立小改）；
-  **PLAN-692**：`size` prop（uint px，缺省 8）→ 根元素内联 `--sb-size` CSS 变量；
-  ScrollBar.vue thumb 厚度 = `--sb-size`（经 reka 内联 `width/height:
-  var(--reka-scroll-area-thumb-{width,height})` 的未定义厚度侧分层接管，长度
-  变量不触碰）；rail 宽 = size+6px（hover 空间）；thumb hover 加宽 +2px/侧 +
-  `cursor:pointer`，按住 `active:` 主色高亮；`.ash-scroll`（原生路径）同参：
-  轨宽 size+4px、thumb 视觉宽 = size（2px 透明 border + background-clip，
-  hover 时 border 归零加宽）、`:active` 主色。native 侧 thumb cursor 为浏览器
-  平台限制（不可定制），"同一套"五参数=宽/色/圆角/hover/active；
+  **PLAN-692**（rev3，2026-09-22 用户裁定）：`size` prop（uint px，缺省 8）→
+  根元素内联 `--sb-size` CSS 变量；ScrollBar.vue thumb 厚度 = `--sb-size`（经
+  reka 内联 `width/height: var(--reka-scroll-area-thumb-{width,height})` 的未定义
+  厚度侧分层接管，长度变量不触碰）；rail 宽 = size+6px（hover 空间）；thumb
+  可见色混入主题 accent（primary/40，纯灰过浅）；hover 加宽 +2px/侧 +
+  `cursor:pointer`，变粗时色相不变仅亮度自适应（primary/60：浅色底变暗、
+  深色底变亮，透明度合成自然达成）；**按住/active 高亮已撤销**（rev2 裁定）；
+  thumb 过渡只允许 width/background-color——**transform 必须排除**：reka 以
+  `transform: translate3d` 从布局原点定位 thumb，动画化 transform 会使挂载时
+  从原点滑到真实位置（闪现）；轨道对齐必须 items-start（原点=内容盒起点，
+  居中会破坏拖拽映射）。`.ash-scroll`（原生路径）同参：轨宽 size+4px、
+  thumb 视觉宽 = size（2px 透明 border + background-clip，hover 时 border
+  归零加宽）、底色 primary/40、hover primary/60。native 侧 thumb cursor 为
+  浏览器平台限制（不可定制）；已知观察项：reka sizes 初始测量在本仓环境下
+  常命中 18px thumb 下限（预存，A/B 证实与 692 无关）；
 - managed bridge v1：`scroll-test-content` = logical spacer（内联逻辑尺寸，
   DOM 节点恒 1，不随逻辑 extent 膨胀）；物化窗口属 iced widget 与 Phase D。
 
