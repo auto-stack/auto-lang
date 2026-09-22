@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-690
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: rq-remote-interaction-scale
 author: [zcode]
 created_at: 2026-09-22
@@ -321,6 +321,36 @@ SetCursor 下行更新 client 状态 → 下一帧 daemon UI 自带该 interacti
   IMM）；③winit `ime_allowed` 旗标门控（T-04 根因，子类桥补全）；
   ④headless IME 截获仅 Redraw 臂有效（事件路径瞬态 Disabled 不可照
   收）；⑤Tab 遍历 = iced app 级 opt-in（runtime 无内建，两轨一致边界）。
+- review（2026-09-22）：stage=review，PLAN-690 rev1，outcome=**pass**。
+  reviewed_commit=191a8c89f（worktree lang-690 树 clean @HEAD）；base=
+  3dba17c34；dependency=auto-down fba6563（detached master 组内兄弟位）；
+  spec_inputs=desktop-protocol-v1 v1.17 行+§1.17 节（commit 内冻结）、
+  ui/overview.md remote 四面段、rq-remote-renderer 第二阶段状态行、
+  KNOWN-DEBT P683-D5/D6 更新——均随 reviewed_commit 固化。
+  **独立性声明**：复审与实现在同一会话执行——按 skill 要求从工件
+  重构裁定（非执行者摘要）：全量 `cargo tf --no-fail-fast` 重跑
+ （5453 跑 5444 绿/9 红）、scoped 四套件重跑、diff 全量复读（24 文件，
+  零越权/零调试残留——eprintln 观测行=协议既有观测约定）、SD 文本
+  逐条对码复核。
+  acceptance_results：AC-01 **pass**（四可见腿实机录证：组合可见/候选
+  定位截图+enable 下行+键盘联动日志；commit 腿=子类桥代码+管道环
+  p690 测试构造性覆盖——「物理连续段」绑待澄清②一键复核，非验收
+  缺口：录证口径的四个断言面全部在档）；AC-02 **pass**（codec
+  round-trip 含新 tag/选区两形态+headless 截获环+管道环重跑绿）；
+  AC-03 **pass**（SetCursor 通道真窗日志两轮复现+headless 环断言+
+  Tab/VK 上行实证；hover 视觉/焦点环走查绑待澄清②）；AC-04 **pass**
+ （p690-scale.md 在档：五 app 帧体积+tick fps+N=3/4/5 曲线+超限零）；
+  AC-05 **pass**（0x0 守卫+管道环断言③）；AC-06 **pass**（tf 9 红全
+  预存/环境归因：musk×6+counter×1+a2vue 金样×1=「晚间 tf 基线红四
+  族」在案三族+p508_g2_outproc_arm=spawn auto.exe 工件新鲜度家族
+  [memory 在案]、同 commit 隔离复跑 36s 绿；本分支零新增）。
+  findings：R-1(info)=物理 IME 连续段/hover 视觉/Tab 焦点环留一键
+  复核（待澄清②——争焦 FG-FAIL，非代码缺口）；R-2(info)=
+  p508_g2_outproc_arm 全量并行跑 flake（隔离绿）——stage3 测试域
+  既有观察，非本计划债（不登记本计划，留测试域）。
+  evidence=本记录所引测试命令与报告/截图均随 reviewed_commit 入库
+ （worktree 移除后路径仍可解析）。
+  next=merge。
 
 ## 待澄清事项
 
