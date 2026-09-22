@@ -872,18 +872,14 @@ widget App {
     view {
         col (style: "w-full h-full min-h-screen bg-background text-foreground flex flex-col overflow-hidden") {
             // ---- 顶栏 Header ----
-            row (style: "items-center justify-between px-4 py-2 border-b bg-card shrink-0") {
-                row (style: "items-center gap-3") {
-                    span (style: "w-8 h-8 rounded-lg bg-primary/20 text-primary flex items-center justify-center font-bold text-base") {
+            row (style: "items-center justify-between px-3 py-1.5 border-b bg-card shrink-0 gap-2") {
+                row (style: "items-center gap-2 min-w-0") {
+                    span (style: "w-6 h-6 rounded bg-primary/20 text-primary flex items-center justify-center text-sm shrink-0") {
                         text "🗄" {}
                     }
-                    col (style: "gap-0.5") {
-                        row (style: "items-center gap-2") {
-                            h1 "Database Studio" { style: "text-lg font-bold tracking-tight" }
-                            badge (text: "SQLite 3.45", variant: "secondary") {}
-                        }
-                        text "northwind.db · In-Memory Studio (Plan 439)" { style: "text-xs text-muted-foreground" }
-                    }
+                    h1 "Database Studio" { style: "text-sm font-bold tracking-tight shrink-0" }
+                    badge (text: "SQLite 3.45", variant: "secondary") {}
+                    text "northwind.db" { style: "text-xs text-muted-foreground truncate" }
                 }
                 row (style: "items-center gap-4") {
                     row (style: "items-center gap-2 text-xs text-muted-foreground") {
@@ -930,22 +926,22 @@ widget App {
             // ---- 右侧主内容区 ----
                 col (style: "flex-1 flex flex-col min-w-0 bg-background") {
                     // Tab 切换条
-                    row (style: "items-center justify-between px-6 pt-3 border-b bg-card/30") {
-                        row (style: "gap-2") {
-                            button "📊 Data Browse" {
+                    row (style: "items-center justify-between px-3 border-b bg-card/30 shrink-0 gap-2") {
+                        row (style: "gap-1") {
+                            button "Data" {
                                 onclick: () => { .SelectTab("data") },
-                                style: if .activeTab == "data" { "px-4 py-2 text-sm font-semibold border-b-2 border-primary text-primary bg-transparent" } else { "px-4 py-2 text-sm text-muted-foreground hover:text-foreground bg-transparent" }
+                                style: if .activeTab == "data" { "px-2.5 py-1.5 text-xs font-semibold border-b-2 border-primary text-primary bg-transparent" } else { "px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground bg-transparent" }
                             }
-                            button "📐 Table Schema / DDL" {
+                            button "Schema" {
                                 onclick: () => { .SelectTab("schema") },
-                                style: if .activeTab == "schema" { "px-4 py-2 text-sm font-semibold border-b-2 border-primary text-primary bg-transparent" } else { "px-4 py-2 text-sm text-muted-foreground hover:text-foreground bg-transparent" }
+                                style: if .activeTab == "schema" { "px-2.5 py-1.5 text-xs font-semibold border-b-2 border-primary text-primary bg-transparent" } else { "px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground bg-transparent" }
                             }
-                            button "💻 SQL Console" {
+                            button "SQL" {
                                 onclick: () => { .SelectTab("console") },
-                                style: if .activeTab == "console" { "px-4 py-2 text-sm font-semibold border-b-2 border-primary text-primary bg-transparent" } else { "px-4 py-2 text-sm text-muted-foreground hover:text-foreground bg-transparent" }
+                                style: if .activeTab == "console" { "px-2.5 py-1.5 text-xs font-semibold border-b-2 border-primary text-primary bg-transparent" } else { "px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground bg-transparent" }
                             }
                         }
-                        text .tableStatsText { style: "text-xs text-muted-foreground pb-2" }
+                        text .tableStatsText { style: "text-[11px] text-muted-foreground truncate max-w-[45%] text-right" }
                     }
 
                     // 事务状态提示条
@@ -957,7 +953,7 @@ widget App {
 
                     // === Tab 1: Data Browse 数据浏览 ===
                     if .activeTab == "data" {
-                        col (style: "flex-1 p-6 gap-4 flex flex-col min-h-0") {
+                        col (style: "flex-1 p-2 gap-2 flex flex-col min-h-0") {
                             // 工具栏：搜索 + 操作按钮 + 分页
                             row (style: "items-center justify-between gap-4") {
                                 row (style: "items-center gap-2 flex-1") {
@@ -969,35 +965,23 @@ widget App {
                                     }
                                     button "+ Add Row" {
                                         onclick: .ToggleNewRowModal,
-                                        style: "px-3 py-1.5 text-xs rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90"
+                                        size: "sm",
+                                        style: "h-8 px-2.5 text-xs rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90"
                                     }
                                 }
 
-                                // 分页控制条
-                                row (style: "items-center gap-2") {
-                                    text .showingText { style: "text-xs text-muted-foreground mr-2" }
-                                    button "|<<" {
-                                        onclick: .FirstPage,
-                                        style: "px-2 py-1 text-xs rounded border bg-card hover:bg-accent text-foreground disabled:opacity-50"
-                                    }
-                                    button "<" {
-                                        onclick: .PrevPage,
-                                        style: "px-2.5 py-1 text-xs rounded border bg-card hover:bg-accent text-foreground disabled:opacity-50"
-                                    }
-                                    text f"Page ${.page} / ${.totalPages}" { style: "text-xs font-semibold px-1" }
-                                    button ">" {
-                                        onclick: .NextPage,
-                                        style: "px-2.5 py-1 text-xs rounded border bg-card hover:bg-accent text-foreground disabled:opacity-50"
-                                    }
-                                    button ">>|" {
-                                        onclick: .LastPage,
-                                        style: "px-2 py-1 text-xs rounded border bg-card hover:bg-accent text-foreground disabled:opacity-50"
-                                    }
-                                    row (style: "items-center gap-1 ml-2 text-xs text-muted-foreground") {
-                                        text "Size:" {}
-                                        button "10" { onclick: .SetPageSize10, style: if .pageSize == 10 { "px-1.5 py-0.5 rounded bg-primary text-primary-foreground font-bold" } else { "px-1.5 py-0.5 rounded border" } }
-                                        button "25" { onclick: .SetPageSize25, style: if .pageSize == 25 { "px-1.5 py-0.5 rounded bg-primary text-primary-foreground font-bold" } else { "px-1.5 py-0.5 rounded border" } }
-                                        button "50" { onclick: .SetPageSize50, style: if .pageSize == 50 { "px-1.5 py-0.5 rounded bg-primary text-primary-foreground font-bold" } else { "px-1.5 py-0.5 rounded border" } }
+                                // 分页（紧凑单行；pagination 组件族待 API 对齐后替换）
+                                row (style: "items-center gap-1.5 shrink-0 text-xs") {
+                                    text .showingText { style: "text-[11px] text-muted-foreground whitespace-nowrap" }
+                                    button "‹‹" { onclick: .FirstPage, style: "h-7 w-7 p-0 rounded border bg-card hover:bg-accent text-foreground" }
+                                    button "‹" { onclick: .PrevPage, style: "h-7 w-7 p-0 rounded border bg-card hover:bg-accent text-foreground" }
+                                    text f"${.page} / ${.totalPages}" { style: "px-1 font-medium tabular-nums" }
+                                    button "›" { onclick: .NextPage, style: "h-7 w-7 p-0 rounded border bg-card hover:bg-accent text-foreground" }
+                                    button "››" { onclick: .LastPage, style: "h-7 w-7 p-0 rounded border bg-card hover:bg-accent text-foreground" }
+                                    row (style: "items-center gap-0.5 ml-1 text-[11px] text-muted-foreground") {
+                                        button "10" { onclick: .SetPageSize10, style: if .pageSize == 10 { "h-6 px-1.5 rounded bg-primary text-primary-foreground" } else { "h-6 px-1.5 rounded border" } }
+                                        button "25" { onclick: .SetPageSize25, style: if .pageSize == 25 { "h-6 px-1.5 rounded bg-primary text-primary-foreground" } else { "h-6 px-1.5 rounded border" } }
+                                        button "50" { onclick: .SetPageSize50, style: if .pageSize == 50 { "h-6 px-1.5 rounded bg-primary text-primary-foreground" } else { "h-6 px-1.5 rounded border" } }
                                     }
                                 }
                             }
@@ -1024,13 +1008,13 @@ widget App {
                                 table {
                                     table-header {
                                         table-row {
-                                            table-head (onclick: () => { .SortCol("id") }, text: .hId, style: "cursor-pointer select-none font-semibold w-24") {}
+                                            table-head (onclick: () => { .SortCol("id") }, text: .hId, style: "cursor-pointer select-none font-semibold px-2 py-1 text-xs w-16 whitespace-nowrap") {}
                                             table-head (onclick: () => { .SortCol("col1") }, text: .hCol1, style: "cursor-pointer select-none font-semibold px-2 py-1 text-xs whitespace-nowrap") {}
                                             table-head (text: .hCol2, style: "font-semibold px-2 py-1 text-xs whitespace-nowrap") {}
                                             table-head (text: .hCol3, style: "font-semibold px-2 py-1 text-xs whitespace-nowrap") {}
                                             table-head (text: .hCol4, style: "font-semibold px-2 py-1 text-xs whitespace-nowrap") {}
                                             table-head (text: .hCol5, style: "font-semibold px-2 py-1 text-xs whitespace-nowrap") {}
-                                            table-head (text: "Actions", style: "w-20 text-right") {}
+                                            table-head (text: "", style: "w-12 px-1 py-1") {}
                                         }
                                     }
                                     table-body {
@@ -1050,10 +1034,11 @@ widget App {
                                                         text r.col5 { style: "text-xs text-muted-foreground" }
                                                     }
                                                 }
-                                                table-cell (style: "text-right") {
+                                                table-cell (style: "px-1 py-0.5 text-right") {
                                                     button "🗑" {
                                                         onclick: .DeleteRow(i),
-                                                        style: "px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10 rounded"
+                                                        size: "sm",
+                                                        style: "h-6 w-6 p-0 text-xs text-destructive hover:bg-destructive/10 rounded"
                                                     }
                                                 }
                                             }
