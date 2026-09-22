@@ -294,5 +294,5 @@ route A 不止 back 端点真体，还包括 front merged 桩的真契约化（�
 - landed：rebase onto master（674 两 commit 已在 master ancestry=自然跳过；四实现 commit patch-id 逐枚相等 /tmp old/new 比对在案；账本 commit 冲突=EOF 双追加取并集——P674-1/2+P681-1/2 共存回读证实）；master ff-only 至 588b2eca9（零 merge commit；他会话 WIP 三簇原样保留）；master 冒烟 cargo check -p a2r-std -p auto-lang --lib --features ui-iced 零 error。
 - ledger_refreshed：.autoos/specs.json（indent=1 无尾换行）P681-1/P681-2 插入+回读；docs/specs/auto-lang/{ui,trans}/plans.md 双行；scripts/spec-index.py 再生 INDEX。
 - archived：docs/plans/archive/681-a2r-deploy-gap-batch.md（本文件）status=archived，completion_kind: delivered。
-- cleaned：见下。
+- cleaned：wt-guard clean（reparse 零命中）→ worktree lang-681/auto-lang 移除+分支 plan-681-dev 删除（was 588b2eca9=交付 tip）+依赖位 lang-681/auto-down 移除+组目录删除（GROUP_CLEANED 实测）。
 - outcome: pass · 边界/债注记随 §9 r2 记录在档（dialog 父窗锚/HTTP 对拍/预制槽默认参/AUTO_LANG_CRATE dev 口子 merge 后解除）。
