@@ -134,10 +134,10 @@ widget PerformanceView {
                                 badge (text: f"${.store.cpuCount} 核心", variant: "secondary") {}
                             }
                             row (style: "grid grid-cols-4 md:grid-cols-5 gap-2") {
-                                for i, core in .store.cores {
+                                for core in .store.cores {
                                     col (style: "p-2 rounded border bg-muted/20 gap-1") {
                                         row (style: "items-center justify-between") {
-                                            text f"核 ${i}" { style: "text-[11px] text-muted-foreground" }
+                                            text core.name { style: "text-[11px] text-muted-foreground" }
                                             text f"${core} %" { style: "text-xs font-mono font-semibold" }
                                         }
                                         row (style: "w-full h-1.5 rounded-full bg-muted overflow-hidden") {
@@ -155,7 +155,7 @@ widget PerformanceView {
                             row (style: "grid grid-cols-3 gap-4") {
                                 col (style: "p-3 rounded border bg-muted/20 gap-1") {
                                     text "总物理内存" { style: "text-xs text-muted-foreground" }
-                                    text f"${.store.memTotalMb} MB" { style: "text-lg font-bold font-mono" }
+                                    text .store.memLabel { style: "text-lg font-bold font-mono" }
                                 }
                                 col (style: "p-3 rounded border bg-muted/20 gap-1") {
                                     text "已使用内存" { style: "text-xs text-muted-foreground" }
@@ -163,7 +163,7 @@ widget PerformanceView {
                                 }
                                 col (style: "p-3 rounded border bg-muted/20 gap-1") {
                                     text "可用内存" { style: "text-xs text-muted-foreground" }
-                                    text f"${.store.memTotalMb - .store.memUsedMb} MB" { style: "text-lg font-bold font-mono text-muted-foreground" }
+                                    text f"${.store.memTotalMb} MB" { style: "text-lg font-bold font-mono text-muted-foreground" }
                                 }
                             }
                         }

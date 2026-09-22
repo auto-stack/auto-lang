@@ -1,6 +1,15 @@
-// fmt.at — 显示用数字格式化。PLAN-684：浮点 to_string 长尾（4.1999…%）收敛为 1 位小数。
+// fmt.at — 1/2 位小数 + 速率自适应单位（PLAN-684 rev6）
 
-/// 保留 1 位小数（截断）：4.1999… → "4.1"；33 → "33.0"
+/// 速率：≥1000 KB/s → MB/s（2 位小数），否则 KB/s（1 位小数）
+fn rate(kbs float) str {
+    if kbs >= 1000.0 {
+        let mb float = kbs / 1024.0
+        return n2(mb) + " MB/s"
+    }
+    return n1(kbs) + " KB/s"
+}
+
+/// 保留 1 位小数（截断）
 fn n1(x float) str {
     let s str = x.to_string()
     var i int = 0
@@ -22,6 +31,33 @@ fn n1(x float) str {
     }
     var cut str = s.sub(0, end)
     if cut.len() == dot + 1 {
+        cut = cut + "0"
+    }
+    return cut
+}
+
+/// 保留 2 位小数（截断）
+fn n2(x float) str {
+    let s str = x.to_string()
+    var i int = 0
+    var dot int = -1
+    while i < s.len() {
+        if s.sub(i, i + 1) == "." {
+            dot = i
+            i = s.len()
+        } else {
+            i = i + 1
+        }
+    }
+    if dot < 0 {
+        return s + ".00"
+    }
+    var end int = dot + 3
+    if end > s.len() {
+        end = s.len()
+    }
+    var cut str = s.sub(0, end)
+    while cut.len() < dot + 3 {
         cut = cut + "0"
     }
     return cut

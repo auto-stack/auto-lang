@@ -2,7 +2,7 @@
 // Holds all monitor state, sliding windows, sorting, tabs, and API calls.
 
 use back.api: system_snapshot, kill_process
-use fmt: n1
+use fmt: n1, rate
 
 store SysStore {
     model {
@@ -46,8 +46,8 @@ store SysStore {
         var procs []ProcInfo = []
         var procsView []ProcInfo = []
         var disks []DiskInfo = []
-        var cores []float = []
-        var users []str = []
+        var cores []CoreInfo = []
+        var users []UserInfo = []
 
         // ---- Sliding Windows (30 points) ----
         var cpuHist []float = []
@@ -369,7 +369,7 @@ store SysStore {
                 .procs = snap.procs
                 var filled []ProcInfo = []
                 for raw in snap.procs {
-                    filled.push(ProcInfo { pid: raw.pid, name: raw.name, cpu: raw.cpu, mem_mb: raw.mem_mb, disk_kbs: raw.disk_kbs, net_kbs: raw.net_kbs, status: raw.status, cpu_s: n1(raw.cpu), mem_s: f"${raw.mem_mb}MB", disk_s: n1(raw.disk_kbs), net_s: n1(raw.net_kbs) })
+                    filled.push(ProcInfo { pid: raw.pid, name: raw.name, cpu: raw.cpu, mem_mb: raw.mem_mb, disk_kbs: raw.disk_kbs, net_kbs: raw.net_kbs, status: raw.status, cpu_s: n1(raw.cpu), mem_s: f"${raw.mem_mb}MB", disk_s: rate(raw.disk_kbs), net_s: rate(raw.net_kbs) })
                 }
                 .procs = filled
                 .disks = snap.disks
@@ -434,15 +434,15 @@ store SysStore {
                     si += 1
                 }
                 var netTotal = .netSentKbs + .netRecvKbs
-                .netSent_s = n1(.netSentKbs)
-                .netRecv_s = n1(.netRecvKbs)
-                .netLabel = f"${n1(netTotal)} KB/s"
+                .netSent_s = rate(.netSentKbs)
+                .netRecv_s = rate(.netRecvKbs)
+                .netLabel = rate(netTotal)
 
                 var totalDiskKbs float = 0.0
                 for p in .procs {
                     totalDiskKbs = totalDiskKbs + p.disk_kbs
                 }
-                .diskLabel = f"${n1(totalDiskKbs)} KB/s"
+                .diskLabel = rate(totalDiskKbs)
 
                 var upH = .uptimeS / 3600
                 var upM = (.uptimeS % 3600) / 60
@@ -578,15 +578,8 @@ store SysStore {
                 .netLine = pn
                 .netArea = pn + " L 540 120 L 36 120 Z"
 
-                // ---- Update Procs View ----
-                if .sortColumn == "cpu" && .sortDir == "desc" {
-                    var pv []ProcInfo = []
-                    for p in .procs { pv.push(p) }
-                    .procsView = pv
-                } else {
-                    // Re-sort current view
-                    .Sort(.sortColumn)
-                }
+                // ---- Update Procs View（始终重排，刷新不丢排序）----
+                .Sort(.sortColumn)
             }
         }
     }
