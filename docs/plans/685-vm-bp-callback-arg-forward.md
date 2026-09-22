@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-685
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-bp-callback-arg-forward + bp 内容页 UX 重设计
 author: [zhaop/agent]
 created_at: 2026-09-22
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-vm, autoui]
-current_step: 0
+current_step: 7
 total_steps: 7
 ---
 
@@ -172,10 +172,30 @@ Rust（crates/auto-lang，仅 T-01/T-02 触及）；应用层 `.at`
 （文件：行 + 机理一句话）。**边界**：时间盒半日；若 H1/H2 之外
 （如两层叠加），产物改为根因地图 + 修复拆分建议，回禀后改契约。
 
+**[✅] 根因钉定（2026-09-22，worktree 80bfec4b6 前的红测在案）**：
+H2 变体，确切落点不在 vm_bridge 装配点（其无恙），而在**剥离回调
+快照链**：`handler_codegen.rs` `stripped_arg_text`（:1883）把体内
+`on_select(id)` 实参记为**文本** `"id"`（Expr 非 Send，设计使然）→
+`dynamic.rs` `eval_stripped_arg`（:2480）派发侧求值域**只有 root
+state**，handler 形参不可见 → :2510 兜底 `Value::Str(t)` **名字即值**。
+红测 `plan685_inbody_callback_param_forwarded_not_name` 修复前
+`Str("v")`（退化实锤）、字面量形态既有绿。
+
 ### T-02 回调丢值根修 + 单测
 
 按 T-01 结论修发射端或绑定端；最小语料转绿 + 邻近面三形态断言
 （onclick 字面量参 / oninput 事件参 / for 内闭包捕获参），防修 A 坏 B。
+
+**[✅] 绑定端根修（80bfec4b6）**：`vm_bridge` `handler_param_counts`
+扩为 `handler_param_names`（形参名表；`handler_param_count` 契约
+不变，arity=vec len）；`dynamic.rs` 派发侧形参名 × 派发实参配对成
+绑定表，`eval_stripped_arg` 裸标识符**先查绑定**（词法最近）再退
+state；`this.`/`.` 前缀显式指 state 跳过绑定；裸词字面量兜底保留。
+邻近形态：字面量参 + oninput 事件参两测新增保绿；state 路径参由
+既有 plan051 测覆盖（绿）；视图 for 内 msg 带参（第一跳）不经剥离
+快照路径，由 T-03 E2E 实点覆盖。ui 模块门禁 2344 pass / 17 fail
+全预存（14 layout=PLAN-686 + counter/shell_pack/dock_pager 三枚
+base 0e541c7e5 原样复现）。
 
 ### T-03 bps-gallery 点击 E2E 门禁
 
@@ -184,6 +204,14 @@ press 侧栏卡片 → 断言 `state_changes.selected_id == 所点 id` 且快照
 该 bp spec 正文 → 覆盖 ≥3 卡片含多 kind。落
 `.agents/skills/autoui-verifier/scripts/test_bp_gallery_click.py`，
 README 登记用法；进 CI 与否复审时定（Q-2）。
+
+**[✅] 落库 + 多轮连绿**：脚本按 `blueprints/` 目录解析卡片（改名
+漂移即门禁红）、首帧竞态探针兼用（`selected_id` 非空即签名）、
+3 卡跨 3 kind（dashboard/layout/navigation）、按 PID 只收杀自拉实例；
+SKILL.md 步骤 1 登记用法。加固：首帧窗口 ~1/3 频率 no-op press
+（回执 ok 零 state 变化，与仓内记忆 MCP 首 30s window-size-zero
+同族）→ 有界重试 3 次，值错误仍立即红。终态 2 连跑 exit 0
+（AC-02/AC-03）。
 
 ### T-04 首启竞态勘定（有界）
 
@@ -197,6 +225,16 @@ README 登记用法；进 CI 与否复审时定（Q-2）。
 根因结论 + 修复尺寸评估；小修同批（进 AC），大改记债
 `KNOWN-DEBT-AND-RISKS.md` 并回禀（Q-1）。
 
+**[✅] 结论：同根，已被 T-02 覆盖（带修构建实证 0/10 复发）**。
+①"字段访问退化"假设**证伪**：VM GET_FIELD 的 ObjectData 缺键臂读
+null（PLAN-053 P-053-6），无名字退化臂（engine.rs :6187 实勘）；
+②签名反推：标题 "id" 要求 `selected_id=="id"`，唯一写入路径 =
+Select 链剥离快照兜底（T-02 已封）；③实证：带修 auto.exe 共 10 次
+全新启动（E2E --runs 与 5 连跑）竞态签名 0/10，修复前基线 2/5 在档。
+残留不确定性登记：未在无修复环境捕获触发分派的准确源头（该环境已
+不可复得）；若再现，E2E 首帧探针（`selected_id` 非空即红）会当场
+逮住。判定为"修复同批"档，不立新债（AC-05 口径二选一取修复）。
+
 ### T-05 内容页重设计实施（G4/G5 主战场）
 
 改 `examples/bps-gallery/src/front/app.at`（+catalog.at 配套 fn）：
@@ -209,6 +247,22 @@ README 登记用法；进 CI 与否复审时定（Q-2）。
 验证：双臂实机走查（vue `auto run` + VM `auto run -r vm`），标题层级/
 列表/表格/引用渲染在案；tab 点击即切；VM 臂不出现 scroll 依赖。
 
+**[✅] 实施完成（8b8c94c0c + 2d2d9de05 纪律修复）**：`active_section`
+状态分节（spec 缺省；Q-4 裁定=切 bp 保持分节，首启缺省承担入口语义）、
+Spec/Gotchas 换 `markdown (content:, final: true)` 渲染件（vue 臂
+pac.at npm_deps `@autodown/engine` **绝对 link**——jade-garden 先例，
+worktree 深度免疫；Empty gotchas 占位文案）、头部三件（kind 面包屑
+可点击=SelectKind 等价 + 变体计数徽标 + prev/next，`prev_next` 按
+gallery_items 序到头空串降灰、SelectBp 空串守卫）、Reference 保留
+mono 代码容器。VM 臂 MCP 交互全验证（tab 直切/prev-next/breadcrumb）。
+
+**T-06 逮出回归并根修**：`prev_of(.np)`/`bp_name(.shell_active)` 形态
+= computed 实参位**链 computed**（违反 app.at 头注装配纪律），VM 臂
+容忍、vue 臂解析为 state 字段读 → undefined → `TypeError: reading
+'prev'` 整页白屏。全改单 fn 直呼（bp_name/prev_id_of/next_id_of/
+prev_exists/next_exists 各自重导 resolve_key/prev_next），重建后
+vue 页恢复。此教训已沉淀 catalog.at 注 + 报告 README。
+
 ### T-06 双臂对拍走查 + 截图归档
 
 T-05 后双臂各全量走查一遍（选 3 个代表性 bp：长 spec 的
@@ -216,10 +270,30 @@ dashboard/overview、多 gotcha 的 row-list、带表格式 props 的
 master-detail），截图归档 `docs/plans/reports/` 或计划附件；vue 臂
 `auto build`（vue-tsc）绿为硬门。
 
+**[✅] 双臂网格归档（2d2d9de05）**：`docs/plans/reports/p685/` 双臂
+3bp × 3 节 + README（视检结论/复跑工具/工具脚本四件）。vue `auto
+build` 绿（仅既有 chunk 体积告警）。markdown 双臂真渲染（标题层级/
+wrong:/why:/right: 加粗/行内码 chip/列表/表格 chrome）、tab 直切、
+头部件在位（视检 README 有据，AC-06/07/08 证据面齐）。**运行器边界
+登记**：vue `auto run` 无条件要求 `<name>-back` API 后端成员，纯前端
+应用错配（master 亦然，预存）——走查以 `auto build` + 直接 vite dev
+等价替代。
+
 ### T-07 收尾
 
 按改动面跑门禁档；`auto bp list --format at` 漂移负验证（blueprints/
 未被触碰）；复审材料整理。
+
+**[✅] 门禁档全绿（零新增红，全数 base 对勘）**：
+- E2E 终态 2 连跑 exit 0（T-06 代码态）。
+- `cargo t`（5434 集）：24 红 = layout×14（PLAN-686 在管）+ musk×6
+  （base 0e541c7e5 原样复现，DEBTS 在案"待认领"）+ counter/shell_pack/
+  dock_pager×3（base 原样复现）+ clipboard×1（并行跑剪贴板态竞争
+  偶发；单测隔离 3/3 绿 + base 绿——环境类，非回归）。
+- `cargo tv`（VM 语料 golden，824 集）：820 绿，4 红= musk 预存族。
+- `auto bp list --format at` vs registry.at：零漂移；
+  `git diff 0e541c7e5..HEAD -- blueprints/` 空。
+- worktree 干净、探针实例/vite 全按 PID 收杀。
 
 ### 规范增量
 
@@ -300,15 +374,33 @@ master-detail），截图归档 `docs/plans/reports/` 或计划附件；vue 臂
   映射 @autodown/engine；jade-edit 消费先例 :220），快速导航裁定走
   状态分节 tab 而非锚点滚动（scroll_to 不可靠先例）。授权 = 用户原话
   "把这些设计和修改方式也记录到计划 685 里，之后一起实施"。
+- 2026-09-22 `stage: work` `plan_id: PLAN-685` `plan_revision: 2`
+  `outcome: pass` `code_commit: plan-685-dev 80bfec4b6..2d2d9de05`
+  （T-01/T-02=80bfec4b6，T-03=d141073e6+b0fe5e3aa 加固，T-05=8b8c94c0c，
+  T-06=2d2d9de05）`task_ids: T-01..T-07 全数`
+  `evidence: 见 §5 各任务 [✅] 注（红→绿单测/E2E 多轮连绿 exit 0/
+  双臂截图网格+README 视检/cargo t·tv 零新增红全 base 对勘/bp 零漂移）`
+  `blockers: 无`
+  `next: /auto-plan:review`
+  勘定要点：①根因=剥离回调快照求值域盲区（H2 变体，非 vm_bridge
+  装配点）；②首启竞态判同根（0/10 复发 vs 基线 2/5）；③vue 臂
+  computed-as-arg 不解析实证（装配纪律的跨臂差异面，教训沉淀于
+  catalog.at 注 + 报告 README）；④运行器 `-back` 成员要求与纯前端
+  应用错配为预存边界（非本计划引入）。
 
 ## 10. 待澄清事项
 
-- **Q-1**：首启竞态若勘定为需较大机制改动（首帧就绪门/重渲染触发器），
-  同批修还是记债另立？——默认：回禀用户裁定（T-04 产物触发）。
-- **Q-2**：T-03 E2E 是否进 CI——涉及 GUI 实例起停的 runner 环境，
-  复审时按 CI 现状定。
-- **Q-3**：Reference .at 源码语法高亮：vue 臂 `@autodown/engine` 是否
-  支持 lang 标签高亮、VM 臂 autodown codeblock 无高亮（plan-019 边界）
-  ——T-05 中实测，支持则开，不支持则登记边界不阻塞 AC-09。
-- **Q-4**：切 bp 时 `active_section` 保持还是重置——实现取一登记即可，
-  无阻塞。
+- **Q-1（已裁决，实现取定）**：首启竞态勘定为同根、T-02 修复覆盖
+  （带修构建 0/10 复发），取"修复同批"档，不立新债；触发分派源头
+  未捕获的残留不确定性已在 T-04 注登记，再现即被 E2E 首帧探针
+  逮住。
+- **Q-2（留复审）**：T-03 E2E 已落 `test_bp_gallery_click.py` 且
+  多轮稳定；进 CI 与否涉及 runner 的 GUI 实例起停环境，复审时按
+  CI 现状定。
+- **Q-3（边界登记，不阻塞 AC-09）**：Reference 源码面保持 mono +
+  代码块 chrome（反引号安全）；`@autodown/engine` lang 标签高亮未
+  开（vue 臂引擎能力实测未启），VM 臂 autodown codeblock 无高亮
+  （plan-019 边界）——双臂一致不阻塞。
+- **Q-4（已裁决，实现取定）**：切 bp **保持** `active_section`
+  （比较型浏览友好），首启缺省 "spec" 承担入口语义；SelectKind 同
+  保持。已在 app.at model 注登记。
