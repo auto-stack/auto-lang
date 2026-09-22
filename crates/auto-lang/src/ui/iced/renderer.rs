@@ -13802,17 +13802,22 @@ fn deliver_open_arg(
 }
 
 fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str) {
-    // PLAN-041 T-03：崩溃围栏——017-chat 的 VM front 存在 widget 树/布局
-    // 树失配（timer 1s 重建 × MCP bounds operate 竞态 → iced container
-    // `layout.children().next().unwrap()` 崩桌面，boot7/boot9/back11 三次
-    // 复现；master 期该 app 死于链接失败死窗、被掩蔽不可达）。base 补链
-    // （T-02）使其可达后围栏之，待失配根修（债 P041-D1）摘除。
-    if name == "017-chat" {
+    // PLAN-041 T-03：崩溃围栏——VM front 初始化崩溃族（base 补链后可达、
+    // master 期被链接失败掩蔽）：
+    //   · 017-chat：widget 树/布局失配（timer 重建 × bounds operate 竞态 →
+    //     iced container `layout.children().next().unwrap()` 崩桌面，三次复
+    //     现）；
+    //   · auto-term：Init future_all/race 空未来列表（handler_App_Init/Tick
+    //     每 拍 崩、空闲 20 分钟 2.6 万行日志，复审走查实录；终端窗渲染但
+    //     永不 tick）。
+    // 两者待各自根修（债 P041-D1）后摘围栏。
+    const VM_LAUNCH_FENCE: [&str; 2] = ["017-chat", "auto-term"];
+    if VM_LAUNCH_FENCE.contains(&name) {
         push_notification(
             state,
             "error",
             &format!(
-                "launch `{name}` 失败: VM front 树/布局失配崩溃围栏中（P041-D1 根修后放行）"
+                "launch `{name}` 失败: VM front 初始化崩溃围栏中（P041-D1 根修后放行）"
             ),
         );
         show_launch_unavailable(state, name);
