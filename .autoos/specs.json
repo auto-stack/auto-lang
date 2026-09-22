@@ -4509,6 +4509,11 @@
      "id": "P683-1",
      "title": "rq-remote-renderer — 方案 2 远程 Renderer：headless iced 宿主 + DisplayList v2（SD-01）+ desktop_render 四值 remote（SD-02）",
      "content": "RQ 轨命令生产者从手写投影器换成「iced 组件树照常渲染 + tiny_skia 记录层截获」：iced::Renderer::Secondary(iced_tiny_skia::Renderer) 公开枚举臂纯 CPU 构造（T-00 GO 架构发现——自研 RecordRenderer 因 into_iced() 3.5 万行适配层构造期钉死 Renderer 类型不可行），view.into_iced() 组件树类型同源直驱 UserInterface::build/update/draw（iced_runtime 公开 API），Layer 记录层（quads/text Weak→cosmic run 提取/images/层 bounds）降格 DisplayList v2 过线：载荷 tag 2 追加式超集（Quad 全参=Fill 色或线性渐变 angle+stops 原生〔与 iced 同构角度模型〕+四角半径+BorderSpec/ShadowSpec；Transform 2×3；from_v1 直搬）+FrameReadyV2 信封 tag 12+shm 槽首字节分派 v1/v2 互斥。daemon 侧 DisplayListPainter/paint_ops_v2 canvas 原生重放（渐变 to_distance 重建+四角 Path+border 内描边+shadow 垫层 P683-D4）+v2 合成面优先路由（v1 零扰）。事件回路径 InputMsg→iced::Event 全族（含 IME 三态映射）。desktop_render 四值 +remote：pac→automan pac_desktop_render→main.rs -q gate→AUTO_VM_RENDER env→run_vm_rqhost_client/双轨 client remote 分岔；remote 模式覆盖门不适用（组件覆盖=iced 全集构造保证）。RqProjector/DrawList v1 冻结 legacy 位（设计档 §6.1 清单）。三试点 001/003/004 实机走查全过（679 遗留头像圆裁/真渐变差距构造性消除；daemon private 12MB）。债 P683-D1..D6（mesh 词汇外/旋转矩阵元不可达/svg/shadow 垫层/daemon 窗最小化环境怪/IME 实机验证缺口）。canonical：docs/design/autoui/desktop-protocol-v1.md 帧载荷 v2 行+docs/specs/auto-lang/ui/overview.md remote 段+设计档 rq-remote-renderer.md §6.1"
+    },
+    {
+     "id": "P684-1",
+     "title": "018-book-reader-sidebar-ux — gallery vue 轨示例修复与 UI/UX 重设计批（018/022/024/025/026/027）+ 嵌入安全壳层契约（SD-01）+ 示例壳层/thin 契约读盘纪律（SD-02）",
+     "content": "PLAN-684 滚动批八 revision 交付。SD-01（widgets/viewport-boundary.md §3 demo 壳层 chrome 禁令）：demo 根部件禁 viewport-fixed（fixed/inset-y-0/inset-0 锚浏览器视口，AppViewport deep 覆盖只改写 h-screen 族高宽不覆盖 fixed）——正确形态=flex 行+侧栏 shrink-0 h-full+主区 flex-1 min-w-0 overflow-auto，模态遮罩容器内 absolute；018 侧栏穿出（P675-D1 ②）与 022 视口空白（①）demo 面清偿，发射器通用分派仍开放。SD-02（ui/overview.md 示例壳层与后端读盘契约节）：①018 阅读 App 契约（TOC 抽屉/偏好 storage 键 br-font-size、br-line-height/Continue Reading 条）；②027 fullstack 读盘 thin 契约纪律——#[api] 端点体恒单行 return impl_xxx 委托（无控制流），真实现住同文件普通 fn：gallery back-proxy VM 会话全语义真盘、standalone rust 后端 thin 体跳过 a2r 内联落签名模板 Default（{ok:false}/\"\"）前端演示目录后备，规避 a2r 转译面无 fs.* 目录 native 的 E0425 坏产物（P670-D1 另案）；契约带 pub type 同关 route A；路径/面包屑/排序前端纯函数双轨同源（fs_util parent_of/base_name/ext_of/build_crumbs/sort_files，VM inline 块迁移共用）。批面：018 四页重设计+嵌入壳（a746b76c1）、022 app frame+语义 token（8184fb142）、024 图表可见（package_origin 折叠 319716236）+ADR-19 Init 重放（watch(props) 3ae4c42f8）、025 sys-monitor 重设计（5ea9d42a9 族）、026 database 视口适配（105b6fcd9 族）、027 真盘读路径（rev6 演示 0c8ab50b7→rev7 真盘 6044fb1b9）。随批 crates 两件：ts_adapter VM_ONLY_OBJECT_NATIVES 补 file/process 小写模块名（027 vue-tsc 历史首绿）+gallery 缓存失配扫描 worker 显式 16MB 栈（2MB 缺省深语料解析整进程栈溢出）。测试面修复：plan408 断言随 ADR-19 形态（本支引入红）+auto-man 测试构建 PLAN-681 generate_api_rs 三参化遗留 11 处 E0061（master 编译即坏随批修复）。债：P684-D1（vue 轨写操作后端端点未做）/P684-D2（vue 轨缩略图缺失）；tf 3722/3722+auto-man 324/327（3 预存在案）"
     }
    ]
   },
@@ -7158,6 +7163,11 @@
      "title": "sidebar-shell-collapse-responsive — 复审与合并收据（r1 单树→r2 双 pane 用户裁定返场）",
      "content": "r1（D1 单树逐元素 label 面）execution_done 后用户走查裁定返场：双 pane 互斥+一体钮+rail 大一号 icon，r2 重写重走查全过。复审 pass（实施会话内复审，独立性声明+工件重建）：AC-02 补双臂 hover/选中四证据（VM SetCursorPos 真悬停+Vue CUA 坐标点击）；F-1=047-bp-admin nav 播种缺 icon 全键（计划约束只修 t09 fixture 漏在库消费方）修复 2115b76e5；F-2=plan640 收集器潜伏缺口非阻断；F-4 域外基线红（musk_vm_track/desktop_protocol/a2vue master 同红+ffi_dual 依赖位互扰）tf 以四族排除跑 5108/5108；F-5=MCP vtree 快照滞后 view 缓存一拍测量陷阱（断点断言以截图为准）。关键勘正：T-03 草案 flex lg:hidden 按 is_hidden display 覆盖语义不可行→rail 根禁 display 类",
      "file": "docs/plans/archive/688-sidebar-shell-collapse-responsive.md"
+    },
+    {
+     "id": "P684-2",
+     "title": "PLAN-684 复审记录 — rev8 pass（F-1 T-07 中断漏做补齐/F-2 plan408 断言修正/F-3 auto-man 测试构建修复）",
+     "content": "PLAN-684 复审 pass @ reviewed_commit d433e3f29（base ce77f58fe）。AC-01..18 全映射（018/022/024 前会话走查 8e4ba1eab+代码抽查；025/026 走查提交列；027 三路径本会话实证：gallery back-proxy 真盘 66 项/双击导航 29 项/排序翻转/平板档+standalone vue 骨架后备 fs_home()=\"\"+VM 实拍不回归；evidence/p682 25 PNG+6 可重放探针）。门禁：tf 3722/3722（--no-fail-fast）+cargo t vm_only 2/2+gallery 12/12+027 auto build 绿。findings：F-1 T-07（SD-01..03）被中断会话漏做——补齐 6044fb1b9；F-2 plan408 断言滞后 T-12 ADR-19 __autoReplayInit 形态（本支引入=tf 快败根因）——修正 d433e3f29；F-3 auto-man 测试面 PLAN-681 三参化遗留（master 编译即坏）——随批修复构建，余 3 红全预存（shell_pack 在册+css golden/merged client 681/672 基线漂移另案）。归档 docs/plans/archive/684-018-book-reader-sidebar-ux.md"
     }
    ]
   }
