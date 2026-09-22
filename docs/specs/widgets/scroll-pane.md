@@ -89,10 +89,26 @@ scroll-pane(onscroll: |ox, oy, vw, vh, cw, ch, px, py| { ... }) { ... }
 - plain 模式：`overflow-y/x/-auto`（always → `*-scroll`）；hidden → 内联
   `scrollbar-width:none`（滚动能力保留）；controller → `data-scroll-ctl` 锚 +
   注入 snake 同名 JS helper 族；onscroll → 8 位置实参内联箭头（同 VM 序）；
+  **PLAN-692**：带 `overflow-*:auto` 语义类的普通容器在 plain 装配点自动挂
+  `.ash-scroll` 类（原生滚动条统一皮肤），与 ScrollArea 同视觉参数；
 - shadcn 模式：axis y/x → ScrollArea orientation；**both/hidden 表达受限**
   （语义完整形态在 plain 模式——已知限制，后续 plain 降级或 ScrollArea 定制另立小改）；
+  **PLAN-692**：`size` prop（uint px，缺省 8）→ 根元素内联 `--sb-size` CSS 变量；
+  ScrollBar.vue thumb 厚度 = `--sb-size`（经 reka 内联 `width/height:
+  var(--reka-scroll-area-thumb-{width,height})` 的未定义厚度侧分层接管，长度
+  变量不触碰）；rail 宽 = size+6px（hover 空间）；thumb hover 加宽 +2px/侧 +
+  `cursor:pointer`，按住 `active:` 主色高亮；`.ash-scroll`（原生路径）同参：
+  轨宽 size+4px、thumb 视觉宽 = size（2px 透明 border + background-clip，
+  hover 时 border 归零加宽）、`:active` 主色。native 侧 thumb cursor 为浏览器
+  平台限制（不可定制），"同一套"五参数=宽/色/圆角/hover/active；
 - managed bridge v1：`scroll-test-content` = logical spacer（内联逻辑尺寸，
   DOM 节点恒 1，不随逻辑 extent 膨胀）；物化窗口属 iced widget 与 Phase D。
+
+### iced（PLAN-692 兼容注记）
+
+`size` prop 为 vue 臂视觉面；iced 臂 `renderer.rs` scrollbar 样式为固定宽度
+主题样式，本计划不接 `size`（VM 窗忽略该 prop，schema 兼容零破坏）——后续
+如需 iced thumb 宽度可从 `scrollable::Scrollbar` 宽度字段接线（另立小改）。
 
 ### 未来 backend
 
