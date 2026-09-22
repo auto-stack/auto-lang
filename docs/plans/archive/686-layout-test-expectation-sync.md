@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-686
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: layout-test-expectation-sync
 author: [agent]
 created_at: 2026-09-22
@@ -97,17 +97,19 @@ TASKBAR_HEIGHT（唯一事实源，crates/auto-lang/src/ui/layout.rs:78，=56）
 
 ## 执行步骤
 
-- [ ] **T-01** worktree 组建组：`git worktree add D:/autostack/.wt/lang-686/auto-lang -b plan-686-dev` + 兄弟 `git -C D:/autostack/auto-down worktree add D:/autostack/.wt/lang-686/auto-down --detach a615d693`（autodown-core 相对路径 manifest 解析位；Plan 656 先例）。验收：`cargo t ui::layout --no-fail-fast` 在 worktree 复现 14 红（改动前基线）。〔依赖：无〕
-- [ ] **T-02** layout.rs 期望值+注释勘正（§详细设计 1）。验收：编译净。〔依赖：T-01〕
-- [ ] **T-03** layout_cases.json 表同步+头注（§详细设计 2）。〔依赖：T-02〕
-- [ ] **T-04** layout.ts TASKBAR_HEIGHT 48→56（§详细设计 3）。〔依赖：无，可并行〕
-- [ ] **T-05** 门禁：AC-01/02/03/05 逐项取证。〔依赖：T-02/T-03/T-04〕
-- [ ] **T-06** 债册三处勘正+SD-01 spec 注记（§详细设计 4/5）。〔依赖：无〕
-- [ ] **T-07** 复审（checklist audit+健康检查）→ 落库（merge 账本三件套：ui/plans.md 行+specs.json+spec-index.py）→ 合 master（`fix(ui-tests): … (Plan 686)`）→ 归档 → wt-guard+组清理。〔依赖：T-05/T-06〕
+- [✅ 已完成] **T-01** worktree 组建组：`D:/autostack/.wt/lang-686/{auto-lang@plan-686-dev, auto-down@a615d693}`。基线复现：改动前 `cargo t ui::layout --no-fail-fast` = **25 测 14 红/11 绿**（干净树逐名与勘定清单一致，失败签名 `h:744 != expected h:752`）。
+- [✅ 已完成] **T-02** layout.rs 期望值 14 测 26 值（含 usable 测 `u` 变体——首轮批量替换漏 `assert_rect(u,…)` 一处，复跑抓住补齐）+ 注释 4 处（行 16/56/349 陈旧 48 注记 + TASKBAR_HEIGHT 常量补三处同步面互指）。
+- [✅ 已完成] **T-03** layout_cases.json：`reservedTaskbar` 48→56 + expected 全表 56 基重算（752→744、376→372、grid_nine expectedLast →[853.333, 496, 426.667, 248]）+ `_header` 补三处同值同步规则。
+- [✅ 已完成] **T-04** auto-man `assets/wm/layout.ts` `TASKBAR_HEIGHT = 48→56`（附勘正注：Taskbar.vue 实渲染 h-14=56 而预留 48，Vue 轨同症活体现）。
+- [✅ 已完成] **T-05** 门禁取证：`cargo t ui::layout --no-fail-fast` = **25/25 全绿**（AC-01 ✓）；`node scripts/ui-layout-parity.mjs` = **17 pass / 0 fail, exit 0**（AC-02 ✓）；残留扫描=三处事实源全 56，仅剩 snap_middle 光标输入坐标 [640,376]（非期望值，计划内保留）（AC-03 ✓）；全档红普查 5431 测 8 红=musk p053/p054×6（564-Q6/R-25 在案）+counter×1（master 预存）+shell_pack×1（auto-os↔auto-lang .at 双源 hash-lock 漂移守卫，pack 五件全 .at 与本 diff 零交集构造性证明），layout 族零命中（AC-05 ✓）。〔依赖：T-02/T-03/T-04〕
+- [✅ 已完成] **T-06** 债册三处勘正（R-11 行 ✅修复化+勘正注 / P576 行 ui::layout 半边划线勘正 / P667-D2/P661-D7 豁免清单摘除 ui::layout 族）+ SD-01 spec 注记（ui/overview.md 465 直译句钉三处同值规则）。〔依赖：无〕
+- [✅ 已完成] **T-07** 复审 pass（同会话复审已声明，命令级证据）→ 账本三件套落地（specs.json P686-1/P686-2 外科插入 indent=1 +17 行 + ui/plans.md 行 + INDEX 再生零漂移）→ rebase master（0e541c7e5，零交集；range-diff fix 提交 patch-id 相等 2a1422353=5c2ce28cb）→ master ff-only 100acb459（7 文件 74+/51−）→ 归档本提交。〔依赖：T-05/T-06〕
 
 ## 复审记录
 
 - 2026-09-22 draft handoff：stage=new，PLAN-686 rev1。outcome=pass（授权在案：用户"OK，改期望值吧。请立项修改。"）。next=work。T-04（Vue 侧生产常量一行）为授权方向最小延伸，已于 §需求分析 显式标注——复审时请重点关注该条是否维持。
+- 2026-09-22 review：stage=review | plan_id=PLAN-686 | plan_revision=1 | **outcome=pass** | reviewed_commit=5c2ce28cb（rebase 后；pre-rebase 2a1422353 patch-id 相等）| base=0969326d0（rebase 终基 0e541c7e5 零交集）| spec_inputs=docs/specs/auto-lang/ui/overview.md（SD-01 已随分支落地）| acceptance=AC-01..05 全 pass（证据：对提交态复跑 ui::layout 25/25+parity 17 pass/0 fail exit 0；三源=56；普查 8 红全预存定性）| findings=F-1（非阻塞：计划文本估「18 处」实为 26 期望值，簿记已正）| 同会话复审已声明——证据全部命令级可复现。Spec 影响说明：无 supersedes/new/touched（改动=对齐 526 T24 既定裁定的实现-测试一致化；规范增量仅 SD-01 注记一行）。| next=merge。
+- 2026-09-22 merge 收据：delivery=master ff-only `100acb459`（7 文件 74+/51−：layout.rs+layout_cases.json+wm/layout.ts+KNOWN-DEBT+ui/overview.md+specs.json+ui/plans.md）；账本 P686-1（tests）/P686-2（reviews）+INDEX 再生零漂移；本提交归档（status: archived 随 git mv 翻转）；worktree 组清理随后续 wt-guard 收据。
 
 ## 待澄清事项
 
