@@ -308,6 +308,14 @@ fn styled_text<M: Clone + std::fmt::Debug>(content: String, class: &str) -> View
 fn span_class(span: &InlineSpan) -> String {
     // PLAN-053 T18：正文档 §7.3（0.95rem=15.2px / lh 1.6）。
     let mut cls = String::from("text-[15.2px] leading-[1.6]");
+    // PLAN-084 T-01：inline math（`$...$`，parser 以 math_inline attr 携带、
+    // 无 mark——markdown_parser spanWith(code, marks, mattrs)）。VM 轨不渲染
+    // LaTeX（web 轨 katex，§3.1 豁免不变），但不得以裸文本「解析失败」观感
+    // 直出——视觉兜底与行内 code 同词汇（mono+弱色 chip），语义为「源码
+    // 形态的公式」。
+    if span.attrs.iter().any(|a| a.key == "math_inline") {
+        cls.push_str(" font-mono text-sm bg-muted rounded px-1");
+    }
     for m in &span.marks {
         match m {
             Mark::Strong => cls.push_str(" font-bold"),
@@ -836,10 +844,12 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             // 「math · web-only」与 mermaid 降级形态对齐（面板族 chrome
             // 一致性）+ mono $$ 包裹文本（KaTeX web-only，显式豁免登记）。
             let chrome = family_of(BlockType::MathBlock).chrome;
+            // PLAN-084 T-01：PANEL_CHROME 的 header_label 为空串（默认字号
+            // 直出突兀）——头标签弱化小字（QueryBlock tag 同词汇）。
             let header = View::Container {
                 child: Box::new(styled_text(
                     "math \u{00b7} web-only".to_string(),
-                    chrome.header_label,
+                    "text-xs text-muted-foreground",
                 )),
                 padding: 0,
                 width: None,
@@ -1564,6 +1574,25 @@ mod tests {
         assert_eq!(text_of(h), "math \u{00b7} web-only");
         let View::Container { child: body, .. } = &parts[1] else { panic!("body") };
         assert_eq!(text_of(body), "$$\nE=mc^2\n$$");
+    }
+
+    /// PLAN-084 T-01：inline math（`$...$`）视觉兜底——math_inline attr
+    /// 消费为 mono+弱色 chip 类（裸直出退役）；普通 span 不受牵连。
+    #[test]
+    fn math_inline_span_gets_chip_class() {
+        let math = InlineSpan {
+            text: "Av = \\lambda v".to_string(),
+            marks: vec![],
+            attrs: vec![autodown_core::block_model::Attr {
+                key: "math_inline".to_string(),
+                value: Value::Str("Av = \\lambda v".to_string()),
+            }],
+        };
+        let cls = span_class(&math);
+        assert!(cls.contains("font-mono"), "math span must be mono, got {cls}");
+        assert!(cls.contains("bg-muted"), "math span must carry muted chip, got {cls}");
+        let plain = InlineSpan { text: "正文".to_string(), marks: vec![], attrs: vec![] };
+        assert!(!span_class(&plain).contains("font-mono"), "普通 span 不得误挂 chip");
     }
 
     /// PLAN-041 T7 降级臂③：QueryBlock——query 文本面板 + 「query · 未求值」

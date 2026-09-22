@@ -40,6 +40,8 @@ pub struct State {
     widths: Vec<f32>,
     /// 表头带高（命中区域上界）。
     header_h: f32,
+    /// PLAN-084 T-02：表头带宽（=layout 的 total_w，内容宽；draw 画底色带）。
+    header_w: f32,
     /// 拖拽态（code_editor 滚动条 Drag 同款）：col + 起点几何 + 当前临时宽。
     drag: Option<DragState>,
     /// 悬浮命中的列边界（指示线显示）。
@@ -252,6 +254,7 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
         {
             let state = tree.state.downcast_mut::<State>();
             state.header_h = header_h;
+            state.header_w = total_w;
             state.widths = effective.clone();
             state.rules = rules;
             state.indicator = if let Some(d) = state.drag {
@@ -468,6 +471,24 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
     ) {
         let state = tree.state.downcast_ref::<State>();
         let bounds = layout.bounds();
+
+        // PLAN-084 T-02：表头行底色（vue `<thead>` bg-muted 同词汇；Muted
+        // 语义色随主题翻转，编辑臂 table_header_rgb 的只读臂对应面）。
+        // 先画带再画格，单元格文字落其上。
+        if state.header_h > 0.0 && state.header_w > 0.0 {
+            if let Some((r, g, b)) = crate::ui::style::theme::resolve_semantic_rgb(
+                &crate::ui::style::Color::Muted,
+            ) {
+                fill_quad(
+                    renderer,
+                    Rectangle::new(
+                        Point::new(bounds.x, bounds.y),
+                        Size::new(state.header_w, state.header_h),
+                    ),
+                    iced::Color::from_rgb8(r, g, b),
+                );
+            }
+        }
 
         let mut ci = 0usize;
         for cell in self.header_cells.iter().chain(self.body_rows.iter().flatten()) {
