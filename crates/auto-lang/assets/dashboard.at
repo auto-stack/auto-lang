@@ -88,11 +88,12 @@ widget DashboardPanel {
                     // backdrop-blur-md 为 518 G8 冻结词汇（当前渲染 no-op，
                     // 框架落地 backdrop 管道后自动升真磨砂）。face 卡由宿主
                     // 按活动 tab 拆借渲染叠合于网格算式格位；空态文案居中。
-                    // PLAN-041 T-15（用户裁定）：双分支——dark = 深底 90%
-                    // 不透明（繁忙壁纸下可读：深底浅字高对比），light 沿
-                    // 低透白亮边框浅玻璃。
+                    // PLAN-041 T-15（用户裁定）：双分支——dark = 任务栏同色系
+                    // 深蓝（实测 #1e2438）提亮一档 #272e48、95% 不透明（用户
+                    // 二轮裁定：再降透明度+向任务栏色系靠拢），light 沿低透
+                    // 白亮边框浅玻璃。
                     col {
-                        style: if .__dash_dark == "1" { "w-full h-[176px] p-3 bg-[#101218]/90 border border-white/15 rounded-xl overflow-hidden backdrop-blur-md" } else { "w-full h-[176px] p-3 bg-white/10 border border-white/25 rounded-xl overflow-hidden backdrop-blur-md" }
+                        style: if .__dash_dark == "1" { "w-full h-[176px] p-3 bg-[#272e48]/95 border border-white/15 rounded-xl overflow-hidden backdrop-blur-md" } else { "w-full h-[176px] p-3 bg-white/10 border border-white/25 rounded-xl overflow-hidden backdrop-blur-md" }
                         col {
                             style: "w-full h-full items-center justify-center"
                             if .nrows == 0 {
