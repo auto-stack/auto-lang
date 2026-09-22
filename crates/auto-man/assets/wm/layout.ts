@@ -18,8 +18,10 @@ export interface WinSnap {
   focused: boolean
 }
 
-/** 任务栏高度（463 layout.rs TASKBAR_HEIGHT 同值；shell 装配共用）。 */
-export const TASKBAR_HEIGHT = 48
+/** 任务栏高度（463 layout.rs TASKBAR_HEIGHT 同值；shell 装配共用）。
+ * 56 起：PLAN-526 T24 对齐 shell.at 任务栏行渲染高 h-14——本文件曾漏同步残留
+ * 48（Taskbar.vue 实渲染 56 而预留 48，最大化窗底缘被盖 8px），Plan 686 勘正。 */
+export const TASKBAR_HEIGHT = 56
 /** master 宽占比（462/463 §3.1 定参）。 */
 export const MASTER_RATIO = 0.55
 /** snap 触发带宽度（光标距可用区左/右缘 ≤ 此值触发半屏预览）。 */

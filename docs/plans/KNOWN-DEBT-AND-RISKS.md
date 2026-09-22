@@ -35,7 +35,7 @@
 | 656 | scroll-pane v1 公共面两处语言层缺口（执行裁定） | ① controller 方法语法糖 `scroll.to_end(axis: y)`（plan r2 §5.1 原定形态）未落地——VM 无 handle-method 派发通道（ForeignObject+obj_call 需 codegen receiver 路由+kwargs，现有 py 专用），v1 为原生函数族 `scroll_to_end(handle, axis?)`+不透明串句柄（`controller: .sc` 状态字段直接作柄）；② on-scroll record 单实参 `|state| state.progress_y` 未落地——vm_bridge push_value 对 heap 实参是占位 0，v1 为 8 位置实参（字段序冻结 offset_x..progress_y），具名 record 经 `scroll_state(handle)` native。两者均需语言面（handle/record 实参）支撑，属独立语言计划；双端语义已按 v1 形态对齐。 | `vm/native.rs` scroll 族、`ui/aura_view_builder.rs` scroll_pane_semantics、`ui_gen/vue.rs` helper 注入；spec `docs/specs/widgets/scroll-pane.md` API 节 |
 | 656 | examples vue dev 启动被 prismjs 1.30.0 上游漂移全域阻断（review 补充复核发现） | 脚手架 package.json 浮动 `prismjs: ^1.29.0` 新装解析到 1.30.0 → vite 5 transformCjsImport 崩（`Cannot read properties of undefined (reading '0')`，main.ts 500，`#app` 空挂载）；001-helloworld 主检出/worktree 同败=环境级（auto-man 脚手架面，本仓 diff 零触碰）。钉 1.29.0 实证恢复（main.ts 200）。修法归 auto-man：锁 prismjs 精确版本或升 vite。注意：程序化 `scrollTop=` 赋值在 ZCode IAB webview 不派发 scroll 事件（vue 侧 onscroll 实机核验须用 dispatchEvent 或真实滚轮）。 | gen/front/vue/package.json（auto-man 生成）；复现：任一 example `auto run` 后 curl localhost:3000/src/main.ts。**656 F-R1/R2 已清偿**（fix-p656-vue-probe b69c7344c）：p656 vue_probe.mjs 内置该钉版自愈 + 归档物已刷至交付态；脚本外场景仍需脚手架根修。 |
 | 576 | 绕道退役跟进（用户已签待澄清#2 默认） | renderer PLAN-043 T6 直写快道 + frac +1e-3（renderer.rs/aura_view_builder.rs T9）与 auto-down demo custom_scrollbar is_vm 双轨/thumb 内联——引擎侧前提已由 576 G1-G4 消除，物理退役触及 auto-down demo 实机验证，随滚动同步契约计划另行立项。 | `renderer.rs` PLAN-043 T6 块；`aura_view_builder.rs` PLAN-043 T9；auto-down demo custom_scrollbar.at |
-~~〔R-11 环境红豁免口径在 P668 批登记；osconfig sibling_fixture 竞态另案〕~~ | 576 | 测试隔离（复审新发现，防误归因） | osconfig_daemon `sibling_fixture` 用固定共享临时目录且各用例以 remove_dir_all 开场——nextest 并行全量跑下跨用例竞态（tf 复审实跑 1 红，单测隔离绿；Plan 501/505 期产物，576 零触及）。ui::layout 族为本机显示几何环境红（master 复现 14，数量随会话 6↔9 浮动）——两族均非代码回归，后续计划勿误归因。 | `osconfig_daemon.rs` sibling_fixture；`ui/layout.rs`（环境依赖） |
+~~〔R-11 环境红豁免口径在 P668 批登记；osconfig sibling_fixture 竞态另案〕~~ | 576 | 测试隔离（复审新发现，防误归因） | osconfig_daemon `sibling_fixture` 用固定共享临时目录且各用例以 remove_dir_all 开场——nextest 并行全量跑下跨用例竞态（tf 复审实跑 1 红，单测隔离绿；Plan 501/505 期产物，576 零触及）。~~ui::layout 族为本机显示几何环境红（master 复现 14，数量随会话 6↔9 浮动）~~〔勘正 2026-09-22 Plan 686：ui::layout 族**非环境红**——TASKBAR_HEIGHT 48→56（be2c17d62/PLAN-526 T24）改常量未同步测试期望的代码红：固定 VIEWPORT 1280×800 纯函数零实时 OS 度量，任何机器同败（实际 744/372 vs 期望 752/376，4px=(56−48)/2）；「数量浮动 6↔9」=nextest fail-fast 截停假象；Plan 686 期望值族对齐 56 清偿〕~~两族均非代码回归~~（勘正后仅 osconfig 一族为环境/竞态红），后续计划勿误归因。 | `osconfig_daemon.rs` sibling_fixture；`ui/layout.rs`（期望值族，Plan 686 清偿） |
 
 | 526 | 一致性 | ~~布局件级 hover/右键公共基建（wrap_layout_onclick）未做~~ **已落地（PLAN-002 B，2026-09-09）**：`wrap_layout_events` 收拢布局件三臂——onclick（490 G4）+ `oncontextmenu`（`View::Row/Column/Container::on_right_click`，aura `set_layout_events` 提取、`convert_view_messages` 显式穿透）+ `hover:` 变体类消费（新增 `hover_area.rs`：HoverArea 自持 hover 态 + 与样式闭包共享 `Arc<AtomicBool>` 标志，翻转只 request_redraw 不重建 view）。试点=launcher 网格格（既有 `hover:bg-primary/10` 生效）+ 桌面图标格（`hover:bg-white/10` + oncontextmenu 自 icon button 迁至格 col，格内全域可右键）；实机证据 scratch/p002（p002b_desktop.ps1/p002b_launcher.ps1：桌面格 hover 像素差 6054/撤除 0、label 区右键菜单、launcher 网格 7/8 候选点命中 152×95 格）。**余项（全量铺开另立）**：`View::Grid` 无事件槽、`cursor-pointer` iced 适配器 no-op、hover 文本色不级联子件、全示例 sweep（481+88 处 hover: 布局件） | `renderer.rs wrap_layout_events/layout_hover_flag/layout_style_fn`；`hover_area.rs`；`aura_view_builder.rs set_layout_events`；`auto-os/shell/desktop.at:73`；设计稿 `docs/design/autoui/layout-interaction.md` |
 | 572 | AA2R/host 发射对齐缺口: push 容器实参克隆 | AA2R push 臂克隆规则窄化为「用户 struct/enum 裸 ident」；宿主（trans/rust.rs:8659 auto-clone）对**所有非 Copy**（含 `List<T>`/Vec 容器 ident）实参克隆——AA2R 遇容器 ident 入 push 仍裸 move（语料+lib 现零形状,非阻塞;真出现时为 E0382 家族）。对齐另案小改。 | `auto/lib/a2r.at` push 臂 P572 T5b 注释 |
@@ -2535,7 +2535,7 @@ T-04=acf22be45/T-05=f1f239918/T-06=a377d23ea/T-06+07=70a30ea84。
 | R-07 | 核销 | d8_toggle_dark_mode 基线已绿（015 默认翻 true 断言已被顺修） |
 | R-08 | ✅修复 | c2_param_msg 坐标箭头断言跟 clientX-rect 现行发射形态 |
 | R-09 | ✅修复 | strip_html 语义裁定：职责=去标签+实体解码，tag→空格替换不折叠（断言跟实现） |
-| R-11 | 环境红豁免 | ui::layout 15 件（本机显示几何，CI 为准；576 在案数量浮动 6↔9↔15） |
+| R-11 | ✅修复 | ~~ui::layout 15 件（本机显示几何，CI 为准；576 在案数量浮动 6↔9↔15）~~ 勘正+清偿（Plan 686，2026-09-22）：非环境红——TASKBAR_HEIGHT 48→56（be2c17d62/PLAN-526 T24）未同步测试期望的代码红，期望值族 752/376→744/372 对齐 56，「数量浮动 6↔9↔15」=nextest fail-fast 截停假象 |
 | R-12 | ✅修复 | 双根因：①003/004 use.c manifest 从未入库（.gitignore 全局 *.json 吞掉——白名单+重建两清单，金样级精确复原）；②parser dot 链 .await/.go 后缀委托 Pratt；③trans async 块尾 Expr 不补分号（块值复活，实编门 E0277 清零） |
 | R-13 | ✅修复 | aavm 四金样（b13/b32/g25/b42——台账在册 2 件实跑 4 件）A2R_BLESS 再生，PLAN-018 括号族 |
 | R-14 | ✅修复 | 表同步三件：imagesurface 降 NotYet（D5 裁定随行）/avatar 子件归一折叠/slider 补 target_set（661 漏同步） |
@@ -2559,7 +2559,8 @@ T-04=acf22be45/T-05=f1f239918/T-06=a377d23ea/T-06+07=70a30ea84。
 
 **564-Q6 总条目状态更新**：家族成员全数清偿/核销/豁免（R-07/R-08/R-09/R-11/R-15+
 R-03=R-10+A-05）——"需维护者排查归位"注销。**P667-D2/P661-D7 基线**：红集清零，
-后续计划门禁回到绝对全绿口径（环境红豁免=ui::layout 族+clipboard+ffi 闪测族）。
+后续计划门禁回到绝对全绿口径（环境红豁免=clipboard+ffi 闪测族；~~ui::layout 族~~
+〔勘正 2026-09-22 Plan 686：系代码红已清偿摘除，非环境红〕）。
 **方法论注记**：本仓 nextest 0.9.138 默认 fail-fast，基线采集/门禁必须 --no-fail-fast。
 
 ### P670（2026-09-21，Plan 670 auto-edit 集成缺口批 work 执行登记）

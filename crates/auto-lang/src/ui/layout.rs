@@ -13,7 +13,7 @@
 //!   back→front）在右列均分竖排。
 //!
 //! `ReservedEdges`：任务栏等 shell 层占用的边缘内缩——布局可用区不含
-//! 任务栏区（§4 T1 报告：bottom = 48px）。
+//! 任务栏区（T1 报告 bottom = 48px；PLAN-526 T24 起 56px）。
 //!
 //! Snap（free 模式拖拽）：光标进入屏缘 [`SNAP_ZONE`] 内 → 返回半屏预览
 //! 矩形；落位由 update 壳层在松手时套用（本模块只给几何）。
@@ -52,7 +52,7 @@ impl LayoutMode {
     }
 }
 
-/// shell 层占用的边缘内缩（T1 报告：任务栏 bottom = 48px）。
+/// shell 层占用的边缘内缩（T1 报告 bottom = 48px；PLAN-526 T24 起 56px）。
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct ReservedEdges {
     pub top: f32,
@@ -75,6 +75,8 @@ impl ReservedEdges {
 /// PLAN-526 T24：48 → 56 对齐 shell.at 任务栏行实际渲染高（h-14=56px，
 /// Tailwind 4px/单位）——此前预留 48 少 8px，最大化窗口底缘被任务栏
 /// 盖住（用户六轮反馈 #2）。
+/// 同步面（三处须同值，Plan 686 起）：本文件 tests 期望值 + src/ui/layout_cases.json
+/// `reservedTaskbar` + auto-man assets/wm/layout.ts `TASKBAR_HEIGHT`。
 pub const TASKBAR_HEIGHT: f32 = 56.0;
 
 /// master 宽占比（计划 §3.1：55%，T2 定参）。
@@ -346,7 +348,7 @@ mod tests {
         width: 1280.0,
         height: 800.0,
     };
-    /// 标准可用区（扣任务栏 48）：1280 x 752。
+    /// 标准可用区（扣任务栏 56）：1280 x 744。
     fn usable() -> iced::Rectangle {
         usable_rect(VIEWPORT, ReservedEdges::taskbar())
     }
@@ -406,7 +408,7 @@ mod tests {
     #[test]
     fn usable_rect_excludes_taskbar_bottom() {
         let u = usable();
-        assert_rect(u, 0.0, 0.0, 1280.0, 752.0);
+        assert_rect(u, 0.0, 0.0, 1280.0, 744.0);
     }
 
     #[test]
@@ -431,7 +433,7 @@ mod tests {
     fn grid_one_window_fills_usable() {
         let input = wins(&[(0.0, 0.0, 100.0, 100.0)], None);
         let out = layout(LayoutMode::Grid, &input, VIEWPORT, ReservedEdges::taskbar());
-        assert_rect(out[0].1, 0.0, 0.0, 1280.0, 752.0);
+        assert_rect(out[0].1, 0.0, 0.0, 1280.0, 744.0);
     }
 
     #[test]
@@ -439,8 +441,8 @@ mod tests {
         // ⌈√2⌉ = 2 列 1 行。
         let input = wins(&[(0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0)], None);
         let out = layout(LayoutMode::Grid, &input, VIEWPORT, ReservedEdges::taskbar());
-        assert_rect(out[0].1, 0.0, 0.0, 640.0, 752.0);
-        assert_rect(out[1].1, 640.0, 0.0, 640.0, 752.0);
+        assert_rect(out[0].1, 0.0, 0.0, 640.0, 744.0);
+        assert_rect(out[1].1, 640.0, 0.0, 640.0, 744.0);
     }
 
     #[test]
@@ -455,9 +457,9 @@ mod tests {
             None,
         );
         let out = layout(LayoutMode::Grid, &input, VIEWPORT, ReservedEdges::taskbar());
-        assert_rect(out[0].1, 0.0, 0.0, 640.0, 376.0);
-        assert_rect(out[1].1, 640.0, 0.0, 640.0, 376.0);
-        assert_rect(out[2].1, 0.0, 376.0, 640.0, 376.0);
+        assert_rect(out[0].1, 0.0, 0.0, 640.0, 372.0);
+        assert_rect(out[1].1, 640.0, 0.0, 640.0, 372.0);
+        assert_rect(out[2].1, 0.0, 372.0, 640.0, 372.0);
     }
 
     #[test]
@@ -472,10 +474,10 @@ mod tests {
             None,
         );
         let out = layout(LayoutMode::Grid, &input, VIEWPORT, ReservedEdges::taskbar());
-        assert_rect(out[0].1, 0.0, 0.0, 640.0, 376.0);
-        assert_rect(out[1].1, 640.0, 0.0, 640.0, 376.0);
-        assert_rect(out[2].1, 0.0, 376.0, 640.0, 376.0);
-        assert_rect(out[3].1, 640.0, 376.0, 640.0, 376.0);
+        assert_rect(out[0].1, 0.0, 0.0, 640.0, 372.0);
+        assert_rect(out[1].1, 640.0, 0.0, 640.0, 372.0);
+        assert_rect(out[2].1, 0.0, 372.0, 640.0, 372.0);
+        assert_rect(out[3].1, 640.0, 372.0, 640.0, 372.0);
     }
 
     #[test]
@@ -490,7 +492,7 @@ mod tests {
             .collect();
         let out = layout(LayoutMode::Grid, &input, VIEWPORT, ReservedEdges::taskbar());
         let cw = 1280.0 / 3.0;
-        let ch = 752.0 / 2.0;
+        let ch = 744.0 / 2.0;
         assert_rect(out[0].1, 0.0, 0.0, cw, ch);
         assert_rect(out[1].1, cw, 0.0, cw, ch);
         assert_rect(out[2].1, cw * 2.0, 0.0, cw, ch);
@@ -509,7 +511,7 @@ mod tests {
             .collect();
         let out = layout(LayoutMode::Grid, &input, VIEWPORT, ReservedEdges::taskbar());
         let cw = 1280.0 / 3.0;
-        let ch = 752.0 / 3.0;
+        let ch = 744.0 / 3.0;
         assert_rect(out[8].1, cw * 2.0, ch * 2.0, cw, ch);
         // 全表无重叠、盖满可用区（结构性断言）。
         for r in &out {
@@ -535,8 +537,8 @@ mod tests {
             ReservedEdges::taskbar(),
         );
         let mw = 1280.0 * MASTER_RATIO;
-        assert_rect(out[0].1, mw, 0.0, 1280.0 - mw, 752.0); // stack 右列
-        assert_rect(out[1].1, 0.0, 0.0, mw, 752.0); // 焦点 = master 左
+        assert_rect(out[0].1, mw, 0.0, 1280.0 - mw, 744.0); // stack 右列
+        assert_rect(out[1].1, 0.0, 0.0, mw, 744.0); // 焦点 = master 左
     }
 
     #[test]
@@ -557,9 +559,9 @@ mod tests {
         );
         let mw = 1280.0 * MASTER_RATIO;
         let sw = 1280.0 - mw;
-        assert_rect(out[0].1, 0.0, 0.0, mw, 752.0);
-        assert_rect(out[1].1, mw, 0.0, sw, 376.0);
-        assert_rect(out[2].1, mw, 376.0, sw, 376.0);
+        assert_rect(out[0].1, 0.0, 0.0, mw, 744.0);
+        assert_rect(out[1].1, mw, 0.0, sw, 372.0);
+        assert_rect(out[2].1, mw, 372.0, sw, 372.0);
     }
 
     #[test]
@@ -573,8 +575,8 @@ mod tests {
             ReservedEdges::taskbar(),
         );
         let mw = 1280.0 * MASTER_RATIO;
-        assert_rect(out[1].1, 0.0, 0.0, mw, 752.0);
-        assert_rect(out[0].1, mw, 0.0, 1280.0 - mw, 752.0);
+        assert_rect(out[1].1, 0.0, 0.0, mw, 744.0);
+        assert_rect(out[0].1, mw, 0.0, 1280.0 - mw, 744.0);
     }
 
     #[test]
@@ -586,7 +588,7 @@ mod tests {
             VIEWPORT,
             ReservedEdges::taskbar(),
         );
-        assert_rect(out[0].1, 0.0, 0.0, 1280.0, 752.0);
+        assert_rect(out[0].1, 0.0, 0.0, 1280.0, 744.0);
     }
 
     // ---- 级联初位 ----
@@ -604,8 +606,8 @@ mod tests {
     fn cascade_rect_offsets_cap_and_clamp_into_usable() {
         let size = iced::Size::new(2000.0, 2000.0);
         let r = cascade_rect(100, size, usable());
-        assert!(r.x <= 640.0 && r.y <= 376.0);
-        assert!(r.width <= 1280.0 && r.height <= 752.0);
+        assert!(r.x <= 640.0 && r.y <= 372.0);
+        assert!(r.width <= 1280.0 && r.height <= 744.0);
     }
 
     // ---- Snap 半屏预览 ----
@@ -614,14 +616,14 @@ mod tests {
     fn snap_left_edge_gives_left_half() {
         let p = iced::Point::new(3.0, 300.0);
         let out = snap_preview(p, usable()).expect("left edge should snap");
-        assert_rect(out, 0.0, 0.0, 640.0, 752.0);
+        assert_rect(out, 0.0, 0.0, 640.0, 744.0);
     }
 
     #[test]
     fn snap_right_edge_gives_right_half() {
         let p = iced::Point::new(1279.0, 300.0);
         let out = snap_preview(p, usable()).expect("right edge should snap");
-        assert_rect(out, 640.0, 0.0, 640.0, 752.0);
+        assert_rect(out, 640.0, 0.0, 640.0, 744.0);
     }
 
     #[test]
@@ -781,7 +783,7 @@ mod tests {
         let ra = *wm.wins[&Wid(1)].rect.borrow();
         let rb = *wm.wins[&Wid(2)].rect.borrow();
         // Grid 只排当前分区：B 独占可用区；A（隐分区）保持用户几何。
-        assert_rect(rb, 0.0, 0.0, 1280.0, 752.0);
+        assert_rect(rb, 0.0, 0.0, 1280.0, 744.0);
         assert_rect(ra, 0.0, 0.0, 100.0, 100.0);
     }
 }
