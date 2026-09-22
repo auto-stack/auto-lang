@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-687
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: chunked-read-stdlib
 author: [zcode]
 created_at: 2026-09-22
@@ -178,3 +178,15 @@ IO 层并未分块（多块调用 = IO 平方；全文件反复过内存）。�
 
 （无——范围已裁：仅 read_text_range 真分块；edit O(n) 与观察 A 维持
 登记不修。）
+
+- 2026-09-22T16:50:00+08:00 · stage: merge · PLAN-687 · r1 · **outcome:
+  pass（delivered 全五 checkpoint）**。
+  - prepared 5a45c9ea9（design §5.2 精化节 + ledger P687-1/P687-2 外科
+    +19 行）→ rebase master 撞 P686 并发尾（PLAN-686 同窗落地）——
+    双方保留解（P686/P687 共存）→ **landed 8360bc583 ff-only**
+    （range-diff 映射：8771d0d75→bb3b16da7 / 8eb2a1a71→db4e5954b /
+    aa307c155→bc12e54bd / 5a45c9ea9→8360bc583 含冲突适配）；
+    ledger_refreshed（.autoos/specs.json 回读 P687-1/P687-2 在位，
+    P686 零扰动）；主检出工具链重建 1871-g8360bc583（下游 F-1
+    解锁）；archived 本文件；cleaned 待记。
+  -  |  | delivery 8360bc583
