@@ -2,6 +2,7 @@
 // Holds all monitor state, sliding windows, sorting, tabs, and API calls.
 
 use back.api: system_snapshot, kill_process
+use fmt: n1
 
 store SysStore {
     model {
@@ -36,6 +37,8 @@ store SysStore {
         var mem_segs = []
         var diskLabel str = "0 KB/s"
         var netLabel str = "0 KB/s"
+        var netSent_s str = "0.0"
+        var netRecv_s str = "0.0"
         var procLabel str = "0"
         var uptimeLabel str = "0h 0m"
 
@@ -72,6 +75,9 @@ store SysStore {
         var kill_target int = 0
         var kill_target_name str = ""
         var kill_dialog_open bool = false
+        var ctx_open bool = false
+        var ctx_x int = 0
+        var ctx_y int = 0
 
         // ---- Navigation & Tabs ----
         var active_tab str = "processes"
@@ -97,6 +103,7 @@ store SysStore {
         Init, Refresh, Play, Pause, SetSpeed(str),
         SelectTab(str), SelectPerfTab(str),
         SelectProc(int), RequestKill, CancelKill, ConfirmKill,
+        RowCtx(int), CloseCtx,
         Sort(str), SortName, SortCpu, SortMem, SortDisk, SortNet, SortPid
     }
 
@@ -174,7 +181,22 @@ store SysStore {
             }
         }
 
+        .RowCtx(pid) -> {
+            .selected_pid = pid
+            .ctx_open = true
+            .ctx_x = 280
+            .ctx_y = 200
+            var i int = 0
+            while i < .procs.len() {
+                if .procs[i].pid == pid {
+                    .selected_proc_name = .procs[i].name
+                }
+                i = i + 1
+            }
+        }
+        .CloseCtx -> { .ctx_open = false }
         .RequestKill -> {
+            .ctx_open = false
             if .selected_pid > 0 {
                 .kill_target = .selected_pid
                 .kill_target_name = .selected_proc_name
@@ -345,6 +367,11 @@ store SysStore {
                 .uptimeS = snap.summary.uptime_s
 
                 .procs = snap.procs
+                var filled []ProcInfo = []
+                for raw in snap.procs {
+                    filled.push(ProcInfo { pid: raw.pid, name: raw.name, cpu: raw.cpu, mem_mb: raw.mem_mb, disk_kbs: raw.disk_kbs, net_kbs: raw.net_kbs, status: raw.status, cpu_s: n1(raw.cpu), mem_s: f"${raw.mem_mb}MB", disk_s: n1(raw.disk_kbs), net_s: n1(raw.net_kbs) })
+                }
+                .procs = filled
                 .disks = snap.disks
                 .cores = snap.cores
                 .users = snap.users
@@ -356,7 +383,7 @@ store SysStore {
                 var usedG_int = (.memUsedMb * 10) / 1024
                 var totalG_val float = totalG_int.as(float) / 10.0
                 var usedG_val float = usedG_int.as(float) / 10.0
-                .cpuLabel = f"${.cpu} %"
+                .cpuLabel = f"${n1(.cpu)} %"
                 .memLabel = f"${usedG_val} / ${totalG_val} GB"
                 .procLabel = f"${.procCount}"
 
@@ -407,17 +434,15 @@ store SysStore {
                     si += 1
                 }
                 var netTotal = .netSentKbs + .netRecvKbs
-                var netTotal_int = (netTotal * 10.0).as(int)
-                var netTotal_val float = netTotal_int.as(float) / 10.0
-                .netLabel = f"${netTotal_val} KB/s"
+                .netSent_s = n1(.netSentKbs)
+                .netRecv_s = n1(.netRecvKbs)
+                .netLabel = f"${n1(netTotal)} KB/s"
 
                 var totalDiskKbs float = 0.0
                 for p in .procs {
                     totalDiskKbs = totalDiskKbs + p.disk_kbs
                 }
-                var diskTotal_int = (totalDiskKbs * 10.0).as(int)
-                var diskTotal_val float = diskTotal_int.as(float) / 10.0
-                .diskLabel = f"${diskTotal_val} KB/s"
+                .diskLabel = f"${n1(totalDiskKbs)} KB/s"
 
                 var upH = .uptimeS / 3600
                 var upM = (.uptimeS % 3600) / 60

@@ -1,86 +1,69 @@
-// src/front/details_users.at — Details and Users view
-// Details tab: Full process table with PID column, user column, and process termination.
-// Users tab: Per-user aggregation of processes and memory consumption.
-
+// details_users.at — Details view（用户页已退役，PLAN-684）。
 use sys_store: SysStore
 
 widget DetailsUsersView {
     msg {
         SelectProc(int), RequestKill, CancelKill, ConfirmKill,
-        SortName, SortCpu, SortMem, SortPid
+        RowCtx(int), CloseCtx, SortName, SortCpu, SortMem
     }
 
     view {
-        col (style: "gap-6") {
-            if .store.active_tab == "details" {
-                // ---- Details View: Full Process Table with PID ----
-                col (style: "gap-4") {
-                    // Action Bar
-                    row (style: "items-center justify-between bg-card p-3 rounded-lg border shadow-sm") {
-                        row (style: "items-center gap-3") {
-                            if .store.selected_pid > 0 {
-                                badge (text: f"PID: ${.store.selected_pid}", variant: "default") {}
-                                text f"${.store.selected_proc_name}" { style: "text-sm font-semibold" }
-                            } else {
-                                text "详细信息视图 — 支持按 PID 排序与详细属性检索" { style: "text-sm text-muted-foreground" }
-                            }
-                        }
-                        row (style: "items-center gap-2") {
-                            if .store.selected_pid > 0 {
-                                button "结束任务" {
-                                    onclick: .RequestKill,
-                                    style: "px-3 py-1.5 text-xs font-medium rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm"
-                                }
-                            } else {
-                                button "结束任务" {
-                                    style: "px-3 py-1.5 text-xs font-medium rounded-md border bg-muted text-muted-foreground opacity-50 cursor-not-allowed"
-                                }
-                            }
+        col (style: "gap-3") {
+            alert-dialog (open: .store.kill_dialog_open) {
+                alert-dialog-content {
+                    alert-dialog-header {
+                        alert-dialog-title "结束任务"
+                        alert-dialog-description f"确定结束 ${.store.kill_target_name} (PID ${.store.kill_target})？"
+                    }
+                    alert-dialog-footer {
+                        alert-dialog-cancel "取消" { onclick: .CancelKill }
+                        alert-dialog-action "结束进程" { onclick: .ConfirmKill }
+                    }
+                }
+            }
+
+            if .store.ctx_open {
+                col (style: "fixed inset-0 z-40") {
+                    onclick: .CloseCtx
+                    col {
+                        style: "absolute bg-card border rounded-md shadow-lg py-1 min-w-[120px]"
+                        style: "left:" + .store.ctx_x.to_string() + "px;top:" + .store.ctx_y.to_string() + "px"
+                        row {
+                            onclick: .RequestKill
+                            style: "px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 cursor-pointer"
+                            text "结束进程" {}
                         }
                     }
+                }
+            }
 
-                    // Alert Dialog
-                    alert-dialog (open: .store.kill_dialog_open) {
-                        alert-dialog-content {
-                            alert-dialog-header {
-                                alert-dialog-title "结束进程详细确认"
-                                alert-dialog-description f"您确定要强制终止进程 ${.store.kill_target_name} (PID: ${.store.kill_target}) 吗？"
-                            }
-                            alert-dialog-footer {
-                                alert-dialog-cancel "取消" { onclick: .CancelKill }
-                                alert-dialog-action "强制终止" { onclick: .ConfirmKill }
-                            }
+            col (style: "rounded-lg border bg-card shadow-sm overflow-hidden") {
+                row (style: "items-center justify-between px-3 py-2 border-b") {
+                    text "进程详情" { style: "text-sm font-semibold" }
+                    text "右键结束" { style: "text-[10px] text-muted-foreground" }
+                }
+                table {
+                    table-header {
+                        table-row (style: "bg-muted/30") {
+                            table-head (text: "PID", style: "text-right text-xs text-muted-foreground font-medium px-2 py-1.5 w-16 tabular-nums") {}
+                            table-head (onclick: .SortName, text: .store.nameH, style: "text-left text-xs text-muted-foreground font-medium px-2 py-1.5 cursor-pointer select-none w-[140px]") {}
+                            table-head (onclick: .SortCpu, text: .store.cpuH, style: "text-right text-xs text-muted-foreground font-medium px-2 py-1.5 cursor-pointer select-none tabular-nums") {}
+                            table-head (onclick: .SortMem, text: .store.memH, style: "text-right text-xs text-muted-foreground font-medium px-2 py-1.5 cursor-pointer select-none tabular-nums") {}
+                            table-head (text: "状态", style: "text-center text-xs text-muted-foreground font-medium px-2 py-1.5 w-16") {}
                         }
                     }
-
-                    // Table
-                    col (style: "rounded-lg border bg-card p-4 gap-3 shadow-sm") {
-                        table {
-                            table-header {
-                                table-row {
-                                    table-head (onclick: .SortPid, text: .store.pidH, style: "w-24 cursor-pointer select-none") {}
-                                    table-head (onclick: .SortName, text: .store.nameH, style: "cursor-pointer select-none") {}
-                                    table-head (text: "状态", style: "w-28 text-center") {}
-                                    table-head (text: "运行用户", style: "w-44") {}
-                                    table-head (onclick: .SortCpu, text: .store.cpuH, style: "w-28 text-right cursor-pointer select-none") {}
-                                    table-head (onclick: .SortMem, text: .store.memH, style: "w-32 text-right cursor-pointer select-none") {}
-                                }
-                            }
-                            table-body {
-                                for p in .store.procsView {
-                                    table-row (key: p.pid, onclick: .SelectProc(p.pid), style: if p.pid == .store.selected_pid { "bg-accent text-accent-foreground cursor-pointer" } else { "cursor-pointer hover:bg-muted/50" }) {
-                                        table-cell (text: f"${p.pid}", style: "font-mono font-medium") {}
-                                        table-cell (text: p.name, style: "font-medium") {}
-                                        table-cell (style: "text-center") {
-                                            if p.status == "running" {
-                                                badge (text: "运行中", variant: "default") {}
-                                            } else {
-                                                badge (text: p.status, variant: "secondary") {}
-                                            }
-                                        }
-                                        table-cell (text: p.user, style: "text-xs text-muted-foreground truncate max-w-[170px]") {}
-                                        table-cell (text: f"${p.cpu} %", style: "text-right font-mono") {}
-                                        table-cell (text: f"${p.mem_mb} MB", style: "text-right font-mono") {}
+                    table-body {
+                        for p in .store.procsView {
+                            table-row (key: p.pid, onclick: .SelectProc(p.pid), oncontextmenu.prevent: .RowCtx(p.pid), style: if p.pid == .store.selected_pid { "bg-accent cursor-pointer" } else { "cursor-pointer hover:bg-muted/40" }) {
+                                table-cell (text: f"${p.pid}", style: "text-right text-xs px-2 py-1 tabular-nums text-muted-foreground") {}
+                                table-cell (text: p.name, style: "text-xs font-medium px-2 py-1 truncate max-w-[140px]") {}
+                                table-cell (text: p.cpu_s, style: "text-right text-xs px-2 py-1 tabular-nums") {}
+                                table-cell (text: p.mem_s, style: "text-right text-xs px-2 py-1 tabular-nums") {}
+                                table-cell (style: "text-center px-2 py-1") {
+                                    if p.status == "running" {
+                                        badge (text: "run", variant: "default") {}
+                                    } else {
+                                        badge (text: p.status, variant: "secondary") {}
                                     }
                                 }
                             }
@@ -89,51 +72,13 @@ widget DetailsUsersView {
                 }
             }
 
-            if .store.active_tab == "users" {
-                // ---- Users View: Per-user process & resource aggregation ----
-                col (style: "gap-4") {
-                    row (style: "items-center justify-between") {
-                        col (style: "gap-0.5") {
-                            text "已登录与系统用户账户" { style: "text-base font-semibold" }
-                            text "按系统账户聚合查看运行中的进程与内存使用" { style: "text-xs text-muted-foreground" }
-                        }
-                        badge (text: f"共 ${.store.users.len()} 个用户", variant: "secondary") {}
-                    }
-
-                    row (style: "grid grid-cols-1 md:grid-cols-2 gap-4") {
-                        for u in .store.users {
-                            col (style: "p-4 rounded-lg border bg-card shadow-sm gap-3") {
-                                row (style: "items-center justify-between") {
-                                    row (style: "items-center gap-3") {
-                                        span (style: "w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-base") {
-                                            text "👤" {}
-                                        }
-                                        col (style: "gap-0.5") {
-                                            text u { style: "text-sm font-bold" }
-                                            text "活动会话" { style: "text-xs text-muted-foreground" }
-                                        }
-                                    }
-                                    badge (text: "正常", variant: "outline") {}
-                                }
-
-                                // User processes summary list
-                                col (style: "border-t pt-2 gap-1.5") {
-                                    text "运行在该账户下的主要进程:" { style: "text-xs font-semibold text-muted-foreground" }
-                                    for p in .store.procs {
-                                        if p.user == u {
-                                            row (style: "items-center justify-between text-xs py-0.5") {
-                                                text p.name { style: "font-medium truncate max-w-[200px]" }
-                                                row (style: "items-center gap-2 font-mono text-muted-foreground") {
-                                                    text f"${p.cpu}%" {}
-                                                    text f"${p.mem_mb}MB" {}
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+            col (style: "rounded-lg border bg-card p-3 gap-2 text-xs") {
+                text "系统" { style: "font-semibold" }
+                row (style: "gap-4 flex-wrap text-muted-foreground") {
+                    text f"${.store.osName} ${.store.osVersion}" {}
+                    text f"${.store.hostname}" {}
+                    text f"内核 ${.store.kernel}" {}
+                    text f"运行 ${.store.uptimeLabel}" {}
                 }
             }
         }
@@ -141,12 +86,13 @@ widget DetailsUsersView {
 
     on {
         .SelectProc(pid) -> { store.SelectProc(pid) }
+        .RowCtx(pid) -> { store.RowCtx(pid) }
+        .CloseCtx -> { store.CloseCtx() }
         .RequestKill -> { store.RequestKill() }
         .CancelKill -> { store.CancelKill() }
         .ConfirmKill -> { store.ConfirmKill() }
         .SortName -> { store.SortName() }
         .SortCpu -> { store.SortCpu() }
         .SortMem -> { store.SortMem() }
-        .SortPid -> { store.SortPid() }
     }
 }

@@ -1,0 +1,28 @@
+// fmt.at — 显示用数字格式化。PLAN-684：浮点 to_string 长尾（4.1999…%）收敛为 1 位小数。
+
+/// 保留 1 位小数（截断）：4.1999… → "4.1"；33 → "33.0"
+fn n1(x float) str {
+    let s str = x.to_string()
+    var i int = 0
+    var dot int = -1
+    while i < s.len() {
+        if s.sub(i, i + 1) == "." {
+            dot = i
+            i = s.len()
+        } else {
+            i = i + 1
+        }
+    }
+    if dot < 0 {
+        return s + ".0"
+    }
+    var end int = dot + 2
+    if end > s.len() {
+        end = s.len()
+    }
+    var cut str = s.sub(0, end)
+    if cut.len() == dot + 1 {
+        cut = cut + "0"
+    }
+    return cut
+}

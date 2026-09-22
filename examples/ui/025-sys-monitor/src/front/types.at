@@ -1,5 +1,4 @@
-// src/front/types.at — System monitor shared front types
-
+// types.at — PLAN-684：ProcInfo 显示串字段（1 位小数，store 回填）。
 type SysSummary {
     cpu float
     cpu_count int
@@ -24,20 +23,34 @@ type ProcInfo {
     disk_kbs float
     net_kbs float
     status str
-    user str
+    cpu_s str
+    mem_s str
+    disk_s str
+    net_s str
 }
 
 type DiskInfo {
     name str
     mount str
-    total_mb int
-    avail_mb int
+    total_gb float
+    used_gb float
+}
+
+type CoreInfo {
+    name str
+    usage float
+}
+
+type UserInfo {
+    name str
+    proc_count int
+    mem_mb int
 }
 
 type Snapshot {
-    summary SysSummary
+    summary ?SysSummary
     procs []ProcInfo
     disks []DiskInfo
-    users []str
-    cores []float
+    cores []CoreInfo
+    users []UserInfo
 }

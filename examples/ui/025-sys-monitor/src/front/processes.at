@@ -1,82 +1,56 @@
-// src/front/processes.at — Process Manager view
-// Displays KPI tiles, action bar, alert-dialog for process termination, and 6-column sortable process table.
-
+// src/front/processes.at — Process list. PLAN-684：去选中横幅；右键结束；
+// 紧凑表 + 1 位小数显示串；名称窄列。
 use sys_store: SysStore
 
 widget ProcessesView {
     msg {
         SelectProc(int), RequestKill, CancelKill, ConfirmKill,
+        RowCtx(int), CloseCtx,
         SortName, SortCpu, SortMem, SortDisk, SortNet
     }
 
     view {
-        col (style: "gap-6") {
-            // ---- Top Summary KPI Tiles (Win11 Task Manager Style) ----
-            row (style: "grid grid-cols-2 md:grid-cols-4 gap-4") {
-                col (style: "rounded-lg border bg-card p-4 gap-1 shadow-sm") {
+        col (style: "gap-3") {
+            row (style: "grid grid-cols-2 md:grid-cols-4 gap-2") {
+                col (style: "rounded-lg border bg-card px-3 py-2 gap-0.5 shadow-sm") {
                     row (style: "items-center justify-between") {
-                        text "CPU" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wider" }
-                        span (style: "w-2 h-2 rounded-full bg-[#2563eb]") {}
+                        text "CPU" { style: "text-[10px] font-semibold text-muted-foreground uppercase" }
+                        span (style: "w-1.5 h-1.5 rounded-full bg-[#2563eb]") {}
                     }
-                    text .store.cpuLabel { style: "text-2xl font-bold tracking-tight" }
-                    text f"${.store.cpuCount} 核 · ${.store.cpuBrand}" { style: "text-xs text-muted-foreground truncate" }
+                    text .store.cpuLabel { style: "text-lg font-bold tabular-nums" }
+                    text f"${.store.cpuCount} 核" { style: "text-[10px] text-muted-foreground truncate" }
                 }
-                col (style: "rounded-lg border bg-card p-4 gap-1 shadow-sm") {
+                col (style: "rounded-lg border bg-card px-3 py-2 gap-0.5 shadow-sm") {
                     row (style: "items-center justify-between") {
-                        text "内存" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wider" }
-                        span (style: "w-2 h-2 rounded-full bg-[#16a34a]") {}
+                        text "内存" { style: "text-[10px] font-semibold text-muted-foreground uppercase" }
+                        span (style: "w-1.5 h-1.5 rounded-full bg-[#16a34a]") {}
                     }
-                    text .store.memLabel { style: "text-2xl font-bold tracking-tight" }
-                    text f"物理内存已用 ${.store.memUsedMb} MB" { style: "text-xs text-muted-foreground truncate" }
+                    text .store.memLabel { style: "text-lg font-bold tabular-nums" }
+                    text f"已用 ${.store.memUsedMb} MB" { style: "text-[10px] text-muted-foreground truncate" }
                 }
-                col (style: "rounded-lg border bg-card p-4 gap-1 shadow-sm") {
+                col (style: "rounded-lg border bg-card px-3 py-2 gap-0.5 shadow-sm") {
                     row (style: "items-center justify-between") {
-                        text "磁盘吞吐" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wider" }
-                        span (style: "w-2 h-2 rounded-full bg-[#8b5cf6]") {}
+                        text "磁盘" { style: "text-[10px] font-semibold text-muted-foreground uppercase" }
+                        span (style: "w-1.5 h-1.5 rounded-full bg-[#8b5cf6]") {}
                     }
-                    text .store.diskLabel { style: "text-2xl font-bold tracking-tight" }
-                    text f"${.store.disks.len()} 个驱动器卷挂载" { style: "text-xs text-muted-foreground truncate" }
+                    text .store.diskLabel { style: "text-lg font-bold tabular-nums" }
+                    text f"${.store.disks.len()} 卷" { style: "text-[10px] text-muted-foreground truncate" }
                 }
-                col (style: "rounded-lg border bg-card p-4 gap-1 shadow-sm") {
+                col (style: "rounded-lg border bg-card px-3 py-2 gap-0.5 shadow-sm") {
                     row (style: "items-center justify-between") {
-                        text "网络总吞吐" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wider" }
-                        span (style: "w-2 h-2 rounded-full bg-[#d97706]") {}
+                        text "网络" { style: "text-[10px] font-semibold text-muted-foreground uppercase" }
+                        span (style: "w-1.5 h-1.5 rounded-full bg-[#d97706]") {}
                     }
-                    text .store.netLabel { style: "text-2xl font-bold tracking-tight" }
-                    text f"↑ ${.store.netSentKbs} KB/s  ↓ ${.store.netRecvKbs} KB/s" { style: "text-xs text-muted-foreground truncate" }
+                    text .store.netLabel { style: "text-lg font-bold tabular-nums" }
+                    text f"↑${.store.netSent_s} ↓${.store.netRecv_s}" { style: "text-[10px] text-muted-foreground truncate" }
                 }
             }
 
-            // ---- Action Bar & Kill Double Confirmation ----
-            row (style: "items-center justify-between bg-card p-3 rounded-lg border shadow-sm") {
-                row (style: "items-center gap-3") {
-                    if .store.selected_pid > 0 {
-                        badge (text: f"已选中 PID: ${.store.selected_pid}", variant: "default") {}
-                        text .store.selected_proc_name { style: "text-sm font-semibold" }
-                    } else {
-                        text "请在下方列表中点击选中要管理的进程" { style: "text-sm text-muted-foreground" }
-                    }
-                }
-                row (style: "items-center gap-2") {
-                    if .store.selected_pid > 0 {
-                        button "结束任务" {
-                            onclick: .RequestKill,
-                            style: "px-3 py-1.5 text-xs font-medium rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm"
-                        }
-                    } else {
-                        button "结束任务" {
-                            style: "px-3 py-1.5 text-xs font-medium rounded-md border bg-muted text-muted-foreground opacity-50 cursor-not-allowed"
-                        }
-                    }
-                }
-            }
-
-            // ---- Alert Dialog for Double Confirmation ----
             alert-dialog (open: .store.kill_dialog_open) {
                 alert-dialog-content {
                     alert-dialog-header {
-                        alert-dialog-title "结束任务确认"
-                        alert-dialog-description f"确定要结束进程 ${.store.kill_target_name} (PID: ${.store.kill_target}) 吗？如果该程序有未保存的数据，数据可能会丢失。"
+                        alert-dialog-title "结束任务"
+                        alert-dialog-description f"确定结束 ${.store.kill_target_name} (PID ${.store.kill_target})？未保存数据可能丢失。"
                     }
                     alert-dialog-footer {
                         alert-dialog-cancel "取消" { onclick: .CancelKill }
@@ -85,42 +59,47 @@ widget ProcessesView {
                 }
             }
 
-            // ---- 6-Column Sortable Process Table ----
-            col (style: "rounded-lg border bg-card p-4 gap-3 shadow-sm") {
-                row (style: "items-center justify-between") {
+            if .store.ctx_open {
+                col (style: "fixed inset-0 z-40") {
+                    onclick: .CloseCtx
+                    col {
+                        style: "absolute bg-card border rounded-md shadow-lg py-1 min-w-[120px]"
+                        style: "left:" + .store.ctx_x.to_string() + "px;top:" + .store.ctx_y.to_string() + "px"
+                        row {
+                            onclick: .RequestKill
+                            style: "px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 cursor-pointer"
+                            text "结束进程" {}
+                        }
+                    }
+                }
+            }
+
+            col (style: "rounded-lg border bg-card shadow-sm overflow-hidden") {
+                row (style: "items-center justify-between px-3 py-2 border-b") {
                     row (style: "items-center gap-2") {
                         text "进程列表" { style: "text-sm font-semibold" }
                         badge (text: f"${.store.procCount}", variant: "secondary") {}
                     }
-                    text "点击表头切换排序（名称 / CPU / 内存 / 磁盘 / 网络）" { style: "text-xs text-muted-foreground" }
+                    text "右键结束 · 点表头排序" { style: "text-[10px] text-muted-foreground" }
                 }
-
                 table {
                     table-header {
-                        table-row {
-                            table-head (onclick: .SortName, text: .store.nameH, style: "cursor-pointer select-none") {}
-                            table-head (onclick: .SortCpu, text: .store.cpuH, style: "text-right cursor-pointer select-none") {}
-                            table-head (onclick: .SortMem, text: .store.memH, style: "text-right cursor-pointer select-none") {}
-                            table-head (onclick: .SortDisk, text: .store.diskH, style: "text-right cursor-pointer select-none") {}
-                            table-head (onclick: .SortNet, text: .store.netH, style: "text-right cursor-pointer select-none") {}
-                            table-head (text: "状态", style: "text-center") {}
+                        table-row (style: "bg-muted/30") {
+                            table-head (onclick: .SortName, text: .store.nameH, style: "text-left text-xs text-muted-foreground font-medium px-2 py-1.5 cursor-pointer select-none w-[140px]") {}
+                            table-head (onclick: .SortCpu, text: .store.cpuH, style: "text-right text-xs text-muted-foreground font-medium px-2 py-1.5 cursor-pointer select-none tabular-nums") {}
+                            table-head (onclick: .SortMem, text: .store.memH, style: "text-right text-xs text-muted-foreground font-medium px-2 py-1.5 cursor-pointer select-none tabular-nums") {}
+                            table-head (onclick: .SortDisk, text: .store.diskH, style: "text-right text-xs text-muted-foreground font-medium px-2 py-1.5 cursor-pointer select-none tabular-nums") {}
+                            table-head (onclick: .SortNet, text: .store.netH, style: "text-right text-xs text-muted-foreground font-medium px-2 py-1.5 cursor-pointer select-none tabular-nums") {}
                         }
                     }
                     table-body {
                         for p in .store.procsView {
-                            table-row (key: p.pid, onclick: .SelectProc(p.pid), style: if p.pid == .store.selected_pid { "bg-accent text-accent-foreground cursor-pointer" } else { "cursor-pointer hover:bg-muted/50" }) {
-                                table-cell (text: p.name, style: "font-medium") {}
-                                table-cell (text: f"${p.cpu} %", style: "text-right") {}
-                                table-cell (text: f"${p.mem_mb} MB", style: "text-right") {}
-                                table-cell (text: f"${p.disk_kbs} KB/s", style: "text-right text-muted-foreground") {}
-                                table-cell (text: f"${p.net_kbs} KB/s", style: "text-right text-muted-foreground") {}
-                                table-cell (style: "text-center") {
-                                    if p.status == "running" {
-                                        badge (text: "运行中", variant: "default") {}
-                                    } else {
-                                        badge (text: p.status, variant: "secondary") {}
-                                    }
-                                }
+                            table-row (key: p.pid, onclick: .SelectProc(p.pid), oncontextmenu.prevent: .RowCtx(p.pid), style: if p.pid == .store.selected_pid { "bg-accent text-accent-foreground cursor-pointer" } else { "cursor-pointer hover:bg-muted/40" }) {
+                                table-cell (text: p.name, style: "text-xs font-medium px-2 py-1 truncate max-w-[140px]") {}
+                                table-cell (text: p.cpu_s, style: "text-right text-xs px-2 py-1 tabular-nums") {}
+                                table-cell (text: p.mem_s, style: "text-right text-xs px-2 py-1 tabular-nums") {}
+                                table-cell (text: p.disk_s, style: "text-right text-xs px-2 py-1 tabular-nums text-muted-foreground") {}
+                                table-cell (text: p.net_s, style: "text-right text-xs px-2 py-1 tabular-nums text-muted-foreground") {}
                             }
                         }
                     }
@@ -131,6 +110,8 @@ widget ProcessesView {
 
     on {
         .SelectProc(pid) -> { store.SelectProc(pid) }
+        .RowCtx(pid) -> { store.RowCtx(pid) }
+        .CloseCtx -> { store.CloseCtx() }
         .RequestKill -> { store.RequestKill() }
         .CancelKill -> { store.CancelKill() }
         .ConfirmKill -> { store.ConfirmKill() }
