@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-688
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: sidebar-shell-collapse-responsive
 author: [agent]
 created_at: 2026-09-22
@@ -390,6 +390,29 @@ T-01(c) 勘定：已接线→仅记录；缺失→T-04 在按钮转换臂加 too
 （每步完成后在对应任务下追加 `[✅ 已完成] <证据>` 一行。）
 
 ## 9. 复审记录
+
+### merge 收据 PLAN-688:r2（2026-09-22）
+
+- checkpoint **prepared**：canonical Spec diff=contract.md 交互态 BP 节（26 行）+
+  project.md sidebar-shell 行+INDEX 投影；projection targets=.autoos/specs.json
+  （P688-1 architecture/P688-2 reviews）+docs/specs/auto-lang/ui/plans.md 表行
+  （spec-index.py 再生 INDEX 26 projects）；delivery_commit 候选=worktree 提交
+  25f5f3c2e（doc/projection-only descendant of reviewed d5dc918ca，实现/依赖
+  未变——rebase 后四套门禁绿复核）。
+- checkpoint **landed**：master 前移两次（PLAN-690 簿记竞态）→两轮 rebase；
+  旧→新映射 r1 链 06e792d2e/a4ad7f2e1/d4f7630eb/2115b76e5→66837ae40/7893c5301/
+  2abe95315/d5dc918ca（range-diff：2 全等+2 路径适配[047 rename 跟随]）→再映射
+  终链 8765b9767/27ea3bc3a/d5464853f/dbd10ac60/67937ff69；`git merge --ff-only`
+  成功，master tip=67937ff69=delivery commit（无 merge commit）；落地面复核
+  （contract 交互态 BP 节/specs.json P688-1/plans.md 行/INDEX/examples/bp-admin
+  4 icon 键）+主检出集成冒烟 plan640 5/5+plan649 10/10+plan657 3/3+样式锚 1/1 绿。
+- checkpoint **ledger_refreshed**：.autoos/specs.json（workspace=本仓 .autoos，
+  条目 P688-1/P688-2，indent=1 外科插入）；ui/plans.md 688 行；INDEX.md 再生
+  （spec-index.py 输出 26 projects）。file 字段指向 canonical docs/specs/ 与
+  本归档路径。
+- checkpoint **archived**：本文件 git mv 至 docs/plans/archive/，
+  status: archived，completion_kind: delivered。
+- （cleaned 随后行）
 
 ### review（2026-09-22，r2）
 
