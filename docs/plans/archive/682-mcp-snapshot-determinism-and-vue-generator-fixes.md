@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-682
-status: reviewed
+status: archived
 feature_name: mcp-snapshot-determinism-and-vue-generator-fixes（快照投影确定性 + vue 生成器四缺陷修复批）
 author: [zhaopuming]
 created_at: 2026-09-22T00:00:00+08:00
@@ -254,3 +254,18 @@ detect 并集 + 直接调 `crate::vue_shadcn::materialize(&output_dir,
 - F1a 的 `view_with_debug_gated(true)` 会让每次 view() 都启用探针
   （成本面）——若回归可改条件 `mcp_active`（同 ~21539 口径），执行期
   按实测定。
+
+## 8. 合并收据（PLAN-682:r2，merge session 2026-09-22）
+
+| checkpoint | 证据 |
+|---|---|
+| prepared | reviewed 2f8630e67（r2 pass）→rebase c620bbaae+修复 6830b0b2b+投影 e8bf18647；canonical spec delta=空（复审书面说明在案）；投影目标=specs.json reviews P682-1 / ui plans.md 行 / INDEX 再生（零漂移） |
+| landed | master tip == e8bf18647（--ff-only 无 merge 提交）；rebase 两段（bbb1618e5→e1c73a043）旧→新映射 5f46d99fb→da225aa72/67ffb5312→f508cc42c/20ce3a27c→84b696c15/2f8630e67→c620bbaae/6d245f569→6830b0b2b，range-diff 5/5 全等（安全改写证明） |
+| ledger_refreshed | .autoos/specs.json P682-1 追加后整文件解析+回读断言过；docs/specs/auto-lang/ui/plans.md 682 行；docs/specs/INDEX.md spec-index.py 再生零漂移 |
+| archived | docs/plans/archive/682-mcp-snapshot-determinism-and-vue-generator-fixes.md + status: archived（本提交）；completion_kind: delivered |
+| cleaned | 见随后行（本提交后回填） |
+
+- 合并后下游动作（复审 next 转录）：jade 回执步——三补件按 pattern 断言撤除 +
+  全门对新 exe 复验；auto-down D17（3373a5c）走 auto-down changeset 流。
+- 转告：e85143621（desktop.at pin 同步）未同步 a2vue 金样——
+  test_a2vue_desktop_surface_asset 在 master tip 预存红，归属该提交会话。
