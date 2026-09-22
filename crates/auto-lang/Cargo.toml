@@ -58,7 +58,7 @@ ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
 # Kept independent of a renderer so services and native renderers share one
 # asset registry without making the default build pull image dependencies.
 image-pipeline = ["dep:image", "dep:kamadak-exif"]
-ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "ui-interpreter", "image-pipeline", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog", "native-dock", "native-clipboard", "dep:resvg", "dep:tiny-skia"]
+ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "dep:iced_runtime", "dep:iced_tiny_skia", "ui-interpreter", "image-pipeline", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog", "native-dock", "native-clipboard", "dep:resvg", "dep:tiny-skia"]
 # Plan 413: cross-platform code editor widget (cosmic-text ViEditor engine,
 # syntect/two-face highlighting). Mounted under ui-iced — enabling the iced
 # backend brings the editor along.
@@ -214,6 +214,14 @@ iced_test = { version = "0.14", optional = true }
 # Handle/atlas 通道，理由见 feature `mpv-spike` 处注释）。iced_wgpu 本就是 iced
 # 默认渲染器的依赖，此直接边仅为拿到其 `pub use wgpu` 与 primitive::Pipeline。
 iced_wgpu = { version = "0.14", optional = true }
+# PLAN-683（方案 2 远程 Renderer）：headless 宿主直驱 iced_runtime 的公开
+# `UserInterface`（view → layout → draw 三步，iced_test 同一驱动方式）。
+iced_runtime = { version = "0.14", optional = true }
+# PLAN-683（方案 2 远程 Renderer）：`iced::Renderer` 在本 feature 集下 =
+# fallback::Renderer<wgpu, tiny_skia> 公开枚举——Secondary 臂持
+# iced_tiny_skia::Renderer（纯 CPU 构造，零 wgpu/窗口），draw 后其
+# `layers()` 即延迟栅格化的原语记录层（本计划的截获面）。同版本系直接边。
+iced_tiny_skia = { version = "0.14", optional = true }
 # Plan 411: preview-card copy button (clipboard) — gated behind ui-iced with the renderer.
 arboard = { version = "3", optional = true }
 # Plan 418: native open/save file dialogs (sync API) behind `ui-dialog`.

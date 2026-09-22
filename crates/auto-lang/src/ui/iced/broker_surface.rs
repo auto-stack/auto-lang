@@ -407,7 +407,12 @@ impl<M> iced::widget::canvas::Program<M> for DrawListPainter<M> {
 /// pop 之间的 op 裁剪到矩形内；嵌套 push 自然取交——draft/paste 的组合
 /// 裁剪语义）。空栈 pop / 未闭合 push（编码端违约）宽容不炸：pop =
 /// no-op，未闭合 = 裁到序列尾。
-fn paint_ops(frame: &mut iced::widget::canvas::Frame, ops: &[DrawOp]) {
+/// PLAN-683 T-00：泛型化 canvas 后端（实机 = `iced::Renderer`；headless
+/// 单测 = `()` debug 断言后端——同一降格路径的零 GPU 回放验证）+ pub(crate)。
+pub(crate) fn paint_ops<R>(frame: &mut iced::widget::canvas::Frame<R>, ops: &[DrawOp])
+where
+    R: iced::advanced::graphics::geometry::Renderer,
+{
     use iced::widget::canvas::Text;
     let mut i = 0;
     while i < ops.len() {

@@ -6904,7 +6904,8 @@ fn extract_initials(src: &str) -> String {
 /// 此处以生成端 index.css 的令牌为基(background/foreground 精确换算,
 /// primary 用 indigo-500 基色),扩展色阶由 palette::Extended::generate
 /// 派生(滚动条/选区等默认控件样式随之取色)。
-fn shadcn_theme(dark: bool) -> iced::Theme {
+/// PLAN-683：headless 宿主同源取用（remote 帧与独立轨同主题单源）。
+pub(crate) fn shadcn_theme(dark: bool) -> iced::Theme {
     let (background, text) = if dark {
         // --background: hsl(222.2 47.4% 7%) / --foreground: hsl(210 40% 98%)
         // (Plan 518 stella 重校:dark #141a29 精修蓝黑)

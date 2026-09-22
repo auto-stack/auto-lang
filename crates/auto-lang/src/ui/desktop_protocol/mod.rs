@@ -41,6 +41,10 @@ pub mod demo;
 pub mod dual_mode;
 #[cfg(feature = "ui-iced")]
 pub mod editor_frame;
+/// PLAN-683（方案 2 远程 Renderer）：headless iced 宿主——iced 组件树照常
+/// 构建/布局/绘制，渲染原语经 tiny_skia 记录层截获降格为 DrawList 过线。
+#[cfg(feature = "ui-iced")]
+pub mod headless;
 #[cfg(feature = "ui-iced")]
 pub mod endpoint;
 #[cfg(feature = "ui-iced")]
