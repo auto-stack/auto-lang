@@ -1442,16 +1442,8 @@ widget App {
 
         // ---- R4-T21：Enter 打开选中项（弹层/编辑态守卫）----
         .OpenSelected -> {
-            if !.addr_editing {
-                if !.rename_open {
-                    if !.new_modal_open {
-                        if !.confirm_del_open {
-                            if .selected_id >= 0 {
-                                .OpenItem(.selected_id)
-                            }
-                        }
-                    }
-                }
+            if !.addr_editing && !.rename_open && !.new_modal_open && !.confirm_del_open && .selected_id >= 0 {
+                .OpenItem(.selected_id)
             }
         }
     }
