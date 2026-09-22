@@ -870,9 +870,9 @@ widget App {
     }
 
     view {
-        col (style: "min-h-screen bg-background text-foreground flex flex-col") {
+        col (style: "w-full h-full min-h-screen bg-background text-foreground flex flex-col overflow-hidden") {
             // ---- 顶栏 Header ----
-            row (style: "items-center justify-between px-6 py-3 border-b bg-card") {
+            row (style: "items-center justify-between px-4 py-2 border-b bg-card shrink-0") {
                 row (style: "items-center gap-3") {
                     span (style: "w-8 h-8 rounded-lg bg-primary/20 text-primary flex items-center justify-center font-bold text-base") {
                         text "🗄" {}
@@ -913,7 +913,7 @@ widget App {
             // ---- 主工作区（两栏布局：左侧树导航 + 右侧内容） ----
             row (style: "flex-1 min-h-0") {
                 // ---- 左侧对象树导航(PLAN-618 真树替换平铺按钮) ----
-                col (style: "w-64 border-r bg-card/50 flex flex-col shrink-0") {
+                col (style: "w-52 border-r bg-card/50 flex flex-col shrink-0") {
                     col (style: "p-3 border-b") {
                         input {
                             placeholder: "Filter database objects...",
@@ -1020,27 +1020,27 @@ widget App {
                             }
 
                             // DataTable 表格区
-                            col (style: "flex-1 border rounded-lg overflow-hidden bg-card") {
+                            col (style: "flex-1 border rounded-lg overflow-auto bg-card min-h-0 min-w-0") {
                                 table {
                                     table-header {
                                         table-row {
                                             table-head (onclick: () => { .SortCol("id") }, text: .hId, style: "cursor-pointer select-none font-semibold w-24") {}
-                                            table-head (onclick: () => { .SortCol("col1") }, text: .hCol1, style: "cursor-pointer select-none font-semibold min-w-[180px]") {}
-                                            table-head (text: .hCol2, style: "font-semibold min-w-[150px]") {}
-                                            table-head (text: .hCol3, style: "font-semibold min-w-[120px]") {}
-                                            table-head (text: .hCol4, style: "font-semibold min-w-[120px]") {}
-                                            table-head (text: .hCol5, style: "font-semibold min-w-[120px]") {}
+                                            table-head (onclick: () => { .SortCol("col1") }, text: .hCol1, style: "cursor-pointer select-none font-semibold px-2 py-1 text-xs whitespace-nowrap") {}
+                                            table-head (text: .hCol2, style: "font-semibold px-2 py-1 text-xs whitespace-nowrap") {}
+                                            table-head (text: .hCol3, style: "font-semibold px-2 py-1 text-xs whitespace-nowrap") {}
+                                            table-head (text: .hCol4, style: "font-semibold px-2 py-1 text-xs whitespace-nowrap") {}
+                                            table-head (text: .hCol5, style: "font-semibold px-2 py-1 text-xs whitespace-nowrap") {}
                                             table-head (text: "Actions", style: "w-20 text-right") {}
                                         }
                                     }
                                     table-body {
                                         for i, r in .activeRows {
                                             table-row (key: i) {
-                                                table-cell (text: f"${r.id}", style: "font-mono font-medium text-xs") {}
-                                                table-cell (text: r.col1, style: "font-medium text-xs") {}
-                                                table-cell (text: r.col2, style: "text-xs") {}
-                                                table-cell (text: r.col3, style: "text-xs") {}
-                                                table-cell (text: r.col4, style: "text-xs") {}
+                                                table-cell (text: f"${r.id}", style: "font-mono text-xs px-2 py-1 tabular-nums text-muted-foreground") {}
+                                                table-cell (text: r.col1, style: "text-xs px-2 py-1 font-medium") {}
+                                                table-cell (text: r.col2, style: "text-xs px-2 py-1") {}
+                                                table-cell (text: r.col3, style: "text-xs px-2 py-1") {}
+                                                table-cell (text: r.col4, style: "text-xs px-2 py-1") {}
                                                 table-cell {
                                                     if r.col5 == "Active" || r.col5 == "Shipped" || r.col5 == "200 OK" {
                                                         badge (text: r.col5, variant: "default") {}
