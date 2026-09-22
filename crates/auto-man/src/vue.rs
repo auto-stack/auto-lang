@@ -2183,12 +2183,22 @@ fn generate_index_css(
    bar 需「确定高度」才能检测溢出 —— 与 max-h(限高)不兼容(block 输出限高时
    reka-ui bar 不显示 → 看不见)。故限高容器用原生 overflow-y-auto + 此
    .ash-scroll 样式,视觉与 reka-ui bar 一致(用 --border,随明暗主题)。
-   仅作用于带 .ash-scroll 的元素,不干扰 reka-ui 的 ScrollArea。 */
+   仅作用于带 .ash-scroll 的元素,不干扰 reka-ui 的 ScrollArea。
+   PLAN-692 统一参数表:轨道透明宽 --sb-size+4px,thumb 视觉宽 --sb-size
+   (2px 透明 border + background-clip —— hover 时 border 归零即加宽 2px/侧,
+   不改 scrollbar 布局宽度),按住 active 主色高亮;与 ScrollBar.vue(Reka)
+   同参。size 可由元素内联 style="--sb-size: Npx" 覆盖,缺省 8px。 */
 .ash-scroll { scrollbar-width: thin; scrollbar-color: hsl(var(--border)) transparent; }
-.ash-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.ash-scroll::-webkit-scrollbar { width: calc(var(--sb-size, 8px) + 4px); height: calc(var(--sb-size, 8px) + 4px); }
 .ash-scroll::-webkit-scrollbar-track { background: transparent; }
-.ash-scroll::-webkit-scrollbar-thumb { background-color: hsl(var(--border)); border-radius: 9999px; }
-.ash-scroll::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--muted-foreground)); }
+.ash-scroll::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border));
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.ash-scroll::-webkit-scrollbar-thumb:hover { border-width: 0; background-color: hsl(var(--muted-foreground)); }
+.ash-scroll::-webkit-scrollbar-thumb:active { background-color: hsl(var(--primary)); }
 
 /* PLAN-614 T-10: 悬浮淡入变体——平时完全隐藏,hover 容器时 thumb 以主色
    (primary)半透明浮现(accent 随主题实时跟随,不新增 593 词表 token:

@@ -71,7 +71,7 @@
 //! ### Layout & Navigation (Phase 3)
 //! | AURA Tag | shadcn-vue | Props |
 //! |----------|------------|-------|
-//! | `scroll` | ScrollArea | class, orientation, hide_delay |
+//! | `scroll` | ScrollArea | class, orientation, hide_delay, size (PLAN-692 thumb px → --sb-size) |
 //! | `tabs` | Tabs | v-model, default-value |
 //! | `tab` | TabsTrigger | value, disabled, text→slot |
 //! | `card` | Card | variant, title→slot |
@@ -8097,6 +8097,25 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 if tag == "tooltip-trigger" {
                     attrs.push("as-child".to_string());
                 }
+                // PLAN-692: utility 滚动路径统一滚动条——带 overflow-*-auto 语义类
+                // 的普通容器自动挂 .ash-scroll（与 Reka ScrollArea 同一视觉参数表：
+                // thumb --border 药丸 / hover 加宽加深 / active 主色）。语义 scroll
+                // 元素走 ScrollArea 组件（shadcn 分支），不经此 plain 装配点。
+                {
+                    const OVERFLOW_UTILITIES: [&str; 3] =
+                        ["overflow-y-auto", "overflow-x-auto", "overflow-auto"];
+                    let has_overflow_utility = attrs.iter().any(|a| {
+                        a.starts_with("class=\"")
+                            && OVERFLOW_UTILITIES.iter().any(|c| a.contains(c))
+                    });
+                    if has_overflow_utility {
+                        for a in attrs.iter_mut() {
+                            if a.starts_with("class=\"") {
+                                *a = a.replacen("class=\"", "class=\"ash-scroll ", 1);
+                            }
+                        }
+                    }
+                }
                 let attr_str = if attrs.is_empty() {
                     String::new()
                 } else {
@@ -12552,9 +12571,20 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     );
                     attrs.push(format!(":data-scroll-ctl=\"{}\"", bound));
                 }
-                if let Some(v) = props.get("scrollbar") {
-                    if self.extract_string_value(v).as_deref() == Some("hidden") {
-                        attrs.push("style=\"scrollbar-width:none\"".to_string());
+                // PLAN-692: size prop → --sb-size CSS var（thumb 宽 px；ScrollArea
+                // 组件消费，rail 预留 +6px hover 空间）。与 hidden 内联样式合并。
+                {
+                    let mut style_parts: Vec<String> = Vec::new();
+                    if let Some(size) = props.get("size").and_then(|v| self.extract_int_value(v)) {
+                        style_parts.push(format!("--sb-size: {}px", size));
+                    }
+                    if let Some(v) = props.get("scrollbar") {
+                        if self.extract_string_value(v).as_deref() == Some("hidden") {
+                            style_parts.push("scrollbar-width: none".to_string());
+                        }
+                    }
+                    if !style_parts.is_empty() {
+                        attrs.push(format!("style=\"{}\"", style_parts.join("; ")));
                     }
                 }
                 // scroll hide delay
@@ -21531,8 +21561,63 @@ widget W {
         props.insert("scrollbar".to_string(), AuraPropValue::Expr(Expr::Str("hidden".into())));
         let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &props, &HashMap::new());
         assert!(attrs.iter().any(|a| a.contains(":data-scroll-ctl=\"sc\"")), "{:?}", attrs);
-        assert!(attrs.iter().any(|a| a.contains("scrollbar-width:none")), "{:?}", attrs);
+        assert!(attrs.iter().any(|a| a.contains("scrollbar-width")), "{:?}", attrs);
         assert!(gen.scroll_ctl_helpers_needed, "controller helper injection flag");
+
+        // PLAN-692: size prop → --sb-size 内联 CSS 变量（thumb 宽 px）。
+        let mut gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        props.insert("size".to_string(), AuraPropValue::Expr(Expr::Int(16)));
+        let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &props, &HashMap::new());
+        assert!(attrs.iter().any(|a| a.contains("--sb-size: 16px")), "{:?}", attrs);
+        // size + scrollbar:hidden 合并进同一 style 属性。
+        props.insert("scrollbar".to_string(), AuraPropValue::Expr(Expr::Str("hidden".into())));
+        let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &props, &HashMap::new());
+        let joined = attrs.iter().find(|a| a.starts_with("style=")).expect("style attr");
+        assert!(joined.contains("--sb-size: 16px") && joined.contains("scrollbar-width: none"), "{}", joined);
+    }
+
+    /// PLAN-692: utility 滚动路径（overflow-*-auto 类）统一原生滚动条皮肤——
+    /// plain 装配点对带 overflow-* 语义类的容器自动挂 .ash-scroll；语义 scroll
+    /// 元素走 ScrollArea 组件不挂；无 overflow 的容器不挂。
+    #[test]
+    fn p692_utility_scroll_ash_scroll_class() {
+        // div + overflow-y-auto → 挂 ash-scroll。
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget Test {
+    view {
+        div (style: "flex flex-col h-40 overflow-y-auto border rounded-md p-2") {
+            text "items"
+        }
+    }
+}
+"#);
+        assert!(sfc.contains("ash-scroll"), "expected ash-scroll on overflow container:\n{}", sfc);
+
+        // 无 overflow 的 div → 不挂。
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget Test {
+    view {
+        div (style: "flex flex-col gap-2 border rounded-md") {
+            text "items"
+        }
+    }
+}
+"#);
+        assert!(!sfc.contains("ash-scroll"), "unexpected ash-scroll without overflow:\n{}", sfc);
+
+        // 语义 scroll 元素 → ScrollArea 组件，不挂 ash-scroll。
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget Test {
+    view {
+        scroll (style: "h-40 border rounded-md") {
+            text "items"
+        }
+    }
+}
+"#);
+        assert!(sfc.contains("ScrollArea"), "expected ScrollArea component:\n{}", sfc);
+        assert!(!sfc.contains("ash-scroll"), "scroll element must not get ash-scroll:\n{}", sfc);
     }
 
     #[test]
