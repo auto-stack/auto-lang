@@ -2182,6 +2182,16 @@ fn wrap_example(project_name: &str, components: &str, project_dir: &Path) -> Str
     // PLAN-031 T-06：`--autodesk-rqhost` 标记 → `ClientTarget::Rqhost`
     // （rendezvous 采纳内建 + exit-on-EOF 策略档——宿主 spawn 注入
     // `auto run -r rust -q` 旗标族；旧生成物不识此旗标安全忽略）。
+    // PLAN-693 T-01/T-03：三模式底座 CLI 前置于旧孵化臂——
+    // `--render-mode independent|rq|desktop` + `-q`/`--rq` 糖 +
+    // `--desktop-endpoint` + `--window`/`--title`；底座优先级链 CLI >
+    // AUTO_VM_RENDER env > pac（spawn 透传 `--autodesk-render=` > exe 旁
+    // pac.at）> independent（F-3 关闭口径：remote 族恒显式选用）。rq 臂 =
+    // exe 侧 ensure 孵化（`auto run -q` 宿主语义内联）；desktop 臂 = 不
+    // 孵化直连（端点缺席报错）；显式 CLI independent 覆盖孵化注入（CLI
+    // 顶优先）。同批根修：PLAN-683 给 ClientOpts 加 `remote` 字段时本
+    // 生成器未同步——生成 exe 自此 E0063 不可编（日档无生成物编译门，
+    // 潜伏在案），旧臂补 `remote: false` 归位。
     let native_client_gate = format!(
         r#"let __autodesk_args: Vec<String> = std::env::args().collect();
         let __has_client = __autodesk_args.iter().any(|a| a.starts_with("--autodesk-client="));
@@ -2190,7 +2200,111 @@ fn wrap_example(project_name: &str, components: &str, project_dir: &Path) -> Str
         // 编译轨 spawn 形态（spawn_launcher_outproc 编译产物优先臂）——
         // 与 incubate 同走 broker client（pipe 经 --autodesk-broker 传入）。
         let __has_launcher = __autodesk_args.iter().any(|a| a == "--autodesk-launcher");
-        if __has_client || __has_incubate || __has_launcher {{
+        // PLAN-693：三模式 CLI 解析（未知参数容错透传；显式已知参数畸形
+        // = 报错退出留痕）。
+        let __rc = match auto_lang::ui::desktop_protocol::render_cli::parse_render_cli(
+            &__autodesk_args,
+        ) {{
+            Ok(v) => v,
+            Err(e) => return Err(e.into()),
+        }};
+        // CLI --window/--title = 既有 AUTO_VM_WINDOW/TITLE 的 CLI 形
+        //（env 覆写——pac 烘焙的 env_inits 在前，CLI 在后覆盖）。
+        if let Some((w, h)) = __rc.window {{
+            std::env::set_var("AUTO_VM_WINDOW", format!("{{}}x{{}}", w, h));
+        }}
+        if let Some(t) = &__rc.title {{
+            std::env::set_var("AUTO_VM_TITLE", t);
+        }}
+        // pac 腿：spawn 透传（宿主把 pac desktop_render / --render 注入为
+        // `--autodesk-render=`，注入在前用户在后——rev 取后值）> exe 旁
+        // pac.at（auto build 部署随行形态）。
+        let __pac_leg = __autodesk_args
+            .iter()
+            .rev()
+            .find_map(|a| a.strip_prefix("--autodesk-render=").map(|s| s.to_string()))
+            .or_else(auto_lang::ui::desktop_protocol::render_cli::sidecar_pac_desktop_render);
+        let (__base, __base_log) = auto_lang::ui::desktop_protocol::render_cli::resolve_render_base(
+            __rc.mode,
+            std::env::var("AUTO_VM_RENDER").ok().as_deref(),
+            __pac_leg.as_deref(),
+        );
+        if let Some(l) = &__base_log {{
+            eprintln!("{{}}", l);
+        }}
+        match __base {{
+            // rq 模式（`-q` 语义内联）：exe 侧孵化保活（探活→spawn auto
+            // rqhost→退避）→ rendezvous 采纳 + remote 帧宿主。
+            auto_lang::ui::desktop_protocol::render_cli::RenderBase::Rq => {{
+                // Box<dyn Error> 的 From<_> 非单射（anyhow/miette 等）——
+                // `?`+Into::into 推断二义（E0283 实测）；return 位显式
+                // into（旧臂同款，目标型钉死）。
+                if let Err(e) = auto_lang::ui::desktop_protocol::rqhost::ensure_rqhost_ready() {{
+                    return Err(e.into());
+                }}
+                let __wellknown = auto_lang::ui::desktop_protocol::rqhost::wellknown_pipe();
+                eprintln!("[render] rq 模式：采纳 rqhost daemon（{{__wellknown}}）");
+                let __app_name = "{project_name_snake}".to_string();
+                let (__w, __h) = auto_lang::ui::desktop_protocol::rqhost::vm_window_size();
+                let __component = {main_widget}::default();
+                let __opts = auto_lang::ui::desktop_protocol::client_entry::ClientOpts {{
+                    app_name: __app_name.clone(),
+                    title: std::env::var("AUTO_VM_TITLE").unwrap_or_else(|_| __app_name.clone()),
+                    width: __w,
+                    height: __h,
+                    frame_mode: auto_lang::ui::desktop_protocol::message::FrameMode::Commands,
+                    auto_downgraded: false,
+                    remote: true,
+                }};
+                return auto_lang::ui::desktop_protocol::client_entry::run_native_client(
+                    __component,
+                    __opts,
+                    auto_lang::ui::desktop_protocol::client_entry::ClientTarget::Rqhost {{
+                        wellknown: __wellknown,
+                        app_name: __app_name,
+                    }},
+                )
+                .map_err(Into::into);
+            }}
+            // desktop 模式：虚拟桌面合成器端点——不孵化（桌面已在前），
+            // 端点缺席 = 报错列探测过的 wellknown（AC-03）。
+            auto_lang::ui::desktop_protocol::render_cli::RenderBase::Desktop => {{
+                let Some(__endpoint) = __rc.desktop_endpoint else {{
+                    return Err(format!(
+                        "desktop 模式需要 --desktop-endpoint <pipe>（未指定；探测 wellknown: {{}}——请先启动虚拟桌面或补参）",
+                        auto_lang::ui::desktop_protocol::rqhost::wellknown_pipe(),
+                    )
+                    .into());
+                }};
+                eprintln!("[render] desktop 模式：采纳桌面合成器端点（不孵化）");
+                let __app_name = "{project_name_snake}".to_string();
+                let (__w, __h) = auto_lang::ui::desktop_protocol::rqhost::vm_window_size();
+                let __component = {main_widget}::default();
+                let __opts = auto_lang::ui::desktop_protocol::client_entry::ClientOpts {{
+                    app_name: __app_name.clone(),
+                    title: std::env::var("AUTO_VM_TITLE").unwrap_or_else(|_| __app_name.clone()),
+                    width: __w,
+                    height: __h,
+                    frame_mode: auto_lang::ui::desktop_protocol::message::FrameMode::Commands,
+                    auto_downgraded: false,
+                    remote: true,
+                }};
+                return auto_lang::ui::desktop_protocol::client_entry::run_native_client(
+                    __component,
+                    __opts,
+                    auto_lang::ui::desktop_protocol::client_entry::ClientTarget::Desktop {{
+                        endpoint: __endpoint,
+                        app_name: __app_name,
+                    }},
+                )
+                .map_err(Into::into);
+            }}
+            // independent（缺省/显式）：直落独立窗（下行 iced_entry）。
+            auto_lang::ui::desktop_protocol::render_cli::RenderBase::Independent => {{}}
+        }}
+        // 旧孵化注入臂（PLAN-020/031/039 既有宿主编排面零变化；显式 CLI
+        // 底座已在上方截走——independent 覆盖孵化注入 = CLI 顶优先语义）。
+        if __rc.mode.is_none() && (__has_client || __has_incubate || __has_launcher) {{
             let mut __pipe: Option<String> = None;
             let mut __broker = auto_lang::ui::desktop_protocol::broker::BROKER_PIPE.to_string();
             let mut __render: Option<String> = None;
@@ -2247,6 +2361,9 @@ fn wrap_example(project_name: &str, components: &str, project_dir: &Path) -> Str
                 height: 320.0,
                 frame_mode: __frame_mode,
                 auto_downgraded: __downgraded,
+                // PLAN-683 字段（headless 宿主分岔）——旧孵化编排臂恒
+                // false（remote 族走上方三模式臂；E0063 根修归位）。
+                remote: false,
             }};
             return auto_lang::ui::desktop_protocol::client_entry::run_native_client(
                 __component,
@@ -2311,29 +2428,21 @@ fn main() -> auto_lang::ui::AppResult<()> {{
         // 形态在 tetris 实测确定性 panic，弃）。
         {iced_entry}
     }}
-    #[cfg(feature = "ui-gpui")]
+    // PLAN-691 后随（2026-09-22 用户裁定 auto-lang 侧移除 ui-gpui 休眠
+    // feature）：本生成器残留 emission 令全新工程 cargo resolve 即败
+    //（`auto-lang does not have that feature`——[features] 表声明
+    // `auto-lang/ui-gpui` 被 cargo 惰性校验），GPUI 臂随 feature 一并
+    // 摘除，main 收敛为 iced 单底座。
+    #[cfg(not(feature = "ui-iced"))]
     {{
-        // Plan 020 §5.5：GPUI 臂不接桌面孵化客户端——参数在册报错退出留痕
-        //（v1 限 iced；防静默直跑开窗与孵化预期背离）。
-        if std::env::args().any(|a| a == "--autodesk-incubate" || a.starts_with("--autodesk-client=")) {{
-            return Err("native GPUI 臂不接桌面孵化客户端（Plan 020 v1 限 iced）".into());
-        }}
-        println!("Running with GPUI backend");
-        return auto_lang::ui::gpui::run_app::<{main_widget}>("{project_name}");
-    }}
-    #[cfg(not(any(feature = "ui-iced", feature = "ui-gpui")))]
-    {{
-        Err("No backend enabled! Use --features ui-iced or ui-gpui".into())
-    }}
-}}
+        Err("No backend enabled! Use --features ui-iced".into())
+    }}}}
 "#,
         cleaned = cleaned.trim(),
         at_shims = AT_BUILTIN_METHOD_SHIMS,
         env_inits = env_inits,
         native_client_gate = native_client_gate,
         iced_entry = iced_entry,
-        main_widget = main_widget,
-        project_name = to_snake_case(project_name),
     )
 }
 
@@ -2745,7 +2854,6 @@ version = "0.1.0"
 edition = "2021"
 {bin_block}
 [features]
-ui-gpui = ["auto-lang/ui-gpui"]
 ui-iced = ["auto-lang/ui-iced"]
 default = ["ui-iced", "auto-lang/default"]
 
@@ -4348,6 +4456,42 @@ mod tests {
             main_rs.contains("ClientTarget::Rqhost"),
             "Rqhost 目标臂在场"
         );
+        // 既有直连/broker 臂不回退（I2）。
+        assert!(main_rs.contains("ClientTarget::Direct"));
+        assert!(main_rs.contains("ClientTarget::Broker"));
+    }
+
+    /// PLAN-693 T-01/T-03：生成 main 的三模式 CLI 臂在场——`--render-mode`/
+    /// `-q`/`--rq` 解析与优先级链单源调用、rq 臂（exe 侧 ensure 孵化 +
+    /// remote 帧宿主）、desktop 臂（`--desktop-endpoint` 缺席报错 + 不孵化
+    /// 目标）；旧孵化臂零变化（I2）+ ClientOpts `remote:` 字段归位
+    ///（PLAN-683 E0063 潜伏缺口根修 pin——生成物无日档编译门，字符串
+    /// 锚点即最小防线）。
+    #[test]
+    fn generated_main_has_tri_mode_cli_gate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("p693-app");
+        std::fs::create_dir_all(project.join("src").join("front")).unwrap();
+        std::fs::write(
+            project.join("src").join("front").join("app.at"),
+            "widget P693App { model { var count int = 0 } view { text `c: ${.count}` } }\n",
+        )
+        .unwrap();
+        let components = "use auto_lang::ui::{Component, View};\npub struct P693App { pub count: i64 }\nimpl Component for P693App { type Msg = i64; fn view(&self) -> View<Self::Msg> { View::new() } }\n";
+        let main_rs = wrap_example("p693-app", components, &project);
+        // 三模式 CLI 解析 + 优先级链单源调用（CLI > env > pac > 独立轨）。
+        assert!(main_rs.contains("render_cli::parse_render_cli"), "解析单源在场");
+        assert!(main_rs.contains("render_cli::resolve_render_base"), "优先级链单源在场");
+        // rq 臂：exe 侧孵化保活 + Rqhost 采纳。
+        assert!(main_rs.contains("rqhost::ensure_rqhost_ready"), "exe 侧孵化在场");
+        assert!(main_rs.contains("ClientTarget::Rqhost"));
+        // desktop 臂：不孵化直连 + 端点缺席报错（AC-03 生成面）。
+        assert!(main_rs.contains("ClientTarget::Desktop"));
+        assert!(main_rs.contains("--desktop-endpoint"));
+        assert!(main_rs.contains("请先启动虚拟桌面"));
+        // remote 字段归位（E0063 根修 pin）：rq/desktop 两臂 true + 旧臂 false。
+        assert_eq!(main_rs.matches("remote: true").count(), 2, "rq/desktop 臂 remote 帧宿主");
+        assert!(main_rs.contains("remote: false"), "旧孵化臂 E0063 归位");
         // 既有直连/broker 臂不回退（I2）。
         assert!(main_rs.contains("ClientTarget::Direct"));
         assert!(main_rs.contains("ClientTarget::Broker"));

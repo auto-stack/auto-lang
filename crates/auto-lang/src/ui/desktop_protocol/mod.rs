@@ -63,6 +63,10 @@ pub mod remote;
 /// 多窗 daemon + 输入路由；`auto run -q` 第四形态）。
 #[cfg(feature = "ui-iced")]
 pub mod rqhost;
+/// PLAN-693 —— a2r exe 三模式 CLI（independent/rq/desktop 底座参数化 +
+/// 优先级链 CLI > env > pac > independent；F-3 关闭口径的解析单源）。
+#[cfg(feature = "ui-iced")]
+pub mod render_cli;
 /// PLAN-690 T-02 —— daemon 窗 IME 激活门控（Windows IMM 直写；内部
 /// 自带平台 cfg，非 Windows 宿主为 no-op 观测行）。
 #[cfg(feature = "ui-iced")]
