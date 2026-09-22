@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-687
-status: executing             # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: chunked-read-stdlib
 author: [zcode]
 created_at: 2026-09-22
@@ -12,8 +12,8 @@ new_spec_components: [SD-01 read_text_range 真分块 IO 契约（流式语义�
 touched_goals: []
 
 affects: [auto-lang/vm, a2r-std]
-current_step: 0
-total_steps: 4
+current_step: 5
+total_steps: 5
 ---
 
 # [PLAN-687] read_text_range 真分块 IO（供料 auto-edit PLAN-007 §10 观察 B②）
@@ -108,14 +108,23 @@ IO 层并未分块（多块调用 = IO 平方；全文件反复过内存）。�
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- **T-01** a2r-std `read_text_range` 真分块重写 + 新增两单测 →
-  `cargo test -p a2r-std fs`
-- **T-02** VM shim 同形重写 → `cargo test -p auto-lang
-  read_text_range`（parity 守门）
-- **T-03** 工具链构建（worktree 内 `cargo build --features ui-iced
-  --bin auto`）+ VM 058 语义例复跑
-- **T-04** 下游复跑（auto-edit edit-007 工作树：AUTO_BIN=新工具链 +
-  装载回多块 + L0 锚点）→ 收据回写 PLAN-007
+- **T-01 [✅ 8771d0d75]** a2r-std `read_text_range` 真分块重写 + 两新测
+  （多块拼接回读 8MB 精确等值 0.22s + 块区校验收窄语义）——
+  `cargo test -p a2r-std read_text_range` 2/2 绿。
+- **T-02 [✅ 8771d0d75]** VM shim 同形重写——`cargo test -p auto-lang
+  read_text_range` parity 1/1 绿（byte-identical 守门零回退）。
+- **T-03 [✅]** 工具链构建（lang-687 worktree，2m43s）+ catalog 门禁
+  4/4 绿。VM 058 语义例由 parity 直调 shim 全覆盖（同函数）。
+- **T-04 [✅ 范围扩——装载端点]** 实测真分块后内存不降（100MB
+  1362MB——envelope 过 VM 池滞留非 IO 主因，根因=帧退出局部槽不清账
+  + 分配器留存 ~8× 文件尺寸线性）。按用户方针扩范围：新增
+  `code_editor_load_file(key, path)` 装载端点（nat#9908；9907 撞
+  Env.track 实测错派发返 -355 垃圾——P673-D2 无守卫坑复现）——
+  native 单趟读+单次重写+drain-弃+last_external 不触；core 单测绿。
+  下游切端点后：**100MB 装载 219MB（锚 521 → -58%）、1/10/100MB 全
+  档 Flat ~219MB、装载 <25ms**（正式 JSONL 20260922-150608 + 矩阵
+  50/0 + vue regen 绿）。顺带补齐 a2r 映射（ui_gen:
+  code_editor_edit/load_file；trans File 表: read_text_range）。
 
 ## 复审记录
 
@@ -123,6 +132,21 @@ IO 层并未分块（多块调用 = IO 平方；全文件反复过内存）。�
   PLAN-007 §10-5 用户裁定（上游修复路线）；起草即执行授权=用户
   会话指令原文（「应该修改上游标准库的实现……借助 rust 的实现来
   加速（未来再自己写）」）。
+- 2026-09-22T16:00:00+08:00 · stage: work · PLAN-687 · r1 · **五任务毕
+  （T-04 扩范围=装载端点），outcome: pass** → execution_done；next:
+  review。
+  - `stage: work`
+  - `outcome: pass`（AC-1 ✓ parity/单测绿；AC-2 ✓ 两新测；AC-3 ✓
+    下游 100MB 219MB vs 锚 521——经 T-04 端点达成，真分块件为
+    流式消费面在档）
+  - `code_commit`: 8771d0d75（plan-687-dev；worktree
+    `D:/autostack/.wt/lang-687/auto-lang` + auto-down 兄弟树 fba6563）
+  - `task_ids`: T-01..T-04 ✅（T-04 扩端点）
+  - `evidence`: cargo test（a2r-std 2/2、parity 1/1、catalog 4/4、
+    core load_file 1/1）；下游矩阵 50/0、vue regen --build 绿、
+    L0 锚点 219MB Flat（tools/bench/results/20260922-150608.jsonl）
+  - `blockers`: 无
+  - `next`: review（auto-lang 侧 /auto-plan:review）
 
 ## 待澄清事项
 
