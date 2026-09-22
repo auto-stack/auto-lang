@@ -9519,7 +9519,7 @@ impl RustGenerator {
                 a3 = arg(3)?
             )),
             "code_editor_load_file" => Some(format!(
-                "(auto_lang::ui::code_editor::code_editor_load_file(&({a0}), &({a1})).unwrap_or(-1)) as i64",
+                "(auto_lang::ui::code_editor::code_editor_load_file(&({a0}), &({a1})).unwrap_or(-1)) as i32",
                 a0 = arg(0)?,
                 a1 = arg(1)?
             )),
