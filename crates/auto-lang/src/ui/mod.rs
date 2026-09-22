@@ -158,6 +158,10 @@ pub mod autodown_render;
 #[cfg(feature = "autodown")]
 pub mod autodown_blocks;
 
+// PLAN-084 T-01b: VM 轨 LaTeX→Unicode 数学符号转换（真渲染 bounded 子集）。
+#[cfg(feature = "autodown")]
+pub mod autodown_math;
+
 // Plan 019 Phase 3: autodown 文档编辑壳（cosmic-text 块缓冲 + 焦点导航）。
 // 双 feature 门控：块模型单源（autodown）× cosmic-text 栈（code-editor）。
 #[cfg(all(feature = "autodown", feature = "code-editor"))]

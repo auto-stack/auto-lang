@@ -350,7 +350,12 @@ fn render_inlines<M: Clone + std::fmt::Debug>(inlines: &[InlineSpan]) -> View<M>
                 .iter()
                 .filter(|s| !s.text.is_empty())
                 .map(|s| crate::ui::view::RichSpanView {
-                    content: s.text.clone(),
+                    // PLAN-084 T-01b: math_inline span 内容 LaTeX→Unicode（真渲染）
+                    content: if s.attrs.iter().any(|a| a.key == "math_inline") {
+                        crate::ui::autodown_math::latex_to_unicode(&s.text)
+                    } else {
+                        s.text.clone()
+                    },
                     style: Style::parse(&span_class(s)).ok(),
                 })
                 .collect();
@@ -859,7 +864,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 style: Style::parse(chrome.header.unwrap_or("")).ok(),
                 onclick: None, on_right_click: None,
             };
-            let body = format!("$$\n{}\n$$", spansText(b.inlines.clone()));
+            let body = format!("$$\n{}\n$$", crate::ui::autodown_math::latex_to_unicode(&spansText(b.inlines.clone())));
             let code_area = View::Container {
                 child: Box::new(styled_text(body, chrome.body_text)),
                 padding: 0,
@@ -1573,7 +1578,8 @@ mod tests {
         let View::Container { child: h, .. } = &parts[0] else { panic!("header") };
         assert_eq!(text_of(h), "math \u{00b7} web-only");
         let View::Container { child: body, .. } = &parts[1] else { panic!("body") };
-        assert_eq!(text_of(body), "$$\nE=mc^2\n$$");
+        // PLAN-084 T-01b: math block 正文 LaTeX→Unicode（^2 → ²）。
+        assert_eq!(text_of(body), "$$\nE=mc²\n$$");
     }
 
     /// PLAN-084 T-01：inline math（`$...$`）视觉兜底——math_inline attr
