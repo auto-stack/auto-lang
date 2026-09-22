@@ -76,6 +76,18 @@ time.sleep(0.5)
 client.screenshot("converter_vm_decimal")
 ```
 
+**现成门禁脚本**：BP 消费型应用（bps-gallery 型，侧栏卡片 → 详情）的
+VM 臂点击链有专用 E2E 门禁 `scripts/test_bp_gallery_click.py`
+（PLAN-685 T-03）——起独立端口实例 → 首帧竞态探针（`selected_id` 非
+空即签名）→ 按 `blueprints/` 目录解析卡片并 press ≥3 个跨 kind 条目 →
+断言 `selected_id == 所点 id` 且详情区渲染该 bp spec/gotchas 正文。
+```bash
+python .agents/skills/autoui-verifier/scripts/test_bp_gallery_click.py \
+    --auto-bin <auto.exe> --app-dir examples/bps-gallery --runs 2
+```
+exit 0 = 通过；`--runs N` 兼作首启竞态频率计（T-04）。脚本只按 PID
+收杀自己拉起的实例。
+
 ### 步骤 2：Vue 模式自动化交互与截图
 启动 Vite 后，运行 Playwright 脚本（参考 `scripts/test_vue_playwright.mjs`）生成 `converter_vue_initial.png` 与 `converter_vue_decimal.png`。
 
