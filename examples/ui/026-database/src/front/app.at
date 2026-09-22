@@ -877,7 +877,7 @@ widget App {
                     span (style: "w-6 h-6 rounded bg-primary/20 text-primary flex items-center justify-center text-sm shrink-0") {
                         text "🗄" {}
                     }
-                    h1 "Database Studio" { style: "text-sm font-bold tracking-tight shrink-0" }
+                    h1 "Database Studio" { style: "text-sm font-bold tracking-tight shrink-0 leading-none m-0 py-1" }
                     badge (text: "SQLite 3.45", variant: "secondary") {}
                     text "northwind.db" { style: "text-xs text-muted-foreground truncate" }
                 }
