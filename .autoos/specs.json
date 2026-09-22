@@ -5449,6 +5449,18 @@
      "status": "published",
      "created": "2026-09-18",
      "last_modified": "2026-09-18"
+    },
+    {
+     "id": "P686-1",
+     "title": "layout-test-expectation-sync — ui::layout 期望值同步 56（526 T24 漏同步勘正）+三处同值同步规则",
+     "content": "TASKBAR_HEIGHT 48→56（be2c17d62/PLAN-526 T24）改常量漏同步测试期望：14 测 26 期望值 752/376→744/372+4 处陈旧注释+常量 doc 补三处同步面互指；layout_cases.json reservedTaskbar 48→56 全表重算（grid_nine expectedLast→[853.333,496,426.667,248]）+表头同步规则；auto-man wm/layout.ts TASKBAR_HEIGHT 48→56（Taskbar.vue 实渲染 h-14=56 而预留 48 的 Vue 轨同症对齐）。勘正归因：代码红非环境红（固定视口纯函数零实时度量；372≠376=(56−48)/2；历史数量浮动 6↔9↔15=nextest fail-fast 截停假象），债册 R-11/P576 误归因划线留史；spec SD-01 三处同值规则入 ui/overview.md。门=干净树基线 14 红复现→修后 ui::layout 25/25+parity 17/0（exit 0）+普查 5431 测 8 红全预存（musk p053/p054×6+counter×1+shell_pack×1 跨仓 .at 双源漂移，与 diff 零交集构造性证明）。",
+     "file": "docs/plans/archive/686-layout-test-expectation-sync.md",
+     "related": [
+      "PLAN-686"
+     ],
+     "status": "published",
+     "created": "2026-09-22",
+     "last_modified": "2026-09-22"
     }
    ]
   },
@@ -7041,6 +7053,11 @@
      "title": "rq-style-parity 收口复审与合并收据",
      "content": "收口复审 pass（收缩版，2026-09-22 用户裁定：004 修后目视等未竟验收弃做）。rebase 完整性=零文本冲突但 2/4 patch-id 不等，range-diff 逐项定性良性（commit1 测试构造器适配 678 proj_center_off 双向意图保留；commit4 hunk 边界随基座位移折行语义不变）；git 文本静默合并漏一枚语义缺口=678 平移通道 ops 穷尽 match 未含 679 新增 DrawOp::QuadR（E0004 两处），补臂提交 5a629a54e（语义与 679 自有 shift_draw_op 同构：rect 平移 color/radius 保留）；内容级特征存活核查（theme fn 16 用点/常量代码残留 0[6 处命中全注释]/autocenter+flex 共存）。门禁：check -p auto 0 err+desktop_protocol --no-fail-fast 193/194（唯一红=预存同败实证）+fit 20/20+typing 2/2；p508_g2_outproc_arm 首跑红=cargo build -p auto 刷新后绿（在案陈旧 exe 假红，非回归）；cargo tf 未跑完（>70min 冷编+test-groups 串行重测，用户裁定尽快收口中止——同基 678 tf 3722/3722 背书，679 增量面已由作用域门覆盖）。F-2 移交 683：新 op 变体落地时全消费者穷尽扫描（本 E0004 为实例）。多会话注记：合并时他方会话 renderer.rs WIP 以补丁保全（.git/foreign-wip-renderer-679merge.patch）→checkout→ff→apply --3way 干净回贴（双方特征共存验证：DASH_TAB_STRIP_H×4+fit-trace×2）。",
      "file": "docs/plans/archive/679-rq-style-parity.md"
+    },
+    {
+     "id": "P686-2",
+     "title": "layout-test-expectation-sync 复审与合并收据",
+     "content": "复审 pass（2026-09-22，同会话复审已声明——证据全部命令级可复现非执行者转述）。reviewed_commit 2a1422353（base 0969326d0）：对提交态复跑 ui::layout 25/25+parity 17 pass/0 fail exit 0；worktree 组 .wt/lang-686（auto-lang+auto-down@a615d693 兄弟依赖位）经 git worktree list 在册。AC-01..05 全 pass（AC-05 普查 8 红=musk×6[564-Q6/R-25 在案]+counter×1[master 预存]+shell_pack×1[auto-os↔auto-lang .at 双源 hash-lock 漂移守卫，pack 五件全 .at 与本 diff [.rs/.json/.ts] 零交集构造性证明，shell.rs 测试 docstring 自述红灯面]）。F-1 勘误（非阻塞）：计划文本估「18 处」实为 26 期望值，簿记已正。范围延伸披露：T-04 layout.ts 生产常量一行（文件头注释自承诺同值+Vue 轨同症），计划内显式声明供裁定。tf 全档未跑（Category B 测试面改动，AGENTS 分级门禁=作用域档；普查 5431 测替证据）。"
     }
    ]
   }
