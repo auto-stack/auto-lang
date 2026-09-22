@@ -20751,7 +20751,14 @@ fn compare_pngs(
                         }
                     } else {
                         let dash_app = state.desktop.dashboard_app.expect("dashboard checked");
-                        let build = || state.split_ref_dashboard().map(|v| dynamic_view(v, false));
+                        // PLAN-041 T-15：面板底色宿主侧实铺（面板 .at 的 chrome
+                        // bg 类在 VM 视图链不落漆，根因另卡 P041-D3）——定位
+                        // 复用 face 卡同款 spare_position（已被证明正确落位，
+                        // 弃自研 spacer 链 Fill 容器被中央化错位面）：
+                        // dark = 任务栏同色系 #272e48 @95%（用户二轮裁定），
+                        // light = 白 10% 浅玻璃。
+                        let build =
+                            || state.split_ref_dashboard().map(|v| dynamic_view(v, false));
                         let dash_client: iced::Element<'_, IcedMessage> = match
                             std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
                         {
@@ -20766,30 +20773,42 @@ fn compare_pngs(
                                 desktop_crash_element()
                             }
                         };
-                        // chrome wrapper：panel 矩形 spacer 链定位定尺寸，.at 内部
-                        // w-full h-full 填充（chrome 不再自带尺寸类）。
-                        iced::widget::container(
-                            iced::widget::row![
-                                iced::widget::Space::new()
-                                    .width(iced::Length::Fixed(panel.x))
-                                    .height(iced::Length::Shrink),
-                                iced::widget::column![
-                                    iced::widget::Space::new()
-                                        .width(iced::Length::Shrink)
-                                        .height(iced::Length::Fixed(panel.y)),
-                                    iced::widget::container(
-                                        dash_client.map(move |m| DM::App(dash_app, m)),
-                                    )
-                                    .width(iced::Length::Fixed(panel.width))
-                                    .height(iced::Length::Fixed(
-                                        panel.height + DASH_TAB_STRIP_H,
-                                    )),
-                                ],
-                            ],
+                        let chrome_card = iced::widget::container(
+                            dash_client.map(move |m| DM::App(dash_app, m)),
                         )
-                        .width(iced::Length::Fill)
-                        .height(iced::Length::Fill)
-                        .into()
+                        .width(iced::Length::Fixed(panel.width))
+                        .height(iced::Length::Fixed(
+                            panel.height + DASH_TAB_STRIP_H,
+                        ))
+                        .style(move |_t| {
+                            let dark = crate::ui::style::iced_adapter::dark_mode();
+                            iced::widget::container::Style {
+                                background: Some(if dark {
+                                    iced::Background::Color(iced::Color::from_rgba(
+                                        0.153, 0.180, 0.282, 0.95,
+                                    ))
+                                } else {
+                                    iced::Background::Color(iced::Color::from_rgba(
+                                        1.0, 1.0, 1.0, 0.10,
+                                    ))
+                                }),
+                                border: iced::Border {
+                                    color: iced::Color::from_rgba(1.0, 1.0, 1.0, 0.15),
+                                    width: 1.0,
+                                    radius: 12.0.into(),
+                                },
+                                ..Default::default()
+                            }
+                        });
+                        spare_position(
+                            chrome_card.into(),
+                            iced::Rectangle {
+                                x: panel.x,
+                                y: panel.y,
+                                width: panel.width,
+                                height: panel.height + DASH_TAB_STRIP_H,
+                            },
+                        )
                     };
                 layers.push(chrome);
                 // face 卡叠合（viewport 绝对格位；占位卡 = 宿主合成面）。
