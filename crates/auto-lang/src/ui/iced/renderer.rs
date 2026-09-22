@@ -20705,8 +20705,11 @@ fn compare_pngs(
                 let (panel, cells) = dashboard_layout(viewport, &faces_view);
                 // R4：卡面 glass 底（stella dash-card 语言——主题感知半透
                 // 明填充，dark=轻提亮/light=白玻璃）。
+                // PLAN-041 追随三轮（用户裁定）：dark = 任务栏同色系
+                // #272e48 @95%（卡自身实底；外层面板框已退役），light =
+                // 白 45% 浅卡沿旧。
                 let card_fill = if crate::ui::style::iced_adapter::dark_mode() {
-                    iced::Color::from_rgba(1.0, 1.0, 1.0, 0.04)
+                    iced::Color::from_rgba(0.153, 0.180, 0.282, 0.90)
                 } else {
                     iced::Color::from_rgba(1.0, 1.0, 1.0, 0.45)
                 };
@@ -20773,33 +20776,16 @@ fn compare_pngs(
                                 desktop_crash_element()
                             }
                         };
+                        // PLAN-041 追随三轮（用户裁定）：外层大框退役——
+                        // 底色改铺 face 卡自身（card_fill 深色支），面板层
+                        // 只承担 .at chrome 定位（透明）。
                         let chrome_card = iced::widget::container(
                             dash_client.map(move |m| DM::App(dash_app, m)),
                         )
                         .width(iced::Length::Fixed(panel.width))
                         .height(iced::Length::Fixed(
                             panel.height + DASH_TAB_STRIP_H,
-                        ))
-                        .style(move |_t| {
-                            let dark = crate::ui::style::iced_adapter::dark_mode();
-                            iced::widget::container::Style {
-                                background: Some(if dark {
-                                    iced::Background::Color(iced::Color::from_rgba(
-                                        0.153, 0.180, 0.282, 0.95,
-                                    ))
-                                } else {
-                                    iced::Background::Color(iced::Color::from_rgba(
-                                        1.0, 1.0, 1.0, 0.10,
-                                    ))
-                                }),
-                                border: iced::Border {
-                                    color: iced::Color::from_rgba(1.0, 1.0, 1.0, 0.15),
-                                    width: 1.0,
-                                    radius: 12.0.into(),
-                                },
-                                ..Default::default()
-                            }
-                        });
+                        ));
                         spare_position(
                             chrome_card.into(),
                             iced::Rectangle {
