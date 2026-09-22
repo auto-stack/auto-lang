@@ -294,8 +294,9 @@ plan340_tests:7444、musk_vm_track_tests:7826，声明带 Plan 编号溯源注�
     节位 tests/reviews 各一）；docs/specs/auto-lang/ui/plans.md 表行；INDEX 再生幂等。
   - `archived`：git mv → docs/plans/archive/691-presplit-subtraction.md，status:
     archived，completion_kind: delivered。
-  - `cleaned`：待本提交后执行（wt-guard 双 worktree → 移除 lang-691/auto-lang +
-    lang-691/auto-down 依赖位 → 分支删 → 组目录清）。
+  - `cleaned`：✅ wt-guard 双 clean（reparse 零）→ auto-down 依赖位归属仓移除 →
+    lang-691/auto-lang 移除 → plan-691-dev 删（was 0236239ae=delivery tip）→ 组目录清。
+    **五 checkpoint 闭环，completion_kind: delivered。**
 
 ## 10. 待澄清事项
 - **Q-1（✅ 已裁定 2026-09-22 用户）**：**gpui 删除**——未来有需要再独立加（且属 auto-ui
