@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-691
-status: execution_done       # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: presplit-subtraction（拆仓前减面瘦身批）
 author: [zcode]
 created_at: 2026-09-22
@@ -9,8 +9,8 @@ plan_revision: 2
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: [docs/design/32-autoui-repo-extraction.md §0 体量口径勘误]
-touched_goals: []
+new_spec_components: [docs/design/32-autoui-repo-extraction.md §0 体量口径勘误, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/architecture.md, docs/specs/auto-lang/project.md, docs/specs/INDEX.md]
+touched_goals: []             # 域内卫生批，无 GOAL-NNN 语义变更（GOAL-007 视觉/parity 面零触及）
 
 affects: [auto-lang/ui, auto-lang/desktop-protocol, auto-lang/tests]
 current_step: 5
@@ -255,9 +255,31 @@ plan340_tests:7444、musk_vm_track_tests:7826，声明带 Plan 编号溯源注�
   master 已前移（690 合入+684/690 归档+692 起草）——merge 阶段须 rebase，
   冲突预估面=Cargo.toml（690 亦改）；③master 主检出 blueprints/ 盘损（他方
   会话作业，68 文件未暂存删除+空嵌套目录）未代处置，需其归属会话或用户路由。
+- 2026-09-22 review（auto-plan:review，**独立性声明：本会话=执行会话，裁定全部从
+  工件重推**——git diff/HEAD 树 grep/增量重跑，不采信执行期自述）：
+  `stage: review | PLAN-691 | r2 | outcome: **pass** | reviewed_commit:
+  24ddad334372acd7681b3a4bb355cec69ed77724 | base: 90d578c08 | deps:
+  auto-down@3373a5c（组内 detached 依赖位）| spec_inputs: design/32 §0,
+  design/autoui/desktop-protocol-v1.md §1.15, specs/auto-lang/{project,ui/*} |
+  验收: AC-01 pass（f876e2661 双 hunk 逐字核，纯注释）；AC-02 pass（HEAD 树渲染面
+  grep 零命中[余=Cargo.toml 两行墓碑注记]；依赖四件全无；**裸 --examples 复审增量
+  重跑=0 错**[p023 门生效直接证据]；examples(build-examples) 0 错@a5c5d0d49 复用
+  理由=T-04 未触 examples）；AC-03 pass=顺延路径（门②证据=master 设计档 :816 labels
+  not-yet/:824/:827 terminal+imagesurface M7-c；Q-2 默认裁定）；AC-04 pass（rename
+  90×R100+2×R09x+test_util/；根残留仅 test_runner；lib.rs 余量=先在 #[path] 定向
+  声明族[见 F-1]；tests.rs=157 声明；t=5451/9 与基线逐位全等+tv/tt/tb/tf 四档回执；
+  告警 351→344 纯减 7 零新增[复审增量对拍]）；AC-05 gates 面 pass（tf 10 红=预存 9+
+  ffi_dual_019 flaky——689 债册"ffi flaky 留档"+684 晚间 tf 基线 10 红双互证+双侧
+  solo 绿；账本三件套=merge 阶段 T-06 设计内）| findings: F-1(info) lib.rs 存先在
+  `#[path="tests/…"]` 定向声明族 ~10 处（plan510/plan608/plan394/plan577×2/
+  gallery_pages/plan632/plan664/plan633/back_proxy…基点即有，非 T-04 缺陷）——与
+  归位后形态不同构，拆仓阶段 2 前可一次归并进 tests.rs（候选，非债）；F-2(info)
+  plan077_integration_tests 死文件（1.3k 行，声明注释态随迁）删除候选待裁定 |
+  route: R-1 worktree 内 4 docs/specs 外部位写（他会话 SD-03，±6 行）内容与实现
+  一致——**裁定 merge 收编并注明来源**（对方会话已按用户裁定退出，退回无主）|
+  next: merge`
 
 ## 10. 待澄清事项
-
 - **Q-1（✅ 已裁定 2026-09-22 用户）**：**gpui 删除**——未来有需要再独立加（且属 auto-ui
   拆分出去之后的事）。git 历史即封存。
 - **Q-2（T-03 内裁定）**：pixels 门②widget 覆盖现状若勘定不达标（terminal M7-c 撞面
