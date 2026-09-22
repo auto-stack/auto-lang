@@ -266,6 +266,328 @@ pub struct FontBlob {
     pub data: Vec<u8>,
 }
 
+// ---------------------------------------------------------------------------
+// 帧载荷 v2（PLAN-683 SD-01 DisplayList v2——方案 2 远程 Renderer wire 载体）
+// ---------------------------------------------------------------------------
+
+/// 帧载荷 v2：v1 DrawList 原语超集（追加式——载荷种类 tag **2**；v1=1 冻结
+/// 不动，旧端拒收 tag 2 与仓内同版发布纪律同 v1 QuadR tag 7 先例）。
+/// v1→v2 逐 op 直搬映射：Quad→Quad(fill=Color,radius=0,border/shadow=None)、
+/// QuadR→Quad(radius 填角)、Text/TextStyled/Scissor/ScissorPop/Image 同形。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DisplayList {
+    /// 清屏色（None = 沿用宿主底色）。
+    pub clear: Option<Rgba8>,
+    /// 绘制序（先到先画，后画盖前）。
+    pub ops: Vec<DisplayOp>,
+}
+
+/// v2 quad 填充：色或线性渐变（原生 stop——T-01 勘定裁定：不做条带展开，
+/// daemon canvas 原生渐变重放；**角度模型**与 iced 同构：start/end 由
+/// rect 中心按 angle 派生，wire 只过 angle + stops）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum Fill {
+    Color(Rgba8),
+    /// 线性渐变：角度（弧度）+ 停点（offset 升序，编码端保证）。
+    LinearGradient { angle: f32, stops: Vec<(f32, Rgba8)> },
+}
+
+/// v2 border 面（内侧描边——iced 语义）。四角半径在 quad 主面。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BorderSpec {
+    pub color: Rgba8,
+    pub width: f32,
+}
+
+/// v2 shadow 面（drop shadow——iced 语义：色/偏移/模糊半径）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShadowSpec {
+    pub color: Rgba8,
+    pub offset: (f32, f32),
+    pub blur: f32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DisplayOp {
+    /// 全参 quad（v1 Quad/QuadR 合并超集）：`radius` = 四角 [TL,TR,BR,BL]。
+    Quad {
+        rect: WRect,
+        fill: Fill,
+        radius: [f32; 4],
+        border: Option<BorderSpec>,
+        shadow: Option<ShadowSpec>,
+    },
+    /// 带字重/斜体的文本 run（v1 TextStyled 同形——daemon 同字体栈重整形，
+    /// 字体经 FontBlob 通道下发 = T-01 勘定裁定：字体下发，非字形栅格过线）。
+    TextStyled {
+        x: f32,
+        y: f32,
+        size: f32,
+        line_height: f32,
+        color: Rgba8,
+        weight: u16,
+        italic: bool,
+        text: String,
+    },
+    /// 压栈裁剪（v1 Scissor 同语义：与当前有效裁剪取交集）。
+    Scissor { rect: WRect },
+    ScissorPop,
+    /// 压栈仿射变换（canvas push/pop_transform 同构）；矩阵 = 行主序
+    /// 2×3 [m00, m01, m10, m11, tx, ty]。作用于后续所有 op 直至配对 pop。
+    Transform { matrix: [f32; 6] },
+    TransformPop,
+    /// 图像引用（v1 Image 同形：src 引用 + 宿主侧解析）。
+    Image { rect: WRect, src: String, fit: ImageFit },
+}
+
+impl DisplayList {
+    /// v1 载荷逐 op 直搬（legacy 生产者 → v2 消费面的适配；语义保真：
+    /// v1 词汇 ⊂ v2）。
+    pub fn from_v1(list: &DrawList) -> Self {
+        let ops = list
+            .ops
+            .iter()
+            .map(|op| match op {
+                DrawOp::Quad { rect, color } => DisplayOp::Quad {
+                    rect: *rect,
+                    fill: Fill::Color(*color),
+                    radius: [0.0; 4],
+                    border: None,
+                    shadow: None,
+                },
+                DrawOp::QuadR { rect, color, radius } => DisplayOp::Quad {
+                    rect: *rect,
+                    fill: Fill::Color(*color),
+                    radius: [*radius; 4],
+                    border: None,
+                    shadow: None,
+                },
+                DrawOp::Text { x, y, size, line_height, color, text } => {
+                    DisplayOp::TextStyled {
+                        x: *x,
+                        y: *y,
+                        size: *size,
+                        line_height: *line_height,
+                        color: *color,
+                        weight: 400,
+                        italic: false,
+                        text: text.clone(),
+                    }
+                }
+                DrawOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
+                    DisplayOp::TextStyled {
+                        x: *x,
+                        y: *y,
+                        size: *size,
+                        line_height: *line_height,
+                        color: *color,
+                        weight: *weight,
+                        italic: *italic,
+                        text: text.clone(),
+                    }
+                }
+                DrawOp::Scissor { rect } => DisplayOp::Scissor { rect: *rect },
+                DrawOp::ScissorPop => DisplayOp::ScissorPop,
+                DrawOp::Image { rect, src, fit } => {
+                    DisplayOp::Image { rect: *rect, src: src.clone(), fit: *fit }
+                }
+            })
+            .collect();
+        Self { clear: list.clear, ops }
+    }
+
+    pub fn encode(&self, out: &mut Vec<u8>) {
+        put_u8(out, 2); // 载荷种类 tag：2 = DisplayList v2
+        match self.clear {
+            Some(c) => {
+                put_bool(out, true);
+                c.encode(out);
+            }
+            None => put_bool(out, false),
+        }
+        put_u32(out, self.ops.len() as u32);
+        for op in &self.ops {
+            match op {
+                DisplayOp::Quad { rect, fill, radius, border, shadow } => {
+                    put_u8(out, 1);
+                    rect.encode(out);
+                    encode_fill(out, fill);
+                    for corner in radius {
+                        put_f32(out, *corner);
+                    }
+                    match border {
+                        Some(b) => {
+                            put_bool(out, true);
+                            b.color.encode(out);
+                            put_f32(out, b.width);
+                        }
+                        None => put_bool(out, false),
+                    }
+                    match shadow {
+                        Some(s) => {
+                            put_bool(out, true);
+                            s.color.encode(out);
+                            put_f32(out, s.offset.0);
+                            put_f32(out, s.offset.1);
+                            put_f32(out, s.blur);
+                        }
+                        None => put_bool(out, false),
+                    }
+                }
+                DisplayOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
+                    put_u8(out, 2);
+                    put_f32(out, *x);
+                    put_f32(out, *y);
+                    put_f32(out, *size);
+                    put_f32(out, *line_height);
+                    color.encode(out);
+                    put_u16(out, *weight);
+                    put_bool(out, *italic);
+                    put_string(out, text);
+                }
+                DisplayOp::Scissor { rect } => {
+                    put_u8(out, 3);
+                    rect.encode(out);
+                }
+                DisplayOp::ScissorPop => {
+                    put_u8(out, 4);
+                }
+                DisplayOp::Transform { matrix } => {
+                    put_u8(out, 5);
+                    for v in matrix {
+                        put_f32(out, *v);
+                    }
+                }
+                DisplayOp::TransformPop => {
+                    put_u8(out, 6);
+                }
+                DisplayOp::Image { rect, src, fit } => {
+                    put_u8(out, 7);
+                    rect.encode(out);
+                    put_string(out, src);
+                    put_u8(out, fit.as_u8());
+                }
+            }
+        }
+    }
+
+    pub fn decode(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let kind = r.u8()?;
+        if kind != 2 {
+            return Err(CodecError::UnknownTag(kind));
+        }
+        let clear = if r.bool()? { Some(Rgba8::decode(r)?) } else { None };
+        let n = r.u32()? as usize;
+        let mut ops = Vec::with_capacity(n.min(1024));
+        for _ in 0..n {
+            match r.u8()? {
+                1 => {
+                    let rect = WRect::decode(r)?;
+                    let fill = decode_fill(r)?;
+                    let mut radius = [0.0f32; 4];
+                    for corner in &mut radius {
+                        *corner = r.f32()?;
+                    }
+                    let border = if r.bool()? {
+                        let color = Rgba8::decode(r)?;
+                        let width = r.f32()?;
+                        Some(BorderSpec { color, width })
+                    } else {
+                        None
+                    };
+                    let shadow = if r.bool()? {
+                        let color = Rgba8::decode(r)?;
+                        let ox = r.f32()?;
+                        let oy = r.f32()?;
+                        let blur = r.f32()?;
+                        Some(ShadowSpec { color, offset: (ox, oy), blur })
+                    } else {
+                        None
+                    };
+                    ops.push(DisplayOp::Quad { rect, fill, radius, border, shadow });
+                }
+                2 => {
+                    let x = r.f32()?;
+                    let y = r.f32()?;
+                    let size = r.f32()?;
+                    let line_height = r.f32()?;
+                    let color = Rgba8::decode(r)?;
+                    let weight = r.u16()?;
+                    let italic = r.bool()?;
+                    let text = r.string()?;
+                    ops.push(DisplayOp::TextStyled {
+                        x,
+                        y,
+                        size,
+                        line_height,
+                        color,
+                        weight,
+                        italic,
+                        text,
+                    });
+                }
+                3 => {
+                    let rect = WRect::decode(r)?;
+                    ops.push(DisplayOp::Scissor { rect });
+                }
+                4 => ops.push(DisplayOp::ScissorPop),
+                5 => {
+                    let mut matrix = [0.0f32; 6];
+                    for v in &mut matrix {
+                        *v = r.f32()?;
+                    }
+                    ops.push(DisplayOp::Transform { matrix });
+                }
+                6 => ops.push(DisplayOp::TransformPop),
+                7 => {
+                    let rect = WRect::decode(r)?;
+                    let src = r.string()?;
+                    let fit = ImageFit::from_u8(r.u8()?)?;
+                    ops.push(DisplayOp::Image { rect, src, fit });
+                }
+                tag => return Err(CodecError::UnknownTag(tag)),
+            }
+        }
+        Ok(Self { clear, ops })
+    }
+}
+
+fn encode_fill(out: &mut Vec<u8>, fill: &Fill) {
+    match fill {
+        Fill::Color(color) => {
+            put_u8(out, 1);
+            color.encode(out);
+        }
+        Fill::LinearGradient { angle, stops } => {
+            put_u8(out, 2);
+            put_f32(out, *angle);
+            put_u32(out, stops.len() as u32);
+            for (offset, color) in stops {
+                put_f32(out, *offset);
+                color.encode(out);
+            }
+        }
+    }
+}
+
+fn decode_fill(r: &mut Reader<'_>) -> Result<Fill, CodecError> {
+    match r.u8()? {
+        1 => Ok(Fill::Color(Rgba8::decode(r)?)),
+        2 => {
+            let angle = r.f32()?;
+            let n = r.u32()? as usize;
+            let mut stops = Vec::with_capacity(n.min(64));
+            for _ in 0..n {
+                let offset = r.f32()?;
+                let color = Rgba8::decode(r)?;
+                stops.push((offset, color));
+            }
+            Ok(Fill::LinearGradient { angle, stops })
+        }
+        tag => Err(CodecError::UnknownTag(tag)),
+    }
+}
+
 /// 帧载荷模式（v1.3 二态；`Welcome` 尾部协商位）。线格式 u8：1 Commands /
 /// 2 Pixels。旧端载荷无此字段 → 解码缺省 Commands（追加式兼容）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -640,6 +962,19 @@ pub enum FrameMsg {
     /// 空闲池（FrameAck 同纪律——app 复用槽必在 Ack 后 = 宿主已读完旧
     /// 载荷，同 id 覆盖时序由此钉死）。
     BitmapAck { wid: u64, slot: u8 },
+    /// app→host。**帧就绪 v2**（PLAN-683 tag 12，DisplayList v2 载荷——
+    /// 方案 2 远程 Renderer 的 remote 模式帧）：字段序 FrameReady 同构，
+    /// 载荷换 `DisplayList`（原语超集；追加式变体——旧端不产不出，
+    /// shm 变体 = v2 载荷写槽 + FrameReadyShared 元数据不变，宿主按槽内
+    /// 载荷种类 tag 分派）。
+    FrameReadyV2 {
+        wid: u64,
+        frame_id: u64,
+        slot: u8,
+        damage: Option<WRect>,
+        revision: u64,
+        payload: DisplayList,
+    },
 }
 
 /// `BufferAlloc.bm` 位图段声明（PLAN-034 D3）：专用第二段的段名/槽数/
@@ -678,6 +1013,7 @@ impl FrameMsg {
     const HIT_TABLE: u8 = 9;
     const BITMAP_READY: u8 = 10;
     const BITMAP_ACK: u8 = 11;
+    const FRAME_READY_V2: u8 = 12;
 
     pub fn encode(&self, out: &mut Vec<u8>) {
         match self {
@@ -800,6 +1136,21 @@ impl FrameMsg {
                 put_u64(out, *wid);
                 put_u8(out, *slot);
             }
+            Self::FrameReadyV2 { wid, frame_id, slot, damage, revision, payload } => {
+                put_u8(out, Self::FRAME_READY_V2);
+                put_u64(out, *wid);
+                put_u64(out, *frame_id);
+                put_u8(out, *slot);
+                match damage {
+                    Some(d) => {
+                        put_bool(out, true);
+                        d.encode(out);
+                    }
+                    None => put_bool(out, false),
+                }
+                put_u64(out, *revision);
+                payload.encode(out);
+            }
         }
     }
 
@@ -902,6 +1253,15 @@ impl FrameMsg {
                 let wid = r.u64()?;
                 let slot = r.u8()?;
                 Self::BitmapAck { wid, slot }
+            }
+            Self::FRAME_READY_V2 => {
+                let wid = r.u64()?;
+                let frame_id = r.u64()?;
+                let slot = r.u8()?;
+                let damage = if r.bool()? { Some(WRect::decode(r)?) } else { None };
+                let revision = r.u64()?;
+                let payload = DisplayList::decode(r)?;
+                Self::FrameReadyV2 { wid, frame_id, slot, damage, revision, payload }
             }
             tag => return Err(CodecError::UnknownTag(tag)),
         })
@@ -2225,7 +2585,162 @@ mod tests {
         bytes[4] = 9;
         assert_eq!(
             ProtocolMsg::decode(&bytes),
-            Err(CodecError::UnsupportedVersion(9))
+            Err(CodecError::UnsupportedVersion(9)),
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // PLAN-683：DisplayList v2 codec（SD-01）
+    // -----------------------------------------------------------------------
+
+    fn sample_v2() -> DisplayList {
+        DisplayList {
+            clear: Some(Rgba8::new(9, 14, 26, 255)),
+            ops: vec![
+                DisplayOp::Quad {
+                    rect: WRect::new(0.0, 0.0, 320.0, 80.0),
+                    fill: Fill::LinearGradient {
+                        angle: 0.0,
+                        stops: vec![
+                            (0.0, Rgba8::new(99, 102, 241, 255)),
+                            (1.0, Rgba8::new(139, 92, 246, 255)),
+                        ],
+                    },
+                    radius: [12.0, 12.0, 12.0, 12.0],
+                    border: Some(BorderSpec { color: Rgba8::new(39, 39, 42, 255), width: 1.0 }),
+                    shadow: Some(ShadowSpec { color: Rgba8::new(0, 0, 0, 128), offset: (0.0, 4.0), blur: 12.0 }),
+                },
+                DisplayOp::Quad {
+                    rect: WRect::new(0.0, 80.0, 320.0, 40.0),
+                    fill: Fill::Color(Rgba8::new(24, 24, 27, 255)),
+                    radius: [8.0, 8.0, 0.0, 0.0],
+                    border: None,
+                    shadow: None,
+                },
+                DisplayOp::TextStyled {
+                    x: 12.0,
+                    y: 92.0,
+                    size: 16.0,
+                    line_height: 21.6,
+                    color: Rgba8::new(248, 250, 252, 255),
+                    weight: 600,
+                    italic: false,
+                    text: "Hello, World!".into(),
+                },
+                DisplayOp::Scissor { rect: WRect::new(0.0, 0.0, 100.0, 100.0) },
+                DisplayOp::Transform { matrix: [1.0, 0.0, 0.0, 1.0, 8.0, 0.0] },
+                DisplayOp::Image { rect: WRect::new(0.0, 0.0, 40.0, 40.0), src: "bitmap://42-avatar".into(), fit: ImageFit::Stretch },
+                DisplayOp::TransformPop,
+                DisplayOp::ScissorPop,
+            ],
+        }
+    }
+
+    /// PLAN-683 AC-04 —— v2 全原语 round-trip（消息信封 FrameReadyV2
+    /// tag 12 同轮）+ 载荷直编 golden 字节锚点 + v1 帧兼容。
+    #[test]
+    fn display_list_v2_round_trip_and_golden() {
+        // round-trip：FrameReadyV2 消息信封（追加式 tag 12）。
+        round_trip(ProtocolMsg::Frame(FrameMsg::FrameReadyV2 {
+            wid: 7,
+            frame_id: 99,
+            slot: 1,
+            damage: Some(WRect::new(1.0, 2.0, 3.0, 4.0)),
+            revision: 5,
+            payload: sample_v2(),
+        }));
+
+        // 载荷直编 round-trip（tag 2 头）。
+        let list = sample_v2();
+        let mut buf = Vec::new();
+        list.encode(&mut buf);
+        assert_eq!(buf[0], 2, "载荷种类 tag = 2（v2）");
+        let mut r = Reader::new(&buf);
+        assert_eq!(DisplayList::decode(&mut r).unwrap(), list);
+
+        // golden：单 op 直编字节锚点（tag 1 quad + gradient fill 2 +
+        // 四角半径 + border/shadow Option 位）。
+        let minimal = DisplayList {
+            clear: None,
+            ops: vec![DisplayOp::Quad {
+                rect: WRect::new(1.0, 2.0, 3.0, 4.0),
+                fill: Fill::LinearGradient {
+                    angle: 1.5707964,
+                    stops: vec![(0.5, Rgba8::new(1, 2, 3, 4))],
+                },
+                radius: [5.0, 6.0, 7.0, 8.0],
+                border: Some(BorderSpec { color: Rgba8::new(9, 10, 11, 12), width: 13.0 }),
+                shadow: None,
+            }],
+        };
+        let mut buf = Vec::new();
+        minimal.encode(&mut buf);
+        let mut expect: Vec<u8> = vec![2, 0, 1, 0, 0, 0, 1]; // kind, clear, len, tag
+        expect.extend_from_slice(&1.0f32.to_le_bytes()); // rect x
+        expect.extend_from_slice(&2.0f32.to_le_bytes());
+        expect.extend_from_slice(&3.0f32.to_le_bytes());
+        expect.extend_from_slice(&4.0f32.to_le_bytes());
+        expect.push(2); // fill kind = gradient
+        expect.extend_from_slice(&1.5707964f32.to_le_bytes()); // angle
+        expect.extend_from_slice(&1u32.to_le_bytes()); // stops len
+        expect.extend_from_slice(&0.5f32.to_le_bytes()); // offset
+        expect.extend_from_slice(&[1, 2, 3, 4]); // color
+        for v in [5.0f32, 6.0, 7.0, 8.0] {
+            expect.extend_from_slice(&v.to_le_bytes()); // 四角半径
+        }
+        expect.push(1); // border 有
+        expect.extend_from_slice(&[9, 10, 11, 12]); // border color
+        expect.extend_from_slice(&13.0f32.to_le_bytes()); // border width
+        expect.push(0); // shadow 无
+        assert_eq!(buf, expect, "DisplayList v2 线格式冻结锚点");
+
+        // 未知 op tag 拒收（追加式纪律）。
+        let bad: Vec<u8> = vec![2, 0, 1, 0, 0, 0, 0x7F];
+        let mut r = Reader::new(&bad);
+        assert!(matches!(DisplayList::decode(&mut r), Err(CodecError::UnknownTag(0x7F))));
+    }
+
+    /// PLAN-683 AC-04 —— v1 帧兼容：v1 载荷 tag=1 解码仍为 DrawList
+    /// （v2 解码器拒收 tag 1——载荷种类互斥，不静默降级）；v1→v2 直搬
+    /// 映射语义保真（全 op 词汇覆盖）。
+    #[test]
+    fn display_list_v2_v1_compat_and_lift() {
+        let v1 = DrawList {
+            clear: Some(Rgba8::new(1, 2, 3, 4)),
+            ops: vec![
+                DrawOp::Quad { rect: WRect::new(0.0, 0.0, 10.0, 10.0), color: Rgba8::new(5, 6, 7, 8) },
+                DrawOp::QuadR { rect: WRect::new(0.0, 0.0, 12.0, 12.0), color: Rgba8::new(9, 10, 11, 12), radius: 6.0 },
+                DrawOp::Text { x: 1.0, y: 2.0, size: 3.0, line_height: 4.0, color: Rgba8::new(13, 14, 15, 16), text: "t".into() },
+                DrawOp::TextStyled { x: 1.0, y: 2.0, size: 3.0, line_height: 4.0, color: Rgba8::new(17, 18, 19, 20), weight: 700, italic: true, text: "s".into() },
+                DrawOp::Scissor { rect: WRect::new(0.0, 0.0, 5.0, 5.0) },
+                DrawOp::ScissorPop,
+                DrawOp::Image { rect: WRect::new(0.0, 0.0, 6.0, 6.0), src: "bitmap://x".into(), fit: ImageFit::Stretch },
+            ],
+        };
+        let mut v1_bytes = Vec::new();
+        v1.encode(&mut v1_bytes);
+        // v1 载荷解码 = DrawList（原路径不动）。
+        let mut r = Reader::new(&v1_bytes);
+        assert_eq!(DrawList::decode(&mut r).unwrap(), v1);
+        // v2 解码器对 v1 载荷 = Err（tag 互斥）。
+        let mut r = Reader::new(&v1_bytes);
+        assert!(matches!(DisplayList::decode(&mut r), Err(CodecError::UnknownTag(1))));
+
+        // 直搬映射：v1 全词汇 → v2 等价（语义保真断言）。
+        let lifted = DisplayList::from_v1(&v1);
+        assert_eq!(lifted.clear, v1.clear);
+        assert!(matches!(lifted.ops[0], DisplayOp::Quad { ref fill, radius, border: None, shadow: None, .. }
+            if matches!(fill, Fill::Color(c) if *c == Rgba8::new(5, 6, 7, 8)) && radius == [0.0; 4]));
+        assert!(matches!(lifted.ops[1], DisplayOp::Quad { radius, .. } if radius == [6.0; 4]));
+        assert!(matches!(&lifted.ops[2], DisplayOp::TextStyled { weight: 400, italic: false, text, .. } if text == "t"));
+        assert!(matches!(&lifted.ops[3], DisplayOp::TextStyled { weight: 700, italic: true, text, .. } if text == "s"));
+        assert!(matches!(lifted.ops[4], DisplayOp::Scissor { .. }));
+        assert!(matches!(lifted.ops[5], DisplayOp::ScissorPop));
+        assert!(matches!(&lifted.ops[6], DisplayOp::Image { src, .. } if src == "bitmap://x"));
+        // lift 后 round-trip 恒等。
+        let mut buf = Vec::new();
+        lifted.encode(&mut buf);
+        let mut r = Reader::new(&buf);
+        assert_eq!(DisplayList::decode(&mut r).unwrap(), lifted);
     }
 }

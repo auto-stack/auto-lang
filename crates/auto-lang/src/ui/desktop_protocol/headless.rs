@@ -19,7 +19,9 @@
 // CPU 后端长期维护。详见 T-00 决策档。
 
 use crate::ui::component::Component;
-use crate::ui::desktop_protocol::message::{DrawList, DrawOp, Rgba8, WRect};
+use crate::ui::desktop_protocol::message::{
+    BorderSpec, DisplayList, DisplayOp, DrawList, DrawOp, Fill, Rgba8, ShadowSpec, WRect,
+};
 use crate::ui::iced::renderer::IntoIcedElement;
 
 use iced::advanced::graphics::text::Text as GfxText;
@@ -55,8 +57,11 @@ pub struct HeadlessSurface<C: Component> {
     height: f32,
     cursor: mouse::Cursor,
     cache: Cache,
-    /// 上帧观测行（未覆盖原语/降格近似——wire v1 词汇面之外的内容）。
+    /// 上帧观测行（未覆盖原语/降格近似——T-01 逐项消解台账，v2 后剩余项）。
     observations: Vec<String>,
+    /// v2 帧待上传位图（Rgba 句柄 → bitmap:// 通道；v1 投影器
+    /// drain_bitmap_uploads 同型缝）。
+    pending_bitmaps: Vec<super::endpoint::BitmapUpload>,
 }
 
 impl<C: Component> HeadlessSurface<C>
@@ -72,11 +77,32 @@ where
             cursor: mouse::Cursor::Unavailable,
             cache: Cache::default(),
             observations: Vec::new(),
+            pending_bitmaps: Vec::new(),
         }
     }
 
-    /// 产一帧（v1 wire 降格——T-01 升 DisplayList v2）。
+    /// 产一帧（v1 wire 降格——legacy/parity 探针面；产线帧走
+    /// [`Self::render_frame_v2`]）。
     pub fn render_frame(&mut self) -> DrawList {
+        let layers = self.drive_and_draw();
+        self.observations.clear();
+        lower_layers(&layers, &mut self.observations)
+    }
+
+    /// 产一帧 v2（PLAN-683 SD-01 remote 模式产线帧）：tiny_skia 记录层 →
+    /// DisplayList v2 原生原语（渐变 stop/四角半径/border/shadow/
+    /// transform/位图通道）。
+    pub fn render_frame_v2(&mut self) -> DisplayList {
+        let layers = self.drive_and_draw();
+        self.observations.clear();
+        self.pending_bitmaps.clear();
+        let mut bitmap_seq = 0usize;
+        lower_layers_v2(&layers, &mut self.observations, &mut self.pending_bitmaps, &mut bitmap_seq)
+    }
+
+    /// 驱动一轮 iced 帧循环：view → UI::build（Cache 复用）→ RedrawRequested
+    /// → draw（tiny_skia 记录）→ 消息回灌组件。返回记录层快照（Clone）。
+    fn drive_and_draw(&mut self) -> Vec<Layer> {
         let mut view = self.component.view();
         crate::ui::iced::renderer::rewrite_viewport_units(&mut view);
         let element: Element<'_, C::Msg> = view.into_iced();
@@ -122,12 +148,10 @@ where
         }
 
         // Secondary 臂拆取 tiny_skia 记录层（fallback 枚举不转发 layers()）。
-        let layers: &[Layer] = match &mut renderer {
-            iced::Renderer::Secondary(tiny) => tiny.layers(),
+        match &mut renderer {
+            iced::Renderer::Secondary(tiny) => tiny.layers().to_vec(),
             iced::Renderer::Primary(_) => unreachable!("headless 宿主恒构造 Secondary 臂"),
-        };
-        self.observations.clear();
-        lower_layers(layers, &mut self.observations)
+        }
     }
 
     /// 远程事件注入（T-02 事件回路径主入口；T-00 首帧 spike 仅渲染）。
@@ -173,6 +197,12 @@ where
     /// 上帧降格观测（未入 wire 的原语——T-01 逐项消解的台账）。
     pub fn observations(&self) -> &[String] {
         &self.observations
+    }
+
+    /// v2 帧位图排水（Rgba/Bytes 句柄 → bitmap:// 上传；泵在
+    /// `drain_bitmap_uploads` 缝消费——v1 投影器同型）。
+    pub fn drain_bitmap_uploads(&mut self) -> Vec<super::endpoint::BitmapUpload> {
+        std::mem::take(&mut self.pending_bitmaps)
     }
 }
 
@@ -284,17 +314,19 @@ fn lower_text(
     match text {
         GfxText::Paragraph { paragraph, position, color, .. } => {
             let Some(paragraph) = paragraph.upgrade() else { return };
-            lower_buffer_runs(
-                paragraph.buffer(),
-                *position,
-                *color,
-                translation,
-                ops,
-            );
+            buffer_runs(paragraph.buffer(), *position, *color, translation, &mut |x, y, size, lh, rgba, weight, text| {
+                ops.push(DrawOp::TextStyled {
+                    x, y, size, line_height: lh, color: rgba, weight, italic: false, text,
+                });
+            });
         }
         GfxText::Editor { editor, position, color, .. } => {
             let Some(editor) = editor.upgrade() else { return };
-            lower_buffer_runs(editor.buffer(), *position, *color, translation, ops);
+            buffer_runs(editor.buffer(), *position, *color, translation, &mut |x, y, size, lh, rgba, weight, text| {
+                ops.push(DrawOp::TextStyled {
+                    x, y, size, line_height: lh, color: rgba, weight, italic: false, text,
+                });
+            });
         }
         GfxText::Cached {
             content,
@@ -331,14 +363,14 @@ fn lower_text(
     }
 }
 
-/// cosmic Buffer 逐行降格。行 y = run 顶（line_top），x = 行首字形 x
-///（居中对齐/缩进行非零）。
-fn lower_buffer_runs(
+/// cosmic Buffer 逐行提取（v1/v2 降格共用——run 顶锚 + 行首字形 x +
+/// 首字形字号/字重；emit 回调落各自的 op 词汇）。
+fn buffer_runs(
     buffer: &cosmic_text::Buffer,
     position: iced::Point,
     color: iced::Color,
     translation: iced::Vector,
-    ops: &mut Vec<DrawOp>,
+    mut emit: impl FnMut(f32, f32, f32, f32, Rgba8, u16, String),
 ) {
     let rgba = to_rgba8(color);
     for run in buffer.layout_runs() {
@@ -348,16 +380,15 @@ fn lower_buffer_runs(
         } else {
             first.font_size * 1.3
         };
-        ops.push(DrawOp::TextStyled {
-            x: position.x + translation.x + first.x,
-            y: position.y + translation.y + run.line_top,
-            size: first.font_size,
-            line_height: line_h,
-            color: rgba,
-            weight: first.font_weight.0,
-            italic: false,
-            text: run.text.to_string(),
-        });
+        emit(
+            position.x + translation.x + first.x,
+            position.y + translation.y + run.line_top,
+            first.font_size,
+            line_h,
+            rgba,
+            first.font_weight.0,
+            run.text.to_string(),
+        );
     }
 }
 
@@ -411,6 +442,283 @@ fn to_wrect(rect: iced::Rectangle) -> WRect {
 fn to_rgba8(color: iced::Color) -> Rgba8 {
     let to_u8 = |v: f32| (v * 255.0).round().clamp(0.0, 255.0) as u8;
     Rgba8::new(to_u8(color.r), to_u8(color.g), to_u8(color.b), to_u8(color.a))
+}
+
+// ---------------------------------------------------------------------------
+// Layer 记录 → DisplayList v2（native 原语——remote 模式产线降格）
+// ---------------------------------------------------------------------------
+
+/// v2 降格（PLAN-683 SD-01）：quad 全参原生（渐变 stop/四角半径/border/
+/// shadow）；文本 run 承接非恒等变换（Transform push/pop 包络——scale+
+/// translate 近似，旋转不可达见观测）；图像句柄 → src 词汇或 bitmap://
+/// 上传通道。mesh（canvas/vector）= v2 词汇面外（G2 词汇表未列），位图
+/// 降级承接为登记债（试点三例无 canvas 面）。
+fn lower_layers_v2(
+    layers: &[Layer],
+    observations: &mut Vec<String>,
+    bitmaps: &mut Vec<super::endpoint::BitmapUpload>,
+    bitmap_seq: &mut usize,
+) -> DisplayList {
+    let mut ops = Vec::new();
+    for (index, layer) in layers.iter().enumerate() {
+        let clipped = index > 0;
+        if clipped {
+            ops.push(DisplayOp::Scissor { rect: to_wrect(layer.bounds) });
+        }
+        for (quad, background) in &layer.quads {
+            lower_quad_v2(quad, background, &mut ops);
+        }
+        for item in &layer.text {
+            lower_text_v2(item.as_slice(), item.transformation(), &mut ops, observations);
+        }
+        for image in &layer.images {
+            lower_image_v2(image, &mut ops, observations, bitmaps, bitmap_seq);
+        }
+        if !layer.primitives.is_empty() {
+            observations.push(format!(
+                "mesh primitive x{}（canvas/vector 面——G2 词汇外，位图降级=登记债 P683-D1）",
+                layer.primitives.len()
+            ));
+        }
+        if clipped {
+            ops.push(DisplayOp::ScissorPop);
+        }
+    }
+    DisplayList { clear: Some(super::client_runtime::bg()), ops }
+}
+
+/// v2 quad：原生全参——Fill（色/渐变 angle+stops）、四角半径、border、
+/// shadow 直落 wire（v1 近似面全部消除）。
+fn lower_quad_v2(
+    quad: &advanced_renderer::Quad,
+    background: &iced::Background,
+    ops: &mut Vec<DisplayOp>,
+) {
+    let rect = to_wrect(quad.bounds);
+    let radius = [
+        quad.border.radius.top_left,
+        quad.border.radius.top_right,
+        quad.border.radius.bottom_right,
+        quad.border.radius.bottom_left,
+    ];
+    let fill = match background {
+        iced::Background::Color(color) => Fill::Color(to_rgba8(*color)),
+        iced::Background::Gradient(gradient) => match gradient {
+            iced::gradient::Gradient::Linear(linear) => Fill::LinearGradient {
+                angle: linear.angle.0,
+                stops: linear
+                    .stops
+                    .iter()
+                    .flatten()
+                    .map(|stop| (stop.offset, to_rgba8(stop.color)))
+                    .collect(),
+            },
+        },
+    };
+    let border = (quad.border.width > 0.0).then(|| BorderSpec {
+        color: to_rgba8(quad.border.color),
+        width: quad.border.width,
+    });
+    let shadow = (quad.shadow.color.a > 0.0
+        && (quad.shadow.blur_radius > 0.0
+            || quad.shadow.offset.x != 0.0
+            || quad.shadow.offset.y != 0.0))
+        .then(|| ShadowSpec {
+            color: to_rgba8(quad.shadow.color),
+            offset: (quad.shadow.offset.x, quad.shadow.offset.y),
+            blur: quad.shadow.blur_radius,
+        });
+    ops.push(DisplayOp::Quad { rect, fill, radius, border, shadow });
+}
+
+/// v2 文本：项级非恒等变换 → Transform 包络（scale+translate 近似——
+/// iced Transformation 未公开矩阵元，旋转/剪切不可达，观测留痕）；run
+/// 几何在变换局部坐标直落。
+fn lower_text_v2(
+    texts: &[GfxText],
+    transformation: iced::Transformation,
+    ops: &mut Vec<DisplayOp>,
+    observations: &mut Vec<String>,
+) {
+    let wrapped = transformation != iced::Transformation::IDENTITY;
+    if wrapped {
+        let translation = transformation.translation();
+        let scale = transformation.scale_factor();
+        ops.push(DisplayOp::Transform {
+            matrix: [scale, 0.0, 0.0, scale, translation.x, translation.y],
+        });
+        if (scale - 1.0).abs() > f32::EPSILON {
+            observations.push(
+                "transform scale 近似（旋转/剪切矩阵元 iced 未公开——P683-D2）".to_string(),
+            );
+        }
+    }
+    for text in texts {
+        match text {
+            GfxText::Paragraph { paragraph, position, color, .. } => {
+                if let Some(paragraph) = paragraph.upgrade() {
+                    buffer_runs(
+                        paragraph.buffer(),
+                        *position,
+                        *color,
+                        iced::Vector::default(),
+                        &mut |x, y, size, lh, rgba, weight, text| {
+                            ops.push(DisplayOp::TextStyled {
+                                x,
+                                y,
+                                size,
+                                line_height: lh,
+                                color: rgba,
+                                weight,
+                                italic: false,
+                                text,
+                            });
+                        },
+                    );
+                }
+            }
+            GfxText::Editor { editor, position, color, .. } => {
+                if let Some(editor) = editor.upgrade() {
+                    buffer_runs(
+                        editor.buffer(),
+                        *position,
+                        *color,
+                        iced::Vector::default(),
+                        &mut |x, y, size, lh, rgba, weight, text| {
+                            ops.push(DisplayOp::TextStyled {
+                                x,
+                                y,
+                                size,
+                                line_height: lh,
+                                color: rgba,
+                                weight,
+                                italic: false,
+                                text,
+                            });
+                        },
+                    );
+                }
+            }
+            GfxText::Cached {
+                content,
+                bounds,
+                color,
+                size,
+                line_height,
+                font,
+                align_x,
+                ..
+            } => {
+                let width = text_width_approx(content, size.0);
+                let x = match align_x {
+                    iced::advanced::text::Alignment::Center => bounds.x - width / 2.0,
+                    iced::advanced::text::Alignment::Right => bounds.x - width,
+                    _ => bounds.x,
+                };
+                ops.push(DisplayOp::TextStyled {
+                    x,
+                    y: bounds.y,
+                    size: size.0,
+                    line_height: line_height.0,
+                    color: to_rgba8(*color),
+                    weight: iced_weight_u16(font.weight),
+                    italic: matches!(
+                        font.style,
+                        iced::font::Style::Italic | iced::font::Style::Oblique
+                    ),
+                    text: content.clone(),
+                });
+            }
+            GfxText::Raw { .. } => {
+                observations.push(
+                    "raw text buffer 省略（编辑器组合态——T-02 IME 面承接）".to_string(),
+                );
+            }
+        }
+    }
+    if wrapped {
+        ops.push(DisplayOp::TransformPop);
+    }
+}
+
+/// v2 图像：句柄 → src 词汇（Path 直通）/ bitmap:// 上传（Rgba 直取；
+/// Bytes 解码）。呈现参数（rotation/opacity/filter）非缺省 → 观测行
+///（v2 Image op 保持 v1 形态——呈现参数追加留后续 tag）。
+fn lower_image_v2(
+    image: &iced::advanced::graphics::image::Image,
+    ops: &mut Vec<DisplayOp>,
+    observations: &mut Vec<String>,
+    bitmaps: &mut Vec<super::endpoint::BitmapUpload>,
+    bitmap_seq: &mut usize,
+) {
+    use iced::advanced::image::Handle;
+
+    let (handle, bounds, rotation, opacity) = match image {
+        iced::advanced::graphics::image::Image::Raster { image, bounds, .. } => (
+            &image.handle,
+            *bounds,
+            image.rotation,
+            image.opacity,
+        ),
+        iced::advanced::graphics::image::Image::Vector { bounds, .. } => {
+            observations.push(format!(
+                "svg 图像降格省略（{bounds:?}——svg 通道=登记债 P683-D3）"
+            ));
+            return;
+        }
+    };
+    let rect = to_wrect(bounds);
+    let src = match handle {
+        Handle::Path(_, path) => path.to_string_lossy().into_owned(),
+        Handle::Rgba { width, height, pixels, .. } => {
+            *bitmap_seq += 1;
+            let local = format!("p683-img-{bitmap_seq}");
+            bitmaps.push(super::endpoint::BitmapUpload {
+                id: super::endpoint::bitmap_local_id(&local),
+                w: *width,
+                h: *height,
+                stride: width * 4,
+                rgba: pixels.to_vec(),
+            });
+            super::endpoint::bitmap_src(&local)
+        }
+        Handle::Bytes(_, bytes) => match decode_image_rgba(&bytes[..]) {
+            Some((w, h, rgba)) => {
+                *bitmap_seq += 1;
+                let local = format!("p683-img-{bitmap_seq}");
+                bitmaps.push(super::endpoint::BitmapUpload {
+                    id: super::endpoint::bitmap_local_id(&local),
+                    w,
+                    h,
+                    stride: w * 4,
+                    rgba,
+                });
+                super::endpoint::bitmap_src(&local)
+            }
+            None => {
+                observations.push("Bytes 图像解码失败（观测省略）".to_string());
+                return;
+            }
+        },
+    };
+    if rotation.0 != 0.0 || (opacity - 1.0).abs() > f32::EPSILON {
+        observations.push(format!(
+            "image 呈现参数（rotation/opacity）非缺省观测省略（{src}）"
+        ));
+    }
+    ops.push(DisplayOp::Image {
+        rect,
+        src,
+        fit: crate::ui::desktop_protocol::message::ImageFit::Stretch,
+    });
+}
+
+/// 编码图像字节 → RGBA（Bytes 句柄解码——repo image 管线同源）。
+fn decode_image_rgba(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+    let img = image::load_from_memory(bytes).ok()?;
+    let rgba = img.to_rgba8();
+    let (w, h) = (rgba.width(), rgba.height());
+    Some((w, h, rgba.into_raw()))
 }
 
 // ================================ 测试 ================================
@@ -487,6 +795,71 @@ mod tests {
         let decoded = DrawList::decode(&mut reader).expect("decode");
         assert_eq!(list, decoded, "003 round-trip 漂移");
         replay_with_paint_ops(&list);
+    }
+
+    /// PLAN-683 T-01（AC-04）—— v2 产线帧：headless 降格产 DisplayList v2
+    /// 全原语（001/003 载体）→ codec round-trip 恒等；v1 降格面与 v2 直搬
+    /// 面（from_v1）语义等价（quad/text 同几何同色）。
+    #[test]
+    fn p683_t01_v2_first_frame_round_trip() {
+        for dir in ["001-helloworld", "003-converter"] {
+            let Some(src) = example_source(dir) else {
+                eprintln!("[p683] skip: {dir} 载体缺席");
+                return;
+            };
+            let component =
+                crate::build_dynamic_component(&src, None).unwrap_or_else(|e| panic!("{dir}: {e}"));
+            let mut surface = HeadlessSurface::new(component, 480.0, 360.0);
+
+            let v1 = surface.render_frame();
+            let lifted = DisplayList::from_v1(&v1);
+            let v2 = surface.render_frame_v2();
+
+            // v2 非空 + 文本在档。
+            assert!(!v2.ops.is_empty(), "{dir} v2 空帧");
+            assert!(
+                v2.ops.iter().any(|op| matches!(op, DisplayOp::TextStyled { .. })),
+                "{dir} v2 无文本"
+            );
+
+            // round-trip 恒等。
+            let mut buf = Vec::new();
+            v2.encode(&mut buf);
+            assert_eq!(buf[0], 2, "{dir} v2 载荷 tag");
+            let mut reader = crate::ui::desktop_protocol::codec::Reader::new(&buf);
+            assert_eq!(DisplayList::decode(&mut reader).unwrap(), v2, "{dir} v2 round-trip 漂移");
+
+            // v1 降格 vs v2 原生：文本 run 集合等价（同组件同驱动的
+            // 两条降格路径文本面一致——run 提取单源）。
+            let texts_of = |list: &DisplayList| -> Vec<(f32, f32, String)> {
+                list.ops
+                    .iter()
+                    .filter_map(|op| match op {
+                        DisplayOp::TextStyled { x, y, text, .. } => Some((*x, *y, text.clone())),
+                        _ => None,
+                    })
+                    .collect()
+            };
+            assert_eq!(texts_of(&lifted), texts_of(&v2), "{dir} 文本面 v1/v2 不一致");
+
+            // 消息信封 round-trip（FrameReadyV2）。
+            let msg = crate::ui::desktop_protocol::message::ProtocolMsg::Frame(
+                crate::ui::desktop_protocol::message::FrameMsg::FrameReadyV2 {
+                    wid: 1,
+                    frame_id: 2,
+                    slot: 0,
+                    damage: None,
+                    revision: 1,
+                    payload: v2.clone(),
+                },
+            );
+            let bytes = msg.encode();
+            assert_eq!(
+                crate::ui::desktop_protocol::message::ProtocolMsg::decode(&bytes).unwrap(),
+                msg,
+                "{dir} FrameReadyV2 信封 round-trip 漂移"
+            );
+        }
     }
 
     /// daemon paint_ops 回放（`()` 后端）——与 broker_surface 的实机重放

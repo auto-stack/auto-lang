@@ -856,6 +856,7 @@ fn msg_name(msg: &ProtocolMsg) -> &'static str {
             super::message::FrameMsg::HitTable { .. } => "Frame::HitTable",
             super::message::FrameMsg::BitmapReady { .. } => "Frame::BitmapReady",
             super::message::FrameMsg::BitmapAck { .. } => "Frame::BitmapAck",
+            super::message::FrameMsg::FrameReadyV2 { .. } => "Frame::FrameReadyV2",
         },
         ProtocolMsg::Input(_) => "Input",
         ProtocolMsg::Control(m) => match m {

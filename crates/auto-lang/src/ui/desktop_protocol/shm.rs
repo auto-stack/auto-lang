@@ -310,6 +310,23 @@ pub fn draw_list_from_slot_payload(payload: &[u8]) -> Result<DrawList, CodecErro
     Ok(list)
 }
 
+/// 从共享内存槽载荷解码 [`DisplayList`] v2（PLAN-683——与 FrameReadyV2
+/// 内嵌载荷同编码；槽内载荷种类 tag 分派由调用侧按首字节判）。
+pub fn display_list_from_slot_payload(
+    payload: &[u8],
+) -> Result<crate::ui::desktop_protocol::message::DisplayList, CodecError> {
+    let mut r = Reader::new(payload);
+    let list = crate::ui::desktop_protocol::message::DisplayList::decode(&mut r)?;
+    r.finish()?;
+    Ok(list)
+}
+
+/// 槽载荷的帧版本分派（PLAN-683 remote 模式）：首字节 = 载荷种类 tag
+///（1 = DrawList v1 / 2 = DisplayList v2）——v2 统一 lift 后交 v2 消费面。
+pub fn frame_payload_kind(payload: &[u8]) -> u8 {
+    payload.first().copied().unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
