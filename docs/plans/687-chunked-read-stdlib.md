@@ -139,7 +139,7 @@ IO 层并未分块（多块调用 = IO 平方；全文件反复过内存）。�
   - `outcome: pass`（AC-1 ✓ parity/单测绿；AC-2 ✓ 两新测；AC-3 ✓
     下游 100MB 219MB vs 锚 521——经 T-04 端点达成，真分块件为
     流式消费面在档）
-  - `code_commit`: 8771d0d75（plan-687-dev；worktree
+  - `code_commit`: aa307c155（plan-687-dev tip；8771d0d75 主体+8eb2a1a71 facade 补丁+aa307c155 位宽修；worktree
     `D:/autostack/.wt/lang-687/auto-lang` + auto-down 兄弟树 fba6563）
   - `task_ids`: T-01..T-04 ✅（T-04 扩端点）
   - `evidence`: cargo test（a2r-std 2/2、parity 1/1、catalog 4/4、
@@ -147,6 +147,11 @@ IO 层并未分块（多块调用 = IO 平方；全文件反复过内存）。�
     L0 锚点 219MB Flat（tools/bench/results/20260922-150608.jsonl）
   - `blockers`: 无
   - `next`: review（auto-lang 侧 /auto-plan:review）
+  - **下游 L2 首跑收据（同日）**：a2r 门通（工具链
+    1856-g8771d0d75）；下游单 iced 启动链 steady 12.7/12.4ms、
+    mem 37MB、拓扑门过；open 段败于**新登记缺口**（a2r 生成物
+    Tick 改 store 后 code_editor 视图不重建/不注册——auto-edit
+    upstream §10 在档，独立于本计划三件）。
 
 ## 待澄清事项
 
