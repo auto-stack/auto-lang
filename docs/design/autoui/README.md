@@ -14,6 +14,7 @@
 | [desktop-shell-and-launcher](desktop-shell-and-launcher.md) | 24 | 桌面 Shell 与 Launcher（M2–M4） | 463/464/465 |
 | [a2ui-composer-analysis](a2ui-composer-analysis.md) | 25* | Google A2UI 技术分析与实现映射（研究输入） | — |
 | [desktop-protocol-v1](desktop-protocol-v1.md) | — | 桌面协议 v1：进程外 App 五通道（孵化/帧/输入/控制/观测）规范 | 386（Stage 2 落地） |
+| [rq-remote-renderer](rq-remote-renderer.md) | — | **RQ 远程 Renderer 架构（方案 2 已裁定）**：iced 组件照常构建/布局/命中，渲染原语经 RecordRenderer 序列化过 RenderQueue，RQHost 重放；含四方案对比裁定记录、方案 3（自有渲染）未来选项与重估触发条件 | 680（立项）/679（对拍驱动） |
 | [diagram-components](diagram-components.md) | — | Diagram 组件家族与 DSL 设计（Mermaid/D2 对标；统一 498/499 交互与 canvas 模型） | 设计先行（建议拆 plan，§8） |
 | [canvas-pointer-events](canvas-pointer-events.md) | — | Canvas 交互 v2：通用指针事件原语（mousemove 限频流/坐标语义/P-list 协议草案/扇区-边命中同源/axisPointer/动画双轨） | 499 |
 | [layout-interaction](layout-interaction.md) | — | 布局件交互原语（row/col/div 的 `hover:` 类消费 + `oncontextmenu` 挂点；HoverArea 共享标志零重建） | 002（origin 535） |
