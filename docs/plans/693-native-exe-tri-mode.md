@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-693
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done       # drafting → executing → execution_done → reviewed → archived
 feature_name: native-exe-tri-mode
 author: [zcode]
 created_at: 2026-09-23
@@ -12,7 +12,7 @@ new_spec_components: [SD-01 a2r exe 三模式 CLI 契约（independent/rq/deskto
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [docs/design/autoui/rq-remote-renderer.md, docs/design/autoui/desktop-protocol-v1.md]
-current_step: 0
+current_step: 4
 total_steps: 5
 ---
 
@@ -141,34 +141,81 @@ remote 族恒显式选用。PLAN-683 F-3 呈报项就此关闭（设计档 §8 �
 
 ## 验收标准
 
-- [ ] AC-01 同一 exe 三参数三形态：independent 自窗/rq 连 daemon/desktop
-      连桌面端点，实机截图三张在档。
-- [ ] AC-02 优先级链测试绿（CLI 压 env 压 pac）。
-- [ ] AC-03 desktop 模式端点缺席 = 干净报错不孵化（单测+实机）。
+- [x] AC-01 同一 exe 三参数三形态：independent 自窗/rq 连 daemon/desktop
+      连桌面端点，实机截图三张在档。（rq-cli / sidecar-pac /
+      desktop-endpoint / independent-cli 四张 + 观测行，
+      reports/p693-tri-mode/）
+- [x] AC-02 优先级链测试绿（CLI 压 env 压 pac）。（render_cli 8/8：
+      priority_chain_cli_beats_env_beats_pac + 缺省/跳过腿）
+- [x] AC-03 desktop 模式端点缺席 = 干净报错不孵化（单测+实机）。
+      （单测双态 3/3 + 实机报错列探测 wellknown 不孵化）
 - [ ] AC-04 desktop 模式实机互连：虚拟桌面端点在位时 003 级交互闭环
-      （依赖 auto-os 侧就绪，跨仓协调项可后置）。
-- [ ] AC-05 F-3 关闭记录在设计档/债册口径在档；既有门禁零新增红。
+      （依赖 auto-os 侧就绪，跨仓协调项可后置）。（rqhost 形态端点
+      合同等价实机已交付——desktop-endpoint.png；真桌面 shell 互连 =
+      T-04 后置，债册 P693-D2）
+- [x] AC-05 F-3 关闭记录在设计档/债册口径在档；既有门禁零新增红。
+      （设计档 §8 在位；desktop_protocol 213 run 211 绿，2 红 stash
+      对照 base 同败全预存零新增）
 
 ## 执行步骤
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] T-01 CLI 解析 + 优先级链：runtime 启动函数参数面（生成 main 透传形
+- [x] T-01 CLI 解析 + 优先级链：runtime 启动函数参数面（生成 main 透传形
       勘定——`ui_gen/rust.rs:12852` 模板 + a2r-std 运行入口）。
       验证：单测（解析矩阵）+ 001 实机三参数。
-- [ ] T-02 `ClientTarget::Desktop` 连接语义（不孵化）+ 报错路径。
+      [✅ 已完成] 2026-09-23 work（abeaf113d）——**实勘勘误**：a2r 生成
+      main 真身 = `auto-man/rust_ui.rs` native_client_gate（计划所引
+      `ui_gen/rust.rs:12852` 系 code-editor e2e 测试内临时 crate，非生成
+      模板；a2r-std 无 UI 运行入口——CLI 解析落点勘定为 auto-lang runtime
+      单源 + 生成 gate 调用，语义不变）。新增
+      `desktop_protocol/render_cli.rs`（解析/优先级链/旁车 pac 单源）+
+      rust_ui.rs gate 三模式臂前置。单测 8/8 + 001 实机（rq CLI 腿/
+      rq sidecar pac 腿/independent CLI 压 sidecar 三观测行 + 截图）。
+- [x] T-02 `ClientTarget::Desktop` 连接语义（不孵化）+ 报错路径。
       验证：单测（替身端点不在/在双态）。
-- [ ] T-03 rq 模式 CLI 化（`-q`/`--rq` 映射现 env 链，env 保留兼容）。
+      [✅ 已完成] client_entry.rs Desktop 变体（adopt 同构 + exit-on-EOF
+      同 rqhost）+ 单测双态 3/3 + 实机（rqhost 形态端点合同等价：
+      desktop-endpoint.png；缺端点干净报错列探测 wellknown）。
+- [x] T-03 rq 模式 CLI 化（`-q`/`--rq` 映射现 env 链，env 保留兼容）。
       验证：001 rq 实机。
+      [✅ 已完成] `-q`/`--rq` 语义糖（解析单源）+ exe 侧
+      ensure_rqhost_ready（`auto run -q` 宿主语义内联）+ 实机（-q 糖采纳
+      +宿主 `auto run -r rust -q` 全链含 host 孵化——AUTO_VM_RENDER env
+      腿自此补通，见 T-01 勘误与报告 README）。
 - [ ] T-04 desktop 模式实机（配合 auto-os 侧端点；跨仓协调项就绪后）。
       验证：AC-04 录证。
-- [ ] T-05 复审收口：F-3 关闭记录落设计档 §8（已预写）+ 债册口径 +
+      （后置在案：依赖 auto-os 桌面 shell 内嵌 rqhost daemon + 管道命名
+      约定对齐（待澄清#1）；desktop 连接契约与 rqhost 形态端点合同等价
+      实机已交付（T-02），余面=真桌面 shell 互连录证——债册 P693-D2。）
+- [x] T-05 复审收口：F-3 关闭记录落设计档 §8（已预写）+ 债册口径 +
       specs 沉淀（SD-01/02）。
+      [✅ 已完成] 设计档 §8 预写核对在位（4dec4f698 随立项落）；
+      债册 P693-D1（rust-workspace 存量 member 陈旧 Cargo.toml ui-gpui
+      行，重生成自然收敛）/P693-D2（T-04 跨仓配对）登记；
+      SD-01/SD-02 delta 与实际一致（render_cli 单源 + Desktop 变体），
+      specs.json upsert 留 merge 段。
 
 ## 复审记录
 
 - draft 交付（2026-09-23）：stage=new，PLAN-693 rev1。outcome=pass。
   next=work（T-04 依赖 auto-os 侧端点就绪，可后置）。
+- work 交付（2026-09-23）：stage=work | plan_id=PLAN-693 | plan_revision=1 |
+  outcome=pass | code_commit=abeaf113d（worktree
+  `D:/autostack/.wt/lang-693/auto-lang`，分支 plan-693-dev，base 4dec4f698；
+  组内依赖位 auto-down detached @3373a5c）| task_ids=T-01,T-02,T-03,T-05
+  （T-04 后置在案）| evidence=render_cli 8/8 + client_entry 3/3 +
+  auto-man generated_main 2/2 + desktop_protocol 213 run 211 绿（2 红
+  stash 对照 base 同败全预存）+ 全域 ad-hoc 套件 5778/5791（13 红全
+  预存：已知清单 12 + P693-D3 外科勘定新增 1，零新增红）+ 001 实机
+  三形态四截图+观测行在档（reports/p693-tri-mode/）| blockers=T-04/AC-04
+  （auto-os 桌面 shell 内嵌 rqhost daemon + 管道命名对齐——unblock 见
+  待澄清#1 与债册 P693-D2）| next=review。
+  执行期增量（随计划暴露的双潜伏缺口根修，同批交付）：①PLAN-683
+  ClientOpts.remote 未同步生成器→生成 exe E0063 不可编（旧臂 remote:false
+  归位+新臂 remote:true——rust 轨 `-q --render=remote` env 链补通）；
+  ②PLAN-691 ui-gpui 移除后生成器残留 emission→fresh 生成 cargo resolve
+  即败（GPUI 臂随 feature 摘除）。
 
 ## 待澄清事项
 
@@ -176,3 +223,6 @@ remote 族恒显式选用。PLAN-683 F-3 呈报项就此关闭（设计档 §8 �
    发布）——T-04 前与 auto-os 侧对齐。
 2. desktop 模式窗口宿主语义 v1 边界（rqhost 窗语义 vs 桌面 WM 深度集成）
    ——v1 取 rqhost 窗语义（本计划），深度集成为 auto-os 侧后续。
+3. （work 期新增）独立窗臂窗尺寸/标题 CLI 面仅作用于三模式臂 v1（旧
+   孵化注入臂保持 480×320 硬编码零变化——宿主编排面窗语义属既有编排
+   契约，I1 边界）；`--window`/`--title` 对旧臂生效与否留 review 裁量。
