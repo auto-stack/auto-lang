@@ -537,9 +537,11 @@ mod plan408_tests {
         ).expect("async handler must compile");
         let code = result.vue_code.clone();
 
-        // 缺口 A: async handler.
-        assert!(code.contains("onMounted(async () =>"),
-            "Init handler with await must be async: {}", code);
+        // 缺口 A: async handler（PLAN-684 rev4/ADR-19 形态——Init 统一发
+        // `async function __autoReplayInit()` + onMounted 调用 + watch(props)
+        // 重放；旧 `onMounted(async () =>` 内联形态已被替换）。
+        assert!(code.contains("async function __autoReplayInit()"),
+            "Init handler with await must be async (ADR-19 replay form): {}", code);
         // 缺口 B: props access in handler body.
         assert!(code.contains("props.path"),
             "handler body prop access must use props. prefix: {}", code);

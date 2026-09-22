@@ -3258,7 +3258,7 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
 "#;
         let module = extract_api_lenient(content).expect("Should extract");
         assert!(module.endpoints.iter().any(|e| e.return_type.contains("Stream<")));
-        let api_rs = generate_api_rs(&module, None);
+        let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false);
         assert!(api_rs.contains("axum::response::Sse<"), "SSE return: {}", api_rs);
         assert!(api_rs.contains("crate::events::subscribe()"), "subscribe");
         assert!(api_rs.contains("async_stream::stream!"), "stream macro");
@@ -3293,7 +3293,7 @@ pub fn create_article(slug str, title str, meta str) Article { return db.create_
             "current_user".to_string(), "create_article".to_string(),
         ].into_iter().collect();
 
-        let api_rs = generate_api_rs(&module, Some(&db_fns));
+        let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
 
         // helper emitted once
         assert!(
@@ -3330,7 +3330,7 @@ pub fn list_notes() []Note { return db.all_notes() }
 "#;
         let module = extract_api_lenient(api).expect("extract api");
         let db_fns: std::collections::HashSet<String> = ["all_notes".to_string()].into_iter().collect();
-        let api_rs = generate_api_rs(&module, Some(&db_fns));
+        let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
         assert!(!api_rs.contains("meta_json"), "no helper without meta: {}", api_rs);
         assert!(!api_rs.contains("HeaderMap"), "no extractor without meta: {}", api_rs);
     }
@@ -3358,7 +3358,7 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
             "all_messages".to_string(), "create_message".to_string(),
         ].into_iter().collect();
 
-        let api_rs = generate_api_rs(&module, Some(&db_fns));
+        let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
 
         // GET list delegates to crate::db::all_messages(), no State<Db>.
         assert!(api_rs.contains("crate::db::all_messages()"), "list delegates: {}", api_rs);
@@ -3420,7 +3420,7 @@ pub fn search_notes(query str) []Note { return db.search_notes(query) }
             "update_tags".to_string(), "search_notes".to_string(),
         ].into_iter().collect();
 
-        let api_rs = generate_api_rs(&module, Some(&db_fns));
+        let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
 
         // Every endpoint resolves to its db.rs counterpart.
         for db_fn in &[
@@ -3542,7 +3542,7 @@ pub fn exists(path str) bool { return fsys.path_exists(path) }
             db_at.with_file_name("api.at")
         ).unwrap();
         let module = extract_api_lenient(&api_at).expect("api extracts");
-        let api_rs = generate_api_rs(&module, Some(&fns));
+        let api_rs = generate_api_rs(&module, Some(&fns), /* api_impl_active */ false);
         assert!(api_rs.contains("crate::db::all_messages()"), "list delegates: {}", api_rs);
         assert!(
             api_rs.contains("crate::db::create_message(&input.sender, &input.text)"),
@@ -3577,7 +3577,7 @@ pub fn toggle_pin(id int) ?Task { return db.toggle_pin(id) }
         let db_fns: std::collections::HashSet<String> = [
             "set_done".to_string(), "toggle_pin".to_string(),
         ].into_iter().collect();
-        let api_rs = generate_api_rs(&module, Some(&db_fns));
+        let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
 
         // PATCH+body (set_done): must have Json extractor AND delegate &input.done.
         assert!(
@@ -3620,7 +3620,7 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
         let db_fns: std::collections::HashSet<String> = [
             "create".to_string(), "set_typing".to_string(),
         ].into_iter().collect();
-        let api_rs = generate_api_rs(&module, Some(&db_fns));
+        let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
 
         // create POST broadcasts "NewMessage" (was hardcoded before §6).
         assert!(api_rs.contains("\"NewMessage\""), "create broadcasts NewMessage: {}", api_rs);
@@ -3652,7 +3652,7 @@ pub fn lookup(id int) ?User { return db.find_user(id) }
         // heuristic verb whitelist, so db_fn_candidates would fail — but the
         // body-based resolver finds find_user directly.
         let db_fns: std::collections::HashSet<String> = ["find_user".to_string()].into_iter().collect();
-        let api_rs = generate_api_rs(&module, Some(&db_fns));
+        let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
         assert!(
             api_rs.contains("crate::db::find_user(id)"),
             "synonym endpoint delegates via body: {}", api_rs
@@ -3764,7 +3764,7 @@ pub fn get_item(id int) Item {
         // The body has an if-statement → NOT a thin delegation.
         assert!(!is_thin_delegation(&module.endpoints[0]), "if-body is non-thin");
         // No db.rs → no delegation possible.
-        let api_rs = generate_api_rs(&module, None);
+        let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false);
         // The a2r path should have transpiled the if-statement into the handler.
         // Look for evidence: "if" keyword from the transpiled body (not the
         // CRUD template which has no if-statements).
@@ -3892,7 +3892,7 @@ pub fn get_item(id int) Item {
 }
 "#;
         let module = try_full_parse(api).expect("full_parse");
-        let api_rs = generate_api_rs(&module, None);
+        let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false);
         std::env::remove_var("AUTO_A2R_BODY");
         // With a2r disabled, falls back to CRUD template.
         assert!(
