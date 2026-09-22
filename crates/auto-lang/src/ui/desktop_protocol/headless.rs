@@ -183,6 +183,13 @@ where
             );
         }
         self.cache = ui.into_cache();
+        // 事件消息回灌（drive_and_draw 同律——组件状态变更即刻生效，
+        // 下一帧 view() 反映；INPUT_TEXT 通道同线程纪律：闭包写入 →
+        // on() 读面在同一 update 调用内闭合）。返回值保留原消息集
+        //（HeadlessFrameSource 的 revision 门控按非空计前进）。
+        for msg in &messages {
+            self.component.on(msg.clone());
+        }
         messages
     }
 
@@ -442,6 +449,300 @@ fn to_wrect(rect: iced::Rectangle) -> WRect {
 fn to_rgba8(color: iced::Color) -> Rgba8 {
     let to_u8 = |v: f32| (v * 255.0).round().clamp(0.0, 255.0) as u8;
     Rgba8::new(to_u8(color.r), to_u8(color.g), to_u8(color.b), to_u8(color.a))
+}
+
+// ---------------------------------------------------------------------------
+// 事件回路径（T-02）：wire InputMsg → iced::Event 注入
+// ---------------------------------------------------------------------------
+
+/// wire 修饰位（bit0 shift / bit1 ctrl / bit2 alt / bit3 logo——
+/// session.rs `wire_mods` 同表反向）→ iced Modifiers。
+fn wire_mods_to_iced(bits: u8) -> iced::keyboard::Modifiers {
+    use iced::keyboard::Modifiers;
+    let mut m = Modifiers::empty();
+    if bits & 0b0001 != 0 {
+        m |= Modifiers::SHIFT;
+    }
+    if bits & 0b0010 != 0 {
+        m |= Modifiers::CTRL;
+    }
+    if bits & 0b0100 != 0 {
+        m |= Modifiers::ALT;
+    }
+    if bits & 0b1000 != 0 {
+        m |= Modifiers::LOGO;
+    }
+    m
+}
+
+/// Windows VK → iced Named/Code（宿主 LiveInput 语义：Named 键映射；字母
+/// 数字走 Character 由 CharTyped 承担——此处只收控制面键）。
+fn vk_to_named(vk: u32) -> Option<iced::keyboard::key::Named> {
+    use iced::keyboard::key::Named;
+    Some(match vk {
+        8 => Named::Backspace,
+        9 => Named::Tab,
+        13 => Named::Enter,
+        27 => Named::Escape,
+        32 => Named::Space,
+        33 => Named::PageUp,
+        34 => Named::PageDown,
+        35 => Named::End,
+        36 => Named::Home,
+        37 => Named::ArrowLeft,
+        38 => Named::ArrowUp,
+        39 => Named::ArrowRight,
+        40 => Named::ArrowDown,
+        45 => Named::Insert,
+        46 => Named::Delete,
+        _ => return None,
+    })
+}
+
+/// Windows VK → iced Physical Code（字母/数字——物理位映射）。
+fn vk_to_code(vk: u32) -> Option<iced::keyboard::key::Code> {
+    use iced::keyboard::key::Code;
+    Some(match vk {
+        0x30..=0x39 => Code::Digit0,
+        0x41 => Code::KeyA,
+        0x42 => Code::KeyB,
+        0x43 => Code::KeyC,
+        0x44 => Code::KeyD,
+        0x45 => Code::KeyE,
+        0x46 => Code::KeyF,
+        0x47 => Code::KeyG,
+        0x48 => Code::KeyH,
+        0x49 => Code::KeyI,
+        0x4A => Code::KeyJ,
+        0x4B => Code::KeyK,
+        0x4C => Code::KeyL,
+        0x4D => Code::KeyM,
+        0x4E => Code::KeyN,
+        0x4F => Code::KeyO,
+        0x50 => Code::KeyP,
+        0x51 => Code::KeyQ,
+        0x52 => Code::KeyR,
+        0x53 => Code::KeyS,
+        0x54 => Code::KeyT,
+        0x55 => Code::KeyU,
+        0x56 => Code::KeyV,
+        0x57 => Code::KeyW,
+        0x58 => Code::KeyX,
+        0x59 => Code::KeyY,
+        0x5A => Code::KeyZ,
+        _ => return None,
+    })
+}
+
+/// wire InputMsg → iced::Event（远程事件回路径——命中/聚焦/IME 全由
+/// iced widget 树原生处理）。IME 三态映射：Preedit/Commit →
+/// `input_method::Event`（text_input 组合态原生消费）；Cancelled →
+/// Closed（组合态清理）。Windows 中文 IME 实机完备性 = T-02 风险面
+///（待澄清③），残缺则混合方案兜底登记。
+pub(crate) fn input_to_iced_events(input: &crate::ui::desktop_protocol::message::InputMsg) -> Vec<iced::Event> {
+    use crate::ui::desktop_protocol::message::{InputMsg, MouseButton};
+    use iced::keyboard::{Event as KeyEvent, Key};
+    use iced::mouse;
+    match input {
+        InputMsg::PointerMoved { x, y, .. } => vec![iced::Event::Mouse(
+            mouse::Event::CursorMoved { position: iced::Point::new(*x, *y) },
+        )],
+        InputMsg::PointerPressed { button, x, y, modifiers, .. } => {
+            vec![
+                iced::Event::Mouse(mouse::Event::CursorMoved { position: iced::Point::new(*x, *y) }),
+                iced::Event::Mouse(mouse::Event::ButtonPressed(wire_button(*button))),
+                // 修饰键态同步（iced 内部跟踪依赖事件流——Ctrl+C 等组合
+                // 键的正确派发需要按下时修饰在场）。
+                iced::Event::Keyboard(KeyEvent::ModifiersChanged(wire_mods_to_iced(*modifiers))),
+            ]
+        }
+        InputMsg::PointerReleased { button, x, y, modifiers, .. } => {
+            vec![
+                iced::Event::Mouse(mouse::Event::CursorMoved { position: iced::Point::new(*x, *y) }),
+                iced::Event::Mouse(mouse::Event::ButtonReleased(wire_button(*button))),
+                iced::Event::Keyboard(KeyEvent::ModifiersChanged(wire_mods_to_iced(*modifiers))),
+            ]
+        }
+        InputMsg::KeyPressed { key, modifiers, .. } => {
+            let mods = wire_mods_to_iced(*modifiers);
+            let Some(named) = vk_to_named(*key) else {
+                return Vec::new();
+            };
+            vec![iced::Event::Keyboard(KeyEvent::KeyPressed {
+                key: Key::Named(named),
+                modified_key: Key::Named(named),
+                physical_key: vk_to_code(*key)
+                    .map(iced::keyboard::key::Physical::Code)
+                    .unwrap_or(iced::keyboard::key::Physical::Unidentified(
+                        iced::keyboard::key::NativeCode::Unidentified,
+                    )),
+                location: iced::keyboard::Location::Standard,
+                modifiers: mods,
+                text: None,
+                repeat: false,
+            })]
+        }
+        InputMsg::KeyReleased { key, modifiers, .. } => {
+            let mods = wire_mods_to_iced(*modifiers);
+            let Some(named) = vk_to_named(*key) else {
+                return Vec::new();
+            };
+            vec![iced::Event::Keyboard(KeyEvent::KeyReleased {
+                key: Key::Named(named),
+                modified_key: Key::Named(named),
+                physical_key: vk_to_code(*key)
+                    .map(iced::keyboard::key::Physical::Code)
+                    .unwrap_or(iced::keyboard::key::Physical::Unidentified(
+                        iced::keyboard::key::NativeCode::Unidentified,
+                    )),
+                location: iced::keyboard::Location::Standard,
+                modifiers: mods,
+            })]
+        }
+        InputMsg::CharTyped { ch, .. } => {
+            let text: String = ch.to_string();
+            let key = Key::Character(iced_widget::core::SmolStr::new(&text));
+            vec![iced::Event::Keyboard(KeyEvent::KeyPressed {
+                key: key.clone(),
+                modified_key: key,
+                physical_key: iced::keyboard::key::Physical::Unidentified(
+                    iced::keyboard::key::NativeCode::Unidentified,
+                ),
+                location: iced::keyboard::Location::Standard,
+                modifiers: iced::keyboard::Modifiers::empty(),
+                text: Some(iced_widget::core::SmolStr::new(&text)),
+                repeat: false,
+            })]
+        }
+        InputMsg::Scroll { dx, dy, .. } => vec![iced::Event::Mouse(
+            mouse::Event::WheelScrolled {
+                delta: iced::mouse::ScrollDelta::Pixels { x: *dx, y: *dy },
+            },
+        )],
+        InputMsg::ImePreedit { text, .. } => vec![iced::Event::InputMethod(
+            iced::advanced::input_method::Event::Preedit(text.clone(), None),
+        )],
+        InputMsg::ImeCommit { text, .. } => vec![iced::Event::InputMethod(
+            iced::advanced::input_method::Event::Commit(text.clone()),
+        )],
+        InputMsg::ImeCancelled { .. } => vec![iced::Event::InputMethod(
+            iced::advanced::input_method::Event::Closed,
+        )],
+    }
+}
+
+fn wire_button(button: crate::ui::desktop_protocol::message::MouseButton) -> iced::mouse::Button {
+    match button {
+        crate::ui::desktop_protocol::message::MouseButton::Left => iced::mouse::Button::Left,
+        crate::ui::desktop_protocol::message::MouseButton::Right => iced::mouse::Button::Right,
+        crate::ui::desktop_protocol::message::MouseButton::Middle => iced::mouse::Button::Middle,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HeadlessFrameSource（T-02）：FrameSource 接入——ClientPump 直驱
+// ---------------------------------------------------------------------------
+
+/// remote 模式帧源（PLAN-683）：HeadlessSurface 的 FrameSource 适配——
+/// 事件回路径（InputMsg → iced::Event → widget 树 → 消息 → 组件）+
+/// revision 门控（消息产出/tick 到期 → 前进 → 泵侧对账产帧）+ v2 产线帧。
+pub struct HeadlessFrameSource<C: Component> {
+    surface: HeadlessSurface<C>,
+    rev: u64,
+    tick_last: Option<std::time::Instant>,
+    observations: Vec<String>,
+}
+
+impl<C: Component> HeadlessFrameSource<C>
+where
+    C::Msg: Clone + std::fmt::Debug + 'static,
+{
+    pub fn new(component: C, width: f32, height: f32) -> Self {
+        Self {
+            surface: HeadlessSurface::new(component, width, height),
+            rev: 0,
+            tick_last: None,
+            observations: Vec::new(),
+        }
+    }
+
+    /// 组件只读访问（调用侧装载/观测）。
+    pub fn component(&self) -> &C {
+        &self.surface.component
+    }
+}
+
+impl<C: Component> super::endpoint::FrameSource for HeadlessFrameSource<C>
+where
+    C::Msg: Clone + std::fmt::Debug + 'static,
+{
+    fn revision(&self) -> u64 {
+        self.rev
+    }
+
+    fn render_frame(&mut self) -> DrawList {
+        // v1 面（legacy/parity）：泵 v2 位开着时本方法不为主产线。
+        let list = self.surface.render_frame();
+        self.observations = self.surface.observations().to_vec();
+        list
+    }
+
+    fn render_frame_v2(&mut self) -> DisplayList {
+        let list = self.surface.render_frame_v2();
+        self.observations = self.surface.observations().to_vec();
+        list
+    }
+
+    fn on_input(&mut self, input: &crate::ui::desktop_protocol::message::InputMsg) {
+        // 光标位同步（hover 态渲染依赖——iced Cursor::Available）。
+        if let crate::ui::desktop_protocol::message::InputMsg::PointerMoved { x, y, .. } = input {
+            self.surface.point_at(Some(iced::Point::new(*x, *y)));
+        }
+        let events = input_to_iced_events(input);
+        if events.is_empty() {
+            return;
+        }
+        let messages = self.surface.update(&events);
+        // 消息产出 = 组件状态可能变化 → revision 前进（泵对账产帧）。
+        if !messages.is_empty() {
+            self.rev += 1;
+        }
+    }
+
+    fn on_control(&mut self, _control: &crate::ui::desktop_protocol::message::ControlMsg) {}
+
+    fn poll_tick(&mut self) {
+        // 双 tick 源（RqProjector 同构）：timesources 到期派发 + 单通道
+        // interval tick。
+        if self.surface.component.fire_due_timers() {
+            self.rev += 1;
+        }
+        let Some(interval) = self.surface.component.tick_interval_ms() else {
+            return;
+        };
+        let now = std::time::Instant::now();
+        match self.tick_last {
+            None => self.tick_last = Some(now),
+            Some(last) => {
+                if now.duration_since(last) >= std::time::Duration::from_millis(u64::from(interval))
+                {
+                    self.tick_last = Some(now);
+                    if let Some(msg) = self.surface.component.tick_msg() {
+                        self.surface.component.on(msg);
+                        self.rev += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    fn drain_desktop_commands(&mut self) -> Vec<String> {
+        self.surface.component.drain_desktop_commands()
+    }
+
+    fn drain_bitmap_uploads(&mut self) -> Vec<super::endpoint::BitmapUpload> {
+        self.surface.drain_bitmap_uploads()
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -452,24 +452,54 @@ fn apply_actions(
                 }
             }
             HostAction::ComposeFrameShared { surface, wid, frame_id, slot, revision, .. } => {
-                let ready = client
-                    .inner
-                    .shm
-                    .get(&surface)
-                    .and_then(|shm| shm.read_slot(slot).ok())
-                    .and_then(|payload| {
-                        super::shm::draw_list_from_slot_payload(&payload).ok()
-                    });
-                if let Some(payload) = ready {
-                    if let Some(freed) = client.inner.surfaces.compose(surface, slot, payload) {
-                        client.frames += 1;
-                        note_revision(client, revision);
-                        to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
-                            wid,
-                            frame_id,
-                            slot: freed,
-                        }));
+                // PLAN-683：槽内载荷种类 tag 分派（2 = DisplayList v2 →
+                // v2 槽合成；1/其他 = v1 既有路径）。
+                let slot_payload = client.inner.shm.get(&surface).and_then(|s| s.read_slot(slot).ok());
+                if super::shm::frame_payload_kind(slot_payload.as_deref().unwrap_or(&[])) == 2 {
+                    let ready_v2 = slot_payload
+                        .as_deref()
+                        .and_then(|payload| super::shm::display_list_from_slot_payload(payload).ok());
+                    if let Some(payload) = ready_v2 {
+                        if let Some(freed) = client.inner.surfaces.compose_v2(surface, slot, payload) {
+                            client.frames += 1;
+                            note_revision(client, revision);
+                            to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
+                                wid,
+                                frame_id,
+                                slot: freed,
+                            }));
+                        }
                     }
+                } else {
+                    let ready = slot_payload
+                        .as_deref()
+                        .and_then(|payload| {
+                            super::shm::draw_list_from_slot_payload(payload).ok()
+                        });
+                    if let Some(payload) = ready {
+                        if let Some(freed) = client.inner.surfaces.compose(surface, slot, payload) {
+                            client.frames += 1;
+                            note_revision(client, revision);
+                            to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
+                                wid,
+                                frame_id,
+                                slot: freed,
+                            }));
+                        }
+                    }
+                }
+            }
+            // PLAN-683（remote 模式）：v2 内嵌帧 → v2 槽合成（信封
+            // FrameReadyV2；Ack 纪律同 v1）。
+            HostAction::ComposeFrameV2 { surface, wid, frame_id, slot, revision, payload } => {
+                if let Some(freed) = client.inner.surfaces.compose_v2(surface, slot, payload) {
+                    client.frames += 1;
+                    note_revision(client, revision);
+                    to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
+                        wid,
+                        frame_id,
+                        slot: freed,
+                    }));
                 }
             }
             // PLAN-034 T-05（D3）：位图就绪——读位图段槽入宿主图像
@@ -643,6 +673,12 @@ pub fn composed(client: &RqClient) -> Option<&DrawList> {
     client.inner.composed()
 }
 
+/// PLAN-683（remote 模式）：该客户端当前合成面 v2（DisplayList——
+/// remote 窗的取帧/断言口）。
+pub fn composed_v2(client: &RqClient) -> Option<&crate::ui::desktop_protocol::message::DisplayList> {
+    client.inner.composed_v2()
+}
+
 // ---------------------------------------------------------------------------
 // -q vm 轨客户端分岔（T-05/D6）：装载链零改
 // ---------------------------------------------------------------------------
@@ -669,6 +705,12 @@ pub fn run_vm_rqhost_client(
         height,
         frame_mode: FrameMode::Commands,
         auto_downgraded: false,
+        // PLAN-683（remote 模式）：`desktop_render: remote` 经 env 透传
+        //（AUTO_VM_RENDER=remote——AUTO_VM_WINDOW/TITLE 同型缝；CLI/pac
+        // 层在 T-04 试点接线）。
+        remote: std::env::var("AUTO_VM_RENDER")
+            .map(|v| v.trim().eq_ignore_ascii_case("remote"))
+            .unwrap_or(false),
     };
     let target = ClientTarget::Rqhost { wellknown: wellknown.to_string(), app_name };
     client_entry::run_dynamic_client(component, opts, target)
@@ -2013,6 +2055,177 @@ mod tests {
         serve.stop(&pipe);
         let _ = conv_app.join();
         let _ = hello_app.join();
+    }
+
+    /// PLAN-683 T-02（AC-02）—— typing 环 remote 变体：HeadlessFrameSource
+    /// （headless iced 宿主）+ v2 产线帧。事件回路径端到端：宿主输入 →
+    /// InputMsg → iced::Event 注入 → iced widget 树（命中/聚焦原生）→
+    /// 组件消息 → v2 帧回宿主合成。键入 "100" → celsius 联动 212。
+    #[test]
+    fn p683_t02_typing_remote_v2_loop() {
+        use crate::ui::desktop_protocol::client_runtime::{ClientConfig, ClientPump};
+        use crate::ui::desktop_protocol::endpoint::FrameSource;
+        use crate::ui::desktop_protocol::headless::HeadlessFrameSource;
+        use crate::ui::desktop_protocol::message::DisplayOp;
+
+        let conv_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/ui/003-converter/src/front/app.at"
+        );
+        let conv_src = match std::fs::read_to_string(conv_path) {
+            Ok(s) => s,
+            Err(_) => {
+                eprintln!("[p683] skip: 003-converter 载体缺席");
+                return;
+            }
+        };
+
+        let pipe = pid_pipe("typing-remote");
+        let (serve, _claim) = start_serve(&pipe);
+
+        // 客户端线程：HeadlessFrameSource + v2 泵（remote 分岔同装配）。
+        // HeadlessFrameSource 含 iced widget 树缓存（Rc 面 !Send）——
+        // 线程内建、线程内终，join 只回 Send 的 exit。
+        let cp = pipe.clone();
+        let conv_app = std::thread::spawn(move || {
+            let (_, end) = adopt(&cp, "App", 2000).expect("adopt conv");
+            let comp = crate::build_dynamic_component(&conv_src, None).expect("build conv");
+            let source = HeadlessFrameSource::new(comp, 480.0, 320.0);
+            let mut pump = ClientPump::new(
+                end,
+                source,
+                ClientConfig {
+                    app_name: "App".into(),
+                    title: "003-remote".into(),
+                    width: 480.0,
+                    height: 320.0,
+                },
+                None,
+            );
+            pump.set_v2(true);
+            let (exit, _source) = pump.run();
+            exit
+        });
+
+        // 宿主：采纳 + 挂窗。
+        let mut state = RqDaemon {
+            serve: Arc::clone(&serve),
+            claim: None,
+            wellknown: pipe.clone(),
+            ids: RqIds::default(),
+            clients: Vec::new(),
+            had_window: false,
+            opened: 0,
+            last_cursor: BTreeMap::new(),
+            mem_ticks: 0,
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while state.clients.is_empty() {
+            let pending: Vec<_> = state.serve.pending.lock().unwrap().drain(..).collect();
+            for (name, end) in pending {
+                if let Some((client, _)) = adopt_one(name, end, &mut state.ids, 3000) {
+                    state.clients.push(client);
+                }
+            }
+            assert!(std::time::Instant::now() < deadline, "客户端 5s 未落地");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let win = iced::window::Id::unique();
+        state.clients[0].window = Some(win);
+        state.had_window = true;
+
+        fn texts_of_v2(list: &crate::ui::desktop_protocol::message::DisplayList) -> Vec<String> {
+            list.ops
+                .iter()
+                .filter_map(|op| match op {
+                    DisplayOp::TextStyled { text, .. } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        // 首帧落地（v2 合成面）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while composed_v2(&state.clients[0]).is_none() {
+            let _ = rq_update(&mut state, RqMessage::Tick);
+            assert!(std::time::Instant::now() < deadline, "首帧 5s 未落地");
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+        let first = composed_v2(&state.clients[0]).unwrap();
+        let first_texts = texts_of_v2(first);
+        assert!(
+            first_texts.iter().any(|t| t.contains("Temperature Converter")),
+            "首帧标题缺席: {first_texts:?}"
+        );
+        assert!(
+            first_texts.iter().any(|t| t.contains("Celsius")),
+            "首帧标签缺席: {first_texts:?}"
+        );
+
+        // celsius 输入定位：值文本 "0"（run 级）→ 点击输入盒内（文本左
+        // 侧少量内边——iced text_input 命中区含值文本盒）。
+        let zero = first
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                DisplayOp::TextStyled { x, y, text, .. } if text == "0" => Some((*x, *y)),
+                _ => None,
+            })
+            .expect("celsius 值文本 `0` 缺席");
+        let (cx, cy) = (zero.0 + 4.0, zero.1 + 8.0);
+
+        // 键入序：光标 → 点击聚焦 → "100"（CharTyped → iced Character
+        // 键事件 → text_input 原生插入）。
+        let _ = rq_update(&mut state, RqMessage::CursorMoved { window: win, x: cx, y: cy });
+        let _ = rq_update(&mut state, RqMessage::PointerPressed { window: win, button: iced::mouse::Button::Left });
+        let _ = rq_update(&mut state, RqMessage::PointerReleased { window: win, button: iced::mouse::Button::Left });
+        for ch in "100".chars() {
+            let _ = rq_update(
+                &mut state,
+                RqMessage::Live {
+                    window: win,
+                    input: crate::ui::session::LiveInput::Chars { text: ch.to_string() },
+                },
+            );
+            let _ = rq_update(&mut state, RqMessage::Tick);
+            std::thread::sleep(std::time::Duration::from_millis(40));
+        }
+
+        // 联动断言：键入 "100" 插在光标位（点击命中值文本首字形前 →
+        // "0" 前插 = "1000"）→ fahrenheit 1832 出帧（键入→oninput→
+        // 换算→v2 帧端到端；v1 环同锚不同值系投影器 buffer 语义差，
+        // 联动语义等价）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+        loop {
+            let _ = rq_update(&mut state, RqMessage::Tick);
+            let hit = composed_v2(&state.clients[0])
+                .map(|l| texts_of_v2(l).iter().any(|t| t.starts_with("1832")))
+                .unwrap_or(false);
+            if hit {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "remote 键入→1832 帧文本超时；当前帧: {:?}",
+                composed_v2(&state.clients[0]).map(texts_of_v2)
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        // revision 前进断言（输入驱动帧变的宿主侧证据——v1 环同锚）。
+        assert!(state.clients[0].last_revision > 1, "revision 零前进");
+
+        // 收尾：Close + Tick 泵到收敛。
+        if let Ok(close) = state.clients[0].inner.endpoint.close() {
+            let _ = state.clients[0].inner.end.send(&close);
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !conv_app.is_finished() {
+            let _ = rq_update(&mut state, RqMessage::Tick);
+            assert!(std::time::Instant::now() < deadline, "Close 握手 5s 未收敛");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        serve.stop(&pipe);
+        let _ = conv_app.join();
     }
 
     /// T-07 回归钉：超大帧（20KB 文本，超 16KiB shm 槽）经管道内联回退

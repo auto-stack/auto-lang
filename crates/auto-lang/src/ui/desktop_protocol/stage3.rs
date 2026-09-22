@@ -83,6 +83,12 @@ impl BrokerClient {
         self.surfaces.front(surface)
     }
 
+    /// PLAN-683（remote 模式）：当前合成面 v2（DisplayList——首 wid 表面）。
+    pub fn composed_v2(&self) -> Option<&crate::ui::desktop_protocol::message::DisplayList> {
+        let surface = *self.wid_surface.get(&self.wid?.0)?;
+        self.surfaces.front_v2(surface)
+    }
+
     /// PLAN-030：wid 归属判定（多表面客户端第二 wid 含于 wid_surface——
     /// 输入路由去单值化）。
     pub fn owns_wid(&self, wid: crate::ui::session::Wid) -> bool {

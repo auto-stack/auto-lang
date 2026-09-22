@@ -868,7 +868,8 @@ pub fn native_style_token(class: &crate::ui::style::StyleClass) -> String {
 /// 三态渲染开关（Plan 500 步骤 6：裁决链 spawn 参数 > pac.at > auto 探测）
 /// ---------------------------------------------------------------------------
 
-/// per-App 三态渲染声明（pac.at `desktop_render:` / spawn `--render=`）。
+/// per-App 渲染声明（pac.at `desktop_render:` / spawn `--render=`；
+/// PLAN-683 前二态 + remote 三态——SD-02）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RenderMode {
     /// 装载期覆盖度探测：Covered → queue；NotCovered → 降级 independent
@@ -879,6 +880,10 @@ pub enum RenderMode {
     Queue,
     /// 像素帧（child 自带 iced 自渲染 → shm RGBA）。
     Independent,
+    /// PLAN-683（方案 2）：远程 Renderer——headless iced 宿主（组件照常
+    /// 渲染，tiny_skia 记录层截获）→ DisplayList v2 帧过线；组件覆盖 =
+    /// iced 全集（coverage 门禁对本模式失效——结构保证）。
+    Remote,
 }
 
 impl RenderMode {
@@ -889,6 +894,7 @@ impl RenderMode {
             "auto" => Some(Self::Auto),
             "queue" => Some(Self::Queue),
             "independent" => Some(Self::Independent),
+            "remote" => Some(Self::Remote),
             _ => None,
         }
     }
@@ -924,6 +930,9 @@ pub fn effective_frame_mode(
         // NotCovered 由臂启动覆盖门权威拒绝（eprintln + Err，禁静默
         // 错绘）。
         RenderMode::Auto => (super::message::FrameMode::Commands, None),
+        // PLAN-683（remote 模式）：帧载荷仍是 Commands 家族（shm 槽内
+        // 载荷种类 tag 区分 v2）；客户端分岔位在 run_dynamic_client。
+        RenderMode::Remote => (super::message::FrameMode::Commands, None),
     }
 }
 

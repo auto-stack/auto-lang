@@ -4485,13 +4485,48 @@ fn spawn_shell_outproc(
                         }));
                     }
                 }
+                // PLAN-683（remote 模式）：v2 内嵌帧 → v2 槽合成。
+                HostAction::ComposeFrameV2 { surface, wid, frame_id, slot, payload, .. } => {
+                    if let Some(freed) = client.surfaces.compose_v2(surface, slot, payload) {
+                        to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
+                            wid,
+                            frame_id,
+                            slot: freed,
+                        }));
+                    }
+                }
                 HostAction::ComposeFrameShared { surface, wid, frame_id, slot, .. } => {
-                    let ready = client
+                    // PLAN-683：槽内载荷种类 tag 分派（2 = v2 → v2 槽）。
+                    let slot_payload = client
                         .shm
                         .get(&surface)
-                        .and_then(|shm| shm.read_slot(slot).ok())
+                        .and_then(|shm| shm.read_slot(slot).ok());
+                    if crate::ui::desktop_protocol::shm::frame_payload_kind(
+                        slot_payload.as_deref().unwrap_or(&[]),
+                    ) == 2
+                    {
+                        let ready_v2 = slot_payload
+                            .as_deref()
+                            .and_then(|p| {
+                                crate::ui::desktop_protocol::shm::display_list_from_slot_payload(p)
+                                    .ok()
+                            });
+                        if let Some(payload) = ready_v2 {
+                            if let Some(freed) = client.surfaces.compose_v2(surface, slot, payload)
+                            {
+                                to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
+                                    wid,
+                                    frame_id,
+                                    slot: freed,
+                                }));
+                            }
+                        }
+                        continue;
+                    }
+                    let ready = slot_payload
+                        .as_deref()
                         .and_then(|payload| {
-                            crate::ui::desktop_protocol::shm::draw_list_from_slot_payload(&payload)
+                            crate::ui::desktop_protocol::shm::draw_list_from_slot_payload(payload)
                                 .ok()
                         });
                     if let Some(payload) = ready {

@@ -14,6 +14,7 @@ use crate::ui::component::Component;
 use crate::ui::desktop_protocol::broker::{self, RequestedRender};
 use crate::ui::desktop_protocol::client_runtime::{self, ClientConfig, ReconnectPolicy};
 use crate::ui::desktop_protocol::coverage::{Coverage, RenderMode, Verdict};
+use crate::ui::desktop_protocol::endpoint::FrameSource;
 use crate::ui::desktop_protocol::message::FrameMode;
 use crate::ui::desktop_protocol::native_projector::RqProjector;
 use crate::ui::desktop_protocol::pixels;
@@ -29,6 +30,9 @@ pub struct ClientOpts {
     pub frame_mode: FrameMode,
     /// auto 裁决降级标记（broker 孵化记录携带 `pixels:auto`，宿主观测留痕）。
     pub auto_downgraded: bool,
+    /// PLAN-683（remote 模式）：headless iced 宿主 + DisplayList v2 产线
+    /// 帧（Commands 家族内载荷 tag 分派）。
+    pub remote: bool,
 }
 
 /// 端点目标：① 直连 per-app 管道 ② broker 孵化（`--autodesk-broker` 可改）
@@ -99,6 +103,31 @@ pub fn run_dynamic_client(
         FrameMode::Pixels => Err(
             "[render] 解释轨 pixels 臂已退役（PLAN-033）——VM 轨两合法形态 = inproc 直挂 / -q 经 native 臂".to_string(),
         ),
+        FrameMode::Commands if opts.remote => {
+            // PLAN-683（remote 模式）：headless iced 宿主——组件树照常
+            // 渲染（tiny_skia 记录层截获），DisplayList v2 产线帧；覆盖
+            // 门不适用（组件覆盖 = iced 全集，结构保证）。
+            let (per_app_pipe, app_end) = connect(&target, &opts.app_name, render)?;
+            let source = super::headless::HeadlessFrameSource::new(
+                component,
+                opts.width,
+                opts.height,
+            );
+            let config = ClientConfig {
+                app_name: opts.app_name.clone(),
+                title: opts.title,
+                width: opts.width,
+                height: opts.height,
+            };
+            let reconnect = reconnect_for(&target, per_app_pipe);
+            let (exit, source) =
+                client_runtime::run_client_session_v2(app_end, source, config, reconnect);
+            if reconnect_pipe_target && matches!(exit, client_runtime::ClientExit::HostLost) {
+                eprintln!("[rqhost-client] host lost → exit（exit-on-EOF 策略档）");
+            }
+            println!("[autodesk-client] exit={exit:?} revision={}", source.revision());
+            Ok(())
+        }
         FrameMode::Commands => {
             let (per_app_pipe, app_end) = connect(&target, &opts.app_name, render)?;
             let mut projector = RqProjector::new(component, opts.width, opts.height);
@@ -184,6 +213,9 @@ pub fn resolve_native_frame_mode<M: Clone + std::fmt::Debug>(
     match mode {
         RenderMode::Queue => (FrameMode::Commands, false, None),
         RenderMode::Independent => (FrameMode::Pixels, false, None),
+        // PLAN-683（remote 模式）：Commands 家族 + remote 标记（调用侧
+        // ClientOpts.remote=true → headless 宿主分岔）；覆盖门不适用。
+        RenderMode::Remote => (FrameMode::Commands, false, None),
         RenderMode::Auto => {
             let scan = crate::ui::desktop_protocol::coverage::scan_native_view(view);
             match crate::ui::desktop_protocol::coverage::judge(&scan, &Coverage::native_queue_set()) {
@@ -241,6 +273,29 @@ where
             opts.width,
             opts.height,
         ),
+        FrameMode::Commands if opts.remote => {
+            // PLAN-683（remote 模式）：native 轨同享 headless 宿主
+            //（HeadlessFrameSource 泛型于 Component——a2r 编译组件同臂）。
+            let source = super::headless::HeadlessFrameSource::new(
+                component,
+                opts.width,
+                opts.height,
+            );
+            let config = ClientConfig {
+                app_name: opts.app_name.clone(),
+                title: opts.title,
+                width: opts.width,
+                height: opts.height,
+            };
+            let reconnect = reconnect_for(&target, per_app_pipe);
+            let (exit, source) =
+                client_runtime::run_client_session_v2(app_end, source, config, reconnect);
+            if rqhost_target && matches!(exit, client_runtime::ClientExit::HostLost) {
+                eprintln!("[rqhost-client] host lost → exit（exit-on-EOF 策略档）");
+            }
+            println!("[autodesk-client] exit={exit:?} revision={}", source.revision());
+            Ok(())
+        }
         FrameMode::Commands => {
             let projector = RqProjector::new(component, opts.width, opts.height);
             if let Err(gate) = projector.ensure_covered() {

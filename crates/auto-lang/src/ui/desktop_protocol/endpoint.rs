@@ -134,6 +134,13 @@ pub trait FrameSource {
     fn drain_bitmap_uploads(&mut self) -> Vec<BitmapUpload> {
         Vec::new()
     }
+
+    /// PLAN-683（remote 模式）：v2 产线帧。缺省 = v1 帧 lift（
+    /// [`super::message::DisplayList::from_v1`]——语义保真直搬，legacy
+    /// 生产者零改造）；headless 宿主覆写为 tiny_skia 记录层原生降格。
+    fn render_frame_v2(&mut self) -> super::message::DisplayList {
+        super::message::DisplayList::from_v1(&self.render_frame())
+    }
 }
 
 /// app 侧端点。泛型 [`FrameSource`] 是会话的最小接缝。
@@ -276,6 +283,64 @@ impl<S: FrameSource> AppEndpoint<S> {
         self.last_slot = slot;
         self.next_frame_id += 1;
         let payload = self.session.render_frame();
+        let mut encoded = Vec::new();
+        payload.encode(&mut encoded);
+        shm.write_slot(slot, &encoded).map_err(ProtocolError::Shm)?;
+        let len = encoded.len() as u32;
+        Ok(ProtocolMsg::Frame(super::message::FrameMsg::FrameReadyShared {
+            wid: self.wid.expect("Active 即有 wid"),
+            frame_id: self.next_frame_id,
+            slot,
+            damage,
+            revision: self.session.revision(),
+            len,
+        }))
+    }
+
+    /// 产一帧 v2（PLAN-683 remote 模式）：DisplayList 内嵌帧（信封 =
+    /// FrameReadyV2 tag 12）。Active 才可。
+    pub fn produce_frame_v2(
+        &mut self,
+        damage: Option<WRect>,
+    ) -> Result<ProtocolMsg, ProtocolError> {
+        if self.state != AppState::Active {
+            return Err(ProtocolError::NotActive);
+        }
+        let slot = match self.free_slots.pop() {
+            Some(s) => s,
+            None => 1 - self.last_slot,
+        };
+        self.last_slot = slot;
+        self.next_frame_id += 1;
+        let payload = self.session.render_frame_v2();
+        Ok(ProtocolMsg::Frame(super::message::FrameMsg::FrameReadyV2 {
+            wid: self.wid.expect("Active 即有 wid"),
+            frame_id: self.next_frame_id,
+            slot,
+            damage,
+            revision: self.session.revision(),
+            payload,
+        }))
+    }
+
+    /// 产一帧 v2 走共享内存变体（PLAN-683 remote 模式）：v2 载荷写
+    /// `slot` 槽（载荷种类 tag 2），管道上仍过 FrameReadyShared 元数据
+    ///（宿主按槽内首字节分派 v1/v2）。Active 才可。
+    pub fn produce_frame_shared_v2(
+        &mut self,
+        shm: &super::shm::SharedFrameBuffer,
+        damage: Option<WRect>,
+    ) -> Result<ProtocolMsg, ProtocolError> {
+        if self.state != AppState::Active {
+            return Err(ProtocolError::NotActive);
+        }
+        let slot = match self.free_slots.pop() {
+            Some(s) => s,
+            None => 1 - self.last_slot,
+        };
+        self.last_slot = slot;
+        self.next_frame_id += 1;
+        let payload = self.session.render_frame_v2();
         let mut encoded = Vec::new();
         payload.encode(&mut encoded);
         shm.write_slot(slot, &encoded).map_err(ProtocolError::Shm)?;
@@ -503,6 +568,16 @@ pub enum HostAction {
     ComposeFrame { surface: u64, wid: u64, frame_id: u64, slot: u8, revision: u64, payload: DrawList },
     /// 共享内存变体（S9）：适配层从 shm 槽读载荷解码后合成。
     ComposeFrameShared { surface: u64, wid: u64, frame_id: u64, slot: u8, revision: u64, len: u32 },
+    /// v2 内嵌帧（PLAN-683 remote 模式）：DisplayList 载荷直达（无 shm），
+    /// 适配层入 v2 槽合成 + 回 FrameAck。
+    ComposeFrameV2 {
+        surface: u64,
+        wid: u64,
+        frame_id: u64,
+        slot: u8,
+        revision: u64,
+        payload: super::message::DisplayList,
+    },
     /// 像素帧变体（v1.3）：适配层从 shm 槽读 RGBA 上传合成
     /// （independent 臂；载荷解释随 Welcome 模式位）。
     ComposeFramePixels {
@@ -666,6 +741,28 @@ impl HostEndpoint {
                     w,
                     h,
                     stride,
+                }])
+            }
+            // PLAN-683（remote 模式）：v2 内嵌帧 → 适配层直接合成（无 shm）。
+            (
+                HostState::Active,
+                ProtocolMsg::Frame(super::message::FrameMsg::FrameReadyV2 {
+                    wid,
+                    frame_id,
+                    slot,
+                    damage: _,
+                    revision,
+                    payload,
+                }),
+            ) => {
+                let surface = self.surface_for(wid).expect("Active 即有 surface");
+                Ok(vec![HostAction::ComposeFrameV2 {
+                    surface,
+                    wid,
+                    frame_id,
+                    slot,
+                    revision,
+                    payload,
                 }])
             }
             // PLAN-034 T-05（D3）：位图就绪——surface 解析同 ComposeFrame

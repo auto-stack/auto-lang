@@ -27,6 +27,9 @@ pub fn rect_to_wire(r: &Rectangle) -> WRect {
 /// 一个虚拟窗的表面：2 槽双缓冲 + 翻面记录。
 pub struct Surface {
     slots: [Option<DrawList>; 2],
+    /// v2 槽（PLAN-683 remote 模式——DisplayList v2 双缓冲；v1 槽不动。
+    /// 同表面两族载荷互斥使用：remote 客户端恒写 v2 槽）。
+    v2_slots: [Option<crate::ui::desktop_protocol::message::DisplayList>; 2],
     /// 当前合成面（最近一次 compose 的槽）。
     pub front: u8,
     pub width: f32,
@@ -58,7 +61,7 @@ impl SurfaceStore {
         self.next_surface = id;
         self.surfaces.insert(
             id,
-            Surface { slots: [None, None], front: 0, width, height },
+            Surface { slots: [None, None], v2_slots: [None, None], front: 0, width, height },
         );
         id
     }
@@ -75,9 +78,35 @@ impl SurfaceStore {
         Some(freed)
     }
 
+    /// 合成一帧 v2（PLAN-683 remote 模式）：DisplayList 入 v2 槽并翻面；
+    /// 槽纪律与 v1 compose 同构（FrameAck 归还原 front）。
+    pub fn compose_v2(
+        &mut self,
+        surface: u64,
+        slot: u8,
+        payload: crate::ui::desktop_protocol::message::DisplayList,
+    ) -> Option<u8> {
+        let s = self.surfaces.get_mut(&surface)?;
+        if slot as usize >= s.v2_slots.len() {
+            return None;
+        }
+        s.v2_slots[slot as usize] = Some(payload);
+        let freed = s.front;
+        s.front = slot;
+        Some(freed)
+    }
+
     /// 虚拟窗当前合成面（live-iced 渲染器 Stage 2 的取用点）。
     pub fn front(&self, surface: u64) -> Option<&DrawList> {
         self.surfaces.get(&surface)?.slots[self.surfaces[&surface].front as usize].as_ref()
+    }
+
+    /// 虚拟窗当前合成面 v2（PLAN-683 remote 模式取用点）。
+    pub fn front_v2(
+        &self,
+        surface: u64,
+    ) -> Option<&crate::ui::desktop_protocol::message::DisplayList> {
+        self.surfaces.get(&surface)?.v2_slots[self.surfaces[&surface].front as usize].as_ref()
     }
 
     pub fn release(&mut self, surface: u64) -> bool {
@@ -218,14 +247,42 @@ impl<'a> ProtocolHost<'a> {
                         }));
                     }
                 }
+                // PLAN-683（remote 模式）：v2 内嵌帧 → v2 槽合成。
+                HostAction::ComposeFrameV2 { surface, wid, frame_id, slot, payload, .. } => {
+                    if let Some(freed) = self.surfaces.compose_v2(surface, slot, payload) {
+                        self.to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
+                            wid,
+                            frame_id,
+                            slot: freed,
+                        }));
+                    }
+                }
                 HostAction::ComposeFrameShared { surface, wid, frame_id, slot, .. } => {
                     // 从共享内存槽读载荷 → 解码 → 与管道帧同路合成。
-                    let ready = self
+                    // PLAN-683：槽内载荷种类 tag 分派（2 = v2 → v2 槽）。
+                    let slot_payload = self
                         .shm_buffers
                         .get(&surface)
-                        .and_then(|shm| shm.read_slot(slot).ok())
+                        .and_then(|shm| shm.read_slot(slot).ok());
+                    if super::shm::frame_payload_kind(slot_payload.as_deref().unwrap_or(&[])) == 2 {
+                        let ready_v2 = slot_payload
+                            .as_deref()
+                            .and_then(|p| super::shm::display_list_from_slot_payload(p).ok());
+                        if let Some(payload) = ready_v2 {
+                            if let Some(freed) = self.surfaces.compose_v2(surface, slot, payload) {
+                                self.to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
+                                    wid,
+                                    frame_id,
+                                    slot: freed,
+                                }));
+                            }
+                        }
+                        continue;
+                    }
+                    let ready = slot_payload
+                        .as_deref()
                         .and_then(|payload| {
-                            super::shm::draw_list_from_slot_payload(&payload).ok()
+                            super::shm::draw_list_from_slot_payload(payload).ok()
                         });
                     if let Some(payload) = ready {
                         if let Some(freed) = self.surfaces.compose(surface, slot, payload) {

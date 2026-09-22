@@ -463,6 +463,9 @@ pub struct ClientPump<S: FrameSource> {
     disconnected_at: Option<std::time::Instant>,
     /// 出口已交付（projector 已交还调用方，step 短路防二次取用）。
     spent: bool,
+    /// PLAN-683（remote 模式）：v2 产线帧（DisplayList 载荷——shm 槽
+    /// 载荷种类 tag 2 / 内嵌 = FrameReadyV2）。缺省 false = v1 既有行为。
+    v2: bool,
 }
 
 /// 进程级泵起点（诊断时间戳基准）。
@@ -490,9 +493,15 @@ impl<S: FrameSource> ClientPump<S> {
             reconnect,
             disconnected_at: None,
             spent: false,
+            v2: false,
         };
         pump.attach(projector);
         pump
+    }
+
+    /// PLAN-683（remote 模式）：翻 v2 产线帧（建泵后、run 前调用）。
+    pub fn set_v2(&mut self, v2: bool) {
+        self.v2 = v2;
     }
 
     /// 以给定 projector 建端点并发 Hello（首连 / 重连共用）。
@@ -775,10 +784,21 @@ impl<S: FrameSource> ClientPump<S> {
         }
         let Some(app) = self.endpoint.as_mut() else { return };
         let shm = self.shm.as_ref().expect("上方已核");
-        let frame = match app.produce_frame_shared(shm, None) {
-            Ok(f) => Some(f),
-            Err(super::endpoint::ProtocolError::Shm(_)) => app.produce_frame(None).ok(),
-            Err(_) => None,
+        // PLAN-683（remote 模式）：v2 位分派——同 shm 槽纪律，载荷种类
+        // tag 区分（宿主按槽内首字节分派）；无 shm 段回退内嵌
+        //（FrameReadyV2 / FrameReady）。
+        let frame = if self.v2 {
+            match app.produce_frame_shared_v2(shm, None) {
+                Ok(f) => Some(f),
+                Err(super::endpoint::ProtocolError::Shm(_)) => app.produce_frame_v2(None).ok(),
+                Err(_) => None,
+            }
+        } else {
+            match app.produce_frame_shared(shm, None) {
+                Ok(f) => Some(f),
+                Err(super::endpoint::ProtocolError::Shm(_)) => app.produce_frame(None).ok(),
+                Err(_) => None,
+            }
         };
         if let Some(frame) = frame {
             let _ = self.app_end.send(&frame);
@@ -854,6 +874,20 @@ pub fn run_client_session<S: FrameSource>(
     reconnect: Option<ReconnectPolicy>,
 ) -> (ClientExit, S) {
     ClientPump::new(app_end, projector, config, reconnect).run()
+}
+
+/// PLAN-683（remote 模式）：v2 产线帧会话（泵 v2 位开——shm 槽载荷
+/// 种类 tag 2 / 内嵌 FrameReadyV2）。会话循环/重连/排水纪律与 v1
+/// [`run_client_session`] 同源。
+pub fn run_client_session_v2<S: FrameSource>(
+    app_end: Box<dyn Transport + Send>,
+    source: S,
+    config: ClientConfig,
+    reconnect: Option<ReconnectPolicy>,
+) -> (ClientExit, S) {
+    let mut pump = ClientPump::new(app_end, source, config, reconnect);
+    pump.set_v2(true);
+    pump.run()
 }
 
 // ---------------------------------------------------------------------------
