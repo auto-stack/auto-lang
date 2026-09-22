@@ -263,7 +263,7 @@ detect 并集 + 直接调 `crate::vue_shadcn::materialize(&output_dir,
 | landed | master tip == e8bf18647（--ff-only 无 merge 提交）；rebase 两段（bbb1618e5→e1c73a043）旧→新映射 5f46d99fb→da225aa72/67ffb5312→f508cc42c/20ce3a27c→84b696c15/2f8630e67→c620bbaae/6d245f569→6830b0b2b，range-diff 5/5 全等（安全改写证明） |
 | ledger_refreshed | .autoos/specs.json P682-1 追加后整文件解析+回读断言过；docs/specs/auto-lang/ui/plans.md 682 行；docs/specs/INDEX.md spec-index.py 再生零漂移 |
 | archived | docs/plans/archive/682-mcp-snapshot-determinism-and-vue-generator-fixes.md + status: archived（本提交）；completion_kind: delivered |
-| cleaned | 见随后行（本提交后回填） |
+| cleaned | wt-guard clean（deps/bps junction=gen 探针 dep leg 产物，按处方 cmd rmdir 只摘链接）→ git worktree remove（--force 过 ignored oracle/Cargo.lock 残留）→ branch -d plan-682-dev（=e8bf18647 已落地核实）；组目录保留（auto-down 兄弟 worktree + 组 target 归其会话处置） |
 
 - 合并后下游动作（复审 next 转录）：jade 回执步——三补件按 pattern 断言撤除 +
   全门对新 exe 复验；auto-down D17（3373a5c）走 auto-down changeset 流。
