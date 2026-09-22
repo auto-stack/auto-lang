@@ -230,7 +230,8 @@ fn editor_key_of(vk: u32) -> Option<ce::EditorKey> {
 }
 
 /// DrawOp 原点平移（popover 面板子树走线产物同移——全部坐标字段绝对制）。
-fn shift_draw_op(op: &DrawOp, dx: f32, dy: f32) -> DrawOp {    match op {
+fn shift_draw_op(op: &DrawOp, dx: f32, dy: f32) -> DrawOp {
+    match op {
         DrawOp::Quad { rect, color } => DrawOp::Quad {
             rect: WRect::new(rect.x + dx, rect.y + dy, rect.w, rect.h),
             color: *color,
@@ -588,7 +589,7 @@ impl<C: Component> FrameSource for RqProjector<C> {
         let mut max_y = f32::MIN;
         for op in &ctx.ops {
             match op {
-                DrawOp::Quad { rect, .. } | DrawOp::Scissor { rect } | DrawOp::Image { rect, .. } => {
+                DrawOp::Quad { rect, .. } | DrawOp::QuadR { rect, .. } | DrawOp::Scissor { rect } | DrawOp::Image { rect, .. } => {
                     min_x = min_x.min(rect.x);
                     min_y = min_y.min(rect.y);
                     max_x = max_x.max(rect.x + rect.w);
@@ -704,7 +705,7 @@ impl<C: Component> FrameSource for RqProjector<C> {
             };
             for op in &mut ctx.ops {
                 match op {
-                    DrawOp::Quad { rect, .. } | DrawOp::Scissor { rect } | DrawOp::Image { rect, .. } => {
+                    DrawOp::Quad { rect, .. } | DrawOp::QuadR { rect, .. } | DrawOp::Scissor { rect } | DrawOp::Image { rect, .. } => {
                         shift(rect);
                     }
                     DrawOp::Text { x, y, .. } | DrawOp::TextStyled { x, y, .. } => {
