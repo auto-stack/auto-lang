@@ -255,7 +255,11 @@ fn bp_kind(bps List, selected str, needle str, kind str) str {
 }
 
 // 当前 bp 名（key 去 kind 前缀，面包屑尾段；无前缀原样）。
-fn bp_name(key str) str {
+// 装配纪律：computed 实参位只收 model 变量与 all_bps()——key 重导自
+// resolve_key（vue 臂 computed-as-arg 不解析，PLAN-685 T-06 实证：
+// prev_of(.np) 形态 vue 臂 TypeError 整页白屏）。
+fn bp_name(bps List, selected str, needle str, kind str) str {
+    var key str = resolve_key(bps, selected, needle, kind)
     var cut int = key.indexOf("/")
     if cut < 0 {
         return key
@@ -273,8 +277,8 @@ fn variant_count_label(bps List, selected str, needle str, kind str) str {
 }
 
 // 前后条目（当前筛选序；到头即空串 = 按钮降灰，不循环）。
-// 全键 Obj 返回，字段平铺经 prev_of/next_of 出computed——view 内
-// 不裸访 Obj 字段（双臂转译边界，装配纪律同头注）。
+// 逐字段包装 fn 各自直呼重导 prev_next（computed 实参位禁链 computed，
+// 见 bp_name 注）。
 fn prev_next(bps List, selected str, needle str, kind str) Obj {
     var rows List = gallery_items(bps, needle, kind)
     var key str = resolve_key(bps, selected, needle, kind)
@@ -295,19 +299,23 @@ fn prev_next(bps List, selected str, needle str, kind str) Obj {
     return { prev: prev, next: next }
 }
 
-fn prev_of(np Obj) str {
+fn prev_id_of(bps List, selected str, needle str, kind str) str {
+    var np Obj = prev_next(bps, selected, needle, kind)
     return np.prev
 }
 
-fn next_of(np Obj) str {
+fn next_id_of(bps List, selected str, needle str, kind str) str {
+    var np Obj = prev_next(bps, selected, needle, kind)
     return np.next
 }
 
-fn np_has_prev(np Obj) bool {
+fn prev_exists(bps List, selected str, needle str, kind str) bool {
+    var np Obj = prev_next(bps, selected, needle, kind)
     return np.prev != ""
 }
 
-fn np_has_next(np Obj) bool {
+fn next_exists(bps List, selected str, needle str, kind str) bool {
+    var np Obj = prev_next(bps, selected, needle, kind)
     return np.next != ""
 }
 

@@ -12,7 +12,7 @@
 
 use bps.layout.gallery_shell.reference.default: GalleryShell
 use registry: all_bps
-use catalog: gallery_items, kind_ordered, resolve_key, sel_variant_names, sel_variant, sel_source, sel_spec, sel_gotchas, sel_multi_variant, bp_kind, bp_name, variant_count_label, prev_next, prev_of, next_of, np_has_prev, np_has_next, section_tabs
+use catalog: gallery_items, kind_ordered, resolve_key, sel_variant_names, sel_variant, sel_source, sel_spec, sel_gotchas, sel_multi_variant, bp_kind, bp_name, variant_count_label, prev_id_of, next_id_of, prev_exists, next_exists, section_tabs
 
 widget App {
     msg {
@@ -51,14 +51,15 @@ widget App {
         cur_source => sel_source(all_bps(), .active_variant, .selected_id, .query, .active_kind)
         cur_spec => sel_spec(all_bps(), .selected_id, .query, .active_kind)
         cur_gotchas => sel_gotchas(all_bps(), .selected_id, .query, .active_kind)
-        // 头部专业化件（PLAN-685 T-05）：组合与度量全收 catalog fn 体内
-        np => prev_next(all_bps(), .selected_id, .query, .active_kind)
-        prev_id => prev_of(.np)
-        next_id => next_of(.np)
-        has_prev => np_has_prev(.np)
-        has_next => np_has_next(.np)
+        // 头部专业化件（PLAN-685 T-05）：全部单 fn 直呼 model 变量与
+        // all_bps()——computed 实参位禁链 computed（vue 臂不解析，
+        // T-06 实证），组合与度量收 catalog fn 体内重导
+        prev_id => prev_id_of(all_bps(), .selected_id, .query, .active_kind)
+        next_id => next_id_of(all_bps(), .selected_id, .query, .active_kind)
+        has_prev => prev_exists(all_bps(), .selected_id, .query, .active_kind)
+        has_next => next_exists(all_bps(), .selected_id, .query, .active_kind)
         cur_kind => bp_kind(all_bps(), .selected_id, .query, .active_kind)
-        cur_name => bp_name(.shell_active)
+        cur_name => bp_name(all_bps(), .selected_id, .query, .active_kind)
         variant_label => variant_count_label(all_bps(), .selected_id, .query, .active_kind)
         tabs => section_tabs()
     }
