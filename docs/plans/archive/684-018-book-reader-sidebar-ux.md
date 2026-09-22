@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-684
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: 018-book-reader-sidebar-ux
 author: [agent]
 created_at: 2026-09-22
@@ -521,6 +521,18 @@ col.w-full.h-full.min-h-screen        ← 占满嵌入视口/窗口
   evidence: tf 3722/3722 全绿（--no-fail-fast）+ auto-man 324/327（3 预存
   上列）+ cargo t vm_only 2/2 + gallery 12/12 + 027 auto build 绿（vue-tsc
   首绿）+ evidence/p682/ 25 PNG + 6 探针脚本 | next: merge
+- [2026-09-22] `stage: merge` | plan_id: PLAN-684 | plan_revision: 8 | outcome:
+  **pass** | delivery_commit: `e6b408c52`（master tip，ff-only） | 五 checkpoint：
+  **prepared**=账本三件套随交付提交（ui/plans.md 表行+specs.json P684-1/P684-2 designs/reviews 两节外科插入+INDEX 再生零差异=项目级索引无新项目）；**landed**=rebase 双轮（1311fee29→87c2e50a4 他方会话并行前移；KNOWN-DEBT EOF P683/P684 并集+specs.json/plans.md 条目级 JSON 并集×2 轮），range-diff 全等（`=` 逐提交；哈希映射
+  a746b76c1→71bf8e64a / 319716236→0cebf7742 / 3ae4c42f8→371fbbd54 / 8e4ba1eab→38ee2d27f / 5ea9d42a9→250d8e879 / 0c8ab50b7→999476b55 / 0a264e36e→18912bfc3 / 528edf399→6664f4716 / 6044fb1b9→b4b186eaf / d433e3f29→fed6f00eb / 8910d8086→37ac4b3a1→e6b408c52），origin push force-with-lease+主检出 ff-only；**ledger_refreshed**=specs.json 落库含 P684-1/P684-2（readback：master 树 grep P684-1 命中）；**archived**=本行（git mv archive/ + status archived）；**cleaned**=随后行。
+  - 落地终态门禁补注：rebase 后全量 tf（-E 'not(test(/ffi_dual/))'，ffi_dual_018_dep_fields
+    =run_with_capture 双重解释器路径 P574 文档化 Windows 挂起类、纯 master 预存）：
+    5428 run/5418 pass/10 红——全预存（musk p053/p054 ×6=在册 musk×6 待认领、
+    projector_counter=P678 在册、p508_g2=陈旧 exe 假红类、a2vue desktop 金样+
+    native_gate coverage=纯 master 复跑同败实证=682/683 期漂移另案）；增量面
+    （vm_only/gallery/plan408）全绿+rebase 前基线 tf 3722/3722 全绿。
+  - worktree 注记：lang-684 实为独立 clone（origin=主仓本地路径，非注册 worktree
+    ——前会话创建形态），guard 后整目录删除（分支经 push 已并入主仓再删）。
   - 同会话复审局限注记：本复审在实施会话内进行；判据全部自仓内耐久工件
     （提交 diff/测试输出/走查截图/可重放探针）重建，不依赖执行者口头总结。
   - 会话中断接续注记：前一 agent 中断于 rev7 中途（api.at 对象访问误用
