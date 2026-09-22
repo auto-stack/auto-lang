@@ -211,3 +211,10 @@ graph TD
 - 备选：iced 上游 vendored patch(否——T-01 判本仓映射误用,Stack/opaque/capture 语义自洽,Shell 每事件新建即复位);每浮层自绘命中检测(否——重复发明 Stack 逆序投递)。
 - 后果：分屏双浮层"首轮交互后全灭"终结(实车三动作探针全活:双槽 TERM_PRESS/FOCUS/KEY + pane-2 WHEEL + 拖拽几何随动);PLAN-022 T-05"移除 opaque 轨迹不变"实验确认为测量伪影致盲(on_click 伪影),opaque 边界过宽即元凶;022 T-06 门由本 ADR 解锁。
 - 状态：active
+
+### ADR-23: 窗口缩略快照末帧保留（冻结集）+ 图片负缓存重试 + fit 双轴自然测量
+- 日期 / 来源：PLAN-040（2026-09-22，auto-os desktop-ux-fit-and-taskbar；用户实机走查三连修的 lang 侧语义收口；代码 @5dd8bf8fd/1f8cc66b5）
+- 决策：①**窗口缩略快照末帧保留**：任务栏 hover 预览 / pager 分区缩略对**最小化/隐藏/被更高 z 序遮挡/不在当前分区**的窗进入冻结集（`snapshot.rs` frozen 集——`request_capture` 冻结 no-op、`cache_put` 拒收、`snapshot_window_stale` 冻结恒 fresh），预览画保留的最后一帧；冻结判据 `sync_snapshot_frozen` 每 tick 全量校正 + `wm_minimize` 即时冻结 + `SnapshotShot` 裁剪回调裁决前现算（双保险封死在途截图污染）。Plan 497「裁剪式整窗快照」对不可见窗裁到壁纸/他窗像素的根修——Windows DWM redirection surface / macOS NSWindow backing store 同款 OS 惯例；Plan 497 待澄清③（子树离线栅格化）在本 iced 版本不可行的替代语义。②**图片负缓存重试**：`load_image_bytes` 本地文件读取失败不永久缓存，改 1s 负缓存后重试——壁纸/缩略重启丢失的根修（PLAN-035 T-17 家族姊妹语义）。③**fit 双轴自然测量**：`fit_aware_root` 对 `window: "fit"` app 双轴（Direction::Both 隐藏滚动条）+ 锚点 Shrink×Shrink——P679-D1 宽度 Fill 视口钳制退役（Fill 根链"测量值"=当前窗口尺寸→fit 恒等号永不收缩），Plan 512 v1 单轴语义修订为双轴自然；后代 bbox 方案因桌面复合场景同坐标系污染（他窗/图标网格节点落入锚点矩形）弃用。
+- 备选：①逐帧重渲染缩略（否——最小化窗无在屏 framebuffer，Plan 497 待澄清③已裁定离线栅格化不可行）；③锚点后代 bbox 并集（否——同坐标系污染，见决策③）。
+- 后果：最小化/遮挡窗预览恒正确（用户实机确认"hover 的预览确实是正确的末帧了"）；冻结窗恢复可见即解冻重抓。已知观察面：主题热切换时 dashboard face 渲染滞留（PLAN-040 F-R1 待澄清，暂规避=重启）。
+- 状态：active
