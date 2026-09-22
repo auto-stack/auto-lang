@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-678
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: rq-default-centering
 author: [zcode]
 created_at: 2026-09-21
-updated_at: 2026-09-21
+updated_at: 2026-09-22
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: [SD-01 桌面轨窗口根缺省居中放置契约（RqProjector 根入口 + iced 窗口根容器双轨同律）]
+new_spec_components: [SD-01（收缩版）桌面轨 -q 侧 RqProjector 根入口缺省居中放置契约（放置平移·零测量改动·AUTO_NO_AUTOCENTER 旁路）；iced 窗口根臂随 PLAN-683 重写弃]
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [docs/specs/auto-lang/ui/overview.md]
@@ -23,6 +23,12 @@ total_steps: 5
 > 他们默认居中显示"。同会话已落地前置修复 e0e2d6b52（fix-rq-items-center，
 > L0）：RqProjector 列臂 items-center 交叉轴居中两遍法——**声明的**居中
 > 现在 `-q` 轨生效；本计划补的是**缺省**居中（app 零声明时的宿主行为）。
+
+> **收口裁定（2026-09-22 用户）**：PLAN-683（rq-remote-renderer，方案 2：
+> iced 组件照常渲染、渲染原语过 RenderQueue）更换 RQ 架构路线，本计划与
+> PLAN-679 的实现面将随 683 重写。**未竟步骤（T-03/T-04 iced 臂/T-05）
+> 弃做**；已落地的 T-01/T-02（RqProjector 臂根缺省居中通道）按范围收缩版
+> 直接收口合并。AC-02/AC-03 及 AC-04 的 iced 半臂随之弃（详见 §6/§8）。
 
 ## 0. 变更摘要
 
@@ -160,14 +166,22 @@ MARGIN`，非零则全部 op/hit 坐标平移。要点：
   Shell 三画廊框架），Fill/h-screen 族零漂移为硬门。
 - e2e：`auto run -r vm -q` 001 实机居中走查（autoui-verifier 双轨）。
 
-## 6. 验收标准
+## 6. 验收标准（2026-09-22 收口裁定后判定见 §8）
 
-- [ ] AC-01 001-helloworld `-q` 轨内容双轴居中（实机截图 + 几何断言）。
-- [ ] AC-02 002-counter iced 轨内容居中，且 `-q` 轨同形态（两轨 parity）。
-- [ ] AC-03 gallery 矩阵：Fill/h-screen/嵌入面零回归（截图对比在档）。
-- [ ] AC-04 `AUTO_NO_AUTOCENTER=1` 双轨逃生门生效。
-- [ ] AC-05 覆盖门/成熟度门零回退（desktop_protocol 作用域 + 裸
+- [x] AC-01 001-helloworld `-q` 轨内容双轴居中（实机截图 + 几何断言）。
+      [2026-09-22 收口判定：pass（scoped）——几何断言单测复现绿；实机复验
+      弃做（裁定）]
+- [~] AC-02 002-counter iced 轨内容居中，且 `-q` 轨同形态（两轨 parity）。
+      [弃做——iced 臂=未竟 T-03，683 重写]
+- [~] AC-03 gallery 矩阵：Fill/h-screen/嵌入面零回归（截图对比在档）。
+      [弃做——iced 走查面随 T-03/T-04 弃；-q 侧由 tf/desktop_protocol 门背书]
+- [x] AC-04 `AUTO_NO_AUTOCENTER=1` 双轨逃生门生效。
+      [2026-09-22 收口判定：pass（scoped）——RqProjector 臂单测复现绿；
+      iced 臂弃]
+- [x] AC-05 覆盖门/成熟度门零回退（desktop_protocol 作用域 + 裸
       `cargo t` 零新增红）。
+      [2026-09-22 收口判定：pass——tf 3722/3722 + desktop_protocol
+      193/194 唯一红=master 预存同败实证]
 
 ## 7. 执行步骤
 
@@ -187,13 +201,49 @@ MARGIN`，非零则全部 op/hit 坐标平移。要点：
       门：desktop_protocol 191/192（唯一红=master 预存 counter）+daily
       cargo t 零新增红。
 - [ ] T-03 iced 窗口根改造（按 §2.2 单方案）+ embed 豁免 + 单测。
+      [❌ 弃做 2026-09-22——683 远程 renderer 路线重写实现面，用户裁定
+      未竟步骤不做，直接收口]
 - [ ] T-04 env 逃生门双轨接线 + gallery 全量走查矩阵（AC-03）。
+      [❌ 弃做 2026-09-22——同上；-q 臂 env 门已随 T-02 落地并有单测]
 - [ ] T-05 复审收口：specs 沉淀（ui/overview + desktop-protocol-v1 增补）、
       债册对账（P020-D1 差距面缩短注记）。
+      [✅ 以收缩形态完成 2026-09-22——复审+账本随收口执行；canonical
+      spec 散文编辑跳过（683 即将重写该面，delta 走账本 P678-1 存档）]
+
+### 规范增量（收口版）
+
+- **SD-01（收缩版）**：`docs/specs/auto-lang/ui/overview.md` 渲染缺省行为
+  增一条——`-q` 侧 RqProjector 根入口对内容尺寸严格小于视口（扣 MARGIN）
+  的轴做整体放置平移（ops/hits/right_hits 同 delta，视口锚定 rect 豁免，
+  `AUTO_NO_AUTOCENTER=1` 旁路），零测量语义改动。iced 窗口根臂（原 SD-01
+  另半）随 PLAN-683 重写，不入 canonical 散文；delta 摘要走账本 P678-1。
 
 ## 8. 复审记录
 
-（复审时填写）
+**stage: review | PLAN-678 | plan_revision: 立项稿 069c9cc4b+T-01/T-02 注记回填（legacy 无 revision 字段，以提交链为基线） | outcome: pass（范围收缩版） | reviewed_commit: 938cc5aac | base_commit: ce77f58fe | dependency_revisions: e0e2d6b52（前置 items-center L0，已在 master） | spec_inputs: docs/specs/auto-lang/ui/overview.md、docs/design/autoui/rq-remote-renderer.md（683 裁定档）**
+
+- **范围收缩授权**：2026-09-22 用户裁定——PLAN-683 换远程 Renderer 路线，
+  本计划实现面将重写，未竟 T-03/T-04(iced 臂)/T-05 弃做，T-01/T-02 收口。
+  非未批准的延期/缩面（有明确裁定档）。
+- **rebase 完整性**：原 T-02 提交 3b2fe0ee0（基底 069c9cc4b）rebase 至
+  master ce77f58fe 得 938cc5aac，**patch-id 双侧相等**
+  （334e45278af1243ec1256b528983e41afe2cbc91）——复审对象=交付物逐补丁
+  等价。重叠文件仅 native_projector.rs（master 侧=PLAN-674 codeeditor
+  DrawOps 臂，不同区域，零冲突自动合并）。
+- **acceptance_results**：AC-01 pass(scoped)/AC-02 弃/AC-03 弃/AC-04
+  pass(scoped)/AC-05 pass——判定与依据见 §6 行内注记。
+- **门禁复现（2026-09-22，lang-678 worktree @938cc5aac）**：
+  `cargo check -p auto` 净（1 警告=bin 域 master 预存，分支未触 bin 源）；
+  `cargo t autocenter` 4/4 绿（centers_small_content /
+  exempts_explicit_viewport_classes / env_gate_bypasses_translation /
+  translates_hits_with_ops）；`cargo t desktop_protocol --no-fail-fast`
+  193/194（唯一红 projector_counter_layout_and_hits **主检出同败实证=
+  master 预存**）；`cargo tf` **3722/3722 全绿**。
+- **findings**：无阻塞发现。一处非阻塞注记——AC-01 的"实机截图"要件以
+  单测几何断言+起源会话实机观察（无存档）替代，复验弃做有裁定背书。
+- **evidence**：本记录内命令/结果摘录（durable）；patch-id 见上。
+- **next**: merge（ff-only 938cc5aac）→ 账本 P678-1 + ui/plans.md + INDEX
+  → 归档 → worktree 清理。
 
 ## 9. 待澄清事项
 
