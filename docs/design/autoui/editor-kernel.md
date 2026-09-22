@@ -156,6 +156,16 @@ rope（文档事实源：本仓自实现轻量 rope）
 
 ### 5.2 返回形状与边界语义
 
+> **PLAN-687（2026-09-22）实现精化**：envelope 形状/字段序/边界回退
+> 语义零变；`fs::read` 全文+切片改 **File seek+精确窗读**
+> （`[offset−3, end+1)` 余量窗 + metadata 总长，IO O(limit)——多块
+> 扫描不再每块全量读盘）。**流式语义收窄**：UTF-8 校验从全文一次性
+> 收窄为块区（非法字节在所在块读取时报 total:-1，未读区不提前暴露）
+> ——VM shim 与 a2r-std 双轨同形（P670-D1 纪律延续），parity 测试
+> 零回退。另：消费侧装载主链已改 `code_editor_load_file` 端点
+> （nat#9908，auto-edit PLAN-007 供料回流）——分块读保留为流式
+> 消费面。
+
 ```json
 {"text": "...", "total": 1234567, "next_offset": 4096}
 {"text": "", "total": 1234567, "next_offset": null}   // 到达 EOF
