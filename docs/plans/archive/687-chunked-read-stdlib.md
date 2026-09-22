@@ -189,4 +189,4 @@ IO 层并未分块（多块调用 = IO 平方；全文件反复过内存）。�
     ledger_refreshed（.autoos/specs.json 回读 P687-1/P687-2 在位，
     P686 零扰动）；主检出工具链重建 1871-g8360bc583（下游 F-1
     解锁）；archived 本文件；cleaned 待记。
-  -  |  | delivery 8360bc583
+  - stage: merge | outcome: pass | delivery 8360bc583 | next: none
