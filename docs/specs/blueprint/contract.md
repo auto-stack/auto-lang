@@ -41,6 +41,32 @@ reka-ui（shadcn: off 项目如 jade-garden front 宿主化 ui/menubar+ui/button
 3. 评审通过 → 进 spec 正式声明（下个应用免费用）；拒绝 → 差异留应用侧并登记
    `docs/plans/KNOWN-DEBT-AND-RISKS.md`。
 
+## 交互态 BP（PLAN-688 SD-01）
+
+bp 参考实现不限于静态形态：**交互态 BP** = bp-private model var（scoped
+store，六问 #3 既有归属）+ toggle msg（`!` 取反，form/login ToggleRemember
+先例）+ **双 pane 互斥可见性**，全程零新增 VM 原语。锚例 =
+`navigation/sidebar-shell`（collapsed 态驱动宽栏 ↔ icon rail）。
+
+**pane 互斥配方（可复制）**：
+
+```auto
+// 宽 pane 根：可见 = ¬collapsed ∧ 窗宽 ≥1024
+style: if .collapsed { "hidden" }
+                 else { "hidden lg:block w-56 shrink-0 ..." }
+// rail pane 根：可见 = collapsed ∨ 窗宽 <1024（竖屏自动 rail）
+style: if .collapsed { "w-14 shrink-0 ..." }
+                 else { "lg:hidden w-14 shrink-0 ..." }
+```
+
+**语义陷阱（is_hidden 的 Plan 409 §10 display 覆盖规则）**：pane 根**禁带
+任何 display 类**——base 里的 `flex` 会让 `lg:hidden` 永远隐藏不掉
+（display 覆盖 Hidden）；宽根用 `lg:block`（列容器无需 flex 类，iced
+Column / CSS block 天然栈式）。断点随 OS resize→view 重建→重解析实时生效
+（Plan 527 T7 回路）。回归锚：`test_lg_hidden_override_and_width_cascade`
+（ui/style/mod.rs）。rail 态 icon 钮的 `title:` tooltip 走 PLAN-053 批4
+EE03 接线（普通 button title→iced tooltip），无需 bp 侧改动。
+
 ## 验证面
 
 - 包完整性：registry 扫描（spec name ↔ 目录名一致、声明 variant 必有 reference 文件）。

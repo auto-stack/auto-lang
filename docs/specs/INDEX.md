@@ -341,7 +341,7 @@
 | form/settings | 设置页 blueprint（分区 + 危险区确认） | active |
 | form/wizard | 分步向导 blueprint | active |
 | navigation/sidebar-nav | 侧边导航（三段式内容）blueprint | active |
-| navigation/sidebar-shell | 应用壳 blueprint（header + sidebar + 内容槽 + user menu） | active |
+| navigation/sidebar-shell | 应用壳 blueprint（首个交互态 BP，PLAN-688：三段式 sidebar 双 pane——宽 pane 每 item icon+标题一体单钮 ↔ rail pane icon-only 大一号；collapsed 态+ToggleCollapsed+lg: 断点竖屏自动 rail；mobile ☰ 记录 Non-goals 待 mobile milestone 翻案） | active |
 | layout/sandwich | 桌面三层壳骨架 blueprint（toolbar/sidebar/content/statusbar 四 slot 出口；default/full，PLAN-665） | active |
 | layout/gallery-shell | 画廊/文档站三段壳 blueprint（header brand slot+搜索+设置 popover / aside w-72 筛选+双行卡条目 / content 出口；on_* msg-ref 回调契约，主题态归宿主；PLAN-676） | active |
 | dashboard/overview | 仪表盘总览 blueprint | active |

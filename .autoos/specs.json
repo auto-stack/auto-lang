@@ -3333,6 +3333,12 @@
      "status": "published",
      "created": "2026-09-22",
      "last_modified": "2026-09-22"
+    },
+    {
+     "id": "P688-1",
+     "title": "sidebar-shell-collapse-responsive — sidebar-shell BP 交互化（首个交互态 BP，双 pane 形态）",
+     "content": "navigation/sidebar-shell 从静态双变体参考升格为受态驱动交互 widget（PLAN-688 r2，用户走查裁定形态）：三段式 sidebar（上 logo+收缩钮/中 nav/下 settings footer）渲染为两棵互斥 pane——宽 pane 每 item 一颗 icon+标题一体单按钮（f 双插值），rail pane icon-only 且大一号（text-lg w-10 vs text-sm）；bp-private collapsed 态+ToggleCollapsed（! 取反）驱动，平板竖屏（<1024）经 lg: 断点自动 rail，OS resize→view 重建→重解析实时换 pane（Plan 527 T7 回路实机证实）。pane 互斥配方与 is_hidden display 覆盖陷阱（pane 根禁 display 类，flex lg:hidden 不可隐藏）沉淀 contract.md 交互态 BP 节+gotchas #5；回归锚 test_lg_hidden_override_and_width_cascade。附带：plan649/657 收集器补 View::Scrollable 穿透臂（overflow-y-auto 容器内 needle 可见性，对齐 snapshot v2 口径）；047-bp-admin nav 播种补 icon 全键（复审 F-1）；title→tooltip 经 PLAN-053 批4 EE03 已接线（T-04 免）；mobile ☰ 记录 spec Non-goals 待 mobile milestone 翻案",
+     "file": "docs/specs/blueprint/contract.md"
     }
    ]
   },
@@ -7146,6 +7152,12 @@
      "status": "published",
      "created": "2026-09-22",
      "last_modified": "2026-09-22"
+    },
+    {
+     "id": "P688-2",
+     "title": "sidebar-shell-collapse-responsive — 复审与合并收据（r1 单树→r2 双 pane 用户裁定返场）",
+     "content": "r1（D1 单树逐元素 label 面）execution_done 后用户走查裁定返场：双 pane 互斥+一体钮+rail 大一号 icon，r2 重写重走查全过。复审 pass（实施会话内复审，独立性声明+工件重建）：AC-02 补双臂 hover/选中四证据（VM SetCursorPos 真悬停+Vue CUA 坐标点击）；F-1=047-bp-admin nav 播种缺 icon 全键（计划约束只修 t09 fixture 漏在库消费方）修复 2115b76e5；F-2=plan640 收集器潜伏缺口非阻断；F-4 域外基线红（musk_vm_track/desktop_protocol/a2vue master 同红+ffi_dual 依赖位互扰）tf 以四族排除跑 5108/5108；F-5=MCP vtree 快照滞后 view 缓存一拍测量陷阱（断点断言以截图为准）。关键勘正：T-03 草案 flex lg:hidden 按 is_hidden display 覆盖语义不可行→rail 根禁 display 类",
+     "file": "docs/plans/archive/688-sidebar-shell-collapse-responsive.md"
     }
    ]
   }
