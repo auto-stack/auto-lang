@@ -188,5 +188,7 @@ IO 层并未分块（多块调用 = IO 平方；全文件反复过内存）。�
     aa307c155→bc12e54bd / 5a45c9ea9→8360bc583 含冲突适配）；
     ledger_refreshed（.autoos/specs.json 回读 P687-1/P687-2 在位，
     P686 零扰动）；主检出工具链重建 1871-g8360bc583（下游 F-1
-    解锁）；archived 本文件；cleaned 待记。
+    解锁）；archived 本文件；cleaned（guard clean 双验 + worktree/分支/组目录
+    零残留 + auto-687.exe 保出件随组清理 + 双仓 prune——auto-down
+    兄弟树同组移除）。
   - stage: merge | outcome: pass | delivery 8360bc583 | next: none
