@@ -245,7 +245,7 @@ fn conformance_030_str_to_int() {
 /// Each program is generated from a seed for reproducibility.
 #[test]
 fn conformance_differential_stability() {
-    use crate::test_util::program_generator::ProgramGenerator;
+    use crate::tests::test_util::program_generator::ProgramGenerator;
 
     let count = 50;
     let mut passed = 0;
@@ -272,7 +272,7 @@ fn conformance_differential_stability() {
 /// Verify same seed produces same output (reproducibility).
 #[test]
 fn conformance_differential_reproducibility() {
-    use crate::test_util::program_generator::ProgramGenerator;
+    use crate::tests::test_util::program_generator::ProgramGenerator;
 
     for seed in [0u64, 1, 42, 100, 999] {
         let mut gen1 = ProgramGenerator::new(seed);

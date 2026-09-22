@@ -87,7 +87,7 @@ widget GoodWidget {
             .to_path_buf();
         let tmp = std::env::temp_dir().join("plan492-m5-synth");
         let _ = std::fs::remove_dir_all(&tmp);
-        crate::plan492_tests::pkg_harness::copy_tree_for_test(&front, &tmp).unwrap();
+        crate::tests::plan492_tests::pkg_harness::copy_tree_for_test(&front, &tmp).unwrap();
         let bar = tmp.join("components/bar_chart.at");
         let code = std::fs::read_to_string(&bar).unwrap();
         let patched = code.replace(

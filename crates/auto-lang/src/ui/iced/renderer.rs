@@ -33709,7 +33709,7 @@ mod line_edit_tests {
 
     /// Plan 483 T3:042 真实形态端到端(parse→registry→DynamicComponent→
     /// view_with_debug_gated→render_dynamic_view VM 主路径)。镜像
-    /// plan437_child_init_tests::build_inline 的生产构建路径;子 widget
+    /// tests::plan437_child_init_tests::build_inline 的生产构建路径;子 widget
     /// 以 kebab tag 直接实例化(免 use 导入),根 widget 持 .authed 条件。
     #[cfg(feature = "iced-layout-tests")]
     fn p483_build_login_shape() -> crate::ui::dynamic::DynamicComponent {

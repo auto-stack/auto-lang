@@ -10,7 +10,7 @@
 
 #[cfg(all(test, feature = "ui-iced"))]
 mod m4_pkg_compile_chain {
-    use crate::plan492_tests::pkg_harness::{build_patched_gallery, render_dump};
+    use crate::tests::plan492_tests::pkg_harness::{build_patched_gallery, render_dump};
 
     /// 三副本组件目录(cargo 测试 cwd 在 crate 下,经 CARGO_MANIFEST_DIR 定位;
     /// PLAN-590:widgets-gallery 迁 auto-os 顶层,经解析序定位,未解析跳过)。
