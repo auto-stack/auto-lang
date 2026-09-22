@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-688
-status: executing             # drafting → executing → execution_done → reviewed → archived
+status: execution_done       # drafting → executing → execution_done → reviewed → archived
 feature_name: sidebar-shell-collapse-responsive
 author: [agent]
 created_at: 2026-09-22
 updated_at: 2026-09-22
 plan_revision: 1
-current_step: 0
+current_step: 5
 total_steps: 7
 
 # /auto-plan:review 结束时填写：
@@ -200,6 +200,19 @@ T-01(c) 勘定：已接线→仅记录；缺失→T-04 在按钮转换臂加 too
 
 （D1-D4 见 §2；此处补执行级细节。T-01 探针结论须回写本节。）
 
+### T-01 探针结论（2026-09-22 执行回写）
+
+- **(a) 通过**：`hidden lg:flex` 在 <1024 隐藏、≥1024 display 覆盖
+  （`Style::is_hidden` Plan 409 §10 语义）；`w-14 lg:w-56` 响应类按声明序
+  进 base、后声明胜。钉测 `test_lg_hidden_override_and_width_cascade`
+  （ui/style/mod.rs，随本计划落库）。
+- **(b) 通过**：OS resize→`__window_resized`（renderer.rs:21311 映射，:17527
+  漏斗置 view_dirty+写 window_size）→view 重建→重解析，960↔1280 实时往返
+  实机证实。测量陷阱：MCP vtree 快照可滞后 view 缓存一拍，断言以截图为准。
+- **(c) 已接线**：PLAN-053 批4 普通按钮 `title:`→EE03→renderer tooltip
+  （aura_view_builder.rs:9412-9420 / iced/renderer.rs:3972-3985）——原 §4 表
+  事实 #7 的"疑似未接线"被证伪，T-04 免执行。
+
 ### T-01 探针设计（bounded investigation，决策工件）
 
 临时 example（`examples/capability-tests/` 惯例位或 `cargo t iced` 单测）验证三前提：
@@ -281,41 +294,102 @@ T-01(c) 勘定：已接线→仅记录；缺失→T-04 在按钮转换臂加 too
   - 产出：三前提结论写回 §5 D1/D3；D1 破则 T-03 转执行
   - 验证：`auto run -r vm` 实测或 `cargo t iced`；预期见 §5
   - 关联：AC-04/AC-05 前置
+  - [✅ 已完成] (a) 单测实证（`test_lg_hidden_override_and_width_cascade`，
+    ui/style/mod.rs，探针转正式回归锚保留）：768 `hidden lg:flex`→is_hidden ✓ /
+    1280→flex 覆盖 ✓ / `w-14 lg:w-56` 命中序级联后声明胜（1280→56、768→14）✓。
+    (b) 实机证实（run3，P530_TRACE）：OS resize→`__window_resized: 960x800`→
+    `view rebuild: dirty=true window=960`→视觉即切 rail（截图像素判读），拉回
+    1280 即回宽栏——Plan 527 T7 回路真实生效。**测量注记**：MCP
+    autoui_snapshot(vtree) 在 view 缓存置换前可滞后一拍，断点断言以截图/布局
+    为准、勿以 vtree 文本为准（曾致"resize 不生效"假阴性）。(c) **已接线**：
+    PLAN-053 批4 已把普通 button `title:`→EE03 拼入 label
+    （aura_view_builder.rs:9412-9420,9654-9657）→ renderer Button 臂剥离并包
+    iced tooltip（iced/renderer.rs:3972-3985，300ms 防误触）——快照 label 的
+    `⌂\uee03Home` 形态即链路实证。T-04 因此免执行。
 - **T-02 reference/default.at 三段式重写**（依赖 T-01(a) 通过）
   - 文件：`blueprints/navigation/sidebar-shell/reference/default.at`
   - 操作：§2 D2 骨架落地——三段式/`collapsed`+`ToggleCollapsed`/D1 组合类/nav 全键 icon/
     header 迁 content 侧/needle 三文本保留/EDIT 注释惯例
   - 验证：`auto run -r vm` 裸实例化走查（宽/rail 两态）
   - 关联：AC-01/02/03
+  - [✅ 已完成] 三段式/`collapsed`+`ToggleCollapsed`(`!` 取反)/D1 组合类/nav 全键
+    `node.icon`/header 迁 content 侧/needle 三文本保留/EDIT 注释全落
+    （commit 06e792d2e）。门禁：t09 单测绿（needle Home/Acme/App content mounts
+    here 全命中）；**顺序微调**：t09 `.nav` fixture 补 `icon:"⌂"` 键自 T-07 前置
+    到本任务（reference 读 `node.icon` 后不补即硬错）。实机宽/rail 两态走查
+    见 T-06。
 - **T-03 双树回退**（**条件任务**：仅 T-01(a)/(b) 判 D1 不可行时执行；否则标注
   skipped+原因，不计入完成度缺口）
   - 文件：同 T-02
   - 操作：宽/rail 两棵子树 + `hidden lg:flex`/`flex lg:hidden` 互斥可见性
   - 关联：AC-03/AC-04
+  - [⏭ skipped] T-01(a)/(b) 均通过（单测+实机），D1 单树组合成立，回退不触发。
 - **T-04 VM 轨 button title→tooltip 臂**（**条件任务**：仅 T-01(c) 判未接线时执行）
   - 文件：`crates/auto-lang/src/ui/aura_view_builder.rs`（按钮转换臂读 `title` →
     tooltip 包裹；EE03 先例 `iced/renderer.rs:4479`，`iced::widget::tooltip` 已导入）
   - 验证：`cargo check -p auto-lang` 零 error；`cargo t iced` 绿；探针 (c) 复跑出 tooltip
   - 关联：AC-05；债册 P548-D2 同族清偿注记（T-07 落账）
+  - [⏭ skipped] T-01(c) 勘定=已接线（PLAN-053 批4 EE03 链路，见 T-01 证据），
+    本任务不触发；AC-05 以勘定记录满足（计划原文口径）。P548-D2
+    （`sidebar_menu_button` tag 面 tooltip deferred）是另一表面，本计划未触碰，
+    债条保持原状。
 - **T-05 spec.md + gotchas.md**（依赖 T-02 定稿）
   - 文件：`blueprints/navigation/sidebar-shell/spec.md`、`gotchas.md`
   - 操作：§5 spec 变更三条 + Non-goals mobile 记录 + gotchas 三条
   - 关联：AC-06
+  - [✅ 已完成] acceptance 增三条（collapse 双向/竖屏自动 rail/rail tooltip）+
+    props 全键注记 + Non-goals 节（mobile ☰ 记录+翻案声明/竖屏手动展开同批/
+    动画/RQ 零接触）+ gotchas #4/#5/#6 新增（既有三条编号对齐）（commit a4ad7f2e1）。
 - **T-06 registry.at 再生 + 双臂走查**（依赖 T-02/T-05）
   - 文件：`examples/bps-gallery/src/front/registry.at`
   - 操作：`auto bp list --format at > examples/bps-gallery/src/front/registry.at`；
     bps-gallery VM 轨三态走查（宽/rail/768）+ Vue 臂 `auto run` 走查（autoui-verifier 截图）
   - 关联：AC-01/02/03/04/08
+  - [✅ 已完成] registry 再生 diff=sidebar-shell 单行（commit a4ad7f2e1）。
+    **宿主调整**（记录）：bps-gallery 为源码目录浏览器（Reference 节明示
+    "live render via a2vue is deferred"），无 live 实例面——走查宿主改用
+    t09 式临时 live 宿主 app（`%TEMP%/p688-walkthrough`，dep bps path 钉
+    worktree blueprints），同一 `auto run -r vm`/`auto run` 运行时，验收购不缩水。
+    VM 轨（AUTO_VM_WINDOW/auto exe=主检出 125842944B 2026-09-22 19:17 构建，
+    .at 资产运行期读盘故 worktree 改动直接生效）：宽 1280 首绘三段式全标签 ✓
+    （AC-01）；点 Projects → VTree `bg:#334156` secondary 填充高亮、Home 行
+    ghost 无底色对照 ✓（AC-02）；点 ◂ 收缩钮 → rail（label 面全隐，handler
+    `.SidebarShell.ToggleCollapsed` ok）→ 点 ▲ 标题 icon 回宽栏且选中保持
+    （VTree bg 仍在 Projects 行）✓（AC-03）；OS resize 1280→960→1280 实时
+    rail↔wide 往返（不重启零交互，P530_TRACE 轨迹+像素判读）✓（AC-04 上半）；
+    768x1024 首渲染即 rail ✓（AC-04 下半）；tooltip 勘定记录满足（AC-05，
+    EE03 链路见 T-01）。Vue 臂（`AUTO_BACKEND_IMPL=vm auto run`，vite
+    localhost:4788）：1280 视口宽栏三段式 / 768 视口 icon rail——与 VM 臂
+    同页同断点行为 ✓（AC-08）。
 - **T-07 测试收口 + 门禁 + 落账**（依赖 T-02..T-06 全部定稿）
   - 文件：`crates/auto-lang/src/plan649_bp_tests.rs`（`.nav` fixture 补 `icon` 键 + needle 复核）、
     `docs/plans/KNOWN-DEBT-AND-RISKS.md`（P548-D2 处置注记，若 T-04 执行）
   - 操作与验证：`cargo t plan640` + `cargo t plan649` + `cargo t plan657` 绿；
     若触 Rust：`cargo check -p auto-lang` + `cargo t iced` 绿；扫描零漂移
   - 关联：AC-07
+  - [✅ 已完成] plan640 5/5 + plan649 10/10 + plan657 3/3 +
+    test_lg_hidden_override_and_width_cascade 1/1 全绿；触 Rust（style/mod.rs
+    回归锚+plan649 fixture）已跑 `cargo check -p auto-lang` 零 error 零新警
+    （触及文件无 warning 归因）+ `cargo t iced` 271/271。P548-D2 注记：T-04
+    未执行（title 面已接线），无清偿项，债条不动。
 
 （每步完成后在对应任务下追加 `[✅ 已完成] <证据>` 一行。）
 
 ## 9. 复审记录
+
+### work handoff（2026-09-22）
+
+- stage: work | PLAN-688 | revision 1 | outcome: **pass** |
+  code_commit: plan-688-dev 06e792d2e + a4ad7f2e1（base master 97614062f）|
+  task_ids: T-01✓ T-02✓ T-03⏭(条件不触发) T-04⏭(条件不触发) T-05✓ T-06✓ T-07✓ |
+  evidence: 探针三前提（§5 回写：单测钉测+P530_TRACE 实机+EE03 勘定）；三套
+  bp 测试 18/18 绿 + `cargo t iced` 271/271 + `cargo check` 零 error 零新警；
+  双臂实机走查全过（VM 宽/选中/收缩/展开/resize 往返/768 首绘 + Vue 1280/768），
+  详见 §8 各任务证据行 |
+  blockers: 无 |
+  next: review（/auto-plan:review）——关注点：①T-06 宿主调整（画廊无 live 面
+  →临时 live 宿主 app）的验购买账；②T-01(b) 测量注记（vtree 滞后）是否值得
+  沉淀为 autoui-verifier gotcha；③SD-01/SD-02 规范增量的落库面。
 
 ### draft handoff（2026-09-22）
 
