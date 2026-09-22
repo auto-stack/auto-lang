@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-688
-status: execution_done       # drafting → executing → execution_done → reviewed → archived
+status: executing             # drafting → executing → execution_done → reviewed → archived
 feature_name: sidebar-shell-collapse-responsive
 author: [agent]
 created_at: 2026-09-22
 updated_at: 2026-09-22
-plan_revision: 1
+plan_revision: 2
 current_step: 5
 total_steps: 7
 
