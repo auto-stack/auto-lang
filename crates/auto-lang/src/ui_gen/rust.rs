@@ -9511,6 +9511,18 @@ impl RustGenerator {
                     op
                 ))
             }
+            "code_editor_edit" => Some(format!(
+                "auto_lang::ui::code_editor::code_editor_edit(&({a0}), ({a1}).max(0) as u64 as usize, ({a2}).max(0) as u64 as usize, &({a3}))",
+                a0 = arg(0)?,
+                a1 = arg(1)?,
+                a2 = arg(2)?,
+                a3 = arg(3)?
+            )),
+            "code_editor_load_file" => Some(format!(
+                "(auto_lang::ui::code_editor::code_editor_load_file(&({a0}), &({a1})).unwrap_or(-1)) as i64",
+                a0 = arg(0)?,
+                a1 = arg(1)?
+            )),
             "code_editor_fold_toggle" => Some(format!(
                 "auto_lang::ui::code_editor::code_editor_with(&({a0}), |core| core.fold_toggle(({a1}).max(1) as usize - 1)).unwrap_or(false)",
                 a0 = arg(0)?,

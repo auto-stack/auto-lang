@@ -266,10 +266,13 @@ impl File {
 
     /// Plan 673 T-03 bin 层直通(read_text 同款先例;语料不触达,仅为可
     /// 编译——engine.at nat#1016 臂的 .at 级 File.read_text_range 调用
-    /// 被 a2r 直映成此关联函数)。语义仍逐字节对齐 VM 侧
+    /// 被 a2r 直映成此关联函数)。语义逐字节对齐 VM 侧
     /// `shim_file_read_text_range`(P670-D1):错误形 total:-1(offset<0 /
     /// limit<=0 / IO 错 / 无效 UTF-8);next_offset=null 仅真 EOF;块两缘
     /// char boundary 回退。serde 不可用(零依赖 crate),JSON 手卷,
+    /// PLAN-687 注记:VM/a2r-std 已改真分块窗读(File seek+精确窗),
+    /// 本 leg 语料不触达保持旧全量读形态——等价性以语料边界矩阵为限
+    /// (invalid UTF-8 全文 vs 块区校验的流式差异不进语料面)。
     /// __esc 与 serde_json 字符串转义同形。
     pub fn read_text_range<Off: Into<i128>, Lim: Into<i128>>(
         p: impl AsRef<std::path::Path>,

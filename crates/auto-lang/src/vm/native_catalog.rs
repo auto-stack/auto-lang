@@ -38,6 +38,9 @@ macro_rules! for_each_native {
             // 2960=auto.image.queue)——沿 PLAN-656 scroll 族先例取 9900+
             // 高段(dynamic shim 自 10000 起,stdlib 动态计数永不达此)。
             (9906, NATIVE_CODE_EDITOR_EDIT, shim_code_editor_edit, "auto.code_editor.edit"),
+            // PLAN-687: bulk load endpoint (native-side file → editor; dual of the
+            // registered code_editor_save want). 9900+ band per P673-D2.
+            (9908, NATIVE_CODE_EDITOR_LOAD_FILE, shim_code_editor_load_file, "auto.code_editor.load_file"), // 9907 已被 Env.track 占（P673-D2 无守卫坑实测：错派发返垃圾值）
             // === Plan 413 follow-up: console natives (in-app Console panel) ===
             (2916, NATIVE_CONSOLE_LOG, shim_console_log, "auto.console.log"),
             (2917, NATIVE_CONSOLE_LINES, shim_console_lines, "auto.console.lines"),
@@ -807,6 +810,8 @@ macro_rules! for_each_bigvm_native {
             // === Plan 673 T-02: structured write — write side (nat 9906;
             // 29xx band exhausted, 9900+ high band per PLAN-656 precedent) ===
             ("auto.code_editor.edit", 9906, Bool),
+            // === PLAN-687: bulk load endpoint (nat 9907) ===
+            ("auto.code_editor.load_file", 9908, Int),
             // === Plan 413 follow-up: console natives (in-app Console panel) ===
             ("auto.console.log", 2916, Bool),
             ("auto.console.lines", 2917, String),
@@ -1929,6 +1934,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     // reaches it) but is pinned here for a uniform ownership record.
     ("auto.code_editor.delta", 2939),
     ("auto.code_editor.edit", 9906),
+    ("auto.code_editor.load_file", 9908),
     // Plan 555 T06: 分发组合子（interop.* 限定名 + 裸名别名——裸名
     // resolve_qualified 经 NATIVE_ID_MAP 惰性注册命中）。
     ("interop.obj_get", 1860),

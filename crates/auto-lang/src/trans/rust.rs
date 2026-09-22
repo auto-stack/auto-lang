@@ -6590,6 +6590,30 @@ impl RustTrans {
                                 write!(out, ").is_ok()")?;
                                 return Ok(());
                             }
+                            // PLAN-687: chunked-read envelope — true chunked
+                            // window read in a2r_std (byte-identical with the
+                            // VM shim, P670-D1). Auto int = i64 → usize cast.
+                            "read_text_range" => {
+                                self.a2r_std_used.set(true);
+                                write!(out, "auto_lang::a2r_std::fs::read_text_range(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    write!(out, "&(")?;
+                                    self.expr_as_str(a, out)?;
+                                    write!(out, ")")?;
+                                }
+                                for (i, arg) in call.args.args.iter().enumerate().skip(1) {
+                                    write!(out, ", ")?;
+                                    if let Arg::Pos(e) = arg {
+                                        write!(out, "((")?;
+                                        self.expr(e, out)?;
+                                        write!(out, ").max(0) as u64 as usize)")?;
+                                    } else {
+                                        self.arg(arg, out)?;
+                                    }
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
                             _ => {}
                         },
                         "sys" => {

@@ -363,37 +363,68 @@ fn read_text_range_json(text: String, total: i64, next_offset: Option<u64>) -> S
 /// not fake EOF; `offset<0` or `limit<=0` → `total:-1`). Chunk edges never
 /// split a char: a mid-char `offset` walks back to the preceding boundary,
 /// and the chunk end backs off likewise. Invalid UTF-8 → error shape.
+///
+/// PLAN-687 true chunked IO (byte-identical with the a2r-std mirror,
+/// P670-D1): the disk window actually read is
+/// `[offset − 3, min(total, offset + limit + 1))` via `File::seek` +
+/// exact-size read; `total` comes from metadata — no whole-file `fs::read`,
+/// so a chunked scan costs O(limit) IO per call. Streaming semantic note:
+/// UTF-8 validation is per-chunk-region; invalid bytes outside the window
+/// surface as the error shape only when their containing chunk is read.
 #[auto_macros::rust_fn("File.read_text_range", "auto.file.read_text_range")]
 pub fn shim_file_read_text_range(path: String, offset: i32, limit: i32) -> String {
     let err = || read_text_range_json(String::new(), -1, None);
     if offset < 0 || limit <= 0 {
         return err();
     }
-    let bytes = match fs::read(&path) {
-        Ok(b) => b,
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = match fs::File::open(&path) {
+        Ok(f) => f,
         Err(_) => return err(),
     };
-    let total = bytes.len() as i64;
-    let text = match String::from_utf8(bytes) {
+    let total = match file.metadata() {
+        Ok(m) => m.len(),
+        Err(_) => return err(),
+    };
+    let start = (offset as u64).min(total);
+    if start >= total {
+        // offset past end (empty file included): EOF shape, real total.
+        return read_text_range_json(String::new(), total as i64, None);
+    }
+    let end = (start as usize)
+        .saturating_add(limit as usize)
+        .min(total as usize) as u64;
+    // Boundary margins: 3 bytes before `start` (max UTF-8 continuation run)
+    // + 1 byte at `end` (decides whether `end` sits inside a multi-byte
+    // char). Continuation bytes = 0b10xxxxxx (std-free walk, same result
+    // as the previous whole-text `is_char_boundary` back-off).
+    let win_start = start.saturating_sub(3);
+    let win_end = (end + 1).min(total);
+    let mut win = vec![0u8; (win_end - win_start) as usize];
+    if file.seek(SeekFrom::Start(win_start)).is_err() {
+        return err();
+    }
+    if file.read_exact(&mut win).is_err() {
+        return err();
+    }
+    let is_cont = |b: u8| b & 0xC0 == 0x80;
+    let mut s = (start - win_start) as usize;
+    while s > 0 && is_cont(win[s]) {
+        s -= 1;
+    }
+    let mut e = (end - win_start) as usize;
+    if e < win.len() {
+        while e > s && is_cont(win[e]) {
+            e -= 1;
+        }
+    }
+    let chunk = match String::from_utf8(win[s..e].to_vec()) {
         Ok(t) => t,
         Err(_) => return err(),
     };
-    let len = text.len();
-    let mut start = (offset as usize).min(len);
-    while !text.is_char_boundary(start) {
-        start -= 1;
-    }
-    if start >= len {
-        // offset past end (empty file included): EOF shape, real total.
-        return read_text_range_json(String::new(), total, None);
-    }
-    let mut end = start.saturating_add(limit as usize).min(len);
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    let chunk = text[start..end].to_string();
-    let next_offset = if end >= len { None } else { Some(end as u64) };
-    read_text_range_json(chunk, total, next_offset)
+    let end_abs = (e + win_start as usize) as u64;
+    let next_offset = if end_abs >= total { None } else { Some(end_abs) };
+    read_text_range_json(chunk, total as i64, next_offset)
 }
 
 /// Write text content to a file

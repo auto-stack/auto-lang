@@ -2067,6 +2067,27 @@ pub fn code_editor_set_text(key: &str, text: &str) -> bool {
     }
 }
 
+/// PLAN-687 (auto-edit PLAN-007 supply): bulk load endpoint — the dual of
+/// the registered `code_editor_save(key, path)` want. Reads `path` fully
+/// NATIVE-side (std::fs, one pass — borrow Rust's implementation) and sets
+/// the editor text in ONE rewrite, so the full text never transits the VM
+/// heap/pool. Guard posture mirrors `code_editor_edit`: `last_external` is
+/// NOT touched — callers align it to their binding value beforehand (a
+/// view re-push of the stale bound value must stay a no-op). The
+/// full-replace delta queued by set_text is drained and discarded here (a
+/// file-sized replacement must not sit resident in the unbounded delta
+/// queue). Returns total bytes loaded; None = no editor / IO error /
+/// invalid UTF-8.
+pub fn code_editor_load_file(key: &str, path: &str) -> Option<i64> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let key = normalize_payload_key(key);
+    let map = CODE_EDITORS.lock().unwrap();
+    let core = map.get(&key)?;
+    with_font_system(|fs| core.set_text(&text, fs));
+    let _ = core.take_deltas();
+    Some(text.len() as i64)
+}
+
 /// Plan 673 §4.3 structured write (agent edit): `code_editor_edit(key,
 /// start, end, replacement)` — one API, three forms (insert/delete/replace
 /// per the interval shape). Returns false on invalid input (no such editor,
@@ -2743,6 +2764,51 @@ let beta = alpha + 2;
     }
 
     // ── Plan 673 T-01: unified delta queue (read side) ─────────────────
+
+    /// PLAN-687: bulk load endpoint — text lands in one pass, the
+    /// full-replace delta is drained (queue empty after), `last_external`
+    /// stays untouched (guard posture mirrors `code_editor_edit`), and the
+    /// return is the byte total. Missing editor/file → None.
+    #[test]
+    fn load_file_sets_text_drains_delta_and_skips_last_external() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-load-file-687");
+        code_editor_dispose(&key);
+        let config = CodeEditorConfig::default();
+        let core = code_editor(&key, &config);
+        // Stale-bound guard alignment, as the downstream caller does
+        // (editor_store RunPendingLoad protocol). Return value is
+        // irrelevant (fresh core may already hold last_external ==
+        // Some("")); what matters is the post-load re-push below staying
+        // a guard no-op.
+        let _ = code_editor_set_text(&key, "");
+        let dir = std::env::temp_dir().join("auto_lang_load_file_687");
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("load.txt");
+        std::fs::write(&p, b"fn main() { 42 }\n// CJK \xe4\xbd\xa0\xe5\xa5\xbd\n").unwrap();
+        let n = code_editor_load_file(&key, p.to_str().unwrap())
+            .expect("load must succeed for a registered editor");
+        assert_eq!(n, 31, "byte total of the loaded file");
+        assert!(core.text().contains("fn main()"));
+        assert!(core.text().contains("CJK"));
+        // Delta queue drained by the endpoint itself.
+        let (_, deltas) = core.take_deltas();
+        assert!(deltas.is_empty(), "load must not leave a resident delta");
+        // last_external untouched: a re-push of the stale bound value ("")
+        // must remain a no-op (the loaded text survives view rebuilds).
+        assert!(!code_editor_set_text(&key, ""));
+        assert!(core.text().contains("fn main()"));
+        // Missing editor / missing file → None.
+        assert!(code_editor_load_file("no-such-editor-687", p.to_str().unwrap()).is_none());
+        assert!(code_editor_load_file(
+            &key,
+            dir.join("definitely_missing.txt").to_str().unwrap()
+        )
+        .is_none());
+        code_editor_dispose(&key);
+        std::fs::remove_file(&p).ok();
+    }
 
     /// A successful `set_text` rewrite pushes exactly one full-replace
     /// delta: `start: 0`, `end` = byte length of the pre-rewrite text,

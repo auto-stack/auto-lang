@@ -770,6 +770,28 @@ pub fn shim_code_editor_set_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     Ok(())
 }
 
+/// PLAN-687: `code_editor_load_file(key, path) -> i64` — native-side bulk
+/// load (total bytes; -1 = no editor / IO error / invalid UTF-8). Error is
+/// a VALUE (not a raise): the caller's load loop treats -1 as the empty-tab
+/// path, mirroring `File.read_text`'s `unwrap_or_default` convention.
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_load_file(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Args push left-to-right: pop the LAST (path) first, then the key.
+    let path = pop_string_arg(task, vm);
+    let key = pop_string_arg(task, vm);
+    let n = crate::ui::code_editor::code_editor_load_file(&key, &path)
+        .unwrap_or(-1);
+    task.ram.push_i32(n as i32);
+    Ok(())
+}
+
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_load_file(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_load_file: the `code-editor` feature is disabled".into(),
+    ))
+}
+
 // ── Plan 428 P1: code folding natives ─────────────────────────────────
 
 /// `code_editor_fold_toggle(key, line_1based) -> Bool` — toggle the fold
