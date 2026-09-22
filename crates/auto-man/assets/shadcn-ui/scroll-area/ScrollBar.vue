@@ -23,19 +23,22 @@ const delegatedProps = reactiveOmit(props, "class")
            && 'w-full h-[calc(var(--sb-size,8px)_+_6px)] flex-col p-px',
          props.class)"
   >
-    <!-- PLAN-692 unified thumb: thickness = --sb-size (8px default), hover widens
-         +2px/side with a subtle brighten (muted-foreground at 60% — NOT a loud
-         theme-color highlight; user ruling 2026-09-22: no press/active highlight).
-         Reka drives thumb length through inline
+    <!-- PLAN-692 unified thumb (rev3, user rulings 2026-09-22):
+         - visible tint mixes in the theme accent (primary/40) — plain gray read too pale;
+         - hovering the thumb widens it +2px/side and shifts ONLY brightness
+           (primary/60 = adaptive: darker over light bg, lighter over dark bg), hue unchanged;
+         - transform is EXCLUDED from the transition: reka mounts the thumb at its
+           layout origin and then repositions it via `transform: translate3d` —
+           animating `all` made it visibly slide from the track top to its real
+           position on every hover-mount (flash). Only width/background-color ease.
+         Thickness var layering: reka drives thumb length through inline
          `width/height: var(--reka-scroll-area-thumb-{width,height})`; the thickness
-         side is undefined by reka, so the thickness var is layered here per orientation
-         (vertical consumes width, horizontal height) without touching the length var.
-         Track alignment MUST be items-start: reka positions the thumb along the track
-         with `transform: translate3d` from its static layout origin, so any
-         cross-axis centering (items-center) shifts the origin and breaks drag
-         mapping (grab jump + inverted feel). justify-center centers thickness only. -->
+         side is undefined by reka, so it is layered here per orientation.
+         Track alignment MUST stay items-start: reka positions the thumb via
+         transform from its static layout origin — any cross-axis centering
+         (items-center) shifts the origin and breaks drag mapping. -->
     <ScrollAreaThumb
-      class="relative rounded-full bg-border transition-all duration-150 cursor-pointer hover:bg-muted-foreground/60"
+      class="relative rounded-full bg-[hsl(var(--primary)/0.4)] transition-[width,background-color] duration-150 cursor-pointer hover:bg-[hsl(var(--primary)/0.6)]"
       :class="orientation === 'vertical'
         ? '[--reka-scroll-area-thumb-width:var(--sb-size,8px)] hover:[--reka-scroll-area-thumb-width:calc(var(--sb-size,8px)_+_4px)]'
         : '[--reka-scroll-area-thumb-height:var(--sb-size,8px)] hover:[--reka-scroll-area-thumb-height:calc(var(--sb-size,8px)_+_4px)]'"
