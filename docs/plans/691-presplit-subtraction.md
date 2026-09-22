@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-691
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done       # drafting → executing → execution_done → reviewed → archived
 feature_name: presplit-subtraction（拆仓前减面瘦身批）
 author: [zcode]
 created_at: 2026-09-22
@@ -13,7 +13,7 @@ new_spec_components: [docs/design/32-autoui-repo-extraction.md §0 体量口径�
 touched_goals: []
 
 affects: [auto-lang/ui, auto-lang/desktop-protocol, auto-lang/tests]
-current_step: 3
+current_step: 5
 total_steps: 6
 ---
 
@@ -234,6 +234,9 @@ plan340_tests:7444、musk_vm_track_tests:7826，声明带 Plan 编号溯源注�
   **四档门禁全过**：t=5451/9 红（与搬移前基线逐位全等，9 红全预存同名）；tv/tt/tb
   同 9 红家族零新增（5599/5821/5506 总数）。
 - **T-05** 全量门禁 `cargo tf`（AC-05 前半）。
+  [✅ 已完成] tf=5452/10 红：9 预存家族（musk×6+desktop_protocol×2+a2vue×1）+
+  ffi_dual_019（tf 满配并行调度敏感 flaky，689 在册 ffi flaky 家族；双侧 solo
+  复跑全绿 worktree 3.2s/main 2.7s，非移动致伤）。零新增红。
 - **T-06** 复审（/auto-plan:review）+ merge 账本三件套 + 归档（AC-05 后半）。
 
 ## 9. 复审记录
@@ -243,13 +246,15 @@ plan340_tests:7444、musk_vm_track_tests:7826，声明带 Plan 编号溯源注�
 - 2026-09-22 work start（auto-plan:work）：用户裁定 Q-1=gpui 删除（未来需要再独立加，
   属拆仓后）；Q-2/Q-3 采默认。开工序：master 提交骨架 → worktree lang-691/plan-691-dev。
   T-03 前置 PLAN-690 未合（plan-690-dev 在途），本批执行 T-01/02/04/05。
-- 2026-09-22 work 进行中（r2）：T-01 ✅ f876e2661 / T-02 ✅ a5c5d0d49 / T-04 ✅
-  1b56f9541（四档门禁在途）/ T-03 ⏸ 阻塞（等 690 merge）。**环境注记**：主检出
-  `blueprints/` 盘损（68 文件未暂存删除+空嵌套目录，他方会话作业面，未代处置——
-  基线对拍时以其导致 19 环境红在案）；**并发注记**：worktree 内 4 个 docs/specs
-  文件（INDEX/project/ui.architecture/ui.overview）21:47:54 同毫秒簇被外部位写
-  （内容=SD-03 gpui specs 同步），按多会话礼仪不吞并、留位未暂存，归属待用户裁定；
-  worktree 依赖位=组内 auto-down detached@3373a5c（master 已含 D17 修复）。
+- 2026-09-22 work handoff（auto-plan:work）：`stage: work | PLAN-691 | r2 |
+  outcome: pass | code: plan-691-dev @24ddad334（T-01 f876e2661→T-02 a5c5d0d49→
+  T-04 24ddad334，三 commit）| tasks: T-01..T-05（T-03=勘定顺延路径收口）|
+  evidence: 四档 t/tv/tt/tb+tf 全过零新增红（红集=预存 9+在册 ffi flaky 1）|
+  blockers: 无 | next: review`。**复审注意事项**：①worktree 内 4 个 docs/specs
+  文件为他方会话 SD-03 位写（未暂存，merge 时裁定归属）；②分支基点 90d578c08，
+  master 已前移（690 合入+684/690 归档+692 起草）——merge 阶段须 rebase，
+  冲突预估面=Cargo.toml（690 亦改）；③master 主检出 blueprints/ 盘损（他方
+  会话作业，68 文件未暂存删除+空嵌套目录）未代处置，需其归属会话或用户路由。
 
 ## 10. 待澄清事项
 
