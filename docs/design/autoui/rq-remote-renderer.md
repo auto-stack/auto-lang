@@ -1,6 +1,7 @@
 # RQ 远程 Renderer 架构（方案 2：Iced 组件照常渲染，RenderQueue 转手一道）
 
 > **状态**：已实施（PLAN-683 T-00..T-05，2026-09-22）——方案 2 全链落地：
+> **第二阶段（PLAN-690，2026-09-22）**：remote 模式交互完备与规模化落地——IME 下行通道（ImeRequest tag 15 + IMM 直写 + wndproc 子类桥，winit 旗标勘定绕行）+ preedit 选区上行（v1.17 载荷精化）+ 光标形状（SetCursor tag 16 + view 态应用）+ 0x0 自愈（D5 销号）+ perf 观测行与规模化报告（p690-scale）；详见 desktop-protocol-v1 §1.17。
 > headless iced 宿主（T-00 GO，**实现修正：截获面 = `iced::Renderer::
 > Secondary(iced_tiny_skia::Renderer)` 公开枚举臂**，非自研 RecordRenderer
 > trait 实现——`into_iced()` 组件树构造期钉死 Renderer 类型，自研面须

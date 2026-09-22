@@ -6,8 +6,8 @@
 | P683-D2 | low | remote 降格 | **Transform 旋转/剪切矩阵元不可达**——iced `Transformation` 未公开矩阵元（仅 scale_factor/translation），v2 降格只产轴对齐 [s,0,0,s,tx,ty]；旋转内容（canvas 旋转动画等）remote 面暂缺 | headless.rs lower_text_v2 近似臂观测 |
 | P683-D3 | low | remote 图像 | **svg 图像（tiny_skia Image::Vector）降格省略**——v1/v2 词汇 src 均为位图通道；svg 组件经 lucide 栅格化外的直引形态需 src 词汇扩展或宿主侧 svg 栅格化 | headless.rs lower_image_v2 Vector 臂观测 |
 | P683-D4 | low | daemon 重放 | **shadow blur 无 canvas 原语**——v2 wire 携带 ShadowSpec 全参，daemon 重放为偏移半透明垫层（无 blur 扩散；alpha 按有无 blur 稀释）——观感近似，004 卡面 shadow-sm 实测可接受 | broker_surface.rs paint_shadow_scrim |
-| P683-D5 | low | remote 环境注记 | **daemon 窗最小化环境怪**——本机他方窗口争焦会把 rqhost daemon 窗最小化（resized 0x0 观测行；SW_RESTORE 即复，渲染管线无恙）；走查/巡检脚本需带恢复臂。与 master 在案 taskbar 环境红族同环境 | T-04 走查记录（plan 683） |
-| P683-D6 | low | remote IME | **Windows 中文 IME 组合态实机验证未执行**（review r1 F-2 登记）——wire 面已接 input_method::Event 三态映射（Preedit/Commit/Closed）+ASCII 键入端到端绿（单测+实机），但中文 IME 组合/候选窗定位（preedit cursor 矩形）无实机用例；残缺则按计划待澄清③混合方案（text_input 类交互保留 daemon 侧原生组件）兜底 | headless.rs input_to_iced_events IME 三臂；plan 683 待澄清③ |
+| P683-D5 | low | remote 环境注记 | **已销号（PLAN-690 T-07 自愈臂落地）**——daemon `WindowResized` 0x0 守卫：零尺寸（最小化路径）不向 app 转发、基线尺寸不动（恢复期假空白根除），真实尺寸恢复 resize 自然同步；管道环 p690 测试③断言绿。原走查恢复臂诉求由守卫替代 | PLAN-690 commit（rqhost.rs 守卫 + p690 测试） |
+| P683-D6 | low | remote IME | **大部销号（PLAN-690 G1）**——中文 IME 组合/候选定位实机已验：组合串+候选窗在 daemon 窗内按 App 焦点框定位可见（录证 `docs/plans/reports/p690-ime-walkthrough/`），enable 下行/定位/上屏通道全链在档。**残面**：物理 IME「组合→上屏」连续实机段（commit 串经子类桥入值）在多会话争焦窗下未录成（前台锁拒合成注入；FG-FAIL 留痕），桥→上行→入值段由管道环 p690 测试覆盖（同路径构造性等价），留一键复核（安静窗内 003 remote 走查脚本即验） | PLAN-690 win_ime.rs 子类桥 + 走查录证；plan 690 待澄清② |
 ### P684（2026-09-22，Plan 684 gallery 示例修复批 work 执行登记）
 
 | id | 级别 | 领域 | 内容 | 锚点 |

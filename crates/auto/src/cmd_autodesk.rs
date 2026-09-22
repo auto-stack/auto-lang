@@ -193,12 +193,14 @@ fn read_manifest_render(app_dir: &std::path::Path) -> Option<String> {
 
 /// -q gate 校验：出界组合显式报错（vue/tauri/jet/arkts 前端不支持
 /// rqhost 形态；`--rq-host` 参数面预留未实现——desktop 形态归 PLAN-030
-/// 线）。缺省（render 缺席）= vm 轨合法。
+/// 线）。缺省（render 缺席）= vm 轨合法。PLAN-690 T-04：`remote` 入列
+/// （PLAN-683 的 headless iced 宿主轨——vm 前端目标 + DisplayList v2
+/// 帧载荷；main.rs Run 臂经 AUTO_VM_RENDER 透传分岔）。
 pub fn rqhost_gate_validate(render: Option<&str>, args: &[String]) -> Result<(), String> {
     if let Some(r) = render {
-        if !matches!(r, "vm" | "rust") {
+        if !matches!(r, "vm" | "rust" | "remote") {
             return Err(format!(
-                "--render-queue 仅支持 vm/rust 前端目标（当前 --render={r}）"
+                "--render-queue 仅支持 vm/rust/remote 前端目标（当前 --render={r}）"
             ));
         }
     }
@@ -237,6 +239,8 @@ mod tests {
         assert!(rqhost_gate_validate(None, &[]).is_ok(), "缺省 = vm 轨合法");
         assert!(rqhost_gate_validate(Some("vm"), &[]).is_ok());
         assert!(rqhost_gate_validate(Some("rust"), &[]).is_ok());
+        // PLAN-690 T-04：remote 前端目标入列（headless iced 宿主轨）。
+        assert!(rqhost_gate_validate(Some("remote"), &[]).is_ok());
         for bad in ["vue", "tauri", "jet", "arkts"] {
             let err = rqhost_gate_validate(Some(bad), &[]).unwrap_err();
             assert!(err.contains(bad), "报错含目标名: {err}");

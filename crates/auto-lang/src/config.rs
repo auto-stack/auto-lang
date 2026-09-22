@@ -170,6 +170,10 @@ impl BackendType {
             "godot" => Some(Self::Godot),
             "rust" => Some(Self::Rust),
             "vm" => Some(Self::Vm),
+            // PLAN-690 T-04：remote = vm 前端 + remote 帧载荷（headless
+            // iced 宿主轨）——main.rs render-queue 臂 RenderMode::Remote
+            // 分岔，auto-man 侧按 vm 前端解析（帧模式不属 BackendType）。
+            "remote" => Some(Self::Vm),
             "vscode" => Some(Self::Vscode),
             _ => None,
         }

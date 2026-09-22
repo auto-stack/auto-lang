@@ -340,6 +340,8 @@ pub struct RqClient {
     /// PLAN-690 T-02：daemon 窗 scale factor（App 逻辑坐标 → IMM 物理
     /// 坐标换算；开窗后取一次，取不到回退 1.0）。
     pub scale: f64,
+    /// PLAN-690 T-06：上一观测拍的帧计数（fps 分母——与 mem 行同拍）。
+    pub last_perf_frames: u64,
 }
 
 /// rqhost 域 id 分配器（app_id/wid 与桌面会话无关的自增序）。
@@ -633,6 +635,7 @@ pub fn adopt_one(
         cursor_kind: 0,
         ime_applied: None,
         scale: 1.0,
+        last_perf_frames: 0,
     };
     let deadline =
         std::time::Instant::now() + std::time::Duration::from_millis(budget_ms as u64);
@@ -846,8 +849,8 @@ fn open_window_for(client: &mut RqClient, cascade: u64) -> iced::Task<RqMessage>
     iced::Task::batch([task.map(|_| RqMessage::Tick), scale_task])
 }
 
-/// PLAN-690 T-02：App IME 请求 → daemon 窗 IMM 应用（`window::run` 在
-/// 事件循环线程派发——win_ime 模块文档载全链路勘定）。
+/// PLAN-690 T-02：App IME 请求 → daemon 窗 IMM 应用 + 子类桥挂载
+///（`window::run` 在事件循环线程派发——win_ime 模块文档载全链路勘定）。
 fn apply_ime_request(
     window: iced::window::Id,
     enabled: Option<ImeReq>,
@@ -857,13 +860,37 @@ fn apply_ime_request(
     let tag = format!(" `{app_name}`");
     match enabled {
         Some(req) => iced::window::run(window, move |w| {
-            super::win_ime::enable(w, &req, scale, &tag);
+            super::win_ime::enable(w, &req, scale, &tag, window);
         })
         .map(|_| RqMessage::Tick),
         None => iced::window::run(window, move |w| {
             super::win_ime::disable(w, &tag);
         })
         .map(|_| RqMessage::Tick),
+    }
+}
+
+/// PLAN-690 T-04：子类桥上行排水（Tick 泵）——提交/组合串转 LiveInput
+/// 上行（winit 旗标门控外的原语面，见 win_ime 模块文档勘定）。
+fn drain_ime_uplinks(state: &mut RqDaemon) {
+    for ev in super::win_ime::drain_uplinks() {
+        if let Some(client) = state.client_of(ev.window) {
+            if let Some(wid) = client.inner.wid.map(|w| w.0) {
+                let inputs = match (ev.commit, ev.preedit) {
+                    (Some(text), _) => vec![crate::ui::session::LiveInput::ImeCommit { text }],
+                    (None, Some((text, pos))) => {
+                        let selection = (pos >= 0).then(|| (pos as usize, pos as usize));
+                        vec![crate::ui::session::LiveInput::ImePreedit { text, selection }]
+                    }
+                    (None, None) => Vec::new(),
+                };
+                for input in inputs {
+                    for msg in live_input_msgs(wid, &input) {
+                        let _ = client.inner.end.send(&ProtocolMsg::Input(msg));
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -920,6 +947,31 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
                         s.working_set / 1024
                     );
                 }
+                // PLAN-690 T-06：per-client 帧率 + 帧体积观测行（与 mem 行
+                // 同拍；帧体积 = 当前合成面 DisplayList 精确 wire 编码字节
+                // + op 数——静态 app 恒帧不涨，fps=0 属预期稳态）。
+                for client in &mut state.clients {
+                    let window_frames = client.frames;
+                    let delta = window_frames.saturating_sub(client.last_perf_frames);
+                    client.last_perf_frames = window_frames;
+                    if let Some(v2) = client.inner.composed_v2() {
+                        let mut buf = Vec::new();
+                        v2.encode(&mut buf);
+                        let text_ops = v2
+                            .ops
+                            .iter()
+                            .filter(|op| matches!(op, super::message::DisplayOp::TextStyled { .. }))
+                            .count();
+                        eprintln!(
+                            "[rqhost] perf `{}` fps={:.1} frame_bytes={} ops={} texts={}",
+                            client.app_name,
+                            delta as f64 / 4.5,
+                            buf.len(),
+                            v2.ops.len(),
+                            text_ops
+                        );
+                    }
+                }
             }
             // ① 待定采纳消费（serve 线程生产——队列 drain）。
             let pending: Vec<_> = state.serve.pending.lock().unwrap().drain(..).collect();
@@ -940,6 +992,9 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
             }
             // ② 日常泵（帧合成/回收；EOF 判死）。
             let mut dead: Vec<usize> = Vec::new();
+            // PLAN-690 T-04：子类桥 IME 上行排水（提交/组合串——winit
+            // 旗标门控外原语面）。
+            drain_ime_uplinks(state);
             for idx in 0..state.clients.len() {
                 let (events, alive) = pump_client(&mut state.clients[idx], &mut state.ids);
                 for ev in events {

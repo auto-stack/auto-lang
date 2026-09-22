@@ -30,6 +30,7 @@
 | v1.15 | 2026-09-20 | **位图过线通道 + rqhost 内存量化门 + 像素原生族裁定（rqhost-maturity）**——FrameMsg tag 10 `BitmapReady`/tag 11 `BitmapAck`（元数据过管道、RGBA 在专用第二段 `-bm` 槽——`BufferAlloc.bm` 尾追协商）+ `bitmap://{pid}-{局部 id}` 词汇（宿主 resolve 前缀臂；走既有 Image op 零新 DrawOp tag）+ app 上传 API（`drain_bitmap_uploads` 排水缝）+ canvas=位图快照过线（首个像素原生 kind 过线；video 专属/terminal M7-c 撞面/code_editor 维持/imagesurface not-yet 维持+M7-c，五 kind 裁定入册）+ rqhost 内存门 release 复测与归因矩阵（见 §1.15 门判定行）——`PROTOCOL_VERSION` 仍 1（全追加式） | PLAN-034（§1.15） |
 | v1.14 | 2026-09-19 | **单投影器统一（rq-projector-unify）**——`-q` VM 轨改接 RqProjector（View 全展开投影 + 启动覆盖门，a2r/解释同律）+ VM 轨三补（input_state_map 绑定字段回写[on() 单写点，a2r 生成物同构]/多 timer 泵侧驱动[Component::fire_due_timers 钩子]/`__desktop_cmd` 读走上行[DesktopBus 泛化]）+ `AppProjector` 退役（解释 re-exec 臂/pixels 臂/process_model=outproc 选项拔除——解释态两合法形态 = inproc 直挂 / `-q` 经 native 臂）+ `NativeProjector` 更名 `RqProjector`（见 §1.14；客户端臂内部演进零 wire 变体，`PROTOCOL_VERSION` 仍 1） | PLAN-033（§1.14） |
 | v1.16 | 2026-09-20 | **B 形态彻底化收官（shell-compile-overlay-outproc）**——shell-lib 编译面轨（a2r 五件生成 `crates/shell-pack` 入库 lib crate + `mount_face` 工厂 + freshness 字节对拍门；outproc child 缺省编译、显式 `AUTO_SHELL_PACK`=解释双轨）+ overlay 四面 outproc（switcher/通知/dashboard 并壳 exe 多表面 + launcher 一面一 exe 独立进程[注册表源]）+ 表面 role 扩档（`OVERLAY`=3 置顶全屏 / `DASHBOARD`=4 中间 z 档——bg 上/窗下，伪窗命中带随几何动态更新）+ `shell_face::LAUNCHER`=6（独立 exe 快照寻址）+ 快照载体全激活（Switcher/Notes/Dashboard/Launcher interpreted_writes + per-face 指纹门）+ 键盘动词事件位（ShellEvent tag 6-9：Advance/Back/Pick/Escape——宿主截获 → 快照 events 下行 → child dispatch；指纹门放行 = fp 变化 || events 非空）+ D5 聚焦链（child focus_first_input + 伪窗可聚焦 + VK→bind 路由臂 + 修饰组合宿主域）+ truncate 真渲（见 §1.16；`PROTOCOL_VERSION` 仍 1——全追加式） | PLAN-036（§1.16） |
+| v1.17 | 2026-09-22 | **remote 模式交互完备（rq-remote-interaction-scale）**——控制下行 IME/光标族（`ControlMsg::ImeRequest{wid, enabled: Option<ImeReq>}` tag 15 / `SetCursor{wid, kind}` tag 16 追加；`ImeReq{cursor: WRect, purpose: u8}` 载荷——App headless 截获 `State::Updated{input_method, mouse_interaction}` 去重下行，daemon 经 `window::run`→HWND→IMM enable/定位 + wndproc 子类桥上行组合/提交串——winit `ime_allowed` 内部旗标勘定绕行）+ `InputMsg::ImePreedit` 载荷原位重定义（`cursor: WRect` → `selection: Option<(u32,u32)>`——iced 0.14 Preedit 第二参勘正=字节选区非矩形；双端同仓版本内变更）+ rqhost 0x0 resize 守卫（最小化路径不转发，P683-D5 自愈）+ perf 观测行（per-client fps/frame_bytes，与 mem 行同拍）——`PROTOCOL_VERSION` 仍 1（tag 追加式；ImePreedit 原位重定义为唯一载荷级变更，双端同 exe 分发无兼容窗） | PLAN-690（§1.17） |
 
 - 版本常量：`desktop_protocol::PROTOCOL_VERSION = 1`，随每条消息信封头过线。
 - **协商规则**：Hello 携带版本；宿主校验不符 → `ProtocolError::VersionMismatch`
@@ -1022,3 +1023,51 @@ Host : Listening --Hello(版本校验)--> (ResolveAndAttach) --activate()--> Act
   （打字/IME/缓存键 + 协议输入与 core 直喂无差）。
 - 验收句（计划 §0）："一个 App 的帧/输入/控制经协议通路渲染进 462 虚拟
   窗口，行为与直挂无差" —— `counter_loopback_demo_parity_with_direct_mount`。
+
+## §1.17 v1.17 增量：remote 模式交互完备——IME 下行通道与光标形状（PLAN-690）
+
+- **动机**：PLAN-683 交付 remote 模式三试点渲染+交互闭环（ASCII/数字）后，
+  中文 IME 在 daemon 窗内根本不触发（激活门控缺失）、光标形状恒箭头、
+  preedit 选区上行丢弃——本增量补全 remote 模式的交互四面（IME/hover/
+  键盘导航/光标形状），使方案 2 从「试点通过」达到「日用可依赖」。
+- **IME 下行（app→host，`ControlMsg::ImeRequest` tag 15）**：App headless
+  宿主在 `UserInterface::update` 返回的 `State::Updated{input_method}`
+  截获 iced text_input 的 IME 请求（iced 0.14 公开出口——仅 Redraw 臂
+  有效，事件路径 shell 态为瞬态 Disabled 不可照收），变化才下行
+ （`Some(ImeReq{cursor, purpose})`=Enabled / `None`=Disabled；App 视口
+  逻辑坐标）。daemon 落地 = `iced::window::run`（事件循环线程）→
+  `RawWindowHandle::Win32` → IMM 直写（`ImmAssociateContextEx`
+  IACE_DEFAULT/CHILDREN + `ImmSetCompositionWindow(CFS_POINT)` +
+  `ImmSetCandidateWindow(CFS_EXCLUDE)`——winit 0.30.13 ime.rs 同语义，
+  逻辑坐标 × 窗 scale factor 换算物理；purpose Windows no-op）。
+- **wndproc 子类桥（wintern 旗标勘定）**：winit 的 `WM_IME_COMPOSITION`
+  处理臂门控其内部 `ime_allowed` 旗标（仅 `Window::set_ime_allowed`
+  置位，`&dyn Window` 面不可达），且提交串走 `WM_IME_CHAR`（winit 无
+  handler 恒丢）——daemon 对 IME 激活窗挂 `SetWindowLongPtrW` 子类
+  proc：`GCS_RESULTSTR` → 提交串、`GCS_COMPSTR`+`GCS_CURSORPOS` →
+  组合串+光标字节位，经注册表由 daemon 15ms Tick 泵排水转
+  `LiveInput::ImeCommit/ImePreedit` 上行（winit 侧两路皆死，无双投）。
+  实机录证：组合串+候选窗在 daemon 窗内按 App 焦点框定位可见
+（`docs/plans/reports/p690-ime-walkthrough/`）。
+- **preedit 选区上行（`InputMsg::ImePreedit` 载荷原位重定义）**：iced
+  0.14 `Preedit(String, Option<Range<usize>>)` 第二参 = 组合串内字节
+  选区（非矩形——计划立项时的勘误前提，源级勘正）。wire 字段
+  `cursor: WRect`（生产端恒硬编码零矩形、消费端弃读）重定义为
+  `selection: Option<(u32,u32)>`；全链四构造/消费点（session 路由/
+  rqhost 映射/MCP 注入/headless 注入）同步。双端同仓同 exe 分发，
+  无混合版本窗；`PROTOCOL_VERSION` 不动（变体 tag 未变，载荷语义
+  精化——登记为 v1.17 唯一载荷级变更）。
+- **光标形状下行（app→host，`ControlMsg::SetCursor` tag 16）**：App
+  截获 `State::Updated{mouse_interaction}` 两级映射过线（1 pointer /
+  2 text / 其余 0）。daemon 以 **view 态**应用（`rq_view` 内容外包
+  `mouse_area().interaction(...)`）而非 Win32 直设——iced_winit 每帧
+  `update_mouse` 以 daemon 自身 UI 的 interaction 刷 OS 光标，直设
+  会被覆盖；mouse_area 的 interaction 在内容 None 且悬停时生效
+  （remote 窗内容恒 None，恰好接管）。
+- **规模化稳态**：rqhost 0x0 resize 守卫（最小化路径零尺寸不转发 app、
+  基线尺寸不动——P683-D5 自愈销号）；`[rqhost] perf` 观测行（per-client
+  fps + 合成面精确 wire 字节 + op/text 计数，与 mem 行同拍——实测
+  报告 `docs/plans/reports/p690-scale.md`：帧 <1KB、tick 帧率吻合、
+  daemon ≈1.2MB/窗）。
+- **TS 义务**：TS decode tag 15/16 桩分支（无 TS 消费面——同 tag 12-14
+  先例）。

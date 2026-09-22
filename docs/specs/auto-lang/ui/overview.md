@@ -157,9 +157,24 @@ tag:managed_content（PLAN-656 合成基准件，P674-D2）两登记项）与
 canvas 原生重放）；**该模式覆盖门不适用（组件覆盖 = iced 全集，构造
 保证——coverage 概念失效）**，RqProjector/DrawList v1 冻结为 legacy
 兼容位（冻结清单 = 设计档 rq-remote-renderer §6.1）。试点 001/003/004
-在档（走查截图 `docs/plans/reports/p683-shots/`）。权威正文 =
-`docs/design/autoui/desktop-protocol-v1.md` §1.6–§1.8（本节仅指针，不
-重复）；翻转数据行 =
+在档（走查截图 `docs/plans/reports/p683-shots/`）。**remote 交互完备
+四面（PLAN-690，SD-02）**：①IME 闭环——App 截获 `State::Updated{
+input_method}` 下行 `ControlMsg::ImeRequest`（tag 15），daemon IMM 直写
+激活+焦点框定位（候选窗/组合窗锚在 App 焦点框），wndproc 子类桥上行
+组合/提交串（winit `ime_allowed` 旗标勘定绕行——winit 自身 IME 事件
+面在 daemon 窗不可达）；`InputMsg::ImePreedit.selection` 字节选区原样
+上行（v1.17 载荷语义精化）；②hover——指针位同步已有，hover 态渲染
+原生（iced Cursor::Available）；③光标形状——`State::Updated{
+mouse_interaction}` 两级映射（pointer/text）下行 `ControlMsg::SetCursor`
+（tag 16），daemon view 态 `mouse_area.interaction` 应用（每帧
+`update_mouse` 覆盖面的规避）；④键盘导航——Tab 事件上行保真与
+native 轨同语义（iced 0.14 无 runtime 级 Tab 遍历——app 级 opt-in
+operation，两轨一致的既有边界）。稳态：0x0 resize 守卫（最小化自愈，
+P683-D5 销号）+ `[rqhost] perf` 观测行（帧 <1KB/tick 帧率吻合/
+daemon ≈1.2MB/窗——`docs/plans/reports/p690-scale.md`）。实机录证 =
+`docs/plans/reports/p690-ime-walkthrough/`。权威正文 =
+`docs/design/autoui/desktop-protocol-v1.md` §1.6–§1.8 + §1.17（本节仅
+指针，不重复）；翻转数据行 =
 `docs/plans/reports/p026-native-flip-data-row.md`；度量 =
 `docs/plans/reports/020-rust-exe-compositor-metrics.md`。
 
