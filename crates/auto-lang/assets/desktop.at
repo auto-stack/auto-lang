@@ -327,6 +327,19 @@ widget DesktopSurface {
                     onclick: .OpenSettingsBlank
                     style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
                 }
+                // 2026-09-22：主题切换直达项（用户建议——os-config 修好前
+                // 深浅切换常驻入口）。线上动词 set_theme\tdark|light 宿主
+                // Plan 518 G1 执行臂既有（set_dark_mode + config 落盘 +
+                // theme_source=manual + 快照撤 + 全 App view_dirty），本面
+                // 零智能只发记录。无当前档投影，双项平铺不做 checked 态。
+                button (text: "深色主题", variant: "ghost") {
+                    onclick: .ThemeDarkBlank
+                    style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
+                }
+                button (text: "浅色主题", variant: "ghost") {
+                    onclick: .ThemeLightBlank
+                    style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
+                }
                 // PLAN-014 W-05'：恢复默认图标（清 shell.desktop.hidden
                 // 单源——boot 合并臂不再排除任何条目，重启全量回；
                 // refresh_desktop_icons 触发宿主即时重注入，storage 已清
@@ -500,6 +513,16 @@ widget DesktopSurface {
         .OpenSettingsBlank -> {
             .blank_menu = ""
             .SendCmd("open_settings")
+        }
+        // 2026-09-22：主题切换（消费即收起；动词字面 = session.rs parse 臂
+        // "set_theme" 窄值域 dark|light → SetTheme(bool)）。
+        .ThemeDarkBlank -> {
+            .blank_menu = ""
+            .SendCmd("set_theme\tdark")
+        }
+        .ThemeLightBlank -> {
+            .blank_menu = ""
+            .SendCmd("set_theme\tlight")
         }
 
         // 菜单：打开 = activate 两臂（同双击）。
