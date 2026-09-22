@@ -1,3 +1,6 @@
+# PLAN-683（remote 试点）：iced 组件照常渲染，原语经 tiny_skia 记录层
+# 截获 → DisplayList v2 过线（headless iced 宿主，方案 2）。
+desktop_render: "remote"
 name: "hello-world"
 version: "1.0.0"
 scene: "ui"
