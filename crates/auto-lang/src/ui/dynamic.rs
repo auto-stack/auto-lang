@@ -2274,9 +2274,19 @@ impl DynamicComponent {
         // 之后回放，读 state 会拿到清空值。
         let emit_widget = if widget_name.is_empty() { self.widget_name.clone() } else { widget_name.to_string() };
         let stripped_calls = crate::ui::child_emit::lookup_stripped(&emit_widget, &clean_name);
+        // PLAN-685 G1: 剥离实参文本的求值域此前只有 root state——handler
+        // 形参（如 `.Select(id) -> { on_select(id) }` 的 id）不可见，查名
+        // 失败走"名字即值"字面量兜底（bps-gallery 实拍 selected_id="id"）。
+        // 形参名 × 本次派发实参配对成绑定表，供 eval_stripped_arg 先查
+        // 词法域（形参）再退 state。
+        let param_bindings: std::collections::HashMap<String, auto_val::Value> = self
+            .bridge
+            .handler_param_names(&emit_widget, &clean_name)
+            .map(|names| names.into_iter().zip(args.iter().cloned()).collect())
+            .unwrap_or_default();
         let mut stripped_payloads: Vec<(String, auto_val::Value)> = Vec::with_capacity(stripped_calls.len());
         for sc in &stripped_calls {
-            let payload = eval_stripped_arg(&self.bridge, sc.arg.as_deref());
+            let payload = eval_stripped_arg(&self.bridge, sc.arg.as_deref(), &param_bindings);
             stripped_payloads.push((sc.callback.clone(), payload));
         }
         if !clean_name.starts_with("__") {
@@ -2480,6 +2490,7 @@ impl DynamicComponent {
 fn eval_stripped_arg(
     bridge: &crate::ui::vm_bridge::VmBridge,
     arg: Option<&str>,
+    param_bindings: &std::collections::HashMap<String, auto_val::Value>,
 ) -> auto_val::Value {
     let Some(t) = arg else { return auto_val::Value::Nil };
     let t = t.trim();
@@ -2496,6 +2507,7 @@ fn eval_stripped_arg(
         "false" => return auto_val::Value::Bool(false),
         _ => {}
     }
+    let state_prefixed = t.starts_with("this.") || t.starts_with('.');
     let path = t
         .strip_prefix("this.")
         .or_else(|| t.strip_prefix('.'))
@@ -2503,6 +2515,15 @@ fn eval_stripped_arg(
     if path.is_empty() || path.contains('(') {
         eprintln!("[VM-EMIT] stripped arg form unsupported: {}", t);
         return auto_val::Value::Nil;
+    }
+    // PLAN-685 G1: 裸标识符 = handler 体词法域的变量引用——形参绑定优先
+    // （最近作用域者胜），未命中再退 root state；`this.`/`.` 前缀显式指
+    // state 字段，跳过绑定。两者皆未命中维持既有裸词字面量兜底（如
+    // on_set_view(preview) 形态）。
+    if !state_prefixed && !path.contains('.') {
+        if let Some(v) = param_bindings.get(path) {
+            return v.clone();
+        }
     }
     if let Ok(v) = bridge.read_state(path) {
         v
@@ -3084,6 +3105,144 @@ mod tests {
             comp.read_state("text").expect("text 字段"),
             auto_val::Value::str(""),
             "子 handler 照常清空 text"
+        );
+    }
+
+    /// PLAN-685 T-01/T-02 (G1): BP 注入回调携参再发射——形参**绑定值**必须
+    /// 原样达宿主，形参名字面量退化 forbidden（SD-01）。bps-gallery 实证
+    /// 缺陷链：卡片 `.Select(item.id)`（第一跳，payload 正确）→ BP 内
+    /// `.Select(id) -> { on_select(id) }`（第二跳，strip_callback_calls 把
+    /// 形参记成文本快照）→ 宿主 `.SelectBp(id)` 收到字面量 "id"（
+    /// state_changes 实拍 selected_id: "" -> "id"）。根因：eval_stripped_arg
+    /// 求值域只有 root state，handler 形参不可见 → 名字即值兜底。
+    /// 根修：派发侧快照求值先查 handler 形参绑定（词法域最近者胜）。
+    #[test]
+    fn plan685_inbody_callback_param_forwarded_not_name() {
+        let src = concat!(
+            "widget App685 {\n",
+            "    msg { Pick(str) }\n",
+            "    model { var picked str = \"\" }\n",
+            "    view { col { Emitter685(on_pick: .Pick) } }\n",
+            "    on {\n",
+            "        .Pick(v) -> { .picked = v }\n",
+            "    }\n",
+            "}\n",
+            "widget Emitter685(on_pick: msg) {\n",
+            "    msg { DoPick(str) }\n",
+            "    model { var hint str = \"\" }\n",
+            "    view { button \"pick\" { onclick: .DoPick } }\n",
+            "    on {\n",
+            "        .DoPick(v) -> { on_pick(v) }\n",
+            "    }\n",
+            "}\n",
+        );
+        let (decls, root_widget, registry) = parse_widgets_for_decls(src);
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        let _ = comp.view();
+        // 第一跳形态：点击位带实参派发（payload 编码 = bps-gallery 实拍链）。
+        comp.on_with_input_for(
+            "Emitter685",
+            "DoPick\u{1F}s\u{1F}navigation/sidebar-nav",
+            None,
+        );
+        assert_eq!(
+            comp.read_state("picked").expect("picked 字段"),
+            auto_val::Value::str("navigation/sidebar-nav"),
+            "宿主必须收到形参绑定值；退化态 = 形参名字面量 \"v\""
+        );
+    }
+
+    /// PLAN-685 T-02 邻近形态①：字面量实参（裸词/引号串）——根修不得
+    /// 改变字面量语义（裸词字面量是 name-as-value 兜底的合法用例）。
+    #[test]
+    fn plan685_stripped_literal_arg_still_literal() {
+        let src = concat!(
+            "widget App685b {\n",
+            "    msg { Note(str) }\n",
+            "    model { var noted str = \"\" }\n",
+            "    view { col { Emitter685b(on_note: .Note) } }\n",
+            "    on {\n",
+            "        .Note(v) -> { .noted = v }\n",
+            "    }\n",
+            "}\n",
+            "widget Emitter685b(on_note: msg) {\n",
+            "    msg { DoNote }\n",
+            "    model { var x str = \"\" }\n",
+            "    view { button \"n\" { onclick: .DoNote } }\n",
+            "    on {\n",
+            "        .DoNote -> { on_note(\"static-note\") }\n",
+            "    }\n",
+            "}\n",
+        );
+        let (decls, root_widget, registry) = parse_widgets_for_decls(src);
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        let _ = comp.view();
+        comp.on_with_input_for("Emitter685b", "DoNote", None);
+        assert_eq!(
+            comp.read_state("noted").expect("noted 字段"),
+            auto_val::Value::str("static-note"),
+            "字面量实参语义不变"
+        );
+    }
+
+    /// PLAN-685 T-02 邻近形态②：oninput 事件参（B12(b) 输入文本补参路径）
+    /// 再发射——输入文本经 args 进形参绑定，剥离快照同样命中。
+    #[test]
+    fn plan685_inbody_callback_input_event_param_forwarded() {
+        let src = concat!(
+            "widget App685c {\n",
+            "    msg { Query(str) }\n",
+            "    model { var q str = \"\" }\n",
+            "    view { col { Emitter685c(on_query: .Query) } }\n",
+            "    on {\n",
+            "        .Query(v) -> { .q = v }\n",
+            "    }\n",
+            "}\n",
+            "widget Emitter685c(on_query: msg) {\n",
+            "    msg { DoQuery(str) }\n",
+            "    model { var draft str = \"\" }\n",
+            "    view { input (value: .draft, oninput: .DoQuery) }\n",
+            "    on {\n",
+            "        .DoQuery(v) -> { on_query(v) }\n",
+            "    }\n",
+            "}\n",
+        );
+        let (decls, root_widget, registry) = parse_widgets_for_decls(src);
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        let _ = comp.view();
+        // oninput 派发形态：typed text 经 input_value 补参（plan446 B12(b)）。
+        comp.on_with_input_for("Emitter685c", "DoQuery", Some("typed text".to_string()));
+        assert_eq!(
+            comp.read_state("q").expect("q 字段"),
+            auto_val::Value::str("typed text"),
+            "输入事件参绑定值达宿主；退化态 = 形参名字面量 \"v\""
         );
     }
 

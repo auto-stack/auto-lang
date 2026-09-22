@@ -141,7 +141,13 @@ pub struct VmBridge {
     /// (mcp submit/type pass the input text as `input_value`; the extra arg
     /// shifted the handler frame — `.todos` writes landed on a garbage object
     /// id in 013-todo's AddTodo).
-    handler_param_counts: std::collections::HashMap<(String, String), usize>,
+    /// Audit B12(b) + PLAN-685 G1: declared handler parameter NAMES per
+    /// `(widget, event)` handler (arity = vec len; `handler_param_count`
+    /// keeps the B12(b) contract). PLAN-685: dispatch-side stripped in-body
+    /// callback snapshot evaluation (`eval_stripped_arg`) resolves bare
+    /// identifiers against these names paired with the actual dispatch args
+    /// — the "param name as string literal" degradation is forbidden.
+    handler_param_names: std::collections::HashMap<(String, String), Vec<String>>,
 
     /// PLAN-062 F2: 帧域 retain 账本（双缓冲）。cur 收本脏帧经
     /// `retain_heap_result` 拿下的宿主份额；`commit_dirty_frame` 在下一
@@ -200,28 +206,28 @@ fn nv_to_pub_value(nv: auto_val::NanoValue) -> Value {
     }
 }
 
-/// Audit B12(b): collect `(widget, event) -> declared param count` from an
+/// Audit B12(b): collect `(widget, event) -> declared param names` from an
 /// AuraWidget's handler_params map (patterns like `.Inc` / `SelectNote`).
-fn collect_param_counts_from_widget(
+fn collect_param_names_from_widget(
     widget: &AuraWidget,
-    out: &mut std::collections::HashMap<(String, String), usize>,
+    out: &mut std::collections::HashMap<(String, String), Vec<String>>,
 ) {
     for (pattern, params) in &widget.handler_params {
         let ev = pattern.trim_start_matches('.');
-        out.insert((widget.name.clone(), ev.to_string()), params.len());
+        out.insert((widget.name.clone(), ev.to_string()), params.clone());
     }
 }
 
 /// Audit B12(b): same collection from a WidgetDecl's on-block (decl-based
 /// synthesis path — `new_from_decls`).
-fn collect_param_counts_from_decl(
+fn collect_param_names_from_decl(
     decl: &crate::ast::ui::WidgetDecl,
-    out: &mut std::collections::HashMap<(String, String), usize>,
+    out: &mut std::collections::HashMap<(String, String), Vec<String>>,
 ) {
     for on in &decl.on {
         for h in &on.handlers {
             let ev = h.pattern.trim_start_matches('.');
-            out.insert((decl.name.to_string(), ev.to_string()), h.params.len());
+            out.insert((decl.name.to_string(), ev.to_string()), h.params.clone());
         }
     }
 }
@@ -244,9 +250,21 @@ impl VmBridge {
     /// writes landed on a garbage object id in 013-todo's AddTodo).
     pub fn handler_param_count(&self, widget_name: &str, event_name: &str) -> Option<usize> {
         let ev = event_name.trim_start_matches('.');
-        self.handler_param_counts
+        self.handler_param_names
             .get(&(widget_name.to_string(), ev.to_string()))
-            .copied()
+            .map(|v| v.len())
+    }
+
+    /// PLAN-685 G1: declared parameter NAMES per `(widget, event)` handler.
+    /// Stripped in-body callback args (child_emit STRIPPED table) are TEXT
+    /// snapshots evaluated outside the VM where handler locals don't exist;
+    /// dispatch pairs these names with the actual dispatch args to give the
+    /// snapshot evaluator the handler's lexical param bindings.
+    pub fn handler_param_names(&self, widget_name: &str, event_name: &str) -> Option<Vec<String>> {
+        let ev = event_name.trim_start_matches('.');
+        self.handler_param_names
+            .get(&(widget_name.to_string(), ev.to_string()))
+            .cloned()
     }
 
     /// Create a new VmBridge for a given AuraWidget, with no imported symbols.
@@ -361,10 +379,12 @@ impl VmBridge {
 
         // Audit B12(b): record declared handler arities (root + children) so
         // dispatch can skip phantom string args at no-param handlers.
-        let mut handler_param_counts = std::collections::HashMap::new();
-        collect_param_counts_from_widget(widget, &mut handler_param_counts);
+        // PLAN-685: names (not just counts) — stripped in-body callback
+        // snapshot evaluation resolves bare identifiers against them.
+        let mut handler_param_names = std::collections::HashMap::new();
+        collect_param_names_from_widget(widget, &mut handler_param_names);
         for child in child_widgets {
-            collect_param_counts_from_widget(child, &mut handler_param_counts);
+            collect_param_names_from_widget(child, &mut handler_param_names);
         }
 
         Ok(Self {
@@ -373,7 +393,7 @@ impl VmBridge {
             state_field_names: field_names,
             widget_name,
             child_state_map: std::cell::RefCell::new(std::collections::HashMap::new()),
-            handler_param_counts,
+            handler_param_names,
             import_aliases: import_aliases.clone(),
             store_alias_snapshot,
             child_last_init_identity: std::cell::RefCell::new(std::collections::HashMap::new()),
@@ -540,10 +560,12 @@ impl VmBridge {
 
         // Audit B12(b): record declared handler arities (root + children) so
         // dispatch can skip phantom string args at no-param handlers.
-        let mut handler_param_counts = std::collections::HashMap::new();
-        collect_param_counts_from_decl(decl, &mut handler_param_counts);
+        // PLAN-685: names (not just counts) — stripped in-body callback
+        // snapshot evaluation resolves bare identifiers against them.
+        let mut handler_param_names = std::collections::HashMap::new();
+        collect_param_names_from_decl(decl, &mut handler_param_names);
         for child in child_decls {
-            collect_param_counts_from_decl(child, &mut handler_param_counts);
+            collect_param_names_from_decl(child, &mut handler_param_names);
         }
 
         Ok(Self {
@@ -552,7 +574,7 @@ impl VmBridge {
             state_field_names: field_names,
             widget_name,
             child_state_map: std::cell::RefCell::new(std::collections::HashMap::new()),
-            handler_param_counts,
+            handler_param_names,
             import_aliases: import_aliases.clone(),
             store_alias_snapshot,
             child_last_init_identity: std::cell::RefCell::new(std::collections::HashMap::new()),
