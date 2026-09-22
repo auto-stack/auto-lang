@@ -4472,6 +4472,11 @@
      "content": "PLAN-687 供料 auto-edit PLAN-007 §10-5（用户裁定上游修复路线：借 Rust std 实现，未来再自研）。①read_text_range 双轨（VM shim stdlib.rs + a2r-std fs.rs，P670-D1 byte-identical 纪律延续）从 fs::read 全文+切片改 File seek+精确窗读 [offset-3,end+1)（metadata 总长；IO O(limit)）；流式语义收窄=UTF-8 校验限块区（非法字节所在块读取时报 total:-1，未读区不提前暴露）；边界回退改窗内续字节 walk（0xC0 掩码）。②code_editor_load_file(key,path) 装载端点（save 直写 want 的对偶）：native std::fs 单趟读+core.set_text 单次重写+delta 即 drain-弃+last_external 不触；返回总字节（None=缺席/IO 错/无效 UTF-8）。③a2r 映射补齐：ui_gen 增 code_editor_edit/load_file（i32）+trans File 表增 read_text_range（facade re-export 同步补）。坑：nat id 无守卫（P673-D2）——9907 撞 Env.track 错派发，改 9908。canonical=docs/design/autoui/editor-kernel.md §5.2 PLAN-687 节。",
      "file": "docs/design/autoui/editor-kernel.md",
      "created": "2026-09-22"
+    },
+    {
+     "id": "P683-1",
+     "title": "rq-remote-renderer — 方案 2 远程 Renderer：headless iced 宿主 + DisplayList v2（SD-01）+ desktop_render 四值 remote（SD-02）",
+     "content": "RQ 轨命令生产者从手写投影器换成「iced 组件树照常渲染 + tiny_skia 记录层截获」：iced::Renderer::Secondary(iced_tiny_skia::Renderer) 公开枚举臂纯 CPU 构造（T-00 GO 架构发现——自研 RecordRenderer 因 into_iced() 3.5 万行适配层构造期钉死 Renderer 类型不可行），view.into_iced() 组件树类型同源直驱 UserInterface::build/update/draw（iced_runtime 公开 API），Layer 记录层（quads/text Weak→cosmic run 提取/images/层 bounds）降格 DisplayList v2 过线：载荷 tag 2 追加式超集（Quad 全参=Fill 色或线性渐变 angle+stops 原生〔与 iced 同构角度模型〕+四角半径+BorderSpec/ShadowSpec；Transform 2×3；from_v1 直搬）+FrameReadyV2 信封 tag 12+shm 槽首字节分派 v1/v2 互斥。daemon 侧 DisplayListPainter/paint_ops_v2 canvas 原生重放（渐变 to_distance 重建+四角 Path+border 内描边+shadow 垫层 P683-D4）+v2 合成面优先路由（v1 零扰）。事件回路径 InputMsg→iced::Event 全族（含 IME 三态映射）。desktop_render 四值 +remote：pac→automan pac_desktop_render→main.rs -q gate→AUTO_VM_RENDER env→run_vm_rqhost_client/双轨 client remote 分岔；remote 模式覆盖门不适用（组件覆盖=iced 全集构造保证）。RqProjector/DrawList v1 冻结 legacy 位（设计档 §6.1 清单）。三试点 001/003/004 实机走查全过（679 遗留头像圆裁/真渐变差距构造性消除；daemon private 12MB）。债 P683-D1..D6（mesh 词汇外/旋转矩阵元不可达/svg/shadow 垫层/daemon 窗最小化环境怪/IME 实机验证缺口）。canonical：docs/design/autoui/desktop-protocol-v1.md 帧载荷 v2 行+docs/specs/auto-lang/ui/overview.md remote 段+设计档 rq-remote-renderer.md §6.1"
     }
    ]
   },
@@ -7077,6 +7082,11 @@
      ],
      "content": "r1 pass @ aa307c155（3 commits：8771d0d75 主体+8eb2a1a71 facade+aa307c155 位宽）。复审复跑三测试门全绿：parity 1/1+a2r-std read_text_range 2/2+core load_file 1/1+catalog 4/4；下游 AC-3 经 auto-edit PLAN-007 复审基线（100MB 装载 219MB vs 521 锚 -58% 全档 Flat）。工具链 1856-g8771d0d75 供下游主检出重建。",
      "created": "2026-09-22"
+    },
+    {
+     "id": "P683-2",
+     "title": "rq-remote-renderer 复审与合并收据",
+     "content": "review r1 needs_fix→修复批 7a92a96b4（rebase 后 e8d0bf200）→r2 pass（同会话复审已声明——证据全部命令级可复现）。AC-01..06 全 pass：golden 三测重跑+负例 0x7F 拒收+字节锚直读；typing remote 双证（单测 p683_t02 进程内 pipe 环+实机真鼠标键盘 revision 1→2→3 前进 1832 联动）；走查截图四张 md5 与视觉验证件字节同在库 docs/plans/reports/p683-shots/；裸 t 9 红+tf 10 红全预存归因（musk×6+counter=5c2ce28cb/shell_pack=P672/dock_pager=985c5b944；tf 第 10 红 ffi_dual_019 单跑即绿=满载 flake）。findings：F-1 未用 import（修）/F-2 IME 实机验证缺口（债 P683-D6）/F-4 frontmatter 陈词（勘正）/F-3 desktop_render 缺省未翻 remote=保守解释（翻转需独立爬坡数据门，032 先例）呈报 merge 裁定。merge：rebase master 5dd8bf8fd range-diff 8/8 全等（映射 e0cd21cc8→9bc685826/…/7a92a96b4→e8d0bf200），ff-only 落地"
     }
    ]
   }
