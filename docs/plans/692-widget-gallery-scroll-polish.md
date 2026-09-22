@@ -14,7 +14,7 @@ touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 affects: [widgets/scroll-pane]
 current_step: 6
 total_steps: 7
-plan_revision: 2
+plan_revision: 3
 ---
 
 # [PLAN-692] widget-gallery-scroll-polish
@@ -213,6 +213,7 @@ vue 生成器（`crates/auto-lang/src/ui_gen/vue.rs`）在 div/容器 class 组�
 - 2026-09-22 work（rev1）：/auto-plan:work 执行完毕。stage: work | plan_id: PLAN-692 | plan_revision: 1 | outcome: **pass** | code_commit: auto-lang `f986a2140`+`70231e2dd`（branch plan-692-dev，base bebd09387）；auto-os `20bf4dc`+`396ab85`（branch plan-692-dev，base 0fbe421）| task_ids: T-01..T-06 done，T-07 merge 阶段 | evidence: 三单测绿（size/合并 style/ash-scroll 三态）；`cargo check -p auto-lang` 绿；iced 271/271 绿；实机 IAB 断言 AC-01..06 全过（几何+thumb 16px 端到端+hover 20px 禁过渡实测+功能滚动）| blockers: 无 | next: review。计划内设计修正已记录（T-01 reka 变量分层接管；T-05 shrink-0/w-160 两枚实机修正）。预存红两枚 master 同败（a2vue 金样、index_css token 漂移）非本支引入。
 - 2026-09-22 F-1（rev1，用户实机反馈修复）：用户报告语义 scroll thumb 拖拽方向/位置错乱。根因=ScrollBar.vue 轨道 `items-center` 把 thumb 静态布局原点在长度轴居中（纵轨 cross 轴即长度轴），而 reka 以 `transform: translate3d` 从布局原点位移定位 thumb（ScrollAreaScrollbarVisible.onThumbPositionChange），原点偏移实测 70px → 位移映射整体错位（grab 跳变+方向感错乱）。修复=轨道 `items-start justify-center`（长度轴起点+仅厚度轴居中；纵横两向同形），实测 originTopRelTrack 70→1px（commit 32ea85b66）。A/B 对拍证实 18px thumb 长度为预存现象（原模板同值，reka sizes 测量面问题，与本次改动无关，记观察项）。合成拖拽在 IAB 无法穿透 reka 的 setPointerCapture/emit 链（cua.drag 只发 move；合成 PointerEvent 的 capture 语义受限），终验以几何断言（原点=内容盒起点）+ reka 源码数学推演为准，真实鼠标拖拽待用户复核。
 - 2026-09-22 rev2（用户裁定：active 高亮撤销改 hover 微亮）：用户手测后裁定——不做"按住后高亮"，与普通 scroll 一致改为 hover 时高亮，且非主题色大高亮而是轻微变亮。变更：thumb `active:bg-primary` 移除 → `hover:bg-muted-foreground/60`；`.ash-scroll` hover 改 `hsl(var(--muted-foreground) / 0.6)` 同参、`:active` 规则退役；hover 加宽 +2px/侧与 cursor:pointer 保留。**AC-05 改述**：hover 加宽 +2px/侧 + cursor:pointer + thumb 微亮（muted-foreground/60）。**AC-06 退役**（用户裁定 2026-09-22，非计划让步）。SD-01 相应改述（spec 增量在 worktree 于 merge 时同步落）。实机验证：compiled CSS 规则确认（hoverRule=新值，activeRuleCount=0）；禁过渡探针读 hover 真值 bg=rgba(148,163,184,0.6)+宽 12px。commit beebcb832（branch plan-692-dev）。plan_revision 1→2（AC 契约文本变化；授权=用户直接下达）。
+- 2026-09-22 rev3（用户实机反馈三则）：①thumb 闪现根修——hover 挂载时 thumb 先现于轨道顶再滑到真实位置：`transition-all` 把 reka 挂载后施加 `transform: translate3d` 定位的过程也动画化了；改 `transition-[width,background-color]`（transform 排除，实测 transitionProperty="width, background-color"）。②可见色加 accent——纯灰过浅，底色 `bg-border`→`bg-[hsl(var(--primary)/0.4)]`（tailwind config 无 alpha-value 占位故用任意值写法；实测 rgba(147,149,246,0.4)）。③变粗时色相不变仅亮度自适应——hover 色 muted-foreground/60→`primary/60`（浅色底变暗、深色底变亮，透明度合成自然达成）；`.ash-scroll` 同参（底 primary/40、hover primary/60+border 归零加宽）+Firefox scrollbar-color 同步。commit 9193d9915+9cc0813eb（spec 同步）。A/B 复核：IAB 合成悬停下 reka 定位链（RO→sizes→watchOnce→transform）不完整为环境既有伪象（原模板同态）；真实鼠标链路通（用户截图 2 证 thumb 会落位）。plan_revision 2→3（视觉契约文本变化；授权=用户直接下达）。
 
 ## 10. 待澄清事项
 
