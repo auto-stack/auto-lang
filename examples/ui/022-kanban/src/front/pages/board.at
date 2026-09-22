@@ -1,12 +1,14 @@
-// pages/board.at — the three-column board. Reads cards from the shared store,
-// filters by column, and offers add / move / delete / drag-and-drop
-// (cf. 018 bookshelf.at).
+// pages/board.at — 三列看板。PLAN-684 rev2：语义 token 配色（去 gray/orange/green
+// 硬编码底色）+ 全高独立 app 框布局（flex-1 items-stretch，卡片区滚动）。
+// 状态身份用色点（双主题安全）；风格锚 Linear / Trello × AutoUI token。
 use store: BoardStore
 
-style kanban_card = "w-full items-center bg-card rounded-lg px-3 py-2 shadow-sm cursor-move"   // Phase B: bg-white → bg-card
-style card_title = "text-sm font-medium text-foreground flex-1"   // Phase B: gray-800 → foreground
-style column_head = "items-center px-1 py-2"
-style del_x = "ml-2 text-xs text-muted-foreground hover:text-destructive"   // Phase B: gray-300/red-500 → muted/destructive
+style card_base = "w-full items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 shadow-sm cursor-move hover:border-primary/40 transition-colors"
+style card_title = "text-sm font-medium text-foreground flex-1 truncate"
+style icon_btn = "ml-auto h-6 w-6 items-center justify-center rounded text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+style del_btn = "ml-1 h-6 w-6 items-center justify-center rounded text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+style col_shell = "flex-1 min-w-0 bg-muted/50 border border-border/60 rounded-xl p-3 gap-2 flex flex-col"
+style col_head = "items-center gap-2 px-1 py-1 shrink-0"
 
 widget board {
     msg { Init, AddCard, TitleChanged, RemoveCard(int), MoveCard(int, str), DragStart(int), AllowDrop, Drop(str) }
@@ -14,117 +16,129 @@ widget board {
     model {
         var new_title str = ""
         // id of the card currently being dragged (set by DragStart, read by Drop).
-        // We use widget state instead of HTML5 dataTransfer because source and
-        // target live in the same widget — simpler and avoids str↔int coercion.
         var drag_id int = 0
     }
 
     view {
         col {
-            style: "p-4 gap-4"
-            // Add-card row
+            style: "h-full w-full p-4 gap-3 min-h-0 flex flex-col"
+
+            // ── 工具条：新建卡片 ──
             row {
-                style: "gap-2 items-center"
+                style: "gap-2 items-center shrink-0"
                 input {
                     placeholder: "Add a card…",
                     value: .new_title,
                     oninput: .TitleChanged,
-                    style: "px-3 py-2 border border-border rounded-lg text-sm w-64"
+                    style: "px-3 py-2 bg-card border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary w-64 max-w-full"
                 }
                 button "+ Add Card" {
                     onclick: .AddCard,
-                    style: "px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90"
+                    style: "px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
                 }
             }
-            // Three columns
+
+            // ── 三列：拉满剩余高度 ──
             row {
-                style: "w-full gap-4 items-start"
+                style: "flex-1 min-h-0 gap-3 items-stretch w-full"
+
                 // To Do
                 col {
-                    style: "w-80 bg-gray-100 rounded-xl flex-shrink-0 p-3 gap-2"
+                    style: col_shell
                     ondragover.prevent: .AllowDrop
                     ondrop: .Drop("todo")
                     row {
-                        style: column_head
+                        style: col_head
+                        col {
+                            style: "h-2 w-2 rounded-full bg-border shrink-0"
+                        }
                         text "To Do" { style: "text-sm font-semibold text-foreground" }
                     }
                     col {
-                        style: "gap-2"
+                        style: "flex-1 min-h-0 overflow-y-auto gap-2"
                         for card in .store.cards {
                             if card.column == "todo" {
                                 row {
                                     key: card.id
                                     draggable: true
                                     ondragstart: .DragStart(card.id)
-                                    style: kanban_card
+                                    style: card_base
                                     text card.title { style: card_title }
                                     button ">" {
                                         onclick: .MoveCard(card.id, "doing"),
-                                        style: "ml-auto text-xs text-muted-foreground hover:text-primary"
+                                        style: icon_btn
                                     }
                                     button "×" {
                                         onclick: .RemoveCard(card.id),
-                                        style: del_x
+                                        style: del_btn
                                     }
                                 }
                             }
                         }
                     }
                 }
+
                 // In Progress
                 col {
-                    style: "w-80 bg-orange-50 rounded-xl flex-shrink-0 p-3 gap-2"
+                    style: col_shell
                     ondragover.prevent: .AllowDrop
                     ondrop: .Drop("doing")
                     row {
-                        style: column_head
-                        text "In Progress" { style: "text-sm font-semibold text-orange-600" }
+                        style: col_head
+                        col {
+                            style: "h-2 w-2 rounded-full bg-primary shrink-0"
+                        }
+                        text "In Progress" { style: "text-sm font-semibold text-foreground" }
                     }
                     col {
-                        style: "gap-2"
+                        style: "flex-1 min-h-0 overflow-y-auto gap-2"
                         for card in .store.cards {
                             if card.column == "doing" {
                                 row {
                                     key: card.id
                                     draggable: true
                                     ondragstart: .DragStart(card.id)
-                                    style: kanban_card
+                                    style: card_base
                                     text card.title { style: card_title }
                                     button ">" {
                                         onclick: .MoveCard(card.id, "done"),
-                                        style: "ml-auto text-xs text-muted-foreground hover:text-primary"
+                                        style: icon_btn
                                     }
                                     button "×" {
                                         onclick: .RemoveCard(card.id),
-                                        style: del_x
+                                        style: del_btn
                                     }
                                 }
                             }
                         }
                     }
                 }
+
                 // Done
                 col {
-                    style: "w-80 bg-green-50 rounded-xl flex-shrink-0 p-3 gap-2"
+                    style: col_shell
                     ondragover.prevent: .AllowDrop
                     ondrop: .Drop("done")
                     row {
-                        style: column_head
-                        text "Done" { style: "text-sm font-semibold text-green-600" }
+                        style: col_head
+                        col {
+                            style: "h-2 w-2 rounded-full bg-emerald-500 shrink-0"
+                        }
+                        text "Done" { style: "text-sm font-semibold text-foreground" }
                     }
                     col {
-                        style: "gap-2"
+                        style: "flex-1 min-h-0 overflow-y-auto gap-2"
                         for card in .store.cards {
                             if card.column == "done" {
                                 row {
                                     key: card.id
                                     draggable: true
                                     ondragstart: .DragStart(card.id)
-                                    style: kanban_card
+                                    style: card_base
                                     text card.title { style: card_title }
                                     button "×" {
                                         onclick: .RemoveCard(card.id),
-                                        style: "ml-auto text-xs text-muted-foreground hover:text-destructive"
+                                        style: del_btn
                                     }
                                 }
                             }

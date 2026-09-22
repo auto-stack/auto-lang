@@ -1,5 +1,5 @@
-// app.at — App shell. Single-page board; routes just render the board page.
-// store import at the top (cf. 018 app.at `use book_store: BooksStore`).
+// app.at — 022-kanban 应用壳。PLAN-684 rev2：独立 app 框（pac window:1120x740）
+// + 全高填充链；主题契约 dark_mode/accent_color（Plan 458 变量名勿改）。
 use board_store: BoardStore
 
 widget App {
@@ -7,23 +7,46 @@ widget App {
         "/" -> use board
     }
 
-    msg { Init }
+    msg { Init, ToggleDarkMode }
+
+    model {
+        // 主题魔法变量：驱动生成器深浅色运行时
+        var dark_mode bool = true
+        var accent_color str = "indigo"
+    }
 
     view {
         col {
-            style: "min-h-screen bg-background text-foreground"
-            // Header
+            // h-full + min-h-screen：嵌入视口与桌面窗口均占满（AppViewport deep
+            // 覆盖 .min-h-screen→100%）。overflow-hidden 由列内滚动条消化。
+            style: "w-full h-full min-h-screen bg-background text-foreground overflow-hidden"
+
+            // ── 应用铬件：标题栏 ──
             row {
-                style: "w-full items-center justify-between p-4 border-b border-border bg-card"
+                style: "h-14 shrink-0 items-center justify-between px-4 border-b border-border bg-card"
                 row {
-                    style: "items-center gap-2"
-                    text "Project Board" { style: "text-xl font-bold text-foreground" }
-                    text "Kanban" { style: "text-sm text-muted-foreground" }
+                    style: "items-center gap-2 min-w-0"
+                    text "☰" { style: "text-lg text-primary" }
+                    text "Project Board" { style: "text-lg font-semibold text-foreground truncate" }
+                    text "Kanban" { style: "text-xs text-muted-foreground shrink-0" }
+                }
+                row {
+                    style: "items-center gap-1 shrink-0"
+                    button {
+                        onclick: .ToggleDarkMode
+                        style: "h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                        if .dark_mode {
+                            text "🌙" {}
+                        } else {
+                            text "☀️" {}
+                        }
+                    }
                 }
             }
-            // Route outlet
+
+            // ── 看板区 ──
             col {
-                style: "flex-1"
+                style: "flex-1 min-h-0"
                 outlet
             }
         }
@@ -31,5 +54,6 @@ widget App {
 
     on {
         .Init -> { store.Init() }
+        .ToggleDarkMode -> { .dark_mode = !.dark_mode }
     }
 }

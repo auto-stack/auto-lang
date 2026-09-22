@@ -12,9 +12,9 @@ store BoardStore {
 
     on {
         .Init -> {
-            .loading = true
-            .cards = all_cards()
+            // 先清 loading 再拉数：API 失败不留 Loading 死态（PLAN-684 同 018）
             .loading = false
+            .cards = all_cards()
         }
         .AddCard(title str) -> {
             create_card(title)
