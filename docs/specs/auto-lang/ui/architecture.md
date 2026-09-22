@@ -27,7 +27,7 @@ graph TD
     VNODE["vnode.rs / vnode_converter.rs"]
     EVT["event_router.rs EventRouter"]
     BRIDGE["vm_bridge.rs + interpreter/"]
-    HOSTS["gpui/ · iced/ · headless/"]
+    HOSTS["iced/ · headless/"]
     STYLE["style/ class·theme·iced_adapter<br/>(458 主题)"]
     ACT["action_config.rs<br/>(418/423/451 Action 配置层)"]
     EDITORS["code_editor/ · autodown_editor/<br/>(413-428 内建编辑器)"]

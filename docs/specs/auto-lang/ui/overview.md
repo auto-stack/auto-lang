@@ -22,7 +22,7 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 - **前端解析**：UI 方言（`widget`/`msg`/`model`/`view`/`on`/`setup`/`actions`，dialect 机制）。
 - **AURA 提取与校验**：WidgetDecl → 视图树/状态/事件三元 IR，按 `schema/aura.at`（唯一契约源，plan-435）校验。
 - **代码生成**（`ui_gen/`）：a2vue（主力）、a2rust、a2jet/a2ark、ts adapter、widget 契约表、block 层。
-- **VM 运行时渲染**（`ui/`）：vnode/事件路由/VM 桥接、iced/gpui/headless 后端、code_editor 与
+- **VM 运行时渲染**（`ui/`）：vnode/事件路由/VM 桥接、iced/headless 后端、code_editor 与
   autodown_editor 内建 widget、热重载、MCP 调试服务。
 - **桌面运行时**（2026-08 新增）：`session.rs`（DesktopSession/AppSession 双层会话 + WmState/
   WmCommand 桌面消息）、`ui/iced/virtual_window.rs`（VirtualWindow 渲染）、排布纯函数与
@@ -735,7 +735,7 @@ p659_cdb_soak.py`，探针 `p659_probe.rs`）：
 - 桌面线：`ui/session.rs`（DesktopSession/AppSession + WmState/WmCommand/DM::Wm）·
   `ui/iced/virtual_window.rs`（VirtualWindow）· `ui/iced/renderer.rs`（view_desktop_fn/run_dynamic_iced_multi）·
   `ui/desktop_protocol/`（路线 B 桌面协议 v1.1：五通道/传输/shm/broker/状态机）
-- 样式与主题：`ui/style/`（class/color/theme/iced/headless/gpui 适配 + **Plan 527 v3.4 清单驱动全量
+- 样式与主题：`ui/style/`（class/color/theme/iced/headless 适配 + **Plan 527 v3.4 清单驱动全量
   覆盖契约**——parse_reported 报告通道/对拍审计台 style_parity/Variant 管道〔hover/focus/active/
   disabled/responsive 五断点窗口宽门控/dark 主题态门控〕，覆盖矩阵 docs/style-coverage.md；
   **Plan 593 后语义 token 值单源于 `design_tokens/registry.rs`**——theme/ 目录模块化，
