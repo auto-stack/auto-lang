@@ -53,6 +53,9 @@ fn collect_view_texts(
         // header/footer/nav 等语义容器经 convert_container_tracked_ctx 落
         // View::Container（单 child）——壳 brand/菜单文案在此层下。
         View::Container { child, .. } => collect_view_texts(child, out),
+        // PLAN-688 r2：nav 列表容器带 overflow-y-auto 落 View::Scrollable，
+        // 收集器须穿透（plan649 同款修正）。
+        View::Scrollable { child, .. } => collect_view_texts(child, out),
         View::AnchorSlot { child, .. } => collect_view_texts(child, out),
         _ => {}
     }

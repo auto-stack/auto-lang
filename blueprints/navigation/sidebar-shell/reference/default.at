@@ -1,9 +1,10 @@
 // reference/default.at — SidebarShell blueprint, "default" variant.
-// Interactive app frame: full-height three-section sidebar (top brand +
-// collapse toggle / mid nav tree / bottom settings footer) beside a content
-// column that owns the header (brand + user menu). Consumer fills
-// nav_tree/user props and owns actions.sign_out. EDIT regions mark where
-// per-app customization is expected.
+// Interactive app frame: a full-height three-section sidebar rendered as TWO
+// mutually exclusive panes — the wide pane (icon + title per nav item) and
+// the rail pane (icon-only, one size larger) — beside a content column that
+// owns the header (brand + user menu). Consumer fills nav_tree/user props and
+// owns actions.sign_out. EDIT regions mark where per-app customization is
+// expected.
 //
 // PLAN-657 参数化修整（reference 实现对齐 frontmatter 契约面，frontmatter
 // 零改动）：nav_tree/user props 经 widget 参数接入（047-bp-admin 首次多包
@@ -13,21 +14,26 @@
 // content EDIT 区为 slot 出口（fallback 保留原占位文案——裸实例化
 // 渲染形态不变，plan649 t09 锚兼容）。
 //
-// PLAN-688 交互化（首个"交互态 BP"，SD-01 惯例锚例）：
-// - bp-private `collapsed` 态 + `ToggleCollapsed` 消息（`!` 取反切换，
-//   form/login ToggleRemember 先例）驱动宽栏 ↔ icon rail 双形态。
-// - 形态组合走 D1 单树 class 组合，零新增 VM 原语：
-//     label 面（文字/chevron/badge）: style: if .collapsed {"hidden"}
-//       else {"hidden lg:flex"} —— 可见 = ¬collapsed ∧ 窗宽 ≥1024；
-//     sidebar 列宽: style: if .collapsed {"w-14 ..."} else
-//       {"w-14 ... lg:w-56"} —— 响应类按声明序进 base，后声明胜。
+// PLAN-688 交互化（r2，用户走查裁定 2026-09-22）：双 pane 形态——
+// - 收缩 rail 与展开宽栏是两棵独立子树，互斥可见（非逐元素 label 面切换）：
+//     宽栏 pane 根: style: if .collapsed {"hidden"}
+//                       else {"hidden lg:block w-56 ..."}   ← 可见 = ¬collapsed ∧ ≥1024
+//     rail  pane 根: style: if .collapsed {"w-14 ..."}
+//                       else {"lg:hidden w-14 ..."}         ← 可见 = collapsed ∨ <1024
+//   **rail pane 根禁带任何 display 类**（flex/lg:flex 会以 display 覆盖语义
+//   压过 Hidden 永显，`flex lg:hidden` 不可隐藏——is_hidden 的 Plan 409 §10
+//   语义）；列向布局 col 本身即栈式，无需 flex 类（gotchas #5）。
+// - 宽栏 pane：每个 nav item 是单颗按钮（icon 与标题一体，
+//   `f"{node.icon}  {node.label}"` 内联字形，compact.at 字形先例）；
+//   rail pane：icon-only 且比宽栏大一号（text-lg w-10 h-10 vs text-sm）。
+// - bp-private `collapsed` 态 + `ToggleCollapsed`（`!` 取反，form/login
+//   ToggleRemember 先例）；宽栏 ◂/rail ▲ 同一消息。
 // - 平板竖屏（<1024）自动 rail：纯 `lg:` 断点门控，不依赖手动态；
-//   resize→view 重建→重解析实时生效（Plan 527 T7 回路）。
-// - rail 态 icon 按钮带 `title:` tooltip（PLAN-053 批4 EE03 接线，
-//   renderer Button 臂剥离 EE03 尾段包 iced tooltip）。
-// - nav 节点全键 {id, label, badge, icon}（catalog.at 纪律：VM 缺键
-//   访问=硬错）；icon 为文本字形（compact.at "⌂▦⚙" 先例），空串时
-//   icon 钮为空块——首字符回退属消费方烘焙，bp 不做切片逻辑。
+//   resize→view 重建→重解析实时生效（Plan 527 T7 回路，实机证实）。
+// - rail 态 icon 按钮带 `title:` tooltip（PLAN-053 批4 EE03 接线）。
+// - nav 节点全键 {id, label, badge, icon}（catalog.at 纪律：VM 缺键访问
+//   =硬错）；icon 为文本字形，空串时 rail 钮为空块——首字符回退属消费方
+//   烘焙，bp 不做切片逻辑。
 
 widget SidebarShell (nav_tree: List, user_name: str, user_email: str, on_nav: msg, on_sign_out: msg) {
     msg {
@@ -46,57 +52,52 @@ widget SidebarShell (nav_tree: List, user_name: str, user_email: str, on_nav: ms
     view {
         col {
             row {
-                // ── sidebar: three sections, collapse-aware ──
+                // ── sidebar: two mutually exclusive panes ──
                 sidebar {
+                    // ── 宽栏 pane（展开态）────────────────────────────
                     col {
-                        // ── 上段：标题 icon + 收缩钮（rail 态点标题 icon 回宽栏）──
+                        // ── 上段：logo + 标题 + 收缩钮 ──
                         row {
+                            // ── EDIT: logo ──
                             button "▲" {
                                 onclick: .ToggleCollapsed
                                 title: "Toggle sidebar"
                                 variant: "ghost"
-                                style: "w-9 h-9 rounded-lg text-sm font-bold"
+                                style: "w-8 h-8 rounded-lg text-sm shrink-0"
                             }
-                            // ── EDIT: logo（标题文字，label 面）──
                             text "Acme" {
-                                style: if .collapsed { "hidden" } else { "hidden lg:block text-sm font-semibold truncate" }
+                                style: "text-sm font-semibold px-2"
                             }
                             button "◂" {
                                 onclick: .ToggleCollapsed
                                 title: "Collapse sidebar"
                                 variant: "ghost"
-                                style: if .collapsed { "hidden" } else { "hidden lg:flex w-9 h-9 rounded-lg text-muted-foreground hover:bg-muted" }
+                                style: "w-8 h-8 rounded-lg text-muted-foreground hover:bg-muted ml-auto shrink-0"
                             }
                             style: "items-center gap-1 w-full"
                         }
 
-                        // ── EDIT: nav_items (over props.nav_tree; badge counts
-                        //    baked by the consumer from dataSource.counts;
-                        //    overflow 归本层——Plan 656 scroll 语义) ──
+                        // ── EDIT: nav_items (over props.nav_tree; icon 与
+                        //    标题一体单按钮；badge counts baked by the
+                        //    consumer from dataSource.counts; overflow 归
+                        //    本层——Plan 656 scroll 语义) ──
                         col {
                             for node in .nav_tree {
                                 row (key: node.id) {
-                                    button f"${node.icon}" {
-                                        onclick: .NavSelected(node.id)
-                                        title: f"${node.label}"
-                                        variant: if .active_nav == node.id { "secondary" } else { "ghost" }
-                                        style: "w-9 h-9 rounded-lg text-sm"
-                                    }
-                                    button f"${node.label}" {
+                                    button f"${node.icon}  ${node.label}" {
                                         onclick: .NavSelected(node.id)
                                         variant: if .active_nav == node.id { "secondary" } else { "ghost" }
-                                        style: if .collapsed { "hidden" } else { "hidden lg:flex flex-1 justify-start px-3 py-2 rounded-lg text-sm hover:bg-muted" }
+                                        style: "flex-1 justify-start px-3 py-2 rounded-lg text-sm hover:bg-muted"
                                     }
                                     if node.badge != "" {
                                         badge f"${node.badge}" {
                                             variant: "outline"
-                                            style: if .collapsed { "hidden" } else { "hidden lg:flex" }
                                         }
                                     }
-                                    style: "gap-2 items-center"
+                                    style: "gap-2 items-center w-full"
                                 }
                             }
-                            style: "gap-1"
+                            style: "gap-1 w-full overflow-y-auto flex-1 min-h-0"
                         }
 
                         // ── EDIT: footer（settings + 附加 nav 项示例，纯
@@ -104,36 +105,71 @@ widget SidebarShell (nav_tree: List, user_name: str, user_email: str, on_nav: ms
                         col {
                             separator {}
                             row {
-                                button "⚙" {
-                                    title: "Settings"
+                                button "⚙  Settings" {
                                     variant: "ghost"
-                                    style: "w-9 h-9 rounded-lg text-sm"
+                                    style: "flex-1 justify-start px-3 py-2 rounded-lg text-sm hover:bg-muted"
                                 }
-                                button "Settings" {
-                                    variant: "ghost"
-                                    style: if .collapsed { "hidden" } else { "hidden lg:flex flex-1 justify-start px-3 py-2 rounded-lg text-sm hover:bg-muted" }
-                                }
-                                style: "gap-2 items-center"
+                                style: "w-full"
                             }
                             row {
-                                button "▤" {
-                                    title: "Workspace"
+                                button "▤  Workspace" {
                                     variant: "ghost"
-                                    style: "w-9 h-9 rounded-lg text-sm"
+                                    style: "flex-1 justify-start px-3 py-2 rounded-lg text-sm hover:bg-muted"
                                 }
-                                button "Workspace" {
-                                    variant: "ghost"
-                                    style: if .collapsed { "hidden" } else { "hidden lg:flex flex-1 justify-start px-3 py-2 rounded-lg text-sm hover:bg-muted" }
-                                }
-                                style: "gap-2 items-center"
+                                style: "w-full"
                             }
                             text "v0.1" {
-                                style: if .collapsed { "hidden" } else { "hidden lg:block text-xs text-gray-400" }
+                                style: "text-xs text-gray-400 px-3"
                             }
-                            style: "gap-1 pt-2"
+                            style: "gap-1 pt-2 w-full"
                         }
 
-                        style: if .collapsed { "w-14 shrink-0 items-center border-r p-2 gap-2" } else { "w-14 lg:w-56 shrink-0 items-center border-r p-2 gap-2" }
+                        style: if .collapsed { "hidden" } else { "hidden lg:block w-56 shrink-0 border-r p-2 gap-2" }
+                    }
+
+                    // ── rail pane（收缩态；icon 比宽栏大一号）──────────
+                    col {
+                        // ── 上段：大 logo icon（点击回宽栏）──
+                        button "▲" {
+                            onclick: .ToggleCollapsed
+                            title: "Expand sidebar"
+                            variant: "ghost"
+                            style: "w-10 h-10 rounded-lg text-xl font-bold"
+                        }
+
+                        // ── EDIT: nav_items (icon-only rail; title = tooltip;
+                        //    badge 收纳属消费方升级面，v1 不显) ──
+                        col {
+                            for rnode in .nav_tree {
+                                row (key: rnode.id) {
+                                    button f"${rnode.icon}" {
+                                        onclick: .NavSelected(rnode.id)
+                                        title: f"${rnode.label}"
+                                        variant: if .active_nav == rnode.id { "secondary" } else { "ghost" }
+                                        style: "w-10 h-10 rounded-lg text-lg"
+                                    }
+                                }
+                            }
+                            style: "gap-1 items-center flex-1 min-h-0 overflow-y-auto w-full"
+                        }
+
+                        // ── EDIT: footer（icon-only，同宽栏语义）──
+                        col {
+                            separator {}
+                            button "⚙" {
+                                title: "Settings"
+                                variant: "ghost"
+                                style: "w-10 h-10 rounded-lg text-lg"
+                            }
+                            button "▤" {
+                                title: "Workspace"
+                                variant: "ghost"
+                                style: "w-10 h-10 rounded-lg text-lg"
+                            }
+                            style: "gap-1 items-center pt-2 w-full"
+                        }
+
+                        style: if .collapsed { "w-14 shrink-0 border-r p-2 gap-2 items-center" } else { "lg:hidden w-14 shrink-0 border-r p-2 gap-2 items-center" }
                     }
                 }
 

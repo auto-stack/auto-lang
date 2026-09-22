@@ -66,34 +66,43 @@ Treat portrait as always-rail v1. If a product needs a manual override,
 propose the window-signal primitive at the mobile milestone instead of
 forking this package.
 
-## 5. `style: if` × responsive classes — the label-face/icon-face recipe
+## 5. Two-pane collapse — the mutual-exclusion recipe (and its display-class trap)
 
 **Wrong**
-Building two sibling subtrees (wide + rail) and toggling their visibility,
-or reaching for a window-size primitive to drive widths.
+Toggling per-element label visibility inside one shared tree (icon button +
+label button as siblings per row — they drift apart visually), or writing the
+rail pane as `flex lg:hidden`.
 
 **Why**
-The single-tree composition does it with zero new primitives:
+The collapse is two independent panes with mutually exclusive visibility
+(user ruling 2026-09-22: expanded pane shows icon+title as ONE button per
+item; the rail pane is icon-only with icons one size larger):
 
 ```auto
-// label face (texts/chevrons/badges): visible = ¬collapsed ∧ width ≥1024
-style: if .collapsed { "hidden" } else { "hidden lg:flex" }
-// sidebar column width: responsive classes enter base in declaration
-// order when the breakpoint hits — the later lg:w-56 wins
-style: if .collapsed { "w-14 items-center" } else { "w-14 items-center lg:w-56" }
+// wide pane root: visible = ¬collapsed ∧ width ≥1024
+style: if .collapsed { "hidden" }
+                 else { "hidden lg:block w-56 shrink-0 border-r p-2 gap-2" }
+// rail pane root:  visible = collapsed ∨ width <1024
+style: if .collapsed { "w-14 shrink-0 border-r p-2 gap-2 items-center" }
+                 else { "lg:hidden w-14 shrink-0 border-r p-2 gap-2 items-center" }
 ```
 
-`hidden` + a display class (`lg:flex`) resolves as display-wins (Plan 409
-§10 semantics); the breakpoint re-gates on resize → view rebuild → reparse
-(Plan 527 T7). Regression anchor: `test_lg_hidden_override_and_width_cascade`
-(ui/style/mod.rs). Copyable to any BP needing manual-state × orientation
-AND-combination.
+**The trap**: the rail pane root must carry NO display class (`flex`,
+`lg:flex`, …). `Style::is_hidden` uses display-wins-over-Hidden semantics
+(Plan 409 §10): a base `flex` makes `lg:hidden` unable to hide the pane at
+≥1024 — `flex lg:hidden` stays visible forever. Columns stack their children
+without any flex class (iced Column / CSS block), so omitting display costs
+nothing. The wide pane uses `lg:block` (not `lg:flex`) for the same reason on
+a column root. Resize re-gates via resize → view rebuild → reparse
+(Plan 527 T7, machine-verified). Regression anchor:
+`test_lg_hidden_override_and_width_cascade` (ui/style/mod.rs).
 
 **Right**
-Keep one tree; mark the two faces per element (icon face always rendered,
-label face behind the conditional). The bp-private `collapsed` var +
-`ToggleCollapsed` message (`!` negation, form/login ToggleRemember
-precedent) is the whole state surface.
+Two subtrees under the sidebar; one `ToggleCollapsed` message (`!`
+negation, form/login ToggleRemember precedent) from the wide chevron ◂ and
+the rail logo ▲. Rail icon buttons carry `title:` tooltips (PLAN-053 EE03
+wiring); rail icons run one size up (`text-lg w-10 h-10` vs the wide pane's
+`text-sm`).
 
 ## 6. mobile ☰ floating menu — recorded, not built
 

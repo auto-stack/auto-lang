@@ -280,6 +280,10 @@ fn collect_view_texts(
         // PLAN-657：语义容器（header/footer/nav）落 View::Container——壳
         // brand/user menu 文案在此层下（此前收集器不遍历，断言面未覆盖）。
         View::Container { child, .. } => collect_view_texts(child, out),
+        // PLAN-688 r2：nav 列表容器带 overflow-y-auto（Plan 656 scroll 语义）
+        // 落 View::Scrollable——收集器须穿透（snapshot v2 同口径，否则
+        // 循环子树对 needle 断言不可见）。
+        View::Scrollable { child, .. } => collect_view_texts(child, out),
         View::AnchorSlot { child, .. } => collect_view_texts(child, out),
         _ => {}
     }

@@ -36,8 +36,8 @@ and user via props, badge counts via `dataSource.counts`, and the
 
 Since PLAN-688 this is the anchor example of an **interactive-state BP**
 (SD-01): a bp-private `collapsed` model var + `ToggleCollapsed` message drive
-the wide ↔ icon-rail switch; no window-size primitive is needed (see gotchas
-#5 for the class-composition recipe).
+the wide ↔ icon-rail switch via two mutually exclusive panes; no window-size
+primitive is needed (see gotchas #5 for the pane-visibility recipe).
 
 # Props
 
@@ -64,9 +64,11 @@ the wide ↔ icon-rail switch; no window-size primitive is needed (see gotchas
   sign-out is `actions.sign_out`
 - the `content` EDIT region is the routed app surface — keep it a single
   slot, no bp-owned chrome
-- the collapse toggle reuses one `ToggleCollapsed` message from both the
-  title icon (rail → wide) and the chevron button (wide → rail); portrait
-  (<1024) stays rail regardless of the manual state (see gotchas #4)
+- the sidebar renders TWO mutually exclusive panes: the wide pane (each nav
+  item one button with icon + title together) and the rail pane (icon-only,
+  icons one size larger); the collapse toggle reuses one `ToggleCollapsed`
+  message from both the wide chevron and the rail logo; portrait (<1024)
+  stays rail regardless of the manual state (see gotchas #4/#5)
 - keep `title:` attributes on rail icon buttons for hover tooltips
 - mark every extension point with a `// EDIT: <point>` comment
 
