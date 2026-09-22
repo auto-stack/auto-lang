@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-681
-status: reviewed                 # drafting → executing → execution_done → reviewed → archived
+status: archived                  # drafting → executing → execution_done → reviewed → archived
 feature_name: a2r-deploy-gap-batch
 author: [zcode]
 created_at: 2026-09-22
@@ -287,3 +287,12 @@ route A 不止 back 端点真体，还包括 front merged 桩的真契约化（�
 3. ~~console 缓冲宿主形态~~ **已裁定（T-00）**：auto_lang::vm::ui_console 直连
    （VM shim 同一 ring，DEFAULT_LINES=200 newest-first '\n' join，进程级
    Mutex<VecDeque> CAP=500——a2r 生成物进程内同语义）。
+
+## 11. 合并收据（PLAN-681:r1）
+
+- prepared：reviewed 基线=r2 pass@worktree tip（R-1 修正后）；SD-01/SD-02 worktree 落盘（574e89065→rebase a5582a8ed 同补丁）；账本投影=P681-1(designs)/P681-2(reviews)+ui/trans plans.md 双行+INDEX 再生（projection-only descendant，588b2eca9）。
+- landed：rebase onto master（674 两 commit 已在 master ancestry=自然跳过；四实现 commit patch-id 逐枚相等 /tmp old/new 比对在案；账本 commit 冲突=EOF 双追加取并集——P674-1/2+P681-1/2 共存回读证实）；master ff-only 至 588b2eca9（零 merge commit；他会话 WIP 三簇原样保留）；master 冒烟 cargo check -p a2r-std -p auto-lang --lib --features ui-iced 零 error。
+- ledger_refreshed：.autoos/specs.json（indent=1 无尾换行）P681-1/P681-2 插入+回读；docs/specs/auto-lang/{ui,trans}/plans.md 双行；scripts/spec-index.py 再生 INDEX。
+- archived：docs/plans/archive/681-a2r-deploy-gap-batch.md（本文件）status=archived，completion_kind: delivered。
+- cleaned：见下。
+- outcome: pass · 边界/债注记随 §9 r2 记录在档（dialog 父窗锚/HTTP 对拍/预制槽默认参/AUTO_LANG_CRATE dev 口子 merge 后解除）。
