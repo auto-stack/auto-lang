@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-685
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-bp-callback-arg-forward + bp 内容页 UX 重设计
 author: [zhaop/agent]
 created_at: 2026-09-22
@@ -8,9 +8,9 @@ updated_at: 2026-09-22
 plan_revision: 2
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components: [docs/specs/blueprint/project.md#消费面与组装样板]   # SD-01 修订该节 P657-D1 P0 条目（载荷字面量化收口注记）
+new_spec_components: [docs/specs/blueprint/project.md#消费面与组装样板]         # SD-02/03 新增验收/展示规则句
+touched_goals: [GOAL-011, GOAL-007]  # GOAL-011 行在册 P657-D1=本修收口；GOAL-007 双臂一致面（computed-as-arg vue 臂白屏修复+markdown 双臂消费）
 
 affects: [auto-vm, autoui]
 current_step: 7
@@ -299,9 +299,14 @@ wrong:/why:/right: 加粗/行内码 chip/列表/表格 chrome）、tab 直切、
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | modify | docs/specs/auto-vm/project.md | 新增：VM 臂组件注入回调（`on_*: msg`）携参再发射时，实参 = 发射点形参绑定值（名字面量退化 forbidden） | 本缺陷即违例实证 | AC-01/AC-02 |
-| SD-02 | add | docs/specs/autoui-skill/project.md | 新增：BP 消费型应用（bps-gallery 型）VM 臂点击路径属 E2E 应验面，双臂验收不得只盖 vue 构建 | PLAN-676 漏网教训 | AC-03 |
-| SD-03 | add | docs/specs/autoui-skill/project.md | 新增：结构化文档展示（spec/gotchas 型 markdown 内容）双臂应消费 autodown 渲染件（`markdown` tag），裸 `pre` 纯文本仅限代码源码面 | 内容粗糙即违例实证；jade-edit 消费先例 | AC-06/AC-07 |
+| SD-01 | modify | docs/specs/blueprint/project.md（消费面与组装样板·组装摩擦结论） | P657-D1 P0 条目（"VM 轨跨 widget 回调载荷字面量化"）追加收口注记 + 新增规则：VM 臂组件注入回调（`on_*: msg`）携参再发射（体内 `on_x(expr)` 剥离快照形态）实参 = 发射点形参绑定值，形参名字面量化 forbidden | 本缺陷即 P657-D1 在案实例（active_nav:"id" 同型），PLAN-685 根修收口 | AC-01/AC-02 |
+| SD-02 | add | docs/specs/blueprint/project.md（消费面与组装样板） | 新增：BP 消费型应用（bps-gallery 型）VM 臂点击路径属 E2E 应验面，双臂验收不得只盖 vue 构建 | PLAN-676 漏网教训 | AC-03 |
+| SD-03 | add | docs/specs/blueprint/project.md（消费面与组装样板） | 新增：结构化文档展示（spec/gotchas 型 markdown 内容）双臂应消费 autodown 渲染件（`markdown` tag），裸 `pre` 纯文本仅限代码源码面 | 内容粗糙即违例实证；jade-garden 消费先例 | AC-06/AC-07 |
+
+> **复审勘正（R-1，2026-09-22）**：SD 原表目标错位——`docs/specs/auto-vm/project.md`
+> 是独立运行器（crates/auto-vm 薄 CLI）spec，非 VM 臂 UI 桥；`autoui-skill/project.md`
+> 明文"不做：验证执行"。三 SD 归位 `blueprint/project.md`（on_* msg-ref 回调契约与
+> P657-D1 的在案家）。规则文本零改动 → 非语义契约变更，plan_revision 维持 2。
 
 ## 6. 测试设计
 
@@ -387,6 +392,38 @@ wrong:/why:/right: 加粗/行内码 chip/列表/表格 chrome）、tab 直切、
   computed-as-arg 不解析实证（装配纪律的跨臂差异面，教训沉淀于
   catalog.at 注 + 报告 README）；④运行器 `-back` 成员要求与纯前端
   应用错配为预存边界（非本计划引入）。
+- 2026-09-22 `stage: review` `plan_id: PLAN-685` `plan_revision: 2`
+  `outcome: pass` `reviewed_commit: plan-685-dev e577cef99`
+  `base_commit: 0e541c7e5` `dependency_revisions: auto-down fba6563
+  (detached master sibling)` `spec_inputs: docs/specs/blueprint/
+  project.md（消费面与组装样板/P657-D1）、docs/specs/goals.md
+  （GOAL-007/011）`
+  `acceptance_results: AC-01..AC-09 全 pass`——
+  AC-01 红相 base 重建（review-red 树 0e541c7e5+纯测试：两参测
+  `left: Str("v")` 红、字面量测绿）+ 审定点绿 3/3；AC-02/03 E2E
+  ×2 exit 0（重建 exe 后复跑，3 卡跨 3 kind，首帧竞态 0/2）；
+  AC-04 cargo t 24 红 / tv 3 红 / tf 等价 5887 集 30 红（含仅
+  test-book 组合暴露的 book×7）——全数 base 对勘预存，零新增；
+  AC-05 计划 T-04 注 + Q-1 裁定留痕；AC-06/09 截图视检
+  （docs/plans/reports/p685/ 双臂网格：markdown 层级/加粗/行内码/
+  列表/表格 chrome、Reference 反引号原样+变体 tab 节内）；AC-07
+  运行期探针（review_probe.py：起始仅 Spec 节、三 tab 状态+内容
+  双翻转、旧节卸载；review_keep.py：非缺省节跨 bp/跨 kind 切换
+  保持）；AC-08 头部件 runtime 在位 + vue build 重建绿。
+  `findings: R-1（已勘正）SD 三条目标错位——auto-vm/project.md 为
+  独立运行器 spec、autoui-skill 明文不做验证执行，归位
+  blueprint/project.md（P657-D1 在案家），规则文本零改动非契约变更；
+  R-2（非阻塞）app.at SelectBp 空串守卫属 prev/next 降灰 UX（T-05
+  特性面）非 T-02 语义 workaround，合规；R-3（非阻塞）E2E 首帧
+  no-op press 窗口现象（~1/3）已由有界重试加固覆盖，与 T-04 同族。`
+  `evidence: plan-685-dev 80bfec4b6..e577cef99 五提交 + 复审探针
+  scripts（docs/plans/reports/p685/review_probe.py、review_keep.py）
+  + 截图网格（同目录 vm//vue/）+ 红相重建（review-red 临时树已按
+  guard 规程清除，方法与输出摘录留本记录）`
+  `next: /auto-plan:merge`（SD 归位后的 blueprint spec 沉淀随 merge
+  落地；Q-2 E2E 进 CI 留 merge/复审后续裁定）
+  **独立性限制声明**：复审与实施同会话，裁定由工件重建（红绿两相
+  重跑、运行期探针、全档门禁 base 对勘、截图直读）而非实施期总结。
 
 ## 10. 待澄清事项
 
