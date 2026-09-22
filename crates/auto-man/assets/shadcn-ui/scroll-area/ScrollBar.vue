@@ -16,7 +16,7 @@ const delegatedProps = reactiveOmit(props, "class")
   <ScrollAreaScrollbar
     v-bind="delegatedProps"
     :class="
-      cn('flex touch-none select-none transition-colors items-center justify-center',
+      cn('flex touch-none select-none transition-colors items-start justify-center',
          orientation === 'vertical'
            && 'h-full w-[calc(var(--sb-size,8px)_+_6px)] p-px',
          orientation === 'horizontal'
@@ -27,7 +27,11 @@ const delegatedProps = reactiveOmit(props, "class")
          +2px/side, press highlights primary. Reka drives thumb length through inline
          `width/height: var(--reka-scroll-area-thumb-{width,height})`; the thickness
          side is undefined by reka, so the thickness var is layered here per orientation
-         (vertical consumes width, horizontal height) without touching the length var. -->
+         (vertical consumes width, horizontal height) without touching the length var.
+         Track alignment MUST be items-start: reka positions the thumb along the track
+         with `transform: translate3d` from its static layout origin, so any
+         cross-axis centering (items-center) shifts the origin and breaks drag
+         mapping (grab jump + inverted feel). justify-center centers thickness only. -->
     <ScrollAreaThumb
       class="relative rounded-full bg-border transition-all duration-150 cursor-pointer active:bg-primary"
       :class="orientation === 'vertical'
