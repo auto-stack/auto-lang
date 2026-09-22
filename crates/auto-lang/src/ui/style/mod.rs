@@ -579,6 +579,37 @@ mod tests {
         theme::set_window_width(1024.0);
     }
 
+    // PLAN-688 T-01(a):sidebar-shell D1 组合语法回归锚——label 面
+    // `hidden lg:flex`(lg 断点 display 覆盖 Hidden)+ 宽度级联 `w-14 lg:w-56`
+    // (命中断点的响应类按声明序进 base,后声明胜)。SD-01 登记"交互态 BP"
+    // 惯例的机制底座,消费者=blueprints/navigation/sidebar-shell。
+    #[test]
+    fn test_lg_hidden_override_and_width_cascade() {
+        use crate::ui::style::theme;
+        // label 面:768 竖屏(<lg 1024)→ hidden;1280(≥lg)→ flex 覆盖
+        theme::set_window_width(768.0);
+        let s = Style::parse("hidden lg:flex").unwrap();
+        assert!(s.is_hidden(), "768 竖屏 label 面应隐藏");
+        theme::set_window_width(1280.0);
+        let s = Style::parse("hidden lg:flex").unwrap();
+        assert!(!s.is_hidden(), "1280 label 面 flex 覆盖 hidden");
+        // 宽度级联:lg 命中时后声明的 lg:w-56 覆盖先声明的 w-14
+        let widths = |s: &Style| -> Vec<_> {
+            s.classes.iter().filter_map(|c| match c {
+                StyleClass::Width(SizeValue::Fixed(v)) => Some(*v),
+                _ => None,
+            }).collect()
+        };
+        theme::set_window_width(1280.0);
+        let s = Style::parse("w-14 items-center lg:w-56").unwrap();
+        assert_eq!(widths(&s).last(), Some(&56), "≥1024 时最终宽度应为 w-56, got {:?}", widths(&s));
+        theme::set_window_width(768.0);
+        let s = Style::parse("w-14 items-center lg:w-56").unwrap();
+        assert_eq!(widths(&s).last(), Some(&14), "<1024 时最终宽度应为 w-14, got {:?}", widths(&s));
+        // 还原默认
+        theme::set_window_width(1024.0);
+    }
+
     // ========== Plan 527 T8: dark: 主题过滤 ==========
 
     #[test]

@@ -238,7 +238,7 @@ fn e2e_host(tag: &str, dotted: &str, widget: &str, props: &str) -> PathBuf {
     std::fs::write(
         &app,
         format!(
-            "use {dotted}: {widget}\n\nwidget App {{\n    model {{\n        var nav List = [{{ id: \"h\", label: \"Home\", badge: \"\" }}]\n    }}\n    msg {{ Primary, NavSel }}\n    view {{\n        col {{\n            {widget}{props} {{}}\n            style: \"min-h-screen p-6\"\n        }}\n    }}\n}}\n"
+            "use {dotted}: {widget}\n\nwidget App {{\n    model {{\n        var nav List = [{{ id: \"h\", label: \"Home\", badge: \"\", icon: \"⌂\" }}]\n    }}\n    msg {{ Primary, NavSel }}\n    view {{\n        col {{\n            {widget}{props} {{}}\n            style: \"min-h-screen p-6\"\n        }}\n    }}\n}}\n"
         ),
     )
     .unwrap();
