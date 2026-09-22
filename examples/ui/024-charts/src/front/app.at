@@ -214,33 +214,19 @@ widget App {
                 }
 
                 // ---- 右:图表区(官方组件消费) ----
+                // props 写在括号内（组件契约形态；body 内裸赋值不进 props 通道）
                 col (style: "flex-1 rounded-lg border p-4 gap-2") {
                     if .chartType == "line" {
-                        line-chart (index: "m") {
-                        data: .monthly
-                        fields: ["desktop", "mobile", "tablet"]
-                        labels: ["Desktop", "Mobile", "Tablet"]
-                    }
+                        line-chart (data: .monthly, index: "m", fields: ["desktop", "mobile", "tablet"], labels: ["Desktop", "Mobile", "Tablet"]) {}
                     }
                     if .chartType == "bar" {
-                        bar-chart (index: "m") {
-                        data: .monthly
-                        fields: ["desktop", "mobile", "tablet"]
-                        labels: ["Desktop", "Mobile", "Tablet"]
-                    }
+                        bar-chart (data: .monthly, index: "m", fields: ["desktop", "mobile", "tablet"], labels: ["Desktop", "Mobile", "Tablet"]) {}
                     }
                     if .chartType == "area" {
-                        area-chart (index: "m") {
-                        data: .monthly
-                        fields: ["desktop", "mobile", "tablet"]
-                        labels: ["Desktop", "Mobile", "Tablet"]
-                    }
+                        area-chart (data: .monthly, index: "m", fields: ["desktop", "mobile", "tablet"], labels: ["Desktop", "Mobile", "Tablet"]) {}
                     }
                     if .chartType == "donut" {
-                        donut-chart (index: "m") {
-                        data: .monthly
-                        field: "desktop"
-                    }
+                        donut-chart (data: .monthly, index: "m", field: "desktop") {}
                     }
                 }
             }

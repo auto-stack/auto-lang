@@ -269,9 +269,19 @@ fn view_tree_has_tag(node: &AuraNode, tag: &str) -> bool {
 
 /// Plan 435 P4:tag 是否为内置(schema 三级折叠解析可命中)。
 /// 内置优先(Plan 408 推广):内置 tag 不参与子组件折叠桥接。
+/// PLAN-684:package_origin 元素(chart 四裸名等)不算 builtin——它们由
+/// official 组件包供给,须走 known_sub_widgets 折叠桥接(否则落 div 空壳)。
+/// 与 component_registry::is_builtin_fold/resolve 同口径。
 fn tag_is_builtin(tag: &str) -> bool {
     crate::aura::default_schema_cached()
-        .map(|s| s.resolve_tag(tag).is_some())
+        .map(|s| {
+            s.resolve_tag(tag)
+                .map(|(canonical, _)| {
+                    s.meta.get(canonical).map(|m| m.tier)
+                        != Some(crate::aura::schema::ElementTier::PackageOrigin)
+                })
+                .unwrap_or(false)
+        })
         .unwrap_or(false)
 }
 
