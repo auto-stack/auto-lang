@@ -32,7 +32,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 | 定性 | 判据 | 去向 |
 |---|---|---|
-| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **32**——30/31 已用），在本索引登记 |
+| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **33**——30/31/32 已用），在本索引登记 |
 | **需求级/专题设计** | 服务于某条需求线或专题（特性、轨道、规范、研究输入） | 进对应模块子目录（`autoui/`、`blueprints/`、`strategy/`…），**slug 命名不带号** |
 | **流程体系类** | 开发范式、知识体系、流程设计 | 根级不拿号（与 `plan-spec-hybrid-model.md`、`autoplan-spec-ledger.md` 同列） |
 
@@ -104,13 +104,14 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 ## 三、AutoUI 与 App 生成域
 
-**域级章（仅此三篇拿号）**：
+**域级章（仅此四篇拿号）**：
 
 | # | 文档 | 主题 |
 |---|------|------|
 | 16 | [App Generation & AI Authoring](16-app-generation-and-ai-authoring.md) | Rung 1–5 分层战略、AI 生成工作流（域战略伞） |
 | 20 | [AutoUI Separation Architecture](20-autoui-separation-architecture.md) | AutoUI 分离架构：a2ui/ui_gen/host 分层（域架构锚点） |
 | 29 | [AutoUI Style & Theme System](29-autoui-style-theme-system.md) | 样式抽象与主题系统：ThemeRegistry 单一值源（partial override/extends 派生/hot-switch）+ style recipe 编译期组合宏；取代原 Design 19 值层（2026-09-09 立档） |
+| 32 | [AutoUI Repo Extraction](32-autoui-repo-extraction.md) | AutoUI 仓分离总方案（三件套+双插件缝）：方言插件（Dialect trait 补完）+ auto-man cargo 式插件缝 + 五阶段拆仓路线 + 函数级迁移勘定账。📝 方案稿（2026-09-20 立档待评审；DEBTS `拆仓-候选` 登记，下一版规划实施） |
 
 **需求级设计子目录**（各篇头部有归位注记，保留原 Design NN 对应）：
 
