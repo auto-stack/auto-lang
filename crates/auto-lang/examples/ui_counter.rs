@@ -1,11 +1,9 @@
 // Unified Counter Example with Auto-Conversion
 //
 // This example demonstrates TRUE unification - the same Component code
-// works with BOTH Iced and GPUI backends through automatic message conversion.
 //
 // Run with:
 //   cargo run --example ui_counter --features ui-iced
-//   cargo run --example ui_counter --features ui-gpui
 
 use auto_lang::ui::{Component, View};
 
@@ -51,19 +49,13 @@ fn main() -> auto_lang::ui::AppResult<()> {
         return auto_lang::ui::HostBackend::Iced.run::<Counter>();
     }
 
-    #[cfg(all(feature = "ui-gpui", not(feature = "ui-iced")))]
-    {
-        println!("🎨 Running with GPUI backend");
-        return auto_lang::ui::HostBackend::Gpui { title: "Counter - AutoUI".into() }.run::<Counter>();
-    }
 
-    #[cfg(not(any(feature = "ui-iced", feature = "ui-gpui")))]
+    #[cfg(not(feature = "ui-iced"))]
     {
         Err(
             "❌ No backend enabled!\n\n\
              Please run with a backend feature:\n\
              • cargo run --example ui_counter --features ui-iced\n\
-             • cargo run --example ui_counter --features ui-gpui"
                 .into(),
         )
     }

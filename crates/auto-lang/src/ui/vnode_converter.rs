@@ -89,7 +89,7 @@ where
 ///
 /// 根节点 path = `[]`。
 ///
-/// 现有的 [`view_to_vtree`]（顺序 id）保持不变，GPUI/headless 路径仍使用它。
+/// 现有的 [`view_to_vtree`]（顺序 id）保持不变，headless 路径仍使用它。
 pub fn view_to_vtree_with_paths<M, F>(view: View<M>, span_for: F) -> VTree
 where
     M: Clone + std::fmt::Debug,

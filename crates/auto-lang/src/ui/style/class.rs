@@ -1,7 +1,7 @@
 // StyleClass - Intermediate Representation (IR) for style classes
 //
 // This enum represents the parsed form of Tailwind-style utility classes.
-// It is backend-agnostic and can be translated to GPUI, Iced, or other backends.
+// It is backend-agnostic and can be translated to Iced or other backends.
 
 use super::Color;
 
@@ -707,7 +707,7 @@ pub enum StyleClass {
     /// Plan 518 G8：backdrop-filter: blur(Npx)（声明冻结,渲染分期）——
     /// 值为像素半径（Tailwind 刻度 sm=4/默认 8/md=12/lg=16/xl=24/
     /// 2xl=40/3xl=64 + [Npx] 任意值）。vue 臂类串直通出真毛玻璃;
-    /// iced/gpui/headless 渲染端视觉 no-op（装饰性降级非错绘——真
+    /// iced/headless 渲染端视觉 no-op（装饰性降级非错绘——真
     /// backdrop 渲染挂 RenderQueue 宿主栅格化,KNOWN-DEBT planned-debt）。
     BackdropBlur(f32),
 

@@ -1,10 +1,8 @@
-// Unified Sidebar Example - Works with BOTH Iced and GPUI backends!
 //
 // This demonstrates the Sidebar (fixed-width side panel) component.
 //
 // Run with:
 //   cargo run -p auto-lang --example ui_sidebar --features ui-iced
-//   cargo run -p auto-lang --example ui_sidebar --features ui-gpui
 
 use auto_lang::ui::{Component, View};
 use auto_lang::ui::view::SidebarPosition;
@@ -82,13 +80,8 @@ fn main() -> auto_lang::ui::AppResult<()> {
         return auto_lang::ui::iced::run_app::<SidebarApp>();
     }
 
-    #[cfg(feature = "ui-gpui")]
-    {
-        return auto_lang::ui::gpui::run_app::<SidebarApp>("Sidebar Example");
-    }
 
-    #[cfg(not(any(feature = "ui-iced", feature = "ui-gpui")))]
+    #[cfg(not(feature = "ui-iced"))]
     {
-        Err("No backend enabled. Please enable either 'ui-iced' or 'ui-gpui' feature in Cargo.toml.".into())
     }
 }

@@ -1,4 +1,4 @@
-//! Rust/GPUI Code Generator
+//! Rust (Iced) Code Generator
 //!
 //! Generates Rust code implementing the `Component` trait from AURA widgets.
 //!
@@ -68,7 +68,7 @@ pub struct ComponentSemantics {
     pub written_props: Vec<String>,
 }
 
-/// Rust/GPUI code generator
+/// Rust (Iced) code generator
 pub struct RustGenerator {
     /// Current widget name
     current_widget: Option<String>,

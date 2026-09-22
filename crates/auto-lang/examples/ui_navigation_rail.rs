@@ -1,10 +1,8 @@
-// Unified NavigationRail Example - Works with BOTH Iced and GPUI backends!
 //
 // This demonstrates the NavigationRail (compact side navigation) component.
 //
 // Run with:
 //   cargo run -p auto-lang --example ui_navigation_rail --features ui-iced
-//   cargo run -p auto-lang --example ui_navigation_rail --features ui-gpui
 
 use auto_lang::ui::{Component, View};
 use auto_lang::ui::view::NavigationRailItem;
@@ -87,13 +85,8 @@ fn main() -> auto_lang::ui::AppResult<()> {
         return auto_lang::ui::iced::run_app::<NavigationRailApp>();
     }
 
-    #[cfg(feature = "ui-gpui")]
-    {
-        return auto_lang::ui::gpui::run_app::<NavigationRailApp>("NavigationRail Example");
-    }
 
-    #[cfg(not(any(feature = "ui-iced", feature = "ui-gpui")))]
+    #[cfg(not(feature = "ui-iced"))]
     {
-        Err("No backend enabled. Please enable either 'ui-iced' or 'ui-gpui' feature in Cargo.toml.".into())
     }
 }

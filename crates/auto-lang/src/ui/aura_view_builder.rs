@@ -6780,7 +6780,7 @@ let tabs_inner = View::Row {
 
         // Grid decomposition (final-row padding + w-full rows + col-of-rows)
         // now lives in ONE place: the shared generic `build_grid` in the iced
-        // renderer (plus the GPUI inline twin). Construct `View::Grid` here;
+        // renderer. Construct `View::Grid` here;
         // both render paths (render_dynamic_view VM, into_iced rust) consume
         // it identically, so they can never drift again. (Plan 319.)
         View::Grid { cols, gap, cells, style }

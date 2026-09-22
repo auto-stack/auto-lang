@@ -1,10 +1,8 @@
-// Unified Accordion Example - Works with BOTH Iced and GPUI backends!
 //
 // This demonstrates the Accordion (collapsible sections) component.
 //
 // Run with:
 //   cargo run -p auto-lang --example ui_accordion --features ui-iced
-//   cargo run -p auto-lang --example ui_accordion --features ui-gpui
 
 use auto_lang::ui::{Component, View};
 use auto_lang::ui::view::AccordionItem;
@@ -93,20 +91,14 @@ fn main() -> auto_lang::ui::AppResult<()> {
     // The same code works with both backends!
     // Just change the feature flag in Cargo.toml or CLI:
     //   --features ui-iced   -> Iced backend
-    //   --features ui-gpui   -> GPUI backend
 
     #[cfg(feature = "ui-iced")]
     {
         return auto_lang::ui::iced::run_app::<AccordionApp>();
     }
 
-    #[cfg(feature = "ui-gpui")]
-    {
-        return auto_lang::ui::gpui::run_app::<AccordionApp>("Accordion Example");
-    }
 
-    #[cfg(not(any(feature = "ui-iced", feature = "ui-gpui")))]
+    #[cfg(not(feature = "ui-iced"))]
     {
-        Err("No backend enabled. Please enable either 'ui-iced' or 'ui-gpui' feature in Cargo.toml.".into())
     }
 }

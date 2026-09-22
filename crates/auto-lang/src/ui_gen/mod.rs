@@ -7,7 +7,7 @@
 //!
 //! The Rust generator produces code using the abstract AutoUI components from
 //! the `auto-ui` crate. The auto-ui crate then handles backend-specific
-//! implementations (Iced, GPUI, etc.).
+//! implementations (Iced etc.).
 //!
 //! All generators take `AuraWidget` as input and produce target-specific code.
 

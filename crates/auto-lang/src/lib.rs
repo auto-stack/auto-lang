@@ -6592,7 +6592,7 @@ pub fn ui_build(
     }
 
     // Generate code based on backend
-    // Rust backend uses auto-ui abstract components (Iced, GPUI handled by auto-ui crate)
+    // Rust backend uses auto-ui abstract components (Iced handled by auto-ui crate)
     // Jet backend generates Kotlin/Compose code for Android
     let mut output_code = String::new();
     match backend {

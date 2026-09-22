@@ -7,7 +7,6 @@
 //
 // Run with:
 //   cargo run -p auto-lang --example ui_gallery --features ui-iced
-//   cargo run -p auto-lang --example ui_gallery --features ui-gpui
 
 use auto_lang::ui::{Component, View};
 use auto_lang::ui::view::{AccordionItem, NavigationRailItem, SidebarPosition};
@@ -212,7 +211,7 @@ impl GalleryApp {
             .child(View::text("这是 auto-ui 统一抽象组件的展示应用。".to_string()))
             .child(View::text("".to_string()))
             .child(View::text("功能特性：".to_string()))
-            .child(View::text("• 统一的 API 设计，支持 Iced 和 GPUI 后端".to_string()))
+            .child(View::text("• 统一的 API 设计（Iced 桌面 / Vue Web 双轨）".to_string()))
             .child(View::text("• 所有组件使用相同的声明式接口".to_string()))
             .child(View::text("• 内置样式系统和主题支持".to_string()))
             .child(View::text("• 导航组件（Accordion, Sidebar, Tabs, NavigationRail）".to_string()))
@@ -541,7 +540,7 @@ impl GalleryApp {
             .child(View::text("unified-gallery 示例应用".to_string()))
             .child(View::text("".to_string()))
             .child(View::text("展示了 auto-ui 的所有统一抽象组件。".to_string()))
-            .child(View::text("支持 Iced 和 GPUI 后端。".to_string()))
+            .child(View::text("支持 Iced 桌面与 Vue Web 双轨后端。".to_string()))
             .build()
     }
 }
@@ -561,13 +560,8 @@ fn main() -> auto_lang::ui::AppResult<()> {
         return auto_lang::ui::iced::run_app::<GalleryApp>();
     }
 
-    #[cfg(feature = "ui-gpui")]
-    {
-        return auto_lang::ui::gpui::run_app::<GalleryApp>("Unified Gallery");
-    }
 
-    #[cfg(not(any(feature = "ui-iced", feature = "ui-gpui")))]
+    #[cfg(not(feature = "ui-iced"))]
     {
-        Err("No backend enabled. Please enable either 'ui-iced' or 'ui-gpui' feature in Cargo.toml.".into())
     }
 }

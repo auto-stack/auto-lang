@@ -15,7 +15,7 @@
 //!    ↓
 //! View<DynamicMessage>（增强支持类型化消息）
 //!    ↓
-//! GPUI 渲染
+//! 桌面渲染（iced）
 //! ```
 
 use crate::interpreter::AutoInterpreter;

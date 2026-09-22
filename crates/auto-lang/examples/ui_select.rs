@@ -1,11 +1,9 @@
-// Unified Select Example - Works with BOTH Iced and GPUI backends!
 //
 // This demonstrates dropdown selection from multiple options using native widgets.
 // Now with callback-based API that receives the selected value!
 //
 // Run with:
 //   cargo run --example ui_select --features ui-iced
-//   cargo run --example ui_select --features ui-gpui
 
 use auto_lang::ui::{Component, View};
 
@@ -92,19 +90,13 @@ fn main() -> auto_lang::ui::AppResult<()> {
         return auto_lang::ui::iced::run_app::<SelectApp>();
     }
 
-    #[cfg(feature = "ui-gpui")]
-    {
-        println!("🎨 Running with GPUI backend (callback support enabled!)");
-        return auto_lang::ui::gpui::run_app::<SelectApp>("Select Demo - AutoUI");
-    }
 
-    #[cfg(not(any(feature = "ui-iced", feature = "ui-gpui")))]
+    #[cfg(not(feature = "ui-iced"))]
     {
         Err(
             "❌ No backend enabled!\n\n\
              Please run with a backend feature:\n\
              • cargo run --example ui_select --features ui-iced\n\
-             • cargo run --example ui_select --features ui-gpui"
                 .into(),
         )
     }

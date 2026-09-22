@@ -19,7 +19,7 @@
 //!  - view()  -> AuraViewBuilder::build()
 //!    |
 //!    v
-//! UI Backend (iced, GPUI, headless)
+//! UI Backend (iced, headless)
 //! ```
 //!
 //! ## Plan 205 Phase 3

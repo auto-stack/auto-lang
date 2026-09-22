@@ -1,4 +1,3 @@
-// Unified TodoMVC Example - Works with BOTH Iced and GPUI backends!
 //
 // This demonstrates a complex application with state management,
 // list operations, and conditional rendering.
@@ -6,7 +5,6 @@
 //
 // Run with:
 //   cargo run --example ui_todo --features ui-iced
-//   cargo run --example ui_todo --features ui-gpui
 
 use auto_lang::ui::{Component, View};
 
@@ -129,19 +127,13 @@ fn main() -> auto_lang::ui::AppResult<()> {
         return auto_lang::ui::iced::run_app::<TodoApp>();
     }
 
-    #[cfg(feature = "ui-gpui")]
-    {
-        println!("🎨 Running with GPUI backend (with auto-conversion!)");
-        return auto_lang::ui::gpui::run_app::<TodoApp>("TodoMVC - AutoUI");
-    }
 
-    #[cfg(not(any(feature = "ui-iced", feature = "ui-gpui")))]
+    #[cfg(not(feature = "ui-iced"))]
     {
         Err(
             "❌ No backend enabled!\n\n\
              Please run with a backend feature:\n\
              • cargo run --example ui_todo --features ui-iced\n\
-             • cargo run --example ui_todo --features ui-gpui"
                 .into(),
         )
     }

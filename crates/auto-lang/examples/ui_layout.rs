@@ -4,7 +4,6 @@
 //
 // Run with:
 //   cargo run --example ui_layout --features ui-iced
-//   cargo run --example ui_layout --features ui-gpui
 
 use auto_lang::ui::{Component, View, App};
 
@@ -100,19 +99,13 @@ fn main() -> auto_lang::ui::AppResult<()> {
         return auto_lang::ui::iced::run_app::<LayoutExample>();
     }
 
-    #[cfg(feature = "ui-gpui")]
-    {
-        println!("🎨 Running layout example with GPUI backend");
-        return auto_lang::ui::gpui::run_app::<LayoutExample>("Layout - AutoUI");
-    }
 
-    #[cfg(not(any(feature = "ui-iced", feature = "ui-gpui")))]
+    #[cfg(not(feature = "ui-iced"))]
     {
         Err(
             "❌ No backend enabled!\n\n\
              Please run with a backend feature:\n\
              • cargo run --example ui_layout --features ui-iced\n\
-             • cargo run --example ui_layout --features ui-gpui"
                 .into(),
         )
     }

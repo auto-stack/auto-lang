@@ -1,11 +1,9 @@
 // Unified Hello Loader Example - Loads and displays scratch/hello.at
 //
 // This demonstrates how to load an Auto language (.at) file and display it
-// using the AutoUI framework with BOTH Iced and GPUI backend support!
 //
 // Run with:
 //   cargo run --example ui_hello_loader --features ui-iced
-//   cargo run --example ui_hello_loader --features ui-gpui
 
 use auto_lang::ui::{Component, View};
 
@@ -239,7 +237,7 @@ impl HelloLoaderApp {
                 "text-sm text-gray-700"
             ))
             .child(View::text_styled(
-                "3. This Rust Component renders the UI (Iced or GPUI)",
+                "3. This Rust Component renders the UI (Iced desktop backend)",
                 "text-sm text-gray-700"
             ))
             .child(View::text_styled(
@@ -259,20 +257,13 @@ fn main() -> auto_lang::ui::AppResult<()> {
         return auto_lang::ui::iced::run_app::<HelloLoaderApp>();
     }
 
-    #[cfg(feature = "ui-gpui")]
-    {
-        println!("🎨 Running with GPUI backend (with auto-conversion!)");
-        println!("📁 Loading from: scratch/hello.at");
-        return auto_lang::ui::gpui::run_app::<HelloLoaderApp>("Hello Loader - AutoUI");
-    }
 
-    #[cfg(not(any(feature = "ui-iced", feature = "ui-gpui")))]
+    #[cfg(not(feature = "ui-iced"))]
     {
         Err(
             "❌ No backend enabled!\n\n\
              Please run with a backend feature:\n\
              • cargo run --example ui_hello_loader --features ui-iced\n\
-             • cargo run --example ui_hello_loader --features ui-gpui"
                 .into(),
         )
     }

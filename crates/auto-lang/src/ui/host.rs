@@ -1,6 +1,6 @@
 //! Plan 365 W1: Unified host backend interface.
 //!
-//! Each render backend (headless / iced / gpui) sits behind one `HostBackend`
+//! Each render backend (headless / iced) sits behind one `HostBackend`
 //! entry. This is the seam that W2 (dev-host mock framework) and W3 (libcosmic
 //! host) build on.
 //!
@@ -10,9 +10,11 @@
 //!   are foreign. Instead, `HostBackend` is an enum whose variants are each
 //!   `#[cfg(feature = "ui-*")]`-gated, with a single `run::<C>()` method that
 //!   delegates to the existing per-backend entry functions.
-//! - The per-backend direct entry points (`iced::run_app`, `gpui::run_app`,
+//! - The per-backend direct entry points (`iced::run_app`,
 //!   `headless::run_headless`) remain public and unchanged — examples that
 //!   call them directly still work. `HostBackend` is the additive unified path.
+//! - Historical note: a GPUI variant existed behind `ui-gpui` until
+//!   PLAN-691 removed the never-enabled backend (2026-09-22).
 
 use super::Component;
 use super::app::AppResult;
@@ -31,24 +33,17 @@ pub enum HostBackend {
     /// Iced render backend (cross-platform GUI).
     #[cfg(feature = "ui-iced")]
     Iced,
-
-    /// GPUI render backend (Zed's GPU UI layer).
-    #[cfg(feature = "ui-gpui")]
-    Gpui {
-        /// Window title (GPUI requires one at open-window time).
-        title: String,
-    },
 }
 
 impl HostBackend {
     /// Run a `Component` app under this backend.
     ///
     /// The iced backend additionally requires `C::Msg: Send` (enforced by
-    /// `iced::run_app`'s own where-clause); headless and gpui do not.
+    /// `iced::run_app`'s own where-clause); headless does not.
     ///
     /// **Note**: the `Iced` variant can only be used via [`run`](Self::run) when
     /// `C::Msg: Send`. If your message type is not `Send`, use the `Headless`
-    /// or `Gpui` variant instead, or call `iced::run_app` directly (which has
+    /// variant instead, or call `iced::run_app` directly (which has
     /// the `Send` bound in its own signature and gives a clear error at that
     /// call site).
     pub fn run<C>(self) -> AppResult<()>
@@ -66,16 +61,12 @@ impl HostBackend {
             HostBackend::Iced => {
                 super::iced::run_app::<C>()
             }
-            #[cfg(feature = "ui-gpui")]
-            HostBackend::Gpui { title } => {
-                super::gpui::run_app::<C>(&title)
-            }
         }
     }
 
     /// Pick the best-available backend given the enabled Cargo features.
     ///
-    /// Priority: Headless > Iced > Gpui (matches the historical `App::run`
+    /// Priority: Headless > Iced (matches the historical `App::run`
     /// cfg-ladder, where headless short-circuits first). Returns `Err` if no
     /// `ui-*` feature is enabled.
     pub fn default_for_features() -> AppResult<HostBackend> {
@@ -87,19 +78,10 @@ impl HostBackend {
         {
             return Ok(HostBackend::Iced);
         }
-        #[cfg(all(
-            feature = "ui-gpui",
-            not(any(feature = "ui-headless", feature = "ui-iced"))
-        ))]
-        {
-            return Ok(HostBackend::Gpui {
-                title: "Auto App".to_string(),
-            });
-        }
-        #[cfg(not(any(feature = "ui-headless", feature = "ui-iced", feature = "ui-gpui")))]
+        #[cfg(not(any(feature = "ui-headless", feature = "ui-iced")))]
         {
             return Err(
-                "No UI backend enabled. Enable one of: 'ui-headless', 'ui-iced', 'ui-gpui'."
+                "No UI backend enabled. Enable one of: 'ui-headless', 'ui-iced'."
                     .into(),
             );
         }

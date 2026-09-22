@@ -1,10 +1,8 @@
-// Unified Tabs Example - Works with BOTH Iced and GPUI backends!
 //
 // This demonstrates the Tabs (horizontal tab navigation) component.
 //
 // Run with:
 //   cargo run -p auto-lang --example ui_tabs --features ui-iced
-//   cargo run -p auto-lang --example ui_tabs --features ui-gpui
 
 use auto_lang::ui::{Component, View};
 
@@ -79,13 +77,8 @@ fn main() -> auto_lang::ui::AppResult<()> {
         return auto_lang::ui::iced::run_app::<TabsApp>();
     }
 
-    #[cfg(feature = "ui-gpui")]
-    {
-        return auto_lang::ui::gpui::run_app::<TabsApp>("Tabs Example");
-    }
 
-    #[cfg(not(any(feature = "ui-iced", feature = "ui-gpui")))]
+    #[cfg(not(feature = "ui-iced"))]
     {
-        Err("No backend enabled. Please enable either 'ui-iced' or 'ui-gpui' feature in Cargo.toml.".into())
     }
 }

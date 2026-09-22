@@ -2,7 +2,7 @@
 //! AutoUI Core - Backend-agnostic UI abstraction
 //!
 //! This module provides the core UI abstraction layer that can be adapted
-//! to multiple backends (GPUI, Iced, Vue.js, etc.) through a unified
+//! to multiple backends (Iced desktop, Vue.js web, etc.) through a unified
 //! Component trait and View system.
 
 // Re-export `auto_val` so generated rust-mode code (which only depends on
@@ -201,9 +201,6 @@ pub mod headless;
 
 #[cfg(feature = "ui-iced")]
 pub mod iced;
-
-#[cfg(feature = "ui-gpui")]
-pub mod gpui;
 
 // Plan 365 W1: Unified host backend interface (seam for W2/W3).
 // Available whenever the base `ui` feature is on; each variant is individually

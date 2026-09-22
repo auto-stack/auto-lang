@@ -1,11 +1,9 @@
-// Unified Container Example - Works with BOTH Iced and GPUI backends!
 //
 // This demonstrates styling and layout options for containers.
 // The same Component code works with both backends through automatic message conversion.
 //
 // Run with:
 //   cargo run -p auto-lang --example ui_container --features ui-iced
-//   cargo run -p auto-lang --example ui_container --features ui-gpui
 
 use auto_lang::ui::{Component, View};
 
@@ -190,19 +188,13 @@ fn main() -> auto_lang::ui::AppResult<()> {
         return auto_lang::ui::iced::run_app::<ContainerApp>();
     }
 
-    #[cfg(feature = "ui-gpui")]
-    {
-        println!("Running with GPUI backend (with auto-conversion!)");
-        return auto_lang::ui::gpui::run_app::<ContainerApp>("Container Demo - AutoUI");
-    }
 
-    #[cfg(not(any(feature = "ui-iced", feature = "ui-gpui")))]
+    #[cfg(not(feature = "ui-iced"))]
     {
         Err(
             "No backend enabled!\n\n\
              Please run with a backend feature:\n\
              \u{2022} cargo run --features ui-iced\n\
-             \u{2022} cargo run --features ui-gpui"
                 .into(),
         )
     }

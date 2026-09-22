@@ -5,7 +5,7 @@
 //
 // §5.1 定案（策略 B，运行期 View 投影）：a2r 编译 Component 的 `view()`
 // 产物是**全物化 IR**——prop 已解析、handler 已是 `M` 值、条件/循环/插值
-// 在构建期求值完毕，投影器即 `View` 的第四消费后端（iced/GPUI/VTree 之外
+// 在构建期求值完毕，投影器即 `View` 的第四消费后端（iced/VTree 之外
 // 的协议后端）。与解释态 [`super::client_runtime::AppProjector`] 并存
 // （双轨 v1；解释态改写为 View 基的"双轨统一"记债不在本计划）：
 //

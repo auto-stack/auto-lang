@@ -1,7 +1,7 @@
 // Unified Styling System for AutoUI
 //
 // This module provides a Tailwind CSS-inspired utility class system that works across
-// multiple backends (GPUI, Iced, etc.) through a unified intermediate representation.
+// multiple backends (Iced etc.) through a unified intermediate representation.
 //
 // ═══════════════════════════════════════════════════════════════════════════
 // Plan 527 覆盖契约(VM 轨 Tailwind 全量覆盖)
@@ -148,8 +148,7 @@ mod parse_cache {
 }
 
 // Backend adapters (only compile when the respective backend is enabled)
-#[cfg(feature = "ui-gpui")]
-pub mod gpui_adapter;
+// （gpui_adapter 随 ui-gpui feature 移除——PLAN-691）
 
 /// Backend-neutral theme state + semantic color resolution (Plan 413/418
 /// follow-up: extracted from iced_adapter so `code-editor`-only builds
@@ -158,9 +157,6 @@ pub mod theme;
 
 /// PLAN-571: button variant/size preset 单一事实源（default 一等化）。
 pub mod variants;
-
-#[cfg(feature = "ui-gpui")]
-pub use gpui_adapter::GpuiStyle; // Re-export for backend adapters
 
 #[cfg(feature = "ui-iced")]
 pub mod iced_adapter;

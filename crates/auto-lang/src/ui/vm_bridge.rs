@@ -18,7 +18,7 @@
 //!  - Dispatches handlers via call_fn_by_name
 //!    |
 //!    v
-//! UI Backend (iced, GPUI, headless) reads state via read_state()
+//! UI Backend (iced, headless) reads state via read_state()
 //! and triggers handlers via call_handler()
 //! ```
 //!

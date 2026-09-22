@@ -54,7 +54,8 @@ python = ["pyo3"]
 ui = []
 ui-interpreter = ["ui", "dep:ureq", "dep:axum"]
 ui-headless = ["ui", "ui-interpreter"]
-ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
+# ui-gpui（Zed GPUI 后端）2026-09-22 用户裁定移除——全仓零启用者，休眠 feature 与
+# 模块一并删除（PLAN-691）；未来 auto-ui 拆分后如需要再独立加。
 # Shared asynchronous media loading, decoding, rendition, and cache runtime.
 # Kept independent of a renderer so services and native renderers share one
 # asset registry without making the default build pull image dependencies.
@@ -198,9 +199,7 @@ tokio-util = { version = "0.7", features = ["io"], optional = true }
 futures = "0.3"
 
 # Plan 015: UI Backend dependencies (optional)
-gpui-lib = { version = "0.2.2", package = "gpui", optional = true }
-gpui-component = { version = "0.5.0", optional = true }
-anyhow = { version = "1.0", optional = true }
+# （gpui-lib/gpui-component/anyhow 三 optional deps 随 ui-gpui feature 移除——PLAN-691）
 iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced", "canvas"], optional = true }
 # Plan 057 (ash-gui 光标可见): text_editor 的 highlighter 类型(PlainText/Format)
 # 未经 iced facade 公开导出,直接依赖 iced_widget(与 iced 0.14 同版本系)。
@@ -413,6 +412,13 @@ required-features = ["ui-iced"]
 name = "ui_container"
 path = "examples/ui_container.rs"
 required-features = ["build-examples"]
+
+# p023_probe 依赖 iced_test（iced-layout-tests 门控）——原无 [[example]] 声明，
+# 裸 cargo check --examples 恒红（master 预存 14×E0433，PLAN-691 勘定补门）。
+[[example]]
+name = "p023_probe"
+path = "examples/p023_probe.rs"
+required-features = ["iced-layout-tests"]
 
 [[example]]
 name = "ui_counter"

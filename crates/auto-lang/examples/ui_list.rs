@@ -1,11 +1,9 @@
-// Unified List Example - Works with BOTH Iced and GPUI backends!
 //
 // This demonstrates list rendering and item management.
 // The same Component code works with both backends through automatic message conversion.
 //
 // Run with:
 //   cargo run -p auto-lang --example ui_list --features ui-iced
-//   cargo run -p auto-lang --example ui_list --features ui-gpui
 //
 use auto_lang::ui::{Component, View};
 
@@ -186,19 +184,13 @@ fn main() -> auto_lang::ui::AppResult<()> {
         return auto_lang::ui::iced::run_app::<ListApp>();
     }
 
-    #[cfg(feature = "ui-gpui")]
-    {
-        println!("Running with GPUI backend (with auto-conversion!)");
-        return auto_lang::ui::gpui::run_app::<ListApp>("List Demo - AutoUI");
-    }
 
-    #[cfg(not(any(feature = "ui-iced", feature = "ui-gpui")))]
+    #[cfg(not(feature = "ui-iced"))]
     {
         Err(
             "No backend enabled!\n\n\
              Please run with a backend feature:\n\
              \u{2022} cargo run --features ui-iced\n\
-             \u{2022} cargo run --features ui-gpui"
                 .into(),
         )
     }
