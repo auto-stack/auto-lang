@@ -53,10 +53,14 @@ jobs = 12
 # 金样/覆盖/降级)进日常,nextest 单调用无法混 feature 集,故整档带上(实测
 # 4304/4304 绿,45.9s;500 复审实证的 tf ui-iced 盲区由此收口)。覆盖率数字:
 # cargo nextest run -p auto-lang --test schema_drift queue_coverage --success-output immediate
+# (2026-09-22 注:ui-iced 已入 auto-lang default feature——本行显式 flag 冗余
+# 但保留作文档;全部档位见 tf 注的新裁定。)
 t = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test component_registry_test --features ui-iced"
 # Plan 466: full 档 = 全部测试含 1M 大档 churn(review/fold 全量门禁专用)
-# (Plan 507 注:tf 不带 ui-iced——复审档语义不动,desktop_protocol 盲区由
-# 日常档 t[+ui-iced] 收口;复审清单须另跑 cargo t desktop_protocol --features ui-iced)
+# (2026-09-22 用户裁定:全档统一 feature 集——ui-iced 入 auto-lang default,
+# tf/tv/tt/tb/taa/ta/t3 与裸 cargo check/test 经 cargo 默认机制天然同源,
+# 档间切换零整库冷重编。Plan 507"tf 不带 ui-iced 复审档语义不动"保守残留
+# 作废,desktop_protocol 面进 tf;复审清单不再须另跑 ui-iced 补档。)
 # (Plan 531 注:tf 亦不含 test-trans(tt 档)——a2r/cookbook 文本金样 28 件曾
 # 因此脱离门禁烂了一年(444/514/523 三期累积);复审清单同样须另跑 cargo tt)
 tf = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test component_registry_test --config-file .config/nextest-full.toml"

@@ -10,9 +10,13 @@ license = "MIT"
 keywords = ["automation", "language", "scripting"]
 
 [features]
-# Plan 330: ui-iced and python are heavy optional backends — no longer default.
-# Consumers opt in explicitly (auto via its own default; auto-man via features).
-default = ["with-file-history"]
+# Plan 330 曾把 ui-iced 定为非默认 heavy optional backend——2026-09-22 用户
+# 裁定推翻：UI 已占本 crate ~90%（27.2万/30.3万行），ui-iced 事实上是本体
+# 而非可选件，全档（t/tf/tv/tt/tb/taa/ta/t3 + 裸 cargo check/test）经 default
+# 统一同源 feature 集，消除档间切换的整库冷重编（Plan 507"tf 不带 ui-iced"
+# 保守残留随之作废）。python 维持可选（auto bin default 仍自带）。拆仓
+# （Design 32）落地后按新 crate 边界重新分档。
+default = ["with-file-history", "ui-iced"]
 # Plan 289: Feature-gated test groups for faster daily development
 test-vm-files = []
 test-trans = []
