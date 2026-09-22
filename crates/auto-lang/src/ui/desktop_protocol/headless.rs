@@ -1184,4 +1184,35 @@ mod tests {
             crate::ui::iced::broker_surface::paint_ops(&mut frame, &list.ops);
         }
     }
+
+    /// PLAN-683 T-03——v2 原语 canvas 重放：001/003 实帧（含渐变/圆角/
+    /// border/shadow 全参 quad）经 `()` 后端完整走 paint_ops_v2 降格
+    /// 路径（词汇面兼容/路径构造炸点/嵌套 scissor-transform 扫描）。
+    #[test]
+    fn p683_t03_v2_paint_replay() {
+        for dir in ["001-helloworld", "003-converter"] {
+            let Some(src) = example_source(dir) else {
+                eprintln!("[p683] skip: {dir} 载体缺席");
+                return;
+            };
+            let component =
+                crate::build_dynamic_component(&src, None).unwrap_or_else(|e| panic!("{dir}: {e}"));
+            let mut surface = HeadlessSurface::new(component, 480.0, 360.0);
+            let v2 = surface.render_frame_v2();
+            assert!(!v2.ops.is_empty(), "{dir} v2 空帧");
+            if cfg!(debug_assertions) {
+                let bounds =
+                    iced::Rectangle::new(iced::Point::ORIGIN, iced::Size::new(640.0, 480.0));
+                let mut frame = iced::widget::canvas::Frame::with_bounds(&(), bounds);
+                if let Some(clear) = v2.clear {
+                    frame.fill_rectangle(
+                        iced::Point::ORIGIN,
+                        bounds.size(),
+                        iced::Color::from_rgba8(clear.r, clear.g, clear.b, 1.0),
+                    );
+                }
+                crate::ui::iced::broker_surface::paint_ops_v2(&mut frame, &v2.ops);
+            }
+        }
+    }
 }

@@ -1238,6 +1238,17 @@ fn real_main(cli: Cli) -> Result<()> {
                 let wellknown = auto_lang::ui::desktop_protocol::rqhost::wellknown_pipe();
                 std::env::set_var("AUTO_RQHOST_PIPE", &wellknown);
                 args = cmd_autodesk::rqhost_injected_args(&wellknown, &args);
+                // PLAN-683（remote 模式）：pac `desktop_render: remote` /
+                // `--render=remote` → vm 轨分岔信号（AUTO_VM_RENDER env——
+                // AUTO_RQHOST_PIPE 同位缝；run_vm_rqhost_client 消费）。
+                let render_mode = auto_lang::ui::desktop_protocol::coverage::RenderMode::resolve(
+                    render.as_deref(),
+                    am.pac_desktop_render().as_deref(),
+                );
+                if render_mode == auto_lang::ui::desktop_protocol::coverage::RenderMode::Remote {
+                    std::env::set_var("AUTO_VM_RENDER", "remote");
+                    println!("  render-queue: remote mode (headless iced host, DisplayList v2)");
+                }
                 println!("  render-queue: rqhost shared compositor ({wellknown})");
             }
             if !ai_mode {

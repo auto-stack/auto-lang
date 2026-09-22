@@ -147,7 +147,7 @@ pub struct Pac {
     pub accent: Option<AutoStr>,
 
     /// Plan 500: desktop protocol render mode, declared as
-    /// `desktop_render: "auto" | "queue" | "independent"` in pac.at.
+    /// `desktop_render: "auto" | "queue" | "independent" | "remote"` in pac.at.
     /// None/absent = auto（装载期覆盖度探测降级）。**不与 Plan 276 的
     /// `render:`（前端后端 vue/rust/arkts）同字段**——语义正交（执行期
     /// 发现草案措辞与既有字段撞名后的定案）。`--render` spawn 参数 wins。

@@ -389,6 +389,13 @@ impl Automan {
         self.pac.ui_config.as_ref().map(|t| t.to_string())
     }
 
+    /// PLAN-683：render 档声明 from pac.at `desktop_render: "..."`（三态
+    /// auto/queue/independent + remote——`-q` gate 的 RenderMode 裁决链
+    /// manifest 环）。
+    pub fn pac_desktop_render(&self) -> Option<String> {
+        self.pac.desktop_render.as_ref().map(|t| t.to_string())
+    }
+
     /// Plan 451: app identity from pac.at `name: "..."` — the OS user keymap
     /// layer's app id source for DSL-actions projects (no config file stem).
     pub fn pac_name(&self) -> Option<String> {

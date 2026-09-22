@@ -1026,11 +1026,13 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
 /// daemon view：按窗路由——注册表命中 = DrawListPainter 栅格化当前
 /// 合成面；未登记窗 = 占位（renderer.rs view_desktop_fn 先例，D3）。
 fn rq_view(state: &RqDaemon, window: iced::window::Id) -> iced::Element<'_, RqMessage> {
-    let frame = state
-        .clients
-        .iter()
-        .find(|c| c.window == Some(window))
-        .and_then(composed);
+    // PLAN-683：v2 合成面优先（remote 窗——DisplayListPainter 原生重放）；
+    // 无 v2 帧 = v1 既有路径（queue 臂 DrawListPainter）。
+    let client = state.clients.iter().find(|c| c.window == Some(window));
+    if let Some(v2) = client.and_then(composed_v2) {
+        return crate::ui::iced::broker_surface::displaylist_element(v2);
+    }
+    let frame = client.and_then(composed);
     match frame {
         Some(list) => crate::ui::iced::broker_surface::drawlist_element(list),
         None => iced::widget::container(

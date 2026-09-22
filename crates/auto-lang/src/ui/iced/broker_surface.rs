@@ -551,6 +551,286 @@ pub fn drawlist_element<'a, M: 'a>(list: &DrawList) -> iced::Element<'a, M> {
     .into()
 }
 
+// ---------------------------------------------------------------------------
+// PLAN-683（remote 模式）：DisplayList v2 画师——canvas 原生原语重放
+//（渐变 stop/四角半径/border/transform 原生；shadow 无 blur 原语 =
+// 偏移半透明垫层近似 P683-D4）。
+// ---------------------------------------------------------------------------
+
+use crate::ui::desktop_protocol::message::{
+    BorderSpec, DisplayList, DisplayOp, Fill as WireFill, ShadowSpec,
+};
+
+struct DisplayListPainter<M> {
+    list: DisplayList,
+    _message: std::marker::PhantomData<fn() -> M>,
+}
+
+/// remote 臂内容：DisplayList v2 → canvas 元素（Fill×Fill 客户区）。
+pub fn displaylist_element<'a, M: 'a>(list: &DisplayList) -> iced::Element<'a, M> {
+    iced::widget::canvas(DisplayListPainter::<M> {
+        list: list.clone(),
+        _message: std::marker::PhantomData,
+    })
+    .width(iced::Length::Fill)
+    .height(iced::Length::Fill)
+    .into()
+}
+
+impl<M> iced::widget::canvas::Program<M> for DisplayListPainter<M> {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        _renderer: &iced::Renderer,
+        _theme: &iced::Theme,
+        bounds: iced::Rectangle,
+        _cursor: iced::mouse::Cursor,
+    ) -> Vec<iced::widget::canvas::Geometry> {
+        use iced::widget::canvas::{Frame, Path};
+        let mut frame = Frame::new(_renderer, bounds.size());
+        if let Some(clear) = self.list.clear {
+            frame.fill_rectangle(
+                iced::Point::ORIGIN,
+                bounds.size(),
+                to_color(clear),
+            );
+        }
+        paint_ops_v2(&mut frame, &self.list.ops);
+        let _ = Path::new(|_| {});
+        vec![frame.into_geometry()]
+    }
+}
+
+/// v2 原语 canvas 重放（paint_ops 同构 + v2 原生面）：Quad 全参（渐变
+/// angle→to_distance 绝对几何重建 + 四角半径 + border 内描边 + shadow
+/// 垫层近似）；Transform 压出栈（轴对齐矩阵直落 translate+scale，剪切
+/// 面观测省略——降格端只产轴对齐形态）；Scissor/文本/图像与 v1 同路。
+pub(crate) fn paint_ops_v2<R>(frame: &mut iced::widget::canvas::Frame<R>, ops: &[DisplayOp])
+where
+    R: iced::advanced::graphics::geometry::Renderer,
+{
+    use iced::widget::canvas::{Fill, Path, Stroke, Text};
+    let mut i = 0;
+    while i < ops.len() {
+        match &ops[i] {
+            DisplayOp::Scissor { rect } => {
+                let mut depth = 1usize;
+                let mut end = ops.len();
+                for (j, op) in ops.iter().enumerate().take(ops.len()).skip(i + 1) {
+                    match op {
+                        DisplayOp::Scissor { .. } => depth += 1,
+                        DisplayOp::ScissorPop => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = j;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let region = iced::Rectangle::new(
+                    iced::Point::new(rect.x, rect.y),
+                    iced::Size::new(rect.w.max(0.0), rect.h.max(0.0)),
+                );
+                frame.with_clip(region, |f| paint_ops_v2(f, &ops[i + 1..end]));
+                i = end + 1;
+            }
+            DisplayOp::ScissorPop => i += 1,
+            DisplayOp::Transform { matrix } => {
+                // 配对 pop 扫描（Scissor 同法；Transform 栈内可含 Scissor
+                //——按种类独立计数）。
+                let mut depth = 1usize;
+                let mut end = ops.len();
+                for (j, op) in ops.iter().enumerate().take(ops.len()).skip(i + 1) {
+                    match op {
+                        DisplayOp::Transform { .. } => depth += 1,
+                        DisplayOp::TransformPop => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = j;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let [m00, m01, m10, m11, tx, ty] = *matrix;
+                let axis_aligned = m01 == 0.0 && m10 == 0.0;
+                frame.push_transform();
+                if axis_aligned {
+                    frame.translate(iced::Vector::new(tx, ty));
+                    if (m00 - 1.0).abs() > f32::EPSILON || (m11 - 1.0).abs() > f32::EPSILON {
+                        frame.scale_nonuniform(iced::Vector::new(m00, m11));
+                    }
+                }
+                // 非轴对齐（剪切/旋转）= 降格端不可产面；宽容直落平移。
+                if !axis_aligned {
+                    frame.translate(iced::Vector::new(tx, ty));
+                }
+                paint_ops_v2(frame, &ops[i + 1..end]);
+                frame.pop_transform();
+                i = end + 1;
+            }
+            DisplayOp::TransformPop => i += 1,
+            DisplayOp::Quad { rect, fill, radius, border, shadow } => {
+                let region = iced::Rectangle::new(
+                    iced::Point::new(rect.x, rect.y),
+                    iced::Size::new(rect.w.max(0.0), rect.h.max(0.0)),
+                );
+                // shadow 垫层近似（canvas 无 blur 原语——偏移半透明圆角
+                // 垫层承载投影主体，blur 缺席=登记债 P683-D4）。
+                if let Some(shadow) = shadow {
+                    paint_shadow_scrim(frame, region, *radius, shadow);
+                }
+                let radius = [
+                    radius[0].min(region.width / 2.0).min(region.height / 2.0),
+                    radius[1].min(region.width / 2.0).min(region.height / 2.0),
+                    radius[2].min(region.width / 2.0).min(region.height / 2.0),
+                    radius[3].min(region.width / 2.0).min(region.height / 2.0),
+                ];
+                let path = Path::rounded_rectangle(
+                    region.position(),
+                    region.size(),
+                    iced::border::Radius {
+                        top_left: radius[0],
+                        top_right: radius[1],
+                        bottom_right: radius[2],
+                        bottom_left: radius[3],
+                    },
+                );
+                let fill_style: Fill = match fill {
+                    WireFill::Color(c) => to_color(*c).into(),
+                    WireFill::LinearGradient { angle, stops } => {
+                        let (start, end) = iced::Radians(*angle).to_distance(&region);
+                        let mut linear =
+                            iced::widget::canvas::gradient::Linear::new(start, end);
+                        for (offset, color) in stops {
+                            linear = linear.add_stop(*offset, to_color(*color));
+                        }
+                        linear.into()
+                    }
+                };
+                frame.fill(&path, fill_style);
+                // border 内描边（inset w/2——iced Border 语义近似）。
+                if let Some(b) = border {
+                    if b.width > 0.0 {
+                        let inset = b.width / 2.0;
+                        let border_region = iced::Rectangle::new(
+                            iced::Point::new(region.x + inset, region.y + inset),
+                            iced::Size::new(
+                                (region.width - b.width).max(0.0),
+                                (region.height - b.width).max(0.0),
+                            ),
+                        );
+                        let br = [
+                            (radius[0] - inset).max(0.0),
+                            (radius[1] - inset).max(0.0),
+                            (radius[2] - inset).max(0.0),
+                            (radius[3] - inset).max(0.0),
+                        ];
+                        let border_path = Path::rounded_rectangle(
+                            border_region.position(),
+                            border_region.size(),
+                            iced::border::Radius {
+                                top_left: br[0],
+                                top_right: br[1],
+                                bottom_right: br[2],
+                                bottom_left: br[3],
+                            },
+                        );
+                        frame.stroke(
+                            &border_path,
+                            Stroke::default()
+                                .with_color(to_color(b.color))
+                                .with_width(b.width),
+                        );
+                    }
+                }
+                i += 1;
+            }
+            DisplayOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
+                frame.fill_text(Text {
+                    content: text.clone(),
+                    position: iced::Point::new(*x, *y),
+                    color: to_color(*color),
+                    size: (*size).into(),
+                    line_height: iced::widget::text::LineHeight::Absolute((*line_height).into()),
+                    font: iced::Font {
+                        weight: css_weight_to_iced(*weight),
+                        style: if *italic {
+                            iced::font::Style::Italic
+                        } else {
+                            iced::font::Style::Normal
+                        },
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+                i += 1;
+            }
+            DisplayOp::Image { rect, src, .. } => {
+                let at = iced::Point::new(rect.x, rect.y);
+                let size = iced::Size::new(rect.w.max(0.0), rect.h.max(0.0));
+                match resolve_drawlist_image(src, rect.w.max(1.0) as u32, rect.h.max(1.0) as u32) {
+                    Some(handle) => {
+                        frame.draw_image(iced::Rectangle::new(at, size), &handle);
+                    }
+                    None => {
+                        frame.fill_rectangle(
+                            at,
+                            size,
+                            to_color(
+                                crate::ui::desktop_protocol::client_runtime::image_placeholder(),
+                            ),
+                        );
+                    }
+                }
+                i += 1;
+            }
+        }
+    }
+}
+
+/// shadow 垫层（P683-D4 近似）：偏移圆角矩形，alpha 按模糊半径弱化
+///（blur 越大越淡——单层垫层的光学折衷）。
+fn paint_shadow_scrim<R>(
+    frame: &mut iced::widget::canvas::Frame<R>,
+    region: iced::Rectangle,
+    radius: [f32; 4],
+    shadow: &ShadowSpec,
+) where
+    R: iced::advanced::graphics::geometry::Renderer,
+{
+    use iced::widget::canvas::{Fill, Path};
+    let grow = shadow.blur.min(8.0);
+    let scrim = iced::Rectangle::new(
+        iced::Point::new(
+            region.x + shadow.offset.0 - grow,
+            region.y + shadow.offset.1 - grow,
+        ),
+        iced::Size::new(region.width + grow * 2.0, region.height + grow * 2.0),
+    );
+    let path = Path::rounded_rectangle(
+        scrim.position(),
+        scrim.size(),
+        iced::border::Radius {
+            top_left: radius[0] + grow,
+            top_right: radius[1] + grow,
+            bottom_right: radius[2] + grow,
+            bottom_left: radius[3] + grow,
+        },
+    );
+    // 单层垫层：alpha 随 blur 稀释（无 blur = 原样 alpha）。
+    let dilution = if shadow.blur > 0.0 { 0.55 } else { 1.0 };
+    let mut color = to_color(shadow.color);
+    color.a *= dilution;
+    let _ = Fill::default();
+    frame.fill(&path, color);
+}
+
 /// independent 臂内容：RGBA 前缓冲 → Image（`from_rgba` 直接纳 straight
 /// 非预乘；预乘换算在 iced 渲染器内部，协议层不感知）。
 pub fn pixels_element<'a, M: 'a>(surface: &PixelsSurface) -> iced::Element<'a, M> {
@@ -578,6 +858,10 @@ pub fn broker_client_content(
     // 像素前缓冲优先（independent 臂），回退命令帧（queue 臂）。
     if let Some(px) = client.composed_pixels() {
         return Some(pixels_element(px));
+    }
+    // PLAN-683：v2 合成面优先（remote 臂——DisplayListPainter）。
+    if let Some(v2) = client.composed_v2() {
+        return Some(displaylist_element(v2));
     }
     client.composed().map(drawlist_element)
 }

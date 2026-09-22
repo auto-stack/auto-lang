@@ -139,7 +139,7 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
     if let Some(arg) = render_arg.as_deref() {
         if RenderMode::parse(arg).is_none() {
             eprintln!(
-                "[autodesk-client] 未知 --autodesk-render={arg}（auto|queue|independent），回退裁决链"
+                "[autodesk-client] 未知 --autodesk-render={arg}（auto|queue|independent|remote），回退裁决链"
             );
         }
     }
@@ -163,6 +163,9 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
         height: 320.0,
         frame_mode,
         auto_downgraded: downgrade.is_some(),
+        // PLAN-683（remote 模式）：headless iced 宿主 + DisplayList v2
+        // 产线帧（386 child 臂同享分岔）。
+        remote: mode == RenderMode::Remote,
     };
     client_entry::run_dynamic_client(component, opts, target)
 }
