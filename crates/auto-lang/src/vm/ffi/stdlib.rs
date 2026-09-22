@@ -7341,7 +7341,9 @@ fn spawn_async_http_msg_get(url: String, widget: String, event: String) {
         let payload =
             serde_json::json!({ "ok": ok, "status": status, "body": body }).to_string();
         if let Ok(mut q) = http_msg_queue().lock() {
-            q.push_back(HttpMsgDone { widget, event, payload });
+            q.push_back(HttpMsgDone { widget: widget.clone(), event: event.clone(), payload });
+            // PLAN-084 诊断打点（临时）：桥线程入队侧。
+            eprintln!("[msg-bridge] queued widget={widget} event={event} qlen={}", q.len());
         }
     });
 }

@@ -9477,6 +9477,8 @@ fn shell_event_subscription(
 // by_name 忙等 5ms×N 冻结 UI——082 §10-7 实测 20.9s 的根因）。
 fn poll_http_msgs() -> Option<IcedMessage> {
     let done = crate::vm::ffi::stdlib::http_msg_poll_one()?;
+    // PLAN-084 诊断打点（临时）：泵派发侧。
+    eprintln!("[msg-pump] dispatch widget={} event={}", done.widget, done.event);
     Some(IcedMessage {
         widget: done.widget,
         event: format!("{}\u{1F}s\u{1F}{}", done.event, done.payload),
