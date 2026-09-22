@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-690
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: rq-remote-interaction-scale
 author: [zcode]
 created_at: 2026-09-22
@@ -351,6 +351,24 @@ SetCursor 下行更新 client 状态 → 下一帧 daemon UI 自带该 interacti
   evidence=本记录所引测试命令与报告/截图均随 reviewed_commit 入库
  （worktree 移除后路径仍可解析）。
   next=merge。
+- merge（2026-09-22）：stage=merge，PLAN-690:r1，outcome=**pass**（五
+  checkpoint 全闭环，completion_kind=delivered）。
+  `prepared`=reviewed_commit 191a8c89f + delivery=账本三件套文档派生
+  唯一增量（specs.json P690-1/2 外科插入 indent=1+plans.md 表行+INDEX
+  再生——实现/依赖零变化）。`landed`=master ff-only **8a1b9a1ed**；
+  **两轮并发 rebase 映射**（多会话同窗竞赛）：25dee6696→67f2b32a4→
+  **90809c098**；191a8c89f→e3d74a9d2→6fa8bbc9f→**3d1b54f0a**；
+  3928a2b99→faa2fac45→fb059ce5f→**8a1b9a1ed**——range-diff round2=
+  T-02/03/07 `=`+T-04/05/06 `!`（唯一差异=KNOWN-DEBT 冲突解：master
+  并发行+我方 D5/D6 行），代码补丁 md5 同一（d0091d8a 双侧）；
+  round3 双 `=`（rerere 重放）。并发位=688 归档/691 立项/684 归档
+  三会话同窗先后落库。
+  `ledger_refreshed`=specs.json 658 items（P690-1 designs/P690-2
+  reviews，P688/P689 并存验证）+plans.md 表行+INDEX 再生 26 projects；
+  json 载入验证过。
+  `archived`=git mv archive/690-rq-remote-interaction-scale.md+status
+  archived（本行）。
+  `cleaned`=（待清理后回填）。
 
 ## 待澄清事项
 
