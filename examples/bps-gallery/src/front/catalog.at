@@ -237,3 +237,85 @@ fn sel_multi_variant(bps List, selected str, needle str, kind str) bool {
 fn sel_first_variant(bps List, selected str, needle str, kind str) str {
     return first_variant_name(bp_refs(bps, resolve_key(bps, selected, needle, kind)))
 }
+
+// ---- 内容页头部（PLAN-685 T-05：面包屑 / kind 徽标 / 变体计数 / 前后条目）----
+
+// 当前 bp 的 kind 段（面包屑首段，可点击 = SelectKind 等价）。
+fn bp_kind(bps List, selected str, needle str, kind str) str {
+    var rows List = gallery_items(bps, needle, kind)
+    var key str = resolve_key(bps, selected, needle, kind)
+    var i int = 0
+    while i < rows.len() {
+        if rows[i].id == key {
+            return rows[i].category
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+// 当前 bp 名（key 去 kind 前缀，面包屑尾段；无前缀原样）。
+fn bp_name(key str) str {
+    var cut int = key.indexOf("/")
+    if cut < 0 {
+        return key
+    }
+    return key.substring(cut + 1)
+}
+
+// 变体计数徽标（int→str 收体内）。
+fn variant_count_label(bps List, selected str, needle str, kind str) str {
+    var n int = variant_names(bp_refs(bps, resolve_key(bps, selected, needle, kind))).len()
+    if n == 1 {
+        return "1 variant"
+    }
+    return n.to_string() + " variants"
+}
+
+// 前后条目（当前筛选序；到头即空串 = 按钮降灰，不循环）。
+// 全键 Obj 返回，字段平铺经 prev_of/next_of 出computed——view 内
+// 不裸访 Obj 字段（双臂转译边界，装配纪律同头注）。
+fn prev_next(bps List, selected str, needle str, kind str) Obj {
+    var rows List = gallery_items(bps, needle, kind)
+    var key str = resolve_key(bps, selected, needle, kind)
+    var prev str = ""
+    var next str = ""
+    var i int = 0
+    while i < rows.len() {
+        if rows[i].id == key {
+            if i > 0 {
+                prev = rows[i - 1].id
+            }
+            if i + 1 < rows.len() {
+                next = rows[i + 1].id
+            }
+        }
+        i = i + 1
+    }
+    return { prev: prev, next: next }
+}
+
+fn prev_of(np Obj) str {
+    return np.prev
+}
+
+fn next_of(np Obj) str {
+    return np.next
+}
+
+fn np_has_prev(np Obj) bool {
+    return np.prev != ""
+}
+
+fn np_has_next(np Obj) bool {
+    return np.next != ""
+}
+
+// 分节 tab 表（G5：状态直切一次一节，不依赖滚动定位）。
+fn section_tabs() List {
+    var out List = []
+    out.push({ key: "spec", label: "Spec" })
+    out.push({ key: "reference", label: "Reference" })
+    out.push({ key: "gotchas", label: "Gotchas" })
+    return out
+}

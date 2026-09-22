@@ -12,7 +12,7 @@
 
 use bps.layout.gallery_shell.reference.default: GalleryShell
 use registry: all_bps
-use catalog: gallery_items, kind_ordered, resolve_key, sel_variant_names, sel_variant, sel_source, sel_spec, sel_gotchas, sel_multi_variant, sel_first_variant
+use catalog: gallery_items, kind_ordered, resolve_key, sel_variant_names, sel_variant, sel_source, sel_spec, sel_gotchas, sel_multi_variant, bp_kind, bp_name, variant_count_label, prev_next, prev_of, next_of, np_has_prev, np_has_next, section_tabs
 
 widget App {
     msg {
@@ -22,6 +22,7 @@ widget App {
         SetAccent(str),
         SelectKind(str),
         SelectVariant(str),
+        SelectSection(str),
     }
 
     model {
@@ -35,6 +36,9 @@ widget App {
         var accent_color str = "indigo"
         // 变体 tab（"" = 首个）
         var active_variant str = ""
+        // 内容分节（PLAN-685 G5：状态直切一次一节；Q-4 裁定=切 bp 保持，
+        // 便于跨 bp 比对同一节；首启缺省 spec 承担入口语义）
+        var active_section str = "spec"
     }
 
     computed {
@@ -47,7 +51,16 @@ widget App {
         cur_source => sel_source(all_bps(), .active_variant, .selected_id, .query, .active_kind)
         cur_spec => sel_spec(all_bps(), .selected_id, .query, .active_kind)
         cur_gotchas => sel_gotchas(all_bps(), .selected_id, .query, .active_kind)
-        first_variant => sel_first_variant(all_bps(), .selected_id, .query, .active_kind)
+        // 头部专业化件（PLAN-685 T-05）：组合与度量全收 catalog fn 体内
+        np => prev_next(all_bps(), .selected_id, .query, .active_kind)
+        prev_id => prev_of(.np)
+        next_id => next_of(.np)
+        has_prev => np_has_prev(.np)
+        has_next => np_has_next(.np)
+        cur_kind => bp_kind(all_bps(), .selected_id, .query, .active_kind)
+        cur_name => bp_name(.shell_active)
+        variant_label => variant_count_label(all_bps(), .selected_id, .query, .active_kind)
+        tabs => section_tabs()
     }
 
     view {
@@ -81,64 +94,96 @@ widget App {
                 }
             }
 
-            // ── content 默认出口（裸子）：选中 bp 的三区详情
+            // ── content 默认出口（裸子）：选中 bp 详情（PLAN-685 T-05 重
+            // 设计：头部专业化 + 三节 tab 直切 + Spec/Gotchas autodown
+            // 渲染件；一次只渲染活动节，不依赖滚动定位）
             col {
-                style: "w-full max-w-5xl mx-auto gap-6"
+                style: "w-full max-w-5xl mx-auto gap-5"
 
-                // 标题区
-                col {
-                    style: "gap-1"
+                // 头部行：kind 面包屑（可点击 = SelectKind 等价）› 名 +
+                // 变体计数徽标；右侧 ‹ › 前后条目（当前筛选序，到头降灰）
+                row {
+                    style: "items-center gap-2 flex-wrap"
+                    button .cur_kind {
+                        style: "px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground hover:bg-accent"
+                        onclick: .SelectKind(.cur_kind)
+                    }
+                    text "›" { style: "text-xs text-muted-foreground" }
+                    text .cur_name { style: "text-xl font-bold tracking-tight" }
+                    badge {
+                        text: .variant_label
+                        variant: "outline"
+                        style: "text-[10px]"
+                    }
                     row {
-                        style: "items-center gap-3"
-                        text .shell_active { style: "text-2xl font-bold tracking-tight" }
-                        text .first_variant { style: "text-sm text-muted-foreground" }
+                        style: "items-center gap-1 ml-auto"
+                        button "‹" {
+                            style: if .has_prev { "h-7 w-7 p-0 rounded-md text-sm text-muted-foreground hover:bg-muted" } else { "h-7 w-7 p-0 rounded-md text-sm text-muted-foreground/30" }
+                            onclick: .SelectBp(.prev_id)
+                        }
+                        button "›" {
+                            style: if .has_next { "h-7 w-7 p-0 rounded-md text-sm text-muted-foreground hover:bg-muted" } else { "h-7 w-7 p-0 rounded-md text-sm text-muted-foreground/30" }
+                            onclick: .SelectBp(.next_id)
+                        }
                     }
                 }
 
-                // Spec 区（正文视图，frontmatter 已剥壳）
-                col {
-                    style: "gap-3 border border-border rounded-xl bg-card p-6 shadow-sm"
-                    text "Spec" { style: "text-sm font-semibold uppercase tracking-wider text-muted-foreground" }
-                    pre {
-                        style: "p-4 rounded-lg bg-muted text-xs font-mono whitespace-pre-wrap border border-border leading-relaxed"
-                        text .cur_spec {}
+                // 分节 tab 条（选中档沿用 kind pills 语汇：bg-primary 圆角）
+                row {
+                    style: "gap-1 border-b border-border pb-2 text-xs"
+                    for t in .tabs {
+                        button t.label {
+                            style: if .active_section == t.key { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
+                            onclick: .SelectSection(t.key)
+                        }
                     }
                 }
 
-                // Reference implementation 区（变体 tab + 源码）
-                col {
-                    style: "gap-3 border border-border rounded-xl bg-card p-6 shadow-sm"
-                    text "Reference implementation" { style: "text-sm font-semibold uppercase tracking-wider text-muted-foreground" }
-                    if .multi_variant {
-                        row {
-                            style: "gap-2 border-b border-border pb-3"
-                            for v in .variant_list {
-                                button v {
-                                    style: if .cur_variant == v { "px-3 py-1 rounded-md text-xs font-bold bg-primary text-primary-foreground" } else { "px-3 py-1 rounded-md text-xs text-muted-foreground hover:bg-muted" }
-                                    onclick: .SelectVariant(v)
+                // Spec 节（autodown 渲染件：标题层级/列表/表格/行内码 chrome）
+                if .active_section == "spec" {
+                    col {
+                        style: "gap-3 border border-border rounded-xl bg-card p-6 shadow-sm"
+                        markdown (content: .cur_spec, final: true) {}
+                    }
+                }
+
+                // Reference 节（源码面保留 mono 代码容器；变体 tab 收节内）
+                if .active_section == "reference" {
+                    col {
+                        style: "gap-3 border border-border rounded-xl bg-card p-6 shadow-sm"
+                        if .multi_variant {
+                            row {
+                                style: "gap-2 border-b border-border pb-3"
+                                for v in .variant_list {
+                                    button v {
+                                        style: if .cur_variant == v { "px-3 py-1 rounded-md text-xs font-bold bg-primary text-primary-foreground" } else { "px-3 py-1 rounded-md text-xs text-muted-foreground hover:bg-muted" }
+                                        onclick: .SelectVariant(v)
+                                    }
                                 }
                             }
                         }
-                    }
-                    row {
-                        style: "items-center gap-1.5"
-                        text "Source of" { style: "text-xs text-muted-foreground" }
-                        text .cur_variant { style: "text-xs font-mono text-foreground" }
-                        text ".at — live render via a2vue is deferred; authored source shown." { style: "text-xs text-muted-foreground" }
-                    }
-                    pre {
-                        style: "p-4 rounded-lg bg-muted text-xs font-mono overflow-x-auto border border-border leading-relaxed"
-                        text .cur_source {}
+                        row {
+                            style: "items-center gap-1.5"
+                            text "Source of" { style: "text-xs text-muted-foreground" }
+                            text .cur_variant { style: "text-xs font-mono text-foreground" }
+                            text ".at — live render via a2vue is deferred; authored source shown." { style: "text-xs text-muted-foreground" }
+                        }
+                        pre {
+                            style: "p-4 rounded-lg bg-muted text-xs font-mono overflow-x-auto border border-border leading-relaxed"
+                            text .cur_source {}
+                        }
                     }
                 }
 
-                // Gotchas 区
-                col {
-                    style: "gap-3 border border-border rounded-xl bg-card p-6 shadow-sm"
-                    text "Gotchas" { style: "text-sm font-semibold uppercase tracking-wider text-muted-foreground" }
-                    pre {
-                        style: "p-4 rounded-lg bg-muted text-xs font-mono whitespace-pre-wrap border border-border leading-relaxed"
-                        text .cur_gotchas {}
+                // Gotchas 节（结构化 markdown 渲染件；空内容给占位文案）
+                if .active_section == "gotchas" {
+                    col {
+                        style: "gap-3 border border-border rounded-xl bg-card p-6 shadow-sm"
+                        if .cur_gotchas == "" {
+                            text "No gotchas recorded for this blueprint." { style: "text-xs text-muted-foreground" }
+                        } else {
+                            markdown (content: .cur_gotchas, final: true) {}
+                        }
                     }
                 }
             }
@@ -146,9 +191,12 @@ widget App {
     }
 
     on {
+        // 空串守卫：prev/next 到头时按钮传 ""（降灰态仍可聚焦），不改动选中
         .SelectBp(id) -> {
-            .selected_id = id
-            .active_variant = ""
+            if id != "" {
+                .selected_id = id
+                .active_variant = ""
+            }
         }
         .Search(q) -> { .query = q }
         .SetTheme(mode) -> {
@@ -166,5 +214,6 @@ widget App {
             .active_variant = ""
         }
         .SelectVariant(v) -> { .active_variant = v }
+        .SelectSection(s) -> { .active_section = s }
     }
 }

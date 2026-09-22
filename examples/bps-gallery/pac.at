@@ -23,3 +23,10 @@ accent: "indigo"
 dep bps {
     path: "../../blueprints"
 }
+
+// PLAN-685 T-05：Spec/Gotchas 换 autodown 渲染件（vue 臂消费
+// @autodown/engine StreamingRenderer，jade-garden 先例同款绝对 link——
+// 路径钉主检出，worktree 深度差异不破解析）。
+npm_deps: {
+  "@autodown/engine": "link:D:/autostack/auto-down/autodown/packages/engine"
+}
