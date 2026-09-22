@@ -213,16 +213,26 @@ plan340_tests:7444、musk_vm_track_tests:7826，声明带 Plan 编号溯源注�
   desktop_protocol×2[690 档"2 红全预存"] + a2vue×1[682 转告]；主检出 28 红含
   blueprints 盘损环境红 19 对照）。
 - **T-03** pixels 臂退役门勘定 + 条件执行（AC-03；§5 刀③）。验证：§6 T-03 行 +
-  勘定记录入 §9。**[⏸ 阻塞]** 前置 PLAN-690 未合并（690 现状 reviewed 待 merge），
-  本批不执行。
+  勘定记录入 §9。**[✅ 勘定收口=顺延路径]**（2026-09-22，Q-2 默认裁定执行）：
+  量化门达标在案（034 memory-matrix 结论行：release×tiny-skia×1窗 11260KB ≤
+  102400KB；app 6460KB ≤10MB）；**条件②未达**——现行设计档（desktop-protocol-v1.md，
+  post-690 master）:816 labels not-yet（软栅格无文本面）+:824/:827 terminal/imagesurface
+  M7-c 撞面未立项——像素原生族外 widget 覆盖未收口。**裁定：顺延整刀，不删**；等
+  M7-c 批+labels 收口后另立。勘定附带：P-RQ-PIX 债册行已在 684-690 期间账面变动中
+  不在册（实质退役门=design/autoui/desktop-protocol-v1.md §1.15 门判定行）——
+  SD-02 目标随勘正为该设计档行（不再指向债册行）。
 - **T-04** 散测试归位（AC-04；§5 刀④）。验证：§6 T-04 行四档 + rename 100% 对拍。
-  [✅ 主体完成] commit `1b56f9541`：90 文件+test_util/ git mv（90×R100 + 2×R09x
+  [✅ 已完成] commit `24ddad334`：90 文件+test_util/ git mv（90×R100 + 2×R09x
   =plan492 互引修）；lib.rs -91 声明块迁 tests.rs（cfg 门/溯源注释原样）。
   勘正三枚：①**test_runner 例外留根**——生产依赖勘定（vm/ffi/stdlib.rs:10921
   `auto.test.*` natives 调 discover/run，Plan 263），91→90；②plan077_integration_tests
   为死文件（声明早已注释，1.3k 行从未编译）随迁保留注释态（删除候选另记）；
-  ③外引修 2+2 处（plan492_m4/m5 crate::tests:: 前缀 + conformance_tests 两行
-  test_util use）。四档门禁进行中（cargo t 先行）。
+  ③外引修 2+2 处（plan492_m4/m5 + conformance_tests 两行 test_util use）。
+  **事故与恢复在案**：追加脚本首次运行在 join 处抛 TypeError，但 `open('w')` 已先
+  截断 tests.rs——第二脚读到空串写入→既有 67 声明丢失（~427 测试静默消失，零编译
+  错）。nextest list 双侧全名对拍发现；恢复=git 原内容+追加段重拼（157 声明验证）。
+  **四档门禁全过**：t=5451/9 红（与搬移前基线逐位全等，9 红全预存同名）；tv/tt/tb
+  同 9 红家族零新增（5599/5821/5506 总数）。
 - **T-05** 全量门禁 `cargo tf`（AC-05 前半）。
 - **T-06** 复审（/auto-plan:review）+ merge 账本三件套 + 归档（AC-05 后半）。
 
