@@ -150,6 +150,20 @@ sidebar 壳承载导航（content slot 注入主区）、主区按 app model `ac
 - **dataSource** → L1 无 bp→app 逆向调用通道，**app 取数经 props 回填物化**
   （counts 烘焙进 nav_tree badge、query 受控 rows/total、load 平铺 cfg 参数）。
 
+**消费端验收与展示契约（PLAN-685 成文，2026-09-22）**：
+
+- **双臂验收面**：BP 消费型应用（bps-gallery 型，侧栏条目 → 详情区）的
+  VM 臂点击链属 E2E 应验面——宿主收到载荷断言（如 `selected_id == 所点
+  id`）且详情区渲染该 bp 正文；双臂验收不得只盖 vue 构建（PLAN-676 漏网
+  教训）。门禁 = `.agents/skills/autoui-verifier/scripts/
+  test_bp_gallery_click.py`（按 blueprints/ 目录解析卡片，改名漂移即门禁红；
+  首帧 no-op press 有界重试，值错误仍立即红）。
+- **结构化文档展示**：spec/gotchas 型 markdown 内容双臂消费 autodown
+  渲染件（`markdown (content:, final: true)` tag——VM 臂 autodown-core
+  真渲染、vue 臂 @autodown/engine StreamingRenderer）；裸 `pre` 纯文本
+  仅限代码源码面（源码含反引号，不围栏）。内容分节导航走状态直切
+  （`active_section` 一次一节），不依赖滚动定位（scroll_to 不可靠面）。
+
 **参数化修整先例（PLAN-657，frontmatter 契约面零改动）**：被消费的 5 个
 reference 变体参数化对齐各自 frontmatter 已声明契约（`FileTree(nodes, …)`
 filetree 先例的推广）；官方集 15 包其余 reference 仍为无参脚手架——
@@ -157,8 +171,12 @@ filetree 先例的推广）；官方集 15 包其余 reference 仍为无参脚�
 
 **组装摩擦结论（Tier 1 / vm-component-parity 排期输入，完整清单与分级见
 PLAN-657 §5.3 与 KNOWN-DEBT P657-D1..D5）**：P0 = VM 轨跨 widget 回调
-载荷字面量化（vue 全绿、VM `active_nav: "id"` 实证——639-D1 族第四实证，
-vm-component-parity 第一优先）；P1 = reference 参数化缺位、a2r back 转译
+载荷字面量化（vue 全绿、VM `active_nav: "id"` 实证——639-D1 族第四实证；
+**体内剥离回调形态已由 PLAN-685 根修收口（2026-09-22）：实参 = 发射点
+形参绑定值，形参名字面量化 forbidden——派发侧按 handler 形参名 × 实参
+绑定表解析（bare-ident/dot 路径/字面量三形），词法形参 > state > 裸词
+字面量兜底；表达式形态实参仍回 Nil，残项留 vm-component-parity**）；
+P1 = reference 参数化缺位、a2r back 转译
 方言窄面；P2 = examples npm 阶段共享基建双预存红（auto-sources phase
 ordering + main.ts env types）、跨包结构体类型无通道（契约退化为平铺原子
 参数）；P3 = view 表现面小摩擦、capability-tests 生成面 CI 缺口。
