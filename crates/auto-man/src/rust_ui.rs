@@ -3745,6 +3745,17 @@ pub fn build_rust_ui(project_dir: &Path) -> AutoResult<()> {
         regenerate_code_only(project_dir, &rust_dir)?;
     }
 
+    // PLAN-681 R-1（复审 needs_fix 修正）：build 路径补 back crate 刷新。
+    // generate_api（伴生模块转译 + route A——axum 后端生成）此前仅 run 路径
+    // start_api_server 触发，back 源变更在 build 下只再生成 front 成员，
+    // 陈旧空体桩照常编译绿（消费方 back 停 9-21 桩版实证）。该入口自注
+    // idempotent；无契约纯前工程经 resolve_back_api 门控跳过。
+    if auto_lang::config::resolve_back_api(project_dir).is_some() {
+        println!("{}", "Refreshing Rust backend crate (idempotent)...".bright_cyan());
+        crate::api_gen::generate_api(project_dir, "rust")
+            .map_err(|e| format!("Failed to generate Rust backend: {}", e))?;
+    }
+
     // Resolve to an ABSOLUTE manifest path (ws_dir may be CWD-relative) and
     // pin CARGO_TARGET_DIR to the repo-wide shared target: cargo discovers
     // .cargo/config.toml from the CWD (NOT the manifest dir), so without the
