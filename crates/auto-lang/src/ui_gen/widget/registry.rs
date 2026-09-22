@@ -113,6 +113,58 @@ impl WidgetRegistry {
                 );
             }
         }
+
+        // PLAN-692 W-2: schema 有 `vue:` 映射但未进手写 register_defaults 的
+        // 元素（command 家族首例——此前 backends web:"none" 使它们压根没有
+        // spec）在此补建 spec：上方 overlay 只更新既有 spec，缺 spec 时映射
+        // 落空，is_backend_supported 恒 false，标签永远降级为无交互 stub。
+        for (tag, meta) in &schema.meta {
+            let Some(v) = &meta.vue else { continue };
+            let folded = fold(tag);
+            let exists = self.widgets.values().any(|spec| {
+                std::iter::once(&spec.name)
+                    .chain(spec.aliases.iter())
+                    .any(|k| {
+                        schema
+                            .resolve_tag(k)
+                            .map(|(canon, _)| fold(canon) == folded)
+                            .unwrap_or_else(|| fold(k) == folded)
+                    })
+            });
+            if exists {
+                continue;
+            }
+            // ElementDef 承载 props/allows_children（ElementMeta 只有家族面）。
+            let Some((_, def)) = schema.resolve_tag(tag) else { continue };
+            let mut spec = WidgetSpec::new(tag, WidgetCategory::Overlay);
+            spec.has_children = def.allows_children;
+            // DSL 侧标签是 kebab（command-input），registry get() 按 lowercase
+            // 精确键查找——下划线 canonical 之外必须补 kebab 别名，否则 kebab
+            // 标签查不到 spec 恒降级 stub。schema 拼写变体一并带入。
+            let kebab = tag.replace('_', "-");
+            if kebab != *tag {
+                spec.aliases.push(kebab);
+            }
+            for a in &meta.aliases {
+                spec.aliases.push(a.to_string());
+            }
+            spec.backends.insert(
+                "vue".to_string(),
+                BackendMapping {
+                    component: v.component.clone(),
+                    import: v.import.clone(),
+                    props: def
+                        .props
+                        .iter()
+                        .map(|p| (p.name.to_string(), p.name.to_string()))
+                        .collect(),
+                    events: HashMap::new(),
+                    extra_components: v.extras.iter().map(|s| s.to_string()).collect(),
+                    npm_package: v.npm.clone(),
+                },
+            );
+            self.register(spec);
+        }
     }
 
     /// Register default widget specifications
@@ -2556,5 +2608,42 @@ mod tests {
         assert!(registry.get("BUTTON").is_some());
         assert!(registry.get("Button").is_some());
         assert!(registry.get("button").is_some());
+    }
+
+    /// PLAN-692 W-2: schema-only 组件家族（未进手写 register_defaults）在
+    /// apply_schema_vue_mappings 时补建 spec——command 家族首例。无此回填时
+    /// is_backend_supported 恒 false，标签全部降级为无交互 stub div。
+    #[test]
+    fn p692_schema_only_command_family_gets_vue_specs() {
+        let registry = WidgetRegistry::with_defaults();
+        for tag in [
+            "command",
+            "command_input",
+            "command_empty",
+            "command_list",
+            "command_group",
+            "command_item",
+            "command_separator",
+            "command_shortcut",
+        ] {
+            assert!(
+                registry.is_backend_supported("vue", tag),
+                "vue backend must be supported for {tag}"
+            );
+        }
+        assert_eq!(
+            registry.get_primary_component("vue", "command_input"),
+            Some("CommandInput".to_string())
+        );
+        assert_eq!(
+            registry.get_backend_import("vue", "command_item").as_deref(),
+            Some("@/components/ui/command")
+        );
+        // 既有家族不被补建逻辑干扰（overlay 路径保持）。
+        assert!(registry.is_backend_supported("vue", "scroll"));
+        assert_eq!(
+            registry.get_primary_component("vue", "scroll"),
+            Some("ScrollArea".to_string())
+        );
     }
 }

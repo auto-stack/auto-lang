@@ -14252,18 +14252,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             }
 
             // === Command (Command Palette) ===
+            // PLAN-692 W-2: 组件家族=assets/shadcn-ui/command（shadcn-vue 官方
+            // Listbox 实现），schema web:component 翻转后走 shadcn 路径——此前
+            // backends web:"none" 使这些标签全部降级为无交互 stub div。
+            // search 态由 CommandInput 经注入上下文自持（ListboxFilter v-model
+            // → filterState.search），root 的 query 绑定与 placeholder 发射
+            // 均已移除（reka/官方实现无此 API，误发射只会落成噪音属性）。
             "command" => {
-                // v-model for search query
-                if let Some(value) = props.get("query") {
-                    if let Some(model) = self.extract_state_ref(value) {
-                        attrs.push(format!("v-model:search-term=\"{}\"", model));
-                    }
-                }
-                // placeholder
-                if let Some(value) = props.get("placeholder") {
-                    let placeholder = self.extract_string_value(value).unwrap_or("Type a command or search...");
-                    attrs.push(format!("placeholder=\"{}\"", placeholder));
-                }
+                self.push_style_class(&mut attrs, props);
             }
 
             "command_input" => {
@@ -21583,6 +21579,39 @@ widget W {
         let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &props, &HashMap::new());
         let joined = attrs.iter().find(|a| a.starts_with("style=")).expect("style attr");
         assert!(joined.contains("--sb-size: 16px") && joined.contains("scrollbar-width: none"), "{}", joined);
+    }
+
+    /// PLAN-692 W-2: command 家族子件（command_input 等）必须映射到
+    /// shadcn 组件而非降级 stub div。
+    #[test]
+    fn p692_command_family_shadcn_mapping() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget Test {
+    view {
+        command (style: "x") {
+            command-input (placeholder: "p") {}
+            command-empty "No results."
+            command-list {
+                command-group (heading: "G") {
+                    command-item (value: "Vue", text: "Vue") {}
+                }
+            }
+        }
+    }
+}
+"#);
+        assert!(sfc.contains("<Command "), "command root must map to <Command>:
+{}", sfc);
+        assert!(sfc.contains("<CommandInput"), "command_input must map to <CommandInput>:
+{}", sfc);
+        assert!(sfc.contains("<CommandEmpty"), "command_empty must map to <CommandEmpty>:
+{}", sfc);
+        assert!(sfc.contains("<CommandList"), "command_list must map to <CommandList>:
+{}", sfc);
+        assert!(sfc.contains("<CommandGroup"), "command_group must map to <CommandGroup>:
+{}", sfc);
+        assert!(sfc.contains("<CommandItem"), "command_item must map to <CommandItem>:
+{}", sfc);
     }
 
     /// PLAN-692: code_editor 字面串 content 此前被静默丢弃（挂载即空白编辑器）

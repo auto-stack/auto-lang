@@ -3756,7 +3756,8 @@ element command {
     tag: "command"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "Command", import: "@/components/ui/command" }
     props: [
         { name: "query", type: "state_ref", description: "Search query binding" }
         { name: "placeholder", type: "string", default: "Type a command...", description: "Search placeholder" }
@@ -3770,7 +3771,8 @@ element command_empty {
     tag: "command_empty"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "CommandEmpty", import: "@/components/ui/command" }
     props: [
         { name: "text", type: "string", default: "No results found.", description: "Empty state text" }
     ]
@@ -3782,7 +3784,8 @@ element command_group {
     tag: "command_group"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "CommandGroup", import: "@/components/ui/command" }
     props: [
         { name: "heading", type: "string", description: "Group heading" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3795,7 +3798,8 @@ element command_input {
     tag: "command_input"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "CommandInput", import: "@/components/ui/command" }
     props: [
         { name: "placeholder", type: "string", default: "Type a command...", description: "Input placeholder" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3808,7 +3812,8 @@ element command_item {
     tag: "command_item"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "CommandItem", import: "@/components/ui/command" }
     props: [
         { name: "value", type: "string", description: "Item value" }
         { name: "text", type: "string", description: "Item text" }
@@ -3823,7 +3828,8 @@ element command_list {
     tag: "command_list"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "CommandList", import: "@/components/ui/command" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -3835,7 +3841,8 @@ element command_separator {
     tag: "command_separator"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "CommandSeparator", import: "@/components/ui/command" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -3847,7 +3854,8 @@ element command_shortcut {
     tag: "command_shortcut"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "CommandShortcut", import: "@/components/ui/command" }
     props: [
         { name: "text", type: "string", description: "Shortcut text (e.g., ⌘K)" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
