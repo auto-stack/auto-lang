@@ -2759,6 +2759,12 @@ impl VueGenerator {
             if !imports.contains(&"onMounted") {
                 imports.push("onMounted");
             }
+            // PLAN-684 ADR-19 Vue 对等：带 props 的组件 Init 在 props 变更时
+            // 重放（VM 轨每渲染帧补发 Init；Vue 轨以 watch(props, deep) 对齐）。
+            // 否则父级 data 重播种（如 024 流式）后几何不重算，图不更新。
+            if !widget.props.is_empty() && !imports.contains(&"watch") {
+                imports.push("watch");
+            }
         }
         // Auto-edit onMounted for sub-widgets with editing state + note prop
         let _has_editing = self.state_names.iter().any(|n| n == "editing");
@@ -4106,7 +4112,20 @@ function scroll_state(k) {
             let is_async = self.handler_has_api_calls(&init.payload) || body.contains("await");
             let async_kw = if is_async { "async " } else { "" };
             let indented = Self::indent_body(&body, "  ");
-            script.push_str(&format!("onMounted({}() => {{\n{}\n}})\n\n", async_kw, indented));
+            if !widget.props.is_empty() {
+                // PLAN-684 ADR-19 Vue 对等：props 重播种后重放 Init（与 VM 轨
+                // 渲染期补发同构）。Init 契约为纯派生幂等（chart-components.md）。
+                script.push_str(&format!(
+                    "{}function __autoReplayInit() {{\n{}\n}}\n\n",
+                    async_kw, indented
+                ));
+                script.push_str("onMounted(() => {\n  __autoReplayInit()\n})\n\n");
+                script.push_str(
+                    "watch(() => props, () => {\n  __autoReplayInit()\n}, { deep: true })\n\n",
+                );
+            } else {
+                script.push_str(&format!("onMounted({}() => {{\n{}\n}})\n\n", async_kw, indented));
+            }
         }
         // .Destroy → onUnmounted
         if let Some(destroy) = widget.lifecycle.iter().find(|l| l.name == "Destroy") {
