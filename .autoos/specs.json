@@ -5510,6 +5510,19 @@
      "status": "published",
      "created": "2026-09-22",
      "last_modified": "2026-09-22"
+    },
+    {
+     "id": "P690-1",
+     "title": "rq-remote-interaction-scale — remote 模式交互完备：IME 下行通道+wndproc 子类桥（SD-01）+remote 四面契约（SD-02）",
+     "content": "方案 2 第二阶段（PLAN-683 三试点→日用可依赖）：①IME 下行=ControlMsg::ImeRequest（tag 15，ImeReq{cursor,purpose}）——App headless 截获 State::Updated{input_method}（iced 0.14 公开出口，仅 Redraw 臂有效——事件路径瞬态 Disabled 不可照收）变化才下行；daemon window::run→HWND→IMM 直写（ImmAssociateContextEx IACE_DEFAULT/CHILDREN+ImmSetCompositionWindow CFS_POINT+ImmSetCandidateWindow CFS_EXCLUDE，winit ime.rs 同语义，逻辑×scale_factor 换算物理）；②wndproc 子类桥=winit 旗标门控勘定根修（WM_IME 臂门控内部 ime_allowed——&dyn Window 面不可达+提交串走 WM_IME_CHAR 无 handler 恒丢；SetWindowLongPtrW 读 GCS_RESULTSTR/GCS_COMPSTR+GCS_CURSORPOS→Tick 泵上行）；③preedit 选区=InputMsg::ImePreedit cursor:WRect 原位重定义 selection:Option<(u32,u32)>（iced 0.14 第二参勘正=字节选区非矩形；v1.17 唯一载荷级变更）；④光标形状=SetCursor（tag 16）两级映射（pointer/text）下行，daemon view 态 mouse_area.interaction 应用（每帧 update_mouse 覆盖面规避）；⑤稳态=0x0 resize 守卫（P683-D5 销号）+[rqhost] perf 观测行（帧 51-919B 全档<1KB/charts tick 2.4-2.7fps/daemon≈1.2MB每窗——p690-scale.md）。Tab=iced app 级 opt-in（runtime 无内建，两轨一致）",
+     "file": "docs/design/autoui/desktop-protocol-v1.md",
+     "related": [
+      "PLAN-690",
+      "PLAN-683"
+     ],
+     "status": "published",
+     "created": "2026-09-22",
+     "last_modified": "2026-09-22"
     }
    ]
   },
@@ -7168,6 +7181,19 @@
      "id": "P684-2",
      "title": "PLAN-684 复审记录 — rev8 pass（F-1 T-07 中断漏做补齐/F-2 plan408 断言修正/F-3 auto-man 测试构建修复）",
      "content": "PLAN-684 复审 pass @ reviewed_commit d433e3f29（base ce77f58fe）。AC-01..18 全映射（018/022/024 前会话走查 8e4ba1eab+代码抽查；025/026 走查提交列；027 三路径本会话实证：gallery back-proxy 真盘 66 项/双击导航 29 项/排序翻转/平板档+standalone vue 骨架后备 fs_home()=\"\"+VM 实拍不回归；evidence/p682 25 PNG+6 可重放探针）。门禁：tf 3722/3722（--no-fail-fast）+cargo t vm_only 2/2+gallery 12/12+027 auto build 绿。findings：F-1 T-07（SD-01..03）被中断会话漏做——补齐 6044fb1b9；F-2 plan408 断言滞后 T-12 ADR-19 __autoReplayInit 形态（本支引入=tf 快败根因）——修正 d433e3f29；F-3 auto-man 测试面 PLAN-681 三参化遗留（master 编译即坏）——随批修复构建，余 3 红全预存（shell_pack 在册+css golden/merged client 681/672 基线漂移另案）。归档 docs/plans/archive/684-018-book-reader-sidebar-ux.md"
+    },
+    {
+     "id": "P690-2",
+     "title": "rq-remote-interaction-scale 复审与合并收据",
+     "content": "work pass（25dee6696+191a8c89f 系）→review pass@191a8c89f（同会话复审独立性声明+工件重构：tf --no-fail-fast 重跑 5453 跑 5444 绿/9 红全预存环境归因=musk×6+counter×1+a2vue 金样×1[晚间基线三族在案]+p508_g2_outproc_arm[spawn auto.exe 新鲜度家族、同 commit 隔离复跑 36s 绿]；scoped session 85/mcp 21/bins 12 绿；diff 24 文件全读零越权）。AC-01 四可见腿实机录证（组合串可见/候选窗按焦点框定位/enable 下行/键盘联动——p690-ime-walkthrough；commit 腿=子类桥+管道环构造性覆盖，物理连续段绑待澄清②一键复核非缺口）；AC-02..06 全 pass。执行期勘定五增量在案（Preedit 字节选区/window::run IMM 路径/winit 旗标门控/Redraw 臂截获/Tab opt-in）。残面=物理 IME 连续段+hover 视觉+Tab 焦点环（多会话争焦 FG-FAIL，一键复核）。合并=两轮 rebase（master 并发 688 落库+691 立项）；base 3dba17c34、dep auto-down fba6563（detached 只读）",
+     "file": "docs/plans/archive/690-rq-remote-interaction-scale.md",
+     "related": [
+      "PLAN-690",
+      "PLAN-683"
+     ],
+     "status": "published",
+     "created": "2026-09-22",
+     "last_modified": "2026-09-22"
     }
    ]
   }
