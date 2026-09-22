@@ -32,6 +32,10 @@ pub struct Published {
     pub wallpaper: Option<(u8, u8, u8)>,
     /// 分区 id（"0"/"1"/…）→ z 序 tile 集（常驻隐藏窗已排除）。
     pub workspaces: BTreeMap<String, Vec<PreviewTile>>,
+    /// 2026-09-22：解析后的壁纸 spec（`#hex` | `builtin:` | 图片路径，
+    /// `desktop_wallpaper` 同源镜像）——预览底层直绘真壁纸（非 `#` 时
+    /// 渲染臂走 `desktop_wallpaper_element` 图片臂；空 = 旧行为色底）。
+    pub wallpaper_src: String,
 }
 
 static CURRENT: Mutex<Option<Published>> = Mutex::new(None);

@@ -5916,30 +5916,42 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let border_radius =
                     is.as_ref().and_then(|is| is.border_radius).unwrap_or(0.0);
                 let mut layers: Vec<iced::Element<'static, M>> = Vec::new();
-                // ① 壁纸基色底（None → 主色占位）。
-                let bg = data
+                // ① 壁纸底层（2026-09-22 升级：非 `#` spec——图片路径/
+                // builtin:——直绘真壁纸（desktop_wallpaper_element 同源
+                // handle 缓存，Cover 铺满）；`#hex` 仍走基色底，缺席 →
+                // 主色占位。原纯色臂把图片壁纸画成主色块，pager 卡观感
+                // 为"紫色板"而非桌面）。
+                let wp_src = data
                     .as_ref()
-                    .and_then(|d| d.wallpaper)
-                    .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
-                    .or_else(|| {
-                        crate::ui::style::iced_adapter::resolve_semantic_rgb(
-                            &crate::ui::style::Color::Primary,
-                        )
+                    .map(|d| d.wallpaper_src.clone())
+                    .unwrap_or_default();
+                if !wp_src.is_empty() && !wp_src.starts_with('#') {
+                    layers.push(desktop_wallpaper_element::<M>(&wp_src));
+                } else {
+                    let bg = data
+                        .as_ref()
+                        .and_then(|d| d.wallpaper)
                         .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
-                    })
-                    .unwrap_or(iced::Color::from_rgb8(0x33, 0x33, 0x44));
-                let bg_style =
-                    move |_t: &iced::Theme| iced::widget::container::Style {
-                        background: Some(iced::Background::Color(bg)),
-                        ..Default::default()
-                    };
-                layers.push(
-                    iced::widget::container(iced::widget::Space::new())
-                        .width(iced::Length::Fill)
-                        .height(iced::Length::Fill)
-                        .style(bg_style)
-                        .into(),
-                );
+                        .or_else(|| {
+                            crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                &crate::ui::style::Color::Primary,
+                            )
+                            .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                        })
+                        .unwrap_or(iced::Color::from_rgb8(0x33, 0x33, 0x44));
+                    let bg_style =
+                        move |_t: &iced::Theme| iced::widget::container::Style {
+                            background: Some(iced::Background::Color(bg)),
+                            ..Default::default()
+                        };
+                    layers.push(
+                        iced::widget::container(iced::widget::Space::new())
+                            .width(iced::Length::Fill)
+                            .height(iced::Length::Fill)
+                            .style(bg_style)
+                            .into(),
+                    );
+                }
                 if let Some(d) = data.as_ref() {
                     let fallback_icon = if fallback_icon.is_empty() {
                         "app-window".to_string()
@@ -6535,6 +6547,29 @@ pub(crate) fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
         }
     }
 
+    // 2026-09-22 修：本地文件读失败不再永久负缓存——首读失败常见于
+    // boot 竞态（杀软持句柄/休眠盘唤醒/写后即读），原实现 None 一旦
+    // 入缓存整会话黑屏（壁纸重启丢失实录）。本地路径失败只挂 1s 负
+    // 缓存，过期重读自愈；builtin:/data: 失败是确定性解析失败、http
+    // 负缓存防打挂远端，三者维持原永久缓存语义。
+    use std::time::{Duration, Instant};
+    static NEGATIVE: std::sync::OnceLock<Mutex<HashMap<String, Instant>>> =
+        std::sync::OnceLock::new();
+    let negative = NEGATIVE.get_or_init(|| Mutex::new(HashMap::new()));
+    const FILE_MISS_RETRY: Duration = Duration::from_secs(1);
+    let is_local_file = !url.starts_with("builtin:")
+        && !url.starts_with("data:")
+        && !url.starts_with("http://")
+        && !url.starts_with("https://")
+        && !url.starts_with("/api/__auto/media/");
+    if is_local_file {
+        if let Some(t) = negative.lock().unwrap().get(url) {
+            if t.elapsed() < FILE_MISS_RETRY {
+                return None;
+            }
+        }
+    }
+
     // Fetch and cache
     let result = if let Some(name) = url.strip_prefix("builtin:") {
         // Plan 518：内嵌壁纸虚拟方案(builtin:ricepaper / builtin:inkwash)。
@@ -6576,7 +6611,14 @@ pub(crate) fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
         std::fs::read(url).ok()
     };
 
-    cache.lock().unwrap().insert(url.to_string(), result.clone());
+    if result.is_some() {
+        cache.lock().unwrap().insert(url.to_string(), result.clone());
+        negative.lock().unwrap().remove(url);
+    } else if is_local_file {
+        negative.lock().unwrap().insert(url.to_string(), Instant::now());
+    } else {
+        cache.lock().unwrap().insert(url.to_string(), None);
+    }
     result
 }
 
@@ -12124,11 +12166,25 @@ fn execute_desktop_commands(
                     execute_showdesk_return(state);
                 }
                 let target = state.host.as_ref().and_then(|h| {
-                    h.wm
-                        .wins
-                        .iter()
-                        .find(|(_, v)| v.registry_id.as_deref() == Some(name.as_str()))
-                        .map(|(wid, v)| (*wid, v.workspace))
+                    // PLAN-040 F2a（2026-09-22）：可见窗优先——多实例同
+                    // app 时把最小化/隐藏窗留在兜底位，单击优先聚焦在场
+                    // 实例；全最小化/隐藏 = 首个命中（focus 自带取消最
+                    // 小化/取消隐藏，单击恢复语义不变）。
+                    let mut fallback: Option<(crate::ui::session::Wid, usize)> = None;
+                    let mut visible: Option<(crate::ui::session::Wid, usize)> = None;
+                    for (wid, v) in h.wm.wins.iter() {
+                        if v.registry_id.as_deref() != Some(name.as_str()) {
+                            continue;
+                        }
+                        let entry = (*wid, v.workspace);
+                        if !v.minimized.get() && !v.hidden.get() && visible.is_none() {
+                            visible = Some(entry);
+                        }
+                        if fallback.is_none() {
+                            fallback = Some(entry);
+                        }
+                    }
+                    visible.or(fallback)
                 });
                 match target {
                     Some((wid, ws)) => {
@@ -15370,10 +15426,41 @@ pub(crate) fn apply_shell_projection_interpreted(
     }
 }
 
+/// PLAN-040 F3：快照冻结集全量校正（sync 每 tick）——冻结 = 最小化 ‖
+/// 隐藏 ‖ 不在当前分区 ‖ 被更高 z 序可见窗矩形相交（部分遮挡即污染
+/// 裁剪）。冻结窗：不重抓、缩略不 TTL 过期（末帧保留，OS 惯例）。
+fn sync_snapshot_frozen(state: &mut crate::ui::session::DesktopSession) {
+    let Some(host) = state.host.as_ref() else { return };
+    let current = host.wm.current_workspace;
+    // z 序自顶向下的可见窗矩形集——后出现的窗可遮挡先出现的。被遮挡
+    // 的可见窗仍遮挡其下方窗，故遮挡集收录一切"在屏"窗（冻结分级：
+    // 被判遮挡的窗自身冻结，但其矩形照常参与下方窗的遮挡判定）。
+    let mut above: Vec<(f32, f32, f32, f32)> = Vec::new();
+    for wid in host.wm.z_order.iter().rev() {
+        let Some(v) = host.wm.wins.get(wid) else { continue };
+        let (rx, ry, rw, rh) = {
+            let r = v.rect.borrow();
+            (r.x, r.y, r.width, r.height)
+        };
+        let offscreen = v.minimized.get() || v.hidden.get() || v.workspace != current;
+        let covered = !offscreen
+            && above.iter().any(|(x, y, w, h)| {
+                rx < x + *w && *x < rx + rw && ry < y + *h && *y < ry + rh
+            });
+        if !offscreen {
+            crate::ui::iced::snapshot::set_frozen(*wid, covered);
+            above.push((rx, ry, rw, rh));
+        } else {
+            crate::ui::iced::snapshot::set_frozen(*wid, true);
+        }
+    }
+}
+
 /// 2026-09-15：workspace_preview 数据发布（原 sync_shell_windows 内联块）。
 /// usable 区逐窗 tile（常驻隐藏窗排除），壁纸 #hex 基色；渲染臂直查
 /// snapshot 缓存（SWR）。
 fn publish_workspace_previews(state: &mut crate::ui::session::DesktopSession) {
+    sync_snapshot_frozen(state);
     let viewport = state.host_viewport();
     let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
     let mut per_ws: std::collections::BTreeMap<String, Vec<crate::ui::iced::workspace_preview::PreviewTile>> =
@@ -15403,6 +15490,7 @@ fn publish_workspace_previews(state: &mut crate::ui::session::DesktopSession) {
                 &state.desktop.config.wallpaper_path,
             ),
             workspaces: per_ws,
+            wallpaper_src: state.desktop.desktop_wallpaper.clone(),
         },
     );
 }
@@ -19350,10 +19438,20 @@ fn compare_pngs(
                     // dirty（行 fallback → 真缩略升级；dock/pager hover 面
                     // 同随 dirty 重建）。
                     DesktopEvent::SnapshotShot(ss) => {
+                        // PLAN-040 F3：裁剪判定前现算冻结态——入队到回调
+                        // 之间窗可能刚最小化/被遮挡（400ms sync 未及），
+                        // 用最新可见性裁决，杜绝污染帧入库。
+                        sync_snapshot_frozen(state);
                         let wids = std::mem::take(&mut *state.desktop.snapshot_pending_wids.borrow_mut());
                         if let Some(host) = state.host.as_ref() {
                             for wid in wids {
                                 let Some(v) = host.wm.wins.get(&wid) else { continue };
+                                // PLAN-040 F3：入队到回调之间窗可能已最小化/
+                                // 被遮挡（冻结）——裁剪像素已非该窗内容，跳过
+                                // 不入缓存（末帧保留语义）。
+                                if crate::ui::iced::snapshot::is_frozen(wid) {
+                                    continue;
+                                }
                                 let rect = *v.rect.borrow();
                                 if let Some(snap) = crate::ui::iced::snapshot::thumbnail_from_screenshot(
                                     ss.rgba.as_ref(),
@@ -21946,27 +22044,25 @@ fn fit_aware_root(
     if fit_active {
         // PLAN-002 N4（用户复核裁定 2026-09-09）：内容在放大窗内居中——
         // 最大化/手动拉大的 fit 窗内容不再左上角沉底（512 v1 语义升级，
-        // 待澄清③就此定案）。Shrink 约束链不动：居中容器 Fill 只是
-        // 对齐包裹，锚点量到的仍是内容自然尺寸，512 S3 scrollable
-        // 测量语义零变化。
+        // 待澄清③就此定案）。
+        // PLAN-040 F1（2026-09-22 用户裁定：fit 窗宽度也随内容）：滚动区
+        // 改 Both 双向 + 隐藏滚动条，锚点回 Shrink×Shrink——双轴无界约束
+        // 下量到内容**自然宽 × 自然高**（P679-D1 的宽度 Fill 视口钳制使
+        // Fill 根 app 恒量到窗口宽、fit 宽度方向永不生效，calculator 停在
+        // 60% viewport 实录）。003 的 Shrink 宽链塌 0 发生在**有界**视口
+        // （Fill 后代解析 0）；无界约束下 Fill 后代解析为内在尺寸，与 512
+        // S3 高度方向同机理。
         container(
             scrollable(
                 container(content)
-                    // P679-D1 终版：锚点宽 = Fill（视口钳制）。规则（003
-                    // fit-trace 实测）：iced 里 mx-auto 包装器/容器缺省宽
-                    // 都是 Fill，而 Fill 后代在 Shrink 祖先下解析为 0——
-                    // 原 Shrink 锚点把整条宽度链打成 0（锚点量到 64=p-8
-                    // 纯内边距、行/列 0 宽、fit 窗缩成窄条空卡）。Fill 化
-                    // 后宽度方向全链视口钳制（Plan 512 成文的 v1 语义），
-                    // 卡片收窄交给内容自己的 max-w-*/mx-auto；高度保持
-                    // Shrink = 512 S3 自然高测量（scrollable 无限高约束）。
-                    .width(iced::Length::Fill)
+                    .width(iced::Length::Shrink)
                     .height(iced::Length::Shrink)
                     .id(iced::widget::Id::from(format!("aura_fit_root_{}", app_id.0))),
             )
-            .direction(scrollable::Direction::Vertical(
-                scrollable::Scrollbar::hidden(),
-            ))
+            .direction(scrollable::Direction::Both {
+                vertical: scrollable::Scrollbar::hidden(),
+                horizontal: scrollable::Scrollbar::hidden(),
+            })
             .width(iced::Length::Fill)
             .height(iced::Length::Fill),
         )

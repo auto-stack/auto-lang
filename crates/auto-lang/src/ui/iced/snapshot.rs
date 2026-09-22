@@ -56,6 +56,30 @@ fn cache() -> &'static Mutex<HashMap<Wid, (WindowSnapshot, Instant)>> {
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// PLAN-040 F3：冻结窗集（最小化/隐藏/被遮挡/不在当前分区）——冻结窗
+/// 的缩略 = **保留的最后一帧**（Windows DWM / macOS backing store 同款
+/// 惯例：预览画缓存末帧，不做屏外实时重渲染）。冻结期间：不重抓（裁剪
+/// 会采到壁纸/他窗像素）、条目不 TTL 清除、SWR 恒按可绘制上报。
+fn frozen() -> &'static Mutex<std::collections::HashSet<Wid>> {
+    static FROZEN: OnceLock<Mutex<std::collections::HashSet<Wid>>> = OnceLock::new();
+    FROZEN.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
+}
+
+/// 宿主同步冻结位（sync 每 tick 按可见性/遮挡全量校正）。
+pub fn set_frozen(wid: Wid, on: bool) {
+    let mut guard = frozen().lock().unwrap();
+    if on {
+        guard.insert(wid);
+    } else {
+        guard.remove(&wid);
+    }
+}
+
+/// 冻结判定（渲染臂 SWR 与抓取冷却共用）。
+pub fn is_frozen(wid: Wid) -> bool {
+    frozen().lock().unwrap().contains(&wid)
+}
+
 /// 抓取请求冷却：同一 wid 两次入队的最小间隔（防"抓取失败→下帧再排队"
 /// 的请求风暴；抓取本身是整窗截图，代价远超一次 HashMap 写）。
 const REQUEST_COOLDOWN: Duration = Duration::from_millis(500);
@@ -70,6 +94,11 @@ fn pending() -> &'static Mutex<(Vec<Wid>, HashMap<Wid, Instant>)> {
 /// 整窗 RGBA 按各窗 rect 裁剪入缓存。native wid（"N&lt;slot&gt;"）由调用
 /// 侧 parse 失败自然不进来。
 pub fn request_capture(wid: Wid) {
+    // PLAN-040 F3：冻结窗不重抓——最小化/遮挡/跨分区时裁剪到的是壁纸/
+    // 他窗像素，重抓只会污染末帧缓存（OS 惯例 = 预览画保留的最后一帧）。
+    if is_frozen(wid) {
+        return;
+    }
     let mut guard = pending().lock().unwrap();
     let (queue, last) = &mut *guard;
     if let Some(ts) = last.get(&wid) {
@@ -103,8 +132,13 @@ pub fn snapshot_window(wid: Wid) -> Option<WindowSnapshot> {
     }
 }
 
-/// 抓取回调落缓存（renderer screenshot 回调臂调用）。
+/// 抓取回调落缓存（renderer screenshot 回调臂调用）。PLAN-040 F3：
+/// 冻结窗拒绝入库——入队到回调之间窗可能已最小化/被遮挡，裁剪像素已
+/// 不是该窗内容。
 pub fn cache_put(wid: Wid, snap: WindowSnapshot) {
+    if is_frozen(wid) {
+        return;
+    }
     cache().lock().unwrap().insert(wid, (snap, Instant::now()));
 }
 
@@ -121,12 +155,14 @@ pub fn __test_backdate(wid: Wid) {
 /// 条目，不删除），`(快照, 是否 TTL 新鲜)`。渲染臂专用：新鲜直绘；
 /// 过期仍绘旧图 + [`request_capture`] 静默重抓（重抓落地 cache_put
 /// 原子覆盖，无中间空档）；"过期即 miss"合同由 [`snapshot_window`]
-/// 单独维持。
+/// 单独维持。PLAN-040 F3：冻结窗恒按"新鲜"上报（重抓被 request_capture
+/// 冻结闸拦下，末帧即最真）。
 pub fn snapshot_window_stale(wid: Wid) -> Option<(WindowSnapshot, bool)> {
+    let frozen = is_frozen(wid);
     let guard = cache().lock().unwrap();
     guard
         .get(&wid)
-        .map(|(snap, ts)| (snap.clone(), ts.elapsed() <= SNAPSHOT_TTL))
+        .map(|(snap, ts)| (snap.clone(), frozen || ts.elapsed() <= SNAPSHOT_TTL))
 }
 
 /// 事件失效：单窗内容/几何变化（relayout/dirty/close）。
@@ -240,6 +276,36 @@ fn downsample_box(rgba: &[u8], w: u32, h: u32, max: u32) -> (Vec<u8>, u32, u32) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-040 F3：冻结窗三禁——不重抓、cache_put 拒收、SWR 恒可绘。
+    #[test]
+    fn frozen_window_skips_capture_and_serves_last_frame() {
+        let wid = Wid(9001);
+        take_capture_requests(); // 排空全局队列（并行测试共享进程态）
+        set_frozen(wid, false);
+        request_capture(wid);
+        assert!(take_capture_requests().contains(&wid), "未冻结可入队");
+        // 冻结：request_capture 静默（不进抓取队列）。
+        set_frozen(wid, true);
+        request_capture(wid);
+        assert!(!take_capture_requests().contains(&wid), "冻结窗不得入队");
+        // cache_put 拒收（末帧不被裁剪像素污染）。
+        cache_put(wid, WindowSnapshot { rgba: vec![0; 4], w: 1, h: 1 });
+        assert!(snapshot_window_stale(wid).is_none(), "冻结期不得入库");
+        // 先留一帧真末帧 → 冻结 → SWR 恒可绘且 TTL 过期仍上报。
+        set_frozen(wid, false);
+        cache_put(wid, WindowSnapshot { rgba: vec![9; 4], w: 1, h: 1 });
+        set_frozen(wid, true);
+        __test_backdate(wid);
+        let (snap, fresh) = snapshot_window_stale(wid).expect("冻结末帧可绘");
+        assert!(fresh, "冻结窗恒按可绘上报（消费臂不重抓）");
+        assert_eq!(snap.rgba, vec![9; 4]);
+        // 解冻 → 恢复 SWR/重抓语义；清理测试态。
+        set_frozen(wid, false);
+        assert!(!is_frozen(wid));
+        invalidate(wid);
+        assert!(snapshot_window_stale(wid).is_none(), "invalidate(wid) 生效");
+    }
 
     /// 合成整窗物理 RGBA：2×2 四色块（红/绿上、蓝/黄下）——T1 spike demo
     /// 同型（HiDPI：逻辑 400×300 × scale 2 = 物理 800×600）。

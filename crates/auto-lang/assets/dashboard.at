@@ -20,6 +20,14 @@
 // 关闭模型（PLAN-012 W2 同型）：× / 点面板外（scrim）/ Esc 三路径。
 // 消费者唯一：宿主 renderer 的 dashboard_toggle / refresh_dashboard_panel
 // / dashboard 键盘订阅。
+//
+// 2026-09-22 用户裁定（本文件 rev）：
+//   · 面板 8×3→8×2（宿主 DASH_ROWS；face 卡回自然 2 格高，T-18 满高
+//     3 行格退役）；
+//   · 分页 pill（悬空「系统」钮）改面板正下方 tab 条——宿主 wrapper
+//     高 = 外框 + DASH_TAB_STRIP_H(28)，条行常驻占位、按钮 hover 显隐；
+//   · chrome 底板改玻璃形态（bg-white/10 + 亮边框 + backdrop-blur
+//     冻结声明）。
 widget DashboardPanel {
     msg { Init, Escape, Close, SelectTab(str), ShowClose, HideClose, RebuildFaces }
 
@@ -31,8 +39,10 @@ widget DashboardPanel {
         var __dashboard_faces = []  // 协议 v1.8 合同面（声明不 handler 消费）
 
         // ---- 面板几何（宿主注入，px——单一事实在宿主，本面镜像）----
-        var __panel_w int = 920
-        var __panel_h int = 320
+        // 缺省 = 宿主 8×2 契约值（720×176，含 T-14 四围 PAD），仅注
+        // 入前首帧可见；chrome 定高 h-[176px] 同源（视图串不可插值）。
+        var __panel_w int = 720
+        var __panel_h int = 176
         var __panel_top int = 64
 
         // ---- face 快照（宿主注入平行字符串列表；B12 规避）----
@@ -58,46 +68,55 @@ widget DashboardPanel {
 
     view {
         if .visible == "1" {
-            // 常驻小组件层（R2）：宿主 wrapper 给定面板矩形，本面只画
-            // chrome。PLAN-035 T-18：tab 头行（72px 网格行 0）退役——
-            // 分页触发改右上角紧凑 pill（main↔system 互换，SelectTab
-            // 既有消息面），lazy 语义不变（非活动页 face 不渲染 + Tick
-            // 停订）；face 卡改满高 3 行格（232px）。PLAN-035 T-14：
-            // 外框四围 p-3（外框 = 网格块外扩 PAD 12px）。
+            // 常驻小组件层（R2）：宿主 wrapper 给定面板矩形 + 下缘 28px
+            // tab 条带（2026-09-22：分页 pill 从右上悬浮改面板正下方
+            // hover 显隐——本面根块 h = 外框 176 + 条带 28 = 204，chrome
+            // 定高 176 镜像宿主 8×2 算式（2*80-8 + 2*12），条带浮层锚定
+            // 底缘、按钮 hover 显隐：单一 mouse-area 包面板+条全程，
+            // 零跨元素 enter/leave 抖动）。PLAN-035 T-14：外框四围 p-3。
             col {
                 style: "w-full h-full"
                 mouse-area (onmouseenter: .ShowClose, onmouseleave: .HideClose) {
                 col {
-                    style: "w-full h-full p-3 bg-card/80 border rounded-xl overflow-hidden"
+                    style: "w-full h-full"
 
-                    // 网格区：face 由宿主按活动 tab 拆借渲染叠合（满高
-                    // 3 行格）；空态文案居中。
+                    // 玻璃 chrome 底板（半透明 + 磨砂词汇冻结声明）：
+                    // bg-white/10 低透白 + 亮边框；backdrop-blur-md 为
+                    // 518 G8 冻结词汇（当前渲染 no-op，框架落地 backdrop
+                    // 管道后自动升真磨砂）。face 卡由宿主按活动 tab 拆借
+                    // 渲染叠合于网格算式格位；空态文案居中。
                     col {
-                        style: "w-full h-full items-center justify-center"
-                        if .nrows == 0 {
-                            text "No widgets" {
-                                style: "text-muted-foreground text-sm"
+                        style: "w-full h-[176px] p-3 bg-white/10 border border-white/25 rounded-xl overflow-hidden backdrop-blur-md"
+                        col {
+                            style: "w-full h-full items-center justify-center"
+                            if .nrows == 0 {
+                                text "No widgets" {
+                                    style: "text-muted-foreground text-sm"
+                                }
+                            }
+                        }
+
+                        // ×（hover 显隐，绝对悬浮右上——PLAN-536 浮层）。
+                        mouse-area (onclick: .Close) {
+                            style: "absolute top-2 right-2 h-6 w-8 items-center justify-center rounded-lg hover:bg-accent z-10"
+                            if .show_close == "1" {
+                                text { "×" }
                             }
                         }
                     }
 
-                    // 右上角控制簇（绝对定位悬浮，不占网格行）：分页
-                    // pill（显示另一页名，点击切换）+ ×（hover 显隐）。
-                    col {
-                        style: "absolute top-1.5 right-2 items-center gap-1"
-                        if .active_tab == "main" {
-                            button (text: "系统", onclick: .SelectTab("system")) {
-                                style: "h-6 px-2 text-xs rounded-full bg-card/80 border text-muted-foreground hover:bg-accent"
-                            }
-                        } else {
+                    // 下缘 tab 条（绝对锚定 chrome 底缘 y=176——流式兄弟序
+                    // 在宿主动态臂不稳定，浮层锚定像素确定；PLAN-536 偏移
+                    // 浮层与老 pill 同机制。常驻渲染、按钮 hover 显隐）：
+                    // 双页签直显（stella widget-tabs 语义），活动页高亮。
+                    row {
+                        style: "absolute top-[176px] left-0 w-full h-7 items-center justify-center gap-2 z-10"
+                        if .show_close == "1" {
                             button (text: "小组件", onclick: .SelectTab("main")) {
-                                style: "h-6 px-2 text-xs rounded-full bg-card/80 border text-primary hover:bg-accent"
+                                style: if .active_tab == "main" { "h-6 px-2.5 text-xs rounded-full bg-primary/15 border border-primary/40 text-primary" } else { "h-6 px-2.5 text-xs rounded-full bg-card/80 border text-muted-foreground hover:bg-accent" }
                             }
-                        }
-                        mouse-area (onclick: .Close) {
-                            style: "h-6 w-8 items-center justify-center rounded-lg hover:bg-accent"
-                            if .show_close == "1" {
-                                text { "×" }
+                            button (text: "系统", onclick: .SelectTab("system")) {
+                                style: if .active_tab == "system" { "h-6 px-2.5 text-xs rounded-full bg-primary/15 border border-primary/40 text-primary" } else { "h-6 px-2.5 text-xs rounded-full bg-card/80 border text-muted-foreground hover:bg-accent" }
                             }
                         }
                     }

@@ -876,11 +876,12 @@ fn shell_surfaces(geometry: &ShellGeometry) -> Vec<SurfaceDecl> {
             height: geometry.viewport_h,
         },
         // PLAN-036 T-05（D2-A）：dashboard 面——中间 z 档显式声明（表面
-        // 尺寸 = 035 固定外框 696×232）。
+        // 尺寸 = dashboard_layout 外框 720×176 + 下缘 tab 条带 28 = 204
+        // ——2026-09-22 裁定 8×2；快照 __panel_* 同源注入）。
         SurfaceDecl {
             role: surface_role::DASHBOARD,
-            width: 696.0,
-            height: 232.0,
+            width: 720.0,
+            height: 204.0,
         },
     ]
 }

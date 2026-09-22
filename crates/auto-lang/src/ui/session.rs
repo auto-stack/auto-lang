@@ -2867,6 +2867,9 @@ impl DesktopSession {
         if let Some(host) = self.host.as_mut() {
             host.wm.minimize_win(wid);
         }
+        // PLAN-040 F3：即时冻结快照——不等 400ms sync（在途截图任务落地
+        // 时回调臂冻结态已就位，末帧不被最小化后的帧污染）。
+        crate::ui::iced::snapshot::set_frozen(wid, true);
     }
 
     /// PLAN-526 T1：最大化/还原切换（可用区 = host viewport 扣任务栏，

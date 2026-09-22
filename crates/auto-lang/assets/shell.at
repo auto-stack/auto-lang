@@ -62,6 +62,10 @@ widget Desktop {
         LayoutGrid, LayoutStack,
         WinFocus(str), WinClose(str), WinMin(str),
         ActivateApp(str), SetWorkspace(str),
+        // PLAN-040 F2c：任务栏窗口条目单击（外层 mouse-area 承载——
+        // popover 开启期锚点点击被捕获，按钮 onclick 不可达）。菜单开
+        // = 只收菜单；否则 = 聚焦/恢复该窗。
+        IconClick(str),
         WorkspaceAdd,
         NotificationToggle,
         NativeFocus(str), NativeClose(str),
@@ -335,14 +339,26 @@ widget Desktop {
                                     // PLAN-012 W4：菜单追加「固定到任务栏」
                                     // （dock_pin v1.6 动词；仅 registry app 条目
                                     // ——w.app 空串的 boot 窗不出现该菜单项）。
-                                    mouse-area (onmouseenter: .HoverWin(w.wid), onmouseleave: .HoverLeave) {
+                                    // PLAN-040 F2b（2026-09-22 用户裁定）：
+                                    // hover 预览不再 mouseleave 即灭（原
+                                    // 死区：指针移向预览必先离开 icon，预
+                                    // 览提前消失不可点中）——预览开启后由
+                                    // ondismiss/动作收起，WinMenuClose/
+                                    // WinFocus 兼清 dock_hover。
+                                    // PLAN-040 F2c：恢复点击挂外层
+                                    // mouse-area——popover 开启期锚点点击
+                                    // 被 overlay 捕获吞掉（点触发器=关菜
+                                    // 单语义），按钮 onclick 永不触发（单
+                                    // 击不恢复实录）；外层先于捕获发布，
+                                    // IconClick 兼菜单感知（菜单开=只收
+                                    // 菜单）。
+                                    mouse-area (onclick: .IconClick(w.wid), onmouseenter: .HoverWin(w.wid)) {
                                         // PLAN-010 N6c：预览臂加 win_menu=="" 门（菜单
                                         // 开启期抑制 hover 预览）；ondismiss 改菜单专用
                                         // 关闭——原 HoverEnd 兼清使菜单被 hover-leave
                                         // 秒关（菜单项不可达，用户实测）。
                                         popover (open: (.dock_hover == w.wid && .win_menu == "") || .win_menu == w.wid, placement: "top", ondismiss: .WinMenuClose, class: "p-1 border rounded bg-card") {
                                             button (icon: w.icon, variant: "ghost") {
-                                                onclick: .WinFocus(w.wid)
                                                 oncontextmenu.prevent: .WinMenu(w.wid)
                                                 style: if w.focused == "1" {
                                                     "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50"
@@ -373,7 +389,20 @@ widget Desktop {
                                                     }
                                                 }
                                             } else {
-                                                window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-48 h-28 rounded" }
+                                                // PLAN-040 F2b：hover 预览列全部
+                                                // 同 app 实例（原仅本条目单窗）——
+                                                // 多实例合并 icon 的"预览选实例"
+                                                // 语义补全；点缩略 = 恢复该实例。
+                                                col {
+                                                    style: "gap-1"
+                                                    for win in .__wm_wins {
+                                                        if win.app == w.app {
+                                                            mouse-area (onclick: .WinFocus(win.wid)) {
+                                                                window_thumbnail (wid: win.wid, fallback_icon: win.icon) { style: "w-48 h-28 rounded" }
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -652,7 +681,15 @@ widget Desktop {
         .LayoutStack -> { .SendCmd("layout_toggle\tmaster-stack") }
         // PLAN-526 T8：菜单态随动作消费清零（动作项与条目本体共用消息，
         // 非菜单路径清空为无害幂等）。
-        .WinFocus(wid) -> { .SendCmd("focus\t" + wid); .win_menu = "" }
+        .WinFocus(wid) -> { .SendCmd("focus\t" + wid); .win_menu = ""; .dock_hover = "" }
+        // PLAN-040 F2c：icon 单击 = 菜单开只收菜单；否则恢复/聚焦该窗。
+        .IconClick(wid) -> {
+            if .win_menu == "" {
+                .SendCmd("focus\t" + wid)
+            }
+            .win_menu = ""
+            .dock_hover = ""
+        }
         .WinClose(wid) -> { .SendCmd("close\t" + wid); .win_menu = "" }
         .WinMin(wid) -> { .SendCmd("win_min\t" + wid); .win_menu = "" }
         .ActivateApp(app) -> { .SendCmd("activate\t" + app) }
@@ -700,7 +737,7 @@ widget Desktop {
         // 与 desktop.at icon 菜单（MenuClose）完全同构。
         .HoverWin(wid) -> { .dock_hover = wid }
         .HoverLeave -> { .dock_hover = "" }
-        .WinMenuClose -> { .win_menu = "" }
+        .WinMenuClose -> { .win_menu = ""; .dock_hover = "" }
         // PLAN-019 v1.7：显示桌面 sliver（toggle 判据 = __wm_showdesk
         // 宿主投影等式；负一屏上开 picker 时返回臂幂等先关 picker）。
         .ShowDesktopToggle -> {
