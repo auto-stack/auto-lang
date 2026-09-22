@@ -3318,6 +3318,21 @@
      "status": "published",
      "created": "2026-09-22",
      "last_modified": "2026-09-22"
+    },
+    {
+     "id": "P689-1",
+     "title": "bp-admin-standalone-example — L1 组装样板迁出画廊轨道升格独立示例（examples/bp-admin）",
+     "content": "迁移钉点全收口（022-kanban 升格同型）：git mv 历史随行+pac.at dep bps 层级修正（../../../→../../）；app_registry 双断言重基线（C 档策展 21→20、scan ≥35→≥34）；plan657 回归锚随迁新路径；build-ui-examples.yml 矩阵仓根全路径化+working-directory 参数化+exe 路径 $GITHUB_WORKSPACE 绝对形态（矩阵跨深度必配）+paths 扩 examples/bp-admin/**；canonical 指针四处同步（blueprint/project.md L1 样板位置句、goals.md GOAL-010/011 括注、P657-D1 证据路径、sidebar-shell reference 头注）。独立示例命名=与 bp-gate/bps-gallery 同族平铺无编号前缀；auto-os 画廊再发射（35→34 demos、back-proxy 会话 7→6）为 merge 后伴随动作",
+     "file": "docs/specs/blueprint/project.md",
+     "related": [
+      "PLAN-689",
+      "PLAN-657",
+      "PLAN-666",
+      "PLAN-685"
+     ],
+     "status": "published",
+     "created": "2026-09-22",
+     "last_modified": "2026-09-22"
     }
    ]
   },
@@ -7119,6 +7134,18 @@
      ],
      "content": "review r2 pass @ 2f8630e67（实现会话内复审独立性受限已声明，证据全部命令级复现：AC-01 三实例快照恒属性态 5201B×3+jade vm_matrix 双臂全绿零漂移/AC-02 :key 原生直发/AC-03 natives 守卫+真换行/AC-04 冷删 popover 重物化 TS2307=0/AC-05 补件③撤除信号实证）；tf 1743/1749 六红甄别=5 环境（oracle 预建）+1 基点既有（ffi_dual_019 detached 同败）。规范增量=空（四修复均为把实现拉回已文档化契约）。merge（独立会话）：rebase master e1c73a043 两段（bbb1618e5 零冲突→新 3 提交 e85143621/97614062f/e1c73a043 零交集再进），range-diff 5/5 全等；合并期 AC-04 复验发现 F-682-M1 layout 臂双 :key（F2 顶部单点转发×push_passthrough_attrs 透传叠加，row/col 行 div X_DUPLICATE_ATTRIBUTE 拒收；master 对照单 key）→当修双漏斗「已含 :key= 则跳过」守卫+shadcn 模式回归钉（关守卫必红双态证）→产物级 dup-key 0+ui_gen 844/844；AC-04 rebase 复验清偿（TS1117 归因确证=master 已落地生成器修复）；styled 10/10+snapshot 24/24+shell_pack parity 随 e85143621 转绿；tf 终跑数字见归档档 §6.2；ff-only 落地",
      "created": "2026-09-22"
+    },
+    {
+     "id": "P689-2",
+     "title": "bp-admin-standalone-example — 复审与合并收据",
+     "content": "复审 pass（实施会话内复审，独立性声明+六 AC 工件重构复现）：gen-only 29 组件/app_registry 25/25（C 档恰等 20+scan ≥34）/plan657 3/3/YAML 静态断言/残留扫描非归档清零/git log --follow 直溯 657 创建提交；tf 5442/5450——8 预存红全归因零回归（musk×6+counter×1 双源漂移在案+a2vue 金样 e85143621 未同步基线隔离同红），ffi_dual_019 全量并行 flaky（隔离绿+复跑绿+输入零交集）；F-689-1 注释折行非阻塞；spec 增量=指针性更新无新组件。合并：reviewed_commit 1d829b935、base 97614062f、dep auto-down fba6563（只读）；rebase 1d829b935→6d4e3af7f（range-diff 1:1 全等，PLAN-682 代码先落）后受影响面复验绿（plan657/app_registry/gen-only）",
+     "file": "docs/plans/archive/689-bp-admin-standalone-example.md",
+     "related": [
+      "PLAN-689"
+     ],
+     "status": "published",
+     "created": "2026-09-22",
+     "last_modified": "2026-09-22"
     }
    ]
   }
