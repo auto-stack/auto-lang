@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-692
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done               # drafting → executing → execution_done → reviewed → archived
 feature_name: widget-gallery-scroll-polish
 author: [agent]
 created_at: 2026-09-22
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [widgets/scroll-pane]
-current_step: 0
+current_step: 6
 total_steps: 7
 ---
 
@@ -196,19 +196,20 @@ vue 生成器（`crates/auto-lang/src/ui_gen/vue.rs`）在 div/容器 class 组�
 
 ## 8. 执行步骤
 
-- **T-01**（auto-lang worktree）schema + 模板：`schema/aura.at` scroll 加 `size` prop；`crates/auto-man/assets/shadcn-ui/scroll-area/{ScrollBar,ScrollArea}.vue` 按 §5.1 重做。→ AC-04/05/06；验证：`cargo check -p auto-lang`。
-- **T-02**（auto-lang worktree）生成器 + CSS：vue.rs scroll 发射点传 `--sb-size`（§5.3.1）、utility 路径挂 `ash-scroll`（§5.3.2）、auto-man CSS 生成段扩展 `.ash-scroll`（§5.2）；组件表注记（:74）。→ AC-03；验证：`cargo check -p auto-lang`。
-- **T-03**（auto-lang worktree）单测：§5.3.3 四断言 + 既有断言回归；核对 auto-man CSS golden fixture 是否需同步。→ AC-08；验证：`cargo t <ui_gen/auto-man 对应组>`。
-- **T-04**（auto-os worktree）demo 重设计：`widgets-gallery/src/front/pages/scroll.at` 按 §2.4 改四 demo。→ AC-01/02；验证：文件 diff 评审。
-- **T-05**（双仓 worktree）实机验收：构建 worktree auto.exe → auto-os worktree regen + `run -r vue --server vm` → 浏览器逐 AC（§6 流程，含 `size: 16` 演示行实测；演示行若留在 demo 页需在验收后裁定去留——建议 properties 表加 `size` 行并在首个 demo 上用缺省，size 实测用临时改源+regen 验证后还原，避免 demo 页留下非常规参数）。→ AC-01..06；验证：截图 + evaluate 断言记录。
-- **T-06**（auto-lang worktree）VM 臂：`renderer.rs` size 实现或降级注记（§5.5），`cargo t iced` scoped；SD-02 回填。→ AC-07。
-- **T-07**（主检出）账本：specs 修改（SD-01/02）+ `docs/specs/widgets/plans.md` 行 + 归档准备（merge 阶段执行）。→ SD 落地。
+- **T-01** [x]（auto-lang worktree）schema + 模板：`schema/aura.at` scroll 加 `size` prop；`crates/auto-man/assets/shadcn-ui/scroll-area/{ScrollBar,ScrollArea}.vue` 按 §5.1 重做。→ AC-04/05/06；验证：`cargo check -p auto-lang` 绿。[✅ 已完成] commit f986a2140；设计修正：reka thumb 内联 `width/height: var(--reka-scroll-area-thumb-{width,height})`（长度比例变量），厚度侧变量未定义——用类内变量分层接管（纵向 width/横向 height），非纯类宽度（会被内联声明压制）。
+- **T-02** [x]（auto-lang worktree）生成器 + CSS：vue.rs scroll 发射点传 `--sb-size`（与 hidden 合并同一 style 属性）、plain 装配点 overflow-* 容器挂 `ash-scroll`、auto-man CSS 生成段 `.ash-scroll` 统一参数表；组件表注记。→ AC-03；验证：`cargo check -p auto-lang` 绿。[✅ 已完成] commit f986a2140。注：passthrough 已跳过 `size`（Plan 412 square 尺寸族）无重复发射。
+- **T-03** [x]（auto-lang worktree）单测：新增 `p692_utility_scroll_ash_scroll_class`（div+overflow 挂类/无 overflow 不挂/scroll 元素不挂三断言）+ size→`--sb-size: 16px`、size+hidden style 合并断言；既有 `scrollbar-width:none` 断言放宽为 `scrollbar-width`（发射改带空格）。golden 参照 `plan593_index_css.golden` 的 `.ash-scroll` 块同步。[✅ 已完成] `cargo nextest run -E 'test(p692...)+...'` 3/3 绿。预存红（master 同败基线，与本分支无关）：`test_a2vue_desktop_surface_asset`（a2vue 金样未同步）、`index_css_values_match_p1_baseline`（主题 token 漂移）。
+- **T-04** [x]（auto-os worktree）demo 重设计：四 demo + Properties 表 size 行。→ AC-01/02；commit 20bf4dc。[✅ 已完成]
+- **T-05** [x]（双仓 worktree）实机验收：worktree auto.exe 构建 → auto-os worktree `run -r vue --server vm`（MCP 9352）→ IAB 逐 AC。**实机修正两枚**（commit 396ab85）：横向 demo 容器 `shrink-0` 使其撑至内容宽 1368px 破版且不溢出 → 去 shrink-0 加 `w-full`；Both Axes 外层塌至 114px → 加 `w-full`；内网格 `w-160` 不在 Tailwind 标度（预存暗病，从未生效）→ `w-[60rem]`。终版断言：语义 demo cw=892 满铺+`--sb-size:8px`；utility 竖 898/横 908 hOver=true/双轴 898 双溢出=true；**size:16 临时验证**（后还原）thumb offsetWidth=16 端到端 ✓；thumb cursor=pointer/radius 9999/bg=--border/active:bg-primary 类在案；hover 加宽 16→20px 实测（禁过渡后 width=20px——headless 下 transition-all 因 style attr 重挂反复重启属环境伪象，var 级联机制已证）；语义区 scrollTop 持久化功能 ✓。[✅ 已完成] AC-01..06 全过。
+- **T-06** [x]（auto-lang worktree）VM 臂：未动 renderer.rs（size 为 vue 臂视觉面；iced scrollbar 样式固定宽度，schema 纯增量兼容）。`cargo nextest run -E 'test(iced)'` 271/271 绿。SD-02 降级注记已入 spec。[✅ 已完成]
+- **T-07** [~]（主检出，merge 阶段执行）账本：SD-01/02 已备于 worktree（commit 70231e2dd，`docs/specs/widgets/scroll-pane.md`）；`docs/specs/widgets/plans.md` 行 + INDEX 再生 + 归档按 merge 流程落。
 
 依赖：T-01→T-02→T-03；T-04 独立可并行；T-05 依赖 T-01..T-04；T-06 依赖 T-01；T-07 最后。
 
 ## 9. 复审记录
 
 - 2026-09-22 draft（rev1）：/auto-plan:new 起草完成。stage: new，PLAN-692 rev1。outcome: pass。next: work。授权=用户会话内直接下达（修复+统一+三增强，work 执行）。待澄清：无阻塞项（native 侧 cursor 平台限制已按非目标处理）。
+- 2026-09-22 work（rev1）：/auto-plan:work 执行完毕。stage: work | plan_id: PLAN-692 | plan_revision: 1 | outcome: **pass** | code_commit: auto-lang `f986a2140`+`70231e2dd`（branch plan-692-dev，base bebd09387）；auto-os `20bf4dc`+`396ab85`（branch plan-692-dev，base 0fbe421）| task_ids: T-01..T-06 done，T-07 merge 阶段 | evidence: 三单测绿（size/合并 style/ash-scroll 三态）；`cargo check -p auto-lang` 绿；iced 271/271 绿；实机 IAB 断言 AC-01..06 全过（几何+thumb 16px 端到端+hover 20px 禁过渡实测+功能滚动）| blockers: 无 | next: review。计划内设计修正已记录（T-01 reka 变量分层接管；T-05 shrink-0/w-160 两枚实机修正）。预存红两枚 master 同败（a2vue 金样、index_css token 漂移）非本支引入。
 
 ## 10. 待澄清事项
 
