@@ -5523,7 +5523,19 @@
      "status": "published",
      "created": "2026-09-22",
      "last_modified": "2026-09-22"
-    }
+    },
+    {
+      "id": "P691-1",
+      "title": "presplit-subtraction — 拆仓前减面四刀：体量口径勘误（SD-01）+gpui 死后端移除+散测试归位（SD-03 specs 同步）",
+      "content": "拆仓（Design 32）前置减面批：①体量口径勘误——UI 集群实测 ~52%（约30万/58万行，cat 口径），原稿 90%/30.3万 系 xargs wc -l|tail-1 分批截断（09-20 当日 git archive 实测 55.7万），Design 32 §0+Cargo.toml 注释双订正；②gpui 死后端移除净 -4030 行——src/ui/gpui/+style/gpui_adapter(554行)+ui-gpui feature+gpui-lib/gpui-component/anyhow 三 optional deps+19 examples cfg 阶梯臂+HostBackend::Gpui；数据面豁免在案（config UiBackend::Gpui/session 默认串/aura BackendMatrix.gpui=目录契约零派发保留）；rider=p023_probe 补 required-features=iced-layout-tests 门（裸 --examples 预存 14×E0433 收口）；③pixels 臂顺延不删（量化门达标 11.3MB≤100MB，条件② labels not-yet+terminal/imagesurface M7-c 未立项）；④90 顶层散测试+test_util/ 纯 move 归位 src/tests/（90×R100；test_runner 例外留根=VM auto.test.* natives 生产依赖；plan077 死文件注释态随迁）。specs 四件 gpui 活提及同步（SD-03）。",
+      "file": "docs/design/32-autoui-repo-extraction.md",
+      "related": [
+       "PLAN-691"
+      ],
+      "status": "published",
+      "created": "2026-09-22",
+      "last_modified": "2026-09-22"
+     }
    ]
   },
   {
@@ -7194,7 +7206,19 @@
      "status": "published",
      "created": "2026-09-22",
      "last_modified": "2026-09-22"
-    }
+    },
+    {
+      "id": "P691-2",
+      "title": "presplit-subtraction 复审与合并收据",
+      "content": "work pass（c60cf8905/3ac279750/a72257e6f/ffe800947 rebased 链）→review pass@24ddad334（同会话复审独立性声明+工件重推：裸 --examples 增量重跑 0 错/p023 门生效直证；告警 351→344 纯减 7 零新增；rename 90×R100+2×R09x；tf 10 红=预存9+ffi_dual_019 flaky[689 在册+684 晚间基线双互证+双侧 solo 绿]）。AC-03=顺延路径（门②证据=desktop-protocol-v1.md :816/:824/:827）。merge=rebase master 干净 4/4 range-diff 全等（f876e2661→c60cf8905/a5c5d0d49→3ac279750/24ddad334→a72257e6f/0cac22a25→ffe800947）；执行期事故在案：tests.rs open(w) 截断吞 67 声明（~427 测试静默消失）→nextest 双侧全名对拍发现→git 原文重拼，恢复后 t=5451/9 与基线逐位全等；双会话执行史（用户裁定单写者）+外来 specs 位写 R-1 收编。F-1 lib.rs 先在 #[path] 声明族 info（拆仓阶段归并候选）/F-2 plan077 死文件删除候选。",
+      "file": "docs/plans/archive/691-presplit-subtraction.md",
+      "related": [
+       "PLAN-691"
+      ],
+      "status": "published",
+      "created": "2026-09-22",
+      "last_modified": "2026-09-22"
+     }
    ]
   }
  ]
