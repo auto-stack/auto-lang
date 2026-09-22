@@ -14,7 +14,7 @@ touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 affects: [widgets/scroll-pane]
 current_step: 6
 total_steps: 7
-plan_revision: 3
+plan_revision: 4
 ---
 
 # [PLAN-692] widget-gallery-scroll-polish
@@ -214,6 +214,7 @@ vue 生成器（`crates/auto-lang/src/ui_gen/vue.rs`）在 div/容器 class 组�
 - 2026-09-22 F-1（rev1，用户实机反馈修复）：用户报告语义 scroll thumb 拖拽方向/位置错乱。根因=ScrollBar.vue 轨道 `items-center` 把 thumb 静态布局原点在长度轴居中（纵轨 cross 轴即长度轴），而 reka 以 `transform: translate3d` 从布局原点位移定位 thumb（ScrollAreaScrollbarVisible.onThumbPositionChange），原点偏移实测 70px → 位移映射整体错位（grab 跳变+方向感错乱）。修复=轨道 `items-start justify-center`（长度轴起点+仅厚度轴居中；纵横两向同形），实测 originTopRelTrack 70→1px（commit 32ea85b66）。A/B 对拍证实 18px thumb 长度为预存现象（原模板同值，reka sizes 测量面问题，与本次改动无关，记观察项）。合成拖拽在 IAB 无法穿透 reka 的 setPointerCapture/emit 链（cua.drag 只发 move；合成 PointerEvent 的 capture 语义受限），终验以几何断言（原点=内容盒起点）+ reka 源码数学推演为准，真实鼠标拖拽待用户复核。
 - 2026-09-22 rev2（用户裁定：active 高亮撤销改 hover 微亮）：用户手测后裁定——不做"按住后高亮"，与普通 scroll 一致改为 hover 时高亮，且非主题色大高亮而是轻微变亮。变更：thumb `active:bg-primary` 移除 → `hover:bg-muted-foreground/60`；`.ash-scroll` hover 改 `hsl(var(--muted-foreground) / 0.6)` 同参、`:active` 规则退役；hover 加宽 +2px/侧与 cursor:pointer 保留。**AC-05 改述**：hover 加宽 +2px/侧 + cursor:pointer + thumb 微亮（muted-foreground/60）。**AC-06 退役**（用户裁定 2026-09-22，非计划让步）。SD-01 相应改述（spec 增量在 worktree 于 merge 时同步落）。实机验证：compiled CSS 规则确认（hoverRule=新值，activeRuleCount=0）；禁过渡探针读 hover 真值 bg=rgba(148,163,184,0.6)+宽 12px。commit beebcb832（branch plan-692-dev）。plan_revision 1→2（AC 契约文本变化；授权=用户直接下达）。
 - 2026-09-22 rev3（用户实机反馈三则）：①thumb 闪现根修——hover 挂载时 thumb 先现于轨道顶再滑到真实位置：`transition-all` 把 reka 挂载后施加 `transform: translate3d` 定位的过程也动画化了；改 `transition-[width,background-color]`（transform 排除，实测 transitionProperty="width, background-color"）。②可见色加 accent——纯灰过浅，底色 `bg-border`→`bg-[hsl(var(--primary)/0.4)]`（tailwind config 无 alpha-value 占位故用任意值写法；实测 rgba(147,149,246,0.4)）。③变粗时色相不变仅亮度自适应——hover 色 muted-foreground/60→`primary/60`（浅色底变暗、深色底变亮，透明度合成自然达成）；`.ash-scroll` 同参（底 primary/40、hover primary/60+border 归零加宽）+Firefox scrollbar-color 同步。commit 9193d9915+9cc0813eb（spec 同步）。A/B 复核：IAB 合成悬停下 reka 定位链（RO→sizes→watchOnce→transform）不完整为环境既有伪象（原模板同态）；真实鼠标链路通（用户截图 2 证 thumb 会落位）。plan_revision 2→3（视觉契约文本变化；授权=用户直接下达）。
+- 2026-09-23 rev4（用户实机裁定）：hover 加宽撤销，thumb 恒宽——方向性 `hover:[--reka-*-thumb-*:+4px]` 变体移除；轨宽从 calc(size+6px)+p-px 简化为恒等 size（2px 透明 border 加宽技巧退役）；thumb 过渡收窄 `transition-colors`（width 不再参与）。hover 色深 primary/60、accent 底 primary/40、cursor:pointer、size prop 保留。实机验证：thumb 8px=轨 8px 恒等、origin 0、过渡族仅颜色、编译 CSS 加宽产物零残留（reka 底/hover 两规则在案）。commit 3bba2fd77+4068c86fb（spec 同步）。plan_revision 3→4（授权=用户直接下达）。
 
 ## 10. 待澄清事项
 
