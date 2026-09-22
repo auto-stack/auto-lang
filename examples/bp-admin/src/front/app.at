@@ -102,11 +102,14 @@ widget App {
             var badge_settings str = nav_count("settings")
             var badge_reports str = nav_count("reports")
             var badge_about str = nav_count("about")
+            // PLAN-688 r2 复审 F-1：nav 节点全键 {id,label,badge,icon}——
+            // sidebar-shell reference 读 node.icon，缺键渲染为无字形行
+            // （icon 首字符回退属消费方烘焙，bp 不做切片）。
             .nav_tree = [
-                { id: "data", label: "Data", badge: badge_data },
-                { id: "settings", label: "Settings", badge: badge_settings },
-                { id: "reports", label: "Reports", badge: badge_reports },
-                { id: "about", label: "About", badge: badge_about }
+                { id: "data", label: "Data", badge: badge_data, icon: "▦" },
+                { id: "settings", label: "Settings", badge: badge_settings, icon: "⚙" },
+                { id: "reports", label: "Reports", badge: badge_reports, icon: "▣" },
+                { id: "about", label: "About", badge: badge_about, icon: "◇" }
             ]
             .columns = [
                 { id: "name", title: "Name" },
