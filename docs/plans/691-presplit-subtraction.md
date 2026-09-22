@@ -5,7 +5,7 @@ feature_name: presplit-subtraction（拆仓前减面瘦身批）
 author: [zcode]
 created_at: 2026-09-22
 updated_at: 2026-09-22
-plan_revision: 1
+plan_revision: 2
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -13,7 +13,7 @@ new_spec_components: [docs/design/32-autoui-repo-extraction.md §0 体量口径�
 touched_goals: []
 
 affects: [auto-lang/ui, auto-lang/desktop-protocol, auto-lang/tests]
-current_step: 0
+current_step: 3
 total_steps: 6
 ---
 
@@ -179,9 +179,12 @@ plan340_tests:7444、musk_vm_track_tests:7826，声明带 Plan 编号溯源注�
 
 - **AC-01**（T-01）：两处注释口径为 ~52%/58 万行并注明复核口径与日期；diff 仅注释/
   文档行，零行为面。验证：`git diff` 逐行人工审。
-- **AC-02**（T-02）：`cargo check -p auto-lang`（default）与 `--examples` 零错零新警；
-  全仓活码 `grep -rn gpui --include=*.rs --include=*.toml` 零命中（docs/plans/archive、
-  docs/design 历史文档豁免）；Cargo.toml 无 ui-gpui/gpui-lib/gpui-component/anyhow-optional。
+- **AC-02**（T-02；r2 口径勘正）：`cargo check -p auto-lang`（default）零错；
+  `--examples --features build-examples` 零错（裸 `--examples` 因 p023_probe 补
+  required-features 门后跳过该例→零错）。**渲染后端面零活引用**（src/ui/gpui、
+  style/gpui_adapter、examples、HostBackend 全清）；**数据面豁免在案**：config.rs
+  `UiBackend::Gpui`/session 默认串/aura `BackendMatrix.gpui`（aura.at 目录唯一源契约，
+  零派发勘定）保留，历史成因注记（vnode.rs 等）保留。
 - **AC-03**（T-03，条件式）：门②勘定记录在案。达标路径：pixels.rs/dual_mode.rs 删、
   FrameMode 单 Queue 档、renderer.rs NativePixelsHost 族清、债册销账、`-q` 单窗实机
   渲染正确。不达标路径：勘定报告 + 顺延裁定落 §9，标 deferred（不算失败，算门机制生效）。
@@ -199,10 +202,27 @@ plan340_tests:7444、musk_vm_track_tests:7826，声明带 Plan 编号溯源注�
 > 先执行 T-01/02/04，T-03 排 690 merge 后（同 worktree 续做或返回复工）。
 
 - **T-01** 两处注释订正（AC-01；§5 刀①）。验证：git diff 人工审。
+  [✅ 已完成] worktree commit `f876e2661`（2 文件 +5/-2，纯注释）。
 - **T-02** gpui 死后端移除（AC-02；§5 刀②）。验证：§6 T-02 行三命令全绿 + grep 零命中。
+  [✅ 已完成] commit `a5c5d0d49`（39 文件 +57/-4030）。勘正四枚：①移除面比立项
+  勘定多 `style/gpui_adapter.rs`（554 行，style/mod.rs 两处门控挂载）；②examples 面
+  19 个非 8 个；③裸 `--examples` 的 p023_probe 14×E0433 为 master 预存（主检出同位
+  对拍在案），rider 补 `required-features = ["iced-layout-tests"]` 门收口；④AC-02
+  grep 口径勘正为"渲染后端面零活引用+数据面豁免"（r2）。门禁：check 0 错；
+  examples(build-examples) 0 错；cargo t 9 红全预存零新增（musk×6 在册族 +
+  desktop_protocol×2[690 档"2 红全预存"] + a2vue×1[682 转告]；主检出 28 红含
+  blueprints 盘损环境红 19 对照）。
 - **T-03** pixels 臂退役门勘定 + 条件执行（AC-03；§5 刀③）。验证：§6 T-03 行 +
-  勘定记录入 §9。
+  勘定记录入 §9。**[⏸ 阻塞]** 前置 PLAN-690 未合并（690 现状 reviewed 待 merge），
+  本批不执行。
 - **T-04** 散测试归位（AC-04；§5 刀④）。验证：§6 T-04 行四档 + rename 100% 对拍。
+  [✅ 主体完成] commit `1b56f9541`：90 文件+test_util/ git mv（90×R100 + 2×R09x
+  =plan492 互引修）；lib.rs -91 声明块迁 tests.rs（cfg 门/溯源注释原样）。
+  勘正三枚：①**test_runner 例外留根**——生产依赖勘定（vm/ffi/stdlib.rs:10921
+  `auto.test.*` natives 调 discover/run，Plan 263），91→90；②plan077_integration_tests
+  为死文件（声明早已注释，1.3k 行从未编译）随迁保留注释态（删除候选另记）；
+  ③外引修 2+2 处（plan492_m4/m5 crate::tests:: 前缀 + conformance_tests 两行
+  test_util use）。四档门禁进行中（cargo t 先行）。
 - **T-05** 全量门禁 `cargo tf`（AC-05 前半）。
 - **T-06** 复审（/auto-plan:review）+ merge 账本三件套 + 归档（AC-05 后半）。
 
@@ -213,6 +233,13 @@ plan340_tests:7444、musk_vm_track_tests:7826，声明带 Plan 编号溯源注�
 - 2026-09-22 work start（auto-plan:work）：用户裁定 Q-1=gpui 删除（未来需要再独立加，
   属拆仓后）；Q-2/Q-3 采默认。开工序：master 提交骨架 → worktree lang-691/plan-691-dev。
   T-03 前置 PLAN-690 未合（plan-690-dev 在途），本批执行 T-01/02/04/05。
+- 2026-09-22 work 进行中（r2）：T-01 ✅ f876e2661 / T-02 ✅ a5c5d0d49 / T-04 ✅
+  1b56f9541（四档门禁在途）/ T-03 ⏸ 阻塞（等 690 merge）。**环境注记**：主检出
+  `blueprints/` 盘损（68 文件未暂存删除+空嵌套目录，他方会话作业面，未代处置——
+  基线对拍时以其导致 19 环境红在案）；**并发注记**：worktree 内 4 个 docs/specs
+  文件（INDEX/project/ui.architecture/ui.overview）21:47:54 同毫秒簇被外部位写
+  （内容=SD-03 gpui specs 同步），按多会话礼仪不吞并、留位未暂存，归属待用户裁定；
+  worktree 依赖位=组内 auto-down detached@3373a5c（master 已含 D17 修复）。
 
 ## 10. 待澄清事项
 
