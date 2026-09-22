@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-684
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: 018-book-reader-sidebar-ux
 author: [agent]
 created_at: 2026-09-22
@@ -497,6 +497,32 @@ col.w-full.h-full.min-h-screen        ← 占满嵌入视口/窗口
   （vue-tsc 首绿经 ts_adapter 桩表补全）、cargo t vm_only 2/2、gallery 12/12；
   T-07 中断漏做已补（SD-01..03 + P675-D1 ①② demo 面清偿 + P684-D1/D2 记债）
   | blockers: 无 | next: review
+- [2026-09-22] `stage: review` | plan_id: PLAN-684 | plan_revision: 8 | outcome:
+  **pass** | reviewed_commit: `d433e3f29`（复审随批含测试修复；实现面
+  a746b76c1..6044fb1b9 十六提交） | base_commit: `ce77f58fe` |
+  dependency_revisions: 无跨仓依赖（auto-os ui-gallery 消费面经
+  AUTO_GALLERY_APPS 走查验证，无代码改动） | spec_inputs:
+  docs/specs/widgets/viewport-boundary.md + docs/specs/auto-lang/ui/overview.md
+  （SD-01/02 落地核读）+ KNOWN-DEBT P675-D1/P670-D1 | acceptance_results:
+  AC-01..08 pass（018：走查 8e4ba1eab + 代码抽查 storage 接线
+  reading.at:158/settings.at:120-139、债行更新 6044fb1b9）；AC-09..12 pass
+  （022：走查 + pac.at:12 window:"1120x740" + app.at:14-15 主题契约 + 原始
+  色板 grep 0 命中）；AC-13..15 pass（024：走查前后对照 + SFC watch 重放 +
+  tf 内 test_charts_gallery_compiles 绿）；AC-16 pass（025 三提交走查）；
+  AC-17 pass（026 三提交走查）；AC-18 pass（027 三路径本会话实证：gallery
+  真盘 66 项/导航 29 项/排序翻转/平板档 + standalone vue 骨架后备
+  fs_home()=""/list ok:false + VM 实拍不回归；probe_027_*.mjs 可重放） |
+  findings: F-1 T-07（SD-01..03）被中断会话漏做——本会话补齐（6044fb1b9）；
+  F-2 plan408 断言滞后于 T-12 ADR-19 发射形态（本分支引入，tf 快败根因）——
+  已修（d433e3f29，断言改 async __autoReplayInit）；F-3 auto-man 测试面
+  PLAN-681 generate_api_rs 三参化遗留 11 处 E0061（master 测试目标编译即坏，
+  非本分支引入）——随批修复构建；余 3 红全预存（shell_pack=在册已知 +
+  plan593 css golden/merged_api_client=681/672 基线漂移类，另案） |
+  evidence: tf 3722/3722 全绿（--no-fail-fast）+ auto-man 324/327（3 预存
+  上列）+ cargo t vm_only 2/2 + gallery 12/12 + 027 auto build 绿（vue-tsc
+  首绿）+ evidence/p682/ 25 PNG + 6 探针脚本 | next: merge
+  - 同会话复审局限注记：本复审在实施会话内进行；判据全部自仓内耐久工件
+    （提交 diff/测试输出/走查截图/可重放探针）重建，不依赖执行者口头总结。
   - 会话中断接续注记：前一 agent 中断于 rev7 中途（api.at 对象访问误用
     fs.read_dir 字符串数组形态 + pac 已改未提交）；本会话重写为 thin 契约形态、
     补 vue 轨接线/守卫/纯函数迁移与两处 crates 修复（桩表 + 扫描栈）后收口。
