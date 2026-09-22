@@ -29255,8 +29255,11 @@ mod tests {
         // popover）退役为切换面板——缩略叶 4→2。PLAN-012 W3：切换器
         // popover 化（content 预构建）且每分区卡一枚 workspace_preview
         // 叶 ×2（pack 默认分区）→ 预构建缩略/预览叶 2→4。
+        // PLAN-040 F2b：条目 hover 预览列**全部同 app 实例**（合并 icon
+        // 的预览选实例语义）——夹具两窗 app 串均空（同 app 全匹配），每
+        // 条目预构建 2 枚缩略 → 缩略叶 2→4，预览叶 2 不变，基线 4→6。
         let (p0, t0) = counts(&ds);
-        assert_eq!((p0, t0), (0, 4), "无 hover 基线零 open、两缩略+两预览叶");
+        assert_eq!((p0, t0), (0, 6), "无 hover 基线零 open、四缩略（2 条目×全实例）+两预览叶");
 
         // dock hover b：b 条目 popover open ×1（缩略叶已在预构建集内）。
         {
@@ -29268,7 +29271,7 @@ mod tests {
         }
         let (p1, t1) = counts(&ds);
         assert_eq!(p1, 1, "dock hover 打开单个 popover");
-        assert_eq!(t1, 4, "缩略/预览叶集不变（open 不增建；W3 后基线 4）");
+        assert_eq!(t1, 6, "缩略/预览叶集不变（open 不增建；F2b 后基线 6）");
         // PLAN-010 N6c：hover 离开只清预览态（HoverLeave，原 HoverEnd 退役）。
         {
             let app = ds.apps.get_mut(&shell).unwrap();
