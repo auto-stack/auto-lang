@@ -158,7 +158,7 @@ widget App {
 
     view {
         col {
-            style: "w-full h-screen flex flex-col bg-background text-foreground select-none overflow-hidden font-sans"
+            style: "w-full h-full min-h-screen flex flex-col bg-background text-foreground select-none overflow-hidden font-sans"
 
             // ══════════════════════════════════════════════════════════════
             // 顶部工具栏与路径条
@@ -1034,6 +1034,26 @@ widget App {
                     .has_items = (kept > 0)
                     .total_size_str = format_size(total_bytes)
                 }
+            } else {
+                // PLAN-684 rev6：Vue 轨无真 FS（PLAN-680 Q3）——加载演示虚拟
+                // 目录，gallery 内嵌可浏览；真 IO 仍仅 VM 轨。
+                .home = "demo://home"
+                .current_path = "demo://home"
+                .addr = "demo://home"
+                .quick.push({ path: "demo://home", label: "主目录", is_home: true })
+                .quick.push({ path: "demo://docs", label: "文档", is_home: false })
+                .quick.push({ path: "demo://pics", label: "图片", is_home: false })
+                var demo = []
+                demo.push({ id: 0, name: "Documents", path: "demo://home/Documents", is_dir: true, size: 0, size_str: "", file_ext: "", type_name: "文件夹", date: "2026-09-20 10:00", is_hidden: false, thumb_src: "" })
+                demo.push({ id: 1, name: "Pictures", path: "demo://home/Pictures", is_dir: true, size: 0, size_str: "", file_ext: "", type_name: "文件夹", date: "2026-09-20 10:00", is_hidden: false, thumb_src: "" })
+                demo.push({ id: 2, name: "Downloads", path: "demo://home/Downloads", is_dir: true, size: 0, size_str: "", file_ext: "", type_name: "文件夹", date: "2026-09-18 09:12", is_hidden: false, thumb_src: "" })
+                demo.push({ id: 3, name: "readme.md", path: "demo://home/readme.md", is_dir: false, size: 2048, size_str: "2 KB", file_ext: "md", type_name: "Markdown", date: "2026-09-21 14:30", is_hidden: false, thumb_src: "" })
+                demo.push({ id: 4, name: "report.pdf", path: "demo://home/report.pdf", is_dir: false, size: 245760, size_str: "240 KB", file_ext: "pdf", type_name: "PDF", date: "2026-09-19 11:05", is_hidden: false, thumb_src: "" })
+                demo.push({ id: 5, name: "photo.png", path: "demo://home/photo.png", is_dir: false, size: 1048576, size_str: "1 MB", file_ext: "png", type_name: "图片", date: "2026-09-17 16:44", is_hidden: false, thumb_src: "" })
+                .files_view = demo
+                .has_items = true
+                .item_count_str = "6 个项目"
+                .total_size_str = "1.2 MB"
             }
             }
         }
