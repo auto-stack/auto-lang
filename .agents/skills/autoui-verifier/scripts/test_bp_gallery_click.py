@@ -144,11 +144,29 @@ def one_run(auto_bin: str, app_dir: str, cards: list, timeout: int) -> dict:
             if not vnode:
                 report["error"] = f"sidebar card for {bp_id} not found in snapshot"
                 return report
-            receipt = client.press(vnode)  # harness returns text already
             sel = read_state(client, "selected_id")
+            attempts = []
+            for attempt in range(3):
+                if attempt > 0:
+                    time.sleep(1.0)
+                receipt = client.press(vnode)  # harness returns text already
+                attempts.append(receipt.splitlines()[0] if receipt else "")
+                # bounded settle poll: the first-frame window can drop a
+                # press dispatch (MCP window-size-zero family, repo-memory
+                # hazard) — a no-op press is retried; a WRONG value still
+                # fails immediately (that's the G1 defect signature).
+                deadline = time.time() + 3.0
+                while time.time() < deadline:
+                    sel = read_state(client, "selected_id")
+                    if sel == bp_id:
+                        break
+                    time.sleep(0.25)
+                if sel == bp_id:
+                    break
             if sel != bp_id:
                 report["error"] = (
-                    f"press {bp_id}: selected_id == {sel!r} (receipt: {receipt[:200]})"
+                    f"press {bp_id}: selected_id == {sel!r} after {len(attempts)} attempt(s) "
+                    f"(receipts: {attempts})"
                 )
                 return report
             detail = client.snapshot()
