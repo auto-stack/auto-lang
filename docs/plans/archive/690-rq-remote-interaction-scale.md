@@ -368,7 +368,10 @@ SetCursor 下行更新 client 状态 → 下一帧 daemon UI 自带该 interacti
   json 载入验证过。
   `archived`=git mv archive/690-rq-remote-interaction-scale.md+status
   archived（本行）。
-  `cleaned`=（待清理后回填）。
+  `cleaned`=双 worktree guard clean 后移除（lang-690/auto-lang @8a1b9a1ed
+  已落+lang-690/auto-down detached 只读）；分支 plan-690-dev 删
+ （was 8a1b9a1ed）；组目录清（走查脚本/临时截图为会话产物不入库——
+  canonical 录证三张+报告已随 delivery 入库）。五 checkpoint 闭环。
 
 ## 待澄清事项
 
