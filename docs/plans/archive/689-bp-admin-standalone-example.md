@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-689
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
+completion_kind: delivered
 feature_name: bp-admin-standalone-example
 author: []
 created_at: 2026-09-22
@@ -260,6 +261,34 @@ rs/at/ts/vue/md/json/toml/yml/py/mjs。）
     goals.md GOAL-010/011 括注），已随 delivery 1d829b935 提交；
     frontmatter 维持 supersedes=[]/new=[]，touched_goals
     [GOAL-010, GOAL-011] 为完整影响面。
+
+- **merge 合并收据（PLAN-689:r1，2026-09-22）**
+  `stage: merge | PLAN-689 | r1 | pass | delivery 7f74a9c46 | 归档
+  docs/plans/archive/689-bp-admin-standalone-example.md | cleaned 待
+  回填`
+  - **prepared**：reviewed_commit 1d829b935（base 97614062f，dep
+    auto-down fba6563 只读）；canonical spec 改动已在 reviewed commit
+    内（指针性更新两处），无额外 delta；账本投影=ui/plans.md 表行+
+    specs.json P689-1(architecture)/P689-2(reviews)。
+  - **rebase 与哈希映射**：review 后 master 介入 PLAN-682 完整 merge
+    （代码+账本同文件）+684/688 簿记——实现提交干净重放
+    **1d829b935→6d4e3af7f**（`git range-diff` 1:1 全等）；首轮账本
+    提交 c23c27b46 与 682 账本冲突，裁定弃置改在新基线重做（账本=
+    projection-only 件，非 review 证据）；rebase 后受影响面复验绿
+    （plan657 3/3+app_registry 25/25+gen-only 29 组件——682 落过
+    vue 生成器代码）。
+  - **landed**：`git merge --ff-only plan-689-dev` → master=
+    **7f74a9c46**（无 merge commit；14 files，rename 识别完整）；
+    主检出冒烟 plan657 3/3+app_registry 25/25+gen-only 29 组件绿。
+  - **ledger_refreshed**：主检出 specs.json 回读 P689-1/P689-2 在位
+    +P682-1/P657-1 完好；外科插入 27 行纯新增（EOF 无尾换行形态
+    保持，682 先例对齐）；INDEX 再生零漂移免提交。
+  - **archived**：git mv → docs/plans/archive/ + status archived +
+    completion_kind delivered（本行随归档提交）。
+  - **cleaned**：待回填（worktree/分支/组目录清理后补）。
+  - 伴随 watch：CI build-ui-examples 首跑绿（GitHub 侧）；auto-os
+    画廊再发射（35→34 demos/会话 7→6，PLAN-666 先例 regen+跨仓提交）
+    ——均不在本仓 worktree 内执行。
 
 ## 待澄清事项
 
