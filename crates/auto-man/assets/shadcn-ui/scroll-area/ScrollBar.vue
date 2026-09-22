@@ -24,7 +24,9 @@ const delegatedProps = reactiveOmit(props, "class")
          props.class)"
   >
     <!-- PLAN-692 unified thumb: thickness = --sb-size (8px default), hover widens
-         +2px/side, press highlights primary. Reka drives thumb length through inline
+         +2px/side with a subtle brighten (muted-foreground at 60% — NOT a loud
+         theme-color highlight; user ruling 2026-09-22: no press/active highlight).
+         Reka drives thumb length through inline
          `width/height: var(--reka-scroll-area-thumb-{width,height})`; the thickness
          side is undefined by reka, so the thickness var is layered here per orientation
          (vertical consumes width, horizontal height) without touching the length var.
@@ -33,7 +35,7 @@ const delegatedProps = reactiveOmit(props, "class")
          cross-axis centering (items-center) shifts the origin and breaks drag
          mapping (grab jump + inverted feel). justify-center centers thickness only. -->
     <ScrollAreaThumb
-      class="relative rounded-full bg-border transition-all duration-150 cursor-pointer active:bg-primary"
+      class="relative rounded-full bg-border transition-all duration-150 cursor-pointer hover:bg-muted-foreground/60"
       :class="orientation === 'vertical'
         ? '[--reka-scroll-area-thumb-width:var(--sb-size,8px)] hover:[--reka-scroll-area-thumb-width:calc(var(--sb-size,8px)_+_4px)]'
         : '[--reka-scroll-area-thumb-height:var(--sb-size,8px)] hover:[--reka-scroll-area-thumb-height:calc(var(--sb-size,8px)_+_4px)]'"
