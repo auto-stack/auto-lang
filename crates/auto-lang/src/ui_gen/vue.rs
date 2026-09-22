@@ -2232,7 +2232,7 @@ impl VueGenerator {
         html.push_str(&format!("{}<div>\n", ind));
         html.push_str(&format!("{}  <div class=\"flex items-center gap-2 mb-4\">\n", ind));
         html.push_str(&format!("{}    <span class=\"h-2.5 w-2.5 rounded-full {}\" />\n", ind, dot_class));
-        html.push_str(&format!("{}    <h2 class=\"text-sm font-semibold uppercase tracking-wider text-muted-foreground\">{}</h2>\n", ind, name));
+        html.push_str(&format!("{}    <h2 class=\"m-0 text-sm font-semibold uppercase tracking-wider text-muted-foreground\">{}</h2>\n", ind, name));
         html.push_str(&format!("{}    <span class=\"text-xs text-muted-foreground/60\">({})</span>\n", ind, count));
         html.push_str(&format!("{}  </div>\n", ind));
         html.push_str(&format!("{}  <div class=\"grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3\">\n", ind));
