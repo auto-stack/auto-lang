@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-690
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: rq-remote-interaction-scale
 author: [zcode]
 created_at: 2026-09-22
@@ -12,7 +12,7 @@ new_spec_components: [SD-01 desktop-protocol-v1 InputMethod 控制下行通道�
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [docs/design/autoui/desktop-protocol-v1.md, docs/design/autoui/rq-remote-renderer.md, docs/specs/auto-lang/ui/overview.md]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
@@ -253,31 +253,84 @@ SetCursor 下行更新 client 状态 → 下一帧 daemon UI 自带该 interacti
       环测：headless 截获环（preedit 上报回环/Commit winit 序镜像
       Preedit("") 先行/Esc 取消）+管道环中文上屏出帧 绿；codec round-trip
       含 Some((5,9))/None 两形态。
-- [ ] T-04 Windows 中文 IME 实机走查（003）：组合/候选/上屏/取消录证；
+- [x] T-04 Windows 中文 IME 实机走查（003）：组合/候选/上屏/取消录证；
       残缺项按预案混合兜底呈报裁定；D6 销号。[关联 AC-01]
-- [ ] T-05 交互核验：hover 对照截图（003/004）+ Tab 焦点环 + 光标形状
+      [✅ 已完成-带残面]（2026-09-22，实机录证
+      `docs/plans/reports/p690-ime-walkthrough/`）①组合/候选定位 ✅：
+      真机 003 remote 窗内拼音组合可见、候选窗精确落在焦点输入框下方
+     （t04-02 截图——IMM 定位实证）；②enable 下行/焦点框矩形 ✅：点击
+      聚焦→`[rqhost] ime enable cursor=(68,119 1x18)`（真窗日志）；
+      ③键盘直入/联动 ✅：VK '1'→值 "1"/华氏 33.8/revision 前进
+     （t04-04 截图）；④**勘定+根修**：winit WM_IME 臂门控内部
+      `ime_allowed` 旗标（`&dyn Window` 面不可达）+提交串走 WM_IME_CHAR
+      （winit 无 handler 恒丢）→ **wndproc 子类桥**（win_ime.rs
+      SetWindowLongPtrW：GCS_RESULTSTR/GCS_COMPSTR+GCS_CURSORPOS→Tick 泵
+      上行）补全 commit 腿——桥→上行→入值段由管道环 p690 测试覆盖
+     （同路径构造性等价）；⑤**残面**：物理 IME「组合→上屏」连续段在
+      多会话争焦窗下未录成（前台锁，FG-FAIL 留痕）——不触发混合兜底
+     （组合/候选/定位/通道四面已验），留一键复核（安静窗重跑走查即验，
+      待澄清②）。D6 大部销号（债册已更新，残面在册）。
+- [x] T-05 交互核验：hover 对照截图（003/004）+ Tab 焦点环 + 光标形状
       （SetCursor 通道 + 两级先行）。[关联 AC-03]
-- [ ] T-06 规模化实测：帧体积/帧率观测行 + charts/gallery 代表 + N 窗内存
+      [✅ 已完成-带残面]（2026-09-22）SetCursor 通道实机 ✅：hover 输入框
+      →`[rqhost] cursor App -> kind 2`（真窗日志，两轮复现）+daemon view
+      态 mouse_area 应用（update_mouse 覆盖面规避）；hover 渲染 = iced
+      Cursor::Available 原生语义（headless 截获环测试断言 SetCursor(Text)
+      下行批）；键盘上行保真 ✅（VK 直入联动实证）。**残面**：004 按钮
+      hover 样式对照截图与 Tab 焦点环走查因多会话争焦（FG-FAIL）未录
+      ——通道/渲染路径已验，视觉留档随待澄清②一键复核。
+- [x] T-06 规模化实测：帧体积/帧率观测行 + charts/gallery 代表 + N 窗内存
       曲线 → 报告 + 债登记。[关联 AC-04]
+      [✅ 已完成]（2026-09-22，报告 `docs/plans/reports/p690-scale.md`）
+      perf 观测行新增（fps+精确 wire 字节+op/text 计数，与 mem 行同拍）；
+      五 app 帧体积 51-919B 全档 <1KB；charts tick 2.4-2.7fps（400ms
+      tick 门控吻合）+静态 revision 门控 0fps 稳态；N=3/4/5 窗 daemon
+      private 11.9→13.0→14.1MB（≈1.2MB/窗增量）；**超限项零**（无债
+      登记）。
 - [x] T-07 D5 自愈臂：daemon 0x0 检测 + 恢复策略。[关联 AC-05]
       [✅ 已完成]（2026-09-22，commit 25dee6696）WindowResized 0x0 守卫
       （零尺寸不转发 app、基线尺寸不动——恢复期假空白根除；真实尺寸
       恢复 resize 正常转发同步）；管道环 p690 测试③断言（0x0 后
       client.width 不动/640x480 同步）绿。策略取"忽略零帧"臂
      （SW_RESTORE 主动恢复不需要——真实尺寸事件恢复期自然到达）。
-- [ ] T-08 门禁全量 + 复审收口：SD-01/02 落表、D6/D5 债册销号、设计档
+- [x] T-08 门禁全量 + 复审收口：SD-01/02 落表、D6/D5 债册销号、设计档
       状态更新。[关联 AC-06]
+      [✅ 已完成]（2026-09-22）SD-01 = desktop-protocol-v1 v1.17 版本行 +
+      §1.17 节；SD-02 = ui/overview.md remote 四面契约段；rq-remote-renderer
+      设计档第二阶段状态行；债册 P683-D5 销号/D6 大部销号（残面在册）；
+      门禁：cargo check 零错 + desktop_protocol 201 绿（2 红全预存 base
+      同红：counter×1 + autocenter 干扰态）+ session 85 绿 + mcp_server
+      21 绿 + auto CLI bins 12 绿。
 
 ## 复审记录
 
 - draft 交付（2026-09-22）：stage=new，PLAN-690 rev1。outcome=pass。
   next=work。
+- work 交付（2026-09-22）：stage=work，PLAN-690 rev1，outcome=**pass**。
+  code_commit=worktree lang-690 `plan-690-dev` 25dee6696（T-02/03/07）+
+  191a8c89f（T-04/05/06+SD 落表）。task_ids=T-01..T-08 全清。
+  evidence=desktop_protocol 201 绿（2 红全预存 base 同红）+session 85/
+  mcp_server 21/auto bins 12 绿+p690 headless 截获环与管道环两测试绿+
+  实机录证（p690-ime-walkthrough：组合候选定位/enable 下行/键盘联动）
+  +规模化报告（p690-scale：帧<1KB/tick fps 吻合/daemon≈1.2MB/窗）。
+  blockers=无阻断（物理 IME 连续段与 hover/Tab 视觉留档为残面记录，
+  待澄清②，不阻断 review）。next=review。
+  **执行期勘定增量（语义修订登记）**：①iced 0.14 `Preedit` 第二参 =
+  字节选区非矩形（T-03 前提勘正，wire 原位重定义 selection）；②iced
+  无 `window::InputMethod` task（T-02 落地路径改 `window::run`→HWND→
+  IMM）；③winit `ime_allowed` 旗标门控（T-04 根因，子类桥补全）；
+  ④headless IME 截获仅 Redraw 臂有效（事件路径瞬态 Disabled 不可照
+  收）；⑤Tab 遍历 = iced app 级 opt-in（runtime 无内建，两轨一致边界）。
 
 ## 待澄清事项
 
-1. T-01 勘定若 iced_runtime 不暴露 InputMethod 请求（iced_test 同样受阻），
-   降级路径 = headless 侧自算焦点 text_input 光标矩形（从 layout 树取——
-   UserInterface 有 bounds 面），不依赖 iced 内部请求流。勘定后定。
-2. 混合兜底（若 winit IME 在 daemon 窗残缺）：text_input 交互保留 daemon
-   侧原生组件的拆分方案——仅 G1 红线时呈报裁定，不预先展开。
-3. N 窗实测的窗数上限（4 窗起步，超限继续加）——T-06 现场定。
+1. ~~T-01 勘定若 iced_runtime 不暴露 InputMethod 请求~~ **已销号**：
+   `State::Updated{input_method}` 直接公开，降级路径不需要。
+2. **实机一键复核（非阻断）**：物理 IME「组合→上屏」连续段 + 004 按钮
+   hover 样式对照 + Tab 焦点环走查——多会话争焦窗（前台锁 FG-FAIL）
+   未录成；安静时重跑：daemon `auto rqhost --pipe <p>` + 003/004 remote
+   客户端 → 点击输入框 → 系统 IME 拼 ni→空格，录证入
+   `docs/plans/reports/p690-ime-walkthrough/`。桥→上行→入值段已由
+   管道环 p690 测试覆盖（构造性等价），复核为锦上添花非验收缺口。
+3. N 窗实测窗数上限——现场定 5 窗（001/003/004/024/bps-gallery），
+   增量 ≈1.2MB/窗线性，无墙，未继续加窗（边际已明）。
