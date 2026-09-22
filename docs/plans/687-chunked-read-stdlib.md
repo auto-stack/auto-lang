@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-687
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: chunked-read-stdlib
 author: [zcode]
 created_at: 2026-09-22
@@ -152,6 +152,27 @@ IO 层并未分块（多块调用 = IO 平方；全文件反复过内存）。�
     mem 37MB、拓扑门过；open 段败于**新登记缺口**（a2r 生成物
     Tick 改 store 后 code_editor 视图不重建/不注册——auto-edit
     upstream §10 在档，独立于本计划三件）。
+- 2026-09-22T16:35:00+08:00 · stage: review · PLAN-687 · r1 ·
+  **outcome: pass**（独立性声明：执行会话内复审，结论自工件与可复现
+  命令重建）。
+  - `reviewed_commit`: aa307c155（plan-687-dev tip，3 commits；worktree
+    `D:/autostack/.wt/lang-687/auto-lang` clean 实证）
+  - `base_commit`: ea2a4af4d（master）
+  - `dependency_revisions`: auto-down fba6563（组内兄弟树）；下游消费方
+    auto-edit plan-007-dev @ 5063e73（已 reviewed）
+  - `spec_inputs`: 本仓无既有 module spec 覆盖 read_text_range（673
+    契约注释在代码+供料文档）；SD-01 流式收窄注记已写入函数 doc。
+  - `acceptance_results`：AC-1 pass（复审复跑：parity 1/1 +
+    a2r-std 2/2 + load_file 1/1 全绿；catalog 门 4/4 在档）；
+    AC-2 pass（两新测=多块拼接回读 8MB 精确等值+收窄语义构造例）；
+    AC-3 pass（下游 100MB 装载 219MB vs 锚 521 -58% 全档 Flat
+    ——auto-edit PLAN-007 复审基线 evidence）。
+  - `findings`：无阻塞件。非阻塞记录：nat id 无唯一性守卫（P673-D2
+    债，9907 撞号实测在档——候选修法已在册）。
+  - `evidence`: 本记录内联复跑结果；下游 evidence 见 PLAN-007 复审
+    记录（results/20260922-150608.jsonl 入 auto-edit 仓）。
+  - `next`: merge（作为 PLAN-007 落地 F-1 前置——先落本仓再重建
+    下游主检出工具链）。
 
 ## 待澄清事项
 
