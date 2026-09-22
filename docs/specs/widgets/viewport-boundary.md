@@ -44,7 +44,19 @@ CSS `margin:auto` safe-center 语义。带 overflow 的列不展开（滚动交�
 `AppViewport.vm.at`、未来 desktop-host/虚拟桌面窗）零声明改动即得正确语义；
 新宿主的规范声明形态 = `w-[W] h-[H] overflow-y-auto` frame + 子项 `m-auto`。
 
-## 3. 契约边界
+## 3. demo 壳层 chrome 禁令（PLAN-684 SD-01）
+
+demo 根部件（examples/ui/*/src/front/app.at 外壳）禁用 viewport-fixed 铬件：
+`fixed` / `inset-y-0` / `inset-0` / `sticky` 锚定**浏览器视口**而非嵌入容器，
+gallery `AppViewport` 的 deep 覆盖只改写 `.h-screen/.min-h-screen/.w-screen`
+高宽类、不覆盖 fixed——侧栏/遮罩穿出视口卡（018 `fixed inset-y-0 z-40`
+实证，P675-D1 ②）。正确形态：**flex 行 + 侧栏 `shrink-0 h-full` + 主区
+`flex-1 min-w-0 overflow-auto`**（高度锚定父容器，deep 覆盖后=容器高）；
+模态遮罩用容器内 absolute（滚动容器 `relative`）。仅容器内滚动条/吸顶
+元素允许容器坐标的 absolute/sticky。同族修复示例：018（T-01）/022
+（rev2 app frame）/025/026/027（`h-full min-h-screen` 全高壳）。
+
+## 4. 契约边界
 
 - `h-full`（Full）不重锚定（父容器百分比原义保留；全屏外壳仓内惯例 = h-screen）。
 - T-12 Shrink 兜底**不退役**：与 `Screen→Fixed(边界)` 组合成立（Fixed 不受 Shrink

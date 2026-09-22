@@ -1065,6 +1065,29 @@ class；`menubar_checkbox_item` 为 vm view_builder 既有臂的 schema 补册
 裸 div 而非 Menubar* 组件）为后续计划候选；bps reference 语料的既有
 S001 漂移（select.value/skeleton.lines 等）为容忍面非本契约。
 
+## 示例壳层与后端读盘契约（PLAN-684）
+
+**嵌入安全壳层（018-book-reader 实证，SD-01 联动 viewport-boundary）**：demo
+根 chrome 禁用 viewport-fixed 定位——`fixed`/`inset-y-0`/`inset-0` 锚定的是
+浏览器视口，gallery `AppViewport` 的 deep 覆盖只改写 `.h-screen/.min-h-screen/
+.w-screen` 高宽类、不改写 fixed，侧栏/遮罩会穿出视口卡（P675-D1 ② 实证）。
+正确形态 = **flex 行 + 侧栏 `shrink-0 h-full` + 主区 `flex-1 min-w-0 overflow-auto`**，
+高度锚定父容器（`h-full`/`h-screen` 语义，deep 覆盖后=容器高）；对话框遮罩用
+**容器内 absolute**（页面滚动容器 `relative`），不用 fixed。阅读示例契约：TOC
+抽屉（非常驻树）、阅读偏好 storage 键 `br-font-size` / `br-line-height`（Settings
+写入、Reading `.Init` 读取映射 class）、Continue Reading 推荐条。
+
+**fullstack demo 后端读盘形态（027-file-manager rev7，PLAN-680 Q3 L2）**：前端
+`fs.*`/`file.*` 为 `__vmOnly`，Vue 轨读真盘走 `src/back/api.at` HTTP 契约。
+**thin 契约纪律**——`#[api]` 端点体恒为单行 `return impl_xxx(...)` 委托（无
+控制流），真实现住同文件普通 fn：gallery back-proxy VM 会话全语义执行（进程内
+fs.* native 面）；standalone rust 后端（`auto run` 缺省）thin 体跳过 a2r 内联
+转译、落签名模板 Default（`{ok:false}`/`""`），前端落演示目录后备——规避 a2r
+转译面无 `fs.*` 目录 native 的 E0425 坏产物（P670-D1 债另案）。契约带 `pub
+type` 亦关 route A（api_impl.rs 不发射）。路径/面包屑/排序走前端纯函数
+（fs_util `parent_of`/`build_crumbs`/`sort_files`——双轨同源，VM 轨 inline 块
+迁移共用）。
+
 ## 已知坑
 
 - **`video` 元素：Vue 是原生 `<video>`，iced 是原生命中播放面（PLAN-617；SD-05）**：
