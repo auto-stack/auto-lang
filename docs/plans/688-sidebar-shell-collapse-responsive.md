@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-688
-status: execution_done       # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: sidebar-shell-collapse-responsive
 author: [agent]
 created_at: 2026-09-22
@@ -11,8 +11,8 @@ total_steps: 7
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components: ["docs/specs/blueprint/contract.md#interactive-state-bp", "docs/specs/blueprint/project.md#sidebar-shell"]
+touched_goals: ["GOAL-011"]   # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [blueprint]          # docs/specs/blueprint/{contract,project}.md
 ---
@@ -251,8 +251,8 @@ T-01(c) 勘定：已接线→仅记录；缺失→T-04 在按钮转换臂加 too
 
 | delta_id | add/modify/retire | docs/specs/ 目标 | before/after 规则 | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | modify | docs/specs/blueprint/contract.md | before：BP 参考实现皆静态、交互变体装配期选定；after：登记"交互态 BP"惯例——bp-private model var + toggle msg + `style: if`×响应式类组合（label 面/icon 面规则），sidebar-shell 为锚例 | 首个交互态 BP，组合语法可复用 | AC-03, AC-04 |
-| SD-02 | modify | docs/specs/blueprint/project.md | sidebar-shell 条目注记交互化（三段式/收缩/竖屏）+ mobile ☰ Non-goals 指针 | 消费方发现面 | AC-06 |
+| SD-01 | modify | docs/specs/blueprint/contract.md | before：BP 参考实现皆静态、交互变体装配期选定；after：登记"交互态 BP"惯例——bp-private model var + toggle msg + **双 pane 互斥可见性**（宽根 `hidden lg:block` / rail 根 `lg:hidden` 且 pane 根禁 display 类——is_hidden display 覆盖语义陷阱随例登记），sidebar-shell 为锚例（r2 用户裁定形态，r1 单树逐元素配方作废） | 首个交互态 BP，pane 互斥配方可复用 | AC-03, AC-04 |
+| SD-02 | modify | docs/specs/blueprint/project.md | sidebar-shell 条目注记交互化（三段式/双 pane 收缩/竖屏自动 rail/展开 pane icon+标题一体·rail icon 大一号）+ mobile ☰ Non-goals 指针 | 消费方发现面 | AC-06 |
 
 ## 6. 测试设计
 
@@ -390,6 +390,45 @@ T-01(c) 勘定：已接线→仅记录；缺失→T-04 在按钮转换臂加 too
 （每步完成后在对应任务下追加 `[✅ 已完成] <证据>` 一行。）
 
 ## 9. 复审记录
+
+### review（2026-09-22，r2）
+
+- stage: review | PLAN-688 | revision 2 | outcome: **pass（含复审内修复 F-1 后复验）** |
+  reviewed_commit: plan-688-dev 2115b76e5（链 06e792d2e→a4ad7f2e1→d4f7630eb→2115b76e5）|
+  base_commit: master 97614062f（merge 时需同步：master 已前移——PLAN-689 归档迁移
+  047-bp-admin 至 examples/bp-admin 并改 plan657 example_047() 路径，与本分支
+  plan657 收集器臂不同 hunk，可自动合并；本分支仍持旧位 examples/ui/047-bp-admin
+  的 F-1 修复，rename+modify 三方合并应无冲突）|
+  dependency_revisions: 组内 auto-down detached fba6563（复审中曾被外部清走致
+  ffi_dual 假红，重建后单测隔离过——并行会话互扰在案）|
+  spec_inputs: blueprints/navigation/sidebar-shell/{spec.md,gotchas.md} r2 形态；
+  docs/specs/blueprint/{contract,project}.md 待 SD-01/SD-02 落库（delta 表已更新
+  为 r2 双 pane 表述）|
+  acceptance_results: AC-01 pass（r2 宽栏截图三段式+全键 generic 文案+t09/640）；
+  AC-02 pass（**复审补证**：VM hover 态截图[SetCursorPos 真悬停]+VM 选中
+  [VTree bg:#334156+截图]+Vue hover 态+Vue 选中态[CUA 坐标点击]四证据齐）；
+  AC-03 pass（press handler ok+双 pane 互斥快照+选中保持）；AC-04 pass
+  （960↔1280 OS resize 两 pane 实时互换+768x1024 首绘 rail 截图）；AC-05 pass
+  （勘定记录口径：PLAN-053 EE03 链路+label 快照形态实证）；AC-06 pass
+  （Non-goals/gotchas 六条在位+compact 零改动+plan640 绿）；AC-07 pass
+  （`auto bp list --format at` diff=空复验+640 5/5+649 10/10+657 3/3+
+  check 零 error+iced 271/271+tf 5108/5108[四域外族排除，见 findings]）；
+  AC-08 pass（Vue 1280 宽 pane/768 rail pane 与 VM 同构，DOM 快照一体钮命名）|
+  findings: **F-1（已修）** 047-bp-admin nav 播种缺 icon 全键——r2 读
+  node.icon 缺键渲染无字形行（计划约束只修了 t09 fixture 漏在库消费方）；
+  修复 commit 2115b76e5（▦⚙▣◇ 四字形），plan657 3/3 复跑绿。**F-2（非阻断）**
+  plan640 collect_view_texts 无 Scrollable/Container 穿透臂（潜伏缺口，现无
+  活断言依赖——plan649/657 已修，待有需要时同款补）。**F-3（已修）** SD-01
+  delta 文本滞后 r1 单树描述→更新为 r2 双 pane。**F-4（域外基线红）**
+  musk_vm_track 族/desktop_protocol projector/a2vue_desktop_surface_asset
+  在 master 主检出同红（本计划零触碰面）；ffi_dual_019 并行互扰（依赖位被
+  外部清走时红，单测隔离绿）。**F-5（随行注记）** MCP vtree 快照滞后 view
+  缓存一拍——autoui-verifier gotcha 候选（merge 时沉淀）。rail badge 不显示
+  （v1 口径，.at 注释在案）非债。|
+  evidence: 全部证据以命令输出/截图判读记录于 §8 各任务行与本记录（临时
+  走查宿主已清理，程序可复现：t09 式宿主+AUTO_VM_WINDOW/AUTO_BACKEND_IMPL=vm）|
+  next: merge（/auto-plan:merge）——SD-01/SD-02 落库+账本+归档五 checkpoint；
+  merge 前同步 master（689 迁移面三方合并复核）。
 
 ### work handoff r2（2026-09-22，用户走查裁定返场）
 
