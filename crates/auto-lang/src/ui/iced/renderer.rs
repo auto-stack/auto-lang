@@ -6018,9 +6018,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         }
                     }
                 }
+                // 2026-09-22 修：stack 显式 Fixed(box)——原 Shrink 下
+                // Fill 子层（壁纸底/窗 tile 层）在 Shrink 测量语境解析
+                // 为 0×0，整预览塌缩不可见（pager 空卡实录）。
                 let root = iced::widget::stack(layers)
-                    .width(iced::Length::Shrink)
-                    .height(iced::Length::Shrink);
+                    .width(iced::Length::Fixed(box_w))
+                    .height(iced::Length::Fixed(box_h));
                 let mut cont = iced::widget::container(root)
                     .width(iced::Length::Shrink)
                     .height(iced::Length::Shrink);
@@ -10987,7 +10990,12 @@ pub(crate) fn push_dashboard_snapshot(
         if let Some(v) = host.wm.wins.get_mut(&dwid) {
             *v.rect.borrow_mut() = iced::Rectangle::new(
                 iced::Point::new((vw - snap.panel_w as f32 - 12.0).max(12.0), snap.panel_top as f32),
-                iced::Size::new(snap.panel_w as f32, snap.panel_h as f32),
+                // 高度含下缘 tab 条预留带（与 .at 根块 h = 外框 + 28 同构，
+                // 条内 tab 点击落入面板伪窗命中带）。
+                iced::Size::new(
+                    snap.panel_w as f32,
+                    snap.panel_h as f32 + DASH_TAB_STRIP_H,
+                ),
             );
         }
     }
@@ -11040,19 +11048,26 @@ pub(crate) fn push_notes_snapshot(
 // 宿主注入两段式，单一事实在宿主侧读回）。
 // ============================================================================
 
-/// dashboard 面板布局常量（PLAN-035 T-04 v2：桌面图标网格吸附 8×3——
-/// 外框 = 屏幕右上 8 列×3 行网格块，widget 卡 = 网格单元整数倍（缺省
-/// 2×2、声明/存储 3×2），卡框线落 88/80 节距网格；头行 = 网格行 0）。
-/// 宿主计算单一事实，面板 .at 经 `__panel_*` 注入镜像；face 格位由同一
-/// 算式产出（像素级一致，零漂移）。
+/// dashboard 面板布局常量（PLAN-035 T-04 v2：桌面图标网格吸附——外框 =
+/// 屏幕右上 8 列×2 行网格块，widget 卡 = 网格单元整数倍（缺省 2×2、
+/// 声明/存储 3×2），卡框线落 88/80 节距网格）。宿主计算单一事实，面板
+/// .at 经 `__panel_*` 注入镜像；face 格位由同一算式产出（像素级一致，
+/// 零漂移）。2026-09-22 用户裁定 8×3→8×2：T-18 满高 3 行格把 3x2/2x2
+/// 声明卡拉伸成 3 行高，面板回 2 行后卡落自然 2 格高。
 const DASH_GRID_COL: f32 = 88.0; // w-20 80 + gap 8（桌面图标列距）
 const DASH_GRID_ROW: f32 = 80.0; // h-[72px] 72 + gap 8（桌面图标行距）
 const DASH_MARGIN: f32 = 12.0; // 屏幕边距（桌面内容 p-3 同源）
-const DASH_COLS: usize = 8; // 外框列数（用户裁定 8×3）
-const DASH_ROWS: usize = 3; // 外框行数
+const DASH_COLS: usize = 8; // 外框列数
+const DASH_ROWS: usize = 2; // 外框行数
 
 const DASH_FRAME_PAD: f32 = 12.0; // 外框四围 padding（PLAN-035 T-14：
-// 外框 = 8×3 网格块四周外扩 12px 做 chrome 留白——卡片不再贴框缘）
+// 外框 = 8×2 网格块四周外扩 12px 做 chrome 留白——卡片不再贴框缘）
+
+/// 面板下缘 tab 条预留带（2026-09-22 用户裁定：分页 pill 从右上悬浮
+/// 改面板正下方 hover 显隐）。chrome wrapper 高度 = 面板外框 + 本带；
+/// .at 内 tab 行常驻占位（h-7 = 28px），按钮 hover 显隐——单一
+/// mouse-area 包面板+条全程，无跨元素 enter/leave 抖动。
+const DASH_TAB_STRIP_H: f32 = 28.0;
 
 /// face 卡片（格位算式输入）：registry id + 列跨度 + 所属 tab。
 /// R5：tab 由注册表 category 派生（"system" → 系统页，其余 → 小组件页）
@@ -11117,19 +11132,19 @@ mod plan024_dashboard_layout_tests {
         height: 800.0,
     };
 
-    /// 空清单：无格位，外框 = 8×3 网格块四围外扩 PAD 的固定矩形。
+    /// 空清单：无格位，外框 = 8×2 网格块四围外扩 PAD 的固定矩形。
     #[test]
     fn empty_faces_fixed_frame() {
         let (panel, cells) = dashboard_layout(VP, &[]);
         assert!(cells.is_empty());
         assert_eq!(panel.width, 8.0 * DASH_GRID_COL - 8.0 + 2.0 * DASH_FRAME_PAD);
-        assert_eq!(panel.height, 3.0 * DASH_GRID_ROW - 8.0 + 2.0 * DASH_FRAME_PAD);
+        assert_eq!(panel.height, 2.0 * DASH_GRID_ROW - 8.0 + 2.0 * DASH_FRAME_PAD);
         assert_eq!(panel.x, VP.width - DASH_MARGIN - panel.width);
         assert_eq!(panel.y, DASH_MARGIN);
     }
 
-    /// 网格算术：span2 卡宽 168、span3 卡宽 256；卡高 152（2 行格）；
-    /// 卡行 y = panel.y + 80（网格行 1 起）；x 落 88 节距。
+    /// 网格算术：span2 卡宽 168、span3 卡宽 256；卡高 152（2 行格，
+    /// 2026-09-22 裁定回自然高）；卡行 y = panel.y + PAD；x 落 88 节距。
     #[test]
     fn grid_unit_cell_geometry() {
         let faces = vec![face("a", 2), face("b", 3)];
@@ -11137,8 +11152,8 @@ mod plan024_dashboard_layout_tests {
         assert_eq!(cells.len(), 2);
         assert_eq!(cells[0].width, 2.0 * DASH_GRID_COL - 8.0);
         assert_eq!(cells[1].width, 3.0 * DASH_GRID_COL - 8.0);
-        // T-18：卡片满高 3 行格（232），原点 = 外框内缩 PAD。
-        assert_eq!(cells[0].height, 3.0 * DASH_GRID_ROW - 8.0);
+        // 卡高 = 满框 2 行格（152），原点 = 外框内缩 PAD。
+        assert_eq!(cells[0].height, 2.0 * DASH_GRID_ROW - 8.0);
         assert_eq!(cells[0].y, panel.y + DASH_FRAME_PAD);
         assert_eq!(cells[0].x, panel.x + DASH_FRAME_PAD);
         assert_eq!(cells[1].x, panel.x + DASH_FRAME_PAD + 2.0 * DASH_GRID_COL);
@@ -11171,10 +11186,10 @@ mod plan024_dashboard_layout_tests {
 }
 
 /// 面板布局算式（PLAN-035 T-04 v2——宿主/面板几何单一事实）：外框 =
-/// 屏幕右上 8×3 图标网格块（696×232 @ 12px 边距，节距 88/80）；face 卡
-/// = 视口绝对格位，行主序单卡行 next-fit（span∈{2,3} 缺省 2，余量不足
-/// 裁剪 + dev 日志——3 行外框仅容一行 2 格高卡，Q2 v1 裁剪策略）。头行
-/// = 网格行 0（格 72 + gap 8 → 卡行起点 panel.y + DASH_HEADER_H）。
+/// 屏幕右上 8×2 图标网格块（720×176 @ 12px 边距，节距 88/80，含四围
+/// PAD）；face 卡 = 视口绝对格位，行主序单卡行 next-fit（span∈{2,3}
+/// 缺省 2，余量不足裁剪 + dev 日志，Q2 v1 裁剪策略）。卡高 = 满框
+/// 2 行格（152）——2026-09-22 裁定退役 T-18 满高 3 行格。
 fn dashboard_layout(
     viewport: iced::Rectangle,
     faces: &[DashFace],
@@ -11209,7 +11224,7 @@ fn dashboard_layout(
     }
     if clipped > 0 {
         eprintln!(
-            "[dashboard] layout: {clipped} face(s) clipped — 8×3 外框仅容一行 2 格高卡（滚动/增高挂 v2 债）"
+            "[dashboard] layout: {clipped} face(s) clipped — 8×2 外框单行 {DASH_COLS} 列容不下（滚动/换行挂 v2 债）"
         );
     }
     (
@@ -20404,7 +20419,7 @@ fn compare_pngs(
                 let faces_view = dashboard_faces_for_view(state);
                 let viewport = state.host_viewport();
                 // PLAN-035 T-04 v2：dashboard_layout 直出视口绝对矩形
-                // （外框 = 右上 8×3 网格块 696×232 @12px；face 卡 88/80
+                // （外框 = 右上 8×2 网格块 720×176 @12px；face 卡 88/80
                 // 网格算术 2×2/3×2）——R10 十列外框 + 三等分内格 sx/sy
                 // 缩放路径退役。
                 let (panel, cells) = dashboard_layout(viewport, &faces_view);
@@ -20416,10 +20431,11 @@ fn compare_pngs(
                     iced::Color::from_rgba(1.0, 1.0, 1.0, 0.45)
                 };
                 // PLAN-036 T-05/T-06（B2）：chrome 二轨——outproc = child
-                /// 表面帧贴层（伪窗[4]，表面 = 035 固定外框 696×232 spacer
-                /// 链右上贴放）；in-proc = 面板 App 拆借视图 wrapper（原
-                /// 路径零变化）。face 卡两轨共用（宿主叠层——D1 修订：
-                /// 卡内容真渲保留宿主，面板 chrome/清单/grid = child）。
+                /// 表面帧贴层（伪窗[4]，表面 = dashboard_layout 外框
+                /// 720×176 spacer 链右上贴放）；in-proc = 面板 App 拆借
+                /// 视图 wrapper（原路径零变化）。face 卡两轨共用（宿主
+                /// 叠层——D1 修订：卡内容真渲保留宿主，面板 chrome/清单
+                /// /grid = child）。
                 let msg_target = state
                     .desktop
                     .dashboard_app
@@ -20440,7 +20456,9 @@ fn compare_pngs(
                                                 .height(iced::Length::Fixed(panel.y)),
                                             iced::widget::container(el)
                                                 .width(iced::Length::Fixed(panel.width))
-                                                .height(iced::Length::Fixed(panel.height))
+                                                .height(iced::Length::Fixed(
+                                                    panel.height + DASH_TAB_STRIP_H,
+                                                ))
                                                 .clip(true),
                                         ],
                                     ],
@@ -20483,7 +20501,9 @@ fn compare_pngs(
                                         dash_client.map(move |m| DM::App(dash_app, m)),
                                     )
                                     .width(iced::Length::Fixed(panel.width))
-                                    .height(iced::Length::Fixed(panel.height)),
+                                    .height(iced::Length::Fixed(
+                                        panel.height + DASH_TAB_STRIP_H,
+                                    )),
                                 ],
                             ],
                         )

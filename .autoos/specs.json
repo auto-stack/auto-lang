@@ -4453,6 +4453,18 @@
      "title": "a2r-deploy-gap-batch — handler 体内建映射表+伴生模块通用转译/route A+bps 依赖解析+动态记录面（SD-01）+trans 内建映射面契约（SD-02）",
      "content": "PLAN-681 a2r 部署面缺口清偿（P670-D1 四缺口+P674-D3 五子族，消费方 auto build -r rust 全编译过判据）：①S1 生成域扩容——ui_gen vm_builtin_host_call 单源映射表（VM 裸名内建→宿主调用：console 族→auto_lang::vm::ui_console 同一 ring 零分叉、code_editor 8 员→ui::code_editor 注册表、dialog_open/save→ui::dialog rfd 宿主、file_basename→a2r_std::fs::basename、Process.exit、json.to_value）+伴生模块通用转译（src/back/*.at 单转译源双发射位=back crate <stem>.rs+merged front 内嵌）+route A（api.at 剥 #[api] 属性行转译 api_impl，端点体真降体，back 委托 handler+front merged 真契约桩双位委派；CRUD mock 兜底=PLAN-648 契约降末位；R-1 修正：build_rust_ui 补 generate_api back 刷新）+bps 依赖解析面（pac dep 声明→use-fn 模块转译内嵌 mod __bps_*+星 use、裸 widget 名依赖包源补集）+on-only handler 载荷推断（STORE_MSG_PAYLOADS 预填+store 转发推断）+list-of-record 元素形状表；②trans 内建映射面契约——Env→env 大写归一化（Json 同款）+fs.tree 两派发表+宿主位两类（a2r-std 独立 crate 经迷你库 re-export 单源/auto_lang 直连零分叉）+双轨逐字节对拍纪律（fs_tree_parity 先例）+动态记录面（bare List=动态桶→Vec<Value>：P1 Value 派生推断/P2 字段索引访问/P3 push json!/P4 typed 收口/P5 形参收口）。消费方探针 134→0；fs.tree 对拍 2/2。文件=docs/specs/auto-lang/ui/design/shell-a2r-seams.md+docs/specs/auto-lang/trans/overview.md",
      "file": "docs/specs/auto-lang/ui/design/shell-a2r-seams.md"
+    },
+    {
+     "id": "P678-1",
+     "title": "rq-default-centering — -q 轨 RqProjector 根入口缺省居中放置契约（SD-01 收缩版）",
+     "content": "2026-09-22 收口（用户裁定 PLAN-683 远程 renderer 路线重写实现面，iced 窗口根臂弃做）。已落地半臂：RqProjector render_frame 主块 ops 实测 bbox 对中视口——内容尺寸严格小于视口−MARGIN×2 的轴整体平移（ops[Quad/QuadR/Scissor/Image rect+Text x/y]+hits 全变体 rect+right_hits 同 delta；choke=self.hits 收册前，overlays/select 弹层随行）；根显式视口/填充类（h-screen/w-full 族+min_height）该轴豁免；视口锚定 rect（全窗 scrim/PopoverDismiss）豁免；BitmapUpload 零坐标不平移；AUTO_NO_AUTOCENTER=1 构造期旁路；放置平移零测量语义改动（Plan 512「Fill 钉回窗口尺寸」塌缩机制正面规避）。测试缝分层：proj_center_off/proj_autocenter_off——自闭环管道环（counter_projector/stress 子体/reconnect 管道）钉预居中坐标关通道，生产孪生配对面（t3_child_body/remote_twin_hits/g2_counter_twin 视口 900→320）常开同态。与前置 e0e2d6b52（列臂 items-center 两遍法=声明居中）互补成套：实测 bbox 使已居中内容 delta=0 零叠加冲突。交付 979ce80c2（rebase patch-id 与原 T-02 相等 334e4527）。",
+     "file": "docs/plans/archive/678-rq-default-centering.md"
+    },
+    {
+     "id": "P679-1",
+     "title": "rq-style-parity — RQ 臂缺省调色板=theme 语义 token 单源（SD-01）+Phase 2 视觉保真四件（QuadR/预折行/渐变条带/group 视觉面）+P679-D1 两根修",
+     "content": "RqProjector 消费层硬编码暗色常量族（BG/BUTTON_BG/INPUT_*/TEXT_FG 等）全数改走 theme::resolve_semantic_rgb/resolve_border_rgb（stella registry 单源，dark/accent 感知；Design 22 §3 对表：clear/输入底=Background、按钮回退=Muted、placeholder=OnSurface、聚焦描边=Primary、select 选中=Accent）——RQHost「iced 原生控件感」根因消除。Phase 2（004-profile-card 对拍驱动）：wire tag 7 DrawOp::QuadR 圆角矩形（rounded-full 哨兵 9999 编码端解析 min(w,h)/2，broker_surface Path::rounded_rectangle）+NodeStyle radius/grad 三件（渐变=24 条带近似）+投影端 avail_w 预折行（词优先+CJK 兜底，逐行发射 text_center 居中，laid 高=n×line_h）+group（Row/Column/List）视觉面（padding 消费+max_width 钳制+bg/border/圆角绘制——bg-card RQ 轨不可见根修）。P679-D1 两根修：iced fit 宽度链全程 Fill 视口钳制（Shrink 宽零化 Fill 后代塌缩根修，AUTO_FIT_TRACE 诊断面）+Horizontal 行 flex 份额分配（flex-1/flex-auto 因子均分「行宽−gap−非伸缩子自然宽」，弃置重排全套快照回滚）。金样 003-converter 再生（纯色值零几何漂移）。残余边界 v1 在册：fit 窗 toast 不显示/渐变条带近似/头像无圆裁/Vertical 列 flex 不消费/hover 态无。2026-09-22 收口（683 重写在即，canonical Design 22 锚点列不落，delta 以本条存档）。交付 2b1ced631（rebase 链 75c217b67→73f67d334→8373585b1→8bdbee3d0→适配修补 5a629a54e 系）。",
+     "file": "docs/plans/archive/679-rq-style-parity.md"
     }
    ]
   },
@@ -7017,6 +7029,18 @@
      "title": "a2r-deploy-gap-batch 复审与合并收据",
      "content": "review r1 needs_fix@90cc1fab2（R-1：auto build -r rust UI 路径仅 front 再生成——generate_api 仅 run 路径触发，消费方 back 停 9-21 桩版=exit 0 假阳；T-01/T-02 重开）→修正（build_rust_ui regen 后 generate_api，idempotent+resolve_back_api 门控）→r2 pass：back 工件真体验证（fsys.rs+api_impl.rs mtime 新鲜+TODO 0+Query 提取委派金样 pub async fn tree(Query(query): Query<TreeQuery>) -> JsonResponse<String> { JsonResponse(crate::api_impl::tree(&query.path, query.depth)) }）+workspace cargo check 0+auto build exit 0+perf.py a2r 绿 EXIT=0+tf 3722/3722+tv 3869/3869+tt 4091/4091（cargo t 唯一停跑红=musk p053_4 P645-D2 在册预存豁免，full 配置下不存在）+fs_tree parity 2/2+signature parity 兜带扩容绿+grep 门代码位零消费方标识符（命中仅映射表 VM 内建名位=机制本体）。边界：dialog 父窗锚 v1 从简；--server rust 运行期 HTTP 对拍非目标；code_editor 预制槽载荷型默认值（674 I3 同族）。叠基注记：worktree 基于 plan-674-dev@1f8828d19，其两 commit 随本交付入 ancestry，674 自身 merge 顺延为簿记",
      "file": "docs/plans/archive/681-a2r-deploy-gap-batch.md"
+    },
+    {
+     "id": "P678-2",
+     "title": "rq-default-centering 收口复审与合并收据",
+     "content": "收口复审 pass（范围收缩版，2026-09-22 用户裁定 683 重写实现面：T-03/T-04 iced 臂/T-05 弃做，AC-02/AC-03 弃）。rebase 完整性=patch-id 双侧相等（334e4527：原 3b2fe0ee0→复审 938cc5aac→交付 979ce80c2，重叠仅 native_projector.rs 与 PLAN-674 不同区域零冲突）。门禁复现（lang-678 worktree）：cargo check -p auto 净（1 警告=bin 域 master 预存）+cargo t autocenter 4/4+desktop_protocol --no-fail-fast 193/194（唯一红 projector_counter_layout_and_hits 主检出同败实证=预存）+cargo tf 3722/3722 全绿。AC 判定：AC-01/AC-04 pass(scoped)（几何/env 单测复现绿，实机复验弃-裁定）、AC-05 pass、AC-02/03 弃。finding：AC-01 实机截图要件以单测几何断言+起源会话观察替代（裁定背书）。多会话注记：master 并行会话 PLAN-083 两 commit 同窗入 ancestry（1fdcfcb5e/641e1b9f4），无文件冲突。",
+     "file": "docs/plans/archive/678-rq-default-centering.md"
+    },
+    {
+     "id": "P679-2",
+     "title": "rq-style-parity 收口复审与合并收据",
+     "content": "收口复审 pass（收缩版，2026-09-22 用户裁定：004 修后目视等未竟验收弃做）。rebase 完整性=零文本冲突但 2/4 patch-id 不等，range-diff 逐项定性良性（commit1 测试构造器适配 678 proj_center_off 双向意图保留；commit4 hunk 边界随基座位移折行语义不变）；git 文本静默合并漏一枚语义缺口=678 平移通道 ops 穷尽 match 未含 679 新增 DrawOp::QuadR（E0004 两处），补臂提交 5a629a54e（语义与 679 自有 shift_draw_op 同构：rect 平移 color/radius 保留）；内容级特征存活核查（theme fn 16 用点/常量代码残留 0[6 处命中全注释]/autocenter+flex 共存）。门禁：check -p auto 0 err+desktop_protocol --no-fail-fast 193/194（唯一红=预存同败实证）+fit 20/20+typing 2/2；p508_g2_outproc_arm 首跑红=cargo build -p auto 刷新后绿（在案陈旧 exe 假红，非回归）；cargo tf 未跑完（>70min 冷编+test-groups 串行重测，用户裁定尽快收口中止——同基 678 tf 3722/3722 背书，679 增量面已由作用域门覆盖）。F-2 移交 683：新 op 变体落地时全消费者穷尽扫描（本 E0004 为实例）。多会话注记：合并时他方会话 renderer.rs WIP 以补丁保全（.git/foreign-wip-renderer-679merge.patch）→checkout→ff→apply --3way 干净回贴（双方特征共存验证：DASH_TAB_STRIP_H×4+fit-trace×2）。",
+     "file": "docs/plans/archive/679-rq-style-parity.md"
     }
    ]
   }
