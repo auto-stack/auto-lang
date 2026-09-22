@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-691
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: presplit-subtraction（拆仓前减面瘦身批）
 author: [zcode]
 created_at: 2026-09-22
@@ -278,6 +278,24 @@ plan340_tests:7444、musk_vm_track_tests:7826，声明带 Plan 编号溯源注�
   route: R-1 worktree 内 4 docs/specs 外部位写（他会话 SD-03，±6 行）内容与实现
   一致——**裁定 merge 收编并注明来源**（对方会话已按用户裁定退出，退回无主）|
   next: merge`
+
+- 2026-09-22 merge（auto-plan:merge）consolidation receipt `PLAN-691:r2`：
+  - `prepared`：reviewed@24ddad334 → SD-03 specs 收编 commit（rebased ffe800947，来源注
+    并行会话）+ 账本三件套 commit 0236239ae（plans.md 行 691/孤儿标记清除+specs.json
+    P691-1(tests)/P691-2(reviews) 660 条+INDEX 再生幂等零 diff）；编码事故一次（heredoc
+    中文按错码页解码污染 plans.md 行+提交信息）即撤即修（Write 工具脚本+msg 文件重提，
+    定损=早期 12 文件清扫与 specs.json 未殃及）。
+  - `landed`：rebase master 干净 4/4 **range-diff 全等**（f876e2661→c60cf8905/
+    a5c5d0d49→3ac279750/24ddad334→a72257e6f/0cac22a25→ffe800947）；rebased 态复验=
+    cargo check 0 错+cargo t 5453/9 与 master 基线同集（含 p690 两测全过）；
+    `git merge --ff-only` → master tip=0236239ae=delivery commit（零合并提交）；主检出
+    烟测 check 0 错。
+  - `ledger_refreshed`：.autoos/specs.json P691-1/P691-2 外科插入（json.loads 全文验证+
+    节位 tests/reviews 各一）；docs/specs/auto-lang/ui/plans.md 表行；INDEX 再生幂等。
+  - `archived`：git mv → docs/plans/archive/691-presplit-subtraction.md，status:
+    archived，completion_kind: delivered。
+  - `cleaned`：待本提交后执行（wt-guard 双 worktree → 移除 lang-691/auto-lang +
+    lang-691/auto-down 依赖位 → 分支删 → 组目录清）。
 
 ## 10. 待澄清事项
 - **Q-1（✅ 已裁定 2026-09-22 用户）**：**gpui 删除**——未来有需要再独立加（且属 auto-ui
