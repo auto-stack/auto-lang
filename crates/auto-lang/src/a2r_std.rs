@@ -535,6 +535,9 @@ pub mod fs {
     // `auto_lang::a2r_std::fs::tree` — resolve to the ONE implementation
     // (tests/fs_tree_parity.rs pins the VM byte parity).
     pub use a2r_std::fs::{basename, tree};
+    // PLAN-687: chunked-read envelope re-export (trans File 表映射发射
+    // auto_lang::a2r_std::fs::read_text_range —— facade 面)。
+    pub use a2r_std::fs::read_text_range;
 
     pub fn read_text<S: AsRef<str>>(path: S) -> String {
         std::fs::read_to_string(path.as_ref()).unwrap_or_default()
