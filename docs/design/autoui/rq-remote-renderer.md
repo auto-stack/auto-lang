@@ -1,6 +1,13 @@
 # RQ 远程 Renderer 架构（方案 2：Iced 组件照常渲染，RenderQueue 转手一道）
 
-> **状态**：已裁定（2026-09-22，四方案架构评审收敛；用户裁定现阶段走方案 2）
+> **状态**：已实施（PLAN-683 T-00..T-05，2026-09-22）——方案 2 全链落地：
+> headless iced 宿主（T-00 GO，**实现修正：截获面 = `iced::Renderer::
+> Secondary(iced_tiny_skia::Renderer)` 公开枚举臂**，非自研 RecordRenderer
+> trait 实现——`into_iced()` 组件树构造期钉死 Renderer 类型，自研面须
+> 3.5 万行适配层泛型化不可行；tiny_skia Layer 记录层即现成截获面，
+> 官方 CPU 后端长期维护）+ DisplayList v2 wire（SD-01）+ 事件回路径
+> + rqhost daemon 重放 + 三试点（001/003/004）实机走查全过。
+> 四方案裁定记录（2026-09-22 用户裁定现阶段走方案 2）如下。
 > **来源**：2026-09-21/22 RQ 双轨对拍系列（003 验收 → 004 差距 → 组件重实现成本
 > 追问 → 四方案架构评审）。原始诉求见会话记录：用户最初设想即为本文方案 2
 > ——「iced 组件照常渲染，唯一区别是渲染经 RenderQueue 转手一道（函数调用
@@ -108,6 +115,23 @@ RecordRenderer 需实现文本子 trait（App 内 cosmic-text 度量整形——
   （001 → 003 → 004 试点先行）；
 - RqProjector 迁移完成后冻结退役（coverage 门禁随之只约束 legacy 模式）；
 - PLAN-679 Phase 1/2 修复对 v1 wire 真实有效，不浪费。
+
+### 6.1 RqProjector 冻结清单（PLAN-683 T-06 在档）
+
+试点验收后进入冻结态（`desktop_render` 缺省**未翻转**——翻转留待
+爬坡复核，非本计划面）：
+
+| 冻结面 | 内容 | 处置 |
+|---|---|---|
+| `native_projector.rs`（~2300 行） | 手写块流布局+命令发射+命中表+输入缓冲 | **代码冻结**：不再新增组件臂/样式臂（coverage 缺口即终态）；legacy 客户端（`desktop_render: queue`）继续可用 |
+| `DrawList` v1 wire（tag 1） | quad/quad-r/text styled/image/scissor | **线格式冻结**：v2 载荷 tag 2 追加式共存（载荷种类互斥，宿主按槽内首字节分派）；删除与否留待方案 3 重估一并裁定 |
+| coverage 门禁（`ensure_covered`/`judge`） | 组件覆盖表裁决 queue 臂 | **作用域收缩至 legacy**：`remote` 模式绕过覆盖门（组件覆盖 = iced 全集，结构保证——PLAN-683 结构性消除覆盖爬坡成本） |
+| PLAN-679 样式 parity 修复 | theme 单源+QuadR+折行+渐变条带 | 对 v1 wire 真实有效（legacy 客户端受益）；v2 由 iced 构造保证 |
+
+**remote 模式覆盖语义（SD-02）**：`desktop_render: remote` 下组件
+覆盖 = iced 组件全集（`into_iced()` 构造路径全量可用），coverage
+概念对该模式失效——这是方案 2 的构造性收益（对照方案 3 的逐组件
+爬坡台账）。
 
 ### 7. Spike（go/no-go 前置）
 

@@ -2594,3 +2594,13 @@ R-03=R-10+A-05）——"需维护者排查归位"注销。**P667-D2/P661-D7 基�
 | P674-D2 | low | RQ 覆盖 | **tag:managed_content ×1**（p656-scroll-pane）——View::ManagedScrollContent 为 PLAN-656 T-06 合成基准件（"capability-test 专用，非正式 public widget"），RQ 投影臂归属 PLAN-656 域裁定（host 注册表单源持有 offset/extent——非透传壳可归一） | view.rs :757 变体注释；PLAN-656 域 |
 | P674-D3 | medium | a2r codegen | **auto-edit main 新演进 a2r 余错（词汇门外家族，~135 错实测 2026-09-21）→ 2026-09-22 用户裁定：并入 P670-D1 清偿面（本条转范围/证据记录，清偿归 P670-D1 扩册计划）**——供料 §7 测量后 auto-edit 演进至 PLAN-005 后：E0425 循环变量/子件转发（`i`/`id`/`TreeIconMsg`/`toggle_id` 伴生 fn）、native 对象面（`Process`/`json`）、`list` 类型、tab 条 unit 变体带参（`TabActivate(i)`）——与 P670-D1 三支路（伴生转译/route A/内建面）同族。词汇门 23 错已清零（PLAN-674）；消费方 `auto build -r rust` 全编译过随 P670-D1 扩册清偿——**PLAN-681 已清偿（2026-09-22，worktree lang-681 待 merge；本条销）** | auto-edit rust-workspace cargo check 实测（main@dc99328）；P670-D1 条目（已扩） |
 | P674-D4 | low | RQ codeeditor | **RQ 轨 `on_cursor` 事件显式降级弃置（复审 R-1，§10-4 定边界）**——inproc 轨经 widget `on_cursor` 派发 caret 移动回调，RQ 投影臂 v1 不回传（最小键入面之外；消费方声明位 auto-edit app.at:176 `oncursor: .CursorMoved(i)`，光标镜像态 RQ 形态降级）。臂内 I3 注记在档；接线（HitEntry 携 on_cursor + feed_editor_input cursor_changed 分派）随消费方需要另立 | native_projector.rs CodeEditor 臂 on_cursor 注记；plan 674 §9 复审记录 |
+
+### P683（2026-09-22，Plan 683 rq-remote-renderer 方案 2 执行登记）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P683-D1 | low | remote wire v2 | **mesh/canvas 原语 v2 词汇面外**（G2 词汇表未列；tiny_skia `layer.primitives` 位图降级承接未实施）——试点三例无 canvas 面，首个 canvas 应用上 remote 时需 Path 序列化或位图降级（T-01 勘定登记） | headless.rs lower_layers_v2 观测臂；设计档 rq-remote-renderer §4 |
+| P683-D2 | low | remote 降格 | **Transform 旋转/剪切矩阵元不可达**——iced `Transformation` 未公开矩阵元（仅 scale_factor/translation），v2 降格只产轴对齐 [s,0,0,s,tx,ty]；旋转内容（canvas 旋转动画等）remote 面暂缺 | headless.rs lower_text_v2 近似臂观测 |
+| P683-D3 | low | remote 图像 | **svg 图像（tiny_skia Image::Vector）降格省略**——v1/v2 词汇 src 均为位图通道；svg 组件经 lucide 栅格化外的直引形态需 src 词汇扩展或宿主侧 svg 栅格化 | headless.rs lower_image_v2 Vector 臂观测 |
+| P683-D4 | low | daemon 重放 | **shadow blur 无 canvas 原语**——v2 wire 携带 ShadowSpec 全参，daemon 重放为偏移半透明垫层（无 blur 扩散；alpha 按有无 blur 稀释）——观感近似，004 卡面 shadow-sm 实测可接受 | broker_surface.rs paint_shadow_scrim |
+| P683-D5 | low | remote 环境注记 | **daemon 窗最小化环境怪**——本机他方窗口争焦会把 rqhost daemon 窗最小化（resized 0x0 观测行；SW_RESTORE 即复，渲染管线无恙）；走查/巡检脚本需带恢复臂。与 master 在案 taskbar 环境红族同环境 | T-04 走查记录（plan 683） |

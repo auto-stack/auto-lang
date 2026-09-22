@@ -149,7 +149,15 @@ tag:managed_content（PLAN-656 合成基准件，P674-D2）两登记项）与
 `auto`=independent 缺省裁定（026 复测 judged 76.2% < 95%，翻转点已备）、
 宿主 `desktop_exe:` 孵化分流、输入路由两端（投影器右键/滚轮/聚焦编辑/IME
 闭环消费 + 宿主 `broker_key_event/broker_char/broker_scroll/broker_ime_*`
-生产）随册。权威正文 =
+生产）随册。**remote 四值（PLAN-683，SD-02）**：`desktop_render: remote`
+= headless iced 宿主（`iced::Renderer::Secondary(iced_tiny_skia)` 纯 CPU
+记录层截获——组件树经 `into_iced()` 照常布局/命中/聚焦/IME，渲染原语降格
+**DisplayList v2**〔SD-01，载荷 tag 2 追加式超集：渐变 angle+stops 原生/
+四角半径/border/shadow/Transform〕过线，rqhost daemon `DisplayListPainter`
+canvas 原生重放）；**该模式覆盖门不适用（组件覆盖 = iced 全集，构造
+保证——coverage 概念失效）**，RqProjector/DrawList v1 冻结为 legacy
+兼容位（冻结清单 = 设计档 rq-remote-renderer §6.1）。试点 001/003/004
+在档（走查截图 `docs/plans/reports/p683-shots/`）。权威正文 =
 `docs/design/autoui/desktop-protocol-v1.md` §1.6–§1.8（本节仅指针，不
 重复）；翻转数据行 =
 `docs/plans/reports/p026-native-flip-data-row.md`；度量 =
