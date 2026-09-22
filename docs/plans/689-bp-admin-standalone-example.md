@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-689
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: bp-admin-standalone-example
 author: []
 created_at: 2026-09-22
@@ -222,6 +222,44 @@ rs/at/ts/vue/md/json/toml/yml/py/mjs。）
     worktree 后建议例行 really-refresh 抽验。
   - CI 首跑绿=merge 后 watch 项（AC-06 附注）；auto-os 画廊再发射
     （35→34）=merge 后伴随动作（§跨仓伴随动作）。
+
+- **review 复审记录（2026-09-22，实施会话内复审——独立性声明：裁定
+  自工件重构，六 AC 全部重新复现，不采信 work 摘要）**
+  `stage: review | PLAN-689 | r1 | pass | 1d829b9356c3f30447ec709902
+  aa8a56df28894c | 97614062f | auto-down detached @ fba6563（只读未改）
+  | spec 输入=blueprint/project.md + goals.md（GOAL-010/011）基线版 |
+  AC-01..06 全 pass（复现命令与结果如下）| 发现 F-689-1（非阻塞）|
+  证据见下 | next=merge`
+  - **AC 复现**：AC-01 `git log --follow examples/bp-admin/pac.at` 2
+    commit 跨迁移直溯 3e190da3a ✓；AC-02 `cargo t app_registry`
+    25/25（含 C 档恰等 20）✓；AC-03 `cargo t plan657` 3/3 ✓；AC-04
+    `auto build --gen-only` 29 组件+api client+Rust server ✓；AC-05
+    残留扫描非归档 0 命中 ✓；AC-06 YAML safe_load+静态断言（matrix
+    全路径含 examples/bp-admin/paths 双含/wd 参数化/exe 绝对形态）
+    ✓。worktree 终态 clean，无未提交实现。
+  - **全量门禁**：`cargo tf`（nextest-full --no-fail-fast）两轮：
+    5450 run，复跑 5442 pass / 8 fail / 112 skip。**8 红零回归全归因**：
+    musk×6 + projector_counter×1 = 记忆在案预存（.at 双源漂移，
+    修归 auto-os sync 脚本待认领）；a2vue_desktop_surface_asset×1 =
+    基线（主检出 97614062f 同代码）隔离复跑同红——PLAN-682 转告的
+    e85143621 pin 同步后金样未同步预存红。首轮另见
+    ffi_dual_019_dep_layout_invariants 1 红：隔离绿+复跑全量绿+输入
+    面（test/ffi_dual fixture×nightly methods_pack）与本 diff 零交集
+    ——裁定全量并行下 fixture 现场编译争用型 flaky，非本计划回归。
+  - **diff 审查**：12 文件逐 hunk 过——代码面（app_registry 双断言/
+    plan657 锚/CI 矩阵+exe 路径/pac.at path）与设计条 1-5 逐条对应；
+    $GITHUB_WORKSPACE 适配=设计条 5 的必要推论（矩阵跨深度），授权
+    范围内；docs 面（project.md/goals.md/KNOWN-DEBT/头注）与设计条
+    6 对应，迁出注统一只引新路径。
+  - **F-689-1（非阻塞）**：`blueprints/navigation/sidebar-shell/
+    reference/default.at:7` 迁出注使单注释行超宽（~100 字符，原文件
+    惯例 ~76 折行）。不影响解析/生成/任何 AC（plan657 t03 绿）；留
+    后续顺手修，不构成 needs_fix。
+  - **spec 增量裁定**：本计划无新增/废弃规范组件——canonical spec
+    改动为指针性更新两处（blueprint/project.md L1 样板位置句、
+    goals.md GOAL-010/011 括注），已随 delivery 1d829b935 提交；
+    frontmatter 维持 supersedes=[]/new=[]，touched_goals
+    [GOAL-010, GOAL-011] 为完整影响面。
 
 ## 待澄清事项
 
