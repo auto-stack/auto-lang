@@ -229,6 +229,26 @@ detect 并集 + 直接调 `crate::vue_shadcn::materialize(&output_dir,
   单跑即绿（36.8s PASS），环境项非回归。musk×6 + counter×1 =
   repo 在案预存；ffi_dual_019 = 复审在案基点既有/满载 flake。
 
+### §6.2 合并期门禁终跑（final tip e1c73a043 + 5 提交）
+
+- **二次 rebase**：master 在首次 rebase 后前进 3 提交（e85143621
+  desktop.at pin 同步 / 97614062f iced_adapter 圆角 / e1c73a043 688
+  开工 docs），与分支 5 文件零交集，再 rebase 零冲突；range-diff
+  5/5 全等（含 F-682-M1 修复 6d245f569→6830b0b2b）。
+- **tf 终跑**（nextest-full 档 no-fail-fast）：**5451 run / 5441
+  passed / 10 failed / 112 skipped**。10 红逐一归因：
+  - musk×6（p053×4+p054×2）+ counter×1 + ffi_dual_019 + p508（exe
+    落位环境项，前证单跑绿）= 9 个在案预存/环境，同 §6.1；
+  - **test_a2vue_desktop_surface_asset（新增红，master tip 预存）**：
+    e85143621 改 desktop.at（+23 行）未同步 a2vue 金样（该测试注释
+    自述「改动 vue 生成器/资产后须同步金样」义务；该提交单文件构造
+    性证明与本分支零交集）。转告归属会话，不在本计划代修。
+  - shell_pack_hash_parity 在旧基（bbb1618e5）曾红=旧 pin vs 新
+    auto-os pack 时间窗（两轮 tf 一绿一红的真身）；e85143621 落地
+    后随基进新 pin，终跑已不在红集（scoped 复跑 PASS）。
+- **触及面终态**：styled 10/10 + snapshot 24/24 + shell_pack parity
+  PASS + key 回归钉族 5/5 + ui_gen 全域 844/844（修后）。
+
 ## 7. 待澄清事项
 
 - F1a 的 `view_with_debug_gated(true)` 会让每次 view() 都启用探针

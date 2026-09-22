@@ -7109,6 +7109,16 @@
      ],
      "status": "published",
      "created": "2026-09-22"
+    },
+    {
+     "id": "P682-1",
+     "title": "mcp-snapshot-determinism-and-vue-generator-fixes 复审与合并收据",
+     "file": "docs/plans/archive/682-mcp-snapshot-determinism-and-vue-generator-fixes.md",
+     "related": [
+      "PLAN-682"
+     ],
+     "content": "review r2 pass @ 2f8630e67（实现会话内复审独立性受限已声明，证据全部命令级复现：AC-01 三实例快照恒属性态 5201B×3+jade vm_matrix 双臂全绿零漂移/AC-02 :key 原生直发/AC-03 natives 守卫+真换行/AC-04 冷删 popover 重物化 TS2307=0/AC-05 补件③撤除信号实证）；tf 1743/1749 六红甄别=5 环境（oracle 预建）+1 基点既有（ffi_dual_019 detached 同败）。规范增量=空（四修复均为把实现拉回已文档化契约）。merge（独立会话）：rebase master e1c73a043 两段（bbb1618e5 零冲突→新 3 提交 e85143621/97614062f/e1c73a043 零交集再进），range-diff 5/5 全等；合并期 AC-04 复验发现 F-682-M1 layout 臂双 :key（F2 顶部单点转发×push_passthrough_attrs 透传叠加，row/col 行 div X_DUPLICATE_ATTRIBUTE 拒收；master 对照单 key）→当修双漏斗「已含 :key= 则跳过」守卫+shadcn 模式回归钉（关守卫必红双态证）→产物级 dup-key 0+ui_gen 844/844；AC-04 rebase 复验清偿（TS1117 归因确证=master 已落地生成器修复）；styled 10/10+snapshot 24/24+shell_pack parity 随 e85143621 转绿；tf 终跑数字见归档档 §6.2；ff-only 落地",
+     "created": "2026-09-22"
     }
    ]
   }
