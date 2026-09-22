@@ -412,7 +412,10 @@ T-01(c) 勘定：已接线→仅记录；缺失→T-04 在按钮转换臂加 too
   本归档路径。
 - checkpoint **archived**：本文件 git mv 至 docs/plans/archive/，
   status: archived，completion_kind: delivered。
-- （cleaned 随后行）
+- checkpoint **cleaned**：wt-guard 双 clean（auto-lang/auto-down 均
+  "no reparse point"）→`git worktree remove` 两worktree+`git branch -d
+  plan-688-dev`（67937ff69）+组目录 rmdir；.wt/lang-688 无残留。merge 完成
+  （completion_kind: delivered，五 checkpoint 全闭环）。
 
 ### review（2026-09-22，r2）
 
