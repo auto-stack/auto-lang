@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-689
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: bp-admin-standalone-example
 author: []
 created_at: 2026-09-22
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-010, GOAL-011]  # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [blueprint]            # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 6
 total_steps: 6
 ---
 
@@ -152,26 +152,50 @@ rs/at/ts/vue/md/json/toml/yml/py/mjs。）
   `git mv examples/ui/047-bp-admin examples/bp-admin`；编辑
   `examples/bp-admin/pac.at` dep bps path → `../../blueprints`。
   验证：`cd examples/bp-admin && auto build --gen-only`（AC-04）。
+  [✅ 已完成] worktree 1d829b935：git mv 五文件 rename 全识别（pac.at 63%
+  相似度因路径编辑、其余四文件 100%）；gen-only 绿——29 component(s)、
+  TypeScript api client + Rust server 生成、`dep bps` 新相对路径解析成立
+  （auto.exe 0.4.2-1893 主检出当日构建）。
 - **T-02 app_registry 双断言重基线**
   `crates/auto-lang/src/ui/app_registry.rs` want 摘项（21→20）+
   `>= 35` → `>= 34`，各补 PLAN-689 注。
   验证：`cargo t app_registry`（AC-02）。
+  [✅ 已完成] 25/25 passed（含 scan_examples_ui_curation_set 恰等 20 +
+  scan_examples_ui_finds_at_least_27_apps ≥34），零邻红。
 - **T-03 plan657 回归锚路径**
   `crates/auto-lang/src/plan657_bp_admin_tests.rs` `example_047()`
   → `examples/bp-admin`。
   验证：`cargo t plan657`（AC-03）。
+  [✅ 已完成] 3/3 passed（t01 VM 轨全量组装/t02 vue 轨 import+零副本/
+  t03 语料面五 reference+palette 零漂移）——四包直连解释器断言不因迁移漂移。
 - **T-04 CI 矩阵 path 形态化**
   `.github/workflows/build-ui-examples.yml` matrix 全路径化 +
   working-directory 参数化 + paths 增 `examples/bp-admin/**`。
   验证：YAML 目测 + AC-06。
+  [✅ 已完成] YAML python.safe_load 解析通过；matrix 五项=仓根全路径
+  （含 examples/bp-admin）、working-directory=${{ matrix.example }}、
+  push/PR paths 双含 examples/bp-admin/**。**实施期适配**：exe 调用从
+  `../../../target/debug/auto`（固定三层回退）改 `$GITHUB_WORKSPACE/
+  target/debug/auto` 绝对形态——matrix 项现跨两种深度（examples/ui/X
+  两层 / examples/bp-admin 一层），固定 ../ 数无法同时满足（设计条 5
+  "path 形态化"的必要推论，授权范围内）。
 - **T-05 specs/债册/头注指针**
   blueprint/project.md:136、goals.md GOAL-010/011 括注、
   KNOWN-DEBT P657-D1 证据路径、blueprints/navigation/sidebar-shell/
   reference/default.at 头注。
   验证：§残留扫描（AC-05）。
+  [✅ 已完成] 四指针全落新路径（goals.md 双括注保留 657 入矩阵史实+
+  补 PLAN-689 迁出注；迁出注按规范只引新路径不引旧路径字面量）；
+  残留扫描 `grep -rn "examples/ui/047"` 非归档零命中（归档 plans 与
+  本计划自述文件除外）。
 - **T-06 门禁收口**
   `cargo t app_registry && cargo t plan657` 复跑 + `cargo check -p
   auto-lang`；AC-01 follow 检查。
+  [✅ 已完成] app_registry 25/25 + plan657 3/3 复跑绿（如上）；
+  cargo check -p auto-lang Finished 无 error（lib 344 警告=master
+  基线存量，两改动文件零命中）；AC-01 `git log --follow
+  examples/bp-admin/pac.at` 跨迁移 commit 1d829b935 直溯 PLAN-657
+  创建提交 3e190da3a；worktree 终态 clean。
 
 ## 跨仓伴随动作（merge 后，不在本 worktree）
 
@@ -180,6 +204,24 @@ rs/at/ts/vue/md/json/toml/yml/py/mjs。）
   跨仓提交——PLAN-666 "画廊再发射 auto-os 24aa01f" 同型。
 
 ## 复审记录
+
+- **work 交付记录（2026-09-22）**
+  `stage: work | PLAN-689 | r1 | pass | 1d829b935 (plan-689-dev, base
+  97614062f) | T-01..T-06 | 六任务全绿：gen-only 29 组件（AC-04）/
+  app_registry 25/25 恰等 20+≥34（AC-02）/plan657 3/3（AC-03）/YAML
+  解析+矩阵静态断言（AC-06）/残留扫描非归档清零（AC-05）/git log
+  --follow 跨迁移直溯 657 创建提交（AC-01）；cargo check 无 error、
+  改动文件零警告 | 无阻塞 | 下一步 /auto-plan:review`
+  - worktree：`D:/autostack/.wt/lang-689/auto-lang`（plan-689-dev）；
+    依赖位：`.wt/lang-689/auto-down` detached @ fba6563（只读，未改动）。
+  - **环境事故留档**：auto-down 依赖位首次 worktree add 后 909 文件
+    null 字节损坏（含 .git 指针；尺寸正确内容零填充，疑似 NTFS 延迟
+    写失败，盘空间充足 218G free 排除盘满）——prune+rmdir 重建后
+    `git update-index --really-refresh` 全绿；auto-lang 实现树同法
+    校验完好（17 扫描命中均为被跟踪的合法二进制内容）。后续建
+    worktree 后建议例行 really-refresh 抽验。
+  - CI 首跑绿=merge 后 watch 项（AC-06 附注）；auto-os 画廊再发射
+    （35→34）=merge 后伴随动作（§跨仓伴随动作）。
 
 ## 待澄清事项
 
