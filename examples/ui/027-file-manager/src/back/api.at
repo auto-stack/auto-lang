@@ -1,0 +1,112 @@
+// api.at — 027-file-manager 后端读盘契约（PLAN-684 rev7；PLAN-680 Q3 L2）
+//
+// Vue 轨经 HTTP 读真盘：gallery 内嵌 = back-proxy VM 会话（进程内 fs.* 全
+// native 面，PLAN-658 lazy session）；standalone `auto run --server=vm` =
+// AutoVM HTTP 后端同语义。VM 轨不消费本契约（前端 inline natives 直连
+// ——canonical/缩略图/mtime 语义保真）。
+//
+// ⚠ 结构纪律（Plan 400 a2r 内联面规避）：#[api] 端点体恒 thin（单行
+// return 委托）——thin 体跳过 a2r 内联转译，standalone rust 后端
+// （`auto run` 缺省）落签名模板 Default（fs_home()=""、DirListing.ok=false，
+// 前端落演示目录后备，rev7 口径「演示目录仅后备」）；真实现住本文件普通
+// fn（impl_*，route A 因 pub type 在场而关闭、companion 扫描不收 api.at
+// 自身——a2r 转译面无 fs.*/file.* 目录 native 的 E0425 债见 P670-D1）。
+// VM 会话/merged 编译按模块语义整文件执行，impl_* 直调可达。
+//
+// 契约名 fs_* 与实现名 impl_* 错开（013-todo 导入遮蔽纪律）；展示派生
+// 字段（size_str/type_name/date/is_hidden）全部前端 fs_util 计算——后端
+// 只交原始 size/mtime，双轨同源格式化。空目录依赖 for-in 对 json.parse
+// 结果零迭代（len() 语义缺陷 F-8 在册），不做 len 判空。
+
+pub type DirEntry = {
+    name: str
+    path: str
+    is_dir: bool
+    size: int
+    mtime: int
+}
+
+pub type DirListing = {
+    ok: bool
+    path: str
+    entries: []DirEntry
+}
+
+fn impl_list(path str) DirListing {
+    if path == "" {
+        return { ok: false, path: "", entries: [] }
+    }
+    let can str = fs.canonical(path)
+    if can == "" {
+        return { ok: false, path: "", entries: [] }
+    }
+    if !file.is_dir(can) {
+        return { ok: false, path: "", entries: [] }
+    }
+    let raw str = fs.read_dir(can)
+    if raw == "" {
+        return { ok: false, path: "", entries: [] }
+    }
+    let names = json.parse(raw)
+    var out []DirEntry = []
+    for nm_raw in names {
+        let nm str = "" + nm_raw
+        let pp str = fs.join(can, nm)
+        out.push(DirEntry {
+            name: nm,
+            path: pp,
+            is_dir: file.is_dir(pp),
+            size: file.size(pp),
+            mtime: fs.mtime(pp)
+        })
+    }
+    return { ok: true, path: can, entries: out }
+}
+
+fn impl_home() str {
+    let h str = Env.get("USERPROFILE")
+    if h != "" {
+        return h
+    }
+    return Env.get("HOME")
+}
+
+fn impl_drives() []DirEntry {
+    var out []DirEntry = []
+    var letters = ["C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"]
+    var k int = 0
+    while k < letters.len() {
+        let root str = letters[k] + ":/"
+        if file.exists(root) {
+            if file.is_dir(root) {
+                out.push(DirEntry {
+                    name: letters[k] + ":",
+                    path: root,
+                    is_dir: true,
+                    size: 0,
+                    mtime: 0
+                })
+            }
+        }
+        k = k + 1
+    }
+    return out
+}
+
+/// GET /api/fs/list?path=.. — 列目录（canonical + is_dir 门控；失败 ok:false）
+#[api(method = "GET", path = "/api/fs/list")]
+pub fn fs_list(path str) DirListing {
+    return impl_list(path)
+}
+
+/// GET /api/fs/home — 用户主目录（"" = 骨架/不可达，前端落演示后备）
+#[api(method = "GET", path = "/api/fs/home")]
+pub fn fs_home() str {
+    return impl_home()
+}
+
+/// GET /api/fs/drives — 盘符探测（C..Z exists+is_dir；仅目录条目）
+#[api(method = "GET", path = "/api/fs/drives")]
+pub fn fs_drives() []DirEntry {
+    return impl_drives()
+}

@@ -16,7 +16,11 @@
 /// Phase 2 Env/Process），vue.rs 的 lifecycle AST 预检 walker 与 auto-man
 /// 的 natives 声明层（`declare const` + globalThis Proxy 抛错桩）消费同一
 /// 表——**新增对象形态内建只改此一处**，不得在消费方另立名单。
-pub const VM_ONLY_OBJECT_NATIVES: &[&str] = &["fs", "File", "image", "Env", "Process"];
+/// PLAN-684 rev7：并入小写模块名 `file`/`process`（`use auto.file` /
+/// `use auto.process` 的调用面——027 语料实证：VM 分支的 file.exists/
+/// process.spawn 裸发射落 vue-tsc TS2304/TS2552，dev 轨不查类型故先潜伏；
+/// 大写 File/Process 为宿主内建对象形态，此前已在表）。
+pub const VM_ONLY_OBJECT_NATIVES: &[&str] = &["fs", "File", "image", "Env", "Process", "file", "process"];
 
 use crate::ast::*;
 use crate::trans::Sink;

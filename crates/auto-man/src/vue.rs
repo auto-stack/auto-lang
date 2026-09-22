@@ -7356,12 +7356,21 @@ fn gallery_rows_with_disk_cache(
                 let handles: Vec<_> = slots
                     .chunks(chunk)
                     .map(|chunk_idx| {
-                        s.spawn(|| {
-                            chunk_idx
-                                .iter()
-                                .map(|&i| (i, scan_one(apps_dir, &entries[i])))
-                                .collect::<Vec<_>>()
-                        })
+                        // PLAN-684 rev7：扫描 worker 补显式 16MB 栈——scope
+                        // spawn 缺省 2MB 栈跑 VueProject::from_workspace 全量
+                        // parse+codegen，深嵌套 demo（027 rev7 语料实录）在
+                        // 无名线程栈溢出整进程崩（'thread <unknown> has
+                        // overflowed its stack'）；对齐 api_gen/automan/
+                        // back_proxy 会话线程的显式栈先例。
+                        std::thread::Builder::new()
+                            .stack_size(16 * 1024 * 1024)
+                            .spawn_scoped(s, || {
+                                chunk_idx
+                                    .iter()
+                                    .map(|&i| (i, scan_one(apps_dir, &entries[i])))
+                                    .collect::<Vec<_>>()
+                            })
+                            .expect("spawn gallery scan worker")
                     })
                     .collect();
                 for h in handles {
