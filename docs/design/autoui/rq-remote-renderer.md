@@ -140,3 +140,22 @@ RecordRenderer 需实现文本子 trait（App 内 cosmic-text 度量整形——
 在无 wgpu feature 下可用；②RecordRenderer 录制 001 首帧 → 现有 paint_ops
 回放成功；③与 wgpu 独立轨渲染做结构对照。红 → 回退方案 3 续航 + StyleSpec
 单源兜底。
+
+## 8. 运行模式与 CLI 参数化（F-3 裁定，2026-09-22）
+
+**缺省翻转裁定关闭**：不做 `desktop_render` 缺省翻转——缺省维持 iced 底座
+合一（独立轨），RQ 模式经 `-q`/参数显式选用。F-3 呈报项就此关闭。
+
+**a2r exe 三模式参数化**（PLAN-693）：
+
+| 模式 | CLI | 行为 |
+|---|---|---|
+| independent（缺省） | `--render-mode independent` / 缺省 | 本地 iced wgpu 自窗（现状） |
+| rq | `-q` / `--render-mode rq` | 连接/孵化独立 rqhost daemon（现 `-q` 语义） |
+| desktop | `--render-mode desktop --desktop-endpoint <pipe>` | 连接**虚拟桌面进程**的合成器端点（不孵化——桌面已在前） |
+
+优先级链：CLI > `AUTO_VM_RENDER` env > pac `desktop_render` > independent。
+连接语义：rq/desktop 同用 rendezvous/adopt 协议（rqhost 形态），差异仅在
+端点来源与孵化归属——desktop 模式端点缺席时报错提示先启动桌面（不代孵）。
+桌面侧落地（shell 内嵌 `run_daemon(desktop_pipe)` 或子进程 rqhost）=
+auto-os 配对项，协议契约（采纳协议不变）由本仓定义。
