@@ -78,6 +78,7 @@ fn terminal_view() -> View<()> {
         on_input: None,
         cursor_row: 0,
         cursor_col: 0,
+        history: 0,
         style: None,
     }
 }

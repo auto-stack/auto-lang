@@ -30,6 +30,8 @@ use crate::vm::ffi::term_engine::{
     shim_term_config_profiles_full, shim_term_config_spawn_argv,
     shim_term_config_spawn_cwd, shim_term_config_spawn_program,
     shim_term_scroll_pending_for,
+    // PLAN-028:分体轨 resize 断链桥(pend 写入 + history 查询)。
+    shim_term_engine_pend_resize_geom, shim_term_engine_history,
     shim_term_resize, shim_term_rows, shim_term_rows_for, shim_term_spawn,
     shim_term_spawn_ex, shim_term_viewport_cols, shim_term_viewport_rows,
     shim_term_write_line,

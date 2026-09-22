@@ -762,6 +762,26 @@ pub fn storage_host_read(key: &str) -> Option<String> {
     STORAGE_MAP.lock().unwrap().get(key).cloned()
 }
 
+/// PLAN-028：host-side 新鲜读——绕开 load-once `or_insert` 的首读冻结
+/// 语义（[`storage_host_read`] 对已加载键永远返回首读值，发布端后续
+/// 写入不可见）。分体轨后端按拍拉取前端发布的窗口尺寸真值用：每次
+/// 直读 backing 文件最新值；键不在盘上时回落进程内 map（含本进程
+/// 直写）。只读不落缓存——不污染 load-once 语义。
+pub fn storage_host_read_fresh(key: &str) -> Option<String> {
+    if let Some(path) = storage_file() {
+        if let Ok(raw) = std::fs::read_to_string(&path) {
+            if let Ok(parsed) =
+                serde_json::from_str::<std::collections::HashMap<String, String>>(&raw)
+            {
+                if let Some(v) = parsed.get(key) {
+                    return Some(v.clone());
+                }
+            }
+        }
+    }
+    STORAGE_MAP.lock().unwrap().get(key).cloned()
+}
+
 // ── Plan 309 Task 1.2 P5: PATH FFI ──────────────────────────────────────
 // TODO: Env.path_add/prepend/remove FFI deferred — #[rust_fn] registration
 // requires BIGVM_NATIVES updates in native.rs. The shell-side env.path
@@ -10508,6 +10528,44 @@ mod tests {
             !raw.contains("musk_login_username"),
             "removed key must not persist: {raw}"
         );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// PLAN-028 T-03:新鲜读穿透语义——storage_host_read_fresh 直读盘上
+    /// 最新值(模拟他进程发布端直写),不受本进程 load-once `or_insert`
+    /// 首读冻结;host_read 保持首读语义不变(对偶面回归)。
+    #[test]
+    fn storage_host_read_fresh_sees_external_writes() {
+        let _serial = lock_storage_for_test();
+        let path = std::env::temp_dir().join(format!(
+            "auto-fresh-storage-{}.json",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
+
+        storage_host_publish("p028.win.w", "1182".into());
+        assert_eq!(
+            storage_host_read_fresh("p028.win.w").as_deref(),
+            Some("1182")
+        );
+        // 模拟分体轨他进程(前端渲染器)直写 backing 文件,绕过本进程 MAP。
+        let mut m: std::collections::HashMap<String, String> =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        m.insert("p028.win.w".into(), "999".into());
+        std::fs::write(&path, serde_json::to_string(&m).unwrap()).unwrap();
+        assert_eq!(
+            storage_host_read_fresh("p028.win.w").as_deref(),
+            Some("999"),
+            "新鲜读必须穿透本进程缓存"
+        );
+        assert_eq!(
+            storage_host_read("p028.win.w").as_deref(),
+            Some("1182"),
+            "host_read 保持首读语义(对偶面不回退)"
+        );
+        // 缺键回落进程内 MAP,盘上无键不 panic。
+        assert_eq!(storage_host_read_fresh("p028.absent"), None);
         let _ = std::fs::remove_file(&path);
     }
 

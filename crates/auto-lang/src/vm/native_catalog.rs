@@ -538,6 +538,11 @@ macro_rules! for_each_native {
             (2992, NATIVE_TERM_CONFIG_SPAWN_ARGV, shim_term_config_spawn_argv, "auto.term.config_spawn_argv"),
             (2993, NATIVE_TERM_CONFIG_SPAWN_CWD, shim_term_config_spawn_cwd, "auto.term.config_spawn_cwd"),
             (3001, NATIVE_TERM_ENGINE_SCROLL_PENDING_FOR, shim_term_scroll_pending_for, "auto.term.engine_scroll_pending_for"),
+            // PLAN-028:分体轨 resize 断链桥——pend 几何跨界写入(geom 串
+            // 形态,.at 侧零解析)+ 引擎 history 查询(nums 尾段数据源)。
+            // id 续 3000 带(026 write_raw/scroll_pending_for 先例)。
+            (3002, NATIVE_TERM_ENGINE_PEND_RESIZE_GEOM, shim_term_engine_pend_resize_geom, "auto.term.engine_pend_resize_geom"),
+            (3003, NATIVE_TERM_ENGINE_HISTORY, shim_term_engine_history, "auto.term.engine_history"),
             // PLAN-020 T-00b:窗口尺寸面(逻辑 px;分屏矩形投影 px 类几何的
             // 标定源)。读 iced_adapter 窗口全局(renderer 每帧 set),零引擎
             // 耦合;vue back 无窗口降级返缺省槽位值。
@@ -1126,6 +1131,8 @@ macro_rules! for_each_bigvm_native {
             ("auto.term.config_spawn_argv", 2992, List),
             ("auto.term.config_spawn_cwd", 2993, String),
             ("auto.term.engine_scroll_pending_for", 3001, Int),
+            ("auto.term.engine_pend_resize_geom", 3002, Int),
+            ("auto.term.engine_history", 3003, Int),
 
             // === Hash extended (2814-2816) ===
             ("auto.hash.hmac_sha256", 2814, String),
@@ -2764,6 +2771,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.term.config_spawn_argv", 2992),
     ("auto.term.config_spawn_cwd", 2993),
     ("auto.term.engine_scroll_pending_for", 3001),
+    ("auto.term.engine_pend_resize_geom", 3002),
+    ("auto.term.engine_history", 3003),
     ("auto.term.window_width", 2998),
     ("auto.term.window_height", 2999),
 

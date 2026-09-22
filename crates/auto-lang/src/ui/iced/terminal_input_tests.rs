@@ -42,6 +42,7 @@ fn terminal_view() -> View<KeyMsg> {
         on_input: Some(KeyMsg::KeyIn),
         cursor_row: 0,
         cursor_col: 0,
+        history: 0,
         style: None,
     }
 }
@@ -114,6 +115,7 @@ fn p023_focus_switch_single_cast() {
         on_input: Some(KeyMsg::KeyIn),
         cursor_row: 0,
         cursor_col: 0,
+        history: 0,
         style: None,
     };
     let root = View::col()

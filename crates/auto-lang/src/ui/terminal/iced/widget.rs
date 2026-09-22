@@ -673,6 +673,23 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 let rows = (((viewport_h - 2.0 * PAD) / CELL_H).floor() as u16).max(1);
                 if cols >= 2 {
                     crate::ui::terminal::terminal_request_resize(self.core, cols, rows);
+                    // PLAN-028 T-02:探针真值发布(分体轨桥;变化才发布——
+                    // 同键几何不变时零写入,防每帧字符串风暴)。前端 .at
+                    // storage.get 读取,变化才推送 back pane-resize-request。
+                    static PUBLISHED: std::sync::OnceLock<
+                        std::sync::Mutex<std::collections::HashMap<String, (u16, u16)>>,
+                    > = std::sync::OnceLock::new();
+                    let mut published = PUBLISHED
+                        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+                        .lock()
+                        .unwrap();
+                    if published.get(&self.key).copied() != Some((cols, rows)) {
+                        published.insert(self.key.clone(), (cols, rows));
+                        crate::vm::ffi::stdlib::storage_host_publish(
+                            &format!("vm.term_probe.{}", self.key),
+                            format!("{}x{}", cols, rows),
+                        );
+                    }
                 }
             }
         }
@@ -1625,6 +1642,7 @@ mod virtual_scroll_tests {
             on_input: None,
             cursor_row: 0,
             cursor_col: 0,
+            history: 0,
             style: None,
         };
         let root = View::col()
@@ -1675,6 +1693,73 @@ mod virtual_scroll_tests {
         let y = Terminal::<u8>::bind_request_y(core);
         assert_eq!(y, Some(0.0));
         assert!(core.take_scroll_bind_suppress());
+    }
+
+    // PLAN-028 T-02:014 探针真值发布(分体轨桥;变化才发布)。virtual 模式
+    // (scrollable 内)max.height 无穷 → 探针吃 VIEWPORT_H 记账(生产 =
+    // draw 期观察回灌;headless 直接播种 register)。iced_test 依赖面同
+    // P023 门控(裸 cargo t 无该特性)。
+    #[cfg(feature = "iced-layout-tests")]
+    #[test]
+    fn probe_publish_follows_available_width_and_stays_stable() {
+        use super::viewport_h_register;
+        use crate::ui::iced::renderer::IntoIcedElement;
+        use crate::ui::terminal::terminal_dispose;
+        use crate::ui::view::View;
+        use crate::vm::ffi::stdlib::{lock_storage_for_test, storage_host_read_fresh};
+        use iced_test::simulator;
+        let _serial = lock_storage_for_test();
+        let path = std::env::temp_dir()
+            .join(format!("auto-probe-storage-{}.json", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
+        terminal_dispose("p028-probe");
+        viewport_h_register().lock().unwrap().insert("p028-probe".to_string(), 120.0);
+        let probe_key = "vm.term_probe.p028-probe";
+        let view = |w: u16| {
+            View::<()>::col()
+                .style(&format!("w-[{w}px] h-[120px]"))
+                .child(View::Terminal {
+                    key: "p028-probe".to_string(),
+                    cols: 40,
+                    rows: 10,
+                    lines: vec![],
+                    scroll_offset: 0,
+                    preedit: None,
+                    scheme: crate::ui::terminal::TERMINAL_SCHEME_FOLLOW_THEME,
+                    shortcuts: Vec::new(),
+                    on_select: None,
+                    on_menu: None,
+                    on_input: None,
+                    cursor_row: 0,
+                    cursor_col: 0,
+                    history: 0,
+                    style: None,
+                })
+                .build()
+        };
+
+        // 窄容器:首次布局发布探针。
+        let _ = simulator(view(300).into_iced());
+        let first = storage_host_read_fresh(probe_key).expect("首次布局应发布探针");
+        let (c1, r1) = first.split_once('x').expect("形态 colsxrows");
+        let (c1, r1): (u16, u16) = (c1.parse().unwrap(), r1.parse().unwrap());
+        assert!(c1 >= 2 && r1 >= 1, "探针几何须过 014 护栏: {first}");
+
+        // 宽容器:可用宽度变化 → 探针随动。
+        let _ = simulator(view(900).into_iced());
+        let second = storage_host_read_fresh(probe_key).expect("几何变化应再发布");
+        assert_ne!(first, second, "可用宽度变化必须反映到探针值: {first} vs {second}");
+
+        // 同宽重布局:发布守护命中,值稳定。
+        let _ = simulator(view(900).into_iced());
+        assert_eq!(
+            storage_host_read_fresh(probe_key).as_deref(),
+            Some(second.as_str()),
+            "同几何重布局不得改变探针值"
+        );
+        terminal_dispose("p028-probe");
+        let _ = std::fs::remove_file(&path);
     }
 }
 

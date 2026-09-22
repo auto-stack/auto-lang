@@ -3823,6 +3823,21 @@ impl RustGenerator {
                             _ => "0u16".to_string(),
                         }
                     };
+                    // PLAN-028 T-05:回滚历史行数(字面量或 .field 绑定;
+                    // 缺省 0 = 未喂入占位)。
+                    let history = match props.get("history") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => format!("{n}i32"),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => format!("self.{} as i32", id.as_str()),
+                        Some(AuraPropValue::Expr(expr)) => {
+                            let e = self.ast_expr_to_rust(expr);
+                            if e.starts_with("self.") {
+                                format!("({e}) as i32")
+                            } else {
+                                "0i32".to_string()
+                            }
+                        }
+                        _ => "0i32".to_string(),
+                    };
                     let on_input = ["oninput", "input", "onkey"]
                         .iter()
                         .find_map(|k| events.get(*k))
@@ -3891,7 +3906,7 @@ impl RustGenerator {
                         }
                     }
                     return format!(
-                        "View::Terminal {{ key: {key_expr}, cols: {}, rows: {}, lines: {lines}, scroll_offset: {scroll}, preedit: None, on_select: None, on_menu: {on_menu_expr}, on_input: {on_input_expr}, cursor_row: {}, cursor_col: {}, scheme: {scheme}, shortcuts: vec![{}], style: None }}",
+                        "View::Terminal {{ key: {key_expr}, cols: {}, rows: {}, lines: {lines}, scroll_offset: {scroll}, preedit: None, on_select: None, on_menu: {on_menu_expr}, on_input: {on_input_expr}, cursor_row: {}, cursor_col: {}, history: {history}, scheme: {scheme}, shortcuts: vec![{}], style: None }}",
                         geom("cols", 80),
                         geom("rows", 24),
                         cursor("cursor_row"),

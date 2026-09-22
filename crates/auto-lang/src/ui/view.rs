@@ -697,6 +697,10 @@ pub enum View<M: Clone + Debug> {
         /// 光标格(app 每拍从引擎回读喂入;0,0 = 未喂入的占位)。
         cursor_row: u16,
         cursor_col: u16,
+        /// PLAN-028 T-05:引擎回滚历史行数(app 每拍从 nums 尾段回读喂入;
+        /// 0 = 未喂入的占位哨兵)。虚拟画布含历史 → iced scrollable 恢复
+        /// 出条;分体轨经 nums 尾段跨进程回流,merged 轨与泵回写同源等值。
+        history: i32,
         /// PLAN-018 D10:配色方案(id;缺省 -1 = 跟随桌面主题 dark→0/
         /// light→1;≥0 显式覆盖,scheme 表见 ui::terminal palette 面)。
         scheme: i32,
@@ -2383,7 +2387,7 @@ impl<M: Clone + Debug> View<M> {
             View::ManagedScrollContent { key, logical_w, logical_h, axes } => {
                 View::ManagedScrollContent { key, logical_w, logical_h, axes }
             }
-            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => View::Terminal {
+            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, history, scheme, shortcuts, style } => View::Terminal {
                 key,
                 cols,
                 rows,
@@ -2395,6 +2399,7 @@ impl<M: Clone + Debug> View<M> {
                 on_input: on_input.map(|m| f(m)),
                 cursor_row,
                 cursor_col,
+                history,
                 scheme,
                 shortcuts: shortcuts.into_iter().map(|(k, m)| (k, f(m))).collect(),
                 style,

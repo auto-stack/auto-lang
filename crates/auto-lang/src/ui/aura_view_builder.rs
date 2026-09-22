@@ -10208,6 +10208,12 @@ let tabs_inner = View::Row {
             .extract_u16(props, "cursor_col")
             .or_else(|| self.eval_u16_prop(props, "cursor_col", bindings))
             .unwrap_or(0);
+        // PLAN-028 T-05:引擎回滚历史行数(app 每拍从 nums 尾段回读喂入;
+        // 0 = 未喂入占位哨兵,渲染臂据以落注册表)。
+        let history = self
+            .extract_i32_prop(props, "history")
+            .or_else(|| self.eval_i32_prop(props, "history", bindings))
+            .unwrap_or(0);
         // PLAN-018 D10:配色方案 prop(int;缺省 -1 = 跟随桌面主题)。字面量
         // 或 state 绑定求值(scheme 随主题切换的重挂场景)。
         let scheme = self
@@ -10246,6 +10252,7 @@ let tabs_inner = View::Row {
             on_input,
             cursor_row,
             cursor_col,
+            history,
             scheme,
             shortcuts,
             style,

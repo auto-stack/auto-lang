@@ -833,6 +833,76 @@ pub fn shim_term_apply_resize_for(task: &mut AutoTask, vm: &AutoVM) -> Result<()
     Ok(())
 }
 
+/// PLAN-028 T-03:engine_pend_resize_geom(key str, geom str) int——分体轨
+/// 桥写入口。geom = 前端 014 探针 storage 发布形态("colsxrows")原样跨界
+/// (.at 侧零解析——str.to_int/split 无 a2r 前端 handler 转译路径,026
+/// 实证),rust 侧解析后落 per-key 待定几何,既有 apply 泵消费。
+/// 返回 1=已落位 0=忽略(geom 非法/退化尺寸/同值)。014 护栏同款:
+/// 最小化退化(cols<2/rows<1)拒收,不 clamp 上来。
+#[cfg(feature = "ui")]
+fn engine_pend_resize_geom(key: &str, geom: &str) -> i64 {
+    let Some((cols_s, rows_s)) = geom.split_once('x') else {
+        return 0;
+    };
+    let (Ok(cols), Ok(rows)) = (cols_s.trim().parse::<u16>(), rows_s.trim().parse::<u16>())
+    else {
+        return 0;
+    };
+    if cols < crate::ui::terminal::MIN_RESIZE_COLS
+        || rows < 1
+        || cols > crate::ui::terminal::MAX_RESIZE_COLS
+        || rows > crate::ui::terminal::MAX_RESIZE_ROWS
+    {
+        return 0;
+    }
+    if crate::ui::terminal::terminal_pend_resize(key, cols, rows) {
+        1
+    } else {
+        0
+    }
+}
+
+#[cfg(not(feature = "ui"))]
+fn engine_pend_resize_geom(_key: &str, _geom: &str) -> i64 {
+    0
+}
+
+/// PLAN-028 T-03:engine_pend_resize_geom(key str, geom str) int shim。
+pub fn shim_term_engine_pend_resize_geom(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
+    let geom: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let key: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    task.ram.push_nv(auto_val::encode_i32(engine_pend_resize_geom(&key, &geom) as i32));
+    Ok(())
+}
+
+/// PLAN-028 T-03/SD-03:engine_history(handle) int——引擎回滚历史行数
+/// (nums 尾段数据源;DLL autoterm_engine_history 同源,泵 scroll 面
+/// 同款管线,几何句柄零耦合)。
+fn engine_history(handle: i64) -> i64 {
+    let Some(lib) = lib() else { return 0 };
+    let h = ptr_of(handle);
+    if h.is_null() {
+        return 0;
+    }
+    unsafe {
+        let hist: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> =
+            lib.get(b"autoterm_engine_history\0").expect("autoterm_engine_history symbol");
+        hist(h).max(0) as i64
+    }
+}
+
+/// PLAN-028 T-03:engine_history(handle int) int shim。
+pub fn shim_term_engine_history(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    task.ram.push_nv(auto_val::encode_i32(engine_history(handle) as i32));
+    Ok(())
+}
+
 /// PLAN-015 D4:engine_menu_take() int——菜单动作载荷(0=Copy 1=Paste
 /// 2=SelectAll 3=Interrupt;-1=无载荷;注册表任意端,BTreeMap 键序)。
 fn engine_menu_take() -> i64 {
@@ -1216,4 +1286,31 @@ pub fn shim_term_config_spawn_cwd(task: &mut AutoTask, vm: &AutoVM) -> Result<()
     String::new()
         .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+// ── PLAN-028 T-03:geom 桥写解析层测试(ui 臂;注册表 + 泵出口往返)──
+#[cfg(all(test, feature = "ui"))]
+mod p028_geom_bridge_tests {
+    use super::*;
+
+    #[test]
+    fn geom_parse_guards_and_registry_write() {
+        crate::ui::terminal::terminal_dispose("p028-geom");
+        // 非法串/退化尺寸拒收(014 护栏:最小化退化不落不应用)。
+        assert_eq!(engine_pend_resize_geom("p028-geom", "abc"), 0);
+        assert_eq!(engine_pend_resize_geom("p028-geom", "80"), 0);
+        assert_eq!(engine_pend_resize_geom("p028-geom", "80x"), 0);
+        assert_eq!(engine_pend_resize_geom("p028-geom", "1x30"), 0, "退化 cols 拒收");
+        assert_eq!(engine_pend_resize_geom("p028-geom", "80x0"), 0, "退化 rows 拒收");
+        assert_eq!(engine_pend_resize_geom("p028-geom", "0x30"), 0, "最小化 0 尺寸拒收");
+        // 合法:落 per-key pending,既有定向泵出口取走。
+        assert_eq!(engine_pend_resize_geom("p028-geom", "80x30"), 1);
+        let core = crate::ui::terminal::terminal_core("p028-geom").expect("桥写惰性建核");
+        assert_eq!(crate::ui::terminal::terminal_take_resize_for(core), Some((80, 30)));
+        assert_eq!(crate::ui::terminal::terminal_take_resize_for(core), None, "取走即清");
+        // 同值重推仍落位(core 占位 (0,0);去重归前端推送面,泵侧幂等)。
+        assert_eq!(engine_pend_resize_geom("p028-geom", "80x30"), 1);
+        assert_eq!(crate::ui::terminal::terminal_take_resize_for(core), Some((80, 30)));
+        crate::ui::terminal::terminal_dispose("p028-geom");
+    }
 }

@@ -4791,7 +4791,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .into_element()
             }
 
-            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => {
+            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, history, scheme, shortcuts, style } => {
                 let core = crate::ui::terminal::terminal(&key, cols, rows);
                 // PLAN-018 D10:scheme prop 随帧落注册表(显式 ≥0 覆盖;
                 // -1 = 跟随主题,绘制期解析)。
@@ -4820,6 +4820,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         cursor_col as usize,
                         crate::ui::terminal::TermCursorShape::Block,
                     );
+                }
+                // PLAN-028 T-05:回滚历史随帧落注册表(app 从 nums 尾段回读
+                // 喂入;0 = 未喂入哨兵)。虚拟画布 =(rows+history)×CELL_H
+                // 随之复原,iced scrollable 恢复"内容高于视口出条"。
+                if history > 0 {
+                    crate::ui::terminal::terminal_set_history(core, history as usize);
                 }
                 let el: iced::Element<'static, M> = crate::ui::terminal::iced::Terminal {
                     core,
@@ -7700,7 +7706,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             AbstractView::ManagedScrollContent { key, logical_w, logical_h, axes }
         }
 
-        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => {
+        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, history, scheme, shortcuts, style } => {
             AbstractView::Terminal {
                 key,
                 cols,
@@ -7713,6 +7719,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 on_input: on_input.map(|m| IcedMessage::from_dynamic(&m)),
                 cursor_row,
                 cursor_col,
+                history,
                 scheme,
                 shortcuts: shortcuts
                     .iter()
@@ -21598,6 +21605,33 @@ fn dynamic_view_impl(
     // PLAN-020 T-00b: 高度随帧同步(window_size = 逻辑 px;分屏矩形投影
     // 窗口尺寸面的消费源,与 width 同点同规约)。
     crate::ui::style::iced_adapter::set_window_height(state.window_size.borrow().height);
+    // PLAN-028 T-02:窗口尺寸真值发布(分体轨桥;变化才发布——每帧两次
+    // f32 比较,发布仅随真实变化,稳态零写入)。消费面:同进程 .at
+    // storage.get 直读;分体轨后端经共享 storage 文件按拍拉取
+    // (AUTO_VM_STORAGE_FILE 钉扎,runbook 惯例)。__window_resized 事件臂
+    // 的 vm.window_inner_height 发布(Plan 046-B)语义保留。
+    {
+        static PUBLISHED: std::sync::OnceLock<
+            std::sync::Mutex<Option<(f32, f32)>>,
+        > = std::sync::OnceLock::new();
+        let (sw, sh) = { let sz = state.window_size.borrow(); (sz.width, sz.height) };
+        let mut last = PUBLISHED.get_or_init(|| std::sync::Mutex::new(None)).lock().unwrap();
+        let changed = match *last {
+            Some((lw, lh)) => (lw - sw).abs() >= 0.5 || (lh - sh).abs() >= 0.5,
+            None => true,
+        };
+        if changed {
+            *last = Some((sw, sh));
+            crate::vm::ffi::stdlib::storage_host_publish(
+                "vm.window_inner_width",
+                format!("{:.0}", sw),
+            );
+            crate::vm::ffi::stdlib::storage_host_publish(
+                "vm.window_inner_height",
+                format!("{:.0}", sh),
+            );
+        }
+    }
     // PLAN-530 步骤2 表面追踪：view 重建时的宽度信号轨迹。
     if std::env::var("P530_TRACE").as_deref() == Ok("1") {
         let sz = state.window_size.borrow();

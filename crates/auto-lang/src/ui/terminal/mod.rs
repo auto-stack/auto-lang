@@ -1172,14 +1172,27 @@ pub const MAX_RESIZE_COLS: u16 = 500;
 pub const MAX_RESIZE_ROWS: u16 = 200;
 
 /// Widget layout 由可用空间反推网格几何;与当前几何不同才落位(覆盖
-/// 旧请求——只关心最新值)。
-pub fn terminal_request_resize(core: &TerminalCore, cols: u16, rows: u16) {
+/// 旧请求——只关心最新值)。返回 true = 本次落了待定请求。
+pub fn terminal_request_resize(core: &TerminalCore, cols: u16, rows: u16) -> bool {
     let cols = cols.clamp(MIN_RESIZE_COLS, MAX_RESIZE_COLS);
     let rows = rows.clamp(1, MAX_RESIZE_ROWS);
     if cols == core.cols && rows == core.rows {
-        return;
+        return false;
     }
     *core.pending_resize.lock().unwrap() = Some((cols, rows));
+    true
+}
+
+/// PLAN-028 T-03:分体轨桥写入口——后端进程(无渲染面)按 key 惰性建核
+/// 并落 per-key 待定几何,供同进程引擎泵(apply_resize_for)消费。
+/// 落表权限从渲染面 [`terminal`] 扩至此处:(0,0) 占位建核(后端不渲染,
+/// cells 空表;几何只在引擎侧落位),钳位/同值 no-op 语义与
+/// [`terminal_request_resize`] 同款。返回 true = 落了待定请求。
+pub fn terminal_pend_resize(key: &str, cols: u16, rows: u16) -> bool {
+    let cols = cols.clamp(MIN_RESIZE_COLS, MAX_RESIZE_COLS);
+    let rows = rows.clamp(1, MAX_RESIZE_ROWS);
+    let core = terminal(key, 0, 0);
+    terminal_request_resize(core, cols, rows)
 }
 
 /// Take the pending resize request (any terminal; key order stable).
@@ -1630,6 +1643,32 @@ mod tests {
         assert_eq!(terminal_take_resize_for(a), None, "取走即清");
         terminal_dispose("p18-pump-a");
         terminal_dispose("p18-pump-b");
+    }
+
+    #[test]
+    fn pend_resize_bridge_lazy_creates_and_feeds_pump() {
+        // PLAN-028 T-03:分体轨桥写入口——后端进程(无渲染面)按 key 惰性
+        // 建核落 pending,既有定向泵出口(apply_resize_for 消费面)取走。
+        terminal_dispose("p028-bridge");
+        assert!(
+            terminal_core("p028-bridge").is_none(),
+            "前置:注册表无核(terminal_core 只读不建)"
+        );
+        assert!(terminal_pend_resize("p028-bridge", 100, 30), "首次请求应落位");
+        let core = terminal_core("p028-bridge").expect("桥写应惰性建核");
+        assert_eq!(terminal_take_resize_for(core), Some((100, 30)));
+        assert_eq!(terminal_take_resize_for(core), None, "取走即清");
+        // 覆盖旧请求语义:未消费前重推,泵只取最新值。
+        assert!(terminal_pend_resize("p028-bridge", 80, 24));
+        assert!(terminal_pend_resize("p028-bridge", 120, 40));
+        assert_eq!(terminal_take_resize_for(core), Some((120, 40)), "只关心最新值");
+        // clamp 面:退化 (0,0) 在本层 clamp 为 (2,1) 落位——退化**拒收**
+        // 在 geom 解析层(term_engine p028 测试),本层只负责钳位与
+        // 同值 no-op(重推同值:core 占位 (0,0)≠(2,1) 仍落位,去重归
+        // 前端推送面)。
+        assert!(terminal_pend_resize("p028-bridge", 0, 0));
+        assert_eq!(terminal_take_resize_for(core), Some((2, 1)));
+        terminal_dispose("p028-bridge");
     }
 
     #[test]
