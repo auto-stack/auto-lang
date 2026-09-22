@@ -13158,6 +13158,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         } else {
                             attrs.push(format!("v-model=\"{}\"", model));
                         }
+                    } else if let Some(lit) = self.extract_string_value(value) {
+                        // PLAN-692: 字面串 content（画廊 AutoLang 示例形态）此前被
+                        // 静默丢弃——CodeEditor 挂载即空白。字面量不可写，走单向
+                        // 初始值 `:model-value`（编辑器内部状态自持，update 无人
+                        // 消费即不回写）。JS 单引号字面量 + `"` 实体化（属性分隔符
+                        // 保护；Vue 属性值先做实体解码再编译表达式）。
+                        let js = Self::escape_js_string(lit).replace('"', "&quot;");
+                        attrs.push(format!(":model-value=\"'{}'\"", js));
                     }
                 }
                 // Static config props.
@@ -21575,6 +21583,40 @@ widget W {
         let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &props, &HashMap::new());
         let joined = attrs.iter().find(|a| a.starts_with("style=")).expect("style attr");
         assert!(joined.contains("--sb-size: 16px") && joined.contains("scrollbar-width: none"), "{}", joined);
+    }
+
+    /// PLAN-692: code_editor 字面串 content 此前被静默丢弃（挂载即空白编辑器）
+    /// ——字面量走单向 `:model-value` 初始值，`"` 以 &quot; 实体化保护属性分隔符；
+    /// 状态绑定 content 的 v-model 形态不受影响。
+    #[test]
+    fn p692_code_editor_literal_content() {
+        // 字面串 content → :model-value 单向初始值（含换行/双引号转义）。
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget Test {
+    view {
+        code_editor (key: "ed", lang: "auto", style: "h-56 w-full") {
+            content: "widget Hello {\n    model { name str = \"world\" }\n}\n"
+        }
+    }
+}
+"#);
+        assert!(sfc.contains(":model-value="), "literal content must emit :model-value:\n{}", sfc);
+        assert!(sfc.contains("&quot;world&quot;"), "double quotes must be entity-escaped:\n{}", sfc);
+        assert!(sfc.contains("\\n"), "newlines must be JS-escaped:\n{}", sfc);
+        assert!(!sfc.contains("v-model="), "literal content must not emit v-model:\n{}", sfc);
+
+        // 状态绑定 content → v-model（既有契约不回归）。
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget Test {
+    model { source str = "" }
+    view {
+        code_editor (key: "ed", lang: "rust") {
+            content: .source
+        }
+    }
+}
+"#);
+        assert!(sfc.contains("v-model=\"source\""), "bound content must keep v-model:\n{}", sfc);
     }
 
     /// PLAN-692: utility 滚动路径（overflow-*-auto 类）统一原生滚动条皮肤——
