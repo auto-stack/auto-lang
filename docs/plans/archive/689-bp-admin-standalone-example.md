@@ -285,7 +285,12 @@ rs/at/ts/vue/md/json/toml/yml/py/mjs。）
     保持，682 先例对齐）；INDEX 再生零漂移免提交。
   - **archived**：git mv → docs/plans/archive/ + status archived +
     completion_kind delivered（本行随归档提交）。
-  - **cleaned**：待回填（worktree/分支/组目录清理后补）。
+  - **cleaned**：wt-guard 先拦截 `examples/bp-admin/deps/bps` junction
+    （gen-only 物化 dep 位，682 同型）——按处方 `cmd /c rmdir` 摘链接后
+    双 worktree（lang-689/auto-lang + auto-down 依赖位）guard clean →
+    `git worktree remove` ×2 + `git branch -d plan-689-dev`（was
+    7f74a9c46）+ 组目录 `D:/autostack/.wt/lang-689` 删除；两仓 worktree
+    list 与 .wt/ 零残留。五 checkpoint 闭环 delivered。
   - 伴随 watch：CI build-ui-examples 首跑绿（GitHub 侧）；auto-os
     画廊再发射（35→34 demos/会话 7→6，PLAN-666 先例 regen+跨仓提交）
     ——均不在本仓 worktree 内执行。
