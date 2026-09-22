@@ -1,26 +1,66 @@
-// bookshelf.at — "/" Library grid. Shows every book with a cover, progress
-// bar, and add/delete actions. Clicking a card navigates to its detail page.
+// bookshelf.at — "/" Library. Apple Books 式书架：Continue Reading 横幅 +
+// 封面网格 + 新建书对话框。PLAN-684 F-2：对话框遮罩用容器内 absolute
+// （父级 relative），不再 fixed inset-0（嵌入态会穿出视口卡，P675-D1 同族）。
 use store: BooksStore
 
 style field_label = "text-sm font-medium text-foreground"
 style search_input = "px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary"
 style empty_state = "items-center justify-center py-20 gap-3 text-muted-foreground"
 
+/// 0 < progress < 100 的第一本书 index；-1 = 无。
+fn continue_index(books List) int {
+    var i int = 0
+    while i < books.len() {
+        if books[i].progress > 0 {
+            if books[i].progress < 100 {
+                return i
+            }
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+/// progress → 章节号（与 book_detail 同换算）。
+fn chapter_from_progress(progress int, chapter_count int) int {
+    if chapter_count <= 0 {
+        return 1
+    }
+    if progress <= 0 {
+        return 1
+    }
+    let computed int = (progress * chapter_count / 100) as int
+    if computed < 1 {
+        return 1
+    }
+    if computed > chapter_count {
+        return chapter_count
+    }
+    return computed
+}
+
 widget bookshelf {
-    msg { Init, OpenBook(int), ShowAdd, CloseAdd, SubmitAdd, TitleChanged, AuthorChanged, DeleteBook(int) }
+    msg { Init, OpenBook(int), ContinueBook(int), ShowAdd, CloseAdd, SubmitAdd, TitleChanged, AuthorChanged, DeleteBook(int) }
 
     model {
         var show_add bool = false
         var new_title str = ""
         var new_author str = ""
+        var cont_id int = 0
+        var cont_title str = ""
+        var cont_author str = ""
+        var cont_color str = "from-indigo-500 to-purple-600"
+        var cont_progress int = 0
+        var cont_chapter_count int = 1
+        var has_continue bool = false
     }
 
     view {
         col {
-            style: "p-6 md:p-10 gap-6 max-w-6xl mx-auto"
+            style: "relative p-6 md:p-10 gap-6 max-w-6xl mx-auto w-full"
 
             row {
-                style: "items-center justify-between gap-4"
+                style: "items-center justify-between gap-4 shrink-0"
                 col {
                     h1 "Library" { style: "text-2xl md:text-3xl font-bold text-foreground" }
                     text f"${.store.books.len()} books" { style: "text-sm text-muted-foreground mt-1" }
@@ -29,6 +69,36 @@ widget bookshelf {
                     onclick: .ShowAdd
                     style: "inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
                     text "＋ Add Book" {}
+                }
+            }
+
+            // Continue Reading — 降低再入成本（Apple Books / Kindle 惯用）
+            if .has_continue {
+                row {
+                    onclick: .ContinueBook(.cont_id)
+                    style: "items-center gap-4 p-4 rounded-xl bg-card border border-border hover:border-primary/50 cursor-pointer transition-colors shrink-0"
+                    col {
+                        style: "w-14 h-20 rounded-lg bg-gradient-to-br " + .cont_color + " items-center justify-center shrink-0 shadow-sm"
+                        text "📖" { style: "text-xl text-white/85" }
+                    }
+                    col {
+                        style: "flex-1 min-w-0 gap-1"
+                        text "Continue Reading" { style: "text-xs font-medium text-primary uppercase tracking-wide" }
+                        text .cont_title { style: "font-semibold text-foreground truncate" }
+                        text .cont_author { style: "text-sm text-muted-foreground truncate" }
+                        row {
+                            style: "items-center gap-2 mt-1"
+                            col {
+                                style: "flex-1 h-1.5 rounded-full bg-border overflow-hidden"
+                                row {
+                                    style: "h-full bg-primary rounded-full"
+                                    style: "width:" + .cont_progress.to_string() + "%"
+                                }
+                            }
+                            text f"${.cont_progress}%" { style: "text-xs text-muted-foreground shrink-0" }
+                        }
+                    }
+                    text "→" { style: "text-lg text-muted-foreground shrink-0" }
                 }
             }
 
@@ -44,6 +114,11 @@ widget bookshelf {
                         text "📖" { style: "text-5xl opacity-40" }
                         text "No books yet" { style: "font-medium" }
                         text "Add your first book to get started" { style: "text-sm" }
+                        button {
+                            onclick: .ShowAdd
+                            style: "mt-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
+                            text "＋ Add Book" {}
+                        }
                     }
                 } else {
                     div {
@@ -52,9 +127,8 @@ widget bookshelf {
                             col {
                                 onclick: .OpenBook(book.id)
                                 style: "cursor-pointer group"
-                                // Cover: gradient block with progress bar overlay.
                                 col {
-                                    style: "h-48 rounded-xl bg-gradient-to-br " + book.cover_color + " items-center justify-center relative overflow-hidden shadow-sm group-hover:shadow-md transition-shadow"
+                                    style: "h-52 rounded-xl bg-gradient-to-br " + book.cover_color + " items-center justify-center relative overflow-hidden shadow-sm group-hover:shadow-md transition-shadow"
                                     text "📖" { style: "text-4xl text-white/70" }
                                     if book.progress > 0 {
                                         col {
@@ -63,6 +137,12 @@ widget bookshelf {
                                                 style: "h-full bg-white/80"
                                                 style: "width:" + book.progress.to_string() + "%"
                                             }
+                                        }
+                                    }
+                                    if book.progress >= 100 {
+                                        col {
+                                            style: "absolute top-2 right-2 px-1.5 py-0.5 rounded bg-black/40 text-white text-xs"
+                                            text "✓" {}
                                         }
                                     }
                                 }
@@ -86,10 +166,10 @@ widget bookshelf {
                 }
             }
 
-            // Add-book dialog
+            // Add-book dialog — absolute 遮罩锚定本 col（relative），嵌入不穿出
             if .show_add {
                 col {
-                    style: "fixed inset-0 bg-black/50 z-50 items-center justify-center p-4"
+                    style: "absolute inset-0 bg-black/50 z-50 items-center justify-center p-4"
                     onclick: .CloseAdd
                     col {
                         style: "w-full max-w-md p-6 gap-4 bg-card rounded-xl shadow-lg border border-border"
@@ -134,8 +214,25 @@ widget bookshelf {
     }
 
     on {
-        .Init -> { store.Init() }
+        .Init -> {
+            store.Init()
+            .has_continue = false
+            var idx int = continue_index(.store.books)
+            if idx >= 0 {
+                .has_continue = true
+                .cont_id = .store.books[idx].id
+                .cont_title = .store.books[idx].title
+                .cont_author = .store.books[idx].author
+                .cont_color = .store.books[idx].cover_color
+                .cont_progress = .store.books[idx].progress
+                .cont_chapter_count = .store.books[idx].chapter_count
+            }
+        }
         .OpenBook(id int) -> { router.push("/book/" + id.to_string()) }
+        .ContinueBook(id int) -> {
+            var ch int = chapter_from_progress(.cont_progress, .cont_chapter_count)
+            router.push("/book/" + id.to_string() + "/chapter/" + ch.to_string())
+        }
         .ShowAdd -> {
             .show_add = true
             .new_title = ""
@@ -148,8 +245,32 @@ widget bookshelf {
             if .new_title != "" {
                 store.AddBook(.new_title, .new_author)
                 .show_add = false
+                var idx int = continue_index(.store.books)
+                .has_continue = false
+                if idx >= 0 {
+                    .has_continue = true
+                    .cont_id = .store.books[idx].id
+                    .cont_title = .store.books[idx].title
+                    .cont_author = .store.books[idx].author
+                    .cont_color = .store.books[idx].cover_color
+                    .cont_progress = .store.books[idx].progress
+                    .cont_chapter_count = .store.books[idx].chapter_count
+                }
             }
         }
-        .DeleteBook(id int) -> { store.RemoveBook(id) }
+        .DeleteBook(id int) -> {
+            store.RemoveBook(id)
+            .has_continue = false
+            var idx int = continue_index(.store.books)
+            if idx >= 0 {
+                .has_continue = true
+                .cont_id = .store.books[idx].id
+                .cont_title = .store.books[idx].title
+                .cont_author = .store.books[idx].author
+                .cont_color = .store.books[idx].cover_color
+                .cont_progress = .store.books[idx].progress
+                .cont_chapter_count = .store.books[idx].chapter_count
+            }
+        }
     }
 }

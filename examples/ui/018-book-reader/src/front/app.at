@@ -16,26 +16,27 @@ widget App {
     msg { Init }
 
     view {
+        // PLAN-684 F-1 嵌入安全壳层：禁用 viewport-fixed 铬件。
+        // 侧栏/主区都是容器内 flex 兄弟，高度锚定父容器（AppViewport deep
+        // 覆盖 .min-h-screen→100%）。此前 `fixed inset-y-0` 相对浏览器视口
+        // 定位，gallery 内嵌时侧栏穿出视口卡（P675-D1 ②）。
         row {
-            style: "min-h-screen bg-background text-foreground"
+            style: "h-full min-h-screen bg-background text-foreground"
 
-            // Sidebar (desktop)
+            // Sidebar (desktop) — relative flex child, not fixed
             col {
-                style: "w-60 border-r border-border bg-card hidden md:flex flex-col fixed inset-y-0 z-40"
+                style: "w-60 shrink-0 h-full border-r border-border bg-card hidden md:flex flex-col"
                 row {
-                    style: "items-center gap-2 p-5 border-b border-border"
+                    style: "items-center gap-2 p-5 border-b border-border shrink-0"
                     text "📖" { style: "text-xl" }
                     text "AutoRead" { style: "font-bold text-lg text-foreground" }
                 }
-                // Plan 562: nav → sidebar 族（nav 退役）。外壳 col 已承担
-                // w-60 宽度/fixed 定位，不用 sidebar root；provider class
-                // 覆盖 min-h-svh/w-full 默认（独子直返，VM 零布局介入）。
-                sidebar_provider (class: "w-auto min-h-0 flex flex-1 min-h-0 flex-col") {
-                    sidebar_menu (style: "p-3 flex-1") {
+                // Plan 562: nav → sidebar 族（nav 退役）。外壳 col 承担
+                // w-60 宽度；provider class 覆盖 min-h-svh/w-full 默认。
+                sidebar_provider (class: "w-auto min-h-0 flex flex-1 flex-col") {
+                    sidebar_menu (style: "p-3 flex-1 overflow-y-auto") {
                         // Plan 548 D2: menu_button(to:) 路由模式 —— Vue hash
                         // URL + 浏览器返回；VM __navigate + router.back() 历史栈。
-                        // 选中态主色调高亮由 to 自动判定（/ 对 /book/1 不误亮——
-                        // 前缀段匹配，exact: true 锁首页恰等）。
                         sidebar_menu_item {
                             sidebar_menu_button (to: "/", exact: true) {
                                 text "📚" {}
@@ -50,19 +51,14 @@ widget App {
                         }
                     }
                 }
-                // Theme toggle withdrawn (PLAN-675 T-06): the handmade
-                // ThemeToggle.vue escape hatch never resolved in the .at
-                // pipeline (strict builds hard-fail on the unknown element;
-                // the web arm has been broken standalone all along). A
-                // schema-native theme-toggle element is deferred debt.
             }
 
             // Main content
             col {
-                style: "flex-1 md:ml-60"
+                style: "flex-1 min-w-0 h-full flex flex-col"
                 // Mobile top bar
                 row {
-                    style: "h-14 border-b border-border bg-card items-center px-4 gap-4 md:hidden"
+                    style: "h-14 border-b border-border bg-card items-center px-4 gap-4 md:hidden shrink-0"
                     text "📖 AutoRead" { style: "font-bold text-foreground" }
                     row { style: "flex-1" }
                     link (to: "/") { text "Library" { style: sub_text } }

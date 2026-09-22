@@ -1,13 +1,28 @@
-// book_detail.at — "/book/:id" book detail + chapter list.
-// Reads the :id route param, fetches the book (get_book) + its chapters
-// (list_chapters), and lets the reader jump into a chapter or continue reading.
-// NOTE: the found book is stored in a model field, NOT a multi-statement
-// `computed` — the vue codegen does not emit a `return` for a block-bodied
-// computed, so it would yield undefined.
+// book_detail.at — "/book/:id" 书籍详情 + 章节目录。
+// PLAN-684 F-3：左封面/元信息，右编号 TOC 列表（当前章高亮）；主 CTA =
+// Continue/Start。不再用 4 列密网格。
 use back.api: get_book, list_chapters
 
 style btn_primary_xl = "mt-3 inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
 style row_gap1 = "items-center gap-1"
+
+/// progress → 当前章（1-based）。
+fn chapter_from_progress(progress int, chapter_count int) int {
+    if chapter_count <= 0 {
+        return 1
+    }
+    if progress <= 0 {
+        return 1
+    }
+    let computed int = (progress * chapter_count / 100) as int
+    if computed < 1 {
+        return 1
+    }
+    if computed > chapter_count {
+        return chapter_count
+    }
+    return computed
+}
 
 widget book_detail {
     msg { Init, Back, ReadChapter(int), ContinueReading }
@@ -17,16 +32,17 @@ widget book_detail {
         var book ?Book = None
         var chapters []Chapter = []
         var loaded bool = false
+        var current_ch int = 1
     }
 
     view {
         col {
-            style: "p-6 md:p-10 gap-6 max-w-4xl mx-auto"
+            style: "p-6 md:p-10 gap-6 max-w-4xl mx-auto w-full"
 
             button {
                 onclick: .Back
-                style: "inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
-                text "← Back to Library" {}
+                style: "inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit shrink-0"
+                text "← Library" {}
             }
 
             if .loaded {
@@ -39,13 +55,13 @@ widget book_detail {
                 } else {
                     row {
                         style: "gap-6 flex-col md:flex-row"
-                        // Cover
+                        // Cover + meta
                         col {
                             style: "w-36 h-52 rounded-xl bg-gradient-to-br " + .book.cover_color + " items-center justify-center flex-shrink-0 shadow-lg"
                             text "📖" { style: "text-4xl text-white/70" }
                         }
                         col {
-                            style: "gap-2 flex-1"
+                            style: "gap-2 flex-1 min-w-0"
                             h1 .book.title { style: "text-2xl font-bold text-foreground" }
                             text .book.author { style: "text-muted-foreground" }
                             row {
@@ -84,17 +100,41 @@ widget book_detail {
                         }
                     }
 
+                    // Chapter TOC — 编号列表，当前章高亮
                     col {
-                        style: "mt-2 gap-3"
-                        text "Chapters" { style: "text-lg font-semibold text-foreground" }
-                        div {
-                            style: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"
+                        style: "mt-2 gap-2"
+                        row {
+                            style: "items-baseline justify-between"
+                            text "Chapters" { style: "text-lg font-semibold text-foreground" }
+                            text f"${.chapters.len()} entries" { style: "text-xs text-muted-foreground" }
+                        }
+                        col {
+                            style: "gap-1"
                             for ch in .chapters {
-                                button {
+                                row {
                                     onclick: .ReadChapter(ch.number)
-                                    style: "flex items-center justify-between p-3 bg-card border border-border rounded-lg text-left hover:border-primary hover:bg-accent transition-all"
-                                    text ch.title { style: "text-sm font-medium text-foreground" }
-                                    text "→" { style: "text-muted-foreground" }
+                                    style: ["items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors cursor-pointer",
+                                        if ch.number == .current_ch {
+                                            "border-primary bg-primary/10"
+                                        } else {
+                                            "border-transparent hover:bg-accent"
+                                        }]
+                                    text f"${ch.number}" {
+                                        style: "text-xs font-mono text-muted-foreground w-6 shrink-0"
+                                    }
+                                    text ch.title {
+                                        style: ["flex-1 truncate text-sm",
+                                            if ch.number == .current_ch {
+                                                "font-semibold text-foreground"
+                                            } else {
+                                                "text-foreground"
+                                            }]
+                                    }
+                                    if ch.number == .current_ch {
+                                        text "Reading" { style: "text-xs text-primary shrink-0" }
+                                    } else {
+                                        text "→" { style: "text-muted-foreground shrink-0" }
+                                    }
                                 }
                             }
                         }
@@ -109,6 +149,10 @@ widget book_detail {
             .book_id = router.param("id")
             .book = get_book(.book_id)
             .chapters = list_chapters(.book_id)
+            .current_ch = 1
+            if .book != None {
+                .current_ch = chapter_from_progress(.book.progress, .book.chapter_count)
+            }
             .loaded = true
         }
         .Back -> { router.push("/") }
@@ -118,17 +162,7 @@ widget book_detail {
         .ContinueReading -> {
             var current int = 1
             if .book != None {
-                if .book.progress > 0 {
-                    let total int = .book.chapter_count
-                    let computed int = .book.progress * total / 100
-                    if computed >= 1 {
-                        if computed <= total {
-                            current = computed
-                        } else {
-                            current = total
-                        }
-                    }
-                }
+                current = chapter_from_progress(.book.progress, .book.chapter_count)
             }
             router.push("/book/" + .book_id.to_string() + "/chapter/" + current.to_string())
         }

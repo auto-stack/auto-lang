@@ -1,21 +1,21 @@
-// settings.at — "/settings" reading preferences.
-// Font size is persisted to localStorage (storage.get/set) and applied to the
-// reading view. Theme (light/dark) is handled by the ThemeToggle escape hatch.
+// settings.at — "/settings" 阅读偏好。
+// PLAN-684 F-5：字号 + 行距真实写入 storage，由 reading.at 读取生效；
+// 去掉指向不存在 theme-toggle 的误导文案。
 use stylekit.styles: caption_text
 style settings_label = "text-sm font-semibold text-foreground"
-style size_xl = "text-xl"
 style sub_text = "text-sm text-muted-foreground"
 
 widget settings {
-    msg { Init, SetFont(str) }
+    msg { Init, SetFont(str), SetLineHeight(str) }
 
     model {
         var font_size str = "medium"
+        var line_height str = "comfy"
     }
 
     view {
         col {
-            style: "p-6 md:p-10 gap-6 max-w-3xl mx-auto"
+            style: "p-6 md:p-10 gap-6 max-w-3xl mx-auto w-full"
 
             col {
                 h1 "Settings" { style: "text-2xl md:text-3xl font-bold text-foreground" }
@@ -29,7 +29,7 @@ widget settings {
                 col {
                     style: "gap-3"
                     text "Font Size" { style: settings_label }
-                    text "Affects the reading view text size." { style: caption_text }
+                    text "Applies to the reading view body text." { style: caption_text }
                     row {
                         style: "gap-2"
                         button {
@@ -62,17 +62,45 @@ widget settings {
                     }
                 }
 
+                // Line height
+                col {
+                    style: "gap-3"
+                    text "Line Spacing" { style: settings_label }
+                    text "Compact fits more text; comfortable is easier on long sessions." { style: caption_text }
+                    row {
+                        style: "gap-2"
+                        button {
+                            onclick: .SetLineHeight("compact")
+                            style: ["px-4 py-2 rounded-lg text-sm", if .line_height == "compact" {
+                                "bg-primary text-primary-foreground"
+                            } else {
+                                "border border-border text-foreground hover:bg-accent"
+                            }]
+                            text "Compact" {}
+                        }
+                        button {
+                            onclick: .SetLineHeight("comfy")
+                            style: ["px-4 py-2 rounded-lg text-sm", if .line_height == "comfy" {
+                                "bg-primary text-primary-foreground"
+                            } else {
+                                "border border-border text-foreground hover:bg-accent"
+                            }]
+                            text "Comfortable" {}
+                        }
+                    }
+                }
+
                 // Theme
                 col {
                     style: "gap-3"
                     text "Theme" { style: settings_label }
-                    text "Use the sun/moon toggle (top of the sidebar or reading bar) to switch between light and dark." { style: caption_text }
+                    text "AutoRead follows the app theme (light/dark). Reading view uses the same background." { style: caption_text }
                     row {
                         style: "gap-2 items-center"
-                        text "☀️" { style: size_xl }
+                        text "☀️" { style: "text-xl" }
                         text "Light" { style: sub_text }
                         text "⇄" { style: "text-muted-foreground mx-2" }
-                        text "🌙" { style: size_xl }
+                        text "🌙" { style: "text-xl" }
                         text "Dark" { style: sub_text }
                     }
                 }
@@ -81,7 +109,7 @@ widget settings {
                 col {
                     style: "gap-2 p-4 bg-card border border-border rounded-xl"
                     text "About" { style: settings_label }
-                    text "AutoRead — a multi-page e-book reader built with AutoUI: routes, a rust backend, and a runtime theme toggle." { style: "text-xs text-muted-foreground leading-relaxed" }
+                    text "AutoRead — a multi-page e-book reader built with AutoUI: routes, a rust backend, and reading preferences that stick." { style: "text-xs text-muted-foreground leading-relaxed" }
                 }
             }
         }
@@ -95,10 +123,20 @@ widget settings {
                     .font_size = saved
                 }
             }
+            let lh = storage.get("br-line-height")
+            if lh != nil {
+                if lh != "" {
+                    .line_height = lh
+                }
+            }
         }
         .SetFont(s str) -> {
             .font_size = s
             storage.set("br-font-size", s)
+        }
+        .SetLineHeight(s str) -> {
+            .line_height = s
+            storage.set("br-line-height", s)
         }
     }
 }
