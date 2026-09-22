@@ -4447,6 +4447,12 @@
      "title": "rq-codeeditor-a2r-vocab — RQ codeeditor 覆盖契约（SD-01，覆盖集 v1.9）+ a2r 词汇门 per-kind 表驱动契约（SD-02）",
      "content": "PLAN-674 两件生成面覆盖扩容。SD-01（ui/overview.md 覆盖集段 v1.8→v1.9）：codeeditor 入 native_queue_set——投影=结构 DrawOps（T-00 裁定 A：rasterize_canvas_scene 无文本面证伪位图通道；CODE_EDITORS 注册表 get-or-create 同源 inproc iced widget〔storage_key 键+code_editor_set_text 外部值差分〕→core::render 视口虚拟化 EditorDrawList→lower_editor_frame〔Plan 386 降层〕平移入流）；键入/IME/箭标/滚轮走 core handle_input 全键面（INPUT_TEXT 全文代写+on_change 零参派发；ensure_font_system_call 幂等缺省字体源=无 iced 宿主必需）；折叠 gutter/搜索面板/on_cursor 等宿主面板与事件族显式 not-yet（I3 随注，P674-D4）；not-yet 全集勘定仪器 native_not_yet_kind_inventory 双根聚合（现余 style:native-unstyled ×12=P674-D1 与 tag:managed_content=P674-D2 两登记项；tree/menubar 同缺推测证伪）。SD-02（ui/design/shell-a2r-seams.md S1 词汇门节转正）：识别面从四 prop 白名单扩为 per-kind 词汇表（单源=ui_gen/vocab.rs view_prop_vocab/view_event_vocab——语义源=View IR builder 方法面，表体落 ui_gen 是组合律〔view 域挂 ui feature 门，test-trans 无 ui 组合须可编译〕；值形 Str/Bool/F32/U16/Usize/Flag 强转+事件槽 Closure/Msg 双态）；拒绝门保留（PLAN-027 原则）文案补 on <kind>；复合族（menubar value/title/icon/shortcut/enabled/checked）由族降层臂整体消费（镜像解释态 convert_menubar_component；开合态=action_config::MENUBAR_OPEN 全局面+合成变体 __MenubarToggle(String)/__MenubarClose——与 VM 轨 renderer 同机制）。验收：041 运行时钉翻 Covered+消费方 perf.py smoke exit 0 双实例 2/2（供料 §6 0/2 清偿）+a2r 词汇门 23 compile_error!→0（供料 §7 判据；整段 BLOCKED 移位=P670-D1 家族，PLAN-681 承接）。",
      "created": "2026-09-22"
+    },
+    {
+     "id": "P681-1",
+     "title": "a2r-deploy-gap-batch — handler 体内建映射表+伴生模块通用转译/route A+bps 依赖解析+动态记录面（SD-01）+trans 内建映射面契约（SD-02）",
+     "content": "PLAN-681 a2r 部署面缺口清偿（P670-D1 四缺口+P674-D3 五子族，消费方 auto build -r rust 全编译过判据）：①S1 生成域扩容——ui_gen vm_builtin_host_call 单源映射表（VM 裸名内建→宿主调用：console 族→auto_lang::vm::ui_console 同一 ring 零分叉、code_editor 8 员→ui::code_editor 注册表、dialog_open/save→ui::dialog rfd 宿主、file_basename→a2r_std::fs::basename、Process.exit、json.to_value）+伴生模块通用转译（src/back/*.at 单转译源双发射位=back crate <stem>.rs+merged front 内嵌）+route A（api.at 剥 #[api] 属性行转译 api_impl，端点体真降体，back 委托 handler+front merged 真契约桩双位委派；CRUD mock 兜底=PLAN-648 契约降末位；R-1 修正：build_rust_ui 补 generate_api back 刷新）+bps 依赖解析面（pac dep 声明→use-fn 模块转译内嵌 mod __bps_*+星 use、裸 widget 名依赖包源补集）+on-only handler 载荷推断（STORE_MSG_PAYLOADS 预填+store 转发推断）+list-of-record 元素形状表；②trans 内建映射面契约——Env→env 大写归一化（Json 同款）+fs.tree 两派发表+宿主位两类（a2r-std 独立 crate 经迷你库 re-export 单源/auto_lang 直连零分叉）+双轨逐字节对拍纪律（fs_tree_parity 先例）+动态记录面（bare List=动态桶→Vec<Value>：P1 Value 派生推断/P2 字段索引访问/P3 push json!/P4 typed 收口/P5 形参收口）。消费方探针 134→0；fs.tree 对拍 2/2。文件=docs/specs/auto-lang/ui/design/shell-a2r-seams.md+docs/specs/auto-lang/trans/overview.md",
+     "file": "docs/specs/auto-lang/ui/design/shell-a2r-seams.md"
     }
    ]
   },
@@ -7005,6 +7011,12 @@
      "title": "rq-codeeditor-a2r-vocab 复审与合并收据",
      "content": "review pass@plan-674-dev r1（实施会话内复审，证据自工件重建）：needs_fix R-1=on_cursor 静默弃置违 I3 留痕纪律→注释修正+P674-D4 债→pass 复裁（树差异仅注释行）。AC-01..06 全 pass：作用域 7 测（041 翻 None/矩阵钉/键入闭环/双根勘定/plan039 19/19/vocab 双测/menubar 降层）+tf 3715/3715+tv 3857/3857（排除域 dep_parity=PLAN-596 预存 scratch 慢测，tf full 配置滤除口径）+tt 4084/4084+消费方 HEAD 双探针（perf smoke exit 0 双实例 2/2〔2026-09-22 00:51，auto.exe=reviewed HEAD〕+a2r 词汇门 0 错首错 E0425=P670-D1 族）。T-00 三裁定（A=结构 DrawOps；B=builder 面单源，表体迁 ui_gen/vocab.rs=组合律；C=批次边界）+T-02 勘定（全集两项 P674-D1/D2，tree/menubar 证伪）。P674-D3 处置=2026-09-22 用户裁定扩 P670-D1（PLAN-681 承接）。债册 P674-D1/D2/D3/D4 四条在册。",
      "created": "2026-09-22"
+    },
+    {
+     "id": "P681-2",
+     "title": "a2r-deploy-gap-batch 复审与合并收据",
+     "content": "review r1 needs_fix@90cc1fab2（R-1：auto build -r rust UI 路径仅 front 再生成——generate_api 仅 run 路径触发，消费方 back 停 9-21 桩版=exit 0 假阳；T-01/T-02 重开）→修正（build_rust_ui regen 后 generate_api，idempotent+resolve_back_api 门控）→r2 pass：back 工件真体验证（fsys.rs+api_impl.rs mtime 新鲜+TODO 0+Query 提取委派金样 pub async fn tree(Query(query): Query<TreeQuery>) -> JsonResponse<String> { JsonResponse(crate::api_impl::tree(&query.path, query.depth)) }）+workspace cargo check 0+auto build exit 0+perf.py a2r 绿 EXIT=0+tf 3722/3722+tv 3869/3869+tt 4091/4091（cargo t 唯一停跑红=musk p053_4 P645-D2 在册预存豁免，full 配置下不存在）+fs_tree parity 2/2+signature parity 兜带扩容绿+grep 门代码位零消费方标识符（命中仅映射表 VM 内建名位=机制本体）。边界：dialog 父窗锚 v1 从简；--server rust 运行期 HTTP 对拍非目标；code_editor 预制槽载荷型默认值（674 I3 同族）。叠基注记：worktree 基于 plan-674-dev@1f8828d19，其两 commit 随本交付入 ancestry，674 自身 merge 顺延为簿记",
+     "file": "docs/plans/archive/681-a2r-deploy-gap-batch.md"
     }
    ]
   }
