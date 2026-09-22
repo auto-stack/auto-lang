@@ -452,6 +452,11 @@ wrong:/why:/right: 加粗/行内码 chip/列表/表格 chrome）、tab 直切、
   guard clean；落地时点主检出他方 WIP 清单：iced/renderer.rs、
   shell_client.rs、workspace_preview.rs、dashboard.at、examples/** 等
   （归属会话未路由，未触碰未包含）。
+- 2026-09-22 `cleaned`：双 worktree 各自新跑 guard clean 后移除——
+  `D:/autostack/.wt/lang-685/auto-lang`（branch plan-685-dev 已删，删前
+  指向 e34692db9 = landed delivery）+ auto-down 依赖 sibling（detached
+  fba6563）；组目录 `D:/autostack/.wt/lang-685` 空删（ls 计 0 证实）。
+  五 checkpoint 全闭环，**delivered**。
 
 ## 10. 待澄清事项
 
