@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-690
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: rq-remote-interaction-scale
 author: [zcode]
 created_at: 2026-09-22
@@ -119,18 +119,73 @@ App（headless iced 宿主）                     daemon（iced 窗）
 - daemon 落地：`rq_update` 收 Control → `iced::window::InputMethod::*`
   task 发到该 wid 窗（多窗偏移换算在 daemon 侧按窗 rect）。
 
+**T-01 勘定结论（2026-09-22，代码级三锚点，待澄清①销号）**：
+
+1. **App 侧截获点 = `UserInterface::update` 返回的 `State::Updated`**
+   （iced_runtime-0.14 user_interface.rs:615-640）：`State::Updated {
+   mouse_interaction, redraw_request, input_method: InputMethod,
+   has_layout_changed }` 直接公开 IME 请求与鼠标光标形状——无需任何
+   hack 或降级路径（headless.rs:127/177 现以 `let _ = ui.update(..)`
+   丢弃 State，截获即改捕获）。text_input 在 `RedrawRequested` 事件臂
+   发 `shell.request_input_method(Enabled{cursor, purpose, preedit})`
+  （iced_widget text_input.rs:1348-1353）→ update 返回时已 merge 好。
+   cursor 矩形 = App 视口逻辑坐标（text_input 内部 layout 推得）。
+2. **daemon 落地点 ≠ 计划原设的 `iced::window::InputMethod` task**
+  （勘误：iced 0.14 无此公开 task——`window::Action` 枚举无 IME 变体，
+   iced_winit 的 `request_input_method` 是内部方法，lib.rs:969 每帧
+   自刷）。实际路径 = **`iced::window::run(id, closure)`
+   （iced_runtime/window.rs:463）→ iced_winit `run_action` 在事件循环
+   线程执行闭包（lib.rs:1633）→ `&dyn Window`（HasWindowHandle）→
+   `RawWindowHandle::Win32` → HWND → IMM API**。IMM 语义照抄 winit
+   0.30.13 ime.rs:115-151：enable = `ImmAssociateContextEx(hwnd, 0,
+   IACE_DEFAULT)`；cursor area = `ImmSetCompositionWindow(CFS_POINT)`
+   + `ImmSetCandidateWindow(CFS_EXCLUDE)`；purpose = Windows no-op
+  （winit `set_ime_purpose` 空实现）。逻辑→物理换算用 daemon 窗
+   scale factor（`iced::window::scale_factor(id) -> Task<f32>` 开窗后
+   取一次，client 登记）。非 Windows daemon = 观测行 + no-op（remote
+   桌面 v1 主战场 Windows）。
+3. **daemon 侧 preedit 可视化 v1 裁定 = 缺省不建**：iced 0.14.2
+   text_input **不自绘** preedit 内容（draw 只用 `state.value`，
+   text_input.rs:589 preedit 仅门 placeholder）；真窗的组合串可见性
+   来自 iced_winit runtime overlay（window.rs:263 draw_preedit）或
+   OS IME 缺省 UI（ImmSetCompositionWindow 定位）。remote 窗 v1 依赖
+   OS 缺省 composition UI（下行走通后候选窗/组合串由系统绘在定位
+   点）；T-04 实机若出现双绘/不绘再立 overlay 补件。
+
 ### preedit cursor 上行（T-03）
 
-`live_input_from_input_method` 签名保留矩形（`Option<Rectangle>`）→
-`LiveInput::ImePreedit{ text, cursor }` → rqhost 填真值 → headless 注入
-`Preedit(text, rect)`（App 侧 iced text_input 自绘 on-the-spot 组合串，rect
-供其内部定位）。
+**语义勘正**（iced 0.14 源级）：`input_method::Event::Preedit(String,
+Option<Range<usize>>)` 第二参 = 组合串内**字节选区**（byte-wise，
+winit conversion.rs:322 `(start, end) -> start..end`），**非矩形**。
+适配实现：`live_input_from_input_method` 保留 `Option<(usize, usize)>`
+→ `LiveInput::ImePreedit { text, selection }` → wire
+`InputMsg::ImePreedit` 的 `cursor: WRect` 字段**原位重定义为
+`selection: Option<(u32, u32)>`**（现硬编码零矩形、headless 弃读——
+双端同仓同版，无兼容包袱；SD-01 注记）→ headless 注入
+`Preedit(text, selection.map(|(s,e)| s..e))`（App 侧 text_input 收进
+`state.preedit`，随后经 `InputMethod::Enabled.preedit` 原样上报——
+T-01 截获面即环测断言口）。
 
 ### 光标形状（T-05 部分）
 
 App 侧 hover 命中（iced Cursor + widget hover 语义）得出目标光标形状 →
-下行 `ControlMsg::SetCursor{wid, kind}` → daemon `window::ChangeCursor`。
-v1 不追求 widget 级精细——text_input/按钮两级先行，其余 default。
+下行 `ControlMsg::SetCursor{wid, kind}` → daemon 应用。v1 不追求
+widget 级精细——text_input/按钮两级先行，其余 default。
+
+**T-05 补充勘定（2026-09-22）**：①App 侧来源 = T-01 同一截获面
+`State::Updated.mouse_interaction`（iced_core mouse/interaction.rs，
+~27 变体——wire v1 两级映射：Pointer→1 / Text→2 / 其余→0）。②daemon
+应用路径 = **view 态而非 Win32**：`&dyn Window` 只有 rwh 句柄面无
+set_cursor；且 iced_winit 每帧 `window.update_mouse(mouse_interaction)`
+会以 daemon 自身 UI 的 interaction 覆盖 OS 光标（lib.rs:969）。
+裁定 = `rq_view` 内容外包 `mouse_area().interaction(映射图标)`——
+SetCursor 下行更新 client 状态 → 下一帧 daemon UI 自带该 interaction
+（hover 期 update_mouse 读到的即它，纯 iced 跨平台）。③Tab 键盘焦点
+导航勘定：iced 0.14 runtime/`UserInterface::update` **无内建 Tab 遍历**
+（全库仅 focus_next/focus_previous operation 定义，无 runtime 调用
+方——遍历是 app 级显式 opt-in）。remote 臂的 Tab 语义 = 上行保真
+（Tab 事件到达 App widget 树，与 native 轨同语义）；app 级遍历缺省
+不在本计划展开，实机走查按 parity 口径记录。
 
 ### 规范增量
 
@@ -170,22 +225,46 @@ v1 不追求 widget 级精细——text_input/按钮两级先行，其余 defaul
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] T-01 勘定：iced_runtime `UserInterface::update` 的 window 动作暴露面
+- [x] T-01 勘定：iced_runtime `UserInterface::update` 的 window 动作暴露面
       （InputMethod 请求从何截获——iced_test 先例对照）；产出决策段回填
       §详细设计。[关联 AC-02] 验证：勘定记录 + headless 截获点代码锚定。
-- [ ] T-02 IME 下行通道：wire ControlMsg::ImeRequest + headless 截获转发 +
+      [✅ 已完成]（2026-09-22）三锚点：①截获点 = `State::Updated{input_method,
+      mouse_interaction}`（user_interface.rs:615-640，headless.rs:127/177 现
+      丢弃待捕获）；②daemon 落地 = `window::run`→HWND→IMM（勘误：无
+      `window::InputMethod` task；winit ime.rs:115-151 语义照抄）；③preedit
+      第二参勘正 = 字节选区 `Option<Range<usize>>` 非矩形。决策段已回填
+      §详细设计；待澄清①降级路径销号。
+- [x] T-02 IME 下行通道：wire ControlMsg::ImeRequest + headless 截获转发 +
       daemon `window::InputMethod` task。[关联 AC-01/02] 验证：环测绿
       （管道注入→task 观测行）。
-- [ ] T-03 preedit cursor 上行修复：`live_input_from_input_method` 矩形保留
+      [✅ 已完成]（2026-09-22，commit 25dee6696）wire ImeRequest/SetCursor
+      tag15/16+ImeReq 载荷；headless State::Updated 截获（勘定补遗：仅
+      Redraw 臂——事件路径 shell 态瞬态 Disabled，照收误发 Disable，
+      drive_and_draw 独占截获）+去重+drain_window_controls 泵缝；daemon
+      window::run→HWND→IMM（win_ime.rs，winit ime.rs 同语义）+scale 取样。
+      环测：p690_ime_downlink_arrival_and_zero_resize_guard 管道环绿（点击
+      聚焦→ime_applied 落位含非退化 cursor 矩形）。
+- [x] T-03 preedit cursor 上行修复：`live_input_from_input_method` 矩形保留
       + rqhost 真值 + headless 注入；typing 环 remote 变体增中文用例。
       [关联 AC-02] 验证：环测绿。
+      [✅ 已完成]（2026-09-22，commit 25dee6696）语义勘正落地：第二参 =
+      字节选区（非矩形）——LiveInput::ImePreedit{selection} 四构造消费点
+      （session/rqhost/mcp/broker）+wire 原位重定义+headless 注入；
+      环测：headless 截获环（preedit 上报回环/Commit winit 序镜像
+      Preedit("") 先行/Esc 取消）+管道环中文上屏出帧 绿；codec round-trip
+      含 Some((5,9))/None 两形态。
 - [ ] T-04 Windows 中文 IME 实机走查（003）：组合/候选/上屏/取消录证；
       残缺项按预案混合兜底呈报裁定；D6 销号。[关联 AC-01]
 - [ ] T-05 交互核验：hover 对照截图（003/004）+ Tab 焦点环 + 光标形状
       （SetCursor 通道 + 两级先行）。[关联 AC-03]
 - [ ] T-06 规模化实测：帧体积/帧率观测行 + charts/gallery 代表 + N 窗内存
       曲线 → 报告 + 债登记。[关联 AC-04]
-- [ ] T-07 D5 自愈臂：daemon 0x0 检测 + 恢复策略。[关联 AC-05]
+- [x] T-07 D5 自愈臂：daemon 0x0 检测 + 恢复策略。[关联 AC-05]
+      [✅ 已完成]（2026-09-22，commit 25dee6696）WindowResized 0x0 守卫
+      （零尺寸不转发 app、基线尺寸不动——恢复期假空白根除；真实尺寸
+      恢复 resize 正常转发同步）；管道环 p690 测试③断言（0x0 后
+      client.width 不动/640x480 同步）绿。策略取"忽略零帧"臂
+     （SW_RESTORE 主动恢复不需要——真实尺寸事件恢复期自然到达）。
 - [ ] T-08 门禁全量 + 复审收口：SD-01/02 落表、D6/D5 债册销号、设计档
       状态更新。[关联 AC-06]
 
