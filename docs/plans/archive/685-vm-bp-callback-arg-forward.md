@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-685
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-bp-callback-arg-forward + bp 内容页 UX 重设计
 author: [zhaop/agent]
 created_at: 2026-09-22
@@ -424,6 +424,34 @@ wrong:/why:/right: 加粗/行内码 chip/列表/表格 chrome）、tab 直切、
   落地；Q-2 E2E 进 CI 留 merge/复审后续裁定）
   **独立性限制声明**：复审与实施同会话，裁定由工件重建（红绿两相
   重跑、运行期探针、全档门禁 base 对勘、截图直读）而非实施期总结。
+- 2026-09-22 `stage: merge` `plan_id: PLAN-685:r2` `outcome: delivered`
+  五 checkpoint：
+  - `prepared`：reviewed 基线 261244a8f（rebase 后）；规范 diff =
+    blueprint/project.md 消费端验收/展示契约两则（SD-02/03）+ 组装摩擦
+    P657-D1 收口注记（SD-01，规则文本零改动）；投影目标
+    .autoos/specs.json P685-1/2 + auto-lang/ui/plans.md 行 685 + INDEX
+    再生（按构造零漂移——INDEX 只数包行，本 delta 未加包）；债册
+    P657-D1 部分收口勘注（名字面量化形态收口/表达式形态残项留
+    vm-component-parity）；delivery commit e34692db9（docs/projection-only
+    后裔，实现与依赖零变化）。
+  - `landed`：rebase plan-685-dev 0e541c7e5 基 → master 00e56202d，
+    六对 range-diff 全等（80bfec4b6→cf306af9e/d141073e6→b0341b36a/
+    8b8c94c0c→c926ace81/b0fe5e3aa→34fe4920e/2d2d9de05→d0252af93/
+    e577cef99→261244a8f）；rebase 态 plan685 3/3 绿；master ff-only
+    合入 **e34692db9**，tip 相等核验 ✓（无 merge 提交）。main 检出
+    冒烟以 branch 端验证为准——main 工作树携带他方会话 WIP（本计划
+    全程未触碰），在 main 构建不具代表性，如实登记。
+  - `ledger_refreshed`：master 落面核验——specs.json P685-1/2 计 2 命中
+    （sections 0/5，外科插入仅尾 hunk）、ui/plans.md 行 685、
+    blueprint spec 契约节在位；specs.json 重投 24+/1-（`}` 尾行位移）。
+  - `archived`：git mv docs/plans/archive/685-vm-bp-callback-arg-forward.md
+    + status: archived（本提交）。
+  - `cleaned`：见随后收据行（guard clean 后 worktree/分支/组目录清除）。
+  事故与边界留痕：worktree 内 gen/deps pnpm junction 卡 guard——按
+  661/671 既定程序 `cmd rmdir /s /q` 整目录清（gitignored 生成物）后
+  guard clean；落地时点主检出他方 WIP 清单：iced/renderer.rs、
+  shell_client.rs、workspace_preview.rs、dashboard.at、examples/** 等
+  （归属会话未路由，未触碰未包含）。
 
 ## 10. 待澄清事项
 
@@ -431,9 +459,12 @@ wrong:/why:/right: 加粗/行内码 chip/列表/表格 chrome）、tab 直切、
   （带修构建 0/10 复发），取"修复同批"档，不立新债；触发分派源头
   未捕获的残留不确定性已在 T-04 注登记，再现即被 E2E 首帧探针
   逮住。
-- **Q-2（留复审）**：T-03 E2E 已落 `test_bp_gallery_click.py` 且
-  多轮稳定；进 CI 与否涉及 runner 的 GUI 实例起停环境，复审时按
-  CI 现状定。
+- **Q-2（已裁决，merge 阶段按 CI 现状定）**：**E2E 不进 CI**。现状：CI 无
+  GUI 实例 runner 形态（vm-files-ci=.at 语料、http-e2e=HTTP、
+  build-bps-gallery=registry 漂移+vue build 构建面）；VM 臂点击门禁以本地
+  脚本为准（`test_bp_gallery_click.py`，SKILL.md 步骤 1 登记用法）。
+  merge 后 build-bps-gallery.yml 首跑为 watch 项（本地同工具链 vue build
+  已绿，PLAN-676 AC-06 条件证据先例同款）。
 - **Q-3（边界登记，不阻塞 AC-09）**：Reference 源码面保持 mono +
   代码块 chrome（反引号安全）；`@autodown/engine` lang 标签高亮未
   开（vue 臂引擎能力实测未启），VM 臂 autodown codeblock 无高亮
