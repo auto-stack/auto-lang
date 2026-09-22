@@ -2634,6 +2634,16 @@ fn tool_desktop(_shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
                     },
                     "ime_preedit" => LiveInput::ImePreedit {
                         text: args.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        // PLAN-690：组合内选区（字节区间，可选——缺省 None
+                        // = 光标隐藏）。
+                        selection: args
+                            .get("selection")
+                            .and_then(|v| v.as_array())
+                            .and_then(|pair| {
+                                let start = pair.first().and_then(|v| v.as_u64())?;
+                                let end = pair.get(1).and_then(|v| v.as_u64())?;
+                                Some((start as usize, end as usize))
+                            }),
                     },
                     "ime_cancelled" => LiveInput::ImeCancelled,
                     "wheel" => LiveInput::Wheel {

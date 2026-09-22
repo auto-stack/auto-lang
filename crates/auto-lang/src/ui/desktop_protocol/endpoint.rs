@@ -141,6 +141,14 @@ pub trait FrameSource {
     fn render_frame_v2(&mut self) -> super::message::DisplayList {
         super::message::DisplayList::from_v1(&self.render_frame())
     }
+
+    /// PLAN-690 T-02/T-05：App 派生窗口控制下行批读走（ImeRequest/
+    /// SetCursor——headless 宿主 `State::Updated` 截获产物）。泵在产帧
+    /// 后消费并上行 `ProtocolMsg::Control`（drain_desktop_commands 同型
+    /// 缝）。缺省空——非 remote 宿主零负担。
+    fn drain_window_controls(&mut self) -> Vec<ControlMsg> {
+        Vec::new()
+    }
 }
 
 /// app 侧端点。泛型 [`FrameSource`] 是会话的最小接缝。
@@ -609,6 +617,13 @@ pub enum HostAction {
     /// wid → registry_id。此前在端点丢弃臂中无声消失（desktop.* wire 化
     /// 缺口，PLAN-030 D4 清偿）。
     DesktopBus { wid: u64, record: String },
+    /// app→host IME 请求下行（PLAN-690 T-02，remote 模式）：daemon 对
+    /// wid 窗执行 IME enable/disable + 候选窗定位（Windows IMM——
+    /// `window::run` → HWND 路径；非 Windows 观测行降级）。
+    ImeRequest { wid: u64, enabled: Option<super::message::ImeReq> },
+    /// app→host 光标形状下行（PLAN-690 T-05）：daemon view 态应用
+    ///（mouse_area interaction，跨平台；0 default / 1 pointer / 2 text）。
+    SetCursor { wid: u64, kind: u8 },
     /// 观测上行转发（MCP 代理的最小落点）。
     ObserveUp { msg: ObserveMsg },
 }
@@ -818,6 +833,24 @@ impl HostEndpoint {
             (HostState::Active, ProtocolMsg::Control(ControlMsg::DesktopBus { wid, record })) => {
                 Ok(vec![HostAction::DesktopBus { wid, record }])
             }
+            // PLAN-690 T-02/T-05（remote 模式）：App 派生窗口控制下行——
+            // 端点只路由（wid 原样），落点在适配层（rqhost daemon IMM /
+            // view 态）。wid = 0 哨兵（连接级寻址——headless 装配期不知
+            // 真实 wid）同型壳投影族。
+            (
+                HostState::Active,
+                ProtocolMsg::Control(
+                    control @ (ControlMsg::ImeRequest { .. } | ControlMsg::SetCursor { .. }),
+                ),
+            ) => match control {
+                ControlMsg::ImeRequest { wid, enabled } => {
+                    Ok(vec![HostAction::ImeRequest { wid, enabled }])
+                }
+                ControlMsg::SetCursor { wid, kind } => {
+                    Ok(vec![HostAction::SetCursor { wid, kind }])
+                }
+                _ => unreachable!("上方模式已限定两变体"),
+            },
             (HostState::Active, ProtocolMsg::Control(control @ (ControlMsg::TitleChanged { .. } | ControlMsg::Notify { .. }))) => {
                 // 控制上行在此端点只做透传记录；落点在适配层（title→chrome、
                 // notify→通知中心）。
@@ -971,6 +1004,8 @@ fn msg_name(msg: &ProtocolMsg) -> &'static str {
             ControlMsg::ShellProjectionPush { .. } => "Control::ShellProjectionPush",
             ControlMsg::ShellClockTick { .. } => "Control::ShellClockTick",
             ControlMsg::ShellCursorMove { .. } => "Control::ShellCursorMove",
+            ControlMsg::ImeRequest { .. } => "Control::ImeRequest",
+            ControlMsg::SetCursor { .. } => "Control::SetCursor",
         },
         ProtocolMsg::Observe(m) => match m {
             ObserveMsg::Attach { .. } => "Observe::Attach",

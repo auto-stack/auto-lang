@@ -622,6 +622,8 @@ impl<S: FrameSource> ClientPump<S> {
         // PLAN-033 T-03③（D3）：timer 拍的 handler 可能写 `__desktop_cmd`
         // ——周期拍后读走上行。
         self.drain_desktop_bus();
+        // PLAN-690：产帧/拍可能截获新 IME/光标态——控制下行同点读走。
+        self.drain_window_controls();
     }
 
     /// PLAN-034 T-05（D3）：位图上传排水（drain_desktop_bus 同点位）——
@@ -681,6 +683,25 @@ impl<S: FrameSource> ClientPump<S> {
         }
     }
 
+    /// PLAN-690 T-02/T-05：App 派生窗口控制上行（ImeRequest/SetCursor——
+    /// headless `State::Updated` 截获产物；产帧后读走——截获发生在
+    /// render 内，FIFO 序保证 daemon 见帧后见控制）。
+    fn drain_window_controls(&mut self) {
+        let Some(app) = self.endpoint.as_mut() else { return };
+        if app.state != AppState::Active {
+            return;
+        }
+        let wid = app.wid.unwrap_or(0);
+        let controls = app.session.drain_window_controls();
+        for mut control in controls {
+            // 连接级哨兵 → 真实 wid（headless 装配期不知，路由靠它）。
+            if control.wid() == 0 {
+                control.set_wid(wid);
+            }
+            let _ = self.app_end.send(&ProtocolMsg::Control(control));
+        }
+    }
+
     /// 单条消息派发；到出口时返回 `Some((出口, projector))`。
     fn dispatch(&mut self, msg: ProtocolMsg) -> Option<(ClientExit, S)> {
         match msg {
@@ -698,6 +719,8 @@ impl<S: FrameSource> ClientPump<S> {
                 // PLAN-033 T-03③（D3）：输入可能写命令（按钮 handler）——
                 // 读走 + 上行。
                 self.drain_desktop_bus();
+                // PLAN-690：产帧内截获的 IME/光标下行同点读走。
+                self.drain_window_controls();
                 None
             }
             ProtocolMsg::Frame(FrameMsg::BufferAlloc { shm: Some(ref name), bm: ref bm_decl, .. }) => {

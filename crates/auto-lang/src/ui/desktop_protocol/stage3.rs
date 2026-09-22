@@ -1873,7 +1873,7 @@ mod tests {
         client2.wid = Some(wid2);
         session2.broker_clients.insert(pipe2.clone(), client2);
 
-        assert!(session2.broker_ime_preedit("中文"), "preedit 路由");
+        assert!(session2.broker_ime_preedit("中文", Some((0, 2))), "preedit 路由");
         match wait_msg(&mut child_end2) {
             Some(ProtocolMsg::Input(InputMsg::ImePreedit { wid: w, text, .. })) => {
                 assert_eq!((w, text.as_str()), (wid2.0, "中文"));

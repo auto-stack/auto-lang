@@ -289,7 +289,7 @@ mod tests {
         s.on_input(&InputMsg::ImePreedit {
             wid: 1,
             text: "让".into(),
-            cursor: WRect::new(4.0, 0.0, 1.0, 14.0),
+            selection: None,
         });
         let preedit_frame = s.render_frame();
         assert!(frame_text(&preedit_frame).contains("让"), "preedit 过线");

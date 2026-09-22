@@ -279,6 +279,9 @@ windows = { version = "0.58", optional = true, features = [
     # Plan 486 T4：合成拖拽 SendInput（test-native-dock 档独占使用；
     # feature 列与 native-dock/native-clipboard 共用条目——Cargo 合并语义）。
     "Win32_UI_Input_KeyboardAndMouse",
+    # PLAN-690 T-02：daemon 窗 IME 激活门控（ImmAssociateContextEx/
+    # ImmSetCompositionWindow/ImmSetCandidateWindow——win_ime.rs）。
+    "Win32_UI_Input_Ime",
     # Plan 488: OLE 拖放——Com(OLE 基础/DoDragDrop/OleInitialize)+
     # Ole(IDataObject/IDropSource/IDropTarget/STGMEDIUM/FORMATETC)+
     # implement(#[implement] 宏与 *_Impl trait 的 include 门)+

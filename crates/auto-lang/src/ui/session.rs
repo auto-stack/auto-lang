@@ -2460,7 +2460,10 @@ pub enum LiveInput {
     /// 投影器 char_typed 侧被滤，此处原样透传）。
     Chars { text: String },
     ImeCommit { text: String },
-    ImePreedit { text: String },
+    /// PLAN-690 T-03：preedit 组合串 + 组合内光标选区（字节区间——iced
+    /// `Preedit(String, Option<Range<usize>>)` 第二参原样透传；None =
+    /// 光标隐藏）。
+    ImePreedit { text: String, selection: Option<(usize, usize)> },
     ImeCancelled,
     /// 像素化滚轮增量（Lines×[`WHEEL_LINE_PX`]；投影器 on_scroll 像素
     /// 消费——editor_frame WheelScrolled 直通同号）。
@@ -2551,13 +2554,18 @@ pub fn live_inputs_from_keyboard(kb: &iced::keyboard::Event) -> Vec<LiveInput> {
 }
 
 /// IME（input_method）事件 → live 输入（纯函数）：Preedit/Commit/Closed
-/// → 三态；Opened 无子侧语义不转发。
+/// → 三态；Opened 无子侧语义不转发。PLAN-690 T-03：Preedit 的第二参
+/// （字节选区——iced 0.14 `Option<Range<usize>>`）原样保留（此前丢弃，
+/// App 侧组合内光标不可见）。
 pub fn live_input_from_input_method(
     im: &iced::advanced::input_method::Event,
 ) -> Option<LiveInput> {
     use iced::advanced::input_method::Event as Ime;
     Some(match im {
-        Ime::Preedit(text, _) => LiveInput::ImePreedit { text: text.clone() },
+        Ime::Preedit(text, selection) => LiveInput::ImePreedit {
+            text: text.clone(),
+            selection: selection.as_ref().map(|r| (r.start, r.end)),
+        },
         Ime::Commit(text) => LiveInput::ImeCommit { text: text.clone() },
         Ime::Closed => LiveInput::ImeCancelled,
         Ime::Opened => return None,
@@ -4065,9 +4073,10 @@ fn spawn_shell_outproc(
     }
 
     /// 桌面级 IME preedit 路由：焦点窗 → (Wid, ImePreedit) 注入
-    /// （组合串 + 光标矩形——候选窗定位消费 not-yet，投影器尾拼显示）。
+    /// （组合串 + 组合内选区——PLAN-690 T-03 起 wire 语义为字节区间；
+    /// 候选窗定位矩形走下行 ImeRequest.cursor，不在此列）。
     #[cfg(feature = "ui-iced")]
-    pub fn broker_ime_preedit(&mut self, text: &str) -> bool {
+    pub fn broker_ime_preedit(&mut self, text: &str, selection: Option<(usize, usize)>) -> bool {
         use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
         let wid = {
             let Some(host) = self.host.as_ref() else { return false };
@@ -4079,7 +4088,7 @@ fn spawn_shell_outproc(
         let input = ProtocolMsg::Input(InputMsg::ImePreedit {
             wid: wid.0,
             text: text.to_string(),
-            cursor: crate::ui::desktop_protocol::message::WRect::new(0.0, 0.0, 0.0, 0.0),
+            selection: selection.map(|(s, e)| (s as u32, e as u32)),
         });
         for client in self.broker_clients.values_mut() {
             if client.owns_wid(wid) {
@@ -4145,7 +4154,9 @@ fn spawn_shell_outproc(
                 routed
             }
             LiveInput::ImeCommit { text } => self.broker_ime_commit(text),
-            LiveInput::ImePreedit { text } => self.broker_ime_preedit(text),
+            LiveInput::ImePreedit { text, selection } => {
+                self.broker_ime_preedit(text, *selection)
+            }
             LiveInput::ImeCancelled => self.broker_ime_cancelled(),
             LiveInput::Wheel { dx, dy } => {
                 // 滚轮路由指针命中窗（hover 语义）——listen_with 回调不带
@@ -4611,6 +4622,10 @@ fn spawn_shell_outproc(
                 HostAction::ObserveUp { .. } => {
                     // 观测上行：MCP 代理落点（v1 压测不消费）。
                 }
+                // PLAN-690 T-02/T-05：App 派生窗口控制下行——rqhost daemon
+                // 专属消费面（IMM/光标 view 态）；桌面 broker 会话（inproc
+                // 壳宿主）无 daemon 窗臂，观测丢弃即可。
+                HostAction::ImeRequest { .. } | HostAction::SetCursor { .. } => {}
             }
         }
         to_app
@@ -8609,7 +8624,12 @@ mod live_input_tests {
         use iced::mouse::ScrollDelta;
         assert_eq!(
             live_input_from_input_method(&Ime::Preedit("中".into(), None)),
-            Some(LiveInput::ImePreedit { text: "中".into() })
+            Some(LiveInput::ImePreedit { text: "中".into(), selection: None })
+        );
+        // PLAN-690 T-03：选区保留（字节区间透传）。
+        assert_eq!(
+            live_input_from_input_method(&Ime::Preedit("nihao".into(), Some(2..4))),
+            Some(LiveInput::ImePreedit { text: "nihao".into(), selection: Some((2, 4)) })
         );
         assert_eq!(
             live_input_from_input_method(&Ime::Commit("中文".into())),

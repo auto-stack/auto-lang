@@ -27,7 +27,8 @@ use std::sync::{Arc, Mutex};
 use super::endpoint::{HostAction, HostEndpoint, HostState};
 use super::host::SurfaceStore;
 use super::message::{
-    ControlMsg, DrawList, FrameMode, FrameMsg, HandshakeMsg, InputMsg, MouseButton, ProtocolMsg,
+    ControlMsg, DrawList, FrameMode, FrameMsg, HandshakeMsg, ImeReq, InputMsg, MouseButton,
+    ProtocolMsg,
 };
 use super::shm::SharedFrameBuffer;
 use super::stage3::BrokerClient;
@@ -330,6 +331,15 @@ pub struct RqClient {
     pub last_revision: u64,
     /// 首帧观测行已打（e2e 断言锚点——[rqhost] first frame）。
     first_frame_observed: bool,
+    /// PLAN-690 T-05：App 下发的光标形状（0 default / 1 pointer / 2 text
+    /// ——rq_view mouse_area 消费）。
+    pub cursor_kind: u8,
+    /// PLAN-690 T-02：daemon 侧 IME 去重基线（App 每帧重发请求，变化才
+    /// 走 IMM——imm 写是 OS 往返，重复刷会扰动候选窗）。
+    pub ime_applied: Option<ImeReq>,
+    /// PLAN-690 T-02：daemon 窗 scale factor（App 逻辑坐标 → IMM 物理
+    /// 坐标换算；开窗后取一次，取不到回退 1.0）。
+    pub scale: f64,
 }
 
 /// rqhost 域 id 分配器（app_id/wid 与桌面会话无关的自增序）。
@@ -352,6 +362,11 @@ pub enum RqEvent {
     Adopted { app_name: String, title: String, width: f32, height: f32 },
     /// 窗应回收（ExitRequest→ReclaimWindow 握手完成，BufferRelease 已回发）。
     Reclaimed { wid: u64 },
+    /// PLAN-690 T-02：App IME 请求下行（daemon 按发生窗执行 IMM；去重在
+    /// client.ime_applied 基线上）。
+    ImeRequest { enabled: Option<ImeReq> },
+    /// PLAN-690 T-05：App 光标形状下行（view mouse_area 消费）。
+    SetCursor { kind: u8 },
 }
 
 /// 帧版本观测（P031-R2 e2e 断言锚点）：revision 前进 = 客户端内容
@@ -580,6 +595,15 @@ fn apply_actions(
             HostAction::DesktopBus { record, .. } => {
                 eprintln!("[rqhost] desktop-bus 上行（普通 app 不执行）: {record}");
             }
+            // PLAN-690 T-02/T-05：App 派生窗口控制下行——事件转 daemon
+            // update 臂（window::run → IMM / view 态；apply_actions 无
+            // Task 产出面，与开窗同路由）。
+            HostAction::ImeRequest { enabled, .. } => {
+                events.push(RqEvent::ImeRequest { enabled });
+            }
+            HostAction::SetCursor { kind, .. } => {
+                events.push(RqEvent::SetCursor { kind });
+            }
             HostAction::ObserveUp { .. } => {
                 // 观测上行：v1 不消费（桌面 MCP 代理线归桌面）。
             }
@@ -606,6 +630,9 @@ pub fn adopt_one(
         frames: 0,
         last_revision: 0,
         first_frame_observed: false,
+        cursor_kind: 0,
+        ime_applied: None,
+        scale: 1.0,
     };
     let deadline =
         std::time::Instant::now() + std::time::Duration::from_millis(budget_ms as u64);
@@ -754,6 +781,9 @@ pub enum RqMessage {
     /// 指针按下/释放（坐标取 `last_cursor` 簿记——Button 事件不带位）。
     PointerPressed { window: iced::window::Id, button: iced::mouse::Button },
     PointerReleased { window: iced::window::Id, button: iced::mouse::Button },
+    /// PLAN-690 T-02：daemon 窗 scale factor 回报（开窗后取一次——App
+    /// 逻辑坐标 → IMM 物理坐标换算系数）。
+    ScaleFactor { window: iced::window::Id, scale: f32 },
 }
 
 /// daemon 状态：客户端表（窗注册表即 `client.window`）+ serve 柄。
@@ -795,6 +825,8 @@ impl RqDaemon {
 
 /// 开窗（Adopted 事件消费）：Hello 凭据 → OS 窗（级联偏移防叠死）。
 /// 登记即刻生效（`window::open` 同步返回 Id）；Task 随 update 返回派发。
+/// 附 scale factor 取样（PLAN-690 T-02——IME 坐标换算系数，开窗动作序
+/// 后读取，取不到保 client 缺省 1.0）。
 fn open_window_for(client: &mut RqClient, cascade: u64) -> iced::Task<RqMessage> {
     let (win_id, task) = iced::window::open(iced::window::Settings {
         size: iced::Size::new(client.width.max(160.0), client.height.max(120.0)),
@@ -805,11 +837,34 @@ fn open_window_for(client: &mut RqClient, cascade: u64) -> iced::Task<RqMessage>
         ..Default::default()
     });
     client.window = Some(win_id);
+    let scale_task = iced::window::scale_factor(win_id)
+        .map(move |scale| RqMessage::ScaleFactor { window: win_id, scale });
     eprintln!(
         "[rqhost] window opened for `{}` ({:.0}x{:.0})",
         client.app_name, client.width, client.height
     );
-    task.map(|_| RqMessage::Tick)
+    iced::Task::batch([task.map(|_| RqMessage::Tick), scale_task])
+}
+
+/// PLAN-690 T-02：App IME 请求 → daemon 窗 IMM 应用（`window::run` 在
+/// 事件循环线程派发——win_ime 模块文档载全链路勘定）。
+fn apply_ime_request(
+    window: iced::window::Id,
+    enabled: Option<ImeReq>,
+    scale: f64,
+    app_name: &str,
+) -> iced::Task<RqMessage> {
+    let tag = format!(" `{app_name}`");
+    match enabled {
+        Some(req) => iced::window::run(window, move |w| {
+            super::win_ime::enable(w, &req, scale, &tag);
+        })
+        .map(|_| RqMessage::Tick),
+        None => iced::window::run(window, move |w| {
+            super::win_ime::disable(w, &tag);
+        })
+        .map(|_| RqMessage::Tick),
+    }
 }
 
 /// iced 鼠标按钮 → 协议按钮。
@@ -837,10 +892,10 @@ fn live_input_msgs(wid: u64, input: &crate::ui::session::LiveInput) -> Vec<Input
         LiveInput::ImeCommit { text } => {
             vec![InputMsg::ImeCommit { wid, text: text.clone() }]
         }
-        LiveInput::ImePreedit { text } => vec![InputMsg::ImePreedit {
+        LiveInput::ImePreedit { text, selection } => vec![InputMsg::ImePreedit {
             wid,
             text: text.clone(),
-            cursor: super::message::WRect::new(0.0, 0.0, 0.0, 0.0),
+            selection: selection.map(|(s, e)| (s as u32, e as u32)),
         }],
         LiveInput::ImeCancelled => vec![InputMsg::ImeCancelled { wid }],
         LiveInput::Wheel { dx, dy } => vec![InputMsg::Scroll { wid, dx: *dx, dy: *dy }],
@@ -899,6 +954,33 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
                                 tasks.push(iced::window::close(w));
                             }
                         }
+                        RqEvent::ImeRequest { enabled } => {
+                            let client = &mut state.clients[idx];
+                            // 去重（App 每帧重发请求——IMM 写是 OS 往返，
+                            // 重复刷会扰动候选窗状态）。
+                            if client.ime_applied != enabled {
+                                client.ime_applied = enabled.clone();
+                                if let Some(window) = client.window {
+                                    let scale = client.scale;
+                                    tasks.push(apply_ime_request(
+                                        window,
+                                        enabled,
+                                        scale,
+                                        &client.app_name,
+                                    ));
+                                }
+                            }
+                        }
+                        RqEvent::SetCursor { kind } => {
+                            let client = &mut state.clients[idx];
+                            if client.cursor_kind != kind {
+                                client.cursor_kind = kind;
+                                eprintln!(
+                                    "[rqhost] cursor `{}` -> kind {kind}",
+                                    client.app_name
+                                );
+                            }
+                        }
                     }
                 }
                 // 首帧观测行（e2e 断言锚点：帧已到宿主并合成）。
@@ -928,6 +1010,16 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
             iced::Task::batch(tasks)
         }
         RqMessage::WindowResized { window, width, height } => {
+            // PLAN-690 T-07（P683-D5 自愈臂）：最小化路径 OS 会发 0x0
+            // resize——不向 app 转发零尺寸（app 侧表面重排成空面，恢复期
+            // 假空白），登记基线保持最近有效尺寸；真实尺寸在恢复 resize
+            // 时重新同步。
+            if width <= 0.0 || height <= 0.0 {
+                eprintln!(
+                    "[rqhost] window 零尺寸 resize（{width:.0}x{height:.0}，最小化路径）——忽略"
+                );
+                return iced::Task::none();
+            }
             if let Some(client) = state.client_of(window) {
                 client.width = width;
                 client.height = height;
@@ -942,6 +1034,15 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
                         "[rqhost] window `{}` resized {width:.0}x{height:.0}",
                         client.app_name
                     );
+                }
+            }
+            iced::Task::none()
+        }
+        RqMessage::ScaleFactor { window, scale } => {
+            if let Some(client) = state.client_of(window) {
+                if client.scale != scale as f64 {
+                    client.scale = scale as f64;
+                    eprintln!("[rqhost] window `{}` scale factor {scale}", client.app_name);
                 }
             }
             iced::Task::none()
@@ -1025,24 +1126,32 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
 
 /// daemon view：按窗路由——注册表命中 = DrawListPainter 栅格化当前
 /// 合成面；未登记窗 = 占位（renderer.rs view_desktop_fn 先例，D3）。
+/// 外层 mouse_area（PLAN-690 T-05）：App 下发光标形状以 view 态应用——
+/// iced_winit 每帧 `update_mouse` 以 daemon 自身 UI 的 interaction 刷
+/// OS 光标，Win32 直设会被覆盖；mouse_area 的 interaction 在内容
+/// Interaction::None 且悬停时生效（恰好 remote 窗内容恒 None）。
 fn rq_view(state: &RqDaemon, window: iced::window::Id) -> iced::Element<'_, RqMessage> {
     // PLAN-683：v2 合成面优先（remote 窗——DisplayListPainter 原生重放）；
     // 无 v2 帧 = v1 既有路径（queue 臂 DrawListPainter）。
     let client = state.clients.iter().find(|c| c.window == Some(window));
-    if let Some(v2) = client.and_then(composed_v2) {
-        return crate::ui::iced::broker_surface::displaylist_element(v2);
-    }
-    let frame = client.and_then(composed);
-    match frame {
-        Some(list) => crate::ui::iced::broker_surface::drawlist_element(list),
-        None => iced::widget::container(
-            iced::widget::text("[rqhost] 窗口未登记").size(14),
-        )
-        .width(iced::Length::Fill)
-        .height(iced::Length::Fill)
-        .center(iced::Length::Fill)
-        .into(),
-    }
+    let cursor_kind = client.map(|c| c.cursor_kind).unwrap_or(0);
+    let content: iced::Element<'_, RqMessage> = if let Some(v2) = client.and_then(composed_v2) {
+        crate::ui::iced::broker_surface::displaylist_element(v2)
+    } else {
+        match client.and_then(composed) {
+            Some(list) => crate::ui::iced::broker_surface::drawlist_element(list),
+            None => iced::widget::container(
+                iced::widget::text("[rqhost] 窗口未登记").size(14),
+            )
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .center(iced::Length::Fill)
+            .into(),
+        }
+    };
+    iced::widget::mouse_area(content)
+        .interaction(crate::ui::desktop_protocol::headless::cursor_kind_icon(cursor_kind))
+        .into()
 }
 
 /// daemon 订阅：15ms 帧泵 + 窗事件流 + 输入流（键盘/滚轮/IME Ignored
@@ -2215,6 +2324,193 @@ mod tests {
         }
         // revision 前进断言（输入驱动帧变的宿主侧证据——v1 环同锚）。
         assert!(state.clients[0].last_revision > 1, "revision 零前进");
+
+        // 收尾：Close + Tick 泵到收敛。
+        if let Ok(close) = state.clients[0].inner.endpoint.close() {
+            let _ = state.clients[0].inner.end.send(&close);
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !conv_app.is_finished() {
+            let _ = rq_update(&mut state, RqMessage::Tick);
+            assert!(std::time::Instant::now() < deadline, "Close 握手 5s 未收敛");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        serve.stop(&pipe);
+        let _ = conv_app.join();
+    }
+
+    /// PLAN-690 T-02/T-05/T-07 —— remote 管道环（daemon 侧）：
+    /// ①点击聚焦 → App 截获 `ImeRequest(Enabled)`/`SetCursor(Text)` 下行
+    ///   到达 daemon（client.ime_applied / cursor_kind 落位）；
+    /// ②preedit 上行（含字节选区）→ headless 注入 → Commit 上屏 → v2 帧
+    ///   含中文（全环零编码损）；
+    /// ③0x0 resize（最小化路径）不向 app 转发（P683-D5 自愈臂），真实
+    ///   尺寸恢复转发。
+    #[test]
+    fn p690_ime_downlink_arrival_and_zero_resize_guard() {
+        use crate::ui::desktop_protocol::client_runtime::{ClientConfig, ClientPump};
+        use crate::ui::desktop_protocol::endpoint::FrameSource;
+        use crate::ui::desktop_protocol::headless::HeadlessFrameSource;
+
+        let conv_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/ui/003-converter/src/front/app.at"
+        );
+        let conv_src = match std::fs::read_to_string(conv_path) {
+            Ok(s) => s,
+            Err(_) => {
+                eprintln!("[p690] skip: 003-converter 载体缺席");
+                return;
+            }
+        };
+
+        let pipe = pid_pipe("ime-down");
+        let (serve, _claim) = start_serve(&pipe);
+
+        let cp = pipe.clone();
+        let conv_app = std::thread::spawn(move || {
+            let (_, end) = adopt(&cp, "App", 2000).expect("adopt conv");
+            let comp = crate::build_dynamic_component(&conv_src, None).expect("build conv");
+            let source = HeadlessFrameSource::new(comp, 480.0, 320.0);
+            let mut pump = ClientPump::new(
+                end,
+                source,
+                ClientConfig {
+                    app_name: "App".into(),
+                    title: "003-ime".into(),
+                    width: 480.0,
+                    height: 320.0,
+                },
+                None,
+            );
+            pump.set_v2(true);
+            let (exit, _source) = pump.run();
+            exit
+        });
+
+        let mut state = RqDaemon {
+            serve: Arc::clone(&serve),
+            claim: None,
+            wellknown: pipe.clone(),
+            ids: RqIds::default(),
+            clients: Vec::new(),
+            had_window: false,
+            opened: 0,
+            last_cursor: BTreeMap::new(),
+            mem_ticks: 0,
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while state.clients.is_empty() {
+            let pending: Vec<_> = state.serve.pending.lock().unwrap().drain(..).collect();
+            for (name, end) in pending {
+                if let Some((client, _)) = adopt_one(name, end, &mut state.ids, 3000) {
+                    state.clients.push(client);
+                }
+            }
+            assert!(std::time::Instant::now() < deadline, "客户端 5s 未落地");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let win = iced::window::Id::unique();
+        state.clients[0].window = Some(win);
+        state.had_window = true;
+
+        fn texts_of_v2(list: &crate::ui::desktop_protocol::message::DisplayList) -> Vec<String> {
+            list.ops
+                .iter()
+                .filter_map(|op| match op {
+                    crate::ui::desktop_protocol::message::DisplayOp::TextStyled { text, .. } => {
+                        Some(text.clone())
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+
+        // 首帧落地 + celsius 输入定位（值文本 `0`——typing 环同锚）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while composed_v2(&state.clients[0]).is_none() {
+            let _ = rq_update(&mut state, RqMessage::Tick);
+            assert!(std::time::Instant::now() < deadline, "首帧 5s 未落地");
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+        let (fx, fy) = composed_v2(&state.clients[0])
+            .and_then(|l| {
+                l.ops.iter().find_map(|op| match op {
+                    crate::ui::desktop_protocol::message::DisplayOp::TextStyled {
+                        x, y, text, ..
+                    } if text == "0" => Some((*x, *y)),
+                    _ => None,
+                })
+            })
+            .expect("celsius 值文本 `0` 缺席");
+        let (cx, cy) = (fx + 4.0, fy + 8.0);
+
+        // ① 点击聚焦 → ImeRequest(Enabled)/SetCursor(Text) 下行到位。
+        let _ = rq_update(&mut state, RqMessage::CursorMoved { window: win, x: cx, y: cy });
+        let _ = rq_update(&mut state, RqMessage::PointerPressed { window: win, button: iced::mouse::Button::Left });
+        let _ = rq_update(&mut state, RqMessage::PointerReleased { window: win, button: iced::mouse::Button::Left });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let _ = rq_update(&mut state, RqMessage::Tick);
+            let ime_ok = state.clients[0]
+                .ime_applied
+                .as_ref()
+                .is_some_and(|req| req.cursor.w > 0.0 && req.cursor.h > 0.0);
+            if ime_ok && state.clients[0].cursor_kind == 2 {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "ImeRequest/SetCursor 下行 5s 未到位（ime={:?} cursor_kind={}）",
+                state.clients[0].ime_applied,
+                state.clients[0].cursor_kind
+            );
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+
+        // ② preedit 上行（选区保留过线）→ Commit 中文上屏 → v2 帧含中文。
+        let _ = rq_update(
+            &mut state,
+            RqMessage::Live {
+                window: win,
+                input: crate::ui::session::LiveInput::ImePreedit {
+                    text: "nihao".into(),
+                    selection: Some((2, 4)),
+                },
+            },
+        );
+        let _ = rq_update(&mut state, RqMessage::Tick);
+        let _ = rq_update(
+            &mut state,
+            RqMessage::Live {
+                window: win,
+                input: crate::ui::session::LiveInput::ImeCommit { text: "你好".into() },
+            },
+        );
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+        loop {
+            let _ = rq_update(&mut state, RqMessage::Tick);
+            let hit = composed_v2(&state.clients[0])
+                .map(|l| texts_of_v2(l).iter().any(|t| t.contains("你好")))
+                .unwrap_or(false);
+            if hit {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Commit 中文上屏 8s 未出帧；当前帧: {:?}",
+                composed_v2(&state.clients[0]).map(texts_of_v2)
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        // ③ 0x0 resize（最小化路径）忽略：不向 app 转发、基线不动。
+        let width_before = state.clients[0].width;
+        let _ = rq_update(&mut state, RqMessage::WindowResized { window: win, width: 0.0, height: 0.0 });
+        assert_eq!(state.clients[0].width, width_before, "0x0 resize 改动基线");
+        // 真实尺寸恢复转发。
+        let _ = rq_update(&mut state, RqMessage::WindowResized { window: win, width: 640.0, height: 480.0 });
+        assert_eq!(state.clients[0].width, 640.0, "真实 resize 未同步基线");
 
         // 收尾：Close + Tick 泵到收敛。
         if let Ok(close) = state.clients[0].inner.endpoint.close() {

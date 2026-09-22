@@ -1301,8 +1301,13 @@ pub enum InputMsg {
     KeyReleased { wid: u64, key: u32, modifiers: u8 },
     CharTyped { wid: u64, ch: char },
     Scroll { wid: u64, dx: f32, dy: f32 },
-    /// 413 §7.1：preedit 组合串 + 光标矩形（候选窗定位）。
-    ImePreedit { wid: u64, text: String, cursor: WRect },
+    /// 413 §7.1 + PLAN-690 T-03：preedit 组合串 + 组合内光标选区
+    ///（字节区间 `(start, end)`——iced 0.14 `Preedit(String,
+    /// Option<Range<usize>>)` 第二参的原样透传；`None` = 光标隐藏。
+    /// 原字段 `cursor: WRect`（候选窗定位矩形）勘误后由下行
+    /// `ControlMsg::ImeRequest` 的 ImeReq.cursor 承担（App 视口
+    /// layout 推得的焦点框矩形，daemon 换算定位）。
+    ImePreedit { wid: u64, text: String, selection: Option<(u32, u32)> },
     ImeCommit { wid: u64, text: String },
     ImeCancelled { wid: u64 },
 }
@@ -1364,11 +1369,18 @@ impl InputMsg {
                 put_f32(out, *dx);
                 put_f32(out, *dy);
             }
-            Self::ImePreedit { wid, text, cursor } => {
+            Self::ImePreedit { wid, text, selection } => {
                 put_u8(out, 8);
                 put_u64(out, *wid);
                 put_string(out, text);
-                cursor.encode(out);
+                match selection {
+                    Some((start, end)) => {
+                        put_bool(out, true);
+                        put_u32(out, *start);
+                        put_u32(out, *end);
+                    }
+                    None => put_bool(out, false),
+                }
             }
             Self::ImeCommit { wid, text } => {
                 put_u8(out, 9);
@@ -1430,8 +1442,12 @@ impl InputMsg {
             8 => {
                 let wid = r.u64()?;
                 let text = r.string()?;
-                let cursor = WRect::decode(r)?;
-                Self::ImePreedit { wid, text, cursor }
+                let selection = if r.bool()? {
+                    Some((r.u32()?, r.u32()?))
+                } else {
+                    None
+                };
+                Self::ImePreedit { wid, text, selection }
             }
             9 => {
                 let wid = r.u64()?;
@@ -1491,6 +1507,30 @@ pub enum ControlMsg {
     /// 空白菜单坐标锚等）；节拍由宿主消费门控制（blank_menu/拖拽期 +
     /// tick 兜底）。坐标 = 宿主视口系。
     ShellCursorMove { face: u8, x: f32, y: f32 },
+    /// app→host（PLAN-690 T-02，remote 模式）。App headless 宿主截获的
+    /// IME 请求下行：`None` = `InputMethod::Disabled`（失焦关 IME），
+    /// `Some` = `Enabled { cursor, purpose }`（daemon 对自己窗口执行
+    /// enable + 候选窗/组合窗定位——Windows IMM 语义，winit
+    /// `set_ime_allowed/set_ime_cursor_area` 同型）。cursor = App 视口
+    /// 逻辑坐标的焦点框矩形，daemon 按窗 scale factor 换算物理坐标。
+    ImeRequest { wid: u64, enabled: Option<ImeReq> },
+    /// app→host（PLAN-690 T-05，remote 模式）。App 侧 hover 命中的目标
+    /// 光标形状下行（v1 两级映射：0 default / 1 pointer / 2 text，
+    /// 其余 iced Interaction 归 0）。daemon 以 view 态
+    ///（mouse_area interaction）应用——iced_winit 每帧 update_mouse
+    /// 以自身 UI 的 interaction 刷 OS 光标，Win32 直设会被覆盖。
+    SetCursor { wid: u64, kind: u8 },
+}
+
+/// `ControlMsg::ImeRequest` 的 Enabled 载荷（PLAN-690 T-02）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImeReq {
+    /// 焦点框光标矩形（App 视口逻辑坐标）——候选窗排除区 + 组合窗
+    /// 定位锚（daemon 侧换算窗偏移与物理坐标）。
+    pub cursor: WRect,
+    /// IME purpose（iced_core `input_method::Purpose`：0 Normal /
+    /// 1 Secure / 2 Terminal——Windows 后端 no-op，透传留协议面）。
+    pub purpose: u8,
 }
 
 impl ControlMsg {
@@ -1506,11 +1546,36 @@ impl ControlMsg {
             | Self::L2Detach { wid }
             | Self::L2Detached { wid }
             | Self::L2AttachRequest { wid }
-            | Self::StateSnapshot { wid, .. } => *wid,
+            | Self::StateSnapshot { wid, .. }
+            | Self::ImeRequest { wid, .. }
+            | Self::SetCursor { wid, .. } => *wid,
             // v1.11 壳投影族：连接级寻址（非窗口）——0 哨兵。
             Self::ShellProjectionPush { .. }
             | Self::ShellClockTick { .. }
             | Self::ShellCursorMove { .. } => 0,
+        }
+    }
+
+    /// 窗寻址重写（PLAN-690：headless 下行控制的 0 哨兵 → 泵侧真实
+    /// wid 回填；壳投影族连接级寻址不在此列——调用方只回填窗口族）。
+    pub fn set_wid(&mut self, wid: u64) {
+        match self {
+            Self::Close { wid: w }
+            | Self::Focus { wid: w, .. }
+            | Self::Resize { wid: w, .. }
+            | Self::TitleChanged { wid: w, .. }
+            | Self::Notify { wid: w, .. }
+            | Self::ExitRequest { wid: w }
+            | Self::DesktopBus { wid: w, .. }
+            | Self::L2Detach { wid: w }
+            | Self::L2Detached { wid: w }
+            | Self::L2AttachRequest { wid: w }
+            | Self::StateSnapshot { wid: w, .. }
+            | Self::ImeRequest { wid: w, .. }
+            | Self::SetCursor { wid: w, .. } => *w = wid,
+            Self::ShellProjectionPush { .. }
+            | Self::ShellClockTick { .. }
+            | Self::ShellCursorMove { .. } => {}
         }
     }
 
@@ -1585,6 +1650,23 @@ impl ControlMsg {
                 put_f32(out, *x);
                 put_f32(out, *y);
             }
+            Self::ImeRequest { wid, enabled } => {
+                put_u8(out, 15);
+                put_u64(out, *wid);
+                match enabled {
+                    Some(req) => {
+                        put_bool(out, true);
+                        req.cursor.encode(out);
+                        put_u8(out, req.purpose);
+                    }
+                    None => put_bool(out, false),
+                }
+            }
+            Self::SetCursor { wid, kind } => {
+                put_u8(out, 16);
+                put_u64(out, *wid);
+                put_u8(out, *kind);
+            }
         }
     }
 
@@ -1644,6 +1726,19 @@ impl ControlMsg {
                 let y = r.f32()?;
                 Self::ShellCursorMove { face, x, y }
             }
+            15 => {
+                let wid = r.u64()?;
+                let enabled = if r.bool()? {
+                    Some(ImeReq {
+                        cursor: WRect::decode(r)?,
+                        purpose: r.u8()?,
+                    })
+                } else {
+                    None
+                };
+                Self::ImeRequest { wid, enabled }
+            }
+            16 => Self::SetCursor { wid: r.u64()?, kind: r.u8()? },
             tag => return Err(CodecError::UnknownTag(tag)),
         })
     }
@@ -2206,7 +2301,8 @@ mod tests {
             InputMsg::KeyReleased { wid: 3, key: 0x1B, modifiers: 0 },
             InputMsg::CharTyped { wid: 3, ch: '漢' },
             InputMsg::Scroll { wid: 3, dx: 0.0, dy: -33.5 },
-            InputMsg::ImePreedit { wid: 3, text: "ni hao".into(), cursor: WRect::new(5.0, 6.0, 1.0, 14.0) },
+            InputMsg::ImePreedit { wid: 3, text: "ni hao".into(), selection: Some((5, 9)) },
+            InputMsg::ImePreedit { wid: 3, text: "你好".into(), selection: None },
             InputMsg::ImeCommit { wid: 3, text: "你好".into() },
             InputMsg::ImeCancelled { wid: 3 },
         ];
@@ -2230,6 +2326,13 @@ mod tests {
             ControlMsg::L2Detach { wid: 3 },
             ControlMsg::L2Detached { wid: 3 },
             ControlMsg::L2AttachRequest { wid: 3 },
+            // PLAN-690 T-02/T-05（remote 模式下行控制族）。
+            ControlMsg::ImeRequest {
+                wid: 3,
+                enabled: Some(ImeReq { cursor: WRect::new(12.0, 8.0, 1.0, 16.0), purpose: 1 }),
+            },
+            ControlMsg::ImeRequest { wid: 3, enabled: None },
+            ControlMsg::SetCursor { wid: 3, kind: 2 },
         ];
         for m in msgs {
             assert_eq!(m.wid(), 3, "wid 提取器");

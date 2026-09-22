@@ -350,6 +350,10 @@ impl<'a> ProtocolHost<'a> {
                 // v1.11 命令上行：loopback 路径的收件箱落点在下方的原始
                 // ControlMsg 分流（DesktopBus 同族）——此处零动作。
                 HostAction::DesktopBus { .. } => {}
+                // PLAN-690 T-02/T-05：App 派生窗口控制下行——rqhost daemon
+                // 专属消费面（IMM/光标 view 态）；loopback 宿主无 OS 窗，
+                // 零动作（wire 面已由端点路由保证）。
+                HostAction::ImeRequest { .. } | HostAction::SetCursor { .. } => {}
             }
         }
         // 控制上行（端点只透传，这里落收件箱）。

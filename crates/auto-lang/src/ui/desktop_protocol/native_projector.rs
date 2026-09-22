@@ -4163,7 +4163,7 @@ mod tests {
         // 聚焦 celsius（首 input 槽位——003 金样同位坐标）。
         click(&mut p, 100.0, 26.0);
         // ① ImePreedit：暂存 → 聚焦框尾拼 op（差分色）。
-        p.on_input(&InputMsg::ImePreedit { wid: 1, text: "中文".into(), cursor: WRect::new(0.0, 0.0, 0.0, 0.0) });
+        p.on_input(&InputMsg::ImePreedit { wid: 1, text: "中文".into(), selection: None });
         let frame = p.render_frame();
         let texts = texts_of(&frame);
         assert!(
@@ -4201,7 +4201,7 @@ mod tests {
         p.on_input(&InputMsg::KeyPressed { wid: 1, key: 27, modifiers: 0 }); // Esc 不失焦——改走结构变化失焦：省略，直接测无聚焦路径
         let mut p2 = proj_center_off(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
         p2.on_input(&InputMsg::ImeCommit { wid: 1, text: "x".into() });
-        p2.on_input(&InputMsg::ImePreedit { wid: 1, text: "y".into(), cursor: WRect::new(0.0, 0.0, 0.0, 0.0) });
+        p2.on_input(&InputMsg::ImePreedit { wid: 1, text: "y".into(), selection: None });
         assert_eq!(p2.ime_dropped(), 2, "无聚焦丢弃留痕");
     }
 

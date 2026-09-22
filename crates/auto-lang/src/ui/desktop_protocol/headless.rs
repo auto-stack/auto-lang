@@ -20,17 +20,19 @@
 
 use crate::ui::component::Component;
 use crate::ui::desktop_protocol::message::{
-    BorderSpec, DisplayList, DisplayOp, DrawList, DrawOp, Fill, Rgba8, ShadowSpec, WRect,
+    BorderSpec, ControlMsg, DisplayList, DisplayOp, DrawList, DrawOp, Fill, ImeReq, Rgba8,
+    ShadowSpec, WRect,
 };
 use crate::ui::iced::renderer::IntoIcedElement;
 
 use iced::advanced::graphics::text::Text as GfxText;
 use iced::advanced::graphics::text::font_system;
+use iced::advanced::input_method::{InputMethod, Purpose};
 use iced::advanced::renderer as advanced_renderer;
 use iced::mouse;
 use iced::theme::Base;
 use iced::Element;
-use iced_runtime::user_interface::{Cache, UserInterface};
+use iced_runtime::user_interface::{Cache, State as UiState, UserInterface};
 use iced_tiny_skia::Layer;
 
 /// 字体装载（进程内一次）：独立轨 application 链同款 Inter 三字重
@@ -62,6 +64,18 @@ pub struct HeadlessSurface<C: Component> {
     /// v2 帧待上传位图（Rgba 句柄 → bitmap:// 通道；v1 投影器
     /// drain_bitmap_uploads 同型缝）。
     pending_bitmaps: Vec<super::endpoint::BitmapUpload>,
+    /// PLAN-690 T-02：上次下行的 IME 请求（去重基线——iced 每帧
+    /// RedrawRequested 重发 `InputMethod::Enabled`，变化才下行）。
+    last_ime: Option<ImeReq>,
+    /// PLAN-690 T-05：上次下行的光标形状（0 default / 1 pointer / 2 text）。
+    last_cursor_kind: u8,
+    /// PLAN-690：待下行控制批（ImeRequest/SetCursor——drain_window_controls
+    /// 消费，泵在产帧后上行）。
+    pending_controls: Vec<ControlMsg>,
+    /// PLAN-690 T-03：最近一帧 text_input 上报的组合串（Enabled.preedit
+    /// 内容——上行 Preedit 事件 → App iced 态 → 原样上报的环测断言口；
+    /// wire ImeRequest v1 不携带组合串本体）。
+    preedit_reported: Option<String>,
 }
 
 impl<C: Component> HeadlessSurface<C>
@@ -78,6 +92,10 @@ where
             cache: Cache::default(),
             observations: Vec::new(),
             pending_bitmaps: Vec::new(),
+            last_ime: None,
+            last_cursor_kind: 0,
+            pending_controls: Vec::new(),
+            preedit_reported: None,
         }
     }
 
@@ -124,7 +142,7 @@ where
         // RedrawRequested 先行（iced_test snapshot 同款驱动）——部分 widget
         // 首帧状态推进依赖一次 redraw 事件。
         let mut messages = Vec::new();
-        let _ = ui.update(
+        let (state, _) = ui.update(
             &[iced::Event::Window(iced::window::Event::RedrawRequested(
                 iced::time::Instant::now(),
             ))],
@@ -133,6 +151,9 @@ where
             &mut iced::advanced::clipboard::Null,
             &mut messages,
         );
+        // PLAN-690 T-01：State::Updated.input_method / mouse_interaction
+        // 截获（IME 激活门控 + 光标形状的下行源头）。
+        self.capture_ui_state(state);
 
         // 主题单源（PLAN-679）：与独立轨 run 链同款 shadcn 调色板。
         let theme = crate::ui::iced::renderer::shadcn_theme(
@@ -181,6 +202,10 @@ where
                 &mut iced::advanced::clipboard::Null,
                 &mut messages,
             );
+            // 截获面不在事件路径：iced_winit 只在 RedrawRequested 处理臂
+            // 消费 input_method/mouse_interaction（lib.rs:940-970）——事件
+            // 轮的 shell 态是瞬态 Disabled（text_input 仅在 Redraw 臂请求
+            // IME），照收会误发 Disable 下行。drive_and_draw 独占截获。
         }
         self.cache = ui.into_cache();
         // 事件消息回灌（drive_and_draw 同律——组件状态变更即刻生效，
@@ -199,6 +224,57 @@ where
             Some(p) => mouse::Cursor::Available(p),
             None => mouse::Cursor::Unavailable,
         };
+    }
+
+    /// PLAN-690 T-01/T-05：`UserInterface::update` 返回态截获——
+    /// `State::Updated { input_method, mouse_interaction }` 是 iced 0.14
+    /// 公开的 IME 请求/光标形状出口（user_interface.rs:615-640；headless
+    /// 旧代码以 `let _ =` 丢弃）。变化才入下行批（iced 每帧重发请求）。
+    fn capture_ui_state(&mut self, state: UiState) {
+        let UiState::Updated { input_method, mouse_interaction, .. } = state else {
+            return;
+        };
+        let ime = match input_method {
+            InputMethod::Disabled => {
+                self.preedit_reported = None;
+                None
+            }
+            InputMethod::Enabled { cursor, purpose, preedit } => {
+                // 空组合串归一 None（winit Windows commit 序 = Preedit("")
+                // 先行清态——text_input 会存空串，上报面按"无组合态"口径）。
+                self.preedit_reported =
+                    preedit.filter(|p| !p.content.is_empty()).map(|p| p.content);
+                Some(ImeReq {
+                    cursor: WRect { x: cursor.x, y: cursor.y, w: cursor.width, h: cursor.height },
+                    purpose: purpose_u8(purpose),
+                })
+            }
+        };
+        if ime != self.last_ime {
+            self.last_ime = ime.clone();
+            // wid = 0 哨兵（连接级寻址——headless 装配期不知真实 wid，
+            // rqhost 客户端单 wid 连接按 client 记录路由，壳投影族同型）。
+            let wid = 0;
+            self.pending_controls.push(ControlMsg::ImeRequest { wid, enabled: ime });
+        }
+        let kind = cursor_kind_u8(mouse_interaction);
+        if kind != self.last_cursor_kind {
+            self.last_cursor_kind = kind;
+            let wid = 0;
+            self.pending_controls.push(ControlMsg::SetCursor { wid, kind });
+        }
+    }
+
+    /// PLAN-690：App 派生窗口控制下行批读走（ImeRequest/SetCursor——
+    /// 泵在产帧后消费并上行 `ProtocolMsg::Control`）。
+    pub fn drain_window_controls(&mut self) -> Vec<ControlMsg> {
+        std::mem::take(&mut self.pending_controls)
+    }
+
+    /// PLAN-690 T-03：最近一帧 text_input 上报的组合串（环测断言口，
+    /// 见 `preedit_reported` 字段注）。
+    pub fn preedit_reported(&self) -> Option<&str> {
+        self.preedit_reported.as_deref()
     }
 
     /// 上帧降格观测（未入 wire 的原语——T-01 逐项消解的台账）。
@@ -619,8 +695,11 @@ pub(crate) fn input_to_iced_events(input: &crate::ui::desktop_protocol::message:
                 delta: iced::mouse::ScrollDelta::Pixels { x: *dx, y: *dy },
             },
         )],
-        InputMsg::ImePreedit { text, .. } => vec![iced::Event::InputMethod(
-            iced::advanced::input_method::Event::Preedit(text.clone(), None),
+        InputMsg::ImePreedit { text, selection, .. } => vec![iced::Event::InputMethod(
+            iced::advanced::input_method::Event::Preedit(
+                text.clone(),
+                selection.map(|(s, e)| s as usize..e as usize),
+            ),
         )],
         InputMsg::ImeCommit { text, .. } => vec![iced::Event::InputMethod(
             iced::advanced::input_method::Event::Commit(text.clone()),
@@ -628,6 +707,36 @@ pub(crate) fn input_to_iced_events(input: &crate::ui::desktop_protocol::message:
         InputMsg::ImeCancelled { .. } => vec![iced::Event::InputMethod(
             iced::advanced::input_method::Event::Closed,
         )],
+    }
+}
+
+/// iced IME purpose → wire u8（0 Normal / 1 Secure / 2 Terminal——
+/// `ControlMsg::ImeRequest` 载荷语义，透传留协议面）。
+fn purpose_u8(purpose: Purpose) -> u8 {
+    match purpose {
+        Purpose::Normal => 0,
+        Purpose::Secure => 1,
+        Purpose::Terminal => 2,
+    }
+}
+
+/// iced 鼠标 Interaction → wire 光标形状 u8（PLAN-690 v1 两级：pointer/
+/// text 显式，其余 default——iced ~27 变体不逐个过线，SD-02 契约注记）。
+fn cursor_kind_u8(interaction: mouse::Interaction) -> u8 {
+    match interaction {
+        mouse::Interaction::Pointer => 1,
+        mouse::Interaction::Text => 2,
+        _ => 0,
+    }
+}
+
+/// wire u8 → iced 光标图标（daemon view mouse_area 消费侧同表反向；
+/// Idle 在 iced_winit conversion 映射 CursorIcon::Default——0 档即箭头）。
+pub(crate) fn cursor_kind_icon(kind: u8) -> mouse::Interaction {
+    match kind {
+        1 => mouse::Interaction::Pointer,
+        2 => mouse::Interaction::Text,
+        _ => mouse::Interaction::Idle,
     }
 }
 
@@ -742,6 +851,10 @@ where
 
     fn drain_bitmap_uploads(&mut self) -> Vec<super::endpoint::BitmapUpload> {
         self.surface.drain_bitmap_uploads()
+    }
+
+    fn drain_window_controls(&mut self) -> Vec<crate::ui::desktop_protocol::message::ControlMsg> {
+        self.surface.drain_window_controls()
     }
 }
 
@@ -1161,6 +1274,123 @@ mod tests {
                 "{dir} FrameReadyV2 信封 round-trip 漂移"
             );
         }
+    }
+
+    /// PLAN-690 T-02/T-03/T-05 —— IME 截获环（headless 单元级）：
+    /// 点击聚焦 → `ImeRequest(Enabled{cursor})` + hover 光标 `SetCursor(2)`
+    /// 下行批；Preedit（含字节选区）注入 → text_input 收态 → 下一帧经
+    /// `Enabled.preedit` 原样上报（`preedit_reported` 断言口）→ Commit
+    /// 入值出帧 → Esc 取消清组合态。
+    #[test]
+    fn p690_ime_capture_and_preedit_round_trip() {
+        use crate::ui::desktop_protocol::message::{InputMsg, MouseButton};
+
+        let Some(src) = example_source("003-converter") else {
+            eprintln!("[p690] skip: 003-converter 载体缺席");
+            return;
+        };
+        let component =
+            crate::build_dynamic_component(&src, None).unwrap_or_else(|e| panic!("{e}"));
+        let mut surface = HeadlessSurface::new(component, 480.0, 360.0);
+
+        // 首帧 + celsius 输入定位（p683 typing 环同锚：值文本 `0`）。
+        let first = surface.render_frame();
+        let (fx, fy) = first
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                DrawOp::TextStyled { x, y, text, .. } if text == "0" => Some((*x, *y)),
+                _ => None,
+            })
+            .expect("celsius 值文本 `0` 缺席");
+        let (cx, cy) = (fx + 4.0, fy + 8.0);
+
+        // hover 同点（光标形状断言前置——text_input hover = Text）。
+        surface.point_at(Some(iced::Point::new(cx, cy)));
+        // 点击聚焦（Pressed + Released 完整对——iced text_input 点击聚焦）。
+        let press = input_to_iced_events(&InputMsg::PointerPressed {
+            wid: 0,
+            button: MouseButton::Left,
+            x: cx,
+            y: cy,
+            modifiers: 0,
+        });
+        let release = input_to_iced_events(&InputMsg::PointerReleased {
+            wid: 0,
+            button: MouseButton::Left,
+            x: cx,
+            y: cy,
+            modifiers: 0,
+        });
+        surface.update(&press);
+        surface.update(&release);
+
+        // 下一帧：RedrawRequested 臂 → text_input 请求 IME（聚焦态）——
+        // 截获出 ImeRequest(Enabled) + SetCursor(Text)。
+        let _ = surface.render_frame();
+        let controls = surface.drain_window_controls();
+        assert!(
+            controls.iter().any(|c| matches!(
+                c,
+                ControlMsg::ImeRequest { enabled: Some(req), .. }
+                    if req.cursor.w > 0.0 && req.cursor.h > 0.0
+            )),
+            "聚焦后 IME enable 下行缺席: {controls:?}"
+        );
+        assert!(
+            controls.iter().any(|c| matches!(c, ControlMsg::SetCursor { kind: 2, .. })),
+            "text_input hover 光标（Text）下行缺席: {controls:?}"
+        );
+
+        // Preedit 注入（组合串 + 字节选区）→ 下一帧 text_input 经
+        // Enabled.preedit 原样上报。
+        let preedit = input_to_iced_events(&InputMsg::ImePreedit {
+            wid: 0,
+            text: "nihao".into(),
+            selection: Some((2, 4)),
+        });
+        surface.update(&preedit);
+        let _ = surface.render_frame();
+        assert_eq!(
+            surface.preedit_reported(),
+            Some("nihao"),
+            "组合串未达 text_input 态（Enabled.preedit 上报缺席）"
+        );
+        let re_drain = surface.drain_window_controls();
+        assert!(
+            re_drain.is_empty(),
+            "组合态帧不重发 IME 请求（去重基线失效）: {re_drain:?}"
+        );
+
+        // Commit 入值：winit Windows commit 序 = `Preedit("")` 清态先行 +
+        // `Commit(text)`（event_loop.rs:1546-1556）——镜像真实事件序。
+        let clear = input_to_iced_events(&InputMsg::ImePreedit {
+            wid: 0,
+            text: String::new(),
+            selection: None,
+        });
+        surface.update(&clear);
+        let commit = input_to_iced_events(&InputMsg::ImeCommit { wid: 0, text: "你好".into() });
+        surface.update(&commit);
+        let committed = surface.render_frame();
+        assert!(
+            committed.ops.iter().any(|op| matches!(
+                op,
+                DrawOp::TextStyled { text, .. } | DrawOp::Text { text, .. } if text.contains("你好")
+            )),
+            "Commit 后帧文本不含上屏串"
+        );
+        assert_eq!(
+            surface.preedit_reported(),
+            None,
+            "Commit 后组合态未清（preedit 上报残留）"
+        );
+
+        // Esc 取消（ImeCancelled → Closed 清组合态——G1 取消腿）。
+        let cancelled = input_to_iced_events(&InputMsg::ImeCancelled { wid: 0 });
+        surface.update(&cancelled);
+        let _ = surface.render_frame();
+        assert_eq!(surface.preedit_reported(), None, "取消后组合态残留");
     }
 
     /// daemon paint_ops 回放（`()` 后端）——与 broker_surface 的实机重放

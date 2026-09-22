@@ -63,6 +63,10 @@ pub mod remote;
 /// 多窗 daemon + 输入路由；`auto run -q` 第四形态）。
 #[cfg(feature = "ui-iced")]
 pub mod rqhost;
+/// PLAN-690 T-02 —— daemon 窗 IME 激活门控（Windows IMM 直写；内部
+/// 自带平台 cfg，非 Windows 宿主为 no-op 观测行）。
+#[cfg(feature = "ui-iced")]
+pub mod win_ime;
 /// PLAN-029 T-03（D2）：Windows SendInput FFI（真机合成键入基建；内部
 /// 自带 `#![cfg(windows)]`，非 Windows 平台为空模块）。
 #[cfg(feature = "ui-iced")]
