@@ -540,7 +540,7 @@ fn vk_to_code(vk: u32) -> Option<iced::keyboard::key::Code> {
 /// Closed（组合态清理）。Windows 中文 IME 实机完备性 = T-02 风险面
 ///（待澄清③），残缺则混合方案兜底登记。
 pub(crate) fn input_to_iced_events(input: &crate::ui::desktop_protocol::message::InputMsg) -> Vec<iced::Event> {
-    use crate::ui::desktop_protocol::message::{InputMsg, MouseButton};
+    use crate::ui::desktop_protocol::message::InputMsg;
     use iced::keyboard::{Event as KeyEvent, Key};
     use iced::mouse;
     match input {
