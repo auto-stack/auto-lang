@@ -12,9 +12,10 @@ store BooksStore {
 
     on {
         .Init -> {
-            .loading = true
-            .books = list_books()
+            // 先清 loading 再拉数：list_books 失败时不留 Loading 死态
+            // （gallery 嵌入 back-proxy 500 时仍显示空书架引导）。
             .loading = false
+            .books = list_books()
         }
         .AddBook(title str, author str) -> {
             create_book(title, author)

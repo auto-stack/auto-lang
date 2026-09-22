@@ -21,7 +21,7 @@ widget App {
         // 覆盖 .min-h-screen→100%）。此前 `fixed inset-y-0` 相对浏览器视口
         // 定位，gallery 内嵌时侧栏穿出视口卡（P675-D1 ②）。
         row {
-            style: "h-full min-h-screen bg-background text-foreground"
+            style: "w-full h-full min-h-screen bg-background text-foreground"
 
             // Sidebar (desktop) — relative flex child, not fixed
             col {

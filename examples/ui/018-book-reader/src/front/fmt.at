@@ -1,0 +1,34 @@
+// fmt.at — 显示用数字格式化。PLAN-684 进度百分比保留 1 位小数。
+// Book.progress 运行时可能是 float（如 100/3=33.333…），直接插值会长尾。
+
+/// 保留 1 位小数（截断）：33.333… → "33.3"；33 → "33.0"；100 → "100.0"
+fn pct1(x float) str {
+    let s str = x.to_string()
+    var i int = 0
+    var dot int = -1
+    while i < s.len() {
+        if s.sub(i, i + 1) == "." {
+            dot = i
+            i = s.len()
+        } else {
+            i = i + 1
+        }
+    }
+    if dot < 0 {
+        return s + ".0"
+    }
+    var end int = dot + 2
+    if end > s.len() {
+        end = s.len()
+    }
+    var cut str = s.sub(0, end)
+    if cut.len() == dot + 1 {
+        cut = cut + "0"
+    }
+    return cut
+}
+
+/// 百分比文案：33.333… → "33.3%"
+fn pct1_label(x float) str {
+    return pct1(x) + "%"
+}

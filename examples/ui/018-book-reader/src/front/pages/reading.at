@@ -6,6 +6,7 @@
 // for a block-bodied computed, so it would yield undefined.
 use back.api: get_book, get_chapter, list_chapters
 use store: BooksStore
+use fmt: pct1
 
 style page_btn = "inline-flex items-center gap-1 px-3 py-1.5 text-sm text-foreground hover:bg-accent rounded-lg transition-colors disabled:opacity-40"
 
@@ -34,6 +35,7 @@ widget reading {
         var font_size str = "medium"
         var line_height str = "comfy"
         var body_style str = "text-foreground text-base leading-relaxed"
+        var progress_label str = "0.0%"
     }
 
     view {
@@ -121,7 +123,7 @@ widget reading {
                     row {
                         style: "justify-between text-xs text-muted-foreground"
                         text f"Chapter ${.chapter_num} of ${.chapter_count}" {}
-                        text f"${.progress_pct}%" {}
+                        text .progress_label {}
                     }
                 }
                 button {
@@ -177,6 +179,7 @@ widget reading {
                 lead_cls = "leading-snug"
             }
             .body_style = "text-foreground " + size_cls + " " + lead_cls
+            .progress_label = pct1(.progress_pct) + "%"
             .loaded = true
             store.SetProgress(.book_id, .progress_pct)
         }
@@ -192,6 +195,7 @@ widget reading {
                 if total > 0 {
                     .progress_pct = pct_of(.chapter_num, total)
                 }
+                .progress_label = pct1(.progress_pct) + "%"
                 store.SetProgress(.book_id, .progress_pct)
             }
         }
@@ -204,6 +208,7 @@ widget reading {
                 if total > 0 {
                     .progress_pct = pct_of(.chapter_num, total)
                 }
+                .progress_label = pct1(.progress_pct) + "%"
                 store.SetProgress(.book_id, .progress_pct)
             }
         }
@@ -216,6 +221,7 @@ widget reading {
                 if total > 0 {
                     .progress_pct = pct_of(.chapter_num, total)
                 }
+                .progress_label = pct1(.progress_pct) + "%"
                 store.SetProgress(.book_id, .progress_pct)
             }
         }

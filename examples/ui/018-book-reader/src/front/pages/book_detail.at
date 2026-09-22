@@ -2,6 +2,7 @@
 // PLAN-684 F-3：左封面/元信息，右编号 TOC 列表（当前章高亮）；主 CTA =
 // Continue/Start。不再用 4 列密网格。
 use back.api: get_book, list_chapters
+use fmt: pct1
 
 style btn_primary_xl = "mt-3 inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
 style row_gap1 = "items-center gap-1"
@@ -33,6 +34,7 @@ widget book_detail {
         var chapters []Chapter = []
         var loaded bool = false
         var current_ch int = 1
+        var progress_label str = ""
     }
 
     view {
@@ -77,7 +79,7 @@ widget book_detail {
                                     text f"${.book.word_count} words" {}
                                 }
                                 if .book.progress > 0 {
-                                    text f"${.book.progress}%" { style: "text-primary font-medium" }
+                                    text .progress_label { style: "text-primary font-medium" }
                                 }
                             }
                             if .book.progress > 0 {
@@ -150,8 +152,10 @@ widget book_detail {
             .book = get_book(.book_id)
             .chapters = list_chapters(.book_id)
             .current_ch = 1
+            .progress_label = ""
             if .book != None {
                 .current_ch = chapter_from_progress(.book.progress, .book.chapter_count)
+                .progress_label = pct1(.book.progress) + "%"
             }
             .loaded = true
         }

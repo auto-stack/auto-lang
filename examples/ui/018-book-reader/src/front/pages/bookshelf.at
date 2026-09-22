@@ -2,6 +2,7 @@
 // 封面网格 + 新建书对话框。PLAN-684 F-2：对话框遮罩用容器内 absolute
 // （父级 relative），不再 fixed inset-0（嵌入态会穿出视口卡，P675-D1 同族）。
 use store: BooksStore
+use fmt: pct1
 
 style field_label = "text-sm font-medium text-foreground"
 style search_input = "px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary"
@@ -52,7 +53,9 @@ widget bookshelf {
         var cont_color str = "from-indigo-500 to-purple-600"
         var cont_progress int = 0
         var cont_chapter_count int = 1
+        var cont_label str = ""
         var has_continue bool = false
+        var cards List = []
     }
 
     view {
@@ -95,20 +98,14 @@ widget bookshelf {
                                     style: "width:" + .cont_progress.to_string() + "%"
                                 }
                             }
-                            text f"${.cont_progress}%" { style: "text-xs text-muted-foreground shrink-0" }
+                            text .cont_label { style: "text-xs text-muted-foreground shrink-0" }
                         }
                     }
                     text "→" { style: "text-lg text-muted-foreground shrink-0" }
                 }
             }
 
-            if .store.loading {
-                col {
-                    style: empty_state
-                    text "Loading library…" {}
-                }
-            } else {
-                if .store.books.len() == 0 {
+            if .store.books.len() == 0 {
                     col {
                         style: empty_state
                         text "📖" { style: "text-5xl opacity-40" }
@@ -123,7 +120,7 @@ widget bookshelf {
                 } else {
                     div {
                         style: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5"
-                        for book in .store.books {
+                        for book in .cards {
                             col {
                                 onclick: .OpenBook(book.id)
                                 style: "cursor-pointer group"
@@ -152,7 +149,7 @@ widget bookshelf {
                                     text book.author { style: "text-sm text-muted-foreground truncate" }
                                     row {
                                         style: "items-center justify-between mt-1.5"
-                                        text f"${book.progress}%" { style: "text-xs text-muted-foreground" }
+                                        text book.progress_label { style: "text-xs text-muted-foreground" }
                                         button {
                                             onclick: .DeleteBook(book.id)
                                             style: "opacity-0 group-hover:opacity-100 text-xs text-destructive hover:underline transition-opacity"
@@ -164,7 +161,6 @@ widget bookshelf {
                         }
                     }
                 }
-            }
 
             // Add-book dialog — absolute 遮罩锚定本 col（relative），嵌入不穿出
             if .show_add {
@@ -216,6 +212,13 @@ widget bookshelf {
     on {
         .Init -> {
             store.Init()
+            .cards = []
+            var i int = 0
+            while i < .store.books.len() {
+                let b = .store.books[i]
+                .cards.push({ id: b.id, title: b.title, author: b.author, cover_color: b.cover_color, progress: b.progress, progress_label: pct1(b.progress) + "%" })
+                i = i + 1
+            }
             .has_continue = false
             var idx int = continue_index(.store.books)
             if idx >= 0 {
@@ -226,6 +229,7 @@ widget bookshelf {
                 .cont_color = .store.books[idx].cover_color
                 .cont_progress = .store.books[idx].progress
                 .cont_chapter_count = .store.books[idx].chapter_count
+                .cont_label = pct1(.cont_progress) + "%"
             }
         }
         .OpenBook(id int) -> { router.push("/book/" + id.to_string()) }
@@ -245,6 +249,13 @@ widget bookshelf {
             if .new_title != "" {
                 store.AddBook(.new_title, .new_author)
                 .show_add = false
+                .cards = []
+                var i int = 0
+                while i < .store.books.len() {
+                    let b = .store.books[i]
+                    .cards.push({ id: b.id, title: b.title, author: b.author, cover_color: b.cover_color, progress: b.progress, progress_label: pct1(b.progress) + "%" })
+                    i = i + 1
+                }
                 var idx int = continue_index(.store.books)
                 .has_continue = false
                 if idx >= 0 {
@@ -255,11 +266,19 @@ widget bookshelf {
                     .cont_color = .store.books[idx].cover_color
                     .cont_progress = .store.books[idx].progress
                     .cont_chapter_count = .store.books[idx].chapter_count
+                    .cont_label = pct1(.cont_progress) + "%"
                 }
             }
         }
         .DeleteBook(id int) -> {
             store.RemoveBook(id)
+            .cards = []
+            var i int = 0
+            while i < .store.books.len() {
+                let b = .store.books[i]
+                .cards.push({ id: b.id, title: b.title, author: b.author, cover_color: b.cover_color, progress: b.progress, progress_label: pct1(b.progress) + "%" })
+                i = i + 1
+            }
             .has_continue = false
             var idx int = continue_index(.store.books)
             if idx >= 0 {
@@ -270,6 +289,7 @@ widget bookshelf {
                 .cont_color = .store.books[idx].cover_color
                 .cont_progress = .store.books[idx].progress
                 .cont_chapter_count = .store.books[idx].chapter_count
+                .cont_label = pct1(.cont_progress) + "%"
             }
         }
     }
