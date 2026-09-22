@@ -956,6 +956,52 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         let bounds = layout.bounds();
         let state = tree.state.downcast_ref::<TerminalState>();
 
+        // PLAN-028 T-05 rev2:history/offset rust 直达回流(读端)——分体轨
+        // back 变化才发布 vm.term_hist.<key> / vm.term_off.<key>(共享
+        // storage 文件),本端节流读取(≤150ms/次)落 core:history → 画布
+        // 比例;offset+anchor → 022 虚拟画布窗口位移标定(分体下泵回写
+        // 不可达,此为唯一供给面)。键缺席(桌面/merged 轨:泵回写同值)
+        // = no-op,零回归。
+        {
+            static LAST_POLL: std::sync::OnceLock<
+                std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, i64, i64)>>,
+            > = std::sync::OnceLock::new();
+            let poll = {
+                let mut m = LAST_POLL
+                    .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+                    .lock()
+                    .unwrap();
+                let fresh = match m.get(&self.key) {
+                    Some((t, _, _)) if t.elapsed() < std::time::Duration::from_millis(150) => false,
+                    _ => true,
+                };
+                if fresh {
+                    let now = std::time::Instant::now();
+                    let read = |k: String| -> i64 {
+                        crate::vm::ffi::stdlib::storage_host_read_fresh(&k)
+                            .and_then(|s| s.trim().parse::<i64>().ok())
+                            .unwrap_or(-1)
+                    };
+                    let hist = read(format!("vm.term_hist.{}", self.key));
+                    let off = read(format!("vm.term_off.{}", self.key));
+                    m.insert(self.key.clone(), (now, hist, off));
+                    Some((hist, off))
+                } else {
+                    None
+                }
+            };
+            if let Some((hist, off)) = poll {
+                if hist > 0 {
+                    crate::ui::terminal::terminal_set_history(self.core, hist as usize);
+                }
+                if off >= 0 {
+                    crate::ui::terminal::terminal_set_scroll_offset(self.core, off as usize);
+                    let anchor = hist.max(0) - off;
+                    crate::ui::terminal::terminal_set_window_anchor(self.core, anchor);
+                }
+            }
+        }
+
         // PLAN-022 T-02 虚拟滚动读出臂(draw 期 viewport 观察;iced
         // scrollable 传给子件的 viewport = 内容坐标的可见区):
         // 1) 视口高记账 → 下一帧 014 几何随动探针消费(scrollable 内
