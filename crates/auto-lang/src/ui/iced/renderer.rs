@@ -10268,6 +10268,62 @@ fn update_shell_clock(state: &mut crate::ui::session::DesktopSession) {
     }
 }
 
+/// PLAN-041 T-15：dashboard 面板暗色注入位单点同步——`dark_mode()` 翻转
+/// （bus set_theme / config 外写 poll / boot 任一路径）经 400ms 帧泵在
+/// 此收敛：值变才写面板 `__dash_dark` + 置脏（面板 .at 玻璃底双分支
+/// 消费；boot 缺省 dark=true 与 DesktopConfig::default 对齐）。
+fn sync_dash_dark_bit(state: &mut crate::ui::session::DesktopSession) {
+    let dark = crate::ui::style::iced_adapter::dark_mode();
+    if state.desktop.dash_dark_cache.get() == dark {
+        return;
+    }
+    state.desktop.dash_dark_cache.set(dark);
+    let Some(panel) = state.desktop.dashboard_app else { return };
+    if let Some(app) = state.apps.get_mut(&panel) {
+        let _ = app
+            .component
+            .write_state("__dash_dark", auto_val::Value::str(if dark { "1" } else { "0" }));
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+}
+
+/// PLAN-041 T-14（呈现保活）：纯订阅 tick（ServiceTick）在 iced 0.14 不
+/// 触发窗口 present——双实例实机实证：update 侧状态/投影每拍更新（
+/// __wm_clock 与墙钟同步），OS 表面滞留旧帧（任务栏分钟字停旧、跨分区
+/// 残影、通知面板延迟上屏、dashboard face 时钟"停走"四象同根因）。
+/// Win32 InvalidateRect+UpdateWindow 强制 WM_PAINT → winit
+/// RedrawRequested → 全管线重渲+present。1s 节流（分钟粒度状态一帧即
+/// 足）；输入活跃期 winit 自身 present 照常，本臂纯兜底。
+#[cfg(all(windows, feature = "native-dock"))]
+fn presentation_keepalive_tick() {
+    static LAST: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+    let now = std::time::Instant::now();
+    let due = LAST
+        .lock()
+        .map_or(true, |g| {
+            g.map_or(true, |t| {
+                now.duration_since(t) >= std::time::Duration::from_secs(1)
+            })
+        });
+    if !due {
+        return;
+    }
+    if let Ok(mut g) = LAST.lock() {
+        *g = Some(now);
+    }
+    if let Some(h) = crate::ui::native_dock::win32::find_largest_own_window() {
+        unsafe {
+            use windows::Win32::Foundation::HWND;
+            use windows::Win32::Graphics::Gdi::InvalidateRect;
+            let hwnd = HWND(h.0 as *mut _);
+            // 仅异步失效（UpdateWindow 同步派发会在 update() 内重入
+            // winit 事件环——017-chat fit collector unwrap 崩溃同族风险，
+            // T-03 后摘除）；WM_PAINT 在消息队列排空后由系统投递。
+            let _ = InvalidateRect(hwnd, None, false);
+        }
+    }
+}
+
 fn push_notification(state: &mut crate::ui::session::DesktopSession, kind: &str, msg: &str) {
     // Plan 487 M4 + Plan 540 T2：通知持久化开关门控（479 消费链单点）——
     // 单源 `config.notes_enabled`（设置窗写经宿主臂收口落 config.at），
@@ -11212,14 +11268,23 @@ mod plan024_dashboard_layout_tests {
     /// 8 列单卡行容量：2+3+3 恰满；第 4 张裁剪（Q2 v1 策略）。
     #[test]
     fn single_widget_row_capacity_and_clip() {
+        // PLAN-041 T-08（SD-01）：溢出 → span-3 依序收缩到 2，全容纳不再
+        // 裁剪（2+3+3+2=10 → 2+2+2+2=8 恰满）。
         let faces = vec![face("a", 2), face("b", 3), face("c", 3), face("d", 2)];
         let (panel, cells) = dashboard_layout(VP, &faces);
-        assert_eq!(cells.len(), 3, "2+3+3=8 恰满一行，第 4 张裁剪");
-        let last = cells.last().unwrap();
-        assert!(
-            last.x + last.width <= panel.x + panel.width + 0.5,
-            "卡不得越出外框右缘"
-        );
+        assert_eq!(cells.len(), 4, "收缩后 4 张全容纳（旧行为裁第 4 张）");
+        for c in &cells {
+            assert!(
+                c.x + c.width <= panel.x + panel.width + 0.5,
+                "卡不得越出外框右缘"
+            );
+        }
+        // 收缩只落在 span-3 面（a/d 原宽保持 2 格 = 168px）。
+        assert_eq!(cells[0].width as i32, (2 * DASH_GRID_COL as i32) - 8);
+        assert_eq!(cells[3].width as i32, (2 * DASH_GRID_COL as i32) - 8);
+        // 收缩数恰为溢出差额（2 张）：总宽 = 8 格 - 4×8 gap。
+        let total_w: i32 = cells.iter().map(|c| c.width as i32).sum();
+        assert_eq!(total_w, 8 * DASH_GRID_COL as i32 - 4 * 8);
     }
 
     /// span 越界 clamp（0/99 直传不 panic、不越界——存储坏值防御）。
@@ -11237,9 +11302,12 @@ mod plan024_dashboard_layout_tests {
 
 /// 面板布局算式（PLAN-035 T-04 v2——宿主/面板几何单一事实）：外框 =
 /// 屏幕右上 8×2 图标网格块（720×176 @ 12px 边距，节距 88/80，含四围
-/// PAD）；face 卡 = 视口绝对格位，行主序单卡行 next-fit（span∈{2,3}
-/// 缺省 2，余量不足裁剪 + dev 日志，Q2 v1 裁剪策略）。卡高 = 满框
+/// PAD）；face 卡 = 视口绝对格位，行主序单卡行 next-fit。卡高 = 满框
 /// 2 行格（152）——2026-09-22 裁定退役 T-18 满高 3 行格。
+/// PLAN-041 T-08（SD-01）：单行容量自适应——溢出时 span-3 卡依序收缩
+/// 到 2（仅本布局生效，不回写声明/存储；2 格高卡折双行会半高/溢框故
+/// 弃 wrap 臂），仍容不下才裁剪 + dev 日志。spans 2+3+3+2=9 → 2+2+2+2
+/// =8 全容纳（1 face clipped 消失）。
 fn dashboard_layout(
     viewport: iced::Rectangle,
     faces: &[DashFace],
@@ -11254,11 +11322,18 @@ fn dashboard_layout(
     let panel_y = DASH_MARGIN;
     let grid_x = panel_x + DASH_FRAME_PAD;
     let grid_y = panel_y + DASH_FRAME_PAD;
+    // 容量预算：单行总跨度超 8 列的差额 = 需收缩的 span-3 卡数。
+    let total: usize = faces.iter().map(|f| f.span.clamp(2, 3)).sum();
+    let mut shrink_left = total.saturating_sub(DASH_COLS);
     let mut cells = Vec::with_capacity(faces.len());
     let mut col = 0usize;
     let mut clipped = 0usize;
     for f in faces {
-        let want = f.span.clamp(2, 3);
+        let mut want = f.span.clamp(2, 3);
+        if shrink_left > 0 && want > 2 {
+            want = 2;
+            shrink_left -= 1;
+        }
         let remain = DASH_COLS - col;
         if want > remain {
             clipped += 1;
@@ -11274,7 +11349,7 @@ fn dashboard_layout(
     }
     if clipped > 0 {
         eprintln!(
-            "[dashboard] layout: {clipped} face(s) clipped — 8×2 外框单行 {DASH_COLS} 列容不下（滚动/换行挂 v2 债）"
+            "[dashboard] layout: {clipped} face(s) clipped — 单行 {DASH_COLS} 列 span 收缩后仍容不下"
         );
     }
     (
@@ -11611,6 +11686,12 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
         faces.iter().map(|f| (f.id.as_str(), f.status)).collect::<Vec<_>>(),
     );
     if let Some(app) = state.apps.get_mut(&panel) {
+        // PLAN-041 T-15：挂载兜底——懒挂载可能晚于 dark_cache 收敛，
+        // refresh（召唤后必经）无条件回写当前暗色位（值同写亦幂等）。
+        let _ = app.component.write_state(
+            "__dash_dark",
+            auto_val::Value::str(if state.desktop.dash_dark_cache.get() { "1" } else { "0" }),
+        );
         let _ = app.component.write_state_vec("face_ids", ids);
         let _ = app.component.write_state_vec("face_titles", titles);
         let _ = app.component.write_state_vec("face_icons", icons);
@@ -12162,8 +12243,17 @@ fn execute_desktop_commands(
             }
             // Plan 472 T2：分区切换（dock 切换条/workspace_next；调用臂尾
             // sync_shell_windows 刷新投影）。
-            DC::SetWorkspace(n) => state.wm_set_workspace(n),
-            DC::NextWorkspace => state.wm_next_workspace(),
+            // PLAN-041 T-04：切完即推呈现三面（预览重发布 + shell 重建 +
+            // 可见窗补抓）——状态/投影在 WmState 臂已切，呈现半边不再等
+            // 帧泵兜底（2026-09-22 实机：Desktop 2 上残影上一分区窗）。
+            DC::SetWorkspace(n) => {
+                state.wm_set_workspace(n);
+                after_workspace_switch(state);
+            }
+            DC::NextWorkspace => {
+                state.wm_next_workspace();
+                after_workspace_switch(state);
+            }
             // Plan 472 T4：dock 固定图标点击——运行中 →（隐藏分区先切分区）
             // 聚焦其窗；未运行 → launch（与 LaunchApp 臂同执行体）。
             DC::ActivateApp(name) => {
@@ -12731,9 +12821,13 @@ fn apply_external_config_diff(
     if cfg.dark_theme != old.dark_theme {
         // execute_set_theme 同款生效面(减 save):adapter 切换 + fence
         // 重着色(autodown 门控)+ 全场快照随撤 + 全 App view_dirty/dark_mode 回写。
+        // PLAN-041 T-05（F-R1 根修）：补 snapshot::invalidate_all——face
+        // 内容/缩略/pager 走快照缓存，缺此则 config 外写热切后 face 渲染
+        // 滞留旧主题（bus 臂 12345 同款；2026-09-22 实机复现 shot-07）。
         crate::ui::style::iced_adapter::set_dark_mode(cfg.dark_theme);
         #[cfg(feature = "autodown")]
         crate::ui::autodown_editor::retheme_all_fence_buffers();
+        crate::ui::iced::snapshot::invalidate_all();
         let dark = cfg.dark_theme;
         for app in state.apps.values_mut() {
             if app.component.read_state("dark_mode").is_ok() {
@@ -12780,6 +12874,26 @@ fn execute_set_wallpapers_dir(state: &mut crate::ui::session::DesktopSession, di
             host.wm.picker_win = 0;
         }
         inject_wallpaper_picker(state);
+    }
+}
+
+/// PLAN-041 T-04：分区切换后的呈现即时生效面。状态/投影由 WmState 臂
+/// 与 sync_shell_windows 负责；此处补呈现半边——pager/切换预览数据重
+/// 发布 + shell 视图重建（任务栏/预览即时随切，不等 400ms 帧泵兜底）。
+fn after_workspace_switch(state: &mut crate::ui::session::DesktopSession) {
+    if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
+        let cur = state
+            .host
+            .as_ref()
+            .map(|h| h.wm.current_workspace)
+            .unwrap_or(usize::MAX);
+        eprintln!("[472-WS] switch done, current={cur}");
+    }
+    publish_workspace_previews(state);
+    if let Some(shell) = state.desktop.shell_app {
+        if let Some(app) = state.apps.get_mut(&shell) {
+            *app.state.view_dirty.borrow_mut() = true;
+        }
     }
 }
 
@@ -13688,6 +13802,22 @@ fn deliver_open_arg(
 }
 
 fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str) {
+    // PLAN-041 T-03：崩溃围栏——017-chat 的 VM front 存在 widget 树/布局
+    // 树失配（timer 1s 重建 × MCP bounds operate 竞态 → iced container
+    // `layout.children().next().unwrap()` 崩桌面，boot7/boot9/back11 三次
+    // 复现；master 期该 app 死于链接失败死窗、被掩蔽不可达）。base 补链
+    // （T-02）使其可达后围栏之，待失配根修（债 P041-D1）摘除。
+    if name == "017-chat" {
+        push_notification(
+            state,
+            "error",
+            &format!(
+                "launch `{name}` 失败: VM front 树/布局失配崩溃围栏中（P041-D1 根修后放行）"
+            ),
+        );
+        show_launch_unavailable(state, name);
+        return;
+    }
     match state.launch_app(name) {
         // PLAN-002 N3（用户复核裁定 2026-09-09）：启动成功不再发通知——
         // toast 层逐动态视图面各渲染一份（shell + 每 app 窗，见 412 toast
@@ -13698,23 +13828,29 @@ fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str
             push_notification(state, "error", &err);
             // Plan 463 T7：启动失败占位页（Design 24 §6.5）——
             // 可见反馈窗代替白屏；占位页自身构建失败则仅 toast。
-            if let Ok(comp) = crate::ui::shell::build_launch_fallback(name) {
-                let app_id = state.allocate_app(comp);
-                let usable = crate::ui::layout::usable_rect(
-                    state.host_viewport(),
-                    state.desktop.dock_edges,
-                );
-                let index = state
-                    .host
-                    .as_ref()
-                    .map(|h| h.wm.wins.len())
-                    .unwrap_or(0);
-                let size = iced::Size::new(usable.width * 0.4, usable.height * 0.4);
-                let rect = crate::ui::layout::cascade_rect(index, size, usable);
-                let wid = state.wm_add_win(app_id, format!("{name}（不可用）"), rect);
-                state.wm_focus(wid);
-            }
+            show_launch_unavailable(state, name);
         }
+    }
+}
+
+/// 启动失败占位窗（Design 24 §6.5；PLAN-041 T-03 自 Err 臂提炼共用——
+/// vue 门禁与启动失败同面）。占位页自身构建失败则仅 toast（通知已发）。
+fn show_launch_unavailable(state: &mut crate::ui::session::DesktopSession, name: &str) {
+    if let Ok(comp) = crate::ui::shell::build_launch_fallback(name) {
+        let app_id = state.allocate_app(comp);
+        let usable = crate::ui::layout::usable_rect(
+            state.host_viewport(),
+            state.desktop.dock_edges,
+        );
+        let index = state
+            .host
+            .as_ref()
+            .map(|h| h.wm.wins.len())
+            .unwrap_or(0);
+        let size = iced::Size::new(usable.width * 0.4, usable.height * 0.4);
+        let rect = crate::ui::layout::cascade_rect(index, size, usable);
+        let wid = state.wm_add_win(app_id, format!("{name}（不可用）"), rect);
+        state.wm_focus(wid);
     }
 }
 
@@ -16053,6 +16189,34 @@ fn compare_pngs(
                     // 并 armed `window: "fit"`（计算器等直挂 App 窗随内容
                     // 收缩；462 固定 60% 初值 blanks 的实测反馈根治）。
                     arm_boot_fit_windows(&mut session);
+                    // PLAN-041 T-11：boot 直挂/恢复窗标题注册表对齐——建窗
+                    // 期 title = widget 根名（15942，通用 "App"），须在
+                    // arm_boot_fit_windows 回填 registry_id 之后覆盖展示名
+                    // （守卫 = 仅当 title 仍等于建窗期 widget 名，自定义
+                    // window 声明者不误伤；chrome/任务栏/投影单源 v.title）。
+                    {
+                        let reg_titles: std::collections::HashMap<String, String> = session
+                            .desktop
+                            .registry_entries
+                            .iter()
+                            .map(|e| (e.id.clone(), e.display_title().to_string()))
+                            .collect();
+                        if let Some(host) = session.host.as_mut() {
+                            for (_, v) in host.wm.wins.iter_mut() {
+                                let Some(rid) = v.registry_id.clone() else { continue };
+                                let Some(t) = reg_titles.get(&rid) else { continue };
+                                let widget_default = session
+                                    .apps
+                                    .get(&v.app)
+                                    .map(|a| a.component.widget_name().to_string());
+                                if Some(v.title.as_str()) == widget_default.as_deref()
+                                    && v.title != *t
+                                {
+                                    v.title = t.clone();
+                                }
+                            }
+                        }
+                    }
                     if let Some(e) = session
                         .desktop
                         .registry_entries
@@ -19141,6 +19305,11 @@ fn compare_pngs(
                         // Plan 497 G1：dock 时钟——分钟变化才注入（400ms
                         // 帧泵粒度检查，稳态零重建；本地 tick 非投影流量）。
                         update_shell_clock(state);
+                        // PLAN-041 T-15：面板暗色注入位单点同步（值变才写）。
+                        sync_dash_dark_bit(state);
+                        // PLAN-041 T-14：空闲呈现保活（1s 节流，Win32 门控）。
+                        #[cfg(all(windows, feature = "native-dock"))]
+                        presentation_keepalive_tick();
                         // PLAN-036 T-07（B3）：launcher attach 追赶——
                         /// spawn→attach 异步落差（launcher_open 挂起 +
                         /// pipe 落地 + 指纹未建）时补推召唤快照。
@@ -20716,6 +20885,14 @@ fn compare_pngs(
                 let Some(vwin) = host.wm.wins.get(&wid) else { continue };
                 // Plan 472 T2：只绘制当前分区（换分区=窗口随分区隐现）。
                 if vwin.workspace != host.wm.current_workspace {
+                    // PLAN-041 T-04 诊断（AUTO_DEBUG_KEYS 门控）：实证跨分区
+                    // 残影时核对本臂是否随帧泵执行（打印 = 过滤在、层已跳）。
+                    if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
+                        eprintln!(
+                            "[472-WS] view skip wid={} ws={} cur={}",
+                            wid.0, vwin.workspace, host.wm.current_workspace
+                        );
+                    }
                     continue;
                 }
                 // PLAN-526 T2：最小化窗不推层（隐藏；任务栏 icon 保留，

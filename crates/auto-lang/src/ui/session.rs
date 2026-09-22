@@ -309,6 +309,9 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// PLAN-024：注册表 id → 静默孵化 mini 会话映射（face 反查 + 幂等
     /// 孵化；常驻不回收，会话消亡随 DesktopSession 释放）。
     pub hatched_minis: std::collections::HashMap<String, AppId>,
+    /// PLAN-041 T-15：`__dash_dark` 注入位去重缓存（宿主 ServiceTick 单点
+    /// 同步 dark_mode() → 面板 .at 双分支玻璃底；值变才写+置脏）。
+    pub dash_dark_cache: std::cell::Cell<bool>,
     /// Plan 487 M4：设置面板 overlay App 的 AppId。首次 open_settings 召唤时
     /// Plan 496 M5：桌面本体面（assets/desktop.at 图标网格面）的 AppId。
     /// boot 期常驻装载（非 overlay 懒挂载——面常驻不召唤），装配层 Stack
@@ -491,6 +494,7 @@ impl DesktopState {
             notification_app: None,
             dashboard_app: None,
             hatched_minis: std::collections::HashMap::new(),
+            dash_dark_cache: std::cell::Cell::new(true),
             desktop_app: None,
             desktop_wallpaper: DESKTOP_WALLPAPER_DEFAULT.to_string(),
             launcher_entry: None,

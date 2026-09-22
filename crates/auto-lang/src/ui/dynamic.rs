@@ -2073,6 +2073,13 @@ impl DynamicComponent {
         }
         match self.bridge.call_handler("Init", &[]) {
             Ok(_) => self.dirty = true,
+            // PLAN-041 T-13：Init 是可选 handler——HandlerNotFound = 应用未
+            // 声明（无状态填充需求），静默降 debug。Plan 446 的"醒目"诉求
+            // 只针对声明了却真失败的形态（下方保留 stderr）；未声明形态在
+            // 真桌面 boot 每 app 一条噪声行（App.Init failed 实录）。
+            Err(e) if matches!(e, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)) => {
+                log::debug!("[VM-HANDLER] {}.Init absent (no state seeding)", self.widget_name);
+            }
             // Plan 446 批一 (F1): Init 失败从 log::warn 升级为无条件 stderr ——
             // Init 失败 = 状态未填充,整屏静默空白,必须醒目。
             Err(e) => {
@@ -2417,11 +2424,26 @@ impl DynamicComponent {
                 // Plan 446 批一 (F1): 诊断无条件打 stderr —— 此前仅
                 // ASH_DEBUG_VM_LOG=1 可见,os-config 现场靠逐句插桩才能定位崩溃
                 // handler,成本极高。崩点 ip/handler 名由 vm_bridge 附加。
-                eprintln!(
-                    "[VM-HANDLER] {}.{} failed: {}",
-                    if widget_name.is_empty() { &self.widget_name } else { widget_name },
-                    clean_name, _e
-                );
+                // PLAN-041 T-12：框架内部探测事件（`__` 前缀，如
+                // __mcp_heartbeat/__scroll_state_read）按契约就是"有则消费、
+                // 无则跳过"的可选面——HandlerNotFound 降 debug，不再每 2s
+                // 双行刷屏（桌面 shell 实录）；用户代码 handler 的诊断价值
+                // 原样保留。
+                let _handler_missing =
+                    matches!(_e, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_));
+                let _framework_probe = _handler_missing && clean_name.starts_with("__");
+                if !_framework_probe {
+                    eprintln!(
+                        "[VM-HANDLER] {}.{} failed: {}",
+                        if widget_name.is_empty() { &self.widget_name } else { widget_name },
+                        clean_name, _e
+                    );
+                } else {
+                    log::debug!(
+                        "[VM-HANDLER] {}.{} probe absent: {}",
+                        self.widget_name, clean_name, _e
+                    );
+                }
                 // PLAN-536 T2(题1 根修): handler **执行中崩**(≠HandlerNotFound)
                 // = 副作用已部分落盘——musk PollStream 实录:store 已拿到数据、
                 // 完成启发式已翻转,而 dirty 不置 → 画布永冻在崩前旧帧,用户
@@ -2464,11 +2486,20 @@ impl DynamicComponent {
                     match self.bridge.call_handler(&clean_name, &args) {
                         Ok(()) => { self.dirty = true; }
                         Err(_e2) => {
-                            eprintln!(
-                                "[VM-HANDLER] {}.{} legacy fallback also failed: {}",
-                                self.widget_name, clean_name, _e2
+                            // PLAN-041 T-12：同主臂——框架探测事件
+                            // HandlerNotFound 降 debug（否则 legacy 回退臂
+                            // 每探测再补一行刷屏）。
+                            let _fallback_missing = matches!(
+                                _e2,
+                                crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)
                             );
-                            if !matches!(_e2, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)) {
+                            if !(_fallback_missing && clean_name.starts_with("__")) {
+                                eprintln!(
+                                    "[VM-HANDLER] {}.{} legacy fallback also failed: {}",
+                                    self.widget_name, clean_name, _e2
+                                );
+                            }
+                            if !_fallback_missing {
                                 self.dirty = true;
                             }
                         }

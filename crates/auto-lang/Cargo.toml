@@ -201,6 +201,12 @@ futures = "0.3"
 # Plan 015: UI Backend dependencies (optional)
 # （gpui-lib/gpui-component/anyhow 三 optional deps 随 ui-gpui feature 移除——PLAN-691）
 iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced", "canvas"], optional = true }
+# PLAN-041 T-14：unconditional-rendering——iced_winit 缺省只在 widget 主动
+# 请求 NextFrame 时 present（AboutToWait 臂），纯订阅 tick（桌面帧泵）驱动
+# 的 update 不落帧 → 空闲期 OS 表面滞留旧帧（时钟停走/分区残影/通知滞后
+# 四象同根因，双实例实证）。开其后每消息周期强制一帧；空闲无消息早退
+# 零成本。
+iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced", "canvas", "unconditional-rendering"], optional = true }
 # Plan 057 (ash-gui 光标可见): text_editor 的 highlighter 类型(PlainText/Format)
 # 未经 iced facade 公开导出,直接依赖 iced_widget(与 iced 0.14 同版本系)。
 iced_widget = { version = "0.14", optional = true }

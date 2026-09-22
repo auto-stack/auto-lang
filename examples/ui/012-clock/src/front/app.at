@@ -495,6 +495,23 @@ widget App {
                 if lsec < 10 { lsec_str = "0" + lsec_str }
                 .w_local = lh_str + ":" + lm_str + ":" + lsec_str
 
+                // PLAN-041 T-07：活日期（原硬编码初始值 "2026年9月18日"
+                // 恒不更新——face/主视图日期停旧日根因）。civil_from_days
+                // （Hinnant 算法，1970+ 恒正域整除安全），随本地城市时
+                // （ls）同源换日。
+                var z_days = ls / 86400 + 719468
+                var era = z_days / 146097
+                var doe = z_days - era * 146097
+                var yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+                var civil_y = yoe + era * 400
+                var doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+                var mp = (5 * doy + 2) / 153
+                var civil_m = mp + 3
+                if mp >= 10 { civil_m = mp - 9 }
+                if civil_m <= 2 { civil_y += 1 }
+                var civil_d = doy - (153 * mp + 2) / 5 + 1
+                .local_date_str = f"${civil_y}年${civil_m}月${civil_d}日"
+
                 var s_deg = (lsec * 6) % 360
                 var m_deg = (lm * 6 + lsec / 10) % 360
                 var h_deg = ((lh % 12) * 30 + lm / 2) % 360

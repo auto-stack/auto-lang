@@ -1537,7 +1537,17 @@ impl VmBridge {
 
         // Verify the handler is exported before setting up a call frame.
         if !self.vm.flash.exports_by_name.contains_key(&fn_name) {
-            eprintln!("[CALL_HANDLER_FOR_NOT_FOUND] fn_name={} not in exports", fn_name);
+            // PLAN-041 T-12：框架探测事件（`__` 前缀）按契约可选——缺失
+            // 静默降 debug（否则 __mcp_heartbeat/__scroll_state_read 每
+            // 2s 单行刷屏，75s 空闲 28 行实录）；用户代码 handler 原样。
+            if event_name.starts_with("__") {
+                log::debug!(
+                    "[CALL_HANDLER_FOR_NOT_FOUND] fn_name={} not in exports (framework probe)",
+                    fn_name
+                );
+            } else {
+                eprintln!("[CALL_HANDLER_FOR_NOT_FOUND] fn_name={} not in exports", fn_name);
+            }
             return Err(VmBridgeError::HandlerNotFound(format!("{}.{}", widget_name, event_name)));
         }
 

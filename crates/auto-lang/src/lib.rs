@@ -4151,6 +4151,19 @@ fn build_dynamic_component_inner(
         // 实测）。回退基 = 语言仓根（编译期锚，CWD 无关；主检出/worktree
         // 构建各自自洽）。首基（CWD 相对）优先，回退基仅在前者 miss 时参与。
         let mut base_dirs: Vec<std::path::PathBuf> = vec![base_dir.to_path_buf()];
+        // PLAN-041 T-02（T-01 决策件推荐臂：装载链补 back 符号注册）：
+        // auto-os app 布局 = `src/front/` + `src/back/`，front 的
+        // `use back.api` 按既有基目录只探 `front/back/api.at`——miss 后
+        // 静默跳过（下方 `if let Ok(read_to_string)`），符号悬空至链接期
+        // `Undefined symbol: api.kill_process` 死窗（025-sys-monitor/
+        // kanban/017-chat 家族实录）。增补 entry 父目录（= `src/`）为次
+        // 基：`back.api → src/back/api.at` 命中，back 模块随 import 束
+        // 正常编译链接。首基序不变（front 兄弟优先，无回归面）。
+        if let Some(src_dir) = base_dir.parent() {
+            if src_dir.file_name().map_or(false, |n| n == "src") {
+                base_dirs.push(src_dir.to_path_buf());
+            }
+        }
         let lang_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .nth(2)
