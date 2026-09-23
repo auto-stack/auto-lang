@@ -124,6 +124,9 @@ pub mod ui_gen;
 // Stage B P-5（PLAN-590）：跨仓解析序定位 auto-os 侧资产（无 feature 门——
 // ui_gen/docs 管线与 CLI 的无 ui 构建形态也要消费）。
 pub mod os_paths;
+// PLAN-044：用户级状态文件写安全（原子替换 + 跨进程锁；键级合并写在
+// vm::ffi::stdlib::storage_persist，锁路径跨仓约定单源在模块头）。
+pub mod state_file;
 // Plan 152: Server-Sent Events (SSE) 解析
 pub mod sse;
 // Plan 114: Hybrid Routing (Convention + Config)
