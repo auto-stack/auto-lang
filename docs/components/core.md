@@ -1121,6 +1121,7 @@ Universal scroll viewport (PLAN-656 scroll-pane; scrollable/scroll are aliases)
 | `controller` | `string` | — | Scroll controller handle from scroll_controller() (PLAN-656; pairs with scroll_to_end/scroll_by/... native family) |
 | `onscroll` | `closure` | — | Scroll observation callback |state| with record { offset_x, offset_y, viewport_w, viewport_h, content_w, content_h, progress_x, progress_y } (PLAN-656; observe-only, not a control protocol) |
 | `direction` | `one_of: vertical|horizontal|both` | vertical | Legacy scroll direction (PLAN-656: maps to axis; axis wins when both present) |
+| `size` | `string` | 8 | Scrollbar thumb width in px (PLAN-692; rail is size+4px, hover widens thumb +2px/side, press highlights primary) |
 
 子件:`scrollarea` `scrollareascrollbar` `scrollareathumb` `scrollareaviewport`
 
