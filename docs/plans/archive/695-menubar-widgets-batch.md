@@ -428,8 +428,11 @@ T-03/T-07（语料用全族）；T-11 依赖 T-04~T-10；T-12 依赖 T-04/T-06/T
   （reviews 节尾，file 指归档路径）外科插入+json read-back 校验
   （9e260998f）+docs/specs/INDEX.md spec-index.py 再生。
   **archived**=本文件 git mv docs/plans/archive/ + status archived。
-  **cleaned**=见后续收据行（guard+三 worktree/三分支/auto-down 依赖位/
-  组目录）。
+  **cleaned**=四仓 guard 全清（auto-lang/auto-os/auto-down 首跑 clean；
+  auto-edit 首跑 BLOCKED——specs/auto-edit/deps/{bps,stylekit} junction
+  卡闸，cmd rmdir 摘链接本体后复跑 clean）→ 四 worktree remove+三分支
+  delete（was 1b602759d/3f2a7be/5aa8ea9=各自落地 tip）+auto-down 依赖位
+  摘除+组目录 rmdir 零残留。
 
 ## 待澄清事项
 
