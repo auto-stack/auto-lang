@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-696
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: stdlib-http-server-runtime-hardening
 author: [agent]
 created_at: 2026-09-23
@@ -120,8 +121,30 @@ Spec 增量经 `/auto-plan:review` 复核后由 `/auto-plan:merge` 沉淀；不�
   - `evidence`：`docs/plans/reports/696-backend-inventory.md`、`696-vm-owner-decision.md`、`696-response-parity.md`、`696-verification.md`；复审命令 `cargo th` → 51/51、上述合并调用定向 nextest → 4/4、计划基线 P-053 定向 nextest → 同样 3 项失败。工作树 `D:/autostack/.wt/lang-696/auto-lang` 干净且 implementation changes 已提交。
   - `next: merge`。复审在同一实施会话内执行（独立上下文不可用）；结论由提交 diff、Specs、报告与计划基线重跑重建。
 
-## 10. 待澄清事项
+## 10. 待澄清事项与执行结论
 
-1. 对外部署等级后续决定；本计划只保证本机/示例服务正确性，不以未定义的公网吞吐阈值验收。
-2. VM owner 的最终线程/LocalSet 组织由 T-04 spike 裁定；若涉及不等价的核心运行时契约，先修订 revision 与影响。
-3. HTTP/IPC/合并路径未必覆盖每个示例；T-07 按真实可启动拓扑选样，不伪造不存在的传输路径。
+1. **部署等级**仍在本计划范围外：仅保证本机/示例服务正确性，不以未定义的公网吞吐阈值验收；若要支持公网生产部署，另行制定安全、TLS、容量与运维验收计划。
+2. **VM owner 形态已裁定**：T-04 选择同线程 Tokio `LocalSet` + `Rc<AutoVM>`，移除了跨线程整数指针转运；决策见 `docs/plans/reports/696-vm-owner-decision.md`。
+3. **路径样本已按真实拓扑完成**：T-07 分别验证 VM merge 调用、VM server、生成 Axum 和 back-proxy；没有把这些路径当作同一传输实现。VM publisher SSE 与 listener graceful shutdown 的剩余边界已登记为 P696-D1/D2。
+
+## 11. 合并收据（PLAN-696:r1）
+
+```text
+stage: merge | plan_id: PLAN-696 | plan_revision: 1 | outcome: pass
+completion_kind: delivered
+delivery_commit: a8c30a8bd8d2e4df178afe7a40dfb2c527600bab
+canonical_specs: docs/specs/stdlib/design/backend-assembly.md + docs/specs/auto-lang/runtime/design/networking-stdlib.md + docs/specs/stdlib/design/http-server.md
+ledger_targets: .autoos/specs.json P696-1..P696-5 + P669-1 refresh; docs/specs/stdlib/plans.md + docs/specs/auto-lang/runtime/plans.md
+archive_path: docs/plans/archive/696-stdlib-http-server-runtime-hardening.md
+cleanup: 见 checkpoints
+```
+
+| Checkpoint | Evidence |
+|---|---|
+| `prepared` | 复审 `pass`，reviewed commit `bc17269a1c172d4a58a2813d05912fb32baa8219`、base `051e7b54023f420c3955c480d986e83197eb5899`；冻结 Spec delta SHA-256 `5F10D76523D52CA073C65CFEBF1D896C3375D3752EF8ACA0A16348E39722A74B`。rebase 后六个提交 range-diff 逐项相等（`a227eebb3→8bd7ebc4f`、`724096cd4→2f8282f07`、`065f39663→59968aa6d`、`7d431992e→197f920c0`、`86df0015f→f47d5a402`、`bc17269a1→a7a7fbbbc`）；规格和账本提交 `a8c30a8bd` 仅在其后追加。`cargo th` 51/51；`cargo tv`/`cargo tf` 的 3 项 P-053 红测已在原始计划基线逐项复现。Spec hashes：backend-assembly `F30407E160DA1BF349FCDFAA12F4F167D112A321D3879138BC2ABC852E59D6F7`、networking-stdlib `262D5BEE743032E2FF78B412E532CF8AB046D91338DF02EFF0399897BE400F60`、http-server `84F437D0BF49DE4FD9CAFB1F76629665C9C6AD3757C266F955C5F319FB1C8F30`。|
+| `landed` | `master` 从 `e5172514b` 对 `plan-696-dev` 执行 `--ff-only`，落在 delivery commit `a8c30a8bd8d2e4df178afe7a40dfb2c527600bab`；reviewed implementation 已在祖先链。master 原有其他 WIP 保留。|
+| `ledger_refreshed` | `.autoos/specs.json` 回读校验 P696-1..5 和 P669-1 更新；`spec-index.py` 生成 26 个项目且 `docs/specs/INDEX.md` 无语义差异；`spec-lint.py` 0 errors、5 个既有断链警告。三份 canonical Spec 哈希与文件 SHA-256 一致。|
+| `archived` | 归档至 `docs/plans/archive/696-stdlib-http-server-runtime-hardening.md`，frontmatter `status: archived` / `completion_kind: delivered`；复审遗漏/延期扫描登记 P696-D1（VM publisher SSE compile seam）和 P696-D2（VM HTTP listener graceful shutdown）至 `KNOWN-DEBT-AND-RISKS.md`。|
+| `cleaned` | 清理完成后补记。|
+
+复审与验证证据见本计划 §9 及 `docs/plans/reports/696-{backend-inventory,vm-owner-decision,response-parity,verification}.md`。
