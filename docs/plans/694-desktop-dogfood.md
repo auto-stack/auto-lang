@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-694
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-dogfood
 author: [zcode]
 created_at: 2026-09-23
@@ -12,7 +12,7 @@ new_spec_components: [SD-01 桌面孵化链 ↔ exe CLI 方言对齐契约（spa
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [docs/design/autoui/rq-remote-renderer.md, docs/design/autoui/desktop-protocol-v1.md]
-current_step: 0
+current_step: 1
 total_steps: 6
 ---
 
@@ -153,8 +153,25 @@ exe → 桌面窗清 + launcher 可再启动）——走查脚本录证。
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] T-01 方言对齐：spawn_exe_child desktop 增发（native exe 子条件臂）
+- [x] T-01 方言对齐：spawn_exe_child desktop 增发（native exe 子条件臂）
       + 单测。验证：单测绿 + a/b 案裁定记录。
+      [✅ 已完成]（2026-09-23，worktree lang-694 提交 34ce62fb2）a 案裁定在案：
+      `rqhost_gate_validate`（cmd_autodesk.rs:199）只校验 `--render=` 值域与
+      `--rq-host=` 预留旗标，不触及 spawn 参数面——无冲突，b 案（render_cli
+      认别名）不需要。实施三件：①`spawn_exe_child_args` 单源纯函数（session.rs，
+      desktop 方言 `--render-mode=desktop --desktop-endpoint=<broker>` 与
+      autodesk 方言 `--autodesk-incubate` 族双方言并发，render 档透传可选位；
+      单测 `spawn_exe_child_args_dual_dialect`）；②**勘定增量（宿主半）**：
+      plan 勘定只标了 spawn 半边，实勘发现 `Broker::serve_once` 只认
+      `incubate␟` 且应答动词 incubate，而 `ClientTarget::Desktop` 的
+      `rqhost::adopt` 发 `adopt␟` 且只认 adopt 应答——desktop exe 直连桌面
+      宿主会得 "bad adopt reply"。修=serve_once 双动词（rqhost
+      parse_adopt_record 同式，应答镜像请求动词；单测
+      `serve_once_adopts_adopt_record`，incubate 既有路径由
+      broker_incubation_full_flow 钉住 17/17 绿）；③生成器 rq/desktop 两臂补
+      `--app386=` Hello app_name 覆盖（认领对称性——宿主 launch_app_outproc
+      按 child_name=目录名匹配 Hello，Desktop 臂原用 project_name 必错配；
+      单测 generated_main 三方言 pin）。作用域测试全绿。
 - [ ] T-02 003-converter exe 编译（fresh 重生成顺带收敛 P693-D1 残留）+
       桌面直连 launch_app 验证（不经 launcher UI 先验链路）。
       验证：桌面进程内窗落地观测行。
