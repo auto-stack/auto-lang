@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-695
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: menubar-widgets-batch
 author: [agent]
 created_at: 2026-09-23
@@ -415,6 +415,21 @@ T-03/T-07（语料用全族）；T-11 依赖 T-04~T-10；T-12 依赖 T-04/T-06/T
   （schema_drift/docs_gen/gallery_golden/menubar/p695/t/tv）+ 截图
   widgets-gallery tests/screenshots/（gitignore，路径在任务行）。
   next：/auto-plan:merge。
+- 2026-09-23 合并收据（stage: merge，PLAN-695:r2，outcome: pass，
+  completion_kind: delivered）。五 checkpoint：
+  **prepared**=reviewed 基线 e99b8ba89（base d59bd9fbb，12 commits）+
+  canonical spec diff（widgets/menubar-family.md 新建+project.md 行+
+  design/menubar-snapshot.md 扩注+ui/overview.md 现状节，均随分支提交）
+  +交付 commit=1b602759d（range-diff 12/12 全等映射）。
+  **landed**=ff-only 三仓：auto-lang master 1b602759d（烟测 cargo check
+  0 error+schema_drift 2/2）、auto-os main 3f2a7bed4（8e098bc→3f2a7bed4
+  1/1 等）、auto-edit main 5aa8ea9ae（d71a396→5aa8ea9 1/1 等）。
+  **ledger_refreshed**=.autoos/specs.json P695-1（tests 节尾）+P695-2
+  （reviews 节尾，file 指归档路径）外科插入+json read-back 校验
+  （9e260998f）+docs/specs/INDEX.md spec-index.py 再生。
+  **archived**=本文件 git mv docs/plans/archive/ + status archived。
+  **cleaned**=见后续收据行（guard+三 worktree/三分支/auto-down 依赖位/
+  组目录）。
 
 ## 待澄清事项
 
