@@ -7511,6 +7511,8 @@ pub fn start_gallery_back_proxy(project_dir: &Path) -> Option<u16> {
         // 且 12 家 VM 常驻改为按访问付费更省）。
         lazy_sessions: true,
         native_media,
+        // PLAN-043 Part 1: ui-gallery 当前无 photo 声明者——空表。
+        native_photos: Vec::new(),
     };
     match auto_lang::back_proxy::start(config) {
         Ok(proxy) => {

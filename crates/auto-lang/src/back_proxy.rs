@@ -66,6 +66,19 @@ pub struct NativeMediaApp {
     pub media_root: Option<String>,
 }
 
+/// PLAN-043 Part 1: 宿主原生 photo 路由注册（`/api/photos/scan` +
+/// `/api/photos/thumb/:id` + `/api/photos/full/:id`）。029 形态：无
+/// session，仅原生路由。 gated on `image-pipeline`——缩略图渲染需要
+/// `image`/`kamadak-exif` 解码器（media 臂无解码需求故只挂 ui）。
+#[cfg(feature = "image-pipeline")]
+#[derive(Debug, Clone, PartialEq)]
+pub struct NativePhotoApp {
+    pub app_id: String,
+    /// pac.at `photo_root`（None → photo_service::resolve_root(None) 语义：
+    /// env `AUTO_PHOTO_ROOT` → 无（诚实空图库））。
+    pub photo_root: Option<String>,
+}
+
 /// proxy 启动配置。
 #[derive(Debug, Clone, Default)]
 pub struct BackProxyConfig {
@@ -84,6 +97,10 @@ pub struct BackProxyConfig {
     /// 与生成器一致）。
     #[cfg(feature = "ui")]
     pub native_media: Vec<NativeMediaApp>,
+    /// 原生 photo 路由（cfg image-pipeline；语义同 native_media——
+    /// 无 root 也注册，诚实空图库）。
+    #[cfg(feature = "image-pipeline")]
+    pub native_photos: Vec<NativePhotoApp>,
 }
 
 /// 运行中的 proxy 句柄。drop 不自动停机（宿主进程生命周期即 proxy 生命周期）。
@@ -115,6 +132,10 @@ struct ProxyShared {
     /// 同上 Mutex 化（add_native_media/remove_app 运行期写）。
     #[cfg(feature = "ui")]
     native_media: std::sync::Mutex<HashMap<String, NativeMediaState>>,
+    /// PLAN-043 Part 1: 宿主原生 photo 路由状态（cfg image-pipeline；
+    /// 生命周期语义同 native_media）。
+    #[cfg(feature = "image-pipeline")]
+    native_photos: std::sync::Mutex<HashMap<String, NativePhotoState>>,
 }
 
 /// PLAN-658 T-03: 一个 app 的原生 media 服务面（惰性索引 + 绝对 URL base）。
@@ -128,6 +149,16 @@ struct NativeMediaState {
     base: String,
     /// 进程内一次性索引（镜像生成器 OnceLock<MEDIA_INDEX> 语义）。
     index: std::sync::Mutex<Option<crate::ui::media_service::MediaIndex>>,
+}
+
+/// PLAN-043 Part 1: 一个 app 的原生 photo 服务面（语义同 NativeMediaState：
+/// 惰性索引 + 绝对 URL base）。
+#[cfg(feature = "image-pipeline")]
+struct NativePhotoState {
+    app_id: String,
+    root: Option<std::path::PathBuf>,
+    base: String,
+    index: std::sync::Mutex<Option<crate::ui::photo_service::PhotoIndex>>,
 }
 
 struct ProxyRequest {
@@ -213,6 +244,24 @@ pub fn start(config: BackProxyConfig) -> std::io::Result<RunningProxy> {
                 map.insert(
                     app.app_id.clone(),
                     NativeMediaState {
+                        app_id: app.app_id.clone(),
+                        root,
+                        base: base.clone(),
+                        index: std::sync::Mutex::new(None),
+                    },
+                );
+            }
+            map
+        }),
+        #[cfg(feature = "image-pipeline")]
+        native_photos: std::sync::Mutex::new({
+            let base = format!("http://127.0.0.1:{port}");
+            let mut map = HashMap::new();
+            for app in &config.native_photos {
+                let root = crate::ui::photo_service::resolve_root(app.photo_root.as_deref());
+                map.insert(
+                    app.app_id.clone(),
+                    NativePhotoState {
                         app_id: app.app_id.clone(),
                         root,
                         base: base.clone(),
@@ -344,6 +393,24 @@ impl RunningProxy {
         );
     }
 
+    /// PLAN-043 Part 1: 运行期注册宿主原生 photo 路由（语义同
+    /// add_native_media——同 id 重复 add 覆盖旧态，索引丢弃重建）。
+    #[cfg(feature = "image-pipeline")]
+    pub fn add_native_photo(&self, app: NativePhotoApp) {
+        let base = format!("http://127.0.0.1:{}", self.port);
+        let root = crate::ui::photo_service::resolve_root(app.photo_root.as_deref());
+        let app_id = app.app_id.clone();
+        self.shared.native_photos.lock().unwrap().insert(
+            app_id,
+            NativePhotoState {
+                app_id: app.app_id,
+                root,
+                base,
+                index: std::sync::Mutex::new(None),
+            },
+        );
+    }
+
     /// PLAN-037 T-01: 运行期卸载一个 app 的全部供给面（session 表项 +
     /// 原生 media 路由；摘表 drop sender → session 线程 `for req in rx`
     /// 自然退出）。返回 session 线程 JoinHandle 供测试 join 断言退出；
@@ -358,6 +425,8 @@ impl RunningProxy {
             .and_then(|mut handle| handle.join.take());
         #[cfg(feature = "ui")]
         self.shared.native_media.lock().unwrap().remove(app_id);
+        #[cfg(feature = "image-pipeline")]
+        self.shared.native_photos.lock().unwrap().remove(app_id);
         join
     }
 
@@ -490,6 +559,11 @@ fn route_request(shared: &ProxyShared, req: &ParsedRequest) -> ProxyReply {
     // PLAN-658 T-03: 宿主原生 media 路由先于 session 分发（020 无 session）。
     #[cfg(feature = "ui")]
     if let Some(reply) = shared.try_native_media(&app_id, &sub_path, req) {
+        return reply;
+    }
+    // PLAN-043 Part 1: 宿主原生 photo 路由（029 无 session，同 media 序位）。
+    #[cfg(feature = "image-pipeline")]
+    if let Some(reply) = shared.try_native_photos(&app_id, &sub_path, req) {
         return reply;
     }
     // PLAN-658 T-05: 031 族图片字节路由（image_pipeline 共享 registry 的
@@ -809,6 +883,168 @@ impl ProxyShared {
                 let mut f = file;
                 let _ = f.seek(SeekFrom::Start(start));
                 Box::new(f.take(content_length))
+            },
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 宿主原生 photo 路由（PLAN-043 Part 1，cfg image-pipeline）
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "image-pipeline")]
+impl ProxyShared {
+    /// `/api/photos/scan` + `/api/photos/thumb/:id` + `/api/photos/full/:id`
+    /// 直答（029 形态：无 session，仅原生路由）。未命中返回 None（回落
+    /// session 分发）。锁语义同 try_native_media（命中即持锁服务）。
+    fn try_native_photos(
+        &self,
+        app_id: &str,
+        sub_path: &str,
+        req: &ParsedRequest,
+    ) -> Option<ProxyReply> {
+        let photos = self.native_photos.lock().unwrap();
+        let state = photos.get(app_id)?;
+        if sub_path == "/api/photos/scan" && req.method == "GET" {
+            return Some(Self::photo_scan(state));
+        }
+        if let Some(rest) = sub_path.strip_prefix("/api/photos/thumb/") {
+            let id = rest.split(['?', '&']).next().unwrap_or("");
+            let width = rest
+                .split('?')
+                .nth(1)
+                .and_then(|q| q.split('&').find_map(|p| p.strip_prefix("w=")))
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(260);
+            if !id.is_empty() && (req.method == "GET" || req.method == "HEAD") {
+                return Some(Self::photo_thumb(state, id, width, req.method == "HEAD"));
+            }
+        }
+        if let Some(id) = sub_path
+            .strip_prefix("/api/photos/full/")
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+        {
+            if req.method == "GET" || req.method == "HEAD" {
+                return Some(Self::photo_full(state, &id, req.method == "HEAD"));
+            }
+        }
+        None
+    }
+
+    /// scan JSON：字段对齐 api_gen 的 photo 发射形态；url 字段发绝对值
+    /// （`{base}/apps/{app_id}/api/photos/...`，媒体臂 §5.3 同款裁定——
+    /// 前端 image src 不经 Http. 行级改写，相对值在 VM native 渲染器
+    /// 会被当本地文件路径）。
+    fn photo_scan(state: &NativePhotoState) -> ProxyReply {
+        let Some(root) = &state.root else {
+            return ProxyReply::json(
+                200,
+                "{\"entries\":[],\"root_missing\":false}".to_string(),
+            );
+        };
+        if !root.exists() {
+            return ProxyReply::json(200, "{\"entries\":[],\"root_missing\":true}".to_string());
+        }
+        let mut guard = state.index.lock().unwrap();
+        let index = guard.get_or_insert_with(|| {
+            crate::ui::photo_service::index_directory(root).unwrap_or_default()
+        });
+        let mut out = String::from("{\"entries\":[");
+        for (i, e) in index.entries.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            let abs_thumb = format!("{}/apps/{}/api/photos/thumb/{}", state.base, state.app_id, e.id);
+            let abs_full = format!("{}/apps/{}/api/photos/full/{}", state.base, state.app_id, e.id);
+            out.push_str(
+                &serde_json::json!({
+                    "id": &e.id,
+                    "index": i + 1,
+                    "title": crate::ui::photo_service::display_title(&e.name),
+                    "name": &e.name,
+                    "album": crate::ui::photo_service::album_of(e),
+                    "rel_dir": &e.rel_dir,
+                    "relative_path": &e.relative_path,
+                    "extension": &e.extension,
+                    "bytes": e.bytes,
+                    "size_str": crate::ui::photo_service::human_size(e.bytes),
+                    "width": e.width,
+                    "height": e.height,
+                    "date": crate::ui::photo_service::date_label(e.mtime),
+                    "sort_key": e.mtime,
+                    "thumb_url": abs_thumb,
+                    "full_url": abs_full,
+                })
+                .to_string(),
+            );
+        }
+        out.push_str("],\"root_missing\":false}");
+        ProxyReply::json(200, out)
+    }
+
+    /// 按需缩略图：渲染（磁盘缓存命中即免解码）→ JPEG 200；HEAD 只带头。
+    fn photo_thumb(state: &NativePhotoState, id: &str, width: u32, head_only: bool) -> ProxyReply {
+        let Some(root) = &state.root else {
+            return ProxyReply::json(503, error_json("photo root not configured"));
+        };
+        let mut guard = state.index.lock().unwrap();
+        let index = guard.get_or_insert_with(|| {
+            crate::ui::photo_service::index_directory(root).unwrap_or_default()
+        });
+        let Some(entry) = crate::ui::photo_service::find(index, id) else {
+            return ProxyReply::json(404, error_json(&format!("unknown photo id `{id}`")));
+        };
+        let head = crate::ui::photo_service::entry_path(root, entry);
+        if !head.is_file() {
+            return ProxyReply::json(404, error_json(&format!("photo file missing: {}", entry.name)));
+        }
+        match crate::ui::photo_service::render_thumbnail(root, entry, width) {
+            Ok(bytes) => {
+                let len = bytes.len() as u64;
+                ProxyReply::Stream {
+                    status: 200,
+                    content_type: "image/jpeg".to_string(),
+                    extra_headers: vec![("Cache-Control".to_string(), "no-store".to_string())],
+                    content_length: len,
+                    reader: if head_only {
+                        Box::new(std::io::empty())
+                    } else {
+                        Box::new(std::io::Cursor::new(bytes))
+                    },
+                }
+            }
+            Err(e) => ProxyReply::json(500, error_json(&e)),
+        }
+    }
+
+    /// 原图字节：Content-Type 按扩展名（image/jpeg 等）；全文件 200（照片
+    /// 查看器一次性全图加载，range 语义非必需——如未来接渐进/分片再补）。
+    fn photo_full(state: &NativePhotoState, id: &str, head_only: bool) -> ProxyReply {
+        let Some(root) = &state.root else {
+            return ProxyReply::json(503, error_json("photo root not configured"));
+        };
+        let mut guard = state.index.lock().unwrap();
+        let index = guard.get_or_insert_with(|| {
+            crate::ui::photo_service::index_directory(root).unwrap_or_default()
+        });
+        let Some(entry) = crate::ui::photo_service::find(index, id) else {
+            return ProxyReply::json(404, error_json(&format!("unknown photo id `{id}`")));
+        };
+        let path = crate::ui::photo_service::entry_path(root, entry);
+        let Ok(file) = std::fs::File::open(&path) else {
+            return ProxyReply::json(404, error_json(&format!("photo file missing: {}", entry.name)));
+        };
+        let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+        ProxyReply::Stream {
+            status: 200,
+            content_type: crate::ui::photo_service::content_type(&entry.extension).to_string(),
+            extra_headers: vec![("Cache-Control".to_string(), "no-store".to_string())],
+            content_length: len,
+            reader: if head_only {
+                Box::new(std::io::empty())
+            } else {
+                Box::new(file)
             },
         }
     }

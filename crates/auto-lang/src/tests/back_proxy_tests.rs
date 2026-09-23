@@ -129,6 +129,8 @@ fn fixture_config(tag: &str, port: u16) -> (BackProxyConfig, PathBuf) {
         }],
         #[cfg(feature = "ui")]
         native_media: Vec::new(),
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
     };
     (config, dir)
 }
@@ -272,6 +274,8 @@ fn path_param_config(tag: &str, port: u16) -> (BackProxyConfig, PathBuf) {
         }],
         #[cfg(feature = "ui")]
         native_media: Vec::new(),
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
     };
     (config, dir)
 }
@@ -367,6 +371,8 @@ pub fn echo(n int) int {
         ],
         #[cfg(feature = "ui")]
         native_media: Vec::new(),
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
     };
     let proxy = start(config).expect("lazy start");
 
@@ -422,6 +428,8 @@ fn http_e2e_back_proxy_real_routes_corpora_data_face() {
         ],
         #[cfg(feature = "ui")]
         native_media: Vec::new(),
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
     };
     let proxy = start(config).expect("start back proxy for routes corpora");
 
@@ -511,6 +519,8 @@ fn http_e2e_back_proxy_real_020_status_route() {
         }],
         #[cfg(feature = "ui")]
         native_media: Vec::new(),
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
     };
     let proxy = start(config).expect("start back proxy for 020");
     let (status, body) =
@@ -541,6 +551,8 @@ fn http_e2e_back_proxy_native_media_routes() {
             app_id: "020-t".to_string(),
             media_root: Some(dir.to_string_lossy().into_owned()),
         }],
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
     };
     let proxy = start(config).expect("start back proxy (media)");
 
@@ -614,6 +626,8 @@ fn http_e2e_back_proxy_native_media_no_root_honest_empty() {
             app_id: "no-root-t".to_string(),
             media_root: Some("Z:/definitely/not/a/real/dir".to_string()),
         }],
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
     };
     let proxy = start(config).expect("start back proxy (no root)");
     let (status, body) = http_request(proxy.port, "GET", "/apps/no-root-t/api/media/scan", None);
@@ -641,6 +655,8 @@ fn http_e2e_back_proxy_real_017_crud_probe() {
         }],
         #[cfg(feature = "ui")]
         native_media: Vec::new(),
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
     };
     let proxy = start(config).expect("start proxy 017");
     let (status, body) = http_request(proxy.port, "GET", "/apps/017-chat/api/contacts", None);
@@ -680,6 +696,8 @@ fn http_e2e_back_proxy_real_017_sse_stream() {
         }],
         #[cfg(feature = "ui")]
         native_media: Vec::new(),
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
     };
     let proxy = start(config).expect("start proxy 017 sse");
 
@@ -770,6 +788,8 @@ fn http_e2e_back_proxy_real_031_native_ns_session() {
             back_entry: base.join("src/back/api.at"),
         }],
         native_media: Vec::new(),
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
     };
     let proxy = start(config).expect("start proxy 031");
 
@@ -840,6 +860,8 @@ fn http_e2e_back_proxy_media_uri_byte_fidelity() {
         port: 3938,
         sessions: Vec::new(),
         native_media: Vec::new(),
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
     };
     let proxy = start(config).expect("start proxy (media uri)");
     let path = format!("/apps/031-image-viewer/api/__auto/media/{}/{}", ticket.id, ticket.revision);
@@ -932,6 +954,8 @@ pub fn boom() str {
         ],
         #[cfg(feature = "ui")]
         native_media: Vec::new(),
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
     };
     let proxy = start(config).expect("start proxy (panic isolation)");
 
@@ -986,6 +1010,8 @@ fn http_e2e_back_proxy_runtime_add_remove_and_join_exit() {
         sessions: Vec::new(),
         #[cfg(feature = "ui")]
         native_media: Vec::new(),
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
     };
     let proxy = start(config).expect("start idle proxy (lazy gate)");
     assert!(!proxy.has_session("fixture"), "boot 零 session（懒启门）");
@@ -1056,6 +1082,8 @@ fn http_e2e_back_proxy_runtime_native_media_add_remove() {
         port: 4028,
         sessions: Vec::new(),
         native_media: Vec::new(),
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
     };
     let proxy = start(config).expect("start idle proxy (media)");
 

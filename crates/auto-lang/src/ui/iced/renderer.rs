@@ -16176,6 +16176,8 @@ fn compare_pngs(
                                         // PLAN-037：供给决策树透传（capability/
                                         // session 臂的读源）。
                                         media_root: e.media_root.clone(),
+                                        // PLAN-043 Part 1：photo capability 臂透传。
+                                        photo_root: e.photo_root.clone(),
                                         back_entry: e.back_entry.clone(),
                                     })
                                 })
@@ -28799,6 +28801,7 @@ mod tests {
                 if name == OSCONFIG_APP_ID {
                     return Some(crate::ui::session::LaunchSpec {
                         media_root: None,
+                        photo_root: None,
                         back_entry: None,
 
                         code: T551_OSCONFIG_STUB_AT.to_string(),
@@ -28815,6 +28818,7 @@ mod tests {
                 let e = apps.iter().find(|a| a.id == name)?;
                 Some(crate::ui::session::LaunchSpec {
                     media_root: None,
+                    photo_root: None,
                     back_entry: None,
 
                     code: std::fs::read_to_string(&e.entry).ok()?,
@@ -29199,6 +29203,7 @@ mod tests {
         let mut ds = t3_session_with_shell();
         ds.desktop.registry_entries = vec![AppRegistryEntry {
             media_root: None,
+            photo_root: None,
             back_entry: None,
 
             id: "011-calculator".to_string(),
@@ -29221,6 +29226,7 @@ mod tests {
             Some(std::sync::Arc::new(|name: &str| {
                 (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
                     media_root: None,
+                    photo_root: None,
                     back_entry: None,
 
                     code: T3_WIN_AT.to_string(),
@@ -30800,6 +30806,7 @@ mod tests {
             Some(std::sync::Arc::new(|name: &str| {
                 (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
                     media_root: None,
+                    photo_root: None,
                     back_entry: None,
 
                     code: T3_WIN_AT.to_string(),
@@ -31129,6 +31136,7 @@ mod tests {
             Some(std::sync::Arc::new(|name: &str| {
                 (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
                     media_root: None,
+                    photo_root: None,
                     back_entry: None,
 
                     code: T3_WIN_AT.to_string(),
@@ -31178,6 +31186,7 @@ mod tests {
             Some(std::sync::Arc::new(|name: &str| {
                 (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
                     media_root: None,
+                    photo_root: None,
                     back_entry: None,
 
                     code: T3_WIN_AT.to_string(),
@@ -31383,6 +31392,7 @@ mod tests {
         // 宿主侧 pinned 解析注入（pack 默认表 + 注册表图标）。
         ds.desktop.registry_entries = vec![crate::ui::app_registry::AppRegistryEntry {
             media_root: None,
+            photo_root: None,
             back_entry: None,
 
             id: "011-calculator".to_string(),
@@ -32165,6 +32175,7 @@ mod tests {
         ds.desktop.registry_entries = vec![
             crate::ui::app_registry::AppRegistryEntry {
                 media_root: None,
+                photo_root: None,
                 back_entry: None,
 
                 id: "011-calculator".into(),
@@ -32185,6 +32196,7 @@ mod tests {
     },
             crate::ui::app_registry::AppRegistryEntry {
                 media_root: None,
+                photo_root: None,
                 back_entry: None,
 
                 id: "015-notes".into(),
@@ -32819,6 +32831,7 @@ mod tests {
 
         let entry = |id: &str, title: &str| AppRegistryEntry {
             media_root: None,
+            photo_root: None,
             back_entry: None,
 
             id: id.to_string(),

@@ -361,6 +361,13 @@ impl Automan {
         self.pac.media_root.as_ref().map(|t| t.to_string())
     }
 
+    /// PLAN-043 Part 1: photo library root from pac.at `photo_root`.
+    /// Consumed via the `AUTO_PHOTO_ROOT` env with the same precedence
+    /// discipline as `pac_media_root` (env wins, pac fills in).
+    pub fn pac_photo_root(&self) -> Option<String> {
+        self.pac.photo_root.as_ref().map(|t| t.to_string())
+    }
+
     /// VM native window title from pac.at `title: "..."`.
     pub fn pac_window_title(&self) -> Option<String> {
         self.pac.title.as_ref().map(|t| t.to_string())

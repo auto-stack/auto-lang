@@ -464,6 +464,7 @@ mod tests {
                 if name == "broker386" {
                     Some(crate::ui::session::LaunchSpec {
                         media_root: None,
+                        photo_root: None,
                         back_entry: None,
 
                         code: code.clone(),

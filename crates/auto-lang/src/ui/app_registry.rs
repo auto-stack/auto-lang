@@ -80,6 +80,10 @@ pub struct AppRegistryEntry {
     /// 后端供给决策树的 capability 臂（proxy 原生 media 路由的根）；
     /// None = 不参与原生 media 供给。
     pub media_root: Option<String>,
+    /// PLAN-043 Part 1：pac `photo_root:` 声明（photo_service 解析序的
+    /// capability 臂——proxy 原生 photo 路由的根；media_root 同形透传）。
+    /// None = 不参与原生 photo 供给。
+    pub photo_root: Option<String>,
     /// PLAN-037：back api.at 入口探测（`<dir>/src/back/api.at` 存在即记；
     /// launch 期 session 臂谓词 `back_needs_session` 的读源）。None = 无
     /// back 入口（纯前端）。
@@ -280,6 +284,7 @@ fn entry_for_dir(
             .is_some_and(|w| w.eq_ignore_ascii_case("fit")),
         opens: fields.get("opens").map(|v| normalize_opens(v)).unwrap_or_default(),
         media_root: fields.get("media_root").cloned(),
+        photo_root: fields.get("photo_root").cloned(),
         back_entry: {
             let entry = dir.join("src").join("back").join("api.at");
             entry.is_file().then_some(entry)
@@ -1511,7 +1516,7 @@ desktop_exe: \"target/release/native-app.exe\"
         std::fs::write(with_back.join("src").join("front").join("app.at"), "widget A {}").unwrap();
         std::fs::write(
             with_back.join("pac.at"),
-            "name: \"m\"\nmedia_root: \"E:\\\\Music\\\\\"\n",
+            "name: \"m\"\nmedia_root: \"E:\\\\Music\\\\\"\nphoto_root: \"C:\\\\Users\\\\zhaop\\\\Pictures\\\\\"\n",
         )
         .unwrap();
         // 纯前端形态：两者皆无。
@@ -1528,12 +1533,18 @@ desktop_exe: \"target/release/native-app.exe\"
             "media_root 原值透传（引号剥、不反转义——pac 双反斜杠原样保留）"
         );
         assert_eq!(
+            media.photo_root.as_deref(),
+            Some("C:\\\\Users\\\\zhaop\\\\Pictures\\\\"),
+            "PLAN-043 Part 1: photo_root 原值透传（media_root 同形）"
+        );
+        assert_eq!(
             media.back_entry.as_deref(),
             Some(with_back.join("src").join("back").join("api.at").as_path()),
             "back api.at 存在即记绝对路径"
         );
         let plain_e = apps.iter().find(|a| a.id == "plain-app").unwrap();
         assert_eq!(plain_e.media_root, None);
+        assert_eq!(plain_e.photo_root, None, "PLAN-043: 无声明 → None");
         assert_eq!(plain_e.back_entry, None, "无 src/back/api.at → None");
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -1565,6 +1576,7 @@ desktop_exe: \"target/release/native-app.exe\"
         exe: None,
         render_decl: None,
         media_root: e.media_root.clone(),
+        photo_root: None,
         back_entry: e.back_entry.clone(),
     })
                 })

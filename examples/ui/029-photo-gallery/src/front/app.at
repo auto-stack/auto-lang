@@ -1,9 +1,14 @@
-// app.at — 029-photo-gallery 现代相册（Plan 628）
+// app.at — 029-photo-gallery 现代相册（Plan 628 → PLAN-043 Part 1 后端化）
 //
-// 移动端/平板风格真实图库：
-// 1. 真实相册数据源：直连 C:/Users/zhaop/Pictures/ 真实照片与屏幕截图
-// 2. 真实缩略图与原图呈现：秒开高清本地缩略图 + 全屏无损原画直接渲染
-// 3. 平板/手机端 UI/UX：取消生硬的左侧 PC 侧栏，采用沉浸式分段导航栏 + 纯净无边框照片网格 + 悬浮胶囊控制条
+// 数据源：后端 photo_service 实时扫描（pac `photo_root:` 声明根目录）——
+// Init 拉 /api/photos/scan 建网格；缩略图走 /api/photos/thumb/:id（按需
+// 渲染 + 磁盘缓存），查看器原图走 /api/photos/full/:id。目录增删后重启
+// app 即跟随（Plan 628 离线烘焙链已删，见 pac.at 头注）。
+//
+// UI：平板/手机端沉浸式设计——分段相册导航（动态分组：全部/各子目录/
+// 收藏）+ 搜索/排序/网格密度工具栏 + 无边框照片网格 + 悬浮胶囊查看器
+// （上一张/下一张/收藏）。收藏 id 落 app Storage（photo-gallery.favs），
+// 重开保留。
 
 use stylekit.styles: caption_text
 style label_xs_medium = "text-xs font-medium"
@@ -23,8 +28,8 @@ widget App {
         Init,
         SelectAlbum(str), SetSearch(str), ApplyFilter,
         ToggleSort, SetDensity(int),
-        OpenPhoto(int), PrevPhoto, NextPhoto, BackToGrid,
-        ToggleFav(int),
+        OpenPhoto(str), PrevPhoto, NextPhoto, BackToGrid,
+        ToggleFav(str),
         ToggleDark, SetAccent(str)
     }
 
@@ -36,146 +41,35 @@ widget App {
         // ---- 视图形态 ----
         var mode str = "grid"               // "grid" | "view"
 
+        // ---- 数据源（Init 自后端 scan 填充）----
+        var photos = []                     // {id,title,album,date,meta,fav,thumb,full,sort_key}
+        var fav_ids = []                    // 收藏 id 表（Storage 持久化）
+        var load_error str = ""             // scan 失败文案（空 = 成功）
+        var root_missing bool = false       // 后端根目录缺席诚实态
+
         // ---- 过滤 / 排序 / 密度 ----
-        var album str = "all"               // all | photos | screenshots | favorites
+        var album str = "all"               // all | favorites | <album key>
         var search_q str = ""
         var sort_dir str = "desc"           // "desc"=最新在前 | "asc"
         var sort_label str = "最新 ↓"
         var density int = 3                 // 网格列数：2 | 3 | 4
-
-        // ---- 真实照片种子列表（68 张，来自 C:\Users\zhaop\Pictures）----
-        var p_ids = [
-            1, 2, 3, 4,
-            5, 6, 7, 8,
-            9, 10, 11, 12,
-            13, 14, 15, 16,
-            17, 18, 19, 20,
-            21, 22, 23, 24
-        ]
-        var p_titles = [
-            "000042", "2016-08-26", "DzleXs_rMnlhN1bbZs…", "Screenshot_2026-03…",
-            "u=1685612231,35676…", "yanxingshuyuan.com", "yanxingshuyuan", "反面",
-            "微信图片_20200408101954", "微信图片_20200703131319", "微信图片_20200703131618", "微信图片_20210204124322",
-            "微信图片_20210204124332", "微信图片_2021020412481…", "微信图片_20210204124813", "微信图片_20210204125222",
-            "微信图片_20210307104209", "微信图片_20210314162739", "微信图片_20210729113331", "微信图片_20210729113338",
-            "微信图片_20210729113343", "微信图片_20210729113430", "微信图片_20210729113454", "微信图片_20210729113521"
-        ]
-        var p_tls = [
-            "000042", "2016-08-26", "dzlexs_rmnlhn1bbzs…", "screenshot_2026-03…",
-            "u=1685612231,35676…", "yanxingshuyuan.com", "yanxingshuyuan", "反面",
-            "微信图片_20200408101954", "微信图片_20200703131319", "微信图片_20200703131618", "微信图片_20210204124322",
-            "微信图片_20210204124332", "微信图片_2021020412481…", "微信图片_20210204124813", "微信图片_20210204125222",
-            "微信图片_20210307104209", "微信图片_20210314162739", "微信图片_20210729113331", "微信图片_20210729113338",
-            "微信图片_20210729113343", "微信图片_20210729113430", "微信图片_20210729113454", "微信图片_20210729113521"
-        ]
-        var p_albums = [
-            "photos", "photos", "photos", "photos",
-            "photos", "photos", "photos", "photos",
-            "photos", "photos", "photos", "photos",
-            "photos", "photos", "photos", "photos",
-            "photos", "photos", "photos", "photos",
-            "photos", "photos", "photos", "photos"
-        ]
-        var p_dates = [
-            "2019-01-16", "2018-12-25", "2020-03-18", "2026-03-21",
-            "2020-09-14", "2021-02-04", "2021-02-04", "2021-02-04",
-            "2020-04-08", "2020-07-03", "2020-07-03", "2021-02-04",
-            "2021-02-04", "2021-07-29", "2021-07-29", "2021-02-04",
-            "2021-03-07", "2021-03-14", "2021-07-29", "2021-07-29",
-            "2021-07-29", "2021-07-29", "2021-07-29", "2021-07-29"
-        ]
-        var p_keys = [
-            20190116, 20181225, 20200318, 20260321,
-            20200914, 20210204, 20210204, 20210204,
-            20200408, 20200703, 20200703, 20210204,
-            20210204, 20210729, 20210729, 20210204,
-            20210307, 20210314, 20210729, 20210729,
-            20210729, 20210729, 20210729, 20210729
-        ]
-        var p_favs = [
-            true, false, true, false,
-            false, true, false, false,
-            true, false, false, false,
-            true, false, false, false,
-            false, false, false, false,
-            false, false, false, false
-        ]
-        var p_fulls = [
-            "C:/Users/zhaop/Pictures/000042.jpg", "C:/Users/zhaop/Pictures/2016-08-26.jpeg", "C:/Users/zhaop/Pictures/DzleXs_rMnlhN1bbZsDtzwFVQOBP5KN3h_CUhR26uFY.jpg", "C:/Users/zhaop/Pictures/Screenshot_2026-03-21T105421.png",
-            "C:/Users/zhaop/Pictures/u=1685612231,3567664266&fm=26&gp=0.jpg", "C:/Users/zhaop/Pictures/yanxingshuyuan.com.png", "C:/Users/zhaop/Pictures/yanxingshuyuan.jpg", "C:/Users/zhaop/Pictures/反面.jpg",
-            "C:/Users/zhaop/Pictures/微信图片_20200408101954.jpg", "C:/Users/zhaop/Pictures/微信图片_20200703131319.jpg", "C:/Users/zhaop/Pictures/微信图片_20200703131618.jpg", "C:/Users/zhaop/Pictures/微信图片_20210204124322.jpg",
-            "C:/Users/zhaop/Pictures/微信图片_20210204124332.jpg", "C:/Users/zhaop/Pictures/微信图片_20210204124813 (1).jpg", "C:/Users/zhaop/Pictures/微信图片_20210204124813.jpg", "C:/Users/zhaop/Pictures/微信图片_20210204125222.jpg",
-            "C:/Users/zhaop/Pictures/微信图片_20210307104209.jpg", "C:/Users/zhaop/Pictures/微信图片_20210314162739.png", "C:/Users/zhaop/Pictures/微信图片_20210729113331.jpg", "C:/Users/zhaop/Pictures/微信图片_20210729113338.jpg",
-            "C:/Users/zhaop/Pictures/微信图片_20210729113343.jpg", "C:/Users/zhaop/Pictures/微信图片_20210729113430.png", "C:/Users/zhaop/Pictures/微信图片_20210729113454.png", "C:/Users/zhaop/Pictures/微信图片_20210729113521.png"
-        ]
-        var p_metas = [
-            "2409×3614 · 3383KB · 2019-01-16", "1449×2576 · 3426KB · 2018-12-25", "1200×2803 · 453KB · 2020-03-18", "1320×2856 · 283KB · 2026-03-21",
-            "347×499 · 38KB · 2020-09-14", "1184×1794 · 450KB · 2021-02-04", "768×1164 · 353KB · 2021-02-04", "1207×792 · 385KB · 2021-02-04",
-            "602×602 · 217KB · 2020-04-08", "660×1002 · 63KB · 2020-07-03", "680×951 · 58KB · 2020-07-03", "2622×1693 · 1185KB · 2021-02-04",
-            "2540×1665 · 1380KB · 2021-02-04", "1662×1080 · 193KB · 2021-07-29", "1662×1080 · 193KB · 2021-07-29", "1120×840 · 243KB · 2021-02-04",
-            "1080×1440 · 103KB · 2021-03-07", "1841×1009 · 68KB · 2021-03-14", "4000×3000 · 1759KB · 2021-07-29", "4000×3000 · 2139KB · 2021-07-29",
-            "4000×3000 · 2007KB · 2021-07-29", "1119×827 · 1005KB · 2021-07-29", "1120×814 · 1188KB · 2021-07-29", "1028×779 · 1021KB · 2021-07-29"
-        ]
-        var p_thumbs = [
-            "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_001.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_002.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_003.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_004.jpg",
-            "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_005.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_006.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_007.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_008.jpg",
-            "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_009.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_010.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_011.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_012.jpg",
-            "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_013.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_014.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_015.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_016.jpg",
-            "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_017.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_018.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_019.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_020.jpg",
-            "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_021.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_022.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_023.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_024.jpg"
-        ]
+        var album_tabs = []                 // {key,label,count} 动态分组
 
         // ---- 主列表与视图列表 ----
-        var photos = [
-            {
-                id: 1,
-                title: "照片",
-                album: "photos",
-                date: "2026-01-01",
-                meta: "",
-                fav: false,
-                thumb: "",
-                full: ""
-            }
-        ]
-        var view_list = [
-            {
-                id: 1,
-                title: "照片",
-                album: "photos",
-                date: "2026-01-01",
-                meta: "",
-                fav: false,
-                thumb: "",
-                full: ""
-            }
-        ]
-        var view_ids = [1]
-        var has_view bool = true
-
-        // accent 五色点
-        var accents = [
-            { name: "coral", dot: "text-[#fb7185]" },
-            { name: "ocean", dot: "text-[#38bdf8]" },
-            { name: "sage", dot: "text-[#4ade80]" },
-            { name: "amber", dot: "text-[#fbbf24]" },
-            { name: "indigo", dot: "text-[#818cf8]" }
-        ]
+        var view_list = []
+        var view_ids = []
+        var has_view bool = false
 
         // ---- 计数与文案 ----
-        var view_label str = ""
-        var cnt_all str = "0"
-        var cnt_photos str = "0"
-        var cnt_screenshots str = "0"
-        var cnt_favorites str = "0"
+        var view_label str = "加载中…"
 
         // ---- 查看器 ----
-        var cur_id int = -1
+        var cur_id str = ""
         var cur_title str = ""
         var cur_meta str = ""
         var cur_full str = ""
-        var prev_id int = -1
-        var next_id int = -1
+        var prev_id str = ""
+        var next_id str = ""
         var fav_label str = "♡ 收藏"
         var is_cur_fav bool = false
     }
@@ -191,7 +85,7 @@ widget App {
                 col {
                     style: "w-full h-full flex flex-col overflow-hidden"
 
-                    // ---- 顶部沉浸式导航栏（移动/平板风格 Segmented Control + 工具栏） ----
+                    // ---- 顶部沉浸式导航栏（Segmented Control + 工具栏） ----
                     row {
                         style: "h-16 shrink-0 items-center justify-between px-6 border-b border-border bg-card/60 backdrop-blur-md gap-4"
 
@@ -202,32 +96,16 @@ widget App {
                             text "Photos" { style: "text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium" }
                         }
 
-                        // 平板风格分段胶囊控制条 (Segmented Album Tabs)
+                        // 分段胶囊控制条（动态相册分组：全部/各目录/收藏）
                         row {
                             style: "items-center p-1 bg-muted/60 rounded-xl border border-border/50 gap-1"
-                            button {
-                                onclick: .SelectAlbum("all")
-                                style: if .album == "all" { "h-8 px-4 rounded-lg bg-background text-foreground text-xs font-semibold shadow-sm" } else { "h-8 px-4 rounded-lg bg-transparent text-muted-foreground hover:text-foreground text-xs font-medium" }
-                                text "全部照片" { style: "text-xs" }
-                                text .cnt_all { style: emoji_count }
-                            }
-                            button {
-                                onclick: .SelectAlbum("photos")
-                                style: if .album == "photos" { "h-8 px-4 rounded-lg bg-background text-foreground text-xs font-semibold shadow-sm" } else { "h-8 px-4 rounded-lg bg-transparent text-muted-foreground hover:text-foreground text-xs font-medium" }
-                                text "📷 图片" { style: "text-xs" }
-                                text .cnt_photos { style: emoji_count }
-                            }
-                            button {
-                                onclick: .SelectAlbum("screenshots")
-                                style: if .album == "screenshots" { "h-8 px-4 rounded-lg bg-background text-foreground text-xs font-semibold shadow-sm" } else { "h-8 px-4 rounded-lg bg-transparent text-muted-foreground hover:text-foreground text-xs font-medium" }
-                                text "📱 截图" { style: "text-xs" }
-                                text .cnt_screenshots { style: emoji_count }
-                            }
-                            button {
-                                onclick: .SelectAlbum("favorites")
-                                style: if .album == "favorites" { "h-8 px-4 rounded-lg bg-background text-foreground text-xs font-semibold shadow-sm" } else { "h-8 px-4 rounded-lg bg-transparent text-muted-foreground hover:text-foreground text-xs font-medium" }
-                                text "❤ 收藏" { style: "text-xs" }
-                                text .cnt_favorites { style: emoji_count }
+                            for t in .album_tabs {
+                                button {
+                                    onclick: .SelectAlbum(t.key)
+                                    style: if .album == t.key { "h-8 px-4 rounded-lg bg-background text-foreground text-xs font-semibold shadow-sm" } else { "h-8 px-4 rounded-lg bg-transparent text-muted-foreground hover:text-foreground text-xs font-medium" }
+                                    text t.label { style: "text-xs" }
+                                    text t.count { style: emoji_count }
+                                }
                             }
                         }
 
@@ -277,11 +155,15 @@ widget App {
                         }
                     }
 
-                    // 信息提示条 (状态与真实目录展示)
+                    // 信息提示条（计数 + 后端扫描态）
                     row {
                         style: "h-8 shrink-0 items-center justify-between px-6 bg-muted/20 border-b border-border/40"
                         text .view_label { style: caption_text }
-                        text "源目录: C:/Users/zhaop/Pictures/" { style: "text-[11px] text-muted-foreground/60" }
+                        if .root_missing {
+                            text "⚠️ 照片源目录不存在（检查 photo_root）" { style: "text-[11px] text-destructive/80" }
+                        } else {
+                            text "后端实时扫描 · 缩略图按需渲染" { style: "text-[11px] text-muted-foreground/60" }
+                        }
                     }
 
                     // 照片网格区 (无缝现代网格设计，纯净呈现图片主体)
@@ -411,9 +293,19 @@ widget App {
                         } else {
                             col {
                                 style: "w-full flex flex-col items-center justify-center py-24 gap-3"
-                                text "🖼️" { style: "text-5xl opacity-80" }
-                                text "当前相册未找到照片" { style: "text-sm font-semibold" }
-                                text "试着清空搜索关键字，或在上方切换到其他相簿" { style: caption_text }
+                                if .load_error != "" {
+                                    text "⚠️" { style: "text-5xl opacity-80" }
+                                    text .load_error { style: "text-sm font-semibold" }
+                                    text "后端启动后重新打开本应用（scan 端点 /api/photos/scan）" { style: caption_text }
+                                } else if .root_missing {
+                                    text "🖼️" { style: "text-5xl opacity-80" }
+                                    text "照片源目录不存在" { style: "text-sm font-semibold" }
+                                    text "检查后端 photo_root 配置指向的目录" { style: caption_text }
+                                } else {
+                                    text "🖼️" { style: "text-5xl opacity-80" }
+                                    text "当前相册未找到照片" { style: "text-sm font-semibold" }
+                                    text "试着清空搜索关键字，或在上方切换到其他相簿" { style: caption_text }
+                                }
                             }
                         }
                     }
@@ -480,24 +372,69 @@ widget App {
     }
 
     on {
+        // ---- Init：后端 scan 拉全量 → 建 photos 主列表（PLAN-043 数据源）----
         .Init -> {
-            var plist = []
-            var i int = 0
-            for i < .p_ids.len() {
-                var p = {
-                    id: .p_ids[i],
-                    title: .p_titles[i],
-                    album: .p_albums[i],
-                    date: .p_dates[i],
-                    meta: .p_metas[i],
-                    fav: .p_favs[i],
-                    thumb: .p_thumbs[i],
-                    full: .p_fulls[i]
+            // 收藏恢复（Storage CSV → fav_ids 表）
+            let saved str = Storage.get("photo-gallery.favs")
+            var fids = []
+            if saved != "" {
+                var fi int = 0
+                var cur str = ""
+                while fi < saved.len() {
+                    let ch str = saved[fi]
+                    if ch == "," {
+                        if cur != "" { fids.push(cur) }
+                        cur = ""
+                    } else {
+                        cur = cur + ch
+                    }
+                    fi = fi + 1
                 }
-                plist.push(p)
-                i = i + 1
+                if cur != "" { fids.push(cur) }
             }
-            .photos = plist
+            .fav_ids = fids
+
+            try {
+                let data = json.to_value(Http.get_json("/api/photos/scan"))
+                .root_missing = data.root_missing ?? false
+                .load_error = ""
+                var entries = data.entries ?? []
+                var plist = []
+                var i int = 0
+                while i < entries.len() {
+                    let e = entries[i]
+                    // fav 标记：fav_ids 命中即真
+                    var is_fav bool = false
+                    var fi2 int = 0
+                    while fi2 < .fav_ids.len() {
+                        if .fav_ids[fi2] == e.id { is_fav = true }
+                        fi2 = fi2 + 1
+                    }
+                    // meta 串：尺寸缺席（头部解析失败）时只留大小+日期
+                    var meta str = e.size_str + " · " + e.date
+                    let w int = e.width
+                    if w > 0 {
+                        meta = w.str() + "×" + e.height.str() + " · " + meta
+                    }
+                    plist.push({
+                        id: e.id,
+                        title: e.title,
+                        album: e.album,
+                        date: e.date,
+                        meta: meta,
+                        fav: is_fav,
+                        thumb: e.thumb_url,
+                        full: e.full_url,
+                        sort_key: e.sort_key
+                    })
+                    i = i + 1
+                }
+                .photos = plist
+            } catch {
+                .photos = []
+                .root_missing = false
+                .load_error = "照片后端未就绪（scan 请求失败）"
+            }
             .ApplyFilter()
         }
 
@@ -511,38 +448,42 @@ widget App {
             .ApplyFilter()
         }
 
+        // ---- 过滤 + 排序 + 动态相册分组 + 计数（全部基于 .photos）----
         .ApplyFilter -> {
-            var hits = []
-            var used = []
             let ql str = .search_q.lower()
+
+            // 过滤：相册键 + 搜索子串
+            var hits = []
             var i int = 0
-            for i < .p_ids.len() {
+            var n_all int = .photos.len()
+            while i < n_all {
+                let p = .photos[i]
                 var album_match bool = false
                 if .album == "all" { album_match = true }
-                if .album == "favorites" { album_match = .p_favs[i] }
-                if .album == "photos" { album_match = (.p_albums[i] == "photos") }
-                if .album == "screenshots" { album_match = (.p_albums[i] == "screenshots") }
-
-                let tl = .p_tls[i]
-                let tmatch = (ql == "") || tl.contains(ql)
+                if .album == "favorites" { album_match = p.fav }
+                if .album == p.album { album_match = true }
+                let tmatch = (ql == "") || p.title.lower().contains(ql)
                 if album_match && tmatch {
                     hits.push(i)
-                    used.push(0)
                 }
                 i = i + 1
             }
 
+            // 排序：选择序（sort_key = mtime；desc 最新在前）
             var vlist = []
             var vids = []
-            var n int = hits.len()
+            var used = []
+            var hn int = hits.len()
+            var u int = 0
+            while u < hn { used.push(false); u = u + 1 }
             var placed int = 0
-            for placed < n {
+            while placed < hn {
                 var best int = -1
                 var best_key int = 0
                 var bi int = 0
-                for bi < n {
-                    if used[bi] == 0 {
-                        var k int = .p_keys[hits[bi]]
+                while bi < hn {
+                    if !used[bi] {
+                        let k int = .photos[hits[bi]].sort_key
                         var take bool = false
                         if best == -1 { take = true }
                         else {
@@ -558,19 +499,9 @@ widget App {
                 }
                 if best >= 0 {
                     let si = hits[best]
-                    var p = {
-                        id: .p_ids[si],
-                        title: .p_titles[si],
-                        album: .p_albums[si],
-                        date: .p_dates[si],
-                        meta: .p_metas[si],
-                        fav: .p_favs[si],
-                        thumb: .p_thumbs[si],
-                        full: .p_fulls[si]
-                    }
-                    vlist.push(p)
-                    vids.push(.p_ids[si])
-                    used[best] = 1
+                    vlist.push(.photos[si])
+                    vids.push(.photos[si].id)
+                    used[best] = true
                 }
                 placed = placed + 1
             }
@@ -579,31 +510,47 @@ widget App {
             .view_ids = vids
             .has_view = (vids.len() > 0)
 
-            // 相簿全量计数
-            var c_all int = 0
-            var c_pho int = 0
-            var c_scr int = 0
+            // ---- 动态相册分组：全部 / 各 album 首现序 / 收藏 ----
+            // 标签：photos（根目录文件）与 Screenshots 给中文惯用名，其余用原名
+            var tabs = []
             var c_fav int = 0
-            var k int = 0
-            for k < .p_ids.len() {
-                c_all = c_all + 1
-                let alb = .p_albums[k]
-                if alb == "photos" { c_pho = c_pho + 1 }
-                if alb == "screenshots" { c_scr = c_scr + 1 }
-                if .p_favs[k] { c_fav = c_fav + 1 }
-                k = k + 1
+            var seen = []
+            var k2 int = 0
+            while k2 < n_all {
+                let p2 = .photos[k2]
+                if p2.fav { c_fav = c_fav + 1 }
+                var got bool = false
+                var s2 int = 0
+                while s2 < seen.len() {
+                    if seen[s2] == p2.album { got = true }
+                    s2 = s2 + 1
+                }
+                if !got {
+                    seen.push(p2.album)
+                    // 该 album 计数
+                    var c_alb int = 0
+                    var k3 int = 0
+                    while k3 < n_all {
+                        if .photos[k3].album == p2.album { c_alb = c_alb + 1 }
+                        k3 = k3 + 1
+                    }
+                    var label str = p2.album
+                    if p2.album == "photos" { label = "📷 图片" }
+                    if p2.album == "Screenshots" { label = "📱 截图" }
+                    tabs.push({ key: p2.album, label: label, count: c_alb.str() })
+                }
+                k2 = k2 + 1
             }
-            .cnt_all = c_all.str()
-            .cnt_photos = c_pho.str()
-            .cnt_screenshots = c_scr.str()
-            .cnt_favorites = c_fav.str()
+            var tabs2 = [{ key: "all", label: "全部照片", count: n_all.str() }]
+            var t2 int = 0
+            while t2 < tabs.len() { tabs2.push(tabs[t2]); t2 = t2 + 1 }
+            tabs2.push({ key: "favorites", label: "❤ 收藏", count: c_fav.str() })
+            .album_tabs = tabs2
 
-            var cur_label str = ""
-            if .album == "all" { cur_label = "全部" }
-            if .album == "photos" { cur_label = "图片" }
-            if .album == "screenshots" { cur_label = "截图" }
+            // 文案
+            var cur_label str = "全部"
             if .album == "favorites" { cur_label = "收藏" }
-
+            if .album != "all" && .album != "favorites" { cur_label = .album }
             if .search_q == "" {
                 .view_label = vids.len().str() + " 项内容 · " + cur_label
             } else {
@@ -626,11 +573,12 @@ widget App {
             .density = d
         }
 
+        // ---- 查看器：按 id 定位（view_ids 为当前过滤排序序）----
         .OpenPhoto(pid) -> {
             var pos int = -1
             var n int = .view_ids.len()
             var i int = 0
-            for i < n {
+            while i < n {
                 if .view_ids[i] == pid { pos = i }
                 i = i + 1
             }
@@ -646,15 +594,15 @@ widget App {
 
                 var si int = -1
                 var j int = 0
-                for j < .p_ids.len() {
-                    if .p_ids[j] == pid { si = j }
+                while j < .photos.len() {
+                    if .photos[j].id == pid { si = j }
                     j = j + 1
                 }
                 if si >= 0 {
-                    .cur_title = .p_titles[si]
-                    .cur_full = .p_fulls[si]
-                    .cur_meta = .p_metas[si]
-                    .is_cur_fav = .p_favs[si]
+                    .cur_title = .photos[si].title
+                    .cur_full = .photos[si].full
+                    .cur_meta = .photos[si].meta
+                    .is_cur_fav = .photos[si].fav
                     if .is_cur_fav {
                         .fav_label = "❤ 已收藏"
                     } else {
@@ -668,24 +616,40 @@ widget App {
         .NextPhoto -> { .OpenPhoto(.next_id) }
         .BackToGrid -> { .mode = "grid" }
 
-        .ToggleFav(id) -> {
+        // ---- 收藏：photos 表内翻标 + fav_ids 表同步 + Storage 持久化 ----
+        .ToggleFav(pid) -> {
             var i int = 0
-            for i < .p_ids.len() {
-                if .p_ids[i] == id {
-                    .p_favs[i] = !.p_favs[i]
+            while i < .photos.len() {
+                if .photos[i].id == pid {
+                    .photos[i].fav = !.photos[i].fav
                 }
                 i = i + 1
             }
+            // fav_ids 同步（重建 CSV）
+            var fids2 = []
+            var csv str = ""
+            var j2 int = 0
+            while j2 < .photos.len() {
+                if .photos[j2].fav {
+                    fids2.push(.photos[j2].id)
+                    if csv != "" { csv = csv + "," }
+                    csv = csv + .photos[j2].id
+                }
+                j2 = j2 + 1
+            }
+            .fav_ids = fids2
+            Storage.set("photo-gallery.favs", csv)
+
             .ApplyFilter()
-            if .mode == "view" && .cur_id == id {
+            if .mode == "view" && .cur_id == pid {
                 var si int = -1
                 var j int = 0
-                for j < .p_ids.len() {
-                    if .p_ids[j] == id { si = j }
+                while j < .photos.len() {
+                    if .photos[j].id == pid { si = j }
                     j = j + 1
                 }
                 if si >= 0 {
-                    .is_cur_fav = .p_favs[si]
+                    .is_cur_fav = .photos[si].fav
                     if .is_cur_fav {
                         .fav_label = "❤ 已收藏"
                     } else {

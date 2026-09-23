@@ -2244,6 +2244,10 @@ pub struct LaunchSpec {
     /// proxy 原生 media 路由的根；None = 不参与）。boot 期 resolver 自
     /// 注册表条目填入。
     pub media_root: Option<String>,
+    /// PLAN-043 Part 1：pac `photo_root:` 透传（photo_service capability
+    /// 臂——proxy 原生 photo 路由的根；None = 不参与）。boot 期 resolver
+    /// 自注册表条目填入（media_root 同形）。
+    pub photo_root: Option<String>,
     /// PLAN-037：back api.at 入口（`<app>/src/back/api.at` 探测；session
     /// 臂谓词 `back_needs_session` 的读源；None = 无 back 入口）。
     pub back_entry: Option<std::path::PathBuf>,
@@ -2263,6 +2267,7 @@ impl Default for LaunchSpec {
             exe: None,
             render_decl: None,
             media_root: None,
+            photo_root: None,
             back_entry: None,
         }
     }
@@ -6223,6 +6228,7 @@ mod tests {
                 (name == "probe-app").then(|| LaunchSpec {
                     code: MINI_SRC.to_string(),
                     media_root: media_root.then(|| "E:\\Music\\".to_string()),
+                    photo_root: None,
                     ..Default::default()
                 })
             })
@@ -7014,6 +7020,7 @@ mod tests {
         ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
             (name == "probe").then(|| LaunchSpec {
                 media_root: None,
+                photo_root: None,
                 back_entry: None,
 
                 code: T4_PROBE_AT.to_string(),
@@ -7048,6 +7055,7 @@ mod tests {
         ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
             (name == "probe").then(|| LaunchSpec {
                 media_root: None,
+                photo_root: None,
                 back_entry: None,
 
                 code: T4_PROBE_AT.to_string(),
@@ -7093,6 +7101,7 @@ mod tests {
         ds.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
             (name == "probe").then(|| LaunchSpec {
                 media_root: None,
+                photo_root: None,
                 back_entry: None,
 
                 code: widget.to_string(),
@@ -7156,6 +7165,7 @@ mod tests {
         }
         let spec = |exe: Option<std::path::PathBuf>| LaunchSpec {
             media_root: None,
+            photo_root: None,
             back_entry: None,
 
             code: String::new(),
@@ -7199,6 +7209,7 @@ mod tests {
         assert_eq!(DesktopSession::outproc_native_exe(&spec(None)), None);
         let inline = LaunchSpec {
             media_root: None,
+            photo_root: None,
             back_entry: None,
 
             code: String::new(),
@@ -7228,6 +7239,7 @@ mod tests {
         std::fs::write(&app_at, "widget App {}").unwrap();
         let spec = LaunchSpec {
             media_root: None,
+            photo_root: None,
             back_entry: None,
             code: String::new(),
             source_path: Some(app_at.to_string_lossy().to_string()),
@@ -7323,6 +7335,7 @@ mod tests {
         ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
             (name == "probe").then(|| LaunchSpec {
                 media_root: None,
+                photo_root: None,
                 back_entry: None,
 
                 code: P508_PROBE_AT.to_string(),
@@ -7512,6 +7525,7 @@ mod tests {
         ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
             (name == "probe").then(|| LaunchSpec {
                 media_root: None,
+                photo_root: None,
                 back_entry: None,
 
                 code: T4_PROBE_AT.to_string(),
@@ -7554,6 +7568,7 @@ mod tests {
         ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
             (name == "probe").then(|| LaunchSpec {
                 media_root: None,
+                photo_root: None,
                 back_entry: None,
 
                 code: T4_PROBE_AT.to_string(),
