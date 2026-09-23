@@ -63,6 +63,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(PathBuf::from)
         .unwrap_or_else(default_apps_dir);
 
+    // PLAN-697 T-01 观测加固（外因勘定收口，镜像 rust_ui.rs X9 足迹桩形制）：
+    // P694-D1「宿主静默退出」勘定结论 = 机器级外因（09-23 10:59 内核
+    // bugcheck 实锤，见 docs/plans/reports/p697-stability/），但宿主进程
+    // 此前零足迹——死亡无法与机器灾难对时。三件：①panic 钩子带 backtrace
+    // （此前 ui_desktop 无钩子，内部 panic 直接 abort 零痕迹）；②30s 存活
+    // 心跳（墙钟 epoch，与 System 事件日志 6008/1001 直接对时——死亡时刻
+    // 贴近 bugcheck 即机器外因，反之查 WER）；③start/exit 留痕行（正常
+    // 关窗 = exit 行在场；被杀 = 心跳截断无 exit 行；崩溃 = WER + 心跳缺口）。
+    {
+        let boot = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        eprintln!(
+            "[ui-desktop] start pid={} fullscreen={fullscreen} apps_dir={} t={boot}",
+            std::process::id(),
+            apps_dir.display()
+        );
+        std::panic::set_hook(Box::new(|info| {
+            eprintln!("[ui-desktop] panic {info}
+backtrace:
+{}", std::backtrace::Backtrace::force_capture());
+        }));
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            eprintln!("[ui-desktop] alive pid={} t={now}", std::process::id());
+        });
+    }
+
     // PLAN-526 T6：传源路径（仓库根相对）——boot 直挂组件可按 source
     // path 后缀对齐注册表条目（回填 registry_id + armed `window: "fit"`）。
     // PLAN-013 实测（2026-09-12）：master 859c31710 起 011-calculator 多文件
@@ -90,10 +123,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         hole_mode: std::env::var("AUTO_DESKTOP_HOLE").as_deref() == Ok("1"),
         ..Default::default()
     };
-    if fullscreen {
-        run_dynamic_desktop_fullscreen(comps, opts)?;
+    let result = if fullscreen {
+        run_dynamic_desktop_fullscreen(comps, opts)
     } else {
-        run_dynamic_desktop_with_options(comps, opts)?;
+        run_dynamic_desktop_with_options(comps, opts)
+    };
+    // PLAN-697 T-01：退出留痕行——正常关窗/Err 返回均留痕（0/1 退出码
+    // 即本 Result 的映射）；被杀/崩溃则此行缺席（心跳缺口+WER 判位面）。
+    match &result {
+        Ok(_) => eprintln!("[ui-desktop] exit ok (code 0)"),
+        Err(e) => eprintln!("[ui-desktop] exit err (code 1): {e}"),
     }
-    Ok(())
+    result.map(|_| ())
 }

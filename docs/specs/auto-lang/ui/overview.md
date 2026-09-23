@@ -740,6 +740,27 @@ p659_cdb_soak.py`，探针 `p659_probe.rs`）：
   max=-96.0` 精确根因）；调试体僵尸泄漏（taskkill 偶发漏杀）由
   编排器 kill 兜底清扫按可执行路径匹配补杀。
 
+## 桌面宿主稳定性与退出留痕契约（PLAN-697）
+
+inproc VM App（ui_desktop 宿主 `launch_app`）拉起零宿主退出是桌面日用
+底线；宿主消失必须可归因。P694-D1「静默退出 ×3」勘定结论（2026-09-23，
+归因档案 `docs/plans/reports/p697-stability/attribution.md`）= 机器级外因
+（内核 bugcheck 三日三蓝屏 + GPU TDR 族；走查窗口 Event 6008 10:59:12
+非正常关机实锤），嫌疑面 back-proxy lazy-start/media 供给/inproc panic
+边界经 13 轮复现矩阵 + WER 零应用崩溃记录排除。
+
+- **观测面（契约）**：宿主进程必须留足迹——`[ui-desktop] start/alive
+  (30s)/exit` 三行 + panic 钩子带 backtrace（`examples/ui_desktop.rs`；
+  CLI 桌面路径同形制 = rust_ui.rs X9 足迹桩）。死亡判位表：exit 行在
+  场=正常；心跳截断无 exit 无 WER=外力/机器灾难（对时 System 6008）；
+  心跳截断 + WER Event 1000=内部崩溃（backtrace/WER dump 归因）。
+- **对照缝（勘定器械，生产零影响）**：`AUTO_NO_BACK_PROXY=1` 整体旁路
+  后端供给；`AUTO_NO_NATIVE_MEDIA=1` 旁路 ② capability 臂
+  （back_provision.rs）——宿主稳定性勘定对照矩阵用，缺省未设零变化。
+- **勘定方法**：`repro_host_exit.py`（MCP 验收通道 bus verb 拉起 + 进程/
+  MCP 双探逐秒盯存活）+ Windows 事件日志三查（Application 1000/1001/
+  1002 + System 41/1001/6008 + WER 桶）；cdb 托管形态见上节（F1）。
+
 ## 关键入口
 
 - `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）

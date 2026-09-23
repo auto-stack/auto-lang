@@ -63,12 +63,26 @@ impl BackendPlan {
     }
 }
 
+/// PLAN-697 T-00：嫌疑B 对照缝——`AUTO_NO_NATIVE_MEDIA=1` 时 ② capability
+/// 臂旁路（media 计划位清零，session 臂不受影响）。勘定对照矩阵用
+/// （repro_host_exit.py --no-media）；生产零影响（env 缺省未设）。
+fn native_media_enabled() -> bool {
+    std::env::var("AUTO_NO_NATIVE_MEDIA").ok().as_deref() != Some("1")
+}
+
+/// PLAN-697 T-00：嫌疑A 对照缝——`AUTO_NO_BACK_PROXY=1` 时 ensure_backend
+/// 整体旁路（proxy 懒启 + 装载全跳，恒零供给）。同上，勘定对照矩阵用
+/// （--no-proxy）；生产零影响。
+fn back_proxy_enabled() -> bool {
+    std::env::var("AUTO_NO_BACK_PROXY").ok().as_deref() != Some("1")
+}
+
 /// PLAN-037 T-03：launch 期后端供给决策树（§5.1）。app_key = launch 名
 /// （注册表 id；与 658 子 URL 段同形——前缀化 root 与 proxy 表两侧同源，
 /// 自洽）。②③可叠加（一个 app 既声明 media_root 又有特形 back）。
 pub fn plan_backend(spec: &crate::ui::session::LaunchSpec, app_key: &str) -> BackendPlan {
     let mut plan = BackendPlan::default();
-    if spec.media_root.is_some() {
+    if spec.media_root.is_some() && native_media_enabled() {
         plan.native_media = Some(crate::back_proxy::NativeMediaApp {
             app_id: app_key.to_string(),
             media_root: spec.media_root.clone(),
@@ -94,6 +108,9 @@ impl crate::ui::session::DesktopSession {
     /// proxy 供给，launch 臂需对 spec.code 做内存态前缀化；None = ④ 零
     /// 供给）。AppId 归属绑定在 allocate_app 之后（`bind_app_backend`）。
     pub fn ensure_backend(&mut self, spec: &crate::ui::session::LaunchSpec, app_key: &str) -> Option<String> {
+        if !back_proxy_enabled() {
+            return None;
+        }
         let plan = plan_backend(spec, app_key);
         if plan.is_empty() {
             return None;

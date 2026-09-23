@@ -1,0 +1,187 @@
+AURA Snapshot v2 (rendered)
+widget: "Desktop"
+
+tree:
+col #vnode_14695981039346656037 {
+  style: "w-full h-full flex-col-reverse"
+  row #vnode_12642422519345821663 {
+    style: "h-14 w-full flex items-center gap-2 pl-2 bg-card/95 border-t"
+    button #vnode_4305065243889594349 "iconfile:launcher" {
+      style: "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
+      onclick: .SummonLauncher
+    }
+    col #vnode_4305047651703549498 {
+      container #vnode_4306385829146414222 {
+        col #vnode_5889769877696550218 {
+          col #vnode_4965876993954819262 {
+            button #vnode_9006465672922662618 "iconfile:calculator"
+            col #vnode_9006483265108707469 {
+              col #vnode_4843142981900339095 {
+                col #vnode_13672387130401121685 {
+                  container #vnode_5788451778883656751 {
+                    col #vnode_16840247192146633693 {
+                      text #vnode_15282012107994476679 "[WindowThumbnail]"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      container #vnode_4306403421332459073 {
+      }
+    }
+    col #vnode_4305030059517504647 {
+      container #vnode_4291080627287583077 {
+        col #vnode_14349869738559936159 {
+          col #vnode_4989872699913302061 {
+            button #vnode_12830762644906351735 "iconfile:music-video-player"
+            col #vnode_12830745052720306884 {
+              col #vnode_8848547074914974476 {
+                col #vnode_13325824869129688420 {
+                  container #vnode_16658189535766370540 {
+                    col #vnode_10401092916611225860 {
+                      text #vnode_6865163283381813708 "[WindowThumbnail]"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      container #vnode_4291063035101538226 {
+      }
+    }
+    container #vnode_4305012467331459796 {
+      style: "flex-1 h-8"
+    }
+    col #vnode_4304994875145414945 {
+      style: "p-2 border rounded bg-card"
+      ondismiss: .SwitcherToggle
+      button #vnode_4260470223569920787 "iconfile:desktop-switch" {
+        style: "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
+        onclick: .SwitcherToggle
+      }
+      col #vnode_4260452631383875936 {
+        row #vnode_12808020184718325280 {
+          style: "items-center gap-2 px-1 pb-1"
+          container #vnode_13497963972693653600 {
+            col #vnode_2056608221122661152 {
+              col #vnode_2313434168512538464 {
+                text #vnode_11261703686421293088 "1"
+                text #vnode_11261721278607337939 "[WorkspacePreview]"
+              }
+            }
+          }
+          container #vnode_13497981564879698451 {
+            col #vnode_2071913422981492297 {
+              col #vnode_12300078381358704139 {
+                text #vnode_11237707980462810289 "2"
+                text #vnode_11237690388276765438 "[WorkspacePreview]"
+              }
+            }
+          }
+          container #vnode_13497999157065743302 {
+            onclick: .WorkspaceAdd
+            col #vnode_2087218624840323442 {
+              col #vnode_3839978520495318198 {
+                style: "w-12 h-[88px] rounded-xl border bg-card/95 text-muted-foreground items-center justify-center hover:bg-white/50 cursor-pointer"
+                text #vnode_11213712274504327490 "+" {
+                  style: "text-xl text-muted-foreground"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    button #vnode_4304977282959370094 "iconfile:layout-grid" {
+      style: "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
+      onclick: .LayoutGrid
+    }
+    button #vnode_4304959690773325243 "iconfile:layout-stack" {
+      style: "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
+      onclick: .LayoutStack
+    }
+    row #vnode_4304942098587280392 {
+      style: "items-center gap-0"
+      col #vnode_4214554617993427352 {
+        style: "relative"
+        button #vnode_1310136821748211016 "iconfile:notification" {
+          style: "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
+          onclick: .NotificationToggle
+        }
+      }
+    }
+    button #vnode_4304924506401235541 "iconfile:widgets-gallery" {
+      style: "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50"
+      onclick: .DashboardToggle
+    }
+    button #vnode_4304906914215190690 "iconfile:config" {
+      style: "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
+      onclick: .OpenSettingsPanel
+    }
+    col #vnode_4304889322029145839 {
+      style: "p-3 border rounded bg-card"
+      ondismiss: .ShutdownCancel
+      button #vnode_4168639012416933917 "iconfile:shutdown" {
+        style: "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
+        onclick: .ShutdownRequest
+      }
+      col #vnode_4168621420230889066 {
+        col #vnode_8228387128769986078 {
+          style: "w-52 gap-2"
+          text #vnode_13641938208444550394 "退出 Auto 桌面？" {
+            style: "text-sm text-foreground"
+          }
+          row #vnode_13641955800630595245 {
+            style: "gap-2"
+            button #vnode_6570951181174075383 "取消" {
+              style: "h-8 px-3 text-sm rounded-md bg-transparent text-foreground hover:bg-white/50"
+              onclick: .ShutdownCancel
+            }
+            button #vnode_6570933588988030532 "退出" {
+              style: "h-8 px-3 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+              onclick: .ShutdownConfirm
+            }
+          }
+        }
+      }
+    }
+    row #vnode_4304871729843100988 {
+      style: "items-center gap-0"
+    }
+    col #vnode_4304854137657056137 {
+      style: "items-center px-2"
+      text #vnode_4138028608699271627 "18:34" {
+        style: "text-xs text-muted-foreground tabular-nums leading-tight"
+      }
+      text #vnode_4138011016513226776 "9月23日 周三" {
+        style: "text-[10px] text-muted-foreground leading-tight"
+      }
+    }
+    container #vnode_4304836545471011286 {
+      onclick: .ShowDesktopToggle
+      onmouseenter: .SliverHover
+      onmouseleave: .SliverUnhover
+      col #vnode_4122723406840440482 {
+        col #vnode_15177247839509423430 {
+          style: "w-2 h-full border-l border-border"
+        }
+      }
+    }
+    col #vnode_4304818953284966435 {
+      style: "px-2 py-1 rounded bg-card border"
+      col #vnode_4107418204981609337 {
+        text #vnode_5190603626663257755 "显示桌面" {
+          style: "text-xs text-muted-foreground"
+        }
+      }
+    }
+  }
+  container #vnode_12642404927159776812 {
+    style: "w-full h-full"
+  }
+}

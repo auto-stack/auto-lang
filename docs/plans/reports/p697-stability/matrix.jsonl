@@ -1,0 +1,17 @@
+{"round": 1, "app": "020-music-player", "env": "baseline", "watch_s": 60, "died": "mcp-never-up", "alive_seconds": null, "exit_note": "host log: D:\\autostack\\.wt\\lang-697\\auto-lang\\docs\\plans\\reports\\p697-stability\\host-1790157906.log"}
+{"round": 1, "app": "020-music-player", "env": "baseline", "watch_s": 75, "launch_queued": true, "alive_seconds": 75.8, "died": "no", "exit_note": ""}
+{"round": 1, "app": "020-music-player", "env": "baseline", "form": "windowed", "watch_s": 75, "launch_queued": true, "alive_seconds": 75.1, "died": "no", "exit_note": ""}
+{"round": 1, "app": "020-music-player", "env": "baseline", "form": "windowed", "watch_s": 90, "launch_queued": true, "alive_seconds": 90.4, "died": "no", "exit_note": ""}
+{"round": 2, "app": "020-music-player", "env": "baseline", "form": "windowed", "watch_s": 90, "launch_queued": true, "alive_seconds": 91.0, "died": "no", "exit_note": ""}
+{"round": 3, "app": "020-music-player", "env": "baseline", "form": "windowed", "watch_s": 90, "launch_queued": true, "alive_seconds": 90.2, "died": "no", "exit_note": ""}
+{"round": 4, "app": "020-music-player", "env": "baseline", "form": "windowed", "watch_s": 90, "launch_queued": true, "alive_seconds": 90.5, "died": "no", "exit_note": ""}
+{"round": 5, "app": "020-music-player", "env": "baseline", "form": "windowed", "watch_s": 90, "launch_queued": true, "alive_seconds": 90.9, "died": "no", "exit_note": ""}
+{"round": 1, "app": "020-music-player", "env": "baseline", "form": "fullscreen", "watch_s": 60, "launch_queued": true, "alive_seconds": 60.8, "died": "no", "exit_note": ""}
+{"round": 2, "app": "020-music-player", "env": "baseline", "form": "fullscreen", "watch_s": 60, "launch_queued": true, "alive_seconds": 61.0, "died": "no", "exit_note": ""}
+{"round": 1, "app": "020-music-player", "env": "AUTO_NO_BACK_PROXY=1", "form": "windowed", "watch_s": 60, "launch_queued": true, "alive_seconds": 60.8, "died": "no", "exit_note": ""}
+{"round": 2, "app": "020-music-player", "env": "AUTO_NO_BACK_PROXY=1", "form": "windowed", "watch_s": 60, "launch_queued": true, "alive_seconds": 60.8, "died": "no", "exit_note": ""}
+{"round": 1, "app": "020-music-player", "env": "AUTO_NO_NATIVE_MEDIA=1", "form": "windowed", "watch_s": 60, "launch_queued": true, "alive_seconds": 60.9, "died": "no", "exit_note": ""}
+{"round": 2, "app": "020-music-player", "env": "AUTO_NO_NATIVE_MEDIA=1", "form": "windowed", "watch_s": 60, "launch_queued": true, "alive_seconds": 60.6, "died": "no", "exit_note": ""}
+{"round": 1, "app": "011-calculator", "env": "baseline", "form": "windowed", "watch_s": 60, "launch_queued": true, "alive_seconds": 60.9, "died": "no", "exit_note": ""}
+{"round": 2, "app": "011-calculator", "env": "baseline", "form": "windowed", "watch_s": 60, "launch_queued": true, "alive_seconds": 60.1, "died": "no", "exit_note": ""}
+{"round": 1, "app": "020-music-player", "env": "baseline", "form": "windowed", "watch_s": 40, "launch_queued": true, "alive_seconds": 41.9, "died": "no", "exit_note": ""}
