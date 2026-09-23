@@ -7615,3 +7615,9 @@ mod plan633_fullstack_embed_tests;
 #[cfg(all(test, feature = "test-http-e2e"))]
 #[path = "tests/back_proxy_tests.rs"]
 mod back_proxy_tests;
+
+// PLAN-042 T-08：ScanProbe 最小复现（D6 腿）——get_json 延续值 = body
+// 本体回归钉（生产装载管线 + 进程内真 HTTP 端点）。
+#[cfg(test)]
+#[path = "tests/plan042_scan_probe_tests.rs"]
+mod plan042_scan_probe_tests;

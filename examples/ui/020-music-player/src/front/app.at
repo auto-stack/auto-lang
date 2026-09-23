@@ -125,11 +125,35 @@ widget App {
         // 计数（calendar Init 读 store 先例），空且未通知过才发 notify
         // （一次性；曲库恢复非空即复位旗标，之后再空可再报）。
         .Init -> {
+            // PLAN-042 T-07：music-scan 三钉插桩（log 动词，AC-08）——
+            // 钉 1 发起 / 钉 2 响应到达（store __scan_ok）/ 钉 3 entries
+            // 解析计数（=0 → error 行，D6 病灶签名可见）。多记录 \n 累积
+            // （parse_records 按行切），联合排空分段归因 registry_id。
+            .__desktop_cmd = "log	info	[music-scan] scan initiated (GET /api/media/scan)
+"
             store.Load()
+            var pins str = ""
+            if .store.__scan_ok == false {
+                pins = "log	error	[music-scan] response failed: " + .store.library_error + "
+"
+            } else {
+                if .store.item_count == 0 {
+                    var rm str = "false"
+                    if .store.root_missing {
+                        rm = "true"
+                    }
+                    pins = pins + "log	error	[music-scan] entries parsed = 0 (root_missing=" + rm + "; D6 签名面)
+"
+                } else {
+                    pins = pins + "log	info	[music-scan] response parsed; entries: " + .store.item_count.to_string() + "
+"
+                }
+            }
+            .__desktop_cmd = .__desktop_cmd + pins
             if .store.item_count == 0 {
                 if .empty_notified == false {
                     .empty_notified = true
-                    .__desktop_cmd = "notify	info	本地曲库为空：E:\\Music\\（FLAC / MP3 / WAV）"
+                    .__desktop_cmd = .__desktop_cmd + "notify	info	本地曲库为空：E:\\Music\\（FLAC / MP3 / WAV）"
                 }
             } else {
                 .empty_notified = false

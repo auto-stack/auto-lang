@@ -83,20 +83,31 @@ store PlayerStore {
         var library_error str = ""
         var root_missing bool = false
         var media_error str = ""
+
+        // PLAN-042 T-07：scan 插桩钉 2——响应到达旗标（root Init 臂经
+        // .store.__scan_ok 读取后组 log 动词行；false = 请求/解析异常）。
+        // 注：`Http.get_json` 表达式值 = 已解析 Obj（PLAN-080 F-2③ 编译期
+        // 内联 to_value；T-08 幂等根修后显式配方等价），原始 body 字节数
+        // 在 .at 层不可观测——字节钉退役，到达+解析由本旗标与钉 3 承载。
+        var __scan_ok bool = false
     }
 
     on {
         // 扫描本地音乐库
         .Load -> {
             try {
+                // PLAN-042 T-07：钉 2——响应到达/解析旗标（log 动词插桩由
+                // root Init 臂组行）。
                 let data = json.to_value(Http.get_json("/api/media/scan"))
                 .playlist = data.entries ?? []
                 .root_missing = data.root_missing ?? false
                 .library_error = ""
+                .__scan_ok = true
             } catch {
                 .playlist = []
                 .root_missing = false
                 .library_error = "后端服务未启动或未配置 AUTO_MEDIA_ROOT"
+                .__scan_ok = false
             }
             .item_count = .playlist.len()
             .item_count_label = .item_count.to_string()

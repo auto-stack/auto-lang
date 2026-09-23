@@ -3113,6 +3113,20 @@ fn json_to_vm_value_inner(
 /// `auto.json.to_value(json_str) -> NanoValue`
 /// Parse a JSON string and push the resulting VM value onto the stack.
 pub fn shim_json_to_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let nv = task.ram.pop_nv();
+    // PLAN-042 T-08（P041-D6 根修）：to_value 幂等——VM 复合值
+    // （TAG_OBJECT/TAG_LIST）直通不转串。PLAN-080 F-2③ 起
+    // `Http.get_json(url)` 编译期内联 json.to_value（web 轨
+    // fetch().json() 语义），文档配方 `json.to_value(Http.get_json(url))`
+    // （PLAN-617 T-10 双端同源配方）自此成为**二次转换**：旧 shim 把
+    // Obj 强转 String 解析失败 → 静默 null → entries 恒空（P041-D6
+    // 病灶：音乐曲库 entries=0、延续值呈 20 位数字串=NV 位型）。
+    // 幂等直通使显式/隐式两种调用形态等价，存量 .at 消费方零改绿。
+    if auto_val::is_object(nv) || auto_val::is_list(nv) {
+        task.ram.push_nv(nv);
+        return Ok(());
+    }
+    task.ram.push_nv(nv);
     let json_str: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let trimmed = json_str.trim();
