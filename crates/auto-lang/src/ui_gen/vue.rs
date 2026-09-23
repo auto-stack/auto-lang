@@ -6427,6 +6427,15 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 | "menubar_item"
                 | "menubar_separator"
                 | "menubar_checkbox_item"
+                // PLAN-695 T-03: 族补全至 shadcn 16 元素。
+                | "menubar_label"
+                | "menubar_shortcut"
+                | "menubar_radio_group"
+                | "menubar_radio_item"
+                | "menubar_sub"
+                | "menubar_sub_trigger"
+                | "menubar_sub_content"
+                | "menubar_group"
         ) {
             return Ok(None);
         }
@@ -6487,12 +6496,132 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     .insert("MenubarSeparator".to_string());
                 format!("{}<MenubarSeparator />\n", ind)
             }
+            // PLAN-695 T-03: 分组标签——muted 小字非可点（auto-edit "行尾"
+            // 此前被白名单静默吞）。
+            "menubar_label" => {
+                self.shadcn_components_used.insert("MenubarLabel".to_string());
+                let inner = match prop_str(props, "text") {
+                    Some(t) => Self::escape_html_text(t),
+                    None => {
+                        let mut s = String::new();
+                        for child in children {
+                            s.push_str(&self.node_to_html(child, indent + 1)?);
+                        }
+                        s
+                    }
+                };
+                format!("{}<MenubarLabel>{}</MenubarLabel>\n", ind, inner)
+            }
+            // 独立快捷键子元素（右对齐 muted token，替代手写 zinc span）。
+            "menubar_shortcut" => {
+                self.shadcn_components_used
+                    .insert("MenubarShortcut".to_string());
+                let inner = match prop_str(props, "text") {
+                    Some(t) => Self::escape_html_text(t),
+                    None => {
+                        let mut s = String::new();
+                        for child in children {
+                            if let crate::aura::AuraNode::Text(content) = child {
+                                match content {
+                                    crate::aura::AuraTextContent::Literal(lit) => {
+                                        s.push_str(&Self::escape_html_text(lit));
+                                    }
+                                    crate::aura::AuraTextContent::Interpolated {
+                                        template,
+                                        bindings,
+                                    } => {
+                                        let mut vue_text = template.clone();
+                                        for binding in bindings {
+                                            vue_text = vue_text.replace(
+                                                &format!("${{{}.{}}}", ".", binding),
+                                                &format!("{{{{ {} }}}}", binding),
+                                            );
+                                            vue_text = vue_text.replace(
+                                                &format!("${{{}}}", binding),
+                                                &format!("{{{{ {} }}}}", binding),
+                                            );
+                                        }
+                                        s.push_str(&vue_text);
+                                    }
+                                }
+                            }
+                        }
+                        s
+                    }
+                };
+                format!("{}<MenubarShortcut>{}</MenubarShortcut>\n", ind, inner)
+            }
+            // 单选组：value 绑定 → :model-value 单向（视觉随 store 刷新，
+            // 回写走 radio-item onclick——与 checkbox :checked 单向同源）。
+            "menubar_radio_group" => {
+                self.shadcn_components_used
+                    .insert("MenubarRadioGroup".to_string());
+                let value_attr = match prop_expr(props, "value") {
+                    Some(v) => {
+                        let expr = self.expr_to_vue_bound_value(v)?;
+                        format!(" :model-value=\"{}\"", expr)
+                    }
+                    None => String::new(),
+                };
+                let mut out = format!("{}<MenubarRadioGroup{}>\n", ind, value_attr);
+                for child in children {
+                    out.push_str(&self.node_to_html(child, indent + 1)?);
+                }
+                out.push_str(&format!("{}</MenubarRadioGroup>\n", ind));
+                out
+            }
+            // submenu 三件套 + 语义分组：纯容器透传（reka-ui 上下文自持
+            // 开合/选择状态，发射侧零状态通道）。
+            "menubar_sub" => {
+                self.shadcn_components_used.insert("MenubarSub".to_string());
+                let mut out = format!("{}<MenubarSub>\n", ind);
+                for child in children {
+                    out.push_str(&self.node_to_html(child, indent + 1)?);
+                }
+                out.push_str(&format!("{}</MenubarSub>\n", ind));
+                out
+            }
+            "menubar_sub_trigger" => {
+                self.shadcn_components_used
+                    .insert("MenubarSubTrigger".to_string());
+                let inner = match prop_str(props, "text") {
+                    Some(t) => Self::escape_html_text(t),
+                    None => {
+                        let mut s = String::new();
+                        for child in children {
+                            s.push_str(&self.node_to_html(child, indent + 1)?);
+                        }
+                        s
+                    }
+                };
+                format!("{}<MenubarSubTrigger>{}</MenubarSubTrigger>\n", ind, inner)
+            }
+            "menubar_sub_content" => {
+                self.shadcn_components_used
+                    .insert("MenubarSubContent".to_string());
+                let mut out = format!("{}<MenubarSubContent>\n", ind);
+                for child in children {
+                    out.push_str(&self.node_to_html(child, indent + 1)?);
+                }
+                out.push_str(&format!("{}</MenubarSubContent>\n", ind));
+                out
+            }
+            "menubar_group" => {
+                self.shadcn_components_used.insert("MenubarGroup".to_string());
+                let mut out = format!("{}<MenubarGroup>\n", ind);
+                for child in children {
+                    out.push_str(&self.node_to_html(child, indent + 1)?);
+                }
+                out.push_str(&format!("{}</MenubarGroup>\n", ind));
+                out
+            }
             item_kind => {
-                // menubar_item / menubar_checkbox_item 共用项渲染。
-                let (tag, is_checkbox) = if item_kind == "menubar_checkbox_item" {
-                    ("MenubarCheckboxItem", true)
-                } else {
-                    ("MenubarItem", false)
+                // menubar_item / menubar_checkbox_item / menubar_radio_item
+                // 共用项渲染（PLAN-695 扩 radio-item）。
+                let (tag, is_checkbox, is_radio) = match item_kind {
+                    "menubar_checkbox_item" => ("MenubarCheckboxItem", true, false),
+                    "menubar_radio_item" => ("MenubarRadioItem", false, true),
+                    _ => ("MenubarItem", false, false),
                 };
                 self.shadcn_components_used.insert(tag.to_string());
                 let mut open = format!("{}<{} {}{}", ind, tag, click_attr, {
@@ -6501,10 +6630,22 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         let expr = self.expr_to_vue_bound_value(v)?;
                         s.push_str(&format!(":disabled=\"!({})\" ", expr));
                     }
+                    // 静态 disabled 字面量（bool true）→ disabled 属性
+                    //（PLAN-695: 族内三项统一）。
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Bool(true))) =
+                        props.get("disabled")
+                    {
+                        s.push_str("disabled ");
+                    }
                     if is_checkbox {
                         if let Some(v) = prop_expr(props, "checked") {
                             let expr = self.expr_to_vue_bound_value(v)?;
                             s.push_str(&format!(":checked=\"{}\" ", expr));
+                        }
+                    }
+                    if is_radio {
+                        if let Some(v) = prop_str(props, "value") {
+                            s.push_str(&format!("value=\"{}\" ", Self::escape_html_attr(v)));
                         }
                     }
                     s
@@ -6535,8 +6676,13 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 }
                 if let Some(v) = prop_str(props, "shortcut")
                 {
+                    // PLAN-695 浅色修正（Vue 侧）：硬编码 text-zinc-500 span
+                    // → MenubarShortcut 组件（muted-foreground token，浅色
+                    // 主题下自动适配）。
+                    self.shadcn_components_used
+                        .insert("MenubarShortcut".to_string());
                     out.push_str(&format!(
-                        "{}  <span class=\"ml-auto pl-5 text-[11px] text-zinc-500 tracking-widest\">{}</span>\n",
+                        "{}  <MenubarShortcut>{}</MenubarShortcut>\n",
                         inner_ind,
                         Self::escape_html_text(v)
                     ));
@@ -24247,8 +24393,14 @@ widget L {
             sfc
         );
         assert!(
-            sfc.contains(">Ctrl+J</span>"),
-            "shortcut renders right-aligned hint:
+            sfc.contains(">Ctrl+J</MenubarShortcut>"),
+            "shortcut renders as MenubarShortcut component (muted token, PLAN-695 浅色修正):
+{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("text-zinc-500"),
+            "hardcoded zinc shortcut color retired (PLAN-695):
 {}",
             sfc
         );
@@ -24271,7 +24423,7 @@ widget L {
             sfc
         );
         assert!(
-            sfc.contains("MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator, MenubarTrigger"),
+            sfc.contains("MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator, MenubarShortcut, MenubarTrigger"),
             "full family imported from ui/menubar:
 {}",
             sfc
@@ -24279,6 +24431,122 @@ widget L {
         assert!(
             !sfc.contains("<div :title="),
             "no bare div fallback remains for family tags:
+{}",
+            sfc
+        );
+    }
+
+    /// PLAN-695 T-03: 族补全契约——label/shortcut 独立件、radio-group
+    /// :model-value 单向绑定、radio-item value 透传、sub 三件套嵌套、
+    /// group 容器透传；零手写 div、零硬编码 zinc 色。
+    #[test]
+    fn p695_view_menubar_full_family() {
+        let src = concat!(
+            "widget App {
+",
+            "    model {
+",
+            "        var theme string = \"light\"
+",
+            "        var autosave bool = true
+",
+            "    }
+",
+            "    view {
+",
+            "        col {
+",
+            "            menubar {
+",
+            "                menubar-menu (value: \"profiles\") {
+",
+            "                    menubar-trigger \"Profiles\"
+",
+            "                    menubar-content {
+",
+            "                        menubar-label (text: \"账号\")
+",
+            "                        menubar-radio-group (value: .theme) {
+",
+            "                            menubar-radio-item (value: \"light\", title: \"浅色\") { onclick: .ActLight }
+",
+            "                            menubar-radio-item (value: \"dark\", title: \"深色\", disabled: true)
+",
+            "                        }
+",
+            "                        menubar-separator
+",
+            "                        menubar-sub {
+",
+            "                            menubar-sub-trigger (text: \"更多\")
+",
+            "                            menubar-sub-content {
+",
+            "                                menubar-item (title: \"导入\") { onclick: .ActImport }
+",
+            "                            }
+",
+            "                        }
+",
+            "                        menubar-group {
+",
+            "                            menubar-item (title: \"自动保存\", checked: .autosave)
+",
+            "                            menubar-shortcut \"⌘S\"
+",
+            "                        }
+",
+            "                    }
+",
+            "                }
+",
+            "            }
+",
+            "        }
+",
+            "    }
+",
+            "    on { .ActLight -> { } .ActImport -> { } }
+",
+            "}
+",
+        );
+        let sfc = gen_sfc_from_widget_src_shadcn(src);
+        assert!(
+            sfc.contains("<MenubarLabel>账号</MenubarLabel>"),
+            "label emits MenubarLabel:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<MenubarRadioGroup :model-value=\"theme\">"),
+            "radio group binds one-way :model-value:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<MenubarRadioItem @click=\"ActLight\" value=\"light\">")
+                && sfc.contains("<MenubarRadioItem disabled value=\"dark\">"),
+            "radio items carry value + click + disabled:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<MenubarSub>") && sfc.contains("<MenubarSubTrigger>更多</MenubarSubTrigger>")
+                && sfc.contains("<MenubarSubContent>"),
+            "sub triad nests:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<MenubarGroup>") && sfc.contains("<MenubarShortcut>⌘S</MenubarShortcut>"),
+            "group container + standalone shortcut emit:
+{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("text-zinc"),
+            "zero hardcoded zinc colors (AC-02):
 {}",
             sfc
         );
