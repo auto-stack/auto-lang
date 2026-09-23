@@ -3339,6 +3339,30 @@
      "title": "sidebar-shell-collapse-responsive — sidebar-shell BP 交互化（首个交互态 BP，双 pane 形态）",
      "content": "navigation/sidebar-shell 从静态双变体参考升格为受态驱动交互 widget（PLAN-688 r2，用户走查裁定形态）：三段式 sidebar（上 logo+收缩钮/中 nav/下 settings footer）渲染为两棵互斥 pane——宽 pane 每 item 一颗 icon+标题一体单按钮（f 双插值），rail pane icon-only 且大一号（text-lg w-10 vs text-sm）；bp-private collapsed 态+ToggleCollapsed（! 取反）驱动，平板竖屏（<1024）经 lg: 断点自动 rail，OS resize→view 重建→重解析实时换 pane（Plan 527 T7 回路实机证实）。pane 互斥配方与 is_hidden display 覆盖陷阱（pane 根禁 display 类，flex lg:hidden 不可隐藏）沉淀 contract.md 交互态 BP 节+gotchas #5；回归锚 test_lg_hidden_override_and_width_cascade。附带：plan649/657 收集器补 View::Scrollable 穿透臂（overflow-y-auto 容器内 needle 可见性，对齐 snapshot v2 口径）；047-bp-admin nav 播种补 icon 全键（复审 F-1）；title→tooltip 经 PLAN-053 批4 EE03 已接线（T-04 免）；mobile ☰ 记录 spec Non-goals 待 mobile milestone 翻案",
      "file": "docs/specs/blueprint/contract.md"
+    },
+    {
+     "id": "P693-1",
+     "title": "native-exe-tri-mode — a2r exe 三模式 CLI 契约（independent/rq/desktop+desktop-endpoint）",
+     "content": "a2r 生成 exe 渲染底座参数化：`--render-mode independent|rq|desktop` + `-q/--rq` 糖 + `--desktop-endpoint <pipe>`（desktop 必需）+ `--window/--title`；优先级链 CLI > AUTO_VM_RENDER env > pac desktop_render > independent（F-3 关闭口径：缺省恒 independent，remote 族显式选用；queue/auto=帧覆盖声明跳过降级）。rq 臂=exe 侧 ensure_rqhost_ready 孵化+采纳；desktop 臂=不孵化直连（端点缺席报错提示先启动桌面）；显式 CLI independent 覆盖孵化注入（CLI 顶优先）。单源 render_cli.rs（parse/resolve/sidecar pac）。同批双潜伏缺口根修：PLAN-683 ClientOpts.remote 生成器同步（E0063）+PLAN-691 gpui 残留 emission 摘除。实机三形态四截图 reports/p693-tri-mode/。",
+     "file": "docs/design/autoui/rq-remote-renderer.md",
+     "related": [
+      "PLAN-693"
+     ],
+     "status": "published",
+     "created": "2026-09-23",
+     "last_modified": "2026-09-23"
+    },
+    {
+     "id": "P694-1",
+     "title": "desktop-dogfood — 桌面孵化链↔exe CLI 方言对齐+虚拟桌面加载 a2r exe 端到端契约",
+     "content": "桌面宿主进程本尊=桌面端点（ui_desktop 宿主，无需独立 rqhost daemon）：①spawn_exe_child_args 单源双方言并发——desktop 方言（--render-mode=desktop --desktop-endpoint=<broker>，新 exe CLI 顶优先进 Desktop 臂不孵化）+autodesk 方言（--autodesk-incubate 族，旧二进制落回孵化臂零变化）+render 档透传可选；②Broker::serve_once 双动词受理（adopt␟/incubate␟，应答镜像请求动词——request_incubation_render 认 incubate/rqhost::adopt 认 adopt）；③生成器 rq/desktop 臂 --app386= Hello app_name 覆盖（宿主按目录名认领同源）；④发现链单源 convention_native_exe（组内约定+共享工作区两落点+exe 名三候选）+注册表 exe 背书豁免 render 过滤+desktop_visible 缺省翻转（ui_desktop 注册表 25→27 实证）；⑤headless 光标同步根修（press/release 携位——桌面注入面无 PointerMoved，协议级点击聚焦 iced text_input 前提）。协议级环测 p694_desktop_dialect_ring（AUTO_DESKTOP_E2E=1）：发现链→生产 spawn→adopt 直连→v2 帧→点击聚焦+键入联动（100°C→212°F）→kill 回收，attach ~90ms。",
+     "file": "docs/design/autoui/rq-remote-renderer.md",
+     "related": [
+      "PLAN-694"
+     ],
+     "status": "published",
+     "created": "2026-09-23",
+     "last_modified": "2026-09-23"
     }
    ]
   },
@@ -7228,6 +7252,30 @@
      "id": "P692-2",
      "title": "widget-gallery-scroll-polish 复审与合并收据",
      "content": "review pass@rev5（tf 全量档 5458 跑 12 红对账：musk×6+counter+ffi_dual+native_gate_six+a2vue 金样+plan358 flaky 全预存/flaky 有佐证，docs_gen core_reference 系本计划 schema 变更引发→DOCS_GEN_UPDATE 再生修复 4/4 绿，零回归；iced 271/271；新增单测 6 枚；AC-01..08 终态+W-1/W-2/W-3 走查批全过，实机证据在复审记录）。merge=rebase 13 提交（12 全等+core.md 追加）ff-only 双仓落地：auto-lang fa524d126、auto-os 20ce5c8（main 检出 ui-cache churn 还原后落）。债候选：ui-cache 入库跟踪但键缺生成器版本/popover 选中不自动关闭/VM command iced:none/18px thumb 下限观察/h1-h6 基础 margin 内联隐患。归档=docs/plans/archive/。"
+    },
+    {
+     "id": "P693-2",
+     "title": "native-exe-tri-mode 复审与合并收据",
+     "content": "review pass@rev1（随 PLAN-694 收口联审）：重排 tip c1ce13933→5bc78de0b 验证刷新 render_cli+client_entry 11/11+generated_main 2/2；desktop_protocol 2 红预存（stash 对照在案）；实机三形态证据入库。AC-04 由 PLAN-694 兑现（桌面宿主本尊=桌面端点，无需 auto-os 内嵌 daemon；auto-os shell 侧集成残面保持 P693-D2）。E0063/gpui 双根修经 694 pin+003 fresh 重生成实证收敛（P693-D1 实质销号）。merge=rebase abeaf113d→c1ce13933→5bc78de0b 两段 range-diff 全等 ff-only。债 P693-D2（收窄）/D3。",
+     "file": "docs/plans/archive/693-native-exe-tri-mode.md",
+     "related": [
+      "PLAN-693"
+     ],
+     "status": "published",
+     "created": "2026-09-23",
+     "last_modified": "2026-09-23"
+    },
+    {
+     "id": "P694-2",
+     "title": "desktop-dogfood 复审与合并收据",
+     "content": "review pass@rev1（复审在实现会话内，判定由工件重建）：tf 5458/5469=10 预存+ffi_dual_019 flaky 两连绿非回归；裸 t 5458/5468 同名单；环测复审复现四段全绿；注册表 25→27 截图+发现序 5/5。AC-01 录证窄面（converter 行击+合成窗交互）与 AC-05（D6 物理 IME 段）由用户 review+merge 指令裁定接受协议级等价（安静窗补录脚本 walkthrough.py 留档）；AC-05 partial 按 AC 自身残面不阻塞口径。merge=rebase 5 commits range-diff 5/5 全等（34ce62fb2→4f2a6b082 等映射）ff-only 落地 5bc78de0b→bb640b8e2。债 P694-D1（music player 拉起后桌面静默退出 ×3 未诊）/P694-D2（launcher VM 轨搜索/滚动/方向键三路不通，行击正常——recent 存储夹具绕行）。",
+     "file": "docs/plans/archive/694-desktop-dogfood.md",
+     "related": [
+      "PLAN-694"
+     ],
+     "status": "published",
+     "created": "2026-09-23",
+     "last_modified": "2026-09-23"
     }
    ]
   }
