@@ -70,6 +70,22 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
   （undo/redo/cut/paste 埋点后 mark_external_dirty 全保留）。
 - `code_editor_text` 整串读保留兼容，文档注明为非推荐路径（推荐 delta 增量面）。
 
+## 现状（2026-09-23）——menubar 族完备 + 配色主题化（PLAN-695）
+
+menubar 从"七件主干 + 硬编码深色"补全为 shadcn-vue 对齐的 **16 元素完整
+组件族**（radio-group/radio-item/label/shortcut/sub 族/group 新增，
+schema 三端注记如实翻转 `iced: component`）；VM 双解释态（声明式族 +
+actions 合成）与 a2r 静态降层三路同源：面板/项/分隔线/trigger 配色全量
+消费 popover 语义 token（`Color::Popover/PopoverForeground` 独立投影
+registry 双盘——浅色主题白板深字可读，字面 `#16171B`/zinc 族退役）、
+disabled/无 onclick 项置灰非隐藏、开态 trigger accent 高亮、跨菜单
+hover-switch、submenu 内联展开（复合键注册表 + 前缀感知外层开态判；
+嵌套 overlay 挂渲染通道故浮动式留债 P695-D2）、radio circle-dot 选中
+指示、label/shortcut muted 静态文本。registry 16 spec 三形态别名；
+untracked 动态解析路径补 menubar 臂（D-GAP，画廊 preview 实锤）。
+契约：`widgets/menubar-family.md`；开合契约扩注：
+`design/menubar-snapshot.md`（PLAN-695 扩注节）。
+
 ## 现状（2026-09-20）——menubar 快照可见性与开合持久性（PLAN-664 U-1）
 
 041 矩阵六失败根修：MCP 打开 menubar 后展开项不进 `autoui_snapshot` 的
