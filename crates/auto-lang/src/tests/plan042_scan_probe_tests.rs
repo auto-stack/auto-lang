@@ -112,3 +112,38 @@ fn p042_app_at_parses() {
         Err(e) => panic!("039-syslog app.at parse 失败: {e:?}"),
     }
 }
+
+/// PLAN-042 T-09（AC-03 headless 断言）：坏 handler app 的失败行入环
+/// （T-03 trap；源含 face 标识 `vm:<dir>/<stem>`）。并发进程内唯一
+/// source 过滤自证（ring 全局共享同 syslog 单测口径）。
+#[test]
+fn p042_bad_handler_error_lands_in_ring() {
+    let src = r#"widget Bad {
+    msg { Init }
+    model { var probe str = "" }
+    view { col { text .probe } }
+    on {
+        .Init -> {
+            .probe = .nonexistent_field.len()
+        }
+    }
+}
+"#;
+    let mut dc = crate::build_dynamic_component(src, Some("scan_probe/bad.at"))
+        .expect("bad app build");
+    dc.on_with_input_for("Bad", "Init", None);
+    let face = "vm:scan_probe/bad";
+    let hit = crate::ui::syslog::snapshot()
+        .into_iter()
+        .find(|e| e.source == face && e.msg.contains("[VM-HANDLER]") && e.msg.contains("failed"));
+    assert!(
+        hit.is_some(),
+        "坏 handler 失败行应入环（source={face}）: got {:?}",
+        hit
+    );
+    let hit = hit.unwrap();
+    assert!(matches!(
+        hit.level,
+        crate::ui::syslog::SyslogLevel::Error
+    ));
+}

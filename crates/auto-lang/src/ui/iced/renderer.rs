@@ -10329,8 +10329,88 @@ fn presentation_keepalive_tick() {
     }
 }
 
-fn push_notification(state: &mut crate::ui::session::DesktopSession, kind: &str, msg: &str) {
-    // Plan 487 M4 + Plan 540 T2：通知持久化开关门控（479 消费链单点）——
+/// PLAN-042 T-06：syslog 查看窗注入泵（ServiceTick 段）。窗定位按
+/// registry_id（目录名 `039-syslog`，OSCONFIG_APP_ID 先例 wm.wins 线性查）
+/// ——窗不在 = 本段零额外工作（环照转，泵零扫描零注入，AC-06）；窗在：
+/// `injection_due` 门（seq 无变化零注入 + 500ms 攒批 ≤2Hz）→ snapshot()
+/// 全量克隆 → `__syslog_*` 平行字符串列表下行（B12 同族——宿主注入 Obj
+/// 数组的 handler 字段读失效，launcher apps_* 先例；time 宿主预格式化
+/// HH:MM:SS 本地时区，通知面板 at 串先例）→ 显式 `call_handler("Rebuild")`
+/// （宿主写状态不触发 handler，RebuildNotes 同规）+ 置脏一拍重建。
+/// v1 全量快照替换，不做增量协议（PLAN-042 §1.3 红线）。
+fn syslog_inject_tick(state: &mut crate::ui::session::DesktopSession) {
+    const SYSLOG_APP_ID: &str = "039-syslog";
+    // 顶层优先（z_order 逆序首个非隐藏匹配）——多窗同 app 时泵跟随用户
+    // 正在看的窗；全隐藏回退首个在册窗（focus 追随语义）。
+    let win_app = state.host.as_ref().and_then(|h| {
+        h.wm
+            .wins
+            .iter()
+            .filter(|(_, v)| v.registry_id.as_deref() == Some(SYSLOG_APP_ID))
+            .map(|(k, v)| (k, v.app, v.hidden.get()))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .find(|(k, _, hidden)| {
+                !*hidden && h.wm.z_order.iter().rev().any(|z| z == *k)
+            })
+            .map(|(_, app, _)| app)
+            .or_else(|| {
+                h.wm
+                    .wins
+                    .values()
+                    .find(|v| v.registry_id.as_deref() == Some(SYSLOG_APP_ID))
+                    .map(|v| v.app)
+            })
+    });
+    let Some(app_id) = win_app else { return };
+    let dirty = crate::ui::syslog::dirty_seq();
+    let now = std::time::Instant::now();
+    let last_seq = state.desktop.syslog_inject_seq.get();
+    let last_at = state.desktop.syslog_last_inject.get();
+    if !crate::ui::syslog::injection_due(dirty, last_seq, last_at, now) {
+        return;
+    }
+    let entries = crate::ui::syslog::snapshot();
+    let mut seqs = Vec::with_capacity(entries.len());
+    let mut times = Vec::with_capacity(entries.len());
+    let mut levels = Vec::with_capacity(entries.len());
+    let mut sources = Vec::with_capacity(entries.len());
+    let mut msgs = Vec::with_capacity(entries.len());
+    for e in &entries {
+        seqs.push(auto_val::Value::Str(e.seq.to_string().into()));
+        let time_s = chrono::DateTime::from_timestamp_millis(e.ts_ms as i64)
+            .map(|dt| dt.with_timezone(&chrono::Local).format("%H:%M:%S").to_string())
+            .unwrap_or_default();
+        times.push(auto_val::Value::Str(time_s.into()));
+        levels.push(auto_val::Value::Str(e.level.as_str().into()));
+        sources.push(auto_val::Value::Str(e.source.clone().into()));
+        msgs.push(auto_val::Value::Str(e.msg.clone().into()));
+    }
+    if let Some(app) = state.apps.get_mut(&app_id) {
+        // hosted 旗标：泵首次命中即写 "1"（viewer 独立模式 mock 种子/脚注
+        // 隐藏；launcher hosted 同语义）。
+        let _ = app
+            .component
+            .write_state("hosted", auto_val::Value::str("1"));
+        let _ = app.component.write_state_vec("__syslog_seq", seqs);
+        let _ = app.component.write_state_vec("__syslog_time", times);
+        let _ = app.component.write_state_vec("__syslog_level", levels);
+        let _ = app.component.write_state_vec("__syslog_source", sources);
+        let _ = app.component.write_state_vec("__syslog_msg", msgs);
+        if let Err(err) = app.component.bridge_mut().call_handler("Rebuild", &[]) {
+            crate::syslog!(
+                SyslogLevel::Error, "host",
+                "[session] syslog viewer Rebuild failed: {err}"
+            );
+        }
+        *app.state.view_dirty.borrow_mut() = true;
+        // 簿记后置（写失败下拍重试）。
+        state.desktop.syslog_inject_seq.set(dirty);
+        state.desktop.syslog_last_inject.set(Some(now));
+    }
+}
+
+fn push_notification(state: &mut crate::ui::session::DesktopSession, kind: &str, msg: &str) {    // Plan 487 M4 + Plan 540 T2：通知持久化开关门控（479 消费链单点）——
     // 单源 `config.notes_enabled`（设置窗写经宿主臂收口落 config.at），
     // false = 关：notify 动词全链路（入史 + toast + 未读 + 落盘）短路。
     if !state.desktop.config.notes_enabled {
@@ -19336,6 +19416,9 @@ fn compare_pngs(
                         update_shell_clock(state);
                         // PLAN-041 T-15：面板暗色注入位单点同步（值变才写）。
                         sync_dash_dark_bit(state);
+                        // PLAN-042 T-06：syslog 查看窗注入泵（窗在才扫描；
+                        // seq 门 + 500ms 攒批；全量快照下行）。
+                        syslog_inject_tick(state);
                         // PLAN-041 T-14：空闲呈现保活（1s 节流，Win32 门控）。
                         #[cfg(all(windows, feature = "native-dock"))]
                         presentation_keepalive_tick();
@@ -32971,6 +33054,138 @@ mod tests {
             other => panic!("joined 读回异常: {other:?}"),
         }
         let _ = ds;
+    }
+
+    /// PLAN-042 T-09（AC-04 执行臂归因 headless 断言）：`log` 动词执行臂
+    /// 入环 source = notify_source（注册表分段归因 registry_id；特权面
+    /// None → "privileged"）。
+    #[test]
+    fn p042_log_verb_ring_attribution() {
+        use crate::ui::session::DesktopCommand as DC;
+        use crate::ui::syslog::SyslogLevel;
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        // 特权面（notify_source None）→ source="privileged"。
+        let (exit, _tasks) = execute_desktop_commands(
+            &mut ds,
+            vec![DC::Syslog(SyslogLevel::Info, "p042-privileged-line".into())],
+        );
+        assert!(!exit);
+        // 注册表分段（notify_source 置位）→ source=registry_id。
+        *ds.desktop.notify_source.borrow_mut() = Some("039-syslog".into());
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![DC::Syslog(SyslogLevel::Error, "p042-attributed-line".into())],
+        );
+        *ds.desktop.notify_source.borrow_mut() = None;
+        let snap = crate::ui::syslog::snapshot();
+        let priv_e = snap
+            .iter()
+            .find(|e| e.msg == "p042-privileged-line")
+            .expect("privileged line in ring");
+        assert_eq!(priv_e.source, "privileged");
+        assert_eq!(priv_e.level, SyslogLevel::Info);
+        let attr_e = snap
+            .iter()
+            .find(|e| e.msg == "p042-attributed-line")
+            .expect("attributed line in ring");
+        assert_eq!(attr_e.source, "039-syslog");
+        assert_eq!(attr_e.level, SyslogLevel::Error);
+    }
+
+    /// PLAN-042 T-09（AC-05/AC-06 headless 实证；#[ignore] + P042_APPS_DIR
+    /// env 门——apps/039-syslog 源在跨仓 auto-os 工作树，CI 不依赖）：
+    /// 注册表 launch → 窗在册 registry_id=="039-syslog" → 注入泵 seq 门 +
+    /// 500ms 节流 + 平行列表下行 + 显式 Rebuild。
+    /// 运行：P042_APPS_DIR=<auto-os>/apps cargo nextest run -p auto-lang
+    /// --lib --features ui-iced p042_syslog_window_launch_and_pump -- --ignored
+    #[test]
+    #[ignore = "requires P042_APPS_DIR pointing at auto-os worktree apps/"]
+    fn p042_syslog_window_launch_and_pump() {
+        use crate::ui::syslog::SyslogLevel;
+        let root = std::path::PathBuf::from(
+            std::env::var("P042_APPS_DIR").expect("P042_APPS_DIR required"),
+        );
+        let mut ds = t3_session_with_shell();
+        let apps = std::sync::Arc::new(crate::ui::app_registry::scan_apps(
+            &root,
+            &crate::ui::app_registry::ScanOptions::default(),
+        ));
+        assert!(
+            apps.iter().any(|e| e.id == "039-syslog"),
+            "注册表应含 039-syslog"
+        );
+        ds.desktop.registry_entries = (*apps).clone();
+        ds.desktop.app_resolver = Some({
+            let apps = apps.clone();
+            std::sync::Arc::new(move |name: &str| {
+                let e = apps.iter().find(|a| a.id == name)?;
+                Some(crate::ui::session::LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+                    code: std::fs::read_to_string(&e.entry).ok()?,
+                    source_path: Some(e.entry.to_string_lossy().to_string()),
+                    title: Some(e.title.clone()),
+                    name: e.name.clone(),
+                    fit: e.fit,
+                    daemon: None,
+                    back_root: None,
+                    exe: None,
+                    opens: Vec::new(),
+                    render_decl: None,
+                })
+            })
+        });
+        // ① launch → 窗在册 + registry_id 归因（AC-05）。
+        let wid = ds.launch_app("039-syslog").expect("syslog launch");
+        let v = &ds.host.as_ref().unwrap().wm.wins[&wid];
+        assert_eq!(v.registry_id.as_deref(), Some("039-syslog"));
+        let app_id = v.app;
+        // ② 环入三条 → 首拍注入（last=None 立即放行基线）。
+        crate::ui::syslog::push(SyslogLevel::Info, "host", "[p042] line one".into());
+        crate::ui::syslog::push(SyslogLevel::Warn, "host", "[p042] line two".into());
+        crate::ui::syslog::push(SyslogLevel::Error, "host", "[p042] line three".into());
+        syslog_inject_tick(&mut ds);
+        {
+            let app = ds.apps.get(&app_id).unwrap();
+            let seqs = app
+                .component
+                .bridge()
+                .read_state_as_vec("__syslog_seq")
+                .expect("seq list readable");
+            let consumed = app.component.read_state("consumed").ok();
+            assert_eq!(seqs.len(), 3, "基线注入三行（平行列表）");
+            match consumed {
+                Some(auto_val::Value::Int(n)) => assert_eq!(n, 3, "Rebuild 显式臂已消费"),
+                other => panic!("注入面状态异常: {other:?}"),
+            }
+        }
+        // ③ seq 无变化 → 零注入（重注入幂等不可直接观测——断言簿记不变 +
+        //    无 panic 即门走通）。
+        syslog_inject_tick(&mut ds);
+        // ④ 新行 + 立即拍 → 500ms 攒批拒绝（内容不含 line four）。
+        let seq4 = crate::ui::syslog::push(SyslogLevel::Info, "host", "[p042] line four".into());
+        syslog_inject_tick(&mut ds);
+        {
+            let app = ds.apps.get(&app_id).unwrap();
+            let consumed = app.component.read_state("consumed").ok();
+            match consumed {
+                Some(auto_val::Value::Int(n)) => assert_eq!(n, 3, "节流窗内新行未注入"),
+                other => panic!("consumed 异常: {other:?}"),
+            }
+        }
+        // ⑤ 过节流窗 → 一拍全量追平。
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        syslog_inject_tick(&mut ds);
+        {
+            let app = ds.apps.get(&app_id).unwrap();
+            let consumed = app.component.read_state("consumed").ok();
+            match consumed {
+                Some(auto_val::Value::Int(n)) => {
+                    assert!(n >= 4, "过节流窗追平（含 line four seq={seq4}）");
+                }
+                other => panic!("consumed 异常: {other:?}"),
+            }
+        }
     }
 
     #[derive(Clone, Copy, Debug)]

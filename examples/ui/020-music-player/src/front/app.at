@@ -137,6 +137,8 @@ widget App {
                 pins = "log	error	[music-scan] response failed: " + .store.library_error + "
 "
             } else {
+                pins = pins + "log	info	[music-scan] response arrived (parsed ok)
+"
                 if .store.item_count == 0 {
                     var rm str = "false"
                     if .store.root_missing {
@@ -145,7 +147,7 @@ widget App {
                     pins = pins + "log	error	[music-scan] entries parsed = 0 (root_missing=" + rm + "; D6 签名面)
 "
                 } else {
-                    pins = pins + "log	info	[music-scan] response parsed; entries: " + .store.item_count.to_string() + "
+                    pins = pins + "log	info	[music-scan] entries parsed: " + .store.item_count.to_string() + "
 "
                 }
             }
