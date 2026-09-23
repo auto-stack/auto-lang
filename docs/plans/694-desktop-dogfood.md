@@ -172,9 +172,28 @@ exe → 桌面窗清 + launcher 可再启动）——走查脚本录证。
       `--app386=` Hello app_name 覆盖（认领对称性——宿主 launch_app_outproc
       按 child_name=目录名匹配 Hello，Desktop 臂原用 project_name 必错配；
       单测 generated_main 三方言 pin）。作用域测试全绿。
-- [ ] T-02 003-converter exe 编译（fresh 重生成顺带收敛 P693-D1 残留）+
+- [x] T-02 003-converter exe 编译（fresh 重生成顺带收敛 P693-D1 残留）+
       桌面直连 launch_app 验证（不经 launcher UI 先验链路）。
       验证：桌面进程内窗落地观测行。
+      [✅ 已完成]（2026-09-23，worktree lang-694 提交 87f60e29c）fresh 重生成
+      干净（无 ui-gpui 残留，P693-D1 收敛实证——`cargo build` 2m38s 仅 2 个
+      生成物命名风格 warning）。exe CLI 冒烟：`converter.exe --render-mode
+      desktop`（缺端点）→ 观测行 `[render] render-mode: desktop (CLI)` +
+      干净报错退出 exit=1（AC-02 观测行 + AC-03 缺席语义，不开窗）。**协议级
+      端到端环** `p694_desktop_dialect_ring`（AUTO_DESKTOP_E2E=1 实机档）全绿：
+      发现链真走（spec exe 缺席 → outproc_native_exe 共享工作区落点命中
+      `<repo>/target/debug/converter.exe`）→ 生产 spawn 双方言 → exe
+      `[render] desktop 模式：采纳桌面合成器端点（不孵化）` → adopt 直连桌面
+      宿主 broker（serve 双动词受理）→ 认领对称（Hello app_name=目录名）→
+      v2 DisplayList 首帧合成（"Temperature Converter" 在册）→ 点击聚焦
+      （Pressed+Released 完整对，p690 先例）+ 键入联动（Celsius 100 →
+      Fahrenheit 212 跨输入框换算帧落地）→ kill EOF 回收。attach 实测
+      41-167ms。**勘定增量二（根修）**：headless on_input 光标只随
+      PointerMoved 同步，而桌面会话注入面无 PointerMoved 生产（hover 不上线
+      ——session.rs 零命中），协议级点击聚焦 iced text_input 必败（iced 命中
+      测试须 Cursor::Available）；根修=press/release 携带 x,y 同步 point_at
+      （物理鼠标 move 流恒先到，VM 臂行为不变；p690 先例的显式 point_at 即
+      此缺口测试侧补丁）。headless 作用域回归 7/7 绿。
 - [ ] T-03 端到端实机：launcher UI 拉起 → 交互 → 回收录证（AC-01/03）+
       第二 exe（AC-04）+ 发现面对齐注记。
 - [ ] T-04 D6 残面一键复核（同场走查）。验证：AC-05 结论。
