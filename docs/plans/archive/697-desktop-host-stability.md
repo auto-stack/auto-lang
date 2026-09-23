@@ -259,6 +259,11 @@ ui_desktop 宿主
   completion_kind: delivered；**cleaned**=（本行随清理结果回填）。
   已知残面：机器稳定性本身（GPU 驱动/内核，环境面非本仓代码）；R-3
   口径注（环境自检=start 行环境快照）随档案在档。
+  **cleaned 回填**：双 worktree guard clean（auto-lang+auto-down 组内
+  依赖位均零 reparse point）→auto-lang worktree 经本仓移除、auto-down
+  worktree 经其属主仓（D:/autostack/auto-down）移除→分支 plan-697-dev
+  删除（was b26b69849）→组目录 D:/autostack/.wt/lang-697 摘除零残留
+  （worktree list 零 697 条目）。五 checkpoint 全闭环，outcome=delivered。
 
 ## 待澄清事项
 
