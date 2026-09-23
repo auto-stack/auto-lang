@@ -647,6 +647,11 @@ pub fn shim_env_track() -> String {
 lazy_static::lazy_static! {
     static ref STORAGE_MAP: std::sync::Mutex<std::collections::HashMap<String, String>> =
         std::sync::Mutex::new(std::collections::HashMap::new());
+    /// PLAN-044 T-02：本进程写过的键（写路径统一登记）。持久化合并语义
+    /// 「盘 ∪ 脏键」的脏键集——未触键以盘上新值为准，脏键本进程胜（含
+    /// 删除胜）。跨进程不共享（各进程各记各的），恰是合并写需要的语义。
+    static ref STORAGE_DIRTY: std::sync::Mutex<std::collections::HashSet<String>> =
+        std::sync::Mutex::new(std::collections::HashSet::new());
 }
 
 /// Location of the backing JSON file. Deterministic per cwd (DefaultHasher
@@ -686,15 +691,74 @@ fn storage_load() {
 
 /// Write the whole map through to the backing file (best-effort). Config
 /// writes are low-frequency, so write-through needs no flush hook.
+///
+/// PLAN-044 T-02：改为**键级合并写**——`<file>.lock` 互斥下重读磁盘 →
+/// 盘 ∪ 脏键 → [`crate::state_file::atomic_write`] 原子替换。多进程
+/// （宿主 × outproc 子进程）交错写不同键两键均存活（修复前全量覆盖必丢，
+/// tests/storage_cross_process.rs 红→绿对拍）；锁超时 best-effort 降级时
+/// 仍走合并（降级只跳过互斥）；盘文件坏 JSON → `.corrupt.bak` 留证后
+/// 以内存重建（撕裂自愈）。
 fn storage_persist() {
     let Some(path) = storage_file() else { return };
-    let map = STORAGE_MAP.lock().unwrap();
-    if let Ok(json) = serde_json::to_string_pretty(&*map) {
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
+    let dirty: Vec<String> = {
+        let d = STORAGE_DIRTY.lock().unwrap();
+        if d.is_empty() {
+            return;
         }
-        let _ = std::fs::write(&path, json);
+        d.iter().cloned().collect()
+    };
+    let wrote = crate::state_file::with_lock(
+        &path,
+        crate::state_file::LOCK_TIMEOUT,
+        || {
+            let mut disk = match storage_read_disk(&path) {
+                Ok(m) => m,
+                Err(raw) => {
+                    let _ = std::fs::write(path.with_extension("json.corrupt.bak"), &raw);
+                    std::collections::HashMap::new()
+                }
+            };
+            let map = STORAGE_MAP.lock().unwrap();
+            for k in &dirty {
+                match map.get(k) {
+                    Some(v) => {
+                        disk.insert(k.clone(), v.clone());
+                    }
+                    None => {
+                        disk.remove(k);
+                    }
+                }
+            }
+            match serde_json::to_string_pretty(&disk) {
+                Ok(json) => crate::state_file::atomic_write(&path, json.as_bytes()).is_ok(),
+                Err(_) => false,
+            }
+        },
+    )
+    .into_inner();
+    if wrote {
+        // 只清除本次已落盘的脏键（并发线程新标的键保留待下轮）
+        let mut d = STORAGE_DIRTY.lock().unwrap();
+        for k in &dirty {
+            d.remove(k);
+        }
     }
+}
+
+/// 直读磁盘 storage 库（合并写锁内专用；缺文件/不可读 = 空库，坏 JSON =
+/// Err(原文)——调用方留证重建）。
+fn storage_read_disk(
+    path: &std::path::Path,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    match std::fs::read_to_string(path) {
+        Ok(raw) => serde_json::from_str(&raw).map_err(|_| raw),
+        Err(_) => Ok(std::collections::HashMap::new()),
+    }
+}
+
+/// 写路径统一登记脏键（PLAN-044 T-02；合并写语义见 [`storage_persist`]）。
+fn storage_mark_dirty(key: &str) {
+    STORAGE_DIRTY.lock().unwrap().insert(key.to_string());
 }
 
 /// storage.get(key) → stored value, or "" if absent (mirrors JS localStorage).
@@ -708,6 +772,7 @@ pub fn shim_storage_get(key: String) -> String {
 #[auto_macros::rust_fn("Storage.set")]
 pub fn shim_storage_set(key: String, value: String) {
     storage_load();
+    storage_mark_dirty(&key);
     STORAGE_MAP.lock().unwrap().insert(key, value);
     storage_persist();
 }
@@ -717,6 +782,7 @@ pub fn shim_storage_set(key: String, value: String) {
 pub fn shim_storage_remove(key: String) {
     storage_load();
     STORAGE_MAP.lock().unwrap().remove(&key);
+    storage_mark_dirty(&key);
     storage_persist();
 }
 
@@ -734,6 +800,7 @@ pub(crate) fn storage_raw_get(key: &str) -> Option<String> {
 
 pub(crate) fn storage_raw_set(key: String, value: String) {
     storage_load();
+    storage_mark_dirty(&key);
     STORAGE_MAP.lock().unwrap().insert(key, value);
     storage_persist();
 }
@@ -741,6 +808,7 @@ pub(crate) fn storage_raw_set(key: String, value: String) {
 pub(crate) fn storage_raw_remove(key: &str) {
     storage_load();
     STORAGE_MAP.lock().unwrap().remove(key);
+    storage_mark_dirty(key);
     storage_persist();
 }
 
@@ -751,6 +819,7 @@ pub(crate) fn storage_raw_remove(key: &str) {
 pub fn storage_host_publish(key: &str, value: String) {
     storage_load();
     STORAGE_MAP.lock().unwrap().insert(key.to_string(), value);
+    storage_mark_dirty(key);
     storage_persist();
 }
 
@@ -10419,6 +10488,63 @@ pub(crate) fn lock_storage_for_test() -> std::sync::MutexGuard<'static, ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-044 T-02：键级合并写——盘上他进程的键不被本进程 persist 冲掉；
+    /// 本进程脏键（含 remove 删除胜）正确落盘。
+    #[test]
+    fn storage_persist_merges_disk_with_dirty_keys() {
+        let _ser = lock_storage_for_test();
+        let dir = std::env::temp_dir().join(format!("auto-t02-merge-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("storage.json");
+        std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
+        // 盘上预置「他进程」的键（本进程尚未写过它）
+        std::fs::write(&path, r#"{"other.key":"fresh"}"#).unwrap();
+        shim_storage_set("mine.a".into(), "va".into());
+        shim_storage_set("mine.b".into(), "vb".into());
+        let map: std::collections::HashMap<String, String> =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            map.get("other.key").map(String::as_str),
+            Some("fresh"),
+            "他进程键被冲掉 = 合并写失效"
+        );
+        assert_eq!(map.get("mine.a").map(String::as_str), Some("va"));
+        assert_eq!(map.get("mine.b").map(String::as_str), Some("vb"));
+        // remove 删除胜：盘上消失，他进程键不受牵连
+        shim_storage_remove("mine.a".into());
+        let map: std::collections::HashMap<String, String> =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(!map.contains_key("mine.a"));
+        assert_eq!(map.get("other.key").map(String::as_str), Some("fresh"));
+        std::env::remove_var("AUTO_VM_STORAGE_FILE");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// PLAN-044 T-02：盘文件坏 JSON（撕裂/损坏）→ `.corrupt.bak` 留证后
+    /// 以内存重建，persist 自愈不空库。
+    #[test]
+    fn storage_persist_rebuilds_from_corrupt_disk() {
+        let _ser = lock_storage_for_test();
+        let dir = std::env::temp_dir().join(format!("auto-t02-corrupt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("storage.json");
+        std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
+        std::fs::write(&path, "{\"torn\":").unwrap();
+        shim_storage_set("k".into(), "v".into());
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let map: std::collections::HashMap<String, String> =
+            serde_json::from_str(&raw).expect("重建后必须合法 JSON");
+        assert_eq!(map.get("k").map(String::as_str), Some("v"));
+        assert!(
+            path.with_extension("json.corrupt.bak").exists(),
+            "坏文件必须留证 .corrupt.bak"
+        );
+        std::env::remove_var("AUTO_VM_STORAGE_FILE");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// PLAN-617 T-10: 相对 URL（`/` 开头）按 `AUTO_HTTP_BASE` 展开为绝对地址；
     /// 绝对 URL 与未设 env 时原样透传（幂等：展开后的绝对 URL 再过一遍不变）。
