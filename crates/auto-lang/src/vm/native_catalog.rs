@@ -1464,10 +1464,10 @@ macro_rules! for_each_bigvm_native {
             ("auto.http.clear_default_auth", 3141, Void),
             // PLAN-053 P-053-4: merged mode #[api] no-op warning
             ("auto.vm.warn_api_noop", 3142, Void),
-            // PLAN-658 T-04: ~Stream 端点的宿主事件总线 seam。语义：流端点
-            // 由宿主按签名特路服务（Axum 生成器与 back-proxy 同语义，函数体
-            // 不在执行面）；本 shim 仅为让 `bus.subscribe()` 体可编译——
-            // 被实际执行则压 -1 哨兵（iterator 查找响亮失败，不静默）。
+            // PLAN-658 T-04 立项 / PLAN-698 T-02 转正：~Stream 端点的事件
+            // 总线订阅。原为编译面 seam（执行压 -1 哨兵）；698 起为真运行面
+            // ——进程内 broadcast bus（镜像生成侧 events.rs）+ AsyncHttpStream
+            // 迭代器，SSE serve 循环与 .at iterator 家族同面消费。
             ("auto.bus.subscribe", 3144, Void),
             // PLAN-658 T-04: Plan 341 SSE 客户端的逐步拉取面（挂 auto.http.*
             // ——`http` 已在 codegen 内建命名空间白名单，`http_stream` 前缀

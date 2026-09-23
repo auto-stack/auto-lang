@@ -1,0 +1,16 @@
+: keep-alive
+
+: keep-alive
+
+data: "{\"event\":\"Typing\",\"name\":\"Alice\"}"
+
+data: "{\"id\":5,\"sender\":\"Bob\",\"text\":\"hello bus\",\"time\":\"Just now\",\"mine\":true,\"event\":\"NewMessage\"}"
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+
+: keep-alive
+

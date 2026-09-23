@@ -4098,6 +4098,27 @@ pub fn alloc_async_id() -> u64 {
     NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst)
 }
 
+/// PLAN-698 T-02/SD-02: VM 侧进程内 SSE 事件总线——生成 Axum 工程
+/// events.rs 模板（api_gen::generate_events_rs）的运行面镜像：同款
+/// `broadcast::channel(256)`，发送失败（无订阅者）忽略。
+static EVENT_BUS: std::sync::LazyLock<tokio::sync::broadcast::Sender<String>> =
+    std::sync::LazyLock::new(|| {
+        let (tx, _rx) = tokio::sync::broadcast::channel(256);
+        tx
+    });
+
+/// 向 VM 事件总线广播一条 SSE 事件 JSON（http_server 的 POST publisher
+/// 臂调用；对齐生成侧 `crate::events::broadcast`）。
+pub fn bus_broadcast(json: String) {
+    let _ = EVENT_BUS.send(json);
+}
+
+/// 测试专用：领取一个总线订阅者（http_server publisher 臂单测收流用）。
+#[cfg(test)]
+pub fn bus_subscribe_for_test() -> tokio::sync::broadcast::Receiver<String> {
+    EVENT_BUS.subscribe()
+}
+
 /// Plan 341: 在独立 OS 线程（自带 tokio runtime）上 spawn 一个 SSE 流式接收
 /// future。每收到一帧 SSE 事件就经 channel 推一个 AsyncStreamEvent::Data。
 ///
@@ -6542,13 +6563,52 @@ pub fn shim_http_stream_sse_poll(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
         .map_err(|e| VMError::RuntimeError(e.to_string()))
 }
 
-/// PLAN-658 T-04: `auto.bus.subscribe() -> iterator_id`（编译面 seam）
+/// PLAN-698 T-02/SD-02: `auto.bus.subscribe() -> iterator_id`（VM 运行面）
 ///
-/// ~Stream 端点由宿主按签名特路服务（Axum 生成器与 back-proxy 同语义，
-/// 函数体不在执行面）；本 shim 让 `bus.subscribe()` 体可编译——被实际
-/// 执行则压 -1（iterator 查找响亮失败，不静默谎报空流）。
-pub fn shim_bus_subscribe_stub(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    task.ram.push_i32(-1);
+/// 进程内 SSE 事件总线（bridge 案①：进程内 iterator 注册表）——与生成
+/// Axum 侧 events.rs 模板同构（`broadcast::channel(256)`，发送失败忽略）。
+/// 每个 subscribe 领一个 broadcast Receiver，由专属转发线程泵进统一
+/// ASYNC_STREAMS 表，再以既有 `Iterator::AsyncHttpStream` 臂被 SSE serve
+/// 循环与 .at 侧 iterator 家族消费（断连/停端=696 回收语义：Done→-1）。
+pub fn shim_bus_subscribe(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let stream_id = alloc_async_id();
+    let (tx, rx) = tokio::sync::mpsc::channel::<AsyncStreamEvent>(64);
+    let handle = Arc::new(AsyncStreamHandle {
+        rx: std::sync::Mutex::new(rx),
+        done: std::sync::atomic::AtomicBool::new(false),
+    });
+    let handle_clone = handle.clone();
+    let mut bus_rx = EVENT_BUS.subscribe();
+
+    // 镜像生成侧 `while let Ok(json) = rx.recv()`：任何 RecvError
+    // （Closed/Lagged）都结束流——订阅面终止即 SSE 连接关闭。
+    std::thread::Builder::new()
+        .name("auto-bus-subscribe".into())
+        .spawn(move || {
+            while let Ok(json) = bus_rx.blocking_recv() {
+                if tx.blocking_send(AsyncStreamEvent::Data(json)).is_err() {
+                    break; // 消费端已丢弃（连接关闭）——回收转发线程
+                }
+            }
+            let _ = tx.blocking_send(AsyncStreamEvent::Done);
+            handle_clone.done.store(true, Ordering::SeqCst);
+        })
+        .expect("spawn bus-subscribe thread");
+
+    if let Ok(mut map) = ASYNC_STREAMS.lock() {
+        map.insert(stream_id, handle);
+    }
+
+    let async_iter = crate::vm::engine::AsyncStreamIterator {
+        stream_id,
+        done: false,
+    };
+    let iter_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    vm.iterators.insert(
+        iter_id,
+        crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
+    );
+    task.ram.push_i32(iter_id as i32);
     Ok(())
 }
 
@@ -8736,7 +8796,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // PLAN-658 T-04: SSE 逐步拉取面 + ~Stream 端点编译 seam。
     natives.register_shim_by_name("auto.http.sse_open", shim_http_stream_sse_open);
     natives.register_shim_by_name("auto.http.sse_poll", shim_http_stream_sse_poll);
-    natives.register_shim_by_name("auto.bus.subscribe", shim_bus_subscribe_stub);
+    natives.register_shim_by_name("auto.bus.subscribe", shim_bus_subscribe);
     natives.register_shim_by_name("http.sse_get_stream", shim_http_sse_get_stream);
     natives.register_shim_by_name("http.sse_stream", shim_http_sse_get_stream);
 
@@ -11413,5 +11473,80 @@ fn main() {
         assert_eq!(lines[3], "true", "bare engine_interrupt ok");
         assert_eq!(lines[4], "true", "bare engine_is_exited false");
         assert_eq!(lines[5], "done", "bare-call script completed");
+    }
+}
+
+/// PLAN-698 T-02/SD-02: VM 事件总线（bus.subscribe 运行面）。
+#[cfg(test)]
+mod bus_subscribe_tests {
+    use super::*;
+
+    #[test]
+    fn bus_broadcast_fans_out_and_ignores_missing_subscribers() {
+        let mut s1 = EVENT_BUS.subscribe();
+        let mut s2 = EVENT_BUS.subscribe();
+        bus_broadcast(r#"{"event":"Typing"}"#.into());
+        assert_eq!(
+            s1.blocking_recv().unwrap(),
+            r#"{"event":"Typing"}"#.to_string()
+        );
+        assert_eq!(
+            s2.blocking_recv().unwrap(),
+            r#"{"event":"Typing"}"#.to_string()
+        );
+        // 无订阅者广播不报错（镜像生成侧 `let _ = bus().send(json)`）。
+        bus_broadcast("unheard".into());
+    }
+
+    #[test]
+    fn shim_bus_subscribe_registers_async_stream_iterator_and_delivers() {
+        let vm = crate::vm::engine::AutoVM::new(
+            crate::vm::virt_memory::VirtualFlash::new_with_code(vec![
+                crate::vm::opcode::OpCode::RET as u8,
+            ]),
+            1024,
+        );
+        // DashMap 读守卫作用域内只读；vm.tasks.remove 必须等守卫全 drop
+        // （同 shard 自死锁陷阱，见 http_server.rs Plan 346 3c 注记）。
+        let (task_id, iter_id, stream_id) = {
+            let task_id = vm.spawn_task(0, 8192);
+            let task_arc = vm.tasks.get(&task_id).expect("task spawned");
+            let mut task = task_arc.blocking_lock();
+
+            shim_bus_subscribe(&mut task, &vm).expect("subscribe shim runs");
+
+            let iter_id = auto_val::decode_i32(task.ram.peek_nv(0)) as u32;
+            assert!(iter_id >= 0, "subscribe returns a real iterator id, got {iter_id}");
+            let stream_id = match vm.iterators.get(&iter_id).map(|it| it.clone()) {
+                Some(crate::vm::engine::Iterator::AsyncHttpStream(a)) => a.stream_id,
+                other => panic!("expected AsyncHttpStream iterator, got {other:?}"),
+            };
+            (task_id, iter_id, stream_id)
+        };
+        vm.tasks.remove(&task_id);
+
+        let handle = ASYNC_STREAMS
+            .lock()
+            .unwrap()
+            .get(&stream_id)
+            .cloned()
+            .expect("stream handle registered");
+        bus_broadcast(r#"{"event":"NewMessage"}"#.into());
+        // 转发线程异步泵送——有界轮询等待 Data 帧。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut got: Option<AsyncStreamEvent> = None;
+        while std::time::Instant::now() < deadline {
+            if let Ok(ev) = handle.rx.lock().unwrap().try_recv() {
+                got = Some(ev);
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        match got {
+            Some(AsyncStreamEvent::Data(json)) => {
+                assert_eq!(json, r#"{"event":"NewMessage"}"#.to_string());
+            }
+            other => panic!("expected Data frame from bus forwarder, got {other:?}"),
+        }
     }
 }

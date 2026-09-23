@@ -368,8 +368,9 @@ pub fn main() {
 | a2r-std HTTP | `crates/a2r-std/src/http.rs` 是基于 ureq 的客户端流/请求实现。 | 它不是 `.at` HTTP server 的 Rust 目标实现；`stdlib/auto/http.rs.at` 当前不存在。 |
 | VM merge / split | 默认 VM merge 直接调用 `#[api]` 函数；`--no-merge` / `AUTO_VM_MERGE=0` 将符合条件的调用改写为 HTTP。 | merge 是进程内函数调用，保留函数值/错误语义，不产生 HTTP status/header；split 才经过服务端传输。 |
 | process back-proxy | `crates/auto-lang/src/back_proxy.rs` 为每个 app session 装载独立 VM，通过宿主 HTTP 路由分发 `api.at` 调用；另有 SSE/IPC 接线。 | 此代理是独立的进程内 session 路径，不等同于 `serve_async` 或 generated Axum。按名参数缺失可返回 400。 |
+| VM 事件总线（PLAN-698） | `auto.bus.subscribe()`（native 3144，stdlib `shim_bus_subscribe`）为 VM 真实执行面：进程内 `EVENT_BUS`（`broadcast::channel(256)`，镜像 api_gen 生成 events.rs 模板）+ 每订阅者一线程泵入统一 ASYNC_STREAMS 表，以既有 `Iterator::AsyncHttpStream` 臂被 SSE serve 循环与 `.at` iterator 家族消费；断连/停端沿用 696 回收语义（Done→-1→连接关闭）。VM server 的 POST 广播臂（`publish_post_broadcast`，两个 serve 循环插桩）按 api_gen `broadcast_event_name` 同款约定发事件：fn 名含 "typing" → `{"event":"Typing","name":<首个 str 形参请求值>}`；其余 POST 成功且响应体为 JSON 对象 → 注入 `"event":"New{RetType}"`（RetType 取 codegen 侧信道 `record_api_return_type` 的 `unique_name`）。 | 仅当工程声明 ~Stream 端点时发布（`has_stream_endpoint()` 门控=api_gen has_sse）。无 topic 寻址（与生成侧一致的单总线）；生成 Rust server 的 publisher SSE 走生成 events.rs，与 VM 总线互不相通。017-chat VM 臂 subscribe→收事件→UI 联动全环实测（Typing/NewMessage 双形态；带外 POST typing 在 Vue UI 渲染 typing 指示）。 |
 
-VM `#[api]` 的当前按名绑定规则、path/body/query 优先级、缺参语义与同步 serve 路径差异见 §4.1.1。计划 696 的回归覆盖请求体 TCP 分段、短体/超限、慢 SSE 与断连取消，以及 015/017/023 的 VM/Axum 行为。`auto.bus.subscribe()` 仍是 VM compile seam；不能把 generated Axum 的 publisher SSE 视作 VM pubsub 已实现。
+VM `#[api]` 的当前按名绑定规则、path/body/query 优先级、缺参语义与同步 serve 路径差异见 §4.1.1。计划 696 的回归覆盖请求体 TCP 分段、短体/超限、慢 SSE 与断连取消，以及 015/017/023 的 VM/Axum 行为。~~`auto.bus.subscribe()` 仍是 VM compile seam~~（PLAN-698 起为上表 VM 事件总线行所述的真实执行面）。
 
 ### 8.2 统一实现层（目标架构，尚未落地）
 

@@ -80,12 +80,84 @@ pub fn api_param_sigs(fn_name: &str) -> Option<Vec<ApiParamSig>> {
         .and_then(|t| t.get(fn_name).cloned())
 }
 
+/// PLAN-698 T-02/SD-02: #[api] fn 返回类型显示串侧信道（与 API_PARAM_SIGS
+/// 同生命周期模型）。SSE publisher 臂据此判 has_sse（任一 ~Stream 端点）
+/// 并按 api_gen broadcast_event_name 同款约定拼 New{Type} 事件名。
+static API_RETURN_TYPES: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, String>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// Codegen 在 #[api] fn 编译时发布返回类型（dep-module Codegen 同步发布）。
+pub fn record_api_return_type(fn_name: &str, ret_display: String) {
+    if let Ok(mut table) = API_RETURN_TYPES.lock() {
+        table.insert(fn_name.to_string(), ret_display);
+    }
+}
+
+/// 本工程是否声明了 ~Stream 端点（对齐 api_gen 的 has_sse 广播门控）。
+pub fn has_stream_endpoint() -> bool {
+    API_RETURN_TYPES
+        .lock()
+        .map(|t| t.values().any(|r| r.contains("Stream")))
+        .unwrap_or(false)
+}
+
 /// Reset before compiling a program (the run pipeline calls this next to
 /// axum_adapter::reset; the codegen publishers rebuild the table from scratch).
 pub fn clear_api_param_sigs() {
     if let Ok(mut table) = API_PARAM_SIGS.lock() {
         table.clear();
     }
+    if let Ok(mut table) = API_RETURN_TYPES.lock() {
+        table.clear();
+    }
+}
+
+/// PLAN-698 T-02/SD-02: POST 成功后的 SSE 广播臂——生成 Axum 侧
+/// void-POST+broadcast 路径（api_gen broadcast_event_name + events::broadcast）
+/// 的 VM 运行面对照实现。仅当工程声明 ~Stream 端点时发布（has_sse 门控同
+/// api_gen）。事件形态：
+/// - fn 名含 "typing"（void 信号端点）→ `{"event":"Typing","name":<首个
+///   str 形参的请求值>}`（api_gen 取首个 body 形参的同一约定）；
+/// - 其余 POST（实体创建）→ 响应体（序列化实体）注入 `"event":"New{RetType}"`。
+pub fn publish_post_broadcast(fn_name: &str, request_body: &str, response_json: &str) {
+    if !has_stream_endpoint() {
+        return;
+    }
+    if fn_name.to_lowercase().contains("typing") {
+        let name_field = api_param_sigs(fn_name)
+            .and_then(|sigs| {
+                sigs.into_iter()
+                    .find(|p| p.ty.contains("str"))
+                    .map(|p| p.name)
+            })
+            .unwrap_or_else(|| "sender".to_string());
+        let name = serde_json::from_str::<serde_json::Value>(request_body)
+            .ok()
+            .and_then(|v| v.get(&name_field).cloned())
+            .unwrap_or(serde_json::Value::Null);
+        crate::vm::ffi::stdlib::bus_broadcast(
+            serde_json::json!({ "event": "Typing", "name": name }).to_string(),
+        );
+        return;
+    }
+    // 实体创建：响应体必须是 JSON 对象才注入事件名（流式/空响应跳过）。
+    let ret = API_RETURN_TYPES
+        .lock()
+        .ok()
+        .and_then(|t| t.get(fn_name).cloned());
+    let Some(ret) = ret else { return };
+    if ret.contains("Stream") || ret == "()" || ret.is_empty() {
+        return;
+    }
+    let Ok(mut evt) = serde_json::from_str::<serde_json::Value>(response_json) else {
+        return;
+    };
+    if !evt.is_object() {
+        return;
+    }
+    evt["event"] = serde_json::Value::String(format!("New{}", ret));
+    crate::vm::ffi::stdlib::bus_broadcast(evt.to_string());
 }
 
 /// Match a request (method, path) against a list of routes.
@@ -735,7 +807,6 @@ mod plan326_tests {
     fn json_escape_basic() {
         assert_eq!(json_escape_string("hello"), r#""hello""#);
     }
-
     #[test]
     fn json_escape_quotes_and_backslash() {
         assert_eq!(json_escape_string(r#"a"b\c"#), r#""a\"b\\c""#);
@@ -3025,6 +3096,10 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
             Some(s) => ("200 OK", s),
             None => ("500 Internal Server Error", "{}".to_string()),
         };
+        // PLAN-698 SD-02: POST 广播臂（Typing / New{Type}，has_sse 门控）。
+        if req_method == "POST" && status == "200 OK" {
+            publish_post_broadcast(&route_match.fn_name, &body, &body_json);
+        }
         let response = format!(
             "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
             status, body_json.len(), cors_headers(), body_json
@@ -3893,6 +3968,10 @@ async fn handle_connection_async(
         // Plan 346 stage 2: Determine status code from response content.
         let is_error = result_json.starts_with("{\"error\":");
         let status = if is_error { "500 Internal Server Error" } else { "200 OK" };
+        // PLAN-698 SD-02: POST 广播臂（Typing / New{Type}，has_sse 门控）。
+        if !is_error && req_method == "POST" {
+            publish_post_broadcast(&route_match.fn_name, &body, &result_json);
+        }
         // Log successful request (non-SSE, non-error already logged above).
         if !is_error {
             eprintln!("[HTTP] {} {} [{}] → 200 ({}ms)",
@@ -4292,4 +4371,81 @@ fn build_handler_args(
         }
     }
     Ok(n_args)
+}
+
+/// PLAN-698 T-02/SD-02: POST 广播臂单测——事件 payload 形态与生成 Axum
+/// 侧（api_gen broadcast_event_name + events::broadcast）逐字段对拍。
+#[cfg(test)]
+mod plan698_publisher_tests {
+    use super::{publish_post_broadcast, record_api_param_sigs, record_api_return_type, ApiParamSig};
+    use crate::vm::ffi::stdlib::bus_subscribe_for_test;
+
+    fn sig(name: &str, ty: &str) -> ApiParamSig {
+        ApiParamSig { name: name.to_string(), ty: ty.to_string() }
+    }
+
+    #[test]
+    fn typing_post_broadcasts_typing_event_with_first_str_param() {
+        record_api_param_sigs("set_typing", vec![sig("sender", "str")]);
+        record_api_return_type("set_typing", "()".into());
+        record_api_return_type("stream", "~Stream<ChatEvent>".into());
+        let mut rx = bus_subscribe_for_test();
+
+        publish_post_broadcast("set_typing", r#"{"sender":"Carol"}"#, "null");
+
+        let json = rx.blocking_recv().unwrap();
+        let evt: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(evt["event"], "Typing");
+        assert_eq!(evt["name"], "Carol");
+    }
+
+    #[test]
+    fn entity_post_broadcasts_newtype_event_with_injected_discriminator() {
+        record_api_return_type("send_message", "Message".into());
+        record_api_return_type("stream", "~Stream<ChatEvent>".into());
+        let mut rx = bus_subscribe_for_test();
+
+        publish_post_broadcast(
+            "send_message",
+            r#"{"sender":"Bob","text":"hi"}"#,
+            r#"{"id":5,"sender":"Bob","text":"hi","time":"Just now","mine":true}"#,
+        );
+
+        let json = rx.blocking_recv().unwrap();
+        let evt: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            evt,
+            serde_json::json!({
+                "id": 5, "sender": "Bob", "text": "hi",
+                "time": "Just now", "mine": true,
+                "event": "NewMessage",
+            })
+        );
+    }
+
+    #[test]
+    fn non_object_or_non_entity_responses_are_not_broadcast() {
+        record_api_return_type("stream", "~Stream<ChatEvent>".into());
+        record_api_return_type("stream_only_fn", "~Stream<ChatEvent>".into());
+        let mut rx = bus_subscribe_for_test();
+
+        // ~Stream 返回类型的 fn 自身不是实体创建——不广播。
+        publish_post_broadcast("stream_only_fn", "{}", r#"{"any":1}"#);
+        // 响应体不是 JSON 对象（标量/数组/坏 JSON）——不广播。
+        record_api_return_type("scalar_fn", "int".into());
+        publish_post_broadcast("scalar_fn", "{}", "42");
+        publish_post_broadcast("scalar_fn", "{}", "not-json");
+
+        // 无事件应到达（有界等待确认空）。
+        let mut arrived = false;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(300);
+        while std::time::Instant::now() < deadline {
+            if rx.try_recv().is_ok() {
+                arrived = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(!arrived, "no event expected for stream/scalar responses");
+    }
 }

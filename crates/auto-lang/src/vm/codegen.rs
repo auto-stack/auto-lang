@@ -1369,6 +1369,16 @@ impl Codegen {
                             })
                             .collect(),
                     );
+                    // PLAN-698 T-02/SD-02: publish the declared return type
+                    // too — the HTTP server's SSE publisher arm reads it to
+                    // gate broadcasts (has_sse) and name New{Type} events.
+                    // unique_name (not Display) — Display dumps the full
+                    // type-decl s-expr for User types; the publisher needs
+                    // the bare entity name ("Message" → "NewMessage").
+                    crate::vm::ffi::http_server::record_api_return_type(
+                        &fn_decl.name.to_string(),
+                        fn_decl.ret.unique_name().to_string(),
+                    );
                 }
 
                 // Plan 321/327: Detect generator functions (return type ~Iter<T>
