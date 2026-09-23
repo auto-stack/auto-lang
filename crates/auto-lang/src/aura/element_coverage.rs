@@ -304,7 +304,9 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("math_block", QueueStatus::NotYet("复合内容块——块流可承载但排版复杂——后续专项（T7 裁定）")),
         ("media", QueueStatus::NotYet("媒体/动态内容——位图帧归 Stage 5 后续（image 占位先例）")),
         ("menu-item", QueueStatus::NotYet("复合导航族——后续专项（Stage 6 路由/远程端消费）")),
-        ("menubar", QueueStatus::NotYet("复合导航族——后续专项（Stage 6 路由/远程端消费）")),
+        // PLAN-695 族完备——声明式组件族双臂全 kind（解释态
+        // build_menu_panel_items + a2r 降层 + vue reka 标准件），队列臂全实现。
+        ("menubar", QueueStatus::Covered),
         ("menubar_checkbox_item", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记（PLAN-671 附b 入册）")),
         ("menubar_content", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("menubar_group", QueueStatus::NotConsumed("PLAN-695 族补全——menubar 容器内子件，VM 消费走 convert_menubar_component（非 queue 臂）")),

@@ -905,17 +905,17 @@ _props 待声明_
 
 ### `menubar`
 
-`builtin_widget` · `menubar` · web: `component` · iced: `unknown` · category: `navigation`
+`builtin_widget` · `menubar` · web: `component` · iced: `component` · category: `navigation`
 
 [demo →](/examples/widgets-gallery/menubar)
 
-Menubar container
+Menubar container (PLAN-695 full 16-element family, shadcn-vue aligned; VM iced arm = Popover 原语双解释态)
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 
-子件:`menubar_checkbox_item` `menubar_content` `menubar_item` `menubar_menu` `menubar_separator` `menubar_trigger`
+子件:`menubar_checkbox_item` `menubar_content` `menubar_group` `menubar_item` `menubar_label` `menubar_menu` `menubar_radio_group` `menubar_radio_item` `menubar_separator` `menubar_shortcut` `menubar_sub` `menubar_sub_content` `menubar_sub_trigger` `menubar_trigger`
 
 ---
 
