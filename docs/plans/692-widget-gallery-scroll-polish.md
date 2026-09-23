@@ -8,9 +8,8 @@ updated_at: 2026-09-22
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
-
+new_spec_components: [widgets/command-family]
+touched_goals: []             # 无对应 GOAL-NNN——本计划为实机走查改良批，未触及 goals.md 既有目标
 affects: [widgets/scroll-pane]
 current_step: 6
 total_steps: 7
