@@ -343,6 +343,8 @@ fn popover_panel_origin(
         PopoverPlacement::Top => (cx, v_flip(below, above, false)),
         PopoverPlacement::Left => (h_flip(left, right, true), cy),
         PopoverPlacement::Right => (h_flip(left, right, false), cy),
+        // PLAN-695 T-06: submenu 顶对齐右弹（顶缘平齐锚顶，向下生长）。
+        PopoverPlacement::RightTop => (h_flip(left, right, false), r.y),
     };
     (clamp_x(px), clamp_y(py))
 }

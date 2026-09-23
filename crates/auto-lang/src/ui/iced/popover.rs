@@ -465,6 +465,15 @@ where
                 ),
                 size,
             ),
+            // PLAN-695 T-06: submenu 顶对齐右弹——面板左上角 = 锚右上角
+            //（顶缘平齐，长面板向下生长不上溢）。
+            PopoverPlacement::RightTop => Rectangle::new(
+                Point::new(
+                    position.x + anchor_bounds.width + self.gap,
+                    position.y,
+                ),
+                size,
+            ),
             // PLAN-530 步骤8（W13）：模态对话框——面板视口居中，与锚位无关。
             PopoverPlacement::Modal => Rectangle::new(
                 Point::new(

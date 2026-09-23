@@ -3190,6 +3190,225 @@ impl RustGenerator {
         }
     }
 
+    /// PLAN-695 T-06/T-07：menubar 面板子项 a2r 代码发射——item/
+    /// checkbox-item/radio 族/label/shortcut/separator/sub（submenu 递归）/
+    /// group 全 kind；返回 `.child(...)` 链片段（调用方拼在面板 col
+    /// builder 上）。解释态镜像 = aura_view_builder::build_menu_panel_items
+    ///（同 kind 表、同复合键 `<menu_id>::sub-<idx>`、同置灰/token 词汇）。
+    /// `radio_group_expr` = 外层 radio-group 绑定值的 Rust 表达式（顶层
+    /// 传空串——脱组 radio-item 恒未选中）；`sub_key_prefix` = submenu
+    /// 复合键前缀；`depth` 限深（MAX_SUB_DEPTH）。
+    fn a2r_menubar_panel_children(
+        &self,
+        nodes: &[&AuraNode],
+        msg_name: &str,
+        radio_group_expr: &str,
+        sub_key_prefix: &str,
+        depth: usize,
+    ) -> String {
+        const MAX_SUB_DEPTH: usize = 4;
+        let str_lit = |v: Option<&AuraPropValue>| -> Option<String> {
+            match v {
+                Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => Some(s.to_string()),
+                _ => None,
+            }
+        };
+        let node_text = |n: &AuraNode| -> Option<String> {
+            match n {
+                AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
+                _ => None,
+            }
+        };
+        // item/checkbox-item/radio-item 共用按钮发射（prefix_expr =
+        // 前缀文本表达式：checkbox ✓ / radio ◉○ / 普通项空）。
+        let emit_item_button = |title: &str,
+                                icon: Option<String>,
+                                shortcut: Option<String>,
+                                prefix_expr: String,
+                                enabled_off: bool,
+                                handler: Option<String>| -> String {
+            let icon_pua = icon
+                .map(|i| format!("\\u{{EE01}}{i}\\u{{EE02}}"))
+                .unwrap_or_default();
+            let sc = shortcut.map(|s| format!("    {s}")).unwrap_or_default();
+            let btn_dimmed = format!(
+                "View::button(format!(\"{icon_pua}{{}}{{}}{{}}\", {prefix_expr}, \"{title}\".to_string(), \"{sc}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 w-full px-0 py-0 justify-start text-left text-muted-foreground opacity-50\").unwrap_or_default()).build()"
+            );
+            match handler {
+                None => btn_dimmed,
+                Some(handler_fn) if !enabled_off => {
+                    let btn = format!(
+                        "View::button(format!(\"{icon_pua}{{}}{{}}{{}}\", {prefix_expr}, \"{title}\".to_string(), \"{sc}\".to_string())).on_click({handler_fn}).build()"
+                    );
+                    btn
+                }
+                Some(_) => btn_dimmed,
+            }
+        };
+        let mut code = String::new();
+        for (item_idx, item) in nodes.iter().enumerate() {
+            let crate::aura::AuraNode::Element { tag: itag, props: iprops, events: ievents, children: ikids, .. } =
+                item
+            else { continue };
+            let itag = itag.replace('_', "-");
+            match itag.as_str() {
+                "menubar-separator" => {
+                    code = format!(
+                        "{code}.child(View::container(View::Empty).with_style(auto_lang::ui::style::Style::parse(\"h-px my-1 bg-border\").unwrap_or_default()).build())"
+                    );
+                }
+                "menubar-item" | "menubar-checkbox-item" => {
+                    let is_checkbox = itag == "menubar-checkbox-item";
+                    let title = str_lit(iprops.get("title"))
+                        .or_else(|| ikids.iter().find_map(node_text))
+                        .unwrap_or_default();
+                    let icon = str_lit(iprops.get("icon"));
+                    let shortcut = str_lit(iprops.get("shortcut"));
+                    let prefix_expr = if is_checkbox {
+                        match iprops.get("checked") {
+                            Some(AuraPropValue::Expr(e)) => {
+                                let cond = self.ast_expr_to_rust(e);
+                                format!("if {cond} {{ \"✓ \" }} else {{ \"\" }}")
+                            }
+                            _ => "\"\"".to_string(),
+                        }
+                    } else {
+                        "\"\"".to_string()
+                    };
+                    let handler = ievents
+                        .get("onclick")
+                        .or_else(|| crate::aura::aura_events_get_base(ievents, "onclick"))
+                        .map(|ev| {
+                            self.handler_to_rust_closure_with_params(&ev.handler, &ev.params)
+                        });
+                    let enabled_off = matches!(
+                        iprops.get("enabled"),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Bool(false)))
+                    ) || matches!(
+                        iprops.get("disabled"),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Bool(true)))
+                    );
+                    let child_expr = emit_item_button(
+                        &title, icon, shortcut, prefix_expr, enabled_off, handler,
+                    );
+                    code = format!("{code}.child({child_expr})");
+                }
+                // PLAN-695 T-07: label / 独立 shortcut——muted 静态文本。
+                "menubar-label" => {
+                    let title = str_lit(iprops.get("text"))
+                        .or_else(|| ikids.iter().find_map(node_text))
+                        .unwrap_or_default();
+                    code = format!(
+                        "{code}.child(View::text_styled(\"{title}\".to_string(), \"h-6 w-full px-2 text-[11px] text-muted-foreground text-left\"))"
+                    );
+                }
+                "menubar-shortcut" => {
+                    let text = str_lit(iprops.get("text"))
+                        .or_else(|| ikids.iter().find_map(node_text))
+                        .unwrap_or_default();
+                    code = format!(
+                        "{code}.child(View::text_styled(\"{text}\".to_string(), \"h-6 w-full pr-2 text-[11px] text-muted-foreground text-right\"))"
+                    );
+                }
+                // PLAN-695 T-07: radio-group——组值表达式下传子项作选中
+                // 前缀判定（◉ 选中 / ○ 未选）；容器 col 透传。
+                "menubar-radio-group" => {
+                    let group_expr = match iprops.get("value") {
+                        Some(AuraPropValue::Expr(e)) => self.ast_expr_to_rust(e),
+                        _ => "String::new()".to_string(),
+                    };
+                    let children_code = self.a2r_menubar_panel_children(
+                        &ikids.iter().collect::<Vec<_>>(), msg_name, &group_expr,
+                        sub_key_prefix, depth,
+                    );
+                    code = format!(
+                        "{code}.child(View::col(){children_code}.with_style(auto_lang::ui::style::Style::parse(\"w-full\").unwrap_or_default()).build())"
+                    );
+                }
+                "menubar-radio-item" => {
+                    let value = str_lit(iprops.get("value")).unwrap_or_default();
+                    let title = str_lit(iprops.get("title"))
+                        .or_else(|| ikids.iter().find_map(node_text))
+                        .unwrap_or_default();
+                    let icon = str_lit(iprops.get("icon"));
+                    let shortcut = str_lit(iprops.get("shortcut"));
+                    let prefix_expr = format!(
+                        "if {radio_group_expr} == \"{value}\" {{ \"◉ \" }} else {{ \"○ \" }}"
+                    );
+                    let handler = ievents
+                        .get("onclick")
+                        .or_else(|| crate::aura::aura_events_get_base(ievents, "onclick"))
+                        .map(|ev| {
+                            self.handler_to_rust_closure_with_params(&ev.handler, &ev.params)
+                        });
+                    let enabled_off = matches!(
+                        iprops.get("enabled"),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Bool(false)))
+                    ) || matches!(
+                        iprops.get("disabled"),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Bool(true)))
+                    );
+                    let child_expr = emit_item_button(
+                        &title, icon, shortcut, prefix_expr, enabled_off, handler,
+                    );
+                    code = format!("{code}.child({child_expr})");
+                }
+                // PLAN-695 T-06: submenu——trigger（▸ 尾缀）+ 嵌套 Popover
+                //（RightTop 顶对齐右弹）；复合键进同一注册表，on_dismiss
+                // = toggle(sub_id)（只关本层）。
+                "menubar-sub" if depth < MAX_SUB_DEPTH => {
+                    let sub_id = format!("{}::sub-{}", sub_key_prefix, item_idx);
+                    let mut sub_title = String::new();
+                    let mut sub_content: Vec<&AuraNode> = Vec::new();
+                    for sk in ikids {
+                        if let crate::aura::AuraNode::Element { tag: stag, props: sprops, children: skids, .. } = sk {
+                            match stag.replace('_', "-").as_str() {
+                                "menubar-sub-trigger" => {
+                                    sub_title = str_lit(sprops.get("text"))
+                                        .or_else(|| skids.iter().find_map(node_text))
+                                        .unwrap_or_default();
+                                }
+                                "menubar-sub-content" => {
+                                    sub_content = skids.iter().collect();
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    let sub_trigger = format!(
+                        "View::button(\"{sub_title}  \\u{{25B8}}\".to_string()).on_click(|_| {msg_name}::__MenubarToggle(\"{sub_id}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 w-full px-2 justify-start text-left text-[12px] text-popover-foreground\").unwrap_or_default()).build()"
+                    );
+                    let sub_children_code = self.a2r_menubar_panel_children(
+                        &sub_content,
+                        msg_name,
+                        radio_group_expr,
+                        &sub_id,
+                        depth + 1,
+                    );
+                    let sub_panel = format!(
+                        "View::col(){sub_children_code}.with_style(auto_lang::ui::style::Style::parse(\"w-44 bg-popover text-popover-foreground border border-border shadow-md py-1\").unwrap_or_default()).build()"
+                    );
+                    let sub_popover = format!(
+                        "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({sub_trigger})), content: Box::new({sub_panel}), placement: auto_lang::ui::view::PopoverPlacement::RightTop, open: auto_lang::ui::action_config::menubar_open().as_deref() == Some(\"{sub_id}\"), on_dismiss: Some({msg_name}::__MenubarToggle(\"{sub_id}\".to_string())) }}"
+                    );
+                    code = format!("{code}.child({sub_popover})");
+                }
+                // PLAN-695 T-07: 语义分组容器——col 透传。
+                "menubar-group" => {
+                    let children_code = self.a2r_menubar_panel_children(
+                        &ikids.iter().collect::<Vec<_>>(), msg_name, radio_group_expr,
+                        sub_key_prefix, depth,
+                    );
+                    code = format!(
+                        "{code}.child(View::col(){children_code}.with_style(auto_lang::ui::style::Style::parse(\"w-full\").unwrap_or_default()).build())"
+                    );
+                }
+                _ => {}
+            }
+        }
+        code
+    }
+
     fn generate_view_tree(&mut self, node: &AuraNode) -> String {
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
@@ -5405,91 +5624,19 @@ impl RustGenerator {
                         // PLAN-695 T-04：面板配色字面 #16171B/zinc-700 →
                         // popover/border 语义 token（浅色主题白板深字可读；
                         // 运行期 Style::parse 消费，与解释态同词汇）。
-                        let mut panel = String::from(
-                            "View::col().with_style(auto_lang::ui::style::Style::parse(\"w-44 bg-popover text-popover-foreground border border-border shadow-md py-1\").unwrap_or_default())",
+                        // PLAN-695 T-06/T-07：面板子项发射收口
+                        // a2r_menubar_panel_children（item/checkbox/radio/
+                        // label/shortcut/separator/sub/group 全 kind）。
+                        let items_code = self.a2r_menubar_panel_children(
+                            &content_nodes,
+                            &msg_name,
+                            "",
+                            menu_id.as_str(),
+                            0,
                         );
-                        for item in &content_nodes {
-                            let crate::aura::AuraNode::Element { tag: itag, props: iprops, events: ievents, children: ikids, .. } =
-                                item
-                            else { continue };
-                            let itag = itag.replace('_', "-");
-                            match itag.as_str() {
-                                "menubar-separator" => {
-                                    panel = format!(
-                                        "{panel}.child(View::container(View::Empty).with_style(auto_lang::ui::style::Style::parse(\"h-px my-1 bg-border\").unwrap_or_default()).build())"
-                                    );
-                                }
-                                "menubar-item" | "menubar-checkbox-item" => {
-                                    let is_checkbox = itag == "menubar-checkbox-item";
-                                    let title = str_lit(iprops.get("title"))
-                                        .or_else(|| ikids.iter().find_map(node_text))
-                                        .unwrap_or_default();
-                                    let icon = str_lit(iprops.get("icon"));
-                                    let shortcut = str_lit(iprops.get("shortcut"));
-                                    let check_expr = if is_checkbox {
-                                        match iprops.get("checked") {
-                                            Some(AuraPropValue::Expr(e)) => {
-                                                let cond = self.ast_expr_to_rust(e);
-                                                format!("if {cond} {{ \"✓ \" }} else {{ \"\" }}")
-                                            }
-                                            _ => "\"\"".to_string(),
-                                        }
-                                    } else {
-                                        "\"\"".to_string()
-                                    };
-                                    let icon_pua = icon
-                                        .map(|i| format!("\\u{{EE01}}{i}\\u{{EE02}}"))
-                                        .unwrap_or_default();
-                                    let sc = shortcut
-                                        .map(|s| format!("    {s}"))
-                                        .unwrap_or_default();
-                                    // PLAN-695 T-04：disabled 置灰根修——此前
-                                    // enabled:false → View::Empty（隐藏）、无
-                                    // onclick → 整项跳过（隐藏）。置灰静态
-                                    // 按钮（muted 前景 + opacity-50，无
-                                    // on_click 链）对齐 shadcn
-                                    // data-[disabled]:opacity-50。
-                                    let handler = ievents
-                                        .get("onclick")
-                                        .or_else(|| crate::aura::aura_events_get_base(ievents, "onclick"))
-                                        .map(|ev| {
-                                            self.handler_to_rust_closure_with_params(&ev.handler, &ev.params)
-                                        });
-                                    let enabled_off = matches!(
-                                        iprops.get("enabled"),
-                                        Some(AuraPropValue::Expr(crate::ast::Expr::Bool(false)))
-                                    ) || matches!(
-                                        iprops.get("disabled"),
-                                        Some(AuraPropValue::Expr(crate::ast::Expr::Bool(true)))
-                                    );
-                                    let item_btn_dimmed = format!(
-                                        "View::button(format!(\"{icon_pua}{{}}{{}}{{}}\", {check_expr}, \"{title}\".to_string(), \"{sc}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 w-full px-0 py-0 justify-start text-left text-muted-foreground opacity-50\").unwrap_or_default()).build()"
-                                    );
-                                    let item_btn = match &handler {
-                                        Some(handler_fn) => format!(
-                                            "View::button(format!(\"{icon_pua}{{}}{{}}{{}}\", {check_expr}, \"{title}\".to_string(), \"{sc}\".to_string())).on_click({handler_fn}).build()"
-                                        ),
-                                        None => item_btn_dimmed.clone(),
-                                    };
-                                    let item_expr = match (handler.as_ref(), iprops.get("enabled")) {
-                                        // 无 handler：恒置灰静态（不发射 on_click）。
-                                        (None, _) => item_btn_dimmed,
-                                        (Some(_), Some(AuraPropValue::Expr(e)))
-                                            if !matches!(e, crate::ast::Expr::Bool(true)) =>
-                                        {
-                                            // enabled 为动态表达式（含字面 false）：
-                                            // 真走可点臂，假置灰。
-                                            let cond = self.ast_expr_to_rust(e);
-                                            format!("{{ if {cond} {{ {item_btn} }} else {{ {item_btn_dimmed} }} }}")
-                                        }
-                                        (Some(_), _) if !enabled_off => item_btn,
-                                        (Some(_), _) => item_btn_dimmed,
-                                    };
-                                    panel = format!("{panel}.child({item_expr})");
-                                }
-                                _ => {}
-                            }
-                        }
+                        let panel = format!(
+                            "View::col(){items_code}.with_style(auto_lang::ui::style::Style::parse(\"w-44 bg-popover text-popover-foreground border border-border shadow-md py-1\").unwrap_or_default())"
+                        );
                         let popover = format!(
                             "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({trigger})), content: Box::new({panel}.build()), placement: auto_lang::ui::view::PopoverPlacement::BottomStart, open: auto_lang::ui::action_config::menubar_open().as_deref() == Some(\"{menu_id}\"), on_dismiss: Some({msg_name}::__MenubarClose) }}"
                         );
@@ -14239,6 +14386,67 @@ widget Demo {
         assert!(
             !code.contains("else { View::Empty }"),
             "enabled:false 隐藏路径退役（置灰替代）:\n{code}"
+        );
+    }
+
+    /// PLAN-695 T-06/T-07：a2r 面板全 kind——submenu 嵌套 Popover
+    ///（RightTop + 复合键 + on_dismiss toggle）、radio ◉○ 前缀判定、
+    /// label/shortcut text_styled muted 文本。
+    #[test]
+    fn p695_menubar_a2r_submenu_radio_label_shortcut() {
+        let code = gen_first_widget(r#"
+widget Demo {
+    msg { PickLight, PickDark, PickImport }
+    model { var theme string = "dark" }
+    view {
+        col {
+            menubar {
+                menubar-menu (value: "file") {
+                    menubar-trigger "文件"
+                    menubar-content {
+                        menubar-label (text: "外观")
+                        menubar-radio-group (value: .theme) {
+                            menubar-radio-item (value: "light", title: "浅色") { onclick: .PickLight }
+                            menubar-radio-item (value: "dark", title: "深色") { onclick: .PickDark }
+                        }
+                        menubar-separator
+                        menubar-sub {
+                            menubar-sub-trigger (text: "导入")
+                            menubar-sub-content {
+                                menubar-item (title: "从文件") { onclick: .PickImport }
+                            }
+                        }
+                        menubar-shortcut "⌘Q"
+                    }
+                }
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            code.contains("PopoverPlacement::RightTop"),
+            "submenu 右弹顶对齐:\n{code}"
+        );
+        assert!(
+            code.matches("file::sub-3").count() >= 3,
+            "复合键 toggle/open/on_dismiss 同键（label+radio+sep 后 sub 在 idx 3，≥3 处）:\n{code}"
+        );
+        assert!(
+            code.contains("\"◉ \"") && code.contains("\"○ \""),
+            "radio 选中前缀判定:\n{code}"
+        );
+        assert!(
+            code.contains("View::text_styled(\"外观\".to_string()"),
+            "label muted 静态文本:\n{code}"
+        );
+        assert!(
+            code.contains("View::text_styled(\"⌘Q\".to_string()"),
+            "shortcut 独立件:\n{code}"
+        );
+        assert!(
+            code.contains(".on_click(|_| DemoMsg::PickImport)"),
+            "sub 面板内项 handler:\n{code}"
         );
     }
 

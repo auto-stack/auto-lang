@@ -1267,6 +1267,11 @@ pub enum PopoverPlacement {
     TopEnd,
     Left,
     Right,
+    /// PLAN-695 T-06：submenu 顶对齐右弹——面板左上角对锚右上角（gap 间隙
+    /// 保留），面板顶缘与锚顶缘平齐（reka MenubarSubContent side=right
+    /// align=start 语义）。`Right` 的垂直居中在长面板上双向溢出锚带，
+    /// submenu 需要顶对齐不上溢。
+    RightTop,
     /// PLAN-530 步骤8（源 PLAN-528 W13）：模态对话框形态——面板视口居中 +
     /// 全屏半透明遮罩（scrim）+ 面板外点击整吞（on_dismiss 为 Some 时同时
     /// 发布）。alert-dialog 臂专用（shadcn AlertDialog 语义：外点/Esc 不关，
