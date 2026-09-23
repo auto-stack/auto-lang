@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-696
-status: drafting
+status: execution_done
 feature_name: stdlib-http-server-runtime-hardening
 author: [agent]
 created_at: 2026-09-23
@@ -13,7 +13,7 @@ new_spec_components:
   - docs/specs/stdlib/design/backend-assembly.md
 touched_goals: [GOAL-003]
 affects: [docs/specs/stdlib, docs/specs/auto-lang/runtime, crates/auto-lang/vm, examples/ui]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
@@ -95,18 +95,22 @@ Spec 增量经 `/auto-plan:review` 复核后由 `/auto-plan:merge` 沉淀；不�
 
 | 任务 | 依赖 | 位置/动作 | 产出与验收 | 验证 |
 |---|---|---|---|---|
-| T-01 | 无 | 盘点 `stdlib/auto/`、`crates/a2r-std/src/`、`crates/auto-lang/src/{compile.rs,autovm_persistent.rs,vm/ffi}`、`crates/auto-man/src/api_gen.rs`；新增 `docs/plans/reports/696-backend-inventory.md` | AC-01，附路径和缺项 | 文件/符号抽样 |
-| T-02 | T-01 | `vm/ffi/http_server.rs` HTTP E2E 区新增原始 TCP 分段/短体/超限、慢 SSE + 并发请求红样 | AC-02/03 失败基线 | 定向 `cargo th`，记录结果 |
-| T-03 | T-02 | `http_server.rs::handle_connection_async` 统一 header/body byte 读取、长度/上限/超时错误，保留 multipart 行为 | AC-02 | 定向 E2E + 既有 multipart/绑定测试 |
-| T-04 | T-02 | `lib.rs` VM 服务入口与 `http_server.rs` 做 VM owner 可编译 spike；新增 `docs/plans/reports/696-vm-owner-decision.md` | AC-04 的所有权选择与关闭证明；硬约束则修订 plan_revision，不提交不安全 workaround | `cargo check -p auto-lang` + owner 小样 |
-| T-05 | T-04 | 按 T-04 决策改 VM 生命周期/连接任务持有；移除跨线程 `usize` 地址恢复 | AC-04 | `cargo check -p auto-lang` + HTTP E2E |
-| T-06 | T-03,T-05 | `http_server.rs` SSE 取帧改可 await 的有界结果桥；断连/结束信号回收 | AC-03 | 并发 E2E、线程/任务回落 |
-| T-07 | T-03,T-06 | 用 `examples/ui/{015-notes,017-chat,023-realworld}/src/back/api.at` 和合并调用测试建立响应 parity，记录预存差异 | AC-05 | 集成/金样、`cargo th` |
-| T-08 | T-01..T-07 | 验收、警告/格式/workaround 审计，确认 SD-01..03；执行 `/auto-plan:review`，通过后 `/auto-plan:merge` 更新 Specs/归档 | AC-06/07 | `cargo check -p auto-lang`、`cargo th`、`cargo tv`；必要时一次 `cargo tf` |
+| T-01 [x] | 无 | 盘点 `stdlib/auto/`、`crates/a2r-std/src/`、`crates/auto-lang/src/{compile.rs,autovm_persistent.rs,vm/ffi}`、`crates/auto-man/src/api_gen.rs`；新增 `docs/plans/reports/696-backend-inventory.md` | AC-01；2026-09-23：覆盖表已对照源码路径/符号，明确 `sse.at::parse_sse` 存在、`http.rs.at` 缺失及 SSE 服务路径为独立拼接。报告：`docs/plans/reports/696-backend-inventory.md`；验证：路径存在/缺失断言 + 符号抽样通过，基线 `051e7b5` | 文件/符号抽样 |
+| T-02 [x] | T-01 | `vm/ffi/http_server.rs` HTTP E2E 区新增原始 TCP 分段/短体/超限、慢 SSE + 并发请求红样 | AC-02/03 红样已记录；`cargo nextest run -p auto-lang --lib --features test-http-e2e -E 'test(/e2e_plan696/)' --no-fail-fast`：4 项中超限 413 通过，分段 body（服务端 400 后连接重置，未读到响应）、短体（错误地返回 200）、慢 SSE（健康请求等待 2.50s）失败，均复现预期基线；测试提交 `724096cd4`。全量 `cargo th` 在既有 `back_proxy_tests::http_e2e_back_proxy_real_031_native_ns_session`（`names` 为空）失败并取消后续用例 | 定向 `cargo th`，记录结果 |
+| T-03 [x] | T-02 | `http_server.rs::handle_connection_async` 统一 header/body byte 读取、长度/上限/超时错误，保留 multipart 行为 | AC-02；已按 byte buffer 读完整 header/body，校验非法/重复 `Content-Length` 和不支持的 `Transfer-Encoding`，10 MiB 上限、10 秒总读取期限，短体 400/超时 408/超限 413；multipart 复用完整 body bytes。PLAN-696 原始 TCP 的 body 分段、短体、超限、畸形长度 4/4 通过；既有 multipart、body-by-name、whole-body 3/3 通过；仍红项仅慢 SSE（T-06）。实现提交 `065f39663` | 定向 E2E + 既有 multipart/绑定测试 |
+| T-04 [x] | T-02 | `lib.rs` VM 服务入口与 `http_server.rs` 做 VM owner 可编译 spike；新增 `docs/plans/reports/696-vm-owner-decision.md` | AC-04；同线程 Tokio `LocalSet` 承载 VM 与服务，选 `Rc<AutoVM>` 作为非跨线程所有权句柄；关闭/lifetime 关系及现阶段限制已记入决策报告。`cargo check -p auto-lang` 通过；owner 小样分段 body + generator SSE 2/2 通过。提交 `7d431992e` | `cargo check -p auto-lang` + owner 小样 |
+| T-05 [x] | T-04 | 按 T-04 决策改 VM 生命周期/连接任务持有；移除跨线程 `usize` 地址恢复 | AC-04；服务 future 与每个 `spawn_local` 连接任务都持有 `Rc<AutoVM>`；HTTP 服务入口及 SSE 帧拉取路径不再将 VM 指针转成整数/跨 OS 线程；通过 owner HTTP E2E。SSE 写失败后停止取帧由 T-06 覆盖 | `cargo check -p auto-lang` + HTTP E2E |
+| T-06 [x] | T-03,T-05 | `http_server.rs` SSE 取帧改可 await 的有界结果桥；断连/结束信号回收 | AC-03；generator 逐次 4096 指令预算、SSE 专用 `Time.sleep_ms` wake deadline、有界帧通道、心跳探测断连并清理 VM iterator/task；慢 producer 的健康路由 <1.5s，2.5s 延迟保持，断连后副作用不执行。原始 TCP/SSE 定向 5/5 通过；提交 `86df0015f` | 原始 TCP/SSE E2E：5/5 |
+| T-07 [x] | T-03,T-06 | 用 `examples/ui/{015-notes,017-chat,023-realworld}/src/back/api.at` 和合并调用测试建立响应 parity，记录预存差异 | AC-05；VM 对拍 015/017/023 3/3，生成器 metadata/inline return/SSE discriminator 4/4，Axum 015/017/023 live HTTP assertions 全通过；VM 017 pubsub 仍受 `auto.bus.subscribe` compile seam 限制，详见 `docs/plans/reports/696-response-parity.md`；提交 `bc17269a1` | VM E2E、Axum live server、`cargo th` |
+| T-08 [x] | T-01..T-07 | 完成实现验收、警告/格式/workaround 审计并准备独立复审 handoff；SD-01..03 留给复审确认后由 merge workflow 沉淀 Specs/归档 | AC-07 门禁已执行并报告；`cargo check -p auto-lang` 和 `cargo th` 通过。`cargo tv`、`cargo tf` 均复现相同 3 项 P-053/UI 断言失败并在 fail-fast 下取消后续用例，细节见 `docs/plans/reports/696-verification.md`。`git diff --check` 通过；全仓 fmt check 被依赖/既有格式差异阻断。实现代码已提交，等待独立 review | `cargo check -p auto-lang`、`cargo th`、`cargo tv`、`cargo tf` |
 
 ## 9. 复审记录
 
 - 2026-09-23 `/auto-plan:new` handoff：`stage: new`，`PLAN-696` revision 1，`outcome: pass`（可进入 work）；`next: work`，任务 T-01..T-08、验收 AC-01..AC-07。此处是计划合同检查，不是代码复审。
+- 2026-09-23 work 执行基线：实现 worktree `D:/autostack/.wt/lang-696/auto-lang` / `plan-696-dev`，base `051e7b54023f420c3955c480d986e83197eb5899`；只读 Cargo 依赖 worktree `D:/autostack/.wt/lang-696/auto-down` detached at `3373a5cc6e3a00336613133db51906fb0940777d`。T-01 报告提交 `a227eebb3`，T-02 红样提交 `724096cd4`。
+- T-04/T-05 owner decision：`cargo check -p auto-lang` exit 0；`cargo nextest run -p auto-lang --lib --features test-http-e2e -E 'test(/e2e_plan696_body_split_across_tcp_writes|e2e_sse_generator_handler/)' --no-fail-fast` 2/2 pass；实现与报告提交 `7d431992e`。编译输出有仓库既有 warning，T-08 继续对改动新增项和全局预存项分开审计。
+- T-06：计划内分段 body/Content-Length 与 SSE 慢 producer/断连回归 5/5 pass；generator cleanup 删除 iterator 和 task。T-07：真实 api.at VM E2E 3/3、api_gen 定向单测 4/4、生成 Axum 的 015 notes / 017 chat-SSE / 023 auth+article live 断言全通过；详细数据和 VM bus 已知限制见 `docs/plans/reports/696-response-parity.md`。实现与 T-08 全档门禁尚待最终提交/记账。
+- 2026-09-23 execution handoff：实现提交 `86df0015f`（SSE/HTTP owner）与 `bc17269a1`（Axum/API parity）；T-08 检查报告 `docs/plans/reports/696-verification.md`。`cargo th` 51/51 pass；`cargo tv` 为 1,518 pass / 3 fail / 508 skipped / 4,099 not run，`cargo tf` 为 1,414 pass / 3 fail / 112 skipped / 4,056 not run；同 3 个未修改 P-053 tests 另行逐项复现。`cargo check` pass，`cargo fmt --all -- --check` 因既有全仓格式差异退出 101。工作阶段到 `execution_done`；后续 `/auto-plan:review` 与 `/auto-plan:merge` 负责独立复核及 Spec 沉淀。
 
 ## 10. 待澄清事项
 
