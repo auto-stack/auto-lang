@@ -1345,6 +1345,45 @@ mod plan326_tests {
             resp
         }
 
+        /// PLAN-696 T-02: POST a body after the headers in multiple TCP writes.
+        /// The delays make the write boundaries observable to the server instead
+        /// of letting the OS coalesce the whole request into one read.
+        fn http_post_json_in_chunks(port: u16, path: &str, body: &str) -> String {
+            let mut stream = None;
+            for _ in 0..50 {
+                if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
+                    stream = Some(s);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let mut stream = stream.expect("connect to test server");
+            stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+            let head = format!(
+                "POST {} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                path,
+                body.len()
+            );
+            stream.write_all(head.as_bytes()).unwrap();
+            std::thread::sleep(Duration::from_millis(40));
+
+            let bytes = body.as_bytes();
+            let cuts = [bytes.len() / 3, (bytes.len() * 2) / 3];
+            let mut start = 0;
+            for end in [cuts[0], cuts[1], bytes.len()] {
+                if stream.write_all(&bytes[start..end]).is_err() {
+                    break;
+                }
+                let _ = stream.flush();
+                start = end;
+                std::thread::sleep(Duration::from_millis(40));
+            }
+            let _ = stream.shutdown(std::net::Shutdown::Write);
+            let mut resp = String::new();
+            stream.read_to_string(&mut resp).ok();
+            resp
+        }
+
         /// Extract the body (after the blank line) from a raw HTTP response.
         fn body_of(resp: &str) -> &str {
             resp.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or(resp)
@@ -1790,6 +1829,97 @@ fn counter_handler() ~Iter<int> {
                 "conn1 incomplete: body={:?}", body1);
             assert!(body2.contains("data: 1") && body2.contains("data: 2") && body2.contains("data: 3"),
                 "conn2 incomplete: body={:?}", body2);
+        }
+
+        /// PLAN-696 T-02 red sample: ordinary request bodies must be read in
+        /// full even when headers and body, and then body chunks, arrive in
+        /// separate TCP writes. The JSON itself is pretty-printed and carries
+        /// an escaped newline in a string value.
+        #[test]
+        fn e2e_plan696_body_split_across_tcp_writes() {
+            let port = start_server(r#"
+#[api(method = "POST", path = "/api/echo")]
+fn echo(text str) str { text }
+"#, 18760);
+            let body = "{\n  \"text\": \"first\\nsecond\"\n}";
+            let resp = http_post_json_in_chunks(port, "/api/echo", body);
+            assert!(resp.starts_with("HTTP/1.1 200 OK"), "split body status: {:?}", resp);
+            assert_eq!(body_of(&resp), r#""first\nsecond""#, "split body response: {:?}", resp);
+        }
+
+        /// PLAN-696 T-02 red sample: EOF before Content-Length is satisfied
+        /// must reject the request before dispatching a body-independent route.
+        #[test]
+        fn e2e_plan696_short_body_rejected() {
+            let port = start_server(r#"
+#[api(method = "POST", path = "/api/ready")]
+fn ready() str { "ready" }
+"#, 18761);
+            let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
+            stream.write_all(
+                b"POST /api/ready HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 12\r\nConnection: close\r\n\r\nabc",
+            ).unwrap();
+            stream.shutdown(std::net::Shutdown::Write).unwrap();
+            let mut resp = String::new();
+            stream.read_to_string(&mut resp).unwrap();
+            assert!(resp.starts_with("HTTP/1.1 400"), "short body must be rejected, got: {:?}", resp);
+        }
+
+        /// PLAN-696 T-02: reject Content-Length above the shared request-body
+        /// limit before allocating or dispatching the request.
+        #[test]
+        fn e2e_plan696_over_limit_body_rejected() {
+            let port = start_server(r#"
+#[api(method = "POST", path = "/api/ready")]
+fn ready() str { "ready" }
+"#, 18763);
+            let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
+            stream.write_all(
+                b"POST /api/ready HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 10485761\r\nConnection: close\r\n\r\n",
+            ).unwrap();
+            let mut resp = String::new();
+            stream.read_to_string(&mut resp).unwrap();
+            assert!(resp.starts_with("HTTP/1.1 413"), "oversize body must be rejected, got: {:?}", resp);
+        }
+
+        /// PLAN-696 T-02 red sample: a delayed generator must not keep the
+        /// single-thread I/O reactor from serving an unrelated health request.
+        #[test]
+        fn e2e_plan696_slow_sse_does_not_block_health() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/api/slow")]
+fn slow() ~Iter<int> {
+    yield 1
+    Time.sleep_ms(2500)
+    yield 2
+}
+#[api(method = "GET", path = "/health")]
+fn health() str { "ok" }
+"#, 18762);
+
+            let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+            stream.write_all(
+                b"GET /api/slow HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+            ).unwrap();
+            let mut received = Vec::new();
+            let mut chunk = [0u8; 512];
+            while !received.windows(b"data: 1\n\n".len()).any(|w| w == b"data: 1\n\n") {
+                let n = stream.read(&mut chunk).expect("read first SSE frame");
+                assert!(n > 0, "SSE closed before first frame: {:?}", received);
+                received.extend_from_slice(&chunk[..n]);
+            }
+
+            let started = std::time::Instant::now();
+            let health = http_get(port, "/health");
+            let elapsed = started.elapsed();
+            assert!(health.starts_with("HTTP/1.1 200"), "health response: {:?}", health);
+            assert!(
+                elapsed < Duration::from_millis(1500),
+                "health request waited {elapsed:?} behind the slow SSE producer"
+            );
         }
 
         /// Plan 346 3c: `http.response_redirect(url, 302)` end-to-end. The
