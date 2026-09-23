@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-694
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-dogfood
 author: [zcode]
 created_at: 2026-09-23
@@ -289,6 +289,18 @@ exe → 桌面窗清 + launcher 可再启动）——走查脚本录证。
   （孵化链↔exe CLI 方言契约）/SD-02（虚拟桌面加载 a2r exe 端到端契约）
   经代码+测试逐条对勘成立；touched_goals 留空（特性级契约工作，不触
   goals.md 既有 GOAL-NNN）。next=**merge**。
+- merge 交付（2026-09-23）：stage=merge，PLAN-694:r1。outcome=**pass**
+  （收据 PLAN-694:r1）。prepared=规范增量经设计档 rq-remote-renderer §8
+  端到端实证段承载（先例在案；worktree bb640b8e2）+账本 P694-1/2。
+  landed=rebase 5 commits range-diff 5/5 全等（34ce62fb2→4f2a6b082/
+  87f60e29c→2133b0ce6/f7de52023→857a01be1/d009236ce→3ef5488c6/
+  6b75297b5→bb640b8e2），master ff-only 落地 **bb640b8e2** 无合并提交；
+  master 冒烟 16/16（render_cli/client_entry/serve_once/
+  spawn_exe_child_args/native_exe_discovery/scan_render_filter）。
+  ledger_refreshed=specs.json P694-1（architecture）/P694-2（reviews）
+  +ui/plans.md 行+INDEX 再生。archived=docs/plans/archive/
+  694-desktop-dogfood.md。cleaned=worktree lang-694+auto-down 依赖位+
+  分支 plan-694-dev（wt-guard clean 后移除）。
 
 ## 待澄清事项
 

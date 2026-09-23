@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-693
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: native-exe-tri-mode
 author: [zcode]
 created_at: 2026-09-23
@@ -233,6 +233,14 @@ remote 族恒显式选用。PLAN-683 F-3 呈报项就此关闭（设计档 §8 �
   残留）经 694 的 generated_main pin+003 fresh 重生成实证收敛（P693-D1
   实质销号）。**findings**：无阻断项。next=**merge**（fold 顺序
   693→694，与 PLAN-694 叠栈一致）。
+- merge 交付（2026-09-23）：stage=merge，PLAN-693:r1。outcome=**pass**
+  （收据 PLAN-693:r1）。prepared=规范增量经设计档 rq-remote-renderer §8
+  承载（先例在案）+账本 P693-1/2。landed=rebase abeaf113d→c1ce13933→
+  **5bc78de0b** 两段 range-diff 全等（映射在案），master ff-only 无合并
+  提交；master 冒烟 16/16。ledger_refreshed=specs.json P693-1
+  （architecture）/P693-2（reviews）+ui/plans.md 行+INDEX 再生。
+  archived=docs/plans/archive/693-native-exe-tri-mode.md。
+  cleaned=worktree lang-693+分支 plan-693-dev（wt-guard clean 后移除）。
 
 ## 待澄清事项
 
