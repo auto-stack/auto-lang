@@ -3095,17 +3095,7 @@ fn spawn_exe_child(
     render: Option<&str>,
 ) -> std::io::Result<std::process::Child> {
     let mut cmd = std::process::Command::new(exe);
-    cmd.args([
-        "--autodesk-incubate",
-        &format!("--app386={child_name}"),
-        &format!("--autodesk-broker={broker_pipe}"),
-    ]);
-    // pac `desktop_render:` 透传（queue 档显式下发；None = 生成 gate auto
-    // 裁决——v1 缺省 independent，待澄清③）。stdio 静默（p508 注入
-    // spawner 同款——子进程输出/句柄不挂宿主管道）。
-    if let Some(v) = render {
-        cmd.arg(format!("--autodesk-render={v}"));
-    }
+    cmd.args(Self::spawn_exe_child_args(child_name, broker_pipe, render));
     // AUTO_OUTPROC_STDERR=1 诊断口：继承宿主 stderr（子进程 panic 可见）。
     let inherit = std::env::var("AUTO_OUTPROC_STDERR").is_ok();
     cmd.stdin(std::process::Stdio::null())
@@ -3117,6 +3107,37 @@ fn spawn_exe_child(
         }
     }
     cmd.spawn()
+}
+
+/// PLAN-694 T-01 方言对齐（宿主侧单源，a 案裁定——`rqhost_gate_validate`
+/// 只校验 `--render=` 值域/`--rq-host=` 预留旗标，不触及 spawn 参数面，
+/// 无冲突）：孵化参数拼装单源（纯函数面——单测钉住双方言并发）。
+///
+/// - **desktop 方言（增发）**：`--render-mode=desktop --desktop-endpoint=
+///   <broker_pipe>`——693+ 新 exe 以 CLI 顶优先进 Desktop 臂（不孵化，
+///   adopt 直连桌面宿主 broker 管道；宿主 serve 双动词受理，broker.rs），
+///   remote 帧宿主 = DisplayList v2；
+/// - **autodesk 方言（保留）**：`--autodesk-incubate --app386=<name>
+///   --autodesk-broker=<pipe>`——旧二进制（693 前）不识 render-mode 族
+///  （生成 gate 容错透传/解析缺位），落回孵化臂零变化；
+/// - **render 档透传**：`--autodesk-render=<v>`（pac `desktop_render:`
+///   queue 档显式下发）——档位与模式解耦：新 exe desktop 模式下仅存档
+///  （CLI 已裁底座），旧 exe 孵化臂继续消费。
+fn spawn_exe_child_args(
+    child_name: &str,
+    broker_pipe: &str,
+    render: Option<&str>,
+) -> Vec<String> {
+    vec![
+        "--render-mode=desktop".to_string(),
+        format!("--desktop-endpoint={broker_pipe}"),
+        "--autodesk-incubate".to_string(),
+        format!("--app386={child_name}"),
+        format!("--autodesk-broker={broker_pipe}"),
+    ]
+    .into_iter()
+    .chain(render.map(|v| format!("--autodesk-render={v}")))
+    .collect()
 }
 
 /// Plan 508 G1：outproc 子进程本体定位——宿主即 `auto` 二进制
@@ -7206,6 +7227,27 @@ mod tests {
         };
         assert_eq!(DesktopSession::outproc_native_exe(&inline), None, "内联 spec 无发现面");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// PLAN-694 T-01（AC-02）：spawn 参数拼装双方言并发钉子——desktop
+    /// 方言（CLI 顶优先 → 新 exe 进 Desktop 臂不孵化）与 autodesk 方言
+    ///（693 前旧二进制落回孵化臂零变化）同发；render 档透传可选位。
+    #[test]
+    fn spawn_exe_child_args_dual_dialect() {
+        let args = DesktopSession::spawn_exe_child_args("003-converter", "desk-pipe-1", Some("queue"));
+        let has = |p: &str| args.iter().any(|a| a == p);
+        let starts = |p: &str| args.iter().any(|a| a.starts_with(p));
+        // desktop 方言（增发）。
+        assert!(has("--render-mode=desktop"), "CLI 顶优先 desktop 底座: {args:?}");
+        assert!(starts("--desktop-endpoint=desk-pipe-1"), "端点 = broker 管道: {args:?}");
+        // autodesk 方言（保留——旧二进制孵化臂零变化）。
+        assert!(has("--autodesk-incubate"));
+        assert!(has("--app386=003-converter"), "Hello app_name 覆盖=认领同源");
+        assert!(has("--autodesk-broker=desk-pipe-1"));
+        // render 档透传（可选位）。
+        assert!(has("--autodesk-render=queue"));
+        let args = DesktopSession::spawn_exe_child_args("x", "p2", None);
+        assert!(!args.iter().any(|a| a.starts_with("--autodesk-render=")), "缺席不透传");
     }
 
     /// Plan 508 G1：outproc 臂子进程体（re-exec）——env 注入时走 broker

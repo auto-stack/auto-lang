@@ -83,46 +83,42 @@ impl Broker {
         Arc::clone(&self.stopped)
     }
 
-    /// 接一连接：空连接（探测 ping）返回 Ok(None)；真实孵化请求返回
+    /// 接一连接：空连接（探测 ping）返回 Ok(None)；真实请求返回
     /// [`Incubation`]。阻塞——调用方放独立线程。Plan 500：请求记录第三
     /// 字段携带帧模式（`incubate␟<name>␟<mode>`，mode = `queue` |
     /// `pixels` | `pixels:auto`——后者 = auto 探测降级，宿主据此记观测行；
     /// 缺席 = queue，旧 child 向后兼容）。
+    ///
+    /// PLAN-694 T-01（方言对齐宿主半）：**双动词受理**（rqhost
+    /// `parse_adopt_record` 同式）——`adopt␟<name>`（desktop 模式 exe 直连
+    /// 的连接面）与 `incubate␟<name>[␟<mode>]`（既有孵化方言零变化）皆
+    /// 受理；应答动词**镜像请求**（客户端按动词过滤——
+    /// `request_incubation_render` 认 incubate、`rqhost::adopt` 认 adopt），
+    /// per-app 管道分配与转连等待两形态同构。
     pub fn serve_once(&mut self) -> Result<Option<Incubation>, TransportError> {
         let listener = transport::listen(&self.pipe_name)?;
         let mut client = listener.wait_connect()?;
-        // 读孵化请求；100ms 无请求 = 探测 ping（连上即关）→ 吞掉重听。
+        // 读请求；100ms 无请求 = 探测 ping（连上即关）→ 吞掉重听。
         let request = match client.recv_wait(100) {
             Some(Ok(msg)) => msg,
             _ => return Ok(None),
         };
-        let app_name = match &request {
-            ProtocolMsg::Control(ControlMsg::DesktopBus { record, .. }) => record
-                .split('\u{1f}')
-                .collect::<Vec<&str>>()
-                .split_first()
-                .and_then(|(verb, rest)| {
-                    (*verb == "incubate")
-                        .then(|| rest.first().copied().unwrap_or("").to_string())
-                })
-                .ok_or_else(|| TransportError::Io("bad incubate record".into()))?,
+        let record = match &request {
+            ProtocolMsg::Control(ControlMsg::DesktopBus { record, .. }) => record,
             _ => return Ok(None),
         };
-        let render = match &request {
-            ProtocolMsg::Control(ControlMsg::DesktopBus { record, .. }) => record
-                .split('\u{1f}')
-                .nth(2)
-                .map(RequestedRender::parse)
-                .unwrap_or_default(),
-            _ => RequestedRender::default(),
+        let mut parts = record.split('\u{1f}');
+        let verb = match (parts.next(), parts.next()) {
+            (Some(v @ ("adopt" | "incubate")), Some(name)) if !name.is_empty() => v,
+            _ => return Err(TransportError::Io("bad incubate record".into())),
         };
-        let _ = &app_name; // 名字进日志/注册表归 Stage 2 桌面壳；v1 仅分配
+        let render = record.split('\u{1f}').nth(2).map(RequestedRender::parse).unwrap_or_default();
         let n = self.next_id.fetch_add(1, Ordering::Relaxed) + 1;
         let pipe_name = format!("{}-app-{n}", self.pipe_name);
         let app_listener = transport::listen(&pipe_name)?;
         let reply = ProtocolMsg::Control(ControlMsg::DesktopBus {
             wid: 0,
-            record: format!("incubate\u{1f}{pipe_name}"),
+            record: format!("{verb}\u{1f}{pipe_name}"),
         });
         client.send(&reply)?;
         let end = app_listener.wait_connect()?;
@@ -401,6 +397,50 @@ mod tests {
         }
         assert_eq!(app.session.count(), 1, "broker 孵化的 app 可输入");
         let _ = (FrameMsg::CacheControl { wid: 0, drop_keys: vec![] }, HandshakeMsg::Ready);
+    }
+
+    /// PLAN-694 T-01：serve_once 双动词——`adopt␟<name>`（desktop 模式 exe
+    /// 直连方言，rqhost::adopt 客户端同形）受理并**镜像动词**应答；无第三
+    /// 字段 = render 缺省。incubate 方言既有行为由上测（incubate 过滤）
+    /// 钉住，此处不重复。
+    #[test]
+    fn serve_once_adopts_adopt_record() {
+        let pipe = format!("autodesk-broker-adopt-{}", std::process::id());
+        let mut broker = Broker::on_pipe(pipe.clone());
+        let host_side = std::thread::spawn(move || {
+            broker.serve_once().unwrap().expect("adopt 连接")
+        });
+        // 客户端侧：rqhost::adopt 同形——连上 → `adopt␟<name>` → 认 adopt
+        // 应答 → 转连 per-app 管道。
+        let mut client = transport::connect(&pipe, 2000).unwrap();
+        client
+            .send(&ProtocolMsg::Control(ControlMsg::DesktopBus {
+                wid: 0,
+                record: "adopt\u{1f}003-converter".to_string(),
+            }))
+            .unwrap();
+        let reply = client
+            .recv_wait(2000)
+            .ok_or(TransportError::Eof)
+            .and_then(|m| m.map_err(TransportError::Codec))
+            .unwrap();
+        let ProtocolMsg::Control(ControlMsg::DesktopBus { record, .. }) = reply else {
+            panic!("应答须为 DesktopBus 记录");
+        };
+        let (verb, per_app) = record
+            .split_once('\u{1f}')
+            .filter(|(v, _)| *v == "adopt")
+            .expect("应答动词镜像 = adopt");
+        assert_eq!(verb, "adopt");
+        assert!(per_app.contains("-app-"), "per-app 管道名分配");
+        let _app_end = transport::connect(per_app, 2000).unwrap();
+        let incubation = host_side.join().unwrap();
+        assert_eq!(incubation.pipe_name, per_app);
+        assert_eq!(
+            incubation.render,
+            RequestedRender::default(),
+            "adopt 记录无第三字段 = render 缺省"
+        );
     }
 
     /// Plan 480 S3：`DesktopSession::enable_broker` 桌面模式集成——serve

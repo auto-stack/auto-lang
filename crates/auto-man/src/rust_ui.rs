@@ -2244,7 +2244,15 @@ fn wrap_example(project_name: &str, components: &str, project_dir: &Path) -> Str
                 }}
                 let __wellknown = auto_lang::ui::desktop_protocol::rqhost::wellknown_pipe();
                 eprintln!("[render] rq 模式：采纳 rqhost daemon（{{__wellknown}}）");
-                let __app_name = "{project_name_snake}".to_string();
+                // --app386= Hello app_name 覆盖（PLAN-694 T-01 认领对称性
+                // ——宿主 spawn 按 `--app386=<目录名>` 传身份，认领按目录
+                // 名匹配同源；旧臂同款语义）。
+                let mut __app_name = "{project_name_snake}".to_string();
+                for __a in &__autodesk_args {{
+                    if let Some(v) = __a.strip_prefix("--app386=") {{
+                        __app_name = v.to_string();
+                    }}
+                }}
                 let (__w, __h) = auto_lang::ui::desktop_protocol::rqhost::vm_window_size();
                 let __component = {main_widget}::default();
                 let __opts = auto_lang::ui::desktop_protocol::client_entry::ClientOpts {{
@@ -2277,7 +2285,15 @@ fn wrap_example(project_name: &str, components: &str, project_dir: &Path) -> Str
                     .into());
                 }};
                 eprintln!("[render] desktop 模式：采纳桌面合成器端点（不孵化）");
-                let __app_name = "{project_name_snake}".to_string();
+                // --app386= Hello app_name 覆盖（PLAN-694 T-01 认领对称性
+                // ——宿主 spawn 按 `--app386=<目录名>` 传身份，认领按目录
+                // 名匹配同源；旧臂同款语义）。
+                let mut __app_name = "{project_name_snake}".to_string();
+                for __a in &__autodesk_args {{
+                    if let Some(v) = __a.strip_prefix("--app386=") {{
+                        __app_name = v.to_string();
+                    }}
+                }}
                 let (__w, __h) = auto_lang::ui::desktop_protocol::rqhost::vm_window_size();
                 let __component = {main_widget}::default();
                 let __opts = auto_lang::ui::desktop_protocol::client_entry::ClientOpts {{
@@ -4492,6 +4508,14 @@ mod tests {
         // remote 字段归位（E0063 根修 pin）：rq/desktop 两臂 true + 旧臂 false。
         assert_eq!(main_rs.matches("remote: true").count(), 2, "rq/desktop 臂 remote 帧宿主");
         assert!(main_rs.contains("remote: false"), "旧孵化臂 E0063 归位");
+        // PLAN-694 T-01 认领对称性 pin：rq/desktop 两臂消费 `--app386=`
+        // 覆盖 Hello app_name（宿主 spawn 认领按目录名匹配同源——旧臂
+        // 同款语义；缺席臂 = 认领错配潜伏缺口）。
+        assert_eq!(
+            main_rs.matches(r#"strip_prefix("--app386=")"#).count(),
+            3,
+            "rq/desktop/旧臂三方言同消费 --app386"
+        );
         // 既有直连/broker 臂不回退（I2）。
         assert!(main_rs.contains("ClientTarget::Direct"));
         assert!(main_rs.contains("ClientTarget::Broker"));
