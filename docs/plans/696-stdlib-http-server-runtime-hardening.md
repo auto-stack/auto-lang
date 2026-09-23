@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-696
-status: execution_done
+status: reviewed
 feature_name: stdlib-http-server-runtime-hardening
 author: [agent]
 created_at: 2026-09-23
@@ -111,6 +111,14 @@ Spec 增量经 `/auto-plan:review` 复核后由 `/auto-plan:merge` 沉淀；不�
 - T-04/T-05 owner decision：`cargo check -p auto-lang` exit 0；`cargo nextest run -p auto-lang --lib --features test-http-e2e -E 'test(/e2e_plan696_body_split_across_tcp_writes|e2e_sse_generator_handler/)' --no-fail-fast` 2/2 pass；实现与报告提交 `7d431992e`。编译输出有仓库既有 warning，T-08 继续对改动新增项和全局预存项分开审计。
 - T-06：计划内分段 body/Content-Length 与 SSE 慢 producer/断连回归 5/5 pass；generator cleanup 删除 iterator 和 task。T-07：真实 api.at VM E2E 3/3、api_gen 定向单测 4/4、生成 Axum 的 015 notes / 017 chat-SSE / 023 auth+article live 断言全通过；详细数据和 VM bus 已知限制见 `docs/plans/reports/696-response-parity.md`。实现与 T-08 全档门禁尚待最终提交/记账。
 - 2026-09-23 execution handoff：实现提交 `86df0015f`（SSE/HTTP owner）与 `bc17269a1`（Axum/API parity）；T-08 检查报告 `docs/plans/reports/696-verification.md`。`cargo th` 51/51 pass；`cargo tv` 为 1,518 pass / 3 fail / 508 skipped / 4,099 not run，`cargo tf` 为 1,414 pass / 3 fail / 112 skipped / 4,056 not run；同 3 个未修改 P-053 tests 另行逐项复现。`cargo check` pass，`cargo fmt --all -- --check` 因既有全仓格式差异退出 101。工作阶段到 `execution_done`；后续 `/auto-plan:review` 与 `/auto-plan:merge` 负责独立复核及 Spec 沉淀。
+
+- 2026-09-23 `/auto-plan:review`：`stage: review | plan_id: PLAN-696 | plan_revision: 1 | outcome: pass | reviewed_commit: bc17269a1c172d4a58a2813d05912fb32baa8219 | base_commit: 051e7b54023f420c3955c480d986e83197eb5899 | dependency_revisions: auto-down=3373a5cc6e3a00336613133db51906fb0940777d`。
+  - 复审基线 Plan 文件 SHA-256：`AE43BB6EA0A382ED6D392E41BE05706959E90F608494BFDE4D3C130D923DE0BC`；§5 `规范增量` 冻结快照 SHA-256：`5F10D76523D52CA073C65CFEBF1D896C3375D3752EF8ACA0A16348E39722A74B`。快照正文即本计划 §5 SD-01..03 表；复审期间未改规范正文或派生 ledger。
+  - `spec_inputs`：`docs/specs/auto-lang/runtime/design/networking-stdlib.md` blob `3f3e9e8ae6e3088d15869884a5aa0d4e6c0474bf` / SHA-256 `AE2BFF58298B0E2DEF252AFE31DFC513C837B96A729C181007185B7334145E66`；`docs/specs/stdlib/design/http-server.md` blob `978d52c467a7b48d95363bc47f906eeaf853f637` / SHA-256 `6A007A89EF1973B32717A4E02C253EEF800A5773B21340E1403100B21726569B`；`docs/specs/goals.md` blob `3d267f1d0bf5c7f8c3140b8faa83c0e3f01f73d9`（GOAL-003 存在）；新目标 `docs/specs/stdlib/design/backend-assembly.md` 在基线不存在。派生 `.autoos/specs.json` 不作为权威输入。
+  - `acceptance_results`：AC-01 pass（覆盖报告并抽查目标文件/符号；确认 `http.rs.at`、`sse.vm.at` 缺失）；AC-02 pass（复审重跑 `cargo th` 51/51，含 body 分段、短体、畸形长度、超限）；AC-03 pass（慢 SSE 健康请求与断连取消两项在 `cargo th` 通过）；AC-04 pass（`Rc<AutoVM>`/同线程 `LocalSet` 所有权审查，HTTP 路径原始指针/整数转运扫描零命中，编译通过）；AC-05 pass（015/017/023 VM 与 Axum 对拍及 api_gen 4/4 见 T-07 报告；复审定向 `plan370_015_behavior_tests::{d1_init_loads_seed_notes,d2_new_note_appends}` + `back_proxy_tests::{http_e2e_back_proxy_json_routes_and_session_state,http_e2e_back_proxy_missing_param_is_400}` 为 4/4，覆盖真实 015 合并调用正常返回及进程内 API 正常/400 错误响应；017 VM bus compile seam 已明确披露）；AC-06 pass（SD-01..03 的目标、事实边界、理由与 AC 对齐，GOAL-003 有效）；AC-07 pass（`cargo check -p auto-lang`、复审 `cargo th` 通过；`cargo tv`/`cargo tf` 的相同 3 项红测在计划基线独立复现，满足本 AC 的既有红项例外）。
+  - `findings`：无阻断项。全档门禁历史结果沿用同一实现 commit、依赖 commit、Cargo.lock（SHA-256 `80C985E3A7CF2FAA314D3A14930BA148F00D3BF9E7A4039AA390F3838CAAF7C7`）及 nextest 配置（`nextest-full.toml` blob `5b2cf1b0adbceb609ebb9a83bc70a752198957ed`；daily blob `15db1b9a2ef69d3dfbe1d2978aec60ea818022e8`）。审阅者在同一实施会话中执行，独立上下文不可用；为降低依赖原 handoff 摘要，已按提交 diff、Specs 和可复现产物重建判断，并在计划基线源码快照中重跑 P-053 三项（结果与当前完全一致：0/3 pass，失败为 `widget_computed_passthrough_survives_reeval`、`widget_computed_store_arg_helper_chain`、`merged_mode_api_call_emits_warn_opcode`），故确认为既有失败而非 PLAN-696 回归。`cargo fmt --all -- --check` exit 101 的 730 个格式差异均来自 sibling AutoDown；PLAN-696 变更的 Rust 文件无格式差异。`git diff --check` pass；warning/debug-print 审计无新增告警或调试残留。
+  - `evidence`：`docs/plans/reports/696-backend-inventory.md`、`696-vm-owner-decision.md`、`696-response-parity.md`、`696-verification.md`；复审命令 `cargo th` → 51/51、上述合并调用定向 nextest → 4/4、计划基线 P-053 定向 nextest → 同样 3 项失败。工作树 `D:/autostack/.wt/lang-696/auto-lang` 干净且 implementation changes 已提交。
+  - `next: merge`。复审在同一实施会话内执行（独立上下文不可用）；结论由提交 diff、Specs、报告与计划基线重跑重建。
 
 ## 10. 待澄清事项
 
