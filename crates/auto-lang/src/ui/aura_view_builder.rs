@@ -3804,6 +3804,17 @@ impl<'a> AuraViewBuilder<'a> {
             "hovercard" | "hover-card" | "hover_card" | "HoverCard" => {
                 self.convert_hovercard(props, children, bindings)
             }
+            // PLAN-695 T-11: menubar → 声明式组件族/actions 合成（untracked
+            // 镜像臂,D-GAP 规则）——此前仅 tracked 表有此臂,动态 VM 解析
+            // 路径（画廊 preview 实况预览）落 unknown 兜底整树 Empty,
+            // baseline `vb0_not_in_vb1 menubar` 预存漂移由本臂消除。
+            "menubar" => {
+                if !children.is_empty() {
+                    self.convert_menubar_component(props, children, bindings, None)
+                } else {
+                    self.convert_menubar(props, bindings, None)
+                }
+            }
             // PLAN-534: sheet/drawer/hover-card trigger/content 组外兜底
             // 透传（untracked 镜像,镜像 dialog 先例）。
             "sheet-trigger" | "sheet_trigger" | "sheettrigger"
@@ -7738,7 +7749,11 @@ let tabs_inner = View::Row {
                         args: vec![Value::str(sub_id.as_str())],
                     };
                     let chevron = View::Image {
-                        src: "lucide:chevron-right".to_string(),
+                        src: if sub_open {
+                            "lucide:chevron-down".to_string()
+                        } else {
+                            "lucide:chevron-right".to_string()
+                        },
                         style: Style::parse("w-3.5 h-3.5 text-muted-foreground shrink-0").ok(),
                     };
                     let title_text = View::Text {
@@ -7776,29 +7791,30 @@ let tabs_inner = View::Row {
                         depth + 1,
                         radio_value,
                     );
+                    // PLAN-695 T-11 裁定：内联展开——嵌套 Popover overlay
+                    // 挂 iced 渲染/截图通道（双实例走查三次复现：子菜单开态
+                    // screenshot 恒超时、主菜单恒正常），VM 臂子面板改父面板
+                    // 内缩进节（左 hairline + pl-4）；复合键/事件路径机制
+                    // 不变，浮动式留债 P695-D2。Vue 臂 reka 真 submenu 不变。
                     events.extend(sub_events.into_iter().map(|(p, h)| {
-                        let mut full = vec![item_idx, 1];
+                        let mut full = vec![item_idx];
                         full.extend(p);
                         (full, h)
                     }));
-                    let sub_panel = View::Column {
-                        children: sub_views,
-                        spacing: 0,
-                        padding: 0,
-                        style: Style::parse(
-                            "w-44 bg-popover text-popover-foreground border border-border shadow-md py-1",
-                        )
-                        .ok(),
-                        onclick: None,
-                        on_right_click: None,
-                    };
-                    items.push(View::Popover {
-                        anchor: crate::ui::view::PopoverAnchor::Widget(Box::new(trigger)),
-                        content: Box::new(sub_panel),
-                        placement: crate::ui::view::PopoverPlacement::RightTop,
-                        open: sub_open,
-                        on_dismiss: Some(toggle_msg),
-                    });
+                    items.push(trigger);
+                    if sub_open {
+                        items.push(View::Column {
+                            children: sub_views,
+                            spacing: 0,
+                            padding: 0,
+                            style: Style::parse(
+                                "w-full pl-4 ml-2 border-l border-border py-0.5",
+                            )
+                            .ok(),
+                            onclick: None,
+                            on_right_click: None,
+                        });
+                    }
                 }
                 // PLAN-695 T-07: 语义分组容器——透传（样式中立）。
                 "menubar-group" => {
@@ -7920,7 +7936,13 @@ let tabs_inner = View::Row {
                 (title, content)
             };
 
-            let is_open = open.as_deref() == Some(menu_id.as_str());
+            // PLAN-695 T-06 修正：复合键注册表下单值语义——外层菜单在自身
+            // 或任一 submenu（`<id>::…` 前缀）开态时都保持展开，否则子菜单
+            // 键替换整值会把外层面板一起关掉（实机走查实锤）。
+            let is_open = open
+                .as_deref()
+                .map(|o| o == menu_id.as_str() || o.starts_with(&format!("{}::", menu_id)))
+                .unwrap_or(false);
             record!(children_out.len(), 0 => &format!(r#"__menubar_toggle("{}")"#, menu_id));
             // PLAN-695 T-05：trigger 文本 token 化（T-04）+ 开态 accent 高亮
             //（对齐 shadcn data-[state=open]:bg-accent）。
@@ -8086,7 +8108,11 @@ let tabs_inner = View::Row {
         let open = menubar_open();
         let mut children: Vec<View<DynamicMessage>> = Vec::new();
         for menu in &cfg.menus {
-            let is_open = open.as_deref() == Some(menu.id.as_str());
+            // 前缀感知开态（submenu 复合键兼容，同声明式臂注）。
+            let is_open = open
+                .as_deref()
+                .map(|o| o == menu.id.as_str() || o.starts_with(&format!("{}::", menu.id)))
+                .unwrap_or(false);
             // §8.4①: probe 路径按真实子位置记录 —— popover 占 children.len(),
             // 触发按钮是其 anchor 子(子序 0,与 snapshot/render_dynamic_view
             // 的 Popover 子序约定一致)。
@@ -14714,29 +14740,41 @@ mod tests {
             }
             other => panic!("radio group Column, got {other:?}"),
         }
-        // submenu：嵌套 Popover（RightTop + 复合键 open 态关）。
+        // submenu（T-11 内联展开裁定）：闭态 = trigger 行（chevron 右置）；
+        // 开态（复合键 file::sub-3）= trigger 后跟缩进节（内含面板项）。
         match &items[3] {
-            View::Popover { anchor, placement, open, on_dismiss, .. } => {
-                assert!(
-                    matches!(placement, crate::ui::view::PopoverPlacement::RightTop),
-                    "submenu RightTop, got {placement:?}"
-                );
-                assert!(!open, "sub closed by default (open=file not ::sub-2)");
-                assert!(on_dismiss.is_some(), "sub on_dismiss present");
-                match anchor {
-                    crate::ui::view::PopoverAnchor::Widget(b) => match b.as_ref() {
-                        View::Button { label, .. } => assert_eq!(label, "导入"),
-                        other => panic!("sub trigger Button, got {other:?}"),
-                    },
-                    other => panic!("sub anchor Widget, got {other:?}"),
-                }
-            }
-            other => panic!("item 3 must be sub Popover, got {other:?}"),
+            View::Button { label, .. } => assert_eq!(label, "导入"),
+            other => panic!("sub trigger row Button, got {other:?}"),
         }
         // shortcut：右对齐 muted 静态文本。
         match &items[4] {
             View::Text { content, .. } => assert_eq!(content, "⌘Q"),
             other => panic!("shortcut must be Text, got {other:?}"),
+        }
+        set_menubar_open(Some("file::sub-3".to_string()));
+        let builder_sub = AuraViewBuilder::new(&bridge, "App");
+        let (view_sub, _m, _p) = builder_sub.build_with_debug(&widget.view_tree);
+        let content_sub = find_popover(&view_sub).expect("popover with sub open");
+        let items_sub = match content_sub {
+            View::Column { children, .. } => children,
+            other => panic!("panel Column, got {other:?}"),
+        };
+        assert_eq!(items_sub.len(), 6, "closed→open inserts inline section");
+        match &items_sub[4] {
+            View::Column { children, style, .. } => {
+                assert_eq!(children.len(), 1, "sub panel items");
+                match &children[0] {
+                    View::Button { label, .. } => assert_eq!(label, "从文件"),
+                    other => panic!("sub item Button, got {other:?}"),
+                }
+                let st = style.as_ref().expect("indent style");
+                assert!(
+                    st.classes.iter().any(|c| matches!(c, StyleClass::BorderLeft)),
+                    "inline section carries left hairline, got {:?}",
+                    st.classes
+                );
+            }
+            other => panic!("inline section Column, got {other:?}"),
         }
         set_menubar_open(None);
     }

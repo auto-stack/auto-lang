@@ -606,7 +606,6 @@ rs_not_in_vb	toast
 rs_not_in_vb	toaster
 rs_not_in_vb	toggle
 rs_not_in_vb	ul
-vb0_not_in_vb1	menubar
 vb0_not_in_vb1	toolbar
 vb1_not_in_vb0	Select
 vb1_not_in_vb0	select

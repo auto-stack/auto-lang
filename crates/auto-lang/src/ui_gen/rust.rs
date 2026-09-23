@@ -3353,9 +3353,10 @@ impl RustGenerator {
                     );
                     code = format!("{code}.child({child_expr})");
                 }
-                // PLAN-695 T-06: submenu——trigger（▸ 尾缀）+ 嵌套 Popover
-                //（RightTop 顶对齐右弹）；复合键进同一注册表，on_dismiss
-                // = toggle(sub_id)（只关本层）。
+                // PLAN-695 T-06/T-11: submenu——trigger（标签纯文本）+ 内联
+                // 展开条件节（父面板内缩进节）。嵌套 Popover overlay 挂
+                // iced 渲染/截图通道（T-11 走查实锤），浮动式留债 P695-D2；
+                // 复合键 <prefix>::sub-<idx> 机制不变。
                 "menubar-sub" if depth < MAX_SUB_DEPTH => {
                     let sub_id = format!("{}::sub-{}", sub_key_prefix, item_idx);
                     let mut sub_title = String::new();
@@ -3376,7 +3377,7 @@ impl RustGenerator {
                         }
                     }
                     let sub_trigger = format!(
-                        "View::button(\"{sub_title}  \\u{{25B8}}\".to_string()).on_click(|_| {msg_name}::__MenubarToggle(\"{sub_id}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 w-full px-2 justify-start text-left text-[12px] text-popover-foreground\").unwrap_or_default()).build()"
+                        "View::button(\"{sub_title}\".to_string()).on_click(|_| {msg_name}::__MenubarToggle(\"{sub_id}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 w-full px-0 py-0 justify-start text-left text-[12px] text-popover-foreground\").unwrap_or_default()).build()"
                     );
                     let sub_children_code = self.a2r_menubar_panel_children(
                         &sub_content,
@@ -3385,13 +3386,11 @@ impl RustGenerator {
                         &sub_id,
                         depth + 1,
                     );
-                    let sub_panel = format!(
-                        "View::col(){sub_children_code}.with_style(auto_lang::ui::style::Style::parse(\"w-44 bg-popover text-popover-foreground border border-border shadow-md py-1\").unwrap_or_default()).build()"
+                    // 开态内联节（闭态空 col 零高占位）。
+                    let sub_section = format!(
+                        "{{ if auto_lang::ui::action_config::menubar_open().as_deref() == Some(\"{sub_id}\") {{ View::col(){sub_children_code}.with_style(auto_lang::ui::style::Style::parse(\"w-full pl-4 ml-2 border-l border-border py-0.5\").unwrap_or_default()).build() }} else {{ View::col().build() }} }}"
                     );
-                    let sub_popover = format!(
-                        "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({sub_trigger})), content: Box::new({sub_panel}), placement: auto_lang::ui::view::PopoverPlacement::RightTop, open: auto_lang::ui::action_config::menubar_open().as_deref() == Some(\"{sub_id}\"), on_dismiss: Some({msg_name}::__MenubarToggle(\"{sub_id}\".to_string())) }}"
-                    );
-                    code = format!("{code}.child({sub_popover})");
+                    code = format!("{code}.child({sub_trigger}).child({sub_section})");
                 }
                 // PLAN-695 T-07: 语义分组容器——col 透传。
                 "menubar-group" => {
@@ -5638,7 +5637,7 @@ impl RustGenerator {
                             "View::col(){items_code}.with_style(auto_lang::ui::style::Style::parse(\"w-44 bg-popover text-popover-foreground border border-border shadow-md py-1\").unwrap_or_default())"
                         );
                         let popover = format!(
-                            "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({trigger})), content: Box::new({panel}.build()), placement: auto_lang::ui::view::PopoverPlacement::BottomStart, open: auto_lang::ui::action_config::menubar_open().as_deref() == Some(\"{menu_id}\"), on_dismiss: Some({msg_name}::__MenubarClose) }}"
+                            "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({trigger})), content: Box::new({panel}.build()), placement: auto_lang::ui::view::PopoverPlacement::BottomStart, open: auto_lang::ui::action_config::menubar_open().as_deref().map(|o| o == \"{menu_id}\" || o.starts_with(\"{menu_id}::\")).unwrap_or(false), on_dismiss: Some({msg_name}::__MenubarClose) }}"
                         );
                         root = format!("{root}.child({popover})");
                     }
@@ -14425,12 +14424,12 @@ widget Demo {
 }
 "#);
         assert!(
-            code.contains("PopoverPlacement::RightTop"),
-            "submenu 右弹顶对齐:\n{code}"
+            code.contains("starts_with(\"file::\")"),
+            "外层开态前缀感知（子菜单复合键兼容）:\\n{code}"
         );
         assert!(
-            code.matches("file::sub-3").count() >= 3,
-            "复合键 toggle/open/on_dismiss 同键（label+radio+sep 后 sub 在 idx 3，≥3 处）:\n{code}"
+            code.matches("file::sub-3").count() >= 2,
+            "复合键 toggle/open（label+radio+sep 后 sub 在 idx 3，≥2 处）:\\n{code}"
         );
         assert!(
             code.contains("\"◉ \"") && code.contains("\"○ \""),
