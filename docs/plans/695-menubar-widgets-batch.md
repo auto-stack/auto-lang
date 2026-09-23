@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-695
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: menubar-widgets-batch
 author: [agent]
 created_at: 2026-09-23
@@ -375,6 +375,11 @@ T-03/T-07（语料用全族）；T-11 依赖 T-04~T-10；T-12 依赖 T-04/T-06/T
   NotYet（covered fence 实锤）。gallery_pages_compile tf 首轮栈溢出中止
   = 重测并发内存挤兑，单跑 1289s 绿非缺陷。gallery_golden 重基线随本门
   执行（P695-D4 消化）。
+- 2026-09-23 work 终态（outcome: pass，status → execution_done）：
+  gallery_golden 重基线落定（25cb53fa7，理由随提交：auto-os master 自
+  614 基线点演进 + 本计划 menubar.at 语料定稿；复跑对账 1108s exit 0，
+  P695-D4 销号）。全任务+验收映射收口，代码全提交，无阻塞问题。
+  next: /auto-plan:review（worktree 保留）。
 
 ## 待澄清事项
 
