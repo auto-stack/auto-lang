@@ -147,7 +147,7 @@ fn t_c_token_css_vars_unique() {
     assert_eq!(names.len(), n, "css_var 名存在碰撞：{:?}", names);
 }
 
-/// 投影完备性（S4 color_token 契约）：全部 14 个被投影的 `Color` 语义变体
+/// 投影完备性（S4 color_token 契约）：全部被投影的 `Color` 语义变体
 /// 双 mode 均可解析（= stella 表覆盖投影目标集）；非语义域变体返回 None。
 #[test]
 fn t_c_projection_complete_in_stella() {
@@ -160,6 +160,8 @@ fn t_c_projection_complete_in_stella() {
         Color::OnBackground, Color::OnSurface, Color::Border,
         // PLAN-601 T-08（P593-D1 收口）：accent 独立投影入完备集。
         Color::Accent, Color::OnAccent,
+        // PLAN-695 T-04：popover 独立投影（不再折 Card——弹层面板双盘 token）。
+        Color::Popover, Color::PopoverForeground,
     ];
     for dark in [false, true] {
         theme::set_dark_mode(dark);

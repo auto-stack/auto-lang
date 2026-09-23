@@ -10,6 +10,14 @@ pub enum Color {
     Secondary,
     Background,
     Surface,
+    /// PLAN-695 T-04：shadcn `popover` 面板底——独立变体，resolve 走
+    /// registry Popover 槽（此前收敛投影 Surface→Card，弹层与卡片同色；
+    /// 浅色主题下菜单面板需与页面卡片区分度由 token 表承载）。
+    Popover,
+    /// PLAN-695 T-04：shadcn `popover-foreground` 面板前景——此前
+    /// from_tailwind 无此臂（color-shade 兜底解析失败落 Hex(0) 纯黑，
+    /// 浅色主题黑字、深色主题不可读）。
+    PopoverForeground,
     Muted,
     Error,
     Warning,
@@ -113,11 +121,15 @@ impl Color {
             "secondary" => Ok(Color::Secondary),
             // "foreground" / "text" → text color on background
             "foreground" | "text" => Ok(Color::OnBackground),
-            // "background" / "card" / "surface" / "popover" → surface colors
+            // "background" / "card" / "surface" → surface colors
             "background" => Ok(Color::Background),
-            // Plan 409 §10 续 13: card/surface/popover 用稍亮的 Surface(gray-800),
+            // Plan 409 §10 续 13: card/surface 用稍亮的 Surface(gray-800),
             // 与页面背景(gray-900)拉开色差(对齐 shadcn dark token)。
-            "card" | "surface" | "popover" => Ok(Color::Surface),
+            // PLAN-695 T-04: popover 独立变体（不再折 Card——弹层面板底/前景
+            // 消费 registry Popover 双盘 token，浅色可读）。
+            "card" | "surface" => Ok(Color::Surface),
+            "popover" => Ok(Color::Popover),
+            "popover-foreground" => Ok(Color::PopoverForeground),
             // "muted" → distinct muted surface (dark: slate-800 rgb(30, 41, 59), light: slate-100 rgb(241, 245, 249))
             "muted" => Ok(Color::Muted),
             "muted-foreground" => Ok(Color::OnSurface),
@@ -238,6 +250,8 @@ impl Color {
         Color::Secondary => (139, 92, 246),      // violet-500
         Color::Background => (245, 241, 232),    // 暖纸 #f5f1e8(Plan 518)
         Color::Surface => (251, 248, 242),       // #fbf8f2(Plan 518)
+        Color::Popover => (255, 255, 255),       // zinc light popover 纯白(PLAN-695)
+        Color::PopoverForeground => (42, 39, 35), // 墨色暖黑 #2a2723(PLAN-695 回退)
         Color::Muted => (240, 235, 226),         // 暖 muted #f0ebe2(Plan 518)
         Color::Error => (239, 68, 68),           // red-500
         Color::Warning => (234, 179, 8),         // yellow-500

@@ -322,14 +322,18 @@ pub fn font_stack(kind: &str) -> &'static [&'static str] {
 }
 
 /// PLAN-593（Design 29 §5.4）：`Color` 枚举（VM 侧词表子集）→ registry
-/// TokenName 的投影契约——card/popover/surface 三键在 VM 投影收敛为 Card
-/// （词表全集以 registry 为准）。投影完备性由 plan593 T-c 测试钉死。
+/// TokenName 的投影契约——card/surface 两键在 VM 投影收敛为 Card
+/// （词表全集以 registry 为准）。PLAN-695 T-04：popover/popover-foreground
+/// 独立投影（不再折 Card——弹层面板底/前景消费 registry Popover 双盘
+/// token，菜单浅色可读根修）。投影完备性由 plan593 T-c 测试钉死。
 fn color_token(color: &Color) -> Option<registry::TokenName> {
     use registry::TokenName as T;
     Some(match color {
         Color::Secondary => T::Secondary,
         Color::Background => T::Background,
         Color::Surface => T::Card,
+        Color::Popover => T::Popover,
+        Color::PopoverForeground => T::PopoverForeground,
         Color::Muted => T::Muted,
         Color::Error => T::Error,
         Color::Warning => T::Warning,

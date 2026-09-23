@@ -7409,6 +7409,16 @@ let tabs_inner = View::Row {
     /// [leading slot (check/action icon/blank) + title] packed left |
     /// [shortcut] packed right (right-aligned text). 626 T-02 的
     /// justify-start/text-left 让位与 629 T-06 的两组布局在此收口。
+    /// PLAN-630 T-01: shared menu-item presentation — the actions-DSL
+    /// synthesis AND the declarative menubar component both lower to this:
+    /// [leading slot (check/action icon/blank) + title] packed left |
+    /// [shortcut] packed right (right-aligned text). 626 T-02 的
+    /// justify-start/text-left 让位与 629 T-06 的两组布局在此收口。
+    /// PLAN-695 T-04：配色主题化根修——字面 zinc-200/300/500 → popover
+    /// 语义 token（浅色主题可读）；disabled 置灰（muted 前景 + 整项
+    /// opacity-50，对齐 shadcn `data-[disabled]:opacity-50`）；onclick
+    /// 改 Option——None 渲染置灰静态行（此前整项隐藏，"不发声的菜单项
+    /// 莫名消失"）。
     fn menu_item_button_view(
         &self,
         title: &str,
@@ -7416,17 +7426,25 @@ let tabs_inner = View::Row {
         shortcut: Option<String>,
         checked: bool,
         enabled: bool,
-        onclick: DynamicMessage,
+        onclick: Option<DynamicMessage>,
     ) -> View<DynamicMessage> {
+        // 置灰通道：显式 disabled 或无 handler（不可激活 → muted 视觉，
+        // a2r 降层同语义——PLAN-695 T-04 三路一致）。
+        let interactive = enabled && onclick.is_some();
+        let (fg, item_opacity) = if interactive {
+            ("text-popover-foreground", "")
+        } else {
+            ("text-muted-foreground", " opacity-50")
+        };
         let leading: View<DynamicMessage> = if checked {
             View::Image {
                 src: "lucide:check".to_string(),
-                style: Style::parse("w-4 h-4 text-zinc-200 shrink-0").ok(),
+                style: Style::parse(&format!("w-4 h-4 {fg} shrink-0")).ok(),
             }
         } else if let Some(icon) = icon.filter(|i| !i.is_empty()) {
             View::Image {
                 src: format!("lucide:{icon}"),
-                style: Style::parse("w-4 h-4 text-zinc-300 shrink-0").ok(),
+                style: Style::parse(&format!("w-4 h-4 {fg} shrink-0")).ok(),
             }
         } else {
             View::Text {
@@ -7440,7 +7458,7 @@ let tabs_inner = View::Row {
                 leading,
                 View::Text {
                     content: title.to_string(),
-                    style: Style::parse("text-[12px] text-zinc-200").ok(),
+                    style: Style::parse(&format!("text-[12px] {fg}")).ok(),
                     selectable: false,
                 },
             ],
@@ -7452,8 +7470,25 @@ let tabs_inner = View::Row {
         };
         let shortcut_text = View::Text {
             content: shortcut.unwrap_or_default(),
-            style: Style::parse("text-[11px] text-zinc-500 w-14 text-right").ok(),
+            style: Style::parse(&format!(
+                "text-[11px] text-muted-foreground w-14 text-right{item_opacity}"
+            ))
+            .ok(),
             selectable: false,
+        };
+        let row_style =
+            Style::parse(&format!("h-7 w-full px-0 py-0 justify-start text-left{item_opacity}"))
+                .ok();
+        let Some(onclick) = onclick else {
+            // 无 handler：置灰静态行（不可点、可读——不再隐藏）。
+            return View::Row {
+                children: vec![left_group, shortcut_text],
+                spacing: 0,
+                padding: 0,
+                style: row_style,
+                onclick: None,
+                on_right_click: None,
+            };
         };
         View::Button {
             disabled: !enabled,
@@ -7461,7 +7496,7 @@ let tabs_inner = View::Row {
             onclick,
             // PLAN-626 T-02: 显式 justify-start/text-left 走 plan050→plan414
             // 让位通道压过按钮 content 容器的 Center 默认。
-            style: Style::parse("h-7 w-full px-0 py-0 justify-start text-left").ok(),
+            style: row_style,
             on_right_click: None,
             content: Some(Box::new(View::Row {
                 children: vec![left_group, shortcut_text],
@@ -7566,6 +7601,8 @@ let tabs_inner = View::Row {
 
             let is_open = open.as_deref() == Some(menu_id.as_str());
             record!(children_out.len(), 0 => &format!(r#"__menubar_toggle("{}")"#, menu_id));
+            // PLAN-695 T-04：trigger 文本字面 zinc → foreground token；
+            // 开态 accent 高亮随 T-05（hover-switch 批）落。
             let trigger = View::Button {
                 disabled: false,
                 label: trigger_title.clone(),
@@ -7576,7 +7613,7 @@ let tabs_inner = View::Row {
                 },
                 style: Style::parse(&format!(
                     "h-7 px-3 text-[12px] {}",
-                    if is_open { "text-zinc-100" } else { "mr-1 text-zinc-300" }
+                    if is_open { "text-zinc-100" } else { "mr-1 text-foreground" }
                 ))
                 .ok(),
                 on_right_click: None,
@@ -7620,15 +7657,20 @@ let tabs_inner = View::Row {
                             } else {
                                 false
                             };
+                            // PLAN-695 T-04：disabled 置灰——enabled 表达式与
+                            // 静态 disabled 字面量双通道（置灰非隐藏）。
                             let enabled = self
                                 .extract_string_with(iprops, "enabled", bindings)
                                 .map(|e| self.eval_condition_with(&e, bindings))
-                                .unwrap_or(true);
+                                .unwrap_or(true)
+                                && !matches!(
+                                    iprops.get("disabled"),
+                                    Some(AuraPropValue::Expr(Expr::Bool(true)))
+                                );
                             let onclick = ievents
                                 .get("onclick")
                                 .or_else(|| aura_events_get_base(ievents, "onclick"))
                                 .map(|ev| self.event_to_message_with(ev, bindings));
-                            let Some(onclick) = onclick else { continue };
                             record!(children_out.len(), 1, item_idx => &format!(
                                 "__menubar_item({:?})", title
                             ));
@@ -7646,8 +7688,10 @@ let tabs_inner = View::Row {
                 }
             }
 
+            // PLAN-695 T-04：面板配色字面 #16171B/zinc-700 → popover/border
+            // 语义 token（浅色主题白板深字可读；深色 registry dark 表同源）。
             let mut panel_style =
-                Style::parse("w-44 bg-[#16171B] border border-zinc-700 shadow-md py-1").ok();
+                Style::parse("w-44 bg-popover text-popover-foreground border border-border shadow-md py-1").ok();
             if let Some(st) = panel_style.as_mut() {
                 if !st.classes.iter().any(|c| matches!(c, StyleClass::Width(_))) {
                     let owned = std::mem::take(st);
@@ -7750,7 +7794,7 @@ let tabs_inner = View::Row {
                 },
                 style: Style::parse(&format!(
                     "h-7 px-3 text-[12px] {}",
-                    if is_open { "text-zinc-100" } else { "mr-1 text-zinc-300" }
+                    if is_open { "text-zinc-100" } else { "mr-1 text-foreground" }
                 ))
                 .ok(),
                 on_right_click: None,
@@ -7810,7 +7854,7 @@ let tabs_inner = View::Row {
                                 a.shortcut.clone(),
                                 checked,
                                 enabled,
-                                onclick,
+                                Some(onclick),
                             ));
                         }
                     }
@@ -7822,8 +7866,10 @@ let tabs_inner = View::Row {
             // 注入——menubar 面板不经 convert_popover，width 类若解析失败
             // 会按块级语义 Fill 撑满宿主宽；w-48→w-44 收窄贴近 shadcn 菜单
             // 内容宽。
+            // PLAN-695 T-04：面板配色字面 #16171B/zinc-700 → popover/border
+            // 语义 token（浅色主题白板深字可读）。
             let mut panel_style =
-                Style::parse("w-44 bg-[#16171B] border border-zinc-700 shadow-md py-1").ok();
+                Style::parse("w-44 bg-popover text-popover-foreground border border-border shadow-md py-1").ok();
             if let Some(s) = panel_style.as_mut() {
                 if !s.classes.iter().any(|c| matches!(c, StyleClass::Width(_))) {
                     let owned = std::mem::take(s);
@@ -13994,6 +14040,108 @@ mod tests {
             },
             other => panic!("panel, got {other:?}"),
         }
+    }
+
+    /// PLAN-695 T-04: VM 解释态配色主题化 + disabled 置灰——面板底/前景/
+    /// 边框消费 popover 语义 token（浅色主题白板深字）；disabled 项与
+    /// 无 onclick 项置灰渲染（muted 前景 + opacity-50），不再隐藏。
+    #[test]
+    fn p695_menubar_panel_tokens_and_disabled_dim() {
+        let src = concat!(
+            "widget App {\n",
+            "    model { var offline bool = false }\n",
+            "    view {\n",
+            "        col {\n",
+            "            menubar {\n",
+            "                menubar-menu (value: \"file\") {\n",
+            "                    menubar-trigger \"文件\"\n",
+            "                    menubar-content {\n",
+            "                        menubar-item (title: \"打开\", shortcut: \"Ctrl+O\") { onclick: .ActOpen }\n",
+            "                        menubar-item (title: \"断线重连\", disabled: true) { onclick: .ActReconnect }\n",
+            "                        menubar-item (title: \"重命名\")\n",
+            "                        menubar-separator\n",
+            "                    }\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "    on { .ActOpen -> { } .ActReconnect -> { } }\n",
+            "}\n",
+        );
+        use crate::ui::action_config::set_menubar_open;
+        set_menubar_open(Some("file".to_string()));
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+        let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
+
+        fn find_popover(v: &View<DynamicMessage>) -> Option<&View<DynamicMessage>> {
+            match v {
+                View::Popover { content, .. } => Some(content),
+                View::Column { children, .. } | View::Row { children, .. } => {
+                    children.iter().find_map(find_popover)
+                }
+                View::Button { content: Some(c), .. } => find_popover(c),
+                View::Container { child, .. } => find_popover(child),
+                _ => None,
+            }
+        }
+        let content = find_popover(&view).expect("declarative menubar popover");
+        let (items, panel_style) = match content {
+            View::Column { children, style, .. } => (children, style),
+            other => panic!("panel must be a Column, got {other:?}"),
+        };
+        // 面板底色 = Popover 语义变体（不再是字面 Hex(0x16171B)）。
+        let st = panel_style.as_ref().expect("panel style");
+        assert!(
+            st.classes.iter().any(
+                |c| matches!(c, StyleClass::BackgroundColor(crate::ui::style::Color::Popover))
+            ),
+            "panel bg must be popover token, got {:?}",
+            st.classes
+        );
+        assert!(
+            st.classes.iter().any(
+                |c| matches!(c, StyleClass::TextColor(crate::ui::style::Color::PopoverForeground))
+            ),
+            "panel foreground must be popover-foreground token, got {:?}",
+            st.classes
+        );
+        // 三项齐渲染：可点 + disabled 置灰 + 无 handler 置灰（不再隐藏）。
+        assert_eq!(items.len(), 4, "enabled + disabled + no-handler + sep");
+        match &items[0] {
+            View::Button { disabled, .. } => assert!(!disabled, "item 0 enabled"),
+            other => panic!("item 0 must be Button, got {other:?}"),
+        }
+        for (idx, label, as_button) in
+            [(1usize, "断线重连", true), (2, "重命名", false)]
+        {
+            let st = match &items[idx] {
+                View::Button { disabled, style, .. } if as_button => {
+                    assert!(disabled, "item {idx} ({label}) must be disabled");
+                    style.as_ref().expect("dimmed style")
+                }
+                View::Row { style, .. } if !as_button => {
+                    style.as_ref().expect("static row style")
+                }
+                other => panic!("item {idx} ({label}) unexpected shape, got {other:?}"),
+            };
+            assert!(
+                st.classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::Opacity(50))),
+                "item {idx} must carry opacity-50, got {:?}",
+                st.classes
+            );
+        }
+        set_menubar_open(None);
     }
 
     /// Plan 448 I: grid `cols:` dynamic values. A non-literal expression

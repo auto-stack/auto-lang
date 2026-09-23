@@ -1455,6 +1455,7 @@ pub fn convert_color(color: &Color) -> iced::Color {
         }
         // Plan 370 D-GAP-2/D-GAP-5: semantic colors use dark-mode + accent-aware RGB
         Color::Primary | Color::Secondary | Color::Background | Color::Surface | Color::Muted
+        | Color::Popover | Color::PopoverForeground
         | Color::Error | Color::Warning | Color::Success | Color::Info
         | Color::OnPrimary | Color::OnSecondary | Color::OnBackground | Color::OnSurface | Color::OnDestructive
         | Color::Border => {

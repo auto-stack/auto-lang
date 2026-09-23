@@ -5347,8 +5347,13 @@ impl RustGenerator {
                 // 词汇门）；separator = h-px container。VM 轨差异随注：
                 // ①items 无条件发射（VM 按开态条件构建——Popover 闭态
                 // 不渲染面板，发射面等价且 handler 常在树）；②disabled
-                // 项 v1 隐藏非置灰（I3——Button builder 无 disabled 通道）；
-                // ③trigger/面板静态样式（VM 开态差分色 not-yet）。
+                // 项/无 onclick 项置灰非隐藏（PLAN-695 T-04：muted 前景 +
+                // opacity-50 静态按钮，对齐 shadcn data-[disabled]:opacity-50
+                // ——v1 的 View::Empty/continue 隐藏路径退役）；③面板/分隔
+                // 线/trigger 配色消费 popover/border/foreground 语义 token
+                //（PLAN-695 T-04，运行期 Style::parse 解析，浅色可读）；
+                // ④trigger 开态差分色 a2r 静态源不可见（open 态全局注册表
+                // 运行期事实），悬停/开态高亮以解释态为准（PLAN-695 T-05）。
                 if tag == "menubar" {
                     let msg_name = self.current_msg_name();
                     let str_lit = |v: Option<&AuraPropValue>| -> Option<String> {
@@ -5394,11 +5399,14 @@ impl RustGenerator {
                             }
                         }
                         let trigger = format!(
-                            "View::button(\"{}\".to_string()).on_click(|_| {}::__MenubarToggle(\"{}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 px-3 text-[12px]\").unwrap_or_default()).build()",
+                            "View::button(\"{}\".to_string()).on_click(|_| {}::__MenubarToggle(\"{}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 px-3 text-[12px] text-foreground\").unwrap_or_default()).build()",
                             trigger_title, msg_name, menu_id
                         );
+                        // PLAN-695 T-04：面板配色字面 #16171B/zinc-700 →
+                        // popover/border 语义 token（浅色主题白板深字可读；
+                        // 运行期 Style::parse 消费，与解释态同词汇）。
                         let mut panel = String::from(
-                            "View::col().with_style(auto_lang::ui::style::Style::parse(\"w-44 bg-[#16171B] border border-zinc-700 shadow-md py-1\").unwrap_or_default())",
+                            "View::col().with_style(auto_lang::ui::style::Style::parse(\"w-44 bg-popover text-popover-foreground border border-border shadow-md py-1\").unwrap_or_default())",
                         );
                         for item in &content_nodes {
                             let crate::aura::AuraNode::Element { tag: itag, props: iprops, events: ievents, children: ikids, .. } =
@@ -5408,7 +5416,7 @@ impl RustGenerator {
                             match itag.as_str() {
                                 "menubar-separator" => {
                                     panel = format!(
-                                        "{panel}.child(View::container(View::Empty).with_style(auto_lang::ui::style::Style::parse(\"h-px my-1 bg-zinc-700\").unwrap_or_default()).build())"
+                                        "{panel}.child(View::container(View::Empty).with_style(auto_lang::ui::style::Style::parse(\"h-px my-1 bg-border\").unwrap_or_default()).build())"
                                     );
                                 }
                                 "menubar-item" | "menubar-checkbox-item" => {
@@ -5429,28 +5437,53 @@ impl RustGenerator {
                                     } else {
                                         "\"\"".to_string()
                                     };
-                                    // onclick 缺席 = 不发射（VM 轨同款 continue）。
-                                    let Some(onclick) = ievents
-                                        .get("onclick")
-                                        .or_else(|| crate::aura::aura_events_get_base(ievents, "onclick"))
-                                    else { continue };
-                                    let handler_fn =
-                                        self.handler_to_rust_closure_with_params(&onclick.handler, &onclick.params);
                                     let icon_pua = icon
                                         .map(|i| format!("\\u{{EE01}}{i}\\u{{EE02}}"))
                                         .unwrap_or_default();
                                     let sc = shortcut
                                         .map(|s| format!("    {s}"))
                                         .unwrap_or_default();
-                                    let item_btn = format!(
-                                        "View::button(format!(\"{icon_pua}{{}}{{}}{{}}\", {check_expr}, \"{title}\".to_string(), \"{sc}\".to_string())).on_click({handler_fn}).build()"
+                                    // PLAN-695 T-04：disabled 置灰根修——此前
+                                    // enabled:false → View::Empty（隐藏）、无
+                                    // onclick → 整项跳过（隐藏）。置灰静态
+                                    // 按钮（muted 前景 + opacity-50，无
+                                    // on_click 链）对齐 shadcn
+                                    // data-[disabled]:opacity-50。
+                                    let handler = ievents
+                                        .get("onclick")
+                                        .or_else(|| crate::aura::aura_events_get_base(ievents, "onclick"))
+                                        .map(|ev| {
+                                            self.handler_to_rust_closure_with_params(&ev.handler, &ev.params)
+                                        });
+                                    let enabled_off = matches!(
+                                        iprops.get("enabled"),
+                                        Some(AuraPropValue::Expr(crate::ast::Expr::Bool(false)))
+                                    ) || matches!(
+                                        iprops.get("disabled"),
+                                        Some(AuraPropValue::Expr(crate::ast::Expr::Bool(true)))
                                     );
-                                    let item_expr = match iprops.get("enabled") {
-                                        Some(AuraPropValue::Expr(e)) => {
+                                    let item_btn_dimmed = format!(
+                                        "View::button(format!(\"{icon_pua}{{}}{{}}{{}}\", {check_expr}, \"{title}\".to_string(), \"{sc}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 w-full px-0 py-0 justify-start text-left text-muted-foreground opacity-50\").unwrap_or_default()).build()"
+                                    );
+                                    let item_btn = match &handler {
+                                        Some(handler_fn) => format!(
+                                            "View::button(format!(\"{icon_pua}{{}}{{}}{{}}\", {check_expr}, \"{title}\".to_string(), \"{sc}\".to_string())).on_click({handler_fn}).build()"
+                                        ),
+                                        None => item_btn_dimmed.clone(),
+                                    };
+                                    let item_expr = match (handler.as_ref(), iprops.get("enabled")) {
+                                        // 无 handler：恒置灰静态（不发射 on_click）。
+                                        (None, _) => item_btn_dimmed,
+                                        (Some(_), Some(AuraPropValue::Expr(e)))
+                                            if !matches!(e, crate::ast::Expr::Bool(true)) =>
+                                        {
+                                            // enabled 为动态表达式（含字面 false）：
+                                            // 真走可点臂，假置灰。
                                             let cond = self.ast_expr_to_rust(e);
-                                            format!("{{ if {cond} {{ {item_btn} }} else {{ View::Empty }} }}")
+                                            format!("{{ if {cond} {{ {item_btn} }} else {{ {item_btn_dimmed} }} }}")
                                         }
-                                        _ => item_btn,
+                                        (Some(_), _) if !enabled_off => item_btn,
+                                        (Some(_), _) => item_btn_dimmed,
                                     };
                                     panel = format!("{panel}.child({item_expr})");
                                 }
@@ -14153,6 +14186,59 @@ widget Demo {
         assert!(
             !code.contains("not in the recognized vocabulary"),
             "族 props 臂内消费零拒绝门:\n{code}"
+        );
+    }
+
+    /// PLAN-695 T-04：a2r 静态降层配色主题化 + disabled 置灰——面板
+    /// bg-popover/border-border、分隔线 bg-border、disabled 与无 onclick
+    /// 项置灰静态按钮（muted + opacity-50，无 on_click 链），零字面深色。
+    #[test]
+    fn p695_menubar_a2r_popover_tokens_and_dimmed() {
+        let code = gen_first_widget(r#"
+widget Demo {
+    msg { PickOpen, PickToggle }
+    view {
+        col {
+            menubar {
+                menubar-menu (value: "file") {
+                    menubar-trigger "文件"
+                    menubar-content {
+                        menubar-item (title: "打开", shortcut: "Ctrl+O") { onclick: .PickOpen }
+                        menubar-item (title: "重命名")
+                        menubar-item (title: "断线", disabled: true) { onclick: .PickToggle }
+                        menubar-separator
+                    }
+                }
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            code.contains("bg-popover text-popover-foreground border border-border"),
+            "面板配色 popover token:\n{code}"
+        );
+        assert!(
+            code.contains("h-px my-1 bg-border"),
+            "分隔线 border token:\n{code}"
+        );
+        assert!(
+            !code.contains("#16171B") && !code.contains("zinc-700"),
+            "零字面深色残留:\n{code}"
+        );
+        // 可点项：handler 物化；无 handler/disabled 项：置灰静态（无 on_click）。
+        assert!(
+            code.contains(".on_click(|_| DemoMsg::PickOpen)"),
+            "可点项 handler:\n{code}"
+        );
+        let dimmed_count = code.matches("text-muted-foreground opacity-50").count();
+        assert_eq!(
+            dimmed_count, 2,
+            "无 handler + disabled 两项置灰:\n{code}"
+        );
+        assert!(
+            !code.contains("else { View::Empty }"),
+            "enabled:false 隐藏路径退役（置灰替代）:\n{code}"
         );
     }
 
