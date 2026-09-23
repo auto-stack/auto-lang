@@ -71,6 +71,17 @@ pub fn get_global_runtime() -> Arc<tokio::runtime::Runtime> {
     }).clone()
 }
 
+/// Drive AutoVM work inside a thread-local executor on the calling thread.
+/// The HTTP server uses `spawn_local` to retain an `Rc<AutoVM>` without making
+/// the `!Send` VM cross an OS-thread boundary.
+fn block_on_autovm_local<F>(future: F) -> F::Output
+where
+    F: std::future::Future,
+{
+    let runtime = get_global_runtime();
+    tokio::task::LocalSet::new().block_on(&runtime, future)
+}
+
 pub mod api;
 pub mod ast;
 pub mod atom;
@@ -422,8 +433,7 @@ pub fn run_with_capture_and_path(code: &str, path: &str) -> AutoResult<(String, 
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            let rt = get_global_runtime();
-            rt.block_on(async { execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout, _, _)| (r, stdout)) })
+            block_on_autovm_local(async { execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout, _, _)| (r, stdout)) })
         })
         .expect("Failed to spawn execution thread");
     handle.join().unwrap()
@@ -448,8 +458,7 @@ pub fn run_with_capture_and_bytecode_with_meta(
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            let rt = get_global_runtime();
-            rt.block_on(async { execute_autovm(&code, true).await })
+            block_on_autovm_local(async { execute_autovm(&code, true).await })
         })
         .expect("Failed to spawn execution thread");
     handle.join().unwrap()
@@ -478,8 +487,7 @@ pub fn run_with_capture_and_path_and_bytecode_with_meta(
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            let rt = get_global_runtime();
-            rt.block_on(async { execute_autovm_with_path(&code, true, Some(&path)).await })
+            block_on_autovm_local(async { execute_autovm_with_path(&code, true, Some(&path)).await })
         })
         .expect("Failed to spawn execution thread");
     handle.join().unwrap()
@@ -504,8 +512,7 @@ pub fn run_autovm(code: &str) -> AutoResult<String> {
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            let rt = get_global_runtime();
-            rt.block_on(async { execute_autovm(&code, false).await.map(|(r, _, _, _)| r) })
+            block_on_autovm_local(async { execute_autovm(&code, false).await.map(|(r, _, _, _)| r) })
         })
         .expect("Failed to spawn execution thread");
     handle.join().unwrap()
@@ -517,8 +524,7 @@ pub fn run_autovm_capture(code: &str) -> AutoResult<(String, String)> {
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            let rt = get_global_runtime();
-            rt.block_on(async { execute_autovm(&code, true).await.map(|(r, stdout, _, _)| (r, stdout)) })
+            block_on_autovm_local(async { execute_autovm(&code, true).await.map(|(r, stdout, _, _)| (r, stdout)) })
         })
         .expect("Failed to spawn execution thread");
     handle.join().unwrap()
@@ -1717,63 +1723,16 @@ async fn execute_autovm_with_path(
     // 6. Get result from stack
     let result = extract_autovm_result(&vm, task_id, Some(result_type)).await?;
 
-    // Plan 312 Phase 4 / Plan 316 fix: Auto-start HTTP server if #[api] routes
-    // were registered. CRITICAL: the server must NOT run inside the tokio
-    // async context (blocking_lock panics). Instead, we return early from the
-    // async portion and let the caller (run_autovm) start the server on the
-    // OS thread after block_on returns.
-    //
-    // We can't move the VM (it's !Send due to Rc<RefCell>), so the server must
-    // run on the same OS thread that owns the VM — which is this thread, after
-    // the async runtime is done. The execute_autovm caller handles this.
+    // Auto-start the HTTP server on the VM's owner thread. The synchronous
+    // entry points wrap execution in a LocalSet; each connection task retains
+    // an Rc clone, so the !Send VM stays on this thread and outlives the task.
     let routes = crate::vm::ffi::stdlib::get_http_routes();
     if !routes.is_empty() {
         let port = std::env::var("AUTO_HTTP_PORT").unwrap_or_else(|_| "8080".to_string());
         let addr = format!("0.0.0.0:{}", port);
         eprintln!("[HTTP] Auto-starting server with {} route(s) on {}", routes.len(), addr);
 
-        // Plan 316: Run server directly here. We're inside rt.block_on(async),
-        // but run_http_server_blocking uses std::net (synchronous). The
-        // blocking_lock calls are technically in a tokio context, BUT we can
-        // use tokio::task::spawn_blocking to escape it... except the VM is !Send.
-        //
-        // FINAL APPROACH: Use std::thread to run the server, and keep the VM
-        // alive via a leaked reference (server runs for process lifetime).
-        // This avoids Send requirements because the thread takes a raw pointer.
-        //
-        // SAFETY: The VM lives on this thread for the duration of the server.
-        // The server thread is joined before execute_autovm returns, so the
-        // VM outlives the server thread. This is sound as long as no other
-        // thread accesses the VM while the server runs.
-        // SAFETY: The VM lives on this thread, which is blocked on join() for
-        // the entire server lifetime. The server thread is the ONLY thread
-        // accessing the VM after this point (the async runtime has finished).
-        let vm_addr_usize = &vm as *const AutoVM as usize;
-        let addr_clone = addr.clone();
-        let server_thread = std::thread::Builder::new()
-            .name("auto-http-server".into())
-            .spawn(move || {
-                // SAFETY: vm lives on parent thread (blocked on join).
-                let vm_ref: &AutoVM = unsafe {
-                    &*(vm_addr_usize as *const AutoVM)
-                };
-                // Plan 327 Phase 4: concurrent server via tokio LocalSet.
-                // LocalSet allows spawn_local with !Send futures (AutoVM is
-                // !Send). All connection-handler tasks run cooperatively on
-                // this single thread — Goroutine-style concurrency.
-                let local_rt = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .expect("local runtime for HTTP server");
-                let local_set = tokio::task::LocalSet::new();
-                local_set.block_on(&local_rt, async move {
-                    crate::vm::ffi::http_server::serve_async(vm_ref, &addr_clone).await;
-                });
-            })
-            .expect("Failed to spawn HTTP server thread");
-
-        // Block forever — server is the process lifetime
-        let _ = server_thread.join();
+        crate::vm::ffi::http_server::serve_async(std::rc::Rc::new(vm), &addr).await;
     }
 
     Ok((result, get_stdout(), bytecode_lines, bytecode_meta))
@@ -5073,8 +5032,7 @@ fn run_with_path(code: &str, path: &str) -> AutoResult<String> {
     let handle = std::thread::Builder::new()
         .stack_size(32 * 1024 * 1024)
         .spawn(move || {
-            let rt = get_global_runtime();
-            rt.block_on(async {
+            block_on_autovm_local(async {
                 execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout, _, _)| {
                     if !stdout.is_empty() { println!("{}", stdout); }
                     r
