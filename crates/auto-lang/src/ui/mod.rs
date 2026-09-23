@@ -81,6 +81,9 @@ pub mod handler_codegen;
 pub mod child_emit;
 #[cfg(feature = "ui-iced")]
 pub mod session;
+// PLAN-042 T-01：宿主系统日志环（三层采集归一：log trap / syslog! 双写宏 /
+// App log 动词）。纯 std + log，零 feature 门（headless 单测同轨可用）。
+pub mod syslog;
 // PLAN-037：桌面后端供给层（launch 决策树四臂 + 按需 proxy 装载 +
 // 前端 URL 内存态前缀化；658 谓词/前缀化函数迁入 auto-man 复用）。
 #[cfg(feature = "ui-iced")]
