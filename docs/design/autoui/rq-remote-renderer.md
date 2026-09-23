@@ -159,3 +159,16 @@ RecordRenderer 需实现文本子 trait（App 内 cosmic-text 度量整形——
 端点来源与孵化归属——desktop 模式端点缺席时报错提示先启动桌面（不代孵）。
 桌面侧落地（shell 内嵌 `run_daemon(desktop_pipe)` 或子进程 rqhost）=
 auto-os 配对项，协议契约（采纳协议不变）由本仓定义。
+
+**端到端实证补记（PLAN-694，2026-09-23）**：desktop 模式的桌面宿主落定 =
+**虚拟桌面进程本尊**（`ui_desktop` 宿主 = 桌面端点，无需独立 rqhost
+daemon）——孵化链 `spawn_exe_child` 双方言并发（desktop 方言
+`--render-mode=desktop --desktop-endpoint=<broker>` 增发 + autodesk 方言
+保留向后兼容）；桌面宿主 broker 监听双动词受理（`adopt␟`/`incubate␟`，
+应答镜像请求动词）。发现链单源 `convention_native_exe`（共享工作区两落点
+镜像生成侧 P-2）；注册表 exe 背书豁免 render 过滤 + 桌面可见性缺省翻转。
+协议级端到端环 `p694_desktop_dialect_ring`（AUTO_DESKTOP_E2E=1）全绿：
+发现链→生产 spawn→Desktop 臂 adopt 直连→DisplayList v2 首帧→点击聚焦+
+键入联动（Celsius 100→Fahrenheit 212）→kill EOF 回收，attach ~90ms。
+headless 光标同步根修（press/release 携位——协议级点击聚焦 iced
+text_input 的前提）随批落库。
