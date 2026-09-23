@@ -245,7 +245,7 @@
 | Project | 状态 | 模块数 | 项目卡 |
 |---|---|---|---|
 | auto-playground | active | 8 | [auto-playground/project.md](auto-playground/project.md) |
-| widgets | active | 7 | [widgets/project.md](widgets/project.md) |
+| widgets | active | 8 | [widgets/project.md](widgets/project.md) |
 | forge-ui | active | 4 | [forge-ui/project.md](forge-ui/project.md) |
 | lab-ui | active | 5 | [lab-ui/project.md](lab-ui/project.md) |
 | playground-vue | active | 5 | [playground-vue/project.md](playground-vue/project.md) |
@@ -278,6 +278,7 @@
 | terminal-iced-draw | terminal iced widget 绘制期契约（draw 段落强引用规则 + 像素金样环境契约；auto-lang 侧,Plan 634） | active |
 | scroll-pane | AutoUI 通用滚动架构（PLAN-656 Phase A+B+C）：ScrollState/Intent/Viewport 三通道语义层 + scroll-pane primitive + controller/on-scroll 双端契约 + managed content bridge | active |
 | command-family | command 八元素组件家族（PLAN-692 W-2）：vue 臂经 assets/shadcn-ui/command 官方 Listbox 实现接入 shadcn 路径（过滤/空态/悬停/键盘/点选），registry schema-only spec 补建 + kebab 别名回填为通用机制；VM 臂 iced:none 维持 | active |
+| menubar-family | menubar 15 元素完整组件族（PLAN-695）：vue 臂 reka 标准件全发射（radio/label/shortcut/sub 族），VM 双解释态 popover token 配色 + hover-switch + submenu 内联展开（复合键注册表）+ disabled 置灰；a2r 静态降层同构 | active |
 | viewport-boundary | VM/iced 视口边界与嵌入居中契约（PLAN-663）：Screen 视口单位定高嵌入边界内重锚定（iframe 语义）+ my-auto/m-auto 垂直安全居中 | active |
 
 </details>
