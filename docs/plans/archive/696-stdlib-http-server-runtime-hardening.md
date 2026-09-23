@@ -145,6 +145,6 @@ cleanup: 见 checkpoints
 | `landed` | `master` 从 `e5172514b` 对 `plan-696-dev` 执行 `--ff-only`，落在 delivery commit `a8c30a8bd8d2e4df178afe7a40dfb2c527600bab`；reviewed implementation 已在祖先链。master 原有其他 WIP 保留。|
 | `ledger_refreshed` | `.autoos/specs.json` 回读校验 P696-1..5 和 P669-1 更新；`spec-index.py` 生成 26 个项目且 `docs/specs/INDEX.md` 无语义差异；`spec-lint.py` 0 errors、5 个既有断链警告。三份 canonical Spec 哈希与文件 SHA-256 一致。|
 | `archived` | 归档至 `docs/plans/archive/696-stdlib-http-server-runtime-hardening.md`，frontmatter `status: archived` / `completion_kind: delivered`；复审遗漏/延期扫描登记 P696-D1（VM publisher SSE compile seam）和 P696-D2（VM HTTP listener graceful shutdown）至 `KNOWN-DEBT-AND-RISKS.md`。|
-| `cleaned` | 清理完成后补记。|
+| `cleaned` | 合并前在 `a8c30a8bd` 上 `wt-guard.sh` 返回 clean；随后移除 `D:/autostack/.wt/lang-696/auto-lang` 并删除已完整落地的 `plan-696-dev`（原 tip `a8c30a8bd`）。组目录因兄弟 `D:/autostack/.wt/lang-696/auto-down` 仍存在而保留；其他工作树未触碰。|
 
 复审与验证证据见本计划 §9 及 `docs/plans/reports/696-{backend-inventory,vm-owner-decision,response-parity,verification}.md`。
