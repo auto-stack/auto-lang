@@ -7601,9 +7601,9 @@ let tabs_inner = View::Row {
 
             let is_open = open.as_deref() == Some(menu_id.as_str());
             record!(children_out.len(), 0 => &format!(r#"__menubar_toggle("{}")"#, menu_id));
-            // PLAN-695 T-04：trigger 文本字面 zinc → foreground token；
-            // 开态 accent 高亮随 T-05（hover-switch 批）落。
-            let trigger = View::Button {
+            // PLAN-695 T-05：trigger 文本 token 化（T-04）+ 开态 accent 高亮
+            //（对齐 shadcn data-[state=open]:bg-accent）。
+            let trigger_btn = View::Button {
                 disabled: false,
                 label: trigger_title.clone(),
                 onclick: DynamicMessage::Typed {
@@ -7612,12 +7612,40 @@ let tabs_inner = View::Row {
                     args: vec![Value::str(menu_id.as_str())],
                 },
                 style: Style::parse(&format!(
-                    "h-7 px-3 text-[12px] {}",
-                    if is_open { "text-zinc-100" } else { "mr-1 text-foreground" }
+                    "h-7 px-3 rounded-sm text-[12px] {}",
+                    if is_open {
+                        "bg-accent text-accent-foreground"
+                    } else {
+                        "mr-1 text-foreground"
+                    }
                 ))
                 .ok(),
                 on_right_click: None,
                 content: None,
+            };
+            // PLAN-695 T-05: hover-switch——开态下指针进入其他 trigger 直接
+            // 切换（MouseArea on_enter → __MenubarToggle，`__` 前缀内部消息
+            // 不触发 menubar-snapshot 规则 3 的自动关闭判据）；关闭态悬停
+            // 不开（无包裹），本菜单已开不重入。
+            let trigger = if open.is_some() && !is_open {
+                View::MouseArea {
+                    content: Box::new(trigger_btn),
+                    on_enter: Some(DynamicMessage::Typed {
+                        widget_name: self.widget_name.clone(),
+                        event_name: "__menubar_toggle".to_string(),
+                        args: vec![Value::str(menu_id.as_str())],
+                    }),
+                    on_exit: None,
+                    on_double_click: None,
+                    on_click: None,
+                    on_context_menu: None,
+                    on_release: None,
+                    on_move: None,
+                    logical_extent: None,
+                    style: None,
+                }
+            } else {
+                trigger_btn
             };
 
             let mut items: Vec<View<DynamicMessage>> = Vec::new();
@@ -7784,7 +7812,9 @@ let tabs_inner = View::Row {
             // 触发按钮是其 anchor 子(子序 0,与 snapshot/render_dynamic_view
             // 的 Popover 子序约定一致)。
             record!(children.len(), 0 => &format!("__menubar_toggle(\"{}\")", menu.id));
-            let trigger = View::Button {
+            // PLAN-695 T-05：开态 accent 高亮 + hover-switch（声明式臂同款，
+            // 见 convert_menubar_component 注）。
+            let trigger_btn = View::Button {
                 disabled: false,
                 label: menu.title.clone(),
                 onclick: DynamicMessage::Typed {
@@ -7793,12 +7823,36 @@ let tabs_inner = View::Row {
                     args: vec![Value::str(menu.id.as_str())],
                 },
                 style: Style::parse(&format!(
-                    "h-7 px-3 text-[12px] {}",
-                    if is_open { "text-zinc-100" } else { "mr-1 text-foreground" }
+                    "h-7 px-3 rounded-sm text-[12px] {}",
+                    if is_open {
+                        "bg-accent text-accent-foreground"
+                    } else {
+                        "mr-1 text-foreground"
+                    }
                 ))
                 .ok(),
                 on_right_click: None,
                 content: None,
+            };
+            let trigger = if open.is_some() && !is_open {
+                View::MouseArea {
+                    content: Box::new(trigger_btn),
+                    on_enter: Some(DynamicMessage::Typed {
+                        widget_name: self.widget_name.clone(),
+                        event_name: "__menubar_toggle".to_string(),
+                        args: vec![Value::str(menu.id.as_str())],
+                    }),
+                    on_exit: None,
+                    on_double_click: None,
+                    on_click: None,
+                    on_context_menu: None,
+                    on_release: None,
+                    on_move: None,
+                    logical_extent: None,
+                    style: None,
+                }
+            } else {
+                trigger_btn
             };
 
             // 面板项路径 [base, popover_idx, 1, item_idx](content 是 popover
@@ -14142,6 +14196,133 @@ mod tests {
             );
         }
         set_menubar_open(None);
+    }
+
+    /// PLAN-695 T-05: 开态 trigger accent 高亮 + hover-switch——开菜单 A
+    /// 时，B 的 trigger 包 MouseArea（on_enter = __MenubarToggle(B)），
+    /// A 自己与全关态不包裹；高亮走 bg-accent/text-accent-foreground。
+    #[test]
+    fn p695_menubar_hover_switch_and_open_highlight() {
+        let src = concat!(
+            "widget App {\n",
+            "    view {\n",
+            "        col {\n",
+            "            menubar {\n",
+            "                menubar-menu (value: \"file\") {\n",
+            "                    menubar-trigger \"文件\"\n",
+            "                    menubar-content {\n",
+            "                        menubar-item (title: \"打开\") { onclick: .ActOpen }\n",
+            "                    }\n",
+            "                }\n",
+            "                menubar-menu (value: \"edit\") {\n",
+            "                    menubar-trigger \"编辑\"\n",
+            "                    menubar-content {\n",
+            "                        menubar-item (title: \"重做\") { onclick: .ActRedo }\n",
+            "                    }\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "    on { .ActOpen -> { } .ActRedo -> { } }\n",
+            "}\n",
+        );
+        use crate::ui::action_config::set_menubar_open;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        fn find_popovers<'a>(
+            v: &'a View<DynamicMessage>,
+            out: &mut Vec<&'a crate::ui::view::PopoverAnchor<DynamicMessage>>,
+        ) {
+            match v {
+                View::Popover { anchor, .. } => {
+                    out.push(anchor);
+                }
+                View::Column { children, .. } | View::Row { children, .. } => {
+                    for c in children {
+                        find_popovers(c, out);
+                    }
+                }
+                View::Button { content: Some(c), .. } => find_popovers(c, out),
+                View::Container { child, .. } => find_popovers(child, out),
+                _ => {}
+            }
+        }
+        fn accent_on(v: &View<DynamicMessage>) -> bool {
+            match v {
+                View::Button { style: Some(s), .. } => s
+                    .classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::BackgroundColor(crate::ui::style::Color::Accent))),
+                View::MouseArea { content, .. } => accent_on(content),
+                _ => false,
+            }
+        }
+
+        // 开 file：file trigger = accent 高亮 Button（无包裹）；edit trigger
+        // = MouseArea 包裹且 on_enter = toggle("edit")。
+        set_menubar_open(Some("file".to_string()));
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+        let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
+        let mut anchors = Vec::new();
+        find_popovers(&view, &mut anchors);
+        assert_eq!(anchors.len(), 2, "two menubar popovers");
+        let (file_anchor, edit_anchor) = (anchors[0], anchors[1]);
+        match file_anchor {
+            crate::ui::view::PopoverAnchor::Widget(b) => {
+                assert!(accent_on(b), "open trigger must carry accent bg");
+                assert!(
+                    matches!(b.as_ref(), View::Button { .. }),
+                    "open trigger unwrapped, got {:?}",
+                    std::mem::discriminant(b.as_ref())
+                );
+            }
+            other => panic!("file anchor must be Widget, got {other:?}"),
+        }
+        match edit_anchor {
+            crate::ui::view::PopoverAnchor::Widget(b) => {
+                assert!(!accent_on(b), "inactive trigger no accent");
+                match b.as_ref() {
+                    View::MouseArea { on_enter: Some(msg), .. } => {
+                        let repr = format!("{msg:?}");
+                        assert!(
+                            repr.contains("menubar_toggle") && repr.contains("edit"),
+                            "hover switch must emit toggle(edit), got {repr}"
+                        );
+                    }
+                    other => panic!(
+                        "inactive trigger must be MouseArea-wrapped while open, got {:?}",
+                        std::mem::discriminant(other)
+                    ),
+                }
+            }
+            other => panic!("edit anchor must be Widget, got {other:?}"),
+        }
+
+        // 全关态：两 trigger 均裸 Button、无 accent、无包裹（悬停不开）。
+        set_menubar_open(None);
+        let bridge2 = VmBridge::new(&widget).unwrap();
+        let builder2 = AuraViewBuilder::new(&bridge2, "App");
+        let (view2, _id_map2, _probe2) = builder2.build_with_debug(&widget.view_tree);
+        let mut anchors2 = Vec::new();
+        find_popovers(&view2, &mut anchors2);
+        assert_eq!(anchors2.len(), 2);
+        for a in &anchors2 {
+            match a {
+                crate::ui::view::PopoverAnchor::Widget(b) => {
+                    assert!(matches!(b.as_ref(), View::Button { .. }), "closed state: bare button");
+                    assert!(!accent_on(b), "closed state: no accent");
+                }
+                other => panic!("closed state anchor must be Widget, got {other:?}"),
+            }
+        }
     }
 
     /// Plan 448 I: grid `cols:` dynamic values. A non-literal expression
