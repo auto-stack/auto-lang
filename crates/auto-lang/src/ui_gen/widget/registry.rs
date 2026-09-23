@@ -1500,6 +1500,69 @@ impl WidgetRegistry {
                 .with_alias("menubar-checkbox-item");
         self.register(menu_bar_checkbox_item);
 
+        // PLAN-695 T-02: menubar 族补全至 shadcn 16 元素——8 个新/改 spec
+        //（7 新件 + label 此前 web:none 无 spec）。三形态别名纪律同 677
+        //（menu-bar-* 官方 kebab / menubar_* schema snake / menubar-* DSL
+        // kebab）；vue 映射随 schema/aura.at overlay 灌入
+        //（apply_schema_vue_mappings 按折叠键解析）。
+        let menu_bar_label = WidgetSpec::new("MenuBarLabel", WidgetCategory::Navigation)
+            .with_alias("menu-bar-label")
+            .with_alias("menubar_label")
+            .with_alias("menubar-label");
+        self.register(menu_bar_label);
+
+        let menu_bar_shortcut = WidgetSpec::new("MenuBarShortcut", WidgetCategory::Navigation)
+            .with_alias("menu-bar-shortcut")
+            .with_alias("menubar_shortcut")
+            .with_alias("menubar-shortcut");
+        self.register(menu_bar_shortcut);
+
+        let mut menu_bar_radio_group =
+            WidgetSpec::new("MenuBarRadioGroup", WidgetCategory::Navigation)
+                .with_alias("menu-bar-radio-group")
+                .with_alias("menubar_radio_group")
+                .with_alias("menubar-radio-group");
+        menu_bar_radio_group.has_children = true;
+        self.register(menu_bar_radio_group);
+
+        let mut menu_bar_radio_item =
+            WidgetSpec::new("MenuBarRadioItem", WidgetCategory::Navigation)
+                .with_alias("menu-bar-radio-item")
+                .with_alias("menubar_radio_item")
+                .with_alias("menubar-radio-item");
+        menu_bar_radio_item.has_children = true;
+        self.register(menu_bar_radio_item);
+
+        let mut menu_bar_sub = WidgetSpec::new("MenuBarSub", WidgetCategory::Navigation)
+            .with_alias("menu-bar-sub")
+            .with_alias("menubar_sub")
+            .with_alias("menubar-sub");
+        menu_bar_sub.has_children = true;
+        self.register(menu_bar_sub);
+
+        let mut menu_bar_sub_trigger =
+            WidgetSpec::new("MenuBarSubTrigger", WidgetCategory::Navigation)
+                .with_alias("menu-bar-sub-trigger")
+                .with_alias("menubar_sub_trigger")
+                .with_alias("menubar-sub-trigger");
+        menu_bar_sub_trigger.has_children = true;
+        self.register(menu_bar_sub_trigger);
+
+        let mut menu_bar_sub_content =
+            WidgetSpec::new("MenuBarSubContent", WidgetCategory::Navigation)
+                .with_alias("menu-bar-sub-content")
+                .with_alias("menubar_sub_content")
+                .with_alias("menubar-sub-content");
+        menu_bar_sub_content.has_children = true;
+        self.register(menu_bar_sub_content);
+
+        let mut menu_bar_group = WidgetSpec::new("MenuBarGroup", WidgetCategory::Navigation)
+            .with_alias("menu-bar-group")
+            .with_alias("menubar_group")
+            .with_alias("menubar-group");
+        menu_bar_group.has_children = true;
+        self.register(menu_bar_group);
+
         // DropdownMenu
         let mut dropdown_menu = WidgetSpec::new("DropdownMenu", WidgetCategory::Navigation)
             .with_alias("dropdown-menu");
@@ -2644,6 +2707,69 @@ mod tests {
         assert_eq!(
             registry.get_primary_component("vue", "scroll"),
             Some("ScrollArea".to_string())
+        );
+    }
+
+    /// PLAN-695 T-02: menubar 族 16 元素 spec 全绿——三形态别名命中 +
+    /// vue 映射自 schema overlay（label 此前 web:none 无 spec，补后即有）。
+    #[test]
+    fn p695_menubar_family_registry_complete() {
+        let registry = WidgetRegistry::with_defaults();
+        let family = [
+            "menubar",
+            "menubar_menu",
+            "menubar_trigger",
+            "menubar_content",
+            "menubar_item",
+            "menubar_checkbox_item",
+            "menubar_separator",
+            "menubar_label",
+            "menubar_radio_group",
+            "menubar_radio_item",
+            "menubar_shortcut",
+            "menubar_sub",
+            "menubar_sub_trigger",
+            "menubar_sub_content",
+            "menubar_group",
+        ];
+        for tag in family {
+            assert!(
+                registry.is_backend_supported("vue", tag),
+                "vue backend must be supported for {tag} (canonical snake form)"
+            );
+        }
+        // DSL kebab 形态逐件命中（677 缺别名致 auto-edit 裸 div 的回归锚）。
+        for tag in [
+            "menubar-label",
+            "menubar-shortcut",
+            "menubar-radio-group",
+            "menubar-radio-item",
+            "menubar-sub",
+            "menubar-sub-trigger",
+            "menubar-sub-content",
+            "menubar-group",
+        ] {
+            assert!(
+                registry.is_backend_supported("vue", tag),
+                "vue backend must be supported for kebab tag {tag}"
+            );
+        }
+        // 官方 menu-bar-* 形态与 vue 组件名/import 逐件对账。
+        assert_eq!(
+            registry.get_primary_component("vue", "menubar_radio_group"),
+            Some("MenubarRadioGroup".to_string())
+        );
+        assert_eq!(
+            registry.get_primary_component("vue", "menubar-shortcut"),
+            Some("MenubarShortcut".to_string())
+        );
+        assert_eq!(
+            registry.get_primary_component("vue", "menubar-label"),
+            Some("MenubarLabel".to_string())
+        );
+        assert_eq!(
+            registry.get_backend_import("vue", "menubar_sub_content").as_deref(),
+            Some("@/components/ui/menubar")
         );
     }
 }
