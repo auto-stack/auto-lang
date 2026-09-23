@@ -299,8 +299,11 @@ exe → 桌面窗清 + launcher 可再启动）——走查脚本录证。
   spawn_exe_child_args/native_exe_discovery/scan_render_filter）。
   ledger_refreshed=specs.json P694-1（architecture）/P694-2（reviews）
   +ui/plans.md 行+INDEX 再生。archived=docs/plans/archive/
-  694-desktop-dogfood.md。cleaned=worktree lang-694+auto-down 依赖位+
-  分支 plan-694-dev（wt-guard clean 后移除）。
+  694-desktop-dogfood.md。cleaned=**已实证**：worktree lang-694/auto-lang
+  移除（pnpm junction 12 枚 PowerShell 逐链接摘除后 guard clean——vue
+  脚手架生成物）+auto-down 依赖位（detached @3373a5c）移除+分支
+  plan-694-dev 删除（@bb640b8e2=landed tip）+组目录收空；git worktree
+  list 零残留。
 
 ## 待澄清事项
 
