@@ -160,6 +160,36 @@ pub fn ensure_ready_with(spawner: &RqhostSpawner) -> Result<(), String> {
     }
 }
 
+/// PLAN-698 T-04b/SD-04：桌面侧专管孵化——`auto rqhost --pipe <name>`
+/// 子进程（pid 派生名隔离，与 wellknown 实例互斥面无关）。与
+/// [`ensure_rqhost_ready`] 的差异：管道名由调用方给（桌面发布语义）、
+/// 不打 wellknown；就绪探测预算缩到 5s（桌面 boot 不被孵化面长阻塞——
+/// 未就绪只留观测行，客户端侧 adopt 自带干净报错与重试语义）。
+pub fn spawn_desktop_daemon(pipe: &str) -> Result<(), String> {
+    let exe = rqhost_auto_binary().map_err(|e| format!("rqhost binary: {e}"))?;
+    let mut cmd = std::process::Command::new(&exe);
+    cmd.args(["rqhost", "--pipe", pipe]);
+    for (key, _) in std::env::vars() {
+        if key.starts_with("NEXTEST_") {
+            cmd.env_remove(&key);
+        }
+    }
+    cmd.spawn().map_err(|e| format!("spawn auto rqhost: {e}"))?;
+    let started = std::time::Instant::now();
+    let mut backoff_ms: u32 = 100;
+    loop {
+        if transport::connect(pipe, backoff_ms).is_ok() {
+            return Ok(());
+        }
+        if started.elapsed() >= std::time::Duration::from_secs(5) {
+            eprintln!("[rqhost] desktop daemon {pipe} spawn 后 5s 未就绪（放行——客户端 adopt 自带重试/报错面）");
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(backoff_ms as u64 / 4));
+        backoff_ms = (backoff_ms * 2).min(1600);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // rendezvous：宿主侧（serve 环 + 锁管道 + per-adoption 线程）
 // ---------------------------------------------------------------------------

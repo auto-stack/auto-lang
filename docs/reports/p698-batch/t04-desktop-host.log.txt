@@ -1,0 +1,3134 @@
+warning: unused doc comment
+   --> crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused doc comment
+   --> crates\auto-lang\src\aura\extract.rs:886:1
+    |
+886 | /// Extract view node from parsed ViewNode
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+    |
+    = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ViewProp`
+  --> crates\auto-lang\src\aura\extract.rs:13:50
+   |
+13 | use crate::ast::{Expr, Type, Key, ViewPropValue, ViewProp, ViewEvent};
+   |                                                  ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unnecessary parentheses around block return value
+   --> crates\auto-lang\src\design_tokens\registry.rs:190:9
+    |
+190 |         ((g - b) / d + if g < b { 6.0 } else { 0.0 })
+    |         ^                                           ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+190 -         ((g - b) / d + if g < b { 6.0 } else { 0.0 })
+190 +         (g - b) / d + if g < b { 6.0 } else { 0.0 }
+    |
+
+warning: unused import: `super::*`
+   --> crates\auto-lang\src\ui_gen\bp\registry.rs:368:9
+    |
+368 |     use super::*;
+    |         ^^^^^^^^
+    |
+help: if this is a test module, consider adding a `#[cfg(test)]` to the containing module
+   --> crates\auto-lang\src\ui_gen\bp\registry.rs:367:1
+    |
+367 | mod root_resolution_tests {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused doc comment
+    --> crates\auto-lang\src\ui_gen\rust.rs:1248:9
+     |
+1248 | /         /// action_config 全局面——与 VM 轨 renderer __menubar_toggle 同
+1249 | |         /// 机制非消费方补丁；族折叠契约镜像解释态
+1250 | |         /// convert_menubar_component）。枚举先于 view 树生成——变体在
+1251 | |         /// 此预扫描推送（scan_input_fields 同序先例）。
+     | |________________________________________________________^
+1252 | /         if self.view_tree_has_menubar(&widget.view_tree) {
+1253 | |             if !self.message_variants.iter().any(|v| v.name == "__MenubarToggle") {
+1254 | |                 self.message_variants.push(AuraMsgVariant {
+1255 | |                     name: "__MenubarToggle".to_string(),
+...    |
+1269 | |         }
+     | |_________- rustdoc does not generate documentation for expressions
+     |
+     = help: use `//` for a plain comment
+
+warning: unused imports: `Expr` and `Stmt`
+    --> crates\auto-lang\src\ui_gen\rust.rs:7217:26
+     |
+7217 |         use crate::ast::{Expr, Stmt};
+     |                          ^^^^  ^^^^
+
+warning: unused import: `auto_val::Op`
+    --> crates\auto-lang\src\ui_gen\rust.rs:7218:13
+     |
+7218 |         use auto_val::Op;
+     |             ^^^^^^^^^^^^
+
+warning: unused doc comment
+    --> crates\auto-lang\src\ui_gen\rust.rs:8026:21
+     |
+8026 |                       /// 显式拒绝非静默）。
+     |                       ^^^^^^^^^^^^^^^^^^^^^^
+8027 | /                     _ => {
+8028 | |                         let kind = self.tag_to_view_fn(tag);
+8029 | |                         let hit = crate::ui_gen::vocab::view_prop_vocab(kind)
+8030 | |                             .iter()
+...    |
+8065 | |                         format!("{{ std::compile_error!(\"{msg}\"); unreachable!() }}")
+8066 | |                     }
+     | |_____________________- rustdoc does not generate documentation for match arms
+     |
+     = help: use `//` for a plain comment
+
+warning: unused doc comment
+    --> crates\auto-lang\src\ui_gen\rust.rs:8210:17
+     |
+8210 |                 /// handler 闭包，Msg 槽发直消息（Option<M> 面无闭包包装）。
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+8211 |                 let kind = self.tag_to_view_fn(tag);
+     |                 ------------------------------------ rustdoc does not generate documentation for statements
+     |
+     = help: use `//` for a plain comment
+
+warning: unnecessary parentheses around `if` condition
+     --> crates\auto-lang\src\ui_gen\rust.rs:10465:20
+      |
+10465 |                 if (fn_name.starts_with("store.") || fn_name.starts_with("self.store.")) {
+      |                    ^                                                                   ^
+      |
+help: remove these parentheses
+      |
+10465 -                 if (fn_name.starts_with("store.") || fn_name.starts_with("self.store.")) {
+10465 +                 if fn_name.starts_with("store.") || fn_name.starts_with("self.store.") {
+      |
+
+warning: unused import: `std::collections::HashSet`
+   --> crates\auto-lang\src\ui_gen\api.rs:283:5
+    |
+283 | use std::collections::HashSet;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Args`
+  --> crates\auto-lang\src\trans\emit.rs:15:23
+   |
+15 | use crate::ast::{Arg, Args, Body, Call, Code, Expr, Fn, For, If, Iter, Stmt, Store, StoreKind, Try, Use, UseKind};
+   |                       ^^^^
+
+warning: unused imports: `NATIVE_PRINT_F64` and `NATIVE_PRINT_U64`
+ --> crates\auto-lang\src\vm\codegen.rs:7:1074
+  |
+7 | ...E_BASENAME, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_PRINT_UNIFIED, NATIVE...
+  |                                  ^^^^^^^^^^^^^^^^                                      ^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::fmt::Write`
+  --> crates\auto-lang\src\vm\abt\mod.rs:81:13
+   |
+81 |         use std::fmt::Write;
+   |             ^^^^^^^^^^^^^^^
+
+warning: unused doc comment
+    --> crates\auto-lang\src\vm\engine.rs:1633:5
+     |
+1633 | /     /// PLAN-053 P-053-2: nil 家族判定 —— tag-null(encode_null，现行
+1634 | |     /// `None`/`null`/`nil` 字面量与 JSON null 的统一编码)或旧编码
+1635 | |     /// i32(-1)(历史 `null` 字面量/CREATE_NONE)或 i32(i32::MIN+1)
+1636 | |     /// (历史 `nil` 字面量)。EQ/NE/NULL_COALESCE 用它在等值/合并语义上
+...    |
+1640 | |     /// PLAN-026 T-03 配套: 宽整数值归一(i32/i64 tag → i64 按值;算术
+1641 | |     /// 兜底臂与序比较宽整臂共用)。
+     | |_____------------------------------^
+     |       |
+     |       rustdoc does not generate documentation for macro invocations
+     |
+     = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+
+warning: unused import: `std::sync::atomic::Ordering`
+   --> crates\auto-lang\src\vm\engine.rs:894:13
+    |
+894 |         use std::sync::atomic::Ordering;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::vm::ffi::VMConvertible`
+     --> crates\auto-lang\src\vm\engine.rs:10999:9
+      |
+10999 |     use crate::vm::ffi::VMConvertible;
+      |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::vm::task::AutoTask`
+     --> crates\auto-lang\src\vm\engine.rs:11000:9
+      |
+11000 |     use crate::vm::task::AutoTask;
+      |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `dashmap::DashMap`
+  --> crates\auto-lang\src\vm\rc.rs:20:5
+   |
+20 | use dashmap::DashMap;
+   |     ^^^^^^^^^^^^^^^^
+
+warning: unused import: `AtomicU64`
+  --> crates\auto-lang\src\vm\rc.rs:22:36
+   |
+22 | use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+   |                                    ^^^^^^^^^
+
+warning: unused doc comment
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:2910:1
+     |
+2910 | /// 原始（inventory rust_fn）shim 的暂存表：wrapper 规整首参后委托原实现。
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+     |
+     = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+
+warning: unused doc comment
+   --> crates\auto-lang\src\vm\ffi\dep_methods.rs:878:1
+    |
+878 | / /// 同步调用期有效的回调帧(裸指针仅在 marshaller 调用窗口内解引用;
+879 | | /// 单线程原型,深度 1)。Option 空即"不在回调窗口"。
+    | |_--------------------------------------------------^
+    |   |
+    |   rustdoc does not generate documentation for macro invocations
+    |
+    = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+
+warning: unused doc comment
+   --> crates\auto-lang\src\vm\ffi\term_engine.rs:917:1
+    |
+917 | / /// PLAN-020 T-00b:窗口尺寸面(逻辑 px)。读 iced_adapter 窗口全局
+918 | | /// (renderer 每帧 set_window_width/height),与引擎零耦合——分屏矩形
+919 | | /// 投影的前端 px 类几何标定源。非 ui 特性(无窗口)返缺省槽位值。
+920 | | ///
+...   |
+923 | | /// (run_app/动态轨,022 T-03 写入路)与 vm 无窗口轨不注入 override,
+924 | | /// 读路径与既有行为零变化。
+    | |_---------------------------^
+    |   |
+    |   rustdoc does not generate documentation for macro invocations
+    |
+    = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+
+warning: unnecessary parentheses around assigned value
+    --> crates\auto-lang\src\vm\ffi\term_engine.rs:1051:26
+     |
+1051 |         let Ok(paused) = (lib.get::<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int>(
+     |                          ^
+1052 |             b"autoterm_engine_backlog_paused\0",
+1053 |         )) else {
+     |          ^
+     |
+help: remove these parentheses
+     |
+1051 ~         let Ok(paused) = lib.get::<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int>(
+1052 |             b"autoterm_engine_backlog_paused\0",
+1053 ~         ) else {
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates\auto-lang\src\vm\ffi\term_engine.rs:1090:27
+     |
+1090 |         let Ok(dropped) = (lib.get::<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int>(
+     |                           ^
+1091 |             b"autoterm_engine_overflow_count\0",
+1092 |         )) else {
+     |          ^
+     |
+help: remove these parentheses
+     |
+1090 ~         let Ok(dropped) = lib.get::<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int>(
+1091 |             b"autoterm_engine_overflow_count\0",
+1092 ~         ) else {
+     |
+
+warning: unused import: `crate::run`
+  --> crates\auto-lang\src\vm\tests_chart_geometry.rs:12:5
+   |
+12 | use crate::run;
+   |     ^^^^^^^^^^
+
+warning: unused imports: `VueGenerator` and `VueMode`
+    --> crates\auto-lang\src\lib.rs:6961:76
+     |
+6961 |     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions, VueGenerator, VueMode};
+     |                                                                            ^^^^^^^^^^^^  ^^^^^^^
+
+warning: unused import: `Family`
+  --> crates\auto-lang\src\ui\code_editor\core\render.rs:14:41
+   |
+14 |     Attrs, AttrsList, BufferLine, Edit, Family, FontSystem, LineEnding, Metrics, Selection, Wrap,
+   |                                         ^^^^^^
+
+warning: unused import: `Weak`
+  --> crates\auto-lang\src\ui\code_editor\core\mod.rs:23:39
+   |
+23 | use std::sync::{Arc, Mutex, OnceLock, Weak};
+   |                                       ^^^^
+
+warning: unused import: `Family`
+  --> crates\auto-lang\src\ui\code_editor\iced\gutter.rs:21:35
+   |
+21 |     Attrs, AttrsList, BufferLine, Family, FontSystem, LayoutLine, LineEnding, Shaping, SwashCache,
+   |                                   ^^^^^^
+
+warning: unused import: `iced::advanced::graphics::text::Renderer as RawTextRenderer`
+  --> crates\auto-lang\src\ui\code_editor\iced\widget.rs:13:5
+   |
+13 | use iced::advanced::graphics::text::Renderer as RawTextRenderer;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ScrollSource`
+  --> crates\auto-lang\src\ui\scroll\controller.rs:22:47
+   |
+22 | use crate::ui::scroll::intent::{ScrollIntent, ScrollSource};
+   |                                               ^^^^^^^^^^^^
+
+warning: unused import: `scroll_range`
+  --> crates\auto-lang\src\ui\scroll\host.rs:16:49
+   |
+16 | use crate::ui::scroll::geometry::{clamp_offset, scroll_range};
+   |                                                 ^^^^^^^^^^^^
+
+warning: unused import: `ScrollAxisState`
+   --> crates\auto-lang\src\ui\scroll\intent.rs:107:38
+    |
+107 | use crate::ui::scroll::state::{Axis, ScrollAxisState, ScrollState};
+    |                                      ^^^^^^^^^^^^^^^
+
+warning: unused imports: `Point` and `Vector`
+ --> crates\auto-lang\src\ui\anchor_slot.rs:9:29
+  |
+9 | use iced::{Element, Length, Point, Rectangle, Size, Theme, Vector};
+  |                             ^^^^^                          ^^^^^^
+
+warning: unused import: `AtomicBool`
+  --> crates\auto-lang\src\ui\style\mod.rs:41:29
+   |
+41 |     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+   |                             ^^^^^^^^^^
+
+warning: unused doc comment
+   --> crates\auto-lang\src\ui\style\theme\mod.rs:176:1
+    |
+176 | / /// PLAN-020 T-00b: 窗口高度(逻辑 px),与 window_width 同规约——renderer
+177 | | /// 在 view() 前设值。窗口尺寸面(分屏矩形投影 px 类几何的标定源)。
+    | |_-----------------------------------------------------------------^
+    |   |
+    |   rustdoc does not generate documentation for macro invocations
+    |
+    = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+
+warning: unused import: `VNode`
+  --> crates\auto-lang\src\ui\selection\output.rs:16:38
+   |
+16 | use crate::ui::vnode::{kind_keyword, VNode, VNodeId, VTree};
+   |                                      ^^^^^
+
+warning: unused import: `Try`
+  --> crates\auto-lang\src\ui\handler_codegen.rs:22:73
+   |
+22 |     Arg, Body, Branch, Expr, Fn, FnKind, If, Member, Name, Param, Stmt, Try, Type, TypeDecl,
+   |                                                                         ^^^
+
+warning: unused import: `ReservedEdges`
+  --> crates\auto-lang\src\ui\session.rs:32:37
+   |
+32 | use crate::ui::layout::{LayoutMode, ReservedEdges};
+   |                                     ^^^^^^^^^^^^^
+
+warning: unused doc comment
+    --> crates\auto-lang\src\ui\session.rs:3938:13
+     |
+3938 |               /// 回收（无 respawn——spawned 复位，下次召唤重 spawn）。
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3939 | /             if self.desktop.launcher_pipe.as_deref() == Some(pipe.as_str()) {
+3940 | |                 if let Some(lwid) = self.desktop.launcher_wid.take() {
+3941 | |                     if Some(lwid) != client.wid {
+3942 | |                         let _ = self.wm_remove_win(lwid);
+...    |
+3949 | |                 self.desktop.launcher_spawned = false;
+3950 | |             }
+     | |_____________- rustdoc does not generate documentation for expressions
+     |
+     = help: use `//` for a plain comment
+
+warning: unused doc comment
+    --> crates\auto-lang\src\ui\session.rs:4317:25
+     |
+4317 | /                         ///（add_win_above_bottom：z_order[1]，bg 上/窗下）；
+4318 | |                         /// rect 初值 = 顶部带（全宽 × 缺省面板高），宿主随
+4319 | |                         /// DashboardSnapshot 推送动态更新（命中带随几何）。
+     | |____________________________________________________________________________^
+4320 |                           let mut dashboard_wid: Option<Wid> = None;
+     |                           ------------------------------------------ rustdoc does not generate documentation for statements
+     |
+     = help: use `//` for a plain comment
+
+warning: unused doc comment
+    --> crates\auto-lang\src\ui\session.rs:4325:29
+     |
+4325 |   ...                   /// 边距；push_dashboard_snapshot 随几何动态更新）。
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+4326 | / ...                   let d_rect = iced::Rectangle::new(
+4327 | | ...                       iced::Point::new((width - d_decl.width - 12.0).max(12.0), 12.0),
+4328 | | ...                       iced::Size::new(d_decl.width, d_decl.height),
+4329 | | ...                   );
+     | |________________________- rustdoc does not generate documentation for statements
+     |
+     = help: use `//` for a plain comment
+
+warning: unused doc comment
+    --> crates\auto-lang\src\ui\session.rs:4412:21
+     |
+4412 |                       ///[v1 记债]——死亡由 pump 回收，下次召唤重 spawn）。
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+4413 | /                     if app_name == "launcher" && !surfaces.is_empty() {
+4414 | |                         let rect = iced::Rectangle::new(
+4415 | |                             iced::Point::new(0.0, 0.0),
+4416 | |                             iced::Size::new(width, height),
+...    |
+4453 | |                         continue;
+4454 | |                     }
+     | |_____________________- rustdoc does not generate documentation for expressions
+     |
+     = help: use `//` for a plain comment
+
+warning: unused doc comment
+    --> crates\auto-lang\src\ui\shell_projection.rs:1208:13
+     |
+1208 |             /// renderer in-proc 写点 Value::Int 同型）。
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1209 |             ShellWrite::Scalar("__panel_max_h", auto_val::Value::Int(self.panel_max_h as i32)),
+     |             ---------------------------------------------------------------------------------- rustdoc does not generate documentation for expressions
+     |
+     = help: use `//` for a plain comment
+
+warning: unused import: `std::collections::HashMap`
+  --> crates\auto-lang\src\ui\desktop_protocol\client_runtime.rs:13:5
+   |
+13 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AuraNode`, `AuraPropValue`, `AuraTextContent`, and `aura_events_get_base`
+  --> crates\auto-lang\src\ui\desktop_protocol\client_runtime.rs:16:19
+   |
+16 | use crate::aura::{aura_events_get_base, AuraNode, AuraPropValue, AuraTextContent};
+   |                   ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^  ^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^
+
+warning: unused imports: `DrawList`, `DrawOp`, `ImageFit`, `InputMsg`, `MouseButton`, and `WRect`
+  --> crates\auto-lang\src\ui\desktop_protocol\client_runtime.rs:19:17
+   |
+19 |     ControlMsg, DrawList, DrawOp, FrameMsg, ImageFit, InputMsg, MouseButton, ProtocolMsg, Rgba8,
+   |                 ^^^^^^^^  ^^^^^^            ^^^^^^^^  ^^^^^^^^  ^^^^^^^^^^^
+20 |     WRect,
+   |     ^^^^^
+
+warning: unused doc comment
+   --> crates\auto-lang\src\ui\desktop_protocol\coverage.rs:317:13
+    |
+317 | /             /// §10-④ 另立，opacity/overflow 先例；018 fixed×2/021
+318 | |             /// sticky×2 判定翻绿，保真边界显式随注）；top-/left-/right-/
+    | |_________________________________________________________________________^
+319 |               // bottom-/z- 偏移与层级 token。
+320 |               "absolute",
+    |               ---------- rustdoc does not generate documentation for expressions
+    |
+    = help: use `//` for a plain comment
+
+warning: unused doc comment
+   --> crates\auto-lang\src\ui\desktop_protocol\coverage.rs:824:9
+    |
+824 |         /// "flex-wrap"（既有 "flex" 前缀命中），渲染 no-op 单行随注。
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+825 |         SC::FlexWrap => "flex-wrap".into(),
+    |         ---------------------------------- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+
+warning: unused import: `super::broker`
+  --> crates\auto-lang\src\ui\desktop_protocol\dual_mode.rs:16:5
+   |
+16 | use super::broker;
+   |     ^^^^^^^^^^^^^
+
+warning: unused imports: `AppEndpoint` and `AppState`
+  --> crates\auto-lang\src\ui\desktop_protocol\dual_mode.rs:17:23
+   |
+17 | use super::endpoint::{AppEndpoint, AppState, FrameSource};
+   |                       ^^^^^^^^^^^  ^^^^^^^^
+
+warning: unused imports: `FrameMsg` and `ProtocolMsg`
+  --> crates\auto-lang\src\ui\desktop_protocol\dual_mode.rs:19:44
+   |
+19 | use super::message::{ControlMsg, DrawList, FrameMsg, InputMsg, MouseButton, ProtocolMsg, Rgba8, WRect};
+   |                                            ^^^^^^^^                         ^^^^^^^^^^^
+
+warning: unused import: `super::shm::SharedFrameBuffer`
+  --> crates\auto-lang\src\ui\desktop_protocol\dual_mode.rs:20:5
+   |
+20 | use super::shm::SharedFrameBuffer;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `self`
+  --> crates\auto-lang\src\ui\desktop_protocol\dual_mode.rs:21:24
+   |
+21 | use super::transport::{self, Transport};
+   |                        ^^^^
+
+warning: unused import: `crate::ui::session::DesktopSession`
+  --> crates\auto-lang\src\ui\desktop_protocol\dual_mode.rs:23:5
+   |
+23 | use crate::ui::session::DesktopSession;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `DISABLED_ALPHA`
+  --> crates\auto-lang\src\ui\desktop_protocol\native_projector.rs:35:17
+   |
+35 |     BUTTON_PAD, DISABLED_ALPHA, LINE_H_FACTOR, MARGIN, TEXT_SIZE,
+   |                 ^^^^^^^^^^^^^^
+
+warning: unused doc comment
+   --> crates\auto-lang\src\ui\desktop_protocol\native_projector.rs:319:5
+    |
+319 |       /// 无 GAP/高度推导）；Widget 锚 = 边缘 + GAP。
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+320 | /     let (below, above) = match site {
+321 | |         PopoverAnchorSite::Point { y, .. } => (*y, *y - ph),
+322 | |         PopoverAnchorSite::Widget(_) => (r.y + r.h + POP_GAP, r.y - POP_GAP - ph),
+323 | |     };
+    | |______- rustdoc does not generate documentation for statements
+    |
+    = help: use `//` for a plain comment
+
+warning: unused doc comment
+    --> crates\auto-lang\src\ui\desktop_protocol\native_projector.rs:1442:9
+     |
+1442 |         ///（延迟放置见块尾）。
+     |         ^^^^^^^^^^^^^^^^^^^^^^^
+1443 |         let style = node_style_of_view(view);
+     |         ------------------------------------- rustdoc does not generate documentation for statements
+     |
+     = help: use `//` for a plain comment
+
+warning: unused doc comment
+    --> crates\auto-lang\src\ui\desktop_protocol\native_projector.rs:2953:9
+     |
+2953 |         ///（token "style-grid" 判定面不受影响）。
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2954 |         StyleClass::GridCols(n) => s.grid_cols = Some(usize::from(*n)),
+     |         -------------------------------------------------------------- rustdoc does not generate documentation for match arms
+     |
+     = help: use `//` for a plain comment
+
+warning: unused doc comment
+    --> crates\auto-lang\src\ui\desktop_protocol\native_projector.rs:2957:9
+     |
+2957 | /         ///（layout_view_block 延迟放置消费）；fixed/sticky 降级放行
+2958 | |         ///（in-flow no-op——opacity/overflow 先例，真渲债 §10-④）。
+     | |___________________________________________________________________^
+2959 |           StyleClass::Absolute => s.absolute = true,
+     |           ----------------------------------------- rustdoc does not generate documentation for match arms
+     |
+     = help: use `//` for a plain comment
+
+warning: unused doc comment
+    --> crates\auto-lang\src\ui\desktop_protocol\native_projector.rs:2986:9
+     |
+2986 |         ///（underline 先例；真渲债 KNOWN-DEBT 随注）。
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2987 |         StyleClass::LineClamp(_) | StyleClass::LineClampNone => {}
+     |         ---------------------------------------------------------- rustdoc does not generate documentation for match arms
+     |
+     = help: use `//` for a plain comment
+
+warning: unused import: `HostEndpoint`
+  --> crates\auto-lang\src\ui\desktop_protocol\rqhost.rs:27:35
+   |
+27 | use super::endpoint::{HostAction, HostEndpoint, HostState};
+   |                                   ^^^^^^^^^^^^
+
+warning: unused import: `super::host::SurfaceStore`
+  --> crates\auto-lang\src\ui\desktop_protocol\rqhost.rs:28:5
+   |
+28 | use super::host::SurfaceStore;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `HandshakeMsg`
+  --> crates\auto-lang\src\ui\desktop_protocol\rqhost.rs:30:48
+   |
+30 |     ControlMsg, DrawList, FrameMode, FrameMsg, HandshakeMsg, ImeReq, InputMsg, MouseButton,
+   |                                                ^^^^^^^^^^^^
+
+warning: unused doc comment
+   --> crates\auto-lang\src\ui\desktop_protocol\shell_client.rs:342:13
+    |
+342 |               /// 错退出，宿主 respawn 链兜底）。
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+343 | /             shell_face::LAUNCHER => {
+344 | |                 let Some(entry) = std::env::var_os("AUTO_LAUNCHER_ENTRY") else {
+345 | |                     eprintln!("[p036-child] launcher 面：AUTO_LAUNCHER_ENTRY 缺席");
+346 | |                     return false;
+...   |
+362 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+
+warning: unused doc comment
+   --> crates\auto-lang\src\ui\desktop_protocol\shell_client.rs:709:21
+    |
+709 |                     ///——首 OVERLAY=switcher、次=notification_center）。
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+710 |                     let mut overlay_idx = 0usize;
+    |                     ----------------------------- rustdoc does not generate documentation for statements
+    |
+    = help: use `//` for a plain comment
+
+warning: unused doc comment
+   --> crates\auto-lang\src\ui\desktop_protocol\shell_client.rs:747:25
+    |
+747 | /                         /// 可产命令（SendCmd 总线写点）——与 wire 输入同路：
+748 | |                         /// 命令读走 + DesktopBus 上行（e2e 钩子与生产同径）。
+    | |______________________________________________________________________________^
+749 | /                         for record in self.faces.drain_commands(face) {
+750 | |                             let wid = self
+751 | |                                 .routes
+752 | |                                 .iter()
+...   |
+758 | |                             );
+759 | |                         }
+    | |_________________________- rustdoc does not generate documentation for expressions
+    |
+    = help: use `//` for a plain comment
+
+warning: unused import: `NamedPipeClient`
+   --> crates\auto-lang\src\ui\desktop_protocol\transport.rs:160:58
+    |
+160 |     use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions};
+    |                                                          ^^^^^^^^^^^^^^^
+
+warning: unused imports: `GetIconInfo` and `ICONINFO`
+   --> crates\auto-lang\src\ui\native_dock\win32.rs:592:27
+    |
+592 |         GetClassLongPtrW, GetIconInfo, SendMessageTimeoutW, GCLP_HICON, HICON, ICONINFO,
+    |                           ^^^^^^^^^^^                                          ^^^^^^^^
+
+warning: unnecessary trailing semicolon
+     --> crates\auto-lang\src\ui\aura_view_builder.rs:11573:22
+      |
+11573 |                     };
+      |                      ^ help: remove this semicolon
+      |
+      = note: `#[warn(redundant_semicolons)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused doc comment
+   --> crates\auto-lang\src\ui\iced\renderer.rs:125:1
+    |
+125 | /// 独立 kill-ring(readline 语义:最近 16 条;不污染系统剪贴板)。
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+    |
+    = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+
+warning: unused doc comment
+   --> crates\auto-lang\src\ui\iced\renderer.rs:983:1
+    |
+983 | /// 每个 textarea key 当前嵌入的 ghost 后缀(渲染时写入,编辑派发时读)。
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+    |
+    = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+
+warning: unused import: `Fill`
+    --> crates\auto-lang\src\ui\iced\renderer.rs:8219:36
+     |
+8219 |         use iced::widget::canvas::{Fill, Frame, Path, Stroke};
+     |                                    ^^^^
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:10546:5
+      |
+10546 |       /// RebuildNotes 事件重建 rows——in-proc 写集 + handler 同册语义）。
+      |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10547 | /     if state.desktop.shell_pipe.is_some() {
+10548 | |         if state.desktop.notes_open {
+10549 | |             push_notes_snapshot(
+10550 | |                 state,
+...     |
+10554 | |         return;
+10555 | |     }
+      | |_____- rustdoc does not generate documentation for expressions
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:10634:5
+      |
+10634 | /     /// 场）——launcher 独立 exe：已 attach 则快照推送（ApplyFilter 事件
+10635 | |     /// + child 自主聚焦[D5 等价]）；未 spawn 则一次性 spawn（attach 异步
+10636 | |     ///——ServiceTick 补推追赶）；伪窗聚焦承接键盘路由（D5 可聚焦语义）。
+10637 | |     /// in-proc 轨原路径零变化（I2）。
+      | |______________________________________^
+10638 | /     if state.desktop.shell_pipe.is_some() {
+10639 | |         state.desktop.launcher_open = true;
+10640 | |         if state.desktop.launcher_pipe.is_some() {
+10641 | |             if let Some(lwid) = state.desktop.launcher_wid {
+...     |
+10654 | |         return iced::Task::none();
+10655 | |     }
+      | |_____- rustdoc does not generate documentation for expressions
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:10797:5
+      |
+10797 | /     ///（child 预装/懒装面 apply_writes + dispatch 重建 rows）；in-proc
+10798 | |     /// 原路径零变化（I2）。开关镜像位 = switcher_open（层序/仲裁消费）。
+      | |_________________________________________________________________________^
+10799 | /     if state.desktop.shell_pipe.is_some() {
+10800 | |         state.desktop.switcher_open = true;
+10801 | |         push_switcher_snapshot(state, &[crate::ui::shell_projection::ShellEvent::RebuildMru]);
+10802 | |         return iced::Task::none();
+10803 | |     }
+      | |_____- rustdoc does not generate documentation for expressions
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:10892:5
+      |
+10892 | /     /// RebuildNotes 事件 + 未读清零；关 = visible=0 纯状态位）；in-proc
+10893 | |     /// 原路径零变化（I2）。
+      | |____________________________^
+10894 | /     if state.desktop.shell_pipe.is_some() {
+10895 | |         let open = !state.desktop.notes_open;
+10896 | |         state.desktop.notes_open = open;
+10897 | |         if open {
+...     |
+10903 | |         return iced::Task::none();
+10904 | |     }
+      | |_____- rustdoc does not generate documentation for expressions
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:11173:5
+      |
+11173 |       ///（右上锚定：x = 视口 - w - 12，y = panel_top——035 固定外框契约）。
+      |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11174 | /     if let (Some(dwid), Some(host)) = (
+11175 | |         state.desktop.shell_pseudo_wids.get(4).copied(),
+11176 | |         state.host.as_mut(),
+11177 | |     ) {
+...     |
+11194 | |     }
+      | |_____- rustdoc does not generate documentation for expressions
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:11733:5
+      |
+11733 |       /// 宿主行为两轨同源）+ 快照重推（RebuildFaces 事件重建 rows）。
+      |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11734 | /     if state.desktop.shell_pipe.is_some() {
+11735 | |         if state.desktop.dashboard_open {
+11736 | |             push_dashboard_snapshot(
+11737 | |                 state,
+...     |
+11741 | |         return;
+11742 | |     }
+      | |_____- rustdoc does not generate documentation for expressions
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:11750:5
+      |
+11750 | /     ///（in-proc 注入与 outproc 快照两轨同源——孵化副作用/配置门/跨度/
+11751 | |     /// 布局算式单一事实）。
+      | |____________________________^
+11752 |       let (faces, panel_w, panel_h, panel_top) = collect_dashboard_faces(state);
+      |       -------------------------------------------------------------------------- rustdoc does not generate documentation for statements
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:11813:5
+      |
+11813 | /     /// visible 置位 + RebuildFaces 事件快照；关 = visible=0 纯状态）；
+11814 | |     /// in-proc 原路径零变化（I2）。
+      | |____________________________________^
+11815 | /     if state.desktop.shell_pipe.is_some() {
+11816 | |         if state.desktop.dashboard_open {
+11817 | |             state.desktop.dashboard_open = false;
+11818 | |             push_dashboard_snapshot(state, &[]);
+...     |
+11826 | |         return iced::Task::none();
+11827 | |     }
+      | |_____- rustdoc does not generate documentation for expressions
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:19470:25
+      |
+19470 | /                         /// spawn→attach 异步落差（launcher_open 挂起 +
+19471 | |                         /// pipe 落地 + 指纹未建）时补推召唤快照。
+      | |__________________________________________________________________^
+19472 | /                         if state.desktop.launcher_open
+19473 | |                             && state.desktop.launcher_pipe.is_some()
+19474 | |                             && state.desktop.launcher_fp.is_none()
+...     |
+19482 | |                             );
+19483 | |                         }
+      | |_________________________- rustdoc does not generate documentation for expressions
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:19849:25
+      |
+19849 | /                         /// 事件快照（child dispatch → SwitcherMsg::Advance）；
+19850 | |                         /// 未可见 = 首召唤（switcher_open 置位 + RebuildMru +
+19851 | |                         /// Advance 首步——in-proc 首按推进语义同册）。
+      | |______________________________________________________________________^
+19852 | /                         if state.desktop.shell_pipe.is_some() {
+19853 | |                             if state.desktop.switcher_open {
+19854 | |                                 push_switcher_snapshot(
+19855 | |                                     state,
+...     |
+19868 | |                             return iced::Task::none();
+19869 | |                         }
+      | |_________________________- rustdoc does not generate documentation for expressions
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:20147:29
+      |
+20147 | / ...                   /// ——Escape 事件快照（面板 .at Escape handler 置
+20148 | | ...                   /// visible=0 + 镜像位复位；in-proc 走 app 内 bind
+20149 | | ...                   /// 路径不动）。
+      | |______________________________________^
+20150 | / ...                   if state.desktop.shell_pipe.is_some() {
+20151 | | ...                       if state.desktop.switcher_open {
+20152 | | ...                           state.desktop.switcher_open = false;
+20153 | | ...                           push_switcher_snapshot(
+...     |
+20182 | | ...                   }
+      | |_______________________- rustdoc does not generate documentation for expressions
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:20581:41
+      |
+20581 | / ...                   /// Pick 事件快照（child dispatch →
+20582 | | ...                   /// SwitcherMsg::Pick 提交选中 →
+20583 | | ...                   /// SendCmd focus 上行 DesktopBus）+
+20584 | | ...                   /// 面板自隐（switcher_open 复位）。
+      | |__________________________________________________________^
+20585 | / ...                   if state.desktop.shell_pipe.is_some() {
+20586 | | ...                       state.desktop.switcher_open = false;
+20587 | | ...                       push_switcher_snapshot(
+20588 | | ...                           state,
+...     |
+20591 | | ...                       return iced::Task::none();
+20592 | | ...                   }
+      | |_______________________- rustdoc does not generate documentation for expressions
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:20868:17
+      |
+20868 | /                 /// 表面帧贴层（伪窗[4]，表面 = dashboard_layout 外框
+20869 | |                 /// 720×176 spacer 链右上贴放）；in-proc = 面板 App 拆借
+20870 | |                 /// 视图 wrapper（原路径零变化）。face 卡两轨共用（宿主
+20871 | |                 /// 叠层——D1 修订：卡内容真渲保留宿主，面板 chrome/清单
+20872 | |                 /// /grid = child）。
+      | |_____________________________________^
+20873 | /                 let msg_target = state
+20874 | |                     .desktop
+20875 | |                     .dashboard_app
+20876 | |                     .unwrap_or(crate::ui::session::AppId(0));
+      | |_____________________________________________________________- rustdoc does not generate documentation for statements
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:21210:13
+      |
+21210 | /             ///（伪窗全屏——launcher 可见时置顶；child else 分支同语义
+21211 | |             /// 渲透明空层）。
+      | |______________________________^
+21212 | /             if state.desktop.launcher_pipe.is_some() && state.launcher_visible() {
+21213 | |                 if let Some(lwid) = state.desktop.launcher_wid {
+21214 | |                     if let Some(el) = shell_surface_element_pipe(state, state.desktop.launcher_pipe.clone(), lwid) {
+21215 | |                         let full = iced::widget::container(el)
+...     |
+21234 | |                 layers.push(launcher_client.map(move |m| DM::App(launcher_app, m)));
+21235 | |             }
+      | |_____________- rustdoc does not generate documentation for expressions
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:21241:17
+      |
+21241 |                   /// 贴层（伪窗 [2]；面板内容/scrim 由 child DrawList 自绘）。
+      |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+21242 | /                 if state.desktop.shell_pipe.is_some() {
+21243 | |                     let overlay_wid = state.desktop.shell_pseudo_wids.get(2).copied();
+21244 | |                     if let Some(el) = overlay_wid.and_then(|w| shell_surface_element(state, w)) {
+21245 | |                         let full = iced::widget::container(el)
+...     |
+21264 | |                 layers.push(switcher_client.map(move |m| DM::App(switcher_app, m)));
+21265 | |                 }
+      | |_________________- rustdoc does not generate documentation for expressions
+      |
+      = help: use `//` for a plain comment
+
+warning: unused doc comment
+     --> crates\auto-lang\src\ui\iced\renderer.rs:21277:17
+      |
+21277 |                   ///（伪窗 [3]；对齐/scrim 由 child 自绘）。
+      |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+21278 | /                 if state.desktop.shell_pipe.is_some() {
+21279 | |                     let overlay_wid = state.desktop.shell_pseudo_wids.get(3).copied();
+21280 | |                     if let Some(el) = overlay_wid.and_then(|w| shell_surface_element(state, w)) {
+21281 | |                         let full = iced::widget::container(el)
+...     |
+21299 | |                 layers.push(panel_client.map(move |m| DM::App(panel_app, m)));
+21300 | |                 }
+      | |_________________- rustdoc does not generate documentation for expressions
+      |
+      = help: use `//` for a plain comment
+
+warning: unused import: `Text`
+   --> crates\auto-lang\src\ui\iced\broker_surface.rs:390:49
+    |
+390 |         use iced::widget::canvas::{Frame, Path, Text};
+    |                                                 ^^^^
+
+warning: unused import: `BorderSpec`
+   --> crates\auto-lang\src\ui\iced\broker_surface.rs:561:5
+    |
+561 |     BorderSpec, DisplayList, DisplayOp, Fill as WireFill, ShadowSpec,
+    |     ^^^^^^^^^^
+
+warning: falling back to `f32` as the trait bound `f32: From<f64>` is not satisfied
+    --> crates\auto-lang\src\ui\terminal\iced\widget.rs:1063:28
+     |
+1063 |                     width: 0.0.into(),
+     |                            ^^^ help: explicitly specify the type as `f32`: `0.0_f32`
+     |
+     = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+     = note: for more information, see issue #154024 <https://github.com/rust-lang/rust/issues/154024>
+     = note: `#[warn(float_literal_f32_fallback)]` (part of `#[warn(future_incompatible)]`) on by default
+
+warning: falling back to `f32` as the trait bound `f32: From<f64>` is not satisfied
+    --> crates\auto-lang\src\ui\terminal\iced\widget.rs:1348:32
+     |
+1348 |                         width: 1.0.into(),
+     |                                ^^^ help: explicitly specify the type as `f32`: `1.0_f32`
+     |
+     = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+     = note: for more information, see issue #154024 <https://github.com/rust-lang/rust/issues/154024>
+
+warning: unused import: `HasWindowHandle`
+   --> crates\auto-lang\src\ui\desktop_protocol\win_ime.rs:248:29
+    |
+248 |     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    |                             ^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> crates\auto-lang\src\aura\extract.rs:689:24
+    |
+689 |     let (mut handlers, mut handler_params) = if let Some(on) = &decl.on {
+    |                        ----^^^^^^^^^^^^^^
+    |                        |
+    |                        help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `def`
+   --> crates\auto-lang\src\aura\schema.rs:333:21
+    |
+333 |         if let Some(def) = self.elements.get(tag) {
+    |                     ^^^ help: if this is intentional, prefix it with an underscore: `_def`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+    --> crates\auto-lang\src\ui_gen\vue.rs:7000:34
+     |
+7000 | ...                   let (mut static_classes, _dc, _ds) = self.extract_classes(tag, props);
+     |                            ----^^^^^^^^^^^^^^
+     |                            |
+     |                            help: remove this `mut`
+
+warning: unreachable pattern
+    --> crates\auto-lang\src\ui_gen\vue.rs:9655:13
+     |
+9626 |             "option" | "Option" => "option".to_string(),
+     |             ------------------- matches all the relevant values
+...
+9655 |             "option" | "Option" => "option".to_string(),
+     |             ^^^^^^^^^^^^^^^^^^^ no value can reach this
+     |
+     = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+     --> crates\auto-lang\src\ui_gen\vue.rs:10320:17
+      |
+10320 |                 _ => {}
+      |                 ^ no value can reach this
+      |
+note: multiple earlier patterns match some of the same values
+     --> crates\auto-lang\src\ui_gen\vue.rs:10320:17
+      |
+10185 |                 AuraPropValue::StyleBinding(bindings) => {
+      |                 ------------------------------------- matches some of the same values
+...
+10204 |                 AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+      |                 --------------------------------------------- matches some of the same values
+...
+10234 |                 AuraPropValue::Expr(crate::ast::Expr::If(if_stmt)) => {
+      |                 -------------------------------------------------- matches some of the same values
+...
+10247 |                 AuraPropValue::Expr(crate::ast::Expr::Array(elems)) => {
+      |                 --------------------------------------------------- matches some of the same values
+...
+10320 |                 _ => {}
+      |                 ^ ...and 1 other patterns collectively make this unreachable
+
+warning: unused variable: `store_check`
+    --> crates\auto-lang\src\ui_gen\rust.rs:7704:21
+     |
+7704 |                 let store_check = format!("{}.{}", first, part);
+     |                     ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_store_check`
+
+warning: variable does not need to be mutable
+   --> crates\auto-lang\src\ui_gen\widget\registry.rs:388:13
+    |
+388 |         let mut scroll_scrollbar = WidgetSpec::new("ScrollAreaScrollbar", WidgetCategory::Layout)
+    |             ----^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates\auto-lang\src\ui_gen\widget\registry.rs:393:13
+    |
+393 |         let mut scroll_thumb = WidgetSpec::new("ScrollAreaThumb", WidgetCategory::Layout)
+    |             ----^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates\auto-lang\src\ui_gen\widget\registry.rs:586:13
+    |
+586 |         let mut select_value = WidgetSpec::new("SelectValue", WidgetCategory::Form)
+    |             ----^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates\auto-lang\src\ui_gen\widget\registry.rs:1196:13
+     |
+1196 |         let mut breadcrumb_sep = WidgetSpec::new("BreadcrumbSeparator", WidgetCategory::Navigation)
+     |             ----^^^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates\auto-lang\src\ui_gen\widget\registry.rs:1261:13
+     |
+1261 |         let mut pagination_link = WidgetSpec::new("PaginationLink", WidgetCategory::Navigation)
+     |             ----^^^^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates\auto-lang\src\ui_gen\widget\registry.rs:1266:13
+     |
+1266 |         let mut pagination_ellipsis = WidgetSpec::new("PaginationEllipsis", WidgetCategory::Navigation)
+     |             ----^^^^^^^^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates\auto-lang\src\ui_gen\widget\registry.rs:1271:13
+     |
+1271 |         let mut pagination_next = WidgetSpec::new("PaginationNext", WidgetCategory::Navigation)
+     |             ----^^^^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates\auto-lang\src\ui_gen\widget\registry.rs:1276:13
+     |
+1276 |         let mut pagination_prev = WidgetSpec::new("PaginationPrevious", WidgetCategory::Navigation)
+     |             ----^^^^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates\auto-lang\src\ui_gen\widget\registry.rs:2007:13
+     |
+2007 |         let mut toast_viewport = WidgetSpec::new("ToastViewport", WidgetCategory::Feedback)
+     |             ----^^^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates\auto-lang\src\ui_gen\widget\registry.rs:2018:13
+     |
+2018 |         let mut toast_close = WidgetSpec::new("ToastClose", WidgetCategory::Feedback)
+     |             ----^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates\auto-lang\src\ui_gen\widget\registry.rs:2056:13
+     |
+2056 |         let mut sonner = WidgetSpec::new("Sonner", WidgetCategory::Feedback)
+     |             ----^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates\auto-lang\src\ui_gen\widget\registry.rs:2227:13
+     |
+2227 |         let mut calendar_day = WidgetSpec::new("CalendarDay", WidgetCategory::Data)
+     |             ----^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `sub_widgets_out` is never read
+   --> crates\auto-lang\src\ui_gen\api.rs:849:44
+    |
+849 |     let mut sub_widgets_out: Vec<String> = Vec::new();
+    |                                            ^^^^^^^^^^ this value is reassigned later and never used
+...
+912 |         sub_widgets_out = package_names;
+    |         --------------- `sub_widgets_out` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `count`
+   --> crates\auto-lang\src\ui_gen\validators.rs:674:9
+    |
+674 |     let count = template.matches("AutoDownEditor").count();
+    |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_count`
+
+warning: unused variable: `w`
+    --> crates\auto-lang\src\parser.rs:1383:21
+     |
+1383 |                 let w = "__w".to_string();
+     |                     ^ help: if this is intentional, prefix it with an underscore: `_w`
+
+warning: variable does not need to be mutable
+    --> crates\auto-lang\src\parser.rs:2542:13
+     |
+2542 |         let mut rollback = |slf: &mut Self| {
+     |             ----^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: unused variable: `open`
+     --> crates\auto-lang\src\parser.rs:10882:14
+      |
+10882 |         let (open, close, close_text) = if self.is_kind(TokenKind::Lt) {
+      |              ^^^^ help: if this is intentional, prefix it with an underscore: `_open`
+
+warning: unused variable: `events`
+     --> crates\auto-lang\src\parser.rs:13242:45
+      |
+13242 |             ViewNode::Element { tag, props, events, children, .. } => {
+      |                                             ^^^^^^ help: try ignoring the field: `events: _`
+
+warning: unused variable: `method`
+    --> crates\auto-lang\src\trans\rust.rs:1019:31
+     |
+1019 |         if let Expr::Dot(obj, method) = call.name.as_ref() {
+     |                               ^^^^^^ help: if this is intentional, prefix it with an underscore: `_method`
+
+warning: unreachable pattern
+    --> crates\auto-lang\src\trans\rust.rs:6274:34
+     |
+6174 |                         "Json" => match method.as_str() {
+     |                         ------ matches all the relevant values
+...
+6274 |                         "json" | "Json" => match method.as_str() {
+     |                                  ^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates\auto-lang\src\trans\rust.rs:6394:29
+     |
+6316 | ...                   "as_int" => {
+     |                       -------- matches all the relevant values
+...
+6394 | ...                   "as_int" => {
+     |                       ^^^^^^^^ no value can reach this
+
+warning: unused variable: `i`
+    --> crates\auto-lang\src\trans\rust.rs:6604:38
+     |
+6604 | ...                   for (i, arg) in call.args.args.iter().enumerate().skip(1) {
+     |                            ^ help: if this is intentional, prefix it with an underscore: `_i`
+
+warning: unused variable: `name`
+     --> crates\auto-lang\src\trans\rust.rs:12308:13
+      |
+12308 |         let name = td.name.as_str();
+      |             ^^^^ help: if this is intentional, prefix it with an underscore: `_name`
+
+warning: unused variable: `name`
+     --> crates\auto-lang\src\trans\rust.rs:12860:9
+      |
+12860 |         name: &str,
+      |         ^^^^ help: if this is intentional, prefix it with an underscore: `_name`
+
+warning: irrefutable `if let` pattern
+     --> crates\auto-lang\src\trans\rust.rs:20264:20
+      |
+20264 |                 if let crate::ast::Cover::Tag(tc) = cover {
+      |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = note: this pattern will always match, so the `if let` is useless
+      = help: consider replacing the `if let` with a `let`
+      = note: `#[warn(irrefutable_let_patterns)]` on by default
+
+warning: unused variable: `derive_attr`
+     --> crates\auto-lang\src\trans\rust.rs:22571:21
+      |
+22571 |                 let derive_attr = caps.get(1).unwrap().as_str();
+      |                     ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_derive_attr`
+
+warning: unused variable: `has_kw`
+  --> crates\auto-lang\src\trans\s2s_rules.rs:90:21
+   |
+90 |                 let has_kw = c
+   |                     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_has_kw`
+
+warning: unused variable: `spec_decl`
+    --> crates\auto-lang\src\vm\codegen.rs:2661:28
+     |
+2661 |             Stmt::SpecDecl(spec_decl) => {
+     |                            ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_spec_decl`
+
+warning: unused variable: `enum_method`
+    --> crates\auto-lang\src\vm\codegen.rs:8083:61
+     |
+8083 | ...                   let enum_method = format!("{}.{}", enum_name, method.as_ref());
+     |                           ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_enum_method`
+
+warning: unreachable pattern
+   --> crates\auto-lang\src\vm\abt\asm.rs:175:11
+    |
+151 |         | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+    |           ------------------- matches all the relevant values
+...
+175 |         | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+    |           ^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> crates\auto-lang\src\vm\abt\asm.rs:175:33
+    |
+151 |         | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+    |                                 -------------------- matches all the relevant values
+...
+175 |         | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+    |                                 ^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> crates\auto-lang\src\vm\abt\disasm.rs:263:11
+    |
+239 |         | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+    |           ------------------- matches all the relevant values
+...
+263 |         | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+    |           ^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+   --> crates\auto-lang\src\vm\abt\disasm.rs:263:33
+    |
+239 |         | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+    |                                 -------------------- matches all the relevant values
+...
+263 |         | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+    |                                 ^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: variable does not need to be mutable
+  --> crates\auto-lang\src\vm\abt\mod.rs:87:13
+   |
+87 | ...   let mut emit_line = |s: &str, src_line: Option<u32>, out: &mut String, map: &mut Vec<crate::trans::SourceMapEntry>, line_no: &...
+   |           ----^^^^^^^^^
+   |           |
+   |           help: remove this `mut`
+
+warning: unused variable: `handle`
+    --> crates\auto-lang\src\vm\engine.rs:6949:33
+     |
+6949 |                     if let Some(handle) = http_response_handle {
+     |                                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_handle`
+
+warning: unused variable: `other`
+    --> crates\auto-lang\src\vm\engine.rs:7944:42
+     |
+7944 | ...                   Some(other) => {
+     |                            ^^^^^ help: if this is intentional, prefix it with an underscore: `_other`
+
+warning: value assigned to `old_field_ref` is never read
+    --> crates\auto-lang\src\vm\engine.rs:5027:58
+     |
+5027 |                       let mut old_field_ref: Option<u64> = None;
+     |                                                            ^^^^ this value is reassigned later and never used
+...
+5041 | /                                 old_field_ref = instance.fields.get(field_index).and_then(|v| match v {
+5042 | |                                     Value::VmRef(r) => Some(r.id as u64),
+5043 | |                                     _ => None,
+5044 | |                                 });
+     | |__________________________________- `old_field_ref` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> crates\auto-lang\src\vm\rc.rs:355:22
+    |
+355 |             let Some(mut e) = self.heap_rc.get_mut(&id) else {
+    |                      ----^
+    |                      |
+    |                      help: remove this `mut`
+
+warning: unused variable: `k`
+   --> crates\auto-lang\src\vm\rc.rs:694:25
+    |
+694 |             if let Some(k) = &key {
+    |                         ^ help: if this is intentional, prefix it with an underscore: `_k`
+
+warning: unused variable: `key`
+  --> crates\auto-lang\src\vm\autodown_natives.rs:59:9
+   |
+59 |     let key = pop_string_arg(task, vm);
+   |         ^^^ help: if this is intentional, prefix it with an underscore: `_key`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:320:38
+    |
+320 | fn shim_int_and(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                      ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:328:37
+    |
+328 | fn shim_int_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                     ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:336:38
+    |
+336 | fn shim_int_xor(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                      ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:345:38
+    |
+345 | fn shim_int_not(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                      ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:353:38
+    |
+353 | fn shim_int_shl(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                      ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:364:38
+    |
+364 | fn shim_int_shr(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                      ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:375:38
+    |
+375 | fn shim_int_sar(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                      ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:389:38
+    |
+389 | fn shim_int_rol(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                      ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:397:38
+    |
+397 | fn shim_int_ror(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                      ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:405:45
+    |
+405 | fn shim_int_count_ones(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                             ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:412:48
+    |
+412 | fn shim_int_leading_zeros(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                                ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:419:49
+    |
+419 | fn shim_int_trailing_zeros(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                                 ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:426:41
+    |
+426 | fn shim_int_bitrev(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                         ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:435:43
+    |
+435 | fn shim_int_bit_read(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:447:43
+    |
+447 | fn shim_int_bit_test(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:458:41
+    |
+458 | fn shim_int_bit_on(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                         ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:468:42
+    |
+468 | fn shim_int_bit_off(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                          ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:478:43
+    |
+478 | fn shim_int_bit_flip(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+528 | math_unary_shim!(shim_math_sin, sin);
+    | ------------------------------------ in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+528 | math_unary_shim!(shim_math_sin, sin);
+    | ------------------------------------ in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+529 | math_unary_shim!(shim_math_cos, cos);
+    | ------------------------------------ in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+529 | math_unary_shim!(shim_math_cos, cos);
+    | ------------------------------------ in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+530 | math_unary_shim!(shim_math_tan, tan);
+    | ------------------------------------ in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+530 | math_unary_shim!(shim_math_tan, tan);
+    | ------------------------------------ in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+533 | math_unary_shim!(shim_math_abs_f, abs);
+    | -------------------------------------- in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+533 | math_unary_shim!(shim_math_abs_f, abs);
+    | -------------------------------------- in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+534 | math_unary_shim!(shim_math_floor, floor);
+    | ---------------------------------------- in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+534 | math_unary_shim!(shim_math_floor, floor);
+    | ---------------------------------------- in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+535 | math_unary_shim!(shim_math_ceil, ceil);
+    | -------------------------------------- in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+535 | math_unary_shim!(shim_math_ceil, ceil);
+    | -------------------------------------- in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+536 | math_unary_shim!(shim_math_round, round);
+    | ---------------------------------------- in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+536 | math_unary_shim!(shim_math_round, round);
+    | ---------------------------------------- in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+537 | math_unary_shim!(shim_math_exp, exp);
+    | ------------------------------------ in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+537 | math_unary_shim!(shim_math_exp, exp);
+    | ------------------------------------ in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+538 | math_unary_shim!(shim_math_ln, ln);
+    | ---------------------------------- in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+538 | math_unary_shim!(shim_math_ln, ln);
+    | ---------------------------------- in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+539 | math_unary_shim!(shim_math_log2, log2);
+    | -------------------------------------- in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+539 | math_unary_shim!(shim_math_log2, log2);
+    | -------------------------------------- in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+540 | math_unary_shim!(shim_math_log10, log10);
+    | ---------------------------------------- in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+540 | math_unary_shim!(shim_math_log10, log10);
+    | ---------------------------------------- in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+541 | math_unary_shim!(shim_math_signum, signum);
+    | ------------------------------------------ in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+541 | math_unary_shim!(shim_math_signum, signum);
+    | ------------------------------------------ in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+542 | math_unary_shim!(shim_math_asin, asin);
+    | -------------------------------------- in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+542 | math_unary_shim!(shim_math_asin, asin);
+    | -------------------------------------- in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+543 | math_unary_shim!(shim_math_acos, acos);
+    | -------------------------------------- in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+543 | math_unary_shim!(shim_math_acos, acos);
+    | -------------------------------------- in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+544 | math_unary_shim!(shim_math_atan, atan);
+    | -------------------------------------- in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+544 | math_unary_shim!(shim_math_atan, atan);
+    | -------------------------------------- in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+545 | math_unary_shim!(shim_math_to_radians, to_radians);
+    | -------------------------------------------------- in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+545 | math_unary_shim!(shim_math_to_radians, to_radians);
+    | -------------------------------------------------- in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+546 | math_unary_shim!(shim_math_to_degrees, to_degrees);
+    | -------------------------------------------------- in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:509:43
+    |
+509 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+546 | math_unary_shim!(shim_math_to_degrees, to_degrees);
+    | -------------------------------------------------- in this macro invocation
+    = note: this warning originates in the macro `math_unary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:519:43
+    |
+519 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+547 | math_binary_shim!(shim_math_pow, powf);
+    | -------------------------------------- in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:519:43
+    |
+519 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+547 | math_binary_shim!(shim_math_pow, powf);
+    | -------------------------------------- in this macro invocation
+    = note: this warning originates in the macro `math_binary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:519:43
+    |
+519 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+548 | math_binary_shim!(shim_math_powf, powf);
+    | --------------------------------------- in this macro invocation
+    |
+help: `vm` is captured in macro and introduced a unused variable
+   --> crates\auto-lang\src\vm\native.rs:519:43
+    |
+519 |         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                           ^^
+...
+548 | math_binary_shim!(shim_math_powf, powf);
+    | --------------------------------------- in this macro invocation
+    = note: this warning originates in the macro `math_binary_shim` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `vm`
+   --> crates\auto-lang\src\vm\native.rs:559:45
+    |
+559 | pub fn shim_math_atan2(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    |                                             ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\native.rs:1814:48
+     |
+1814 | pub fn shim_console_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\native.rs:7161:46
+     |
+7161 | pub fn shim_rand_random(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                              ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\native.rs:7179:44
+     |
+7179 | pub fn shim_log_noop(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                            ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\native.rs:8932:45
+     |
+8932 | pub fn shim_result_ok(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                             ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\native.rs:8986:45
+     |
+8986 | pub fn shim_rand_float(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                             ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\native.rs:8999:44
+     |
+8999 | pub fn shim_rand_bool(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                            ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:3684:58
+     |
+3684 | pub fn shim_net_tcp_listener_accept(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                          ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:3723:57
+     |
+3723 | pub fn shim_net_tcp_listener_close(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                         ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:3865:55
+     |
+3865 | pub fn shim_net_tcp_stream_close(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                       ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:3886:66
+     |
+3886 | pub fn shim_net_tcp_stream_set_read_timeout(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                                  ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:3905:67
+     |
+3905 | pub fn shim_net_tcp_stream_set_write_timeout(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                                   ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:3927:55
+     |
+3927 | pub fn shim_net_tcp_stream_flush(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                       ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:3943:61
+     |
+3943 | pub fn shim_net_tcp_stream_set_nodelay(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                             ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:4192:46
+     |
+4192 | pub fn shim_http_server(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                              ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:4811:48
+     |
+4811 | pub fn shim_http_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:4824:55
+     |
+4824 | pub fn shim_http_response_status(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                       ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:4948:50
+     |
+4948 | pub fn shim_http_rate_limit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                  ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:6153:55
+     |
+6153 | pub fn shim_response_status_code(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                       ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:6354:54
+     |
+6354 | pub fn shim_http_stream_is_done(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                      ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:6371:52
+     |
+6371 | pub fn shim_http_stream_close(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                    ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:7822:51
+     |
+7822 | pub fn shim_http_last_status(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                                   ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `vm`
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:7855:47
+     |
+7855 | pub fn shim_http_listen(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+     |                                               ^^ help: if this is intentional, prefix it with an underscore: `_vm`
+
+warning: unused variable: `mod_ast`
+    --> crates\auto-lang\src\lib.rs:3249:20
+     |
+3249 |             let Ok(mod_ast) = parser.parse() else { continue };
+     |                    ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_mod_ast`
+
+warning: taking a mutable reference to a `const` item
+    --> crates\auto-lang\src\lib.rs:6015:54
+     |
+6015 |         scan_at_files(&src_root, &mut type_store, 0, &mut SCAN_MAX_FILES);
+     |                                                      ^^^^^^^^^^^^^^^^^^^
+     |
+     = note: each usage of a `const` item creates a new temporary
+     = note: the mutable reference will refer to this temporary, not the original `const` item
+note: `const` item defined here
+    --> crates\auto-lang\src\lib.rs:5965:9
+     |
+5965 |         const SCAN_MAX_FILES: usize = 400;
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = note: `#[warn(const_item_mutation)]` on by default
+
+warning: unused variable: `g`
+   --> crates\auto-lang\src\ui\vm_bridge.rs:860:25
+    |
+860 |                     let g = obj.read().unwrap();
+    |                         ^ help: if this is intentional, prefix it with an underscore: `_g`
+
+warning: unused variable: `name`
+    --> crates\auto-lang\src\ui\vm_bridge.rs:1088:14
+     |
+1088 |         for (name, val) in result.iter_mut() {
+     |              ^^^^ help: if this is intentional, prefix it with an underscore: `_name`
+
+warning: unused variable: `state_dot`
+    --> crates\auto-lang\src\ui\handler_codegen.rs:1082:9
+     |
+1082 |     let state_dot = |field: &str| {
+     |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_state_dot`
+
+warning: unused variable: `store_fields`
+    --> crates\auto-lang\src\ui\handler_codegen.rs:1955:5
+     |
+1955 |     store_fields: &HashMap<String, Vec<String>>,
+     |     ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_store_fields`
+
+warning: unused variable: `store_widget_names`
+    --> crates\auto-lang\src\ui\handler_codegen.rs:1956:5
+     |
+1956 |     store_widget_names: &HashMap<String, String>,
+     |     ^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_store_widget_names`
+
+warning: unused variable: `app_root`
+    --> crates\auto-lang\src\ui\session.rs:3460:26
+     |
+3460 |         let (child_name, app_root) = Self::outproc_child_identity(&spec, name);
+     |                          ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_app_root`
+
+warning: variable does not need to be mutable
+   --> crates\auto-lang\src\ui\desktop_protocol\client_entry.rs:151:17
+    |
+151 |             let mut projector = RqProjector::new(component, opts.width, opts.height);
+    |                 ----^^^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: unused variable: `e`
+   --> crates\auto-lang\src\ui\desktop_protocol\client_runtime.rs:549:26
+    |
+549 |                 Some(Err(e)) => {
+    |                          ^ help: if this is intentional, prefix it with an underscore: `_e`
+
+warning: unreachable pattern
+   --> crates\auto-lang\src\ui\desktop_protocol\coverage.rs:853:9
+    |
+777 |         SC::Opacity(_) => "opacity-50".into(),
+    |         -------------- matches all the relevant values
+...
+853 |         SC::Opacity(_) => "opacity-50".into(),
+    |         ^^^^^^^^^^^^^^ no value can reach this
+
+warning: unused variable: `component`
+   --> crates\auto-lang\src\ui\desktop_protocol\coverage.rs:921:5
+    |
+921 |     component: &crate::ui::dynamic::DynamicComponent,
+    |     ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_component`
+
+warning: unreachable pattern
+    --> crates\auto-lang\src\ui\desktop_protocol\native_projector.rs:2921:9
+     |
+2886 |         StyleClass::GradientFrom(c) => s.bg = s.bg.or(resolve_typed_color(c)),
+     |         --------------------------- matches all the relevant values
+...
+2921 |         StyleClass::GradientFrom(c) => s.grad_from = resolve_typed_color(c),
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: variable does not need to be mutable
+   --> crates\auto-lang\src\ui\desktop_protocol\rqhost.rs:651:5
+    |
+651 |     mut end: Box<dyn Transport + Send>,
+    |     ----^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> crates\auto-lang\src\ui\desktop_protocol\render_cli.rs:99:13
+   |
+99 |         let mut next = |i: &mut usize, flag: &str| -> Result<String, String> {
+   |             ----^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates\auto-lang\src\ui\desktop_protocol\shell_client.rs:287:13
+    |
+287 |         let mut chrome =
+    |             ----^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates\auto-lang\src\ui\desktop_protocol\shell_client.rs:289:13
+    |
+289 |         let mut background =
+    |             ----^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `pid`
+    --> crates\auto-lang\src\ui\native_dock\win32.rs:1987:30
+     |
+1987 | pub fn main_window_minimized(pid: u32) -> bool {
+     |                              ^^^ help: if this is intentional, prefix it with an underscore: `_pid`
+
+warning: variable does not need to be mutable
+   --> crates\auto-lang\src\ui\snapshot_builder.rs:305:21
+    |
+305 |                 let mut props = vec![
+    |                     ----^^^^^
+    |                     |
+    |                     help: remove this `mut`
+
+warning: unused variable: `shared_handle`
+    --> crates\auto-lang\src\ui\mcp_server.rs:1234:22
+     |
+1234 | fn tool_editor_state(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+     |                      ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_shared_handle`
+
+warning: unused variable: `ids`
+    --> crates\auto-lang\src\ui\mcp_server.rs:4007:13
+     |
+4007 |         let ids: Vec<String> = matches.iter()
+     |             ^^^ help: if this is intentional, prefix it with an underscore: `_ids`
+
+warning: unused variable: `stripped`
+   --> crates\auto-lang\src\ui\aura_view_builder.rs:839:21
+    |
+839 |                 let stripped = store_field.as_deref().unwrap_or(stripped);
+    |                     ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_stripped`
+
+warning: unused variable: `stripped`
+    --> crates\auto-lang\src\ui\aura_view_builder.rs:6659:13
+     |
+6659 |         let stripped = store_field.as_deref().unwrap_or(stripped);
+     |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_stripped`
+
+warning: unreachable pattern
+     --> crates\auto-lang\src\ui\aura_view_builder.rs:11241:13
+      |
+11165 |             Expr::Bina(_, Op::Add, _) => {
+      |             ------------------------- matches all the relevant values
+...
+11241 |             Expr::Bina(l, Op::Add, r) => format!(
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unused variable: `cond`
+     --> crates\auto-lang\src\ui\aura_view_builder.rs:11749:13
+      |
+11749 |         let cond = condition.trim();
+      |             ^^^^ help: if this is intentional, prefix it with an underscore: `_cond`
+
+warning: unused variable: `keymap`
+    --> crates\auto-lang\src\ui\iced\renderer.rs:4682:95
+     |
+4682 |             AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style, keymap, .. } => {
+     |                                                                                               ^^^^^^ help: try ignoring the field: `keymap: _`
+
+warning: variable does not need to be mutable
+    --> crates\auto-lang\src\ui\iced\renderer.rs:8700:9
+     |
+8700 |     let mut lock = match guard.lock() {
+     |         ----^^^^
+     |         |
+     |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+     --> crates\auto-lang\src\ui\iced\renderer.rs:10154:14
+      |
+10154 |     let Some(mut v) = state.split_mut(app_id) else {
+      |              ----^
+      |              |
+      |              help: remove this `mut`
+
+warning: variable does not need to be mutable
+     --> crates\auto-lang\src\ui\iced\renderer.rs:10739:13
+      |
+10739 |         let mut app = state.apps.get_mut(&launcher).expect("launcher mounted");
+      |             ----^^^
+      |             |
+      |             help: remove this `mut`
+
+warning: unused variable: `dragged_slot`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:14632:9
+      |
+14632 |     let dragged_slot = cells
+      |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_dragged_slot`
+
+warning: variable does not need to be mutable
+     --> crates\auto-lang\src\ui\iced\renderer.rs:19996:36
+      |
+19996 |                         let (exit, mut tasks) = drain_and_execute_desktop_commands(state);
+      |                                    ----^^^^^
+      |                                    |
+      |                                    help: remove this `mut`
+
+warning: variable does not need to be mutable
+     --> crates\auto-lang\src\ui\iced\renderer.rs:20018:36
+      |
+20018 |                         let (exit, mut tasks) = drain_and_execute_desktop_commands(state);
+      |                                    ----^^^^^
+      |                                    |
+      |                                    help: remove this `mut`
+
+warning: variable does not need to be mutable
+     --> crates\auto-lang\src\ui\iced\renderer.rs:20065:32
+      |
+20065 |                     let (exit, mut tasks) = drain_and_execute_desktop_commands(state);
+      |                                ----^^^^^
+      |                                |
+      |                                help: remove this `mut`
+
+warning: variable does not need to be mutable
+     --> crates\auto-lang\src\ui\iced\renderer.rs:22055:13
+      |
+22055 |         let mut buf = state.app.devtools.console_buffer.lock().unwrap();
+      |             ----^^^
+      |             |
+      |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+     --> crates\auto-lang\src\ui\iced\renderer.rs:24247:15
+      |
+24247 | fn apply_edit(mut state: crate::ui::session::SessionViewMut) {
+      |               ----^^^^^
+      |               |
+      |               help: remove this `mut`
+
+warning: unused variable: `on_change`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:24855:5
+      |
+24855 |     on_change: Option<M>,
+      |     ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_on_change`
+
+warning: unused variable: `placeholder`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:24857:5
+      |
+24857 |     placeholder: Option<String>,
+      |     ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_placeholder`
+
+warning: unreachable pattern
+     --> crates\auto-lang\src\ui\iced\renderer.rs:25152:9
+      |
+25134 |         AbstractView::Popover { anchor, content, .. } => {
+      |         --------------------------------------------- matches all the relevant values
+...
+25152 |         AbstractView::Popover { anchor, content, .. } => {
+      |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unused variable: `key`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:25808:40
+      |
+25808 |         AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style: _ } => {
+      |                                        ^^^ help: try ignoring the field: `key: _`
+
+warning: unused variable: `is_final`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:25808:52
+      |
+25808 |         AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style: _ } => {
+      |                                                    ^^^^^^^^ help: try ignoring the field: `is_final: _`
+
+warning: unused variable: `on_change`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:25808:62
+      |
+25808 |         AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style: _ } => {
+      |                                                              ^^^^^^^^^ help: try ignoring the field: `on_change: _`
+
+warning: unused variable: `placeholder`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:25808:83
+      |
+25808 |         AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style: _ } => {
+      |                                                                                   ^^^^^^^^^^^ help: try ignoring the field: `placeholder: _`
+
+warning: unused variable: `tick_msg`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:27203:19
+      |
+27203 |     let (tick_ms, tick_msg) = (tick.tick_interval_ms(), tick.tick_msg());
+      |                   ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_tick_msg`
+
+warning: unused variable: `interval`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:27204:9
+      |
+27204 |     let interval = tick_ms.map(|ms| std::time::Duration::from_millis(ms as u64));
+      |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_interval`
+
+warning: variable does not need to be mutable
+   --> crates\auto-lang\src\ui\iced\table_resize.rs:193:17
+    |
+193 |             let mut lay_row =
+    |                 ----^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: type `TodoItem` is more private than the item `ui::session::AppState::todos`
+    --> crates\auto-lang\src\ui\session.rs:49:5
+     |
+  49 |     pub todos: Vec<TodoItem>,
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^ field `ui::session::AppState::todos` is reachable at visibility `pub`
+     |
+note: but type `TodoItem` is only usable at visibility `pub(crate)`
+    --> crates\auto-lang\src\ui\iced\renderer.rs:7196:1
+     |
+7196 | pub(crate) struct TodoItem {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `DebugElementInfo` is more private than the item `ui::session::DevToolsState::debug_element_styles`
+     --> crates\auto-lang\src\ui\session.rs:112:5
+      |
+  112 |     pub debug_element_styles: RefCell<HashMap<String, DebugElementInfo>>,
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field `ui::session::DevToolsState::debug_element_styles` is reachable at visibility `pub`
+      |
+note: but type `DebugElementInfo` is only usable at visibility `pub(crate)`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:24407:1
+      |
+24407 | pub(crate) struct DebugElementInfo {
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: type `InspectorSubTab` is more private than the item `ui::session::DevToolsState::inspector_subtab`
+     --> crates\auto-lang\src\ui\session.rs:117:5
+      |
+  117 |     pub inspector_subtab: RefCell<InspectorSubTab>,
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field `ui::session::DevToolsState::inspector_subtab` is reachable at visibility `pub`
+      |
+note: but type `InspectorSubTab` is only usable at visibility `pub(crate)`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:10056:1
+      |
+10056 | pub(crate) enum InspectorSubTab {
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: type `InspectorSections` is more private than the item `ui::session::DevToolsState::inspector_sections`
+     --> crates\auto-lang\src\ui\session.rs:118:5
+      |
+  118 |     pub inspector_sections: RefCell<InspectorSections>,
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field `ui::session::DevToolsState::inspector_sections` is reachable at visibility `pub`
+      |
+note: but type `InspectorSections` is only usable at visibility `pub(crate)`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:10096:1
+      |
+10096 | pub(crate) struct InspectorSections {
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: type `DevToolsTab` is more private than the item `ui::session::DevToolsState::devtools_tab`
+     --> crates\auto-lang\src\ui\session.rs:120:5
+      |
+  120 |     pub devtools_tab: RefCell<DevToolsTab>,
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field `ui::session::DevToolsState::devtools_tab` is reachable at visibility `pub`
+      |
+note: but type `DevToolsTab` is only usable at visibility `pub(crate)`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:10043:1
+      |
+10043 | pub(crate) enum DevToolsTab {
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: type `DebugTreeNode` is more private than the item `ui::session::DevToolsState::component_tree`
+     --> crates\auto-lang\src\ui\session.rs:127:5
+      |
+  127 |     pub component_tree: RefCell<Option<DebugTreeNode>>,
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field `ui::session::DevToolsState::component_tree` is reachable at visibility `pub`
+      |
+note: but type `DebugTreeNode` is only usable at visibility `pub(crate)`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:24362:1
+      |
+24362 | pub(crate) struct DebugTreeNode {
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: type `ToastReq` is more private than the item `DesktopState::toasts`
+     --> crates\auto-lang\src\ui\session.rs:263:5
+      |
+  263 |     pub toasts: RefCell<Vec<ToastReq>>,
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field `DesktopState::toasts` is reachable at visibility `pub`
+      |
+note: but type `ToastReq` is only usable at visibility `pub(crate)`
+     --> crates\auto-lang\src\ui\iced\renderer.rs:10111:1
+      |
+10111 | pub(crate) struct ToastReq {
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: type `NotificationEntry` is more private than the item `DesktopState::notifications`
+   --> crates\auto-lang\src\ui\session.rs:278:5
+    |
+278 |     pub notifications: RefCell<Vec<NotificationEntry>>,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field `DesktopState::notifications` is reachable at visibility `pub`
+    |
+note: but type `NotificationEntry` is only usable at visibility `pub(crate)`
+   --> crates\auto-lang\src\ui\session.rs:236:1
+    |
+236 | pub(crate) struct NotificationEntry {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: type `sendinput::Input` is more private than the item `unicode_inputs`
+  --> crates\auto-lang\src\ui\desktop_protocol\sendinput.rs:89:1
+   |
+89 | pub fn unicode_inputs(text: &str) -> Vec<Input> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `unicode_inputs` is reachable at visibility `pub`
+   |
+note: but type `sendinput::Input` is only usable at visibility `pub(self)`
+  --> crates\auto-lang\src\ui\desktop_protocol\sendinput.rs:54:1
+   |
+54 | struct Input {
+   | ^^^^^^^^^^^^
+
+warning: type `sendinput::Input` is more private than the item `vk_inputs`
+   --> crates\auto-lang\src\ui\desktop_protocol\sendinput.rs:100:1
+    |
+100 | pub fn vk_inputs(vk: u32) -> Vec<Input> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `vk_inputs` is reachable at visibility `pub`
+    |
+note: but type `sendinput::Input` is only usable at visibility `pub(self)`
+   --> crates\auto-lang\src\ui\desktop_protocol\sendinput.rs:54:1
+    |
+ 54 | struct Input {
+    | ^^^^^^^^^^^^
+
+warning: type `sendinput::Input` is more private than the item `sendinput::send`
+   --> crates\auto-lang\src\ui\desktop_protocol\sendinput.rs:106:1
+    |
+106 | pub fn send(inputs: &[Input]) -> u32 {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `sendinput::send` is reachable at visibility `pub`
+    |
+note: but type `sendinput::Input` is only usable at visibility `pub(self)`
+   --> crates\auto-lang\src\ui\desktop_protocol\sendinput.rs:54:1
+    |
+ 54 | struct Input {
+    | ^^^^^^^^^^^^
+
+warning: type `PreviewCardUiState` is more private than the item `AuraViewBuilder::<'a>::with_preview_states`
+   --> crates\auto-lang\src\ui\aura_view_builder.rs:388:5
+    |
+388 |     pub fn with_preview_states(mut self, states: &'a std::collections::HashMap<String, crate::ui::dynamic::PreviewCardUiState>) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method `AuraViewBuilder::<'a>::with_preview_states` is reachable at visibility `pub`
+    |
+note: but type `PreviewCardUiState` is only usable at visibility `pub(crate)`
+   --> crates\auto-lang\src\ui\dynamic.rs:355:1
+    |
+355 | pub(crate) struct PreviewCardUiState {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `AUTO_LIB_FILES_V2` is never used
+    --> crates\auto-lang\src\lib.rs:1890:18
+     |
+1890 | pub(crate) const AUTO_LIB_FILES_V2: &[&str] = &[
+     |                  ^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `aavm2_lib_source` is never used
+    --> crates\auto-lang\src\lib.rs:1906:15
+     |
+1906 | pub(crate) fn aavm2_lib_source(project_root: &std::path::Path) -> AutoResult<String> {
+     |               ^^^^^^^^^^^^^^^^
+
+warning: function `extract_api_imports_from_ast` is never used
+    --> crates\auto-lang\src\lib.rs:6732:4
+     |
+6732 | fn extract_api_imports_from_ast(code: &crate::ast::Code) -> Vec<String> {
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `is_api_use_stmt` is never used
+    --> crates\auto-lang\src\lib.rs:6745:4
+     |
+6745 | fn is_api_use_stmt(use_stmt: &crate::ast::Use) -> bool {
+     |    ^^^^^^^^^^^^^^^
+
+warning: method `has_subscribers` is never used
+   --> crates\auto-lang\src\back_proxy.rs:860:8
+    |
+844 | impl SessionBus {
+    | --------------- method in this implementation
+...
+860 |     fn has_subscribers(&self) -> bool {
+    |        ^^^^^^^^^^^^^^^
+
+warning: function `key_of` is never used
+   --> crates\auto-lang\src\ui_gen\vue.rs:198:8
+    |
+198 |     fn key_of(node: &AuraNode) -> Option<String> {
+    |        ^^^^^^
+
+warning: struct `EnvGuard` is never constructed
+   --> crates\auto-lang\src\ui_gen\bp\registry.rs:370:12
+    |
+370 |     struct EnvGuard(&'static str);
+    |            ^^^^^^^^
+
+warning: associated function `set` is never used
+   --> crates\auto-lang\src\ui_gen\bp\registry.rs:372:12
+    |
+371 |     impl EnvGuard {
+    |     ------------- associated function in this implementation
+372 |         fn set(var: &'static str, value: &std::ffi::OsStr) -> Self {
+    |            ^^^
+
+warning: associated function `collect_pattern_idents` is never used
+     --> crates\auto-lang\src\trans\rust.rs:20248:8
+      |
+  474 | impl RustTrans {
+      | -------------- associated function in this implementation
+...
+20248 |     fn collect_pattern_idents(expr: &Expr, out: &mut HashSet<AutoStr>) {
+      |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_a2p` is never used
+    --> crates\auto-lang\src\trans\python.rs:2599:8
+     |
+2599 |     fn test_a2p(case: &str) -> AutoResult<()> {
+     |        ^^^^^^^^
+
+warning: function `pop_str_idx` is never used
+  --> crates\auto-lang\src\vm\engine.rs:91:4
+   |
+91 | fn pop_str_idx(ram: &mut VirtualRAM) -> usize {
+   |    ^^^^^^^^^^^
+
+warning: methods `decode_tagged_value` and `intern_string` are never used
+   --> crates\auto-lang\src\vm\engine.rs:800:8
+    |
+565 | impl AutoVM {
+    | ----------- methods in this implementation
+...
+800 |     fn decode_tagged_value(&self, raw: i32) -> auto_val::Value {
+    |        ^^^^^^^^^^^^^^^^^^^
+...
+986 |     fn intern_string(&mut self, bytes: &[u8]) -> usize {
+    |        ^^^^^^^^^^^^^
+
+warning: function `vm_with` is never used
+     --> crates\auto-lang\src\vm\engine.rs:10945:8
+      |
+10945 |     fn vm_with(code: Vec<u8>) -> AutoVM {
+      |        ^^^^^^^
+
+warning: function `pop_str` is never used
+     --> crates\auto-lang\src\vm\engine.rs:10949:8
+      |
+10949 |     fn pop_str(vm: &AutoVM, task: &mut AutoTask) -> String {
+      |        ^^^^^^^
+
+warning: function `vm_idle` is never used
+     --> crates\auto-lang\src\vm\engine.rs:11003:8
+      |
+11003 |     fn vm_idle() -> AutoVM {
+      |        ^^^^^^^
+
+warning: function `vm_with` is never used
+     --> crates\auto-lang\src\vm\engine.rs:11080:8
+      |
+11080 |     fn vm_with(code: Vec<u8>) -> AutoVM {
+      |        ^^^^^^^
+
+warning: function `push_result_instance` is never used
+     --> crates\auto-lang\src\vm\engine.rs:11084:8
+      |
+11084 |     fn push_result_instance(vm: &AutoVM, task: &mut AutoTask, kind: &str, field: auto_val::Value) {
+      |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: field `root` is never read
+   --> crates\auto-lang\src\ui\image_pipeline.rs:946:5
+    |
+944 | struct MediaSession {
+    |        ------------ field in this struct
+945 |     id: String,
+946 |     root: PathBuf,
+    |     ^^^^
+    |
+    = note: `MediaSession` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: method `take_scroll_bind_suppress` is never used
+   --> crates\auto-lang\src\ui\terminal\mod.rs:360:19
+    |
+254 | impl TerminalCore {
+    | ----------------- method in this implementation
+...
+360 |     pub(crate) fn take_scroll_bind_suppress(&self) -> bool {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `DEFAULT_FG` is never used
+   --> crates\auto-lang\src\ui\terminal\iced\widget.rs:102:7
+    |
+102 | const DEFAULT_FG: Color = Color::from_rgb8(0xe8, 0xe8, 0xe8);
+    |       ^^^^^^^^^^
+
+warning: function `row_rebuilds` is never used
+   --> crates\auto-lang\src\ui\terminal\iced\widget.rs:160:15
+    |
+160 | pub(crate) fn row_rebuilds() -> u64 {
+    |               ^^^^^^^^^^^^
+
+warning: function `row_rebuilds_reset` is never used
+   --> crates\auto-lang\src\ui\terminal\iced\widget.rs:165:15
+    |
+165 | pub(crate) fn row_rebuilds_reset() -> u64 {
+    |               ^^^^^^^^^^^^^^^^^^
+
+warning: associated function `view_y_to_offset` is never used
+   --> crates\auto-lang\src\ui\terminal\iced\widget.rs:433:19
+    |
+370 | impl<M: Clone> Terminal<M> {
+    | -------------------------- associated function in this implementation
+...
+433 |     pub(crate) fn view_y_to_offset(view_y: f32, history: usize) -> usize {
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: method `retain_heap_result` is never used
+    --> crates\auto-lang\src\ui\vm_bridge.rs:1424:8
+     |
+ 245 | impl VmBridge {
+     | ------------- method in this implementation
+...
+1424 |     fn retain_heap_result(&self, out: &Value) {
+     |        ^^^^^^^^^^^^^^^^^^
+
+warning: function `rewrite_stmt` is never used
+   --> crates\auto-lang\src\ui\handler_codegen.rs:338:4
+    |
+338 | fn rewrite_stmt(stmt: &mut Stmt, state_fields: &HashSet<String>) {
+    |    ^^^^^^^^^^^^
+
+warning: function `synthesize_handler_fn_from_decl` is never used
+    --> crates\auto-lang\src\ui\handler_codegen.rs:1819:4
+     |
+1819 | fn synthesize_handler_fn_from_decl(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `INPUT_H` is never used
+   --> crates\auto-lang\src\ui\desktop_protocol\client_runtime.rs:113:7
+    |
+113 | const INPUT_H: f32 = 32.0;
+    |       ^^^^^^^
+
+warning: constant `INPUT_PAD` is never used
+   --> crates\auto-lang\src\ui\desktop_protocol\client_runtime.rs:114:7
+    |
+114 | const INPUT_PAD: f32 = 10.0;
+    |       ^^^^^^^^^
+
+warning: field `font_italic` is never read
+   --> crates\auto-lang\src\ui\desktop_protocol\client_runtime.rs:149:16
+    |
+124 | pub(crate) struct NodeStyle {
+    |                   --------- field in this struct
+...
+149 |     pub(crate) font_italic: bool,
+    |                ^^^^^^^^^^^
+    |
+    = note: `NodeStyle` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: function `handler_token` is never used
+   --> crates\auto-lang\src\ui\desktop_protocol\client_runtime.rs:230:4
+    |
+230 | fn handler_token(pattern: &str) -> Option<String> {
+    |    ^^^^^^^^^^^^^
+
+warning: function `fstr_template_and_bindings` is never used
+   --> crates\auto-lang\src\ui\desktop_protocol\client_runtime.rs:245:4
+    |
+245 | fn fstr_template_and_bindings(expr: &Expr) -> (String, Vec<String>) {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `interpolate` is never used
+   --> crates\auto-lang\src\ui\desktop_protocol\client_runtime.rs:283:4
+    |
+283 | fn interpolate(comp: &DynamicComponent, template: &str, bindings: &[String]) -> String {
+    |    ^^^^^^^^^^^
+
+warning: function `format_value` is never used
+   --> crates\auto-lang\src\ui\desktop_protocol\client_runtime.rs:297:4
+    |
+297 | fn format_value(value: &auto_val::Value) -> String {
+    |    ^^^^^^^^^^^^
+
+warning: static `PUMP_T0` is never used
+   --> crates\auto-lang\src\ui\desktop_protocol\client_runtime.rs:472:8
+    |
+472 | static PUMP_T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    |        ^^^^^^^
+
+warning: function `t0` is never used
+   --> crates\auto-lang\src\ui\desktop_protocol\client_runtime.rs:474:4
+    |
+474 | fn t0() -> std::time::Instant {
+    |    ^^
+
+warning: constant `CHILD_ENV` is never used
+  --> crates\auto-lang\src\ui\desktop_protocol\dual_mode.rs:26:7
+   |
+26 | const CHILD_ENV: &str = "AUTO_386_CHILD_PIPE";
+   |       ^^^^^^^^^
+
+warning: constant `CHILD_MARKER` is never used
+  --> crates\auto-lang\src\ui\desktop_protocol\dual_mode.rs:28:7
+   |
+28 | const CHILD_MARKER: &str = "AUTO386-STANDALONE";
+   |       ^^^^^^^^^^^^
+
+warning: constant `COUNTER_SRC` is never used
+  --> crates\auto-lang\src\ui\desktop_protocol\dual_mode.rs:31:7
+   |
+31 | const COUNTER_SRC: &str = "widget SpawnCounter {\n    model { var count int = 0 }\n    view {\n        button \"+\" { onclick: () =>...
+   |       ^^^^^^^^^^^
+
+warning: struct `SpawnCounterSource` is never constructed
+  --> crates\auto-lang\src\ui\desktop_protocol\dual_mode.rs:34:8
+   |
+34 | struct SpawnCounterSource {
+   |        ^^^^^^^^^^^^^^^^^^
+
+warning: associated items `new` and `count` are never used
+  --> crates\auto-lang\src\ui\desktop_protocol\dual_mode.rs:41:8
+   |
+40 | impl SpawnCounterSource {
+   | ----------------------- associated items in this implementation
+41 |     fn new(component: DynamicComponent) -> Self {
+   |        ^^^
+...
+45 |     fn count(&self) -> i64 {
+   |        ^^^^^
+
+warning: function `pump_host` is never used
+  --> crates\auto-lang\src\ui\desktop_protocol\dual_mode.rs:99:4
+   |
+99 | fn pump_host(server_end: &mut Box<dyn Transport + Send>, ph: &mut ProtocolHost<'_>) {
+   |    ^^^^^^^^^
+
+warning: function `git_status_porcelain` is never used
+    --> crates\auto-lang\src\ui\desktop_protocol\stage3.rs:6648:4
+     |
+6648 | fn git_status_porcelain(repo: &std::path::Path, scope: &str) -> Vec<String> {
+     |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `RestoreFiles` is never constructed
+    --> crates\auto-lang\src\ui\desktop_protocol\stage3.rs:6662:8
+     |
+6662 | struct RestoreFiles(Vec<(std::path::PathBuf, Vec<u8>)>);
+     |        ^^^^^^^^^^^^
+
+warning: method `run` is never used
+    --> crates\auto-lang\src\ui\desktop_protocol\stage3.rs:6665:8
+     |
+6664 | impl RestoreFiles {
+     | ----------------- method in this implementation
+6665 |     fn run(&self) {
+     |        ^^^
+
+warning: function `load_blue_test_icon` is never used
+    --> crates\auto-lang\src\ui\native_dock\win32.rs:1755:4
+     |
+1755 | fn load_blue_test_icon() -> windows::Win32::UI::WindowsAndMessaging::HICON {
+     |    ^^^^^^^^^^^^^^^^^^^
+
+warning: function `parse_aura_id` is never used
+    --> crates\auto-lang\src\ui\mcp_server.rs:3268:4
+     |
+3268 | fn parse_aura_id(s: &str) -> Option<AuraNodeId> {
+     |    ^^^^^^^^^^^^^
+
+warning: function `view_kind_str` is never used
+    --> crates\auto-lang\src\ui\mcp_server.rs:3408:4
+     |
+3408 | fn view_kind_str(view: &View<DynamicMessage>) -> &'static str {
+     |    ^^^^^^^^^^^^^
+
+warning: multiple associated items are never used
+     --> crates\auto-lang\src\ui\aura_view_builder.rs:3265:8
+      |
+  266 | impl<'a> AuraViewBuilder<'a> {
+      | ---------------------------- associated items in this implementation
+...
+ 3265 |     fn autodown_scroll_binding(
+      |        ^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 3378 |     fn autodown_table_widths(
+      |        ^^^^^^^^^^^^^^^^^^^^^
+...
+ 3419 |     fn autodown_on_col_resize_binding(
+      |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 3444 |     fn autodown_padding_class(
+      |        ^^^^^^^^^^^^^^^^^^^^^^
+...
+ 3463 |     fn autodown_placeholder(
+      |        ^^^^^^^^^^^^^^^^^^^^
+...
+ 3502 |     fn autodown_on_focus_binding(
+      |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 4841 |     fn icon_to_emoji(icon: &str) -> Option<&'static str> {
+      |        ^^^^^^^^^^^^^
+...
+ 8351 |     fn modal_dialog_family(tag: &str) -> ModalDialogFamily {
+      |        ^^^^^^^^^^^^^^^^^^^
+...
+12935 |     fn extract_f64(
+      |        ^^^^^^^^^^^
+
+warning: constant `LEADING_EMPTY` is never used
+    --> crates\auto-lang\src\ui\aura_view_builder.rs:8234:35
+     |
+8234 | ...                   const LEADING_EMPTY: &str = "w-4 h-4 shrink-0";
+     |                             ^^^^^^^^^^^^^
+
+warning: function `svg_attr_literal` is never used
+     --> crates\auto-lang\src\ui\aura_view_builder.rs:19274:4
+      |
+19274 | fn svg_attr_literal(expr: &Expr) -> Option<String> {
+      |    ^^^^^^^^^^^^^^^^
+
+warning: function `onkeydown_suffix` is never used
+    --> crates\auto-lang\src\ui\dynamic.rs:2803:4
+     |
+2803 | fn onkeydown_suffix(event_key: &str) -> Option<&str> {
+     |    ^^^^^^^^^^^^^^^^
+
+warning: variants `Handler` and `Swallow` are never constructed
+   --> crates\auto-lang\src\ui\iced\renderer.rs:153:5
+    |
+138 | enum LineEditOp {
+    |      ---------- variants in this enum
+...
+153 |     Handler,
+    |     ^^^^^^^
+...
+161 |     Swallow,
+    |     ^^^^^^^
+    |
+    = note: `LineEditOp` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: function `table_cell_container` is never used
+    --> crates\auto-lang\src\ui\iced\renderer.rs:1578:4
+     |
+1578 | fn table_cell_container<'a, M: 'static>(
+     |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `col_fixed_width` is never used
+    --> crates\auto-lang\src\ui\iced\renderer.rs:1597:4
+     |
+1597 | fn col_fixed_width(col_widths: Option<&[f32]>, col: usize) -> Option<f32> {
+     |    ^^^^^^^^^^^^^^^
+
+warning: function `table_row_rule` is never used
+    --> crates\auto-lang\src\ui\iced\renderer.rs:1603:4
+     |
+1603 | fn table_row_rule<M: 'static>() -> iced::Element<'static, M> {
+     |    ^^^^^^^^^^^^^^
+
+warning: function `lucide_svg` is never used
+    --> crates\auto-lang\src\ui\iced\renderer.rs:6807:4
+     |
+6807 | fn lucide_svg(name: &str) -> Option<&'static str> {
+     |    ^^^^^^^^^^
+
+warning: function `parse_drag_points` is never used
+    --> crates\auto-lang\src\ui\iced\renderer.rs:7096:4
+     |
+7096 | fn parse_drag_points(pts: &str) -> Vec<(f32, f32)> {
+     |    ^^^^^^^^^^^^^^^^^
+
+warning: function `widget_tick` is never used
+    --> crates\auto-lang\src\ui\iced\renderer.rs:7971:4
+     |
+7971 | fn widget_tick(
+     |    ^^^^^^^^^^^
+
+warning: field `id` is never read
+     --> crates\auto-lang\src\ui\iced\renderer.rs:10112:5
+      |
+10111 | pub(crate) struct ToastReq {
+      |                   -------- field in this struct
+10112 |     id: u64,
+      |     ^^
+
+warning: function `load_desktop_positions` is never used
+     --> crates\auto-lang\src\ui\iced\renderer.rs:14484:4
+      |
+14484 | fn load_desktop_positions() -> Vec<(String, (usize, usize))> {
+      |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `target_slot_default` is never used
+     --> crates\auto-lang\src\ui\iced\renderer.rs:14572:4
+      |
+14572 | fn target_slot_default() -> usize {
+      |    ^^^^^^^^^^^^^^^^^^^
+
+warning: function `ade_fg_dark` is never used
+     --> crates\auto-lang\src\ui\iced\renderer.rs:35221:4
+      |
+35221 | fn ade_fg_dark() -> crate::ui::code_editor::theme::Rgba {
+      |    ^^^^^^^^^^^
+
+warning: function `ade_fg_light` is never used
+     --> crates\auto-lang\src\ui\iced\renderer.rs:35224:4
+      |
+35224 | fn ade_fg_light() -> crate::ui::code_editor::theme::Rgba {
+      |    ^^^^^^^^^^^^
+
+warning: constant `LUCIDE_SOURCE_VERSION` is never used
+    --> crates\auto-lang\src\ui\iced\lucide_generated.rs:1418:18
+     |
+1418 | pub(super) const LUCIDE_SOURCE_VERSION: &str = "0.312.0";
+     |                  ^^^^^^^^^^^^^^^^^^^^^
+
+warning: variable `_stake__disc` should have a snake case name
+    --> crates\auto-lang\src\vm\native.rs:3466:13
+     |
+3466 |         let _stake__disc = crate::vm::native::StakeGuard::nv(vm, _disc);
+     |             ^^^^^^^^^^^^ help: convert the identifier to snake case: `_stake_disc`
+     |
+     = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: variable `_stake__closure_id` should have a snake case name
+    --> crates\auto-lang\src\vm\native.rs:3830:9
+     |
+3830 |     let _stake__closure_id = crate::vm::native::StakeGuard::new(vm, _closure_id as i64 as u64);
+     |         ^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `_stake_closure_id`
+
+warning: variable `_stake__func_addr` should have a snake case name
+    --> crates\auto-lang\src\vm\native.rs:4720:9
+     |
+4720 |     let _stake__func_addr = crate::vm::native::StakeGuard::new(vm, _func_addr as i64 as u64); // Not used in MVP
+     |         ^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `_stake_func_addr`
+
+warning: variable `_stake__func_addr` should have a snake case name
+    --> crates\auto-lang\src\vm\native.rs:4774:9
+     |
+4774 |     let _stake__func_addr = crate::vm::native::StakeGuard::new(vm, _func_addr as i64 as u64); // Not used in MVP
+     |         ^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `_stake_func_addr`
+
+warning: variable `_stake__capacity` should have a snake case name
+    --> crates\auto-lang\src\vm\native.rs:5527:9
+     |
+5527 |     let _stake__capacity = crate::vm::native::StakeGuard::new(vm, _capacity as i64 as u64);
+     |         ^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `_stake_capacity`
+
+warning: variable `_stake__capacity` should have a snake case name
+    --> crates\auto-lang\src\vm\native.rs:6359:9
+     |
+6359 |     let _stake__capacity = crate::vm::native::StakeGuard::new(vm, _capacity as i64 as u64);
+     |         ^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `_stake_capacity`
+
+warning: variable `_stake__arr_id` should have a snake case name
+    --> crates\auto-lang\src\vm\native.rs:6872:9
+     |
+6872 |     let _stake__arr_id = crate::vm::native::StakeGuard::new(vm, _arr_id as i64 as u64);
+     |         ^^^^^^^^^^^^^^ help: convert the identifier to snake case: `_stake_arr_id`
+
+warning: variable `_stake__inst_id` should have a snake case name
+    --> crates\auto-lang\src\vm\native.rs:6977:9
+     |
+6977 |     let _stake__inst_id = crate::vm::native::StakeGuard::new(vm, _inst_id as i64 as u64);
+     |         ^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `_stake_inst_id`
+
+warning: variable `_stake__inst_id` should have a snake case name
+    --> crates\auto-lang\src\vm\native.rs:6990:9
+     |
+6990 |     let _stake__inst_id = crate::vm::native::StakeGuard::new(vm, _inst_id as i64 as u64);
+     |         ^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `_stake_inst_id`
+
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:9622:13
+     |
+9622 |             drop(i64::pop_from_stack(task, vm).unwrap_or(0));
+     |             ^^^^^------------------------------------------^
+     |                  |
+     |                  argument has type `i64`
+     |
+     = note: `#[warn(dropping_copy_types)]` on by default
+help: use `let _ = ...` to ignore the expression or result
+     |
+9622 -             drop(i64::pop_from_stack(task, vm).unwrap_or(0));
+9622 +             let _ = i64::pop_from_stack(task, vm).unwrap_or(0);
+     |
+
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+    --> crates\auto-lang\src\vm\ffi\stdlib.rs:9626:13
+     |
+9626 |             drop(i64::pop_from_stack(task, vm).unwrap_or(0));
+     |             ^^^^^------------------------------------------^
+     |                  |
+     |                  argument has type `i64`
+     |
+help: use `let _ = ...` to ignore the expression or result
+     |
+9626 -             drop(i64::pop_from_stack(task, vm).unwrap_or(0));
+9626 +             let _ = i64::pop_from_stack(task, vm).unwrap_or(0);
+     |
+
+warning: variable `_stake__cfg` should have a snake case name
+   --> crates\auto-lang\src\vm\ffi\musk_response_ctor.rs:836:16
+    |
+836 |     let (_cfg, _stake__cfg) = pop_value_staked(task, vm); // config Value (unused for the default)
+    |                ^^^^^^^^^^^ help: convert the identifier to snake case: `_stake_cfg`
+
+warning: for loop over a `&Option`. This is more readably written as an `if let` statement
+   --> crates\auto-lang\src\ui\vm_bridge.rs:227:15
+    |
+227 |     for on in &decl.on {
+    |               ^^^^^^^^
+    |
+    = note: `#[warn(for_loops_over_fallibles)]` on by default
+help: to check pattern in a loop use `while let`
+    |
+227 -     for on in &decl.on {
+227 +     while let Some(on) = &decl.on {
+    |
+help: consider using `if let` to clear intent
+    |
+227 -     for on in &decl.on {
+227 +     if let Some(on) = &decl.on {
+    |
+
+warning: unused `BOOL` that must be used
+   --> crates\auto-lang\src\ui\desktop_protocol\win_ime.rs:321:9
+    |
+321 |         ImmReleaseContext(hwnd, himc);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+    |
+321 |         let _ = ImmReleaseContext(hwnd, himc);
+    |         +++++++
+
+warning: unused `BOOL` that must be used
+   --> crates\auto-lang\src\ui\desktop_protocol\win_ime.rs:151:26
+    |
+151 |                 unsafe { ImmReleaseContext(hwnd, himc) };
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: use `let _ = ...` to ignore the resulting value
+    |
+151 |                 unsafe { let _ = ImmReleaseContext(hwnd, himc); };
+    |                          +++++++                              +
+
+warning: direct cast of function item into an integer
+   --> crates\auto-lang\src\ui\desktop_protocol\win_ime.rs:177:25
+    |
+177 |             ime_wndproc as usize as isize,
+    |                         ^^^^^^^^
+    |
+    = note: `#[warn(function_casts_as_integer)]` on by default
+help: first cast to a pointer `as *const ()`
+    |
+177 |             ime_wndproc as *const () as usize as isize,
+    |                         ++++++++++++
+
+warning: structure field `PageFaultCount` should have a snake case name
+   --> crates\auto-lang\src\ui\desktop_protocol\stage3.rs:162:13
+    |
+162 |         pub PageFaultCount: u32,
+    |             ^^^^^^^^^^^^^^ help: convert the identifier to snake case: `page_fault_count`
+
+warning: structure field `PeakWorkingSetSize` should have a snake case name
+   --> crates\auto-lang\src\ui\desktop_protocol\stage3.rs:163:13
+    |
+163 |         pub PeakWorkingSetSize: usize,
+    |             ^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `peak_working_set_size`
+
+warning: structure field `WorkingSetSize` should have a snake case name
+   --> crates\auto-lang\src\ui\desktop_protocol\stage3.rs:164:13
+    |
+164 |         pub WorkingSetSize: usize,
+    |             ^^^^^^^^^^^^^^ help: convert the identifier to snake case: `working_set_size`
+
+warning: structure field `QuotaPeakPagedPoolUsage` should have a snake case name
+   --> crates\auto-lang\src\ui\desktop_protocol\stage3.rs:165:13
+    |
+165 |         pub QuotaPeakPagedPoolUsage: usize,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `quota_peak_paged_pool_usage`
+
+warning: structure field `QuotaPagedPoolUsage` should have a snake case name
+   --> crates\auto-lang\src\ui\desktop_protocol\stage3.rs:166:13
+    |
+166 |         pub QuotaPagedPoolUsage: usize,
+    |             ^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `quota_paged_pool_usage`
+
+warning: structure field `QuotaPeakNonPagedPoolUsage` should have a snake case name
+   --> crates\auto-lang\src\ui\desktop_protocol\stage3.rs:167:13
+    |
+167 |         pub QuotaPeakNonPagedPoolUsage: usize,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `quota_peak_non_paged_pool_usage`
+
+warning: structure field `QuotaNonPagedPoolUsage` should have a snake case name
+   --> crates\auto-lang\src\ui\desktop_protocol\stage3.rs:168:13
+    |
+168 |         pub QuotaNonPagedPoolUsage: usize,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `quota_non_paged_pool_usage`
+
+warning: structure field `PagefileUsage` should have a snake case name
+   --> crates\auto-lang\src\ui\desktop_protocol\stage3.rs:169:13
+    |
+169 |         pub PagefileUsage: usize,
+    |             ^^^^^^^^^^^^^ help: convert the identifier to snake case: `pagefile_usage`
+
+warning: structure field `PeakPagefileUsage` should have a snake case name
+   --> crates\auto-lang\src\ui\desktop_protocol\stage3.rs:170:13
+    |
+170 |         pub PeakPagefileUsage: usize,
+    |             ^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `peak_pagefile_usage`
+
+warning: structure field `PrivateUsage` should have a snake case name
+   --> crates\auto-lang\src\ui\desktop_protocol\stage3.rs:171:13
+    |
+171 |         pub PrivateUsage: usize,
+    |             ^^^^^^^^^^^^ help: convert the identifier to snake case: `private_usage`
+
+warning: `K32GetProcessMemoryInfo` redeclared with a different signature
+   --> crates\auto-lang\src\ui\desktop_protocol\stage3.rs:148:9
+    |
+148 | /         fn K32GetProcessMemoryInfo(
+149 | |             hProcess: isize,
+150 | |             ppsmemCounters: *mut PROCESS_MEMORY_COUNTERS,
+151 | |             cb: u32,
+152 | |         ) -> i32;
+    | |_________________^ this signature doesn't match the previous declaration
+    |
+   ::: crates\auto-lang\src\ui\mem_guard.rs:256:9
+    |
+256 | /         fn K32GetProcessMemoryInfo(
+257 | |             process: *mut core::ffi::c_void,
+258 | |             counters: *mut ProcessMemoryCounters,
+259 | |             cb: u32,
+260 | |         ) -> i32;
+    | |_________________- `K32GetProcessMemoryInfo` previously declared here
+    |
+    = note: expected `unsafe extern "system" fn(*mut c_void, *mut ProcessMemoryCounters, u32) -> i32`
+               found `unsafe extern "system" fn(isize, *mut PROCESS_MEMORY_COUNTERS, u32) -> i32`
+    = note: `#[warn(clashing_extern_declarations)]` on by default
+
+warning: `auto-lang` (lib) generated 349 warnings (run `cargo fix --lib -p auto-lang` to apply 168 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.99s
+     Running `target\debug\examples\ui_desktop.exe`
+[ui-desktop] start pid=6336 fullscreen=false apps_dir=D:\autostack\.wt\lang-698\auto-lang\crates\auto-lang\..\..\examples\ui t=1790183294
+[rqhost] serving on autodesk-rqhost-desktop-6336
+[ui-desktop] rqhost daemon spawned at autodesk-rqhost-desktop-6336 (AUTO_DESKTOP_ENDPOINT published)
+AutoUI MCP: listening on http://127.0.0.1:9247
+[CALL_HANDLER] widget=Desktop event_name=Init fn_name=handler_Desktop_Init args=[]
+[CALL_HANDLER] widget=DesktopSurface event_name=Init fn_name=handler_DesktopSurface_Init args=[]
+[app-registry] apps.manifest entry `kanban` skipped: ..\auto-os\../auto-kanban has no pac.at
+[app-registry] apps.manifest entry `auto-musk` skipped: ..\auto-os\../auto-musk has no pac.at
+[app-registry] apps.manifest entry `auto-term` skipped: ..\auto-os\../auto-term/app has no pac.at
+[syslog][info][host] [session] app registry: 40 entries (27 desktop-visible) from D:\autostack\.wt\lang-698\auto-lang\crates\auto-lang\..\..\examples\ui
+[CALL_HANDLER] widget=DashboardPanel event_name=Init fn_name=handler_DashboardPanel_Init args=[]
+[CALL_HANDLER] widget=App event_name=Init fn_name=handler_App_Init args=[]
+[CALL_HANDLER] widget=App event_name=Init fn_name=handler_App_Init args=[]
+[CALL_HANDLER] widget=App event_name=Init fn_name=handler_App_Init args=[]
+[dashboard] refresh: faces=4 statuses=[("012-clock", "hatched"), ("013-todo", "hatched"), ("020-music-player", "placeholder"), ("025-sys-monitor", "hatched")] panel=720x176@12
+[CALL_HANDLER] widget=DashboardPanel event_name=RebuildFaces fn_name=handler_DashboardPanel_RebuildFaces args=[]
+AutoUI MCP: first state sync in view()
+[CALL_HANDLER] widget=DesktopSurface event_name=RunningSync fn_name=handler_DesktopSurface_RunningSync args=[]
+[dashboard] refresh: faces=4 statuses=[("012-clock", "hatched"), ("013-todo", "hatched"), ("020-music-player", "placeholder"), ("025-sys-monitor", "hatched")] panel=720x176@12
+[CALL_HANDLER] widget=DashboardPanel event_name=RebuildFaces fn_name=handler_DashboardPanel_RebuildFaces args=[]
+[rqhost] mem private=7156KB working_set=19276KB
+[rqhost] mem private=7156KB working_set=19304KB
+[rqhost] mem private=7156KB working_set=19304KB
+[rqhost] adopt converter -> autodesk-rqhost-desktop-6336-app-1
+[rqhost] window opened for `converter` (480x320)
+[rqhost] first frame `converter`
+[rqhost] window `converter` resized 480x320
+[rqhost] window `converter` resized 480x320
+[rqhost] mem private=10072KB working_set=35696KB
+[rqhost] perf `converter` fps=0.2 frame_bytes=412 ops=9 texts=6
+[rqhost] mem private=10072KB working_set=35744KB
+[rqhost] perf `converter` fps=0.0 frame_bytes=412 ops=9 texts=6
+[rqhost] client `converter` 断连（EOF）——窗回收
+[rqhost] 末窗关闭——daemon 退出
+[ui-desktop] alive pid=6336 t=1790183324

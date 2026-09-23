@@ -1,0 +1,2 @@
+[render] render-mode: desktop (CLI)
+[render] desktop 模式：采纳桌面合成器端点（不孵化）

@@ -15797,6 +15797,12 @@ pub struct DesktopOptions {
     /// （`Settings{visible:false}`）+ boot 取像素桥入 `session.pixels` +
     /// 协议轮询/截图回调订阅。false（缺省）= 既有 Standalone 行为零变化。
     pub pixels: bool,
+    /// PLAN-698 T-04b/SD-04：桌面侧 rqhost 合成器 daemon 孵化（子进程
+    /// 形态——`auto rqhost --pipe` 专进程，winit Windows 单事件循环约束
+    /// 否决同进程库形态，勘定留痕见计划）。`Some(name)` = 管道名显式；
+    /// `None` + env `AUTO_DESKTOP_RQHOST=1` = pid 派生名（多桌面实例
+    /// 隔离）；两者缺席 = 不孵化（行为零变化）。
+    pub rqhost_endpoint: Option<String>,
 }
 
 /// Plan 462 T5：desktop 模式入口 —— 单宿主 OS 窗口承载 N 个虚拟窗口
@@ -15854,6 +15860,42 @@ fn run_session(
     // Stage B P-7：宿主显式 shell pack 注入（OnceLock 首值胜；后续幂等）。
     if let Some(pack_dir) = &opts.shell_pack {
         crate::ui::shell::set_shell_pack_override(pack_dir.clone());
+    }
+    // PLAN-698 T-04b/SD-04：桌面侧 rqhost 合成器 daemon 孵化（仅 Desktop
+    // 模式；P693-D2 配对面）。形态勘定（2026-09-23 实机）：**子进程**——
+    // 库形态（同进程专线程 run_daemon）被 winit/iced Windows 单事件循环
+    // 约束否决（第二 iced 循环 = `RecreationAttempt` panic，实测留痕
+    // scratch-w1/t04_desktop.log）；子进程复用既有孵化机制
+    // （`auto rqhost --pipe <name>`，spawn_rqhost_default 同型）。管道
+    // 命名裁定（T-04a，待澄清2 默认案）：**注册表发布 + pid 派生隔离**
+    // ——发布=AUTO_DESKTOP_ENDPOINT env（桌面进程设置，子进程启动即继承，
+    // 注册表 launch 面零改动）；pid 派生名=多桌面实例隔离；wellknown
+    // 兜底=桌面外 `-q` 轨既有语义不变。生命周期注记：daemon 子进程按
+    // 末窗自退语义存活（零窗常驻与 `-q` 轨一致）；宿主强杀不级联。
+    if mode == RunMode::Desktop {
+        let endpoint = opts
+            .rqhost_endpoint
+            .clone()
+            .or_else(|| {
+                (std::env::var("AUTO_DESKTOP_RQHOST").as_deref() == Ok("1")).then(|| {
+                    format!(
+                        "{}-desktop-{}",
+                        crate::ui::desktop_protocol::rqhost::RQHOST_PIPE,
+                        std::process::id()
+                    )
+                })
+            });
+        if let Some(pipe) = endpoint {
+            match crate::ui::desktop_protocol::rqhost::spawn_desktop_daemon(&pipe) {
+                Ok(()) => {
+                    std::env::set_var("AUTO_DESKTOP_ENDPOINT", &pipe);
+                    eprintln!(
+                        "[ui-desktop] rqhost daemon spawned at {pipe} (AUTO_DESKTOP_ENDPOINT published)"
+                    );
+                }
+                Err(e) => eprintln!("[ui-desktop] rqhost daemon spawn failed: {e}"),
+            }
+        }
     }
     // PLAN-575 D1 挂点②：main 装配处（run_session 唯一管线，I3）装全局
     // panic 审计 hook——只追加日志，不改 panic 语义（G3 零行为变更）。

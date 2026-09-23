@@ -761,6 +761,30 @@ inproc VM App（ui_desktop 宿主 `launch_app`）拉起零宿主退出是桌面�
   MCP 双探逐秒盯存活）+ Windows 事件日志三查（Application 1000/1001/
   1002 + System 41/1001/6008 + WER 桶）；cdb 托管形态见上节（F1）。
 
+## 桌面端点跨仓配对契约（PLAN-698 SD-04）
+
+auto-os 桌面 shell（ui_desktop 宿主装载的特权 .at App）所在进程=**真实
+desktop 端点**：a2r exe（native 轨，P693 三模式 CLI）经
+`--desktop-endpoint <pipe>` 采纳进桌面侧合成器（rqhost 协议 adopt 同构，
+**不孵化**——端点缺席=干净报错提示先启动桌面）。
+
+- **daemon 形态（勘定定案）**：子进程——桌面宿主 boot 孵化
+  `auto rqhost --pipe <name>`（`spawn_desktop_daemon`，就绪探测 5s 放行）。
+  同进程库形态（专线程第二 iced 循环）被 **winit Windows 每进程单事件
+  循环**约束结构性否决（`RecreationAttempt` panic 实测留痕，P698 报告
+  T04-desktop-pairing.md）。daemon 子进程按末窗自退语义存活；宿主强杀
+  不级联（Job 级联=后续债）。
+- **管道命名（T-04a 裁定）**：`autodesk-rqhost-desktop-<pid>`（pid 派生
+  =多桌面实例隔离）+ **注册表发布**=宿主进程设 `AUTO_DESKTOP_ENDPOINT`
+  env（子进程启动即继承，launch 面零改动）；wellknown 兜底=桌面外 `-q`
+  轨语义不变。
+- **启用门**：`DesktopOptions.rqhost_endpoint: Option<String>`（显式名）
+  ∨ env `AUTO_DESKTOP_RQHOST=1`；两者缺席=不孵化（行为零变化）。auto-os
+  侧 `scripts/desktop.ps1` 缺省置 1（显式置 0 停用）。
+- **互连口径**：003 级 exe 全环=adopt→开窗→v2 帧（perf 行）→输入存活→
+  EOF 窗回收→末窗 daemon 自退（录证 docs/reports/p698-batch/）。虚拟窗
+  内嵌/键面深集成（输入路由）归 P694-D2 线，非本契约面。
+
 ## 关键入口
 
 - `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）
