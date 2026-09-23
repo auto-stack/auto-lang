@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-694
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-dogfood
 author: [zcode]
 created_at: 2026-09-23
@@ -264,6 +264,31 @@ exe → 桌面窗清 + launcher 可再启动）——走查脚本录证。
   ——用户实时在用环境合成输入竞夺（桌面进程被关 ×6 实测），解锁动作 =
   安静窗重跑 walkthrough.py 或 review 裁定协议级等价。next=**review**（若
   裁定证据足额；否则安静窗补录后续 work）。
+- review 交付（2026-09-23）：stage=review，PLAN-694 rev1。
+  outcome=**pass**。reviewed_commit=plan-694-dev 6b75297b5（worktree
+  lang-694 clean）；base_commit=abeaf113d（plan-693-dev）；dependency
+  revisions=auto-down 3373a5c（detached 组内位）；spec_inputs=设计档
+  rq-remote-renderer §8（worktree 6b75297b5 增补段）+desktop_protocol
+  契约面（client_entry/broker/session 代码即规范）。**独立性声明**：复审
+  在实现会话内进行（无独立会话可用），判定由工件重建（测试复跑+证据
+  文件核验），不依赖执行摘要。**AC 对勘**：AC-01 pass（环测复审复现：
+  discovery/attach 99.8ms/v2 首帧/键入联动 100→212/kill 回收四段全绿；
+  真机 launch 链经 music player 行击实证；converter 行击录证窄面由用户
+  本轮 review+merge 指令裁定接受协议级等价——待澄清④就此关闭）；
+  AC-02 pass（单测+观测行实机复核 `[render] render-mode: desktop (CLI)`）；
+  AC-03 pass（环测 kill-reclaim 臂+broker EOF 机制）；AC-04 pass
+  （注册表 25→27 截图+发现序 5/5 单测）；AC-05 **partial**（物理 IME 段
+  未复核——P683-D6 原状保持；按本 AC 自身"残面登记不阻塞"口径不拦
+  pass）；AC-06 pass（tf 5458/5469=10 预存+ffi_dual_019 flaky 两连绿
+  非回归；裸 t 5458/5468 同名单；curation/render_filter 按新语义分区
+  断言更新属刻意语义变更非弱化）。**findings**：R-1（info）broker 双
+  动词/headless 光标同步/注册表可见性翻转为 plan 文本外的勘定增量，
+  均在 G1/G2/G3 目标域内且留档；R-2（info）主检出存在他方 WIP
+  （back_prefix.rs 改动+blueprints 删除标记）——非本计划范围，落库走
+  plan-694-dev 分支提交面不受影响，呈报用户。**spec delta**：SD-01
+  （孵化链↔exe CLI 方言契约）/SD-02（虚拟桌面加载 a2r exe 端到端契约）
+  经代码+测试逐条对勘成立；touched_goals 留空（特性级契约工作，不触
+  goals.md 既有 GOAL-NNN）。next=**merge**。
 
 ## 待澄清事项
 
