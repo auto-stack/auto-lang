@@ -28,6 +28,22 @@
   [后台装配与覆盖](../../stdlib/design/backend-assembly.md)；HTTP server 的 VM/Axum 现状见
   [HTTP Server Spec](../../stdlib/design/http-server.md)。
 
+## UICache 生成器指纹契约（PLAN-698 SD-01）
+
+`.auto/ui-cache.json` 的缓存键除源文件内容哈希外，**必含生成器指纹**
+（`generator_fingerprint`）：build.rs 对 `src/ui_gen/**` 生成器源集
+（相对路径+内容，排序后 FNV-1a）算 `AUTO_UI_GEN_FINGERPRINT` env；
+`UICache::load` 与现 env 不匹配（含一侧缺席）即**整缓存失效**并重签
+（692 W-1 根修——生成器升级后旧产物不再被判"新鲜"复用）。语义：
+
+- `VERSION` 迁移即弃旧（v1 无指纹字段，1→2 bump 后 version 不匹配
+  直接重建）——指纹失效臂是 version 语义的追加层，二者同向。
+- `api_functions_hash` 既有臂不动（API 配置变化失效，双保险）。
+- 失效观测=`Warning: UI cache invalidated (generator fingerprint
+  changed)`（stderr，出现于每次 load 直至下一次生成 save 重签）。
+- 入库策略：`.auto/ui-cache.json` 为生成数据（auto-os 侧注记，本契约
+  只保证失效正确性；入库与否不阻塞）。
+
 ## File 内建契约（VM/a2r 双轨）（PLAN-673 SD-02）
 
 File 面此前未细化，本节为新增（契约详档 `design/autoui/editor-kernel.md` §5）：
