@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-697
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-host-stability
 author: [zcode]
 created_at: 2026-09-23
@@ -219,6 +219,31 @@ ui_desktop 宿主
   694 T-04 环境阻塞未复核，债册行按证据刷新为状态维持+对账注记（非划
   线）；②"cdb 附加取证"由 Windows 事件日志三查替代（走查窗口已闭无可
   捕现场；事件日志=更强回溯性证据，方法在档案 §勘定方法）。
+- review 交付（2026-09-23）：stage=review，PLAN-697 rev1。outcome=**pass**。
+  reviewed_commit=plan-697-dev d52ea4400（实现件 45aef8e04 + R-1/R-2 证据
+  修复 d52ea4400）；base_commit=0f6a91b29；dependency_revisions=auto-down
+  @3373a5c（detached 只读）。spec_inputs=docs/specs/auto-lang/ui/
+  overview.md（SD-01 节 worktree 在档 @d52ea4400，未发布）。**独立性
+  声明**：复审与实现同会话——裁定从在档工件重建（matrix.jsonl 17 条逐
+  轮+events-extract.txt 0xA/6008/三日关机行+债册行+SD-01 节逐一 git
+  show 核验），并做了运行时独立复验。acceptance_results：AC-01 pass
+  （归因档案三证：对照矩阵+事件日志退出位面+排除链；逐文件核验）；AC-02
+  pass（加固代码核验+运行时复验：fresh 宿主 start 行 t=1790174016+
+  launch/proxy 点火行实证；"环境自检"口径=start 行环境快照（pid/form/
+  apps_dir/t），uptime 后验可自事件日志导出——记 R-3 非阻塞）；AC-03
+  pass（工件四截图+state 转录核验+紧凑复现：拉起 wid2→关闭→宿主存活）；
+  AC-04 pass（债册行 git show 核验：P694-D1 销号划线+P683-D6 对账注记）；
+  AC-05 pass（复用 work 期同 commit 全量 5495 跑 10 红名册+flake 隔离
+  绿——复用理由：代码/依赖/测试配置与复审基线零变化；back_provision
+  4/4+check --examples 干净同理由复用）。findings：R-1（已修复@d52ea4400）
+  =host-*.log 受 .gitignore 未入库而 attribution 引用之——补
+  host-evidence-excerpt.txt+证据位面注；R-2（已修复@d52ea4400）=轮次
+  口径 13→15 勘正；R-3（非阻塞，不修复）="环境自检"以 start 行环境快照
+  口径兑现，系统 uptime 未进 boot 行——死亡判位目标已全达，记录口径备
+  查。spec delta 审读：SD-01 节=持久契约（观测面+判位表+对照缝+方法）
+  非执行日记，与 F1 节相邻不冲突；touched_goals 空=无已登记 GOAL 覆盖
+  桌面宿主稳定性（书面说明，frontmatter 不动）。evidence=reports/
+  p697-stability/（d52ea4400，worktree 移除后路径仍解析）。next=merge。
 
 ## 待澄清事项
 
