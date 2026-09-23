@@ -1,10 +1,11 @@
 ---
 plan_id: PLAN-697
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: desktop-host-stability
 author: [zcode]
 created_at: 2026-09-23
 updated_at: 2026-09-23
+completion_kind: delivered
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -244,6 +245,20 @@ ui_desktop 宿主
   非执行日记，与 F1 节相邻不冲突；touched_goals 空=无已登记 GOAL 覆盖
   桌面宿主稳定性（书面说明，frontmatter 不动）。evidence=reports/
   p697-stability/（d52ea4400，worktree 移除后路径仍解析）。next=merge。
+- merge 交付（2026-09-23）：stage=merge，PLAN-697:r1。outcome=**pass
+  （delivered）**。五 checkpoint：**prepared**=reviewed 基线 7c15e5280
+  +冻结 delta（SD-01 节 worktree 在档）+账本落点（specs.json P697-1
+  architecture/P697-2 reviews+ui/plans.md 697 行+INDEX 再生）+delivery
+  候选 b26b69849；**landed**=rebase 2 commits range-diff 2/2 全等
+  （45aef8e04→34bcda2b6、d52ea4400→c1884f1c9）+ff-only 落地 master
+  tip=b26b69849（零合并提交）+main 上 SD-01 节（overview.md:743）/
+  P697-1/P697-2/plans.md 行逐一读回验证；**ledger_refreshed**=specs.json
+  语义 append-only 程序化核验（+2 条目/零删/零改/零移位，672→674）+
+  INDEX 再生净零变化+plans.md 行在档；**archived**=git mv
+  docs/plans/archive/697-desktop-host-stability.md+status: archived+
+  completion_kind: delivered；**cleaned**=（本行随清理结果回填）。
+  已知残面：机器稳定性本身（GPU 驱动/内核，环境面非本仓代码）；R-3
+  口径注（环境自检=start 行环境快照）随档案在档。
 
 ## 待澄清事项
 
