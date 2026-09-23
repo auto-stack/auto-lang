@@ -14,34 +14,36 @@ touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 affects: [widgets/scroll-pane]
 current_step: 6
 total_steps: 7
-plan_revision: 4
+plan_revision: 5
 ---
 
 # [PLAN-692] widget-gallery-scroll-polish
 
-## 0. 变更摘要
+## 0. 变更摘要（rev5 整合态；演进史见复审记录 rev1→rev4/W-1..W-3）
 
-Vue 版 widgets-gallery（auto-os 仓）`#/scroll` 页实机走查（2026-09-22，PLAN-656 scroll 替换核实会话）发现四个 demo 呈现问题；用户同场对 `scroll` 组件提出三项视觉增强。本计划：
+Vue 版 widgets-gallery（auto-os 仓）实机走查引发的一揽子改良，跨越 scroll 页、scroll 组件、Combobox、CodeEditor、首页标题六面：
 
-1. **Demo 重设计**（auto-os `widgets-gallery/src/front/pages/scroll.at`）：竖向 demo 容器加宽度根修塌条；横向/Both-Axes demo 保证真实溢出使滚动条出现。
-2. **双路径滚动条统一**（auto-lang vue 脚手架）：语义 `scroll`（Reka ScrollArea）与 utility 路径（`overflow-*` 原生滚动条）统一到同一套视觉参数（宽 8px/药丸/`--border` 色/hover 加宽加深/active 高亮）；utility 路径自动挂 `.ash-scroll` 类。
-3. **scroll 组件三项增强**：新 `size` prop（thumb 宽度 px）；thumb hover 左右各加宽 2px 且 `cursor: pointer`；thumb 按住时高亮色。
+1. **scroll 页 demo 重设计**（auto-os `widgets-gallery/src/front/pages/scroll.at`）：竖向两 demo 容器 `w-full` 根修预览区 shrink-to-fit 塌条；横向卡片 6→10 张；Both Axes 3 行+w-[60rem] 双轴真溢出（`w-160` 不在 Tailwind 标度系预存暗病）；Properties 表补 size 行。
+2. **双路径滚动条统一**（auto-lang vue 脚手架）：语义 `scroll`（Reka ScrollArea）与 utility 路径（`overflow-*` 原生滚动条）统一到同一视觉参数表；utility 路径由生成器 plain 装配点自动挂 `.ash-scroll` 类。
+3. **scroll thumb 增强（rev4 终态）**：`size` prop（thumb 宽 px，缺省 8）端到端；hover 色相不变、亮度自适应加深/提亮（primary/60）；cursor:pointer；**hover 加宽与按住高亮均按用户裁定撤销**；thumb 过渡禁含 transform（reka 从布局原点 translate3d 定位，动画化 transform 即闪现）；轨道对齐必须 items-start（居中破坏拖拽映射，F-1 根修）。
+4. **Combobox 重接入 shadcn 官方形态（W-2）**：command 八元素 schema 翻转 web:component + vue 映射，真身=assets/shadcn-ui/command 官方 Listbox 实现；registry 为 schema-only 元素补建 spec + kebab 别名回填；删除 front 遗留 stub 家族 command.at；combobox.at 升级 Simple 真交互 + Complex Items 示例。
+5. **CodeEditor 字面 content 修复（W-1）**：code_editor 臂此前只认状态绑定、字面串被静默丢弃（AutoLang 示例空白）——补单向 `:model-value` 初始值。
+6. **首页分区标题对齐（W-3）**：generate_category_section_html 的 h2 补 `m-0`（脚手架基础 h2 margin 泄漏进 flex 标题行致 8px 下坠）。
 
-跨仓计划：auto-lang 为主仓（schema/生成器/脚手架模板/CSS），auto-os 为兄弟 worktree（demo 页源码）。**Vue 臂为验收面**；VM 臂保证不红 + `size` prop 兼容（实现或降级注记二选一，执行期裁定）。
+跨仓计划：auto-lang 为主仓（schema/生成器/脚手架模板/CSS），auto-os 为兄弟 worktree（widgets-gallery 页面源码 + ui-cache）。**Vue 臂为验收面**；VM 臂保证不红 + `size` prop 降级注记（SD-02）。
 
-## 1. 目标
+**债务候选（merge 时落 KNOWN-DEBT-AND-RISKS.md）**：①auto-os `.auto/ui-cache.json` 入库跟踪但缓存键不含生成器版本（生成器升级后旧产物判新鲜，须手工清缓存）；②popover 选中后不自动关闭（需 open 状态绑定）；③VM(iced) 臂 command 家族未实现（iced:none 维持）；④reka sizes 初始测量常命中 18px thumb 下限（预存观察项）；⑤脚手架 h1-h6 基础 margin 对其它内联标题行的同类隐患。
 
-- G1：widgets-gallery scroll 页四个 demo 在 Vue 臂呈现为"像样的大样例"——竖向容器全宽、横向/双轴 demo 滚动条实际出现（用户原话："div 做大一点"）。
-- G2：`scroll` 元素与 `overflow-y-auto`/`overflow-x-auto`/`overflow-auto` utility 类产出的滚动条视觉一致（同一套：宽度、色、圆角、hover、active）。
-- G3：`scroll` 组件支持 `size` prop 端到端（schema → 生成 .vue → DOM thumb 宽度）+ hover 加宽 2px/侧 + cursor:pointer + 按住高亮。
+## 1. 目标（rev5 整合态）
 
-**非目标**：
-- 不改 preview-card 生成器包装结构（`flex items-center justify-center` 保留；宽度在 demo 源码层解决）。
-- 不动 VM 臂 iced 滚动条的视觉重设计（`renderer.rs:2727` scrollbar_style 仅按"size 兼容"最小处理）。
-- 不处理 Firefox 原生滚动条的 hover 加宽（`scrollbar-width` 无此能力；Chromium 是验收浏览器）。
-- native（utility 路径）thumb 的 `cursor: pointer` 为浏览器平台限制——若 `::-webkit-scrollbar-thumb { cursor }` 实测无效，cursor 仅 Reka 侧生效并在 specs 记边界（G2 的"同一套"以色彩/宽度/圆角/hover/active 五参数为准）。
+- G1：scroll 页四 demo 满铺呈现、应有滚动条全部出现（AC-01/02）。
+- G2：语义 scroll 与 utility 路径滚动条同一套视觉（宽/色/圆角/hover 微亮/无 active——rev2 起去除 active，rev3/4 改 accent 底+亮度自适应）。
+- G3：`size` prop 端到端 + thumb hover 反馈（色深变化 + cursor:pointer；**不加宽**——rev4 裁定）。
+- G4（W-2）：Combobox 达 shadcn 官方效果——实时过滤、空态自动显隐、候选项 hover/键盘/点击选中、复杂候选项（图标/快捷键/分组）、触发器标签回填。
+- G5（W-1）：code_editor 字面串 content 正常显示。
+- G6（W-3）：首页分区标题圆点/文字/计数三点对齐。
 
-**成功样貌**：浏览器打开 `#/scroll`，四 demo 全部出现应有滚动条且样式一致；`scroll (size: 16)` 生成 16px thumb；hover 变宽、按住变主色。
+**非目标（演进后终态）**：hover 加宽（rev4 撤销）；按住高亮（rev2 撤销）；preview-card 生成器结构变更；VM 臂 iced 滚动条视觉重设计与 command 实现（iced:none 维持）；Firefox hover 加宽；native 侧 thumb cursor（平台限制）。
 
 ## 2. 架构方案
 
@@ -167,8 +169,13 @@ vue 生成器（`crates/auto-lang/src/ui_gen/vue.rs`）在 div/容器 class 组�
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | modify | widgets/scroll-pane.md | scroll 新增 `size` prop（thumb 宽 px，缺省 8）；thumb hover 加宽 +2px/侧 + Reka 侧 cursor:pointer；active 主色高亮；vue 臂 utility 路径 overflow-* 自动挂 .ash-scroll，双路径统一视觉参数表（§2.1） | 用户裁定 2026-09-22 三项增强 + 统一需求 | AC-03 AC-04 AC-05 AC-06 |
-| SD-02 | add | widgets/scroll-pane.md（VM 臂段） | VM(iced) 臂对 `size` 的支持形态（实现值或降级注记），执行期 T-06 裁定后回填 | 双端契约完整性 | AC-07 |
+| SD-01 | modify | widgets/scroll-pane.md | scroll 新增 `size` prop（thumb 宽 px，缺省 8）；thumb 可见色 accent 化 primary/40；hover 色相不变仅亮度自适应 primary/60 + cursor:pointer（**不加宽**，rev4）；**无 active 高亮**（rev2 撤销）；thumb 过渡禁含 transform；轨道对齐必须 items-start；vue 臂 utility 路径 overflow-* 自动挂 .ash-scroll，双路径统一参数表 | 用户裁定 2026-09-22/23 演进终态 | AC-03..06 |
+| SD-02 | add | widgets/scroll-pane.md（VM 臂段） | VM(iced) 臂对 `size` 降级注记（schema 兼容零破坏，接线另立） | 双端契约完整性 | AC-07 |
+| SD-03 | add | widgets/project.md（command 家族行） | command 八元素（command/command_input/command_empty/command_list/command_group/command_item/command_separator/command_shortcut）vue 臂正式接入 shadcn 组件路径（assets/shadcn-ui/command 官方 Listbox 实现）；registry 为 schema-only 组件家族补建 spec + kebab 别名回填为通用机制；VM 臂 iced:none 维持 | 用户裁定 W-2：Combobox 对照 shadcn 官方重实现 | AC-09 |
+
+（AC-08 = auto-lang 门禁；W-1/W-3 为走查修复无独立 SD；AC 终态见复审记录 W-2/W-3 条目。）
+
+## 6. 测试设计
 
 ## 6. 测试设计
 
