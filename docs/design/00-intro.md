@@ -32,7 +32,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 | 定性 | 判据 | 去向 |
 |---|---|---|
-| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **33**——30/31/32 已用），在本索引登记 |
+| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **34**——33 已用于标准库运行时），在本索引登记 |
 | **需求级/专题设计** | 服务于某条需求线或专题（特性、轨道、规范、研究输入） | 进对应模块子目录（`autoui/`、`blueprints/`、`strategy/`…），**slug 命名不带号** |
 | **流程体系类** | 开发范式、知识体系、流程设计 | 根级不拿号（与 `plan-spec-hybrid-model.md`、`autoplan-spec-ledger.md` 同列） |
 
@@ -50,7 +50,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 分区 | 数量 | 内容 |
 |---|---|---|
 | 一、语言核心 | 10（01–10） | 从源码到执行的语言本体设计 |
-| 二、应用框架与生态 | 5（11–15）+ 1 子目录 | Shell / 并发 / 网络 / 开发工具 / AI 基础设施；文档与在线体验线设计归 `documents/` |
+| 二、应用框架与生态 | 5（11–15）+ 1 子目录 | Shell / 并发 / 网络 / 开发工具 / AI 基础设施；标准库运行时方案见 Design 33，文档与在线体验线设计归 `documents/` |
 | 三、AutoUI 与 App 生成域 | 2 章 + 2 子目录 | 域级章 16/20；需求级设计归 `autoui/`（10）与 `blueprints/`（4） |
 | 四、流程与知识体系 | 1 个域级章 + 2 个根级专题 | Knowledge Lifecycle、AutoPlan 账本、Plan+Spec v1 |
 | 五、战略路线图 `strategy/` | 13 | 生态版图伞形（三市场框架）/ Rust 脚本层 / 消费者 parity / C·Web·鸿蒙·Mobile·ROS2·Native·第三代互联网(Godot) 生态 / Python parity / Rust 库复刻 |
@@ -98,6 +98,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 15 | [AI Daemon Infrastructure](15-ai-daemon-infrastructure.md) | AutoOS 共享 LLM Harness、并发仲裁、Key Vault | 跨仓主题，实现在 auto-os 生态 |
 | 28 | [Rust Interop Architecture](28-rust-interop-architecture.md) | Auto↔Rust 互操作：类型信息生命周期铁律、三时刻能力模型、编译预言机原则、430 管线实勘、双轨迁移模式 | 2026-09-07 立档；源 musk VM 轨 JSON 桥追问的全链定案，PLAN-591 的架构依据 |
 | 31 | [AutoScape / AutoWeb](31-autoscape-autoweb.md) | Auto 原生浏览器与统一应用寻址运行时：URI/Intent/AppResolver、AppRealm/AppSession/AppProvider、AutoFrame/BrowsingContext、AutoWeb 部署模型、远程语义流；含术语×本地实现对照与差距分析 | 📝 Draft（2026-09-20 立档；外来设计输入融入重排版，v0.6 主打候选 M1 见其 §13） |
+| 33 | [Stdlib Runtime & HTTP](33-stdlib-runtime-and-http.md) | 标准库多后台装配现状、AutoUI API 三类传输、VM HTTP/task 风险、Axum/VM owner 边界与分阶段改良路线 | 📝 方案稿（2026-09-23 静态审计，PLAN-696 实施入口） |
 
 **模块子目录**：[documents/](documents/README.md)——文档与在线体验大模块（website/书籍/Playground
 线的需求级设计，slug 命名不带号；域级概要章待目录整体重组时补立，2026-09-07 用户裁定）。

@@ -1,5 +1,9 @@
 # 13 - Networking (HTTP Server & Async I/O)
 
+> 2026-09-23 现状勘误：本章的模块层次与 `http.rs.at` 表格包含目标态，不能据此
+> 推断 VM HTTP 已由 Axum 承载。现役路径、代码证据与改良路线见
+> [Design 33：标准库多后台与 Web 服务运行时](33-stdlib-runtime-and-http.md)。
+
 ## Status
 
 **Implemented** (current-state audit 2026-09-07, PLAN-546):
