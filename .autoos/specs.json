@@ -5525,17 +5525,22 @@
      "last_modified": "2026-09-22"
     },
     {
-      "id": "P691-1",
-      "title": "presplit-subtraction — 拆仓前减面四刀：体量口径勘误（SD-01）+gpui 死后端移除+散测试归位（SD-03 specs 同步）",
-      "content": "拆仓（Design 32）前置减面批：①体量口径勘误——UI 集群实测 ~52%（约30万/58万行，cat 口径），原稿 90%/30.3万 系 xargs wc -l|tail-1 分批截断（09-20 当日 git archive 实测 55.7万），Design 32 §0+Cargo.toml 注释双订正；②gpui 死后端移除净 -4030 行——src/ui/gpui/+style/gpui_adapter(554行)+ui-gpui feature+gpui-lib/gpui-component/anyhow 三 optional deps+19 examples cfg 阶梯臂+HostBackend::Gpui；数据面豁免在案（config UiBackend::Gpui/session 默认串/aura BackendMatrix.gpui=目录契约零派发保留）；rider=p023_probe 补 required-features=iced-layout-tests 门（裸 --examples 预存 14×E0433 收口）；③pixels 臂顺延不删（量化门达标 11.3MB≤100MB，条件② labels not-yet+terminal/imagesurface M7-c 未立项）；④90 顶层散测试+test_util/ 纯 move 归位 src/tests/（90×R100；test_runner 例外留根=VM auto.test.* natives 生产依赖；plan077 死文件注释态随迁）。specs 四件 gpui 活提及同步（SD-03）。",
-      "file": "docs/design/32-autoui-repo-extraction.md",
-      "related": [
-       "PLAN-691"
-      ],
-      "status": "published",
-      "created": "2026-09-22",
-      "last_modified": "2026-09-22"
-     }
+     "id": "P691-1",
+     "title": "presplit-subtraction — 拆仓前减面四刀：体量口径勘误（SD-01）+gpui 死后端移除+散测试归位（SD-03 specs 同步）",
+     "content": "拆仓（Design 32）前置减面批：①体量口径勘误——UI 集群实测 ~52%（约30万/58万行，cat 口径），原稿 90%/30.3万 系 xargs wc -l|tail-1 分批截断（09-20 当日 git archive 实测 55.7万），Design 32 §0+Cargo.toml 注释双订正；②gpui 死后端移除净 -4030 行——src/ui/gpui/+style/gpui_adapter(554行)+ui-gpui feature+gpui-lib/gpui-component/anyhow 三 optional deps+19 examples cfg 阶梯臂+HostBackend::Gpui；数据面豁免在案（config UiBackend::Gpui/session 默认串/aura BackendMatrix.gpui=目录契约零派发保留）；rider=p023_probe 补 required-features=iced-layout-tests 门（裸 --examples 预存 14×E0433 收口）；③pixels 臂顺延不删（量化门达标 11.3MB≤100MB，条件② labels not-yet+terminal/imagesurface M7-c 未立项）；④90 顶层散测试+test_util/ 纯 move 归位 src/tests/（90×R100；test_runner 例外留根=VM auto.test.* natives 生产依赖；plan077 死文件注释态随迁）。specs 四件 gpui 活提及同步（SD-03）。",
+     "file": "docs/design/32-autoui-repo-extraction.md",
+     "related": [
+      "PLAN-691"
+     ],
+     "status": "published",
+     "created": "2026-09-22",
+     "last_modified": "2026-09-22"
+    },
+    {
+     "id": "P692-1",
+     "title": "widget-gallery-scroll-polish — scroll 页改良+滚动条双路径统一+thumb 增强+Combobox shadcn 官方接入+CodeEditor 字面 content+首页标题对齐",
+     "content": "实机走查批（rev5，用户会话内六面需求）：①scroll 四 demo 满铺+真溢出（w-full/w-[60rem]；w-160 不在 Tailwind 标度系预存暗病）；②滚动条双路径统一——语义 scroll 与 utility(overflow-*) 同参（accent 底 primary/40、hover 亮度自适应 primary/60、恒宽 size prop），utility 侧生成器 plain 装配点自动挂 .ash-scroll；③thumb 演进终态：hover 加宽与按住高亮均经用户裁定撤销、过渡禁含 transform（reka translate3d 从布局原点定位，动画化即闪现）、轨道 items-start 铁律（items-center 移原点 70px 破拖拽映射）；④Combobox 八 command 元素 schema 翻转 web:component 接入 assets/shadcn-ui/command 官方 Listbox 实现（Empty 自动显隐/过滤/hover/键盘/点选回填/复杂候选项），registry 为 schema-only 家族补建 spec+kebab 别名回填（通用机制），删除 front 遗留 stub；⑤code_editor 字面串 content 补单向 :model-value（此前静默丢弃挂载即空白）；⑥首页分区标题 h2 补 m-0（脚手架 h2 基础 margin 泄漏进 flex 行致 8px 下坠）。"
+    }
    ]
   },
   {
@@ -7208,17 +7213,22 @@
      "last_modified": "2026-09-22"
     },
     {
-      "id": "P691-2",
-      "title": "presplit-subtraction 复审与合并收据",
-      "content": "work pass（c60cf8905/3ac279750/a72257e6f/ffe800947 rebased 链）→review pass@24ddad334（同会话复审独立性声明+工件重推：裸 --examples 增量重跑 0 错/p023 门生效直证；告警 351→344 纯减 7 零新增；rename 90×R100+2×R09x；tf 10 红=预存9+ffi_dual_019 flaky[689 在册+684 晚间基线双互证+双侧 solo 绿]）。AC-03=顺延路径（门②证据=desktop-protocol-v1.md :816/:824/:827）。merge=rebase master 干净 4/4 range-diff 全等（f876e2661→c60cf8905/a5c5d0d49→3ac279750/24ddad334→a72257e6f/0cac22a25→ffe800947）；执行期事故在案：tests.rs open(w) 截断吞 67 声明（~427 测试静默消失）→nextest 双侧全名对拍发现→git 原文重拼，恢复后 t=5451/9 与基线逐位全等；双会话执行史（用户裁定单写者）+外来 specs 位写 R-1 收编。F-1 lib.rs 先在 #[path] 声明族 info（拆仓阶段归并候选）/F-2 plan077 死文件删除候选。",
-      "file": "docs/plans/archive/691-presplit-subtraction.md",
-      "related": [
-       "PLAN-691"
-      ],
-      "status": "published",
-      "created": "2026-09-22",
-      "last_modified": "2026-09-22"
-     }
+     "id": "P691-2",
+     "title": "presplit-subtraction 复审与合并收据",
+     "content": "work pass（c60cf8905/3ac279750/a72257e6f/ffe800947 rebased 链）→review pass@24ddad334（同会话复审独立性声明+工件重推：裸 --examples 增量重跑 0 错/p023 门生效直证；告警 351→344 纯减 7 零新增；rename 90×R100+2×R09x；tf 10 红=预存9+ffi_dual_019 flaky[689 在册+684 晚间基线双互证+双侧 solo 绿]）。AC-03=顺延路径（门②证据=desktop-protocol-v1.md :816/:824/:827）。merge=rebase master 干净 4/4 range-diff 全等（f876e2661→c60cf8905/a5c5d0d49→3ac279750/24ddad334→a72257e6f/0cac22a25→ffe800947）；执行期事故在案：tests.rs open(w) 截断吞 67 声明（~427 测试静默消失）→nextest 双侧全名对拍发现→git 原文重拼，恢复后 t=5451/9 与基线逐位全等；双会话执行史（用户裁定单写者）+外来 specs 位写 R-1 收编。F-1 lib.rs 先在 #[path] 声明族 info（拆仓阶段归并候选）/F-2 plan077 死文件删除候选。",
+     "file": "docs/plans/archive/691-presplit-subtraction.md",
+     "related": [
+      "PLAN-691"
+     ],
+     "status": "published",
+     "created": "2026-09-22",
+     "last_modified": "2026-09-22"
+    },
+    {
+     "id": "P692-2",
+     "title": "widget-gallery-scroll-polish 复审与合并收据",
+     "content": "review pass@rev5（tf 全量档 5458 跑 12 红对账：musk×6+counter+ffi_dual+native_gate_six+a2vue 金样+plan358 flaky 全预存/flaky 有佐证，docs_gen core_reference 系本计划 schema 变更引发→DOCS_GEN_UPDATE 再生修复 4/4 绿，零回归；iced 271/271；新增单测 6 枚；AC-01..08 终态+W-1/W-2/W-3 走查批全过，实机证据在复审记录）。merge=rebase 13 提交（12 全等+core.md 追加）ff-only 双仓落地：auto-lang fa524d126、auto-os 20ce5c8（main 检出 ui-cache churn 还原后落）。债候选：ui-cache 入库跟踪但键缺生成器版本/popover 选中不自动关闭/VM command iced:none/18px thumb 下限观察/h1-h6 基础 margin 内联隐患。归档=docs/plans/archive/。"
+    }
    ]
   }
  ]

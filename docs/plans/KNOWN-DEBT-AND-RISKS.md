@@ -21,3 +21,11 @@
 | P693-D1 | low | a2r 生成物存量 | **rust-workspace 既有 member 的生成 Cargo.toml 仍含 `ui-gpui = ["auto-lang/ui-gpui"]` 行**（PLAN-691 移除 feature 前生成）——存量 member 重复 resolve 即败（fresh 生成已被本计划生成器根修）；各 member 下次 `auto build -r rust` 重生成自然收敛，禁手工清（生成物 never-track） | rust_ui.rs generate_cargo_toml（已修）；主检出 examples/rust-workspace/011-calculator 等存量 |
 | P693-D2 | medium | desktop 接入跨仓配对 | **T-04/AC-04 未结**——auto-os 桌面 shell 内嵌 rqhost daemon（`run_daemon(desktop_pipe)` 库形态或子进程 `auto rqhost --pipe`）+ 桌面合成器管道命名约定对齐（固定 wellknown vs 桌面注册表发布，plan 待澄清#1）+ 003 级交互实机互连录证。窗宿主语义 v1 = rqhost 窗语义（WM 深度集成/任务栏联动 = auto-os 侧后续）；本计划交付面 = 连接契约（Desktop 变体）+ rqhost 形态端点合同等价实机（desktop-endpoint.png） | client_entry.rs ClientTarget::Desktop；reports/p693-tri-mode/README.md |
 | P693-D3 | low | a2r 测试漂移 | **`merged_api_client_crud_fallback_for_uncovered_endpoints` 预存红勘定新增**（不在既有已知红清单）——测试期望旧 CRUD 兜底形（`static API_DATA` + `-> Vec<Value>`），实发为 PLAN-681 route A `api_impl` 伴随模块形；base rust_ui.rs 外科对照同败（与本计划 diff 零交集）。修 = 测试期望随 route A 形更新，归 PLAN-681 线或独立 L0 | rust_ui.rs:4813 测试 vs generate_merged_api_client route A 臂 |
+
+## PLAN-692 债务候选（2026-09-23，W-2/W-1 走查批）
+
+1. **ui-cache 键缺生成器版本（infra，高优先）**：auto-os `.auto/ui-cache.json` 入库跟踪但缓存键仅含源文件哈希——生成器升级后旧产物被判"新鲜"复用（PLAN-692 W-1 实证：code_editor 修复后页面不重生成，须手工清缓存）。建议：缓存键混入生成器版本/hash；并评估该缓存是否应入库。
+2. **popover 选中后不自动关闭**：Combobox 选中候选项后 popover 保持打开（shadcn 官方为选中即关）。需 popover open 状态绑定 + CommandItem @select 联动关闭。
+3. **VM(iced) 臂 command 家族未实现**：八 command 元素 `iced: none` 维持——VM 臂渲染降级。接线（含 `size` prop 的 iced scrollable 宽度）另立。
+4. **reka sizes 初始测量 18px 下限（观察项）**：本仓环境下 ScrollArea thumb 长度常命中 reka getThumbSize 的 18px 下限（A/B 证实与实现无关；拖拽数学内部自洽，仅视觉比例偏小）。
+5. **脚手架 h1-h6 基础 margin 内联隐患**：基础样式给 h1-h6 的 mt/mb 对"内联进 flex 行"的标题同类泄漏（PLAN-692 W-3 实证一处）；其余位置待观察，出现即补 m-0。
