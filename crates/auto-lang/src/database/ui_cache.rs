@@ -21,19 +21,46 @@ pub struct UICache {
     version: u32,
     /// Hash of the .api_functions file content — changed API config invalidates all cached artifacts
     api_functions_hash: Option<u64>,
+    /// Content fingerprint of the generator sources (src/ui_gen/**) this
+    /// binary was built with (Plan 698 SD-01). A mismatch invalidates all
+    /// cached artifacts even when source hashes are unchanged — 692 W-1
+    /// root fix (generator upgrade replayed stale outputs as "fresh").
+    generator_fingerprint: Option<String>,
 }
 
 impl UICache {
-    const VERSION: u32 = 1;
+    const VERSION: u32 = 2;
 
-    /// Create a new empty cache
-    pub fn new() -> Self {
+    /// Generator fingerprint stamped by build.rs (`AUTO_UI_GEN_FINGERPRINT`).
+    /// `None` when the binary was built without it (foreign build).
+    pub fn generator_fingerprint() -> Option<String> {
+        option_env!("AUTO_UI_GEN_FINGERPRINT").map(|s| s.to_string())
+    }
+
+    /// A cached fingerprint mismatches the current one when they differ, or
+    /// when one side appeared/disappeared (same semantics as
+    /// `api_functions_hash`).
+    fn fingerprint_mismatch(cached: &Option<String>, current: &Option<String>) -> bool {
+        match (cached, current) {
+            (Some(c), Some(n)) => c != n,
+            (None, None) => false,
+            _ => true,
+        }
+    }
+
+    fn fresh_with(fingerprint: Option<String>) -> Self {
         Self {
             file_hashes: HashMap::new(),
             artifacts: HashMap::new(),
             version: Self::VERSION,
             api_functions_hash: None,
+            generator_fingerprint: fingerprint,
         }
+    }
+
+    /// Create a new empty cache
+    pub fn new() -> Self {
+        Self::fresh_with(Self::generator_fingerprint())
     }
 
     /// Get cache file path for a project
@@ -43,14 +70,34 @@ impl UICache {
 
     /// Load cache from project root
     pub fn load(project_root: &Path) -> Self {
+        Self::load_with(project_root, Self::generator_fingerprint())
+    }
+
+    fn load_with(project_root: &Path, current_fp: Option<String>) -> Self {
         let path = Self::cache_path(project_root);
         if path.exists() {
             match fs::read_to_string(&path) {
                 Ok(content) => {
                     match serde_json::from_str::<Self>(&content) {
                         Ok(cache) => {
-                            // Version check - invalidate if version mismatch
+                            // Version check - invalidate if version mismatch.
+                            // The 1→2 bump (Plan 698) also retires old caches
+                            // that carry no fingerprint field at all.
                             if cache.version == Self::VERSION {
+                                // Generator fingerprint check (Plan 698
+                                // SD-01): a generator upgrade invalidates
+                                // every entry even when source hashes are
+                                // unchanged. Stays loud until the next
+                                // generation re-stamps the cache on save.
+                                if Self::fingerprint_mismatch(
+                                    &cache.generator_fingerprint,
+                                    &current_fp,
+                                ) {
+                                    eprintln!(
+                                        "Warning: UI cache invalidated (generator fingerprint changed)"
+                                    );
+                                    return Self::fresh_with(current_fp);
+                                }
                                 return cache;
                             }
                         }
@@ -64,7 +111,7 @@ impl UICache {
                 }
             }
         }
-        Self::new()
+        Self::fresh_with(current_fp)
     }
 
     /// Save cache to project root
@@ -246,5 +293,67 @@ mod tests {
         let loaded = UICache::load(temp_dir.path());
         assert_eq!(loaded.file_count(), 1);
         assert!(!loaded.is_dirty(&path, 12345));
+    }
+
+    // --- Plan 698 SD-01: generator fingerprint in the cache key ---
+
+    fn seeded_cache(fp: Option<&str>) -> UICache {
+        let mut cache = UICache::new();
+        cache.update(PathBuf::from("app.at"), 12345, vec![]);
+        cache.generator_fingerprint = fp.map(|s| s.to_string());
+        cache
+    }
+
+    #[test]
+    fn test_fingerprint_match_retained() {
+        let temp_dir = TempDir::new().unwrap();
+        seeded_cache(Some("F1")).save(temp_dir.path()).unwrap();
+
+        let loaded = UICache::load_with(temp_dir.path(), Some("F1".into()));
+        assert_eq!(loaded.file_count(), 1, "matching fingerprint keeps entries");
+        assert_eq!(loaded.generator_fingerprint, Some("F1".into()));
+    }
+
+    #[test]
+    fn test_fingerprint_mismatch_invalidates_all() {
+        let temp_dir = TempDir::new().unwrap();
+        seeded_cache(Some("F1")).save(temp_dir.path()).unwrap();
+
+        let loaded = UICache::load_with(temp_dir.path(), Some("F2".into()));
+        assert_eq!(loaded.file_count(), 0, "changed fingerprint clears entries");
+        assert_eq!(loaded.generator_fingerprint, Some("F2".into()), "fresh cache re-stamps current fp");
+    }
+
+    #[test]
+    fn test_fingerprint_appeared_or_disappeared_invalidates() {
+        let temp_dir = TempDir::new().unwrap();
+        // Cache written without a fingerprint, binary now has one.
+        seeded_cache(None).save(temp_dir.path()).unwrap();
+        let loaded = UICache::load_with(temp_dir.path(), Some("F1".into()));
+        assert_eq!(loaded.file_count(), 0);
+
+        // Cache written with a fingerprint, binary built without one.
+        let temp_dir2 = TempDir::new().unwrap();
+        seeded_cache(Some("F1")).save(temp_dir2.path()).unwrap();
+        let loaded = UICache::load_with(temp_dir2.path(), None);
+        assert_eq!(loaded.file_count(), 0);
+    }
+
+    #[test]
+    fn test_version1_cache_without_fingerprint_discarded() {
+        let temp_dir = TempDir::new().unwrap();
+        let legacy = r#"{
+  "file_hashes": {},
+  "artifacts": {},
+  "version": 1,
+  "api_functions_hash": null
+}"#;
+        let cache_path = UICache::cache_path(temp_dir.path());
+        std::fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+        std::fs::write(&cache_path, legacy).unwrap();
+
+        let loaded = UICache::load_with(temp_dir.path(), Some("F1".into()));
+        assert_eq!(loaded.version, 2, "v1 cache migrates by being discarded");
+        assert_eq!(loaded.generator_fingerprint, Some("F1".into()));
     }
 }
