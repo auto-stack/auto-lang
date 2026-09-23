@@ -31,11 +31,16 @@ where the frame producer will also stop after a failed socket write.
 - Owner smoke: `cargo nextest run -p auto-lang --lib --features test-http-e2e -E 'test(/e2e_plan696_body_split_across_tcp_writes|e2e_sse_generator_handler/)' --no-fail-fast` — 2 passed. The test harness invokes the same synchronous AutoVM entry point, which now enters a `LocalSet` before serving.
 - `AutoVM` values are held through typed `Rc` ownership in `serve_async` and connection tasks. The HTTP server's previous raw-pointer-to-`usize` conversion and the SSE pull thread's equivalent conversion have been removed.
 
-## Remaining work
+## T-06 completion
 
-The owner model compiles and serves ordinary HTTP/SSE requests. Generator
-stepping is still synchronous within each frame pull, so a slow producer can
-occupy the LocalSet. T-06 must bound VM instruction batches and await between
-them, and must stop stepping when the client write fails. A blocking native
-operation such as `Time.sleep_ms` also needs a cooperative path when executed
-inside an SSE generator; T-06 will cover the current delayed-producer case.
+SSE frame pulls now run in 4,096-instruction batches and yield to the LocalSet
+between batches. `Time.sleep_ms` inside an SSE generator records a wake deadline
+instead of blocking the LocalSet; ordinary VM sleep behavior is unchanged. A
+bounded channel carries frames to the socket writer, a heartbeat lets the
+connection detect a closed peer during a sleeping generator, and dropping the
+producer removes its iterator and VM generator task.
+
+Evidence: `e2e_plan696_slow_sse_does_not_block_health` passes with a 2.5-second
+generator delay while the concurrent health response remains under the 1.5-
+second bound. `e2e_plan696_sse_disconnect_cancels_generator` passes and confirms
+the post-sleep side effect does not run after the peer closes.

@@ -3937,6 +3937,31 @@ pub fn shim_list_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
+thread_local! {
+    /// PLAN-696: only the top-level SSE iterator is budgeted. Nested iterator
+    /// calls made by the generator body retain their ordinary synchronous
+    /// semantics.
+    static PLAN696_SSE_NEXT_BUDGET: std::cell::Cell<Option<(u32, u32)>> = const { std::cell::Cell::new(None) };
+}
+
+/// Run one SSE iterator step cooperatively. `false` means the generator used
+/// its instruction budget or entered a cooperative sleep and should be polled
+/// again after yielding to the LocalSet.
+pub fn shim_iterator_next_cooperative(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    budget: u32,
+) -> Result<bool, VMError> {
+    let iterator_id = auto_val::decode_i32(task.ram.peek_nv(0)) as u32;
+    let stack_before = task.ram.sp;
+    let previous = PLAN696_SSE_NEXT_BUDGET.with(|slot| {
+        slot.replace(Some((iterator_id, budget.max(1))))
+    });
+    let result = shim_iterator_next(task, vm);
+    PLAN696_SSE_NEXT_BUDGET.with(|slot| slot.set(previous));
+    result.map(|()| task.ram.sp == stack_before)
+}
+
 /// Get next element from iterator.
 /// Stack: iterator_id -> element (or -1 for nil)
 /// Returns: element value, or -1 if exhausted
@@ -3956,6 +3981,12 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     }
 
     let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    let cooperative_budget = PLAN696_SSE_NEXT_BUDGET.with(|slot| {
+        slot.get()
+            .filter(|(target_iterator, _)| *target_iterator == iterator_id)
+            .map(|(_, budget)| budget)
+    });
+    let cooperative = cooperative_budget.is_some();
 
 
     let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
@@ -4214,6 +4245,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 
                     if let Some(gen_task_arc) = vm.tasks.get(&tid) {
                         if let Ok(mut gt) = gen_task_arc.try_lock() {
+                            gt.cooperative_http_sleep = cooperative;
                             // Plan 417-D2: seed the CALL-transferred args
                             // BELOW the frame markers, mirroring the CALL
                             // convention [args..., ret_addr, old_bp] so the
@@ -4252,16 +4284,27 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                     }
                 };
 
+                // A generator can be created before its first HTTP pull; set
+                // the mode on every pull so sleep dispatch stays scoped to
+                // this cooperative SSE consumer.
+                if let Some(gen_task_arc) = vm.tasks.get(&tid) {
+                    if let Ok(mut gt) = gen_task_arc.try_lock() {
+                        gt.cooperative_http_sleep = cooperative;
+                    }
+                }
+
                 // Run the generator task forward until the next YIELD_VAL or
                 // completion. Budget caps a single next() (prevents runaway
                 // loops with no yields); the task resumes from its saved ip.
                 const NEXT_BUDGET: u32 = 1_000_000;
+                let instruction_budget = cooperative_budget.unwrap_or(NEXT_BUDGET);
                 let mut yielded_nv: Option<u64> = None;
                 let mut finished = false;
+                let mut pending = false;
 
                 if let Some(gen_task_arc) = vm.tasks.get(&tid) {
                     if let Ok(mut gt) = gen_task_arc.try_lock() {
-                        for _ in 0..NEXT_BUDGET {
+                        for _ in 0..instruction_budget {
                             match vm.run_one_instruction(&mut gt) {
                                 Ok(StepResult::Continue) => continue,
                                 Ok(StepResult::GeneratorYield) => {
@@ -4283,7 +4326,12 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                                     finished = true;
                                     break;
                                 }
-                                Ok(StepResult::Yield) => continue,
+                                Ok(StepResult::Yield) => {
+                                    if cooperative && gt.wake_time.is_some() {
+                                        pending = true;
+                                        break;
+                                    }
+                                }
                                 Ok(StepResult::AwaitFuture { .. }) => continue,
                                 Err(e) => {
                                     eprintln!("[Generator] Error: {:?}", e);
@@ -4294,11 +4342,19 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                         }
                         // Budget exhausted without yield or termination: treat
                         // as done to avoid an infinite external loop.
-                        if yielded_nv.is_none() && !finished {
-                            eprintln!("[Generator] next() budget exhausted without yield");
-                            finished = true;
+                        if yielded_nv.is_none() && !finished && !pending {
+                            if cooperative {
+                                pending = true;
+                            } else {
+                                eprintln!("[Generator] next() budget exhausted without yield");
+                                finished = true;
+                            }
                         }
                     }
+                }
+
+                if pending {
+                    return Ok(());
                 }
 
                 if finished {

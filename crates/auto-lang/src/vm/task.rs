@@ -43,6 +43,9 @@ pub struct AutoTask {
     pub num_locals: usize, // Number of local variables in current stack frame
     pub status: TaskStatus,
     pub wake_time: Option<Instant>, // For SLEEP opcode
+    /// Plan 696: `Time.sleep_ms` inside an HTTP SSE generator is represented
+    /// as a task wake deadline so the LocalSet can serve other connections.
+    pub cooperative_http_sleep: bool,
     pub current_closure_id: Option<u32>, // Plan 071: Current closure being executed
     pub saved_closure_id: Option<u32>,   // Saved closure ID for restoration on RET
     // Plan 088 Phase 4: Function metadata from FN_PROLOG instruction
@@ -204,6 +207,7 @@ impl AutoTask {
             num_locals: 0,
             status: TaskStatus::Ready,
             wake_time: None,
+            cooperative_http_sleep: false,
             current_closure_id: None,
             saved_closure_id: None,
             current_fn_n_args: 0, // Plan 088 Phase 4: Initialize to 0

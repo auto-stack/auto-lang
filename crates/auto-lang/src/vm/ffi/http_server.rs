@@ -1267,6 +1267,7 @@ mod plan326_tests {
         use crate::vm::ffi::stdlib::clear_http_routes;
         use std::io::{Read, Write};
         use std::net::TcpStream;
+        use std::path::PathBuf;
         use std::time::Duration;
 
         /// Send a raw HTTP request to localhost:port and return the full response.
@@ -1422,6 +1423,39 @@ mod plan326_tests {
                 std::thread::sleep(Duration::from_millis(100));
             }
             port
+        }
+
+        /// Start the real back/api.at with its sibling db.at resolved from the
+        /// example directory, so Plan 696 exercises the runtime entry point
+        /// against the same source the app uses.
+        fn start_example_api_server(example: &str, port: u16) -> u16 {
+            clear_http_routes();
+            std::env::set_var("AUTO_HTTP_PORT", port.to_string());
+            let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .ancestors()
+                .nth(2)
+                .expect("repo root")
+                .to_path_buf();
+            let entry = repo_root
+                .join("examples/ui")
+                .join(example)
+                .join("src/back/api.at");
+            let source = std::fs::read_to_string(&entry)
+                .unwrap_or_else(|error| panic!("read {}: {error}", entry.display()));
+            let source_path = entry.to_string_lossy().into_owned();
+            let _server = std::thread::Builder::new()
+                .stack_size(16 * 1024 * 1024)
+                .spawn(move || {
+                    let _ = crate::run_with_capture_and_path(&source, &source_path);
+                })
+                .expect("spawn real example API server");
+            for _ in 0..50 {
+                if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                    return port;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            panic!("{} VM API did not listen on port {port}", example);
         }
 
         /// P442-4: e2e 端口唯一性守卫。nextest 每测试一进程并行执行，两个
@@ -1929,6 +1963,7 @@ fn health() str { "ok" }
                 assert!(n > 0, "SSE closed before first frame: {:?}", received);
                 received.extend_from_slice(&chunk[..n]);
             }
+            let first_frame_at = std::time::Instant::now();
 
             let started = std::time::Instant::now();
             let health = http_get(port, "/health");
@@ -1938,6 +1973,168 @@ fn health() str { "ok" }
                 elapsed < Duration::from_millis(1500),
                 "health request waited {elapsed:?} behind the slow SSE producer"
             );
+
+            while !received.windows(b"data: 2\n\n".len()).any(|w| w == b"data: 2\n\n") {
+                let n = stream.read(&mut chunk).expect("read second SSE frame");
+                assert!(n > 0, "SSE closed before second frame: {:?}", received);
+                received.extend_from_slice(&chunk[..n]);
+            }
+            let producer_delay = first_frame_at.elapsed();
+            assert!(
+                producer_delay >= Duration::from_secs(2),
+                "Time.sleep_ms delay was not preserved: {producer_delay:?}"
+            );
+        }
+
+        /// PLAN-696 T-06: closing the SSE client stops a sleeping generator
+        /// before its post-sleep side effect runs.
+        #[test]
+        fn e2e_plan696_sse_disconnect_cancels_generator() {
+            let port = start_server(r#"
+var produced int = 0
+#[api(method = "GET", path = "/api/cancel")]
+fn cancel_stream() ~Iter<int> {
+    yield 1
+    Time.sleep_ms(2500)
+    produced = 1
+    yield 2
+}
+#[api(method = "GET", path = "/api/produced")]
+fn produced_count() int { produced }
+"#, 18765);
+
+            let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
+            stream.write_all(
+                b"GET /api/cancel HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+            ).unwrap();
+            let mut received = Vec::new();
+            let mut chunk = [0u8; 512];
+            while !received.windows(b"data: 1\n\n".len()).any(|w| w == b"data: 1\n\n") {
+                let n = stream.read(&mut chunk).expect("read first SSE frame");
+                assert!(n > 0, "SSE closed before first frame: {:?}", received);
+                received.extend_from_slice(&chunk[..n]);
+            }
+            drop(stream);
+
+            std::thread::sleep(Duration::from_millis(3200));
+            let state = http_get(port, "/api/produced");
+            assert_eq!(body_of(&state), "0", "disconnected SSE generator continued: {state:?}");
+        }
+
+        /// PLAN-696 T-07: the real 015-notes api.at/db.at pair preserves CRUD
+        /// response shape and session state through the owner-thread server.
+        #[test]
+        fn e2e_plan696_real_015_notes_crud_parity() {
+            let port = start_example_api_server("015-notes", 18766);
+            let initial = http_get(port, "/api/notes");
+            assert!(initial.starts_with("HTTP/1.1 200"), "initial list: {initial}");
+            let notes: serde_json::Value = serde_json::from_str(body_of(&initial)).unwrap();
+            assert!(notes.as_array().unwrap().iter().any(|n| n["title"] == "Welcome"));
+
+            let created = http_post_json_with_headers(
+                port,
+                "/api/notes",
+                r#"{"title":"Plan 696 parity","body":"body split","folder":"work"}"#,
+                &[],
+            );
+            assert!(created.starts_with("HTTP/1.1 200"), "create response: {created}");
+            let created_note: serde_json::Value =
+                serde_json::from_str(body_of(&created)).expect("created note JSON");
+            assert_eq!(created_note["title"], "Plan 696 parity");
+            assert_eq!(created_note["id"], 6);
+
+            let persisted = http_get(port, "/api/notes");
+            let notes: serde_json::Value = serde_json::from_str(body_of(&persisted)).unwrap();
+            assert!(notes.as_array().unwrap().iter().any(|n| n["id"] == 6));
+        }
+
+        /// PLAN-696 T-07: the real 017-chat API keeps the message response and
+        /// subsequent list response consistent across the VM HTTP requests.
+        #[test]
+        fn e2e_plan696_real_017_chat_crud_parity() {
+            let port = start_example_api_server("017-chat", 18768);
+            let contacts = http_get(port, "/api/contacts");
+            assert!(contacts.starts_with("HTTP/1.1 200"), "contacts: {contacts}");
+            assert!(body_of(&contacts).contains("Alice"), "contact seed: {contacts}");
+
+            let sent = http_post_json_with_headers(
+                port,
+                "/api/messages",
+                r#"{"sender":"You","text":"Plan 696 parity"}"#,
+                &[],
+            );
+            assert!(sent.starts_with("HTTP/1.1 200"), "send response: {sent}");
+            let sent_message: serde_json::Value =
+                serde_json::from_str(body_of(&sent)).expect("message JSON");
+            assert_eq!(sent_message["text"], "Plan 696 parity");
+
+            let listed = http_get(port, "/api/messages");
+            assert!(listed.starts_with("HTTP/1.1 200"), "message list: {listed}");
+            let messages: serde_json::Value = serde_json::from_str(body_of(&listed)).unwrap();
+            assert!(messages.as_array().unwrap().iter().any(|m| m["text"] == "Plan 696 parity"));
+        }
+
+        /// PLAN-696 T-07: real 023-realworld auth and article responses retain
+        /// the current empty-record failure conventions and use the bearer
+        /// token metadata binding for authenticated routes.
+        #[test]
+        fn e2e_plan696_real_023_auth_parity() {
+            let port = start_example_api_server("023-realworld", 18767);
+            let login = http_post_json_with_headers(
+                port,
+                "/api/users/login",
+                r#"{"email":"sarah@vercel.com","password":"sarah-secret"}"#,
+                &[],
+            );
+            assert!(login.starts_with("HTTP/1.1 200"), "login response: {login}");
+            let user: serde_json::Value = serde_json::from_str(body_of(&login)).unwrap();
+            assert_eq!(user["username"], "Sarah Chen");
+            assert!(user["token"].as_str().unwrap_or_default().starts_with("tok-"));
+            assert!(user.get("password").is_none(), "password leaked: {user}");
+
+            let token = user["token"].as_str().unwrap();
+            let authorization = format!("Bearer {token}");
+            let current = http_get_with_headers(
+                port,
+                "/api/user",
+                &[("Authorization", authorization.as_str())],
+            );
+            assert!(current.starts_with("HTTP/1.1 200"), "current user: {current}");
+            let current: serde_json::Value = serde_json::from_str(body_of(&current)).unwrap();
+            assert_eq!(current["username"], "Sarah Chen");
+
+            let article = http_post_json_with_headers(
+                port,
+                "/api/articles",
+                r#"{"slug":"plan-696-parity","title":"Plan 696","description":"runtime check","body":"auth owner","tagList":"verification"}"#,
+                &[("Authorization", authorization.as_str())],
+            );
+            assert!(article.starts_with("HTTP/1.1 200"), "authenticated article: {article}");
+            let article: serde_json::Value = serde_json::from_str(body_of(&article)).unwrap();
+            assert_eq!(article["slug"], "plan-696-parity");
+            assert_eq!(article["author"], "Sarah Chen");
+
+            let anonymous_article = http_post_json_with_headers(
+                port,
+                "/api/articles",
+                r#"{"slug":"anonymous","title":"Anonymous","description":"","body":"","tagList":""}"#,
+                &[],
+            );
+            assert!(anonymous_article.starts_with("HTTP/1.1 200"), "anonymous article convention changed: {anonymous_article}");
+            let anonymous_article: serde_json::Value =
+                serde_json::from_str(body_of(&anonymous_article)).unwrap();
+            assert_eq!(anonymous_article["slug"], "");
+
+            let rejected = http_post_json_with_headers(
+                port,
+                "/api/users/login",
+                r#"{"email":"sarah@vercel.com","password":"wrong"}"#,
+                &[],
+            );
+            assert!(rejected.starts_with("HTTP/1.1 200"), "invalid-login convention changed: {rejected}");
+            let rejected: serde_json::Value = serde_json::from_str(body_of(&rejected)).unwrap();
+            assert_eq!(rejected["id"], 0);
         }
 
         /// Plan 346 3c: `http.response_redirect(url, 302)` end-to-end. The
@@ -2839,18 +3036,13 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
 /// Plan 317 Phase 4: Concurrent HTTP server using tokio async I/O.
 ///
 /// Replaces the serial `serve_blocking_stdnet` for the Goroutine-style
-/// concurrency model. The tokio runtime is `worker_threads(1)` (lib.rs:14),
-/// so all `tokio::spawn` tasks run cooperatively on a single thread — this
-/// matches Auto's Task model (single-thread, cooperative yield). &AutoVM is
-/// safe to share because there is no cross-thread access.
+/// concurrency model. The VM owner enters this on a Tokio `LocalSet`, and all
+/// connection tasks remain on that same thread because `AutoVM` is `!Send`.
 ///
-/// Each accepted connection becomes a `tokio::spawn` task:
+/// Each accepted connection becomes a `spawn_local` task:
 ///   - JSON handlers: call_fn_by_name (synchronous), write response, done.
-///   - SSE handlers: pull generator values, write a frame per value, and
-///     `yield_now().await` after each frame so other connections' tasks get
-///     scheduled. This gives interleaved streaming (connection A's frame,
-///     connection B's frame, ...) without any single connection monopolizing
-///     the single worker.
+///   - SSE handlers: a bounded local producer steps the VM in instruction
+///     batches while the connection task writes frames.
 pub async fn serve_async(vm: std::rc::Rc<crate::vm::engine::AutoVM>, addr: &str) {
     use tokio::net::TcpListener;
 
@@ -2886,9 +3078,166 @@ pub async fn serve_async(vm: std::rc::Rc<crate::vm::engine::AutoVM>, addr: &str)
     }
 }
 
+struct SseIteratorCleanup {
+    vm: std::rc::Rc<crate::vm::engine::AutoVM>,
+    iterator_id: u32,
+}
+
+impl Drop for SseIteratorCleanup {
+    fn drop(&mut self) {
+        cleanup_sse_iterator(&self.vm, self.iterator_id);
+    }
+}
+
+fn cleanup_sse_iterator(vm: &crate::vm::engine::AutoVM, iterator_id: u32) {
+    let generator_task_id = match vm.iterators.remove(&iterator_id) {
+        Some((_, crate::vm::engine::Iterator::Generator(state))) => state.task_id,
+        Some(_) | None => None,
+    };
+    if let Some(task_id) = generator_task_id {
+        vm.tasks.remove(&task_id);
+    }
+}
+
+fn sse_generator_wake_deadline(
+    vm: &crate::vm::engine::AutoVM,
+    iterator_id: u32,
+) -> Option<std::time::Instant> {
+    let task_id = match vm.iterators.get(&iterator_id) {
+        Some(state) => match &*state {
+            crate::vm::engine::Iterator::Generator(generator) => generator.task_id?,
+            _ => return None,
+        },
+        None => return None,
+    };
+    vm.tasks
+        .get(&task_id)
+        .and_then(|task| task.try_lock().ok().and_then(|task| task.wake_time))
+}
+
+fn wake_sse_generator(vm: &crate::vm::engine::AutoVM, iterator_id: u32) {
+    let task_id = match vm.iterators.get(&iterator_id) {
+        Some(state) => match &*state {
+            crate::vm::engine::Iterator::Generator(generator) => generator.task_id,
+            _ => None,
+        },
+        None => None,
+    };
+    if let Some(task_id) = task_id {
+        if let Some(task) = vm.tasks.get(&task_id) {
+            if let Ok(mut task) = task.try_lock() {
+                if task.wake_time.is_some_and(|deadline| deadline <= std::time::Instant::now()) {
+                    task.wake_time = None;
+                    task.status = crate::vm::task::TaskStatus::Ready;
+                }
+            }
+        }
+    }
+}
+
+async fn next_sse_generator_value(
+    vm: &std::rc::Rc<crate::vm::engine::AutoVM>,
+    iterator_id: u32,
+) -> Option<u64> {
+    loop {
+        if let Some(deadline) = sse_generator_wake_deadline(vm, iterator_id) {
+            if deadline > std::time::Instant::now() {
+                tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)).await;
+            }
+            wake_sse_generator(vm, iterator_id);
+        }
+
+        let next_task_id = vm.spawn_task(0, 1024);
+        let step_result = {
+            if let Some(next_task) = vm.tasks.get(&next_task_id) {
+                match next_task.try_lock() {
+                    Ok(mut next_task) => {
+                        next_task.ram.push_i32(iterator_id as i32);
+                        match crate::vm::native::shim_iterator_next_cooperative(
+                            &mut next_task,
+                            vm,
+                            4096,
+                        ) {
+                            Ok(true) => Ok(Some(next_task.ram.pop_nv())),
+                            Ok(false) => Ok(None),
+                            Err(error) => Err(error),
+                        }
+                    }
+                    Err(_) => Err(crate::vm::engine::VMError::RuntimeError(
+                        "SSE iterator task is busy".to_string(),
+                    )),
+                }
+            } else {
+                Err(crate::vm::engine::VMError::RuntimeError(
+                    "SSE iterator task is missing".to_string(),
+                ))
+            }
+        };
+        vm.tasks.remove(&next_task_id);
+
+        match step_result {
+            Ok(Some(value)) => {
+                if auto_val::is_i32(value) && auto_val::decode_i32(value) == -1 {
+                    return None;
+                }
+                return Some(value);
+            }
+            Ok(None) => {
+                if let Some(deadline) = sse_generator_wake_deadline(vm, iterator_id) {
+                    if deadline > std::time::Instant::now() {
+                        tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)).await;
+                    }
+                    wake_sse_generator(vm, iterator_id);
+                } else {
+                    tokio::task::yield_now().await;
+                }
+            }
+            Err(error) => {
+                eprintln!("[HTTP] SSE generator step failed: {:?}", error);
+                return None;
+            }
+        }
+    }
+}
+
+async fn produce_sse_frames(
+    vm: std::rc::Rc<crate::vm::engine::AutoVM>,
+    iterator_id: u32,
+    sender: tokio::sync::mpsc::Sender<String>,
+) {
+    let _cleanup = SseIteratorCleanup {
+        vm: vm.clone(),
+        iterator_id,
+    };
+    let mut heartbeat = tokio::time::interval_at(
+        tokio::time::Instant::now() + std::time::Duration::from_secs(1),
+        std::time::Duration::from_secs(1),
+    );
+
+    loop {
+        tokio::select! {
+            _ = sender.closed() => break,
+            _ = heartbeat.tick() => {
+                if sender.send(": keep-alive\n\n".to_string()).await.is_err() {
+                    break;
+                }
+            }
+            value = next_sse_generator_value(&vm, iterator_id) => {
+                let Some(value) = value else { break; };
+                if let Some(frame) = crate::vm::ffi::musk_response_ctor::sse_frame_from_nv(&vm, value) {
+                    if sender.send(frame).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+        tokio::task::yield_now().await;
+    }
+}
+
 /// Handle a single HTTP connection (async). Parses the request, dispatches to
 /// the matched #[api] handler via call_fn_by_name, and writes the response.
-/// SSE handlers interleave with other connections via yield_now.
+/// SSE frames are produced through a bounded local channel.
 async fn write_request_error_response(
     stream: &mut tokio::net::TcpStream,
     status: &str,
@@ -2908,7 +3257,7 @@ async fn write_request_error_response(
 }
 
 async fn handle_connection_async(
-    vm: &crate::vm::engine::AutoVM,
+    vm: &std::rc::Rc<crate::vm::engine::AutoVM>,
     stream: &mut tokio::net::TcpStream,
     routes: &[HttpRoute],
 ) {
@@ -3445,41 +3794,31 @@ async fn handle_connection_async(
                             req_method, req_path, request_start.elapsed().as_millis());
                         drop(ht);
                         let sse_header = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n{}\r\n", cors_headers());
-                        let _ = stream.write_all(sse_header.as_bytes()).await;
-                        let _ = stream.flush().await;
-                        // Pull generator values on the VM owner thread. T-06
-                        // makes this stepping cooperative so slow producers do
-                        // not hold the LocalSet between frames.
-                        loop {
-                            let next_task_id = vm.spawn_task(0, 1024);
-                            let yielded = if let Some(nt_arc) = vm.tasks.get(&next_task_id) {
-                                if let Ok(mut nt) = nt_arc.try_lock() {
-                                    nt.ram.push_i32(iter_id as i32);
-                                    let _ = crate::vm::native::shim_iterator_next(&mut nt, vm);
-                                    nt.ram.pop_nv()
-                                } else {
-                                    auto_val::encode_i32(-1)
-                                }
-                            } else {
-                                auto_val::encode_i32(-1)
-                            };
-                            vm.tasks.remove(&next_task_id);
-                            // Iterator done sentinel: i32 -1.
-                            if auto_val::is_i32(yielded) && auto_val::decode_i32(yielded) == -1 {
+                        if stream.write_all(sse_header.as_bytes()).await.is_err()
+                            || stream.flush().await.is_err()
+                        {
+                            cleanup_sse_iterator(vm, iter_id);
+                            drop(_task_arc);
+                            return;
+                        }
+                        // The handler's task map read guard is no longer
+                        // needed while the producer creates temporary VM tasks.
+                        drop(_task_arc);
+                        let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
+                        let producer_vm = vm.clone();
+                        let producer = tokio::task::spawn_local(async move {
+                            produce_sse_frames(producer_vm, iter_id, sender).await;
+                        });
+
+                        while let Some(frame) = receiver.recv().await {
+                            if stream.write_all(frame.as_bytes()).await.is_err()
+                                || stream.flush().await.is_err()
+                            {
                                 break;
                             }
-                            // Plan 442 C2 item ②: yielded `Event` objects (or
-                            // `Ok(event)`) format as `event:`/`data:` frames;
-                            // raw scalars keep the legacy `data: N` path.
-                            if let Some(frame) =
-                                crate::vm::ffi::musk_response_ctor::sse_frame_from_nv(vm, yielded)
-                            {
-                                let _ = stream.write_all(frame.as_bytes()).await;
-                                let _ = stream.flush().await;
-                            }
-                            // Cooperative yield: let other connections' tasks run.
-                            tokio::task::yield_now().await;
                         }
+                        drop(receiver);
+                        let _ = producer.await;
                         None
                     } else if let Some(res) =
                         crate::vm::ffi::stdlib::lookup_http_response(iter_id as u64)

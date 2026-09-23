@@ -8412,6 +8412,17 @@ impl AutoVM {
                             task.ip = pre_call_ip - 3;
                             return Ok(StepResult::Yield);
                         }
+                    } else if native_id == 1202 && task.cooperative_http_sleep {
+                        // PLAN-696: SSE generator stepping is driven in bounded
+                        // batches by the HTTP LocalSet. Preserve Time.sleep_ms
+                        // semantics by parking this generator task until its
+                        // deadline instead of blocking the LocalSet thread.
+                        let ms = crate::vm::native::pop_arg_i32(task).max(0) as u64;
+                        task.wake_time = Some(
+                            Instant::now() + std::time::Duration::from_millis(ms),
+                        );
+                        task.status = TaskStatus::Waiting(format!("sleep for {}ms", ms));
+                        return Ok(StepResult::Yield);
                     } else if native_id == 2300 {
                         // Plan 317 Phase 1: Task.spawn -> vm-aware (register AutoVM task)
                         crate::vm::ffi::stdlib::shim_task_spawn_vm(task, self)?;
