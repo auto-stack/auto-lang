@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-693
-status: execution_done       # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: native-exe-tri-mode
 author: [zcode]
 created_at: 2026-09-23
@@ -216,6 +216,23 @@ remote 族恒显式选用。PLAN-683 F-3 呈报项就此关闭（设计档 §8 �
   归位+新臂 remote:true——rust 轨 `-q --render=remote` env 链补通）；
   ②PLAN-691 ui-gpui 移除后生成器残留 emission→fresh 生成 cargo resolve
   即败（GPUI 臂随 feature 摘除）。
+- review 交付（2026-09-23，随 PLAN-694 收口联审）：stage=review，
+  PLAN-693 rev1。outcome=**pass**。reviewed_commit=plan-693-dev
+  **c1ce13933**（abeaf113d rebase onto master 的等价重写，range-diff
+  `abeaf113d = c1ce13933` 全等；worktree lang-693 clean）。**独立性
+  声明**：复审由 PLAN-694 会话执行（原实现会话已结束），判定由工件
+  重建——作用域验证在重排 tip 刷新：render_cli+client_entry 11/11、
+  generated_main 2/2；desktop_protocol 213/215（2 红=预存，693 报告
+  stash 对照在案）；实机三形态证据 reports/p693-tri-mode/（四截图+
+  观测行，随提交入库）。**AC 对勘**：AC-01 pass（三参数三形态实机）；
+  AC-02 pass（优先级链单测+实机）；AC-03 pass（缺端点干净报错不孵化，
+  单测+实机）；AC-04 pass（**由 PLAN-694 兑现**——桌面宿主本尊=桌面
+  端点（无需 auto-os 内嵌 daemon）：spawn 双方言+broker 双动词+环测
+  全环（003-converter 载体 attach/交互/回收）+注册表发现面实证；auto-os
+  shell 侧集成残面保持 P693-D2 在案）。执行期增量双根修（E0063/gpui
+  残留）经 694 的 generated_main pin+003 fresh 重生成实证收敛（P693-D1
+  实质销号）。**findings**：无阻断项。next=**merge**（fold 顺序
+  693→694，与 PLAN-694 叠栈一致）。
 
 ## 待澄清事项
 
