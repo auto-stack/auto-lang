@@ -3045,18 +3045,10 @@ fn outproc_child_identity(
 /// Plan 020 T-06：native exe 发现序（待澄清②定案：pac 声明为主 + 约定
 /// 路径兜底）——①`LaunchSpec.exe`（pac `desktop_exe:`，resolver 装配期已
 /// 相对 App 根解析；声明即信，缺失在 spawn 臂报错——"声明了但未构建"
-/// 走 toast，不静默回退解释臂）→ ②rust-workspace 约定路径扫描：
-/// `<app-root>/rust-workspace/<dir>/target/{release,debug}/<exe>.exe`
-/// （exe 名先 pac `name:` 蛇形、后目录名——scratch counter 实测生成物 =
-/// 蛇形包名）。两者皆无 → None = 现行解释态 outproc 臂。
-///
-/// PLAN-694 T-03（发现面对齐）：③**共享工作区两落点**（Stage B P-2 生成
-/// 侧 `resolve_rust_workspace_dir` 的发现侧镜像——②的组内约定是 P-2 前
-/// 形态；框架 member 实测落点 = 仓根共享 ws `examples/rust-workspace/
-/// <dir>/`（member 本名）+ 仓根共享 target-dir（生成 config
-/// `target-dir = ../../target`）——`auto build -r rust` 003-converter 实测
-/// exe 落 `<repo>/target/debug/converter.exe`）。仓根判定 = 自 App 目录
-/// 向上找 `crates/`（仓外 App 无此标记——desktop_exe 声明或 env 钉定）。
+/// 走 toast，不静默回退解释臂）→ ②rust-workspace 约定路径扫描（约定
+/// 单源 = [`crate::ui::app_registry::convention_native_exe`]：组内约定
+/// + PLAN-694 共享工作区两落点；exe 名 pac name 蛇形 > 原名 > 目录名）。
+/// 两者皆无 → None = 现行解释态 outproc 臂。
 pub(crate) fn outproc_native_exe(spec: &LaunchSpec) -> Option<std::path::PathBuf> {
     if spec.exe.is_some() {
         return spec.exe.clone();
@@ -3065,68 +3057,7 @@ pub(crate) fn outproc_native_exe(spec: &LaunchSpec) -> Option<std::path::PathBuf
         .source_path
         .as_deref()
         .and_then(|p| std::path::Path::new(p).ancestors().nth(3))?;
-    let root = dir.parent()?;
-    let dir_name = dir.file_name()?.to_string_lossy().to_string();
-    let mut candidates: Vec<String> = Vec::new();
-    if let Some(name) = &spec.name {
-        let snake: String = name
-            .chars()
-            .map(|c| if c == '-' || c == ' ' { '_' } else { c.to_ascii_lowercase() })
-            .collect();
-        candidates.push(snake);
-    }
-    candidates.push(dir_name.clone());
-    let repo_root = Self::framework_repo_root(dir);
-    for build in ["release", "debug"] {
-        for exe_name in &candidates {
-            let exe_file = format!("{exe_name}.exe");
-            // ② 组内约定（P-2 前形态，零变化）。
-            let candidate = root
-                .join("rust-workspace")
-                .join(&dir_name)
-                .join("target")
-                .join(build)
-                .join(&exe_file);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-            // ③ 共享工作区（P-2 现实落点）。
-            let Some(repo) = repo_root.as_ref() else {
-                continue;
-            };
-            let ws_member = repo
-                .join("examples")
-                .join("rust-workspace")
-                .join(&dir_name)
-                .join("target")
-                .join(build)
-                .join(&exe_file);
-            if ws_member.is_file() {
-                return Some(ws_member);
-            }
-            let shared = repo.join("target").join(build).join(&exe_file);
-            if shared.is_file() {
-                return Some(shared);
-            }
-        }
-    }
-    None
-}
-
-/// 自 App 目录向上找框架仓根（含 `crates/` 标记目录；auto-man
-/// `find_lang_repo_root` 同式简化——发现侧只需仓内判定，无需兄弟布局
-/// 回退：仓外 App 无 crates/ 即 None，走 desktop_exe 声明）。
-fn framework_repo_root(from: &std::path::Path) -> Option<std::path::PathBuf> {
-    let mut dir = from.to_path_buf();
-    for _ in 0..6 {
-        if dir.join("crates").exists() {
-            return Some(dir);
-        }
-        if !dir.pop() {
-            break;
-        }
-    }
-    None
+    crate::ui::app_registry::convention_native_exe(dir, spec.name.as_deref())
 }
 
 /// Plan 020 T-06：native exe 子进程 spawn——a2r 编译产物自带孵化参数解析

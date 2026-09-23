@@ -132,6 +132,79 @@ impl AppRegistryEntry {
 
 /// 扫描 `dir` 下一级子目录，产出可启动 App 清单（目录名字典序）。
 /// 无入口 .at 的目录跳过；`dir` 不存在返回空表（不 panic）。
+/// PLAN-694 T-03：自 App 目录向上找框架仓根（含 `crates/` 标记目录；
+/// 发现侧只需仓内判定——仓外 App 无 crates/ 即 None，走 desktop_exe
+/// pac 声明）。session 侧 `outproc_native_exe` 与注册表过滤共用单源。
+pub(crate) fn framework_repo_root(from: &Path) -> Option<PathBuf> {
+    let mut dir = from.to_path_buf();
+    for _ in 0..6 {
+        if dir.join("crates").exists() {
+            return Some(dir);
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    None
+}
+
+/// PLAN-694 T-03：rust-workspace 约定产物定位单源（发现链单一事实源）
+/// ——①组内约定 `<parent>/rust-workspace/<dir>/target/{release,debug}/
+/// <exe>.exe`（P-2 前形态）→ ②共享工作区 `<repo>/examples/rust-workspace/
+/// <dir>/target/…` → ③仓根共享 target-dir `<repo>/target/…`（Stage B P-2
+/// 生成侧落点，auto build 实测 converter.exe 落位）。exe 名候选：pac
+/// name 蛇形 > pac name 原名（生成包名保 dash——hello-world.exe）> 目录名。
+/// 返回首个存在命中；全缺 = None。
+pub(crate) fn convention_native_exe(app_dir: &Path, name: Option<&str>) -> Option<PathBuf> {
+    let dir_name = app_dir.file_name()?.to_string_lossy().to_string();
+    let mut candidates: Vec<String> = Vec::new();
+    if let Some(name) = name {
+        let snake: String = name
+            .chars()
+            .map(|c| if c == '-' || c == ' ' { '_' } else { c.to_ascii_lowercase() })
+            .collect();
+        candidates.push(snake);
+        candidates.push(name.to_string());
+    }
+    candidates.push(dir_name.clone());
+    let group = app_dir.parent();
+    let repo = framework_repo_root(app_dir);
+    for build in ["release", "debug"] {
+        for exe_name in &candidates {
+            let exe_file = format!("{exe_name}.exe");
+            if let Some(parent) = group {
+                let candidate = parent
+                    .join("rust-workspace")
+                    .join(&dir_name)
+                    .join("target")
+                    .join(build)
+                    .join(&exe_file);
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+            let Some(repo) = repo.as_ref() else {
+                continue;
+            };
+            let ws_member = repo
+                .join("examples")
+                .join("rust-workspace")
+                .join(&dir_name)
+                .join("target")
+                .join(build)
+                .join(&exe_file);
+            if ws_member.is_file() {
+                return Some(ws_member);
+            }
+            let shared = repo.join("target").join(build).join(&exe_file);
+            if shared.is_file() {
+                return Some(shared);
+            }
+        }
+    }
+    None
+}
+
 pub fn scan_apps(dir: &Path, opts: &ScanOptions) -> Vec<AppRegistryEntry> {
     let Ok(read) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -168,12 +241,18 @@ fn entry_for_dir(
     let pac = std::fs::read_to_string(dir.join("pac.at")).ok();
     let fields = pac.as_deref().map(parse_pac_fields).unwrap_or_default();
     let entry = probe_entry(dir)?;
+    // PLAN-694 T-03（发现面注册表半）：exe 背书勘定（单点）——desktop_exe
+    // pac 声明或 rust-workspace 约定产物在场。"exe App 天然 outproc"
+    //（Plan 020 G1 裁定）：render 过滤豁免 + 桌面可见性缺省翻转（主根
+    // opt-in 语义对编译产物 App 无意义——编译即桌面 App）。
+    let exe_backed = fields.contains_key("desktop_exe")
+        || convention_native_exe(dir, fields.get("name").map(|s| s.as_str())).is_some();
     let render = fields
         .get("render")
         .cloned()
         .unwrap_or_else(|| "vm".to_string());
     if let Some(want) = &opts.render {
-        if &render != want {
+        if &render != want && !exe_backed {
             return None;
         }
     }
@@ -208,7 +287,8 @@ fn entry_for_dir(
         desktop_visible: match fields.get("desktop").map(|v| v.to_ascii_lowercase()) {
             Some(v) if v == "true" => true,
             Some(v) if v == "false" => false,
-            _ => default_visible,
+            // PLAN-694：exe 背书缺省可见（编译产物 = 桌面 App）。
+            _ => default_visible || exe_backed,
         },
     })
 }
@@ -1344,6 +1424,53 @@ desktop_exe: \"target/release/native-app.exe\"
         );
         let plain = apps.iter().find(|a| a.id == "plain-app").unwrap();
         assert_eq!(plain.desktop_exe, None, "无声明 = None");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// PLAN-694 T-03（发现面注册表半）：render 过滤的 exe 背书豁免——
+    /// desktop_exe 声明或 rust-workspace 约定产物在场的 App 无视 render
+    /// 不匹配照常入册（"exe App 天然 outproc"，Plan 020 G1）；无背书的
+    /// 异 render App 照旧滤除。
+    #[test]
+    fn scan_render_filter_admits_exe_backed_apps() {
+        let root = std::env::temp_dir().join("autoui-694-registry-exe-backed");
+        let _ = std::fs::remove_dir_all(&root);
+        // 伪仓根（crates/ 标记）——共享落点③可达。
+        std::fs::create_dir_all(root.join("crates")).unwrap();
+        // A：render vue + 约定产物在共享 target（converter 实测形态）。
+        let a = root.join("examples").join("ui").join("003-converter");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::write(a.join("pac.at"), "name: \"converter\"\nrender: \"vue\"\n").unwrap();
+        std::fs::write(a.join("app.at"), "widget A {}").unwrap();
+        let shared = root.join("target").join("debug");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::write(shared.join("converter.exe"), b"MZ").unwrap();
+        // B：render vue + desktop_exe 声明（声明即信，产物可缺）。
+        let b = root.join("examples").join("ui").join("001-declared");
+        std::fs::create_dir_all(&b).unwrap();
+        std::fs::write(
+            b.join("pac.at"),
+            "name: \"declared\"\nrender: \"vue\"\ndesktop_exe: \"x/app.exe\"\n",
+        )
+        .unwrap();
+        std::fs::write(b.join("app.at"), "widget B {}").unwrap();
+        // C：render vue 无背书 → 滤除（既有行为零变化）。
+        let c = root.join("examples").join("ui").join("014-weather");
+        std::fs::create_dir_all(&c).unwrap();
+        std::fs::write(c.join("pac.at"), "name: \"weather\"\nrender: \"vue\"\n").unwrap();
+        std::fs::write(c.join("app.at"), "widget C {}").unwrap();
+
+        let apps = scan_apps(
+            &root.join("examples").join("ui"),
+            &ScanOptions { render: Some("vm".to_string()) },
+        );
+        let ids: Vec<&str> = apps.iter().map(|a| a.id.as_str()).collect();
+        assert!(
+            ids.contains(&"003-converter"),
+            "约定产物背书豁免 render 过滤: {ids:?}"
+        );
+        assert!(ids.contains(&"001-declared"), "desktop_exe 声明背书豁免: {ids:?}");
+        assert!(!ids.contains(&"014-weather"), "无背书异 render 照旧滤除: {ids:?}");
         let _ = std::fs::remove_dir_all(&root);
     }
 
