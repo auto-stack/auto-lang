@@ -762,6 +762,31 @@ where
         });
     }
 
+    /// PLAN-698 T-03a spike：嵌套 overlay 收集——iced 0.14 的官方嵌套协议
+    /// （runtime 把根 overlay 包成 `overlay::Nested`，逐层调
+    /// `Overlay::overlay()` 递归挂子 overlay；此前该钩子走默认 None，
+    /// 面板内嵌套 Popover 的 overlay 永不注册=浮动子菜单不渲染，
+    /// P695-D2 降级内联的根因）。
+    ///
+    /// 坐标协议：Panel::layout 已把 content 节点 move_to 面板绝对位置，
+    /// 子树 layout bounds 即窗内绝对坐标——平移恒取 ZERO，嵌套 Popover
+    /// 的 anchor_position（layout.position()+translation）天然正确。
+    fn overlay<'b>(
+        &'b mut self,
+        layout: Layout<'b>,
+        renderer: &iced::Renderer,
+    ) -> Option<overlay::Element<'b, Message, iced::Theme, iced::Renderer>> {
+        let content_layout = layout.children().next()?;
+        let viewport = self.viewport.get();
+        self.content.as_widget_mut().overlay(
+            self.tree,
+            content_layout,
+            renderer,
+            &viewport,
+            Vector::ZERO,
+        )
+    }
+
     /// 高于 tooltip(默认 1.0):弹层面板盖住提示。
     fn index(&self) -> f32 {
         10.0

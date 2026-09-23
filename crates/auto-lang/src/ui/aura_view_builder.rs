@@ -54,7 +54,7 @@ use crate::ui::interpreter::DynamicMessage;
 use crate::ui::vm_bridge::VmBridge;
 use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::debug::{BuildProbe, ForIter};
-use crate::ui::view::{View, ViewBuilder};
+use crate::ui::view::{View, ViewBuilder, PopoverAnchor, PopoverPlacement};
 use crate::ui_gen::vue::VueGenerator;
 use crate::ui::style::{Style, StyleClass, SizeValue};
 
@@ -7791,29 +7791,59 @@ let tabs_inner = View::Row {
                         depth + 1,
                         radio_value,
                     );
-                    // PLAN-695 T-11 裁定：内联展开——嵌套 Popover overlay
-                    // 挂 iced 渲染/截图通道（双实例走查三次复现：子菜单开态
-                    // screenshot 恒超时、主菜单恒正常），VM 臂子面板改父面板
-                    // 内缩进节（左 hairline + pl-4）；复合键/事件路径机制
-                    // 不变，浮动式留债 P695-D2。Vue 臂 reka 真 submenu 不变。
+                    // PLAN-698 T-03b：浮动式恢复——嵌套 Popover（iced 0.14
+                    // overlay::Nested 官方嵌套协议 + Panel::overlay 收集钩子
+                    // 落地，见 popover.rs T-03a spike）。RightTop=T-06 顶对齐
+                    // 右弹变体。内联臂降为降级路径（AUTO_MENU_SUBMENU_INLINE=1
+                    // 时走旧形态，判位/回退用，P695-D2 划线）。
                     events.extend(sub_events.into_iter().map(|(p, h)| {
                         let mut full = vec![item_idx];
                         full.extend(p);
                         (full, h)
                     }));
-                    items.push(trigger);
-                    if sub_open {
-                        items.push(View::Column {
+                    let submenu_inline_fallback =
+                        std::env::var("AUTO_MENU_SUBMENU_INLINE").as_deref() == Ok("1");
+                    if !sub_views.is_empty() && !submenu_inline_fallback {
+                        let mut sub_panel_style = Style::parse(
+                            "w-44 bg-popover text-popover-foreground border border-border shadow-md py-1",
+                        )
+                        .ok();
+                        if let Some(st) = sub_panel_style.as_mut() {
+                            if !st.classes.iter().any(|c| matches!(c, StyleClass::Width(_))) {
+                                let owned = std::mem::take(st);
+                                *st = owned.add(StyleClass::Width(SizeValue::Auto));
+                            }
+                        }
+                        let sub_panel = View::Column {
                             children: sub_views,
                             spacing: 0,
                             padding: 0,
-                            style: Style::parse(
-                                "w-full pl-4 ml-2 border-l border-border py-0.5",
-                            )
-                            .ok(),
+                            style: sub_panel_style,
                             onclick: None,
                             on_right_click: None,
+                        };
+                        items.push(View::Popover {
+                            anchor: PopoverAnchor::Widget(Box::new(trigger)),
+                            content: Box::new(sub_panel),
+                            placement: PopoverPlacement::RightTop,
+                            open: sub_open,
+                            on_dismiss: None,
                         });
+                    } else {
+                        items.push(trigger);
+                        if sub_open {
+                            items.push(View::Column {
+                                children: sub_views,
+                                spacing: 0,
+                                padding: 0,
+                                style: Style::parse(
+                                    "w-full pl-4 ml-2 border-l border-border py-0.5",
+                                )
+                                .ok(),
+                                onclick: None,
+                                on_right_click: None,
+                            });
+                        }
                     }
                 }
                 // PLAN-695 T-07: 语义分组容器——透传（样式中立）。
@@ -14740,11 +14770,41 @@ mod tests {
             }
             other => panic!("radio group Column, got {other:?}"),
         }
-        // submenu（T-11 内联展开裁定）：闭态 = trigger 行（chevron 右置）；
-        // 开态（复合键 file::sub-3）= trigger 后跟缩进节（内含面板项）。
+        // submenu（PLAN-698 T-03b 浮动式恢复）：trigger 行包装为嵌套
+        // Popover（RightTop 顶对齐右弹，T-06 变体）；闭态 open=false，
+        // 面板项在 content Column 内。AUTO_MENU_SUBMENU_INLINE=1 降级路径
+        // 仍回旧内联形态（左 hairline 缩进节）。
         match &items[3] {
-            View::Button { label, .. } => assert_eq!(label, "导入"),
-            other => panic!("sub trigger row Button, got {other:?}"),
+            View::Popover { anchor, content, placement, open, .. } => {
+                assert!(!*open, "closed state: nested popover not open");
+                assert_eq!(*placement, PopoverPlacement::RightTop, "T-06 top-aligned right-open");
+                match anchor {
+                    PopoverAnchor::Widget(trigger) => match trigger.as_ref() {
+                        View::Button { label, .. } => assert_eq!(label, "导入"),
+                        other => panic!("sub trigger Button, got {other:?}"),
+                    },
+                    other => panic!("widget anchor, got {other:?}"),
+                }
+                match content.as_ref() {
+                    View::Column { children, style, .. } => {
+                        assert_eq!(children.len(), 1, "sub panel items");
+                        match &children[0] {
+                            View::Button { label, .. } => assert_eq!(label, "从文件"),
+                            other => panic!("sub item Button, got {other:?}"),
+                        }
+                        let st = style.as_ref().expect("panel style");
+                        assert!(
+                            st.classes.iter().any(
+                                |c| matches!(c, StyleClass::BackgroundColor(crate::ui::style::Color::Popover))
+                            ),
+                            "floating panel carries popover chrome, got {:?}",
+                            st.classes
+                        );
+                    }
+                    other => panic!("sub panel Column, got {other:?}"),
+                }
+            }
+            other => panic!("sub trigger wrapped in nested Popover, got {other:?}"),
         }
         // shortcut：右对齐 muted 静态文本。
         match &items[4] {
@@ -14759,22 +14819,12 @@ mod tests {
             View::Column { children, .. } => children,
             other => panic!("panel Column, got {other:?}"),
         };
-        assert_eq!(items_sub.len(), 6, "closed→open inserts inline section");
-        match &items_sub[4] {
-            View::Column { children, style, .. } => {
-                assert_eq!(children.len(), 1, "sub panel items");
-                match &children[0] {
-                    View::Button { label, .. } => assert_eq!(label, "从文件"),
-                    other => panic!("sub item Button, got {other:?}"),
-                }
-                let st = style.as_ref().expect("indent style");
-                assert!(
-                    st.classes.iter().any(|c| matches!(c, StyleClass::BorderLeft)),
-                    "inline section carries left hairline, got {:?}",
-                    st.classes
-                );
+        assert_eq!(items_sub.len(), 5, "open state: same item count (floating popover open flag flips, no inline insert)");
+        match &items_sub[3] {
+            View::Popover { open, .. } => {
+                assert!(*open, "sub open via composite key file::sub-3");
             }
-            other => panic!("inline section Column, got {other:?}"),
+            other => panic!("sub popover present when open, got {other:?}"),
         }
         set_menubar_open(None);
     }
