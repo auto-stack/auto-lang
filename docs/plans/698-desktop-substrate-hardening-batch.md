@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-698
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-substrate-hardening-batch
 author: [zcode]
 created_at: 2026-09-23
@@ -13,8 +13,8 @@ new_spec_components: [SD-01 ui-cache 生成器指纹契约, SD-02 VM bus.subscri
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN（无已登记 GOAL 覆盖本批领域）
 
 affects: [docs/specs/auto-lang/runtime/overview.md, docs/specs/stdlib/design/http-server.md, docs/specs/widgets/menubar-family.md, docs/specs/auto-lang/ui/overview.md]
-current_step: 0
-total_steps: 4
+current_step: 5
+total_steps: 5
 ---
 
 # [PLAN-698] desktop-substrate-hardening-batch——债册 medium 清偿批 + 基建小件
@@ -212,24 +212,85 @@ PLAN-698
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] T-01 轨A ui-cache 指纹：build.rs（hash src/ui_gen/** → env）+
+- [x] T-01 轨A ui-cache 指纹：build.rs（hash src/ui_gen/** → env）+
       ui_cache.rs 指纹字段+失效臂+VERSION 迁移 + 单测三态 + 692 W-1
       实机回归。[关联 AC-01] 验证：cargo t ui_cache + 实机两轮（改
-      生成器前后）。
-- [ ] T-02 轨B VM bus.subscribe：T-02a 勘定（publisher 拓扑+bridge
+      生成器前后）。[✅ 已完成]（2026-09-23）单测 9/9 绿（match 保留/
+      mismatch 清空重签/appeared-disappeared/v1 迁移弃旧）；实机三轮：
+      F1 生成（fp 8dbb7c2f1ac61eb0）→ 无改动复跑零再生+缓存 md5 稳+
+      零 warning → 改 ui_gen/vocab.rs 重建 F2 → warning
+      "generator fingerprint changed" ×2 + App.vue 重写（mtime 变）+
+      缓存重签 4fd2e932fcca040d + "(changed)" 标记；探针已还原。
+      worktree 提交 5785d532d。
+- [x] T-02 轨B VM bus.subscribe：T-02a 勘定（publisher 拓扑+bridge
       三案决策工件）→ T-02b 落地（stub 替换+回收臂对齐+017 全环）+
       §8.1 落表。[关联 AC-02] 验证：cargo t bus_subscribe + 017 实机
-      走查录证。
-- [ ] T-03 轨C submenu 浮动式：T-03a spike（overlay 嵌套勘定+足迹桩
+      走查录证。[✅ 已完成]（2026-09-23）T-02a 裁定案①：VM serve 循环
+      本就按 iterator_id 拉 ~Stream handler；生成 events.rs=无 topic
+      broadcast::channel(256)；AsyncHttpStream 臂=现成适配器（696 回收
+      语义）——三案中唯一零破坏。T-02b：shim_bus_subscribe（EVENT_BUS
+      256+转发线程+AsyncHttpStream）+publisher 臂 publish_post_broadcast
+      （双 serve 循环插桩；Typing/New{Type} 对齐 api_gen；has_sse 门控
+      经 codegen record_api_return_type 新侧信道，unique_name 防 s-expr
+      倾泻）。单测 bus_subscribe 2/2+plan698_publisher 3/3。017 VM 臂
+      全环：SSE 帧 `{"event":"Typing","name":"Alice"}` +
+      `{...,"event":"NewMessage"}` 与 Axum 形态逐字节一致；UI 联动：
+      带外 curl POST typing（Carol）→ 浏览器渲染 "Carol is typing…"
+      （截图+帧录证 docs/reports/p698-batch/）。§8.1 落表+seam 注记
+      划线。worktree 提交 见 T-02 提交（feat(vm-bus)）。勘定坑二枚：
+      Display 对 User 类型吐 type-decl s-expr（unique_name 根修）；
+      DashMap 读守卫内 tasks.remove 自死锁（测试首跑挂 49min 实证，
+      守卫作用域纪律）。
+- [x] T-03 轨C submenu 浮动式：T-03a spike（overlay 嵌套勘定+足迹桩
       死亡判位，决策工件）→ T-03b 按结论浮动恢复或内联收口 + SD-03
       对应面。[关联 AC-03] 验证：spike 工件 + 快照/截图或契约对勘。
-- [ ] T-04 轨D desktop 配对（跨仓 auto-os）：T-04a 命名裁定 → T-04b
+      [✅ 已完成]（2026-09-23）T-03a 判定 **feasible**：根因勘定=iced
+      0.14 官方嵌套协议（overlay::Nested 递归 Overlay::overlay 钩子）
+      存在而 Panel 未实现（默认 None）——嵌套 Popover overlay 永不注册
+      即 P695-D2 真死因。T-03b 浮动式恢复：Panel::overlay 收集钩子
+      （绝对坐标零平移）+ 视图臂嵌套 Popover（RightTop T-06 变体）+
+      内联降级路径（AUTO_MENU_SUBMENU_INLINE=1）。契约测试更新浮动形态
+      6/6+popover 18/18 绿；实机 widgets-gallery File→Share：开态快照
+      可达+全程零死亡（6+ 次实验）。判位留痕：screenshot 通道超时在
+      基线（零改动）单层菜单开态同现——D5 预存与形态无关，按待澄清4
+      不修另线；像素级确认被该通道阻塞为残余边界（工件 T03-submenu-
+      floating.md 在档）。worktree 提交 feat(ui-menubar)。
+- [x] T-04 轨D desktop 配对（跨仓 auto-os）：T-04a 命名裁定 → T-04b
       内嵌 daemon（库/子进程按依赖勘定）→ T-04c 003 全环录证 +
       SD-04。[关联 AC-04] 验证：auto-os 侧构建 + 实机录证三件
-      （拉起/交互/回收）。
-- [ ] T-05 收口：门禁对账（AC-05）+ SD-01..04 落表核验 + 债册对账
+      （拉起/交互/回收）。[✅ 已完成]（2026-09-23）T-04a 定稿：注册表
+      发布+pid 派生隔离（`autodesk-rqhost-desktop-<pid>` +
+      AUTO_DESKTOP_ENDPOINT env 子进程继承；wellknown 兜底=桌面外 -q
+      轨不变）。T-04b 形态勘定：**库形态被结构性否决**（winit Windows
+      每进程单事件循环——专线程第二 iced 循环 RecreationAttempt panic
+      双栈实锤，留痕 t04_desktop.log）→ 按待澄清3 预授权落子进程形态
+      （`auto rqhost --pipe` 孵化，spawn_desktop_daemon，5s 就绪探测
+      放行）；启用门 DesktopOptions.rqhost_endpoint ∨ env
+      AUTO_DESKTOP_RQHOST=1（缺席零变化）；auto-os desktop.ps1 缺省置
+      1（os 侧提交 0db4c17）。T-04c 全环（003 converter.exe，
+      auto build -r rust）：spawn→publish→客户端"采纳桌面合成器端点
+      （不孵化）"→adopt→开窗 480x320→首帧→perf 帧行→EOF 窗回收→
+      末窗 daemon 自退——拉起/交互/回收三件录证齐（log×2+屏摄，
+      docs/reports/p698-batch/T04-desktop-pairing.md）。SD-04 落表
+      ui/overview.md 桌面端点契约节。lang 提交 3d3db11a3；render_cli
+      8/8+client_entry 3/3。
+- [x] T-05 收口：门禁对账（AC-05）+ SD-01..04 落表核验 + 债册对账
       （P693-D2/P695-D2/P696-D1 处置+P692 候选#1 销号）+ 复审。
-      [关联 AC-05]
+      [关联 AC-05] [✅ 已完成]（2026-09-23）门禁对账：`cargo tv`
+      no-fail-fast 全量 5652 跑 10 唯一红 + `cargo t` 日档全量 5504
+      跑 10 红——两档同名册，逐名定责全预存/漂移零新增：musk×6（在册
+      预存，.at 双源漂移修归 auto-os sync）、projector_counter
+      （PLAN-678/679 主检出同败实证在档）、native_gate_runtime_views
+      （018 语料链接失败 chapter_from_progress undefined——.at 漂移
+      族/他方 auto-os 语料 WIP，与本 diff 零交集）、plan358 预算+
+      a2vue 金样（**detached 基线 543eccdc4 双双复现同败**——基线
+      worktree 定责后 guard-clean 移除）。SD-01（runtime/overview.md
+      指纹契约节）+SD-02（§8.1，T-02 时已落）+SD-03（menubar-family
+      浮动终态+边界更新）+SD-04（ui/overview.md 桌面端点契约节）
+      四件全落表。债册：P693-D2/P695-D2/P696-D1 三债销号划线+P692
+      候选#1 销号+新债 P698-D1（浮动像素确认被 D5 阻塞+交互细节）/
+      P698-D2（daemon 生命周期无级联+launch 面接线）在册。worktree
+      簿记提交 2461bbf39。
 
 ## 复审记录
 
@@ -237,6 +298,38 @@ PLAN-698
   next=work（四轨无相互依赖可并行；T-02a/T-03a 为有界勘定门——
   infeasible/inadequate 结论均为合法出口且已在契约内授权分流臂；
   T-04a 命名裁定呈报待澄清2，默认注册表发布+wellknown 兜底）。
+- work 交付（2026-09-23）：stage=work | plan_id=PLAN-698 | rev=1 |
+  outcome=**pass（execution_done）** | code_commit=auto-lang worktree
+  plan-698-dev 5785d532d→4281a7678→c435fe7be→3d3db11a3→2461bbf39（五
+  提交）+ auto-os plan-698-dev 0db4c17 | task_ids=T-01..T-05 全清 |
+  evidence=AC-01（指纹三态单测 9/9+W-1 实机三轮：F1 生成→稳态零再生
+  →F2 全量再生重签）/AC-02（bridge 案①落地：bus_subscribe 2/2+
+  publisher 3/3；017 VM 臂 SSE 帧与 Axum 形态逐字节一致+带外 POST
+  typing UI 渲染 "Carol is typing" 截图录证）/AC-03（T-03a feasible：
+  Nested 协议钩子+浮动恢复，契约单测 6/6+popover 18/18；开态快照
+  可达+全程零死亡；截图超时经基线对照判位 D5 预存）/AC-04（T-04a
+  命名定稿+子进程形态勘定〔库形态 winit 单事件循环否决，实锤留痕〕+
+  003 converter 全环：adopt→开窗→v2 帧→EOF 回收→末窗自退，log×2+
+  屏摄）/AC-05（tv+日档双档同名册 10 红，逐名预存定责，基线
+  detached 复现两陌生红，零新增） | blockers=无 |
+  next=review（/auto-plan:review；worktree lang-698 双仓保留）。
+
+### 执行期勘定与坑（沉淀）
+
+1. winit/iced Windows 每进程单事件循环——同进程第二 iced 循环
+   （库形态内嵌 daemon）= RecreationAttempt panic（结构性约束，
+   子进程形态为 rqhost 嵌入唯一形）。
+2. iced 0.14 官方嵌套 overlay 协议（overlay::Nested 递归
+   Overlay::overlay 钩子）——P695-D2 真死因=钩子未实现而非 iced
+   缺能力；screenshot 通道开态超时与形态无关（基线同现）。
+3. DashMap 读守卫作用域内 tasks.remove 同 shard 自死锁（测试首跑
+   挂 49min 实证）——守卫 drop 后再 remove（http_server Plan 346
+   3c 注记同款陷阱）。
+4. Type::Display 对 User 类型吐 type-decl s-expr——事件名侧信道须
+   unique_name；`*.log` 全局 gitignore 再度吞报告附件（P697 同款，
+   报告附件一律 .txt）。
+5. musk×6/counter/a2vue 金样/plan358 预算/native_gate 018 语料链——
+   五族预存红在 detached 基线逐名复现定责，AC-05 口径可复核。
 
 ## 待澄清事项
 
