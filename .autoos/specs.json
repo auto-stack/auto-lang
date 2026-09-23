@@ -3376,6 +3376,18 @@
      "status": "published",
      "created": "2026-09-23",
      "last_modified": "2026-09-23"
+    },
+    {
+     "id": "P697-1",
+     "title": "desktop-host-stability — 桌面宿主稳定性与退出留痕契约（SD-01）",
+     "content": "inproc VM App 拉起零宿主退出=桌面日用底线，宿主消失必须可归因。P694-D1「静默退出×3」勘定外因结案：机器级内核/驱动不稳定（三日三蓝屏 0x9F/0x1A/0xA+GPU TDR 族；走查窗口 System Event 6008=09-23 10:59:12 非正常关机实锤），蓝屏吞进程=无 panic/无 WER 应用崩溃，签名逐项吻合；嫌疑 back-proxy lazy-start/media 供给/inproc panic 边界经 15 轮复现矩阵（基线窗口化×5+全屏×2+禁A×2+禁B×2+他App×2 零死亡、A/B 面点火实证 port 3358）+WER 零宿主崩溃记录三重排除。契约三件：①观测面=宿主必须留足迹（[ui-desktop] start/alive 30s/exit+panic 钩子带 backtrace，examples/ui_desktop.rs；CLI 路径 rust_ui.rs X9 同形制）+死亡判位表（exit 行在场=正常/心跳截断无 WER=外力对时 6008/心跳截断+WER 1000=内部崩溃）；②对照缝=AUTO_NO_BACK_PROXY（整体旁路供给）/AUTO_NO_NATIVE_MEDIA（旁路②capability 臂）（back_provision.rs，勘定器械生产零影响）；③勘定方法=repro_host_exit.py+事件日志三查。归因档案 docs/plans/reports/p697-stability/attribution.md。",
+     "file": "docs/specs/auto-lang/ui/overview.md",
+     "related": [
+      "PLAN-697"
+     ],
+     "status": "published",
+     "created": "2026-09-23",
+     "last_modified": "2026-09-23"
     }
    ]
   },
@@ -5604,20 +5616,20 @@
      "id": "P692-1",
      "title": "widget-gallery-scroll-polish — scroll 页改良+滚动条双路径统一+thumb 增强+Combobox shadcn 官方接入+CodeEditor 字面 content+首页标题对齐",
      "content": "实机走查批（rev5，用户会话内六面需求）：①scroll 四 demo 满铺+真溢出（w-full/w-[60rem]；w-160 不在 Tailwind 标度系预存暗病）；②滚动条双路径统一——语义 scroll 与 utility(overflow-*) 同参（accent 底 primary/40、hover 亮度自适应 primary/60、恒宽 size prop），utility 侧生成器 plain 装配点自动挂 .ash-scroll；③thumb 演进终态：hover 加宽与按住高亮均经用户裁定撤销、过渡禁含 transform（reka translate3d 从布局原点定位，动画化即闪现）、轨道 items-start 铁律（items-center 移原点 70px 破拖拽映射）；④Combobox 八 command 元素 schema 翻转 web:component 接入 assets/shadcn-ui/command 官方 Listbox 实现（Empty 自动显隐/过滤/hover/键盘/点选回填/复杂候选项），registry 为 schema-only 家族补建 spec+kebab 别名回填（通用机制），删除 front 遗留 stub；⑤code_editor 字面串 content 补单向 :model-value（此前静默丢弃挂载即空白）；⑥首页分区标题 h2 补 m-0（脚手架 h2 基础 margin 泄漏进 flex 行致 8px 下坠）。"
-     },
-     {
-      "id": "P695-1",
-      "title": "menubar-widgets-batch — menubar 15 元素完整组件族（shadcn 对齐）+popover token 主题化+submenu 内联展开+auto-edit 回灌+gallery 滚动协议",
-      "content": "menubar 从七件深色主干补全为 shadcn-vue 对齐 15 元素族（root+14 子件；schema 三端注记翻转 iced:component/registry 三形态别名/vue 全 kind reka 件）。VM 双解释态（build_menu_panel_items 收口+actions 合成）与 a2r 递归发射（a2r_menubar_panel_children）三路同源：配色全量消费 popover 语义 token（Color::Popover/PopoverForeground 独立投影 registry 双盘——浅色白板深字可读，字面 #16171B/zinc 退役）；disabled/无 handler 项置灰非隐藏（muted+opacity-50）；开态 trigger accent 高亮+跨菜单 hover-switch（MouseArea 条件包裹，__ 前缀不触发规则3判据）；submenu=复合键 <menu>::sub-N 注册表+外层开态前缀感知+内联展开（嵌套 Popover overlay 挂 iced 渲染/截图通道实锤——浮动式留债 D2）；radio circle-dot/label/shortcut muted 静态文本。执行期四增量：untracked 派发表缺 menubar 臂（画廊动态路径 Empty 实锤，D-GAP 双表纪律）/复合键前缀/内联展开/desktop_protocol coverage Covered=协议可投影语义勘定（menubar root 回退 NotYet）。契约=docs/specs/widgets/menubar-family.md。auto-edit 回灌：ctx_menu/app.at token 化+行尾 submenu 化（regen 33 组件零 S002+probe exit0+EOL 三段活体全真）；gallery menubar 页四菜单全族+状态回显。"
-     },
-     {
-      "id": "P696-3",
-      "title": "VM HTTP 请求体分段、SSE 调度/取消与 API 路径回归",
-      "content": "复审在提交 bc17269a1c172d4a58a2813d05912fb32baa8219 上重跑 cargo th：51/51 pass。另定向 4/4：015-notes merge 调用正常返回、back-proxy API 正常与缺参 400。cargo tv/cargo tf 仅有 3 项 P-053 基线红测，三项在 051e7b54023f420c3955c480d986e83197eb5899 原始源码快照上逐项复现。详尽 T-02..T-08 与复审证据见计划归档文件。",
-      "file": "docs/plans/archive/696-stdlib-http-server-runtime-hardening.md",
-      "related": [
-       "PLAN-696"
-      ],
+    },
+    {
+     "id": "P695-1",
+     "title": "menubar-widgets-batch — menubar 15 元素完整组件族（shadcn 对齐）+popover token 主题化+submenu 内联展开+auto-edit 回灌+gallery 滚动协议",
+     "content": "menubar 从七件深色主干补全为 shadcn-vue 对齐 15 元素族（root+14 子件；schema 三端注记翻转 iced:component/registry 三形态别名/vue 全 kind reka 件）。VM 双解释态（build_menu_panel_items 收口+actions 合成）与 a2r 递归发射（a2r_menubar_panel_children）三路同源：配色全量消费 popover 语义 token（Color::Popover/PopoverForeground 独立投影 registry 双盘——浅色白板深字可读，字面 #16171B/zinc 退役）；disabled/无 handler 项置灰非隐藏（muted+opacity-50）；开态 trigger accent 高亮+跨菜单 hover-switch（MouseArea 条件包裹，__ 前缀不触发规则3判据）；submenu=复合键 <menu>::sub-N 注册表+外层开态前缀感知+内联展开（嵌套 Popover overlay 挂 iced 渲染/截图通道实锤——浮动式留债 D2）；radio circle-dot/label/shortcut muted 静态文本。执行期四增量：untracked 派发表缺 menubar 臂（画廊动态路径 Empty 实锤，D-GAP 双表纪律）/复合键前缀/内联展开/desktop_protocol coverage Covered=协议可投影语义勘定（menubar root 回退 NotYet）。契约=docs/specs/widgets/menubar-family.md。auto-edit 回灌：ctx_menu/app.at token 化+行尾 submenu 化（regen 33 组件零 S002+probe exit0+EOL 三段活体全真）；gallery menubar 页四菜单全族+状态回显。"
+    },
+    {
+     "id": "P696-3",
+     "title": "VM HTTP 请求体分段、SSE 调度/取消与 API 路径回归",
+     "content": "复审在提交 bc17269a1c172d4a58a2813d05912fb32baa8219 上重跑 cargo th：51/51 pass。另定向 4/4：015-notes merge 调用正常返回、back-proxy API 正常与缺参 400。cargo tv/cargo tf 仅有 3 项 P-053 基线红测，三项在 051e7b54023f420c3955c480d986e83197eb5899 原始源码快照上逐项复现。详尽 T-02..T-08 与复审证据见计划归档文件。",
+     "file": "docs/plans/archive/696-stdlib-http-server-runtime-hardening.md",
+     "related": [
+      "PLAN-696"
+     ],
      "test_file": "crates/auto-lang/src/vm/ffi/http_server.rs",
      "status": "published",
      "created": "2026-09-23",
@@ -7334,28 +7346,40 @@
      "status": "published",
      "created": "2026-09-23",
      "last_modified": "2026-09-23"
-     },
-     {
-      "id": "P695-2",
-      "title": "menubar-widgets-batch 复审与合并收据",
-      "file": "docs/plans/archive/695-menubar-widgets-batch.md",
-      "related": [
-       "PLAN-695"
-      ],
-      "status": "published",
-      "created": "2026-09-23",
-      "last_modified": "2026-09-23",
-      "content": "review pass@rev2（复审在实现会话内，判定由工件重建）：R-1 元素计数 16→15 勘正（起草笔误，行为面零缺）。tf --no-fail-fast 5465 测红册定谳=11 预存（musk×6/counter/a2vue 金样基线在档+style_if stress/native_gate 018 master 同测实锤）+1 已修（plan674 断言随前缀感知更新）；schema_drift 2/2+docs_gen 4/4+gallery_golden 重基线复跑绿（D4 销号）；p695 九单测+menubar 14 绿。AC-01..08 全 pass（AC-03 浅色活体截图与 AC-02 Vue 臂活体走查由 D5/D6 环境受限承载改确定性通道，残项在案）。merge=range-diff 全等 ff-only 三仓落地：auto-lang 1b602759d（12 commits，e99b8ba89→1b602759d 等映射）、auto-os 3f2a7bed4（8e098bc→3f2a7bed4）、auto-edit 5aa8ea9ae（d71a396→5aa8ea9）。债 P695-D1 键盘导航/D2 浮动式 submenu/D3 MCP 合成事件×hover-switch/D5 auto-edit Tick 截图争用/D6 gallery Vue 臂活体环境受阻。"
-     },
-     {
-      "id": "P696-5",
-      "title": "PLAN-696 复审与合并收据",
-      "content": "Review pass，plan_revision=1；审核提交 bc17269a1c172d4a58a2813d05912fb32baa8219，base=051e7b54023f420c3955c480d986e83197eb5899，AutoDown=3373a5cc6e3a00336613133db51906fb0940777d；冻结 Spec delta SHA-256=5F10D76523D52CA073C65CFEBF1D896C3375D3752EF8ACA0A16348E39722A74B。rebase 后原提交→新提交逐项 range-diff 相等（bc17269a1→a7a7fbbbc；其余映射见归档计划）；全档 P-053 红项在基线复现。交付与归档/cleanup checkpoint 见计划文件。",
-      "file": "docs/plans/archive/696-stdlib-http-server-runtime-hardening.md",
-      "related": [
-       "PLAN-696",
-       "GOAL-003"
-      ],
+    },
+    {
+     "id": "P695-2",
+     "title": "menubar-widgets-batch 复审与合并收据",
+     "file": "docs/plans/archive/695-menubar-widgets-batch.md",
+     "related": [
+      "PLAN-695"
+     ],
+     "status": "published",
+     "created": "2026-09-23",
+     "last_modified": "2026-09-23",
+     "content": "review pass@rev2（复审在实现会话内，判定由工件重建）：R-1 元素计数 16→15 勘正（起草笔误，行为面零缺）。tf --no-fail-fast 5465 测红册定谳=11 预存（musk×6/counter/a2vue 金样基线在档+style_if stress/native_gate 018 master 同测实锤）+1 已修（plan674 断言随前缀感知更新）；schema_drift 2/2+docs_gen 4/4+gallery_golden 重基线复跑绿（D4 销号）；p695 九单测+menubar 14 绿。AC-01..08 全 pass（AC-03 浅色活体截图与 AC-02 Vue 臂活体走查由 D5/D6 环境受限承载改确定性通道，残项在案）。merge=range-diff 全等 ff-only 三仓落地：auto-lang 1b602759d（12 commits，e99b8ba89→1b602759d 等映射）、auto-os 3f2a7bed4（8e098bc→3f2a7bed4）、auto-edit 5aa8ea9ae（d71a396→5aa8ea9）。债 P695-D1 键盘导航/D2 浮动式 submenu/D3 MCP 合成事件×hover-switch/D5 auto-edit Tick 截图争用/D6 gallery Vue 臂活体环境受阻。"
+    },
+    {
+     "id": "P696-5",
+     "title": "PLAN-696 复审与合并收据",
+     "content": "Review pass，plan_revision=1；审核提交 bc17269a1c172d4a58a2813d05912fb32baa8219，base=051e7b54023f420c3955c480d986e83197eb5899，AutoDown=3373a5cc6e3a00336613133db51906fb0940777d；冻结 Spec delta SHA-256=5F10D76523D52CA073C65CFEBF1D896C3375D3752EF8ACA0A16348E39722A74B。rebase 后原提交→新提交逐项 range-diff 相等（bc17269a1→a7a7fbbbc；其余映射见归档计划）；全档 P-053 红项在基线复现。交付与归档/cleanup checkpoint 见计划文件。",
+     "file": "docs/plans/archive/696-stdlib-http-server-runtime-hardening.md",
+     "related": [
+      "PLAN-696",
+      "GOAL-003"
+     ],
+     "status": "published",
+     "created": "2026-09-23",
+     "last_modified": "2026-09-23"
+    },
+    {
+     "id": "P697-2",
+     "title": "desktop-host-stability 复审与合并收据",
+     "content": "review pass@rev1（复审在实现会话内，判定由工件重建+运行时独立复验）：AC-01..05 全对勘——归因档案三证（15 轮矩阵+事件日志退出位面+排除链）；AC-02 fresh 宿主 start/launch/proxy 三行实证；AC-03 紧凑复现拉起 wid2→关闭→宿主存活；AC-05 同作用域 no-fail-fast 5495 跑 10 红全预存（musk×6+desktop_protocol×2+a2vue 金样×1+test_plan358_d1 负载敏感 flake 隔离绿）。findings：R-1=host-*.log 受 .gitignore 未入库而 attribution 引用（补 host-evidence-excerpt.txt+证据位面注@d52ea4400）/R-2=轮次口径 13→15 勘正/R-3 非阻塞=环境自检以 start 行环境快照口径兑现。两契约勘正：AC-04 预期销号实为 694 T-04 环境阻塞未复核（债册按证据刷新非划线）；cdb 附加由事件日志三查替代（窗口已闭，回溯证据更强）。merge=rebase 2 commits range-diff 2/2 全等（45aef8e04→34bcda2b6/d52ea4400→c1884f1c9）ff-only 落地。债册 P694-D1 销号（外因结案）；P683-D6 加 694 T-04 对账注记。",
+     "file": "docs/plans/archive/697-desktop-host-stability.md",
+     "related": [
+      "PLAN-697"
+     ],
      "status": "published",
      "created": "2026-09-23",
      "last_modified": "2026-09-23"
