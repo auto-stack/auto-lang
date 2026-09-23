@@ -184,7 +184,7 @@ impl UIWatcher {
                 Self::handle_event(event);
             }
             Err(e) => {
-                eprintln!("Watch error: {:?}", e);
+                crate::syslog!(crate::ui::syslog::SyslogLevel::Warn, "host", "Watch error: {:?}", e);
             }
         })?;
 

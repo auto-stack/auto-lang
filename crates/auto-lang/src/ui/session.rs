@@ -1513,6 +1513,11 @@ pub enum DesktopCommand {
     /// 入史 + 未读 + toast 浮现三联动（push_notification 单入口）。
     /// 约束：msg 单行（记录层按 \n 切分）。
     Notify(String, String),
+    /// PLAN-042 T-04（协议 v1.9）：App 系统日志出向动词（`log␟level␟text`；
+    /// notify 姊妹）。执行臂入宿主 syslog 环（`ui::syslog`），source =
+    /// notify_source 分段归因 registry_id（特权面 None → "privileged"）。
+    /// 约束：text 单行（Notify msg 同款）；未知 level 兜底 info 不弃单。
+    Syslog(crate::ui::syslog::SyslogLevel, String),
     /// Plan 479 T3：通知中心面板开合（`notes_toggle` 无参动词；dock 铃铛钮
     /// 路径，宿主臂落 toggle_notification_center 执行体）。
     NotesToggle,
@@ -1733,6 +1738,11 @@ impl DesktopCommand {
             // msg 可含空格与 FIELD_SEP——parse 取首分符，尾部完整保留）。
             DesktopCommand::Notify(kind, msg) => {
                 format!("notify{}{kind}{}{msg}", Self::FIELD_SEP, Self::FIELD_SEP)
+            }
+            // PLAN-042 T-04：协议 v1.9 系统日志动词（level/text FIELD_SEP
+            // 分段；text 可含空格与 FIELD_SEP——parse 取首分符，尾部保留）。
+            DesktopCommand::Syslog(level, text) => {
+                format!("log{}{}{}{}", Self::FIELD_SEP, level.as_str(), Self::FIELD_SEP, text)
             }
             DesktopCommand::NotesToggle => "notes_toggle".to_string(),
             DesktopCommand::NotesClear => "notes_clear".to_string(),
@@ -2051,6 +2061,22 @@ impl DesktopCommand {
                             DesktopCommand::Notify(kind.to_string(), msg.to_string())
                         })
                         .filter(|c| !matches!(c, DesktopCommand::Notify(k, _) if k.is_empty())),
+                    // PLAN-042 T-04：协议 v1.9 系统日志动词。log 对 arg 二次
+                    // split（notify/send_to 同型）——level ∈ error/warn/info，
+                    // 未知 level 兜底 info 不弃单（notify kind 兜底同款）；
+                    // text 空弃单。词表白名单：本臂即契约（解析白名单约束，
+                    // §2 裁定点）。
+                    "log" => arg
+                        .split_once([Self::FIELD_SEP, '\t'])
+                        .map(|(level, text)| {
+                            DesktopCommand::Syslog(
+                                crate::ui::syslog::SyslogLevel::parse(level),
+                                text.to_string(),
+                            )
+                        })
+                        .filter(|c| {
+                            !matches!(c, DesktopCommand::Syslog(_, t) if t.is_empty())
+                        }),
                     "notes_dismiss" => arg
                         .parse::<u64>()
                         .ok()
@@ -6086,6 +6112,7 @@ mod tests {
             C::WorkspaceClose(1),
             C::SendTo(Wid(5), 2),
             C::Notify("info".into(), "hello world".into()),
+            C::Syslog(crate::ui::syslog::SyslogLevel::Warn, "scan finished 42 entries".into()),
             C::NotesToggle,
             C::NotesClear,
             C::NotesDismiss(42),
@@ -6155,6 +6182,46 @@ mod tests {
             vec![C::FocusWindow(Wid(1)), C::Shutdown, C::SummonLauncher]
         );
         assert!(q.is_empty());
+    }
+
+    /// PLAN-042 T-04（AC-04）：`log` 动词词面单测——三段 parse、未知 level
+    /// 兜底 info 不弃单、空 text 弃单、词面含分隔符尾部保留。
+    #[test]
+    fn syslog_verb_parse_semantics() {
+        use crate::ui::syslog::SyslogLevel;
+        let sep = DesktopCommand::FIELD_SEP;
+        // 三段词面正路（\u{1F} 编码面）。
+        let rec = format!("log{sep}error{sep}scan boom");
+        assert_eq!(
+            DesktopCommand::parse_records(&rec),
+            vec![DesktopCommand::Syslog(SyslogLevel::Error, "scan boom".into())]
+        );
+        // \t 直书面等价。
+        let tab = format!("log\twarn\tcold index 3.2s");
+        assert_eq!(
+            DesktopCommand::parse_records(&tab),
+            vec![DesktopCommand::Syslog(SyslogLevel::Warn, "cold index 3.2s".into())]
+        );
+        // 未知 level 兜底 info（notify kind 兜底同款）。
+        let unk = format!("log{sep}verbose{sep}detail line");
+        assert_eq!(
+            DesktopCommand::parse_records(&unk),
+            vec![DesktopCommand::Syslog(SyslogLevel::Info, "detail line".into())]
+        );
+        // 空 text 弃单。
+        let empty = format!("log{sep}info{sep}");
+        assert!(DesktopCommand::parse_records(&empty).is_empty());
+        // text 内含分隔符：parse 取首分符，尾部完整保留。
+        let embedded = format!("log{sep}info{sep}a{sep}b c");
+        assert_eq!(
+            DesktopCommand::parse_records(&embedded),
+            vec![DesktopCommand::Syslog(SyslogLevel::Info, format!("a{sep}b c"))]
+        );
+        // encode 臂词面 = "log␟<level>␟<text>"（v1.9 记录形）。
+        assert_eq!(
+            DesktopCommand::Syslog(SyslogLevel::Info, "x y".into()).encode(),
+            format!("log{sep}info{sep}x y")
+        );
     }
     use super::*;
     use crate::ast::Expr;

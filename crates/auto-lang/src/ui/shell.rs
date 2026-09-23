@@ -100,7 +100,7 @@ pub fn shell_source(name: &str) -> std::borrow::Cow<'static, str> {
             match std::fs::read_to_string(&path) {
                 Ok(src) => return Cow::Owned(src),
                 Err(err) => {
-                    eprintln!("[shell-pack] {name} read failed ({err}) — embedded fallback");
+                    crate::syslog!(crate::ui::syslog::SyslogLevel::Warn, "host", "[shell-pack] {name} read failed ({err}) — embedded fallback");
                 }
             }
         } else {

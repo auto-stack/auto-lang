@@ -110,7 +110,7 @@ impl crate::ui::session::DesktopSession {
                 Err(err) => {
                     // 懒启失败降级：launch 继续（前端拿可诊断的连接错误，
                     // 与零供给面同形），下次命中重试。
-                    eprintln!("[session] back-proxy start failed (degraded): {err}");
+                    crate::syslog!(crate::ui::syslog::SyslogLevel::Error, "host", "[session] back-proxy start failed (degraded): {err}");
                     return None;
                 }
             }
@@ -124,7 +124,7 @@ impl crate::ui::session::DesktopSession {
             }
             if let Some(session) = plan.session {
                 if let Err(err) = proxy.add_session(session) {
-                    eprintln!("[session] back-proxy add_session {app_key} failed: {err}");
+                    crate::syslog!(crate::ui::syslog::SyslogLevel::Error, "host", "[session] back-proxy add_session {app_key} failed: {err}");
                 }
             }
         }

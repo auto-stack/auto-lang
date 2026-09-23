@@ -1941,7 +1941,23 @@ impl Component for DynamicComponent {
         match self.bridge.call_handler(&event_name, &args) {
             Ok(()) => { self.dirty = true; }
             Err(e) => {
-                eprintln!("[VM-HANDLER] {}.{} failed: {}", self.widget_name, event_name, e);
+                // PLAN-042 T-03：路由派发失败同规入环（face 归因同上）。
+                let syslog_face = {
+                    let face = self
+                        .source_path
+                        .as_ref()
+                        .and_then(|p| {
+                            let stem = p.file_stem()?.to_string_lossy().to_string();
+                            let dir = p.parent()?.file_name()?.to_string_lossy().to_string();
+                            Some(format!("{dir}/{stem}"))
+                        })
+                        .unwrap_or_else(|| self.widget_name.clone());
+                    format!("vm:{face}")
+                };
+                crate::syslog!(
+                    crate::ui::syslog::SyslogLevel::Error, syslog_face,
+                    "[VM-HANDLER] {}.{} failed: {}", self.widget_name, event_name, e
+                );
                 if !matches!(e, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)) {
                     self.dirty = true;
                 }
@@ -2433,7 +2449,24 @@ impl DynamicComponent {
                     matches!(_e, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_));
                 let _framework_probe = _handler_missing && clean_name.starts_with("__");
                 if !_framework_probe {
-                    eprintln!(
+                    // PLAN-042 T-03：VM handler 失败入环（三层采集③）——
+                    // face 归因：source_path 父目录/文件干（app 仓形态
+                    // examples/ui/<app>/src/front/app.at → "<app>/app"），
+                    // 无路径 = 根 widget 名。窗口层可按 source 过滤定位。
+                    let syslog_face = {
+                        let face = self
+                            .source_path
+                            .as_ref()
+                            .and_then(|p| {
+                                let stem = p.file_stem()?.to_string_lossy().to_string();
+                                let dir = p.parent()?.file_name()?.to_string_lossy().to_string();
+                                Some(format!("{dir}/{stem}"))
+                            })
+                            .unwrap_or_else(|| self.widget_name.clone());
+                        format!("vm:{face}")
+                    };
+                    crate::syslog!(
+                        crate::ui::syslog::SyslogLevel::Error, syslog_face,
                         "[VM-HANDLER] {}.{} failed: {}",
                         if widget_name.is_empty() { &self.widget_name } else { widget_name },
                         clean_name, _e

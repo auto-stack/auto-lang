@@ -10,6 +10,11 @@
 //! 集与 wire 形逐字节一致），编译轨（T-08 ShellSurface 装配）直接消费
 //! typed 载体。
 //!
+//! **协议版记**：v1.9（PLAN-042 T-04）——新增上行 `log␟level␟text` 系统
+//! 日志动词（DesktopCommand::Syslog，notify 同型三段词面/未知 level 兜底
+//! info/联合排空分段归因 registry_id）。本模块载体面零改动（下行投影不
+//! 涉 syslog——注入走 viewer app state 直写），版记仅登记协议级增量。
+//!
 //! **B-ready（I3）**：全部 plain data，无进程内假设；wire 叶面保形原则
 //! （focused 等布尔在载体为 bool，lowering 单点译 "1"/""——零漂移锚）。
 //!

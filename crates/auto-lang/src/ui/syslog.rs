@@ -182,7 +182,8 @@ macro_rules! syslog {
         let __lvl = $level;
         let __src = $source;
         eprintln!("[syslog][{}][{}] {}", __lvl, __src, format!($($arg)*));
-        $crate::ui::syslog::push(__lvl, __src, format!($($arg)*))
+        // 语句宏语义（恒 ()）——match 臂/表达式语句位直用。
+        $crate::ui::syslog::push(__lvl, &__src, format!($($arg)*));
     }};
 }
 
@@ -281,11 +282,16 @@ mod tests {
     fn macro_dual_writes_eprintln_and_ring() {
         // eprintln 侧由捕获_stderr 测试框架覆盖成本高——本测锚环侧写入 +
         // 展开形态（eprintln 臂同表达式共存，stderr 输出为可接受副产物）。
+        // 语句宏语义（恒 ()）：match 臂位直用可编译。
         let src = "t01-macro";
-        let seq = crate::syslog!(SyslogLevel::Warn, src, "macro line {}", 42);
+        let mut landed = false;
+        if src.starts_with("t01") {
+            crate::syslog!(SyslogLevel::Warn, src, "macro line {}", 42);
+            landed = true;
+        }
+        assert!(landed);
         let got = mine(src);
         assert_eq!(got.len(), 1);
-        assert_eq!(got[0].seq, seq);
         assert_eq!(got[0].msg, "macro line 42");
         assert_eq!(got[0].level, SyslogLevel::Warn);
     }

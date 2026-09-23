@@ -15,6 +15,9 @@ use std::collections::HashMap;
 use iced::widget::{button, checkbox, column, container, mouse_area, pick_list, row, scrollable, svg, text, text_editor, text_input, tooltip};
 
 use crate::ui::dynamic::DynamicComponent;
+// PLAN-042 T-02：诊断家族双写（eprintln 载重站点 → `crate::syslog!` 宏，
+// stderr 归档层保留 + 环实时层入环）。
+use crate::ui::syslog::SyslogLevel;
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::debug_id_map::DebugIdMap;
 use crate::aura::{AuraNodeId, SpanInfo};
@@ -10503,7 +10506,7 @@ fn refresh_notification_panel(state: &mut crate::ui::session::DesktopSession) {
         .component
         .write_state("__panel_max_h", auto_val::Value::Int(max_h as i32));
     if let Err(err) = app.component.bridge_mut().call_handler("RebuildNotes", &[]) {
-        eprintln!("[session] notification RebuildNotes failed: {err}");
+        crate::syslog!(SyslogLevel::Error, "host", "[session] notification RebuildNotes failed: {err}");
     }
     *app.state.view_dirty.borrow_mut() = true;
 }
@@ -10562,7 +10565,7 @@ pub(crate) fn summon_launcher(
             );
         } else if !state.desktop.launcher_spawned {
             if let Err(err) = state.spawn_launcher_outproc() {
-                eprintln!("[p036] launcher exe spawn 失败: {err}");
+                crate::syslog!(SyslogLevel::Error, "host", "[p036] launcher exe spawn 失败: {err}");
                 state.desktop.launcher_open = false;
             }
         }
@@ -10640,7 +10643,7 @@ pub(crate) fn summon_launcher(
             .write_state("__focus_input_tries", auto_val::Value::Int(0));
         // 宿主写状态不触发 handler——显式重算 ranked/网格行 + 刷 view
         if let Err(err) = app.component.bridge_mut().call_handler("ApplyFilter", &[]) {
-            eprintln!("[session] launcher ApplyFilter failed: {err}");
+            crate::syslog!(SyslogLevel::Error, "host", "[session] launcher ApplyFilter failed: {err}");
         }
         *app.state.view_dirty.borrow_mut() = true;
     }
@@ -10785,7 +10788,7 @@ fn summon_switcher(
         let _ = app.component.write_state("visible", auto_val::Value::str("1"));
         // 宿主写状态不触发 handler——显式重建 rows（sel 复位在 handler 内）+ 刷 view
         if let Err(err) = app.component.bridge_mut().call_handler("RebuildMru", &[]) {
-            eprintln!("[session] switcher RebuildMru failed: {err}");
+            crate::syslog!(SyslogLevel::Error, "host", "[session] switcher RebuildMru failed: {err}");
         }
         *app.state.view_dirty.borrow_mut() = true;
     }
@@ -10871,7 +10874,7 @@ fn toggle_notification_center(
             .write_state("__panel_max_h", auto_val::Value::Int(max_h as i32));
         // 宿主写状态不触发 handler——显式重建 rows + 刷 view。
         if let Err(err) = app.component.bridge_mut().call_handler("RebuildNotes", &[]) {
-            eprintln!("[session] notification RebuildNotes failed: {err}");
+            crate::syslog!(SyslogLevel::Error, "host", "[session] notification RebuildNotes failed: {err}");
         }
         *app.state.view_dirty.borrow_mut() = true;
     }
@@ -11350,7 +11353,8 @@ fn dashboard_layout(
         col += want;
     }
     if clipped > 0 {
-        eprintln!(
+        crate::syslog!(
+            SyslogLevel::Info, "host",
             "[dashboard] layout: {clipped} face(s) clipped — 单行 {DASH_COLS} 列 span 收缩后仍容不下"
         );
     }
@@ -11613,7 +11617,7 @@ fn collect_dashboard_faces(
                 }
                 // PLAN-035：孵化失败不再静默——错误串落日志（可诊断性）。
                 Err(err) => {
-                    eprintln!("[dashboard] hatch {id} failed: {err}");
+                    crate::syslog!(SyslogLevel::Error, "host", "[dashboard] hatch {id} failed: {err}");
                     "placeholder"
                 }
                 _ => "placeholder",
@@ -11711,7 +11715,7 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
             .component
             .write_state("__panel_top", auto_val::Value::Int(panel_top as i32));
         if let Err(err) = app.component.bridge_mut().call_handler("RebuildFaces", &[]) {
-            eprintln!("[session] dashboard RebuildFaces failed: {err}");
+            crate::syslog!(SyslogLevel::Error, "host", "[session] dashboard RebuildFaces failed: {err}");
         }
         *app.state.view_dirty.borrow_mut() = true;
     }
@@ -12353,6 +12357,18 @@ fn execute_desktop_commands(
             // Plan 479 T2：notify 动词（App 主动请求通知；入史 + 未读 +
             // 浮现三联动，push_notification 单入口）。
             DC::Notify(kind, msg) => push_notification(state, &kind, &msg),
+            // PLAN-042 T-04：log 动词执行臂——入宿主 syslog 环。source =
+            // notify_source（联合排空泵注册表分段执行期置位的发件方
+            // registry_id；特权面批量段 None → "privileged"）。
+            DC::Syslog(level, text) => {
+                let src = state
+                    .desktop
+                    .notify_source
+                    .borrow()
+                    .clone()
+                    .unwrap_or_else(|| "privileged".to_string());
+                crate::ui::syslog::push(level, &src, text);
+            }
             // Plan 479 T2：notes_clear / notes_dismiss（面板「全部清除」/
             // 「逐条 ×」）——历史变更 + 落盘 + 面板开着则重注入。未读不动
             // （两按钮只在面板内可达，此刻未读恒 0）。
@@ -13287,7 +13303,7 @@ fn refresh_hole_regions_at(
         })
         .unwrap_or_default();
     if ndw::apply_hole_regions(desktop_hwnd, frame, &holes).is_err() {
-        eprintln!("[session] hole region apply failed (fallback to fake-hole, Plan 494)");
+        crate::syslog!(SyslogLevel::Warn, "host", "[session] hole region apply failed (fallback to fake-hole, Plan 494)");
         state.desktop.hole_mode = false;
         // 假洞 z 序全量重申（原生盖桌面，473 语义）。
         let slots: Vec<crate::ui::native_dock::NativeHwnd> = state
@@ -14074,7 +14090,8 @@ fn apply_fit_measured(
             state.desktop.fit_measure_in_flight.set(true);
             return fit_measure_task(win);
         }
-        eprintln!(
+        crate::syslog!(
+            SyslogLevel::Warn, "host",
             "[session] fit measure: anchor missing after {FIT_MEASURE_MAX_RETRIES} retries; \
              keeping fit_pending for the next trigger (plan-504)"
         );
@@ -15563,7 +15580,7 @@ pub(crate) fn apply_shell_projection_interpreted(
                 .component
                 .write_state("__wm_dashboard", auto_val::Value::str(if dash_visible { "1" } else { "" }));
             if let Err(err) = dapp.component.bridge_mut().call_handler("RunningSync", &[]) {
-                eprintln!("[session] desktop RunningSync failed: {err}");
+                crate::syslog!(SyslogLevel::Error, "host", "[session] desktop RunningSync failed: {err}");
             }
             *dapp.state.view_dirty.borrow_mut() = true;
         }
@@ -16030,7 +16047,7 @@ fn compare_pngs(
                             session.desktop.shell_app = Some(session.allocate_app(shell_comp));
                         }
                         Err(err) => {
-                            eprintln!("[session] shell load failed (desktop continues): {err}")
+                            crate::syslog!(SyslogLevel::Error, "host", "[session] shell load failed (desktop continues): {err}")
                         }
                     }
                     // Plan 496 M5：桌面本体面（第五面，常驻不召唤——与 overlay
@@ -16042,7 +16059,7 @@ fn compare_pngs(
                                 Some(session.allocate_app(surface_comp));
                         }
                         Err(err) => {
-                            eprintln!("[session] desktop surface load failed (desktop continues): {err}")
+                            crate::syslog!(SyslogLevel::Error, "host", "[session] desktop surface load failed (desktop continues): {err}")
                         }
                     }
                 }
@@ -16123,7 +16140,8 @@ fn compare_pngs(
                         .filter(|e| e.desktop_visible)
                         .cloned()
                         .collect();
-                    eprintln!(
+                    crate::syslog!(
+                        SyslogLevel::Info, "host",
                         "[session] app registry: {} entries ({} desktop-visible) from {}",
                         full.len(),
                         curated.len(),
@@ -16250,7 +16268,8 @@ fn compare_pngs(
                         .map(str::trim)
                         == Some("outproc")
                     {
-                        eprintln!(
+                        crate::syslog!(
+                            SyslogLevel::Info, "host",
                             "[session] shell.apps.process_model=outproc 已退役（PLAN-033）——
                              解释态两合法形态 = inproc 直挂 / -q 经 native 臂；键值忽略"
                         );
@@ -16304,7 +16323,8 @@ fn compare_pngs(
                     == crate::ui::session::ShellModel::Outproc
                 {
                     if let Err(err) = session.launch_shell_outproc() {
-                        eprintln!(
+                        crate::syslog!(
+                            SyslogLevel::Error, "host",
                             "[session] shell outproc spawn failed (fallback inproc): {err}"
                         );
                         match crate::ui::shell::build_shell_component() {
@@ -16312,7 +16332,8 @@ fn compare_pngs(
                                 session.desktop.shell_app =
                                     Some(session.allocate_app(shell_comp));
                             }
-                            Err(err2) => eprintln!(
+                            Err(err2) => crate::syslog!(
+                                SyslogLevel::Error, "host",
                                 "[session] fallback shell load failed (desktop continues): {err2}"
                             ),
                         }
@@ -16321,7 +16342,8 @@ fn compare_pngs(
                                 session.desktop.desktop_app =
                                     Some(session.allocate_app(surface_comp));
                             }
-                            Err(err2) => eprintln!(
+                            Err(err2) => crate::syslog!(
+                                SyslogLevel::Error, "host",
                                 "[session] fallback desktop surface load failed: {err2}"
                             ),
                         }
