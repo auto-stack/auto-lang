@@ -794,9 +794,22 @@ mod tests {
     #[test]
     fn scan_examples_ui_curation_set() {
         let apps = scan_apps(&repo_examples_ui(), &ScanOptions::default());
+        // PLAN-694：exe 背书 App（desktop_exe 声明/约定产物在场——如
+        // rust-workspace 产物已构建的 003-converter/001-helloworld）经
+        // 可见性缺省翻转入桌面，不入 C 档策展钉面——分区断言（无 exe
+        // 背书者恰等 C 档；有背书者必可见）。两分支皆构建态无关（判定
+        // 与可见性同源同条件）。
+        let exe_backed = |a: &AppRegistryEntry| {
+            a.desktop_exe.is_some()
+                || convention_native_exe(
+                    a.entry.ancestors().nth(3).expect("entry app dir"),
+                    a.name.as_deref(),
+                )
+                .is_some()
+        };
         let curated: Vec<&str> = apps
             .iter()
-            .filter(|a| a.desktop_visible)
+            .filter(|a| a.desktop_visible && !exe_backed(a))
             .map(|a| a.id.as_str())
             .collect();
         let want = [
@@ -849,11 +862,21 @@ mod tests {
         let opts = ScanOptions { render: Some("vm".to_string()) };
         let apps = scan_apps(&repo_examples_ui(), &opts);
         assert!(!apps.is_empty(), "vm 过滤后应仍有条目（041/024 等）");
+        // PLAN-694：render 过滤保留 vm + exe 背书（豁免语义——判定与
+        // 豁免同源 [`convention_native_exe`]，构建态无关）。
+        let exe_backed = |a: &AppRegistryEntry| {
+            a.desktop_exe.is_some()
+                || convention_native_exe(
+                    a.entry.ancestors().nth(3).expect("entry app dir"),
+                    a.name.as_deref(),
+                )
+                .is_some()
+        };
         assert!(
-            apps.iter().all(|a| a.render == "vm"),
-            "过滤后全部条目 render == vm"
+            apps.iter().all(|a| a.render == "vm" || exe_backed(a)),
+            "过滤后条目 = vm 声明 ∪ exe 背书"
         );
-        // vue 声明的 calculator 被滤除。
+        // vue 声明且无背书的 calculator 被滤除。
         assert!(apps.iter().all(|a| a.id != "011-calculator"));
     }
 
