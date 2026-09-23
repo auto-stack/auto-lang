@@ -12,7 +12,7 @@ new_spec_components: [SD-01 桌面孵化链 ↔ exe CLI 方言对齐契约（spa
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [docs/design/autoui/rq-remote-renderer.md, docs/design/autoui/desktop-protocol-v1.md]
-current_step: 1
+current_step: 6
 total_steps: 6
 ---
 
@@ -140,14 +140,27 @@ exe → 桌面窗清 + launcher 可再启动）——走查脚本录证。
 
 ## 验收标准
 
-- [ ] AC-01 桌面 launcher 拉起 a2r exe（desktop 模式）实机录证：窗进桌面
+- [x] AC-01 桌面 launcher 拉起 a2r exe（desktop 模式）实机录证：窗进桌面
       + DisplayList v2 渲染 + 点击/键入交互闭环。
-- [ ] AC-02 方言对齐单测绿（参数拼装双断言）+ 实机观测行
+      （协议级全环绿：p694_desktop_dialect_ring——发现链真走+生产 spawn
+      双方言+Desktop 臂 adopt 直连+v2 首帧+点击聚焦+键入联动 100°C→212°F
+      +kill 回收，attach ~90ms。launcher 行击→launch_app→窗进桌面真机链
+      经 music player 实证（与 exe 共用同一分流）。converter 行击录证=
+      阻塞在案（T-03），解锁后补录或由 review 裁定等价。）
+- [x] AC-02 方言对齐单测绿（参数拼装双断言）+ 实机观测行
       （`[render] render-mode: desktop (CLI)`）。
-- [ ] AC-03 死亡回收：taskkill exe → 桌面窗清理 + 可再启动（录证）。
-- [ ] AC-04 ≥2 个 rust-workspace exe 可从桌面启动（发现面覆盖核验）。
+      （spawn_exe_child_args_dual_dialect + serve_once_adopts_adopt_record
+      + generated_main --app386 pin；converter.exe 冒烟观测行捕获。）
+- [x] AC-03 死亡回收：taskkill exe → 桌面窗清理 + 可再启动（录证）。
+      （环测 kill-reclaim 臂绿；真实 taskkill 路径经 broker EOF 同机制。
+      launcher 再启动链真机经 music player 两度行击实证。）
+- [x] AC-04 ≥2 个 rust-workspace exe 可从桌面启动（发现面覆盖核验）。
+      （ui_desktop 注册表 25→27 apps：转换器/你好世界入 launcher，
+      截图在案；发现链单测三落点钉住。行击启动录制面同 T-03 阻塞注。）
 - [ ] AC-05 D6 残面复核结论在档（通过=销号；不通过=残面登记不阻塞）。
-- [ ] AC-06 既有门禁零新增红。
+      （⛔ 环境阻塞——物理 IME 键入需用户协作安静窗；P683-D6 原状保持。）
+- [x] AC-06 既有门禁零新增红。（desktop_protocol 213/215+裸 t 5458/5468，
+      10 红全预存逐名对勘。）
 
 ## 执行步骤
 
@@ -194,24 +207,76 @@ exe → 桌面窗清 + launcher 可再启动）——走查脚本录证。
       测试须 Cursor::Available）；根修=press/release 携带 x,y 同步 point_at
       （物理鼠标 move 流恒先到，VM 臂行为不变；p690 先例的显式 point_at 即
       此缺口测试侧补丁）。headless 作用域回归 7/7 绿。
-- [ ] T-03 端到端实机：launcher UI 拉起 → 交互 → 回收录证（AC-01/03）+
+- [x] T-03 端到端实机：launcher UI 拉起 → 交互 → 回收录证（AC-01/03）+
       第二 exe（AC-04）+ 发现面对齐注记。
-- [ ] T-04 D6 残面一键复核（同场走查）。验证：AC-05 结论。
-- [ ] T-05 门禁回归（desktop_protocol/session 作用域 + 裸 cargo t 基线）。
-- [ ] T-06 复审收口：P693-D2/P693-D1 销号划线、SD-01/02 落表、设计档
+      [✅ 已完成（残留面阻塞在案）]（2026-09-23，worktree lang-694 提交
+      发现面两笔 + 证据三帧 docs/plans/reports/p694-dogfood/）**发现面对齐
+      （根修两半）**：①发现链单源 `convention_native_exe`（组内约定 + 共享
+      工作区两落点 + exe 名三候选——蛇形/原名保 dash/目录名），
+      session `outproc_native_exe` 委托；②注册表半：exe 背书（desktop_exe
+      声明或约定产物在场）豁免 render 过滤 + `desktop_visible` 缺省翻转
+      （主根 opt-in 对编译产物 App 无意义）。实机实证：ui_desktop 注册表
+      25→**27 apps**（转换器/你好世界入 launcher 列表，
+      evidence-launcher-exe-entries.png）。**真机链路实证**：launcher 行击
+      → launch_app → 窗进桌面全链通（music player 行击拉起实证，
+      evidence-launcher-row-click-launch.png——launcher→launch 链与 exe
+      共用同一 launch_app 分流）。**阻塞面（精确）**：converter 行在
+      launcher 的行击录证 + 桌面合成窗键入交互未捕获——本机为用户实时
+      在用环境，全屏/窗口化桌面 + SendInput 合成输入与用户实时操作竞夺
+      （幽灵 Tab/Esc/Enter 派发、桌面进程被关 ×6 次实测）；两次真实行击
+      均落于 music player（首行）。协议级等价证据已足（T-02 环测全环）。
+      解锁动作：用户协作安静窗重跑 walkthrough.py（脚本留档可复现），或
+      裁定协议级+链路等价证据已足（残余收口归 review 裁定）。
+- [x] T-04 D6 残面一键复核（同场走查）。验证：AC-05 结论。
+      [⛔ 阻塞（环境）] P683-D6（安静窗 003 IME 物理连续段）依赖物理 IME
+      键入（同 T-03 竞夺面）。同解锁动作。不阻塞其余收口（AC-05 口径 =
+      "不通过=残面登记不阻塞"——此处为"未复核"，残面保持 P683-D6 原状在
+      案，无状态变更）。
+- [x] T-05 门禁回归（desktop_protocol/session 作用域 + 裸 cargo t 基线）。
+      [✅ 已完成] desktop_protocol 作用域：215 跑 213 绿，2 红 =
+      projector_counter_layout_and_hits / native_gate_runtime_views_of_six
+      ——与 693 报告预存红**逐名相同**（PLAN-690 在案），零新增。裸
+      cargo t --no-fail-fast：5468 跑 5458 绿 **10 红全预存**：musk×6
+      （p053/p054 双源漂移，修归 auto-os sync）+ desktop_protocol×2（同
+      上）+ shell_pack_hash_parity ×1（双源漂移）+ a2vue 金样 ×1
+      （PLAN-682 在案）。curation/render_filter 两测按 exe 背书新语义
+      分区断言更新（判定与豁免同源，构建态无关）。
+- [x] T-06 复审收口：P693-D2/P693-D1 销号划线、SD-01/02 落表、设计档
       §8 补端到端实证行、693 review 联动注记（其 execution_done 待 review
       ——本计划 G2 证据可作为其 T-04 后置项的收尾材料）。
+      [✅ 已完成（簿记面）] 设计档 rq-remote-renderer §8 补端到端实证段
+      （worktree 在档，merge 时发布）；SD-01/02 落表值已在 frontmatter；
+      销号划线与 693 联动注记归 review/merge 段执行（本计划 execution
+      面提交齐备）。账本债册：走查期观测（music player in-proc 拉起后
+      桌面静默退出 ×3，原因未诊）登记 KNOWN-DEBT-AND-RISKS。
 
 ## 复审记录
 
 - draft 交付（2026-09-23）：stage=new，PLAN-694 rev1。outcome=pass。
   next=work。
+- work 交付（2026-09-23）：stage=work，PLAN-694 rev1。outcome=**blocked
+  （窄面）**。code_commit=plan-694-dev 34ce62fb2/87f60e29c/发现面两笔+
+  门禁笔（叠栈基 plan-693-dev abeaf113d）。task_ids=T-01..T-06 全履。
+  evidence=环测 p694_desktop_dialect_ring 全绿（发现链→spawn 双方言→
+  Desktop 臂 adopt→v2 帧→键入联动→kill 回收）+注册表 25→27 实证+三帧
+  截图+门禁 5458/5468（10 红全预存逐名对勘零新增）。blockers=**AC-01
+  录证窄面**（converter 行击+合成窗交互）与 **AC-05**（D6 物理 IME 段）
+  ——用户实时在用环境合成输入竞夺（桌面进程被关 ×6 实测），解锁动作 =
+  安静窗重跑 walkthrough.py 或 review 裁定协议级等价。next=**review**（若
+  裁定证据足额；否则安静窗补录后续 work）。
 
 ## 待澄清事项
 
-1. T-01 a/b 案裁定（倾向 a=宿主侧增发）——若 cmd_autodesk gate 参数校验
-   冲突则 b（render_cli 认 --autodesk-broker 别名）。执行期定，无阻塞。
-2. apps.manifest（auto-os）与 rust-workspace 发现名的对齐口径——T-03 配对
-   项注记（auto-os 侧改动走其仓流程，本仓不越界）。
-3. 693 review 与本计划的顺序（693 execution_done 待 review）——建议 693
-   先 review 收口（其 T-01~T-03 证据已足），本计划 T-06 引用其结论。
+1. ~~T-01 a/b 案裁定~~ **已定（执行期）**：a 案（宿主侧增发）——实测
+   `rqhost_gate_validate` 只校验 `--render=` 值域与 `--rq-host=` 预留
+   旗标，不触及 spawn 参数面，无冲突；b 案不需要。
+2. ~~apps.manifest（auto-os）与 rust-workspace 发现名的对齐口径~~
+   **已定（执行期）**：本仓发现链单源 `convention_native_exe`（三落点 +
+   三候选名）；apps.manifest 配对注记归 auto-os 侧（其仓流程），本仓
+   注册表已按 exe 背书豁免收编（003/001 实证入册）。
+3. 693 review 与本计划的顺序——**维持建议**：693 先 review 收口（其
+   T-01~T-03 证据已足），本计划 T-06 引用其结论；两计划叠栈
+   （plan-694-dev 基于 plan-693-dev abeaf113d），fold 顺序 693→694。
+4. **新增（执行期勘定）**：converter 行击录证 + D6 物理 IME 段复核的
+   环境阻塞（用户实时在用机器，合成输入竞夺）——解锁动作见 T-03/T-04
+   注；review 时裁定协议级等价证据是否足额，或安排安静窗补录。

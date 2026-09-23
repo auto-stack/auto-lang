@@ -29,3 +29,10 @@
 3. **VM(iced) 臂 command 家族未实现**：八 command 元素 `iced: none` 维持——VM 臂渲染降级。接线（含 `size` prop 的 iced scrollable 宽度）另立。
 4. **reka sizes 初始测量 18px 下限（观察项）**：本仓环境下 ScrollArea thumb 长度常命中 reka getThumbSize 的 18px 下限（A/B 证实与实现无关；拖拽数学内部自洽，仅视觉比例偏小）。
 5. **脚手架 h1-h6 基础 margin 内联隐患**：基础样式给 h1-h6 的 mt/mb 对"内联进 flex 行"的标题同类泄漏（PLAN-692 W-3 实证一处）；其余位置待观察，出现即补 m-0。
+
+### P694（2026-09-23，Plan 694 desktop-dogfood work 执行登记）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P694-D1 | medium | 桌面宿主稳定性 | **走查期观测：in-proc VM App（020-music-player）拉起后桌面宿主静默退出 ×3**（ui_desktop 全屏/窗口化两形态均复现；日志无 panic/错误行，进程直接消失；时间点在 launch_app(inproc) 落地后的数十秒内）。back-proxy lazy-start（port 3359）/media 能力面疑似关联，未诊断。走查期间用户实时操作与合成输入并存，不排除外因（进程被关），但 ×3 时间相关性值得勘定。诊断入口：cdb 附加 + music player 拉起复现；修 = 归因后定点 | ui_desktop 宿主；session.rs launch_app inproc 臂；back_provision/back-proxy lazy-start |
+| P694-D2 | low | 桌面 shell 输入面（VM 轨） | **launcher 全量列表导航在 VM 轨不可用**——搜索框键入（物理字符派发为 `key_<char>` VM 事件，input widget 不收 CharTyped）、滚轮滚动、方向键（Named 键不路由至 bind 表）三路实测均不通（028-launcher overlay）；行击直点正常。本计划以 recent 存储夹具绕行完成发现面录证；shell 侧输入路由修复归 auto-os/shell 线（本计划非目标） | 028-launcher overlay；session.rs 键盘路由（key_<char> 派发臂）；walkthrough 走查留痕 docs/plans/reports/p694-dogfood/ |
