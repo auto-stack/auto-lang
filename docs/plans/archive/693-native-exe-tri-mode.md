@@ -240,7 +240,7 @@ remote 族恒显式选用。PLAN-683 F-3 呈报项就此关闭（设计档 §8 �
   提交；master 冒烟 16/16。ledger_refreshed=specs.json P693-1
   （architecture）/P693-2（reviews）+ui/plans.md 行+INDEX 再生。
   archived=docs/plans/archive/693-native-exe-tri-mode.md。
-  cleaned=worktree lang-693+分支 plan-693-dev（wt-guard clean 后移除）。
+  cleaned=**已实证**：worktree lang-693/auto-lang 移除+分支 plan-693-dev 删除（@5bc78de0b=landed tip）+组目录收空+auto-down 依赖位陈旧残留清扫（wt-guard 三处 clean 在案）；git worktree list 零残留。
 
 ## 待澄清事项
 
