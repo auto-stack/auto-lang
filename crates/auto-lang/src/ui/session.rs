@@ -3049,6 +3049,14 @@ fn outproc_child_identity(
 /// `<app-root>/rust-workspace/<dir>/target/{release,debug}/<exe>.exe`
 /// （exe 名先 pac `name:` 蛇形、后目录名——scratch counter 实测生成物 =
 /// 蛇形包名）。两者皆无 → None = 现行解释态 outproc 臂。
+///
+/// PLAN-694 T-03（发现面对齐）：③**共享工作区两落点**（Stage B P-2 生成
+/// 侧 `resolve_rust_workspace_dir` 的发现侧镜像——②的组内约定是 P-2 前
+/// 形态；框架 member 实测落点 = 仓根共享 ws `examples/rust-workspace/
+/// <dir>/`（member 本名）+ 仓根共享 target-dir（生成 config
+/// `target-dir = ../../target`）——`auto build -r rust` 003-converter 实测
+/// exe 落 `<repo>/target/debug/converter.exe`）。仓根判定 = 自 App 目录
+/// 向上找 `crates/`（仓外 App 无此标记——desktop_exe 声明或 env 钉定）。
 pub(crate) fn outproc_native_exe(spec: &LaunchSpec) -> Option<std::path::PathBuf> {
     if spec.exe.is_some() {
         return spec.exe.clone();
@@ -3068,17 +3076,54 @@ pub(crate) fn outproc_native_exe(spec: &LaunchSpec) -> Option<std::path::PathBuf
         candidates.push(snake);
     }
     candidates.push(dir_name.clone());
+    let repo_root = Self::framework_repo_root(dir);
     for build in ["release", "debug"] {
         for exe_name in &candidates {
+            let exe_file = format!("{exe_name}.exe");
+            // ② 组内约定（P-2 前形态，零变化）。
             let candidate = root
                 .join("rust-workspace")
                 .join(&dir_name)
                 .join("target")
                 .join(build)
-                .join(format!("{exe_name}.exe"));
+                .join(&exe_file);
             if candidate.is_file() {
                 return Some(candidate);
             }
+            // ③ 共享工作区（P-2 现实落点）。
+            let Some(repo) = repo_root.as_ref() else {
+                continue;
+            };
+            let ws_member = repo
+                .join("examples")
+                .join("rust-workspace")
+                .join(&dir_name)
+                .join("target")
+                .join(build)
+                .join(&exe_file);
+            if ws_member.is_file() {
+                return Some(ws_member);
+            }
+            let shared = repo.join("target").join(build).join(&exe_file);
+            if shared.is_file() {
+                return Some(shared);
+            }
+        }
+    }
+    None
+}
+
+/// 自 App 目录向上找框架仓根（含 `crates/` 标记目录；auto-man
+/// `find_lang_repo_root` 同式简化——发现侧只需仓内判定，无需兄弟布局
+/// 回退：仓外 App 无 crates/ 即 None，走 desktop_exe 声明）。
+fn framework_repo_root(from: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut dir = from.to_path_buf();
+    for _ in 0..6 {
+        if dir.join("crates").exists() {
+            return Some(dir);
+        }
+        if !dir.pop() {
+            break;
         }
     }
     None
@@ -7226,6 +7271,60 @@ mod tests {
             render_decl: None,            ..Default::default()
         };
         assert_eq!(DesktopSession::outproc_native_exe(&inline), None, "内联 spec 无发现面");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// PLAN-694 T-03（发现面对齐）：共享工作区两落点——组内约定 MISS 后
+    /// 镜像生成侧 P-2 落点：`<repo>/examples/rust-workspace/<dir>/target/…`
+    ///（member 本名）与 `<repo>/target/…`（共享 target-dir，auto build
+    /// 003-converter 实测落位）。仓根判定 = 向上找 `crates/`；无标记
+    ///（仓外/temp 布局）不进入 ③ 臂——上测 temp 布局即天然隔离。
+    #[test]
+    fn native_exe_discovery_shared_workspace_landing() {
+        let root = std::env::temp_dir().join("plan694-shared-ws-disc");
+        let _ = std::fs::remove_dir_all(&root);
+        // 伪仓根：crates/ 标记 + examples/ui 组布局。
+        std::fs::create_dir_all(root.join("crates")).unwrap();
+        let dir = root.join("examples").join("ui").join("003-converter");
+        std::fs::create_dir_all(dir.join("src").join("front")).unwrap();
+        let app_at = dir.join("src").join("front").join("app.at");
+        std::fs::write(&app_at, "widget App {}").unwrap();
+        let spec = LaunchSpec {
+            media_root: None,
+            back_entry: None,
+            code: String::new(),
+            source_path: Some(app_at.to_string_lossy().to_string()),
+            name: Some("converter".to_string()),
+            exe: None,
+            ..Default::default()
+        };
+        // 全缺 → None（无组内约定、无共享落点）。
+        assert_eq!(DesktopSession::outproc_native_exe(&spec), None, "落点缺席不误报");
+        // ③a 共享 ws member 本地 target。
+        let ws_member = root
+            .join("examples")
+            .join("rust-workspace")
+            .join("003-converter")
+            .join("target")
+            .join("debug");
+        std::fs::create_dir_all(&ws_member).unwrap();
+        std::fs::write(ws_member.join("converter.exe"), b"MZ").unwrap();
+        assert_eq!(
+            DesktopSession::outproc_native_exe(&spec).as_ref(),
+            Some(&ws_member.join("converter.exe")),
+            "共享 ws member 落点命中"
+        );
+        // ③b 共享 target-dir 落点（生成 config ../../target 实测形态——
+        // member 落点清空后命中仓根 target）。
+        std::fs::remove_file(ws_member.join("converter.exe")).unwrap();
+        let shared = root.join("target").join("debug");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::write(shared.join("converter.exe"), b"MZ").unwrap();
+        assert_eq!(
+            DesktopSession::outproc_native_exe(&spec).as_ref(),
+            Some(&shared.join("converter.exe")),
+            "仓根共享 target 落点命中"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

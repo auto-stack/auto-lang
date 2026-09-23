@@ -804,8 +804,17 @@ where
 
     fn on_input(&mut self, input: &crate::ui::desktop_protocol::message::InputMsg) {
         // 光标位同步（hover 态渲染依赖——iced Cursor::Available）。
-        if let crate::ui::desktop_protocol::message::InputMsg::PointerMoved { x, y, .. } = input {
-            self.surface.point_at(Some(iced::Point::new(*x, *y)));
+        // PLAN-694：press/release 同步（携带 x,y——任何位置性输入都蕴含
+        // 光标在位；桌面会话注入面无 PointerMoved 生产（hover 不上线），
+        // 协议级点击（p694 环测）据此可聚焦 iced text_input——物理鼠标
+        // 场景 move 流恒先到，行为不变）。
+        match input {
+            crate::ui::desktop_protocol::message::InputMsg::PointerMoved { x, y, .. }
+            | crate::ui::desktop_protocol::message::InputMsg::PointerPressed { x, y, .. }
+            | crate::ui::desktop_protocol::message::InputMsg::PointerReleased { x, y, .. } => {
+                self.surface.point_at(Some(iced::Point::new(*x, *y)));
+            }
+            _ => {}
         }
         let events = input_to_iced_events(input);
         if events.is_empty() {

@@ -4674,6 +4674,233 @@ mod tests {
         let _ = transport::connect(&broker_pipe, 500);
     }
 
+    /// PLAN-694 T-02 —— desktop 方言端到端环（`AUTO_DESKTOP_E2E=1` 实机
+    /// 档 + 载体在册才跑）：a2r exe（003-converter；**发现链真走**——
+    /// spec exe 缺席，`outproc_native_exe` 共享工作区落点命中）经生产
+    /// spawn 链（`spawn_exe_child` 双方言）→ exe 以 CLI 顶优先进
+    /// `ClientTarget::Desktop` 臂 → `rqhost::adopt` 直连桌面宿主 broker
+    ///（serve 双动词受理）→ v2 DisplayList 帧入宿主合成 → 协议点击聚焦 +
+    /// 键入联动（Celsius 100 → Fahrenheit 212）→ kill 方向 EOF 回收
+    ///（AC-01 协议级半环 + AC-02 观测面 + AC-03 kill 前置）。
+    /// 载体：env `AUTO_694_NATIVE_EXE`（pin exe = 跳过发现链）/ 
+    /// `AUTO_694_NATIVE_APP_DIR`（缺省 = 本仓 examples/ui/003-converter，
+    /// exe 缺省经发现链找 `<repo>/target/debug/converter.exe`）。
+    #[test]
+    fn p694_desktop_dialect_ring() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        let app_dir = std::path::PathBuf::from(
+            std::env::var("AUTO_694_NATIVE_APP_DIR").unwrap_or_else(|_| {
+                concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/ui/003-converter").to_string()
+            }),
+        );
+        let source = app_dir.join("src").join("front").join("app.at");
+        if !source.is_file() {
+            eprintln!("[p694] skip: 载体源缺席（{}）", source.display());
+            return;
+        }
+        let code = std::fs::read_to_string(&source).expect("read converter source");
+        let pinned_exe = std::env::var("AUTO_694_NATIVE_EXE").ok().map(std::path::PathBuf::from);
+
+        let broker_pipe = format!("autodesk-broker-694-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+        // 注册表 resolver：exe 缺席 = 发现链真走（共享工作区落点）。
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            (name == "003-converter").then(|| LaunchSpec {
+                media_root: None,
+                back_entry: None,
+                code: code.clone(),
+                source_path: Some(source.to_string_lossy().to_string()),
+                title: Some("Converter".to_string()),
+                name: Some("converter".to_string()),
+                daemon: None,
+                back_root: None,
+                fit: false,
+                exe: pinned_exe.clone(),
+                opens: Vec::new(),
+                render_decl: None,
+            })
+        }));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        // 发现链证据：exe 由 ③ 共享工作区落点命中（非 pin）。
+        let resolver_spec = (session.desktop.app_resolver.as_ref().unwrap())("003-converter")
+            .expect("resolver spec");
+        if resolver_spec.exe.is_none() {
+            let discovered = DesktopSession::outproc_native_exe(&resolver_spec)
+                .expect("发现链命中共享工作区落点（缺 exe 先跑 auto build -r rust）");
+            println!("AUTO694-RING discovered={}", discovered.display());
+        }
+
+        // —— launch：生产 spawn 链（双方言）→ Desktop 臂 adopt → attach 落窗。
+        let wid = {
+            let t0 = std::time::Instant::now();
+            let wid = session.launch_app("003-converter").expect("desktop 方言 launch");
+            println!("AUTO694-RING launch_attach_ms={:.1}", t0.elapsed().as_secs_f64() * 1000.0);
+            wid
+        };
+        // 认领对称性证据：Hello app_name = 目录名（--app386 覆盖生效）。
+        let client = session
+            .broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid))
+            .expect("落地 client")
+            .pipe
+            .clone();
+        let claimed = session
+            .broker_clients
+            .get(&client)
+            .and_then(|c| c.app_name.clone());
+        assert_eq!(
+            claimed.as_deref(),
+            Some("003-converter"),
+            "Hello app_name = --app386 目录名（认领同源）"
+        );
+
+        // —— 首帧（v2 DisplayList）：desktop 臂 remote 帧宿主合成。
+        let frame_deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        let first_v2 = loop {
+            session.pump_broker_clients();
+            if let Some(list) = session
+                .broker_clients
+                .values()
+                .find(|c| c.wid == Some(wid))
+                .and_then(|c| c.composed_v2())
+                .filter(|l| !l.ops.is_empty())
+            {
+                break list.clone();
+            }
+            assert!(std::time::Instant::now() < frame_deadline, "v2 首帧超时");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        assert!(
+            first_v2.ops.iter().any(|op| matches!(
+                op,
+                crate::ui::desktop_protocol::message::DisplayOp::TextStyled { text, .. }
+                    if text.contains("Temperature Converter")
+            )),
+            "v2 帧已合成（标题在册）"
+        );
+        println!("AUTO694-RING first-v2-frame PASS (ops={})", first_v2.ops.len());
+
+        // —— 交互闭环：点击 Celsius 输入区（标签下 ~28px）→ 键入 100 →
+        // Fahrenheit 联动 212（oninput 换算跨输入框生效）。
+        let (label_x, label_y) = first_v2
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                crate::ui::desktop_protocol::message::DisplayOp::TextStyled { x, y, text, .. }
+                    if text.contains("Celsius") => Some((*x, *y)),
+                _ => None,
+            })
+            .expect("Celsius 标签定位");
+        let (click_x, click_y) = (
+            wid_rect_x(&session, wid) + label_x + 20.0,
+            wid_rect_y(&session, wid) + label_y + 28.0,
+        );
+        // Pressed + Released 完整对（p690 先例：iced text_input 点击聚焦
+        // 须成对——单 press 不成 focus）。
+        assert!(
+            session.broker_pointer_down(click_x, click_y, MouseButton::Left),
+            "点击路由（聚焦 Celsius 输入）"
+        );
+        assert!(
+            session.broker_pointer_up(click_x, click_y, MouseButton::Left),
+            "点击收尾路由"
+        );
+        for ch in "100".chars() {
+            assert!(session.broker_char(ch), "键入路由 {ch}");
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            session.pump_broker_clients();
+            let hit = session
+                .broker_clients
+                .values()
+                .find(|c| c.wid == Some(wid))
+                .and_then(|c| c.composed_v2())
+                .is_some_and(|l| {
+                    l.ops.iter().any(|op| match op {
+                        crate::ui::desktop_protocol::message::DisplayOp::TextStyled {
+                            text, ..
+                        } => text.contains("212"),
+                        _ => false,
+                    })
+                });
+            if hit {
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                let texts: Vec<String> = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.wid == Some(wid))
+                    .and_then(|c| c.composed_v2())
+                    .map(|l| {
+                        l.ops
+                            .iter()
+                            .filter_map(|op| match op {
+                                crate::ui::desktop_protocol::message::DisplayOp::TextStyled {
+                                    x,
+                                    y,
+                                    text,
+                                    ..
+                                } => Some(format!("({x:.0},{y:.0}) {text:?}")),
+                                _ => None,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                panic!("键入联动帧超时（100°C → 212°F 未落地）；v2 文本面 = {texts:?}");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        println!("AUTO694-RING typing-linkage PASS (Celsius 100 -> Fahrenheit 212)");
+
+        // —— kill 方向回收（AC-03 前置）：杀子进程 → 宿主 EOF 清窗。
+        let kid = session.desktop.outproc_children.last_mut().unwrap();
+        let _ = kid.kill();
+        let _ = kid.wait();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            session.pump_broker_clients();
+            let reclaimed = !session.host.as_ref().unwrap().wm.wins.contains_key(&wid)
+                && !session.broker_clients.values().any(|c| c.wid == Some(wid));
+            if reclaimed {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "kill 回收超时");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        println!("AUTO694-RING kill-reclaim PASS (wid={wid:?})");
+
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
+
+    /// 环测取位辅助：窗原点 x（协议点击坐标 = 桌面级绝对坐标）。
+    fn wid_rect_x(session: &DesktopSession, wid: Wid) -> f32 {
+        session
+            .host
+            .as_ref()
+            .and_then(|h| h.wm.wins.get(&wid))
+            .map(|v| v.rect.borrow().x)
+            .unwrap_or(0.0)
+    }
+
+    /// 环测取位辅助：窗原点 y。
+    fn wid_rect_y(session: &DesktopSession, wid: Wid) -> f32 {
+        session
+            .host
+            .as_ref()
+            .and_then(|h| h.wm.wins.get(&wid))
+            .map(|v| v.rect.borrow().y)
+            .unwrap_or(0.0)
+    }
+
     /// Plan 020 T-08 —— native exe 度量臂（`AUTO_DESKTOP_E2E=1` + 载体在册
     /// 才跑）：N=1/3/5 阶梯 launch（同一编译 exe 五实例——同 App 边际，
     /// 与 508 五不同 App 口径的差异随注报告）+ 宿主/子进程 Private/WS 双
