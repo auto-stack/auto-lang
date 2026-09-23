@@ -1501,7 +1501,7 @@ impl WidgetRegistry {
         self.register(menu_bar_checkbox_item);
 
         // PLAN-695 T-02: menubar 族补全至 shadcn 16 元素——8 个新/改 spec
-        //（7 新件 + label 此前 web:none 无 spec）。三形态别名纪律同 677
+        //（7 新件 + label 此前 web:none 无 spec）。别名纪律同 677
         //（menu-bar-* 官方 kebab / menubar_* schema snake / menubar-* DSL
         // kebab）；vue 映射随 schema/aura.at overlay 灌入
         //（apply_schema_vue_mappings 按折叠键解析）。
@@ -2710,7 +2710,7 @@ mod tests {
         );
     }
 
-    /// PLAN-695 T-02: menubar 族 16 元素 spec 全绿——三形态别名命中 +
+    /// PLAN-695 T-02: menubar 族 15 元素 spec 全绿——别名命中 +
     /// vue 映射自 schema overlay（label 此前 web:none 无 spec，补后即有）。
     #[test]
     fn p695_menubar_family_registry_complete() {

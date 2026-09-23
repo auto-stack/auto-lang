@@ -72,8 +72,8 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 
 ## 现状（2026-09-23）——menubar 族完备 + 配色主题化（PLAN-695）
 
-menubar 从"七件主干 + 硬编码深色"补全为 shadcn-vue 对齐的 **16 元素完整
-组件族**（radio-group/radio-item/label/shortcut/sub 族/group 新增，
+menubar 从"七件主干 + 硬编码深色"补全为 shadcn-vue 对齐的 **15 元素完整
+组件族**（root+14 子件；复审 R-1 计数勘正）（radio-group/radio-item/label/shortcut/sub 族/group 新增，
 schema 三端注记如实翻转 `iced: component`）；VM 双解释态（声明式族 +
 actions 合成）与 a2r 静态降层三路同源：面板/项/分隔线/trigger 配色全量
 消费 popover 语义 token（`Color::Popover/PopoverForeground` 独立投影
