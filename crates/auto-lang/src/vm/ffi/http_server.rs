@@ -1884,6 +1884,24 @@ fn ready() str { "ready" }
             assert!(resp.starts_with("HTTP/1.1 413"), "oversize body must be rejected, got: {:?}", resp);
         }
 
+        /// PLAN-696 T-03: reject malformed Content-Length instead of silently
+        /// treating it as a bodyless request.
+        #[test]
+        fn e2e_plan696_invalid_content_length_rejected() {
+            let port = start_server(r#"
+#[api(method = "POST", path = "/api/ready")]
+fn ready() str { "ready" }
+"#, 18764);
+            let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
+            stream.write_all(
+                b"POST /api/ready HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: not-a-number\r\nConnection: close\r\n\r\n",
+            ).unwrap();
+            let mut resp = String::new();
+            stream.read_to_string(&mut resp).unwrap();
+            assert!(resp.starts_with("HTTP/1.1 400"), "malformed length must be rejected, got: {:?}", resp);
+        }
+
         /// PLAN-696 T-02 red sample: a delayed generator must not keep the
         /// single-thread I/O reactor from serving an unrelated health request.
         #[test]
@@ -2878,55 +2896,98 @@ pub async fn serve_async(vm: &crate::vm::engine::AutoVM, addr: &str) {
 /// Handle a single HTTP connection (async). Parses the request, dispatches to
 /// the matched #[api] handler via call_fn_by_name, and writes the response.
 /// SSE handlers interleave with other connections via yield_now.
+async fn write_request_error_response(
+    stream: &mut tokio::net::TcpStream,
+    status: &str,
+    message: &str,
+) {
+    use tokio::io::AsyncWriteExt;
+
+    let body = format!("{{\"error\":{}}}", json_escape_string(message));
+    let response = format!(
+        "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
+        status,
+        body.len(),
+        cors_headers(),
+        body
+    );
+    let _ = stream.write_all(response.as_bytes()).await;
+}
+
 async fn handle_connection_async(
     vm: &crate::vm::engine::AutoVM,
     stream: &mut tokio::net::TcpStream,
     routes: &[HttpRoute],
 ) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use std::time::Duration;
 
-    // Read the request line + headers (raw bytes; minimal parser).
-    // PLAN-669: read until the end of the request head ("\r\n\r\n") — a
-    // single read() can return a TCP-segmented fragment (observed under
-    // nextest process churn: the first read yielded "G", which parsed to
-    // parts.len()<2 and an empty-body 400 — the long-mysterious th-tier
-    // "environment reds", Plan 568 T7). Headers are only parseable whole.
+    const MAX_HEADER_SIZE: usize = 64 * 1024;
+    const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
+    const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(10);
+
+    // Read the complete head as bytes while retaining any body bytes coalesced
+    // into the same TCP read. `lines()` is only used on the bounded head.
     let mut buf: Vec<u8> = Vec::with_capacity(2048);
-    loop {
+    let read_deadline = tokio::time::Instant::now() + REQUEST_READ_TIMEOUT;
+    let head_end = loop {
+        if let Some(end) = find_sub(&buf, b"\r\n\r\n")
+            .map(|i| i + 4)
+            .or_else(|| find_sub(&buf, b"\n\n").map(|i| i + 2))
+        {
+            if end > MAX_HEADER_SIZE {
+                write_request_error_response(
+                    stream,
+                    "431 Request Header Fields Too Large",
+                    "request headers too large",
+                )
+                .await;
+                return;
+            }
+            break end;
+        }
+        if buf.len() > MAX_HEADER_SIZE {
+            write_request_error_response(
+                stream,
+                "431 Request Header Fields Too Large",
+                "request headers too large",
+            )
+            .await;
+            return;
+        }
+
         let mut chunk = [0u8; 2048];
-        let n = match stream.read(&mut chunk).await {
-            Ok(n) => n,
-            Err(_) => return,
+        let n = match tokio::time::timeout_at(read_deadline, stream.read(&mut chunk)).await {
+            Ok(Ok(n)) => n,
+            Ok(Err(_)) => return,
+            Err(_) => {
+                write_request_error_response(stream, "408 Request Timeout", "request headers timed out").await;
+                return;
+            }
         };
         if n == 0 {
             // EOF before a complete head (start_server's readiness probe
-            // lands here) — drop silently.
+            // lands here) — report malformed data only if a partial head arrived.
+            if !buf.is_empty() {
+                write_request_error_response(stream, "400 Bad Request", "incomplete request headers").await;
+            }
             return;
         }
         buf.extend_from_slice(&chunk[..n]);
-        if buf.windows(4).any(|w| w == b"\r\n\r\n") {
-            break;
-        }
-        if buf.len() > 64 * 1024 {
-            let resp = format!(
-                "HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\n{}\r\n",
-                cors_headers()
-            );
-            let _ = stream.write_all(resp.as_bytes()).await;
-            return;
-        }
-    }
-    let raw = String::from_utf8_lossy(&buf).to_string();
+    };
+    let raw = String::from_utf8_lossy(&buf[..head_end]).to_string();
 
     let mut lines = raw.lines();
     let request_line = match lines.next() {
-        Some(l) => l,
-        None => return,
+        Some(l) if !l.is_empty() => l,
+        _ => {
+            write_request_error_response(stream, "400 Bad Request", "missing request line").await;
+            return;
+        }
     };
     let parts: Vec<&str> = request_line.split_whitespace().collect();
     if parts.len() < 2 {
-        let resp = format!("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n{}\r\n", cors_headers());
-        let _ = stream.write_all(resp.as_bytes()).await;
+        write_request_error_response(stream, "400 Bad Request", "malformed request line").await;
         return;
     }
     let req_method = parts[0].to_uppercase();
@@ -2939,10 +3000,10 @@ async fn handle_connection_async(
         return;
     }
 
-    // Parse body (after blank line) if Content-Length present.
-    let mut content_length = 0usize;
-    let mut body = String::new();
-    let mut header_done = false;
+    // Parse framing and request metadata from complete header lines. Invalid
+    // lengths and transfer codings we do not implement are rejected up front.
+    let mut content_length_header: Option<usize> = None;
+    let mut has_transfer_encoding = false;
     let mut is_websocket = false;
     let mut content_type = String::new();
     let mut content_type_raw = String::new();
@@ -2950,48 +3011,57 @@ async fn handle_connection_async(
     let mut auth_header = String::new();
     let mut incoming_request_id = String::new();
     for line in lines {
-        if !header_done {
-            if line.is_empty() {
-                header_done = true;
-                continue;
-            }
-            let lower = line.to_lowercase();
-            if lower.starts_with("content-length:") {
-                content_length = lower[15..].trim().parse().unwrap_or(0);
-            }
-            // Plan 346 stage 5: Request body size limit (default 10MB).
-            const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
-            if content_length > MAX_BODY_SIZE {
-                let resp = format!("HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nContent-Length: 27\r\nConnection: close\r\n{}\r\n{{\"error\":\"body too large\"}}", cors_headers());
-                let _ = stream.write_all(resp.as_bytes()).await;
-                eprintln!("[HTTP] {} {} → 413 (body {} > {})", req_method, req_path, content_length, MAX_BODY_SIZE);
-                return;
-            }
-            if lower.starts_with("upgrade:") && lower.contains("websocket") {
-                is_websocket = true;
-            }
-            if lower.starts_with("content-type:") {
-                // Keep the lowercased copy for `contains` checks, plus the
-                // original case — multipart boundaries are case-sensitive
-                // (Plan 346 5a: a lowercased boundary never matched the body).
-                content_type = lower[13..].trim().to_string();
-                content_type_raw = line[13..].trim().to_string();
-            }
-            // Plan 346 stage 4: Parse Cookie and Authorization headers.
-            if lower.starts_with("cookie:") {
-                cookie_header = line[7..].trim().to_string();
-            }
-            if lower.starts_with("authorization:") {
-                auth_header = line[14..].trim().to_string();
-            }
-            // Plan 346 #12 (B6): honor an incoming X-Request-Id (trace
-            // propagation); otherwise mint one below.
-            if lower.starts_with("x-request-id:") {
-                incoming_request_id = line[14..].trim().to_string();
-            }
-        } else if body.len() < content_length {
-            body.push_str(line);
+        if line.is_empty() {
+            break;
         }
+        let Some((name, value)) = line.split_once(':') else {
+            write_request_error_response(stream, "400 Bad Request", "malformed request header").await;
+            return;
+        };
+        let name = name.trim().to_ascii_lowercase();
+        let value = value.trim();
+        match name.as_str() {
+            "content-length" => {
+                if content_length_header.is_some() {
+                    write_request_error_response(stream, "400 Bad Request", "duplicate Content-Length").await;
+                    return;
+                }
+                let parsed = match value.parse::<usize>() {
+                    Ok(n) => n,
+                    Err(_) => {
+                        write_request_error_response(stream, "400 Bad Request", "invalid Content-Length").await;
+                        return;
+                    }
+                };
+                if parsed > MAX_BODY_SIZE {
+                    write_request_error_response(stream, "413 Payload Too Large", "body too large").await;
+                    eprintln!("[HTTP] {} {} → 413 (body {} > {})", req_method, req_path, parsed, MAX_BODY_SIZE);
+                    return;
+                }
+                content_length_header = Some(parsed);
+            }
+            "transfer-encoding" => has_transfer_encoding = true,
+            "upgrade" if value.to_ascii_lowercase().contains("websocket") => is_websocket = true,
+            "content-type" => {
+                // Preserve multipart boundary case while retaining a lowercase
+                // media-type copy for case-insensitive checks.
+                content_type = value.to_ascii_lowercase();
+                content_type_raw = value.to_string();
+            }
+            "cookie" => cookie_header = value.to_string(),
+            "authorization" => auth_header = value.to_string(),
+            "x-request-id" => incoming_request_id = value.to_string(),
+            _ => {}
+        }
+    }
+    if has_transfer_encoding {
+        write_request_error_response(stream, "400 Bad Request", "Transfer-Encoding is not supported").await;
+        return;
+    }
+    let content_length = content_length_header.unwrap_or(0);
+    if content_length_header.is_none() && buf.len() > head_end {
+        write_request_error_response(stream, "400 Bad Request", "request body requires Content-Length").await;
+        return;
     }
 
     // Plan 346 B6: resolve this request's id (incoming value wins, else mint).
@@ -3026,10 +3096,43 @@ async fn handle_connection_async(
         return;
     }
 
-    // Plan 346 5a (B6): multipart/form-data — the body is BINARY (file
-    // bytes) and may exceed the initial 8KB read, so acquire it at the byte
-    // level (split at \r\n\r\n, then read until Content-Length satisfied).
-    // The legacy lossy-UTF-8 `body` path stays untouched for other types.
+    // Collect exactly Content-Length bytes. The initial header read may already
+    // contain body bytes; subsequent reads share the request deadline and stop
+    // on EOF. An incomplete body is rejected before route dispatch.
+    let mut body_bytes: Vec<u8> = buf
+        .get(head_end..)
+        .unwrap_or_default()
+        .iter()
+        .take(content_length)
+        .copied()
+        .collect();
+    while body_bytes.len() < content_length {
+        let remaining = content_length - body_bytes.len();
+        let read_len = remaining.min(8192);
+        let mut chunk = [0u8; 8192];
+        let n = match tokio::time::timeout_at(
+            read_deadline,
+            stream.read(&mut chunk[..read_len]),
+        )
+        .await
+        {
+            Ok(Ok(n)) => n,
+            Ok(Err(_)) => return,
+            Err(_) => {
+                write_request_error_response(stream, "408 Request Timeout", "request body timed out").await;
+                return;
+            }
+        };
+        if n == 0 {
+            write_request_error_response(stream, "400 Bad Request", "request body shorter than Content-Length").await;
+            return;
+        }
+        body_bytes.extend_from_slice(&chunk[..n]);
+    }
+    let body = String::from_utf8_lossy(&body_bytes).into_owned();
+
+    // Multipart is binary, so pass the same fully framed byte buffer directly
+    // to its parser. Ordinary text and JSON bodies use those bytes above.
     let mut multipart_json: Option<String> = None;
     if content_type.starts_with("multipart/form-data") {
         let boundary = content_type_raw
@@ -3037,25 +3140,12 @@ async fn handle_connection_async(
             .find_map(|p| p.trim().strip_prefix("boundary="))
             .map(|b| b.trim_matches('"').to_string());
         if let Some(boundary) = boundary {
-            let header_split = find_sub(&buf, b"\r\n\r\n")
-                .map(|p| p + 4)
-                .or_else(|| find_sub(&buf, b"\n\n").map(|p| p + 2));
-            if let Some(split) = header_split {
-                let mut body_bytes = buf[split..].to_vec();
-                while body_bytes.len() < content_length {
-                    let mut chunk = vec![0u8; (content_length - body_bytes.len()).min(8192)];
-                    match stream.read(&mut chunk).await {
-                        Ok(r) if r > 0 => body_bytes.extend_from_slice(&chunk[..r]),
-                        _ => break,
-                    }
-                }
-                let parts = parse_multipart(&body_bytes, &boundary);
-                multipart_json = Some(multipart_to_handler_json(parts));
-                eprintln!(
-                    "[HTTP] {} {} [{}] multipart: {} bytes parsed",
-                    req_method, req_path, request_id, body_bytes.len()
-                );
-            }
+            let parts = parse_multipart(&body_bytes, &boundary);
+            multipart_json = Some(multipart_to_handler_json(parts));
+            eprintln!(
+                "[HTTP] {} {} [{}] multipart: {} bytes parsed",
+                req_method, req_path, request_id, body_bytes.len()
+            );
         } else {
             eprintln!("[HTTP] {} {} [{}] multipart without boundary — ignored", req_method, req_path, request_id);
         }
