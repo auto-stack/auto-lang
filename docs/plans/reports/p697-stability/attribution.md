@@ -10,13 +10,20 @@
 （Event 6008，bugcheck 0xA IRQL_NOT_LESS_OR_EQUAL，minidump 0923 在档）；
 进程被内核蓝屏瞬时吞没 = 无 panic、无错误行、无 WER 应用崩溃记录、进程
 直接消失——与 P694-D1 签名逐项吻合。宿主内部崩溃面被三重排除法排除
-（13 轮复现零死亡 + 嫌疑面全点火 + WER 零应用崩溃记录）。处置走观测加固
+（15 轮复现零死亡 + 嫌疑面全点火 + WER 零应用崩溃记录）。处置走观测加固
 分支（契约预授权：待澄清①默认口径），残面=机器稳定性本身（非本仓代码）。
+
+> 证据位面注（review R-1 修复）：原始宿主日志（host-*.log）受仓根
+> `.gitignore` `*.log` 规则约束不入库；入库的持久证据 = `matrix.jsonl`
+> （17 条逐轮记录）+ `host-evidence-excerpt.txt`（足迹桩/点火行摘录，
+> review 复验时自加固版宿主 fresh 采集）+ 本档案内联引文。
 
 ## 证据一：复现（≥5 轮，零死亡）
 
 复现脚本 `repro_host_exit.py`（自起宿主 + MCP 验收通道 bus verb
-`launch\t020-music-player` + 进程/MCP 双探逐秒盯存活）。基线与对照臂全绿：
+`launch\t020-music-player` + 进程/MCP 双探逐秒盯存活）。基线与对照臂全绿
+（矩阵口径 15 轮，另有 CLI 形态误配冒烟 1 轮 + 加固验证 1 轮，见
+matrix.jsonl 17 条逐轮记录）：
 
 | 臂 | 形态 | 轮数 | 存活 | 死亡 |
 |---|---|---|---|---|
@@ -31,8 +38,9 @@
 嫌疑A（proxy 懒启）与嫌疑B（media 供给→305KB scan→json.to_value）在基线
 轮**真实点火**且宿主稳定。测试缝生效核验：禁A 臂日志零 proxy 行（8 份含
 proxy vs 6 份对照臂零 proxy）；--no-media 对 020 等效零供给（media 是其
-唯一 proxy 消费面，无 back_entry/session）。原始记录：`matrix.jsonl` +
-`host-*.log`（14 份）。
+唯一 proxy 消费面，无 back_entry/session）。原始记录：`matrix.jsonl`
+（17 条逐轮记录）+ `host-evidence-excerpt.txt`（点火行/足迹行摘录，
+.gitignore 注见证据位面注）。
 
 ## 证据二：Windows 取证（退出位面档案）
 
@@ -63,7 +71,7 @@ proxy vs 6 份对照臂零 proxy）；--no-media 对 020 等效零供给（media
 |---|---|
 | A back-proxy lazy-start | 基线 7 轮全点火（port 3358 在册）零死亡；禁A 对照 2 轮零差异信号 |
 | B media 能力 | 同上点火零死亡；缺省构建无 mpv-widget（video=诚实占位，播放不涉 mpv 驱动面）；scan 响应 305KB→json.to_value 深度帽 64 层+平铺数组无递归深度放大（stdlib.rs json_to_vm_value）；宿主主线程 /STACK:33554432（32MB） |
-| C inproc panic→abort | 走查窗口 WER 零 ui_desktop 崩溃记录（AV/fastfail/栈溢出必留 Event 1000）；13 轮复现零 abort |
+| C inproc panic→abort | 走查窗口 WER 零 ui_desktop 崩溃记录（AV/fastfail/栈溢出必留 Event 1000）；15 轮复现零 abort |
 
 ## 残面与边界（诚实声明）
 

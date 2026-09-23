@@ -1,0 +1,26 @@
+PLAN-697 review 复验（2026-09-23 22:33:52）宿主日志摘录（原始 *.log 按 .gitignore 不入库）
+
+[ui-desktop] start pid=20376 fullscreen=false apps_dir=D:\autostack\.wt\lang-697\auto-lang\crates\auto-lang\..\..\examples\ui t=1790174016
+AutoUI MCP: listening on http://127.0.0.1:2982
+[CALL_HANDLER] widget=Desktop event_name=Init fn_name=handler_Desktop_Init args=[]
+[CALL_HANDLER] widget=DesktopSurface event_name=Init fn_name=handler_DesktopSurface_Init args=[]
+[syslog][info][host] [session] app registry: 40 entries (26 desktop-visible) from D:\autostack\.wt\lang-697\auto-lang\crates\auto-lang\..\..\examples\ui
+[CALL_HANDLER] widget=DashboardPanel event_name=Init fn_name=handler_DashboardPanel_Init args=[]
+[CALL_HANDLER] widget=App event_name=Init fn_name=handler_App_Init args=[]
+[CALL_HANDLER] widget=App event_name=Init fn_name=handler_App_Init args=[]
+[CALL_HANDLER] widget=App event_name=Init fn_name=handler_App_Init args=[]
+[dashboard] refresh: faces=4 statuses=[("012-clock", "hatched"), ("013-todo", "hatched"), ("020-music-player", "placeholder"), ("025-sys-monitor", "hatched")] panel=720x176@12
+[CALL_HANDLER] widget=DashboardPanel event_name=RebuildFaces fn_name=handler_DashboardPanel_RebuildFaces args=[]
+AutoUI MCP: first state sync in view()
+[CALL_HANDLER] widget=DesktopSurface event_name=RunningSync fn_name=handler_DesktopSurface_RunningSync args=[]
+[dashboard] refresh: faces=4 statuses=[("012-clock", "hatched"), ("013-todo", "hatched"), ("020-music-player", "placeholder"), ("025-sys-monitor", "hatched")] panel=720x176@12
+[CALL_HANDLER] widget=DashboardPanel event_name=RebuildFaces fn_name=handler_DashboardPanel_RebuildFaces args=[]
+[session] launch_app(inproc) 020-music-player
+[session] back-proxy lazy-start on "020-music-player" (port 3358)
+[CALL_HANDLER] widget=App event_name=Init fn_name=handler_App_Init args=[]
+[CALL_HANDLER] widget=DesktopSurface event_name=RunningSync fn_name=handler_DesktopSurface_RunningSync args=[]
+[dashboard] refresh: faces=4 statuses=[("012-clock", "hatched"), ("013-todo", "hatched"), ("020-music-player", "running"), ("025-sys-monitor", "hatched")] panel=720x176@12
+[CALL_HANDLER] widget=DashboardPanel event_name=RebuildFaces fn_name=handler_DashboardPanel_RebuildFaces args=[]
+[CALL_HANDLER] widget=DesktopSurface event_name=RunningSync fn_name=handler_DesktopSurface_RunningSync args=[]
+[dashboard] refresh: faces=4 statuses=[("012-clock", "hatched"), ("013-todo", "hatched"), ("020-music-player", "placeholder"), ("025-sys-monitor", "hatched")] panel=720x176@12
+[CALL_HANDLER] widget=DashboardPanel event_name=RebuildFaces fn_name=handler_DashboardPanel_RebuildFaces args=[]
