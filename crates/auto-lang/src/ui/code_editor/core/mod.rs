@@ -191,6 +191,9 @@ pub struct CodeEditorConfig {
     pub wrap: bool,
     pub vi: bool,
     pub highlight_current_line: bool,
+    /// PLAN-089(musk T-09): 只读查看器——buffer 变更键在 handle_key 门口
+    /// 吞掉，导航/选择/复制/滚动照常；paste/cut/undo/IME 载荷同属变更面。
+    pub readonly: bool,
     pub tab_width: u16,
     pub font_size: f32,
 }
@@ -203,6 +206,7 @@ impl Default for CodeEditorConfig {
             wrap: false,
             vi: false,
             highlight_current_line: true,
+            readonly: false,
             tab_width: 4,
             font_size: 15.0,
         }
@@ -553,6 +557,14 @@ impl CodeEditorCore {
 
     pub fn config(&self) -> CodeEditorConfig {
         self.config.lock().unwrap().clone()
+    }
+
+    /// PLAN-089(musk T-09): readonly gate — user-reachable mutation surfaces
+    /// (keyboard, IME commit, menu undo/redo/cut/paste) consult this.
+    /// Programmatic `code_editor_edit` stays open on purpose: agent
+    /// instrumentation is the app's own choice, not user input.
+    fn is_readonly(&self) -> bool {
+        self.config.lock().unwrap().readonly
     }
 
     /// Apply a (possibly changed) configuration. Diffs field by field so
@@ -1159,6 +1171,10 @@ impl CodeEditorCore {
             EditorInput::ImeCommit(content) => {
                 *self.preedit.lock().unwrap() = None;
                 // Plan 673 §4.3: IME commits are typed edits — same stream.
+                // PLAN-089: readonly viewer swallows them (no buffer change).
+                if self.is_readonly() {
+                    return CoreOutput::default();
+                }
                 let old = self.text();
                 let mut editor = self.editor_lock();
                 editor.insert_string(&content, None);
@@ -1194,6 +1210,13 @@ impl CodeEditorCore {
         modifiers: EditorModifiers,
         clipboard: &mut dyn EditorClipboard,
     ) -> CoreOutput {
+        // PLAN-089(musk T-09): readonly viewer — mutating keys are swallowed
+        // at the door; motions/selection/copy/scroll still reach
+        // `handle_key_inner` (the mutate classifier below is the exact
+        // complement).
+        if self.is_readonly() && Self::key_may_mutate(&key, text.as_deref(), modifiers) {
+            return CoreOutput::default();
+        }
         if !Self::key_may_mutate(&key, text.as_deref(), modifiers) {
             return self.handle_key_inner(font_system, key, text, modifiers, clipboard);
         }
@@ -2132,18 +2155,19 @@ pub fn code_editor_find(key: &str) -> bool {
 }
 
 /// Plan 418: programmatic undo on the editor under `key`. Returns true when
-/// an editor exists (undo itself no-ops on empty history).
+/// an editor exists (undo itself no-ops on empty history). PLAN-089: false
+/// on readonly viewers (menu undo would mutate).
 pub fn code_editor_undo(key: &str) -> bool {
     let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
-    map.get(&key).map(|core| { core.do_undo(); core.mark_external_dirty(); }).is_some()
+    map.get(&key).map(|core| { if core.is_readonly() { return false; } core.do_undo(); core.mark_external_dirty(); true }).unwrap_or(false)
 }
 
 /// Plan 418: programmatic redo (mirrors the Ctrl+Y arm of handle_key).
 pub fn code_editor_redo(key: &str) -> bool {
     let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
-    map.get(&key).map(|core| { core.do_redo(); core.mark_external_dirty(); }).is_some()
+    map.get(&key).map(|core| { if core.is_readonly() { return false; } core.do_redo(); core.mark_external_dirty(); true }).unwrap_or(false)
 }
 
 /// Plan 418: select all text (mirrors the Ctrl+A arm of handle_key).
@@ -2161,6 +2185,10 @@ pub fn code_editor_clipboard_op(key: &str, op: ClipboardOp) -> bool {
     let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
     if let Some(core) = map.get(&key) {
+        // PLAN-089: readonly viewer — Copy stays available, Cut/Paste mutate.
+        if core.is_readonly() && !matches!(op, ClipboardOp::Copy) {
+            return false;
+        }
         match op {
             // Cut/Paste change the text → resync model bindings via the
             // external-dirty flag; Copy only touches the OS clipboard.
@@ -2366,6 +2394,95 @@ only
         code_editor_clipboard_op(&key, ClipboardOp::Cut);
         assert!(core.take_external_dirty(), "cut marks");
         code_editor_dispose(&key);
+    }
+
+    /// PLAN-089(musk T-09): readonly viewer — mutating keys (Char/Enter/
+    /// Backspace/Ctrl+V chord) are swallowed at `handle_key`, navigation
+    /// still moves the caret, and the menu undo/redo/clipboard natives
+    /// refuse. The non-readonly twin keeps typing (regression guard).
+    #[test]
+    fn core_readonly_gates_mutating_keys_keeps_navigation() {
+        // with_font_system + registry natives need the backend init first.
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+
+        let mut fs = FontSystem::new();
+        let cfg = CodeEditorConfig { readonly: true, ..CodeEditorConfig::default() };
+        let core = CodeEditorCore::new("test-readonly-gate", cfg, &mut fs);
+        core.set_text("hello world", &mut fs);
+
+        with_font_system(|fs| {
+            core.set_focused(true);
+            // Mutating keys swallowed.
+            for key in [EditorKey::Char('X'), EditorKey::Enter, EditorKey::Backspace] {
+                core.handle_input(
+                    fs,
+                    EditorInput::KeyPressed { key, text: None, modifiers: EditorModifiers::none() },
+                    &mut NullClipboard,
+                );
+            }
+            // Paste chord swallowed.
+            core.handle_input(
+                fs,
+                EditorInput::KeyPressed {
+                    key: EditorKey::Char('v'),
+                    text: None,
+                    modifiers: EditorModifiers { control: true, ..EditorModifiers::none() },
+                },
+                &mut NullClipboard,
+            );
+            assert_eq!(core.text(), "hello world", "readonly swallows mutating keys");
+
+            // Navigation reaches the caret: Home → col 0.
+            core.handle_input(
+                fs,
+                EditorInput::KeyPressed {
+                    key: EditorKey::Home,
+                    text: None,
+                    modifiers: EditorModifiers::none(),
+                },
+                &mut NullClipboard,
+            );
+        });
+        let (row, col, _) = core.cursor_info();
+        assert_eq!((row, col), (0, 0), "Home motion works in readonly");
+
+        // Menu undo/redo refuse on a registry-registered readonly editor
+        // (Copy-only exemption asserted in core_external_dirty_roundtrip).
+        let ro_key = storage_key("test-readonly-menu");
+        code_editor_dispose(&ro_key);
+        let ro_cfg = CodeEditorConfig { readonly: true, ..CodeEditorConfig::default() };
+        let _ro = code_editor(&ro_key, &ro_cfg);
+        assert!(!code_editor_undo(&ro_key), "menu undo refused");
+        assert!(!code_editor_redo(&ro_key), "menu redo refused");
+        code_editor_dispose(&ro_key);
+
+        // Non-readonly twin still types (gate is config-scoped).
+        let mut fs2 = FontSystem::new();
+        let live = CodeEditorCore::new("test-readonly-live", CodeEditorConfig::default(), &mut fs2);
+        live.set_text("abc", &mut fs2);
+        with_font_system(|fs| {
+            live.set_focused(true);
+            live.handle_input(
+                fs,
+                EditorInput::KeyPressed {
+                    key: EditorKey::End,
+                    text: None,
+                    modifiers: EditorModifiers::none(),
+                },
+                &mut NullClipboard,
+            );
+            live.handle_input(
+                fs,
+                EditorInput::KeyPressed {
+                    key: EditorKey::Char('d'),
+                    text: Some("d".to_owned()),
+                    modifiers: EditorModifiers::none(),
+                },
+                &mut NullClipboard,
+            );
+        });
+        assert_eq!(live.text(), "abcd", "non-readonly typing unchanged");
     }
 
     /// Config diffs: wrap toggling flips the horizontal scrollbar, and vi

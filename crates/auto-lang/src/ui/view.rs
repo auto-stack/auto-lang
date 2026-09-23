@@ -658,6 +658,9 @@ pub enum View<M: Clone + Debug> {
         wrap: bool,
         vi: bool,
         highlight_current_line: bool,
+        /// PLAN-089(musk T-09):只读查看器形态——buffer 变更键全部吞掉,
+        /// 导航/选择/复制照常。musk 文件浏览器消费(编辑归 auto-edit 域)。
+        readonly: bool,
         tab_width: usize,
         font_size: f32,
         on_change: Option<M>,
@@ -1913,6 +1916,7 @@ impl<M: Clone + Debug> View<M> {
             wrap: false,
             vi: false,
             highlight_current_line: true,
+            readonly: false,
             tab_width: 4,
             font_size: 15.0,
             on_change: None,
@@ -2367,7 +2371,7 @@ impl<M: Clone + Debug> View<M> {
                 keydown: keydown.into_iter().map(|(k, m)| (k, f(m))).collect(),
                     keymap,
             },
-            View::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style } => View::CodeEditor {
+            View::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, readonly, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style } => View::CodeEditor {
                 key,
                 value,
                 lang,
@@ -2375,6 +2379,7 @@ impl<M: Clone + Debug> View<M> {
                 wrap,
                 vi,
                 highlight_current_line,
+                readonly,
                 tab_width,
                 font_size,
                 on_change: on_change.map(|m| f(m)),
@@ -2996,6 +3001,7 @@ pub struct ViewCodeEditorBuilder<M: Clone + Debug> {
     wrap: bool,
     vi: bool,
     highlight_current_line: bool,
+    readonly: bool,
     tab_width: usize,
     font_size: f32,
     on_change: Option<M>,
@@ -3033,6 +3039,12 @@ impl<M: Clone + Debug> ViewCodeEditorBuilder<M> {
 
     pub fn highlight_current_line(mut self, on: bool) -> Self {
         self.highlight_current_line = on;
+        self
+    }
+
+    /// PLAN-089(musk T-09): 只读形态——变更键吞掉,导航/选择/复制保留。
+    pub fn readonly(mut self, on: bool) -> Self {
+        self.readonly = on;
         self
     }
 
@@ -3092,6 +3104,7 @@ impl<M: Clone + Debug> ViewCodeEditorBuilder<M> {
             wrap: self.wrap,
             vi: self.vi,
             highlight_current_line: self.highlight_current_line,
+            readonly: self.readonly,
             tab_width: self.tab_width,
             font_size: self.font_size,
             on_change: self.on_change,

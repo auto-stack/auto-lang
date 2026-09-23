@@ -222,3 +222,58 @@ fn corpus_041_code_editor_events_reach_handler() {
     comp.on(on_cursor);
 }
 
+
+/// PLAN-089(musk T-09): `readonly` prop reaches `View::CodeEditor` —
+/// literal `true` bakes true, state binding resolves, absence defaults to
+/// false (existing corpus untouched).
+#[test]
+fn code_editor_readonly_prop_bakes() {
+    fn collect_readonly<'a>(
+        view: &'a View<DynamicMessage>,
+        out: &mut Vec<(&'a str, bool)>,
+    ) {
+        match view {
+            View::CodeEditor { key, readonly, .. } => {
+                out.push((key.as_str(), *readonly));
+            }
+            View::Row { children, .. } | View::Column { children, .. } | View::List { items: children, .. } => {
+                for child in children {
+                    collect_readonly(child, out);
+                }
+            }
+            View::Container { child, .. } | View::Scrollable { child, .. } => {
+                collect_readonly(child, out);
+            }
+            _ => {}
+        }
+    }
+
+    let src = r#"
+widget Demo {
+    model {
+        ro bool = true
+    }
+    view {
+        col (style: "w-full") {
+            code_editor (key: "ro-lit", lang: "rust", readonly: true) {}
+            code_editor (key: "ro-state", lang: "rust", readonly: .ro) {}
+            code_editor (key: "ro-default", lang: "rust") {}
+        }
+    }
+}
+"#;
+    let v = build_view(src);
+    let mut editors = Vec::new();
+    collect_readonly(&v, &mut editors);
+    assert_eq!(editors.len(), 3, "all three editors built: {:?}", editors);
+    let get = |k: &str| -> bool {
+        editors
+            .iter()
+            .find(|(key, _)| *key == k)
+            .map(|(_, ro)| *ro)
+            .unwrap_or_else(|| panic!("editor {k} missing"))
+    };
+    assert!(get("ro-lit"), "literal readonly: true bakes");
+    assert!(get("ro-state"), "state binding .ro resolves");
+    assert!(!get("ro-default"), "absent prop defaults false");
+}

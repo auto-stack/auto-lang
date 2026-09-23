@@ -117,13 +117,23 @@ impl SnapshotBuilder {
             },
             // Plan 484: MouseArea 命中区在 snapshot 里降级为占位(事件转发
             // 原语,MCP autoui_find 无需看见)。
-            View::MouseArea { .. } => UiNode {
-                id,
-                kind: "MouseArea".to_string(),
-                props: vec![],
-                actions: vec![],
-                children: vec![],
-            },
+            // PLAN-089(T-07① 根修): content 子树照常展开——检视/寻址面与
+            // vnode_converter 的 MouseArea→Container+content 同步(此前叶
+            // 占位与 FileTree 行 press 仪器面失配同族)。
+            View::MouseArea { content, .. } => {
+                let child_path: Vec<usize> = {
+                    let mut p = path.to_vec();
+                    p.push(0);
+                    p
+                };
+                UiNode {
+                    id,
+                    kind: "MouseArea".to_string(),
+                    props: vec![],
+                    actions: vec![],
+                    children: vec![Self::traverse_view(content, id_map, &child_path)],
+                }
+            }
             // Plan 563: 画布在 snapshot 里为占位 leaf(内容 = scene 状态
             // 纯函数渲染,无子树;带笔画数 props 供 MCP 检视定位)。
             // PLAN-656 T-06: managed content 快照（logical extent 可见；

@@ -10302,6 +10302,8 @@ let tabs_inner = View::Row {
         let wrap = bool_prop("wrap", false);
         let vi = bool_prop("vi", false);
         let highlight_current_line = bool_prop("highlight_current_line", true);
+        // PLAN-089(musk T-09): readonly viewer (bool prop, binding-aware).
+        let readonly = bool_prop("readonly", false);
 
         let tab_width = self.extract_u16(props, "tab_width").unwrap_or(4) as usize;
         let font_size = self
@@ -10345,6 +10347,7 @@ let tabs_inner = View::Row {
             .wrap(wrap)
             .vi(vi)
             .highlight_current_line(highlight_current_line)
+            .readonly(readonly)
             .tab_width(tab_width)
             .font_size(font_size);
         if let Some(msg) = on_change {
@@ -12111,11 +12114,18 @@ let tabs_inner = View::Row {
         // Plan 499 M2: onmousemove + coords(限频流臂)。
         let (on_move, logical_extent) = self.mouse_area_move_arm(props, events, bindings);
         let style = self.extract_style_with(props, bindings);
+        // PLAN-089(T-07① 根修): mouse-area 子树压子索引——此前 content 与
+        // wrapper 同路径展开，build 探针路径与 view 树路径错位(computed
+        // class/events 合流到同键 + MCP press 按 wrapper 路径落到错位节
+        // 点=FileTree 行 press "No press handler" 的仪器面根因)。push(0)
+        // 与 vnode_converter 的 MouseArea→[content] 下探对齐。
+        path.push(0);
         let child_views: Vec<View<DynamicMessage>> = self
             .expand_children_spliced_source(children, path, id_map, probe, bindings)
             .into_iter()
             .filter(|v| !is_visually_empty(v))
             .collect();
+        path.pop();
         let content = if child_views.is_empty() {
             View::Empty
         } else {

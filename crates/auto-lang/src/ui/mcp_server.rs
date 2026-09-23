@@ -3295,7 +3295,7 @@ fn parse_element_id(s: &str) -> Option<ElementId> {
 
 /// Navigate the View tree by a VNode's path (child-index sequence) to find the
 /// corresponding rendered View. Mirrors `extract_children` from vnode_converter.
-fn find_view_by_path<'a>(
+pub(crate) fn find_view_by_path<'a>(
     view: &'a View<DynamicMessage>,
     path: &[u16],
 ) -> Option<&'a View<DynamicMessage>> {
@@ -3329,7 +3329,7 @@ fn extract_dyn_msg(msg: &DynamicMessage) -> Option<(String, String)> {
 
 /// Extract the handler (widget_name, event_name) from a View for a given action.
 /// `action_name`: "press" / "type" / "submit" / "toggle" / "select" / "set_value".
-fn extract_action_from_view(
+pub(crate) fn extract_action_from_view(
     view: &View<DynamicMessage>,
     action_name: &str,
 ) -> Option<(String, String)> {
@@ -3393,6 +3393,13 @@ fn extract_action_from_view(
         {
             onclick.as_ref().and_then(|m| extract_dyn_msg(m))
         }
+        // PLAN-089(musk T-07①): mouse-area on_click——FileTree 行点击面
+        //（chevron Toggle/行 Select 双挂点）走 View::MouseArea；press 通道
+        // 此前无臂，"No 'press' handler" 与真接线状态脱钩（真机 iced
+        // on_click 已活，仪器面够不着）。
+        View::MouseArea { on_click, .. } if action_name == "press" => {
+            on_click.as_ref().and_then(|m| extract_dyn_msg(m))
+        }
         _ => None,
     }
 }
@@ -3407,6 +3414,7 @@ fn view_kind_str(view: &View<DynamicMessage>) -> &'static str {
         // type_text validation accepts it.
         View::CodeEditor { .. } => "Textarea",
         View::Checkbox { .. } => "Checkbox",
+        View::MouseArea { .. } => "MouseArea",
         View::Slider { .. } => "Slider",
         _ => "Other",
     }
@@ -3526,8 +3534,9 @@ fn execute_action_vnode(
         // PLAN-043 T4: press 放行可携带 onclick 的布局件（Row/Column/
         // Container——layout onclick 件如 Details summary 行）；无 onclick
         // 的件仍由 extract 的 "No 'press' handler" 错误兜底。
+        // PLAN-089: MouseArea 同放行（on_click 臂见 extract_action_from_view）。
         UiActionType::Press
-            if !matches!(vnode_kind_str.as_str(), "Button" | "Row" | "Column" | "Container") =>
+            if !matches!(vnode_kind_str.as_str(), "Button" | "Row" | "Column" | "Container" | "MouseArea") =>
             return Err(format!("Action 'press' not valid for component type '{}'", vnode_kind_str)),
         UiActionType::TypeText if vnode_kind_str != "Input" && vnode_kind_str != "Textarea" =>
             return Err(format!("Action 'type_text' not valid for component type '{}'", vnode_kind_str)),

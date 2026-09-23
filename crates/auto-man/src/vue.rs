@@ -783,6 +783,7 @@ import { EditorView, keymap } from '@codemirror/view'
 import { StreamLanguage, foldGutter, foldKeymap, foldService } from '@codemirror/language'
 import { registerEditor, unregisterEditor } from '../lib/editorBridge'
 import { SearchQuery, setSearchQuery, search as searchPanel } from '@codemirror/search'
+import { EditorState } from '@codemirror/state'
 import type { Extension } from '@codemirror/state'
 import { rust } from '@codemirror/lang-rust'
 import { python } from '@codemirror/lang-python'
@@ -804,6 +805,9 @@ const props = defineProps({
   // PLAN-677 T-05: DSL editor key —— code_editor_* 内建经 editorBridge
   // 按此键寻址到本实例（vm 按键寻址同构）。
   editorKey: { type: String, default: '' },
+  // PLAN-089(musk T-09): 只读查看器——Codemirror 不可编辑扩展(光标隐藏、
+  // 选择/复制保留)，对齐 iced 端 config.readonly 输入门。
+  readonly: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['update:modelValue', 'cursor', 'contextmenu'])
@@ -854,6 +858,12 @@ const extensions = computed(() => {
   }
   if (props.wrap) {
     ext.push(EditorView.lineWrapping)
+  }
+  // PLAN-089(musk T-09): readonly —— editable(false) 摘掉 contenteditable
+  // (光标不显、键入不落)，readOnly facet 拦 programmatic dispatch；选择/复制照常。
+  if (props.readonly) {
+    ext.push(EditorView.editable.of(false))
+    ext.push(EditorState.readOnly.of(true))
   }
   // Plan 421 P1: line_numbers=false → 隐藏行号槽。basicSetup 基线已带
   // lineNumbers(),追加无法移除,用 CSS 覆盖关闭。

@@ -2381,6 +2381,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             wrap,
             vi,
             highlight_current_line,
+            readonly,
             tab_width,
             font_size,
             on_change,
@@ -2398,6 +2399,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 wrap: *wrap,
                 vi: *vi,
                 highlight_current_line: *highlight_current_line,
+                readonly: *readonly,
                 tab_width: *tab_width as u16,
                 font_size: *font_size,
             };

@@ -345,6 +345,11 @@ mod plan063_handler_float_tests;
 // 点路径三类实参，062 T9 input 同款语义镜像）回归锁。
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan670_code_editor_event_tests;
+// PLAN-089(musk T-07①)：mouse-area press 链回归锁——wrapper=Container+
+// content 入树+path 对齐（builder push(0) ↔ extractor 下探），MCP press
+// 仪器面经 styled_vtree→path→extract 全链可达 on_click。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan089_mouse_area_press_tests;
 // Plan 502 M1: diagram 标签发射——svg <text> 直通(vue 上下文分流 + VM
 // svgdoc 内容序列化)与 overlay 动态 arbitrary 值双轨对照回归。
 #[cfg(test)]

@@ -225,7 +225,10 @@ where
         View::AnchorSlot { .. } => (VNodeKind::Text, VNodeProps::Empty),
         // Plan 484: MouseArea 命中区对 VNode 检视层不可见(事件转发原语,
         // 无内容语义),同 Overlay 降级 Text/Empty。
-        View::MouseArea { .. } => (VNodeKind::Text, VNodeProps::Empty),
+        // PLAN-089(T-07① 根修): 改 Container 形态——content 子树入 vtree
+        // (extract_children 同步)，事件挂点可见可寻址(MCP press 面)；
+        // 检视层不再吞掉 FileTree 行/chevron 等 mouse-area 挂点。
+        View::MouseArea { .. } => (VNodeKind::Container, VNodeProps::Empty),
         // Plan 563: 画布内容 = scene 状态纯函数渲染,无结构子树;检视层
         // 保留专用 Canvas kind leaf(snapshot v2 可见——G4 只跳 Text+
         // Empty 占位, MCP 寻址/检视需要看见画布)。
@@ -590,6 +593,11 @@ where
             vec![*w.clone(), *content.clone()]
         }
         View::Popover { content, .. } => vec![*content.clone()],
+        // PLAN-089(T-07① 根修): mouse-area content 进 vtree——此前落 `_`
+        // 叶子，content 子树整体不可见且与 builder 侧 push(0) 路径错位
+        // (computed 合流 + MCP press 失配=FileTree 行按不动的仪器面根因)。
+        // 与 aura_view_builder 的 wrapper=path / content=path+[0] 约定对齐。
+        View::MouseArea { content, .. } => vec![(**content).clone()],
         _ => Vec::new(),
     }
 }
@@ -629,6 +637,8 @@ where
             vec![w.as_ref(), content.as_ref()]
         }
         View::Popover { content, .. } => vec![content.as_ref()],
+        // PLAN-089(T-07① 根修): 与 extract_children 的 MouseArea 臂同序同构。
+        View::MouseArea { content, .. } => vec![content.as_ref()],
         _ => Vec::new(),
     }
 }

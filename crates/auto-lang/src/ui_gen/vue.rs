@@ -13185,6 +13185,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 bool_attr(&mut attrs, "wrap", "wrap", false, props);
                 bool_attr(&mut attrs, "vi", "vi", false, props);
                 bool_attr(&mut attrs, "highlight_current_line", "highlight-current-line", true, props);
+                // PLAN-089(musk T-09): readonly viewer → CodeEditor.vue 的
+                // Codemirror editable/readOnly 扩展（壳同计划补位）。
+                bool_attr(&mut attrs, "readonly", "readonly", false, props);
                 if let Some(value) = props.get("tab_width") {
                     if let Some(n) = self.extract_int_value(value) {
                         attrs.push(format!(":tab-width=\"{}\"", n));

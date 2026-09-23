@@ -4776,10 +4776,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style: _ } => {
+            AbstractView::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, readonly, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style: _ } => {
                 build_code_editor_generic(
                     &key, &value, &lang, line_numbers, wrap, vi,
-                    highlight_current_line, tab_width, font_size, &search,
+                    highlight_current_line, readonly, tab_width, font_size, &search,
                     on_change, on_cursor, on_context_menu,
                 )
             }
@@ -7437,6 +7437,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             wrap,
             vi,
             highlight_current_line,
+            readonly,
             tab_width,
             font_size,
             on_change,
@@ -7452,6 +7453,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             wrap,
             vi,
             highlight_current_line,
+            readonly,
             tab_width,
             font_size,
             on_change: on_change.map(|m| IcedMessage::from_dynamic(&m)),
@@ -24850,6 +24852,7 @@ fn build_code_editor_generic<M: Clone + Debug + 'static>(
     wrap: bool,
     vi: bool,
     highlight_current_line: bool,
+    readonly: bool,
     tab_width: usize,
     font_size: f32,
     search: &str,
@@ -24865,6 +24868,7 @@ fn build_code_editor_generic<M: Clone + Debug + 'static>(
         wrap,
         vi,
         highlight_current_line,
+        readonly,
         tab_width: tab_width as u16,
         font_size,
     };
@@ -25674,7 +25678,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 
         // Plan 413: code editor (VM path) — on_change 发布携带全文的新消息
         // （input_value: Some，PLAN-057 textarea 先例同款）。
-        AbstractView::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style } => {
+        AbstractView::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, readonly, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style } => {
             let dbg_props = debug_style_props(style.as_ref());
             use crate::ui::code_editor as ce;
 
@@ -25691,6 +25695,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 wrap,
                 vi,
                 highlight_current_line,
+                readonly,
                 tab_width: tab_width as u16,
                 font_size,
             };
