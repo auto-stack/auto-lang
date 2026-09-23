@@ -2649,6 +2649,11 @@ impl AuraSchema {
             description: "Menubar label",
         });
 
+        // PLAN-695: menubar 族补全至 shadcn 16 元素——权威面是 schema/aura.at
+        //（运行时 loader 填充 ElementMeta：tier/backends/vue），本硬编码 fallback
+        // 照 menubar_checkbox_item 先例不镜像新增件（schema_drift 围栏 rs 维度
+        // 会对 fallback-only 新件报孤儿漂移；fallback 仅 schema 加载失败时兜底）。
+
         // === Plan 041a①/T18-T19(musk 041 Phase 5): 原生语义元素 ===
         // slot: 组件定义位插座/组件调用位具名填充(codegen 特判已有,补声明
         // 使 S002 不再误报)。pre/code/ol/ul/dl/dt/dd/optgroup/figure/

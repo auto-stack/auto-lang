@@ -874,14 +874,14 @@ element menubar {
     tag: "menubar"
     category: "navigation"
     tier: "builtin_widget"
-    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    backends: { web: "component", iced: "component", gpui: "unknown" }
     vue: { component: "Menubar", import: "@/components/ui/menubar" }
-    sub_widgets: ["menubar_checkbox_item", "menubar_content", "menubar_item", "menubar_menu", "menubar_separator", "menubar_trigger"]
+    sub_widgets: ["menubar_checkbox_item", "menubar_content", "menubar_group", "menubar_item", "menubar_label", "menubar_menu", "menubar_radio_group", "menubar_radio_item", "menubar_separator", "menubar_shortcut", "menubar_sub", "menubar_sub_content", "menubar_sub_trigger", "menubar_trigger"]
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Menubar container"
+    description: "Menubar container (PLAN-695 full 16-element family, shadcn-vue aligned; VM iced arm = Popover 原语双解释态)"
 }
 
 element mouse-area {
@@ -4493,7 +4493,7 @@ element menubar_content {
     category: "navigation"
     tier: "web_component"
     aliases: ["menubarcontent"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "component", gpui: "unknown" }
     vue: { component: "MenubarContent", import: "@/components/ui/menubar" }
     props: [
         { name: "align", type: "one_of:start,center,end", default: "start", description: "Content alignment" }
@@ -4508,7 +4508,7 @@ element menubar_item {
     category: "navigation"
     tier: "web_component"
     aliases: ["menubaritem"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "component", gpui: "unknown" }
     vue: { component: "MenubarItem", import: "@/components/ui/menubar" }
     props: [
         { name: "text", type: "string", description: "Item text" }
@@ -4530,7 +4530,7 @@ element menubar_checkbox_item {
     category: "navigation"
     tier: "web_component"
     aliases: ["menubarcheckboxitem"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "component", gpui: "unknown" }
     vue: { component: "MenubarCheckboxItem", import: "@/components/ui/menubar" }
     props: [
         { name: "text", type: "string", description: "Item text" }
@@ -4551,13 +4551,15 @@ element menubar_label {
     tag: "menubar_label"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    aliases: ["menubarlabel"]
+    backends: { web: "component", iced: "component", gpui: "unknown" }
+    vue: { component: "MenubarLabel", import: "@/components/ui/menubar" }
     props: [
         { name: "text", type: "string", description: "Label text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Menubar label"
+    description: "Menubar group label (muted section heading, non-interactive; PLAN-695 auto-edit '行尾' 吞标签根修)"
 }
 
 element menubar_menu {
@@ -4565,7 +4567,7 @@ element menubar_menu {
     category: "navigation"
     tier: "web_component"
     aliases: ["menubarmenu"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "component", gpui: "unknown" }
     vue: { component: "MenubarMenu", import: "@/components/ui/menubar" }
     props: [
         { name: "value", type: "string", description: "Menu value" }
@@ -4579,7 +4581,7 @@ element menubar_separator {
     category: "navigation"
     tier: "web_component"
     aliases: ["menubarseparator"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "component", gpui: "unknown" }
     vue: { component: "MenubarSeparator", import: "@/components/ui/menubar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -4593,7 +4595,7 @@ element menubar_trigger {
     category: "navigation"
     tier: "web_component"
     aliases: ["menubartrigger"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "component", gpui: "unknown" }
     vue: { component: "MenubarTrigger", import: "@/components/ui/menubar" }
     props: [
         { name: "text", type: "string", description: "Trigger text" }
@@ -4601,6 +4603,113 @@ element menubar_trigger {
     ]
     allows_children: true
     description: "Menubar trigger"
+}
+
+element menubar_radio_group {
+    tag: "menubar_radio_group"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["menubarradiogroup"]
+    backends: { web: "component", iced: "component", gpui: "unknown" }
+    vue: { component: "MenubarRadioGroup", import: "@/components/ui/menubar" }
+    props: [
+        { name: "value", type: "union:string,state_ref", description: "Selected radio value binding (group-level state_ref, PLAN-695 family)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Menubar radio group (single-select container, PLAN-695 family)"
+}
+
+element menubar_radio_item {
+    tag: "menubar_radio_item"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["menubarradioitem"]
+    backends: { web: "component", iced: "component", gpui: "unknown" }
+    vue: { component: "MenubarRadioItem", import: "@/components/ui/menubar" }
+    props: [
+        { name: "value", type: "string", description: "Radio option value (required for selection identity, PLAN-695 family)" }
+        { name: "title", type: "union:string,state_ref", description: "Item label (PLAN-695 family; shape mirrors menubar_checkbox_item)" }
+        { name: "icon", type: "union:string,state_ref", description: "Item icon name (lucide kebab, PLAN-695 family)" }
+        { name: "shortcut", type: "union:string,state_ref", description: "Shortcut hint text (PLAN-695 family)" }
+        { name: "enabled", type: "union:bool,state_ref", default: "true", description: "Enabled state (PLAN-695 family)" }
+        { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
+        { name: "onclick", type: "msg_ref", description: "Click handler (store write-back for the group value, PLAN-695)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Menubar radio item (selected state renders circle-dot indicator; PLAN-695 family)"
+}
+
+element menubar_shortcut {
+    tag: "menubar_shortcut"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["menubarshortcut"]
+    backends: { web: "component", iced: "component", gpui: "unknown" }
+    vue: { component: "MenubarShortcut", import: "@/components/ui/menubar" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Menubar shortcut hint (standalone child form, right-aligned muted; text via children, PLAN-695 family)"
+}
+
+element menubar_sub {
+    tag: "menubar_sub"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["menubarsub"]
+    backends: { web: "component", iced: "component", gpui: "unknown" }
+    vue: { component: "MenubarSub", import: "@/components/ui/menubar" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Menubar submenu container (trigger + content pair, PLAN-695 family; VM = nested Popover EndTop)"
+}
+
+element menubar_sub_trigger {
+    tag: "menubar_sub_trigger"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["menubarsubtrigger"]
+    backends: { web: "component", iced: "component", gpui: "unknown" }
+    vue: { component: "MenubarSubTrigger", import: "@/components/ui/menubar" }
+    props: [
+        { name: "text", type: "string", description: "Trigger label (slot content, shape mirrors menubar_trigger, PLAN-695 family)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Menubar submenu trigger (chevron-right auto-appended, PLAN-695 family)"
+}
+
+element menubar_sub_content {
+    tag: "menubar_sub_content"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["menubarsubcontent"]
+    backends: { web: "component", iced: "component", gpui: "unknown" }
+    vue: { component: "MenubarSubContent", import: "@/components/ui/menubar" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Menubar submenu panel (popover token chrome, PLAN-695 family)"
+}
+
+element menubar_group {
+    tag: "menubar_group"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["menubargroup"]
+    backends: { web: "component", iced: "component", gpui: "unknown" }
+    vue: { component: "MenubarGroup", import: "@/components/ui/menubar" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Menubar group (semantic item grouping container, PLAN-695 family)"
 }
 
 element mermaid {
