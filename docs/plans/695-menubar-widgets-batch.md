@@ -12,7 +12,7 @@ new_spec_components: [widgets/menubar-family]
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/ui-gen, widgets, auto-edit]
-current_step: 0
+current_step: 14
 total_steps: 14
 ---
 
@@ -318,21 +318,31 @@ plan 文件是唯一跟踪面，不另立计划。
 `git worktree add D:/autostack/.wt/lang-695/auto-lang -b plan-695-dev`（主检出）+
 auto-os/auto-edit 兄弟 worktree（各自仓，branch plan-695-dev）。
 
-- **T-01** [plan-695-dev/auto-lang] schema/aura.at menubar 族扩展 + schema.rs 镜像 → AC-01
-  （验证：`cargo check -p auto` + `cargo t schema_drift`）
-- **T-02** registry.rs 8 spec + kebab 别名 → AC-01（验证：registry 单测）
-- **T-03** vue.rs 发射器全族 kind + shortcut 组件化 + golden 更新 → AC-02（验证：`cargo t menubar`）
-- **T-04** VM 配色主题化根修（三路）+ disabled 置灰 → AC-03（验证：单测 token 断言 + 后续实机）
-- **T-05** VM 开态高亮 + hover-switch → AC-04（验证：renderer 单测）
-- **T-06** VM submenu 双解释态 + renderer 显式臂 → AC-04（验证：单测 + 实机二级菜单）
-- **T-07** VM radio/label/shortcut → AC-04（验证：单测）
-- **T-08** VM 键盘导航（时间盒；落债路径=P695-D1 在案）→ AC-04
-- **T-09** coverage 更新 + core.md 再生 + corpus 影响面确认 → AC-01/07
-- **T-10** [auto-os] menubar.at 完整示例重写 → AC-05
-- **T-11** 双臂实机走查 + 浅/深截图（autoui-verifier）→ AC-02/03/04/05 实证
-- **T-12** [auto-edit] ctx_menu/app.at token 修 + 行尾 submenu 化 → AC-06
-- **T-13** [auto-edit] 双轨重生成 + probe_menu.py 回归 + 浅色对照截图 → AC-06
-- **T-14** 滚动协议落册：候选池核对 + INDEX 行 + specs.json 预填核对 → AC-08
+- **T-01** [x] schema/aura.at 族扩展（7 新元素+label 双面翻转+iced 注记翻转；schema.rs fallback 照 checkbox_item 先例不镜像——围栏 rs 维度裁定）+ element_coverage 7 件登记 → AC-01
+  （证据：e659208d2；`cargo check -p auto` 绿 + schema_drift 2/2 绿）
+- **T-02** [x] registry.rs 8 spec + 三形态别名 + p695 单测 → AC-01
+  （证据：9f3f75c86；p695_menubar_family_registry_complete 绿）
+- **T-03** [x] vue.rs 发射器全族 kind + shortcut 组件化 + 静态 disabled → AC-02
+  （证据：6ede43b02；p695_view_menubar_full_family + plan677 更新绿；golden 基线漂移勘定=预存红（auto-os master 演进未重基线，menubar.at 哈希两侧一致），重基线随 fold 门）
+- **T-04** [x] VM 配色主题化根修（Color::Popover/PopoverForeground 独立投影 registry 双盘；三路字面深色全退役）+ disabled 置灰 → AC-03
+  （证据：6275eaf98；p695_menubar_panel_tokens_and_disabled_dim + p695_menubar_a2r_popover_tokens_and_dimmed 绿；plan593 投影完备集 +2）
+- **T-05** [x] VM 开态 accent 高亮 + hover-switch（MouseArea on_enter 条件包裹）→ AC-04
+  （证据：55e5c1b19；p695_menubar_hover_switch_and_open_highlight 绿；menubar-snapshot 规则 3 相容核对在案）
+- **T-06** [x] VM submenu 双解释态（复合键注册表+前缀感知外层开态+内联展开裁定）→ AC-04
+  （证据：bc35012ce + dd129995a；p695_menubar_submenu_radio_label_shortcut 绿；RightTop 变体保留；嵌套 overlay 挂渲染通道留债 P695-D2）
+- **T-07** [x] VM radio/label/shortcut（circle-dot/muted 静态文本/group 透传）→ AC-04
+  （证据：bc35012ce；单测同上绿）
+- **T-08** [x] 键盘导航时间盒裁定：Esc 已有（Popover 既有捕获+menubar-snapshot 验证锚）；方向键/Enter 需 iced 焦点基建超时间盒 → 落债 P695-D1，AC-04 最小集满足
+  （证据：c342a1717 提交注记；renderer Esc 订阅链在档）
+- **T-09** [x] coverage menubar root→Covered + core.md 再生（docs_gen 4/4）+ corpus 零 menubar 语料确认 → AC-01/07
+  （证据：c342a1717）
+- **T-10** [x] [auto-os] menubar.at 重写（四菜单全族+状态回显+全族属性表+auto: 源码串）→ AC-05
+  （证据：auto-os 8e098bc；docs_gen gallery_properties schema 符合门绿）
+- **T-11** [x] 实机走查：VM 臂三修（untracked 臂补缺 dd129995a/复合键前缀/内联展开）+ 深色三截图（initial/file_open/view_open/submenu_inline 环境受限部分取得）+ EOL 端到端（auto-edit 编辑→行尾→CRLF 三段全真）；Vue 臂活体走查环境受阻（worktree 无 front workspace，unblock=宿主窗交互启动或 692 同款全量再生成流程）——SFC 发射面由单测+schema 符合门确定性覆盖 → AC-02/03/04/05 部分实证（D5/D6 在册）
+- **T-12** [x] [auto-edit] ctx_menu/app.at token 修 + 行尾 submenu 化 → AC-06
+  （证据：auto-edit d71a396）
+- **T-13** [x] [auto-edit] 双轨重生成（regen_vue 33 组件零 S002 + vm 轨=解释态）+ probe_menu.py 两轮 exit 0 四时点全开 + EOL 活体三段；对照截图不可得（auto-edit 1s Tick 与截图通道争用，预存特征）→ AC-06（结构链承载）
+- **T-14** [x] 滚动协议落册：候选池核对（§5.3 表即协议面，进入=点名+W5.N+revision+1）+ INDEX 性质核对（Stage-B 指针页，非活跃清单——695 非随迁计划无行）+ specs.json 预填核对（P-NNN-1 条目形态已核，落库随 merge）→ AC-08
 
 依赖链：T-01→T-02→T-03/T-04~T-07（可并行）；T-08 依赖 T-06；T-09 收口 W1；T-10 依赖
 T-03/T-07（语料用全族）；T-11 依赖 T-04~T-10；T-12 依赖 T-04/T-06/T-07；T-13 依赖 T-12。
@@ -342,6 +352,19 @@ T-03/T-07（语料用全族）；T-11 依赖 T-04~T-10；T-12 依赖 T-04/T-06/T
 - 2026-09-23 起草（stage: new，PLAN-695 rev1）：三路探查（auto-lang 生成器/双臂、auto-edit
   消费现状、widgets-gallery 49 组件盘点）+ shadcn-vue menubar API 对勘完成；W1-W4 任务与
   SD-01..06 就位；开工前置门（692 先折）在案。outcome: pass（待用户确认后 /auto-plan:work）。
+- 2026-09-23 执行完毕（stage: work，PLAN-695 rev1，outcome: pass → 待独立复审）：
+  三仓 plan-695-dev（auto-lang base d59bd9fbb→349574529+tf 复跑批 / auto-os base
+  20ce5c8→8e098bc / auto-edit base cf56891→d71a396）。T-01..T-14 全勾证据随任务行；
+  新单测 9 枚全绿、schema_drift 2/2、docs_gen 4/4、registry/vue/VM 解释态/a2r 定向
+  全绿。**执行期四增量**（均在案带证据）：①untracked 派发表缺 menubar 臂（画廊
+  preview 实锤 Empty，baseline 预存漂移随之裁剪）；②复合键注册表外层开态须前缀
+  感知（子键曾连带关外层）；③嵌套 Popover overlay 挂 iced 渲染/截图通道→VM
+  submenu 改内联展开（浮动式留债 P695-D2）；④menubar_shortcut 补 text prop 声明
+  （positional text 落 text prop，S001 消除）。fold 前门：cargo tf --no-fail-fast
+  全量对勘（首轮 2 musk 预存 + gallery 重测并发内存挤兑中止——单跑 1289s 绿）+
+  gallery_golden 重基线（理由随提交）。auto-edit 侧：worktree 二进制 env 覆盖序
+  regen（PATH 解析落主检出旧 exe 的坑在案）；Vue 臂活体走查环境受阻（D6）。
+  blockers: 无。next: /auto-plan:review。
 
 ## 待澄清事项
 
@@ -352,3 +375,10 @@ T-03/T-07（语料用全族）；T-11 依赖 T-04~T-10；T-12 依赖 T-04/T-06/T
 - **Q-3 auto-edit 他方 WIP**：auto-edit 主检出有未跟踪 plan010 草稿与 stylekit 删除态（他方
   会话）；W4 已定为独立 worktree 隔离，不碰主检出——若该会话仍在写 auto-edit，T-13 重生成
   前需与其协调空窗。
+
+## 待澄清处置（2026-09-23 执行期）
+
+- Q-1 键盘导航深度：按预案时间盒裁定——Esc 既有满足最小集，方向键/Enter 落债
+  P695-D1（AC-04 口径不受阻）。
+- Q-2 692 时序：692 已折（archived/cleaned），未发生 rebase 冲突。
+- Q-3 auto-edit 他方 WIP：主检出 WIP 未被触碰；本计划全在 worktree（cf56891 基线）。

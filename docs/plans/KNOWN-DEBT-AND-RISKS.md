@@ -36,3 +36,14 @@
 |---|---|---|---|---|
 | P694-D1 | medium | 桌面宿主稳定性 | **走查期观测：in-proc VM App（020-music-player）拉起后桌面宿主静默退出 ×3**（ui_desktop 全屏/窗口化两形态均复现；日志无 panic/错误行，进程直接消失；时间点在 launch_app(inproc) 落地后的数十秒内）。back-proxy lazy-start（port 3359）/media 能力面疑似关联，未诊断。走查期间用户实时操作与合成输入并存，不排除外因（进程被关），但 ×3 时间相关性值得勘定。诊断入口：cdb 附加 + music player 拉起复现；修 = 归因后定点 | ui_desktop 宿主；session.rs launch_app inproc 臂；back_provision/back-proxy lazy-start |
 | P694-D2 | low | 桌面 shell 输入面（VM 轨） | **launcher 全量列表导航在 VM 轨不可用**——搜索框键入（物理字符派发为 `key_<char>` VM 事件，input widget 不收 CharTyped）、滚轮滚动、方向键（Named 键不路由至 bind 表）三路实测均不通（028-launcher overlay）；行击直点正常。本计划以 recent 存储夹具绕行完成发现面录证；shell 侧输入路由修复归 auto-os/shell 线（本计划非目标） | 028-launcher overlay；session.rs 键盘路由（key_<char> 派发臂）；walkthrough 走查留痕 docs/plans/reports/p694-dogfood/ |
+
+### P695（2026-09-23，Plan 695 menubar-widgets-batch work 执行登记）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P695-D1 | low | menubar 键盘面 | **方向键/Enter 键盘导航未实现**（T-08 时间盒裁定）——需 iced 焦点基建（逐项 focus 节点 + 键盘订阅 + 索引态进 MENUBAR_OPEN 注册表扩展），Esc 关闭已走 Popover 既有捕获（AC-04 最小集满足）。实施时对齐 shadcn：↑↓ 移项 / → 进 submenu / ← 回父级 / Enter 激活 | convert_menubar_component；menubar-snapshot.md PLAN-695 扩注 |
+| P695-D2 | medium | VM submenu 浮动式 | **submenu 浮动面板（嵌套 Popover overlay）挂 iced 渲染/截图通道**——走查三次复现：子菜单开态 screenshot 通道恒超时（主菜单恒正常）、一次进程静默死亡；VM 臂已改内联展开（父面板内缩进节，交互语义等价），浮动式（reka side=right 视觉）待 iced overlay 嵌套支持勘定后恢复。RightTop 落位变体已备（view.rs/popover.rs/native_projector.rs 三处） | aura_view_builder build_menu_panel_items 内联臂；T-11 走查实录（计划复审记录） |
+| P695-D3 | low | autoui-verifier × menubar | **MCP 合成指针事件 × hover-switch 干扰**——合成 press 的指针位移穿过被包裹 trigger 触发非预期 toggle，菜单开合状态在 MCP 驱动下呈非确定（真实鼠标语义不受影响）；autoui-verifier 对 menubar 的状态断言须容忍切换抖动或改坐标无关派发（menubar-snapshot.md 扩注已记） | aura_view_builder MouseArea 包裹臂；T-11 走查实录 |
+| P695-D4 | low | gallery golden | **gallery_golden 基线落后 auto-os master + 本计划语料定稿**——基线停 PLAN-614（0fc28e92b），其后 692 W-2 combobox 重写/scroll 页重设计/041 shell 追随等漂移（预存红勘定：menubar.at 哈希两侧一致证明与本计划无关）+ 本计划 menubar.at 重写。fold 前 `GALLERY_GOLDEN_UPDATE=1` 一次性重基线（理由随提交） | crates/auto-lang/tests/fixtures/gallery_vue_golden.txt；T-03 勘定记录 |
+| P695-D5 | low | auto-edit 截图通道 | **auto-edit VM 臂截图与 1s 状态栏 Tick 争用（预存特征）**——无菜单态 screenshot 亦恒超时，AC-06 对照截图不可得；可读性由 token 断言链（bg-popover light=白/popover-foreground=墨）+ 快照结构验证 + probe_menu.py 承载。修复归 041/render 时序线 | tests/probe_menu.py（exit 0 两轮）；T-13 走查实录 |
+| P695-D6 | low | gallery Vue 臂活体 | **widgets-gallery Vue 臂活体走查环境受阻**——worktree 无 front workspace/node_modules，`auto run`（vue）宿主窗不自动起 vite（3024 恒 000）。unblock：宿主窗交互启动 web 或主检出跑 692 同款全量再生成流程。SFC 发射面已由 p695 vue 单测 + gallery_properties schema 符合门 + fold 前 gallery_golden 确定性覆盖 | T-11 执行记录；.auto/ui-cache.json（合并后须再生） |
