@@ -16176,6 +16176,10 @@ fn compare_pngs(
                 // Plan 494：真洞模式位（`shell.native.hole` storage >
                 // DesktopOptions 程序位取或；缺席 = off）。
                 session.desktop.hole_mode = opts.hole_mode || load_native_hole_mode();
+                // PLAN-044 T-04：桌面快捷方式缺键自愈（`shell.desktop.icons`
+                // 缺/空 → 播种 DEFAULT_DESKTOP_ICONS 预置集并落盘；有键
+                // no-op，幂等）。
+                crate::ui::desktop_config::ensure_desktop_icons_seeded();
                 // Plan 479 T5：通知历史 boot 恢复（storage 定长槽
                 // shell.notes.0..9 读回会话域——I9 单一事实，桌面模式限定）。
                 restore_notifications(&mut session);

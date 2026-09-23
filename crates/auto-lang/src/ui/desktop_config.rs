@@ -343,6 +343,38 @@ fn csv_pinned(raw: &str) -> Vec<String> {
         .collect()
 }
 
+/// PLAN-044 T-04：桌面快捷方式预置集——PLAN-018 一次性预置进 storage 的
+/// 11 id 实况单源化（此前只存在于盘上 JSON，一次空库覆盖即永久缩水且无
+/// 自愈）。跨仓 id（jade-garden/auto-musk）注册缺失只影响图标回退、不
+/// 影响条目存在（renderer 桌面投影对未登记 id 回退 lucide 的既有语义）。
+pub const DEFAULT_DESKTOP_ICONS: [&str; 11] = [
+    "011-calculator",
+    "012-clock",
+    "013-todo",
+    "014-weather",
+    "015-notes",
+    "020-music-player",
+    "028-launcher",
+    "029-photo-gallery",
+    "030-video-player",
+    "jade-garden",
+    "auto-musk",
+];
+
+/// boot 自愈：storage `shell.desktop.icons` **缺键或空串** → 播种
+/// [`DEFAULT_DESKTOP_ICONS`] 并经安全写路径落盘（T-02 合并写，后续重启
+/// 不再触发）。有键非空 = 用户/预置态，no-op。`shell.desktop.hidden`
+/// 空串是合法用户态（PLAN-012 W4 缺省空），**不**播种。
+pub fn ensure_desktop_icons_seeded() {
+    use crate::vm::ffi::stdlib::{storage_host_publish, storage_host_read};
+    if let Some(v) = storage_host_read("shell.desktop.icons") {
+        if !v.trim().is_empty() {
+            return;
+        }
+    }
+    storage_host_publish("shell.desktop.icons", DEFAULT_DESKTOP_ICONS.join(","));
+}
+
 /// boot 装载：config.at 读（缺席 → 旧键迁移 + 立即落盘一次）。
 /// PLAN-615 T-06：`theme_source = "system"`（缺省，含存量文件缺键）时
 /// `dark_theme` 从 OS 系统主题派生（[`crate::ui::system_theme::
@@ -362,24 +394,120 @@ pub fn load() -> DesktopConfig {
             cfg.dark_theme = dark;
         }
     }
+    // PLAN-044 T-03：boot 装载即首帧快照——后续 save 的字段级 diff 基线。
+    *LAST_SNAPSHOT.lock().unwrap() = Some(cfg.clone());
     cfg
 }
 
-/// 落盘（mkdir -p + 全量写；原子性 v1 不做——配置写频低，坏文件由
-/// parse 回退链兜底）。
+/// 宿主上次写/装载的内存快照——[`save`] 字段级 diff 合并的基线。boot
+/// [`load`] 与每次成功 save 后刷新；外部热应用（renderer 400ms 轮询）不
+/// 刷新是**有意**的：热应用把盘上新值搬进调用方内存后，diff 会把它算成
+/// 「调用方变过的字段」，但锁内合并的 base 本就是盘上现值，同值覆盖无害
+/// （详见 save 注释）。
+static LAST_SNAPSHOT: std::sync::Mutex<Option<DesktopConfig>> = std::sync::Mutex::new(None);
+
+/// 逐字段比较（11 字段，返回发生变化的字段名）——save 合并的 delta 源。
+fn changed_fields(a: &DesktopConfig, b: &DesktopConfig) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if a.dock_position != b.dock_position {
+        out.push("dock_position");
+    }
+    if a.dock_enabled != b.dock_enabled {
+        out.push("dock_enabled");
+    }
+    if a.dock_pinned != b.dock_pinned {
+        out.push("dock_pinned");
+    }
+    if a.wallpaper_path != b.wallpaper_path {
+        out.push("wallpaper_path");
+    }
+    if a.wallpapers_dir != b.wallpapers_dir {
+        out.push("wallpapers_dir");
+    }
+    if a.wallpaper_request != b.wallpaper_request {
+        out.push("wallpaper_request");
+    }
+    if a.dark_theme != b.dark_theme {
+        out.push("dark_theme");
+    }
+    if a.theme_source != b.theme_source {
+        out.push("theme_source");
+    }
+    if a.theme_name != b.theme_name {
+        out.push("theme_name");
+    }
+    if a.transparency != b.transparency {
+        out.push("transparency");
+    }
+    if a.notes_enabled != b.notes_enabled {
+        out.push("notes_enabled");
+    }
+    out
+}
+
+/// 把 `from` 的单个字段抄进 `cfg`（[`changed_fields`] 的逆映射）。
+fn apply_field(cfg: &mut DesktopConfig, name: &str, from: &DesktopConfig) {
+    match name {
+        "dock_position" => cfg.dock_position = from.dock_position.clone(),
+        "dock_enabled" => cfg.dock_enabled = from.dock_enabled,
+        "dock_pinned" => cfg.dock_pinned = from.dock_pinned.clone(),
+        "wallpaper_path" => cfg.wallpaper_path = from.wallpaper_path.clone(),
+        "wallpapers_dir" => cfg.wallpapers_dir = from.wallpapers_dir.clone(),
+        "wallpaper_request" => cfg.wallpaper_request = from.wallpaper_request.clone(),
+        "dark_theme" => cfg.dark_theme = from.dark_theme,
+        "theme_source" => cfg.theme_source = from.theme_source.clone(),
+        "theme_name" => cfg.theme_name = from.theme_name.clone(),
+        "transparency" => cfg.transparency = from.transparency.clone(),
+        "notes_enabled" => cfg.notes_enabled = from.notes_enabled,
+        _ => {}
+    }
+}
+
+/// 落盘（PLAN-044 T-03 双写者护栏）：`<config.at>.lock` 互斥（os-config
+/// daemon 的 put/delete 同一把锁，锁路径约定单源 =
+/// `auto_lang::state_file` 模块头）→ 锁内重读盘上最新值做**字段级合并**
+/// （仅调用方内存相对快照变过的字段采纳调用方值，其余字段取盘上现值
+/// ——daemon 在两次轮询间刚写的字段不再被陈旧快照整体冲掉）→
+/// [`crate::state_file::atomic_write`] 原子替换。锁超时 best-effort 降级
+/// 放行但合并照做。无快照基线（boot 迁移首写）或盘上无文件 → 调用方
+/// 整份为准（历史行为）。
 pub fn save(cfg: &DesktopConfig) -> std::io::Result<()> {
     let path = desktop_config_path().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::NotFound, "home directory unavailable")
     })?;
-    save_to(&path, cfg)
+    let merged =
+        crate::state_file::with_lock(&path, crate::state_file::LOCK_TIMEOUT, || -> DesktopConfig {
+            let disk = std::fs::read_to_string(&path).ok().map(|src| parse_config(&src));
+            let snapshot = LAST_SNAPSHOT.lock().unwrap().clone();
+            match (disk, snapshot) {
+                (Some(base), Some(snap)) => {
+                    let mut m = base;
+                    for f in changed_fields(cfg, &snap) {
+                        apply_field(&mut m, f, cfg);
+                    }
+                    m
+                }
+                _ => cfg.clone(),
+            }
+        })
+        .into_inner();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let result = crate::state_file::atomic_write(&path, serialize_config(&merged).as_bytes());
+    if result.is_ok() {
+        *LAST_SNAPSHOT.lock().unwrap() = Some(merged);
+    }
+    result
 }
 
-/// 落盘到指定路径（单测隔离用）。
+/// 落盘到指定路径（单测隔离用；无锁无合并——隔离路径无并发写方），
+/// PLAN-044 起同为原子替换。
 pub fn save_to(path: &std::path::Path, cfg: &DesktopConfig) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, serialize_config(cfg))
+    crate::state_file::atomic_write(path, serialize_config(cfg).as_bytes())
 }
 
 
@@ -427,6 +555,87 @@ mod tests {
     }
 
     use super::*;
+
+    /// PLAN-044 T-04：桌面快捷方式缺键自愈——缺键/空串播种预置集，
+    /// 有键（用户自定义面）no-op。
+    #[test]
+    fn desktop_icons_seed_only_when_missing() {
+        use crate::vm::ffi::stdlib::{lock_storage_for_test, storage_host_read};
+        let _ser = lock_storage_for_test();
+        let dir = std::env::temp_dir().join(format!("auto-t04-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("storage.json");
+        std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
+
+        // 缺键 → 播种预置集
+        ensure_desktop_icons_seeded();
+        assert_eq!(
+            storage_host_read("shell.desktop.icons").as_deref(),
+            Some(DEFAULT_DESKTOP_ICONS.join(",").as_str())
+        );
+
+        // 有键（用户自定义面）→ no-op
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.icons",
+            "011-calculator,auto-term".into(),
+        );
+        ensure_desktop_icons_seeded();
+        assert_eq!(
+            storage_host_read("shell.desktop.icons").as_deref(),
+            Some("011-calculator,auto-term")
+        );
+
+        // 空串（损坏态）→ 重新播种
+        crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.icons", String::new());
+        ensure_desktop_icons_seeded();
+        assert_eq!(
+            storage_host_read("shell.desktop.icons").as_deref(),
+            Some(DEFAULT_DESKTOP_ICONS.join(",").as_str())
+        );
+
+        std::env::remove_var("AUTO_VM_STORAGE_FILE");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// PLAN-044 T-03：save 字段级合并——daemon 在轮询间隙外写的字段不被
+    /// 宿主陈旧快照冲掉；宿主真正改过的字段照常落盘。
+    #[test]
+    fn save_merges_external_field_changes() {
+        let dir = std::env::temp_dir().join(format!("auto-t03-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.at");
+        std::env::set_var("AUTOOS_DESKTOP_CONFIG", &path);
+        *LAST_SNAPSHOT.lock().unwrap() = None;
+
+        // 1) 宿主首写：壁纸=图片路径
+        let mut cfg = DesktopConfig::default();
+        cfg.wallpaper_path = "D:/wallpapers/room.jpg".into();
+        save(&cfg).unwrap();
+        assert!(std::fs::read_to_string(&path).unwrap().contains("room.jpg"));
+
+        // 2) 模拟 daemon 外写：绕过 save 直接改盘上壁纸=纯色
+        let external = std::fs::read_to_string(&path)
+            .unwrap()
+            .replace("room.jpg", "#101014");
+        std::fs::write(&path, external).unwrap();
+
+        // 3) 宿主陈旧快照（内存仍 room.jpg）只改 notes 开关 → save
+        let mut stale = DesktopConfig::default();
+        stale.wallpaper_path = "D:/wallpapers/room.jpg".into();
+        stale.notes_enabled = false;
+        save(&stale).unwrap();
+
+        // 4) daemon 的壁纸保住，宿主的开关落盘
+        let disk = std::fs::read_to_string(&path).unwrap();
+        assert!(disk.contains("#101014"), "daemon 外写字段被冲掉: {disk}");
+        assert!(disk.contains("notes_enabled : false"), "宿主字段未落盘: {disk}");
+        assert!(!disk.contains("room.jpg"), "陈旧壁纸值被写回: {disk}");
+
+        std::env::remove_var("AUTOOS_DESKTOP_CONFIG");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// 全字段好值：逐字段命中（含引号剥除与 CSV 拆分）。
     #[test]
