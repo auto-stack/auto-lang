@@ -169,7 +169,13 @@ pub struct DevToolsState {
 impl DevToolsState {
     pub(crate) fn new() -> Self {
         Self {
-            debug_mode: false,
+            // PLAN-088 T-02B: 编排方可注入 AUTO_DEBUG_CAPTURE=1 打开捕获面
+            //（debug_mode 单独置位，devtools_open 不动——面板不出镜）。为
+            // AutoUI MCP 通道补齐叶件 bounds（bounds 探针容器 Plan 402 §13.10
+            // 只在 debug_mode 包裹）与引导帧 bounds（PLAN-650 E-2 的 dirty 门
+            // 在 MCP 后激活时破缺）。消费方=auto-musk canvas 会话（无真鼠
+            // 点击/无 hover，402 回归面不适用）。
+            debug_mode: std::env::var("AUTO_DEBUG_CAPTURE").as_deref() == Ok("1"),
             hovered_widget: RefCell::new(None),
             pending_hovers: RefCell::new(Vec::new()),
             debug_element_styles: RefCell::new(HashMap::new()),

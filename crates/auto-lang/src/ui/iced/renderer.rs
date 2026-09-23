@@ -21732,6 +21732,13 @@ fn dynamic_view_impl(
                     .map(|e| (e.event.clone(), e.handler.clone()))
                     .collect();
             }
+            // PLAN-088 T-02B: for 循环上下文随探针入快照（for_iter prop 的
+            // 序列化臂 vtree_atom 既有；此前仅 raw_class/events 入站，实例
+            // 标注到不了 MCP 消费面）。
+            if let Some(f) = &entry.for_context {
+                node.for_context =
+                    Some((f.var.clone(), f.index, f.value_repr.clone()));
+            }
         }
         let state_vals = state.component.read_all_state_materialized();
         let input_map = state.component.input_state_map().clone();
@@ -22198,6 +22205,11 @@ fn dynamic_view_impl(
                 }
                 if !entry.events.is_empty() {
                     node.events = entry.events.clone();
+                }
+                // PLAN-088 T-02B: ForIter 同站合并（缺此则 __bounds_collected
+                // 回路的 from_live 覆盖会把同步块已并入的 for_context 抹掉）。
+                if entry.for_context.is_some() {
+                    node.for_context = entry.for_context.clone();
                 }
             }
         }

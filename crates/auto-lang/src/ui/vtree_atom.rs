@@ -115,6 +115,18 @@ impl VTreeAtomBuilder {
             Self::attach_computed(&mut node, c, opts);
         }
 
+        // PLAN-088 T-02B: 源码 span（字节偏移，.at 源文件内）。随
+        // include_source 开关；行号换算交消费方（musk canvas anchor）——VM
+        // 侧不持多文件行索引。数据即 vnode.source_span（span_for 回调填充）。
+        if opts.include_source {
+            if let Some(span) = vnode.source_span {
+                let mut obj = Obj::new();
+                obj.set("offset", Value::Int(span.offset as i32));
+                obj.set("len", Value::Int(span.len as i32));
+                node.set_prop("span", Value::Obj(Box::new(obj)));
+            }
+        }
+
         // children —— 严格 1:1
         if let Some(max) = opts.depth {
             if depth >= max {
