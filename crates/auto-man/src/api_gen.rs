@@ -750,8 +750,14 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         }
     }
 
-    // Generate api.rs with route handlers
-    let api_rs = qualify_a2r_std(generate_api_rs(api_module, db_fns.as_ref(), api_impl_active));
+    // Generate api.rs with route handlers. Inline API bodies retain their
+    // source-level calls into db.rs; borrow String expressions where the
+    // transpiled db signature expects `&str`, just as route-B handlers do.
+    let mut api_rs = generate_api_rs(api_module, db_fns.as_ref(), api_impl_active);
+    if let Ok(db_source) = std::fs::read_to_string(src_dir.join("db.rs")) {
+        api_rs = borrow_string_db_call_args(&api_rs, &db_source);
+    }
+    let api_rs = qualify_a2r_std(api_rs);
     std::fs::write(src_dir.join("api.rs"), &api_rs)
         .map_err(|e| format!("Failed to write api.rs: {}", e))?;
 
@@ -1336,11 +1342,15 @@ fn all_endpoints_covered(
 /// Plan 399 §6: infer the SSE broadcast discriminator value for a POST endpoint.
 /// The frontend store dispatches by `data.<discriminator_field>` (default field
 /// "event"), and the value names the ChatEvent variant to route to. Convention:
-/// - POST returning the primary entity (a "create") → `"New{TypeName}"`
+/// - POST returning a declared entity (a "create") → `"New{TypeName}"`
 ///   (e.g. POST /api/messages → Message → "NewMessage").
 /// - POST whose fn name contains "typing" (void, signals presence) → `"Typing"`.
 /// Returns None when the endpoint should not broadcast.
-fn broadcast_event_name(endpoint: &ApiEndpoint, primary_type: &str) -> Option<String> {
+fn broadcast_event_name(
+    endpoint: &ApiEndpoint,
+    primary_type: &str,
+    declared_types: &[ApiType],
+) -> Option<String> {
     if endpoint.method() != "POST" {
         return None;
     }
@@ -1348,8 +1358,17 @@ fn broadcast_event_name(endpoint: &ApiEndpoint, primary_type: &str) -> Option<St
     if fn_name.contains("typing") {
         return Some("Typing".to_string());
     }
-    // Default: a create broadcasts "New<Type>".
-    Some(format!("New{}", primary_type))
+    // A create can return a secondary declared type (e.g. Contact is the
+    // primary store type while send_message returns Message). Use that actual
+    // endpoint type when available, retaining the primary-type convention for
+    // scalar/collection results that do not name a declared entity.
+    let return_type = endpoint.return_type.trim().trim_start_matches('?').trim();
+    let event_type = declared_types
+        .iter()
+        .find(|ty| ty.name == return_type)
+        .map(|ty| ty.name.as_str())
+        .unwrap_or(primary_type);
+    Some(format!("New{}", event_type))
 }
 
 /// Generate api.rs with route handlers — full CRUD implementation.
@@ -1375,6 +1394,21 @@ fn is_thin_delegation(endpoint: &ApiEndpoint) -> bool {
     // statement — pattern matching is `is` and error handling is `try`, both
     // of which carry real logic and must take the a2r path.
     !body.stmts.iter().any(stmt_is_control_flow)
+        && !body.stmts.iter().any(stmt_has_nested_call_argument)
+}
+
+/// A nested call changes argument semantics and cannot be lowered by the db
+/// delegation's parameter-name mapping (for example,
+/// `db.current_user(bearer_token(meta))`). Keep it on the body transpiler path.
+fn stmt_has_nested_call_argument(stmt: &auto_lang::ast::Stmt) -> bool {
+    use auto_lang::ast::{Expr, Stmt};
+    let expr = match stmt {
+        Stmt::Return(expr) => expr.as_ref(),
+        Stmt::Expr(expr) => expr,
+        _ => return false,
+    };
+    let Expr::Call(call) = expr else { return false };
+    call.args.args.iter().any(|arg| matches!(arg.get_expr(), Expr::Call(_)))
 }
 
 /// A statement that makes a handler body "non-thin": control flow whose
@@ -1423,6 +1457,219 @@ fn try_transpile_body(
     trans.transpile_body_stmts(body, &params).map_err(|e| e.to_string())
 }
 
+fn append_inline_param_bindings(lines: &mut Vec<String>, endpoint: &ApiEndpoint) {
+    for param in endpoint_body_params(endpoint) {
+        lines.push(format!("    let {} = input.{}.clone();", param.name, param.name));
+    }
+    for param in endpoint_query_params(endpoint) {
+        lines.push(format!("    let {} = query.{}.clone();", param.name, param.name));
+    }
+}
+
+fn rewrite_inline_runtime_names(source: &str) -> String {
+    let bytes = source.as_bytes();
+    let mut out = String::with_capacity(source.len());
+    let (mut index, mut in_string, mut escaped) = (0usize, false, false);
+    while index < bytes.len() {
+        if in_string {
+            let ch = source[index..].chars().next().unwrap();
+            out.push(ch);
+            index += ch.len_utf8();
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        let previous = source[..index].chars().next_back();
+        let is_boundary = |ch: Option<char>| {
+            ch.map(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == ':' || c == '.'))
+                .unwrap_or(true)
+        };
+        if is_boundary(previous) && source[index..].starts_with("db.") {
+            out.push_str("crate::db::");
+            index += 3;
+            continue;
+        }
+        if is_boundary(previous) && source[index..].starts_with("bearer_token(") {
+            out.push_str("auto_bearer_token(");
+            index += "bearer_token(".len();
+            continue;
+        }
+        let ch = source[index..].chars().next().unwrap();
+        out.push(ch);
+        index += ch.len_utf8();
+        if ch == '"' {
+            in_string = true;
+        }
+    }
+    out
+}
+
+fn wrap_inline_return(line: &str) -> String {
+    let trimmed = line.trim_start();
+    let Some(value) = trimmed.strip_prefix("return ") else {
+        return line.to_string();
+    };
+    let value = value.trim_end().strip_suffix(';').unwrap_or(value.trim_end());
+    if value.starts_with("JsonResponse(") || value.is_empty() {
+        return line.to_string();
+    }
+    let indent = &line[..line.len() - trimmed.len()];
+    format!("{}return JsonResponse({});", indent, value)
+}
+
+fn matching_paren(source: &str, open: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (index, byte) in bytes.iter().enumerate().skip(open) {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if *byte == b'\\' {
+                escaped = true;
+            } else if *byte == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match *byte {
+            b'"' => in_string = true,
+            b'(' => depth += 1,
+            b')' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn split_top_level_args(source: &str) -> Vec<&str> {
+    if source.trim().is_empty() {
+        return Vec::new();
+    }
+    let mut args = Vec::new();
+    let (mut parens, mut brackets, mut braces, mut angles) = (0usize, 0usize, 0usize, 0usize);
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut start = 0usize;
+    for (index, byte) in source.as_bytes().iter().enumerate() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if *byte == b'\\' {
+                escaped = true;
+            } else if *byte == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match *byte {
+            b'"' => in_string = true,
+            b'(' => parens += 1,
+            b')' => parens = parens.saturating_sub(1),
+            b'[' => brackets += 1,
+            b']' => brackets = brackets.saturating_sub(1),
+            b'{' => braces += 1,
+            b'}' => braces = braces.saturating_sub(1),
+            b'<' => angles += 1,
+            b'>' => angles = angles.saturating_sub(1),
+            b',' if parens == 0 && brackets == 0 && braces == 0 && angles == 0 => {
+                args.push(source[start..index].trim());
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    args.push(source[start..].trim());
+    args
+}
+
+fn db_string_param_signatures(db_source: &str) -> std::collections::HashMap<String, Vec<bool>> {
+    let mut signatures = std::collections::HashMap::new();
+    for line in db_source.lines() {
+        let Some(decl) = line.trim().strip_prefix("pub fn ") else { continue };
+        let Some(open_rel) = decl.find('(') else { continue };
+        let Some(close_rel) = matching_paren(decl, open_rel) else { continue };
+        let name = decl[..open_rel].trim().split('<').next().unwrap_or("").trim();
+        let params = split_top_level_args(&decl[open_rel + 1..close_rel]);
+        let string_params = params
+            .iter()
+            .map(|param| {
+                param
+                    .split_once(':')
+                    .map(|(_, ty)| ty.contains("&str") || ty.contains("&[String]"))
+                    .unwrap_or(false)
+            })
+            .collect::<Vec<_>>();
+        signatures.insert(name.to_string(), string_params);
+    }
+    signatures
+}
+
+fn borrow_string_db_call_args(api_source: &str, db_source: &str) -> String {
+    let signatures = db_string_param_signatures(db_source);
+    if signatures.is_empty() {
+        return api_source.to_string();
+    }
+    const MARKER: &str = "crate::db::";
+    let mut out = String::with_capacity(api_source.len());
+    let mut cursor = 0usize;
+    while let Some(rel) = api_source[cursor..].find(MARKER) {
+        let start = cursor + rel;
+        let name_start = start + MARKER.len();
+        let name_end = name_start
+            + api_source[name_start..]
+                .bytes()
+                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+                .count();
+        let name = &api_source[name_start..name_end];
+        let Some(expected) = signatures.get(name) else {
+            out.push_str(&api_source[cursor..name_end]);
+            cursor = name_end;
+            continue;
+        };
+        let open = api_source[name_end..]
+            .find('(')
+            .map(|i| name_end + i)
+            .filter(|i| api_source[name_end..*i].trim().is_empty());
+        let Some(open) = open else {
+            out.push_str(&api_source[cursor..name_end]);
+            cursor = name_end;
+            continue;
+        };
+        let Some(close) = matching_paren(api_source, open) else {
+            out.push_str(&api_source[cursor..open + 1]);
+            cursor = open + 1;
+            continue;
+        };
+        let args = split_top_level_args(&api_source[open + 1..close]);
+        out.push_str(&api_source[cursor..open + 1]);
+        for (index, arg) in args.iter().enumerate() {
+            if index > 0 {
+                out.push_str(", ");
+            }
+            if expected.get(index).copied().unwrap_or(false) && !arg.starts_with('&') {
+                out.push('&');
+            }
+            out.push_str(arg);
+        }
+        out.push(')');
+        cursor = close + 1;
+    }
+    out.push_str(&api_source[cursor..]);
+    out
+}
+
 /// Plan B1(b): request-metadata JSON builder emitted into generated api.rs.
 /// Mirrors the VM server's push_meta format byte-for-byte so bearer_token /
 /// cookie readers behave identically on both backends.
@@ -1454,6 +1701,12 @@ const META_JSON_HELPER: &str = r#"fn meta_json(headers: &axum::http::HeaderMap) 
         .unwrap_or("")
         .replace('"', "\\\"");
     format!("{{\"cookies\":{},\"auth\":\"{}\"}}", cookies, auth)
+}"#;
+
+const META_BEARER_TOKEN_HELPER: &str = r#"fn auto_bearer_token(meta: &str) -> String {
+    let marker = "Bearer ";
+    let Some(start) = meta.find(marker).map(|i| i + marker.len()) else { return String::new(); };
+    meta[start..].split('"').next().unwrap_or("").to_string()
 }"#;
 
 // Plan 617 T-05: local media file service routes. Deliberately mirrors the
@@ -1830,6 +2083,7 @@ fn generate_api_rs(
     // endpoint declares the `meta str` server-injected param.
     if api_module.endpoints.iter().any(|e| e.params.iter().any(|p| is_meta_param(p))) {
         lines.push(META_JSON_HELPER.to_string());
+        lines.push(META_BEARER_TOKEN_HELPER.to_string());
         lines.push("".to_string());
     }
 
@@ -1957,7 +2211,7 @@ fn generate_api_rs(
         let fn_name = &endpoint.fn_name;
         let has_path = has_path_param(&endpoint.path());
         // Plan 399 §6: SSE broadcast event name (was hardcoded "NewMessage").
-        let bcast_evt = broadcast_event_name(endpoint, &primary_type);
+        let bcast_evt = broadcast_event_name(endpoint, &primary_type, &api_module.types);
 
         // Plan musk-022: streaming endpoints get an SSE handler (Sse<impl Stream>),
         // not a JSON CRUD handler. Subscribes to the events bus, emits each as SSE.
@@ -2071,7 +2325,12 @@ fn generate_api_rs(
             && (db_delegation.is_some()
                 || (a2r_body_enabled && !is_thin_delegation(endpoint) && endpoint.body.is_some()));
         if meta_binding_needed {
-            params.push("headers: axum::http::HeaderMap".to_string());
+            let header_extractor = "headers: axum::http::HeaderMap".to_string();
+            if let Some(body_index) = params.iter().position(|param| param.starts_with("Json(")) {
+                params.insert(body_index, header_extractor);
+            } else {
+                params.push(header_extractor);
+            }
         }
 
         // Determine return type
@@ -2159,7 +2418,7 @@ fn generate_api_rs(
         if a2r_body_enabled && !is_thin_delegation(endpoint) {
             if let Some(body) = &endpoint.body {
                 match try_transpile_body(body, endpoint, api_module) {
-                    Ok(mut stmts) => {
+                    Ok(stmts) => {
                         // PLAN-668 R-24：非 void 端点的 a2r 内联体尾 `return X;`
                         // 是语义值，而 handler 签名是 `-> JsonResponse<T>`——
                         // 尾 return 包 JsonResponse(...)（025 system_snapshot
@@ -2167,25 +2426,18 @@ fn generate_api_rs(
                         // 不在内联面，见 a2r_body 覆盖注记）。
                         let ret_nonvoid = !endpoint.return_type.trim().is_empty()
                             && endpoint.return_type.trim() != "void";
-                        if ret_nonvoid {
-                            if let Some(last) = stmts.last_mut() {
-                                let trimmed = last.trim_start();
-                                if let Some(rest) = trimmed.strip_prefix("return ") {
-                                    let val = rest.trim_end().trim_end_matches(';');
-                                    if !val.is_empty() {
-                                        let indent = &last[..last.len() - trimmed.len()];
-                                        *last = format!("{}return JsonResponse({});", indent, val);
-                                    }
-                                }
-                            }
-                        }
                         // Plan B1(b): bind the server-injected meta JSON before
                         // the transpiled body (it references `meta` like any param).
                         if has_meta {
                             lines.push("    let meta: String = meta_json(&headers);".to_string());
                         }
-                        for s in &stmts {
-                            lines.push(s.clone());
+                        append_inline_param_bindings(&mut lines, endpoint);
+                        for source_line in &stmts {
+                            let mut line = rewrite_inline_runtime_names(source_line);
+                            if ret_nonvoid {
+                                line = wrap_inline_return(&line);
+                            }
+                            lines.push(line);
                         }
                         lines.push("}".to_string());
                         lines.push("".to_string());
@@ -3251,7 +3503,7 @@ pub type Message = { id: int, text: str }
 pub fn list_messages() []Message { return db.all() }
 
 #[api(method = "POST", path = "/api/messages")]
-pub fn send_message(text str) Message { return db.create(text) }
+pub fn send_message(text str) Message { return db.create_message(text) }
 
 #[api(method = "GET", path = "/api/stream")]
 pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
@@ -3305,6 +3557,14 @@ pub fn create_article(slug str, title str, meta str) Article { return db.create_
         // extractor + binding present
         assert!(api_rs.contains("headers: axum::http::HeaderMap"), "extractor: {}", api_rs);
         assert!(api_rs.contains("let meta: String = meta_json(&headers);"), "binding: {}", api_rs);
+        let post_signature = api_rs
+            .lines()
+            .find(|line| line.contains("pub async fn create_article"))
+            .expect("POST handler signature");
+        assert!(
+            post_signature.find("headers:").unwrap() < post_signature.find("Json(input)").unwrap(),
+            "HeaderMap extractor precedes body-consuming Json: {post_signature}"
+        );
         // delegation args use the binding
         assert!(api_rs.contains("crate::db::current_user(&meta)"), "get deleg: {}", api_rs);
         assert!(
@@ -3316,6 +3576,51 @@ pub fn create_article(slug str, title str, meta str) Article { return db.create_
         // helper JSON format parity spot-check (VM push_meta format)
         assert!(api_rs.contains("cookies"), "cookies key: {}", api_rs);
         assert!(api_rs.contains("auth"), "auth key: {}", api_rs);
+    }
+
+    #[test]
+    fn test_inline_meta_body_binds_extractors_and_wraps_early_returns() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type User = { id: int, username: str, token: str }
+pub type Article = { slug: str, title: str, author: str }
+use db
+
+#[api(method = "GET", path = "/api/user")]
+pub fn current_user(meta str) User { return db.current_user(bearer_token(meta)) }
+
+#[api(method = "POST", path = "/api/articles")]
+pub fn create_article(slug str, title str, meta str) Article {
+    let user User = db.current_user(bearer_token(meta))
+    if user.id == 0 {
+        return Article { slug: "", title: "", author: "" }
+    }
+    return db.create_article(slug, title, user.username)
+}
+"#;
+        let module = try_full_parse(api).expect("extract API");
+        let db_fns: std::collections::HashSet<String> = [
+            "current_user".to_string(),
+            "create_article".to_string(),
+        ]
+        .into_iter()
+        .collect();
+        let api_rs = generate_api_rs(&module, Some(&db_fns), false);
+        let db_source = r#"
+pub fn current_user(token: &str) -> User {
+    todo!()
+}
+pub fn create_article(slug: &str, title: &str, author: &str) -> Article {
+    todo!()
+}
+"#;
+        let api_rs = borrow_string_db_call_args(&api_rs, db_source);
+
+        assert!(api_rs.contains("fn auto_bearer_token(meta: &str) -> String"), "token helper: {api_rs}");
+        assert!(api_rs.contains("crate::db::current_user(&auto_bearer_token(meta.as_str()))"), "nested metadata call: {api_rs}");
+        assert!(api_rs.contains("let slug = input.slug.clone();"), "body field binding: {api_rs}");
+        assert!(api_rs.contains("return JsonResponse(Article"), "early return wrapper: {api_rs}");
+        assert!(api_rs.contains("crate::db::create_article(&slug, &title, &user.username)"), "db qualification and bound params: {api_rs}");
     }
 
     /// Plan B1(b): module without any meta param must NOT emit the helper.
@@ -3605,7 +3910,10 @@ pub fn toggle_pin(id int) ?Task { return db.toggle_pin(id) }
     fn test_sse_broadcast_event_name_not_hardcoded() {
         let _a2r_env = a2r_env_lock();
         let api = r#"
+pub type Contact = { id: str, name: str }
 pub type Message = { id: int, text: str }
+
+use db
 
 #[api(method = "POST", path = "/api/messages")]
 pub fn send_message(text str) Message { return db.create(text) }
@@ -3618,7 +3926,7 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
 "#;
         let module = extract_api_lenient(api).expect("extract");
         let db_fns: std::collections::HashSet<String> = [
-            "create".to_string(), "set_typing".to_string(),
+            "create_message".to_string(), "set_typing".to_string(),
         ].into_iter().collect();
         let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
 

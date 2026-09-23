@@ -76,14 +76,18 @@ fn mint_token(email str) str {
 pub fn login(email str, password str) User {
     var result User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
     let empty User = result
+    var credentials_match bool = false
     for cred in creds {
         if cred.email == email && cred.password == password {
-            let token str = mint_token(email)
-            for user in users {
-                if user.email == email {
-                    let matched User = User { id: user.id, email: user.email, username: user.username, bio: user.bio, image: user.image, token: token }
-                    result = matched
-                }
+            credentials_match = true
+        }
+    }
+    if credentials_match {
+        let token str = mint_token(email)
+        for user in users {
+            if user.email == email {
+                let matched User = User { id: user.id, email: user.email, username: user.username, bio: user.bio, image: user.image, token: token }
+                result = matched
             }
         }
     }
