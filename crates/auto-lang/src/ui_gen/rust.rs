@@ -14302,8 +14302,10 @@ widget Demo {
             "trigger 合成开合消息:\n{code}"
         );
         assert!(
-            code.contains("auto_lang::ui::action_config::menubar_open().as_deref() == Some(\"file\")"),
-            "open 态 = 全局面比对:\n{code}"
+            code.contains(
+                "menubar_open().as_deref().map(|o| o == \"file\" || o.starts_with(\"file::\")).unwrap_or(false)",
+            ),
+            "open 态 = 全局面比对（前缀感知，PLAN-695 复合键兼容）:\n{code}"
         );
         assert!(
             code.contains("on_dismiss: Some(DemoMsg::__MenubarClose)"),

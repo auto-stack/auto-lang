@@ -4649,10 +4649,11 @@ element menubar_shortcut {
     backends: { web: "component", iced: "component", gpui: "unknown" }
     vue: { component: "MenubarShortcut", import: "@/components/ui/menubar" }
     props: [
+        { name: "text", type: "string", description: "Shortcut text (positional text lands here; children text accepted too, PLAN-695 family)" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Menubar shortcut hint (standalone child form, right-aligned muted; text via children, PLAN-695 family)"
+    description: "Menubar shortcut hint (standalone child form, right-aligned muted, PLAN-695 family)"
 }
 
 element menubar_sub {
