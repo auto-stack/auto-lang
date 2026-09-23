@@ -99,11 +99,26 @@ fn scan_probe_documented_recipe_double_to_value_idempotent() {
 
 #[test]
 fn p042_app_at_parses() {
+    // 跨仓兄弟解析（AGENTS.md §2 序）——组内 .wt/os-042/auto-lang 与主检出
+    // D:/autostack/{auto-lang,auto-os} 两形态同构（CARGO_MANIFEST_DIR 上三
+    // 级即组/伞根）。R-1 修复：原路径少一级 auto-os，工作树内恒 skip 空绿。
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../apps/039-syslog/src/front/app.at");
+        .join("..")
+        .join("..")
+        .join("..")
+        .join("auto-os")
+        .join("apps")
+        .join("039-syslog")
+        .join("src")
+        .join("front")
+        .join("app.at");
     let src = match std::fs::read_to_string(&p) {
         Ok(s) => s,
-        Err(e) => { eprintln!("[p042] skip (app file not found: {e})"); return; }
+        Err(e) => {
+            // 兄弟检出缺席（CI 纯 auto-lang 检出）= 合法跳过，响亮留痕。
+            eprintln!("[p042] skip (auto-os sibling checkout absent: {e})");
+            return;
+        }
     };
     let session = crate::session::CompilerSession::ui();
     let mut parser = crate::parser::Parser::from(src.as_str()).with_session(session);
@@ -146,4 +161,42 @@ fn p042_bad_handler_error_lands_in_ring() {
         hit.level,
         crate::ui::syslog::SyslogLevel::Error
     ));
+}
+
+/// PLAN-042 review R-2：HostLogger 直测（AC-02 log crate 腿）——error/
+/// warn/info 入环（source=host、target 前缀、级别映射），Debug/Trace 不入
+/// 环。并发进程内唯一 target 过滤自证（ring 全局共享同 syslog 单测口径）。
+#[test]
+fn p042_host_logger_levels_into_ring() {
+    use log::{Level, Record};
+    use log::Log as _;
+    let logger = crate::ui::syslog::HostLogger;
+    // format_args! 借用局部——Record 逐条就地构建（无闭包返回）。
+    macro_rules! rec {
+        ($level:expr, $msg:expr) => {{
+            let r = Record::builder()
+                .level($level)
+                .target("p042_host")
+                .args(format_args!("{}", $msg))
+                .build();
+            logger.log(&r);
+        }};
+    }
+    rec!(Level::Error, "err line");
+    rec!(Level::Warn, "warn line");
+    rec!(Level::Info, "info line");
+    rec!(Level::Debug, "debug line");
+    rec!(Level::Trace, "trace line");
+    let got: Vec<_> = crate::ui::syslog::snapshot()
+        .into_iter()
+        .filter(|e| e.msg.starts_with("[p042_host]"))
+        .collect();
+    assert_eq!(got.len(), 3, "error/warn/info 入环，Debug/Trace 不入");
+    assert!(got.iter().all(|e| e.source == "host"));
+    assert_eq!(got[0].msg, "[p042_host] err line");
+    assert!(matches!(
+        got[0].level,
+        crate::ui::syslog::SyslogLevel::Error
+    ));
+    assert!(matches!(got[2].level, crate::ui::syslog::SyslogLevel::Info));
 }
