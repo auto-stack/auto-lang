@@ -365,6 +365,16 @@ T-03/T-07（语料用全族）；T-11 依赖 T-04~T-10；T-12 依赖 T-04/T-06/T
   gallery_golden 重基线（理由随提交）。auto-edit 侧：worktree 二进制 env 覆盖序
   regen（PATH 解析落主检出旧 exe 的坑在案）；Vue 臂活体走查环境受阻（D6）。
   blockers: 无。next: /auto-plan:review。
+- 2026-09-23 fold 门对勘补录（stage: work 续）：cargo tf --no-fail-fast
+  全量 5465 测，红册 12→定谳 11 预存（musk×6/counter×1/a2vue 金样×1 =
+  基线在档；style_if stress + native_gate 018 两枚 master 同测实锤预存）
+  + 1 本计划（plan674 menubar_family_lowers_to_popover_row 断言随 a2r
+  前缀感知发射更新，73de4c9ef）。执行期增量 ⑤：menubar_shortcut 补
+  text prop 声明（S001 消除）；⑥desktop_protocol coverage 语义勘定——
+  Covered=协议 target_set 可投影非本地实现完备，menubar root 回退
+  NotYet（covered fence 实锤）。gallery_pages_compile tf 首轮栈溢出中止
+  = 重测并发内存挤兑，单跑 1289s 绿非缺陷。gallery_golden 重基线随本门
+  执行（P695-D4 消化）。
 
 ## 待澄清事项
 
