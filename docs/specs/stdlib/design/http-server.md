@@ -1,17 +1,19 @@
 # Auto HTTP/HTTPS Server 标准库 Spec
 
-> **Status**: Draft v2(2026-06-17 更新;2026-09-20 Plan 669 修订 §4.1 注入规则并新增 §4.1.1 VM 模式装配实现状态)
+> **Status**: Draft v2(2026-06-17 更新;2026-09-20 Plan 669 修订 §4.1 注入规则并新增 §4.1.1 VM 模式装配实现状态;2026-09-23 Plan 696 校正后台现状)
 > **范围**: 定义 Auto 标准库中 HTTP/HTTPS Server 的统一 API,覆盖同步/异步 × 普通/流 四种 handler 模式
-> **目标**: VM 模式和 A2R 模式共享同一套 API,底层封装 Axum/Tokio
+> **目标**: VM 模式和 A2R 模式共享同一套 API。各后台当前实现不同，不能据此推断底层共享 Axum/Tokio；实际装配与支持范围见 §8.1（PLAN-696）。
 > **关联**: Plan 321(generator 运行时)提供 yield/~Iter/~Stream 原语;本 Spec 定义 HTTP 层如何消费它们
-> **v2 更新**: 确认 AutoHttpServer shim 层架构;SSE handler 用 yield 写法 A;HTTPStream 统一到 Iter 协议
+> **v2 目标**: AutoHttpServer shim 层、SSE handler 的 yield 写法和 HTTPStream→Iter 统一方向；共享 server 尚未实施，SSE/HTTPStream 的每条后台路径以 §8.1 为准
+
+> 本文中的 API 形状与架构章节描述目标合约；只有 §4.1.1 与 §8.1 标明为当前实现的内容才是已验证支持面。特别是 HTTPS、优雅关闭、VM/A2R 共用 Axum 等均不是 PLAN-696 的交付声明。
 
 ---
 
 ## §1 设计原则
 
-1. **API 统一**:用户写一套代码,VM 和 A2R 两种模式行为一致
-2. **底层封装 Axum/Tokio**:标准库底层调 Axum,用户不直接接触 Rust 框架
+1. **API 统一目标**:尽量让 VM 和 A2R 使用同一套 API 合约；行为一致性需按 §8.1 的真实覆盖逐项验证
+2. **实现目标**:API 合约尽量不暴露 Rust 框架；当前 VM 与生成 Rust 的传输层不同，见 §8.1。
 3. **不染色**:同步 handler 不需要 async,异步 handler 用 `~T` 返回类型表达
 4. **注解 = Builder 的语法糖**:`#[api]` 底层转换为 `http.server().get()` builder 代码
 5. **未来可适配其他生态**:API 设计独立于 Rust(为 Kotlin/C/ArkTS 留空间)
@@ -351,24 +353,25 @@ pub fn main() {
 
 ### 7.3 优雅关闭
 
-`Ctrl+C` / `SIGTERM` 时,server 停止 accept 新连接,等待活跃连接完成。
+目标行为：`Ctrl+C` / `SIGTERM` 时 server 停止 accept 新连接并等待活跃连接完成。VM `#[api]` server 当前没有优雅关闭 API。
 
 ---
 
 ## §8 跨模式一致性
 
-### 8.1 VM 模式 vs A2R 模式
+### 8.1 当前后台装配与支持范围（PLAN-696）
 
-| 行为 | VM 模式 | A2R 模式 | 一致性 |
+| 路径 | 当前实现 | 支持范围与边界 |
 |---|---|---|---|
-| 路径参数 `:id` | 自动注入(int/str 转换) | Axum `Path<T>` | ✅ 行为相同 |
-| Body JSON | `req.json[T]()` | Axum `Json<T>` | ✅ |
-| 返回值序列化 | Value→JSON(需实现全类型) | serde_json | ✅(需补全 VM 序列化) |
-| 流式响应 | Iterator::Generator next() | `Sse<impl Stream>` | ✅(SSE 帧格式统一) |
-| 状态码 | Response.status() | Axum `StatusCode` | ✅ |
-| HTTPS | 独立后续 | `axum-server` + `rustls` | ✅ |
+| VM `#[api]` server | `crates/auto-lang/src/vm/ffi/http_server.rs` 用 Tokio TCP listener 和手写 HTTP/1 请求解析；VM、listener 与连接任务由同线程 `LocalSet` / `Rc<AutoVM>` 持有。 | 普通 body 按 `Content-Length` 读满；非法/重复长度、短体及不支持的 `Transfer-Encoding` 会被拒绝；读取超时返回 408，超过 10 MiB 返回 413。SSE generator 分片执行并让出 LocalSet；连接断开会取消取帧任务。当前没有优雅关闭 API。 |
+| 生成 Rust server | `crates/auto-man/src/api_gen.rs` 从 `back/api.at` 生成 Axum handler 和路由。 | 015-notes、017-chat、023-realworld 有 VM/Axum live 行为对拍；这是一条独立生成路径，不复用 VM server 的 HTTP 解析器。 |
+| a2r-std HTTP | `crates/a2r-std/src/http.rs` 是基于 ureq 的客户端流/请求实现。 | 它不是 `.at` HTTP server 的 Rust 目标实现；`stdlib/auto/http.rs.at` 当前不存在。 |
+| VM merge / split | 默认 VM merge 直接调用 `#[api]` 函数；`--no-merge` / `AUTO_VM_MERGE=0` 将符合条件的调用改写为 HTTP。 | merge 是进程内函数调用，保留函数值/错误语义，不产生 HTTP status/header；split 才经过服务端传输。 |
+| process back-proxy | `crates/auto-lang/src/back_proxy.rs` 为每个 app session 装载独立 VM，通过宿主 HTTP 路由分发 `api.at` 调用；另有 SSE/IPC 接线。 | 此代理是独立的进程内 session 路径，不等同于 `serve_async` 或 generated Axum。按名参数缺失可返回 400。 |
 
-### 8.2 统一实现层
+VM `#[api]` 的当前按名绑定规则、path/body/query 优先级、缺参语义与同步 serve 路径差异见 §4.1.1。计划 696 的回归覆盖请求体 TCP 分段、短体/超限、慢 SSE 与断连取消，以及 015/017/023 的 VM/Axum 行为。`auto.bus.subscribe()` 仍是 VM compile seam；不能把 generated Axum 的 publisher SSE 视作 VM pubsub 已实现。
+
+### 8.2 统一实现层（目标架构，尚未落地）
 
 ```
 Auto 标准库 http.at / https.at (API 声明)
@@ -380,12 +383,10 @@ Auto 标准库 http.at / https.at (API 声明)
     ↓         ↓
     └────┬────┘
          ↓
-   Axum / Tokio (统一 Rust 实现)
+   未来共享的 Rust 协议层（待设计与实施）
 ```
 
-VM shim 和 a2r 转译**底层都调 Axum/Tokio**,只是调用方式不同:
-- VM: native Rust shim 封装 Axum,通过 `spawn_blocking`/专用线程桥接 `!Send` 的 VM
-- A2R: 转译生成的 Rust 代码直接调 Axum(天然 `Send`)
+图中统一协议层是后续目标，不是当前架构。VM 的 `AutoVM` 为 `!Send`；若以后接入共享 server，必须通过同线程 typed owner 或消息桥承载，禁止把 VM 引用编码为 `usize` 并跨线程恢复。生成 Axum 服务目前独立运行。
 
 ---
 
@@ -456,11 +457,11 @@ HTTP 层检测到 `~Stream<str>` 返回类型:
 
 ---
 
-## §11 架构决策(v2 确认)
+## §11 架构方向（v2 草案；落地状态见 §8.1）
 
-### 11.1 底层封装:AutoHttpServer shim 层(选项 C)
+### 11.1 目标底层封装：AutoHttpServer shim 层（未实施）
 
-**决策**:新建独立的 Rust 模块 `AutoHttpServer`,封装 Axum Router + 路由表 + VM/a2r 桥接。VM 的 native shim 和 a2r 生成的代码**都调这个模块**,确保两个模式底层共享同一套 Rust 实现。
+**目标**:新建独立的 Rust 模块 `AutoHttpServer`,封装 Axum Router + 路由表 + VM/a2r 桥接。此目标不描述 PLAN-696 交付的当前实现；短期 VM HTTP 路径和生成 Axum 路径见 §8.1。
 
 ```rust
 // crates/auto-lang/src/vm/ffi/http_server.rs (或 a2r-std)
@@ -473,8 +474,8 @@ pub struct AutoRoute {
     handler: AutoHandler,
 }
 pub enum AutoHandler {
-    /// VM 模式:函数名 + VM 引用(通过 usize 指针,!Send 绕过)
-    VmFn { fn_name: String, vm_ptr: usize },
+    /// VM handler 需由 typed owner 或消息桥调用；不能跨线程转运 !Send VM 指针。
+    VmFn { fn_name: String /*, owner bridge */ },
     /// a2r 模式:直接是 Rust async fn
     RustFn { /* Box<dyn Fn...> */ },
 }

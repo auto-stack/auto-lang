@@ -7,13 +7,13 @@ docs/design/13 规划的 async/net/http/json/url/log/env 模块在 `stdlib/auto/
 
 ## 原则
 
-- 层次依赖：`async` 最底，`net` 建于其上，`http` 依赖 net/json/url，`log`/`env` 独立。
-- 公共 API 与执行后端解耦：同一 `.at` API，AutoVM 走 FFI（`.vm.at`），a2r 走直译（`.rs.at`）。
+- **目标层次**：逻辑上由 `async` 支撑 `net`，HTTP API 再组合网络、JSON 与 URL 能力；这是模块设计关系，不代表各目标已有同构实现或共享传输层。
+- **按目标核实现状**：`.at` 公共声明、`.vm.at`/`.rs.at` 等目标文件、native shim、生成 Rust 服务与宿主适配是不同覆盖维度。具体文件和缺口见 [stdlib 后台装配表](../../../stdlib/design/backend-assembly.md)。
 - 路由约定优先、配置兜底覆盖。
 
 ## 细节
 
-### 模块层次（13 章设计，已落地）
+### 模块逻辑层次（设计视图；不表示共享实现已落地）
 
 ```text
 http.Server（route/middleware/listen）
@@ -24,18 +24,21 @@ http.Server（route/middleware/listen）
 log / env 为独立工具模块
 ```
 
-实证（`stdlib/auto/`）：`http.at`+`http.vm.at`、`http_stream.at`、`net.at`+`net.vm.at`、
+此图表示公共能力的逻辑关系，不表示 VM HTTP server 与 Rust/Axum server 共用实现。
+实现目录的文件实证包括：`http.at`+`http.vm.at`、`http_stream.at`、`net.at`+`net.vm.at`、
 `async.at`+`async.vm.at`、`json.at`+`json.vm.at`+`json.rs.at`、`url.at`+`url.vm.at`、
 `log.at`+`log.vm.at`、`env.at`+`env.vm.at`+`env.rs.at`、`sse.at`、`sse_server.at`。
-全目录共 28 个 `.vm.at`/`.rs.at` 后端文件——13 章 "Planned: 双文件模式" 已成现实。
+`stdlib/auto/` 有多份 `.vm.at`/`.rs.at` 目标文件；它们不构成每个公共 API 都有配对实现的承诺。
 
 ### 双模式执行（13 章 §Dual-Mode Execution）
 
 | 文件 | 用途 | 消费方 |
 |------|------|--------|
-| `http.at` | Auto 公共 API | 两种模式 |
+| `http.at` | Auto 公共 API 声明 | VM；Rust server 从 `back/api.at` 独立生成 |
 | `http.vm.at` | `#[vm]` FFI 绑定 | AutoVM |
-| `http.rs.at` | `#[rust_fn]` 转译提示 | a2r |
+
+`stdlib/auto/http.rs.at` 当前不存在。`auto-man` 从 `back/api.at` 生成 Axum 服务；
+`crates/a2r-std/src/http.rs` 是 HTTP 客户端实现，不是上述 VM server 的 Rust 后端。
 
 ### SSE（plan-152/154/313）
 
@@ -43,6 +46,8 @@ log / env 为独立工具模块
   （id/event/data/retry），`parse_sse_chunk` 处理字符串块；空事件与完成标记有显式判定。
 - 用户侧 stdlib：`sse.at`（客户端）、`sse_server.at`（服务端推送，plan-313 完成
   TCP flush + SSE 服务端 Phase 1-2）。
+- `sse.at` 中的解析 API、`sse_server.at` 的推送示例、`#[api]` handler 的 VM SSE
+  与生成 Axum 的 SSE 是不同路径；一个路径存在不代表其他路径具备相同功能。
 
 ### 混合路由（plan-114）
 

@@ -1147,6 +1147,19 @@
      ],
      "status": "published",
      "created": "2026-09-22"
+    },
+    {
+     "id": "P696-4",
+     "title": "stdlib-http-server-runtime-hardening — 交付摘要",
+     "content": "PLAN-696 完成 VM HTTP Content-Length 全量读取/限制/超时、typed same-thread AutoVM owner、协作式 SSE 与断连取消；修复生成 Axum response parity；补全标准库后台装配事实。已知限制：VM bus subscribe 仍为 compile seam，VM 与 Axum server 不共享协议实现，HTTP listener 无 graceful shutdown。详档见归档计划及 stdlib/runtime Specs。",
+     "file": "docs/plans/archive/696-stdlib-http-server-runtime-hardening.md",
+     "related": [
+      "PLAN-696",
+      "GOAL-003"
+     ],
+     "status": "published",
+     "created": "2026-09-23",
+     "last_modified": "2026-09-23"
     }
    ]
   },
@@ -4463,19 +4476,20 @@
     },
     {
      "id": "P669-1",
-     "title": "#[api] HTTP server 实参按名绑定（VM 轨装配规则与实现链）",
-     "content": "PLAN-669 修复 VM 模式 #[api] handler 实参装配违反 spec §4.1 的断层（query 集合串/body 原始串按位直塞）。注入规则五条：路径段→body JSON 字段→query 参数按名绑定（声明序，同名 path 优先）；int/float/bool 精确类型转换（parse 失败 400 指名）；缺参→HTTP 400 {\"error\":\"missing param `名`\"}（back_proxy Plan 658 对齐）；单参 whole-body 容忍（唯一 str 形参未按名供给时收整个 body 串——Plan 346 单参 body 契约延续，含 multipart 字段 JSON）；元数据形参按名 opt-in（尾随形参名∈{meta,metadata,req,request} 收 {\"cookies\":...,\"auth\":...}，其余未供给一律 400）。实现链：codegen 在 api_routes 采集点发布形参签名（名+Type Display）到进程级 API_PARAM_SIGS 侧信道（axum_adapter PARAM_SIGS 同型生命周期，run pipeline 编译前重置）→四条 serve 路径（handle_connection_async/serve_blocking_stdnet/run_http_server_blocking/shim_http_server_listen）统一 bind_api_args_by_name（同步三路径经 bind_api_args_or_legacy，无元数据源——meta 形参 400 指名，差异见 §4.1.1）→无签名条目回退旧位序装配。附带根修：async 请求头单次 read() 遇 TCP 分片产生空 400（plan 568 T7 th 档\"环境红\"真身），改读至 \r\n\r\n。__axum: 合成路由走 axum_adapter extractor 编组、a2r 轨参数绑定在生成代码里，均不经此链。",
+     "title": "#[api] HTTP server 按名参数绑定与运行时支持边界",
+     "content": "PLAN-669 修复 VM 模式 #[api] handler 实参装配违反 spec §4.1 的断层（query 集合串/body 原始串按位直塞）。注入规则五条：路径段→body JSON 字段→query 参数按名绑定（声明序，同名 path 优先）；int/float/bool 精确类型转换（parse 失败 400 指名）；缺参→HTTP 400 {\"error\":\"missing param `名`\"}（back_proxy Plan 658 对齐）；单参 whole-body 容忍（唯一 str 形参未按名供给时收整个 body 串——Plan 346 单参 body 契约延续，含 multipart 字段 JSON）；元数据形参按名 opt-in（尾随形参名∈{meta,metadata,req,request} 收 {\"cookies\":...,\"auth\":...}，其余未供给一律 400）。实现链：codegen 在 api_routes 采集点发布形参签名（名+Type Display）到进程级 API_PARAM_SIGS 侧信道（axum_adapter PARAM_SIGS 同型生命周期，run pipeline 编译前重置）→四条 serve 路径（handle_connection_async/serve_blocking_stdnet/run_http_server_blocking/shim_http_server_listen）统一 bind_api_args_by_name（同步三路径经 bind_api_args_or_legacy，无元数据源——meta 形参 400 指名，差异见 §4.1.1）→无签名条目回退旧位序装配。附带根修：async 请求头单次 read() 遇 TCP 分片产生空 400（plan 568 T7 th 档\"环境红\"真身），改读至 \r\n\r\n。__axum: 合成路由走 axum_adapter extractor 编组、a2r 轨参数绑定在生成代码里，均不经此链。\n\nPLAN-696（2026-09-23）：VM `#[api]` server 按 Content-Length 读满 body，校验非法/重复长度、短体与不支持的 Transfer-Encoding，设置有界大小和读取期限；AutoVM 由同线程 LocalSet/Rc owner 持有，不再跨线程转运 VM 指针；SSE generator 分片让出调度，连接断开后取消 producer。生成 Axum server 是独立路径，a2r-std HTTP 为客户端，`stdlib/auto/http.rs.at` 不存在。支持和限制见 §8.1；Spec SHA-256=84F437D0BF49DE4FD9CAFB1F76629665C9C6AD3757C266F955C5F319FB1C8F30。",
      "file": "docs/specs/stdlib/design/http-server.md",
      "related": [
       "PLAN-669",
       "PLAN-658",
       "PLAN-442",
       "PLAN-317",
-      "GOAL-003"
+      "GOAL-003",
+      "PLAN-696"
      ],
      "status": "published",
      "created": "2026-09-21",
-     "last_modified": "2026-09-21"
+     "last_modified": "2026-09-23"
     },
     {
      "id": "P668-1",
@@ -4538,6 +4552,32 @@
      "id": "P684-1",
      "title": "018-book-reader-sidebar-ux — gallery vue 轨示例修复与 UI/UX 重设计批（018/022/024/025/026/027）+ 嵌入安全壳层契约（SD-01）+ 示例壳层/thin 契约读盘纪律（SD-02）",
      "content": "PLAN-684 滚动批八 revision 交付。SD-01（widgets/viewport-boundary.md §3 demo 壳层 chrome 禁令）：demo 根部件禁 viewport-fixed（fixed/inset-y-0/inset-0 锚浏览器视口，AppViewport deep 覆盖只改写 h-screen 族高宽不覆盖 fixed）——正确形态=flex 行+侧栏 shrink-0 h-full+主区 flex-1 min-w-0 overflow-auto，模态遮罩容器内 absolute；018 侧栏穿出（P675-D1 ②）与 022 视口空白（①）demo 面清偿，发射器通用分派仍开放。SD-02（ui/overview.md 示例壳层与后端读盘契约节）：①018 阅读 App 契约（TOC 抽屉/偏好 storage 键 br-font-size、br-line-height/Continue Reading 条）；②027 fullstack 读盘 thin 契约纪律——#[api] 端点体恒单行 return impl_xxx 委托（无控制流），真实现住同文件普通 fn：gallery back-proxy VM 会话全语义真盘、standalone rust 后端 thin 体跳过 a2r 内联落签名模板 Default（{ok:false}/\"\"）前端演示目录后备，规避 a2r 转译面无 fs.* 目录 native 的 E0425 坏产物（P670-D1 另案）；契约带 pub type 同关 route A；路径/面包屑/排序前端纯函数双轨同源（fs_util parent_of/base_name/ext_of/build_crumbs/sort_files，VM inline 块迁移共用）。批面：018 四页重设计+嵌入壳（a746b76c1）、022 app frame+语义 token（8184fb142）、024 图表可见（package_origin 折叠 319716236）+ADR-19 Init 重放（watch(props) 3ae4c42f8）、025 sys-monitor 重设计（5ea9d42a9 族）、026 database 视口适配（105b6fcd9 族）、027 真盘读路径（rev6 演示 0c8ab50b7→rev7 真盘 6044fb1b9）。随批 crates 两件：ts_adapter VM_ONLY_OBJECT_NATIVES 补 file/process 小写模块名（027 vue-tsc 历史首绿）+gallery 缓存失配扫描 worker 显式 16MB 栈（2MB 缺省深语料解析整进程栈溢出）。测试面修复：plan408 断言随 ADR-19 形态（本支引入红）+auto-man 测试构建 PLAN-681 generate_api_rs 三参化遗留 11 处 E0061（master 编译即坏随批修复）。债：P684-D1（vue 轨写操作后端端点未做）/P684-D2（vue 轨缩略图缺失）；tf 3722/3722+auto-man 324/327（3 预存在案）"
+    },
+    {
+     "id": "P696-1",
+     "title": "标准库后台装配与覆盖：公共 .at、VM/native、a2r Rust 与生成 Axum",
+     "content": "PLAN-696 当前态覆盖表：区分公共 .at 与目标文件、VM native、a2r-std、auto-man Axum 生成服务及 AutoUI/back-proxy 消费路径；明确 http.rs.at、sse.vm.at 等缺口，不把相似 API 名称视作 parity。VM HTTP 由 Tokio TCP/手写 HTTP/1 路径承载，AutoVM 在同线程 LocalSet/Rc owner 中执行；生成 Axum、merge/split 与 back-proxy 是不同拓扑。规范源 SHA-256=F30407E160DA1BF349FCDFAA12F4F167D112A321D3879138BC2ABC852E59D6F7。",
+     "file": "docs/specs/stdlib/design/backend-assembly.md",
+     "related": [
+      "PLAN-696",
+      "GOAL-003"
+     ],
+     "status": "published",
+     "created": "2026-09-23",
+     "last_modified": "2026-09-23"
+    },
+    {
+     "id": "P696-2",
+     "title": "networking-stdlib 目标层次与当前目标覆盖边界",
+     "content": "PLAN-696 将 async/net/http 的逻辑层次和当前实现覆盖分开表述；http.rs.at 缺失，HTTP VM server 与生成 Axum 服务独立，a2r-std HTTP 是客户端。规范源 SHA-256=262D5BEE743032E2FF78B412E532CF8AB046D91338DF02EFF0399897BE400F60。",
+     "file": "docs/specs/auto-lang/runtime/design/networking-stdlib.md",
+     "related": [
+      "PLAN-696",
+      "GOAL-003"
+     ],
+     "status": "published",
+     "created": "2026-09-23",
+     "last_modified": "2026-09-23"
     }
    ]
   },
@@ -5564,12 +5604,25 @@
      "id": "P692-1",
      "title": "widget-gallery-scroll-polish — scroll 页改良+滚动条双路径统一+thumb 增强+Combobox shadcn 官方接入+CodeEditor 字面 content+首页标题对齐",
      "content": "实机走查批（rev5，用户会话内六面需求）：①scroll 四 demo 满铺+真溢出（w-full/w-[60rem]；w-160 不在 Tailwind 标度系预存暗病）；②滚动条双路径统一——语义 scroll 与 utility(overflow-*) 同参（accent 底 primary/40、hover 亮度自适应 primary/60、恒宽 size prop），utility 侧生成器 plain 装配点自动挂 .ash-scroll；③thumb 演进终态：hover 加宽与按住高亮均经用户裁定撤销、过渡禁含 transform（reka translate3d 从布局原点定位，动画化即闪现）、轨道 items-start 铁律（items-center 移原点 70px 破拖拽映射）；④Combobox 八 command 元素 schema 翻转 web:component 接入 assets/shadcn-ui/command 官方 Listbox 实现（Empty 自动显隐/过滤/hover/键盘/点选回填/复杂候选项），registry 为 schema-only 家族补建 spec+kebab 别名回填（通用机制），删除 front 遗留 stub；⑤code_editor 字面串 content 补单向 :model-value（此前静默丢弃挂载即空白）；⑥首页分区标题 h2 补 m-0（脚手架 h2 基础 margin 泄漏进 flex 行致 8px 下坠）。"
-    },
+     },
      {
       "id": "P695-1",
       "title": "menubar-widgets-batch — menubar 15 元素完整组件族（shadcn 对齐）+popover token 主题化+submenu 内联展开+auto-edit 回灌+gallery 滚动协议",
       "content": "menubar 从七件深色主干补全为 shadcn-vue 对齐 15 元素族（root+14 子件；schema 三端注记翻转 iced:component/registry 三形态别名/vue 全 kind reka 件）。VM 双解释态（build_menu_panel_items 收口+actions 合成）与 a2r 递归发射（a2r_menubar_panel_children）三路同源：配色全量消费 popover 语义 token（Color::Popover/PopoverForeground 独立投影 registry 双盘——浅色白板深字可读，字面 #16171B/zinc 退役）；disabled/无 handler 项置灰非隐藏（muted+opacity-50）；开态 trigger accent 高亮+跨菜单 hover-switch（MouseArea 条件包裹，__ 前缀不触发规则3判据）；submenu=复合键 <menu>::sub-N 注册表+外层开态前缀感知+内联展开（嵌套 Popover overlay 挂 iced 渲染/截图通道实锤——浮动式留债 D2）；radio circle-dot/label/shortcut muted 静态文本。执行期四增量：untracked 派发表缺 menubar 臂（画廊动态路径 Empty 实锤，D-GAP 双表纪律）/复合键前缀/内联展开/desktop_protocol coverage Covered=协议可投影语义勘定（menubar root 回退 NotYet）。契约=docs/specs/widgets/menubar-family.md。auto-edit 回灌：ctx_menu/app.at token 化+行尾 submenu 化（regen 33 组件零 S002+probe exit0+EOL 三段活体全真）；gallery menubar 页四菜单全族+状态回显。"
-     }
+     },
+     {
+      "id": "P696-3",
+      "title": "VM HTTP 请求体分段、SSE 调度/取消与 API 路径回归",
+      "content": "复审在提交 bc17269a1c172d4a58a2813d05912fb32baa8219 上重跑 cargo th：51/51 pass。另定向 4/4：015-notes merge 调用正常返回、back-proxy API 正常与缺参 400。cargo tv/cargo tf 仅有 3 项 P-053 基线红测，三项在 051e7b54023f420c3955c480d986e83197eb5899 原始源码快照上逐项复现。详尽 T-02..T-08 与复审证据见计划归档文件。",
+      "file": "docs/plans/archive/696-stdlib-http-server-runtime-hardening.md",
+      "related": [
+       "PLAN-696"
+      ],
+     "test_file": "crates/auto-lang/src/vm/ffi/http_server.rs",
+     "status": "published",
+     "created": "2026-09-23",
+     "last_modified": "2026-09-23"
+    }
    ]
   },
   {
@@ -7281,7 +7334,7 @@
      "status": "published",
      "created": "2026-09-23",
      "last_modified": "2026-09-23"
-    },
+     },
      {
       "id": "P695-2",
       "title": "menubar-widgets-batch 复审与合并收据",
@@ -7293,7 +7346,20 @@
       "created": "2026-09-23",
       "last_modified": "2026-09-23",
       "content": "review pass@rev2（复审在实现会话内，判定由工件重建）：R-1 元素计数 16→15 勘正（起草笔误，行为面零缺）。tf --no-fail-fast 5465 测红册定谳=11 预存（musk×6/counter/a2vue 金样基线在档+style_if stress/native_gate 018 master 同测实锤）+1 已修（plan674 断言随前缀感知更新）；schema_drift 2/2+docs_gen 4/4+gallery_golden 重基线复跑绿（D4 销号）；p695 九单测+menubar 14 绿。AC-01..08 全 pass（AC-03 浅色活体截图与 AC-02 Vue 臂活体走查由 D5/D6 环境受限承载改确定性通道，残项在案）。merge=range-diff 全等 ff-only 三仓落地：auto-lang 1b602759d（12 commits，e99b8ba89→1b602759d 等映射）、auto-os 3f2a7bed4（8e098bc→3f2a7bed4）、auto-edit 5aa8ea9ae（d71a396→5aa8ea9）。债 P695-D1 键盘导航/D2 浮动式 submenu/D3 MCP 合成事件×hover-switch/D5 auto-edit Tick 截图争用/D6 gallery Vue 臂活体环境受阻。"
-     }
+     },
+     {
+      "id": "P696-5",
+      "title": "PLAN-696 复审与合并收据",
+      "content": "Review pass，plan_revision=1；审核提交 bc17269a1c172d4a58a2813d05912fb32baa8219，base=051e7b54023f420c3955c480d986e83197eb5899，AutoDown=3373a5cc6e3a00336613133db51906fb0940777d；冻结 Spec delta SHA-256=5F10D76523D52CA073C65CFEBF1D896C3375D3752EF8ACA0A16348E39722A74B。rebase 后原提交→新提交逐项 range-diff 相等（bc17269a1→a7a7fbbbc；其余映射见归档计划）；全档 P-053 红项在基线复现。交付与归档/cleanup checkpoint 见计划文件。",
+      "file": "docs/plans/archive/696-stdlib-http-server-runtime-hardening.md",
+      "related": [
+       "PLAN-696",
+       "GOAL-003"
+      ],
+     "status": "published",
+     "created": "2026-09-23",
+     "last_modified": "2026-09-23"
+    }
    ]
   }
  ]

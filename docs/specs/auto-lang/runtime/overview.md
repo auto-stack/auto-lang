@@ -23,8 +23,10 @@
 - C FFI（`CFfiBridge`，native id 200+）与 Python FFI（`PyFfiBridge`，native id 400+，
   `py_call`/`py_getattr` 固定 450/451）均可用；Rust FFI 见 vm 模块的 `NativeInterface`。
 - `database/` 两层（存储 + 缓存）结构在码，UI 产物缓存（`UIArtifact`/`UICache`）已并入。
-- 网络栈按 docs/design/13 的层次落地在 `stdlib/auto/`：`http.at`+`http.vm.at`、
-  `net.at`、`async.at`+`async.vm.at`、`json/url/log/env/sse` 等，双文件（部分三文件 `.rs.at`）模式真实存在。
+- 网络模块在 `stdlib/auto/` 有公共 `.at` 声明和不同目标实现；目标文件、native shim、生成 Axum 服务、
+  a2r-std 客户端及 merge/split 调用路径并非一一配对。当前覆盖见
+  [后台装配与覆盖](../../stdlib/design/backend-assembly.md)；HTTP server 的 VM/Axum 现状见
+  [HTTP Server Spec](../../stdlib/design/http-server.md)。
 
 ## File 内建契约（VM/a2r 双轨）（PLAN-673 SD-02）
 
