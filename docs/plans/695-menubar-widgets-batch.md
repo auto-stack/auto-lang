@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-695
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: menubar-widgets-batch
 author: [agent]
 created_at: 2026-09-23
@@ -8,7 +8,7 @@ updated_at: 2026-09-23
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: [widgets/menubar-family]
+new_spec_components: [widgets/menubar-family]  # rev2：R-1 计数勘正随档
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/ui-gen, widgets, auto-edit]
@@ -380,6 +380,41 @@ T-03/T-07（语料用全族）；T-11 依赖 T-04~T-10；T-12 依赖 T-04/T-06/T
   614 基线点演进 + 本计划 menubar.at 语料定稿；复跑对账 1108s exit 0，
   P695-D4 销号）。全任务+验收映射收口，代码全提交，无阻塞问题。
   next: /auto-plan:review（worktree 保留）。
+- 2026-09-23 复审（stage: review，PLAN-695 **rev2**，outcome: **pass**，
+  reviewed_commit auto-lang **e99b8ba89** / base d59bd9fbb；依赖位 auto-os
+  8e098bc（base 20ce5c8）/ auto-edit d71a396（base cf56891）；spec inputs =
+  schema/aura.at@worktree + docs/specs/widgets/menubar-family.md@e99b8ba89
+  + menubar-snapshot.md@349574529+R-1 + ui/overview.md@R-1）。声明：复审与
+  实现同会话——裁定从制品重建（下述命令/断言均复审期复跑），非执行者摘要
+  采信。**R-1（已修，rev2 由来）**：族元素计数"16"为起草算术笔误，实际
+  shadcn-vue menubar 全组件 15 件（root+14；资产/注册/断言同数）——spec
+  三文档+registry 注释勘正（e99b8ba89），行为面零缺。
+  acceptance_results：AC-01 pass（15/15 元素 iced:"component" 逐件核清；
+  schema_drift 2/2+docs_gen 4/4+registry 测试复审期复跑绿）；AC-02 pass
+  （p695 vue 全 kind+零 zinc+零裸 div 断言绿；gallery_properties 符合门
+  绿；golden 重基线+复跑绿；Vue 臂活体走查环境受阻=D6 在册非产品缺）；
+  AC-03 pass（解释态 Color::Popover/PopoverForeground/OnSurface/Opacity
+  类断言+a2r token 串/置灰计数断言绿；registry zinc-light Popover=白为
+  可读性地面真值；浅色活体截图因 D5/D6 环境受限未取得——以确定性等价
+  通道承载，残项在案）；AC-04 pass（四关闭路径代码在 diff 外零触碰——
+  外点 popover.rs/Esc renderer 订阅/失焦 popover 捕获/handler 自动关判据
+  原样；TimeSource 豁免原样；hover-switch/高亮/radio/submenu 单测绿+
+  auto-edit EOL 端到端三段全真+画廊菜单活体打开实录）；AC-05 pass（页
+  结构/属性表/源码串/回显齐备+schema 符合门；深色截图 3 枚入档，submenu
+  与浅色活体受限 D2/D6 在案）；AC-06 pass（regen 33 组件零 S002 产物
+  对账+probe exit0×2+EOL 三段；对照截图不可得=D5 预存承载改 token 链）；
+  AC-07 pass（tf --no-fail-fast 5465 测=11 预存〔musk×6/counter/a2vue
+  基线在档；style_if stress/native_gate 018 master 同测实锤〕+1 已修
+  73de4c9ef；复审期 t/tv 复现仅命中同预存集零新红；定向套件全绿）；
+  AC-08 pass（候选池+进入协议 §5.3 可执行；INDEX=Stage-B 指针页非活跃
+  清单无行属性质核对非缺项；specs.json P-NNN-1 条目形态已核）。
+  findings：R-1（low，已修）。遗漏/延后/工作绕行扫描：四执行期调整
+  （untracked 臂/前缀感知/内联展开/coverage 语义）均有走查实证+债册
+  锚点，属证据驱动等价实现非范围收缩；P695-D1/D2/D3/D5/D6 为显式登记
+  债非隐性缺口。evidence：本计划任务行证据链+复审期复跑命令集
+  （schema_drift/docs_gen/gallery_golden/menubar/p695/t/tv）+ 截图
+  widgets-gallery tests/screenshots/（gitignore，路径在任务行）。
+  next：/auto-plan:merge。
 
 ## 待澄清事项
 
