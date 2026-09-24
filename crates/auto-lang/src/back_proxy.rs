@@ -152,13 +152,13 @@ struct NativeMediaState {
 }
 
 /// PLAN-043 Part 1: 一个 app 的原生 photo 服务面（语义同 NativeMediaState：
-/// 惰性索引 + 绝对 URL base）。
+/// 绝对 URL base）。非递归浏览模型——scan 每次现列目录（无进程内索引；
+/// token→路径注册表在 photo_service 全局，按 root 分桶）。
 #[cfg(feature = "image-pipeline")]
 struct NativePhotoState {
     app_id: String,
     root: Option<std::path::PathBuf>,
     base: String,
-    index: std::sync::Mutex<Option<crate::ui::photo_service::PhotoIndex>>,
 }
 
 struct ProxyRequest {
@@ -265,7 +265,6 @@ pub fn start(config: BackProxyConfig) -> std::io::Result<RunningProxy> {
                         app_id: app.app_id.clone(),
                         root,
                         base: base.clone(),
-                        index: std::sync::Mutex::new(None),
                     },
                 );
             }
@@ -406,7 +405,6 @@ impl RunningProxy {
                 app_id: app.app_id,
                 root,
                 base,
-                index: std::sync::Mutex::new(None),
             },
         );
     }
@@ -905,8 +903,16 @@ impl ProxyShared {
     ) -> Option<ProxyReply> {
         let photos = self.native_photos.lock().unwrap();
         let state = photos.get(app_id)?;
-        if sub_path == "/api/photos/scan" && req.method == "GET" {
-            return Some(Self::photo_scan(state));
+        if sub_path.starts_with("/api/photos/scan") && req.method == "GET" {
+            // 非递归浏览模型：`?dir=<相对路径>`（缺省根目录）。非法段由
+            // list_directory 拒（400）。
+            let dir = sub_path
+                .split('?')
+                .nth(1)
+                .and_then(|q| q.split('&').find_map(|p| p.strip_prefix("dir=")))
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            return Some(Self::photo_scan(state, &dir));
         }
         if let Some(rest) = sub_path.strip_prefix("/api/photos/thumb/") {
             let id = rest.split(['?', '&']).next().unwrap_or("");
@@ -936,22 +942,24 @@ impl ProxyShared {
     /// （`{base}/apps/{app_id}/api/photos/...`，媒体臂 §5.3 同款裁定——
     /// 前端 image src 不经 Http. 行级改写，相对值在 VM native 渲染器
     /// 会被当本地文件路径）。
-    fn photo_scan(state: &NativePhotoState) -> ProxyReply {
+    fn photo_scan(state: &NativePhotoState, dir: &str) -> ProxyReply {
         let Some(root) = &state.root else {
             return ProxyReply::json(
                 200,
-                "{\"entries\":[],\"root_missing\":false}".to_string(),
+                "{\"entries\":[],\"dirs\":[],\"root_missing\":false}".to_string(),
             );
         };
         if !root.exists() {
-            return ProxyReply::json(200, "{\"entries\":[],\"root_missing\":true}".to_string());
+            return ProxyReply::json(200, "{\"entries\":[],\"dirs\":[],\"root_missing\":true}".to_string());
         }
-        let mut guard = state.index.lock().unwrap();
-        let index = guard.get_or_insert_with(|| {
-            crate::ui::photo_service::index_directory(root).unwrap_or_default()
-        });
-        let mut out = String::from("{\"entries\":[");
-        for (i, e) in index.entries.iter().enumerate() {
+        let listing = match crate::ui::photo_service::list_directory(root, dir) {
+            Ok(l) => l,
+            Err(_) => return ProxyReply::json(400, error_json("illegal dir segment")),
+        };
+        let mut out = String::from("{\"dir\":");
+        out.push_str(&serde_json::json!(listing.dir_rel).to_string());
+        out.push_str(",\"entries\":[");
+        for (i, e) in listing.images.iter().enumerate() {
             if i > 0 {
                 out.push(',');
             }
@@ -963,7 +971,6 @@ impl ProxyShared {
                     "index": i + 1,
                     "title": crate::ui::photo_service::display_title(&e.name),
                     "name": &e.name,
-                    "album": crate::ui::photo_service::album_of(e),
                     "rel_dir": &e.rel_dir,
                     "relative_path": &e.relative_path,
                     "extension": &e.extension,
@@ -979,27 +986,47 @@ impl ProxyShared {
                 .to_string(),
             );
         }
+        out.push_str("],\"dirs\":[");
+        for (i, d) in listing.dirs.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            out.push_str(
+                &serde_json::json!({
+                    "name": &d.name,
+                    "rel_path": &d.rel_path,
+                    "image_count": d.image_count,
+                })
+                .to_string(),
+            );
+        }
         out.push_str("],\"root_missing\":false}");
         ProxyReply::json(200, out)
     }
 
+    /// token 反查公共臂：注册表未命中（未扫描/异 root）→ 404 JSON。
+    fn photo_entry_for(
+        state: &NativePhotoState,
+        id: &str,
+    ) -> Result<crate::ui::photo_service::PhotoEntry, ProxyReply> {
+        let Some(root) = &state.root else {
+            return Err(ProxyReply::json(503, error_json("photo root not configured")));
+        };
+        let Some(rel) = crate::ui::photo_service::resolve_token(root, id) else {
+            return Err(ProxyReply::json(404, error_json(&format!("unknown photo id `{id}`"))));
+        };
+        crate::ui::photo_service::photo_from_rel(root, &rel)
+            .ok_or_else(|| ProxyReply::json(404, error_json("photo file missing")))
+    }
+
     /// 按需缩略图：渲染（磁盘缓存命中即免解码）→ JPEG 200；HEAD 只带头。
     fn photo_thumb(state: &NativePhotoState, id: &str, width: u32, head_only: bool) -> ProxyReply {
-        let Some(root) = &state.root else {
-            return ProxyReply::json(503, error_json("photo root not configured"));
+        let entry = match Self::photo_entry_for(state, id) {
+            Ok(e) => e,
+            Err(reply) => return reply,
         };
-        let mut guard = state.index.lock().unwrap();
-        let index = guard.get_or_insert_with(|| {
-            crate::ui::photo_service::index_directory(root).unwrap_or_default()
-        });
-        let Some(entry) = crate::ui::photo_service::find(index, id) else {
-            return ProxyReply::json(404, error_json(&format!("unknown photo id `{id}`")));
-        };
-        let head = crate::ui::photo_service::entry_path(root, entry);
-        if !head.is_file() {
-            return ProxyReply::json(404, error_json(&format!("photo file missing: {}", entry.name)));
-        }
-        match crate::ui::photo_service::render_thumbnail(root, entry, width) {
+        let root = state.root.as_ref().expect("photo_entry_for 已验 root");
+        match crate::ui::photo_service::render_thumbnail(root, &entry, width) {
             Ok(bytes) => {
                 let len = bytes.len() as u64;
                 ProxyReply::Stream {
@@ -1021,17 +1048,12 @@ impl ProxyShared {
     /// 原图字节：Content-Type 按扩展名（image/jpeg 等）；全文件 200（照片
     /// 查看器一次性全图加载，range 语义非必需——如未来接渐进/分片再补）。
     fn photo_full(state: &NativePhotoState, id: &str, head_only: bool) -> ProxyReply {
-        let Some(root) = &state.root else {
-            return ProxyReply::json(503, error_json("photo root not configured"));
+        let entry = match Self::photo_entry_for(state, id) {
+            Ok(e) => e,
+            Err(reply) => return reply,
         };
-        let mut guard = state.index.lock().unwrap();
-        let index = guard.get_or_insert_with(|| {
-            crate::ui::photo_service::index_directory(root).unwrap_or_default()
-        });
-        let Some(entry) = crate::ui::photo_service::find(index, id) else {
-            return ProxyReply::json(404, error_json(&format!("unknown photo id `{id}`")));
-        };
-        let path = crate::ui::photo_service::entry_path(root, entry);
+        let root = state.root.as_ref().expect("photo_entry_for 已验 root");
+        let path = crate::ui::photo_service::rel_to_path(root, &entry.relative_path);
         let Ok(file) = std::fs::File::open(&path) else {
             return ProxyReply::json(404, error_json(&format!("photo file missing: {}", entry.name)));
         };

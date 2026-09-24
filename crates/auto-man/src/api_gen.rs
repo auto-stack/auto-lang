@@ -1662,16 +1662,6 @@ fn photo_json_str(s: &str) -> String {
     o
 }
 
-static PHOTO_INDEX: std::sync::OnceLock<auto_lang::ui::photo_service::PhotoIndex> =
-    std::sync::OnceLock::new();
-
-fn photo_index() -> Option<&'static auto_lang::ui::photo_service::PhotoIndex> {
-    let root = auto_lang::ui::photo_service::resolve_root(None)?;
-    Some(PHOTO_INDEX.get_or_init(|| {
-        auto_lang::ui::photo_service::index_directory(&root).unwrap_or_default()
-    }))
-}
-
 /// Absolute base for scan URLs: AUTO_HTTP_BASE inherited from `auto run`
 /// (points at this backend's own origin); falls back to the bound port.
 fn photo_base() -> String {
@@ -1685,40 +1675,44 @@ fn photo_base() -> String {
     format!("http://127.0.0.1:{}", port)
 }
 
-async fn auto_photos_scan() -> axum::response::Response {
-    // Three-state honesty mirrors media scan: unconfigured / root missing /
-    // normal. Absolute paths never leave the backend.
-    let Some(root) = auto_lang::ui::photo_service::resolve_root(None) else {
+async fn auto_photos_scan(
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> axum::response::Response {
+    use auto_lang::ui::photo_service as ps;
+    // 非递归浏览模型：`?dir=<相对路径>`（缺省根目录）；非法段 400。
+    let dir = params.get("dir").cloned().unwrap_or_default();
+    let Some(root) = ps::resolve_root(None) else {
         return axum::response::Response::builder()
             .status(200)
             .header("Content-Type", "application/json")
-            .body(axum::body::Body::from("{\"entries\":[],\"root_missing\":false}"))
+            .body(axum::body::Body::from("{\"dir\":\"\",\"entries\":[],\"dirs\":[],\"root_missing\":false}"))
             .expect("photo scan response is valid");
     };
     if !root.exists() {
         return axum::response::Response::builder()
             .status(200)
             .header("Content-Type", "application/json")
-            .body(axum::body::Body::from("{\"entries\":[],\"root_missing\":true}"))
+            .body(axum::body::Body::from("{\"dir\":\"\",\"entries\":[],\"dirs\":[],\"root_missing\":true}"))
             .expect("photo scan response is valid");
     }
-    let index = PHOTO_INDEX.get_or_init(|| {
-        auto_lang::ui::photo_service::index_directory(&root).unwrap_or_default()
-    });
+    let listing = match ps::list_directory(&root, &dir) {
+        Ok(l) => l,
+        Err(_) => return photo_plain(400, "illegal dir segment".to_string()),
+    };
     let base = photo_base();
-    use auto_lang::ui::photo_service as ps;
-    let mut out = String::from("{\"entries\":[");
-    for (i, e) in index.entries.iter().enumerate() {
+    let mut out = String::from("{\"dir\":");
+    out.push_str(&photo_json_str(&listing.dir_rel));
+    out.push_str(",\"entries\":[");
+    for (i, e) in listing.images.iter().enumerate() {
         if i > 0 {
             out.push(',');
         }
         out.push_str(&format!(
-            "{{\"id\":{},\"index\":{},\"title\":{},\"name\":{},\"album\":{},\"rel_dir\":{},\"relative_path\":{},\"extension\":{},\"bytes\":{},\"size_str\":{},\"width\":{},\"height\":{},\"date\":{},\"sort_key\":{},\"thumb_url\":\"{}/api/photos/thumb/{}\",\"full_url\":\"{}/api/photos/full/{}\"}}",
+            "{{\"id\":{},\"index\":{},\"title\":{},\"name\":{},\"rel_dir\":{},\"relative_path\":{},\"extension\":{},\"bytes\":{},\"size_str\":{},\"width\":{},\"height\":{},\"date\":{},\"sort_key\":{},\"thumb_url\":\"{}/api/photos/thumb/{}\",\"full_url\":\"{}/api/photos/full/{}\"}}",
             photo_json_str(&e.id),
             i + 1,
             photo_json_str(ps::display_title(&e.name)),
             photo_json_str(&e.name),
-            photo_json_str(ps::album_of(e)),
             photo_json_str(&e.rel_dir),
             photo_json_str(&e.relative_path),
             photo_json_str(&e.extension),
@@ -1734,6 +1728,18 @@ async fn auto_photos_scan() -> axum::response::Response {
             &e.id,
         ));
     }
+    out.push_str("],\"dirs\":[");
+    for (i, d) in listing.dirs.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&format!(
+            "{{\"name\":{},\"rel_path\":{},\"image_count\":{}}}",
+            photo_json_str(&d.name),
+            photo_json_str(&d.rel_path),
+            d.image_count,
+        ));
+    }
     out.push_str("],\"root_missing\":false}");
     axum::response::Response::builder()
         .status(200)
@@ -1742,27 +1748,28 @@ async fn auto_photos_scan() -> axum::response::Response {
         .expect("photo scan response is valid")
 }
 
+/// token 反查公共臂（生成后端形态：注册表按 root 分桶，miss → None）。
+fn photo_entry_for(id: &str) -> Option<auto_lang::ui::photo_service::PhotoEntry> {
+    let root = auto_lang::ui::photo_service::resolve_root(None)?;
+    let rel = auto_lang::ui::photo_service::resolve_token(&root, id)?;
+    auto_lang::ui::photo_service::photo_from_rel(&root, &rel)
+}
+
 async fn auto_photos_thumb(
     axum::extract::Path(id): axum::extract::Path<String>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> axum::response::Response {
     use auto_lang::ui::photo_service as ps;
     let width = params.get("w").and_then(|v| v.parse::<u32>().ok()).unwrap_or(260);
-    let Some(index) = photo_index() else {
-        return photo_plain(503, "no photo root configured".to_string());
+    let Some(entry) = photo_entry_for(&id) else {
+        return photo_plain(404, "unknown photo id".to_string());
     };
     let Some(root) = ps::resolve_root(None) else {
         return photo_plain(503, "no photo root configured".to_string());
     };
-    let Some(entry) = ps::find(index, &id) else {
-        return photo_plain(404, "unknown photo id".to_string());
-    };
-    if !ps::entry_path(&root, entry).is_file() {
-        return photo_plain(404, "photo file missing".to_string());
-    }
     // Sync render behind a disk cache: worst case is one bounded decode of a
     // single photo (~tens of ms for phone JPEGs) — no spawn_blocking needed.
-    match ps::render_thumbnail(&root, entry, width) {
+    match ps::render_thumbnail(&root, &entry, width) {
         Ok(bytes) => axum::response::Response::builder()
             .status(200)
             .header("Content-Type", "image/jpeg")
@@ -1778,16 +1785,13 @@ async fn auto_photos_full(
 ) -> axum::response::Response {
     use auto_lang::ui::photo_service as ps;
     use tokio::io::AsyncReadExt;
-    let Some(index) = photo_index() else {
-        return photo_plain(503, "no photo root configured".to_string());
+    let Some(entry) = photo_entry_for(&id) else {
+        return photo_plain(404, "unknown photo id".to_string());
     };
     let Some(root) = ps::resolve_root(None) else {
         return photo_plain(503, "no photo root configured".to_string());
     };
-    let Some(entry) = ps::find(index, &id) else {
-        return photo_plain(404, "unknown photo id".to_string());
-    };
-    let path = ps::entry_path(&root, entry);
+    let path = ps::rel_to_path(&root, &entry.relative_path);
     let Ok(file) = tokio::fs::File::open(&path).await else {
         return photo_plain(404, "photo file missing".to_string());
     };

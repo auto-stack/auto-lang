@@ -4080,4 +4080,27 @@ mod musk_vm_track_p080_http_web_family {
         assert!(text.contains("auto.http.delete_json"), "delete_json missing:
 {text}");
     }
+
+    /// PLAN-043 Phase 2 回归钉：旧配方 `json.to_value(Http.get_json(..))`
+    /// 在 PLAN-080 F-2③ 后成为双重解析——内层 get_json 编译期自带
+    /// to_value、已产解析对象；外层 to_value 必须**幂等透传**（修前走
+    /// String 弹栈的 `{:?}` 兜底，产出 NanoValue 调试串（~20 位数字），
+    /// 下游字段读全空且 try/catch 静默吞——020/029/030「后端有数据、
+    /// 前端空」全族根因，auto-os PLAN-043 Part 2 实证链）。
+    #[test]
+    fn json_to_value_idempotent_on_parsed_object() {
+        let out = match crate::run_with_capture(r#"fn main() {
+    let parsed = json.to_value("{\"entries\":[{\"id\":\"abc\"}],\"label\":\"ok\"}")
+    let again = json.to_value(parsed)
+    print(again.entries.len())
+    print(again.entries[0].id)
+    print(again.label)
+}"#) {
+            Ok((_, stdout)) => stdout,
+            Err(e) => panic!("run failed: {e:?}"),
+        };
+        assert!(out.contains('1'), "entries.len 应活过双重 to_value: {out}");
+        assert!(out.contains("abc"), "条目字段应活过双重 to_value: {out}");
+        assert!(out.contains("ok"), "顶层字段应活过双重 to_value: {out}");
+    }
 }

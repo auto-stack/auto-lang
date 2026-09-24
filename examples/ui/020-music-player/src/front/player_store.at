@@ -89,7 +89,9 @@ store PlayerStore {
         // 扫描本地音乐库
         .Load -> {
             try {
-                let data = json.to_value(Http.get_json("/api/media/scan"))
+                // PLAN-043: UI 路径裸 Http.get_json 编译期自带 to_value
+                //（PLAN-080 F-2③），直接取解析产物，勿再外包。
+                let data = Http.get_json("/api/media/scan")
                 .playlist = data.entries ?? []
                 .root_missing = data.root_missing ?? false
                 .library_error = ""

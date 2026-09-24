@@ -135,14 +135,16 @@ store PlayerStore {
         //   root_missing → 配置了根目录但目录不存在（scan 响应字段回传）；
         //   entries 空   → 根目录存在且可读，但没有白名单内的媒体文件。
         //
-        // 取 JSON body 的**双端同源配方**（T-10）：`json.to_value(Http.get_json(url))`。
-        // VM 侧 get_json 返回 body 字符串（URL 经 AUTO_HTTP_BASE 基址展开）、
-        // to_value 解析成 Value；Vue 侧 get_json 映射为 fetch().json()、to_value
-        // 为恒等。**不写裸 `Http.get`**——它在 VM 返回响应句柄（Plan 446 E1/E2
+        // 取 JSON body 的**双端同源配方**（T-10；PLAN-043 修订）：裸
+        // `Http.get_json(url)` 单写即可——VM 侧编译期自带 to_value
+        // （PLAN-080 F-2③，返回解析产物；URL 经 AUTO_HTTP_BASE 基址展开），
+        // Vue 侧映射为 fetch().json()。旧配方 json.to_value 外包曾致
+        // 双重解析（对象强转字符串出 NanoValue 调试串、数据静默全空）。
+        // **不写裸 `Http.get`**——它在 VM 返回响应句柄（Plan 446 E1/E2
         // 契约，配 .status()/.body() 访问器），不是解析后的 body。
         .Load -> {
             try {
-                let data = json.to_value(Http.get_json("/api/media/scan"))
+                let data = Http.get_json("/api/media/scan")
                 .playlist = data.entries ?? []
                 .root_missing = data.root_missing ?? false
                 .library_error = ""

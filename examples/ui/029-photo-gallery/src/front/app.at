@@ -1,9 +1,15 @@
 // app.at — 029-photo-gallery 现代相册（Plan 628 → PLAN-043 Part 1 后端化）
 //
 // 数据源：后端 photo_service 实时扫描（pac `photo_root:` 声明根目录）——
-// Init 拉 /api/photos/scan 建网格；缩略图走 /api/photos/thumb/:id（按需
-// 渲染 + 磁盘缓存），查看器原图走 /api/photos/full/:id。目录增删后重启
-// app 即跟随（Plan 628 离线烘焙链已删，见 pac.at 头注）。
+// Init 拉 /api/photos/scan?dir=<当前目录> 建网格；缩略图走
+// /api/photos/thumb/:id（按需渲染 + 磁盘缓存），查看器原图走
+// /api/photos/full/:id。目录增删后重启 app 即跟随（Plan 628 离线烘焙链
+// 已删，见 pac.at 头注）。
+//
+// 浏览模型（2026-09-24 用户裁定）：**非递归**——网格只列当前目录直属
+// 图片；子目录以导航 chip 呈现（计数 = 该目录直属图片数），点击进入、
+// 顶栏返回上一级。收藏跨目录全局（fav 记录带完整 URL，收藏页聚合
+// 所有目录的收藏项）。
 //
 // UI：平板/手机端沉浸式设计——分段相册导航（动态分组：全部/各子目录/
 // 收藏）+ 搜索/排序/网格密度工具栏 + 无边框照片网格 + 悬浮胶囊查看器
@@ -27,9 +33,11 @@ widget App {
     msg {
         Init,
         SelectAlbum(str), SetSearch(str), ApplyFilter,
+        NavigateDir(str), GoUp, ReloadDir,
         ToggleSort, SetDensity(int),
         OpenPhoto(str), PrevPhoto, NextPhoto, BackToGrid,
         ToggleFav(str),
+        LoadMore,
         ToggleDark, SetAccent(str)
     }
 
@@ -41,9 +49,13 @@ widget App {
         // ---- 视图形态 ----
         var mode str = "grid"               // "grid" | "view"
 
-        // ---- 数据源（Init 自后端 scan 填充）----
-        var photos = []                     // {id,title,album,date,meta,fav,thumb,full,sort_key}
-        var fav_ids = []                    // 收藏 id 表（Storage 持久化）
+        // ---- 数据源（Init/导航自后端 scan 填充；非递归浏览模型）----
+        var photos = []                     // 当前目录直属图片 {id,title,date,meta,fav,thumb,full,sort_key}
+        var dirs = []                       // 当前目录的子目录导航 [{name,rel_path,image_count}]
+        var dir str = ""                    // 当前目录（根相对路径，"" = 根）
+        var dir_badge str = ""              // 页签行目录徽标（"📁 <dir>"，根为空）
+        var scan_source_label str = ""      // 信息条扫描源文案
+        var fav_records = []                // 收藏全记录（跨目录聚合视图 + Storage 持久化）
         var load_error str = ""             // scan 失败文案（空 = 成功）
         var root_missing bool = false       // 后端根目录缺席诚实态
 
@@ -59,6 +71,13 @@ widget App {
         var view_list = []
         var view_ids = []
         var has_view bool = false
+        // 分批渲染闸（PLAN-043 性能边界）：VM native 渲染器的 image 加载
+        // 是渲染线程同步阻塞 HTTP——一次全量渲染 400+ 缩略图会把 UI 冻死
+        //（实机：412 张时 screenshot 超时 / 进程失联）。网格只画前
+        // render_cap 张，底部「加载更多」分批解锁；查看器单张不受影响。
+        var render_cap int = 60
+        var render_more_label str = ""
+        var render_list = []
 
         // ---- 计数与文案 ----
         var view_label str = "加载中…"
@@ -96,15 +115,31 @@ widget App {
                             text "Photos" { style: "text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium" }
                         }
 
-                        // 分段胶囊控制条（动态相册分组：全部/各目录/收藏）
+                        // 分段胶囊控制条（全部/收藏 + 子目录导航 chips）
                         row {
                             style: "items-center p-1 bg-muted/60 rounded-xl border border-border/50 gap-1"
+                            if .dir != "" {
+                                button {
+                                    onclick: .GoUp
+                                    style: "h-8 px-3 rounded-lg bg-background text-foreground text-xs font-semibold shadow-sm"
+                                    text "← 返回" { style: "text-xs" }
+                                }
+                                text .dir_badge { style: "text-[11px] text-muted-foreground px-1 max-w-40 truncate" }
+                            }
                             for t in .album_tabs {
                                 button {
                                     onclick: .SelectAlbum(t.key)
                                     style: if .album == t.key { "h-8 px-4 rounded-lg bg-background text-foreground text-xs font-semibold shadow-sm" } else { "h-8 px-4 rounded-lg bg-transparent text-muted-foreground hover:text-foreground text-xs font-medium" }
                                     text t.label { style: "text-xs" }
                                     text t.count { style: emoji_count }
+                                }
+                            }
+                            for d in .dirs {
+                                button {
+                                    onclick: .NavigateDir(d.rel_path)
+                                    style: "h-8 px-3 rounded-lg bg-transparent text-muted-foreground hover:text-foreground text-xs font-medium border border-border/40"
+                                    text d.label { style: "text-xs" }
+                                    text d.count { style: emoji_count }
                                 }
                             }
                         }
@@ -162,7 +197,7 @@ widget App {
                         if .root_missing {
                             text "⚠️ 照片源目录不存在（检查 photo_root）" { style: "text-[11px] text-destructive/80" }
                         } else {
-                            text "后端实时扫描 · 缩略图按需渲染" { style: "text-[11px] text-muted-foreground/60" }
+                            text .scan_source_label { style: "text-[11px] text-muted-foreground/60" }
                         }
                     }
 
@@ -174,7 +209,7 @@ widget App {
                                 grid {
                                     cols: 2
                                     gap: 16
-                                    for item in .view_list {
+                                    for item in .render_list {
                                         col {
                                             style: group_card
                                             // 图片区域（点击直开原图）
@@ -215,7 +250,7 @@ widget App {
                                 grid {
                                     cols: 3
                                     gap: 14
-                                    for item in .view_list {
+                                    for item in .render_list {
                                         col {
                                             style: group_card
                                             button {
@@ -254,7 +289,7 @@ widget App {
                                 grid {
                                     cols: 4
                                     gap: 10
-                                    for item in .view_list {
+                                    for item in .render_list {
                                         col {
                                             style: "group rounded-xl overflow-hidden bg-card border border-border/50 hover:border-primary/60 transition-all shadow-sm flex flex-col"
                                             button {
@@ -290,7 +325,17 @@ widget App {
                                     }
                                 }
                             }
-                        } else {
+                        }
+                        if .render_more_label != "" {
+                            row {
+                                style: "w-full items-center justify-center py-6"
+                                button (text: .render_more_label, variant: "ghost") {
+                                    onclick: .LoadMore
+                                    style: "h-9 px-5 text-xs rounded-full border border-border text-muted-foreground hover:text-foreground"
+                                }
+                            }
+                        }
+                        if !.has_view {
                             col {
                                 style: "w-full flex flex-col items-center justify-center py-24 gap-3"
                                 if .load_error != "" {
@@ -372,42 +417,56 @@ widget App {
     }
 
     on {
-        // ---- Init：后端 scan 拉全量 → 建 photos 主列表（PLAN-043 数据源）----
+        // ---- Init：收藏恢复（JSON 全记录）→ scan 当前目录 → 建网格 ----
         .Init -> {
-            // 收藏恢复（Storage CSV → fav_ids 表）
-            let saved str = Storage.get("photo-gallery.favs")
-            var fids = []
-            if saved != "" {
-                var fi int = 0
-                var cur str = ""
-                while fi < saved.len() {
-                    let ch str = saved[fi]
-                    if ch == "," {
-                        if cur != "" { fids.push(cur) }
-                        cur = ""
-                    } else {
-                        cur = cur + ch
-                    }
-                    fi = fi + 1
-                }
-                if cur != "" { fids.push(cur) }
-            }
-            .fav_ids = fids
-
+            // 收藏恢复：JSON 往返（Storage 字符串 → 解析 list）。勿用逐
+            // 字符 CSV 解析——str[i] 索引返回字符码 int，拼接会把字节转
+            // 十进制（PLAN-043 实机踩坑，收藏恢复全失效）。
+            .fav_records = []
             try {
-                let data = json.to_value(Http.get_json("/api/photos/scan"))
+                let saved = json.to_value(Storage.get("photo-gallery.favs"))
+                if saved != null {
+                    .fav_records = saved
+                }
+            } catch {
+                .fav_records = []
+            }
+            .ReloadDir()
+        }
+
+        // ---- ReloadDir：scan 当前 .dir（Init 与导航共用臂）----
+        .ReloadDir -> {
+            try {
+                // PLAN-043 Phase 2: UI 路径裸 Http.get_json 编译期自带
+                // to_value（PLAN-080 F-2③），直接取解析产物，勿再外包。
+                // dir 参数经 query 传递——根为空串时后端归一化。
+                let data = Http.get_json("/api/photos/scan?dir=" + .dir)
                 .root_missing = data.root_missing ?? false
                 .load_error = ""
                 var entries = data.entries ?? []
+                var dlist = []
+                var dd = data.dirs ?? []
+                var di int = 0
+                while di < dd.len() {
+                    let d = dd[di]
+                    dlist.push({
+                        name: d.name,
+                        rel_path: d.rel_path,
+                        label: "📂 " + d.name,
+                        count: d.image_count.str()
+                    })
+                    di = di + 1
+                }
+                .dirs = dlist
                 var plist = []
                 var i int = 0
                 while i < entries.len() {
                     let e = entries[i]
-                    // fav 标记：fav_ids 命中即真
+                    // fav 标记：fav_records 命中即真
                     var is_fav bool = false
                     var fi2 int = 0
-                    while fi2 < .fav_ids.len() {
-                        if .fav_ids[fi2] == e.id { is_fav = true }
+                    while fi2 < .fav_records.len() {
+                        if .fav_records[fi2].id == e.id { is_fav = true }
                         fi2 = fi2 + 1
                     }
                     // meta 串：尺寸缺席（头部解析失败）时只留大小+日期
@@ -419,7 +478,6 @@ widget App {
                     plist.push({
                         id: e.id,
                         title: e.title,
-                        album: e.album,
                         date: e.date,
                         meta: meta,
                         fav: is_fav,
@@ -430,40 +488,80 @@ widget App {
                     i = i + 1
                 }
                 .photos = plist
+                // 目录徽标与扫描源文案（text 只接标识符，表达式须预计算）
+                if .dir == "" {
+                    .dir_badge = ""
+                    .scan_source_label = "后端实时扫描 · 根目录"
+                } else {
+                    .dir_badge = "📁 " + .dir
+                    .scan_source_label = "后端实时扫描 · " + .dir
+                }
             } catch {
                 .photos = []
+                .dirs = []
                 .root_missing = false
                 .load_error = "照片后端未就绪（scan 请求失败）"
             }
             .ApplyFilter()
         }
 
+        // ---- 导航：进入子目录 / 返回上一级 ----
+        .NavigateDir(rel) -> {
+            .dir = rel
+            .album = "all"
+            .render_cap = 60
+            .ReloadDir()
+        }
+
+        .GoUp -> {
+            // 去掉末段：a/b/c → a/b；单段 → 根。split + 重组（不用逐字符
+            // 索引——str[i] 返回字符码 int，与 str 比较恒假）。
+            var parts = .dir.split("/")
+            if parts.len() <= 1 {
+                .dir = ""
+            } else {
+                var up str = ""
+                var ui int = 0
+                while ui < parts.len() - 1 {
+                    if ui > 0 { up = up + "/" }
+                    up = up + parts[ui]
+                    ui = ui + 1
+                }
+                .dir = up
+            }
+            .album = "all"
+            .render_cap = 60
+            .ReloadDir()
+        }
+
         .SelectAlbum(a) -> {
             .album = a
+            .render_cap = 60
             .ApplyFilter()
         }
 
         .SetSearch(q) -> {
             .search_q = q
+            .render_cap = 60
             .ApplyFilter()
         }
 
-        // ---- 过滤 + 排序 + 动态相册分组 + 计数（全部基于 .photos）----
+        // ---- 过滤 + 排序 + 页签计数（all=当前目录 / favorites=全局收藏）----
         .ApplyFilter -> {
             let ql str = .search_q.lower()
 
-            // 过滤：相册键 + 搜索子串
+            // 数据源：收藏视图聚合 fav_records，其余为当前目录 photos
+            var source = .photos
+            if .album == "favorites" { source = .fav_records }
+
+            // 过滤：搜索子串（fav 已在两源各自内建）
             var hits = []
             var i int = 0
-            var n_all int = .photos.len()
+            var n_all int = source.len()
             while i < n_all {
-                let p = .photos[i]
-                var album_match bool = false
-                if .album == "all" { album_match = true }
-                if .album == "favorites" { album_match = p.fav }
-                if .album == p.album { album_match = true }
+                let p = source[i]
                 let tmatch = (ql == "") || p.title.lower().contains(ql)
-                if album_match && tmatch {
+                if tmatch {
                     hits.push(i)
                 }
                 i = i + 1
@@ -483,7 +581,7 @@ widget App {
                 var bi int = 0
                 while bi < hn {
                     if !used[bi] {
-                        let k int = .photos[hits[bi]].sort_key
+                        let k int = source[hits[bi]].sort_key
                         var take bool = false
                         if best == -1 { take = true }
                         else {
@@ -499,8 +597,8 @@ widget App {
                 }
                 if best >= 0 {
                     let si = hits[best]
-                    vlist.push(.photos[si])
-                    vids.push(.photos[si].id)
+                    vlist.push(source[si])
+                    vids.push(source[si].id)
                     used[best] = true
                 }
                 placed = placed + 1
@@ -510,47 +608,32 @@ widget App {
             .view_ids = vids
             .has_view = (vids.len() > 0)
 
-            // ---- 动态相册分组：全部 / 各 album 首现序 / 收藏 ----
-            // 标签：photos（根目录文件）与 Screenshots 给中文惯用名，其余用原名
-            var tabs = []
-            var c_fav int = 0
-            var seen = []
-            var k2 int = 0
-            while k2 < n_all {
-                let p2 = .photos[k2]
-                if p2.fav { c_fav = c_fav + 1 }
-                var got bool = false
-                var s2 int = 0
-                while s2 < seen.len() {
-                    if seen[s2] == p2.album { got = true }
-                    s2 = s2 + 1
-                }
-                if !got {
-                    seen.push(p2.album)
-                    // 该 album 计数
-                    var c_alb int = 0
-                    var k3 int = 0
-                    while k3 < n_all {
-                        if .photos[k3].album == p2.album { c_alb = c_alb + 1 }
-                        k3 = k3 + 1
-                    }
-                    var label str = p2.album
-                    if p2.album == "photos" { label = "📷 图片" }
-                    if p2.album == "Screenshots" { label = "📱 截图" }
-                    tabs.push({ key: p2.album, label: label, count: c_alb.str() })
-                }
-                k2 = k2 + 1
+            // 分批渲染闸：只画前 render_cap 张（VM native image 同步阻塞
+            // 加载的实机性能边界——见 model 注记）。剩余张数进按钮文案。
+            var cap int = .render_cap
+            if vlist.len() < cap { cap = vlist.len() }
+            var rlist = []
+            var ri int = 0
+            while ri < cap {
+                rlist.push(vlist[ri])
+                ri = ri + 1
             }
-            var tabs2 = [{ key: "all", label: "全部照片", count: n_all.str() }]
-            var t2 int = 0
-            while t2 < tabs.len() { tabs2.push(tabs[t2]); t2 = t2 + 1 }
+            .render_list = rlist
+            if vlist.len() > cap {
+                .render_more_label = "还有 " + (vlist.len() - cap).str() + " 张 · 点击加载更多"
+            } else {
+                .render_more_label = ""
+            }
+
+            // 页签：全部（当前目录）+ 收藏（全局）；子目录走独立导航条。
+            var c_fav int = .fav_records.len()
+            var tabs2 = [{ key: "all", label: "全部照片", count: .photos.len().str() }]
             tabs2.push({ key: "favorites", label: "❤ 收藏", count: c_fav.str() })
             .album_tabs = tabs2
 
             // 文案
             var cur_label str = "全部"
             if .album == "favorites" { cur_label = "收藏" }
-            if .album != "all" && .album != "favorites" { cur_label = .album }
             if .search_q == "" {
                 .view_label = vids.len().str() + " 项内容 · " + cur_label
             } else {
@@ -566,6 +649,7 @@ widget App {
                 .sort_dir = "desc"
                 .sort_label = "最新 ↓"
             }
+            .render_cap = 60
             .ApplyFilter()
         }
 
@@ -616,39 +700,75 @@ widget App {
         .NextPhoto -> { .OpenPhoto(.next_id) }
         .BackToGrid -> { .mode = "grid" }
 
-        // ---- 收藏：photos 表内翻标 + fav_ids 表同步 + Storage 持久化 ----
+        // ---- 收藏：photos 翻标 + fav_records 增删（跨目录全局）+ 持久化 ----
         .ToggleFav(pid) -> {
+            // 当前目录内翻标
             var i int = 0
+            var flipped bool = false
             while i < .photos.len() {
                 if .photos[i].id == pid {
                     .photos[i].fav = !.photos[i].fav
+                    flipped = .photos[i].fav
                 }
                 i = i + 1
             }
-            // fav_ids 同步（重建 CSV）
-            var fids2 = []
-            var csv str = ""
-            var j2 int = 0
-            while j2 < .photos.len() {
-                if .photos[j2].fav {
-                    fids2.push(.photos[j2].id)
-                    if csv != "" { csv = csv + "," }
-                    csv = csv + .photos[j2].id
-                }
-                j2 = j2 + 1
+            // fav_records 同步增删（按 flipped 态；当前目录外的旧记录不动）
+            var j int = 0
+            var found_at int = -1
+            while j < .fav_records.len() {
+                if .fav_records[j].id == pid { found_at = j }
+                j = j + 1
             }
-            .fav_ids = fids2
-            Storage.set("photo-gallery.favs", csv)
+            if flipped && found_at < 0 {
+                // 从 photos 取完整记录补入（当前目录内的收藏）
+                var k int = 0
+                while k < .photos.len() {
+                    if .photos[k].id == pid {
+                        .fav_records.push({
+                            id: .photos[k].id,
+                            title: .photos[k].title,
+                            date: .photos[k].date,
+                            meta: .photos[k].meta,
+                            fav: true,
+                            thumb: .photos[k].thumb,
+                            full: .photos[k].full,
+                            sort_key: .photos[k].sort_key
+                        })
+                    }
+                    k = k + 1
+                }
+            }
+            if !flipped && found_at >= 0 {
+                // 移除：重建 list（.at 无按索引删）
+                var kept = []
+                var m int = 0
+                while m < .fav_records.len() {
+                    if m != found_at { kept.push(.fav_records[m]) }
+                    m = m + 1
+                }
+                .fav_records = kept
+            }
+            Storage.set("photo-gallery.favs", json.from_value(.fav_records))
 
             .ApplyFilter()
             if .mode == "view" && .cur_id == pid {
                 var si int = -1
-                var j int = 0
-                while j < .photos.len() {
-                    if .photos[j].id == pid { si = j }
-                    j = j + 1
+                var j2 int = 0
+                while j2 < .photos.len() {
+                    if .photos[j2].id == pid { si = j2 }
+                    j2 = j2 + 1
                 }
-                if si >= 0 {
+                // 收藏视图里查看的照片可能不在当前目录——从 fav_records 取态
+                if si < 0 {
+                    var j3 int = 0
+                    while j3 < .fav_records.len() {
+                        if .fav_records[j3].id == pid {
+                            .is_cur_fav = true
+                            .fav_label = "❤ 已收藏"
+                        }
+                        j3 = j3 + 1
+                    }
+                } else {
                     .is_cur_fav = .photos[si].fav
                     if .is_cur_fav {
                         .fav_label = "❤ 已收藏"
@@ -657,6 +777,11 @@ widget App {
                     }
                 }
             }
+        }
+
+        .LoadMore -> {
+            .render_cap = .render_cap + 60
+            .ApplyFilter()
         }
 
         .ToggleDark -> { .dark_mode = !.dark_mode }

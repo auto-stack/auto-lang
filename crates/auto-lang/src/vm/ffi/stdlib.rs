@@ -3113,6 +3113,21 @@ fn json_to_vm_value_inner(
 /// `auto.json.to_value(json_str) -> NanoValue`
 /// Parse a JSON string and push the resulting VM value onto the stack.
 pub fn shim_json_to_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // PLAN-043 Phase 2 幂等臂：实参已是 VM 值（object/list/bool/null）
+    // 时原样透传，不经字符串往返。动机——PLAN-080 F-2③ 后 UI 路径裸
+    // `Http.get_json(url)` 编译期自带 to_value（返回解析产物），旧配方
+    // `json.to_value(Http.get_json(..))`（020/029/030 在用的双端同源
+    // 写法，stdlib 注释层长期如此文档化）会把解析后的对象再喂进来；
+    // 旧实现走 String 弹栈的 `{:?}` 兜底，产出 NanoValue 调试串（~20 位
+    // 数字），下游 .entries 读全空且静默吞——「后端有数据、前端空」
+    // 全族根因（auto-os PLAN-043 Part 2 实证链）。i32/f64 维持原路
+    // （数值语义不变：i32 经数字串重解析等价）。
+    let nv = task.ram.pop_nv();
+    if auto_val::is_object(nv) || auto_val::is_list(nv) || auto_val::is_bool(nv) || auto_val::is_null(nv) {
+        task.ram.push_nv(nv);
+        return Ok(());
+    }
+    task.ram.push_nv(nv);
     let json_str: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let trimmed = json_str.trim();
@@ -5358,6 +5373,13 @@ pub fn shim_http_internal_error(msg: String) -> i64 {
 /// 字符串、to_value 解析成 Value（与 #[api] 改写的既有形状同型）；Vue 侧
 /// ts_adapter 把 `Http.get_json` 映射为 fetch().json()、`json.to_value` 映射为
 /// 恒等（Vue 侧已是解析后的对象）。030 的 store 即此写法。
+/// PLAN-043 Phase 2 修订（2026-09-24）：UI 路径裸 `Http.get_json` 自
+/// PLAN-080 F-2③ 起编译期自带 to_value（vm/codegen.rs Call 臂改发
+/// `auto.http.get_json` + `auto.json.to_value`），**返回的已是解析产物
+/// 而非 body 字符串**——app 侧单写 `Http.get_json(url)` 即可；旧配方
+/// `json.to_value(Http.get_json(..))` 依靠 shim_json_to_value 的幂等臂
+/// 透传（双重解析曾致对象被强转成 NanoValue 调试串、数据静默全空，
+/// 020/029/030 全族中招，auto-os PLAN-043 Part 2 实证）。
 pub fn shim_http_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {

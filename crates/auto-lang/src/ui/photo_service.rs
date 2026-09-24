@@ -13,8 +13,16 @@
 //! feature (which this module is gated on).
 //!
 //! Security boundary mirrors media_service: only blake3 tokens of relative
-//! paths ever leave the backend; `find` + `entry_path` re-join under the
-//! index root, so a request can never address a file outside the indexed set.
+//! paths ever leave the backend; tokens resolve through a per-root registry
+//! populated by `list_directory` scans, so a request can never address a
+//! file outside the scanned set, and `sanitize_rel_dir` keeps user-supplied
+//! navigation segments inside the root (no `..`/absolute/drive-letter).
+//!
+//! Listing is **non-recursive** (user requirement, 2026-09-24): a scan of
+//! `dir=X` returns only the images directly inside X plus X's immediate
+//! subdirectories (each with a direct-image count for tab badges).
+//! Subdirectory contents are fetched by a follow-up scan — the gallery
+//! navigates like a file browser, it does not flat-render the whole tree.
 
 use std::cmp::Ordering;
 use std::io;
@@ -24,9 +32,6 @@ use std::path::{Path, PathBuf};
 /// RAW formats are deliberately absent — the `image` crate cannot decode
 /// them, and listing undecodable files would render broken tiles.
 pub const PHOTO_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "gif", "bmp"];
-
-/// Hard cap on directory depth (symlink-loop guard, media_service precedent).
-const MAX_DEPTH: usize = 32;
 
 /// Decoder limits: photos from phones can be 100+MP, but a gallery thumbnail
 /// never needs more than this to decode safely.
@@ -54,11 +59,53 @@ pub struct PhotoEntry {
     pub mtime: i64,
 }
 
+/// A subdirectory entry returned by a non-recursive listing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PhotoDir {
+    /// Display name (the directory's file name).
+    pub name: String,
+    /// Root-relative path with `/` separators — the navigation token the
+    /// frontend passes back as `?dir=`.
+    pub rel_path: String,
+    /// Number of supported images *directly* inside (one level; recursive
+    /// counts would contradict the non-recursive browsing model).
+    pub image_count: usize,
+}
+
+/// Result of one non-recursive directory listing.
 #[derive(Debug, Clone, Default)]
-pub struct PhotoIndex {
-    /// Redacted root label (the root itself, not a per-file path).
-    pub root: String,
-    pub entries: Vec<PhotoEntry>,
+pub struct PhotoListing {
+    /// Root-relative path of the listed directory ("" = root).
+    pub dir_rel: String,
+    pub images: Vec<PhotoEntry>,
+    pub dirs: Vec<PhotoDir>,
+}
+
+/// Validate a user-supplied navigation segment string (`?dir=`). Only
+/// `a/b/c`-shaped relative paths are legal: no absolute paths, no drive
+/// letters, no `..`, no backslashes, no quotes. Returns the normalized
+/// `/`-separated relative path (`""` for root) or None.
+pub fn sanitize_rel_dir(rel: &str) -> Option<String> {
+    let rel = rel.trim().trim_matches('/');
+    if rel.is_empty() {
+        return Some(String::new());
+    }
+    let mut out: Vec<&str> = Vec::new();
+    for seg in rel.split('/') {
+        if seg.is_empty() || seg == "." {
+            continue; // 空段（连续/首尾斜杠）与当前段无害，归一化跳过
+        }
+        if seg == ".." {
+            return None;
+        }
+        // 拒绝反斜杠（Windows 分隔符的另一形态）、盘符冒号、引号——
+        // 只允许干净的相对路径段（'/' 已在上层 split）。
+        if seg.contains(['\\', ':', '"', '\'']) {
+            return None;
+        }
+        out.push(seg);
+    }
+    Some(out.join("/"))
 }
 
 /// Resolve the photo root. Order: explicit argument (pac.at) ->
@@ -83,13 +130,42 @@ fn is_supported(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Recursive collect. **Never follows symlinks** (media_service precedent —
-/// a junction pointing back up the tree would recurse forever).
-fn collect_files(root: &Path, dir: &Path, depth: usize, out: &mut Vec<(PathBuf, u64, i64)>) -> io::Result<()> {
-    if depth > MAX_DEPTH {
-        return Ok(());
-    }
-    for item in std::fs::read_dir(dir)? {
+/// mtime seconds since epoch from file metadata (0 when unavailable).
+fn mtime_secs(meta: &std::fs::Metadata) -> i64 {
+    meta.modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Count supported images *directly* inside `dir` (non-recursive; one
+/// read_dir). Used for subdirectory tab badges.
+fn count_direct_images(dir: &Path) -> usize {
+    let Ok(rd) = std::fs::read_dir(dir) else { return 0 };
+    rd.filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_type().map(|t| t.is_file()).unwrap_or(false) && is_supported(&e.path())
+        })
+        .count()
+}
+
+/// One-level directory listing (non-recursive browsing model). Returns the
+/// images directly inside `rel` plus its immediate subdirectories. Never
+/// follows symlinks (media_service precedent). Errors when the directory
+/// is unreadable/missing (caller maps to `root_missing` / 404 semantics).
+pub fn list_directory(root: &Path, rel: &str) -> io::Result<PhotoListing> {
+    let dir_rel = sanitize_rel_dir(rel)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "illegal dir segment"))?;
+    let dir = if dir_rel.is_empty() {
+        root.to_path_buf()
+    } else {
+        root.join(dir_rel.replace('/', std::path::MAIN_SEPARATOR_STR))
+    };
+    let rd = std::fs::read_dir(&dir)?;
+    let mut images: Vec<(PathBuf, u64, i64)> = Vec::new();
+    let mut dirs: Vec<PhotoDir> = Vec::new();
+    for item in rd {
         let item = match item {
             Ok(i) => i,
             Err(_) => continue, // unreadable entry: skip, do not fail the whole scan
@@ -103,18 +179,102 @@ fn collect_files(root: &Path, dir: &Path, depth: usize, out: &mut Vec<(PathBuf, 
             continue;
         }
         if meta.is_dir() {
-            let _ = collect_files(root, &path, depth + 1, out);
-        } else if meta.is_file() && is_supported(&path) && path.strip_prefix(root).is_ok() {
-            let mtime = meta
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
-            out.push((path, meta.len(), mtime));
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let child_rel = if dir_rel.is_empty() {
+                name.clone()
+            } else {
+                format!("{dir_rel}/{name}")
+            };
+            dirs.push(PhotoDir {
+                name,
+                image_count: count_direct_images(&path),
+                rel_path: child_rel,
+            });
+        } else if meta.is_file() && is_supported(&path) {
+            images.push((path, meta.len(), mtime_secs(&meta)));
         }
     }
-    Ok(())
+    // 自然序（文件名数字感知）——浏览型图库的确定性排序。
+    images.sort_by(|(a, _, _), (b, _, _)| {
+        let a_rel = a.strip_prefix(root).unwrap_or(a).to_string_lossy().replace('\\', "/");
+        let b_rel = b.strip_prefix(root).unwrap_or(b).to_string_lossy().replace('\\', "/");
+        natural_key(&a_rel).cmp(&natural_key(&b_rel)).then_with(|| a_rel.cmp(&b_rel))
+    });
+    dirs.sort_by(|a, b| natural_key(&a.rel_path).cmp(&natural_key(&b.rel_path)));
+    let mut listing = PhotoListing { dir_rel, images: Vec::new(), dirs };
+    for (path, bytes, mtime) in images {
+        let relative_path = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+        let rel_dir = relative_path
+            .rsplit_once('/')
+            .map(|(d, _)| d.to_string())
+            .unwrap_or_default();
+        let extension = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let (width, height) = header_dimensions(&path);
+        let id = blake3::hash(relative_path.as_bytes()).to_hex().to_string();
+        listing.images.push(PhotoEntry { id, name, relative_path, rel_dir, extension, bytes, width, height, mtime });
+    }
+    // token → 相对路径注册表（thumb/full 反查用），按 root 分桶。
+    if let Ok(mut reg) = token_registry().lock() {
+        reg.insert(root.to_string_lossy().to_string(), listing.images.iter().map(|e| (e.id.clone(), e.relative_path.clone())).collect());
+    }
+    Ok(listing)
+}
+
+/// token → root-relative path registry. Bucketed by root so two photo apps
+/// with identical relative paths never collide. Rebuilt wholesale per scan
+/// (bounded by the scanned dir's image count).
+fn token_registry() -> &'static std::sync::Mutex<std::collections::HashMap<String, std::collections::HashMap<String, String>>> {
+    static REG: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, std::collections::HashMap<String, String>>>> = std::sync::OnceLock::new();
+    &REG.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// Resolve a photo token against the registry for `root`. Returns the
+/// root-relative path (`/` separators) only when the token was issued by a
+/// scan of this same root — otherwise None (404 arm).
+pub fn resolve_token(root: &Path, token: &str) -> Option<String> {
+    let reg = token_registry().lock().ok()?;
+    reg.get(&root.to_string_lossy().to_string())?.get(token).cloned()
+}
+
+/// Rebuild a `PhotoEntry` for a root-relative path (thumb/full 端点的
+/// token 反查臂——只服务扫描过的文件，路径永不来自请求体）。
+pub fn photo_from_rel(root: &Path, rel: &str) -> Option<PhotoEntry> {
+    let path = rel_to_path(root, rel);
+    let meta = std::fs::symlink_metadata(&path).ok()?;
+    if !meta.is_file() || !is_supported(&path) {
+        return None;
+    }
+    let name = path.file_name()?.to_string_lossy().to_string();
+    let rel_dir = rel.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_default();
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+    let (width, height) = header_dimensions(&path);
+    Some(PhotoEntry {
+        id: blake3::hash(rel.as_bytes()).to_hex().to_string(),
+        name,
+        relative_path: rel.to_string(),
+        rel_dir,
+        extension,
+        bytes: meta.len(),
+        width,
+        height,
+        mtime: mtime_secs(&meta),
+    })
 }
 
 /// Natural ordering (S01E02 before S01E10) — media_service precedent, kept
@@ -175,56 +335,10 @@ fn header_dimensions(path: &Path) -> (u32, u32) {
     image::image_dimensions(path).unwrap_or((0, 0))
 }
 
-/// Recursively index `root` into entries sorted naturally by relative path.
-pub fn index_directory(root: impl AsRef<Path>) -> io::Result<PhotoIndex> {
-    let root = root.as_ref();
-    let mut files = Vec::new();
-    collect_files(root, root, 0, &mut files)?;
-    files.sort_by(|(a, _, _), (b, _, _)| {
-        let a_rel = a.strip_prefix(root).unwrap_or(a).to_string_lossy().replace('\\', "/");
-        let b_rel = b.strip_prefix(root).unwrap_or(b).to_string_lossy().replace('\\', "/");
-        natural_key(&a_rel).cmp(&natural_key(&b_rel)).then_with(|| a_rel.cmp(&b_rel))
-    });
-    let entries = files
-        .into_iter()
-        .map(|(path, bytes, mtime)| {
-            let relative_path = path
-                .strip_prefix(root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            let name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or_default()
-                .to_string();
-            let rel_dir = relative_path
-                .rsplit_once('/')
-                .map(|(d, _)| d.to_string())
-                .unwrap_or_default();
-            let extension = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or_default()
-                .to_ascii_lowercase();
-            let (width, height) = header_dimensions(&path);
-            let id = blake3::hash(relative_path.as_bytes()).to_hex().to_string();
-            PhotoEntry { id, name, relative_path, rel_dir, extension, bytes, width, height, mtime }
-        })
-        .collect();
-    Ok(PhotoIndex { root: root.to_string_lossy().to_string(), entries })
-}
-
-/// Reverse lookup by token. The request never carries a path, so a client
-/// cannot ask for a file outside the indexed set.
-pub fn find<'a>(index: &'a PhotoIndex, id: &str) -> Option<&'a PhotoEntry> {
-    index.entries.iter().find(|e| e.id == id)
-}
-
-/// Absolute path of an entry, re-joined under the index root.
-pub fn entry_path(root: &Path, entry: &PhotoEntry) -> PathBuf {
+/// Build an absolute path from a root-relative (`/`-separated) path.
+pub fn rel_to_path(root: &Path, relative_path: &str) -> PathBuf {
     let mut p = root.to_path_buf();
-    for part in entry.relative_path.split('/') {
+    for part in relative_path.split('/') {
         p.push(part);
     }
     p
@@ -350,7 +464,7 @@ pub fn render_thumbnail(root: &Path, entry: &PhotoEntry, width: u32) -> Result<V
             return Ok(bytes);
         }
     }
-    let path = entry_path(root, entry);
+    let path = rel_to_path(root, &entry.relative_path);
     let orientation = exif_orientation(&path).unwrap_or(1);
     let mut reader = image::ImageReader::open(&path)
         .and_then(|r| r.with_guessed_format())
@@ -418,50 +532,87 @@ mod tests {
     }
 
     #[test]
-    fn index_is_recursive_filtered_and_dimensioned() {
+    fn root_listing_is_non_recursive_with_dirs() {
         let base = tmp_tree();
-        let idx = index_directory(&base).unwrap();
-        let names: Vec<_> = idx.entries.iter().map(|e| e.relative_path.clone()).collect();
-        assert!(names.iter().any(|n| n == "Trip/t1.webp"), "{names:?}");
-        assert!(names.iter().any(|n| n == "Screenshots/s2.png"), "{names:?}");
-        assert!(!names.iter().any(|n| n.ends_with(".txt")), "{names:?}");
-        assert!(!names.iter().any(|n| n == "noext"), "{names:?}");
-        assert_eq!(idx.entries.len(), 6, "{names:?}");
-        // Header dimensions parsed for real PNGs (junk jpg header fails → 0, tolerated).
-        let a = idx.entries.iter().find(|e| e.name == "a.png").unwrap();
+        let l = list_directory(&base, "").unwrap();
+        // 根目录直属：3 张图（a.png b.PNG c.jpg），txt/noext 被白名单拒。
+        let names: Vec<_> = l.images.iter().map(|e| e.name.clone()).collect();
+        assert_eq!(names.len(), 3, "{names:?}");
+        assert!(!names.iter().any(|n| n == "notes.txt"), "{names:?}");
+        // 子目录作为导航条目（非内容平铺）。
+        let dnames: Vec<_> = l.dirs.iter().map(|d| d.name.clone()).collect();
+        assert!(dnames.iter().any(|n| n == "Screenshots"), "{dnames:?}");
+        assert!(dnames.iter().any(|n| n == "Trip"), "{dnames:?}");
+        // 直接图片计数（一层）。
+        let shots = l.dirs.iter().find(|d| d.name == "Screenshots").unwrap();
+        assert_eq!(shots.image_count, 2, "Screenshots 直属 2 张");
+        assert_eq!(shots.rel_path, "Screenshots");
+        // Header dimensions parsed for real PNGs.
+        let a = l.images.iter().find(|e| e.name == "a.png").unwrap();
         assert_eq!((a.width, a.height), (1, 1));
         let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
-    fn natural_order_and_album_labels() {
+    fn subdir_listing_navigates_one_level() {
         let base = tmp_tree();
-        let idx = index_directory(&base).unwrap();
-        let names: Vec<_> = idx.entries.iter().map(|e| e.name.clone()).collect();
+        let l = list_directory(&base, "Screenshots").unwrap();
+        assert_eq!(l.dir_rel, "Screenshots");
+        let names: Vec<_> = l.images.iter().map(|e| name_only(e)).collect();
+        assert!(names.iter().any(|n| n == "s2.png"), "{names:?}");
+        assert!(names.iter().any(|n| n == "s10.png"), "{names:?}");
+        // 自然序：s2 在 s10 前。
         let s2 = names.iter().position(|n| n == "s2.png").unwrap();
         let s10 = names.iter().position(|n| n == "s10.png").unwrap();
         assert!(s2 < s10, "natural order broken: {names:?}");
-        let root_file = idx.entries.iter().find(|e| e.name == "a.png").unwrap();
-        assert_eq!(album_of(root_file), "photos");
-        let shot = idx.entries.iter().find(|e| e.name == "s2.png").unwrap();
-        assert_eq!(album_of(shot), "Screenshots");
-        let trip = idx.entries.iter().find(|e| e.name == "t1.webp").unwrap();
-        assert_eq!(album_of(trip), "Trip");
+        // 该子目录下无更深子目录。
+        assert!(l.dirs.is_empty(), "{:?}", l.dirs);
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    fn name_only(e: &PhotoEntry) -> String { e.name.clone() }
+
     #[test]
-    fn ids_are_tokens_and_never_leak_absolute_paths() {
+    fn sanitize_rel_dir_rejects_traversal() {
+        assert_eq!(sanitize_rel_dir(""), Some(String::new()));
+        assert_eq!(sanitize_rel_dir("Screenshots"), Some("Screenshots".into()));
+        assert_eq!(sanitize_rel_dir("a/b/c"), Some("a/b/c".into()));
+        assert_eq!(sanitize_rel_dir("/a//b/"), Some("a/b".into()));
+        assert!(sanitize_rel_dir("..").is_none());
+        assert!(sanitize_rel_dir("a/../b").is_none());
+        assert!(sanitize_rel_dir("C:/Windows").is_none());
+        assert!(sanitize_rel_dir("a\\b").is_none());
+        assert!(sanitize_rel_dir("a:b").is_none());
+    }
+
+    #[test]
+    fn tokens_resolve_per_root_and_never_leak_paths() {
         let base = tmp_tree();
-        let idx = index_directory(&base).unwrap();
-        for e in &idx.entries {
+        let l = list_directory(&base, "").unwrap();
+        for e in &l.images {
             assert_eq!(e.id.len(), 64, "blake3 hex");
             assert!(!e.id.contains(':'), "no drive letters in the token");
             assert!(!e.relative_path.contains(base.to_string_lossy().as_ref()));
         }
-        let first = idx.entries[0].id.clone();
-        assert!(find(&idx, &first).is_some());
-        assert!(find(&idx, "deadbeef").is_none());
+        let first = l.images[0].id.clone();
+        assert_eq!(resolve_token(&base, &first).as_deref(), Some(l.images[0].relative_path.as_str()));
+        assert!(resolve_token(&base, "deadbeef").is_none());
+        // 异 root 不串桶。
+        let other = std::env::temp_dir().join("p043_other_root");
+        let _ = std::fs::create_dir_all(&other);
+        assert!(resolve_token(&other, &first).is_none());
+        let _ = std::fs::remove_dir_all(&other);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn photo_from_rel_rebuilds_entry() {
+        let base = tmp_tree();
+        list_directory(&base, "").unwrap();
+        let e = photo_from_rel(&base, "a.png").unwrap();
+        assert_eq!(e.name, "a.png");
+        assert_eq!((e.width, e.height), (1, 1));
+        assert!(photo_from_rel(&base, "notes.txt").is_none(), "非图片不重建");
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -513,15 +664,15 @@ mod tests {
         });
         let src = base.join("grad.png");
         img.save(&src).unwrap();
-        let idx = index_directory(&base).unwrap();
-        let entry = &idx.entries[0];
-        let out = render_thumbnail(&base, entry, 64).unwrap();
+        list_directory(&base, "").unwrap();
+        let entry = photo_from_rel(&base, "grad.png").unwrap();
+        let out = render_thumbnail(&base, &entry, 64).unwrap();
         assert!(!out.is_empty());
         assert!(out.len() > 100, "a real JPEG, not an empty file");
         // Cached: second call must hit the disk cache (same bytes).
         let cache = thumb_cache_dir().join(thumb_cache_name(&entry.id, entry.mtime, 64));
         assert!(cache.is_file(), "cache file written");
-        let again = render_thumbnail(&base, entry, 64).unwrap();
+        let again = render_thumbnail(&base, &entry, 64).unwrap();
         assert_eq!(out, again);
         let _ = std::fs::remove_dir_all(&base);
         let _ = std::fs::remove_file(&cache);
@@ -531,6 +682,10 @@ mod tests {
     fn missing_root_is_an_error_not_a_panic() {
         let nope = std::env::temp_dir().join("p043_definitely_missing_photo_root");
         let _ = std::fs::remove_dir_all(&nope);
-        assert!(index_directory(&nope).is_err());
+        assert!(list_directory(&nope, "").is_err());
+        // 非法 dir 段（穿越尝试）同样是 Err 而非 panic。
+        let base = tmp_tree();
+        assert!(list_directory(&base, "..").is_err());
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
