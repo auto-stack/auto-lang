@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-698
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed             # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-substrate-hardening-batch
 author: [zcode]
 created_at: 2026-09-23
@@ -326,6 +326,19 @@ PLAN-698
   线程自然终止故仅句柄累积（预存面），bus 线程无自然终点（本计划
   引入面）。修法=cleanup 对 AsyncHttpStream 臂回收句柄（rx drop→
   线程退出），test 断言句柄移除。 | next=work（F-1 修复）→re-review。
+
+- review #2（2026-09-24）：stage=review | plan_id=PLAN-698 | rev=1 |
+  outcome=**pass** | reviewed_commit=b6e037cbf（lang F-1 终形）+
+  0db4c17（os） | base=543eccdc4/eb93848 | acceptance=AC-01..05 全过
+  （AC-02 面含 F-1 修复） | findings=F-1 已闭环 |
+  evidence=①F-1 终形（cleanup 回收句柄 + Weak 有界轮询转发线程）：
+  单测 cleanup_reclaims_async_stream_handle+bus 3/3、作用域 17/17、
+  **实机 4 轮订阅/断连线程数恒基线（7→7，RECLAIMED）**；②终码 tv
+  全档 5653 跑 11 红=已知 10+back_provision（OS bind 10013 端口
+  排除环境红，diff 零触面）；ffi_dual_019/c1_future_all 单跑双绿=
+  负载抖动（ffi flaky 留档先例同族）；③tf 全档（中间形）12 红同名册
+  定责；④SD-01..04 文本终态逐节核验与终码一致（§8.1 补 F-1 回收
+  语义句） | next=merge。
 
 ### 执行期勘定与坑（沉淀）
 
