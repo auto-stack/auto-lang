@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-700
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: unify-vm-files-tier
 author: [zcode]
 created_at: 2026-09-24
 updated_at: 2026-09-24
 plan_revision: 1
-current_step: 0
+current_step: 5
 total_steps: 5
 
 # /auto-plan:review 结束时填写：
@@ -15,8 +15,6 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 无 docs/specs 触面（见 5. 规范增量的零影响说明）
-current_step: 0
-total_steps: 5
 ---
 
 # [PLAN-700] unify-vm-files-tier——语料档并入全档 feature 集，消除 tv↔tf 跨档重编
@@ -151,26 +149,86 @@ aavm 系（test-aavm 门）不动。
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] T-01 常驻化：`crates/auto-lang/src/tests.rs` 删三处
+- [x] T-01 常驻化：`crates/auto-lang/src/tests.rs` 删三处
       `#[cfg(feature = "test-vm-files")]`（vm_file_tests/cookbook_vm_tests/
       conformance_tests）；`crates/auto-lang/Cargo.toml` 删 `test-vm-files
       = []`、`test-aavm = ["test-vm-files"]` → `test-aavm = []`。验证：
       `cargo check -p auto-lang` + `cargo t plan394`。[关联 AC-01]
-- [ ] T-02 档位重组：`.cargo/config.toml` tv alias 改 filter 形态；
+      [✅ 已完成] 2026-09-24 lang-700：check 绿（349 警告全预存）；plan394
+      17/17 绿（二进制 6197 列表含语料族=常驻化实证）；附带清扫
+      aavm2_t3.rs 冗余内层门+四文件注释措辞（见复审记录勘定①）。
+- [x] T-02 档位重组：`.cargo/config.toml` tv alias 改 filter 形态；
       `.config/nextest.toml` default-filter 追加语料三族排除。验证：
       tv 单跑 ≈148 全绿；t 计数不含语料族。[关联 AC-02]
-- [ ] T-03 口径件：`vm-files-ci.yml` 命令改筛形态+注释；`AGENTS.md`
+      [✅ 已完成] 2026-09-24 lang-700：执行期勘定③——计划的 -E 内联
+      filterset 形态在 Windows 不可行（cargo 对 alias 实参不做引号剥离，
+      单/双引号两形态实测均 filterset 解析失败），等价改走 nextest
+      profile：`.config/nextest.toml` 增 `[profile.tv]`（语料三族白名单
+      default-filter）+ alias `tv = nextest run --profile tv`，语义与
+      计划等价且与 t/tf 的 config-file 模式同构。实测 tv 162/162 绿
+      3.95s 零 Compiling；t1.log 语料族零出现。
+- [x] T-03 口径件：`vm-files-ci.yml` 命令改筛形态+注释；`AGENTS.md`
       档位表 tv/tf 行+Category B 说明；`.cargo/config.toml` Plan 568 段
       注释。验证：全仓 grep 残留清零（docs/plans 历史档除外）。[关联 AC-03]
-- [ ] T-04 实测收口：三向切换零重编实测 + 三档计数 + tf 语料全绿 + tf/t
+      [✅ 已完成] 2026-09-24 lang-700：CI 五步骤摘 feature 旗标（aavm2
+      步保 test-aavm）+workflow 名/头注重写（yaml.safe_load 过）；AGENTS
+      档位表 tv/tf 行+Category B+别名参考+taa 行（implies 残留）四处更
+      新+实测数回填；scripts 三件旗标改 test-aavm；project.md:63 一词
+      修正；全仓 grep（rs/toml/yml/md/sh/py）worktree 内残留=0
+      （docs/plans 历史档豁免）。
+- [x] T-04 实测收口：三向切换零重编实测 + 三档计数 + tf 语料全绿 + tf/t
       墙钟记录。验证命令：见测试设计。[关联 AC-02/AC-04]
-- [ ] T-05 收口：AC 对账 + 复审记录 +（如引债）债册登记。[关联 AC-01..04]
+      [✅ 已完成] 2026-09-24 lang-700（四段实测，scratch/p700/{t1,tf,tv,t2}.log）：
+      t(scoped)→tf→tv→t(scoped) 四段 **零 `Compiling auto-lang`**（G1 同二进制
+      零重编成立）；计数 t=5521（scoped，+dep_parity 6≈默认档 5527）/tf=5689/
+      tv=162（计划估算 ≈5504/≈5650±/≈148 系 P698 期数字，语料族已增长，
+      delta 口径吻合）；tf 语料三族 **162/162 零红**（AC-04 主证），tf 红册
+      11 条与 t 红册全等=预存（10 条与 P698 红册同名；plan606 test_029 经
+      master 检出单跑复现同红——预存定责，非本计划引入；back_provision 本次
+      绿=对方红册中环境 flaky）；tv 162/162 绿 3.95s。墙钟：本 worktree 冷态
+      t/tf 被 gallery_pages_compile 围栏支配（~800s/次，三连跑同值——**该围
+      栏无跨进程缓存**，每 nextest 进程全量重编画廊页；非本计划触面，观察记
+      录在案）；语料执行段实测 3.95s（≈计划的 +20-60s 预期下限以下）。
+      dep_parity 首段 >30min 零 CPU 卡死（内嵌腿构建排队锁+疑似管道停滞，
+      环境/基建行为，计时段以 -E 排除并记录；其余 5543 测正常流过）。
+- [x] T-05 收口：AC 对账 + 复审记录 +（如引债）债册登记。[关联 AC-01..04]
+      [✅ 已完成] 2026-09-24：AC-01..04 全对账通过（见复审记录）；无新增债
+      入册（gallery 围栏无跨进程缓存为预存观察，留 review 裁量是否立项）。
 
 ## 复审记录
 
 - draft 交付（2026-09-24）：stage=new，PLAN-700 rev1。outcome=pass。
   next=work（单仓单 worktree `lang-700`；改动面 5 文件全为测试基建/口径件，
   无运行时代码；T-04 实测为验收主门）。
+- work 启动（2026-09-24）：status drafting→executing。worktree
+  `D:/autostack/.wt/lang-700/auto-lang`（branch `plan-700-dev`），
+  base=master `499b8bdff`；依赖位 auto-down 组内 detached
+  `D:/autostack/.wt/lang-700/auto-down`@`3373a5cc6`（主检出同 commit，零改动）。
+  执行期勘定①：计划正文的 5 文件面之外，AC-03 grep 清零要求扩展清扫——
+  `aavm2_t3.rs:16` 冗余内层 cfg 门（模组门 test-aavm 已等价覆盖，删）、
+  `aavm_runner_tests.rs`/`heavy_gate.rs`/`plan024_named_view_tests.rs`/
+  `aavm2_a2r.rs` 注释措辞、scripts 三件（aavm4_check.py/
+  measure_test_mem.py/aavm_native_gen_check.sh 的 feature 旗标改 test-aavm）、
+  `docs/specs/aavm/project.md:63` 命令引用一词修正（test-vm-files→test-aavm；
+  计划正文称该行"引用 test-aavm 语义不变"与实况有出入——实为仍挂旧 feature
+  名的命令字面量，语义按 Plan 568 意图不变，不构成规则变更、无 specs.json
+  条目）；语义均等价或措辞级，不扩权。勘定②：语料模块仅常驻于测试构建
+  （`#[cfg(test)]` 面），非测试编译零涟漪（cargo check 实证）。
+- work 收口（2026-09-24）：stage=work | plan_id=PLAN-700 | plan_revision=1 |
+  outcome=**pass** | code_commit=worktree `plan-700-dev`@`403b9ea4a`
+  （15 文件 +82/−66）| task_ids=T-01..T-05 | evidence=scratch/p700/
+  {t1,tf,tv,t2}.log 四段零 Compiling + tv 162/162 绿 3.95s + tf 语料零红 +
+  grep 残留清零 + yaml.safe_load 过 + plan394 17/17 | blockers=无 | next=review。
+  AC 对账：AC-01 ✓（三门+feature 退役+check/plan394 绿）；AC-02 ✓（四段零
+  重编；t 排除/tf 包含/tv=162 实测）；AC-03 ✓（CI/AGENTS/config/scripts/
+  project.md 同步，残留清零）；AC-04 ✓（tf 语料 162/162；红册 11 全预存
+  ——test_029 master 复现定责；tv 空跑定位正确）。勘定③（T-02 实施形态）：
+  -E 内联 filterset 于 Windows alias 不可行（引号字面传递，两形态实测皆败），
+  等价改 `[profile.tv]` + `--profile tv`（语义不变，与 t/tf config-file 模式
+  同构）；勘定④（观察，非本计划触面）：gallery_pages_compile 围栏每
+  nextest 进程全量重编画廊页 ~800s、无跨进程缓存（三连跑同值），且
+  dep_parity 首段出现过 >30min 零 CPU 停滞（环境基建）——两项留 review
+  裁量是否立项清偿。
 
 ## 待澄清事项
 
