@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-698
-status: reviewed             # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-substrate-hardening-batch
 author: [zcode]
 created_at: 2026-09-23
@@ -339,6 +339,15 @@ PLAN-698
   负载抖动（ffi flaky 留档先例同族）；③tf 全档（中间形）12 红同名册
   定责；④SD-01..04 文本终态逐节核验与终码一致（§8.1 补 F-1 回收
   语义句） | next=merge。
+
+- merge（2026-09-24）：stage=merge | PLAN-698:r1 | outcome=**pass
+  （delivered）** | 落库=lang master b7ee6f302（rebase 6/6 range-diff
+  全等 ff-only）+os main a574e31（rebase 1/1 全等 ff-only）|
+  账本=specs.json P698-1（architecture）/P698-2（reviews）+ui/plans.md
+  698 行+INDEX 再生 | 归档=docs/plans/archive/698-...md status
+  archived | 清理=lang-698 组（auto-lang+auto-os worktree+auto-down
+  依赖位+分支）guard clean 后移除 | checkpoint=prepared/landed/
+  ledger_refreshed/archived/cleaned 五章全验。
 
 ### 执行期勘定与坑（沉淀）
 
