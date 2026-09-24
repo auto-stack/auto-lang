@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-700
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: unify-vm-files-tier
 author: [zcode]
 created_at: 2026-09-24
@@ -229,6 +229,38 @@ aavm 系（test-aavm 门）不动。
   nextest 进程全量重编画廊页 ~800s、无跨进程缓存（三连跑同值），且
   dep_parity 首段出现过 >30min 零 CPU 停滞（环境基建）——两项留 review
   裁量是否立项清偿。
+- 复审（2026-09-24）：stage=review | plan_id=PLAN-700 | plan_revision=1 |
+  reviewed_commit=`403b9ea4a`+R-1 修复 `c615d696a` | base_commit=`499b8bdff` |
+  dependency_revisions=auto-down 组内 detached `3373a5cc6`（==属主 master，零
+  改动）| spec_inputs=docs/specs/aavm/project.md（一词修正，见下）|
+  **独立性声明**：与执行同会话，结论全部从工件重建（直接读 diff + 在被审
+  提交上重跑验证），未采信执行摘要。
+  **outcome 第一轮=needs_fix（R-1）→ 修复 → 第二轮=pass。**
+  - R-1（minor，已修 `c615d696a`）：常驻化使 `cookbook_vm_tests.rs:11` 死常量
+    `COOKBOOK_DIR` 首次暴露于 t/tf 日常档警告面（`constant is never used`；
+    test_cookbook 直用字面量，base 期即死仅不可见）——违反零新增警告健康线。
+    修复=删一行；复验 `cargo check --tests` 零 COOKBOOK_DIR 警告 + tv 162/162 绿。
+  - 复审重跑证据（被审提交上独立复现）：cargo check 绿；plan394 17/17 绿
+    （首跑失败系与后台 tf 的 target 锁并发互扰，单跑即绿）；`cargo nextest
+    list`（默认档）5512 测语料族零出现；tv 162/162 绿 2.4-4.3s（两轮）；
+    fresh tf 全量 5689 测零 Compiling、语料三族 162/162 **零红**、红册 12 条
+    =已知 11 预存 + `ffi_dual_019`（Plan 619/689 在册环境 flaky 轮换现身，
+    零改动非引入）；残留清零（docs/plans 豁免类除外）；CI yaml safe_load 过。
+  - 健康检查勘误：fmt 分叉（5 文件）经 base 对照（git show base|rustfmt
+    --check）确证 base 期即存在，非本计划新增，不构成发现。
+  - AC 对账：AC-01 ✓ / AC-02 ✓ / AC-03 ✓ / AC-04 ✓（证据同上；tf 下语料零
+    红为本轮 fresh 复现，非仅沿用执行段日志）。
+  - 规范增量附注：T-03 实际触及 `docs/specs/aavm/project.md:62-63` 命令引用
+    字面量一词修正（旧语料 feature 名→test-aavm）——属 Plan 568 意图内的事
+    实同步、非规则变更；`supersedes/new_spec_components` 维持空，无 specs.json
+    条目。
+  - 观察项（非阻塞，出计划范围，留裁量）：①gallery_pages_compile 围栏每
+    nextest 进程全量重编画廊页 ~800s、无跨进程缓存（四连跑同值）；②
+    dep_parity 一次 >30min 零 CPU 停滞；③ffi_dual_019 环境 flaky 在册。
+  evidence 摘要（工作树 scratch 将随 merge 清理，此处留可稽核摘录）：
+  tf-review.log 语料 PASS 计 162、corpus FAIL 0、Compiling 0；tv 两轮
+  162/162（2.419s/4.316s）；plan394 17 passed。| next=**merge**。
+  status: execution_done → reviewed。
 
 ## 待澄清事项
 
