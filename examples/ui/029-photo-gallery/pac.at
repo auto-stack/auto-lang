@@ -1,21 +1,29 @@
-// pac.at — 029-photo-gallery（Plan 537）。
+// pac.at — 029-photo-gallery（Plan 537；PLAN-043 Part 1 后端化改写）。
 //
-// 图库：macOS 相册风图片浏览器——侧边栏相册导航 + 搜索/排序/网格密度
+// 图库：macOS 相册风图片浏览器——分段相册导航 + 搜索/排序/网格密度
 // 工具栏 + 响应式缩略图网格 + 大图查看器（上一张/下一张/收藏）。
-// 全部基于既有 image widget 真实加载网络图片（picsum.photos 固定 seed），
-// 是该 widget 首个应用级双端示范（019/020 媒体 demo 封面均为渐变色块模拟）。
 //
-// render 声明 "vue"（开发目标端）；vm 兼容性由实机验收兜底（注册表扫描
-// 不过滤 render——声明的 render 是前端目标）。编号 029 回填空洞：原能力
-// 样板 029-external-imports 已迁 examples/capability-tests/（README 编号说明）。
+// PLAN-043 Part 1（2026-09-23）：去掉 Plan 628 的离线烘焙数据链
+// （prepare_gallery.py 扫一遍目录把缩略图+元数据硬编码进 app.at——
+// 目录变化图库不跟随），改为 photo_service 能力臂真后端：
+//   pac `photo_root:` 声明照片根目录 → 生成后端原生供给
+//   /api/photos/scan（实时索引：token id / 相册=首段 rel_dir / 尺寸 /
+//   mtime 日期）+ /api/photos/thumb/:id（按需渲染 + 磁盘缓存）+
+//   /api/photos/full/:id（原图字节）。前端 Init 拉 scan 建网格，
+//   缩略图/原图全走 HTTP——浏览器与 VM native 双端都无本地文件访问
+//   问题（Vue <img> 跨源 CORS-any；VM image widget 只认 http/data/
+//   builtin，相对路径会被当本地文件）。
 
 name: "photo-gallery"
-version: "0.1.0"
-description: "Photo Gallery - album sidebar, search/sort/density toolbar, thumbnail grid & fullscreen viewer (vue/vm)"
+version: "0.2.0"
+description: "Photo Gallery - album tabs, search/sort/density toolbar, thumbnail grid & fullscreen viewer with live backend scan (PLAN-043)"
 
 scene: "ui"
 render: "vue"
+api: "rust"
 front_port: 4029
+back_port: 4429
+photo_root: "C:\\Users\\zhaop\\Pictures"
 icon: "image"
 title: "Photo Gallery"
 title_zh: "照片图库"

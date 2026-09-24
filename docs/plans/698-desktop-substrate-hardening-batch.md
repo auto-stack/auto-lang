@@ -314,6 +314,19 @@ PLAN-698
   detached 复现两陌生红，零新增） | blockers=无 |
   next=review（/auto-plan:review；worktree lang-698 双仓保留）。
 
+- review #1（2026-09-24）：stage=review | plan_id=PLAN-698 | rev=1 |
+  outcome=**needs_fix（F-1）** | reviewed_commit=2461bbf39（lang）+
+  0db4c17（os） | base=543eccdc4/eb93848 | 证据=diff 全量审计（10 .rs）
+  +四 AC 工件链在档+§8.1/SD 文本对现行行为核验 | 独立性声明=与执行
+  同会话，裁定由工件/diff 重建 |
+  **F-1（medium，AC-02 面）**：bus.subscribe 转发线程在订阅端断连后
+  永生——`cleanup_sse_iterator` 只移除 iterator 不回收 ASYNC_STREAMS
+  句柄，rx 不 drop → 转发线程 `blocking_send` 永不失败（broadcast
+  静态永活）；每次弃订泄漏线程+句柄+Receiver。既有各流（http/io）
+  线程自然终止故仅句柄累积（预存面），bus 线程无自然终点（本计划
+  引入面）。修法=cleanup 对 AsyncHttpStream 臂回收句柄（rx drop→
+  线程退出），test 断言句柄移除。 | next=work（F-1 修复）→re-review。
+
 ### 执行期勘定与坑（沉淀）
 
 1. winit/iced Windows 每进程单事件循环——同进程第二 iced 循环

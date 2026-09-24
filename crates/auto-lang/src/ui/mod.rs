@@ -23,6 +23,13 @@ pub mod image_pipeline;
 // `auto_lang::ui::media_service`.
 pub mod media_service;
 
+// PLAN-043 Part 1: local photo file service (recursive index + on-demand
+// thumbnail rendering + original byte serving) for 029-photo-gallery.
+// Gated on `image-pipeline` — thumbnails need the `image`/`kamadak-exif`
+// decoders (media_service stays ungated because it never decodes pixels).
+#[cfg(feature = "image-pipeline")]
+pub mod photo_service;
+
 // PLAN-617 T-16: VM/iced 端原生播放引擎（libmpv DLL 运行时加载）。可选能力，
 // gated behind `mpv-native`：它是**运行时**依赖——没装 mpv 的机器照常编译、照常
 // 过 CI，只是运行期走降级（AC-20）。为什么是 libmpv 而非 ffmpeg FFI、为什么是 SW

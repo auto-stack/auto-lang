@@ -59,6 +59,12 @@ pub fn apply(path: &Path, code: String) -> String {
         return code;
     };
     let under = path_under(path, &spec.front_dir);
+    if code.contains("/api/media/scan") {
+        eprintln!(
+            "[P041-DBG] prefix apply: under={under} root={} key={} path={:?}",
+            spec.root, spec.app_key, path
+        );
+    }
     if under {
         prefix_api_url_literals(&code, &spec.root, &spec.app_key)
     } else {

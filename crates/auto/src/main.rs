@@ -1114,6 +1114,14 @@ fn real_main(cli: Cli) -> Result<()> {
                     println!("  Media root: {} (from pac.at)", root);
                 }
             }
+            // PLAN-043 Part 1: pac.at `photo_root` → `AUTO_PHOTO_ROOT` env
+            // （photo_service 解析序的 pac 层；同 media_root 的 env 优先纪律）。
+            if std::env::var_os("AUTO_PHOTO_ROOT").is_none() {
+                if let Some(root) = am.pac_photo_root() {
+                    std::env::set_var("AUTO_PHOTO_ROOT", &root);
+                    println!("  Photo root: {} (from pac.at)", root);
+                }
+            }
             // Plan 458: UI theme + accent presets. CLI --theme/--accent >
             // pac.at `theme:`/`accent:` > built-in default (dark/indigo,
             // applied by the consumers when these env vars are absent).

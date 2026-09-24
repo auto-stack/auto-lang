@@ -706,6 +706,7 @@ mod tests {
             Some(std::sync::Arc::new(move |name: &str| match name {
                 "003-converter" => Some(LaunchSpec {
                     media_root: None,
+                    photo_root: None,
                     back_entry: None,
 
                     code: code_c_for.clone(),
@@ -723,6 +724,7 @@ mod tests {
                 }),
                 "025-inputs" => Some(LaunchSpec {
                     media_root: None,
+                    photo_root: None,
                     back_entry: None,
 
                     code: code_i_for.clone(),
@@ -1278,6 +1280,7 @@ mod tests {
                 // PLAN-037 merge 语义补口：本字面量系 036 并行期新增
                 //（T-02 机械补字段后落 master），rebase 文本净但缺新字段。
                 media_root: None,
+                photo_root: None,
                 back_entry: None,
             },
         );
@@ -1972,6 +1975,7 @@ mod tests {
             Some(std::sync::Arc::new(move |name: &str| match name {
                 "profile-card" => Some(LaunchSpec {
                     media_root: None,
+                    photo_root: None,
                     back_entry: None,
 
                     code: code_p.clone(),
@@ -1989,6 +1993,7 @@ mod tests {
                 }),
                 "026-display" => Some(LaunchSpec {
                     media_root: None,
+                    photo_root: None,
                     back_entry: None,
 
                     code: code_d.clone(),
@@ -2006,6 +2011,7 @@ mod tests {
                 }),
                 "003-converter" => Some(LaunchSpec {
                     media_root: None,
+                    photo_root: None,
                     back_entry: None,
 
                     code: code_c.clone(),
@@ -2351,6 +2357,7 @@ mod tests {
                     .find(|(n, _)| n == name)
                     .map(|(n, src)| LaunchSpec {
                         media_root: None,
+                        photo_root: None,
                         back_entry: None,
 
                         code: src.clone(),
@@ -2540,6 +2547,7 @@ mod tests {
             // 子真身走 t3_child_body typed 分支（P029TypedInputs）。
             (name == "p029-typed-inputs").then(|| LaunchSpec {
                 media_root: None,
+                photo_root: None,
                 back_entry: None,
 
                 code: r#"widget t { view { text "x" } }"#.to_string(),
@@ -2758,6 +2766,7 @@ mod tests {
         session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
             (name == "p029-shell-face").then(|| LaunchSpec {
                 media_root: None,
+                photo_root: None,
                 back_entry: None,
 
                 code: r#"widget t { view { text "x" } }"#.to_string(),
@@ -3009,6 +3018,7 @@ mod tests {
                 .find(|(n, _)| n == name)
                 .map(|(n, src)| LaunchSpec {
                     media_root: None,
+                    photo_root: None,
                     back_entry: None,
 
                     code: src.clone(),
@@ -3386,6 +3396,7 @@ mod tests {
                 if known.iter().any(|n| n == name) {
                     Some(LaunchSpec {
                         media_root: None,
+                        photo_root: None,
                         back_entry: None,
 
                         code: src.clone(),
@@ -3947,6 +3958,7 @@ mod tests {
                 if known.iter().any(|n| n == name) {
                     Some(LaunchSpec {
                         media_root: None,
+                        photo_root: None,
                         back_entry: None,
 
                         code: src.clone(),
@@ -4119,6 +4131,7 @@ mod tests {
         session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
             entries.iter().find(|(n, _, _)| n == name).map(|(n, src, path)| LaunchSpec {
                 media_root: None,
+                photo_root: None,
                 back_entry: None,
 
                 code: src.clone(),
@@ -4478,6 +4491,7 @@ mod tests {
             Some(std::sync::Arc::new(move |name: &str| {
                 (name == "002-counter").then(|| LaunchSpec {
                     media_root: None,
+                    photo_root: None,
                     back_entry: None,
 
                     code: code_for_resolver.clone(),
@@ -4710,6 +4724,7 @@ mod tests {
         session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
             (name == "003-converter").then(|| LaunchSpec {
                 media_root: None,
+                photo_root: None,
                 back_entry: None,
                 code: code.clone(),
                 source_path: Some(source.to_string_lossy().to_string()),
@@ -4937,6 +4952,7 @@ mod tests {
             Some(std::sync::Arc::new(move |name: &str| {
                 (name == "002-counter").then(|| LaunchSpec {
                     media_root: None,
+                    photo_root: None,
                     back_entry: None,
 
                     code: code_for_resolver.clone(),
@@ -5145,6 +5161,7 @@ mod tests {
         session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
             names.iter().position(|n| n.as_str() == name).map(|_| LaunchSpec {
                 media_root: None,
+                photo_root: None,
                 back_entry: None,
 
                 code: r#"widget t { view { text "x" } }"#.to_string(),

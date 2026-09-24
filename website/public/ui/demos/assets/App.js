@@ -1,0 +1,1 @@
+import{aA as t,aB as s,aC as o,aD as a}from"./index.js";const r={},l={class:"flex flex-col p-8 items-center"};function c(n,e){return s(),o("div",l,[...e[0]||(e[0]=[a("span",{class:"text-4xl font-bold text-primary",style:{"user-select":"text"}},"Hello, World!",-1)])])}const p=t(r,[["render",c]]);export{p as default};

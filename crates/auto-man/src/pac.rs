@@ -111,6 +111,13 @@ pub struct Pac {
     /// backend's env only when the env is not already set.
     pub media_root: Option<AutoStr>,
 
+    /// PLAN-043 Part 1: photo library root for the generated photo service
+    /// (`/api/photos/scan` / `/api/photos/thumb/{id}` / `/api/photos/full/{id}`),
+    /// declared as `photo_root: "C:\Users\zhaop\Pictures"` in pac.at.
+    /// Resolution order mirrors media_root: `AUTO_PHOTO_ROOT` env (explicit,
+    /// wins) -> this field -> nothing (honest empty gallery).
+    pub photo_root: Option<AutoStr>,
+
     /// VM native window title, declared as `title: "My App"` in pac.at.
     /// None = renderer default ("Auto - {root widget name}").
     pub title: Option<AutoStr>,
@@ -280,6 +287,14 @@ impl Pac {
         let media_root_raw = config.root.get_prop("media_root").to_astr();
         let media_root = {
             let t = media_root_raw.trim().to_string();
+            if t.is_empty() { None } else { Some(t.into()) }
+        };
+
+        // PLAN-043 Part 1: photo library root (photo_service 解析序的 pac 层，
+        // 与 media_root 同形：引号剥、trim、空值 = None)。
+        let photo_root_raw = config.root.get_prop("photo_root").to_astr();
+        let photo_root = {
+            let t = photo_root_raw.trim().to_string();
             if t.is_empty() { None } else { Some(t.into()) }
         };
 
@@ -502,6 +517,7 @@ impl Pac {
             front_port,
             back_port,
             media_root,
+            photo_root,
             window,
             window_fit,
             title,

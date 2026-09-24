@@ -3183,15 +3183,16 @@ fn json_to_vm_value_inner(
 /// Parse a JSON string and push the resulting VM value onto the stack.
 pub fn shim_json_to_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let nv = task.ram.pop_nv();
-    // PLAN-042 T-08（P041-D6 根修）：to_value 幂等——VM 复合值
-    // （TAG_OBJECT/TAG_LIST）直通不转串。PLAN-080 F-2③ 起
-    // `Http.get_json(url)` 编译期内联 json.to_value（web 轨
-    // fetch().json() 语义），文档配方 `json.to_value(Http.get_json(url))`
-    // （PLAN-617 T-10 双端同源配方）自此成为**二次转换**：旧 shim 把
-    // Obj 强转 String 解析失败 → 静默 null → entries 恒空（P041-D6
-    // 病灶：音乐曲库 entries=0、延续值呈 20 位数字串=NV 位型）。
-    // 幂等直通使显式/隐式两种调用形态等价，存量 .at 消费方零改绿。
-    if auto_val::is_object(nv) || auto_val::is_list(nv) {
+    // PLAN-042 T-08（P041-D6 根修）+ PLAN-043 Phase 2 扩面：to_value
+    // 幂等——VM 值直通不转串。PLAN-080 F-2③ 起 `Http.get_json(url)`
+    // 编译期内联 json.to_value（web 轨 fetch().json() 语义），文档配方
+    // `json.to_value(Http.get_json(url))`（PLAN-617 T-10 双端同源配方）
+    // 自此成为**二次转换**：旧 shim 把 Obj 强转 String 解析失败 → 静默
+    // null → entries 恒空（P041-D6 病灶：音乐曲库 entries=0、延续值呈
+    // 20 位数字串=NV 位型）。042 修 object/list；043 扩 bool/null
+    // （auto-os PLAN-043 Part 2 实证链：双重解析全族根因）。幂等直通
+    // 使显式/隐式两种调用形态等价，存量 .at 消费方零改绿。
+    if auto_val::is_object(nv) || auto_val::is_list(nv) || auto_val::is_bool(nv) || auto_val::is_null(nv) {
         task.ram.push_nv(nv);
         return Ok(());
     }
@@ -5441,6 +5442,13 @@ pub fn shim_http_internal_error(msg: String) -> i64 {
 /// 字符串、to_value 解析成 Value（与 #[api] 改写的既有形状同型）；Vue 侧
 /// ts_adapter 把 `Http.get_json` 映射为 fetch().json()、`json.to_value` 映射为
 /// 恒等（Vue 侧已是解析后的对象）。030 的 store 即此写法。
+/// PLAN-043 Phase 2 修订（2026-09-24）：UI 路径裸 `Http.get_json` 自
+/// PLAN-080 F-2③ 起编译期自带 to_value（vm/codegen.rs Call 臂改发
+/// `auto.http.get_json` + `auto.json.to_value`），**返回的已是解析产物
+/// 而非 body 字符串**——app 侧单写 `Http.get_json(url)` 即可；旧配方
+/// `json.to_value(Http.get_json(..))` 依靠 shim_json_to_value 的幂等臂
+/// 透传（双重解析曾致对象被强转成 NanoValue 调试串、数据静默全空，
+/// 020/029/030 全族中招，auto-os PLAN-043 Part 2 实证）。
 pub fn shim_http_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {

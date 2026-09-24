@@ -18,7 +18,7 @@ import UnifiedNavbar from './components/UnifiedNavbar.vue'
 // SPA routes served from public/ui/*/index.html.
 // VitePress client-side router doesn't know about these, so we must
 // force a full page load when navigating to them.
-const SPA_ROUTES = ['/ui/gallery/', '/ui/blocks/', '/ui/charts/', '/ui/a2ui/']
+const SPA_ROUTES = ['/ui/gallery/', '/ui/blocks/', '/ui/charts/', '/ui/a2ui/', '/ui/demos/']
 
 function isSpaRoute(path: string): boolean {
   return SPA_ROUTES.some(r => path === r || path.startsWith(r))

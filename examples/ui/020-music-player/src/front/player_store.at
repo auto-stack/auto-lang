@@ -97,7 +97,8 @@ store PlayerStore {
         .Load -> {
             try {
                 // PLAN-042 T-07：钉 2——响应到达/解析旗标（log 动词插桩由
-                // root Init 臂组行）。
+                // root Init 臂组行）。显式 json.to_value 外包与编译期内联
+                // 形态等价（T-08 幂等臂，PLAN-043 Phase 2 扩 bool/null）。
                 let data = json.to_value(Http.get_json("/api/media/scan"))
                 .playlist = data.entries ?? []
                 .root_missing = data.root_missing ?? false

@@ -1,0 +1,16 @@
+// api.at — 029-photo-gallery backend API.
+// Control-plane API for 029-photo-gallery.
+// Photo indexing and serving are provided automatically via
+// /api/photos/scan, /api/photos/thumb/:id and /api/photos/full/:id
+// (PLAN-043 Part 1 — photo_service capability arm, pac `photo_root`).
+
+pub type GalleryInfo = {
+    status: str
+    version: str
+}
+
+/// GET /api/gallery/status — check gallery backend service status.
+#[api(method = "GET", path = "/api/gallery/status")]
+pub fn status() []GalleryInfo {
+    return []
+}

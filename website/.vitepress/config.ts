@@ -19,7 +19,7 @@ function spaRewrite(): Plugin {
         if (req.url) {
           // Only rewrite exact directory URLs, NOT sub-resources (assets/*.js, assets/*.css)
           const urlPath = req.url.split('?')[0]
-          const spaDirs = ['/ui/gallery', '/ui/blocks', '/ui/charts', '/ui/a2ui']
+          const spaDirs = ['/ui/gallery', '/ui/blocks', '/ui/charts', '/ui/a2ui', '/ui/demos']
           for (const dir of spaDirs) {
             if (urlPath === dir || urlPath === dir + '/') {
               req.url = dir + '/index.html'

@@ -53,13 +53,28 @@ pub use crate::back_prefix::prefix_api_url_literals;
 pub struct BackendPlan {
     /// ② capability 臂：pac `media_root:` 声明 → proxy 原生 media 路由。
     pub native_media: Option<crate::back_proxy::NativeMediaApp>,
+    /// ②' capability 臂：pac `photo_root:` 声明 → proxy 原生 photo 路由
+    /// （PLAN-043 Part 1；media_root 平行件，029-photo-gallery 形态）。
+    #[cfg(feature = "image-pipeline")]
+    pub native_photos: Option<crate::back_proxy::NativePhotoApp>,
     /// ③ session 臂：back api.at 特形谓词命中 → proxy VM session。
     pub session: Option<crate::back_proxy::SessionSpec>,
 }
 
 impl BackendPlan {
     pub fn is_empty(&self) -> bool {
-        self.native_media.is_none() && self.session.is_none()
+        self.native_media.is_none()
+            && {
+                #[cfg(feature = "image-pipeline")]
+                {
+                    self.native_photos.is_none()
+                }
+                #[cfg(not(feature = "image-pipeline"))]
+                {
+                    true
+                }
+            }
+            && self.session.is_none()
     }
 }
 
@@ -86,6 +101,13 @@ pub fn plan_backend(spec: &crate::ui::session::LaunchSpec, app_key: &str) -> Bac
         plan.native_media = Some(crate::back_proxy::NativeMediaApp {
             app_id: app_key.to_string(),
             media_root: spec.media_root.clone(),
+        });
+    }
+    #[cfg(feature = "image-pipeline")]
+    if spec.photo_root.is_some() {
+        plan.native_photos = Some(crate::back_proxy::NativePhotoApp {
+            app_id: app_key.to_string(),
+            photo_root: spec.photo_root.clone(),
         });
     }
     if let Some(entry) = &spec.back_entry {
@@ -138,6 +160,10 @@ impl crate::ui::session::DesktopSession {
         if newly {
             if let Some(media) = plan.native_media {
                 proxy.add_native_media(media);
+            }
+            #[cfg(feature = "image-pipeline")]
+            if let Some(photos) = plan.native_photos {
+                proxy.add_native_photo(photos);
             }
             if let Some(session) = plan.session {
                 if let Err(err) = proxy.add_session(session) {

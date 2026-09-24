@@ -1,13 +1,32 @@
-# SPEC — 029-photo-gallery（Plan 628）
+# SPEC — 029-photo-gallery（Plan 628 → PLAN-043 Part 1 后端化）
 
 > Purpose: 图库——现代移动/平板风照片浏览器。顶部沉浸式分段导航栏 + 搜索/排序/
-> 网格密度工具栏 + 无边框真实照片流网格 + 悬浮胶囊大图查看器（上一张/下一张/收藏）。
-> **真实数据源：直连用户真实目录 `C:\Users\zhaop\Pictures\` 本地照片与截图。**
-> 真实预览图：预构建轻量 JPEG 高清缩略图（~11KB/张，秒级加载），大图查看器直显无损本地原画。
+> 网格密度工具栏 + 无边框照片流网格 + 悬浮胶囊大图查看器（上一张/下一张/收藏）。
+>
+> **数据源（PLAN-043 Part 1，2026-09-23 起）**：后端 `photo_service` 能力臂
+> 实时扫描——pac `photo_root:` 声明根目录（现 `C:\Users\zhaop\Pictures`），
+> 生成后端原生供给三路端点：
+> - `GET /api/photos/scan`——递归索引（jpg/jpeg/png/webp/gif/bmp），条目含
+>   token id（blake3，绝对路径不出后端）/标题/相册（rel_dir 首段，根文件归
+>   "photos"）/尺寸（头部解析）/大小/mtime 日期/sort_key，url 字段发绝对地址；
+> - `GET /api/photos/thumb/:id?w=N`——按需渲染缩略图（解码 → EXIF 朝向规范化
+>   → 等比缩放 → JPEG），磁盘缓存 `%TEMP%/autoos-photo-thumbs/`（mtime+宽度
+>   参与缓存键，改图自动失效）；
+> - `GET /api/photos/full/:id`——原图字节（Content-Type 按扩展名）。
+>
+> 前端 Init 拉 scan 建网格；缩略图与原图全走 HTTP——浏览器（CORS-any）与
+> VM native（image widget 只认 http/data/builtin）双端通吃，相对/本地路径
+> 一律不用。目录增删后重启 app 即跟随。
+>
+> Plan 628 的离线烘焙链（prepare_gallery.py 扫一遍目录 → 缩略图 +
+> gallery_data.json → generate_at.py 硬编码进 app.at）**已删除**——目录
+> 变化图库不跟随是产品级缺陷（PLAN-043 Part 1 根因）。
+>
 > 主题：AutoOS Dark/indigo 默认；root 声明 `dark_mode` bool /
 > `accent_color` str 契约变量（变量名即双端契约），工具栏可运行时切换。
 >
-> 本文件按 Plan 628 现代平板图库与 `src/front/app.at` 实际行为逐条对照定稿（2026-09-14）。
+> 收藏：id 落 app Storage 键 `photo-gallery.favs`（CSV），ToggleFav 翻标 +
+> 重建 CSV + 重写盘，重开保留。
 
 ## 形态
 
@@ -16,130 +35,47 @@
 `var mode str`（"grid" | "view"）全页条件切换，不走路由。取消旧版 macOS
 三段式生硬侧边栏，采用现代移动/平板级 Edge-to-edge 沉浸式相册布局。
 
+后端半身：最小 `src/back/api.at`（`GET /api/gallery/status` 控制面——后
+端进程因它而存在，photo 三路由由生成器无条件发射，020-music-player
+同款形态）。pac 声明 `api: "rust"` / `back_port: 4429` / `photo_root:`。
+
 ## 数据形状
 
-### 真实照片种子平行列表（唯一真源，handler 按下标读）
+`photos` 主列表元素（Init 由 scan 响应构建）：
 
-| 列表 | 类型 | 内容 |
-|---|---|---|
-| `p_ids` | int ×24 | 1..24 |
-| `p_titles` | str ×24 | 真实图片文件名（000042、反面、微信图片_20210204124813…） |
-| `p_tls` | str ×24 | 预小写标题（搜索域；大小写不敏感搜索匹配） |
-| `p_albums` | str ×24 | all / photos / screenshots / favorites 真实相册分类 |
-| `p_dates` | str ×24 | "YYYY-MM-DD"（从图片 EXIF/文件真实 mtime 提取） |
-| `p_keys` | int ×24 | YYYYMMDD 整数排序键（字典序即时间序的整数化，支持最新/最早秒级切换） |
-| `p_favs` | bool ×24 | 收藏布尔值（支持点击心形动态收藏/取消并全局联动） |
-| `p_fulls` | str ×24 | 真实大图绝对路径（`C:/Users/zhaop/Pictures/xxx.jpg`，全屏无损原画呈现） |
-| `p_metas` | str ×24 | 预格式化元数据（宽×高 · 文件大小KB · 拍摄日期） |
-| `p_thumbs` | str ×24 | 本地高质量轻量缩略图绝对路径（`.../thumbnails/thumb_NNN.jpg`，秒开无延迟） |
+```
+{ id: str        // blake3 token（收藏/查看器定位键）
+  title: str     // 文件名去扩展名
+  album: str     // "photos"（根文件）| 子目录名（如 "Screenshots"）
+  date: str      // "YYYY-MM-DD"（mtime）
+  meta: str      // "宽×高 · 大小 · 日期"（尺寸解析失败时省宽高段）
+  fav: bool      // 收藏标（fav_ids 初始化时命中即真）
+  thumb: str     // 绝对缩略图 URL
+  full: str      // 绝对原图 URL
+  sort_key: int  // mtime epoch 秒（排序键）
+}
+```
 
-### handler 构建的列表
+## 行为契约
 
-- `photos`：Init 构建的主 struct 列表（id/title/album/seed/date/fav/thumb/
-  full；thumb/full 为已拼好的完整 URL，模板零拼接）。
-- `view_list`：ApplyFilter 产出的过滤+排序视图列表（struct 形状同 photos；
-  预置一项使 TS 推导字段类型，027 files_view 同款）。
-- `view_ids`：与 view_list 平行的 int id 列表（OpenPhoto 定位 + 循环导航；
-  标量列表下标读保真——028 注入形态约束同思路）。
+- **Init**：`Storage.get("photo-gallery.favs")` 恢复收藏 →
+  `Http.get_json("/api/photos/scan")` 建 `photos` → `ApplyFilter()`。
+  scan 失败（后端未起）→ 空列表 + `load_error` 文案（空态三态之一）；
+  `root_missing: true` → 空态「照片源目录不存在」。
+- **动态相册分组**：`ApplyFilter` 每次按 `photos` 首现序重建
+  `album_tabs = [全部, <各 album>, 收藏]`（计数同重建）。"photos" 标签
+  📷 图片、"Screenshots" 标签 📱 截图，其余 album 用目录原名。
+- **过滤**：相册键相等 || all || favorites(fav 标)；搜索子串命中
+  `title.lower()`。
+- **排序**：`sort_key`（mtime）选择序，desc 最新在前 / asc 最早在前。
+- **查看器**：`OpenPhoto(id)` 在 `view_ids`（当前过滤排序序）定位，前后
+  循环环绕；`cur_*` 字段从 `photos` 反查填充。
+- **收藏**：`ToggleFav(id)` 翻 `photos[i].fav` → 重建 `fav_ids` +
+  CSV → `Storage.set` → `ApplyFilter`；查看器态同步 `fav_label`。
 
-### 状态全集
+## 已知边界
 
-- 视图/交互：`mode`、`album`（all|favorites|nature|city|sky|abstract，默认 all）、
-  `search_q`、`sort_dir`（desc 默认=最新在前 / asc）、`sort_label`（"最新 ↓"/
-  "最早 ↑"）、`density`（"2"/"3"/"4" 默认 3）、`grid_class`
-  （"grid grid-cols-N gap-3"，**经 `class:` prop 绑定**——见勘误②）。
-- 计数/文案（handler 预拼，模板零方法调用——028 T1 盘点）：`view_label`
-  （"{n} 张照片 · {相册标签}"，搜索中为 "{n} 张照片 · 搜索 "{q}" · {标签}"）、
-  `cnt_all/cnt_favorites/cnt_nature/cnt_city/cnt_sky/cnt_abstract`（侧边栏
-  六计数，全种子系统计，收藏数随 ToggleFav 联动）、`has_view`（空态门控，
-  027 has_items 同款）。
-- 查看器（元信息 handler 预取，模板不做字段链查找）：`cur_id/cur_title/
-  cur_meta/cur_full/prev_id/next_id/fav_label`。
-- 主题契约：`dark_mode bool = true`、`accent_color str = "indigo"`；
-  `accents` 五色点列表（name + 色点类，`for a in .accents` 渲染，
-  `${a.dot}` 插值进 class——028 实证）。
-
-## 过滤 / 排序规则（ApplyFilter，被 Init/SelectAlbum/SetSearch/ToggleSort/ToggleFav 复用）
-
-1. **相册过滤**：`all` → 全量；`favorites` → fav==true；其余 → album 相等。
-2. **搜索过滤**：`q.lower()` 为空串或 `p_tls[i].contains(q.lower())`
-   （子串、大小写不敏感；仅标题域，不含相册/日期）。
-3. **排序**：selection sort + used 标记（028 实证习语），键 `p_keys` 整数
-   比较：asc 取最小 / desc 取最大；日期互异故天然稳定。
-4. **产出**：view_list + view_ids + has_view + 六计数 + view_label。
-
-## 查看器行为
-
-- `OpenPhoto(id)`：mode="view"；view_ids 内定位 → prev/next **循环取模**
-  （首张的上一张=末张，末张的下一张=首张；**单张时 prev=next=自身**，
-  即循环语义天然自恰；未做禁用态——`disabled:` 绑定无双端先例，风险规避）
-  → cur_title/cur_full/cur_meta（"{相册中文标签} · {date} · 1600×1200 ·
-  {seed}"）/fav_label 全部 handler 预取。
-- `PrevPhoto/NextPhoto` = `OpenPhoto(prev_id/next_id)` 薄封装。
-- `ToggleFav(id)`：翻转 `p_favs[i]`（状态列表元素赋值，027 实证）→
-  ApplyFilter 重算（收藏计数/列表联动）→ 若查看器正显示该图则刷新
-  fav_label（"❤ 已收藏"/"♡ 收藏"）。
-- 布局全部常规 flex（顶栏/大图区 `bg-black/80` + contain/底栏），**不用
-  absolute/fixed**（VM 定位支持面窄，019 的 absolute 角标是 vue-only）。
-
-## 卡片点击与收藏按钮（待澄清①的落地形态）
-
-AURA 无 stopPropagation 原语。落地：**开图点击区与收藏按钮是兄弟节点**——
-卡片 col 内：图片区 button（开图）+ 信息行（标题 button 开图 + ♡/❤
-button 收藏）。互不嵌套，无冒泡问题。
-
-## 图片源与真实本地呈现（Plan 628 移动/平板图库重塑）
-
-- **真实目录与缩略图流水线**：
-  - 数据源直连用户真实目录 `C:\Users\zhaop\Pictures\`（包含照片与屏幕截图）。
-  - 通过 `scripts/prepare_gallery.py` 离线预构建高质量轻量 JPEG 缩略图（260px，~11KB/张，存放在 `src/front/thumbnails/`）。
-  - 缩略图路径使用绝对路径文件直引（如 `D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_001.jpg`），VM Iced 原生支持加载本地绝对路径，0ms 秒开渲染。
-- **全屏原画查看器**：
-  - 点击任何卡片直接开启查看器，大图直接加载无损本地原画 `C:/Users/zhaop/Pictures/xxx.jpg`。
-  - 原画无网络依赖，支持大图原始高分辨率（如 2409×3614、4000×3000 等）在视口内以 `fit: "contain"` 完美完整呈现。
-- **缩放裁切与渲染**：
-  - 缩略图网格采用 `fit: "cover"`（充满卡片视图比例，保持纯净利落）。
-  - 查看器大图采用 `fit: "contain"`（双端完美对齐，无畸变）。
-
-## 双端差异注记
-
-1. **`hover:` 类仅 Vue 生效**（VM 忽略）：卡片 hover 边框、侧边栏/按钮
-   hover 均为增强；选中/收藏等关键状态都有静态样式表达（025 行 hover
-   降级同思路）。
-2. **icon (name:) 名单受 VM lucide 闭集约束**（renderer.rs `lucide_svg`
-   84 项）：本例只用 `sun`/`moon`/`chevron-left`/`chevron-right`。
-   计划原拟的 images/heart/mountain/building-2/cloud-sun/sparkles 在
-   lucide-vue-next 存在但 **不在 VM 表**——相册图标改用 emoji 文本
-   （🖼️/♡/🏔️/🏙️/☁️/✨，027 先例），返回按钮用文本 "←"。
-   `pac.at icon: "image"`（VM 表内名字）。
-3. **button 组件默认变体类**（h-10 / bg-primary / hover:bg-primary/90 /
-   text-primary-foreground）会与业务类叠加：本例凡透明底/自定义高按钮
-   显式 `bg-transparent`/`hover:bg-transparent`/`text-foreground`/
-   `h-auto|h-6` 压制（cn/tailwind-merge 后者优先）。
-4. **动态网格密度用语义 grid 元素三静态臂**：VM 侧 `grid` 元素的
-   `cols:` 状态绑定不解析（回落 1 列）、`class:` 状态绑定不消费、CSS
-   `grid-cols-N` 类只对语义 grid 的 class 仲裁生效——故密度 2/3/4 以
-   `if .density == N { grid { cols: N … } }` 三臂静态展开（028 静态
-   `cols: 4` 同构造），双端一致（T7 实测 2/4 列截图在案）。
-   Vue 曾用 `class: .grid_class`（`:class` 绑定）工作，为双端统一改
-   语义 grid；`density` 相应由 str 改 **int**（SetDensity(int)）。
-5. **fit 语义**：缩略 `cover`（h-40 容器裁切）、查看器 `contain`
-   （完整显示）——schema 单一定义，两端语义一致（首个 fit 双端应用）。
-
-## 执行勘误（相对计划文本，语义不变）
-
-1. 状态名 `view` → **`view_list`**：`view` 是语言关键字（view 块），
-   `.view = …` 解析报错（Expected term, got DotView）。
-2. 密度网格演进为**语义 grid 元素三静态臂**（见差异 4）；`grid_class`
-   状态删除、`SetDensity(str)` → `SetDensity(int)`。
-3. 相册图标 emoji 化 + icon 名单收缩（差异 2）。
-4. 新增 `view_ids`/`has_view`/`accents` 三个计划未点名状态：分别为
-   OpenPhoto 定位（规避 handler 读注入 Obj 数组的失效面）、空态门控
-   （模板不可调 .len()）、五色点渲染参数化；均为已实证形态。
-
-## 运行
-
-- Vue 独立：`auto run`（front_port 4029）
-- VM 独立：`auto run -r vm`
-- 桌面宿主：`cargo run -p auto-lang --features ui-iced --example
-  ui_desktop -- --fullscreen --apps-dir examples/ui`（零登记收录）
+- HEIC/RAW 不入索引（image crate 无解码器），listed-but-broken 比缺席更糟。
+- 相册标签固定为 全部/各目录/收藏 分段——两级以上嵌套目录只按首段归组。
+- scan 索引为后端进程内一次性（OnceLock 语义）——目录变化后重启 app
+  即跟随（不做目录监视推送）。
