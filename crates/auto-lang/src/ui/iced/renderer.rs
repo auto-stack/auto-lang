@@ -15943,8 +15943,12 @@ fn run_session(
     // panic 审计 hook——只追加日志，不改 panic 语义（G3 零行为变更）。
     crate::vm::ffi::stdlib::install_exit_audit_panic_hook();
     if components.is_empty() {
-        // daemon 无窗口不会自动退出，空入参直接报错而非静默长存。
-        return Err(Box::new(std::io::Error::other("run_dynamic_iced_multi: no components")));
+        // PLAN-043 补刀：桌面宿主 boot 直挂退役后 ui_desktop 恒传空表——
+        // 桌面生命周期由 shell/desktop-face 伪窗撑住（dock 电源键退出），
+        // 空组件表合法。纯多 app runner（ui_dual_app 族）恒非空，不受
+        // 影响；此处降级为提示不再拒启（此前拒启会把无直挂的桌面一并
+        // 拒之门外）。
+        eprintln!("[ui-desktop] boot components empty — shell-only desktop");
     }
 
     // Plan 458: seed DECLARED dark_mode / accent_color state vars once from

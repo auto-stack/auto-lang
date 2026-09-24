@@ -14,7 +14,10 @@ use std::path::PathBuf;
 // 2026-09-15 用户裁定：459 双窗口 demo 的 boot 直挂窗退役——验收遗留，普通
 // 桌面每次启动都带 demo 窗（任务栏还得靠 app-window 兜底图标）；双窗隔离
 // 验收跑专用 example `ui_dual_app`（同一源，进程内双 OS 窗）。
-const APP_B: &str = include_str!("../../../examples/ui/011-calculator/src/front/app.at");
+// PLAN-043 执行期补刀（2026-09-24 用户报告"每次启动都开计算器"）：011 的
+// boot 直挂同属验收遗留，本入口每次启动把计算器当直挂组件装配（无开关、
+// 不走 launch 链，故无 autostart/会话恢复痕迹）——一并退役；boot 组件表
+// 恒空，桌面窗口全部经注册表 launch 链。
 
 /// 默认注册表目录：仓库 examples/ui（相对 crate 编译期定位，CWD 无关）。
 fn default_apps_dir() -> PathBuf {
@@ -96,23 +99,10 @@ backtrace:
         });
     }
 
-    // PLAN-526 T6：传源路径（仓库根相对）——boot 直挂组件可按 source
-    // path 后缀对齐注册表条目（回填 registry_id + armed `window: "fit"`）。
-    // PLAN-013 实测（2026-09-12）：master 859c31710 起 011-calculator 多文件
-    // 聚装断链（`link failed: Undefined symbol: pcur_fmt`——prog_util.at 符号
-    // 未入 VM 表，boot 直挂零容错直接崩进程）。验收宿主降级容错：boot 直挂
-    // 组件装载失败 → 警告 + 剩余组件启动（桌面注册表/launch 不受影响）。
-    // 回归根因归 PLAN-615 线排查，修复后本容错自然静默。
-    let mut comps = Vec::new();
-    match auto_lang::build_dynamic_component(
-        APP_B,
-        Some("examples/ui/011-calculator/src/front/app.at"),
-    ) {
-        Ok(cb) => comps.push(cb),
-        Err(e) => eprintln!(
-            "[ui_desktop] boot 直挂组件 011-calculator 装载失败，降级跳过（回归见 PLAN-615）: {e}"
-        ),
-    }
+    // PLAN-043 执行期补刀：boot 直挂计算器退役（APP_B 装配块拆除）——
+    // boot 组件表恒空，窗口全部经注册表 launch 链。此前的 PLAN-013 容错
+    // 与 PLAN-526 T6 源路径对齐都只服务于直挂组件，随直挂退役一并失效。
+    let comps = Vec::new();
     // Plan 472 T5：窗口模式同样装配注册表（dock pinned/launch 依赖；
     // 463 只给了全屏路径）。
     let opts = DesktopOptions {
