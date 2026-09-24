@@ -12560,6 +12560,11 @@ fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool)
 /// 回退）+ 快照全撤。壁纸层 view 每帧重建读该字段，下一帧即生效
 /// （518 G1 set_theme 同链先例）。
 fn execute_set_wallpaper(state: &mut crate::ui::session::DesktopSession, path: &str) {
+    // PLAN-043 Phase 3 执行期修正：反斜杠路径经 `__desktop_cmd` 记录链
+    // （VM 字符串管道）会丢 `\`（实机 picker 选 D:\Down\... 落盘成
+    // "D:Downstella-os..."，靠目录首图兜底假活）——入口统一规整为
+    // 正斜杠（Windows 文件 API 等价接受）。
+    let path = path.trim().replace('\\', "/");
     // PLAN-019 T-06：布局随壁纸切换——先把**旧壁纸**的现行布局快照落其
     // 布局键（旧壁纸无键控语境 = 布局本就在缺省底稿，跳过），再切换。
     {
