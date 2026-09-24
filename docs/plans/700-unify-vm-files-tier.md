@@ -1,0 +1,179 @@
+---
+plan_id: PLAN-700
+status: drafting               # drafting → executing → execution_done → reviewed → archived
+feature_name: unify-vm-files-tier
+author: [zcode]
+created_at: 2026-09-24
+updated_at: 2026-09-24
+plan_revision: 1
+current_step: 0
+total_steps: 5
+
+# /auto-plan:review 结束时填写：
+supersedes_spec_components: []
+new_spec_components: []
+touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+
+affects: []                   # 无 docs/specs 触面（见 5. 规范增量的零影响说明）
+current_step: 0
+total_steps: 5
+---
+
+# [PLAN-700] unify-vm-files-tier——语料档并入全档 feature 集，消除 tv↔tf 跨档重编
+
+## 变更摘要
+
+`test-vm-files` 退役，语料测试族（vm_file_tests/cookbook_vm_tests/conformance_tests，
+~148 测）成为 test 构建的常驻组成：
+
+1. `src/tests.rs` 三处 `#[cfg(feature = "test-vm-files")]` 门拆除 → 语料测试
+   随 `--lib` 测试构建恒在；
+2. `test-vm-files` feature 退役，`test-aavm` 独立化（imply 关系随常驻化失效，
+   aavm loader 依赖的 vm_file_tests 模块恒在）；
+3. `cargo tv` 从 feature 档降级为**纯 nextest filter**（语料三族筛选），与
+   t/tf 同二进制——三档间切换零重编；
+4. `cargo t`（日常档）经 nextest default-filter 排除语料族（镜像 1M churn 的
+   现有待遇），**tf 全档自动包含语料**——review 门禁从 tf+tv 两次一次收口。
+
+背景痛点（PLAN-698 复审实测）：t/tf↔tv 跨 feature 档切换=lib test 二进制
+整链重编（3–20 分钟/次），一次复审周期多次跨档即损失小时级。
+
+## 目标
+
+- **G1**：t/tf/tv 三档共享同一测试二进制，三向切换零重编（fingerprint 实测）。
+- **G2**：tf 全档包含语料族（review 单次覆盖 VM 语义触面），语料测试在 tf 下全绿。
+- **G3**：日常 `t` 档墙钟不显著回退（语料经 default-filter 排除，镜像 churn 待遇），
+  tv 仍可作为"改 VM 后只跑语料"的定向快捷档。
+
+**非目标**：`test-trans`/`test-book` 的同构统一（待本计划稳定后单独评估——
+tt 的转译金样执行成本更高，需独立测量）；aavm 档（taa/ta/t3）语义不动；
+1M churn 分层不动。
+
+## 架构方案
+
+```
+现状:  t/tf (default) ──切换──> tv (default+test-vm-files) = 重编
+目标:  t/tf/tv (default，同一二进制) ──只差 nextest filter = 零重编
+
+src/tests.rs   三处 #[cfg(feature="test-vm-files")] 删除（模块常驻）
+Cargo.toml     test-vm-files 退役；test-aavm = []（原 imply 失效无害化）
+.cargo/config  tv = nextest filter（语料三族）；t 的 nextest.toml
+               default-filter 追加语料三族排除；tf 不动（full 天然含）
+CI             vm-files-ci.yml 命令改语料名筛（--features 形态随 feature 退役）
+AGENTS.md      档位表 tv 行改口径（feature 档→filter 档；tf 含语料）
+```
+
+## 需求分析与背景调查
+
+- **授权记录**：用户 2026-09-24「OK」——对本会话提案（"tv 的 feature 集做成和
+  t/tf 一样，tf/tv 切换不重编"）的立项批准。
+- **实测依据**（PLAN-698 复审，2026-09-24）：tv 5652 测 vs t 5504 vs tf 5505
+  ——差集 ~148 = 语料三族（cfg 门后）；tv 首跑冷编 15–23 分钟；同档重编
+  3–5 分钟。1M churn 仅 +2 测（tf 5505 vs t 5504）证明 nextest-config 分层
+  机制成熟可镜像。
+- **语料本体**：`test/vm/{category}/{NNN_name}/{name}.at`（repo 根相对），
+  运行时读盘不入二进制；全族执行 ~20s（AGENTS 2026-09-06 实测）。
+- **相关决策先例**：2026-09-22 用户裁定"ui-iced 入 default 全档同源"（消除
+  ui-iced 跨档重编）——本计划为同一方向在测试分组 flag 上的收尾。
+
+## 详细设计
+
+### D1 cfg 门拆除（tests.rs）
+
+`vm_file_tests`/`cookbook_vm_tests`/`conformance_tests` 三处
+`#[cfg(feature = "test-vm-files")]` 删除，模块随 `#[cfg(test)]` 恒编。
+aavm 系（test-aavm 门）不动。
+
+### D2 feature 退役（Cargo.toml）
+
+- `test-vm-files = []` 删除；`test-aavm = ["test-vm-files"]` → `test-aavm = []`
+  （imply 的唯一理由是 aavm runner 复用 vm_file_tests 语料缓存 loader——
+  常驻化后依赖恒满足）。plan394_future_arch_tests::c1_future_all 等
+  非门控测试不受影响。
+- 残留引用清零：CI workflow、AGENTS.md、config 注释（T-03）。
+
+### D3 alias 与 nextest 配置
+
+- `tv = "nextest run -p auto-lang --lib -E 'test(vm_file_tests::) or
+  test(cookbook_vm_tests::) or test(conformance_tests::)'"`（filter 表达式，
+  与 t/tf 同二进制）。
+- `.config/nextest.toml` default-filter 追加
+  `and not test(vm_file_tests::) and not test(cookbook_vm_tests::)
+  and not test(conformance_tests::)`（镜像 churn 行；`::` 后缀锚定模块
+  路径避免子串误伤）。
+- `.config/nextest-full.toml` 不动 → tf 天然含语料。
+
+### D4 CI 与账面（口径件）
+
+- `vm-files-ci.yml`：`cargo test --features test-vm-files` 形态改语料名筛
+  （`cargo test -p auto-lang --lib -- vm_file_tests cookbook_vm_tests
+  conformance_tests`），workflow 名与注释同步。
+- `AGENTS.md` 档位表：tv 行改"语料筛选档（与 t/tf 同二进制，零重编）"，
+  tf 行注"含语料族"；Category B 门禁说明同步（改 VM→tf 已含语料，tv 为
+  定向快捷档可选）。
+- `.cargo/config.toml` alias 注释（Plan 568 段）更新。
+
+### 规范增量
+
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| （无） | — | — | 无 Spec 触面：测试分档契约的权威载体是 AGENTS.md 档位表与 `.cargo/config.toml`/`.config/nextest*.toml`（仓指令与构建配置层），本计划在 T-03 内原地更新；`docs/specs/aavm/project.md:63` 引用的是 `test-aavm` CI 命令行，`test-aavm` 独立化后该行语义不变 | 测试基础设施重组不产生新的模块行为契约 | AC-01..04 |
+
+## 测试设计
+
+- **切换零重编实测（G1）**：同一 worktree 依次 `cargo t` → `cargo tf` →
+  `cargo tv` → `cargo t`，第二次起各档输出不得出现 `Compiling auto-lang`
+  （fingerprint 稳定判定；本轮全程 CARGO_INCREMENTAL 稳态，非 0 覆盖）。
+- **三档计数**：t（语料排除，测试数≈现 5504）、tf（含语料，≈5505+148）、
+  tv（≈148，全绿）。
+- **tf 总墙钟**：记录含语料后的 tf 执行段增量（预期 +20–60s 量级）。
+- **CI 对账**：vm-files-ci.yml 改后语法校验（actionlint 或 dry-run 结构审查）。
+- 既有门禁：本计划不改任何运行时代码（tests.rs 仅 cfg 门/模块声明层），
+  `cargo t` 日常档全绿 + 语料族在 tf 下全绿即收口口径；不触发 tf 之外的
+  重档（无 VM 语义/转译/书改动）。
+
+## 验收标准
+
+- [ ] AC-01 语料族常驻化：`src/tests.rs` 三 cfg 门删除 + Cargo.toml
+      `test-vm-files` 退役 + `test-aavm = []`；`cargo check -p auto-lang`
+      与 `cargo t plan394` 冒烟绿（非门控测试零涟漪）。
+- [ ] AC-02 三档同源：tv 改 filter 形态后与 t/tf 同二进制；实测三向切换
+      （t→tf→tv→t）第二次起各档零 `Compiling auto-lang`；t 的
+      default-filter 排除语料三族且 tf 包含之（测试数实测：t≈5504 /
+      tf≈5650± / tv≈148）。
+- [ ] AC-03 口径件同步：vm-files-ci.yml 命令改筛形态；AGENTS.md 档位表
+      tv/tf 行与 Category B 说明更新；config 注释更新；全仓
+      `grep -rn "test-vm-files"` 残留清零（历史计划文档除外）。
+- [ ] AC-04 行为守恒：tf 下语料三族全绿（0 fail）；t 档墙钟不劣化
+      （对照本计划前基线，容忍 ±10%）；tv 空跑定位正确（在语料族上）。
+
+## 执行步骤
+
+（原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
+
+- [ ] T-01 常驻化：`crates/auto-lang/src/tests.rs` 删三处
+      `#[cfg(feature = "test-vm-files")]`（vm_file_tests/cookbook_vm_tests/
+      conformance_tests）；`crates/auto-lang/Cargo.toml` 删 `test-vm-files
+      = []`、`test-aavm = ["test-vm-files"]` → `test-aavm = []`。验证：
+      `cargo check -p auto-lang` + `cargo t plan394`。[关联 AC-01]
+- [ ] T-02 档位重组：`.cargo/config.toml` tv alias 改 filter 形态；
+      `.config/nextest.toml` default-filter 追加语料三族排除。验证：
+      tv 单跑 ≈148 全绿；t 计数不含语料族。[关联 AC-02]
+- [ ] T-03 口径件：`vm-files-ci.yml` 命令改筛形态+注释；`AGENTS.md`
+      档位表 tv/tf 行+Category B 说明；`.cargo/config.toml` Plan 568 段
+      注释。验证：全仓 grep 残留清零（docs/plans 历史档除外）。[关联 AC-03]
+- [ ] T-04 实测收口：三向切换零重编实测 + 三档计数 + tf 语料全绿 + tf/t
+      墙钟记录。验证命令：见测试设计。[关联 AC-02/AC-04]
+- [ ] T-05 收口：AC 对账 + 复审记录 +（如引债）债册登记。[关联 AC-01..04]
+
+## 复审记录
+
+- draft 交付（2026-09-24）：stage=new，PLAN-700 rev1。outcome=pass。
+  next=work（单仓单 worktree `lang-700`；改动面 5 文件全为测试基建/口径件，
+  无运行时代码；T-04 实测为验收主门）。
+
+## 待澄清事项
+
+1. 日常 `t` 是否长期排除语料族——本计划取"排除"（镜像 churn，保 daily
+   墙钟）；备选"纳入"（daily +~30s 换每日 VM 行为覆盖）如需翻转属一行
+   filter 改动，执行期呈报即可不阻塞。
