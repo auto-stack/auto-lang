@@ -1,27 +1,15 @@
-//! Plan 321/322: AutoHttpServer — unified HTTP server backend wrapping Axum.
+//! VM `#[api]` HTTP server core: route table, argument binding, middleware,
+//! handler dispatch, SSE producers and the owned request/reply bridge.
 //!
-//! This module is shared by both VM mode (via native shim) and a2r mode
-//! (via generated Rust code). It encapsulates Axum Router construction,
-//! route matching, SSE streaming, and the !Send VM bridging.
-//!
-//! ## VM mode bridging strategy
-//!
-//! AutoVM is !Send (Rc<RefCell> in type system). Axum handlers must be
-//! Send + 'static futures. To bridge:
-//!
-//! 1. The HTTP server runs on a dedicated OS thread (not the tokio runtime
-//!    that drives the VM's async task system).
-//! 2. On that thread, we create a `current_thread` tokio runtime and run
-//!    `axum::serve` inside `block_on`.
-//! 3. Each Axum handler is a thin async wrapper that uses `spawn_blocking`
-//!    to call the VM synchronously (the VM lives on the same thread, so
-//!    the blocking call is safe — it just blocks the current_thread runtime,
-//!    which is fine since there's only one worker).
-//!
-//! Alternatively (simpler for MVP): skip Axum entirely for VM mode and
-//! keep the existing std::net implementation, but route it through this
-//! module's route table for unified route matching logic. Axum can be
-//! added later for a2r mode.
+//! PLAN-699 (Design 33 阶段 B): the HTTP/1.1 wire protocol is Axum/Hyper's
+//! job — the transport lives in [`super::http_transport`] on a dedicated net
+//! thread and hands owned `ApiRequest`s to [`dispatch_api_request`] on the
+//! VM owner thread. AutoVM is `!Send` (`Rc<RefCell>` in its type system);
+//! only owned `Send` data crosses the bridge — no `usize` pointer
+//! laundering, no `spawn_blocking` VM calls. This module is the VM server
+//! only: the generated Rust track (auto-man api_gen) builds its own Axum
+//! service, and `shim_http_server_listen`/`back_proxy` are separate server
+//! paths (see docs/specs/stdlib/design/backend-assembly.md).
 
 use std::io::{Read, Write, BufRead};
 use std::net::TcpListener;
@@ -2530,14 +2518,14 @@ fn rid() int {
 "#, 18741);
             let resp = http_get(port, "/api/rid");
             assert!(
-                resp.contains("X-Request-Id: req-"),
+                resp.to_lowercase().contains("x-request-id: req-"),
                 "minted request id header expected, got: {:?}",
                 resp
             );
             // 404 responses carry it too.
             let not_found = http_get(port, "/api/nope");
             assert!(
-                not_found.contains("X-Request-Id: req-"),
+                not_found.to_lowercase().contains("x-request-id: req-"),
                 "404 should carry request id, got: {:?}",
                 not_found
             );
@@ -2559,12 +2547,12 @@ fn rid2() int {
                 &[("X-Request-Id", "my-trace-42")],
             );
             assert!(
-                resp.contains("X-Request-Id: my-trace-42"),
+                resp.to_lowercase().contains("x-request-id: my-trace-42"),
                 "incoming request id should be echoed verbatim, got: {:?}",
                 resp
             );
             assert!(
-                !resp.contains("X-Request-Id: req-"),
+                !resp.to_lowercase().contains("x-request-id: req-"),
                 "minted id should not override the incoming one, got: {:?}",
                 resp
             );
@@ -2604,7 +2592,7 @@ fn rl() int {
                 third
             );
             assert!(
-                third.contains("X-Request-Id: "),
+                third.to_lowercase().contains("x-request-id: "),
                 "429 should carry the request id, got: {:?}",
                 third
             );
@@ -2833,6 +2821,205 @@ fn list_notes() []Note {
                 "list generic frame 2: body={:?}", body);
             assert!(body.trim_start().starts_with('['),
                 "list generic should be JSON array: body={:?}", body);
+        }
+
+        // ============ PLAN-699: Axum/Hyper transport protocol probes ========
+        // Raw-TCP probes against the real VM server (AC-01 framing/keep-alive,
+        // AC-03 header bounds, AC-05 injected-signal shutdown). Ports
+        // 18770-18775 (unique per e2e_ports_unique).
+
+        /// Connect to the test server with the standard retry loop.
+        fn connect_retry(port: u16) -> std::net::TcpStream {
+            let mut stream = None;
+            for _ in 0..50 {
+                if let Ok(s) = std::net::TcpStream::connect(("127.0.0.1", port)) {
+                    stream = Some(s);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let mut stream = stream.expect("connect to test HTTP server");
+            stream.set_read_timeout(Some(Duration::from_secs(25))).ok();
+            stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+            stream
+        }
+
+        /// AC-01: a chunked request body is decoded by the transport — the
+        /// legacy hand-written parser rejected Transfer-Encoding outright.
+        #[test]
+        fn e2e_plan699_chunked_request_body_accepted() {
+            let port = start_server(
+                r#"
+#[api(method = "POST", path = "/api/echo")]
+fn echo(text str) str { text }
+"#,
+                18770,
+            );
+            let mut s = connect_retry(port);
+            let req = "POST /api/echo HTTP/1.1\r\nHost: 127.0.0.1\r\n\
+                       Content-Type: text/plain\r\nTransfer-Encoding: chunked\r\n\
+                       Connection: close\r\n\r\n5\r\nhello\r\nE\r\n chunked world\r\n0\r\n\r\n";
+            s.write_all(req.as_bytes()).unwrap();
+            let mut resp = String::new();
+            s.read_to_string(&mut resp).ok();
+            assert!(
+                resp.starts_with("HTTP/1.1 200"),
+                "chunked body accepted, got: {:?}",
+                resp
+            );
+            assert!(
+                resp.contains("hello chunked world"),
+                "decoded body echoed, got: {:?}",
+                resp
+            );
+        }
+
+        /// AC-01: two sequential requests on one connection (keep-alive);
+        /// the legacy server closed after every response.
+        #[test]
+        fn e2e_plan699_keepalive_two_requests_one_connection() {
+            let port = start_server(
+                r#"
+#[api(method = "GET", path = "/api/ping")]
+fn ping() str { "pong" }
+"#,
+                18771,
+            );
+            let mut s = connect_retry(port);
+            let req = "GET /api/ping HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
+            s.write_all(req.as_bytes()).unwrap();
+            s.write_all(req.as_bytes()).unwrap();
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 4096];
+            loop {
+                let n = match s.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => n,
+                };
+                buf.extend_from_slice(&chunk[..n]);
+                let text = String::from_utf8_lossy(&buf);
+                let heads = text.matches("HTTP/1.1").count();
+                if heads >= 2 && text.matches("pong").count() >= 2 {
+                    break;
+                }
+                if buf.len() > 64 * 1024 {
+                    break;
+                }
+            }
+            let resp = String::from_utf8_lossy(&buf).into_owned();
+            assert_eq!(
+                resp.matches("HTTP/1.1 200").count(),
+                2,
+                "two keep-alive responses on one connection, got: {:?}",
+                resp
+            );
+        }
+
+        /// AC-03: oversized request head (beyond the 64 KiB connection
+        /// buffer) is rejected with hyper's native 431.
+        #[test]
+        fn e2e_plan699_oversized_headers_431() {
+            let port = start_server(
+                r#"
+#[api(method = "GET", path = "/api/ping")]
+fn ping() str { "pong" }
+"#,
+                18772,
+            );
+            let mut s = connect_retry(port);
+            let big = format!("X-Big: {}\r\n", "a".repeat(70 * 1024));
+            let req = format!("GET /api/ping HTTP/1.1\r\nHost: 127.0.0.1\r\n{}\r\n", big);
+            let _ = s.write_all(req.as_bytes());
+            let mut resp = String::new();
+            let _ = s.read_to_string(&mut resp);
+            assert!(
+                resp.starts_with("HTTP/1.1 431"),
+                "oversized head must be rejected with 431, got: {:?}",
+                resp.lines().next()
+            );
+        }
+
+        /// AC-03: a request head that never completes is closed by the 10s
+        /// header read timeout (deterministic close, no unbounded hold).
+        #[test]
+        fn e2e_plan699_slow_headers_timeout_close() {
+            let port = start_server(
+                r#"
+#[api(method = "GET", path = "/api/ping")]
+fn ping() str { "pong" }
+"#,
+                18773,
+            );
+            let mut s = connect_retry(port);
+            let _ = s.write_all(b"GET /api/ping HTTP/1.1\r\nHost: 127.0.0.1\r\n");
+            let _ = s.flush();
+            let started = std::time::Instant::now();
+            let mut sink = Vec::new();
+            let _ = s.read_to_end(&mut sink);
+            let elapsed = started.elapsed();
+            assert!(
+                elapsed >= Duration::from_secs(8) && elapsed <= Duration::from_secs(20),
+                "head timeout should close at ~10s, elapsed={:?}",
+                elapsed
+            );
+        }
+
+        /// AC-05: the injected shutdown flag stops the accept loop, the owner
+        /// loop drains and exits, and the port is rebindable. A bare VM (no
+        /// routes) is enough — every request 404s through the real dispatch.
+        #[test]
+        fn e2e_plan699_injected_shutdown_releases_port() {
+            let port: u16 = 18775;
+            let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+            let cfg = crate::vm::ffi::http_transport::TransportConfig::from_env();
+            let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+            // Rc<AutoVM> is !Send — build the VM inside the owner thread
+            // (same pattern as start_server).
+            let _server = std::thread::Builder::new()
+                .stack_size(8 * 1024 * 1024)
+                .spawn(move || {
+                    let vm = std::rc::Rc::new(crate::vm::engine::AutoVM::new(
+                        crate::vm::virt_memory::VirtualFlash::new_with_code(vec![
+                            crate::vm::opcode::OpCode::RET as u8,
+                        ]),
+                        1024,
+                    ));
+                    crate::block_on_autovm_local(async move {
+                        crate::vm::ffi::http_server::serve_with(
+                            vm,
+                            &format!("0.0.0.0:{}", port),
+                            cfg,
+                            shutdown_rx,
+                        )
+                        .await;
+                    });
+                    let _ = done_tx.send(());
+                })
+                .expect("spawn shutdown-test server thread");
+
+            // Wait for accept, then exercise the real dispatch (404 path).
+            let mut s = connect_retry(port);
+            s.write_all(
+                "GET /api/nope HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+                    .as_bytes(),
+            )
+            .unwrap();
+            let mut resp = String::new();
+            let _ = s.read_to_string(&mut resp);
+            assert!(
+                resp.starts_with("HTTP/1.1 404"),
+                "bare VM serves 404 through the bridge, got: {:?}",
+                resp
+            );
+
+            // Flip the shutdown flag: the server must exit promptly.
+            let _ = shutdown_tx.send(true);
+            done_rx
+                .recv_timeout(Duration::from_secs(15))
+                .expect("server exits after injected shutdown");
+            // Port is released: a fresh bind on the same port must succeed.
+            let rebind = std::net::TcpListener::bind(("127.0.0.1", port));
+            assert!(rebind.is_ok(), "port must be rebindable after shutdown");
         }
     }
 }
@@ -3147,141 +3334,6 @@ pub(crate) fn compute_ws_accept(key: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(&hash)
 }
 
-/// Convert an `ApiReply` into a legacy raw-TCP response (pre-axum path).
-/// T-03 replaces the transport; the axum arm maps the same reply into
-/// `axum::response::Response` instead.
-async fn write_api_reply(stream: &mut tokio::net::TcpStream, reply: ApiReply) {
-    use tokio::io::AsyncWriteExt;
-    match reply {
-        ApiReply::Full {
-            status,
-            headers,
-            body,
-        } => {
-            let mut head = format!("HTTP/1.1 {} {}\r\n", status, http_status_reason(status));
-            for (k, v) in &headers {
-                head.push_str(k);
-                head.push_str(": ");
-                head.push_str(v);
-                head.push_str("\r\n");
-            }
-            match body {
-                ApiBody::Text(bytes) => {
-                    head.push_str(&format!("Content-Length: {}\r\n\r\n", bytes.len()));
-                    let _ = stream.write_all(head.as_bytes()).await;
-                    if !bytes.is_empty() {
-                        let _ = stream.write_all(&bytes).await;
-                    }
-                }
-                ApiBody::Sse(mut frames) => {
-                    head.push_str("\r\n");
-                    if stream.write_all(head.as_bytes()).await.is_err() {
-                        // Dropping the receiver ends the producer, which runs
-                        // SseIteratorCleanup on the owner thread (696/698 reuse).
-                        return;
-                    }
-                    while let Some(frame) = frames.recv().await {
-                        if stream.write_all(frame.as_bytes()).await.is_err()
-                            || stream.flush().await.is_err()
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        ApiReply::WebSocket { accept } => {
-            let response = format!(
-                "HTTP/1.1 101 Switching Protocols\r\n\
-                 Upgrade: websocket\r\n\
-                 Connection: Upgrade\r\n\
-                 Sec-WebSocket-Accept: {}\r\n\r\n",
-                accept
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
-            let _ = stream.flush().await;
-            serve_ws_echo_loop(stream).await;
-        }
-    }
-}
-
-/// Raw WebSocket echo loop over an upgraded/stream socket — moved verbatim
-/// from the legacy inline path (simplified text-frame echo; not a general
-/// WebSocket implementation).
-async fn serve_ws_echo_loop(stream: &mut tokio::net::TcpStream) {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    loop {
-        // Read a WebSocket frame (simplified: text frames only).
-        let mut header = [0u8; 2];
-        if stream.read_exact(&mut header).await.is_err() {
-            break;
-        }
-        let opcode = header[0] & 0x0F;
-        let masked = (header[1] & 0x80) != 0;
-        let payload_len = (header[1] & 0x7F) as usize;
-
-        // Extended payload length (16/64 bit).
-        let actual_len = if payload_len == 126 {
-            let mut ext = [0u8; 2];
-            if stream.read_exact(&mut ext).await.is_err() {
-                break;
-            }
-            u16::from_be_bytes(ext) as usize
-        } else if payload_len == 127 {
-            let mut ext = [0u8; 8];
-            if stream.read_exact(&mut ext).await.is_err() {
-                break;
-            }
-            u64::from_be_bytes(ext) as usize
-        } else {
-            payload_len
-        };
-
-        // Masking key (4 bytes if masked).
-        let mut mask_key = [0u8; 4];
-        if masked {
-            if stream.read_exact(&mut mask_key).await.is_err() {
-                break;
-            }
-        }
-
-        // Payload.
-        let mut payload = vec![0u8; actual_len];
-        if stream.read_exact(&mut payload).await.is_err() {
-            break;
-        }
-        if masked {
-            for (i, b) in payload.iter_mut().enumerate() {
-                *b ^= mask_key[i % 4];
-            }
-        }
-
-        // Handle by opcode.
-        match opcode {
-            0x1 => {
-                // Text frame — echo back (unmasked, server→client).
-                let text = String::from_utf8_lossy(&payload).to_string();
-                let resp = encode_ws_text_frame(&text);
-                let _ = stream.write_all(&resp).await;
-                let _ = stream.flush().await;
-            }
-            0x8 => {
-                // Close frame.
-                break;
-            }
-            0x9 => {
-                // Ping → Pong.
-                let pong = [0x8Au8, payload.len() as u8];
-                let _ = stream.write_all(&pong).await;
-                let _ = stream.write_all(&payload).await;
-            }
-            _ => {}
-        }
-        // Cooperative yield for other connections.
-        tokio::task::yield_now().await;
-    }
-}
-
 /// Plan 317 Phase 4: Concurrent HTTP server using tokio async I/O.
 ///
 /// Replaces the serial `serve_blocking_stdnet` for the Goroutine-style
@@ -3293,38 +3345,135 @@ async fn serve_ws_echo_loop(stream: &mut tokio::net::TcpStream) {
 ///   - SSE handlers: a bounded local producer steps the VM in instruction
 ///     batches while the connection task writes frames.
 pub async fn serve_async(vm: std::rc::Rc<crate::vm::engine::AutoVM>, addr: &str) {
-    use tokio::net::TcpListener;
+    // PLAN-699 T-03: Axum/Hyper HTTP/1.1 transport (Design 33 阶段 B). The VM
+    // owner keeps this thread's `LocalSet` and consumes a bounded queue of
+    // owned `ApiRequest`s; the network layer runs on a dedicated net thread
+    // (super::http_transport). Default shutdown signals: Ctrl+C (+ SIGTERM on
+    // unix); tests/embedders inject theirs through `serve_with`.
+    let cfg = super::http_transport::TransportConfig::from_env();
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    tokio::task::spawn_local({
+        let shutdown_tx = shutdown_tx.clone();
+        async move {
+            let _ = tokio::signal::ctrl_c().await;
+            eprintln!("[HTTP] Ctrl+C — shutting down gracefully");
+            let _ = shutdown_tx.send(true);
+        }
+    });
+    #[cfg(unix)]
+    tokio::task::spawn_local({
+        let shutdown_tx = shutdown_tx.clone();
+        async move {
+            if let Ok(mut sig) =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            {
+                sig.recv().await;
+                eprintln!("[HTTP] SIGTERM — shutting down gracefully");
+                let _ = shutdown_tx.send(true);
+            }
+        }
+    });
+    serve_with(vm, addr, cfg, shutdown_rx).await;
+}
 
-    // `Rc` gives each local connection task an owning handle without requiring
-    // `AutoVM: Send`; the LocalSet runs these futures on its owner thread.
+/// Injectable-shutdown entry (tests / embedders). Owns the VM for the server
+/// lifetime; returns after the shutdown flag fired and draining finished
+/// (port released).
+async fn serve_with(
+    vm: std::rc::Rc<crate::vm::engine::AutoVM>,
+    addr: &str,
+    cfg: super::http_transport::TransportConfig,
+    shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) {
+    let routes = get_routes();
+    let (req_tx, mut req_rx) = tokio::sync::mpsc::channel::<(
+        ApiRequest,
+        tokio::sync::oneshot::Sender<ApiReply>,
+    )>(cfg.queue_capacity);
 
-    let listener = match TcpListener::bind(addr).await {
-        Ok(l) => l,
-        Err(e) => {
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
+    let net_addr = addr.to_string();
+    let net_cfg = cfg.clone();
+    let net_shutdown = shutdown_rx.clone();
+    let spawned = std::thread::Builder::new()
+        .name("auto-http-net".to_string())
+        .stack_size(4 * 1024 * 1024)
+        .spawn(move || {
+            let rt = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = ready_tx.send(Err(format!("net runtime: {e}")));
+                    return;
+                }
+            };
+            rt.block_on(super::http_transport::serve_network(
+                net_addr,
+                net_cfg,
+                req_tx,
+                net_shutdown,
+                ready_tx,
+            ));
+        });
+    if spawned.is_err() {
+        eprintln!("[HTTP] failed to spawn the auto-http-net thread");
+        return;
+    }
+    match ready_rx.await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
             eprintln!("[HTTP] Async server bind failed on {}: {}", addr, e);
             return;
         }
-    };
-    eprintln!("[HTTP] Async server listening on {} (concurrent, single-worker)", addr);
-    eprintln!("[HTTP] Press Ctrl+C to shut down gracefully");
-
-    let routes = get_routes();
-
-    loop {
-        let (mut stream, _peer) = match listener.accept().await {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("[HTTP] Accept error: {}", e);
-                continue;
-            }
-        };
-
-        let routes_clone = routes.clone();
-        let vm_owner = vm.clone();
-        tokio::task::spawn_local(async move {
-            handle_connection_async(&vm_owner, &mut stream, &routes_clone).await;
-        });
+        Err(_) => {
+            eprintln!("[HTTP] net thread died before binding");
+            return;
+        }
     }
+    eprintln!(
+        "[HTTP] Axum/Hyper transport listening on {} ({} route(s), VM owner thread)",
+        addr,
+        routes.len()
+    );
+
+    // Owner loop: one synchronous VM at a time; a CPU-bound handler blocks
+    // the queue until done (bounded wait via AUTO_HTTP_REQUEST_TIMEOUT_MS at
+    // the bridge — handlers cannot be preempted).
+    let mut shutdown_rx = shutdown_rx;
+    loop {
+        tokio::select! {
+            req = req_rx.recv() => {
+                match req {
+                    Some((api_req, reply_tx)) => {
+                        let reply = dispatch_api_request(&vm, &routes, &api_req);
+                        let _ = reply_tx.send(reply);
+                    }
+                    None => break,
+                }
+            }
+            _ = shutdown_rx.changed() => {
+                // Drain: keep answering queued requests until the net side
+                // drops its senders or the drain budget expires.
+                let deadline = tokio::time::Instant::now() + cfg.shutdown_drain;
+                loop {
+                    tokio::select! {
+                        req = req_rx.recv() => match req {
+                            Some((api_req, reply_tx)) => {
+                                let reply = dispatch_api_request(&vm, &routes, &api_req);
+                                let _ = reply_tx.send(reply);
+                            }
+                            None => break,
+                        },
+                        _ = tokio::time::sleep_until(deadline) => break,
+                    }
+                }
+                break;
+            }
+        }
+    }
+    eprintln!("[HTTP] VM owner loop exited (port released)");
 }
 
 /// PLAN-699 T-02: the VM-owner dispatch core shared by the legacy inline
@@ -3709,7 +3858,7 @@ pub(crate) fn dispatch_api_request(
                     {
                         // Plan 346 3c: handler-built Response object — serve
                         // status/headers/body directly (custom headers + CORS
-                        // + request id, same as write_http_response_object).
+                        // + request id, same as the legacy writer).
                         let (status, headers, body) = res;
                         let mut all_headers = headers;
                         all_headers.extend(cors_header_pairs());
@@ -4019,209 +4168,7 @@ async fn produce_sse_frames(
     }
 }
 
-/// Handle a single HTTP connection (async). Parses the request, dispatches to
-/// the matched #[api] handler via call_fn_by_name, and writes the response.
-/// SSE frames are produced through a bounded local channel.
-async fn write_request_error_response(
-    stream: &mut tokio::net::TcpStream,
-    status: &str,
-    message: &str,
-) {
-    use tokio::io::AsyncWriteExt;
-
-    let body = format!("{{\"error\":{}}}", json_escape_string(message));
-    let response = format!(
-        "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
-        status,
-        body.len(),
-        cors_headers(),
-        body
-    );
-    let _ = stream.write_all(response.as_bytes()).await;
-}
-
-async fn handle_connection_async(
-    vm: &std::rc::Rc<crate::vm::engine::AutoVM>,
-    stream: &mut tokio::net::TcpStream,
-    routes: &[HttpRoute],
-) {
-    use tokio::io::AsyncReadExt;
-    use std::time::Duration;
-
-    const MAX_HEADER_SIZE: usize = 64 * 1024;
-    const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
-    const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(10);
-
-    // Read the complete head as bytes while retaining any body bytes coalesced
-    // into the same TCP read. `lines()` is only used on the bounded head.
-    let mut buf: Vec<u8> = Vec::with_capacity(2048);
-    let read_deadline = tokio::time::Instant::now() + REQUEST_READ_TIMEOUT;
-    let head_end = loop {
-        if let Some(end) = find_sub(&buf, b"\r\n\r\n")
-            .map(|i| i + 4)
-            .or_else(|| find_sub(&buf, b"\n\n").map(|i| i + 2))
-        {
-            if end > MAX_HEADER_SIZE {
-                write_request_error_response(
-                    stream,
-                    "431 Request Header Fields Too Large",
-                    "request headers too large",
-                )
-                .await;
-                return;
-            }
-            break end;
-        }
-        if buf.len() > MAX_HEADER_SIZE {
-            write_request_error_response(
-                stream,
-                "431 Request Header Fields Too Large",
-                "request headers too large",
-            )
-            .await;
-            return;
-        }
-
-        let mut chunk = [0u8; 2048];
-        let n = match tokio::time::timeout_at(read_deadline, stream.read(&mut chunk)).await {
-            Ok(Ok(n)) => n,
-            Ok(Err(_)) => return,
-            Err(_) => {
-                write_request_error_response(stream, "408 Request Timeout", "request headers timed out").await;
-                return;
-            }
-        };
-        if n == 0 {
-            // EOF before a complete head (start_server's readiness probe
-            // lands here) — report malformed data only if a partial head arrived.
-            if !buf.is_empty() {
-                write_request_error_response(stream, "400 Bad Request", "incomplete request headers").await;
-            }
-            return;
-        }
-        buf.extend_from_slice(&chunk[..n]);
-    };
-    let raw = String::from_utf8_lossy(&buf[..head_end]).to_string();
-
-    let mut lines = raw.lines();
-    let request_line = match lines.next() {
-        Some(l) if !l.is_empty() => l,
-        _ => {
-            write_request_error_response(stream, "400 Bad Request", "missing request line").await;
-            return;
-        }
-    };
-    let parts: Vec<&str> = request_line.split_whitespace().collect();
-    if parts.len() < 2 {
-        write_request_error_response(stream, "400 Bad Request", "malformed request line").await;
-        return;
-    }
-    let req_method = parts[0].to_uppercase();
-    let req_path = parts[1].to_string();
-
-    // Parse framing and request metadata from complete header lines. Invalid
-    // lengths and transfer codings we do not implement are rejected up front.
-    // PLAN-699 T-02: every header is carried on the owned ApiRequest
-    // (names lowercased); only framing checks stay in the parse layer.
-    let mut content_length_header: Option<usize> = None;
-    let mut has_transfer_encoding = false;
-    let mut all_headers: Vec<(String, String)> = Vec::new();
-    for line in lines {
-        if line.is_empty() {
-            break;
-        }
-        let Some((name, value)) = line.split_once(':') else {
-            write_request_error_response(stream, "400 Bad Request", "malformed request header").await;
-            return;
-        };
-        let name = name.trim().to_ascii_lowercase();
-        let value = value.trim();
-        match name.as_str() {
-            "content-length" => {
-                if content_length_header.is_some() {
-                    write_request_error_response(stream, "400 Bad Request", "duplicate Content-Length").await;
-                    return;
-                }
-                let parsed = match value.parse::<usize>() {
-                    Ok(n) => n,
-                    Err(_) => {
-                        write_request_error_response(stream, "400 Bad Request", "invalid Content-Length").await;
-                        return;
-                    }
-                };
-                if parsed > MAX_BODY_SIZE {
-                    write_request_error_response(stream, "413 Payload Too Large", "body too large").await;
-                    eprintln!("[HTTP] {} {} → 413 (body {} > {})", req_method, req_path, parsed, MAX_BODY_SIZE);
-                    return;
-                }
-                content_length_header = Some(parsed);
-            }
-            "transfer-encoding" => has_transfer_encoding = true,
-            _ => {}
-        }
-        all_headers.push((name, value.to_string()));
-    }
-    if has_transfer_encoding {
-        write_request_error_response(stream, "400 Bad Request", "Transfer-Encoding is not supported").await;
-        return;
-    }
-    let content_length = content_length_header.unwrap_or(0);
-    if content_length_header.is_none() && buf.len() > head_end {
-        write_request_error_response(stream, "400 Bad Request", "request body requires Content-Length").await;
-        return;
-    }
-
-    // Collect exactly Content-Length bytes. The initial header read may already
-    // contain body bytes; subsequent reads share the request deadline and stop
-    // on EOF. An incomplete body is rejected before route dispatch.
-    let mut body_bytes: Vec<u8> = buf
-        .get(head_end..)
-        .unwrap_or_default()
-        .iter()
-        .take(content_length)
-        .copied()
-        .collect();
-    while body_bytes.len() < content_length {
-        let remaining = content_length - body_bytes.len();
-        let read_len = remaining.min(8192);
-        let mut chunk = [0u8; 8192];
-        let n = match tokio::time::timeout_at(
-            read_deadline,
-            stream.read(&mut chunk[..read_len]),
-        )
-        .await
-        {
-            Ok(Ok(n)) => n,
-            Ok(Err(_)) => return,
-            Err(_) => {
-                write_request_error_response(stream, "408 Request Timeout", "request body timed out").await;
-                return;
-            }
-        };
-        if n == 0 {
-            write_request_error_response(stream, "400 Bad Request", "request body shorter than Content-Length").await;
-            return;
-        }
-        body_bytes.extend_from_slice(&chunk[..n]);
-    }
-
-    // PLAN-699 T-02: hand the fully framed request to the shared VM-owner
-    // dispatch core (request id/rate limit/CORS/multipart/route/middleware/
-    // binder/handler semantics all live there now) and write the structured
-    // reply back over raw TCP.
-    let api_req = ApiRequest {
-        method: req_method.clone(),
-        path: req_path.clone(),
-        headers: all_headers,
-        body: body_bytes,
-        peer: stream.peer_addr().ok(),
-    };
-    let reply = dispatch_api_request(vm, routes, &api_req);
-    write_api_reply(stream, reply).await;
-}
-
-/// Encode a text message as a WebSocket frame (server→client, unmasked).
-fn encode_ws_text_frame(text: &str) -> Vec<u8> {
+pub(crate) fn encode_ws_text_frame(text: &str) -> Vec<u8> {
     let payload = text.as_bytes();
     let len = payload.len();
     let mut frame = Vec::new();

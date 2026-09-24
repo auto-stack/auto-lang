@@ -40,6 +40,8 @@ mod generated_std;
 pub mod dep_methods;
 pub mod rust_stdlib;
 pub mod http_server;  // Plan 321/322: AutoHttpServer unified shim
+// PLAN-699: Axum/Hyper HTTP/1.1 transport (network thread + owned bridge).
+pub mod http_transport;
 pub mod websocket;   // Plan 350: WebSocket client
 // auto-os Plan 013 T2: AutoTerm 引擎桥(auto.term.*,libloading → autoterm_core.dll)
 pub mod term_engine;
