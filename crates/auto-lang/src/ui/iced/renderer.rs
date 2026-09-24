@@ -12541,6 +12541,18 @@ fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool)
         }
         *app.state.view_dirty.borrow_mut() = true;
     }
+    // PLAN-043 Phase 3：分主题壁纸——切主题即应用**目标主题**槽（槽空 =
+    // 该主题未单独设过壁纸，维持当前壁纸不跟随）。与 SetWallpaper 同链：
+    // 旧布局快照/单值+槽落盘/会话回读/快照全撤/格子重注入都在
+    // execute_set_wallpaper 内（槽回写自身同值 = no-op）。
+    let slot = if dark {
+        state.desktop.config.wallpaper_path_dark.clone()
+    } else {
+        state.desktop.config.wallpaper_path_light.clone()
+    };
+    if !slot.is_empty() && slot != state.desktop.config.wallpaper_path {
+        execute_set_wallpaper(state, &slot);
+    }
 }
 
 /// PLAN-526 T14 + Plan 540 T3：壁纸热切换执行体——单源 `config.wallpaper_path`
@@ -12561,6 +12573,13 @@ fn execute_set_wallpaper(state: &mut crate::ui::session::DesktopSession, path: &
         }
     }
     state.desktop.config.wallpaper_path = path.to_string();
+    // PLAN-043 Phase 3：分主题壁纸——写**当前主题**槽（记忆面；另一槽
+    // 不动）。单值仍是活跃值，槽在本次 save 同步持久化。
+    if state.desktop.config.dark_theme {
+        state.desktop.config.wallpaper_path_dark = path.to_string();
+    } else {
+        state.desktop.config.wallpaper_path_light = path.to_string();
+    }
     let _ = crate::ui::desktop_config::save(&state.desktop.config);
     state.desktop.desktop_wallpaper = load_desktop_wallpaper(&state.desktop.config);
     crate::ui::iced::snapshot::invalidate_all();
@@ -14599,19 +14618,37 @@ fn desktop_icon_apply_drop(
             .find(|(eid, _)| eid == id)
             .map(|(_, c)| *c)
     };
-    // 现行有效占位（无位者按行主序补位——与 desktop_icon_cells 同口径）。
+    // 现行有效占位（无位者按**列主序**补位——PLAN-043 Phase 4 与
+    // desktop_icon_cells 的 2026-09-15 列主序裁定真正同口径；此前本臂
+    // 线性行主序扫描、注释却写"同口径"，拖拽一发生补位图标横插，
+    // 与展示网格竖排形态分裂）。rows 口径照抄 desktop_icon_cells。
+    let rows = {
+        let viewport = state.host_viewport();
+        let reserved = desktop_dock_edges(&state.desktop.config);
+        (((viewport.height - reserved.top - reserved.bottom) / 80.0).floor() as usize)
+            .clamp(4, 24)
+            .max((visible.len() + COLS - 1) / COLS)
+            .max(1)
+    };
     let mut taken: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
     let mut cells: Vec<(String, usize)> = Vec::new();
     for id in &visible {
         let slot = match cell_of(id) {
             Some((c, r)) => r * COLS + c,
             None => {
-                let mut s = 0usize;
-                while taken.contains(&s) {
-                    s += 1;
+                // 列主序首个空格：序数 k → (c, r) = (k / rows, k % rows)，
+                // 跳过已占位（desktop_icon_cells ②同构）。
+                let mut k = 0usize;
+                loop {
+                    let (c, r) = (k / rows, k % rows);
+                    let s = r * COLS + c;
+                    k += 1;
+                    if !taken.contains(&s) {
+                        taken.insert(s);
+                        cells.push((id.clone(), s));
+                        break;
+                    }
                 }
-                taken.insert(s);
-                cells.push((id.clone(), s));
                 continue;
             }
         };

@@ -57,6 +57,13 @@ pub struct DesktopConfig {
     /// 壁纸原始配置值（"" = 未配置；`#hex` | `builtin:` | 图片路径——
     /// 有效性验证与目录首图回退链在 boot 壁纸解析，本层不验）。
     pub wallpaper_path: String,
+    /// PLAN-043 Phase 3：分主题壁纸槽（深）——深色主题下设置的壁纸记忆。
+    /// `wallpaper_path` 仍是**活跃值**（boot 解析/渲染层读它）；槽 = 记忆
+    /// 面：`set_wallpaper` 写当前主题槽，`set_theme` 切主题时目标槽非空
+    /// 即应用。空串 = 该主题未单独设置（切换时维持当前壁纸）。
+    pub wallpaper_path_dark: String,
+    /// PLAN-043 Phase 3：分主题壁纸槽（浅）——语义同上，浅色主题侧。
+    pub wallpaper_path_light: String,
     /// 壁纸目录（"" = 未配置；env/探测回退链在 boot 侧）。
     pub wallpapers_dir: String,
     /// PLAN-019-FU8：壁纸 picker 外部请求通道——os-config 设置面「切换壁纸」
@@ -92,6 +99,8 @@ impl Default for DesktopConfig {
             dock_enabled: true,
             dock_pinned: DEFAULT_DOCK_PINNED.iter().map(|s| s.to_string()).collect(),
             wallpaper_path: String::new(),
+            wallpaper_path_dark: String::new(),
+            wallpaper_path_light: String::new(),
             wallpapers_dir: String::new(),
             wallpaper_request: String::new(),
             dark_theme: true,
@@ -154,6 +163,13 @@ pub fn parse_config(src: &str) -> DesktopConfig {
     }
     if let Some(v) = f.get("wallpaper_path") {
         cfg.wallpaper_path = v.clone();
+    }
+    // PLAN-043 Phase 3：分主题壁纸槽（缺键 = 空 = 未单独设置）。
+    if let Some(v) = f.get("wallpaper_path_dark") {
+        cfg.wallpaper_path_dark = v.clone();
+    }
+    if let Some(v) = f.get("wallpaper_path_light") {
+        cfg.wallpaper_path_light = v.clone();
     }
     if let Some(v) = f.get("wallpapers_dir") {
         cfg.wallpapers_dir = v.clone();
@@ -255,6 +271,15 @@ pub fn serialize_config(cfg: &DesktopConfig) -> String {
     ));
     out.push_str(&format!("    dock_pinned : \"{}\"\n", cfg.dock_pinned.join(",")));
     out.push_str(&format!("    wallpaper_path : \"{}\"\n", cfg.wallpaper_path));
+    // PLAN-043 Phase 3：分主题壁纸槽恒落盘（通用编辑器展示全字段约定）。
+    out.push_str(&format!(
+        "    wallpaper_path_dark : \"{}\"\n",
+        cfg.wallpaper_path_dark
+    ));
+    out.push_str(&format!(
+        "    wallpaper_path_light : \"{}\"\n",
+        cfg.wallpaper_path_light
+    ));
     out.push_str(&format!("    wallpapers_dir : \"{}\"\n", cfg.wallpapers_dir));
     out.push_str(&format!(
         "    wallpaper_request : \"{}\"\n",
@@ -375,6 +400,36 @@ pub fn ensure_desktop_icons_seeded() {
     storage_host_publish("shell.desktop.icons", DEFAULT_DESKTOP_ICONS.join(","));
 }
 
+/// PLAN-043 Phase 3：分主题壁纸槽纯逻辑（[`load`] 尾部调用，可单测）。
+/// ① 存量单值迁移：当前生效主题槽**空**且单值非空 → 播种到该槽（幂等
+/// ——槽被 `set_wallpaper` 持久化后不再触发）。② boot 按生效主题取槽：
+/// 槽非空且 ≠ 单值 → 单值跟随槽值（内存生效不回写——`theme_source =
+/// "system"` 派生同款先例，每次 load 一致重推导）。槽空 = 未设分主题
+/// 壁纸，单值语义原样。
+fn apply_per_theme_wallpaper_slots(cfg: &mut DesktopConfig) {
+    let slot_empty = if cfg.dark_theme {
+        cfg.wallpaper_path_dark.is_empty()
+    } else {
+        cfg.wallpaper_path_light.is_empty()
+    };
+    if slot_empty && !cfg.wallpaper_path.is_empty() {
+        let v = cfg.wallpaper_path.clone();
+        if cfg.dark_theme {
+            cfg.wallpaper_path_dark = v;
+        } else {
+            cfg.wallpaper_path_light = v;
+        }
+    }
+    let slot = if cfg.dark_theme {
+        cfg.wallpaper_path_dark.clone()
+    } else {
+        cfg.wallpaper_path_light.clone()
+    };
+    if !slot.is_empty() && slot != cfg.wallpaper_path {
+        cfg.wallpaper_path = slot;
+    }
+}
+
 /// boot 装载：config.at 读（缺席 → 旧键迁移 + 立即落盘一次）。
 /// PLAN-615 T-06：`theme_source = "system"`（缺省，含存量文件缺键）时
 /// `dark_theme` 从 OS 系统主题派生（[`crate::ui::system_theme::
@@ -394,6 +449,8 @@ pub fn load() -> DesktopConfig {
             cfg.dark_theme = dark;
         }
     }
+    // PLAN-043 Phase 3：分主题壁纸——存量单值迁移 + 按生效主题取槽。
+    apply_per_theme_wallpaper_slots(&mut cfg);
     // PLAN-044 T-03：boot 装载即首帧快照——后续 save 的字段级 diff 基线。
     *LAST_SNAPSHOT.lock().unwrap() = Some(cfg.clone());
     cfg
@@ -420,6 +477,12 @@ fn changed_fields(a: &DesktopConfig, b: &DesktopConfig) -> Vec<&'static str> {
     }
     if a.wallpaper_path != b.wallpaper_path {
         out.push("wallpaper_path");
+    }
+    if a.wallpaper_path_dark != b.wallpaper_path_dark {
+        out.push("wallpaper_path_dark");
+    }
+    if a.wallpaper_path_light != b.wallpaper_path_light {
+        out.push("wallpaper_path_light");
     }
     if a.wallpapers_dir != b.wallpapers_dir {
         out.push("wallpapers_dir");
@@ -452,6 +515,10 @@ fn apply_field(cfg: &mut DesktopConfig, name: &str, from: &DesktopConfig) {
         "dock_enabled" => cfg.dock_enabled = from.dock_enabled,
         "dock_pinned" => cfg.dock_pinned = from.dock_pinned.clone(),
         "wallpaper_path" => cfg.wallpaper_path = from.wallpaper_path.clone(),
+        // PLAN-043 Phase 3：分主题壁纸槽参与字段级合并（外部写方——os-config
+        // 设置面/手编 config.at——写槽不再被陈旧快照冲掉）。
+        "wallpaper_path_dark" => cfg.wallpaper_path_dark = from.wallpaper_path_dark.clone(),
+        "wallpaper_path_light" => cfg.wallpaper_path_light = from.wallpaper_path_light.clone(),
         "wallpapers_dir" => cfg.wallpapers_dir = from.wallpapers_dir.clone(),
         "wallpaper_request" => cfg.wallpaper_request = from.wallpaper_request.clone(),
         "dark_theme" => cfg.dark_theme = from.dark_theme,
@@ -683,6 +750,9 @@ mod tests {
             dock_enabled: false,
             dock_pinned: vec!["011-calculator".to_string(), "015-notes".to_string()],
             wallpaper_path: "builtin:inkwash".to_string(),
+            // PLAN-043 Phase 3：分主题壁纸槽参与往返。
+            wallpaper_path_dark: "C:/pics/dark.jpg".to_string(),
+            wallpaper_path_light: "C:/pics/light.png".to_string(),
             wallpapers_dir: String::new(),
             // PLAN-019-FU8：请求字段参与往返（空串往返 = 空串）。
             wallpaper_request: String::new(),
@@ -830,6 +900,77 @@ mod tests {
         let src = std::fs::read_to_string(&path).expect("read back");
         assert_eq!(parse_config(&src), cfg);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// PLAN-043 Phase 3：分主题壁纸槽序列化往返。
+    #[test]
+    fn per_theme_wallpaper_slots_round_trip() {
+        let cfg = DesktopConfig {
+            wallpaper_path: "C:/pics/dark.jpg".to_string(),
+            wallpaper_path_dark: "C:/pics/dark.jpg".to_string(),
+            wallpaper_path_light: "C:/pics/light.png".to_string(),
+            ..DesktopConfig::default()
+        };
+        let src = serialize_config(&cfg);
+        assert!(src.contains("wallpaper_path_dark : \"C:/pics/dark.jpg\""));
+        assert!(src.contains("wallpaper_path_light : \"C:/pics/light.png\""));
+        assert_eq!(parse_config(&src), cfg);
+    }
+
+    /// PLAN-043 Phase 3：存量单值迁移——当前主题槽空且单值非空 → 播种。
+    #[test]
+    fn per_theme_migration_seeds_current_theme_slot() {
+        let mut cfg = DesktopConfig {
+            dark_theme: true,
+            wallpaper_path: "C:/pics/dark.jpg".to_string(),
+            ..DesktopConfig::default()
+        };
+        apply_per_theme_wallpaper_slots(&mut cfg);
+        assert_eq!(cfg.wallpaper_path_dark, "C:/pics/dark.jpg");
+        assert!(cfg.wallpaper_path_light.is_empty());
+        // 幂等：再跑一遍不翻值。
+        apply_per_theme_wallpaper_slots(&mut cfg);
+        assert_eq!(cfg.wallpaper_path_dark, "C:/pics/dark.jpg");
+    }
+
+    /// PLAN-043 Phase 3：boot 按生效主题取槽——槽非空且 ≠ 单值 → 单值
+    /// 跟随槽值（dark 取 dark 槽，light 取 light 槽）。
+    #[test]
+    fn per_theme_boot_applies_matching_slot() {
+        let mut dark = DesktopConfig {
+            dark_theme: true,
+            wallpaper_path: "C:/pics/stale.jpg".to_string(),
+            wallpaper_path_dark: "C:/pics/dark.jpg".to_string(),
+            wallpaper_path_light: "C:/pics/light.png".to_string(),
+            ..DesktopConfig::default()
+        };
+        apply_per_theme_wallpaper_slots(&mut dark);
+        assert_eq!(dark.wallpaper_path, "C:/pics/dark.jpg");
+        let mut light = DesktopConfig {
+            dark_theme: false,
+            wallpaper_path: "C:/pics/stale.jpg".to_string(),
+            wallpaper_path_dark: "C:/pics/dark.jpg".to_string(),
+            wallpaper_path_light: "C:/pics/light.png".to_string(),
+            ..DesktopConfig::default()
+        };
+        apply_per_theme_wallpaper_slots(&mut light);
+        assert_eq!(light.wallpaper_path, "C:/pics/light.png");
+    }
+
+    /// PLAN-043 Phase 3：目标槽空 = 该主题未单独设置 → 单值语义原样
+    /// （不迁移**另一**主题的槽，迁移只看当前生效主题）。
+    #[test]
+    fn per_theme_empty_current_slot_seeds_from_single_value() {
+        let mut cfg = DesktopConfig {
+            dark_theme: false,
+            wallpaper_path: "C:/pics/light.png".to_string(),
+            wallpaper_path_dark: "C:/pics/dark.jpg".to_string(),
+            ..DesktopConfig::default()
+        };
+        apply_per_theme_wallpaper_slots(&mut cfg);
+        // light 槽被播种；dark 槽（非当前主题）不被触碰。
+        assert_eq!(cfg.wallpaper_path_light, "C:/pics/light.png");
+        assert_eq!(cfg.wallpaper_path_dark, "C:/pics/dark.jpg");
     }
 
 
