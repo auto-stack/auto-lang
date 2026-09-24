@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-699
-status: drafting
+status: execution_done
 feature_name: vm-http-transport-axum-bridge
 author: [agent]
 created_at: 2026-09-24
@@ -13,7 +13,7 @@ supersedes_spec_components:
 new_spec_components: []
 touched_goals: [GOAL-003]
 affects: [crates/auto-lang/src/vm/ffi/http_server.rs, crates/auto-lang/src/lib.rs, crates/auto-lang/Cargo.toml, docs/specs/stdlib]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
@@ -114,22 +114,25 @@ Spec delta 由 `/auto-plan:review` 验证后 `/auto-plan:merge` 沉淀。若 T-0
 
 | 任务 | 依赖 | 位置/动作与产出 | 验证（期望） |
 |---|---|---|---|
-| T-01 [ ] | 无 | 只读核查 PLAN-698 折叠状态及 F-1 资源回收；在 `http_server.rs`/`lib.rs`/`Cargo.toml` 做 Axum `Send` bridge、header 限额、启动/关闭、feature 边界的有界 spike；新建 `docs/plans/reports/699-bridge-decision.md`，定默认限额/配置、线程拓扑、已知同步 handler 边界。（AC-01..05） | `git log`/调用图、最小编译 spike、基线 `cargo th` 结果；报告有选择及否决理由。代码 T-02 起须等 698 折叠 |
-| T-02 [ ] | T-01、PLAN-698 复审/折叠 | 在 `crates/auto-lang/src/vm/ffi/http_server.rs`（可拆新增同目录内部模块）抽出 owned `ApiRequest`/`ApiReply` 与纯 VM 调用逻辑；把原解析/写字符串中的路由/绑定/middleware/响应语义保留。先保现有 E2E 绿。（AC-02/06） | `cargo check -p auto-lang`；`cargo th` 中 696 回归与绑定测试通过 |
-| T-03 [ ] | T-02 | 用 Axum/Hyper 入口替换 `serve_async` 默认 TCP parser，`lib.rs` 接 VM owner 与网络 runtime；`Cargo.toml` 修正 Axum feature 依赖。header/body/frame 处理均由协议层承担。（AC-01/02） | `cargo check -p auto-lang`（含需要的无 UI feature 形态）；chunked、keep-alive、分段 body 原始 TCP E2E 通过 |
-| T-04 [ ] | T-03 | 在桥和网络入口加连接/在途/队列/body/header/超时预算与拒绝映射，写小容量负载/慢头测试；保留现有 400/408/413/429 语义的可验证部分。（AC-03） | 定向 E2E：超限有界拒绝、排队满 503、慢请求无无限占用 |
-| T-05 [ ] | T-03/04 | 将 PLAN-696 generator SSE 与已折叠的 PLAN-698 publisher 订阅接到有界网络帧流；断连/取消回送 owner 清理。不得引入另一个长期转发线程。（AC-04） | 定向慢 SSE/断连/017 publisher 测试；线程、iterator、task 计数回落 |
-| T-06 [ ] | T-04/05 | `serve_async` 增可注入关闭信号/服务句柄，接入 CLI Ctrl+C 与受支持平台 SIGTERM；停止接收、限时排空、取消流、释放端口。（AC-05） | 注入式关闭 E2E + 实机信号；端口复绑通过 |
-| T-07 [ ] | T-02..06 | 跑 015/017/023、middleware/Response/429/multipart/`__axum:` 完整回归；生成 Axum 和合并/IPC 抽样；清理默认调用图中不再需要的手写解析/错误注释，修正文档草案的“已共用 Axum”旧误述。（AC-01/06） | `cargo th`、生成 Rust live 对拍；差异矩阵 `docs/plans/reports/699-parity.md` |
-| T-08 [ ] | T-07 | 范围门禁、基准/资源记录、遗漏/延期扫描与独立复审准备；整理 SD-01..03 的最终证据，按 review/merge 沉淀而非执行期私改 canonical Specs。（AC-03..07） | `cargo check -p auto-lang`、`cargo th`、`cargo tv`/必要 `cargo tf`、`git diff --check`；`docs/plans/reports/699-verification.md` |
+| T-01 [x] | 无 | 只读核查 PLAN-698 折叠状态及 F-1 资源回收；在 `http_server.rs`/`lib.rs`/`Cargo.toml` 做 Axum `Send` bridge、header 限额、启动/关闭、feature 边界的有界 spike；新建 `docs/plans/reports/699-bridge-decision.md`，定默认限额/配置、线程拓扑、已知同步 handler 边界。（AC-01..05） | `[✅ 已完成]` worktree `5a77d1972`：698 折叠全链核查（F-1 b7ee6f302/归档 045aa37c7/cleaned b41e9aa31，worktree 已清）；spike 6/6（keep-alive/chunked/64KiB→431 原生/慢头 2s 关闭/SSE 帧流/graceful+端口复绑）；两坑实证（header_read_timeout 缺 timer 即 panic、try_recv 无 waker 饿死 body）；axum 转无条件依赖+hyper/hyper-util 新增；基线 `cargo th` 50/51（唯一红 back_proxy 031 在 master 同样红=预存环境红，范围外）；拓扑/限额/边界冻结于报告 |
+| T-02 [x] | T-01、PLAN-698 复审/折叠 | 在 `crates/auto-lang/src/vm/ffi/http_server.rs`（可拆新增同目录内部模块）抽出 owned `ApiRequest`/`ApiReply` 与纯 VM 调用逻辑；把原解析/写字符串中的路由/绑定/middleware/响应语义保留。先保现有 E2E 绿。（AC-02/06） | `[✅ 已完成]` worktree `3420af7ed`（rebase 后 `01cd23192`）：`dispatch_api_request` 语义逐行镜像（顺序=旧内联路径），旧 TCP 路径改走同一核心；`cargo check` 0 error；`cargo th` 50/51=基线逐位一致（唯一红=预存 back_proxy/031） |
+| T-03 [x] | T-02 | 用 Axum/Hyper 入口替换 `serve_async` 默认 TCP parser，`lib.rs` 接 VM owner 与网络 runtime；`Cargo.toml` 修正 Axum feature 依赖。header/body/frame 处理均由协议层承担。（AC-01/02） | `[✅ 已完成]` worktree `6de714eeb`（原 e798df2d7）：专属 `auto-http-net` 线程 + hyper-util auto Builder（http1_only+TokioTimer+64KiB+10s）+ GracefulShutdown；axum fallback → 有界 mpsc → owner 循环；`handle_connection_async`/write_api_reply 删除；chunked/keep-alive/分段 body E2E 过；`cargo check --no-default-features` 0 error |
+| T-04 [x] | T-03 | 在桥和网络入口加连接/在途/队列/body/header/超时预算与拒绝映射，写小容量负载/慢头测试；保留现有 400/408/413/429 语义的可验证部分。（AC-03） | `[✅ 已完成]` 同上提交：413（to_bytes+LengthLimitError）/408（body 总期限）/431（hyper 原生，实测）/503+Retry-After（队列满，桥级单测无竞态）/503（回复等待 30s）；`e2e_plan699_oversized_headers_431`、`…slow_headers_timeout_close`（实测 10.6s）、`bridge_tests::full_queue_rejects_with_503` |
+| T-05 [x] | T-03/04 | 将 PLAN-696 generator SSE 与已折叠的 PLAN-698 publisher 订阅接到有界网络帧流；断连/取消回送 owner 清理。不得引入另一个长期转发线程。（AC-04） | `[✅ 已完成]` 同上提交：696 producer 原样+capacity-1 帧通道；FrameStream（poll_recv 接 waker——try_recv 饿死为 spike 实证坑）+shutdown watch 收流；断连/关闭回收 iterator/task/698 订阅（owner 线程，无新转发线程）；`e2e_plan696_slow_sse_does_not_block_health`/`…sse_disconnect_cancels_generator` 新传输重跑绿 |
+| T-06 [x] | T-04/05 | `serve_async` 增可注入关闭信号/服务句柄，接入 CLI Ctrl+C 与受支持平台 SIGTERM；停止接收、限时排空、取消流、释放端口。（AC-05） | `[✅ 已完成（实机 Ctrl+C 见待澄清#5）]` `serve_with` 注入 watch 信号；serve_async 缺省=ctrl_c(+unix SIGTERM)；`e2e_plan699_injected_shutdown_releases_port`（停 accept→限时排空→owner 退出→端口复绑）；headless harness 三种投递方式均无法使 tokio handler 接管（CTRL_BREAK 落默认处理器 0xC000013A），实机终端确认列入待澄清 |
+| T-07 [x] | T-02..06 | 跑 015/017/023、middleware/Response/429/multipart/`__axum:` 完整回归；生成 Axum 和合并/IPC 抽样；清理默认调用图中不再需要的手写解析/错误注释，修正文档草案的“已共用 Axum”旧误述。（AC-01/06） | `[✅ 已完成]` `1b8bf6a3f`：`docs/plans/reports/699-parity.md` 矩阵——015/017/023 真实 app e2e/Response/绑定/multipart/CORS/429/request-id 全绿（新传输重跑）；手写解析/写串路径已删除、模块头 "spawn_blocking 直接调 VM" 旧误述已纠正；中间件（公共 .at 面缺失=预存缺口）与 `__axum:`（代码逐行保留、无仓内语料）矩阵如实注记；合并/IPC 抽样确认未触碰 |
+| T-08 [x] | T-07 | 范围门禁、基准/资源记录、遗漏/延期扫描与独立复审准备；整理 SD-01..03 的最终证据，按 review/merge 沉淀而非执行期私改 canonical Specs。（AC-03..07） | `[✅ 已完成]` `docs/plans/reports/699-verification.md`：check 双形态 0 error / th 56/56 / tv 162/162 / tf 5704/5705（唯一红=plan358 负载抖动单跑双绿；同批 9 红 master 逐一复红=全预存，零本计划归因红）/ `git diff --check` 干净；执行期 rebase 至 master `4dc4d581a` 在案；SD-01..03 证据就绪待 review/merge 沉淀 |
 
 ## 9. 复审记录
 
 - 2026-09-24，`stage: new`，`plan_id: PLAN-699`，`plan_revision: 1`，`outcome: pass`。PLAN-696/698 状态、现行 Specs、`serve_async`/`handle_connection_async` 与 Cargo feature 已核对；AC-01..07 均映射到 T-01..08，SD-01..03 均有验收项。`next: work`，先完成 T-01；T-02 起待 PLAN-698 F-1 修复、复审、折叠。此记录不是实施完成或独立复审通过。
 
+- 2026-09-24，`stage: work`，`plan_id: PLAN-699`，`plan_revision: 1`，`outcome: pass`，`code_commit: 1b8bf6a3f`（worktree `D:/autostack/.wt/lang-699/auto-lang`，分支 `plan-699-dev`，rebase 至 master `4dc4d581a`；链=`d2de4d01b` T-01 spike+决策 / `01cd23192` T-02 桥+dispatch 核心 / `6de714eeb` T-03/04/05 传输+预算+SSE+关闭 / `d748e59be` 中间件 e2e 撤销 / `1b8bf6a3f` 报告）。`task_ids: T-01..T-08` 全清。`evidence`：决策报告 699-bridge-decision.md（spike 6/6+拓扑/限额冻结）；对拍矩阵 699-parity.md；验证报告 699-verification.md——check 双形态 0 error、th 56/56（6 个新协议探针：chunked/keep-alive/431/慢头关/注入关停/队列 503 单测）、tv 162/162、tf 5704/5705（唯一红=plan358 stress 单跑双绿=负载抖动；同批 9 红 master 逐一复红=全预存，零本计划归因红）、`--no-default-features` 纯 VM 编译过、`git diff --check` 净。执行期勘定四条：axum 转 unconditional（`ui-interpreter` 摘 dep:axum）+hyper/hyper-util 直依赖；并行会话落 `4dc4d581a` 后无冲突 rebase（顺带收口旧 back_proxy/031 红与基线 018 坏样）；hyper 响应头名小写规范化致三处旧断言改大小写不敏感（值不变）；TF 红册定责=detached 复现法（master 主检出热编译复跑）。`blockers`: 无（待澄清#5 为环境限制记录，非阻塞）。`next: review`（/auto-plan:review 独立复审 AC-01..07+SD-01..03；建议复审环境有交互终端时补一轮 CLI Ctrl+C 实机确认）。
+
 ## 10. 待澄清事项
 
-1. T-01 决策：Axum/Hyper 在本仓版本下的 header size/deadline 可控接入方式、请求 body 增量收集、关闭信号所有权、纯 VM feature 配置；若高层 API 不满足，选可编译的 Hyper 连接驱动，不降低 AC-03。
-2. T-01 实测后冻结限额和默认值；现有 10 MiB/10 秒与监听地址保持兼容，新增连接/队列/关闭预算由可复现负载数据定，不臆设生产容量。
-3. 同步 CPU handler 占住唯一 VM owner 时，排队与取消能限制外部资源，但无法强制抢占 VM 代码。若要求 handler 可中断/多 VM 并行，属于 Design 33 阶段 C 的 task 调度或后续架构修订，不以本计划未实现的能力作承诺。
-4. `http.server().listen()`、back-proxy 与 VM `#[api]` 是否最终共用协议入口、以及默认 loopback/公开监听策略，留阶段 D 独立裁定；本计划必须在 Spec 精确区分它们。
+1. T-01 决策：Axum/Hyper 在本仓版本下的 header size/deadline 可控接入方式、请求 body 增量收集、关闭信号所有权、纯 VM feature 配置；若高层 API 不满足，选可编译的 Hyper 连接驱动，不降低 AC-03。（已决：hyper-util auto Builder 直驱，见 699-bridge-decision.md）
+2. T-01 实测后冻结限额和默认值；现有 10 MiB/10 秒与监听地址保持兼容，新增连接/队列/关闭预算由可复现负载数据定，不臆设生产容量。（已冻结于决策报告 §2）
+3. 同步 CPU handler 占住唯一 VM owner 时，排队与取消能限制外部资源，但无法强制抢占 VM 代码。若要求 handler 可中断/多 VM 并行，属于 Design 33 阶段 C 的 task 调度或后续架构修订，不以本计划未实现的能力作承诺。（保持）
+4. `http.server().listen()`、back-proxy 与 VM `#[api]` 是否最终共用协议入口、以及默认 loopback/公开监听策略，留阶段 D 独立裁定；本计划必须在 Spec 精确区分它们。（保持，SD-02/SD-03 落点）
+5. **CLI Ctrl+C 实机确认（非阻塞）**：本执行会话为 headless pty 控制台，三种事件投递方式（进程组 CTRL_C_EVENT / AttachConsole+GenerateConsoleCtrlEvent / CREATE_NEW_PROCESS_GROUP+CTRL_BREAK_EVENT）均无法使 tokio handler 接管（CTRL_BREAK 落默认处理器 0xC000013A，事件本身已到达=handler 注册在该环境未生效）。注入信号与 ctrl_c 汇入同一 watch，下游全路径已 E2E 证明（`e2e_plan699_injected_shutdown_releases_port`）；ctrl_c(+unix SIGTERM) 接线与仓内先例同构（`vm/task_system.rs:732`）。建议：复审或合入后由有交互终端的环境执行 `AUTO_HTTP_PORT=8080 auto examples/ui/015-notes/src/back/api.at` → Ctrl+C → 期望 stderr 出现 `Ctrl+C — shutting down gracefully` 与 `VM owner loop exited`、进程 exit 0、端口可复绑。
