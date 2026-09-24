@@ -3318,6 +3318,9 @@ fn spawn_shell_outproc(
                 if provision_root.is_some() {
                     self.release_app_key(name);
                 }
+                // PLAN-043 走查（2026-09-24）：build 失败详情此前只进瞬时
+                // toast（通知槽轮换即失）——落一行 stderr 供实机诊断对账。
+                eprintln!("[session] build `{name}` failed: {e}");
                 format!("build `{name}` failed: {e}")
             })?;
         let title = spec.title.unwrap_or_else(|| comp.widget_name().to_string());

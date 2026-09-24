@@ -19,11 +19,17 @@
 /// PLAN-037 T-02: back api.at 是否需要装载为 proxy VM session——特形谓词
 /// （自 auto-man vue.rs `start_gallery_back_proxy` 内联谓词迁入，658 §5.2
 /// 同律）：`~Stream`（SSE 流端点）/ `~Promise`（异步任务）/ 行首
-/// `use auto.`（原生命名空间）任一命中。普通 `#[api]` CRUD back 不建
-/// session——inproc 合并编译 CALL 面已通（PLAN-037 T-00② 实证）。
+/// `use auto.`（原生命名空间）任一命中。
+/// PLAN-043 走查修正（2026-09-24）：`#[api]` CRUD 路由 back **也建
+/// session**——原判定"普通 #[api] CRUD 不建 session，inproc 合并编译
+/// CALL 面已通（PLAN-037 T-00②）"在桌面轨失效实锤：018/017 前端
+/// `use back.api` 被 P-15 静默跳过 → Init 调 undefined → VmBridge init
+/// 崩 → 无法启动（018 实机两次、017 同族）。CRUD back 一律经 proxy
+/// session 供给（front HTTP 调用，020/029 同配方）。
 pub fn back_needs_session(back_api_source: &str) -> bool {
     back_api_source.contains("~Stream")
         || back_api_source.contains("~Promise")
+        || back_api_source.contains("#[api")
         || back_api_source
             .lines()
             .any(|l| l.trim_start().starts_with("use auto."))
@@ -118,6 +124,23 @@ pub fn plan_backend(spec: &crate::ui::session::LaunchSpec, app_key: &str) -> Bac
                     back_entry: entry.clone(),
                 });
             }
+        }
+    }
+    // PLAN-043 走查（2026-09-24）：018 back 会话缺位诊断——plan 空 = 无
+    // back 供给（数据面空），留一行 stderr 对账（back_entry 缺席/读失败/
+    // 判定否三选一）。
+    if plan.is_empty() {
+        match &spec.back_entry {
+            Some(entry) => {
+                let source = std::fs::read_to_string(entry);
+                let needs = source.as_deref().map(back_needs_session).unwrap_or(false);
+                eprintln!(
+                    "[session] back plan empty: {app_key} entry={} read_ok={} needs_session={needs}",
+                    entry.display(),
+                    source.is_ok()
+                );
+            }
+            None => eprintln!("[session] back plan empty: {app_key} back_entry=None"),
         }
     }
     plan
@@ -226,8 +249,9 @@ mod tests {
         assert!(back_needs_session("pub fn load() ~Promise<Data> { }"));
         assert!(back_needs_session("use auto.image\npub fn ok() int { return 1 }"));
         assert!(back_needs_session("    use auto.image"));
-        // 普通 CRUD / 无特形提及 / 空串不命中。
-        assert!(!back_needs_session(
+        // PLAN-043 走查修正：#[api] CRUD 路由 back 也命中（桌面轨 inproc
+        // CALL 面失效实锤——018/017 P-15 跳过 → Init 崩，见谓词文档注释）。
+        assert!(back_needs_session(
             "#[api(method = \"GET\", path = \"/api/notes\")]\npub fn list() []Note { return notes }"
         ));
         // 注：658 谓词为朴素子串匹配——注释里出现 ~Stream 同样命中（保守
@@ -308,15 +332,16 @@ mod tests {
         assert_eq!(plan.session.as_ref().unwrap().app_id, "017-chat");
         assert_eq!(plan.session.as_ref().unwrap().back_entry, back_entry);
 
-        // 普通 #[api] CRUD back：谓词不命中 → 空计划（inproc 合并编译
-        /// CALL 面已通，T-00② 实证）。
+        // #[api] CRUD back：PLAN-043 走查修正后谓词命中 → 建 session
+        // （桌面轨 inproc CALL 面失效实锤——018/017 P-15 跳过 → Init 崩）。
         let plain_back = dir.join("crud.at");
         std::fs::write(&plain_back, "#[api(method = \"GET\", path = \"/api/notes\")]\npub fn list() int { return 1 }").unwrap();
         let spec = LaunchSpec {
             back_entry: Some(plain_back),
             ..Default::default()
         };
-        assert!(plan_backend(&spec, "013-todo").is_empty(), "CRUD back 不建 session");
+        let plan = plan_backend(&spec, "013-todo");
+        assert!(plan.session.is_some(), "CRUD back 建 session（PLAN-043 修正）");
 
         // ②③叠加：media_root + 特形 back 同存 → 双命中。
         let both = LaunchSpec {

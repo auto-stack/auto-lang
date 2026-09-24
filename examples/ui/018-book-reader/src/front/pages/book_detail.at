@@ -1,7 +1,9 @@
 // book_detail.at — "/book/:id" 书籍详情 + 章节目录。
 // PLAN-684 F-3：左封面/元信息，右编号 TOC 列表（当前章高亮）；主 CTA =
 // Continue/Start。不再用 4 列密网格。
-use back.api: get_book, list_chapters
+// PLAN-043 走查修复（2026-09-24）：`use back.api` 直接导入 VM 轨不可解析
+// ——数据改 Http.get_json 拉（/api/books/:id 与 /chapters，lazy back 随请求
+// 孵化）；`?Book`/`[]Chapter` 类型随 use 失效，model 退无类型 + null 语义。
 use fmt: pct1
 
 style btn_primary_xl = "mt-3 inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
@@ -30,8 +32,8 @@ widget book_detail {
 
     model {
         var book_id int = 0
-        var book ?Book = None
-        var chapters []Chapter = []
+        var book = null
+        var chapters = []
         var loaded bool = false
         var current_ch int = 1
         var progress_label str = ""
@@ -48,7 +50,7 @@ widget book_detail {
             }
 
             if .loaded {
-                if .book == None {
+                if .book == null {
                     col {
                         style: "items-center justify-center py-20 gap-3 text-muted-foreground"
                         text "📖" { style: "text-5xl opacity-40" }
@@ -149,11 +151,11 @@ widget book_detail {
     on {
         .Init -> {
             .book_id = router.param("id")
-            .book = get_book(.book_id)
-            .chapters = list_chapters(.book_id)
+            .book = Http.get_json("/api/books/" + .book_id.to_string())
+            .chapters = Http.get_json("/api/books/" + .book_id.to_string() + "/chapters")
             .current_ch = 1
             .progress_label = ""
-            if .book != None {
+            if .book != null {
                 .current_ch = chapter_from_progress(.book.progress, .book.chapter_count)
                 .progress_label = pct1(.book.progress) + "%"
             }
@@ -165,7 +167,7 @@ widget book_detail {
         }
         .ContinueReading -> {
             var current int = 1
-            if .book != None {
+            if .book != null {
                 current = chapter_from_progress(.book.progress, .book.chapter_count)
             }
             router.push("/book/" + .book_id.to_string() + "/chapter/" + current.to_string())

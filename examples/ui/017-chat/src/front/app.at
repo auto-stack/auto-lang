@@ -5,7 +5,8 @@ use chat_store: ChatStore
 use chat_sidebar: ChatSidebar
 use message_thread: MessageThread
 use composer: Composer
-use back.api: send_message, list_messages, set_typing
+// PLAN-043 走查修复（2026-09-24）：`use back.api` 直接导入 VM 轨不可解析
+// ——发送/打字改 POST back 端点，消息刷新改 GET（lazy back 随首次请求孵化）。
 
 use stylekit.styles: caption_text
 style main_shell = "flex-1 gap-3 min-h-0 overflow-hidden"
@@ -90,11 +91,11 @@ widget App {
             .clock_secs = .clock_secs + 1
         }
         .SendMessage(text) -> {
-            send_message("You", text)
-            store.messages = list_messages()
+            try { Http.post("/api/messages", json.from_value({ sender: "You", text: text })) } catch { }
+            store.messages = Http.get_json("/api/messages")
         }
         .Typing(name) -> {
-            set_typing(name)
+            try { Http.post("/api/typing", json.from_value({ sender: name })) } catch { }
         }
         .SelectContact(id) -> {
             store.SelectContact(id)

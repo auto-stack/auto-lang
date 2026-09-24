@@ -1,10 +1,12 @@
 // book_store.at — shared store. Persists the library + reading progress across
 // all route pages (k1 pattern). Each page does `use store: BooksStore`.
-use back.api: list_books, create_book, delete_book, update_progress
+// PLAN-043 走查修复（2026-09-24）：`use back.api` 直接导入在 VM 轨不可解析
+// （P-15 静默跳过 → 符号未定义 → 无法启动）——改走 back HTTP 端点
+// （GET/POST/DELETE /api/books*；lazy back 随首次请求孵化，020/029 同配方）。
 
 store BooksStore {
     model {
-        var books []Book = []
+        var books = []
         var loading bool = false
     }
 
@@ -12,22 +14,22 @@ store BooksStore {
 
     on {
         .Init -> {
-            // 先清 loading 再拉数：list_books 失败时不留 Loading 死态
+            // 先清 loading 再拉数：list 失败时不留 Loading 死态
             // （gallery 嵌入 back-proxy 500 时仍显示空书架引导）。
             .loading = false
-            .books = list_books()
+            .books = Http.get_json("/api/books")
         }
         .AddBook(title str, author str) -> {
-            create_book(title, author)
-            .books = list_books()
+            try { Http.post("/api/books", json.from_value({ title: title, author: author })) } catch { }
+            .books = Http.get_json("/api/books")
         }
         .RemoveBook(id int) -> {
-            delete_book(id)
-            .books = list_books()
+            try { Http.delete("/api/books/" + id.to_string()) } catch { }
+            .books = Http.get_json("/api/books")
         }
         .SetProgress(id int, progress int) -> {
-            update_progress(id, progress)
-            .books = list_books()
+            try { Http.put("/api/books/" + id.to_string() + "/progress", json.from_value({ progress: progress })) } catch { }
+            .books = Http.get_json("/api/books")
         }
     }
 }
