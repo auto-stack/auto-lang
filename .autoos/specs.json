@@ -7407,6 +7407,18 @@
      "status": "published",
      "created": "2026-09-24",
      "last_modified": "2026-09-24"
+    },
+    {
+     "id": "P700-1",
+     "title": "unify-vm-files-tier 复审与合并收据",
+     "content": "review #1 needs_fix（R-1）：语料常驻化使 cookbook_vm_tests.rs:11 死常量 COOKBOOK_DIR 首次暴露于 t/tf 日常档警告面（test_cookbook 直用字面量，base 期即死仅不可见）——删一行修复 c615d696a，check --tests 零警告+tv 162/162 绿复验。review #2 pass（复审在实现会话内，判定由工件重建）：fresh tf 全量 5689 测零 Compiling auto-lang、语料三族 162/162 零红、红册 12=已知 11 预存（musk×6+desktop_protocol×2+a2vue 金样+plan358+plan606 test_029——master 单跑复现定责 P698 后既有）+ffi_dual_019 环境轮换（619/689 在册 flaky 零改动非引入）；t 档 nextest list 5512 语料族零出现；plan394 17/17；全仓 test-vm-files 残留清零（docs/plans 豁免）；CI yaml safe_load 过；fmt 分叉 5 文件经 base rustfmt 对照勘误=预存。执行勘定：-E 内联 filterset 于 Windows cargo alias 不可行（引号字面传递，单/双引号皆败）→等价 [profile.tv] 语料白名单+--profile tv；AGENTS 档位表/Category B/别名参考+scripts×3+CI 五步骤+project.md:63 一词修正（Plan 568 意图同步）口径全同步。merge=lang rebase 2 commits range-diff 2/2 全等（403b9ea4a→b9f747e45/c615d696a→af95350af）ff-only 落地 master af95350af。观察项三条在册（gallery 围栏每 nextest 进程全量重编 ~800s 无跨进程缓存/dep_parity 一次 >30min 零 CPU 停滞/ffi_dual_019 flaky），出计划范围留裁量。零 spec 触面（分档契约权威载体=AGENTS.md 档位表+config 文件，复审确认）。",
+     "file": "docs/plans/archive/700-unify-vm-files-tier.md",
+     "related": [
+      "PLAN-700"
+     ],
+     "status": "published",
+     "created": "2026-09-24",
+     "last_modified": "2026-09-24"
     }
    ]
   }
