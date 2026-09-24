@@ -3021,6 +3021,7 @@ fn ping() str { "pong" }
             let rebind = std::net::TcpListener::bind(("127.0.0.1", port));
             assert!(rebind.is_ok(), "port must be rebindable after shutdown");
         }
+
     }
 }
 
