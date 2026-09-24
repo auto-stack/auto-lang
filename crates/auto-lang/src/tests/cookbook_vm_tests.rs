@@ -8,7 +8,6 @@ use crate::run_with_capture;
 use std::fs;
 use std::path::PathBuf;
 
-const COOKBOOK_DIR: &str = "test/cookbook";
 
 fn test_cookbook(category: &str, name: &str) -> AutoResult<()> {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
