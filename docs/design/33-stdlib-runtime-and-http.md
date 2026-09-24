@@ -1,10 +1,12 @@
 # 33 - Auto 标准库多后台与 Web 服务运行时
 
-> 状态：方案稿（2026-09-23，代码静态审计）；现状以 `docs/specs/` 与源码为准。
-> 实施入口：[PLAN-696](../plans/696-stdlib-http-server-runtime-hardening.md)。
+> 状态：方案稿（2026-09-23 静态审计；2026-09-24 更新阶段状态）；现状以 `docs/specs/` 与源码为准。
+> 实施入口：阶段 A [PLAN-696](../plans/archive/696-stdlib-http-server-runtime-hardening.md) 已交付；阶段 B [PLAN-699](../plans/699-vm-http-transport-axum-bridge.md) 待实施。
 > 历史输入：[Design 13](13-networking.md)、[多平台填充草案](raw/stdlib-organization.md)、[HTTP 草案](raw/http-server-stdlib.md)。
 
 ## 1. 结论与适用边界
+
+**阶段状态**：下文 §2 与 §5 的风险表保留 PLAN-696 实施前的审计基线，不能当成 2026-09-24 的现状。PLAN-696 已修复分段 body、慢 SSE 阻塞和 VM 指针跨线程转运；现行入口仍是手写 HTTP/1，服务关闭、资源预算与 Axum/Hyper 桥接由 PLAN-699 接续。PLAN-698 的 VM publisher SSE 仍在独立复审/修复中，PLAN-699 的 SSE 改造须以其折叠结果为基线。
 
 Auto 当前足以支撑示例级、本机开发用的 CRUD API，以及已经验证的部分 SSE/媒体路径；不能据此认定 VM HTTP 入口已经具备通用 Web 服务器的协议正确性、并发隔离和运维能力。`#[api]` 是跨后台的用户契约，实际服务能力分散在 AutoVM 原生 shim、`auto-man` 生成的 Axum 服务、VM 合并调用、Tauri IPC，以及 gallery back-proxy 中。不能把“使用同一份 `api.at`”等同于“使用同一 HTTP 实现”。
 
@@ -78,12 +80,12 @@ HTTP/IPC/合并适配器
 
 | 阶段 | 主要交付 | 验收门 |
 |---|---|---|
-| A：契约与 P0 加固（PLAN-696） | 标准库后台覆盖表、HTTP/IPC/合并调用矩阵；分段 body 与慢 SSE 红转绿；去掉 VM 地址整数跨线程转运；修订现状 Specs | 原始 TCP/并发/生命周期回归通过，文档不再把目标态写为现状。 |
-| B：VM HTTP 传输替换 | Axum/Hyper 接入 VM owner 消息桥；旧手写解析退出默认路径；连接、body、时间与关闭预算 | 原始 TCP 分段/慢连接/并发/异常/中断测试与 015/017/023 示例回归通过；无跨线程裸 VM 指针。 |
+| A：契约与 P0 加固（PLAN-696，已交付） | 标准库后台覆盖表、HTTP/IPC/合并调用矩阵；分段 body 与慢 SSE 红转绿；去掉 VM 地址整数跨线程转运；修订现状 Specs | 原始 TCP/并发/生命周期回归与文档核对已完成；详见 PLAN-696 归档记录。 |
+| B：VM HTTP 传输替换（PLAN-699，待实施） | Axum/Hyper 接入 VM owner 消息桥；旧手写解析退出默认路径；连接、body、时间与关闭预算 | 原始 TCP 分段/慢连接/并发/异常/中断测试与 015/017/023 示例回归通过；无跨线程裸 VM 指针。 |
 | C：task/异步 I/O 与流 | `~T`/task 外部 I/O 唤醒、取消/超时；有界 SSE/上传下载；a2r 客户端阻塞边界治理 | 慢 SSE 不拖住并发请求；断连及时回收；背压/取消/错误对拍通过。 |
 | D：多后台收敛与部署 | Rust 生成/VM/IPC/合并/back-proxy 共用 API 契约和失败诊断；覆盖 manifest；安全配置与性能报告 | 指定示例矩阵跨后台同语义；p95、内存、最大连接与拒绝策略有可重复记录，明确支持等级。 |
 
-阶段 B/C/D 应在 A 的证据下各立一个中等规模 Plan；不要把全部迁移压成一个不可独立复审的改动。`cargo check`/局部测试与 `cargo tv`/`cargo th` 等仅在相应 Rust/VM 源码触及时按仓库门禁选用；本次文档审计不运行 Cargo 测试。
+阶段 B/C/D 应在 A 的证据下各立一个中等规模 Plan；B 已由 PLAN-699 起草，C/D 仍待立项。`cargo check`/局部测试与 `cargo tv`/`cargo th` 等仅在相应 Rust/VM 源码触及时按仓库门禁选用；本次文档起草不运行 Cargo 测试。
 
 ## 7. 待决策
 
