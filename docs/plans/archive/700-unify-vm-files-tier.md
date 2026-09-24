@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-700
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: unify-vm-files-tier
 author: [zcode]
 created_at: 2026-09-24
@@ -261,6 +261,24 @@ aavm 系（test-aavm 门）不动。
   tf-review.log 语料 PASS 计 162、corpus FAIL 0、Compiling 0；tv 两轮
   162/162（2.419s/4.316s）；plan394 17 passed。| next=**merge**。
   status: execution_done → reviewed。
+- merge 收据（2026-09-24）：**PLAN-700:r1 completion_kind=delivered**，
+  五 checkpoint 全闭环：
+  ① `prepared`——reviewed 基线 `403b9ea4a`+R-1 `c615d696a`（plan-700-dev），
+    base `499b8bdff`；零 spec 触面（复审确认，规范增量附注在案）；依赖位
+    auto-down 组内 detached `3373a5cc6` 零改动。
+  ② `landed`——rebase 2 commits 到 master `0d95cbe61`，range-diff **2/2
+    全等**（`403b9ea4a→b9f747e45` / `c615d696a→af95350af`），ff-only 落地
+    **delivery_commit=`af95350af`**（master==分支，无 merge commit）；
+    master smoke `cargo t plan394` 17/17 绿 exit 0（scratch/p700-master-smoke.log）。
+  ③ `ledger_refreshed`——`.autoos/specs.json` P700-1（reviews 复审合并收据）
+    外科 append-only（+12 行纯插入，json.loads 验证过）+ `docs/specs/
+    auto-lang/vm/plans.md` 700 行（域归属=vm，564/568 测试档先例同域）+
+    `python scripts/spec-index.py` 再生（输出零变化，与 698 先例一致）；
+    提交 `8416033fa`。
+  ④ `archived`——`git mv` 至 `docs/plans/archive/700-unify-vm-files-tier.md`
+    + frontmatter `status: archived`（终态）。
+  ⑤ `cleaned`——lang-700 组（auto-lang worktree+分支 plan-700-dev+auto-down
+    依赖位）wt-guard clean 后移除，见随后收据补记。
 
 ## 待澄清事项
 
