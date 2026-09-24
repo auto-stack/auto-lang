@@ -462,12 +462,6 @@ fn gen_request_id() -> String {
     format!("req-{:x}-{:x}", now_ms, n)
 }
 
-/// Plan 346 #12 (B6): response-header block carrying the request id
-/// (CRLF-terminated), appended next to `cors_headers()` on every response.
-fn request_id_header(request_id: &str) -> String {
-    format!("X-Request-Id: {}\r\n", request_id)
-}
-
 /// Plan 349 步骤 7/8 (W5): reason phrase for common status codes (redirect focus).
 fn http_status_reason(code: u16) -> &'static str {
     match code {
@@ -484,48 +478,14 @@ fn http_status_reason(code: u16) -> &'static str {
         403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        408 => "Request Timeout",
+        413 => "Payload Too Large",
+        429 => "Too Many Requests",
+        431 => "Request Header Fields Too Large",
         500 => "Internal Server Error",
+        503 => "Service Unavailable",
         _ => "",
     }
-}
-
-/// Plan 346 3c: write a handler-returned Response object (status/headers/body)
-/// directly to the connection. The parts come from
-/// `stdlib::lookup_http_response`.
-async fn write_http_response_object(
-    stream: &mut tokio::net::TcpStream,
-    res: (u16, Vec<(String, String)>, Vec<u8>),
-    req_method: &str,
-    req_path: &str,
-    elapsed_ms: u128,
-    request_id: &str,
-) {
-    use tokio::io::AsyncWriteExt;
-    let (status, headers, body) = res;
-    let mut head = format!(
-        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n",
-        status,
-        http_status_reason(status),
-        body.len()
-    );
-    for (k, v) in &headers {
-        head.push_str(k);
-        head.push_str(": ");
-        head.push_str(v);
-        head.push_str("\r\n");
-    }
-    head.push_str(&cors_headers());
-    head.push_str(&request_id_header(request_id));
-    head.push_str("\r\n");
-    let _ = stream.write_all(head.as_bytes()).await;
-    if !body.is_empty() {
-        let _ = stream.write_all(&body).await;
-    }
-    let _ = stream.flush().await;
-    eprintln!(
-        "[HTTP] {} {} [{}] → {} ({}ms)",
-        req_method, req_path, request_id, status, elapsed_ms
-    );
 }
 
 /// Plan 349 步骤 7/8 (W5): write a CORS preflight (OPTIONS) response and return true if
@@ -3108,6 +3068,220 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
     }
 }
 
+// ============================================================================
+// PLAN-699 T-02: owned request/reply bridge + VM-owner dispatch core
+// ============================================================================
+
+/// Owned, `Send` request handed from the HTTP network layer to the VM owner
+/// thread. Protocol objects (hyper types, sockets) never cross the bridge;
+/// the owner re-runs the same routing/binding/middleware/response semantics
+/// as the legacy inline path (AC-02: no `Rc<AutoVM>`, no raw pointers).
+pub(crate) struct ApiRequest {
+    pub method: String,
+    /// Raw request target (path + query string), as received.
+    pub path: String,
+    /// All request headers (names lowercased, values as received).
+    pub headers: Vec<(String, String)>,
+    /// Fully framed body bytes (bounded by the transport's body limit).
+    pub body: Vec<u8>,
+    pub peer: Option<std::net::SocketAddr>,
+}
+
+impl ApiRequest {
+    fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    }
+}
+
+/// Reply body payload: plain bytes, or SSE frames streamed from a producer
+/// task on the VM owner thread.
+pub(crate) enum ApiBody {
+    Text(Vec<u8>),
+    Sse(tokio::sync::mpsc::Receiver<String>),
+}
+
+/// Structured reply produced by the VM owner for one request.
+pub(crate) enum ApiReply {
+    Full {
+        status: u16,
+        headers: Vec<(String, String)>,
+        body: ApiBody,
+    },
+    /// `#[api]` route matched an `Upgrade: websocket` request — the network
+    /// layer writes the 101 (accept value precomputed here) and serves the
+    /// raw echo loop on the upgraded IO. Capability boundary unchanged:
+    /// simplified echo, not general WebSocket (Design 33 §7.3).
+    WebSocket { accept: String },
+}
+
+/// CORS response headers as typed pairs (the string block in `cors_headers`
+/// stays for the sync stdnet server's string writer).
+pub(crate) fn cors_header_pairs() -> Vec<(String, String)> {
+    let origin = cors_origin();
+    vec![
+        ("Access-Control-Allow-Origin".to_string(), origin),
+        (
+            "Access-Control-Allow-Methods".to_string(),
+            "GET, POST, PUT, DELETE, PATCH, OPTIONS".to_string(),
+        ),
+        (
+            "Access-Control-Allow-Headers".to_string(),
+            "Content-Type, Authorization".to_string(),
+        ),
+        ("Access-Control-Max-Age".to_string(), "86400".to_string()),
+    ]
+}
+
+/// Sec-WebSocket-Accept = base64(sha1(key + magic GUID)) — same handshake the
+/// legacy inline path computed; pure protocol math, no VM involvement.
+pub(crate) fn compute_ws_accept(key: &str) -> String {
+    use base64::Engine;
+    use sha1::Digest;
+    let mut hasher = sha1::Sha1::new();
+    hasher.update(key.as_bytes());
+    hasher.update(b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+    let hash = hasher.finalize();
+    base64::engine::general_purpose::STANDARD.encode(&hash)
+}
+
+/// Convert an `ApiReply` into a legacy raw-TCP response (pre-axum path).
+/// T-03 replaces the transport; the axum arm maps the same reply into
+/// `axum::response::Response` instead.
+async fn write_api_reply(stream: &mut tokio::net::TcpStream, reply: ApiReply) {
+    use tokio::io::AsyncWriteExt;
+    match reply {
+        ApiReply::Full {
+            status,
+            headers,
+            body,
+        } => {
+            let mut head = format!("HTTP/1.1 {} {}\r\n", status, http_status_reason(status));
+            for (k, v) in &headers {
+                head.push_str(k);
+                head.push_str(": ");
+                head.push_str(v);
+                head.push_str("\r\n");
+            }
+            match body {
+                ApiBody::Text(bytes) => {
+                    head.push_str(&format!("Content-Length: {}\r\n\r\n", bytes.len()));
+                    let _ = stream.write_all(head.as_bytes()).await;
+                    if !bytes.is_empty() {
+                        let _ = stream.write_all(&bytes).await;
+                    }
+                }
+                ApiBody::Sse(mut frames) => {
+                    head.push_str("\r\n");
+                    if stream.write_all(head.as_bytes()).await.is_err() {
+                        // Dropping the receiver ends the producer, which runs
+                        // SseIteratorCleanup on the owner thread (696/698 reuse).
+                        return;
+                    }
+                    while let Some(frame) = frames.recv().await {
+                        if stream.write_all(frame.as_bytes()).await.is_err()
+                            || stream.flush().await.is_err()
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        ApiReply::WebSocket { accept } => {
+            let response = format!(
+                "HTTP/1.1 101 Switching Protocols\r\n\
+                 Upgrade: websocket\r\n\
+                 Connection: Upgrade\r\n\
+                 Sec-WebSocket-Accept: {}\r\n\r\n",
+                accept
+            );
+            let _ = stream.write_all(response.as_bytes()).await;
+            let _ = stream.flush().await;
+            serve_ws_echo_loop(stream).await;
+        }
+    }
+}
+
+/// Raw WebSocket echo loop over an upgraded/stream socket — moved verbatim
+/// from the legacy inline path (simplified text-frame echo; not a general
+/// WebSocket implementation).
+async fn serve_ws_echo_loop(stream: &mut tokio::net::TcpStream) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    loop {
+        // Read a WebSocket frame (simplified: text frames only).
+        let mut header = [0u8; 2];
+        if stream.read_exact(&mut header).await.is_err() {
+            break;
+        }
+        let opcode = header[0] & 0x0F;
+        let masked = (header[1] & 0x80) != 0;
+        let payload_len = (header[1] & 0x7F) as usize;
+
+        // Extended payload length (16/64 bit).
+        let actual_len = if payload_len == 126 {
+            let mut ext = [0u8; 2];
+            if stream.read_exact(&mut ext).await.is_err() {
+                break;
+            }
+            u16::from_be_bytes(ext) as usize
+        } else if payload_len == 127 {
+            let mut ext = [0u8; 8];
+            if stream.read_exact(&mut ext).await.is_err() {
+                break;
+            }
+            u64::from_be_bytes(ext) as usize
+        } else {
+            payload_len
+        };
+
+        // Masking key (4 bytes if masked).
+        let mut mask_key = [0u8; 4];
+        if masked {
+            if stream.read_exact(&mut mask_key).await.is_err() {
+                break;
+            }
+        }
+
+        // Payload.
+        let mut payload = vec![0u8; actual_len];
+        if stream.read_exact(&mut payload).await.is_err() {
+            break;
+        }
+        if masked {
+            for (i, b) in payload.iter_mut().enumerate() {
+                *b ^= mask_key[i % 4];
+            }
+        }
+
+        // Handle by opcode.
+        match opcode {
+            0x1 => {
+                // Text frame — echo back (unmasked, server→client).
+                let text = String::from_utf8_lossy(&payload).to_string();
+                let resp = encode_ws_text_frame(&text);
+                let _ = stream.write_all(&resp).await;
+                let _ = stream.flush().await;
+            }
+            0x8 => {
+                // Close frame.
+                break;
+            }
+            0x9 => {
+                // Ping → Pong.
+                let pong = [0x8Au8, payload.len() as u8];
+                let _ = stream.write_all(&pong).await;
+                let _ = stream.write_all(&payload).await;
+            }
+            _ => {}
+        }
+        // Cooperative yield for other connections.
+        tokio::task::yield_now().await;
+    }
+}
+
 /// Plan 317 Phase 4: Concurrent HTTP server using tokio async I/O.
 ///
 /// Replaces the serial `serve_blocking_stdnet` for the Goroutine-style
@@ -3151,6 +3325,530 @@ pub async fn serve_async(vm: std::rc::Rc<crate::vm::engine::AutoVM>, addr: &str)
             handle_connection_async(&vm_owner, &mut stream, &routes_clone).await;
         });
     }
+}
+
+/// PLAN-699 T-02: the VM-owner dispatch core shared by the legacy inline
+/// server and the Axum bridge. Consumes an owned `ApiRequest` and runs the
+/// legacy semantics in the legacy order — CORS preflight → rate limit →
+/// request id → multipart → route match → websocket upgrade → middleware →
+/// binder → handler → response object / SSE / broadcast — returning a
+/// structured reply. No socket I/O happens here; runs synchronously on the
+/// VM owner thread (must be inside a `LocalSet` for `spawn_local` SSE
+/// producers). A CPU-bound handler blocks the owner until it returns —
+/// queueing bounds the wait, it cannot preempt the handler (Design 33 §C).
+pub(crate) fn dispatch_api_request(
+    vm: &std::rc::Rc<crate::vm::engine::AutoVM>,
+    routes: &[HttpRoute],
+    req: &ApiRequest,
+) -> ApiReply {
+    let req_method = req.method.to_uppercase();
+    let req_path = req.path.clone();
+
+    // Plan 349 步骤 7/8 (W5): CORS preflight short-circuit — same response
+    // as the legacy inline write (204 + CORS block, empty body).
+    if let Some(_preflight) = handle_cors_preflight(&req_method) {
+        return ApiReply::Full {
+            status: 204,
+            headers: cors_header_pairs(),
+            body: ApiBody::Text(Vec::new()),
+        };
+    }
+
+    // Framing metadata from owned headers (same selection as the legacy loop).
+    let content_type_raw = req.header("content-type").unwrap_or("").to_string();
+    let content_type = content_type_raw.to_ascii_lowercase();
+    let cookie_header = req.header("cookie").unwrap_or("").to_string();
+    let auth_header = req.header("authorization").unwrap_or("").to_string();
+    let incoming_request_id = req.header("x-request-id").unwrap_or("").to_string();
+    let is_websocket = req
+        .header("upgrade")
+        .map(|v| v.to_ascii_lowercase().contains("websocket"))
+        .unwrap_or(false);
+
+    // Plan 346 B6: resolve this request's id (incoming value wins, else mint).
+    let request_id = if incoming_request_id.is_empty() {
+        gen_request_id()
+    } else {
+        incoming_request_id
+    };
+
+    // Plan 346 5e (B6): per-IP fixed-window rate limit — after the CORS
+    // preflight short-circuit, before middleware/route matching.
+    let client_ip = req
+        .peer
+        .map(|a| a.ip().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    if let Some(retry_after_ms) = rate_limit_take(&client_ip) {
+        let body = format!(
+            "{{\"error\":\"rate limit exceeded\",\"retry_after_ms\":{}}}",
+            retry_after_ms
+        );
+        let mut headers = vec![
+            ("Content-Type".to_string(), "application/json".to_string()),
+            (
+                "Retry-After".to_string(),
+                ((retry_after_ms + 999) / 1000).to_string(),
+            ),
+        ];
+        headers.extend(cors_header_pairs());
+        headers.push(("X-Request-Id".to_string(), request_id.clone()));
+        eprintln!(
+            "[HTTP] {} {} [{}] → 429 rate limited (ip {})",
+            req_method, req_path, request_id, client_ip
+        );
+        return ApiReply::Full {
+            status: 429,
+            headers,
+            body: ApiBody::Text(body.into_bytes()),
+        };
+    }
+
+    let body = String::from_utf8_lossy(&req.body).into_owned();
+
+    // Multipart is binary — same framed byte buffer to its parser.
+    let mut multipart_json: Option<String> = None;
+    if content_type.starts_with("multipart/form-data") {
+        let boundary = content_type_raw
+            .split(';')
+            .find_map(|p| p.trim().strip_prefix("boundary="))
+            .map(|b| b.trim_matches('"').to_string());
+        if let Some(boundary) = boundary {
+            let parts = parse_multipart(&req.body, &boundary);
+            multipart_json = Some(multipart_to_handler_json(parts));
+            eprintln!(
+                "[HTTP] {} {} [{}] multipart: {} bytes parsed",
+                req_method,
+                req_path,
+                request_id,
+                req.body.len()
+            );
+        } else {
+            eprintln!(
+                "[HTTP] {} {} [{}] multipart without boundary — ignored",
+                req_method, req_path, request_id
+            );
+        }
+    }
+
+    // Route match
+    let route_match = match match_route(routes, &req_method, &req_path) {
+        Some(rm) => rm,
+        None => {
+            let mut headers = cors_header_pairs();
+            headers.push(("X-Request-Id".to_string(), request_id.clone()));
+            return ApiReply::Full {
+                status: 404,
+                headers,
+                body: ApiBody::Text(Vec::new()),
+            };
+        }
+    };
+
+    // Plan 350: WebSocket upgrade handling — the legacy inline path required
+    // a matched route first (404 wins), then handshaked when a
+    // Sec-WebSocket-Key was present; a missing key fell through to normal
+    // handling. Same order preserved.
+    if is_websocket {
+        if let Some(key) = req.header("sec-websocket-key") {
+            return ApiReply::WebSocket {
+                accept: compute_ws_accept(key),
+            };
+        }
+    }
+
+    // Plan 352: middleware chain before the handler; request-info JSON shares
+    // the request id with X-Request-Id so middleware can correlate.
+    let request_info = format!(
+        r#"{{"method":"{}","path":"{}","content_type":"{}","has_body":{},"request_id":"{}"}}"#,
+        req_method,
+        req_path,
+        content_type,
+        !body.is_empty(),
+        request_id
+    );
+    let middleware_names: Vec<String> = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
+        .lock()
+        .map(|c| c.clone())
+        .unwrap_or_default();
+    let mut middleware_response: Option<String> = None;
+    for mw_fn in &middleware_names {
+        let mw_task_id = vm.spawn_task(0, 65536);
+        // Push request info as arg.
+        if let Some(t_arc) = vm.tasks.get(&mw_task_id) {
+            if let Ok(mut t) = t_arc.try_lock() {
+                push_str_arg(vm, &mut t, &request_info);
+            }
+        }
+        let mw_result = if let Some(t_arc) = vm.tasks.get(&mw_task_id) {
+            let mut t = match t_arc.try_lock() {
+                Ok(t) => t,
+                Err(_) => break,
+            };
+            match vm.call_fn_by_name(&mut t, mw_fn, 1) {
+                Ok(()) => {
+                    let nv = t.ram.pop_nv();
+                    if auto_val::is_null(nv) {
+                        None
+                    } else {
+                        nv_to_json(vm, nv, 0)
+                    }
+                }
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+        vm.tasks.remove(&mw_task_id);
+        if let Some(ref resp) = mw_result {
+            if !resp.is_empty() && resp != "null" {
+                middleware_response = Some(resp.clone());
+                break;
+            }
+        }
+    }
+    if let Some(ref mw_resp) = middleware_response {
+        // Middleware short-circuited — return its response directly.
+        eprintln!("[HTTP] {} {} [{}] → MW ({}ms)", req_method, req_path, request_id, 0);
+        let mut headers = vec![(
+            "Content-Type".to_string(),
+            "application/json".to_string(),
+        )];
+        headers.extend(cors_header_pairs());
+        headers.push(("X-Request-Id".to_string(), request_id.clone()));
+        return ApiReply::Full {
+            status: 200,
+            headers,
+            body: ApiBody::Text(mw_resp.clone().into_bytes()),
+        };
+    }
+
+    // Plan 442 C2: axum adapter detection — synthetic `__axum:<n>` names
+    // dispatch via closure (Plan 383) with extractor marshalling.
+    let request_start = std::time::Instant::now();
+    let handler_task_id = vm.spawn_task(0, 65536);
+    let axum_route = if route_match.fn_name.starts_with("__axum:") {
+        match crate::vm::ffi::axum_adapter::route_by_synthetic_name(&route_match.fn_name) {
+            Some(r) => Some(r),
+            None => {
+                eprintln!(
+                    "[HTTP] {} {} → 500 (axum route lookup failed for {})",
+                    req_method, req_path, route_match.fn_name
+                );
+                vm.tasks.remove(&handler_task_id);
+                let mut headers = vec![(
+                    "Content-Type".to_string(),
+                    "application/json".to_string(),
+                )];
+                headers.extend(cors_header_pairs());
+                return ApiReply::Full {
+                    status: 500,
+                    headers,
+                    body: ApiBody::Text(br#"{"error":"route lookup failed"}"#.to_vec()),
+                };
+            }
+        }
+    } else {
+        None
+    };
+
+    let n_args = if let Some(ref axum_route) = axum_route {
+        // Axum adapter path: marshalling per param extractor shapes.
+        let query_json = if route_match.query_params.is_empty() {
+            "{}".to_string()
+        } else {
+            let pairs: Vec<String> = route_match
+                .query_params
+                .iter()
+                .map(|(k, v)| {
+                    format!(
+                        "\"{}\":\"{}\"",
+                        k.replace('"', "\\\""),
+                        v.replace('"', "\\\"")
+                    )
+                })
+                .collect();
+            format!("{{{}}}", pairs.join(","))
+        };
+        let mut pushed = 0usize;
+        if let Some(t_arc) = vm.tasks.get(&handler_task_id) {
+            if let Ok(mut t) = t_arc.try_lock() {
+                let headers_json = if auth_header.is_empty() {
+                    "{}".to_string()
+                } else {
+                    format!("{{\"authorization\":\"{}\"}}", auth_header.replace('"', ""))
+                };
+                pushed = crate::vm::ffi::axum_adapter::push_extractor_args(
+                    vm,
+                    &mut t,
+                    axum_route,
+                    &route_match.path_params,
+                    &query_json,
+                    &body,
+                    &headers_json,
+                );
+            }
+        }
+        pushed
+    } else {
+        // Legacy #[api] path: PLAN-669 by-name binding (path → body field →
+        // query); bind failures map to 400/500 responses.
+        match build_handler_args(
+            vm,
+            handler_task_id,
+            &route_match,
+            &body,
+            &content_type,
+            &cookie_header,
+            &auth_header,
+            multipart_json.as_deref(),
+            &req_method,
+            &req_path,
+        ) {
+            Ok(n) => n,
+            Err(ApiArgBindError::BadRequest(msg)) => {
+                eprintln!("[HTTP] {} {} → 400 ({})", req_method, req_path, msg);
+                vm.tasks.remove(&handler_task_id);
+                let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
+                let mut headers = vec![(
+                    "Content-Type".to_string(),
+                    "application/json".to_string(),
+                )];
+                headers.extend(cors_header_pairs());
+                return ApiReply::Full {
+                    status: 400,
+                    headers,
+                    body: ApiBody::Text(err_body.into_bytes()),
+                };
+            }
+            Err(ApiArgBindError::Internal(msg)) => {
+                eprintln!("[HTTP] {} {} → 500 ({})", req_method, req_path, msg);
+                vm.tasks.remove(&handler_task_id);
+                let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
+                let mut headers = vec![(
+                    "Content-Type".to_string(),
+                    "application/json".to_string(),
+                )];
+                headers.extend(cors_header_pairs());
+                return ApiReply::Full {
+                    status: 500,
+                    headers,
+                    body: ApiBody::Text(err_body.into_bytes()),
+                };
+            }
+        }
+    };
+
+    // DashMap 读守卫纪律（既有注释沿用）：守卫作用域内不得对同一 shard
+    // `vm.tasks.remove`（自死锁）；守卫先行 drop 再清理任务。
+    let reply = if let Some(_task_arc) = vm.tasks.get(&handler_task_id) {
+        let mut ht = match _task_arc.try_lock() {
+            Ok(t) => t,
+            Err(_) => {
+                eprintln!(
+                    "[HTTP] {} {} → 500 (task lock failed, {}ms)",
+                    req_method,
+                    req_path,
+                    request_start.elapsed().as_millis()
+                );
+                vm.tasks.remove(&handler_task_id);
+                let mut headers = vec![(
+                    "Content-Type".to_string(),
+                    "application/json".to_string(),
+                )];
+                headers.extend(cors_header_pairs());
+                return ApiReply::Full {
+                    status: 500,
+                    headers,
+                    body: ApiBody::Text(br#"{"error":"internal error"}"#.to_vec()),
+                };
+            }
+        };
+
+        // Dispatch: axum routes use closure (Plan 383 fn-ref), legacy use fn-name.
+        match if let Some(ref axum_route) = axum_route {
+            vm.call_closure(&mut ht, axum_route.closure_id, n_args)
+        } else {
+            vm.call_fn_by_name(&mut ht, &route_match.fn_name, n_args)
+        } {
+            Ok(()) => {
+                let nv = ht.ram.pop_nv();
+                // SSE detection: generator/iterator return → stream frames.
+                if auto_val::is_i32(nv) {
+                    let iter_id = auto_val::decode_i32(nv) as u32;
+                    if vm.iterators.contains_key(&iter_id) {
+                        eprintln!(
+                            "[HTTP] {} {} → 200 SSE ({}ms)",
+                            req_method,
+                            req_path,
+                            request_start.elapsed().as_millis()
+                        );
+                        drop(ht);
+                        drop(_task_arc);
+                        // Bounded frame channel (capacity 1 — same backpressure
+                        // as the legacy producer loop); slow client blocks the
+                        // producer which pauses the generator batches.
+                        let (sender, receiver) = tokio::sync::mpsc::channel(1);
+                        let producer_vm = vm.clone();
+                        tokio::task::spawn_local(async move {
+                            produce_sse_frames(producer_vm, iter_id, sender).await;
+                        });
+                        ApiReply::Full {
+                            status: 200,
+                            headers: vec![
+                                (
+                                    "Content-Type".to_string(),
+                                    "text/event-stream".to_string(),
+                                ),
+                                ("Cache-Control".to_string(), "no-cache".to_string()),
+                                ("Connection".to_string(), "keep-alive".to_string()),
+                            ],
+                            body: ApiBody::Sse(receiver),
+                        }
+                    } else if let Some(res) =
+                        crate::vm::ffi::stdlib::lookup_http_response(iter_id as u64)
+                    {
+                        // Plan 346 3c: handler-built Response object — serve
+                        // status/headers/body directly (custom headers + CORS
+                        // + request id, same as write_http_response_object).
+                        let (status, headers, body) = res;
+                        let mut all_headers = headers;
+                        all_headers.extend(cors_header_pairs());
+                        all_headers.push(("X-Request-Id".to_string(), request_id.clone()));
+                        drop(ht);
+                        eprintln!(
+                            "[HTTP] {} {} [{}] → {} ({}ms)",
+                            req_method,
+                            req_path,
+                            request_id,
+                            status,
+                            request_start.elapsed().as_millis()
+                        );
+                        ApiReply::Full {
+                            status,
+                            headers: all_headers,
+                            body: ApiBody::Text(body),
+                        }
+                    } else {
+                        json_value_reply(vm, nv, &req_method, &req_path, &route_match.fn_name, &body, &request_id, request_start.elapsed().as_millis())
+                    }
+                } else if auto_val::is_i64(nv) {
+                    // Plan 346 3c / Plan 377 inline tag 8: response handles.
+                    let handle = auto_val::decode_i64(nv) as u64;
+                    match crate::vm::ffi::stdlib::lookup_http_response(handle) {
+                        Some(res) => {
+                            let (status, headers, body) = res;
+                            let mut all_headers = headers;
+                            all_headers.extend(cors_header_pairs());
+                            all_headers
+                                .push(("X-Request-Id".to_string(), request_id.clone()));
+                            drop(ht);
+                            eprintln!(
+                                "[HTTP] {} {} [{}] → {} ({}ms)",
+                                req_method,
+                                req_path,
+                                request_id,
+                                status,
+                                request_start.elapsed().as_millis()
+                            );
+                            ApiReply::Full {
+                                status,
+                                headers: all_headers,
+                                body: ApiBody::Text(body),
+                            }
+                        }
+                        None => json_value_reply(vm, nv, &req_method, &req_path, &route_match.fn_name, &body, &request_id, request_start.elapsed().as_millis()),
+                    }
+                } else {
+                    json_value_reply(vm, nv, &req_method, &req_path, &route_match.fn_name, &body, &request_id, request_start.elapsed().as_millis())
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "[HTTP] {} {} → 500 (handler '{}' error: {:?}, {}ms)",
+                    req_method,
+                    req_path,
+                    route_match.fn_name,
+                    e,
+                    request_start.elapsed().as_millis()
+                );
+                // Plan 346 stage 2: proper 500 JSON error response.
+                let error_json = format!(
+                    r#"{{"error":"internal server error","detail":"{}"}}"#,
+                    format!("{:?}", e)
+                        .replace('"', "\\\"")
+                        .replace('\n', " ")
+                );
+                ApiReply::Full {
+                    status: 500,
+                    headers: json_reply_headers(&request_id),
+                    body: ApiBody::Text(error_json.into_bytes()),
+                }
+            }
+        }
+    } else {
+        // No task slot — legacy wrote nothing (connection left hanging);
+        // a determinate empty 200 keeps the bridge contract total.
+        ApiReply::Full {
+            status: 200,
+            headers: json_reply_headers(&request_id),
+            body: ApiBody::Text(Vec::new()),
+        }
+    };
+
+    vm.tasks.remove(&handler_task_id);
+    reply
+}
+
+/// Marshal a returned NanoValue into the final JSON reply arm: PLAN-698 POST
+/// broadcast + 200/500 mapping by the legacy `{"error":` prefix convention +
+/// the success log line.
+fn json_value_reply(
+    vm: &crate::vm::engine::AutoVM,
+    nv: auto_val::NanoValue,
+    req_method: &str,
+    req_path: &str,
+    fn_name: &str,
+    request_body: &str,
+    request_id: &str,
+    elapsed_ms: u128,
+) -> ApiReply {
+    match nv_to_json(vm, nv, 0) {
+        Some(result_json) => {
+            let is_error = result_json.starts_with("{\"error\":");
+            let status = if is_error { 500 } else { 200 };
+            // PLAN-698 SD-02: POST 广播臂（Typing / New{Type}，has_sse 门控）。
+            if !is_error && req_method == "POST" {
+                publish_post_broadcast(fn_name, request_body, &result_json);
+            }
+            if !is_error {
+                eprintln!(
+                    "[HTTP] {} {} [{}] → 200 ({}ms)",
+                    req_method, req_path, request_id, elapsed_ms
+                );
+            }
+            ApiReply::Full {
+                status,
+                headers: json_reply_headers(request_id),
+                body: ApiBody::Text(result_json.into_bytes()),
+            }
+        }
+        None => ApiReply::Full {
+            status: 200,
+            headers: json_reply_headers(request_id),
+            body: ApiBody::Text(Vec::new()),
+        },
+    }
+}
+
+/// Standard headers of a JSON `#[api]` reply (content-type + CORS + request id).
+fn json_reply_headers(request_id: &str) -> Vec<(String, String)> {
+    let mut headers = vec![(
+        "Content-Type".to_string(),
+        "application/json".to_string(),
+    )];
+    headers.extend(cors_header_pairs());
+    headers.push(("X-Request-Id".to_string(), request_id.to_string()));
+    headers
 }
 
 struct SseIteratorCleanup {
@@ -3347,7 +4045,7 @@ async fn handle_connection_async(
     stream: &mut tokio::net::TcpStream,
     routes: &[HttpRoute],
 ) {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::AsyncReadExt;
     use std::time::Duration;
 
     const MAX_HEADER_SIZE: usize = 64 * 1024;
@@ -3421,23 +4119,13 @@ async fn handle_connection_async(
     let req_method = parts[0].to_uppercase();
     let req_path = parts[1].to_string();
 
-    // Plan 349 步骤 7/8 (W5): CORS preflight short-circuit — respond before parsing the
-    // body since preflight requests have no body.
-    if let Some(preflight) = handle_cors_preflight(&req_method) {
-        let _ = stream.write_all(preflight.as_bytes()).await;
-        return;
-    }
-
     // Parse framing and request metadata from complete header lines. Invalid
     // lengths and transfer codings we do not implement are rejected up front.
+    // PLAN-699 T-02: every header is carried on the owned ApiRequest
+    // (names lowercased); only framing checks stay in the parse layer.
     let mut content_length_header: Option<usize> = None;
     let mut has_transfer_encoding = false;
-    let mut is_websocket = false;
-    let mut content_type = String::new();
-    let mut content_type_raw = String::new();
-    let mut cookie_header = String::new();
-    let mut auth_header = String::new();
-    let mut incoming_request_id = String::new();
+    let mut all_headers: Vec<(String, String)> = Vec::new();
     for line in lines {
         if line.is_empty() {
             break;
@@ -3469,18 +4157,9 @@ async fn handle_connection_async(
                 content_length_header = Some(parsed);
             }
             "transfer-encoding" => has_transfer_encoding = true,
-            "upgrade" if value.to_ascii_lowercase().contains("websocket") => is_websocket = true,
-            "content-type" => {
-                // Preserve multipart boundary case while retaining a lowercase
-                // media-type copy for case-insensitive checks.
-                content_type = value.to_ascii_lowercase();
-                content_type_raw = value.to_string();
-            }
-            "cookie" => cookie_header = value.to_string(),
-            "authorization" => auth_header = value.to_string(),
-            "x-request-id" => incoming_request_id = value.to_string(),
             _ => {}
         }
+        all_headers.push((name, value.to_string()));
     }
     if has_transfer_encoding {
         write_request_error_response(stream, "400 Bad Request", "Transfer-Encoding is not supported").await;
@@ -3489,38 +4168,6 @@ async fn handle_connection_async(
     let content_length = content_length_header.unwrap_or(0);
     if content_length_header.is_none() && buf.len() > head_end {
         write_request_error_response(stream, "400 Bad Request", "request body requires Content-Length").await;
-        return;
-    }
-
-    // Plan 346 B6: resolve this request's id (incoming value wins, else mint).
-    // Present on every response as X-Request-Id and in the middleware
-    // request-info JSON, so logs/middleware/handler share one trace id.
-    let request_id = if incoming_request_id.is_empty() {
-        gen_request_id()
-    } else {
-        incoming_request_id
-    };
-
-    // Plan 346 5e (B6): per-IP fixed-window rate limit — checked after the
-    // CORS preflight short-circuit (preflights stay free) but before the
-    // middleware chain and route matching. 429 carries Retry-After + the
-    // request id.
-    let client_ip = stream
-        .peer_addr()
-        .map(|a| a.ip().to_string())
-        .unwrap_or_else(|_| "unknown".to_string());
-    if let Some(retry_after_ms) = rate_limit_take(&client_ip) {
-        let body = format!("{{\"error\":\"rate limit exceeded\",\"retry_after_ms\":{}}}", retry_after_ms);
-        let resp = format!(
-            "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nRetry-After: {}\r\nContent-Length: {}\r\nConnection: close\r\n{}{}\r\n{}",
-            (retry_after_ms + 999) / 1000,
-            body.len(),
-            cors_headers(),
-            request_id_header(&request_id),
-            body
-        );
-        let _ = stream.write_all(resp.as_bytes()).await;
-        eprintln!("[HTTP] {} {} [{}] → 429 rate limited (ip {})", req_method, req_path, request_id, client_ip);
         return;
     }
 
@@ -3557,443 +4204,20 @@ async fn handle_connection_async(
         }
         body_bytes.extend_from_slice(&chunk[..n]);
     }
-    let body = String::from_utf8_lossy(&body_bytes).into_owned();
 
-    // Multipart is binary, so pass the same fully framed byte buffer directly
-    // to its parser. Ordinary text and JSON bodies use those bytes above.
-    let mut multipart_json: Option<String> = None;
-    if content_type.starts_with("multipart/form-data") {
-        let boundary = content_type_raw
-            .split(';')
-            .find_map(|p| p.trim().strip_prefix("boundary="))
-            .map(|b| b.trim_matches('"').to_string());
-        if let Some(boundary) = boundary {
-            let parts = parse_multipart(&body_bytes, &boundary);
-            multipart_json = Some(multipart_to_handler_json(parts));
-            eprintln!(
-                "[HTTP] {} {} [{}] multipart: {} bytes parsed",
-                req_method, req_path, request_id, body_bytes.len()
-            );
-        } else {
-            eprintln!("[HTTP] {} {} [{}] multipart without boundary — ignored", req_method, req_path, request_id);
-        }
-    }
-
-    // Route match
-    let route_match = match match_route(routes, &req_method, &req_path) {
-        Some(rm) => rm,
-        None => {
-            let resp = format!("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n{}{}\r\n", cors_headers(), request_id_header(&request_id));
-            let _ = stream.write_all(resp.as_bytes()).await;
-            return;
-        }
+    // PLAN-699 T-02: hand the fully framed request to the shared VM-owner
+    // dispatch core (request id/rate limit/CORS/multipart/route/middleware/
+    // binder/handler semantics all live there now) and write the structured
+    // reply back over raw TCP.
+    let api_req = ApiRequest {
+        method: req_method.clone(),
+        path: req_path.clone(),
+        headers: all_headers,
+        body: body_bytes,
+        peer: stream.peer_addr().ok(),
     };
-
-    // Plan 350: WebSocket upgrade handling.
-    if is_websocket {
-        // We need to do the WebSocket handshake using tungstenite. Since we've
-        // already read the HTTP request into `raw`, we need to convert the
-        // tokio TcpStream into a tungstenite WebSocket. The simplest approach:
-        // write the raw request back into the stream (tungstenite reads it),
-        // but actually tungstenite's server::accept expects a stream where the
-        // client's upgrade request hasn't been consumed yet. Since we already
-        // consumed it, we need to manually do the handshake.
-        //
-        // Alternative: use tungstenite's handshake manually. We extract the
-        // Sec-WebSocket-Key from the raw request, compute the accept value,
-        // write the response, then wrap the stream.
-        let ws_key = raw.lines()
-            .find(|l| l.to_lowercase().starts_with("sec-websocket-key:"))
-            .and_then(|l| l.split(':').nth(1))
-            .map(|s| s.trim().to_string());
-
-        if let Some(key) = ws_key {
-            // Compute Sec-WebSocket-Accept: base64(sha1(key + magic_guid))
-            // Compute Sec-WebSocket-Accept: base64(sha1(key + magic_guid))
-            use sha1::Digest;
-            let mut hasher = sha1::Sha1::new();
-            hasher.update(key.as_bytes());
-            hasher.update(b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
-            let hash = hasher.finalize();
-            use base64::Engine;
-            let accept = base64::engine::general_purpose::STANDARD.encode(&hash);
-
-            let response = format!(
-                "HTTP/1.1 101 Switching Protocols\r\n\
-                 Upgrade: websocket\r\n\
-                 Connection: Upgrade\r\n\
-                 Sec-WebSocket-Accept: {}\r\n\r\n",
-                accept
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
-            let _ = stream.flush().await;
-
-            // Now the TCP stream is a raw WebSocket. We use tokio's AsyncRead
-            // to read raw WebSocket frames and echo text messages back.
-            // This avoids the ownership issue of converting &mut TcpStream.
-            loop {
-                // Read a WebSocket frame (simplified: text frames only).
-                let mut header = [0u8; 2];
-                if stream.read_exact(&mut header).await.is_err() {
-                    break;
-                }
-                let opcode = header[0] & 0x0F;
-                let masked = (header[1] & 0x80) != 0;
-                let payload_len = (header[1] & 0x7F) as usize;
-
-                // Extended payload length (16/64 bit).
-                let actual_len = if payload_len == 126 {
-                    let mut ext = [0u8; 2];
-                    if stream.read_exact(&mut ext).await.is_err() { break; }
-                    u16::from_be_bytes(ext) as usize
-                } else if payload_len == 127 {
-                    let mut ext = [0u8; 8];
-                    if stream.read_exact(&mut ext).await.is_err() { break; }
-                    u64::from_be_bytes(ext) as usize
-                } else {
-                    payload_len
-                };
-
-                // Masking key (4 bytes if masked).
-                let mut mask_key = [0u8; 4];
-                if masked {
-                    if stream.read_exact(&mut mask_key).await.is_err() { break; }
-                }
-
-                // Payload.
-                let mut payload = vec![0u8; actual_len];
-                if stream.read_exact(&mut payload).await.is_err() { break; }
-                if masked {
-                    for (i, b) in payload.iter_mut().enumerate() {
-                        *b ^= mask_key[i % 4];
-                    }
-                }
-
-                // Handle by opcode.
-                match opcode {
-                    0x1 => {
-                        // Text frame — echo back (unmasked, server→client).
-                        let text = String::from_utf8_lossy(&payload).to_string();
-                        let resp = encode_ws_text_frame(&text);
-                        let _ = stream.write_all(&resp).await;
-                        let _ = stream.flush().await;
-                    }
-                    0x8 => {
-                        // Close frame.
-                        break;
-                    }
-                    0x9 => {
-                        // Ping → Pong.
-                        let pong = [0x8Au8, payload.len() as u8];
-                        let _ = stream.write_all(&pong).await;
-                        let _ = stream.write_all(&payload).await;
-                    }
-                    _ => {}
-                }
-                // Cooperative yield for other connections.
-                tokio::task::yield_now().await;
-            }
-        }
-        return;
-    }
-
-    // Plan 352: Execute middleware chain before handler.
-    // Each middleware is a VM fn that receives a request-info JSON string.
-    // If it returns a non-empty/non-null value, that becomes the response
-    // (short-circuit). If it returns nil/empty, the handler runs normally.
-    // Plan 346 #12 (B6): request_id is part of the request-info payload so
-    // middleware (logging/auth) can correlate with the X-Request-Id header.
-    let request_info = format!(
-        r#"{{"method":"{}","path":"{}","content_type":"{}","has_body":{},"request_id":"{}"}}"#,
-        req_method, req_path, content_type, !body.is_empty(), request_id
-    );
-    let middleware_names: Vec<String> = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
-        .lock().map(|c| c.clone()).unwrap_or_default();
-    let mut middleware_response: Option<String> = None;
-    for mw_fn in &middleware_names {
-        let mw_task_id = vm.spawn_task(0, 65536);
-        // Push request info as arg.
-        if let Some(t_arc) = vm.tasks.get(&mw_task_id) {
-            if let Ok(mut t) = t_arc.try_lock() {
-                push_str_arg(vm, &mut t, &request_info);
-            }
-        }
-        let mw_result = if let Some(t_arc) = vm.tasks.get(&mw_task_id) {
-            let mut t = match t_arc.try_lock() { Ok(t) => t, Err(_) => break };
-            match vm.call_fn_by_name(&mut t, mw_fn, 1) {
-                Ok(()) => {
-                    let nv = t.ram.pop_nv();
-                    if auto_val::is_null(nv) { None }
-                    else { nv_to_json(vm, nv, 0) }
-                }
-                Err(_) => None,
-            }
-        } else { None };
-        vm.tasks.remove(&mw_task_id);
-        if let Some(ref resp) = mw_result {
-            if !resp.is_empty() && resp != "null" {
-                middleware_response = Some(resp.clone());
-                break;
-            }
-        }
-    }
-    if let Some(ref mw_resp) = middleware_response {
-        // Middleware short-circuited — return its response directly.
-        eprintln!("[HTTP] {} {} [{}] → MW ({}ms)", req_method, req_path, request_id, 0);
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}{}\r\n{}",
-            mw_resp.len(), cors_headers(), request_id_header(&request_id), mw_resp
-        );
-        let _ = stream.write_all(response.as_bytes()).await;
-        return;
-    }
-
-    // Plan 442 C2: axum adapter detection — synthetic `__axum:<n>` names indicate
-    // the route was built via the adapter (Router::new + app.route(get/post)).
-    // For these routes, use extractor-based marshalling instead of the legacy
-    // positional convention, and dispatch via closure (Plan 383 zero-capture fn-ref).
-    let request_start = std::time::Instant::now();
-    let handler_task_id = vm.spawn_task(0, 65536);
-    let axum_route = if route_match.fn_name.starts_with("__axum:") {
-        match crate::vm::ffi::axum_adapter::route_by_synthetic_name(&route_match.fn_name) {
-            Some(r) => Some(r),
-            None => {
-                eprintln!("[HTTP] {} {} → 500 (axum route lookup failed for {})",
-                    req_method, req_path, route_match.fn_name);
-                vm.tasks.remove(&handler_task_id);
-                let resp = format!("HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 31\r\nConnection: close\r\n{}\r\n{{\"error\":\"route lookup failed\"}}", cors_headers());
-                let _ = stream.write_all(resp.as_bytes()).await;
-                return;
-            }
-        }
-    } else {
-        None
-    };
-
-    let n_args = if let Some(ref axum_route) = axum_route {
-        // Axum adapter path: marshalling per param extractor shapes.
-        // Query JSON for the Query<T> extractor.
-        let query_json = if route_match.query_params.is_empty() {
-            "{}".to_string()
-        } else {
-            let pairs: Vec<String> = route_match.query_params.iter()
-                .map(|(k, v)| format!("\"{}\":\"{}\"", k.replace('"', "\\\""), v.replace('"', "\\\"")))
-                .collect();
-            format!("{{{}}}", pairs.join(","))
-        };
-        let mut pushed = 0usize;
-        if let Some(t_arc) = vm.tasks.get(&handler_task_id) {
-            if let Ok(mut t) = t_arc.try_lock() {
-                let headers_json = if auth_header.is_empty() {
-                    "{}".to_string()
-                } else {
-                    format!("{{\"authorization\":\"{}\"}}", auth_header.replace('"', ""))
-                };
-                pushed = crate::vm::ffi::axum_adapter::push_extractor_args(
-                    vm,
-                    &mut t,
-                    axum_route,
-                    &route_match.path_params,
-                    &query_json,
-                    &body,
-                    &headers_json,
-                );
-            }
-        }
-        pushed
-    } else {
-        // Legacy #[api] path: PLAN-669 by-name binding (path → body field →
-        // query) when the fn's sigs are published; positional params + query
-        // collection + raw body otherwise. Bind failures are protocol errors
-        // (400 missing/invalid param, 500 marshal) — respond and abort the
-        // request instead of calling the handler with wrong args.
-        match build_handler_args(
-            vm,
-            handler_task_id,
-            &route_match,
-            &body,
-            &content_type,
-            &cookie_header,
-            &auth_header,
-            multipart_json.as_deref(),
-            &req_method,
-            &req_path,
-        ) {
-            Ok(n) => n,
-            Err(ApiArgBindError::BadRequest(msg)) => {
-                eprintln!("[HTTP] {} {} → 400 ({})", req_method, req_path, msg);
-                vm.tasks.remove(&handler_task_id);
-                let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
-                let resp = format!(
-                    "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
-                    err_body.len(),
-                    cors_headers(),
-                    err_body
-                );
-                let _ = stream.write_all(resp.as_bytes()).await;
-                return;
-            }
-            Err(ApiArgBindError::Internal(msg)) => {
-                eprintln!("[HTTP] {} {} → 500 ({})", req_method, req_path, msg);
-                vm.tasks.remove(&handler_task_id);
-                let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
-                let resp = format!(
-                    "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
-                    err_body.len(),
-                    cors_headers(),
-                    err_body
-                );
-                let _ = stream.write_all(resp.as_bytes()).await;
-                return;
-            }
-        }
-    };
-
-    let result_json = if let Some(_task_arc) = vm.tasks.get(&handler_task_id) {
-        let mut ht = match _task_arc.try_lock() {
-            Ok(t) => t,
-            Err(_) => {
-                eprintln!("[HTTP] {} {} → 500 (task lock failed, {}ms)",
-                    req_method, req_path, request_start.elapsed().as_millis());
-                vm.tasks.remove(&handler_task_id);
-                let resp = format!("HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 27\r\nConnection: close\r\n{}\r\n{{\"error\":\"internal error\"}}", cors_headers());
-                let _ = stream.write_all(resp.as_bytes()).await;
-                return;
-            }
-        };
-
-        // Dispatch: axum routes use closure (Plan 383 fn-ref), legacy routes use fn-name.
-        let call_result = if let Some(ref axum_route) = axum_route {
-            vm.call_closure(&mut ht, axum_route.closure_id, n_args)
-        } else {
-            vm.call_fn_by_name(&mut ht, &route_match.fn_name, n_args)
-        };
-
-        match call_result {
-            Ok(()) => {
-                let nv = ht.ram.pop_nv();
-                // SSE detection: generator/iterator return → stream frames.
-                if auto_val::is_i32(nv) {
-                    let iter_id = auto_val::decode_i32(nv) as u32;
-                    if vm.iterators.contains_key(&iter_id) {
-                        eprintln!("[HTTP] {} {} → 200 SSE ({}ms)",
-                            req_method, req_path, request_start.elapsed().as_millis());
-                        drop(ht);
-                        let sse_header = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n{}\r\n", cors_headers());
-                        if stream.write_all(sse_header.as_bytes()).await.is_err()
-                            || stream.flush().await.is_err()
-                        {
-                            cleanup_sse_iterator(vm, iter_id);
-                            drop(_task_arc);
-                            return;
-                        }
-                        // The handler's task map read guard is no longer
-                        // needed while the producer creates temporary VM tasks.
-                        drop(_task_arc);
-                        let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
-                        let producer_vm = vm.clone();
-                        let producer = tokio::task::spawn_local(async move {
-                            produce_sse_frames(producer_vm, iter_id, sender).await;
-                        });
-
-                        while let Some(frame) = receiver.recv().await {
-                            if stream.write_all(frame.as_bytes()).await.is_err()
-                                || stream.flush().await.is_err()
-                            {
-                                break;
-                            }
-                        }
-                        drop(receiver);
-                        let _ = producer.await;
-                        None
-                    } else if let Some(res) =
-                        crate::vm::ffi::stdlib::lookup_http_response(iter_id as u64)
-                    {
-                        // Plan 346 3c: response-object return — the handler built a
-                        // Response (e.g. http.response_redirect(url, 302)) and
-                        // returned its handle; serve status/headers/body directly.
-                        // NOTE: do NOT vm.tasks.remove() here — we are inside the
-                        // `vm.tasks.get()` DashMap read-guard scope; removing the
-                        // same shard now self-deadlocks. Return None and let the
-                        // shared cleanup below (outside the scope) remove the task.
-                        write_http_response_object(
-                            stream,
-                            res,
-                            &req_method,
-                            &req_path,
-                            request_start.elapsed().as_millis(),
-                            &request_id,
-                        )
-                        .await;
-                        drop(ht);
-                        None
-                    } else {
-                        nv_to_json(vm, nv, 0)
-                    }
-                } else if auto_val::is_i64(nv) {
-                    // Plan 346 3c: response handles built via http.response()/
-                    // response_status()/... are pushed as i64 (Plan 377 inline
-                    // tag 8). Serve them as response objects, not JSON ints.
-                    let handle = auto_val::decode_i64(nv) as u64;
-                    match crate::vm::ffi::stdlib::lookup_http_response(handle) {
-                        Some(res) => {
-                            // Same DashMap-guard caveat as the i32 branch above.
-                            write_http_response_object(
-                                stream,
-                                res,
-                                &req_method,
-                                &req_path,
-                                request_start.elapsed().as_millis(),
-                                &request_id,
-                            )
-                            .await;
-                            drop(ht);
-                            None
-                        }
-                        None => nv_to_json(vm, nv, 0),
-                    }
-                } else {
-                    nv_to_json(vm, nv, 0)
-                }
-            }
-            Err(e) => {
-                eprintln!("[HTTP] {} {} → 500 (handler '{}' error: {:?}, {}ms)",
-                    req_method, req_path, route_match.fn_name, e, request_start.elapsed().as_millis());
-                // Plan 346 stage 2: Return a proper 500 JSON error response
-                // instead of silently dropping the connection.
-                let error_json = format!(
-                    r#"{{"error":"internal server error","detail":"{}"}}"#,
-                    format!("{:?}", e).replace('"', "\\\"").replace('\n', " ")
-                );
-                Some(error_json)
-            }
-        }
-    } else {
-        None
-    };
-
-    vm.tasks.remove(&handler_task_id);
-
-    // Non-SSE: write JSON response.
-    if let Some(result_json) = result_json {
-        // Plan 346 stage 2: Determine status code from response content.
-        let is_error = result_json.starts_with("{\"error\":");
-        let status = if is_error { "500 Internal Server Error" } else { "200 OK" };
-        // PLAN-698 SD-02: POST 广播臂（Typing / New{Type}，has_sse 门控）。
-        if !is_error && req_method == "POST" {
-            publish_post_broadcast(&route_match.fn_name, &body, &result_json);
-        }
-        // Log successful request (non-SSE, non-error already logged above).
-        if !is_error {
-            eprintln!("[HTTP] {} {} [{}] → 200 ({}ms)",
-                req_method, req_path, request_id, request_start.elapsed().as_millis());
-        }
-        let response = format!(
-            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}{}\r\n{}",
-            status, result_json.len(), cors_headers(), request_id_header(&request_id), result_json
-        );
-        let _ = stream.write_all(response.as_bytes()).await;
-    }
+    let reply = dispatch_api_request(vm, routes, &api_req);
+    write_api_reply(stream, reply).await;
 }
 
 /// Encode a text message as a WebSocket frame (server→client, unmasked).
