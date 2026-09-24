@@ -589,6 +589,8 @@ pub const NATIVE_SHELL_SYSTEM: u16 = 1800;
 pub const NATIVE_SHELL_SYSTEM_STATUS: u16 = 1801;
 pub const NATIVE_SHELL_EXPORT: u16 = 1802;
 pub const NATIVE_SHELL_EXIT: u16 = 1803;
+pub const NATIVE_SHELL_QUERY: u16 = 1804;
+pub const NATIVE_SHELL_RUN: u16 = 1805;
 
 // === Standard Shims ===
 
@@ -646,6 +648,34 @@ pub fn shim_shell_system(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     // Push the result string into the pool and tag-push its index.
     let idx = vm.add_string(out.into_bytes());
     vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// PLAN-082: `shell_query(cmd: String) -> records` — structured command
+/// results. Pops the command string, asks the host for the pipeline's
+/// final-stage value (records as `Value::Array` of `Value::Obj` by ash
+/// convention), materializes it into VM heap objects, and pushes the root
+/// reference. Host-less VMs get the trait default (empty array).
+pub fn shim_shell_query(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let cmd = pop_string_arg(task, vm);
+    let val = if let Some(host) = &vm.host {
+        host.query(&cmd)
+    } else {
+        auto_val::Value::Array(auto_val::Array::new())
+    };
+    push_value_tree(task, vm, &val);
+    Ok(())
+}
+
+/// PLAN-082: `shell_run(cmd: String)` — print-executing command bridge.
+/// The host renders output on the shell side; the shim leaves null so the
+/// call is stack-neutral in expression position.
+pub fn shim_shell_run(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let cmd = pop_string_arg(task, vm);
+    if let Some(host) = &vm.host {
+        host.run(&cmd);
+    }
+    task.ram.push_nv(auto_val::encode_null());
     Ok(())
 }
 
@@ -2871,6 +2901,49 @@ fn push_value(task: &mut AutoTask, vm: &AutoVM, val: &auto_val::Value) {
             vm.rc_push_str_idx(task, str_idx as usize);
         }
         _ => task.ram.push_i32(0), // Nil 等兜底为 0
+    }
+}
+
+/// PLAN-082: 把 host 侧返回的整棵 `Value` 树物化为 VM 堆对象并把根压栈。
+/// * `Obj` → 堆 `ObjectData`（字段递归转换）——Dot/字段访问与原生 struct 同路径；
+/// * `Array` → 堆 `ListData<Value>`——for-in 逐元素迭代、`.len()`/`.get` 可用，
+///   容器元素是 `Value::VmRef`（嵌套 Obj/Array）或内联标量（Str/Int/Bool）；
+/// * 标量走既有 [`push_value`]（Str 经 string pool）。
+/// 根引用按**裸堆 id** 入栈（`rc_push_id`，clipboard natives 同款）——
+/// `.len()` 等 `pop_arg_i32` 消费者只认裸 id；TAG_OBJECT 编码仅在部分
+/// 消费者有兼容臂（Plan 437 判例）。T-01 spike 实测锚点。
+fn push_value_tree(task: &mut AutoTask, vm: &AutoVM, val: &auto_val::Value) {
+    match val {
+        auto_val::Value::Obj(_) | auto_val::Value::Array(_) => {
+            if let auto_val::Value::VmRef(r) = heap_value(vm, val) {
+                vm.rc_push_id(task, r.id as u64);
+            }
+        }
+        _ => push_value(task, vm, val),
+    }
+}
+
+/// PLAN-082: [`push_value_tree`] 的递归臂——容器（Obj/Array）返回指向新堆对象的
+/// `Value::VmRef`（insert 的初始计数即容器所有权），标量原样克隆。
+fn heap_value(vm: &AutoVM, val: &auto_val::Value) -> auto_val::Value {
+    match val {
+        auto_val::Value::Obj(o) => {
+            let mut rec = crate::vm::types::ObjectData::new();
+            for (k, fv) in o.iter() {
+                rec.set(k.clone(), heap_value(vm, fv));
+            }
+            let id = vm.insert_heap_object(rec);
+            auto_val::Value::VmRef(auto_val::VmRef { id: id as usize })
+        }
+        auto_val::Value::Array(a) => {
+            let mut list = crate::vm::types::ListData::<auto_val::Value>::new();
+            for ev in &a.values {
+                list.push(heap_value(vm, ev));
+            }
+            let id = vm.insert_heap_object(list);
+            auto_val::Value::VmRef(auto_val::VmRef { id: id as usize })
+        }
+        other => other.clone(),
     }
 }
 

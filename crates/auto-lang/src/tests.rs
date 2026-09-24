@@ -394,3 +394,7 @@ mod plan649_bp_tests;
 // 回归锚 + 参数化语料面（palette 零漂移 + dep 探测）。
 #[cfg(test)]
 mod plan657_bp_admin_tests;
+// PLAN-082: 脚本与 `>` 命令的结构化互操作——shell_query/run native 数据面
+// （T-01 spike 三前提 + T-02 mock host 契约）。
+#[cfg(test)]
+mod plan082_shell_query_tests;

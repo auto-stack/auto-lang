@@ -528,6 +528,10 @@ fn build_bare_native_intrinsics() -> HashMap<String, u16> {
     intrinsics.insert("system_status".to_string(), NATIVE_SHELL_SYSTEM_STATUS);
     intrinsics.insert("export".to_string(), NATIVE_SHELL_EXPORT);
     intrinsics.insert("exit".to_string(), NATIVE_SHELL_EXIT);
+    // PLAN-082: structured shell interop (records via shell_query,
+    // print-executing commands via shell_run).
+    intrinsics.insert("shell_query".to_string(), crate::vm::native::NATIVE_SHELL_QUERY);
+    intrinsics.insert("shell_run".to_string(), crate::vm::native::NATIVE_SHELL_RUN);
     // Plan 413: code editor payload accessors (UI bridge).
     intrinsics.insert("code_editor_text".to_string(), NATIVE_CODE_EDITOR_TEXT);
     intrinsics.insert("code_editor_cursor_line".to_string(), NATIVE_CODE_EDITOR_CURSOR_LINE);
@@ -9529,6 +9533,18 @@ impl Codegen {
                         } else if name == "system" {
                             // Plan 011: system(cmd) -> String
                             self.last_expr_type = ObjectType::String;
+                        } else if name == "shell_query" {
+                            // PLAN-082: shell_query(cmd) -> List of records
+                            // (heap ObjectData/ListData payloads). Array typing
+                            // routes var-stored receivers to ARRAY_LEN/list
+                            // natives — str-typed dispatch would stringify the
+                            // bare heap id (spike probe: len()==7 on
+                            // "4194307"-shaped ids).
+                            self.last_expr_type = ObjectType::Array;
+                        } else if name == "shell_run" {
+                            // PLAN-082: shell_run(cmd) -> void (host renders)
+                            self.last_expr_type = ObjectType::Void;
+                            self.last_was_native_void = true;
                         } else if name == "code_editor_text" {
                             // Plan 413: code_editor_text(key) -> String
                             self.last_expr_type = ObjectType::String;

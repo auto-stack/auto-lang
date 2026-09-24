@@ -41,6 +41,23 @@ pub trait ShellHost: Send + Sync {
 
     /// The exit code requested by the last `exit()` call (0 if none).
     fn requested_exit_code(&self) -> i32;
+
+    /// PLAN-082: Execute a shell pipeline and return its final-stage
+    /// structured value — records arrive as `Value::Array` of `Value::Obj`
+    /// (e.g. `ls` rows `{name type size modified}`). Default: empty array —
+    /// pure-AutoLang hosts without a shell report "no records".
+    ///
+    /// Future work (designs/039): the eager `Value::Array` contract is the
+    /// materialized form; the signature deliberately returns a whole `Value`
+    /// so a later Iter/Channel streaming form can replace the payload without
+    /// touching script syntax.
+    fn query(&self, _cmd: &str) -> auto_val::Value {
+        auto_val::Value::Array(auto_val::Array::new())
+    }
+
+    /// PLAN-082: Execute a shell command through the shell's own output path
+    /// (the host renders/prints; the VM never sees the text). Default: no-op.
+    fn run(&self, _cmd: &str) {}
 }
 
 /// Type alias for the shared host handle stored on the VM.

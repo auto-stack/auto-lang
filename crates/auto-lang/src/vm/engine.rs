@@ -671,6 +671,9 @@ impl AutoVM {
             native_interface.register(crate::vm::native::NATIVE_SHELL_SYSTEM_STATUS, crate::vm::native::shim_shell_system_status);
             native_interface.register(crate::vm::native::NATIVE_SHELL_EXPORT, crate::vm::native::shim_shell_export);
             native_interface.register(crate::vm::native::NATIVE_SHELL_EXIT, crate::vm::native::shim_shell_exit);
+            // PLAN-082: structured interop natives.
+            native_interface.register(crate::vm::native::NATIVE_SHELL_QUERY, crate::vm::native::shim_shell_query);
+            native_interface.register(crate::vm::native::NATIVE_SHELL_RUN, crate::vm::native::shim_shell_run);
         }
 
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
