@@ -277,8 +277,11 @@ aavm 系（test-aavm 门）不动。
     提交 `8416033fa`。
   ④ `archived`——`git mv` 至 `docs/plans/archive/700-unify-vm-files-tier.md`
     + frontmatter `status: archived`（终态）。
-  ⑤ `cleaned`——lang-700 组（auto-lang worktree+分支 plan-700-dev+auto-down
-    依赖位）wt-guard clean 后移除，见随后收据补记。
+  ⑤ `cleaned`——wt-guard 双 worktree clean（auto-lang/auto-down 均"无任何
+    reparse point"）→ `git worktree remove` lang-700/auto-lang +
+    `git branch -d plan-700-dev`（was af95350af）+ auto-down 属主仓侧移除
+    lang-700/auto-down 依赖位 → 组目录 rmdir；`git worktree list` 零 lang-700
+    残留。全组清空。
 
 ## 待澄清事项
 
