@@ -262,8 +262,8 @@ widget App {
 /// PLAN-024 走查诊断：面板 chrome 样式串逐类解析——w-[920px] 任意值类
 /// 必须落 Width(920)（渲染实机面板曾收缩为内容宽，定位用）。
 /// fix-tabs-merged-look：测试体消费 `crate::ui`，须挂 ui feature 门——
-/// 否则 `cargo tv/tf`（test-vm-files 无 ui）编译失败（024 落地引入的
-/// 基线破损，此处机械修复解锁门禁）。
+/// 否则无 ui feature 的测试档编译失败（024 落地引入的基线破损，
+/// 此处机械修复解锁门禁）。
 #[cfg(feature = "ui")]
 #[test]
 fn dashboard_panel_classes_parse() {

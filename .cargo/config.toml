@@ -4,8 +4,10 @@
 #                      excluded via .config/nextest.toml default-filter, Plan 466)
 #   cargo tf         - full-scale daily tests (all tests incl. 1M churn, via
 #                      .config/nextest-full.toml) — review/pre-fold gate (Plan 466)
-#   cargo tv         - VM file tests (pure .at corpus goldens; NO aavm since
-#                      Plan 568 - aavm moved to its own taa tier)
+#   cargo tv         - corpus filter tier (pure .at corpus goldens via nextest
+#                      profile tv default-filter; SAME binary as t/tf - zero
+#                      recompile, PLAN-700;
+#                      NO aavm since Plan 568 - aavm moved to its own taa tier)
 #   cargo tt         - transpiler tests
 #   cargo tb         - book listing tests (fast now: <0.4s each, Plan 568 measure)
 #   cargo taa        - AAVM/AA2R self-hosting tier (auto/lib + aavm2 + a2r).
@@ -68,10 +70,15 @@ tf = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test 
 # 自举测试已迁出(test-aavm feature)——"改 VM/编译器的回归"与"AAVM 展示"
 # 不是同一概念,aavm 无实用面,反射性 tv 不再触发三重解释/现场 cargo build
 # 重测试(实测 21 测 Σ≈1163s、单测峰值 0.8-1.2GB)。aavm 系守护=taa+CI+ta。
-tv = "nextest run -p auto-lang --lib --features test-vm-files"
+# PLAN-700: tv 降为纯 nextest filter 档(--profile tv,default-filter 筛
+# 语料三族,定义见 .config/nextest.toml [profile.tv]),与 t/tf 同一测试
+# 二进制——三档切换零重编。不用 -E 内联表达式:cargo 在 Windows 下对
+# alias 实参不做引号剥离,带空格的 filterset 传不进去(实测两形态皆败)。
+tv = "nextest run -p auto-lang --lib --profile tv"
 tt = "nextest run -p auto-lang --lib --features test-trans"
 tb = "nextest run -p auto-lang --lib --features test-book"
-# Plan 568: AAVM/AA2R 专属档(implies test-vm-files;full 配置含 1M churn 与
+# Plan 568: AAVM/AA2R 专属档(独立空 feature,PLAN-700 起不再 imply 语料档;
+# full 配置含 1M churn 与
 # 全部重测试,无 XL 排除——裸跑=aavm 全集兜底,附带日常面)。仅当改动触及
 # aavm 代码时使用(触发条件与作用域映射见 AGENTS.md);追加滤串缩小作用域
 # (同 cargo t <module> 习惯),如 cargo taa aavm2_m5 只跑 M5。刻意不带固定

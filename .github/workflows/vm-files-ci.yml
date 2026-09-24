@@ -1,9 +1,10 @@
-name: VM file tests (test-vm-files)
+name: VM corpus and aavm tier tests
 
 # 430 复审补网(2026-08-25):aavm2 六道闸门(M1 lexer/M2 AST/M3 .type/M4 字节码/
-# M5 行为/主里程碑)与 vm 文件级 golden 全部挂在 `test-vm-files` cargo feature 后,
-# 默认 `cargo test` 与其余 CI workflow 均不执行——"六道闸门全绿"此前完全依赖
-# 本地手动 `--features test-vm-files`。本 workflow 把这层守护接入 CI。
+# M5 行为/主里程碑)与 vm 文件级 golden 原挂在独立语料档 cargo feature 后
+# 接入 CI 守护(默认 `cargo test` 此前不执行)。PLAN-700(2026-09-24):该 feature
+# 随语料三族常驻化退役——语料族(goldens/conformance/cookbook/gallery fence)
+# 模块常驻,用测试名筛选即可;aavm2 闸门保持 `test-aavm` feature(已独立化)。
 #
 # 分层策略:
 #   - gates / goldens / ffi_dual / conformance:必须绿(确定性 golden 级断言);
@@ -71,21 +72,21 @@ jobs:
       # schema_drift/docs_gen 集成档仍留本地 t/tf 门禁）。
       - name: Gallery pages compile fence (corpus from auto-os)
         run: >
-          cargo test -p auto-lang --lib --features test-vm-files --
+          cargo test -p auto-lang --lib --
           gallery_pages_compile --test-threads=1
 
       - name: aavm2 six gates (M1-M5 + milestone + compile corpus)
         # Plan 514 W2 (P511-2 口径收窄清偿): compile corpus 腿已去 ignore,
         # 常规口径即覆盖;--include-ignored 移除(按需 rustc 探针保持 ignored)。
-        # Plan 568: aavm 系测试迁入 test-aavm feature(implies test-vm-files)
-        # ——本步骤换用之;goldens/ffi_dual/conformance/cookbook 仍 test-vm-files。
+        # Plan 568: aavm 系测试迁入 test-aavm feature。PLAN-700: 语料三族
+        # 常驻化后该 feature 独立(不再 imply 语料档),本步骤命令形态不变。
         run: >
           cargo test -p auto-lang --lib --features test-aavm --
           test_aavm2 --test-threads=1
 
       - name: VM goldens + ffi_dual (incl. 014 std generated segment)
         run: >
-          cargo test -p auto-lang --lib --features test-vm-files --
+          cargo test -p auto-lang --lib --
           vm_file_tests ffi_dual --test-threads=1
 
       # PLAN-592: dep 三轨行为对拍——VM/oracle 腿 + a2r 全量档(env 门控,
@@ -94,17 +95,17 @@ jobs:
         env:
           AUTO_LANG_DEP_PARITY_A2R: "1"
         run: >
-          cargo test -p auto-lang --lib --features test-vm-files --
+          cargo test -p auto-lang --lib --
           ffi_dep_parity_tests --test-threads=1
 
       - name: Conformance goldens
         run: >
-          cargo test -p auto-lang --lib --features test-vm-files --
+          cargo test -p auto-lang --lib --
           conformance_tests --test-threads=1
 
       # 非阻断:收集 ubuntu 侧 cookbook 信号(既有环境相关失败不动基线)
       - name: Cookbook VM (non-blocking signal)
         continue-on-error: true
         run: >
-          cargo test -p auto-lang --lib --features test-vm-files --
+          cargo test -p auto-lang --lib --
           cookbook_vm_tests --test-threads=1

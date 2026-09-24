@@ -7,8 +7,8 @@ Win32_Process.PeakWorkingSetSize for auto_lang-* child processes. The child's
 command line carries the exact test id, giving precise per-test attribution.
 
 Usage:
-  python scripts/measure_test_mem.py <filter> [-F test-vm-files] [--ignored]
-  python scripts/measure_test_mem.py aavm2_ -F test-vm-files
+  python scripts/measure_test_mem.py <filter> [-F test-aavm] [--ignored]
+  python scripts/measure_test_mem.py aavm2_ -F test-aavm
   python scripts/measure_test_mem.py str_churn --ignored
 
 Output: markdown table sorted by peak desc, with tier classification
@@ -105,7 +105,7 @@ def load_registered() -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("filter", help="test name substring / nextest filter")
-    ap.add_argument("-F", "--features", default="test-vm-files")
+    ap.add_argument("-F", "--features", default="test-aavm")
     ap.add_argument("--config", default=None,
                     help="nextest --config-file override (e.g. .config/nextest-full.toml "
                          "to measure tests excluded by the daily default-filter)")

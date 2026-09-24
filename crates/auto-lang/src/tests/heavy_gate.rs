@@ -1,6 +1,6 @@
 // Plan 564 D4: 重内存测试守门。
 //
-// 背景：2026-09-05 事件——裸 `cargo test --features test-vm-files aavm2_`
+// 背景：2026-09-05 事件——裸 `cargo test --features test-aavm aavm2_`
 // 在 libtest 单进程 12 线程全并发下峰值 9.78GB。nextest 路径每测试独立
 // 进程且受 .config/nextest*.toml [test-groups] 并发限流，是重测试的安全
 // 运行环境；裸 libtest 无法按测试限流。

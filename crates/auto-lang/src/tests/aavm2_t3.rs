@@ -13,7 +13,7 @@
 //
 // 判据:scripts/aavm_tower_check.sh(R0==O1==O2==O3 逐字节,分阶重试
 // 容忍宿主静默空输出存量)退出码 0;runner 输出全量透传 --nocapture。
-#[cfg(feature = "test-vm-files")]
+// PLAN-700: 原内层 cfg 门删除——模组门 test-aavm 已等价覆盖（原 imply）
 #[test]
 fn test_aavm2_t3_tower_milestone() {
     if std::env::var("T3_MILESTONE").map(|v| v != "0" && !v.is_empty()).unwrap_or(false) == false {

@@ -115,7 +115,7 @@ fn test_aavm2_a2r_main_dump_print() {
 
 /// Plan 447 7.5 探针冒烟:99_idiom_probe 的 p01/p02b/p04/p05/p12 经 AA2R
 /// (a2r.at 自身)转译后 rustc 零错。`#[ignore]`:需 rustc,按需跑:
-/// cargo test -p auto-lang --lib --features test-vm-files a2r_probe_smoke -- --ignored
+/// cargo test -p auto-lang --lib --features test-aavm a2r_probe_smoke -- --ignored
 #[test]
 #[ignore = "shells out to rustc; on-demand AA2R compile-level guard (Plan 447)"]
 fn test_aavm2_a2r_probe_smoke() {
@@ -185,7 +185,7 @@ fn main() {{
 /// 考古五洞 H1–H5 的转绿载体(H1 字段名撞方法/H2 嵌套 place mut/
 /// H3 返回推断/H4 str 下标/H5 全局 once_cell)。
 /// `#[ignore]`: shells out to rustc,验收/折叠点按需跑:
-/// cargo test -p auto-lang --lib --features test-vm-files a2r_corpus_rustc -- --ignored
+/// cargo test -p auto-lang --lib --features test-aavm a2r_corpus_rustc -- --ignored
 #[test]
 #[ignore = "shells out to rustc; on-demand emission-level guard (Plan 523)"]
 fn test_aavm2_a2r_corpus_rustc() {
@@ -355,7 +355,7 @@ fn test_aavm2_goldens_check() {
 //
 // 用例集 = 三件套金样集(g19–g25 per-case dir + corpus_m4 抽验集)。
 // `#[ignore]`(shells aavm2_bin[内含 cargo build] + rustc),验收/折叠点
-// 按需:cargo test -p auto-lang --lib --features test-vm-files fourpath -- --ignored --nocapture
+// 按需:cargo test -p auto-lang --lib --features test-aavm fourpath -- --ignored --nocapture
 #[test]
 #[ignore = "shells cargo/rustc; on-demand four-path acceptance runner (Plan 523)"]
 fn test_aavm2_fourpath_runner() {

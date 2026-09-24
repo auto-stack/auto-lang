@@ -38,7 +38,7 @@ REP="b01_hello b07_fib b08_strcat b13_eval_print_true b27_arr_literal b30_arr_lo
 # ── exe¹:⑤腿原生二进制 ──────────────────────────────────────────
 if [ "${1:-}" != "--skip-gen1" ]; then
     echo "[gen] triggering leg-5 build (test_aavm2_compile_corpus; cached if fresh)..."
-    (cd "$ROOT" && cargo test -p auto-lang --lib --features test-vm-files \
+    (cd "$ROOT" && cargo test -p auto-lang --lib --features test-aavm \
         test_aavm2_compile_corpus -- --test-threads=1 >/dev/null 2>&1) \
         || { echo "[gen] leg-5 test FAILED (see cargo output)"; exit 1; }
 fi

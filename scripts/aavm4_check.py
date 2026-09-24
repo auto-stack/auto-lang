@@ -27,7 +27,7 @@ def run(filter_name: str, ignored: bool, bless: bool) -> int:
         env["A2R_BLESS"] = "1"
     cmd = [
         "cargo", "test", "--manifest-path", os.path.join(ROOT, "Cargo.toml"),
-        "-p", "auto-lang", "--lib", "--features", "test-vm-files",
+        "-p", "auto-lang", "--lib", "--features", "test-aavm",
         filter_name, "--", "--nocapture",
     ]
     if ignored:

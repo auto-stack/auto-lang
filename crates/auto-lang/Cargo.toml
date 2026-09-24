@@ -19,13 +19,13 @@ keywords = ["automation", "language", "scripting"]
 # （Design 32）落地后按新 crate 边界重新分档。
 default = ["with-file-history", "ui-iced"]
 # Plan 289: Feature-gated test groups for faster daily development
-test-vm-files = []
 test-trans = []
 test-book = []
-# Plan 568: AAVM/AA2R 自举测试独立档（implies test-vm-files：runner 复用
-# vm_file_tests 语料缓存 loader）。cargo tv 从此不含 aavm（纯 .at 语料
-# golden）；aavm 专属档 = cargo taa（触发条件与作用域映射见 AGENTS.md）。
-test-aavm = ["test-vm-files"]
+# Plan 568: AAVM/AA2R 自举测试独立档。aavm 专属档 = cargo taa（触发条件与
+# 作用域映射见 AGENTS.md）。PLAN-700: 原 implies 的语料门随语料三族常驻化
+# 退役，test-aavm 成独立空 feature（aavm runner 复用的 vm_file_tests loader
+# 恒在，依赖恒满足）。
+test-aavm = []
 # Plan 565 P0: feature-gated counting global allocator (memory attribution).
 # Zero cost when off — the System allocator stays in place; when on, lib.rs
 # installs CountingAlloc as #[global_allocator] (lock-free AtomicU64 stats).
@@ -123,8 +123,8 @@ native-clipboard = ["dep:windows", "dep:image"]
 # 传递依赖不可见（488 步骤 2 spike 发现）。image：拖入 CF_DIB/PNG → 临时
 # PNG 落盘转换（485 同源用法，零新增版本）。
 native-dnd = ["dep:windows", "dep:windows-core", "dep:image"]
-# Plan 473: T2/T3 真窗口 Win32 集成 / fixture E2E 测试门控（对齐
-# test-vm-files 命名法）；隐含 ui-iced + native-dock，`cargo t` 日常档不含。
+# Plan 473: T2/T3 真窗口 Win32 集成 / fixture E2E 测试门控（对齐 test-* 测试
+# 门命名法）；隐含 ui-iced + native-dock，`cargo t` 日常档不含。
 test-native-dock = ["ui-iced", "native-dock"]
 
 [dependencies]

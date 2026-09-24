@@ -1,10 +1,10 @@
-// Plan 568: AAVM/AA2R runner 测试——自 vm_file_tests.rs 整体迁入(原
-// test-vm-files 门内嵌 aavm 腿;现独立 test-aavm 档,见 tests.rs 注册与
-// AGENTS.md 触发条件/作用域映射)。内容:AAVM v1 runner(lib-legacy)+
-// AAVM v2 基建(runner/compile 腿)+ AAVM-Rust 转译构建(build_aavm_rust_bin,
-// 含现场 cargo build,产物内容寻址缓存)+ 99_bootstrap v1 ignored 一行测试。
-// 共享设施(语料缓存 get_cached_test/VmTestData)仍居 vm_file_tests
-// (test-vm-files 门;test-aavm implies 之,经 pub(crate) 复用)。
+// Plan 568: AAVM/AA2R runner 测试——自 vm_file_tests.rs 整体迁入(原语料档
+// 门内嵌 aavm 腿;现独立 test-aavm 档,见 tests.rs 注册与 AGENTS.md 触发条件/
+// 作用域映射)。内容:AAVM v1 runner(lib-legacy)+ AAVM v2 基建(runner/compile
+// 腿)+ AAVM-Rust 转译构建(build_aavm_rust_bin,含现场 cargo build,产物内容
+// 寻址缓存)+ 99_bootstrap v1 ignored 一行测试。共享设施(语料缓存
+// get_cached_test/VmTestData)居 vm_file_tests(PLAN-700 起常驻编译,经
+// pub(crate) 复用)。
 
 use crate::error::AutoResult;
 use crate::tests::vm_file_tests::get_cached_test;
