@@ -52,7 +52,9 @@ python = ["pyo3"]
 
 # Plan 015: UI Features (AutoUI Core)
 ui = []
-ui-interpreter = ["ui", "dep:ureq", "dep:axum"]
+# PLAN-699: dep:axum dropped — axum is an unconditional dependency now (the
+# VM #[api] server transport); ui-interpreter keeps its own ureq requirement.
+ui-interpreter = ["ui", "dep:ureq"]
 ui-headless = ["ui", "ui-interpreter"]
 # ui-gpui（Zed GPUI 后端）2026-09-22 用户裁定移除——全仓零启用者，休眠 feature 与
 # 模块一并删除（PLAN-691）；未来 auto-ui 拆分后如需要再独立加。
@@ -248,8 +250,17 @@ syntect = { version = "5", optional = true }
 two-face = { version = "0.4", optional = true }
 notify = { workspace = true }
 ureq = { version = "2", features = ["json"], optional = true }
-# Plan 299: Streamable HTTP transport for AutoUI MCP server
-axum = { version = "0.8", features = ["json"], optional = true }
+# Plan 299: Streamable HTTP transport for AutoUI MCP server.
+# PLAN-699 T-03: no longer optional — the VM `#[api]` server's HTTP/1.1
+# transport is Axum/Hyper now (network layer), so it must compile in every
+# feature shape instead of riding on ui-interpreter implicitly.
+axum = { version = "0.8", features = ["json"] }
+# PLAN-699 T-01 spike: the VM server drives hyper-util's auto connection
+# builder directly (max_buf_size / header_read_timeout / graceful shutdown
+# are not exposed through axum::serve). hyper is direct only for
+# hyper::upgrade::on (raw WebSocket echo port).
+hyper = { version = "1", default-features = false, features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio", "server-auto", "server-graceful", "service"] }
 # Plan 214: Python FFI (optional, requires Python dev headers)
 pyo3 = { version = "0.29", optional = true, features = ["auto-initialize"] }
 trans = "0.4.0"

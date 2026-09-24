@@ -4506,3 +4506,324 @@ mod plan698_f1_cleanup_tests {
         assert!(!vm.iterators.contains_key(&iter_id), "iterator entry removed");
     }
 }
+
+/// PLAN-699 T-01 spike: prove the Axum/Hyper transport topology compiles and
+/// runs before fixing the bridge types. Decision evidence lands in
+/// docs/plans/reports/699-bridge-decision.md. Kept as the seed of the new
+/// protocol E2E suite (raw-TCP framing probes); will be folded into the
+/// real implementation's test module.
+#[cfg(test)]
+mod spike699_axum_transport {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    use axum::extract::Request;
+    use axum::response::Response;
+    use hyper_util::rt::{TokioExecutor, TokioIo};
+    use hyper_util::server::conn::auto::Builder as ConnBuilder;
+    use hyper_util::server::graceful::GracefulShutdown;
+    use hyper_util::service::TowerToHyperService;
+
+    const HEADER_BUF: usize = 64 * 1024;
+    const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(2);
+
+    struct SpikeServer {
+        port: u16,
+        shutdown_tx: tokio::sync::watch::Sender<bool>,
+        done_rx: std::sync::mpsc::Receiver<()>,
+    }
+
+    impl SpikeServer {
+        fn start(router: axum::Router) -> Self {
+            let (ready_tx, ready_rx) = std::sync::mpsc::channel::<u16>();
+            let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+            let (done_tx, done_rx) = std::sync::mpsc::channel();
+            let _handle = std::thread::Builder::new()
+                .name("spike699-net".into())
+                .stack_size(4 * 1024 * 1024)
+                .spawn(move || {
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("spike net runtime");
+                    rt.block_on(async move {
+                        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                            .await
+                            .expect("spike bind");
+                        let port = listener.local_addr().unwrap().port();
+                        // Ready signal BEFORE the accept loop — start() waits
+                        // on it; sending after the loop would deadlock.
+                        let _ = ready_tx.send(port);
+                        let graceful = GracefulShutdown::new();
+                        let mut shutdown_rx = shutdown_rx;
+                        loop {
+                            tokio::select! {
+                                accepted = listener.accept() => {
+                                    let (stream, _peer) = match accepted {
+                                        Ok(x) => x,
+                                        Err(_) => break,
+                                    };
+                                    let svc = TowerToHyperService::new(router.clone());
+                                    let watcher = graceful.watcher();
+                                    tokio::spawn(async move {
+                                        // http1_only: the transport contract is
+                                        // HTTP/1.1 — the auto builder would
+                                        // otherwise also serve h2c prior-knowledge
+                                        // connections, silently widening scope.
+                                        let mut builder = ConnBuilder::new(TokioExecutor::new())
+                                            .http1_only();
+                                        builder
+                                            .http1()
+                                            .timer(hyper_util::rt::TokioTimer::new())
+                                            .max_buf_size(HEADER_BUF)
+                                            .header_read_timeout(HEADER_READ_TIMEOUT);
+                                        let conn = builder.serve_connection_with_upgrades(
+                                            TokioIo::new(stream),
+                                            svc,
+                                        );
+                                        let _ = watcher.watch(conn).await;
+                                    });
+                                }
+                                _ = shutdown_rx.changed() => {
+                                    // Graceful: stop accepting, drain in-flight
+                                    // connections with a deadline, then force out.
+                                    let _ = tokio::time::timeout(
+                                        Duration::from_secs(2),
+                                        graceful.shutdown(),
+                                    )
+                                    .await;
+                                    break;
+                                }
+                            }
+                        }
+                        drop(listener);
+                        let _ = done_tx.send(());
+                    });
+                })
+                .expect("spawn spike net thread");
+            let port = ready_rx
+                .recv_timeout(Duration::from_secs(10))
+                .expect("spike server ready");
+            SpikeServer { port, shutdown_tx, done_rx }
+        }
+    }
+
+    fn connect(port: u16) -> TcpStream {
+        let stream = TcpStream::connect(("127.0.0.1", port)).expect("spike connect");
+        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        stream.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+        stream
+    }
+
+    fn read_response(stream: &mut TcpStream) -> String {
+        read_response_until(stream, &|resp: &str, head_done: bool, _bytes: usize| {
+            // One complete response head (+ its content-length body when present).
+            if !head_done {
+                return false;
+            }
+            let lower = resp.to_ascii_lowercase();
+            let cl = lower
+                .split("\r\n")
+                .find_map(|l| {
+                    l.strip_prefix("content-length:")
+                        .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                })
+                .unwrap_or(0);
+            // No content-length = streaming body: the caller supplies its own
+            // `until` predicate; default waits for EOF via head_done=false… so
+            // keep the head-only contract here and let custom predicates decide.
+            let pos = find_head_end(resp.as_bytes()).unwrap_or(resp.len());
+            resp.len() >= pos + cl
+        })
+    }
+
+    /// Read from the socket until `until` returns true (checked after every
+    /// read), EOF, or the 5s read timeout fires.
+    fn read_response_until(
+        stream: &mut TcpStream,
+        until: &dyn Fn(&str, bool, usize) -> bool,
+    ) -> String {
+        let mut resp = Vec::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            let n = match stream.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => n,
+            };
+            resp.extend_from_slice(&buf[..n]);
+            let s = String::from_utf8_lossy(&resp).to_string();
+            let head_done = find_head_end(&resp).is_some();
+            if until(&s, head_done, resp.len()) {
+                break;
+            }
+            if resp.len() > 256 * 1024 {
+                break;
+            }
+        }
+        String::from_utf8_lossy(&resp).into_owned()
+    }
+
+    fn find_head_end(b: &[u8]) -> Option<usize> {
+        b.windows(4).position(|w| w == b"\r\n\r\n").map(|p| p + 4)
+    }
+
+    /// SSE body adapter: tokio mpsc Receiver → Stream with correct waker
+    /// wiring (poll_recv registers the waker; a naive try_recv+Pending
+    /// poll_fn never wakes and the body starves — spike-verified pitfall).
+    struct FrameStream {
+        rx: tokio::sync::mpsc::Receiver<String>,
+    }
+
+    impl futures::Stream for FrameStream {
+        type Item = Result<String, std::convert::Infallible>;
+        fn poll_next(
+            mut self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Self::Item>> {
+            std::pin::Pin::new(&mut self.rx)
+                .poll_recv(cx)
+                .map(|opt| opt.map(Ok))
+        }
+    }
+
+    async fn spike_router() -> axum::Router {
+        axum::Router::new()
+            .route(
+                "/api/echo-len",
+                axum::routing::post(|body: String| async move { body.len().to_string() }),
+            )
+            .route(
+                "/api/hello",
+                axum::routing::get(|| async { "hi" }),
+            )
+            .route(
+                "/api/sse",
+                axum::routing::get(|| async {
+                    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(1);
+                    tokio::spawn(async move {
+                        for i in 0..3 {
+                            if tx.send(format!("data: {i}\n\n")).await.is_err() {
+                                break;
+                            }
+                        }
+                    });
+                    let stream = FrameStream { rx };
+                    axum::response::Response::builder()
+                        .status(200)
+                        .header("content-type", "text/event-stream")
+                        .header("cache-control", "no-cache")
+                        .body(axum::body::Body::from_stream(stream))
+                        .unwrap()
+                }),
+            )
+    }
+
+    /// AC-01 probe: keep-alive — two requests on one connection.
+    #[test]
+    fn spike_keepalive_two_requests_one_connection() {
+        let server = SpikeServer::start(futures::executor::block_on(spike_router()));
+        let mut s = connect(server.port);
+        let req = "GET /api/hello HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
+        s.write_all(req.as_bytes()).unwrap();
+        s.write_all(req.as_bytes()).unwrap();
+        let resp = read_response_until(&mut s, &|resp, _head, _bytes| {
+            resp.matches("HTTP/1.1").count() >= 2
+                && {
+                    // Second head must also have its (content-length) body.
+                    let second = resp.split("HTTP/1.1").nth(2).unwrap_or("");
+                    second.contains("\r\n\r\n")
+                }
+        });
+        let count = resp.matches("HTTP/1.1 200 OK").count();
+        assert_eq!(count, 2, "two keep-alive responses on one connection, got: {resp:?}");
+    }
+
+    /// AC-01 probe: chunked request body is decoded by the transport.
+    #[test]
+    fn spike_chunked_request_body_decoded() {
+        let server = SpikeServer::start(futures::executor::block_on(spike_router()));
+        let mut s = connect(server.port);
+        let body = b"hello chunked world";
+        let req = format!(
+            "POST /api/echo-len HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n\
+             {:x}\r\n{}\r\n0\r\n\r\n",
+            body.len(),
+            String::from_utf8_lossy(body)
+        );
+        s.write_all(req.as_bytes()).unwrap();
+        let resp = read_response(&mut s);
+        assert!(resp.starts_with("HTTP/1.1 200"), "chunked body accepted, got: {resp:?}");
+        assert!(resp.contains(&body.len().to_string()), "decoded length echoed, got: {resp:?}");
+    }
+
+    /// AC-03 probe: oversized headers must produce a determinate outcome.
+    #[test]
+    fn spike_oversized_headers_rejected() {
+        let server = SpikeServer::start(futures::executor::block_on(spike_router()));
+        let mut s = connect(server.port);
+        let big = "X-Big: ".to_string() + &"a".repeat(HEADER_BUF + 4096);
+        let req = format!("GET /api/hello HTTP/1.1\r\nHost: 127.0.0.1\r\n{big}\r\n\r\n");
+        let _ = s.write_all(req.as_bytes());
+        let resp = read_response(&mut s);
+        let status = resp.lines().next().unwrap_or("").to_string();
+        assert!(
+            status.contains("431") || status.contains("400") || resp.is_empty(),
+            "oversized headers → 431/400/close, got: {status:?}"
+        );
+        eprintln!("[spike699] oversized headers outcome: {status:?} (bytes={})", resp.len());
+    }
+
+    /// AC-03 probe: slow headers must hit the header read timeout and close.
+    #[test]
+    fn spike_slow_headers_timeout() {
+        let server = SpikeServer::start(futures::executor::block_on(spike_router()));
+        let mut s = connect(server.port);
+        let _ = s.write_all(b"GET /api/hello HTTP/1.1\r\nHost: 127.0.0.1\r\n");
+        let _ = s.flush();
+        let started = std::time::Instant::now();
+        let mut resp = Vec::new();
+        let _ = s.read_to_end(&mut resp);
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= Duration::from_millis(1500) && elapsed < Duration::from_secs(6),
+            "slow headers closed after header_read_timeout, elapsed={elapsed:?}"
+        );
+        eprintln!(
+            "[spike699] slow headers outcome: {:?} after {elapsed:?}",
+            String::from_utf8_lossy(&resp).lines().next().unwrap_or("<eof>")
+        );
+    }
+
+    /// AC-04 probe: SSE streams over the transport.
+    #[test]
+    fn spike_sse_frames_stream() {
+        let server = SpikeServer::start(futures::executor::block_on(spike_router()));
+        let mut s = connect(server.port);
+        s.write_all(b"GET /api/sse HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n").unwrap();
+        let resp = read_response_until(&mut s, &|resp, _head, _bytes| resp.contains("data: 2"));
+        assert!(resp.contains("200 OK"), "SSE status, got {resp:?}");
+        assert!(resp.contains("text/event-stream"), "SSE content-type");
+        assert!(resp.contains("data: 0") && resp.contains("data: 2"), "frames streamed");
+    }
+
+    /// AC-05 probe: graceful shutdown stops accept, drains, releases the port.
+    #[test]
+    fn spike_graceful_shutdown_releases_port() {
+        let server = SpikeServer::start(futures::executor::block_on(spike_router()));
+        let mut s = connect(server.port);
+        s.write_all(b"GET /api/hello HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n").unwrap();
+        let _ = read_response(&mut s);
+        server.shutdown_tx.send(true).unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        let done = server.done_rx.recv_timeout(Duration::from_secs(4));
+        assert!(done.is_ok(), "net loop exited after graceful shutdown");
+        // Port must be free again.
+        let rebind = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async { tokio::net::TcpListener::bind(("127.0.0.1", server.port)).await });
+        assert!(rebind.is_ok(), "port rebindable after shutdown");
+    }
+}
