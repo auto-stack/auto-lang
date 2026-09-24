@@ -3388,6 +3388,18 @@
      "status": "published",
      "created": "2026-09-23",
      "last_modified": "2026-09-23"
+    },
+    {
+     "id": "P698-1",
+     "title": "desktop-substrate-hardening-batch — 四轨 substrate 契约（SD-01..04）",
+     "content": "债册 medium 清偿批四件全 delivered。①UICache 生成器指纹（SD-01→runtime/overview.md）：build.rs hash src/ui_gen/** 入缓存键，不匹配整缓存失效重签，VERSION 1→2——692 W-1 根修，实机三轮回归绿。②VM bus.subscribe 真运行面（SD-02→http-server.md §8.1）：EVENT_BUS broadcast::channel(256) 镜像生成 events.rs+转发线程+AsyncHttpStream 臂（案①进程内 iterator 注册表）；POST publisher 臂 publish_post_broadcast 双 serve 循环插桩（Typing/New{Type} 对齐 api_gen，has_sse 门控经 record_api_return_type 新侧信道，unique_name 防 s-expr 倾泻）；017 全环 SSE 帧与 Axum 逐字节一致+带外 POST typing UI 渲染指示。③submenu 浮动终态（SD-03→menubar-family.md）：翻案 T-11——真因=iced 0.14 官方嵌套协议（overlay::Nested 递归 Overlay::overlay 钩子）未实现；Panel 钩子+RightTop 浮动恢复，内联降为 AUTO_MENU_SUBMENU_INLINE=1 降级路径。④desktop 端点配对（SD-04→ui/overview.md）：子进程 daemon（库形态被 winit Windows 单事件循环结构性否决 RecreationAttempt）spawn_desktop_daemon 孵化 auto rqhost --pipe autodesk-rqhost-desktop-<pid>+AUTO_DESKTOP_ENDPOINT env 发布；003 exe 全环 adopt→开窗→v2 帧→EOF 回收→末窗自退。债册 P693-D2/P695-D2/P696-D1+P692 候选#1 销号；P698-D1（浮动像素确认被 D5 阻塞+交互细节）/P698-D2（daemon 生命周期无级联+launch 面接线）在册。",
+     "file": "docs/specs/auto-lang/ui/overview.md",
+     "related": [
+      "PLAN-698"
+     ],
+     "status": "published",
+     "created": "2026-09-24",
+     "last_modified": "2026-09-24"
     }
    ]
   },
@@ -7383,6 +7395,18 @@
      "status": "published",
      "created": "2026-09-23",
      "last_modified": "2026-09-23"
+    },
+    {
+     "id": "P698-2",
+     "title": "desktop-substrate-hardening-batch 复审与合并收据",
+     "content": "review #1 needs_fix（F-1）：bus.subscribe 转发线程订阅端断连后永生——cleanup 不回收 ASYNC_STREAMS 句柄+线程 Arc 自撑 rx+blocking_recv 睡过收割窗（实机 +1 线程/弃订）。二次修正：cleanup_sse_iterator 对 AsyncHttpStream 臂回收句柄+转发线程改 Weak 有界轮询（150ms）自收割——实机 4 轮订阅/断连线程数恒基线（7→7 RECLAIMED）。review #2 pass：终码 tv 全档 5653 跑 11 红=已知 10（musk×6+counter+a2vue 金样+plan358 预算+native_gate 018 语料链）+back_provision（OS bind 10013 端口排除环境红，diff 零触面）；ffi_dual_019/c1_future_all 单跑双绿=负载抖动；tf 全档（中间形）12 红同名册定责；ICE=增量缓存损坏 CARGO_INCREMENTAL=0 愈。merge：lang rebase 6 commits range-diff 6/6 全等（5785d532d→63a89d8dd/4281a7678→fc0e08025/c435fe7be→4159857eb/3d3db11a3→d7ef23b2d/2461bbf39→cf427a3e8/b6e037cbf→b7ee6f302）ff-only 落地；os rebase 1 commit range-diff 1/1（0db4c17→a574e31）ff-only。spec 四件落表核验与终码一致（§8.1 补回收语义句）。",
+     "file": "docs/plans/archive/698-desktop-substrate-hardening-batch.md",
+     "related": [
+      "PLAN-698"
+     ],
+     "status": "published",
+     "created": "2026-09-24",
+     "last_modified": "2026-09-24"
     }
    ]
   }
