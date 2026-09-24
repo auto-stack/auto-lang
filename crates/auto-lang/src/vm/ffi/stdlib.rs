@@ -6577,21 +6577,38 @@ pub fn shim_bus_subscribe(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         rx: std::sync::Mutex::new(rx),
         done: std::sync::atomic::AtomicBool::new(false),
     });
-    let handle_clone = handle.clone();
+    // 线程只持 Weak——强引用归 ASYNC_STREAMS 独占：cleanup 移除句柄
+    // （rx drop）即 `blocking_send` 失败；Weak 升级失败即线程收割位。
+    let handle_weak = Arc::downgrade(&handle);
     let mut bus_rx = EVENT_BUS.subscribe();
 
-    // 镜像生成侧 `while let Ok(json) = rx.recv()`：任何 RecvError
-    // （Closed/Lagged）都结束流——订阅面终止即 SSE 连接关闭。
+    // F-1 转发线程（终形）：有界轮询（150ms）——`blocking_recv` 会睡过
+    // 收割时机（无后续广播时线程永不醒，实机 LEAK 实证），try_recv 轮询
+    // 使 cleanup 后线程在 ~150ms 内自检退出。Lagged 跳过（慢消费者丢帧
+    // 不断流）；Closed（总线消失，防御臂）结束流。事件语义不变：
+    // Data 直通、Done 收尾（镜像生成侧"任何 RecvError 终止"）。
     std::thread::Builder::new()
         .name("auto-bus-subscribe".into())
         .spawn(move || {
-            while let Ok(json) = bus_rx.blocking_recv() {
-                if tx.blocking_send(AsyncStreamEvent::Data(json)).is_err() {
-                    break; // 消费端已丢弃（连接关闭）——回收转发线程
+            use tokio::sync::broadcast::error::TryRecvError;
+            loop {
+                if handle_weak.upgrade().is_none() {
+                    break; // 句柄已被 cleanup 回收——线程收割
+                }
+                match bus_rx.try_recv() {
+                    Ok(json) => {
+                        if tx.blocking_send(AsyncStreamEvent::Data(json)).is_err() {
+                            break; // 消费端已丢弃（连接关闭）——线程退出
+                        }
+                    }
+                    Err(TryRecvError::Empty) => {
+                        std::thread::sleep(std::time::Duration::from_millis(150));
+                    }
+                    Err(TryRecvError::Lagged(_)) => continue, // 慢消费者丢帧继续
+                    Err(TryRecvError::Closed) => break,       // 总线消失——流终止
                 }
             }
             let _ = tx.blocking_send(AsyncStreamEvent::Done);
-            handle_clone.done.store(true, Ordering::SeqCst);
         })
         .expect("spawn bus-subscribe thread");
 

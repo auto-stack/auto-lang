@@ -3165,12 +3165,23 @@ impl Drop for SseIteratorCleanup {
 }
 
 fn cleanup_sse_iterator(vm: &crate::vm::engine::AutoVM, iterator_id: u32) {
-    let generator_task_id = match vm.iterators.remove(&iterator_id) {
-        Some((_, crate::vm::engine::Iterator::Generator(state))) => state.task_id,
-        Some(_) | None => None,
-    };
-    if let Some(task_id) = generator_task_id {
-        vm.tasks.remove(&task_id);
+    // PLAN-698 F-1（review #1）: AsyncHttpStream 句柄一并回收——rx drop
+    // 使转发线程的 `blocking_send` 失败退出（bus.subscribe 的转发线程
+    // 否则在订阅端断连后永生：broadcast 静态永活，无自然终点）。既有
+    // http/io 流线程本就自然终止，此处回收同时缩小其句柄累积面。
+    // Generator 仍回收其 VM task（原语义零变化）。
+    match vm.iterators.remove(&iterator_id) {
+        Some((_, crate::vm::engine::Iterator::Generator(state))) => {
+            if let Some(task_id) = state.task_id {
+                vm.tasks.remove(&task_id);
+            }
+        }
+        Some((_, crate::vm::engine::Iterator::AsyncHttpStream(a))) => {
+            if let Ok(mut map) = crate::vm::ffi::stdlib::ASYNC_STREAMS.lock() {
+                map.remove(&a.stream_id);
+            }
+        }
+        Some((_, _)) | None => {}
     }
 }
 
@@ -4377,6 +4388,7 @@ fn build_handler_args(
 /// 侧（api_gen broadcast_event_name + events::broadcast）逐字段对拍。
 #[cfg(test)]
 mod plan698_publisher_tests {
+    use super::cleanup_sse_iterator;
     use super::{publish_post_broadcast, record_api_param_sigs, record_api_return_type, ApiParamSig};
     use crate::vm::ffi::stdlib::bus_subscribe_for_test;
 
@@ -4447,5 +4459,50 @@ mod plan698_publisher_tests {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         assert!(!arrived, "no event expected for stream/scalar responses");
+    }
+}
+
+/// PLAN-698 F-1（review #1）: cleanup_sse_iterator 回收 AsyncHttpStream
+/// 的 ASYNC_STREAMS 句柄——rx drop 即 bus 转发线程 blocking_send 失败
+/// 退出（否则订阅端断连后线程永生）。
+#[cfg(test)]
+mod plan698_f1_cleanup_tests {
+    use super::cleanup_sse_iterator;
+
+    #[test]
+    fn cleanup_reclaims_async_stream_handle() {
+        let vm = crate::vm::engine::AutoVM::new(
+            crate::vm::virt_memory::VirtualFlash::new_with_code(vec![
+                crate::vm::opcode::OpCode::RET as u8,
+            ]),
+            1024,
+        );
+        let (task_id, iter_id, stream_id) = {
+            let tid = vm.spawn_task(0, 8192);
+            let arc = vm.tasks.get(&tid).expect("task spawned");
+            let mut task = arc.blocking_lock();
+            crate::vm::ffi::stdlib::shim_bus_subscribe(&mut task, &vm)
+                .expect("subscribe shim runs");
+            let iter_id = auto_val::decode_i32(task.ram.peek_nv(0)) as u32;
+            let stream_id = match vm.iterators.get(&iter_id).map(|it| it.clone()) {
+                Some(crate::vm::engine::Iterator::AsyncHttpStream(a)) => a.stream_id,
+                other => panic!("expected AsyncHttpStream, got {other:?}"),
+            };
+            (tid, iter_id, stream_id)
+        };
+        assert!(
+            crate::vm::ffi::stdlib::ASYNC_STREAMS.lock().unwrap().contains_key(&stream_id),
+            "handle registered by subscribe"
+        );
+
+        // DashMap 读守卫全 drop 后再 cleanup（同 shard 自死锁陷阱纪律）。
+        vm.tasks.remove(&task_id);
+        cleanup_sse_iterator(&vm, iter_id);
+
+        assert!(
+            !crate::vm::ffi::stdlib::ASYNC_STREAMS.lock().unwrap().contains_key(&stream_id),
+            "F-1: handle reclaimed on cleanup — forwarder thread unblocks and exits"
+        );
+        assert!(!vm.iterators.contains_key(&iter_id), "iterator entry removed");
     }
 }
