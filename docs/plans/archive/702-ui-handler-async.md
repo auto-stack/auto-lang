@@ -409,8 +409,12 @@ specs 先行）。
   ui/plans.md 702 行；INDEX 再生（内容等价，CRLF 归一零 diff）。
   `archived`——git mv → docs/plans/archive/702-ui-handler-async.md +
   status: archived；completion_kind: delivered。
-  `cleaned`——（紧随其后补记）wt-guard 双 clean + worktree/分支/组目录
-  移除回执。
+  `cleaned`——wt-guard 双 clean（删除前后各一次，零 reparse point）+
+  worktree 注销+目录清（git remove 首删遇句柄锁 Permission denied——
+  git 元数据已注销仅目录残留，guard 复扫后 cmd rmdir /s /q 逐目录清，
+  与 P685 增量拒 rename 同族坑）+ plan-702-dev 分支删（83c4621b5）+
+  auto-down 依赖位经属主仓移除 + 组目录 rmdir；.wt 零 702 残留
+  （worktree list 亦零）。
   `evidence`：/tmp/tf_review.log 摘要（Summary 5698 passed/12 failed→
   串行裁定后 10 预存）；/tmp/ui_review2.log（1512/1513）；
   docs/plans/evidence/plan702/（HEAD 双轮探针报告+日志+快照+runbook）；
