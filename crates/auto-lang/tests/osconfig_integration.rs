@@ -235,6 +235,10 @@ fn osconfig_full_chain_launch_modules_and_persist() {
             opens: Vec::new(),
             exe: None,
             render_decl: None,
+            // PLAN-702 T-05 前置（漏改家族顺带修复，504/PLAN-016 注记同款）：
+            // PLAN-043 Part 1 新增 photo_root 字段——日常档（t/tf）不含
+            // tests/ 目标故未炸；AC-03 release 全量档编 tests/ 才暴露。
+            photo_root: None,
         })
     }));
     let probe_url = url.clone();
