@@ -233,7 +233,8 @@ pub(crate) fn cors_headers() -> String {
 }
 
 /// Plan 346 B6: process-wide rate limiter (fixed window per client IP) and
-/// request-id minting for `handle_connection_async`.
+/// request-id minting for `dispatch_api_request` (PLAN-699: the legacy
+/// inline handler this comment named was removed by the Axum transport).
 
 /// Plan 346 5e (B6): active rate-limit config `(max_requests, window_ms)`.
 /// `None` (default) = no limiting — backwards compatible until
