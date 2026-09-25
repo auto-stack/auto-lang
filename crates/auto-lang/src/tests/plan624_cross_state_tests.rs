@@ -56,6 +56,13 @@ mod plan624_cross_state_tests {
 
     fn p1_assert(dc: &mut crate::ui::dynamic::DynamicComponent, mode_name: &str) {
         dc.on_with_input("OpenPage", Some("Hello World.ad".to_string()));
+        // PLAN-702 段驱动适配：OpenPage 内含 api 调用即 park——驱动恢复泵
+        // 至落账（生产 = __parked_resume_tick 泵）。
+        crate::plan370_test_support::drive_parked_segments(dc, |dc| {
+            let t = state_raw(dc, "view_title");
+            let s = state_raw(dc, "status");
+            t.contains("Hello World") && s.contains("opened")
+        }, "plan624 P1 cross-state read");
         let title = state_raw(dc, "view_title");
         let status = state_raw(dc, "status");
         eprintln!("plan624(P1/{}) view_title={} status={}", mode_name, title, status);

@@ -47,6 +47,14 @@ mod plan606_gallery_tests {
             }
         };
 
+        // PLAN-702 段驱动适配：挂载自发 Init 内含 api 调用即 park——驱动
+        // 恢复泵至缩略图源就绪再渲染断言（生产 = __parked_resume_tick 泵）。
+        crate::plan370_test_support::drive_parked_segments(&mut dc, |dc| {
+            let mut imgs = Vec::new();
+            collect_images(&dc.view(), &mut imgs);
+            imgs.iter().filter(|(src, _)| !src.starts_with("lucide:")).count() >= 24
+        }, "029 thumbnails");
+
         // Render initial grid view
         let view = dc.view();
         let mut all_images = Vec::new();

@@ -262,6 +262,17 @@ mod plan622_store_facade_gap_tests {
         // 3. Dispatch the widget msg that reaches the STORE module's #[api]
         //    call (App.StoreSave → store.Save() → save_note(.count)).
         dc.on_with_input("StoreSave", None);
+        // PLAN-702 段驱动适配：StoreSave 内含 #[api] 调用即 park——驱动
+        // 恢复泵至后端命中（生产 = __parked_resume_tick 泵）。
+        let hit_for_pump = captured.clone();
+        crate::plan370_test_support::drive_parked_segments(&mut dc, |_| {
+            hit_for_pump
+                .lock()
+                .unwrap()
+                .as_deref()
+                .map(|l| l.contains("POST /api/notes/save"))
+                .unwrap_or(false)
+        }, "plan622 c-runtime StoreSave backend hit");
 
         // 4. Restore env, stop the mock.
         if let Some(v) = old_backend {

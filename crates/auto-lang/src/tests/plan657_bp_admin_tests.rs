@@ -68,8 +68,18 @@ fn collect_view_texts(
 fn t01_vm_track_full_assembly_renders_four_regions() {
     let app = example_047().join("src/front/app.at");
     let src = std::fs::read_to_string(&app).unwrap();
-    let dc = crate::build_dynamic_component(&src, Some(&app.to_string_lossy()))
+    let mut dc = crate::build_dynamic_component(&src, Some(&app.to_string_lossy()))
         .expect("047 full assembly must compile on the VM track");
+    // PLAN-702 段驱动适配：挂载自发 Init 经 back.api mock 播种即 park——
+    // 驱动恢复泵至 nav 标签落账（生产 = __parked_resume_tick 泵）。
+    crate::plan370_test_support::drive_parked_segments(&mut dc, |dc| {
+        let (view, _m, _p) = dc.view_with_debug();
+        let mut texts = Vec::new();
+        collect_view_texts(&view, &mut texts);
+        let joined = texts.join("
+");
+        ["Data", "Settings", "Reports", "About"].iter().all(|e| joined.contains(e))
+    }, "plan657 t01 nav seeding");
     let (view, _debug_map, _probe) = dc.view_with_debug();
     let mut texts = Vec::new();
     collect_view_texts(&view, &mut texts);

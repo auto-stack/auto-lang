@@ -432,3 +432,26 @@ pub(crate) fn build_component_from_app_mode(
     comp.fire_init();
     Some(comp)
 }
+
+/// PLAN-702 段驱动测试侧恢复泵：驱动 parked handler 段直至 `done` 判真或
+/// 超时。与生产 `__parked_resume_tick` 泵同机制——测试进程没有 iced 事件
+/// 循环，凡断言"api 调用落账后状态"的测试，派发（含挂载自发 Init）后
+/// 必须经此泵续跑；同步驱动时代的"dispatch 即落账"假设已随段驱动退役。
+pub fn drive_parked_segments(
+    dc: &mut crate::ui::dynamic::DynamicComponent,
+    mut done: impl FnMut(&crate::ui::dynamic::DynamicComponent) -> bool,
+    what: &str,
+) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        dc.bridge_mut().resume_ready_parked();
+        if done(dc) {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "PLAN-702: parked 段 10s 内未落账（{what}）——api worker 未回？"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}

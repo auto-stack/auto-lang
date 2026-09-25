@@ -61,7 +61,21 @@ fn probe_app(load_stmt: &str, port: u16) -> crate::ui::dynamic::DynamicComponent
 }
 
 fn init_and_read_entries(dc: &mut crate::ui::dynamic::DynamicComponent) -> i32 {
+    // PLAN-702 段驱动适配：Init 内含 api 调用即 park（挂载自发 Init 先
+    // park，显式 Init 因重入互斥被忽略）——测试侧驱动恢复泵至落账
+    // （生产 = `__parked_resume_tick` 泵；同步驱动时代"dispatch 即落账"
+    // 的假设已随段驱动退役，见 plan370_test_support::drive_parked_segments）。
     dc.on_with_input_for("App", "Init", None);
+    crate::plan370_test_support::drive_parked_segments(
+        dc,
+        |dc| {
+            matches!(
+                dc.bridge().read_state("entries"),
+                Ok(auto_val::Value::Int(n)) if n >= 0
+            )
+        },
+        "scan_probe entries",
+    );
     match dc.bridge().read_state("entries").expect("entries state") {
         auto_val::Value::Int(n) => n,
         other => panic!("entries 非整型: {other:?}"),
