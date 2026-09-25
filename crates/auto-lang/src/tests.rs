@@ -398,3 +398,7 @@ mod plan657_bp_admin_tests;
 // （T-01 spike 三前提 + T-02 mock host 契约）。
 #[cfg(test)]
 mod plan082_shell_query_tests;
+// PLAN-702: engine 段执行驱动单测（UI handler park/resume 语义 +
+// 非 yield handler 同步对拍 + resume 段 .at try/catch 捕获）。
+#[cfg(test)]
+mod plan702_segment_tests;

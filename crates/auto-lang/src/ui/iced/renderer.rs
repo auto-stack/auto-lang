@@ -17193,6 +17193,20 @@ fn compare_pngs(
             return iced::Task::none();
         }
 
+        // PLAN-702 T-03: parked handler 段恢复泵 — resume every parked
+        // segment whose wait (async HTTP / external future) is ready, then
+        // re-render the mid-await state writes. Same conditional-subscription
+        // family as `__timer_tick`: the subscription only exists while
+        // `has_parked_tasks()` (16ms cadence; the iced update that parked the
+        // handler re-evaluates subscriptions, first tick lands ≤16ms after a
+        // result becomes ready). 恢复触发待澄清项①的落地形态：AppTick 轮询
+        // （`__timer_tick` 同族条件订阅——免静态通道、免跨 App 路由歧义，
+        // 恢复内联在 update 内天然满足单 VM 串行裁断）。
+        if msg.event == "__parked_resume_tick" {
+            state.component.poll_parked_resumes();
+            return iced::Task::none();
+        }
+
         // Plan 409 §10 续 19: preview-card 的 toggle/tab(局部 UI state,存 DynamicComponent)。
         if msg.event.starts_with("__preview_toggle")
             || msg.event.starts_with("__preview_tab")
@@ -21521,6 +21535,13 @@ fn compare_pngs(
                 // are pending; due callbacks fire in update's __timer_tick arm.
                 if app.component.has_pending_timers() {
                     subs.push(app_tick(app_id, "__timer_tick", 16));
+                }
+                // PLAN-702 T-03: parked handler 段恢复泵 — only while segments
+                // are parked; ready resumes fire in update's
+                // __parked_resume_tick arm. 16ms ≠ 17/19ms 既有泵（Recipe
+                // 身份含事件名，去重安全）。
+                if app.component.has_parked_tasks() {
+                    subs.push(app_tick(app_id, "__parked_resume_tick", 16));
                 }
                 // F12 DevTools + key bindings（per-App bindings + 本窗过滤）。
                 if let Some(win) = state.window_of_app(app_id) {

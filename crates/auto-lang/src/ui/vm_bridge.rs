@@ -15,7 +15,11 @@
 //! VmBridge
 //!  - Links the module into a VirtualFlash
 //!  - Stores widget state as GenericInstanceData on the VM heap
-//!  - Dispatches handlers via call_fn_by_name
+//!  - Dispatches handlers via the segment driver (PLAN-702
+//!    `call_fn_by_name_segment`: Yield+wait parks the task into
+//!    `parked_tasks` and returns immediately — the iced loop stays
+//!    interactive; the `__parked_resume_tick` pump resumes ready segments.
+//!    The busy-waiting `call_fn_by_name` is legacy, non-UI callers only)
 //!    |
 //!    v
 //! UI Backend (iced, headless) reads state via read_state()
@@ -26,7 +30,7 @@
 //! State references (`.field`) are AST-rewritten to `__state.field` by
 //! `handler_codegen`, which Codegen lowers to `LOAD_LOCAL + GET_FIELD/SET_FIELD`
 //! against the state heap object. `call_handler` pushes the state heap id as the
-//! first argument and dispatches via `call_fn_by_name`.
+//! first argument and dispatches via the segment driver (`call_fn_by_name_segment`).
 //!
 //! This replaces the bespoke mini-compiler + AST tree-walker that stalled during
 //! the Plan 205 migration: handlers can now use the full language (loops, arrays,
@@ -35,7 +39,7 @@
 use std::collections::HashMap;
 
 use crate::ast::Stmt;
-use crate::vm::engine::AutoVM;
+use crate::vm::engine::{AutoVM, ParkedSegment, ParkedWait, SegmentOutcome};
 use crate::vm::generic_registry::GenericInstanceData;
 use crate::vm::loader::Linker;
 use crate::vm::task::AutoTask;
@@ -176,6 +180,54 @@ pub struct VmBridge {
     /// 根态、无独立堆对象可挂"首建"信号,故以名字集合在 bridge(唯一跨帧
     /// 存活、渲染期可变的组件侧结构)上记账。
     child_last_init_identity: std::cell::RefCell<std::collections::HashMap<String, String>>,
+
+    /// PLAN-702 T-02: parked handler 段注册表——handler 派发遇 Yield+等待
+    /// （异步 HTTP / 外部 future）时，执行中的 task（ip/bp/栈/闭包态）连
+    /// 同引擎恢复上下文登记在此，等恢复泵（`__parked_resume_tick`）在其
+    /// wait 就绪后续跑。单 VM 串行：续跑只在 iced update 内发生，同一时刻
+    /// 至多一个连续段在执行（架构裁断 1）；同 (widget,handler) 键的重复
+    /// 触发在派发前被 `is_handler_parked` 忽略（T-04 重入策略）。
+    /// RefCell 与 child_state_map 同款内可变性理由（call_handler_for 是
+    /// `&self`）。
+    parked_tasks: std::cell::RefCell<Vec<ParkedTask>>,
+
+    /// PLAN-702 T-04: `__busy_handlers` 镜像的已写字集——parked 键集无变化
+    /// 时跳过堆列表重铸（每 tick 调 sync_busy_flag，稳态零写）。
+    busy_flag_names: std::cell::RefCell<Vec<String>>,
+}
+
+/// PLAN-702 T-04: root-state busy 镜像字段名——List&lt;str&gt;（namespaced
+/// handler fn 名集），.at 可查询（如 `.store.__busy_handlers.len() > 0`）。
+const BUSY_STATE_FIELD: &str = "__busy_handlers";
+
+/// PLAN-702 T-03: outcome of one resume-pump pass.
+#[derive(Default)]
+pub struct ResumeReport {
+    /// Segments that ran to completion this pass (model writes landed).
+    pub completed: usize,
+    /// Segments whose resumed execution failed uncaught: (fn_name, error).
+    pub failed: Vec<(String, String)>,
+}
+
+/// PLAN-702 T-02: one parked handler segment.
+pub struct ParkedTask {
+    /// Mid-execution task — ip/bp/ram/call_stack/闭包上下文原样保留，恢复
+    /// 时交还引擎续跑。栈上的 rc 份额随 task 存活（不得中途
+    /// rc_release_task_stack——完成/失败时按来源纪律清账）。
+    pub task: AutoTask,
+    /// 引擎恢复上下文（saved_bp/saved_fn_n_args/fn_name，跨段不变）。
+    pub seg: ParkedSegment,
+    /// 就绪凭据（HTTP req_id / future id），恢复泵按此探测。
+    pub wait: ParkedWait,
+    /// 派发时解析出的 namespaced fn 名（重入键；编码了 widget+handler）。
+    pub fn_name: String,
+    /// 事件显示名（日志/诊断用，如 "PickFolder"）。
+    pub event_name: String,
+    /// 完成时是否清整任务栈（call_handler_for 来源=true，与其同步路径的
+    /// rc_release_task_stack 纪律对齐；call_handler/with_record 来源=false，
+    /// 保持其既有弃栈行为不变）。
+    pub release_stack_on_complete: bool,
+    pub parked_at: std::time::Instant,
 }
 
 /// PLAN-051 C3: 栈顶 nanbox → Value（call_vm_fn 返回值解码；与
@@ -397,6 +449,8 @@ impl VmBridge {
             import_aliases: import_aliases.clone(),
             store_alias_snapshot,
             child_last_init_identity: std::cell::RefCell::new(std::collections::HashMap::new()),
+            parked_tasks: std::cell::RefCell::new(Vec::new()),
+            busy_flag_names: std::cell::RefCell::new(Vec::new()),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
         })
@@ -578,6 +632,8 @@ impl VmBridge {
             import_aliases: import_aliases.clone(),
             store_alias_snapshot,
             child_last_init_identity: std::cell::RefCell::new(std::collections::HashMap::new()),
+            parked_tasks: std::cell::RefCell::new(Vec::new()),
+            busy_flag_names: std::cell::RefCell::new(Vec::new()),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
         })
@@ -1292,6 +1348,161 @@ impl VmBridge {
         }
     }
 
+    // ==========================================================================
+    // PLAN-702 T-02/T-03/T-04: parked handler segments（段执行驱动）
+    // ==========================================================================
+
+    /// PLAN-702 T-02: whether any handler segment is parked awaiting resume
+    /// (gates the renderer's `__parked_resume_tick` subscription — same
+    /// conditional-subscription family as `has_pending_timers`).
+    pub fn has_parked_tasks(&self) -> bool {
+        !self.parked_tasks.borrow().is_empty()
+    }
+
+    /// PLAN-702 T-02/T-04: parked 段计数（测试与诊断用；重入忽略断言面）。
+    pub fn parked_count(&self) -> usize {
+        self.parked_tasks.borrow().len()
+    }
+
+    /// PLAN-702 T-04: is a segment already parked for this resolved handler
+    /// fn (the (widget, handler) reentry key — namespaced fn 名编码二者)?
+    pub fn is_handler_parked(&self, fn_name: &str) -> bool {
+        self.parked_tasks.borrow().iter().any(|p| p.fn_name == fn_name)
+    }
+
+    /// PLAN-702 T-03: probe every parked segment's wait and resume the ready
+    /// ones. Resumes run serially inside the calling (iced update) context —
+    /// 单 VM 串行一致性的执行点。Completed → 出清注册表；Completed(Err) →
+    /// 出清并由调用方走既有 `[VM-HANDLER] ... failed` 通道（.at try/catch
+    /// 已在段内经 intercept_error 捕获，未捕获才到这）；仍 Waiting → 再 park。
+    pub fn resume_ready_parked(&self) -> ResumeReport {
+        let mut report = ResumeReport::default();
+        loop {
+            let idx = {
+                let parked = self.parked_tasks.borrow();
+                match parked.iter().position(|p| self.parked_wait_ready(&p.wait)) {
+                    Some(i) => i,
+                    None => break,
+                }
+            };
+            let mut p = self.parked_tasks.borrow_mut().remove(idx);
+            match self.vm.resume_fn_by_name_segment(&mut p.task, &p.seg) {
+                SegmentOutcome::Completed(Ok(())) => {
+                    if p.release_stack_on_complete {
+                        self.vm.rc_release_task_stack(&mut p.task);
+                    }
+                    eprintln!(
+                        "[VM-PARKED] {} resumed to completion (waited {:?})",
+                        p.fn_name,
+                        p.parked_at.elapsed()
+                    );
+                    report.completed += 1;
+                }
+                SegmentOutcome::Completed(Err(e)) => {
+                    if p.release_stack_on_complete {
+                        self.vm.rc_release_task_stack(&mut p.task);
+                    }
+                    eprintln!("[VM-PARKED] {} resume FAILED: {:?}", p.fn_name, e);
+                    report.failed.push((p.fn_name.clone(), format!("{:?}", e)));
+                }
+                SegmentOutcome::Parked { wait, .. } => {
+                    // Still waiting (chained await / not-ready shim re-entry)
+                    // — re-park with the refreshed credential.
+                    p.wait = wait;
+                    self.parked_tasks.borrow_mut().push(p);
+                }
+            }
+        }
+        self.sync_busy_flag();
+        report
+    }
+
+    /// Readiness probe per wait credential.
+    fn parked_wait_ready(&self, wait: &ParkedWait) -> bool {
+        match wait {
+            ParkedWait::HttpRequest(req_id) => {
+                crate::vm::ffi::stdlib::async_http_result_ready(*req_id)
+            }
+            ParkedWait::Future(fid) => self
+                .vm
+                .futures
+                .get(fid)
+                .map(|f| f.read().unwrap().state != crate::vm::engine::FutureState::Pending)
+                .unwrap_or(true), // future gone → wake (engine wake-source-6 parity)
+        }
+    }
+
+    /// PLAN-702 T-02: register a parked segment and raise the busy mirror.
+    fn register_parked(
+        &self,
+        task: AutoTask,
+        seg: ParkedSegment,
+        wait: ParkedWait,
+        event_name: String,
+        release_stack_on_complete: bool,
+    ) {
+        eprintln!(
+            "[VM-PARKED] {} parked (event {}, wait {:?}) — UI stays interactive",
+            seg.fn_name, event_name, wait
+        );
+        let fn_name = seg.fn_name.clone();
+        self.parked_tasks.borrow_mut().push(ParkedTask {
+            task,
+            seg,
+            wait,
+            fn_name,
+            event_name,
+            release_stack_on_complete,
+            parked_at: std::time::Instant::now(),
+        });
+        self.sync_busy_flag();
+    }
+
+    /// PLAN-702 T-04: maintain the root-state `__busy_handlers` mirror — a
+    /// List&lt;str&gt; heap id (.at reads it like any list field; MCP snapshots
+    /// materialize it via read_all_state_materialized). Rewritten only when
+    /// the parked-key set actually changes.
+    fn sync_busy_flag(&self) {
+        let mut names: Vec<String> = {
+            let parked = self.parked_tasks.borrow();
+            parked.iter().map(|p| p.fn_name.clone()).collect()
+        };
+        names.sort();
+        if *self.busy_flag_names.borrow() == names {
+            return;
+        }
+        *self.busy_flag_names.borrow_mut() = names.clone();
+
+        let mut list = crate::vm::types::ListData::<auto_val::Value>::new();
+        for n in &names {
+            list.push(auto_val::Value::Str(auto_val::AutoStr::from(n.as_str())));
+        }
+        let id = self.vm.insert_heap_object(list);
+        // PLAN-062 纪律：状态字段获得持有时显式 stake（write_state 对称面
+        // —— Rust 直写绕过 VM 栈，rc.rs §2.3）。
+        self.vm.rc_retain_id(id);
+        let value = auto_val::Value::Int(id as i32);
+        let Some(obj) = self.vm.get_heap_object_mut(self.state_obj_id) else {
+            return;
+        };
+        let mut guard = obj.write().unwrap();
+        let Some(inst) = guard.as_any_mut().downcast_mut::<GenericInstanceData>() else {
+            return;
+        };
+        match inst.field_names.iter().position(|n| n == BUSY_STATE_FIELD) {
+            Some(i) => {
+                if let Some(old) = inst.get_field(i).cloned() {
+                    self.release_state_value(&old);
+                }
+                let _ = inst.set_field(i, value);
+            }
+            None => {
+                inst.field_names.push(BUSY_STATE_FIELD.to_string());
+                inst.fields.push(value);
+            }
+        }
+    }
+
     /// Call a handler by name with arguments.
     ///
     /// Looks up the synthesized `handler_<WidgetName>_<EventName>` function in
@@ -1551,6 +1762,13 @@ impl VmBridge {
             return Err(VmBridgeError::HandlerNotFound(format!("{}.{}", widget_name, event_name)));
         }
 
+        // PLAN-702 T-04: parked 段在途的重入默认忽略（队列/合并策略留待
+        // 使用反馈）；`__busy_handlers` 镜像已在 park 时置位，.at 可查询。
+        if self.is_handler_parked(&fn_name) {
+            eprintln!("[VM-PARKED] {} re-entry ignored (segment in flight)", fn_name);
+            return Ok(());
+        }
+
         let mut task = AutoTask::new(0, 4096, 0);
         self.vm.rc_push_id(&mut task, state_obj_id); // Plan 419
         for a in args {
@@ -1588,14 +1806,25 @@ impl VmBridge {
 
         // Plan 446 批一 (F1): 失败时带上崩点 ip + handler 名 —— VMError 本身
         // 无位置信息,task.ip 在 Err 返回后指向失败指令附近。
-        let call_result = self.vm.call_fn_by_name(&mut task, &fn_name, 1 + args.len());
-        // PLAN-062 F2 配套: 主任务边界 RET 无帧清扫(见 call_vm_fn 注)——
-        // 任务弃前整栈清账。Err 路径同样清(局部/临时槽可能已持 stake,
-        // 不清则崩掉的 handler 额外漏一份)。
-        self.vm.rc_release_task_stack(&mut task);
-        call_result.map_err(|e| {
-            VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
-        })
+        // PLAN-702 T-02: 段派发——Yield+等待即 park（task 入注册表、零忙等，
+        // UI 立即恢复事件循环）；从不 yield 的 handler 在本次 update 内跑完，
+        // 与同步驱动逐字节同（兼容性论证见计划 §架构方案 4）。
+        match self.vm.call_fn_by_name_segment(&mut task, &fn_name, 1 + args.len()) {
+            SegmentOutcome::Completed(res) => {
+                // PLAN-062 F2 配套: 主任务边界 RET 无帧清扫(见 call_vm_fn 注)——
+                // 任务弃前整栈清账。Err 路径同样清(局部/临时槽可能已持 stake,
+                // 不清则崩掉的 handler 额外漏一份)。
+                self.vm.rc_release_task_stack(&mut task);
+                res.map_err(|e| {
+                    VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
+                })
+            }
+            SegmentOutcome::Parked { wait, seg } => {
+                // parked 段的栈份额随 task 存活——不得中途清账（T-02）。
+                self.register_parked(task, seg, wait, event_name.to_string(), true);
+                Ok(())
+            }
+        }
     }
 
     /// Plan 442 A5: fire every due one-shot timer (set_timeout). Event-form
@@ -1663,13 +1892,20 @@ impl VmBridge {
         let mut task = AutoTask::new(0, 4096, 0);
         self.vm.rc_push_id(&mut task, self.state_obj_id); // Plan 419
         self.vm.rc_push_id(&mut task, rec_id);
-        let call_result = self.vm.call_fn_by_name(&mut task, &fn_name, 2);
-        call_result.map_err(|e| {
-            VmBridgeError::VmError(format!(
-                "{:?} (crash ip=0x{:x} in {})",
-                e, task.ip, fn_name
-            ))
-        })
+        // PLAN-702 T-02: 段派发（同 call_handler_for；宿主注入载荷的
+        // handler 同样可能内部等待）。
+        match self.vm.call_fn_by_name_segment(&mut task, &fn_name, 2) {
+            SegmentOutcome::Completed(res) => res.map_err(|e| {
+                VmBridgeError::VmError(format!(
+                    "{:?} (crash ip=0x{:x} in {})",
+                    e, task.ip, fn_name
+                ))
+            }),
+            SegmentOutcome::Parked { wait, seg } => {
+                self.register_parked(task, seg, wait, event_name.to_string(), false);
+                Ok(())
+            }
+        }
     }
 
     /// [`RecordValue`] 递归入堆：嵌套记录先铸（子先父后），字段存真
@@ -1718,6 +1954,12 @@ impl VmBridge {
 
         eprintln!("[CALL_HANDLER] widget={} event_name={} fn_name={} args={:?}", self.widget_name, event_name, fn_name, args);
 
+        // PLAN-702 T-04: parked 段在途的重入默认忽略（同 call_handler_for）。
+        if self.is_handler_parked(&fn_name) {
+            eprintln!("[VM-PARKED] {} re-entry ignored (segment in flight)", fn_name);
+            return Ok(());
+        }
+
         let mut task = AutoTask::new(0, 4096, 0);
 
         // Push arguments left-to-right: __state (the state heap id) first, then
@@ -1739,15 +1981,22 @@ impl VmBridge {
 
         // Plan 446 批一 (F1): 失败时带上崩点 ip + handler 名 —— VMError 本身
         // 无位置信息,task.ip 在 Err 返回后指向失败指令附近。
-        let call_result = self.vm.call_fn_by_name(&mut task, &fn_name, 1 + args.len());
-        call_result.map_err(|e| {
-            eprintln!("[CALL_HANDLER_ERR] {} error: {:?} at ip=0x{:x}", fn_name, e, task.ip);
-            eprintln!("[CALL_HANDLER_ERR] exports: {:?}", self.vm.flash.exports_by_name.keys().collect::<Vec<_>>());
-            let start = task.ip.saturating_sub(40);
-            let end = (task.ip + 40).min(self.vm.flash.memory.len());
-            eprintln!("[CALL_HANDLER_ERR] code around ip (0x{:x}..0x{:x}): {:?}", start, end, &self.vm.flash.memory[start..end]);
-            VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
-        })
+        // PLAN-702 T-02: 段派发（同 call_handler_for；本入口的弃栈行为
+        // 保持既有纪律——Completed 也不 rc_release_task_stack）。
+        match self.vm.call_fn_by_name_segment(&mut task, &fn_name, 1 + args.len()) {
+            SegmentOutcome::Completed(res) => res.map_err(|e| {
+                eprintln!("[CALL_HANDLER_ERR] {} error: {:?} at ip=0x{:x}", fn_name, e, task.ip);
+                eprintln!("[CALL_HANDLER_ERR] exports: {:?}", self.vm.flash.exports_by_name.keys().collect::<Vec<_>>());
+                let start = task.ip.saturating_sub(40);
+                let end = (task.ip + 40).min(self.vm.flash.memory.len());
+                eprintln!("[CALL_HANDLER_ERR] code around ip (0x{:x}..0x{:x}): {:?}", start, end, &self.vm.flash.memory[start..end]);
+                VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
+            }),
+            SegmentOutcome::Parked { wait, seg } => {
+                self.register_parked(task, seg, wait, event_name.to_string(), false);
+                Ok(())
+            }
+        }
     }
 
     /// Get the widget name.
@@ -2304,6 +2553,131 @@ mod tests {
         bridge2
             .call_handler("CloseRequest", &[])
             .expect("CloseRequest dispatch");
+    }
+
+    /// PLAN-702 T-02/T-04: 桥接段派发全链——handler 内 Http.post_json 即
+    /// park 入注册表（零忙等），重入默认忽略，结果就绪后 resume_ready_parked
+    /// 续跑落账（model 写入经 read_state 可见），`__busy_handlers` 镜像随
+    /// park/完成翻转。HTTP worker 走真本地 server（受控延迟 300ms，证明
+    /// dispatch 立即返回）。
+    #[test]
+    fn plan702_handler_park_reentry_resume_roundtrip() {
+        use crate::ast::Stmt;
+        use crate::aura::{AuraStateDef, LogicPayload};
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+
+        let body_for_server = "seeded-body".to_string();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buf = [0u8; 4096];
+            let _ = std::io::Read::read(&mut stream, &mut buf);
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body_for_server.len(),
+                body_for_server
+            );
+            let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
+        });
+
+        let mut widget = make_test_widget("ParkProbe", vec![]);
+        let state_src = r#"var result str = """#;
+        let mut parser = Parser::from(state_src).with_session(CompilerSession::ui());
+        let ast = parser.parse().expect("parse state");
+        let inits: Vec<_> = ast
+            .stmts
+            .iter()
+            .filter_map(|s| match s {
+                Stmt::Store(st) => Some(st.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(inits.len(), 1);
+        widget.state_vars.push(AuraStateDef {
+            name: "result".to_string(),
+            type_info: Type::Unknown,
+            initial: inits[0].expr.clone(),
+            decorators: vec![],
+        });
+        let handler_src = format!(
+            r#"
+            var resp = Http.post_json("http://127.0.0.1:{}/seed", "q=1")
+            .result = resp
+        "#,
+            port
+        );
+        let mut parser = Parser::from(&handler_src).with_session(CompilerSession::ui());
+        let ast2 = parser.parse().expect("parse handler");
+        widget
+            .handlers
+            .insert(".Load".to_string(), LogicPayload::AstStmts(ast2.stmts));
+        let mut bridge = VmBridge::new(&widget).expect("bridge");
+
+        // 首次派发：立即返回（server 延迟 300ms 内 park 完成 = 零忙等）。
+        let started = std::time::Instant::now();
+        bridge.call_handler("Load", &[]).expect("dispatch parks");
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(250),
+            "dispatch 耗时 {:?} —— 忙等回归",
+            started.elapsed()
+        );
+        assert_eq!(bridge.parked_count(), 1, "应恰有一个 parked 段");
+        assert!(bridge.has_parked_tasks());
+
+        // T-04 busy 镜像：__busy_handlers 含 namespaced fn 名。读法走
+        // read_state 的 live-object 兜底（镜像字段是运行期追加的堆字段，
+        // 不在声明字段列表内——read_all_state 只枚举声明字段）。
+        let busy_names: Vec<String> = bridge
+            .read_state_as_vec("__busy_handlers")
+            .expect("busy 镜像字段应存在")
+            .iter()
+            .map(|v| v.as_str().to_string())
+            .collect();
+        assert!(
+            busy_names.iter().any(|n| n.contains("ParkProbe_Load")),
+            "busy 镜像应含 namespaced handler 名：{:?}",
+            busy_names
+        );
+
+        // T-04 重入：parked 期间重复触发被忽略（不叠执行）。
+        bridge.call_handler("Load", &[]).expect("re-entry ignored");
+        assert_eq!(bridge.parked_count(), 1, "重入不得新开段");
+
+        // 结果就绪后恢复泵续跑（模拟 __parked_resume_tick 臂）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let report = bridge.resume_ready_parked();
+            if report.completed > 0 {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "恢复泵 5s 内未完成——worker 未应答？"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        server.join().expect("server thread");
+
+        // AC-02: 结果落账——model 值正确、注册表出清、busy 镜像归零。
+        assert_eq!(bridge.parked_count(), 0, "完成段应出清");
+        match bridge.read_state("result").expect("result") {
+            Value::Str(s) => assert_eq!(s.as_str(), "seeded-body"),
+            other => panic!("result not a str: {other:?}"),
+        }
+        let busy_after: Vec<String> = bridge
+            .read_state_as_vec("__busy_handlers")
+            .expect("busy 镜像字段应仍在")
+            .iter()
+            .map(|v| v.as_str().to_string())
+            .collect();
+        assert!(
+            busy_after.is_empty(),
+            "完成后 busy 镜像应空：{:?}",
+            busy_after
+        );
     }
 
     #[test]

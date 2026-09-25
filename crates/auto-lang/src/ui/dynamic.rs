@@ -1478,6 +1478,45 @@ impl DynamicComponent {
         self.bridge.has_pending_timers()
     }
 
+    /// PLAN-702 T-02: whether any handler segment is parked awaiting resume —
+    /// gates the render loop's `__parked_resume_tick` subscription (same
+    /// conditional family as [`Self::has_pending_timers`]; no parked segments
+    /// → no polling overhead).
+    pub fn has_parked_tasks(&self) -> bool {
+        self.bridge.has_parked_tasks()
+    }
+
+    /// PLAN-702 T-03/T-04: resume every parked handler segment whose wait is
+    /// ready. Called from the iced render loop's `__parked_resume_tick` arm
+    /// (serial with all other VM execution — 架构裁断 1). Marks the view
+    /// dirty on completion/failure so mid-await state writes re-render.
+    /// Uncaught resume errors go through the same `[VM-HANDLER] ... failed`
+    /// syslog face as dispatch-time failures (E7 通道复用).
+    pub fn poll_parked_resumes(&mut self) {
+        let report = self.bridge.resume_ready_parked();
+        if report.completed > 0 || !report.failed.is_empty() {
+            self.dirty = true;
+        }
+        for (fn_name, err) in &report.failed {
+            let syslog_face = {
+                let face = self
+                    .source_path
+                    .as_ref()
+                    .and_then(|p| {
+                        let stem = p.file_stem()?.to_string_lossy().to_string();
+                        let dir = p.parent()?.file_name()?.to_string_lossy().to_string();
+                        Some(format!("{dir}/{stem}"))
+                    })
+                    .unwrap_or_else(|| self.widget_name.clone());
+                format!("vm:{face}")
+            };
+            crate::syslog!(
+                crate::ui::syslog::SyslogLevel::Error, syslog_face,
+                "[VM-HANDLER] {} failed (resume): {}", fn_name, err
+            );
+        }
+    }
+
     /// Find the source span for a specific element by kind and occurrence index.
     /// Traverses the AuraNode tree in DFS order, counting Element nodes by tag name.
     /// Returns the span of the `target_index`-th occurrence of `target_kind`.

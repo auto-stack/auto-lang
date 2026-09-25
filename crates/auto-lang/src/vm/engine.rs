@@ -306,6 +306,51 @@ pub enum FrameResult {
     BudgetExhausted,
 }
 
+/// PLAN-702 T-01: outcome of one handler dispatch segment (segment driver for
+/// the UI bridge; sync `call_fn_by_name` is the busy-wait specialization).
+#[derive(Debug)]
+pub enum SegmentOutcome {
+    /// Handler finished within this segment (RET reached, or the Plan 321
+    /// generator short-circuit fired). `Ok(())` ≡ `call_fn_by_name` Ok —
+    /// result value on stack top; `Err` after non-stack state restore, same
+    /// as the sync driver's error return.
+    Completed(Result<(), VMError>),
+    /// Handler yielded with a pending wait (async HTTP request / external
+    /// `~{}` future). Task state (ip/bp/stack/closures) is preserved for
+    /// [`AutoVM::resume_fn_by_name_segment`]. No busy-wait happened; the
+    /// wait's result slot is deliberately NOT dropped — PLAN-027 缺陷 A 的
+    /// `drop_async_result` 回收只属于"真正放弃等待"的超时路径，恢复时按
+    /// req_id 从 ASYNC_RESULTS 取用。
+    Parked { wait: ParkedWait, seg: ParkedSegment },
+}
+
+/// What a parked segment is waiting on (readiness credential for the UI
+/// resume pump, PLAN-702 T-03).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParkedWait {
+    /// Async HTTP request — ready when ASYNC_RESULTS[req_id] holds a result;
+    /// the shim's re-entry branch consumes it when the re-driven CALL_NAT
+    /// re-fires (Plan 349 step 7 re-entry protocol).
+    HttpRequest(u64),
+    /// External `~{}` future — ready when the future leaves Pending; the
+    /// wake itself happens in `resume_fn_by_name_segment` (mirror of wake
+    /// source 6, Plan 394 Phase A).
+    Future(u32),
+}
+
+/// Resume context captured at park time; immutable across repeated
+/// park→resume cycles of the same call (saved_bp / saved_fn_n_args /
+/// fn_name are fixed for the lifetime of the dispatch).
+#[derive(Debug, Clone)]
+pub struct ParkedSegment {
+    pub fn_name: String,
+    /// Caller-frame bp at dispatch time (completion detection: `task.bp ==
+    /// saved_bp` after RET restores it).
+    pub saved_bp: usize,
+    /// `current_fn_n_args` to restore once the handler returns / errors.
+    pub saved_fn_n_args: usize,
+}
+
 pub struct AutoVM {
     pub flash: Arc<VirtualFlash>,
     pub native_interface: Arc<NativeInterface>,
@@ -2087,11 +2132,138 @@ impl AutoVM {
         fn_name: &str,
         n_args: usize,
     ) -> Result<(), VMError> {
+        // PLAN-702 T-05: legacy entry — busy-wait drive, reserved for NON-UI
+        // callers (back_proxy / http_server / run_module_init bootstrap), whose
+        // own thread may block for the wait's duration. The UI bridge
+        // (vm_bridge) must dispatch via [`Self::call_fn_by_name_segment`]
+        // instead: busy-waiting here freezes the iced event loop for the
+        // whole wait (PLAN-083 T-01: auto-edit 切换冻结 20.9s 即此).
+        match self.dispatch_fn_by_name(task, fn_name, n_args, true) {
+            SegmentOutcome::Completed(res) => res,
+            SegmentOutcome::Parked { .. } => Err(VMError::RuntimeError(
+                "internal: segment driver parked under busy-wait mode (unreachable)".into(),
+            )),
+        }
+    }
+
+    /// PLAN-702 T-01: segment-dispatch a named VM function (UI handler drive).
+    ///
+    /// Same setup contract as [`Self::call_fn_by_name`] (args pre-pushed on
+    /// `task.ram` left-to-right, result on stack top on `Completed`), but a
+    /// Yield with a pending wait does NOT busy-wait: the call returns
+    /// [`SegmentOutcome::Parked`] immediately and the task keeps its
+    /// ip/bp/stack/closure state, ready for [`Self::resume_fn_by_name_segment`]
+    /// once the wait is satisfied. The iced event loop is free for the whole
+    /// wait (E3/E7: 忙等冻结 UI 的事故面).
+    ///
+    /// Handlers that never yield complete inside this call — the step loop,
+    /// budget, runaway guard and try/catch interception are byte-identical
+    /// to the sync driver (兼容性论证：迁移爆炸半径 = 今天已坏的会 yield 的
+    /// handler，正是缺陷面本身).
+    pub fn call_fn_by_name_segment(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+    ) -> SegmentOutcome {
+        self.dispatch_fn_by_name(task, fn_name, n_args, false)
+    }
+
+    /// PLAN-702 T-01/T-03: resume a parked handler segment once its wait is
+    /// ready. Returns `Completed` on finish, or `Parked` again (still
+    /// waiting / chained await). Readiness probing is the resume pump's job
+    /// (vm_bridge scans `ParkedWait`); the external-future wake itself
+    /// happens here.
+    pub fn resume_fn_by_name_segment(
+        &self,
+        task: &mut AutoTask,
+        seg: &ParkedSegment,
+    ) -> SegmentOutcome {
+        // Wake source 6 mirror (Plan 394 Phase A): an external `~{}` future
+        // reached Ready/Failed — push the await result and clear the slot so
+        // the suspended body resumes at the instruction after the await.
+        if let Some(fid) = task.waiting_future_id {
+            let ready = self
+                .futures
+                .get(&fid)
+                .map(|f| f.read().unwrap().state != FutureState::Pending)
+                .unwrap_or(true); // future gone → wake (nil fallback)
+            if !ready {
+                return SegmentOutcome::Parked {
+                    wait: ParkedWait::Future(fid),
+                    seg: seg.clone(),
+                };
+            }
+            if let Some(future_arc) = self.futures.get(&fid) {
+                let future = future_arc.read().unwrap();
+                match future.state {
+                    FutureState::Ready => {
+                        if let Some(ref r) = future.result {
+                            Self::push_value(task, r, self);
+                        } else {
+                            task.ram.push_nv(auto_val::encode_null());
+                        }
+                    }
+                    _ => {
+                        // Failed / missing result → null (Phase A)
+                        task.ram.push_nv(auto_val::encode_null());
+                    }
+                }
+            } else {
+                task.ram.push_nv(auto_val::encode_null());
+            }
+            task.waiting_future_id = None;
+            task.status = TaskStatus::Ready;
+        }
+        // Plan 394 Phase B continuation: the `~{}` body was suspended
+        // mid-await (async_frames holds the continuation) — finish the body
+        // first (execute_task's resume arm, adapted to the call frame), then
+        // keep driving the outer handler frame below.
+        if task.waiting_future_id.is_none() {
+            if let Some(frame) = task.async_frames.last().copied() {
+                match self.resume_suspended_body(task, frame) {
+                    Ok(TaskStatus::Waiting(_)) => {
+                        return SegmentOutcome::Parked {
+                            wait: ParkedWait::Future(
+                                task.waiting_future_id.unwrap_or(0),
+                            ),
+                            seg: seg.clone(),
+                        };
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        task.current_fn_n_args = seg.saved_fn_n_args;
+                        return SegmentOutcome::Completed(Err(e));
+                    }
+                }
+            }
+        }
+        // Async-HTTP wait: nothing to push here — when the re-driven CALL_NAT
+        // re-fires, the shim's re-entry branch consumes ASYNC_RESULTS[req_id]
+        // (Plan 349 step 7 protocol; the driver loop below is identical to
+        // what the busy-wait arm continued into).
+        self.drive_handler_segment(task, &seg.fn_name, seg.saved_bp, seg.saved_fn_n_args, false)
+    }
+
+    /// Shared first-entry path of [`Self::call_fn_by_name`] and
+    /// [`Self::call_fn_by_name_segment`]: fn lookup, Plan 321 generator
+    /// short-circuit, frame setup, then the segment drive loop.
+    fn dispatch_fn_by_name(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+        allow_busy_wait: bool,
+    ) -> SegmentOutcome {
         // 1. Look up function address
-        let addr = *self.flash.exports_by_name.get(fn_name)
-            .ok_or_else(|| VMError::RuntimeError(
-                format!("call_fn_by_name: function '{}' not found in exports", fn_name)
-            ))?;
+        let addr = match self.flash.exports_by_name.get(fn_name) {
+            Some(a) => *a,
+            None => {
+                return SegmentOutcome::Completed(Err(VMError::RuntimeError(
+                    format!("call_fn_by_name: function '{}' not found in exports", fn_name),
+                )))
+            }
+        };
 
         // Plan 321: Generator detection — if the function body contains
         // YIELD_VAL (0x8D), it's a generator. Don't execute the body;
@@ -2125,7 +2297,7 @@ impl AutoVM {
                 next_id
             };
             task.ram.push_i32(iter_id as i32);
-            return Ok(());
+            return SegmentOutcome::Completed(Ok(()));
         }
 
         // 2. Save current state
@@ -2145,11 +2317,28 @@ impl AutoVM {
         task.ip = addr as usize;
 
         // 5. Execute until function returns (BP restored to saved_bp)
+        self.drive_handler_segment(task, fn_name, saved_bp, saved_fn_n_args, allow_busy_wait)
+    }
+
+    /// PLAN-702 T-01: the shared step loop behind `call_fn_by_name`
+    /// (`allow_busy_wait = true`, legacy) and `call_fn_by_name_segment`
+    /// (`false`, park-on-wait). The frame must already be set up; the
+    /// segment completes when RET restores `task.bp` to `saved_bp`.
+    fn drive_handler_segment(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        saved_bp: usize,
+        saved_fn_n_args: usize,
+        allow_busy_wait: bool,
+    ) -> SegmentOutcome {
         let budget = 10_000_000;
         let mut steps = 0u64;
         // Plan 423 P5 加固:步预算只限时长不限内存 —— 字节码错位后可在垃圾
         // 指令里无界生长字符串池/堆(实机 20G 内存事故)。每 RUNAWAY_CHECK_EVERY
         // 步核对一次增量,超阈即以明确错误中止,把内存炸弹变成可读失败。
+        // (段驱动语义:每个段独立基线与预算——非 yield handler 只有首段,
+        // 与同步驱动逐字节同;会 park 的 handler 每段重新计,比同步更宽。)
         let baseline_strings = self.strings.read().map(|s| s.len()).unwrap_or(0);
         let baseline_heap = self.heap_objects.len();
         for _ in 0..budget {
@@ -2164,10 +2353,10 @@ impl AutoVM {
                     .unwrap_or(0);
                 let h_growth = self.heap_objects.len().saturating_sub(baseline_heap);
                 task.current_fn_n_args = saved_fn_n_args;
-                return Err(VMError::RuntimeError(format!(
+                return SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
                     "runaway execution halted in '{}' at ip=0x{:04x}: +{} strings, +{} heap objects within one call (bytecode desync or unbounded loop?)",
                     fn_name, task.ip, s_growth, h_growth
-                )));
+                ))));
             }
             let step = match self.run_one_instruction(task) {
                 Ok(s) => s,
@@ -2177,7 +2366,7 @@ impl AutoVM {
                         continue;
                     }
                     task.current_fn_n_args = saved_fn_n_args;
-                    return Err(e);
+                    return SegmentOutcome::Completed(Err(e));
                 }
             };
             match step {
@@ -2189,11 +2378,39 @@ impl AutoVM {
                 }
                 StepResult::Terminated => {
                     task.current_fn_n_args = saved_fn_n_args;
-                    return Err(VMError::RuntimeError(
+                    return SegmentOutcome::Completed(Err(VMError::RuntimeError(
                         format!("Function '{}' execution terminated unexpectedly", fn_name)
-                    ));
+                    )));
                 }
                 StepResult::Yield => {
+                    if !allow_busy_wait {
+                        // PLAN-702 T-01: park instead of busy-waiting — the
+                        // iced update returns and the resume pump re-drives
+                        // the segment once the wait is satisfied.
+                        if let Some(fid) = task.waiting_future_id {
+                            return SegmentOutcome::Parked {
+                                wait: ParkedWait::Future(fid),
+                                seg: ParkedSegment {
+                                    fn_name: fn_name.to_string(),
+                                    saved_bp,
+                                    saved_fn_n_args,
+                                },
+                            };
+                        }
+                        if let Some(req_id) = task.waiting_http_request_id {
+                            return SegmentOutcome::Parked {
+                                wait: ParkedWait::HttpRequest(req_id),
+                                seg: ParkedSegment {
+                                    fn_name: fn_name.to_string(),
+                                    saved_bp,
+                                    saved_fn_n_args,
+                                },
+                            };
+                        }
+                        // Non-waiting yield (SLEEP / SSE generator retry):
+                        // sync-driver parity — keep stepping.
+                        continue;
+                    }
                     if let Some(req_id) = task.waiting_http_request_id {
                         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
                         // PLAN-026 T-04: 忙等段预算计(轮询次数 + 忙等时长)。
@@ -2206,9 +2423,9 @@ impl AutoVM {
                                 // ASYNC_RESULTS 条目——worker 迟到完成的
                                 // 完整响应体会永驻(每超时泄漏一个 body)。
                                 crate::vm::ffi::stdlib::drop_async_result(req_id);
-                                return Err(VMError::RuntimeError(
+                                return SegmentOutcome::Completed(Err(VMError::RuntimeError(
                                     "async http request timed out in call_fn_by_name".into(),
-                                ));
+                                )));
                             }
                             std::thread::sleep(std::time::Duration::from_millis(5));
                             budget_waits += 1;
@@ -2229,7 +2446,23 @@ impl AutoVM {
                     continue;
                 }
                 StepResult::AwaitFuture { future_id, body_offset } => {
-                    self.handle_await_future(task, future_id, body_offset)?;
+                    if let Err(e) = self.handle_await_future(task, future_id, body_offset) {
+                        task.current_fn_n_args = saved_fn_n_args;
+                        return SegmentOutcome::Completed(Err(e));
+                    }
+                    // PLAN-702 T-01: Phase B suspension (body parked mid-await
+                    // on an external future) — park instead of the sync
+                    // driver's fall-through hot-continue over a mid-body ip.
+                    if !allow_busy_wait && task.waiting_future_id.is_some() {
+                        return SegmentOutcome::Parked {
+                            wait: ParkedWait::Future(task.waiting_future_id.unwrap_or(0)),
+                            seg: ParkedSegment {
+                                fn_name: fn_name.to_string(),
+                                saved_bp,
+                                saved_fn_n_args,
+                            },
+                        };
+                    }
                 }
             }
         }
@@ -2254,7 +2487,7 @@ impl AutoVM {
         // 6. Restore non-stack state (return value already on stack top)
         task.current_fn_n_args = saved_fn_n_args;
         // PLAN-026 T-04: handler 粒度预算报告(api.* 忙等观测护栏)。
-        Self::api_budget_report(&fn_name);
+        Self::api_budget_report(fn_name);
         // PLAN-026 needs_fix3(内存爬升分流):AUTO_VM_MEM=1 时每 500 次
         // 调用打印 VM 侧池/堆规模(strings 池字节数近似 = Σ len)——
         // 区分"VM 层泄漏(池/堆线性涨)"与"rust 层(HTTP/渲染)"。
@@ -2274,7 +2507,7 @@ impl AutoVM {
                 );
             }
         }
-        Ok(())
+        SegmentOutcome::Completed(Ok(()))
     }
 
     /// Plan 321: Check if a function body contains YIELD_VAL (0x8D) opcode.
