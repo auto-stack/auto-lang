@@ -13935,11 +13935,12 @@ fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str
     //     每 拍 崩、空闲 20 分钟 2.6 万行日志，复审走查实录；终端窗渲染但
     //     永不 tick）。
     // 两者待各自根修（债 P041-D1）后摘围栏。
-    // PLAN-043 走查（2026-09-24）：围栏实验性放行 017 复测——**桌面即崩**
-    // （iced_widget container.rs:291 unwrap，与 PLAN-041 三次复现同点；
-    // front 已改 HTTP 配方、build/back 供给全过，崩在布局竞态本尊）。
-    // 围栏恢复，017 维持 P041-D1 在账债；auto-term 同理保留。
-    const VM_LAUNCH_FENCE: [&str; 2] = ["017-chat", "auto-term"];
+    // PLAN-043 走查（2026-09-24）：围栏实验性放行 017 复测——桌面即崩
+    // （iced_widget container.rs:291 unwrap，与 PLAN-041 三次复现同点）。
+    // **2026-09-25 根治**：iced_widget 本地补丁（patches/iced_widget，
+    // [patch.crates-io] 挂载）把 container.rs 布局空窗 unwrap 全族改良性
+    // 降级——017 摘围栏放行（auto-term 无本补丁实证，暂留围栏观察）。
+    const VM_LAUNCH_FENCE: [&str; 1] = ["auto-term"];
     if VM_LAUNCH_FENCE.contains(&name) {
         push_notification(
             state,
