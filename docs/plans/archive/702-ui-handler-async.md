@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-702
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-handler-async
 author: [zhaop, agent]
 created_at: 2026-09-25
@@ -391,6 +391,26 @@ specs 先行）。
     致瞬时红批（p508_g2_outproc_arm 等）；串行复裁定 p508 绿
     （37s）/ui 面 1512/1513（唯一红=预存 counter）。教训：tf 期间
     不得并行跑真端口测试族。
+
+- 2026-09-25 merge（/auto-plan:merge）：`PLAN-702:r1` 五 checkpoint。
+  `prepared`——reviewed 基线 d170b7ad8 + 冻结 delta（vm ADR-23/ui
+  ADR-24）+ 账本投影目标（specs.json architecture/reviews 两节 +
+  ui/plans.md 行 + spec-index.py INDEX）。
+  `landed`——rebase master（71bc74a65）后 ff-only；delivery commit
+  **83c4621b5**；range-diff c95f2a00e..d170b7ad8 → master..HEAD：
+  **6 `=` + 1 `!`**（唯一 `!`=KNOWN-DEBT 尾部并集冲突解：master 侧
+  P701 段+本计划 P702 段共存）+3 docs-only 新增（F-1 勘正/证据补录/
+  账本）；主检出烟测 plan702 5/5 绿。落地插曲：主检出他方 WIP
+  （renderer.rs auto-term 摘围栏实验）挡 ff——按 P678/P690 先例补丁
+  保全回贴（.wt/foreign-wip-renderer-vm-launch-fence.patch，19 行
+  原样回贴成功，未卷入本落地）。
+  `ledger_refreshed`——specs.json P702-1(architecture)/P702-2(reviews)
+  外科 append（indent=1 往返逐字节保真，diff 仅 +10 行）；
+  ui/plans.md 702 行；INDEX 再生（内容等价，CRLF 归一零 diff）。
+  `archived`——git mv → docs/plans/archive/702-ui-handler-async.md +
+  status: archived；completion_kind: delivered。
+  `cleaned`——（紧随其后补记）wt-guard 双 clean + worktree/分支/组目录
+  移除回执。
   `evidence`：/tmp/tf_review.log 摘要（Summary 5698 passed/12 failed→
   串行裁定后 10 预存）；/tmp/ui_review2.log（1512/1513）；
   docs/plans/evidence/plan702/（HEAD 双轮探针报告+日志+快照+runbook）；
