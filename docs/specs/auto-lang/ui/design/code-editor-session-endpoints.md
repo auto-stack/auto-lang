@@ -8,7 +8,7 @@
 ## 范围
 
 `ui/code_editor/core/mod.rs` 三个 registry 级函数 +
-`vm/native.rs` 四个 shim（9909-9913）+ `vm/native_catalog.rs` 登记 +
+`vm/native.rs` 五个 shim（9909-9913）+ `vm/native_catalog.rs` 登记 +
 `vm/codegen.rs` intrinsics + `ui_gen/rust.rs` `vm_builtin_host_call`
 a2r/merged 臂——三面同步（VM shim/catalog/a2r 映射，687 形）。
 
