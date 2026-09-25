@@ -3583,28 +3583,62 @@ impl VueGenerator {
         // 原生调用（scroll_to_end(scroll) 等）经 ts 转译蛇形名直通，此处
         // 注入同名 JS 函数接通（双端语义：与 VM natives 族一一对应；DOM
         // 寻址经 pane 的 data-scroll-ctl 锚）。
+        // PLAN-701 供⑤b: strict（vue-tsc）下补 TS 类型注解——原裸形参数
+        // 在 `strict: true` tsconfig 下 TS7006（隐式 any）×12 build 红
+        // （m1-supply §14/§15 登记；auto-edit App.vue helper 行实测）。
         if self.scroll_ctl_helpers_needed {
-            script.push_str(
+            let sig = |name: &str, params: &str, ret: &str| -> String {
+                if self.use_typescript {
+                    format!("function {name}({params}): {ret}")
+                } else {
+                    format!("function {name}({params})")
+                }
+            };
+            let (k, ax, a, b) = if self.use_typescript {
+                (
+                    "k: string",
+                    "ax: string",
+                    "a: string | number",
+                    "b: number",
+                )
+            } else {
+                ("k", "ax", "a", "b")
+            };
+            let el_ret_t = if self.use_typescript { "Element | null" } else { "" };
+            let state_ret_t = if self.use_typescript {
+                "{ offset_x: number; offset_y: number; viewport_w: number; viewport_h: number; content_w: number; content_h: number; progress_x: number; progress_y: number }"
+            } else {
+                ""
+            };
+            script.push_str(&format!(
                 r#"let __scrollCtlSeq = 0
-function scroll_controller() { return '__scrollctl_' + (++__scrollCtlSeq) }
-function __scrollCtlEl(k) { return document.querySelector('[data-scroll-ctl="' + k + '"]') }
-function scroll_to_start(k, ax) { const e = __scrollCtlEl(k); if (!e) return; if (ax === 'x') e.scrollTo({ left: 0 }); else e.scrollTo({ top: 0 }) }
-function scroll_to_end(k, ax) { const e = __scrollCtlEl(k); if (!e) return; if (ax === 'x') e.scrollTo({ left: e.scrollWidth }); else e.scrollTo({ top: e.scrollHeight }) }
-function scroll_by(k, a, b) { const e = __scrollCtlEl(k); if (!e) return; if (typeof a === 'string') { if (a === 'x') e.scrollLeft += b; else e.scrollTop += b } else { e.scrollTop += a } }
-function scroll_to(k, a, b) { const e = __scrollCtlEl(k); if (!e) return; if (typeof a === 'string') { if (a === 'x') e.scrollLeft = b; else e.scrollTop = b } else { e.scrollTo(a, b) } }
-function scroll_state(k) {
+{sc} {{ return '__scrollctl_' + (++__scrollCtlSeq) }}
+{sce} {{ return document.querySelector('[data-scroll-ctl="' + k + '"]') }}
+{sts} {{ const e = __scrollCtlEl(k); if (!e) return; if (ax === 'x') e.scrollTo({{ left: 0 }}); else e.scrollTo({{ top: 0 }}) }}
+{ste} {{ const e = __scrollCtlEl(k); if (!e) return; if (ax === 'x') e.scrollTo({{ left: e.scrollWidth }}); else e.scrollTo({{ top: e.scrollHeight }}) }}
+{sb} {{ const e = __scrollCtlEl(k); if (!e) return; if (typeof a === 'string') {{ if (a === 'x') e.scrollLeft += b; else e.scrollTop += b }} else {{ e.scrollTop += a }} }}
+{st} {{ const e = __scrollCtlEl(k); if (!e) return; if (typeof a === 'string') {{ if (a === 'x') e.scrollLeft = b; else e.scrollTop = b }} else {{ e.scrollTo(a, b) }} }}
+{ss} {{
   const e = __scrollCtlEl(k)
-  if (!e) return { offset_x: 0, offset_y: 0, viewport_w: 0, viewport_h: 0, content_w: 0, content_h: 0, progress_x: 0, progress_y: 0 }
-  return {
+  if (!e) return {{ offset_x: 0, offset_y: 0, viewport_w: 0, viewport_h: 0, content_w: 0, content_h: 0, progress_x: 0, progress_y: 0 }}
+  return {{
     offset_x: e.scrollLeft, offset_y: e.scrollTop,
     viewport_w: e.clientWidth, viewport_h: e.clientHeight,
     content_w: e.scrollWidth, content_h: e.scrollHeight,
     progress_x: Math.min(1, e.scrollLeft / Math.max(1, e.scrollWidth - e.clientWidth)),
     progress_y: Math.min(1, e.scrollTop / Math.max(1, e.scrollHeight - e.clientHeight)),
-  }
-}
+  }}
+}}
 
-"#);
+"#,
+                sc = sig("scroll_controller", "", "string"),
+                sce = sig("__scrollCtlEl", k, el_ret_t),
+                sts = sig("scroll_to_start", &format!("{k}, {ax}"), "void"),
+                ste = sig("scroll_to_end", &format!("{k}, {ax}"), "void"),
+                sb = sig("scroll_by", &format!("{k}, {a}, {b}"), "void"),
+                st = sig("scroll_to", &format!("{k}, {a}, {b}"), "void"),
+                ss = sig("scroll_state", k, state_ret_t),
+            ));
         }
 
         // PLAN-493: textarea mentions backdrop 的 HTML helper —— template
@@ -21761,6 +21795,50 @@ widget Test {
 {}", sfc);
         assert!(sfc.contains("<CommandItem"), "command_item must map to <CommandItem>:
 {}", sfc);
+    }
+
+    /// PLAN-701 供⑤b: scroll controller helper 族在 TS 模式必须带类型
+    /// 注解——原裸形参在 `strict: true` 下 TS7006（隐式 any）×12 build 红
+    /// （m1-supply §14/§15；auto-edit App.vue:23-28 实测）。
+    #[test]
+    fn p701_scroll_ctl_helpers_typed() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget Test {
+    view {
+        col {
+            scroll (axis: "y", controller: .sc, style: "h-40") {
+                text "content"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("function scroll_to(k: string, a: string | number, b: number): void"),
+            "scroll_to must carry TS annotations:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("function __scrollCtlEl(k: string): Element | null"),
+            "__scrollCtlEl must annotate k + nullable return:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("function scroll_controller(): string"),
+            "scroll_controller must annotate return:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("function scroll_state(k: string): { offset_x: number;"),
+            "scroll_state must annotate the record return:
+{sfc}"
+        );
+        // TS7006 反断面：helper 形参行不得再出现无注解裸形参。
+        assert!(
+            !sfc.contains("function scroll_to(k, a, b)"),
+            "unannotated scroll_to must not survive:
+{sfc}"
+        );
     }
 
     /// PLAN-692: code_editor 字面串 content 此前被静默丢弃（挂载即空白编辑器）

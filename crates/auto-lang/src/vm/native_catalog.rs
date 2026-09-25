@@ -41,6 +41,17 @@ macro_rules! for_each_native {
             // PLAN-687: bulk load endpoint (native-side file → editor; dual of the
             // registered code_editor_save want). 9900+ band per P673-D2.
             (9908, NATIVE_CODE_EDITOR_LOAD_FILE, shim_code_editor_load_file, "auto.code_editor.load_file"), // 9907 已被 Env.track 占（P673-D2 无守卫坑实测：错派发返垃圾值）
+            // === PLAN-701 供①/供②: save 直写 + 光标/滚动端点（9909-9913，
+            // 沿 9900+ 高段惯例续段；013/010/009 下游 want 集中清偿）===
+            (9909, NATIVE_CODE_EDITOR_SAVE, shim_code_editor_save, "auto.code_editor.save"),
+            (9910, NATIVE_CODE_EDITOR_SET_CURSOR, shim_code_editor_set_cursor, "auto.code_editor.set_cursor"),
+            (9911, NATIVE_CODE_EDITOR_SCROLL_OFFSET_X, shim_code_editor_scroll_offset_x, "auto.code_editor.scroll_offset_x"),
+            (9912, NATIVE_CODE_EDITOR_SCROLL_OFFSET_Y, shim_code_editor_scroll_offset_y, "auto.code_editor.scroll_offset_y"),
+            (9913, NATIVE_CODE_EDITOR_SCROLL_TO, shim_code_editor_scroll_to, "auto.code_editor.scroll_to"),
+            // === PLAN-701 供⑥: shell 跳转列表 Recent 一调用 shim
+            // （SHAddToRecentDocs(SHARD_PATHW)；非 Windows no-op 返 false；
+            // 零注册表关联面——auto-edit PLAN-014 T-01 裁定 (b) 消费前置）。
+            (9914, NATIVE_SHELL_ADD_RECENT, shim_shell_add_recent, "auto.shell.add_recent"),
             // === Plan 413 follow-up: console natives (in-app Console panel) ===
             (2916, NATIVE_CONSOLE_LOG, shim_console_log, "auto.console.log"),
             (2917, NATIVE_CONSOLE_LINES, shim_console_lines, "auto.console.lines"),
@@ -352,7 +363,16 @@ macro_rules! for_each_native {
 
             // === Instant (1203-1204) — Plan 240 ===
             (1203, NATIVE_INSTANT_NOW, shim_instant_now, "auto.time.instant_now"),
+            // PLAN-701 供④: elapsed 约定勘定——毫秒 int（名表同步 Void→I64，
+            // 见 register_bigvm 段）；此前字符串+null 双推、.at 侧实得 None
+            // （m1-supply §9）。
             (1204, NATIVE_INSTANT_ELAPSED, shim_instant_elapsed, "auto.time.instant_elapsed"),
+            // === Time (1200/1201/1205) — PLAN-701 供④: epoch 三件实装
+            // （此前仅名表登记无 shim，裸/use 两形态均返 0——m1-supply §9）。
+            // 语义与 a2r-std/src/time.rs 三方一致（GOAL-003）。
+            (1200, NATIVE_TIME_NOW_MS, shim_time_now_ms, "auto.time.now_ms"),
+            (1201, NATIVE_TIME_NOW_SEC, shim_time_now_sec, "auto.time.now_sec"),
+            (1205, NATIVE_TIME_NOW, shim_time_now, "auto.time.now"),
 
             // === Scheduler (1206-1207) — Plan 442 A5: one-shot timers ===
             (1206, NATIVE_SCHED_SET_TIMEOUT, shim_sched_set_timeout, "auto.sched.set_timeout"),
@@ -1188,12 +1208,14 @@ macro_rules! for_each_bigvm_native {
             ("Storage.remove", 1108, Void),
             ("storage.remove", 1108, Void),
 
-            // === Time (1200-1204) ===
+            // === Time (1200-1205) ===
             ("auto.time.now_ms", 1200, I64),
             ("auto.time.now_sec", 1201, I64),
             ("auto.time.sleep_ms", 1202, Void),
             ("auto.time.instant_now", 1203, Void),
-            ("auto.time.instant_elapsed", 1204, Void),
+            // PLAN-701 供④: elapsed 返回毫秒 int（shim 同步改形）——.at 侧
+            // 自此得真实值而非 None（m1-supply §9 观察清偿）。
+            ("auto.time.instant_elapsed", 1204, I64),
             ("auto.time.now", 1205, String),
             ("Time.now", 1205, String),
 

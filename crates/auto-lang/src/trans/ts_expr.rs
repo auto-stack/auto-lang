@@ -475,7 +475,10 @@ impl TypeScriptTrans {
             if self.struct_names.contains(name));
 
         if is_print {
-            sink.body.write(b"console.log")?;
+            // PLAN-701 供⑤b: `globalThis.console.log` 改道——裸 console 与
+            // store 名为 `console` 的 state 字段（Ref）遮蔽成 TS2339
+            // （m1-supply §9 附记；auto-edit useEditorStore BENCH ×4）。
+            sink.body.write(b"globalThis.console.log")?;
         } else if is_struct_ctor {
             sink.body.write(b"new ")?;
             self.expr(&call.name, sink)?;

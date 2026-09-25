@@ -425,7 +425,9 @@ impl JavaScriptTrans {
         let is_print = matches!(&*call.name, Expr::Ident(name) if name == "print");
 
         if is_print {
-            out.write(b"console.log")?;
+            // PLAN-701 供⑤b: 同 TS 轨改道 globalThis.console.log（JS 轨
+            // 同遮蔽在运行期同形炸——store `console` 字段模块内遮蔽）。
+            out.write(b"globalThis.console.log")?;
         } else {
             self.expr(&call.name, sink)?;
         }

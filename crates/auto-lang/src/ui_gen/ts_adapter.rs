@@ -4,7 +4,8 @@
 //! into TypeScript code, applying UI-specific rewrites:
 //! - StateRef (`.count` / `self.count`) → `count.value` ref access
 //! - API function calls → `await` prefix
-//! - `print()` → `console.log()`
+//! - `print()` → `globalThis.console.log()`（PLAN-701 供⑤b 改道——裸
+//!    `console` 与 store 同名 state 字段遮蔽 TS2339）
 //!
 //! Everything else (control flow, types, closures, pattern matching)
 //! is delegated to the a2ts transpiler for standard expressions.
@@ -1699,7 +1700,11 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     if ctx.is_api(func_name) {
                         write!(out, "await {}", func_name).ok();
                     } else if func_name == "print" {
-                        write!(out, "console.log").ok();
+                        // PLAN-701 供⑤b: `globalThis.console.log` 改道——
+                        // 裸 `console.log` 与 store 名为 `console` 的 state
+                        // 字段（Ref）遮蔽成 TS2339（m1-supply §9 附记；
+                        // auto-edit useEditorStore BENCH 标记 ×4 实证）。
+                        write!(out, "globalThis.console.log").ok();
                     } else if ctx.is_prop(func_name) {
                         // Plan 345 (gap K2/N4): callback prop call -> props.<name>(...)
                         write!(out, "props.{}", func_name).ok();

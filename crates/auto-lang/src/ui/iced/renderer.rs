@@ -17378,6 +17378,19 @@ fn compare_pngs(
                 {
                     for (id, (ox, oy, vw, vh, cw, ch)) in map {
                         if std::env::var("P656_DEBUG").is_ok() { eprintln!("[P656-READ] id={id} vals={:?}", (ox, oy, vw, vh, cw, ch)); }
+                        // PLAN-701 供②b: editor 句柄（editor-scroll-*）放开
+                        // offset 回写——读端点 `code_editor_scroll_offset_*`
+                        // 的注册表投影由此收敛（用户滚动无 on_scroll 回声臂，
+                        // M 泛型臂；读回 offset 与 Viewport::absolute_offset
+                        // 同源同号已证可信[F-4]）。controller pane 维持
+                        // extent-only 不变（排空同帧 pre-scroll 读值竞态的
+                        // 原 F-4 裁定不受扰）；editor 句柄同帧竞态由心跳
+                        // 节拍收敛（写臂 drain 投影先行，读回校正随后）。
+                        if id.starts_with("editor-scroll-") {
+                            crate::ui::scroll::controller::note_controller_offset(
+                                &id, ox as f64, oy as f64,
+                            );
+                        }
                         for handle in crate::ui::scroll::controller::handles_for_widget(&id) {
                             // F-4 终段：extent-only——offset 语义单源在注册表
                             //（写臂回填/on_scroll 回声/用户滚动）；读回 offset
@@ -25012,8 +25025,18 @@ fn build_code_editor_generic<M: Clone + Debug + 'static>(
     // dispatch_app 尾部排水光标跟随，见 render_dynamic_view 同款包裹）。
     if std::env::var("AUTO_EDITOR_NO_SCROLLER").as_deref() != Ok("1") {
         widget = widget.hosted();
+        // PLAN-701 供②b: editor scroller 入 scroll controller 注册表
+        // （handle = widget id = `editor-scroll-{key}`，core::editor_scroll_handle
+        // 单源）——读端点 `code_editor_scroll_offset_*` 走注册表快照，写端点
+        // `code_editor_scroll_to` 走 intent 排空（既有 drain 消费者）。本臂
+        // M 泛型无法合成 on_scroll 回声闭包（ScrollCallback<M> 需 M 具体值）
+        // ——测量走 ScrollStateReader 读回通道（bind 预热 + drain 后校正 +
+        // __mcp_heartbeat 2s 节拍持续读；offset 对 editor 句柄放开回写，
+        // 见 __scroll_state_read 消费者），读出投影新鲜度 ≤2s。
+        let scroll_id = ce::editor_scroll_handle(key);
+        crate::ui::scroll::bind_controller(&scroll_id, &scroll_id);
         let scroller = iced::widget::scrollable(widget)
-            .id(iced::widget::Id::from(format!("editor-scroll-{key}")))
+            .id(iced::widget::Id::from(scroll_id))
             .style(|_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
                 scrollbar_style()
             })

@@ -9717,6 +9717,39 @@ impl RustGenerator {
                 a0 = arg(0)?,
                 a1 = arg(1)?
             )),
+            // PLAN-701 供①/供②: save 直写 + 光标/滚动端点（三面同步之
+            // a2r/merged 臂——直接调 core 实现，VM shim 语义同源）。
+            "code_editor_save" => Some(format!(
+                "auto_lang::ui::code_editor::code_editor_save(&({a0}), &({a1}))",
+                a0 = arg(0)?,
+                a1 = arg(1)?
+            )),
+            "code_editor_set_cursor" => Some(format!(
+                "auto_lang::ui::code_editor::code_editor_set_cursor(&({a0}), ({a1}).max(0) as u64 as usize, ({a2}).max(0) as u64 as usize)",
+                a0 = arg(0)?,
+                a1 = arg(1)?,
+                a2 = arg(2)?
+            )),
+            "code_editor_scroll_offset_x" => Some(format!(
+                "(auto_lang::ui::scroll::controller::controller_snapshot(&auto_lang::ui::code_editor::editor_scroll_handle(&({a0}))).offset_x)",
+                a0 = arg(0)?
+            )),
+            "code_editor_scroll_offset_y" => Some(format!(
+                "(auto_lang::ui::scroll::controller::controller_snapshot(&auto_lang::ui::code_editor::editor_scroll_handle(&({a0}))).offset_y)",
+                a0 = arg(0)?
+            )),
+            "code_editor_scroll_to" => Some(format!(
+                "{{ let __h = auto_lang::ui::code_editor::editor_scroll_handle(&({a0})); auto_lang::ui::scroll::enqueue_intent(&__h, auto_lang::ui::scroll::ScrollIntent::ScrollTo {{ axis: auto_lang::ui::scroll::Axis::X, offset: ({a1}) as f64, source: auto_lang::ui::scroll::ScrollSource::Programmatic }}); auto_lang::ui::scroll::enqueue_intent(&__h, auto_lang::ui::scroll::ScrollIntent::ScrollTo {{ axis: auto_lang::ui::scroll::Axis::Y, offset: ({a2}) as f64, source: auto_lang::ui::scroll::ScrollSource::Programmatic }}); true }}",
+                a0 = arg(0)?,
+                a1 = arg(1)?,
+                a2 = arg(2)?
+            )),
+            // PLAN-701 供⑥: shell 跳转列表 Recent 一调用（SHAddToRecentDocs；
+            // 非 Windows 返 false no-op——实现体单源 vm::native::shell_add_recent）。
+            "shell_add_recent" => Some(format!(
+                "auto_lang::vm::native::shell_add_recent(&({}))",
+                arg(0)?
+            )),
             "code_editor_fold_toggle" => Some(format!(
                 "auto_lang::ui::code_editor::code_editor_with(&({a0}), |core| core.fold_toggle(({a1}).max(1) as usize - 1)).unwrap_or(false)",
                 a0 = arg(0)?,

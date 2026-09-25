@@ -824,6 +824,201 @@ pub fn shim_code_editor_load_file(_task: &mut AutoTask, vm: &AutoVM) -> Result<(
     ))
 }
 
+/// PLAN-701 供①: `code_editor_save(key, path) -> Bool` — rope→disk direct
+/// write (auto-edit PLAN-013 big-file guard relief). The full text is
+/// materialized NATIVE-side from the rope and written in one pass — zero
+/// full-text VM transit. Error is a VALUE (false), not a raise: the
+/// caller's save flow treats false as the guarded/failed path, mirroring
+/// the load side's -1 convention.
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_save(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Args push left-to-right: pop the LAST (path) first, then the key.
+    let path = pop_string_arg(task, vm);
+    let key = pop_string_arg(task, vm);
+    let ok = crate::ui::code_editor::code_editor_save(&key, &path);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_save(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_save: the `code-editor` feature is disabled".into(),
+    ))
+}
+
+/// PLAN-701 供②a: `code_editor_set_cursor(key, line, col) -> Bool` —
+/// programmatic cursor placement (session restore / goto-line). 0-based
+/// line/char-col (read-side `code_editor_cursor_*` convention); clamped
+/// into the document, selection dropped. false = no editor for key.
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_set_cursor(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let col = pop_arg_i32(task).max(0) as usize;
+    let line = pop_arg_i32(task).max(0) as usize;
+    let key = pop_string_arg(task, vm);
+    let ok = crate::ui::code_editor::code_editor_set_cursor(&key, line, col);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_set_cursor(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = vm;
+    Err(VMError::RuntimeError(
+        "code_editor_set_cursor: the `code-editor` feature is disabled".into(),
+    ))
+}
+
+/// PLAN-701 供②b: `code_editor_scroll_offset_x(key) -> Float` /
+/// `code_editor_scroll_offset_y(key)` — per-editor scroll offset readout.
+/// Single source = the scroll controller registry projection (bind 预热 +
+/// intent-drain 投影 + ScrollStateReader 读回校正，MCP 心跳 2s 节拍收敛；
+/// 见 renderer `editor-scroll-{key}` 绑定臂)。Unbound/unmeasured → 0.0
+/// (top) — the session-restore neutral value.
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_scroll_offset_x(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
+    let handle = crate::ui::code_editor::editor_scroll_handle(&key);
+    let snap = crate::ui::scroll::controller::controller_snapshot(&handle);
+    task.ram.push_f64(snap.offset_x);
+    Ok(())
+}
+
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_scroll_offset_y(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
+    let handle = crate::ui::code_editor::editor_scroll_handle(&key);
+    let snap = crate::ui::scroll::controller::controller_snapshot(&handle);
+    task.ram.push_f64(snap.offset_y);
+    Ok(())
+}
+
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_scroll_offset_x(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = vm;
+    Err(VMError::RuntimeError(
+        "code_editor_scroll_offset_x: the `code-editor` feature is disabled".into(),
+    ))
+}
+
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_scroll_offset_y(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = vm;
+    Err(VMError::RuntimeError(
+        "code_editor_scroll_offset_y: the `code-editor` feature is disabled".into(),
+    ))
+}
+
+/// PLAN-701 供②b: `code_editor_scroll_to(key, x, y) -> Bool` — apply a
+/// scroll offset to the editor's hosted scroller. Routed through the
+/// scroll controller intent queue; the renderer's existing drain resolves
+/// it to `operation::scroll_to` on `editor-scroll-{key}` (unbound handle =
+/// scroller not built — intent silently dropped by the drain's unprimed
+/// rule; we report true = request enqueued, mirroring shim_scroll_to).
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_scroll_to(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::ui::scroll::{enqueue_intent, ScrollIntent, ScrollSource};
+    let y = pop_f64_operand(task);
+    let x = pop_f64_operand(task);
+    let key = pop_string_arg(task, vm);
+    let handle = crate::ui::code_editor::editor_scroll_handle(&key);
+    enqueue_intent(&handle, ScrollIntent::ScrollTo { axis: crate::ui::scroll::Axis::X, offset: x, source: ScrollSource::Programmatic });
+    enqueue_intent(&handle, ScrollIntent::ScrollTo { axis: crate::ui::scroll::Axis::Y, offset: y, source: ScrollSource::Programmatic });
+    task.ram.push_nv(auto_val::encode_bool(true));
+    Ok(())
+}
+
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_scroll_to(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = pop_f64_operand(task);
+    let _ = pop_f64_operand(task);
+    let _ = pop_string_arg(task, vm);
+    let _ = vm;
+    task.ram.push_nv(auto_val::encode_bool(false));
+    Ok(())
+}
+
+// ── PLAN-701 供④: time 族 VM 运行时 shim（catalog 1200/1201/1205 既有
+// 登记位的实装；此前裸/use 两形态均返 0——m1-supply §9 观察清偿）。语义
+// 与 a2r-std/src/time.rs 三方一致（GOAL-003）：now_ms/now_sec = Unix epoch
+// （.at stdlib time.at/time.rs.at 文档注释口径，非单调钟），now = epoch
+// 秒十进制字符串。下游 bench 毫秒差值在双轨语义下同形。
+
+/// `auto.time.now_ms() -> i64` — Unix epoch milliseconds.
+pub fn shim_time_now_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    vm.push_i64_vm(task, ms);
+    Ok(())
+}
+
+/// `auto.time.now_sec() -> i64` — Unix epoch seconds.
+pub fn shim_time_now_sec(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    vm.push_i64_vm(task, s);
+    Ok(())
+}
+
+/// `auto.time.now() -> str` — epoch seconds as decimal string
+/// (a2r-std `time_now` alias同形).
+pub fn shim_time_now(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_default();
+    let idx = vm.add_string(s.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+// ── PLAN-701 供⑥: `shell_add_recent(path) -> Bool` — Windows jump-list
+// Recent 面 shim（auto-edit PLAN-014 T-01 裁定 (b) 用户确认改道件）。
+// One-call form: `SHAddToRecentDocs(SHARD_PATHW, path)` — the opened file
+// lands in the shell Recent items (taskbar jump list). Zero registry
+// association surface (HKCR/Classes untouched); ICustomDestinationList
+// custom-task categories are a non-goal (裁定成文). Non-Windows: no-op
+// returning false (恒定可链接——a2r 轨同形).
+
+/// Non-Windows + test-visible core: cfg(windows) FFI one-call; elsewhere a
+/// false no-op. Exposed (not only a shim body) so the a2r/merged rust
+/// emission (`vm_builtin_host_call` arm) links the same implementation.
+pub fn shell_add_recent(path: &str) -> bool {
+    #[cfg(windows)]
+    {
+        #[link(name = "shell32")]
+        extern "system" {
+            fn SHAddToRecentDocs(flags: u32, path: *const core::ffi::c_void);
+        }
+        const SHARD_PATHW: u32 = 0x0000_0002;
+        if path.is_empty() {
+            return false;
+        }
+        let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+        unsafe {
+            SHAddToRecentDocs(SHARD_PATHW, wide.as_ptr() as *const core::ffi::c_void);
+        }
+        true
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        false
+    }
+}
+
+/// `shell_add_recent(path) -> Bool` shim.
+pub fn shim_shell_add_recent(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path = pop_string_arg(task, vm);
+    let ok = shell_add_recent(&path);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
 // ── Plan 428 P1: code folding natives ─────────────────────────────────
 
 /// `code_editor_fold_toggle(key, line_1based) -> Bool` — toggle the fold
@@ -8359,8 +8554,14 @@ pub fn shim_instant_now(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     Ok(())
 }
 
-/// Get elapsed time from Instant handle as a formatted string.
-/// Stack: handle_id -> string (e.g., "123ms")
+/// Get elapsed time from Instant handle.
+/// PLAN-701 供④ elapsed 约定勘定：返回自创建点起的**毫秒 int**（单调钟）。
+/// 此前形态=「Nms」字符串入池 + null 双推、catalog 返回型 Void——.at 侧
+/// 实际得到 None（m1-supply §9 观察件）。现对齐 I64 语义（catalog 同步
+/// Void→I64）；跨轨边界注记：a2r/trans 轨的 `Instant.elapsed()` 保持真实
+/// Rust `Duration`（opaque 不透明形），VM 轨为毫秒 int——不透明类型跨轨
+/// 既有边界，本约定成文于 SD-02。
+/// Stack: handle_id -> elapsed_ms (i64)
 pub fn shim_instant_elapsed(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as u64;
 
@@ -8372,20 +8573,9 @@ pub fn shim_instant_elapsed(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         .ok_or_else(|| VMError::RuntimeError("Not a RustStdlibObject".to_string()))?;
     let instant = rust_obj.downcast_ref::<std::time::Instant>()
         .ok_or_else(|| VMError::RuntimeError("Not an Instant object".to_string()))?;
-    let elapsed = instant.elapsed();
-    let millis = elapsed.as_millis();
-    let nanos = elapsed.as_nanos();
-    let result = if millis > 0 {
-        format!("{}ms", millis)
-    } else {
-        format!("{}ns", nanos)
-    };
+    let millis = instant.elapsed().as_millis() as i64;
     drop(guard);
-    let bytes = result.into_bytes();
-    let idx = vm.add_string(bytes);
-    // Plan 510 G1-2: 返回串入栈配平(+1;消费侧 POP 即 -1)。
-    vm.rc_push_str_idx(task, idx);
-    task.ram.push_nv(auto_val::encode_null());
+    vm.push_i64_vm(task, millis);
     Ok(())
 }
 

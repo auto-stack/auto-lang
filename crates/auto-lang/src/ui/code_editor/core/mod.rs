@@ -852,6 +852,35 @@ impl CodeEditorCore {
         (cursor.line, col, sel)
     }
 
+    /// PLAN-701 供②a: programmatic cursor placement (session restore /
+    /// goto-line). 0-based `line` and `char_col` — the SAME convention as
+    /// the read side [`Self::cursor_info`] (downstream SyncCursor persists
+    /// 1-based and converts at its own boundary). Out-of-range line/col
+    /// clamp to the nearest valid position (mirrors the rewrite-side clamp);
+    /// any selection is dropped (`Selection::None`, same as rewrite). The
+    /// placement does not republish on_cursor — the next widget event flow
+    /// (or the caller's own read) observes the new position.
+    pub fn set_cursor_position(&self, line: usize, char_col: usize) {
+        let mut editor = self.editor_lock();
+        let cursor = {
+            let (line, index) = editor.with_buffer(|b| {
+                let line = line.min(b.lines.len().saturating_sub(1));
+                let text = b.lines.get(line).map(|l| l.text()).unwrap_or("");
+                let mut index = text.len();
+                for (ci, (bo, _)) in text.char_indices().enumerate() {
+                    if ci >= char_col {
+                        index = bo;
+                        break;
+                    }
+                }
+                (line, index)
+            });
+            Cursor::new(line, index)
+        };
+        editor.set_selection(Selection::None);
+        editor.set_cursor(cursor);
+    }
+
     pub fn revision(&self) -> u64 {
         self.revision.load(Ordering::Relaxed)
     }
@@ -2111,6 +2140,67 @@ pub fn code_editor_load_file(key: &str, path: &str) -> Option<i64> {
     Some(text.len() as i64)
 }
 
+/// PLAN-701 供①: rope→disk direct write — the dual of
+/// [`code_editor_load_file`] and the registered `code_editor_save(key, path)`
+/// want (auto-edit PLAN-013 big-file guard relief). The full text is
+/// materialized NATIVE-side straight from the rope (document source of
+/// truth) and written in one `std::fs::write` — it never transits the VM
+/// heap/pool (the old path read it out via `code_editor_text` + `write_text`,
+/// two full-text VM string crossings).
+///
+/// Byte-fidelity ownership (PLAN-701 T-03 勘定): the endpoint writes the
+/// rope bytes BARE — no BOM prepend, no EOL rewriting (the rope holds what
+/// was loaded/edited, LF as loaded). BOM/EOL wrapping stays the FRONT's
+/// WriteFidelity concern (downstream keeps its per-file bom/eol metadata
+/// wrapping); the probe 对拍 must guard against double wrapping on the
+/// consumer side.
+///
+/// Returns true when the file was written; false = no editor for `key` /
+/// IO error (reported on stderr, 报错不静默).
+pub fn code_editor_save(key: &str, path: &str) -> bool {
+    let key = normalize_payload_key(key);
+    let map = CODE_EDITORS.lock().unwrap();
+    let Some(core) = map.get(&key) else {
+        eprintln!("code_editor_save: no editor registered for key {key:?}");
+        return false;
+    };
+    let text = core.text();
+    match std::fs::write(path, text.as_bytes()) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("code_editor_save: write {path:?} failed: {e}");
+            false
+        }
+    }
+}
+
+/// PLAN-701 供②a: programmatic cursor write — the sister of the
+/// [`code_editor_cursor`] read. 0-based (line, char col), clamped into the
+/// document; selection dropped. Returns false when no editor is registered
+/// for `key`.
+pub fn code_editor_set_cursor(key: &str, line: usize, char_col: usize) -> bool {
+    let key = normalize_payload_key(key);
+    let map = CODE_EDITORS.lock().unwrap();
+    match map.get(&key) {
+        Some(core) => {
+            core.set_cursor_position(line, char_col);
+            true
+        }
+        None => {
+            eprintln!("code_editor_set_cursor: no editor registered for key {key:?}");
+            false
+        }
+    }
+}
+
+/// PLAN-701 供②b: the scroll registry handle for an editor's hosted
+/// scroller — ONE convention shared by the renderer bind site, the
+/// scroll-offset read, and the scroll-to write. (The iced widget Id is the
+/// same string; see renderer's `editor-scroll-{key}` scroller.)
+pub fn editor_scroll_handle(key: &str) -> String {
+    format!("editor-scroll-{key}")
+}
+
 /// Plan 673 §4.3 structured write (agent edit): `code_editor_edit(key,
 /// start, end, replacement)` — one API, three forms (insert/delete/replace
 /// per the interval shape). Returns false on invalid input (no such editor,
@@ -2925,6 +3015,86 @@ let beta = alpha + 2;
         .is_none());
         code_editor_dispose(&key);
         std::fs::remove_file(&p).ok();
+    }
+
+    // ── PLAN-701 供①: rope→disk direct write (code_editor_save) ────────
+
+    /// PLAN-701 T-03: save writes the ROPE bytes bare (zero full-text VM
+    /// transit is a runtime property; the testable half is the byte 对拍:
+    /// CRLF content round-trips load→save byte-identical — the endpoint
+    /// neither prepends a BOM nor rewrites EOL, front wrapping stays the
+    /// consumer's concern). Missing editor / unwritable path → false.
+    #[test]
+    fn save_writes_rope_bytes_bare_and_reports_failures() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-save-701");
+        code_editor_dispose(&key);
+        let config = CodeEditorConfig::default();
+        let core = code_editor(&key, &config);
+        let dir = std::env::temp_dir().join("auto_lang_save_701");
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("save_src.txt");
+        let dst = dir.join("save_dst.txt");
+        // CRLF + CJK payload: byte fidelity is the contract (裸写).
+        let payload: &[u8] = b"fn main() { 42 }\r\n// CJK \xe4\xbd\xa0\xe5\xa5\xbd\r\ntail";
+        std::fs::write(&src, payload).unwrap();
+        std::fs::remove_file(&dst).ok();
+        let loaded = code_editor_load_file(&key, src.to_str().unwrap()).expect("load");
+        assert_eq!(loaded, payload.len() as i64);
+        assert!(code_editor_save(&key, dst.to_str().unwrap()), "save must succeed");
+        let written = std::fs::read(&dst).expect("dst readable");
+        assert_eq!(
+            written, payload,
+            "save must write the rope bytes bare (CRLF preserved, no BOM, no EOL rewrite)"
+        );
+        // In-editor edits (outside the load path) are visible to save too:
+        // edit the rope, save again, bytes follow.
+        assert!(code_editor_edit(&key, 0, 2, "FN"));
+        assert!(code_editor_save(&key, dst.to_str().unwrap()));
+        let written2 = std::fs::read(&dst).unwrap();
+        assert_eq!(&written2[..2], b"FN", "post-edit save persists the edit");
+        // Missing editor → false; unwritable path (dir-as-file) → false.
+        assert!(!code_editor_save("no-such-editor-701", dst.to_str().unwrap()));
+        assert!(!code_editor_save(&key, dir.to_str().unwrap()));
+        code_editor_dispose(&key);
+        std::fs::remove_file(&src).ok();
+        std::fs::remove_file(&dst).ok();
+    }
+
+    // ── PLAN-701 供②a: set-cursor (write side of code_editor_cursor) ───
+
+    /// PLAN-701 T-04: 0-based (line, char col) placement — the read-side
+    /// convention. In-range placement lands exactly (selection dropped);
+    /// out-of-range line/col clamp (last line / line end); missing editor
+    /// → false.
+    #[test]
+    fn set_cursor_places_clamps_and_reports_missing() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-set-cursor-701");
+        code_editor_dispose(&key);
+        let config = CodeEditorConfig::default();
+        let core = code_editor(&key, &config);
+        code_editor_set_text(&key, "abc\n你好de\nxyz");
+        // In-range: line 1, char col 2 (multi-byte line — char col, not byte).
+        assert!(code_editor_set_cursor(&key, 1, 2));
+        assert_eq!(code_editor_cursor(&key), Some((1, 2, 0)), "0-based line/char-col round-trip");
+        // Out-of-range line clamps to last; out-of-range col clamps to EOL.
+        assert!(code_editor_set_cursor(&key, 99, 0));
+        assert_eq!(code_editor_cursor(&key).map(|(l, _, _)| l), Some(2));
+        assert!(code_editor_set_cursor(&key, 0, 999));
+        assert_eq!(code_editor_cursor(&key), Some((0, 3, 0)), "col clamps to line char count");
+        // Missing editor → false.
+        assert!(!code_editor_set_cursor("no-such-editor-701", 0, 0));
+        code_editor_dispose(&key);
+    }
+
+    /// PLAN-701 供②b: the scroll registry handle convention — raw
+    /// `editor-scroll-{key}` (the iced widget Id), NOT storage-key prefixed.
+    #[test]
+    fn editor_scroll_handle_shape() {
+        assert_eq!(editor_scroll_handle("main"), "editor-scroll-main");
     }
 
     /// A successful `set_text` rewrite pushes exactly one full-replace

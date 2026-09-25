@@ -236,6 +236,11 @@ pub struct ParkedTask {
 fn nv_to_pub_value(nv: auto_val::NanoValue) -> Value {
     if auto_val::is_i32(nv) {
         Value::Int(auto_val::decode_i32(nv))
+    } else if auto_val::is_i64(nv) {
+        // PLAN-701 T-06 增量：TAG_I64 返回值此前落入末位 decode_i32 兜底
+        // → 桥面垃圾值（epoch 毫秒探针 -699152978 实证）。Value::I64 变体
+        // 在档——补臂（Plan 522 T4 f64 臂 / P-053-6 字符串臂同族桥面缺口）。
+        Value::I64(auto_val::decode_i64(nv))
     } else if auto_val::is_f64(nv) {
         // Plan 522 T4: f64 返回值此前落入末位 i32 解码 → Int(0) 桥面丢失
         // (call_vm_fn 的 float helper 返回值全 0;引擎内部 decode_tagged_nv
