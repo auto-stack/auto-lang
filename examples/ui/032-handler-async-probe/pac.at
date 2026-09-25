@@ -1,0 +1,9 @@
+name: "handler-async-probe"
+version: "1.0.0"
+scene: "ui"
+render: "vue"
+title: "Handler Async Probe"
+title_zh: "Handler 异步探针"
+# PLAN-702 T-06: AC-01/AC-02 证据探针——handler 内 65s 异步请求期间
+# 窗口可交互（Tick 计数 + Bump 按钮持续响应），结果就绪后落账刷新。
+window: "fit"

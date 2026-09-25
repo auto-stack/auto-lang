@@ -215,3 +215,78 @@ fn guarded() str {
         .expect("string slot");
     assert_eq!(String::from_utf8_lossy(&got), "caught");
 }
+
+/// PLAN-702 T-05 / AC-04: UI 驱动路径忙等退役门禁——`ui/` 下
+/// `.call_fn_by_name(`（同步忙等入口）调用点必须全部落在显式
+/// `legacy 同步驱动保留位` 标记（view 侧求值契约）或 §T-05 注释附近；
+/// handler 派发族（call_handler / call_handler_for / with_record /
+/// run_module_init）已全量迁移段驱动，新增同步派发即红。
+///
+/// AC-04 原文口径是"忙等入口零命中"——view 侧 call_vm_fn/call_computed_fn
+/// 两处保留位为执行期裁定（其 Value 返回契约无 park 形态，计划 §非目标
+/// 未覆盖视图求值），已带 `PLAN-702 T-05: legacy 同步驱动保留位` 注释；
+/// 本门禁允许且仅允许带标记的保留位，比裸 grep 更严格（复审注意项）。
+#[test]
+fn plan702_ui_path_busy_wait_retired_gate() {
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let ui_dir = std::path::Path::new(manifest).join("src/ui");
+    let mut offenders: Vec<String> = Vec::new();
+    let mut legacy_sites: Vec<String> = Vec::new();
+    visit_rs_files(&ui_dir, &mut |path, content| {
+        let lines: Vec<&str> = content.lines().collect();
+        for (i, line) in lines.iter().enumerate() {
+            if !line.contains(".call_fn_by_name(") {
+                continue;
+            }
+            // 注释行（提及而非调用）不计。
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") {
+                continue;
+            }
+            // 回看 12 行找保留位标记。
+            let back_start = i.saturating_sub(12);
+            let is_legacy = lines[back_start..i]
+                .iter()
+                .any(|l| l.contains("PLAN-702 T-05: legacy 同步驱动保留位"));
+            let loc = format!("{}:{}", path.display(), i + 1);
+            if is_legacy {
+                legacy_sites.push(loc);
+            } else {
+                offenders.push(loc);
+            }
+        }
+    });
+    assert!(
+        offenders.is_empty(),
+        "PLAN-702 T-05 门禁：ui/ 下发现未迁移的同步忙等派发点 {:?}——\
+         handler 派发必须走 call_fn_by_name_segment；如确属 view 侧求值\
+         契约保留位，请补 `PLAN-702 T-05: legacy 同步驱动保留位` 注释并在\
+         计划 §复审记录 登记",
+        offenders
+    );
+    // 保留位封顶断言：恰两处（call_vm_fn / call_computed_fn）——防保留位
+    // 无限扩散。
+    assert_eq!(
+        legacy_sites.len(),
+        2,
+        "legacy 同步驱动保留位应为恰 2 处（view 求值契约），现 {:?}",
+        legacy_sites
+    );
+}
+
+fn visit_rs_files(dir: &std::path::Path, f: &mut dyn FnMut(&std::path::Path, &str)) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            visit_rs_files(&path, f);
+        } else if path.extension().map(|e| e == "rs").unwrap_or(false) {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                f(&path, &content);
+            }
+        }
+    }
+}

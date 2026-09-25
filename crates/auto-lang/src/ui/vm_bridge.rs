@@ -1160,15 +1160,24 @@ impl VmBridge {
     /// imported module-level globals (`var notes = ...` etc.). Must be called
     /// once before `Init` (and before any handler that reads those globals).
     /// No-op (returns Ok) if the fn isn't present (no module-level stores).
+    /// PLAN-702 T-02: 段派发（E1 证据链 :1114 调用点即此）——模块级 store
+    /// 初始化若内含异步等待（api 拉数）即 park 入注册表、由
+    /// `__parked_resume_tick` 泵续跑；同步初始化行为不变（Completed 等价）。
     pub fn run_module_init(&mut self) -> Result<()> {
         let fn_name = crate::ui::handler_codegen::MODULE_INIT_FN;
         if !self.vm.flash.exports_by_name.contains_key(fn_name) {
             return Ok(());
         }
         let mut task = AutoTask::new(0, 4096, 0);
-        self.vm
-            .call_fn_by_name(&mut task, fn_name, 0)
-            .map_err(|e| VmBridgeError::VmError(format!("{:?}", e)))
+        match self.vm.call_fn_by_name_segment(&mut task, fn_name, 0) {
+            SegmentOutcome::Completed(res) => {
+                res.map_err(|e| VmBridgeError::VmError(format!("{:?}", e)))
+            }
+            SegmentOutcome::Parked { wait, seg } => {
+                self.register_parked(task, seg, wait, "__module_init".to_string(), false);
+                Ok(())
+            }
+        }
     }
 
     /// PLAN-642 T-15: 本组件的视图侧 store 别名解析（`.Store.X` 展平判定）。
@@ -1587,6 +1596,9 @@ impl VmBridge {
                 other => push_value(&mut task.ram, other),
             }
         }
+        // PLAN-702 T-05: legacy 同步驱动保留位①——view 侧 helper 求值契约
+        // 是"本次调用返回 Value"，无 park 形态（视图每帧重算，parked 返回值
+        // 无投递面）；视图 fn 含异步等待本属病理（纯度约束另立计划）。
         self.vm
             .call_fn_by_name(&mut task, &fn_name, args.len())
             .map_err(|e| VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name)))?;
@@ -1725,6 +1737,8 @@ impl VmBridge {
         }
         let mut task = AutoTask::new(0, 4096, 0);
         self.vm.rc_push_id(&mut task, self.state_obj_id()); // Plan 419
+        // PLAN-702 T-05: legacy 同步驱动保留位②——block computed 求值（同
+        // call_vm_fn：本次调用返回 Value 契约，无 park 形态）。
         self.vm
             .call_fn_by_name(&mut task, &fn_name, 1)
             .map_err(|e| VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name)))?;

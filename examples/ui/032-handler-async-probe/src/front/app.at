@@ -1,0 +1,53 @@
+// 032-handler-async-probe — PLAN-702 T-06 探针
+// 「Start 65s request」派发 Load handler：内含 65s+ 异步 HTTP POST——
+// 段驱动下 handler park、窗口保持可交互（本应冻结的 E7 事故面）。
+// 验收断言（配合 docs/plans/evidence/plan702/ 采集脚本）：
+//   AC-01 等待期间 ticks 持续增长、Bump 按钮即时响应、
+//         日志零 `[VM-HANDLER] ... timed out`；
+//   AC-02 结果到达后 result 字段落账、视图刷新（`[VM-PARKED] resumed`
+//         日志在案）。
+widget App {
+    msg { Init, Load, Bump, Tick }
+
+    model {
+        var result str = "(idle)"
+        var bumps int = 0
+        var ticks int = 0
+        var interval int = 250
+    }
+
+    view {
+        col {
+            text "PLAN-702 handler-async probe"
+            text `result: ${.result}`
+            text `bumps: ${.bumps}`
+            text `ticks: ${.ticks}`
+            row {
+                button "Start 65s request" { onclick: .Load }
+                button "Bump" { onclick: .Bump }
+                style: "gap-3"
+            }
+            style: "items-start gap-2 p-6"
+        }
+    }
+
+    on {
+        .Init -> {
+            .result = "(idle)"
+            .bumps = 0
+            .ticks = 0
+        }
+        .Load -> {
+            // 65s 慢端点（evidence 采集脚本起的本机 server）；handler 在
+            // 此 park——旧驱动下这是 30s 超时 + UI 冻结 65s 的事故面。
+            var resp = Http.post_json("http://127.0.0.1:7072/slow", "q=1")
+            .result = resp
+        }
+        .Bump -> {
+            .bumps = .bumps + 1
+        }
+        .Tick -> {
+            .ticks = .ticks + 1
+        }
+    }
+}

@@ -99,6 +99,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 28 | [Rust Interop Architecture](28-rust-interop-architecture.md) | Auto↔Rust 互操作：类型信息生命周期铁律、三时刻能力模型、编译预言机原则、430 管线实勘、双轨迁移模式 | 2026-09-07 立档；源 musk VM 轨 JSON 桥追问的全链定案，PLAN-591 的架构依据 |
 | 31 | [AutoScape / AutoWeb](31-autoscape-autoweb.md) | Auto 原生浏览器与统一应用寻址运行时：URI/Intent/AppResolver、AppRealm/AppSession/AppProvider、AutoFrame/BrowsingContext、AutoWeb 部署模型、远程语义流；含术语×本地实现对照与差距分析 | 📝 Draft（2026-09-20 立档；外来设计输入融入重排版，v0.6 主打候选 M1 见其 §13） |
 | 33 | [Stdlib Runtime & HTTP](33-stdlib-runtime-and-http.md) | 标准库多后台装配现状、AutoUI API 三类传输、VM HTTP/task 风险、Axum/VM owner 边界与分阶段改良路线 | 📝 方案稿（PLAN-696 已交付；PLAN-699 阶段 B 待实施） |
+| 34 | [VM Store 所有权与 Handler 阻塞纪律](34-vm-store-ownership-and-handler-discipline.md) | 决策工件：段执行/actor 双形态下的 store 所有权（Erlang vs Go 式）与 handler 阻塞纪律（类型化 vs ui_lint+段切预算）两案对比、迁移面评估与裁定建议 | 📝 决策工件（PLAN-702 T-07 产出，待用户裁定；不含实现） |
 
 **模块子目录**：[documents/](documents/README.md)——文档与在线体验大模块（website/书籍/Playground
 线的需求级设计，slug 命名不带号；域级概要章待目录整体重组时补立，2026-09-07 用户裁定）。
