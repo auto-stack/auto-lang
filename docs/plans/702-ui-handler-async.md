@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-702
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-handler-async
 author: [zhaop, agent]
 created_at: 2026-09-25
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/ui]
-current_step: 0
+current_step: 5
 total_steps: 8
 ---
 
@@ -233,14 +233,41 @@ specs 先行）。
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] **T-01** engine 段执行入口（`vm/engine.rs`：抽共享 step 核心 + 新
+- [x] **T-01** engine 段执行入口（`vm/engine.rs`：抽共享 step 核心 + 新
   `SegmentOutcome` 入口；单测三件套）。验证：`cargo test -p auto-lang engine`。
-- [ ] **T-02** vm_bridge 派发切换 + parked 注册表（`ui/vm_bridge.rs`；
+  [✅ 已完成] worktree c719be8ce（rebase 后）；`drive_handler_segment`
+  共享核（allow_busy_wait 开关）+ `call_fn_by_name_segment` /
+  `resume_fn_by_name_segment`（wake source 6 镜像 + async_frames 续体）；
+  plan702 三件套绿（park 零忙等+槽不回收 / 续跑取值 / 非 yield 对拍），
+  另含 resume 段 .at try/catch 捕获测（T-04 面）。命令 `cargo test -p
+  auto-lang --lib plan702`，5 passed 0.42s。
+- [x] **T-02** vm_bridge 派发切换 + parked 注册表（`ui/vm_bridge.rs`；
   依赖 T-01）。验证：`cargo test -p auto-lang ui`。
-- [ ] **T-03** 恢复泵（`ui/iced/renderer.rs` AppTick 臂；依赖 T-02）。
+  [✅ 已完成] 同上提交；call_handler / call_handler_for /
+  call_handler_with_record / run_module_init（E1 证据 :1114 即此）四派发点
+  全切段驱动；parked_tasks 注册表（task+seg+wait+重入键+来源清账纪律）；
+  read_state 零改动。nextest ui 面 1512/1513 绿（唯一红
+  projector_counter_layout_and_hits 与基线 detached 同红，预存）；
+  桥接全链 roundtrip 测绿（真本地 HTTP server）。
+- [x] **T-03** 恢复泵（`ui/iced/renderer.rs` AppTick 臂；依赖 T-02）。
   验证：探针 app 集成用例（60s+ 请求 → 落账刷新）。
-- [ ] **T-04** 重入 + 错误语义（`ui/vm_bridge.rs` + 单测；依赖 T-03）。
+  [✅ 已完成] 同上提交；实现形态 = `__parked_resume_tick` **条件订阅**
+  （`__timer_tick` 同族，16ms，仅 has_parked_tasks 时在册）+ update 臂内联
+  poll_parked_resumes——比计划草案的"Poll 泵+静态通道"少一个跨 App 路由
+  歧义面（AppTick Poll 泵是进程级静态通道，多 App 会话会串投；条件订阅
+  按 AppId 打标天然隔离），恢复内联在 update 内满足单 VM 串行裁断。
+  属待澄清项①（恢复触发精化）的执行期裁定，机制仍为 AppTick 轮询族。
+  集成验证由 T-06 探针承接（见 T-06 记录）。
+- [x] **T-04** 重入 + 错误语义（`ui/vm_bridge.rs` + 单测；依赖 T-03）。
   验证：`cargo test -p auto-lang ui` + .at 探针。
+  [✅ 已完成] 同上提交；重入默认忽略（is_handler_parked 早退）+ busy
+  标志 = 根态 `__busy_handlers` List<str> 镜像随 park/完成翻转（roundtrip
+  测断言翻转）；错误语义 = 段内 .at try/catch 经既有 intercept_error 捕获
+  （engine_segment_resume_error_caught_by_at_try 测绿），未捕获 Err 经
+  `[VM-HANDLER] ... failed` 通道。**口径偏差登记**：busy 标志经宿主读
+  路径可查（read_state 兜底/MCP 物化），但 .at 编译期 GET_FIELD 按静态
+  field_idx、运行期追加字段不可达——".at 原生查询"需合成期注入字段，
+  延期入债册（KD 登记，见 §复审记录）。
 - [ ] **T-05** UI 路径忙等退役门禁（grep 断言 + 全量回归；依赖 T-04）。
   验证：`grep -rn "call_fn_by_name" crates/auto-lang/src/ui/` +
   `cargo test --release -p auto-lang`。
