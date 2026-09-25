@@ -136,7 +136,7 @@ Spec delta 由 `/auto-plan:review` 验证后 `/auto-plan:merge` 沉淀。若 T-0
   `landed`：plan-699-dev rebase 至 master bc92ba6c7（7 提交），`git range-diff 4dc4d581a..2e0922710 master..HEAD~1` **6/6 全等**（补丁等价证明）；旧→新映射 d2de4d01b→6625cf49d / 01cd23192→da5b95948 / 6de714eeb→e48d4e366 / d748e59be→64119b289 / 1b8bf6a3f→82a790996 / 2e0922710→3c462b6e5；`git merge --ff-only` 落库零合并提交，master tip=delivery commit `4324a5ce4`；主检出 smoke：`cargo check -p auto-lang` 0 error + 协议探针 3/3。
   `ledger_refreshed`：`.autoos/specs.json` P699-1（architecture，SD-01..03 契约）/P699-2（reviews，复审+合并收据）语义 append-only（indent=1 roundtrip 恒等）；`docs/specs/stdlib/plans.md` 699 行；`docs/specs/INDEX.md` 由 `scripts/spec-index.py` 再生（输出零变化）。canonical 沉淀目标=docs/specs/stdlib/design/{http-server,backend-assembly}.md + docs/specs/auto-lang/runtime/design/networking-stdlib.md。
   `archived`：`git mv` 至 `docs/plans/archive/699-vm-http-transport-axum-bridge.md` + `status: archived`。
-  `cleaned`：随后补记（wt-guard 双 worktree + 分支/组目录清理）。
+  `cleaned`：wt-guard 双 clean（`lang-699/auto-lang` 与依赖位 `lang-699/auto-down` 均无 reparse point）；`git worktree remove` 对 auto-lang 侧报 Invalid argument（target 产物目录句柄占用）——注册已摘（worktree list 零命中），残留目录经 `rmdir /s /q` 清除、`plan-699-dev` 分支删除（was 4324a5ce4=落库 tip）、组目录 `D:/autostack/.wt/lang-699` 已清。**事故记录**：清句柄时误用 `taskkill //IM auto.exe` 按映像名（违反 PLAN-685 后按 PID 纪律），可能波及并行会话 auto.exe 实例——本仓 git/账本状态经复核无损，行为面 instance 可重启，如他会话有实例中断归因于此致歉。
 
 
 ## 10. 待澄清事项
