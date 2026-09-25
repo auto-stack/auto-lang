@@ -1,15 +1,15 @@
 ---
 plan_id: PLAN-702
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-handler-async
 author: [zhaop, agent]
 created_at: 2026-09-25
 updated_at: 2026-09-25
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components: ["docs/specs/auto-lang/vm/architecture.md#ADR-22（忙等语义降为 legacy 非 UI 调用方语义）", "docs/specs/auto-lang/ui/architecture.md#vm_bridge 派发契约节（同步跑完才返回→段执行）"]
+new_spec_components: ["docs/specs/auto-lang/vm/architecture.md#ADR-23", "docs/specs/auto-lang/ui/architecture.md#ADR-24"]
+touched_goals: []             # 无 goals.md 正式 GOAL-NNN 锚定本面（目标 1-4 见 §目标）
 
 affects: [auto-lang/vm, auto-lang/ui]
 current_step: 8
@@ -344,6 +344,57 @@ specs 先行）。
     的执行期裁定）。
   - **R-4** T-04 busy 标志查询面：宿主读路径可查、.at 原生查询延期
     （P702-D1，.at GET_FIELD 静态 field_idx 对运行期字段不可达）。
+
+- 2026-09-25 review（/auto-plan:review）：PLAN-702 rev1 复审。
+  `stage: review`，`outcome: pass`，`next: merge`。
+  `reviewed_commit`：1292cc4db（worktree plan-702-dev；复审期勘正链
+  d170b7ad8→214f39c4a(F-1 delta 文本校正)→1292cc4db(证据补录)——均
+  docs-only，实现代码自 ad79d5dfb 起零变动）。
+  `base_commit`：c95f2a00e（rebase 后 master）；`dependency_revisions`：
+  auto-down 3373a5c（detached 只读依赖位）。
+  `spec_inputs`：vm/architecture.md ADR-23 + ui/architecture.md ADR-24
+  （worktree 提交面）；Design 34（00-intro 已注册）；账本三件套按
+  T-08 口径留 merge 相位派生。
+  **独立性声明**：复审与实现同会话——判定全部重建自工件（HEAD 复跑
+  而非采信执行期记录）；gate 复跑期间曾自造并行干扰（tf×前台 nextest
+  真端口争用，p508 等瞬时红），已串行复裁定排除（F-6）。
+  `acceptance_results`：
+  - AC-01 **pass**——HEAD 复审绑定探针 65s 轮：t+60s bumps=61/ticks=269
+    持续交互、零忙等超时（probe_review65；evidence/plan702 已补录）。
+  - AC-02 **pass**——engine 单测（resume 取值）+ 20s 轮 21.4s 值原样
+    落账（result={"ok":true,"slow":702}）。
+  - AC-03 **pass**（裁定见 F-3）——复审绑定 tf（no-fail-fast）5698
+    passed + p508 串行绿 / 5710：**10 红全预存**（musk×6 在册待认领 +
+    counter×1 + plan358 + a2vue + test_029 基线复现），零新增。
+  - AC-04 **pass**（裁定见 F-4）——HEAD grep 恰 2 处 view 保留位
+    （vm_bridge.rs:1603/:1743，带标记）；门禁测试绿（封顶 2 处）；
+    handler 派发族零同步忙等。
+  - AC-05 **pass**——重入忽略/busy 镜像/try-catch 捕获三单测 HEAD 绿。
+  - AC-06 **pass**——ADR-23/24 + Design 34 文件在册且 00-intro 注册；
+    INDEX/账本派生为 merge 相位动作（merge 必须完成，属其收尾门）。
+  `findings`：
+  - **F-1（low，已决）** ADR-23 legacy 调用方列表误列 run_module_init
+    （实为段驱动）——delta 文本校正 214f39c4a，rev1 维持。
+  - **F-2（low，延期在册）** T-04 "busy 标志 .at 可查询" 仅达宿主读
+    路径（P702-D1）；重入行为不依赖该面，AC-05 实质满足。
+  - **F-3（low，口径偏差在案）** AC-03 字面命令（release 全量）证实为
+    非维护门（base 即 2 处 tests/ 编译 rot + ~254 档位环境红，同名测
+    tf 全绿）；以权威 tf 门收口 + 顺带修复 2 rot（P702-D2）。
+  - **F-4（low，口径偏差在案）** AC-04 "忙等入口零命中"字面不可达：
+    view 侧 call_vm_fn/call_computed_fn 的 Value 返回契约无 park 形态
+    （视图每帧重算），保留位封顶由门禁测试强制；view 异步化归
+    Design 34 Q2 后续线。
+  - **F-5（low，移交在册）** musk PickFolder 人在环走查（P702-D4）——
+    机制面同驱动路径 HEAD 探针双轮证毕；复跑手册
+    evidence/plan702/README.md。
+  - **F-6（process，已排除）** 复审期 tf×前台 nextest 并行真端口争用
+    致瞬时红批（p508_g2_outproc_arm 等）；串行复裁定 p508 绿
+    （37s）/ui 面 1512/1513（唯一红=预存 counter）。教训：tf 期间
+    不得并行跑真端口测试族。
+  `evidence`：/tmp/tf_review.log 摘要（Summary 5698 passed/12 failed→
+  串行裁定后 10 预存）；/tmp/ui_review2.log（1512/1513）；
+  docs/plans/evidence/plan702/（HEAD 双轮探针报告+日志+快照+runbook）；
+  门禁测试与 plan702 套件 HEAD 输出（5/5）。
 
 ## 待澄清事项
 
