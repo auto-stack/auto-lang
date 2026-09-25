@@ -150,6 +150,14 @@ T-02 改记录性件（不改退出码语义）。
 
 - AC 关联：AC-01。验证：根因报告在档（含对照跑数据）。
 
+  **[✅ 已完成 2026-09-25]** 根因定罪=跨会话 auto.exe 扫膛（/IM sweep
+  误伤）：基线 5 连跑 2/5 早崩（与下游 1631 实录同率）；run5 watcher
+  实捕同秒双进程蒸发（主实例 26852+他会话 build 进程 3236）=外部
+  TerminateProcess 形（无 panic/WER/退出迹）；tools/perf/README.md:65
+  /IM 清扫指导在案+他会话实活全程实证；T12.6 flake 另计（早崩清零判
+  据不受扰）。报告 docs/reports/p701-frv6-race-report.md（附录 A 排
+  除清单七项）。**Q-3 分支成立**：根因落本包界外（环境/流程面）。
+
 ### T-02 F-RV6 修复+五连跑判据（前置 T-01）
 
 按 T-01 根因形修复（工具链侧）。验证=下游 desktop_mcp 矩阵 5 连跑
@@ -167,6 +175,12 @@ Buffer → 序列化直写磁盘（零全文 VM 字符串往返——与 code_ed
 a2r 映射三面同步（687 形）；单元测试（写通/缺席 key false/字节对拍）。
 
 - AC 关联：AC-02。验证：`cargo test -p auto-lang code_editor_save`
+
+  **[✅ 已完成 2026-09-25]** code_editor_save(9909) 三面同步在册
+  （shim/catalog/intrinsics/host_call 臂）；rope 直写+裸写字节契约
+  （CRLF 载荷 load→save 字节对拍测试绿：save_writes_rope_bytes_bare_
+  and_reports_failures）；缺席 key false/不可写路径 false 测试绿。
+  commit 63901ed62。
   绿+a2r 映射在册 grep。
 
 ### T-04 set-cursor 端点（供②a）
@@ -177,6 +191,15 @@ cursor 读侧（:2064）姊妹写位——定位+caret 应用；基面勘定（c
 步+单元测试。
 
 - AC 关联：AC-03。验证：cargo test 绿+契约节。
+
+  **[✅ 已完成 2026-09-25]** set_cursor(9910，0 基/char 列/钳位/弃选
+  区，读侧姊妹位)+scroll_offset_x/y(9911/9912 注册表投影读)+scroll_
+  to(9913 intent 写) 三面同步；renderer 寄宿 scroller bind_controller
+  （handle=widget id 单源 editor_scroll_handle）+ScrollStateReader 对
+  editor 句柄放开 offset 回写（M 泛型臂无 on_scroll 回声，心跳 2s 收
+  敛——Q-2 裁定=读出单源注册表投影零依赖回声）；测试 set_cursor_
+  places_clamps/editor_scroll_handle_shape 绿。SD-01 成文
+  （code-editor-session-endpoints.md）。commit 63901ed62。
 
 ### T-05 editor scroll 读/写端点（供②b）
 
@@ -197,6 +220,14 @@ I64)` 等）；裸/use 两形态通（现均返 0）；elapsed() 返回约定补
 （三方一致 GOAL-003）。
 
 - AC 关联：AC-04。验证：cargo test -p auto-lang time 绿+.at 侧探针
+
+  **[✅ 已完成 2026-09-25]** 1200/1201/1205 shim 实装（epoch 语义=
+  a2r-std 三方一致——计划「单调钟」措辞勘正为立项笔误，time.at 文
+  档注释口径优先）；对拍测试 vm_ms/vm_sec vs a2r_std <5s 绿；elapsed
+  约定=毫秒 int（catalog Void→I64 同步，.at None→值形）；执行期增量
+  =vm_bridge nv_to_pub_value 补 TAG_I64 臂（桥面垃圾值实证修复）；
+  .at 层 TAG_I64 算术（DIV）解码错位=预存平台缺口 #[ignore] 留档。
+  SD-02 成文（time-natives.md）。commit 63901ed62。
   （auto eval 形）返非零。
 
 ### T-07 menubar-sub 三元素 vue schema（供⑤a）
@@ -208,6 +239,14 @@ exit 0（跨仓只读构建证）。
 
 - AC 关联：AC-05。验证：strict gen exit 0+schema 单测。
 
+  **[✅ 已完成 2026-09-25]** S002 根因勘定=下游 2046 钉版 exe 的构建
+  期内嵌 schema 早于 PLAN-695 吸收（二进制 menubar_sub_trigger 0 命
+  中实证）——master 树 schema/emission 两面已在档；回归测试 schema_
+  resolves_dash_form_menubar_sub_family 钉（p695 emission 测试既存）。
+  **跨仓证（AC-05 合流）**：plan-014 worktree strict regen（v2115 新
+  工具链）exit 0+pnpm build exit 0（✓ built 5.03s），App.vue helper
+  注解形态在档实证。commit 63901ed62。
+
 ### T-08 helper 族类型注解+print 映射改道（供⑤b）
 
 ts_adapter helper 发射位补 TS 类型注解（App.vue TS7006×12 清零——
@@ -218,6 +257,13 @@ regen_vue.py 遮蔽缓解件随之可退役（下游退役判定其计划 T-08�
 
 - AC 关联：AC-05。验证：双 exit 0。
 
+  **[✅ 已完成 2026-09-25]** print→globalThis.console.log 三发射位
+  （ts_adapter/ts_expr/javascript；store console 遮蔽 TS2339×4 解，
+  下游缓解件退役判定归 014 T-08）+helper 族 TS 注解（TS7006×12 解；
+  use_typescript 分支）。测试 print_emits_globalthis_console_log+
+  p701_scroll_ctl_helpers_typed 绿；跨仓双 exit 0（见 T-07 行）。
+  SD-03 增补成文。commit 63901ed62。
+
 ### T-09 SHAddToRecentDocs shim（供⑥）
 
 vm/native.rs 新 shim（cfg(windows) `SHAddToRecentDocs(SHARD_PATHW,
@@ -227,6 +273,13 @@ path.encode_utf16()+NUL)` 一调用；非 Windows no-op 返 false）+catalog
 （Windows 上冒烟+签名对拍）。
 
 - AC 关联：AC-06。验证：cargo test 绿+catalog/a2r grep。
+
+  **[✅ 已完成 2026-09-25]** shell_add_recent(9914) 三面同步（shim/
+  catalog/host_call 臂单源 vm::native::shell_add_recent）；
+  SHAddToRecentDocs(SHARD_PATHW) cfg(windows)+非 Windows no-op false
+  +空路径 false 测试绿（真调用冒烟归下游 E2E——测试进程不污染用户
+  Recent 面）。SD-04 成文（shell-recent-integration.md）。
+  commit 63901ed62。
 
 ### 规范增量
 
