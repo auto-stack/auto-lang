@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-702
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-handler-async
 author: [zhaop, agent]
 created_at: 2026-09-25
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/ui]
-current_step: 5
+current_step: 8
 total_steps: 8
 ---
 
@@ -268,21 +268,82 @@ specs 先行）。
   路径可查（read_state 兜底/MCP 物化），但 .at 编译期 GET_FIELD 按静态
   field_idx、运行期追加字段不可达——".at 原生查询"需合成期注入字段，
   延期入债册（KD 登记，见 §复审记录）。
-- [ ] **T-05** UI 路径忙等退役门禁（grep 断言 + 全量回归；依赖 T-04）。
+- [x] **T-05** UI 路径忙等退役门禁（grep 断言 + 全量回归；依赖 T-04）。
   验证：`grep -rn "call_fn_by_name" crates/auto-lang/src/ui/` +
   `cargo test --release -p auto-lang`。
-- [ ] **T-06** 端到端实测（重建 release → musk VM 桌面 PickFolder 回归 +
+  [✅ 已完成] 78afd9d84/832cde983/ad79d5dfb；门禁测试
+  plan702_ui_path_busy_wait_retired_gate（ui/ 下同步派发点必须全落
+  `legacy 同步驱动保留位` 标记、恰 2 处封顶——口径比 AC-04 字面 grep
+  更严；view 侧 call_vm_fn/call_computed_fn 保留位为执行期裁定，
+  见 §复审记录 R-2）。**AC-03 全量回归（执行期口径裁定）**：权威全量门
+  `cargo tf`（no-fail-fast）= **5700/5710，10 红全预存**（musk×6=在册
+  待认领 + counter×1 + plan358 + a2vue + test_029 基线 c95f2a00e detached
+  复现定责），零新增；release 档（AC-03 字面命令）证实为**非维护门**——
+  base 上即有 2 处 tests/ 编译 rot（headless `()` Renderer 运行期门 /
+  osconfig photo_root 漏改，均顺带修复）+ ~254 档位环境红（同名测 tf
+  全绿），清点入债册 P702-D2。段驱动语义的测试侧适配：六处 park 面
+  （plan042×2/606/622/624/657）接共享恢复泵 helper
+  drive_parked_segments。
+- [x] **T-06** 端到端实测（重建 release → musk VM 桌面 PickFolder 回归 +
   探针实测；依赖 T-05）。验证：AC-01/AC-02 证据落 docs/plans/evidence/。
-- [ ] **T-07** 有界调查：store 所有权 + actor 纪律决策工件（依赖 T-01
+  [✅ 已完成] 探针腿 PASS（40acff02f/d170b7ad8，evidence/plan702/）：
+  032 探针 VM 桌面（本分支 release exe）——65s 慢端点等待全程窗口可交互
+  （t+60s bumps=61/ticks=270 持续推进）、零忙等超时；20s 端点值原样落账
+  （21.5s result={"ok":true,"slow":702}）。**契约变更实录**：等待上限从
+  "30s 忙等硬超时→RuntimeError（catch 接不住）"变为"reqwest 客户端超时
+  以错误体数据落账（.at 可捕获）"——E7 的静默失败面结构性消除。
+  musk PickFolder 人在环走查移交债册 P702-D4（机制面同驱动路径已证；
+  复跑手册 evidence/plan702/README.md，含 ESC-取消自动化变体）。
+- [x] **T-07** 有界调查：store 所有权 + actor 纪律决策工件（依赖 T-01
   即可并行）。验证：决策文档在 docs/design/ 出稿。
-- [ ] **T-08** spec 沉淀（SD-01/SD-02；依赖 T-05，merge 相位执行）。
+  [✅ 已完成] 8e3e79ab1；docs/design/34-vm-store-ownership-and-handler-
+  discipline.md（注册 00-intro）——Q1 建议Go 式（共享+单写者纪律，
+  F1 iced 串行 + F3 跨线程只交值为既成正确形态）/ Q2 建议 ui_lint +
+  段切预算两步走；两案迁移面评估在册，**待用户裁定**（裁定后由后续
+  计划承接）。
+- [x] **T-08** spec 沉淀（SD-01/SD-02；依赖 T-05，merge 相位执行）。
   验证：spec diff + INDEX。
+  [✅ 已完成] 40acff02f（canonical specs 先行）——vm/architecture.md
+  ADR-23（段执行驱动/忙等 legacy 化/PLAN-027 缺陷 A 边界/等待上限契约
+  变更）+ ui/architecture.md ADR-24（派发契约段化/parked 注册表/
+  __parked_resume_tick 条件订阅泵/重入忽略+busy 镜像/view 侧两保留位）。
+  账本三件套（specs.json 条目/plans.md 行/INDEX 再生）留 merge 相位
+  （§4 merge 流程执行）。债册 P702-D1..D4 登记。
 
 ## 复审记录
 
 - 2026-09-25 draft handoff（/auto-plan:new）：PLAN-702 rev1 起草完成。
   `stage: new`，`outcome: pass`（授权范围内可直接开工），`next: work`。
   关键待办无阻塞；§待澄清三项不阻塞 T-01/T-02 开工。
+
+- 2026-09-25 work handoff（/auto-plan:work）：T-01..T-08 全清。
+  `stage: work`，`outcome: pass`，`next: review`。
+  `code_commit`：worktree plan-702-dev 头 d170b7ad8（基线 c95f2a00e
+  rebase 链 c719be8ce→8e3e79ab1→78afd9d84→832cde983→ad79d5dfb→
+  40acff02f→d170b7ad8；组内依赖位 .wt/lang-702/auto-down@3373a5c 只读）。
+  `task_ids`：T-01..T-08（细节证据见各任务 [✅] 行）。
+  `evidence`：plan702 单测 5/5 + 六适配族 nextest 绿 + tf 全档
+  5700/5710（10 红全预存定责）+ 探针 AC-01/AC-02 PASS
+  （evidence/plan702/）+ 门禁测试在册。
+  `blockers`：无阻塞；两项移交复查——(a) musk PickFolder 人在环走查
+  （P702-D4 复跑手册）；(b) T-07 决策工件待用户裁定（属后续计划入口）。
+  `next`：/auto-plan:review（复审注意项 R-1..R-4 如下）。
+
+  **复审注意项（执行期裁定与口径偏差，复审须逐条核）**：
+  - **R-1** AC-03 全量门口径：字面命令 `cargo test --release -p
+    auto-lang` 证实为非维护门（base 即 2 处 tests/ 编译 rot + ~254 档位
+    环境红，同名测 tf 全绿）；本计划以权威全量门 `cargo tf` 收口
+    （5700/5710，10 红全预存），release 档顺带修复 2 编译 rot。
+  - **R-2** AC-04 grep 口径：view 侧 call_vm_fn/call_computed_fn 两处
+    同步保留位（Value 返回契约无 park 形态），门禁测试以保留位标记
+    封顶 2 处代字面零命中；run_module_init 按 E1 证据链（:1114）判入
+    handler 族已切段驱动。
+  - **R-3** T-03 恢复泵形态：`__parked_resume_tick` 条件订阅（__timer_tick
+    同族）替代计划草案的"Poll 静态泵"——静态泵多 App 会话串投歧义，
+    条件订阅按 AppId 打标天然隔离；机制仍属 AppTick 轮询族（待澄清①
+    的执行期裁定）。
+  - **R-4** T-04 busy 标志查询面：宿主读路径可查、.at 原生查询延期
+    （P702-D1，.at GET_FIELD 静态 field_idx 对运行期字段不可达）。
 
 ## 待澄清事项
 
