@@ -13939,8 +13939,12 @@ fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str
     // （iced_widget container.rs:291 unwrap，与 PLAN-041 三次复现同点）。
     // **2026-09-25 根治**：iced_widget 本地补丁（patches/iced_widget，
     // [patch.crates-io] 挂载）把 container.rs 布局空窗 unwrap 全族改良性
-    // 降级——017 摘围栏放行（auto-term 无本补丁实证，暂留围栏观察）。
-    const VM_LAUNCH_FENCE: [&str; 1] = ["auto-term"];
+    // 降级——017 摘围栏放行（auto-term 无本补丁独立实证，暂留围栏观察）。
+    // **2026-09-25 续**：auto-term 亦摘围栏实验——其 Init 已被
+    // PLAN-025/026 tick-snapshot 聚合改造重写（计划期"future_all 空列表"
+    // 形态在现行源码 grep 不到），若复现旧崩形再恢复围栏。
+    const VM_LAUNCH_FENCE: [&str; 0] = [];
+    let _ = VM_LAUNCH_FENCE;
     if VM_LAUNCH_FENCE.contains(&name) {
         push_notification(
             state,

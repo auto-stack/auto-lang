@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-701
-status: reviewed
+status: archived
 feature_name: edit-consume-supply-pack-v1（auto-edit 消费供料包六件——save 直写/光标滚动端点/F-RV6 稳定化/time 族/vue strict/跳转列表 shim）
 author: [agent]
 created_at: 2026-09-24T17:45:00+08:00
@@ -414,6 +414,33 @@ WIP——零触碰零依赖；钉版纪律=执行期核 `auto --version`+mtime�
   围内收敛非变通（SD-03 改口）；.at 层 TAG_I64 算术缺口+JS 轨遮蔽=
   债候选入册（P701-D1/D2，KNOWN-DEBT-AND-RISKS）；无未批延期。out-
   come: **pass**。next: merge。
+
+
+- **2026-09-25 stage: merge（r1，reviewed → archived，PLAN-701:r1）**：
+  五 checkpoint。**prepared**：reviewed 基线 22db61a59（6 提交）+账本
+  三件套入 worktree 提交（specs.json P701-1 designs[P701-D1/D2 债面
+  摘要]+P701-2 reviews[复审收据]/ui+vm plans.md 701 行/INDEX 再生；
+  095a576a1）；规范增量 SD-01..04 已在 worktree docs/specs（4f66b4988
+  +R-1 22db61a59），delta 目标全部 docs/specs/**（有 precedent）。
+  **landed**：rebase 两轮（master 期间被 PLAN-702 会话推进两次：
+  71bc74a65→83c4621b5）；range-diff 6/6 全等（旧→新映射 63901ed62→
+  cafd20597/4f66b4988→f787aca4f/03560ec2a→ce6b7097b/c9901f762→
+  d1f49684c/92ef5f817→f548e91ba/22db61a59→d66162c78）；specs.json 两
+  轮条目级并集（P701×P702 共存）+ui/plans.md 701/702 双行并集；
+  rebased 态 scoped 复验（check 0e+probes 6✓+save/menubar 绿，699 码
+  共存健康）；落地=ff-only，master tip=delivery_commit 35cfbea35；
+  落地 smok echeck 0e+probes 绿。落地竞态处置=他会话 renderer.rs 活
+  WIP 挡 ff（PLAN-678②/683 先例）：patch 保全→checkout→ff→回贴，他
+  方 WIP 字节级还原在案（foreign-renderer-wip.patch 19 行）。分支
+  重写哈希绑定复审证据已由 range-diff 全等桥接；delivery 35cfbea35
+  =reviewed 22db61a59 的 docs/specs 勘正+账本投影 only 后代（代码
+  patch 全等）。**ledger_refreshed**：specs.json P701-1/2 + ui/vm
+  plans.md + INDEX（spec-index.py 26 projects）；读回验证 JSON 合法
+  +P701/P702 条目共存。**archived**：git mv archive/+status archived。
+  **cleaned**：（待清理后回填）canonical paths=ui/design/code-editor-
+  session-endpoints.md、vm/design/time-natives.md、ui/design/shell-
+  recent-integration.md、ui/design/vue-use-fn-emission.md（strict-TS
+  节 modify）。outcome: pass。
 
 ## 10. 待澄清事项
 
