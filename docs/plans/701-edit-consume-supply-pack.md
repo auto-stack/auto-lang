@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-701
-status: drafting
+status: execution_done
 feature_name: edit-consume-supply-pack-v1（auto-edit 消费供料包六件——save 直写/光标滚动端点/F-RV6 稳定化/time 族/vue strict/跳转列表 shim）
 author: [agent]
 created_at: 2026-09-24T17:45:00+08:00
-updated_at: 2026-09-24T17:45:00+08:00
+updated_at: 2026-09-25T12:40:00+08:00
 plan_revision: 1
-current_step: 0
+current_step: 9
 total_steps: 9
 supersedes_spec_components: []
 new_spec_components:
@@ -165,6 +165,12 @@ T-02 改记录性件（不改退出码语义）。
 T-01 判不达分支：记录性件——竞态边界成文+下游条款维持注记。
 
 - AC 关联：AC-01。验证：五连跑谱+exit 码。
+
+  **[✅ 已完成 2026-09-25]** Q-3 分支=记录性件：竞态边界成文（根因=
+  跨会话 /IM sweep 误伤，报告 §3/§4——工具链无可修缺陷面，清偿归下
+  游流程纪律）；新工具链 v2115 五连跑**早崩清零 5/5**（基线 2/5），
+  测试级失败 6-19 漂移=他会话拥堵谱另计。谱+定罪见
+  docs/reports/p701-frv6-race-report.md §5。
 
 ### T-03 code_editor_save 直写端点（供①）
 
@@ -358,14 +364,41 @@ WIP——零触碰零依赖；钉版纪律=执行期核 `auto --version`+mtime�
   （auto-plan-work，worktree `.wt/lang-701/auto-lang` branch
   plan-701-dev）。
 
+
+- **2026-09-25 stage: work（r1，executing → execution_done）**：九任
+  务全清。T-03..T-09 六件供料一提交（worktree commit 63901ed62，十四
+  文件+793 行）：供① save 直写（rope 裸写字节契约+字节对拍测）/供②
+  set_cursor+scroll 三端点（0 基勘定+注册表投影单源+Q-2 回声裁定=
+  零依赖回声）/供④ time 族三方一致 shim+elapsed 毫秒约定+执行期增
+  量 nv_to_pub_value TAG_I64 臂（桥面垃圾值实证修）/供⑤ print 改道
+  （TS 双发射位；javascript.rs 改道执行期回退 c9901f762——JS golden
+  字面断言，SD-03 改口）+helper 族 TS 注解+menubar-sub S002 根因勘
+  定（2046 钉版 exe 内嵌 schema 早于 695 吸收，二进制 0 命中实证）/
+  供⑥ shell_add_recent 三面同步（非 Windows no-op）。T-01/T-02：根
+  因=跨会话 auto.exe 扫膛（/IM sweep，tools/perf/README.md:65 在案
+  实+watcher 同秒双杀实捕）；基线 2/5 同下游率；v2115 五连跑早崩清
+  零 5/5；Q-3 分支=记录性件。跨仓证：plan-014 worktree strict regen
+  +pnpm build 双 exit 0（App.vue helper 注解+store globalThis.console
+  实证）。SD-01..04 落档（三 add 一 modify）。code_commit:
+  63901ed62..c9901f762+报告回填；worktree .wt/lang-701/auto-lang（组
+  内 auto-down 依赖位 3373a5c detached）。evidence: plan701_supply_
+  probes 七测（6 过 1 ignore 留档）+core 三测+JS 九测+tf 定册（3
+  musk+4 plan606/plan358/a2vue/projector 红=clean master 同名预存，
+  my-delta 零新增；gallery 围栏 1259s SLOW 在案）；坑留档：.at 层
+  TAG_I64 算术解码错位（平台缺口 #[ignore]）/cargo fmt 全仓分叉再证
+  （examples 误格式化已还原）。outcome: pass。next: review。
+
 ## 10. 待澄清事项
 
-- **Q-1 save 直写字节保真归属**（T-03）：端点侧裸写（预记）vs 端点
-  侧承载 bom/eol 包装——下游 WriteFidelity 包装逻辑保留前提下的双
-  重包装风险=T-03 对拍勘定后契约成文；漂移则双方向有界修订。
-- **Q-2 scroll 写端点回声语义**（T-05）：程序化 scroll_to 的
-  onscroll 回声随构建漂移（§14 观察件）——写端点应用是否发回声需
-  与该观察裁定合流（二选一稳定+成文）；不阻塞 T-04。
-- **Q-3 F-RV6 根因在界外分支**（T-01）：若根因定位落在本包界外（如
-  iced/系统层），T-02 转记录性件（竞态边界成文），下游重跑条款维持
-  ——不硬凑修复判据。
+- **Q-1 save 直写字节保真归属**（T-03）**[已裁定 2026-09-25]**：
+  端点侧裸写（预记成立）——rope 字节直落盘，BOM/EOL 包装归 front
+  （WriteFidelity）侧；CRLF 载荷 load→save 字节对拍测试钉；SD-01 成
+  文。双重包装风险的对拍守卫归下游 T-00② 形探针。
+- **Q-2 scroll 写端点回声语义**（T-05）**[已裁定 2026-09-25]**：读
+  出单源注册表投影、对回声行为零依赖（M 泛型臂无 on_scroll 回声；
+  程序化写经 drain 投影先行+读回校正，用户滚动 ≤2s 心跳收敛）——
+  回声漂移（§14 观察件）不再影响端点语义；SD-01 成文。
+- **Q-3 F-RV6 根因在界外分支**（T-01）**[已触发 2026-09-25]**：根
+  因=跨会话 /IM sweep 误伤（环境/流程面，界外成立）——T-02 记录性
+  件执行毕；下游重跑条款维持（T-09 口径评估可改注记「外因条款」，
+  引 p701-frv6-race-report.md）。
