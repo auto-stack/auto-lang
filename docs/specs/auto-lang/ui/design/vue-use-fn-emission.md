@@ -73,12 +73,13 @@ components/ 包通道接线、VM 装载的包组件 use 依赖收集
   TS7006（隐式 any）×12 build 红（m1-supply §14/§15 登记；auto-edit
   App.vue 实测）。新 helper 族入发射面时同规则（注解或 strict 豁免位
   二选一，缺省注解）。
-- **print 映射改道**：`print()` → `globalThis.console.log`（三发射
-  位：trans/ts_expr、trans/javascript、ui_gen/ts_adapter）——裸
-  `console.log` 与 store 名为 `console` 的 state 字段（Ref）模块内遮
-  蔽成 TS2339（运行期 JS 同形炸；m1-supply §9 附记，auto-edit
-  useEditorStore BENCH 标记 ×4 实证）。下游 regen_vue.py 遮蔽缓解件
-  随本改道可退役（退役判定属 014 T-08）。
+- **print 映射改道**：`print()` → `globalThis.console.log`（TS 双发
+  射位：trans/ts_expr、ui_gen/ts_adapter；JS 轨 javascript.rs 维持裸
+  `console.log`——JS golden 面零扰动裁定，模块内遮蔽在 JS 轨为预存
+  运行期边界、无 TS2339 编译面）——裸 `console.log` 与 store 名为
+  `console` 的 state 字段（Ref）遮蔽成 TS2339（m1-supply §9 附记，
+  auto-edit useEditorStore BENCH 标记 ×4 实证）。下游 regen_vue.py
+  遮蔽缓解件随本改道可退役（退役判定属 014 T-08）。
 - **验证面**：`print_emits_globalthis_console_log` +
   `p701_scroll_ctl_helpers_typed`（vue.rs 测试锁）+ 下游 strict
   regen+pnpm build 双 exit 0（014 T-08 复验）。
