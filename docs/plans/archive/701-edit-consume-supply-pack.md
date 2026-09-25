@@ -437,7 +437,7 @@ WIP——零触碰零依赖；钉版纪律=执行期核 `auto --version`+mtime�
   patch 全等）。**ledger_refreshed**：specs.json P701-1/2 + ui/vm
   plans.md + INDEX（spec-index.py 26 projects）；读回验证 JSON 合法
   +P701/P702 条目共存。**archived**：git mv archive/+status archived。
-  **cleaned**：（待清理后回填）canonical paths=ui/design/code-editor-
+  **cleaned**：wt-guard clean（无 reparse point）→auto-lang worktree+auto-down 依赖位+plan-701-dev 分支（35cfbea35）+组目录全摘，worktree list/branch list 双零残留；F-RV6 勘定证据袋迁 .wt/p701-frv6-evidence/（watcher.log+Temp 侧 auto041 app 日志 163 份回收；runner 侧补充日志误清——谱/死亡形态/定罪链已全量落在报告与本档，证据链无损）canonical paths=ui/design/code-editor-
   session-endpoints.md、vm/design/time-natives.md、ui/design/shell-
   recent-integration.md、ui/design/vue-use-fn-emission.md（strict-TS
   节 modify）。outcome: pass。
