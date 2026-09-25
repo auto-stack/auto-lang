@@ -351,26 +351,26 @@ pub fn main() {
 }
 ```
 
-### 7.3 优雅关闭
+### 7.3 优雅关闭（PLAN-699 已交付）
 
-目标行为：`Ctrl+C` / `SIGTERM` 时 server 停止 accept 新连接并等待活跃连接完成。VM `#[api]` server 当前没有优雅关闭 API。
+VM `#[api]` server 支持优雅关闭：`serve_async` 缺省注册 `Ctrl+C`（unix 另有 SIGTERM）置关闭 watch 旗标；网络线程停止 accept 并对在途连接限时排空（drain 10s，SSE 流经同一旗标收尾，超期强制关闭），VM owner 循环排空已入队请求后退出，端口释放可复绑。测试/嵌入经 `serve_with` 注入信号（与 Ctrl+C 汇入同一 watch；E2E `e2e_plan699_injected_shutdown_releases_port` 验证停 accept→排空→退出→复绑全链）。CLI Ctrl+C 的实机交互验证依赖真实控制台——headless harness 中 tokio 控制台 handler 注册不可用（归档 plan §10.5 记录仓外最小探针证据）。
 
 ---
 
 ## §8 跨模式一致性
 
-### 8.1 当前后台装配与支持范围（PLAN-696）
+### 8.1 当前后台装配与支持范围（PLAN-696/699）
 
 | 路径 | 当前实现 | 支持范围与边界 |
-|---|---|---|---|
-| VM `#[api]` server | `crates/auto-lang/src/vm/ffi/http_server.rs` 用 Tokio TCP listener 和手写 HTTP/1 请求解析；VM、listener 与连接任务由同线程 `LocalSet` / `Rc<AutoVM>` 持有。 | 普通 body 按 `Content-Length` 读满；非法/重复长度、短体及不支持的 `Transfer-Encoding` 会被拒绝；读取超时返回 408，超过 10 MiB 返回 413。SSE generator 分片执行并让出 LocalSet；连接断开会取消取帧任务。当前没有优雅关闭 API。 |
+|---|---|---|
+| VM `#[api]` server | `crates/auto-lang/src/vm/ffi/http_transport.rs` 以 Axum/Hyper 承载 HTTP/1.1（专属 `auto-http-net` 线程 + hyper-util auto Builder `http1_only`+`TokioTimer`）；HTTP 协议对象不出网络线程，经有界队列向 VM owner 的 `dispatch_api_request`（`http_server.rs`）传 owned `Send` `ApiRequest`，经 oneshot 回结构化 `ApiReply`（AC-02：无 `Rc<AutoVM>` 跨线程、无 `usize` 洗指针、无 `spawn_blocking` 调 VM）。 | 分帧/keep-alive/chunked 由 Hyper 承担（chunked 请求体自 PLAN-699 起支持，旧手写解析器是直接拒绝）。资源上限（699 决策报告冻结）：请求头缓冲 64 KiB + ≤100 头（超限 Hyper 原生 431）、慢头 10s 读超时（直接关闭）、body 10 MiB（413）+ 收满总期限 10s（408）、在途队列 `AUTO_HTTP_MAX_INFLIGHT`（默认 64，满载立即 503+`Retry-After`）、回复等待 `AUTO_HTTP_REQUEST_TIMEOUT_MS`（默认 30s，超时 503）。SSE generator 分片让出 owner LocalSet，帧通道容量 1 背压；断连/关闭经 `FrameStream`（`poll_recv` 接 waker + 关闭旗标收流）在 owner 线程回收 iterator/task/698 订阅。响应头名由 Hyper 规范化为小写（HTTP/1.1 头名大小写不敏感）。WebSocket 仍为简化 echo（101 + 裸帧 echo，经 hyper upgrade 路径），非通用 WS。优雅关闭见 §7.3。VM owner 单线程串行执行 handler——同步 CPU handler 无抢占，队列等待超时只解除排队关系。 |
 | 生成 Rust server | `crates/auto-man/src/api_gen.rs` 从 `back/api.at` 生成 Axum handler 和路由。 | 015-notes、017-chat、023-realworld 有 VM/Axum live 行为对拍；这是一条独立生成路径，不复用 VM server 的 HTTP 解析器。 |
 | a2r-std HTTP | `crates/a2r-std/src/http.rs` 是基于 ureq 的客户端流/请求实现。 | 它不是 `.at` HTTP server 的 Rust 目标实现；`stdlib/auto/http.rs.at` 当前不存在。 |
 | VM merge / split | 默认 VM merge 直接调用 `#[api]` 函数；`--no-merge` / `AUTO_VM_MERGE=0` 将符合条件的调用改写为 HTTP。 | merge 是进程内函数调用，保留函数值/错误语义，不产生 HTTP status/header；split 才经过服务端传输。 |
 | process back-proxy | `crates/auto-lang/src/back_proxy.rs` 为每个 app session 装载独立 VM，通过宿主 HTTP 路由分发 `api.at` 调用；另有 SSE/IPC 接线。 | 此代理是独立的进程内 session 路径，不等同于 `serve_async` 或 generated Axum。按名参数缺失可返回 400。 |
 | VM 事件总线（PLAN-698） | `auto.bus.subscribe()`（native 3144，stdlib `shim_bus_subscribe`）为 VM 真实执行面：进程内 `EVENT_BUS`（`broadcast::channel(256)`，镜像 api_gen 生成 events.rs 模板）+ 每订阅者一线程泵入统一 ASYNC_STREAMS 表，以既有 `Iterator::AsyncHttpStream` 臂被 SSE serve 循环与 `.at` iterator 家族消费；断连/停端沿用 696 回收语义（Done→-1→连接关闭）；订阅端断连经 cleanup 回收 ASYNC_STREAMS 句柄——转发线程随之退出（PLAN-698 F-1）。VM server 的 POST 广播臂（`publish_post_broadcast`，两个 serve 循环插桩）按 api_gen `broadcast_event_name` 同款约定发事件：fn 名含 "typing" → `{"event":"Typing","name":<首个 str 形参请求值>}`；其余 POST 成功且响应体为 JSON 对象 → 注入 `"event":"New{RetType}"`（RetType 取 codegen 侧信道 `record_api_return_type` 的 `unique_name`）。 | 仅当工程声明 ~Stream 端点时发布（`has_stream_endpoint()` 门控=api_gen has_sse）。无 topic 寻址（与生成侧一致的单总线）；生成 Rust server 的 publisher SSE 走生成 events.rs，与 VM 总线互不相通。017-chat VM 臂 subscribe→收事件→UI 联动全环实测（Typing/NewMessage 双形态；带外 POST typing 在 Vue UI 渲染 typing 指示）。 |
 
-VM `#[api]` 的当前按名绑定规则、path/body/query 优先级、缺参语义与同步 serve 路径差异见 §4.1.1。计划 696 的回归覆盖请求体 TCP 分段、短体/超限、慢 SSE 与断连取消，以及 015/017/023 的 VM/Axum 行为。~~`auto.bus.subscribe()` 仍是 VM compile seam~~（PLAN-698 起为上表 VM 事件总线行所述的真实执行面）。
+VM `#[api]` 的当前按名绑定规则、path/body/query 优先级、缺参语义与同步 serve 路径差异见 §4.1.1。计划 696 的回归覆盖请求体 TCP 分段、短体/超限、慢 SSE 与断连取消；计划 699 新增协议探针：chunked 请求体、单连接 keep-alive 双请求、超限头 431、慢头超时关闭、注入式优雅关闭+端口复绑、队列满 503，以及 015/017/023 真实示例在新传输上的重跑。~~`auto.bus.subscribe()` 仍是 VM compile seam~~（PLAN-698 起为上表 VM 事件总线行所述的真实执行面）。
 
 ### 8.2 统一实现层（目标架构，尚未落地）
 

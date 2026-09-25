@@ -24,7 +24,7 @@ http.Server（route/middleware/listen）
 log / env 为独立工具模块
 ```
 
-此图表示公共能力的逻辑关系，不表示 VM HTTP server 与 Rust/Axum server 共用实现。
+此图表示公共能力的逻辑关系，不表示 VM HTTP server 与 Rust/Axum server 共用实现。传输层现状（PLAN-699）：VM `#[api]` server 的 HTTP/1.1 由 Axum/Hyper 承载——专属 `auto-http-net` 线程驱动 hyper-util 连接，经 owned `Send` 桥（有界队列 + oneshot）把请求交给 VM owner 线程的 `dispatch_api_request`；生成 Rust 服务（auto-man）仍是独立装配的 Axum handler，两者不共享路由/handler 代码。Auto `task`/`~T` 的通用异步 I/O 重做（Design 33 阶段 C）未落地：VM handler 仍在 owner 线程同步执行，无抢占；HTTP 层的队列/body/超时预算（详见 stdlib [http-server §8.1](../../../stdlib/design/http-server.md)）约束的是排队与传输资源，不是 handler 可中断性。
 实现目录的文件实证包括：`http.at`+`http.vm.at`、`http_stream.at`、`net.at`+`net.vm.at`、
 `async.at`+`async.vm.at`、`json.at`+`json.vm.at`+`json.rs.at`、`url.at`+`url.vm.at`、
 `log.at`+`log.vm.at`、`env.at`+`env.vm.at`+`env.rs.at`、`sse.at`、`sse_server.at`。

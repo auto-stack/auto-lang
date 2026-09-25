@@ -3400,6 +3400,11 @@
      "status": "published",
      "created": "2026-09-24",
      "last_modified": "2026-09-24"
+    },
+    {
+     "id": "P699-1",
+     "title": "vm-http-transport-axum-bridge — VM #[api] HTTP 传输替换与有界调用桥（SD-01..03）",
+     "content": "Design 33 阶段 B 全 delivered。①传输（SD-01→http-server.md §7.3/§8.1）：VM #[api] HTTP/1.1 迁 Axum/Hyper——专属 auto-http-net 线程 + hyper-util auto Builder（http1_only+TokioTimer+64KiB 头缓冲+10s 慢头读超时）+GracefulShutdown；手写 handle_connection_async/write_api_reply 退出调用图；chunked 请求体与 keep-alive 由 Hyper 承担（chunked 旧为直接拒绝=设计内放松）；资源预算冻结面：头 64KiB+≤100（超限原生 431）、慢头 10s 关闭、body 10MiB（413）+收满总期限 10s（408）、在途队列 AUTO_HTTP_MAX_INFLIGHT 默认 64（满载立即 503+Retry-After）、回复等待 AUTO_HTTP_REQUEST_TIMEOUT_MS 默认 30s（503）。②owned 桥（AC-02）：ApiRequest/ApiReply 全 owned Send（method/path/headers/body/peer ↔ status/headers/body 或 Sse 帧通道），有界 mpsc→VM owner 循环 dispatch_api_request（CORS/限流/请求 id/multipart/路由/中间件/绑定/handler/Response/POST 广播语义逐行镜像旧内联路径），零 Rc<AutoVM> 跨线程、零 usize 洗指针、零 spawn_blocking。③SSE/关闭：696 producer+capacity-1 帧通道原样；FrameStream 以 Receiver::poll_recv 接 waker（try_recv+Pending 无 waker 永久饿死=spike 实证坑）+关闭旗标收流；断连/关闭在 owner 线程回收 iterator/task/698 订阅；优雅关闭=serve_async 缺省 ctrl_c(+unix SIGTERM) 置 watch 旗标→停 accept→drain 10s→强制关→端口复绑（serve_with 注入信号同通道，E2E 全链绿）。④Spec 三面：SD-02 backend-assembly http 行+拓扑表+696/699 锁定行为节（VM 与生成 Axum 均依赖 Axum 但为两套独立服务实现）；SD-03 networking-stdlib 传输现实注记（Auto task 通用异步 I/O 仍属 Design 33 阶段 C 未落地，handler 无抢占）；顺带 reconcile 698 前的 bus.subscribe compile seam 过时行。axum 转 auto-lang 无条件依赖（ui-interpreter 摘 dep:axum 保 dep:ureq）+hyper/hyper-util 直依赖。"
     }
    ]
   },
@@ -7419,6 +7424,11 @@
      "status": "published",
      "created": "2026-09-24",
      "last_modified": "2026-09-24"
+    },
+    {
+     "id": "P699-2",
+     "title": "vm-http-transport-axum-bridge 复审与合并收据",
+     "content": "review #1 pass（同会话复审，结论由制品与可复现命令重建）。AC-01..07 全 pass：受审 HEAD 复绿 34/34 AC 探针（chunked/keep-alive/431/慢头 10.6s/注入关停→端口复绑/队列 503 桥级单测）+调用图删除核对+--no-default-features 纯 VM 编译；tf 5704/5705——唯一红 plan358 stress 单跑双绿=并行负载抖动（698 红册 ffi/c1 同型），同批 9 红（musk×6+plan606 029+projector_counter+a2vue_desktop_surface）在未改动 master 主检出逐一复红=全预存，零计划归因红；执行期并行会话落 4dc4d581a（017/018 前端重构）无冲突 rebase，顺带收口基线 018 坏样与 back_proxy/031 旧环境红（th 56/56）。F-1（trivial 已修）：限流注释仍引用已删除的 handle_connection_async→2e0922710。CLI Ctrl+C 实机：仓外 20 行最小 tokio 探针（#[tokio::main]+tokio::spawn(ctrl_c) 生态标准形态）经 CTRL_BREAK 可靠投递通道同样落默认处理器 0xC000013A，三拓扑（LocalSet+spawn_local/LocalSet+tokio::spawn/裸 multi-thread）全等=本 harness 环境 tokio 控制台 handler 注册本身失效（环境属性，非计划缺陷）；注入信号与 ctrl_c 同 watch 下游全路径 E2E 已证，人工终端复现指引在归档 plan §10.5。坑沉淀：hyper Http1Builder 配 header_read_timeout 必须配 timer 否则 panic；hyper 响应头名规范化小写（三个旧 e2e 断言改大小写不敏感，值不变）；nextest 默认 fail-fast 勘错须 --no-fail-fast。merge：rebase 后 ff-only 落库、账本三件套、归档、组目录全清。"
     }
    ]
   }
