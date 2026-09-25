@@ -47,6 +47,7 @@ widget bookshelf {
         var show_add bool = false
         var new_title str = ""
         var new_author str = ""
+        var book_count int = 0
         var cont_id int = 0
         var cont_title str = ""
         var cont_author str = ""
@@ -66,42 +67,24 @@ widget bookshelf {
                 style: "items-center justify-between gap-4 shrink-0"
                 col {
                     h1 "Library" { style: "text-2xl md:text-3xl font-bold text-foreground" }
-                    text f"${.store.books.len()} books" { style: "text-sm text-muted-foreground mt-1" }
+                    text f"${.book_count} books" { style: "text-sm text-muted-foreground mt-1" }
                 }
-                button {
-                    onclick: .ShowAdd
-                    style: "inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-                    text "＋ Add Book" {}
-                }
-            }
-
-            // Continue Reading — 降低再入成本（Apple Books / Kindle 惯用）
-            if .has_continue {
                 row {
-                    onclick: .ContinueBook(.cont_id)
-                    style: "items-center gap-4 p-4 rounded-xl bg-card border border-border hover:border-primary/50 cursor-pointer transition-colors shrink-0"
-                    col {
-                        style: "w-14 h-20 rounded-lg bg-gradient-to-br " + .cont_color + " items-center justify-center shrink-0 shadow-sm"
-                        text "📖" { style: "text-xl text-white/85" }
-                    }
-                    col {
-                        style: "flex-1 min-w-0 gap-1"
-                        text "Continue Reading" { style: "text-xs font-medium text-primary uppercase tracking-wide" }
-                        text .cont_title { style: "font-semibold text-foreground truncate" }
-                        text .cont_author { style: "text-sm text-muted-foreground truncate" }
-                        row {
-                            style: "items-center gap-2 mt-1"
-                            col {
-                                style: "flex-1 h-1.5 rounded-full bg-border overflow-hidden"
-                                row {
-                                    style: "h-full bg-primary rounded-full"
-                                    style: "width:" + .cont_progress.to_string() + "%"
-                                }
-                            }
-                            text .cont_label { style: "text-xs text-muted-foreground shrink-0" }
+                    style: "items-center gap-3 shrink-0"
+                    // PLAN-043 走查 UI 修正：Continue Reading 大横幅降级为
+                    // 标题栏按钮（书名 + 进度一手带全），省一屏纵向空间。
+                    if .has_continue {
+                        button {
+                            onclick: .ContinueBook(.cont_id)
+                            style: "inline-flex items-center gap-2 px-4 py-2 border border-primary/50 rounded-lg text-sm text-foreground hover:bg-primary/10 transition-colors whitespace-nowrap"
+                            text "▶ " + .cont_title + " · " + .cont_label {}
                         }
                     }
-                    text "→" { style: "text-lg text-muted-foreground shrink-0" }
+                    button {
+                        onclick: .ShowAdd
+                        style: "inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors whitespace-nowrap"
+                        text "＋ Add Book" {}
+                    }
                 }
             }
 
@@ -118,8 +101,13 @@ widget bookshelf {
                         }
                     }
                 } else {
-                    div {
-                        style: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5"
+                    // PLAN-043 走查 UI 修正：原生 grid 部件 3 列（此前
+                    // `grid grid-cols-N md:...` Tailwind 响应式类在 VM 原生
+                    // 渲染器不吃 → 塌单列满宽）。cols 支持状态表达式绑定，
+                    // 宽度信号注入后可平滑升级自适应 2/3 列。
+                    grid {
+                        cols: 3
+                        gap: 20
                         for book in .cards {
                             col {
                                 onclick: .OpenBook(book.id)
@@ -219,6 +207,7 @@ widget bookshelf {
                 .cards.push({ id: b.id, title: b.title, author: b.author, cover_color: b.cover_color, progress: b.progress, progress_label: pct1(b.progress) + "%" })
                 i = i + 1
             }
+            .book_count = .cards.len()
             .has_continue = false
             var idx int = continue_index(.store.books)
             if idx >= 0 {
@@ -256,6 +245,7 @@ widget bookshelf {
                     .cards.push({ id: b.id, title: b.title, author: b.author, cover_color: b.cover_color, progress: b.progress, progress_label: pct1(b.progress) + "%" })
                     i = i + 1
                 }
+                .book_count = .cards.len()
                 var idx int = continue_index(.store.books)
                 .has_continue = false
                 if idx >= 0 {
@@ -279,6 +269,7 @@ widget bookshelf {
                 .cards.push({ id: b.id, title: b.title, author: b.author, cover_color: b.cover_color, progress: b.progress, progress_label: pct1(b.progress) + "%" })
                 i = i + 1
             }
+            .book_count = .cards.len()
             .has_continue = false
             var idx int = continue_index(.store.books)
             if idx >= 0 {
