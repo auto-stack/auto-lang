@@ -1405,28 +1405,42 @@ mod tests {
     /// daemon paint_ops 回放（`()` 后端）——与 broker_surface 的实机重放
     /// 同一降格函数。debug 断言档外该后端不存在，测试跳过（release 测档
     /// 由 T-03 实机窗承接）。
+    /// PLAN-702 T-05 前置修复（预存 release 编译炸点，非本计划引入）：
+    /// iced_graphics 的 `impl Renderer for ()` 挂 `#[cfg(debug_assertions)]`
+    /// ——debug 档外该类型不存在；本函数原用**运行期** `cfg!(debug_
+    /// assertions)` 门，release 测档（AC-03 `cargo test --release`）照样
+    /// 编译即炸 E0277。改编译期门整段消除，语义与注释自述一致。
     fn replay_with_paint_ops(list: &DrawList) {
-        if cfg!(debug_assertions) {
-            let bounds =
-                iced::Rectangle::new(iced::Point::ORIGIN, iced::Size::new(640.0, 480.0));
-            let mut frame = iced::widget::canvas::Frame::with_bounds(&(), bounds);
-            frame.fill_rectangle(
-                iced::Point::ORIGIN,
-                bounds.size(),
-                iced::Color::from_rgba8(
-                    list.clear.map(|c| c.r).unwrap_or(0),
-                    list.clear.map(|c| c.g).unwrap_or(0),
-                    list.clear.map(|c| c.b).unwrap_or(0),
-                    1.0,
-                ),
-            );
-            crate::ui::iced::broker_surface::paint_ops(&mut frame, &list.ops);
-        }
+        #[cfg(debug_assertions)]
+        replay_with_paint_ops_debug(list);
+        #[cfg(not(debug_assertions))]
+        let _ = list;
+    }
+
+    /// `()` 后端重放体——仅在 debug 断言档编译（与 iced `()` Renderer 的
+    /// 存在档位对齐）。
+    #[cfg(debug_assertions)]
+    fn replay_with_paint_ops_debug(list: &DrawList) {
+        let bounds =
+            iced::Rectangle::new(iced::Point::ORIGIN, iced::Size::new(640.0, 480.0));
+        let mut frame = iced::widget::canvas::Frame::with_bounds(&(), bounds);
+        frame.fill_rectangle(
+            iced::Point::ORIGIN,
+            bounds.size(),
+            iced::Color::from_rgba8(
+                list.clear.map(|c| c.r).unwrap_or(0),
+                list.clear.map(|c| c.g).unwrap_or(0),
+                list.clear.map(|c| c.b).unwrap_or(0),
+                1.0,
+            ),
+        );
+        crate::ui::iced::broker_surface::paint_ops(&mut frame, &list.ops);
     }
 
     /// PLAN-683 T-03——v2 原语 canvas 重放：001/003 实帧（含渐变/圆角/
     /// border/shadow 全参 quad）经 `()` 后端完整走 paint_ops_v2 降格
     /// 路径（词汇面兼容/路径构造炸点/嵌套 scissor-transform 扫描）。
+    /// 同 replay_with_paint_ops 的编译期门修复（`()` Renderer 存在档位）。
     #[test]
     fn p683_t03_v2_paint_replay() {
         for dir in ["001-helloworld", "003-converter"] {
@@ -1439,7 +1453,8 @@ mod tests {
             let mut surface = HeadlessSurface::new(component, 480.0, 360.0);
             let v2 = surface.render_frame_v2();
             assert!(!v2.ops.is_empty(), "{dir} v2 空帧");
-            if cfg!(debug_assertions) {
+            #[cfg(debug_assertions)]
+            {
                 let bounds =
                     iced::Rectangle::new(iced::Point::ORIGIN, iced::Size::new(640.0, 480.0));
                 let mut frame = iced::widget::canvas::Frame::with_bounds(&(), bounds);
@@ -1452,6 +1467,8 @@ mod tests {
                 }
                 crate::ui::iced::broker_surface::paint_ops_v2(&mut frame, &v2.ops);
             }
+            #[cfg(not(debug_assertions))]
+            let _ = v2;
         }
     }
 }
