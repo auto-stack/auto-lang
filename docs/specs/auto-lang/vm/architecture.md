@@ -141,3 +141,10 @@ graph TD
 - 备选：VM api.* 真异步化(handler yield 出 iced update,结果经 IcedMessage 回流;cons:改动面大,Plan 026 §10.1 另档);保留 60s 继续跑(cons:Init 撞无监听端口 ~2s/次失败且不重试,lab-premerge2 实证卡死)。
 - 后果：AutoTerm VM split 每拍 HTTP 22-68 次 → 4 次(双端点聚合,终端侧契约见 terminal-mux-model.md),Tick busy 115-295ms → ~20ms,Windows 全程 Responsive=True(修前恒 False);配套修复随本 ADR 落地:VM i64 数值语义链六处(GET_ELEM i64 下标/str 串化分支/TYPE_CAST_I64 宽整 sign-extend/算术与序比较宽整臂)、`api_gen` []int 数组端点模板(Vec<i64>)、ui_gen handler 局部 List<int> 索引 as i32 窄化(db 层 Vec<i64> 惯例与 i32 模型语境对齐)。
 - 状态：active
+
+### ADR-23: UI 驱动路径段执行——call_fn_by_name_segment park/resume，忙等退役为 legacy 非 UI 语义（PLAN-702）
+- 日期 / 来源：2026-09-25 / plan-702（E3/E7 实证：UI handler 内异步等待期间 5ms 忙等占住 iced update，30s deadline 超时 RuntimeError 且 .at catch 接不住——musk PickFolder rfd 人在环模态事故）
+- 决策：`AutoVM` 新增段执行驱动 `call_fn_by_name_segment` / `resume_fn_by_name_segment`（共享核 `drive_handler_segment`，`allow_busy_wait` 开关）：Yield 且 `waiting_http_request_id`/`waiting_future_id` 就位时**不进入忙等**，返回 `SegmentOutcome::Parked{wait, seg}`（task 持 ip/bp/栈/闭包上下文天然可续）；恢复入口镜像 wake source 6（外部 future 推结果）+ `resume_suspended_body`（async_frames 续体）后续跑同一 step 核。**PLAN-027 缺陷 A 边界**：`drop_async_result` 回收只属"真正放弃等待"的超时路径，parked 不回收、恢复时 shim 重入臂按 req_id 消费。**忙等语义退役为 legacy**：`call_fn_by_name` 原样保留给非 UI 调用方（back_proxy/http_server/run_module_init 前 bootstrap 等自带线程阻塞可接受面），UI 桥（vm_bridge）全派发点禁用（ui/ 下门禁测试封顶 view 侧求值两保留位）。等待上限契约变更：从"30s 忙等硬超时→RuntimeError"变为"reqwest 客户端超时以错误体数据形态落账（.at 可捕获）"。
+- 备选：iced `Command::perform`+channel 精准唤醒（cons：改动面大，19ms AppTick 轮询族已满足）；handler 改造为 actor task（cons：差分过大，PLAN-702 只借 scheduler 的段状态返回语义）。
+- 后果：从不 yield 的 handler 与同步驱动逐字节同（同 step 核/预算/try-catch 拦截）；会 yield 的 handler 迁移爆炸半径=缺陷面本身；单 VM 串行一致性保持（全部 VM 执行仍在 iced update 内串行，parked 中途态可见性同级于顺序写）。`call_closure` 的 Yield=hot-continue 属另一族驱动，不在本裁定面。
+- 状态：active

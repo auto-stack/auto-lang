@@ -218,3 +218,10 @@ graph TD
 - 备选：①逐帧重渲染缩略（否——最小化窗无在屏 framebuffer，Plan 497 待澄清③已裁定离线栅格化不可行）；③锚点后代 bbox 并集（否——同坐标系污染，见决策③）。
 - 后果：最小化/遮挡窗预览恒正确（用户实机确认"hover 的预览确实是正确的末帧了"）；冻结窗恢复可见即解冻重抓。已知观察面：主题热切换时 dashboard face 渲染滞留（PLAN-040 F-R1 待澄清，暂规避=重启）。
 - 状态：active
+
+### ADR-24: VM 桥 handler 派发契约=段执行——parked 注册表 + `__parked_resume_tick` 恢复泵 + 重入忽略/busy 镜像（PLAN-702）
+- 日期 / 来源：2026-09-25 / plan-702（VM 桥接层契约变更的事实沉淀：派发契约从"同步跑完才返回"改为"交还任务段即返回"）
+- 决策：①**派发契约**——`VmBridge::call_handler` / `call_handler_for` / `call_handler_with_record` / `run_module_init` 全部经 `call_fn_by_name_segment`：`Completed` 等价旧语义（Ok→dirty 置脏、Err→既有失败通道），`Parked{wait,seg}` 即 task 入 `parked_tasks` 注册表（task+seg+wait+重入键+来源清账纪律）并**立即返回**，iced 事件循环零占用。②**恢复泵**——`__parked_resume_tick` 条件订阅（`__timer_tick` 同族，16ms，仅 `has_parked_tasks()` 时在册）→ update 臂内联 `poll_parked_resumes`：wait 就绪段续跑，Completed 出清落账置脏，仍 Waiting 再 park；恢复 Err 经既有 `[VM-HANDLER] ... failed` syslog 通道。选型注记：AppTick Poll 静态泵是进程级通道（多 App 会话串投歧义），条件订阅按 AppId 打标天然隔离且免静态通道。③**重入默认策略**——同 (widget,handler) 键（namespaced fn 名）parked 在途时后续触发**忽略**（队列/合并留待使用反馈）；busy 可见面 = 根态 `__busy_handlers` List<str> 堆镜像随 park/完成翻转（宿主读路径可查；.at 编译期 GET_FIELD 按静态 field_idx，运行期追加字段不可达——.at 原生查询需合成期注入字段，延期项）。④**view 侧例外**——`call_vm_fn`/`call_computed_fn` 保持同步驱动（本次调用返回 Value 的契约无 park 形态，视图每帧重算），带 legacy 保留位标记封顶两处。
+- 备选：重入排队/合并（cons：无使用反馈前属过度设计）；busy 走 .at 可查询的合成字段（cons：全 widget 状态面膨胀，等真实查询需求立项）。
+- 后果：handler 内任意时长异步等待（含人在环模态端点）期间窗口保持交互与重绘；挂载自发 Init 含 api 拉数时先渲染中途态再泵续落账；`read_state` 取数路径零改动。测试侧适配：断言 api 落账的测试须经 `plan370_test_support::drive_parked_segments` 驱动泵（"dispatch 即落账"假设退役）。
+- 状态：active

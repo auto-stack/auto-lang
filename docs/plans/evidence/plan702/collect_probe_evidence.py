@@ -87,11 +87,30 @@ def mcp_call(port, tool, args=None, timeout=30):
 
 
 def state_fields(port):
+    """autoui_state 返回格式化文本（`  field: value (type)` 行），非 JSON。"""
     text = mcp_call(port, "autoui_state")
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return {"_raw": text}
+    fields = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("- "):
+            line = line[2:]
+        if not line or line.startswith("State") or ":" not in line                 or not line.endswith(")"):
+            continue
+        try:
+            name, rest = line.split(":", 1)
+        except ValueError:
+            continue
+        val = rest.rsplit("(", 1)[0].strip()
+        if val.startswith('"') and val.endswith('"'):
+            fields[name.strip()] = val[1:-1]
+        else:
+            try:
+                fields[name.strip()] = int(val)
+            except ValueError:
+                fields[name.strip()] = val
+    if not fields:
+        fields["_raw"] = text
+    return fields
 
 
 def press_button(port, snapshot_text, label):

@@ -1,0 +1,20 @@
+AURA Snapshot v2 (rendered)
+widget: "App"
+
+tree:
+col #vnode_14695981039346656037 {
+  style: "items-start gap-2 p-6"
+  text #vnode_12642422519345821663 "PLAN-702 handler-async probe"
+  text #vnode_12642404927159776812 "result: (idle)"
+  text #vnode_12642457703717911365 "bumps: 0"
+  text #vnode_12642440111531866514 "ticks: 9"
+  row #vnode_12642352150601642259 {
+    style: "gap-3"
+    button #vnode_4243844436454269769 "Start 65s request" {
+      onclick: .Load
+    }
+    button #vnode_4243826844268224918 "Bump" {
+      onclick: .Bump
+    }
+  }
+}
