@@ -1,0 +1,198 @@
+---------------------------
+AutoNexus / Auto CLI
+---------------------------
+Loading AmConfig from Some("C:\\Users\\zhaop\\.auto\\auto-man\\am.at")...
+AmConfig: AmConfig {
+  name: default
+  index: {
+    soutek: git@codeup.aliyun.com:soutek/auto-stack/auto-index.git
+    default: git@gitee.com:auto-stack/auto-index.git
+    boe: git@codeup.aliyun.com:soutek/boe/index.git
+  }
+}
+
+
+Loaded port: windows_ninja
+port NAME: windows_ninja
+all index: {"soutek": "git@codeup.aliyun.com:soutek/auto-stack/auto-index.git", "default": "git@gitee.com:auto-stack/auto-index.git", "boe": "git@codeup.aliyun.com:soutek/boe/index.git"}
+used index: ["default"]
+04:49:16 [0m[34m[INFO] [0mloading index store from C:/Users/zhaop/.auto/auto-man/index/default
+setting port builder: windows_ninja ninja, at build
+04:49:16 [0m[34m[INFO] [0mAutoCache initialized for project: handler-async-probe
+  VM window size: fit (content-measured, from pac.at)
+  VM window title: Handler 异步探针 (from pac.at)
+04:49:16 [0m[34m[INFO] [0mRunning project ...
+
+------------ output ------------
+
+  ✓ vm+vm merged mode: backend runs in-process (no HTTP server)
+Running VM interpreter UI (backend: vm, merged)
+04:49:16 [0m[34m[INFO] [0mDownloading deps
+04:49:16 [0m[34m[INFO] [0mdownload done!
+04:49:16 [0m[34m[INFO] [0m--- pac: handler-async-probe ---
+
+╭──────┬──────┬────┬──────╮
+│[94m [39m[94mname[39m[94m [39m│[94m [39m[94mkind[39m[94m [39m│[94m [39m[94mat[39m[94m [39m│[94m [39m[94mdirs[39m[94m [39m│
+╰──────┴──────┴────┴──────╯
+04:49:16 [0m[34m[INFO] [0mLinking targets with dependencies
+04:49:16 [0m[34m[INFO] [0mScanning targets for srcs and incs, only major targets and their deps are scanned
+[X9] entering vm interpreter
+[CALL_HANDLER] widget=App event_name=Init fn_name=handler_App_Init args=[]
+AutoUI MCP: listening on http://127.0.0.1:4075
+04:49:16 [0m[34m[INFO] [0mSystem theme: None
+04:49:16 [0m[34m[INFO] [0mWindow attributes for id `Id(
+    1,
+)`: WindowAttributes {
+    inner_size: Some(
+        Logical(
+            LogicalSize {
+                width: 480.0,
+                height: 680.0,
+            },
+        ),
+    ),
+    min_inner_size: None,
+    max_inner_size: None,
+    position: Some(
+        Logical(
+            LogicalPosition {
+                x: 80.0,
+                y: 80.0,
+            },
+        ),
+    ),
+    resizable: true,
+    enabled_buttons: WindowButtons(
+        CLOSE | MINIMIZE | MAXIMIZE,
+    ),
+    title: "Handler 异步探针",
+    maximized: false,
+    visible: false,
+    transparent: false,
+    blur: false,
+    decorations: true,
+    window_icon: None,
+    preferred_theme: None,
+    resize_increments: None,
+    content_protected: false,
+    window_level: Normal,
+    active: true,
+    cursor: Icon(
+        Default,
+    ),
+    parent_window: None,
+    fullscreen: None,
+    platform_specific: PlatformSpecificWindowAttributes {
+        owner: None,
+        menu: None,
+        taskbar_icon: None,
+        no_redirection_bitmap: false,
+        drag_and_drop: true,
+        skip_taskbar: false,
+        class_name: "Window Class",
+        decoration_shadow: false,
+        backdrop_type: Auto,
+        clip_children: true,
+        border_color: None,
+        title_background_color: None,
+        title_text_color: None,
+        corner_preference: Some(
+            Default,
+        ),
+    },
+}
+04:49:16 [0m[34m[INFO] [0mSettings {
+    present_mode: AutoVsync,
+    backends: Backends(
+        NOOP | VULKAN | GL | METAL | DX12 | BROWSER_WEBGPU,
+    ),
+    default_font: Font {
+        family: Name(
+            "Inter",
+        ),
+        weight: Normal,
+        stretch: Normal,
+        style: Normal,
+    },
+    default_text_size: Pixels(
+        16.0,
+    ),
+    antialiasing: Some(
+        MSAAx4,
+    ),
+}
+04:49:16 [0m[34m[INFO] [0mAvailable adapters: [
+    AdapterInfo {
+        name: "NVIDIA GeForce RTX 4060 Ti",
+        vendor: 4318,
+        device: 10245,
+        device_type: DiscreteGpu,
+        driver: "NVIDIA",
+        driver_info: "617.14",
+        backend: Vulkan,
+    },
+    AdapterInfo {
+        name: "NVIDIA GeForce RTX 4060 Ti",
+        vendor: 4318,
+        device: 10245,
+        device_type: DiscreteGpu,
+        driver: "32.0.16.1714",
+        driver_info: "",
+        backend: Dx12,
+    },
+    AdapterInfo {
+        name: "NVIDIA GeForce RTX 4060 Ti",
+        vendor: 4318,
+        device: 10245,
+        device_type: DiscreteGpu,
+        driver: "32.0.16.1714",
+        driver_info: "",
+        backend: Dx12,
+    },
+    AdapterInfo {
+        name: "Microsoft Basic Render Driver",
+        vendor: 5140,
+        device: 140,
+        device_type: Cpu,
+        driver: "10.0.26100.9278",
+        driver_info: "",
+        backend: Dx12,
+    },
+    AdapterInfo {
+        name: "NVIDIA GeForce RTX 4060 Ti/PCIe/SSE2",
+        vendor: 4318,
+        device: 0,
+        device_type: Other,
+        driver: "",
+        driver_info: "4.6.0 NVIDIA 617.14",
+        backend: Gl,
+    },
+]
+04:49:16 [0m[34m[INFO] [0mSelected: AdapterInfo {
+    name: "NVIDIA GeForce RTX 4060 Ti",
+    vendor: 4318,
+    device: 10245,
+    device_type: DiscreteGpu,
+    driver: "NVIDIA",
+    driver_info: "617.14",
+    backend: Vulkan,
+}
+04:49:16 [0m[34m[INFO] [0mAvailable formats: Copied {
+    it: Iter(
+        [
+            Bgra8UnormSrgb,
+            Rgba8UnormSrgb,
+            Bgra8Unorm,
+            Rgba8Unorm,
+            Rgb10a2Unorm,
+        ],
+    ),
+}
+04:49:16 [0m[34m[INFO] [0mAvailable alpha modes: [
+    Opaque,
+    PreMultiplied,
+]
+04:49:16 [0m[34m[INFO] [0mSelected format: Bgra8Unorm with alpha mode: PreMultiplied
+AutoUI MCP: first state sync in view()
+[VM-PARKED] handler_App_Load parked (event Load, wait HttpRequest(1)) — UI stays interactive
+[VM-PARKED] handler_App_Load resumed to completion (waited 20.0083643s)

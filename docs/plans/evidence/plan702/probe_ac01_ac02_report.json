@@ -1,0 +1,60 @@
+{
+  "ac01_interactivity": {
+    "bumps_sequence": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20
+    ],
+    "ticks_sequence": [
+      15,
+      19,
+      23,
+      27,
+      32,
+      36,
+      40,
+      44,
+      49,
+      53,
+      "...",
+      78,
+      82,
+      87,
+      91,
+      95
+    ],
+    "bumps_advanced_every_probe": true,
+    "ticks_alive": true
+  },
+  "ac02_result": {
+    "__emit_msg": "",
+    "__emit_payload": "nil",
+    "__toast": "",
+    "bumps": 20,
+    "result": "{\\\"ok\\\":true,\\\"slow\\\":702}",
+    "ticks": 95
+  },
+  "log_assertions": {
+    "busy_wait_timeouts": 0,
+    "parked_logged": true,
+    "resumed_logged": true
+  },
+  "wall_clock_to_result_s": 21.5
+}
