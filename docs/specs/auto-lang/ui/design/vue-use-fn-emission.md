@@ -61,3 +61,24 @@ components/ 包通道接线、VM 装载的包组件 use 依赖收集
 测试锁：vue 单测 11（发射/不发/闭包/块体/handler/门控/去重/ext 抑制/
 冲突/pattern 回退/尾表达式 return）+ api 集成 3（文件系统端到端 + 016/024
 语料锁）+ vm_bridge 2（016 生产路径 grid、024 dc/ds VM 别名求值）。
+
+## strict-TS 发射契约（PLAN-701 供⑤增补，2026-09-25）
+
+生成器 TS 面在 `strict: true` tsconfig（vue-tsc）下必须 build 干净：
+
+- **helper 函数族类型注解**：scroll controller helper 族
+  （scroll_to_start/scroll_to_end/scroll_by/scroll_to/scroll_state/
+  scroll_controller/__scrollCtlEl）发射带显式 TS 形参/返回注解
+  （`use_typescript` 分支；JS 轨维持裸形）。此前裸形参在 strict 下
+  TS7006（隐式 any）×12 build 红（m1-supply §14/§15 登记；auto-edit
+  App.vue 实测）。新 helper 族入发射面时同规则（注解或 strict 豁免位
+  二选一，缺省注解）。
+- **print 映射改道**：`print()` → `globalThis.console.log`（三发射
+  位：trans/ts_expr、trans/javascript、ui_gen/ts_adapter）——裸
+  `console.log` 与 store 名为 `console` 的 state 字段（Ref）模块内遮
+  蔽成 TS2339（运行期 JS 同形炸；m1-supply §9 附记，auto-edit
+  useEditorStore BENCH 标记 ×4 实证）。下游 regen_vue.py 遮蔽缓解件
+  随本改道可退役（退役判定属 014 T-08）。
+- **验证面**：`print_emits_globalthis_console_log` +
+  `p701_scroll_ctl_helpers_typed`（vue.rs 测试锁）+ 下游 strict
+  regen+pnpm build 双 exit 0（014 T-08 复验）。
