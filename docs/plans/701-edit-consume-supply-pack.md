@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-701
-status: execution_done
+status: reviewed
 feature_name: edit-consume-supply-pack-v1（auto-edit 消费供料包六件——save 直写/光标滚动端点/F-RV6 稳定化/time 族/vue strict/跳转列表 shim）
 author: [agent]
 created_at: 2026-09-24T17:45:00+08:00
@@ -387,6 +387,33 @@ WIP——零触碰零依赖；钉版纪律=执行期核 `auto --version`+mtime�
   my-delta 零新增；gallery 围栏 1259s SLOW 在案）；坑留档：.at 层
   TAG_I64 算术解码错位（平台缺口 #[ignore]）/cargo fmt 全仓分叉再证
   （examples 误格式化已还原）。outcome: pass。next: review。
+
+
+- **2026-09-25 stage: review（r1，execution_done → reviewed）**：本会
+  话复审（实现+复审同会话——独立有限，判定自工件重构非执行摘要）。
+  基线：plan_revision r1；reviewed_commit 22db61a59（worktree 六提交
+  63901ed62..22db61a59，base c40fab5d3，dep auto-down 3373a5c
+  detached）；worktree 提交态 clean。AC 复现（终 HEAD 重跑）：
+  **AC-01 pass**（报告在档：基线 2/5 谱+watcher 同秒双杀实捕+定罪
+  链；t02 五连谱早崩清零 5/5 在 §5 表）；**AC-02 pass**（save_writes
+  rope_bytes 绿+三面 grep 9/9）；**AC-03 pass**（set_cursor_places 绿
+  +SD-01 契约节）；**AC-04 pass**（plan701 time 三测+a2r 对拍 <5s 绿；
+  AC 文字「单调钟」按执行期勘正=epoch 三方一致，SD-02 成文）；**AC-05
+  pass**（schema 解析回归测+p701_scroll_ctl+p695 emission 绿；跨仓
+  strict regen+pnpm build 双 exit 0[exe v2115-g63901ed62 采证，证据
+  桥=c9901f762 仅 JS 轨+SD-03 文档 diff，TS 发射面恒等]）；**AC-06
+  pass**（shell 空 path 测+三面 grep）。**tf 终版门禁（22db61a59 树
+  ，--no-fail-fast 全量 5708）**：5696 过/12 红=10 clean master 同名
+  预存（musk p053×6+plan606 029+projector_counter+plan358_stress+
+  a2vue_surface，逐一 master 复跑定责）+2 负载 flake（p508 outproc/
+  top_level_actions_merge——并行会话满载期超时，隔离重跑双绿），
+  **my-delta 零回归**。规范增量：SD-01..04 审读=描述现行为+持久裁定
+  （R-1 勘正 SD-01 shim 计数四→五，22db61a59）；frontmatter 三字段
+  终定（new=SD-01/02/04 三 add；SD-03 modify 经 §5 表走 ledger；
+  touched_goals=[GOAL-003]）。遗漏/延期/变通扫描：JS 轨改道回退=范
+  围内收敛非变通（SD-03 改口）；.at 层 TAG_I64 算术缺口+JS 轨遮蔽=
+  债候选入册（P701-D1/D2，KNOWN-DEBT-AND-RISKS）；无未批延期。out-
+  come: **pass**。next: merge。
 
 ## 10. 待澄清事项
 
