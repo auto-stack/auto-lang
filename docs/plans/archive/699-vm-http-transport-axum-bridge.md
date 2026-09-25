@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-699
-status: reviewed
+status: archived
 feature_name: vm-http-transport-axum-bridge
 author: [agent]
 created_at: 2026-09-24
@@ -130,6 +130,14 @@ Spec delta 由 `/auto-plan:review` 验证后 `/auto-plan:merge` 沉淀。若 T-0
 - 2026-09-24，`stage: work`，`plan_id: PLAN-699`，`plan_revision: 1`，`outcome: pass`，`code_commit: 1b8bf6a3f`（worktree `D:/autostack/.wt/lang-699/auto-lang`，分支 `plan-699-dev`，rebase 至 master `4dc4d581a`；链=`d2de4d01b` T-01 spike+决策 / `01cd23192` T-02 桥+dispatch 核心 / `6de714eeb` T-03/04/05 传输+预算+SSE+关闭 / `d748e59be` 中间件 e2e 撤销 / `1b8bf6a3f` 报告）。`task_ids: T-01..T-08` 全清。`evidence`：决策报告 699-bridge-decision.md（spike 6/6+拓扑/限额冻结）；对拍矩阵 699-parity.md；验证报告 699-verification.md——check 双形态 0 error、th 56/56（6 个新协议探针：chunked/keep-alive/431/慢头关/注入关停/队列 503 单测）、tv 162/162、tf 5704/5705（唯一红=plan358 stress 单跑双绿=负载抖动；同批 9 红 master 逐一复红=全预存，零本计划归因红）、`--no-default-features` 纯 VM 编译过、`git diff --check` 净。执行期勘定四条：axum 转 unconditional（`ui-interpreter` 摘 dep:axum）+hyper/hyper-util 直依赖；并行会话落 `4dc4d581a` 后无冲突 rebase（顺带收口旧 back_proxy/031 红与基线 018 坏样）；hyper 响应头名小写规范化致三处旧断言改大小写不敏感（值不变）；TF 红册定责=detached 复现法（master 主检出热编译复跑）。`blockers`: 无（待澄清#5 为环境限制记录，非阻塞）。`next: review`（/auto-plan:review 独立复审 AC-01..07+SD-01..03；建议复审环境有交互终端时补一轮 CLI Ctrl+C 实机确认）。
 
 - 2026-09-25，`stage: review`，`plan_id: PLAN-699`，`plan_revision: 1`，`outcome: pass`，`reviewed_commit: 2e0922710`，`base_commit: 4dc4d581a`，`dependency_revisions: auto-down 3373a5c (detach, 零改动)`。**独立性声明**：复审与实现同会话，结论由制品与可复现命令重建（非执行摘要采信）；复用 T-08 门禁数字的显式理由=1b8bf6a3f 与 d748e59be 之间仅 docs-only 差异（两份 reports/*.md），全部编译目标内容恒等；受审 HEAD 上另复跑 34/34 AC 探针子集与 F-1 修复后 6/6。`spec_inputs`: http-server.md §7.3/§8.1、backend-assembly.md `http` 行、networking-stdlib.md §细节（SHA 于 merge 时随 SD 沉淀冻结）。`acceptance_results`: AC-01 pass（调用图：`handle_connection_async` 已删除；chunked/keep-alive E2E；`--no-default-features` 0 error）；AC-02 pass（transport 侧零 `Rc<AutoVM>`/零 spawn_blocking；`as usize` 仅 WS 帧长解码）；AC-03 pass（431/慢头 10.6s 关/413/408/队列 503 在 HEAD 复绿）；AC-04 pass（慢 SSE 不碍健康请求+断连取消+帧通道容量 1+FrameStream 关闭臂）；AC-05 pass（注入信号 E2E 绿：停 accept→限时排空→owner 退出→端口复绑；**CLI Ctrl+C 实机在本 harness 被证明不可测**——仓外 20 行最小 tokio 探针（`#[tokio::main]`+`tokio::spawn(ctrl_c)` 生态标准形态）经 CTRL_BREAK 可靠投递通道同样落默认处理器 0xC000013A=本环境 tokio 控制台 handler 注册本身失效，三拓扑（LocalSet+spawn_local / LocalSet+tokio::spawn / 裸 multi-thread）全等复现，非本计划缺陷；人工终端复现步骤在 §10.5）；AC-06 pass（699-parity.md 矩阵逐面对证，SD-01..03 before 断言与现行 canonical 文本逐一吻合）；AC-07 pass（门禁表+红册定责）。`findings`: **F-1（trivial，已修）**=`http_server.rs:236` 限流注释仍引用已删除的 `handle_connection_async`（T-07 范围内残留）→ 修复于 `2e0922710`（纯注释，compile-neutral，探针 6/6 复绿）；**观察 O-1（非阻塞、范围外）**=`backend-assembly.md:22` "VM bus.subscribe 仍是 compile seam" 系 PLAN-698 折叠前的过时行（698 已翻案为真执行面），不属本计划 SD 范围，移交 merge 阶段裁定是否顺带沉淀。`evidence`: 本记录+三报告（随计划归档持久化）+`git diff master...2e0922710`。`next: merge`。
+
+- 2026-09-25，`stage: merge`，`PLAN-699:r1`，`outcome: pass`，`completion_kind: delivered`。**收据（五 checkpoint）**——
+  `prepared`：受审基线 2e0922710（rebase 前记法；见 landed 映射），SD-01..03 canonical 修订与账本三件套在工作树备妥为 docs-only 后代提交（`git diff 2e0922710..59c7a753a` 五文件纯 docs：http-server.md §7.3/§8.1、backend-assembly.md http 行/拓扑表/696·699 锁定行为节+O-1 reconcile、networking-stdlib.md 传输注记、stdlib/plans.md 699 行、specs.json P699-1/P699-2 语义 append 10 增 0 删；INDEX 再生零语义变化）。
+  `landed`：plan-699-dev rebase 至 master bc92ba6c7（7 提交），`git range-diff 4dc4d581a..2e0922710 master..HEAD~1` **6/6 全等**（补丁等价证明）；旧→新映射 d2de4d01b→6625cf49d / 01cd23192→da5b95948 / 6de714eeb→e48d4e366 / d748e59be→64119b289 / 1b8bf6a3f→82a790996 / 2e0922710→3c462b6e5；`git merge --ff-only` 落库零合并提交，master tip=delivery commit `4324a5ce4`；主检出 smoke：`cargo check -p auto-lang` 0 error + 协议探针 3/3。
+  `ledger_refreshed`：`.autoos/specs.json` P699-1（architecture，SD-01..03 契约）/P699-2（reviews，复审+合并收据）语义 append-only（indent=1 roundtrip 恒等）；`docs/specs/stdlib/plans.md` 699 行；`docs/specs/INDEX.md` 由 `scripts/spec-index.py` 再生（输出零变化）。canonical 沉淀目标=docs/specs/stdlib/design/{http-server,backend-assembly}.md + docs/specs/auto-lang/runtime/design/networking-stdlib.md。
+  `archived`：`git mv` 至 `docs/plans/archive/699-vm-http-transport-axum-bridge.md` + `status: archived`。
+  `cleaned`：随后补记（wt-guard 双 worktree + 分支/组目录清理）。
+
 
 ## 10. 待澄清事项
 
