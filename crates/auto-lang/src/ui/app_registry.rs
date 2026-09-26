@@ -545,6 +545,11 @@ struct OsManifestApp {
     /// [`ManifestDaemon`]）。
     #[serde(default)]
     daemon: Option<ManifestDaemon>,
+    /// PLAN-043 走查（2026-09-25）：per-app 主启动方式声明——`"vm"` =
+    /// 桌面 launch 恒 inproc 解释渲染（编译产物存在也不走原生附着）；
+    /// `"native"` = 原生 exe 优先；缺席 = 既有 exe 存在即原生（向后兼容）。
+    #[serde(default)]
+    launch: Option<String>,
 }
 
 /// PLAN-013 T2：manifest `daemon` 字段 schema——桌面 launch 前置 ensure 链的
@@ -631,6 +636,22 @@ pub fn manifest_daemon_lookup(parent: &Path, name: &str) -> Option<(PathBuf, Man
         .into_iter()
         .find(|(id, _, _)| id == name)
         .map(|(_, repo_dir, def)| (repo_dir, def))
+}
+
+/// PLAN-043 走查（2026-09-25）：per-app 主启动方式查表——launch 期单名
+/// 查找（[`manifest_daemon_lookup`] 同款独立读取形态；launch 期一次性
+/// 成本换零回归面）。返回条目 `launch` 字段（"vm"|"native"；缺席/未声明
+/// = None = 既有 exe 存在即原生）。
+pub fn manifest_launch_lookup(parent: &Path, name: &str) -> Option<String> {
+    let root = resolve_os_manifest_root(parent)?;
+    let path = root.join("apps.manifest");
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let parsed: OsManifestFile = serde_json::from_str(&raw).ok()?;
+    parsed
+        .apps
+        .into_iter()
+        .find(|app| app.id == name)
+        .and_then(|app| app.launch)
 }
 
 pub fn manifest_repo_roots(manifest_root: &Path) -> Vec<(String, PathBuf)> {

@@ -3234,11 +3234,21 @@ fn spawn_shell_outproc(
         // inproc 缺省下发现编译 exe（pac `desktop_exe:` / rust-workspace
         // 约定）同样走孵化链；纯解释 spec（发现 MISS）维持 inproc 零变化
         //（I1——多一次 resolver 读源 + 少量 stat，launch 本就重复读源）。
-        if let Some(resolver) = self.desktop.app_resolver.clone() {
-            if let Some(spec) = resolver(name) {
-                if Self::outproc_native_exe(&spec).is_some() {
-                    eprintln!("[session] launch_app(outproc-native) {name}");
-                    return self.launch_app_outproc(name);
+        // PLAN-043 走查（2026-09-25）：apps.manifest per-app `launch` 字段
+        // （"vm"|"native"；缺席 = 既有 exe 存在即原生）——"vm" 声明的 app
+        // 恒 inproc 解释（编译产物存在也不走原生附着；RQHost 路线缓行期
+        // 的 per-app 主启动方式声明，apps.manifest 为配置单源）。
+        let manifest_launch =
+            crate::ui::app_registry::manifest_launch_lookup(std::path::Path::new("."), name);
+        if manifest_launch.as_deref() != Some("native") {
+            if let Some(resolver) = self.desktop.app_resolver.clone() {
+                if let Some(spec) = resolver(name) {
+                    let native_ok = manifest_launch.as_deref() == Some("native")
+                        || manifest_launch.is_none();
+                    if native_ok && Self::outproc_native_exe(&spec).is_some() {
+                        eprintln!("[session] launch_app(outproc-native) {name}");
+                        return self.launch_app_outproc(name);
+                    }
                 }
             }
         }
