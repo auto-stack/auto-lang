@@ -1294,15 +1294,23 @@ impl VmBridge {
                         other => other.clone(),
                     };
                     if let Some(idx) = inst.field_names.iter().position(|n| n == name) {
+                        // PLAN-045 T-02：prop 种子写入根态 = 状态面突变——但
+                        // ensure_child_state 由 render_child_widget 每帧调用，
+                        // 无条件 bump 会把"每帧 seq 必动"坐实（PLAN-062
+                        // fire_timer 空转拍判定失效 + memo 快速路径恒 miss）。
+                        // 值变化才计突变；其余状态面突变（SET_FIELD/handler/
+                        // write_state）自有通道 bump，不变值重种子不掩盖。
+                        let changed = inst.get_field(idx) != Some(&storable);
                         let _ = inst.set_field(idx, storable);
+                        if changed {
+                            self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        }
                     } else {
                         // Add new field (prop not yet in root state).
                         inst.field_names.push(name.clone());
                         inst.fields.push(storable);
+                        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     }
-                    // PLAN-045 T-02：prop 种子写入根态 = 状态面突变——memo
-                    // 快速路径可见性（同 write_state 口径）。
-                    self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
             }
         }
