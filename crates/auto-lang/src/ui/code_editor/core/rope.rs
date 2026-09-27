@@ -718,6 +718,20 @@ fn q_subtree_equal(a: &Node, b: &Node) -> bool {
     range_content_equal(a, 0, b, 0, a.bytes())
 }
 
+/// Length tails beyond the common prefix are divergence by definition (a
+/// pure insertion/deletion at the tail end) — appended after the aligned
+/// walk by both `prune_spans` faces.
+fn append_length_tails(a: &Arc<Node>, b: &Arc<Node>, out: &mut PruneSpans) {
+    let (a_len, b_len) = (a.bytes(), b.bytes());
+    let common = a_len.min(b_len);
+    if a_len > common {
+        out.diverged.push((common, a_len, b_len, b_len));
+    }
+    if b_len > common {
+        out.diverged.push((a_len, a_len, common, b_len));
+    }
+}
+
 /// Aligned prune spans for diff preprocessing (PLAN-703 T-04 "剪后算"):
 /// walks two roots in lockstep and classifies aligned byte ranges as
 /// *shared* (ptr_eq structural sharing or Merkle-shortcut equal) or
@@ -728,7 +742,6 @@ fn q_subtree_equal(a: &Node, b: &Node) -> bool {
 ///
 /// Consumed by the diff engine's snapshot preprocessing (PLAN-703 T-04).
 #[derive(Debug, Default)]
-#[allow(dead_code)]
 pub(crate) struct PruneSpans {
     /// `(a_start, a_end, b_start, b_end)` — byte-identical content on both
     /// sides (positions may shift apart across edits — structural sharing
@@ -738,8 +751,6 @@ pub(crate) struct PruneSpans {
     pub diverged: Vec<(usize, usize, usize, usize)>,
 }
 
-// Consumed by the diff engine's snapshot preprocessing (PLAN-703 T-04).
-#[allow(dead_code)]
 fn collect_prune_spans(
     a: &Node,
     a_off: usize,
@@ -941,26 +952,6 @@ impl Rope {
         q_subtree_equal(&self.root, &other.root)
     }
 
-    /// Aligned prune spans vs `other` — the diff preprocessing face
-    /// (PLAN-703 T-04). Shared spans are byte-identical on both sides.
-    #[allow(dead_code)]
-    pub(crate) fn prune_spans(&self, other: &RopeSnapshot) -> PruneSpans {
-        let mut out = PruneSpans::default();
-        let a_len = self.root.bytes();
-        let b_len = other.root.bytes();
-        let common = a_len.min(b_len);
-        collect_prune_spans(&self.root, 0, &other.root, 0, common, &mut out);
-        // Length tails beyond the common prefix are divergence by definition
-        // (a pure insertion/deletion at the end).
-        if a_len > common {
-            out.diverged.push((common, a_len, b_len, b_len));
-        }
-        if b_len > common {
-            out.diverged.push((a_len, a_len, common, b_len));
-        }
-        out
-    }
-
     /// Iterate lines 0..line_count (each without its terminating `'\n'`).
     pub fn lines(&self) -> impl Iterator<Item = Cow<'_, str>> + '_ {
         let root = &*self.root;
@@ -1051,6 +1042,13 @@ impl RopeSnapshot {
     /// Exact content equality with shortcuts — see [`Rope::subtree_equal`].
     pub fn subtree_equal(&self, other: &RopeSnapshot) -> bool {
         q_subtree_equal(&self.root, &other.root)
+    }
+    /// Aligned prune spans vs `other` — see [`Rope::prune_spans`].
+    pub(crate) fn prune_spans(&self, other: &RopeSnapshot) -> PruneSpans {
+        let mut out = PruneSpans::default();
+        collect_prune_spans(&self.root, 0, &other.root, 0, self.root.bytes().min(other.root.bytes()), &mut out);
+        append_length_tails(&self.root, &other.root, &mut out);
+        out
     }
 }
 
@@ -1440,7 +1438,7 @@ mod tests {
 
         // Identical snapshot: one shared span, nothing diverged.
         let s0 = r.snapshot();
-        let spans = r.prune_spans(&s0);
+        let spans = r.snapshot().prune_spans(&s0);
         assert_eq!(spans.shared, vec![(0, r.len_bytes(), 0, r.len_bytes())]);
         assert!(spans.diverged.is_empty());
 
@@ -1451,7 +1449,7 @@ mod tests {
         r.insert_bytes(insert_at, "INSERTED\n");
         let mut b_model = model.clone();
         b_model.insert_str(insert_at, "INSERTED\n");
-        let spans = r.prune_spans(&s0);
+        let spans = r.snapshot().prune_spans(&s0);
         assert!(!spans.diverged.is_empty(), "the edit region must register as diverged");
         // Shared spans must be byte-identical across the (possibly shifted)
         // coordinate pair. a-coords index the POST tree (self = r = the
@@ -1589,7 +1587,7 @@ mod prune_span_reference {
         let r = Rope::from_str(&model);
         let mut r2 = Rope::from_str(&model);
         r2.insert_bytes(insert_at, "INSERTED\n");
-        let spans = r2.prune_spans(&r.snapshot());
+        let spans = r2.snapshot().prune_spans(&r.snapshot());
         let (nsh, ndi) = naive_spans(&b_model, &model);
         // every walk-shared span must be content-equal in the models
         for (a1, a2, b1, b2) in &spans.shared {

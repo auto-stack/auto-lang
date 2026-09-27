@@ -10,6 +10,7 @@
 // original implementation.
 
 pub mod core;
+pub mod diff;
 pub mod draw;
 pub mod theme;
 
@@ -30,6 +31,7 @@ pub use core::{
 // Plan 418: menu-driven clipboard ops (requires the arboard bridge).
 #[cfg(feature = "ui-clipboard")]
 pub use core::{code_editor_clipboard_op, ClipboardOp};
+pub use diff::{diff_lines, diff_lines_parallel, diff_lines_windowed, diff_snapshots, refine_inline, DiffOpts, DiffOut, Hunk, Refinement};
 pub use draw::EditorDrawList;
 pub use theme::{current_theme, set_theme_source, CodeEditorTheme, Rgba};
 
