@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-703
-status: executing
+status: reviewed
 feature_name: diff-engine-supply-pack-v1（auto-edit 供料包承接——rope 子树哈希/diff 引擎本体/行内 refinement/分块并行/目录比对/消费端点 五件）
 author: [agent]
 created_at: 2026-09-27T11:52:52+08:00
@@ -342,6 +342,35 @@ SD-01..03 三册落档（契约含 T-00 选型记录）；specs.json 账本投�
   基准（AC-05）：100MB 文本全形态 0.35-0.9s（压进下游 ≤2s 线）+快照
   O(1) 快路 10.6µs；执行期修复实录（三枚探针实勘+一枚基准驱动二次方）
   见各提交与 SD-02。`blockers: 无`。`next: review`。
+- 2026-09-27 review handoff：`stage: review`，PLAN-703，plan_revision 1。
+  `outcome: pass`。reviewed_commit=**e1542e1c1**（worktree HEAD；其前一
+  4d69f4e27=功能终态，e1542e1c1 仅复审卫生门 F-1 一行 attribute-only
+  allow+注释，无语义变化）；base_commit=c0a52de7b；
+  dependency_revisions=auto-down@3373a5c（detached，零改动）。
+  spec_inputs=SD-01..03 三册（worktree
+  docs/specs/auto-lang/ui/design/{rope-subtree-hash,diff-engine,
+  diff-endpoints}.md@e1542e1c1）。**独立性声明**：复审在实现会话内
+  进行——判定全部自工件重建（HEAD 复跑命令+提交清单+grep 锚），不采
+  信执行期总结。AC 逐条复现：AC-01 rope 23/0 绿；AC-02/03/04 diff
+  60/0 绿（八形态 golden/双跑字节等/窗投影采样一致性/并行≡串行内
+  含）；AC-05 HEAD 复跑 release 基准（100MB 全等 373ms/1% 404ms/快照
+  8.6µs——SD-02 记录 ±10% 运行方差内一致）；AC-06 dirs 13/0 绿；
+  AC-07 探针 7/0 绿+tf 5746/5757（11 红全预存对账：musk×6+counter×1+
+  plan358+a2vue+test_029=P702 复审同册 + ffi_dual_019=689 flaky 先例
+  隔离复跑绿——零新增）+tv 162/162；AC-08 三册在档+specs.json
+  P703-1+plans.md 行+INDEX 再生无漂移+五注册面 grep 锚（catalog 常
+  量×3/codegen intrinsics×4/a2r 臂×3/bigvm String×3/shim 双臂）。
+  findings：**F-1**（已修）group_hunks_annotated 尾次 open=false 死写
+  警告——复审卫生门修复（e1542e1c1），diff 60/0 复绿、警告基线对齐
+  master 351。遗漏/延后扫描：无未批准缩面——natives 位次漂移
+  （9914→9915-9917）、窗投影语义、mtime 快路默认关、>2MB uncompared
+  保持、snapshot rows 净形——五项偏差全部 SD 册成文+计划 §9 记录在
+  案；非阻塞精化（per-region 共享回收/段粒度自适应并行）已录 SD-02
+  为后续面不入本件判据。规范增量复核：SD-01..03 描述现行为与持久决
+  策（非执行日记）；new_spec_components 三册与 frontmatter 一致；
+  touched_goals=[] 空影响有书面解释（供料驱动新面，702 先例）。
+  evidence：本记录+各提交+tf_run2.log/tv 会话输出（摘要摘录于此，
+  临时日志不随工作树存留）。`next: merge`。
 
 ## 10. 待澄清事项
 
