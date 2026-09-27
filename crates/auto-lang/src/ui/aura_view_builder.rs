@@ -4975,6 +4975,17 @@ let tabs_inner = View::Row {
     /// `__route_params` state object so page handlers can read them via
     /// `router.param("id")`. No routes / no match / empty route → `View::Empty`.
     fn render_outlet(&self, bindings: &Bindings) -> View<DynamicMessage> {
+        // PLAN-045 T-07 拆账：outlet 页构建耗时单列（AUTO_MEMO_DIAG 门）。
+        let __diag = std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1");
+        let __t0 = if __diag { Some(std::time::Instant::now()) } else { None };
+        let __out = self.render_outlet_inner(bindings);
+        if let (true, Some(t0)) = (__diag, __t0) {
+            eprintln!("[VM-VIEW-OUTLET] outlet_ms={}", (std::time::Instant::now() - t0).as_millis());
+        }
+        __out
+    }
+
+    fn render_outlet_inner(&self, bindings: &Bindings) -> View<DynamicMessage> {
         let (Some(registry), Some(routes)) = (self.widget_registry, self.routes) else {
             return View::Empty;
         };
@@ -19890,8 +19901,11 @@ impl<'a> AuraViewBuilder<'a> {
         }
         let slots = match scan_static(props, children) {
             ScanVerdict::Slots(s) => s,
-            ScanVerdict::Degrade(_reason) => {
+            ScanVerdict::Degrade(reason) => {
                 self.bridge.with_memo_cache(|c| c.note_degraded());
+                if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+                    eprintln!("[MEMO-DIAG] site={site} DEGRADE reason={reason}");
+                }
                 return MemoGateBegin::Off;
             }
         };
@@ -19920,6 +19934,9 @@ impl<'a> AuraViewBuilder<'a> {
         {
             if seq_at_fill == seq && gfp_entry == gfp {
                 self.bridge.with_memo_cache(|c| c.note_hit());
+                if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+                    eprintln!("[MEMO-DIAG] site={site} HIT fast");
+                }
                 return MemoGateBegin::Hit {
                     product,
                     probe_replay,
@@ -19937,6 +19954,9 @@ impl<'a> AuraViewBuilder<'a> {
                             c.refresh_seq(&key, seq);
                             c.note_hit();
                         });
+                        if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+                            eprintln!("[MEMO-DIAG] site={site} HIT slow");
+                        }
                         return MemoGateBegin::Hit {
                             product,
                             probe_replay,
@@ -19951,6 +19971,9 @@ impl<'a> AuraViewBuilder<'a> {
                                 c.refresh_seq(&key, seq);
                                 c.note_hit();
                             });
+                            if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+                                eprintln!("[MEMO-DIAG] site={site} HIT slow");
+                            }
                             return MemoGateBegin::Hit {
                                 product,
                                 probe_replay,
@@ -19960,7 +19983,13 @@ impl<'a> AuraViewBuilder<'a> {
                     }
                 }
             }
+            if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+                eprintln!("[MEMO-DIAG] site={site} MISS (slow mismatch)");
+            }
             self.bridge.with_memo_cache(|c| c.note_miss());
+        }
+        if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+            eprintln!("[MEMO-DIAG] site={site} FILL (no entry)");
         }
         MemoGateBegin::Fill(MemoGateFill {
             key,

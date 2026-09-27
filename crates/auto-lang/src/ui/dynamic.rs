@@ -1554,6 +1554,11 @@ impl DynamicComponent {
         &self,
         capture_probe: bool,
     ) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
+        // PLAN-045 T-07：帧构建计时打点（AUTO_MEMO_DIAG=1 门控）——主线程
+        // 阻塞 = 本函数时长（VM 整树重解释在此），替代易受心跳污染的
+        // stderr 静默窗口径。
+        let memo_diag = std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1");
+        let __diag_t0 = if memo_diag { Some(std::time::Instant::now()) } else { None };
         let prev = self.view_mount_frame_prepare();
         let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts)
             .with_routes(&self.routes)
@@ -1564,6 +1569,13 @@ impl DynamicComponent {
             .with_mount_path_sink(self.mount_path_sink());
         let out = builder.build_with_debug_gated(&self.view_template, capture_probe);
         self.view_mount_frame_finish(prev);
+        if let Some(t0) = __diag_t0 {
+            eprintln!(
+                "[VM-VIEW] widget={} build_ms={} dirty_before=true",
+                self.widget_name,
+                (std::time::Instant::now() - t0).as_millis()
+            );
+        }
         out
     }
 
