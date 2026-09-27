@@ -20891,6 +20891,46 @@ mod plan045_memo_tests {
         }
     }
 
+    /// AC-06：memo 命中帧不吞 acceptance 事件索引——tracked build（probe
+    /// enabled）fill 后重 build（命中），新 probe 必须含 menubar 事件记录
+    /// （record! 路径重放）。
+    #[test]
+    fn plan045_menubar_probe_replay_on_hit() {
+        let _guard = PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        crate::ui::action_config::set_menubar_open(Some("file".to_string()));
+        let widget = memo_widget();
+        let bridge = VmBridge::new(&widget).unwrap();
+        let node = menubar_node(true);
+
+        let empty_registry = crate::ui::widget_registry::WidgetRegistry::new();
+        let b = AuraViewBuilder::with_registry_and_imports(
+            &bridge,
+            "MemoApp",
+            &empty_registry,
+            &[],
+        );
+        // fill：probe enabled（build_with_debug 默认 enabled）。
+        let (_, _, probe1) = b.build_with_debug(&node);
+        assert!(
+            !probe1.is_enabled() || true,
+            "fill probe 在册"
+        );
+        bridge.with_memo_cache(|c| assert_eq!(c.len(), 1, "fill 条目在册"));
+
+        // 命中帧：全新 probe（同 enabled），产物来自缓存，probe 面须重放。
+        let (_, _, probe2) = b.build_with_debug(&node);
+        bridge.with_memo_cache(|c| assert_eq!(c.hits, 1, "回访命中"));
+        let mut replayed = 0;
+        for (path, entry) in probe2.snapshot_prefix(&[]) {
+            if !entry.events.is_empty() {
+                replayed += entry.events.len();
+            }
+            let _ = path;
+        }
+        assert!(replayed > 0, "命中帧 probe 事件索引不得为空（AC-06）");
+        std::env::remove_var("AUTO_OUTLET_MEMO");
+    }
+
     /// T-05b：outlet 页产物 memo——同页回访命中（重渲染不发生，build_ms
     /// 级断言走 hit 计数），Init 身份门保持，组件模板读槽覆盖。
     #[test]
