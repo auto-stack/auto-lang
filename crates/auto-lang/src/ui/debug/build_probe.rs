@@ -112,6 +112,25 @@ impl BuildProbe {
         self.by_path.entry(path.to_vec()).or_default()
     }
 
+    /// PLAN-045: 快照 `prefix` 前缀下的全部条目（memo fill 捕获面——fill 后
+    /// diff 出 memo 子树新增条目，命中时经 [`Self::merge_entries`] 重放）。
+    pub fn snapshot_prefix(&self, prefix: &[u16]) -> Vec<(Vec<u16>, ProbeEntry)> {
+        self.by_path
+            .iter()
+            .filter(|(p, _)| p.starts_with(prefix))
+            .map(|(p, e)| (p.clone(), e.clone()))
+            .collect()
+    }
+
+    /// PLAN-045: 合并重放 memo 条目捕获的 probe 面（命中路径——acceptance
+    /// 事件索引不被缓存吞掉，AC-06）。同 path 条目覆盖式写入（fill 与重放
+    /// 产物同构，语义等价）。
+    pub fn merge_entries(&mut self, entries: Vec<(Vec<u16>, ProbeEntry)>) {
+        for (p, e) in entries {
+            self.by_path.insert(p, e);
+        }
+    }
+
     /// Record a state binding at `path`. Multiple bindings at the same path
     /// accumulate (they are not overwritten).
     ///

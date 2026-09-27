@@ -194,6 +194,13 @@ pub struct VmBridge {
     /// PLAN-702 T-04: `__busy_handlers` 镜像的已写字集——parked 键集无变化
     /// 时跳过堆列表重铸（每 tick 调 sync_busy_flag，稳态零写）。
     busy_flag_names: std::cell::RefCell<Vec<String>>,
+
+    /// PLAN-045: 组件级 memo 缓存宿主——builder 每帧借用临时、桥跨帧持久，
+    /// 缓存生命周期随桥（hot-reload 走新建桥 reload，缓存自然弃置）。
+    /// RefCell 内可变理由同 parked_tasks（渲染期 `&self`）。类型面依赖
+    /// interpreter，同 ui-interpreter 门控。
+    #[cfg(feature = "ui-interpreter")]
+    memo_cache: std::cell::RefCell<crate::ui::memo_deps::MemoCache>,
 }
 
 /// PLAN-702 T-04: root-state busy 镜像字段名——List&lt;str&gt;（namespaced
@@ -456,6 +463,8 @@ impl VmBridge {
             child_last_init_identity: std::cell::RefCell::new(std::collections::HashMap::new()),
             parked_tasks: std::cell::RefCell::new(Vec::new()),
             busy_flag_names: std::cell::RefCell::new(Vec::new()),
+            #[cfg(feature = "ui-interpreter")]
+            memo_cache: std::cell::RefCell::new(crate::ui::memo_deps::MemoCache::new()),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
         })
@@ -639,6 +648,8 @@ impl VmBridge {
             child_last_init_identity: std::cell::RefCell::new(std::collections::HashMap::new()),
             parked_tasks: std::cell::RefCell::new(Vec::new()),
             busy_flag_names: std::cell::RefCell::new(Vec::new()),
+            #[cfg(feature = "ui-interpreter")]
+            memo_cache: std::cell::RefCell::new(crate::ui::memo_deps::MemoCache::new()),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
         })
@@ -746,7 +757,12 @@ impl VmBridge {
         }
         self.stake_state_value(&value);
         instance.set_field(field_index, value)
-            .map_err(|e| VmBridgeError::InvalidState(e))
+            .map_err(|e| VmBridgeError::InvalidState(e))?;
+        // PLAN-045 T-02：Rust 侧直写绕过 engine 突变臂，全局 state_mutation_seq
+        // 原本不动——`set_route` 等桥写通道因此对 memo 快速路径不可见（陈旧
+        // 误命中）。与 engine 突变臂同口径在此补 bump（PLAN-045 决策注记②）。
+        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Ok(())
     }
 
     /// PLAN-654 阶段 B: 写 state；字段不存在时在根态对象上追加（框架注入面）。
@@ -767,6 +783,9 @@ impl VmBridge {
                 instance.field_names.push(field_name.to_string());
                 instance.fields.push(value);
                 self.state_field_names.push(field_name.to_string());
+                // PLAN-045 T-02：新增字段同属状态面突变，与 write_state 同口径
+                // 补 bump（memo 快速路径可见性）。
+                self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 Ok(())
             }
             Err(e) => Err(e),
@@ -974,6 +993,9 @@ impl VmBridge {
                             self.stake_state_value(new_el);
                         }
                         list.elems = values;
+                        // PLAN-045 T-02：容器原地替换 = 状态面突变（memo
+                        // 快速路径可见性），与 write_state 同口径补 bump。
+                        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         Ok(())
                     } else {
                         Err(VmBridgeError::InvalidState(
@@ -1002,6 +1024,8 @@ impl VmBridge {
                             self.stake_state_value(new_el);
                         }
                         list.elems = values;
+                        // PLAN-045 T-02：容器原地替换补 bump（同 Int 臂）。
+                        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         Ok(())
                     } else {
                         Err(VmBridgeError::InvalidState(
@@ -1276,6 +1300,9 @@ impl VmBridge {
                         inst.field_names.push(name.clone());
                         inst.fields.push(storable);
                     }
+                    // PLAN-045 T-02：prop 种子写入根态 = 状态面突变——memo
+                    // 快速路径可见性（同 write_state 口径）。
+                    self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
             }
         }
@@ -1515,6 +1542,9 @@ impl VmBridge {
                 inst.fields.push(value);
             }
         }
+        // PLAN-045 T-02：`__busy_handlers` 镜像重写 = 状态面突变——memo
+        // 快速路径可见性（函数体前段有"集合未变早退"，真写入才到此）。
+        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Call a handler by name with arguments.
@@ -1727,6 +1757,53 @@ impl VmBridge {
     /// PLAN-062: 状态突变序号只读透传（fire_timer 空转拍判定）。
     pub fn state_mutation_seq(&self) -> u64 {
         self.vm.state_mutation_seq()
+    }
+
+    /// PLAN-045: memo 缓存快照口（渲染期 builder 走 `&self`，RefCell 内可变）。
+    #[cfg(feature = "ui-interpreter")]
+    pub fn with_memo_cache<R>(&self, f: impl FnOnce(&mut crate::ui::memo_deps::MemoCache) -> R) -> R {
+        f(&mut self.memo_cache.borrow_mut())
+    }
+
+    /// PLAN-045: 指纹展开器——堆引用展开一层为纯值（memo 值指纹用）。
+    /// ObjectData/GenericInstanceData → `Value::Obj`（materialize 同款）；
+    /// ListData → `Value::Array`（materialize 不覆盖的容器面——内容原地
+    /// 突变只有展开内容才检得出）；其余原样返回（指纹器按含 id Debug 兜底）。
+    pub fn expand_heap_for_fingerprint(&self, v: &Value) -> Value {
+        let (id, via_vmref) = match v {
+            Value::Int(i) if *i >= 4_000_000 => (*i as u64, false),
+            Value::VmRef(r) => (r.id as u64, true),
+            _ => return v.clone(),
+        };
+        let Some(obj) = self.vm.get_heap_object(id) else {
+            return v.clone();
+        };
+        let guard = obj.read().unwrap();
+        if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+            let mut out = auto_val::Obj::new();
+            for (key, val) in od.fields.iter() {
+                if let auto_val::ValueKey::Str(s) = key {
+                    out.set(s.clone(), val.clone());
+                }
+            }
+            return Value::Obj(Box::new(out));
+        }
+        if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
+            let mut out = auto_val::Obj::new();
+            for (val, name) in inst.fields.iter().zip(inst.field_names.iter()) {
+                if name != "_unknown" {
+                    out.set(name.clone(), val.clone());
+                }
+            }
+            return Value::Obj(Box::new(out));
+        }
+        if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<Value>>() {
+            return Value::Array(auto_val::Array {
+                values: list.elems.clone(),
+            });
+        }
+        let _ = via_vmref;
+        v.clone()
     }
 
     /// Plan 448 H2: execute a block-bodied computed's hidden fn

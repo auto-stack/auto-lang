@@ -83,6 +83,11 @@ pub mod debug;
 pub mod selection;
 pub mod vm_bridge;
 pub mod handler_codegen;
+// PLAN-045：VM 渲染组件级 memo（菜单族四件 + sidebar nav 块；opt-in，
+// 缺省原始路径逐字节不变）。类型面依赖 interpreter 的 View/DynamicMessage，
+// 同门控。
+#[cfg(feature = "ui-interpreter")]
+pub mod memo_deps;
 // PLAN-051 C2：子→父 msg 参数回调通用路由表（handler_codegen 无 feature 门，
 // 故本模块同样不门控）。
 pub mod child_emit;

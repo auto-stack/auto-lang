@@ -157,6 +157,10 @@ pub struct AuraViewBuilder<'a> {
     /// PLAN-654: path 级挂载登记（InstancePath + per-type seq）。
     /// 与类型级 `mounted_sink` 并行写入；None 时仅类型级（652 兼容）。
     mount_path_sink: Option<crate::ui::dynamic::MountPathSinkRef<'a>>,
+    /// PLAN-045: sidebar nav memo 武装旗标——`sidebar_provider (memo: true)`
+    /// 在其子树转换期间置位，`sidebar_group` 臂据此入 nav memo 门（键随
+    /// group 骨架指纹，无需 path 通道）。builder 每帧新建，天然帧界。
+    nav_memo_armed: std::cell::Cell<bool>,
 }
 
 /// Plan 476: widget 调用位的 slot 填充集。
@@ -282,6 +286,7 @@ impl<'a> AuraViewBuilder<'a> {
             computed: None,
             preview_states: None,
             nav_group_states: None,
+            nav_memo_armed: std::cell::Cell::new(false),
             slot_fills: None,
             active_child_widgets: RefCell::new(HashSet::new()),
             mounted_sink: None,
@@ -306,6 +311,7 @@ impl<'a> AuraViewBuilder<'a> {
             computed: None,
             preview_states: None,
             nav_group_states: None,
+            nav_memo_armed: std::cell::Cell::new(false),
             slot_fills: None,
             active_child_widgets: RefCell::new(HashSet::new()),
             mounted_sink: None,
@@ -334,6 +340,7 @@ impl<'a> AuraViewBuilder<'a> {
             computed: None,
             preview_states: None,
             nav_group_states: None,
+            nav_memo_armed: std::cell::Cell::new(false),
             slot_fills: None,
             active_child_widgets: RefCell::new(HashSet::new()),
             mounted_sink: None,
@@ -5484,7 +5491,7 @@ let tabs_inner = View::Row {
     /// 受控 `open:` 或 `default_open:` 求值后注入直连 `sidebar` 子节点
     /// （sidebar 自身 schema 无 open prop——状态归 provider，shadcn 同构）；
     /// 显式写了 `open:` 的 sidebar 不被覆盖。
-    fn convert_sidebar_provider(
+    fn convert_sidebar_provider_raw(
         &self,
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, AuraEvent>,
@@ -5655,7 +5662,7 @@ let tabs_inner = View::Row {
     /// sidebar_group_label 子节点（或 `label:` prop）渲染为开合按钮
     /// （内部 `__nav_toggle` 消息 + nav_group_states 通道复用，键名
     /// `__sidebar_group_open:<label>` 命名空间隔离），其余子节点收起不渲染。
-    fn convert_sidebar_group(
+    fn convert_sidebar_group_raw(
         &self,
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
@@ -6308,6 +6315,7 @@ let tabs_inner = View::Row {
             computed: Some(&child_widget.computed),
             preview_states: self.preview_states,
             nav_group_states: self.nav_group_states,
+            nav_memo_armed: std::cell::Cell::new(false),
             slot_fills,
             active_child_widgets: {
                 let mut active = self.active_child_widgets.borrow().clone();
@@ -6377,6 +6385,7 @@ let tabs_inner = View::Row {
             computed: Some(&child_widget.computed),
             preview_states: self.preview_states,
             nav_group_states: self.nav_group_states,
+            nav_memo_armed: std::cell::Cell::new(false),
             slot_fills,
             active_child_widgets: {
                 let mut active = self.active_child_widgets.borrow().clone();
@@ -7885,7 +7894,7 @@ let tabs_inner = View::Row {
     /// 触发/开合/定位走公共 Popover 原语（BottomStart + MENUBAR_OPEN
     /// 注册表，与 actions 合成同机制）；菜单项 presentation 共享
     /// [`Self::menu_item_button_view`]。
-    fn convert_menubar_component(
+    fn convert_menubar_component_raw(
         &self,
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
@@ -8096,7 +8105,7 @@ let tabs_inner = View::Row {
         }
     }
 
-    fn convert_menubar(
+    fn convert_menubar_raw(
         &self,
         props: &HashMap<String, AuraPropValue>,
         bindings: &Bindings,
@@ -8483,7 +8492,7 @@ let tabs_inner = View::Row {
         p
     }
 
-    fn convert_alert_dialog(
+    fn convert_alert_dialog_raw(
         &self,
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
@@ -8572,7 +8581,7 @@ let tabs_inner = View::Row {
 
     /// convert_alert_dialog 的 tracked 镜像（D-GAP 规则）：trigger/content
     /// 子件经 path 追踪递归,inspector/MCP 快照可定位面板内节点。
-    fn convert_alert_dialog_tracked_ctx(
+    fn convert_alert_dialog_tracked_ctx_raw(
         &self,
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
@@ -9375,7 +9384,7 @@ let tabs_inner = View::Row {
     /// Plan 418 P2-3: synthesize the toolbar from the action config
     /// (`toolbar {}` DSL tag) — icon buttons (PUA label scheme, same as
     /// convert_button's icon path) + separators; style from the tag merges on.
-    fn convert_toolbar(
+    fn convert_toolbar_raw(
         &self,
         props: &HashMap<String, AuraPropValue>,
         bindings: &Bindings,
@@ -19742,5 +19751,896 @@ mod plan080_rowclass_probe_tests {
             }
             other => panic!("非 Column: {other:?}"),
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PLAN-045: 组件级 memo 引擎（菜单族四件 + sidebar nav 块）
+//
+// 机制与正确性论证见 ui/memo_deps.rs 模块注记与 auto-os
+// docs/specs/shell/vm-render-memo.md（T-01 决策注记为准：值指纹慢路径，
+// 全局 seq 快速路径，降级宁缺勿错；键 = ctx_state_obj + site + 骨架指纹 +
+// probe_on）。所有 memo 臂均为 opt-in：`memo:` prop 缺省/false 时 memo_gate
+// 直接 Off，原始代码体零重排零包裹。
+// ─────────────────────────────────────────────────────────────────────
+
+/// PLAN-045: memo 门三态（菜单族/nav 共用）。
+enum MemoGateBegin {
+    /// 非 memo / 降级 / 未武装——直接原始体（现状代码，零变化）。
+    Off,
+    /// 命中：产物 + probe/id_map 重放面（调用方合并进当前帧收集器）。
+    Hit {
+        product: View<DynamicMessage>,
+        probe_replay: Vec<(Vec<u16>, crate::ui::debug::ProbeEntry)>,
+        idmap_replay: Vec<(Vec<usize>, crate::aura::AuraNodeId)>,
+    },
+    /// fill：body 执行后连同产物交 `memo_gate_store` 入缓存。
+    Fill(MemoGateFill),
+}
+
+/// PLAN-045: fill 阶段载体（门前置产出，门后置消费）。
+struct MemoGateFill {
+    key: crate::ui::memo_deps::MemoKey,
+    slots: Vec<Expr>,
+    extra_dyn: Option<u64>,
+}
+
+impl<'a> AuraViewBuilder<'a> {
+    /// memo site 常量（MemoKey.site）。
+    const MEMO_SITE_MENUBAR_COMPONENT: u8 = 1;
+    const MEMO_SITE_MENUBAR_DSL: u8 = 2;
+    const MEMO_SITE_TOOLBAR: u8 = 3;
+    const MEMO_SITE_DIALOG_FAMILY: u8 = 4;
+    const MEMO_SITE_SIDEBAR_GROUP: u8 = 5;
+
+    /// `memo:` prop 解析：bool 字面量为开关；缺省/`false`/非 bool 容错按
+    /// 关（非 bool 一次性诊断——PLAN-045 §1 容错条款）。
+    pub(crate) fn memo_prop_on(props: &HashMap<String, AuraPropValue>) -> bool {
+        match props.get("memo") {
+            Some(AuraPropValue::Expr(Expr::Bool(b))) => *b,
+            Some(AuraPropValue::Expr(other)) => {
+                use std::sync::atomic::{AtomicBool, Ordering};
+                static MEMO_NONBOOL_WARNED: AtomicBool = AtomicBool::new(false);
+                if !MEMO_NONBOOL_WARNED.swap(true, Ordering::Relaxed) {
+                    eprintln!(
+                        "[PLAN-045] memo prop 非 bool 字面量（{:?}），按 false 处理",
+                        other
+                    );
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+
+    /// memo 上下文门：bindings 非空或 widget 声明 computed → 整体不 memo
+    /// （T-01：bindings 下循环变量进入求值、computed 走 VM 代码，均静态
+    /// 不可证）。
+    fn memo_ctx_ok(&self, bindings: &Bindings) -> bool {
+        bindings.is_empty() && self.computed.map_or(true, |c| c.is_empty())
+    }
+
+    fn memo_ctx_obj(&self) -> u64 {
+        self.override_state_obj_id
+            .unwrap_or_else(|| self.bridge.state_obj_id())
+    }
+
+    /// 全局 episode 指纹：theme_epoch + menubar/popover 开态 + action_config
+    /// 身份。任一翻转 → 条目慢路径 miss（快路径也拦在 gfp 比对上）。
+    fn memo_episode_fp(&self) -> u64 {
+        let ep = crate::ui::memo_deps::GlobalEpisode {
+            theme_epoch: crate::ui::style::theme::theme_epoch(),
+            menubar_open: crate::ui::action_config::menubar_open(),
+            popover_open: crate::ui::action_config::popover_open(),
+            action_config_ptr: crate::ui::action_config::action_config()
+                .map(|a| std::sync::Arc::as_ptr(&a) as usize)
+                .unwrap_or(0),
+        };
+        crate::ui::memo_deps::globals_fingerprint(&ep)
+    }
+
+    /// 读槽重解析值指纹。`None` = 存在不可内容展开的堆引用 → 整条目降级
+    /// （宁多失效，绝不按含堆 id 的指纹命中——原地突变会漏检成陈旧）。
+    fn memo_slots_fp(&self, slots: &[Expr], bindings: &Bindings) -> Option<u64> {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        slots.len().hash(&mut h);
+        for e in slots {
+            match self.resolve_expr_to_value(e, bindings) {
+                Some(v) => {
+                    let fp = crate::ui::memo_deps::fingerprint_value(
+                        &v,
+                        &|x| self.bridge.expand_heap_for_fingerprint(x),
+                    )?;
+                    fp.hash(&mut h);
+                }
+                None => {
+                    // 解析空是确定性结果（字段缺失等），以标记参与指纹。
+                    "unresolved".hash(&mut h);
+                }
+            }
+        }
+        Some(h.finish())
+    }
+
+    /// 门前置：扫描降级判定 + 查表 + 快/慢路径。`extra_dyn` = 转换器隐藏
+    /// 读面的派生指纹（sidebar nav：per-button active + 组开态），并入 dyn
+    /// 比对；菜单族传 None。
+    #[allow(clippy::too_many_arguments)]
+    fn memo_gate_begin(
+        &self,
+        site: u8,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+        probe_on: bool,
+        extra_dyn: Option<u64>,
+        prop_gated: bool,
+    ) -> MemoGateBegin {
+        use crate::ui::memo_deps::{scan_static, MemoKey, ScanVerdict};
+
+        // prop_gated=false：武装旗标门（sidebar nav 组——旗标已由 provider
+        // wrapper 判定），跳过节点自身 memo prop 检查。
+        if prop_gated && !Self::memo_prop_on(props) {
+            return MemoGateBegin::Off;
+        }
+        if !self.memo_ctx_ok(bindings) {
+            self.bridge.with_memo_cache(|c| c.note_degraded());
+            return MemoGateBegin::Off;
+        }
+        let slots = match scan_static(props, children) {
+            ScanVerdict::Slots(s) => s,
+            ScanVerdict::Degrade(_reason) => {
+                self.bridge.with_memo_cache(|c| c.note_degraded());
+                return MemoGateBegin::Off;
+            }
+        };
+        let key = MemoKey {
+            ctx_state_obj: self.memo_ctx_obj(),
+            site,
+            skeleton_fp: crate::ui::memo_deps::skeleton_fingerprint(props, children),
+            probe_on,
+        };
+        let seq = self.bridge.state_mutation_seq();
+        let gfp = self.memo_episode_fp();
+        // 快路径：seq 未动 ∧ 全局 episode 同 → 零重解析全命中。
+        let cached = self.bridge.with_memo_cache(|c| {
+            c.lookup(&key).map(|e| {
+                (
+                    e.seq_at_fill,
+                    e.globals_fp,
+                    e.dyn_fp,
+                    e.product.clone(),
+                    e.probe_replay.clone(),
+                    e.idmap_replay.clone(),
+                )
+            })
+        });
+        if let Some((seq_at_fill, gfp_entry, dyn_fp, product, probe_replay, idmap_replay)) = cached
+        {
+            if seq_at_fill == seq && gfp_entry == gfp {
+                self.bridge.with_memo_cache(|c| c.note_hit());
+                return MemoGateBegin::Hit {
+                    product,
+                    probe_replay,
+                    idmap_replay,
+                };
+            }
+            if gfp_entry == gfp {
+                // 慢路径：读槽重解析 + 派生面 → 值指纹比对（T-01 值指纹设计）。
+                if let (Some(slots_fp), Some(extra)) =
+                    (self.memo_slots_fp(&slots, bindings), extra_dyn)
+                {
+                    let cur = Self::memo_combine_dyn(slots_fp, Some(extra));
+                    if Some(cur) == dyn_fp {
+                        self.bridge.with_memo_cache(|c| {
+                            c.refresh_seq(&key, seq);
+                            c.note_hit();
+                        });
+                        return MemoGateBegin::Hit {
+                            product,
+                            probe_replay,
+                            idmap_replay,
+                        };
+                    }
+                } else if extra_dyn.is_none() {
+                    if let Some(slots_fp) = self.memo_slots_fp(&slots, bindings) {
+                        let cur = Self::memo_combine_dyn(slots_fp, None);
+                        if Some(cur) == dyn_fp {
+                            self.bridge.with_memo_cache(|c| {
+                                c.refresh_seq(&key, seq);
+                                c.note_hit();
+                            });
+                            return MemoGateBegin::Hit {
+                                product,
+                                probe_replay,
+                                idmap_replay,
+                            };
+                        }
+                    }
+                }
+            }
+            self.bridge.with_memo_cache(|c| c.note_miss());
+        }
+        MemoGateBegin::Fill(MemoGateFill {
+            key,
+            slots,
+            extra_dyn,
+        })
+    }
+
+    /// 门后置：fill——body 执行后采集（产物对应 body 后状态），读槽重解析
+    /// 指纹 + probe/id_map 快照入缓存。不可展开堆引用面 → 降级不入缓存。
+    fn memo_gate_store(
+        &self,
+        fill: MemoGateFill,
+        bindings: &Bindings,
+        product: View<DynamicMessage>,
+        probe_snap: Vec<(Vec<u16>, crate::ui::debug::ProbeEntry)>,
+        idmap_snap: Vec<(Vec<usize>, crate::aura::AuraNodeId)>,
+    ) -> View<DynamicMessage> {
+        let MemoGateFill {
+            key,
+            slots,
+            extra_dyn,
+        } = fill;
+        let Some(slots_fp) = self.memo_slots_fp(&slots, bindings) else {
+            self.bridge.with_memo_cache(|c| c.note_degraded());
+            return product;
+        };
+        let entry = crate::ui::memo_deps::MemoEntry {
+            seq_at_fill: self.bridge.state_mutation_seq(),
+            globals_fp: self.memo_episode_fp(),
+            read_exprs: slots,
+            dyn_fp: Some(Self::memo_combine_dyn(slots_fp, extra_dyn)),
+            product: product.clone(),
+            probe_replay: probe_snap,
+            idmap_replay: idmap_snap,
+        };
+        self.bridge.with_memo_cache(|c| c.insert(key, entry));
+        product
+    }
+
+    fn memo_combine_dyn(slots_fp: u64, extra_dyn: Option<u64>) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        slots_fp.hash(&mut h);
+        extra_dyn.hash(&mut h);
+        h.finish()
+    }
+
+    /// sidebar nav 块派生指纹：collapsible + nav_group_states 全表 + 每个
+    /// menu button 的 (to, exact, active)。active 复刻转换器判定序（显式
+    /// `active:` prop > `nav_route_active` 路由自动），路由变化时仅含旧/新
+    /// active 翻转按钮的组翻面——其余组全命中（PLAN-045 §3）。
+    fn memo_nav_group_extra_dyn(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let collapsible = self.extract_bool(props, "collapsible").unwrap_or(false)
+            || self
+                .extract_bool_expr(props, "collapsible", bindings)
+                .unwrap_or(false);
+        collapsible.hash(&mut h);
+        if let Some(states) = self.nav_group_states {
+            let mut keys: Vec<(&String, &bool)> = states.iter().collect();
+            keys.sort();
+            keys.len().hash(&mut h);
+            for (k, v) in keys {
+                k.hash(&mut h);
+                v.hash(&mut h);
+            }
+        }
+        self.memo_nav_buttons_walk(children, bindings, &mut h);
+        h.finish()
+    }
+
+    fn memo_nav_buttons_walk(
+        &self,
+        children: &[AuraNode],
+        bindings: &Bindings,
+        h: &mut std::collections::hash_map::DefaultHasher,
+    ) {
+        use std::hash::Hash;
+        for c in children {
+            if let AuraNode::Element { tag, props, children, .. } = c {
+                let tag_lc = tag.replace('_', "-");
+                if tag_lc == "sidebar-menu-button" || tag_lc == "sidebar-menu-sub-button" {
+                    let to = self
+                        .extract_string_with(props, "to", bindings)
+                        .unwrap_or_default();
+                    let exact = self.extract_bool(props, "exact").unwrap_or(false);
+                    let active = self
+                        .extract_bool_expr(props, "active", bindings)
+                        .unwrap_or_else(|| self.nav_route_active(&to, exact));
+                    to.hash(h);
+                    exact.hash(h);
+                    active.hash(h);
+                }
+                self.memo_nav_buttons_walk(children, bindings, h);
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PLAN-045 T-04/T-05: memo 门包装层。原始转换体全部原样保留在 `*_raw`
+// （非 memo 路径 = 包装直落 raw，行为逐字节一致——用户硬性要求）；包装
+// 仅在 `memo: true`（provider 系为武装旗标）且扫描/上下文门通过时插缓存。
+// ─────────────────────────────────────────────────────────────────────
+
+impl<'a> AuraViewBuilder<'a> {
+    /// menubar 声明式组件族门（`menubar { menubar-menu … }`）。
+    fn convert_menubar_component(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+        mut path: Option<(&[usize], &mut BuildProbe)>,
+    ) -> View<DynamicMessage> {
+        let probe_on = matches!(&path, Some((_, p)) if p.is_enabled());
+        let gate = self.memo_gate_begin(
+            Self::MEMO_SITE_MENUBAR_COMPONENT,
+            props,
+            children,
+            bindings,
+            probe_on,
+            None,
+            true,
+        );
+        let fill = match gate {
+            MemoGateBegin::Hit {
+                product,
+                probe_replay,
+                idmap_replay,
+            } => {
+                if let Some((_, probe)) = path.as_mut() {
+                    probe.merge_entries(probe_replay);
+                }
+                let _ = idmap_replay; // menubar 无 id_map 面
+                return product;
+            }
+            MemoGateBegin::Off => None,
+            MemoGateBegin::Fill(f) => Some(f),
+        };
+        let raw_path = path.as_mut().map(|(b, p)| (*b, &mut **p));
+        let out = self.convert_menubar_component_raw(props, children, bindings, raw_path);
+        match fill {
+            Some(f) => {
+                let snap = path
+                    .as_ref()
+                    .map(|(base, p)| {
+                        let u16b: Vec<u16> = base.iter().map(|&x| x as u16).collect();
+                        p.snapshot_prefix(&u16b)
+                    })
+                    .unwrap_or_default();
+                self.memo_gate_store(f, bindings, out, snap, vec![])
+            }
+            None => out,
+        }
+    }
+
+    /// menubar actions DSL 门（空标签合成形态）。
+    fn convert_menubar(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+        mut path: Option<(&[usize], &mut BuildProbe)>,
+    ) -> View<DynamicMessage> {
+        let probe_on = matches!(&path, Some((_, p)) if p.is_enabled());
+        let gate = self.memo_gate_begin(
+            Self::MEMO_SITE_MENUBAR_DSL,
+            props,
+            &[],
+            bindings,
+            probe_on,
+            None,
+            true,
+        );
+        let fill = match gate {
+            MemoGateBegin::Hit {
+                product,
+                probe_replay,
+                idmap_replay,
+            } => {
+                if let Some((_, probe)) = path.as_mut() {
+                    probe.merge_entries(probe_replay);
+                }
+                let _ = idmap_replay;
+                return product;
+            }
+            MemoGateBegin::Off => None,
+            MemoGateBegin::Fill(f) => Some(f),
+        };
+        let raw_path = path.as_mut().map(|(b, p)| (*b, &mut **p));
+        let out = self.convert_menubar_raw(props, bindings, raw_path);
+        match fill {
+            Some(f) => {
+                let snap = path
+                    .as_ref()
+                    .map(|(base, p)| {
+                        let u16b: Vec<u16> = base.iter().map(|&x| x as u16).collect();
+                        p.snapshot_prefix(&u16b)
+                    })
+                    .unwrap_or_default();
+                self.memo_gate_store(f, bindings, out, snap, vec![])
+            }
+            None => out,
+        }
+    }
+
+    /// toolbar actions DSL 门。
+    fn convert_toolbar(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+        mut path: Option<(&[usize], &mut BuildProbe)>,
+    ) -> View<DynamicMessage> {
+        let probe_on = matches!(&path, Some((_, p)) if p.is_enabled());
+        let gate = self.memo_gate_begin(
+            Self::MEMO_SITE_TOOLBAR,
+            props,
+            &[],
+            bindings,
+            probe_on,
+            None,
+            true,
+        );
+        let fill = match gate {
+            MemoGateBegin::Hit {
+                product,
+                probe_replay,
+                idmap_replay,
+            } => {
+                if let Some((_, probe)) = path.as_mut() {
+                    probe.merge_entries(probe_replay);
+                }
+                let _ = idmap_replay;
+                return product;
+            }
+            MemoGateBegin::Off => None,
+            MemoGateBegin::Fill(f) => Some(f),
+        };
+        let raw_path = path.as_mut().map(|(b, p)| (*b, &mut **p));
+        let out = self.convert_toolbar_raw(props, bindings, raw_path);
+        match fill {
+            Some(f) => {
+                let snap = path
+                    .as_ref()
+                    .map(|(base, p)| {
+                        let u16b: Vec<u16> = base.iter().map(|&x| x as u16).collect();
+                        p.snapshot_prefix(&u16b)
+                    })
+                    .unwrap_or_default();
+                self.memo_gate_store(f, bindings, out, snap, vec![])
+            }
+            None => out,
+        }
+    }
+
+    /// dialog/dropdown/alert 模态族门（untracked 臂——无 probe 面）。
+    fn convert_alert_dialog(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+        family: ModalDialogFamily,
+    ) -> View<DynamicMessage> {
+        let gate = self.memo_gate_begin(
+            Self::MEMO_SITE_DIALOG_FAMILY,
+            props,
+            children,
+            bindings,
+            false,
+            None,
+            true,
+        );
+        let fill = match gate {
+            MemoGateBegin::Hit {
+                product,
+                probe_replay,
+                idmap_replay,
+            } => {
+                let _ = (probe_replay, idmap_replay);
+                return product;
+            }
+            MemoGateBegin::Off => None,
+            MemoGateBegin::Fill(f) => Some(f),
+        };
+        let out = self.convert_alert_dialog_raw(props, children, bindings, family);
+        match fill {
+            Some(f) => self.memo_gate_store(f, bindings, out, vec![], vec![]),
+            None => out,
+        }
+    }
+
+    /// dialog/dropdown/alert 模态族门（tracked 臂——probe + id_map 双重放）。
+    fn convert_alert_dialog_tracked_ctx(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+        family: ModalDialogFamily,
+    ) -> View<DynamicMessage> {
+        let gate = self.memo_gate_begin(
+            Self::MEMO_SITE_DIALOG_FAMILY,
+            props,
+            children,
+            bindings,
+            probe.is_enabled(),
+            None,
+            true,
+        );
+        let fill = match gate {
+            MemoGateBegin::Hit {
+                product,
+                probe_replay,
+                idmap_replay,
+            } => {
+                probe.merge_entries(probe_replay);
+                id_map.merge_entries(idmap_replay);
+                return product;
+            }
+            MemoGateBegin::Off => None,
+            MemoGateBegin::Fill(f) => Some(f),
+        };
+        let out = self.convert_alert_dialog_tracked_ctx_raw(
+            props, children, path, id_map, probe, bindings, family,
+        );
+        match fill {
+            Some(f) => {
+                let u16b: Vec<u16> = path.iter().map(|&x| x as u16).collect();
+                let probe_snap = probe.snapshot_prefix(&u16b);
+                let idmap_snap = id_map.snapshot_prefix(path);
+                self.memo_gate_store(f, bindings, out, probe_snap, idmap_snap)
+            }
+            None => out,
+        }
+    }
+
+    /// sidebar provider 级武装（`sidebar_provider (memo: true)`）——子树内
+    /// `sidebar_group` 臂凭旗标入 nav memo 门；provider 本体不建条目
+    /// （passthrough 便宜，组级条目才是收益粒度，PLAN-045 §3/Q-02）。
+    fn convert_sidebar_provider(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let armed = Self::memo_prop_on(props) && self.memo_ctx_ok(bindings);
+        if !armed {
+            return self.convert_sidebar_provider_raw(props, events, children, bindings);
+        }
+        self.nav_memo_armed.set(true);
+        let out = self.convert_sidebar_provider_raw(props, events, children, bindings);
+        self.nav_memo_armed.set(false);
+        out
+    }
+
+    /// sidebar_group nav 块门（PLAN-045 §3：nav 块粒度派生值键——路由变化
+    /// 仅 active 翻转组失效，其余组全命中）。
+    fn convert_sidebar_group(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let gate = if self.nav_memo_armed.get() {
+            let extra = self.memo_nav_group_extra_dyn(props, children, bindings);
+            self.memo_gate_begin(
+                Self::MEMO_SITE_SIDEBAR_GROUP,
+                props,
+                children,
+                bindings,
+                false,
+                Some(extra),
+                false,
+            )
+        } else {
+            MemoGateBegin::Off
+        };
+        let fill = match gate {
+            MemoGateBegin::Hit {
+                product,
+                probe_replay,
+                idmap_replay,
+            } => {
+                let _ = (probe_replay, idmap_replay);
+                return product;
+            }
+            MemoGateBegin::Off => None,
+            MemoGateBegin::Fill(f) => Some(f),
+        };
+        let out = self.convert_sidebar_group_raw(props, children, bindings);
+        match fill {
+            Some(f) => self.memo_gate_store(f, bindings, out, vec![], vec![]),
+            None => out,
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PLAN-045: memo 门单测（AC-01..AC-06 的单测面；实靶验收在 T-06/T-07）。
+// ─────────────────────────────────────────────────────────────────────
+// ── PLAN-045: memo 门单测 ──
+#[cfg(test)]
+mod plan045_memo_tests {
+    use super::*;
+    use crate::ast::Type;
+    use crate::aura::{AuraStateDef, AuraWidget};
+
+    /// 本模块本地 widget 构造（tests::make_test_widget 私有不可达）。
+    fn make_memo_widget(name: &str, state_vars: Vec<AuraStateDef>) -> AuraWidget {
+        AuraWidget {
+            named_views: Vec::new(),
+            actions: None,
+            name: name.to_string(),
+            state_vars,
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            timers: Vec::new(),
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        }
+    }
+
+
+    fn memo_widget() -> AuraWidget {
+        make_memo_widget(
+            "MemoApp",
+            vec![
+                AuraStateDef {
+                    name: "show_urls".to_string(),
+                    type_info: Type::Bool,
+                    initial: Expr::Bool(false),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "unrelated".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(0),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "__current_route".to_string(),
+                    type_info: Type::StrSlice,
+                    initial: Expr::Str("/a".into()),
+                    decorators: vec![],
+                },
+            ],
+        )
+    }
+
+    /// 声明式 menubar：一项 `checked: .show_urls`（读槽），结构同 jade-edit。
+    fn menubar_node(memo: bool) -> AuraNode {
+        let item = AuraNode::element("menubar-checkbox-item")
+            .with_prop("title", Expr::Str("Show URLs".into()))
+            .with_prop("checked", Expr::Ident(".show_urls".into()));
+        let content = AuraNode::element("menubar-content").with_child(item);
+        let trigger = AuraNode::element("menubar-trigger")
+            .with_prop("text", Expr::Str("File".into()));
+        let menu = AuraNode::element("menubar-menu")
+            .with_prop("value", Expr::Str("file".into()))
+            .with_child(trigger)
+            .with_child(content);
+        let mut mb = AuraNode::element("menubar");
+        if memo {
+            mb = mb.with_prop("memo", Expr::Bool(true));
+        }
+        mb.with_child(menu)
+    }
+
+    fn view_key(v: &View<DynamicMessage>) -> String {
+        format!("{v:?}")
+    }
+
+    /// AC-02/AC-03：读集内写失效重建、读集外写快/慢路径命中（重求值不发生）。
+    #[test]
+    fn plan045_menubar_memo_hit_and_invalidation() {
+        // items 仅在菜单开态渲染（PLAN-695）——开态下产物才反映 checked。
+        crate::ui::action_config::set_menubar_open(Some("file".to_string()));
+        let widget = memo_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        let node = menubar_node(true);
+
+        let v1 = AuraViewBuilder::new(&bridge, "MemoApp").build(&node); // fill
+        bridge.with_memo_cache(|c| {
+            assert_eq!(c.hits, 0, "fill 不计 hit");
+            assert_eq!(c.len(), 1, "menubar 条目在册");
+        });
+
+        // 无状态写直接重建：seq 未动 → 快速路径全命中，产物一致。
+        let v2 = AuraViewBuilder::new(&bridge, "MemoApp").build(&node);
+        bridge.with_memo_cache(|c| assert_eq!(c.hits, 1, "快路径命中"));
+        assert_eq!(view_key(&v1), view_key(&v2));
+
+        // 读集外写（unrelated）：seq 动 → 慢路径 → 读槽值指纹同 → 命中，
+        // 重求值不发生（AC-03）。
+        bridge
+            .write_state("unrelated", auto_val::Value::Int(7))
+            .unwrap();
+        let v3 = AuraViewBuilder::new(&bridge, "MemoApp").build(&node);
+        bridge.with_memo_cache(|c| {
+            assert_eq!(c.hits, 2, "读集外写经慢路径命中");
+            assert_eq!(c.misses, 0, "未失效");
+        });
+        assert_eq!(view_key(&v1), view_key(&v3));
+
+        // 读集内写（show_urls）：值指纹翻面 → 失效重求值，产物随之变化
+        //（AC-02）。
+        bridge
+            .write_state("show_urls", auto_val::Value::Bool(true))
+            .unwrap();
+        let v4 = AuraViewBuilder::new(&bridge, "MemoApp").build(&node);
+        bridge.with_memo_cache(|c| {
+            assert_eq!(c.misses, 1, "读集内写失效一次");
+        });
+        assert_ne!(view_key(&v1), view_key(&v4), "checked 翻转必须改变产物");
+
+        // 重写回 false：再次失效重建，产物回到 v1 形态。
+        bridge
+            .write_state("show_urls", auto_val::Value::Bool(false))
+            .unwrap();
+        let v5 = AuraViewBuilder::new(&bridge, "MemoApp").build(&node);
+        assert_eq!(view_key(&v1), view_key(&v5), "值回产物必须一致");
+    }
+
+    /// AC-01 前半：`memo` 缺省/false 时缓存完全惰性（零条目零计数）。
+    #[test]
+    fn plan045_memo_off_is_inert() {
+        // items 仅在菜单开态渲染（PLAN-695）——开态下产物才反映 checked。
+        crate::ui::action_config::set_menubar_open(Some("file".to_string()));
+        let widget = memo_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+
+        let off_node = menubar_node(false);
+        let default_node = menubar_node(false).with_prop("memo", Expr::Bool(false));
+        for node in [off_node, default_node] {
+            bridge
+                .write_state("show_urls", auto_val::Value::Bool(false))
+                .unwrap();
+            let v1 = AuraViewBuilder::new(&bridge, "MemoApp").build(&node);
+            bridge
+                .write_state("show_urls", auto_val::Value::Bool(true))
+                .unwrap();
+            let v2 = AuraViewBuilder::new(&bridge, "MemoApp").build(&node);
+            assert_ne!(view_key(&v1), view_key(&v2), "非 memo 路径照常重求值");
+        }
+        bridge.with_memo_cache(|c| {
+            assert_eq!(c.len(), 0, "非 memo 不建条目");
+            assert_eq!((c.hits, c.misses, c.degraded), (0, 0, 0), "计数全零");
+        });
+    }
+
+    /// AC-04：静态不可证形态（插值文本/ForLoop）自动降级——不建条目、
+    /// 行为与非 memo 一致。
+    #[test]
+    fn plan045_dynamic_forms_degrade_to_raw() {
+        // items 仅在菜单开态渲染（PLAN-695）——开态下产物才反映 checked。
+        crate::ui::action_config::set_menubar_open(Some("file".to_string()));
+        let widget = memo_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+
+        let interp_item = AuraNode::element("menubar-item")
+            .with_prop("title", Expr::Str("Dyn".into()))
+            .with_child(AuraNode::Text(crate::aura::AuraTextContent::Interpolated {
+                template: "n=${.unrelated}".to_string(),
+                bindings: vec!["unrelated".to_string()],
+            }));
+        let content = AuraNode::element("menubar-content").with_child(interp_item);
+        let trigger =
+            AuraNode::element("menubar-trigger").with_prop("text", Expr::Str("F".into()));
+        let menu = AuraNode::element("menubar-menu")
+            .with_child(trigger)
+            .with_child(content);
+        let mb = AuraNode::element("menubar")
+            .with_prop("memo", Expr::Bool(true))
+            .with_child(menu);
+
+        let v1 = AuraViewBuilder::new(&bridge, "MemoApp").build(&mb);
+        bridge
+            .write_state("unrelated", auto_val::Value::Int(1))
+            .unwrap();
+        let v2 = AuraViewBuilder::new(&bridge, "MemoApp").build(&mb);
+        bridge.with_memo_cache(|c| {
+            assert_eq!(c.len(), 0, "降级形态不建条目");
+            assert!(c.degraded >= 1, "降级计数在册");
+        });
+        // 降级形态的动态面（插值子文本）不进 item 渲染——产物稳定恰证
+        // 走的是原始路径每次重算（缓存面为零由上方 len/degraded 断言承载）。
+        assert_eq!(view_key(&v1), view_key(&v2), "降级 = 原始重求值行为");
+    }
+
+    /// sidebar：`sidebar_provider (memo: true)` 武装 + nav 块派生值键——
+    /// 路由切换仅 active 翻转组失效，其余组全命中（AC-05 的机制面）；读集
+    /// 外写两组建全命中。
+    #[test]
+    fn plan045_sidebar_nav_group_memo() {
+        let widget = memo_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge
+            .write_state("__current_route", auto_val::Value::str("/a"))
+            .unwrap();
+
+        let mk_button = |to: &str, label: &str| {
+            AuraNode::element("sidebar_menu_button")
+                .with_prop("to", Expr::Str(to.into()))
+                .with_prop("text", Expr::Str(label.into()))
+        };
+        let group = |buttons: Vec<AuraNode>| {
+            let mut g = AuraNode::element("sidebar_group");
+            for btn in buttons {
+                g = g.with_child(btn);
+            }
+            g
+        };
+        let scroll = AuraNode::element("scroll")
+            .with_child(group(vec![
+                mk_button("/a", "Alpha"),
+                mk_button("/b", "Beta"),
+            ]))
+            .with_child(group(vec![mk_button("/c", "Gamma")]));
+        let provider = AuraNode::element("sidebar_provider")
+            .with_prop("memo", Expr::Bool(true))
+            .with_child(scroll.clone());
+
+        let v1 = AuraViewBuilder::new(&bridge, "MemoApp").build(&provider); // 两组建 fill
+        bridge.with_memo_cache(|c| assert_eq!(c.len(), 2, "两组条目在册"));
+
+        // 读集外写：两组全命中（慢路径，重求值不发生）。
+        bridge
+            .write_state("unrelated", auto_val::Value::Int(3))
+            .unwrap();
+        let v2 = AuraViewBuilder::new(&bridge, "MemoApp").build(&provider);
+        bridge.with_memo_cache(|c| {
+            assert_eq!(c.hits, 2, "两组全命中");
+            assert_eq!(c.misses, 0);
+        });
+        assert_eq!(view_key(&v1), view_key(&v2));
+
+        // 路由切换 /a→/b：含 active 翻转按钮的组 1 失效重建，组 2 全命中
+        //（§3 期望形态的机制面）。
+        bridge
+            .write_state("__current_route", auto_val::Value::str("/b"))
+            .unwrap();
+        let v3 = AuraViewBuilder::new(&bridge, "MemoApp").build(&provider);
+        bridge.with_memo_cache(|c| {
+            assert_eq!(c.misses, 1, "仅 active 翻转组失效");
+            assert_eq!(c.hits, 3, "组 2 命中");
+        });
+        assert_ne!(view_key(&v1), view_key(&v3), "active 高亮随路由迁移");
+
+        // 未武装 provider（无 memo prop）：nav 门完全不入。
+        let plain = AuraNode::element("sidebar_provider").with_child(scroll);
+        bridge
+            .write_state("__current_route", auto_val::Value::str("/a"))
+            .unwrap();
+        let before = bridge.with_memo_cache(|c| (c.hits, c.misses, c.len()));
+        let _ = AuraViewBuilder::new(&bridge, "MemoApp").build(&plain);
+        bridge.with_memo_cache(|c| {
+            let after = (c.hits, c.misses, c.len());
+            assert_eq!(before, after, "未武装 = nav 门惰性");
+        });
     }
 }
