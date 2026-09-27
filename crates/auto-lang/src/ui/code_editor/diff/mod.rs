@@ -38,6 +38,7 @@ use imara_diff::{Algorithm, Diff as ImaraDiff, Token};
 use super::core::rope::RopeSnapshot;
 
 pub mod dirs;
+pub mod envelope;
 pub use dirs::{DirCounts, DirDiffError, DirDiffIter, DirDiffOptions, DirEntryDiff, DirStatus};
 
 /// Context radius for hunk grouping (lines shown around each change).
@@ -297,21 +298,46 @@ pub(crate) fn engine_changes(inp: &Interned, parallel: bool) -> Vec<Change> {
 // Hunk grouping (downstream envelope semantics)
 // ---------------------------------------------------------------------------
 
+/// A hunk with its change-stream annotations (downstream internal shape:
+/// `fc`/`lc` = first/last change's stream index, `fi` = first change's
+/// a-coordinate, `ah` = a-side consumption watermark) — the rows builder
+/// slices the keep+change stream by these.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct GroupedHunk {
+    pub hunk: Hunk,
+    pub fc: usize,
+    pub lc: usize,
+    pub fi: usize,
+    pub ah: usize,
+}
+
 /// Group a change stream into ctx-expanded hunks. Gap rule (downstream ⑤):
 /// a change joins the open group iff it is within `2·ctx` of the previous
 /// change on BOTH coordinates.
 pub(crate) fn group_hunks(changes: &[Change], la: usize, lb: usize, ctx: usize) -> Vec<Hunk> {
+    group_hunks_annotated(changes, la, lb, ctx).into_iter().map(|g| g.hunk).collect()
+}
+
+pub(crate) fn group_hunks_annotated(changes: &[Change], la: usize, lb: usize, ctx: usize) -> Vec<GroupedHunk> {
     let ctx2 = 2 * ctx;
-    let mut hunks = Vec::new();
+    let mut out: Vec<GroupedHunk> = Vec::new();
     let mut open = false;
     let (mut ga1, mut ga2, mut gb1, mut gb2) = (0usize, 0usize, 0usize, 0usize);
     let (mut last_i, mut last_j) = (0usize, 0usize);
-    for ch in changes {
+    macro_rules! close_group {
+        () => {
+            if open {
+                let g = out.last_mut().unwrap();
+                g.hunk = emit(ga1, ga2, gb1, gb2, la, lb, ctx);
+                open = false;
+            }
+        };
+    }
+    for (idx, ch) in changes.iter().enumerate() {
         if open {
             let same = ch.i.saturating_sub(last_i) <= ctx2 && ch.j.saturating_sub(last_j) <= ctx2;
             if !same {
-                hunks.push(emit(ga1, ga2, gb1, gb2, la, lb, ctx));
-                open = false;
+                close_group!();
             }
         }
         if !open {
@@ -320,21 +346,23 @@ pub(crate) fn group_hunks(changes: &[Change], la: usize, lb: usize, ctx: usize) 
             ga2 = ch.i;
             gb1 = ch.j;
             gb2 = ch.j;
+            out.push(GroupedHunk { hunk: Hunk { a1: 0, a2: 0, b1: 0, b2: 0 }, fc: idx, lc: idx, fi: ch.i, ah: ch.i });
         } else {
             ga1 = ga1.min(ch.i);
             gb1 = gb1.min(ch.j);
+            out.last_mut().unwrap().lc = idx;
         }
         let a2 = if ch.del { ch.i + 1 } else { ch.i };
         let b2 = if ch.del { ch.j } else { ch.j + 1 };
         ga2 = ga2.max(a2);
         gb2 = gb2.max(b2);
+        let g = out.last_mut().unwrap();
+        g.ah = g.ah.max(a2);
         last_i = ch.i;
         last_j = ch.j;
     }
-    if open {
-        hunks.push(emit(ga1, ga2, gb1, gb2, la, lb, ctx));
-    }
-    hunks
+    close_group!();
+    out
 }
 
 fn emit(ga1: usize, ga2: usize, gb1: usize, gb2: usize, la: usize, lb: usize, ctx: usize) -> Hunk {

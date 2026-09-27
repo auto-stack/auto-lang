@@ -9750,6 +9750,24 @@ impl RustGenerator {
                 "auto_lang::vm::native::shell_add_recent(&({}))",
                 arg(0)?
             )),
+            // PLAN-703 供⑤: diff envelope endpoints（a2r 臂——envelope JSON
+            // 单源 diff::envelope；ctx 钳非负）。
+            "diff_files" => Some(format!(
+                "auto_lang::ui::code_editor::diff::envelope::diff_files_envelope_from_paths(&({a0}), &({a1}), ({a2}).max(0) as usize)",
+                a0 = arg(0)?,
+                a1 = arg(1)?,
+                a2 = arg(2)?
+            )),
+            "diff_snapshots" => Some(format!(
+                "auto_lang::ui::code_editor::diff::envelope::diff_snapshots_envelope(&({a0}), &({a1}))",
+                a0 = arg(0)?,
+                a1 = arg(1)?
+            )),
+            "diff_dirs" => Some(format!(
+                "auto_lang::ui::code_editor::diff::envelope::diff_dirs_envelope(&({a0}), &({a1}))",
+                a0 = arg(0)?,
+                a1 = arg(1)?
+            )),
             "code_editor_fold_toggle" => Some(format!(
                 "auto_lang::ui::code_editor::code_editor_with(&({a0}), |core| core.fold_toggle(({a1}).max(1) as usize - 1)).unwrap_or(false)",
                 a0 = arg(0)?,

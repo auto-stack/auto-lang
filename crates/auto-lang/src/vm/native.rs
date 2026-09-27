@@ -824,6 +824,67 @@ pub fn shim_code_editor_load_file(_task: &mut AutoTask, vm: &AutoVM) -> Result<(
     ))
 }
 
+// ── PLAN-703 供⑤: diff engine consumption endpoints (9915/9916/9917) ──
+// Envelope JSON field-identical to the downstream replacement-seam
+// contracts (auto-edit diff-view.md SD-01/PLAN-011/012); errors are VALUES
+// in the envelope err field, never raises (669/687 convention).
+
+/// `auto.diff_files(path_a, path_b, ctx) -> Str` — envelope JSON for two
+/// files (rows render-ready, three-segment marks, CR tolerated).
+#[cfg(feature = "code-editor")]
+pub fn shim_diff_files(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Args push left-to-right: pop the LAST (ctx) first.
+    let ctx = pop_arg_i32(task).max(0) as usize;
+    let path_b = pop_string_arg(task, vm);
+    let path_a = pop_string_arg(task, vm);
+    let json = crate::ui::code_editor::diff::envelope::diff_files_envelope_from_paths(&path_a, &path_b, ctx);
+    let idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_diff_files(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = vm;
+    Err(VMError::RuntimeError("diff_files: the `code-editor` feature is disabled".into()))
+}
+
+/// `auto.diff_snapshots(key_a, key_b) -> Str` — envelope JSON for two live
+/// editor buffers (direct registry read, zero full-text VM transit).
+#[cfg(feature = "code-editor")]
+pub fn shim_diff_snapshots(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key_b = pop_string_arg(task, vm);
+    let key_a = pop_string_arg(task, vm);
+    let json = crate::ui::code_editor::diff::envelope::diff_snapshots_envelope(&key_a, &key_b);
+    let idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_diff_snapshots(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = vm;
+    Err(VMError::RuntimeError("diff_snapshots: the `code-editor` feature is disabled".into()))
+}
+
+/// `auto.diff_dirs(path_a, path_b) -> Str` — envelope JSON for a recursive
+/// directory comparison (five-state classification, cap 5000).
+#[cfg(feature = "code-editor")]
+pub fn shim_diff_dirs(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_b = pop_string_arg(task, vm);
+    let path_a = pop_string_arg(task, vm);
+    let json = crate::ui::code_editor::diff::envelope::diff_dirs_envelope(&path_a, &path_b);
+    let idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_diff_dirs(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = vm;
+    Err(VMError::RuntimeError("diff_dirs: the `code-editor` feature is disabled".into()))
+}
+
 /// PLAN-701 供①: `code_editor_save(key, path) -> Bool` — rope→disk direct
 /// write (auto-edit PLAN-013 big-file guard relief). The full text is
 /// materialized NATIVE-side from the rope and written in one pass — zero

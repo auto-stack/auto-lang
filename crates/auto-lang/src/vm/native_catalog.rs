@@ -52,6 +52,12 @@ macro_rules! for_each_native {
             // （SHAddToRecentDocs(SHARD_PATHW)；非 Windows no-op 返 false；
             // 零注册表关联面——auto-edit PLAN-014 T-01 裁定 (b) 消费前置）。
             (9914, NATIVE_SHELL_ADD_RECENT, shim_shell_add_recent, "auto.shell.add_recent"),
+            // === PLAN-703 供⑤: diff engine consumption endpoints (9915-9917，
+            // 沿 9900+ 高段续段；9914 已被 701 供⑥占——计划草案"9914 起"
+            // 前提漂移修正，见计划 §9 入场记录）===
+            (9915, NATIVE_DIFF_FILES, shim_diff_files, "auto.diff_files"),
+            (9916, NATIVE_DIFF_SNAPSHOTS, shim_diff_snapshots, "auto.diff_snapshots"),
+            (9917, NATIVE_DIFF_DIRS, shim_diff_dirs, "auto.diff_dirs"),
             // === Plan 413 follow-up: console natives (in-app Console panel) ===
             (2916, NATIVE_CONSOLE_LOG, shim_console_log, "auto.console.log"),
             (2917, NATIVE_CONSOLE_LINES, shim_console_lines, "auto.console.lines"),
@@ -837,6 +843,10 @@ macro_rules! for_each_bigvm_native {
             ("auto.code_editor.edit", 9906, Bool),
             // === PLAN-687: bulk load endpoint (nat 9907) ===
             ("auto.code_editor.load_file", 9908, Int),
+            // === PLAN-703 供⑤: diff envelope endpoints (String returns) ===
+            ("auto.diff_files", 9915, String),
+            ("auto.diff_snapshots", 9916, String),
+            ("auto.diff_dirs", 9917, String),
             // === Plan 413 follow-up: console natives (in-app Console panel) ===
             ("auto.console.log", 2916, Bool),
             ("auto.console.lines", 2917, String),

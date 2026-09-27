@@ -627,6 +627,20 @@ impl CodeEditorCore {
     /// line endings). Reads the ROPE — the document source of truth (T-05):
     /// O(n), same as the previous buffer join, but no editor lock and the
     /// save/readout path benefits from the rope's contiguous leaves.
+    /// PLAN-703 供⑤: frozen rope snapshot for the diff engine — the
+    /// snapshot-isolation reader face (background diff tasks hold this
+    /// while the editor keeps mutating; zero lock contention).
+    pub fn doc_snapshot(&self) -> rope::RopeSnapshot {
+        self.doc.lock().unwrap().snapshot()
+    }
+
+    /// PLAN-703 供⑤ (probe/test face): wholesale buffer replacement — the
+    /// diff_snapshots endpoint exercises two live buffers with distinct
+    /// contents without driving the whole edit pipeline.
+    pub fn doc_replace(&self, text: &str) {
+        *self.doc.lock().unwrap() = rope::Rope::from_str(text);
+    }
+
     pub fn text(&self) -> String {
         self.doc.lock().unwrap().to_string()
     }
