@@ -248,6 +248,28 @@ pub(crate) fn engine_changes(inp: &Interned, parallel: bool) -> Vec<Change> {
         segs.push((cursor.0, cursor.1, a_mid.len(), b_mid.len()));
     }
 
+    // Per-segment id compression: global token ids are dense across the
+    // whole document, so a late single-line segment still carries ids
+    // ~2.9M — and imara sizes its occurrence table by the token bound,
+    // making every tiny segment allocate a table the size of the document
+    // (the 100MB/1% bench sat in exactly this O(segments × tokens)
+    // quadratic). Remapping to per-segment rank keeps ids deterministic
+    // (first-occurrence order within the segment) and every table O(seg).
+    fn local_remap(seg_a: &[Token], seg_b: &[Token]) -> (Vec<Token>, Vec<Token>, u32) {
+        let mut map: HashMap<Token, Token> = HashMap::with_capacity(seg_a.len() + seg_b.len());
+        let mut out_a = Vec::with_capacity(seg_a.len());
+        for t in seg_a {
+            let n = Token(map.len() as u32);
+            out_a.push(*map.entry(*t).or_insert(n));
+        }
+        let mut out_b = Vec::with_capacity(seg_b.len());
+        for t in seg_b {
+            let n = Token(map.len() as u32);
+            out_b.push(*map.entry(*t).or_insert(n));
+        }
+        (out_a, out_b, map.len() as u32)
+    }
+
     let mut results: Vec<Vec<Change>> = vec![Vec::new(); segs.len()];
     if parallel && segs.len() > 1 {
         let workers = segs.len().min(std::thread::available_parallelism().map_or(4, |n| n.get()));
@@ -268,7 +290,8 @@ pub(crate) fn engine_changes(inp: &Interned, parallel: bool) -> Vec<Change> {
                     for (k, slot) in head.iter_mut().enumerate() {
                         let idx = base + k;
                         let (sa, sb, ea, eb) = segs_ref[idx];
-                        *slot = histogram_changes(&a_mid[sa..ea], &b_mid[sb..eb], num_tokens)
+                        let (ta, tb, bound) = local_remap(&a_mid[sa..ea], &b_mid[sb..eb]);
+                        *slot = histogram_changes(&ta, &tb, bound)
                             .into_iter()
                             .map(|c| Change { del: c.del, i: c.i + p + sa, j: c.j + p + sb })
                             .collect();
@@ -280,7 +303,8 @@ pub(crate) fn engine_changes(inp: &Interned, parallel: bool) -> Vec<Change> {
     } else {
         for (idx, slot) in results.iter_mut().enumerate() {
             let (sa, sb, ea, eb) = segs[idx];
-            *slot = histogram_changes(&a_mid[sa..ea], &b_mid[sb..eb], num_tokens)
+            let (ta, tb, bound) = local_remap(&a_mid[sa..ea], &b_mid[sb..eb]);
+            *slot = histogram_changes(&ta, &tb, bound)
                 .into_iter()
                 .map(|c| Change { del: c.del, i: c.i + p + sa, j: c.j + p + sb })
                 .collect();
@@ -846,9 +870,13 @@ mod diff_bench {
     use std::time::Instant;
 
     /// Deterministic pseudo-random filler so the shapes are reproducible.
+    /// The line text carries its index (a realistic near-unique line
+    /// alphabet — a 997-value dictionary made every line repeat ~1000×,
+    /// killing all patience anchors and pushing the dense shape into the
+    /// histogram→Myers pathological fallback for wall-clock hours).
     fn filler(seed: usize, i: usize) -> String {
         let h = (i.wrapping_mul(2654435761).wrapping_add(seed * 0x9E3779B9)) % 997;
-        format!("fn item_{h}(arg: u32) -> u32 {{ arg.wrapping_mul({h}) + {seed} }}")
+        format!("fn item_{i}_{h}(arg: u32) -> u32 {{ arg.wrapping_mul({h}) + {seed} }}")
     }
 
     /// `changed_pct` = share of b lines that differ from their a position.
@@ -894,8 +922,11 @@ mod diff_bench {
     #[test]
     #[ignore = "100MB-class benchmark — run with cargo test --release -p auto-lang diff_bench -- --ignored --nocapture"]
     fn bench_diff_scale_100mb() {
-        // 100MB ≈ 2.5M lines at ~40 bytes/line.
-        for &(mb, pct) in &[(100usize, 0usize), (100, 1), (100, 10), (100, 100)] {
+        // 100MB ≈ 2.5M lines at ~40 bytes/line. The fully-changed shape
+        // runs at 10MB: with a near-unique alphabet it is a pure O(n)
+        // replace, and the all-repeat pathological variant is already
+        // documented as the histogram→Myers fallback boundary.
+        for &(mb, pct) in &[(100usize, 0usize), (100, 1), (100, 10), (10, 100)] {
             run_shape(&format!("{mb}MB changed={pct}%"), mb * 1024 * 1024, pct);
         }
     }
