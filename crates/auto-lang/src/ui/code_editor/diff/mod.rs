@@ -37,6 +37,9 @@ use imara_diff::{Algorithm, Diff as ImaraDiff, Token};
 
 use super::core::rope::RopeSnapshot;
 
+pub mod dirs;
+pub use dirs::{DirCounts, DirDiffError, DirDiffIter, DirDiffOptions, DirEntryDiff, DirStatus};
+
 /// Context radius for hunk grouping (lines shown around each change).
 /// Zero falls back to the downstream default of 3.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -796,5 +799,119 @@ mod p703_dbg {
         println!("removed={rem:?} added={add:?}");
         let hunks: Vec<_> = d.hunks().collect();
         println!("imara hunks={hunks:?}");
+    }
+}
+
+// ── PLAN-703 T-04: 100MB-class synthetic benchmarks (AC-05) ────────────────
+//
+// #[ignore]-gated (the gallery-fence pattern): run explicitly with
+//   cargo test --release -p auto-lang diff_bench -- --ignored --nocapture
+// Debug builds hash/compare ~10x slower and would drown the relative signal.
+// AC-05 judges RELATIVE quantities only — the absolute ≤2s verdict belongs
+// to the downstream auto-edit L2 bench (plan §10 Q-2). Numbers land in
+// docs/specs/auto-lang/ui/design/diff-engine.md (SD-02).
+
+#[cfg(test)]
+mod diff_bench {
+    use super::*;
+    use super::super::core::rope::Rope;
+    use std::time::Instant;
+
+    /// Deterministic pseudo-random filler so the shapes are reproducible.
+    fn filler(seed: usize, i: usize) -> String {
+        let h = (i.wrapping_mul(2654435761).wrapping_add(seed * 0x9E3779B9)) % 997;
+        format!("fn item_{h}(arg: u32) -> u32 {{ arg.wrapping_mul({h}) + {seed} }}")
+    }
+
+    /// `changed_pct` = share of b lines that differ from their a position.
+    fn build_pair(target_bytes: usize, changed_pct: usize) -> (String, String) {
+        let line = filler(1, 0);
+        let approx = target_bytes / (line.len() + 1);
+        let mut a = String::with_capacity(target_bytes + 64);
+        let mut b = String::with_capacity(target_bytes + 64);
+        for i in 0..approx {
+            a.push_str(&filler(1, i));
+            a.push('\n');
+            if i % 100 < changed_pct {
+                b.push_str(&filler(2, i));
+            } else {
+                b.push_str(&filler(1, i));
+            }
+            b.push('\n');
+        }
+        (a, b)
+    }
+
+    fn run_shape(name: &str, target_bytes: usize, changed_pct: usize) {
+        let t0 = Instant::now();
+        let (a, b) = build_pair(target_bytes, changed_pct);
+        let built = t0.elapsed();
+        let t1 = Instant::now();
+        let serial = diff_lines(&a, &b, DiffOpts::default());
+        let serial_ms = t1.elapsed().as_millis();
+        let t2 = Instant::now();
+        let par = diff_lines_parallel(&a, &b, DiffOpts::default());
+        let par_ms = t2.elapsed().as_millis();
+        assert_eq!(serial, par, "{name}: parallel must equal serial");
+        println!(
+            "BENCH {name}: {} bytes / {} lines | serial {serial_ms} ms | parallel {par_ms} ms | hunks {} adds {} dels {} | build {built:?}",
+            a.len(),
+            a.len() / 40,
+            serial.hunks.len(),
+            serial.adds,
+            serial.dels,
+        );
+    }
+
+    #[test]
+    #[ignore = "100MB-class benchmark — run with cargo test --release -p auto-lang diff_bench -- --ignored --nocapture"]
+    fn bench_diff_scale_100mb() {
+        // 100MB ≈ 2.5M lines at ~40 bytes/line.
+        for &(mb, pct) in &[(100usize, 0usize), (100, 1), (100, 10), (100, 100)] {
+            run_shape(&format!("{mb}MB changed={pct}%"), mb * 1024 * 1024, pct);
+        }
+    }
+
+    #[test]
+    #[ignore = "smaller ladder for quick relative checks"]
+    fn bench_diff_scale_ladder() {
+        for &mb in &[1usize, 10] {
+            for &pct in &[0usize, 10] {
+                run_shape(&format!("{mb}MB changed={pct}%"), mb * 1024 * 1024, pct);
+            }
+        }
+    }
+
+    /// Snapshot-path prune evidence: the envelope skips everything outside
+    /// the edited region; the identical case is O(1) via subtree_equal.
+    #[test]
+    #[ignore = "snapshot prune-share evidence — run with the release bench"]
+    fn bench_snapshot_prune_share() {
+        let mut model = String::new();
+        for i in 0..1_500_000 {
+            model.push_str(&filler(1, i));
+            model.push('\n');
+        }
+        let mut rope = Rope::from_str(&model);
+        let s0 = rope.snapshot();
+        // Identical: O(1) equal fast path.
+        let t0 = Instant::now();
+        assert!(diff_snapshots(&s0, &s0, DiffOpts::default()).is_empty());
+        println!("BENCH snapshot identical ({} bytes): {:?}", model.len(), t0.elapsed());
+        // Single edit mid-document: envelope ≈ the edit's neighbourhood.
+        let at = rope.line_start_byte(700_000);
+        rope.insert_bytes(at, "INSERTED LINE\n");
+        let s1 = rope.snapshot();
+        let t1 = Instant::now();
+        let out = diff_snapshots(&s0, &s1, DiffOpts::default());
+        println!(
+            "BENCH snapshot single-edit ({} bytes): {:?} | hunks {} adds {} dels {}",
+            model.len(),
+            t1.elapsed(),
+            out.hunks.len(),
+            out.adds,
+            out.dels
+        );
+        assert_eq!((out.adds, out.dels), (1, 0));
     }
 }
