@@ -145,6 +145,13 @@ strum = { workspace = true }
 strum_macros = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+# PLAN-703 T-00: diff engine core — histogram algorithm (git port, optimized;
+# Myers fallback for pathological repetition keeps worst-case linear). 0.2.0
+# API: Diff::compute_with over caller-interned token arrays (we intern line
+# &str by first occurrence ourselves — no interner copy, full determinism
+# control). unified_diff feature off (we build envelope rows ourselves).
+# License Apache-2.0; deps hashbrown+memchr only (T-00 decision record).
+imara-diff = { version = "0.2", default-features = false }
 toml = { workspace = true }      # Plan 342: block spec.md frontmatter
 ecow = { workspace = true }
 normalize-path = { workspace = true }
