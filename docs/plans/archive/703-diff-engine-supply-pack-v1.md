@@ -383,6 +383,13 @@ SD-01..03 三册落档（契约含 T-00 选型记录）；specs.json 账本投�
   smoke：cargo check 过+diff 60/0。`ledger_refreshed`——specs.json
   reviews 段 P703-1 回读 True、plans.md |703| 行在档、INDEX 再生无
   漂移、三册文件主检出在位（tracked ledger 经工作树+Git 落地）。
+  `archived`——docs/plans/archive/703-diff-engine-supply-pack-v1.md，
+  status: archived，completion_kind: delivered。`cleaned`——双树预检
+  clean（auto-lang 主树+auto-down 依赖位，porcelain 双零）+wt-guard
+  双 clean（无 reparse point）；worktree×2 移除（依赖位经属主仓
+  auto-down 移除——组兄弟 worktree 的属主仓注记）、plan-703-dev 分支
+  删除（-d 确认已并 46efa926a）、组目录 .wt/lang-703 rmdir；四路复核
+  （.wt 清单/双仓 worktree list/分支清单）全零。
 
 ## 10. 待澄清事项
 
