@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-703
-status: reviewed
+status: archived
 feature_name: diff-engine-supply-pack-v1（auto-edit 供料包承接——rope 子树哈希/diff 引擎本体/行内 refinement/分块并行/目录比对/消费端点 五件）
 author: [agent]
 created_at: 2026-09-27T11:52:52+08:00
@@ -371,6 +371,18 @@ SD-01..03 三册落档（契约含 T-00 选型记录）；specs.json 账本投�
   touched_goals=[] 空影响有书面解释（供料驱动新面，702 先例）。
   evidence：本记录+各提交+tf_run2.log/tv 会话输出（摘要摘录于此，
   临时日志不随工作树存留）。`next: merge`。
+- 2026-09-27 merge receipt **PLAN-703:r1**：`prepared`——reviewed 基线
+  e1542e1c1、规范三册+账本已随工作树提交（0a84bf375/a0bbf3d5a 的
+  range-diff 等价像）、落地目标=master ff-only、交付期望=docs/specs
+  三册+账本三件随码落。`landed`——rebase master（23694b2ab）后
+  **range-diff 8/8 全等**（安全重写证明；old→new 映射：8fd8850a3→
+  6d2c9fd98 / 841bd5dee→4adc67514 / a173d74fc→9e2faeb00 / 1a4af59e6→
+  ed2d29fb4 / 0a84bf375→2517043c2 / a0bbf3d5a→1e64713e8 / 4d69f4e27→
+  6a3080f44 / **e1542e1c1→46efa926a=delivery_commit**）；wt-guard
+  clean；`git merge --ff-only` 零合并提交，main tip==46efa926a 复核；
+  smoke：cargo check 过+diff 60/0。`ledger_refreshed`——specs.json
+  reviews 段 P703-1 回读 True、plans.md |703| 行在档、INDEX 再生无
+  漂移、三册文件主检出在位（tracked ledger 经工作树+Git 落地）。
 
 ## 10. 待澄清事项
 
