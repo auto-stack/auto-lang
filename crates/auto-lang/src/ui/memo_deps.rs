@@ -280,7 +280,19 @@ pub fn scan_static(
     props: &HashMap<String, crate::aura::AuraPropValue>,
     children: &[AuraNode],
 ) -> ScanVerdict {
+    scan_static_with_components(props, children, None)
+}
+
+/// T-05b 组件模板感知版：`Component` 节点的模板（registry 子 widget 的
+/// view_tree）一并扫描——模板内的状态读同为读槽；visited 集合破自引用环。
+/// registry 缺席（None）时 Component 退回降级（宁缺勿错）。
+pub fn scan_static_with_components(
+    props: &HashMap<String, crate::aura::AuraPropValue>,
+    children: &[AuraNode],
+    registry: Option<&crate::ui::widget_registry::WidgetRegistry>,
+) -> ScanVerdict {
     let mut slots = Vec::new();
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (_k, prop) in props.iter() {
         match prop {
             crate::aura::AuraPropValue::Expr(e) => {
@@ -294,11 +306,37 @@ pub fn scan_static(
         }
     }
     for c in children {
-        if let Err(reason) = scan_node(c, &mut slots) {
+        if let Err(reason) = scan_node_registry(c, &mut slots, registry, &mut visited) {
             return ScanVerdict::Degrade(reason);
         }
     }
     ScanVerdict::Slots(slots)
+}
+
+fn scan_node_registry(
+    node: &AuraNode,
+    slots: &mut Vec<Expr>,
+    registry: Option<&crate::ui::widget_registry::WidgetRegistry>,
+    visited: &mut std::collections::HashSet<String>,
+) -> Result<(), &'static str> {
+    if let AuraNode::Component { name, props, children, .. } = node {
+        // Component props = Vec<(String, Expr)>（Element 的 HashMap 形态不同）。
+        for (_k, e) in props.iter() {
+            scan_expr(e, slots)?;
+        }
+        for c in children {
+            scan_node_registry(c, slots, registry, visited)?;
+        }
+        if let Some(reg) = registry {
+            if let Some(w) = reg.get(name) {
+                if visited.insert(name.clone()) {
+                    scan_node_registry(&w.view_tree, slots, Some(reg), visited)?;
+                }
+            }
+        }
+        return Ok(());
+    }
+    scan_node(node, slots)
 }
 
 fn scan_node(node: &AuraNode, slots: &mut Vec<Expr>) -> Result<(), &'static str> {
@@ -393,10 +431,70 @@ pub fn skeleton_fingerprint(
     props: &HashMap<String, crate::aura::AuraPropValue>,
     children: &[AuraNode],
 ) -> u64 {
+    skeleton_fingerprint_with_components(props, children, None)
+}
+
+/// T-05b：Component 模板并入骨架（registry 模板结构进指纹；visited 破环）。
+pub fn skeleton_fingerprint_with_components(
+    props: &HashMap<String, crate::aura::AuraPropValue>,
+    children: &[AuraNode],
+    registry: Option<&crate::ui::widget_registry::WidgetRegistry>,
+) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     skeleton_props(props, &mut h);
-    skeleton_children(children, &mut h);
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    skeleton_children_registry(children, &mut h, registry, &mut visited);
     h.finish()
+}
+
+fn skeleton_children_registry(
+    children: &[AuraNode],
+    h: &mut std::collections::hash_map::DefaultHasher,
+    registry: Option<&crate::ui::widget_registry::WidgetRegistry>,
+    visited: &mut std::collections::HashSet<String>,
+) {
+    children.len().hash(h);
+    for c in children {
+        if let AuraNode::Component { name, props, children, .. } = c {
+            "comp".hash(h);
+            name.hash(h);
+            props.len().hash(h);
+            for (k, e) in props.iter() {
+                k.hash(h);
+                format!("{:?}", expr_shape(e)).hash(h);
+            }
+            skeleton_children_registry(children, h, registry, visited);
+            if let Some(reg) = registry {
+                if let Some(w) = reg.get(name) {
+                    if visited.insert(name.clone()) {
+                        skeleton_children_registry(
+                            std::slice::from_ref(&w.view_tree),
+                            h,
+                            Some(reg),
+                            visited,
+                        );
+                    }
+                }
+            }
+            continue;
+        }
+        match c {
+            AuraNode::Element { tag, props, children, .. } => {
+                "el".hash(h);
+                tag.hash(h);
+                skeleton_props(props, h);
+                skeleton_children_registry(children, h, registry, visited);
+            }
+            AuraNode::Text(AuraTextContent::Literal(s)) => {
+                "txt".hash(h);
+                s.hash(h);
+            }
+            _ => {
+                "other".hash(h);
+                std::mem::discriminant(c).hash(h);
+            }
+        }
+    }
 }
 
 fn skeleton_props(props: &HashMap<String, crate::aura::AuraPropValue>, h: &mut std::collections::hash_map::DefaultHasher) {

@@ -1061,7 +1061,7 @@ impl<'a> AuraViewBuilder<'a> {
             AuraNode::Outlet => {
                 // Plan 401/VM-routing: render the page widget matching the
                 // current route (the iced equivalent of vue's <router-view>).
-                self.render_outlet(bindings)
+                self.render_outlet_impl(bindings, None)
             }
             AuraNode::Link { text, children, to, .. } => {
                 // Plan 401/VM-routing: render a link as a clickable button whose
@@ -1348,7 +1348,7 @@ impl<'a> AuraViewBuilder<'a> {
             AuraNode::Outlet => {
                 // Plan 401/VM-routing: render the page widget matching the
                 // current route (the iced equivalent of vue's <router-view>).
-                self.render_outlet(bindings)
+                self.render_outlet_impl(bindings, Some((path, id_map, probe)))
             }
             AuraNode::Link { text, children, to, .. } => {
                 // Plan 401/VM-routing: render link as a clickable button (same
@@ -4975,17 +4975,33 @@ let tabs_inner = View::Row {
     /// `__route_params` state object so page handlers can read them via
     /// `router.param("id")`. No routes / no match / empty route → `View::Empty`.
     fn render_outlet(&self, bindings: &Bindings) -> View<DynamicMessage> {
+        self.render_outlet_impl(bindings, None)
+    }
+
+    /// PLAN-045 T-05b：outlet 页产物 memo（opt-in：`AUTO_OUTLET_MEMO=1`；
+    /// 裸 `outlet` 节点无 props 载体，语料级 prop 留待档 B 显式 memo 语法）。
+    /// 命中路径重放挂载/路由簿记（产物无关面），Init 身份变化帧弃缓存全量
+    /// 渲染（Init 派发语义逐字节保持）。
+    fn render_outlet_impl(
+        &self,
+        bindings: &Bindings,
+        tracked: Option<(&mut Vec<usize>, &mut DebugIdMap, &mut BuildProbe)>,
+    ) -> View<DynamicMessage> {
         // PLAN-045 T-07 拆账：outlet 页构建耗时单列（AUTO_MEMO_DIAG 门）。
         let __diag = std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1");
         let __t0 = if __diag { Some(std::time::Instant::now()) } else { None };
-        let __out = self.render_outlet_inner(bindings);
+        let __out = self.render_outlet_inner(bindings, tracked);
         if let (true, Some(t0)) = (__diag, __t0) {
             eprintln!("[VM-VIEW-OUTLET] outlet_ms={}", (std::time::Instant::now() - t0).as_millis());
         }
         __out
     }
 
-    fn render_outlet_inner(&self, bindings: &Bindings) -> View<DynamicMessage> {
+    fn render_outlet_inner(
+        &self,
+        bindings: &Bindings,
+        tracked: Option<(&mut Vec<usize>, &mut DebugIdMap, &mut BuildProbe)>,
+    ) -> View<DynamicMessage> {
         let (Some(registry), Some(routes)) = (self.widget_registry, self.routes) else {
             return View::Empty;
         };
@@ -5030,7 +5046,24 @@ let tabs_inner = View::Row {
                 let empty_props: HashMap<String, AuraPropValue> = HashMap::new();
                 let empty_events: HashMap<String, AuraEvent> = HashMap::new();
                 // Plan 476: 页面路由无调用位填充,outlet 页面不带 slot fills。
-                return self.render_child_widget(page_widget, &empty_props, &empty_events, bindings, None);
+                let memo_on = std::env::var("AUTO_OUTLET_MEMO").ok().as_deref() == Some("1");
+                if !memo_on {
+                    return match tracked {
+                        Some((path, id_map, probe)) => self.render_child_widget_tracked(
+                            page_widget, &empty_props, &empty_events, bindings, path, id_map, probe, None,
+                        ),
+                        None => self.render_child_widget(
+                            page_widget, &empty_props, &empty_events, bindings, None,
+                        ),
+                    };
+                }
+                return self.render_outlet_page_memo(
+                    page_widget,
+                    &empty_props,
+                    &empty_events,
+                    bindings,
+                    tracked,
+                );
             }
             // Page widget not registered → show a textual placeholder so the
             // gap is visible (e.g. "page book_detail not loaded").
@@ -5045,6 +5078,217 @@ let tabs_inner = View::Row {
             content: format!("<outlet: no route for {}>", current),
             style: None,
             selectable: false,
+        }
+    }
+
+    /// PLAN-045 T-05b：outlet 页产物 memo 门（AUTO_OUTLET_MEMO=1 opt-in）。
+    /// 键 = (ctx, SITE_OUTLET_PAGE, 页模板+组件模板骨架指纹, probe_on)；命中
+    /// 条件同 SD-02（seq 快速路径 / 读槽值指纹慢路径，读槽含组件模板内状态
+    /// 读）。命中帧重放挂载/回调路由簿记；Init 身份变化帧弃缓存（Init 派发
+    /// 语义保持）。
+    #[allow(clippy::too_many_arguments)]
+    fn render_outlet_page_memo(
+        &self,
+        page_widget: &crate::aura::AuraWidget,
+        empty_props: &HashMap<String, AuraPropValue>,
+        empty_events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+        mut tracked: Option<(&mut Vec<usize>, &mut DebugIdMap, &mut BuildProbe)>,
+    ) -> View<DynamicMessage> {
+        use crate::ui::memo_deps::{
+            globals_fingerprint, scan_static_with_components, GlobalEpisode, MemoEntry, MemoKey,
+            ScanVerdict,
+        };
+        const SITE_OUTLET_PAGE: u8 = 6;
+
+        // 循环守卫（同 render_child_widget 首检）。
+        if self.active_child_widgets.borrow().contains(&page_widget.name) {
+            return View::Empty;
+        }
+        // Init 身份门：身份变化 → 本帧必须真实 build（Init 派发伴随渲染），
+        // 弃缓存走全量；身份不变 → 记账保持（不触发派发）。
+        let has_init = page_widget.lifecycle.iter().any(|l| l.name == "Init");
+        if has_init {
+            let identity = self.child_init_identity(page_widget, empty_props, bindings);
+            if self.bridge.child_init_should_fire(&page_widget.name, &identity) {
+                let child_state_id =
+                    self.prepare_child_render_state(page_widget, empty_props, bindings);
+                if let Err(e) = self
+                    .bridge
+                    .call_handler_for(&page_widget.name, "Init", child_state_id, &[])
+                {
+                    if !matches!(e, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)) {
+                        log::warn!(
+                            "child {}.Init failed during render: {:?}",
+                            page_widget.name,
+                            e
+                        );
+                    }
+                }
+                return self.render_outlet_page_full(
+                    page_widget, empty_props, empty_events, bindings, tracked,
+                );
+            }
+        }
+        // 簿记重放（产物无关面——非命中帧由 render_child_widget 内部做同款）。
+        if let Some(sink) = self.mounted_sink {
+            sink.borrow_mut().insert(page_widget.name.clone());
+        }
+        if let Some(psink) = self.mount_path_sink {
+            psink.register(&page_widget.name);
+        }
+        Self::record_child_callback_routes_for(
+            self.widget_name.clone(),
+            page_widget.name.clone(),
+            empty_props,
+            empty_events,
+        );
+        let _child_state_id =
+            self.prepare_child_render_state(page_widget, empty_props, bindings);
+
+        // 静态扫描（含组件模板读槽）+ 骨架键。
+        let probe_on = tracked
+            .as_ref()
+            .map(|(_, _, p)| p.is_enabled())
+            .unwrap_or(false);
+        let page_slice = std::slice::from_ref(&page_widget.view_tree);
+        let slots =
+            match scan_static_with_components(empty_props, page_slice, self.widget_registry) {
+                ScanVerdict::Slots(sl) => sl,
+                ScanVerdict::Degrade(_reason) => {
+                    self.bridge.with_memo_cache(|c| c.note_degraded());
+                    return self.render_outlet_page_full(
+                        page_widget, empty_props, empty_events, bindings, tracked,
+                    );
+                }
+            };
+        let key = MemoKey {
+            ctx_state_obj: self.memo_ctx_obj(),
+            site: SITE_OUTLET_PAGE,
+            skeleton_fp: crate::ui::memo_deps::skeleton_fingerprint_with_components(
+                empty_props,
+                page_slice,
+                self.widget_registry,
+            ),
+            probe_on,
+        };
+        let seq = self.bridge.state_mutation_seq();
+        let gfp = {
+            let ep = GlobalEpisode {
+                theme_epoch: crate::ui::style::theme::theme_epoch(),
+                menubar_open: crate::ui::action_config::menubar_open(),
+                popover_open: crate::ui::action_config::popover_open(),
+                action_config_ptr: crate::ui::action_config::action_config()
+                    .map(|a| std::sync::Arc::as_ptr(&a) as usize)
+                    .unwrap_or(0),
+            };
+            globals_fingerprint(&ep)
+        };
+        let cached = self.bridge.with_memo_cache(|c| {
+            c.lookup(&key).map(|e| {
+                (
+                    e.seq_at_fill,
+                    e.globals_fp,
+                    e.dyn_fp,
+                    e.product.clone(),
+                    e.probe_replay.clone(),
+                    e.idmap_replay.clone(),
+                )
+            })
+        });
+        if let Some((seq_at_fill, gfp_entry, dyn_fp, product, probe_replay, idmap_replay)) =
+            cached
+        {
+            if seq_at_fill == seq && gfp_entry == gfp {
+                self.bridge.with_memo_cache(|c| c.note_hit());
+                if let Some((_, id_map, probe)) = tracked.as_mut() {
+                    probe.merge_entries(probe_replay);
+                    id_map.merge_entries(idmap_replay);
+                }
+                if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+                    eprintln!("[MEMO-DIAG] site=6 HIT fast page={}", page_widget.name);
+                }
+                return product;
+            }
+            if gfp_entry == gfp {
+                let cur = self
+                    .memo_slots_fp(&slots, bindings)
+                    .map(|fp| Self::memo_combine_dyn(fp, None));
+                if matches!((cur, dyn_fp), (Some(a), Some(b)) if a == b) {
+                    self.bridge.with_memo_cache(|c| {
+                        c.refresh_seq(&key, seq);
+                        c.note_hit();
+                    });
+                    if let Some((_, id_map, probe)) = tracked.as_mut() {
+                        probe.merge_entries(probe_replay);
+                        id_map.merge_entries(idmap_replay);
+                    }
+                    if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+                        eprintln!("[MEMO-DIAG] site=6 HIT slow page={}", page_widget.name);
+                    }
+                    return product;
+                }
+            }
+            self.bridge.with_memo_cache(|c| c.note_miss());
+            if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+                eprintln!("[MEMO-DIAG] site=6 MISS page={}", page_widget.name);
+            }
+        } else if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+            eprintln!("[MEMO-DIAG] site=6 FILL page={}", page_widget.name);
+        }
+        // fill：全量渲染 + 入缓存。
+        let reborrowed = tracked
+            .as_mut()
+            .map(|(path, id_map, probe)| (&mut **path, &mut **id_map, &mut **probe));
+        let out = self.render_outlet_page_full(
+            page_widget,
+            empty_props,
+            empty_events,
+            bindings,
+            reborrowed,
+        );
+        if let Some(slots_fp) = self.memo_slots_fp(&slots, bindings) {
+            let reborrowed = tracked
+                .as_mut()
+                .map(|(path, id_map, probe)| (&mut **path, &mut **id_map, &mut **probe));
+            let (probe_snap, idmap_snap) = match reborrowed {
+                Some((path, id_map, probe)) if probe.is_enabled() => {
+                    let u16b: Vec<u16> = path.iter().map(|&x| x as u16).collect();
+                    (probe.snapshot_prefix(&u16b), id_map.snapshot_prefix(path))
+                }
+                _ => (Vec::new(), Vec::new()),
+            };
+            let entry = MemoEntry {
+                seq_at_fill: self.bridge.state_mutation_seq(),
+                globals_fp: gfp,
+                read_exprs: slots,
+                dyn_fp: Some(Self::memo_combine_dyn(slots_fp, None)),
+                product: out.clone(),
+                probe_replay: probe_snap,
+                idmap_replay: idmap_snap,
+            };
+            self.bridge.with_memo_cache(|c| c.insert(key, entry));
+        } else {
+            self.bridge.with_memo_cache(|c| c.note_degraded());
+        }
+        out
+    }
+
+    fn render_outlet_page_full(
+        &self,
+        page_widget: &crate::aura::AuraWidget,
+        empty_props: &HashMap<String, AuraPropValue>,
+        empty_events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+        tracked: Option<(&mut Vec<usize>, &mut DebugIdMap, &mut BuildProbe)>,
+    ) -> View<DynamicMessage> {
+        match tracked {
+            Some((path, id_map, probe)) => self.render_child_widget_tracked(
+                page_widget, empty_props, empty_events, bindings, path, id_map, probe, None,
+            ),
+            None => {
+                self.render_child_widget(page_widget, empty_props, empty_events, bindings, None)
+            }
         }
     }
 
@@ -6187,11 +6431,7 @@ let tabs_inner = View::Row {
         // ——对齐 vue 的按 key 重挂载语义:同名子件 key 变化(含切回先前
         // key)即重发 Init,否则子件继续渲染上一个 key 的数据体。无 key
         // 调用点身份即组件名,每帧不变,536 防重放语义不变。
-        let init_identity = self
-            .extract_string_with(props, "key", bindings)
-            .filter(|k| !k.is_empty())
-            .map(|k| format!("{}#{}", child_widget.name, k))
-            .unwrap_or_else(|| child_widget.name.clone());
+        let init_identity = self.child_init_identity(child_widget, props, bindings);
         if !self.bridge.child_init_should_fire(&child_widget.name, &init_identity) {
             return;
         }
@@ -6207,6 +6447,19 @@ let tabs_inner = View::Row {
                 );
             }
         }
+    }
+
+    /// PLAN-045 T-05b：子件挂载身份单源（组件名 + 调用位 `key:` prop）。
+    fn child_init_identity(
+        &self,
+        child_widget: &crate::aura::AuraWidget,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> String {
+        self.extract_string_with(props, "key", bindings)
+            .filter(|k| !k.is_empty())
+            .map(|k| format!("{}#{}", child_widget.name, k))
+            .unwrap_or_else(|| child_widget.name.clone())
     }
 
     /// PLAN-051 C2: 把 Component 调用位上的回调绑定（`onsend: .SendInput($event)`
@@ -20406,6 +20659,10 @@ mod plan045_memo_tests {
     use crate::ast::Type;
     use crate::aura::{AuraStateDef, AuraWidget};
 
+    /// MENUBAR_OPEN 是进程级全局——本模块 menubar 测试并发翻转会使
+    /// globals_fp 跨 build 漂移（slow 路径 gfp 门误 miss）。模块内互斥。
+    static PLAN045_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     /// 本模块本地 widget 构造（tests::make_test_widget 私有不可达）。
     fn make_memo_widget(name: &str, state_vars: Vec<AuraStateDef>) -> AuraWidget {
         AuraWidget {
@@ -20505,6 +20762,7 @@ mod plan045_memo_tests {
     /// AC-02/AC-03：读集内写失效重建、读集外写快/慢路径命中（重求值不发生）。
     #[test]
     fn plan045_menubar_memo_hit_and_invalidation() {
+        let _guard = PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // items 仅在菜单开态渲染（PLAN-695）——开态下产物才反映 checked。
         crate::ui::action_config::set_menubar_open(Some("file".to_string()));
         let widget = memo_widget();
@@ -20564,6 +20822,7 @@ mod plan045_memo_tests {
     /// AC-01 前半：`memo` 缺省/false 时缓存完全惰性（零条目零计数）。
     #[test]
     fn plan045_memo_off_is_inert() {
+        let _guard = PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // items 仅在菜单开态渲染（PLAN-695）——开态下产物才反映 checked。
         crate::ui::action_config::set_menubar_open(Some("file".to_string()));
         let widget = memo_widget();
@@ -20594,6 +20853,7 @@ mod plan045_memo_tests {
     /// 行为与非 memo 一致。
     #[test]
     fn plan045_dynamic_forms_degrade_to_raw() {
+        let _guard = PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // items 仅在菜单开态渲染（PLAN-695）——开态下产物才反映 checked。
         crate::ui::action_config::set_menubar_open(Some("file".to_string()));
         let widget = memo_widget();
@@ -20631,11 +20891,109 @@ mod plan045_memo_tests {
         }
     }
 
+    /// T-05b：outlet 页产物 memo——同页回访命中（重渲染不发生，build_ms
+    /// 级断言走 hit 计数），Init 身份门保持，组件模板读槽覆盖。
+    #[test]
+    fn plan045_outlet_page_memo() {
+        let _guard = PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        use crate::ui::widget_registry::WidgetRegistry;
+
+        // 页 widget：静态模板 + 一处状态绑定 prop；Init 无。
+        let page_widget = {
+            let mut w = make_memo_widget(
+                "RowPage",
+                vec![AuraStateDef {
+                    name: "page_flag".to_string(),
+                    type_info: Type::Bool,
+                    initial: Expr::Bool(false),
+                    decorators: vec![],
+                }],
+            );
+            let node = AuraNode::element("col")
+                .with_child(
+                    AuraNode::element("h1").with_prop("text", Expr::Str("Row".into())),
+                )
+                .with_child(
+                    AuraNode::element("badge").with_prop(
+                        "visible",
+                        Expr::Ident(".page_flag".into()),
+                    ),
+                );
+            w.view_tree = node;
+            w
+        };
+        let mut registry = WidgetRegistry::new();
+        registry.register(page_widget);
+        registry.register_route_alias("row", "RowPage");
+
+        // T-05b opt-in 门（env 载体；测试内设置-移除）。
+        std::env::set_var("AUTO_OUTLET_MEMO", "1");
+        let host = make_memo_widget(
+            "MemoApp",
+            vec![AuraStateDef {
+                name: "__current_route".to_string(),
+                type_info: Type::StrSlice,
+                initial: Expr::Str("/row".into()),
+                decorators: vec![],
+            }],
+        );
+        let mut bridge = VmBridge::new(&host).unwrap();
+
+        // 宿主 widget：routes 声明 + registry 注入（builder.with_routes 面）。
+        let routes_static = [crate::aura::AuraRoute {
+            path: "/row".to_string(),
+            module: "row".to_string(),
+            widget_name: "RowPage".to_string(),
+            params: Vec::new(),
+        }];
+        let builder_registry = &registry;
+
+        let build_once = |bridge: &VmBridge| {
+            let b = AuraViewBuilder::with_registry_and_imports(
+                bridge,
+                "MemoApp",
+                builder_registry,
+                &[],
+            )
+            .with_routes(&routes_static);
+            b.build(&AuraNode::Outlet)
+        };
+
+        let v1 = build_once(&bridge); // fill
+        let (hits, misses) = bridge.with_memo_cache(|c| (c.hits, c.misses));
+        assert_eq!((hits, misses), (0, 0), "fill 不计");
+
+        // 无状态写回访（同路由）：seq 未动 → 快速路径命中。
+        let v2 = build_once(&bridge);
+        bridge.with_memo_cache(|c| assert_eq!(c.hits, 1, "同页回访快速命中"));
+        assert_eq!(view_key(&v1), view_key(&v2));
+
+        // 页内读槽字段写（badge.visible）：慢路径 miss → 重求值。
+        bridge
+            .write_state("page_flag", auto_val::Value::Bool(true))
+            .unwrap();
+        let v3 = build_once(&bridge);
+        bridge.with_memo_cache(|c| {
+            assert_eq!(c.misses, 1, "页内读槽写失效");
+        });
+        // 失效证据 = misses 计数（合成 badge 产物对该 prop 不敏感，产物
+        // 敏感性由 menubar checkbox 用例承载）。
+
+        // 无关写：慢路径回命中。
+        bridge
+            .write_state("__current_route", auto_val::Value::str("/row"))
+            .unwrap();
+        let v4 = build_once(&bridge);
+        bridge.with_memo_cache(|c| assert_eq!(c.hits, 2, "无关写慢路径命中"));
+        std::env::remove_var("AUTO_OUTLET_MEMO");
+    }
+
     /// sidebar：`sidebar_provider (memo: true)` 武装 + nav 块派生值键——
     /// 路由切换仅 active 翻转组失效，其余组全命中（AC-05 的机制面）；读集
     /// 外写两组建全命中。
     #[test]
     fn plan045_sidebar_nav_group_memo() {
+        let _guard = PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let widget = memo_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
