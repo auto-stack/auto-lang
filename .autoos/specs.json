@@ -7464,6 +7464,11 @@
      "status": "published",
      "created": "2026-09-25",
      "last_modified": "2026-09-25"
+    },
+    {
+     "id": "P703-1",
+     "title": "diff-engine-supply-pack-v1 — auto-edit 供料包承接：rope 子树哈希/diff 引擎/行内 refinement/分块并行/目录比对/消费端点（SD-01..03）",
+     "content": "PLAN-703 执行 delivered（工作树 plan-703-dev，落地收据见归档）。供② rope 子树哈希（SD-01→ui/design/rope-subtree-hash.md）：可复合多项式摘要（Mersenne-61 域、基编译期约化、零随机种子跨运行确定）——内容决定（同文同摘要与树形无关，编辑路径 O(log n) 零降级）+可复合（区间摘要==平铺摘要）+碰撞域 ~n/2^61；查询面 content_hash/range_hash/subtree_equal（ptr_eq 同偏移快路+整节点摘要快路+对齐精确走查，判定精确不猜测）/prune_spans（对齐四元组，ptr_eq 弃用教训=同 Arc 移位绝对坐标失真实测）。供①a/①b/③ 引擎（SD-02→ui/design/diff-engine.md）：T-00 六判据定案 imara-diff 0.2.0（Apache-2.0，hashbrown+memchr 仅两传递依赖；similar 无 histogram 出局/自研工期数倍出局）；唯一管线纪律=universal-newlines 行切分+首现序 interning+patience 锚点分块（≥512 行双侧唯一行强制 keep，内容决定切分）+histogram per 段+下游同构 hunk 归组（gap≤2·ctx 双坐标、0 基半开钳位）；串/并行同构（std::thread::scope+split_at_mut，AC-05 等价=线程数不变性）；窗投影语义定案（histogram 全局行频→切片重算不保证一致，AC-04 由构造成立）；diff_snapshots=subtree_equal 快路+divergence 包络+包络内单次全局行 diff（区域局部直比实证与全文管线失协 7/6 vs 2/1，弃）；refine_inline 公共前后缀字符区间（Q-4 形）。供④ 目录比对：DirDiffIter 惰性分类（per-next 读盘增量返回，counts 同域累计）+下游同构五态（存在性/kind 冲突/≤2MB 二进制启发式/尺寸差/字节等，>2MB same+uncompared 矩阵行为保持）+fif_skipped 同语义 skip-list+cap 5000+mtime 快路 opt-in 默认关。供⑤ 端点（SD-03→ui/design/diff-endpoints.md）：natives 9915/9916/9917（9914 已被 701 供⑥占——草案前提漂移修正）；diff_files envelope 逐字段同构下游（rows 12 字段渲染就绪=流切片+索引对齐配对+三段标记 refine 恒开+ctx 行 lpre 全文+不成对整行 mid Q-4+CR 容忍+truncated/degraded 恒 false）；diff_snapshots buffer registry 直读（doc_snapshot 快照面）；diff_dirs 五态 entries；错误=值不 raise；五面注册（catalog/bigvm/intrinsics/a2r 臂/静态绑定）。执行期修复三枚（探针实勘）：流 keep 填充 ||→&&（del/add 间幽灵 keep）、流元组 bool→三态 Kind（add 被渲染成 ctx 行）、rows 切片 hi 语义推导（先变更块后尾部 keep）。验证：diff 60+rope 23+dirs 11+探针 7 全绿零新增警告；基准 release 档数据见 SD-02（相对量，绝对量 ≤2s 归下游 L2 bench——Q-2 口径）。"
     }
    ]
   }
