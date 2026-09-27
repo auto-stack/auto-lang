@@ -342,6 +342,9 @@ pub(crate) fn group_hunks(changes: &[Change], la: usize, lb: usize, ctx: usize) 
     group_hunks_annotated(changes, la, lb, ctx).into_iter().map(|g| g.hunk).collect()
 }
 
+// The grouping macro's trailing `open = false` is a dead write after the
+// final close — structural to the close-at-both-ends pattern.
+#[allow(unused_assignments)]
 pub(crate) fn group_hunks_annotated(changes: &[Change], la: usize, lb: usize, ctx: usize) -> Vec<GroupedHunk> {
     let ctx2 = 2 * ctx;
     let mut out: Vec<GroupedHunk> = Vec::new();
