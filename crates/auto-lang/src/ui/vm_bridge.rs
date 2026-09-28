@@ -820,7 +820,8 @@ impl VmBridge {
         // PLAN-045 T-02：Rust 侧直写绕过 engine 突变臂，全局 state_mutation_seq
         // 原本不动——`set_route` 等桥写通道因此对 memo 快速路径不可见（陈旧
         // 误命中）。与 engine 突变臂同口径在此补 bump（PLAN-045 决策注记②）。
-        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // PLAN-047 T-03: A 类定点归因（bump_path 内含全局 bump，语义不变）。
+        self.vm.bump_path(self.state_obj_id, Some(field_name));
         Ok(())
     }
 
@@ -843,8 +844,8 @@ impl VmBridge {
                 instance.fields.push(value);
                 self.state_field_names.push(field_name.to_string());
                 // PLAN-045 T-02：新增字段同属状态面突变，与 write_state 同口径
-                // 补 bump（memo 快速路径可见性）。
-                self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                // 补 bump（memo 快速路径可见性）。PLAN-047 T-03: A 类定点归因。
+                self.vm.bump_path(self.state_obj_id, Some(field_name));
                 Ok(())
             }
             Err(e) => Err(e),
@@ -1060,7 +1061,8 @@ impl VmBridge {
                         list.elems = values;
                         // PLAN-045 T-02：容器原地替换 = 状态面突变（memo
                         // 快速路径可见性），与 write_state 同口径补 bump。
-                        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        // PLAN-047 T-03: B 类定点归因（堆列表 wildcard）。
+                        self.vm.bump_path(arr_id, None);
                         Ok(())
                     } else {
                         Err(VmBridgeError::InvalidState(
@@ -1090,7 +1092,8 @@ impl VmBridge {
                         }
                         list.elems = values;
                         // PLAN-045 T-02：容器原地替换补 bump（同 Int 臂）。
-                        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        // PLAN-047 T-03: B 类定点归因（同 Int 臂）。
+                        self.vm.bump_path(arr_id, None);
                         Ok(())
                     } else {
                         Err(VmBridgeError::InvalidState(
@@ -1373,13 +1376,15 @@ impl VmBridge {
                         let changed = inst.get_field(idx) != Some(&storable);
                         let _ = inst.set_field(idx, storable);
                         if changed {
-                            self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            // PLAN-047 T-03: A 类定点归因（值变才 bump 语义不变）。
+                            self.vm.bump_path(self.state_obj_id, Some(&name));
                         }
                     } else {
                         // Add new field (prop not yet in root state).
                         inst.field_names.push(name.clone());
                         inst.fields.push(storable);
-                        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        // PLAN-047 T-03: A 类定点归因（同上）。
+                        self.vm.bump_path(self.state_obj_id, Some(&name));
                     }
                 }
             }
@@ -1622,7 +1627,10 @@ impl VmBridge {
         }
         // PLAN-045 T-02：`__busy_handlers` 镜像重写 = 状态面突变——memo
         // 快速路径可见性（函数体前段有"集合未变早退"，真写入才到此）。
-        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // PLAN-047 T-03: A+B 双归因——根态字段 exact（read_state 通道 dep）
+        // + 新镜像堆列表 wildcard（read_state_as_vec 容器 dep）。
+        self.vm.bump_path(self.state_obj_id, Some(BUSY_STATE_FIELD));
+        self.vm.bump_path(id as u64, None);
     }
 
     /// Call a handler by name with arguments.
@@ -3324,6 +3332,148 @@ widget OpProbeOrig {
         let outer_rec = outer.finish();
         assert_eq!(outer_rec.deps.len(), 3, "外层并集收编内层");
         assert!(bridge.peek_dep_recorder().is_none(), "嵌套恢复未激活");
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-03: plan047_attribution_tests（写点归因 4 条，AC-03）
+    // ─────────────────────────────────────────────────────────────────
+
+    /// 解析 handler 源并挂到 widget（plan423 同款通道）。
+    fn plan047_attach_handler(widget: &mut AuraWidget, event: &str, src: &str) {
+        use crate::aura::LogicPayload;
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+        let ast = Parser::from(src)
+            .with_session(CompilerSession::ui())
+            .parse()
+            .expect("parse handler");
+        widget
+            .handlers
+            .insert(format!(".{event}"), LogicPayload::AstStmts(ast.stmts));
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_attribution_set_field_is_path_exact() {
+        let mut widget = make_test_widget("AttrRoot", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: Expr::Int(0),
+                decorators: vec![],
+            },
+            AuraStateDef {
+                name: "label".to_string(),
+                type_info: Type::StrFixed(0),
+                initial: Expr::Str("L".into()),
+                decorators: vec![],
+            },
+        ]);
+        plan047_attach_handler(&mut widget, "Poke", "\n    .count = .count + 1\n");
+        let mut bridge = VmBridge::new(&widget).expect("bridge");
+        let root = bridge.state_obj_id();
+        // 基线：无任何 path 版本。
+        assert_eq!(bridge.vm.path_version(root, "count"), 0);
+        assert_eq!(bridge.vm.path_version(root, "label"), 0);
+        let seq0 = bridge.state_mutation_seq();
+        bridge.call_handler("Poke", &[]).expect("handler");
+        // AC-03: exact 面定点前进；无关 path 不动；wildcard（同对象任意写）
+        // 与全局 seq 同步前进。
+        assert_eq!(bridge.vm.path_version(root, "count"), 1, "exact 面前进");
+        assert_eq!(bridge.vm.path_version(root, "label"), 0, "无关 path 不动");
+        assert_eq!(bridge.vm.path_version(root, "*"), 1, "wildcard 同步");
+        assert!(bridge.state_mutation_seq() > seq0, "全局 seq 语义不变");
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_attribution_list_push_wildcard_only() {
+        let mut widget = make_test_widget("AttrList", vec![
+            AuraStateDef {
+                name: "items".to_string(),
+                type_info: Type::Unknown,
+                initial: Expr::Array(vec![Expr::Int(1), Expr::Int(2)]),
+                decorators: vec![],
+            },
+        ]);
+        plan047_attach_handler(&mut widget, "Add", "\n    .items.push(3)\n");
+        let mut bridge = VmBridge::new(&widget).expect("bridge");
+        let root = bridge.state_obj_id();
+        bridge.call_handler("Add", &[]).expect("handler");
+        let raw = bridge.read_state("items").expect("items");
+        let list_id = match raw {
+            Value::VmRef(r) => r.id as u64,
+            Value::Int(i) => i as u64,
+            other => panic!("items not heap list: {other:?}"),
+        };
+        // B 类：容器 wildcard 前进；根态字段 exact 不动（槽位未替换）——
+        // 无关 path 版本零扰动的精度面。
+        assert_eq!(bridge.vm.path_version(list_id, "*"), 1, "列表 wildcard");
+        assert_eq!(bridge.vm.path_version(root, "items"), 0, "根态 exact 不动");
+        assert_eq!(bridge.vm.path_version(root, "*"), 0, "根态 wildcard 不动");
+        // 全局 seq 仍前进（全局语义不变）。
+        assert!(bridge.state_mutation_seq() > 0);
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_attribution_bridge_write_state_exact() {
+        let widget = make_test_widget("AttrBridge", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: Expr::Int(0),
+                decorators: vec![],
+            },
+        ]);
+        let mut bridge = VmBridge::new(&widget).expect("bridge");
+        let root = bridge.state_obj_id();
+        bridge.write_state("count", Value::Int(9)).expect("write");
+        assert_eq!(bridge.vm.path_version(root, "count"), 1);
+        assert_eq!(bridge.vm.path_version(root, "*"), 1);
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_attribution_c_class_global_only() {
+        let widget = make_test_widget("AttrC", vec![]);
+        let bridge = VmBridge::new(&widget).expect("bridge");
+        let seq0 = bridge.state_mutation_seq();
+        // C 类：堆对象出世（insert_heap_object）——全局 seq 前进，per-path
+        // 表零条目（新 id 无既有 dep 可指）。
+        let new_id = bridge.vm.insert_heap_object(crate::vm::types::ListData::<i32> {
+            elems: vec![1, 2],
+            storage: None,
+        });
+        assert!(bridge.state_mutation_seq() > seq0);
+        assert_eq!(bridge.vm.path_version(new_id, "*"), 0);
+        assert_eq!(bridge.vm.path_version(new_id, "x"), 0);
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_attribution_hashmap_native_gap_closed() {
+        // 普查发现闭合实证：auto.hashmap.set（shim_hashmap_insert_str）原
+        // 无任何 seq bump——memo 全局快路径陈旧命中窗口。直调 shim 断言
+        // 定点归因（exact+k+wildcard）与全局 seq 补齐。
+        let widget = make_test_widget("AttrMap", vec![]);
+        let bridge = VmBridge::new(&widget).expect("bridge");
+        let seq0 = bridge.state_mutation_seq();
+        let map_id = bridge.vm.insert_heap_object(
+            crate::vm::collections::SpecializedHashMap::new("str"),
+        );
+        let mut task = crate::vm::task::AutoTask::new(0, 4096, 0);
+        // 栈序（shim pop 序 value→key→map）：先 map_id、再 key、后 value。
+        task.ram.push_i32(map_id as i32);
+        let key_idx = bridge.vm.add_string(b"k".to_vec());
+        task.ram.push_string(key_idx as u32);
+        task.ram.push_i32(42);
+        crate::vm::native::shim_hashmap_insert_str(&mut task, &bridge.vm)
+            .expect("shim insert");
+        // 全局 seq 补齐（原盲区）+ 定点归因（A-able 按键名，exact+wildcard）。
+        assert!(bridge.state_mutation_seq() > seq0, "全局 seq 补 bump");
+        assert_eq!(bridge.vm.path_version(map_id, "k"), 1, "按键名 exact");
+        assert_eq!(bridge.vm.path_version(map_id, "*"), 1, "wildcard");
     }
 
     #[test]

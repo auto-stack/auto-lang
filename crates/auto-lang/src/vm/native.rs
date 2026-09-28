@@ -2794,7 +2794,7 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
     // PLAN-062: 列表元素突变（入口计——多成功出口统一覆盖，错误路径
     // 多 bump 一次是保守安全方向）。
-    vm.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+    // PLAN-047 T-03: bump 移至 list_id 出栈后定点归因（B 类）。
     let elem_nv = task.ram.pop_nv();
     // PLAN-604 T04: 取走元素槽份额。元素是 copy-on-load/构造回推的暂存
     // 拷贝(rc_push +1 记影子);本 shim 消费它,容器所有权由分支内 retain
@@ -2833,6 +2833,8 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     };
     let list_id = task.ram.pop_i32() as u64;
     let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id);
+    // PLAN-047 T-03: 定点归因（B 类）。
+    vm.bump_path(list_id, None);
 
     // First try heap_objects (ListData<i32> OR ListData<Value> from List<T>.new())
     if let Some(obj) = vm.get_heap_object(list_id) {
@@ -2921,8 +2923,9 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
     // PLAN-062: 列表元素突变（入口计，同 shim_list_push 口径）。
-    vm.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+    // PLAN-047 T-03: bump 移至 list_id 出栈后定点归因（B 类）。
     let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+    vm.bump_path(list_id, None);
 
 
     let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
@@ -3302,11 +3305,12 @@ pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
     // PLAN-062: 列表元素突变（入口计，同 shim_list_push 口径）。
-    vm.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+    // PLAN-047 T-03: bump 移至 list_id 出栈后定点归因（B 类）。
     let elem_nv = task.ram.pop_nv();
     let elem_val = nv_to_value(elem_nv);
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
+    vm.bump_path(list_id, None);
     let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id);
 
     if let Some(obj) = vm.get_heap_object(list_id) {
@@ -5184,6 +5188,10 @@ let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id);
                 Value::Int(auto_val::decode_i32(value_nv))
             };
             drop(strings);
+            // PLAN-047 T-03（普查发现闭合）：本 shim 原无任何状态面 seq
+            // bump（PLAN-062 遗漏，memo 全局快路径陈旧命中窗口）——补 B 类
+            // 定点归因（按键名 A-able，v1 落 exact+wildcard）。
+            vm.bump_path(map_id, Some(&key_str));
             let mut guard = obj.write().unwrap();
             if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
                 // Plan 419: 旧值 VmRef 释放;新值 VmRef retain(死区结算配平)。
