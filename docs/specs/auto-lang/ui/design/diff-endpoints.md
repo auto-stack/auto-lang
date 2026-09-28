@@ -39,6 +39,15 @@ ui_gen/rust.rs（a2r 臂——实现体单源 `diff::envelope`）+ 静态绑定�
 - **CR 容忍**：universal-newlines 行切分——`\r\n` 剥尾 `\r` 与 `\n`
   等价；行尾孤立 `\r` 同剥（split-on-LF 语义）；尾空元素吸收（尾换行
   不生幻行）。
+- **rows 面语义锚（PLAN-704 D-1 清偿成文）**：rows 投影=下游 011
+  过渡参考实现逐字段对齐——逐 hunk 切片无重复前导 ctx、变更行必在
+  位（纯增形 adds=N ⇔ rows 恰含 N 条 rk="add" 行；纯删同理）、切片
+  域不越 hunk 窗；多 hunk/纯增/纯删/删多增少四族与下游参考零漂移
+  （对账镜面=auto-edit `tests/evidence-p016-recon.json`，缺陷期漂移
+  证据在档）。**换位族=引擎时代语义**（非漂移）：degraded 退场、
+  锚点对齐多 hunk 正确脚本（620 行换位=310/310 双向对称+kept 记账
+  `len−dels==len−adds`），非过渡参考的降级单 replace 形（610/610）。
+  下游 golden 重定轮以此为期望基准。
 - **truncated 恒 false**（v1 保留字段）；**degraded 恒 false**（引擎
   时代无降级语义——下游 DP-200/桶积护栏整块 replace 形态随之退场）。
 - **错误形**（值不 raise）：文件不存在/读取失败 → `hunks:[], rows:[]`、
@@ -93,3 +102,9 @@ feature 双臂）+ catalog 9915-9917 + a2r/merged 臂（实现体单源
 `cargo test -p auto-lang plan703`：探针 7 个（time 族形态）——字段逐
 一断言（hunks 形/配对行三段/ctx 行/counts/err 形/CR 容忍/degraded=
 false）+ registry 直读 + 缺键/缺根/缺文件错误形。
+**PLAN-704 回归锚**：`plan704_rows` 三测试（多 hunk 21 行参考对照/
+删多增少 7 行序列/纯增删行存在性——D-1 四漂移族钉死）+
+`plan704_d2` 两测试（锚集单调/换位 310/310 对称——D-2）；703 探针
+盲区机理注记（八形态 golden=hunks/counts 面无换位形、探针 rows 面
+用 modify 形[变更前零 keep 域]——D-1/D-2 恰互漏，故回归组直接钉
+漂移族形状）。

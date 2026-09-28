@@ -38,7 +38,12 @@
    续编；零哈希器状态→跨运行稳定）。
 3. **patience 锚点分块**（中段 ≥512 行时）：两侧各恰出现一次的行值
    =强制 keep，切分中段为独立段——内容决定（同输入必同切分），并行
-   调度不改变切分。
+   调度不改变切分。**锚集经双坐标严格单调过滤后入场**（PLAN-704
+   D-2）：a 位由 distinct first-occurrence 天然严格递增，b 位经
+   patience LIS（O(n log n)）过滤——换位/移动族的块间序冲突锚弃用
+   （如 620 行换位形三块锚集择一 300 锚），段构建的单调游走假设由
+   此成立（缺陷史：未过滤时 cursor 倒退产生退化段，编辑脚本本身
+   错误——620/0 双向纯增实证）。
 4. **histogram per 段**：imara `Diff::compute_with(Histogram, …)`（自
    strip 公共前后缀）；段流按位拼接（段间 keep 隐式）。
 5. **hunk 归组**（下游 ⑤ 同构）：非 keep 间距 ≤2·ctx 双坐标同满→归
@@ -106,9 +111,26 @@ prune 包络（非 per-region diffing）：区域局部直比曾实测与全文�
 射（id 压缩到段内首现秩，O(段) 总量 O(n)，id 确定性保持）——上述表格
 即修复后数字。教训入档：**分块调用第三方引擎时，token 界必须随块压缩**。
 
+## rows 切片流位契约（PLAN-704 D-1）
+
+`GroupedHunk.fc/lc`=changes 向量下标（分组器输出契约）；`build_rows`
+按 keep+change 流下标切片——两套下标经 **per-change 流位映射
+（`chg_stream`）单源换算**（建流时记录每个 change 的流位，切片
+`lo/hi` 自映射推导）。切片语义=011 下游流位契约：逐 hunk 切片无
+重复、变更行必在位、切片域不越 hunk 窗（rows 投影规范锚=下游过渡
+参考实现，多 hunk/纯增/纯删/删多增少四族零漂移）。缺陷史：fc/lc
+被直接当流下标消费——变更行整块丢失（纯增形 adds=3 而零 add 行）、
+前导 ctx 重复（多 hunk 形 41 vs 21）、大文件 O(H²) 放大。
+
 ## 验证锚
 
 `cargo test -p auto-lang diff`：八形态 golden（纯增/纯删/改/行移动/
 空×2/单行大文件/全等，ctx=1 紧化逐字段）+双跑字节等+多 hunk 归组语
 义断言+窗投影采样一致性+并行≡串行+snapshot≡文本计数+multibyte
 refinement+dirs 11 项（见 diff-endpoints.md 联动）。
+**PLAN-704 回归组**（`diff::` 模块 30 项内）：plan704_d2（换位形
+锚集单调单元[三块择一 300 锚]+换位编辑脚本 310/310 双向对称+kept
+记账不变量 `len−dels==len−adds`）+plan704_rows（多 hunk rows=下游
+参考 21 行对照[含配对行三段标记样本]/删多增少 7 行逐行序列/纯增纯
+删变更行存在性）+plan703_supply_probes 7 项（registry 直读面零
+回归）。
