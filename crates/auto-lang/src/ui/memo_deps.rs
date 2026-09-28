@@ -17,8 +17,10 @@
 //!
 //! 降级（宁缺勿错，正确性下限 = memo 错误只允许"变慢"）：扫描到静态不可证
 //! 形态（Block/Call/方法调用/FStr 插值/ForLoop/Conditional/Component/
-//! Outlet/StyleBinding）→ 不建条目直接原始路径；bindings 非空或 widget 声明
-//! computed → 该 builder 上下文整体不 memo。
+//! Outlet/StyleBinding）→ 不建条目直接原始路径；bindings 非空 → 该 builder
+//! 上下文整体不 memo。PLAN-047 T-07（档 C SD-11）：widget 声明 computed
+//! **不再整体排除**——computed 读面由动态依赖录制闭合（桥读通道 + 引擎读
+//! 臂 + 信号网三通道，级联吸收见 vm_bridge `computed_signal_hit`）。
 
 use std::collections::{HashMap, VecDeque};
 use std::hash::{Hash, Hasher};
@@ -708,8 +710,9 @@ fn scan_expr(e: &Expr, slots: &mut Vec<Expr>) -> Result<(), &'static str> {
         | Expr::Char(_)
         | Expr::Str(_)
         | Expr::CStr(_) => Ok(()),
-        // 确定式解析形态（bindings 空 + computed 空的门下，求值 = 纯 state
-        // 读/物化/组合）——整表达式入槽，check 时经同一通道重解析。
+        // 确定式解析形态（bindings 空的门下，求值 = 纯 state 读/物化/组合/
+        // computed 信号[档 C 录制覆盖]）——整表达式入槽，check 时经同一通
+        // 道重解析。
         Expr::Ident(_) | Expr::Dot(_, _) | Expr::Unary(_, _) | Expr::Bina(_, _, _) => {
             slots.push(e.clone());
             Ok(())
