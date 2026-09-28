@@ -298,7 +298,13 @@ patience 实现=tails 数组+二分+前驱回溯（标准形，~25 行）；结�
     段零扰动）；commit b2f8761e0。
   - **archived**：本行所在提交——git mv 至 docs/plans/archive/ +
     status: archived + completion_kind: delivered。
-  - **cleaned**：待回填（guard+worktree×2/branch/组目录移除）。
+  - **cleaned**：git 侧全净实证——wt-guard clean ✓×2（lang-704/
+    auto-lang 与 lang-704/auto-down 双双零 reparse point，Rust-only
+    构建零 junction 晶格）；worktree 注销 ✓×2（auto-lang 仓+auto-down
+    仓[属主仓注销——组兄弟跨仓注册位]各除其一；git worktree list 零
+    lang-704 条目）/branch plan-704-dev 删 ✓（was b2f8761e0）/组目录
+    .wt/lang-704 rmdir ✓（.wt 列表零残留）。五检查点全落，
+    completion_kind=delivered。
   - **部署观察项（landing ≠ deployment）**：主检出 target/debug
     auto.exe 仍为 704 前构建（v0.4.2-2175-g5c558778f）——下游
     auto-edit PLAN-016 解阻三步之①（工具链重建 ≥704 交付）即消费
