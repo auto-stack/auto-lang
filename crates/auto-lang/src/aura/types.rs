@@ -949,6 +949,27 @@ pub enum AuraNode {
     /// Router outlet: renders matched child route (Plan 105)
     Outlet,
 
+    /// PLAN-046 T-04: explicit memo block — `memo (deps: .a, .b) { body }`
+    /// (`exact: true` optional). VM 渲染轨的用户声明缓存边界：deps 值指纹 ∪
+    /// 块内自动可证读槽（默认）或纯 deps（exact，语料签名担保）+ episode
+    /// 全同才命中复用。
+    MemoBlock {
+        /// Declared dependency expressions (value-fingerprinted per check)
+        deps: Vec<crate::ast::Expr>,
+
+        /// Pure-deps trust mode (staleness risk borne by the corpus author)
+        exact: bool,
+
+        /// Block body nodes
+        body: Vec<AuraNode>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
+
+        /// Stable debug ID assigned during extraction (Plan 273)
+        debug_id: Option<AuraNodeId>,
+    },
+
     /// Navigation link with routing (Plan 105)
     Link {
         /// Target path for router-link

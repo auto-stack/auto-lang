@@ -172,6 +172,15 @@ fn export_node(
             // Outlet has no A2UI equivalent; skip
             Ok(vec![])
         }
+        AuraNode::MemoBlock { body, .. } => {
+            // PLAN-046: memo block is a VM-render cache boundary — export its
+            // children as flat siblings (no A2UI equivalent for the boundary).
+            let mut out = Vec::new();
+            for c in body {
+                out.extend(export_node(c, id_gen, path)?);
+            }
+            Ok(out)
+        }
         AuraNode::Link {
             to: _,
             text: _,

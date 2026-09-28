@@ -15558,6 +15558,22 @@ impl<'a> Parser<'a> {
             return self.parse_view_conditional();
         }
 
+        // PLAN-046 T-04: explicit memo block — `memo (deps: .a, .b) { … }`.
+        // Intercepted only in the `memo (` paren form (single-token peek,
+        // same pattern as the dyn/paren probes below); a bare `memo` token
+        // without parens stays on the generic element path.
+        if self.cur.text.as_str() == "memo" {
+            let is_paren = {
+                let tok = self.lexer.next()?;
+                let is_lparen = tok.kind == TokenKind::LParen;
+                self.lexer.push_token(tok);
+                is_lparen
+            };
+            if is_paren {
+                return self.parse_view_memo_block();
+            }
+        }
+
         // Check for "outlet" keyword: router outlet (Plan 105)
         if self.is_kind(TokenKind::Outlet) {
             self.next();
@@ -16236,6 +16252,105 @@ impl<'a> Parser<'a> {
             lhs = Expr::Dot(Box::new(lhs), field);
         }
         Ok(lhs)
+    }
+
+    /// PLAN-046 T-04: explicit memo block — `memo (deps: .a, .b) { … }`,
+    /// `exact: true` optional. deps = comma-separated expressions（语料作者
+    /// 声明的依赖面，值指纹进命中条件）; exact = bool 字面量，选择纯 deps
+    /// 信任模式（canonical 档明示：陈旧风险由语料承担——正确性下限的唯一
+    /// 显式豁口）。
+    fn parse_view_memo_block(&mut self) -> AutoResult<ViewNode> {
+        let start_pos = self.cur.pos;
+        self.expect_ident("memo")?;
+        self.expect(TokenKind::LParen)?;
+        self.skip_empty_lines();
+
+        let mut deps: Vec<Expr> = Vec::new();
+        let mut exact = false;
+        while !self.is_kind(TokenKind::RParen) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RParen) {
+                break;
+            }
+            let key = self.cur.text.to_string();
+            self.next();
+            self.expect(TokenKind::Colon)?;
+            match key.as_str() {
+                "deps" => loop {
+                    self.skip_empty_lines();
+                    let e = self.parse_expr()?;
+                    match e {
+                        // `deps: .a, .b` 的逗号在表达式位置可能被解析为
+                        // Tuple（Plan 200）——拍平成逐项 deps。
+                        Expr::Tuple(items) => deps.extend(items),
+                        other => deps.push(other),
+                    }
+                    if self.is_kind(TokenKind::Comma) {
+                        self.next();
+                        self.skip_empty_lines();
+                        // 逗号后跟 `exact:` = deps 列表结束、下一头参开始。
+                        if self.is_kind(TokenKind::Ident) && self.cur.text.as_str() == "exact" {
+                            break;
+                        }
+                        continue;
+                    }
+                    break;
+                },
+                "exact" => {
+                    let b = self.cur.text.to_string();
+                    self.next();
+                    exact = match b.as_str() {
+                        "true" => true,
+                        "false" => false,
+                        _ => {
+                            return Err(SyntaxError::Generic {
+                                message: format!(
+                                    "memo exact 只接受 true/false 字面量，得到 `{}`",
+                                    b
+                                ),
+                                span: pos_to_span(self.prev.pos),
+                            }
+                            .into())
+                        }
+                    };
+                }
+                other => {
+                    return Err(SyntaxError::Generic {
+                        message: format!("memo 头参只接受 deps/exact，得到 `{}`", other),
+                        span: pos_to_span(self.prev.pos),
+                    }
+                    .into())
+                }
+            }
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+                self.skip_empty_lines();
+            }
+        }
+        self.expect(TokenKind::RParen)?;
+
+        // Block body: { node … }
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut body = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+            let node = self.parse_view_node()?;
+            body.push(node);
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(ViewNode::MemoBlock {
+            deps,
+            exact,
+            body,
+            span: Some((start_pos.pos, self.prev.pos.pos + self.prev.pos.len - start_pos.pos)),
+        })
     }
 
     /// Parse conditional in view: if condition { then_body } else { else_body }
@@ -21042,6 +21157,115 @@ style = 123
             parser.parse().is_err(),
             "call-shaped key must be a parse error"
         );
+    }
+
+    // ---- PLAN-046 T-04: memo block parsing ----
+
+    /// Parse a widget whose view root is a single memo block; return it.
+    fn plan046_parse_root_memo(src: &str) -> crate::ast::ui::ViewNode {
+        let code = format!("widget App {{
+  view {{
+{}
+  }}
+}}", src);
+        let mut parser =
+            Parser::from(&code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().expect("widget must parse");
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        widget.view.as_ref().unwrap().root.clone()
+    }
+
+    /// `memo (deps: .a, .b) { … }` → deps 拍平为两个表达式、exact=false。
+    #[test]
+    fn plan046_memo_block_parses_deps_and_body() {
+        let root = plan046_parse_root_memo(
+            "    memo (deps: .a, .b) {
+      text \"hi\"
+    }",
+        );
+        match root {
+            ViewNode::MemoBlock { deps, exact, body, .. } => {
+                assert_eq!(deps.len(), 2, "逗号列表拍平为逐项 deps");
+                assert!(!exact);
+                assert_eq!(body.len(), 1);
+                let src = format!("{:?}", deps);
+                assert!(src.contains("a") && src.contains("b"), "{}", src);
+            }
+            other => panic!("expected MemoBlock root, got {:?}", other),
+        }
+    }
+
+    /// `exact: true` 旗标与 `deps: .x, exact: true` 混排。
+    #[test]
+    fn plan046_memo_block_exact_and_mixed_params() {
+        let root = plan046_parse_root_memo(
+            "    memo (exact: true, deps: .x) {
+      text \"h\"
+    }",
+        );
+        match root {
+            ViewNode::MemoBlock { deps, exact, .. } => {
+                assert!(exact, "exact 旗标在册");
+                assert_eq!(deps.len(), 1);
+            }
+            other => panic!("expected MemoBlock, got {:?}", other),
+        }
+        let root = plan046_parse_root_memo(
+            "    memo (deps: .a, .b, exact: false) {
+      text \"h\"
+    }",
+        );
+        match root {
+            ViewNode::MemoBlock { deps, exact, .. } => {
+                assert!(!exact);
+                assert_eq!(deps.len(), 2, "deps 在 exact 前截断正确");
+            }
+            other => panic!("expected MemoBlock, got {:?}", other),
+        }
+    }
+
+    /// 未知头参 / 非 bool exact → 指名解析错误。
+    #[test]
+    fn plan046_memo_block_bad_params_error() {
+        for src in [
+            "memo (foo: 1) { text \"h\" }",
+            "memo (deps: .a, exact: \"yes\") { text \"h\" }",
+        ] {
+            let code = format!("widget App {{
+  view {{
+    {}
+  }}
+}}", src);
+            let mut parser =
+                Parser::from(&code).with_session(crate::session::CompilerSession::ui());
+            assert!(parser.parse().is_err(), "bad memo header must error: {}", src);
+        }
+    }
+
+    /// 嵌套形态：memo 块体内 for/if 照常解析。
+    #[test]
+    fn plan046_memo_block_body_nodes() {
+        let root = plan046_parse_root_memo(
+            "    memo (deps: .items) {
+      for x in .items {
+        text \"r\"
+      }
+    }",
+        );
+        match root {
+            ViewNode::MemoBlock { body, .. } => {
+                assert_eq!(body.len(), 1);
+                assert!(matches!(body[0], ViewNode::ForLoop { .. }), "体内 for 在册");
+            }
+            other => panic!("expected MemoBlock, got {:?}", other),
+        }
     }
 
     /// Missing expression after `key:` is a parse error (not a silent None).

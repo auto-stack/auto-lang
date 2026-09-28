@@ -834,6 +834,20 @@ impl<'a> AuraViewBuilder<'a> {
             AuraNode::Text(text_content) => {
                 self.convert_text_with(text_content, bindings)
             }
+            AuraNode::MemoBlock { body, .. } => {
+                // PLAN-046 T-04：untracked 路径（MCP sync/非 debug）memo 块
+                // = 子体直落原始渲染（不缓存；VM 桌面走 tracked 轨）。
+                let views: Vec<View<DynamicMessage>> = body.iter()
+                    .map(|n| self.convert_node_with(n, bindings))
+                    .collect();
+                if views.is_empty() {
+                    View::Empty
+                } else if views.len() == 1 {
+                    views.into_iter().next().unwrap()
+                } else {
+                    View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
+                }
+            }
             AuraNode::ForLoop { var, index, iterable, body, .. } => {
                 // Strip leading dot from iterable name (e.g., ".notes" → "notes")
                 let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
@@ -1258,6 +1272,7 @@ impl<'a> AuraViewBuilder<'a> {
             AuraNode::Conditional { debug_id, .. } => *debug_id,
             AuraNode::Component { debug_id, .. } => *debug_id,
             AuraNode::Link { debug_id, .. } => *debug_id,
+            AuraNode::MemoBlock { debug_id, .. } => *debug_id,
             _ => None,
         };
         if let Some(aura_id) = node_debug_id {
@@ -1289,6 +1304,11 @@ impl<'a> AuraViewBuilder<'a> {
                     );
                 }
                 self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings)
+            }
+            AuraNode::MemoBlock { deps, exact, body, .. } => {
+                // PLAN-046 T-04：显式 memo 块门（deps 值指纹 ∪ 自动可证读槽；
+                // exact = 纯 deps 信任模式）。
+                self.convert_memo_block(deps, *exact, body, path, id_map, probe, bindings)
             }
             AuraNode::Conditional { condition, then_body, else_body, .. } => {
                 let is_true = self.eval_condition_with(condition, bindings);
@@ -20452,7 +20472,7 @@ impl<'a> AuraViewBuilder<'a> {
         // 进入项体求值，其读面版本静态不可证；memo_ctx_ok 的 for 面）。
         if !bindings.is_empty() {
             self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
-            memo_for_diag("nested-bindings");
+            memo_diag("for_item", "nested-bindings");
             return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
         }
 
@@ -20476,7 +20496,7 @@ impl<'a> AuraViewBuilder<'a> {
             crate::ui::memo_deps::ScanVerdict::Slots(s) => s,
             crate::ui::memo_deps::ScanVerdict::Degrade(reason) => {
                 self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
-                memo_for_diag(&format!("scan:{}", reason));
+                memo_diag("for_item", &format!("scan:{}", reason));
                 return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
             }
         };
@@ -20512,26 +20532,26 @@ impl<'a> AuraViewBuilder<'a> {
             }
             let Some(kv) = self.resolve_expr_to_value(key_expr, &lb) else {
                 self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
-                memo_for_diag("key-eval");
+                memo_diag("for_item", "key-eval");
                 return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
             };
             let expand = |x: &Value| self.bridge.expand_heap_for_fingerprint(x);
             let Some(kfp) = crate::ui::memo_deps::fingerprint_value(&kv, &expand) else {
                 self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
-                memo_for_diag("key-fp");
+                memo_diag("for_item", "key-fp");
                 return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
             };
             if !seen.insert(kfp) {
                 // 重复 key → 整体降级（一次性诊断），绝不静默去重。
                 self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
-                memo_for_diag("dup-key");
+                memo_diag("for_item", "dup-key");
                 return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
             }
             let Some(ifp) = crate::ui::memo_deps::fingerprint_value(item, &expand) else {
                 // 项值超 4096 预算 → 整体降级（AC-03；展开不了的堆引用
                 // 绝不按含 id 指纹命中）。
                 self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
-                memo_for_diag("item-fp-budget");
+                memo_diag("for_item", "item-fp-budget");
                 return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
             };
             plans.push(KeyedPlan {
@@ -20681,9 +20701,8 @@ impl<'a> AuraViewBuilder<'a> {
         h.finish()
     }
 
-    /// PLAN-046 T-03：命中帧簿记重放——项内相对路径以当前基路径+[i] 前缀化
-    /// （重排后簿记落位正确），ForIter.index 补丁为当前迭代位。probe 面
-    /// （acceptance 事件索引/迭代上下文）与 id_map 面（inspector）两通道。
+    /// PLAN-046 T-03：命中帧簿记重放（keyed-for 项）——项内相对路径以当前
+    /// 基路径+[i] 前缀化，ForIter.index 补丁为当前迭代位。
     fn replay_for_item(
         probe: &mut BuildProbe,
         id_map: &mut DebugIdMap,
@@ -20692,14 +20711,233 @@ impl<'a> AuraViewBuilder<'a> {
         probe_rel: Vec<(Vec<u16>, crate::ui::debug::ProbeEntry)>,
         idmap_rel: Vec<(Vec<usize>, crate::aura::AuraNodeId)>,
     ) {
+        Self::replay_memo_subtree(probe, id_map, base_u16, Some(i), probe_rel, idmap_rel);
+    }
+    /// PLAN-046 T-04：显式 memo 块门（`memo (deps: .a, .b) { … }`）。
+    ///
+    /// 默认语义（保守）：deps 值指纹 ∪ 块内自动可证读槽
+    /// （`scan_memo_block_body`——Call/VM 代码形态不入槽不降级[其读面由
+    /// deps 声明覆盖]，ForLoop/Outlet/嵌套块 → 整块降级）；episode 翻转
+    /// 失效。`exact: true`（语料签名担保）：纯 deps 判定——不扫描不重解析
+    /// 读槽，唯一允许"纯 deps 判定"的形态（canonical 档明示陈旧风险语料
+    /// 自担）。块内组件节点照常走自身 memo 门（块条目与组件条目独立，不
+    /// 嵌套失效）。命中帧簿记：块内相对路径重放（上游结构变化时落位仍
+    /// 正确）。
+    #[allow(clippy::too_many_arguments)]
+    fn convert_memo_block(
+        &self,
+        deps: &[Expr],
+        exact: bool,
+        body: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        const SITE: u8 = crate::ui::memo_deps::MEMO_SITE_MEMO_BLOCK;
+        let probe_on = probe.is_enabled();
+        let base_len = path.len();
+
+        // 降级前置门：bindings 非空上下文（for 体内 memo 块——Q-02 保守
+        // 裁定：外层循环变量进入块内求值，其版本不随 deps）。
+        if !bindings.is_empty() {
+            self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
+            return self.render_memo_block_body(body, path, id_map, probe, bindings);
+        }
+
+        // 静态门：默认语义扫描（exact 跳过——作者签名担保读面 ⊆ deps）。
+        let slots = if exact {
+            Vec::new()
+        } else {
+            match crate::ui::memo_deps::scan_memo_block_body(body, self.widget_registry) {
+                crate::ui::memo_deps::ScanVerdict::Slots(s) => s,
+                crate::ui::memo_deps::ScanVerdict::Degrade(reason) => {
+                    self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
+                    memo_diag("memo_block", reason);
+                    return self.render_memo_block_body(body, path, id_map, probe, bindings);
+                }
+            }
+        };
+        let key = crate::ui::memo_deps::MemoKey {
+            ctx_state_obj: self.memo_ctx_obj(),
+            site: SITE,
+            skeleton_fp: crate::ui::memo_deps::memo_block_site_fingerprint(
+                deps,
+                exact,
+                body,
+                self.widget_registry,
+            ),
+            probe_on,
+            item_key: None,
+        };
+        let seq = self.bridge.state_mutation_seq();
+        let gfp = self.memo_episode_fp();
+        let cached = self.bridge.with_memo_cache(|c| {
+            c.lookup(&key).map(|e| {
+                (
+                    e.seq_at_fill,
+                    e.globals_fp,
+                    e.dyn_fp,
+                    e.product.clone(),
+                    e.probe_replay.clone(),
+                    e.idmap_replay.clone(),
+                    e.read_exprs.clone(),
+                )
+            })
+        });
+        if let Some((seq0, gfp0, dyn0, product, prel, irel, slots0)) = cached {
+            let hit = if seq0 == seq && gfp0 == gfp {
+                // 快速路径：fill 后全局 seq 未动 ∧ episode 同。
+                true
+            } else if gfp0 == gfp {
+                // 慢路径：deps 值指纹恒比；默认语义再加读槽重解析。
+                match self.memo_slots_fp(deps, bindings) {
+                    Some(dfp) if exact => {
+                        Some(Self::memo_combine_block(dfp, None)) == dyn0
+                    }
+                    Some(dfp) => self
+                        .memo_slots_fp(&slots0, bindings)
+                        .map(|sfp| Some(Self::memo_combine_block(dfp, Some(sfp))) == dyn0)
+                        .unwrap_or(false),
+                    None => false,
+                }
+            } else {
+                false
+            };
+            if hit {
+                self.bridge.with_memo_cache(|c| c.note_hit_site(SITE));
+                let base_u16: Vec<u16> =
+                    path[..base_len].iter().map(|&x| x as u16).collect();
+                Self::replay_memo_subtree(probe, id_map, &base_u16, None, prel, irel);
+                return product;
+            }
+            self.bridge.with_memo_cache(|c| c.note_miss_site(SITE));
+        }
+
+        // fill：原始渲染 + 簿记相对快照 + 入缓存。
+        let out = self.render_memo_block_body(body, path, id_map, probe, bindings);
+        let base_u16: Vec<u16> = path[..base_len].iter().map(|&x| x as u16).collect();
+        let base_us: Vec<usize> = path[..base_len].to_vec();
+        let prel_rel: Vec<(Vec<u16>, crate::ui::debug::ProbeEntry)> = probe
+            .snapshot_prefix(&base_u16)
+            .into_iter()
+            .map(|(mut p, e)| {
+                p.drain(..base_u16.len());
+                (p, e)
+            })
+            .collect();
+        let irel_rel: Vec<(Vec<usize>, crate::aura::AuraNodeId)> = id_map
+            .snapshot_prefix(&base_us)
+            .into_iter()
+            .map(|(mut p, e)| {
+                p.drain(..base_us.len());
+                (p, e)
+            })
+            .collect();
+        match self.memo_slots_fp(deps, bindings) {
+            Some(dfp) => {
+                let sfp = if exact {
+                    None
+                } else {
+                    self.memo_slots_fp(&slots, bindings)
+                };
+                if exact || sfp.is_some() {
+                    let entry = crate::ui::memo_deps::MemoEntry {
+                        seq_at_fill: self.bridge.state_mutation_seq(),
+                        globals_fp: gfp,
+                        read_exprs: slots,
+                        dyn_fp: Some(Self::memo_combine_block(dfp, sfp)),
+                        product: out.clone(),
+                        probe_replay: prel_rel,
+                        idmap_replay: irel_rel,
+                        replay_relative: true,
+                    };
+                    self.bridge.with_memo_cache(|c| c.insert(key, entry));
+                } else {
+                    // 存侧读槽指纹失败（不可展开堆引用）→ 不入缓存。
+                    self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
+                }
+            }
+            None => {
+                // deps 不可内容指纹（堆引用展开不了）→ 不入缓存。
+                self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
+            }
+        }
+        out
+    }
+
+    /// memo 块体原始渲染（fill 与降级回退共用）：镜像 Conditional 臂的
+    /// 展开规则（单子直出/多子包 Column/[bi] 仅多子时入路径）。
+    fn render_memo_block_body(
+        &self,
+        body: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let body_len = body.len();
+        let child_views: Vec<View<DynamicMessage>> = body
+            .iter()
+            .enumerate()
+            .map(|(bi, n)| {
+                if body_len > 1 {
+                    path.push(bi);
+                }
+                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
+                if body_len > 1 {
+                    path.pop();
+                }
+                v
+            })
+            .collect();
+        if child_views.is_empty() {
+            View::Empty
+        } else if child_views.len() == 1 {
+            child_views.into_iter().next().unwrap()
+        } else {
+            View::Column {
+                children: child_views,
+                spacing: 0,
+                padding: 0,
+                style: None,
+                onclick: None,
+                on_right_click: None,
+            }
+        }
+    }
+
+    /// memo 块慢路径动态指纹组合：deps 值指纹 ∧ [读槽指纹]（exact=None）。
+    fn memo_combine_block(deps_fp: u64, slots_fp: Option<u64>) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        "memo_block".hash(&mut h);
+        deps_fp.hash(&mut h);
+        slots_fp.hash(&mut h);
+        h.finish()
+    }
+
+    /// PLAN-046 T-04/T-03 共用：子树命中帧簿记重放。`extra_seg` = 追加段
+    /// （keyed-for 项 = Some(i)——同时补丁 ForIter.index；memo 块 = None——
+    /// 存量 for_context 保持 fill 时刻索引）。
+    fn replay_memo_subtree(
+        probe: &mut BuildProbe,
+        id_map: &mut DebugIdMap,
+        base_u16: &[u16],
+        extra_seg: Option<usize>,
+        probe_rel: Vec<(Vec<u16>, crate::ui::debug::ProbeEntry)>,
+        idmap_rel: Vec<(Vec<usize>, crate::aura::AuraNodeId)>,
+    ) {
         let mut prefixed: Vec<(Vec<u16>, crate::ui::debug::ProbeEntry)> =
             Vec::with_capacity(probe_rel.len());
         for (rel, mut e) in probe_rel {
-            if let Some(fc) = e.for_context.as_mut() {
+            if let (Some(i), Some(fc)) = (extra_seg, e.for_context.as_mut()) {
                 fc.index = Some(i);
             }
             let mut abs = base_u16.to_vec();
-            abs.push(i as u16);
+            if let Some(i) = extra_seg {
+                abs.push(i as u16);
+            }
             abs.extend_from_slice(&rel);
             prefixed.push((abs, e));
         }
@@ -20708,7 +20946,9 @@ impl<'a> AuraViewBuilder<'a> {
             Vec::with_capacity(idmap_rel.len());
         for (rel, id) in idmap_rel {
             let mut abs: Vec<usize> = base_u16.iter().map(|&x| x as usize).collect();
-            abs.push(i);
+            if let Some(i) = extra_seg {
+                abs.push(i);
+            }
             abs.extend_from_slice(&rel);
             idabs.push((abs, id));
         }
@@ -20716,18 +20956,18 @@ impl<'a> AuraViewBuilder<'a> {
     }
 }
 
-/// PLAN-046 T-03：keyed-for 降级一次性诊断（正确性相关降级作者应知情；
+/// PLAN-046：keyed-for / memo 块降级一次性诊断（正确性相关降级作者应知情；
 /// AUTO_MEMO_DIAG=1 时每次都打）。进程级一次，避免日志风暴。
-fn memo_for_diag(reason: &str) {
+fn memo_diag(label: &str, reason: &str) {
     use std::sync::atomic::{AtomicBool, Ordering};
     static FOR_DIAG_SHOWN: AtomicBool = AtomicBool::new(false);
     if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
-        eprintln!("[MEMO-DIAG] for_item DEGRADE reason={reason}");
+        eprintln!("[MEMO-DIAG] {label} DEGRADE reason={reason}");
         return;
     }
     if !FOR_DIAG_SHOWN.swap(true, Ordering::Relaxed) {
         eprintln!(
-            "[PLAN-046] keyed-for 降级原始路径（reason={reason}，本进程仅提示一次）；AUTO_MEMO_DIAG=1 可看每次"
+            "[PLAN-046] {label} 降级原始路径（reason={reason}，本进程仅提示一次）；AUTO_MEMO_DIAG=1 可看每次"
         );
     }
 }
@@ -21043,8 +21283,9 @@ mod plan045_memo_tests {
     use crate::aura::{AuraStateDef, AuraWidget};
 
     /// MENUBAR_OPEN 是进程级全局——本模块 menubar 测试并发翻转会使
-    /// globals_fp 跨 build 漂移（slow 路径 gfp 门误 miss）。模块内互斥。
-    static PLAN045_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    /// globals_fp 跨 build 漂移（slow 路径 gfp 门误 miss）。模块内互斥；
+    /// PLAN-046 episode 测试同锁（跨模块共享全局翻转面）。
+    pub(crate) static PLAN045_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// 本模块本地 widget 构造（tests::make_test_widget 私有不可达）。
     fn make_memo_widget(name: &str, state_vars: Vec<AuraStateDef>) -> AuraWidget {
@@ -21628,6 +21869,8 @@ mod plan046_for_memo_tests {
     /// fill 后无写重建 → 快速路径全命中、产物一致（AC-02 基础面）。
     #[test]
     fn plan046_keyed_fill_then_fast_hit() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -21649,6 +21892,8 @@ mod plan046_for_memo_tests {
     /// AC-02 重排：键集不变序变 → 全部命中；输出序恒随 iterable 当前序。
     #[test]
     fn plan046_keyed_reorder_all_hit_output_order() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -21676,6 +21921,8 @@ mod plan046_for_memo_tests {
     /// AC-02 单项内容修改（key 稳定）：仅该项慢路径 miss，其余命中。
     #[test]
     fn plan046_keyed_single_modify_only_item_misses() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -21698,6 +21945,8 @@ mod plan046_for_memo_tests {
     /// AC-02 增删：新增项 fill（新键新条目）、删除项靠 LRU 闲置，存续全命中。
     #[test]
     fn plan046_keyed_add_remove_only_delta() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -21728,6 +21977,8 @@ mod plan046_for_memo_tests {
     /// 产物依赖位置时正确性优先，宁可多重求值）。
     #[test]
     fn plan046_keyed_index_declared_reorder_misses() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -21754,6 +22005,8 @@ mod plan046_for_memo_tests {
     /// AC-03 重复 key：整体降级原始路径（绝不静默去重），产物与非 key 化一致。
     #[test]
     fn plan046_dup_key_degrades_to_raw() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -21775,6 +22028,8 @@ mod plan046_for_memo_tests {
     /// AC-03 key 求值失败（读缺失字段）：整体降级，行为与非 key 化一致。
     #[test]
     fn plan046_key_eval_fail_degrades_to_raw() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -21793,6 +22048,8 @@ mod plan046_for_memo_tests {
     /// AC-03 项值超指纹预算（4096 节点）：整体降级，key 可解析也不入缓存。
     #[test]
     fn plan046_item_fp_budget_degrades_to_raw() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         let mut big = auto_val::Obj::new();
@@ -21821,6 +22078,8 @@ mod plan046_for_memo_tests {
     /// （T-01 D-4 保守裁定），渲染行为与原始一致。
     #[test]
     fn plan046_nested_keyed_for_degrades() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge.write_state("outers", Value::Array(auto_val::Array::from(vec![Value::Int(1)]))).unwrap();
@@ -21848,6 +22107,8 @@ mod plan046_for_memo_tests {
     /// probe 面——ForIter.index 补丁到当前迭代位）。
     #[test]
     fn plan046_keyed_hit_replays_probe_bookkeeping() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -21880,5 +22141,320 @@ mod plan046_for_memo_tests {
             "重排命中帧 ForIter.index 补丁在 [0,1] 内：{:?}",
             hit_for
         );
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ── PLAN-046: 显式 memo 块单测（AC-04/AC-05）──
+#[cfg(test)]
+mod plan046_memo_block_tests {
+    use super::*;
+    use crate::ast::Type;
+    use crate::aura::{AuraStateDef, AuraWidget};
+
+
+
+    fn block_widget() -> AuraWidget {
+        AuraWidget {
+            named_views: Vec::new(),
+            actions: None,
+            name: "BlockApp".to_string(),
+            state_vars: vec![
+                AuraStateDef {
+                    name: "count".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(0),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "other".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(0),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "hidden".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(0),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "data".to_string(),
+                    type_info: Type::List(Box::new(Type::Int)),
+                    initial: Expr::Array(vec![]),
+                    decorators: vec![],
+                },
+            ],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            timers: Vec::new(),
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        }
+    }
+
+    fn block_node(deps: Vec<Expr>, exact: bool, body: Vec<AuraNode>) -> AuraNode {
+        AuraNode::MemoBlock {
+            deps,
+            exact,
+            body,
+            span: None,
+            debug_id: None,
+        }
+    }
+
+    fn state_text(state: &str) -> AuraNode {
+        AuraNode::element("text").with_prop("text", Expr::Ident(format!(".{}", state).into()))
+    }
+
+    fn tracked_build(bridge: &VmBridge, node: &AuraNode) -> String {
+        let (v, _idmap, _probe) = AuraViewBuilder::new(bridge, "BlockApp").build_with_debug(node);
+        format!("{v:?}")
+    }
+
+    fn counts(bridge: &VmBridge) -> (u64, u64, u64, usize) {
+        bridge.with_memo_cache(|c| (c.hits, c.misses, c.degraded, c.len()))
+    }
+
+    /// AC-04 默认语义：deps 变化失效、块内读槽变化失效、无关写慢路径命中、
+    /// 无写快速路径命中。
+    #[test]
+    fn plan046_block_default_deps_and_slot_semantics() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = block_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        // 块体读 .count（自动读槽）；deps 声明 .other。
+        let node = block_node(
+            vec![Expr::Ident(".other".into())],
+            false,
+            vec![state_text("count")],
+        );
+
+        let k0 = tracked_build(&bridge, &node); // fill
+        let (h0, m0, d0, n0) = counts(&bridge);
+        assert_eq!((h0, m0, d0), (0, 0, 0), "fill 不计数");
+        assert_eq!(n0, 1, "块条目在册");
+
+        // 无写重建 → 快速路径。
+        let k1 = tracked_build(&bridge, &node);
+        let (h1, _, _, _) = counts(&bridge);
+        assert_eq!(h1 - h0, 1, "无写快路径命中");
+        assert_eq!(k0, k1, "快路径产物一致");
+
+        // 块内读槽变化（.count）→ 失效重求值，产物更新（AC-04）。
+        bridge.write_state("count", auto_val::Value::Int(7)).unwrap();
+        let k2 = tracked_build(&bridge, &node);
+        let (_, m1, _, _) = counts(&bridge);
+        assert_eq!(m1 - m0, 1, "读槽变化失效一次");
+        assert!(k2.contains("7"), "产物反映新 count：{}", k2);
+
+        // deps 变化（.other）→ 失效重求值（AC-04）。
+        bridge.write_state("other", auto_val::Value::Int(3)).unwrap();
+        let _ = tracked_build(&bridge, &node);
+        let (_, m2, _, _) = counts(&bridge);
+        assert_eq!(m2 - m1, 1, "deps 变化失效一次");
+
+        // 无关写（.hidden）→ 慢路径命中（deps+读槽全同）。
+        bridge.write_state("hidden", auto_val::Value::Int(9)).unwrap();
+        let _ = tracked_build(&bridge, &node);
+        let (h2, _, _, _) = counts(&bridge);
+        assert!(h2 > h1, "无关写慢路径命中（deps∪读槽全同）");
+    }
+
+    /// AC-05 `exact: true` 纯 deps 判定：块内隐藏读变化**不失效**（语料
+    /// 签名担保的陈旧自担面）；deps 变化照常失效。
+    #[test]
+    fn plan046_block_exact_pure_deps_judgment() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = block_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        let node = block_node(
+            vec![Expr::Ident(".other".into())],
+            true, // exact
+            vec![state_text("hidden")], // 隐藏读不在 deps——作者担保其不产陈旧
+        );
+
+        let _ = tracked_build(&bridge, &node); // fill
+        let (h0, m0, _, _) = counts(&bridge);
+
+        // 隐藏读变化 → 纯 deps 判定 → 命中（陈旧由语料自担——AC-05 契约）。
+        bridge.write_state("hidden", auto_val::Value::Int(5)).unwrap();
+        let _ = tracked_build(&bridge, &node);
+        let (h1, m1, _, _) = counts(&bridge);
+        assert_eq!((h1 - h0, m1 - m0), (1, 0), "exact 纯 deps：隐藏读变化仍命中");
+
+        // deps 变化 → 失效重求值。
+        bridge.write_state("other", auto_val::Value::Int(2)).unwrap();
+        let _ = tracked_build(&bridge, &node);
+        let (_, m2, _, _) = counts(&bridge);
+        assert_eq!(m2 - m1, 1, "exact 模式 deps 变化照常失效");
+    }
+
+    /// AC-04/05：默认语义下 Call 形态 prop（charts path 场景）不降级不入槽
+    /// ——deps 变化失效重建、无关写命中。
+    #[test]
+    fn plan046_block_call_prop_covered_by_deps() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = block_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        // 模拟 charts path：`chart (path: compute(.data))`——Call 形态 prop。
+        let call = Expr::Call(crate::ast::Call {
+            name: Box::new(Expr::Ident("compute".into())),
+            args: crate::ast::Args {
+                args: vec![crate::ast::Arg::Pos(Expr::Ident(".data".into()))],
+            },
+            ret: Type::Unknown,
+            type_args: Vec::new(),
+            generic_args: Vec::new(),
+            pos: None,
+        });
+        let node = block_node(
+            vec![Expr::Ident(".data".into())],
+            false,
+            vec![AuraNode::element("chart").with_prop("path", call)],
+        );
+
+        let _ = tracked_build(&bridge, &node); // fill（Call 不降级）
+        let (h0, m0, d0, n0) = counts(&bridge);
+        assert_eq!((h0, m0, d0), (0, 0, 0), "Call 形态由 deps 覆盖，fill 无降级");
+        assert_eq!(n0, 1, "块条目在册");
+
+        // deps（.data）变化 → 失效重建。
+        bridge
+            .write_state("data", Value::Array(auto_val::Array::from(vec![Value::Int(1)])))
+            .unwrap();
+        let _ = tracked_build(&bridge, &node);
+        let (_, m1, _, _) = counts(&bridge);
+        assert_eq!(m1, 1, "deps 变化失效");
+
+        // 无关写 → 慢路径命中。
+        bridge.write_state("hidden", auto_val::Value::Int(1)).unwrap();
+        let _ = tracked_build(&bridge, &node);
+        let (h1, _, _, _) = counts(&bridge);
+        assert_eq!(h1, 1, "无关写慢路径命中");
+    }
+
+    /// Q-02 保守面：默认语义块内含 ForLoop → 整块降级原始路径；
+    /// `exact` 块内 ForLoop（deps 覆盖 iterable）→ 可缓存。
+    #[test]
+    fn plan046_block_nested_for_degrade_and_exact_override() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = block_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        let inner = AuraNode::ForLoop {
+            var: "r".to_string(),
+            index: None,
+            iterable: ".data".to_string(),
+            key_expr: None,
+            body: vec![AuraNode::element("text").with_prop(
+                "text",
+                Expr::Dot(Box::new(Expr::Ident("r".into())), "x".into()),
+            )],
+            span: None,
+            debug_id: None,
+        };
+
+        // 默认语义：嵌套 for → 降级，不建条目。
+        let default_block = block_node(vec![Expr::Ident(".data".into())], false, vec![inner.clone()]);
+        let _ = tracked_build(&bridge, &default_block);
+        let (_, _, d0, n0) = counts(&bridge);
+        assert_eq!((d0, n0), (1, 0), "块内 ForLoop 默认降级");
+
+        // exact：作者担保（iterable ⊆ deps）→ 可缓存。
+        let exact_block = block_node(vec![Expr::Ident(".data".into())], true, vec![inner]);
+        let _ = tracked_build(&bridge, &exact_block);
+        let (h0, _, d1, n1) = counts(&bridge);
+        assert_eq!((d1 - d0, n1), (0, 1), "exact 块内 ForLoop 可缓存");
+
+        // 无写重建 → 快速命中。
+        let _ = tracked_build(&bridge, &exact_block);
+        let (h1, _, _, _) = counts(&bridge);
+        assert_eq!(h1 - h0, 1, "exact 块快路径命中");
+    }
+
+    /// untracked 路径（build/MCP sync）memo 块 = 子体直落原始渲染，缓存
+    /// 完全惰性（零条目零计数）。
+    #[test]
+    fn plan046_block_untracked_passthrough_inert() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = block_widget();
+        let bridge = VmBridge::new(&widget).unwrap();
+        let node = block_node(
+            vec![Expr::Ident(".other".into())],
+            false,
+            vec![state_text("count")],
+        );
+
+        let builder = AuraViewBuilder::new(&bridge, "BlockApp");
+        let v = builder.build(&node);
+        let s = format!("{v:?}");
+        assert!(s.contains("0"), "untracked 原始渲染在册（count 初值 0）：{}", s);
+        bridge.with_memo_cache(|c| {
+            assert_eq!((c.len(), c.hits, c.misses, c.degraded), (0, 0, 0, 0), "untracked 缓存惰性");
+        });
+    }
+
+    /// per-site 分解计数：memo 块门走 site_counts[MEMO_SITE_MEMO_BLOCK]。
+    #[test]
+    fn plan046_block_site_counts() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = block_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        let node = block_node(
+            vec![Expr::Ident(".other".into())],
+            false,
+            vec![state_text("count")],
+        );
+
+        let _ = tracked_build(&bridge, &node); // fill
+        bridge.write_state("count", auto_val::Value::Int(4)).unwrap();
+        let _ = tracked_build(&bridge, &node); // miss
+        let _ = tracked_build(&bridge, &node); // fast hit
+        bridge.with_memo_cache(|c| {
+            let sc = &c.site_counts[&crate::ui::memo_deps::MEMO_SITE_MEMO_BLOCK];
+            assert_eq!((sc.hits, sc.misses), (1, 1), "per-site 分解在册");
+        });
+    }
+
+    /// AC-04 episode 翻转：menubar_open 翻面 → 慢路径 miss（互斥防并发翻转）。
+    #[test]
+    fn plan046_block_episode_flip_miss() {
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = block_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        let node = block_node(
+            vec![Expr::Ident(".other".into())],
+            false,
+            vec![state_text("count")],
+        );
+
+        // menubar_open 是跨测试遗留全局——先归 None 再 fill，翻面才确定。
+        crate::ui::action_config::set_menubar_open(None);
+        let _ = tracked_build(&bridge, &node); // fill（open=None）
+        let (h0, m0, _, _) = counts(&bridge);
+        crate::ui::action_config::set_menubar_open(Some("file".to_string()));
+        let _ = tracked_build(&bridge, &node);
+        crate::ui::action_config::set_menubar_open(None);
+        let (h1, m1, _, _) = counts(&bridge);
+        assert_eq!((h1 - h0, m1 - m0), (0, 1), "episode 翻面失效一次");
     }
 }

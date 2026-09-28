@@ -275,6 +275,14 @@ impl WidgetValidator {
             ViewNode::Outlet => {
                 // Router outlet - no children or props to validate
             }
+            ViewNode::MemoBlock { deps, exact: _, body, .. } => {
+                // PLAN-046: memo block — deps 是任意表达式（schema 外），体
+                // 递归校验。
+                let _ = deps;
+                for child in body {
+                    self.validate_view_tree(child, errors);
+                }
+            }
             ViewNode::Link { to, text, href, children, .. } => {
                 // Navigation link - validate that 'to' is valid
                 let _ = (to, text, href); // Suppress unused warning

@@ -276,6 +276,23 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
             output.push_str(&format!("Outlet"));
         }
 
+        // PLAN-046: explicit memo block — serialize deps shapes + body.
+        AuraNode::MemoBlock { deps, exact, body, .. } => {
+            output.push_str(&format!("MemoBlock {{\n"));
+            output.push_str(&format!("{}    exact: {},\n", ind, exact));
+            output.push_str(&format!("{}    deps: [\n", ind));
+            for d in deps {
+                output.push_str(&format!("{}      ", ind));
+                serialize_expr(d, output);
+                output.push_str(",\n");
+            }
+            output.push_str(&format!("{}    ],\n", ind));
+            for c in body {
+                serialize_node(c, output, indent + 1);
+            }
+            output.push_str(&format!("{}}}\n", ind));
+        }
+
         AuraNode::Link { to, text, href, children, .. } => {
             output.push_str(&format!("Link {{\n"));
             output.push_str(&format!("{}    to: \"{}\",\n", ind, to));

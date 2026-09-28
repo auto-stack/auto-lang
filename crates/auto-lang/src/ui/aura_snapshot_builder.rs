@@ -281,6 +281,14 @@ impl<'a> AuraSnapshotBuilder<'a> {
                 out.push_str(&format!("{}/* outlet */\n", pad));
             }
 
+            // PLAN-046: memo block — snapshot sees through the boundary.
+            AuraNode::MemoBlock { body, .. } => {
+                out.push_str(&format!("{}/* memo */\n", pad));
+                for c in body {
+                    self.traverse(c, indent + 1, out);
+                }
+            }
+
             AuraNode::Link { to, text, .. } => {
                 out.push_str(&format!("{}link \"{}\" -> {}\n", pad, text, to));
             }

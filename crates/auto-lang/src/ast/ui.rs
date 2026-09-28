@@ -664,6 +664,26 @@ pub enum ViewNode {
     /// Router outlet: renders the matched child route (Plan 105)
     Outlet,
 
+    /// PLAN-046 T-04: explicit memo block — `memo (deps: .a, .b) { body }`
+    /// (`exact: true` optional). A user-declared cache boundary for the VM
+    /// render track: the product re-renders only when deps values, the
+    /// block's auto-provable read slots (default mode), or the global
+    /// episode change. `exact` opts into pure-deps judgment (author-signed).
+    MemoBlock {
+        /// Declared dependency expressions (value-fingerprinted per check)
+        deps: Vec<Expr>,
+
+        /// Pure-deps trust mode: skip slot re-resolution (staleness risk
+        /// borne by the corpus author — canonical spec documents this)
+        exact: bool,
+
+        /// Block body nodes
+        body: Vec<ViewNode>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
+    },
+
     /// Navigation link: anchor with routing (Plan 105)
     Link {
         /// Target path for router-link (e.g., "/user/123")

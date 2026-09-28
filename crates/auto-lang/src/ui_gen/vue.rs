@@ -8708,6 +8708,16 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 Ok(format!("{}<router-view />\n", ind))
             }
 
+            // PLAN-046: memo is a VM-track cache boundary — Vue diffing is
+            // incremental on its own; emit the block's children inline.
+            AuraNode::MemoBlock { body, .. } => {
+                let mut out = String::new();
+                for c in body {
+                    out.push_str(&self.node_to_html(c, indent)?);
+                }
+                Ok(out)
+            }
+
             AuraNode::Link { to, text, href, children, .. } => {
                 // Handle different link types:
                 // 1. External link with href: <a href="...">
@@ -9229,6 +9239,15 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             // Plan 105: Router outlet and link
             AuraNode::Outlet => {
                 format!("{}outlet\n", ind)
+            }
+
+            // PLAN-046: memo block — emit children (boundary is VM-track only).
+            AuraNode::MemoBlock { body, .. } => {
+                let mut result = String::new();
+                for c in body {
+                    result.push_str(&self.node_to_auto_code(c, indent));
+                }
+                result
             }
 
             AuraNode::Link { to, text, href, children, .. } => {

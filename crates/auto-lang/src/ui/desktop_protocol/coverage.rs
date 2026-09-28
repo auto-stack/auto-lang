@@ -437,6 +437,12 @@ fn scan_node(node: &AuraNode, scan: &mut ViewScan) {
         AuraNode::Outlet => {
             scan.tags.insert("outlet".into());
         }
+        AuraNode::MemoBlock { body, .. } => {
+            scan.tags.insert("memo".into());
+            for c in body {
+                scan_node(c, scan);
+            }
+        }
         AuraNode::Link { .. } => {
             scan.tags.insert("link".into());
         }

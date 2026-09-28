@@ -1210,6 +1210,20 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
         }
         // Plan 105: Router outlet and link
         ViewNode::Outlet => Ok(AuraNode::Outlet),
+        // PLAN-046 T-04: explicit memo block carries deps through unchanged
+        // (they are evaluated per-frame by the AVB memo gate, not extracted).
+        ViewNode::MemoBlock { deps, exact, body, span } => {
+            let aura_body: Vec<AuraNode> = body.iter()
+                .map(|c| extract_view_node(c))
+                .collect::<ExtractResult<_>>()?;
+            Ok(AuraNode::MemoBlock {
+                deps: deps.clone(),
+                exact: *exact,
+                body: aura_body,
+                debug_id: None,
+                span: *span,
+            })
+        }
         ViewNode::Link { to, text, href, children, span } => {
             let aura_children: Vec<AuraNode> = children.iter()
                 .map(|c| extract_view_node(c))
@@ -1328,6 +1342,20 @@ fn expand_fragment_node(
             })
         }
         // Pass through other node types unchanged
+        // PLAN-046 T-04: memo-block deps carry param references in inlined
+        // view fns — substitute like any other expr (the catch-all clone
+        // below would leave stale param refs behind).
+        ViewNode::MemoBlock { deps, exact, body, span } => {
+            let new_body: Vec<ViewNode> = body.iter()
+                .map(|c| expand_fragment_node(c, subs))
+                .collect::<ExtractResult<_>>()?;
+            Ok(ViewNode::MemoBlock {
+                deps: deps.iter().map(|e| substitute_expr(e, subs)).collect(),
+                exact: *exact,
+                body: new_body,
+                span: *span,
+            })
+        }
         _ => Ok(node.clone()),
     }
 }
@@ -1653,6 +1681,17 @@ fn assign_node_ids_recursive(
         }
         AuraNode::Outlet => {
             // Outlet doesn't get a debug_id
+        }
+        AuraNode::MemoBlock { deps: _, exact: _, body, span, debug_id } => {
+            *debug_id = Some(id);
+            span_map.insert(id, SpanInfo {
+                span: *span,
+                aura_tag: "memo".to_string(),
+                user_id: None,
+            });
+            for child in body.iter_mut() {
+                assign_node_ids_recursive(child, next_id, span_map);
+            }
         }
         AuraNode::Link { to: _, text: _, href: _, children, span, debug_id } => {
             *debug_id = Some(id);

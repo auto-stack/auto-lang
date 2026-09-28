@@ -486,6 +486,7 @@ fn scan_item_node(
         }
         AuraNode::ForLoop { .. } => Err("for_loop"),
         AuraNode::Outlet => Err("outlet"),
+        AuraNode::MemoBlock { .. } => Err("memo_block"),
         AuraNode::Component { name, props, children, .. } => {
             let Some(reg) = registry else {
                 return Err("component");
@@ -569,6 +570,7 @@ fn scan_node(node: &AuraNode, slots: &mut Vec<Expr>) -> Result<(), &'static str>
         AuraNode::Conditional { .. } => Err("conditional"),
         AuraNode::Component { .. } => Err("component"),
         AuraNode::Outlet => Err("outlet"),
+        AuraNode::MemoBlock { .. } => Err("memo_block"),
         AuraNode::Link { children, .. } => {
             for c in children {
                 scan_node(c, slots)?;
@@ -770,6 +772,123 @@ fn skeleton_children(children: &[AuraNode], h: &mut std::collections::hash_map::
             }
         }
     }
+}
+
+/// PLAN-046 T-04：显式 memo 块扫描（默认语义）。与 [`scan_for_item_body`]
+/// 同构，差异：VM 代码形态（Call/FStr/Lambda/StyleBinding 等）**不入槽
+/// 不降级**——块的 deps 声明即为其覆盖面（canonical 档：隐藏读面由 deps
+/// 声明覆盖）；插值 bindings 逐名入槽（外部读的可靠上界）；条件串可解析
+/// 入槽、不可解析容忍。降级仅限结构性不可证形态：嵌套 ForLoop / Outlet /
+/// 嵌套 memo 块。
+pub fn scan_memo_block_body(
+    body: &[AuraNode],
+    registry: Option<&crate::ui::widget_registry::WidgetRegistry>,
+) -> ScanVerdict {
+    let mut slots = Vec::new();
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for c in body {
+        if let Err(reason) = scan_block_node(c, &mut slots, registry, &mut visited) {
+            return ScanVerdict::Degrade(reason);
+        }
+    }
+    ScanVerdict::Slots(slots)
+}
+
+fn scan_block_node(
+    node: &AuraNode,
+    slots: &mut Vec<Expr>,
+    registry: Option<&crate::ui::widget_registry::WidgetRegistry>,
+    visited: &mut std::collections::HashSet<String>,
+) -> Result<(), &'static str> {
+    match node {
+        AuraNode::Element { props, children, .. } => {
+            for (_k, prop) in props.iter() {
+                match prop {
+                    // 容忍：可证形态入槽，VM 代码形态跳过（deps 覆盖）。
+                    crate::aura::AuraPropValue::Expr(e) => {
+                        let _ = scan_expr(e, slots);
+                    }
+                    crate::aura::AuraPropValue::StyleBinding(_) => {}
+                }
+            }
+            for c in children {
+                scan_block_node(c, slots, registry, visited)?;
+            }
+            Ok(())
+        }
+        AuraNode::Text(crate::aura::AuraTextContent::Literal(_)) => Ok(()),
+        AuraNode::Text(crate::aura::AuraTextContent::Interpolated { bindings, .. }) => {
+            // 块内插值名 = 状态/计算读——逐名入槽（resolve_expr_to_value 是
+            // 实际读通道的可靠上界：多失效只变慢，绝不陈旧）。
+            for b in bindings {
+                slots.push(Expr::Ident(crate::ast::Name::from(
+                    b.trim_start_matches('.'),
+                )));
+            }
+            Ok(())
+        }
+        AuraNode::Conditional { condition, then_body, else_body, .. } => {
+            if let Some(e) = crate::parser::Parser::parse_expr_fragment(condition) {
+                let _ = scan_expr(&e, slots);
+            }
+            for c in then_body {
+                scan_block_node(c, slots, registry, visited)?;
+            }
+            if let Some(els) = else_body {
+                for c in els {
+                    scan_block_node(c, slots, registry, visited)?;
+                }
+            }
+            Ok(())
+        }
+        // 结构性不可证：嵌套循环/路由口/嵌套块 → 整块降级（Q-02 保守）。
+        AuraNode::ForLoop { .. } => Err("for_loop"),
+        AuraNode::Outlet => Err("outlet"),
+        AuraNode::MemoBlock { .. } => Err("memo_block"),
+        AuraNode::Component { name, props, children, .. } => {
+            for (_k, e) in props.iter() {
+                let _ = scan_expr(e, slots);
+            }
+            for c in children {
+                scan_block_node(c, slots, registry, visited)?;
+            }
+            if let Some(reg) = registry {
+                if let Some(w) = reg.get(name) {
+                    if visited.insert(name.clone()) {
+                        scan_block_node(&w.view_tree, slots, Some(reg), visited)?;
+                    }
+                }
+            }
+            Ok(())
+        }
+        AuraNode::Link { children, .. } => {
+            for c in children {
+                scan_block_node(c, slots, registry, visited)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+/// PLAN-046 T-04：memo 块站点指纹——exact 旗 + deps 全形态 + 体结构。
+/// 同一桥生命周期内块 AST 不可变 → 同站恒同；不同块由 deps/exact/体结构
+/// 差异拆键。
+pub fn memo_block_site_fingerprint(
+    deps: &[Expr],
+    exact: bool,
+    body: &[AuraNode],
+    registry: Option<&crate::ui::widget_registry::WidgetRegistry>,
+) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    "memo_block_site".hash(&mut h);
+    exact.hash(&mut h);
+    deps.len().hash(&mut h);
+    for d in deps {
+        format!("{:?}", d).hash(&mut h);
+    }
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    skeleton_children_registry(body, &mut h, registry, &mut visited);
+    h.finish()
 }
 
 // ─────────────────────────────────────────────────────────────────────

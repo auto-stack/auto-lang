@@ -431,6 +431,14 @@ fun {}Preview() {{
                 // Note: weight is available via .* import from androidx.compose.foundation.layout
                 Ok(format!("{}AppNavHost(navController, modifier = Modifier.weight(1f))\n", ind))
             }
+            // PLAN-046: memo block — VM-track boundary; emit children.
+            AuraNode::MemoBlock { body, .. } => {
+                let mut out = String::new();
+                for c in body {
+                    out.push_str(&self.node_to_compose(c, indent)?);
+                }
+                Ok(out)
+            }
             AuraNode::Link { to, text, href, children, .. } => {
                 self.link_to_compose(to, text, href, children, indent)
             }

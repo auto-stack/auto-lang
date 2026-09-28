@@ -6166,6 +6166,14 @@ impl RustGenerator {
             //   Reject（多路由/带参路由）→ compile_error 带 P039 债指针
             //     （原 View::empty 静默升响亮——I1）；
             //   None（无 routes 块）→ 维持 View::empty（防御形态）。
+            // PLAN-046: memo block — VM-track cache boundary; codegen emits
+            // the body children (the boundary has no generated-code form).
+            AuraNode::MemoBlock { body, .. } => {
+                body.iter()
+                    .map(|c| self.generate_view_tree(c))
+                    .collect::<Vec<String>>()
+                    .join("\n")
+            }
             AuraNode::Outlet => match self.outlet_route.clone() {
                 OutletRoute::Fold(module) => {
                     let msg_name = self.current_msg_name();

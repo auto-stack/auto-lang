@@ -963,6 +963,14 @@ impl ArkGenerator {
                 }
                 self.generate_element(tag, props, events, children)
             }
+            // PLAN-046: memo block — VM-track boundary; emit children.
+            AuraNode::MemoBlock { body, .. } => {
+                let mut out = String::new();
+                for c in body {
+                    out.push_str(&self.generate_node(c)?);
+                }
+                Ok(out)
+            }
             AuraNode::Outlet => {
                 // Outlet in navigation context - render index page directly
                 // Custom components don't support trailing lambda, so just call them
@@ -1119,6 +1127,14 @@ impl ArkGenerator {
                 self.generate_component(name, props, events)
             }
             AuraNode::Outlet => Ok("// Outlet - router placeholder".to_string()),
+            // PLAN-046: memo block — VM-track boundary; emit children.
+            AuraNode::MemoBlock { body, .. } => {
+                let mut out = String::new();
+                for c in body {
+                    out.push_str(&self.generate_node(c)?);
+                }
+                Ok(out)
+            }
             AuraNode::Link {
                 to,
                 text,
