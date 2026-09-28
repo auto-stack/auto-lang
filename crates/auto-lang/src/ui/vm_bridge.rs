@@ -230,12 +230,19 @@ impl<'a> DepRecGuard<'a> {
     }
 
     fn take_and_restore(&mut self) -> crate::ui::memo_deps::RecState {
-        let cur = self
+        let mut cur = self
             .bridge
             .dep_recorder
             .borrow_mut()
             .take()
             .unwrap_or_default();
+        // PLAN-047 T-04: 收编引擎影子集（VM fn 执行期读臂录制面）——并集
+        // 记账沿 record 语义（预算/overflow 同规）。
+        let shadow = self.bridge.vm.take_dep_recorder();
+        for k in shadow.deps {
+            cur.record(k);
+        }
+        cur.overflow |= shadow.overflow;
         if let Some(mut outer) = self.outer.take() {
             outer.absorb(&cur);
             *self.bridge.dep_recorder.borrow_mut() = Some(*outer);
@@ -1859,12 +1866,20 @@ impl VmBridge {
     /// RecState；[`DepRecGuard::finish`] 或 drop 时恢复外层并把本次集
     /// **并集吸收**进外层（外层条目因此覆盖内层 computed/子求值的全部
     /// 依赖），overflow 同向传播——外层集不完整即整体弃用（宁缺勿错）。
+    /// PLAN-047 T-04: 同时激活 AutoVM 录制槽——guard 作用域内的 VM fn
+    /// 执行（block computed `call_computed_fn`/handler）读臂依赖由引擎
+    /// 侧影子集承载，finish 时与桥侧集并集收编。
     #[cfg(feature = "ui-interpreter")]
     pub fn dep_recording_guard(&self) -> DepRecGuard<'_> {
         let outer = self
             .dep_recorder
             .borrow_mut()
             .replace(crate::ui::memo_deps::RecState::default());
+        // 引擎影子槽与本 guard 生命周期同绑（同线程串行，无竞争窗口）。
+        self.vm
+            .set_dep_recorder(std::sync::Arc::new(std::sync::Mutex::new(
+                crate::ui::memo_deps::RecState::default(),
+            )));
         DepRecGuard {
             bridge: self,
             outer: outer.map(Box::new),
@@ -3474,6 +3489,69 @@ widget OpProbeOrig {
         assert!(bridge.state_mutation_seq() > seq0, "全局 seq 补 bump");
         assert_eq!(bridge.vm.path_version(map_id, "k"), 1, "按键名 exact");
         assert_eq!(bridge.vm.path_version(map_id, "*"), 1, "wildcard");
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-04: plan047_engine_read_tests（引擎读臂拦截 2 条）
+    // ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_engine_recorder_slot_semantics() {
+        let widget = make_test_widget("RecSlot", vec![]);
+        let bridge = VmBridge::new(&widget).expect("bridge");
+        // 未激活：record 口零录制。
+        bridge.vm.record_heap_read(1, "f");
+        let arc = std::sync::Arc::new(std::sync::Mutex::new(
+            crate::ui::memo_deps::RecState::default(),
+        ));
+        bridge.vm.set_dep_recorder(arc);
+        bridge.vm.record_heap_read(7, "count");
+        bridge.vm.record_heap_read_any(9);
+        let rec = bridge.vm.take_dep_recorder();
+        assert_eq!(rec.deps.len(), 2, "激活期两条落账");
+        assert!(
+            rec.deps.contains(&crate::ui::memo_deps::DepKey::field(7, "count"))
+        );
+        assert!(rec.deps.contains(&crate::ui::memo_deps::DepKey::any(9)));
+        // take 后去激活：再录零账。
+        bridge.vm.record_heap_read(1, "g");
+        assert!(bridge.vm.take_dep_recorder().deps.is_empty());
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_engine_read_arm_intercepts_handler_reads() {
+        // 端到端：录制激活期内 handler VM 执行（`.count` 读经 GET 系读臂
+        // 编码）的依赖由引擎影子集承载——集含 (root,"count")。call_handler
+        // 是 &mut self，故直挂 vm 槽（guard 的桥侧并集语义由 T-01 套件
+        // 承载，此处专证引擎读臂面）。
+        let mut widget = make_test_widget("RecEngine", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: Expr::Int(0),
+                decorators: vec![],
+            },
+        ]);
+        plan047_attach_handler(&mut widget, "Poke", "\n    .count = .count + 1\n");
+        let mut bridge = VmBridge::new(&widget).expect("bridge");
+        let root = bridge.state_obj_id();
+        let arc = std::sync::Arc::new(std::sync::Mutex::new(
+            crate::ui::memo_deps::RecState::default(),
+        ));
+        bridge.vm.set_dep_recorder(arc.clone());
+        bridge.call_handler("Poke", &[]).expect("handler");
+        bridge.vm.take_dep_recorder();
+        let rec = arc.lock().unwrap().clone();
+        assert!(
+            rec.deps.contains(&crate::ui::memo_deps::DepKey::field(root, "count")),
+            "引擎读臂录制面: deps={rec:?}"
+        );
+        assert!(!rec.overflow);
+        // 去激活后 handler 执行零账（写-only 复跑，无 GET 发生）。
+        bridge.call_handler("Poke", &[]).expect("handler2");
+        assert!(bridge.vm.take_dep_recorder().deps.is_empty());
     }
 
     #[test]

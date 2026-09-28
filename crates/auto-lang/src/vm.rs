@@ -31,6 +31,9 @@ mod tests_parser_stack;
 mod tests_tag;
 // Plan 075: TemplateCodegen for template file compilation
 pub mod collections;
+// PLAN-047（档 C SD-08）: 依赖录制核心类型（不挂 feature 门——AutoVM 录制
+// 槽与 ui/memo_deps 宿主共用；类型单源）。
+pub mod dep_track;
 pub mod engine;
 pub mod template_codegen;
 // Plan 076 Phase 1: Generic type support for AutoVM
