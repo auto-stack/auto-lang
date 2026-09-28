@@ -16384,6 +16384,7 @@ mod tests {
                 var: "o".to_string(),
                 index: None,
                 iterable: ".providers".to_string(),
+                key_expr: None,
                 body: vec![AuraNode::element("option")
                     .with_prop("value", Expr::Dot(
                         Box::new(Expr::Ident("o".into())),
@@ -16445,6 +16446,7 @@ mod tests {
                 var: "o".to_string(),
                 index: None,
                 iterable: ".providers".to_string(),
+                key_expr: None,
                 body: vec![AuraNode::element("option")
                     .with_prop("value", Expr::Dot(
                         Box::new(Expr::Ident("o".into())),
@@ -16978,6 +16980,7 @@ mod tests {
             var: "item".to_string(),
             index: None,
             iterable: ".items".to_string(),
+            key_expr: None,
             body: vec![AuraNode::Text(AuraTextContent::Interpolated {
                 template: "${.item}".to_string(),
                 bindings: vec!["item".to_string()],
@@ -17034,6 +17037,7 @@ mod tests {
             var: "item".to_string(),
             index: None,
             iterable: ".items".to_string(),
+            key_expr: None,
             body: vec![AuraNode::Text(AuraTextContent::Interpolated {
                 template: "${.item}".to_string(),
                 bindings: vec!["item".to_string()],
@@ -17082,6 +17086,7 @@ mod tests {
             var: "item".to_string(),
             index: None,
             iterable: ".items".to_string(),
+            key_expr: None,
             body: vec![
                 AuraNode::Text(AuraTextContent::Interpolated {
                     template: "${.item}".to_string(),
@@ -17114,6 +17119,7 @@ mod tests {
             var: "item".to_string(),
             index: None,
             iterable: ".items".to_string(),
+            key_expr: None,
             body: vec![AuraNode::Text(AuraTextContent::Interpolated {
                 template: "${.item}".to_string(),
                 bindings: vec!["item".to_string()],
@@ -17347,6 +17353,7 @@ mod tests {
             var: "cell".to_string(),
             index: None,
             iterable: ".days".to_string(),
+            key_expr: None,
             body: vec![AuraNode::Element {
                 tag: "button".to_string(),
                 props: HashMap::from([(
@@ -17417,6 +17424,7 @@ mod tests {
             var: "it".to_string(),
             index: None,
             iterable: ".items".to_string(),
+            key_expr: None,
             body: vec![AuraNode::Element {
                 tag: "image".to_string(),
                 props: HashMap::from([

@@ -16124,6 +16124,19 @@ impl<'a> Parser<'a> {
             result
         };
 
+        // PLAN-046 T-02: optional keyed-for clause — `for x in .items key: .id { }`.
+        // `key` is a soft identifier (not a keyword); the clause is probed only
+        // in the slot between the iterable and the body brace, a position no
+        // other form fills with a bare Ident. The bounded expression parser
+        // stops before the body `{` by construction.
+        let key_expr = if self.is_kind(TokenKind::Ident) && self.cur.text.as_str() == "key" {
+            self.next(); // consume 'key'
+            self.expect(TokenKind::Colon)?;
+            Some(self.parse_view_key_expr()?)
+        } else {
+            None
+        };
+
         // Enter new scope for loop body
         self.enter_scope();
 
@@ -16160,9 +16173,69 @@ impl<'a> Parser<'a> {
             var,
             index,
             iterable,
+            key_expr,
             body,
             span: Some((start_pos.pos, self.prev.pos.pos + self.prev.pos.len - start_pos.pos)),
         })
+    }
+
+    /// PLAN-046: bounded key-expression parser for the keyed-for clause.
+    /// Accepts the cheap pure forms a cache key may take — state chains
+    /// (`.a.b` → self-rooted Dot, same shape as expression position),
+    /// item field chains (`item.id`), and scalar literals (Int/Str) — and
+    /// stops before the body `{` by construction (no call/index/object
+    /// grammar is reachable). Keys are fingerprinted per item; VM code
+    /// shapes are deliberately rejected with a pointed error.
+    fn parse_view_key_expr(&mut self) -> AutoResult<Expr> {
+        let lhs: Expr = match self.kind() {
+            TokenKind::Dot => {
+                self.next(); // skip dot
+                let name = self.cur.text.clone();
+                self.next();
+                Expr::Dot(Box::new(Expr::Ident("self".into())), name)
+            }
+            TokenKind::Ident => {
+                let name = self.cur.text.clone();
+                self.next();
+                Expr::Ident(name)
+            }
+            TokenKind::Int => {
+                let text = self.cur.text.clone();
+                self.next();
+                let value: i32 = text.parse().map_err(|_| {
+                    SyntaxError::Generic {
+                        message: format!("key clause Int literal out of range: `{}`", text),
+                        span: pos_to_span(self.prev.pos),
+                    }
+                })?;
+                Expr::Int(value)
+            }
+            TokenKind::Str => {
+                let value = self.cur.text.clone();
+                self.next();
+                Expr::Str(value)
+            }
+            other => {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "key clause accepts state chains (.a.b), field chains (item.id), \
+                         or Int/Str literals — got {:?}",
+                        other
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into())
+            }
+        };
+
+        let mut lhs = lhs;
+        while self.is_kind(TokenKind::Dot) {
+            self.next(); // skip dot
+            let field = self.cur.text.clone();
+            self.next();
+            lhs = Expr::Dot(Box::new(lhs), field);
+        }
+        Ok(lhs)
     }
 
     /// Parse conditional in view: if condition { then_body } else { else_body }
@@ -20846,6 +20919,149 @@ style = 123
             _ => false,
         });
         assert!(!non_recipe, "style = 123 must not be parsed as a StyleRecipeDecl");
+    }
+
+    // ---- PLAN-046: keyed-for `key:` clause parsing matrix ----
+
+    /// Parse a widget whose view root is a single for-loop; return it.
+    fn plan046_parse_root_for(src: &str) -> crate::ast::ui::ViewNode {
+        let code = format!("widget App {{\n  view {{\n{}\n  }}\n}}", src);
+        let mut parser =
+            Parser::from(&code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().expect("widget must parse");
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        widget.view.as_ref().unwrap().root.clone()
+    }
+
+    /// `for x in .items key: x.id { }` → key_expr = Dot(Ident(x), id).
+    #[test]
+    fn plan046_keyed_for_item_field_chain() {
+        let root = plan046_parse_root_for(
+            "    for x in .items key: x.id {\n      text \"r\"\n    }",
+        );
+        match root {
+            ViewNode::ForLoop { var, key_expr, .. } => {
+                assert_eq!(var, "x");
+                let key_expr = key_expr.expect("key clause must parse");
+                assert!(
+                    matches!(key_expr, Expr::Dot(ref l, ref n)
+                        if matches!(**l, Expr::Ident(ref v) if v.as_str() == "x")
+                            && n.as_str() == "id"),
+                    "unexpected key expr: {:?}",
+                    key_expr
+                );
+            }
+            other => panic!("expected ForLoop root, got {:?}", other),
+        }
+    }
+
+    /// `key: .id` → self-rooted state chain (same shape as expression position).
+    #[test]
+    fn plan046_keyed_for_state_chain() {
+        let root = plan046_parse_root_for(
+            "    for x in .items key: .user.id {\n      text \"r\"\n    }",
+        );
+        match root {
+            ViewNode::ForLoop { key_expr, .. } => {
+                let key_expr = key_expr.expect("key clause must parse");
+                let src = format!("{:?}", key_expr);
+                assert!(src.contains("self"), "state chain is self-rooted: {}", src);
+                assert!(src.contains("user") && src.contains("id"), "{}", src);
+            }
+            other => panic!("expected ForLoop root, got {:?}", other),
+        }
+    }
+
+    /// Str literal key (`key: "abc"`) and Int literal key (`key: 5`).
+    #[test]
+    fn plan046_keyed_for_scalar_literals() {
+        let root =
+            plan046_parse_root_for("    for x in .items key: \"abc\" {\n      text \"r\"\n    }");
+        match root {
+            ViewNode::ForLoop { key_expr: Some(Expr::Str(s)), .. } => assert_eq!(s, "abc"),
+            other => panic!("expected Str key, got {:?}", other),
+        }
+        let root = plan046_parse_root_for("    for x in .items key: 5 {\n      text \"r\"\n    }");
+        match root {
+            ViewNode::ForLoop { key_expr: Some(Expr::Int(v)), .. } => assert_eq!(v, 5),
+            other => panic!("expected Int key, got {:?}", other),
+        }
+    }
+
+    /// Index form composes: `for i, x in .items key: x.id`.
+    #[test]
+    fn plan046_keyed_for_with_index_var() {
+        let root = plan046_parse_root_for(
+            "    for i, x in .items key: x.id {\n      text \"r\"\n    }",
+        );
+        match root {
+            ViewNode::ForLoop { index, key_expr, .. } => {
+                assert_eq!(index.as_deref(), Some("i"));
+                assert!(key_expr.is_some(), "key clause must survive index form");
+            }
+            other => panic!("expected ForLoop root, got {:?}", other),
+        }
+    }
+
+    /// Keyless loop is byte-identical modulo the new None field (AC-01 前提).
+    #[test]
+    fn plan046_keyless_for_has_no_key_expr() {
+        let root = plan046_parse_root_for("    for x in .items {\n      text \"r\"\n    }");
+        match root {
+            ViewNode::ForLoop { var, key_expr, body, .. } => {
+                assert_eq!(var, "x");
+                assert!(key_expr.is_none(), "keyless loop must have key_expr None");
+                assert_eq!(body.len(), 1);
+            }
+            other => panic!("expected ForLoop root, got {:?}", other),
+        }
+    }
+
+    /// Call-shaped key (`key: compute(.x)`) is rejected with a pointed error.
+    #[test]
+    fn plan046_key_clause_rejects_call_shape() {
+        let code = concat!(
+            "widget App {\n",
+            "  view {\n",
+            "    for x in .items key: compute(.x) {\n",
+            "      text \"r\"\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        assert!(
+            parser.parse().is_err(),
+            "call-shaped key must be a parse error"
+        );
+    }
+
+    /// Missing expression after `key:` is a parse error (not a silent None).
+    #[test]
+    fn plan046_key_clause_requires_expr() {
+        let code = concat!(
+            "widget App {\n",
+            "  view {\n",
+            "    for x in .items key: {\n",
+            "      text \"r\"\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        assert!(
+            parser.parse().is_err(),
+            "empty key clause must be a parse error"
+        );
     }
 
 }

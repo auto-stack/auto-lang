@@ -618,6 +618,12 @@ pub enum ViewNode {
         /// Iterable expression (e.g., ".todos")
         iterable: String,
 
+        /// PLAN-046: optional keyed-for clause (`for x in .items key: .id`).
+        /// Cheap pure forms only (state/field chains, scalar literals) —
+        /// the key value is fingerprinted per item for the render memo.
+        /// `None` = keyless loop, rendering unchanged.
+        key_expr: Option<Expr>,
+
         /// Loop body nodes
         body: Vec<ViewNode>,
 

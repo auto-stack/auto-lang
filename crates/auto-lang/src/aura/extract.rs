@@ -1109,7 +1109,7 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
             };
             Ok(AuraNode::Text(text_content))
         }
-        ViewNode::ForLoop { var, index, iterable, body, span } => {
+        ViewNode::ForLoop { var, index, iterable, key_expr, body, span } => {
             let aura_body: Vec<AuraNode> = body.iter()
                 .map(|c| extract_view_node(c))
                 .collect::<ExtractResult<_>>()?;
@@ -1118,6 +1118,7 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 var: var.clone(),
                 index: index.clone(),
                 iterable: iterable.clone(),
+                key_expr: key_expr.clone(),
                 body: aura_body,
                 span: *span,
                 debug_id: None,
@@ -1287,7 +1288,7 @@ fn expand_fragment_node(
                 span: *span,
             })
         }
-        ViewNode::ForLoop { var, index, iterable, body, span } => {
+        ViewNode::ForLoop { var, index, iterable, key_expr, body, span } => {
             let new_body: Vec<ViewNode> = body.iter()
                 .map(|c| expand_fragment_node(c, subs))
                 .collect::<ExtractResult<_>>()?;
@@ -1301,6 +1302,9 @@ fn expand_fragment_node(
                 var: var.clone(),
                 index: index.clone(),
                 iterable: substitute_condition(iterable, subs),
+                // PLAN-046: the key clause is a real Expr (unlike the
+                // iterable string), so param substitution applies directly.
+                key_expr: key_expr.as_ref().map(|e| substitute_expr(e, subs)),
                 body: new_body,
                 span: *span,
             })
@@ -1608,7 +1612,7 @@ fn assign_node_ids_recursive(
         AuraNode::Text(_) => {
             // Text nodes don't get a debug_id — they have no span field
         }
-        AuraNode::ForLoop { var: _, index: _, iterable: _, body, span, debug_id } => {
+        AuraNode::ForLoop { var: _, index: _, iterable: _, key_expr: _, body, span, debug_id } => {
             *debug_id = Some(id);
             span_map.insert(id, SpanInfo {
                 span: *span,

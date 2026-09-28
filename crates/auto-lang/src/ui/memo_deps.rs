@@ -723,6 +723,7 @@ mod tests {
             var: "i".to_string(),
             index: None,
             iterable: ".items".to_string(),
+            key_expr: None,
             body: vec![],
             span: None,
             debug_id: None,

@@ -890,6 +890,11 @@ pub enum AuraNode {
         /// Iterable expression
         iterable: String,
 
+        /// PLAN-046: optional keyed-for clause expression (`key: .id`).
+        /// Evaluated per item with loop bindings active; `None` = keyless
+        /// loop, item evaluation unchanged.
+        key_expr: Option<crate::ast::Expr>,
+
         /// Loop body nodes
         body: Vec<AuraNode>,
 
