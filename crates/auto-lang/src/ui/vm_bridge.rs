@@ -201,6 +201,56 @@ pub struct VmBridge {
     /// interpreter，同 ui-interpreter 门控。
     #[cfg(feature = "ui-interpreter")]
     memo_cache: std::cell::RefCell<crate::ui::memo_deps::MemoCache>,
+
+    /// PLAN-047 T-01（档 C SD-08）: 依赖录制器宿主——memo 门/computed 信号
+    /// 求值期经 [`VmBridge::dep_recording_guard`] 激活，桥读通道把状态读记
+    /// 入当前 [`crate::ui::memo_deps::RecState`]；未激活 = `None`，读通道
+    /// 零开销直落（非 memo 零行为零开销红线）。RefCell 理由同 memo_cache。
+    #[cfg(feature = "ui-interpreter")]
+    dep_recorder: std::cell::RefCell<Option<crate::ui::memo_deps::RecState>>,
+}
+
+/// PLAN-047 T-01: 依赖录制 guard。首选显式 [`DepRecGuard::finish`] 取走
+/// 本次录制集；未 finish 即 drop（`?` 早退/panic 展开）走同一恢复语义——
+/// 外层恢复与并集吸收不因退出路径缺失（正确性面不允许静默吞外层）。
+#[cfg(feature = "ui-interpreter")]
+pub struct DepRecGuard<'a> {
+    bridge: &'a VmBridge,
+    outer: Option<Box<crate::ui::memo_deps::RecState>>,
+    done: bool,
+}
+
+#[cfg(feature = "ui-interpreter")]
+impl<'a> DepRecGuard<'a> {
+    /// 结束录制：取走本次 [`crate::ui::memo_deps::RecState`]（含 overflow
+    /// 旗标），恢复外层并集吸收。
+    pub fn finish(mut self) -> crate::ui::memo_deps::RecState {
+        self.done = true;
+        self.take_and_restore()
+    }
+
+    fn take_and_restore(&mut self) -> crate::ui::memo_deps::RecState {
+        let cur = self
+            .bridge
+            .dep_recorder
+            .borrow_mut()
+            .take()
+            .unwrap_or_default();
+        if let Some(mut outer) = self.outer.take() {
+            outer.absorb(&cur);
+            *self.bridge.dep_recorder.borrow_mut() = Some(*outer);
+        }
+        cur
+    }
+}
+
+#[cfg(feature = "ui-interpreter")]
+impl<'a> Drop for DepRecGuard<'a> {
+    fn drop(&mut self) {
+        if !self.done {
+            self.take_and_restore();
+        }
+    }
 }
 
 /// PLAN-702 T-04: root-state busy 镜像字段名——List&lt;str&gt;（namespaced
@@ -465,6 +515,8 @@ impl VmBridge {
             busy_flag_names: std::cell::RefCell::new(Vec::new()),
             #[cfg(feature = "ui-interpreter")]
             memo_cache: std::cell::RefCell::new(crate::ui::memo_deps::MemoCache::new()),
+            #[cfg(feature = "ui-interpreter")]
+            dep_recorder: std::cell::RefCell::new(None),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
         })
@@ -650,6 +702,8 @@ impl VmBridge {
             busy_flag_names: std::cell::RefCell::new(Vec::new()),
             #[cfg(feature = "ui-interpreter")]
             memo_cache: std::cell::RefCell::new(crate::ui::memo_deps::MemoCache::new()),
+            #[cfg(feature = "ui-interpreter")]
+            dep_recorder: std::cell::RefCell::new(None),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
         })
@@ -704,9 +758,14 @@ impl VmBridge {
                 "state object is not a GenericInstanceData".to_string()
             ))?;
 
-        instance.get_field(field_index)
-            .cloned()
-            .ok_or_else(|| VmBridgeError::FieldNotFound(field_name.to_string()))
+        // PLAN-047 T-01: 读通道录制——成功的具名字段读 = 一条依赖边。
+        match instance.get_field(field_index).cloned() {
+            Some(v) => {
+                self.record_dep_read(self.state_obj_id, field_name);
+                Ok(v)
+            }
+            None => Err(VmBridgeError::FieldNotFound(field_name.to_string())),
+        }
     }
 
     /// Write a state field value to the VM.
@@ -859,6 +918,9 @@ impl VmBridge {
             Value::Int(id) => {
                 let arr_id = id as u64;
                 if let Some(obj) = self.vm.get_heap_object(arr_id) {
+                    // PLAN-047 T-01: 容器内容读 = (heap_id, "*") 粗粒度依赖
+                    // （原地突变无字段归因面的保守兜底）。
+                    self.record_dep_any(arr_id);
                     let guard = obj.read().unwrap();
                     use crate::vm::types::ListData;
                     if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
@@ -951,6 +1013,9 @@ impl VmBridge {
         // Path 1: heap_objects — ListData<Value> (array literals / struct lists,
         // Plan 390 §15 H3b) or ListData<i32>.
         if let Some(obj) = self.vm.get_heap_object(id as u64) {
+            // PLAN-047 T-01: 列表解引用读通道（read_state_as_vec 的 VmRef 臂
+            // / for 迭代 / Index 表达式共用）——容器内容读粗粒度依赖。
+            self.record_dep_any(id as u64);
             let guard = obj.read().unwrap();
             use crate::vm::types::ListData;
             if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
@@ -1064,6 +1129,9 @@ impl VmBridge {
                 // CONSTRUCT_INSTANCE → GenericInstanceData both in
                 // heap_objects — single probe + downcast.
                 if let Some(obj) = self.vm.get_heap_object(*id as u64) {
+                    // PLAN-047 T-01: 堆结构展开读 = 粗粒度依赖（展开产物含
+                    // 全部字段——任一字段原地变都须失效，记 " *" 面）。
+                    self.record_dep_any(*id as u64);
                     let guard = obj.read().unwrap();
                     if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
                         let mut out = auto_val::Obj::new();
@@ -1098,6 +1166,8 @@ impl VmBridge {
             // resolve_binding_path only matches Value::Obj).
             Value::VmRef(r) => {
                 if let Some(obj) = self.vm.get_heap_object(r.id as u64) {
+                    // PLAN-047 T-01: 同 Int 臂——堆结构展开读粗粒度依赖。
+                    self.record_dep_any(r.id as u64);
                     let guard = obj.read().unwrap();
                     if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
                         let mut out = auto_val::Obj::new();
@@ -1772,6 +1842,57 @@ impl VmBridge {
     pub fn with_memo_cache<R>(&self, f: impl FnOnce(&mut crate::ui::memo_deps::MemoCache) -> R) -> R {
         f(&mut self.memo_cache.borrow_mut())
     }
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-01（档 C SD-08）: 依赖录制器
+    // ─────────────────────────────────────────────────────────────────
+
+    /// 开启依赖录制（返回 guard）。激活期内桥读通道把状态读记入新
+    /// RecState；[`DepRecGuard::finish`] 或 drop 时恢复外层并把本次集
+    /// **并集吸收**进外层（外层条目因此覆盖内层 computed/子求值的全部
+    /// 依赖），overflow 同向传播——外层集不完整即整体弃用（宁缺勿错）。
+    #[cfg(feature = "ui-interpreter")]
+    pub fn dep_recording_guard(&self) -> DepRecGuard<'_> {
+        let outer = self
+            .dep_recorder
+            .borrow_mut()
+            .replace(crate::ui::memo_deps::RecState::default());
+        DepRecGuard {
+            bridge: self,
+            outer: outer.map(Box::new),
+            done: false,
+        }
+    }
+
+    /// 诊断/测试面：窥探当前录制状态快照（不改变激活态）。
+    #[cfg(feature = "ui-interpreter")]
+    pub fn peek_dep_recorder(&self) -> Option<crate::ui::memo_deps::RecState> {
+        self.dep_recorder.borrow().clone()
+    }
+
+    /// 读通道录制：具名字段读（未激活 = 零开销分支直落）。
+    #[cfg(feature = "ui-interpreter")]
+    fn record_dep_read(&self, heap_id: u64, path: &str) {
+        if let Some(rec) = self.dep_recorder.borrow_mut().as_mut() {
+            rec.record(crate::ui::memo_deps::DepKey::field(heap_id, path));
+        }
+    }
+
+    /// 读通道录制：容器/结构体整体展开（粗粒度 `DEP_PATH_ANY` 保守面）。
+    #[cfg(feature = "ui-interpreter")]
+    fn record_dep_any(&self, heap_id: u64) {
+        if let Some(rec) = self.dep_recorder.borrow_mut().as_mut() {
+            rec.record(crate::ui::memo_deps::DepKey::any(heap_id));
+        }
+    }
+
+    /// 非 ui-interpreter 构建的零伤 stub（vm_bridge 模块本身不门控）。
+    #[cfg(not(feature = "ui-interpreter"))]
+    fn record_dep_read(&self, _heap_id: u64, _path: &str) {}
+
+    /// 非 ui-interpreter 构建的零伤 stub。
+    #[cfg(not(feature = "ui-interpreter"))]
+    fn record_dep_any(&self, _heap_id: u64) {}
 
     /// PLAN-045: 指纹展开器——堆引用展开一层为纯值（memo 值指纹用）。
     /// ObjectData/GenericInstanceData → `Value::Obj`（materialize 同款）；
@@ -3104,6 +3225,117 @@ widget OpProbeOrig {
         assert!(bridge.state_fields().is_empty());
         assert!(bridge.handler_names().is_empty());
 
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-01: plan047_recorder_channel_tests（桥读通道录制 4 条）
+    // ─────────────────────────────────────────────────────────────────
+
+    fn plan047_recorder_widget() -> AuraWidget {
+        make_test_widget(
+            "RecTarget",
+            vec![
+                AuraStateDef {
+                    name: "count".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(7),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "items".to_string(),
+                    type_info: Type::Unknown,
+                    initial: Expr::Array(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)]),
+                    decorators: vec![],
+                },
+            ],
+        )
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_recorder_inactive_zero_record() {
+        let bridge = VmBridge::new(&plan047_recorder_widget()).expect("bridge");
+        bridge.read_state("count").expect("read");
+        bridge.read_state_as_vec("items").expect("read vec");
+        // 未激活 = None，读通道零录制（非 memo 零开销红线）。
+        assert!(bridge.peek_dep_recorder().is_none());
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_recorder_read_state_records_field() {
+        let bridge = VmBridge::new(&plan047_recorder_widget()).expect("bridge");
+        let guard = bridge.dep_recording_guard();
+        bridge.read_state("count").expect("read");
+        let rec = guard.finish();
+        assert!(!rec.overflow);
+        assert_eq!(rec.deps.len(), 1, "单字段读 = 单条依赖边");
+        assert!(rec.deps.contains(&crate::ui::memo_deps::DepKey::field(
+            bridge.state_obj_id(),
+            "count"
+        )));
+        // finish 后恢复未激活。
+        assert!(bridge.peek_dep_recorder().is_none());
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_recorder_container_read_records_any() {
+        let bridge = VmBridge::new(&plan047_recorder_widget()).expect("bridge");
+        let guard = bridge.dep_recording_guard();
+        bridge.read_state("count").expect("read");
+        bridge.read_state_as_vec("items").expect("read vec");
+        let rec = guard.finish();
+        // items 的堆列表 id 现场取出（字面量物化形态随实现 VmRef/Int(id)）。
+        let raw = bridge.read_state("items").expect("items");
+        let list_id = match raw {
+            Value::VmRef(r) => r.id as u64,
+            Value::Int(i) => i as u64,
+            other => panic!("items not a heap list: {other:?}"),
+        };
+        assert!(
+            rec.deps.contains(&crate::ui::memo_deps::DepKey::any(list_id)),
+            "容器内容读 = (heap_id, \"*\") 粗粒度依赖"
+        );
+        assert!(
+            rec.deps.contains(&crate::ui::memo_deps::DepKey::field(
+                bridge.state_obj_id(),
+                "items"
+            ))
+        );
+        assert_eq!(rec.deps.len(), 3, "count + items 字段 + 列表内容");
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_recorder_materialize_and_nested_union() {
+        let bridge = VmBridge::new(&plan047_recorder_widget()).expect("bridge");
+        // 外层 guard 内嵌套内层 guard：内层读 + materialize 展开，
+        // finish 后外层并集收编（外层条目覆盖内层求值全部依赖）。
+        let outer = bridge.dep_recording_guard();
+        {
+            let inner = bridge.dep_recording_guard();
+            bridge.read_state("count").expect("read");
+            let items = bridge.read_state_as_vec("items").expect("items");
+            let _ = bridge.materialize_obj_ref(&items[0]); // Int(id) 展开 → any(id)
+            let inner_rec = inner.finish();
+            assert_eq!(inner_rec.deps.len(), 3, "内层自见三条");
+        }
+        let outer_rec = outer.finish();
+        assert_eq!(outer_rec.deps.len(), 3, "外层并集收编内层");
+        assert!(bridge.peek_dep_recorder().is_none(), "嵌套恢复未激活");
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_recorder_drop_without_finish_restores() {
+        let bridge = VmBridge::new(&plan047_recorder_widget()).expect("bridge");
+        {
+            let _guard = bridge.dep_recording_guard();
+            bridge.read_state("count").expect("read");
+            // guard 未 finish 即 drop（早退形态）——恢复语义兜底。
+        }
+        assert!(bridge.peek_dep_recorder().is_none(), "drop 恢复外层(None)");
     }
 
     #[test]

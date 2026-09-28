@@ -233,6 +233,83 @@ impl MemoCache {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// PLAN-047 T-01: 依赖录制器（档 C SD-08）
+// ─────────────────────────────────────────────────────────────────────
+
+/// 依赖键 path 约定：`"*"` = 该堆对象的任意内容读（容器粗粒度保守面——
+/// 原地突变归因不可达字段级时的正确性兜底，PLAN-045 T-01 欠账的保守
+/// 半边；字段级归因见 SD-09 per-path 版本表）。
+pub const DEP_PATH_ANY: &str = "*";
+
+/// 依赖键 = (堆对象 id, path)。具名字段读记字段名；容器/结构体整体展开
+/// 记 [`DEP_PATH_ANY`]。
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DepKey {
+    pub heap_id: u64,
+    pub path: String,
+}
+
+impl DepKey {
+    pub fn field(heap_id: u64, path: &str) -> Self {
+        Self {
+            heap_id,
+            path: path.to_string(),
+        }
+    }
+
+    pub fn any(heap_id: u64) -> Self {
+        Self {
+            heap_id,
+            path: DEP_PATH_ANY.to_string(),
+        }
+    }
+}
+
+/// 单次录制预算：超限 → `overflow` 置位、集清空（条目弃动态 dep 集落回
+/// 静态扫描路径——宁缺勿错，正确性下限只允许变慢）。
+pub const REC_DEP_BUDGET: usize = 256;
+
+/// 录制状态（guard 激活期持有；guard 嵌套 = 外层收编内层并集——外层
+/// 条目因此覆盖内层 computed/子求值的全部依赖）。
+#[derive(Debug, Default, Clone)]
+pub struct RecState {
+    pub deps: std::collections::BTreeSet<DepKey>,
+    pub overflow: bool,
+}
+
+impl RecState {
+    /// 录一条依赖。预算超限 → 弃整个集（半录制集 = 盲区，绝不半信）。
+    pub fn record(&mut self, key: DepKey) {
+        if self.overflow {
+            return;
+        }
+        if self.deps.len() >= REC_DEP_BUDGET {
+            self.overflow = true;
+            self.deps.clear();
+            return;
+        }
+        self.deps.insert(key);
+    }
+
+    /// 内层集收编进外层（并集 + overflow 传播）。
+    pub fn absorb(&mut self, inner: &RecState) {
+        self.overflow |= inner.overflow;
+        if self.overflow {
+            self.deps.clear();
+            return;
+        }
+        for k in &inner.deps {
+            if self.deps.len() >= REC_DEP_BUDGET {
+                self.overflow = true;
+                self.deps.clear();
+                return;
+            }
+            self.deps.insert(k.clone());
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // 值指纹
 // ─────────────────────────────────────────────────────────────────────
 
@@ -976,6 +1053,89 @@ mod tests {
     use super::*;
     use crate::aura::{AuraPropValue, AuraTextContent};
     use auto_val::{Array, AutoStr};
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-01: plan047_recorder_tests（Recorder 语义 4 条）
+    // ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn plan047_recorder_record_and_key_shapes() {
+        let mut rec = RecState::default();
+        rec.record(DepKey::field(7, "count"));
+        rec.record(DepKey::any(9));
+        assert_eq!(rec.deps.len(), 2);
+        assert!(rec.deps.contains(&DepKey {
+            heap_id: 7,
+            path: "count".to_string()
+        }));
+        assert!(
+            rec.deps.contains(&DepKey {
+                heap_id: 9,
+                path: DEP_PATH_ANY.to_string()
+            }),
+            "any() 记 DEP_PATH_ANY path"
+        );
+        assert!(!rec.overflow);
+        // 重复录同键 = 幂等（BTreeSet 集语义）。
+        rec.record(DepKey::field(7, "count"));
+        assert_eq!(rec.deps.len(), 2);
+    }
+
+    #[test]
+    fn plan047_recorder_budget_overflow_discards_whole_set() {
+        let mut rec = RecState::default();
+        for i in 0..REC_DEP_BUDGET {
+            rec.record(DepKey::field(1, &format!("f{i}")));
+        }
+        assert!(!rec.overflow);
+        assert_eq!(rec.deps.len(), REC_DEP_BUDGET);
+        // 第 257 条 → overflow 置位且**整集弃置**（半录制集 = 盲区，绝不半信）。
+        rec.record(DepKey::field(1, "one-too-many"));
+        assert!(rec.overflow);
+        assert!(rec.deps.is_empty());
+        // overflow 后继续录不再恢复。
+        rec.record(DepKey::field(1, "more"));
+        assert!(rec.overflow && rec.deps.is_empty());
+    }
+
+    #[test]
+    fn plan047_recorder_absorb_union_and_overflow_propagation() {
+        let mut outer = RecState::default();
+        outer.record(DepKey::field(1, "a"));
+        let mut inner = RecState::default();
+        inner.record(DepKey::field(2, "b"));
+        inner.record(DepKey::field(1, "a")); // 与外层重叠 → 并集去重
+        outer.absorb(&inner);
+        assert_eq!(outer.deps.len(), 2);
+        assert!(!outer.overflow);
+
+        // overflow 传播：内层溢出 → 外层弃集置溢（外层集不完整 = 盲区）。
+        let mut outer2 = RecState::default();
+        outer2.record(DepKey::field(1, "x"));
+        let mut inner2 = RecState::default();
+        for i in 0..=REC_DEP_BUDGET {
+            inner2.record(DepKey::field(3, &format!("g{i}")));
+        }
+        assert!(inner2.overflow);
+        outer2.absorb(&inner2);
+        assert!(outer2.overflow);
+        assert!(outer2.deps.is_empty());
+    }
+
+    #[test]
+    fn plan047_recorder_absorb_budget_boundary() {
+        // 外层已有 256-1 条，吸收 2 条 → 越界弃集（并集也守预算）。
+        let mut outer = RecState::default();
+        for i in 0..REC_DEP_BUDGET - 1 {
+            outer.record(DepKey::field(1, &format!("o{i}")));
+        }
+        let mut inner = RecState::default();
+        inner.record(DepKey::field(2, "i1"));
+        inner.record(DepKey::field(2, "i2"));
+        outer.absorb(&inner);
+        assert!(outer.overflow);
+        assert!(outer.deps.is_empty());
+    }
 
     fn ident_dot(field: &str) -> Expr {
         // `.field` 的解析形态：Dot(Ident("."), field)
