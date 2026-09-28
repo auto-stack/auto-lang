@@ -1353,6 +1353,18 @@ impl VueGenerator {
             .collect()
     }
 
+    /// PLAN-706: 字面量 icon 名 → 合法 lucide 组件名。
+    /// 未命中全量表（如 kitchen-sink 的占位 `"sample"`）回退 `Circle`，
+    /// 与动态名降级同族，避免 `import { Sample }` 整页炸掉。
+    fn lucide_component_name(kebab: &str) -> String {
+        let pascal = Self::kebab_to_pascal(kebab);
+        if crate::ui::iced::lucide_generated::is_known(kebab) {
+            pascal
+        } else {
+            "Circle".to_string()
+        }
+    }
+
     // ====================================================================
     // Widget `use { ... }` external TS/Vue imports (escape hatch)
     // ====================================================================
@@ -1636,7 +1648,7 @@ impl VueGenerator {
                     && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
                     && name.starts_with(|c: char| c.is_ascii_lowercase());
                 if is_lucide {
-                    let lucide = Self::kebab_to_pascal(&name);
+                    let lucide = Self::lucide_component_name(&name);
                     self.lucide_icons.insert(lucide.clone());
                     attrs.push(format!(":icon-comp=\"{}\"", lucide));
                 } else if !name.is_empty() {
@@ -1786,7 +1798,7 @@ impl VueGenerator {
                         && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
                         && name.starts_with(|c: char| c.is_ascii_lowercase());
                     if is_lucide {
-                        let lucide = Self::kebab_to_pascal(&name);
+                        let lucide = Self::lucide_component_name(&name);
                         self.lucide_icons.insert(lucide.clone());
                         content.push_str(&format!("{}<{} class=\"{}\" />\n", cind, lucide, icon_cls));
                     } else if !name.is_empty() {
@@ -2246,7 +2258,7 @@ impl VueGenerator {
                     let card_name = child_props.get("name").and_then(|v| self.extract_string_value(v)).unwrap_or("");
                     let desc = child_props.get("desc").and_then(|v| self.extract_string_value(v)).unwrap_or("");
                     let icon_name = child_props.get("icon").and_then(|v| self.extract_string_value(v)).unwrap_or("");
-                    let lucide_component = Self::kebab_to_pascal(icon_name);
+                    let lucide_component = Self::lucide_component_name(icon_name);
                     self.lucide_icons.insert(lucide_component.clone());
 
                     let vshow = if has_search {
@@ -6689,7 +6701,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 }
                 let mut out = format!("{}>\n", open);
                 if let Some(v) = prop_str(props, "icon") {
-                    let lucide = Self::kebab_to_pascal(v);
+                    let lucide = Self::lucide_component_name(v);
                     self.lucide_icons.insert(lucide.clone());
                     out.push_str(&format!(
                         "{}  <{} class=\"mr-2 h-4 w-4\" />\n",
@@ -6780,7 +6792,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     attrs.push(format!("title=\"{}\"", Self::escape_html_attr(title)));
                     let content = match a.icon.as_deref() {
                         Some(icon) if !icon.is_empty() => {
-                            let lucide = Self::kebab_to_pascal(icon);
+                            let lucide = Self::lucide_component_name(icon);
                             self.lucide_icons.insert(lucide.clone());
                             format!(
                                 "\n{}    <{} class=\"h-4 w-4\" />\n{}  ",
@@ -7058,7 +7070,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                             ));
                         }
                     }
-                    let lucide_component = Self::kebab_to_pascal(icon_name);
+                    let lucide_component = Self::lucide_component_name(icon_name);
                     self.lucide_icons.insert(lucide_component.clone());
 
                     let (mut static_classes, _dynamic_class, dynamic_style) = self.extract_classes(tag, props);
@@ -12596,7 +12608,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // Build slot children for icon + text
                 let mut button_children = Vec::new();
                 if let Some(icon_name) = props.get("icon").and_then(|v| self.extract_string_value(v)) {
-                    let lucide_component = Self::kebab_to_pascal(icon_name);
+                    let lucide_component = Self::lucide_component_name(icon_name);
                     self.lucide_icons.insert(lucide_component.clone());
                     button_children.push(format!(r#"<{} class="h-4 w-4" />"#, lucide_component));
                 }
@@ -13000,7 +13012,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 if let Some(label) = props.get("label").and_then(|v| self.extract_string_value(v)) {
                     let icon_name = props.get("icon").and_then(|v| self.extract_string_value(v));
                     if let Some(icon) = icon_name {
-                        let lucide_component = Self::kebab_to_pascal(icon);
+                        let lucide_component = Self::lucide_component_name(icon);
                         self.lucide_icons.insert(lucide_component.clone());
                         slot_children = Some(format!(
                             r#"<div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><{} class="h-4 w-4 shrink-0" /><span>{}</span></div>"#,

@@ -39,7 +39,8 @@ pub mod native_icon;
 pub mod icon_file;
 
 /// PLAN-617 后续：lucide 全量字形表（由 scripts/gen-lucide-table.mjs 生成，勿手改）。
-mod lucide_generated;
+/// PLAN-706: pub(crate) — vue 生成器用 `is_known` 校验字面量图标名，防非法 import。
+pub(crate) mod lucide_generated;
 // Plan 462 T3/T4: VirtualWindow 组合层（单 OS 窗口多 App，路线 A）。
 pub mod virtual_window;
 pub mod broker_surface;

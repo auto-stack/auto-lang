@@ -45,6 +45,68 @@ pub fn is_bundled(component: &str) -> bool {
     ShadcnUiAssets::iter().any(|p| p.as_ref().starts_with(&prefix))
 }
 
+/// PLAN-706 D3: scan a bundled component's sources for `@/components/ui/<name>`
+/// imports and return those names (bundled only). Used to expand materialize
+/// with a bounded transitive closure — e.g. `form` → `label` (FormLabel.vue).
+fn bundled_ui_imports(component: &str) -> Vec<String> {
+    let prefix = format!("{}/", component);
+    let mut found = HashSet::new();
+    for path in ShadcnUiAssets::iter() {
+        let p = path.as_ref();
+        if !p.starts_with(&prefix) {
+            continue;
+        }
+        let Some(data) = ShadcnUiAssets::get(p) else {
+            continue;
+        };
+        let Ok(text) = std::str::from_utf8(data.data.as_ref()) else {
+            continue;
+        };
+        // `@/components/ui/label` / `@/components/ui/sidebar/index`
+        let mut rest = text;
+        while let Some(idx) = rest.find("@/components/ui/") {
+            rest = &rest[idx + "@/components/ui/".len()..];
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '-')
+                .collect();
+            if !name.is_empty() && is_bundled(&name) {
+                found.insert(name);
+            }
+        }
+    }
+    let mut v: Vec<String> = found.into_iter().collect();
+    v.sort();
+    v
+}
+
+/// Expand `requested` with bundled transitive `@/components/ui/*` deps
+/// (≤2 hops) so scaffolds like form→label land together.
+fn expand_transitive(components: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut seen = HashSet::new();
+    let mut frontier: Vec<String> = components.to_vec();
+    for _ in 0..2 {
+        let mut next = Vec::new();
+        for c in frontier {
+            if !seen.insert(c.clone()) {
+                continue;
+            }
+            out.push(c.clone());
+            for dep in bundled_ui_imports(&c) {
+                if !seen.contains(&dep) {
+                    next.push(dep);
+                }
+            }
+        }
+        frontier = next;
+        if frontier.is_empty() {
+            break;
+        }
+    }
+    out
+}
+
 fn component_dest(output_dir: &Path, component: &str) -> PathBuf {
     output_dir
         .join("src")
@@ -69,9 +131,12 @@ pub struct MaterializeReport {
 /// Write-if-missing: an existing file is never overwritten (the file may be
 /// user-patched or come from a previous CLI add), mirroring how
 /// `copy_public_assets` treats already-copied trees.
+///
+/// PLAN-706: the request set is expanded with bundled transitive
+/// `@/components/ui/*` deps (bounded, 2 hops) before copy.
 pub fn materialize(output_dir: &Path, components: &[String]) -> AutoResult<MaterializeReport> {
     let mut report = MaterializeReport::default();
-    for comp in components {
+    for comp in expand_transitive(components) {
         let prefix = format!("{}/", comp);
         let files: Vec<String> = ShadcnUiAssets::iter()
             .map(|p| p.to_string())
@@ -82,7 +147,7 @@ pub fn materialize(output_dir: &Path, components: &[String]) -> AutoResult<Mater
             continue;
         }
 
-        let dest = component_dest(output_dir, comp);
+        let dest = component_dest(output_dir, &comp);
         for embedded_path in files {
             let file_name = embedded_path
                 .rsplit('/')
@@ -139,6 +204,29 @@ mod tests {
         let report = materialize(&dir, &["no-such-component".to_string()]).unwrap();
         assert_eq!(report.written, 0);
         assert!(report.missing.contains(&"no-such-component".to_string()));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// PLAN-706 D3: form scaffold's FormLabel imports @/components/ui/label —
+    /// materialize must expand the transitive closure or Form pages 500.
+    #[test]
+    fn materialize_form_pulls_label_transitively() {
+        let dir = std::env::temp_dir().join(format!(
+            "automan-shadcn-test-form-label-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        let report = materialize(&dir, &["form".to_string()]).unwrap();
+        assert!(
+            dir.join("src/components/ui/label/index.ts").exists(),
+            "form → label 传递依赖应落地 (written={}, missing={:?})",
+            report.written,
+            report.missing
+        );
+        assert!(
+            dir.join("src/components/ui/form/index.ts").exists(),
+            "form 本体应落地"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 

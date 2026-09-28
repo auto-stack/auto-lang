@@ -1434,9 +1434,13 @@ element sidebar_menu_sub_button {
     category: "navigation"
     tier: "builtin_widget"
     aliases: ["SidebarMenuSubButton", "sidebar-menu-sub-button", "sidebarmenusubbutton"]
-    backends: { web: "native", iced: "full", gpui: "unknown" }
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "SidebarMenuSubButton", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "text", type: "string", description: "Button text" }
+        { name: "to", type: "string", description: "Router target" }
+        { name: "active", type: "bool", default: "false", description: "Active state" }
     ]
     allows_children: true
     description: "Sidebar menu sub-button (nested collapsible trigger; 561 full contract)"
