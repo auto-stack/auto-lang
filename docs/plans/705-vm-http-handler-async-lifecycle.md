@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-705
-status: drafting
+status: execution_done
 feature_name: vm-http-handler-async-lifecycle
 author: [agent]
 created_at: 2026-09-28
@@ -14,7 +14,7 @@ new_spec_components:
   - docs/specs/stdlib/design/http-handler-async-lifecycle.md
 touched_goals: [GOAL-003]
 affects: [crates/auto-lang/src/vm/engine.rs, crates/auto-lang/src/vm/task.rs, crates/auto-lang/src/vm/codegen.rs, crates/auto-lang/src/vm/ffi, docs/specs/stdlib, docs/specs/auto-lang/runtime]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
@@ -139,17 +139,26 @@ named handler、既有 middleware 阶段和 `__axum:` closure 均不得留下等
 
 | 任务 | 依赖 | 精确位置/动作与产出 | 验证与关联 |
 |---|---|---|---|
-| T-01 [ ] | 无 | 在专用 worktree 核查 `http_server.rs::serve_with/dispatch_api_request`、`http_transport.rs::bridge_handler`、`engine.rs` 段/closure/RequestBuilder drain、`codegen.rs` 的 `~T` handler 返回表示、`stdlib.rs` 所有结果/Future 完成点；做最小可编译 park/notify/cancel spike；新增 `docs/plans/reports/705-async-decision.md` 冻结入口矩阵、作用域/总许可、默认 client 限额、Hyper 断连判据 | check/定向 spike；本轮 gate 的预期红、兼容消费矩阵；AC-01..05。无法覆盖某生产等待路径必须 replan，不得隐藏同步 fallback |
-| T-02 [ ] | T-01 | 在 `stdlib.rs`（可新增 `vm/ffi/async_http.rs`、改 `ffi/mod.rs`）集中 live 操作登记/完成/take/cancel 与 owned 通知；全部 ASYNC_RESULTS 完成端经安全提交，包括保留的文件 IO；适配 External Future 完成句柄，保 UI 就绪消费接口 | 竞态/迟到完成/重复操作定向单测绿；702 段测试；AC-02/05 |
-| T-03 [ ] | T-02 | 非流式 JSON/handle/builder 使用固定 async reqwest executor；从 `engine.rs` RequestBuilder send drain 移除 handler 等待的同步 drain；实现排队/active/body/期限/重试取消上限，保 builder 属性；去掉池满线程兜底 | check；客户端矩阵、饱和/大响应/取消重试探针；AC-03/05 |
-| T-04 [ ] | T-01..03 | `engine.rs` 复用/补充可恢复调用段入口；`http_server.rs` 将 middleware/handler 编组改成可恢复阶段、解析 `~T` 最终值（必要时 `codegen.rs` 发布返回模式）；`serve_with` 接完成通知与公平入队处理，全部 VM 状态仅 owner 访问 | 上游 gate+health、`~T` 最终值/普通 int 反例、两个 park/chained await/closure/失败恢复 E2E；AC-01/05 |
-| T-05 [ ] | T-04 | `http_transport.rs` 桥携 scope guard/deadline/生命期许可；`http_server.rs` 跳过失效队列、取消 parked 任务/操作、关闭排空；定义 permit 与返值/SSE producer 生命周期交界 | cancel/deadline/shutdown/半关闭 E2E，资源计数回基线与 await 前副作用保留；AC-04/05 |
-| T-06 [ ] | T-03..05 | 在现有 `http_server.rs` HTTP E2E 区扩齐 named/middleware/closure/client 兼容探针；重跑 015/017/023、696/698/699 SSE/关闭及 702 engine/UI；新增 `docs/plans/reports/705-parity.md` | `cargo th`、702/async result 定向测试；矩阵每行追溯命令/commit；AC-01..05 |
-| T-07 [ ] | T-06 | 固定小限额压测、取消风暴、晚完成回收/线程数量探针，记录时间与资源界限；核查所有完成写点/默认 HTTP 调用图无同步忙等；输出 `docs/plans/reports/705-resource-lifecycle.md` | 同样配置重复可复现；无资源斜率/permit 漏失与假并发；AC-02..04 |
-| T-08 [ ] | T-07 | 按当前门禁 check（含 `--no-default-features`）/th/一次 tf；diff/格式/新告警检查、延期与 workaround 扫描；准备 SD-01..04 与独立复审，新增 `docs/plans/reports/705-verification.md` | 验收项逐一有证据，独立红项定责；review/merge 另阶段执行；AC-05/06 |
+| T-01 [x] ✅ | 无 | 在专用 worktree 核查 `http_server.rs::serve_with/dispatch_api_request`、`http_transport.rs::bridge_handler`、`engine.rs` 段/closure/RequestBuilder drain、`codegen.rs` 的 `~T` handler 返回表示、`stdlib.rs` 所有结果/Future 完成点；做最小可编译 park/notify/cancel spike；新增 `docs/plans/reports/705-async-decision.md` 冻结入口矩阵、作用域/总许可、默认 client 限额、Hyper 断连判据 | check/定向 spike；本轮 gate 的预期红、兼容消费矩阵；AC-01..05。无法覆盖某生产等待路径必须 replan，不得隐藏同步 fallback |
+| T-02 [x] ✅ | T-01 | 在 `stdlib.rs`（可新增 `vm/ffi/async_http.rs`、改 `ffi/mod.rs`）集中 live 操作登记/完成/take/cancel 与 owned 通知；全部 ASYNC_RESULTS 完成端经安全提交，包括保留的文件 IO；适配 External Future 完成句柄，保 UI 就绪消费接口 | 竞态/迟到完成/重复操作定向单测绿；702 段测试；AC-02/05 |
+| T-03 [x] ✅ | T-02 | 非流式 JSON/handle/builder 使用固定 async reqwest executor；从 `engine.rs` RequestBuilder send drain 移除 handler 等待的同步 drain；实现排队/active/body/期限/重试取消上限，保 builder 属性；去掉池满线程兜底 | check；客户端矩阵、饱和/大响应/取消重试探针；AC-03/05 |
+| T-04 [x] ✅ | T-01..03 | `engine.rs` 复用/补充可恢复调用段入口；`http_server.rs` 将 middleware/handler 编组改成可恢复阶段、解析 `~T` 最终值（必要时 `codegen.rs` 发布返回模式）；`serve_with` 接完成通知与公平入队处理，全部 VM 状态仅 owner 访问 | 上游 gate+health、`~T` 最终值/普通 int 反例、两个 park/chained await/closure/失败恢复 E2E；AC-01/05 |
+| T-05 [x] ✅ | T-04 | `http_transport.rs` 桥携 scope guard/deadline/生命期许可；`http_server.rs` 跳过失效队列、取消 parked 任务/操作、关闭排空；定义 permit 与返值/SSE producer 生命周期交界 | cancel/deadline/shutdown/半关闭 E2E，资源计数回基线与 await 前副作用保留；AC-04/05 |
+| T-06 [x] ✅ | T-03..05 | 在现有 `http_server.rs` HTTP E2E 区扩齐 named/middleware/closure/client 兼容探针；重跑 015/017/023、696/698/699 SSE/关闭及 702 engine/UI；新增 `docs/plans/reports/705-parity.md` | `cargo th`、702/async result 定向测试；矩阵每行追溯命令/commit；AC-01..05 |
+| T-07 [x] ✅ | T-06 | 固定小限额压测、取消风暴、晚完成回收/线程数量探针，记录时间与资源界限；核查所有完成写点/默认 HTTP 调用图无同步忙等；输出 `docs/plans/reports/705-resource-lifecycle.md` | 同样配置重复可复现；无资源斜率/permit 漏失与假并发；AC-02..04 |
+| T-08 [x] ✅ | T-07 | 按当前门禁 check（含 `--no-default-features`）/th/一次 tf；diff/格式/新告警检查、延期与 workaround 扫描；准备 SD-01..04 与独立复审，新增 `docs/plans/reports/705-verification.md` | 验收项逐一有证据，独立红项定责；review/merge 另阶段执行；AC-05/06 |
 
 ## 9. 复审记录
 
+- 2026-09-28，`stage: work`，`PLAN-705:r1`，T-01 `outcome: pass`，code_commit `plan705 T-01`（worktree `D:/autostack/.wt/lang-705/auto-lang`，branch `plan-705-dev`，base `025fb192c`），task_ids `T-01`，evidence：决策报告 `docs/plans/reports/705-async-decision.md`（入口矩阵/许可升级/client 限额/断连判据/~T 元数据门冻结）+ spike `plan705` 2/2 绿（notify owner loop 零轮询、取消/迟到完成单次终结）+ 前置基线 `p027|engine_segment|plan702` 7/7 绿；依赖组 `auto-down` detached `3373a5cc`。`next: work`（T-02）。
+- 2026-09-28，`stage: work`，`PLAN-705:r1`，T-02 `outcome: pass`，code_commit `plan705 T-02`，task_ids `T-02`，evidence：`vm/ffi/async_http.rs` 统一 live-op 表（register/complete/take/cancel 单次终结 + COMPLETION_NOTIFY）；7 个完成写点全量收口、登记先于提交 worker、presence 守卫拒迟到复活；External Future 统一 `complete_external_future`；定向 `plan705|p027|engine_segment|plan702|plan349|plan394|plan446` 70/70 绿。执行期环境事件：并行 plan-706 会话（WSL git）prune 掉本 worktree 元数据（Windows 形态 gitdir 不被 WSL git 解析），已按规范结构重建（commondir `../..` + config.worktree + index 重建），T-01 提交无损；后续每次提交前重验 worktree 链接。`next: work`（T-03）。
+- 2026-09-28，`stage: work`，`PLAN-705:r1`，T-03 `outcome: pass`，code_commit `3159a15c8`，task_ids `T-03`，evidence：ClientExecutor 五限额（`AUTO_HTTP_ASYNC_WORKERS/MAX_ACTIVE/QUEUE/BODY_LIMIT/TIMEOUT_MS`，决策报告 §4 值）；JSON 池/handle/auth/bearer/builder/msg-bridge 六路每请求线程退役、队满终结性错误（零 spawn 兜底）；`read_body_capped` 增量体预算；`send_with_retry_async` 退避可取消；CALL_SPEC `.send` 段模式 rewind ip−6+Yield park（重入凭据=waiting 标志，CALL_NAT 协议同构）；探针 4 新增（队满/体预算/总期限/builder 段 park 350ms 零 drain）+定向 74/74 绿 + `--no-default-features` 零错。`next: work`（T-04）。
+- 2026-09-28，`stage: work`，`PLAN-705:r1`，T-04 `outcome: pass`，code_commit `390e335a0`，task_ids `T-04`，evidence：请求状态机（DispatchCtx/ParkedRequest/ParkStage 四阶段可 park）+ serve_with 事件驱动 owner loop（COMPLETION_NOTIFY enable→复查→await，spike 同款零丢唤醒）；`call_closure_segment`（__axum: 闭包 park 形态）；`intercept_error` 跨帧展开修复（既有引擎缺口：深帧 try 经 park/resume 后 catch 不生效——plan702 单帧面未覆盖，705 服务端面暴露后修复，`plan705_engine_deep_frame_try_recovery` 回归在册）；`API_ASYNC_RETURNS` 元数据门（普通 int 240 反例 E2E 锚定）；~T 三形态（External 挂起/内部体就地驱动/挂外层 AsyncReturnBody）；E2E：上游 gate 期间 health 完成、双 park 各取所得、~T 最终值 150、链式 await+catch、纯链双 park；plan705 11/11 绿 + 定向扫描 451/452（`e2e_concurrent_sse` j4 偶发，隔离复跑绿）。back_proxy 14 红/vue 1 红为环境/基线预存（socket 10013 与 ui_gen 资产，stash 基线复证）。`next: work`（T-05）。
+- 2026-09-28，`stage: work`，`PLAN-705:r1`，T-05 `outcome: pass`，code_commit `bad060695`，task_ids `T-05`，evidence：REQUEST_SCOPES 状态机 + 幂等终结（许可释放/登记移除/取消信号）；生命期许可总上限（队满/许可满双 503）；桥三臂 select（取消/deadline 从'丢接收端'升级为 scope 终结）；conn watcher 断连判据取消；SSE 许可随 FrameStream 代持；owner 失效队列跳过 + parked 失效废弃（live-op 回收）；排水窗 cfg 化 + hyper half_close 开启；E2E 五探针全绿（deadline 取消后 live-op/scope/许可回基线、失效请求零 handler 派发、关停副作用保留、半关闭仍响应）；定向扫描 522/522 绿。`next: work`（T-06）。
+- 2026-09-28，`stage: work`，`PLAN-705:r1`，T-06 `outcome: pass`，code_commit `plan705 T-06`，task_ids `T-06`，evidence：`docs/plans/reports/705-parity.md`（18 行支持矩阵逐行测试证据；命名回归 plan326 79/79 含 696 real_015/017/023 parity+SSE+关闭、plan702+705 21/21、client 矩阵 63/63、广谱 522/522）；middleware park 续链 + closure 段（合成 fn-ref）探针新增全绿；环境/基线预存红（back_proxy 14+vue 1）stash 复证定责。`next: work`（T-07）。
+- 2026-09-28，`stage: work`，`PLAN-705:r1`，T-07 `outcome: pass`，code_commit `plan705 T-07`，task_ids `T-07`，evidence：`docs/plans/reports/705-resource-lifecycle.md`（取消风暴 2 轮逐字节基线复现、线程数 8 并发前后差 ≤2、限额满载实测表、忙等门禁恰 1 legacy 标记、零资源斜率结论）；写点全查复核（7 写点 complete_live_op + 4 点 complete_external_future）。`next: work`（T-08）。
+- 2026-09-28，`stage: work`，`PLAN-705:r1`，T-08 `outcome: pass`，code_commit `plan705 T-08`，task_ids `T-08`，evidence：`docs/plans/reports/705-verification.md`——check 双形态 0 error；th 40/56（16 红定性：15 socket 10013 环境级 base 复证 + 1 隔离绿）；tf `--no-fail-fast` 全量 5832 项 5819 pass（10 项 base 预存红逐项复证 + 3 项 oracle 争用偶发双树隔离绿）；新增告警零；AC-01..06 逐条证据表。`outcome: pass`（work 阶段）；`next: review`。
+- 2026-09-28，`stage: work | plan_id | plan_revision | outcome | code_commit | task_ids | evidence | blockers | next`：`work | PLAN-705 | r1 | pass | 71aa3d71d+T-08 | T-01..T-08 | 三报告（705-async-decision/705-parity/705-resource-lifecycle/705-verification）+ plan705 探针 19 项全绿 + 门禁表 | 无阻塞 | **execution_done → review**（worktree `D:/autostack/.wt/lang-705/auto-lang` 保留供复审；canonical Spec 沉淀（SD-01..04）与 ledger 回写归 /auto-plan:review 通过后的 /auto-plan:merge）。
 - 2026-09-28，`stage: new`，`PLAN-705:r1`，`outcome: pass`，`next: work`（从 T-01 决策/基线开始）。已核对 699/702 已交付、当前 Specs/执行路径、编号唯一；AC-01..06 与 SD-01..04 均映射到 T-01..08。此为计划起草交接，未实施/测试代码，亦非独立复审通过。实施以本计划范围确认后创建的专用 worktree 为准。
 
 ## 10. 待澄清事项
