@@ -3179,6 +3179,10 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
                 }
             };
 
+            // PLAN-705 T-05: legacy 同步驱动保留位——本 fn 是非默认调用图
+            // 的串行 stdnet server（决策报告 §2 入口矩阵 legacy 行）；默认
+            // Axum 调用图（serve_with → dispatch_api_request_segment）零
+            // 同步忙等派发，由 plan705 gate 测试锁定。
             match vm.call_fn_by_name(&mut ht, &route_match.fn_name, n_args) {
                 Ok(()) => {
                     let nv = ht.ram.pop_nv();

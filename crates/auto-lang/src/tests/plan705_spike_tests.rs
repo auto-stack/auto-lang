@@ -1053,3 +1053,243 @@ fn closure_target() str {
         .expect("string slot");
     assert_eq!(String::from_utf8_lossy(&got), body, "closure 段最终值");
 }
+
+// ============================================================================
+// PLAN-705 T-07：资源生命周期探针（压测/取消风暴/晚完成回收/线程稳定）
+// ============================================================================
+
+/// Windows 线程计数（TH32CS_SNAPTHREAD 枚举，desktop_protocol 同款裸
+/// extern 形态）——AC-03"线程稳定为固定 runtime"的数值探针。
+#[cfg(windows)]
+fn current_process_thread_count() -> usize {
+    #[repr(C)]
+    struct THREADENTRY32 {
+        dw_size: u32,
+        cnt_usage: u32,
+        th32_thread_id: u32,
+        th32_owner_process_id: u32,
+        tp_base_pri: i32,
+        tp_delta_pri: i32,
+        dw_flags: u32,
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateToolhelp32Snapshot(flags: u32, pid: u32) -> isize;
+        fn Thread32First(handle: isize, entry: *mut THREADENTRY32) -> i32;
+        fn Thread32Next(handle: isize, entry: *mut THREADENTRY32) -> i32;
+        fn CloseHandle(handle: isize) -> i32;
+        fn GetCurrentProcessId() -> u32;
+    }
+    const TH32CS_SNAPTHREAD: u32 = 0x4;
+    const INVALID_HANDLE_VALUE: isize = -1;
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        if snap == INVALID_HANDLE_VALUE {
+            return 0;
+        }
+        let mut entry = THREADENTRY32 {
+            dw_size: std::mem::size_of::<THREADENTRY32>() as u32,
+            cnt_usage: 0,
+            th32_thread_id: 0,
+            th32_owner_process_id: 0,
+            tp_base_pri: 0,
+            tp_delta_pri: 0,
+            dw_flags: 0,
+        };
+        let pid = GetCurrentProcessId();
+        let mut count = 0usize;
+        if Thread32First(snap, &mut entry) != 0 {
+            loop {
+                if entry.th32_owner_process_id == pid {
+                    count += 1;
+                }
+                if Thread32Next(snap, &mut entry) == 0 {
+                    break;
+                }
+            }
+        }
+        CloseHandle(snap);
+        count
+    }
+}
+
+/// T-07 (1) 取消风暴 + 晚完成回收 + 基线重复可复现：短 deadline × 慢上游
+/// 的 N 连发全部终结（503），迟到完成零复活，两轮迭代后 live-op/scope/
+/// 许可逐字节回基线（AC-02/04；"同样配置重复可复现"）。
+#[test]
+fn plan705_e2e_cancel_storm_reclaims_deterministically() {
+    const SERVER_PORT: u16 = 18531;
+    const UPSTREAM_PORT: u16 = 18532;
+    std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "250");
+    let op_baseline = crate::vm::ffi::async_http::live_op_count();
+    let listener = std::net::TcpListener::bind(("127.0.0.1", UPSTREAM_PORT)).expect("bind upstream");
+    let up = std::thread::spawn(move || {
+        // 接受 storm+loop×1 个连接（deadline 先收口，上游应答全部迟到）。
+        for _ in 0..6 {
+            let Ok((mut stream, _)) = listener.accept() else { break };
+            let mut buf = [0u8; 4096];
+            let _ = std::io::Read::read(&mut stream, &mut buf);
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
+            let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
+        }
+    });
+    start_plan705_server(
+        &r#"
+#[api(method = "GET", path = "/api/slow")]
+fn slow() str {
+    Http.post_json("http://127.0.0.1:UP/slow", "q=1")
+}
+"#
+        .replace("UP", &UPSTREAM_PORT.to_string()),
+        SERVER_PORT,
+    );
+    for round in 0..2 {
+        let mut clients = Vec::new();
+        for i in 0..3 {
+            clients.push(std::thread::spawn(move || {
+                http_get_raw(SERVER_PORT, &format!("/api/slow?r={round}-{i}"))
+            }));
+            std::thread::sleep(std::time::Duration::from_millis(40));
+        }
+        for c in clients {
+            let (status, body) = c.join().expect("client");
+            assert_eq!(status, 503, "风暴应全部 deadline 503，得到 {status} {body:?}");
+        }
+        // 上游迟到应答落地后：无复活、无泄漏（逐轮基线）。
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert_eq!(
+            crate::vm::ffi::async_http::live_op_count(),
+            op_baseline,
+            "round {round}: live-op 未回基线"
+        );
+        assert_eq!(crate::vm::ffi::http_server::live_scope_count(), 0, "round {round}: scope 未回基线");
+    }
+    up.join().expect("upstream");
+}
+
+/// T-07 (2) 线程数量稳定：M 个 client job 前后进程线程数不变（固定
+/// async runtime，零每请求线程；AC-03 数值探针，Windows 面）。
+#[cfg(windows)]
+#[test]
+fn plan705_client_thread_count_stable_under_load() {
+    const SERVER_PORT: u16 = 18533;
+    const UPSTREAM_PORT: u16 = 18534;
+    let listener = std::net::TcpListener::bind(("127.0.0.1", UPSTREAM_PORT)).expect("bind upstream");
+    let up = std::thread::spawn(move || {
+        // 仅预热 1 连接（1 请求）——join 等待面必须与请求量一致。
+        for _ in 0..1 {
+            let Ok((mut stream, _)) = listener.accept() else { break };
+            let mut buf = [0u8; 4096];
+            let _ = std::io::Read::read(&mut stream, &mut buf);
+            std::thread::sleep(std::time::Duration::from_millis(60));
+            let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
+            let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
+        }
+    });
+    start_plan705_server(
+        &r#"
+#[api(method = "GET", path = "/api/fast")]
+fn fast() str {
+    Http.post_json("http://127.0.0.1:UP/fast", "q=1")
+}
+"#
+        .replace("UP", &UPSTREAM_PORT.to_string()),
+        SERVER_PORT,
+    );
+    // 预热（runtime/client 池建立后的稳态为基线）。
+    let _ = http_get_raw(SERVER_PORT, "/api/fast");
+    up.join().expect("upstream warmup");
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let before = current_process_thread_count();
+    assert!(before > 0, "线程枚举失败");
+    let listener2 = std::net::TcpListener::bind(("127.0.0.1", UPSTREAM_PORT + 1)).expect("bind upstream2");
+    // 连接数 ≤ 请求数（reqwest 池对并发 job 复用连接）——accept 循环以
+    // 停机标志收口，不假设固定次数。
+    let up2_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let up2_flag = up2_done.clone();
+    let up2 = std::thread::spawn(move || {
+        let _ = listener2.set_nonblocking(true);
+        while !up2_flag.load(std::sync::atomic::Ordering::SeqCst) {
+            match listener2.accept() {
+                Ok((mut stream, _)) => {
+                    let mut buf = [0u8; 4096];
+                    let _ = std::io::Read::read(&mut stream, &mut buf);
+                    std::thread::sleep(std::time::Duration::from_millis(40));
+                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
+                    let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
+                }
+                Err(_) => {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+            }
+        }
+    });
+    let mut clients = Vec::new();
+    eprintln!("[probe] load phase start");
+    for i in 0..8 {
+        clients.push(std::thread::spawn(move || {
+            eprintln!("[probe] client {i} connecting");
+            let r = http_get_raw(SERVER_PORT, &format!("/api/fast?i={i}"));
+            eprintln!("[probe] client {i} done {:?}", r.0);
+            r
+        }));
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    for c in clients {
+        let (status, _) = c.join().expect("client");
+        assert_eq!(status, 200);
+    }
+    eprintln!("[probe] all clients done");
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    up2_done.store(true, std::sync::atomic::Ordering::SeqCst);
+    up2.join().expect("upstream2");
+    eprintln!("[probe] up2 joined");
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let after = current_process_thread_count();
+    // 允许 ±2 抖动（tokio 偶发辅助线程），禁止随负载线性增长。
+    assert!(
+        after <= before + 2,
+        "线程数随负载增长：before={before} after={after}——每请求线程回归"
+    );
+}
+
+/// T-07 (3) 默认 HTTP 调用图零同步忙等门禁：http_server.rs 中
+/// `.call_fn_by_name(`（同步忙等派发）只允许落在带 `legacy 同步驱动保留位`
+/// 标记的串行 stdnet server（决策报告 §2 legacy 行）；`.call_closure(`
+/// 同步入口零命中（`__axum:` 走 call_closure_segment）。
+#[test]
+fn plan705_gate_default_callgraph_no_busy_wait() {
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let src = std::fs::read_to_string(std::path::Path::new(manifest)
+        .join("src/vm/ffi/http_server.rs"))
+        .expect("read http_server.rs");
+    let mut unmarked: Vec<String> = Vec::new();
+    let mut legacy = 0usize;
+    let lines: Vec<&str> = src.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        if !line.contains(".call_fn_by_name(") && !line.contains(".call_closure(") {
+            continue;
+        }
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        let back_start = i.saturating_sub(8);
+        let is_legacy = lines[back_start..i]
+            .iter()
+            .any(|l| l.contains("legacy 同步驱动保留位"));
+        if line.contains(".call_closure(") {
+            unmarked.push(format!("line {}: 同步 call_closure 出现（应走段入口）", i + 1));
+        } else if is_legacy {
+            legacy += 1;
+        } else {
+            unmarked.push(format!("line {}: 未标记的同步忙等派发", i + 1));
+        }
+    }
+    assert!(
+        unmarked.is_empty(),
+        "默认 HTTP 调用图发现同步忙等派发点: {unmarked:?}"
+    );
+    assert_eq!(legacy, 1, "legacy 保留位应恰 1 处（serve_blocking_stdnet），现 {legacy}");
+}
