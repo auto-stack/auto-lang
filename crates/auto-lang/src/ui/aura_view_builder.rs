@@ -834,21 +834,28 @@ impl<'a> AuraViewBuilder<'a> {
             AuraNode::Text(text_content) => {
                 self.convert_text_with(text_content, bindings)
             }
-            AuraNode::MemoBlock { body, .. } => {
-                // PLAN-046 T-04：untracked 路径（MCP sync/非 debug）memo 块
-                // = 子体直落原始渲染（不缓存；VM 桌面走 tracked 轨）。
-                let views: Vec<View<DynamicMessage>> = body.iter()
-                    .map(|n| self.convert_node_with(n, bindings))
-                    .collect();
-                if views.is_empty() {
-                    View::Empty
-                } else if views.len() == 1 {
-                    views.into_iter().next().unwrap()
-                } else {
-                    View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
-                }
+            AuraNode::MemoBlock { deps, exact, body, .. } => {
+                // PLAN-046 T-06 执行期修正：untracked 帧同走共享块门（伪造
+                // 空簿记通道；probe 禁用 → probe_on=false 键面）。
+                let mut path0 = Vec::new();
+                let mut id_map0 = DebugIdMap::default();
+                let mut probe0 = BuildProbe::new_disabled();
+                self.convert_memo_block(deps, *exact, body, &mut path0, &mut id_map0, &mut probe0, bindings)
             }
-            AuraNode::ForLoop { var, index, iterable, body, .. } => {
+            AuraNode::ForLoop { var, index, iterable, key_expr, body, .. } => {
+                // PLAN-046 T-06 执行期修正：桌面窗口渲染帧走本 untracked 轨
+                //（DynamicComponent::view()=build()），keyed 门必须双轨可达
+                // ——伪造空簿记通道复用同一 convert_for_keyed（机制单源）；
+                // probe 禁用 → probe_on=false 键面，与 tracked 帧条目互不串。
+                if let Some(key_expr) = key_expr {
+                    let mut path0 = Vec::new();
+                    let mut id_map0 = DebugIdMap::default();
+                    let mut probe0 = BuildProbe::new_disabled();
+                    return self.convert_for_keyed(
+                        var, index, iterable, key_expr, body,
+                        &mut path0, &mut id_map0, &mut probe0, bindings,
+                    );
+                }
                 // Strip leading dot from iterable name (e.g., ".notes" → "notes")
                 let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
                 // Plan 370 (Issue 2): for dotted prop paths like `.note.tags`,
@@ -5369,6 +5376,13 @@ let tabs_inner = View::Row {
         bindings: &Bindings,
         tracked: Option<(&mut Vec<usize>, &mut DebugIdMap, &mut BuildProbe)>,
     ) -> View<DynamicMessage> {
+        if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+            eprintln!(
+                "[MEMO-DIAG] page_full enter page={} tracked={}",
+                page_widget.name,
+                tracked.is_some()
+            );
+        }
         match tracked {
             Some((path, id_map, probe)) => self.render_child_widget_tracked(
                 page_widget, empty_props, empty_events, bindings, path, id_map, probe, None,
@@ -6718,6 +6732,13 @@ let tabs_inner = View::Row {
             psink.register(&child_widget.name);
         }
         Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
+        if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+            eprintln!(
+                "[MEMO-DIAG] child_widget={} keyed_loops={}",
+                child_widget.name,
+                count_keyed_loops_free(&child_widget.view_tree)
+            );
+        }
 
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
         // Plan 437 Phase 2: 同 render_child_widget —— 子组件 Init 补发
@@ -20113,6 +20134,24 @@ mod plan080_rowclass_probe_tests {
     }
 }
 
+#[cfg(feature = "ui-iced")]
+fn count_keyed_loops_free(node: &AuraNode) -> usize {
+    match node {
+        AuraNode::ForLoop { key_expr, body, .. } => {
+            usize::from(key_expr.is_some()) + body.iter().map(count_keyed_loops_free).sum::<usize>()
+        }
+        AuraNode::Element { children, .. } | AuraNode::Link { children, .. } => {
+            children.iter().map(count_keyed_loops_free).sum::<usize>()
+        }
+        AuraNode::Conditional { then_body, else_body, .. } => {
+            then_body.iter().chain(else_body.iter().flatten()).map(count_keyed_loops_free).sum::<usize>()
+        }
+        AuraNode::MemoBlock { body, .. } => body.iter().map(count_keyed_loops_free).sum::<usize>(),
+        AuraNode::Component { children, .. } => children.iter().map(count_keyed_loops_free).sum::<usize>(),
+        _ => 0,
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // PLAN-045: 组件级 memo 引擎（菜单族四件 + sidebar nav 块）
 //
@@ -20471,6 +20510,9 @@ impl<'a> AuraViewBuilder<'a> {
         const SITE: u8 = crate::ui::memo_deps::MEMO_SITE_FOR_ITEM;
         let probe_on = probe.is_enabled();
         let base_len = path.len();
+        if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+            eprintln!("[MEMO-DIAG] site=7 enter var={var} iterable={iterable}");
+        }
 
         // ── 降级前置门：嵌套绑定上下文（T-01 D-4 保守裁定——外层循环变量
         // 进入项体求值，其读面版本静态不可证；memo_ctx_ok 的 for 面）。

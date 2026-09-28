@@ -21274,6 +21274,30 @@ style = 123
         }
     }
 
+    /// PLAN-046 一次性诊断：真实 worktree 语料的 key 解析（跑完即删）。
+    #[test]
+    fn diag_real_filetree_keyed_parse() {
+        let src = std::fs::read_to_string(
+            "D:/autostack/.wt/os-046/auto-os/widgets-gallery/src/front/components/filetree.at",
+        )
+        .expect("corpus file");
+        let mut parser = Parser::from(&src).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().expect("filetree.at must parse");
+        let mut found = 0;
+        for s in &ast.stmts {
+            if let Stmt::WidgetDecl(w) = s {
+                let src_dbg = format!("{:?}", w.view);
+                if src_dbg.contains("ForLoop") {
+                    found += 1;
+                    let keyed = src_dbg.contains("key_expr: Some");
+                    eprintln!("DIAG widget={} ForLoop keyed={}", w.name, keyed);
+                    assert!(keyed, "widget {} 的 ForLoop 必须带 key_expr", w.name);
+                }
+            }
+        }
+        assert!(found > 0, "filetree.at 必须含 ForLoop");
+    }
+
     /// PLAN-046 T-05：`outlet (memo: true)` 语料 prop 解析；裸 outlet 兼容；
     /// 非 `memo: true` 头参指名报错。
     #[test]

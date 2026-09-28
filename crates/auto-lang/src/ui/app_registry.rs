@@ -484,10 +484,12 @@ pub fn host_extra_roots() -> Vec<(String, PathBuf)> {
 /// 不炸）；storage `shell.apps.scan_galleries=false` 可整体关闭
 /// （对称 `shell.apps.scan_siblings`）。
 pub fn gallery_extra_roots() -> Vec<(String, PathBuf)> {
-    gallery_extra_roots_from(
+    let roots = gallery_extra_roots_from(
         crate::vm::ffi::stdlib::storage_host_read("shell.apps.scan_galleries").as_deref(),
         Path::new(".."),
-    )
+    );
+    eprintln!("[app-registry] gallery roots: {:?} (AUTO_OS_ROOT={:?})", roots, std::env::var("AUTO_OS_ROOT").ok());
+    roots
 }
 
 /// PLAN-008：画廊探测纯函数形态（storage 开关与 parent 基目录参数化，
