@@ -80,7 +80,10 @@ impl TransportConfig {
                 "AUTO_HTTP_REQUEST_TIMEOUT_MS",
                 30_000,
             ) as u64),
-            shutdown_drain: Duration::from_secs(10),
+            shutdown_drain: Duration::from_millis(env_usize(
+                "AUTO_HTTP_SHUTDOWN_DRAIN_MS",
+                10_000,
+            ) as u64),
         }
     }
 }
@@ -96,7 +99,11 @@ impl TransportConfig {
 pub(crate) async fn serve_network(
     addr: String,
     cfg: TransportConfig,
-    req_tx: tokio::sync::mpsc::Sender<(ApiRequest, tokio::sync::oneshot::Sender<ApiReply>)>,
+    req_tx: tokio::sync::mpsc::Sender<(
+        ApiRequest,
+        tokio::sync::oneshot::Sender<ApiReply>,
+        u64, // scope id (PLAN-705 T-05)
+    )>,
     shutdown: tokio::sync::watch::Receiver<bool>,
     ready: tokio::sync::oneshot::Sender<Result<(), String>>,
 ) {
@@ -111,6 +118,7 @@ pub(crate) async fn serve_network(
 
     let graceful = GracefulShutdown::new();
     let mut shutdown = shutdown;
+    static CONN_ID_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     loop {
         tokio::select! {
             accepted = listener.accept() => {
@@ -121,17 +129,20 @@ pub(crate) async fn serve_network(
                         continue;
                     }
                 };
+                let conn_id = CONN_ID_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 let req_tx = req_tx.clone();
                 let shutdown = shutdown.clone();
                 // Peer is captured per connection — the fallback handler
                 // closure is the tower service hyper drives.
                 let app = {
                     let cfg = cfg.clone();
+                    let req_tx = req_tx.clone();
+                    let shutdown = shutdown.clone();
                     axum::Router::new().fallback(move |request: axum::extract::Request| {
                         let cfg = cfg.clone();
                         let req_tx = req_tx.clone();
                         let shutdown = shutdown.clone();
-                        async move { bridge_handler(request, peer, cfg, req_tx, shutdown).await }
+                        async move { bridge_handler(request, peer, cfg, req_tx, shutdown, conn_id).await }
                     })
                 };
                 let watcher = graceful.watcher();
@@ -145,12 +156,20 @@ pub(crate) async fn serve_network(
                         .http1()
                         .timer(TokioTimer::new())
                         .max_buf_size(cfg.max_header_buf)
-                        .header_read_timeout(cfg.header_read_timeout);
+                        .header_read_timeout(cfg.header_read_timeout)
+                        // PLAN-705 T-05/§5.4: 半关闭不判取消——客户端半关
+                        // 写端仍读响应；hyper 默认在请求后 FIN 即弃在途
+                        // 派发，显式开启 half_close 语义。
+                        .half_close(true);
                     let conn = builder.serve_connection_with_upgrades(
                         TokioIo::new(stream),
                         TowerToHyperService::new(app),
                     );
+                    // PLAN-705 T-05: 连接任务确证终结（client 关闭/RST/解析
+                    // 错——watch 返回即任务终结证据）→ 取消该连接名下全部
+                    // 请求 scope（决策报告 §5-3 断连判据）。
                     let _ = watcher.watch(conn).await;
+                    super::http_server::cancel_scopes_for_conn(conn_id);
                 });
             }
             _ = shutdown.changed() => {
@@ -173,8 +192,13 @@ async fn bridge_handler(
     request: axum::extract::Request,
     peer: SocketAddr,
     cfg: TransportConfig,
-    req_tx: tokio::sync::mpsc::Sender<(ApiRequest, tokio::sync::oneshot::Sender<ApiReply>)>,
+    req_tx: tokio::sync::mpsc::Sender<(
+        ApiRequest,
+        tokio::sync::oneshot::Sender<ApiReply>,
+        u64,
+    )>,
     shutdown: tokio::sync::watch::Receiver<bool>,
+    conn_id: u64,
 ) -> Response {
     let (mut parts, body) = request.into_parts();
     let method = parts.method.as_str().to_uppercase();
@@ -228,11 +252,28 @@ async fn bridge_handler(
         peer: Some(peer),
     };
 
+    // PLAN-705 T-05: 生命期许可 + scope ——入队前获取（queued+running+
+    // parked 总上限）；许可不可得 = 总上限满 → 503（零分配零排队）。
+    let scope = super::http_server::create_scope(
+        conn_id,
+        std::time::Instant::now() + cfg.request_timeout,
+    );
+    let Some(scope) = scope else {
+        eprintln!("[HTTP] {} {} → 503 (lifetime permit cap)", peer, "");
+        let mut resp = error_response(503, "server busy");
+        if let Ok(v) = axum::http::HeaderValue::from_str("1") {
+            resp.headers_mut().insert("Retry-After", v);
+        }
+        return resp;
+    };
+
     // Bounded queue: a full queue is a fast, testable 503 (AC-03) — never an
-    // unbounded wait or silent allocation growth.
+    // unbounded wait or silent allocation growth. 队满 = scope 终结（许可
+    // 释放），不留下无效排队（AC-04）。
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel::<ApiReply>();
-    if req_tx.try_send((api_req, reply_tx)).is_err() {
+    if req_tx.try_send((api_req, reply_tx, scope.id)).is_err() {
         eprintln!("[HTTP] {} {} → 503 (in-flight queue full)", peer, "");
+        super::http_server::cancel_scope(&scope);
         let mut resp = error_response(503, "server busy");
         if let Ok(v) = axum::http::HeaderValue::from_str("1") {
             resp.headers_mut().insert("Retry-After", v);
@@ -240,22 +281,40 @@ async fn bridge_handler(
         return resp;
     }
 
-    // Reply wait timeout releases the queued request relationship; if the
-    // owner already started the synchronous handler, the late result is
-    // dropped when the receiver is gone — it cannot be preempted (decision
-    // report §5.1).
-    let reply = match tokio::time::timeout(cfg.request_timeout, reply_rx).await {
-        Err(_) => {
-            eprintln!("[HTTP] request wait timed out after {:?}", cfg.request_timeout);
-            return error_response(503, "request wait timed out");
-        }
-        Ok(Err(_)) => {
+    // Reply wait：三臂 select（回复 / scope 取消——连接终结/关闭/owner 失效
+    // / deadline 到期）。取消臂（含 deadline）= scope 幂等终结：owner 侧
+    // parked 等待随后废弃、live-op 回收，已排队请求不再执行业务函数
+    //（AC-04；PLAN-699 语义从"只丢接收端"升级）。
+    let deadline_tokio = tokio::time::Instant::from_std(scope.deadline);
+    let reply = tokio::select! {
+        r = reply_rx => Some(r),
+        _ = scope.cancel_notify.notified() => None,
+        _ = tokio::time::sleep_until(deadline_tokio) => None,
+    };
+    let reply = match reply {
+        Some(Ok(reply)) => reply,
+        Some(Err(_)) => {
+            super::http_server::cancel_scope(&scope);
             return error_response(503, "server shutting down");
         }
-        Ok(Ok(reply)) => reply,
+        None => {
+            eprintln!(
+                "[HTTP] request wait timed out / cancelled after {:?}",
+                cfg.request_timeout
+            );
+            super::http_server::cancel_scope(&scope);
+            return error_response(503, "request wait timed out");
+        }
     };
 
-    api_reply_to_response(reply, parts, shutdown).await
+    // SSE：许可随 scope 移交响应体（FrameStream Drop 释放——流结束/断连/
+    // 关闭均触发）；普通回复立即终结 scope。
+    match &reply {
+        // SSE 的许可随 scope 移交响应体代持；其余回复立即终结 scope。
+        ApiReply::Full { body: ApiBody::Sse(_), .. } => {}
+        _ => super::http_server::complete_scope(&scope),
+    }
+    api_reply_to_response(reply, parts, shutdown, Some(scope)).await
 }
 
 /// Map the VM owner's structured reply onto the Axum response world.
@@ -263,6 +322,7 @@ async fn api_reply_to_response(
     reply: ApiReply,
     request: axum::http::request::Parts,
     shutdown: tokio::sync::watch::Receiver<bool>,
+    scope: Option<std::sync::Arc<super::http_server::RequestScope>>,
 ) -> axum::response::Response {
     match reply {
         ApiReply::Full {
@@ -298,6 +358,7 @@ async fn api_reply_to_response(
                     .body(axum::body::Body::from_stream(FrameStream {
                         rx: frames,
                         shutdown,
+                        scope,
                     }))
                     .unwrap_or_else(|_| error_response(500, "internal error")),
             }
@@ -367,6 +428,17 @@ fn error_response(status: u16, message: &str) -> axum::response::Response {
 struct FrameStream {
     rx: tokio::sync::mpsc::Receiver<String>,
     shutdown: tokio::sync::watch::Receiver<bool>,
+    /// PLAN-705 T-05: SSE 的生命期许可随响应体代持——流结束/断连/关闭
+    /// 触发 Drop → scope 幂等终结（许可释放）。
+    scope: Option<std::sync::Arc<super::http_server::RequestScope>>,
+}
+
+impl Drop for FrameStream {
+    fn drop(&mut self) {
+        if let Some(scope) = self.scope.take() {
+            super::http_server::complete_scope(&scope);
+        }
+    }
 }
 
 impl futures::Stream for FrameStream {
@@ -487,6 +559,7 @@ mod bridge_tests {
                     peer: None,
                 },
                 _reply_tx,
+                1,
             ))
             .await
             .expect("one slot fits");
@@ -502,6 +575,7 @@ mod bridge_tests {
             cfg,
             req_tx,
             shutdown,
+            77,
         )
         .await;
         assert_eq!(resp.status(), 503, "full queue must reject fast");

@@ -3379,6 +3379,14 @@ pub async fn serve_async(vm: std::rc::Rc<crate::vm::engine::AutoVM>, addr: &str)
     // unix); tests/embedders inject theirs through `serve_with`.
     let cfg = super::http_transport::TransportConfig::from_env();
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    // PLAN-705 T-05（仅测试面）：注册全局关停触发器——E2E 经
+    // test_trigger_shutdown 注入优雅关停（默认信号面 Ctrl+C 不变）。
+    #[cfg(test)]
+    {
+        let _ = TEST_SHUTDOWN_TX.set(shutdown_tx.clone());
+    }
+    #[cfg(not(test))]
+    let _ = &shutdown_tx;
     tokio::task::spawn_local({
         let shutdown_tx = shutdown_tx.clone();
         async move {
@@ -3403,6 +3411,32 @@ pub async fn serve_async(vm: std::rc::Rc<crate::vm::engine::AutoVM>, addr: &str)
     serve_with(vm, addr, cfg, shutdown_rx).await;
 }
 
+/// PLAN-705 T-05（仅测试面）：构造最小 GET ApiRequest（失效队列单元用）。
+#[cfg(test)]
+pub(crate) fn test_api_request_get(path: &str) -> ApiRequest {
+    ApiRequest {
+        method: "GET".to_string(),
+        path: path.to_string(),
+        headers: Vec::new(),
+        body: Vec::new(),
+        peer: None,
+    }
+}
+
+/// PLAN-705 T-05（仅测试面）：serve_async 注册的最新实例关停发送端。
+#[cfg(test)]
+static TEST_SHUTDOWN_TX: std::sync::OnceLock<tokio::sync::watch::Sender<bool>> =
+    std::sync::OnceLock::new();
+
+/// PLAN-705 T-05（仅测试面）：触发 serve_async 已注册实例的优雅关停。
+#[cfg(test)]
+pub(crate) fn test_trigger_shutdown() -> bool {
+    TEST_SHUTDOWN_TX
+        .get()
+        .map(|tx| tx.send(true).is_ok())
+        .unwrap_or(false)
+}
+
 /// Injectable-shutdown entry (tests / embedders). Owns the VM for the server
 /// lifetime; returns after the shutdown flag fired and draining finished
 /// (port released).
@@ -3416,6 +3450,7 @@ async fn serve_with(
     let (req_tx, mut req_rx) = tokio::sync::mpsc::channel::<(
         ApiRequest,
         tokio::sync::oneshot::Sender<ApiReply>,
+        u64, // scope id (PLAN-705 T-05)
     )>(cfg.queue_capacity);
 
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
@@ -3478,8 +3513,13 @@ async fn serve_with(
     let mut draining = false;
     let mut loop_result = ();
     loop {
-        // (0) 事件驱动扫描：恢复就绪 parked（本轮通知/事件唤醒后的消费点）。
+        // (0) 事件驱动扫描：scope 失效废弃 + 恢复就绪 parked（本轮通知/
+        // 事件唤醒后的消费点——取消信号同经 COMPLETION_NOTIFY）。
         drain_ready_parked(&vm, &mut parked);
+        // 最早 deadline 定时臂（parked 非空时唤醒失效检查，防无事件悬挂）。
+        let next_deadline = parked.iter().filter_map(|p| lookup_scope(p.scope_id))
+            .map(|s| tokio::time::Instant::from_std(s.deadline))
+            .min();
         // (1) 注册完成通知兴趣（Notified 首次 poll 才登记 waiter，enable()
         // 把登记提前到检查之前）。
         let notify_fut = completion_notify.notified();
@@ -3492,13 +3532,13 @@ async fn serve_with(
         // (3) 事件等待：新请求 / 完成通知 / 关闭。
         if draining {
             // 关闭排水窗：继续应答已排队请求；parked 请求等待其完成或
-            // 排水截止（超时统一取消——T-05 的 scope 取消语义）。
-            let drain_deadline =
-                tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+            // 排水截止（超时统一取消——T-05 的 scope 取消语义；窗宽随
+            // cfg，AUTO_HTTP_SHUTDOWN_DRAIN_MS 可调）。
+            let drain_deadline = tokio::time::Instant::now() + cfg.shutdown_drain;
             tokio::select! {
                 req = req_rx.recv() => match req {
-                    Some((api_req, reply_tx)) => {
-                        dispatch_api_request_segment(&vm, &routes, api_req, reply_tx);
+                    Some((api_req, reply_tx, scope_id)) => {
+                        dispatch_owner_request(&vm, &routes, api_req, reply_tx, scope_id, &mut parked);
                     }
                     None => {
                         cancel_all_parked(&vm, &mut parked);
@@ -3514,11 +3554,8 @@ async fn serve_with(
         } else {
             tokio::select! {
                 req = req_rx.recv() => match req {
-                    Some((api_req, reply_tx)) => {
-                        match dispatch_api_request_segment(&vm, &routes, api_req, reply_tx) {
-                            DispatchOutcome::Replied => {}
-                            DispatchOutcome::Parked(p) => parked.push(*p),
-                        }
+                    Some((api_req, reply_tx, scope_id)) => {
+                        dispatch_owner_request(&vm, &routes, api_req, reply_tx, scope_id, &mut parked);
                     }
                     None => {
                         // net 侧发送端已清（端口释放）——放弃 parked
@@ -3528,6 +3565,14 @@ async fn serve_with(
                     }
                 },
                 _ = &mut notify_fut => {}
+                _ = async {
+                    match next_deadline {
+                        Some(d) => tokio::time::sleep_until(d).await,
+                        None => std::future::pending::<()>().await,
+                    }
+                } => {
+                    // 最早 parked deadline 到期：回到循环顶做失效废弃。
+                }
                 _ = shutdown_rx.changed() => {
                     // 排水窗开启：net 侧同步停收（watch 广播同源），已排队
                     // 请求继续应答；parked 请求等待完成或排水截止。
@@ -3539,6 +3584,44 @@ async fn serve_with(
     eprintln!("[HTTP] VM owner loop exited (port released)");
 }
 
+/// owner 出队派发：scope 失效（取消/过期）的排队请求**跳过业务函数**
+/// 直接 503（AC-04 失效队列不执行）；有效则置 RUNNING 并段驱动。
+pub(crate) fn dispatch_owner_request(
+    vm: &std::rc::Rc<AutoVM>,
+    routes: &[HttpRoute],
+    api_req: ApiRequest,
+    reply_tx: tokio::sync::oneshot::Sender<ApiReply>,
+    scope_id: u64,
+    parked: &mut Vec<ParkedRequest>,
+) {
+    let scope = lookup_scope(scope_id);
+    let usable = scope.as_ref().map(|s| scope_usable(s)).unwrap_or(false);
+    if !usable {
+        // 失效队列：终结 scope（释放许可）+ 503，不调用 handler。
+        if let Some(s) = &scope {
+            cancel_scope(s);
+        }
+        let _ = reply_tx.send(ApiReply::Full {
+            status: 503,
+            headers: json_reply_headers(""),
+            body: ApiBody::Text(br#"{"error":"request cancelled"}"#.to_vec()),
+        });
+        return;
+    }
+    if let Some(s) = &scope {
+        s.state.store(SCOPE_RUNNING, std::sync::atomic::Ordering::SeqCst);
+    }
+    match dispatch_api_request_segment(vm, routes, api_req, reply_tx, scope_id) {
+        DispatchOutcome::Replied => {}
+        DispatchOutcome::Parked(p) => {
+            if let Some(s) = lookup_scope(scope_id) {
+                s.state.store(SCOPE_PARKED, std::sync::atomic::Ordering::SeqCst);
+            }
+            parked.push(*p);
+        }
+    }
+}
+
 /// 关闭/退出时放弃全部 parked 请求：503 终态回复、任务清理、未完成的
 /// live-op 回收（迟到的 worker 完成被 presence 守卫丢弃，无泄漏面）。
 fn cancel_all_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) {
@@ -3548,6 +3631,10 @@ fn cancel_all_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) 
                 crate::vm::ffi::stdlib::drop_async_result(*req_id);
             }
             ParkedWait::Future(_) => {}
+        }
+        // T-05: scope 幂等终结（取消信号唤醒等它的桥臂；许可释放）。
+        if let Some(s) = lookup_scope(p.scope_id) {
+            cancel_scope(&s);
         }
         vm.tasks.remove(&p.task_id);
         if let Some(tx) = p.reply_tx.take() {
@@ -3602,6 +3689,8 @@ pub(crate) struct DispatchCtx {
     pub request_info: String,
     /// handler 任务 id（Handler / AwaitReturnFuture 阶段有效；终态移除）。
     pub handler_task_id: Option<u64>,
+    /// 请求作用域 id（T-05：owner 派发/恢复前的失效检查）。
+    pub scope_id: u64,
 }
 
 /// park 的延续点。
@@ -3623,6 +3712,8 @@ pub(crate) struct ParkedRequest {
     pub reply_tx: Option<tokio::sync::oneshot::Sender<ApiReply>>,
     /// 挂起中的任务 id（仍在 `vm.tasks` 注册表；单 owner try_lock 访问）。
     pub task_id: u64,
+    /// 请求作用域 id（取消/deadline 失效检查——T-05）。
+    pub scope_id: u64,
     pub seg: ParkedSegment,
     /// 就绪凭据（HttpRequest 的 live-op / Future 的 vm.futures）。
     pub wait: ParkedWait,
@@ -3643,6 +3734,7 @@ pub(crate) fn dispatch_api_request_segment(
     routes: &[HttpRoute],
     req: ApiRequest,
     reply_tx: tokio::sync::oneshot::Sender<ApiReply>,
+    scope_id: u64,
 ) -> DispatchOutcome {
     let req_method = req.method.to_uppercase();
     let req_path = req.path.clone();
@@ -3780,6 +3872,7 @@ pub(crate) fn dispatch_api_request_segment(
         middleware_names,
         request_info,
         handler_task_id: None,
+        scope_id,
     };
     advance_dispatch(vm, ctx, 0, Some(reply_tx))
 }
@@ -3814,6 +3907,7 @@ fn advance_dispatch(
                 return DispatchOutcome::Parked(Box::new(ParkedRequest {
                     reply_tx,
                     task_id,
+                    scope_id: ctx.scope_id,
                     seg,
                     wait,
                     stage: ParkStage::Middleware { index },
@@ -4096,6 +4190,7 @@ fn start_handler(
         HandlerEnd::Parked(wait, seg) => DispatchOutcome::Parked(Box::new(ParkedRequest {
             reply_tx,
             task_id: handler_task_id,
+            scope_id: ctx.scope_id,
             seg,
             wait,
             stage: ParkStage::Handler,
@@ -4125,6 +4220,7 @@ fn start_handler(
                     DispatchOutcome::Parked(Box::new(ParkedRequest {
                         reply_tx,
                         task_id: handler_task_id,
+                        scope_id: ctx.scope_id,
                         seg: ParkedSegment {
                             fn_name: ctx.route.fn_name.clone(),
                             saved_bp: 0,
@@ -4139,6 +4235,7 @@ fn start_handler(
                     DispatchOutcome::Parked(Box::new(ParkedRequest {
                         reply_tx,
                         task_id: handler_task_id,
+                        scope_id: ctx.scope_id,
                         seg: ParkedSegment {
                             fn_name: ctx.route.fn_name.clone(),
                             saved_bp: 0,
@@ -4410,6 +4507,173 @@ fn value_to_nv_via_task(
     Some(nv)
 }
 
+// ============================================================================
+// PLAN-705 T-05: 请求作用域与生命期许可（queued+running+parked 总上限）
+// ============================================================================
+//
+// 许可语义升级（决策报告 §3，兼容性明示）：AUTO_HTTP_MAX_INFLIGHT 从
+// "队列容量"升级为"请求生命期总上限"——许可在桥入队前获取，scope 终结
+// （回复送达 / SSE 流结束 / 取消 / 关闭）幂等释放。mpsc 队列容量仍为同值
+// （队满 503 先于许可上限发生）。取消/超时的请求不再无效排队与复活结果
+// 槽：cancel 是幂等终结入口，parked 等待废弃时同步回收 live-op。
+
+/// 作用域状态机（AtomicU8 载荷）。
+pub(crate) const SCOPE_QUEUED: u8 = 0;
+pub(crate) const SCOPE_RUNNING: u8 = 1;
+pub(crate) const SCOPE_PARKED: u8 = 2;
+pub(crate) const SCOPE_DONE: u8 = 3;
+pub(crate) const SCOPE_CANCELLED: u8 = 4;
+
+pub(crate) struct RequestScope {
+    pub id: u64,
+    pub conn_id: u64,
+    pub state: std::sync::atomic::AtomicU8,
+    pub deadline: std::time::Instant,
+    /// 生命期许可（scope 终结时释放；SSE 流由桥侧 FrameStream Drop 代持）。
+    pub permit: std::sync::Mutex<Option<tokio::sync::OwnedSemaphorePermit>>,
+    /// 取消信号（桥 reply 等待 select 臂）。
+    pub cancel_notify: tokio::sync::Notify,
+}
+
+impl RequestScope {
+    /// 终态判定（DONE/CANCELLED）。
+    pub(crate) fn terminal(&self) -> bool {
+        matches!(
+            self.state.load(std::sync::atomic::Ordering::SeqCst),
+            SCOPE_DONE | SCOPE_CANCELLED
+        )
+    }
+}
+
+lazy_static::lazy_static! {
+    static ref REQUEST_SCOPES: std::sync::Mutex<std::collections::HashMap<u64, std::sync::Arc<RequestScope>>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
+}
+
+static SCOPE_ID_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+static LIFE_PERMITS: std::sync::OnceLock<std::sync::Arc<tokio::sync::Semaphore>> =
+    std::sync::OnceLock::new();
+
+static TEST_PERMIT_CAPACITY: std::sync::Mutex<Option<usize>> = std::sync::Mutex::new(None);
+
+/// 仅供测试：覆写生命期许可容量（首次 life_permits() 前调用生效；
+/// nextest 每测试进程隔离）。
+#[cfg(test)]
+pub(crate) fn set_life_permit_capacity_for_test(cap: usize) {
+    *TEST_PERMIT_CAPACITY.lock().unwrap() = Some(cap);
+}
+
+fn life_permits() -> &'static std::sync::Arc<tokio::sync::Semaphore> {
+    LIFE_PERMITS.get_or_init(|| {
+        let cap = TEST_PERMIT_CAPACITY.lock().unwrap().take().unwrap_or_else(|| {
+            super::http_transport::TransportConfig::from_env().queue_capacity
+        });
+        std::sync::Arc::new(tokio::sync::Semaphore::new(cap))
+    })
+}
+
+/// 桥侧（net 线程）：入队前建 scope（许可随 scope 持有，Queued）。
+/// 许可不可得（生命期总上限满）→ None（桥回 503，零分配零排队）。
+pub(crate) fn create_scope(
+    conn_id: u64,
+    deadline: std::time::Instant,
+) -> Option<std::sync::Arc<RequestScope>> {
+    let Ok(permit) = life_permits().clone().try_acquire_owned() else {
+        return None;
+    };
+    let id = SCOPE_ID_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let scope = std::sync::Arc::new(RequestScope {
+        id,
+        conn_id,
+        state: std::sync::atomic::AtomicU8::new(SCOPE_QUEUED),
+        deadline,
+        permit: std::sync::Mutex::new(Some(permit)),
+        cancel_notify: tokio::sync::Notify::new(),
+    });
+    if let Ok(mut map) = REQUEST_SCOPES.lock() {
+        map.insert(id, scope.clone());
+    }
+    Some(scope)
+}
+
+/// scope 状态迁移（幂等；终态不可逆）。
+fn scope_transition(scope: &RequestScope, to: u8) {
+    let current = scope.state.load(std::sync::atomic::Ordering::SeqCst);
+    if current < SCOPE_DONE {
+        scope.state.store(to, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// scope 幂等终结（完成/取消共用）：释放许可 + 移除登记 + 发取消信号
+/// （等它的桥 select 臂与 owner 唤醒臂消费）。
+fn finalize_scope(scope: &RequestScope, to: u8) {
+    scope_transition(scope, to);
+    scope.permit.lock().unwrap().take(); // 释放生命期许可（幂等）
+    if let Ok(mut map) = REQUEST_SCOPES.lock() {
+        map.remove(&scope.id);
+    }
+    scope.cancel_notify.notify_waiters();
+    crate::vm::ffi::async_http::COMPLETION_NOTIFY.notify_waiters();
+}
+
+/// 正常完成（回复送达非 SSE / SSE 流结束）。
+pub(crate) fn complete_scope(scope: &RequestScope) {
+    finalize_scope(scope, SCOPE_DONE);
+}
+
+/// 取消（桥超时/连接终结/关闭）：幂等；首次迁移返回 true。
+pub(crate) fn cancel_scope(scope: &RequestScope) -> bool {
+    if scope.terminal() {
+        return false;
+    }
+    finalize_scope(scope, SCOPE_CANCELLED);
+    true
+}
+
+/// scope 是否仍可执行（owner 派发/恢复前的失效检查）：
+/// 已取消 / 已终结 / 已过 deadline → false（失效请求不调用业务函数）。
+pub(crate) fn scope_usable(scope: &RequestScope) -> bool {
+    if scope.terminal() {
+        return false;
+    }
+    std::time::Instant::now() <= scope.deadline
+}
+
+/// 按 id 查 scope（owner 侧）。
+pub(crate) fn lookup_scope(id: u64) -> Option<std::sync::Arc<RequestScope>> {
+    REQUEST_SCOPES.lock().ok().and_then(|m| m.get(&id).cloned())
+}
+
+/// 连接终结（net 侧 watcher）：取消该连接名下全部 scope（已确证销毁判据，
+/// 决策报告 §5-3）。
+pub(crate) fn cancel_scopes_for_conn(conn_id: u64) {
+    let scopes: Vec<std::sync::Arc<RequestScope>> = match REQUEST_SCOPES.lock() {
+        Ok(map) => map
+            .values()
+            .filter(|s| s.conn_id == conn_id)
+            .cloned()
+            .collect(),
+        Err(_) => return,
+    };
+    for s in scopes {
+        cancel_scope(&s);
+    }
+}
+
+/// 资源基线探针（测试）：存活 scope 数。
+#[cfg(test)]
+pub(crate) fn live_scope_count() -> usize {
+    REQUEST_SCOPES.lock().map(|m| m.len()).unwrap_or(0)
+}
+
+/// 资源基线探针（测试）：可用生命期许可数。
+#[cfg(test)]
+pub(crate) fn life_permit_available() -> usize {
+    life_permits().available_permits()
+}
+
+
 /// 就绪探测（parked 表扫描用；不消费任何状态）。
 pub(crate) fn parked_is_ready(vm: &std::rc::Rc<AutoVM>, p: &ParkedRequest) -> bool {
     match &p.wait {
@@ -4643,6 +4907,7 @@ fn placeholder_ctx() -> DispatchCtx {
         middleware_names: Vec::new(),
         request_info: String::new(),
         handler_task_id: None,
+        scope_id: 0,
     }
 }
 
@@ -4682,6 +4947,17 @@ fn probe_return_future(
 pub(crate) fn drain_ready_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) {
     let mut i = 0;
     while i < parked.len() {
+        // T-05: scope 失效（取消 / deadline 过期）优先于就绪检查——失效
+        // 请求废弃：live-op 回收（迟到完成被 presence 守卫丢弃）、任务
+        // 清理、503 终态。业务函数不再被无效驱动（AC-04）。
+        let scope_dead = lookup_scope(parked[i].scope_id)
+            .map(|s| !scope_usable(&s))
+            .unwrap_or(true);
+        if scope_dead {
+            let mut p = parked.remove(i);
+            abort_parked_request(vm, &mut p);
+            continue;
+        }
         if parked_is_ready(vm, &parked[i]) {
             let mut p = parked.remove(i);
             match resume_parked_request(vm, &mut p) {
@@ -4702,6 +4978,22 @@ pub(crate) fn drain_ready_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<Park
         } else {
             i += 1;
         }
+    }
+}
+
+/// 废弃一条失效 parked 请求：live-op 回收（HttpRequest 等待）、任务清理、
+/// 503 终态（reply_rx 已在桥侧超时关闭时发送静默失败——幂等）。
+fn abort_parked_request(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedRequest) {
+    if let ParkedWait::HttpRequest(req_id) = &p.wait {
+        crate::vm::ffi::stdlib::drop_async_result(*req_id);
+    }
+    vm.tasks.remove(&p.task_id);
+    if let Some(tx) = p.reply_tx.take() {
+        let _ = tx.send(ApiReply::Full {
+            status: 503,
+            headers: json_reply_headers(&p.ctx.request_id),
+            body: ApiBody::Text(br#"{"error":"request cancelled"}"#.to_vec()),
+        });
     }
 }
 

@@ -699,3 +699,195 @@ fn guarded() str {
         other => panic!("resume 应 Completed(Ok)，得到 {:?}", other),
     }
 }
+
+// ============================================================================
+// PLAN-705 T-05 E2E：scope 取消 / deadline / 关闭 / 半关闭 / 副作用边界
+// ============================================================================
+
+/// T-05 (1) deadline 取消 parked 等待并回收资源：上游慢响应超回复
+/// deadline → 桥 503；owner 侧 parked 等待废弃、live-op 回收（迟到完成
+/// 被 presence 守卫丢弃）、scope/许可回基线（AC-04）。
+#[test]
+fn plan705_e2e_deadline_cancels_parked_and_reclaims() {
+    const SERVER_PORT: u16 = 18511;
+    const UPSTREAM_PORT: u16 = 18512;
+    std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "400");
+    let op_baseline = crate::vm::ffi::async_http::live_op_count();
+    let listener = std::net::TcpListener::bind(("127.0.0.1", UPSTREAM_PORT)).expect("bind upstream");
+    let up = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept upstream");
+        let mut buf = [0u8; 4096];
+        let _ = std::io::Read::read(&mut stream, &mut buf);
+        std::thread::sleep(std::time::Duration::from_millis(2_000));
+        let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
+        let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
+    });
+    start_plan705_server(
+        &r#"
+#[api(method = "GET", path = "/api/slow")]
+fn slow() str {
+    Http.post_json("http://127.0.0.1:UP/slow", "q=1")
+}
+"#
+        .replace("UP", &UPSTREAM_PORT.to_string()),
+        SERVER_PORT,
+    );
+    let started = std::time::Instant::now();
+    let (status, body) = http_get_raw(SERVER_PORT, "/api/slow");
+    let elapsed = started.elapsed();
+    up.join().expect("upstream");
+    assert_eq!(status, 503, "超 deadline 应 503");
+    assert!(
+        elapsed >= std::time::Duration::from_millis(350)
+            && elapsed < std::time::Duration::from_millis(2_000),
+        "deadline 应在 ~400ms 收口（非等上游 2s），实际 {:?}",
+        elapsed
+    );
+    assert!(body.contains("error"), "503 带 error 形态: {body}");
+    // owner 侧 parked 等待已废弃（上游 2s 应答到达时无人等待——迟到完成
+    // 被丢弃）：live-op 表回基线、scope 表空、许可全量可用。
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert_eq!(
+        crate::vm::ffi::async_http::live_op_count(),
+        op_baseline,
+        "live-op 未回基线——parked 等待未回收"
+    );
+    assert_eq!(crate::vm::ffi::http_server::live_scope_count(), 0, "scope 未回基线");
+}
+
+/// T-05 (2) 失效队列不执行：scope 已取消的排队请求在 owner 出队时被
+/// 跳过——handler 任务零派发（vm.tasks 零增长）、503 终结（确定性单元
+/// 形态：真 VM + 真路由表 + 已取消 scope，出队臂 = dispatch_owner_request）。
+#[test]
+fn plan705_e2e_invalid_scope_skips_handler_dispatch() {
+    let code = r#"
+#[api(method = "GET", path = "/api/touch")]
+fn touch() str {
+    "touched"
+}
+"#;
+    let (vm, _out, _entry, _t) = crate::create_vm_from_source(code).expect("compile");
+    let routes = crate::vm::ffi::http_server::get_routes();
+    assert!(!routes.is_empty(), "路由应已注册");
+    let tasks_before = vm.tasks.len();
+    let (tx, rx) = tokio::sync::oneshot::channel::<crate::vm::ffi::http_server::ApiReply>();
+    let scope = crate::vm::ffi::http_server::create_scope(
+        999,
+        std::time::Instant::now() + std::time::Duration::from_secs(30),
+    )
+    .expect("scope");
+    // 取消发生在出队前（桥超时/连接终结/关闭皆可到达此态）。
+    assert!(crate::vm::ffi::http_server::cancel_scope(&scope));
+    assert!(!crate::vm::ffi::http_server::scope_usable(&scope));
+    let mut parked = Vec::new();
+    let vm = std::rc::Rc::new(vm);
+    crate::vm::ffi::http_server::dispatch_owner_request(
+        &vm,
+        &routes,
+        crate::vm::ffi::http_server::test_api_request_get("/api/touch"),
+        tx,
+        scope.id,
+        &mut parked,
+    );
+    let reply = rx.blocking_recv().expect("503 reply");
+    match reply {
+        crate::vm::ffi::http_server::ApiReply::Full { status, .. } => {
+            assert_eq!(status, 503, "失效 scope 应 503");
+        }
+        _ => panic!("应 Full 503"),
+    }
+    assert_eq!(vm.tasks.len(), tasks_before, "失效请求不得派发 handler 任务");
+    assert!(parked.is_empty(), "失效请求不得挂表");
+    assert_eq!(crate::vm::ffi::http_server::live_scope_count(), 0, "取消后 scope 回基线");
+}
+
+/// T-05 (3) 关闭排空：优雅关停取消 parked 等待（503 + 资源回收），许可
+/// /scope 回基线；await 前副作用保留（非回滚契约——hits 计数不撤销）。
+#[test]
+fn plan705_e2e_shutdown_cancels_parked_side_effect_kept() {
+    // 排水窗 500ms < 上游 2.5s：parked 请求在排水截止后被取消（503），
+    // 而非排水期内自然完成（200）。
+    std::env::set_var("AUTO_HTTP_SHUTDOWN_DRAIN_MS", "500");
+    std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "30000");
+    const SERVER_PORT: u16 = 18513;
+    const UPSTREAM_PORT: u16 = 18514;
+    let op_baseline = crate::vm::ffi::async_http::live_op_count();
+    let listener = std::net::TcpListener::bind(("127.0.0.1", UPSTREAM_PORT)).expect("bind upstream");
+    let up = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept upstream");
+        let mut buf = [0u8; 4096];
+        let _ = std::io::Read::read(&mut stream, &mut buf);
+        std::thread::sleep(std::time::Duration::from_millis(2_500));
+        let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
+        let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
+    });
+    start_plan705_server(
+        &r#"
+var hits = 0
+
+#[api(method = "GET", path = "/api/side")]
+fn side() str {
+    hits = hits + 1
+    Http.post_json("http://127.0.0.1:UP/slow", "q=1")
+}
+#[api(method = "GET", path = "/api/hits")]
+fn hits_fn() int {
+    hits
+}
+"#
+        .replace("UP", &UPSTREAM_PORT.to_string()),
+        SERVER_PORT,
+    );
+    // 客户端线程阻塞等待 /api/side（服务端 park 中）。
+    let client = std::thread::spawn(move || http_get_raw(SERVER_PORT, "/api/side"));
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    // 副作用已在 await 前提交。
+    let (_, hits_now) = http_get_raw(SERVER_PORT, "/api/hits");
+    assert_eq!(hits_now, "1", "await 前副作用应可见: {hits_now}");
+    // 优雅关停：parked 请求废弃、503、资源回收。
+    assert!(crate::vm::ffi::http_server::test_trigger_shutdown(), "关停触发");
+    let (status, body) = client.join().expect("client");
+    eprintln!("[probe] side after shutdown → {status} {body:?}");
+    // 关停的客户端可见形态：503 终态或连接终结（net 侧排水力关与 503
+    // 下发竞速，两者同义=请求未完成、等待已废弃）；资源回收由下方
+    // 基线断言承载。
+    assert!(
+        status == 503 || status == 0,
+        "关停应使 parked 请求 503 或连接终结，得到 {status} {body:?}"
+    );
+    up.join().expect("upstream");
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert_eq!(
+        crate::vm::ffi::async_http::live_op_count(),
+        op_baseline,
+        "live-op 未回基线"
+    );
+    assert_eq!(crate::vm::ffi::http_server::live_scope_count(), 0, "scope 未回基线");
+}
+
+/// T-05 (4) 半关闭：请求写端关闭（shutdown(Write)）但读端保留——服务端
+/// 仍正常响应（半关闭不判取消；AC-04 断连判据边界）。
+#[test]
+fn plan705_e2e_half_close_still_responds() {
+    const SERVER_PORT: u16 = 18515;
+    start_plan705_server(
+        r#"
+#[api(method = "GET", path = "/api/ping")]
+fn ping() int {
+    42
+}
+"#,
+        SERVER_PORT,
+    );
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", SERVER_PORT)).expect("connect");
+    let req = "GET /api/ping HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    stream.write_all(req.as_bytes()).expect("write");
+    stream.flush().expect("flush");
+    // 半关闭写端：服务端不得据此判取消。
+    stream.shutdown(std::net::Shutdown::Write).expect("half close");
+    let mut resp = String::new();
+    stream.read_to_string(&mut resp).expect("read");
+    assert!(resp.starts_with("HTTP/1.1 200"), "半关闭后应正常响应: {resp:?}");
+    assert!(resp.contains("42"), "半关闭响应体: {resp:?}");
+}
