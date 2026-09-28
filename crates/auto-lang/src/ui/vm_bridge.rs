@@ -212,6 +212,17 @@ pub struct VmBridge {
     /// PLAN-047 T-05: 求值通道探针计数（AC-02 零重解析断言的观测面——
     /// view builder `resolve_expr_to_value` 入口累加，桥级共享、跨帧累计）。
     pub resolve_probe_count: std::sync::atomic::AtomicU64,
+
+    /// PLAN-047 T-06（档 C SD-10）: computed 信号表宿主——(widget, prop)
+    /// 键控的信号节点（值缓存 + 动态 dep 基线对）。生命周期随桥（hot-reload
+    /// 新建桥自然弃置）。RefCell 理由同 memo_cache（渲染期 `&self`）。
+    #[cfg(feature = "ui-interpreter")]
+    computed_signals:
+        std::cell::RefCell<HashMap<(String, String), ComputedSignal>>,
+
+    /// PLAN-047 T-06: 信号网命中/未命中计数（观测面——AC-04 断言用）。
+    pub signal_hits: std::sync::atomic::AtomicU64,
+    pub signal_misses: std::sync::atomic::AtomicU64,
 }
 
 /// PLAN-047 T-01: 依赖录制 guard。首选显式 [`DepRecGuard::finish`] 取走
@@ -262,6 +273,16 @@ impl<'a> Drop for DepRecGuard<'a> {
             self.take_and_restore();
         }
     }
+}
+
+/// PLAN-047 T-06（档 C SD-10）: computed 信号节点——inline 表达式与 block
+/// 体隐藏 VM fn 双通道共载。`deps` = 最近一次求值的动态依赖基线对；版本
+/// 全同 → 值缓存复用。脏传播 pull 式：写点定点 bump → 版本比对 miss →
+/// 重求值（不建主动订阅图——漏传播只落重算，不陈旧）。
+#[cfg(feature = "ui-interpreter")]
+pub struct ComputedSignal {
+    pub cached: Value,
+    pub deps: Vec<(crate::ui::memo_deps::DepKey, u64)>,
 }
 
 /// PLAN-702 T-04: root-state busy 镜像字段名——List&lt;str&gt;（namespaced
@@ -529,6 +550,10 @@ impl VmBridge {
             #[cfg(feature = "ui-interpreter")]
             dep_recorder: std::cell::RefCell::new(None),
             resolve_probe_count: std::sync::atomic::AtomicU64::new(0),
+            #[cfg(feature = "ui-interpreter")]
+            computed_signals: std::cell::RefCell::new(HashMap::new()),
+            signal_hits: std::sync::atomic::AtomicU64::new(0),
+            signal_misses: std::sync::atomic::AtomicU64::new(0),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
         })
@@ -717,6 +742,10 @@ impl VmBridge {
             #[cfg(feature = "ui-interpreter")]
             dep_recorder: std::cell::RefCell::new(None),
             resolve_probe_count: std::sync::atomic::AtomicU64::new(0),
+            #[cfg(feature = "ui-interpreter")]
+            computed_signals: std::cell::RefCell::new(HashMap::new()),
+            signal_hits: std::sync::atomic::AtomicU64::new(0),
+            signal_misses: std::sync::atomic::AtomicU64::new(0),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
         })
@@ -1923,6 +1952,11 @@ impl VmBridge {
     #[cfg(not(feature = "ui-interpreter"))]
     fn record_dep_any(&self, _heap_id: u64) {}
 
+    /// 诊断/测试面：flash 导出名在册查询（block computed 合成通道预检）。
+    pub fn vm_flash_exports_contains(&self, fn_name: &str) -> bool {
+        self.vm.flash.exports_by_name.contains_key(fn_name)
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // PLAN-047 T-05（档 C SD-11）: version_fast 判定面
     // ─────────────────────────────────────────────────────────────────
@@ -1961,6 +1995,60 @@ impl VmBridge {
             Value::Int(i) if *i >= 4_000_000 => self.record_dep_any(*i as u64),
             _ => {}
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-06（档 C SD-10）: computed 信号网
+    // ─────────────────────────────────────────────────────────────────
+
+    /// computed 信号命中查询（deps 版本全同 → 值缓存复用）。命中时把信号
+    /// 节点的 dep 键**吸收进当前录制域**（嵌套 guard 并集）——外层 memo
+    /// 条目/外层信号因此覆盖内层信号的失效面（computed 嵌套的 pull 式级
+    /// 联闭合：内层 deps 变 → 内层重算 → 外层条目版本比对失效 → 重渲染）。    #[cfg(feature = "ui-interpreter")]
+    pub fn computed_signal_hit(&self, widget: &str, prop: &str) -> Option<Value> {
+        let hit = {
+            let signals = self.computed_signals.borrow();
+            signals
+                .get(&(widget.to_string(), prop.to_string()))
+                .and_then(|sig| {
+                    self.deps_unchanged(&sig.deps)
+                        .then(|| {
+                            if let Some(rec) = self.dep_recorder.borrow_mut().as_mut() {
+                                for (k, _) in &sig.deps {
+                                    rec.record(k.clone());
+                                }
+                            }
+                            sig.cached.clone()
+                        })
+                })
+        };
+        if hit.is_some() {
+            self.signal_hits
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        } else {
+            self.signal_misses
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        hit
+    }
+
+    /// computed 信号入库（求值期录制集 → 基线对；空集/超预算不入网——
+    /// 盲区面退回每帧重算，同档 A/B 行为）。
+    #[cfg(feature = "ui-interpreter")]
+    pub fn computed_signal_store(
+        &self,
+        widget: &str,
+        prop: &str,
+        cached: Value,
+        rec: &crate::ui::memo_deps::RecState,
+    ) {
+        if rec.overflow || rec.deps.is_empty() {
+            return;
+        }
+        let deps = self.dep_pairs(&rec.deps);
+        self.computed_signals
+            .borrow_mut()
+            .insert((widget.to_string(), prop.to_string()), ComputedSignal { cached, deps });
     }
 
     /// PLAN-045: 指纹展开器——堆引用展开一层为纯值（memo 值指纹用）。

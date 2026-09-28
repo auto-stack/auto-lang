@@ -11685,6 +11685,30 @@ let tabs_inner = View::Row {
             if let Some(c) = computed_list.iter().find(|c| c.name == name) {
                 // 防 computed 递归引用自身(bindings 里已有同名则跳过)
                 if !bindings.contains_key(name) {
+                    // PLAN-047 T-06（档 C SD-10）: computed 信号网——bindings-free
+                    // 保守面（bindings 参与的求值位置相关，不入网沿 v1 边界；
+                    // keyed-for 项内 computed 沿项级条目承载）。inline 表达式与
+                    // block 体隐藏 VM fn 双通道同构：命中复用缓存值，miss 录制
+                    // 求值入网；guard 嵌套使外层 memo 条目/信号收编本信号的
+                    // dep 面（pull 式级联）。
+                    if bindings.is_empty() {
+                        if let Some(hit) =
+                            self.bridge.computed_signal_hit(&self.widget_name, name)
+                        {
+                            return Some(hit);
+                        }
+                        let (out, rec) = self.fill_with_recording(|| match &c.expr {
+                            Expr::Block(_) => {
+                                self.bridge.call_computed_fn(&self.widget_name, name).ok()
+                            }
+                            _ => self.resolve_expr_to_value(&c.expr, bindings),
+                        });
+                        if let Some(v) = &out {
+                            self.bridge
+                                .computed_signal_store(&self.widget_name, name, v.clone(), &rec);
+                        }
+                        return out;
+                    }
                     // Plan 448 H2: block-bodied computeds execute as hidden
                     // VM fns (`__computed_<Widget>_<Prop>`, synthesized with
                     // the handlers) — statement semantics the inline
@@ -23147,5 +23171,190 @@ mod plan047_gate_tests {
         let (sf1, vf1, _) = vf_kinds(&bridge);
         assert_eq!(sf1 - sf0, 1, "seq_fast 优先");
         assert_eq!(vf1, vf0, "version_fast 未消费");
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PLAN-047 T-06: computed 信号网单测（AC-04 观测面）。
+// ─────────────────────────────────────────────────────────────────────
+mod plan047_signal_tests {
+    use super::*;
+    use crate::ast::Type;
+    use crate::aura::{AuraComputed, AuraStateDef, AuraWidget};
+
+    fn sig_widget(computed: AuraComputed) -> AuraWidget {
+        AuraWidget {
+            named_views: Vec::new(),
+            actions: None,
+            name: "SigApp".to_string(),
+            state_vars: vec![
+                AuraStateDef {
+                    name: "count".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(1),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "other".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(0),
+                    decorators: vec![],
+                },
+            ],
+            computed: vec![computed],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            timers: Vec::new(),
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        }
+    }
+
+    /// inline computed：`mirror = .count`（镜像读面）。
+    fn inline_mirror() -> AuraComputed {
+        AuraComputed {
+            name: "mirror".to_string(),
+            expr: Expr::Dot(Box::new(Expr::Ident(".".into())), "count".into()),
+        }
+    }
+
+    /// block 体 computed：`mirror { .count }`（隐藏 VM fn 通道）。
+    fn block_mirror() -> AuraComputed {
+        AuraComputed {
+            name: "mirror".to_string(),
+            expr: Expr::Block(crate::ast::Body {
+                stmts: vec![crate::ast::Stmt::Expr(Expr::Dot(
+                    Box::new(Expr::Ident(".".into())),
+                    "count".into(),
+                ))],
+                has_new_line: false,
+                source_lines: Vec::new(),
+            }),
+        }
+    }
+
+    fn sig_view() -> AuraNode {
+        // 视图读 computed：`text (text: .mirror)`。
+        AuraNode::element("text").with_prop("text", Expr::Ident(".mirror".into()))
+    }
+
+    fn sig_build(bridge: &VmBridge, computed: &[AuraComputed], node: &AuraNode) -> String {
+        let (v, _idmap, _probe) = AuraViewBuilder::new(bridge, "SigApp")
+            .with_computed(computed)
+            .build_with_debug(node);
+        format!("{v:?}")
+    }
+
+    fn sig_counts(bridge: &VmBridge) -> (u64, u64) {
+        (
+            bridge.signal_hits.load(std::sync::atomic::Ordering::Relaxed),
+            bridge.signal_misses.load(std::sync::atomic::Ordering::Relaxed),
+        )
+    }
+
+    /// AC-04 inline 通道：无关写帧信号命中（零重求值）、deps 变化重算、
+    /// 产物保真（绝不陈旧）。
+    #[test]
+    fn plan047_signal_inline_hit_and_invalidation() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = sig_widget(inline_mirror());
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        let node = sig_view();
+
+        let k0 = sig_build(&bridge, &widget.computed, &node); // fill（信号首求值入网）
+        assert!(k0.contains("1"), "初值 count=1: {k0}");
+        let (h0, m0) = sig_counts(&bridge);
+        assert_eq!((h0, m0), (0, 1), "首帧 miss 入网");
+
+        // 无关写 → 信号 deps 未动 → 命中复用（computed 零重算）。
+        bridge.write_state("other", auto_val::Value::Int(9)).unwrap();
+        let k1 = sig_build(&bridge, &widget.computed, &node);
+        let (h1, _) = sig_counts(&bridge);
+        assert_eq!(h1 - h0, 1, "无关写帧信号命中");
+        assert_eq!(k0, k1, "产物一致");
+
+        // deps 变化（.count）→ 信号重算 → 产物保真。
+        bridge.write_state("count", auto_val::Value::Int(7)).unwrap();
+        let k2 = sig_build(&bridge, &widget.computed, &node);
+        let (_, m2) = sig_counts(&bridge);
+        assert!(m2 > m0, "deps 变化信号重算");
+        assert!(k2.contains("7"), "新值落地（无陈旧）: {k2}");
+    }
+
+    /// AC-04 block 体通道（隐藏 VM fn）：信号命中/失效与 inline 同构；
+    /// 引擎读臂录制的 dep 面承载失效判定（T-04 端到端）。
+    #[test]
+    fn plan047_signal_block_channel() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = sig_widget(block_mirror());
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        // 合成通道在册性预检：__computed_SigApp_mirror 必须已合成（缺失 =
+        // 旧构建路径降级 None，本测试前提不成立）。
+        let fn_name = crate::ui::handler_codegen::computed_fn_name("SigApp", "mirror");
+        assert!(
+            bridge.vm_flash_exports_contains(&fn_name),
+            "block computed 隐藏 fn 未合成: {fn_name}"
+        );
+        let node = sig_view();
+
+        let k0 = sig_build(&bridge, &widget.computed, &node);
+        assert!(k0.contains("1"), "block 通道初值: {k0}");
+        let (h0, m0) = sig_counts(&bridge);
+
+        bridge.write_state("other", auto_val::Value::Int(9)).unwrap();
+        let k1 = sig_build(&bridge, &widget.computed, &node);
+        let (h1, _) = sig_counts(&bridge);
+        assert_eq!(h1 - h0, 1, "block 通道无关写命中");
+        assert_eq!(k0, k1, "产物一致");
+
+        bridge.write_state("count", auto_val::Value::Int(5)).unwrap();
+        let k2 = sig_build(&bridge, &widget.computed, &node);
+        let (_, m2) = sig_counts(&bridge);
+        assert!(m2 > m0, "block 通道 deps 变化重算");
+        assert!(k2.contains("5"), "新值落地: {k2}");
+    }
+
+    /// 级联闭合：memo 条目收编信号的 dep 面——信号 deps 变 → 条目版本比对
+    /// 失效（即使条目自身不直读该状态）。
+    #[test]
+    fn plan047_signal_deps_absorbed_into_memo_entry() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = sig_widget(inline_mirror());
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        // memo 块包 computed 读——块条目 deps 由录制收编（含 .mirror 的
+        // dep 面 (root,count)）。
+        let node = AuraNode::MemoBlock {
+            deps: vec![Expr::Ident(".other".into())],
+            exact: false,
+            body: vec![AuraNode::element("text").with_prop(
+                "text",
+                Expr::Ident(".mirror".into()),
+            )],
+            span: None,
+            debug_id: None,
+        };
+
+        let _ = sig_build(&bridge, &widget.computed, &node); // fill（块条目 + 信号同帧入网）
+        let _ = sig_build(&bridge, &widget.computed, &node); // 无关重建（块快路径 + 信号命中）
+        // 直写 count（信号 dep 面）——块条目必须经 version_fast miss 落重求
+        // 值（条目收编了信号的 dep 键），产物保真。
+        bridge.write_state("count", auto_val::Value::Int(3)).unwrap();
+        let k = sig_build(&bridge, &widget.computed, &node);
+        assert!(k.contains("3"), "级联失效落地: {k}");
     }
 }
