@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-704
-status: execution_done
+status: reviewed
 feature_name: diff 引擎缺陷修复——rows 面流位单源化（D-1）+ anchor 单调过滤（D-2）（PLAN-703 供料包消费侧登记件）
 author: [agent]
 created_at: 2026-09-28T01:20:00+08:00
@@ -259,6 +259,25 @@ patience 实现=tails 数组+二分+前驱回溯（标准形，~25 行）；结�
   错误形面零回归）；④手推对照三族形状=下游参考逐项吻合（scattered
   21/unbalanced 7/纯增删行存在性——下游 evidence-p016-recon.json 漂移
   证据的否定面）。| blockers: 无 | next: review`。status=execution_done。
+- 2026-09-28 复审 handoff：`stage: review | PLAN-704 | plan_revision 1 |
+  outcome: **pass** | reviewed_commit: worktree plan-704-dev@0eb605bf1 |
+  base_commit: master@ca68427fc | dependency_revisions: auto-down@
+  3373a5c（组兄弟 detached——optional path dep 解析面）| spec_inputs:
+  diff-engine.md@0eb605bf1（锚点单调规则+rows 流位契约节+验证锚）/
+  diff-endpoints.md@0eb605bf1（rows 语义锚+换位族语义+回归锚）/
+  供料档 §6.2 回执注记@auto-edit plan-016-dev@2f439ff |
+  acceptance_results: AC-01 pass / AC-02 pass / AC-03 pass / AC-04
+  pass | findings: 无阻断项；备注两条非阻断——①tf 加强证据 1547/5777
+  （fail-fast 截断）3 failed=musk_vm_track p053 族[widget computed/
+  merged api]——**master 基线同红实证**（主检出零 704 改动同族 4
+  failed），非本件回归、非 diff 面（模块门独立全绿），留上游主线另
+  查；②等价验证门勘定维持（UI 模块面非 cargo tf 触发面——AGENTS.md
+  :66，模块门+探针面=正门）| evidence: 复审独立复现（reviewed commit
+  态）：`cargo test -p auto-lang --lib diff::` **30/0**（含 plan704
+  五新测试+26 既有零回归）+`plan703_supply` **7/0**+SD grep 锚
+  diff-engine×3/diff-endpoints×2+worktree porcelain 净；执行期证据
+  复用理由=同一 commit 逐字节未变（git log 单提交两 SD 文件）。|
+  next: merge`。status=reviewed。
 
 ## 10. 待澄清事项
 
