@@ -189,6 +189,13 @@ fn build_rows(
     const ADD: u8 = 2;
     let mut stream: Vec<(u8, usize, usize)> = Vec::with_capacity(a_lines.len() + b_lines.len());
     let (mut i, mut j) = (0usize, 0usize);
+    // PLAN-704 D-1: per-change stream positions. `GroupedHunk.fc/lc` are
+    // indices into `changes` (mod.rs grouping), while the slice arithmetic
+    // below walks the keep+change stream — the two index spaces diverge as
+    // soon as keeps precede/intersperse changes (multi-hunk and pure
+    // add/del families), which used to drop change rows and duplicate
+    // leading context. Record each change's stream slot at push time.
+    let mut chg_stream: Vec<usize> = Vec::with_capacity(changes.len());
     for c in changes {
         // Keeps fill only while BOTH cursors can advance together (paired
         // lines). A `||` here would fabricate a mismatched keep between a
@@ -198,6 +205,7 @@ fn build_rows(
             i += 1;
             j += 1;
         }
+        chg_stream.push(stream.len());
         stream.push((if c.del { DEL } else { ADD }, c.i, c.j));
         if c.del {
             i += 1;
@@ -217,9 +225,12 @@ fn build_rows(
         // Stream slice: leading keeps from the hunk start to the first
         // change, and trailing keeps up to the hunk bounds (semantic walk —
         // the closed-form arithmetic loses the trailing ctx rows).
-        let lo = g.fc.saturating_sub(g.fi.saturating_sub(h.a1));
+        // fc/lc are changes-indices; chg_stream maps them to stream slots
+        // (PLAN-704 D-1 single-sourcing — the downstream 011 contract reads
+        // these as stream positions).
+        let lo = chg_stream[g.fc].saturating_sub(g.fi.saturating_sub(h.a1));
         const KEEP: u8 = 0;
-        let mut hi = g.lc + 1;
+        let mut hi = chg_stream[g.lc] + 1;
         // The change block that lc closes (lc is its LAST change — already
         // inside; the walk covers a mid-block change when grouping merged
         // runs), then the trailing ctx keeps within the hunk bounds.
@@ -385,4 +396,135 @@ pub fn diff_snapshots_envelope(key_a: &str, key_b: &str) -> String {
 
 fn editor_snapshot(key: &str) -> Option<crate::ui::code_editor::core::rope::RopeSnapshot> {
     crate::ui::code_editor::code_editor_with(key, |core| core.doc_snapshot())
+}
+
+// ── PLAN-704: D-1 defect-fix regression (rows slice single-sourcing) ───────
+//
+// `build_rows` used to consume `GroupedHunk.fc/lc` (changes-indices) as
+// stream slots — shapes whose changes follow keeps lost their change rows
+// entirely (pure add: "adds=3, zero add rows") and multi-hunk shapes
+// duplicated leading context (scattered: 41 rows vs 21). The per-change
+// stream-position map restores the downstream 011 reference semantics;
+// these tests pin the four drifted families.
+
+#[cfg(test)]
+mod plan704_rows {
+    use super::super::Hunk;
+    use super::*;
+
+    fn numbered(tag: &str, n: usize) -> Vec<String> {
+        (1..=n).map(|i| format!("{tag}{i}")).collect()
+    }
+
+    fn strings(v: &[String]) -> Vec<&str> {
+        v.iter().map(|s| s.as_str()).collect()
+    }
+
+    fn envelope_rows(
+        a: &[&str],
+        b: &[&str],
+        ctx: usize,
+    ) -> (Vec<Hunk>, Vec<Row>, usize, usize) {
+        let inp = super::super::intern_lines(a, b);
+        let changes = super::super::engine_changes(&inp, false);
+        let adds = changes.iter().filter(|c| !c.del).count();
+        let dels = changes.iter().filter(|c| c.del).count();
+        let grouped =
+            super::super::group_hunks_annotated(&changes, a.len(), b.len(), ctx);
+        let rows = build_rows(&changes, &grouped, a, b);
+        let hunks = grouped.iter().map(|g| g.hunk).collect();
+        (hunks, rows, adds, dels)
+    }
+
+    #[test]
+    fn d1_multihunk_rows_match_downstream_reference() {
+        // downstream scattered fixture: 40 lines, far-apart single-line
+        // changes at 0-based 4/19/34. Reference semantics: per change, 3
+        // leading ctx + pair + 3 trailing ctx (21 rows, zero duplication).
+        let mut a = numbered("L", 40);
+        let mut b = a.clone();
+        b[4] = "L4-changed".into();
+        b[19] = "L19-changed".into();
+        b[34] = "L34-changed".into();
+        let (hunks, rows, adds, dels) =
+            envelope_rows(&strings(&a), &strings(&b), 3);
+        assert_eq!(adds, 3);
+        assert_eq!(dels, 3);
+        assert_eq!(
+            hunks,
+            vec![
+                Hunk { a1: 1, a2: 8, b1: 1, b2: 8 },
+                Hunk { a1: 16, a2: 23, b1: 16, b2: 23 },
+                Hunk { a1: 31, a2: 38, b1: 31, b2: 38 },
+            ]
+        );
+        assert_eq!(rows.len(), 21, "no duplicated leading context");
+        let mut want: Vec<(usize, usize, &str)> = Vec::new();
+        for c in [4usize, 19, 34] {
+            for i in c - 3..c {
+                want.push((i + 1, i + 1, "ctx"));
+            }
+            want.push((c + 1, c + 1, "pair"));
+            for i in c + 1..c + 4 {
+                want.push((i + 1, i + 1, "ctx"));
+            }
+        }
+        for (r, w) in rows.iter().zip(want.iter()) {
+            let kind = if r.lk == "ctx" { "ctx" } else { "pair" };
+            assert_eq!((r.lo, r.ro, kind), *w, "row walk diverged at {}", r.lo);
+        }
+        // three-segment marking on the first pair: "L5" vs "L4-changed"
+        let p = &rows[3];
+        assert_eq!((p.lpre.as_str(), p.lmid.as_str(), p.lpost.as_str()), ("L", "5", ""));
+        assert_eq!(
+            (p.rpre.as_str(), p.rmid.as_str(), p.rpost.as_str()),
+            ("L", "4-changed", "")
+        );
+    }
+
+    #[test]
+    fn d1_unbalanced_rows_reference() {
+        // downstream unbalanced fixture: 3 dels + 1 add → 4 ctx + 1 pair +
+        // 2 unpaired del rows (7). Pre-fix: pair/del rows dropped (6 ctx).
+        let a = numbered("L", 10);
+        let mut b: Vec<String> = a[..6].to_vec();
+        b.push("NEW".into());
+        b.extend(a[9..].to_vec());
+        let (_, rows, adds, dels) =
+            envelope_rows(&strings(&a), &strings(&b), 3);
+        assert_eq!(adds, 1);
+        assert_eq!(dels, 3);
+        assert_eq!(rows.len(), 7, "pair + unpaired dels present");
+        let seq: Vec<(usize, usize, &str, &str)> =
+            rows.iter().map(|r| (r.lo, r.ro, r.lk, r.rk)).collect();
+        assert_eq!(seq[0], (4, 4, "ctx", "ctx"));
+        assert_eq!(seq[1], (5, 5, "ctx", "ctx"));
+        assert_eq!(seq[2], (6, 6, "ctx", "ctx"));
+        assert_eq!(seq[3], (7, 7, "del", "add"));
+        assert_eq!(seq[4], (8, 0, "del", ""));
+        assert_eq!(seq[5], (9, 0, "del", ""));
+        assert_eq!(seq[6], (10, 8, "ctx", "ctx"));
+    }
+
+    #[test]
+    fn d1_pure_add_and_del_change_rows_present() {
+        // minimal negative assertions of the pre-fix symptom: "adds=3 while
+        // rows carry zero add rows".
+        let a = numbered("L", 10);
+        let mut b: Vec<String> = a[..5].to_vec();
+        b.extend(["E1".to_string(), "E2".to_string(), "E3".to_string()]);
+        b.extend(a[5..].to_vec());
+        let (_, rows, adds, dels) =
+            envelope_rows(&strings(&a), &strings(&b), 3);
+        assert_eq!(adds, 3);
+        assert_eq!(dels, 0);
+        assert_eq!(rows.len(), 9);
+        assert_eq!(rows.iter().filter(|r| r.rk == "add").count(), 3, "add rows present");
+        // mirror: pure delete
+        let (_, rows2, adds2, dels2) =
+            envelope_rows(&strings(&b), &strings(&a), 3);
+        assert_eq!(adds2, 0);
+        assert_eq!(dels2, 3);
+        assert_eq!(rows2.iter().filter(|r| r.lk == "del").count(), 3, "del rows present");
+    }
 }

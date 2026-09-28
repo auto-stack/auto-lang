@@ -199,7 +199,54 @@ pub(crate) fn anchor_partition(before: &[Token], after: &[Token], num_tokens: u3
         }
     }
     anchors.sort_unstable();
-    anchors
+    // PLAN-704 D-2: unique-per-side anchor sets are not order-consistent by
+    // construction — reorder/move families yield block-swapped anchors whose
+    // b positions bounce between blocks, and the segment builder below walks
+    // them as if monotone (`cursor = (ai+1, bj+1)` walks backwards), corrupts
+    // the segment list, and produces a wrong edit script (a 620-line swap
+    // degraded to "620 adds / 0 dels" — downstream PLAN-016 registration).
+    // a is already strictly increasing (distinct tokens have distinct
+    // first-occurrence positions); filter to the longest strictly
+    // b-increasing subsequence — patience LIS, O(n log n).
+    // Content-determined: the same anchor set always yields the same
+    // subsequence.
+    longest_monotone_anchors(anchors)
+}
+
+/// Longest subsequence of `anchors` strictly increasing on BOTH coordinates
+/// (a arrives pre-sorted and strict; the filter enforces b). Standard
+/// patience LIS with predecessor reconstruction — deterministic for a given
+/// input, no hash-order dependence.
+fn longest_monotone_anchors(anchors: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+    if anchors.len() < 2 {
+        return anchors;
+    }
+    debug_assert!(
+        anchors.windows(2).all(|w| w[0].0 < w[1].0),
+        "a strictly increasing by construction"
+    );
+    let mut tails: Vec<usize> = Vec::with_capacity(anchors.len());
+    let mut prev: Vec<usize> = vec![usize::MAX; anchors.len()];
+    for (i, &(_, b)) in anchors.iter().enumerate() {
+        let pos = tails.partition_point(|&k| anchors[k].1 < b);
+        if pos == tails.len() {
+            tails.push(i);
+        } else {
+            tails[pos] = i;
+        }
+        if pos > 0 {
+            prev[i] = tails[pos - 1];
+        }
+    }
+    let mut out = Vec::with_capacity(tails.len());
+    let mut k = tails[tails.len() - 1];
+    while k != usize::MAX {
+        out.push(anchors[k]);
+        k = prev[k];
+    }
+    out.reverse();
+    debug_assert!(out.windows(2).all(|w| w[0].0 < w[1].0 && w[0].1 < w[1].1));
+    out
 }
 
 /// Segment size below which the anchor partition is skipped (the histogram
@@ -975,5 +1022,70 @@ mod diff_bench {
             out.dels
         );
         assert_eq!((out.adds, out.dels), (1, 0));
+    }
+}
+
+// ── PLAN-704: D-2 defect-fix regression (anchor monotonicity) ──────────────
+//
+// Downstream registration: auto-edit docs/upstream/2026-09-diff-engine-
+// supply.md §6.2 (PLAN-016 execution-era finding). The unique-per-side
+// anchor set of a block swap spans three blocks whose b positions bounce;
+// the segment builder used to walk them as monotone and corrupt the edit
+// script (620-line swap → "620 adds / 0 dels", both directions).
+
+#[cfg(test)]
+mod plan704_d2 {
+    use super::*;
+
+    fn numbered(tag: &str, n: usize) -> Vec<String> {
+        (1..=n).map(|i| format!("{tag}{i}")).collect()
+    }
+
+    fn swap_pair() -> (Vec<String>, Vec<String>) {
+        let mut a = numbered("P", 5);
+        a.extend(numbered("A", 300));
+        a.extend(numbered("M", 10));
+        a.extend(numbered("B", 300));
+        a.extend(numbered("S", 5));
+        let mut b = numbered("P", 5);
+        b.extend(numbered("B", 300));
+        b.extend(numbered("M", 10));
+        b.extend(numbered("A", 300));
+        b.extend(numbered("S", 5));
+        (a, b)
+    }
+
+    fn joined(v: &[String]) -> String {
+        let mut s = v.join("\n");
+        s.push('\n');
+        s
+    }
+
+    #[test]
+    fn d2_anchor_partition_monotone_on_reorder() {
+        let (a, b) = swap_pair();
+        let a_mid: Vec<&str> = a[5..615].iter().map(|s| s.as_str()).collect();
+        let b_mid: Vec<&str> = b[5..615].iter().map(|s| s.as_str()).collect();
+        let inp = intern_lines(&a_mid, &b_mid);
+        let anchors = anchor_partition(&inp.before, &inp.after, interned_len(&inp));
+        assert_eq!(anchors.len(), 300, "LIS keeps exactly one swapped block (A or B)");
+        assert!(
+            anchors.windows(2).all(|w| w[0].0 < w[1].0 && w[0].1 < w[1].1),
+            "anchors strictly monotone on both coordinates"
+        );
+    }
+
+    #[test]
+    fn d2_swap_edit_script_counts_and_symmetry() {
+        let (a, b) = swap_pair();
+        let (at, bt) = (joined(&a), joined(&b));
+        let ab = diff_lines(&at, &bt, DiffOpts::default());
+        let ba = diff_lines(&bt, &at, DiffOpts::default());
+        // kept accounting: len - dels == len - adds == alignment size (320 =
+        // P5 + one anchored block 300 + M10 + S5); the script itself correct.
+        assert_eq!((ab.adds, ab.dels), (310, 310), "swap script correct, not 620/0");
+        assert_eq!((ba.adds, ba.dels), (310, 310), "symmetric both directions");
+        assert_eq!(620 - ab.dels, 620 - ab.adds, "kept-side accounting invariant");
+        assert_eq!(620 - ba.dels, 620 - ba.adds);
     }
 }
