@@ -23,6 +23,7 @@ pub struct HttpRoute {
 }
 
 /// Result of matching a request against routes.
+#[derive(Debug, Clone)]
 pub struct RouteMatch {
     pub fn_name: String,
     pub path_params: Vec<(String, String)>,
@@ -99,6 +100,30 @@ pub fn clear_api_param_sigs() {
     if let Ok(mut table) = API_RETURN_TYPES.lock() {
         table.clear();
     }
+    if let Ok(mut table) = API_ASYNC_RETURNS.lock() {
+        table.clear();
+    }
+}
+
+/// PLAN-705 T-04/SD-01: 声明 `~T`（Future<T>）返回的函数名集——HTTP 编组
+/// 阶段判定"返回值可能是 future bits"的**元数据门**（禁止把普通 int 的
+/// 位模式猜成 future ID 后误消费；AC-01 普通 int 反例由此挡住）。对全部
+/// fn 发布（非仅 #[api]——段驱动 handler/`__axum:` fn-ref closure 同样
+/// 依此判定；closure 经 func_addr → exports 反查名，同 resolve_params）。
+static API_ASYNC_RETURNS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashSet<String>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+
+/// Codegen 在 fn 编译时发布（声明 ret 为 Future<T> 时调用）。
+pub fn record_api_async_return(fn_name: &str) {
+    if let Ok(mut table) = API_ASYNC_RETURNS.lock() {
+        table.insert(fn_name.to_string());
+    }
+}
+
+/// 编组期判定：该函数（或 fn-ref closure 反查出的函数）声明 `~T` 返回。
+pub(crate) fn fn_is_api_async(fn_name: &str) -> bool {
+    API_ASYNC_RETURNS.lock().ok().map(|t| t.contains(fn_name)).unwrap_or(false)
 }
 
 /// PLAN-698 T-02/SD-02: POST 成功后的 SSE 广播臂——生成 Axum 侧
@@ -3440,72 +3465,197 @@ async fn serve_with(
         routes.len()
     );
 
-    // Owner loop: one synchronous VM at a time; a CPU-bound handler blocks
-    // the queue until done (bounded wait via AUTO_HTTP_REQUEST_TIMEOUT_MS at
-    // the bridge — handlers cannot be preempted).
+    // Owner loop (PLAN-705 T-04): 事件驱动的段调度——请求到达即段驱动
+    // （首 park 前同步完成），park 后挂入 parked 表；完成通知
+    // （COMPLETION_NOTIFY，T-02 完成端写点发出）唤醒后按 park 顺序恢复
+    // 就绪条目。零固定间隔轮询；enable→复查→await 三段式消除丢唤醒窗口
+    // （spike 已证）。等待上游的请求不再占住 owner——期间新请求/健康
+    // 检查照常服务（AC-01）。CPU 段仍不可抢占（10M 指令预算内跑完），
+    // 这是 Design 33 §C 的既有边界。
     let mut shutdown_rx = shutdown_rx;
+    let mut parked: Vec<ParkedRequest> = Vec::new();
+    let completion_notify = &crate::vm::ffi::async_http::COMPLETION_NOTIFY;
+    let mut draining = false;
+    let mut loop_result = ();
     loop {
-        tokio::select! {
-            req = req_rx.recv() => {
-                match req {
+        // (0) 事件驱动扫描：恢复就绪 parked（本轮通知/事件唤醒后的消费点）。
+        drain_ready_parked(&vm, &mut parked);
+        // (1) 注册完成通知兴趣（Notified 首次 poll 才登记 waiter，enable()
+        // 把登记提前到检查之前）。
+        let notify_fut = completion_notify.notified();
+        tokio::pin!(notify_fut);
+        notify_fut.as_mut().enable();
+        // (2) enable 后复查（覆盖"通知在登记前发出"的窗口）。
+        if parked.iter().any(|p| parked_is_ready(&vm, p)) {
+            continue;
+        }
+        // (3) 事件等待：新请求 / 完成通知 / 关闭。
+        if draining {
+            // 关闭排水窗：继续应答已排队请求；parked 请求等待其完成或
+            // 排水截止（超时统一取消——T-05 的 scope 取消语义）。
+            let drain_deadline =
+                tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+            tokio::select! {
+                req = req_rx.recv() => match req {
                     Some((api_req, reply_tx)) => {
-                        let reply = dispatch_api_request(&vm, &routes, &api_req);
-                        let _ = reply_tx.send(reply);
+                        dispatch_api_request_segment(&vm, &routes, api_req, reply_tx);
                     }
-                    None => break,
+                    None => {
+                        cancel_all_parked(&vm, &mut parked);
+                        break loop_result;
+                    }
+                },
+                _ = &mut notify_fut => {}
+                _ = tokio::time::sleep_until(drain_deadline) => {
+                    cancel_all_parked(&vm, &mut parked);
+                    break loop_result;
                 }
             }
-            _ = shutdown_rx.changed() => {
-                // Drain: keep answering queued requests until the net side
-                // drops its senders or the drain budget expires.
-                let deadline = tokio::time::Instant::now() + cfg.shutdown_drain;
-                loop {
-                    tokio::select! {
-                        req = req_rx.recv() => match req {
-                            Some((api_req, reply_tx)) => {
-                                let reply = dispatch_api_request(&vm, &routes, &api_req);
-                                let _ = reply_tx.send(reply);
-                            }
-                            None => break,
-                        },
-                        _ = tokio::time::sleep_until(deadline) => break,
+        } else {
+            tokio::select! {
+                req = req_rx.recv() => match req {
+                    Some((api_req, reply_tx)) => {
+                        match dispatch_api_request_segment(&vm, &routes, api_req, reply_tx) {
+                            DispatchOutcome::Replied => {}
+                            DispatchOutcome::Parked(p) => parked.push(*p),
+                        }
                     }
+                    None => {
+                        // net 侧发送端已清（端口释放）——放弃 parked
+                        //（连接已不在，回复无处投递）。
+                        cancel_all_parked(&vm, &mut parked);
+                        break loop_result;
+                    }
+                },
+                _ = &mut notify_fut => {}
+                _ = shutdown_rx.changed() => {
+                    // 排水窗开启：net 侧同步停收（watch 广播同源），已排队
+                    // 请求继续应答；parked 请求等待完成或排水截止。
+                    draining = true;
                 }
-                break;
             }
         }
     }
     eprintln!("[HTTP] VM owner loop exited (port released)");
 }
 
-/// PLAN-699 T-02: the VM-owner dispatch core shared by the legacy inline
-/// server and the Axum bridge. Consumes an owned `ApiRequest` and runs the
-/// legacy semantics in the legacy order — CORS preflight → rate limit →
-/// request id → multipart → route match → websocket upgrade → middleware →
-/// binder → handler → response object / SSE / broadcast — returning a
-/// structured reply. No socket I/O happens here; runs synchronously on the
-/// VM owner thread (must be inside a `LocalSet` for `spawn_local` SSE
-/// producers). A CPU-bound handler blocks the owner until it returns —
-/// queueing bounds the wait, it cannot preempt the handler (Design 33 §C).
-pub(crate) fn dispatch_api_request(
-    vm: &std::rc::Rc<crate::vm::engine::AutoVM>,
+/// 关闭/退出时放弃全部 parked 请求：503 终态回复、任务清理、未完成的
+/// live-op 回收（迟到的 worker 完成被 presence 守卫丢弃，无泄漏面）。
+fn cancel_all_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) {
+    for mut p in parked.drain(..) {
+        match &p.wait {
+            ParkedWait::HttpRequest(req_id) => {
+                crate::vm::ffi::stdlib::drop_async_result(*req_id);
+            }
+            ParkedWait::Future(_) => {}
+        }
+        vm.tasks.remove(&p.task_id);
+        if let Some(tx) = p.reply_tx.take() {
+            let _ = tx.send(ApiReply::Full {
+                status: 503,
+                headers: json_reply_headers(&p.ctx.request_id),
+                body: ApiBody::Text(
+                    br#"{"error":"server shutting down"}"#.to_vec(),
+                ),
+            });
+        }
+    }
+}
+
+/// ============================================================================
+/// PLAN-705 T-04/SD-01: 段驱动的 owner dispatch——可 park 的请求状态机
+/// ============================================================================
+///
+/// 请求生命周期从"一次同步 fn 调用"升级为可跨 park 的阶段机：
+/// 预处理（CORS/限流/路由/WS，纯同步）→ middleware 链（逐个段驱动）→
+/// handler 段驱动（named / `__axum:` closure）→ 编组（SSE / Response
+/// handle / ~T 最终值 / JSON）。任一段 Yield（异步 HTTP / External
+/// Future 等待）即返回 [`DispatchOutcome::Parked`]，owner loop 把它挂入
+/// parked 表，由 [`COMPLETION_NOTIFY`] 唤醒后经 [`resume_parked_request`]
+/// 续跑。等待期间 owner 可自由服务其他请求（AC-01：等待上游时健康请求
+/// 仍可完成）。
+///
+/// 所有用到的 VM 状态访问都发生在 owner 线程（AutoVM !Send 契约不变）；
+/// 跨线程仍只有 owned `ApiRequest`/`ApiReply`。单执行段顺序执行、跨
+/// await 非原子事务（SD-01 契约：副作用不因取消/交错回滚）。
+
+use crate::vm::engine::{AutoVM, ParkedSegment, ParkedWait, SegmentOutcome};
+
+/// 编组延续所需的全部请求上下文（park 后恢复重建 reply 的最小集）。
+pub(crate) struct DispatchCtx {
+    pub req_method: String,
+    pub req_path: String,
+    pub request_id: String,
+    /// 解码后的 body 字符串（multipart 已折叠为 JSON 时即其内容）。
+    pub body: String,
+    pub content_type: String,
+    #[allow(dead_code)]
+    pub content_type_raw: String,
+    pub cookie_header: String,
+    pub auth_header: String,
+    pub multipart_json: Option<String>,
+    pub route: RouteMatch,
+    pub axum_route: Option<crate::vm::ffi::axum_adapter::AxumRoute>,
+    pub started: std::time::Instant,
+    pub middleware_names: Vec<String>,
+    /// middleware request-info JSON（method/path/ct/has_body/request_id）。
+    pub request_info: String,
+    /// handler 任务 id（Handler / AwaitReturnFuture 阶段有效；终态移除）。
+    pub handler_task_id: Option<u64>,
+}
+
+/// park 的延续点。
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ParkStage {
+    /// `middleware_names[index]` 的段挂起中。
+    Middleware { index: usize },
+    /// handler 段挂起中。
+    Handler,
+    /// handler 已 RET；等待 `~T` 返回 future（future id 在 `wait` 里）。
+    AwaitReturnFuture,
+    /// `~{}` 内部 future 体在 handler RET 后由服务端驱动，中途挂在外层
+    /// External await 上（wait=外层 future id；internal_fid=内部 future）。
+    AsyncReturnBody { internal_fid: u32 },
+}
+
+/// 一次跨 park 的请求延续（owner loop parked 表的条目）。
+pub(crate) struct ParkedRequest {
+    pub reply_tx: Option<tokio::sync::oneshot::Sender<ApiReply>>,
+    /// 挂起中的任务 id（仍在 `vm.tasks` 注册表；单 owner try_lock 访问）。
+    pub task_id: u64,
+    pub seg: ParkedSegment,
+    /// 就绪凭据（HttpRequest 的 live-op / Future 的 vm.futures）。
+    pub wait: ParkedWait,
+    pub stage: ParkStage,
+    pub ctx: DispatchCtx,
+}
+
+/// 段入口的产出：回复已发出（reply_tx 已消费），或请求 parked。
+pub(crate) enum DispatchOutcome {
+    Replied,
+    Parked(Box<ParkedRequest>),
+}
+
+/// owner dispatch 段形态入口：预处理 + middleware + handler，跑到回复或
+/// 首 park。回复经 `reply_tx` 发出（Replied 时 tx 已消费）。
+pub(crate) fn dispatch_api_request_segment(
+    vm: &std::rc::Rc<AutoVM>,
     routes: &[HttpRoute],
-    req: &ApiRequest,
-) -> ApiReply {
+    req: ApiRequest,
+    reply_tx: tokio::sync::oneshot::Sender<ApiReply>,
+) -> DispatchOutcome {
     let req_method = req.method.to_uppercase();
     let req_path = req.path.clone();
 
-    // Plan 349 步骤 7/8 (W5): CORS preflight short-circuit — same response
-    // as the legacy inline write (204 + CORS block, empty body).
     if let Some(_preflight) = handle_cors_preflight(&req_method) {
-        return ApiReply::Full {
+        let _ = reply_tx.send(ApiReply::Full {
             status: 204,
             headers: cors_header_pairs(),
             body: ApiBody::Text(Vec::new()),
-        };
+        });
+        return DispatchOutcome::Replied;
     }
 
-    // Framing metadata from owned headers (same selection as the legacy loop).
     let content_type_raw = req.header("content-type").unwrap_or("").to_string();
     let content_type = content_type_raw.to_ascii_lowercase();
     let cookie_header = req.header("cookie").unwrap_or("").to_string();
@@ -3516,15 +3666,12 @@ pub(crate) fn dispatch_api_request(
         .map(|v| v.to_ascii_lowercase().contains("websocket"))
         .unwrap_or(false);
 
-    // Plan 346 B6: resolve this request's id (incoming value wins, else mint).
     let request_id = if incoming_request_id.is_empty() {
         gen_request_id()
     } else {
         incoming_request_id
     };
 
-    // Plan 346 5e (B6): per-IP fixed-window rate limit — after the CORS
-    // preflight short-circuit, before middleware/route matching.
     let client_ip = req
         .peer
         .map(|a| a.ip().to_string())
@@ -3547,16 +3694,16 @@ pub(crate) fn dispatch_api_request(
             "[HTTP] {} {} [{}] → 429 rate limited (ip {})",
             req_method, req_path, request_id, client_ip
         );
-        return ApiReply::Full {
+        let _ = reply_tx.send(ApiReply::Full {
             status: 429,
             headers,
             body: ApiBody::Text(body.into_bytes()),
-        };
+        });
+        return DispatchOutcome::Replied;
     }
 
     let body = String::from_utf8_lossy(&req.body).into_owned();
 
-    // Multipart is binary — same framed byte buffer to its parser.
     let mut multipart_json: Option<String> = None;
     if content_type.starts_with("multipart/form-data") {
         let boundary = content_type_raw
@@ -3581,34 +3728,29 @@ pub(crate) fn dispatch_api_request(
         }
     }
 
-    // Route match
     let route_match = match match_route(routes, &req_method, &req_path) {
         Some(rm) => rm,
         None => {
             let mut headers = cors_header_pairs();
             headers.push(("X-Request-Id".to_string(), request_id.clone()));
-            return ApiReply::Full {
+            let _ = reply_tx.send(ApiReply::Full {
                 status: 404,
                 headers,
                 body: ApiBody::Text(Vec::new()),
-            };
+            });
+            return DispatchOutcome::Replied;
         }
     };
 
-    // Plan 350: WebSocket upgrade handling — the legacy inline path required
-    // a matched route first (404 wins), then handshaked when a
-    // Sec-WebSocket-Key was present; a missing key fell through to normal
-    // handling. Same order preserved.
     if is_websocket {
         if let Some(key) = req.header("sec-websocket-key") {
-            return ApiReply::WebSocket {
+            let _ = reply_tx.send(ApiReply::WebSocket {
                 accept: compute_ws_accept(key),
-            };
+            });
+            return DispatchOutcome::Replied;
         }
     }
 
-    // Plan 352: middleware chain before the handler; request-info JSON shares
-    // the request id with X-Request-Id so middleware can correlate.
     let request_info = format!(
         r#"{{"method":"{}","path":"{}","content_type":"{}","has_body":{},"request_id":"{}"}}"#,
         req_method,
@@ -3621,69 +3763,165 @@ pub(crate) fn dispatch_api_request(
         .lock()
         .map(|c| c.clone())
         .unwrap_or_default();
-    let mut middleware_response: Option<String> = None;
-    for mw_fn in &middleware_names {
-        let mw_task_id = vm.spawn_task(0, 65536);
-        // Push request info as arg.
-        if let Some(t_arc) = vm.tasks.get(&mw_task_id) {
-            if let Ok(mut t) = t_arc.try_lock() {
-                push_str_arg(vm, &mut t, &request_info);
+
+    let ctx = DispatchCtx {
+        req_method,
+        req_path,
+        request_id,
+        body,
+        content_type,
+        content_type_raw,
+        cookie_header,
+        auth_header,
+        multipart_json,
+        route: route_match,
+        axum_route: None,
+        started: std::time::Instant::now(),
+        middleware_names,
+        request_info,
+        handler_task_id: None,
+    };
+    advance_dispatch(vm, ctx, 0, Some(reply_tx))
+}
+
+/// 段状态机的推进核心：从 middleware `mw_start` 起跑完剩余链 + handler +
+/// 编组；首 park 即返回 Parked（reply_tx 随条目保存）。
+fn advance_dispatch(
+    vm: &std::rc::Rc<AutoVM>,
+    mut ctx: DispatchCtx,
+    mw_start: usize,
+    mut reply_tx: Option<tokio::sync::oneshot::Sender<ApiReply>>,
+) -> DispatchOutcome {
+    // ── middleware 链（逐个段驱动；Err → 视为无响应继续，legacy 语义）──
+    let mut index = mw_start;
+    while index < ctx.middleware_names.len() {
+        match run_middleware_at(vm, &ctx, index) {
+            MWStep::Continue => index += 1,
+            MWStep::Reply(reply) => {
+                eprintln!(
+                    "[HTTP] {} {} [{}] → MW ({}ms)",
+                    ctx.req_method,
+                    ctx.req_path,
+                    ctx.request_id,
+                    ctx.started.elapsed().as_millis()
+                );
+                if let Some(tx) = reply_tx.take() {
+                    let _ = tx.send(reply);
+                }
+                return DispatchOutcome::Replied;
+            }
+            MWStep::Parked { task_id, seg, wait } => {
+                return DispatchOutcome::Parked(Box::new(ParkedRequest {
+                    reply_tx,
+                    task_id,
+                    seg,
+                    wait,
+                    stage: ParkStage::Middleware { index },
+                    ctx,
+                }));
             }
         }
-        let mw_result = if let Some(t_arc) = vm.tasks.get(&mw_task_id) {
-            let mut t = match t_arc.try_lock() {
-                Ok(t) => t,
-                Err(_) => break,
-            };
-            match vm.call_fn_by_name(&mut t, mw_fn, 1) {
-                Ok(()) => {
-                    let nv = t.ram.pop_nv();
-                    if auto_val::is_null(nv) {
-                        None
-                    } else {
-                        nv_to_json(vm, nv, 0)
+    }
+    start_handler(vm, ctx, reply_tx)
+}
+
+enum MWStep {
+    Continue,
+    Reply(ApiReply),
+    Parked { task_id: u64, seg: ParkedSegment, wait: ParkedWait },
+}
+
+/// 运行 middleware_names[index]（spawn 任务 + 段驱动）。
+fn run_middleware_at(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, index: usize) -> MWStep {
+    let mw_fn = ctx.middleware_names[index].clone();
+    let mw_task_id = vm.spawn_task(0, 65536);
+    if let Some(t_arc) = vm.tasks.get(&mw_task_id) {
+        if let Ok(mut t) = t_arc.try_lock() {
+            push_str_arg(vm, &mut t, &ctx.request_info);
+        }
+    }
+    enum MWEnd {
+        Null,
+        Response(String),
+        Parked(ParkedWait, ParkedSegment),
+    }
+    let end = {
+        let Some(t_arc) = vm.tasks.get(&mw_task_id) else {
+            vm.tasks.remove(&mw_task_id);
+            return MWStep::Continue; // legacy：任务槽缺失 = 无响应继续
+        };
+        let mut t = match t_arc.try_lock() {
+            Ok(t) => t,
+            Err(_) => {
+                return MWStep::Continue; // legacy：锁忙 = break 静默跳过
+            }
+        };
+        match vm.call_fn_by_name_segment(&mut t, &mw_fn, 1) {
+            SegmentOutcome::Completed(Ok(())) => {
+                let nv = t.ram.pop_nv();
+                if auto_val::is_null(nv) {
+                    MWEnd::Null
+                } else {
+                    match nv_to_json(vm, nv, 0) {
+                        Some(resp) if !resp.is_empty() && resp != "null" => MWEnd::Response(resp),
+                        _ => MWEnd::Null,
                     }
                 }
-                Err(_) => None,
             }
-        } else {
-            None
-        };
-        vm.tasks.remove(&mw_task_id);
-        if let Some(ref resp) = mw_result {
-            if !resp.is_empty() && resp != "null" {
-                middleware_response = Some(resp.clone());
-                break;
-            }
+            // legacy：middleware Err → None → 继续链（行为保持）。
+            SegmentOutcome::Completed(Err(_)) => MWEnd::Null,
+            SegmentOutcome::Parked { wait, seg } => MWEnd::Parked(wait, seg),
+        }
+    };
+    match end {
+        MWEnd::Parked(wait, seg) => MWStep::Parked { task_id: mw_task_id, seg, wait },
+        MWEnd::Null => {
+            vm.tasks.remove(&mw_task_id);
+            MWStep::Continue
+        }
+        MWEnd::Response(resp) => {
+            vm.tasks.remove(&mw_task_id);
+            let mut headers = vec![(
+                "Content-Type".to_string(),
+                "application/json".to_string(),
+            )];
+            headers.extend(cors_header_pairs());
+            headers.push(("X-Request-Id".to_string(), ctx.request_id.clone()));
+            MWStep::Reply(ApiReply::Full {
+                status: 200,
+                headers,
+                body: ApiBody::Text(resp.into_bytes()),
+            })
         }
     }
-    if let Some(ref mw_resp) = middleware_response {
-        // Middleware short-circuited — return its response directly.
-        eprintln!("[HTTP] {} {} [{}] → MW ({}ms)", req_method, req_path, request_id, 0);
-        let mut headers = vec![(
-            "Content-Type".to_string(),
-            "application/json".to_string(),
-        )];
-        headers.extend(cors_header_pairs());
-        headers.push(("X-Request-Id".to_string(), request_id.clone()));
-        return ApiReply::Full {
-            status: 200,
-            headers,
-            body: ApiBody::Text(mw_resp.clone().into_bytes()),
-        };
-    }
+}
 
-    // Plan 442 C2: axum adapter detection — synthetic `__axum:<n>` names
-    // dispatch via closure (Plan 383) with extractor marshalling.
-    let request_start = std::time::Instant::now();
+enum HandlerEnd {
+    Value(auto_val::NanoValue),
+    Err(crate::vm::engine::VMError),
+    Parked(ParkedWait, ParkedSegment),
+    /// 任务槽缺失（legacy contract：空体 200）。
+    MissingTask,
+    /// tokio Mutex try_lock 失败（守卫出作用域后再落 500 副作用）。
+    LockBusy,
+}
+
+/// handler 阶段：spawn 任务 → 绑定 → 段驱动调用 → 编组/park。
+fn start_handler(
+    vm: &std::rc::Rc<AutoVM>,
+    mut ctx: DispatchCtx,
+    reply_tx: Option<tokio::sync::oneshot::Sender<ApiReply>>,
+) -> DispatchOutcome {
     let handler_task_id = vm.spawn_task(0, 65536);
-    let axum_route = if route_match.fn_name.starts_with("__axum:") {
-        match crate::vm::ffi::axum_adapter::route_by_synthetic_name(&route_match.fn_name) {
+    ctx.handler_task_id = Some(handler_task_id);
+
+    let axum_route = if ctx.route.fn_name.starts_with("__axum:") {
+        match crate::vm::ffi::axum_adapter::route_by_synthetic_name(&ctx.route.fn_name) {
             Some(r) => Some(r),
             None => {
                 eprintln!(
                     "[HTTP] {} {} → 500 (axum route lookup failed for {})",
-                    req_method, req_path, route_match.fn_name
+                    ctx.req_method, ctx.req_path, ctx.route.fn_name
                 );
                 vm.tasks.remove(&handler_task_id);
                 let mut headers = vec![(
@@ -3691,23 +3929,28 @@ pub(crate) fn dispatch_api_request(
                     "application/json".to_string(),
                 )];
                 headers.extend(cors_header_pairs());
-                return ApiReply::Full {
+                let reply = ApiReply::Full {
                     status: 500,
                     headers,
                     body: ApiBody::Text(br#"{"error":"route lookup failed"}"#.to_vec()),
                 };
+                if let Some(tx) = reply_tx {
+                    let _ = tx.send(reply);
+                }
+                return DispatchOutcome::Replied;
             }
         }
     } else {
         None
     };
+    ctx.axum_route = axum_route.clone();
 
     let n_args = if let Some(ref axum_route) = axum_route {
-        // Axum adapter path: marshalling per param extractor shapes.
-        let query_json = if route_match.query_params.is_empty() {
+        let query_json = if ctx.route.query_params.is_empty() {
             "{}".to_string()
         } else {
-            let pairs: Vec<String> = route_match
+            let pairs: Vec<String> = ctx
+                .route
                 .query_params
                 .iter()
                 .map(|(k, v)| {
@@ -3723,41 +3966,39 @@ pub(crate) fn dispatch_api_request(
         let mut pushed = 0usize;
         if let Some(t_arc) = vm.tasks.get(&handler_task_id) {
             if let Ok(mut t) = t_arc.try_lock() {
-                let headers_json = if auth_header.is_empty() {
+                let headers_json = if ctx.auth_header.is_empty() {
                     "{}".to_string()
                 } else {
-                    format!("{{\"authorization\":\"{}\"}}", auth_header.replace('"', ""))
+                    format!("{{\"authorization\":\"{}\"}}", ctx.auth_header.replace('"', ""))
                 };
                 pushed = crate::vm::ffi::axum_adapter::push_extractor_args(
                     vm,
                     &mut t,
                     axum_route,
-                    &route_match.path_params,
+                    &ctx.route.path_params,
                     &query_json,
-                    &body,
+                    &ctx.body,
                     &headers_json,
                 );
             }
         }
         pushed
     } else {
-        // Legacy #[api] path: PLAN-669 by-name binding (path → body field →
-        // query); bind failures map to 400/500 responses.
         match build_handler_args(
             vm,
             handler_task_id,
-            &route_match,
-            &body,
-            &content_type,
-            &cookie_header,
-            &auth_header,
-            multipart_json.as_deref(),
-            &req_method,
-            &req_path,
+            &ctx.route,
+            &ctx.body,
+            &ctx.content_type,
+            &ctx.cookie_header,
+            &ctx.auth_header,
+            ctx.multipart_json.as_deref(),
+            &ctx.req_method,
+            &ctx.req_path,
         ) {
             Ok(n) => n,
             Err(ApiArgBindError::BadRequest(msg)) => {
-                eprintln!("[HTTP] {} {} → 400 ({})", req_method, req_path, msg);
+                eprintln!("[HTTP] {} {} → 400 ({})", ctx.req_method, ctx.req_path, msg);
                 vm.tasks.remove(&handler_task_id);
                 let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
                 let mut headers = vec![(
@@ -3765,14 +4006,18 @@ pub(crate) fn dispatch_api_request(
                     "application/json".to_string(),
                 )];
                 headers.extend(cors_header_pairs());
-                return ApiReply::Full {
+                let reply = ApiReply::Full {
                     status: 400,
                     headers,
                     body: ApiBody::Text(err_body.into_bytes()),
                 };
+                if let Some(tx) = reply_tx {
+                    let _ = tx.send(reply);
+                }
+                return DispatchOutcome::Replied;
             }
             Err(ApiArgBindError::Internal(msg)) => {
-                eprintln!("[HTTP] {} {} → 500 ({})", req_method, req_path, msg);
+                eprintln!("[HTTP] {} {} → 500 ({})", ctx.req_method, ctx.req_path, msg);
                 vm.tasks.remove(&handler_task_id);
                 let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
                 let mut headers = vec![(
@@ -3780,174 +4025,684 @@ pub(crate) fn dispatch_api_request(
                     "application/json".to_string(),
                 )];
                 headers.extend(cors_header_pairs());
-                return ApiReply::Full {
+                let reply = ApiReply::Full {
                     status: 500,
                     headers,
                     body: ApiBody::Text(err_body.into_bytes()),
                 };
+                if let Some(tx) = reply_tx {
+                    let _ = tx.send(reply);
+                }
+                return DispatchOutcome::Replied;
             }
         }
     };
 
-    // DashMap 读守卫纪律（既有注释沿用）：守卫作用域内不得对同一 shard
-    // `vm.tasks.remove`（自死锁）；守卫先行 drop 再清理任务。
-    let reply = if let Some(_task_arc) = vm.tasks.get(&handler_task_id) {
-        let mut ht = match _task_arc.try_lock() {
-            Ok(t) => t,
-            Err(_) => {
-                eprintln!(
-                    "[HTTP] {} {} → 500 (task lock failed, {}ms)",
-                    req_method,
-                    req_path,
-                    request_start.elapsed().as_millis()
-                );
-                vm.tasks.remove(&handler_task_id);
-                let mut headers = vec![(
-                    "Content-Type".to_string(),
-                    "application/json".to_string(),
-                )];
-                headers.extend(cors_header_pairs());
-                return ApiReply::Full {
-                    status: 500,
-                    headers,
-                    body: ApiBody::Text(br#"{"error":"internal error"}"#.to_vec()),
-                };
-            }
-        };
-
-        // Dispatch: axum routes use closure (Plan 383 fn-ref), legacy use fn-name.
-        match if let Some(ref axum_route) = axum_route {
-            vm.call_closure(&mut ht, axum_route.closure_id, n_args)
-        } else {
-            vm.call_fn_by_name(&mut ht, &route_match.fn_name, n_args)
-        } {
-            Ok(()) => {
-                let nv = ht.ram.pop_nv();
-                // SSE detection: generator/iterator return → stream frames.
-                if auto_val::is_i32(nv) {
-                    let iter_id = auto_val::decode_i32(nv) as u32;
-                    if vm.iterators.contains_key(&iter_id) {
-                        eprintln!(
-                            "[HTTP] {} {} → 200 SSE ({}ms)",
-                            req_method,
-                            req_path,
-                            request_start.elapsed().as_millis()
-                        );
-                        drop(ht);
-                        drop(_task_arc);
-                        // Bounded frame channel (capacity 1 — same backpressure
-                        // as the legacy producer loop); slow client blocks the
-                        // producer which pauses the generator batches.
-                        let (sender, receiver) = tokio::sync::mpsc::channel(1);
-                        let producer_vm = vm.clone();
-                        tokio::task::spawn_local(async move {
-                            produce_sse_frames(producer_vm, iter_id, sender).await;
-                        });
-                        ApiReply::Full {
-                            status: 200,
-                            headers: vec![
-                                (
-                                    "Content-Type".to_string(),
-                                    "text/event-stream".to_string(),
-                                ),
-                                ("Cache-Control".to_string(), "no-cache".to_string()),
-                                ("Connection".to_string(), "keep-alive".to_string()),
-                            ],
-                            body: ApiBody::Sse(receiver),
-                        }
-                    } else if let Some(res) =
-                        crate::vm::ffi::stdlib::lookup_http_response(iter_id as u64)
-                    {
-                        // Plan 346 3c: handler-built Response object — serve
-                        // status/headers/body directly (custom headers + CORS
-                        // + request id, same as the legacy writer).
-                        let (status, headers, body) = res;
-                        let mut all_headers = headers;
-                        all_headers.extend(cors_header_pairs());
-                        all_headers.push(("X-Request-Id".to_string(), request_id.clone()));
-                        drop(ht);
-                        eprintln!(
-                            "[HTTP] {} {} [{}] → {} ({}ms)",
-                            req_method,
-                            req_path,
-                            request_id,
-                            status,
-                            request_start.elapsed().as_millis()
-                        );
-                        ApiReply::Full {
-                            status,
-                            headers: all_headers,
-                            body: ApiBody::Text(body),
-                        }
-                    } else {
-                        json_value_reply(vm, nv, &req_method, &req_path, &route_match.fn_name, &body, &request_id, request_start.elapsed().as_millis())
-                    }
-                } else if auto_val::is_i64(nv) {
-                    // Plan 346 3c / Plan 377 inline tag 8: response handles.
-                    let handle = auto_val::decode_i64(nv) as u64;
-                    match crate::vm::ffi::stdlib::lookup_http_response(handle) {
-                        Some(res) => {
-                            let (status, headers, body) = res;
-                            let mut all_headers = headers;
-                            all_headers.extend(cors_header_pairs());
-                            all_headers
-                                .push(("X-Request-Id".to_string(), request_id.clone()));
-                            drop(ht);
-                            eprintln!(
-                                "[HTTP] {} {} [{}] → {} ({}ms)",
-                                req_method,
-                                req_path,
-                                request_id,
-                                status,
-                                request_start.elapsed().as_millis()
-                            );
-                            ApiReply::Full {
-                                status,
-                                headers: all_headers,
-                                body: ApiBody::Text(body),
-                            }
-                        }
-                        None => json_value_reply(vm, nv, &req_method, &req_path, &route_match.fn_name, &body, &request_id, request_start.elapsed().as_millis()),
-                    }
+    // DashMap 读守卫纪律：守卫作用域内不得对同一 shard remove——失败形态
+    // 编码为变体，守卫出作用域后再落副作用。
+    let end = if let Some(t_arc) = vm.tasks.get(&handler_task_id) {
+        match t_arc.try_lock() {
+            Err(_) => HandlerEnd::LockBusy,
+            Ok(mut ht) => {
+                // Dispatch: axum routes use closure (Plan 383 fn-ref), legacy
+                // use fn-name. PLAN-705: 段驱动形态——等待即 park，不再同步
+                // 占线程。
+                match if let Some(ref axum_route) = axum_route {
+                    vm.call_closure_segment(&mut ht, axum_route.closure_id, n_args)
                 } else {
-                    json_value_reply(vm, nv, &req_method, &req_path, &route_match.fn_name, &body, &request_id, request_start.elapsed().as_millis())
-                }
-            }
-            Err(e) => {
-                eprintln!(
-                    "[HTTP] {} {} → 500 (handler '{}' error: {:?}, {}ms)",
-                    req_method,
-                    req_path,
-                    route_match.fn_name,
-                    e,
-                    request_start.elapsed().as_millis()
-                );
-                // Plan 346 stage 2: proper 500 JSON error response.
-                let error_json = format!(
-                    r#"{{"error":"internal server error","detail":"{}"}}"#,
-                    format!("{:?}", e)
-                        .replace('"', "\\\"")
-                        .replace('\n', " ")
-                );
-                ApiReply::Full {
-                    status: 500,
-                    headers: json_reply_headers(&request_id),
-                    body: ApiBody::Text(error_json.into_bytes()),
+                    vm.call_fn_by_name_segment(&mut ht, &ctx.route.fn_name, n_args)
+                } {
+                    SegmentOutcome::Completed(Ok(())) => HandlerEnd::Value(ht.ram.pop_nv()),
+                    SegmentOutcome::Completed(Err(e)) => HandlerEnd::Err(e),
+                    SegmentOutcome::Parked { wait, seg } => HandlerEnd::Parked(wait, seg),
                 }
             }
         }
     } else {
-        // No task slot — legacy wrote nothing (connection left hanging);
-        // a determinate empty 200 keeps the bridge contract total.
-        ApiReply::Full {
-            status: 200,
-            headers: json_reply_headers(&request_id),
-            body: ApiBody::Text(Vec::new()),
-        }
+        HandlerEnd::MissingTask
     };
 
-    vm.tasks.remove(&handler_task_id);
-    reply
+    match end {
+        HandlerEnd::MissingTask => {
+            // legacy contract：任务槽缺失 → 空体 200。
+            let reply = ApiReply::Full {
+                status: 200,
+                headers: json_reply_headers(&ctx.request_id),
+                body: ApiBody::Text(Vec::new()),
+            };
+            if let Some(tx) = reply_tx {
+                let _ = tx.send(reply);
+            }
+            return DispatchOutcome::Replied;
+        }
+        HandlerEnd::LockBusy => {
+            eprintln!(
+                "[HTTP] {} {} → 500 (task lock failed, {}ms)",
+                ctx.req_method,
+                ctx.req_path,
+                ctx.started.elapsed().as_millis()
+            );
+            vm.tasks.remove(&handler_task_id);
+            let reply = ApiReply::Full {
+                status: 500,
+                headers: cors_json_headers(&ctx.request_id),
+                body: ApiBody::Text(br#"{"error":"internal error"}"#.to_vec()),
+            };
+            if let Some(tx) = reply_tx {
+                let _ = tx.send(reply);
+            }
+            return DispatchOutcome::Replied;
+        }
+        HandlerEnd::Parked(wait, seg) => DispatchOutcome::Parked(Box::new(ParkedRequest {
+            reply_tx,
+            task_id: handler_task_id,
+            seg,
+            wait,
+            stage: ParkStage::Handler,
+            ctx,
+        })),
+        HandlerEnd::Err(e) => {
+            vm.tasks.remove(&handler_task_id);
+            let reply = handler_error_reply(&ctx, &e);
+            if let Some(tx) = reply_tx {
+                let _ = tx.send(reply);
+            }
+            DispatchOutcome::Replied
+        }
+        HandlerEnd::Value(nv) => {
+            match marshal_handler_value(vm, &ctx, nv) {
+                MarshalOutcome::Reply(reply) => {
+                    vm.tasks.remove(&handler_task_id);
+                    if let Some(tx) = reply_tx {
+                        let _ = tx.send(reply);
+                    }
+                    DispatchOutcome::Replied
+                }
+                MarshalOutcome::ParkFuture(fid) => {
+                    // ~T 返回 future 未完成：handler 任务保留（终值编组需要
+                    // 栈暂存），stage 切 AwaitReturnFuture，wait=Future(fid)
+                    // 统一就绪探测。
+                    DispatchOutcome::Parked(Box::new(ParkedRequest {
+                        reply_tx,
+                        task_id: handler_task_id,
+                        seg: ParkedSegment {
+                            fn_name: ctx.route.fn_name.clone(),
+                            saved_bp: 0,
+                            saved_fn_n_args: 0,
+                        },
+                        wait: ParkedWait::Future(fid),
+                        stage: ParkStage::AwaitReturnFuture,
+                        ctx,
+                    }))
+                }
+                MarshalOutcome::ParkBody(internal_fid, outer_fid) => {
+                    DispatchOutcome::Parked(Box::new(ParkedRequest {
+                        reply_tx,
+                        task_id: handler_task_id,
+                        seg: ParkedSegment {
+                            fn_name: ctx.route.fn_name.clone(),
+                            saved_bp: 0,
+                            saved_fn_n_args: 0,
+                        },
+                        wait: ParkedWait::Future(outer_fid),
+                        stage: ParkStage::AsyncReturnBody { internal_fid },
+                        ctx,
+                    }))
+                }
+            }
+        }
+    }
+}
+
+/// 编组 handler 返回值：SSE / Response handle / ~T 最终值 / JSON。
+/// ~T 判定为元数据门（fn_is_api_async，`__axum:` 反查导出名）+ future
+/// bits 形态 + vm.futures 注册表存在性三重闸——普通 int 位模式永不误判
+/// （AC-01 反例）。
+enum MarshalOutcome {
+    Reply(ApiReply),
+    /// External 返回 future 未完成。
+    ParkFuture(u32),
+    /// Internal 体挂在外层 External await 上（internal/outer future id）。
+    ParkBody(u32, u32),
+}
+
+/// park 时任务的外层等待 future id（体挂起时 waiting_future_id 即外层）。
+fn ctx_await_outer(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> Option<u32> {
+    let task_id = ctx.handler_task_id?;
+    let t_arc = vm.tasks.get(&task_id)?.clone();
+    let t = t_arc.try_lock().ok()?;
+    t.waiting_future_id
+}
+
+fn marshal_handler_value(
+    vm: &std::rc::Rc<AutoVM>,
+    ctx: &DispatchCtx,
+    nv: auto_val::NanoValue,
+) -> MarshalOutcome {
+    if auto_val::is_i32(nv) {
+        let bits = auto_val::decode_i32(nv);
+        if (bits & 0xFF) == 0xF0 {
+            let fid = ((bits as u32) >> 8) as u32;
+            let handler_async = match ctx.axum_route {
+                Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
+                    .map(|n| fn_is_api_async(&n))
+                    .unwrap_or(false),
+                None => fn_is_api_async(&ctx.route.fn_name),
+            };
+            if handler_async {
+                if let Some(fut) = vm.futures.get(&fid) {
+                    let (pending, is_external, body_offset) = {
+                        let f = fut.read().unwrap();
+                        (
+                            f.state == crate::vm::engine::FutureState::Pending,
+                            f.kind == crate::vm::engine::FutureKind::External,
+                            f.body_offset,
+                        )
+                    };
+                    if pending {
+                        if is_external {
+                            return MarshalOutcome::ParkFuture(fid);
+                        }
+                        // Internal `~{}`：体由 await 上下文驱动——handler 已
+                        // RET，服务端就地驱动（handle_await_future）；体内部
+                        // 再挂 External await 时转 AsyncReturnBody 阶段，由
+                        // 完成通知唤醒后续跑体。
+                        let task_id = ctx.handler_task_id;
+                        if let Some(task_id) = task_id {
+                            if let Some(t_arc) = vm.tasks.get(&task_id) {
+                                if let Ok(mut t) = t_arc.try_lock() {
+                                    let _ = vm.handle_await_future(&mut t, fid, body_offset);
+                                }
+                            }
+                        }
+                        let Some(fut2) = vm.futures.get(&fid) else {
+                            return MarshalOutcome::Reply(final_value_reply(vm, ctx, None));
+                        };
+                        {
+                            let f = fut2.read().unwrap();
+                            if f.state == crate::vm::engine::FutureState::Ready {
+                                let value = f.result.clone();
+                                drop(f);
+                                return MarshalOutcome::Reply(final_value_reply(vm, ctx, value));
+                            }
+                            if f.state == crate::vm::engine::FutureState::Failed {
+                                drop(f);
+                                return MarshalOutcome::Reply(final_value_reply(vm, ctx, None));
+                            }
+                        }
+                        // 体仍挂在外层 await 上 → AsyncReturnBody 阶段。
+                        if let Some(outer_fid) = ctx_await_outer(vm, ctx) {
+                            return MarshalOutcome::ParkBody(fid, outer_fid);
+                        }
+                        return MarshalOutcome::Reply(final_value_reply(vm, ctx, None));
+                    }
+                    let value = fut.read().unwrap().result.clone();
+                    return MarshalOutcome::Reply(final_value_reply(vm, ctx, value));
+                }
+            }
+        }
+        let iter_id = bits as u32;
+        if vm.iterators.contains_key(&iter_id) {
+            eprintln!(
+                "[HTTP] {} {} → 200 SSE ({}ms)",
+                ctx.req_method,
+                ctx.req_path,
+                ctx.started.elapsed().as_millis()
+            );
+            let (sender, receiver) = tokio::sync::mpsc::channel(1);
+            let producer_vm = vm.clone();
+            tokio::task::spawn_local(async move {
+                produce_sse_frames(producer_vm, iter_id, sender).await;
+            });
+            return MarshalOutcome::Reply(ApiReply::Full {
+                status: 200,
+                headers: vec![
+                    ("Content-Type".to_string(), "text/event-stream".to_string()),
+                    ("Cache-Control".to_string(), "no-cache".to_string()),
+                    ("Connection".to_string(), "keep-alive".to_string()),
+                ],
+                body: ApiBody::Sse(receiver),
+            });
+        }
+        if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(iter_id as u64) {
+            return MarshalOutcome::Reply(response_handle_reply(ctx, res));
+        }
+        return MarshalOutcome::Reply(json_value_reply(
+            vm,
+            nv,
+            &ctx.req_method,
+            &ctx.req_path,
+            &ctx.route.fn_name,
+            &ctx.body,
+            &ctx.request_id,
+            ctx.started.elapsed().as_millis(),
+        ));
+    }
+    if auto_val::is_i64(nv) {
+        let handle = auto_val::decode_i64(nv) as u64;
+        if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(handle) {
+            return MarshalOutcome::Reply(response_handle_reply(ctx, res));
+        }
+        return MarshalOutcome::Reply(json_value_reply(
+            vm,
+            nv,
+            &ctx.req_method,
+            &ctx.req_path,
+            &ctx.route.fn_name,
+            &ctx.body,
+            &ctx.request_id,
+            ctx.started.elapsed().as_millis(),
+        ));
+    }
+    MarshalOutcome::Reply(json_value_reply(
+        vm,
+        nv,
+        &ctx.req_method,
+        &ctx.req_path,
+        &ctx.route.fn_name,
+        &ctx.body,
+        &ctx.request_id,
+        ctx.started.elapsed().as_millis(),
+    ))
+}
+
+/// Response-object 分支的共享编组（status/headers/body + CORS + 请求 id）。
+fn response_handle_reply(
+    ctx: &DispatchCtx,
+    res: (u16, Vec<(String, String)>, Vec<u8>),
+) -> ApiReply {
+    let (status, headers, body) = res;
+    let mut all_headers = headers;
+    all_headers.extend(cors_header_pairs());
+    all_headers.push(("X-Request-Id".to_string(), ctx.request_id.clone()));
+    eprintln!(
+        "[HTTP] {} {} [{}] → {} ({}ms)",
+        ctx.req_method,
+        ctx.req_path,
+        ctx.request_id,
+        status,
+        ctx.started.elapsed().as_millis()
+    );
+    ApiReply::Full {
+        status,
+        headers: all_headers,
+        body: ApiBody::Text(body),
+    }
+}
+
+/// handler Err 的 500 形态（legacy 同款）。
+fn handler_error_reply(ctx: &DispatchCtx, e: &crate::vm::engine::VMError) -> ApiReply {
+    eprintln!(
+        "[HTTP] {} {} → 500 (handler '{}' error: {:?}, {}ms)",
+        ctx.req_method,
+        ctx.req_path,
+        ctx.route.fn_name,
+        e,
+        ctx.started.elapsed().as_millis()
+    );
+    let error_json = format!(
+        r#"{{"error":"internal server error","detail":"{}"}}"#,
+        format!("{:?}", e).replace('"', "\\\"").replace('\n', " ")
+    );
+    ApiReply::Full {
+        status: 500,
+        headers: json_reply_headers(&ctx.request_id),
+        body: ApiBody::Text(error_json.into_bytes()),
+    }
+}
+
+/// CORS + JSON content-type + 请求 id（task-lock 失败臂用）。
+fn cors_json_headers(request_id: &str) -> Vec<(String, String)> {
+    let mut headers = vec![(
+        "Content-Type".to_string(),
+        "application/json".to_string(),
+    )];
+    headers.extend(cors_header_pairs());
+    headers.push(("X-Request-Id".to_string(), request_id.to_string()));
+    headers
+}
+
+/// ~T 最终值编组：FutureValue.result → NanoValue → json_value_reply
+/// （Failed / 缺 result → null；Phase A 语义同引擎恢复臂）。
+fn final_value_reply(
+    vm: &std::rc::Rc<AutoVM>,
+    ctx: &DispatchCtx,
+    value: Option<auto_val::Value>,
+) -> ApiReply {
+    let nv = value
+        .and_then(|v| value_to_nv_via_task(vm, ctx, v))
+        .unwrap_or_else(auto_val::encode_null);
+    json_value_reply(
+        vm,
+        nv,
+        &ctx.req_method,
+        &ctx.req_path,
+        &ctx.route.fn_name,
+        &ctx.body,
+        &ctx.request_id,
+        ctx.started.elapsed().as_millis(),
+    )
+}
+
+/// Value → NanoValue（经 handler 任务栈的 scratch——字符串走
+/// rc_push_str_idx 保 RC 簿记；复杂变体降级 null，~T 典型返回为标量/串）。
+fn value_to_nv_via_task(
+    vm: &std::rc::Rc<AutoVM>,
+    ctx: &DispatchCtx,
+    value: auto_val::Value,
+) -> Option<auto_val::NanoValue> {
+    let task_id = ctx.handler_task_id?;
+    let t_arc = vm.tasks.get(&task_id)?.clone();
+    let mut t = t_arc.try_lock().ok()?;
+    let nv = match value {
+        auto_val::Value::Int(i) => auto_val::encode_i32(i),
+        auto_val::Value::Float(f) => auto_val::encode_f64(f),
+        auto_val::Value::Double(f) => auto_val::encode_f64(f),
+        auto_val::Value::Bool(b) => auto_val::encode_bool(b),
+        auto_val::Value::Nil => auto_val::encode_null(),
+        auto_val::Value::Str(s) => {
+            let idx = vm.add_string(s.to_string().into_bytes());
+            vm.rc_push_str_idx(&mut t, idx);
+            t.ram.pop_nv()
+        }
+        _ => auto_val::encode_null(),
+    };
+    Some(nv)
+}
+
+/// 就绪探测（parked 表扫描用；不消费任何状态）。
+pub(crate) fn parked_is_ready(vm: &std::rc::Rc<AutoVM>, p: &ParkedRequest) -> bool {
+    match &p.wait {
+        ParkedWait::HttpRequest(req_id) => crate::vm::ffi::stdlib::async_http_result_ready(*req_id),
+        ParkedWait::Future(fid) => vm
+            .futures
+            .get(fid)
+            .map(|f| f.read().unwrap().state != crate::vm::engine::FutureState::Pending)
+            .unwrap_or(true), // future 消失 → 唤醒（引擎恢复臂同款 nil fallback）
+    }
+}
+
+/// 恢复 parked 请求到下一停点或终态。
+pub(crate) enum ParkedResume {
+    /// 终态回复（任务已清理；caller 经条目内 reply_tx 发送并移除条目）。
+    Reply(ApiReply),
+    /// 仍未完成（wait/seg 凭据已刷新）。
+    StillParked,
+    /// 本条目作废，改挂交接条目（middleware 续链重新 park 的形态）。
+    Handoff(Box<ParkedRequest>),
+}
+
+pub(crate) fn resume_parked_request(
+    vm: &std::rc::Rc<AutoVM>,
+    p: &mut ParkedRequest,
+) -> ParkedResume {
+    match p.stage {
+        ParkStage::Middleware { index } => {
+            enum MWResume {
+                Parked(ParkedWait, ParkedSegment),
+                ContinueChain,
+                ShortCircuit(ApiReply),
+                Missing,
+            }
+            let task_id = p.task_id;
+            let seg = p.seg.clone();
+            let step = if let Some(t_arc) = vm.tasks.get(&task_id) {
+                let Ok(mut t) = t_arc.try_lock() else {
+                    return ParkedResume::StillParked; // 锁忙 → 下一轮重试
+                };
+                match vm.resume_fn_by_name_segment(&mut t, &seg) {
+                    SegmentOutcome::Parked { wait, seg } => MWResume::Parked(wait, seg),
+                    SegmentOutcome::Completed(Ok(())) => {
+                        let nv = t.ram.pop_nv();
+                        if auto_val::is_null(nv) {
+                            MWResume::ContinueChain
+                        } else {
+                            match nv_to_json(vm, nv, 0) {
+                                Some(resp) if !resp.is_empty() && resp != "null" => {
+                                    let mut headers = vec![(
+                                        "Content-Type".to_string(),
+                                        "application/json".to_string(),
+                                    )];
+                                    headers.extend(cors_header_pairs());
+                                    headers.push((
+                                        "X-Request-Id".to_string(),
+                                        p.ctx.request_id.clone(),
+                                    ));
+                                    MWResume::ShortCircuit(ApiReply::Full {
+                                        status: 200,
+                                        headers,
+                                        body: ApiBody::Text(resp.into_bytes()),
+                                    })
+                                }
+                                _ => MWResume::ContinueChain,
+                            }
+                        }
+                    }
+                    // legacy：middleware Err → 无响应继续链。
+                    SegmentOutcome::Completed(Err(_)) => MWResume::ContinueChain,
+                }
+            } else {
+                MWResume::Missing
+            };
+            match step {
+                MWResume::Missing => ParkedResume::Reply(ApiReply::Full {
+                    status: 200,
+                    headers: json_reply_headers(&p.ctx.request_id),
+                    body: ApiBody::Text(Vec::new()),
+                }),
+                MWResume::Parked(wait, seg) => {
+                    p.wait = wait;
+                    p.seg = seg;
+                    ParkedResume::StillParked
+                }
+                MWResume::ShortCircuit(reply) => {
+                    vm.tasks.remove(&task_id);
+                    ParkedResume::Reply(reply)
+                }
+                MWResume::ContinueChain => {
+                    vm.tasks.remove(&task_id);
+                    // 续链：ctx 移交进 advance_dispatch；其再次 park 时产出
+                    // 新条目（Handoff）——本条目由 caller 移除。
+                    let ctx = std::mem::replace(&mut p.ctx, placeholder_ctx());
+                    match advance_dispatch(vm, ctx, index + 1, p.reply_tx.take()) {
+                        DispatchOutcome::Replied => ParkedResume::Reply(placeholder_reply()),
+                        DispatchOutcome::Parked(np) => ParkedResume::Handoff(np),
+                    }
+                }
+            }
+        }
+        ParkStage::Handler => {
+            enum HResume {
+                Parked(ParkedWait, ParkedSegment),
+                Value(auto_val::NanoValue),
+                Err(crate::vm::engine::VMError),
+                Missing,
+            }
+            let task_id = p.task_id;
+            let seg = p.seg.clone();
+            let step = if let Some(t_arc) = vm.tasks.get(&task_id) {
+                let Ok(mut t) = t_arc.try_lock() else {
+                    return ParkedResume::StillParked;
+                };
+                match vm.resume_fn_by_name_segment(&mut t, &seg) {
+                    SegmentOutcome::Parked { wait, seg } => HResume::Parked(wait, seg),
+                    SegmentOutcome::Completed(Ok(())) => HResume::Value(t.ram.pop_nv()),
+                    SegmentOutcome::Completed(Err(e)) => HResume::Err(e),
+                }
+            } else {
+                HResume::Missing
+            };
+            match step {
+                HResume::Missing => ParkedResume::Reply(ApiReply::Full {
+                    status: 200,
+                    headers: json_reply_headers(&p.ctx.request_id),
+                    body: ApiBody::Text(Vec::new()),
+                }),
+                HResume::Parked(wait, seg) => {
+                    p.wait = wait;
+                    p.seg = seg;
+                    ParkedResume::StillParked
+                }
+                HResume::Err(e) => {
+                    vm.tasks.remove(&task_id);
+                    ParkedResume::Reply(handler_error_reply(&p.ctx, &e))
+                }
+                HResume::Value(nv) => match marshal_handler_value(vm, &p.ctx, nv) {
+                    MarshalOutcome::Reply(reply) => {
+                        vm.tasks.remove(&task_id);
+                        ParkedResume::Reply(reply)
+                    }
+                    MarshalOutcome::ParkFuture(fid) => {
+                        p.wait = ParkedWait::Future(fid);
+                        p.stage = ParkStage::AwaitReturnFuture;
+                        ParkedResume::StillParked
+                    }
+                    MarshalOutcome::ParkBody(internal_fid, outer_fid) => {
+                        p.wait = ParkedWait::Future(outer_fid);
+                        p.stage = ParkStage::AsyncReturnBody { internal_fid };
+                        ParkedResume::StillParked
+                    }
+                },
+            }
+        }
+        ParkStage::AsyncReturnBody { internal_fid } => {
+            // 外层 await 已完成：恢复臂推送其结果并续跑挂起的 `~{}` 体
+            //（resume_suspended_body 完成后 internal future 置 Ready），
+            // 然后按内部 future 终态编组。
+            let seg = p.seg.clone();
+            let task_id = p.task_id;
+            let step = if let Some(t_arc) = vm.tasks.get(&task_id) {
+                match t_arc.try_lock() {
+                    Ok(mut t) => Some(vm.resume_fn_by_name_segment(&mut t, &seg)),
+                    Err(_) => return ParkedResume::StillParked,
+                }
+            } else {
+                None
+            };
+            match step {
+                None => {
+                    let reply = final_value_reply(vm, &p.ctx, None);
+                    vm.tasks.remove(&task_id);
+                    return ParkedResume::Reply(reply);
+                }
+                Some(SegmentOutcome::Completed(Err(_))) => {
+                    let reply = final_value_reply(vm, &p.ctx, None);
+                    vm.tasks.remove(&task_id);
+                    return ParkedResume::Reply(reply);
+                }
+                Some(SegmentOutcome::Parked { wait, seg }) => {
+                    p.wait = wait;
+                    p.seg = seg;
+                    return ParkedResume::StillParked;
+                }
+                Some(SegmentOutcome::Completed(Ok(()))) => {}
+            }
+            return probe_return_future(vm, p, internal_fid);
+        }
+        ParkStage::AwaitReturnFuture => {
+            let fid = match &p.wait {
+                ParkedWait::Future(fid) => *fid,
+                _ => return ParkedResume::StillParked,
+            };
+            let Some(fut) = vm.futures.get(&fid) else {
+                // future 消失 → nil fallback（引擎恢复臂同款）。终值编组需要
+                // handler 任务栈做 scratch——先编组后清理。
+                let reply = final_value_reply(vm, &p.ctx, None);
+                vm.tasks.remove(&p.task_id);
+                return ParkedResume::Reply(reply);
+            };
+            if fut.read().unwrap().state == crate::vm::engine::FutureState::Pending {
+                return ParkedResume::StillParked;
+            }
+            let value = fut.read().unwrap().result.clone();
+            let reply = final_value_reply(vm, &p.ctx, value);
+            vm.tasks.remove(&p.task_id);
+            ParkedResume::Reply(reply)
+        }
+    }
+}
+
+fn placeholder_ctx() -> DispatchCtx {
+    DispatchCtx {
+        req_method: String::new(),
+        req_path: String::new(),
+        request_id: String::new(),
+        body: String::new(),
+        content_type: String::new(),
+        content_type_raw: String::new(),
+        cookie_header: String::new(),
+        auth_header: String::new(),
+        multipart_json: None,
+        route: RouteMatch {
+            fn_name: String::new(),
+            path_params: Vec::new(),
+            query_params: Vec::new(),
+        },
+        axum_route: None,
+        started: std::time::Instant::now(),
+        middleware_names: Vec::new(),
+        request_info: String::new(),
+        handler_task_id: None,
+    }
+}
+
+fn placeholder_reply() -> ApiReply {
+    ApiReply::Full {
+        status: 200,
+        headers: Vec::new(),
+        body: ApiBody::Text(Vec::new()),
+    }
+}
+
+/// 按返回 future 终态编组（Ready → 终值；Failed/缺失 → null；Pending →
+/// 继续等）。
+fn probe_return_future(
+    vm: &std::rc::Rc<AutoVM>,
+    p: &mut ParkedRequest,
+    fid: u32,
+) -> ParkedResume {
+    let Some(fut) = vm.futures.get(&fid) else {
+        let reply = final_value_reply(vm, &p.ctx, None);
+        vm.tasks.remove(&p.task_id);
+        return ParkedResume::Reply(reply);
+    };
+    if fut.read().unwrap().state == crate::vm::engine::FutureState::Pending {
+        p.wait = ParkedWait::Future(fid);
+        p.stage = ParkStage::AwaitReturnFuture;
+        return ParkedResume::StillParked;
+    }
+    let value = fut.read().unwrap().result.clone();
+    let reply = final_value_reply(vm, &p.ctx, value);
+    vm.tasks.remove(&p.task_id);
+    ParkedResume::Reply(reply)
+}
+
+/// 事件驱动的就绪扫描：按 park 顺序恢复全部就绪条目（公平、零轮询——
+/// 扫描只发生在完成通知/事件唤醒后）。
+pub(crate) fn drain_ready_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) {
+    let mut i = 0;
+    while i < parked.len() {
+        if parked_is_ready(vm, &parked[i]) {
+            let mut p = parked.remove(i);
+            match resume_parked_request(vm, &mut p) {
+                ParkedResume::Reply(reply) => {
+                    if let Some(tx) = p.reply_tx.take() {
+                        let _ = tx.send(reply);
+                    }
+                }
+                ParkedResume::StillParked => {
+                    parked.insert(i, p);
+                    i += 1;
+                }
+                ParkedResume::Handoff(np) => {
+                    parked.insert(i, *np);
+                    i += 1;
+                }
+            }
+        } else {
+            i += 1;
+        }
+    }
 }
 
 /// Marshal a returned NanoValue into the final JSON reply arm: PLAN-698 POST

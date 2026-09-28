@@ -155,6 +155,17 @@ fn resolve_params(vm: &AutoVM, closure_id: u32) -> Vec<ExtractorKind> {
         .unwrap_or_default()
 }
 
+/// PLAN-705 T-04: fn-ref closure → 导出函数名反查（同 resolve_params 的
+/// 反转表逻辑）。HTTP 编组据此对 `__axum:` 路由应用 ~T 元数据门。
+pub fn export_name_for_closure(vm: &AutoVM, closure_id: u32) -> Option<String> {
+    let func_addr = vm.closures.get(&closure_id)?.func_addr;
+    vm.flash
+        .exports_by_name
+        .iter()
+        .find(|(_, &addr)| addr == func_addr)
+        .map(|(n, _)| n.clone())
+}
+
 /// axum path template → VM match_route syntax: `{x}` → `:x`, `{*x}` → `*x`.
 fn convert_path(axum: &str) -> String {
     let mut out = String::with_capacity(axum.len());

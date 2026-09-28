@@ -2110,6 +2110,74 @@ impl AutoVM {
         Ok(())
     }
 
+    /// PLAN-705 T-04/SD-01: 段驱动的闭包调用（`__axum:` 路由的 park 形态）。
+    ///
+    /// 帧建立与 [`Self::call_closure`] 逐字节同（闭包上下文/ram 返回帧/
+    /// CallFrame 入栈/PLAN-667 帧身份），驱动改走
+    /// [`Self::drive_handler_segment`]（10M 预算 + runaway 守卫 + try/catch
+    /// 拦截 + **Yield → Parked**）：闭包内异步 HTTP/External Future 等待
+    /// 不再同步自旋（旧 call_closure 对 Yield 一律 continue——等待期间
+    /// 占住执行线程，budget 耗尽后静默无结果返回）。恢复走
+    /// [`Self::resume_fn_by_name_segment`]（ParkedSegment.fn_name 仅用于
+    /// 诊断，"<closure:id>" 形态对驱动透明）。
+    pub fn call_closure_segment(
+        &self,
+        task: &mut AutoTask,
+        closure_id: u32,
+        _arg_count: usize,
+    ) -> SegmentOutcome {
+        // 1. Clone closure data (can't hold DashMap guard across yields)
+        let closure = match self.closures.get(&closure_id) {
+            Some(guard) => guard.clone(),
+            None => {
+                return SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                    "Invalid closure ID: {}",
+                    closure_id
+                ))))
+            }
+        };
+
+        // 2. Save current state
+        let saved_ip = task.ip;
+        let saved_bp = task.bp;
+        let saved_closure_id = task.current_closure_id;
+        let saved_fn_n_args = task.current_fn_n_args;
+        let saved_fn_n_locals = task.current_fn_n_locals;
+        let saved_saved_closure_id = task.saved_closure_id;
+
+        // 3-5. Setup closure context + stack frame + jump（同 call_closure）
+        task.current_closure_id = Some(closure_id);
+        task.current_fn_n_args = closure.n_args;
+        task.saved_closure_id = saved_closure_id;
+        task.ram.push_i32(saved_ip as i32); // Return address
+        task.ram.push_i32(saved_bp as i32); // Old BP
+        task.bp = task.ram.sp - 1;
+        task.push_frame_id(task.bp);
+        task.call_stack.push(crate::vm::task::CallFrame {
+            return_ip: saved_ip,
+            old_bp: task.bp,
+            fn_name: Some(format!("<closure:{}>", closure_id)),
+            line: task.current_line,
+            old_fn_n_args: saved_fn_n_args,
+            old_fn_n_locals: saved_fn_n_locals,
+        });
+        task.ip = closure.func_addr as usize;
+
+        // 6. Segment drive（Parked 时 task 状态原样保留供恢复）。
+        task.segment_no_busy_wait = true;
+        let outcome = self.drive_handler_segment(
+            task,
+            &format!("<closure:{}>", closure_id),
+            saved_bp,
+            saved_fn_n_args,
+            false,
+        );
+        if matches!(outcome, SegmentOutcome::Completed(_)) {
+            task.segment_no_busy_wait = false;
+        }
+        outcome
+    }
+
     /// Plan 312: Call a named VM function from native code (HTTP handler dispatch).
     ///
     /// Looks up `fn_name` in `exports_by_name`, pushes a stack frame (mirroring
@@ -10701,6 +10769,20 @@ self.rc_release(a_nv);
         let sp_at_unwind = task.ram.sp;
         self.rc_release_slot_range(&mut task.ram, handler.sp, sp_at_unwind);
         task.ram.sp = handler.sp;
+        // PLAN-705 T-04: 跨帧展开——错误可能发生在 try 帧的**被调帧**内
+        //（服务端 handler 的 park/resume 恢复路径：try 在外层 fn、除零等
+        // 错误在深层被调 fn）。此时必须弃掉被调帧的调用栈账并恢复 try 帧
+        // bp，否则 catch 体 RET 弹错帧 → 返回地址错乱（现场 ip 出界
+        // Terminated，catch 永不生效）。同帧情形（错误与 try 同帧，既有
+        // 702 测试面）无帧可弃，行为逐字节不变。
+        while let Some(fr) = task.call_stack.last() {
+            if fr.old_bp >= handler.bp {
+                task.call_stack.pop();
+            } else {
+                break;
+            }
+        }
+        task.bp = task.bp.min(handler.bp);
         // Push the error message as a string value for the catch handler to
         // bind to its parameter. The string is added to the pool at runtime
         // and its index pushed as a tag.

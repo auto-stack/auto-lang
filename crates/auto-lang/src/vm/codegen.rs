@@ -1411,6 +1411,19 @@ impl Codegen {
                     self.generator_fns.insert(fn_decl.name.to_string());
                 }
 
+                // PLAN-705 T-04/SD-01: publish async-return metadata for ALL
+                // fns declaring `~T`（解析期脱糖为 Future<T>）——HTTP 编组的
+                // 元数据门（返回 future bits 只在声明方为异步时才按 future
+                // 消费，普通 int 位模式永不误判）。run 管线在编译前经
+                // clear_api_param_sigs 一并清空本表。
+                if matches!(&fn_decl.ret, Type::GenericInstance(inst)
+                    if inst.base_name.as_str() == "Future")
+                {
+                    crate::vm::ffi::http_server::record_api_async_return(
+                        &fn_decl.name.to_string(),
+                    );
+                }
+
                 // 3. Push new scope for function locals
                 self.push_scope();
 
