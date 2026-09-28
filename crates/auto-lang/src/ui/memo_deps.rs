@@ -485,7 +485,7 @@ fn scan_item_node(
             Ok(())
         }
         AuraNode::ForLoop { .. } => Err("for_loop"),
-        AuraNode::Outlet => Err("outlet"),
+        AuraNode::Outlet { .. } => Err("outlet"),
         AuraNode::MemoBlock { .. } => Err("memo_block"),
         AuraNode::Component { name, props, children, .. } => {
             let Some(reg) = registry else {
@@ -569,7 +569,7 @@ fn scan_node(node: &AuraNode, slots: &mut Vec<Expr>) -> Result<(), &'static str>
         AuraNode::ForLoop { .. } => Err("for_loop"),
         AuraNode::Conditional { .. } => Err("conditional"),
         AuraNode::Component { .. } => Err("component"),
-        AuraNode::Outlet => Err("outlet"),
+        AuraNode::Outlet { .. } => Err("outlet"),
         AuraNode::MemoBlock { .. } => Err("memo_block"),
         AuraNode::Link { children, .. } => {
             for c in children {
@@ -843,7 +843,7 @@ fn scan_block_node(
         }
         // 结构性不可证：嵌套循环/路由口/嵌套块 → 整块降级（Q-02 保守）。
         AuraNode::ForLoop { .. } => Err("for_loop"),
-        AuraNode::Outlet => Err("outlet"),
+        AuraNode::Outlet { .. } => Err("outlet"),
         AuraNode::MemoBlock { .. } => Err("memo_block"),
         AuraNode::Component { name, props, children, .. } => {
             for (_k, e) in props.iter() {
@@ -1301,7 +1301,7 @@ mod tests {
             ScanVerdict::Degrade("for_loop")
         ));
         assert!(matches!(
-            scan_for_item_body(&[AuraNode::Outlet], None, &loop_vars_of(&["r"])),
+            scan_for_item_body(&[AuraNode::Outlet { memo: false }], None, &loop_vars_of(&["r"])),
             ScanVerdict::Degrade("outlet")
         ));
     }

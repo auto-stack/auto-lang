@@ -8702,7 +8702,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             }
 
             // Plan 105: Router outlet and link
-            AuraNode::Outlet => {
+            AuraNode::Outlet { .. } => {
                 // Vue Router outlet: <router-view />
                 self.needs_router = true;
                 Ok(format!("{}<router-view />\n", ind))
@@ -9237,7 +9237,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             }
 
             // Plan 105: Router outlet and link
-            AuraNode::Outlet => {
+            AuraNode::Outlet { .. } => {
                 format!("{}outlet\n", ind)
             }
 

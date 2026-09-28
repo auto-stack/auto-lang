@@ -434,7 +434,7 @@ fn scan_node(node: &AuraNode, scan: &mut ViewScan) {
         AuraNode::Component { name, .. } => {
             scan.tags.insert(format!("component:{name}"));
         }
-        AuraNode::Outlet => {
+        AuraNode::Outlet { .. } => {
             scan.tags.insert("outlet".into());
         }
         AuraNode::MemoBlock { body, .. } => {

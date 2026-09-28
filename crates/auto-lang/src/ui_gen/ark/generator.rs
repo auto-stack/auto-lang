@@ -971,7 +971,7 @@ impl ArkGenerator {
                 }
                 Ok(out)
             }
-            AuraNode::Outlet => {
+            AuraNode::Outlet { .. } => {
                 // Outlet in navigation context - render index page directly
                 // Custom components don't support trailing lambda, so just call them
                 if let Some(index) = index_component {
@@ -1126,7 +1126,7 @@ impl ArkGenerator {
             AuraNode::Component { name, props, events, .. } => {
                 self.generate_component(name, props, events)
             }
-            AuraNode::Outlet => Ok("// Outlet - router placeholder".to_string()),
+            AuraNode::Outlet { .. } => Ok("// Outlet - router placeholder".to_string()),
             // PLAN-046: memo block — VM-track boundary; emit children.
             AuraNode::MemoBlock { body, .. } => {
                 let mut out = String::new();

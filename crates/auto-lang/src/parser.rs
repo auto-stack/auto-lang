@@ -15574,10 +15574,35 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Check for "outlet" keyword: router outlet (Plan 105)
+        // Check for "outlet" keyword: router outlet (Plan 105). PLAN-046
+        // T-05: optional `outlet (memo: true)` corpus prop — the only
+        // accepted header form (anything else in the parens is a pointed
+        // parse error; bare `outlet` stays byte-compatible).
         if self.is_kind(TokenKind::Outlet) {
             self.next();
-            return Ok(ViewNode::Outlet);
+            let mut memo = false;
+            if self.is_kind(TokenKind::LParen) {
+                self.next();
+                self.skip_empty_lines();
+                let key = self.cur.text.to_string();
+                self.next();
+                self.expect(TokenKind::Colon)?;
+                let v = self.cur.text.to_string();
+                self.next();
+                if key != "memo" || v != "true" {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "outlet 头参只接受 `memo: true`，得到 `{}: {}`",
+                            key, v
+                        ),
+                        span: pos_to_span(self.prev.pos),
+                    }
+                    .into());
+                }
+                self.expect(TokenKind::RParen)?;
+                memo = true;
+            }
+            return Ok(ViewNode::Outlet { memo });
         }
 
         // Check for "link" keyword: navigation link (Plan 105)
@@ -21247,6 +21272,78 @@ style = 123
                 Parser::from(&code).with_session(crate::session::CompilerSession::ui());
             assert!(parser.parse().is_err(), "bad memo header must error: {}", src);
         }
+    }
+
+    /// PLAN-046 T-05：`outlet (memo: true)` 语料 prop 解析；裸 outlet 兼容；
+    /// 非 `memo: true` 头参指名报错。
+    #[test]
+    fn plan046_outlet_prop_parsing() {
+        let code = concat!(
+            "widget App {
+",
+            "  view {
+",
+            "    col {
+",
+            "      outlet (memo: true)
+",
+            "    }
+",
+            "  }
+",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().expect("outlet prop must parse");
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        let children = match &widget.view.as_ref().unwrap().root {
+            ViewNode::Element { children, .. } => children,
+            other => panic!("expected col root, got {:?}", other),
+        };
+        match &children[0] {
+            ViewNode::Outlet { memo } => assert!(*memo, "memo prop 在册"),
+            other => panic!("expected Outlet, got {:?}", other),
+        }
+
+        // 裸 outlet：memo=false（字节兼容）。
+        let code = "widget App {
+  view {
+    outlet
+  }
+}";
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().expect("bare outlet must parse");
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        match &widget.view.as_ref().unwrap().root {
+            ViewNode::Outlet { memo } => assert!(!*memo),
+            other => panic!("expected Outlet, got {:?}", other),
+        }
+
+        // 非 memo: true 头参 → 解析错误。
+        let code = "widget App {
+  view {
+    outlet (foo: 1)
+  }
+}";
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        assert!(parser.parse().is_err(), "non-memo outlet header must error");
     }
 
     /// 嵌套形态：memo 块体内 for/if 照常解析。

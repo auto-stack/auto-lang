@@ -1209,7 +1209,7 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
             })
         }
         // Plan 105: Router outlet and link
-        ViewNode::Outlet => Ok(AuraNode::Outlet),
+        ViewNode::Outlet { memo } => Ok(AuraNode::Outlet { memo: *memo }),
         // PLAN-046 T-04: explicit memo block carries deps through unchanged
         // (they are evaluated per-frame by the AVB memo gate, not extracted).
         ViewNode::MemoBlock { deps, exact, body, span } => {
@@ -1679,7 +1679,7 @@ fn assign_node_ids_recursive(
                 assign_node_ids_recursive(child, next_id, span_map);
             }
         }
-        AuraNode::Outlet => {
+        AuraNode::Outlet { .. } => {
             // Outlet doesn't get a debug_id
         }
         AuraNode::MemoBlock { deps: _, exact: _, body, span, debug_id } => {

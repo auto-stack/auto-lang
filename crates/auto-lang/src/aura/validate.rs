@@ -272,7 +272,7 @@ impl WidgetValidator {
                 // Note: Component validation could be extended to check against component schemas
                 let _ = (name, props); // Suppress unused warning
             }
-            ViewNode::Outlet => {
+            ViewNode::Outlet { .. } => {
                 // Router outlet - no children or props to validate
             }
             ViewNode::MemoBlock { deps, exact: _, body, .. } => {

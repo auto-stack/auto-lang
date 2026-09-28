@@ -272,7 +272,7 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
         }
 
         // Plan 105: Router outlet and link
-        AuraNode::Outlet => {
+        AuraNode::Outlet { .. } => {
             output.push_str(&format!("Outlet"));
         }
 

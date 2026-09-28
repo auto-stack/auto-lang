@@ -425,7 +425,7 @@ fun {}Preview() {{
             AuraNode::Component { name, props, events, .. } => {
                 self.component_to_compose(name, props, events, indent)
             }
-            AuraNode::Outlet => {
+            AuraNode::Outlet { .. } => {
                 // outlet should render the NavHost with current navController
                 // Use weight(1f) to fill remaining space in Column
                 // Note: weight is available via .* import from androidx.compose.foundation.layout

@@ -661,8 +661,14 @@ pub enum ViewNode {
         span: Option<(usize, usize)>,
     },
 
-    /// Router outlet: renders the matched child route (Plan 105)
-    Outlet,
+    /// Router outlet: renders the matched child route (Plan 105).
+    /// PLAN-046 T-05: `outlet (memo: true)` — corpus-level carrier for the
+    /// outlet page memo (plan045 T-05b's env-gate `AUTO_OUTLET_MEMO` stays
+    /// as compat layer; prop wins).
+    Outlet {
+        /// Corpus-level memo opt-in (default false = raw path)
+        memo: bool,
+    },
 
     /// PLAN-046 T-04: explicit memo block — `memo (deps: .a, .b) { body }`
     /// (`exact: true` optional). A user-declared cache boundary for the VM

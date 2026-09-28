@@ -168,7 +168,7 @@ fn export_node(
             let body = export_component(name, props, events)?;
             Ok(vec![A2UIComponent::new(id, body)])
         }
-        AuraNode::Outlet => {
+        AuraNode::Outlet { .. } => {
             // Outlet has no A2UI equivalent; skip
             Ok(vec![])
         }

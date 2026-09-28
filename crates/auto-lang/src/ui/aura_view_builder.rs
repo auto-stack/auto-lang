@@ -1072,10 +1072,10 @@ impl<'a> AuraViewBuilder<'a> {
                     selectable: false,
                 }
             }
-            AuraNode::Outlet => {
+            AuraNode::Outlet { memo } => {
                 // Plan 401/VM-routing: render the page widget matching the
                 // current route (the iced equivalent of vue's <router-view>).
-                self.render_outlet_impl(bindings, None)
+                self.render_outlet_impl(bindings, None, *memo)
             }
             AuraNode::Link { text, children, to, .. } => {
                 // Plan 401/VM-routing: render a link as a clickable button whose
@@ -1426,10 +1426,10 @@ impl<'a> AuraViewBuilder<'a> {
                     selectable: false,
                 }
             }
-            AuraNode::Outlet => {
+            AuraNode::Outlet { memo } => {
                 // Plan 401/VM-routing: render the page widget matching the
                 // current route (the iced equivalent of vue's <router-view>).
-                self.render_outlet_impl(bindings, Some((path, id_map, probe)))
+                self.render_outlet_impl(bindings, Some((path, id_map, probe)), *memo)
             }
             AuraNode::Link { text, children, to, .. } => {
                 // Plan 401/VM-routing: render link as a clickable button (same
@@ -5056,7 +5056,7 @@ let tabs_inner = View::Row {
     /// `__route_params` state object so page handlers can read them via
     /// `router.param("id")`. No routes / no match / empty route → `View::Empty`.
     fn render_outlet(&self, bindings: &Bindings) -> View<DynamicMessage> {
-        self.render_outlet_impl(bindings, None)
+        self.render_outlet_impl(bindings, None, false)
     }
 
     /// PLAN-045 T-05b：outlet 页产物 memo（opt-in：`AUTO_OUTLET_MEMO=1`；
@@ -5067,11 +5067,12 @@ let tabs_inner = View::Row {
         &self,
         bindings: &Bindings,
         tracked: Option<(&mut Vec<usize>, &mut DebugIdMap, &mut BuildProbe)>,
+        prop_memo: bool,
     ) -> View<DynamicMessage> {
         // PLAN-045 T-07 拆账：outlet 页构建耗时单列（AUTO_MEMO_DIAG 门）。
         let __diag = std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1");
         let __t0 = if __diag { Some(std::time::Instant::now()) } else { None };
-        let __out = self.render_outlet_inner(bindings, tracked);
+        let __out = self.render_outlet_inner(bindings, tracked, prop_memo);
         if let (true, Some(t0)) = (__diag, __t0) {
             eprintln!("[VM-VIEW-OUTLET] outlet_ms={}", (std::time::Instant::now() - t0).as_millis());
         }
@@ -5082,6 +5083,7 @@ let tabs_inner = View::Row {
         &self,
         bindings: &Bindings,
         tracked: Option<(&mut Vec<usize>, &mut DebugIdMap, &mut BuildProbe)>,
+        prop_memo: bool,
     ) -> View<DynamicMessage> {
         let (Some(registry), Some(routes)) = (self.widget_registry, self.routes) else {
             return View::Empty;
@@ -5127,7 +5129,9 @@ let tabs_inner = View::Row {
                 let empty_props: HashMap<String, AuraPropValue> = HashMap::new();
                 let empty_events: HashMap<String, AuraEvent> = HashMap::new();
                 // Plan 476: 页面路由无调用位填充,outlet 页面不带 slot fills。
-                let memo_on = std::env::var("AUTO_OUTLET_MEMO").ok().as_deref() == Some("1");
+                // PLAN-046 T-05：语料 prop 优先于 env 门（env 保留兼容层）。
+                let memo_on = prop_memo
+                    || std::env::var("AUTO_OUTLET_MEMO").ok().as_deref() == Some("1");
                 if !memo_on {
                     return match tracked {
                         Some((path, id_map, probe)) => self.render_child_widget_tracked(
@@ -21555,6 +21559,86 @@ mod plan045_memo_tests {
         std::env::remove_var("AUTO_OUTLET_MEMO");
     }
 
+    /// PLAN-046 T-05：outlet 语料 prop 三态——prop=true（env 未设）→ 门开；
+    /// prop=false（env 未设）→ 原始惰性；prop=false（env=1）→ env 兼容层
+    /// 仍开门（并集语义：prop 载体优先，env 保留兼容）。
+    #[test]
+    fn plan046_outlet_prop_priority() {
+        let _guard = PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        use crate::ui::widget_registry::WidgetRegistry;
+
+        let mut page_widget = make_memo_widget(
+            "RowPage",
+            vec![AuraStateDef {
+                name: "title".to_string(),
+                type_info: Type::StrSlice,
+                initial: Expr::Str("r0".into()),
+                decorators: vec![],
+            }],
+        );
+        page_widget.view_tree = AuraNode::element("text")
+            .with_prop("text", Expr::Ident(".title".into()));
+        let mut registry = WidgetRegistry::new();
+        registry.register(page_widget);
+        registry.register_route_alias("row", "RowPage");
+
+        std::env::remove_var("AUTO_OUTLET_MEMO");
+        let host = make_memo_widget(
+            "MemoApp",
+            vec![AuraStateDef {
+                name: "__current_route".to_string(),
+                type_info: Type::StrSlice,
+                initial: Expr::Str("/row".into()),
+                decorators: vec![],
+            }],
+        );
+        let mut bridge = VmBridge::new(&host).unwrap();
+        let routes_static = [crate::aura::AuraRoute {
+            path: "/row".to_string(),
+            module: "row".to_string(),
+            widget_name: "RowPage".to_string(),
+            params: Vec::new(),
+        }];
+        let builder_registry = &registry;
+        let build_once = |bridge: &VmBridge, memo: bool| {
+            let b = AuraViewBuilder::with_registry_and_imports(
+                bridge,
+                "MemoApp",
+                builder_registry,
+                &[],
+            )
+            .with_routes(&routes_static);
+            b.build(&AuraNode::Outlet { memo })
+        };
+
+        // ① prop=false + env 未设 → 原始惰性（零条目零计数）。
+        let _ = build_once(&bridge, false);
+        let _ = build_once(&bridge, false);
+        bridge.with_memo_cache(|c| {
+            assert_eq!(
+                (c.len(), c.hits, c.misses),
+                (0, 0, 0),
+                "prop 缺省 = 原始路径（env 未设）"
+            );
+        });
+
+        // ② prop=true + env 未设 → 语料载体开门：fill + 回访命中。
+        let v1 = build_once(&bridge, true);
+        bridge.with_memo_cache(|c| assert_eq!(c.len(), 1, "prop 门 fill 条目在册"));
+        let v2 = build_once(&bridge, true);
+        bridge.with_memo_cache(|c| assert!(c.hits >= 1, "prop 门回访命中"));
+        assert_eq!(view_key(&v1), view_key(&v2), "命中产物一致");
+
+        // ③ prop=false + env=1 → env 兼容层照常开门。
+        bridge.with_memo_cache(|c| c.clear());
+        std::env::set_var("AUTO_OUTLET_MEMO", "1");
+        let _ = build_once(&bridge, false);
+        bridge.with_memo_cache(|c| assert_eq!(c.len(), 1, "env 门 fill 条目在册"));
+        let _ = build_once(&bridge, false);
+        bridge.with_memo_cache(|c| assert!(c.hits >= 1, "env 门回访命中"));
+        std::env::remove_var("AUTO_OUTLET_MEMO");
+    }
+
     /// T-05b：outlet 页产物 memo——同页回访命中（重渲染不发生，build_ms
     /// 级断言走 hit 计数），Init 身份门保持，组件模板读槽覆盖。
     #[test]
@@ -21620,7 +21704,7 @@ mod plan045_memo_tests {
                 &[],
             )
             .with_routes(&routes_static);
-            b.build(&AuraNode::Outlet)
+            b.build(&AuraNode::Outlet { memo: false })
         };
 
         // 全量套件下其他 menubar 测试并发翻转 MENUBAR_OPEN → globals_fp 漂移

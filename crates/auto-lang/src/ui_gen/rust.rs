@@ -6174,7 +6174,7 @@ impl RustGenerator {
                     .collect::<Vec<String>>()
                     .join("\n")
             }
-            AuraNode::Outlet => match self.outlet_route.clone() {
+            AuraNode::Outlet { .. } => match self.outlet_route.clone() {
                 OutletRoute::Fold(module) => {
                     let msg_name = self.current_msg_name();
                     let field = Self::child_field_name(&module);

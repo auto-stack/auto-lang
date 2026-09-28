@@ -946,8 +946,12 @@ pub enum AuraNode {
         debug_id: Option<AuraNodeId>,
     },
 
-    /// Router outlet: renders matched child route (Plan 105)
-    Outlet,
+    /// Router outlet: renders matched child route (Plan 105). PLAN-046
+    /// T-05: `outlet (memo: true)` corpus prop (prop > env gate > raw).
+    Outlet {
+        /// Corpus-level memo opt-in (default false = raw path)
+        memo: bool,
+    },
 
     /// PLAN-046 T-04: explicit memo block — `memo (deps: .a, .b) { body }`
     /// (`exact: true` optional). VM 渲染轨的用户声明缓存边界：deps 值指纹 ∪

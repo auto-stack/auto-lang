@@ -277,7 +277,7 @@ impl<'a> AuraSnapshotBuilder<'a> {
                 out.push_str(&format!("{}/* component: {} */\n", pad, name));
             }
 
-            AuraNode::Outlet => {
+            AuraNode::Outlet { .. } => {
                 out.push_str(&format!("{}/* outlet */\n", pad));
             }
 
