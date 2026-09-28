@@ -20289,11 +20289,15 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
-    /// memo 上下文门：bindings 非空或 widget 声明 computed → 整体不 memo
-    /// （T-01：bindings 下循环变量进入求值、computed 走 VM 代码，均静态
-    /// 不可证）。
+    /// memo 上下文门。PLAN-045 T-01 原裁定：bindings 非空或 widget 声明
+    /// computed → 整体不 memo（静态不可证）。PLAN-047 T-07（档 C SD-11）
+    /// 降级面收敛：**computed 声明不再整体排除**——computed 的读面由动态
+    /// 依赖录制闭合（桥读通道 + 引擎读臂 + 信号网三通道；T-06 级联吸收
+    /// 使 memo 条目覆盖信号 dep 面），产物逐字节对拍承载等价性（AC-05）；
+    /// bindings 保持排除（循环变量版本静态不可证且不随录制域——v1 保守
+    /// 边界沿袭）。
     fn memo_ctx_ok(&self, bindings: &Bindings) -> bool {
-        bindings.is_empty() && self.computed.map_or(true, |c| c.is_empty())
+        bindings.is_empty()
     }
 
     fn memo_ctx_obj(&self) -> u64 {
@@ -23356,5 +23360,122 @@ mod plan047_signal_tests {
         bridge.write_state("count", auto_val::Value::Int(3)).unwrap();
         let k = sig_build(&bridge, &widget.computed, &node);
         assert!(k.contains("3"), "级联失效落地: {k}");
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PLAN-047 T-07: 降级面收敛单测（AC-05——computed-exclusion 改判）。
+// ─────────────────────────────────────────────────────────────────────
+mod plan047_convergence_tests {
+    use super::*;
+    use crate::ast::Type;
+    use crate::aura::{AuraComputed, AuraStateDef, AuraWidget};
+
+    fn conv_widget() -> AuraWidget {
+        AuraWidget {
+            named_views: Vec::new(),
+            actions: None,
+            name: "ConvApp".to_string(),
+            state_vars: vec![
+                AuraStateDef {
+                    name: "show_urls".to_string(),
+                    type_info: Type::Bool,
+                    initial: Expr::Bool(false),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "other".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(0),
+                    decorators: vec![],
+                },
+            ],
+            computed: vec![AuraComputed {
+                name: "mirror".to_string(),
+                expr: Expr::Dot(Box::new(Expr::Ident(".".into())), "show_urls".into()),
+            }],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            timers: Vec::new(),
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        }
+    }
+
+    /// menubar（memo 可开关）读 computed：`checked: .mirror`——T-01 时代
+    /// 此形态因 computed 声明整体不 memo，T-07 改判后入门。
+    fn conv_menubar(memo: bool) -> AuraNode {
+        let item = AuraNode::element("menubar-checkbox-item")
+            .with_prop("title", Expr::Str("Show URLs".into()))
+            .with_prop("checked", Expr::Ident(".mirror".into()));
+        let content = AuraNode::element("menubar-content").with_child(item);
+        // trigger text 读 computed——闭合态 popover 产物可见面（保真观察点）。
+        let trigger = AuraNode::element("menubar-trigger")
+            .with_prop("text", Expr::Ident(".mirror".into()));
+        let menu = AuraNode::element("menubar-menu")
+            .with_prop("value", Expr::Str("file".into()))
+            .with_child(trigger)
+            .with_child(content);
+        let mut mb = AuraNode::element("menubar");
+        if memo {
+            mb = mb.with_prop("memo", Expr::Bool(true));
+        }
+        mb.with_child(menu)
+    }
+
+    fn conv_build(
+        bridge: &VmBridge,
+        computed: &[AuraComputed],
+        node: &AuraNode,
+    ) -> String {
+        let (v, _idmap, _probe) = AuraViewBuilder::new(bridge, "ConvApp")
+            .with_computed(computed)
+            .build_with_debug(node);
+        format!("{v:?}")
+    }
+
+    /// AC-05: 含 computed 的 widget 上下文 memo 化后渲染产物与原始路径
+    /// **逐字节一致**；门确证入册（非静默降级）；deps 变化经信号级联保真。
+    #[test]
+    fn plan047_computed_widget_memo_parity() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = conv_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+
+        // 原始路径基线（memo 关——不入册）。
+        let raw = conv_menubar(false);
+        let k_raw = conv_build(&bridge, &widget.computed, &raw);
+        let n0 = bridge.with_memo_cache(|c| c.len());
+        assert_eq!(n0, 0, "memo 关不入册");
+
+        // memo 开：T-07 改判后入门（T-01 时代此处整体降级）。
+        let armed = conv_menubar(true);
+        let k_memo = conv_build(&bridge, &widget.computed, &armed);
+        let n1 = bridge.with_memo_cache(|c| c.len());
+        assert_eq!(n1, 1, "computed 声明不再排除——条目在册");
+
+        // AC-05 对拍：产物逐字节一致。
+        assert_eq!(k_raw, k_memo, "memo 化产物与原始路径逐字节一致");
+
+        // 级联保真：computed deps（show_urls）变 → 信号重算 → 条目失效
+        // 重求值 → 产物反映新值。
+        bridge
+            .write_state("show_urls", auto_val::Value::Bool(true))
+            .unwrap();
+        let k2 = conv_build(&bridge, &widget.computed, &armed);
+        assert!(k2.contains("true"), "级联失效产物保真: {k2}");
     }
 }
