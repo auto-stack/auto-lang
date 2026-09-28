@@ -20572,9 +20572,15 @@ impl<'a> AuraViewBuilder<'a> {
         // ── pass 2：按 iterable 当前序逐项命中/fill。
         let base_u16: Vec<u16> = path.iter().map(|&x| x as u16).collect();
         let mut child_views: Vec<View<DynamicMessage>> = Vec::with_capacity(plans.len());
+        // T-06 计量：帧内门汇总（AUTO_MEMO_DIAG=1 逐帧一行，千行列表不刷屏）。
+        let mut diag_hit = 0u64;
+        let mut diag_miss = 0u64;
+        let mut diag_fill = 0u64;
+        let mut diag_skip = 0u64;
         for (i, plan) in plans.iter().enumerate() {
             // 搜索过滤每帧按当前态现算（帧级集合语义；不进项缓存）。
             if !self.matches_search(&plan.item) {
+                diag_skip += 1;
                 continue;
             }
             let key = crate::ui::memo_deps::MemoKey {
@@ -20616,10 +20622,12 @@ impl<'a> AuraViewBuilder<'a> {
                 };
                 if hit {
                     self.bridge.with_memo_cache(|c| c.note_hit_site(SITE));
+                    diag_hit += 1;
                     Self::replay_for_item(probe, id_map, &base_u16, i, prel, irel);
                     reused = Some(product);
                 } else {
                     self.bridge.with_memo_cache(|c| c.note_miss_site(SITE));
+                    diag_miss += 1;
                 }
             }
             let product = match reused {
@@ -20632,8 +20640,10 @@ impl<'a> AuraViewBuilder<'a> {
                     );
                     let Some(out) = out else {
                         // 搜索剔除/空体——与 keyless 同跳过，不入缓存。
+                        diag_skip += 1;
                         continue;
                     };
+                    diag_fill += 1;
                     // 簿记快照：base+[i] 前缀下本帧新增条目 → 项内相对路径。
                     let mut prefix_u16 = base_u16.clone();
                     prefix_u16.push(i as u16);
@@ -20682,6 +20692,11 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             };
             child_views.push(product);
+        }
+        if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+            eprintln!(
+                "[MEMO-DIAG] site=7 frame hits={diag_hit} misses={diag_miss} fills={diag_fill} skip={diag_skip}"
+            );
         }
         View::Column {
             children: child_views,
@@ -20810,15 +20825,28 @@ impl<'a> AuraViewBuilder<'a> {
             };
             if hit {
                 self.bridge.with_memo_cache(|c| c.note_hit_site(SITE));
+                if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+                    let fast = seq0 == seq;
+                    eprintln!(
+                        "[MEMO-DIAG] site=8 {} (exact={exact})",
+                        if fast { "HIT fast" } else { "HIT slow" }
+                    );
+                }
                 let base_u16: Vec<u16> =
                     path[..base_len].iter().map(|&x| x as u16).collect();
                 Self::replay_memo_subtree(probe, id_map, &base_u16, None, prel, irel);
                 return product;
             }
             self.bridge.with_memo_cache(|c| c.note_miss_site(SITE));
+            if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+                eprintln!("[MEMO-DIAG] site=8 MISS (slow mismatch, exact={exact})");
+            }
         }
 
         // fill：原始渲染 + 簿记相对快照 + 入缓存。
+        if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+            eprintln!("[MEMO-DIAG] site=8 FILL (exact={exact})");
+        }
         let out = self.render_memo_block_body(body, path, id_map, probe, bindings);
         let base_u16: Vec<u16> = path[..base_len].iter().map(|&x| x as u16).collect();
         let base_us: Vec<usize> = path[..base_len].to_vec();
