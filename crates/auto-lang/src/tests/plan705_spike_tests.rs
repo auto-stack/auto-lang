@@ -891,3 +891,165 @@ fn ping() int {
     assert!(resp.starts_with("HTTP/1.1 200"), "半关闭后应正常响应: {resp:?}");
     assert!(resp.contains("42"), "半关闭响应体: {resp:?}");
 }
+
+// ============================================================================
+// PLAN-705 T-06：兼容探针（middleware park / __axum: closure 段）
+// ============================================================================
+
+/// T-06 (1) middleware park：middleware 内异步 HTTP 等待 → 请求在
+/// middleware 阶段挂起，恢复后链继续到 handler（短路与续跑两臂）。
+#[test]
+fn plan705_e2e_middleware_park_then_chain() {
+    const SERVER_PORT: u16 = 18521;
+    const UPSTREAM_PORT: u16 = 18522;
+    let listener = std::net::TcpListener::bind(("127.0.0.1", UPSTREAM_PORT)).expect("bind upstream");
+    let up = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept upstream");
+        let mut buf = [0u8; 4096];
+        let _ = std::io::Read::read(&mut stream, &mut buf);
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        let body = "flag";
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
+    });
+    start_plan705_server(
+        &r#"
+fn gate_mw(info) {
+    var verdict = Http.post_json("http://127.0.0.1:UP/gate", "q=1")
+    if verdict == "flag" {
+        return null
+    }
+    "blocked"
+}
+#[api(method = "GET", path = "/api/after-mw")]
+fn after_mw() str {
+    "reached"
+}
+"#
+        .replace("UP", &UPSTREAM_PORT.to_string()),
+        SERVER_PORT,
+    );
+    // 注册 middleware（须在 server 编译后、请求前——MIDDLEWARE_CHAIN 全局）。
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", SERVER_PORT)).expect("connect");
+    // middleware 经 main 面注册不可行（run() 已进 server），改由诊断：
+    // 直接驱动 MIDDLEWARE_CHAIN 等价于 http.server.middleware 调用效果。
+    drop(stream);
+    crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock().unwrap().clear();
+    let code_reg = r#"
+fn gate_mw(info) {
+    var verdict = Http.post_json("http://127.0.0.1:UPREG/gate", "q=1")
+    if verdict == "flag" {
+        return null
+    }
+    "blocked"
+}
+"#
+    .replace("UPREG", &UPSTREAM_PORT.to_string());
+    let (vm_reg, _o, _e, _t) = crate::create_vm_from_source(&code_reg).expect("compile mw");
+    let _ = vm_reg;
+    crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
+        .lock()
+        .unwrap()
+        .push("gate_mw".to_string());
+    // middleware park 期间 handler 不会被调用；上游解除后链继续。
+    let started = std::time::Instant::now();
+    let (status, body) = http_get_raw(SERVER_PORT, "/api/after-mw");
+    up.join().expect("upstream");
+    assert_eq!(status, 200, "middleware 续跑后应 200: {body:?}");
+    assert_eq!(body, "\"reached\"", "handler 应在 middleware 恢复后到达: {body:?}");
+    assert!(
+        started.elapsed() >= std::time::Duration::from_millis(200),
+        "middleware 等待未发生（提前返回）——park 面未覆盖"
+    );
+}
+
+/// T-06 (2) `__axum:` fn-ref closure 的段入口：合成 fn-ref closure（与
+/// axum_adapter 路由同形态）→ call_closure_segment park → resume 消费。
+#[test]
+fn plan705_engine_closure_segment_parks_and_resumes() {
+    let body = r#"{"ok":true,"closure":705}"#.to_string();
+    let body_for_server = body.clone();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut buf = [0u8; 4096];
+        let _ = std::io::Read::read(&mut stream, &mut buf);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body_for_server.len(),
+            body_for_server
+        );
+        let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
+    });
+    let code = r#"
+fn closure_target() str {
+    var resp = Http.post_json("http://127.0.0.1:7059/seed", "q=1")
+    resp
+}
+"#
+    .replace("7059", &port.to_string());
+    let (vm, _out, _entry, _t) = crate::create_vm_from_source(&code).expect("compile");
+    // 合成 fn-ref closure：func_addr 指向目标导出（axum_adapter 注册的
+    // 同一形态——Plan 383 fn-ref closure）。
+    let (addr, _name) = vm
+        .flash
+        .exports_by_name
+        .iter()
+        .find(|(n, _)| n.contains("closure_target"))
+        .map(|(n, a)| (*a, n.clone()))
+        .expect("export closure_target");
+    let closure_id = vm.closure_id_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    vm.closures.insert(
+        closure_id,
+        crate::vm::engine::Closure {
+            func_addr: addr as u32,
+            env: Default::default(),
+            n_args: 0,
+            capture_slots: Default::default(),
+            param_abs: Default::default(),
+            creator_frame: None,
+        },
+    );
+    let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
+    let started = std::time::Instant::now();
+    let outcome = vm.call_closure_segment(&mut task, closure_id, 0);
+    let first = started.elapsed();
+    let (req_id, seg) = match &outcome {
+        crate::vm::engine::SegmentOutcome::Parked {
+            wait: crate::vm::engine::ParkedWait::HttpRequest(id),
+            seg,
+        } => (*id, seg.clone()),
+        crate::vm::engine::SegmentOutcome::Completed(Ok(())) => panic!(
+            "closure 段应 park（server 延迟 300ms 下跑完=同步自旋回归），{:?}",
+            first
+        ),
+        other => panic!("预期 Parked，得到 {:?}", other),
+    };
+    assert!(
+        first < std::time::Duration::from_millis(250),
+        "closure 段首返回 {:?}——同步自旋回归",
+        first
+    );
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
+        assert!(std::time::Instant::now() < deadline, "server 应答超时");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    server.join().expect("server");
+    match vm.resume_fn_by_name_segment(&mut task, &seg) {
+        crate::vm::engine::SegmentOutcome::Completed(Ok(())) => {}
+        other => panic!("closure 恢复应 Completed(Ok)，得到 {:?}", other),
+    }
+    let nv = task.ram.pop_nv();
+    let got = vm
+        .get_string(auto_val::decode_string(nv) as u32)
+        .expect("string slot");
+    assert_eq!(String::from_utf8_lossy(&got), body, "closure 段最终值");
+}
