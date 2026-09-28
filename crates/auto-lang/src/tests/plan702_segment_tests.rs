@@ -94,12 +94,11 @@ fn pick_data() str {
     );
     // PLAN-027 缺陷 A 边界：parked 路径不回收结果槽（条目仍在，未完成的
     // None 或 worker 已写入的 Some 均合法——绝不因 park 消失）。
+    // PLAN-705 T-02：登记表改为统一 live-op 表，contains_key → live_op_exists。
     assert!(
-        crate::vm::ffi::stdlib::async_http_result_ready(req_id) || {
-            let map = crate::vm::ffi::stdlib::ASYNC_RESULTS.lock().unwrap();
-            map.contains_key(&req_id)
-        },
-        "parked 后 ASYNC_RESULTS[{}] 被回收——PLAN-027 缺陷 A 边界破坏",
+        crate::vm::ffi::stdlib::async_http_result_ready(req_id)
+            || crate::vm::ffi::async_http::live_op_exists(req_id),
+        "parked 后 live-op[{}] 被回收——PLAN-027 缺陷 A 边界破坏",
         req_id
     );
 

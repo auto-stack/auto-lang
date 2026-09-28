@@ -111,72 +111,68 @@ fn pick_data() str {
     assert_eq!(String::from_utf8_lossy(&got), body);
 }
 
-/// (2) 取消 + 迟到完成单次终结协议（T-02 登记表种子）：
-/// register(None) → cancel(drop) → 迟到完成带 presence-guard 只在条目
-/// 仍在时写入 → 表回基线、复活零发生；complete-before-wait 立即可消费；
-/// 重复 cancel 幂等。
+/// (2) 取消 + 迟到完成单次终结协议（T-02 统一 live-op 登记表实装验证）：
+/// register → cancel(drop) → 迟到 complete 被 presence 守卫丢弃 → 表回
+/// 基线、复活零发生；complete-before-take 立即可消费；重复 cancel 幂等；
+/// Pending 态 take 不删除 live 令牌（探测/重入不丢条目）。
 #[test]
 fn plan705_spike_cancel_and_late_completion_single_finalization() {
-    let map_before = {
-        let map = crate::vm::ffi::stdlib::ASYNC_RESULTS.lock().unwrap();
-        map.len()
-    };
+    use crate::vm::ffi::async_http as reg;
+    use crate::vm::ffi::stdlib::AsyncResult;
 
-    // -- register：shim 同款 pending 占位（entry().or_insert(None)）。
+    let count_before = reg::live_op_count();
+
+    // -- register → Pending。
     let req_id = crate::vm::ffi::stdlib::alloc_async_id();
-    {
-        let mut map = crate::vm::ffi::stdlib::ASYNC_RESULTS.lock().unwrap();
-        map.entry(req_id).or_insert(None);
-    }
+    reg::register_live_op(req_id);
     assert!(!crate::vm::ffi::stdlib::async_http_result_ready(req_id));
+    assert!(reg::live_op_exists(req_id));
 
-    // -- cancel-first：等待方放弃（同引擎超时臂的 drop_async_result）。
+    // -- Pending 态 take：不得删除 live 令牌（探测/重入不丢条目）。
+    assert!(reg::take_live_op(req_id).is_none());
+    assert!(reg::live_op_exists(req_id), "Pending take 不得消费令牌");
+
+    // -- cancel-first：等待方放弃（引擎超时臂/scope 取消的终结入口）。
     crate::vm::ffi::stdlib::drop_async_result(req_id);
-    assert!(!crate::vm::ffi::stdlib::async_http_result_ready(req_id));
+    assert!(!reg::live_op_exists(req_id));
 
-    // -- 迟到完成（worker 慢于取消）：T-02 协议种子 = presence-guard，
-    //    条目已终结/缺席 → 丢弃数据，禁止 map.insert 重建。
-    {
-        let mut map = crate::vm::ffi::stdlib::ASYNC_RESULTS.lock().unwrap();
-        if map.contains_key(&req_id) {
-            map.insert(
-                req_id,
-                Some(Ok(crate::vm::ffi::stdlib::AsyncResult::Body(
-                    "late".to_string(),
-                ))),
-            );
-        }
-    }
-    {
-        let map = crate::vm::ffi::stdlib::ASYNC_RESULTS.lock().unwrap();
-        assert!(
-            !map.contains_key(&req_id),
-            "迟到完成复活了已取消条目——单次终结被破坏"
-        );
-        assert_eq!(map.len(), map_before, "注册表未回基线（泄漏一个槽）");
-    }
-
-    // -- complete-before-wait：完成先于等待登记 → 就绪立即可见，无丢唤醒。
-    let req_id2 = crate::vm::ffi::stdlib::alloc_async_id();
-    {
-        let mut map = crate::vm::ffi::stdlib::ASYNC_RESULTS.lock().unwrap();
-        map.insert(
-            req_id2,
-            Some(Ok(crate::vm::ffi::stdlib::AsyncResult::Body(
-                "early".to_string(),
-            ))),
-        );
-    }
+    // -- 迟到完成（worker 慢于取消）：presence 守卫丢弃，禁止复活。
     assert!(
-        crate::vm::ffi::stdlib::async_http_result_ready(req_id2),
-        "先完成再等待必须立即可见"
+        !reg::complete_live_op(req_id, Ok(AsyncResult::Body("late".to_string()))),
+        "迟到完成必须被丢弃（返回 false）"
     );
-    crate::vm::ffi::stdlib::drop_async_result(req_id2);
-    crate::vm::ffi::stdlib::drop_async_result(req_id2); // 重复取消幂等
+    assert!(
+        !reg::live_op_exists(req_id),
+        "迟到完成复活了已取消条目——单次终结被破坏"
+    );
 
-    let map_after = {
-        let map = crate::vm::ffi::stdlib::ASYNC_RESULTS.lock().unwrap();
-        map.len()
-    };
-    assert_eq!(map_after, map_before, "全部终结后注册表必须回基线");
+    // -- complete-before-take：完成先于消费 → 就绪立即可见，一次消费终结。
+    let req_id2 = crate::vm::ffi::stdlib::alloc_async_id();
+    reg::register_live_op(req_id2);
+    assert!(reg::complete_live_op(
+        req_id2,
+        Ok(AsyncResult::Body("early".to_string()))
+    ));
+    assert!(crate::vm::ffi::stdlib::async_http_result_ready(req_id2));
+    assert!(reg::take_live_op(req_id2).is_some(), "Completed 必须可消费");
+    assert!(!reg::live_op_exists(req_id2), "take 后条目终结移除");
+    assert!(
+        !reg::complete_live_op(req_id2, Ok(AsyncResult::Body("again".to_string()))),
+        "消费后的重复完成必须被丢弃"
+    );
+
+    // -- 重复完成（未取消）：单次终结——首胜，次弃。
+    let req_id3 = crate::vm::ffi::stdlib::alloc_async_id();
+    reg::register_live_op(req_id3);
+    assert!(reg::complete_live_op(req_id3, Ok(AsyncResult::Body("first".to_string()))));
+    assert!(!reg::complete_live_op(req_id3, Ok(AsyncResult::Body("second".to_string()))));
+    match reg::take_live_op(req_id3) {
+        Some(Ok(AsyncResult::Body(s))) => assert_eq!(s, "first", "首完成胜出"),
+        Some(Ok(_)) => panic!("首完成应胜出，得到非 Body 变体"),
+        Some(Err(e)) => panic!("首完成应胜出，得到 Err: {e}"),
+        None => panic!("首完成应可消费，得到 None"),
+    }
+    crate::vm::ffi::stdlib::drop_async_result(req_id3); // 幂等（已移除）
+
+    assert_eq!(reg::live_op_count(), count_before, "全部终结后登记表必须回基线");
 }

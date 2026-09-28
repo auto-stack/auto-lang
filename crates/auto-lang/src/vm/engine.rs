@@ -2961,22 +2961,15 @@ impl AutoVM {
                 }
 
                 // Plan 349 step 7 / Plan 353: Wake source 5 — async HTTP/IO completed.
-                // Plan 349 table consolidation: the former 4 specialized tables
-                // (ASYNC_HTTP_RESULTS / _HANDLE / _AUTH / ASYNC_IO_RESULTS) are now
-                // a single ASYNC_RESULTS table, so this collapses from a 4-deep
-                // .or_else() chain to one lookup. req_id is globally unique.
+                // PLAN-705 T-02: 统一 live-op 表（async_http::LIVE_OPS）——
+                // 极性与旧表逐字节同（缺席/已终结 → 唤醒落错误 fallback）。
                 if let Some(req_id) = task.waiting_http_request_id {
-                    let ready = crate::vm::ffi::stdlib::ASYNC_RESULTS
-                        .lock()
-                        .ok()
-                        .and_then(|map| {
-                            map.get(&req_id).map(|opt| opt.is_some())
-                        })
-                        .unwrap_or(true); // Entry gone → wake (error fallback)
+                    let ready =
+                        crate::vm::ffi::async_http::live_op_ready_or_gone(req_id);
                     if ready {
                         // NOTE: do NOT clear waiting_http_request_id here. The
                         // shim's re-entry branch needs it to look up the result
-                        // in ASYNC_RESULTS. The shim itself clears the
+                        // in the live-op table. The shim itself clears the
                         // field once it has consumed the result. Clearing it
                         // prematurely makes the re-entry take the first-call
                         // path and pop args that are no longer on the stack

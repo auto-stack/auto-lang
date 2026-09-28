@@ -34,6 +34,9 @@
 mod convert;
 mod error;
 pub mod stdlib;
+// PLAN-705 T-02: 统一 live-op 登记表（register/complete/take/cancel 单次
+// 终结协议）+ 全局完成通知 —— 服务端 HTTP handler 异步生命周期的结果面。
+pub mod async_http;
 // Plan 430: shim-metadata 生成的 std 追加段(dispatch 3000 优先于手写臂)
 mod generated_std;
 // Plan 430 C2: 三方 crate 方法 shim 包的运行期注册表与 dispatch

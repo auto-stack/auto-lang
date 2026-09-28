@@ -1659,7 +1659,7 @@ pub fn shim_io_scanner(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 // Plan 349 step7's async HTTP)
 // ============================================================================
 
-/// Plan 349 table consolidation: payload shape for the unified ASYNC_RESULTS
+/// Plan 349 table consolidation: payload shape for the unified async result
 /// table. Each variant corresponds to a former specialized table.
 pub(crate) enum AsyncResult {
     /// Body string (former ASYNC_HTTP_RESULTS / ASYNC_IO_RESULTS).
@@ -1686,9 +1686,7 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     // popped on the first call. Popping again would eat the wrong stack value
     // and underflow. (Same fix as Plan 340's HTTP shims.)
     if let Some(req_id) = task.waiting_http_request_id {
-        let result = ASYNC_RESULTS.lock()
-            .ok()
-            .and_then(|mut map| map.remove(&req_id).and_then(|opt| opt));
+        let result = crate::vm::ffi::async_http::take_live_op(req_id);
         if let Some(Ok(AsyncResult::Body(content))) = result {
             task.waiting_http_request_id = None;
             let idx = vm.add_string(content.into_bytes());
@@ -1706,22 +1704,21 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         return Ok(());
     }
 
-    // First call — pop the path, spawn the read and yield.
+    // First call — pop the path, register the live token, spawn the read and
+    // yield. PLAN-705 T-02: 登记先于提交 worker（协议顺序，完成端只在
+    // live 令牌上投递）。
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
+    crate::vm::ffi::async_http::register_live_op(req_id);
     let path_for_thread = path.clone();
     std::thread::spawn(move || {
         let result = std::fs::read_to_string(&path_for_thread)
             .map(|s| s)
             .map_err(|e| e.to_string());
-        if let Ok(mut map) = ASYNC_RESULTS.lock() {
-            map.insert(req_id, Some(result.map(AsyncResult::Body)));
-        }
+        // 迟到完成（已被取消）由 complete_live_op 的 presence 守卫丢弃。
+        let _ = crate::vm::ffi::async_http::complete_live_op(req_id, result.map(AsyncResult::Body));
     });
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None);
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -1734,9 +1731,7 @@ pub fn shim_io_write_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     // HTTP shims for rationale: the engine rewinds IP on yield, so args were
     // already popped on the first call).
     if let Some(req_id) = task.waiting_http_request_id {
-        let result = ASYNC_RESULTS.lock()
-            .ok()
-            .and_then(|mut map| map.remove(&req_id).and_then(|opt| opt));
+        let result = crate::vm::ffi::async_http::take_live_op(req_id);
         if let Some(result) = result {
             task.waiting_http_request_id = None;
             let ok = result.is_ok();
@@ -1752,19 +1747,15 @@ pub fn shim_io_write_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
+    crate::vm::ffi::async_http::register_live_op(req_id);
     let path_t = path.clone();
     let content_t = content.clone();
     std::thread::spawn(move || {
         let result = std::fs::write(&path_t, &content_t)
             .map(|_| "ok".to_string())
             .map_err(|e| e.to_string());
-        if let Ok(mut map) = ASYNC_RESULTS.lock() {
-            map.insert(req_id, Some(result.map(AsyncResult::Body)));
-        }
+        let _ = crate::vm::ffi::async_http::complete_live_op(req_id, result.map(AsyncResult::Body));
     });
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None);
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -1780,9 +1771,11 @@ pub fn shim_test_delay_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         let future_arc = future_arc.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(ms));
-            let mut future = future_arc.write().unwrap();
-            future.result = Some(auto_val::Value::Int(ms as i32));
-            future.state = crate::vm::engine::FutureState::Ready;
+            // PLAN-705 T-02: External future 完成走统一入口（含完成通知）。
+            crate::vm::ffi::async_http::complete_external_future(
+                &future_arc,
+                Ok(auto_val::Value::Int(ms as i32)),
+            );
         });
     }
     task.ram.push_i32(AutoVM::encode_future_bits(fid));
@@ -1795,8 +1788,9 @@ pub fn shim_test_fail_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let fid = vm.register_external_future(task.id);
     if let Some(future_arc) = vm.futures.get(&fid) {
-        let mut future = future_arc.write().unwrap();
-        future.state = crate::vm::engine::FutureState::Failed;
+        // PLAN-705 T-02: 完成走统一入口（本臂同步完成，通知仍发出——
+        // enable→check 模式下先完成再等待同样立即可见）。
+        crate::vm::ffi::async_http::complete_external_future(&future_arc, Err("failed".into()));
     }
     task.ram.push_i32(AutoVM::encode_future_bits(fid));
     Ok(())
@@ -1866,9 +1860,11 @@ pub fn shim_future_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
                             }
                         })
                         .collect();
-                    let mut c = combo_arc.write().unwrap();
-                    c.result = Some(auto_val::Value::Str(format!("[{}]", parts.join(", ")).into()));
-                    c.state = crate::vm::engine::FutureState::Ready;
+                    // PLAN-705 T-02: 完成走统一入口（含完成通知）。
+                    crate::vm::ffi::async_http::complete_external_future(
+                        &combo_arc,
+                        Ok(auto_val::Value::Str(format!("[{}]", parts.join(", ")).into())),
+                    );
                     break;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(1));
@@ -1906,9 +1902,11 @@ pub fn shim_future_race(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
                         .unwrap_or(true);
                     if ready {
                         let result = a.read().unwrap().result.clone();
-                        let mut c = combo_arc.write().unwrap();
-                        c.result = result.or(Some(auto_val::Value::Nil));
-                        c.state = crate::vm::engine::FutureState::Ready;
+                        // PLAN-705 T-02: 完成走统一入口（含完成通知）。
+                        crate::vm::ffi::async_http::complete_external_future(
+                            &combo_arc,
+                            Ok(result.unwrap_or(auto_val::Value::Nil)),
+                        );
                         return;
                     }
                 }
@@ -4074,14 +4072,6 @@ pub struct AsyncStreamHandle {
 lazy_static::lazy_static! {
     pub(crate) static ref ASYNC_STREAMS: std::sync::Mutex<std::collections::HashMap<u64, Arc<AsyncStreamHandle>>> =
         std::sync::Mutex::new(std::collections::HashMap::new());
-    // Plan 349 table consolidation: a single unified async-result table replaces
-    // the former ASYNC_HTTP_RESULTS / _HANDLE / _AUTH / ASYNC_IO_RESULTS. The
-    // variant discriminates the payload shape so each re-entry branch can
-    // dispatch to the right push_* helper. req_id is globally unique
-    // (alloc_async_id / NET_HANDLE_COUNTER), so HTTP and IO results share one
-    // table without key collisions.
-    pub(crate) static ref ASYNC_RESULTS: std::sync::Mutex<std::collections::HashMap<u64, Option<Result<AsyncResult, String>>>> =
-        std::sync::Mutex::new(std::collections::HashMap::new());
     // Plan 352: Session storage (in-memory, process-lifetime).
     pub(crate) static ref SESSIONS: std::sync::Mutex<std::collections::HashMap<String, String>> =
         std::sync::Mutex::new(std::collections::HashMap::new());
@@ -5482,10 +5472,9 @@ pub fn shim_http_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
+    // PLAN-705 T-02: 登记先于提交 worker。
+    crate::vm::ffi::async_http::register_live_op(req_id);
     spawn_async_http_handle("GET".into(), resolve_http_base_url(&url), None, req_id);
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None);
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -5506,10 +5495,9 @@ pub fn shim_http_post(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
+    // PLAN-705 T-02: 登记先于提交 worker。
+    crate::vm::ffi::async_http::register_live_op(req_id);
     spawn_async_http_handle("POST".into(), url, Some(body), req_id);
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None);
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -5530,10 +5518,9 @@ pub fn shim_http_put(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
+    // PLAN-705 T-02: 登记先于提交 worker。
+    crate::vm::ffi::async_http::register_live_op(req_id);
     spawn_async_http_handle("PUT".into(), url, Some(body), req_id);
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None);
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -5552,10 +5539,9 @@ pub fn shim_http_delete(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
+    // PLAN-705 T-02: 登记先于提交 worker。
+    crate::vm::ffi::async_http::register_live_op(req_id);
     spawn_async_http_handle("DELETE".into(), url, None, req_id);
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None);
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -5740,8 +5726,11 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     drop(builder_data);
     drop(guard);
 
-    // Spawn a detached worker thread; result lands in ASYNC_RESULTS (Structured).
+    // Spawn a detached worker thread; result lands in the live-op table
+    // (Structured). PLAN-705 T-02: 登记先于提交 worker；迟到完成由
+    // complete_live_op 的 presence 守卫丢弃。
     let req_id = alloc_async_id();
+    crate::vm::ffi::async_http::register_live_op(req_id);
     std::thread::spawn(move || {
         let result = (|| -> Result<(u16, Vec<(String, String)>, Vec<u8>), String> {
             let mut client_builder = reqwest::blocking::Client::builder();
@@ -5808,13 +5797,8 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
             )
         })();
         let wrapped = result.map(|(status, headers, body)| AsyncResult::Structured { status, headers, body });
-        if let Ok(mut map) = ASYNC_RESULTS.lock() {
-            map.insert(req_id, Some(wrapped));
-        }
+        let _ = crate::vm::ffi::async_http::complete_live_op(req_id, wrapped);
     });
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None); // Mark pending.
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -7047,40 +7031,34 @@ fn escape_json(s: &str) -> String {
 /// `auto.http.get_json(url) -> String` — GET, return body as string.
 /// Helper: check if a previously spawned async HTTP request has completed.
 /// Returns Some(body_string) if ready, None if still pending.
-/// Plan 349: reads from the unified ASYNC_RESULTS table (Body variant).
-/// PLAN-027 缺陷 C:Err 条目不再走 `.ok()`→None——remove 已经发生,返回
+/// Plan 349: reads from the unified result table (Body variant).
+/// PLAN-027 缺陷 C:Err 条目不再走 `.ok()`→None——take 已经发生,返回
 /// None 会被 shim 判为"仍在等待"而永远 Waiting。镜像 simple_http_json 的
 /// 错误 body 契约(`{"error":..,"status":0}`),让调用方拿到可解析对象。
+/// PLAN-705 T-02:内部改指统一 live-op 表——take 只消费 Completed,
+/// Pending(未完成)不删除条目。
 fn check_async_http_result(request_id: u64) -> Option<String> {
-    ASYNC_RESULTS.lock().ok().and_then(|mut map| {
-        map.remove(&request_id).and_then(|opt| opt)
-    }).map(|result| match result {
+    crate::vm::ffi::async_http::take_live_op(request_id).map(|result| match result {
         Ok(AsyncResult::Body(s)) => s,
         Ok(_) => r#"{"error":"unexpected async result variant","status":0}"#.to_string(),
         Err(e) => format!(r#"{{"error":"{}","status":0}}"#, escape_json(&e)),
     })
 }
 
-/// PLAN-027 缺陷 A:超时放弃路径的条目回收。engine 的同步 drain
-/// (call_fn_by_name Yield 臂 / request-builder send 臂)30s 超时后只清
-/// `task.waiting_http_request_id`,ASYNC_RESULTS 条目残留——worker 完成
-/// 时还会写入完整响应体,每次超时泄漏一个 body。本函数在超时臂调用,
-/// 与迟到的完成写入之间无同步(race 后条目要么已被此函数移除,要么
-/// 移除失败留给下一次 alloc 复用安全检查;req_id 单调不复用,残留即
-/// 永驻)——超时即删,泄漏面归零。
+/// PLAN-027 缺陷 A / PLAN-705 T-02:超时放弃路径的条目回收=统一协议的
+/// cancel 幂等终结入口。engine 的同步 drain(call_fn_by_name Yield 臂 /
+/// request-builder send 臂)30s 超时后调用;此后的 worker 迟到完成经
+/// `complete_live_op` 的 presence 守卫被丢弃(旧实现裸 remove 与完成写
+/// 无同步,取消后迟到完成可复活条目——协议缺陷已修)。
 pub(crate) fn drop_async_result(request_id: u64) {
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.remove(&request_id);
-    }
+    crate::vm::ffi::async_http::cancel_live_op(request_id);
 }
 
 /// Plan 446 批二 E2: 非夺取式就绪探测（供 engine 的 CALL_SPEC 同步 drain 用）。
 /// 与 check_async_http_result_handle 的 take 语义不同，本函数不消费条目——
-/// 消费仍由 shim 的重入分支完成。
+/// 消费仍由 shim 的重入分支完成。PLAN-705 T-02:仅 Completed 态算就绪。
 pub(crate) fn async_http_result_ready(request_id: u64) -> bool {
-    ASYNC_RESULTS.lock().ok()
-        .and_then(|map| map.get(&request_id).map(|opt| opt.is_some()))
-        .unwrap_or(false)
+    crate::vm::ffi::async_http::live_op_ready(request_id)
 }
 
 /// PLAN-617 T-10: resolve a **relative** URL (leading `/`) against the base
@@ -7116,7 +7094,7 @@ fn resolve_http_base_url(url: &str) -> String {
 /// 仍 80/s)——L1 修复验证实测斜率 ∝ 线程创建数(2→1 线程,
 /// 2.23→~1.3MB/min,量值见 evidence/027)。本池化彻底归零 churn:
 /// 常驻 2 worker + 容量 64 的 mpsc 队列;队满(突发)退化为按需
-/// spawn 兜底,语义不变。完成仍写 `ASYNC_RESULTS[req_id]`,消费协议
+/// spawn 兜底,语义不变。完成写统一 live-op 表(PLAN-705 T-02),消费协议
 /// (async_http_result_ready / check_async_http_result)零变。
 struct HttpJsonJob {
     method: String,
@@ -7130,9 +7108,9 @@ static HTTP_JSON_JOB_TX: std::sync::OnceLock<std::sync::mpsc::SyncSender<HttpJso
 
 fn run_http_json_job(job: HttpJsonJob) {
     let result = simple_http_json(&job.method, &resolve_http_base_url(&job.url), job.body.as_deref());
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.insert(job.req_id, Some(Ok(AsyncResult::Body(result))));
-    }
+    // PLAN-705 T-02: 完成端唯一入口——迟到完成（调用方已取消/超时放弃）
+    // 由 presence 守卫丢弃，禁止复活条目。
+    let _ = crate::vm::ffi::async_http::complete_live_op(job.req_id, Ok(AsyncResult::Body(result)));
 }
 
 fn http_json_job_sender() -> &'static std::sync::mpsc::SyncSender<HttpJsonJob> {
@@ -7161,7 +7139,7 @@ fn http_json_job_sender() -> &'static std::sync::mpsc::SyncSender<HttpJsonJob> {
 }
 
 /// Helper: spawn an async HTTP request on a dedicated thread.
-/// Result is stored in ASYNC_RESULTS[request_id] as the Body variant.
+/// Result is stored in the live-op table (PLAN-705 T-02) as the Body variant.
 /// PLAN-027:dedicated thread 已池化(见 http_json_job_sender);
 /// 队满兜底保留原 spawn 形态(job 从 TrySendError::Full 取回)。
 fn spawn_async_http(method: String, url: String, body: Option<String>, request_id: u64) {
@@ -7187,12 +7165,11 @@ fn spawn_async_http(method: String, url: String, body: Option<String>, request_i
 /// on completion, `None` while still pending. The entry is `.take()`n so the
 /// caller (re-entry branch) owns the data and inserts it into the calling
 /// thread's HTTP_RESPONSES thread_local. Plan 349 步骤 7.
+/// PLAN-705 T-02: take 只消费 Completed;Pending 保持 live。
 fn check_async_http_result_handle(
     request_id: u64,
 ) -> Option<Result<(u16, Vec<(String, String)>, Vec<u8>), String>> {
-    ASYNC_RESULTS.lock().ok().and_then(|mut map| {
-        map.remove(&request_id).and_then(|opt| opt)
-    }).map(|r| r.and_then(|ar| match ar {
+    crate::vm::ffi::async_http::take_live_op(request_id).map(|r| r.and_then(|ar| match ar {
         AsyncResult::Structured { status, headers, body } => Ok((status, headers, body)),
         _ => Err("expected Structured async result".to_string()),
     }))
@@ -7261,7 +7238,7 @@ fn backoff_sleep(attempt: u32) {
 
 /// Spawn a handle-returning async HTTP request (plain GET/POST/PUT/DELETE with
 /// optional JSON body). Mirrors `simple_http_request`'s reqwest logic but runs
-/// detached and writes the structured result into ASYNC_RESULTS (Structured).
+/// detached and writes the structured result into the live-op table (Structured).
 /// Plan 349 步骤 7 (W1a).
 // ─── Plan 446 E4: Http default header/query(认证面) ─────────────────────────
 //
@@ -7418,9 +7395,9 @@ fn spawn_async_http_handle(
             0, // plain handle natives have no retry config; RequestBuilder path carries it
         );
         let wrapped = result.map(|(status, headers, body)| AsyncResult::Structured { status, headers, body });
-        if let Ok(mut map) = ASYNC_RESULTS.lock() {
-            map.insert(request_id, Some(wrapped));
-        }
+        // PLAN-705 T-02: 完成端唯一入口——迟到完成（已取消/已超时放弃）
+        // 由 presence 守卫丢弃，禁止复活条目。
+        let _ = crate::vm::ffi::async_http::complete_live_op(request_id, wrapped);
     });
 }
 
@@ -7475,7 +7452,7 @@ pub(crate) fn http_msg_queue_clear() {
 
 /// 消息桥 GET 的派生线程体：复用 plain-handle 族同款 send 汇聚路径
 /// （默认 query 注入 + 相对 URL 基址展开 + 默认 header 快照），完成即推
-/// 队列，不写 ASYNC_RESULTS（无人在等它）。
+/// 队列，不写 live-op 表（无人在等它）。
 fn spawn_async_http_msg_get(url: String, widget: String, event: String) {
     std::thread::spawn(move || {
         let u = append_default_queries(&resolve_http_base_url(&url));
@@ -7599,10 +7576,9 @@ pub fn shim_http_get_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let req_id = alloc_async_id();
+    // PLAN-705 T-02: 登记先于提交 worker（协议顺序）。
+    crate::vm::ffi::async_http::register_live_op(req_id);
     spawn_async_http("GET".into(), url, None, req_id);
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None); // Mark as pending.
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -7626,10 +7602,9 @@ pub fn shim_http_post_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let req_id = alloc_async_id();
+    // PLAN-705 T-02: 登记先于提交 worker（协议顺序）。
+    crate::vm::ffi::async_http::register_live_op(req_id);
     spawn_async_http("POST".into(), url, Some(body), req_id);
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None);
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -7653,10 +7628,9 @@ pub fn shim_http_put_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let req_id = alloc_async_id();
+    // PLAN-705 T-02: 登记先于提交 worker（协议顺序）。
+    crate::vm::ffi::async_http::register_live_op(req_id);
     spawn_async_http("PUT".into(), url, Some(body), req_id);
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None);
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -7678,10 +7652,9 @@ pub fn shim_http_delete_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let req_id = alloc_async_id();
+    // PLAN-705 T-02: 登记先于提交 worker（协议顺序）。
+    crate::vm::ffi::async_http::register_live_op(req_id);
     spawn_async_http("DELETE".into(), url, None, req_id);
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None);
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -7710,10 +7683,9 @@ pub fn shim_http_patch_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let req_id = alloc_async_id();
+    // PLAN-705 T-02: 登记先于提交 worker（协议顺序）。
+    crate::vm::ffi::async_http::register_live_op(req_id);
     spawn_async_http("PATCH".into(), url, Some(body), req_id);
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None);
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -7733,20 +7705,19 @@ thread_local! {
 
 /// Check whether a spawned auth-bearing async HTTP request has completed.
 /// Returns `Some(Ok((status, body)))` / `Some(Err(msg))` on completion, `None`
-/// while pending. Plan 349 步骤 7/8 (W1c).
+/// while pending. Plan 349 步骤 7/8 (W1c). PLAN-705 T-02: take 只消费
+/// Completed;Pending 保持 live。
 fn check_async_http_result_auth(
     request_id: u64,
 ) -> Option<Result<(i32, String), String>> {
-    ASYNC_RESULTS.lock().ok().and_then(|mut map| {
-        map.remove(&request_id).and_then(|opt| opt)
-    }).map(|r| r.and_then(|ar| match ar {
+    crate::vm::ffi::async_http::take_live_op(request_id).map(|r| r.and_then(|ar| match ar {
         AsyncResult::Auth { status, body } => Ok((status, body)),
         _ => Err("expected Auth async result".to_string()),
     }))
 }
 
 /// Spawn an auth-bearing async HTTP request (x-api-key style, for Anthropic).
-/// Writes `(status, body)` into ASYNC_RESULTS (Auth variant) on completion.
+/// Writes `(status, body)` into the live-op table (Auth variant) on completion.
 /// Plan 349 步骤 7/8 (W1c).
 fn spawn_async_http_auth(
     method: String,
@@ -7789,9 +7760,8 @@ fn spawn_async_http_auth(
             }
         };
         let wrapped = result.map(|(status, body)| AsyncResult::Auth { status, body });
-        if let Ok(mut map) = ASYNC_RESULTS.lock() {
-            map.insert(request_id, Some(wrapped));
-        }
+        // PLAN-705 T-02: 完成端唯一入口（presence 守卫拒迟到复活）。
+        let _ = crate::vm::ffi::async_http::complete_live_op(request_id, wrapped);
     });
 }
 
@@ -7831,9 +7801,8 @@ fn spawn_async_http_bearer(
             Err(e) => Err(format!("HTTP error: {}", e)),
         };
         let wrapped = result.map(|(status, body)| AsyncResult::Auth { status, body });
-        if let Ok(mut map) = ASYNC_RESULTS.lock() {
-            map.insert(request_id, Some(wrapped));
-        }
+        // PLAN-705 T-02: 完成端唯一入口（presence 守卫拒迟到复活）。
+        let _ = crate::vm::ffi::async_http::complete_live_op(request_id, wrapped);
     });
 }
 
@@ -7873,10 +7842,9 @@ pub fn shim_http_post_sync(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let key_opt = if api_key.is_empty() { None } else { Some(api_key) };
     let req_id = alloc_async_id();
+    // PLAN-705 T-02: 登记先于提交 worker（协议顺序）。
+    crate::vm::ffi::async_http::register_live_op(req_id);
     spawn_async_http_auth("POST".into(), url, Some(body), key_opt, req_id);
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None);
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -7902,10 +7870,9 @@ pub fn shim_http_post_bearer(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let key_opt = if api_key.is_empty() { None } else { Some(api_key) };
     let req_id = alloc_async_id();
+    // PLAN-705 T-02: 登记先于提交 worker（协议顺序）。
+    crate::vm::ffi::async_http::register_live_op(req_id);
     spawn_async_http_bearer("POST".into(), url, Some(body), key_opt, req_id);
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None);
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -7934,10 +7901,9 @@ pub fn shim_http_get_sync(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
+    // PLAN-705 T-02: 登记先于提交 worker（协议顺序）。
+    crate::vm::ffi::async_http::register_live_op(req_id);
     spawn_async_http_auth("GET".into(), url, None, None, req_id);
-    if let Ok(mut map) = ASYNC_RESULTS.lock() {
-        map.entry(req_id).or_insert(None);
-    }
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -10452,7 +10418,7 @@ mod e4_default_http_tests {
     }
 
     /// E4 端到端:真实 TcpListener 服务断言 Http.get 收到默认头与默认 query。
-    /// 直接驱动 spawn_async_http_handle(plain handle 汇聚点),轮询 ASYNC_RESULTS。
+    /// 直接驱动 spawn_async_http_handle(plain handle 汇聚点),轮询 live-op 表。
     #[test]
     fn default_headers_reach_wire_on_plain_get() {
         reset_defaults();
@@ -10658,32 +10624,40 @@ mod tests {
         assert_eq!(resolve_http_base_url("/api/x"), "/api/x");
     }
 
-    /// PLAN-027 缺陷 C:Err 条目必须映射为可解析错误 body——remove 已在
+    /// PLAN-027 缺陷 C:Err 条目必须映射为可解析错误 body——take 已在
     /// check 内发生,返回 None 会让 shim 重入分支判"仍在等待"而永远挂起。
+    /// PLAN-705 T-02:登记→完成(Err)→take→单次终结走统一 live-op 协议。
     #[test]
     fn p027_check_async_result_err_maps_to_error_body() {
-        let id = 0x027C_0000u64;
-        if let Ok(mut map) = ASYNC_RESULTS.lock() {
-            map.insert(id, Some(Err("conn refused".to_string())));
-        }
+        let id = alloc_async_id();
+        crate::vm::ffi::async_http::register_live_op(id);
+        assert!(crate::vm::ffi::async_http::complete_live_op(
+            id,
+            Err("conn refused".to_string())
+        ));
         let body = check_async_http_result(id).expect("Err entry must resolve, not None");
         assert!(body.contains("\"error\"") && body.contains("conn refused"), "got: {body}");
         // 条目已被消费(二次 check 无结果)。
         assert!(check_async_http_result(id).is_none());
     }
 
-    /// PLAN-027 缺陷 A:超时回收——drop_async_result 移除条目,缺席时幂等
-    /// (engine drain 超时臂调用,防 worker 迟到 body 永驻)。
+    /// PLAN-027 缺陷 A:超时回收——drop_async_result（cancel 终结）移除
+    /// 条目,缺席时幂等(engine drain 超时臂调用);此后 worker 迟到完成被
+    /// presence 守卫丢弃（PLAN-705 T-02）。
     #[test]
     fn p027_drop_async_result_removes_entry() {
-        let id = 0x027A_0000u64;
-        if let Ok(mut map) = ASYNC_RESULTS.lock() {
-            map.insert(id, None);
-        }
+        let id = alloc_async_id();
+        crate::vm::ffi::async_http::register_live_op(id);
         assert!(!async_http_result_ready(id));
         drop_async_result(id);
         assert!(check_async_http_result(id).is_none());
         drop_async_result(id);
+        // 迟到完成不得复活。
+        assert!(!crate::vm::ffi::async_http::complete_live_op(
+            id,
+            Ok(AsyncResult::Body("late".to_string()))
+        ));
+        assert!(crate::vm::ffi::async_http::take_live_op(id).is_none());
     }
 
     /// Plan 524 三态：process.args() = [程序路径] + CLI 透传参数（List 契约，
