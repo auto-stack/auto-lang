@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-704
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: diff 引擎缺陷修复——rows 面流位单源化（D-1）+ anchor 单调过滤（D-2）（PLAN-703 供料包消费侧登记件）
 author: [agent]
 created_at: 2026-09-28T01:20:00+08:00
@@ -278,6 +279,31 @@ patience 实现=tails 数组+二分+前驱回溯（标准形，~25 行）；结�
   diff-engine×3/diff-endpoints×2+worktree porcelain 净；执行期证据
   复用理由=同一 commit 逐字节未变（git log 单提交两 SD 文件）。|
   next: merge`。status=reviewed。
+- 2026-09-28 merge 收据（PLAN-704:r1，五检查点）：
+  - **prepared**：评审基线=reviewed pass @r1（reviewed_commit
+    0eb605bf1，两轮 handoff 记录在案）；canonical Spec 两册已随交付
+    提交在档（diff-engine.md 锚点单调规则+rows 流位契约节/
+    diff-endpoints.md rows 语义锚+回归锚@554b1fbbf）；账本投影目标
+    =.autoos/specs.json reviews 段；跨仓回执位=auto-edit 供料档
+    §6.2（plan-016-dev@2f439ff，随 PLAN-016 修复轮落地）。
+  - **landed**：dev 分支 rebase 上 master（簿记位在先 4799f1ae7/
+    b2849d9c4）——旧→新映射 ef0a8e1f2→4b20da2e3/0eb605bf1→
+    554b1fbbf/814e13e5b→b2f8761e0，`git range-diff` 3/3 全等（安全
+    改写证明）；master `git merge --ff-only plan-704-dev` → tip=
+    b2f8761e0=delivery commit（零合并提交）；落地后主检出冒烟
+    diff:: 30/0+plan703_supply 7/0（known-good）。
+  - **ledger_refreshed**：.autoos/specs.json reviews 段 P704-1 外科
+    尾插（170→171 项——roundtrip 字节等价先证[indent=1/
+    ensure_ascii=false/无尾换行]；回读断言 reviews 前缀零扰动+他五
+    段零扰动）；commit b2f8761e0。
+  - **archived**：本行所在提交——git mv 至 docs/plans/archive/ +
+    status: archived + completion_kind: delivered。
+  - **cleaned**：待回填（guard+worktree×2/branch/组目录移除）。
+  - **部署观察项（landing ≠ deployment）**：主检出 target/debug
+    auto.exe 仍为 704 前构建（v0.4.2-2175-g5c558778f）——下游
+    auto-edit PLAN-016 解阻三步之①（工具链重建 ≥704 交付）即消费
+    位重建，本仓无独立 release 部署面；生成 web bundle 零涉（纯
+    Rust 计算模块）。
 
 ## 10. 待澄清事项
 
