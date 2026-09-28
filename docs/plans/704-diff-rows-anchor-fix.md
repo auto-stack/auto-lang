@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-704
-status: drafting
+status: execution_done
 feature_name: diff 引擎缺陷修复——rows 面流位单源化（D-1）+ anchor 单调过滤（D-2）（PLAN-703 供料包消费侧登记件）
 author: [agent]
 created_at: 2026-09-28T01:20:00+08:00
-updated_at: 2026-09-28T01:20:00+08:00
+updated_at: 2026-09-28T02:30:00+08:00
 plan_revision: 1
-current_step: 0
+current_step: 4
 total_steps: 4
 supersedes_spec_components: []
 new_spec_components:
@@ -235,10 +235,10 @@ patience 实现=tails 数组+二分+前驱回溯（标准形，~25 行）；结�
 
 | # | 任务 | 依赖 | 落点（实勘锚） | 产出/意图 | AC | 验证（命令/预期） |
 |---|---|---|---|---|---|---|
-| 1 | [ ] T-01 D-2 锚单调过滤：anchor_partition 尾部 LIS（含 a 严格递增不变式）+锚单调单元测试 | — | mod.rs:180-206+tests(:581) | 锚集单调性复位 | AC-02 | [ ] cargo test 锚单调组绿（换位形锚数=300） |
-| 2 | [ ] T-02 D-1 rows 流位单源：build_rows chg_stream 映射+切片换算 | T-01 | envelope.rs:190-233 | rows 切片域复位 | AC-01 | [ ] 纯增/纯删存在性+多 hunk 不变量组绿 |
-| 3 | [ ] T-03 换位 golden+回归组：620 行换位集成（310/310+对称+记账）+多 hunk/删多增少对照 | T-01/02 | mod.rs tests | 缺陷形状回归钉死 | AC-01/02 | [ ] 换位 golden 绿+双跑字节等 |
-| 4 | [ ] T-04 全量门+规范：cargo test -p auto-lang diff 全绿+plan703 7 项+SD-01/02 修订+供料档回执注记+解阻三步清单 | T-03 | SD 两册+auto-edit 供料档 §6 | 交付+解阻闭环 | AC-03/04 | [ ] 全量 diff 测试绿+SD grep 锚全中 |
+| 1 | [x] T-01 D-2 锚单调过滤 [✅ 2026-09-28：anchor_partition 排序后接 `longest_monotone_anchors`（patience LIS+前驱回溯，debug_assert a 严格递增不变式+输出双坐标断言）——commit ef0a8e1f2] | — | mod.rs:180-206+tests | 锚集单调性复位 | AC-02 | [x] `d2_anchor_partition_monotone_on_reorder` 绿（换位形锚数=300） |
+| 2 | [x] T-02 D-1 rows 流位单源 [✅ 2026-09-28：build_rows 建 `chg_stream` per-change 流位映射，切片 `lo/hi` 自映射推导（分组器契约不动）——commit ef0a8e1f2] | T-01 | envelope.rs:190-233 | rows 切片域复位 | AC-01 | [x] 纯增/纯删存在性+多 hunk 不变量组绿（plan704_rows 三测试） |
+| 3 | [x] T-03 换位 golden+回归组 [✅ 2026-09-28：plan704_d2 两测试+plan704_rows 三测试——换位 310/310 双向对称+kept 记账+scattered 21 行参考对照（含三段标记样本）+unbalanced 7 行逐行序列——commit ef0a8e1f2] | T-01/02 | mod.rs+envelope.rs tests | 缺陷形状回归钉死 | AC-01/02 | [x] diff:: 模块 30/0（含双跑字节等既有面） |
+| 4 | [x] T-04 全量门+规范 [✅ 2026-09-28：diff:: 30/0+plan703_supply_probes 7/0（registry 直读零回归）；SD-01/02 修订 commit 0eb605bf1；供料档 §6.2「已修复·PLAN-704」回执+解阻三步清单=auto-edit edit-016 worktree commit 2f439ff（跨仓回执位——PLAN-016 承载面）。**等价验证门勘定**：仓规 cargo tf 为编译器/VM/核心协议门（AGENTS.md:66），本件=UI 模块面——模块门 diff::+探针面为正门，tf 另跑加强证据（见 §9 复审）] | T-03 | SD 两册+auto-edit 供料档 §6 | 交付+解阻闭环 | AC-03/04 | [x] 全量 diff 测试绿+SD grep 锚全中（PLAN-704×5） |
 
 ## 9. 复审记录
 
@@ -247,6 +247,18 @@ patience 实现=tails 数组+二分+前驱回溯（标准形，~25 行）；结�
   §6.2 逐条转contract；锚位/测试面/盲区机理经 master@5c558778f 实勘
   锚定；计数面效果可推导（310/310）故测试断言先行成文；授权=起草，
   执行待用户启动）。`next: work`。
+- 2026-09-28 执行 handoff：`stage: work | PLAN-704 | plan_revision 1 |
+  outcome: pass | code_commit: worktree plan-704-dev@0eb605bf1（base
+  master@ca68427fc；T-01..T-03=ef0a8e1f2，T-04 SD=0eb605bf1+跨仓回执
+  auto-edit plan-016-dev@2f439ff）| task_ids: T-01..T-04 全落 |
+  evidence: ①组依赖=auto-down@3373a5c 钉版 detached worktree（optional
+  path dep 解析面——autodown feature 不在 default，零编译只解析）；②
+  diff:: 模块 **30 passed / 0 failed**（26 既有零回归[八形态 golden/
+  双跑字节等/窗投影/并行≡串行/snapshot 面]+5 新增全绿+3 ignored
+  release bench）；③plan703_supply_probes **7/0**（registry 直读/
+  错误形面零回归）；④手推对照三族形状=下游参考逐项吻合（scattered
+  21/unbalanced 7/纯增删行存在性——下游 evidence-p016-recon.json 漂移
+  证据的否定面）。| blockers: 无 | next: review`。status=execution_done。
 
 ## 10. 待澄清事项
 
