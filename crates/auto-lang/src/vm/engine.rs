@@ -2166,7 +2166,15 @@ impl AutoVM {
         fn_name: &str,
         n_args: usize,
     ) -> SegmentOutcome {
-        self.dispatch_fn_by_name(task, fn_name, n_args, false)
+        // PLAN-705 T-03: 段模式标志——CALL_SPEC 的 RequestBuilder send 拦截
+        // 据此跳过同步 drain（rewind+Yield → park）。Parked 时保持置位
+        // （task 静置，无人驱动；resume 入口会重新置位）；Completed 复位。
+        task.segment_no_busy_wait = true;
+        let outcome = self.dispatch_fn_by_name(task, fn_name, n_args, false);
+        if matches!(outcome, SegmentOutcome::Completed(_)) {
+            task.segment_no_busy_wait = false;
+        }
+        outcome
     }
 
     /// PLAN-702 T-01/T-03: resume a parked handler segment once its wait is
@@ -2242,7 +2250,15 @@ impl AutoVM {
         // re-fires, the shim's re-entry branch consumes ASYNC_RESULTS[req_id]
         // (Plan 349 step 7 protocol; the driver loop below is identical to
         // what the busy-wait arm continued into).
-        self.drive_handler_segment(task, &seg.fn_name, seg.saved_bp, seg.saved_fn_n_args, false)
+        // PLAN-705 T-03: 段标志复位语义同首次入口（Completed 复位，Parked
+        // 保持——见 call_fn_by_name_segment 注）。
+        task.segment_no_busy_wait = true;
+        let outcome =
+            self.drive_handler_segment(task, &seg.fn_name, seg.saved_bp, seg.saved_fn_n_args, false);
+        if matches!(outcome, SegmentOutcome::Completed(_)) {
+            task.segment_no_busy_wait = false;
+        }
+        outcome
     }
 
     /// Shared first-entry path of [`Self::call_fn_by_name`] and
@@ -7219,6 +7235,27 @@ impl AutoVM {
                         "header" | "body" | "timeout" | "json" | "send"
                     ) && arg_count <= 2
                     {
+                        // PLAN-705 T-03: 段模式重入臂——yield 后 rewind 重
+                        // firing 的 .send()。receiver 已在首轮被 shim 消费
+                        // （堆对象已移除、栈槽已弹出），下方 receiver 探测
+                        // 必然落空；`waiting_http_request_id` 即重入凭据
+                        // （与 CALL_NAT 的 shim 重入协议同构）。结果已就绪
+                        // → shim 重入臂消费并 Continue；仍未就绪 → 再让步
+                        // park（链式等待）。
+                        if method_name == "send" && task.waiting_http_request_id.is_some() {
+                            if let Some(shim) = self
+                                .native_interface
+                                .get(crate::vm::ffi::stdlib::NATIVE_HTTP_REQUEST_BUILDER_SEND)
+                                .cloned()
+                            {
+                                shim(task, self)?;
+                                if task.waiting_http_request_id.is_some() {
+                                    task.ip -= 6; // CALL_SPEC = 1 op + 4 idx + 1 count
+                                    return Ok(StepResult::Yield);
+                                }
+                                return Ok(StepResult::Continue);
+                            }
+                        }
                         let rb_heap_id = if auto_val::is_object(receiver_nv) {
                             Some(auto_val::decode_object(receiver_nv) as u64)
                         } else if auto_val::is_i32(receiver_nv) {
@@ -7252,6 +7289,17 @@ impl AutoVM {
                                         // Yield 协议同步完成:首轮 shim 已 spawn 并置位
                                         // waiting;轮询就绪后重入(清位+推柄)。
                                         if let Some(req_id) = task.waiting_http_request_id {
+                                            if task.segment_no_busy_wait {
+                                                // PLAN-705 T-03: 段模式退役同步
+                                                // drain——rewind 至 CALL_SPEC 指令
+                                                // 起点（1 opcode + 4 name_idx +
+                                                // 1 arg_count = 6 字节）并 Yield，
+                                                // 段驱动 park 成 HttpRequest；恢复
+                                                // 时重 firing 的 CALL_SPEC 走 shim
+                                                // 重入臂消费结果（等待零占线程）。
+                                                task.ip -= 6;
+                                                return Ok(StepResult::Yield);
+                                            }
                                             let deadline = std::time::Instant::now()
                                                 + std::time::Duration::from_secs(30);
                                             // PLAN-026 T-04: 同构忙等段预算计。

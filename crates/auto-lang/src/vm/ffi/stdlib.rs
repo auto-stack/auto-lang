@@ -5726,14 +5726,15 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     drop(builder_data);
     drop(guard);
 
-    // Spawn a detached worker thread; result lands in the live-op table
-    // (Structured). PLAN-705 T-02: 登记先于提交 worker；迟到完成由
-    // complete_live_op 的 presence 守卫丢弃。
+    // Submit to the fixed async client executor; result lands in the live-op
+    // table (Structured). PLAN-705 T-03: 每请求 detached 线程退役；builder
+    // 属性矩阵（header/timeout/cookie/gzip/brotli/multipart/retry/TLS 覆盖）
+    // 原样迁入 async job。登记先于提交 worker；迟到完成由 presence 守卫丢弃。
     let req_id = alloc_async_id();
     crate::vm::ffi::async_http::register_live_op(req_id);
-    std::thread::spawn(move || {
-        let result = (|| -> Result<(u16, Vec<(String, String)>, Vec<u8>), String> {
-            let mut client_builder = reqwest::blocking::Client::builder();
+    let job = async move {
+        let result = (|| async move {
+            let mut client_builder = reqwest::Client::builder();
             if skip_verify {
                 client_builder = client_builder.danger_accept_invalid_certs(true);
             }
@@ -5758,9 +5759,17 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
             let client = client_builder.build().map_err(|e| e.to_string())?;
             // Plan 349 步骤 8 (W3): retry loop rebuilds the request each attempt so
             // consumed multipart forms can be reconstructed.
+            // PLAN-705 T-03: async Part::file 是 async——文件字节在 job 前段
+            // 预读，闭包内按尝试重建 Part::bytes（读失败跳过该 part，同旧臂）。
+            let mp_file_data: Vec<(String, Vec<u8>)> = mp_files
+                .iter()
+                .filter_map(|(name, path)| {
+                    std::fs::read(path).ok().map(|d| (name.clone(), d))
+                })
+                .collect();
             let url = append_default_queries(&url); // Plan 446 E4: 默认 query 注入
             let default_headers = snapshot_default_headers(); // Plan 446 E4
-            send_with_retry(
+            send_with_retry_async(
                 |c| {
                     let mut builder = match method.as_str() {
                         "POST" => c.post(&url),
@@ -5776,15 +5785,14 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
                     for (k, v) in &headers {
                         builder = builder.header(k.as_str(), v.as_str());
                     }
-                    if !mp_files.is_empty() || !mp_texts.is_empty() {
-                        let mut form = reqwest::blocking::multipart::Form::new();
+                    if !mp_file_data.is_empty() || !mp_texts.is_empty() {
+                        let mut form = reqwest::multipart::Form::new();
                         for (name, value) in &mp_texts {
                             form = form.text(name.clone(), value.clone());
                         }
-                        for (name, path) in &mp_files {
-                            if let Ok(file_part) = reqwest::blocking::multipart::Part::file(path) {
-                                form = form.part(name.clone(), file_part);
-                            }
+                        for (name, data) in &mp_file_data {
+                            let part = reqwest::multipart::Part::bytes(data.clone());
+                            form = form.part(name.clone(), part);
                         }
                         builder = builder.multipart(form);
                     } else if let Some(ref b) = body {
@@ -5795,10 +5803,12 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
                 client,
                 retry_count,
             )
-        })();
-        let wrapped = result.map(|(status, headers, body)| AsyncResult::Structured { status, headers, body });
-        let _ = crate::vm::ffi::async_http::complete_live_op(req_id, wrapped);
-    });
+            .await
+        })()
+        .await;
+        result.map(|(status, headers, body)| AsyncResult::Structured { status, headers, body })
+    };
+    let _ = super::async_http::submit_client_job(req_id, job);
     task.waiting_http_request_id = Some(req_id);
     task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
@@ -6926,10 +6936,10 @@ pub fn shim_sse_parse(chunk: String) -> Vec<String> {
 
 /// Plan 340: Simple JSON HTTP helpers for VM+VM split mode codegen rewriting.
 /// These return the response body as a STRING (not a handle), so codegen can
-/// feed it directly into `auto.json.to_value`. Each runs `reqwest::blocking`
-/// in a dedicated OS thread (same pattern as `simple_http_request`).
+/// feed it directly into `auto.json.to_value`. Each runs its request on the
+/// fixed async client executor (PLAN-705 T-03).
 ///
-/// Plan 340 audit fix: on failure (network error, thread panic), return a JSON
+/// Plan 340 audit fix: on failure (network error, job panic), return a JSON
 /// error object `{"error":"...","status":0}` instead of the literal "null".
 /// The old "null" was indistinguishable from a real null response body and made
 /// split-mode failures (backend down, wrong port, 404) very hard to debug. The
@@ -6942,85 +6952,82 @@ pub fn shim_sse_parse(chunk: String) -> Vec<String> {
 /// 超时 → 请求线程永久挂起 → tick task 无限堆积 = 前端"没有响应"
 /// + 内存爬升(泄漏修后仍复现的另一半根因)。共享连接池复用连接
 /// (稳态 ~数条 ESTABLISHED),超时兜底保证 task 必然终结。
-static SHARED_API_HTTP_CLIENT: std::sync::OnceLock<reqwest::blocking::Client> =
-    std::sync::OnceLock::new();
 
-fn shared_api_http_client() -> &'static reqwest::blocking::Client {
-    SHARED_API_HTTP_CLIENT.get_or_init(|| {
-        reqwest::blocking::Client::builder()
+/// PLAN-705 T-03: get_json/post_json 的发射体（原 simple_http_json 的
+/// async 形态）。错误映射契约零变：传输/读体错误走 Err，由消费端
+/// check_async_http_result 包成 `{"error":..,"status":0}`；非 2xx 在此
+/// 包成 `{"error":"HTTP n","status":n}`（同旧实现）。
+async fn simple_http_json_async(
+    method: String,
+    url: &str,
+    body: Option<&str>,
+) -> Result<String, String> {
+    // PLAN-648 T-00 仪器:AUTO_LANG_HTTP_TRACE=1 时在 stderr 打印每次
+    // api-改写家族请求的方法/URL/状态/响应摘要(split 模式排障用)。
+    let trace = std::env::var("AUTO_LANG_HTTP_TRACE").ok().as_deref() == Some("1");
+    if trace {
+        eprintln!("[HTTP-TRACE] {} {} body={:?}", method, url, body.unwrap_or(""));
+    }
+    let client = shared_async_http_client().clone();
+    // Plan 446 E4 / PLAN-048: get_json/post_json 是 #[api] 契约改写
+    // (emit_api_http_call)的两条主臂,必须与通用 request 汇聚点同样应用
+    // 进程级默认头/默认查询(musk: Authorization Bearer + workspace)。
+    let url = append_default_queries(url);
+    let default_headers = snapshot_default_headers();
+    let mut builder = match method.as_str() {
+        "POST" => client.post(&url),
+        "PUT" => client.put(&url),
+        "DELETE" => client.delete(&url),
+        "PATCH" => client.patch(&url),
+        _ => client.get(&url),
+    };
+    // 默认头先落,调用方显式 header 同名追加在后(与 request 臂同序)。
+    for (k, v) in &default_headers {
+        builder = builder.header(k.as_str(), v.as_str());
+    }
+    if let Some(b) = body {
+        builder = builder.header("Content-Type", "application/json").body(b.to_string());
+    }
+    let resp = builder.send().await.map_err(|e| e.to_string())?;
+    let status = resp.status().as_u16();
+    // PLAN-705 T-03: 增量响应体预算（text() 换 capped 读）。
+    let bytes = super::async_http::read_body_capped(
+        resp,
+        super::async_http::client_limits().body_limit,
+    )
+    .await?;
+    let text = String::from_utf8_lossy(&bytes).to_string();
+    if trace {
+        let summary: String = text.chars().take(120).collect();
+        eprintln!("[HTTP-TRACE] <- {} status={} body~{}", url, status, summary);
+    }
+    if (200..300).contains(&status) {
+        // Plan 057 (ash-gui 双执行修复): void 端点(如 /api/run_command)
+        // 返回空 body —— 直接把空串喂给 json.to_value 会 parse error,
+        // 让 handler 在副作用(POST)之后失败,再触发 on_with_input_for 的
+        // legacy 回退误执行根 widget 的同名 handler(App.RunCommand →
+        // store.RunCommand 二次执行)。空 body 规范化为 "null"。
+        if text.trim().is_empty() {
+            Ok("null".to_string())
+        } else {
+            Ok(text)
+        }
+    } else {
+        Ok(format!(r#"{{"error":"HTTP {}","status":{}}}"#, status, status))
+    }
+}
+
+/// PLAN-705 T-03: async 客户端共享连接池（对齐旧 blocking 版 30s 超时 +
+/// pool 8;每 host keep-alive 复用,零每请求连接/线程）。
+fn shared_async_http_client() -> &'static reqwest::Client {
+    static C: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    C.get_or_init(|| {
+        reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .pool_max_idle_per_host(8)
             .build()
             .unwrap_or_default()
     })
-}
-
-fn simple_http_json(method: &str, url: &str, body: Option<&str>) -> String {
-    let method = method.to_string();
-    let url = url.to_string();
-    let body = body.map(|s| s.to_string());
-    // PLAN-648 T-00 仪器:AUTO_LANG_HTTP_TRACE=1 时在 stderr 打印每次
-    // api-改写家族请求的方法/URL/状态/响应摘要(split 模式排障用)。
-    let trace = std::env::var("AUTO_LANG_HTTP_TRACE").ok().as_deref() == Some("1");
-    // PLAN-027(线程 churn 坍缩):原实现此处 std::thread::spawn().join()
-    // 为 panic 边界——但调用方(spawn_async_http worker)本就是专职线程,
-    // 每请求双层线程 = 160 线程/s churn(split 前端内存缓升主嫌)。
-    // 换 catch_unwind 保留同等 panic 隔离契约(Err(_) → 错误 body),
-    // 零额外线程。闭包不可 UnwindSafe(reqwest 内部非 RefUnwindSafe),
-    // AssertUnwindSafe 与原线程边界语义等价(panic 后现场整体弃置)。
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-        if trace {
-            eprintln!("[HTTP-TRACE] {} {} body={:?}", method, url, body.as_deref().unwrap_or(""));
-        }
-        let client = shared_api_http_client().clone();
-        // Plan 446 E4 / PLAN-048: get_json/post_json 是 #[api] 契约改写
-        // (emit_api_http_call)的两条主臂,必须与通用 request 汇聚点同样应用
-        // 进程级默认头/默认查询(musk: Authorization Bearer + workspace)。
-        let url = append_default_queries(&url);
-        let default_headers = snapshot_default_headers();
-        let mut builder = match method.as_str() {
-            "POST" => client.post(&url),
-            "PUT" => client.put(&url),
-            "DELETE" => client.delete(&url),
-            "PATCH" => client.patch(&url),
-            _ => client.get(&url),
-        };
-        // 默认头先落,调用方显式 header 同名追加在后(与 request 臂同序)。
-        for (k, v) in &default_headers {
-            builder = builder.header(k.as_str(), v.as_str());
-        }
-        if let Some(b) = body {
-            builder = builder.header("Content-Type", "application/json").body(b);
-        }
-        builder.send().map(|r| {
-            let status = r.status().as_u16();
-            // Non-2xx → wrap as error object so it isn't mistaken for data.
-            let text = r.text().unwrap_or_default();
-            if trace {
-                let summary: String = text.chars().take(120).collect();
-                eprintln!("[HTTP-TRACE] <- {} status={} body~{}", url, status, summary);
-            }
-            if (200..300).contains(&status) {
-                // Plan 057 (ash-gui 双执行修复): void 端点(如 /api/run_command)
-                // 返回空 body —— 直接把空串喂给 json.to_value 会 parse error,
-                // 让 handler 在副作用(POST)之后失败,再触发 on_with_input_for 的
-                // legacy 回退误执行根 widget 的同名 handler(App.RunCommand →
-                // store.RunCommand 二次执行)。空 body 规范化为 "null"。
-                if text.trim().is_empty() {
-                    "null".to_string()
-                } else {
-                    text
-                }
-            } else {
-                format!(r#"{{"error":"HTTP {}","status":{}}}"#, status, status)
-            }
-        })
-    }));
-    match result {
-        Ok(Ok(text)) => text,
-        Ok(Err(e)) => format!(r#"{{"error":"{}","status":0}}"#, escape_json(&e.to_string())),
-        Err(_) => r#"{"error":"HTTP request panicked","status":0}"#.to_string(),
-    }
 }
 
 /// Minimal JSON string escaper for error messages embedded in JSON objects.
@@ -7092,10 +7099,8 @@ fn resolve_http_base_url(url: &str) -> String {
 /// PLAN-027(线程 churn 归零):api.* json 请求的发射路径。原为每请求
 /// `std::thread::spawn`(双层线程时代 160 线程/s;PLAN-027 内层坍缩后
 /// 仍 80/s)——L1 修复验证实测斜率 ∝ 线程创建数(2→1 线程,
-/// 2.23→~1.3MB/min,量值见 evidence/027)。本池化彻底归零 churn:
-/// 常驻 2 worker + 容量 64 的 mpsc 队列;队满(突发)退化为按需
-/// spawn 兜底,语义不变。完成写统一 live-op 表(PLAN-705 T-02),消费协议
-/// (async_http_result_ready / check_async_http_result)零变。
+/// 2.23→~1.3MB/min,量值见 evidence/027)。线程 churn 的终态=PLAN-705 T-03:
+/// 固定 async executor(线程数恒定,零每请求线程),队满=终结性错误。
 struct HttpJsonJob {
     method: String,
     url: String,
@@ -7103,57 +7108,29 @@ struct HttpJsonJob {
     req_id: u64,
 }
 
-static HTTP_JSON_JOB_TX: std::sync::OnceLock<std::sync::mpsc::SyncSender<HttpJsonJob>> =
-    std::sync::OnceLock::new();
-
-fn run_http_json_job(job: HttpJsonJob) {
-    let result = simple_http_json(&job.method, &resolve_http_base_url(&job.url), job.body.as_deref());
-    // PLAN-705 T-02: 完成端唯一入口——迟到完成（调用方已取消/超时放弃）
-    // 由 presence 守卫丢弃，禁止复活条目。
-    let _ = crate::vm::ffi::async_http::complete_live_op(job.req_id, Ok(AsyncResult::Body(result)));
+/// PLAN-705 T-03: JSON 族的发射体改为固定 async executor 的 job——旧
+/// 形态（2 常驻 worker + 容量 64 sync_channel + 队满每 job spawn 兜底
+/// 线程）整体退役；队满现在=终结性错误（`{"error":"http client queue
+/// full","status":0}`），零临时线程。
+async fn run_http_json_job(job: HttpJsonJob) -> Result<AsyncResult, String> {
+    let text =
+        simple_http_json_async(job.method, &resolve_http_base_url(&job.url), job.body.as_deref())
+            .await?;
+    Ok(AsyncResult::Body(text))
 }
 
-fn http_json_job_sender() -> &'static std::sync::mpsc::SyncSender<HttpJsonJob> {
-    HTTP_JSON_JOB_TX.get_or_init(|| {
-        let (tx, rx) = std::sync::mpsc::sync_channel::<HttpJsonJob>(64);
-        let rx = std::sync::Arc::new(std::sync::Mutex::new(rx));
-        for _ in 0..2 {
-            let rx = std::sync::Arc::clone(&rx);
-            std::thread::spawn(move || loop {
-                // recv 持锁仅覆盖出队;HTTP 执行在锁外,两 worker 并行。
-                let job = {
-                    let guard = match rx.lock() {
-                        Ok(g) => g,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    guard.recv()
-                };
-                match job {
-                    Ok(job) => run_http_json_job(job),
-                    Err(_) => break,
-                }
-            });
-        }
-        tx
-    })
-}
-
-/// Helper: spawn an async HTTP request on a dedicated thread.
+/// Helper: submit an async JSON HTTP request to the fixed client executor.
 /// Result is stored in the live-op table (PLAN-705 T-02) as the Body variant.
-/// PLAN-027:dedicated thread 已池化(见 http_json_job_sender);
-/// 队满兜底保留原 spawn 形态(job 从 TrySendError::Full 取回)。
-fn spawn_async_http(method: String, url: String, body: Option<String>, request_id: u64) {
+/// PLAN-027:dedicated thread 已由固定 async executor 取代(PLAN-705 T-03);
+/// 队满=提交即终结性错误,无线程兜底。返回 false = 队满被终结性拒绝。
+pub(crate) fn spawn_async_http(
+    method: String,
+    url: String,
+    body: Option<String>,
+    request_id: u64,
+) -> bool {
     let job = HttpJsonJob { method, url, body, req_id: request_id };
-    match http_json_job_sender().try_send(job) {
-        Ok(()) => {}
-        Err(std::sync::mpsc::TrySendError::Full(job)) => {
-            std::thread::spawn(move || run_http_json_job(job));
-        }
-        // 池通道断开(理论不可达:tx 存活期间 worker 不退出):job 丢弃,
-        // 条目留 None → 调用方 30s 超时 → PLAN-027 A 的 drop_async_result
-        // 回收,无泄漏面。
-        Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {}
-    }
+    super::async_http::submit_client_job(request_id, run_http_json_job(job))
 }
 
 // ============================================================================
@@ -7182,43 +7159,47 @@ fn is_retryable_send_error(err: &reqwest::Error) -> bool {
     err.is_connect() || err.is_timeout() || err.is_request()
 }
 
-/// Run a reqwest blocking request builder to completion with optional retry.
+/// Run an async reqwest request builder to completion with optional retry.
 /// On success returns `(status, headers, body_bytes)`; on terminal failure
 /// returns `Err(message)`. `build_request` is invoked per attempt so multipart
 /// forms (which are consumed by `.send()`) can be rebuilt each iteration.
 /// Plan 349 步骤 7/8 (W3): retry with exponential backoff for transient errors.
-fn send_with_retry(
-    mut build_request: impl FnMut(&reqwest::blocking::Client) -> reqwest::blocking::RequestBuilder,
-    client: reqwest::blocking::Client,
+/// PLAN-705 T-03: async 形态——退避 sleep 在 job 取消/超时时随 future 丢弃;
+/// 响应体经预算化增量读。
+async fn send_with_retry_async(
+    mut build_request: impl FnMut(&reqwest::Client) -> reqwest::RequestBuilder,
+    client: reqwest::Client,
     retry_count: u32,
 ) -> Result<(u16, Vec<(String, String)>, Vec<u8>), String> {
     let mut last_err: Option<String> = None;
     let max_attempts = retry_count.saturating_add(1); // retry_count=0 → 1 attempt
     for attempt in 0..max_attempts {
         let builder = build_request(&client);
-        match builder.send() {
+        match builder.send().await {
             Ok(response) => {
                 let status = response.status().as_u16();
+                // Retry on transient HTTP status (5xx, 429) if attempts remain.
+                let transient = (500..600).contains(&status) || status == 429;
+                if transient && attempt < max_attempts - 1 {
+                    last_err = Some(format!("HTTP {} (transient, retrying)", status));
+                    backoff_sleep_async(attempt).await;
+                    continue;
+                }
                 let headers: Vec<(String, String)> = response
                     .headers()
                     .iter()
                     .filter_map(|(k, v)| Some((k.to_string(), v.to_str().ok()?.to_string())))
                     .collect();
-                let body_bytes = response.bytes().unwrap_or_default().to_vec();
-                // Retry on transient HTTP status (5xx, 429) if attempts remain.
-                let transient = (500..600).contains(&status) || status == 429;
-                if transient && attempt < max_attempts - 1 {
-                    last_err = Some(format!("HTTP {} (transient, retrying)", status));
-                    backoff_sleep(attempt);
-                    continue;
-                }
+                let body_bytes =
+                    super::async_http::read_body_capped(response, super::async_http::client_limits().body_limit)
+                        .await?;
                 return Ok((status, headers, body_bytes));
             }
             Err(e) => {
                 let msg = e.to_string();
                 if is_retryable_send_error(&e) && attempt < max_attempts - 1 {
                     last_err = Some(msg);
-                    backoff_sleep(attempt);
+                    backoff_sleep_async(attempt).await;
                     continue;
                 }
                 return Err(msg);
@@ -7229,11 +7210,12 @@ fn send_with_retry(
 }
 
 /// Exponential backoff helper: base 200ms * 2^attempt, capped at 5s.
-/// Plan 349 步骤 7/8 (W3).
-fn backoff_sleep(attempt: u32) {
+/// Plan 349 步骤 7/8 (W3). PLAN-705 T-03: async sleep——job 被取消（future
+/// drop）时退避随之丢弃，绝不继续发送。
+async fn backoff_sleep_async(attempt: u32) {
     let base: u64 = 200;
     let delay_ms = base.saturating_mul(1u64 << attempt.min(8)).min(5000);
-    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
 }
 
 /// Spawn a handle-returning async HTTP request (plain GET/POST/PUT/DELETE with
@@ -7365,13 +7347,15 @@ fn spawn_async_http_handle(
     body: Option<String>,
     request_id: u64,
 ) {
-    std::thread::spawn(move || {
-        let client = reqwest::blocking::Client::new();
+    // PLAN-705 T-03: 固定 async executor job（原每请求 detached blocking
+    // 线程退役）；迟到完成由 complete_live_op 的 presence 守卫丢弃。
+    let job = async move {
+        let client = shared_async_http_client().clone();
         let m = method.clone();
         let u = append_default_queries(&resolve_http_base_url(&url)); // Plan 446 E4: 默认 query 注入；T-10: 相对 URL 先按基址展开
         let b = body.clone();
         let default_headers = snapshot_default_headers(); // Plan 446 E4
-        let result = send_with_retry(
+        let result = send_with_retry_async(
             |c| {
                 let builder = match m.as_str() {
                     "POST" => c.post(&u),
@@ -7393,12 +7377,11 @@ fn spawn_async_http_handle(
             },
             client,
             0, // plain handle natives have no retry config; RequestBuilder path carries it
-        );
-        let wrapped = result.map(|(status, headers, body)| AsyncResult::Structured { status, headers, body });
-        // PLAN-705 T-02: 完成端唯一入口——迟到完成（已取消/已超时放弃）
-        // 由 presence 守卫丢弃，禁止复活条目。
-        let _ = crate::vm::ffi::async_http::complete_live_op(request_id, wrapped);
-    });
+        )
+        .await;
+        result.map(|(status, headers, body)| AsyncResult::Structured { status, headers, body })
+    };
+    let _ = super::async_http::submit_client_job(request_id, job);
 }
 
 // ─── PLAN-083 T-01: 异步 HTTP 消息桥（C2 形态） ─────────────────────────────
@@ -7450,39 +7433,43 @@ pub(crate) fn http_msg_queue_clear() {
     }
 }
 
-/// 消息桥 GET 的派生线程体：复用 plain-handle 族同款 send 汇聚路径
-/// （默认 query 注入 + 相对 URL 基址展开 + 默认 header 快照），完成即推
-/// 队列，不写 live-op 表（无人在等它）。
+/// 消息桥 GET：复用 plain-handle 族同款 send 汇聚路径（默认 query 注入 +
+/// 相对 URL 基址展开 + 默认 header 快照），完成即推队列。PLAN-705 T-03:
+/// 改走固定 async executor（原派生线程退役）；不写 live-op 表（无人在等
+/// 它，submit 的 complete_live_op 落在缺席令牌上被守卫丢弃）。
 fn spawn_async_http_msg_get(url: String, widget: String, event: String) {
-    std::thread::spawn(move || {
+    let job = async move {
         let u = append_default_queries(&resolve_http_base_url(&url));
         let default_headers = snapshot_default_headers();
         // 30s 超时对齐 get_json 族忙等 deadline——fire-and-forget 无消费侧
         // 兜底，连接悬挂必须由 client 侧收口（超时走 Err 臂→ok:false 入队，
         // poll_inflight 类消费门必然解锁）。
-        let client = reqwest::blocking::Client::builder()
+        let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .unwrap_or_else(|_| reqwest::blocking::Client::new());
-        let result = send_with_retry(
-            |c| {
-                let mut builder = c.get(&u);
-                for (k, v) in &default_headers {
-                    builder = builder.header(k.as_str(), v.as_str());
-                }
-                builder
-            },
-            client,
-            0,
-        );
-        let (ok, status, body) = match result {
-            Ok((status, _headers, body_bytes)) => (
-                (200..300).contains(&status),
-                status,
-                String::from_utf8_lossy(&body_bytes).to_string(),
-            ),
-            Err(msg) => (false, 0u16, msg),
+            .unwrap_or_else(|_| reqwest::Client::new());
+        let mut builder = client.get(&u);
+        for (k, v) in &default_headers {
+            builder = builder.header(k.as_str(), v.as_str());
+        }
+        let result = match builder.send().await {
+            Ok(response) => {
+                let status = response.status().as_u16();
+                let body_bytes = super::async_http::read_body_capped(
+                    response,
+                    super::async_http::client_limits().body_limit,
+                )
+                .await
+                .unwrap_or_default();
+                (
+                    (200..300).contains(&status),
+                    status,
+                    String::from_utf8_lossy(&body_bytes).to_string(),
+                )
+            }
+            Err(e) => (false, 0u16, e.to_string()),
         };
+        let (ok, status, body) = result;
         let payload =
             serde_json::json!({ "ok": ok, "status": status, "body": body }).to_string();
         if let Ok(mut q) = http_msg_queue().lock() {
@@ -7490,7 +7477,10 @@ fn spawn_async_http_msg_get(url: String, widget: String, event: String) {
             // PLAN-084 诊断打点（临时）：桥线程入队侧。
             eprintln!("[msg-bridge] queued widget={widget} event={event} qlen={}", q.len());
         }
-    });
+        // fire-and-forget：无 live-op 令牌，返回值被 submit 的守卫丢弃。
+        Ok(AsyncResult::Body(String::new()))
+    };
+    let _ = super::async_http::submit_client_job(alloc_async_id(), job);
 }
 
 /// 消息桥目标切分：`"Store.Handler"` → (Store, Handler)；无点/空段 →
@@ -7728,8 +7718,9 @@ fn spawn_async_http_auth(
 ) {
     let url = resolve_http_base_url(&url); // PLAN-617 T-10: 相对 URL 按基址展开
     eprintln!("[HTTP_REQ] {} url={} body_len={:?}", method, url, body.as_ref().map(|b| b.len()));
-    std::thread::spawn(move || {
-        let client = reqwest::blocking::Client::new();
+    // PLAN-705 T-03: 固定 async executor job（原每请求 detached 线程退役）。
+    let job = async move {
+        let client = shared_async_http_client().clone();
         let mut builder = match method.as_str() {
             "POST" => client.post(&url),
             "PUT" => client.put(&url),
@@ -7747,10 +7738,16 @@ fn spawn_async_http_auth(
         if let Some(b) = body {
             builder = builder.body(b);
         }
-        let result = match builder.send() {
+        let result = match builder.send().await {
             Ok(response) => {
                 let status = response.status().as_u16() as i32;
-                let body_text = response.text().unwrap_or_default();
+                let body_bytes = super::async_http::read_body_capped(
+                    response,
+                    super::async_http::client_limits().body_limit,
+                )
+                .await
+                .unwrap_or_default();
+                let body_text = String::from_utf8_lossy(&body_bytes).to_string();
                 eprintln!("[HTTP_RESP] {} url={} -> status={} body_len={}", method, url, status, body_text.len());
                 Ok((status, body_text))
             }
@@ -7759,10 +7756,9 @@ fn spawn_async_http_auth(
                 Err(format!("HTTP error: {}", e))
             }
         };
-        let wrapped = result.map(|(status, body)| AsyncResult::Auth { status, body });
-        // PLAN-705 T-02: 完成端唯一入口（presence 守卫拒迟到复活）。
-        let _ = crate::vm::ffi::async_http::complete_live_op(request_id, wrapped);
-    });
+        result.map(|(status, body)| AsyncResult::Auth { status, body })
+    };
+    let _ = super::async_http::submit_client_job(request_id, job);
 }
 
 /// Spawn an auth-bearing async HTTP request (Bearer style, for OpenAI).
@@ -7775,8 +7771,9 @@ fn spawn_async_http_bearer(
     request_id: u64,
 ) {
     let url = resolve_http_base_url(&url); // PLAN-617 T-10: 相对 URL 按基址展开
-    std::thread::spawn(move || {
-        let client = reqwest::blocking::Client::new();
+    // PLAN-705 T-03: 固定 async executor job。
+    let job = async move {
+        let client = shared_async_http_client().clone();
         let mut builder = match method.as_str() {
             "POST" => client.post(&url),
             "PUT" => client.put(&url),
@@ -7792,18 +7789,22 @@ fn spawn_async_http_bearer(
         if let Some(b) = body {
             builder = builder.body(b);
         }
-        let result = match builder.send() {
+        let result = match builder.send().await {
             Ok(response) => {
                 let status = response.status().as_u16() as i32;
-                let body_text = response.text().unwrap_or_default();
-                Ok((status, body_text))
+                let body_bytes = super::async_http::read_body_capped(
+                    response,
+                    super::async_http::client_limits().body_limit,
+                )
+                .await
+                .unwrap_or_default();
+                Ok((status, String::from_utf8_lossy(&body_bytes).to_string()))
             }
             Err(e) => Err(format!("HTTP error: {}", e)),
         };
-        let wrapped = result.map(|(status, body)| AsyncResult::Auth { status, body });
-        // PLAN-705 T-02: 完成端唯一入口（presence 守卫拒迟到复活）。
-        let _ = crate::vm::ffi::async_http::complete_live_op(request_id, wrapped);
-    });
+        result.map(|(status, body)| AsyncResult::Auth { status, body })
+    };
+    let _ = super::async_http::submit_client_job(request_id, job);
 }
 
 /// Push an auth result: set LAST_HTTP_STATUS and push the body String (or an

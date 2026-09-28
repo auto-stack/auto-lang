@@ -115,6 +115,12 @@ pub struct AutoTask {
     pub frame_ids: Vec<(usize, u64)>,
     /// PLAN-667: 帧实例 uid 发号器（从 1 起；0 = 根帧哨兵）。
     pub frame_uid_gen: u64,
+    /// PLAN-705 T-03: 段驱动模式标志——置位时 CALL_SPEC 的 RequestBuilder
+    /// send 拦截**不做** 30s 同步 drain，而是 rewind ip + Yield，由段驱动
+    /// park 成 HttpRequest（handler 等待不占住执行线程）。段入口
+    /// (call_fn_by_name_segment / resume_fn_by_name_segment / call_closure
+    /// 段形态)置位，legacy 同步入口保持 false（忙等语义留给非段调用图）。
+    pub segment_no_busy_wait: bool,
 }
 
 /// Plan 394: continuation snapshot for a suspended async body.
@@ -233,6 +239,7 @@ impl AutoTask {
             async_frames: Vec::new(),
             frame_ids: Vec::new(),      // PLAN-667: 帧身份表
             frame_uid_gen: 0,           // PLAN-667: 首个真帧 uid 从 1 起
+            segment_no_busy_wait: false, // PLAN-705 T-03: 段驱动模式标志
         }
     }
 }

@@ -166,3 +166,162 @@ pub(crate) fn complete_external_future(
     }
     COMPLETION_NOTIFY.notify_waiters();
 }
+
+// ============================================================================
+// PLAN-705 T-03: 固定 async 客户端执行器（非流式 JSON/handle/builder 三路）
+// ============================================================================
+//
+// 旧形态的三宗罪（AC-03 面）：JSON 池满退化为每 job `std::thread::spawn`
+// 兜底；handle/auth/bearer/builder 每请求一个 detached 阻塞线程；无响应体
+// 预算、无总期限上限。新形态：一个进程级固定 tokio runtime（线程数恒定），
+// 提交经**有界队列**（队满立即终结性错误，绝不临时 spawn），执行经**活跃
+// 许可**（超出排队等待），单 job 总期限 + 增量响应体预算兜底。取消 = 丢弃
+// job future（重试退避的 tokio sleep 随之取消），迟到产物由 complete_live_op
+// 的 presence 守卫吸收。
+
+use std::time::Duration;
+
+/// 客户端限额（决策报告 §4 冻结值；env 覆盖在首次使用时读取一次）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ClientLimits {
+    /// 固定 runtime worker 线程数。
+    pub workers: usize,
+    /// 活跃 job 上限（超出排队等待）。
+    pub max_active: usize,
+    /// 等待队列容量（队满 → 提交即终结性错误）。
+    pub queue_capacity: usize,
+    /// 单 job 增量响应体预算（字节）。
+    pub body_limit: usize,
+    /// 单 job 总期限（发送 + 重试 + 读体全程）。
+    pub total_timeout: Duration,
+}
+
+impl ClientLimits {
+    fn from_env() -> Self {
+        let env_usize = |key: &str, default: usize| {
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .filter(|v| *v > 0)
+                .unwrap_or(default)
+        };
+        Self {
+            workers: env_usize("AUTO_HTTP_ASYNC_WORKERS", 2).min(16),
+            max_active: env_usize("AUTO_HTTP_CLIENT_MAX_ACTIVE", 8),
+            queue_capacity: env_usize("AUTO_HTTP_CLIENT_QUEUE", 64),
+            body_limit: env_usize("AUTO_HTTP_CLIENT_BODY_LIMIT", 10 * 1024 * 1024),
+            total_timeout: Duration::from_millis(
+                env_usize("AUTO_HTTP_CLIENT_TIMEOUT_MS", 30_000) as u64,
+            ),
+        }
+    }
+}
+
+struct ClientExecutor {
+    limits: ClientLimits,
+    rt: tokio::runtime::Runtime,
+    active: std::sync::Arc<tokio::sync::Semaphore>,
+    queue: std::sync::Arc<tokio::sync::Semaphore>,
+}
+
+static CLIENT_EXECUTOR: std::sync::OnceLock<ClientExecutor> = std::sync::OnceLock::new();
+
+// 测试覆写限额（set_client_limits_for_test 在首次 executor() 前调用生效）；
+// 非测试构建恒为 None，零成本。
+static TEST_LIMITS: std::sync::Mutex<Option<ClientLimits>> = std::sync::Mutex::new(None);
+
+/// 仅供测试：覆写客户端限额（首次 executor() 前调用生效）。
+#[cfg(test)]
+pub(crate) fn set_client_limits_for_test(limits: ClientLimits) {
+    *TEST_LIMITS.lock().unwrap() = Some(limits);
+}
+
+fn executor() -> &'static ClientExecutor {
+    CLIENT_EXECUTOR.get_or_init(|| {
+        let mut limits = TEST_LIMITS.lock().unwrap().take();
+        if limits.is_none() {
+            limits = Some(ClientLimits::from_env());
+        }
+        let limits = limits.unwrap();
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(limits.workers)
+            .thread_name("auto-http-async")
+            .enable_all()
+            .build()
+            .expect("http async client runtime");
+        ClientExecutor {
+            rt,
+            active: std::sync::Arc::new(tokio::sync::Semaphore::new(limits.max_active)),
+            queue: std::sync::Arc::new(tokio::sync::Semaphore::new(limits.queue_capacity)),
+            limits,
+        }
+    })
+}
+
+/// 客户端限额快照（响应体预算等消费方读取）。
+pub(crate) fn client_limits() -> ClientLimits {
+    executor().limits
+}
+
+/// 提交一个非流式客户端 job 到固定 async runtime。
+///
+/// 队列已满 → 立即以终结性错误完成该 req_id（消费端拿到既有错误形态）并
+/// 返回 `false`——**绝不临时 spawn 兜底线程**。job 的完成统一经
+/// [`complete_live_op`]（presence 守卫拒迟到复活），总期限兜底由本函数
+/// 包裹（job 自身的重试退避 sleep 在取消/超时时随 future 一起丢弃）。
+pub(crate) fn submit_client_job(
+    req_id: u64,
+    job: impl std::future::Future<Output = Result<AsyncResult, String>> + Send + 'static,
+) -> bool {
+    let ex = executor();
+    let Ok(queue_permit) = std::sync::Arc::clone(&ex.queue).try_acquire_owned() else {
+        let _ = complete_live_op(req_id, Err("http client queue full".to_string()));
+        return false;
+    };
+    let active = std::sync::Arc::clone(&ex.active);
+    let limits = ex.limits;
+    ex.rt.spawn(async move {
+        let _queue_slot = queue_permit;
+        // 活跃许可：等待期间占队列槽（有限在途 + 有限等待队列）。
+        let Ok(_active_slot) = active.acquire_owned().await else {
+            let _ = complete_live_op(req_id, Err("http client executor closed".to_string()));
+            return;
+        };
+        let outcome = tokio::time::timeout(limits.total_timeout, job).await;
+        let result = match outcome {
+            Ok(r) => r,
+            Err(_) => Err(format!(
+                "http client job timed out after {:?}",
+                limits.total_timeout
+            )),
+        };
+        let _ = complete_live_op(req_id, result);
+    });
+    true
+}
+
+/// 增量读取响应体并强制预算：Content-Length 预检 + 分块累计超限即终结性
+/// 错误（不把无限响应体读进内存）。
+pub(crate) async fn read_body_capped(
+    resp: reqwest::Response,
+    cap: usize,
+) -> Result<Vec<u8>, String> {
+    if let Some(len) = resp.content_length() {
+        if len > cap as u64 {
+            return Err(format!(
+                "http response body {len} exceeds budget {cap}"
+            ));
+        }
+    }
+    use futures::StreamExt;
+    let mut out: Vec<u8> = Vec::new();
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("http response body read error: {e}"))?;
+        if out.len() + chunk.len() > cap {
+            return Err(format!("http response body exceeds budget {cap}"));
+        }
+        out.extend_from_slice(&chunk);
+    }
+    Ok(out)
+}

@@ -176,3 +176,250 @@ fn plan705_spike_cancel_and_late_completion_single_finalization() {
 
     assert_eq!(reg::live_op_count(), count_before, "全部终结后登记表必须回基线");
 }
+
+// ============================================================================
+// PLAN-705 T-03 探针：固定 async 客户端执行器的限额与退役面
+// ============================================================================
+
+/// 起一个一次性本地 HTTP server（受控响应/延迟），返回 (端口, join 句柄)。
+fn one_shot_server(response: String, delay_ms: u64) -> (u16, std::thread::JoinHandle<()>) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().unwrap().port();
+    let handle = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut buf = [0u8; 4096];
+        let _ = std::io::Read::read(&mut stream, &mut buf);
+        if delay_ms > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        }
+        let _ = std::io::Write::write_all(&mut stream, response.as_bytes());
+    });
+    (port, handle)
+}
+
+/// 等待 req_id 完成（真实 worker 写入），返回 take 结果。
+fn wait_completed(req_id: u64) -> Option<Result<crate::vm::ffi::stdlib::AsyncResult, String>> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
+        assert!(std::time::Instant::now() < deadline, "worker 完成超时");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    crate::vm::ffi::async_http::take_live_op(req_id)
+}
+
+/// T-03 (1) 队满=终结性错误：queue_capacity=1 时第二个 job 提交即以
+/// `http client queue full` 完成终结（旧形态此处是每 job spawn 兜底线程，
+/// 错误面根本不存在）。
+/// 本探针要求独占进程的限额覆写——nextest 每测试进程隔离，勿在裸
+/// cargo test 同进程混跑多个改限额的探针。
+#[test]
+fn plan705_client_queue_full_terminal_error_no_thread_fallback() {
+    crate::vm::ffi::async_http::set_client_limits_for_test(
+        crate::vm::ffi::async_http::ClientLimits {
+            queue_capacity: 1,
+            ..crate::vm::ffi::async_http::ClientLimits {
+                workers: 2,
+                max_active: 1,
+                queue_capacity: 64,
+                body_limit: 1024,
+                total_timeout: std::time::Duration::from_secs(30),
+            }
+        },
+    );
+    // 慢上游占住唯一队列槽（active=1 也被它持有）。
+    let (port, server) = one_shot_server(
+        "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".to_string(),
+        300,
+    );
+    let id1 = crate::vm::ffi::stdlib::alloc_async_id();
+    crate::vm::ffi::async_http::register_live_op(id1);
+    assert!(
+        crate::vm::ffi::stdlib::spawn_async_http(
+            "GET".into(),
+            format!("http://127.0.0.1:{port}/slow"),
+            None,
+            id1
+        ),
+        "第一个 job 应入队"
+    );
+    let id2 = crate::vm::ffi::stdlib::alloc_async_id();
+    crate::vm::ffi::async_http::register_live_op(id2);
+    assert!(
+        !crate::vm::ffi::stdlib::spawn_async_http(
+            "GET".into(),
+            format!("http://127.0.0.1:{port}/rejected"),
+            None,
+            id2
+        ),
+        "队满提交必须立即拒绝（无线程兜底）"
+    );
+    // 第二个 job 已终结性完成（既有 JSON 错误形态）。
+    match wait_completed(id2) {
+        Some(Err(msg)) => assert!(
+            msg.contains("queue full"),
+            "队满错误应可消费，得到 {msg}"
+        ),
+        other => panic!("队满应终结为 Err，得到 {:?}", other.is_some()),
+    }
+    server.join().expect("server thread");
+}
+
+/// T-03 (2) 响应体预算：超预算响应 → 终结性错误（增量读不强吞全量）。
+#[test]
+fn plan705_client_body_budget_enforced() {
+    crate::vm::ffi::async_http::set_client_limits_for_test(
+        crate::vm::ffi::async_http::ClientLimits {
+            body_limit: 16,
+            ..crate::vm::ffi::async_http::ClientLimits {
+                workers: 2,
+                max_active: 8,
+                queue_capacity: 64,
+                body_limit: 16,
+                total_timeout: std::time::Duration::from_secs(30),
+            }
+        },
+    );
+    let big = "x".repeat(200);
+    let (port, server) = one_shot_server(
+        format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            big.len(),
+            big
+        ),
+        0,
+    );
+    let id = crate::vm::ffi::stdlib::alloc_async_id();
+    crate::vm::ffi::async_http::register_live_op(id);
+    crate::vm::ffi::stdlib::spawn_async_http(
+        "GET".into(),
+        format!("http://127.0.0.1:{port}/big"),
+        None,
+        id,
+    );
+    match wait_completed(id) {
+        Some(Err(msg)) => assert!(
+            msg.contains("exceeds budget 16"),
+            "超预算错误应可消费，得到 {msg}"
+        ),
+        other => panic!("超预算应终结为 Err，得到 {:?}", other.is_some()),
+    }
+    server.join().expect("server thread");
+}
+
+/// T-03 (3) 单 job 总期限：慢上游在期限后以终结性错误收口（不悬挂）。
+#[test]
+fn plan705_client_total_deadline_terminal_error() {
+    crate::vm::ffi::async_http::set_client_limits_for_test(
+        crate::vm::ffi::async_http::ClientLimits {
+            total_timeout: std::time::Duration::from_millis(200),
+            ..crate::vm::ffi::async_http::ClientLimits {
+                workers: 2,
+                max_active: 8,
+                queue_capacity: 64,
+                body_limit: 10 * 1024 * 1024,
+                total_timeout: std::time::Duration::from_millis(200),
+            }
+        },
+    );
+    let (port, server) = one_shot_server(
+        "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".to_string(),
+        2_000,
+    );
+    let id = crate::vm::ffi::stdlib::alloc_async_id();
+    crate::vm::ffi::async_http::register_live_op(id);
+    crate::vm::ffi::stdlib::spawn_async_http(
+        "GET".into(),
+        format!("http://127.0.0.1:{port}/slow"),
+        None,
+        id,
+    );
+    let started = std::time::Instant::now();
+    match wait_completed(id) {
+        Some(Err(msg)) => assert!(
+            msg.contains("timed out"),
+            "总期限错误应可消费，得到 {msg}"
+        ),
+        other => panic!("总期限应终结为 Err，得到 {:?}", other.is_some()),
+    }
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(1_500),
+        "期限收口不应等待上游完成"
+    );
+    server.join().expect("server thread");
+}
+
+/// T-03 (4) RequestBuilder `.send()` 在段模式下 park 而非同步 drain：
+/// 首段立即返回 Parked{HttpRequest}（服务端延迟 400ms 下零忙等），
+/// 恢复段消费句柄。旧形态此处是拦截内 30s 同步 drain（占住 owner）。
+#[test]
+fn plan705_builder_send_parks_in_segment_mode() {
+    let body = r#"{"ok":true,"built":705}"#.to_string();
+    let body_for_server = body.clone();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut buf = [0u8; 4096];
+        let _ = std::io::Read::read(&mut stream, &mut buf);
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body_for_server.len(),
+            body_for_server
+        );
+        let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
+    });
+
+    let code = r#"
+fn grab() str {
+    var b = http.request("GET", "http://127.0.0.1:7051/probe")
+    var r = b.send()
+    r.body()
+}
+"#
+    .replace("7051", &port.to_string());
+    let (vm, _stdout, _entry, _object_type) =
+        crate::create_vm_from_source(&code).expect("compile");
+
+    let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
+    let started = std::time::Instant::now();
+    let outcome = vm.call_fn_by_name_segment(&mut task, "grab", 0);
+    let first_elapsed = started.elapsed();
+    let (req_id, seg) = match &outcome {
+        crate::vm::engine::SegmentOutcome::Parked {
+            wait: crate::vm::engine::ParkedWait::HttpRequest(id),
+            seg,
+        } => (*id, seg.clone()),
+        crate::vm::engine::SegmentOutcome::Completed(Ok(())) => panic!(
+            "builder send 应 park 而非同步跑完——server 延迟 400ms 下跑完=同步 drain 回归"
+        ),
+        other => panic!("预期 Parked(HttpRequest)，得到 {:?}", other),
+    };
+    assert!(
+        first_elapsed < std::time::Duration::from_millis(350),
+        "首段返回耗时 {:?}——CALL_SPEC 段模式同步 drain 回归",
+        first_elapsed
+    );
+    assert!(
+        crate::vm::ffi::async_http::live_op_exists(req_id),
+        "parked 后 live-op 不得回收"
+    );
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
+        assert!(std::time::Instant::now() < deadline, "server 应答超时");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    server.join().expect("server thread");
+
+    match vm.resume_fn_by_name_segment(&mut task, &seg) {
+        crate::vm::engine::SegmentOutcome::Completed(Ok(())) => {}
+        other => panic!("恢复段应 Completed(Ok)，得到 {:?}", other),
+    }
+    let nv = task.ram.pop_nv();
+    assert!(auto_val::is_string(nv), "body() 应返回字符串 nv");
+    let got = vm
+        .get_string(auto_val::decode_string(nv) as u32)
+        .expect("string slot");
+    assert_eq!(String::from_utf8_lossy(&got), body);
+}
