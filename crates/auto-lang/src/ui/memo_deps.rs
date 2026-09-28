@@ -37,9 +37,31 @@ use crate::ui::view::View;
 /// 大容器（如 datatable 723 行）超限降级保正确。
 const FINGERPRINT_BUDGET: usize = 4096;
 
-/// 每 builder（=每 VmBridge）缓存条目上限（LRU 逐出最旧）。PLAN-045 Q-03：
-/// 64/组件初值；此为每桥全局口径（首批量级 ≪64），执行期按内存实测调。
+/// 每 builder（=每 VmBridge）缓存条目上限默认值（LRU 逐出最旧）。
+/// PLAN-045 Q-03：64/组件初值；此为每桥全局口径（首批量级 ≪64）。
 const MEMO_CACHE_CAP: usize = 256;
+
+/// PLAN-046 Q-03：keyed-for 大列表（syslog 千行流）单帧 fill 需 ≥列表长度
+/// 的容量，否则 LRU 抖动使重求值计数无法归零（AC-07）。仍共池单 LRU（机制
+/// 单源），键化门按需抬升、硬顶此值（内存实测在 T-06；超顶=部分条目走
+/// LRU 淘汰语义，正确性不受影响——只允许变慢）。
+const MEMO_CACHE_CAP_MAX: usize = 4096;
+
+/// PLAN-046 站点常量（MemoKey.site）：keyed-for 项级条目。档 A 组件族
+/// 常量（1..=5）与 outlet 页（6）在 aura_view_builder，此处 7 起新面。
+pub const MEMO_SITE_FOR_ITEM: u8 = 7;
+
+/// PLAN-046 站点常量：显式 memo 块条目（T-04）。
+pub const MEMO_SITE_MEMO_BLOCK: u8 = 8;
+
+/// PLAN-046 §4：per-site 分解计数（for_item/memo_block/outlet 门经
+/// `note_*_site` 记账；档 A 组件门只走全局计数器）。
+#[derive(Debug, Default, Clone)]
+pub struct SiteCounts {
+    pub hits: u64,
+    pub misses: u64,
+    pub degraded: u64,
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // 键与条目
@@ -51,13 +73,15 @@ const MEMO_CACHE_CAP: usize = 256;
 /// 生命周期内不可变 → 骨架同 ⇒ 结构同，表达式值差异由 dyn_fp 兜住）；
 /// `site` 防不同 convert 家族骨架撞键；probe_on 进键（PLAN-045 §4：
 /// probe-off 先填充、probe-on 后命中会吞 acceptance 事件索引——两态各存
-/// 各的条目）。
+/// 各的条目）。PLAN-046 T-03：`item_key` = keyed-for 项级条目的 key 值
+/// 指纹（`None` = 档 A 组件/outlet 条目——档 A 键面零变化）。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MemoKey {
     pub ctx_state_obj: u64,
     pub site: u8,
     pub skeleton_fp: u64,
     pub probe_on: bool,
+    pub item_key: Option<u64>,
 }
 
 /// memo 条目：fill 时的动态输入指纹 + 产物 + probe/id_map 重放面。
@@ -71,6 +95,7 @@ pub struct MemoEntry {
     /// fill 时静态提取的读槽表达式（check 时经同一通道重解析）。
     pub read_exprs: Vec<Expr>,
     /// fill 时读槽解析值指纹；`None` = 无读槽（纯静态子树）。
+    /// PLAN-046 T-03：keyed-for 项级条目 = combine3(读槽, 项值, index)。
     pub dyn_fp: Option<u64>,
     /// fill 产物（`View: Clone`，命中按值克隆返回）。
     pub product: View<DynamicMessage>,
@@ -79,17 +104,38 @@ pub struct MemoEntry {
     pub probe_replay: Vec<(Vec<u16>, ProbeEntry)>,
     /// fill 期间新增的 id_map 条目（dialog/popover 族 tracked 子树用）。
     pub idmap_replay: Vec<(Vec<usize>, AuraNodeId)>,
+    /// PLAN-046 T-03：keyed-for 项级条目的重放面按**项内相对路径**存储
+    /// （命中帧以当前基路径+[新 index] 前缀化重放、ForIter.index 补丁）；
+    /// `false` = 档 A 绝对路径重放（组件/outlet 结构稳定面，行为不变）。
+    pub replay_relative: bool,
 }
 
 /// 每 VmBridge 一张 memo 表 + 计数器（AC-03 断言/T-07 度量走 counts）。
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct MemoCache {
     entries: HashMap<MemoKey, MemoEntry>,
     order: VecDeque<MemoKey>,
+    cap: usize,
     pub hits: u64,
     pub misses: u64,
     pub degraded: u64,
     pub evictions: u64,
+    pub site_counts: HashMap<u8, SiteCounts>,
+}
+
+impl Default for MemoCache {
+    fn default() -> Self {
+        Self {
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+            cap: MEMO_CACHE_CAP,
+            hits: 0,
+            misses: 0,
+            degraded: 0,
+            evictions: 0,
+            site_counts: HashMap::new(),
+        }
+    }
 }
 
 impl MemoCache {
@@ -124,12 +170,36 @@ impl MemoCache {
         self.degraded += 1;
     }
 
+    /// PLAN-046 §4：带 site 分解的计数（全局计数同步递增）。
+    pub fn note_hit_site(&mut self, site: u8) {
+        self.hits += 1;
+        self.site_counts.entry(site).or_default().hits += 1;
+    }
+
+    pub fn note_miss_site(&mut self, site: u8) {
+        self.misses += 1;
+        self.site_counts.entry(site).or_default().misses += 1;
+    }
+
+    pub fn note_degraded_site(&mut self, site: u8) {
+        self.degraded += 1;
+        self.site_counts.entry(site).or_default().degraded += 1;
+    }
+
+    /// PLAN-046 Q-03：按需抬升容量（共池 LRU，硬顶 [`MEMO_CACHE_CAP_MAX`]）。
+    pub fn ensure_capacity(&mut self, min_cap: usize) {
+        let want = min_cap.max(MEMO_CACHE_CAP).min(MEMO_CACHE_CAP_MAX);
+        if want > self.cap {
+            self.cap = want;
+        }
+    }
+
     pub fn insert(&mut self, key: MemoKey, entry: MemoEntry) {
         if !self.order.contains(&key) {
             self.order.push_back(key.clone());
         }
         self.entries.insert(key, entry);
-        while self.order.len() > MEMO_CACHE_CAP {
+        while self.order.len() > self.cap {
             if let Some(oldest) = self.order.pop_front() {
                 if self.entries.remove(&oldest).is_some() {
                     self.evictions += 1;
@@ -337,6 +407,142 @@ fn scan_node_registry(
         return Ok(());
     }
     scan_node(node, slots)
+}
+
+/// PLAN-046 T-03：keyed-for **项级**扫描。正确性判据：项值指纹覆盖循环变量
+/// 的一切展开（key/条件/插值引用循环变量 → 项变即失效），扫描只负责把
+/// **外部状态读**找出来入槽（check 时经同一通道重解析）。规则（宁缺勿错）：
+/// - Element：prop 表达式按 [`scan_expr`] 分级（槽/降级）；children 递归；
+/// - Text：字面量静态；插值 bindings 全部 ⊆ 循环变量名 → 项值覆盖（安全），
+///   含外部名 → 降级（v1 保守——外部读插值的槽化不在档 B 面）；
+/// - Conditional：条件串经 `parse_expr_fragment` 解析入槽（解析失败降级），
+///   双臂递归；
+/// - 嵌套 ForLoop / Outlet：降级（嵌套绑定上下文由调用方先拦）；
+/// - Component：prop 槽 + children + registry 模板递归（`scan_node_registry`
+///   同型语义；registry 缺席 → 降级）；
+/// - Link：children 递归。
+pub fn scan_for_item_body(
+    body: &[AuraNode],
+    registry: Option<&crate::ui::widget_registry::WidgetRegistry>,
+    loop_vars: &std::collections::HashSet<String>,
+) -> ScanVerdict {
+    let mut slots = Vec::new();
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for c in body {
+        if let Err(reason) = scan_item_node(c, &mut slots, registry, loop_vars, &mut visited) {
+            return ScanVerdict::Degrade(reason);
+        }
+    }
+    ScanVerdict::Slots(slots)
+}
+
+fn scan_item_node(
+    node: &AuraNode,
+    slots: &mut Vec<Expr>,
+    registry: Option<&crate::ui::widget_registry::WidgetRegistry>,
+    loop_vars: &std::collections::HashSet<String>,
+    visited: &mut std::collections::HashSet<String>,
+) -> Result<(), &'static str> {
+    match node {
+        AuraNode::Element { props, children, .. } => {
+            for (_k, prop) in props.iter() {
+                match prop {
+                    crate::aura::AuraPropValue::Expr(e) => scan_expr(e, slots)?,
+                    crate::aura::AuraPropValue::StyleBinding(_) => {
+                        return Err("style_binding");
+                    }
+                }
+            }
+            for c in children {
+                scan_item_node(c, slots, registry, loop_vars, visited)?;
+            }
+            Ok(())
+        }
+        AuraNode::Text(crate::aura::AuraTextContent::Literal(_)) => Ok(()),
+        AuraNode::Text(crate::aura::AuraTextContent::Interpolated { bindings, .. }) => {
+            // 全部插值名都是循环变量（值/索引）→ 项值指纹已覆盖；含外部名
+            // 的插值其读面不在项值内 → 降级（v1 保守）。
+            for b in bindings {
+                if !loop_vars.contains(b) {
+                    return Err("interpolated_text_external");
+                }
+            }
+            Ok(())
+        }
+        AuraNode::Conditional { condition, then_body, else_body, .. } => {
+            match crate::parser::Parser::parse_expr_fragment(condition) {
+                Some(e) => scan_expr(&e, slots)?,
+                None => return Err("conditional_unprovable"),
+            }
+            for c in then_body {
+                scan_item_node(c, slots, registry, loop_vars, visited)?;
+            }
+            if let Some(els) = else_body {
+                for c in els {
+                    scan_item_node(c, slots, registry, loop_vars, visited)?;
+                }
+            }
+            Ok(())
+        }
+        AuraNode::ForLoop { .. } => Err("for_loop"),
+        AuraNode::Outlet => Err("outlet"),
+        AuraNode::Component { name, props, children, .. } => {
+            let Some(reg) = registry else {
+                return Err("component");
+            };
+            for (_k, e) in props.iter() {
+                scan_expr(e, slots)?;
+            }
+            for c in children {
+                scan_item_node(c, slots, registry, loop_vars, visited)?;
+            }
+            if let Some(w) = reg.get(name) {
+                if visited.insert(name.clone()) {
+                    scan_item_node(&w.view_tree, slots, Some(reg), loop_vars, visited)?;
+                }
+            }
+            Ok(())
+        }
+        AuraNode::Link { children, .. } => {
+            for c in children {
+                scan_item_node(c, slots, registry, loop_vars, visited)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+/// PLAN-046 T-03：keyed-for **站点**骨架指纹——循环头（var/index/iterable/
+/// key 表达式全形态）+ 体读槽表达式全形态 + 体结构（Element/Text/
+/// Component 模板递归，同 `skeleton_children_registry`）。同一桥生命周期内
+/// ForLoop AST 不可变 → 同站恒同指纹；不同 for 站点由头差异、读槽差异或
+/// 体结构差异拆键。
+pub fn for_site_fingerprint(
+    var: &str,
+    index: Option<&str>,
+    iterable: &str,
+    key_expr: &crate::ast::Expr,
+    body: &[AuraNode],
+    registry: Option<&crate::ui::widget_registry::WidgetRegistry>,
+    slots: &[Expr],
+) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    var.hash(&mut h);
+    index.hash(&mut h);
+    iterable.hash(&mut h);
+    // key 表达式全形态入指纹（有界解析器产物，Debug 串有界且确定）。
+    format!("{:?}", key_expr).hash(&mut h);
+    // 体读槽表达式全形态入指纹：骨架的 expr_shape 只到判别式（Dot vs Dot
+    // 不分读目标），跨站点撞键时读目标差异必须进站点指纹——否则 A 站条目
+    // 在 B 站慢路径比对的是 A 的槽，B 的真实读面（如 a+c vs a+b）永不复检
+    // → 陈旧风险。
+    slots.len().hash(&mut h);
+    for s in slots {
+        format!("{:?}", s).hash(&mut h);
+    }
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    skeleton_children_registry(body, &mut h, registry, &mut visited);
+    h.finish()
 }
 
 fn scan_node(node: &AuraNode, slots: &mut Vec<Expr>) -> Result<(), &'static str> {
@@ -764,6 +970,7 @@ mod tests {
             product: View::Empty,
             probe_replay: vec![],
             idmap_replay: vec![],
+            replay_relative: false,
         }
     }
 
@@ -776,22 +983,59 @@ mod tests {
                 site: 0,
                 skeleton_fp: i as u64,
                 probe_on: false,
+                item_key: None,
             };
             c.insert(key, mk_entry(0));
         }
         assert_eq!(c.len(), MEMO_CACHE_CAP, "LRU 上限逐出");
         assert_eq!(c.evictions, 8);
-        let hit_key = MemoKey { ctx_state_obj: 1, site: 0, skeleton_fp: (MEMO_CACHE_CAP + 7) as u64, probe_on: false };
+        let hit_key = MemoKey { ctx_state_obj: 1, site: 0, skeleton_fp: (MEMO_CACHE_CAP + 7) as u64, probe_on: false, item_key: None };
         assert!(c.lookup(&hit_key).is_some());
         c.note_hit();
         assert_eq!(c.hits, 1);
-        let miss_key = MemoKey { ctx_state_obj: 1, site: 0, skeleton_fp: 999_999, probe_on: false };
+        let miss_key = MemoKey { ctx_state_obj: 1, site: 0, skeleton_fp: 999_999, probe_on: false, item_key: None };
         assert!(c.lookup(&miss_key).is_none());
         c.note_miss();
         assert_eq!(c.misses, 1);
         c.refresh_seq(&hit_key, 5);
         let e = c.lookup(&hit_key).expect("still present");
         assert_eq!(e.seq_at_fill, 5);
+    }
+
+    #[test]
+    fn memo_cache_site_counts_and_capacity_raise() {
+        // PLAN-046 §4/Q-03：per-site 分解计数 + 按需抬升容量（共池单 LRU）。
+        let mut c = MemoCache::new();
+        assert_eq!(c.len(), 0);
+        c.ensure_capacity(1000);
+        for i in 0..1000 {
+            let key = MemoKey {
+                ctx_state_obj: 1,
+                site: MEMO_SITE_FOR_ITEM,
+                skeleton_fp: 7,
+                probe_on: false,
+                item_key: Some(i),
+            };
+            c.insert(key, mk_entry(0));
+        }
+        assert_eq!(c.len(), 1000, "抬升后容量容纳千行列表（无逐出）");
+        assert_eq!(c.evictions, 0);
+        c.note_hit_site(MEMO_SITE_FOR_ITEM);
+        c.note_miss_site(MEMO_SITE_FOR_ITEM);
+        c.note_degraded_site(MEMO_SITE_FOR_ITEM);
+        assert_eq!(c.hits, 1);
+        assert_eq!(c.misses, 1);
+        assert_eq!(c.degraded, 1);
+        let sc = &c.site_counts[&MEMO_SITE_FOR_ITEM];
+        assert_eq!((sc.hits, sc.misses, sc.degraded), (1, 1, 1));
+        // 硬顶封口：超过 MAX 的抬升请求被截断（cap ≤ MAX，溢出走 LRU 逐出）。
+        c.ensure_capacity(usize::MAX);
+        for i in 0..(MEMO_CACHE_CAP_MAX + 8) {
+            let key = MemoKey { ctx_state_obj: 2, site: 9, skeleton_fp: i as u64, probe_on: false, item_key: None };
+            c.insert(key, mk_entry(0));
+        }
+        assert!(c.evictions > 0, "溢出硬顶走 LRU 逐出");
+        assert!(c.len() <= MEMO_CACHE_CAP_MAX + 1000);
     }
 
     #[test]
@@ -849,5 +1093,133 @@ mod tests {
         let mut pop = base.clone();
         pop.popover_open = Some("dlg-1".to_string());
         assert_ne!(f0, globals_fingerprint(&pop));
+    }
+
+    // ── PLAN-046：keyed-for 项级扫描（scan_for_item_body）──
+
+    fn item_elem(tag: &str, props: Vec<(&str, Expr)>) -> AuraNode {
+        elem(tag, props, vec![])
+    }
+
+    fn loop_vars_of(names: &[&str]) -> std::collections::HashSet<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// 条件臂递归 + 条件串入槽：`if r.open { text (checked: .ftExpanded) }`
+    /// → 条件解析槽 + prop 槽（filetree 形态的正确性前提）。
+    #[test]
+    fn scan_item_conditional_slots_and_recurses() {
+        let body = vec![AuraNode::Conditional {
+            condition: "r.open".to_string(),
+            then_body: vec![item_elem(
+                "text",
+                vec![("checked", ident_dot("ftExpanded"))],
+            )],
+            else_body: None,
+            span: None,
+            debug_id: None,
+        }];
+        match scan_for_item_body(&body, None, &loop_vars_of(&["r"])) {
+            ScanVerdict::Slots(slots) => assert_eq!(slots.len(), 2, "条件槽 + prop 槽"),
+            ScanVerdict::Degrade(r) => panic!("条件臂应可证: {}", r),
+        }
+    }
+
+    /// 条件串不可解析（VM 代码形态）→ 降级（宁缺勿错）。
+    #[test]
+    fn scan_item_unparsable_condition_degrades() {
+        let body = vec![AuraNode::Conditional {
+            condition: "heavy_call(.x)".to_string(),
+            then_body: vec![],
+            else_body: None,
+            span: None,
+            debug_id: None,
+        }];
+        // "heavy_call(.x)" 经 parse_expr_fragment 解析为 Call 形态 →
+        // scan_expr 以 dynamic_expr 拒绝（解析通道接受全表达式语法，
+        // 不可证形态统一由 scan_expr 分级拦截）。
+        assert!(matches!(
+            scan_for_item_body(&body, None, &loop_vars_of(&["r"])),
+            ScanVerdict::Degrade("dynamic_expr")
+        ));
+    }
+
+    /// 插值 bindings 全为循环变量 → 项值覆盖（安全）；含外部名 → 降级。
+    #[test]
+    fn scan_item_interpolation_external_name_degrades() {
+        let loop_only = AuraNode::Text(AuraTextContent::Interpolated {
+            template: "row ${r.id}".to_string(),
+            bindings: vec!["r".to_string()],
+        });
+        assert!(matches!(
+            scan_for_item_body(&[loop_only], None, &loop_vars_of(&["r"])),
+            ScanVerdict::Slots(_)
+        ));
+        let external = AuraNode::Text(AuraTextContent::Interpolated {
+            template: "n ${.count}".to_string(),
+            bindings: vec!["count".to_string()],
+        });
+        assert!(matches!(
+            scan_for_item_body(&[external], None, &loop_vars_of(&["r"])),
+            ScanVerdict::Degrade("interpolated_text_external")
+        ));
+    }
+
+    /// 嵌套 ForLoop / Outlet 在项体内 → 降级。
+    #[test]
+    fn scan_item_nested_for_and_outlet_degrade() {
+        let nested = AuraNode::ForLoop {
+            var: "g".to_string(),
+            index: None,
+            iterable: "r.guides".to_string(),
+            key_expr: None,
+            body: vec![],
+            span: None,
+            debug_id: None,
+        };
+        assert!(matches!(
+            scan_for_item_body(&[nested], None, &loop_vars_of(&["r"])),
+            ScanVerdict::Degrade("for_loop")
+        ));
+        assert!(matches!(
+            scan_for_item_body(&[AuraNode::Outlet], None, &loop_vars_of(&["r"])),
+            ScanVerdict::Degrade("outlet")
+        ));
+    }
+
+    /// 站点指纹：同站恒同；头差异（key 形态/iterable/var）或体结构差异拆键。
+    #[test]
+    fn for_site_fingerprint_distinguishes_sites() {
+        let key_a = Expr::Dot(Box::new(Expr::Ident(AutoStr::from("r"))), AutoStr::from("id"));
+        let key_b = Expr::Dot(Box::new(Expr::Ident(AutoStr::from("r"))), AutoStr::from("name"));
+        let body = vec![item_elem("text", vec![("value", ident_dot("x"))])];
+        let slots_a = match scan_for_item_body(&body, None, &loop_vars_of(&["r"])) {
+            ScanVerdict::Slots(s) => s,
+            ScanVerdict::Degrade(r) => panic!("扫描应通过: {}", r),
+        };
+        let f1 = for_site_fingerprint("r", None, ".rows", &key_a, &body, None, &slots_a);
+        let f2 = for_site_fingerprint("r", None, ".rows", &key_a, &body, None, &slots_a);
+        assert_eq!(f1, f2, "同站恒同");
+        assert_ne!(
+            f1,
+            for_site_fingerprint("r", None, ".rows", &key_b, &body, None, &slots_a),
+            "key 形态差异拆键"
+        );
+        assert_ne!(
+            f1,
+            for_site_fingerprint("r", None, ".other", &key_a, &body, None, &slots_a),
+            "iterable 差异拆键"
+        );
+        // 体读目标差异（x vs y，同为 Dot 判别式）→ 槽形态差异拆键。
+        let body2 = vec![item_elem("text", vec![("value", ident_dot("y"))])];
+        let slots_b = match scan_for_item_body(&body2, None, &loop_vars_of(&["r"])) {
+            ScanVerdict::Slots(s) => s,
+            ScanVerdict::Degrade(r) => panic!("扫描应通过: {}", r),
+        };
+        assert_ne!(
+            f1,
+            for_site_fingerprint("r", None, ".rows", &key_a, &body2, None, &slots_b),
+            "体读槽差异拆键"
+        );
     }
 }

@@ -1076,6 +1076,173 @@ impl<'a> AuraViewBuilder<'a> {
     /// both `DebugIdMap` (AuraNodeId) and `BuildProbe` (state bindings). This is
     /// the Plan 307 Task 9 deep-threaded path; the untracked `build()` path
     /// never reaches here, so its behaviour is unchanged.
+    /// PLAN-046 T-03：keyless for 的原始求值体——tracked 1107 臂逐字节搬移
+    /// （raw 面零重排；key_expr 缺省与 keyed 降级回退共用此单源实现）。
+    fn convert_for_unkeyed(
+        &self,
+        var: &str,
+        index: &Option<String>,
+        iterable: &str,
+        body: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
+        let array: Vec<Value> = match self.resolve_for_iterable(iterable, state_name, bindings) {
+            Some(v) => v,
+            None => return View::Empty,
+        };
+        let child_views: Vec<View<DynamicMessage>> = array.iter().enumerate()
+            .filter_map(|(i, item)| {
+                // Apply search filter if 'search' state exists and is non-empty
+                if !self.matches_search(item) { return None; }
+                let mut loop_bindings = bindings.clone();
+                loop_bindings.insert(var.to_string(), self.bridge.materialize_obj_ref(item));
+                if let Some(idx_var) = index {
+                    loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
+                }
+                self.render_for_item_view(i, item, var, index, iterable, body, path, id_map, probe, &loop_bindings)
+            })
+            .collect();
+        View::Column {
+            children: child_views,
+            spacing: 0,
+            padding: 0,
+            style: None,
+            onclick: None,
+            on_right_click: None,
+        }
+    }
+
+    /// PLAN-046 T-03：for iterable 三通道解析（自 tracked 1107 臂逐字节搬移）：
+    /// 内点链 → `resolve_iterable`（Plan 370 逐字段解引用）；裸标识符 →
+    /// bindings 查表（`row` 等外层循环变量，Plan 046·auto-lang 注记）→
+    /// `read_state_as_vec` → computed 回退（PLAN-051 C3）。`None` = 解析
+    /// 失败（调用方落 `View::Empty`，与原臂 return 语义一致）。
+    fn resolve_for_iterable(
+        &self,
+        iterable: &str,
+        state_name: &str,
+        bindings: &Bindings,
+    ) -> Option<Vec<Value>> {
+        // Plan 370 (Issue 2): for dotted prop paths like `.note.tags`,
+        // resolve via resolve_iterable (handles field-by-field deref).
+        let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
+        let has_inner_dot = stripped.contains('.') && !stripped.starts_with("store.");
+        if has_inner_dot {
+            return self.resolve_iterable(iterable, bindings);
+        }
+        // Plan 046:裸标识符 iterable(如内层 for 的 `row`)可能是外层循环
+        // 绑定的变量 —— 先查 bindings,命中则解包成 Vec<Value>(同 resolve_iterable
+        // :253-263 的 match 逻辑)。未命中再 fallback 到 read_state_as_vec。
+        if let Some(val) = bindings.get(state_name).cloned() {
+            return match val {
+                auto_val::Value::Array(arr) => Some(arr.iter().cloned().collect()),
+                auto_val::Value::Int(id) if id >= 4_000_000 => {
+                    Some(self.bridge.index_list_all(id as usize))
+                }
+                auto_val::Value::VmRef(r) => Some(self.bridge.index_list_all(r.id)),
+                _ => {
+                    log::warn!("view_builder: bindings['{}'] is not iterable: {:?}", state_name, val);
+                    None
+                }
+            };
+        }
+        // Read the iterable. `read_state_as_vec` handles BOTH an inline
+        // `Value::Array` and a `Value::Int(array_id)` heap-array reference
+        // (the latter is how `var x = []; x.push(...)` arrays are stored —
+        // e.g. 016-calendar's `.days`). A bare `read_state` + `Value::Array`
+        // match misses the heap-id form and silently renders an empty loop.
+        match self.read_state_as_vec(state_name) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                // PLAN-051 C3: state 读 miss → computed 求值回退
+                //（musk filteredMessages 链式 fn 调用形态的 for 源）。
+                let dbg_vec = self
+                    .eval_computed(state_name, bindings)
+                    .and_then(|v| self.value_to_iter_vec(&v));
+                if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+                    eprintln!("[VM-FOR] {} computed fallback rows={:?}", state_name, dbg_vec.as_ref().map(|v| v.len()));
+                }
+                match dbg_vec {
+                    Some(v) => Some(v),
+                    None => {
+                        log::warn!("view_builder: read_state_as_vec('{}') failed: {}", state_name, e);
+                        None
+                    }
+                }
+            }
+        }
+    }
+
+    /// PLAN-046 T-03：单项渲染（自 tracked 1107 臂逐字节搬移的 per-item 体）。
+    /// 返回 `None` = 搜索过滤剔除 / 体视图全空（与原臂 filter_map 语义一致）。
+    #[allow(clippy::too_many_arguments)]
+    fn render_for_item_view(
+        &self,
+        i: usize,
+        item: &Value,
+        var: &str,
+        index: &Option<String>,
+        iterable: &str,
+        body: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        loop_bindings: &Bindings,
+    ) -> Option<View<DynamicMessage>> {
+        // Include iteration index in path to ensure unique debug IDs
+        // across loop iterations (without this, all iterations produce
+        // identical paths, causing duplicate iced widget IDs).
+        //
+        // Plan 309 Phase 1 (Fix A): only push the body-node index
+        // when the body has >1 node. When the body is a single
+        // node, the iteration yields that node *directly* (no
+        // wrapping Column — see the `views.len() == 1` unwrap
+        // below), so the node's flattened VTree path is `[p, i]`.
+        // Unconditionally pushing `bi` (=0) recorded it at
+        // `[p, i, 0]`, diverging from the VTree path and leaving
+        // the inspector's AutoUI / source data empty for loop
+        // bodies. The multi-node case still wraps each iteration
+        // in a Column, so `bi` must be pushed there to match the
+        // extra VTree level. `record_for` is computed after the
+        // push, so it auto-reflects the corrected depth.
+        let body_len = body.len();
+        let views: Vec<View<DynamicMessage>> = body.iter()
+            .enumerate()
+            .filter_map(|(bi, n)| {
+                path.push(i);   // iteration index
+                if body_len > 1 { path.push(bi); }  // body node index (multi-node only)
+                // Record this iteration's context against the
+                // body node's path (Plan 307 Task 10). `index`
+                // is the 0-based iteration counter `i`, NOT the
+                // loop's optional index-variable name. Keep
+                // `iterable_repr` in its original ".notes" form.
+                let for_path: Vec<u16> =
+                    path.iter().map(|&x| x as u16).collect();
+                probe.record_for(&for_path, ForIter {
+                    var: var.to_string(),
+                    index: Some(i),
+                    value_repr: value_to_display_string(item),
+                    iterable_repr: iterable.to_string(),
+                });
+                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, loop_bindings);
+                if body_len > 1 { path.pop(); }
+                path.pop();
+                Some(v)
+            })
+            .collect();
+        if views.is_empty() { None }
+        else if views.len() == 1 {
+            // Plan 370 (Issue 1): skip Empty body views (see convert_node_with ForLoop).
+            let v = views.into_iter().next().unwrap();
+            if matches!(v, View::Empty) { None } else { Some(v) }
+        }
+        else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }) }
+    }
+
     fn convert_node_tracked_ctx(
         &self,
         node: &AuraNode,
@@ -1104,130 +1271,24 @@ impl<'a> AuraViewBuilder<'a> {
             AuraNode::Text(text_content) => {
                 self.convert_text_tracked_ctx(text_content, path, probe, bindings)
             }
-            AuraNode::ForLoop { var, index, iterable, body, .. } => {
-                // Strip leading dot from iterable name (e.g., ".notes" → "notes")
-                let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
-                // Plan 370 (Issue 2): for dotted prop paths like `.note.tags`,
-                // resolve via resolve_iterable (handles field-by-field deref).
-                let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
-                let has_inner_dot = stripped.contains('.') && !stripped.starts_with("store.");
-                let array: Vec<Value> = if has_inner_dot {
-                    match self.resolve_iterable(iterable, bindings) {
-                        Some(v) => v,
-                        None => return View::Empty,
-                    }
-                } else {
-                // Plan 046:裸标识符 iterable(如内层 for 的 `row`)可能是外层循环
-                // 绑定的变量 —— 先查 bindings,命中则解包成 Vec<Value>(同 resolve_iterable
-                // :253-263 的 match 逻辑)。未命中再 fallback 到 read_state_as_vec。
-                if let Some(val) = bindings.get(state_name).cloned() {
-                    match val {
-                        auto_val::Value::Array(arr) => arr.iter().cloned().collect(),
-                        auto_val::Value::Int(id) if id >= 4_000_000 => {
-                            self.bridge.index_list_all(id as usize)
-                        }
-                        auto_val::Value::VmRef(r) => {
-                            self.bridge.index_list_all(r.id)
-                        }
-                        _ => {
-                            log::warn!("view_builder: bindings['{}'] is not iterable: {:?}", state_name, val);
-                            return View::Empty;
-                        }
-                    }
-                } else {
-                // Read the iterable. `read_state_as_vec` handles BOTH an inline
-                // `Value::Array` and a `Value::Int(array_id)` heap-array reference
-                // (the latter is how `var x = []; x.push(...)` arrays are stored —
-                // e.g. 016-calendar's `.days`). A bare `read_state` + `Value::Array`
-                // match misses the heap-id form and silently renders an empty loop.
-                match self.read_state_as_vec(state_name) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        // PLAN-051 C3: state 读 miss → computed 求值回退
-                        //（musk filteredMessages 链式 fn 调用形态的 for 源）。
-                        let dbg_vec = self
-                            .eval_computed(state_name, bindings)
-                            .and_then(|v| self.value_to_iter_vec(&v));
-                        if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
-                            eprintln!("[VM-FOR] {} computed fallback rows={:?}", state_name, dbg_vec.as_ref().map(|v| v.len()));
-                        }
-                        match dbg_vec {
-                            Some(v) => v,
-                            None => {
-                                log::warn!("view_builder: read_state_as_vec('{}') failed: {}", state_name, e);
-                                return View::Empty;
-                            }
-                        }
-                    }
+            AuraNode::ForLoop { var, index, iterable, key_expr, body, .. } => {
+                // PLAN-046 T-03：keyed-for（`key:` 子句）走项级缓存门；
+                // keyless 循环 = 原始体直落（convert_for_unkeyed 逐字节
+                // 搬移自本臂，缺省路径零行为差——AC-01 前提）。
+                if let Some(key_expr) = key_expr {
+                    return self.convert_for_keyed(
+                        var,
+                        index,
+                        iterable,
+                        key_expr,
+                        body,
+                        path,
+                        id_map,
+                        probe,
+                        bindings,
+                    );
                 }
-                }
-                };
-                let child_views: Vec<View<DynamicMessage>> = array.iter().enumerate()
-                    .filter_map(|(i, item)| {
-                        // Apply search filter if 'search' state exists and is non-empty
-                        if !self.matches_search(item) { return None; }
-                        let mut loop_bindings = bindings.clone();
-                        loop_bindings.insert(var.clone(), self.bridge.materialize_obj_ref(item));
-                        if let Some(idx_var) = index {
-                            loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
-                        }
-                        // Include iteration index in path to ensure unique debug IDs
-                        // across loop iterations (without this, all iterations produce
-                        // identical paths, causing duplicate iced widget IDs).
-                        //
-                        // Plan 309 Phase 1 (Fix A): only push the body-node index
-                        // when the body has >1 node. When the body is a single
-                        // node, the iteration yields that node *directly* (no
-                        // wrapping Column — see the `views.len() == 1` unwrap
-                        // below), so the node's flattened VTree path is `[p, i]`.
-                        // Unconditionally pushing `bi` (=0) recorded it at
-                        // `[p, i, 0]`, diverging from the VTree path and leaving
-                        // the inspector's AutoUI / source data empty for loop
-                        // bodies. The multi-node case still wraps each iteration
-                        // in a Column, so `bi` must be pushed there to match the
-                        // extra VTree level. `record_for` is computed after the
-                        // push, so it auto-reflects the corrected depth.
-                        let body_len = body.len();
-                        let views: Vec<View<DynamicMessage>> = body.iter()
-                            .enumerate()
-                            .filter_map(|(bi, n)| {
-                                path.push(i);   // iteration index
-                                if body_len > 1 { path.push(bi); }  // body node index (multi-node only)
-                                // Record this iteration's context against the
-                                // body node's path (Plan 307 Task 10). `index`
-                                // is the 0-based iteration counter `i`, NOT the
-                                // loop's optional index-variable name. Keep
-                                // `iterable_repr` in its original ".notes" form.
-                                let for_path: Vec<u16> =
-                                    path.iter().map(|&x| x as u16).collect();
-                                probe.record_for(&for_path, ForIter {
-                                    var: var.clone(),
-                                    index: Some(i),
-                                    value_repr: value_to_display_string(item),
-                                    iterable_repr: iterable.clone(),
-                                });
-                                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, &loop_bindings);
-                                if body_len > 1 { path.pop(); }
-                                path.pop();
-                                Some(v)
-                            })
-                            .collect();
-                        if views.is_empty() { None }
-                        else if views.len() == 1 {
-                            // Plan 370 (Issue 1): skip Empty body views (see convert_node_with ForLoop).
-                            let v = views.into_iter().next().unwrap();
-                            if matches!(v, View::Empty) { None } else { Some(v) }
-                        }
-                        else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }) }
-                    })
-                    .collect();
-                View::Column {
-                    children: child_views,
-                    spacing: 0,
-                    padding: 0,
-                    style: None,
-            onclick: None, on_right_click: None,
-        }
+                self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings)
             }
             AuraNode::Conditional { condition, then_body, else_body, .. } => {
                 let is_true = self.eval_condition_with(condition, bindings);
@@ -5171,6 +5232,7 @@ let tabs_inner = View::Row {
                 self.widget_registry,
             ),
             probe_on,
+            item_key: None,
         };
         let seq = self.bridge.state_mutation_seq();
         let gfp = {
@@ -5266,6 +5328,7 @@ let tabs_inner = View::Row {
                 product: out.clone(),
                 probe_replay: probe_snap,
                 idmap_replay: idmap_snap,
+                replay_relative: false,
             };
             self.bridge.with_memo_cache(|c| c.insert(key, entry));
         } else {
@@ -20175,6 +20238,7 @@ impl<'a> AuraViewBuilder<'a> {
             site,
             skeleton_fp: crate::ui::memo_deps::skeleton_fingerprint(props, children),
             probe_on,
+            item_key: None,
         };
         let seq = self.bridge.state_mutation_seq();
         let gfp = self.memo_episode_fp();
@@ -20286,6 +20350,7 @@ impl<'a> AuraViewBuilder<'a> {
             product: product.clone(),
             probe_replay: probe_snap,
             idmap_replay: idmap_snap,
+            replay_relative: false,
         };
         self.bridge.with_memo_cache(|c| c.insert(key, entry));
         product
@@ -20354,6 +20419,316 @@ impl<'a> AuraViewBuilder<'a> {
                 self.memo_nav_buttons_walk(children, bindings, h);
             }
         }
+    }
+
+    /// PLAN-046 T-03：keyed-for 项级缓存门（`for x in .items key: .id`）。
+    ///
+    /// 键 = `(ctx_state_obj, MEMO_SITE_FOR_ITEM, 站点骨架指纹, probe_on,
+    /// key 值指纹)`；命中 = 快速路径（seq 未动 ∧ episode 同）或慢路径
+    /// （项值指纹 ∧ 项体读槽重解析 ∧ [声明 index 时迭代位] 全同——
+    /// `memo_combine_for`）。降级（宁缺勿错，回退体=convert_for_unkeyed
+    /// 同一实现，行为与非 key 化一致）：嵌套绑定上下文、项体扫描降级、
+    /// key 求值失败/重复 key（绝不静默去重）、项值超指纹预算（AC-03
+    /// 整体降级）、存侧读槽指纹失败。输出序恒随 iterable 当前序（缓存
+    /// 改变的是求值次数，不是输出顺序——AC-02）。
+    #[allow(clippy::too_many_arguments)]
+    fn convert_for_keyed(
+        &self,
+        var: &str,
+        index: &Option<String>,
+        iterable: &str,
+        key_expr: &Expr,
+        body: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        const SITE: u8 = crate::ui::memo_deps::MEMO_SITE_FOR_ITEM;
+        let probe_on = probe.is_enabled();
+        let base_len = path.len();
+
+        // ── 降级前置门：嵌套绑定上下文（T-01 D-4 保守裁定——外层循环变量
+        // 进入项体求值，其读面版本静态不可证；memo_ctx_ok 的 for 面）。
+        if !bindings.is_empty() {
+            self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
+            memo_for_diag("nested-bindings");
+            return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
+        }
+
+        // ── iterable 解析（与 keyless 同一通道，None → View::Empty）。
+        let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
+        let Some(array) = self.resolve_for_iterable(iterable, state_name, bindings) else {
+            return View::Empty;
+        };
+
+        // ── 静态门：项体扫描（外部状态读入槽）+ 站点骨架指纹。
+        let loop_vars: std::collections::HashSet<String> = {
+            let mut s = std::collections::HashSet::new();
+            s.insert(var.to_string());
+            if let Some(iv) = index {
+                s.insert(iv.clone());
+            }
+            s
+        };
+        let slots = match crate::ui::memo_deps::scan_for_item_body(body, self.widget_registry, &loop_vars)
+        {
+            crate::ui::memo_deps::ScanVerdict::Slots(s) => s,
+            crate::ui::memo_deps::ScanVerdict::Degrade(reason) => {
+                self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
+                memo_for_diag(&format!("scan:{}", reason));
+                return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
+            }
+        };
+        let skeleton_fp = crate::ui::memo_deps::for_site_fingerprint(
+            var,
+            index.as_deref(),
+            iterable,
+            key_expr,
+            body,
+            self.widget_registry,
+            &slots,
+        );
+        let ctx_obj = self.memo_ctx_obj();
+        let seq = self.bridge.state_mutation_seq();
+        let gfp = self.memo_episode_fp();
+
+        // ── pass 1：逐项 key/item 指纹 + 循环绑定预构。重复 key / key 求值
+        // 失败 / 项值超指纹预算 → 整体降级原始路径（AC-03；此时尚未与缓存
+        // 交互，无半帧状态）。
+        struct KeyedPlan {
+            key_fp: u64,
+            item_fp: u64,
+            loop_bindings: Bindings,
+            item: Value,
+        }
+        let mut plans: Vec<KeyedPlan> = Vec::with_capacity(array.len());
+        let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
+        for (i, item) in array.iter().enumerate() {
+            let mut lb = bindings.clone();
+            lb.insert(var.to_string(), self.bridge.materialize_obj_ref(item));
+            if let Some(idx_var) = index {
+                lb.insert(idx_var.clone(), Value::Int(i as i32));
+            }
+            let Some(kv) = self.resolve_expr_to_value(key_expr, &lb) else {
+                self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
+                memo_for_diag("key-eval");
+                return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
+            };
+            let expand = |x: &Value| self.bridge.expand_heap_for_fingerprint(x);
+            let Some(kfp) = crate::ui::memo_deps::fingerprint_value(&kv, &expand) else {
+                self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
+                memo_for_diag("key-fp");
+                return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
+            };
+            if !seen.insert(kfp) {
+                // 重复 key → 整体降级（一次性诊断），绝不静默去重。
+                self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
+                memo_for_diag("dup-key");
+                return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
+            }
+            let Some(ifp) = crate::ui::memo_deps::fingerprint_value(item, &expand) else {
+                // 项值超 4096 预算 → 整体降级（AC-03；展开不了的堆引用
+                // 绝不按含 id 指纹命中）。
+                self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
+                memo_for_diag("item-fp-budget");
+                return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
+            };
+            plans.push(KeyedPlan {
+                key_fp: kfp,
+                item_fp: ifp,
+                loop_bindings: lb,
+                item: item.clone(),
+            });
+        }
+
+        // ── 容量抬升（Q-03：千行列表防 LRU 抖动，硬顶 MEMO_CACHE_CAP_MAX）。
+        self.bridge.with_memo_cache(|c| c.ensure_capacity(plans.len()));
+
+        // ── pass 2：按 iterable 当前序逐项命中/fill。
+        let base_u16: Vec<u16> = path.iter().map(|&x| x as u16).collect();
+        let mut child_views: Vec<View<DynamicMessage>> = Vec::with_capacity(plans.len());
+        for (i, plan) in plans.iter().enumerate() {
+            // 搜索过滤每帧按当前态现算（帧级集合语义；不进项缓存）。
+            if !self.matches_search(&plan.item) {
+                continue;
+            }
+            let key = crate::ui::memo_deps::MemoKey {
+                ctx_state_obj: ctx_obj,
+                site: SITE,
+                skeleton_fp,
+                probe_on,
+                item_key: Some(plan.key_fp),
+            };
+            let cached = self.bridge.with_memo_cache(|c| {
+                c.lookup(&key).map(|e| {
+                    (
+                        e.seq_at_fill,
+                        e.globals_fp,
+                        e.dyn_fp,
+                        e.product.clone(),
+                        e.probe_replay.clone(),
+                        e.idmap_replay.clone(),
+                        e.read_exprs.clone(),
+                    )
+                })
+            });
+            let mut reused: Option<View<DynamicMessage>> = None;
+            if let Some((seq0, gfp0, dyn0, product, prel, irel, slots0)) = cached {
+                let hit = if seq0 == seq && gfp0 == gfp {
+                    // 快速路径：fill 后全局 seq 未动 ∧ episode 同。
+                    true
+                } else if gfp0 == gfp {
+                    // 慢路径：项体读槽重解析（循环绑定上下文）∧ 项值 ∧
+                    // index 位 → 值指纹比对（档 A 慢路径同源）。
+                    self.memo_slots_fp(&slots0, &plan.loop_bindings)
+                        .map(|sfp| {
+                            Some(Self::memo_combine_for(sfp, plan.item_fp, index.as_ref().map(|_| i as u64)))
+                                == dyn0
+                        })
+                        .unwrap_or(false)
+                } else {
+                    false
+                };
+                if hit {
+                    self.bridge.with_memo_cache(|c| c.note_hit_site(SITE));
+                    Self::replay_for_item(probe, id_map, &base_u16, i, prel, irel);
+                    reused = Some(product);
+                } else {
+                    self.bridge.with_memo_cache(|c| c.note_miss_site(SITE));
+                }
+            }
+            let product = match reused {
+                Some(p) => p,
+                None => {
+                    // fill：全新求值（render_for_item_view 内部 push/pop [i]）。
+                    let out = self.render_for_item_view(
+                        i, &plan.item, var, index, iterable, body, path, id_map, probe,
+                        &plan.loop_bindings,
+                    );
+                    let Some(out) = out else {
+                        // 搜索剔除/空体——与 keyless 同跳过，不入缓存。
+                        continue;
+                    };
+                    // 簿记快照：base+[i] 前缀下本帧新增条目 → 项内相对路径。
+                    let mut prefix_u16 = base_u16.clone();
+                    prefix_u16.push(i as u16);
+                    let mut prefix_us: Vec<usize> = path[..base_len].to_vec();
+                    prefix_us.push(i);
+                    let prel_rel: Vec<(Vec<u16>, crate::ui::debug::ProbeEntry)> = probe
+                        .snapshot_prefix(&prefix_u16)
+                        .into_iter()
+                        .map(|(mut p, e)| {
+                            p.drain(..prefix_u16.len());
+                            (p, e)
+                        })
+                        .collect();
+                    let irel_rel: Vec<(Vec<usize>, crate::aura::AuraNodeId)> = id_map
+                        .snapshot_prefix(&prefix_us)
+                        .into_iter()
+                        .map(|(mut p, e)| {
+                            p.drain(..prefix_us.len());
+                            (p, e)
+                        })
+                        .collect();
+                    // 存侧指纹（fill 后状态）：读槽重解析失败 → 该项不入缓存。
+                    match self.memo_slots_fp(&slots, &plan.loop_bindings) {
+                        Some(sfp) => {
+                            let entry = crate::ui::memo_deps::MemoEntry {
+                                seq_at_fill: self.bridge.state_mutation_seq(),
+                                globals_fp: gfp,
+                                read_exprs: slots.clone(),
+                                dyn_fp: Some(Self::memo_combine_for(
+                                    sfp,
+                                    plan.item_fp,
+                                    index.as_ref().map(|_| i as u64),
+                                )),
+                                product: out.clone(),
+                                probe_replay: prel_rel,
+                                idmap_replay: irel_rel,
+                                replay_relative: true,
+                            };
+                            self.bridge.with_memo_cache(|c| c.insert(key, entry));
+                        }
+                        None => {
+                            self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
+                        }
+                    }
+                    out
+                }
+            };
+            child_views.push(product);
+        }
+        View::Column {
+            children: child_views,
+            spacing: 0,
+            padding: 0,
+            style: None,
+            onclick: None,
+            on_right_click: None,
+        }
+    }
+
+    /// keyed-for 项级慢路径动态指纹组合：读槽 ∧ 项值 ∧ [index 位]。
+    /// index 声明即参与（保守：无法廉价证明体不读 index——重排必失效）。
+    fn memo_combine_for(slots_fp: u64, item_fp: u64, idx: Option<u64>) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        "for_item".hash(&mut h);
+        slots_fp.hash(&mut h);
+        item_fp.hash(&mut h);
+        idx.hash(&mut h);
+        h.finish()
+    }
+
+    /// PLAN-046 T-03：命中帧簿记重放——项内相对路径以当前基路径+[i] 前缀化
+    /// （重排后簿记落位正确），ForIter.index 补丁为当前迭代位。probe 面
+    /// （acceptance 事件索引/迭代上下文）与 id_map 面（inspector）两通道。
+    fn replay_for_item(
+        probe: &mut BuildProbe,
+        id_map: &mut DebugIdMap,
+        base_u16: &[u16],
+        i: usize,
+        probe_rel: Vec<(Vec<u16>, crate::ui::debug::ProbeEntry)>,
+        idmap_rel: Vec<(Vec<usize>, crate::aura::AuraNodeId)>,
+    ) {
+        let mut prefixed: Vec<(Vec<u16>, crate::ui::debug::ProbeEntry)> =
+            Vec::with_capacity(probe_rel.len());
+        for (rel, mut e) in probe_rel {
+            if let Some(fc) = e.for_context.as_mut() {
+                fc.index = Some(i);
+            }
+            let mut abs = base_u16.to_vec();
+            abs.push(i as u16);
+            abs.extend_from_slice(&rel);
+            prefixed.push((abs, e));
+        }
+        probe.merge_entries(prefixed);
+        let mut idabs: Vec<(Vec<usize>, crate::aura::AuraNodeId)> =
+            Vec::with_capacity(idmap_rel.len());
+        for (rel, id) in idmap_rel {
+            let mut abs: Vec<usize> = base_u16.iter().map(|&x| x as usize).collect();
+            abs.push(i);
+            abs.extend_from_slice(&rel);
+            idabs.push((abs, id));
+        }
+        id_map.merge_entries(idabs);
+    }
+}
+
+/// PLAN-046 T-03：keyed-for 降级一次性诊断（正确性相关降级作者应知情；
+/// AUTO_MEMO_DIAG=1 时每次都打）。进程级一次，避免日志风暴。
+fn memo_for_diag(reason: &str) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static FOR_DIAG_SHOWN: AtomicBool = AtomicBool::new(false);
+    if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+        eprintln!("[MEMO-DIAG] for_item DEGRADE reason={reason}");
+        return;
+    }
+    if !FOR_DIAG_SHOWN.swap(true, Ordering::Relaxed) {
+        eprintln!(
+            "[PLAN-046] keyed-for 降级原始路径（reason={reason}，本进程仅提示一次）；AUTO_MEMO_DIAG=1 可看每次"
+        );
     }
 }
 
@@ -21143,5 +21518,367 @@ mod plan045_memo_tests {
             let after = (c.hits, c.misses, c.len());
             assert_eq!(before, after, "未武装 = nav 门惰性");
         });
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ── PLAN-046: keyed-for 项级 memo 单测（AC-02/AC-03）──
+#[cfg(test)]
+mod plan046_for_memo_tests {
+    use super::*;
+    use crate::ast::Type;
+    use crate::aura::{AuraStateDef, AuraWidget};
+
+    fn keyed_widget() -> AuraWidget {
+        AuraWidget {
+            named_views: Vec::new(),
+            actions: None,
+            name: "KeyedApp".to_string(),
+            state_vars: vec![
+                AuraStateDef {
+                    name: "rows".to_string(),
+                    type_info: Type::List(Box::new(Type::Int)),
+                    initial: Expr::Array(vec![]),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "outers".to_string(),
+                    type_info: Type::List(Box::new(Type::Int)),
+                    initial: Expr::Array(vec![]),
+                    decorators: vec![],
+                },
+            ],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            timers: Vec::new(),
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        }
+    }
+
+    fn row(id: i32, name: &str) -> Value {
+        let mut o = auto_val::Obj::new();
+        o.set("id", Value::Int(id));
+        o.set("name", Value::str(name));
+        Value::obj(o)
+    }
+
+    fn obj_rows(rows: &[Value]) -> Value {
+        Value::Array(auto_val::Array::from(rows.to_vec()))
+    }
+
+    /// `for r in .rows key: r.id { text (text: r.name) }`——稳定 key（id）+
+    /// 可变内容（name）的最小形态：单项内容修改走慢路径 miss 而非换键。
+    fn keyed_node(index: Option<&str>, key: Expr) -> AuraNode {
+        AuraNode::ForLoop {
+            var: "r".to_string(),
+            index: index.map(|s| s.to_string()),
+            iterable: ".rows".to_string(),
+            key_expr: Some(key),
+            body: vec![AuraNode::element("text").with_prop(
+                "text",
+                Expr::Dot(Box::new(Expr::Ident("r".into())), "name".into()),
+            )],
+            span: None,
+            debug_id: None,
+        }
+    }
+
+    fn unkeyed_node() -> AuraNode {
+        AuraNode::ForLoop {
+            var: "r".to_string(),
+            index: None,
+            iterable: ".rows".to_string(),
+            key_expr: None,
+            body: vec![AuraNode::element("text").with_prop(
+                "text",
+                Expr::Dot(Box::new(Expr::Ident("r".into())), "name".into()),
+            )],
+            span: None,
+            debug_id: None,
+        }
+    }
+
+    fn id_key() -> Expr {
+        Expr::Dot(Box::new(Expr::Ident("r".into())), "id".into())
+    }
+
+    fn tracked_build(bridge: &VmBridge, node: &AuraNode) -> String {
+        let (v, _idmap, _probe) = AuraViewBuilder::new(bridge, "KeyedApp").build_with_debug(node);
+        format!("{v:?}")
+    }
+
+    fn counts(bridge: &VmBridge) -> (u64, u64, u64, usize) {
+        bridge.with_memo_cache(|c| (c.hits, c.misses, c.degraded, c.len()))
+    }
+
+    /// fill 后无写重建 → 快速路径全命中、产物一致（AC-02 基础面）。
+    #[test]
+    fn plan046_keyed_fill_then_fast_hit() {
+        let widget = keyed_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge
+            .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "bbb"), row(3, "ccc")]))
+            .unwrap();
+        let node = keyed_node(None, id_key());
+
+        let k1 = tracked_build(&bridge, &node); // fill
+        let (h0, m0, d0, n0) = counts(&bridge);
+        assert_eq!((h0, m0, d0), (0, 0, 0), "fill 不计 hit/miss/degraded");
+        assert_eq!(n0, 3, "三行三条目");
+
+        let k2 = tracked_build(&bridge, &node); // 无状态写 → 快速路径
+        let (h1, m1, d1, _) = counts(&bridge);
+        assert_eq!((h1 - h0, m1 - m0, d1 - d0), (3, 0, 0), "三行全命中");
+        assert_eq!(k1, k2, "快路径产物一致");
+    }
+
+    /// AC-02 重排：键集不变序变 → 全部命中；输出序恒随 iterable 当前序。
+    #[test]
+    fn plan046_keyed_reorder_all_hit_output_order() {
+        let widget = keyed_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge
+            .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "bbb"), row(3, "ccc")]))
+            .unwrap();
+        let node = keyed_node(None, id_key());
+        let _ = tracked_build(&bridge, &node);
+        let (h0, m0, _, _) = counts(&bridge);
+
+        bridge
+            .write_state("rows", obj_rows(&[row(3, "ccc"), row(1, "aaa"), row(2, "bbb")]))
+            .unwrap();
+        let k = tracked_build(&bridge, &node);
+        let (h1, m1, _, _) = counts(&bridge);
+        assert_eq!(h1 - h0, 3, "重排全命中（项产物按 key 复用）");
+        assert_eq!(m1 - m0, 0, "重排零 miss");
+        let (pc, pa, pb) = (
+            k.find("ccc").unwrap(),
+            k.find("aaa").unwrap(),
+            k.find("bbb").unwrap(),
+        );
+        assert!(pc < pa && pa < pb, "输出序=iterable 当前序 c,a,b：{}", k);
+    }
+
+    /// AC-02 单项内容修改（key 稳定）：仅该项慢路径 miss，其余命中。
+    #[test]
+    fn plan046_keyed_single_modify_only_item_misses() {
+        let widget = keyed_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge
+            .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "bbb"), row(3, "ccc")]))
+            .unwrap();
+        let node = keyed_node(None, id_key());
+        let _ = tracked_build(&bridge, &node);
+        let (h0, m0, _, _) = counts(&bridge);
+
+        bridge
+            .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "zzz"), row(3, "ccc")]))
+            .unwrap();
+        let k = tracked_build(&bridge, &node);
+        let (h1, m1, _, _) = counts(&bridge);
+        assert_eq!(h1 - h0, 2, "未变两项命中");
+        assert_eq!(m1 - m0, 1, "仅内容变化项 miss（key 同条目在册）");
+        assert!(k.contains("zzz") && !k.contains("bbb"), "产物反映新内容：{}", k);
+    }
+
+    /// AC-02 增删：新增项 fill（新键新条目）、删除项靠 LRU 闲置，存续全命中。
+    #[test]
+    fn plan046_keyed_add_remove_only_delta() {
+        let widget = keyed_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge
+            .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "bbb")]))
+            .unwrap();
+        let node = keyed_node(None, id_key());
+        let _ = tracked_build(&bridge, &node);
+        let (h0, m0, _, n0) = counts(&bridge);
+
+        bridge
+            .write_state(
+                "rows",
+                obj_rows(&[row(1, "aaa"), row(2, "bbb"), row(3, "ccc")]),
+            )
+            .unwrap();
+        let _ = tracked_build(&bridge, &node);
+        let (h1, m1, _, n1) = counts(&bridge);
+        assert_eq!((h1 - h0, m1 - m0), (2, 0), "新增仅 333 fill（新键），存续全命中");
+        assert_eq!(n1, n0 + 1);
+
+        bridge.write_state("rows", obj_rows(&[row(1, "aaa")])).unwrap();
+        let _ = tracked_build(&bridge, &node);
+        let (h2, m2, _, _) = counts(&bridge);
+        assert_eq!((h2 - h1, m2 - m1), (1, 0), "删除后存续项命中，零 miss");
+    }
+
+    /// 声明 index 的保守面：迭代位入命中条件 → 重排必失效（T-01 D-4；
+    /// 产物依赖位置时正确性优先，宁可多重求值）。
+    #[test]
+    fn plan046_keyed_index_declared_reorder_misses() {
+        let widget = keyed_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge
+            .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "bbb"), row(3, "ccc")]))
+            .unwrap();
+        let node = keyed_node(Some("i"), id_key());
+        let _ = tracked_build(&bridge, &node);
+        let (h0, m0, _, _) = counts(&bridge);
+
+        bridge
+            .write_state("rows", obj_rows(&[row(3, "ccc"), row(1, "aaa"), row(2, "bbb")]))
+            .unwrap();
+        let k = tracked_build(&bridge, &node);
+        let (h1, m1, _, _) = counts(&bridge);
+        assert_eq!((h1 - h0, m1 - m0), (0, 3), "index 声明 → 重排全失效（保守）");
+        let (pc, pa, pb) = (
+            k.find("ccc").unwrap(),
+            k.find("aaa").unwrap(),
+            k.find("bbb").unwrap(),
+        );
+        assert!(pc < pa && pa < pb, "重求值下输出序仍正确：{}", k);
+    }
+
+    /// AC-03 重复 key：整体降级原始路径（绝不静默去重），产物与非 key 化一致。
+    #[test]
+    fn plan046_dup_key_degrades_to_raw() {
+        let widget = keyed_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge
+            .write_state("rows", obj_rows(&[row(1, "aaa"), row(1, "bbb")]))
+            .unwrap();
+        let keyed = keyed_node(None, id_key());
+        let plain = unkeyed_node();
+
+        let k_keyed = tracked_build(&bridge, &keyed);
+        let (h, m, d, n) = counts(&bridge);
+        assert_eq!((h, m), (0, 0), "降级帧零命中零 miss");
+        assert_eq!(d, 1, "重复 key 降级计数");
+        assert_eq!(n, 0, "降级不建条目");
+
+        let k_plain = tracked_build(&bridge, &plain);
+        assert_eq!(k_keyed, k_plain, "降级产物与非 key 化逐字节一致");
+    }
+
+    /// AC-03 key 求值失败（读缺失字段）：整体降级，行为与非 key 化一致。
+    #[test]
+    fn plan046_key_eval_fail_degrades_to_raw() {
+        let widget = keyed_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge
+            .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "bbb")]))
+            .unwrap();
+        let keyed = keyed_node(None, Expr::Ident(".missing".into()));
+        let plain = unkeyed_node();
+
+        let k_keyed = tracked_build(&bridge, &keyed);
+        let (_, _, d, n) = counts(&bridge);
+        assert_eq!((d, n), (1, 0), "key 求值失败降级且不建条目");
+        let k_plain = tracked_build(&bridge, &plain);
+        assert_eq!(k_keyed, k_plain);
+    }
+
+    /// AC-03 项值超指纹预算（4096 节点）：整体降级，key 可解析也不入缓存。
+    #[test]
+    fn plan046_item_fp_budget_degrades_to_raw() {
+        let widget = keyed_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        let mut big = auto_val::Obj::new();
+        big.set("id", Value::Int(7));
+        big.set("name", Value::str("big"));
+        big.set(
+            "data",
+            Value::Array(auto_val::Array::from(
+                (0..5000).map(Value::Int).collect::<Vec<Value>>(),
+            )),
+        );
+        bridge
+            .write_state("rows", Value::Array(auto_val::Array::from(vec![Value::obj(big)])))
+            .unwrap();
+        let keyed = keyed_node(None, id_key());
+        let plain = unkeyed_node();
+
+        let k_keyed = tracked_build(&bridge, &keyed);
+        let (_, _, d, n) = counts(&bridge);
+        assert_eq!((d, n), (1, 0), "超预算项值 → 整体降级不建条目");
+        let k_plain = tracked_build(&bridge, &plain);
+        assert_eq!(k_keyed, k_plain, "降级产物一致");
+    }
+
+    /// 嵌套 keyed-for：外层 keyless 循环体内外层绑定非空 → 内层整体降级
+    /// （T-01 D-4 保守裁定），渲染行为与原始一致。
+    #[test]
+    fn plan046_nested_keyed_for_degrades() {
+        let widget = keyed_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge.write_state("outers", Value::Array(auto_val::Array::from(vec![Value::Int(1)]))).unwrap();
+        bridge
+            .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "bbb")]))
+            .unwrap();
+        let outer = AuraNode::ForLoop {
+            var: "o".to_string(),
+            index: None,
+            iterable: ".outers".to_string(),
+            key_expr: None,
+            body: vec![keyed_node(None, id_key())],
+            span: None,
+            debug_id: None,
+        };
+
+        let k = tracked_build(&bridge, &outer);
+        let (_, _, d, n) = counts(&bridge);
+        assert!(d >= 1, "内层嵌套绑定上下文降级计数");
+        assert_eq!(n, 0, "降级不建条目");
+        assert!(k.contains("aaa") && k.contains("bbb"), "内层原始渲染在册：{}", k);
+    }
+
+    /// probe/idmap 簿记重放：命中帧事件索引在册（fill 帧 probe 面 = 命中帧
+    /// probe 面——ForIter.index 补丁到当前迭代位）。
+    #[test]
+    fn plan046_keyed_hit_replays_probe_bookkeeping() {
+        let widget = keyed_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge
+            .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "bbb")]))
+            .unwrap();
+        let node = keyed_node(None, id_key());
+
+        let (_, _, probe_fill) =
+            AuraViewBuilder::new(&bridge, "KeyedApp").build_with_debug(&node);
+        let fill_for: Vec<usize> = probe_fill
+            .snapshot()
+            .values()
+            .filter_map(|e| e.for_context.as_ref().map(|f| f.index.unwrap()))
+            .collect();
+        assert_eq!(fill_for.len(), 2, "fill 帧两条 record_for 在册");
+
+        bridge
+            .write_state("rows", obj_rows(&[row(2, "bbb"), row(1, "aaa")]))
+            .unwrap();
+        let (_, _, probe_hit) =
+            AuraViewBuilder::new(&bridge, "KeyedApp").build_with_debug(&node);
+        let hit_for: Vec<usize> = probe_hit
+            .snapshot()
+            .values()
+            .filter_map(|e| e.for_context.as_ref().map(|f| f.index.unwrap()))
+            .collect();
+        assert_eq!(hit_for.len(), fill_for.len(), "命中帧 probe 条目数与 fill 帧一致");
+        assert!(
+            hit_for.iter().all(|idx| matches!(idx, 0 | 1)),
+            "重排命中帧 ForIter.index 补丁在 [0,1] 内：{:?}",
+            hit_for
+        );
     }
 }
