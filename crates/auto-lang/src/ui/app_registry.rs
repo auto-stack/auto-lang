@@ -488,7 +488,9 @@ pub fn gallery_extra_roots() -> Vec<(String, PathBuf)> {
         crate::vm::ffi::stdlib::storage_host_read("shell.apps.scan_galleries").as_deref(),
         Path::new(".."),
     );
-    eprintln!("[app-registry] gallery roots: {:?} (AUTO_OS_ROOT={:?})", roots, std::env::var("AUTO_OS_ROOT").ok());
+    if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+        eprintln!("[app-registry] gallery roots: {:?} (AUTO_OS_ROOT={:?})", roots, std::env::var("AUTO_OS_ROOT").ok());
+    }
     roots
 }
 
