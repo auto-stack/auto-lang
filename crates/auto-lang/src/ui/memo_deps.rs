@@ -417,7 +417,8 @@ fn scan_node_registry(
 ///   含外部名 → 降级（v1 保守——外部读插值的槽化不在档 B 面）；
 /// - Conditional：条件串经 `parse_expr_fragment` 解析入槽（解析失败降级），
 ///   双臂递归；
-/// - 嵌套 ForLoop / Outlet：降级（嵌套绑定上下文由调用方先拦）；
+/// - 嵌套 ForLoop：iterable 根 ∈ 循环变量（`r.guides`）→ 项值覆盖，递归
+///   体（内层变量并入循环变量集）；根为状态 → 降级。Outlet：降级；
 /// - Component：prop 槽 + children + registry 模板递归（`scan_node_registry`
 ///   同型语义；registry 缺席 → 降级）；
 /// - Link：children 递归。
@@ -460,10 +461,11 @@ fn scan_item_node(
         }
         AuraNode::Text(crate::aura::AuraTextContent::Literal(_)) => Ok(()),
         AuraNode::Text(crate::aura::AuraTextContent::Interpolated { bindings, .. }) => {
-            // 全部插值名都是循环变量（值/索引）→ 项值指纹已覆盖；含外部名
-            // 的插值其读面不在项值内 → 降级（v1 保守）。
+            // 插值名根段（`r.rowcls` → `r`）∈ 循环变量 → 项值指纹已覆盖；
+            // 外部名（`.count` → `count`）其读面不在项值内 → 降级（v1 保守）。
             for b in bindings {
-                if !loop_vars.contains(b) {
+                let root = b.split('.').next().unwrap_or(b);
+                if !loop_vars.contains(root) {
                     return Err("interpolated_text_external");
                 }
             }
@@ -484,7 +486,26 @@ fn scan_item_node(
             }
             Ok(())
         }
-        AuraNode::ForLoop { .. } => Err("for_loop"),
+        AuraNode::ForLoop { iterable, var, index, body, .. } => {
+            // PLAN-046 T-06 扩展：嵌套 for 的 iterable **根段 ∈ 循环变量**
+            //（如 filetree 的 `for g in r.guides`）→ 其求值面是项值的纯
+            // 函数（项变即失效）→ 递归体（内层 var/index 并入循环变量集）；
+            // iterable 根是状态（`.` 前缀或外部名）→ 降级（保守不变）。
+            let root = iterable.trim_start_matches('.').split('.').next().unwrap_or("");
+            if iterable.starts_with('.') || !loop_vars.contains(root) {
+                return Err("for_loop");
+            }
+            let mut inner = loop_vars.clone();
+            inner.insert(var.clone());
+            if let Some(iv) = index {
+                inner.insert(iv.clone());
+            }
+            inner.insert(root.to_string());
+            for c in body {
+                scan_item_node(c, slots, registry, &inner, visited)?;
+            }
+            Ok(())
+        }
         AuraNode::Outlet { .. } => Err("outlet"),
         AuraNode::MemoBlock { .. } => Err("memo_block"),
         AuraNode::Component { name, props, children, .. } => {
@@ -1284,9 +1305,11 @@ mod tests {
         ));
     }
 
-    /// 嵌套 ForLoop / Outlet 在项体内 → 降级。
+    /// 嵌套 ForLoop（T-06 扩展）：iterable 根 ∈ 循环变量 → 可证（递归）；
+    /// 根为外部状态 → 降级。Outlet 在项体内 → 降级。
     #[test]
     fn scan_item_nested_for_and_outlet_degrade() {
+        // `for g in r.guides`：根 r ∈ 循环变量 → 项值覆盖，Slots。
         let nested = AuraNode::ForLoop {
             var: "g".to_string(),
             index: None,
@@ -1298,6 +1321,20 @@ mod tests {
         };
         assert!(matches!(
             scan_for_item_body(&[nested], None, &loop_vars_of(&["r"])),
+            ScanVerdict::Slots(_)
+        ));
+        // `for g in .external`：状态根 → 降级。
+        let external = AuraNode::ForLoop {
+            var: "g".to_string(),
+            index: None,
+            iterable: ".external".to_string(),
+            key_expr: None,
+            body: vec![],
+            span: None,
+            debug_id: None,
+        };
+        assert!(matches!(
+            scan_for_item_body(&[external], None, &loop_vars_of(&["r"])),
             ScanVerdict::Degrade("for_loop")
         ));
         assert!(matches!(
