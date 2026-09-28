@@ -1,18 +1,18 @@
 # 33 - Auto 标准库多后台与 Web 服务运行时
 
-> 状态：方案稿（2026-09-23 静态审计；2026-09-24 更新阶段状态）；现状以 `docs/specs/` 与源码为准。
-> 实施入口：阶段 A [PLAN-696](../plans/archive/696-stdlib-http-server-runtime-hardening.md) 已交付；阶段 B [PLAN-699](../plans/699-vm-http-transport-axum-bridge.md) 待实施。
+> 状态：方案稿（2026-09-23 静态审计；2026-09-28 更新阶段状态与 C1 设计）；现状以 `docs/specs/` 与源码为准。
+> 实施入口：阶段 A [PLAN-696](../plans/archive/696-stdlib-http-server-runtime-hardening.md)、阶段 B [PLAN-699](../plans/archive/699-vm-http-transport-axum-bridge.md) 已交付；阶段 C1 [PLAN-705](../plans/705-vm-http-handler-async-lifecycle.md) 待实施。
 > 历史输入：[Design 13](13-networking.md)、[多平台填充草案](raw/stdlib-organization.md)、[HTTP 草案](raw/http-server-stdlib.md)。
 
 ## 1. 结论与适用边界
 
-**阶段状态**：下文 §2 与 §5 的风险表保留 PLAN-696 实施前的审计基线，不能当成 2026-09-24 的现状。PLAN-696 已修复分段 body、慢 SSE 阻塞和 VM 指针跨线程转运；现行入口仍是手写 HTTP/1，服务关闭、资源预算与 Axum/Hyper 桥接由 PLAN-699 接续。PLAN-698 的 VM publisher SSE 仍在独立复审/修复中，PLAN-699 的 SSE 改造须以其折叠结果为基线。
+**阶段状态**：下文 §2 与 §5 的风险表保留 PLAN-696 实施前的审计基线，不能当成 2026-09-28 的现状。PLAN-696 已修复分段 body、慢 SSE 阻塞和 VM 指针跨线程转运；PLAN-698 已交付 VM publisher SSE；PLAN-699 已用 Axum/Hyper 替换 VM `#[api]` 手写 HTTP 默认入口，补齐协议/队列预算和优雅关闭。当前普通 handler 仍在 owner 线程同步驱动，异步 HTTP 等待存在忙等；PLAN-705 接续普通 handler 挂起/恢复、请求取消和结果生命周期。CPU 长计算、外部流和多后台收敛仍待后续。
 
 Auto 当前足以支撑示例级、本机开发用的 CRUD API，以及已经验证的部分 SSE/媒体路径；不能据此认定 VM HTTP 入口已经具备通用 Web 服务器的协议正确性、并发隔离和运维能力。`#[api]` 是跨后台的用户契约，实际服务能力分散在 AutoVM 原生 shim、`auto-man` 生成的 Axum 服务、VM 合并调用、Tauri IPC，以及 gallery back-proxy 中。不能把“使用同一份 `api.at`”等同于“使用同一 HTTP 实现”。
 
-建议保持 `api.at` 与 `auto.http` 的平台无关接口，以宿主实现传输层。Rust 生成轨继续用 Axum；VM 轨应把 HTTP 协议处理移到成熟的 Rust HTTP 栈，并用有界、可取消的消息桥把请求交给 VM 所在线程。Auto `task`/`~T` 仍是语言语义，不直接暴露 Tokio 句柄。Auto 自实现 HTTP 解析器可作为教学或协议实验，不作为默认生产服务入口。
+保持 `api.at` 与 `auto.http` 的平台无关接口，以宿主实现传输层。Rust 生成轨继续用 Axum；VM 轨已由 PLAN-699 接入 Axum/Hyper，下一步补请求作用域、可取消异步等待与完成唤醒。Auto `task`/`~T` 仍是语言语义，不直接暴露 Tokio 句柄。Auto 自实现 HTTP 解析器可作为教学或协议实验，不作为默认生产服务入口。
 
-## 2. 现状：从声明到服务的真实路径
+## 2. PLAN-696 前审计基线：从声明到服务的路径
 
 | 路径 | 入口/实现 | 目前可确认的行为 |
 |---|---|---|
@@ -32,7 +32,7 @@ Auto 当前足以支撑示例级、本机开发用的 CRUD API，以及已经验
 
 主文件 `.at` 在前、同名目标文件（VM `.vm.at`、C `.c.at`、Rust `.rs.at`）在后的模型已写在历史草案和 `stdlib/project.md`。实际代码中 VM 的 `.at + .vm.at` 连接最清楚；Rust 轨还有手写/镜像的 `a2r-std`，仅部分模块有 `.rs.at` 与签名对拍；Vue 前端的 `use.web` / 适配器链属于 UI 目标装配，不等同于 `auto.http` 自动加载一个 `.vue.at`。`io.at` 的 `#[vm] read_line`、`io.vm.at` 的 `ext File`、`io.c.at` 的 C 字段填充说明公共声明与目标实现已经混合，但未见统一的“每个公开符号恰有一个实现”门禁。
 
-现有 `docs/specs/auto-lang/runtime/design/networking-stdlib.md` 和 Design 13 把 `http.rs.at`、`http→net→async` 当作已落地依赖图；源码不支持这一结论。`docs/specs/stdlib/design/http-server.md` 的“VM 与 a2r 都封装 Axum/Tokio”是目标态，并非当前 VM 入口事实。Specs 的现状修订应随实施计划经 review/merge 进入 canonical 账本；本设计先标明差异。
+审计前的 networking Spec 和 Design 13 曾把 `http.rs.at`、`http→net→async` 当作已落地依赖图；PLAN-696 已修订现状说明。PLAN-699 后 VM 与生成 Rust 均依赖 Axum，但仍是两条独立的服务/handler 实现，不能据此宣布共享 server 已落地。新能力继续随 review/merge 沉淀到 canonical Specs。
 
 ### 3.2 目标装配契约
 
@@ -81,11 +81,20 @@ HTTP/IPC/合并适配器
 | 阶段 | 主要交付 | 验收门 |
 |---|---|---|
 | A：契约与 P0 加固（PLAN-696，已交付） | 标准库后台覆盖表、HTTP/IPC/合并调用矩阵；分段 body 与慢 SSE 红转绿；去掉 VM 地址整数跨线程转运；修订现状 Specs | 原始 TCP/并发/生命周期回归与文档核对已完成；详见 PLAN-696 归档记录。 |
-| B：VM HTTP 传输替换（PLAN-699，待实施） | Axum/Hyper 接入 VM owner 消息桥；旧手写解析退出默认路径；连接、body、时间与关闭预算 | 原始 TCP 分段/慢连接/并发/异常/中断测试与 015/017/023 示例回归通过；无跨线程裸 VM 指针。 |
-| C：task/异步 I/O 与流 | `~T`/task 外部 I/O 唤醒、取消/超时；有界 SSE/上传下载；a2r 客户端阻塞边界治理 | 慢 SSE 不拖住并发请求；断连及时回收；背压/取消/错误对拍通过。 |
+| B：VM HTTP 传输替换（PLAN-699，已交付） | Axum/Hyper 接入 VM owner 消息桥；旧手写解析退出默认路径；body/header、队列、读取/回复期限与关闭预算 | chunked/keep-alive/431/慢头/503/关闭复绑与示例回归已验证；CLI Ctrl+C 实机终端受环境限制在归档注记，不扩大交付声明。 |
+| C1：普通 HTTP handler 异步等待与取消（PLAN-705，待实施） | 复用 PLAN-702 段执行，完成通知唤醒、请求作用域与生命期总上限、迟到结果不复活、有界非流式 async 客户端 | 上游 gate 未解除时 health 已返回；cancel/timeout/shutdown 后 task/result/许可回基线；无每请求或队满兜底线程。 |
+| C2：CPU 纪律与外部流（待立项） | CPU 段预算/阻塞纪律依独立裁定；HTTPStream/外部 SSE 的可等待 Iter、流式上传下载；a2r 客户端阻塞边界治理 | CPU/等待/流分别有明示保证；外部慢流、背压/取消/错误对拍通过。 |
 | D：多后台收敛与部署 | Rust 生成/VM/IPC/合并/back-proxy 共用 API 契约和失败诊断；覆盖 manifest；安全配置与性能报告 | 指定示例矩阵跨后台同语义；p95、内存、最大连接与拒绝策略有可重复记录，明确支持等级。 |
 
-阶段 B/C/D 应在 A 的证据下各立一个中等规模 Plan；B 已由 PLAN-699 起草，C/D 仍待立项。`cargo check`/局部测试与 `cargo tv`/`cargo th` 等仅在相应 Rust/VM 源码触及时按仓库门禁选用；本次文档起草不运行 Cargo 测试。
+阶段 C1/C2/D 各自按独立验收立 Plan；CPU 纪律、外部流、a2r 治理可再拆分，不把整个 C 压入一份计划。PLAN-705 本轮为文档起草，不运行 Cargo 测试；实施门禁以最新 AGENTS.md 为准（PLAN-700 后 tf 已包含语料，tv 仅定向快捷档）。
+
+### 6.1 阶段 C1 的设计收敛（2026-09-28）
+
+699 的有界队列只限制待取请求，不能解决 handler 内等待上游；702 已为 UI 交付 `SegmentOutcome::Parked` 与原栈恢复，故下一步复用该机制改造 HTTP owner。新的活动请求上限覆盖 queued/running/parked 总生命期，挂起不能让队列边界失效。每个执行段串行，共享状态跨 await 可被其他请求观察；请求不是事务，取消不回滚此前副作用。
+
+取消要与异步结果登记/完成一起设计：当前 `drop_async_result` 仅删条目，部分 worker 完成端仍直接 insert，静态可见“删除后迟到完成复活”的竞态；JSON 池满 fallback spawn 与 handle 每次 spawn 也不构成资源上限。PLAN-705 先以确定性顺序实验验证，再建立 live completion token、通知、单次消费/取消与有限 async executor。现有 UI 消费接口保留；不在本轮重做 actor mailbox 或强制 UI 改泵。
+
+网络取消只接受可证明的任务销毁/错误、deadline 和 server shutdown；请求输入半关闭仍可能需要正常响应，不能把任意 EOF 当作取消。同步 CPU 段或阻塞 native 无强制抢占保证，Design 34 的 Q1/Q2 仍是独立决策，外部 SSE/HTTPStream 与 a2r 客户端另案推进。
 
 ## 7. 待决策
 
