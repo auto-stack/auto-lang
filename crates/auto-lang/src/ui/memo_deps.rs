@@ -437,6 +437,37 @@ pub fn scan_for_item_body(
     ScanVerdict::Slots(slots)
 }
 
+/// PLAN-046 T-06：项级 prop 表达式扫描——FStr（f-string prop，如
+/// `class: f"... ${r.state}"`）的插值根段全 ∈ 循环变量 → 项值覆盖（安全，
+/// 不入槽——值随项值指纹翻面）；其余形态按 [`scan_expr`] 分级。
+fn scan_item_expr(e: &Expr, slots: &mut Vec<Expr>, loop_vars: &std::collections::HashSet<String>) -> Result<(), &'static str> {
+    if let Expr::FStr(f) = e {
+        for part in &f.parts {
+            match part {
+                Expr::Str(_) => {}
+                Expr::Ident(name) => {
+                    let root = name.as_str().trim_start_matches('.').split('.').next().unwrap_or("");
+                    if !loop_vars.contains(root) {
+                        return Err("fstr_external");
+                    }
+                }
+                Expr::Dot(obj, _) => {
+                    let root = match obj.as_ref() {
+                        Expr::Ident(n) => n.as_str().trim_start_matches('.').split('.').next().unwrap_or(""),
+                        _ => "",
+                    };
+                    if root.is_empty() || !loop_vars.contains(root) {
+                        return Err("fstr_external");
+                    }
+                }
+                _ => return Err("fstr_dynamic"),
+            }
+        }
+        return Ok(());
+    }
+    scan_expr(e, slots)
+}
+
 fn scan_item_node(
     node: &AuraNode,
     slots: &mut Vec<Expr>,
@@ -448,7 +479,7 @@ fn scan_item_node(
         AuraNode::Element { props, children, .. } => {
             for (_k, prop) in props.iter() {
                 match prop {
-                    crate::aura::AuraPropValue::Expr(e) => scan_expr(e, slots)?,
+                    crate::aura::AuraPropValue::Expr(e) => scan_item_expr(e, slots, loop_vars)?,
                     crate::aura::AuraPropValue::StyleBinding(_) => {
                         return Err("style_binding");
                     }

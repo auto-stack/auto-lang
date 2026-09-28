@@ -22546,7 +22546,7 @@ mod plan046_memo_block_tests {
     /// untracked 路径（build/MCP sync）memo 块 = 子体直落原始渲染，缓存
     /// 完全惰性（零条目零计数）。
     #[test]
-    fn plan046_block_untracked_passthrough_inert() {
+    fn plan046_block_untracked_shared_gate() {
         let _guard =
             super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let widget = block_widget();
@@ -22557,13 +22557,15 @@ mod plan046_memo_block_tests {
             vec![state_text("count")],
         );
 
+        // T-06 双轨修正：untracked 帧（桌面渲染轨）同走共享块门。
         let builder = AuraViewBuilder::new(&bridge, "BlockApp");
-        let v = builder.build(&node);
-        let s = format!("{v:?}");
-        assert!(s.contains("0"), "untracked 原始渲染在册（count 初值 0）：{}", s);
-        bridge.with_memo_cache(|c| {
-            assert_eq!((c.len(), c.hits, c.misses, c.degraded), (0, 0, 0, 0), "untracked 缓存惰性");
-        });
+        let v1 = builder.build(&node);
+        let s = format!("{v1:?}");
+        assert!(s.contains("0"), "untracked 渲染在册（count 初值 0）：{}", s);
+        bridge.with_memo_cache(|c| assert_eq!(c.len(), 1, "untracked 块门 fill 条目在册"));
+        let v2 = builder.build(&node);
+        bridge.with_memo_cache(|c| assert!(c.hits >= 1, "untracked 块门回访命中"));
+        assert_eq!(format!("{v1:?}"), format!("{v2:?}"), "命中产物一致");
     }
 
     /// per-site 分解计数：memo 块门走 site_counts[MEMO_SITE_MEMO_BLOCK]。
