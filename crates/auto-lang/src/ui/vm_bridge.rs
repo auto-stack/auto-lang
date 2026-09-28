@@ -208,6 +208,10 @@ pub struct VmBridge {
     /// 零开销直落（非 memo 零行为零开销红线）。RefCell 理由同 memo_cache。
     #[cfg(feature = "ui-interpreter")]
     dep_recorder: std::cell::RefCell<Option<crate::ui::memo_deps::RecState>>,
+
+    /// PLAN-047 T-05: 求值通道探针计数（AC-02 零重解析断言的观测面——
+    /// view builder `resolve_expr_to_value` 入口累加，桥级共享、跨帧累计）。
+    pub resolve_probe_count: std::sync::atomic::AtomicU64,
 }
 
 /// PLAN-047 T-01: 依赖录制 guard。首选显式 [`DepRecGuard::finish`] 取走
@@ -524,6 +528,7 @@ impl VmBridge {
             memo_cache: std::cell::RefCell::new(crate::ui::memo_deps::MemoCache::new()),
             #[cfg(feature = "ui-interpreter")]
             dep_recorder: std::cell::RefCell::new(None),
+            resolve_probe_count: std::sync::atomic::AtomicU64::new(0),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
         })
@@ -711,6 +716,7 @@ impl VmBridge {
             memo_cache: std::cell::RefCell::new(crate::ui::memo_deps::MemoCache::new()),
             #[cfg(feature = "ui-interpreter")]
             dep_recorder: std::cell::RefCell::new(None),
+            resolve_probe_count: std::sync::atomic::AtomicU64::new(0),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
         })
@@ -1916,6 +1922,46 @@ impl VmBridge {
     /// 非 ui-interpreter 构建的零伤 stub。
     #[cfg(not(feature = "ui-interpreter"))]
     fn record_dep_any(&self, _heap_id: u64) {}
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-05（档 C SD-11）: version_fast 判定面
+    // ─────────────────────────────────────────────────────────────────
+
+    /// 动态 dep 集版本全同判定（check 三级判定的第二级）。全同 → 零重解析
+    /// 命中（fill 后任何归因写都会前进对应 path 版本——A 类 exact+wildcard
+    /// 双 bump / B 类 wildcard，见 SD-09；C 类（字符串池/对象出世）不动既有
+    /// 内容，version_fast 命中安全）。
+    #[cfg(feature = "ui-interpreter")]
+    pub fn deps_unchanged(&self, pairs: &[(crate::ui::memo_deps::DepKey, u64)]) -> bool {
+        pairs
+            .iter()
+            .all(|(k, v0)| self.vm.path_version(k.heap_id, &k.path) == *v0)
+    }
+
+    /// 录制集 → (dep, 当前版本) 基线对（fill 入条目 / fp_slow 命中刷新）。
+    #[cfg(feature = "ui-interpreter")]
+    pub fn dep_pairs(
+        &self,
+        deps: &std::collections::BTreeSet<crate::ui::memo_deps::DepKey>,
+    ) -> Vec<(crate::ui::memo_deps::DepKey, u64)> {
+        deps.iter()
+            .map(|k| {
+                let v = self.vm.path_version(k.heap_id, &k.path);
+                (k.clone(), v)
+            })
+            .collect()
+    }
+
+    /// PLAN-047 T-05: 值承载的堆身份录制（keyed-for iterable 注入面——
+    /// VmRef/Int≥4M → any 粗粒度；其余值无堆身份不录）。
+    #[cfg(feature = "ui-interpreter")]
+    pub fn record_dep_value_heap(&self, v: &Value) {
+        match v {
+            Value::VmRef(r) => self.record_dep_any(r.id as u64),
+            Value::Int(i) if *i >= 4_000_000 => self.record_dep_any(*i as u64),
+            _ => {}
+        }
+    }
 
     /// PLAN-045: 指纹展开器——堆引用展开一层为纯值（memo 值指纹用）。
     /// ObjectData/GenericInstanceData → `Value::Obj`（materialize 同款）；

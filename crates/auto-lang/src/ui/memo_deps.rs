@@ -55,12 +55,17 @@ pub const MEMO_SITE_FOR_ITEM: u8 = 7;
 pub const MEMO_SITE_MEMO_BLOCK: u8 = 8;
 
 /// PLAN-046 §4：per-site 分解计数（for_item/memo_block/outlet 门经
-/// `note_*_site` 记账；档 A 组件门只走全局计数器）。
+/// `note_*_site` 记账；档 A 组件门只走全局计数器）。PLAN-047 T-05：
+/// check-kind 分解（seq_fast/version_fast/fp_slow——三级判定的观测面，
+/// version_fast = 动态 dep 集版本全同的零重解析命中）。
 #[derive(Debug, Default, Clone)]
 pub struct SiteCounts {
     pub hits: u64,
     pub misses: u64,
     pub degraded: u64,
+    pub seq_fast: u64,
+    pub version_fast: u64,
+    pub fp_slow: u64,
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -108,6 +113,10 @@ pub struct MemoEntry {
     /// （命中帧以当前基路径+[新 index] 前缀化重放、ForIter.index 补丁）；
     /// `false` = 档 A 绝对路径重放（组件/outlet 结构稳定面，行为不变）。
     pub replay_relative: bool,
+    /// PLAN-047 T-05（档 C SD-11）: fill 期动态依赖集 + 基线版本对——
+    /// check 的 `version_fast` 判定面（零重解析）。`None` = 录制空集/
+    /// 超预算（落回既有静态扫描+指纹慢路径，行为与档 A/B 一致）。
+    pub dyn_deps: Option<Vec<(DepKey, u64)>>,
 }
 
 /// 每 VmBridge 一张 memo 表 + 计数器（AC-03 断言/T-07 度量走 counts）。
@@ -121,6 +130,10 @@ pub struct MemoCache {
     pub degraded: u64,
     pub evictions: u64,
     pub site_counts: HashMap<u8, SiteCounts>,
+    /// PLAN-047 T-05: check-kind 全局分解（观测面——AC-02 断言用）。
+    pub seq_fast: u64,
+    pub version_fast: u64,
+    pub fp_slow: u64,
 }
 
 impl Default for MemoCache {
@@ -134,6 +147,9 @@ impl Default for MemoCache {
             degraded: 0,
             evictions: 0,
             site_counts: HashMap::new(),
+            seq_fast: 0,
+            version_fast: 0,
+            fp_slow: 0,
         }
     }
 }
@@ -213,6 +229,38 @@ impl MemoCache {
     pub fn refresh_seq(&mut self, key: &MemoKey, seq: u64) {
         if let Some(e) = self.entries.get_mut(key) {
             e.seq_at_fill = seq;
+        }
+    }
+
+    /// PLAN-047 T-05: 刷新既有条目的动态 dep 基线版本（fp_slow 命中后调用
+    /// ——值同证明版本前进无害，基线前移让后续帧回到 version_fast）。
+    pub fn refresh_deps(&mut self, key: &MemoKey, pairs: Vec<(DepKey, u64)>) {
+        if let Some(e) = self.entries.get_mut(key) {
+            if e.dyn_deps.is_some() {
+                e.dyn_deps = Some(pairs);
+            }
+        }
+    }
+
+    /// PLAN-047 T-05: check-kind 计数（全局 + 可选 per-site 分解）。
+    pub fn note_seq_fast(&mut self, site: Option<u8>) {
+        self.seq_fast += 1;
+        if let Some(s) = site {
+            self.site_counts.entry(s).or_default().seq_fast += 1;
+        }
+    }
+
+    pub fn note_version_fast(&mut self, site: Option<u8>) {
+        self.version_fast += 1;
+        if let Some(s) = site {
+            self.site_counts.entry(s).or_default().version_fast += 1;
+        }
+    }
+
+    pub fn note_fp_slow(&mut self, site: Option<u8>) {
+        self.fp_slow += 1;
+        if let Some(s) = site {
+            self.site_counts.entry(s).or_default().fp_slow += 1;
         }
     }
 
@@ -1235,6 +1283,7 @@ mod tests {
             probe_replay: vec![],
             idmap_replay: vec![],
             replay_relative: false,
+            dyn_deps: None,
         }
     }
 
