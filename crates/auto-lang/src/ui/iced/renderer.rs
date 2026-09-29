@@ -12435,7 +12435,12 @@ fn execute_desktop_commands(
                 }
             }
             // Plan 478 T2：send_to 动词（跨分区发送；窗口随分区隐现）。
-            DC::SendTo(wid, n) => state.wm_move_win_to_workspace(wid, n),
+            // PLAN-709：槽位臂并入（伪 Wid 域统一入口；槽位隐现随
+            // sync_native_workspace_visibility 排水拍）。
+            DC::SendTo(wid, n) => {
+                state.wm_move_member_to_workspace(wid, n);
+                sync_native_geometry(state);
+            }
             // Plan 479 T2：notify 动词（App 主动请求通知；入史 + 未读 +
             // 浮现三联动，push_notification 单入口）。
             DC::Notify(kind, msg) => push_notification(state, &kind, &msg),
@@ -13249,6 +13254,23 @@ fn execute_undock_native(state: &mut crate::ui::session::DesktopSession, _slot_i
 fn execute_focus_native(state: &mut crate::ui::session::DesktopSession, slot_id: u64) {
     use crate::ui::native_dock::{win32 as ndw, NativeSlotId};
     let id = NativeSlotId(slot_id);
+    // PLAN-709：任务栏条目点击「切到窗所在分区」语义（ActivateApp 同款）
+    // ——槽位在隐分区先切分区（隐现 tick 随后排水拍复显）。
+    let slot_ws = state
+        .host
+        .as_ref()
+        .and_then(|h| h.wm.native_slots.get(&id))
+        .map(|s| s.workspace);
+    if let Some(ws) = slot_ws {
+        let current = state
+            .host
+            .as_ref()
+            .map(|h| h.wm.current_workspace)
+            .unwrap_or(0);
+        if ws != current {
+            state.wm_set_workspace(ws);
+        }
+    }
     state.wm_focus_native_slot(id);
     let Some(slot) = state
         .host
@@ -13263,6 +13285,8 @@ fn execute_focus_native(state: &mut crate::ui::session::DesktopSession, slot_id:
         let _ = ndw::show_window(hwnd, ndw::ShowMode::Restore);
     }
     let _ = ndw::focus_window(hwnd);
+    // 隐现/带序重申（切分区复显 + 聚焦置顶）。
+    sync_native_geometry(state);
 }
 
 #[cfg(not(windows))]
@@ -13315,6 +13339,20 @@ fn sync_native_geometry(state: &mut crate::ui::session::DesktopSession) {
         .as_ref()
         .map(|h| h.wm.pending_native_restack)
         .unwrap_or(false);
+    // PLAN-709：workspace 隐现 tick（失配才写——稳态零 SetWindowPos）。
+    // 返回 true = 可见集变化（随后 restack 重申带序）。
+    if sync_native_workspace_visibility(state) {
+        state
+            .host
+            .as_mut()
+            .map(|h| h.wm.pending_native_restack = true);
+    }
+    let restack_requested = restack_requested
+        || state
+            .host
+            .as_ref()
+            .map(|h| h.wm.pending_native_restack)
+            .unwrap_or(false);
     if state
         .host
         .as_ref()
@@ -13410,6 +13448,46 @@ fn restack_band(
         return;
     }
     let _ = ndw::restack_slots(desktop_hwnd, &order, hole_mode);
+}
+
+/// PLAN-709：workspace 隐现排水——Docked 槽位按 `slot.workspace ==
+/// current_workspace` 失配写 SW_HIDE/SW_SHOW（IsWindowVisible 探测，
+/// 稳态零调用）；band restack 序只含当前分区槽位（隐分区 HWND 已藏，
+/// 不入链）。返回可见集是否变化（调用方置 restack 旗标）。
+#[cfg(windows)]
+fn sync_native_workspace_visibility(
+    state: &mut crate::ui::session::DesktopSession,
+) -> bool {
+    use crate::ui::native_dock::{win32 as ndw, SlotState};
+    let Some(host) = state.host.as_ref() else { return false };
+    let current = host.wm.current_workspace;
+    let targets: Vec<(crate::ui::native_dock::NativeHwnd, bool)> = host
+        .wm
+        .native_slots
+        .values()
+        .filter(|s| s.state == SlotState::Docked)
+        .map(|s| (s.hwnd, s.workspace == current))
+        .collect();
+    drop(host);
+    let mut changed = false;
+    for (hwnd, want_visible) in targets {
+        let visible = ndw::is_visible(hwnd);
+        if want_visible && !visible {
+            let _ = ndw::show_window(hwnd, ndw::ShowMode::Show);
+            changed = true;
+        } else if !want_visible && visible {
+            let _ = ndw::show_window(hwnd, ndw::ShowMode::Hide);
+            changed = true;
+        }
+    }
+    changed
+}
+
+#[cfg(not(windows))]
+fn sync_native_workspace_visibility(
+    _state: &mut crate::ui::session::DesktopSession,
+) -> bool {
+    false
 }
 
 /// Plan 494：桌面窗 Region 洞排除重建——洞集 = 全部 docked 槽位客户区
@@ -20572,7 +20650,9 @@ fn compare_pngs(
                             h.wm.focused.map(|w| (w, t))
                         });
                         if let Some((wid, t)) = target {
-                            state.wm_move_win_to_workspace(wid, t);
+                            // PLAN-709：焦点域含槽位（伪 Wid）——统一成员臂。
+                            state.wm_move_member_to_workspace(wid, t);
+                            sync_native_geometry(state);
                         }
                     }
                     // 标题栏按下 = 聚焦置顶 + 进入拖拽（grab 偏移按
@@ -21289,6 +21369,11 @@ fn compare_pngs(
                     let Some(local) = host.wm.native_slot_local_rects.get(&slot_id) else {
                         continue;
                     };
+                    // PLAN-709：非当前分区槽位 chrome 缺席（AC-05；OS 级
+                    // 隐现随 sync_native_workspace_visibility 排水拍）。
+                    if slot.workspace != host.wm.current_workspace {
+                        continue;
+                    }
                     let focused = host.wm.focused == Some(wid);
                     let interacting = host.wm.interaction.is_some_and(|i| match i {
                         crate::ui::session::WmInteraction::NativeDrag { slot_id: s, .. }

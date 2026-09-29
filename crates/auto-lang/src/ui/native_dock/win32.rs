@@ -34,7 +34,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, MSG,
     PostMessageW, PostThreadMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
     ShowWindow, SW_MAXIMIZE, TranslateMessage, GWL_STYLE, SW_HIDE, SW_MINIMIZE, SW_RESTORE,
-    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WM_QUIT,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_SHOW, WM_CLOSE,
+    WM_QUIT,
     WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WS_CAPTION, WS_THICKFRAME,
 };
 
@@ -583,6 +584,8 @@ pub enum ShowMode {
     Maximize,
     Minimize,
     Hide,
+    /// PLAN-709：workspace 复显（SW_SHOW——不还原最小化态，区别于 Restore）。
+    Show,
 }
 
 pub fn show_window(target: NativeHwnd, mode: ShowMode) -> Result<(), DockError> {
@@ -594,6 +597,7 @@ pub fn show_window(target: NativeHwnd, mode: ShowMode) -> Result<(), DockError> 
         ShowMode::Maximize => SW_MAXIMIZE,
         ShowMode::Minimize => SW_MINIMIZE,
         ShowMode::Hide => SW_HIDE,
+        ShowMode::Show => SW_SHOW,
     };
     let _ = unsafe { ShowWindow(hwnd_of(target), cmd) };
     Ok(())
@@ -624,6 +628,11 @@ pub fn is_alive(target: NativeHwnd) -> bool {
 /// 是否最小化（IsIconic）。
 pub fn is_minimized(target: NativeHwnd) -> bool {
     alive(target) && unsafe { IsIconic(hwnd_of(target)) }.as_bool()
+}
+
+/// PLAN-709：是否可见（IsWindowVisible——workspace 隐现 tick 的失配检测）。
+pub fn is_visible(target: NativeHwnd) -> bool {
+    alive(target) && unsafe { IsWindowVisible(hwnd_of(target)) }.as_bool()
 }
 
 /// 是否最大化（IsZoomed；C5：已最大化窗口 dock 前先 SW_RESTORE）。

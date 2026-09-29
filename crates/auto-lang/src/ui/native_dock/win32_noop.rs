@@ -90,6 +90,8 @@ pub enum ShowMode {
     Maximize,
     Minimize,
     Hide,
+    /// PLAN-709：workspace 复显（SW_SHOW——不还原最小化态，区别于 Restore）。
+    Show,
 }
 
 pub fn show_window(_target: NativeHwnd, _mode: ShowMode) -> Result<(), DockError> {

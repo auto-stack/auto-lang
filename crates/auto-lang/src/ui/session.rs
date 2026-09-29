@@ -951,7 +951,7 @@ impl WmState {
         self.z_order.insert(0, wid);
         self.mru.retain(|w| *w != wid);
         if self.focused == Some(wid) {
-            self.focused = self.wins_in_workspace(self.current_workspace).last().copied();
+            self.focused = self.top_member_in_workspace(self.current_workspace);
         }
         wid
     }
@@ -965,7 +965,7 @@ impl WmState {
         self.z_order.insert(1.min(self.z_order.len()), wid);
         self.mru.retain(|w| *w != wid);
         if self.focused == Some(wid) {
-            self.focused = self.wins_in_workspace(self.current_workspace).last().copied();
+            self.focused = self.top_member_in_workspace(self.current_workspace);
         }
         wid
     }
@@ -976,7 +976,7 @@ impl WmState {
         if self.focused == Some(wid) {
             // Plan 472 T2：焦点回退限当前分区（隐分区窗不抢焦点；单分区时
             // 与 463 的 z 顶回退逐位等价）。
-            self.focused = self.wins_in_workspace(self.current_workspace).last().copied();
+            self.focused = self.top_member_in_workspace(self.current_workspace);
         }
         if self.interaction.map(|i| i.wid()) == Some(wid) {
             self.interaction = None;
@@ -999,6 +999,21 @@ impl WmState {
             .copied()
             .filter(|w| self.wins.get(w).map(|v| v.workspace) == Some(ws))
             .collect()
+    }
+
+    /// PLAN-709：分区内 z 顶成员（虚拟窗或 Docked 槽位，统一序域派生）
+    /// ——焦点回退共用底座（set_workspace/remove_win/add_win_bottom 族
+    /// 回退口径统一到「虚拟窗 ∪ 槽位」）。
+    pub fn top_member_in_workspace(&self, ws: usize) -> Option<Wid> {
+        self.z_order.iter().rev().copied().find(|w| {
+            if let Some(id) = Self::native_slot_id_of_pseudo(*w) {
+                return self
+                    .native_slots
+                    .get(&id)
+                    .is_some_and(|s| s.workspace == ws);
+            }
+            self.wins.get(w).map(|v| v.workspace) == Some(ws)
+        })
     }
 
     // --- Plan 473 T4：原生窗口槽位（native dock）注册表与状态机推进 ---
@@ -1135,10 +1150,7 @@ impl WmState {
         self.z_order.retain(|w| *w != wid);
         self.mru.retain(|w| *w != wid);
         if self.focused == Some(wid) {
-            self.focused = self
-                .wins_in_workspace(self.current_workspace)
-                .last()
-                .copied();
+            self.focused = self.top_member_in_workspace(self.current_workspace);
         }
         if matches!(
             self.interaction,
@@ -1172,8 +1184,9 @@ impl WmState {
         true
     }
 
-    /// PLAN-709：带内统一 z 序快照（Docked 槽位 bottom→top，`z_order` 派生
-    /// ——宿主 restack 排水与 chrome 插序共用同一序模型）。
+    /// PLAN-709：带内统一 z 序快照（当前分区 Docked 槽位 bottom→top，
+    /// `z_order` 派生——宿主 restack 排水与 chrome 插序共用同一序模型；
+    /// 隐分区槽位不入带：HWND 已藏，restack 链只覆盖可见带）。
     pub fn native_slots_in_z_order(
         &self,
     ) -> Vec<crate::ui::native_dock::NativeSlotId> {
@@ -1181,9 +1194,10 @@ impl WmState {
             .iter()
             .filter_map(|w| Self::native_slot_id_of_pseudo(*w))
             .filter(|id| {
-                self.native_slots
-                    .get(id)
-                    .is_some_and(|s| s.state == crate::ui::native_dock::SlotState::Docked)
+                self.native_slots.get(id).is_some_and(|s| {
+                    s.state == crate::ui::native_dock::SlotState::Docked
+                        && s.workspace == self.current_workspace
+                })
             })
             .collect()
     }
@@ -1223,12 +1237,18 @@ impl WmState {
     /// 重排），连续按压即 c→b→a→c 遍历；新点击重新锚定新近序。单窗/空桌
     /// 无操作返回 None。Plan 472 T2：候选按当前分区过滤（焦点环不跨分区）。
     pub fn cycle_focus(&mut self) -> Option<Wid> {
-        let ring: Vec<Wid> = self
-            .mru
-            .iter()
-            .copied()
-            .filter(|w| self.wins.get(w).map(|v| v.workspace) == Some(self.current_workspace))
-            .collect();
+        // PLAN-709：环候选并入 Docked 槽位（分区过滤口径与虚拟窗一致，
+        // AC-05/06 的焦点环成员资格）。
+        let in_ws = |w: &Wid| -> bool {
+            if let Some(id) = Self::native_slot_id_of_pseudo(*w) {
+                return self
+                    .native_slots
+                    .get(&id)
+                    .is_some_and(|s| s.workspace == self.current_workspace);
+            }
+            self.wins.get(w).map(|v| v.workspace) == Some(self.current_workspace)
+        };
+        let ring: Vec<Wid> = self.mru.iter().copied().filter(in_ws).collect();
         if ring.len() < 2 {
             return None;
         }
@@ -1293,7 +1313,7 @@ impl WmState {
         }
         let n = n.min(self.workspaces.len() - 1);
         self.current_workspace = n;
-        self.focused = self.wins_in_workspace(n).last().copied();
+        self.focused = self.top_member_in_workspace(n);
     }
 
     /// Plan 472 T2：(current+1) % N 环切。PLAN-019：负一屏不参与环切
@@ -1364,7 +1384,7 @@ impl WmState {
             .focused
             .is_some_and(|w| self.wins.get(&w).map(|v| v.workspace) == Some(self.current_workspace));
         if removed_was_current || !focused_in_current {
-            self.focused = self.wins_in_workspace(self.current_workspace).last().copied();
+            self.focused = self.top_member_in_workspace(self.current_workspace);
         }
     }
 
@@ -1385,17 +1405,54 @@ impl WmState {
         let n = n.min(self.workspaces.len() - 1);
         v.workspace = n;
         if n != self.current_workspace && self.focused == Some(wid) {
-            self.focused = self.wins_in_workspace(self.current_workspace).last().copied();
+            self.focused = self.top_member_in_workspace(self.current_workspace);
         }
+    }
+
+    /// PLAN-709：跨分区移动原生槽位（send_to/send focused 的槽位臂；
+    /// 语义同 [`Self::move_win_to_workspace`]：clamp 合法域、负一屏不可
+    /// 发、发走焦点窗时焦点让渡当前分区 z 顶成员；发往当前分区 = 恒等）。
+    /// 返回是否生效（未知槽位 no-op）。
+    pub fn move_native_slot_to_workspace(
+        &mut self,
+        id: crate::ui::native_dock::NativeSlotId,
+        n: usize,
+    ) -> bool {
+        if self.workspaces.is_empty() {
+            return false;
+        }
+        if self.showdesk_ws == Some(n) {
+            return false;
+        }
+        let Some(slot) = self.native_slots.get_mut(&id) else {
+            return false;
+        };
+        let n = n.min(self.workspaces.len() - 1);
+        slot.workspace = n;
+        let wid = Self::native_slot_pseudo_wid(id);
+        if n != self.current_workspace && self.focused == Some(wid) {
+            self.focused = self.top_member_in_workspace(self.current_workspace);
+        }
+        true
     }
 
     /// Plan 478 T2：MRU 序（front=最近聚焦）过滤指定分区 → `__wm_mru`
     /// 投影序辅助（协议 v1.1；退役 Ctrl+Tab 焦点环语义延续，不跨分区）。
     pub fn mru_in_workspace(&self, ws: usize) -> Vec<Wid> {
+        // PLAN-709：Docked 槽位并入（switcher/MRU 过滤口径与虚拟窗一致；
+        // 隐藏过滤由投影层按 native 可见域裁剪）。
         self.mru
             .iter()
             .copied()
-            .filter(|w| self.wins.get(w).map(|v| v.workspace) == Some(ws))
+            .filter(|w| {
+                if let Some(id) = Self::native_slot_id_of_pseudo(*w) {
+                    return self
+                        .native_slots
+                        .get(&id)
+                        .is_some_and(|s| s.workspace == ws);
+                }
+                self.wins.get(w).map(|v| v.workspace) == Some(ws)
+            })
             .collect()
     }
 
@@ -1474,13 +1531,16 @@ impl WmState {
             self.interaction = None;
         }
         if self.focused == Some(wid) {
+            // PLAN-709：回退口径统一——非最小化虚拟窗优先，无则 z 顶成员
+            // （虚拟窗 ∪ 槽位；槽位无 minimized 域，直接成员回退）。
             self.focused = self
                 .wins_in_workspace(self.current_workspace)
                 .into_iter()
                 .rev()
                 .find(|w| {
                     *w != wid && self.wins.get(w).is_some_and(|v| !v.minimized.get())
-                });
+                })
+                .or_else(|| self.top_member_in_workspace(self.current_workspace));
         }
     }
 
@@ -3216,6 +3276,18 @@ impl DesktopSession {
         if let Some(host) = self.host.as_mut() {
             host.wm.move_win_to_workspace(wid, n);
         }
+    }
+
+    /// PLAN-709：跨分区移动成员（send_to/send focused 统一入口）——伪 Wid
+    /// 域 = 槽位臂（[`WmState::move_native_slot_to_workspace`]），真实 Wid
+    /// = 虚拟窗臂。未知域 no-op。返回是否生效。
+    pub fn wm_move_member_to_workspace(&mut self, wid: Wid, n: usize) -> bool {
+        let Some(host) = self.host.as_mut() else { return false };
+        if let Some(id) = crate::ui::session::WmState::native_slot_id_of_pseudo(wid) {
+            return host.wm.move_native_slot_to_workspace(id, n);
+        }
+        host.wm.move_win_to_workspace(wid, n);
+        true
     }
 
     pub fn wm_focused_app(&self) -> Option<AppId> {
@@ -8471,6 +8543,72 @@ mod tests {
             ds.host.as_ref().unwrap().wm.native_slots_in_z_order(),
             vec![b, a]
         );
+    }
+
+    #[test]
+    fn native_slot_workspace_move_and_visibility_semantics() {
+        let mut ds = desktop_session_with_host();
+        let a = docked_test_slot(&mut ds, 0.0, 0.0);
+        let host = ds.host.as_ref().unwrap();
+        assert!(host.wm.native_slot_visible(a));
+        drop(host);
+        // send_to 槽位臂：发往分区 1 → 隐（非当前分区不可见/不入带序）。
+        let pseudo = crate::ui::session::WmState::native_slot_pseudo_wid(a);
+        assert!(ds.wm_move_member_to_workspace(pseudo, 1));
+        let host = ds.host.as_ref().unwrap();
+        assert_eq!(host.wm.native_slots[&a].workspace, 1);
+        assert!(!host.wm.native_slot_visible(a));
+        assert!(host.wm.native_slots_in_z_order().is_empty());
+        // 聚焦让渡：发走焦点槽位 → 焦点离开槽位域。
+        assert_ne!(host.wm.focused, Some(pseudo));
+        drop(host);
+        // 发回当前分区 → 复显。
+        assert!(ds.wm_move_member_to_workspace(pseudo, 0));
+        let host = ds.host.as_ref().unwrap();
+        assert!(host.wm.native_slot_visible(a));
+        drop(host);
+        // clamp + 未知域：越界压末分区；真实 Wid 走虚拟窗臂（true）；伪 Wid
+        // 未知槽位 no-op（false）。
+        assert!(ds.wm_move_member_to_workspace(pseudo, 9));
+        assert_eq!(ds.host.as_ref().unwrap().wm.native_slots[&a].workspace, 1);
+        let app = insert_app(&mut ds, "V");
+        let v = ds.wm_add_win(app, "V".into(), t2_rect(0.0, 0.0));
+        assert!(ds.wm_move_member_to_workspace(v, 1));
+        assert!(!ds.wm_move_member_to_workspace(
+            crate::ui::session::WmState::native_slot_pseudo_wid(
+                crate::ui::native_dock::NativeSlotId(999)
+            ),
+            0
+        ));
+    }
+
+    #[test]
+    fn native_slot_joins_cycle_and_mru_and_focus_fallback() {
+        let mut ds = desktop_session_with_host();
+        let app = insert_app(&mut ds, "V");
+        let v = ds.wm_add_win(app, "V".into(), t2_rect(0.0, 0.0));
+        let a = docked_test_slot(&mut ds, 0.0, 0.0);
+        let host = ds.host.as_ref().unwrap();
+        // mru 含槽位（dock 入环）。
+        assert!(host.wm.mru_in_workspace(0).contains(&crate::ui::session::WmState::native_slot_pseudo_wid(a)));
+        drop(host);
+        // 切分区（1 无成员）→ 焦点 None；切回 0 → z 顶成员回退（v 与槽位
+        // 同分区，槽位 dock 在后 = z 顶）。
+        ds.wm_set_workspace(1);
+        assert_eq!(ds.host.as_ref().unwrap().wm.focused, None);
+        ds.wm_set_workspace(0);
+        let host = ds.host.as_ref().unwrap();
+        assert_eq!(
+            host.wm.focused,
+            Some(crate::ui::session::WmState::native_slot_pseudo_wid(a))
+        );
+        drop(host);
+        // 焦点环（cycle）：槽位 ↔ 虚拟窗 双向可达（≥2 成员环）。
+        let first = ds.wm_cycle_focus();
+        assert!(first.is_some());
+        let second = ds.wm_cycle_focus();
+        assert!(second.is_some());
+        let _ = v;
     }
 
     #[test]
