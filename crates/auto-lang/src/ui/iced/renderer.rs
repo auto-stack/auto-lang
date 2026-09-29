@@ -13243,14 +13243,17 @@ fn execute_undock_native(state: &mut crate::ui::session::DesktopSession, _slot_i
 
 /// Plan 486 v1.3：任务栏 native 条目点击——聚焦槽位原生窗（最小化先
 /// SW_RESTORE，再 SetForegroundWindow best-effort——前台锁拒绝不 toast，
-/// 窗口仍可能经系统动画置前）。
+/// 窗口仍可能经系统动画置前）。PLAN-709：并接 WM 侧槽位置顶（伪 Wid 进
+/// focused/z_order/mru——chrome 序与投影 focused 位实时）。
 #[cfg(windows)]
 fn execute_focus_native(state: &mut crate::ui::session::DesktopSession, slot_id: u64) {
     use crate::ui::native_dock::{win32 as ndw, NativeSlotId};
+    let id = NativeSlotId(slot_id);
+    state.wm_focus_native_slot(id);
     let Some(slot) = state
         .host
         .as_ref()
-        .and_then(|h| h.wm.native_slots.get(&NativeSlotId(slot_id)))
+        .and_then(|h| h.wm.native_slots.get(&id))
     else {
         push_desktop_toast(state, "error", "未知原生槽位");
         return;
@@ -13432,6 +13435,20 @@ fn refresh_hole_regions_at(
 
 #[cfg(not(windows))]
 fn sync_native_geometry(_state: &mut crate::ui::session::DesktopSession) {}
+
+/// PLAN-709：槽位交互的 DPI 折算系数（min_size_est 物理域 → 逻辑域；
+/// 无桌面窗可查时回退 1.0）。
+#[cfg(windows)]
+fn native_slot_dpi_scale() -> f32 {
+    crate::ui::native_dock::win32::find_largest_own_window()
+        .map(|h| crate::ui::native_dock::win32::dpi_scale_of(h) as f32)
+        .unwrap_or(1.0)
+}
+
+#[cfg(not(windows))]
+fn native_slot_dpi_scale() -> f32 {
+    1.0
+}
 
 /// Plan 473 T6：WinEventHook 事件处理（B7 回收 / C4 拖走 undock；
 /// LocationChange 在自同步与最小化时不误判）。未命中槽位（噪声/他窗）
@@ -20401,6 +20418,83 @@ fn compare_pngs(
                         #[cfg(not(windows))]
                         let _ = id;
                     }
+                    // PLAN-709：槽位标题栏按下——聚焦置顶（伪 Wid 域，带内
+                    // OS 置顶在 restack 排水拍生效）+ 进槽位拖拽（grab 按
+                    // last_cursor 现算，StartDrag 同型 renderer.rs:20441）。
+                    WmCommand::NativeSlotStartDrag { slot_id } => {
+                        state.wm_focus_native_slot(slot_id);
+                        if let Some(host) = state.host.as_mut() {
+                            if let Some(origin) = host
+                                .wm
+                                .native_slot_local_rects
+                                .get(&slot_id)
+                                .map(|r| r.position())
+                            {
+                                let grab = host.wm.last_cursor.get();
+                                host.wm.interaction =
+                                    Some(crate::ui::session::WmInteraction::NativeDrag {
+                                        slot_id,
+                                        grab: iced::Point::new(
+                                            grab.x - origin.x,
+                                            grab.y - origin.y,
+                                        ),
+                                    });
+                            }
+                        }
+                    }
+                    // PLAN-709：槽位把手按下——八向缩放；min_size 起点
+                    // 折算（min_size_est 物理域 ÷ DPI + 160/120 地板）。
+                    WmCommand::NativeSlotStartResize { slot_id, edge } => {
+                        state.wm_focus_native_slot(slot_id);
+                        if let Some(host) = state.host.as_mut() {
+                            let scale = native_slot_dpi_scale();
+                            let est = host
+                                .wm
+                                .native_slots
+                                .get(&slot_id)
+                                .and_then(|s| s.min_size_est)
+                                .map(|s| {
+                                    iced::Size::new(s.w as f32 / scale, s.h as f32 / scale)
+                                })
+                                .unwrap_or_default();
+                            if let Some(start_rect) =
+                                host.wm.native_slot_local_rects.get(&slot_id).copied()
+                            {
+                                host.wm.interaction =
+                                    Some(crate::ui::session::WmInteraction::NativeResize {
+                                        slot_id,
+                                        edge,
+                                        start_rect,
+                                        start_cursor: host.wm.last_cursor.get(),
+                                        min_size: iced::Size::new(
+                                            160.0_f32.max(est.width),
+                                            120.0_f32.max(est.height),
+                                        ),
+                                    });
+                            }
+                        }
+                    }
+                    // PLAN-709：槽位聚焦——WM 侧置顶 + OS 前台（486
+                    // focus_native 执行臂同体；SW_RESTORE 先行）。
+                    WmCommand::NativeSlotFocus(id) => {
+                        state.wm_focus_native_slot(id);
+                        #[cfg(windows)]
+                        {
+                            use crate::ui::native_dock::win32 as ndw;
+                            if let Some(slot) = state
+                                .host
+                                .as_ref()
+                                .and_then(|h| h.wm.native_slots.get(&id))
+                            {
+                                if ndw::is_minimized(slot.hwnd) {
+                                    let _ = ndw::show_window(slot.hwnd, ndw::ShowMode::Restore);
+                                }
+                                let _ = ndw::focus_window(slot.hwnd);
+                            }
+                        }
+                        #[cfg(not(windows))]
+                        let _ = id;
+                    }
                     // Plan 472 T2：分区切换热键臂（同落 WmState 分区方法；
                     // 臂尾 sync_shell_windows 即时刷新投影）。
                     // Plan 472 T2：分区切换热键臂（同落 WmState 分区方法；
@@ -20643,6 +20737,11 @@ fn compare_pngs(
                                         .map(|h| h.wm.apply_cursor(x, y, host_size))
                                         .unwrap_or(false)
                                     {
+                                        // PLAN-709 D3：交互消费即尾随排水——
+                                        // 槽位拖拽/缩放的 SetWindowPos 跟手
+                                        // （pending 空时零开销幂等；vwin 拖拽
+                                        // 路径 pending 恒空零新增成本）。
+                                        sync_native_geometry(state);
                                         return iced::Task::none();
                                     }
                                 }

@@ -206,6 +206,9 @@ pub struct NativeSlot {
     /// 当前槽位矩形（屏幕物理坐标；clamp 扩张后同步更新）。
     pub slot_rect: Rect,
     pub state: SlotState,
+    /// PLAN-709：所属 workspace 分区下标（dock 时由 WmState 回写为当前
+    /// 分区；隐现/投影/send_to 的成员资格事实源。0 = 缺省段位）。
+    pub workspace: usize,
     /// 写读回探测到的最小尺寸估计（不可信窗口防御）。
     pub min_size_est: Option<Size>,
 }
@@ -229,6 +232,7 @@ impl NativeSlot {
             pre_dock_style: 0,
             slot_rect,
             state: SlotState::Candidate,
+            workspace: 0,
             min_size_est: None,
         }
     }

@@ -643,6 +643,22 @@ pub enum WmInteraction {
         start_rect: iced::Rectangle,
         start_cursor: iced::Point,
     },
+    /// PLAN-709 D1：原生槽位拖拽（几何真值域 `native_slot_local_rects`；
+    /// grab 语义同 [`WmInteraction::Drag`]，相对槽位本地矩形原点）。
+    NativeDrag {
+        slot_id: crate::ui::native_dock::NativeSlotId,
+        grab: iced::Point,
+    },
+    /// PLAN-709 D1：原生槽位八向缩放。`min_size` = 起点折算的逻辑像素下限
+    /// （`min_size_est` 物理域由 renderer 起点 DPI 折算 + 160/120 地板取大
+    /// 后传入——session 层无 DPI 知识，钳制在 `apply_cursor` 消费）。
+    NativeResize {
+        slot_id: crate::ui::native_dock::NativeSlotId,
+        edge: ResizeEdge,
+        start_rect: iced::Rectangle,
+        start_cursor: iced::Point,
+        min_size: iced::Size,
+    },
 }
 
 /// Plan 478 T2：相邻分区方向（send_to 热键载荷；环切对称）。
@@ -686,6 +702,15 @@ pub enum WmCommand {
     /// Plan 473 T6：槽位框 chrome——关闭按钮（`PostMessageW(WM_CLOSE)`，
     /// 给目标 app 正常关闭机会）。
     NativeSlotClose(crate::ui::native_dock::NativeSlotId),
+    /// PLAN-709：槽位标题栏按下——WM 侧聚焦置顶（伪 Wid 域，D2）+ 进
+    /// 槽位拖拽交互（grab 偏移 update 侧按 last_cursor 现算，StartDrag 同型）。
+    NativeSlotStartDrag { slot_id: crate::ui::native_dock::NativeSlotId },
+    /// PLAN-709：槽位把手按下——进八向缩放（min_size 由 renderer 按
+    /// `min_size_est` DPI 折算后传入，见 [`WmInteraction::NativeResize`]）。
+    NativeSlotStartResize { slot_id: crate::ui::native_dock::NativeSlotId, edge: ResizeEdge },
+    /// PLAN-709：槽位聚焦（chrome 客户区/标题栏点击、486 任务栏条目
+    /// `focus_native` 同语义收口）——WM 侧置顶（带内 + chrome 序）+ OS 前台。
+    NativeSlotFocus(crate::ui::native_dock::NativeSlotId),
     /// Plan 478 T2：把聚焦窗发送到相邻分区（Ctrl+Alt+Shift+←/→ 热键）。
     /// 宿主解析 focused + 目标 = (current ± 1 + N) % N 后落
     /// `move_win_to_workspace`（见 [`WorkspaceStep`]）。
@@ -974,6 +999,31 @@ impl WmState {
 
     // --- Plan 473 T4：原生窗口槽位（native dock）注册表与状态机推进 ---
 
+    /// PLAN-709 D2：槽位进统一 Wid 域（`focused`/`z_order`/`mru`/命中）的
+    /// 伪 Wid 段标志——与布局伪 Wid（`apply_layout` 槽位输出段）同段；真实
+    /// Wid 从 1 单调递增，会话生命周期内不可达 u63 段，绝不相撞。
+    pub(crate) const NATIVE_SLOT_WID_FLAG: u64 = 0x8000_0000_0000_0000;
+
+    /// PLAN-709 D2：槽位 id → 伪 Wid（`z_order`/`mru`/`focused` 统一序模型
+    /// 的槽位键；486 投影 `"N<slot>"` 同一编码空间的 Wid 域镜像）。
+    pub fn native_slot_pseudo_wid(id: crate::ui::native_dock::NativeSlotId) -> Wid {
+        Wid(Self::NATIVE_SLOT_WID_FLAG | id.0)
+    }
+
+    /// PLAN-709 D2：伪 Wid → 槽位 id（非槽位段返回 None；消费点用
+    /// `wins.get` 的既有路径对真实 Wid 行为零变化）。
+    pub fn native_slot_id_of_pseudo(
+        w: Wid,
+    ) -> Option<crate::ui::native_dock::NativeSlotId> {
+        if w.0 & Self::NATIVE_SLOT_WID_FLAG != 0 {
+            Some(crate::ui::native_dock::NativeSlotId(
+                w.0 & !Self::NATIVE_SLOT_WID_FLAG,
+            ))
+        } else {
+            None
+        }
+    }
+
     /// 登记原生窗口槽位候选（[`crate::ui::native_dock::SlotState::Candidate`]）。
     /// `local_rect` 为槽位的宿主窗本地逻辑矩形（布局引擎输入域，T5）；
     /// `slot_rect` 为屏幕物理矩形（Win32 域）。返回分配的槽位 id；宿主层
@@ -1002,8 +1052,19 @@ impl WmState {
                 slot_rect,
             ),
         );
+        // PLAN-709 D2/§5 workspace：dock 时归属当前分区（隐现/投影/send_to
+        // 的成员资格事实源；dock 在分区切换后即新分区语义）。
+        if let Some(slot) = self.native_slots.get_mut(&id) {
+            slot.workspace = self.current_workspace;
+        }
         self.native_slot_local_rects.insert(id, local_rect);
         self.pending_native_geometry.push((id, local_rect));
+        // PLAN-709：入统一序域——z_order 尾部（带内最顶 = 新收编惯例）+ mru
+        // 尾部（入环未聚焦；聚焦时前插，front=最近聚焦 不变式保持）。
+        // 不夺焦点（dock 是后台收编动作，与 launch 的「新窗即焦点」不同域）。
+        let wid = Self::native_slot_pseudo_wid(id);
+        self.z_order.push(wid);
+        self.mru.push(wid);
         id
     }
 
@@ -1040,6 +1101,7 @@ impl WmState {
         let terminal = slot.is_terminal();
         if terminal {
             self.native_slots.remove(&id);
+            self.purge_native_slot_refs(id);
         }
         (action, terminal)
     }
@@ -1050,7 +1112,64 @@ impl WmState {
         &mut self,
         id: crate::ui::native_dock::NativeSlotId,
     ) -> Option<crate::ui::native_dock::NativeSlot> {
-        self.native_slots.remove(&id)
+        let removed = self.native_slots.remove(&id);
+        if removed.is_some() {
+            self.purge_native_slot_refs(id);
+        }
+        removed
+    }
+
+    /// PLAN-709：槽位从统一序域摘除（`z_order`/`mru`/`focused`/交互态/
+    /// 本地矩形缓存）。焦点回退口径与 `remove_win` 同款（当前分区 z 顶
+    /// 虚拟窗；无则 None——槽位不参与回退候选：原焦点在槽位上时槽位
+    /// 正在消亡）。
+    fn purge_native_slot_refs(&mut self, id: crate::ui::native_dock::NativeSlotId) {
+        self.native_slot_local_rects.remove(&id);
+        let wid = Self::native_slot_pseudo_wid(id);
+        self.z_order.retain(|w| *w != wid);
+        self.mru.retain(|w| *w != wid);
+        if self.focused == Some(wid) {
+            self.focused = self
+                .wins_in_workspace(self.current_workspace)
+                .last()
+                .copied();
+        }
+        if matches!(
+            self.interaction,
+            Some(
+                WmInteraction::NativeDrag { slot_id, .. }
+                | WmInteraction::NativeResize { slot_id, .. }
+            ) if slot_id == id
+        ) {
+            self.interaction = None;
+        }
+    }
+
+    /// PLAN-709 D2：聚焦原生槽位（伪 Wid 进 `focused` + z_order 尾部置顶 +
+    /// mru 前插）。仅 Docked 态可聚焦；真实 Wid 域零接触。返回是否生效。
+    pub fn focus_native_slot(&mut self, id: crate::ui::native_dock::NativeSlotId) -> bool {
+        let docked = self
+            .native_slots
+            .get(&id)
+            .is_some_and(|s| s.state == crate::ui::native_dock::SlotState::Docked);
+        if !docked {
+            return false;
+        }
+        let wid = Self::native_slot_pseudo_wid(id);
+        self.focused = Some(wid);
+        self.z_order.retain(|w| *w != wid);
+        self.z_order.push(wid);
+        self.mru.retain(|w| *w != wid);
+        self.mru.insert(0, wid);
+        true
+    }
+
+    /// PLAN-709：槽位所在分区的可见性判定（伪 Wid 出参）；隐现臂与
+    /// 任务栏/MRU/switcher 过滤共用同一谓词（`workspace` 感知，§5）。
+    pub fn native_slot_visible(&self, id: crate::ui::native_dock::NativeSlotId) -> bool {
+        self.native_slots
+            .get(&id)
+            .is_some_and(|s| s.workspace == self.current_workspace)
     }
 
     /// z 序自顶向下的命中测试（返回最上层含点窗口；仅当前分区参与）。
@@ -1448,6 +1567,68 @@ impl WmState {
                     }
                 }
             }
+            // PLAN-709 D1：槽位拖拽——真值域 `native_slot_local_rects`，
+            // 钳制口径同 Drag（标题栏可抓取），同拍推 `pending_native_geometry`
+            // （`__mouse_moved` 尾随 `sync_native_geometry` 排水，D3）。
+            // Free 布局恒等分支不动 = 本写即落定（AC-03 写回语义）。
+            WmInteraction::NativeDrag { slot_id, grab } => {
+                if let Some(r) = self.native_slot_local_rects.get_mut(&slot_id) {
+                    let w = r.width;
+                    r.x = (x - grab.x).clamp(-(w - 60.0), (host.width - 60.0).max(0.0));
+                    r.y = (y - grab.y).clamp(0.0, (host.height - 30.0).max(0.0));
+                    self.pending_native_geometry.push((slot_id, *r));
+                }
+            }
+            // PLAN-709 D1：槽位八向缩放——几何数学同 Resize 臂；min 下限取
+            // 起点折算的 `min_size`（见变体注），宿主视口钳制同款
+            // （East/South 不越右/下缘，West/North 反向不为负）。
+            WmInteraction::NativeResize {
+                slot_id,
+                edge,
+                start_rect,
+                start_cursor,
+                min_size,
+            } => {
+                let dx = x - start_cursor.x;
+                let dy = y - start_cursor.y;
+                let min_w = min_size.width.max(1.0);
+                let min_h = min_size.height.max(1.0);
+                if let Some(r) = self.native_slot_local_rects.get_mut(&slot_id) {
+                    let right = start_rect.x + start_rect.width;
+                    let bottom = start_rect.y + start_rect.height;
+                    let mut left = start_rect.x;
+                    let mut top = start_rect.y;
+                    let mut width = start_rect.width;
+                    let mut height = start_rect.height;
+                    if matches!(edge, ResizeEdge::East | ResizeEdge::NorthEast | ResizeEdge::SouthEast) {
+                        width = (start_rect.width + dx)
+                            .max(min_w)
+                            .min((host.width - start_rect.x).max(1.0));
+                    }
+                    if matches!(edge, ResizeEdge::South | ResizeEdge::SouthWest | ResizeEdge::SouthEast) {
+                        height = (start_rect.height + dy)
+                            .max(min_h)
+                            .min((host.height - start_rect.y).max(1.0));
+                    }
+                    if matches!(edge, ResizeEdge::West | ResizeEdge::NorthWest | ResizeEdge::SouthWest) {
+                        width = (start_rect.width - dx)
+                            .max(min_w)
+                            .min(right.max(1.0));
+                        left = right - width;
+                    }
+                    if matches!(edge, ResizeEdge::North | ResizeEdge::NorthWest | ResizeEdge::NorthEast) {
+                        height = (start_rect.height - dy)
+                            .max(min_h)
+                            .min(bottom.max(1.0));
+                        top = bottom - height;
+                    }
+                    r.x = left;
+                    r.y = top;
+                    r.width = width;
+                    r.height = height;
+                    self.pending_native_geometry.push((slot_id, *r));
+                }
+            }
         }
         true
     }
@@ -1459,10 +1640,26 @@ impl WmState {
 }
 
 impl WmInteraction {
+    /// 交互目标的 Wid 域键（虚拟窗 = 真实 Wid；槽位 = 伪 Wid，D1/D2）。
+    /// 消费点仅 `minimize_win`/`remove_win` 的「交互中即取消」比较——
+    /// 伪 Wid 与真实 Wid 永不相等，跨域不误取消（语义正确）。
     pub fn wid(&self) -> Wid {
         match self {
             WmInteraction::Drag { wid, .. } | WmInteraction::Resize { wid, .. } => *wid,
+            WmInteraction::NativeDrag { slot_id, .. }
+            | WmInteraction::NativeResize { slot_id, .. } => {
+                WmState::native_slot_pseudo_wid(*slot_id)
+            }
         }
+    }
+
+    /// PLAN-709：交互是否在槽位域（`wins` 写臂短路判据——伪 Wid 不可进
+    /// `wins` 查询）。
+    pub fn is_native_slot(&self) -> bool {
+        matches!(
+            self,
+            WmInteraction::NativeDrag { .. } | WmInteraction::NativeResize { .. }
+        )
     }
 }
 
@@ -2939,6 +3136,18 @@ impl DesktopSession {
         );
         let Some(host) = self.host.as_mut() else { return };
         host.wm.toggle_maximize_win(wid, workarea);
+    }
+
+    /// PLAN-709：聚焦原生槽位（chrome 点击/任务栏条目/FOREGROUND 跟随
+    /// 共用底座；见 [`WmState::focus_native_slot`]）。返回是否生效。
+    pub fn wm_focus_native_slot(
+        &mut self,
+        id: crate::ui::native_dock::NativeSlotId,
+    ) -> bool {
+        self.host
+            .as_mut()
+            .map(|h| h.wm.focus_native_slot(id))
+            .unwrap_or(false)
     }
 
     /// Plan 463 T6：窗口循环聚焦（桌面热键；见 [`WmState::cycle_focus`]）。
@@ -8033,6 +8242,195 @@ mod tests {
             vec![a, c]
         );
         assert_eq!(ds.host.as_ref().unwrap().wm.mru_in_workspace(1), vec![b]);
+    }
+
+    // --- PLAN-709：原生槽位交互主体化（T-02 状态机）---
+
+    /// dock 一个测试槽位并推进到 Docked（add_native_slot → DockRequested
+    /// → DockConfirmed），返回槽位 id。hwnd/pid 为合成值（session 层无
+    /// Win32 接触——几何域 native_slot_local_rects 纯逻辑）。
+    fn docked_test_slot(
+        ds: &mut DesktopSession,
+        x: f32,
+        y: f32,
+    ) -> crate::ui::native_dock::NativeSlotId {
+        let id = ds.host.as_mut().unwrap().wm.add_native_slot(
+            0x11001,
+            4242,
+            "fixture".into(),
+            crate::ui::native_dock::Rect::new(0, 0, 400, 300),
+            crate::ui::native_dock::Rect::new(0, 0, 400, 300),
+            t2_rect(x, y),
+        );
+        let host = ds.host.as_mut().unwrap();
+        host.wm
+            .advance_native_slot(id, crate::ui::native_dock::SlotEvent::DockRequested);
+        host.wm
+            .advance_native_slot(id, crate::ui::native_dock::SlotEvent::DockConfirmed);
+        id
+    }
+
+    #[test]
+    fn native_slot_dock_registers_unified_order_workspace_not_focus() {
+        let mut ds = desktop_session_with_host();
+        let app = insert_app(&mut ds, "V");
+        let v = ds.wm_add_win(app, "V".into(), t2_rect(0.0, 0.0));
+        let id = docked_test_slot(&mut ds, 120.0, 80.0);
+        let host = ds.host.as_ref().unwrap();
+        let pseudo = crate::ui::session::WmState::native_slot_pseudo_wid(id);
+        // 互转助手：伪 Wid ↔ 槽位 id 往返；真实 Wid 不误判。
+        assert_eq!(
+            crate::ui::session::WmState::native_slot_id_of_pseudo(pseudo),
+            Some(id)
+        );
+        assert_eq!(
+            crate::ui::session::WmState::native_slot_id_of_pseudo(v),
+            None
+        );
+        // dock 入统一序域：z_order 尾部（带内最顶）+ mru 尾部（入环未聚焦）。
+        let wm = &host.wm;
+        assert_eq!(wm.z_order.last(), Some(&pseudo));
+        assert_eq!(wm.mru.last(), Some(&pseudo));
+        // dock 不夺焦点（后台收编动作；vwin 的聚焦保持）；workspace 归属
+        // 当前分区。
+        assert_eq!(wm.focused, Some(v));
+        assert_eq!(wm.native_slots[&id].workspace, wm.current_workspace);
+        assert!(wm.native_slot_visible(id));
+    }
+
+    #[test]
+    fn native_slot_drag_follows_cursor_and_persists_in_free() {
+        let mut ds = desktop_session_with_host();
+        let id = docked_test_slot(&mut ds, 100.0, 100.0);
+        // 进拖拽（grab = 光标距槽位原点 (10,10)，StartDrag 同型现算）。
+        {
+            let host = ds.host.as_mut().unwrap();
+            host.wm.last_cursor.set(iced::Point::new(110.0, 110.0));
+            host.wm.interaction =
+                Some(WmInteraction::NativeDrag { slot_id: id, grab: iced::Point::new(10.0, 10.0) });
+        }
+        // dock 时的初始同步项先排空（同步拍既有行为），只盯拖拽增量。
+        ds.host.as_mut().unwrap().wm.drain_native_geometry();
+        // 光标移动 → 本地矩形跟随 + 待同步几何入队。
+        let host = ds.host.as_mut().unwrap();
+        assert!(host.wm.apply_cursor(200.0, 250.0, iced::Size::new(1280.0, 800.0)));
+        assert_eq!(*host.wm.native_slot_local_rects.get(&id).unwrap(), t2_rect(190.0, 240.0));
+        assert_eq!(host.wm.drain_native_geometry(), vec![(id, t2_rect(190.0, 240.0))]);
+        assert!(host.wm.interaction.unwrap().is_native_slot());
+        // Free 布局 relayout（恒等分支）不跳位（AC-03 写回语义）。
+        crate::ui::layout::apply_layout(
+            &mut host.wm,
+            iced::Rectangle::new(iced::Point::ORIGIN, iced::Size::new(1280.0, 800.0)),
+            crate::ui::layout::ReservedEdges::default(),
+        );
+        assert_eq!(*host.wm.native_slot_local_rects.get(&id).unwrap(), t2_rect(190.0, 240.0));
+        // 松手收尾：交互清空。
+        assert!(host.wm.end_interaction());
+        assert!(host.wm.interaction.is_none());
+    }
+
+    #[test]
+    fn native_slot_resize_clamps_to_min_size() {
+        let mut ds = desktop_session_with_host();
+        let id = docked_test_slot(&mut ds, 300.0, 300.0);
+        let start = t2_rect(300.0, 300.0); // 100x100
+        {
+            let host = ds.host.as_mut().unwrap();
+            host.wm.last_cursor.set(iced::Point::new(400.0, 400.0));
+            host.wm.interaction = Some(WmInteraction::NativeResize {
+                slot_id: id,
+                edge: crate::ui::session::ResizeEdge::NorthWest,
+                start_rect: start,
+                start_cursor: iced::Point::new(400.0, 400.0),
+                min_size: iced::Size::new(200.0, 150.0),
+            });
+        }
+        // 向西北拽（-50,-50）→ west/north 反向增长被 min 钳制（200x150，
+        // 低于 400x400 的右/下缘天花板——min 先绑定）。
+        let host = ds.host.as_mut().unwrap();
+        assert!(host.wm.apply_cursor(350.0, 350.0, iced::Size::new(1280.0, 800.0)));
+        let r = *host.wm.native_slot_local_rects.get(&id).unwrap();
+        assert!((r.width - 200.0).abs() < 0.01 && (r.height - 150.0).abs() < 0.01);
+        assert!((r.x - (start.x + start.width - 200.0)).abs() < 0.01);
+        assert!((r.y - (start.y + start.height - 150.0)).abs() < 0.01);
+    }
+
+    #[test]
+    fn native_slot_focus_raises_and_enters_mru_front() {
+        let mut ds = desktop_session_with_host();
+        let id = docked_test_slot(&mut ds, 0.0, 0.0);
+        let other = docked_test_slot(&mut ds, 40.0, 40.0);
+        let host = ds.host.as_mut().unwrap();
+        // 未知/未 dock 槽位聚焦拒绝。
+        assert!(!host.wm.focus_native_slot(crate::ui::native_dock::NativeSlotId(999)));
+        // 聚焦 → 伪 Wid 进 focused/z 顶/mru front。
+        assert!(host.wm.focus_native_slot(other));
+        let pseudo = crate::ui::session::WmState::native_slot_pseudo_wid(other);
+        assert_eq!(host.wm.focused, Some(pseudo));
+        assert_eq!(host.wm.z_order.last(), Some(&pseudo));
+        assert_eq!(host.wm.mru.first(), Some(&pseudo));
+        // 聚焦另一槽位 → 焦点迁移（前插覆盖）。
+        assert!(host.wm.focus_native_slot(id));
+        assert_eq!(
+            host.wm.mru.first(),
+            Some(&crate::ui::session::WmState::native_slot_pseudo_wid(id))
+        );
+        // 槽位聚焦无 App 焦点（focused_app 对伪 Wid 天然 None）。
+        assert_eq!(host.wm.focused_app(), None);
+    }
+
+    #[test]
+    fn native_slot_removal_purges_order_focus_and_interaction() {
+        let mut ds = desktop_session_with_host();
+        let app = insert_app(&mut ds, "V");
+        let v = ds.wm_add_win(app, "V".into(), t2_rect(0.0, 0.0));
+        let id = docked_test_slot(&mut ds, 0.0, 0.0);
+        {
+            let host = ds.host.as_mut().unwrap();
+            assert!(host.wm.focus_native_slot(id));
+            host.wm.interaction =
+                Some(WmInteraction::NativeDrag { slot_id: id, grab: iced::Point::ORIGIN });
+        }
+        // UndockRequested → Undocking（非终态）：统一序域保留。
+        let host = ds.host.as_mut().unwrap();
+        let (action, removed) = host
+            .wm
+            .advance_native_slot(id, crate::ui::native_dock::SlotEvent::UndockRequested);
+        assert!(!removed);
+        assert!(matches!(action, crate::ui::native_dock::SlotAction::RestoreAndRemove { .. }));
+        let pseudo = crate::ui::session::WmState::native_slot_pseudo_wid(id);
+        assert!(host.wm.z_order.contains(&pseudo));
+        // RestoreCompleted → Restored（终态）：自动移除 + 全域摘除。
+        let (_, removed) = host
+            .wm
+            .advance_native_slot(id, crate::ui::native_dock::SlotEvent::RestoreCompleted);
+        assert!(removed);
+        assert!(!host.wm.z_order.contains(&pseudo));
+        assert!(!host.wm.mru.contains(&pseudo));
+        assert_ne!(host.wm.focused, Some(pseudo));
+        assert!(host.wm.interaction.is_none());
+        assert!(!host.wm.native_slots.contains_key(&id));
+        assert!(!host.wm.native_slot_local_rects.contains_key(&id));
+        // 焦点回退到当前分区 z 顶虚拟窗（remove_win 同款口径）。
+        assert_eq!(host.wm.focused, Some(v));
+    }
+
+    #[test]
+    fn vwin_minimize_does_not_cancel_slot_interaction() {
+        let mut ds = desktop_session_with_host();
+        let app = insert_app(&mut ds, "V");
+        let v = ds.wm_add_win(app, "V".into(), t2_rect(0.0, 0.0));
+        let id = docked_test_slot(&mut ds, 0.0, 0.0);
+        let host = ds.host.as_mut().unwrap();
+        host.wm.interaction =
+            Some(WmInteraction::NativeDrag { slot_id: id, grab: iced::Point::ORIGIN });
+        // 拖槽位进行中关/最小化虚拟窗：跨域不误取消（wid() 伪 Wid 比较永 false）。
+        host.wm.minimize_win(v);
+        assert!(host.wm.interaction.is_some());
+        // 同域：拖虚拟窗进行中最小化同一窗 = 取消（既有语义回归钉）。
+        host.wm.interaction = Some(WmInteraction::Drag { wid: v, grab: iced::Point::ORIGIN });
+        host.wm.minimize_win(v);
+        assert!(host.wm.interaction.is_none());
     }
 
     #[test]

@@ -168,8 +168,10 @@ pub fn apply_layout(
         }
     }
     for (wid, r) in layout(wm.layout, &snaps, viewport, reserved) {
-        if wid.0 & NATIVE_SLOT_WID_FLAG != 0 {
-            let id = crate::ui::native_dock::NativeSlotId(wid.0 & !NATIVE_SLOT_WID_FLAG);
+        if wid.0 & crate::ui::session::WmState::NATIVE_SLOT_WID_FLAG != 0 {
+            let id = crate::ui::native_dock::NativeSlotId(
+                wid.0 & !crate::ui::session::WmState::NATIVE_SLOT_WID_FLAG,
+            );
             let min = wm
                 .native_slots
                 .get(&id)
@@ -208,12 +210,11 @@ pub fn apply_layout(
     }
 }
 
-/// Plan 473 T5：native slot 参与排布的伪 Wid 段标志（真 Wid 从 1 单调
-/// 递增，会话生命周期内不可达 u63 段，绝不相撞）。
-const NATIVE_SLOT_WID_FLAG: u64 = 0x8000_0000_0000_0000;
-
-fn native_slot_pseudo_wid(id: crate::ui::native_dock::NativeSlotId) -> crate::ui::session::Wid {
-    crate::ui::session::Wid(NATIVE_SLOT_WID_FLAG | id.0)
+/// Plan 473 T5：native slot 参与排布的伪 Wid（PLAN-709 起段标志/互转
+/// 收口到 `session::WmState`（`NATIVE_SLOT_WID_FLAG` + 助手）——统一序
+/// 模型（focused/z_order/mru）与布局域同一编码，单一事实源）。
+fn native_slot_pseudo_wid(id: crate::ui::native_dock::NativeSlotId) -> Wid {
+    crate::ui::session::WmState::native_slot_pseudo_wid(id)
 }
 
 /// Grid：cols = ⌈√N⌉，rows = ⌈N/cols⌉，行主序。空表返回空表。
