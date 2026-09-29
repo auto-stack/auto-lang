@@ -225,3 +225,10 @@ graph TD
 - 备选：重入排队/合并（cons：无使用反馈前属过度设计）；busy 走 .at 可查询的合成字段（cons：全 widget 状态面膨胀，等真实查询需求立项）。
 - 后果：handler 内任意时长异步等待（含人在环模态端点）期间窗口保持交互与重绘；挂载自发 Init 含 api 拉数时先渲染中途态再泵续落账；`read_state` 取数路径零改动。测试侧适配：断言 api 落账的测试须经 `plan370_test_support::drive_parked_segments` 驱动泵（"dispatch 即落账"假设退役）。
 - 状态：active
+
+### ADR-25: Vue 生成 lucide 字面量校验回退 Circle（PLAN-706）
+- 日期 / 来源：2026-09-28 / plan-706（widgets-gallery kitchen-sink `icon(name:"sample")` 生成非法 `import { Sample }` 整页炸掉的根修）
+- 决策：vue 生成器 `lucide_component_name(kebab)` 先查 `ui/iced::lucide_generated::is_known`（lucide 0.312 全量表）；命中发 PascalCase 真名，**未命中回退 `Circle`**（与动态图标名降级同族），禁止把任意 kebab 字面量当 lucide 导出。内部固定名（Search/Check 等）跳过校验。
+- 备选：跳过 icon 不渲染（cons：厨房水槽等占位演示会出现空洞）；仅警告仍发原名（cons：非法 import 仍炸页）。
+- 后果：kitchen-sink 等占位 `sample` 自动愈合为 Circle；真实 lucide 名零变化；lucide 缺表时静默降级而非模块加载失败。
+- 状态：active
