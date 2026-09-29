@@ -409,3 +409,8 @@ mod plan702_segment_tests;
 // 协议种子（T-02 统一登记表与 T-04 owner loop 的前提探针）。
 #[cfg(test)]
 mod plan705_spike_tests;
+// PLAN-707 T-01 spike：外部流/取消三前提红测（705 managed 取消缺口 +
+// 流建立阻塞 owner + SSE 跨 chunk UTF-8 玷污；修复落地后逐个转绿）。
+#[cfg(test)]
+mod plan707_spike_tests;
+// scratch diagnostics (T-01, remove before landing)
