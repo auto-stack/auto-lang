@@ -121,6 +121,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
   examples-app-track(21)、base-styles(22)、virtual-desktop(23)、desktop-shell-and-launcher(24)、
   a2ui-composer-analysis(原25)、image-viewer-pipeline(Plan 547)、025-gap-enumeration(16a)、
   **vm-frame-budget(VM 帧预算/空转渲染，PLAN-650 设计层)**、
+  **vm-loading-responsiveness(VM 加载响应性、CPU 段预算与 Init 调度，PLAN-708 r2 提议)**、
   **component-time-and-events(嵌套组件时间源/多层交互契约，PLAN-652 设计层)**、
   **universal-scroll-architecture(通用滚动架构 ScrollPane/ScrollContent 契约，设计先行 draft；Phase A+B+C 已立项 PLAN-656)**、
   **editor-kernel(编辑器内核：rope 单写者版+统一 delta+back 分块读，PLAN-673 T-00 设计先行)**
