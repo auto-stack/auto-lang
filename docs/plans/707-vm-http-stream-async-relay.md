@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-707
-status: execution_done
+status: reviewed
 feature_name: vm-http-stream-async-relay
 author: [agent]
 created_at: 2026-09-29
@@ -193,6 +193,9 @@ T-01 后测试文件可提前创建以支持逐任务红转绿，T-07 收口而�
 - 2026-09-29，`stage: work`，`PLAN-707:r1`，`outcome: pass`，`code_commit: 4113a240d`（plan-707-dev，T-01..T-08 全链 9 commits，base 66c9cac19），`task_ids: T-01..T-08`，`evidence: docs/plans/reports/707-{stream-decision,parity,resource-lifecycle,verification}.md + plan707 测试族 31 例全绿 + E2E 三例（真 TCP relay/断连取消/close 基线）全绿 + tf 全量 no-fail-fast 5703/5709（5 红全部干净树基线定责，零 707 因果回归）+ check 双形态绿 + fmt/调试残留零`，`blockers: 无`，`next: review`（独立复审：对照 AC-01..06 与 SD-01..06，canonical Spec 沉淀在 merge 阶段）。
 
 执行摘要（T-01..T-08）：705 managed 取消缺口闭合（abort+竞态复查闭合+detached 分离）；流建立/读取全异步非阻塞（`http_stream.rs` 统一资源表：独立许可对/有界队列背压/幂等终结/typed pull）；增量 SSE decoder（WHATWG 子集+全切分点金样）；`Http.*` 声明面可达（静默 no-op 修复）+ for-in 三形态（内联/变量/生成器）；`ParkedWait::HttpStream` + CALL_NAT 重试协议（参数回推+凭据清除）；generator 等待凭据化（热循环消除）+ **DashMap 跨驱动写锁自死锁修复**（Generator 臂前置分流）；scope 资源组 + `AutoTask.owned_stream_ids` 双线收口；E2E relay 全链（上游→#[api] ~Iter<str>→下游，断连级联取消上游）。执行中发现并修复 705 面外两处既有缺陷：成功 job 的 AbortHandle 慢性泄漏、`http.at` 流族声明在 VM 轨不可达。
+- 2026-09-30，`stage: review`，`PLAN-707:r1`，`outcome: pass`，`reviewed_commit: 4113a240d`（worktree clean，全部实现已提交），`base_commit: 66c9cac19`，`dependency_revisions: auto-down@3373a5c（组内 sibling worktree）`，`spec_inputs: docs/specs/stdlib/design/{http-server,http-handler-async-lifecycle,async-http-result-lifecycle,backend-assembly}.md + docs/specs/auto-lang/runtime/design/networking-stdlib.md 现版；SD-02 before-rule 在 async-http-result-lifecycle.md:39 确认（"取消随 future 丢弃"主张与 705 实现不符，707 已闭合）`，`acceptance_results: AC-01..06 全 pass（逐条对证见 docs/plans/reports/707-verification.md §2；复审独立复现：plan707 族 31/31 绿 + 兼容族 159/160 + 源码核查七项：零阻塞残留/abort 双点/Generator 前置分流/回推迭代器 id×4 臂/detached 唯一位点/scope 登记 5 开点+cleanup 双臂/sse_poll 语义逐字节保留）`，`findings: F-1（非阻断）=plan707_wait 在 160 例重载混合跑（进程被饿 482s）下时序失败，standalone/族内/98 例中载三配置均绿——负载敏感测试基建限制，与 plan358 stress 既有 flaky 同类，建议另档稳定化，不影响 AC-02 判定（判据环境=plan707 族门禁）`，`evidence: 复审重跑命令与结果记录于本条；四份报告随 plan-707-dev 提交（merge 后路径 docs/plans/reports/707-*.md 持久可解析）；canonical Specs/ledger 零改动已核实（diff 27 文件全在计划声明范围）`，`next: merge`。
+
+复审方法声明：复审在实现会话内进行（无独立会话授权），结论由工件重建——commit/diff 清单、源码逐项核查、fresh 测试复现、基线定责链，不依赖执行摘要。tf 全量证据链注记：no-fail-fast 全量跑于 c8744543b 之前，该提交仅含 rustfmt 格式化与单测宽限参数（生产代码语义零变更），tf 结论对 4113a240d 有效。
 
 ## 10. 待澄清事项
 
