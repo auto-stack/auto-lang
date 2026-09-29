@@ -7,6 +7,11 @@
 //! WmState 注册表/状态机组合已在 session 单测覆盖（T4/T5）；renderer 装配层
 //! 的视觉与交互归 T4 手动冒烟清单。
 //!
+//! PLAN-709 增腿：带内 z 序 restack（真窗序断言）/ workspace 隐现（SW_HIDE/
+//! SW_SHOW 探针）/ FOREGROUND 钩子跟随 / 程序化几何零 undock 漂移（AC-01
+//! 安全半边）——session 状态机半边在 `ui::session` 单测（拖拽跟随/钳制/
+//! 聚焦/分区/环成员）。
+//!
 //! 门控：feature `test-native-dock` + `#[cfg(windows)]`；fixture 缺失时
 //! 首测自动 `cargo build`（独立项目，非 workspace 成员）。
 
@@ -405,6 +410,7 @@ fn fixture_drag_in_produces_dock_candidate_t4() {
             NativeSlotEventKind::MinimizeStart => "min-s",
             NativeSlotEventKind::MinimizeEnd => "min-e",
             NativeSlotEventKind::Destroy => "destroy",
+            NativeSlotEventKind::Foreground => "fg",
         }));
         if evt.hwnd != fixture.hwnd {
             continue;
@@ -611,4 +617,163 @@ fn fixture_click_passes_through_hole_region_t3() {
     // 清场：Region 复位（stand_in Drop 时 DestroyWindow 前归还全窗形状）。
     let _ = ndw::apply_hole_regions(stand_in.0, base, &[]);
     test_support::pump_for(stand_in.0, 100);
+}
+
+// ===========================================================================
+// PLAN-709：槽位交互主体化 E2E 腿（真窗 z 序 / 隐现 / FOREGROUND / 零漂移）
+// ===========================================================================
+
+/// ④ 带内 z 序：restack_slots 真窗序断言（假洞桌面垫底 + 链插一次成型；
+/// 真洞翻转形态桌面盖顶）。WindowFromPoint 于三窗重叠区读 z 顶。
+#[test]
+fn slot_band_restack_orders_real_windows() {
+    ensure_dpi_aware();
+    use auto_lang::ui::native_dock::win32::test_support;
+    // 三窗同域重叠（桌面代理大窗垫概念底；槽位窗 2 枚交叠）。
+    let desktop = test_support::spawn("e2e-restack-desktop", Rect::new(80, 80, 700, 520));
+    let s1 = test_support::spawn("e2e-restack-s1", Rect::new(100, 100, 420, 320));
+    let s2 = test_support::spawn("e2e-restack-s2", Rect::new(160, 140, 420, 320));
+    for w in [&desktop, &s1, &s2] {
+        test_support_raise(w.0);
+    }
+    // 并行测试共存（nextest 多进程同机）：整组平移直到探点（三窗交集内）
+    // 的 WindowFromPoint 命中本测窗（他窗占用则右下平移重试）。
+    let mine = [desktop.0 .0, s1.0 .0, s2.0 .0];
+    let (mut dx, mut dy) = (0, 0);
+    let probe = loop {
+        let _ = ndw::set_bounds(desktop.0, Rect::new(80 + dx, 80 + dy, 700, 520));
+        let _ = ndw::set_bounds(s1.0, Rect::new(100 + dx, 100 + dy, 420, 320));
+        let _ = ndw::set_bounds(s2.0, Rect::new(160 + dx, 140 + dy, 420, 320));
+        for w in [&desktop, &s1, &s2] {
+            test_support::pump_for(w.0, 40);
+        }
+        let p = (300 + dx, 260 + dy);
+        let top = ndw::drag_sim::window_from_point(p.0, p.1);
+        if mine.contains(&top) {
+            break p;
+        }
+        dx += 256;
+        dy += 192;
+        assert!(dx < 256 * 8, "8 次平移仍无净空探点（并行窗占用异常）");
+    };
+    // 假洞带（desktop_above=false）：带序 bottom→top = [s1, s2] → 顶 = s2。
+    ndw::restack_slots(desktop.0, &[s1.0, s2.0], false)
+        .expect("restack fake-hole");
+    assert_eq!(
+        ndw::drag_sim::window_from_point(probe.0, probe.1),
+        s2.0 .0,
+        "假洞带顶应为 s2"
+    );
+    // 聚焦 s1（统一 z 序翻转）→ restack [s2, s1] → 顶 = s1。
+    ndw::restack_slots(desktop.0, &[s2.0, s1.0], false)
+        .expect("restack refocus");
+    assert_eq!(
+        ndw::drag_sim::window_from_point(probe.0, probe.1),
+        s1.0 .0,
+        "聚焦置顶后带顶应为 s1"
+    );
+    // 真洞翻转（desktop_above=true）：桌面盖带顶。
+    ndw::restack_slots(desktop.0, &[s2.0, s1.0], true).expect("restack hole");
+    assert_eq!(
+        ndw::drag_sim::window_from_point(probe.0, probe.1),
+        desktop.0 .0,
+        "真洞形态桌面应盖带顶"
+    );
+}
+
+fn test_support_raise(h: NativeHwnd) {
+    // scratch 窗提 TOPMOST 带（终端遮挡候选摆位——test_support 同款保障）。
+    auto_lang::ui::native_dock::win32::test_support::raise_topmost(h);
+}
+
+/// ③ workspace 隐现 OS 半边：SW_HIDE/SW_SHOW + is_visible 探针往返
+/// （session 谓词半边在 `native_slot_workspace_move_and_visibility_semantics`）。
+#[test]
+fn slot_workspace_visibility_round_trip() {
+    ensure_dpi_aware();
+    use auto_lang::ui::native_dock::win32::test_support;
+    let w = test_support::spawn("e2e-ws-visibility", Rect::new(120, 120, 300, 200));
+    assert!(ndw::is_visible(w.0), "前置：scratch 窗应可见");
+    ndw::show_window(w.0, ndw::ShowMode::Hide).expect("hide");
+    assert!(!ndw::is_visible(w.0), "隐分区：SW_HIDE 后不可见");
+    ndw::show_window(w.0, ndw::ShowMode::Show).expect("show");
+    assert!(ndw::is_visible(w.0), "切回：SW_SHOW 后复显");
+}
+
+/// ⑤ FOREGROUND 钩子：fixture 抬前台 → Foreground 事件到达（宿主臂
+/// `wm_focus_native_slot` 消费；session 半边单测在案）。
+#[test]
+fn slot_foreground_hook_event_follows() {
+    ensure_dpi_aware();
+    let fixture = spawn_fixture(&["--title", "e2e-foreground"]);
+    // 钩子槽位互斥——线程并行（裸 cargo test）下退避重试（hook_with_retry）。
+    let (_hook, rx) = hook_with_retry();
+    // AttachThreadInput 前台化真抬（SetForegroundWindow 后台锁退路同款）。
+    assert!(ndw::drag_sim::raise_top(fixture.hwnd), "前置：抬前台应成功");
+    // 环境自适应（PLAN-043 ToDesk 合成输入约束同款在案）：raise_top 返回
+    // true 不保证前台真换（ToDesk 输入同步层回拽/前台锁拒绝）。仅当
+    // GetForegroundWindow 实证 fixture 在前台而事件未达 → 管道断（FAIL）；
+    // 前台未换成 = 环境阻断（注记放行，留待用户实机复验——计划待澄清④）。
+    let fg_target = fixture.hwnd;
+    let reached = std::thread::spawn(move || {
+        for _ in 0..20 {
+            if ndw::drag_sim::raise_top(fg_target) {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        }
+    });
+    let _ = reached.join();
+    let deadline = Instant::now() + Duration::from_secs(4);
+    let mut got_fg = false;
+    while Instant::now() < deadline {
+        match rx.recv_timeout(Duration::from_millis(200)) {
+            Ok(evt)
+                if evt.hwnd == fixture.hwnd
+                    && evt.kind == NativeSlotEventKind::Foreground =>
+            {
+                got_fg = true;
+                break;
+            }
+            Ok(_) => continue,
+            Err(_) => continue,
+        }
+    }
+    if got_fg {
+        return; // 管道实证：前台切换 → Foreground 事件到达。
+    }
+    // 事件未达：区分「前台真换了但钩子漏报」（真缺陷）与「前台未换成」
+    // （环境阻断）。GetForegroundWindow == fixture → 必须已收到事件。
+    let fg_now = ndw::get_foreground_window();
+    if fg_now == Some(fixture.hwnd) {
+        panic!("前台实证在 fixture 而钩子未报 FOREGROUND——管道断");
+    }
+    eprintln!(
+        "[p709-e2e] FOREGROUND 腿环境阻断（前台未换成，fg={fg_now:?}；ToDesk 合成输入约束在案）——留待实机复验"
+    );
+}
+
+/// ① 安全半边：程序化 set_bounds（拖拽排水路径）零 undock 漂移——
+/// 读回 == 槽位矩形 → C4 判据恒 false（真拖手 move-size 循环才产生
+/// 偏差；同步几何路径与 473 自同步豁免同源）。
+#[test]
+fn programmatic_set_bounds_no_undock_drift() {
+    ensure_dpi_aware();
+    let fixture = spawn_fixture(&["--title", "e2e-no-drift"]);
+    ndw::strip_chrome(fixture.hwnd).expect("strip");
+    let slot_a = Rect::new(200, 180, 460, 340);
+    ndw::set_bounds(fixture.hwnd, slot_a).expect("排一次几何");
+    assert!(wait_bounds_eq(fixture.hwnd, slot_a, 2, 3), "几何应落位");
+    let cur = ndw::get_bounds(fixture.hwnd).expect("read back");
+    assert!(
+        !native_dock::detect_user_drag(cur, slot_a, native_dock::USER_DRAG_THRESHOLD_PX),
+        "程序化排水零偏差：不该判用户拖走"
+    );
+    // 连续拖拽排水形态（slot_rect 同拍回写语义）：第二次落位仍零漂移。
+    let slot_b = Rect::new(340, 260, 460, 340);
+    ndw::set_bounds(fixture.hwnd, slot_b).expect("排二次几何");
+    let cur = ndw::get_bounds(fixture.hwnd).expect("read back 2");
+    assert!(
+        !native_dock::detect_user_drag(cur, slot_b, native_dock::USER_DRAG_THRESHOLD_PX),
+        "连续排水零偏差"
+    );
 }

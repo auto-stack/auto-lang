@@ -8511,6 +8511,43 @@ mod tests {
     }
 
     #[test]
+    fn native_slot_resize_east_south_growth_and_viewport_clamp() {
+        let mut ds = desktop_session_with_host();
+        let id = docked_test_slot(&mut ds, 200.0, 100.0);
+        let host_size = iced::Size::new(800.0, 600.0);
+        // East/South 双向增长（AC-02「至少两向」第二向）+ 东/下缘不越视口。
+        {
+            let host = ds.host.as_mut().unwrap();
+            host.wm.last_cursor.set(iced::Point::new(300.0, 200.0));
+            host.wm.interaction = Some(WmInteraction::NativeResize {
+                slot_id: id,
+                edge: crate::ui::session::ResizeEdge::SouthEast,
+                start_rect: t2_rect(200.0, 100.0), // 100x100
+                start_cursor: iced::Point::new(300.0, 200.0),
+                min_size: iced::Size::new(160.0, 120.0),
+            });
+        }
+        let host = ds.host.as_mut().unwrap();
+        // 光标拉到视口右/下缘外（900, 700）→ 增长被视口钳制。
+        assert!(host.wm.apply_cursor(900.0, 700.0, host_size));
+        let r = *host.wm.native_slot_local_rects.get(&id).unwrap();
+        assert!((r.width - 600.0).abs() < 0.01, "东缘钳视口 800: {r:?}");
+        assert!((r.height - 500.0).abs() < 0.01, "下缘钳视口 600: {r:?}");
+        // 单独 East 向。
+        host.wm.interaction = Some(WmInteraction::NativeResize {
+            slot_id: id,
+            edge: crate::ui::session::ResizeEdge::East,
+            start_rect: t2_rect(200.0, 100.0),
+            start_cursor: iced::Point::new(300.0, 200.0),
+            min_size: iced::Size::new(160.0, 120.0),
+        });
+        assert!(host.wm.apply_cursor(400.0, 999.0, host_size));
+        let r = *host.wm.native_slot_local_rects.get(&id).unwrap();
+        assert!((r.width - 300.0).abs() < 0.01, "East +100: {r:?}");
+        assert!((r.height - 100.0).abs() < 0.01, "East 不动高: {r:?}");
+    }
+
+    #[test]
     fn native_slot_focus_raises_and_enters_mru_front() {
         let mut ds = desktop_session_with_host();
         let id = docked_test_slot(&mut ds, 0.0, 0.0);

@@ -32,7 +32,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART,
     EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART, GetCursorPos, GetMessageW, GetWindowLongPtrW, GetWindowRect,
     GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, MSG,
-    PostMessageW, PostThreadMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
+    GetForegroundWindow, PostMessageW, PostThreadMessageW, SetForegroundWindow,
+    SetWindowLongPtrW, SetWindowPos,
     ShowWindow, SW_MAXIMIZE, TranslateMessage, GWL_STYLE, SW_HIDE, SW_MINIMIZE, SW_RESTORE,
     SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_SHOW, WM_CLOSE,
     WM_QUIT,
@@ -633,6 +634,13 @@ pub fn is_minimized(target: NativeHwnd) -> bool {
 /// PLAN-709：是否可见（IsWindowVisible——workspace 隐现 tick 的失配检测）。
 pub fn is_visible(target: NativeHwnd) -> bool {
     alive(target) && unsafe { IsWindowVisible(hwnd_of(target)) }.as_bool()
+}
+
+/// PLAN-709：当前前台窗口（E2E 环境自适应腿用——区分「前台真换钩子漏报」
+/// 与「前台未换成」；生产 FOREGROUND 钩子臂不依赖主动查询）。
+pub fn get_foreground_window() -> Option<NativeHwnd> {
+    let hwnd = unsafe { GetForegroundWindow() };
+    (!hwnd.is_invalid() && !hwnd.0.is_null()).then(|| NativeHwnd(hwnd_value(hwnd)))
 }
 
 /// 是否最大化（IsZoomed；C5：已最大化窗口 dock 前先 SW_RESTORE）。
