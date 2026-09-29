@@ -117,19 +117,39 @@ pub(crate) fn live_op_ready_or_gone(req_id: u64) -> bool {
     LIVE_OPS
         .lock()
         .ok()
-        .and_then(|map| map.get(&req_id).map(|op| op.state != OpState::Pending))
+        .map(|map| map.get(&req_id).map(|op| op.state != OpState::Pending).unwrap_or(true))
         .unwrap_or(true)
 }
 
 /// 幂等终结入口（引擎超时放弃 / scope 取消 / deadline）：Pending/Completed
 /// 一律移除；此后的 worker 迟到完成经 [`complete_live_op`] 的 presence
 /// 守卫被丢弃。取消同样通知——等它的 owner loop/parked 项需要醒来观察。
+///
+/// PLAN-707 T-02：取消升格为**实际停止执行体**——同时 abort 该 req_id 的
+/// managed job future（`JOB_ABORTS` 有则取）。abort 在 job 的下一个 await
+/// 点生效（许可等待/请求建立/重试退避 sleep/读体/队满发送等待），wrapper
+/// task 整树丢弃 → queue/active 许可随 Drop 释放。缺省（无登记 future，
+/// 如 detached/已终结）只删槽——幂等。
 pub(crate) fn cancel_live_op(req_id: u64) {
+    let handle = JOB_ABORTS
+        .lock()
+        .ok()
+        .and_then(|mut map| map.remove(&req_id));
+    if let Some(handle) = handle {
+        handle.abort();
+    }
     if let Ok(mut map) = LIVE_OPS.lock() {
         map.remove(&req_id);
     }
     COMPLETION_NOTIFY.notify_waiters();
 }
+
+/// PLAN-707 T-02：managed job 的 abort 句柄表（req_id → 任务句柄）。
+/// `submit_client_job` 在 spawn 后登记，`cancel_live_op` 取出并 abort。
+/// 迟到 cancel 竞态由插入后复查闭合（见 submit_client_job 注释）。
+static JOB_ABORTS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<u64, tokio::task::AbortHandle>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
 
 /// 登记表是否仍持有该令牌（parked 不回收断言 / 泄漏探针）。
 #[cfg(test)]
@@ -263,12 +283,16 @@ pub(crate) fn client_limits() -> ClientLimits {
     executor().limits
 }
 
-/// 提交一个非流式客户端 job 到固定 async runtime。
+/// 提交一个**managed** 客户端 job 到固定 async runtime。
 ///
 /// 队列已满 → 立即以终结性错误完成该 req_id（消费端拿到既有错误形态）并
 /// 返回 `false`——**绝不临时 spawn 兜底线程**。job 的完成统一经
 /// [`complete_live_op`]（presence 守卫拒迟到复活），总期限兜底由本函数
 /// 包裹（job 自身的重试退避 sleep 在取消/超时时随 future 一起丢弃）。
+///
+/// PLAN-707 T-02：spawn 后登记 [`JOB_ABORTS`]（managed 取消面），随后复查
+/// live-op 仍存在——spawn→登记窗口内的 `cancel_live_op` 抢先时，条目已
+/// 消失 → 此处立即补 abort，cancel 先于 handle 安装不漏失。
 pub(crate) fn submit_client_job(
     req_id: u64,
     job: impl std::future::Future<Output = Result<AsyncResult, String>> + Send + 'static,
@@ -280,7 +304,7 @@ pub(crate) fn submit_client_job(
     };
     let active = std::sync::Arc::clone(&ex.active);
     let limits = ex.limits;
-    ex.rt.spawn(async move {
+    let task = ex.rt.spawn(async move {
         let _queue_slot = queue_permit;
         // 活跃许可：等待期间占队列槽（有限在途 + 有限等待队列）。
         let Ok(_active_slot) = active.acquire_owned().await else {
@@ -296,6 +320,52 @@ pub(crate) fn submit_client_job(
             )),
         };
         let _ = complete_live_op(req_id, result);
+    });
+    JOB_ABORTS
+        .lock()
+        .unwrap()
+        .insert(req_id, task.abort_handle());
+    // Cancel-before-install 闭合：spawn→insert 窗口内取消则条目已不在，
+    // 立即补 abort（幂等：cancel_live_op 侧 remove 已发生，此处句柄仍在表）。
+    let still_live = LIVE_OPS
+        .lock()
+        .map(|map| map.contains_key(&req_id))
+        .unwrap_or(false);
+    if !still_live {
+        if let Some(h) = JOB_ABORTS.lock().unwrap().remove(&req_id) {
+            h.abort();
+        }
+    }
+    true
+}
+
+/// PLAN-707 T-02：提交一个 **detached** 客户端 job（fire-and-forget，如
+/// 消息桥 `spawn_async_http_msg_get`）。
+///
+/// 与 managed 形态的显式边界：不写 live-op 表、不登记 [`JOB_ABORTS`]——
+/// `cancel_live_op` 对其零影响（detached 提交形态不得因 LIVE_OPS 缺席被
+/// 误杀）。executor 的 queue/active 许可与总期限同样适用；完成产物落
+/// complete_live_op 时被 presence 守卫丢弃（无人在等）。
+pub(crate) fn submit_detached_client_job(
+    job: impl std::future::Future<Output = Result<AsyncResult, String>> + Send + 'static,
+) -> bool {
+    let ex = executor();
+    let Ok(queue_permit) = std::sync::Arc::clone(&ex.queue).try_acquire_owned() else {
+        return false;
+    };
+    let active = std::sync::Arc::clone(&ex.active);
+    let limits = ex.limits;
+    let req_id = crate::vm::ffi::stdlib::alloc_async_id();
+    ex.rt.spawn(async move {
+        let _queue_slot = queue_permit;
+        let Ok(_active_slot) = active.acquire_owned().await else {
+            return;
+        };
+        let outcome = tokio::time::timeout(limits.total_timeout, job).await;
+        if let Ok(result) = outcome {
+            // fire-and-forget：无 live-op 令牌，完成被 presence 守卫丢弃。
+            let _ = complete_live_op(req_id, result);
+        }
     });
     true
 }
@@ -324,4 +394,22 @@ pub(crate) async fn read_body_capped(
         out.extend_from_slice(&chunk);
     }
     Ok(out)
+}
+
+// ============================================================================
+// PLAN-707 T-02/T-07 资源观测面（测试专用）
+// ============================================================================
+
+/// 资源回基线探针：managed abort 登记数（job 完成不主动出表——abort 表
+/// 与 live-op 表生命周期一致，cancel 时出表；泄漏探针=完成/取消后计数
+/// 不随轮次增长）。
+#[cfg(test)]
+pub(crate) fn job_abort_count() -> usize {
+    JOB_ABORTS.lock().map(|m| m.len()).unwrap_or(0)
+}
+
+/// 资源回基线探针：非流式 executor 的可用 active 许可（取消后必须归还）。
+#[cfg(test)]
+pub(crate) fn client_active_available() -> usize {
+    executor().active.available_permits()
 }

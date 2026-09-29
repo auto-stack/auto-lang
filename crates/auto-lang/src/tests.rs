@@ -413,4 +413,8 @@ mod plan705_spike_tests;
 // 流建立阻塞 owner + SSE 跨 chunk UTF-8 玷污；修复落地后逐个转绿）。
 #[cfg(test)]
 mod plan707_spike_tests;
+// PLAN-707 T-02：可取消执行器（managed queued/active/retry 实际取消 +
+// 许可回基线 + detached 消息桥反例；D-1 冻结协议验收）。
+#[cfg(test)]
+mod plan707_cancel_tests;
 // scratch diagnostics (T-01, remove before landing)

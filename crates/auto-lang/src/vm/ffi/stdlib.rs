@@ -7480,7 +7480,9 @@ fn spawn_async_http_msg_get(url: String, widget: String, event: String) {
         // fire-and-forget：无 live-op 令牌，返回值被 submit 的守卫丢弃。
         Ok(AsyncResult::Body(String::new()))
     };
-    let _ = super::async_http::submit_client_job(alloc_async_id(), job);
+    // PLAN-707 T-02：detached 显式提交形态——不写 live-op、不登记 abort，
+    // `cancel_live_op` 对消息桥零影响（LIVE_OPS 缺席不构成误杀面）。
+    let _ = super::async_http::submit_detached_client_job(job);
 }
 
 /// 消息桥目标切分：`"Store.Handler"` → (Store, Handler)；无点/空段 →
