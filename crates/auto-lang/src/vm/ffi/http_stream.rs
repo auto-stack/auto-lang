@@ -254,6 +254,17 @@ pub(crate) fn stream_ready(stream_id: u64) -> bool {
     !cell.queue.is_empty() || is_terminal(&cell.state)
 }
 
+/// 资源观测探针（测试）：队列当前条数（背压钉界判据）。
+#[cfg(test)]
+pub(crate) fn stream_queue_len_for_test(stream_id: u64) -> usize {
+    STREAMS
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&stream_id).cloned())
+        .map(|h| h.cell.lock().map(|c| c.queue.len()).unwrap_or(0))
+        .unwrap_or(0)
+}
+
 /// 流 id 是否存活（for-in 惰性消费的判定门——未知 id 不进流路径）。
 pub(crate) fn stream_is_live(stream_id: u64) -> bool {
     STREAMS.lock().map(|m| m.contains_key(&stream_id)).unwrap_or(false)

@@ -315,6 +315,7 @@ pub(crate) fn submit_client_job(
         // 活跃许可：等待期间占队列槽（有限在途 + 有限等待队列）。
         let Ok(_active_slot) = active.acquire_owned().await else {
             let _ = complete_live_op(req_id, Err("http client executor closed".to_string()));
+            JOB_ABORTS.lock().unwrap().remove(&req_id);
             return;
         };
         let outcome = tokio::time::timeout(limits.total_timeout, job).await;
@@ -326,6 +327,9 @@ pub(crate) fn submit_client_job(
             )),
         };
         let _ = complete_live_op(req_id, result);
+        // PLAN-707 T-07：abort 句柄随 job 终结出表（与 cancel 路径双写幂等
+        //）——否则每个成功 job 泄漏一个 AbortHandle（慢性增长）。
+        JOB_ABORTS.lock().unwrap().remove(&req_id);
     });
     JOB_ABORTS
         .lock()

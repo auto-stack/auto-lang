@@ -425,4 +425,8 @@ mod plan707_client_tests;
 // 自旋红转绿判据 + 放行唤醒取值）。
 #[cfg(test)]
 mod plan707_wait_tests;
+// PLAN-707 T-07：流资源生命周期收口探针（背压钉界/取消风暴/线程稳定/
+// 预算终结/abort 表收口；真 TCP relay 在 plan707_stream_e2e_tests）。
+#[cfg(test)]
+mod plan707_stream_tests;
 // scratch diagnostics (T-01, remove before landing)
