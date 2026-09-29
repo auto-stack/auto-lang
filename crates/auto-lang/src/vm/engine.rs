@@ -2797,6 +2797,10 @@ impl AutoVM {
                             };
                         }
                         if let Some(req_id) = task.waiting_http_request_id {
+                            if std::env::var_os("AUTO_DEBUG_G9").is_some() {
+                                eprintln!("[G9] PARK: fn={} req={} ip={:#x} sp={} bp={} saved_bp={}",
+                                    fn_name, req_id, task.ip, task.ram.sp, task.bp, saved_bp);
+                            }
                             return SegmentOutcome::Parked {
                                 wait: ParkedWait::HttpRequest(req_id),
                                 seg: ParkedSegment {
@@ -7742,8 +7746,14 @@ impl AutoVM {
                             {
                                 shim(task, self)?;
                                 if task.waiting_http_request_id.is_some() {
+                                    if std::env::var_os("AUTO_DEBUG_G9").is_some() {
+                                        eprintln!("[G9] re-fire not-ready: ip={:#x} sp={} bp={}", task.ip, task.ram.sp, task.bp);
+                                    }
                                     task.ip -= 6; // CALL_SPEC = 1 op + 4 idx + 1 count
                                     return Ok(StepResult::Yield);
+                                }
+                                if std::env::var_os("AUTO_DEBUG_G9").is_some() {
+                                    eprintln!("[G9] re-fire CONSUMED result: ip={:#x} sp={} bp={}", task.ip, task.ram.sp, task.bp);
                                 }
                                 return Ok(StepResult::Continue);
                             }
