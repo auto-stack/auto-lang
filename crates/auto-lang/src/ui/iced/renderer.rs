@@ -17451,6 +17451,10 @@ fn compare_pngs(
                         let st = state.component.preview_states.entry(id.to_string()).or_default();
                         st.show = !st.show;
                         st.copied = false;
+                        // PLAN-708 T-01：组件局部 UI 态不 bump VM seq——
+                        // epoch 通道废止在册 memo 产物（否则 outlet 命中回放
+                        // 陈旧 tab/show 面）。
+                        crate::ui::memo_deps::bump_ui_epoch();
                         *state.app.view_dirty.borrow_mut() = true;
                     }
                     return iced::Task::none();
@@ -17464,6 +17468,8 @@ fn compare_pngs(
                             crate::ui::dynamic::PreviewTab::Auto
                         };
                         st.copied = false;
+                        // PLAN-708 T-01：组件局部 UI 态——epoch 通道废止 memo。
+                        crate::ui::memo_deps::bump_ui_epoch();
                         *state.app.view_dirty.borrow_mut() = true;
                     }
                     return iced::Task::none();
@@ -17484,6 +17490,8 @@ fn compare_pngs(
                         }
                         let st = state.component.preview_states.entry(id.to_string()).or_default();
                         st.copied = true;
+                        // PLAN-708 T-01：组件局部 UI 态——epoch 通道废止 memo。
+                        crate::ui::memo_deps::bump_ui_epoch();
                         *state.app.view_dirty.borrow_mut() = true;
                     }
                     return iced::Task::none();

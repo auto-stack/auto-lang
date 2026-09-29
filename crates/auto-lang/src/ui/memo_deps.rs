@@ -74,6 +74,23 @@ pub struct SiteCounts {
 // 键与条目
 // ─────────────────────────────────────────────────────────────────────
 
+/// PLAN-708 T-01（S-01）：宿主局部 UI epoch——seq/globals_fp/dyn_fp 覆盖
+/// 不到的"结构性失效源"（模板/热重载替换、挂载代际更替、后续 M 阶段的
+/// 诊断配置翻转）走保守整体失效：bump 后所有旧 epoch 键失配（键内比较，
+/// 无需逐条目清扫；旧条目由既有容量驱逐回收）。
+static UI_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// 当前宿主 UI epoch（MemoKey 填充用；读侧零成本）。
+pub fn ui_epoch() -> u64 {
+    UI_EPOCH.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// 推进 UI epoch 并返回新值（热重载/模板替换/挂载代际更替时调用；
+/// 保守语义 = 一次 bump 废止全部在册 memo 产物）。
+pub fn bump_ui_epoch() -> u64 {
+    UI_EPOCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1
+}
+
 /// 缓存键。`ctx_state_obj` 区分子 widget 状态作用域（child 渲染时
 /// `override_state_obj_id` 生效）；`skeleton_fp` 是子树静态骨架指纹
 /// （tag/字面量 prop/文本/结构——纯 AST 漫步，不含表达式值；模板在桥
@@ -82,6 +99,8 @@ pub struct SiteCounts {
 /// probe-off 先填充、probe-on 后命中会吞 acceptance 事件索引——两态各存
 /// 各的条目）。PLAN-046 T-03：`item_key` = keyed-for 项级条目的 key 值
 /// 指纹（`None` = 档 A 组件/outlet 条目——档 A 键面零变化）。
+/// PLAN-708 T-01：`ui_epoch` = 宿主局部 epoch（模板/热重载/挂载代际的
+/// 保守失效面；bump 即整体失配）。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MemoKey {
     pub ctx_state_obj: u64,
@@ -89,6 +108,7 @@ pub struct MemoKey {
     pub skeleton_fp: u64,
     pub probe_on: bool,
     pub item_key: Option<u64>,
+    pub ui_epoch: u64,
 }
 
 /// memo 条目：fill 时的动态输入指纹 + 产物 + probe/id_map 重放面。
@@ -1300,16 +1320,17 @@ mod tests {
                 skeleton_fp: i as u64,
                 probe_on: false,
                 item_key: None,
+                ui_epoch: 0,
             };
             c.insert(key, mk_entry(0));
         }
         assert_eq!(c.len(), MEMO_CACHE_CAP, "LRU 上限逐出");
         assert_eq!(c.evictions, 8);
-        let hit_key = MemoKey { ctx_state_obj: 1, site: 0, skeleton_fp: (MEMO_CACHE_CAP + 7) as u64, probe_on: false, item_key: None };
+        let hit_key = MemoKey { ctx_state_obj: 1, site: 0, skeleton_fp: (MEMO_CACHE_CAP + 7) as u64, probe_on: false, item_key: None, ui_epoch: 0 };
         assert!(c.lookup(&hit_key).is_some());
         c.note_hit();
         assert_eq!(c.hits, 1);
-        let miss_key = MemoKey { ctx_state_obj: 1, site: 0, skeleton_fp: 999_999, probe_on: false, item_key: None };
+        let miss_key = MemoKey { ctx_state_obj: 1, site: 0, skeleton_fp: 999_999, probe_on: false, item_key: None, ui_epoch: 0 };
         assert!(c.lookup(&miss_key).is_none());
         c.note_miss();
         assert_eq!(c.misses, 1);
@@ -1331,6 +1352,7 @@ mod tests {
                 skeleton_fp: 7,
                 probe_on: false,
                 item_key: Some(i),
+                ui_epoch: 0,
             };
             c.insert(key, mk_entry(0));
         }
@@ -1347,7 +1369,7 @@ mod tests {
         // 硬顶封口：超过 MAX 的抬升请求被截断（cap ≤ MAX，溢出走 LRU 逐出）。
         c.ensure_capacity(usize::MAX);
         for i in 0..(MEMO_CACHE_CAP_MAX + 8) {
-            let key = MemoKey { ctx_state_obj: 2, site: 9, skeleton_fp: i as u64, probe_on: false, item_key: None };
+            let key = MemoKey { ctx_state_obj: 2, site: 9, skeleton_fp: i as u64, probe_on: false, item_key: None, ui_epoch: 0 };
             c.insert(key, mk_entry(0));
         }
         assert!(c.evictions > 0, "溢出硬顶走 LRU 逐出");
@@ -1514,7 +1536,7 @@ mod tests {
             ScanVerdict::Degrade("for_loop")
         ));
         assert!(matches!(
-            scan_for_item_body(&[AuraNode::Outlet { memo: false }], None, &loop_vars_of(&["r"])),
+            scan_for_item_body(&[AuraNode::Outlet { memo: Some(false) }], None, &loop_vars_of(&["r"])),
             ScanVerdict::Degrade("outlet")
         ));
     }

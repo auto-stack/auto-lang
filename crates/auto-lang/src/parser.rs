@@ -15580,7 +15580,10 @@ impl<'a> Parser<'a> {
         // parse error; bare `outlet` stays byte-compatible).
         if self.is_kind(TokenKind::Outlet) {
             self.next();
-            let mut memo = false;
+            // PLAN-708 T-01（S-01）三态头参：裸 `outlet`（None）/
+            // `outlet (memo: true)`（Some(true)）/ `outlet (memo: false)`
+            //（Some(false)）。其余头参仍为 pointed parse error。
+            let mut memo: Option<bool> = None;
             if self.is_kind(TokenKind::LParen) {
                 self.next();
                 self.skip_empty_lines();
@@ -15589,10 +15592,15 @@ impl<'a> Parser<'a> {
                 self.expect(TokenKind::Colon)?;
                 let v = self.cur.text.to_string();
                 self.next();
-                if key != "memo" || v != "true" {
+                let parsed = match (key.as_str(), v.as_str()) {
+                    ("memo", "true") => Some(true),
+                    ("memo", "false") => Some(false),
+                    _ => None,
+                };
+                if parsed.is_none() {
                     return Err(SyntaxError::Generic {
                         message: format!(
-                            "outlet 头参只接受 `memo: true`，得到 `{}: {}`",
+                            "outlet 头参只接受 `memo: true|false`，得到 `{}: {}`",
                             key, v
                         ),
                         span: pos_to_span(self.prev.pos),
@@ -15600,7 +15608,7 @@ impl<'a> Parser<'a> {
                     .into());
                 }
                 self.expect(TokenKind::RParen)?;
-                memo = true;
+                memo = parsed;
             }
             return Ok(ViewNode::Outlet { memo });
         }
@@ -21309,11 +21317,12 @@ style = 123
             other => panic!("expected col root, got {:?}", other),
         };
         match &children[0] {
-            ViewNode::Outlet { memo } => assert!(*memo, "memo prop 在册"),
+            ViewNode::Outlet { memo } => assert_eq!(*memo, Some(true), "memo prop 在册"),
             other => panic!("expected Outlet, got {:?}", other),
         }
 
-        // 裸 outlet：memo=false（字节兼容）。
+        // 裸 outlet：memo=None（未设；PLAN-708 T-01 三态——缺省语义由
+        // builder 三态表裁定，解析层不折叠）。
         let code = "widget App {
   view {
     outlet
@@ -21331,7 +21340,29 @@ style = 123
             })
             .expect("widget decl");
         match &widget.view.as_ref().unwrap().root {
-            ViewNode::Outlet { memo } => assert!(!*memo),
+            ViewNode::Outlet { memo } => assert_eq!(*memo, None),
+            other => panic!("expected Outlet, got {:?}", other),
+        }
+
+        // PLAN-708 T-01（S-01）: `outlet (memo: false)` 显式关（新接受形态）。
+        let code = "widget App {
+  view {
+    outlet (memo: false)
+  }
+}";
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().expect("explicit-false outlet must parse");
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        match &widget.view.as_ref().unwrap().root {
+            ViewNode::Outlet { memo } => assert_eq!(*memo, Some(false)),
             other => panic!("expected Outlet, got {:?}", other),
         }
 

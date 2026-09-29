@@ -949,8 +949,10 @@ pub enum AuraNode {
     /// Router outlet: renders matched child route (Plan 105). PLAN-046
     /// T-05: `outlet (memo: true)` corpus prop (prop > env gate > raw).
     Outlet {
-        /// Corpus-level memo opt-in (default false = raw path)
-        memo: bool,
+        /// PLAN-708 T-01（S-01）三态载体（None=未设/Some(false)/Some(true)）；
+        /// 解析语义见 builder resolve_outlet_memo（env=0 强制关 > env=1
+        /// 强制开 > prop 缺省 on）。
+        memo: Option<bool>,
     },
 
     /// PLAN-046 T-04: explicit memo block — `memo (deps: .a, .b) { body }`

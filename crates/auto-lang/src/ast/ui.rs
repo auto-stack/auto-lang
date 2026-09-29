@@ -666,8 +666,10 @@ pub enum ViewNode {
     /// outlet page memo (plan045 T-05b's env-gate `AUTO_OUTLET_MEMO` stays
     /// as compat layer; prop wins).
     Outlet {
-        /// Corpus-level memo opt-in (default false = raw path)
-        memo: bool,
+        /// PLAN-708 T-01（S-01）三态载体：`None` = 裸 `outlet`（未设），
+        /// `Some(true)` = `outlet (memo: true)`，`Some(false)` =
+        /// `outlet (memo: false)`。缺省语义由解析侧三态表裁定（outlet 缺省开）。
+        memo: Option<bool>,
     },
 
     /// PLAN-046 T-04: explicit memo block — `memo (deps: .a, .b) { body }`

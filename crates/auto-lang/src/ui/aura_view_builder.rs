@@ -5063,7 +5063,9 @@ let tabs_inner = View::Row {
     /// `__route_params` state object so page handlers can read them via
     /// `router.param("id")`. No routes / no match / empty route → `View::Empty`.
     fn render_outlet(&self, bindings: &Bindings) -> View<DynamicMessage> {
-        self.render_outlet_impl(bindings, None, false)
+        // PLAN-708 T-01：无语料 prop 的 fallback 入口 = prop 未设（三态表
+        // Unset 臂 → outlet 缺省 on）。
+        self.render_outlet_impl(bindings, None, None)
     }
 
     /// PLAN-045 T-05b：outlet 页产物 memo（opt-in：`AUTO_OUTLET_MEMO=1`；
@@ -5074,7 +5076,7 @@ let tabs_inner = View::Row {
         &self,
         bindings: &Bindings,
         tracked: Option<(&mut Vec<usize>, &mut DebugIdMap, &mut BuildProbe)>,
-        prop_memo: bool,
+        prop_memo: Option<bool>,
     ) -> View<DynamicMessage> {
         // PLAN-045 T-07 拆账：outlet 页构建耗时单列（AUTO_MEMO_DIAG 门）。
         let __diag = std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1");
@@ -5090,7 +5092,7 @@ let tabs_inner = View::Row {
         &self,
         bindings: &Bindings,
         tracked: Option<(&mut Vec<usize>, &mut DebugIdMap, &mut BuildProbe)>,
-        prop_memo: bool,
+        prop_memo: Option<bool>,
     ) -> View<DynamicMessage> {
         let (Some(registry), Some(routes)) = (self.widget_registry, self.routes) else {
             return View::Empty;
@@ -5136,9 +5138,13 @@ let tabs_inner = View::Row {
                 let empty_props: HashMap<String, AuraPropValue> = HashMap::new();
                 let empty_events: HashMap<String, AuraEvent> = HashMap::new();
                 // Plan 476: 页面路由无调用位填充,outlet 页面不带 slot fills。
-                // PLAN-046 T-05：语料 prop 优先于 env 门（env 保留兼容层）。
-                let memo_on = prop_memo
-                    || std::env::var("AUTO_OUTLET_MEMO").ok().as_deref() == Some("1");
+                // PLAN-708 T-01（S-01）三态表（优先级冻结，r2 §5）：
+                //   env=0 → 强制关（诊断逃生门，覆盖显式 true）
+                //   env=1 → 强制开（兼容层保留）
+                //   未设/其他值 → prop：未设=on（r2 缺省面变更）/false=off/true=on
+                // 046 并集契约变化点：显式 `memo:false` × env=1 现为 on
+                //（原 off）——测试矩阵 plan708_memo_tristate 全覆盖。
+                let memo_on = Self::resolve_outlet_memo(Self::memo_env_gate(), prop_memo);
                 if !memo_on {
                     return match tracked {
                         Some((path, id_map, probe)) => self.render_child_widget_tracked(
@@ -5247,8 +5253,17 @@ let tabs_inner = View::Row {
         let slots =
             match scan_static_with_components(empty_props, page_slice, self.widget_registry) {
                 ScanVerdict::Slots(sl) => sl,
-                ScanVerdict::Degrade(_reason) => {
+                ScanVerdict::Degrade(reason) => {
                     self.bridge.with_memo_cache(|c| c.note_degraded());
+                    // PLAN-708 T-01：Degrade 不再静默——诊断门下输出原因
+                    // （DataTable 每帧全量重建 9.5s 的可观测性缺口，T-00
+                    // baseline §3.3 实录；诊断面正式采集归 T-06）。
+                    if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+                        eprintln!(
+                            "[MEMO-DIAG] site=6 DEGRADE page={} reason={}",
+                            page_widget.name, reason
+                        );
+                    }
                     return self.render_outlet_page_full(
                         page_widget, empty_props, empty_events, bindings, tracked,
                     );
@@ -5264,6 +5279,7 @@ let tabs_inner = View::Row {
             ),
             probe_on,
             item_key: None,
+            ui_epoch: crate::ui::memo_deps::ui_epoch(),
         };
         let seq = self.bridge.state_mutation_seq();
         let gfp = {
@@ -20240,6 +20256,17 @@ fn count_keyed_loops_free(node: &AuraNode) -> usize {
 // 直接 Off，原始代码体零重排零包裹。
 // ─────────────────────────────────────────────────────────────────────
 
+/// PLAN-708 T-01（S-01）: `AUTO_OUTLET_MEMO` 环境门三态。
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum MemoEnvGate {
+    /// env=0：诊断强制关（覆盖显式 prop true——逃生门优先级最高）。
+    ForceOff,
+    /// env=1：显式强开（兼容层保留）。
+    ForceOn,
+    /// 未设/其他值：回落 prop 语义（outlet 缺省 on；菜单族字面量缺省关）。
+    Unset,
+}
+
 /// PLAN-045: memo 门三态（菜单族/nav 共用）。
 enum MemoGateBegin {
     /// 非 memo / 降级 / 未武装——直接原始体（现状代码，零变化）。
@@ -20269,10 +20296,43 @@ impl<'a> AuraViewBuilder<'a> {
     const MEMO_SITE_DIALOG_FAMILY: u8 = 4;
     const MEMO_SITE_SIDEBAR_GROUP: u8 = 5;
 
+    /// PLAN-708 T-01（S-01）: `AUTO_OUTLET_MEMO` 三态门。
+    /// `0` → ForceOff（诊断强制关，覆盖一切显式开）；`1` → ForceOn（显式
+    /// 强开兼容层）；未设/其他值 → Unset（回落 prop 语义）。
+    pub(crate) fn memo_env_gate() -> MemoEnvGate {
+        match std::env::var("AUTO_OUTLET_MEMO").as_deref() {
+            Ok("0") => MemoEnvGate::ForceOff,
+            Ok("1") => MemoEnvGate::ForceOn,
+            _ => MemoEnvGate::Unset,
+        }
+    }
+
+    /// outlet 页三态解析（r2 §5 S-01 优先级冻结表）。
+    /// Unset 臂的 prop 未设 = **on**（r2 缺省面变更：outlet 页 memo 缺省开启）。
+    pub(crate) fn resolve_outlet_memo(env: MemoEnvGate, prop: Option<bool>) -> bool {
+        match env {
+            MemoEnvGate::ForceOff => false,
+            MemoEnvGate::ForceOn => true,
+            MemoEnvGate::Unset => prop.unwrap_or(true),
+        }
+    }
+
+    /// 菜单/nav 族三态解析：env 覆盖 + 字面量缺省关（PLAN-045 原语义保留；
+    /// env=0 诊断强制关/env=1 强制开对其同样生效）。
+    pub(crate) fn resolve_site_memo(env: MemoEnvGate, prop_literal: bool) -> bool {
+        match env {
+            MemoEnvGate::ForceOff => false,
+            MemoEnvGate::ForceOn => true,
+            MemoEnvGate::Unset => prop_literal,
+        }
+    }
+
     /// `memo:` prop 解析：bool 字面量为开关；缺省/`false`/非 bool 容错按
     /// 关（非 bool 一次性诊断——PLAN-045 §1 容错条款）。
+    /// PLAN-708 T-01：env 三态覆盖（0 强制关/1 强制开）作用于所有 memo
+    /// site（诊断开关全局面）；Unset 臂逐字节保持 045 字面量语义。
     pub(crate) fn memo_prop_on(props: &HashMap<String, AuraPropValue>) -> bool {
-        match props.get("memo") {
+        let literal = match props.get("memo") {
             Some(AuraPropValue::Expr(Expr::Bool(b))) => *b,
             Some(AuraPropValue::Expr(other)) => {
                 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20286,7 +20346,8 @@ impl<'a> AuraViewBuilder<'a> {
                 false
             }
             _ => false,
-        }
+        };
+        Self::resolve_site_memo(Self::memo_env_gate(), literal)
     }
 
     /// memo 上下文门。PLAN-045 T-01 原裁定：bindings 非空或 widget 声明
@@ -20384,6 +20445,7 @@ impl<'a> AuraViewBuilder<'a> {
             skeleton_fp: crate::ui::memo_deps::skeleton_fingerprint(props, children),
             probe_on,
             item_key: None,
+            ui_epoch: crate::ui::memo_deps::ui_epoch(),
         };
         let seq = self.bridge.state_mutation_seq();
         let gfp = self.memo_episode_fp();
@@ -20826,6 +20888,7 @@ impl<'a> AuraViewBuilder<'a> {
                 skeleton_fp,
                 probe_on,
                 item_key: Some(plan.key_fp),
+                ui_epoch: crate::ui::memo_deps::ui_epoch(),
             };
             let cached = self.bridge.with_memo_cache(|c| {
                 c.lookup(&key).map(|e| {
@@ -21088,6 +21151,7 @@ impl<'a> AuraViewBuilder<'a> {
                 body,
                 self.widget_registry,
             ),
+            ui_epoch: crate::ui::memo_deps::ui_epoch(),
             probe_on,
             item_key: None,
         };
@@ -22032,7 +22096,7 @@ mod plan045_memo_tests {
                 &[],
             )
             .with_routes(&routes_static);
-            b.build(&AuraNode::Outlet { memo })
+            b.build(&AuraNode::Outlet { memo: Some(memo) })
         };
 
         // ① prop=false + env 未设 → 原始惰性（零条目零计数）。
@@ -22060,6 +22124,241 @@ mod plan045_memo_tests {
         bridge.with_memo_cache(|c| assert_eq!(c.len(), 1, "env 门 fill 条目在册"));
         let _ = build_once(&bridge, false);
         bridge.with_memo_cache(|c| assert!(c.hits >= 1, "env 门回访命中"));
+        std::env::remove_var("AUTO_OUTLET_MEMO");
+    }
+
+    // ── PLAN-708 T-01（S-01）三态矩阵与失效面 ──────────────────────────
+
+    /// r2 §5 S-01 优先级冻结表：env ∈ {0, 1, 未设} × prop ∈
+    /// {None, Some(false), Some(true)} → resolve_outlet_memo 全 9 组合。
+    /// 纯函数级（env 门解析另测）——矩阵即契约。
+    #[test]
+    fn plan708_outlet_tristate_matrix() {
+        use MemoEnvGate as G;
+        let cases: &[(G, Option<bool>, bool, &str)] = &[
+            (G::ForceOff, None, false, "env=0 覆盖 prop 未设"),
+            (G::ForceOff, Some(false), false, "env=0 × 显式 false"),
+            (G::ForceOff, Some(true), false, "env=0 覆盖显式 true（诊断强制关）"),
+            (G::ForceOn, None, true, "env=1 强开 prop 未设"),
+            (G::ForceOn, Some(false), true, "env=1 覆盖显式 false（并集契约变化点）"),
+            (G::ForceOn, Some(true), true, "env=1 × 显式 true"),
+            (G::Unset, None, true, "未设 × 未设 → 缺省 on（r2 缺省面变更）"),
+            (G::Unset, Some(false), false, "未设 × 显式 false"),
+            (G::Unset, Some(true), true, "未设 × 显式 true"),
+        ];
+        for (env, prop, want, why) in cases {
+            assert_eq!(AuraViewBuilder::resolve_outlet_memo(*env, *prop), *want, "{}", why);
+        }
+        // 菜单/nav 族：env 覆盖 + 字面量缺省关（045 语义保留）。
+        assert!(!AuraViewBuilder::resolve_site_memo(G::Unset, false));
+        assert!(AuraViewBuilder::resolve_site_memo(G::Unset, true));
+        assert!(!AuraViewBuilder::resolve_site_memo(G::ForceOff, true), "env=0 诊断强关覆盖字面量 true");
+        assert!(AuraViewBuilder::resolve_site_memo(G::ForceOn, false), "env=1 强开覆盖字面量 false");
+    }
+
+    /// env 门解析：`0`/`1`/未设/其他值四形态（诊断"其他值=未设"容错）。
+    #[test]
+    fn plan708_memo_env_gate_parsing() {
+        let _guard = PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("AUTO_OUTLET_MEMO");
+        assert!(matches!(AuraViewBuilder::memo_env_gate(), MemoEnvGate::Unset));
+        std::env::set_var("AUTO_OUTLET_MEMO", "0");
+        assert!(matches!(AuraViewBuilder::memo_env_gate(), MemoEnvGate::ForceOff));
+        std::env::set_var("AUTO_OUTLET_MEMO", "1");
+        assert!(matches!(AuraViewBuilder::memo_env_gate(), MemoEnvGate::ForceOn));
+        std::env::set_var("AUTO_OUTLET_MEMO", "garbage");
+        assert!(matches!(AuraViewBuilder::memo_env_gate(), MemoEnvGate::Unset));
+        std::env::remove_var("AUTO_OUTLET_MEMO");
+    }
+
+    /// builder 级缺省面变更：裸 outlet（prop 未设）× env 未设 → 门开
+    /// （fill + 回访 hit）。r2 G1"outlet 页 memo 缺省开启"的验收锚。
+    #[test]
+    fn plan708_outlet_bare_default_on() {
+        let _guard = PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        use crate::ui::widget_registry::WidgetRegistry;
+
+        let mut page_widget = make_memo_widget(
+            "RowPage",
+            vec![AuraStateDef {
+                name: "title".to_string(),
+                type_info: Type::StrSlice,
+                initial: Expr::Str("r0".into()),
+                decorators: vec![],
+            }],
+        );
+        page_widget.view_tree = AuraNode::element("text")
+            .with_prop("text", Expr::Ident(".title".into()));
+        let mut registry = WidgetRegistry::new();
+        registry.register(page_widget);
+        registry.register_route_alias("row", "RowPage");
+
+        std::env::remove_var("AUTO_OUTLET_MEMO");
+        let host = make_memo_widget(
+            "MemoApp",
+            vec![AuraStateDef {
+                name: "__current_route".to_string(),
+                type_info: Type::StrSlice,
+                initial: Expr::Str("/row".into()),
+                decorators: vec![],
+            }],
+        );
+        let mut bridge = VmBridge::new(&host).unwrap();
+        let routes_static = [crate::aura::AuraRoute {
+            path: "/row".to_string(),
+            module: "row".to_string(),
+            widget_name: "RowPage".to_string(),
+            params: Vec::new(),
+        }];
+        let builder_registry = &registry;
+        let build_once = |bridge: &VmBridge| {
+            let b = AuraViewBuilder::with_registry_and_imports(
+                bridge,
+                "MemoApp",
+                builder_registry,
+                &[],
+            )
+            .with_routes(&routes_static);
+            // 裸 outlet：prop 未设（None）。
+            b.build(&AuraNode::Outlet { memo: None })
+        };
+        let _v1 = build_once(&bridge);
+        bridge.with_memo_cache(|c| assert_eq!(c.len(), 1, "裸 outlet 缺省开门：fill 条目在册"));
+        let _v2 = build_once(&bridge);
+        bridge.with_memo_cache(|c| assert!(c.hits >= 1, "裸 outlet 缺省开门：回访命中"));
+        std::env::remove_var("AUTO_OUTLET_MEMO");
+    }
+
+    /// builder 级 env=0 强制关：显式 `outlet (memo: true)` × env=0 → 零条目
+    /// （诊断逃生门覆盖语料显式开——AC-02 关键组合）。
+    #[test]
+    fn plan708_outlet_env0_overrides_prop_true() {
+        let _guard = PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        use crate::ui::widget_registry::WidgetRegistry;
+
+        let mut page_widget = make_memo_widget(
+            "RowPage",
+            vec![AuraStateDef {
+                name: "title".to_string(),
+                type_info: Type::StrSlice,
+                initial: Expr::Str("r0".into()),
+                decorators: vec![],
+            }],
+        );
+        page_widget.view_tree = AuraNode::element("text")
+            .with_prop("text", Expr::Ident(".title".into()));
+        let mut registry = WidgetRegistry::new();
+        registry.register(page_widget);
+        registry.register_route_alias("row", "RowPage");
+
+        std::env::set_var("AUTO_OUTLET_MEMO", "0");
+        let host = make_memo_widget(
+            "MemoApp",
+            vec![AuraStateDef {
+                name: "__current_route".to_string(),
+                type_info: Type::StrSlice,
+                initial: Expr::Str("/row".into()),
+                decorators: vec![],
+            }],
+        );
+        let mut bridge = VmBridge::new(&host).unwrap();
+        let routes_static = [crate::aura::AuraRoute {
+            path: "/row".to_string(),
+            module: "row".to_string(),
+            widget_name: "RowPage".to_string(),
+            params: Vec::new(),
+        }];
+        let builder_registry = &registry;
+        let build_once = |bridge: &VmBridge| {
+            let b = AuraViewBuilder::with_registry_and_imports(
+                bridge,
+                "MemoApp",
+                builder_registry,
+                &[],
+            )
+            .with_routes(&routes_static);
+            b.build(&AuraNode::Outlet { memo: Some(true) })
+        };
+        let _v1 = build_once(&bridge);
+        let _v2 = build_once(&bridge);
+        bridge.with_memo_cache(|c| {
+            assert_eq!(
+                (c.len(), c.hits, c.misses),
+                (0, 0, 0),
+                "env=0 覆盖显式 true：零条目零计数（原始路径）"
+            );
+        });
+        std::env::remove_var("AUTO_OUTLET_MEMO");
+    }
+
+    /// T-01 失效面：ui_epoch bump 后旧 epoch 条目失配（保守整体失效）。
+    /// 组件局部态突变（preview toggle/tab、nav 局部态、ghost/列宽直写）
+    /// 走 epoch 通道——不 bump VM seq 也能废止在册产物。
+    #[test]
+    fn plan708_ui_epoch_invalidation() {
+        let _guard = PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        use crate::ui::widget_registry::WidgetRegistry;
+
+        let mut page_widget = make_memo_widget(
+            "RowPage",
+            vec![AuraStateDef {
+                name: "title".to_string(),
+                type_info: Type::StrSlice,
+                initial: Expr::Str("r0".into()),
+                decorators: vec![],
+            }],
+        );
+        page_widget.view_tree = AuraNode::element("text")
+            .with_prop("text", Expr::Ident(".title".into()));
+        let mut registry = WidgetRegistry::new();
+        registry.register(page_widget);
+        registry.register_route_alias("row", "RowPage");
+
+        std::env::remove_var("AUTO_OUTLET_MEMO");
+        let host = make_memo_widget(
+            "MemoApp",
+            vec![AuraStateDef {
+                name: "__current_route".to_string(),
+                type_info: Type::StrSlice,
+                initial: Expr::Str("/row".into()),
+                decorators: vec![],
+            }],
+        );
+        let mut bridge = VmBridge::new(&host).unwrap();
+        let routes_static = [crate::aura::AuraRoute {
+            path: "/row".to_string(),
+            module: "row".to_string(),
+            widget_name: "RowPage".to_string(),
+            params: Vec::new(),
+        }];
+        let builder_registry = &registry;
+        let build_once = |bridge: &VmBridge| {
+            let b = AuraViewBuilder::with_registry_and_imports(
+                bridge,
+                "MemoApp",
+                builder_registry,
+                &[],
+            )
+            .with_routes(&routes_static);
+            b.build(&AuraNode::Outlet { memo: Some(true) })
+        };
+        let _v1 = build_once(&bridge); // fill（epoch E）
+        let _v2 = build_once(&bridge);
+        bridge.with_memo_cache(|c| assert!(c.hits >= 1, "同 epoch 回访命中"));
+
+        // 模拟组件局部态突变臂（preview/nav/ghost 同型）：bump epoch。
+        let before = crate::ui::memo_deps::ui_epoch();
+        let bumped = crate::ui::memo_deps::bump_ui_epoch();
+        assert!(bumped > before, "epoch 单调推进");
+
+        let h0 = bridge.with_memo_cache(|c| c.hits);
+        let _v3 = build_once(&bridge); // 旧 epoch 键失配 → fill 新条目
+        bridge.with_memo_cache(|c| {
+            assert_eq!(c.hits, h0, "bump 后不吞旧命中（保守失效）");
+            assert!(c.len() >= 2, "新 epoch 条目独立在册（旧条目待容量驱逐）");
+        });
+        let _v4 = build_once(&bridge);
+        bridge.with_memo_cache(|c| assert!(c.hits > h0, "新 epoch 内回访恢复命中"));
         std::env::remove_var("AUTO_OUTLET_MEMO");
     }
 
@@ -22128,7 +22427,7 @@ mod plan045_memo_tests {
                 &[],
             )
             .with_routes(&routes_static);
-            b.build(&AuraNode::Outlet { memo: false })
+            b.build(&AuraNode::Outlet { memo: Some(false) })
         };
 
         // 全量套件下其他 menubar 测试并发翻转 MENUBAR_OPEN → globals_fp 漂移

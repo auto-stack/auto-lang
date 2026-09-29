@@ -1655,6 +1655,9 @@ impl DynamicComponent {
     pub fn toggle_nav_group(&mut self, key: &str) -> bool {
         let next = !self.nav_group_states.get(key).copied().unwrap_or(true);
         self.nav_group_states.insert(key.to_string(), next);
+        // PLAN-708 T-01：nav 局部态为组件局部 UI 态（不 bump VM seq）——
+        // epoch 通道废止在册 memo 产物（侧栏组开合回放陈旧面缺口）。
+        crate::ui::memo_deps::bump_ui_epoch();
         next
     }
 
@@ -1876,6 +1879,9 @@ impl DynamicComponent {
         self.tick_interval = new_widget.tick_interval;
         self.span_map = new_widget.span_map.clone();
         self.dirty = true;
+        // PLAN-708 T-01：模板/热重载替换——epoch 保守失效（新桥自带新表，
+        // 此处为跨组件/共享面兜底）。
+        crate::ui::memo_deps::bump_ui_epoch();
 
         Ok(report)
     }
