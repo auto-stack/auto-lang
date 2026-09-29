@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-707
-status: reviewed
+status: archived
 feature_name: vm-http-stream-async-relay
 author: [agent]
 created_at: 2026-09-29
@@ -196,6 +196,7 @@ T-01 后测试文件可提前创建以支持逐任务红转绿，T-07 收口而�
 - 2026-09-30，`stage: review`，`PLAN-707:r1`，`outcome: pass`，`reviewed_commit: 4113a240d`（worktree clean，全部实现已提交），`base_commit: 66c9cac19`，`dependency_revisions: auto-down@3373a5c（组内 sibling worktree）`，`spec_inputs: docs/specs/stdlib/design/{http-server,http-handler-async-lifecycle,async-http-result-lifecycle,backend-assembly}.md + docs/specs/auto-lang/runtime/design/networking-stdlib.md 现版；SD-02 before-rule 在 async-http-result-lifecycle.md:39 确认（"取消随 future 丢弃"主张与 705 实现不符，707 已闭合）`，`acceptance_results: AC-01..06 全 pass（逐条对证见 docs/plans/reports/707-verification.md §2；复审独立复现：plan707 族 31/31 绿 + 兼容族 159/160 + 源码核查七项：零阻塞残留/abort 双点/Generator 前置分流/回推迭代器 id×4 臂/detached 唯一位点/scope 登记 5 开点+cleanup 双臂/sse_poll 语义逐字节保留）`，`findings: F-1（非阻断）=plan707_wait 在 160 例重载混合跑（进程被饿 482s）下时序失败，standalone/族内/98 例中载三配置均绿——负载敏感测试基建限制，与 plan358 stress 既有 flaky 同类，建议另档稳定化，不影响 AC-02 判定（判据环境=plan707 族门禁）`，`evidence: 复审重跑命令与结果记录于本条；四份报告随 plan-707-dev 提交（merge 后路径 docs/plans/reports/707-*.md 持久可解析）；canonical Specs/ledger 零改动已核实（diff 27 文件全在计划声明范围）`，`next: merge`。
 
 复审方法声明：复审在实现会话内进行（无独立会话授权），结论由工件重建——commit/diff 清单、源码逐项核查、fresh 测试复现、基线定责链，不依赖执行摘要。tf 全量证据链注记：no-fail-fast 全量跑于 c8744543b 之前，该提交仅含 rustfmt 格式化与单测宽限参数（生产代码语义零变更），tf 结论对 4113a240d 有效。
+- 2026-09-30，`stage: merge`，`PLAN-707:r1`，`outcome: pass`，delivery_commit `b12d86baf`（ff-only 落 master 线性；= reviewed_commit `4113a240d` 经 rebase 映射 `73e2fe672` + docs-only 沉淀 delta——range-diff 10/10 全等安全重写实证），canonical_specs：`docs/specs/stdlib/design/http-stream-lifecycle.md`（新建 SD-01）+ `async-http-result-lifecycle.md`（SD-02 取消实停）+ `http-handler-async-lifecycle.md`（SD-03 外部流延伸节）+ `http-server.md`（SD-04 §8.1/§11.4/探针清单）+ `backend-assembly.md`（SD-05 后台差异）+ `networking-stdlib.md`（SD-06 C2a 标注），ledger：`.autoos/specs.json` designs `P707-1` / reviews `P707-2`（外科插入 +10 行；去新条目重序列化==原字节的前缀零扰动实证+回读断言，sha 7aec2ee534b2）+ INDEX 再生（26 projects）+ stdlib plans.md 707 行 + 模块卡现状链接。checkpoint：prepared✓（delivery=reviewed+docs-only delta，实现/依赖零变化）→ landed✓（ff-only；master 冒烟 check 0 error + 定向探针 15/15 绿；old→new 映射与 range-diff 全等在录）→ ledger_refreshed✓ → archived✓（本行，git mv 至 docs/plans/archive/）→ cleaned（见下条）。**并行 WIP 零触碰**：主检出上 706/709/KNOWN-DEBT/design 文档为并行会话未提交改动，与落地零重叠，保持原样。**落地非部署**：release 二进制与 gen/front 产物未重建——本计划消费方为 VM 运行时库（`cargo build --release` 面），按需重建（观察项登记）。
 
 ## 10. 待澄清事项
 
