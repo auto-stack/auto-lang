@@ -1331,6 +1331,23 @@ impl AutoVM {
             .unwrap_or(0)
     }
 
+    /// PLAN-706 r2 T-10: dep 键堆对象存活查询——`deps_unchanged` 的死对象
+    /// 伪命中守卫。`path_versions` 条目随状态替换留存，而对象已从
+    /// `heap_objects` 摘除 → 死键版本永不 bump，比对恒等 = 伪命中（缓存值
+    /// 陈旧/悬垂）。判据：`< HEAP_ID_BASE` 的非堆 id（单测合成键）与未分配
+    /// id 按存活处理（纯版本比对语义保持）；已分配（≥ base 且 id < id_gen）
+    /// 而不在 `heap_objects` = 已释放（id_gen 单调不复用，dying 宽限窗内
+    /// 对象仍在表）。
+    pub fn heap_dep_key_alive(&self, id: u64) -> bool {
+        if id < crate::vm::rc::HEAP_ID_BASE {
+            return true;
+        }
+        if self.heap_objects.contains_key(&id) {
+            return true;
+        }
+        id >= self.heap_object_id_gen.load(Ordering::Relaxed)
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // PLAN-047 T-04（档 C SD-08）: 依赖录制槽（VM 读臂挂钩的宿主面）
     // ─────────────────────────────────────────────────────────────────

@@ -2007,9 +2007,16 @@ impl VmBridge {
     /// 内容，version_fast 命中安全）。
     #[cfg(feature = "ui-interpreter")]
     pub fn deps_unchanged(&self, pairs: &[(crate::ui::memo_deps::DepKey, u64)]) -> bool {
-        pairs
-            .iter()
-            .all(|(k, v0)| self.vm.path_version(k.heap_id, &k.path) == *v0)
+        pairs.iter().all(|(k, v0)| {
+            // PLAN-706 r2 T-10: 死对象 dep 键 = 版本冻结键（path_versions
+            // 条目留存而对象已摘除，永不 bump）→ 比对恒等伪命中 → 缓存值
+            // 陈旧/悬垂（脏档切换弧 UAF/弹层滞留根因）。死键按 miss（重求
+            // 值），宁缺勿错。
+            if !self.vm.heap_dep_key_alive(k.heap_id) {
+                return false;
+            }
+            self.vm.path_version(k.heap_id, &k.path) == *v0
+        })
     }
 
     /// 录制集 → (dep, 当前版本) 基线对（fill 入条目 / fp_slow 命中刷新）。
@@ -3533,6 +3540,42 @@ widget OpProbeOrig {
         bridge.computed_signal_store("SigCycle", "m", Value::Int(9), &rec);
         let hit = bridge.computed_signal_hit("SigCycle", "m");
         assert!(matches!(hit, Some(Value::Int(9))), "重填后命中返回新值");
+    }
+
+    /// 死对象 dep 键 → miss（版本冻结键伪命中守卫）。已分配但不在
+    /// heap_objects = 已释放（id_gen 单调不复用）；未分配合成键按存活
+    /// （纯版本比对语义保持——plan047 门测试依赖）。
+    #[test]
+    fn plan706_deps_unchanged_dead_heap_key_misses() {
+        let widget = make_test_widget("SigDeadKey", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+
+        // 已分配但摘除（freed 模拟：占号不 insert）。
+        let freed_id = bridge
+            .vm
+            .heap_object_id_gen
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dead = vec![(crate::ui::memo_deps::DepKey::field(freed_id, "rows"), 0u64)];
+        assert!(
+            !bridge.deps_unchanged(&dead),
+            "死对象 dep 键必须 miss（版本冻结伪命中守卫）"
+        );
+
+        // 活对象键（状态根）：版本恒等 → unchanged。
+        let root = bridge.state_obj_id();
+        let live = vec![(
+            crate::ui::memo_deps::DepKey::field(root, "rows"),
+            bridge.vm.path_version(root, "rows"),
+        )];
+        assert!(bridge.deps_unchanged(&live), "活对象版本恒等 → unchanged");
+
+        // 未分配合成键（远超 id_gen）→ 按存活。
+        let synthetic = u64::MAX / 2;
+        let unknown = vec![(crate::ui::memo_deps::DepKey::field(synthetic, "x"), 0u64)];
+        assert!(
+            bridge.deps_unchanged(&unknown),
+            "未分配 id 按存活处理（plan047 门测试语义保持）"
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────
