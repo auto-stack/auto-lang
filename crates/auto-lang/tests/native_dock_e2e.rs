@@ -777,3 +777,51 @@ fn programmatic_set_bounds_no_undock_drift() {
         "连续排水零偏差"
     );
 }
+
+// ===========================================================================
+// PLAN-709 T-08：实机冒烟清单（#[ignore] 手动驱动；AC-09 留痕面）。
+// 驱动：`cargo test -p auto-lang --test native_dock_e2e --features
+// test-native-dock smoke_ -- --ignored --nocapture`。环境前提：真桌面机
+// （ToDesk 合成输入约束在案时拖拽腿需真机人工/用户复验——计划待澄清④）。
+// ===========================================================================
+
+/// 真 notepad 全链冒烟（AC-09 主腿）：拖入（DragWatch）→ dock → 槽位标题栏
+/// 拖动（宿主排水跟手）→ 八向 resize → send_to 分区（隐现）→ focus_native
+/// （前台 + 带内置顶）→ undock 恢复 → 关闭回收。人工观测点：
+/// ① 槽位随光标实时移动（16ms 内）；② resize 到 <160x120 被钳；
+/// ③ 切分区后 notepad 消失/切回复显；④ 点 notepad 内容后任务栏条目高亮
+/// （FOREGROUND 跟随）；⑤ undock 后 notepad 回 pre-dock 位形。
+#[test]
+#[ignore = "实机冒烟：真 notepad 全链，人工观测（AC-09）"]
+fn smoke_notepad_full_chain() {
+    ensure_dpi_aware();
+    // 启动真 notepad（用户机器；pid 发现走 B1 同路径）。
+    let mut child = std::process::Command::new("notepad.exe")
+        .spawn()
+        .expect("启动 notepad");
+    std::thread::sleep(Duration::from_millis(1500));
+    // 发现 + dock（宿主执行臂同型原语）：
+    //   ndw::find_top_level_by_pid → strip_chrome → set_bounds。
+    // 交互腿（拖动/resize/分区/焦点）需真机桌面运行——本腿只做原语级
+    // 演练与打印指引，交互链由人工按头注观测点核验。
+    let hwnd = ndw::find_top_level_by_pid(child.id())
+        .into_iter()
+        .next()
+        .expect("notepad 顶层窗");
+    println!("[smoke] notepad hwnd={hwnd:?} pid={}", child.id());
+    println!("[smoke] 观测清单：拖入→拖动→resize→Ctrl+Alt+]分区→点击内容→undock");
+    let _ = ndw::strip_chrome(hwnd);
+    // 收尾：还原样式位（先读后还原的完整链由宿主 undock 臂承担——此处
+    // 人工驱动结束后以 WM_CLOSE 兜底）。
+    let _ = ndw::request_close(hwnd);
+    let _ = child.kill();
+}
+
+/// Chrome best-effort 冒烟（D1 自移先例——473 实测 Chrome 会自我移动，
+/// 触发 C4 判定；观测 dock 后 Chrome 自移是否误判 undock / 焦点环行为）。
+#[test]
+#[ignore = "实机冒烟：Chrome best-effort（D1 自移先例），人工观测"]
+fn smoke_chrome_best_effort() {
+    ensure_dpi_aware();
+    println!("[smoke-chrome] 人工启动 Chrome → dock_native hwnd=… → 观测");
+}

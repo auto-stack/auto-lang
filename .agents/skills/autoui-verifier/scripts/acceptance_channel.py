@@ -258,6 +258,55 @@ def run_scenario(name: str, out_dir: str):
                 f"p559: Pick must write through to config.at (before={before!r} after={after!r})"
             )
             shots.append(s.shot("p559-02-pick-hot-apply"))
+        elif name == "p709":
+            # PLAN-709 T-09：win_rect 验收通道实机腿（AC-10）。bus 动词
+            # 确定性摆窗（ToDesk 等远程输入层吞合成输入环境下的唯一摆窗
+            # 面），截图块像素对比断言几何生效 + no-op 容错。截图偶发
+            # "window size is zero"（冷启动/远程会话窗口期）→ 全拍重试。
+            def _shot_retry(name_, tries=6):
+                import time as _t
+                for attempt in range(tries):
+                    try:
+                        return s.shot(name_)
+                    except RuntimeError as e:
+                        if attempt == tries - 1 or "not produced" not in str(e):
+                            raise
+                        _t.sleep(2.0)
+
+            s.bus("launch011-calculator")
+            s.settle(8)
+            shots.append(_shot_retry("p709-01-calculator-launched"))
+            # 聚焦窗 wid 自 __wm_meta（"free	<N>"）读取——伪窗不占真实
+            # wid 段，launch 窗即焦点窗。
+            st = s.mcp.text("autoui_state", {"fields": ["__wm_meta"]})
+            import re as _re
+            m = _re.search('__wm_meta:[ ]*"free[^0-9]*([0-9]+)"', st)
+            assert m, f"p709: __wm_meta 不可读: {st[:200]}"
+            wid = m.group(1)
+            before_png = os.path.join(out_dir, "p709-01-calculator-launched.png")
+            before = _png_block_mean(before_png, 940, 380, 420, 320)
+            s.bus(f"win_rect	{wid}	940,380,420,320")
+            s.settle(4)
+            shots.append(_shot_retry("p709-02-after-winrect"))
+            after_png = os.path.join(out_dir, "p709-02-after-winrect.png")
+            after = _png_block_mean(after_png, 940, 380, 420, 320)
+            assert before != after, (
+                f"p709: win_rect 后新位块像素应变化（before={before} after={after}）"
+            )
+            # no-op 容错：未知 wid（999）与坏参不炸桌面（再摆一次可校验通道仍活）。
+            s.bus("win_rect	999	1,1,10,10")
+            s.bus("win_rect	bad	1,1,10,10")
+            s.settle(2)
+            s.bus(f"win_rect	{wid}	500,300,380,300")
+            s.settle(4)
+            shots.append(_shot_retry("p709-03-reposition-after-noops"))
+            moved2 = _png_block_mean(
+                os.path.join(out_dir, "p709-03-reposition-after-noops.png"),
+                500, 300, 380, 300,
+            )
+            assert moved2 != after, (
+                f"p709: no-op 后通道仍活（二次摆窗生效 {moved2} vs {after}）"
+            )
         else:
             raise SystemExit(f"unknown scenario: {name}")
         print(f"[{name}] PASS — {len(shots)} shot(s):")
@@ -268,10 +317,96 @@ def run_scenario(name: str, out_dir: str):
         s.close()
 
 
+def _png_block_mean(path: str, x: int, y: int, w: int, h: int) -> tuple:
+    """Minimal PNG reader (8-bit RGB/RGBA, non-interlaced) → block mean color.
+
+    Plan 709 T-09 win_rect acceptance leg: geometry assertion without PIL —
+    the window-screenshot PNGs from the desktop host are plain 8-bit RGBA.
+    Coordinates are logical (iced) pixels; the host screenshot bakes its own
+    scale_factor, so we sample the CENTER block with margins — scale-agnostic.
+    """
+    import struct as _struct
+    import zlib as _zlib
+
+    with open(path, "rb") as f:
+        data = f.read()
+    assert data[:8] == bytes([0x89]) + b"PNG" + bytes([13, 10, 26, 10]), f"not a png: {path}"
+    pos, width, height, bitd, color, interlace = 8, 0, 0, 0, 0, 0
+    idat = bytearray()
+    while pos < len(data):
+        (length,) = _struct.unpack(">I", data[pos:pos + 4])
+        ctype = data[pos + 4:pos + 8]
+        chunk = data[pos + 8:pos + 8 + length]
+        pos += 12 + length
+        if ctype == b"IHDR":
+            width, height, bitd, color, _c, _f, interlace = _struct.unpack(
+                ">IIBBBBB", chunk)
+            assert bitd == 8 and interlace == 0, "unsupported png variant"
+        elif ctype == b"IDAT":
+            idat.extend(chunk)
+        elif ctype == b"IEND":
+            break
+    channels = {0: 1, 2: 3, 6: 4}[color]
+    raw = _zlib.decompress(bytes(idat))
+    stride = width * channels
+    # defilter (paeth etc.) — only standard five filters.
+    out = bytearray(height * stride)
+    prev = bytearray(stride)
+    pos = 0
+    for row in range(height):
+        ft = raw[pos]
+        pos += 1
+        line = bytearray(raw[pos:pos + stride])
+        pos += stride
+        bpp = channels
+        if ft == 1:
+            for i in range(bpp, stride):
+                line[i] = (line[i] + line[i - bpp]) & 0xFF
+        elif ft == 2:
+            for i in range(stride):
+                line[i] = (line[i] + prev[i]) & 0xFF
+        elif ft == 3:
+            for i in range(stride):
+                left = line[i - bpp] if i >= bpp else 0
+                line[i] = (line[i] + ((left + prev[i]) >> 1)) & 0xFF
+        elif ft == 4:
+            for i in range(stride):
+                a = line[i - bpp] if i >= bpp else 0
+                b = prev[i]
+                c = prev[i - bpp] if i >= bpp else 0
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                pr = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
+                line[i] = (line[i] + pr) & 0xFF
+        out[row * stride:(row + 1) * stride] = line
+        prev = line
+    # 逻辑像素 → 截图像素（screenshot 自带 scale，按宽高比近似即可：
+    # 采样中心块留边 25%，尺度误差被均值吸收）。
+    sx = width / 1280.0  # 桌面逻辑宽缺省 1280；比例探针容差足够。
+    sy = height / 800.0
+    cx0 = int((x + w * 0.25) * sx)
+    cy0 = int((y + h * 0.25) * sy)
+    cx1 = int((x + w * 0.75) * sx)
+    cy1 = int((y + h * 0.75) * sy)
+    cx0, cy0 = max(0, cx0), max(0, cy0)
+    cx1, cy1 = min(width, cx1), min(height, cy1)
+    rs = gs = bs = n = 0
+    for yy in range(cy0, cy1, 4):
+        base = yy * stride
+        for xx in range(cx0, cx1, 4):
+            o = base + xx * channels
+            rs += out[o]
+            gs += out[o + 1]
+            bs += out[o + 2]
+            n += 1
+    assert n > 0, f"empty block at {x},{y},{w},{h} (png {width}x{height})"
+    return (rs // n, gs // n, bs // n)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scenario", required=True,
-                    choices=["drill", "p487", "p496", "p501", "p515", "p559"])
+                    choices=["drill", "p487", "p496", "p501", "p515", "p559", "p709"])
     ap.add_argument("--out-dir", default=None)
     args = ap.parse_args()
     if not os.path.isfile(DESKTOP_EXE):
