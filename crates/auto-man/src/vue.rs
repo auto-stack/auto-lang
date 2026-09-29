@@ -3744,6 +3744,10 @@ export default router
                     continue;
                 }
 
+                // PLAN-093 V01 追踪：逐文件进度（静默 exit 1 定位用）。
+                if std::env::var_os("AUTO_BUILD_TRACE").is_some() {
+                    eprintln!("[BUILD-TRACE] front file: {}", file_name);
+                }
                 match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None, Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes)) {
                     Ok((vue_code, widgets, stores)) => {
                         collect_ext_import_files(&widgets, &mut ext_file_set);
