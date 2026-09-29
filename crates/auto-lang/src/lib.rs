@@ -7577,6 +7577,12 @@ mod plan633_fullstack_embed_tests;
 #[path = "tests/back_proxy_tests.rs"]
 mod back_proxy_tests;
 
+// PLAN-707 T-06/T-07: 外部流端到端 relay 与取消生命周期（真 TCP，cargo th
+// 串行池；测试名带 http_e2e+plan707 双前缀以被 th 过滤器与交集命令收录）。
+#[cfg(all(test, feature = "test-http-e2e"))]
+#[path = "tests/plan707_stream_e2e_tests.rs"]
+mod plan707_stream_e2e_tests;
+
 // PLAN-042 T-08：ScanProbe 最小复现（D6 腿）——get_json 延续值 = body
 // 本体回归钉（生产装载管线 + 进程内真 HTTP 端点）。
 #[cfg(test)]

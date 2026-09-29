@@ -92,6 +92,11 @@ pub struct AutoTask {
     // Set by stream next/pull shims when the stream has no data yet; the
     // engine CALL_NAT arm rewinds IP + yields, wake sources check stream_ready.
     pub waiting_http_stream_id: Option<u64>,
+    // PLAN-707 T-06（D-7 第二线）：本任务打开的上游流 id——generator 体/
+    // 段内 open 都登记（scope 守卫只覆盖 dispatch 段，generator 首次 pull
+    // 发生在 SSE serve 循环，thread-local scope 已退出）。清理点：
+    // cleanup_sse_iterator（SSE 输出终结）、abort_parked_request（请求废弃）。
+    pub owned_stream_ids: Vec<u64>,
     // Plan 010 (MS3-A): try/catch exception handler stack. Each frame records
     // the catch handler's absolute instruction pointer; when a runtime error
     // is raised, the top frame is popped and execution jumps to its pc.
@@ -237,6 +242,7 @@ impl AutoTask {
             waiting_sse_stream_id: None,
             waiting_http_request_id: None,
             waiting_http_stream_id: None,
+            owned_stream_ids: Vec::new(),
             handler_stack: Vec::new(),
             pending_native_arg_count: 0, // Plan 369 Task 10: runtime arg count for py-FFI shims
             accum_stack: Vec::new(),

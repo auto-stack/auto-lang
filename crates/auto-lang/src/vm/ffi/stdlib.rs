@@ -6225,6 +6225,8 @@ pub fn shim_http_get_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         headers: Vec::new(),
         mode: super::http_stream::StreamMode::Raw,
     });
+    super::http_server::register_scope_stream(stream_id);
+    task.owned_stream_ids.push(stream_id);
     // 单槽 i32（.at int 变量链/for-in _iterator 局部同链，sse_open 先例）。
     task.ram.push_i32(stream_id as i32);
     Ok(())
@@ -6243,6 +6245,8 @@ pub fn shim_http_post_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         headers: vec![("Content-Type".to_string(), "application/json".to_string())],
         mode: super::http_stream::StreamMode::Raw,
     });
+    super::http_server::register_scope_stream(stream_id);
+    task.owned_stream_ids.push(stream_id);
     task.ram.push_i32(stream_id as i32);
     Ok(())
 }
@@ -6346,6 +6350,8 @@ pub fn shim_http_sse_get_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
         headers: Vec::new(),
         mode: super::http_stream::StreamMode::Sse,
     });
+    super::http_server::register_scope_stream(stream_id);
+    task.owned_stream_ids.push(stream_id);
     let handle = super::http_stream::spawn_legacy_channel_bridge(stream_id);
 
     if let Ok(mut map) = ASYNC_STREAMS.lock() {
@@ -6384,6 +6390,8 @@ pub fn shim_http_stream_sse_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
         headers: Vec::new(),
         mode: super::http_stream::StreamMode::Sse,
     });
+    super::http_server::register_scope_stream(stream_id);
+    task.owned_stream_ids.push(stream_id);
     let handle = super::http_stream::spawn_legacy_channel_bridge(stream_id);
     if let Ok(mut map) = ASYNC_STREAMS.lock() {
         map.insert(stream_id, handle);
@@ -6549,6 +6557,8 @@ pub fn shim_http_post_stream_with_headers(
         headers: headers_map.into_iter().collect(),
         mode: super::http_stream::StreamMode::Raw,
     });
+    super::http_server::register_scope_stream(stream_id);
+    task.owned_stream_ids.push(stream_id);
     task.ram.push_i32(stream_id as i32);
     Ok(())
 }

@@ -4148,7 +4148,8 @@ fn start_handler(
             Ok(mut ht) => {
                 // Dispatch: axum routes use closure (Plan 383 fn-ref), legacy
                 // use fn-name. PLAN-705: 段驱动形态——等待即 park，不再同步
-                // 占线程。
+                // 占线程。PLAN-707 T-06: 段执行期间绑定资源组（流 open 登记）。
+                let _scope_bind = bind_current_scope(ctx.scope_id);
                 match if let Some(ref axum_route) = axum_route {
                     vm.call_closure_segment(&mut ht, axum_route.closure_id, n_args)
                 } else {
@@ -4541,6 +4542,10 @@ pub(crate) struct RequestScope {
     pub permit: std::sync::Mutex<Option<tokio::sync::OwnedSemaphorePermit>>,
     /// 取消信号（桥 reply 等待 select 臂）。
     pub cancel_notify: tokio::sync::Notify,
+    /// PLAN-707 T-06（D-7）：请求资源组——handler 段内打开的上游流 id。
+    /// finalize_scope（完成/取消/断连/关闭）逐一流收口（abort 生产者 +
+    /// 释放队列），保证组内资源不越过请求生命期。
+    pub resources: std::sync::Mutex<Vec<u64>>,
 }
 
 impl RequestScope {
@@ -4598,6 +4603,7 @@ pub(crate) fn create_scope(
         deadline,
         permit: std::sync::Mutex::new(Some(permit)),
         cancel_notify: tokio::sync::Notify::new(),
+        resources: std::sync::Mutex::new(Vec::new()),
     });
     if let Ok(mut map) = REQUEST_SCOPES.lock() {
         map.insert(id, scope.clone());
@@ -4617,6 +4623,17 @@ fn scope_transition(scope: &RequestScope, to: u8) {
 /// （等它的桥 select 臂与 owner 唤醒臂消费）。
 fn finalize_scope(scope: &RequestScope, to: u8) {
     scope_transition(scope, to);
+    // PLAN-707 T-06（D-7）：组收口先行——请求内打开的全部上游流终结
+    //（abort 生产者 + 出表 + 通知等待者）。「等待可取消 ≠ 关闭登记」：
+    // 这里是关闭登记面；生产者实际停止由 stream_cancel 的 abort 承载。
+    let group: Vec<u64> = scope
+        .resources
+        .lock()
+        .map(|mut r| std::mem::take(&mut *r))
+        .unwrap_or_default();
+    for stream_id in group {
+        crate::vm::ffi::http_stream::stream_cancel(stream_id);
+    }
     scope.permit.lock().unwrap().take(); // 释放生命期许可（幂等）
     if let Ok(mut map) = REQUEST_SCOPES.lock() {
         map.remove(&scope.id);
@@ -4669,6 +4686,41 @@ pub(crate) fn cancel_scopes_for_conn(conn_id: u64) {
     }
 }
 
+// PLAN-707 T-06（D-7）：handler 段执行的当前 scope——流 open shim 经
+// [`register_scope_stream`] 把新建流挂进请求资源组；非 request 上下文
+// （UI/CLI 程序）无 scope，资源归显式 close 管理（决策 §5.4）。
+thread_local! {
+    static CURRENT_SCOPE_ID: std::cell::Cell<Option<u64>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// 段执行期间绑定 scope 的 RAII 守卫（嵌套安全：保存/恢复外层值）。
+pub(crate) struct ScopeGuard;
+
+impl Drop for ScopeGuard {
+    fn drop(&mut self) {
+        CURRENT_SCOPE_ID.with(|c| c.set(None));
+    }
+}
+
+/// 进入 handler 段（dispatch/resume）时调用；Drop 恢复无 scope 态。
+pub(crate) fn bind_current_scope(scope_id: u64) -> ScopeGuard {
+    CURRENT_SCOPE_ID.with(|c| c.set(Some(scope_id)));
+    ScopeGuard
+}
+
+/// 流 open shim 调用：把新流登记进当前请求资源组（无 scope → no-op）。
+pub(crate) fn register_scope_stream(stream_id: u64) {
+    let Some(scope_id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
+        return;
+    };
+    if let Some(scope) = lookup_scope(scope_id) {
+        if let Ok(mut r) = scope.resources.lock() {
+            r.push(stream_id);
+        }
+    }
+}
+
 /// 资源基线探针（测试）：存活 scope 数。
 #[cfg(test)]
 pub(crate) fn live_scope_count() -> usize {
@@ -4713,6 +4765,8 @@ pub(crate) fn resume_parked_request(
     vm: &std::rc::Rc<AutoVM>,
     p: &mut ParkedRequest,
 ) -> ParkedResume {
+    // PLAN-707 T-06: 恢复段与首段同属请求资源组（流 open 同样登记）。
+    let _scope_bind = bind_current_scope(p.scope_id);
     match p.stage {
         ParkStage::Middleware { index } => {
             enum MWResume {
@@ -5000,6 +5054,16 @@ fn abort_parked_request(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedRequest) {
     if let ParkedWait::HttpRequest(req_id) = &p.wait {
         crate::vm::ffi::stdlib::drop_async_result(*req_id);
     }
+    // PLAN-707 T-06（D-7）：废弃请求的任务持有的流一并取消（首段 open
+    // 后 park 的形态）。
+    if let Some(t) = vm.tasks.get(&p.task_id) {
+        let owned = t.try_lock().ok().map(|mut t| std::mem::take(&mut t.owned_stream_ids));
+        if let Some(ids) = owned {
+            for stream_id in ids {
+                crate::vm::ffi::http_stream::stream_cancel(stream_id);
+            }
+        }
+    }
     vm.tasks.remove(&p.task_id);
     if let Some(tx) = p.reply_tx.take() {
         let _ = tx.send(ApiReply::Full {
@@ -5082,6 +5146,17 @@ fn cleanup_sse_iterator(vm: &crate::vm::engine::AutoVM, iterator_id: u32) {
     match vm.iterators.remove(&iterator_id) {
         Some((_, crate::vm::engine::Iterator::Generator(state))) => {
             if let Some(task_id) = state.task_id {
+                // PLAN-707 T-06（D-7）：generator 体内建立的上游流随任务
+                // 回收（首次 pull 发生在 SSE serve 循环，scope 守卫已退出，
+                // 资源组登记靠 task.owned_stream_ids 第二线承载）。
+                if let Some(t) = vm.tasks.get(&task_id) {
+                    let owned = t.try_lock().ok().map(|mut t| std::mem::take(&mut t.owned_stream_ids));
+                    if let Some(ids) = owned {
+                        for stream_id in ids {
+                            crate::vm::ffi::http_stream::stream_cancel(stream_id);
+                        }
+                    }
+                }
                 vm.tasks.remove(&task_id);
             }
         }
@@ -5089,6 +5164,12 @@ fn cleanup_sse_iterator(vm: &crate::vm::engine::AutoVM, iterator_id: u32) {
             if let Ok(mut map) = crate::vm::ffi::stdlib::ASYNC_STREAMS.lock() {
                 map.remove(&a.stream_id);
             }
+            // PLAN-707 T-06：流句柄出表 → 泵 tx.send 失败 → stream_cancel
+            //（generator 内建立的上游连接随 SSE 输出终结一并收口）。
+        }
+        Some((_, crate::vm::engine::Iterator::HttpStream(h))) => {
+            // PLAN-707 T-06：raw 流迭代器清理=真取消（连接关闭）。
+            crate::vm::ffi::http_stream::stream_cancel(h.stream_handle);
         }
         Some((_, _)) | None => {}
     }
