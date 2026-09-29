@@ -76,3 +76,56 @@ panic 现场（`RUST_BACKTRACE=full`，家族驱动 load 复跑捕获，`app-dea
 - `app-death-*.log`：panic 全量 backtrace（RC canary UAF @ rc.rs:742）
 - `lrun-1.log`/`mrun-1.log`：截断版中间取证；`grun-*.log`：fix 后 load 复跑
 - `p706-matrix-culprit.log`：culprit 提交全矩阵 16/16（ unloaded 未触雷——竞态窗口注记）
+
+## 6. T-10 续：第二断裂面与死键守卫（2026-09-30 补记）
+
+值准入守卫落后全矩阵实机复跑暴露**同根因第二面**：debug 全矩阵在 [12 rename] 后
+ECONNRESET 进程死亡、另跑在 [10] `首页 not found in region`（app 存活无 panic）——
+UAF 只被值守卫断掉，**死键版本冻结伪命中**仍在：`path_versions` 条目随状态替换留存，
+堆对象已从 `heap_objects` 摘除 → dep 键版本永不 bump → `deps_unchanged` 恒等 →
+陈旧标量/陈旧视图回流（弹层滞留/树行缺失/条件错乱）。
+
+修复= `AutoVM::heap_dep_key_alive`（engine.rs）+ `deps_unchanged` 死键按 miss：
+- `< HEAP_ID_BASE` 合成键与未分配 id（id ≥ id_gen）按存活——纯版本比对语义保持
+  （plan047 门测试依赖）；
+- 已分配（≥ base）且不在 `heap_objects` = 已释放（id_gen 单调不复用；dying 宽限窗
+  内对象仍在表）——零新增状态。
+- 咽喉单点：信号网 hit 与 memo version_fast 同经 `deps_unchanged`。
+
+家族单测 `plan706_deps_unchanged_dead_heap_key_misses`（死键 miss/活键恒等/合成键
+存活三态）。定向回归：plan706 3、plan047 24、plan046 38、memo 86、vm_bridge 55 全绿。
+
+## 7. T-11 收口证据（2026-09-30）
+
+| 面 | 载体 | 结果 |
+|---|---|---|
+| 消费者 vm_matrix merged 16/16 | 修复 exe（debug） | **ALL GREEN**（`p706-matrix-fixed2-debug.log`） |
+| 消费者 vm_matrix merged 16/16 | 修复 exe（release） | **ALL GREEN**（`p706-matrix-fixed2-release.log`）——[10b] 弹层滞留面消 |
+| 家族驱动 [7 tab] 弧 ×5 CPU load | 修复 exe | 5/5 GREEN（双守卫后） |
+| 家族 ui:: 域 1617 测 | 修复 exe | 1616/1617（1 红 `projector_counter_layout_and_hits` 为 **base 预存**——old-carrier c8f86ef92 同红复证） |
+| gallery 实机抽查四页 | 修复 exe | **GREEN**——Sidebar/Menubar/Area Chart/Command 四路由真达（__current_route 断言）+ 渲染非空（74821/55750/36659/35335 字节异构内容；`gallery-spot.log`） |
+
+### 7.1 probe_mtime release 挂起面：独立缺陷定谳（AC-11 后半臂）
+
+- 修复 exe debug：probe_mtime **全案通过**（merged+split 五案，`p706-probe-mtime-dbg.log`）。
+- 修复 exe release：`done` 恒 false（`p706-probe-mtime-rel.log`）。
+- **old-carrier c8f86ef92 release：同形红**（`p706-probe-mtime-oldrel.log`）——pre-delta
+  载体同挂 ⇒ **非 706 r2 回归，系独立预存缺陷**（merged 直调臂 back-bridge call 挂起，
+  release 特异）。按 AC-11 预设臂「或定谳为独立缺陷另立记账」处置 → KNOWN-DEBT。
+
+### 7.2 消费者 e2e（vue 轨 Playwright）：预存 flaky 定谳
+
+- 载体 delta 内 e2e `快速打开` menubar 弹层点击偶发不稳（元素反复 detach → click 重试
+  到超时）。样本统计：old-carrier release **2/4 pass**（run1 绿/连跑 1 绿 2 红）、
+  new 载体 **1/4 pass**（debug/newrel/77d05aa3f-run1 红、77d05aa3f-run2 绿）——**双载体
+  同 flaky，无载体区分度 ⇒ 预存 harness 稳定性问题，非 706 r2 回归**。
+- 排除记录：gen/front/vue 为 09-22 陈旧产物（所有 e2e 跑同一前端字节）⇒ 前端非变量；
+  vue 轨 bisect（c8f86ef92..66c9cac19，判据=全 spec）单样本噪声不可靠已弃用（
+  77d05aa3f「first bad」为 1/2 样本侥幸，行为等价 diff+前端零再生成排除因果）。
+- 处置 → KNOWN-DEBT（消费方 harness 加固面：force-click/动画等待），不在本 phase 修复。
+
+### 7.3 gallery 侧栏连按失灵：预存 quirk 注记
+
+- gallery VM 臂 sidebar 连续导航在 **双载体均偶发失灵**（old-carrier 2 连按后路由滞留、
+  new 载体亦然；MCP press 间页面重挂载期 >10s 超时同现）——非 r2 回归。四页收口经
+  press→fixture 双通道重试达成真路由。
