@@ -18,7 +18,7 @@ new_spec_components:
 touched_goals: [GOAL-007, GOAL-009]
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 1
+current_step: 3
 total_steps: 13
 ---
 
@@ -307,8 +307,8 @@ Worktree 复用：`D:/autostack/.wt/lang-708/auto-lang` / `plan-708-dev`，先�
 | T-12（新） | T-00/02/11 | call_computed_fn/call_vm_fn、computed signals、builder热点 | 依赖安全缓存/具名prepare，Ready值/RC/失效；AC-07/12；不能一律同步漏测 |
 
 - [x] T-00 基线/安全探针/decision（reports/708-baseline.md §3/§4 + 708-decision.md D-1..D-6：帧屏障裁定 listen_raw 序障；归因闭环 preview-card 臂 VueGenerator 每实例 ~1.1-1.3s、DataTable 静默 Degrade、FileTree 恒 MISS；env=0 无强制关实证；无 T-00 级阻塞）
-- [ ] T-01 outlet 三态与失效
-- [ ] T-02 gallery 既有 memo 核查及热点减负
+- [x] T-01 outlet 三态与失效（worktree 7ac8f51c2：三态门+Outlet Option<bool> 四层贯通+memo:false 新形态+缺省 on；宿主 UI epoch+五处 bump 堵组件局部态 memo 陈旧缺口；Degrade 诊断面；plan708 5 测试全绿+既有族零回归）
+- [x] T-02 gallery 既有 memo 核查及热点减负（worktree 956d86a90：归因实证=preview-card 每卡每帧 VueGenerator::new ~1.27s；WidgetRegistry::with_defaults 进程级 OnceLock+boot 后台预热；实测冷构建 row 8.1s→365ms/datatable 9.6s→27ms/area-chart 1.2s→1ms/filetree 1.4s→2ms，warm 全 0-1ms；DEGRADE 诊断行实证生效；a2vue 预存红+plan358 并行抖动定责零回归）
 - [ ] T-03 Init demand/代际生命周期
 - [ ] T-04 真实入口帧通知与有界泵
 - [ ] T-05 骨架/完成/失败显示
@@ -350,6 +350,15 @@ Worktree 复用：`D:/autostack/.wt/lang-708/auto-lang` / `plan-708-dev`，先�
 - worktree 修复收据（可恢复、零删除）：`.git/worktrees/auto-lang2/gitdir` 与 worktree `.git` 两文件由 `/mnt/d/...` 改写为 `D:/...`；修复后 `git worktree list` 不再 prunable，branch=plan-708-dev、status clean（零未提交改动）、`master..HEAD` 空 → `git merge --ff-only master` 同步至 e1bab972e（含 707 全部落地接口）。
 - 主检出预检：仅 docs/簿记与 `.tmp-vm-*` 走查残留，无 crates/test 代码 WIP，符合 master 零 WIP 代码规则。
 - `next: T-00 静态/运行探针 → reports/708-baseline.md + 708-decision.md`；探针失败项按 §6 有界处置。
+
+### 2026-09-30 work T-01/T-02（S 档完成）
+
+- `stage: work` | `plan_id: PLAN-708` | `plan_revision: 2` | `outcome: in_progress` | `code_commit: worktree 7ac8f51c2（T-01）+ 956d86a90（T-02）`
+- T-01：三态表/缺省 on/UI epoch 五臂/Degrade 诊断面落地；scoped 门禁 plan708(5)+plan045(13)+plan046(38)+memo(91)+outlet(14)+parser outlet 全绿。
+- T-02：判别实验四组锁定 preview-card 每卡每帧 `VueGenerator::new()`（跳过代码生成仍 9.0s）；`WidgetRegistry::with_defaults` 进程级缓存 + run_session 后台预热；实机复测冷构建 row 8.1s→365ms / datatable 9.6s→27ms / area-chart 1.2s→1ms / filetree 1.4s→2ms，warm 0-1ms；T-01 的 DEGRADE 诊断行实机可见（DataTable reason=memo_block）。
+- 预存红定责（零回归）：`musk_vm_track_p053_6_widget_content`（base e1bab972e 同败，707 台账 musk flaky 族）、`test_a2vue_desktop_surface_asset`（base 同败，707 台账 a2vue）、`plan358_d1_for_style_if_msg_on_stress`（并行抖动，带改动单跑 2/2 过）。
+- T-02 残面（移交后续任务）：Row 冷 365ms 仍超 50ms 占用门禁（真实渲染工作，M 档骨架/泵与 T-12 继续压）；DataTable memo_block Degrade 根因（T-12）；FileTree 恒 FILL（T-12 computed 缓存）。
+- `next: T-11 CPU 可续跑执行片 → T-03 Init demand/代际 → T-04 帧通知泵 → T-05 骨架显示 → T-06/07/08/12 → T-09 实机矩阵 → T-10 交接`。
 
 ## 10. 待澄清事项
 
