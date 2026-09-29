@@ -1,6 +1,6 @@
 # HTTP handler 异步等待与请求生命周期(http handler async lifecycle)
 
-> **Status**: current(PLAN-705,Design 33 阶段 C1) | 层:vm ffi http_server/engine | 2026-09-29
+> **Status**: current(PLAN-705,Design 33 阶段 C1;PLAN-707 C2a 外部流延伸) | 层:vm ffi http_server/engine | 2026-09-30
 
 ## 执行模型
 
@@ -53,15 +53,41 @@ owner parked 表，**owner loop 立即空出**服务后续请求；完成端经�
   [async-http-result-lifecycle](async-http-result-lifecycle.md)）+ 通知；
   External Future 完成统一 `complete_external_future`。
 - owner parked 就绪探测：HttpRequest→live-op 表、Future→`vm.futures`
-  （缺席=唤醒，引擎恢复臂同款 nil fallback）。
+  （缺席=唤醒，引擎恢复臂同款 nil fallback）、**HttpStream→流资源表**
+  （PLAN-707：有 data 或终态即就绪；CALL_NAT rewind 重试协议同构——
+  挂起臂回推被弹的迭代器 id、就绪出口清除凭据，残留标志=热循环根因）。
+
+## 外部流等待与资源组（PLAN-707 C2a）
+
+- **流等待**：外部 HTTP/SSE 流的建立/读取全部异步非阻塞（统一资源表 +
+  固定共享 runtime + 独立许可对 + 有界队列背压）——详见
+  [http-stream-lifecycle](http-stream-lifecycle.md)。handler/generator
+  段遇流无数据即 park（`ParkedWait::HttpStream`），零阻塞读、零热转
+  （gate 关闭期间驱动次数不随等待时长增长）。
+- **generator 等待凭据化**：cooperative 驱动遇流/External Future 等待
+  立即停步（AwaitFuture 走 `handle_await_future` 处理）；SSE serve 的
+  `next_sse_generator_value` 对流做 enable→检查→await，删除 yield_now
+  自旋。
+- **请求资源组**：段内打开的上游流登记进 `RequestScope.resources`
+  （finalize_scope 逐流取消——组内资源不越过请求生命期）；generator
+  体首次 pull 发生在 SSE serve 循环（scope 守卫已退出），以
+  `AutoTask.owned_stream_ids` 第二线承载（`cleanup_sse_iterator`/
+  `abort_parked_request` 收口）。下游断连 → scope 收口 → 上游连接
+  真实关闭（级联取消，E2E 观测 ≤8s）。
+- **期限区别**：首响应 deadline（`AUTO_HTTP_REQUEST_TIMEOUT_MS`）只
+  覆盖排队+handler 到回复；SSE 回复后 scope 移交 `FrameStream` 代持，
+  健康长流不被首响应期限杀死——上游读空闲（60s，背压等待不计时）/
+  下游写停滞（30s，传输侧）分别收口。
 
 ## 支持矩阵（边界明示）
 
 - **已支持**：上述全部（探针族 `plan705` 19 项 + 门禁 gate）。
 - **非目标（本轮明确不做）**：CPU-bound handler 抢占/时间片（段预算
-  10M 指令跑完不可中断）；全后台收敛/全量 task actor mailbox 改造；外部
-  SSE/HTTPStream 的异步等待（仅列缺口）；a2r 客户端迁移；TLS/HTTP2/WS
-  扩展；多 VM/多 owner 并行。
+  10M 指令跑完不可中断）；全后台收敛/全量 task actor mailbox 改造；
+  a2r 客户端迁移；TLS/HTTP2/WS 扩展；多 VM/多 owner 并行。~~外部
+  SSE/HTTPStream 的异步等待~~（PLAN-707 C2a 已落地——见
+  [http-stream-lifecycle](http-stream-lifecycle.md)；a2r 侧流客户端
+  迁移仍为缺口）。
 - **legacy 保留**：`serve_blocking_stdnet` / `run_http_server_blocking` /
   `shim_http_server_listen` 串行同步形态；`*_sync` 客户端显式同步 API
   （不入 request scope）。
@@ -69,6 +95,8 @@ owner parked 表，**owner loop 立即空出**服务后续请求；完成端经�
 ## 关联
 
 - PLAN-705（reports：705-async-decision / 705-parity / 705-resource-lifecycle / 705-verification）
+- PLAN-707（reports：707-stream-decision / 707-parity / 707-resource-lifecycle / 707-verification；
+  [http-stream-lifecycle](http-stream-lifecycle.md) 为本篇外部流延伸契约）
 - [http-server §8.1](http-server.md)（协议预算/装配）、
   [async-http-result-lifecycle](async-http-result-lifecycle.md)（结果通道单次终结）
 - [networking-stdlib](../../auto-lang/runtime/design/networking-stdlib.md)（阶段 C1 落地面）

@@ -1,6 +1,6 @@
 # 异步 HTTP 结果通道生命周期(async result channel lifecycle)
 
-> **Status**: current(SD-01,PLAN-027;PLAN-705 SD-02 修订) | 层:vm ffi stdlib | 2026-09-29
+> **Status**: current(SD-01,PLAN-027;PLAN-705 SD-02 修订;PLAN-707 SD-02 修订——取消实停) | 层:vm ffi stdlib | 2026-09-30
 
 ## 背景
 
@@ -36,17 +36,31 @@ PLAN-027 定罪该通道的三个缺陷与稳态泄漏源(每请求线程 churn)
    活跃 `AUTO_HTTP_CLIENT_MAX_ACTIVE`(8)/队列 `AUTO_HTTP_CLIENT_QUEUE`(64)
    满载即拒(零临时线程)/响应体 `AUTO_HTTP_CLIENT_BODY_LIMIT`(10 MiB
    增量预算)/单 job 总期限 `AUTO_HTTP_CLIENT_TIMEOUT_MS`(30s);
-   重试退避为 async sleep,取消随 future 丢弃,绝不继续发送。
    禁止回归"每请求 spawn"或"队满临时 spawn"(PLAN-027 缺陷面 + AC-03)。
-5. **回归钉**:契约单测(p027 两项——已随 PLAN-705 更新为协议面断言)+
+5. **取消=实际停止执行体(PLAN-707 SD-02 修订)**:705 原文"取消随
+   future 丢弃"在实现面不成立——cancel 当时只删结果槽。现在
+   `cancel_live_op` 同时 abort 该 req_id 的 managed job future
+   (`JOB_ABORTS` 登记;abort 在下一 await 生效:许可等待/请求建立/
+   重试退避 sleep/读体——**queued/active/retry 三阶段均可打断**,许可
+   随 wrapper task 丢弃归还;spawn→登记窗口内的取消由插入后复查闭合)。
+   abort 句柄随 job 完成/取消双路径出表(成功 job 滞留句柄=慢性泄漏,
+   已修)。**detached 显式分离**:`submit_detached_client_job`(消息桥
+   fire-and-forget)不写 live-op、不登记 abort——`cancel_live_op` 对其
+   零影响,LIVE_OPS 缺席不构成误杀面。Future 取消不承诺撤销对端已
+   接受的 POST/OS 已缓冲数据;只证明本地 job 停止读/重试、许可归还。
+6. **回归钉**:契约单测(p027 两项——已随 PLAN-705 更新为协议面断言)+
    `plan705` 探针族(单次终结/竞态/迟到完成/线程稳定/体预算/总期限,
    `plan705_spike_tests.rs`)+ 资源基线断言(取消风暴后 live-op/scope/
-   许可回基线,见 plans/reports/705-resource-lifecycle.md)。
+   许可回基线,见 plans/reports/705-resource-lifecycle.md)+ PLAN-707
+   取消探针族 `plan707_cancel`(queued/active/retry 三阶段实停、许可
+   归还、迟到不复活、detached 反例,`plan707_cancel_tests.rs`)。
 
 ## 关联
 
 - PLAN-027(evidence/027:L0 审计/L1 判别/坍缩半减/池化终局四轮数据)
 - PLAN-705(reports/705-async-decision.md 冻结 + verification 复审)
+- PLAN-707(reports/707-stream-decision.md D-1 冻结 + 707-verification.md;
+  取消执行体闭合的本轮)
 - [http-handler-async-lifecycle](http-handler-async-lifecycle.md)(服务侧生命周期)
 - http-server.md(服务侧)
 - AUTO_VM_MEM(engine 池观测,VM 侧面;本通道为 rust 层,AUTO_VM_MEM
