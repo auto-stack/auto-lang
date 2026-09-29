@@ -576,7 +576,8 @@ pub(crate) fn spawn_legacy_channel_bridge(stream_id: u64) -> Arc<super::stdlib::
 }
 
 /// 流就绪等待（ready Notify + 全局完成通知双通道，enable 三段式防丢）。
-async fn wait_stream_ready(stream_id: u64) {
+/// T-05 generator 等待凭据化（next_sse_generator_value 的 Ok(None) 臂）。
+pub(crate) async fn wait_stream_ready(stream_id: u64) {
     loop {
         let handle = STREAMS.lock().ok().and_then(|m| m.get(&stream_id).cloned());
         let Some(handle) = handle else { return };

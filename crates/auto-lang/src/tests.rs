@@ -421,4 +421,8 @@ mod plan707_cancel_tests;
 // SSE poll/close/error 新面 + 队满终结性 + 许可独立）。
 #[cfg(test)]
 mod plan707_client_tests;
+// PLAN-707 T-05：generator/段等待凭据化（gate 关闭期间驱动次数静态——
+// 自旋红转绿判据 + 放行唤醒取值）。
+#[cfg(test)]
+mod plan707_wait_tests;
 // scratch diagnostics (T-01, remove before landing)

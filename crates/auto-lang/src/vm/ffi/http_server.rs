@@ -5130,6 +5130,72 @@ fn wake_sse_generator(vm: &crate::vm::engine::AutoVM, iterator_id: u32) {
     }
 }
 
+/// PLAN-707 T-05（D-6）：读取 generator 任务的等待凭据（cooperative sleep
+/// 之外的凭据化等待源）——外部流 id 或外部 future id。
+fn generator_wait_credential(
+    vm: &crate::vm::engine::AutoVM,
+    iterator_id: u32,
+) -> GeneratorWait {
+    use crate::vm::engine::Iterator;
+    let task_id = match vm.iterators.get(&iterator_id) {
+        Some(state) => match &*state {
+            Iterator::Generator(generator) => generator.task_id,
+            _ => None,
+        },
+        None => None,
+    };
+    let Some(task_id) = task_id else {
+        return GeneratorWait::None;
+    };
+    let Some(task) = vm.tasks.get(&task_id) else {
+        return GeneratorWait::None;
+    };
+    let Ok(task) = task.try_lock() else {
+        return GeneratorWait::None;
+    };
+    if let Some(stream_id) = task.waiting_http_stream_id {
+        return GeneratorWait::Stream(stream_id);
+    }
+    if let Some(stream_id) = task.waiting_sse_stream_id {
+        return GeneratorWait::Stream(stream_id);
+    }
+    if let Some(fid) = task.waiting_future_id {
+        return GeneratorWait::Future(fid);
+    }
+    GeneratorWait::None
+}
+
+enum GeneratorWait {
+    None,
+    Stream(u64),
+    Future(u32),
+}
+
+/// 测试访问器：next_sse_generator_value（私有 async）驱动。
+#[cfg(test)]
+pub(crate) async fn next_sse_generator_value_for_test(
+    vm: &std::rc::Rc<crate::vm::engine::AutoVM>,
+    iterator_id: u32,
+) -> Option<u64> {
+    next_sse_generator_value(vm, iterator_id).await
+}
+
+/// 测试访问器：generator 产出值 == 期望字符串（str 堆索引解码）。
+#[cfg(test)]
+pub(crate) fn sse_value_is(
+    vm: &crate::vm::engine::AutoVM,
+    nv: auto_val::NanoValue,
+    expect: &str,
+) -> bool {
+    if auto_val::is_string(nv) {
+        vm.get_string(auto_val::decode_string(nv) as u32)
+            .map(|b| String::from_utf8_lossy(&b) == expect)
+            .unwrap_or(false)
+    } else {
+        false
+    }
+}
+
 async fn next_sse_generator_value(
     vm: &std::rc::Rc<crate::vm::engine::AutoVM>,
     iterator_id: u32,
@@ -5141,7 +5207,6 @@ async fn next_sse_generator_value(
             }
             wake_sse_generator(vm, iterator_id);
         }
-
         let next_task_id = vm.spawn_task(0, 1024);
         let step_result = {
             if let Some(next_task) = vm.tasks.get(&next_task_id) {
@@ -5178,13 +5243,40 @@ async fn next_sse_generator_value(
                 return Some(value);
             }
             Ok(None) => {
-                if let Some(deadline) = sse_generator_wake_deadline(vm, iterator_id) {
-                    if deadline > std::time::Instant::now() {
-                        tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)).await;
+                // PLAN-707 T-05（D-6）：凭据化等待——外部流（ready Notify +
+                // COMPLETION_NOTIFY 三段式）或外部 future（完成通知），
+                // 零固定间隔轮询/自旋；cooperative sleep 走既有 wake_time
+                // 臂；未知 pending 兜底 yield_now（保守不忙等死锁）。
+                match generator_wait_credential(vm, iterator_id) {
+                    GeneratorWait::Stream(stream_id) => {
+                        crate::vm::ffi::http_stream::wait_stream_ready(stream_id).await;
                     }
-                    wake_sse_generator(vm, iterator_id);
-                } else {
-                    tokio::task::yield_now().await;
+                    GeneratorWait::Future(_) => {
+                        let notified = crate::vm::ffi::async_http::COMPLETION_NOTIFY.notified();
+                        tokio::pin!(notified);
+                        notified.as_mut().enable();
+                        // enable 后复查：凭据已清除（先完成再 park）则直接
+                        // 回拉，否则等完成通知（complete_external_future 发出）。
+                        if matches!(
+                            generator_wait_credential(vm, iterator_id),
+                            GeneratorWait::Future(_)
+                        ) {
+                            notified.await;
+                        }
+                    }
+                    GeneratorWait::None => {
+                        if let Some(deadline) = sse_generator_wake_deadline(vm, iterator_id) {
+                            if deadline > std::time::Instant::now() {
+                                tokio::time::sleep_until(tokio::time::Instant::from_std(
+                                    deadline,
+                                ))
+                                .await;
+                            }
+                            wake_sse_generator(vm, iterator_id);
+                        } else {
+                            tokio::task::yield_now().await;
+                        }
+                    }
                 }
             }
             Err(error) => {

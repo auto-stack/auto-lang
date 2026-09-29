@@ -4280,6 +4280,217 @@ thread_local! {
 /// Run one SSE iterator step cooperatively. `false` means the generator used
 /// its instruction budget or entered a cooperative sleep and should be polled
 /// again after yielding to the LocalSet.
+/// PLAN-707 T-05：generator next() 驱动体（自 [`shim_iterator_next`] 的
+/// Generator 臂抽出）——调用方先 clone 状态再调本函数，**不持 iterators
+/// 锁驱动**（内层嵌套 iterator_next 同 shard get_mut 重入会自死锁），
+/// 返回后由调用方回写状态。
+fn generator_next_drive(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    iterator_id: u32,
+    gen_state: &mut crate::vm::engine::GeneratorState,
+) {
+    //
+    // Each next() runs the generator task forward from its saved
+    // ip/bp/sp until the NEXT YIELD_VAL (or RET/Terminated). The
+    // task stays alive across next() calls (vm.tasks is not cleaned
+    // by run_task_loop, and we manage the task lifecycle manually).
+    //
+    // This replaces the previous eager approach (which ran the whole
+    // body on first next(), collecting all yields). Lazy enables:
+    //  - infinite generators (fib) that the consumer can break from
+    //  - SSE incremental flush (each yield pushes one frame)
+    //  - side effects in the generator interleaved with consumption
+    //
+    // Plan 326 §1 fix preserved: done pushes the -1 nil sentinel
+    // so the for-loop's `DUP; CONST -1; EQ` exits cleanly.
+    // cooperative 判定原在 shim 顶层（PLAN696 tl 目标比对）——随体迁入。
+    let cooperative_budget = PLAN696_SSE_NEXT_BUDGET.with(|slot| {
+        slot.get()
+            .filter(|(target_iterator, _)| *target_iterator == iterator_id)
+            .map(|(_, budget)| budget)
+    });
+    let cooperative = cooperative_budget.is_some();
+    use crate::vm::engine::StepResult;
+    use crate::vm::task::TaskStatus;
+
+    if gen_state.done {
+        task.ram.push_i32(-1);
+        return;
+    }
+
+    // First next(): spawn the generator task and set up its frame
+    // (mirrors the CALL opcode's frame setup).
+    if !gen_state.started {
+        gen_state.started = true;
+        let tid = vm.spawn_task(gen_state.func_addr as usize, 65536);
+        gen_state.task_id = Some(tid);
+
+        if let Some(gen_task_arc) = vm.tasks.get(&tid) {
+            if let Ok(mut gt) = gen_task_arc.try_lock() {
+                gt.cooperative_http_sleep = cooperative;
+                // Plan 417-D2: seed the CALL-transferred args
+                // BELOW the frame markers, mirroring the CALL
+                // convention [args..., ret_addr, old_bp] so the
+                // generator's FN_PROLOG and RET see a well-formed
+                // frame (previously parameterized generators read
+                // garbage params and underflowed at RET).
+                let seed = std::mem::take(&mut gen_state.stack_snapshot);
+                for nv in seed {
+                    gt.ram.push_nv(nv);
+                }
+                gt.ram.push_i32(0); // return address (unused)
+                gt.ram.push_i32(0); // old BP
+                let new_bp = gt.ram.sp - 1;
+                gt.bp = new_bp;
+                gt.current_fn_n_args = gen_state.n_args as usize;
+                gt.call_stack.push(crate::vm::task::CallFrame {
+                    return_ip: 0,
+                    old_bp: new_bp,
+                    fn_name: None,
+                    line: 0,
+                    old_fn_n_args: 0,
+                    old_fn_n_locals: 0,
+                });
+                gt.ip = gen_state.func_addr as usize;
+            }
+        }
+    }
+
+    let tid = match gen_state.task_id {
+        Some(id) => id,
+        None => {
+            // Task was already cleaned up (generator finished).
+            gen_state.done = true;
+            task.ram.push_i32(-1);
+            return;
+        }
+    };
+
+    // A generator can be created before its first HTTP pull; set
+    // the mode on every pull so sleep dispatch stays scoped to
+    // this cooperative SSE consumer.
+    if let Some(gen_task_arc) = vm.tasks.get(&tid) {
+        if let Ok(mut gt) = gen_task_arc.try_lock() {
+            gt.cooperative_http_sleep = cooperative;
+        }
+    }
+
+    // Run the generator task forward until the next YIELD_VAL or
+    // completion. Budget caps a single next() (prevents runaway
+    // loops with no yields); the task resumes from its saved ip.
+    const NEXT_BUDGET: u32 = 1_000_000;
+    let instruction_budget = cooperative_budget.unwrap_or(NEXT_BUDGET);
+    let mut yielded_nv: Option<u64> = None;
+    let mut finished = false;
+    let mut pending = false;
+
+    if let Some(gen_task_arc) = vm.tasks.get(&tid) {
+        if let Ok(mut gt) = gen_task_arc.try_lock() {
+            for _ in 0..instruction_budget {
+                match vm.run_one_instruction(&mut gt) {
+                    Ok(StepResult::Continue) => continue,
+                    Ok(StepResult::GeneratorYield) => {
+                        // Value is on the generator task's stack.
+                        // PEEK (don't pop): codegen emits a POP after
+                        // YIELD_VAL (ExprStmt discards yield's nil
+                        // return value), so we must leave the yielded
+                        // value on the generator stack for that POP to
+                        // consume. We copy it to the caller instead.
+                        let nv = gt.ram.raw_nv[gt.ram.sp - 1];
+                        yielded_nv = Some(nv);
+                        // Park the task so run_task_loop won't pick
+                        // it up between next() calls. Its ip/bp/sp
+                        // are preserved on the task itself.
+                        gt.status = TaskStatus::Waiting("generator_suspended".into());
+                        break;
+                    }
+                    Ok(StepResult::Terminated) => {
+                        finished = true;
+                        break;
+                    }
+                    Ok(StepResult::Yield) => {
+                        // PLAN-707 T-05（D-6）：cooperative sleep 与
+                        // 外部流等待都必须立即停步——流等待无 wake_time，
+                        // 旧形态落 1M 步预算内同 shim 反复重试（热循环）。
+                        if cooperative
+                            && (gt.wake_time.is_some()
+                                || gt.waiting_sse_stream_id.is_some()
+                                || gt.waiting_http_stream_id.is_some())
+                        {
+                            pending = true;
+                            break;
+                        }
+                    }
+                    Ok(StepResult::AwaitFuture { future_id, body_offset }) => {
+                        // PLAN-707 T-05（§5.4）：外部 `~{}` await 在
+                        // generator 体内同样停步（Pending）——镜像
+                        // drive_handler_segment 的 AwaitFuture 处理；
+                        // 旧形态直接 continue 跳过体执行并热转。
+                        if let Err(e) =
+                            vm.handle_await_future(&mut gt, future_id, body_offset)
+                        {
+                            eprintln!("[Generator] await body error: {:?}", e);
+                            finished = true;
+                            break;
+                        }
+                        if gt.waiting_future_id.is_some() {
+                            pending = true;
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[Generator] Error: {:?}", e);
+                        finished = true;
+                        break;
+                    }
+                }
+            }
+            // Budget exhausted without yield or termination: treat
+            // as done to avoid an infinite external loop.
+            if yielded_nv.is_none() && !finished && !pending {
+                if cooperative {
+                    pending = true;
+                } else {
+                    eprintln!("[Generator] next() budget exhausted without yield");
+                    finished = true;
+                }
+            }
+        }
+    }
+
+    if pending {
+        return;
+    }
+
+    if finished {
+        // Generator returned/terminated: clean up the task.
+        vm.tasks.remove(&tid);
+        gen_state.task_id = None;
+        gen_state.done = true;
+        task.ram.push_i32(-1);
+        return;
+    }
+
+    // Push the yielded value onto the caller's stack.
+    match yielded_nv {
+        Some(nv) => {
+            if auto_val::is_i32(nv) {
+                task.ram.push_i32(auto_val::decode_i32(nv));
+            } else {
+                task.ram.push_nv(nv);
+            }
+        }
+        None => {
+            // No yield and not finished (shouldn't happen, but be safe).
+            gen_state.done = true;
+            task.ram.push_i32(-1);
+        }
+    }
+    return;
+
+}
+
 pub fn shim_iterator_next_cooperative(
     task: &mut AutoTask,
     vm: &AutoVM,
@@ -4326,6 +4537,34 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 
     // Plan 076 Phase 3: Always return i32 by extracting Int from Value
     // Get the iterator (need to clone to update)
+    // PLAN-707 T-05：Generator 臂在 get_mut **之前**分流——generator 驱动
+    // 不得持有 iterators 写锁（内层嵌套 iterator_next 对同 DashMap shard
+    // 的 get_mut/get 重入自死锁，707 实测挂死）。clone→驱动→回写。
+    let is_generator_iter = vm
+        .iterators
+        .get(&iterator_id)
+        .map(|e| matches!(&*e, Iterator::Generator(_)))
+        .unwrap_or(false);
+    if is_generator_iter {
+        let mut gen_state = {
+            let entry = vm.iterators.get(&iterator_id).expect("checked above");
+            match &*entry {
+                Iterator::Generator(g) => g.clone(),
+                _ => unreachable!("checked above"),
+            }
+        };
+        generator_next_drive(task, vm, iterator_id, &mut gen_state);
+        match vm.iterators.entry(iterator_id) {
+            dashmap::mapref::entry::Entry::Occupied(mut e) => {
+                *e.get_mut() = Iterator::Generator(gen_state);
+            }
+            dashmap::mapref::entry::Entry::Vacant(e) => {
+                e.insert(Iterator::Generator(gen_state));
+            }
+        }
+        return Ok(());
+    }
+
     let result = if let Some(mut iter_mut) = vm.iterators.get_mut(&iterator_id) {
         match &mut *iter_mut {
             Iterator::List(list_iter) => {
@@ -4545,177 +4784,9 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                     -1
                 }
             }
-            Iterator::Generator(gen_state) => {
-                // Plan 317 Phase 3: lazy generator next() driver.
-                //
-                // Each next() runs the generator task forward from its saved
-                // ip/bp/sp until the NEXT YIELD_VAL (or RET/Terminated). The
-                // task stays alive across next() calls (vm.tasks is not cleaned
-                // by run_task_loop, and we manage the task lifecycle manually).
-                //
-                // This replaces the previous eager approach (which ran the whole
-                // body on first next(), collecting all yields). Lazy enables:
-                //  - infinite generators (fib) that the consumer can break from
-                //  - SSE incremental flush (each yield pushes one frame)
-                //  - side effects in the generator interleaved with consumption
-                //
-                // Plan 326 §1 fix preserved: done pushes the -1 nil sentinel
-                // so the for-loop's `DUP; CONST -1; EQ` exits cleanly.
-                use crate::vm::engine::StepResult;
-                use crate::vm::task::TaskStatus;
-
-                if gen_state.done {
-                    task.ram.push_i32(-1);
-                    return Ok(());
-                }
-
-                // First next(): spawn the generator task and set up its frame
-                // (mirrors the CALL opcode's frame setup).
-                if !gen_state.started {
-                    gen_state.started = true;
-                    let tid = vm.spawn_task(gen_state.func_addr as usize, 65536);
-                    gen_state.task_id = Some(tid);
-
-                    if let Some(gen_task_arc) = vm.tasks.get(&tid) {
-                        if let Ok(mut gt) = gen_task_arc.try_lock() {
-                            gt.cooperative_http_sleep = cooperative;
-                            // Plan 417-D2: seed the CALL-transferred args
-                            // BELOW the frame markers, mirroring the CALL
-                            // convention [args..., ret_addr, old_bp] so the
-                            // generator's FN_PROLOG and RET see a well-formed
-                            // frame (previously parameterized generators read
-                            // garbage params and underflowed at RET).
-                            let seed = std::mem::take(&mut gen_state.stack_snapshot);
-                            for nv in seed {
-                                gt.ram.push_nv(nv);
-                            }
-                            gt.ram.push_i32(0); // return address (unused)
-                            gt.ram.push_i32(0); // old BP
-                            let new_bp = gt.ram.sp - 1;
-                            gt.bp = new_bp;
-                            gt.current_fn_n_args = gen_state.n_args as usize;
-                            gt.call_stack.push(crate::vm::task::CallFrame {
-                                return_ip: 0,
-                                old_bp: new_bp,
-                                fn_name: None,
-                                line: 0,
-                                old_fn_n_args: 0,
-                                old_fn_n_locals: 0,
-                            });
-                            gt.ip = gen_state.func_addr as usize;
-                        }
-                    }
-                }
-
-                let tid = match gen_state.task_id {
-                    Some(id) => id,
-                    None => {
-                        // Task was already cleaned up (generator finished).
-                        gen_state.done = true;
-                        task.ram.push_i32(-1);
-                        return Ok(());
-                    }
-                };
-
-                // A generator can be created before its first HTTP pull; set
-                // the mode on every pull so sleep dispatch stays scoped to
-                // this cooperative SSE consumer.
-                if let Some(gen_task_arc) = vm.tasks.get(&tid) {
-                    if let Ok(mut gt) = gen_task_arc.try_lock() {
-                        gt.cooperative_http_sleep = cooperative;
-                    }
-                }
-
-                // Run the generator task forward until the next YIELD_VAL or
-                // completion. Budget caps a single next() (prevents runaway
-                // loops with no yields); the task resumes from its saved ip.
-                const NEXT_BUDGET: u32 = 1_000_000;
-                let instruction_budget = cooperative_budget.unwrap_or(NEXT_BUDGET);
-                let mut yielded_nv: Option<u64> = None;
-                let mut finished = false;
-                let mut pending = false;
-
-                if let Some(gen_task_arc) = vm.tasks.get(&tid) {
-                    if let Ok(mut gt) = gen_task_arc.try_lock() {
-                        for _ in 0..instruction_budget {
-                            match vm.run_one_instruction(&mut gt) {
-                                Ok(StepResult::Continue) => continue,
-                                Ok(StepResult::GeneratorYield) => {
-                                    // Value is on the generator task's stack.
-                                    // PEEK (don't pop): codegen emits a POP after
-                                    // YIELD_VAL (ExprStmt discards yield's nil
-                                    // return value), so we must leave the yielded
-                                    // value on the generator stack for that POP to
-                                    // consume. We copy it to the caller instead.
-                                    let nv = gt.ram.raw_nv[gt.ram.sp - 1];
-                                    yielded_nv = Some(nv);
-                                    // Park the task so run_task_loop won't pick
-                                    // it up between next() calls. Its ip/bp/sp
-                                    // are preserved on the task itself.
-                                    gt.status = TaskStatus::Waiting("generator_suspended".into());
-                                    break;
-                                }
-                                Ok(StepResult::Terminated) => {
-                                    finished = true;
-                                    break;
-                                }
-                                Ok(StepResult::Yield) => {
-                                    if cooperative && gt.wake_time.is_some() {
-                                        pending = true;
-                                        break;
-                                    }
-                                }
-                                Ok(StepResult::AwaitFuture { .. }) => continue,
-                                Err(e) => {
-                                    eprintln!("[Generator] Error: {:?}", e);
-                                    finished = true;
-                                    break;
-                                }
-                            }
-                        }
-                        // Budget exhausted without yield or termination: treat
-                        // as done to avoid an infinite external loop.
-                        if yielded_nv.is_none() && !finished && !pending {
-                            if cooperative {
-                                pending = true;
-                            } else {
-                                eprintln!("[Generator] next() budget exhausted without yield");
-                                finished = true;
-                            }
-                        }
-                    }
-                }
-
-                if pending {
-                    return Ok(());
-                }
-
-                if finished {
-                    // Generator returned/terminated: clean up the task.
-                    vm.tasks.remove(&tid);
-                    gen_state.task_id = None;
-                    gen_state.done = true;
-                    task.ram.push_i32(-1);
-                    return Ok(());
-                }
-
-                // Push the yielded value onto the caller's stack.
-                match yielded_nv {
-                    Some(nv) => {
-                        if auto_val::is_i32(nv) {
-                            task.ram.push_i32(auto_val::decode_i32(nv));
-                        } else {
-                            task.ram.push_nv(nv);
-                        }
-                    }
-                    None => {
-                        // No yield and not finished (shouldn't happen, but be safe).
-                        gen_state.done = true;
-                        task.ram.push_i32(-1);
-                    }
-                }
-                return Ok(());
-            }
+            Iterator::Generator(_) => unreachable!(
+                "generator handled before iterators.get_mut dispatch (re-entrant guard)",
+            ),
             Iterator::HttpStream(hs_iter) => {
                 // PLAN-707 T-04：HTTPStream 迭代器走统一 typed pull
                 //（http_stream::STREAMS 资源表；旧 thread-local blocking
@@ -4743,7 +4814,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                         task.status = crate::vm::task::TaskStatus::Waiting("sse".into());
                         // 参数回推（同 fallback 注释；cooperative 驱动自推）。
                         if !cooperative {
-                            task.ram.push_i32(hs_iter.stream_handle as i32);
+                            task.ram.push_i32(iterator_id as i32);
                         }
                         return Ok(());
                     }
@@ -4805,6 +4876,16 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                             // (≤10ms), and other tasks (UI rendering etc.) get to run.
                             task.waiting_sse_stream_id = Some(async_iter.stream_id);
                             task.status = crate::vm::task::TaskStatus::Waiting("sse".into());
+                            // 参数回推（与 PLAN-707 fallback/HttpStream 臂同款）：
+                            // CALL_NAT rewind 重试时 shim 重新 pop——不回推则
+                            // 重试弹到垃圾 id（707 实测嵌套误入）。cooperative
+                            // 驱动自行重推，回推破坏其 sp==stack_before 契约。
+                            if !cooperative {
+                                // 回推**迭代器 id**（被 pop 的栈参）——流 id 与
+                                // 迭代器 id 是不同键，回推错值令重试弹到无关
+                                // 句柄（707 实测 plan341 回归根因）。
+                                task.ram.push_i32(iterator_id as i32);
+                            }
                             return Ok(());
                         }
                     }
