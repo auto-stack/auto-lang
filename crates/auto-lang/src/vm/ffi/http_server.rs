@@ -248,6 +248,9 @@ pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<Rou
     // PLAN-729 R1（G-11 修复）：两遍匹配——第一遍精确 method；HEAD 请求在
     // 第二遍回退到声明文件返回的 GET 路由（自动 HEAD）。显式同路径 HEAD
     // 路由因第一遍先匹配而优先，与注册顺序无关（SD-01 §3 承诺对齐）。
+    // PLAN-093 (G-8 系)：尾部 catch-all（`*` / `*name`，由 axum `{*rest}`
+    // 翻译而来）消费全部剩余段——段数严格相等检查曾使多段剩余路径永远
+    // 404（/api/files/{ws}/{*path} 即此）。
     let head_fallback = method.eq_ignore_ascii_case("HEAD");
     let mut pass = 0;
     while pass < 2 {
@@ -263,17 +266,28 @@ pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<Rou
             }
             let route_segments: Vec<&str> = route.path.split('/').collect();
             let path_segments: Vec<&str> = path_only.split('/').collect();
-            if route_segments.len() != path_segments.len() {
+            let catch_all = route_segments
+                .last()
+                .map_or(false, |s| *s == "*" || s.starts_with('*'));
+            if catch_all {
+                if path_segments.len() < route_segments.len() - 1 {
+                    continue;
+                }
+            } else if route_segments.len() != path_segments.len() {
                 continue;
             }
             let mut params = Vec::new();
             let mut matched = true;
-            for (rs, ps) in route_segments.iter().zip(path_segments.iter()) {
+            for (i, rs) in route_segments.iter().enumerate() {
                 if let Some(param_name) = rs.strip_prefix(':') {
                     // Plan 022 (auto-down): Path params must arrive
                     // percent-DECODED (axum Path semantics): the front calls
                     // encodeURIComponent on wiki titles ("Hello%20World.ad"),
                     // and the undecoded form misses the file on disk.
+                    let Some(ps) = path_segments.get(i) else {
+                        matched = false;
+                        break;
+                    };
                     let decoded = url_decode(ps);
                     if let Some(wild_name) = param_name.strip_prefix('*') {
                         params.push((wild_name.to_string(), decoded));
@@ -281,9 +295,16 @@ pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<Rou
                         params.push((param_name.to_string(), decoded));
                     }
                 } else if *rs == "*" || rs.starts_with('*') {
-                    // Plan 346: Wildcard route — matches any remaining segments.
-                    continue;
-                } else if rs != ps {
+                    // Plan 346 通配 + axum `{*name}` 语义（G-8）：剩余段以 '/'
+                    // 连接（解码后）作为该参数值；无名 `*` 仅消费不产出参数。
+                    let wild_name = rs.strip_prefix('*').unwrap_or("");
+                    let rest: Vec<&str> = path_segments[i.min(path_segments.len())..].to_vec();
+                    let decoded = url_decode(&rest.join("/"));
+                    if !wild_name.is_empty() {
+                        params.push((wild_name.to_string(), decoded));
+                    }
+                    break;
+                } else if path_segments.get(i) != Some(rs) {
                     matched = false;
                     break;
                 }
@@ -7642,5 +7663,71 @@ mod spike699_axum_transport {
             .unwrap()
             .block_on(async { tokio::net::TcpListener::bind(("127.0.0.1", server.port)).await });
         assert!(rebind.is_ok(), "port rebindable after shutdown");
+    }
+}
+
+// =============================================================================
+// PLAN-093 (G-8 系) catch-all 路由匹配回归：axum `{*rest}` 翻译为 `*rest` 段
+// 后须消费全部剩余段——此前段数严格相等检查使多段剩余路径永远 404。
+// =============================================================================
+#[cfg(test)]
+mod plan093_catch_all_tests {
+    use super::{match_route, HttpRoute};
+
+    fn routes() -> Vec<HttpRoute> {
+        vec![
+            HttpRoute {
+                method: "GET".into(),
+                path: "/api/files/:workspace_id/*path".into(),
+                fn_name: "workspace_file".into(),
+            },
+            HttpRoute {
+                method: "GET".into(),
+                path: "/api/chats/session/:id".into(),
+                fn_name: "chat_get".into(),
+            },
+        ]
+    }
+
+    #[test]
+    fn catch_all_consumes_remaining_segments() {
+        let m = match_route(&routes(), "GET", "/api/files/default/targets/probe-a/pac.at")
+            .expect("multi-segment catch-all must match");
+        assert_eq!(m.fn_name, "workspace_file");
+        let ws = m.path_params.iter().find(|(k, _)| k == "workspace_id").unwrap();
+        assert_eq!(ws.1, "default");
+        let rest = m.path_params.iter().find(|(k, _)| k == "path").unwrap();
+        assert_eq!(rest.1, "targets/probe-a/pac.at");
+    }
+
+    #[test]
+    fn catch_all_still_requires_prefix() {
+        // 少于路由前缀段数 → 不匹配（workspace_id 缺失）。
+        assert!(match_route(&routes(), "GET", "/api/files").is_none());
+    }
+
+    #[test]
+    fn catch_all_single_segment_remainder() {
+        let m = match_route(&routes(), "GET", "/api/files/default/notes.md")
+            .expect("single-segment remainder must match");
+        let rest = m.path_params.iter().find(|(k, _)| k == "path").unwrap();
+        assert_eq!(rest.1, "notes.md");
+    }
+
+    #[test]
+    fn non_catch_all_still_strict_length() {
+        // 非 catch-all 路由保持严格段数：多余段不匹配。
+        assert!(match_route(&routes(), "GET", "/api/chats/session/a/b").is_none());
+        let m = match_route(&routes(), "GET", "/api/chats/session/abc")
+            .expect("exact-length param route must match");
+        assert_eq!(m.fn_name, "chat_get");
+    }
+
+    #[test]
+    fn catch_all_decodes_percent_encoded_remainder() {
+        let m = match_route(&routes(), "GET", "/api/files/default/wiki/Hello%20World.ad")
+            .expect("encoded remainder must match");
+        let rest = m.path_params.iter().find(|(k, _)| k == "path").unwrap();
+        assert_eq!(rest.1, "wiki/Hello World.ad");
     }
 }

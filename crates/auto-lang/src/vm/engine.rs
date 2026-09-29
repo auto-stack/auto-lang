@@ -9294,13 +9294,15 @@ impl AutoVM {
                     // Plan 071 Phase 5: Restore previous closure from saved_closure_id
                     task.current_closure_id = task.saved_closure_id;
 
-                    let new_sp = task.bp - n_args;
-
-                    // Plan 053 后续(ash-gui VM 稳定性):bp - n_args 可能为 0
-                    // (帧不匹配 / 主任务边界 RET),原代码 new_sp - 1 直接 usize
-                    // 下溢 panic(exit 101 整窗崩溃)。夹到最小槽位 1 保命,丢一个
-                    // 返回值槽位远好于崩溃;warn 便于追踪帧不匹配的真因。
-                    if task.bp < n_args || new_sp == 0 {
+                    // Plan 053 后续(ash-gui VM 稳定性)+ T-03 G-8 修正:bp - n_args
+                    // 可为 0 / 下溢(帧不匹配 / 主任务边界 RET / 适配器派发的
+                    // handler 0 参入栈)。守卫必须先于减法——原实现先减后判,
+                    // debug 构建(bp<n_args)在守卫之前的减法处直接 panic
+                    // (PLAN-093 实证:VMHTTP canvas 路由整 VM 崩溃即此)。
+                    // 夹到最小槽位 1 保命,丢一个返回值槽位远好于崩溃;warn 便于
+                    // 追踪帧不匹配的真因。
+                    let new_sp = if task.bp >= n_args { task.bp - n_args } else { 0 };
+                    if new_sp == 0 {
                         eprintln!(
                             "[VM-RET] underflow guard: bp={}, n_args={} (frame mismatch?)",
                             task.bp, n_args
