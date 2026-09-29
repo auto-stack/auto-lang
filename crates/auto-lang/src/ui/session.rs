@@ -1916,6 +1916,20 @@ pub enum DesktopCommand {
     /// PLAN-024 协议 v1.8：占位卡一键 launch（`dashboard_launch
     /// <registry-id>`；ExecuteLaunchApp 同体，有后端 app 的正常启动路径）。
     DashboardLaunch(String),
+    /// PLAN-709 rev2（词表增量，协议 v1.11 后）：VM 窗摆位编程化——按 wid
+    /// 直接置虚拟窗 rect（移动+缩放一体；`win_rect	<wid>	<x>,<y>,<w>,<h>`，
+    /// send_to 双参分隔约定、数字全 f32）。执行臂：`VWinState.rect` 直写 +
+    /// 160/120 min 钳制（apply_cursor 同款）+ window_size 同步；无 relayout、
+    /// 不动他窗、不夺焦点、不改 workspace。铺排布局下下一次 relayout 重铺
+    /// 为预期语义（铺排主权优先）；Free 恒等分支 = 即落定。槽位伪 Wid
+    /// 不受本臂（槽位几何归交互状态机）。坏值/缺参/未知 wid no-op。
+    WinRect {
+        wid: Wid,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+    },
 }
 
 /// Plan 473：原生窗口 dock 的目标定位（shell 记录 `pid=123` / `hwnd=0x1a2b`）。
@@ -2140,6 +2154,19 @@ impl DesktopCommand {
             DesktopCommand::DashboardLaunch(app) => {
                 format!("dashboard_launch{}{app}", Self::FIELD_SEP)
             }
+            // PLAN-709 rev2：win_rect 编码（send_to 双参约定；rect 逗号四元组）。
+            DesktopCommand::WinRect { wid, x, y, w, h } => {
+                format!(
+                    "win_rect{}{}{}{},{},{},{}",
+                    Self::FIELD_SEP,
+                    wid.0,
+                    Self::FIELD_SEP,
+                    x,
+                    y,
+                    w,
+                    h
+                )
+            }
         }
     }
 
@@ -2341,6 +2368,38 @@ impl DesktopCommand {
                             w.parse::<u64>().ok().zip(n.parse::<usize>().ok())
                         })
                         .map(|(w, n)| DesktopCommand::SendTo(Wid(w), n)),
+                    // PLAN-709 rev2：win_rect 解析（五族数字全 f32 接受；
+                    // 坏值/缺参 no-op 弃单——词表白名单容错口径）。
+                    "win_rect" => {
+                        arg.split_once([Self::FIELD_SEP, '\t']).and_then(
+                            |(w, rect)| {
+                                let mut it = rect.split(',');
+                                let f = |t: Option<&str>| {
+                                    t.and_then(|v| v.trim().parse::<f32>().ok())
+                                };
+                                let (Some(wid), Some(x), Some(y), Some(w), Some(h)) = (
+                                    w.parse::<u64>().ok(),
+                                    f(it.next()),
+                                    f(it.next()),
+                                    f(it.next()),
+                                    f(it.next()),
+                                ) else {
+                                    return None;
+                                };
+                                // 第五段缺席 = 合法（尾部逗号容差）；多余段弃单。
+                                if it.next().is_some() {
+                                    return None;
+                                }
+                                Some(DesktopCommand::WinRect {
+                                    wid: Wid(wid),
+                                    x,
+                                    y,
+                                    w,
+                                    h,
+                                })
+                            },
+                        )
+                    }
                     // Plan 479 T2：协议 v1.2 通知动词。notify 对 arg 二次
                     // split（send_to 先例）——kind ∈ success/error/info 约定，
                     // 未知 kind 宿主侧 info 兜底不弃单（浮现面宽）。
@@ -8627,6 +8686,44 @@ mod tests {
         host.wm.interaction = Some(WmInteraction::Drag { wid: v, grab: iced::Point::ORIGIN });
         host.wm.minimize_win(v);
         assert!(host.wm.interaction.is_none());
+    }
+
+    #[test]
+    fn win_rect_parse_families_and_noop_rules() {
+        // 编码/解析往返（send_to 双参约定 + 逗号四元组）。
+        let cmd = DesktopCommand::WinRect {
+            wid: Wid(3),
+            x: -12.5,
+            y: 0.0,
+            w: 640.5,
+            h: 480.0,
+        };
+        let recs = DesktopCommand::parse_records(&cmd.encode());
+        assert_eq!(recs, vec![cmd.clone()]);
+        // 五族数字全 f32：整数/小数/负数/正号/科学计数。
+        for payload in [
+            "win_rect\t2\t100,50,400,300",
+            "win_rect\u{1f}2\u{1f}100.5,50,400,300",
+            "win_rect\t2\t-10,-20,400,300",
+            "win_rect\t2\t+10,2e2,4e2,3e2",
+        ] {
+            let recs = DesktopCommand::parse_records(payload);
+            assert_eq!(recs.len(), 1, "{payload}");
+            assert!(matches!(recs[0], DesktopCommand::WinRect { .. }), "{payload}");
+        }
+        // 坏值 no-op：缺参/非数字/多余段/空 wid。
+        for bad in [
+            "win_rect\t2\t100,50,400",
+            "win_rect\t2\ta,b,c,d",
+            "win_rect\t2\t1,2,3,4,5",
+            "win_rect\t\t1,2,3,4",
+            "win_rect\t2",
+        ] {
+            assert!(
+                DesktopCommand::parse_records(bad).is_empty(),
+                "{bad} 应弃单"
+            );
+        }
     }
 
     #[test]

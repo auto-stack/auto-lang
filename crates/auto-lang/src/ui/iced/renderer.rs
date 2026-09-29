@@ -12472,6 +12472,34 @@ fn execute_desktop_commands(
                 state.wm_move_member_to_workspace(wid, n);
                 sync_native_geometry(state);
             }
+            // PLAN-709 rev2：win_rect 执行臂——`VWinState.rect` 直写（移动+
+            // 缩放一体），160/120 min 钳制（apply_cursor 同款），window_size
+            // 同步；无 relayout/不动他窗/不夺焦点/不改 workspace。伪 Wid 段
+            // 与未知 wid no-op（槽位几何归交互状态机）。本拍 update 返回即
+            // 重绘 = 立即生效；铺排布局下下次 relayout 重铺（铺排主权），
+            // Free = 即落定。
+            DC::WinRect { wid, x, y, w, h } => {
+                if let Some(host) = state.host.as_mut() {
+                    if crate::ui::session::WmState::native_slot_id_of_pseudo(wid)
+                        .is_none()
+                    {
+                        if let Some(v) = host.wm.wins.get(&wid) {
+                            let mut r = v.rect.borrow_mut();
+                            r.x = x;
+                            r.y = y;
+                            r.width = w.max(160.0);
+                            r.height = h.max(120.0);
+                            let height = r.height;
+                            let width = r.width;
+                            drop(r);
+                            if let Some(v) = host.wm.wins.get(&wid) {
+                                *v.window_size.borrow_mut() =
+                                    iced::Size::new(width, height);
+                            }
+                        }
+                    }
+                }
+            }
             // Plan 479 T2：notify 动词（App 主动请求通知；入史 + 未读 +
             // 浮现三联动，push_notification 单入口）。
             DC::Notify(kind, msg) => push_notification(state, &kind, &msg),
@@ -31339,6 +31367,62 @@ mod tests {
         let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::ShowdeskReturn]);
         assert!(!exit);
         assert_eq!(ds.host.as_ref().unwrap().wm.current_workspace, 1);
+    }
+
+    /// PLAN-709 rev2：win_rect 执行臂——rect 直写 + min 钳制 + window_size
+    /// 同步；未知 wid / 槽位伪 Wid no-op；workspace/焦点不动。
+    #[test]
+    fn win_rect_execution_moves_clamps_and_noops() {
+        use crate::ui::session::DesktopCommand as DC;
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha");
+        // 常规摆位：立即生效（移动+缩放一体）。
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![DC::WinRect { wid: a, x: 40.0, y: 30.0, w: 500.0, h: 400.0 }],
+        );
+        {
+            let host = ds.host.as_ref().unwrap();
+            let r = *host.wm.wins[&a].rect.borrow();
+            assert_eq!((r.x, r.y, r.width, r.height), (40.0, 30.0, 500.0, 400.0));
+            let sz = *host.wm.wins[&a].window_size.borrow();
+            assert_eq!((sz.width, sz.height), (500.0, 400.0));
+        }
+        // min 钳制（160/120 地板）；不夺焦点。
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![DC::WinRect { wid: a, x: 0.0, y: 0.0, w: 10.0, h: 5.0 }],
+        );
+        {
+            let host = ds.host.as_ref().unwrap();
+            let r = *host.wm.wins[&a].rect.borrow();
+            assert_eq!((r.width, r.height), (160.0, 120.0));
+            assert_eq!(host.wm.focused, Some(a), "win_rect 不夺焦点");
+        }
+        // 未知 wid no-op；槽位伪 Wid no-op（几何归交互状态机）。
+        let before = *ds.host.as_ref().unwrap().wm.wins[&a].rect.borrow();
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![
+                DC::WinRect {
+                    wid: crate::ui::session::Wid(999),
+                    x: 1.0,
+                    y: 1.0,
+                    w: 10.0,
+                    h: 10.0,
+                },
+                DC::WinRect {
+                    wid: crate::ui::session::WmState::native_slot_pseudo_wid(
+                        crate::ui::native_dock::NativeSlotId(7),
+                    ),
+                    x: 1.0,
+                    y: 1.0,
+                    w: 10.0,
+                    h: 10.0,
+                },
+            ],
+        );
+        assert_eq!(*ds.host.as_ref().unwrap().wm.wins[&a].rect.borrow(), before);
     }
 
     /// 排除规则：环切跳过负一屏、删除/发送拒绝（簿记压实跟随）、
