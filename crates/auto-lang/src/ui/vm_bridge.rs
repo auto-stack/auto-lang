@@ -201,6 +201,88 @@ pub struct VmBridge {
     /// interpreter，同 ui-interpreter 门控。
     #[cfg(feature = "ui-interpreter")]
     memo_cache: std::cell::RefCell<crate::ui::memo_deps::MemoCache>,
+
+    /// PLAN-047 T-01（档 C SD-08）: 依赖录制器宿主——memo 门/computed 信号
+    /// 求值期经 [`VmBridge::dep_recording_guard`] 激活，桥读通道把状态读记
+    /// 入当前 [`crate::ui::memo_deps::RecState`]；未激活 = `None`，读通道
+    /// 零开销直落（非 memo 零行为零开销红线）。RefCell 理由同 memo_cache。
+    #[cfg(feature = "ui-interpreter")]
+    dep_recorder: std::cell::RefCell<Option<crate::ui::memo_deps::RecState>>,
+
+    /// PLAN-047 T-05: 求值通道探针计数（AC-02 零重解析断言的观测面——
+    /// view builder `resolve_expr_to_value` 入口累加，桥级共享、跨帧累计）。
+    pub resolve_probe_count: std::sync::atomic::AtomicU64,
+
+    /// PLAN-047 T-06（档 C SD-10）: computed 信号表宿主——(widget, prop)
+    /// 键控的信号节点（值缓存 + 动态 dep 基线对）。生命周期随桥（hot-reload
+    /// 新建桥自然弃置）。RefCell 理由同 memo_cache（渲染期 `&self`）。
+    #[cfg(feature = "ui-interpreter")]
+    computed_signals:
+        std::cell::RefCell<HashMap<(String, String), ComputedSignal>>,
+
+    /// PLAN-047 T-06: 信号网命中/未命中计数（观测面——AC-04 断言用）。
+    pub signal_hits: std::sync::atomic::AtomicU64,
+    pub signal_misses: std::sync::atomic::AtomicU64,
+}
+
+/// PLAN-047 T-01: 依赖录制 guard。首选显式 [`DepRecGuard::finish`] 取走
+/// 本次录制集；未 finish 即 drop（`?` 早退/panic 展开）走同一恢复语义——
+/// 外层恢复与并集吸收不因退出路径缺失（正确性面不允许静默吞外层）。
+#[cfg(feature = "ui-interpreter")]
+pub struct DepRecGuard<'a> {
+    bridge: &'a VmBridge,
+    outer: Option<Box<crate::ui::memo_deps::RecState>>,
+    done: bool,
+}
+
+#[cfg(feature = "ui-interpreter")]
+impl<'a> DepRecGuard<'a> {
+    /// 结束录制：取走本次 [`crate::ui::memo_deps::RecState`]（含 overflow
+    /// 旗标），恢复外层并集吸收。
+    pub fn finish(mut self) -> crate::ui::memo_deps::RecState {
+        self.done = true;
+        self.take_and_restore()
+    }
+
+    fn take_and_restore(&mut self) -> crate::ui::memo_deps::RecState {
+        let mut cur = self
+            .bridge
+            .dep_recorder
+            .borrow_mut()
+            .take()
+            .unwrap_or_default();
+        // PLAN-047 T-04: 收编引擎影子集（VM fn 执行期读臂录制面）——并集
+        // 记账沿 record 语义（预算/overflow 同规）。
+        let shadow = self.bridge.vm.take_dep_recorder();
+        for k in shadow.deps {
+            cur.record(k);
+        }
+        cur.overflow |= shadow.overflow;
+        if let Some(mut outer) = self.outer.take() {
+            outer.absorb(&cur);
+            *self.bridge.dep_recorder.borrow_mut() = Some(*outer);
+        }
+        cur
+    }
+}
+
+#[cfg(feature = "ui-interpreter")]
+impl<'a> Drop for DepRecGuard<'a> {
+    fn drop(&mut self) {
+        if !self.done {
+            self.take_and_restore();
+        }
+    }
+}
+
+/// PLAN-047 T-06（档 C SD-10）: computed 信号节点——inline 表达式与 block
+/// 体隐藏 VM fn 双通道共载。`deps` = 最近一次求值的动态依赖基线对；版本
+/// 全同 → 值缓存复用。脏传播 pull 式：写点定点 bump → 版本比对 miss →
+/// 重求值（不建主动订阅图——漏传播只落重算，不陈旧）。
+#[cfg(feature = "ui-interpreter")]
+pub struct ComputedSignal {
+    pub cached: Value,
+    pub deps: Vec<(crate::ui::memo_deps::DepKey, u64)>,
 }
 
 /// PLAN-702 T-04: root-state busy 镜像字段名——List&lt;str&gt;（namespaced
@@ -465,6 +547,13 @@ impl VmBridge {
             busy_flag_names: std::cell::RefCell::new(Vec::new()),
             #[cfg(feature = "ui-interpreter")]
             memo_cache: std::cell::RefCell::new(crate::ui::memo_deps::MemoCache::new()),
+            #[cfg(feature = "ui-interpreter")]
+            dep_recorder: std::cell::RefCell::new(None),
+            resolve_probe_count: std::sync::atomic::AtomicU64::new(0),
+            #[cfg(feature = "ui-interpreter")]
+            computed_signals: std::cell::RefCell::new(HashMap::new()),
+            signal_hits: std::sync::atomic::AtomicU64::new(0),
+            signal_misses: std::sync::atomic::AtomicU64::new(0),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
         })
@@ -650,6 +739,13 @@ impl VmBridge {
             busy_flag_names: std::cell::RefCell::new(Vec::new()),
             #[cfg(feature = "ui-interpreter")]
             memo_cache: std::cell::RefCell::new(crate::ui::memo_deps::MemoCache::new()),
+            #[cfg(feature = "ui-interpreter")]
+            dep_recorder: std::cell::RefCell::new(None),
+            resolve_probe_count: std::sync::atomic::AtomicU64::new(0),
+            #[cfg(feature = "ui-interpreter")]
+            computed_signals: std::cell::RefCell::new(HashMap::new()),
+            signal_hits: std::sync::atomic::AtomicU64::new(0),
+            signal_misses: std::sync::atomic::AtomicU64::new(0),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
         })
@@ -704,9 +800,14 @@ impl VmBridge {
                 "state object is not a GenericInstanceData".to_string()
             ))?;
 
-        instance.get_field(field_index)
-            .cloned()
-            .ok_or_else(|| VmBridgeError::FieldNotFound(field_name.to_string()))
+        // PLAN-047 T-01: 读通道录制——成功的具名字段读 = 一条依赖边。
+        match instance.get_field(field_index).cloned() {
+            Some(v) => {
+                self.record_dep_read(self.state_obj_id, field_name);
+                Ok(v)
+            }
+            None => Err(VmBridgeError::FieldNotFound(field_name.to_string())),
+        }
     }
 
     /// Write a state field value to the VM.
@@ -761,7 +862,8 @@ impl VmBridge {
         // PLAN-045 T-02：Rust 侧直写绕过 engine 突变臂，全局 state_mutation_seq
         // 原本不动——`set_route` 等桥写通道因此对 memo 快速路径不可见（陈旧
         // 误命中）。与 engine 突变臂同口径在此补 bump（PLAN-045 决策注记②）。
-        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // PLAN-047 T-03: A 类定点归因（bump_path 内含全局 bump，语义不变）。
+        self.vm.bump_path(self.state_obj_id, Some(field_name));
         Ok(())
     }
 
@@ -784,8 +886,8 @@ impl VmBridge {
                 instance.fields.push(value);
                 self.state_field_names.push(field_name.to_string());
                 // PLAN-045 T-02：新增字段同属状态面突变，与 write_state 同口径
-                // 补 bump（memo 快速路径可见性）。
-                self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                // 补 bump（memo 快速路径可见性）。PLAN-047 T-03: A 类定点归因。
+                self.vm.bump_path(self.state_obj_id, Some(field_name));
                 Ok(())
             }
             Err(e) => Err(e),
@@ -859,6 +961,9 @@ impl VmBridge {
             Value::Int(id) => {
                 let arr_id = id as u64;
                 if let Some(obj) = self.vm.get_heap_object(arr_id) {
+                    // PLAN-047 T-01: 容器内容读 = (heap_id, "*") 粗粒度依赖
+                    // （原地突变无字段归因面的保守兜底）。
+                    self.record_dep_any(arr_id);
                     let guard = obj.read().unwrap();
                     use crate::vm::types::ListData;
                     if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
@@ -951,6 +1056,9 @@ impl VmBridge {
         // Path 1: heap_objects — ListData<Value> (array literals / struct lists,
         // Plan 390 §15 H3b) or ListData<i32>.
         if let Some(obj) = self.vm.get_heap_object(id as u64) {
+            // PLAN-047 T-01: 列表解引用读通道（read_state_as_vec 的 VmRef 臂
+            // / for 迭代 / Index 表达式共用）——容器内容读粗粒度依赖。
+            self.record_dep_any(id as u64);
             let guard = obj.read().unwrap();
             use crate::vm::types::ListData;
             if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
@@ -995,7 +1103,8 @@ impl VmBridge {
                         list.elems = values;
                         // PLAN-045 T-02：容器原地替换 = 状态面突变（memo
                         // 快速路径可见性），与 write_state 同口径补 bump。
-                        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        // PLAN-047 T-03: B 类定点归因（堆列表 wildcard）。
+                        self.vm.bump_path(arr_id, None);
                         Ok(())
                     } else {
                         Err(VmBridgeError::InvalidState(
@@ -1025,7 +1134,8 @@ impl VmBridge {
                         }
                         list.elems = values;
                         // PLAN-045 T-02：容器原地替换补 bump（同 Int 臂）。
-                        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        // PLAN-047 T-03: B 类定点归因（同 Int 臂）。
+                        self.vm.bump_path(arr_id, None);
                         Ok(())
                     } else {
                         Err(VmBridgeError::InvalidState(
@@ -1064,6 +1174,9 @@ impl VmBridge {
                 // CONSTRUCT_INSTANCE → GenericInstanceData both in
                 // heap_objects — single probe + downcast.
                 if let Some(obj) = self.vm.get_heap_object(*id as u64) {
+                    // PLAN-047 T-01: 堆结构展开读 = 粗粒度依赖（展开产物含
+                    // 全部字段——任一字段原地变都须失效，记 " *" 面）。
+                    self.record_dep_any(*id as u64);
                     let guard = obj.read().unwrap();
                     if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
                         let mut out = auto_val::Obj::new();
@@ -1098,6 +1211,8 @@ impl VmBridge {
             // resolve_binding_path only matches Value::Obj).
             Value::VmRef(r) => {
                 if let Some(obj) = self.vm.get_heap_object(r.id as u64) {
+                    // PLAN-047 T-01: 同 Int 臂——堆结构展开读粗粒度依赖。
+                    self.record_dep_any(r.id as u64);
                     let guard = obj.read().unwrap();
                     if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
                         let mut out = auto_val::Obj::new();
@@ -1303,13 +1418,15 @@ impl VmBridge {
                         let changed = inst.get_field(idx) != Some(&storable);
                         let _ = inst.set_field(idx, storable);
                         if changed {
-                            self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            // PLAN-047 T-03: A 类定点归因（值变才 bump 语义不变）。
+                            self.vm.bump_path(self.state_obj_id, Some(&name));
                         }
                     } else {
                         // Add new field (prop not yet in root state).
                         inst.field_names.push(name.clone());
                         inst.fields.push(storable);
-                        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        // PLAN-047 T-03: A 类定点归因（同上）。
+                        self.vm.bump_path(self.state_obj_id, Some(&name));
                     }
                 }
             }
@@ -1552,7 +1669,10 @@ impl VmBridge {
         }
         // PLAN-045 T-02：`__busy_handlers` 镜像重写 = 状态面突变——memo
         // 快速路径可见性（函数体前段有"集合未变早退"，真写入才到此）。
-        self.vm.state_mutation_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // PLAN-047 T-03: A+B 双归因——根态字段 exact（read_state 通道 dep）
+        // + 新镜像堆列表 wildcard（read_state_as_vec 容器 dep）。
+        self.vm.bump_path(self.state_obj_id, Some(BUSY_STATE_FIELD));
+        self.vm.bump_path(id as u64, None);
     }
 
     /// Call a handler by name with arguments.
@@ -1771,6 +1891,164 @@ impl VmBridge {
     #[cfg(feature = "ui-interpreter")]
     pub fn with_memo_cache<R>(&self, f: impl FnOnce(&mut crate::ui::memo_deps::MemoCache) -> R) -> R {
         f(&mut self.memo_cache.borrow_mut())
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-01（档 C SD-08）: 依赖录制器
+    // ─────────────────────────────────────────────────────────────────
+
+    /// 开启依赖录制（返回 guard）。激活期内桥读通道把状态读记入新
+    /// RecState；[`DepRecGuard::finish`] 或 drop 时恢复外层并把本次集
+    /// **并集吸收**进外层（外层条目因此覆盖内层 computed/子求值的全部
+    /// 依赖），overflow 同向传播——外层集不完整即整体弃用（宁缺勿错）。
+    /// PLAN-047 T-04: 同时激活 AutoVM 录制槽——guard 作用域内的 VM fn
+    /// 执行（block computed `call_computed_fn`/handler）读臂依赖由引擎
+    /// 侧影子集承载，finish 时与桥侧集并集收编。
+    #[cfg(feature = "ui-interpreter")]
+    pub fn dep_recording_guard(&self) -> DepRecGuard<'_> {
+        let outer = self
+            .dep_recorder
+            .borrow_mut()
+            .replace(crate::ui::memo_deps::RecState::default());
+        // 引擎影子槽与本 guard 生命周期同绑（同线程串行，无竞争窗口）。
+        self.vm
+            .set_dep_recorder(std::sync::Arc::new(std::sync::Mutex::new(
+                crate::ui::memo_deps::RecState::default(),
+            )));
+        DepRecGuard {
+            bridge: self,
+            outer: outer.map(Box::new),
+            done: false,
+        }
+    }
+
+    /// 诊断/测试面：窥探当前录制状态快照（不改变激活态）。
+    #[cfg(feature = "ui-interpreter")]
+    pub fn peek_dep_recorder(&self) -> Option<crate::ui::memo_deps::RecState> {
+        self.dep_recorder.borrow().clone()
+    }
+
+    /// 读通道录制：具名字段读（未激活 = 零开销分支直落）。
+    #[cfg(feature = "ui-interpreter")]
+    fn record_dep_read(&self, heap_id: u64, path: &str) {
+        if let Some(rec) = self.dep_recorder.borrow_mut().as_mut() {
+            rec.record(crate::ui::memo_deps::DepKey::field(heap_id, path));
+        }
+    }
+
+    /// 读通道录制：容器/结构体整体展开（粗粒度 `DEP_PATH_ANY` 保守面）。
+    #[cfg(feature = "ui-interpreter")]
+    fn record_dep_any(&self, heap_id: u64) {
+        if let Some(rec) = self.dep_recorder.borrow_mut().as_mut() {
+            rec.record(crate::ui::memo_deps::DepKey::any(heap_id));
+        }
+    }
+
+    /// 非 ui-interpreter 构建的零伤 stub（vm_bridge 模块本身不门控）。
+    #[cfg(not(feature = "ui-interpreter"))]
+    fn record_dep_read(&self, _heap_id: u64, _path: &str) {}
+
+    /// 非 ui-interpreter 构建的零伤 stub。
+    #[cfg(not(feature = "ui-interpreter"))]
+    fn record_dep_any(&self, _heap_id: u64) {}
+
+    /// 诊断/测试面：flash 导出名在册查询（block computed 合成通道预检）。
+    pub fn vm_flash_exports_contains(&self, fn_name: &str) -> bool {
+        self.vm.flash.exports_by_name.contains_key(fn_name)
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-05（档 C SD-11）: version_fast 判定面
+    // ─────────────────────────────────────────────────────────────────
+
+    /// 动态 dep 集版本全同判定（check 三级判定的第二级）。全同 → 零重解析
+    /// 命中（fill 后任何归因写都会前进对应 path 版本——A 类 exact+wildcard
+    /// 双 bump / B 类 wildcard，见 SD-09；C 类（字符串池/对象出世）不动既有
+    /// 内容，version_fast 命中安全）。
+    #[cfg(feature = "ui-interpreter")]
+    pub fn deps_unchanged(&self, pairs: &[(crate::ui::memo_deps::DepKey, u64)]) -> bool {
+        pairs
+            .iter()
+            .all(|(k, v0)| self.vm.path_version(k.heap_id, &k.path) == *v0)
+    }
+
+    /// 录制集 → (dep, 当前版本) 基线对（fill 入条目 / fp_slow 命中刷新）。
+    #[cfg(feature = "ui-interpreter")]
+    pub fn dep_pairs(
+        &self,
+        deps: &std::collections::BTreeSet<crate::ui::memo_deps::DepKey>,
+    ) -> Vec<(crate::ui::memo_deps::DepKey, u64)> {
+        deps.iter()
+            .map(|k| {
+                let v = self.vm.path_version(k.heap_id, &k.path);
+                (k.clone(), v)
+            })
+            .collect()
+    }
+
+    /// PLAN-047 T-05: 值承载的堆身份录制（keyed-for iterable 注入面——
+    /// VmRef/Int≥4M → any 粗粒度；其余值无堆身份不录）。
+    #[cfg(feature = "ui-interpreter")]
+    pub fn record_dep_value_heap(&self, v: &Value) {
+        match v {
+            Value::VmRef(r) => self.record_dep_any(r.id as u64),
+            Value::Int(i) if *i >= 4_000_000 => self.record_dep_any(*i as u64),
+            _ => {}
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-06（档 C SD-10）: computed 信号网
+    // ─────────────────────────────────────────────────────────────────
+
+    /// computed 信号命中查询（deps 版本全同 → 值缓存复用）。命中时把信号
+    /// 节点的 dep 键**吸收进当前录制域**（嵌套 guard 并集）——外层 memo
+    /// 条目/外层信号因此覆盖内层信号的失效面（computed 嵌套的 pull 式级
+    /// 联闭合：内层 deps 变 → 内层重算 → 外层条目版本比对失效 → 重渲染）。    #[cfg(feature = "ui-interpreter")]
+    pub fn computed_signal_hit(&self, widget: &str, prop: &str) -> Option<Value> {
+        let hit = {
+            let signals = self.computed_signals.borrow();
+            signals
+                .get(&(widget.to_string(), prop.to_string()))
+                .and_then(|sig| {
+                    self.deps_unchanged(&sig.deps)
+                        .then(|| {
+                            if let Some(rec) = self.dep_recorder.borrow_mut().as_mut() {
+                                for (k, _) in &sig.deps {
+                                    rec.record(k.clone());
+                                }
+                            }
+                            sig.cached.clone()
+                        })
+                })
+        };
+        if hit.is_some() {
+            self.signal_hits
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        } else {
+            self.signal_misses
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        hit
+    }
+
+    /// computed 信号入库（求值期录制集 → 基线对；空集/超预算不入网——
+    /// 盲区面退回每帧重算，同档 A/B 行为）。
+    #[cfg(feature = "ui-interpreter")]
+    pub fn computed_signal_store(
+        &self,
+        widget: &str,
+        prop: &str,
+        cached: Value,
+        rec: &crate::ui::memo_deps::RecState,
+    ) {
+        if rec.overflow || rec.deps.is_empty() {
+            return;
+        }
+        let deps = self.dep_pairs(&rec.deps);
+        self.computed_signals
+            .borrow_mut()
+            .insert((widget.to_string(), prop.to_string()), ComputedSignal { cached, deps });
     }
 
     /// PLAN-045: 指纹展开器——堆引用展开一层为纯值（memo 值指纹用）。
@@ -3104,6 +3382,322 @@ widget OpProbeOrig {
         assert!(bridge.state_fields().is_empty());
         assert!(bridge.handler_names().is_empty());
 
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-01: plan047_recorder_channel_tests（桥读通道录制 4 条）
+    // ─────────────────────────────────────────────────────────────────
+
+    fn plan047_recorder_widget() -> AuraWidget {
+        make_test_widget(
+            "RecTarget",
+            vec![
+                AuraStateDef {
+                    name: "count".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(7),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "items".to_string(),
+                    type_info: Type::Unknown,
+                    initial: Expr::Array(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)]),
+                    decorators: vec![],
+                },
+            ],
+        )
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_recorder_inactive_zero_record() {
+        let bridge = VmBridge::new(&plan047_recorder_widget()).expect("bridge");
+        bridge.read_state("count").expect("read");
+        bridge.read_state_as_vec("items").expect("read vec");
+        // 未激活 = None，读通道零录制（非 memo 零开销红线）。
+        assert!(bridge.peek_dep_recorder().is_none());
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_recorder_read_state_records_field() {
+        let bridge = VmBridge::new(&plan047_recorder_widget()).expect("bridge");
+        let guard = bridge.dep_recording_guard();
+        bridge.read_state("count").expect("read");
+        let rec = guard.finish();
+        assert!(!rec.overflow);
+        assert_eq!(rec.deps.len(), 1, "单字段读 = 单条依赖边");
+        assert!(rec.deps.contains(&crate::ui::memo_deps::DepKey::field(
+            bridge.state_obj_id(),
+            "count"
+        )));
+        // finish 后恢复未激活。
+        assert!(bridge.peek_dep_recorder().is_none());
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_recorder_container_read_records_any() {
+        let bridge = VmBridge::new(&plan047_recorder_widget()).expect("bridge");
+        let guard = bridge.dep_recording_guard();
+        bridge.read_state("count").expect("read");
+        bridge.read_state_as_vec("items").expect("read vec");
+        let rec = guard.finish();
+        // items 的堆列表 id 现场取出（字面量物化形态随实现 VmRef/Int(id)）。
+        let raw = bridge.read_state("items").expect("items");
+        let list_id = match raw {
+            Value::VmRef(r) => r.id as u64,
+            Value::Int(i) => i as u64,
+            other => panic!("items not a heap list: {other:?}"),
+        };
+        assert!(
+            rec.deps.contains(&crate::ui::memo_deps::DepKey::any(list_id)),
+            "容器内容读 = (heap_id, \"*\") 粗粒度依赖"
+        );
+        assert!(
+            rec.deps.contains(&crate::ui::memo_deps::DepKey::field(
+                bridge.state_obj_id(),
+                "items"
+            ))
+        );
+        assert_eq!(rec.deps.len(), 3, "count + items 字段 + 列表内容");
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_recorder_materialize_and_nested_union() {
+        let bridge = VmBridge::new(&plan047_recorder_widget()).expect("bridge");
+        // 外层 guard 内嵌套内层 guard：内层读 + materialize 展开，
+        // finish 后外层并集收编（外层条目覆盖内层求值全部依赖）。
+        let outer = bridge.dep_recording_guard();
+        {
+            let inner = bridge.dep_recording_guard();
+            bridge.read_state("count").expect("read");
+            let items = bridge.read_state_as_vec("items").expect("items");
+            let _ = bridge.materialize_obj_ref(&items[0]); // Int(id) 展开 → any(id)
+            let inner_rec = inner.finish();
+            assert_eq!(inner_rec.deps.len(), 3, "内层自见三条");
+        }
+        let outer_rec = outer.finish();
+        assert_eq!(outer_rec.deps.len(), 3, "外层并集收编内层");
+        assert!(bridge.peek_dep_recorder().is_none(), "嵌套恢复未激活");
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-03: plan047_attribution_tests（写点归因 4 条，AC-03）
+    // ─────────────────────────────────────────────────────────────────
+
+    /// 解析 handler 源并挂到 widget（plan423 同款通道）。
+    fn plan047_attach_handler(widget: &mut AuraWidget, event: &str, src: &str) {
+        use crate::aura::LogicPayload;
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+        let ast = Parser::from(src)
+            .with_session(CompilerSession::ui())
+            .parse()
+            .expect("parse handler");
+        widget
+            .handlers
+            .insert(format!(".{event}"), LogicPayload::AstStmts(ast.stmts));
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_attribution_set_field_is_path_exact() {
+        let mut widget = make_test_widget("AttrRoot", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: Expr::Int(0),
+                decorators: vec![],
+            },
+            AuraStateDef {
+                name: "label".to_string(),
+                type_info: Type::StrFixed(0),
+                initial: Expr::Str("L".into()),
+                decorators: vec![],
+            },
+        ]);
+        plan047_attach_handler(&mut widget, "Poke", "\n    .count = .count + 1\n");
+        let mut bridge = VmBridge::new(&widget).expect("bridge");
+        let root = bridge.state_obj_id();
+        // 基线：无任何 path 版本。
+        assert_eq!(bridge.vm.path_version(root, "count"), 0);
+        assert_eq!(bridge.vm.path_version(root, "label"), 0);
+        let seq0 = bridge.state_mutation_seq();
+        bridge.call_handler("Poke", &[]).expect("handler");
+        // AC-03: exact 面定点前进；无关 path 不动；wildcard（同对象任意写）
+        // 与全局 seq 同步前进。
+        assert_eq!(bridge.vm.path_version(root, "count"), 1, "exact 面前进");
+        assert_eq!(bridge.vm.path_version(root, "label"), 0, "无关 path 不动");
+        assert_eq!(bridge.vm.path_version(root, "*"), 1, "wildcard 同步");
+        assert!(bridge.state_mutation_seq() > seq0, "全局 seq 语义不变");
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_attribution_list_push_wildcard_only() {
+        let mut widget = make_test_widget("AttrList", vec![
+            AuraStateDef {
+                name: "items".to_string(),
+                type_info: Type::Unknown,
+                initial: Expr::Array(vec![Expr::Int(1), Expr::Int(2)]),
+                decorators: vec![],
+            },
+        ]);
+        plan047_attach_handler(&mut widget, "Add", "\n    .items.push(3)\n");
+        let mut bridge = VmBridge::new(&widget).expect("bridge");
+        let root = bridge.state_obj_id();
+        bridge.call_handler("Add", &[]).expect("handler");
+        let raw = bridge.read_state("items").expect("items");
+        let list_id = match raw {
+            Value::VmRef(r) => r.id as u64,
+            Value::Int(i) => i as u64,
+            other => panic!("items not heap list: {other:?}"),
+        };
+        // B 类：容器 wildcard 前进；根态字段 exact 不动（槽位未替换）——
+        // 无关 path 版本零扰动的精度面。
+        assert_eq!(bridge.vm.path_version(list_id, "*"), 1, "列表 wildcard");
+        assert_eq!(bridge.vm.path_version(root, "items"), 0, "根态 exact 不动");
+        assert_eq!(bridge.vm.path_version(root, "*"), 0, "根态 wildcard 不动");
+        // 全局 seq 仍前进（全局语义不变）。
+        assert!(bridge.state_mutation_seq() > 0);
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_attribution_bridge_write_state_exact() {
+        let widget = make_test_widget("AttrBridge", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: Expr::Int(0),
+                decorators: vec![],
+            },
+        ]);
+        let mut bridge = VmBridge::new(&widget).expect("bridge");
+        let root = bridge.state_obj_id();
+        bridge.write_state("count", Value::Int(9)).expect("write");
+        assert_eq!(bridge.vm.path_version(root, "count"), 1);
+        assert_eq!(bridge.vm.path_version(root, "*"), 1);
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_attribution_c_class_global_only() {
+        let widget = make_test_widget("AttrC", vec![]);
+        let bridge = VmBridge::new(&widget).expect("bridge");
+        let seq0 = bridge.state_mutation_seq();
+        // C 类：堆对象出世（insert_heap_object）——全局 seq 前进，per-path
+        // 表零条目（新 id 无既有 dep 可指）。
+        let new_id = bridge.vm.insert_heap_object(crate::vm::types::ListData::<i32> {
+            elems: vec![1, 2],
+            storage: None,
+        });
+        assert!(bridge.state_mutation_seq() > seq0);
+        assert_eq!(bridge.vm.path_version(new_id, "*"), 0);
+        assert_eq!(bridge.vm.path_version(new_id, "x"), 0);
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_attribution_hashmap_native_gap_closed() {
+        // 普查发现闭合实证：auto.hashmap.set（shim_hashmap_insert_str）原
+        // 无任何 seq bump——memo 全局快路径陈旧命中窗口。直调 shim 断言
+        // 定点归因（exact+k+wildcard）与全局 seq 补齐。
+        let widget = make_test_widget("AttrMap", vec![]);
+        let bridge = VmBridge::new(&widget).expect("bridge");
+        let seq0 = bridge.state_mutation_seq();
+        let map_id = bridge.vm.insert_heap_object(
+            crate::vm::collections::SpecializedHashMap::new("str"),
+        );
+        let mut task = crate::vm::task::AutoTask::new(0, 4096, 0);
+        // 栈序（shim pop 序 value→key→map）：先 map_id、再 key、后 value。
+        task.ram.push_i32(map_id as i32);
+        let key_idx = bridge.vm.add_string(b"k".to_vec());
+        task.ram.push_string(key_idx as u32);
+        task.ram.push_i32(42);
+        crate::vm::native::shim_hashmap_insert_str(&mut task, &bridge.vm)
+            .expect("shim insert");
+        // 全局 seq 补齐（原盲区）+ 定点归因（A-able 按键名，exact+wildcard）。
+        assert!(bridge.state_mutation_seq() > seq0, "全局 seq 补 bump");
+        assert_eq!(bridge.vm.path_version(map_id, "k"), 1, "按键名 exact");
+        assert_eq!(bridge.vm.path_version(map_id, "*"), 1, "wildcard");
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-04: plan047_engine_read_tests（引擎读臂拦截 2 条）
+    // ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_engine_recorder_slot_semantics() {
+        let widget = make_test_widget("RecSlot", vec![]);
+        let bridge = VmBridge::new(&widget).expect("bridge");
+        // 未激活：record 口零录制。
+        bridge.vm.record_heap_read(1, "f");
+        let arc = std::sync::Arc::new(std::sync::Mutex::new(
+            crate::ui::memo_deps::RecState::default(),
+        ));
+        bridge.vm.set_dep_recorder(arc);
+        bridge.vm.record_heap_read(7, "count");
+        bridge.vm.record_heap_read_any(9);
+        let rec = bridge.vm.take_dep_recorder();
+        assert_eq!(rec.deps.len(), 2, "激活期两条落账");
+        assert!(
+            rec.deps.contains(&crate::ui::memo_deps::DepKey::field(7, "count"))
+        );
+        assert!(rec.deps.contains(&crate::ui::memo_deps::DepKey::any(9)));
+        // take 后去激活：再录零账。
+        bridge.vm.record_heap_read(1, "g");
+        assert!(bridge.vm.take_dep_recorder().deps.is_empty());
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_engine_read_arm_intercepts_handler_reads() {
+        // 端到端：录制激活期内 handler VM 执行（`.count` 读经 GET 系读臂
+        // 编码）的依赖由引擎影子集承载——集含 (root,"count")。call_handler
+        // 是 &mut self，故直挂 vm 槽（guard 的桥侧并集语义由 T-01 套件
+        // 承载，此处专证引擎读臂面）。
+        let mut widget = make_test_widget("RecEngine", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: Expr::Int(0),
+                decorators: vec![],
+            },
+        ]);
+        plan047_attach_handler(&mut widget, "Poke", "\n    .count = .count + 1\n");
+        let mut bridge = VmBridge::new(&widget).expect("bridge");
+        let root = bridge.state_obj_id();
+        let arc = std::sync::Arc::new(std::sync::Mutex::new(
+            crate::ui::memo_deps::RecState::default(),
+        ));
+        bridge.vm.set_dep_recorder(arc.clone());
+        bridge.call_handler("Poke", &[]).expect("handler");
+        bridge.vm.take_dep_recorder();
+        let rec = arc.lock().unwrap().clone();
+        assert!(
+            rec.deps.contains(&crate::ui::memo_deps::DepKey::field(root, "count")),
+            "引擎读臂录制面: deps={rec:?}"
+        );
+        assert!(!rec.overflow);
+        // 去激活后 handler 执行零账（写-only 复跑，无 GET 发生）。
+        bridge.call_handler("Poke", &[]).expect("handler2");
+        assert!(bridge.vm.take_dep_recorder().deps.is_empty());
+    }
+
+    #[test]
+    #[cfg(feature = "ui-interpreter")]
+    fn plan047_recorder_drop_without_finish_restores() {
+        let bridge = VmBridge::new(&plan047_recorder_widget()).expect("bridge");
+        {
+            let _guard = bridge.dep_recording_guard();
+            bridge.read_state("count").expect("read");
+            // guard 未 finish 即 drop（早退形态）——恢复语义兜底。
+        }
+        assert!(bridge.peek_dep_recorder().is_none(), "drop 恢复外层(None)");
     }
 
     #[test]

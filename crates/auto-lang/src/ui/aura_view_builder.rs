@@ -5286,14 +5286,18 @@ let tabs_inner = View::Row {
                     e.product.clone(),
                     e.probe_replay.clone(),
                     e.idmap_replay.clone(),
+                    e.dyn_deps.clone(),
                 )
             })
         });
-        if let Some((seq_at_fill, gfp_entry, dyn_fp, product, probe_replay, idmap_replay)) =
+        if let Some((seq_at_fill, gfp_entry, dyn_fp, product, probe_replay, idmap_replay, dyn_deps)) =
             cached
         {
             if seq_at_fill == seq && gfp_entry == gfp {
-                self.bridge.with_memo_cache(|c| c.note_hit());
+                self.bridge.with_memo_cache(|c| {
+                    c.note_hit();
+                    c.note_seq_fast(Some(SITE_OUTLET_PAGE));
+                });
                 if let Some((_, id_map, probe)) = tracked.as_mut() {
                     probe.merge_entries(probe_replay);
                     id_map.merge_entries(idmap_replay);
@@ -5304,13 +5308,49 @@ let tabs_inner = View::Row {
                 return product;
             }
             if gfp_entry == gfp {
+                // PLAN-047 T-05（档 C SD-11）: version_fast——零重解析命中面。
+                if let Some(pairs) = &dyn_deps {
+                    if self.bridge.deps_unchanged(pairs) {
+                        self.bridge.with_memo_cache(|c| {
+                            c.refresh_seq(&key, seq);
+                            c.note_hit();
+                            c.note_version_fast(Some(SITE_OUTLET_PAGE));
+                        });
+                        if let Some((_, id_map, probe)) = tracked.as_mut() {
+                            probe.merge_entries(probe_replay);
+                            id_map.merge_entries(idmap_replay);
+                        }
+                        if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+                            eprintln!(
+                                "[MEMO-DIAG] site=6 HIT version-fast page={}",
+                                page_widget.name
+                            );
+                        }
+                        return product;
+                    }
+                }
                 let cur = self
                     .memo_slots_fp(&slots, bindings)
                     .map(|fp| Self::memo_combine_dyn(fp, None));
                 if matches!((cur, dyn_fp), (Some(a), Some(b)) if a == b) {
+                    let refreshed = dyn_deps
+                        .as_ref()
+                        .map(|pairs| {
+                            pairs
+                                .iter()
+                                .map(|(k, _)| {
+                                    let v = self.bridge.vm().path_version(k.heap_id, &k.path);
+                                    (k.clone(), v)
+                                })
+                                .collect()
+                        });
                     self.bridge.with_memo_cache(|c| {
                         c.refresh_seq(&key, seq);
+                        if let Some(pairs) = refreshed {
+                            c.refresh_deps(&key, pairs);
+                        }
                         c.note_hit();
+                        c.note_fp_slow(Some(SITE_OUTLET_PAGE));
                     });
                     if let Some((_, id_map, probe)) = tracked.as_mut() {
                         probe.merge_entries(probe_replay);
@@ -5329,18 +5369,26 @@ let tabs_inner = View::Row {
         } else if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
             eprintln!("[MEMO-DIAG] site=6 FILL page={}", page_widget.name);
         }
-        // fill：全量渲染 + 入缓存。
+        // fill：全量渲染 + 入缓存。PLAN-047 T-05: 求值期依赖录制（桥通道 +
+        // 引擎读臂双通道）——录制集进条目 version_fast 面；**槽表达式估值
+        // 同在录制域内**（静态扫描面含未走分支的槽——其读通道必须入集，
+        // 否则 version_fast 漏失效面=陈旧风险）。
         let reborrowed = tracked
             .as_mut()
             .map(|(path, id_map, probe)| (&mut **path, &mut **id_map, &mut **probe));
-        let out = self.render_outlet_page_full(
-            page_widget,
-            empty_props,
-            empty_events,
-            bindings,
-            reborrowed,
-        );
-        if let Some(slots_fp) = self.memo_slots_fp(&slots, bindings) {
+        let ((out, slots_fp), rec) = self.fill_with_recording(|| {
+            let out = self.render_outlet_page_full(
+                page_widget,
+                empty_props,
+                empty_events,
+                bindings,
+                reborrowed,
+            );
+            let slots_fp = self.memo_slots_fp(&slots, bindings);
+            (out, slots_fp)
+        });
+        let dyn_deps = self.rec_to_dyn_deps(&rec);
+        if let Some(slots_fp) = slots_fp {
             let reborrowed = tracked
                 .as_mut()
                 .map(|(path, id_map, probe)| (&mut **path, &mut **id_map, &mut **probe));
@@ -5360,6 +5408,7 @@ let tabs_inner = View::Row {
                 probe_replay: probe_snap,
                 idmap_replay: idmap_snap,
                 replay_relative: false,
+                dyn_deps,
             };
             self.bridge.with_memo_cache(|c| c.insert(key, entry));
         } else {
@@ -11636,6 +11685,30 @@ let tabs_inner = View::Row {
             if let Some(c) = computed_list.iter().find(|c| c.name == name) {
                 // 防 computed 递归引用自身(bindings 里已有同名则跳过)
                 if !bindings.contains_key(name) {
+                    // PLAN-047 T-06（档 C SD-10）: computed 信号网——bindings-free
+                    // 保守面（bindings 参与的求值位置相关，不入网沿 v1 边界；
+                    // keyed-for 项内 computed 沿项级条目承载）。inline 表达式与
+                    // block 体隐藏 VM fn 双通道同构：命中复用缓存值，miss 录制
+                    // 求值入网；guard 嵌套使外层 memo 条目/信号收编本信号的
+                    // dep 面（pull 式级联）。
+                    if bindings.is_empty() {
+                        if let Some(hit) =
+                            self.bridge.computed_signal_hit(&self.widget_name, name)
+                        {
+                            return Some(hit);
+                        }
+                        let (out, rec) = self.fill_with_recording(|| match &c.expr {
+                            Expr::Block(_) => {
+                                self.bridge.call_computed_fn(&self.widget_name, name).ok()
+                            }
+                            _ => self.resolve_expr_to_value(&c.expr, bindings),
+                        });
+                        if let Some(v) = &out {
+                            self.bridge
+                                .computed_signal_store(&self.widget_name, name, v.clone(), &rec);
+                        }
+                        return out;
+                    }
                     // Plan 448 H2: block-bodied computeds execute as hidden
                     // VM fns (`__computed_<Widget>_<Prop>`, synthesized with
                     // the handlers) — statement semantics the inline
@@ -11656,6 +11729,11 @@ let tabs_inner = View::Row {
 
     /// Resolve a base AST `Expr` to a Value, checking loop bindings and VmBridge state.
     fn resolve_expr_to_value(&self, expr: &Expr, bindings: &Bindings) -> Option<Value> {
+        // PLAN-047 T-05: 求值通道探针（AC-02 零重解析断言观测面——version_fast
+        // 命中帧本函数零调用；relaxed 原子累计，诊断面零行为影响）。
+        self.bridge
+            .resolve_probe_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         match expr {
             // State reference: identifier whose name starts with "." (e.g. ".count")
             // or a plain identifier (loop var / state).
@@ -20211,11 +20289,15 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
-    /// memo 上下文门：bindings 非空或 widget 声明 computed → 整体不 memo
-    /// （T-01：bindings 下循环变量进入求值、computed 走 VM 代码，均静态
-    /// 不可证）。
+    /// memo 上下文门。PLAN-045 T-01 原裁定：bindings 非空或 widget 声明
+    /// computed → 整体不 memo（静态不可证）。PLAN-047 T-07（档 C SD-11）
+    /// 降级面收敛：**computed 声明不再整体排除**——computed 的读面由动态
+    /// 依赖录制闭合（桥读通道 + 引擎读臂 + 信号网三通道；T-06 级联吸收
+    /// 使 memo 条目覆盖信号 dep 面），产物逐字节对拍承载等价性（AC-05）；
+    /// bindings 保持排除（循环变量版本静态不可证且不随录制域——v1 保守
+    /// 边界沿袭）。
     fn memo_ctx_ok(&self, bindings: &Bindings) -> bool {
-        bindings.is_empty() && self.computed.map_or(true, |c| c.is_empty())
+        bindings.is_empty()
     }
 
     fn memo_ctx_obj(&self) -> u64 {
@@ -20315,13 +20397,18 @@ impl<'a> AuraViewBuilder<'a> {
                     e.product.clone(),
                     e.probe_replay.clone(),
                     e.idmap_replay.clone(),
+                    e.dyn_deps.clone(),
                 )
             })
         });
-        if let Some((seq_at_fill, gfp_entry, dyn_fp, product, probe_replay, idmap_replay)) = cached
+        if let Some((seq_at_fill, gfp_entry, dyn_fp, product, probe_replay, idmap_replay, dyn_deps)) =
+            cached
         {
             if seq_at_fill == seq && gfp_entry == gfp {
-                self.bridge.with_memo_cache(|c| c.note_hit());
+                self.bridge.with_memo_cache(|c| {
+                    c.note_hit();
+                    c.note_seq_fast(None);
+                });
                 if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
                     eprintln!("[MEMO-DIAG] site={site} HIT fast");
                 }
@@ -20332,15 +20419,55 @@ impl<'a> AuraViewBuilder<'a> {
                 };
             }
             if gfp_entry == gfp {
+                // PLAN-047 T-05（档 C SD-11）: version_fast——动态 dep 集版本
+                // 全同 → 零重解析命中（fill 后任何归因写都会前进对应 path
+                // 版本；C 类全局写不动既有内容，命中安全）。两例外落指纹
+                // 慢路径：fill 未录到集（None，行为同档 A/B）；extra_dyn
+                // 派生面（sidebar nav 路由/组开态——Rust 侧读通道，VM 录制
+                // 盲区，由 extra_dyn 指纹慢路径承载，同档 A/B）。
+                if let Some(pairs) = &dyn_deps {
+                    if extra_dyn.is_none() && self.bridge.deps_unchanged(pairs) {
+                        self.bridge.with_memo_cache(|c| {
+                            c.refresh_seq(&key, seq);
+                            c.note_hit();
+                            c.note_version_fast(None);
+                        });
+                        if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+                            eprintln!("[MEMO-DIAG] site={site} HIT version-fast");
+                        }
+                        return MemoGateBegin::Hit {
+                            product,
+                            probe_replay,
+                            idmap_replay,
+                        };
+                    }
+                }
                 // 慢路径：读槽重解析 + 派生面 → 值指纹比对（T-01 值指纹设计）。
                 if let (Some(slots_fp), Some(extra)) =
                     (self.memo_slots_fp(&slots, bindings), extra_dyn)
                 {
                     let cur = Self::memo_combine_dyn(slots_fp, Some(extra));
                     if Some(cur) == dyn_fp {
+                        // fp_slow 命中：基线前移（seq + 动态 dep 版本）——后续
+                        // 帧回到 seq/version 快路径。
+                        let refreshed = dyn_deps
+                            .as_ref()
+                            .map(|pairs| {
+                                pairs
+                                    .iter()
+                                    .map(|(k, _)| {
+                                        let v = self.bridge.vm().path_version(k.heap_id, &k.path);
+                                        (k.clone(), v)
+                                    })
+                                    .collect()
+                            });
                         self.bridge.with_memo_cache(|c| {
                             c.refresh_seq(&key, seq);
+                            if let Some(pairs) = refreshed {
+                                c.refresh_deps(&key, pairs);
+                            }
                             c.note_hit();
+                            c.note_fp_slow(None);
                         });
                         if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
                             eprintln!("[MEMO-DIAG] site={site} HIT slow");
@@ -20355,9 +20482,24 @@ impl<'a> AuraViewBuilder<'a> {
                     if let Some(slots_fp) = self.memo_slots_fp(&slots, bindings) {
                         let cur = Self::memo_combine_dyn(slots_fp, None);
                         if Some(cur) == dyn_fp {
+                            let refreshed = dyn_deps
+                                .as_ref()
+                                .map(|pairs| {
+                                    pairs
+                                        .iter()
+                                        .map(|(k, _)| {
+                                            let v = self.bridge.vm().path_version(k.heap_id, &k.path);
+                                            (k.clone(), v)
+                                        })
+                                        .collect()
+                                });
                             self.bridge.with_memo_cache(|c| {
                                 c.refresh_seq(&key, seq);
+                                if let Some(pairs) = refreshed {
+                                    c.refresh_deps(&key, pairs);
+                                }
                                 c.note_hit();
+                                c.note_fp_slow(None);
                             });
                             if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
                                 eprintln!("[MEMO-DIAG] site={site} HIT slow");
@@ -20388,6 +20530,9 @@ impl<'a> AuraViewBuilder<'a> {
 
     /// 门后置：fill——body 执行后采集（产物对应 body 后状态），读槽重解析
     /// 指纹 + probe/id_map 快照入缓存。不可展开堆引用面 → 降级不入缓存。
+    /// PLAN-047 T-05: `rec` = body 求值期的依赖录制集（fill_with_recording
+    /// 产出）——空集/超预算 → `dyn_deps = None`（version_fast 面缺失，行为
+    /// 与档 A/B 一致）。
     fn memo_gate_store(
         &self,
         fill: MemoGateFill,
@@ -20395,6 +20540,7 @@ impl<'a> AuraViewBuilder<'a> {
         product: View<DynamicMessage>,
         probe_snap: Vec<(Vec<u16>, crate::ui::debug::ProbeEntry)>,
         idmap_snap: Vec<(Vec<usize>, crate::aura::AuraNodeId)>,
+        rec: crate::ui::memo_deps::RecState,
     ) -> View<DynamicMessage> {
         let MemoGateFill {
             key,
@@ -20405,6 +20551,11 @@ impl<'a> AuraViewBuilder<'a> {
             self.bridge.with_memo_cache(|c| c.note_degraded());
             return product;
         };
+        let dyn_deps = if rec.overflow || rec.deps.is_empty() {
+            None
+        } else {
+            Some(self.bridge.dep_pairs(&rec.deps))
+        };
         let entry = crate::ui::memo_deps::MemoEntry {
             seq_at_fill: self.bridge.state_mutation_seq(),
             globals_fp: self.memo_episode_fp(),
@@ -20414,9 +20565,53 @@ impl<'a> AuraViewBuilder<'a> {
             probe_replay: probe_snap,
             idmap_replay: idmap_snap,
             replay_relative: false,
+            dyn_deps,
         };
         self.bridge.with_memo_cache(|c| c.insert(key, entry));
         product
+    }
+
+    /// PLAN-047 T-05: fill 侧录制包裹——body 求值全程依赖录制（桥读通道 +
+    /// 引擎读臂双通道，guard 嵌套并集），返回 (产物, 录制集)。产物型泛化
+    /// （View / Option<View>——keyed-for 项级 body 可空）。
+    fn fill_with_recording<R>(
+        &self,
+        body: impl FnOnce() -> R,
+    ) -> (R, crate::ui::memo_deps::RecState) {
+        let g = self.bridge.dep_recording_guard();
+        let out = body();
+        let rec = g.finish();
+        (out, rec)
+    }
+
+    /// PLAN-047 T-05: 录制集 → 条目 dep 面（空集/超预算 → None，行为退回
+    /// 档 A/B）。
+    fn rec_to_dyn_deps(
+        &self,
+        rec: &crate::ui::memo_deps::RecState,
+    ) -> Option<Vec<(crate::ui::memo_deps::DepKey, u64)>> {
+        if rec.overflow || rec.deps.is_empty() {
+            None
+        } else {
+            Some(self.bridge.dep_pairs(&rec.deps))
+        }
+    }
+
+    /// PLAN-047 T-05: 现版本基线对（fp_slow/version_fast 命中后刷新——
+    /// 值同/版本同证明基线可前移，后续帧回快路径）；`None` 透传。
+    fn refreshed_dep_pairs(
+        &self,
+        dyn_deps: &Option<Vec<(crate::ui::memo_deps::DepKey, u64)>>,
+    ) -> Option<Vec<(crate::ui::memo_deps::DepKey, u64)>> {
+        dyn_deps.as_ref().map(|pairs| {
+            pairs
+                .iter()
+                .map(|(k, _)| {
+                    let v = self.bridge.vm().path_version(k.heap_id, &k.path);
+                    (k.clone(), v)
+                })
+                .collect()
+        })
     }
 
     fn memo_combine_dyn(slots_fp: u64, extra_dyn: Option<u64>) -> u64 {
@@ -20642,13 +20837,33 @@ impl<'a> AuraViewBuilder<'a> {
                         e.probe_replay.clone(),
                         e.idmap_replay.clone(),
                         e.read_exprs.clone(),
+                        e.dyn_deps.clone(),
                     )
                 })
             });
             let mut reused: Option<View<DynamicMessage>> = None;
-            if let Some((seq0, gfp0, dyn0, product, prel, irel, slots0)) = cached {
+            if let Some((seq0, gfp0, dyn0, product, prel, irel, slots0, dyn_deps)) = cached {
+                // PLAN-047 T-05: 三级判定——seq_fast → version_fast（动态 dep
+                // 版本全同零重解析）→ fp_slow（既有指纹慢路径兜底）。
+                #[derive(PartialEq)]
+                enum Kind {
+                    SeqFast,
+                    VersionFast,
+                    FpSlow,
+                }
+                let mut kind = Kind::FpSlow;
                 let hit = if seq0 == seq && gfp0 == gfp {
                     // 快速路径：fill 后全局 seq 未动 ∧ episode 同。
+                    kind = Kind::SeqFast;
+                    true
+                } else if gfp0 == gfp
+                    && dyn_deps
+                        .as_ref()
+                        .is_some_and(|p| self.bridge.deps_unchanged(p))
+                {
+                    // PLAN-047 T-05: version_fast——fill 后归因写未触及本项
+                    // 依赖面（无关写帧零重解析命中）。
+                    kind = Kind::VersionFast;
                     true
                 } else if gfp0 == gfp {
                     // 慢路径：项体读槽重解析（循环绑定上下文）∧ 项值 ∧
@@ -20663,7 +20878,26 @@ impl<'a> AuraViewBuilder<'a> {
                     false
                 };
                 if hit {
-                    self.bridge.with_memo_cache(|c| c.note_hit_site(SITE));
+                    self.bridge.with_memo_cache(|c| {
+                        c.note_hit_site(SITE);
+                        match kind {
+                            Kind::SeqFast => c.note_seq_fast(Some(SITE)),
+                            Kind::VersionFast => {
+                                c.refresh_seq(&key, seq);
+                                if let Some(pairs) = self.refreshed_dep_pairs(&dyn_deps) {
+                                    c.refresh_deps(&key, pairs);
+                                }
+                                c.note_version_fast(Some(SITE));
+                            }
+                            Kind::FpSlow => {
+                                c.refresh_seq(&key, seq);
+                                if let Some(pairs) = self.refreshed_dep_pairs(&dyn_deps) {
+                                    c.refresh_deps(&key, pairs);
+                                }
+                                c.note_fp_slow(Some(SITE));
+                            }
+                        }
+                    });
                     diag_hit += 1;
                     Self::replay_for_item(probe, id_map, &base_u16, i, prel, irel);
                     reused = Some(product);
@@ -20676,10 +20910,33 @@ impl<'a> AuraViewBuilder<'a> {
                 Some(p) => p,
                 None => {
                     // fill：全新求值（render_for_item_view 内部 push/pop [i]）。
-                    let out = self.render_for_item_view(
-                        i, &plan.item, var, index, iterable, body, path, id_map, probe,
-                        &plan.loop_bindings,
-                    );
+                    // PLAN-047 T-05: 求值期依赖录制（项体读面——循环绑定上下文
+                    // 的项值展开 + 外部状态读）。**iterable 依赖显式注入**：
+                    // pass-1 的 iterable 解析在录制域外（帧级面）——键集/项值/
+                    // 输出序的失效由 iterable 版本承载；注入在录制域内（guard
+                    // 外录制被丢弃）；iterable 非直读状态（computed 源）→
+                    // dyn_deps=None（退回档 A/B 行为）。
+                    let ((out, slots_fp, iterable_dep_ok), rec) = self.fill_with_recording(|| {
+                        let iterable_dep_ok = match self.bridge.read_state(state_name) {
+                            Ok(v) => {
+                                self.bridge.record_dep_value_heap(&v);
+                                true
+                            }
+                            Err(_) => false,
+                        };
+                        let out = self.render_for_item_view(
+                            i, &plan.item, var, index, iterable, body, path, id_map, probe,
+                            &plan.loop_bindings,
+                        );
+                        // 项体读槽录制域内估值（未走分支的槽入集，保守）。
+                        let slots_fp = self.memo_slots_fp(&slots, &plan.loop_bindings);
+                        (out, slots_fp, iterable_dep_ok)
+                    });
+                    let dyn_deps = if iterable_dep_ok {
+                        self.rec_to_dyn_deps(&rec)
+                    } else {
+                        None
+                    };
                     let Some(out) = out else {
                         // 搜索剔除/空体——与 keyless 同跳过，不入缓存。
                         diag_skip += 1;
@@ -20708,7 +20965,9 @@ impl<'a> AuraViewBuilder<'a> {
                         })
                         .collect();
                     // 存侧指纹（fill 后状态）：读槽重解析失败 → 该项不入缓存。
-                    match self.memo_slots_fp(&slots, &plan.loop_bindings) {
+                    // PLAN-047 T-05: 槽指纹已在录制域内估值（fill 时点）——此处
+                    // 复用，不在录制域外二次解析。
+                    match slots_fp {
                         Some(sfp) => {
                             let entry = crate::ui::memo_deps::MemoEntry {
                                 seq_at_fill: self.bridge.state_mutation_seq(),
@@ -20723,6 +20982,7 @@ impl<'a> AuraViewBuilder<'a> {
                                 probe_replay: prel_rel,
                                 idmap_replay: irel_rel,
                                 replay_relative: true,
+                                dyn_deps,
                             };
                             self.bridge.with_memo_cache(|c| c.insert(key, entry));
                         }
@@ -20843,12 +21103,31 @@ impl<'a> AuraViewBuilder<'a> {
                     e.probe_replay.clone(),
                     e.idmap_replay.clone(),
                     e.read_exprs.clone(),
+                    e.dyn_deps.clone(),
                 )
             })
         });
-        if let Some((seq0, gfp0, dyn0, product, prel, irel, slots0)) = cached {
+        if let Some((seq0, gfp0, dyn0, product, prel, irel, slots0, dyn_deps)) = cached {
+            // PLAN-047 T-05: 三级判定（同 keyed-for——seq_fast → version_fast
+            // → fp_slow）。
+            #[derive(PartialEq)]
+            enum Kind {
+                SeqFast,
+                VersionFast,
+                FpSlow,
+            }
+            let mut kind = Kind::FpSlow;
             let hit = if seq0 == seq && gfp0 == gfp {
                 // 快速路径：fill 后全局 seq 未动 ∧ episode 同。
+                kind = Kind::SeqFast;
+                true
+            } else if gfp0 == gfp
+                && dyn_deps
+                    .as_ref()
+                    .is_some_and(|p| self.bridge.deps_unchanged(p))
+            {
+                // PLAN-047 T-05: version_fast——无关写帧零重解析命中。
+                kind = Kind::VersionFast;
                 true
             } else if gfp0 == gfp {
                 // 慢路径：deps 值指纹恒比；默认语义再加读槽重解析。
@@ -20866,13 +21145,33 @@ impl<'a> AuraViewBuilder<'a> {
                 false
             };
             if hit {
-                self.bridge.with_memo_cache(|c| c.note_hit_site(SITE));
+                self.bridge.with_memo_cache(|c| {
+                    c.note_hit_site(SITE);
+                    match kind {
+                        Kind::SeqFast => c.note_seq_fast(Some(SITE)),
+                        Kind::VersionFast => {
+                            c.refresh_seq(&key, seq);
+                            if let Some(pairs) = self.refreshed_dep_pairs(&dyn_deps) {
+                                c.refresh_deps(&key, pairs);
+                            }
+                            c.note_version_fast(Some(SITE));
+                        }
+                        Kind::FpSlow => {
+                            c.refresh_seq(&key, seq);
+                            if let Some(pairs) = self.refreshed_dep_pairs(&dyn_deps) {
+                                c.refresh_deps(&key, pairs);
+                            }
+                            c.note_fp_slow(Some(SITE));
+                        }
+                    }
+                });
                 if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
-                    let fast = seq0 == seq;
-                    eprintln!(
-                        "[MEMO-DIAG] site=8 {} (exact={exact})",
-                        if fast { "HIT fast" } else { "HIT slow" }
-                    );
+                    let label = match kind {
+                        Kind::SeqFast => "HIT fast",
+                        Kind::VersionFast => "HIT version-fast",
+                        Kind::FpSlow => "HIT slow",
+                    };
+                    eprintln!("[MEMO-DIAG] site=8 {label} (exact={exact})");
                 }
                 let base_u16: Vec<u16> =
                     path[..base_len].iter().map(|&x| x as u16).collect();
@@ -20885,11 +21184,24 @@ impl<'a> AuraViewBuilder<'a> {
             }
         }
 
-        // fill：原始渲染 + 簿记相对快照 + 入缓存。
+        // fill：原始渲染 + 簿记相对快照 + 入缓存。PLAN-047 T-05: 求值期依赖
+        // 录制（块体读面——deps 声明外的动态读由运行时事实覆盖）；**deps 与
+        // 读槽估值同在录制域内**（声明的 deps/静态槽是块显式读面——不录制
+        // 则 version_fast 漏失效面=陈旧风险）。
         if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
             eprintln!("[MEMO-DIAG] site=8 FILL (exact={exact})");
         }
-        let out = self.render_memo_block_body(body, path, id_map, probe, bindings);
+        let ((out, deps_fp, slots_fp), rec) = self.fill_with_recording(|| {
+            let out = self.render_memo_block_body(body, path, id_map, probe, bindings);
+            let deps_fp = self.memo_slots_fp(deps, bindings);
+            let slots_fp = if exact {
+                None
+            } else {
+                self.memo_slots_fp(&slots, bindings)
+            };
+            (out, deps_fp, slots_fp)
+        });
+        let dyn_deps = self.rec_to_dyn_deps(&rec);
         let base_u16: Vec<u16> = path[..base_len].iter().map(|&x| x as u16).collect();
         let base_us: Vec<usize> = path[..base_len].to_vec();
         let prel_rel: Vec<(Vec<u16>, crate::ui::debug::ProbeEntry)> = probe
@@ -20908,13 +21220,10 @@ impl<'a> AuraViewBuilder<'a> {
                 (p, e)
             })
             .collect();
-        match self.memo_slots_fp(deps, bindings) {
+        // PLAN-047 T-05: deps/槽指纹已在录制域内估值（fill 时点）——复用。
+        match deps_fp {
             Some(dfp) => {
-                let sfp = if exact {
-                    None
-                } else {
-                    self.memo_slots_fp(&slots, bindings)
-                };
+                let sfp = if exact { None } else { slots_fp };
                 if exact || sfp.is_some() {
                     let entry = crate::ui::memo_deps::MemoEntry {
                         seq_at_fill: self.bridge.state_mutation_seq(),
@@ -20925,6 +21234,7 @@ impl<'a> AuraViewBuilder<'a> {
                         probe_replay: prel_rel,
                         idmap_replay: irel_rel,
                         replay_relative: true,
+                        dyn_deps,
                     };
                     self.bridge.with_memo_cache(|c| c.insert(key, entry));
                 } else {
@@ -21087,7 +21397,15 @@ impl<'a> AuraViewBuilder<'a> {
             MemoGateBegin::Fill(f) => Some(f),
         };
         let raw_path = path.as_mut().map(|(b, p)| (*b, &mut **p));
-        let out = self.convert_menubar_component_raw(props, children, bindings, raw_path);
+        let (out, rec) = self.fill_with_recording(|| {
+            let out = self.convert_menubar_component_raw(props, children, bindings, raw_path);
+            // PLAN-047 T-05: 槽表达式在录制域内估值——静态扫描面全部读通
+            // 道入 dep 集（未走分支的槽也入，保守）。
+            if let Some(f) = &fill {
+                let _ = self.memo_slots_fp(&f.slots, bindings);
+            }
+            out
+        });
         match fill {
             Some(f) => {
                 let snap = path
@@ -21097,7 +21415,7 @@ impl<'a> AuraViewBuilder<'a> {
                         p.snapshot_prefix(&u16b)
                     })
                     .unwrap_or_default();
-                self.memo_gate_store(f, bindings, out, snap, vec![])
+                self.memo_gate_store(f, bindings, out, snap, vec![], rec)
             }
             None => out,
         }
@@ -21136,7 +21454,14 @@ impl<'a> AuraViewBuilder<'a> {
             MemoGateBegin::Fill(f) => Some(f),
         };
         let raw_path = path.as_mut().map(|(b, p)| (*b, &mut **p));
-        let out = self.convert_menubar_raw(props, bindings, raw_path);
+        let (out, rec) = self.fill_with_recording(|| {
+            let out = self.convert_menubar_raw(props, bindings, raw_path);
+            // PLAN-047 T-05: 槽表达式录制域内估值（同 menubar 组件门）。
+            if let Some(f) = &fill {
+                let _ = self.memo_slots_fp(&f.slots, bindings);
+            }
+            out
+        });
         match fill {
             Some(f) => {
                 let snap = path
@@ -21146,7 +21471,7 @@ impl<'a> AuraViewBuilder<'a> {
                         p.snapshot_prefix(&u16b)
                     })
                     .unwrap_or_default();
-                self.memo_gate_store(f, bindings, out, snap, vec![])
+                self.memo_gate_store(f, bindings, out, snap, vec![], rec)
             }
             None => out,
         }
@@ -21185,7 +21510,14 @@ impl<'a> AuraViewBuilder<'a> {
             MemoGateBegin::Fill(f) => Some(f),
         };
         let raw_path = path.as_mut().map(|(b, p)| (*b, &mut **p));
-        let out = self.convert_toolbar_raw(props, bindings, raw_path);
+        let (out, rec) = self.fill_with_recording(|| {
+            let out = self.convert_toolbar_raw(props, bindings, raw_path);
+            // PLAN-047 T-05: 槽表达式录制域内估值（同 menubar 组件门）。
+            if let Some(f) = &fill {
+                let _ = self.memo_slots_fp(&f.slots, bindings);
+            }
+            out
+        });
         match fill {
             Some(f) => {
                 let snap = path
@@ -21195,7 +21527,7 @@ impl<'a> AuraViewBuilder<'a> {
                         p.snapshot_prefix(&u16b)
                     })
                     .unwrap_or_default();
-                self.memo_gate_store(f, bindings, out, snap, vec![])
+                self.memo_gate_store(f, bindings, out, snap, vec![], rec)
             }
             None => out,
         }
@@ -21230,9 +21562,16 @@ impl<'a> AuraViewBuilder<'a> {
             MemoGateBegin::Off => None,
             MemoGateBegin::Fill(f) => Some(f),
         };
-        let out = self.convert_alert_dialog_raw(props, children, bindings, family);
+        let (out, rec) = self.fill_with_recording(|| {
+            let out = self.convert_alert_dialog_raw(props, children, bindings, family);
+            // PLAN-047 T-05: 槽表达式录制域内估值（同 menubar 组件门）。
+            if let Some(f) = &fill {
+                let _ = self.memo_slots_fp(&f.slots, bindings);
+            }
+            out
+        });
         match fill {
-            Some(f) => self.memo_gate_store(f, bindings, out, vec![], vec![]),
+            Some(f) => self.memo_gate_store(f, bindings, out, vec![], vec![], rec),
             None => out,
         }
     }
@@ -21270,15 +21609,22 @@ impl<'a> AuraViewBuilder<'a> {
             MemoGateBegin::Off => None,
             MemoGateBegin::Fill(f) => Some(f),
         };
-        let out = self.convert_alert_dialog_tracked_ctx_raw(
-            props, children, path, id_map, probe, bindings, family,
-        );
+        let (out, rec) = self.fill_with_recording(|| {
+            let out = self.convert_alert_dialog_tracked_ctx_raw(
+                props, children, path, id_map, probe, bindings, family,
+            );
+            // PLAN-047 T-05: 槽表达式录制域内估值（同 menubar 组件门）。
+            if let Some(f) = &fill {
+                let _ = self.memo_slots_fp(&f.slots, bindings);
+            }
+            out
+        });
         match fill {
             Some(f) => {
                 let u16b: Vec<u16> = path.iter().map(|&x| x as u16).collect();
                 let probe_snap = probe.snapshot_prefix(&u16b);
                 let idmap_snap = id_map.snapshot_prefix(path);
-                self.memo_gate_store(f, bindings, out, probe_snap, idmap_snap)
+                self.memo_gate_store(f, bindings, out, probe_snap, idmap_snap, rec)
             }
             None => out,
         }
@@ -21338,9 +21684,17 @@ impl<'a> AuraViewBuilder<'a> {
             MemoGateBegin::Off => None,
             MemoGateBegin::Fill(f) => Some(f),
         };
-        let out = self.convert_sidebar_group_raw(props, children, bindings);
+        let (out, rec) = self.fill_with_recording(|| {
+            let out = self.convert_sidebar_group_raw(props, children, bindings);
+            // PLAN-047 T-05: 槽表达式录制域内估值（extra_dyn 派生面不走
+            // version_fast，录集仍服务 fp_slow 基线刷新一致性）。
+            if let Some(f) = &fill {
+                let _ = self.memo_slots_fp(&f.slots, bindings);
+            }
+            out
+        });
         match fill {
-            Some(f) => self.memo_gate_store(f, bindings, out, vec![], vec![]),
+            Some(f) => self.memo_gate_store(f, bindings, out, vec![], vec![], rec),
             None => out,
         }
     }
@@ -22612,5 +22966,516 @@ mod plan046_memo_block_tests {
         crate::ui::action_config::set_menubar_open(None);
         let (h1, m1, _, _) = counts(&bridge);
         assert_eq!((h1 - h0, m1 - m0), (0, 1), "episode 翻面失效一次");
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PLAN-047 T-05: version_fast 三级判定单测（AC-02/AC-07 观测面）。
+// ─────────────────────────────────────────────────────────────────────
+mod plan047_gate_tests {
+    use super::*;
+    use crate::ast::Type;
+    use crate::aura::{AuraStateDef, AuraWidget};
+
+    fn vf_widget() -> AuraWidget {
+        AuraWidget {
+            named_views: Vec::new(),
+            actions: None,
+            name: "VfApp".to_string(),
+            state_vars: vec![
+                AuraStateDef {
+                    name: "rows".to_string(),
+                    type_info: Type::List(Box::new(Type::Int)),
+                    initial: Expr::Array(vec![]),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "other".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(0),
+                    decorators: vec![],
+                },
+            ],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            timers: Vec::new(),
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        }
+    }
+
+    fn vf_row(id: i32, name: &str) -> Value {
+        let mut o = auto_val::Obj::new();
+        o.set("id", Value::Int(id));
+        o.set("name", Value::str(name));
+        Value::obj(o)
+    }
+
+    fn vf_rows(rows: &[Value]) -> Value {
+        Value::Array(auto_val::Array::from(rows.to_vec()))
+    }
+
+    fn vf_node() -> AuraNode {
+        AuraNode::ForLoop {
+            var: "r".to_string(),
+            index: None,
+            iterable: ".rows".to_string(),
+            key_expr: Some(Expr::Dot(Box::new(Expr::Ident("r".into())), "id".into())),
+            body: vec![AuraNode::element("text").with_prop(
+                "text",
+                Expr::Dot(Box::new(Expr::Ident("r".into())), "name".into()),
+            )],
+            span: None,
+            debug_id: None,
+        }
+    }
+
+    fn vf_build(bridge: &VmBridge, node: &AuraNode) -> String {
+        let (v, _idmap, _probe) = AuraViewBuilder::new(bridge, "VfApp").build_with_debug(node);
+        format!("{v:?}")
+    }
+
+    /// site=7 check-kind 分解读数。
+    fn vf_kinds(bridge: &VmBridge) -> (u64, u64, u64) {
+        bridge.with_memo_cache(|c| {
+            let sc = c.site_counts.get(&crate::ui::memo_deps::MEMO_SITE_FOR_ITEM);
+            (
+                sc.map(|s| s.seq_fast).unwrap_or(0),
+                sc.map(|s| s.version_fast).unwrap_or(0),
+                sc.map(|s| s.fp_slow).unwrap_or(0),
+            )
+        })
+    }
+
+    /// AC-02: 无关写帧 version_fast 零重解析命中——fp_slow 不动、产物一致、
+    /// resolve 探针零增量。
+    #[test]
+    fn plan047_version_fast_unrelated_write_zero_reeval() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = vf_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge
+            .write_state("rows", vf_rows(&[vf_row(1, "aaa"), vf_row(2, "bbb")]))
+            .unwrap();
+        let node = vf_node();
+
+        let k0 = vf_build(&bridge, &node); // fill
+        let probe0 = bridge.resolve_probe_count.load(std::sync::atomic::Ordering::Relaxed);
+        // 无写对照帧：seq_fast——探针增量 = pass-1 key 规划的合法求解
+        // （键集 diff 每帧现算；含 Dot→Ident 递归，2 项×2 次）。
+        let _ = vf_build(&bridge, &node);
+        let (sf0, vf0, fp0) = vf_kinds(&bridge);
+        let probe1 = bridge.resolve_probe_count.load(std::sync::atomic::Ordering::Relaxed);
+
+        // 无关写（.other）→ 全局 seq 动、动态 dep 面不动。
+        bridge.write_state("other", auto_val::Value::Int(9)).unwrap();
+        let k1 = vf_build(&bridge, &node);
+        let (sf1, vf1, fp1) = vf_kinds(&bridge);
+        let probe2 = bridge.resolve_probe_count.load(std::sync::atomic::Ordering::Relaxed);
+
+        assert_eq!(vf1 - vf0, 2, "version_fast 命中（两项条目各计一次）");
+        assert_eq!(fp1 - fp0, 0, "指纹慢路径零调用（零重解析）");
+        assert_eq!(sf1, sf0, "seq 快路径未走（seq 已动）");
+        // AC-02: version_fast 帧 == seq_fast 帧的求解增量（check 阶段零额外
+        // 重解析——fp_slow 的读槽重解析面零调用）。
+        assert_eq!(
+            probe2 - probe1,
+            probe1 - probe0,
+            "check 帧求解增量与快路径帧相同（无读槽重解析）"
+        );
+        assert_eq!(k0, k1, "产物一致");
+    }
+
+    /// dep 面写（同值）→ version_fast miss → fp_slow 命中并刷新基线 →
+    /// 下一无关写帧回到 version_fast（基线前移语义）。
+    #[test]
+    fn plan047_fp_slow_hit_refreshes_dep_baselines() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = vf_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge
+            .write_state("rows", vf_rows(&[vf_row(1, "aaa")]))
+            .unwrap();
+        let node = vf_node();
+
+        let _ = vf_build(&bridge, &node); // fill
+        let (_, vf0, fp0) = vf_kinds(&bridge);
+
+        // dep 面写：rows 字段整体重写**同值** → 版本前进、值指纹同。
+        bridge
+            .write_state("rows", vf_rows(&[vf_row(1, "aaa")]))
+            .unwrap();
+        let _ = vf_build(&bridge, &node);
+        let (_, vf1, fp1) = vf_kinds(&bridge);
+        assert_eq!(fp1 - fp0, 1, "版本动值同 → fp_slow 命中一次");
+        assert_eq!(vf1, vf0, "version_fast 未走（版本已动）");
+
+        // 基线已随 fp_slow 命中刷新 → 下一无关写帧回 version_fast。
+        bridge.write_state("other", auto_val::Value::Int(3)).unwrap();
+        let _ = vf_build(&bridge, &node);
+        let (_, vf2, fp2) = vf_kinds(&bridge);
+        assert_eq!(vf2 - vf1, 1, "基线刷新后 version_fast 恢复");
+        assert_eq!(fp2, fp1, "无新增慢路径");
+    }
+
+    /// 内容真变 → version_fast miss → fp_slow mismatch → 重求值，产物反映
+    /// 新值（AC-07 正确性下限：绝不陈旧）。
+    #[test]
+    fn plan047_content_change_refills_no_stale() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = vf_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge
+            .write_state("rows", vf_rows(&[vf_row(1, "aaa")]))
+            .unwrap();
+        let node = vf_node();
+
+        let k0 = vf_build(&bridge, &node); // fill
+        assert!(k0.contains("aaa"), "初值在册: {k0}");
+
+        bridge
+            .write_state("rows", vf_rows(&[vf_row(1, "zzz")]))
+            .unwrap();
+        let k1 = vf_build(&bridge, &node);
+        assert!(k1.contains("zzz"), "内容变更重求值落地: {k1}");
+        assert!(!k1.contains("aaa"), "无陈旧产物");
+    }
+
+    /// 判定序：无写重建走 seq_fast（version_fast 不消费）。
+    #[test]
+    fn plan047_seq_fast_precedes_version_fast() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = vf_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge
+            .write_state("rows", vf_rows(&[vf_row(1, "aaa")]))
+            .unwrap();
+        let node = vf_node();
+
+        let _ = vf_build(&bridge, &node); // fill
+        let (sf0, vf0, _) = vf_kinds(&bridge);
+        let _ = vf_build(&bridge, &node); // 无写重建
+        let (sf1, vf1, _) = vf_kinds(&bridge);
+        assert_eq!(sf1 - sf0, 1, "seq_fast 优先");
+        assert_eq!(vf1, vf0, "version_fast 未消费");
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PLAN-047 T-06: computed 信号网单测（AC-04 观测面）。
+// ─────────────────────────────────────────────────────────────────────
+mod plan047_signal_tests {
+    use super::*;
+    use crate::ast::Type;
+    use crate::aura::{AuraComputed, AuraStateDef, AuraWidget};
+
+    fn sig_widget(computed: AuraComputed) -> AuraWidget {
+        AuraWidget {
+            named_views: Vec::new(),
+            actions: None,
+            name: "SigApp".to_string(),
+            state_vars: vec![
+                AuraStateDef {
+                    name: "count".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(1),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "other".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(0),
+                    decorators: vec![],
+                },
+            ],
+            computed: vec![computed],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            timers: Vec::new(),
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        }
+    }
+
+    /// inline computed：`mirror = .count`（镜像读面）。
+    fn inline_mirror() -> AuraComputed {
+        AuraComputed {
+            name: "mirror".to_string(),
+            expr: Expr::Dot(Box::new(Expr::Ident(".".into())), "count".into()),
+        }
+    }
+
+    /// block 体 computed：`mirror { .count }`（隐藏 VM fn 通道）。
+    fn block_mirror() -> AuraComputed {
+        AuraComputed {
+            name: "mirror".to_string(),
+            expr: Expr::Block(crate::ast::Body {
+                stmts: vec![crate::ast::Stmt::Expr(Expr::Dot(
+                    Box::new(Expr::Ident(".".into())),
+                    "count".into(),
+                ))],
+                has_new_line: false,
+                source_lines: Vec::new(),
+            }),
+        }
+    }
+
+    fn sig_view() -> AuraNode {
+        // 视图读 computed：`text (text: .mirror)`。
+        AuraNode::element("text").with_prop("text", Expr::Ident(".mirror".into()))
+    }
+
+    fn sig_build(bridge: &VmBridge, computed: &[AuraComputed], node: &AuraNode) -> String {
+        let (v, _idmap, _probe) = AuraViewBuilder::new(bridge, "SigApp")
+            .with_computed(computed)
+            .build_with_debug(node);
+        format!("{v:?}")
+    }
+
+    fn sig_counts(bridge: &VmBridge) -> (u64, u64) {
+        (
+            bridge.signal_hits.load(std::sync::atomic::Ordering::Relaxed),
+            bridge.signal_misses.load(std::sync::atomic::Ordering::Relaxed),
+        )
+    }
+
+    /// AC-04 inline 通道：无关写帧信号命中（零重求值）、deps 变化重算、
+    /// 产物保真（绝不陈旧）。
+    #[test]
+    fn plan047_signal_inline_hit_and_invalidation() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = sig_widget(inline_mirror());
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        let node = sig_view();
+
+        let k0 = sig_build(&bridge, &widget.computed, &node); // fill（信号首求值入网）
+        assert!(k0.contains("1"), "初值 count=1: {k0}");
+        let (h0, m0) = sig_counts(&bridge);
+        assert_eq!((h0, m0), (0, 1), "首帧 miss 入网");
+
+        // 无关写 → 信号 deps 未动 → 命中复用（computed 零重算）。
+        bridge.write_state("other", auto_val::Value::Int(9)).unwrap();
+        let k1 = sig_build(&bridge, &widget.computed, &node);
+        let (h1, _) = sig_counts(&bridge);
+        assert_eq!(h1 - h0, 1, "无关写帧信号命中");
+        assert_eq!(k0, k1, "产物一致");
+
+        // deps 变化（.count）→ 信号重算 → 产物保真。
+        bridge.write_state("count", auto_val::Value::Int(7)).unwrap();
+        let k2 = sig_build(&bridge, &widget.computed, &node);
+        let (_, m2) = sig_counts(&bridge);
+        assert!(m2 > m0, "deps 变化信号重算");
+        assert!(k2.contains("7"), "新值落地（无陈旧）: {k2}");
+    }
+
+    /// AC-04 block 体通道（隐藏 VM fn）：信号命中/失效与 inline 同构；
+    /// 引擎读臂录制的 dep 面承载失效判定（T-04 端到端）。
+    #[test]
+    fn plan047_signal_block_channel() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = sig_widget(block_mirror());
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        // 合成通道在册性预检：__computed_SigApp_mirror 必须已合成（缺失 =
+        // 旧构建路径降级 None，本测试前提不成立）。
+        let fn_name = crate::ui::handler_codegen::computed_fn_name("SigApp", "mirror");
+        assert!(
+            bridge.vm_flash_exports_contains(&fn_name),
+            "block computed 隐藏 fn 未合成: {fn_name}"
+        );
+        let node = sig_view();
+
+        let k0 = sig_build(&bridge, &widget.computed, &node);
+        assert!(k0.contains("1"), "block 通道初值: {k0}");
+        let (h0, m0) = sig_counts(&bridge);
+
+        bridge.write_state("other", auto_val::Value::Int(9)).unwrap();
+        let k1 = sig_build(&bridge, &widget.computed, &node);
+        let (h1, _) = sig_counts(&bridge);
+        assert_eq!(h1 - h0, 1, "block 通道无关写命中");
+        assert_eq!(k0, k1, "产物一致");
+
+        bridge.write_state("count", auto_val::Value::Int(5)).unwrap();
+        let k2 = sig_build(&bridge, &widget.computed, &node);
+        let (_, m2) = sig_counts(&bridge);
+        assert!(m2 > m0, "block 通道 deps 变化重算");
+        assert!(k2.contains("5"), "新值落地: {k2}");
+    }
+
+    /// 级联闭合：memo 条目收编信号的 dep 面——信号 deps 变 → 条目版本比对
+    /// 失效（即使条目自身不直读该状态）。
+    #[test]
+    fn plan047_signal_deps_absorbed_into_memo_entry() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = sig_widget(inline_mirror());
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        // memo 块包 computed 读——块条目 deps 由录制收编（含 .mirror 的
+        // dep 面 (root,count)）。
+        let node = AuraNode::MemoBlock {
+            deps: vec![Expr::Ident(".other".into())],
+            exact: false,
+            body: vec![AuraNode::element("text").with_prop(
+                "text",
+                Expr::Ident(".mirror".into()),
+            )],
+            span: None,
+            debug_id: None,
+        };
+
+        let _ = sig_build(&bridge, &widget.computed, &node); // fill（块条目 + 信号同帧入网）
+        let _ = sig_build(&bridge, &widget.computed, &node); // 无关重建（块快路径 + 信号命中）
+        // 直写 count（信号 dep 面）——块条目必须经 version_fast miss 落重求
+        // 值（条目收编了信号的 dep 键），产物保真。
+        bridge.write_state("count", auto_val::Value::Int(3)).unwrap();
+        let k = sig_build(&bridge, &widget.computed, &node);
+        assert!(k.contains("3"), "级联失效落地: {k}");
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PLAN-047 T-07: 降级面收敛单测（AC-05——computed-exclusion 改判）。
+// ─────────────────────────────────────────────────────────────────────
+mod plan047_convergence_tests {
+    use super::*;
+    use crate::ast::Type;
+    use crate::aura::{AuraComputed, AuraStateDef, AuraWidget};
+
+    fn conv_widget() -> AuraWidget {
+        AuraWidget {
+            named_views: Vec::new(),
+            actions: None,
+            name: "ConvApp".to_string(),
+            state_vars: vec![
+                AuraStateDef {
+                    name: "show_urls".to_string(),
+                    type_info: Type::Bool,
+                    initial: Expr::Bool(false),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "other".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(0),
+                    decorators: vec![],
+                },
+            ],
+            computed: vec![AuraComputed {
+                name: "mirror".to_string(),
+                expr: Expr::Dot(Box::new(Expr::Ident(".".into())), "show_urls".into()),
+            }],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            timers: Vec::new(),
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        }
+    }
+
+    /// menubar（memo 可开关）读 computed：`checked: .mirror`——T-01 时代
+    /// 此形态因 computed 声明整体不 memo，T-07 改判后入门。
+    fn conv_menubar(memo: bool) -> AuraNode {
+        let item = AuraNode::element("menubar-checkbox-item")
+            .with_prop("title", Expr::Str("Show URLs".into()))
+            .with_prop("checked", Expr::Ident(".mirror".into()));
+        let content = AuraNode::element("menubar-content").with_child(item);
+        // trigger text 读 computed——闭合态 popover 产物可见面（保真观察点）。
+        let trigger = AuraNode::element("menubar-trigger")
+            .with_prop("text", Expr::Ident(".mirror".into()));
+        let menu = AuraNode::element("menubar-menu")
+            .with_prop("value", Expr::Str("file".into()))
+            .with_child(trigger)
+            .with_child(content);
+        let mut mb = AuraNode::element("menubar");
+        if memo {
+            mb = mb.with_prop("memo", Expr::Bool(true));
+        }
+        mb.with_child(menu)
+    }
+
+    fn conv_build(
+        bridge: &VmBridge,
+        computed: &[AuraComputed],
+        node: &AuraNode,
+    ) -> String {
+        let (v, _idmap, _probe) = AuraViewBuilder::new(bridge, "ConvApp")
+            .with_computed(computed)
+            .build_with_debug(node);
+        format!("{v:?}")
+    }
+
+    /// AC-05: 含 computed 的 widget 上下文 memo 化后渲染产物与原始路径
+    /// **逐字节一致**；门确证入册（非静默降级）；deps 变化经信号级联保真。
+    #[test]
+    fn plan047_computed_widget_memo_parity() {
+        let _guard =
+            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let widget = conv_widget();
+        let mut bridge = VmBridge::new(&widget).unwrap();
+
+        // 原始路径基线（memo 关——不入册）。
+        let raw = conv_menubar(false);
+        let k_raw = conv_build(&bridge, &widget.computed, &raw);
+        let n0 = bridge.with_memo_cache(|c| c.len());
+        assert_eq!(n0, 0, "memo 关不入册");
+
+        // memo 开：T-07 改判后入门（T-01 时代此处整体降级）。
+        let armed = conv_menubar(true);
+        let k_memo = conv_build(&bridge, &widget.computed, &armed);
+        let n1 = bridge.with_memo_cache(|c| c.len());
+        assert_eq!(n1, 1, "computed 声明不再排除——条目在册");
+
+        // AC-05 对拍：产物逐字节一致。
+        assert_eq!(k_raw, k_memo, "memo 化产物与原始路径逐字节一致");
+
+        // 级联保真：computed deps（show_urls）变 → 信号重算 → 条目失效
+        // 重求值 → 产物反映新值。
+        bridge
+            .write_state("show_urls", auto_val::Value::Bool(true))
+            .unwrap();
+        let k2 = conv_build(&bridge, &widget.computed, &armed);
+        assert!(k2.contains("true"), "级联失效产物保真: {k2}");
     }
 }

@@ -399,6 +399,24 @@ pub struct AutoVM {
     // 用途：fire_timer 派发前后对比判定"本拍是否零状态写"（空转拍不置脏，
     // 不触发整树重建）。保守方向：多 bump 至多多一次重建，漏 bump 才丢更新。
     pub state_mutation_seq: AtomicU64,
+    // PLAN-047 T-03（档 C SD-09）: per-path 版本表——写点字段归因的定点
+    // bump 面。键 = (堆对象 id, path)；path 为字段名（A 类带名写）或 "*"
+    // （B 类容器/未知字段写）。全局 [`Self::state_mutation_seq`] 语义零
+    // 变化（[`Self::bump_path`] 内仍同步 bump），此表纯增量消费者（memo
+    // 门 version_fast 判定）。键用原生 (u64, String) 元组——vm 模块不得
+    // 依赖 ui 门控类型（memo_deps DepKey 由桥侧转换）。
+    pub path_versions: dashmap::DashMap<(u64, String), u64>,
+    // PLAN-047 T-04（档 C SD-08）: 依赖录制槽——ui 侧 memo 门/computed
+    // 信号求值期经 guard 激活，VM 读臂（GET_FIELD/GET_GENERIC_FIELD/
+    // GET_ELEM/LIST_GET_INT）把堆读记入 [`Self::record_heap_read`]。
+    // 快速门 = AtomicBool（未激活读臂一次原子 load 直落——非 memo 零开销
+    // 红线）；槽 = Mutex<Option<Arc<Mutex<RecState>>>>（bridge guard 持
+    // Arc，finish 取走收编）。顺序纪律：**先填槽后开旗（Release）、先关
+    // 旗后清槽（Acquire）**——读臂见旗即见已填槽。同线程串行（渲染/桥
+    // 调用），旗与槽无并发写竞争。
+    pub dep_recorder_slot:
+        std::sync::Mutex<Option<std::sync::Arc<std::sync::Mutex<crate::vm::dep_track::RecState>>>>,
+    pub dep_rec_active: std::sync::atomic::AtomicBool,
     // PLAN-062 T12: 宽限窗延迟回收——rc 归零对象先进 dying 队列（记录入队
     // 时的解释步计数），DYING_GRACE_STEPS 步后续期仍未被复活才真回收。
     // 帧内/近邻的 raw 别名（无份额拷贝）在窗口内安全；长期零累积（窗口
@@ -755,6 +773,9 @@ impl AutoVM {
             rc_freed_total: AtomicU64::new(0),
             rc_traffic: AtomicU64::new(0),
             state_mutation_seq: AtomicU64::new(0),
+            path_versions: DashMap::new(),
+            dep_recorder_slot: std::sync::Mutex::new(None),
+            dep_rec_active: std::sync::atomic::AtomicBool::new(false),
             dying_heap: std::sync::Mutex::new(Vec::new()),
             interp_steps: AtomicU64::new(0),
             pool_state: std::sync::RwLock::new(crate::vm::rc::PoolState::new()),
@@ -1275,6 +1296,88 @@ impl AutoVM {
     /// PLAN-062: 状态突变序号只读访问（fire_timer 空转判定 + 测试断言）。
     pub fn state_mutation_seq(&self) -> u64 {
         self.state_mutation_seq.load(Ordering::Relaxed)
+    }
+
+    /// PLAN-047 T-03（档 C SD-09）: 归因写点定点 bump。`path = Some(字段)`
+    /// = A 类带名写（**同时** bump exact 与 `"*"` 通配——通配保证
+    /// materialize/容器粗粒度 dep 面不漏）；`path = None` = B 类容器/未知
+    /// 字段写（只 bump 通配）。全局 [`Self::state_mutation_seq`] 在此同步
+    /// bump——既有消费者（seq 快路径/fire_timer 空转判定）语义零变化。
+    pub fn bump_path(&self, heap_id: u64, path: Option<&str>) {
+        self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+        *self
+            .path_versions
+            .entry((heap_id, "*".to_string()))
+            .or_insert(0) += 1;
+        if let Some(p) = path {
+            *self
+                .path_versions
+                .entry((heap_id, p.to_string()))
+                .or_insert(0) += 1;
+        }
+    }
+
+    /// PLAN-047 T-03: 版本读（memo 门 version_fast 判定 + 测试断言）。
+    /// 无条目 = 0（未写过该 path）。
+    pub fn path_version(&self, heap_id: u64, path: &str) -> u64 {
+        self.path_versions
+            .get(&(heap_id, path.to_string()))
+            .map(|v| *v)
+            .unwrap_or(0)
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-04（档 C SD-08）: 依赖录制槽（VM 读臂挂钩的宿主面）
+    // ─────────────────────────────────────────────────────────────────
+
+    /// 激活录制（ui guard 持返回的 Arc；finish 时 [`Self::take_dep_recorder`]
+    /// 取走收编）。先填槽后开旗（Release）。
+    pub fn set_dep_recorder(
+        &self,
+        rec: std::sync::Arc<std::sync::Mutex<crate::vm::dep_track::RecState>>,
+    ) {
+        *self.dep_recorder_slot.lock().unwrap() = Some(rec);
+        self.dep_rec_active
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
+
+    /// 取走录制状态并去激活（ui guard finish 时收编进条目）。先关旗（ext
+    /// Acquire）后清槽——读臂从此零开销直落。
+    pub fn take_dep_recorder(&self) -> crate::vm::dep_track::RecState {
+        self.dep_rec_active
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        self.dep_recorder_slot
+            .lock()
+            .unwrap()
+            .take()
+            .map(|arc| {
+                arc.lock()
+                    .unwrap()
+                    .clone()
+            })
+            .unwrap_or_default()
+    }
+
+    /// VM 读臂录制口（未激活 = 一次原子 load 直落，非 memo 零开销红线）。
+    #[inline]
+    pub fn record_heap_read(&self, heap_id: u64, path: &str) {
+        if !self.dep_rec_active.load(std::sync::atomic::Ordering::Acquire) {
+            return;
+        }
+        if let Some(rec) = self.dep_recorder_slot.lock().unwrap().as_ref() {
+            rec.lock().unwrap().record(crate::vm::dep_track::DepKey::field(heap_id, path));
+        }
+    }
+
+    /// VM 读臂录制口（容器/结构体整体展开面，粗粒度 `"*"`）。
+    #[inline]
+    pub fn record_heap_read_any(&self, heap_id: u64) {
+        if !self.dep_rec_active.load(std::sync::atomic::Ordering::Acquire) {
+            return;
+        }
+        if let Some(rec) = self.dep_recorder_slot.lock().unwrap().as_ref() {
+            rec.lock().unwrap().record(crate::vm::dep_track::DepKey::any(heap_id));
+        }
     }
 
     /// PLAN-062 T12: 槽旧值释放——堆份额按影子、字符串按内容（Plan 510
@@ -5264,6 +5367,13 @@ impl AutoVM {
                                         guard.as_any().downcast_ref::<GenericInstanceData>()
                                     {
                                         if let Some(value) = instance.get_field(field_index) {
+                                            // PLAN-047 T-04: VM 读臂依赖录制
+                                            // （字段名可证面；未激活零开销）。
+                                            if let Some(name) =
+                                                instance.field_names.get(field_index)
+                                            {
+                                                self.record_heap_read(id, name);
+                                            }
                                             Self::push_value(task, value, self);
                                         } else {
                                             return Err(VMError::RuntimeError(format!(
@@ -5387,12 +5497,13 @@ impl AutoVM {
                 }
                 OpCode::LIST_PUSH_INT => {
                     // PLAN-062: 列表元素突变（同 SET_FIELD 口径）。
-                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+                    // PLAN-047 T-03: bump 移至 list_id 出栈后定点归因（B 类）。
                     // Plan 077 Phase 7: Optimized with inline helper
                     // Stack layout: [..., list_id, value:int]
                     // Pop value first (top of stack), then list_id
                     let value = task.ram.pop_i32();
                     let list_id = task.ram.pop_i32() as u64;
+                    self.bump_path(list_id, None);
 
                     // Get list from unified registry and downcast to ListData<i32>
                     use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
@@ -5426,11 +5537,12 @@ impl AutoVM {
                 }
                 OpCode::LIST_POP_INT => {
                     // PLAN-062: 列表元素突变（同 SET_FIELD 口径）。
-                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+                    // PLAN-047 T-03: bump 移至 list_id 出栈后定点归因（B 类）。
                     // Plan 077 Phase 7: Optimized with inline helper
                     // Stack layout: [..., list_id]
                     // Pop list_id, get list, pop element, push result
                     let list_id = task.ram.pop_i32() as u64;
+                    self.bump_path(list_id, None);
 
                     // Get list from unified registry and downcast to ListData<i32>
                     use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
@@ -5466,6 +5578,9 @@ impl AutoVM {
                     // Pop index first (top of stack), then list_id
                     let index = task.ram.pop_i32() as usize;
                     let list_id = task.ram.pop_i32() as u64;
+                    // PLAN-047 T-04: VM 读臂依赖录制（容器内容粗粒度面；
+                    // 无效 id 过录=保守方向）。
+                    self.record_heap_read_any(list_id);
 
                     // Get list from unified registry and downcast to ListData<i32>
                     use crate::vm::heap_object::{try_downcast_checked, TypeTag};
@@ -5500,13 +5615,14 @@ impl AutoVM {
                 }
                 OpCode::LIST_SET_INT => {
                     // PLAN-062: 列表元素突变（同 SET_FIELD 口径）。
-                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+                    // PLAN-047 T-03: bump 移至 list_id 出栈后定点归因（B 类）。
                     // Plan 077 Phase 7: Optimized with inline helper
                     // Stack layout: [..., list_id, index:int, value:int]
                     // Pop value first, then index, then list_id
                     let value = task.ram.pop_i32();
                     let index = task.ram.pop_i32() as usize;
                     let list_id = task.ram.pop_i32() as u64;
+                    self.bump_path(list_id, None);
 
                     // Get list from unified registry and downcast to ListData<i32>
                     use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
@@ -5750,6 +5866,9 @@ impl AutoVM {
                         if let Some(obj) = self.get_heap_object(obj_id) {
                             use crate::vm::types::ListData;
                             let guard = obj.read().unwrap();
+                            // PLAN-047 T-04: VM 读臂依赖录制（索引/按键读统一
+                            // 粗粒度 `"*"` 面——按键 A-able v1 不展开，保守）。
+                            self.record_heap_read_any(obj_id);
 
                             // Plan 539 W0 (DIV-PY-ITER-1): PyObjectHandle —
                             // GIL obj[index], result marshalled through the
@@ -5994,6 +6113,10 @@ impl AutoVM {
                             let index = auto_val::decode_i32(index_nv);
                             // Check bounds
                             if index >= 0 && (index as usize) < list.elems.len() {
+                                // PLAN-047 T-03: SET_ELEM 列表臂补 bump——普查
+                                // 发现该写面原无全局 seq bump（PLAN-062 遗漏，
+                                // memo 快路径陈旧命中窗口）；B 类定点归因。
+                                self.bump_path(array_id, None);
                                 // Plan 419: 记录旧元素引用,写锁释放后级联回收。
                                 old_elem_ref = match &list.elems[index as usize] {
                                     auto_val::Value::VmRef(r) => Some(r.id as u64),
@@ -6020,7 +6143,8 @@ impl AutoVM {
                                 ));
                             }
                             // PLAN-062: map 写算状态面突变（与 SET_FIELD 同口径）。
-                            self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+                            // PLAN-047 T-03: 定点归因（按键名 A-able，v1 落
+                            // exact+wildcard——bump_path 通配同 bump）。
                             let key_pool_idx = auto_val::decode_string(index_nv) as usize;
                             let key_name = self.strings.read().unwrap()
                                 .get(key_pool_idx)
@@ -6028,6 +6152,7 @@ impl AutoVM {
                                 .ok_or_else(|| VMError::RuntimeError(format!(
                                     "Invalid key string index: {}", key_pool_idx
                                 )))?;
+                            self.bump_path(array_id, Some(&key_name));
                             // 键语义镜像 SET_FIELD ObjectData 分支（PLAN-057）：
                             // 开放 HashMap，set=insert（JS obj.newKey = v 语义）。
                             let key = auto_val::ValueKey::Str(key_name.into());
@@ -6043,7 +6168,6 @@ impl AutoVM {
                                     "TypeError: map key must be a string".to_string(),
                                 ));
                             }
-                            self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
                             let key_pool_idx = auto_val::decode_string(index_nv) as usize;
                             let key_name = self.strings.read().unwrap()
                                 .get(key_pool_idx)
@@ -6051,6 +6175,8 @@ impl AutoVM {
                                 .ok_or_else(|| VMError::RuntimeError(format!(
                                     "Invalid key string index: {}", key_pool_idx
                                 )))?;
+                            // PLAN-047 T-03: 定点归因（同 ObjectData 臂）。
+                            self.bump_path(array_id, Some(&key_name));
                             // UI 轨 state map（StateObjectLit）表示。GET_ELEM 读臂
                             // 按 field_names 名取，故新键平行追加 fields/field_names
                             // （开键插入，镜像 PLAN-057 语义）；既有键走 set_field。
@@ -6076,7 +6202,6 @@ impl AutoVM {
                                     "TypeError: map key must be a string".to_string(),
                                 ));
                             }
-                            self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
                             let key_pool_idx = auto_val::decode_string(index_nv) as usize;
                             let key_name = self.strings.read().unwrap()
                                 .get(key_pool_idx)
@@ -6084,6 +6209,8 @@ impl AutoVM {
                                 .ok_or_else(|| VMError::RuntimeError(format!(
                                     "Invalid key string index: {}", key_pool_idx
                                 )))?;
+                            // PLAN-047 T-03: 定点归因（同上两臂）。
+                            self.bump_path(array_id, Some(&key_name));
                             if let Some(auto_val::Value::VmRef(r)) = map.get(&key_name) {
                                 old_elem_ref = Some(r.id as u64);
                             }
@@ -6110,9 +6237,10 @@ impl AutoVM {
                 }
                 // Plan 075: Object field assignment (obj.field = value)
                 OpCode::SET_FIELD => {
-                    // PLAN-062: 字段写算状态面突变（arm 入口计——错误路径
-                    // 多 bump 一次是保守安全方向）。
-                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+                    // PLAN-062: 字段写算状态面突变。PLAN-047 T-03: bump 移至
+                    // obj_id/field_name 解码后定点归因（A 类——exact+wildcard
+                    // 双 bump；错误路径此后不再多 bump，handler Err 本身置脏
+                    // 帧面，方向不变）。
                     use crate::vm::generic_registry::GenericInstanceData;
                     // Stack: value, object_id, field_name_idx (compiled in this order by codegen)
                     // Pop field_name_idx first (top of stack)
@@ -6151,6 +6279,9 @@ impl AutoVM {
                         )));
                     };
                     drop(strings); // Release lock before writing
+
+                    // PLAN-047 T-03: A 类定点归因（带名字段写）。
+                    self.bump_path(obj_id, Some(&field_name));
 
                     // Get object from registry (Plan 390 §15 H3b: ObjectData /
                     // GenericInstance / RustStdlib all in heap_objects).
@@ -6380,6 +6511,11 @@ impl AutoVM {
                         )));
                     };
                     drop(strings); // Release lock before potentially writing below
+
+                    // PLAN-047 T-04: VM 读臂依赖录制（field_name 可证面；
+                    // 非 i32 接收者的 decode 兜底 id 可能含位型碰撞——过录
+                    // 是保守安全方向，多失效只多一次重求值）。
+                    self.record_heap_read(obj_id, &field_name);
 
                     // PLAN-055: TAG_STRING 接收者——JS 语义 `.length` = 字符数
                     // （与 web a2ts `text.length` 同值）。此前 Str 接收者落

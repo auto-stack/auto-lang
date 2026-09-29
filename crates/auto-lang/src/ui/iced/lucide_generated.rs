@@ -1425,6 +1425,13 @@ pub(super) fn lookup(name: &str) -> Option<&'static str> {
         .map(|i| LUCIDE_ICONS[i].1)
 }
 
+/// PLAN-706: lucide kebab 名是否在册（vue 生成器防非法 import）。
+pub(crate) fn is_known(name: &str) -> bool {
+    LUCIDE_ICONS
+        .binary_search_by(|(k, _)| (*k).cmp(name))
+        .is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

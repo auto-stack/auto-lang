@@ -17,8 +17,10 @@
 //!
 //! 降级（宁缺勿错，正确性下限 = memo 错误只允许"变慢"）：扫描到静态不可证
 //! 形态（Block/Call/方法调用/FStr 插值/ForLoop/Conditional/Component/
-//! Outlet/StyleBinding）→ 不建条目直接原始路径；bindings 非空或 widget 声明
-//! computed → 该 builder 上下文整体不 memo。
+//! Outlet/StyleBinding）→ 不建条目直接原始路径；bindings 非空 → 该 builder
+//! 上下文整体不 memo。PLAN-047 T-07（档 C SD-11）：widget 声明 computed
+//! **不再整体排除**——computed 读面由动态依赖录制闭合（桥读通道 + 引擎读
+//! 臂 + 信号网三通道，级联吸收见 vm_bridge `computed_signal_hit`）。
 
 use std::collections::{HashMap, VecDeque};
 use std::hash::{Hash, Hasher};
@@ -55,12 +57,17 @@ pub const MEMO_SITE_FOR_ITEM: u8 = 7;
 pub const MEMO_SITE_MEMO_BLOCK: u8 = 8;
 
 /// PLAN-046 §4：per-site 分解计数（for_item/memo_block/outlet 门经
-/// `note_*_site` 记账；档 A 组件门只走全局计数器）。
+/// `note_*_site` 记账；档 A 组件门只走全局计数器）。PLAN-047 T-05：
+/// check-kind 分解（seq_fast/version_fast/fp_slow——三级判定的观测面，
+/// version_fast = 动态 dep 集版本全同的零重解析命中）。
 #[derive(Debug, Default, Clone)]
 pub struct SiteCounts {
     pub hits: u64,
     pub misses: u64,
     pub degraded: u64,
+    pub seq_fast: u64,
+    pub version_fast: u64,
+    pub fp_slow: u64,
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -108,6 +115,10 @@ pub struct MemoEntry {
     /// （命中帧以当前基路径+[新 index] 前缀化重放、ForIter.index 补丁）；
     /// `false` = 档 A 绝对路径重放（组件/outlet 结构稳定面，行为不变）。
     pub replay_relative: bool,
+    /// PLAN-047 T-05（档 C SD-11）: fill 期动态依赖集 + 基线版本对——
+    /// check 的 `version_fast` 判定面（零重解析）。`None` = 录制空集/
+    /// 超预算（落回既有静态扫描+指纹慢路径，行为与档 A/B 一致）。
+    pub dyn_deps: Option<Vec<(DepKey, u64)>>,
 }
 
 /// 每 VmBridge 一张 memo 表 + 计数器（AC-03 断言/T-07 度量走 counts）。
@@ -121,6 +132,10 @@ pub struct MemoCache {
     pub degraded: u64,
     pub evictions: u64,
     pub site_counts: HashMap<u8, SiteCounts>,
+    /// PLAN-047 T-05: check-kind 全局分解（观测面——AC-02 断言用）。
+    pub seq_fast: u64,
+    pub version_fast: u64,
+    pub fp_slow: u64,
 }
 
 impl Default for MemoCache {
@@ -134,6 +149,9 @@ impl Default for MemoCache {
             degraded: 0,
             evictions: 0,
             site_counts: HashMap::new(),
+            seq_fast: 0,
+            version_fast: 0,
+            fp_slow: 0,
         }
     }
 }
@@ -216,6 +234,38 @@ impl MemoCache {
         }
     }
 
+    /// PLAN-047 T-05: 刷新既有条目的动态 dep 基线版本（fp_slow 命中后调用
+    /// ——值同证明版本前进无害，基线前移让后续帧回到 version_fast）。
+    pub fn refresh_deps(&mut self, key: &MemoKey, pairs: Vec<(DepKey, u64)>) {
+        if let Some(e) = self.entries.get_mut(key) {
+            if e.dyn_deps.is_some() {
+                e.dyn_deps = Some(pairs);
+            }
+        }
+    }
+
+    /// PLAN-047 T-05: check-kind 计数（全局 + 可选 per-site 分解）。
+    pub fn note_seq_fast(&mut self, site: Option<u8>) {
+        self.seq_fast += 1;
+        if let Some(s) = site {
+            self.site_counts.entry(s).or_default().seq_fast += 1;
+        }
+    }
+
+    pub fn note_version_fast(&mut self, site: Option<u8>) {
+        self.version_fast += 1;
+        if let Some(s) = site {
+            self.site_counts.entry(s).or_default().version_fast += 1;
+        }
+    }
+
+    pub fn note_fp_slow(&mut self, site: Option<u8>) {
+        self.fp_slow += 1;
+        if let Some(s) = site {
+            self.site_counts.entry(s).or_default().fp_slow += 1;
+        }
+    }
+
     /// 全量失效（THEME_EPOCH 等全局面翻转时的兜底口；当前全局态走指纹
     /// 比对无需清表，此口留档与测试用）。
     pub fn clear(&mut self) {
@@ -231,6 +281,16 @@ impl MemoCache {
         self.entries.is_empty()
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// PLAN-047 T-01: 依赖录制器（档 C SD-08）
+//
+// T-04 起核心类型单源下沉 `crate::vm::dep_track`（vm 模块不依赖 ui 门控
+// 面；AutoVM 录制槽与读臂挂钩共用同组类型）——此处转发导出保持 T-01
+// 引用面（`memo_deps::DepKey` 等）零变化。
+// ─────────────────────────────────────────────────────────────────────
+
+pub use crate::vm::dep_track::{DepKey, RecState, DEP_PATH_ANY, REC_DEP_BUDGET};
 
 // ─────────────────────────────────────────────────────────────────────
 // 值指纹
@@ -650,8 +710,9 @@ fn scan_expr(e: &Expr, slots: &mut Vec<Expr>) -> Result<(), &'static str> {
         | Expr::Char(_)
         | Expr::Str(_)
         | Expr::CStr(_) => Ok(()),
-        // 确定式解析形态（bindings 空 + computed 空的门下，求值 = 纯 state
-        // 读/物化/组合）——整表达式入槽，check 时经同一通道重解析。
+        // 确定式解析形态（bindings 空的门下，求值 = 纯 state 读/物化/组合/
+        // computed 信号[档 C 录制覆盖]）——整表达式入槽，check 时经同一通
+        // 道重解析。
         Expr::Ident(_) | Expr::Dot(_, _) | Expr::Unary(_, _) | Expr::Bina(_, _, _) => {
             slots.push(e.clone());
             Ok(())
@@ -977,6 +1038,89 @@ mod tests {
     use crate::aura::{AuraPropValue, AuraTextContent};
     use auto_val::{Array, AutoStr};
 
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-01: plan047_recorder_tests（Recorder 语义 4 条）
+    // ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn plan047_recorder_record_and_key_shapes() {
+        let mut rec = RecState::default();
+        rec.record(DepKey::field(7, "count"));
+        rec.record(DepKey::any(9));
+        assert_eq!(rec.deps.len(), 2);
+        assert!(rec.deps.contains(&DepKey {
+            heap_id: 7,
+            path: "count".to_string()
+        }));
+        assert!(
+            rec.deps.contains(&DepKey {
+                heap_id: 9,
+                path: DEP_PATH_ANY.to_string()
+            }),
+            "any() 记 DEP_PATH_ANY path"
+        );
+        assert!(!rec.overflow);
+        // 重复录同键 = 幂等（BTreeSet 集语义）。
+        rec.record(DepKey::field(7, "count"));
+        assert_eq!(rec.deps.len(), 2);
+    }
+
+    #[test]
+    fn plan047_recorder_budget_overflow_discards_whole_set() {
+        let mut rec = RecState::default();
+        for i in 0..REC_DEP_BUDGET {
+            rec.record(DepKey::field(1, &format!("f{i}")));
+        }
+        assert!(!rec.overflow);
+        assert_eq!(rec.deps.len(), REC_DEP_BUDGET);
+        // 第 257 条 → overflow 置位且**整集弃置**（半录制集 = 盲区，绝不半信）。
+        rec.record(DepKey::field(1, "one-too-many"));
+        assert!(rec.overflow);
+        assert!(rec.deps.is_empty());
+        // overflow 后继续录不再恢复。
+        rec.record(DepKey::field(1, "more"));
+        assert!(rec.overflow && rec.deps.is_empty());
+    }
+
+    #[test]
+    fn plan047_recorder_absorb_union_and_overflow_propagation() {
+        let mut outer = RecState::default();
+        outer.record(DepKey::field(1, "a"));
+        let mut inner = RecState::default();
+        inner.record(DepKey::field(2, "b"));
+        inner.record(DepKey::field(1, "a")); // 与外层重叠 → 并集去重
+        outer.absorb(&inner);
+        assert_eq!(outer.deps.len(), 2);
+        assert!(!outer.overflow);
+
+        // overflow 传播：内层溢出 → 外层弃集置溢（外层集不完整 = 盲区）。
+        let mut outer2 = RecState::default();
+        outer2.record(DepKey::field(1, "x"));
+        let mut inner2 = RecState::default();
+        for i in 0..=REC_DEP_BUDGET {
+            inner2.record(DepKey::field(3, &format!("g{i}")));
+        }
+        assert!(inner2.overflow);
+        outer2.absorb(&inner2);
+        assert!(outer2.overflow);
+        assert!(outer2.deps.is_empty());
+    }
+
+    #[test]
+    fn plan047_recorder_absorb_budget_boundary() {
+        // 外层已有 256-1 条，吸收 2 条 → 越界弃集（并集也守预算）。
+        let mut outer = RecState::default();
+        for i in 0..REC_DEP_BUDGET - 1 {
+            outer.record(DepKey::field(1, &format!("o{i}")));
+        }
+        let mut inner = RecState::default();
+        inner.record(DepKey::field(2, "i1"));
+        inner.record(DepKey::field(2, "i2"));
+        outer.absorb(&inner);
+        assert!(outer.overflow);
+        assert!(outer.deps.is_empty());
+    }
+
     fn ident_dot(field: &str) -> Expr {
         // `.field` 的解析形态：Dot(Ident("."), field)
         Expr::Dot(
@@ -1142,6 +1286,7 @@ mod tests {
             probe_replay: vec![],
             idmap_replay: vec![],
             replay_relative: false,
+            dyn_deps: None,
         }
     }
 

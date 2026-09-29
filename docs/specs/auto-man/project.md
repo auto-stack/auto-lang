@@ -52,6 +52,13 @@ plan-637 共 16 个 demo 以此形态消费（capability-tests/style-import 为�
   的 `import from '../auto-sources'` 落 TS2307（P657-D2① 根修，vue.rs
   `build_vue_project` 开头补写）。
 
+## shadcn 脚手架传递依赖（PLAN-706 SD-03）
+
+`vue_shadcn::materialize` 在拷贝前对请求集做**有界传递闭包（≤2 跳）**：扫描已选
+组件源码内 `@/components/ui/<name>`，命中烘焙包的并入本次 materialize。典型：
+`form` → `label`（FormLabel.vue 内部 import）。无闭包时 Form 页整页 TS2307/500。
+Write-if-missing 与 CLI 回退语义不变。
+
 ## pac.at 四名称契约（PLAN-015）
 
 每个 AutoUI app 在 pac.at 声明四个名称，展示名与工程标识解绑：
