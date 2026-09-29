@@ -474,22 +474,25 @@ pub fn virtual_window_element<'a>(
     // --- 八向缩放把手（stack 顶层；边 6px、角 14px）---
     let mut layers: Vec<Element<'a, DesktopMessage>> = Vec::with_capacity(9);
     layers.push(win_box.into());
+    let resize_msg = |edge: ResizeEdge| {
+        DesktopMessage::Wm(WmCommand::StartResize { wid, edge })
+    };
     layers.push(handle(0.0, 0.0,
-        Length::Fill, Length::Fixed(EDGE), wid, ResizeEdge::North));
+        Length::Fill, Length::Fixed(EDGE), ResizeEdge::North, resize_msg(ResizeEdge::North)));
     layers.push(handle(rect.height - EDGE, 0.0,
-        Length::Fill, Length::Fill, wid, ResizeEdge::South));
+        Length::Fill, Length::Fill, ResizeEdge::South, resize_msg(ResizeEdge::South)));
     layers.push(handle(0.0, 0.0,
-        Length::Fixed(EDGE), Length::Fill, wid, ResizeEdge::West));
+        Length::Fixed(EDGE), Length::Fill, ResizeEdge::West, resize_msg(ResizeEdge::West)));
     layers.push(handle(0.0, rect.width - EDGE,
-        Length::Fill, Length::Fill, wid, ResizeEdge::East));
+        Length::Fill, Length::Fill, ResizeEdge::East, resize_msg(ResizeEdge::East)));
     layers.push(handle(0.0, 0.0,
-        Length::Fixed(CORNER), Length::Fixed(CORNER), wid, ResizeEdge::NorthWest));
+        Length::Fixed(CORNER), Length::Fixed(CORNER), ResizeEdge::NorthWest, resize_msg(ResizeEdge::NorthWest)));
     layers.push(handle(0.0, rect.width - CORNER,
-        Length::Fill, Length::Fixed(CORNER), wid, ResizeEdge::NorthEast));
+        Length::Fill, Length::Fixed(CORNER), ResizeEdge::NorthEast, resize_msg(ResizeEdge::NorthEast)));
     layers.push(handle(rect.height - CORNER, 0.0,
-        Length::Fixed(CORNER), Length::Fill, wid, ResizeEdge::SouthWest));
+        Length::Fixed(CORNER), Length::Fill, ResizeEdge::SouthWest, resize_msg(ResizeEdge::SouthWest)));
     layers.push(handle(rect.height - CORNER, rect.width - CORNER,
-        Length::Fill, Length::Fill, wid, ResizeEdge::SouthEast));
+        Length::Fill, Length::Fill, ResizeEdge::SouthEast, resize_msg(ResizeEdge::SouthEast)));
 
     // --- 焦点环 overlay（PLAN-526 T4；Stack 最顶层）---
     // 聚焦 accent 2px 环：非捕获空层事件穿透到下层把手，且永不被客户区
@@ -542,21 +545,23 @@ pub fn virtual_window_element<'a>(
 }
 
 /// 缩放把手：透明命中区（pad 定位于窗体局部坐标，其余维度 Fill 补齐）。
-/// PLAN-526 T5：挂系统缩放光标（拖拽可供性）。
+/// PLAN-526 T5：挂系统缩放光标（拖拽可供性）。PLAN-709：on_press 消息
+/// 参数化——虚拟窗（StartResize）与原生槽位（NativeSlotStartResize）
+/// 共用同一把手几何。
 fn handle<'a>(
     pad_top: f32,
     pad_left: f32,
     w: Length,
     h: Length,
-    wid: crate::ui::session::Wid,
     edge: ResizeEdge,
+    on_press: DesktopMessage,
 ) -> Element<'a, DesktopMessage> {
     container(
         mouse_area(
             container(text("")).width(w).height(h),
         )
         .interaction(resize_cursor(edge))
-        .on_press(DesktopMessage::Wm(WmCommand::StartResize { wid, edge })),
+        .on_press(on_press),
     )
     .width(Length::Fill)
     .height(Length::Fill)
@@ -581,10 +586,16 @@ fn resize_cursor(edge: ResizeEdge) -> iced::mouse::Interaction {
 /// 关闭）+ 1px 边框环；中央透明不绘制（假洞：原生窗口在 OS z 序上盖住
 /// 槽位客户区）。原生窗口实际摆放到标题条以下客户区——内缩换算见
 /// renderer `sync_native_geometry`（与本模块 TITLEBAR_H/BORDER 同源）。
+/// PLAN-709 升格（交互主体化）：标题条整条为拖拽把手（StartDrag 同语义，
+/// grab 偏移 update 侧按 last_cursor 现算）+ 八向缩放把手（复用 vwin
+/// `handle` 几何）+ 焦点/交互视觉态（边框 accent 化）；客户区仍透明
+/// （原生窗内容点击归 OS 层，聚焦跟随走 FOREGROUND 钩子，T-04）。
 pub fn native_slot_element<'a>(
     slot_id: crate::ui::native_dock::NativeSlotId,
     title: &str,
     rect: iced::Rectangle,
+    focused: bool,
+    interacting: bool,
 ) -> Element<'a, DesktopMessage> {
     let min_btn = mouse_area(
         container(text("—").size(12))
@@ -602,18 +613,23 @@ pub fn native_slot_element<'a>(
     )
     .on_press(DesktopMessage::Wm(WmCommand::NativeSlotClose(slot_id)));
 
-    let titlebar = row![
-        container(text(title.to_string()).size(12))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_y(Length::Fill)
-            .padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 8.0 }),
-        min_btn,
-        close_btn,
-    ]
-    .spacing(4.0)
-    .width(Length::Fill)
-    .height(Length::Fixed(TITLEBAR_H));
+    // 标题条整条 = 拖拽把手（vwin titlebar 同语义；Move 光标供拖拽可供性）。
+    let titlebar = mouse_area(
+        row![
+            container(text(title.to_string()).size(12))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_y(Length::Fill)
+                .padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 8.0 }),
+            min_btn,
+            close_btn,
+        ]
+        .spacing(4.0)
+        .width(Length::Fill)
+        .height(Length::Fixed(TITLEBAR_H)),
+    )
+    .interaction(iced::mouse::Interaction::Move)
+    .on_press(DesktopMessage::Wm(WmCommand::NativeSlotStartDrag { slot_id }));
 
     // 标题条 + 透明客户区（槽位洞：原生窗口从桌面窗 z 上方露出）。
     let body = column![
@@ -623,21 +639,57 @@ pub fn native_slot_element<'a>(
     .width(Length::Fill)
     .height(Length::Fill);
 
+    // 边框环视觉态：交互中（拖拽/缩放）> 聚焦 > 常态。accent 化 = 与
+    // vwin 焦点环同一主色语义（PLAN-526 T4 焦点环族）。
+    let accent = token(crate::ui::style::Color::Primary);
+    let border_color = if interacting || focused {
+        accent
+    } else {
+        token(crate::ui::style::Color::Surface)
+    };
+    let border_width = if interacting { BORDER + 1.0 } else { BORDER };
     let slot_box = container(body)
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(|_t| Style {
+        .style(move |_t| Style {
             border: Border {
-                color: token(crate::ui::style::Color::Surface),
-                width: BORDER,
+                color: border_color,
+                width: border_width,
                 radius: 0.0.into(),
             },
             ..Default::default()
         });
 
-    container(slot_box)
+    // 八向缩放把手（vwin 同款 stack 顶层几何；槽位命令域）。
+    let resize_msg = |edge: ResizeEdge| {
+        DesktopMessage::Wm(WmCommand::NativeSlotStartResize { slot_id, edge })
+    };
+    let mut layers: Vec<Element<'a, DesktopMessage>> = Vec::with_capacity(9);
+    layers.push(slot_box.into());
+    layers.push(handle(0.0, 0.0,
+        Length::Fill, Length::Fixed(EDGE), ResizeEdge::North, resize_msg(ResizeEdge::North)));
+    layers.push(handle(rect.height - EDGE, 0.0,
+        Length::Fill, Length::Fill, ResizeEdge::South, resize_msg(ResizeEdge::South)));
+    layers.push(handle(0.0, 0.0,
+        Length::Fixed(EDGE), Length::Fill, ResizeEdge::West, resize_msg(ResizeEdge::West)));
+    layers.push(handle(0.0, rect.width - EDGE,
+        Length::Fill, Length::Fill, ResizeEdge::East, resize_msg(ResizeEdge::East)));
+    layers.push(handle(0.0, 0.0,
+        Length::Fixed(CORNER), Length::Fixed(CORNER), ResizeEdge::NorthWest, resize_msg(ResizeEdge::NorthWest)));
+    layers.push(handle(0.0, rect.width - CORNER,
+        Length::Fill, Length::Fixed(CORNER), ResizeEdge::NorthEast, resize_msg(ResizeEdge::NorthEast)));
+    layers.push(handle(rect.height - CORNER, 0.0,
+        Length::Fixed(CORNER), Length::Fill, ResizeEdge::SouthWest, resize_msg(ResizeEdge::SouthWest)));
+    layers.push(handle(rect.height - CORNER, rect.width - CORNER,
+        Length::Fill, Length::Fill, ResizeEdge::SouthEast, resize_msg(ResizeEdge::SouthEast)));
+
+    let slot_stack = iced::widget::Stack::with_children(layers)
         .width(Length::Fixed(rect.width))
-        .height(Length::Fixed(rect.height))
+        .height(Length::Fixed(rect.height));
+
+    container(slot_stack)
+        .width(Length::Fill)
+        .height(Length::Fill)
         .padding(Padding { top: rect.y, left: rect.x, right: 0.0, bottom: 0.0 })
         .align_x(Alignment::Start)
         .align_y(Alignment::Start)

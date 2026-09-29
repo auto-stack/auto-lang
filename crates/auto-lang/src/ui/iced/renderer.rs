@@ -21326,12 +21326,24 @@ fn compare_pngs(
             }
             // Plan 473 T6：槽位框 chrome 层（虚拟窗之上；中央透明不绘制——
             // 原生窗口在 OS z 序上盖住槽位客户区，标题条/边框环露出桌面侧）。
+            // PLAN-709：聚焦/交互视觉态入参（T-04 起装配序改统一 z 序插序）。
             for (slot_id, slot) in host.wm.native_slots.clone() {
                 if let Some(local) = host.wm.native_slot_local_rects.get(&slot_id) {
+                    let focused = host.wm.focused
+                        == Some(crate::ui::session::WmState::native_slot_pseudo_wid(slot_id));
+                    let interacting = host.wm.interaction.is_some_and(|i| match i {
+                        crate::ui::session::WmInteraction::NativeDrag { slot_id: s, .. }
+                        | crate::ui::session::WmInteraction::NativeResize { slot_id: s, .. } => {
+                            s == slot_id
+                        }
+                        _ => false,
+                    });
                     layers.push(crate::ui::iced::virtual_window::native_slot_element(
                         slot_id,
                         &slot.title_cache,
                         *local,
+                        focused,
+                        interacting,
                     ));
                 }
             }
