@@ -1410,11 +1410,24 @@ async fn execute_autovm_with_path(
     // PLAN-057 T7：注入源文本——web 内建编译期门禁的 `// vm-safe-allow`
     // 行级豁免需要按 current_source_line 回读原始行。
     codegen.source_text = Some(code.to_string());
-    // Separate type/ext declarations from other statements
-    // Type declarations and ext blocks stay at global level, other code goes into script wrapper
+    // Separate type declarations from other statements.
+    // PLAN-093 (G-7) 修正：Ext 不再与 TypeDecl 同区——ext 块（解析器已把
+    // ext 合并进 `type X` 的形态除外；未合并的独立 Ext 在此）此前先于
+    // other_stmts 的 Use 编码，方法体 import_scope 恒空 → 裸名 reloc
+    // 链接失败。Ext 归入 other_stmts 按源序编码（use 在文件头自然先行）；
+    // TypeDecl 仍最前（ext 方法依赖类型已注册）。
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
-        matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
+        matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::EnumDecl(_))
     });
+    // PLAN-093 (G-7) 修正：Use 先于 TypeDecl 编码——解析器把 ext 合并进
+    // `type X`，合并方法随 TypeDecl pass 编码；use 在 other_stmts 里会更晚
+    // 处理，方法体 import_scope 恒空 → 裸名 reloc 链接失败（fixture 实证）。
+    let (uses, other_stmts): (Vec<_>, Vec<_>) = other_stmts.into_iter().partition(|stmt| {
+        matches!(stmt, crate::ast::Stmt::Use(_))
+    });
+    for stmt in &uses {
+        codegen.compile_stmt(stmt)?;
+    }
 
     // First, compile type declarations at global level
     for stmt in &type_decls {

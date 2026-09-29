@@ -1938,6 +1938,17 @@ impl CompileSession {
         // (e.g. "db.notes" instead of "notes"), providing cross-module isolation.
         codegen.current_module = module_name.clone();
 
+        // PLAN-093 (G-7) 修正：Use 必须最先编译——解析器把 ext 块合并进
+        // `type X`（AST 中 Ext 消失），合并后的方法随 TypeDecl pass 编码；
+        // Use 原在 pass3 才处理 → 方法体内 import_scope 恒空 → 裸名 reloc
+        // 链接失败（"Use a `use` statement to import" 实证）。use 无依赖
+        // TypeDecl 的面，提到最前安全。
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::Use(_) = stmt {
+                codegen.compile_stmt(stmt)?;
+            }
+        }
+
         // Plan 346 revert: compile ALL statements in declaration order (Type,
         // Store, Fn, Use) as normal top-level bytecode — do NOT wrap Store
         // into __module_init. The __module_init approach broke object literal
@@ -1983,12 +1994,12 @@ impl CompileSession {
                 codegen.compile_stmt(stmt)?;
             }
         }
-        // Compile Fn, Ext, Use.
+        // Compile Fn, Ext (Use already compiled first above — do NOT
+        // re-process, double handle_use_import/import 记录虽幂等，但
+        // rust-import 臂的 rust_native_map 扩展与诊断会重复)。
         for stmt in &ast.stmts {
             match stmt {
-                crate::ast::Stmt::Fn(_)
-                | crate::ast::Stmt::Ext(_)
-                | crate::ast::Stmt::Use(_) => {
+                crate::ast::Stmt::Fn(_) | crate::ast::Stmt::Ext(_) => {
                     codegen.compile_stmt(stmt)?;
                 }
                 _ => {}
