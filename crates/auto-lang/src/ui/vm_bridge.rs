@@ -285,6 +285,42 @@ pub struct ComputedSignal {
     pub deps: Vec<(crate::ui::memo_deps::DepKey, u64)>,
 }
 
+/// PLAN-706 r2 T-10: 值是否携带堆身份（信号网准入检查——携带者不入网）。
+/// 直接载体 = `VmRef` / ≥4M 整数约定形（`record_dep_value_heap` 同阈值）/
+/// `ValueRef`；容器递归（Array/Obj/Pair/Some/Ok）；不可证净的复合变体
+/// （Node/Widget/View 等内嵌 prop 值）保守按携带处理。标量/字符串纯值
+/// （AutoStr 为自有拷贝，非池索引）放行。
+#[cfg(feature = "ui-interpreter")]
+fn value_carries_heap_identity(v: &Value) -> bool {
+    match v {
+        Value::VmRef(_) | Value::ValueRef(_) => true,
+        Value::Int(i) => *i >= 4_000_000,
+        Value::Uint(u) => *u as u64 >= 4_000_000,
+        Value::USize(s) => *s as u64 >= 4_000_000,
+        Value::I64(l) => *l >= 4_000_000,
+        Value::Array(a) | Value::Block(a) => a.values.iter().any(value_carries_heap_identity),
+        Value::Obj(o) => o.iter().any(|(_, v)| value_carries_heap_identity(v)),
+        Value::Pair(_, inner) => value_carries_heap_identity(inner),
+        Value::Some(inner) | Value::Ok(inner) => value_carries_heap_identity(inner),
+        // 复合载体不可证净（内嵌 prop/字段值可能含堆身份）——保守不入网。
+        Value::Node(_)
+        | Value::Widget(_)
+        | Value::Model(_)
+        | Value::View(_)
+        | Value::Meta(_)
+        | Value::Method(_)
+        | Value::Instance(_)
+        | Value::Args(_)
+        | Value::Grid(_)
+        | Value::Closure(_)
+        | Value::Future(_)
+        | Value::Fn(_)
+        | Value::ExtFn(_)
+        | Value::Type(_) => true,
+        _ => false,
+    }
+}
+
 /// PLAN-702 T-04: root-state busy 镜像字段名——List&lt;str&gt;（namespaced
 /// handler fn 名集），.at 可查询（如 `.store.__busy_handlers.len() > 0`）。
 const BUSY_STATE_FIELD: &str = "__busy_handlers";
@@ -2038,6 +2074,15 @@ impl VmBridge {
 
     /// computed 信号入库（求值期录制集 → 基线对；空集/超预算不入网——
     /// 盲区面退回每帧重算，同档 A/B 行为）。
+    ///
+    /// PLAN-706 r2 T-10 回归守卫：缓存值**不得携带堆身份**（`VmRef` /
+    /// ≥4M 整数约定形 / `ValueRef` / 不可证净的复合变体）。`Value` 的克隆
+    /// 是裸 id 复制、零 RC 份额——状态替换（如 tab 切换的 doc/body 交换）
+    /// 释放旧堆对象后，信号命中把悬垂 id 送进渲染（`vmref_to_vec` →
+    /// `get_heap_object`），debug 被 RC canary 判 UAF panic（jade-edit
+    /// vm_matrix [7 tab] 标脏弧 exit=101），release 无 canary 落 id 复用
+    /// 静默错读（确认弹层滞留面）。不入网 = 退回每帧重算（pre-706 行为），
+    /// 与空集/超预算退档同族。
     #[cfg(feature = "ui-interpreter")]
     pub fn computed_signal_store(
         &self,
@@ -2047,6 +2092,9 @@ impl VmBridge {
         rec: &crate::ui::memo_deps::RecState,
     ) {
         if rec.overflow || rec.deps.is_empty() {
+            return;
+        }
+        if value_carries_heap_identity(&cached) {
             return;
         }
         let deps = self.dep_pairs(&rec.deps);
@@ -3386,6 +3434,105 @@ widget OpProbeOrig {
         assert!(bridge.state_fields().is_empty());
         assert!(bridge.handler_names().is_empty());
 
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-706 r2 T-10: 信号网堆身份准入守卫（computed_signal_store）。
+    // 回归面 = jade-edit vm_matrix [7 tab] 标脏弧 UAF（缓存 VmRef 悬垂 →
+    // rc canary panic）/release 确认弹层滞留。此组测试在修复前红：
+    // pre-fix store 照收 VmRef，信号表被悬垂 id 污染。
+    // ─────────────────────────────────────────────────────────────────
+
+    fn plan706_signal_rec() -> crate::ui::memo_deps::RecState {
+        let mut rec = <crate::ui::memo_deps::RecState as Default>::default();
+        rec.record(crate::ui::memo_deps::DepKey::field(1, "rows"));
+        rec
+    }
+
+    /// 堆身份载体（直载 VmRef / ≥4M 整数约定形 / 嵌套容器内）不得入网。
+    #[test]
+    fn plan706_signal_store_skips_heap_identity_value() {
+        let widget = make_test_widget("SigGuard", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let rec = plan706_signal_rec();
+
+        // 直载 VmRef → 拒收。
+        bridge.computed_signal_store(
+            "SigGuard",
+            "m",
+            Value::VmRef(auto_val::VmRef { id: 4_000_555 }),
+            &rec,
+        );
+        assert!(
+            bridge.computed_signals.borrow().is_empty(),
+            "VmRef 载体必须被拒收（UAF 回归守卫）"
+        );
+
+        // 嵌套载体（数组内 VmRef / ≥4M 整数）→ 拒收。
+        bridge.computed_signal_store(
+            "SigGuard",
+            "m",
+            Value::Array(auto_val::Array {
+                values: vec![Value::Int(3), Value::VmRef(auto_val::VmRef { id: 99 })],
+            }),
+            &rec,
+        );
+        assert!(
+            bridge.computed_signals.borrow().is_empty(),
+            "数组内嵌 VmRef 载体必须被拒收"
+        );
+        bridge.computed_signals.borrow_mut().clear();
+
+        bridge.computed_signal_store(
+            "SigGuard",
+            "m",
+            Value::Array(auto_val::Array {
+                values: vec![Value::Int(4_000_555)],
+            }),
+            &rec,
+        );
+        assert!(
+            bridge.computed_signals.borrow().is_empty(),
+            "≥4M 整数约定形（堆身份）载体必须被拒收"
+        );
+
+        // 正控：纯标量放行入网。
+        bridge.computed_signal_store("SigGuard", "m", Value::Int(7), &rec);
+        assert_eq!(
+            bridge.computed_signals.borrow().len(),
+            1,
+            "纯标量载体应正常入网"
+        );
+    }
+
+    /// 入库/命中循环幂等 + 状态变化后重填保新鲜（弹层滞留的缓存陈旧面：
+    /// 旧值不得跨状态替换被复用）。
+    #[test]
+    fn plan706_signal_store_hit_cycle_idempotent_and_fresh() {
+        let widget = make_test_widget(
+            "SigCycle",
+            vec![AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: crate::ast::Expr::Int(1),
+                decorators: vec![],
+            }],
+        );
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        let rec = plan706_signal_rec();
+
+        bridge.computed_signal_store("SigCycle", "m", Value::Int(1), &rec);
+        bridge.computed_signal_store("SigCycle", "m", Value::Int(1), &rec);
+        assert_eq!(bridge.computed_signals.borrow().len(), 1, "同键重入库存幂等（单条目）");
+
+        let hit = bridge.computed_signal_hit("SigCycle", "m");
+        assert!(matches!(hit, Some(Value::Int(1))), "命中返回缓存值");
+
+        // 状态替换 → 重填新值 → 命中必须返回新值（不陈旧）。
+        bridge.write_state("count", Value::Int(9)).unwrap();
+        bridge.computed_signal_store("SigCycle", "m", Value::Int(9), &rec);
+        let hit = bridge.computed_signal_hit("SigCycle", "m");
+        assert!(matches!(hit, Some(Value::Int(9))), "重填后命中返回新值");
     }
 
     // ─────────────────────────────────────────────────────────────────
