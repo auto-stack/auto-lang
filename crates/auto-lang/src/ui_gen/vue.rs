@@ -1358,10 +1358,20 @@ impl VueGenerator {
     /// 与动态名降级同族，避免 `import { Sample }` 整页炸掉。
     fn lucide_component_name(kebab: &str) -> String {
         let pascal = Self::kebab_to_pascal(kebab);
-        if crate::ui::iced::lucide_generated::is_known(kebab) {
+        // PLAN-705 merge-fix：全量表在 ui-gated 的 lucide_generated 里——
+        // 纯 VM 形态（--no-default-features）无此表，全量校验跳过（保守
+        // 直出 Pascal 名，706 的回退语义仅在 ui 形态生效）。
+        #[cfg(feature = "ui")]
+        {
+            if crate::ui::iced::lucide_generated::is_known(kebab) {
+                return pascal;
+            }
+            return "Circle".to_string();
+        }
+        #[cfg(not(feature = "ui"))]
+        {
+            let _ = kebab;
             pascal
-        } else {
-            "Circle".to_string()
         }
     }
 
