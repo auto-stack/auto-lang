@@ -1,6 +1,13 @@
-# AutoShell 状态投影协议 v1.10（S2 接缝合同）
+# AutoShell 状态投影协议 v1.11（S2 接缝合同）
 
-> **版本**：v1.10（2026-09-18，auto-os PLAN-027 rev2：**typed 快照通道**——投影语义的 plain-data 载体入册（`ShellProjection`/`ShellEvent`/`ShellClock`/懒挂载 payload/`ShellManifest`），指纹门控/原子换装/召唤事件/clock 独立脏帧**语义零漂移**，解释态通道双轨期不动（双载体并存）；命令上行 typed 接缝 `DesktopBusHandle`（§4 词表不变，枚举载荷单方法 + send_record = parse_records 单点分型）。详见 §6 v1.10 节）；
+> **版本**：v1.11（2026-09-30，auto-lang PLAN-709：native 槽位条目升格
+> **workspace + focused 实时**——`__wm_wins`/`__wm_mru`/switcher 快照的
+> native 条目补 `workspace`（分区下标串，App 条目同口径）与 `focused`
+> 实时位（v1.3「恒空」退役：WM focused 伪 Wid 域代管后实时投影）；指纹
+> 窗段 native 部分扩为 `"N{slot}:{focused},{workspace},"`（App 段同型）；
+> typed 载体 `ShellWin` 字段本已全携带，**wire 零变化**纯构建面增量）。
+> 详见 §6 v1.11 节）。
+> v1.10（2026-09-18，auto-os PLAN-027 rev2：**typed 快照通道**——投影语义的 plain-data 载体入册（`ShellProjection`/`ShellEvent`/`ShellClock`/懒挂载 payload/`ShellManifest`），指纹门控/原子换装/召唤事件/clock 独立脏帧**语义零漂移**，解释态通道双轨期不动（双载体并存）；命令上行 typed 接缝 `DesktopBusHandle`（§4 词表不变，枚举载荷单方法 + send_record = parse_records 单点分型）。详见 §6 v1.10 节）；
 > v1.9（2026-09-18，双增量并行协调叠号——486/487 先例）：
 > v1.8 = auto-os PLAN-014 shell-ux-polish-v2（纯字段 + 总线语义增量、
 > **零新动词**——`__wm_date`、`__wm_running` desktop 扩注、
@@ -40,10 +47,10 @@
 
 | 字段 | 类型 | 语义 | 权属 | 引入 |
 |---|---|---|---|---|
-| `__wm_wins` | Obj 数组 `{wid:str, title:str, focused:str, workspace:str, app:str, icon:str, native:str, pager:str, pinned:str, dup_app:str}` | **全部**虚拟窗（跨 workspace 全集，dock 运行指示消费；可见性由宿主绘制层自过滤）。`focused` = `"1"/""`；`workspace` = 分区下标串；`app` = 注册表 id（boot 窗缺省 `""`）；`icon` = lucide 名（注册表实时查 → 缺省 `"app-window"`）。**v1.3 native 槽位条目**：Docked 原生窗口追加在尾部，字段集 `{wid, title, focused, native, icon}`（workspace/app 不适用省略）——`wid` = `"N<slot_id>"` **独立编码空间**（`N` 前缀 + 十进制槽位 id，与 App wid 的纯数字空间隔离；shell 侧零解析成本区分两类条目）；`native` = `"1"`（App 条目恒空串，分支判据统一）；`focused` 恒空（native 焦点域在 OS 层，WM 不代管）；`icon` 占位 `"app-window"`（HICON 提取为增强候选）。**v1.5 `pager` 旗标**：`"1"` = 本窗属其分区 z_order 前 4（pager 缩略网格≤4 截断消费；溢出窗⊕空串，与 `ws.more` 标签配套——.at 无过滤后截断原语，宿主派生保持 I9；mru/native 条目恒空串）。**F2 走查增补 `pinned`/`dup_app`**：`"1"/""`——本窗 app 已固定 / 同 app 已有更前位（z_order 序首见之外）非隐藏窗；dock 条目跳过判据（**等式消费**——原 `__dock_pinned_csv.contains(...)` 为 view 条件方法调用死点恒 false，实机固定图标+运行图标并存实证；`dup_app` 兼承"同类 app 共享一图标"用户裁定；mru 条目恒空串；窗开/关/hide 翻 win 指纹段随写刷新） | 宿主写 | v1（native 条目/`native` 字段：v1.3；pager：v1.5；pinned/dup_app：F2 走查增补） |
+| `__wm_wins` | Obj 数组 `{wid:str, title:str, focused:str, workspace:str, app:str, icon:str, native:str, pager:str, pinned:str, dup_app:str}` | **全部**虚拟窗（跨 workspace 全集，dock 运行指示消费；可见性由宿主绘制层自过滤）。`focused` = `"1"/""`；`workspace` = 分区下标串；`app` = 注册表 id（boot 窗缺省 `""`）；`icon` = lucide 名（注册表实时查 → 缺省 `"app-window"`）。**v1.3 native 槽位条目**：Docked 原生窗口追加在尾部，字段集 `{wid, title, focused, native, icon}`（workspace/app 不适用省略）——`wid` = `"N<slot_id>"` **独立编码空间**（`N` 前缀 + 十进制槽位 id，与 App wid 的纯数字空间隔离；shell 侧零解析成本区分两类条目）；`native` = `"1"`（App 条目恒空串，分支判据统一）；`focused` 恒空（native 焦点域在 OS 层，WM 不代管）；`icon` 占位 `"app-window"`（HICON 提取为增强候选）。**v1.11 workspace/focused 实时**：native 条目补 `workspace`（分区下标串，dock 时归属当前分区，send_to/隐现跟随）并翻 `focused` 为实时位（`"1"/""`——PLAN-709 WM focused 伪 Wid 域代管后实时投影，chrome 焦点环/任务栏高亮消费），字段集 `{wid, title, focused, workspace, native, icon, pager}`。**v1.5 `pager` 旗标**：`"1"` = 本窗属其分区 z_order 前 4（pager 缩略网格≤4 截断消费；溢出窗⊕空串，与 `ws.more` 标签配套——.at 无过滤后截断原语，宿主派生保持 I9；mru/native 条目恒空串）。**F2 走查增补 `pinned`/`dup_app`**：`"1"/""`——本窗 app 已固定 / 同 app 已有更前位（z_order 序首见之外）非隐藏窗；dock 条目跳过判据（**等式消费**——原 `__dock_pinned_csv.contains(...)` 为 view 条件方法调用死点恒 false，实机固定图标+运行图标并存实证；`dup_app` 兼承"同类 app 共享一图标"用户裁定；mru 条目恒空串；窗开/关/hide 翻 win 指纹段随写刷新） | 宿主写 | v1（native 条目/`native` 字段：v1.3；pager：v1.5；pinned/dup_app：F2 走查增补） |
 | `__wm_meta` | str `"layout\tfocused_wid"` | 布局名（free/grid/master-stack）+ 焦点窗 wid（无焦点空串） | 宿主写 | v1 |
 | `__wm_workspaces` | Obj 数组 `{id:str, name:str, current:str, label:str, more:str}` | 分区清单；`id` = 下标串；`name` = pack 默认 "Desktop N"（M4 settings 可覆盖）；`current` = `"1"/""`；`label` = 1 基人读标签（= id+1 十进制串；**宿主投影**，避开 .at 字符串算术——pager 按钮文本消费）；**v1.5 `more`**：溢出标签 `"+N"`（分区窗数 >4 时；无溢出/空分区空串——pager 网格≤4 截断配套消费） | 宿主写 | v1（label：v1.1；more：v1.5） |
-| `__wm_mru` | Obj 数组（条目同 `__wm_wins` 六字段） | **当前分区**的窗口按 MRU 序（front = 最近聚焦；退役 Ctrl+Tab 焦点环语义延续——焦点环不跨分区，472 定案）。switcher overlay 专用消费面，dock 消费不受影响。switcher **handler** 侧消费走宿主召唤时的伴随平行字符串列表（`mru_wids`/`mru_titles`/`mru_icons` + `call_handler("RebuildMru")` 建 handler 自有 rows，B12 规避——464 launcher `apps_*`/`ranked` 同型；`__wm_mru` 本体保持合同面对拍形态） | 宿主写 | v1.1 |
+| `__wm_mru` | Obj 数组（条目同 `__wm_wins` 六字段） | **当前分区**的窗口按 MRU 序（front = 最近聚焦；退役 Ctrl+Tab 焦点环语义延续——焦点环不跨分区，472 定案）。switcher overlay 专用消费面，dock 消费不受影响。switcher **handler** 侧消费走宿主召唤时的伴随平行字符串列表（`mru_wids`/`mru_titles`/`mru_icons` + `call_handler("RebuildMru")` 建 handler 自有 rows，B12 规避——464 launcher `apps_*`/`ranked` 同型；`__wm_mru` 本体保持合同面对拍形态）。**v1.11 native 槽位条目并入**：当前分区 Docked 槽位按 MRU 序入列（`wid="N<slot>"`、`workspace`/`focused` 实时同 `__wm_wins`；switcher 行缩略走 native-icon/lucide 回退，thumbs 恒空） | 宿主写 | v1.1（native：v1.11） |
 | `__wm_running` | str `",id1,id2,"` | 运行中 app id 集合的**派生串**（.at view 条件无法 `contains` 消费——方法调用死点，O2 实证；保留为对拍/审计面 + handler 侧可用。pinned 灰条判据改 `__dock_pinned` 条目 `running` 字段）。**v1.8 注入面扩展**：同步扩注 desktop 本体面（`assets/desktop.at` 声明同款）——W-04 启动中反馈的 launching ack 判据数据面（handler 侧 contains 消费合法）；宿主写点 = `sync_shell_windows` 投影组内，随写显式召唤 desktop 层 `RunningSync` handler | 宿主写 | v1（desktop 层扩注：v1.8） |
 | `__wm_notes` | Obj 数组 `{id:str, kind:str, msg:str, at:str, app:str}` | **通知历史全量**（MRU 序 front=最新；容量 50 FIFO）。shell 侧为合同面（dock 不直接消费）；通知中心面板 handler 消费走召唤/活更新时的伴随平行字符串列表（`note_ids`/`note_kinds`/`note_msgs`/`note_ats` + `call_handler("RebuildNotes")` 建 handler 自有 rows，B12 规避——`__wm_mru` 同型）。`kind` ∈ success/error/info（约定值，未知宿主侧已兜底）；`at` = 入史时刻 `HH:MM` 本地时间串（宿主投影）。**v1.8 `app`**：来源 app id（notify 动词发件方 registry_id；宿主内部通知/历史槽恢复缺省 `""`——面板行跳来源臂以空串判不可跳）；平行列表同型增 `note_apps`（W-14 B12 落地后消参，挂账 auto-os §10-Q5） | 宿主写 | v1.2（app/note_apps：v1.8） |
 | `__wm_notes_unread` | str | 未读通知计数十进制串（dock 铃铛 badge 条件消费：`!= "0"` 且非空串渲染）；开面板即清零；不落盘——boot 恢复后恒 `"0"` | 宿主写 | v1.2 |
@@ -94,7 +101,8 @@ Plan 496 M5 的第五面（常驻不召唤，boot 装载挂桌面层 z 槽）。
 - 宿主每 update 周期在 DesktopBus 排空点邻位重算投影（O(窗数) 串接）。
 - `__wm_fp` = 逐窗 `"{wid}:{focused},{workspace};"` 串接（**v1.3**：native
   槽位条目并入同段，`"N{slot}:{focused},"` 同型追加在 App 窗之后——槽位
-  增删/瞬时态转 Docked 必翻指纹）+ `"|{__wm_meta}"` +
+  增删/瞬时态转 Docked 必翻指纹；**v1.11**：native 段与 App 段同型扩为
+  `"N{slot}:{focused},{workspace},"`——分区迁移/聚焦翻位均翻指纹）+ `"|{__wm_meta}"` +
   `"|"` + 逐分区 `"{id}:{current},{label};"` 串接 + `"|"` + 逐 mru 窗
   `"{wid};"` 串接 + `"|notes:{len}:{front_id}:{unread}:{visible};"`（v1.1：
   分区段扩 label、尾接 mru 段；v1.2：尾接 notes 段——len/front_id 双段覆盖
@@ -216,6 +224,29 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
   `__wm_notes_badge` 为新只读面；追加语义对既有单写点行为等价（单命令
   串不变）；`__wm_running` desktop 层扩注对 shell 层零影响。vue 端以
   本版为对拍基线（§5）。
+### v1.11（2026-09-30，auto-lang PLAN-709：native 条目 workspace/focused 实时）
+
+- **背景**：PLAN-709 槽位交互主体化——原生槽位获得 workspace 归属
+  （dock 时 = 当前分区；send_to/隐现跟随）与 WM focused 伪 Wid 域代管
+  （chrome 点击/OS FOREGROUND 钩子跟随），投影面需携带这两维驱动事实。
+- **字段增量（`__wm_wins`/`__wm_mru`/switcher 快照三面 native 条目）**：
+  - `workspace`：分区下标串（App 条目同口径；v1.3「不适用省略」退役）。
+  - `focused`：实时位 `"1"/""`（v1.3「恒空」退役——WM `focused` 以伪
+    Wid（`0x8000...|slot_id` 段，与布局伪 Wid 同段）代管槽位焦点，
+    chrome 点击/任务栏 `focus_native`/OS `EVENT_SYSTEM_FOREGROUND`
+    钩子三路跟随）。
+  - native 条目字段集 `{wid, title, focused, workspace, native, icon,
+    pager}`（App 条目键序对齐）。
+- **指纹**：native 窗段扩 `"N{slot}:{focused},{workspace},"`（App 段同
+  型）；mru 段槽位以 `"N{slot};"` 入段。分区迁移/聚焦变化翻指纹。
+- **typed 载体**：`ShellWin` 结构不变（`workspace: Option<usize>`/
+  `focused: bool` v1.10 起即全条目携带）——**wire 编解码零变化**，纯
+  构建面（`build_shell_projection`/`build_switcher_snapshot`/`to_value`
+  native 分支）增量；解释态通道与 outproc 载体双轨同步生效。
+- **消费者影响**：vue shell.at 既有分支判据（`native == "1"`）不受影
+  响（纯加字段）；任务栏 native 条目可按 `workspace` 做当前分区态显
+  示（增强面，非本版合同要求）。
+
 ### v1.10（2026-09-18，auto-os PLAN-027 rev2：typed 快照通道——投影语义 plain-data 载体入册）
 
 - **背景**：PLAN-027 S1/S2（shell a2r 编译化，形态无关资产面；§10-① 裁定

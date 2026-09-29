@@ -10980,6 +10980,37 @@ pub(crate) fn build_switcher_snapshot(
     let mut snap = SwitcherSnapshot { hosted: true, ..Default::default() };
     let Some(host) = state.host.as_ref() else { return snap };
     for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
+        // PLAN-709 v1.11：槽位条目并入 switcher（Docked 门控；wid="N<id>"
+        // ——缩略 widget 对 native wid 天然 lucide/native-icon 回退（497 注），
+        // thumbs 恒空无快照抓取）。
+        if let Some(slot_id) =
+            crate::ui::session::WmState::native_slot_id_of_pseudo(wid)
+        {
+            let Some(slot) = host.wm.native_slots.get(&slot_id) else { continue };
+            if slot.state != crate::ui::native_dock::SlotState::Docked {
+                continue;
+            }
+            let focused = host.wm.focused == Some(wid);
+            snap.mru_wids.push(format!("N{}", slot_id.0));
+            snap.mru_titles.push(slot.title_cache.clone());
+            snap.mru_thumbs.push(String::new());
+            snap.mru_icons.push(
+                crate::ui::iced::native_icon::icon_field(slot_id.0).to_string(),
+            );
+            snap.wm_mru.push(ShellWin {
+                wid: format!("N{}", slot_id.0),
+                title: slot.title_cache.clone(),
+                focused,
+                workspace: Some(slot.workspace),
+                native: true,
+                app: String::new(),
+                icon: snap.mru_icons.last().cloned().unwrap_or_default(),
+                pager: false,
+                pinned: false,
+                dup_app: false,
+            });
+            continue;
+        }
         let Some(v) = host.wm.wins.get(&wid) else { continue };
         // 壳伪窗不入切换列表（shell_pseudo_wids 过滤——build_shell_
         // projection 同册；overlay 伪窗加入后此过滤同样覆盖）。
@@ -15597,19 +15628,22 @@ pub(crate) fn build_shell_projection(
         // 指纹窗段：{wid}:{focused},{workspace};（协议 v1 §2.3）
         fp.push_str(&format!("{}:{},{},", wid.0, focused as u8, v.workspace));
     }
-    // Plan 486 v1.3：native 槽位条目（wid="N<slot_id>"；仅 Docked 态投影；
-    // focused 恒空——native 焦点域在 OS 层）。Plan 515 D1：HICON 真图标
-    // 幂等提取入缓存。
+    // Plan 486 v1.3：native 槽位条目（wid="N<slot_id>"；仅 Docked 态投影）。
+    // PLAN-709 v1.11：workspace 实时（分区感知投影）+ focused 实时（WM
+    // focused 伪 Wid 域代管；v1.3「focused 恒空」退役）。Plan 515 D1：
+    // HICON 真图标幂等提取入缓存。
     for (id, slot) in &host.wm.native_slots {
         if slot.state != crate::ui::native_dock::SlotState::Docked {
             continue;
         }
         crate::ui::iced::native_icon::ensure(id.0, slot.hwnd);
+        let focused = host.wm.focused
+            == Some(crate::ui::session::WmState::native_slot_pseudo_wid(*id));
         proj.wins.push(ShellWin {
             wid: format!("N{}", id.0),
             title: slot.title_cache.clone(),
-            focused: false,
-            workspace: None,
+            focused,
+            workspace: Some(slot.workspace),
             native: true,
             app: String::new(),
             icon: crate::ui::iced::native_icon::icon_field(id.0).to_string(),
@@ -15617,7 +15651,7 @@ pub(crate) fn build_shell_projection(
             pinned: false,
             dup_app: false,
         });
-        fp.push_str(&format!("N{}:{},", id.0, 0));
+        fp.push_str(&format!("N{}:{},{},", id.0, focused as u8, slot.workspace));
     }
     let layout_name = match host.wm.layout {
         crate::ui::layout::LayoutMode::Free => "free",
@@ -15689,6 +15723,31 @@ pub(crate) fn build_shell_projection(
     // pinned/dup/pager 判据恒空——投影判据面统一约定）。
     fp.push('|');
     for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
+        // PLAN-709 v1.11：槽位条目并入 __wm_mru（Docked 门控同 wins 段；
+        // 指纹段 N 形态与窗段同型）。
+        if let Some(slot_id) =
+            crate::ui::session::WmState::native_slot_id_of_pseudo(wid)
+        {
+            let Some(slot) = host.wm.native_slots.get(&slot_id) else { continue };
+            if slot.state != crate::ui::native_dock::SlotState::Docked {
+                continue;
+            }
+            let focused = host.wm.focused == Some(wid);
+            proj.mru.push(ShellWin {
+                wid: format!("N{}", slot_id.0),
+                title: slot.title_cache.clone(),
+                focused,
+                workspace: Some(slot.workspace),
+                native: true,
+                app: String::new(),
+                icon: crate::ui::iced::native_icon::icon_field(slot_id.0).to_string(),
+                pager: false,
+                pinned: false,
+                dup_app: false,
+            });
+            fp.push_str(&format!("N{};", slot_id.0));
+            continue;
+        }
         if let Some(v) = host.wm.wins.get(&wid) {
             if v.hidden.get() {
                 continue;
@@ -29520,6 +29579,8 @@ mod tests {
             Rect::new(0, 0, 640, 480),
         );
         docked.state = SlotState::Docked;
+        // PLAN-709：workspace 归属（v1.11 投影面）。
+        docked.workspace = 0;
         let mut transient = docked.clone();
         transient.state = SlotState::Candidate;
         {
@@ -29537,15 +29598,32 @@ mod tests {
         assert_eq!(t3_obj_str(native, "title"), "记事本");
         assert_eq!(t3_obj_str(native, "native"), "1");
         assert_eq!(t3_obj_str(native, "icon"), "app-window");
+        // PLAN-709 v1.11：workspace 实时 + focused 实时位（未聚焦 = ""）。
         assert_eq!(t3_obj_str(native, "focused"), "");
-        assert!(
-            matches!(native.get("workspace"), None | Some(auto_val::Value::Nil)),
-            "native 条目无 workspace 字段（不适用省略）"
-        );
+        assert_eq!(t3_obj_str(native, "workspace"), "0");
         match t3_read(&ds, "__wm_fp") {
             auto_val::Value::Str(s) => assert!(
-                s.to_string().contains("N3:0,"),
-                "指纹应含 native 槽位段: {}",
+                s.to_string().contains("N3:0,0,"),
+                "指纹应含 native 槽位段（focused,workspace 同型）: {}",
+                s.to_string()
+            ),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        }
+        // PLAN-709 v1.11：槽位聚焦 → focused 位实时（伪 Wid 域）+ 指纹翻位。
+        {
+            let host = ds.host.as_mut().unwrap();
+            assert!(host.wm.focus_native_slot(NativeSlotId(3)));
+        }
+        sync_shell_windows(&mut ds);
+        let wins = t3_read_array(&ds, "__wm_wins");
+        let auto_val::Value::Obj(native) = &wins[1] else {
+            panic!("native 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(native, "focused"), "1", "聚焦后 focused 实时");
+        match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => assert!(
+                s.to_string().contains("N3:1,0,"),
+                "指纹 focused 位翻 1: {}",
                 s.to_string()
             ),
             other => panic!("__wm_fp 读回异常: {other:?}"),

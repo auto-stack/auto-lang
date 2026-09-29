@@ -894,10 +894,14 @@ impl ShellWin {
     /// 不缺字段的字段恒空串照发）。
     pub fn to_value(&self) -> auto_val::Value {
         if self.native {
+            // PLAN-709 v1.11：native 条目补 workspace（分区下标串，App 条目
+            // 同口径 unwrap_or(0)）+ focused 实时位（"1"/""——v1.3「恒空」
+            // 退役，WM focused 伪 Wid 域代管后实时投影）。
             return auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                 ("wid", s(self.wid.clone())),
                 ("title", s(self.title.clone())),
-                ("focused", s(String::new())),
+                ("focused", s(if self.focused { "1" } else { "" })),
+                ("workspace", s(self.workspace.unwrap_or(0).to_string())),
                 ("native", s("1")),
                 ("icon", s(self.icon.clone())),
                 ("pager", s(String::new())),
@@ -1325,11 +1329,13 @@ mod tests {
         let focused = obj.get("focused").expect("focused key");
         assert!(matches!(&focused, auto_val::Value::Str(s) if s.as_str() == "1"));
 
+        // PLAN-709 v1.11：native 分支补 workspace（App 分支键序对齐）+
+        // focused 实时位（"1"/""）。
         let native = ShellWin {
             wid: "N7".into(),
             title: "Console".into(),
-            focused: false,
-            workspace: None,
+            focused: true,
+            workspace: Some(0),
             native: true,
             app: String::new(),
             icon: "hicon:7".into(),
@@ -1342,8 +1348,12 @@ mod tests {
         let keys: Vec<String> = obj.key_names().iter().map(|k| k.to_string()).collect();
         assert_eq!(
             keys,
-            vec!["wid", "title", "focused", "native", "icon", "pager"]
+            vec!["wid", "title", "focused", "workspace", "native", "icon", "pager"]
         );
+        let focused = obj.get("focused").expect("focused key");
+        assert!(matches!(&focused, auto_val::Value::Str(s) if s.as_str() == "1"));
+        let ws = obj.get("workspace").expect("workspace key");
+        assert!(matches!(&ws, auto_val::Value::Str(s) if s.as_str() == "0"));
     }
 
     /// T-05：interpreted_writes 覆盖 sync_shell_windows 现行写集——键序
