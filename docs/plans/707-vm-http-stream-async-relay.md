@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-707
-status: drafting
+status: execution_done
 feature_name: vm-http-stream-async-relay
 author: [agent]
 created_at: 2026-09-29
@@ -18,7 +18,7 @@ new_spec_components:
 touched_goals: [GOAL-003]
 
 affects: [stdlib/auto/http.at, stdlib/auto/http.vm.at, crates/auto-lang/src/vm, crates/auto-lang/src/sse, crates/auto-lang/src/ui/vm_bridge.rs, docs/specs/stdlib, docs/specs/auto-lang/runtime]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
@@ -176,20 +176,23 @@ generator 内部 `for` 提前 break/异常和普通 handler 完成，要释放�
 
 | ID / 状态 | 依赖 | 文件/符号与动作 | 验证命令与预期 / 验收 |
 |---|---|---|---|
-| T-01 [ ] | 705 已落地 | 在 707 worktree 核查上述入口/栈 ABI/所有权，新增 spike 与 `docs/plans/reports/707-stream-decision.md`；冻结配置、typed pull、取消/错误/poll 新签名、generator wait 协议；定罪 705 job cancel 差距 | `cargo check -p auto-lang`；`cargo t plan707_spike`，新增期望失败复现与目标 spike 分开记录；现有 341/348/702/705 定向基线；AC-01..06 前置 |
-| T-02 [ ] | T-01 | `vm/ffi/async_http.rs::{submit_client_job,cancel_live_op}`、`stdlib.rs::spawn_async_http_msg_get`：managed/detached 分离、登记后提交与 queued/active/retry 实际取消，接入 scope 取消；共享固定 runtime 的流提交接口与独立许可 | `cargo check -p auto-lang`；`cargo t plan707_cancel`、`cargo t plan705`、`cargo t plan083`；active=1 gate 未开许可可复用、detached 消息仍到达；AC-01/06 |
-| T-03 [ ] | T-01 | `sse/parser.rs`，可新增 `sse/decoder.rs`（新路径）：feed bytes 的有限 decoder 与 raw UTF-8 carry；保留/适配原 helper；新增 parser 切分/预算金样 | `cargo t plan707_decode` 与 `cargo t sse`；精确值/全字节切分/尾事件/超限全绿；AC-04 |
-| T-04 [ ] | T-02/03 | `vm/ffi/stdlib.rs` 的 HTTP_STREAMS/ASYNC_STREAMS 与所有 stream shim，可新增 `vm/ffi/http_stream.rs`（新路径）；接入 async producer、字节背压、raw/SSE adapters；`stdlib/auto/http.at,http.vm.at`、`vm/native_catalog.rs`/native 注册、`native.rs`/`codegen.rs` 补 manual/Iter/poll close/error | `cargo check -p auto-lang`；`cargo t plan707_client`、`cargo t plan341`、`cargo t plan348`；零阻塞建立/read，手动/内联/变量 for 均正确，所有 public 声明可装配；AC-04/05/06 |
-| T-05 [ ] | T-04 | `engine.rs::ParkedWait/drive_handler_segment/resume_fn_by_name_segment`、`task.rs::waiting_sse_stream_id`、`native.rs::shim_iterator_next_cooperative`、`http_server.rs::{parked_is_ready,next_sse_generator_value,produce_sse_frames}`、`ui/vm_bridge.rs::parked_wait_ready`：流/Future/HTTP generator Pending 保栈、通知就绪恢复 | `cargo t plan707_wait`、`cargo t plan702`、HTTP-707；gate 等待 health 可服务、无热重试、两流链式等待一次恢复；AC-02/05 |
-| T-06 [ ] | T-05 | `http_server.rs::{cleanup_sse_iterator,abort_parked_request,RequestScope}`、`http_transport.rs::FrameStream` 与 task/iterator 消费退出：请求资源组/stream transfer/close/break/异常/drop/drain、流期限；新增本地端到端 relay fixture 与兼容报告 `docs/plans/reports/707-parity.md` | HTTP-707、`cargo t generator`、`cargo t plan326`、`cargo t plan705`；自然EOF/取消矩阵回基线，半关闭与698/poll行为保持；AC-02/03/05 |
-| T-07 [ ] | T-06 | 新增 `crates/auto-lang/src/tests/plan707_stream_tests.rs`（新路径）并登记 `tests.rs`，真 TCP 用 http_e2e 子族/feature；固定预算风暴/背压/线程与资源计数，输出 `docs/plans/reports/707-resource-lifecycle.md` | `cargo t plan707`、HTTP-707；至少两轮相同配置资源无增长、gate 内本地实际清理、预算/线程/等待计数界限有数据；AC-01..04/06 |
-| T-08 [ ] | T-07 | 按改动范围完成 check 双形态/th/一次 tf、格式/告警/源码调用图核查；输出 `docs/plans/reports/707-verification.md`，逐条 AC 与 SD-01..06 实现对证，准备独立 review | `cargo check -p auto-lang`、`cargo check -p auto-lang --no-default-features`、`cargo th`、`cargo tf`；记录实际结果与 baseline 定责，新告警/临时debug/未授权延期为零；AC-06 |
+| T-01 [x] | 705 已落地 | 在 707 worktree 核查上述入口/栈 ABI/所有权，新增 spike 与 `docs/plans/reports/707-stream-decision.md`；冻结配置、typed pull、取消/错误/poll 新签名、generator wait 协议；定罪 705 job cancel 差距 | `cargo check -p auto-lang`；`cargo t plan707_spike`，新增期望失败复现与目标 spike 分开记录；现有 341/348/702/705 定向基线；AC-01..06 前置 |
+| T-02 [x] | T-01 | `vm/ffi/async_http.rs::{submit_client_job,cancel_live_op}`、`stdlib.rs::spawn_async_http_msg_get`：managed/detached 分离、登记后提交与 queued/active/retry 实际取消，接入 scope 取消；共享固定 runtime 的流提交接口与独立许可 | `cargo check -p auto-lang`；`cargo t plan707_cancel`、`cargo t plan705`、`cargo t plan083`；active=1 gate 未开许可可复用、detached 消息仍到达；AC-01/06 |
+| T-03 [x] | T-01 | `sse/parser.rs`，可新增 `sse/decoder.rs`（新路径）：feed bytes 的有限 decoder 与 raw UTF-8 carry；保留/适配原 helper；新增 parser 切分/预算金样 | `cargo t plan707_decode` 与 `cargo t sse`；精确值/全字节切分/尾事件/超限全绿；AC-04 |
+| T-04 [x] | T-02/03 | `vm/ffi/stdlib.rs` 的 HTTP_STREAMS/ASYNC_STREAMS 与所有 stream shim，可新增 `vm/ffi/http_stream.rs`（新路径）；接入 async producer、字节背压、raw/SSE adapters；`stdlib/auto/http.at,http.vm.at`、`vm/native_catalog.rs`/native 注册、`native.rs`/`codegen.rs` 补 manual/Iter/poll close/error | `cargo check -p auto-lang`；`cargo t plan707_client`、`cargo t plan341`、`cargo t plan348`；零阻塞建立/read，手动/内联/变量 for 均正确，所有 public 声明可装配；AC-04/05/06 |
+| T-05 [x] | T-04 | `engine.rs::ParkedWait/drive_handler_segment/resume_fn_by_name_segment`、`task.rs::waiting_sse_stream_id`、`native.rs::shim_iterator_next_cooperative`、`http_server.rs::{parked_is_ready,next_sse_generator_value,produce_sse_frames}`、`ui/vm_bridge.rs::parked_wait_ready`：流/Future/HTTP generator Pending 保栈、通知就绪恢复 | `cargo t plan707_wait`、`cargo t plan702`、HTTP-707；gate 等待 health 可服务、无热重试、两流链式等待一次恢复；AC-02/05 |
+| T-06 [x] | T-05 | `http_server.rs::{cleanup_sse_iterator,abort_parked_request,RequestScope}`、`http_transport.rs::FrameStream` 与 task/iterator 消费退出：请求资源组/stream transfer/close/break/异常/drop/drain、流期限；新增本地端到端 relay fixture 与兼容报告 `docs/plans/reports/707-parity.md` | HTTP-707、`cargo t generator`、`cargo t plan326`、`cargo t plan705`；自然EOF/取消矩阵回基线，半关闭与698/poll行为保持；AC-02/03/05 |
+| T-07 [x] | T-06 | 新增 `crates/auto-lang/src/tests/plan707_stream_tests.rs`（新路径）并登记 `tests.rs`，真 TCP 用 http_e2e 子族/feature；固定预算风暴/背压/线程与资源计数，输出 `docs/plans/reports/707-resource-lifecycle.md` | `cargo t plan707`、HTTP-707；至少两轮相同配置资源无增长、gate 内本地实际清理、预算/线程/等待计数界限有数据；AC-01..04/06 |
+| T-08 [x] | T-07 | 按改动范围完成 check 双形态/th/一次 tf、格式/告警/源码调用图核查；输出 `docs/plans/reports/707-verification.md`，逐条 AC 与 SD-01..06 实现对证，准备独立 review | `cargo check -p auto-lang`、`cargo check -p auto-lang --no-default-features`、`cargo th`、`cargo tf`；记录实际结果与 baseline 定责，新告警/临时debug/未授权延期为零；AC-06 |
 
 T-01 后测试文件可提前创建以支持逐任务红转绿，T-07 收口而非最后才写测试；新增路径须登记模块。准确内部拆分由 T-01 冻结，不能用同步 fallback、每流线程或隐藏轮询绕过 AC。任何超范围源码/公共错误返回变化先记录并修订执行契约；canonical Specs 不在 work 阶段抢先标 current。
 
 ## 9. 复审记录
 
 - 2026-09-29，`stage: new`，`PLAN-707:r1`，`outcome: pass`，`next: work`（T-01 决策/红测起）。依据 `e2deb4f87`、705 归档与现行 Specs 核对外部流缺口；AC-01..06、T-01..08、SD-01..06 已互相映射，依赖和新增路径明示。本记录为起草交接，**不代表实现已通过或独立复审完成**；未运行 Cargo，未修改实现或 canonical Specs。执行范围经用户确认后由 `/auto-plan:work` 接手并创建专用 worktree。
+- 2026-09-29，`stage: work`，`PLAN-707:r1`，`outcome: pass`，`code_commit: 4113a240d`（plan-707-dev，T-01..T-08 全链 9 commits，base 66c9cac19），`task_ids: T-01..T-08`，`evidence: docs/plans/reports/707-{stream-decision,parity,resource-lifecycle,verification}.md + plan707 测试族 31 例全绿 + E2E 三例（真 TCP relay/断连取消/close 基线）全绿 + tf 全量 no-fail-fast 5703/5709（5 红全部干净树基线定责，零 707 因果回归）+ check 双形态绿 + fmt/调试残留零`，`blockers: 无`，`next: review`（独立复审：对照 AC-01..06 与 SD-01..06，canonical Spec 沉淀在 merge 阶段）。
+
+执行摘要（T-01..T-08）：705 managed 取消缺口闭合（abort+竞态复查闭合+detached 分离）；流建立/读取全异步非阻塞（`http_stream.rs` 统一资源表：独立许可对/有界队列背压/幂等终结/typed pull）；增量 SSE decoder（WHATWG 子集+全切分点金样）；`Http.*` 声明面可达（静默 no-op 修复）+ for-in 三形态（内联/变量/生成器）；`ParkedWait::HttpStream` + CALL_NAT 重试协议（参数回推+凭据清除）；generator 等待凭据化（热循环消除）+ **DashMap 跨驱动写锁自死锁修复**（Generator 臂前置分流）；scope 资源组 + `AutoTask.owned_stream_ids` 双线收口；E2E relay 全链（上游→#[api] ~Iter<str>→下游，断连级联取消上游）。执行中发现并修复 705 面外两处既有缺陷：成功 job 的 AbortHandle 慢性泄漏、`http.at` 流族声明在 VM 轨不可达。
 
 ## 10. 待澄清事项
 
