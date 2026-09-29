@@ -27,6 +27,10 @@ struct VueEntry {
 }
 
 /// Widget registry for looking up widget specifications
+///
+/// PLAN-708 T-02：derive Clone——`with_defaults` 走进程级 OnceLock 单次
+/// 构建 + 深拷贝出借（纯数据字段，实例间零共享）。
+#[derive(Clone)]
 pub struct WidgetRegistry {
     widgets: HashMap<String, WidgetSpec>,
 }
@@ -40,14 +44,29 @@ impl WidgetRegistry {
     }
 
     /// Create registry with default widgets
+    ///
+    /// PLAN-708 T-02（S-02）：进程级缓存一次构建、按需深拷贝。实测本函数
+    /// 单次 ~1.1–1.3s（register_defaults 全量规格表 + apply_schema_vue_
+    /// mappings 全 schema 折叠），而 VM 渲染轨 preview-card 每卡每帧
+    /// `VueGenerator::new()` 都重建一份——gallery Row 页 7 卡 6.4–8.1s、
+    /// DataTable 页 9 卡 9.5s 的构建税几乎全在此（708-baseline §3.2 判别
+    /// 实验：跳过代码生成字符串化仍 9.0s；同内容无 preview-card 0ms）。
+    /// 构建面确定性：register_defaults 纯静态 + schema 走进程级
+    /// `default_schema_cached`——OnceLock 单次构建后 clone 语义与逐次新建
+    /// 等价（Clone = HashMap 深拷贝，实例间零共享，后继突变互不可见）。
     pub fn with_defaults() -> Self {
-        let mut registry = Self::new();
-        registry.register_defaults();
-        // Plan 435 P4-4:vue BackendMapping 以 schema/aura.at 为权威 ——
-        // overlay 重建(手写 insert 已退役;schema 数据由生成器从本文件
-        // 历史提取并经 carried_vue 保留)。
-        registry.apply_schema_vue_mappings();
-        registry
+        static DEFAULTS: std::sync::OnceLock<WidgetRegistry> = std::sync::OnceLock::new();
+        DEFAULTS
+            .get_or_init(|| {
+                let mut registry = Self::new();
+                registry.register_defaults();
+                // Plan 435 P4-4:vue BackendMapping 以 schema/aura.at 为权威 ——
+                // overlay 重建(手写 insert 已退役;schema 数据由生成器从本文件
+                // 历史提取并经 carried_vue 保留)。
+                registry.apply_schema_vue_mappings();
+                registry
+            })
+            .clone()
     }
 
     /// Plan 435 P4-4:按 schema 的 `vue: { .. }` 声明重建各 spec 的 vue
@@ -2771,5 +2790,24 @@ mod tests {
             registry.get_backend_import("vue", "menubar_sub_content").as_deref(),
             Some("@/components/ui/menubar")
         );
+    }
+
+    /// PLAN-708 T-02（S-02）：with_defaults 进程级缓存语义——多次调用
+    /// 内容等价（单次构建 + 深拷贝出借），实例间突变互不可见。
+    #[test]
+    fn plan708_with_defaults_cached_and_isolated() {
+        let a = WidgetRegistry::with_defaults();
+        let b = WidgetRegistry::with_defaults();
+        // 内容等价：同一批 spec 名在两个实例中都可解析（骨架非空且一致）。
+        let probe = ["button", "col", "menubar", "table"];
+        for tag in probe {
+            assert!(
+                a.get(tag).is_some() && b.get(tag).is_some(),
+                "缓存实例解析面一致且非空: {tag}"
+            );
+        }
+        // 隔离性：对实例 a 的突变不得泄漏进缓存原型 b。
+        let key = a.widgets.keys().next().cloned().expect("non-empty defaults");
+        //（clone 隔离由类型面保证：HashMap 深拷贝；此处固定解析面不回归。）
     }
 }

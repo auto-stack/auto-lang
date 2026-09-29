@@ -16179,6 +16179,19 @@ fn run_session(
     // PLAN-575 D1 挂点②：main 装配处（run_session 唯一管线，I3）装全局
     // panic 审计 hook——只追加日志，不改 panic 语义（G3 零行为变更）。
     crate::vm::ffi::stdlib::install_exit_audit_panic_hook();
+    // PLAN-708 T-02（S-02）：生成器默认注册表后台预热——首帧带 preview-card
+    // 的页面渲染原本内联承担 OnceLock 首建全量（register_defaults + schema
+    // 解析折叠，实测 ~1.27s 单块，T-00 baseline §3.2），违反加载期连续占用
+    // 门禁。run_session 启动即后台触碰 `WidgetRegistry::with_defaults()`：
+    // UI 线程到达首个 preview-card 时 OnceLock 已热（clone ~µs）；竞争态下
+    // 最坏退化为现状一次性内联（OnceLock 单胜利者，语义等价）。纯预热无
+    // 共享写面——线程安全由 OnceLock + 纯数据 Clone 保证。
+    std::thread::Builder::new()
+        .name("autoui-registry-warm".to_string())
+        .spawn(|| {
+            let _ = crate::ui_gen::widget::WidgetRegistry::with_defaults();
+        })
+        .ok();
     if components.is_empty() {
         // PLAN-043 补刀：桌面宿主 boot 直挂退役后 ui_desktop 恒传空表——
         // 桌面生命周期由 shell/desktop-face 伪窗撑住（dock 电源键退出），
