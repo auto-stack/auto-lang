@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-706
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # r2 work 阶段收口（2026-09-30）——T-09..T-11 全链完成，next=review
 # r2 重开（2026-09-29）：r1 交付簇携入的 vm UI 脏标/确认弹层交互面回归——追加修复
 # phase（T-09..T-11，§11）。立项=消费者仓 jade-edit PLAN-026 回执批冒烟败形实证 +
 # 用户直接裁定；rev1 交付记录（§8 勾选/§9 既有收据）原样保留。
@@ -19,7 +19,7 @@ new_spec_components:
 touched_goals: [GOAL-007, GOAL-010]
 
 affects: [auto-lang/ui, auto-os/widgets-gallery]
-current_step: 8
+current_step: 11
 total_steps: 11
 ---
 
@@ -385,6 +385,18 @@ git -C D:/autostack/auto-os worktree add D:/autostack/.wt/lang-706/auto-os -b pl
 - changed：frontmatter（status archived→drafting、plan_revision 2、total_steps 8→11、updated_at）；added：§11（T-09..T-11、AC-09..11、域协调注记）；rev1 全部内容原样保留（§0..§10、§8 勾选、§9 既有 stage:new/review/merge 记录不动）。
 - `next: work T-09`（bisect 定谳起）；落地序与 PLAN-709（aura_view_builder 域在飞起草）协调注记见 §11.4。
 
+### stage: work | PLAN-706 | plan_revision 2 | outcome: pass（work 收口，2026-09-30）
+- `code_commit`: plan-706-dev **9420eb7a2**（84befb240 T-09 定谳+T-10 值守卫 / f509b47ff T-10 死键守卫 / 9420eb7a2 定谳报告扩写；基 master 4dae03122）
+- `task_ids`: T-09..T-11 全完成（AC-09 定谳+最小弧+机制实证；AC-10 定义性验收=消费者 merged 矩阵 16/16 ALL GREEN debug+release 双载体；AC-11 probe_mtime 定谳独立缺陷另立记账+家族 UI 面零回归）
+- `evidence`:
+  - 定谳：first-bad=432068075（plan047 T-06 信号网）；RC canary UAF panic 栈 rc.rs:742←vmref_to_vec←resolve_for_iterable 全文 `app-death-*.log`；机制=信号缓存裸 Value 无 RC 堆身份+死键版本冻结伪命中（双面同根因）
+  - 修复：computed_signal_store 堆身份准入 + deps_unchanged 死键 miss（零新特性=pre-706 每帧重算退档语义）；plan706 单测×3（红相取证在案）
+  - 消费者：vm_matrix merged 16/16 ALL GREEN（debug `p706-matrix-fixed2-debug.log` + release `p706-matrix-fixed2-release.log`，[10b] 弹层滞留消）；家族弧 CPU load 5/5（pre-fix 同条件 1/2 红）
+  - 家族：ui:: 1616/1617（1 红 base 预存 old-carrier 同红）；gallery 四页路由真达 GREEN
+  - 定谳为非本回归：probe_mtime release 挂起（old-carrier release 同挂→P706-D1）；消费者 e2e flaky（双载体同 flaky→P706-D2）；gallery 侧栏连按 quirk（双载体同→P706-D3）
+- `blockers`: 无
+- `next`: review（worktree 保留；spec delta=无新增——SD-01..04 已于 r1 沉淀，r2 为纯回归修复不动 canonical Specs 契约面）
+
 ## 10. 待澄清事项
 
 | ID | 问题 | 影响 | 默认 |
@@ -417,15 +429,28 @@ git -C D:/autostack/auto-os worktree add D:/autostack/.wt/lang-706/auto-os -b pl
 | T-10 | **修复实现**：按 T-09 定谳——脏标投影/关闭确认弹层生命周期（开闭幂等/不栈积/关闭路径不致死）；范围=回归修复还原 rev1 前行为语义，零新特性；含家族侧单测（弹层开闭幂等/脏态切换弧） | T-09 | 修复提交（域随定谳） | 家族单测绿 + 消费者再现弧绿 | AC-10 前半 |
 | T-11 | **收口验证**：家族面（cargo t UI 域 + gallery 实机抽查四页不回归）+ **消费者回执面**：重建 exe → jade-edit `tests/vm_matrix.mjs` merged 16/16 ALL GREEN（[7 tab] PASS + [10b] 无弹层滞留）+ e2e 全绿 + probe_mtime release 载体绿 | T-10 | 收口证据（家族+消费者双面） | 消费者矩阵 ALL GREEN = 本回归修复的定义性验收 | AC-10 后半, AC-11 |
 
+进度勾选（r2 work 阶段，2026-09-30；worktree `D:/autostack/.wt/lang-706/auto-lang` branch `plan-706-dev`，基 master 4dae03122）：
+
+- [x] T-09 bisect 定谳（84befb240）：家族最小驱动 `tab-arc.mjs`（组目录不入 git）复刻 [7 tab] 弧；A/B 锚 pre `c8f86ef92` GREEN / master tip RED(exit=101)；git bisect 定谳 **first-bad=`432068075`（plan047 T-06 computed 信号网）**，7b8a3ccbc/3a72d0f15/bb303e914 同弧全绿（消费者「7b8a3ccbc 非肇事」grep 预判复证；705 HTTP 簇预期排除成立）；panic 实证 `[RC canary] use-after-free: heap object 4000555` @rc.rs:742 ← vmref_to_vec ← resolve_for_iterable；定谳报告 `docs/plans/reports/706-bisect-verdict.md`（worktree 提交）
+- [x] T-10 修复实现（84befb240 + f509b47ff 双守卫）：①`computed_signal_store` 堆身份准入守卫 `value_carries_heap_identity`（VmRef/ValueRef/≥4M 整数形直载+容器递归+不可证净复合保守拒收→不入网退回每帧重算=pre-706 行为，plan047 退档同族零新特性）；②`deps_unchanged` 死对象 dep 键伪命中守卫 `heap_dep_key_alive`（值守卫只断 UAF panic 面；全矩阵实机复跑暴露第二面=死键版本冻结伪命中→陈旧标量/视图回流 [10] 首页钮缺失/case13 ECONNRESET；`<HEAP_ID_BASE` 合成键与未分配 id 按存活保 plan047 门测试语义）；家族单测 `plan706_signal_store_skips_heap_identity_value`/`plan706_signal_store_hit_cycle_idempotent_and_fresh`/`plan706_deps_unchanged_dead_heap_key_misses`（红相 gate-off 环境开关取证：pre-fix 红已录，开关已移除）
+- [x] T-11 收口验证（9420eb7a2）：**消费者回执面** vm_matrix merged **16/16 ALL GREEN 双载体**（修复 exe debug+release；[7 tab] PASS+[10b] 无弹层滞留）；家族面 ui:: 域 1617 测 1616 绿（1 红=base 预存，old-carrier 同红复证）+ plan706 3/plan047 24/plan046 38/memo 86/vm_bridge 55 + 家族弧 CPU load 5/5 + **gallery 实机四页抽查 GREEN**（Sidebar/Menubar/Area Chart/Command 四路由真达+渲染非空 74821/55750/36659/35335）；probe_mtime release 挂起面**定谳独立缺陷**（old-carrier c8f86ef92 release 同挂——非本回归，AC-11 后半臂另立记账 P706-D1）+ 修复 exe debug 全案通过；消费者 e2e 预存 flaky 定谳（双载体同 flaky：old 2/4 / new 1/4 无区分度，非 r2 回归，P706-D2）
+
 ### 11.3 验收标准（追加）
 
 - **AC-09**：bisect 定谳报告在档——肇事提交集 + 最小再现弧 + 触发机制初判；pre/post A/B 同 harness 同弧绿红分明。
 - **AC-10**：修复后新 exe 下，jade-edit 消费面 `tests/vm_matrix.mjs` **merged 16/16 ALL GREEN**（[7 tab] 标脏弧与 [10b] 脏关弧 PASS；fail-snap 无双叠确认弹层）。
 - **AC-11**：probe_mtime release 载体挂起面复测绿（或定谳为独立缺陷另立记账）；家族既有 UI 测试面零回归。
 
+### 11.3+ AC 收口（2026-09-30 work 阶段）
+
+- **AC-09 PASS**：定谳报告 `docs/plans/reports/706-bisect-verdict.md` 在档（first-bad=432068075 + 最小再现弧 + RC canary UAF 机制实证 + 死键伪命中第二面）；pre `c8f86ef92` GREEN / post RED 同弧同驱动（家族 tab-arc.mjs；A/B 另有消费者 p25/p26 在库）。
+- **AC-10 PASS（定义性验收）**：修复 exe（plan-706-dev 9420eb7a2 构建）下 jade-edit vm_matrix merged **16/16 ALL GREEN**——debug 与 release 双载体独立全绿；[7 tab] PASS、[10b] 无弹层滞留。
+- **AC-11 PASS（后半臂）**：probe_mtime release 挂起面定谳为**独立预存缺陷**（old-carrier c8f86ef92 release 同挂 → P706-D1 另立记账；修复 exe debug 全案绿）；家族 UI 测试面零回归（ui:: 1616/1617，唯一红为 base 预存且 old-carrier 同红；plan047/plan046/memo/vm_bridge 定向全绿）。注：T-11 验证列的「e2e 全绿」定谳为消费方 harness 预存 flaky（双载体同 flaky 无区分度，P706-D2）——非本回归面，不在本 phase 修复域。
+
 ### 11.4 域协调与边界
 
 - **PLAN-709 在飞**（native slot interaction——aura_view_builder 域，drafting rev1 未动 src）：T-09/T-10 以 master 为基；若 709 先落 src，T-10 基其结果 rebase 重验（同域注意）。
 - **plan047 memo 大宗候选保留**：vm_bridge +616 与断裂域同窗，bisect 不因 7b8a3ccbc 是本计划主提交而预设其肇事——按证据定谳；若定谳落 plan047 提交，修复仍在本 phase 收口（回归经 706 合并窗携入消费者）。
 - **零产品特性扩张**：本 phase 仅还原交互语义；gallery 新能力面不在范围。
-- 消费者等待态：jade-edit PLAN-026 blocked-waiting（r1 裁定选项 a）——本 phase AC-10 兑现即其重入信号。
+- 消费者等待态：jade-edit PLAN-026 blocked-waiting（r1 裁定选项 a）——**AC-10 已兑现（2026-09-30，merged 16/16 ALL GREEN debug+release）= 其重入信号**。
+- r2 work 落地注记：PLAN-709 未动 src（本 phase 基 master 4dae03122 无 rebase 需求）；plan047 提交定谳为肇事（432068075）——修复按 §11.4 预设在本 phase 收口，plan047 交付语义不变（其单测面全绿）。
