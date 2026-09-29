@@ -60,8 +60,9 @@ fn plan707_spike_cancel_gap_active_job_future_not_stopped() {
 
     // 打开 gate：若 future 未被中止，它将继续推进并置位 marker。
     let _ = gate_tx.send(());
-    // 宽限期：executor runtime 推进一轮。取消生效时 marker 必须保持 false。
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    // 宽限期：并行负载下 runtime worker 可能被饿数百 ms——取消生效后
+    // aborted task 不再被 poll，marker 恒 false；宽限只覆盖调度延迟。
+    std::thread::sleep(std::time::Duration::from_secs(2));
     assert!(
         !marker.load(std::sync::atomic::Ordering::SeqCst),
         "RED（705 缺口）：cancel 后 job future 仍在运行并被 gate 唤醒推进——\
@@ -95,8 +96,7 @@ fn plan707_spike_stream_open_blocks_owner_until_headers() {
         }
     });
 
-    let (vm, _out, _entry, _obj) =
-        crate::create_vm_from_source("fn main() {}").expect("vm");
+    let (vm, _out, _entry, _obj) = crate::create_vm_from_source("fn main() {}").expect("vm");
 
     // a. 直达 shim：测 owner 被阻塞的时长下界。
     let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
@@ -153,7 +153,9 @@ fn plan707_spike_sse_utf8_split_across_chunks_survives() {
             use std::io::Write;
             let _ = stream.set_nodelay(true);
             let mut s = stream;
-            let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n");
+            let _ = s.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n",
+            );
             let _ = s.write_all(b"data: \xe4");
             let _ = s.flush();
             std::thread::sleep(std::time::Duration::from_millis(200));
@@ -164,8 +166,7 @@ fn plan707_spike_sse_utf8_split_across_chunks_survives() {
         }
     });
 
-    let (vm, _out, _entry, _obj) =
-        crate::create_vm_from_source("fn main() {}").expect("vm");
+    let (vm, _out, _entry, _obj) = crate::create_vm_from_source("fn main() {}").expect("vm");
     let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
 
     // sse_open：直接驱动 shim（栈上推 url 字符串）。
@@ -180,8 +181,7 @@ fn plan707_spike_sse_utf8_split_across_chunks_survives() {
     loop {
         assert!(std::time::Instant::now() < deadline, "5s 内未收到 SSE data");
         task.ram.push_i32(stream_id as i32);
-        crate::vm::ffi::stdlib::shim_http_stream_sse_poll(&mut task, &vm)
-            .expect("sse_poll");
+        crate::vm::ffi::stdlib::shim_http_stream_sse_poll(&mut task, &vm).expect("sse_poll");
         let nv = task.ram.pop_nv();
         let s = vm
             .get_string(auto_val::decode_string(nv) as u32)

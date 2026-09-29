@@ -56,7 +56,10 @@ fn plan707_cancel_active_job_aborts_and_frees_permit() {
         baseline_active,
         "取消后 active 许可必须归还"
     );
-    assert!(!ah::complete_live_op(req_id, Ok(AsyncResult::Body("x".into()))));
+    assert!(!ah::complete_live_op(
+        req_id,
+        Ok(AsyncResult::Body("x".into()))
+    ));
 }
 
 /// AC-01（queued 阶段）：active=1 被 A 占住（gate 关闭），B 排队；取消 B
@@ -72,27 +75,21 @@ fn plan707_cancel_queued_job_never_starts() {
     let (a_done_tx, a_done_rx) = tokio::sync::oneshot::channel::<()>();
     let req_a = crate::vm::ffi::stdlib::alloc_async_id();
     crate::vm::ffi::async_http::register_live_op(req_a);
-    assert!(ah::submit_client_job(
-        req_a,
-        async move {
-            let _ = gate_rx.await;
-            let _ = a_done_tx.send(());
-            Ok(AsyncResult::Body("a".to_string()))
-        }
-    ));
+    assert!(ah::submit_client_job(req_a, async move {
+        let _ = gate_rx.await;
+        let _ = a_done_tx.send(());
+        Ok(AsyncResult::Body("a".to_string()))
+    }));
 
     // B：排队（active 满）。started 标记只在 job 体（active 之后）执行。
     let started = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let started_for_b = started.clone();
     let req_b = crate::vm::ffi::stdlib::alloc_async_id();
     crate::vm::ffi::async_http::register_live_op(req_b);
-    assert!(ah::submit_client_job(
-        req_b,
-        async move {
-            started_for_b.store(true, std::sync::atomic::Ordering::SeqCst);
-            Ok(AsyncResult::Body("b".to_string()))
-        }
-    ));
+    assert!(ah::submit_client_job(req_b, async move {
+        started_for_b.store(true, std::sync::atomic::Ordering::SeqCst);
+        Ok(AsyncResult::Body("b".to_string()))
+    }));
     // 确认 B 在排队（A 仍占 active、gate 未开）。
     std::thread::sleep(std::time::Duration::from_millis(100));
     assert!(
@@ -117,7 +114,10 @@ fn plan707_cancel_queued_job_never_starts() {
         baseline_active,
         "A 完成后 active 许可回基线"
     );
-    assert!(!ah::complete_live_op(req_b, Ok(AsyncResult::Body("x".into()))));
+    assert!(!ah::complete_live_op(
+        req_b,
+        Ok(AsyncResult::Body("x".into()))
+    ));
 }
 
 /// AC-01（retry 退避阶段）：job 在两次发送尝试之间退避 sleep 时取消——
@@ -132,28 +132,22 @@ fn plan707_cancel_during_retry_backoff_stops_attempts() {
 
     let req_id = crate::vm::ffi::stdlib::alloc_async_id();
     crate::vm::ffi::async_http::register_live_op(req_id);
-    assert!(ah::submit_client_job(
-        req_id,
-        async move {
-            // 指向必然连接失败的端口（1~3 轮退避重试形态）。
-            let client = reqwest::Client::new();
-            for attempt in 0..5u32 {
-                attempts_for_job.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                if attempt == 0 {
-                    if let Some(tx) = first_tx.lock().unwrap().take() {
-                        let _ = tx.send(());
-                    }
+    assert!(ah::submit_client_job(req_id, async move {
+        // 指向必然连接失败的端口（1~3 轮退避重试形态）。
+        let client = reqwest::Client::new();
+        for attempt in 0..5u32 {
+            attempts_for_job.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if attempt == 0 {
+                if let Some(tx) = first_tx.lock().unwrap().take() {
+                    let _ = tx.send(());
                 }
-                let _ = client
-                    .get("http://127.0.0.1:1/never")
-                    .send()
-                    .await;
-                // 退避 sleep：取消必须能打断这里（不再进入下一轮）。
-                tokio::time::sleep(std::time::Duration::from_millis(120)).await;
             }
-            Err("exhausted".to_string())
+            let _ = client.get("http://127.0.0.1:1/never").send().await;
+            // 退避 sleep：取消必须能打断这里（不再进入下一轮）。
+            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
         }
-    ));
+        Err("exhausted".to_string())
+    }));
 
     first_rx.blocking_recv().expect("第一轮尝试已发生");
     let after_first = attempts.load(std::sync::atomic::Ordering::SeqCst);
@@ -176,14 +170,16 @@ fn plan707_cancel_races_close_without_leak() {
     // 常规序：submit → cancel → 迟到完成丢弃；abort 表条目随 cancel 出表。
     let req_id = crate::vm::ffi::stdlib::alloc_async_id();
     crate::vm::ffi::async_http::register_live_op(req_id);
-    assert!(ah::submit_client_job(
-        req_id,
-        async { Ok(AsyncResult::Body("quick".to_string())) }
-    ));
+    assert!(ah::submit_client_job(req_id, async {
+        Ok(AsyncResult::Body("quick".to_string()))
+    }));
     crate::vm::ffi::stdlib::drop_async_result(req_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     // abort 表不复活（cancel 已 remove；job 完成路径不写 abort 表）。
-    assert!(!ah::complete_live_op(req_id, Ok(AsyncResult::Body("late".into()))));
+    assert!(!ah::complete_live_op(
+        req_id,
+        Ok(AsyncResult::Body("late".into()))
+    ));
 
     // 多轮取消风暴后表不增长（幂等终结；条目数与残余 live-op 一致）。
     // 队列容量 8——立即完成的 job 由 runtime 排空有延迟，队满即短退避重试。
@@ -244,7 +240,11 @@ fn plan707_cancel_detached_msg_bridge_unaffected() {
         if let Some(done) = http_msg_poll_one() {
             assert_eq!(done.widget, "Store");
             assert_eq!(done.event, "Handler");
-            assert!(done.payload.contains("\"ok\":true"), "payload={}", done.payload);
+            assert!(
+                done.payload.contains("\"ok\":true"),
+                "payload={}",
+                done.payload
+            );
             break;
         }
         assert!(

@@ -63,12 +63,14 @@ impl StreamLimits {
             queue_capacity: env_usize("AUTO_HTTP_STREAM_QUEUE", 32),
             max_queued_items: env_usize("AUTO_HTTP_STREAM_MAX_QUEUED", 16),
             max_item_bytes: env_usize("AUTO_HTTP_STREAM_MAX_EVENT", 256 * 1024),
-            open_timeout: Duration::from_millis(
-                env_usize("AUTO_HTTP_STREAM_OPEN_TIMEOUT_MS", 10_000) as u64,
-            ),
-            idle_timeout: Duration::from_millis(
-                env_usize("AUTO_HTTP_STREAM_IDLE_TIMEOUT_MS", 60_000) as u64,
-            ),
+            open_timeout: Duration::from_millis(env_usize(
+                "AUTO_HTTP_STREAM_OPEN_TIMEOUT_MS",
+                10_000,
+            ) as u64),
+            idle_timeout: Duration::from_millis(env_usize(
+                "AUTO_HTTP_STREAM_IDLE_TIMEOUT_MS",
+                60_000,
+            ) as u64),
         }
     }
 }
@@ -165,7 +167,10 @@ static STREAM_ABORTS: std::sync::LazyLock<Mutex<HashMap<u64, tokio::task::AbortH
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn is_terminal(state: &StreamState) -> bool {
-    matches!(state, StreamState::Eof | StreamState::Failed(_) | StreamState::Cancelled)
+    matches!(
+        state,
+        StreamState::Eof | StreamState::Failed(_) | StreamState::Cancelled
+    )
 }
 
 /// 消费侧拉取结果（D-4 typed pull）。
@@ -267,12 +272,18 @@ pub(crate) fn stream_queue_len_for_test(stream_id: u64) -> usize {
 
 /// 流 id 是否存活（for-in 惰性消费的判定门——未知 id 不进流路径）。
 pub(crate) fn stream_is_live(stream_id: u64) -> bool {
-    STREAMS.lock().map(|m| m.contains_key(&stream_id)).unwrap_or(false)
+    STREAMS
+        .lock()
+        .map(|m| m.contains_key(&stream_id))
+        .unwrap_or(false)
 }
 
 /// 非消费式终态查询（is_done / sse_error 用）。
 pub(crate) fn stream_terminal_error(stream_id: u64) -> Option<Option<String>> {
-    let handle = STREAMS.lock().ok().and_then(|m| m.get(&stream_id).cloned())?;
+    let handle = STREAMS
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&stream_id).cloned())?;
     let cell = handle.cell.lock().unwrap();
     match &cell.state {
         StreamState::Eof => Some(None),
@@ -344,7 +355,10 @@ pub(crate) fn open_stream(open: StreamOpen) -> u64 {
     }
     let ex = stream_executor();
     let Ok(queue_permit) = Arc::clone(&ex.queue).try_acquire_owned() else {
-        finalize(&handle, StreamState::Failed("stream queue full".to_string()));
+        finalize(
+            &handle,
+            StreamState::Failed("stream queue full".to_string()),
+        );
         return stream_id;
     };
     let limits = ex.limits;
@@ -358,10 +372,16 @@ pub(crate) fn open_stream(open: StreamOpen) -> u64 {
         active,
         queue_permit,
     ));
-    STREAM_ABORTS.lock().unwrap().insert(stream_id, task.abort_handle());
+    STREAM_ABORTS
+        .lock()
+        .unwrap()
+        .insert(stream_id, task.abort_handle());
     // Cancel-before-install 闭合（同 submit_client_job D-1）：登记窗口内
     // 取消则条目已不在 → 补 abort。
-    let still_live = STREAMS.lock().map(|m| m.contains_key(&stream_id)).unwrap_or(false);
+    let still_live = STREAMS
+        .lock()
+        .map(|m| m.contains_key(&stream_id))
+        .unwrap_or(false);
     if !still_live {
         if let Some(h) = STREAM_ABORTS.lock().unwrap().remove(&stream_id) {
             h.abort();
@@ -379,18 +399,18 @@ async fn producer_task(
     _queue_slot: tokio::sync::OwnedSemaphorePermit,
 ) {
     let Ok(_active_slot) = active.acquire_owned().await else {
-        finalize(&handle, StreamState::Failed("stream executor closed".to_string()));
+        finalize(
+            &handle,
+            StreamState::Failed("stream executor closed".to_string()),
+        );
         return;
     };
     // 建立：headers 送达期限 10s（D-10）。SSE 非 2xx → Failed（D-4）；
     // raw 保留读取非 2xx body 的既有可观察行为。
-    let mut builder = match reqwest::Client::new()
-        .request(
-            reqwest::Method::from_bytes(open.method.as_bytes())
-                .unwrap_or(reqwest::Method::GET),
-            &open.url,
-        )
-    {
+    let mut builder = match reqwest::Client::new().request(
+        reqwest::Method::from_bytes(open.method.as_bytes()).unwrap_or(reqwest::Method::GET),
+        &open.url,
+    ) {
         b => b,
     };
     for (k, v) in &open.headers {
@@ -411,7 +431,10 @@ async fn producer_task(
             return;
         }
         Ok(Err(e)) => {
-            finalize(&handle, StreamState::Failed(format!("stream open failed: {e}")));
+            finalize(
+                &handle,
+                StreamState::Failed(format!("stream open failed: {e}")),
+            );
             return;
         }
         Ok(Ok(resp)) => resp,
@@ -442,12 +465,18 @@ async fn producer_task(
         //（决策 D-8/D-12：暂停读不误触读空闲）。
         let chunk = match tokio::time::timeout(limits.idle_timeout, upstream.next()).await {
             Err(_) => {
-                finalize(&handle, StreamState::Failed("stream idle timeout".to_string()));
+                finalize(
+                    &handle,
+                    StreamState::Failed("stream idle timeout".to_string()),
+                );
                 return;
             }
             Ok(None) => break, // 上游 EOF
             Ok(Some(Err(e))) => {
-                finalize(&handle, StreamState::Failed(format!("stream read error: {e}")));
+                finalize(
+                    &handle,
+                    StreamState::Failed(format!("stream read error: {e}")),
+                );
                 return;
             }
             Ok(Some(Ok(bytes))) => bytes,
@@ -557,7 +586,11 @@ pub(crate) fn spawn_legacy_channel_bridge(stream_id: u64) -> Arc<super::stdlib::
         loop {
             match stream_pull(stream_id) {
                 Pull::Data(s) => {
-                    if tx.send(super::stdlib::AsyncStreamEvent::Data(s)).await.is_err() {
+                    if tx
+                        .send(super::stdlib::AsyncStreamEvent::Data(s))
+                        .await
+                        .is_err()
+                    {
                         stream_cancel(stream_id); // 消费端已丢 → 上游回收
                         return;
                     }
@@ -565,7 +598,10 @@ pub(crate) fn spawn_legacy_channel_bridge(stream_id: u64) -> Arc<super::stdlib::
                 Pull::Pending | Pull::Opening => {
                     // enable → 检查 → await：零固定间隔轮询（决策 D-6）。
                     let stream_ready_fut = wait_stream_ready(stream_id);
-                    if wait_stream_ready_or_cancel(stream_ready_fut).await.is_none() {
+                    if wait_stream_ready_or_cancel(stream_ready_fut)
+                        .await
+                        .is_none()
+                    {
                         return;
                     }
                 }

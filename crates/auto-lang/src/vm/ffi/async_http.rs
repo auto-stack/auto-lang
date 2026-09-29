@@ -104,10 +104,7 @@ pub(crate) fn live_op_ready(req_id: u64) -> bool {
     LIVE_OPS
         .lock()
         .ok()
-        .and_then(|map| {
-            map.get(&req_id)
-                .map(|op| op.state == OpState::Completed)
-        })
+        .and_then(|map| map.get(&req_id).map(|op| op.state == OpState::Completed))
         .unwrap_or(false)
 }
 
@@ -117,7 +114,11 @@ pub(crate) fn live_op_ready_or_gone(req_id: u64) -> bool {
     LIVE_OPS
         .lock()
         .ok()
-        .map(|map| map.get(&req_id).map(|op| op.state != OpState::Pending).unwrap_or(true))
+        .map(|map| {
+            map.get(&req_id)
+                .map(|op| op.state != OpState::Pending)
+                .unwrap_or(true)
+        })
         .unwrap_or(true)
 }
 
@@ -154,7 +155,11 @@ static JOB_ABORTS: std::sync::LazyLock<
 /// 登记表是否仍持有该令牌（parked 不回收断言 / 泄漏探针）。
 #[cfg(test)]
 pub(crate) fn live_op_exists(req_id: u64) -> bool {
-    LIVE_OPS.lock().ok().map(|map| map.contains_key(&req_id)).unwrap_or(false)
+    LIVE_OPS
+        .lock()
+        .ok()
+        .map(|map| map.contains_key(&req_id))
+        .unwrap_or(false)
 }
 
 /// 登记表条目总数（资源回基线探针）。
@@ -231,7 +236,7 @@ impl ClientLimits {
             queue_capacity: env_usize("AUTO_HTTP_CLIENT_QUEUE", 64),
             body_limit: env_usize("AUTO_HTTP_CLIENT_BODY_LIMIT", 10 * 1024 * 1024),
             total_timeout: Duration::from_millis(
-                env_usize("AUTO_HTTP_CLIENT_TIMEOUT_MS", 30_000) as u64,
+                env_usize("AUTO_HTTP_CLIENT_TIMEOUT_MS", 30_000) as u64
             ),
         }
     }
@@ -388,9 +393,7 @@ pub(crate) async fn read_body_capped(
 ) -> Result<Vec<u8>, String> {
     if let Some(len) = resp.content_length() {
         if len > cap as u64 {
-            return Err(format!(
-                "http response body {len} exceeds budget {cap}"
-            ));
+            return Err(format!("http response body {len} exceeds budget {cap}"));
         }
     }
     use futures::StreamExt;

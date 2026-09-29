@@ -199,7 +199,12 @@ enum LineTerm {
 fn find_line_terminator(buf: &[u8]) -> Option<LineTerm> {
     for (i, b) in buf.iter().enumerate() {
         match b {
-            0x0A => return Some(LineTerm::Found { end: i, next: i + 1 }),
+            0x0A => {
+                return Some(LineTerm::Found {
+                    end: i,
+                    next: i + 1,
+                })
+            }
             0x0D => {
                 if i + 1 == buf.len() {
                     return Some(LineTerm::CrAtEnd);
@@ -280,8 +285,7 @@ mod tests {
         assert_eq!(decode_all(&bytewise).unwrap(), expected);
         // 2 字节/块、3 字节/块（切在行终结处与码点中点交替）。
         for step in [2usize, 3, 5] {
-            let chunks: Vec<&[u8]> =
-                full.chunks(step).collect();
+            let chunks: Vec<&[u8]> = full.chunks(step).collect();
             assert_eq!(decode_all(&chunks).unwrap(), expected, "step={step}");
         }
     }
@@ -375,13 +379,22 @@ mod tests {
             .unwrap_err();
         assert_eq!(
             err,
-            SseDecodeError::Budget { kind: "line", limit: 16 }
+            SseDecodeError::Budget {
+                kind: "line",
+                limit: 16
+            }
         );
 
         let mut d = SseDecoder::with_limits(1024, 8);
         let mut out = Vec::new();
         let err = d.feed(b"data: 123456789\n\n", &mut out).unwrap_err();
-        assert_eq!(err, SseDecodeError::Budget { kind: "event", limit: 8 });
+        assert_eq!(
+            err,
+            SseDecodeError::Budget {
+                kind: "event",
+                limit: 8
+            }
+        );
     }
 
     // ---- Utf8Carry：raw 流跨 chunk 码点无损 + 非法字节 lossy ----

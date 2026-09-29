@@ -34,7 +34,10 @@ fn start_plan707_server(code: &str, port: u16) {
 
 /// 上游 SSE 服务器：accept 一连接，回 headers + frames（间隔 gap_ms），
 /// 之后**握住连接**不 EOF（由客户端断连/取消收尾）。返回关闭观测通道。
-fn serve_upstream_sse(frames: Vec<String>, gap_ms: u64) -> (u16, std::sync::mpsc::Receiver<&'static str>) {
+fn serve_upstream_sse(
+    frames: Vec<String>,
+    gap_ms: u64,
+) -> (u16, std::sync::mpsc::Receiver<&'static str>) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream");
     let port = listener.local_addr().unwrap().port();
     let (tx, rx) = std::sync::mpsc::channel::<&'static str>();
@@ -59,7 +62,9 @@ fn serve_upstream_sse(frames: Vec<String>, gap_ms: u64) -> (u16, std::sync::mpsc
             std::thread::sleep(std::time::Duration::from_millis(gap_ms));
         }
         // 发完帧后握住：观察读端何时断（下游断连 → 上游被取消的信号）。
-        stream.set_read_timeout(Some(std::time::Duration::from_millis(100))).ok();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_millis(100)))
+            .ok();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         loop {
             let mut probe = [0u8; 64];
@@ -68,7 +73,10 @@ fn serve_upstream_sse(frames: Vec<String>, gap_ms: u64) -> (u16, std::sync::mpsc
                     let _ = tx.send("eof");
                     return;
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut => {
+                Err(ref e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                {
                     if std::time::Instant::now() > deadline {
                         let _ = tx.send("timeout");
                         return;
@@ -86,7 +94,11 @@ fn serve_upstream_sse(frames: Vec<String>, gap_ms: u64) -> (u16, std::sync::mpsc
 }
 
 /// SSE 下游客户端：GET 后逐帧读取（data 行），带总期限。返回 (帧, 事件间隔 ms, 终结形态)。
-fn sse_client_read(port: u16, path: &str, max_wait_ms: u64) -> (Vec<String>, Vec<u128>, &'static str) {
+fn sse_client_read(
+    port: u16,
+    path: &str,
+    max_wait_ms: u64,
+) -> (Vec<String>, Vec<u128>, &'static str) {
     let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect server");
     stream
         .set_read_timeout(Some(std::time::Duration::from_millis(500)))
@@ -217,8 +229,7 @@ fn http_e2e_plan707_relay_downstream_disconnect_cancels_upstream() {
     let op_baseline = crate::vm::ffi::async_http::live_op_count();
 
     // 上游发 1 帧后握住——下游收帧后立即断连，上游读端应观测到关闭。
-    let (up_port, up_rx) =
-        serve_upstream_sse(vec!["data: only\n\n".to_string()], 0);
+    let (up_port, up_rx) = serve_upstream_sse(vec!["data: only\n\n".to_string()], 0);
 
     const SERVER_PORT: u16 = 18702;
     start_plan707_server(
@@ -307,12 +318,15 @@ fn http_e2e_plan707_stream_explicit_close_two_rounds_baseline() {
     });
 
     for round in 0..2 {
-        let url_idx = vm
-            .add_string(format!("http://127.0.0.1:{up_port}/hold?r={round}").into_bytes());
+        let url_idx =
+            vm.add_string(format!("http://127.0.0.1:{up_port}/hold?r={round}").into_bytes());
         vm.rc_push_str_idx(&mut task, url_idx as usize);
         crate::vm::ffi::stdlib::shim_http_get_stream(&mut task, &vm).expect("open");
         let id = task.ram.pop_i32() as u64;
-        assert!(crate::vm::ffi::http_stream::stream_is_live(id), "round {round} 应存活");
+        assert!(
+            crate::vm::ffi::http_stream::stream_is_live(id),
+            "round {round} 应存活"
+        );
         task.ram.push_i32(id as i32);
         crate::vm::ffi::stdlib::shim_http_stream_close(&mut task, &vm).expect("close");
         assert_eq!(

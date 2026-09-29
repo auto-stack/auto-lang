@@ -10,7 +10,6 @@ use crate::vm::ffi::http_stream as hs;
 use crate::vm::ffi::http_stream::StreamLimits;
 use crate::vm::task::AutoTask;
 
-
 /// 段驱动到完成：park → 轮询就绪（测试泵；生产侧为 COMPLETION_NOTIFY
 /// 事件唤醒泵，语义等价）→ resume，直至 Completed 或超时。
 fn drive_to_completion(

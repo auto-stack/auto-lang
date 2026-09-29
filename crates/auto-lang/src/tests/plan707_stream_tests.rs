@@ -61,9 +61,8 @@ fn fast_chunk_server(n: usize, gap_ms: u64) -> (u16, std::sync::mpsc::Receiver<&
         let mut buf = [0u8; 4096];
         let _ = stream.read(&mut buf);
         let _ = stream.set_nodelay(true);
-        let _ = stream.write_all(
-            b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n",
-        );
+        let _ = stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n");
         let mut blocked_observed = false;
         for i in 0..n {
             let chunk = format!("c{i};");
@@ -83,7 +82,11 @@ fn fast_chunk_server(n: usize, gap_ms: u64) -> (u16, std::sync::mpsc::Receiver<&
                 std::thread::sleep(std::time::Duration::from_millis(gap_ms));
             }
         }
-        let _ = tx.send(if blocked_observed { "backpressured" } else { "drained" });
+        let _ = tx.send(if blocked_observed {
+            "backpressured"
+        } else {
+            "drained"
+        });
         std::thread::sleep(std::time::Duration::from_secs(10));
     });
     (port, rx)
@@ -148,7 +151,11 @@ fn plan707_stream_cancel_storm_two_rounds_baseline() {
         let (port, _rx) = blackhole_accepting(8);
         let mut ids = Vec::new();
         for i in 0..8 {
-            let id = open_raw(&mut task, &vm, &format!("http://127.0.0.1:{port}/s{round}-{i}"));
+            let id = open_raw(
+                &mut task,
+                &vm,
+                &format!("http://127.0.0.1:{port}/s{round}-{i}"),
+            );
             ids.push(id);
         }
         assert_eq!(
@@ -163,7 +170,11 @@ fn plan707_stream_cancel_storm_two_rounds_baseline() {
             let _ = i;
         }
         std::thread::sleep(std::time::Duration::from_millis(200));
-        assert_eq!(hs::stream_live_count(), baseline_streams, "round {round} 未回基线");
+        assert_eq!(
+            hs::stream_live_count(),
+            baseline_streams,
+            "round {round} 未回基线"
+        );
         assert_eq!(
             hs::stream_active_available(),
             baseline_active,
@@ -246,7 +257,11 @@ fn plan707_stream_thread_count_stable_across_streams() {
     // 12 条并发流批量建立再终结。
     let mut ids = Vec::new();
     for i in 0..12 {
-        ids.push(open_raw(&mut task, &vm, &format!("http://127.0.0.1:{port}/t{i}")));
+        ids.push(open_raw(
+            &mut task,
+            &vm,
+            &format!("http://127.0.0.1:{port}/t{i}"),
+        ));
     }
     std::thread::sleep(std::time::Duration::from_millis(500));
     for id in &ids {
@@ -326,10 +341,9 @@ fn plan707_stream_job_abort_table_reclaims() {
     for i in 0..4 {
         let id = crate::vm::ffi::stdlib::alloc_async_id();
         ah::register_live_op(id);
-        assert!(ah::submit_client_job(
-            id,
-            async move { Ok(crate::vm::ffi::stdlib::AsyncResult::Body(format!("ok{i}"))) }
-        ));
+        assert!(ah::submit_client_job(id, async move {
+            Ok(crate::vm::ffi::stdlib::AsyncResult::Body(format!("ok{i}")))
+        }));
     }
     std::thread::sleep(std::time::Duration::from_millis(300));
     assert_eq!(
@@ -348,5 +362,9 @@ fn plan707_stream_job_abort_table_reclaims() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     ah::cancel_live_op(id);
     std::thread::sleep(std::time::Duration::from_millis(100));
-    assert_eq!(ah::job_abort_count(), before, "取消 job 的 abort 句柄未出表");
+    assert_eq!(
+        ah::job_abort_count(),
+        before,
+        "取消 job 的 abort 句柄未出表"
+    );
 }
