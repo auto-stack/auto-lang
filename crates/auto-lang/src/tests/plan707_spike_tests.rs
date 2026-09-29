@@ -131,10 +131,10 @@ fn open_stream() int {{
         ),
         "源码 Http.get_stream 段应 Completed(Ok)"
     );
-    let inserted = crate::vm::ffi::stdlib::HTTP_STREAMS.with(|s| s.borrow().len());
+    let inserted = crate::vm::ffi::http_stream::stream_live_count();
     assert!(
         inserted > 0,
-        "RED：Http.get_stream 静默 no-op（HTTP_STREAMS 空）——\
+        "RED：Http.get_stream 静默 no-op（流资源表空）——\
          codegen 缺 get_stream/stream_is_done 路由，http.at 声明面不可达"
     );
 }

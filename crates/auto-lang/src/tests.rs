@@ -417,4 +417,8 @@ mod plan707_spike_tests;
 // 许可回基线 + detached 消息桥反例；D-1 冻结协议验收）。
 #[cfg(test)]
 mod plan707_cancel_tests;
+// PLAN-707 T-04：流客户端 shim 与 for-in 装配（手动/内联/变量三形态 +
+// SSE poll/close/error 新面 + 队满终结性 + 许可独立）。
+#[cfg(test)]
+mod plan707_client_tests;
 // scratch diagnostics (T-01, remove before landing)

@@ -4032,11 +4032,10 @@ thread_local! {
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
-// Plan 152: HTTP 流数据存储
-thread_local! {
-    pub(crate) static HTTP_STREAMS: std::cell::RefCell<std::collections::HashMap<u64, HttpStreamData>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-}
+// PLAN-707 T-04：旧 thread-local HTTP_STREAMS（reqwest::blocking Response
+// 表）退役——外部流统一迁入全局 `http_stream::STREAMS` 资源表（异步生产、
+// 可取消、有界；见 http_stream.rs 模块注释与 707-stream-decision.md D-3）。
+// 流 id 与句柄族同源于 NET_HANDLE_COUNTER，语义键不变。
 
 // ============================================================================
 // Plan 341: 异步 HTTP 客户端基础设施（对称 server 的 serve_async）
@@ -4109,82 +4108,6 @@ pub fn bus_subscribe_for_test() -> tokio::sync::broadcast::Receiver<String> {
     EVENT_BUS.subscribe()
 }
 
-/// Plan 341: 在独立 OS 线程（自带 tokio runtime）上 spawn 一个 SSE 流式接收
-/// future。每收到一帧 SSE 事件就经 channel 推一个 AsyncStreamEvent::Data。
-///
-/// 为什么用独立线程而非 GLOBAL_RT.spawn：GLOBAL_RT 是单 worker runtime，
-/// 如果在 VM native（同步）里阻塞等待 channel，会卡住那个唯一 worker，
-/// 导致 spawn 的 future 永远得不到调度（死锁）。独立线程 + 独立 runtime
-/// 让 HTTP future 自由推进，VM 侧用 try_recv 轮询。
-fn spawn_async_sse_stream(url: String, _stream_id: u64) -> Arc<AsyncStreamHandle> {
-    let (tx, rx) = tokio::sync::mpsc::channel::<AsyncStreamEvent>(64);
-    let handle = Arc::new(AsyncStreamHandle {
-        rx: std::sync::Mutex::new(rx),
-        done: std::sync::atomic::AtomicBool::new(false),
-    });
-    let handle_clone = handle.clone();
-    std::thread::Builder::new()
-        .name("auto-sse-client".into())
-        .spawn(move || {
-            let rt = match tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-            {
-                Ok(rt) => rt,
-                Err(_) => {
-                    handle_clone.done.store(true, Ordering::SeqCst);
-                    return;
-                }
-            };
-            rt.block_on(async move {
-                let client = reqwest::Client::new();
-                let resp = match client.get(&url).send().await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        let _ = tx.send(AsyncStreamEvent::Error(e.to_string())).await;
-                        let _ = tx.send(AsyncStreamEvent::Done).await;
-                        handle_clone.done.store(true, Ordering::SeqCst);
-                        return;
-                    }
-                };
-                use futures::StreamExt;
-                let mut stream = resp.bytes_stream();
-                let mut buffer = String::new();
-                while let Some(chunk_result) = stream.next().await {
-                    match chunk_result {
-                        Ok(bytes) => {
-                            buffer.push_str(&String::from_utf8_lossy(&bytes));
-                            // Split on "\n\n" (SSE event delimiter). Each event
-                            // may span multiple "data:" lines; join them.
-                            while let Some(idx) = buffer.find("\n\n") {
-                                let event_block: String = buffer.drain(..idx + 2).collect();
-                                let data: String = event_block
-                                    .lines()
-                                    .filter_map(|line| {
-                                        line.strip_prefix("data:")
-                                            .map(|s| s.trim_start().to_string())
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join("\n");
-                                if !data.is_empty() {
-                                    let _ = tx.send(AsyncStreamEvent::Data(data)).await;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            let _ = tx.send(AsyncStreamEvent::Error(e.to_string())).await;
-                            break;
-                        }
-                    }
-                }
-                let _ = tx.send(AsyncStreamEvent::Done).await;
-                handle_clone.done.store(true, Ordering::SeqCst);
-            });
-        })
-        .expect("spawn SSE client thread");
-    handle
-}
-
 // Plan 195: RequestBuilder data storage
 #[derive(Debug, Clone)]
 struct HttpRequestBuilderData {
@@ -4214,38 +4137,6 @@ struct HttpResponseData {
     status: u16,
     headers: Vec<(String, String)>,
     body: Vec<u8>,
-}
-
-/// Plan 154: HTTP 流数据（真正的流式实现）
-/// 使用 reqwest::blocking::Response 逐 chunk 读取
-pub(crate) struct HttpStreamData {
-    pub url: String,
-    pub response: Option<reqwest::blocking::Response>,
-    pub done: bool,
-    pub status_code: u16,
-}
-
-impl std::fmt::Debug for HttpStreamData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("HttpStreamData")
-            .field("url", &self.url)
-            .field("done", &self.done)
-            .field("status_code", &self.status_code)
-            .field("has_response", &self.response.is_some())
-            .finish()
-    }
-}
-
-impl HttpStreamData {
-    fn new(url: String, response: reqwest::blocking::Response) -> Self {
-        let status = response.status().as_u16();
-        Self {
-            url,
-            response: Some(response),
-            done: false,
-            status_code: status,
-        }
-    }
 }
 
 /// Create a new HTTP server (placeholder - returns handle)
@@ -6315,144 +6206,112 @@ pub fn shim_response_body(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 }
 
 // ============================================================================
-// Plan 154: 真正的流式 HTTP 函数（使用 reqwest::blocking）
+// PLAN-707 T-04：真正的流式 HTTP 函数（异步非阻塞形态）
 // ============================================================================
+//
+// 签名与哨兵逐字节保留（决策 D-4）：get/post(+headers) → 句柄 i64；
+// next → str（EOF=`[DONE]`）；is_done → 0/1；close → void。
+// 变化在内部：建立与读取全部经 `http_stream` 资源表（异步生产者、
+// 独立许可、可取消），零阻塞线程、零 blocking read。
 
-/// 创建流式 HTTP GET 请求
-/// Runs in a dedicated OS thread to avoid tokio runtime conflicts.
+/// 创建流式 HTTP GET 请求（非阻塞：立即返回句柄，建立经异步生产者）。
 pub fn shim_http_get_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let url_clone = url.clone();
-    let response = std::thread::spawn(move || {
-        reqwest::blocking::Client::new().get(&url_clone).send()
-    }).join()
-        .map_err(|_| VMError::RuntimeError("HTTP GET stream thread panicked".to_string()))?
-        .map_err(|e| VMError::RuntimeError(format!("HTTP GET stream failed: {}", e)))?;
-
-    let stream_handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let stream_data = HttpStreamData::new(url, response);
-    HTTP_STREAMS.with(|streams| {
-        streams.borrow_mut().insert(stream_handle, stream_data);
+    let stream_id = super::http_stream::open_stream(super::http_stream::StreamOpen {
+        url: resolve_http_base_url(&url),
+        method: "GET".to_string(),
+        body: None,
+        headers: Vec::new(),
+        mode: super::http_stream::StreamMode::Raw,
     });
-
-    task.ram.push_i64(stream_handle as i64);
+    // 单槽 i32（.at int 变量链/for-in _iterator 局部同链，sse_open 先例）。
+    task.ram.push_i32(stream_id as i32);
     Ok(())
 }
 
-/// 创建流式 HTTP POST 请求
-/// Runs in a dedicated OS thread to avoid tokio runtime conflicts.
+/// 创建流式 HTTP POST 请求（非阻塞；Content-Type: application/json 保留）。
 pub fn shim_http_post_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let url_clone = url.clone();
-    let response = std::thread::spawn(move || {
-        reqwest::blocking::Client::new()
-            .post(&url_clone)
-            .header("Content-Type", "application/json")
-            .body(body)
-            .send()
-    }).join()
-        .map_err(|_| VMError::RuntimeError("HTTP POST stream thread panicked".to_string()))?
-        .map_err(|e| VMError::RuntimeError(format!("HTTP POST stream failed: {}", e)))?;
-
-    let stream_handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let stream_data = HttpStreamData::new(url, response);
-    HTTP_STREAMS.with(|streams| {
-        streams.borrow_mut().insert(stream_handle, stream_data);
+    let stream_id = super::http_stream::open_stream(super::http_stream::StreamOpen {
+        url: resolve_http_base_url(&url),
+        method: "POST".to_string(),
+        body: Some(body),
+        headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+        mode: super::http_stream::StreamMode::Raw,
     });
-
-    task.ram.push_i64(stream_handle as i64);
+    task.ram.push_i32(stream_id as i32);
     Ok(())
 }
 
-/// 从流中读取下一个数据块
-/// 使用 reqwest::blocking::Response 的 std::io::Read trait 逐块读取
+/// 从流中读取下一个数据块（typed pull）。
+///
+/// Data → 文本块；EOF/取消 → `[DONE]` 哨兵（既有适配保留，迭代器终结凭
+/// 状态而非字符串比较——决策 D-4）；Failed → RuntimeError（既有读错误
+/// 形态）；无数据/建立中 → 段挂起（`waiting_http_stream_id`，引擎 CALL_NAT
+/// 重试协议与 waiting_sse_stream_id 同构）。
 pub fn shim_http_stream_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let handle: i64 = task.ram.pop_i64();
-
-    let result = HTTP_STREAMS.try_with(|streams| -> Result<(), VMError> {
-        let mut streams = streams.borrow_mut();
-        let stream = streams.get_mut(&(handle as u64))
-            .ok_or_else(|| VMError::RuntimeError(format!("Invalid HTTP stream handle: {}", handle)))?;
-
-        if stream.done {
-            "[DONE]".to_string().push_to_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-            return Ok(());
-        }
-
-        if let Some(ref mut response) = stream.response {
-            // Read a chunk (up to 8KB) from the response
-            use std::io::Read;
-            let mut buf = vec![0u8; 8192];
-            match response.read(&mut buf) {
-                Ok(0) => {
-                    // EOF - stream complete
-                    stream.done = true;
-                    stream.response = None;
-                    "[DONE]".to_string().push_to_stack(task, vm)
-                        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-                }
-                Ok(n) => {
-                    let text = String::from_utf8_lossy(&buf[..n]).to_string();
-                    text.push_to_stack(task, vm)
-                        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-                }
-                Err(e) => {
-                    stream.done = true;
-                    stream.response = None;
-                    return Err(VMError::RuntimeError(format!("Stream read error: {}", e)));
-                }
-            }
-        } else {
-            "[DONE]".to_string().push_to_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-        }
-
-        Ok(())
-    });
-
-    result.map_err(|e| VMError::RuntimeError(e.to_string()))??;
-    Ok(())
+    // 重入臂（Plan 349 step 7 协议，与 HttpRequest 族同构）：CALL_NAT
+    // rewind 重触发时凭据即句柄——首轮已 pop 栈参，重入**不得再 pop**
+    //（栈上无参，重 pop 读垃圾）。
+    if let Some(id) = task.waiting_http_stream_id.take() {
+        return push_stream_next_value(task, vm, id as i64);
+    }
+    let handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+    push_stream_next_value(task, vm, handle)
 }
 
-/// 检查流是否完成
+/// stream_next 的 pull→推值主体（首调/重入共用）。
+fn push_stream_next_value(task: &mut AutoTask, vm: &AutoVM, handle: i64) -> Result<(), VMError> {
+    match super::http_stream::stream_pull(handle as u64) {
+        super::http_stream::Pull::Data(text) => {
+            text.push_to_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+            Ok(())
+        }
+        super::http_stream::Pull::Eof => {
+            "[DONE]".to_string().push_to_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+            Ok(())
+        }
+        super::http_stream::Pull::Failed(e) => {
+            Err(VMError::RuntimeError(format!("Stream read error: {}", e)))
+        }
+        super::http_stream::Pull::Pending | super::http_stream::Pull::Opening => {
+            task.waiting_http_stream_id = Some(handle as u64);
+            task.status = crate::vm::task::TaskStatus::Waiting("http-stream".into());
+            Ok(())
+        }
+    }
+}
+
+/// 检查流是否完成（非消费式：终态且队列已空 → 1；否则 0）。
 pub fn shim_http_stream_is_done(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let handle: i64 = task.ram.pop_i64();
-
-    let result = HTTP_STREAMS.try_with(|streams| -> Result<(), VMError> {
-        let streams = streams.borrow();
-        let stream = streams.get(&(handle as u64))
-            .ok_or_else(|| VMError::RuntimeError(format!("Invalid HTTP stream handle: {}", handle)))?;
-
-        task.ram.push_nv(auto_val::encode_bool(stream.done));
-        Ok(())
-    });
-
-    result.map_err(|e| VMError::RuntimeError(e.to_string()))??;
+    let _ = vm;
+    let handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+    // .at 声明返回 int（1=done）——推 i32 而非 bool 位型（`== 1` 比较
+    // 按 int 语义；bool 位型比较恒假，707 实测）。
+    let done = super::http_stream::stream_terminal_error(handle as u64).is_some();
+    task.ram.push_i32(if done { 1 } else { 0 });
     Ok(())
 }
 
-/// 关闭流
+/// 关闭流（语义升级：终结状态机 + abort 生产者 + 出表——连接真正关闭）。
 pub fn shim_http_stream_close(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let handle: i64 = task.ram.pop_i64();
-
-    HTTP_STREAMS.with(|streams| {
-        streams.borrow_mut().remove(&(handle as u64));
-    });
-
+    let _ = vm;
+    let handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+    super::http_stream::stream_cancel(handle as u64);
     Ok(())
 }
 
 /// Plan 321: Create an iterator from an HTTPStream for for-loop consumption.
 /// `for chunk in http_stream { }` calls this via the Iter protocol.
+/// PLAN-707：句柄即 `http_stream::STREAMS` 的流 id（同源发号）。
 pub fn shim_http_stream_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let handle: i64 = task.ram.pop_i64();
+    let handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
     let hs_iter = crate::vm::engine::HttpStreamIterator {
         stream_handle: handle as u64,
@@ -6470,20 +6329,25 @@ pub fn shim_http_stream_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 /// Plan 341: `auto.http.sse_get_stream(url) -> iterator_id`
 ///
 /// Opens an SSE (Server-Sent Events) connection to `url` and returns an
-/// iterator id. The connection is driven asynchronously via tokio::spawn
-/// (reqwest async + bytes_stream); each parsed SSE `data:` event is pushed
-/// through an mpsc channel. The VM-side iterator (Iterator::AsyncHttpStream)
-/// pulls events via try_recv in shim_iterator_next.
+/// iterator id. PLAN-707 T-04：生产端迁入 `http_stream` 资源表（共享固定
+/// runtime、增量 SseDecoder、可取消），经 legacy 通道桥以既有
+/// AsyncStreamEvent（Data/Done/Error）形态供给 `Iterator::AsyncHttpStream`
+/// 的 try_recv 消费面——事件语义逐字节保留（决策 D-4）。
 ///
 /// Usage in Auto: `for event in http.sse_get_stream(url) { print(event) }`
 pub fn shim_http_sse_get_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
-    let stream_id = alloc_async_id();
-    let handle = spawn_async_sse_stream(url, stream_id);
+    let stream_id = super::http_stream::open_stream(super::http_stream::StreamOpen {
+        url: resolve_http_base_url(&url),
+        method: "GET".to_string(),
+        body: None,
+        headers: Vec::new(),
+        mode: super::http_stream::StreamMode::Sse,
+    });
+    let handle = super::http_stream::spawn_legacy_channel_bridge(stream_id);
 
-    // Register the async stream handle.
     if let Ok(mut map) = ASYNC_STREAMS.lock() {
         map.insert(stream_id, handle);
     }
@@ -6507,14 +6371,20 @@ pub fn shim_http_sse_get_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 
 /// PLAN-658 T-04: `auto.http.sse_open(url) -> stream_id (i64)`
 ///
-/// 与 `auto.http.sse_get_stream` 同源（同一 spawn_async_sse_stream 通道），
-/// 但返回**流句柄**而非迭代器 id——配合 sse_poll 供 Tick 驱动的逐步消费
-/// 循环用（迭代器形态只能整流 for-loop，无法分帧跨 Tick 拉取）。
+/// 与 `auto.http.sse_get_stream` 同源（同一 open + legacy 通道桥），但返回
+/// **流句柄**而非迭代器 id——配合 sse_poll 供 Tick 驱动的逐步消费循环用
+///（迭代器形态只能整流 for-loop，无法分帧跨 Tick 拉取）。
 pub fn shim_http_stream_sse_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let stream_id = alloc_async_id();
-    let handle = spawn_async_sse_stream(url, stream_id);
+    let stream_id = super::http_stream::open_stream(super::http_stream::StreamOpen {
+        url: resolve_http_base_url(&url),
+        method: "GET".to_string(),
+        body: None,
+        headers: Vec::new(),
+        mode: super::http_stream::StreamMode::Sse,
+    });
+    let handle = super::http_stream::spawn_legacy_channel_bridge(stream_id);
     if let Ok(mut map) = ASYNC_STREAMS.lock() {
         map.insert(stream_id, handle);
     }
@@ -6554,6 +6424,31 @@ pub fn shim_http_stream_sse_poll(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
         Err(_) => "[DONE]".to_string(),
     };
     out.push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+/// PLAN-707 T-04: `auto.http.sse_close(stream_id)`——显式释放未完流
+///（终结状态机 + abort 生产者 + 双表出表）。幂等。
+pub fn shim_http_stream_sse_close(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = vm;
+    let stream_id: i64 = task.ram.pop_i32() as i64;
+    if let Ok(mut map) = ASYNC_STREAMS.lock() {
+        map.remove(&(stream_id as u64));
+    }
+    super::http_stream::stream_cancel(stream_id as u64);
+    Ok(())
+}
+
+/// PLAN-707 T-04: `auto.http.sse_error(stream_id) -> str`——终态错误查询
+///（"" = 未终结或无错；Failed = 诊断；Cancelled = "stream cancelled"）。
+/// 非消费式，可重复查询。
+pub fn shim_http_stream_sse_error(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = vm;
+    let stream_id: i64 = task.ram.pop_i32() as i64;
+    let err = super::http_stream::stream_terminal_error(stream_id as u64)
+        .and_then(|opt| opt)
+        .unwrap_or_default();
+    err.push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
 }
 
@@ -6631,6 +6526,7 @@ pub fn shim_bus_subscribe(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// - headers_json: String (JSON object like `{"Authorization": "Bearer xxx", "Content-Type": "application/json"}`)
 ///
 /// Returns an HTTP stream handle (i64) on the stack.
+/// PLAN-707 T-04：非阻塞异步建立；VM JSON 字符串头原样透传（决策 D-4）。
 pub fn shim_http_post_stream_with_headers(
     task: &mut AutoTask,
     vm: &AutoVM,
@@ -6646,26 +6542,14 @@ pub fn shim_http_post_stream_with_headers(
     let headers_map: std::collections::HashMap<String, String> =
         serde_json::from_str(&headers_json).unwrap_or_default();
 
-    let url_clone = url.clone();
-    let response = std::thread::spawn(move || {
-        let mut request = reqwest::blocking::Client::new()
-            .post(&url_clone)
-            .body(body);
-        for (key, value) in &headers_map {
-            request = request.header(key.as_str(), value.as_str());
-        }
-        request.send()
-    }).join()
-        .map_err(|_| VMError::RuntimeError("HTTP POST stream thread panicked".to_string()))?
-        .map_err(|e| VMError::RuntimeError(format!("HTTP POST stream with headers failed: {}", e)))?;
-
-    let stream_handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let stream_data = HttpStreamData::new(url, response);
-    HTTP_STREAMS.with(|streams| {
-        streams.borrow_mut().insert(stream_handle, stream_data);
+    let stream_id = super::http_stream::open_stream(super::http_stream::StreamOpen {
+        url: resolve_http_base_url(&url),
+        method: "POST".to_string(),
+        body: Some(body),
+        headers: headers_map.into_iter().collect(),
+        mode: super::http_stream::StreamMode::Raw,
     });
-
-    task.ram.push_i64(stream_handle as i64);
+    task.ram.push_i32(stream_id as i32);
     Ok(())
 }
 
@@ -8782,6 +8666,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // PLAN-658 T-04: SSE 逐步拉取面 + ~Stream 端点编译 seam。
     natives.register_shim_by_name("auto.http.sse_open", shim_http_stream_sse_open);
     natives.register_shim_by_name("auto.http.sse_poll", shim_http_stream_sse_poll);
+    // PLAN-707 T-04: SSE 显式 close 与终态错误查询。
+    natives.register_shim_by_name("auto.http.sse_close", shim_http_stream_sse_close);
+    natives.register_shim_by_name("auto.http.sse_error", shim_http_stream_sse_error);
     natives.register_shim_by_name("auto.bus.subscribe", shim_bus_subscribe);
     natives.register_shim_by_name("http.sse_get_stream", shim_http_sse_get_stream);
     natives.register_shim_by_name("http.sse_stream", shim_http_sse_get_stream);

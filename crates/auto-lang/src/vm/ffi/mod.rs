@@ -43,6 +43,8 @@ mod generated_std;
 pub mod dep_methods;
 pub mod rust_stdlib;
 pub mod http_server;  // Plan 321/322: AutoHttpServer unified shim
+
+pub mod http_stream;  // PLAN-707: 外部 HTTP/SSE 流统一资源表与生产者
 // PLAN-699: Axum/Hyper HTTP/1.1 transport (network thread + owned bridge).
 pub mod http_transport;
 pub mod websocket;   // Plan 350: WebSocket client

@@ -184,6 +184,22 @@ fn http_stream_is_done(stream HTTPStream) int
 #[vm]
 fn http_stream_close(stream HTTPStream) void
 
+// PLAN-707: iterator + SSE explicit lifecycle surface.
+#[vm]
+fn http_stream_iter(stream HTTPStream) int
+
+#[vm]
+fn sse_open(url str) int
+
+#[vm]
+fn sse_poll(stream_id int) str
+
+#[vm]
+fn sse_close(stream_id int) void
+
+#[vm]
+fn sse_error(stream_id int) str
+
 // ═══════════════════════════════════════════════════════════
 // HTTP Client Sync (for API calls from AutoVM)
 // ═══════════════════════════════════════════════════════════

@@ -4717,35 +4717,36 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 return Ok(());
             }
             Iterator::HttpStream(hs_iter) => {
-                // Plan 321: HTTP stream iterator — read next chunk from HTTPStream.
+                // PLAN-707 T-04：HTTPStream 迭代器走统一 typed pull
+                //（http_stream::STREAMS 资源表；旧 thread-local blocking
+                // read 退役）。EOF/Failed/Cancelled → -1 终结（修复 G-I：
+                // 旧 EOF 臂不推 -1，cooperative 驱动误判 pending）；无数据
+                // → 挂 waiting_http_stream_id 等待（同 AsyncHttpStream 的
+                // Waiting 语义，wake source 复查 stream_ready）。
                 if hs_iter.done {
                     return Ok(());
                 }
 
-                let chunk_result: Option<String> = crate::vm::ffi::stdlib::HTTP_STREAMS.with(|streams| {
-                    let mut streams = streams.borrow_mut();
-                    if let Some(stream_data) = streams.get_mut(&hs_iter.stream_handle) {
-                        if stream_data.done {
-                            hs_iter.done = true;
-                            None
-                        } else if let Some(ref mut response) = stream_data.response {
-                            use std::io::Read;
-                            let mut buf = vec![0u8; 8192];
-                            match response.read(&mut buf) {
-                                Ok(0) => { stream_data.done = true; hs_iter.done = true; None }
-                                Ok(n) => Some(String::from_utf8_lossy(&buf[..n]).to_string()),
-                                Err(_) => { stream_data.done = true; hs_iter.done = true; None }
-                            }
-                        } else { hs_iter.done = true; None }
-                    } else { hs_iter.done = true; None }
-                });
-
-                match chunk_result {
-                    Some(chunk) => {
+                match crate::vm::ffi::http_stream::stream_pull(hs_iter.stream_handle) {
+                    crate::vm::ffi::http_stream::Pull::Data(chunk) => {
                         let idx = vm.add_string(chunk.into_bytes());
                         vm.rc_push_str_idx(task, idx as usize);
                     }
-                    None => {}
+                    crate::vm::ffi::http_stream::Pull::Eof
+                    | crate::vm::ffi::http_stream::Pull::Failed(_) => {
+                        hs_iter.done = true;
+                        task.ram.push_i32(-1);
+                    }
+                    crate::vm::ffi::http_stream::Pull::Opening
+                    | crate::vm::ffi::http_stream::Pull::Pending => {
+                        task.waiting_http_stream_id = Some(hs_iter.stream_handle);
+                        task.status = crate::vm::task::TaskStatus::Waiting("sse".into());
+                        // 参数回推（同 fallback 注释；cooperative 驱动自推）。
+                        if !cooperative {
+                            task.ram.push_i32(hs_iter.stream_handle as i32);
+                        }
+                        return Ok(());
+                    }
                 }
                 return Ok(());
             }
@@ -4815,6 +4816,40 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         }
     } else {
         // Fallback: if iterator_id is actually a heap list object, auto-create iterator
+        // PLAN-707 D-5：流句柄惰性消费——for-in 的迭代器通道把「内联
+        // stream-opening 调用」或「持流变量」的值（= 流 id）直接传给本
+        // shim；命中存活流即就地 pull（不进 iterators 表，零 id 碰撞；
+        // 状态全在流资源表 cell 内）。覆盖内联调用、赋变量再 for 两形态。
+        if crate::vm::ffi::http_stream::stream_is_live(iterator_id as u64) {
+            match crate::vm::ffi::http_stream::stream_pull(iterator_id as u64) {
+                crate::vm::ffi::http_stream::Pull::Data(chunk) => {
+                    // 就绪出口必须清等待凭据——否则残留标志令引擎在后续
+                    // 任意 CALL_NAT 上误 rewind（热循环根因，707 实测）。
+                    task.waiting_http_stream_id = None;
+                    let idx = vm.add_string(chunk.into_bytes());
+                    vm.rc_push_str_idx(task, idx as usize);
+                    return Ok(());
+                }
+                crate::vm::ffi::http_stream::Pull::Eof
+                | crate::vm::ffi::http_stream::Pull::Failed(_) => {
+                    task.waiting_http_stream_id = None;
+                    task.ram.push_i32(-1);
+                    return Ok(());
+                }
+                crate::vm::ffi::http_stream::Pull::Opening
+                | crate::vm::ffi::http_stream::Pull::Pending => {
+                    task.waiting_http_stream_id = Some(iterator_id as u64);
+                    task.status = crate::vm::task::TaskStatus::Waiting("sse".into());
+                    // 参数回推：CALL_NAT rewind 重试时 shim 会重新 pop
+                    //（Plan 348/419 重试协议的参数重建臂；cooperative 驱动
+                    // 自行重推 id，回推会破坏其 sp==stack_before 契约）。
+                    if !cooperative {
+                        task.ram.push_i32(iterator_id as i32);
+                    }
+                    return Ok(());
+                }
+            }
+        }
         if let Some(obj) = vm.get_heap_object(iterator_id as u64) {
             let guard = obj.read().unwrap();
             if guard.type_tag() == crate::vm::heap_object::TypeTag::ListInt {

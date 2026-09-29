@@ -1531,6 +1531,18 @@ macro_rules! for_each_bigvm_native {
             ("auto.http_stream.stream_is_done", 2243, Void),
             ("auto.http_stream.stream_close", 2244, Void),
             ("auto.http_stream.stream_iter", 2245, Void), // Plan 321: Iter protocol
+            // PLAN-707 T-04: http.at 声明面路由（裸 `Http.*` 命名空间，经
+            // to_canonical 归一命中）——此前 Http.get_stream 静默 no-op
+            //（707 红测 G-C 定罪）；ID 与 http_stream.* 族共享。
+            ("auto.http.get_stream", 2240, Void),
+            ("auto.http.post_stream", 2241, Void),
+            ("auto.http.stream_next", 2242, Void),
+            ("auto.http.stream_is_done", 2243, Void),
+            ("auto.http.stream_close", 2244, Void),
+            ("auto.http.stream_iter", 2245, Void),
+            // PLAN-707 T-04: SSE 显式 close 与终态错误查询。
+            ("auto.http.sse_close", 3149, Void),
+            ("auto.http.sse_error", 3150, Void),
             ("auto.http.post_stream_with_headers", 2255, Void),
             ("auto.http.post_sync", 2256, Void),
             ("auto.http.last_status", 2257, Void),
@@ -2421,6 +2433,15 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.http_stream.stream_is_done", 2243),
     ("auto.http_stream.stream_close", 2244),
     ("auto.http_stream.stream_iter", 2245),
+    // PLAN-707 T-04: `Http.*` 命名空间别名（同 ID）+ SSE close/error。
+    ("auto.http.get_stream", 2240),
+    ("auto.http.post_stream", 2241),
+    ("auto.http.stream_next", 2242),
+    ("auto.http.stream_is_done", 2243),
+    ("auto.http.stream_close", 2244),
+    ("auto.http.stream_iter", 2245),
+    ("auto.http.sse_close", 3149),
+    ("auto.http.sse_error", 3150),
     ("auto.http.post_stream_with_headers", 2255),
     ("auto.http.post_sync", 2256),
     ("auto.http.last_status", 2257),

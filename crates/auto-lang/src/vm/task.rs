@@ -88,6 +88,10 @@ pub struct AutoTask {
     pub waiting_sse_stream_id: Option<u64>,
     // Plan 349 step 7: HTTP request this task is waiting on (None = not waiting).
     pub waiting_http_request_id: Option<u64>,
+    // PLAN-707: HTTP/SSE stream this task is waiting on (None = not waiting).
+    // Set by stream next/pull shims when the stream has no data yet; the
+    // engine CALL_NAT arm rewinds IP + yields, wake sources check stream_ready.
+    pub waiting_http_stream_id: Option<u64>,
     // Plan 010 (MS3-A): try/catch exception handler stack. Each frame records
     // the catch handler's absolute instruction pointer; when a runtime error
     // is raised, the top frame is popped and execution jumps to its pc.
@@ -232,6 +236,7 @@ impl AutoTask {
             call_stack: Vec::new(),
             waiting_sse_stream_id: None,
             waiting_http_request_id: None,
+            waiting_http_stream_id: None,
             handler_stack: Vec::new(),
             pending_native_arg_count: 0, // Plan 369 Task 10: runtime arg count for py-FFI shims
             accum_stack: Vec::new(),

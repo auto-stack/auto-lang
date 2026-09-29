@@ -336,6 +336,11 @@ pub enum ParkedWait {
     /// wake itself happens in `resume_fn_by_name_segment` (mirror of wake
     /// source 6, Plan 394 Phase A).
     Future(u32),
+    /// PLAN-707 T-05: HTTP/SSE stream — ready when the stream has a queued
+    /// item or reached a terminal state (`http_stream::stream_ready`);
+    /// the shim's re-entry branch consumes it when the re-driven CALL_NAT
+    /// re-fires (same protocol as HttpRequest).
+    HttpStream(u64),
 }
 
 /// Resume context captured at park time; immutable across repeated
@@ -2594,6 +2599,18 @@ impl AutoVM {
                                 },
                             };
                         }
+                        // PLAN-707 T-05: 外部流无数据 → park（就绪/终结后由
+                        // 完成通知唤醒的泵恢复；凭证供 parked_is_ready 判定）。
+                        if let Some(stream_id) = task.waiting_http_stream_id {
+                            return SegmentOutcome::Parked {
+                                wait: ParkedWait::HttpStream(stream_id),
+                                seg: ParkedSegment {
+                                    fn_name: fn_name.to_string(),
+                                    saved_bp,
+                                    saved_fn_n_args,
+                                },
+                            };
+                        }
                         // Non-waiting yield (SLEEP / SSE generator retry):
                         // sync-driver parity — keep stepping.
                         continue;
@@ -2618,6 +2635,23 @@ impl AutoVM {
                             budget_waits += 1;
                         }
                         Self::api_budget_accumulate(budget_waits, budget_start.elapsed());
+                        steps = steps.saturating_sub(1);
+                    }
+                    // PLAN-707 T-05: legacy 同步 busy-wait 段的流等待臂——
+                    // 既有形态比照（5ms 轮询 + 30s 超时；同步驱动的既有约束，
+                    // 事件驱动路径见 segment 泵与 D-6）。
+                    if let Some(stream_id) = task.waiting_http_stream_id {
+                        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                        while !crate::vm::ffi::http_stream::stream_ready(stream_id) {
+                            if std::time::Instant::now() > deadline {
+                                task.waiting_http_stream_id = None;
+                                crate::vm::ffi::http_stream::stream_cancel(stream_id);
+                                return SegmentOutcome::Completed(Err(VMError::RuntimeError(
+                                    "http stream wait timed out in call_fn_by_name".into(),
+                                )));
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                        }
                         steps = steps.saturating_sub(1);
                     }
                     continue;
@@ -3105,6 +3139,18 @@ impl AutoVM {
                     } else {
                         alive_count += 1;
                         continue; // Still waiting for SSE data
+                    }
+                }
+
+                // PLAN-707 T-05: Wake source 4b — HTTPStream 句柄惰性消费的
+                // 等待唤醒（数据入队或终态；stream_ready 含终结与条目消失）。
+                if let Some(stream_id) = task.waiting_http_stream_id {
+                    if crate::vm::ffi::http_stream::stream_ready(stream_id) {
+                        task.waiting_http_stream_id = None;
+                        task.status = TaskStatus::Ready;
+                    } else {
+                        alive_count += 1;
+                        continue; // Still waiting for stream data
                     }
                 }
 
@@ -8887,7 +8933,8 @@ impl AutoVM {
                         // Plan 348: if iterator_next yielded (SSE stream waiting),
                         // back up IP so the CALL_NAT re-executes on resume,
                         // and signal Yield so the scheduler can run other tasks.
-                        if task.waiting_sse_stream_id.is_some() {
+                        // PLAN-707: HTTPStream 句柄惰性消费臂同款重试协议。
+                        if task.waiting_sse_stream_id.is_some() || task.waiting_http_stream_id.is_some() {
                             // Plan 419: yield 重试路径不结算 —— 参数仍在死区
                             // 语义之外,重试时 shim 会重新 pop。
                             task.ip = pre_call_ip - 3;
@@ -8926,7 +8973,11 @@ impl AutoVM {
                         }
                         // Plan 349 step 7: if HTTP json native yielded (async
                         // request pending), back up IP to retry CALL_NAT.
-                        if task.waiting_http_request_id.is_some() {
+                        // PLAN-707 T-05: 流等待同款重试协议（shim 重入臂消费
+                        // waiting_http_stream_id 后重新 pull）。
+                        if task.waiting_http_request_id.is_some()
+                            || task.waiting_http_stream_id.is_some()
+                        {
                             task.ip = pre_call_ip - 3;
                             return Ok(StepResult::Yield);
                         }

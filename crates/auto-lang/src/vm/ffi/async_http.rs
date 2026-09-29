@@ -283,6 +283,12 @@ pub(crate) fn client_limits() -> ClientLimits {
     executor().limits
 }
 
+/// PLAN-707 T-04：共享固定 client runtime 的句柄（流生产者与非流式 job
+/// 同 runtime，无新增线程池——决策 D-2）。
+pub(crate) fn client_runtime() -> tokio::runtime::Handle {
+    executor().rt.handle().clone()
+}
+
 /// 提交一个**managed** 客户端 job 到固定 async runtime。
 ///
 /// 队列已满 → 立即以终结性错误完成该 req_id（消费端拿到既有错误形态）并

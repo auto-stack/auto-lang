@@ -379,6 +379,9 @@ pub struct Codegen {
     /// 与 var_types 平行共存——StrFixed 谎言保留（顶层结果格式化依赖），
     /// 侧表只覆盖"路由到哪"，不影响"打印成什么"。
     pub py_typed_vars: HashSet<String>,
+    /// PLAN-707 D-5: 持流句柄的变量集（`var s = Http.get_stream(..)` 登记；
+    /// for-in 变量形态据此走迭代器通道）。重赋值移除（track/for 双向维护）。
+    pub stream_vars: HashSet<String>,
 
     /// Plan 569 D2: fn 名 → 尾表达式 may_py（用户 fn 返回 py 桥值的跨函数
     /// 传导，单层流型保守正报——错报代价=obj_call 组合子 Auto 臂照常分派）。
@@ -671,6 +674,7 @@ impl Codegen {
             last_was_native_void: false,
             last_expr_may_py: false, // Plan 569 D2: py-类型侧表粘性位
             py_typed_vars: HashSet::new(), // Plan 569 D2
+            stream_vars: HashSet::new(), // PLAN-707 D-5
             fn_may_py_returns: HashSet::new(), // Plan 569 D2
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
             task_variants: HashMap::new(), // Plan 390 §14 L3
@@ -982,6 +986,7 @@ impl Codegen {
             last_was_native_void: false,
             last_expr_may_py: false, // Plan 569 D2: py-类型侧表粘性位
             py_typed_vars: HashSet::new(), // Plan 569 D2
+            stream_vars: HashSet::new(), // PLAN-707 D-5
             fn_may_py_returns: HashSet::new(), // Plan 569 D2
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
             task_variants: HashMap::new(), // Plan 390 §14 L3
@@ -2991,6 +2996,73 @@ impl Codegen {
                                 self.patch_jump_to(continue_placeholder, loop_start as usize);
                             }
                         } else {
+                            // PLAN-707 D-5 形态 2：变量形态——持流变量
+                            //（`var s = Http.get_stream(..)` 登记的 stream_vars）
+                            // 走迭代器通道：CALL auto.iterator.next 逐拉（句柄
+                            // 即流 id，shim 的流句柄惰性消费臂就地 pull，无数据
+                            // 时挂 waiting_http_stream_id）。数组通道对句柄源
+                            // 零迭代（ARRAY_LEN 不可表达），故此前置分流。
+                            let stream_source = match &for_stmt.range {
+                                Expr::Ident(name) => self.stream_vars.contains(name.as_str()),
+                                _ => false,
+                            };
+                            if stream_source {
+                                self.push_scope(); // _iterator + 循环变量
+                                self.compile_expr(&for_stmt.range)?;
+                                let iter_index = self.add_var("_iterator");
+                                self.emit_store_loc(iter_index);
+
+                                let loop_start = self.code.len();
+                                self.emit_load_loc(iter_index);
+                                let native_id = BIGVM_NATIVES
+                                    .lock()
+                                    .unwrap()
+                                    .resolve_qualified("auto.iterator.next")
+                                    .ok_or_else(|| {
+                                        AutoError::Msg(
+                                            "Iterator.next native function not found".to_string(),
+                                        )
+                                    })?;
+                                self.emit(OpCode::CALL_NAT);
+                                self.code.extend_from_slice(&native_id.to_le_bytes());
+                                self.emit(OpCode::DUP);
+                                self.emit(OpCode::CONST_I32);
+                                self.emit_i32(-1);
+                                self.emit(OpCode::EQ);
+                                self.emit(OpCode::JMP_IF_NZ);
+                                let jump_to_end = self.emit_placeholder_i16();
+
+                                let var_str = var_name.to_string();
+                                self.var_types.insert(var_str.clone(), Type::StrOwned);
+                                let var_index = self.add_var(&var_str);
+                                self.emit_store_loc(var_index);
+
+                                if let Some(pos) = self.loop_continue_positions.last_mut() {
+                                    *pos = loop_start as usize;
+                                }
+                                let old_pop = self.should_pop_expr_result;
+                                self.should_pop_expr_result = true;
+                                self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+                                self.should_pop_expr_result = old_pop;
+
+                                self.emit(OpCode::JMP);
+                                let current_pos = self.code.len();
+                                self.emit_i16((loop_start as isize - current_pos as isize - 2) as i16);
+
+                                let _loop_exit = self.code.len();
+                                self.patch_jump(jump_to_end);
+                                self.pop_scope();
+                                let exits = self.loop_exits.pop().unwrap();
+                                for exit_placeholder in exits {
+                                    self.patch_jump(exit_placeholder);
+                                }
+                                let continues = self.loop_continues.pop().unwrap();
+                                for continue_placeholder in continues {
+                                    self.patch_jump_to(continue_placeholder, loop_start as usize);
+                                }
+                                self.loop_continue_positions.pop();
+                                return Ok(());
+                            }
                             // Plan 089: Array-based for loop: for x in expr { ... }
                             // Supports any iterable expression: variable, field access, call, etc.
                             // Infer element type before compiling range (for var_types tracking)
@@ -14117,6 +14189,24 @@ impl Codegen {
     /// regression since Plan 338).
     fn track_store_var_type(&mut self, store: &crate::ast::Store) {
         let name_str = store.name.to_string();
+        // PLAN-707 D-5: RHS 是流打开调用 → 登记持流变量（for-in 变量形态
+        // 识别）；非流 RHS（含重赋值）移除标记，防误路由。
+        if let Expr::Call(call) = &store.expr {
+            if let Expr::Dot(_, method) = call.name.as_ref() {
+                if matches!(
+                    method.as_str(),
+                    "get_stream" | "post_stream" | "post_stream_with_headers"
+                ) {
+                    self.stream_vars.insert(name_str.clone());
+                } else {
+                    self.stream_vars.remove(&name_str);
+                }
+            } else {
+                self.stream_vars.remove(&name_str);
+            }
+        } else {
+            self.stream_vars.remove(&name_str);
+        }
         // Plan 080: Track variable type for instance method support
         // Plan 198 Phase 4: Replaced 120-line hardcoded if-chain with resolve_constructor_type()
         if let Expr::Call(call) = &store.expr {

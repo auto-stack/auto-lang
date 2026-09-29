@@ -246,3 +246,31 @@ pub fn HTTPStream.is_done(self HTTPStream) int;
 
 /// Close stream and release resources
 pub fn HTTPStream.close(self HTTPStream) void;
+
+/// PLAN-707: Get an iterator id over stream chunks (for c in s.iter() { }).
+/// The stream handle stays owned by the caller; close it when done.
+pub fn HTTPStream.iter(self HTTPStream) int;
+
+/// PLAN-707: Read next chunk (free-function form of HTTPStream.next).
+pub fn stream_next(stream HTTPStream) str;
+
+/// PLAN-707: Check stream done flag (free-function form).
+pub fn stream_is_done(stream HTTPStream) int;
+
+/// PLAN-707: Close stream (free-function form).
+pub fn stream_close(stream HTTPStream) void;
+
+/// PLAN-707: Create an iterator over the stream (free-function form).
+pub fn stream_iter(stream HTTPStream) int;
+
+/// PLAN-707: Open an SSE stream, return stream id for sse_poll/sse_close.
+pub fn sse_open(url str) int;
+
+/// PLAN-707: Non-blocking poll — data payload; "" = pending; "[DONE]" = ended.
+pub fn sse_poll(stream_id int) str;
+
+/// PLAN-707: Explicitly close an SSE stream (release upstream connection).
+pub fn sse_close(stream_id int) void;
+
+/// PLAN-707: Query terminal error — "" = not terminated / no error.
+pub fn sse_error(stream_id int) str;

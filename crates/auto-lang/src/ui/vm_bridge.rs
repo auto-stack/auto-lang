@@ -1595,6 +1595,10 @@ impl VmBridge {
                 .get(fid)
                 .map(|f| f.read().unwrap().state != crate::vm::engine::FutureState::Pending)
                 .unwrap_or(true), // future gone → wake (engine wake-source-6 parity)
+            // PLAN-707 T-05: HTTP/SSE stream — queued item or terminal state.
+            ParkedWait::HttpStream(stream_id) => {
+                crate::vm::ffi::http_stream::stream_ready(*stream_id)
+            }
         }
     }
 

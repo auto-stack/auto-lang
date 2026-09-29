@@ -3634,6 +3634,10 @@ fn cancel_all_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) 
             ParkedWait::HttpRequest(req_id) => {
                 crate::vm::ffi::stdlib::drop_async_result(*req_id);
             }
+            // PLAN-707 T-05: 放弃 parked 流等待 → 取消上游流（收口）。
+            ParkedWait::HttpStream(stream_id) => {
+                crate::vm::ffi::http_stream::stream_cancel(*stream_id);
+            }
             ParkedWait::Future(_) => {}
         }
         // T-05: scope 幂等终结（取消信号唤醒等它的桥臂；许可释放）。
@@ -4687,6 +4691,11 @@ pub(crate) fn parked_is_ready(vm: &std::rc::Rc<AutoVM>, p: &ParkedRequest) -> bo
             .get(fid)
             .map(|f| f.read().unwrap().state != crate::vm::engine::FutureState::Pending)
             .unwrap_or(true), // future 消失 → 唤醒（引擎恢复臂同款 nil fallback）
+        // PLAN-707 T-05: 外部流——数据入队或终态即就绪（stream_ready 含
+        // 条目消失的终结臂）。
+        ParkedWait::HttpStream(stream_id) => {
+            crate::vm::ffi::http_stream::stream_ready(*stream_id)
+        }
     }
 }
 
