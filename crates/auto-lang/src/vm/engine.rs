@@ -6572,6 +6572,31 @@ impl AutoVM {
                     };
                     drop(strings); // Release lock before writing
 
+                    // PLAN-093 G-9 诊断：字段写去向（对象身份 vs 状态对象）。
+                    // 内容指纹：写前对象里的 phase/polls 现值——若 pre-park 与
+                    // post-resume 写面向同一对象，序列单调；若对象被换，指纹断裂。
+                    if std::env::var_os("AUTO_DEBUG_G9").is_some()
+                        && matches!(field_name.as_str(), "phase" | "polls" | "r_start" | "r_source")
+                    {
+                        let fp = self.heap_objects.get(&obj_id).and_then(|a| {
+                            let g = a.read().unwrap();
+                            g.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                                .map(|inst| {
+                                    let f = |name: &str| -> String {
+                                        inst.field_names.iter().position(|n| n == name)
+                                            .and_then(|i| inst.get_field(i))
+                                            .map(|v| format!("{:?}", v))
+                                            .unwrap_or_else(|| "<none>".into())
+                                    };
+                                    format!("phase={} polls={} r_start={}", f("phase"), f("polls"), f("r_start"))
+                                })
+                        }).unwrap_or_else(|| "<obj-missing>".into());
+                        eprintln!(
+                            "[G9] SET_FIELD {} -> obj_id={} BEFORE[{}] (ip={:#x} sp={} bp={})",
+                            field_name, obj_id, fp, task.ip, task.ram.sp, task.bp
+                        );
+                    }
+
                     // PLAN-047 T-03: A 类定点归因（带名字段写）。
                     self.bump_path(obj_id, Some(&field_name));
 

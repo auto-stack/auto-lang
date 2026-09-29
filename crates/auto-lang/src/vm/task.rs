@@ -97,6 +97,9 @@ pub struct AutoTask {
     // 发生在 SSE serve 循环，thread-local scope 已退出）。清理点：
     // cleanup_sse_iterator（SSE 输出终结）、abort_parked_request（请求废弃）。
     pub owned_stream_ids: Vec<u64>,
+    // PLAN-093 (G-9 系加固): 段模式等待计时起点（首次置位时打点）——重入臂
+    // 超时判定用，对齐忙等臂 30s 上限；结果丢失时不再无限 rewind+re-park。
+    pub waiting_http_since: Option<std::time::Instant>,
     // Plan 010 (MS3-A): try/catch exception handler stack. Each frame records
     // the catch handler's absolute instruction pointer; when a runtime error
     // is raised, the top frame is popped and execution jumps to its pc.
@@ -254,6 +257,7 @@ impl AutoTask {
             waiting_http_request_id: None,
             waiting_http_stream_id: None,
             owned_stream_ids: Vec::new(),
+            waiting_http_since: None,
             handler_stack: Vec::new(),
             pending_native_arg_count: 0, // Plan 369 Task 10: runtime arg count for py-FFI shims
             accum_stack: Vec::new(),

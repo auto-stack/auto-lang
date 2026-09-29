@@ -1885,6 +1885,17 @@ impl VmBridge {
             "[VM-PARKED] {} parked (event {}, wait {:?}) — UI stays interactive",
             seg.fn_name, event_name, wait
         );
+        if std::env::var_os("AUTO_DEBUG_G9").is_some() {
+            let nv = task.ram.read_nv(0);
+            eprintln!(
+                "[G9] parked task slot0(raw={:016x} i32={}) state_obj_id={} sp={} bp={}",
+                u64::from(nv),
+                auto_val::decode_i32(nv),
+                self.state_obj_id,
+                task.ram.sp,
+                task.bp
+            );
+        }
         let fn_name = seg.fn_name.clone();
         self.parked_tasks.borrow_mut().push(ParkedTask {
             task,
@@ -3202,6 +3213,9 @@ impl VmBridge {
         // the handler's declared params. `call_fn_by_name` then sets up the call
         // frame; params are accessed as bp-(n_args+1) .. bp-2 (see LOAD_LOCAL).
         self.vm.rc_push_id(&mut task, self.state_obj_id); // Plan 419
+        if std::env::var_os("AUTO_DEBUG_G9").is_some() {
+            eprintln!("[G9] dispatch {} state_obj_id={} (slot0)", fn_name, self.state_obj_id);
+        }
         for a in args {
             // Strings must be interned into the VM strings pool and pushed as
             // their tagged index (the same encoding LOAD_STR / GET_FIELD use),
