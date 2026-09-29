@@ -842,6 +842,9 @@ pub struct WmState {
     /// T6 宿主装配排水：换算屏幕物理坐标 → win32 set_bounds → slot_rect 回写。
     pub pending_native_geometry:
         Vec<(crate::ui::native_dock::NativeSlotId, iced::Rectangle)>,
+    /// PLAN-709：带内 z 序待重申旗标（聚焦槽位置顶时置位；宿主
+    /// `sync_native_geometry` 排水拍按统一 z 序全带重申后清除）。
+    pub pending_native_restack: bool,
     /// PLAN-526 T20：软聚焦（[`WmState::focus_soft`]）挂起的延迟置顶，
     /// mouse released 时经 [`WmState::apply_pending_raise`] 偿还。根因与
     /// 语义见方法注——press→release 之间重排 z_order 会经 Stack 按位
@@ -894,6 +897,7 @@ impl WmState {
             next_native_slot_id: 0,
             native_slot_local_rects: BTreeMap::new(),
             pending_native_geometry: Vec::new(),
+            pending_native_restack: false,
             pending_raise: None,
             layout_snapshot: None,
             title_menu: None,
@@ -1065,6 +1069,8 @@ impl WmState {
         let wid = Self::native_slot_pseudo_wid(id);
         self.z_order.push(wid);
         self.mru.push(wid);
+        // 带序变化（新成员入带）→ 排水拍 restack。
+        self.pending_native_restack = true;
         id
     }
 
@@ -1161,7 +1167,25 @@ impl WmState {
         self.z_order.push(wid);
         self.mru.retain(|w| *w != wid);
         self.mru.insert(0, wid);
+        // 带内 OS 置顶随下一排水拍重申（restack 旗标；AC-04）。
+        self.pending_native_restack = true;
         true
+    }
+
+    /// PLAN-709：带内统一 z 序快照（Docked 槽位 bottom→top，`z_order` 派生
+    /// ——宿主 restack 排水与 chrome 插序共用同一序模型）。
+    pub fn native_slots_in_z_order(
+        &self,
+    ) -> Vec<crate::ui::native_dock::NativeSlotId> {
+        self.z_order
+            .iter()
+            .filter_map(|w| Self::native_slot_id_of_pseudo(*w))
+            .filter(|id| {
+                self.native_slots
+                    .get(id)
+                    .is_some_and(|s| s.state == crate::ui::native_dock::SlotState::Docked)
+            })
+            .collect()
     }
 
     /// PLAN-709：槽位所在分区的可见性判定（伪 Wid 出参）；隐现臂与
@@ -8413,6 +8437,40 @@ mod tests {
         assert!(!host.wm.native_slot_local_rects.contains_key(&id));
         // 焦点回退到当前分区 z 顶虚拟窗（remove_win 同款口径）。
         assert_eq!(host.wm.focused, Some(v));
+    }
+
+    #[test]
+    fn native_slot_focus_raises_band_order_and_restack_flag() {
+        let mut ds = desktop_session_with_host();
+        let a = docked_test_slot(&mut ds, 0.0, 0.0);
+        let b = docked_test_slot(&mut ds, 40.0, 40.0);
+        let host = ds.host.as_mut().unwrap();
+        // dock 序 = 带内序（bottom→top）：a 先 b 后。
+        assert_eq!(host.wm.native_slots_in_z_order(), vec![a, b]);
+        assert!(host.wm.pending_native_restack, "dock 排水待重申");
+        host.wm.pending_native_restack = false;
+        // 聚焦 a → 带内置顶 + restack 旗标（AC-04 的 WM 侧半边）。
+        assert!(host.wm.focus_native_slot(a));
+        assert_eq!(host.wm.native_slots_in_z_order(), vec![b, a]);
+        assert!(host.wm.pending_native_restack);
+        // 重复聚焦幂等（序不变，旗标可重置）。
+        host.wm.pending_native_restack = false;
+        assert!(host.wm.focus_native_slot(a));
+        assert_eq!(host.wm.native_slots_in_z_order(), vec![b, a]);
+        drop(host);
+        // Candidate 态槽位不入带序（几何未落定）。
+        ds.host.as_mut().unwrap().wm.add_native_slot(
+            0x11002,
+            4243,
+            "cand".into(),
+            crate::ui::native_dock::Rect::new(0, 0, 100, 100),
+            crate::ui::native_dock::Rect::new(0, 0, 100, 100),
+            t2_rect(0.0, 0.0),
+        );
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.native_slots_in_z_order(),
+            vec![b, a]
+        );
     }
 
     #[test]

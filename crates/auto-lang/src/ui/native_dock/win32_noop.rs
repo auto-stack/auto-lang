@@ -66,6 +66,15 @@ pub fn raise_desktop_above(_desktop: NativeHwnd, _slot: NativeHwnd) -> Result<()
     Err(DockError::Api { op: "noop", code: 0 })
 }
 
+/// PLAN-709：带内 z 序全量重申（no-op 平台同型失败）。
+pub fn restack_slots(
+    _desktop: NativeHwnd,
+    _slots: &[NativeHwnd],
+    _desktop_above: bool,
+) -> Result<(), DockError> {
+    Err(DockError::Api { op: "noop", code: 0 })
+}
+
 /// Plan 494：Region 洞排除（no-op 平台同型失败；宿主层据此走回退路径）。
 pub fn apply_hole_regions(
     _target: NativeHwnd,

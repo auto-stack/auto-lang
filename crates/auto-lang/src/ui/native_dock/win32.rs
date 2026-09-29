@@ -29,8 +29,8 @@ use windows::Win32::UI::HiDpi::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, EnumWindows, EVENT_OBJECT_DESTROY, EVENT_OBJECT_LOCATIONCHANGE,
-    EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MOVESIZEEND,
-    EVENT_SYSTEM_MOVESIZESTART, GetCursorPos, GetMessageW, GetWindowLongPtrW, GetWindowRect,
+    EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART,
+    EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART, GetCursorPos, GetMessageW, GetWindowLongPtrW, GetWindowRect,
     GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, MSG,
     PostMessageW, PostThreadMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
     ShowWindow, SW_MAXIMIZE, TranslateMessage, GWL_STYLE, SW_HIDE, SW_MINIMIZE, SW_RESTORE,
@@ -415,6 +415,71 @@ pub fn raise_desktop_above(desktop: NativeHwnd, slot: NativeHwnd) -> Result<(), 
     .map_err(|e| DockError::from_err("SetWindowPos(raise desktop)", e))
 }
 
+/// PLAN-709：带内 z 序全量重申（`sync_native_geometry` 排水尾与聚焦
+/// 置顶共用底座）。`slots` = 统一 z 序 bottom→top。
+///
+/// 算法（对 SetWindowPos「移除重插、中间窗下推」语义稳健）：锚定 + 顶向
+/// 下链插——
+/// - 假洞（`desktop_above=false`）：最顶槽 HWND_TOP 锚定 → 逐槽
+///   `SetWindowPos(s_k, insertAfter=s_{k+1})` 下探 → 桌面垫底槽正下方；
+/// - 真洞（`desktop_above=true`）：桌面 HWND_TOP 锚定 → 逐槽
+///   `SetWindowPos(s_k, insertAfter=前处理窗)` 挂桌面正下方下探。
+///
+/// 勘误（473 sink 链多槽缺陷）：逐 pending `sink_desktop_below` 的移除
+/// 重插会把先处理槽位压到桌面下方（模拟实证 z=[s2,s1,D] sink(s2) →
+/// [s2,D,s1]）；本函数按目标序一次成型，幂等。全程 NOACTIVATE。
+/// 空槽表 = Ok（无带可言）；真洞模式空槽表跳过桌面锚定（无覆盖对象）。
+pub fn restack_slots(
+    desktop: NativeHwnd,
+    slots: &[NativeHwnd],
+    desktop_above: bool,
+) -> Result<(), DockError> {
+    use windows::Win32::UI::WindowsAndMessaging::HWND_TOP;
+    if !alive(desktop) {
+        return Err(DockError::StaleHwnd);
+    }
+    if slots.is_empty() {
+        return Ok(());
+    }
+    let place_below = |above: HWND, below: NativeHwnd| -> Result<(), DockError> {
+        if !alive(below) {
+            return Err(DockError::StaleHwnd);
+        }
+        unsafe {
+            SetWindowPos(
+                hwnd_of(below),
+                above,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
+        }
+        .map_err(|e| DockError::from_err("SetWindowPos(restack)", e))
+    };
+    if desktop_above {
+        // 真洞：桌面锚顶，槽位链挂其正下方（top→bottom）。
+        place_below(HWND_TOP, desktop)?;
+        let mut prev = hwnd_of(desktop);
+        for s in slots.iter().rev() {
+            place_below(prev, *s)?;
+            prev = hwnd_of(*s);
+        }
+    } else {
+        // 假洞：最顶槽锚顶，链下探后桌面垫底。
+        let top = slots[slots.len() - 1];
+        place_below(HWND_TOP, top)?;
+        let mut prev = hwnd_of(top);
+        for s in slots[..slots.len() - 1].iter().rev() {
+            place_below(prev, *s)?;
+            prev = hwnd_of(*s);
+        }
+        place_below(prev, desktop)?;
+    }
+    Ok(())
+}
+
 /// 目标窗口客户区原点的屏幕物理坐标（`GetClientRect` + `ClientToScreen`
 /// ——跨进程客户区坐标换算的断言基准，494 T3 E2E 用）。
 pub fn client_origin(target: NativeHwnd) -> Option<(i32, i32)> {
@@ -730,6 +795,9 @@ pub fn map_win_event(event: u32) -> Option<NativeSlotEventKind> {
         EVENT_SYSTEM_MINIMIZEEND => Some(NativeSlotEventKind::MinimizeEnd),
         EVENT_OBJECT_LOCATIONCHANGE => Some(NativeSlotEventKind::LocationChange),
         EVENT_OBJECT_DESTROY => Some(NativeSlotEventKind::Destroy),
+        // PLAN-709：OS 前台切换 → WM focused 跟随（docked 槽位命中臂在
+        // 宿主 handle_native_slot_event；未命中槽位的前台噪声在宿主忽略）。
+        EVENT_SYSTEM_FOREGROUND => Some(NativeSlotEventKind::Foreground),
         _ => None,
     }
 }
@@ -814,6 +882,7 @@ pub fn spawn_event_hook(
                 EVENT_SYSTEM_MINIMIZEEND,
                 EVENT_OBJECT_DESTROY,
                 EVENT_OBJECT_LOCATIONCHANGE,
+                EVENT_SYSTEM_FOREGROUND,
             ] {
                 let h = SetWinEventHook(e, e, HMODULE::default(), Some(winevent_proc), 0, 0, flags);
                 if !h.is_invalid() {

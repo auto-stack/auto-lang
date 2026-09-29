@@ -137,6 +137,7 @@ pub enum NativeSlotEventKind {
     MinimizeEnd,
     LocationChange,
     Destroy,
+    Foreground,
 }
 
 /// 槽位状态机状态（转移图见 Plan 473 §详细设计 1）。

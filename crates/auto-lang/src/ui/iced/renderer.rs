@@ -13295,10 +13295,14 @@ fn execute_close_native(state: &mut crate::ui::session::DesktopSession, _slot_id
 
 /// Plan 473 T6：槽位几何排水——本地逻辑矩形 → 屏幕物理坐标（桌面窗原点
 /// + per-monitor DPI 缩放，§2 DPI 段），写入槽位客户区（标题条以下、边框
-/// 环内缩，chrome 露出），重申 z 序不变量（`sink_desktop_below`，勘误②），
-/// 回写 `slot_rect`。幂等：pending 为空即零开销。
-/// Plan 494：hole_mode 下 z 序不变量翻转为 `raise_desktop_above`（原生垫
-/// 桌面下方）+ 桌面窗 Region 洞排除（`apply_hole_regions`，视觉+输入穿透）；
+/// 环内缩，chrome 露出），回写 `slot_rect`。幂等：pending 为空且无带内
+/// 重申旗标即零开销。
+/// PLAN-709：z 序不变量改带内全量重申——几何写毕后按统一 z 序
+/// （`native_slots_in_z_order`）`restack_slots` 一次成型（473 逐 pending
+/// sink 的多槽勘误见 win32 restack 注）；`pending_native_restack` 旗标
+/// （聚焦槽位置顶）单独驱动无几何重申。
+/// Plan 494：hole_mode 下不变量翻转为桌面盖带顶（restack `desktop_above`）
+/// + 桌面窗 Region 洞排除（`apply_hole_regions`，视觉+输入穿透）；
 /// Region 失败自动回退 off（假洞 z 序重申 + 一行日志，storage 不回写）。
 #[cfg(windows)]
 fn sync_native_geometry(state: &mut crate::ui::session::DesktopSession) {
@@ -13306,12 +13310,26 @@ fn sync_native_geometry(state: &mut crate::ui::session::DesktopSession) {
     use crate::ui::native_dock::{win32 as ndw, CoordMapper, LogicalRect};
 
     let hole_mode = state.desktop.hole_mode;
+    let restack_requested = state
+        .host
+        .as_ref()
+        .map(|h| h.wm.pending_native_restack)
+        .unwrap_or(false);
     if state
         .host
         .as_ref()
         .map(|h| h.wm.pending_native_geometry.is_empty())
         .unwrap_or(true)
     {
+        if restack_requested {
+            // 无几何待排、仅带内 z 序重申（聚焦置顶臂）。
+            if let Some(host) = state.host.as_mut() {
+                host.wm.pending_native_restack = false;
+            }
+            if let Some(desktop_hwnd) = ndw::find_largest_own_window() {
+                restack_band(state, desktop_hwnd, hole_mode);
+            }
+        }
         // 无几何待排也要维持 Region 洞（undock/回收后的洞收缩）。
         if hole_mode {
             refresh_hole_regions(state);
@@ -13333,6 +13351,7 @@ fn sync_native_geometry(state: &mut crate::ui::session::DesktopSession) {
     };
     let pending = {
         let host = state.host.as_mut().expect("desktop checked");
+        host.wm.pending_native_restack = false;
         host.wm.drain_native_geometry()
     };
     for (id, local) in pending {
@@ -13353,13 +13372,6 @@ fn sync_native_geometry(state: &mut crate::ui::session::DesktopSession) {
             continue;
         };
         let _ = ndw::set_bounds(hwnd, phys);
-        // z 序不变量按模式分支（I3 配置差异：真洞=原生垫桌面下，假洞=原生
-        // 盖桌面上——473 原语义）。
-        if hole_mode {
-            let _ = ndw::raise_desktop_above(desktop_hwnd, hwnd);
-        } else {
-            let _ = ndw::sink_desktop_below(desktop_hwnd, hwnd);
-        }
         if let Some(slot) = state
             .host
             .as_mut()
@@ -13371,9 +13383,33 @@ fn sync_native_geometry(state: &mut crate::ui::session::DesktopSession) {
             slot.slot_rect = phys;
         }
     }
+    // PLAN-709：带内 z 序全量重申（几何写毕一次成型；473 逐槽 sink 勘误）。
+    restack_band(state, desktop_hwnd, hole_mode);
     if hole_mode {
         refresh_hole_regions(state);
     }
+}
+
+/// PLAN-709：按统一 z 序（`native_slots_in_z_order`，bottom→top）对全部
+/// Docked 槽位做带内重申（真洞=桌面盖带顶，假洞=桌面垫带底）。
+#[cfg(windows)]
+fn restack_band(
+    state: &crate::ui::session::DesktopSession,
+    desktop_hwnd: crate::ui::native_dock::NativeHwnd,
+    hole_mode: bool,
+) {
+    use crate::ui::native_dock::win32 as ndw;
+    let Some(host) = state.host.as_ref() else { return };
+    let order: Vec<crate::ui::native_dock::NativeHwnd> = host
+        .wm
+        .native_slots_in_z_order()
+        .into_iter()
+        .filter_map(|id| host.wm.native_slots.get(&id).map(|s| s.hwnd))
+        .collect();
+    if order.is_empty() {
+        return;
+    }
+    let _ = ndw::restack_slots(desktop_hwnd, &order, hole_mode);
 }
 
 /// Plan 494：桌面窗 Region 洞排除重建——洞集 = 全部 docked 槽位客户区
@@ -13414,21 +13450,19 @@ fn refresh_hole_regions_at(
     if ndw::apply_hole_regions(desktop_hwnd, frame, &holes).is_err() {
         crate::syslog!(SyslogLevel::Warn, "host", "[session] hole region apply failed (fallback to fake-hole, Plan 494)");
         state.desktop.hole_mode = false;
-        // 假洞 z 序全量重申（原生盖桌面，473 语义）。
+        // 假洞 z 序全量重申（原生盖桌面；PLAN-709 统一 z 序 restack 一次成型）。
         let slots: Vec<crate::ui::native_dock::NativeHwnd> = state
             .host
             .as_ref()
             .map(|h| {
-                h.wm.native_slots
-                    .values()
-                    .filter(|s| s.state == crate::ui::native_dock::SlotState::Docked)
-                    .map(|s| s.hwnd)
+                h.wm
+                    .native_slots_in_z_order()
+                    .into_iter()
+                    .filter_map(|id| h.wm.native_slots.get(&id).map(|s| s.hwnd))
                     .collect()
             })
             .unwrap_or_default();
-        for hwnd in slots {
-            let _ = ndw::sink_desktop_below(desktop_hwnd, hwnd);
-        }
+        let _ = ndw::restack_slots(desktop_hwnd, &slots, false);
         let _ = ndw::apply_hole_regions(desktop_hwnd, frame, &[]);
     }
 }
@@ -13533,6 +13567,16 @@ fn handle_native_slot_event(
         // 已 docked 窗口的拖动起点：C4 拖走判定在 MoveSizeEnd 读回几何时做；
         // START 只驱动未 docked 窗口的 DragWatch 手势会话（486，session 侧接线）。
         NativeSlotEventKind::MoveSizeStart => {}
+        // PLAN-709：OS 前台切换 → WM focused 跟随（AC-04）。命中 docked
+        // 槽位 = 伪 Wid 进 focused（WM 侧置顶 + restack 旗标，带内重申随
+        // 排水拍）。边界裁定：未命中槽位的前台切换（他窗/桌面自身）不改
+        // WM focused——桌面自身前台 = iced 域点击聚焦已自管；他窗前台维持
+        // 原焦点（避免 alt-tab 路过他窗时 WM 焦点抖动），473「native 焦点
+        // 域在 OS 层」语义的窄化收口。自身 SetForegroundWindow（focus 臂）
+        // 回波 = 幂等重申，无环路。
+        NativeSlotEventKind::Foreground => {
+            state.wm_focus_native_slot(id);
+        }
     }
 }
 
@@ -13802,6 +13846,8 @@ fn drive_drag_watch(
             }
         }
         NativeSlotEventKind::MinimizeStart | NativeSlotEventKind::MinimizeEnd => {}
+        // PLAN-709：未 docked 窗口的前台切换与拖入手势会话无关（噪声）。
+        NativeSlotEventKind::Foreground => {}
     }
 }
 
@@ -20604,6 +20650,9 @@ fn compare_pngs(
                 // Plan 463 T5：WM 状态变化（聚焦/拖拽落位/关闭/布局）当周期
                 // 即时同步任务栏（指纹门控，无变化时零写）。
                 sync_shell_windows(state);
+                // PLAN-709：槽位聚焦置顶的带内 OS 重申随批收口
+                // （pending_native_restack 旗标；无旗标无 pending = 零开销）。
+                sync_native_geometry(state);
                 iced::Task::none()
             }
             DM::Window(win, m) => {
@@ -21229,7 +21278,34 @@ fn compare_pngs(
             // 最底：先于虚拟窗推层 = 桌面图标在壁纸层之上、App 虚拟窗口
             // 之下（G3 层级：窗口拖过时图标自然被覆盖）。shell 层同型
             // catch_unwind 视图边界（453 T6）。
+            // PLAN-709：统一 z 序循环——伪 Wid 段 = 槽位 chrome 插序臂
+            // （与虚拟窗同一绘制序；假洞视觉边界注：虚拟窗层恒在原生窗
+            // 之下，插序改变的是 chrome 框序，真洞模式语义自然正确）。
             for &wid in &host.wm.z_order {
+                if let Some(slot_id) =
+                    crate::ui::session::WmState::native_slot_id_of_pseudo(wid)
+                {
+                    let Some(slot) = host.wm.native_slots.get(&slot_id) else { continue };
+                    let Some(local) = host.wm.native_slot_local_rects.get(&slot_id) else {
+                        continue;
+                    };
+                    let focused = host.wm.focused == Some(wid);
+                    let interacting = host.wm.interaction.is_some_and(|i| match i {
+                        crate::ui::session::WmInteraction::NativeDrag { slot_id: s, .. }
+                        | crate::ui::session::WmInteraction::NativeResize { slot_id: s, .. } => {
+                            s == slot_id
+                        }
+                        _ => false,
+                    });
+                    layers.push(crate::ui::iced::virtual_window::native_slot_element(
+                        slot_id,
+                        &slot.title_cache,
+                        *local,
+                        focused,
+                        interacting,
+                    ));
+                    continue;
+                }
                 let Some(vwin) = host.wm.wins.get(&wid) else { continue };
                 // Plan 472 T2：只绘制当前分区（换分区=窗口随分区隐现）。
                 if vwin.workspace != host.wm.current_workspace {
@@ -21324,29 +21400,9 @@ fn compare_pngs(
                     client,
                 ));
             }
-            // Plan 473 T6：槽位框 chrome 层（虚拟窗之上；中央透明不绘制——
-            // 原生窗口在 OS z 序上盖住槽位客户区，标题条/边框环露出桌面侧）。
-            // PLAN-709：聚焦/交互视觉态入参（T-04 起装配序改统一 z 序插序）。
-            for (slot_id, slot) in host.wm.native_slots.clone() {
-                if let Some(local) = host.wm.native_slot_local_rects.get(&slot_id) {
-                    let focused = host.wm.focused
-                        == Some(crate::ui::session::WmState::native_slot_pseudo_wid(slot_id));
-                    let interacting = host.wm.interaction.is_some_and(|i| match i {
-                        crate::ui::session::WmInteraction::NativeDrag { slot_id: s, .. }
-                        | crate::ui::session::WmInteraction::NativeResize { slot_id: s, .. } => {
-                            s == slot_id
-                        }
-                        _ => false,
-                    });
-                    layers.push(crate::ui::iced::virtual_window::native_slot_element(
-                        slot_id,
-                        &slot.title_cache,
-                        *local,
-                        focused,
-                        interacting,
-                    ));
-                }
-            }
+            // Plan 473 T6 槽位框 chrome 层——PLAN-709 起并入统一 z 序循环
+            // （上方 vwin 循环内伪 Wid 臂），固定垫全部虚拟窗之后的装配序
+            // 退役（AC-04 chrome 绘制序置顶语义）。
             // Plan 486：拖入手势落点高亮层（DragWatch::Over 时；槽位 chrome
             // 之上、shell 之下——半透明不遮挡既有 chrome 标题条）。
             if let Some(drag_rect) = state.native_drag_over {
