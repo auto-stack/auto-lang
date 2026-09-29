@@ -4625,6 +4625,11 @@
      "status": "published",
      "created": "2026-09-25",
      "last_modified": "2026-09-25"
+    },
+    {
+     "id": "P705-1",
+     "title": "http-handler-async-lifecycle 契约：段驱动 park/resume、请求作用域单次终结、固定 async 客户端",
+     "content": "PLAN-705 交付（Design 33 阶段 C1）：VM #[api] handler 普通异步等待即 park/resume——owner loop COMPLETION_NOTIFY enable→check→await 零轮询零丢唤醒，等待上游期间 health 照常服务（gate E2E）；入口矩阵 named/middleware 链/__axum: closure（call_closure_segment）/RequestBuilder .send（段模式退役 30s drain，rewind ip−6+Yield，重入凭据=waiting 标志与 CALL_NAT 协议同构）；~T 返回元数据门（API_ASYNC_RETURNS，__axum: 经 func_addr→exports 反查）+ future bits + 注册表存在性三重闸（普通 int 240 反例锚定），External 挂起/内部体就地驱动/挂外层 AsyncReturnBody 三形态。请求作用域：AUTO_HTTP_MAX_INFLIGHT 升级为 queued+running+parked 生命期总上限（兼容性明示），桥入队前 try_acquire 满载 503 零排队；取消三类确证判据=回复 deadline/shutdown/连接任务终结（net watcher），半关闭/EOF 不判取消（hyper half_close(true)）；失效排队出队跳过业务函数，parked 失效废弃回收 live-op（presence 守卫拒迟到复活），排水窗 AUTO_HTTP_SHUTDOWN_DRAIN_MS 内自然完成照常回复。跨 await 非原子事务（副作用不回滚）。顺手闭合：intercept_error 跨帧展开（深帧 try 经 park/resume 后 catch 失效——引擎既有缺口，plan705_engine_deep_frame_try_recovery 回归在册）+ 706 lucide_component_name 纯 VM 形态编译断（cfg 门）。canonical：docs/specs/stdlib/design/http-handler-async-lifecycle.md（SD-01 新建）；SD-02 修订 async-http-result-lifecycle（单次终结/取消不复活/固定 async executor 五限额）；SD-03 修订 http-server §8.1；SD-04 修订 networking-stdlib 阶段 C1 标注。回归：plan705 探针 19 项 + 广谱 522 + tf 全量 5819/5832（10 项 base 预存红逐项复证 + 3 项 oracle 争用偶发隔离绿）。"
     }
    ]
   },
@@ -7474,6 +7479,11 @@
      "id": "P704-1",
      "title": "diff-rows-anchor-fix — PLAN-703 供料包双缺陷修复（D-1 rows 流位单源化+D-2 anchor 单调过滤）",
      "content": "PLAN-704 执行 delivered（工作树 plan-704-dev，落地收据见归档）。消费侧勘定源=auto-edit PLAN-016 执行期对账（供料档 §6.2 登记，evidence-p016-recon.json 漂移逐字段在档）。D-2（mod.rs）：anchor_partition 锚集排序后接 longest_monotone_anchors——b 位严格递增 patience LIS（O(n log n) 前驱回溯，a 位由 distinct first-occurrence 天然严格递增 debug_assert 钉死），内容决定性保持；换位形三块锚集择一 300 锚，编辑脚本复位（620 行换位 310/310 双向对称+kept 记账 len−dels==len−adds，缺陷形=双向 620/0 纯增）。D-1（envelope.rs）：build_rows 建 chg_stream per-change 流位映射，切片 lo/hi 自映射推导——GroupedHunk.fc/lc=changes 下标契约不动、消费侧单点换算，011 下游流位语义复位；四漂移族（多 hunk/纯增/纯删/删多增少）与下游过渡参考零漂移（scattered 21 行对照含三段标记样本/unbalanced 7 行逐行序列/纯增删行存在性三测试钉死）。回归：diff:: 30/0（26 既有零回归[八形态 golden/双跑字节等/窗投影/并行≡串行/snapshot]+5 新增）+plan703_supply_probes 7/0（registry 直读零回归）+tf 加强证据 3 failed=musk p053 基线族（master 零改动同红 4 failed 实证，非本件面）。SD：diff-engine.md 锚点单调规则+rows 切片流位契约节；diff-endpoints.md rows 面语义锚（下游 011 参考对齐+换位族=引擎时代语义 310/310 注记）。下游解阻=auto-edit PLAN-016 尾巴（工具链重建→⑦绊线 golden 重定+T15 判绿恢复→bench diff_100mb 真跑）。"
+    },
+    {
+     "id": "P705-2",
+     "title": "vm-http-handler-async-lifecycle 复审收据（r1 pass @ 77d05aa3f）",
+     "content": "复审局限声明在案（实现会话内复审，结论从工件与 reviewed commit 复跑证据重建）。验收 AC-01..06 全 pass：AC-01 gate E2E（park 期间 health 完成/双 park 各取所得/~T 最终值 150/普通 int 240 反例/closure 段/链式 await+深帧 catch 恢复/忙等门禁恰 1 legacy 标记）；AC-02 单次终结协议族+零丢唤醒 spike+风暴逐轮基线；AC-03 线程数 8 并发前后差 ≤2+队满终结+体预算+总期限探针；AC-04 deadline 取消回收/失效队列零 handler 派发/关停副作用保留/半关闭响应；AC-05 plan326 79/79（015/017/023 parity+SSE+关闭）+plan702 7/7+client 矩阵 63/63；AC-06 check 双形态 0 error+th 41/56（15 红=socket 10013 环境族 base 复证）+tf 全量收口（10 红 base 预存逐项复证+3 项 oracle 争用隔离绿）。findings：F-1 706 纯 VM 形态编译断（随本计划 cfg 门修复回 master）；F-2 dep_parity oracle 构建争用可滞（DEBTS 候选）；F-3 __axum: 全链路 fixture 待真实消费方。evidence：docs/plans/reports/{705-async-decision,705-parity,705-resource-lifecycle,705-verification}.md。"
     }
    ]
   }

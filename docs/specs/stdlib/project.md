@@ -6,7 +6,7 @@
 Auto 标准库：auto/ 核心（多后端变体）、c/ C 绑定、aura/ UI 定义、collections/、may/、result/。
 
 HTTP/网络模块的公共声明、目标文件、VM native、生成 Axum 服务与 AutoUI 消费路径彼此独立；
-当前装配与缺口见 [后台装配与覆盖](design/backend-assembly.md) 和 [HTTP Server Spec](design/http-server.md)。
+当前装配与缺口见 [后台装配与覆盖](design/backend-assembly.md) 和 [HTTP Server Spec](design/http-server.md)；handler 异步等待/请求生命周期现状见 [http-handler-async-lifecycle](design/http-handler-async-lifecycle.md)（PLAN-705）。
 
 ## 目标与范围
 
