@@ -235,6 +235,6 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
   - **landed** ✓：ff-only 零合并提交——master tip 依次 451dc1401（SD-05..08 沉淀，对 e228b7c1a 纯文档 +27 行）→ ff32d7004（ui/plans.md 712 行回写）；当前 master=ff32d7004。
   - **ledger_refreshed** ✓：`.autoos/specs.json` reviews 节追加 `P712-1`（手工回退路径——musk 后端 127.0.0.1:8080 不可达实测，README §112 文档化回退；读回验证通过、六节完整、无重复项）；`scripts/spec-index.py` 再生 INDEX.md 零 diff（project.md 未变）。
   - **archived** ✓：`docs/plans/archive/712-vm-desktop-defects.md` status archived（本件，归档位置 r1 时已就位）。
-  - **cleaned**：见下补记。
+  - **cleaned** ✓（含残差登记）：wt-guard 双 worktree 预检 clean（零 reparse point）；`plan-712-dev` 分支已删（was ff32d7004，全提交已 landed）；主 worktree 注销 + 27GB 内容剪除；auto-down 兄弟 worktree 注销移除。**残差**：`.tmp-712-app.log`（219KB）+ 空 `examples/ui/030-video-player/` 目录链两路径被内核卡死僵进程 PID 35340（死因注记现场，§10③）锁定不可删——git 元数据/分支/全部内容已清，残渣 284KB 纯 untracked 无 git 无链接，组目录 `D:/autostack/.wt/lang-712` 待重启后删空壳即可。
   - **陈旧产物观察（PLAN-092 先例口径）**：本计划触及 auto-lang UI 引擎（aura_view_builder/iced renderer/mpv present）——release 档二进制与 `gen/front/vue/dist` 未随本次合并重建；桌面实机消费面当前为 r2 验证 worktree debug 二进制形态（重建+重启归生产面会话）。
   - **批量回归到期判定**：不到期——712%5=2 非整除，收据当日新鲜（last_covered=712@7fcf913eb，2026-09-30T08:04:49Z）。
