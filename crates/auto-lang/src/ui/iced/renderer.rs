@@ -7730,9 +7730,17 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             style,
         },
 
+        // Overlay has no messages of its own, but both layers must survive the
+        // DynamicMessage → IcedMessage bridge. Otherwise absolute-positioned
+        // gallery examples lose their entire preview before reaching the renderer.
+        AbstractView::Overlay { base, content, position } => AbstractView::Overlay {
+            base: Box::new(convert_view_messages(*base)),
+            content: Box::new(convert_view_messages(*content)),
+            position,
+        },
+
         // Plan 422: Popover 携带 on_dismiss 消息 —— MUST be explicit,否则掉进
-        // 下方 `_ => Empty` 兜底,弹层在 VM 模式整体消失(menubar 迁移的
-        // 生命线;Overlay 至今仍走兜底,是已知差异)。
+        // 下方 `_ => Empty` 兜底,弹层在 VM 模式整体消失(menubar 迁移的生命线)。
         AbstractView::Popover { anchor, content, placement, open, on_dismiss } => {
             use crate::ui::view::PopoverAnchor;
             let anchor = match anchor {
@@ -25915,6 +25923,24 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         view
     };
     match view {
+        // Overlay children can contain VM-specific columns, rows and inputs;
+        // recurse through this renderer so nested content keeps the same
+        // layout and message behavior as the rest of the live preview.
+        AbstractView::Overlay { base, content, position } => {
+            path.push(0);
+            let base_el = render_dynamic_view(*base, debug_ctx, path);
+            path.pop();
+            path.push(1);
+            let content_el = render_dynamic_view(*content, debug_ctx, path);
+            path.pop();
+            let floating = build_floating_layer(content_el, position);
+            let el: iced::Element<'static, IcedMessage> = iced::widget::stack![base_el, floating].into();
+            if let Some(ctx) = debug_ctx {
+                ctx.wrap_debug(path, "overlay", el, vec![], None)
+            } else {
+                el
+            }
+        }
         // Input needs IcedMessage-specific text capture — on_input constructs a new
         // IcedMessage with the typed text included, which the generic IntoIcedElement
         // trait cannot do since it's generic over M.

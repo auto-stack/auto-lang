@@ -1489,6 +1489,96 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
+    /// PLAN-717: render the current (or selected) month for VM-only Calendar
+    /// components. Vue uses the installed calendar widget; this native grid
+    /// keeps the VM preview visible and aligned with that widget's month view.
+    fn convert_calendar(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        use chrono::Datelike;
+
+        fn cell(content: String, class: &str) -> View<DynamicMessage> {
+            let class = format!("w-9 h-9 {class}");
+            View::Container {
+                child: Box::new(View::Text {
+                    content,
+                    style: None,
+                    selectable: false,
+                }),
+                padding: 0,
+                width: Some(36),
+                height: Some(36),
+                center_x: true,
+                center_y: true,
+                onclick: None,
+                on_right_click: None,
+                style: Style::parse(&class).ok(),
+            }
+        }
+
+        let today = chrono::Local::now().date_naive();
+        let selected = self
+            .extract_string_with(props, "selected", bindings)
+            .and_then(|value| chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d").ok());
+        let display_date = selected.unwrap_or(today);
+        let month = display_date.with_day(1).unwrap_or(display_date);
+        let leading_days = month.weekday().num_days_from_sunday() as usize;
+        let days_in_month = month
+            .checked_add_months(chrono::Months::new(1))
+            .and_then(|next_month| next_month.pred_opt())
+            .map(|last_day| last_day.day() as usize)
+            .unwrap_or(31);
+
+        let mut cells = Vec::with_capacity(49);
+        for weekday in ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"] {
+            cells.push(cell(
+                weekday.to_string(),
+                "text-xs font-medium text-muted-foreground",
+            ));
+        }
+        for index in 0usize..42 {
+            let day_of_month = index
+                .checked_sub(leading_days)
+                .map(|day| day + 1)
+                .filter(|day| *day <= days_in_month);
+            let Some(day_of_month) = day_of_month else {
+                cells.push(cell(String::new(), ""));
+                continue;
+            };
+            let date = month.with_day(day_of_month as u32).unwrap_or(month);
+            let is_selected = selected.map_or(date == today, |selected| date == selected);
+            let style = if is_selected {
+                "text-sm rounded-md bg-primary text-primary-foreground"
+            } else {
+                "text-sm rounded-md"
+            };
+            cells.push(cell(day_of_month.to_string(), style));
+        }
+
+        View::Column {
+            children: vec![
+                View::Text {
+                    content: month.format("%B %Y").to_string(),
+                    style: Style::parse("text-sm font-medium text-center").ok(),
+                    selectable: false,
+                },
+                View::Grid {
+                    cols: 7,
+                    gap: 0,
+                    cells,
+                    style: None,
+                },
+            ],
+            spacing: 8,
+            padding: 12,
+            style: Style::parse("w-fit rounded-md border bg-background").ok(),
+            onclick: None,
+            on_right_click: None,
+        }
+    }
+
     /// PLAN-641 T-03：tabs 复合组件折叠——`tabs` 根（+ `tab`/`tabs-trigger`/
     /// `tabs-content` 子件与 `tabs-list`/`tabslist`/`tabrow` 透明包装）折叠为
     /// 有状态 `View::Tabs`（此前落 unknown fallback → Column，VM 轨无 tabs）。
@@ -2323,6 +2413,137 @@ impl<'a> AuraViewBuilder<'a> {
             // (contextmenu 坐标锚 / widget 锚两形态,见 convert_popover)。
             "popover" => {
                 self.convert_popover(props, events, children, path, id_map, probe, bindings)
+            }
+
+            // PLAN-717: Calendar is supplied by the Vue widget package, but
+            // the VM backend has no native calendar widget. Render the month
+            // as a native date grid so Calendar and DatePicker samples remain
+            // visible instead of collapsing to an empty unknown component.
+            "calendar" | "Calendar" => self.convert_calendar(props, bindings),
+
+            // Command palette examples are registered as web components too;
+            // dispatch them here before the generic imported-component fallback.
+            "command" => {
+                let p = self.with_class_prop(
+                    props,
+                    bindings,
+                    "w-full rounded-md border bg-popover text-popover-foreground shadow-sm",
+                );
+                self.convert_column_tracked_ctx(&p, children, path, id_map, probe, bindings)
+            }
+            "command_list" | "command-list" => {
+                let p = self.with_class_prop(props, bindings, "flex flex-col gap-1 p-1");
+                self.convert_column_tracked_ctx(&p, children, path, id_map, probe, bindings)
+            }
+            "command_group" | "command-group" => {
+                let mut group_children = Vec::new();
+                if let Some(heading) = self
+                    .extract_string_with(props, "heading", bindings)
+                    .filter(|s| !s.is_empty())
+                {
+                    group_children.push(View::Text {
+                        content: heading,
+                        style: Style::parse("px-2 py-1.5 text-xs font-medium text-muted-foreground").ok(),
+                        selectable: false,
+                    });
+                }
+                for (i, child) in children.iter().enumerate() {
+                    path.push(i);
+                    let view = self.convert_node_tracked_ctx(child, path, id_map, probe, bindings);
+                    path.pop();
+                    if !is_visually_empty(&view) {
+                        group_children.push(view);
+                    }
+                }
+                View::Column {
+                    children: group_children,
+                    spacing: 2,
+                    padding: 0,
+                    style: self.extract_style_with(props, bindings),
+                    onclick: None,
+                    on_right_click: None,
+                }
+            }
+            "command_input" | "command-input" => {
+                let p = self.with_class_prop(
+                    props,
+                    bindings,
+                    "w-full border-b rounded-none px-3 py-2 text-sm",
+                );
+                self.convert_input(&p, events, bindings)
+            }
+            "command_item" | "command-item" => {
+                let mut p = self.with_class_prop(
+                    props,
+                    bindings,
+                    "w-full justify-start px-2 py-1.5 text-sm",
+                );
+                p.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("ghost".into())),
+                );
+                self.convert_button(&p, events, children, bindings)
+            }
+            "command_empty" | "command-empty" => View::Empty,
+            "command_separator" | "command-separator" => View::Container {
+                child: Box::new(View::Empty),
+                padding: 0,
+                width: None,
+                height: None,
+                center_x: false,
+                center_y: false,
+                onclick: None,
+                on_right_click: None,
+                style: Style::parse("w-full h-px bg-border my-1").ok(),
+            },
+            "command_shortcut" | "command-shortcut" => {
+                let p = self.with_class_prop(
+                    props,
+                    bindings,
+                    "ml-auto text-xs tracking-widest text-muted-foreground",
+                );
+                self.convert_text_element(tag, &p, events, children, bindings)
+            }
+
+            // Static VM layout: preserve each slide in a compact horizontal row.
+            "carousel" => self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings),
+            "carousel_content" | "carousel-content" => {
+                let p = self.with_class_prop(props, bindings, "w-full gap-2");
+                self.convert_row_tracked_ctx(&p, children, path, id_map, probe, bindings)
+            }
+            "carousel_item" | "carousel-item" => {
+                let p = self.with_class_prop(
+                    props,
+                    bindings,
+                    "w-24 shrink-0 rounded-md border bg-card p-2",
+                );
+                self.convert_container_tracked_ctx(&p, children, path, id_map, probe, bindings)
+            }
+            "carousel_previous" | "carousel-previous" => {
+                let mut p = props.clone();
+                p.entry("text".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(crate::ast::Expr::Str("‹".into()))
+                });
+                p.entry("variant".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into()))
+                });
+                p.entry("size".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(crate::ast::Expr::Str("icon".into()))
+                });
+                self.convert_button(&p, events, children, bindings)
+            }
+            "carousel_next" | "carousel-next" => {
+                let mut p = props.clone();
+                p.entry("text".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(crate::ast::Expr::Str("›".into()))
+                });
+                p.entry("variant".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into()))
+                });
+                p.entry("size".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(crate::ast::Expr::Str("icon".into()))
+                });
+                self.convert_button(&p, events, children, bindings)
             }
 
             // PLAN-050 T7 (C5): 图标组件臂（tracked 层镜像,见 convert_element
@@ -3817,6 +4038,8 @@ impl<'a> AuraViewBuilder<'a> {
                 let mut probe = crate::ui::debug::BuildProbe::default();
                 self.convert_popover(props, events, children, &mut path, &mut id_map, &mut probe, bindings)
             }
+            // PLAN-717: mirror the tracked calendar arm above.
+            "calendar" | "Calendar" => self.convert_calendar(props, bindings),
             // Plan 497: 每窗口真缩略 leaf（与 tracked 层同名臂镜像，D-GAP；
             // 字面形式与 render_support/schema.rs 三表同款 window_thumbnail）。
             "window_thumbnail" => {
@@ -3826,6 +4049,133 @@ impl<'a> AuraViewBuilder<'a> {
             // window_thumbnail 同款 D-GAP 纪律；SD-02 DSL 合同面）。
             "workspace_preview" => {
                 self.convert_workspace_preview(props, bindings)
+            }
+
+            // Command palette preview components are also web imports. Give
+            // the gallery's static sample VM-native controls before placeholder
+            // dispatch can consume the original tag.
+            "command" => {
+                let p = self.with_class_prop(
+                    props,
+                    bindings,
+                    "w-full rounded-md border bg-popover text-popover-foreground shadow-sm",
+                );
+                self.convert_column(&p, children, bindings)
+            }
+            "command_list" | "command-list" => {
+                let p = self.with_class_prop(props, bindings, "flex flex-col gap-1 p-1");
+                self.convert_column(&p, children, bindings)
+            }
+            "command_group" | "command-group" => {
+                let mut group_children = Vec::new();
+                if let Some(heading) = self
+                    .extract_string_with(props, "heading", bindings)
+                    .filter(|s| !s.is_empty())
+                {
+                    group_children.push(View::Text {
+                        content: heading,
+                        style: Style::parse("px-2 py-1.5 text-xs font-medium text-muted-foreground").ok(),
+                        selectable: false,
+                    });
+                }
+                group_children.extend(
+                    children
+                        .iter()
+                        .map(|child| self.convert_node_with(child, bindings))
+                        .filter(|view| !is_visually_empty(view)),
+                );
+                View::Column {
+                    children: group_children,
+                    spacing: 2,
+                    padding: 0,
+                    style: self.extract_style_with(props, bindings),
+                    onclick: None,
+                    on_right_click: None,
+                }
+            }
+            "command_input" | "command-input" => {
+                let p = self.with_class_prop(
+                    props,
+                    bindings,
+                    "w-full border-b rounded-none px-3 py-2 text-sm",
+                );
+                self.convert_input(&p, events, bindings)
+            }
+            "command_item" | "command-item" => {
+                let mut p = self.with_class_prop(
+                    props,
+                    bindings,
+                    "w-full justify-start px-2 py-1.5 text-sm",
+                );
+                p.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("ghost".into())),
+                );
+                self.convert_button(&p, events, children, bindings)
+            }
+            // The gallery's initial state contains results, so hide the empty
+            // state until a VM search handler is active.
+            "command_empty" | "command-empty" => View::Empty,
+            "command_separator" | "command-separator" => View::Container {
+                child: Box::new(View::Empty),
+                padding: 0,
+                width: None,
+                height: None,
+                center_x: false,
+                center_y: false,
+                onclick: None,
+                on_right_click: None,
+                style: Style::parse("w-full h-px bg-border my-1").ok(),
+            },
+            "command_shortcut" | "command-shortcut" => {
+                let p = self.with_class_prop(
+                    props,
+                    bindings,
+                    "ml-auto text-xs tracking-widest text-muted-foreground",
+                );
+                self.convert_text_element(tag, &p, events, children, bindings)
+            }
+
+            // Static VM layout keeps every gallery slide visible in one row;
+            // the Vue backend retains Embla's scrolling and gesture behavior.
+            "carousel" => self.convert_column(props, children, bindings),
+            "carousel_content" | "carousel-content" => {
+                let p = self.with_class_prop(props, bindings, "w-full gap-2");
+                self.convert_row(&p, children, bindings)
+            }
+            "carousel_item" | "carousel-item" => {
+                let p = self.with_class_prop(
+                    props,
+                    bindings,
+                    "w-24 shrink-0 rounded-md border bg-card p-2",
+                );
+                self.convert_container(&p, children, bindings)
+            }
+            "carousel_previous" | "carousel-previous" => {
+                let mut p = props.clone();
+                p.entry("text".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(crate::ast::Expr::Str("‹".into()))
+                });
+                p.entry("variant".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into()))
+                });
+                p.entry("size".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(crate::ast::Expr::Str("icon".into()))
+                });
+                self.convert_button(&p, events, children, bindings)
+            }
+            "carousel_next" | "carousel-next" => {
+                let mut p = props.clone();
+                p.entry("text".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(crate::ast::Expr::Str("›".into()))
+                });
+                p.entry("variant".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into()))
+                });
+                p.entry("size".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(crate::ast::Expr::Str("icon".into()))
+                });
+                self.convert_button(&p, events, children, bindings)
             }
 
             // PLAN-050 T7 (C5): use.web component 声明的图标组件（lucide 集，
@@ -14343,6 +14693,78 @@ mod tests {
             _ => panic!("tabs root must be an element"),
         };
         builder.convert_tabs(&props, &events, &children, &Bindings::new())
+    }
+
+    #[test]
+    fn plan717_calendar_is_visible_in_tracked_and_untracked_vm_trees() {
+        fn cell_text(cell: &View<DynamicMessage>) -> &str {
+            match cell {
+                View::Container { child, .. } => match child.as_ref() {
+                    View::Text { content, .. } => content.as_str(),
+                    _ => "",
+                },
+                _ => "",
+            }
+        }
+
+        fn assert_month_grid(view: &View<DynamicMessage>) {
+            let View::Column { children, .. } = view else {
+                panic!("calendar should render as a column, got {view:?}");
+            };
+            assert!(matches!(children.first(), Some(View::Text { content, .. }) if !content.is_empty()));
+            let Some(View::Grid { cols, cells, .. }) = children.get(1) else {
+                panic!("calendar should contain a native date grid: {children:?}");
+            };
+            assert_eq!(*cols, 7);
+            assert_eq!(cells.len(), 49, "seven weekday labels plus six date rows");
+            assert!(matches!(
+                &cells[0],
+                View::Container { child, .. }
+                    if matches!(child.as_ref(), View::Text { content, .. } if content == "Su")
+            ));
+        }
+
+        let widget = make_test_widget("App", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+        let calendar = AuraNode::element("calendar");
+        let bindings = Bindings::new();
+
+        assert_month_grid(&builder.convert_node_with(&calendar, &bindings));
+
+        let mut path = Vec::new();
+        let mut id_map = crate::ui::debug_id_map::DebugIdMap::default();
+        let mut probe = crate::ui::debug::BuildProbe::default();
+        assert_month_grid(&builder.convert_node_tracked_ctx(
+            &calendar,
+            &mut path,
+            &mut id_map,
+            &mut probe,
+            &bindings,
+        ));
+
+        let selected_props = HashMap::from([(
+            "selected".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("2024-02-29".into())),
+        )]);
+        let february = builder.convert_calendar(&selected_props, &bindings);
+        let View::Column { children, .. } = february else {
+            panic!("selected month should render as a column");
+        };
+        assert!(matches!(
+            children.first(),
+            Some(View::Text { content, .. }) if content == "February 2024"
+        ));
+        let Some(View::Grid { cells, .. }) = children.get(1) else {
+            panic!("selected month should retain its date grid");
+        };
+        assert_eq!(cell_text(&cells[11]), "1", "February 2024 begins on Thursday");
+        assert_eq!(cell_text(&cells[39]), "29", "leap day remains in the final row");
+        assert_eq!(
+            cells[7..].iter().filter(|cell| !cell_text(cell).is_empty()).count(),
+            29,
+            "leap February contains twenty-nine visible date cells"
+        );
     }
 
     #[test]

@@ -23,7 +23,7 @@ class AutoUiMcpClient:
         self.url = f"http://127.0.0.1:{port}/mcp"
         self._req_id = 1
 
-    def call(self, tool_name: str, args: dict = None) -> dict:
+    def call(self, tool_name: str, args: dict = None, timeout: int = 10) -> dict:
         req = {
             "jsonrpc": "2.0",
             "id": self._req_id,
@@ -37,7 +37,7 @@ class AutoUiMcpClient:
             data=data,
             headers={'Content-Type': 'application/json'}
         )
-        with urllib.request.urlopen(http_req, timeout=10) as response:
+        with urllib.request.urlopen(http_req, timeout=timeout) as response:
             res = json.loads(response.read().decode('utf-8'))
             if "error" in res:
                 raise RuntimeError(f"MCP Tool '{tool_name}' error: {res['error']}")
@@ -103,7 +103,7 @@ class AutoUiMcpClient:
         args = {"name": name, "baseline": baseline}
         if save_path:
             args["save_path"] = save_path
-        res = self.call("autoui_screenshot", args)
+        res = self.call("autoui_screenshot", args, timeout=30)
         return res.get("content", [{}])[0].get("text", "")
 
     def select_rect(self, x: float, y: float, w: float, h: float, fmt: str = "json") -> dict:

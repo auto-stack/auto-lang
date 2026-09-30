@@ -388,6 +388,9 @@ fn kitchen_sink_page_in_sync() {
         return;
     };
     let generated = generate_kitchen_sink();
+    assert!(generated.contains("href: \"/button\""));
+    assert!(!generated.contains("to: \"sample\""));
+    assert!(!generated.contains("href: \"sample\""));
     if std::env::var("KITCHEN_SINK_UPDATE").is_ok() {
         fs::write(&path, &generated).expect("write kitchen-sink.at");
         panic!(

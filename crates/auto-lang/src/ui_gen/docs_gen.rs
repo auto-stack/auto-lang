@@ -20,6 +20,7 @@ pub struct ElemInfo {
     pub aliases: Vec<String>,
     pub sub_widgets: Vec<String>,
     pub props: Vec<(String, String, String, String)>, // (name, type, default, desc)
+    pub allows_children: bool,
     pub web: String,
     pub iced: String,
     /// P7-2/D9:vue 组件 import 路径 —— 非 @/components/ui/* 的是 app 本地
@@ -91,6 +92,7 @@ pub fn load_elements() -> Vec<ElemInfo> {
                     )
                 })
                 .collect(),
+            allows_children: def.allows_children,
             web,
             iced,
             vue_import: meta.and_then(|m| m.vue.as_ref()).and_then(|v| v.import.clone()),
@@ -239,8 +241,12 @@ pub fn generate_kitchen_sink() -> String {
         // 的 @/wm/* 脚手架在 web 画廊工程不存在——不入 web 生成页
         // (此前是手工版页面的例外注记,固化后页面回归"勿手改"幂等)。
         const DESKTOP_SHELL_ONLY: &[&str] = &["window_thumbnail"];
+        // Plan 656's synthetic scroll extent is a capability-test fixture, not
+        // a public widget. Its 10,000,000px default makes the gallery unusable.
+        const NON_PUBLIC_HELPERS: &[&str] = &["scroll_test_content"];
         e.tier == "builtin_widget"
             && !DESKTOP_SHELL_ONLY.contains(&e.canonical.as_str())
+            && !NON_PUBLIC_HELPERS.contains(&e.canonical.as_str())
             // Plan 562:退役元素(superseded_by 标注,nav 族)不入生成页
             && e.superseded_by.is_none()
             && e.props.iter().any(|pr| !literal_prop_variants(pr).is_empty())
@@ -263,21 +269,71 @@ pub fn generate_kitchen_sink() -> String {
     at.push_str("            text \"核心组件全量示例 —— schema 生成页,展示每个组件的 props 取值。\" { style: \"text-muted-foreground\" }\n");
     for e in &elems {
         at.push_str(&format!("\n            h2 \"{}\"\n", e.canonical));
-        at.push_str("            row (style: \"gap-2 flex-wrap items-center\") {\n");
+        at.push_str("            row (style: \"gap-2 flex-wrap items-center w-full min-w-0\") {\n");
+        // Overlay parts require their owning root's injected context. Show a
+        // complete sample for these rows rather than mounting a leaf alone.
+        let overlay_sample = match e.canonical.as_str() {
+            "dropdown-menu" => Some("dropdown-menu { dropdown-menu-trigger { button (text: \"Open menu\", variant: \"outline\") {} } dropdown-menu-content { dropdown-menu-item \"Profile\" dropdown-menu-item \"Settings\" } }"),
+            "alert_dialog_action" | "alert_dialog_cancel" | "alert_dialog_description" | "alert_dialog_title" | "alert_dialog_trigger" => Some("alert_dialog { alert_dialog_trigger { button (text: \"Open dialog\", variant: \"outline\") {} } alert_dialog_content { alert_dialog_header { alert_dialog_title \"Dialog sample\" alert_dialog_description \"Dialog content sample\" } alert_dialog_footer { alert_dialog_cancel \"Cancel\" alert_dialog_action \"Continue\" } } }"),
+            "drawer_content" | "drawer_description" | "drawer_title" | "drawer_trigger" => Some("drawer { drawer-trigger \"Open drawer\" drawer-content { drawer-header { drawer-title \"Drawer sample\" drawer-description \"Drawer content sample\" } drawer-footer { button (text: \"Done\") {} } } }"),
+            "hover_card_content" | "hover_card_trigger" => Some("hover_card { hover_card_trigger { button (text: \"Hover for details\", variant: \"outline\") {} } hover_card_content { text \"Hover card sample\" {} } }"),
+            "sheet_content" | "sheet_title" | "sheet_trigger" => Some("sheet { sheet_trigger { button (text: \"Open sheet\", variant: \"outline\") {} } sheet_content { sheet_header { sheet-title \"Sheet sample\" sheet-description \"Sheet content sample\" } } }"),
+            _ => None,
+        };
+        if let Some(sample) = overlay_sample {
+            at.push_str("                ");
+            at.push_str(sample);
+            at.push('\n');
+        } else {
         // 默认形态(裸标签或 text 简写)。P499-6:视图关键字名元素
         // (link/tag/use——`link` 被 parse_view_link 独占,Plan 105)不可
         // 发射标签简写 `name "text" {}`(解析错级联 20×"Expected term,
         // got RBrace" → serve 跳页 → router 悬空 500);link 用其关键字
         // 形状 (text:,href:) 显式发射,其余关键字名退回裸形态。
         const VIEW_KEYWORD_ELEMENTS: &[&str] = &["link", "tag", "use"];
-        if e.canonical == "link" {
-            at.push_str("                link (text: \"sample\", href: \"sample\") {}\n");
+        if e.canonical == "spacer" {
+            at.push_str("                row (style: \"w-full items-center gap-2\") { text \"Start\" {} spacer {} text \"End\" {} }\n");
+        } else if e.canonical == "autodown_editor" {
+            at.push_str("                autodown_editor (content: \"Sample editor content\") {}\n");
+        } else if e.canonical == "link" {
+            at.push_str("                link (text: \"sample\", href: \"/button\") {}\n");
         } else if VIEW_KEYWORD_ELEMENTS.contains(&e.canonical.as_str()) {
             at.push_str(&format!("                {} {{}}\n", e.canonical));
         } else if e.props.iter().any(|pr| pr.0 == "text") {
             at.push_str(&format!("                {} \"sample\" {{}}\n", e.canonical));
+        } else if e.allows_children {
+            let child = match e.canonical.as_str() {
+                "col" => "text \"Column item\" {} text \"Second item\" {}",
+                "container" => "text \"Contained sample\" {}",
+                "grid" => "text \"Cell one\" {} text \"Cell two\" {} text \"Cell three\" {}",
+                "row" => "text \"First item\" {} text \"Second item\" {}",
+                "scroll" => "text \"Scrollable sample content\" {} text \"Second line\" {}",
+                "select" => "select-trigger { select-value (placeholder: \"Choose an option\") {} } select-content { select-item (text: \"Sample option\", value: \"sample\") {} }",
+                "dropdown-menu" => "dropdown-menu-trigger { button (text: \"Open menu\", variant: \"outline\") {} } dropdown-menu-content { dropdown-menu-item \"Profile\" dropdown-menu-item \"Settings\" }",
+                "drawer" => "drawer-trigger \"Open drawer\" drawer-content { drawer-header { drawer-title \"Drawer sample\" drawer-description \"Visible after opening the drawer.\" } }",
+                "hover_card" => "hover-card-trigger { button (text: \"Hover for details\", variant: \"outline\") {} } hover-card-content { text \"Hover card sample\" {} }",
+                "popover" => "popover-trigger { button (text: \"Open popover\", variant: \"outline\") {} } popover-content { text \"Popover sample\" {} }",
+                "sheet" => "sheet-trigger { button (text: \"Open sheet\", variant: \"outline\") {} } sheet-content { sheet-header { sheet-title \"Sheet sample\" sheet-description \"Visible after opening the sheet.\" } }",
+                "alert_dialog_trigger" => "button (text: \"Open dialog\", variant: \"outline\") {}",
+                "slot" => "text \"Slot content\" {}",
+                _ => "text \"sample\" {}",
+            };
+            if e.canonical == "scroll" {
+                at.push_str("                scroll (style: \"h-20 w-64\") { ");
+                at.push_str(child);
+                at.push_str(" }\n");
+            } else {
+                at.push_str(&format!("                {} {{ {} }}\n", e.canonical, child));
+            }
         } else {
             at.push_str(&format!("                {} {{}}\n", e.canonical));
+        }
+        }
+        if e.canonical == "toaster" {
+            at.push_str("                text \"Toast host (visible after a toast is queued)\" {}\n");
+        }
+        if e.canonical == "workspace_preview" {
+            at.push_str("                text \"Workspace preview needs a live host snapshot.\" {}\n");
         }
         // 变体:每 prop 至多 2 个取值,总变体至多 4。
         // P7-2/D9:app 本地命令式外壳组件(import 非 @/components/ui/*)的
@@ -287,16 +343,29 @@ pub fn generate_kitchen_sink() -> String {
             .vue_import
             .as_deref()
             .map_or(false, |p| !p.starts_with("@/components/ui/"));
-        let mut variants = 0;
+        let mut variants = if overlay_sample.is_some() { 4 } else { 0 };
         for pr in &e.props {
             if shell_component || variants >= 4 { break; }
+            if e.canonical == "spacer" {
+                if pr.0 == "size" {
+                    at.push_str("                row (style: \"w-full items-center gap-2\") { text \"Start\" {} spacer (size: 16) {} text \"End\" {} }\n");
+                    variants += 1;
+                }
+                continue;
+            }
             for v in literal_prop_variants(pr).into_iter().take(2) {
                 if variants >= 4 { break; }
                 if pr.0 == "text" { continue; } // text 已用简写
                 // PLAN-528 W6(生成器固化,PLAN-536 T11): src 指向 public/icon.png
                 // ——裸词 "sample" 会被 vue 生成器当静态资源 import,vite 解析
                 // 不到整页 500(此前是手工版页面的例外注记)。
-                let v = if pr.0 == "src" { "/icon.png".to_string() } else { v };
+                let v = if pr.0 == "src" {
+                    "/icon.png".to_string()
+                } else if pr.0 == "to" || pr.0 == "href" {
+                    "/button".to_string()
+                } else {
+                    v
+                };
                 at.push_str(&format!(
                     "                {} ({}: {}) {{}}\n",
                     e.canonical, pr.0, quote_if_str(&v, &pr.1)

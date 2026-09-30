@@ -1748,7 +1748,8 @@ impl WidgetRegistry {
 
         // AlertDialog
         let mut alert_dialog = WidgetSpec::new("AlertDialog", WidgetCategory::Overlay)
-            .with_alias("alert-dialog");
+            .with_alias("alert-dialog")
+            .with_alias("alert_dialog");
         alert_dialog.has_children = true;
         alert_dialog.backends.insert("ark".to_string(), BackendMapping {
             component: "AlertDialog".to_string(),
@@ -1762,49 +1763,57 @@ impl WidgetRegistry {
 
         // AlertDialogTrigger
         let mut alert_dialog_trigger = WidgetSpec::new("AlertDialogTrigger", WidgetCategory::Overlay)
-            .with_alias("alert-dialog-trigger");
+            .with_alias("alert-dialog-trigger")
+            .with_alias("alert_dialog_trigger");
         alert_dialog_trigger.has_children = true;
         self.register(alert_dialog_trigger);
 
         // AlertDialogContent
         let mut alert_dialog_content = WidgetSpec::new("AlertDialogContent", WidgetCategory::Overlay)
-            .with_alias("alert-dialog-content");
+            .with_alias("alert-dialog-content")
+            .with_alias("alert_dialog_content");
         alert_dialog_content.has_children = true;
         self.register(alert_dialog_content);
 
         // AlertDialogHeader
         let mut alert_dialog_header = WidgetSpec::new("AlertDialogHeader", WidgetCategory::Overlay)
-            .with_alias("alert-dialog-header");
+            .with_alias("alert-dialog-header")
+            .with_alias("alert_dialog_header");
         alert_dialog_header.has_children = true;
         self.register(alert_dialog_header);
 
         // AlertDialogFooter
         let mut alert_dialog_footer = WidgetSpec::new("AlertDialogFooter", WidgetCategory::Overlay)
-            .with_alias("alert-dialog-footer");
+            .with_alias("alert-dialog-footer")
+            .with_alias("alert_dialog_footer");
         alert_dialog_footer.has_children = true;
         self.register(alert_dialog_footer);
 
         // AlertDialogTitle
         let mut alert_dialog_title = WidgetSpec::new("AlertDialogTitle", WidgetCategory::Overlay)
-            .with_alias("alert-dialog-title");
+            .with_alias("alert-dialog-title")
+            .with_alias("alert_dialog_title");
         alert_dialog_title.has_children = true;
         self.register(alert_dialog_title);
 
         // AlertDialogDescription
         let mut alert_dialog_desc = WidgetSpec::new("AlertDialogDescription", WidgetCategory::Overlay)
-            .with_alias("alert-dialog-description");
+            .with_alias("alert-dialog-description")
+            .with_alias("alert_dialog_description");
         alert_dialog_desc.has_children = true;
         self.register(alert_dialog_desc);
 
         // AlertDialogAction
         let mut alert_dialog_action = WidgetSpec::new("AlertDialogAction", WidgetCategory::Overlay)
-            .with_alias("alert-dialog-action");
+            .with_alias("alert-dialog-action")
+            .with_alias("alert_dialog_action");
         alert_dialog_action.has_children = true;
         self.register(alert_dialog_action);
 
         // AlertDialogCancel
         let mut alert_dialog_cancel = WidgetSpec::new("AlertDialogCancel", WidgetCategory::Overlay)
-            .with_alias("alert-dialog-cancel");
+            .with_alias("alert-dialog-cancel")
+            .with_alias("alert_dialog_cancel");
         alert_dialog_cancel.has_children = true;
         self.register(alert_dialog_cancel);
 
@@ -1816,37 +1825,43 @@ impl WidgetRegistry {
 
         // SheetTrigger
         let mut sheet_trigger = WidgetSpec::new("SheetTrigger", WidgetCategory::Overlay)
-            .with_alias("sheet-trigger");
+            .with_alias("sheet-trigger")
+            .with_alias("sheet_trigger");
         sheet_trigger.has_children = true;
         self.register(sheet_trigger);
 
         // SheetContent
         let mut sheet_content = WidgetSpec::new("SheetContent", WidgetCategory::Overlay)
-            .with_alias("sheet-content");
+            .with_alias("sheet-content")
+            .with_alias("sheet_content");
         sheet_content.has_children = true;
         self.register(sheet_content);
 
         // SheetHeader
         let mut sheet_header = WidgetSpec::new("SheetHeader", WidgetCategory::Overlay)
-            .with_alias("sheet-header");
+            .with_alias("sheet-header")
+            .with_alias("sheet_header");
         sheet_header.has_children = true;
         self.register(sheet_header);
 
         // SheetFooter
         let mut sheet_footer = WidgetSpec::new("SheetFooter", WidgetCategory::Overlay)
-            .with_alias("sheet-footer");
+            .with_alias("sheet-footer")
+            .with_alias("sheet_footer");
         sheet_footer.has_children = true;
         self.register(sheet_footer);
 
         // SheetTitle
         let mut sheet_title = WidgetSpec::new("SheetTitle", WidgetCategory::Overlay)
-            .with_alias("sheet-title");
+            .with_alias("sheet-title")
+            .with_alias("sheet_title");
         sheet_title.has_children = true;
         self.register(sheet_title);
 
         // SheetDescription
         let mut sheet_desc = WidgetSpec::new("SheetDescription", WidgetCategory::Overlay)
-            .with_alias("sheet-description");
+            .with_alias("sheet-description")
+            .with_alias("sheet_description");
         sheet_desc.has_children = true;
         self.register(sheet_desc);
 
@@ -1944,19 +1959,22 @@ impl WidgetRegistry {
 
         // HoverCard
         let mut hover_card = WidgetSpec::new("HoverCard", WidgetCategory::Overlay)
-            .with_alias("hover-card");
+            .with_alias("hover-card")
+            .with_alias("hover_card");
         hover_card.has_children = true;
         self.register(hover_card);
 
         // HoverCardTrigger
         let mut hover_card_trigger = WidgetSpec::new("HoverCardTrigger", WidgetCategory::Overlay)
-            .with_alias("hover-card-trigger");
+            .with_alias("hover-card-trigger")
+            .with_alias("hover_card_trigger");
         hover_card_trigger.has_children = true;
         self.register(hover_card_trigger);
 
         // HoverCardContent
         let mut hover_card_content = WidgetSpec::new("HoverCardContent", WidgetCategory::Overlay)
-            .with_alias("hover-card-content");
+            .with_alias("hover-card-content")
+            .with_alias("hover_card_content");
         hover_card_content.has_children = true;
         self.register(hover_card_content);
 
@@ -2523,6 +2541,22 @@ mod tests {
     fn test_registry_creation() {
         let registry = WidgetRegistry::new();
         assert!(registry.get("button").is_none()); // Empty registry
+    }
+
+    #[test]
+    fn hover_card_schema_names_resolve_to_vue_components() {
+        let registry = WidgetRegistry::with_defaults();
+        for (tag, component) in [
+            ("hover_card", "HoverCard"),
+            ("hover_card_trigger", "HoverCardTrigger"),
+            ("hover_card_content", "HoverCardContent"),
+        ] {
+            assert_eq!(
+                registry.get_primary_component("vue", tag).as_deref(),
+                Some(component),
+                "schema tag {tag} must render as its Vue component"
+            );
+        }
     }
 
     #[test]

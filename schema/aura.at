@@ -3756,11 +3756,72 @@ element combobox_trigger {
     description: "Combobox trigger button"
 }
 
+element carousel {
+    tag: "carousel"
+    category: "display"
+    tier: "web_component"
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    vue: { component: "Carousel", import: "@/components/ui/carousel" }
+    props: [
+        { name: "align", type: "string", default: "center", description: "Slide alignment" }
+        { name: "loop", type: "boolean", default: "false", description: "Loop at the ends" }
+        { name: "orientation", type: "string", default: "horizontal", description: "Slide direction" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    sub_widgets: ["carousel_content", "carousel_item", "carousel_previous", "carousel_next"]
+    description: "Accessible, swipeable slide carousel"
+}
+
+element carousel_content {
+    tag: "carousel_content"
+    category: "display"
+    tier: "web_component"
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    vue: { component: "CarouselContent", import: "@/components/ui/carousel" }
+    props: [ { name: "class", type: "union:string,class_binding", description: "CSS class(es)" } ]
+    allows_children: true
+    description: "Carousel track containing slides"
+}
+
+element carousel_item {
+    tag: "carousel_item"
+    category: "display"
+    tier: "web_component"
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    vue: { component: "CarouselItem", import: "@/components/ui/carousel" }
+    props: [ { name: "class", type: "union:string,class_binding", description: "CSS class(es)" } ]
+    allows_children: true
+    description: "A slide in a carousel"
+}
+
+element carousel_previous {
+    tag: "carousel_previous"
+    category: "display"
+    tier: "web_component"
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    vue: { component: "CarouselPrevious", import: "@/components/ui/carousel" }
+    props: [ { name: "class", type: "union:string,class_binding", description: "CSS class(es)" } ]
+    allows_children: false
+    description: "Previous-slide control"
+}
+
+element carousel_next {
+    tag: "carousel_next"
+    category: "display"
+    tier: "web_component"
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    vue: { component: "CarouselNext", import: "@/components/ui/carousel" }
+    props: [ { name: "class", type: "union:string,class_binding", description: "CSS class(es)" } ]
+    allows_children: false
+    description: "Next-slide control"
+}
+
 element command {
     tag: "command"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "Command", import: "@/components/ui/command" }
     props: [
         { name: "query", type: "state_ref", description: "Search query binding" }
@@ -3775,7 +3836,7 @@ element command_empty {
     tag: "command_empty"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "CommandEmpty", import: "@/components/ui/command" }
     props: [
         { name: "text", type: "string", default: "No results found.", description: "Empty state text" }
@@ -3788,7 +3849,7 @@ element command_group {
     tag: "command_group"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "CommandGroup", import: "@/components/ui/command" }
     props: [
         { name: "heading", type: "string", description: "Group heading" }
@@ -3802,7 +3863,7 @@ element command_input {
     tag: "command_input"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "CommandInput", import: "@/components/ui/command" }
     props: [
         { name: "placeholder", type: "string", default: "Type a command...", description: "Input placeholder" }
@@ -3816,7 +3877,7 @@ element command_item {
     tag: "command_item"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "CommandItem", import: "@/components/ui/command" }
     props: [
         { name: "value", type: "string", description: "Item value" }
@@ -3832,7 +3893,7 @@ element command_list {
     tag: "command_list"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "CommandList", import: "@/components/ui/command" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3845,7 +3906,7 @@ element command_separator {
     tag: "command_separator"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "CommandSeparator", import: "@/components/ui/command" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3858,7 +3919,7 @@ element command_shortcut {
     tag: "command_shortcut"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "CommandShortcut", import: "@/components/ui/command" }
     props: [
         { name: "text", type: "string", description: "Shortcut text (e.g., ⌘K)" }

@@ -218,8 +218,10 @@ where
 {
     match view {
         View::Empty => (VNodeKind::Text, VNodeProps::Empty),
-        // Plan 409 §10 续 5: Overlay 在 VNode 转换里降级为 Empty(VM-only 概念)。
-        View::Overlay { .. } => (VNodeKind::Text, VNodeProps::Empty),
+        // Overlay is a VM layout wrapper. The inspector tree has no stack node,
+        // so expose the base and floating content in paint order as a zero-gap
+        // column instead of dropping the entire example subtree.
+        View::Overlay { .. } => (VNodeKind::Column, VNodeProps::Layout { spacing: 0, padding: 0 }),
         // PLAN-063 T-04d-2: 锚槽在 convert_view_to_vnode* 入口已透传子件，
         // 此臂不可达（穷尽性兜底）；保持 Empty 形态以防绕行调用面。
         View::AnchorSlot { .. } => (VNodeKind::Text, VNodeProps::Empty),
@@ -566,6 +568,7 @@ where
     match view {
         View::Column { children, .. } => children.clone(),
         View::Row { children, .. } => children.clone(),
+        View::Overlay { base, content, .. } => vec![(**base).clone(), (**content).clone()],
         // Grid cells are the VTree children (Plan 319). MUST be explicit —
         // the `_` arm below would silently drop them.
         View::Grid { cells, .. } => cells.clone(),
@@ -616,6 +619,7 @@ where
         View::Column { children, .. } | View::Row { children, .. } => {
             children.iter().collect()
         }
+        View::Overlay { base, content, .. } => vec![base.as_ref(), content.as_ref()],
         View::Grid { cells, .. } => cells.iter().collect(),
         // G4: keep the borrow variant in lockstep with extract_children —
         // paths derived from VNodes must resolve to the same nodes here.

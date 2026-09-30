@@ -1134,7 +1134,7 @@ impl VueGenerator {
             if let crate::aura::LogicPayload::AstStmts(stmts) = payload {
                 for snake in &callback_props {
                     let pascal = Self::snake_to_pascal(snake);
-                    if !emits.contains(&pascal) && stmt_calls_callback(stmts, std::slice::from_ref(snake)) {
+                    if !emits.contains(&pascal) {
                         emits.push(pascal);
                     }
                 }
@@ -7503,9 +7503,12 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     self.in_svg_subtree = true;
                 }
                 let is_spacer = tag_lower == "spacer";
-                let is_shadcn_component = !is_svg_text && !is_spacer && !is_known_sub_widget && !is_external_component && !force_native && self.is_shadcn() &&
-                    (self.widget_registry.is_backend_supported("vue", tag) ||
-                     self.widget_registry.is_backend_supported("vue", &tag_lower));
+                let is_shadcn_component = !is_svg_text
+                    && !is_spacer
+                    && !is_known_sub_widget
+                    && !is_external_component
+                    && !force_native
+                    && self.shadcn_component_name(tag).is_some();
 
                 // For known sub-widgets and external (widget `use`) components,
                 // use component-style prop passing
@@ -15862,6 +15865,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
                     sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
                     for (event, aura_event) in sorted_ev {
+            // Parser-minted modal trigger toggles are needed by backends that
+            // don't own overlay state. Vue's Reka/Vaul trigger components
+            // already update the controlled `v-model:open` root; forwarding
+            // this second toggle can immediately close the overlay again.
+            // Keep explicit user handlers intact.
+            if aura_event.handler.trim_start_matches('.').starts_with("__dlg_toggle_") {
+                continue;
+            }
             // .window/.document modifiers → global listener, no template attr
             if self.try_register_global_listener(event, aura_event) {
                 continue;
@@ -17412,7 +17423,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// Register a shadcn-vue component as used
     fn register_shadcn_component(&mut self, tag: &str) {
         if self.is_shadcn() {
-            if let Some(component_name) = self.widget_registry.get_primary_component("vue", tag) {
+            if let Some(component_name) = self.shadcn_component_name(tag) {
                 self.shadcn_components_used.insert(component_name);
             }
         }
@@ -17461,7 +17472,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// Get shadcn-vue component name for a tag
     fn shadcn_component_name(&self, tag: &str) -> Option<String> {
         if self.is_shadcn() {
-            self.widget_registry.get_primary_component("vue", tag)
+            self.widget_registry
+                .get_primary_component("vue", tag)
+                .or_else(|| {
+                    let kebab = tag.replace('_', "-");
+                    (kebab != tag)
+                        .then(|| self.widget_registry.get_primary_component("vue", &kebab))
+                        .flatten()
+                })
         } else {
             None
         }
@@ -22151,6 +22169,46 @@ widget App {
         );
     }
 
+    #[test]
+    fn parser_minted_modal_toggle_is_not_forwarded_to_vue_trigger() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget App {
+    view {
+        dialog {
+            dialog_trigger "Open dialog"
+            dialog_content { dialog_title "Details" }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("<Dialog v-model:open=\"__dlg_open_1\""),
+            "minted state remains bound:\n{sfc}"
+        );
+        assert!(sfc.contains("<DialogTrigger"), "native Vue trigger remains:\n{sfc}");
+        assert!(
+            !sfc.contains("DialogTrigger @click=\"__dlg_toggle_1\""),
+            "Vue's trigger must own the open transition:\n{sfc}"
+        );
+
+        let explicit = gen_sfc_from_widget_src_shadcn(r#"
+widget App {
+    msg { OpenDialog }
+    on { .OpenDialog -> { } }
+    view {
+        dialog {
+            dialog_trigger (onclick: .OpenDialog) "Open dialog"
+            dialog_content { dialog_title "Details" }
+        }
+    }
+}
+"#);
+        assert!(
+            explicit.contains("DialogTrigger @click=\"OpenDialog\""),
+            "explicit handler remains:\n{explicit}"
+        );
+    }
+
     /// Item 1 regression: builtin `alertdialog` keeps v-model:open (this was
     /// the original silent-drop: extract_state_ref only matched bare Ident).
     #[test]
@@ -22169,6 +22227,48 @@ widget App {
             sfc.contains("<AlertDialog v-model:open=\"confirm_open\""),
             "alertdialog → <AlertDialog v-model:open>:\n{}",
             sfc
+        );
+    }
+
+    #[test]
+    fn schema_snake_case_overlay_tags_use_shadcn_components() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget OverlayDemo {
+    view {
+        alert_dialog {
+            alert_dialog_trigger { button (text: "Open dialog") {} }
+            alert_dialog_content {
+                alert_dialog_header {
+                    alert_dialog_title "Confirm"
+                    alert_dialog_description "Continue?"
+                }
+                alert_dialog_footer {
+                    alert_dialog_cancel "Cancel"
+                    alert_dialog_action "Continue"
+                }
+            }
+        }
+        sheet {
+            sheet_trigger { button (text: "Open sheet") {} }
+            sheet_content { sheet_header { sheet_title "Details" } }
+        }
+    }
+}
+"#);
+        assert!(sfc.contains("<AlertDialog"), "root mapping missing:\n{sfc}");
+        assert!(
+            sfc.contains("<AlertDialogContent"),
+            "content mapping missing:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("<AlertDialogTrigger"),
+            "trigger mapping missing:\n{sfc}"
+        );
+        assert!(sfc.contains("<SheetContent"), "sheet content mapping missing:\n{sfc}");
+        assert!(sfc.contains("<SheetTitle"), "sheet title mapping missing:\n{sfc}");
+        assert!(
+            !sfc.contains("<div data-auto-tag=\"alert_dialog\""),
+            "snake_case root must not degrade to an HTML div:\n{sfc}"
         );
     }
 
