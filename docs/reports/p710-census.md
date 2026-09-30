@@ -82,10 +82,19 @@ mklink /J 路径）。
 | ③ | **api 客户端桩形检测** | 生成物 grep `String::new()` 恒返形（D-7 桩）=0——编译绿假阴性堵截 | **实体形在位**：`pub fn env_str/read_text/search_files…` 实体委托 `fsys::env_lookup/read_text_range…`（非 D-7 恒返桩）——route-A 伴生嵌入恢复实证（AC-R2-2 实质达成） |
 
 **r2 判定结论**：①③ 绿、② fresh 成立；**exit 0/cargo check 未达**——
-fresh fsys.rs 暴露 710 §10 显式延后的 route-A 深修层（26 错/8 类：
-fs.metadata/copy_recursive、json.from_value+struct-literal、Regex.test、
-`list` 型映射、diff 三件套、File.write_bytes、E0308×3[含 try 尾 bool+
-闭包内 return 传播——corpus 演化出 710 边界条款「闭包内 return 不出
-闭包」的实实例]）——路由 PLAN-714 r2 §9 needs_replan（有界修订），
-详见计划 §10 Q-R2-2。
+fresh fsys.rs 暴露 710 §10 显式延后的 route-A 深修层（26 错/8 类）——
+路由 r3 深修阶段（同件收纳）。
+
+**r3 收口判定（2026-09-30，PLAN-714 r3 R3-T4/T5——深修落地后同判据复跑）**：
+**① skip 警告=0 ② fresh 卫生成立 ③ 实体形在位** 全绿维持；**`auto build
+-r rust` exit 0**（r3f 轮）+ **fresh workspace cargo check 过**（1m07s）；
+下游真仓 perf.py a2r 三重判据全绿（exit 0+三占位 0/0/0+fresh check
+59.82s）——**AC-R2-1 补全+AC-R2-4 交付，PLAN-021 解阻**。深修面=
+stdlib（fs::copy_recursive/remove_dir/read_bytes_list/write_bytes_list、
+re::test/replace、json::from_value/parse_str_list、diff 三件套[code-editor
+门双轨]、list=Vec<Value> 别名）+表臂三处分发器齐装+Try return 传播形
+（Option<Ret>——710 边界条款实实例收口）+借位迭代变量 clone 窄门；
+附带收口=cookbook file 003/004 夹具随 VM fs.metadata→size 现行语义
+同步（.len()/.modified() 死形退役）。工具链 v0.4.2-2330-g99405c675-dirty
+→r3 提交链（96e848ea5+3574b47c8）。
 
