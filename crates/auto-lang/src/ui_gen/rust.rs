@@ -4504,12 +4504,34 @@ impl RustGenerator {
 
                 // Special handling for code_editor elements (Plan 413) -
                 // View::code_editor(key).value(...).lang(...).on_change(...)
+                // PLAN-714 r4 (R4-T2): key 属性贯通动态表达式——`(key:
+                // t.key)`（Value 循环变量字段）此前只认 Str 字面量而静默
+                // 回落 widget 名 "editor"，注册键 `__code_editor_editor` 与
+                // store 查找键 `__code_editor_tab-N` 脱节（装载探测门永假
+                // ——auto-edit 供料档 §7）。动态形经 ast_expr_to_rust 发射
+                // （与视图条件同源：t.key → t["key"].as_str()...to_string()，
+                // View::code_editor 收 impl Into<String>）；静态 Str 形维持
+                // 字面量发射（既有金样零扰动）。handler 侧 payload 读
+                // （code_editor_sources）仍登记字面量/回落名——handler 无
+                // 循环变量作用域，per-tab 载荷读键解析属后续件（登记债）。
                 if tag == "code_editor" {
-                    let key = props.get("key")
-                        .or_else(|| props.get("id"))
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
-                        .unwrap_or_else(|| "editor".to_string());
-                    let mut builder = format!("View::code_editor(\"{}\")", key);
+                    let key_prop = props.get("key").or_else(|| props.get("id"));
+                    let dynamic_key = match key_prop {
+                        Some(AuraPropValue::Expr(e))
+                            if !matches!(e, crate::ast::Expr::Str(_)) =>
+                        {
+                            Some(self.ast_expr_to_rust(e))
+                        }
+                        _ => None,
+                    };
+                    let key_id = match key_prop {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
+                        _ => "editor".to_string(),
+                    };
+                    let mut builder = match dynamic_key {
+                        Some(expr) => format!("View::code_editor({expr})"),
+                        None => format!("View::code_editor(\"{key_id}\")"),
+                    };
 
                     // Value binding: content: .field | value: .field (or literal).
                     let value_prop = props.get("content").or_else(|| props.get("value"));
@@ -4572,7 +4594,7 @@ impl RustGenerator {
                                     builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
                                 }
                                 // Handler reads the text via code_editor_text(key).
-                                self.code_editor_sources.entry(variant.clone()).or_default().push(key.clone());
+                                self.code_editor_sources.entry(variant.clone()).or_default().push(key_id.clone());
                                 if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = value_prop {
                                     self.input_fields.entry(variant).or_default().push(name.to_string());
                                 }

@@ -350,6 +350,172 @@ widget App {{
             "D-8 to_int 解析整形（失败 0）: {code}"
         );
     }
+    // ---- PLAN-714 r4: code_editor 注册键贯通（供料档 §7 定谳+修复） ----
+    // 定谳（R4-T1）：a2r 生成器 key 属性只认 Str 字面量（Plan 413 原始
+    // 形态），`(key: t.key)` 动态表达式静默回落 widget 名 "editor" →
+    // 注册键 `__code_editor_editor` ≠ store 装载门查找键
+    // `__code_editor_tab-N` → 装载链永递延。非 2205→2366 回归（生成器/
+    // renderer/widget/core 四面与 019 钉版 5bb3f53be 逐字节一致）。
+
+    /// a2r 轨：全 widget 源 → rust 发射产物（gen_rust 的视图面变体）。
+    fn gen_rust_full(widget_src: &str) -> String {
+        let session = crate::session::CompilerSession::ui().with_backend("rust");
+        let mut parser = crate::Parser::from(widget_src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let mut widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let mut gen = crate::ui_gen::rust::RustGenerator::new();
+        gen.generate_rust(&widget).expect("generate rust")
+    }
+
+    #[test]
+    fn plan714_r4_codegen_dynamic_key_threaded_to_view() {
+        // `(key: t.key)` 动态键经 ast_expr_to_rust 发射（Value 循环变量
+        // 字段访问形——与视图条件同源），不再回落 "editor" 字面量。
+        let src = r#"
+store ProbeStore {
+    model {
+        var tabs list = [{key: "tab-1", src: ""}, {key: "tab-2", src: ""}]
+        var active_key str = "tab-1"
+    }
+}
+
+widget App {
+    msg { Init }
+
+    on {
+        .Init -> {
+        }
+    }
+
+    view {
+        col {
+            for i, t in .store.tabs {
+                if t.key == .store.active_key {
+                    code_editor (key: t.key, wrap: false) {
+                        oninput: .SrcChanged(i)
+                    }
+                }
+            }
+        }
+    }
+}
+"#;
+        let code = gen_rust_full(src);
+        assert!(
+            code.contains("View::code_editor(t[\"key\"].as_str().unwrap_or_default().to_string())"),
+            "动态 key 贯通注册键发射（t[\"key\"] 形——与条件判断同源）:\n{code}"
+        );
+        assert!(
+            !code.contains("View::code_editor(\"editor\")"),
+            "字面量回落形必须消失:\n{code}"
+        );
+    }
+
+    #[test]
+    fn plan714_r4_codegen_static_key_literal_unchanged() {
+        // 静态 Str key 维持字面量发射（既有金样/探针应用零扰动——
+        // probe_bufdiff_app "tab-1" 形）。
+        let src = r#"
+widget App {
+    msg { Init }
+
+    on {
+        .Init -> {
+        }
+    }
+
+    view {
+        col {
+            code_editor (key: "tab-1") {
+            }
+        }
+    }
+}
+"#;
+        let code = gen_rust_full(src);
+        assert!(
+            code.contains("View::code_editor(\"tab-1\")"),
+            "静态 key 字面量形不变:\n{code}"
+        );
+        assert!(
+            !code.contains("View::code_editor(\"editor\")"),
+            "显式静态 key 不回落:\n{code}"
+        );
+    }
+
+    #[test]
+    fn plan714_r4_codegen_missing_key_fallback_unchanged() {
+        // 无 key 属性维持 "editor" 回落（Plan 413 语义保持）。
+        let src = r#"
+widget App {
+    msg { Init }
+
+    on {
+        .Init -> {
+        }
+    }
+
+    view {
+        col {
+            code_editor {
+            }
+        }
+    }
+}
+"#;
+        let code = gen_rust_full(src);
+        assert!(
+            code.contains("View::code_editor(\"editor\")"),
+            "无 key 回落形不变:\n{code}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    #[cfg(feature = "code-editor")]
+    fn plan714_r4_registry_gate_accepts_runtime_tab_key() {
+        // 注册键≡store 查找键的注册表层 E2E：按修复后发射形注册
+        // （View::code_editor(t.key) → renderer storage_key("tab-N")），
+        // store 装载探测门 code_editor_edit("__code_editor_tab-N",0,0,"")
+        // 必须命中（供料档 §7 永假门反转绿）；脱节旧形（注册在
+        // __code_editor_editor 下）保持 false——钉住 §7 脱节形态本身。
+        use crate::ui::code_editor::{
+            code_editor, code_editor_dispose, code_editor_edit, set_font_system_call,
+            storage_key, CodeEditorConfig,
+        };
+        use crate::ui::code_editor::core::REGISTRY_TEST_LOCK;
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(probe_font_system);
+        let config = CodeEditorConfig { ..CodeEditorConfig::default() };
+
+        // 修复形：注册键 = storage_key(t.key 运行时值)。
+        let fixed = storage_key("tab-3");
+        code_editor_dispose(&fixed);
+        let _core = code_editor(&fixed, &config);
+        assert!(
+            code_editor_edit("__code_editor_tab-3", 0, 0, ""),
+            "修复形：装载探测门命中（注册键≡查找键）"
+        );
+        code_editor_dispose(&fixed);
+
+        // 脱节旧形（§7）：注册键 = storage_key("editor")。
+        let stale = storage_key("editor");
+        code_editor_dispose(&stale);
+        let _core2 = code_editor(&stale, &config);
+        assert!(
+            !code_editor_edit("__code_editor_tab-3", 0, 0, ""),
+            "脱节旧形：探测门永假（§7 形态钉住）"
+        );
+        code_editor_dispose(&stale);
+    }
 }
 
     // ---- PLAN-714 r2: back-path Stmt::Try arm (trans/rust.rs emission) ----
