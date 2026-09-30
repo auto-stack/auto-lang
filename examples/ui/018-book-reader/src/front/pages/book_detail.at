@@ -33,7 +33,9 @@ widget book_detail {
     model {
         var book_id int = 0
         var book = null
+        var has_book bool = false
         var chapters = []
+        var chapters_label str = "0 entries"
         var loaded bool = false
         var current_ch int = 1
         var progress_label str = ""
@@ -50,7 +52,10 @@ widget book_detail {
             }
 
             if .loaded {
-                if .book == null {
+                // PLAN-712 r2 T-15：view 条件不比 null（VM view 表达式语法
+                // 不吃 null 字面量，`== null` 触发 20 连解析错）——用 has_book
+                // 旗标（bookshelf has_continue 同款惯用法）。
+                if .has_book == false {
                     col {
                         style: "items-center justify-center py-20 gap-3 text-muted-foreground"
                         text "📖" { style: "text-5xl opacity-40" }
@@ -110,33 +115,35 @@ widget book_detail {
                         row {
                             style: "items-baseline justify-between"
                             text "Chapters" { style: "text-lg font-semibold text-foreground" }
-                            text f"${.chapters.len()} entries" { style: "text-xs text-muted-foreground" }
+                            text .chapters_label { style: "text-xs text-muted-foreground" }
                         }
                         col {
                             style: "gap-1"
                             for ch in .chapters {
-                                row {
-                                    onclick: .ReadChapter(ch.number)
-                                    style: ["items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors cursor-pointer",
-                                        if ch.number == .current_ch {
-                                            "border-primary bg-primary/10"
-                                        } else {
-                                            "border-transparent hover:bg-accent"
-                                        }]
-                                    text f"${ch.number}" {
-                                        style: "text-xs font-mono text-muted-foreground w-6 shrink-0"
-                                    }
-                                    text ch.title {
-                                        style: ["flex-1 truncate text-sm",
-                                            if ch.number == .current_ch {
-                                                "font-semibold text-foreground"
-                                            } else {
-                                                "text-foreground"
-                                            }]
-                                    }
-                                    if ch.number == .current_ch {
+                                // T-15：条件数组 style 拆 if/else 双臂（VM
+                                // 解析器不吃数组内 if 表达式——RBrace 级联源）。
+                                if ch.number == .current_ch {
+                                    row {
+                                        onclick: .ReadChapter(ch.number)
+                                        style: "items-center gap-3 px-3 py-2.5 rounded-lg border-primary bg-primary/10 cursor-pointer"
+                                        text f"${ch.number}" {
+                                            style: "text-xs font-mono text-primary w-6 shrink-0"
+                                        }
+                                        text ch.title {
+                                            style: "flex-1 truncate text-sm font-semibold text-foreground"
+                                        }
                                         text "Reading" { style: "text-xs text-primary shrink-0" }
-                                    } else {
+                                    }
+                                } else {
+                                    row {
+                                        onclick: .ReadChapter(ch.number)
+                                        style: "items-center gap-3 px-3 py-2.5 rounded-lg border-transparent hover:bg-accent cursor-pointer"
+                                        text f"${ch.number}" {
+                                            style: "text-xs font-mono text-muted-foreground w-6 shrink-0"
+                                        }
+                                        text ch.title {
+                                            style: "flex-1 truncate text-sm text-foreground"
+                                        }
                                         text "→" { style: "text-muted-foreground shrink-0" }
                                     }
                                 }
@@ -151,13 +158,23 @@ widget book_detail {
     on {
         .Init -> {
             .book_id = router.param("id")
-            .book = Http.get_json("/api/books/" + .book_id.to_string())
-            .chapters = Http.get_json("/api/books/" + .book_id.to_string() + "/chapters")
-            .current_ch = 1
-            .progress_label = ""
-            if .book != null {
-                .current_ch = chapter_from_progress(.book.progress, .book.chapter_count)
-                .progress_label = pct1(.book.progress) + "%"
+            // T-15：try/catch 探测装载成败（player_store 同款），has_book
+            // 旗标驱动视图；chapters_label 预计算（f-string 内不吃 .len()）。
+            try {
+                .book = Http.get_json("/api/books/" + .book_id.to_string())
+                .chapters = Http.get_json("/api/books/" + .book_id.to_string() + "/chapters")
+                .has_book = true
+                .chapters_label = .chapters.len().to_string() + " entries"
+                .current_ch = 1
+                .progress_label = ""
+                if .has_book == true {
+                    .current_ch = chapter_from_progress(.book.progress, .book.chapter_count)
+                    .progress_label = pct1(.book.progress) + "%"
+                }
+            } catch {
+                .has_book = false
+                .chapters = []
+                .chapters_label = "0 entries"
             }
             .loaded = true
         }
@@ -167,7 +184,7 @@ widget book_detail {
         }
         .ContinueReading -> {
             var current int = 1
-            if .book != null {
+            if .has_book == true {
                 current = chapter_from_progress(.book.progress, .book.chapter_count)
             }
             router.push("/book/" + .book_id.to_string() + "/chapter/" + current.to_string())
