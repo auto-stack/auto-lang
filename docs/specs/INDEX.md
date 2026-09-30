@@ -322,14 +322,14 @@
 
 | 模块 | 职责 | 状态 |
 |---|---|---|
-| .vitepress | VitePress 配置与自定义主题 | active |
+| .vitepress | VitePress 配置与自定义主题（theme/data 导航与页面数据单源） | active |
 | docs | 英文文档（architecture/cli/features/guides/language/tutorials 等） | active |
 | zh | 中文文档镜像（docs/books/ui 等） | active |
 | books | 8 本书籍内容 | active |
 | playground.md / ui / blocks / charts 等 | 专题页与内嵌 playground | active |
 | public/playground-data | Notes manifest 确定性生成物（notes.json，gitignore；Plan 581） | active |
 | scripts | prepare-content 等内容预处理脚本（末段接线 manifest 生成） | active |
-| tests | Playwright e2e | active |
+| tests | Playwright e2e（`AUTO_WEBSITE_TEST_PORT` 独占端口，baseURL/webServer 同源 strictPort；`locale:'en-US'` 钉定防宿主 OS locale 泄入触发首页自动跳转） | active |
 
 </details>
 
