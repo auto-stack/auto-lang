@@ -62,7 +62,8 @@
   margin-bottom: 1.5rem;
 }
 
-.landing-page .title {
+.landing-page .landing-hero .title,
+.landing-page .hero .title {
   font-size: clamp(2.5rem, 5vw, 4rem);
   font-weight: 800;
   line-height: 1.1;
@@ -189,13 +190,13 @@
 
 .landing-page .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 1.5rem;
 }
 
 .landing-page .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: 1.5rem;
 }
 
@@ -288,7 +289,7 @@
 
 .landing-page .code-title {
   font-size: 0.8rem;
-  color: #6c7086;
+  color: #a6adc8;
   font-family: 'JetBrains Mono', monospace;
 }
 
@@ -305,9 +306,9 @@
 .landing-page .code-body .keyword  { color: #cba6f7; }
 .landing-page .code-body .function { color: #89b4fa; }
 .landing-page .code-body .string   { color: #a6e3a1; }
-.landing-page .code-body .comment  { color: #6c7086; font-style: italic; }
+.landing-page .code-body .comment  { color: #a6adc8; font-style: italic; }
 .landing-page .code-body .prompt   { color: #a6e3a1; }
-.landing-page .code-body .output   { color: #6c7086; }
+.landing-page .code-body .output   { color: #a6adc8; }
 
 /* ------------------------------------------------ shared visuals (ai/os) */
 
@@ -385,5 +386,18 @@
 @media (max-width: 768px) {
   .landing-page .stats-grid {
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+}
+
+/* Keyboard visibility and motion preferences across landing pages. */
+.landing-page :is(.btn, .cta-btn, .feature-card[href]):focus-visible {
+  outline: 3px solid var(--vp-c-brand-1);
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-page :is(.btn, .cta-btn, .feature-card, .stat-card, .icon-wrapper) {
+    transition: none !important;
+    transform: none !important;
   }
 }

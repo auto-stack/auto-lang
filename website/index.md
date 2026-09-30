@@ -48,8 +48,8 @@ onMounted(() => {
   <div class="apps-grid">
     <div class="app-card">
       <h3>AutoShell</h3>
-      <p>Cross-platform shell with CLI/TUI/GUI modes and Warp-like AI capabilities.</p>
-      <a href="/apps#autoshell">Learn more →</a>
+      <p>An interactive shell, field-based pipelines and multiline AutoScript. Explore practical use cases and observed runs.</p>
+      <a href="/apps/autoshell/">Learn more →</a>
     </div>
     <div class="app-card">
       <h3>AutoMusk</h3>

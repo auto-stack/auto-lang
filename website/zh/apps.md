@@ -26,7 +26,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
   <h2 class="section-title">v0.5 应用矩阵</h2>
   <div class="stats-grid">
     <StatCard value="4" label="旗舰应用" description="AutoShell、AutoMusk、AutoDown 与 AutoUI Demos。" color="#6366f1" />
-    <StatCard value="100%" label="Auto 编写" description="所有应用均使用 Auto 语言自身实现。" color="#8b5cf6" />
+    <StatCard value="Auto" label="生态集成" description="Rust 执行引擎、Auto 脚本和 AutoUI 共同构建应用。" color="#8b5cf6" />
     <StatCard value="3" label="平台" description="CLI、TUI 与 GUI 三种模式覆盖应用套件。" color="#14b8a6" />
     <StatCard value="∞" label="可扩展" description="每个应用都是构建你自己的应用的参考。" color="#ec4899" />
   </div>
@@ -42,8 +42,8 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
       </div>
     </div>
     <p class="app-desc">
-      完整的跨平台 Shell，可替代 Bash、Fish 与 Zsh。
-      支持 CLI、TUI、GUI 三种形态，具备类 Warp 的 AI 能力。
+      面向日常命令和自动化的结构化 Shell。
+      CLI 与交互式会话共用执行引擎，F2 编辑器支持多行 AutoScript。
     </p>
     <div class="app-features">
       <div class="app-feature">
@@ -52,15 +52,15 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
       </div>
       <div class="app-feature">
         <h4>AI 集成</h4>
-        <p>F3 AI 模式由 aaid 驱动。自然语言直接转 Shell 命令。</p>
+        <p>F3 打开 AI 对话入口；需要配置模型服务。</p>
       </div>
       <div class="app-feature">
-        <h4>跨平台</h4>
-        <p>Windows、Linux、macOS。一个 Shell，处处行为一致。</p>
+        <h4>交互操作</h4>
+        <p>补全、历史、行内建议、别名与后台作业。</p>
       </div>
       <div class="app-feature">
-        <h4>双实现</h4>
-        <p>Rust 版功能完整。Auto 版完全可用。</p>
+        <h4>脚本与自动化</h4>
+        <p>交互执行或运行 AutoScript 文件，支持 JSON 输出与执行策略。</p>
       </div>
     </div>
   </div>

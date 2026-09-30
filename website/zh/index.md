@@ -40,8 +40,8 @@ const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
   <div class="apps-grid">
     <div class="app-card">
       <h3>AutoShell</h3>
-      <p>跨平台 Shell，支持 CLI/TUI/GUI 三种形态，具备类 Warp 的 AI 能力。</p>
-      <a href="/zh/apps#autoshell">了解更多 →</a>
+      <p>交互式 Shell、按字段处理的数据管道与多行 AutoScript。查看实际用例和运行记录。</p>
+      <a href="/zh/apps/autoshell/">了解更多 →</a>
     </div>
     <div class="app-card">
       <h3>AutoMusk</h3>

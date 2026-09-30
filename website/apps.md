@@ -27,7 +27,7 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
   <h2 class="section-title">Applications in v0.5</h2>
   <div class="stats-grid">
     <StatCard value="4" label="Flagship Apps" description="AutoShell, AutoMusk, AutoDown, and AutoUI demos." color="#6366f1" />
-    <StatCard value="100%" label="Auto Written" description="All applications are implemented in Auto itself." color="#8b5cf6" />
+    <StatCard value="Auto" label="Ecosystem" description="Rust engines, Auto scripts and AutoUI work together across the applications." color="#8b5cf6" />
     <StatCard value="3" label="Platforms" description="CLI, TUI, and GUI modes across the app suite." color="#14b8a6" />
     <StatCard value="∞" label="Extensible" description="Each app is a reference for building your own." color="#ec4899" />
   </div>
@@ -43,8 +43,8 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
       </div>
     </div>
     <p class="app-desc">
-      A complete cross-platform shell that can replace Bash, Fish, and Zsh.
-      Three modes — CLI, TUI, and GUI — with Warp-like AI capabilities.
+      A structured shell for everyday commands and automation.
+      The CLI and interactive session share an engine, with multiline AutoScript in the F2 editor.
     </p>
     <div class="app-features">
       <div class="app-feature">
@@ -53,15 +53,15 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
       </div>
       <div class="app-feature">
         <h4>AI Integrated</h4>
-        <p>F3 AI mode powered by aaid. Natural language to shell commands.</p>
+        <p>F3 opens AI chat; model service configuration is required.</p>
       </div>
       <div class="app-feature">
-        <h4>Cross-Platform</h4>
-        <p>Windows, Linux, macOS. One shell, consistent behavior everywhere.</p>
+        <h4>Interactive Editing</h4>
+        <p>Completion, history, inline suggestions, aliases, and background jobs.</p>
       </div>
       <div class="app-feature">
-        <h4>Dual Implementation</h4>
-        <p>Rust version is feature-complete. Auto version is fully usable.</p>
+        <h4>Scripts and Automation</h4>
+        <p>Run AutoScript interactively or from files, with JSON output and execution policies.</p>
       </div>
     </div>
   </div>
