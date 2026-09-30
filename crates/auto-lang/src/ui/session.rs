@@ -2362,12 +2362,36 @@ impl DesktopCommand {
                     "workspace_close" => {
                         arg.parse::<usize>().ok().map(DesktopCommand::WorkspaceClose)
                     }
+                    // PLAN-709（R1，review 发现）：send_to 容收槽位条目
+                    // wid "N<slot>"（486 focus_native 前例同款 N 前缀容收
+                    // ——shell 直传条目 wid，宿主归一为伪 Wid 进槽位臂）。
+                    // 纯数字两态兼容：真实 Wid 直传 / 伪 Wid 数值回放均路由
+                    // 正确（wm_move_member_to_workspace 伪 Wid 域分派）。
                     "send_to" => arg
                         .split_once([Self::FIELD_SEP, '\t'])
                         .and_then(|(w, n)| {
-                            w.parse::<u64>().ok().zip(n.parse::<usize>().ok())
-                        })
-                        .map(|(w, n)| DesktopCommand::SendTo(Wid(w), n)),
+                            // N 前缀 = 槽位条目 wid → 伪 Wid；纯数字 =
+                            // 真实 Wid 原样（伪 Wid 数值回放天然带段位，
+                            // 同样落入槽位臂分派）。
+                            let (slot_form, digits) = match w.strip_prefix('N') {
+                                Some(d) => (true, d),
+                                None => (false, &w[..]),
+                            };
+                            digits
+                                .parse::<u64>()
+                                .ok()
+                                .zip(n.parse::<usize>().ok())
+                                .map(|(num, ws)| {
+                                    let wid = if slot_form {
+                                        WmState::native_slot_pseudo_wid(
+                                            crate::ui::native_dock::NativeSlotId(num),
+                                        )
+                                    } else {
+                                        Wid(num)
+                                    };
+                                    DesktopCommand::SendTo(wid, ws)
+                                })
+                        }),
                     // PLAN-709 rev2：win_rect 解析（五族数字全 f32 接受；
                     // 坏值/缺参 no-op 弃单——词表白名单容错口径）。
                     "win_rect" => {
@@ -8761,6 +8785,40 @@ mod tests {
                 "{bad} 应弃单"
             );
         }
+    }
+
+    #[test]
+    fn send_to_parses_slot_entry_wid_and_preserves_vwin() {
+        // R1（review 发现）：N 前缀条目 wid → 伪 Wid 槽位臂。
+        let recs = DesktopCommand::parse_records("send_to\tN2\t1");
+        assert_eq!(
+            recs,
+            vec![DesktopCommand::SendTo(
+                WmState::native_slot_pseudo_wid(crate::ui::native_dock::NativeSlotId(2)),
+                1
+            )]
+        );
+        // 纯数字真实 Wid 原样保留（vwin 臂回归钉）。
+        let recs = DesktopCommand::parse_records("send_to\t3\t0");
+        assert_eq!(recs, vec![DesktopCommand::SendTo(Wid(3), 0)]);
+        // 伪 Wid 数值回放（encode 形态）→ 槽位臂分派。
+        let recs = DesktopCommand::parse_records("send_to\t9223372036854775809\t1");
+        assert_eq!(
+            recs,
+            vec![DesktopCommand::SendTo(
+                WmState::native_slot_pseudo_wid(crate::ui::native_dock::NativeSlotId(1)),
+                1
+            )]
+        );
+        // 端到端（session 层）：N 形态解析产物经成员臂 → 槽位分区迁移。
+        let mut ds = desktop_session_with_host();
+        let id = docked_test_slot(&mut ds, 0.0, 0.0);
+        let cmd = DesktopCommand::parse_records("send_to\tN1\t1").remove(0);
+        let DesktopCommand::SendTo(wid, n) = cmd else {
+            panic!("应为 SendTo");
+        };
+        assert!(ds.wm_move_member_to_workspace(wid, n));
+        assert_eq!(ds.host.as_ref().unwrap().wm.native_slots[&id].workspace, 1);
     }
 
     #[test]
