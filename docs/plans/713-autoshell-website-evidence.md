@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-713
-status: executing
+status: reviewed
 feature_name: AutoShell website evidence and presentation
 author: [Codex]
 created_at: 2026-09-30
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [website]
-current_step: 4
+current_step: 5
 total_steps: 5
 ---
 
@@ -53,7 +53,7 @@ Shared styling: narrow hero-title selector, readable code metadata/output, visib
 
 | delta_id | operation | target | before/after rule | rationale | acceptance |
 |---|---|---|---|---|---|
-| SD-01 | modify | docs/specs/website/project.md | Add shared EN/ZH AutoShell page, evidence/provenance, responsive screenshot/script interactions | Record enduring presentation contract | AC-01..04 |
+| SD-01 | modify | docs/specs/website/project.md | Shared EN/ZH AutoShell page, preserve native overview captures and visible F1/F2/F3 forms, evidence/provenance, responsive screenshot/script interactions | Record enduring presentation contract | AC-01..04 |
 
 ## 6. 测试设计
 
@@ -75,7 +75,7 @@ VitePress/Vue compile; inspect ZH/EN desktop/mobile, light/dark, no document ove
 - [x] T-03 (AC-01/03): Correct EN/ZH home/apps entries and bounded landing.css; prepare SD-01 and review report.
 - [x] T-04 (AC-01..04): Compile/browser/example validation, commit implementation and record results.
 
-- [ ] T-05 (AC-05): 恢复两个原生截图，新增 F1/F2/F3 图示区；保留现有实跑图和脚本，更新证据/规范并检查显示。
+- [x] T-05 (AC-05): 恢复两个原生截图，新增 F1/F2/F3 图示区；保留现有实跑图和脚本，更新证据/规范并检查显示。
 
 ## 9. 复审记录
 
@@ -126,3 +126,15 @@ stage: merge | outcome: blocked (post-landing consolidation only)
 ## revision 2 用户纠正（2026-09-30）
 
 用户指出筛选导致图示覆盖不足，明确要求 F1/F2/F3 与最初两图都展示。沿用同一未归档 Plan/工作区；r1 交付及证据保留，但不覆盖新 AC-05。原生资源实际文件名为 ash-01.png 和 ash-2.png（用户称 ash-02），保留文件名不改写原图。追加常见形式图示区和原生界面介绍，未发起 AI 模型请求的截图只描述入口。规范增量 SD-01 扩展为保留原生界面总览和常见快捷键形式；无需重新申请已获授权的页面补充。
+
+## revision 2 复审与执行完成
+
+stage: review | plan_id: PLAN-713 | plan_revision: 2 | outcome: pass
+reviewed_commit: 41cf4d434db4d436ae3965bd84a475dad6999b19
+base_commit: f8395b1eb0fc5dcb79689f6694eabdc6082cc60e
+
+- AC-05 / T-05: pass. Commit includes byte-preserved ash-01.png/ash-2.png plus three separately visible F1/F2/F3 figures and both locales' explanations. Actual F1, F2/F5, F3 entry/Esc interactions performed; no AI question sent. PTY reconstructions explicitly labeled; conversation history not published. New report docs/reports/autoshell-modes-2026-09-30.md and two browser captures bind evidence.
+- AC-01..04: pass. Original scripts, policies and shared components unchanged (r1 evidence reused with that reason). New page source/Spec inspected; whole-site VitePress build exit 0, 75.79s; EN/ZH, 1440/390/360, light/dark and zoom/Esc checks passed. Existing script labels still load summary and JSON captures. No new console errors; git diff --check and clean worktree verified.
+- Environment: build initially lacked already-known v05 preview assets; restored physical copies, final build passed, moved copies back outside worktree. No unrelated assets committed. Category A: no Cargo/tests/docs_gen.
+- Frozen SD-01 delta: docs/specs/website/project.md Git blob 975544b94c783ff35804dd47647fd1cd6936f429 at reviewed_commit, baseline 5997aeaed592477b888b68e4d915223eca69ab90. Adds native/F-key screenshot retention/provenance to existing paragraph, no runtime or global navigation redesign. Dependency versions/hash baseline unchanged from r1.
+- Same-session artifact-based review; no independent agent claimed. No remaining AC item or new debt. next: fast-forward landing, preserve other sessions' main work; existing ledger-publication blocker still governs archival.
