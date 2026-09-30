@@ -3140,3 +3140,350 @@ fn p035_taskbar_right_group_right_aligned() {
         "任务栏右组必须右对齐贴时钟（P 右缘应 >1000，实测 x={px:.1} w={pw:.1}；{report}）"
     );
 }
+
+// ===========================================================================
+// PLAN-712 T-10/T-11 合并侦查探针（030-video-player 真实结构，headless 布局测量）
+// ===========================================================================
+
+/// T-11 播控条 flex 宽度分配探针——实机症状（用户截图 7b9397df）：进度条只占
+/// 左侧 ~2/3、倍速「1.0x」与音量组之间 ~330px 空档（倍速贴窗右缘）。结构逐
+/// 字面镜像 controls.at 三段式行（左 col flex-1 min-w-0 / 中传输行 / 右音量
+/// 倍速行），叶子换成等尺寸 sentinel 文本（find 可定位；行内宽度分配与叶子
+/// 是 button 还是同尺寸 text 无关——分配在 Row 层做）。判据：
+/// ① 左列右缘（时间行末 status 文本右缘）≈ 传输键左缘（gap-4=16px 容差）；
+/// ② 倍速 sentinel 左缘紧贴音量加号 sentinel 右缘（gap-1=4px，给 60px 容差
+///   ——间距若 ~330px 即实机形态复现）。
+#[test]
+fn p712_controls_row_flex_distribution_matches_design() {
+    let src = r#"
+widget App {
+    msg { Tick }
+    model {
+        var cur str = "00:10"
+        var dur str = "53:12"
+        var status str = "S"
+        var vol str = "80%"
+    }
+    view {
+        row {
+            style: "w-full h-14 items-center gap-4 px-4 border-t border-border bg-card"
+
+            col {
+                style: "flex-1 min-w-0 gap-1"
+                row {
+                    style: "w-full items-center gap-2 text-xs font-mono text-muted-foreground"
+                    text .cur { style: "T" }
+                    text "/" {}
+                    text .dur {}
+                    col { style: "flex-1" }
+                    text .status {}
+                }
+                progress (value: 25.0, max: 100.0, class: "h-2 w-full",
+                          onseek: .SeekFraction($0))
+            }
+
+            row {
+                style: "items-center gap-1"
+                button {
+                    onclick: .Tick
+                    style: "w-9 h-9 items-center justify-center rounded-md"
+                    text "P1" {}
+                }
+                button {
+                    onclick: .Tick
+                    style: "w-9 h-9 items-center justify-center rounded-md"
+                    text "P2" {}
+                }
+                button {
+                    onclick: .Tick
+                    style: "w-9 h-9 items-center justify-center rounded-md"
+                    text "P3" {}
+                }
+            }
+
+            row {
+                style: "items-center gap-1 pl-3 border-l border-border"
+                button {
+                    onclick: .Tick
+                    style: "w-9 h-9 items-center justify-center rounded-md"
+                    text "V1" {}
+                }
+                button {
+                    onclick: .Tick
+                    style: "w-8 h-7 items-center justify-center rounded-md"
+                    text "V2" {}
+                }
+                text .vol {}
+                button {
+                    onclick: .Tick
+                    style: "w-8 h-7 items-center justify-center rounded-md"
+                    text "V4" {}
+                }
+                button {
+                    onclick: .Tick
+                    style: "h-9 px-3 items-center justify-center gap-1 rounded-md text-xs font-mono"
+                    text "RATE" {}
+                }
+            }
+        }
+    }
+    on { .Tick -> {} }
+}
+"#;
+    let dc = crate::build_dynamic_component(src, None).expect("build component");
+    let (view, _, _) = dc.view_with_debug_gated(false);
+    let mut ui = simulator(view.into_iced());
+
+    let (cur_x, _y, cur_w, _h) = bounds_of(&mut ui, "00:10");
+    let (s_x, _sy, s_w, _sh) = bounds_of(&mut ui, "S");
+    let (p1_x, _py1, _pw1, _ph1) = bounds_of(&mut ui, "P1");
+    let (v4_x, _vy4, v4_w, _vh4) = bounds_of(&mut ui, "V4");
+    let (rate_x, _ry, rate_w, _rh) = bounds_of(&mut ui, "RATE");
+    let col_right = s_x + s_w;
+    eprintln!(
+        "[p712-controls] cur_left={cur_x:.1} col_right={col_right:.1} p1_left={p1_x:.1} \
+         v4_right={:.1} rate_left={rate_x:.1} rate_w={rate_w:.1}",
+        v4_x + v4_w
+    );
+    // ① 左列（flex-1）应吃满剩余宽：列右缘贴传输键左缘（gap-4 → ~16px；
+    //   实机形态=列提前 ~1/3 处收住 → gap ≈ 数百 px）。
+    assert!(
+        p1_x - col_right < 60.0,
+        "左列 flex-1 必须贴传输键（P1.left - 列右缘应 <60，实测 {:.1}px——flex 分配塌缩复现）",
+        p1_x - col_right
+    );
+    // ② 倍速紧贴音量组（gap-1=4px，60px 容差；实机形态=~330px 空档）。
+    assert!(
+        rate_x - (v4_x + v4_w) < 60.0,
+        "倍速必须紧贴音量组（RATE.left - V4.right 应 <60，实测 {:.1}px——右组内部空隙复现）",
+        rate_x - (v4_x + v4_w)
+    );
+}
+
+/// T-10 头部动作按钮探针——实机症状：主题切换 + 队列开关两按钮在 VM 双轨
+/// 不渲染/不可达（712 前截图在案有按钮）。结构镜像 app.at 顶栏行（标题组 +
+/// `col flex-1` spacer + 右侧按钮行，按钮经 if/else 条件臂），按钮内放
+/// sentinel 文本供 find 定位。判据：两按钮 bounds 落在窗口内（1024 宽）且
+/// 有非零宽；找不到或 x≥窗宽即「不可达」形态复现。
+#[test]
+fn p712_header_action_buttons_visible_and_in_window() {
+    let src = r#"
+widget App {
+    msg { ToggleDarkMode, TogglePlaylist }
+    model {
+        var dark_mode bool = true
+        var show_playlist bool = true
+    }
+    view {
+        col {
+            style: "w-full h-screen flex-col bg-background text-foreground overflow-hidden"
+            row {
+                style: "w-full h-12 items-center gap-3 px-4 border-b border-border bg-card"
+                row {
+                    style: "items-center gap-2"
+                    icon (name: "film", size: 18, style: "text-primary")
+                    text "Video Player" { style: "text-sm font-semibold tracking-tight" }
+                }
+                col { style: "flex-1" }
+                row {
+                    style: "items-center gap-1"
+                    if .dark_mode {
+                        button {
+                            onclick: .ToggleDarkMode
+                            style: "w-8 h-7 items-center justify-center rounded-md cursor-pointer"
+                            text "BTN1" { style: "text-xs" }
+                        }
+                    } else {
+                        button {
+                            onclick: .ToggleDarkMode
+                            style: "w-8 h-7 items-center justify-center rounded-md cursor-pointer"
+                            text "BTN1" { style: "text-xs" }
+                        }
+                    }
+                    button {
+                        onclick: .TogglePlaylist
+                        style: "w-8 h-7 items-center justify-center rounded-md cursor-pointer"
+                        text "BTN2" { style: "text-xs" }
+                    }
+                }
+            }
+        }
+    }
+    on {
+        .ToggleDarkMode -> {}
+        .TogglePlaylist -> {}
+    }
+}
+"#;
+    let dc = crate::build_dynamic_component(src, None).expect("build component");
+    let (view, _, _) = dc.view_with_debug_gated(false);
+    let mut ui = simulator(view.into_iced());
+
+    let (t_x, _ty, _tw, _th) = bounds_of(&mut ui, "Video Player");
+    let (b1_x, _b1y, b1_w, _b1h) = bounds_of(&mut ui, "BTN1");
+    let (b2_x, _b2y, b2_w, _b2h) = bounds_of(&mut ui, "BTN2");
+    eprintln!(
+        "[p712-header] title_right={:.1} btn1=x{b1_x:.1} w{b1_w:.1} btn2=x{b2_x:.1} w{b2_w:.1}",
+        t_x + 120.0
+    );
+    assert!(b1_w > 0.0 && b2_w > 0.0, "头部按钮必须有非零宽度（BTN1 w={b1_w:.1} BTN2 w={b2_w:.1}）");
+    assert!(
+        b1_x < 1024.0 && b2_x < 1024.0,
+        "头部按钮必须落在窗口内（BTN1 x={b1_x:.1} BTN2 x={b2_x:.1}，窗宽 1024）"
+    );
+    // 右对齐语义：按钮组应贴行右缘（flex-1 spacer 生效；整行 w-24=96 内两键
+    // + gap-1），即 BTN2 右缘 > 900（1024 - px-4 - 行宽余量）。
+    assert!(
+        b2_x + b2_w > 900.0,
+        "按钮组应被 flex-1 spacer 推到行右缘（BTN2 右缘应 >900，实测 {:.1}）",
+        b2_x + b2_w
+    );
+}
+
+/// T-11 探针②：完整 app.at 层级（根列 h-screen + 顶栏 + body 行 flex-1 含
+/// 视口列与队列栏 w-72 + 底部播控条）。孤立探针①绿说明三段式行自身分配
+/// 正确——实机 ~330px 空档需要完整祖先约束链才复现（真窗口 ~2000px 下倍速
+/// 落 ~1600 处、其后还有 ~400px 空）。判据同①。
+#[test]
+fn p712_full_app_hierarchy_controls_distribution() {
+    let src = r#"
+widget App {
+    msg { Tick }
+    model {
+        var cur str = "00:10"
+        var dur str = "53:12"
+        var status str = "S"
+        var vol str = "80%"
+        var show_playlist bool = true
+    }
+    view {
+        col {
+            style: "w-full h-screen flex-col bg-background text-foreground overflow-hidden"
+
+            row {
+                style: "w-full h-12 items-center gap-3 px-4 border-b border-border bg-card"
+                row {
+                    style: "items-center gap-2"
+                    icon (name: "film", size: 18, style: "text-primary")
+                    text "Video Player" { style: "text-sm font-semibold tracking-tight" }
+                }
+                col { style: "flex-1" }
+                row {
+                    style: "items-center gap-1"
+                    button {
+                        onclick: .Tick
+                        style: "w-8 h-7 items-center justify-center rounded-md"
+                        text "BTN1" { style: "text-xs" }
+                    }
+                    button {
+                        onclick: .Tick
+                        style: "w-8 h-7 items-center justify-center rounded-md"
+                        text "BTN2" { style: "text-xs" }
+                    }
+                }
+            }
+
+            row {
+                style: "w-full flex-1 min-h-0"
+                col {
+                    style: "flex-1 min-w-0 min-h-0"
+                    text "VIEWPORT" {}
+                }
+                if .show_playlist {
+                    col {
+                        style: "w-72 border-l border-border"
+                        text "QUEUE" {}
+                    }
+                }
+            }
+
+            row {
+                style: "w-full h-14 items-center gap-4 px-4 border-t border-border bg-card"
+                col {
+                    style: "flex-1 min-w-0 gap-1"
+                    row {
+                        style: "w-full items-center gap-2 text-xs font-mono text-muted-foreground"
+                        text .cur { style: "text-xs" }
+                        text "/" {}
+                        text .dur {}
+                        col { style: "flex-1" }
+                        text .status {}
+                    }
+                    progress (value: 25.0, max: 100.0, class: "h-2 w-full",
+                          onseek: .SeekFraction($0))
+                }
+                row {
+                    style: "items-center gap-1"
+                    button {
+                        onclick: .Tick
+                        style: "w-9 h-9 items-center justify-center rounded-md"
+                        text "P1" {}
+                    }
+                    button {
+                        onclick: .Tick
+                        style: "w-9 h-9 items-center justify-center rounded-md"
+                        text "P2" {}
+                    }
+                    button {
+                        onclick: .Tick
+                        style: "w-9 h-9 items-center justify-center rounded-md"
+                        text "P3" {}
+                    }
+                }
+                row {
+                    style: "items-center gap-1 pl-3 border-l border-border"
+                    button {
+                        onclick: .Tick
+                        style: "w-9 h-9 items-center justify-center rounded-md"
+                        text "V1" {}
+                    }
+                    button {
+                        onclick: .Tick
+                        style: "w-8 h-7 items-center justify-center rounded-md"
+                        text "V2" {}
+                    }
+                    text .vol {}
+                    button {
+                        onclick: .Tick
+                        style: "w-8 h-7 items-center justify-center rounded-md"
+                        text "V4" {}
+                    }
+                    button {
+                        onclick: .Tick
+                        style: "h-9 px-3 items-center justify-center gap-1 rounded-md text-xs font-mono"
+                        text "RATE" {}
+                    }
+                }
+            }
+        }
+    }
+    on { .Tick -> {} }
+}
+"#;
+    let dc = crate::build_dynamic_component(src, None).expect("build component");
+    let (view, _, _) = dc.view_with_debug_gated(false);
+    let mut ui = simulator(view.into_iced());
+
+    let (s_x, _sy, s_w, _sh) = bounds_of(&mut ui, "S");
+    let (p1_x, _py1, _pw1, _ph1) = bounds_of(&mut ui, "P1");
+    let (v4_x, _vy4, v4_w, _vh4) = bounds_of(&mut ui, "V4");
+    let (rate_x, _ry, rate_w, _rh) = bounds_of(&mut ui, "RATE");
+    let (q_x, _qy, _qw, _qh) = bounds_of(&mut ui, "QUEUE");
+    let col_right = s_x + s_w;
+    eprintln!(
+        "[p712-full] col_right={col_right:.1} p1_left={p1_x:.1} v4_right={:.1} \
+         rate_left={rate_x:.1} queue_left={q_x:.1}",
+        v4_x + v4_w
+    );
+    assert!(
+        p1_x - col_right < 60.0,
+        "完整层级下左列仍须贴传输键（实测 gap {:.1}px）",
+        p1_x - col_right
+    );
+    assert!(
+        rate_x - (v4_x + v4_w) < 60.0,
+        "完整层级下倍速仍须紧贴音量组（实测 gap {:.1}px）",
+        rate_x - (v4_x + v4_w)
+    );
+}
+

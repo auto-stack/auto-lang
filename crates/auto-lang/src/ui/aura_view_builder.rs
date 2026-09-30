@@ -12773,6 +12773,18 @@ let tabs_inner = View::Row {
         // → args empty → handler received no arg → no-op / stack mismatch).
         let mut args: Vec<Value> = Vec::with_capacity(event.params.len());
         for param in &event.params {
+            // PLAN-712 T-12: `$` 前缀实参（`$0`/`$1`/`$event`…）是**事件期回调
+            // 占位**——Vue 侧由生成器替换成真实取值（ui_gen/vue.rs「`$0` 需要
+            // 被生成器替换成真实取值」），VM 侧由各回调臂（progress onseek /
+            // mouse-area onmousemove / pen）在事件现场把 payload 追加进 args。
+            // 此前占位串落 parse_event_param_literal 兜底臂 → Str("$0") 占据
+            // args[0]，handler 形参绑到垃圾字面量、真载荷错位到 args[1]——
+            // 030 进度条 `onseek: .SeekFraction($0)` 点击恒换算 0（空参 `()`
+            // 形态不受影响，故 020 同控件正常）。剥除占位后载荷对位由回调臂
+            // 保证，`($0)` 与 `()` 两形态 VM 端同义、与 Vue 生成器对齐。
+            if param.trim().starts_with('$') {
+                continue;
+            }
             if let Some(val) = self.resolve_binding_path(param, bindings) {
                 args.push(val);
             } else if let Some(val) = self.parse_event_param_expr(param, bindings) {
@@ -20145,6 +20157,76 @@ mod plan534_side_panel_tests {
         );
         let (_, plain_seek) = find_progress(&plain).expect("progress 节点");
         assert!(!plain_seek, "未声明 onseek 不得凭空多出 seek handler");
+    }
+
+    /// PLAN-712 T-12 回归锁：`onseek: .Seek($0)` 的 `$0` 是**事件期回调占位**
+    /// （Vue 侧由生成器替换成真实取值），VM 侧不得落成 Str("$0") 字面量占据
+    /// args[0]——否则 handler 形参绑到垃圾、真载荷错位到 args[1]，030 进度条
+    /// 点击恒换算 0。修复后 `($0)` 与 `()` 两形态在 VM 端同义：调用 handler
+    /// 后 args[0] 即回调臂追加的比例载荷。
+    #[test]
+    fn progress_onseek_placeholder_param_never_becomes_literal_arg() {
+        fn find_on_seek(
+            view: &View<DynamicMessage>,
+        ) -> Option<crate::ui::view::PointerMoveHandler<DynamicMessage>> {
+            match view {
+                View::ProgressBar { on_seek, .. } => on_seek.clone(),
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    children.iter().find_map(find_on_seek)
+                }
+                View::Container { child, .. } | View::Scrollable { child, .. } => {
+                    find_on_seek(child)
+                }
+                _ => None,
+            }
+        }
+        // `($0)` 形态（030 controls.at / vue.rs 金样同款）
+        let placeholder = build_view(
+            "widget App {
+             msg { Seek(float) }
+             model { pct float = 25.0 }
+             on { .Seek(f) -> { .pct = f } }
+             view { col { progress (value: .pct, max: 100.0, onseek: .Seek($0)) } }
+             }",
+        );
+        let on_seek = find_on_seek(&placeholder).expect("progress 节点带 on_seek");
+        let msg = on_seek.call(0.5, 0.0);
+        let DynamicMessage::Typed { event_name, args, .. } = msg else {
+            panic!("Seek 应产出 Typed 消息");
+        };
+        assert_eq!(event_name, "Seek");
+        assert!(
+            !args.iter().any(|a| matches!(a, auto_val::Value::Str(s) if s.as_str().starts_with('$'))),
+            "占位串不得进 args（实得 {args:?}）"
+        );
+        match args.first() {
+            Some(auto_val::Value::Float(f)) | Some(auto_val::Value::Double(f)) => assert!(
+                (*f - 0.501).abs() < 1e-6,
+                "args[0] 必须是回调臂追加的比例 0.501，实得 {f}"
+            ),
+            other => panic!("args[0] 必须是 Float 载荷，实得 {other:?}"),
+        }
+        // `()` 空参形态（020 controls.at 同款）与 `($0)` 严格同义。
+        let empty = build_view(
+            "widget App {
+             msg { Seek(float) }
+             model { pct float = 25.0 }
+             on { .Seek(f) -> { .pct = f } }
+             view { col { progress (value: .pct, max: 100.0, onseek: .Seek()) } }
+             }",
+        );
+        let on_seek = find_on_seek(&empty).expect("progress 节点带 on_seek");
+        let msg = on_seek.call(0.5, 0.0);
+        let DynamicMessage::Typed { args, .. } = msg else {
+            panic!("Seek 应产出 Typed 消息");
+        };
+        match args.first() {
+            Some(auto_val::Value::Float(f)) | Some(auto_val::Value::Double(f)) => assert!(
+                (*f - 0.501).abs() < 1e-6,
+                "空参形态 args[0] 同为比例 0.501，实得 {f}"
+            ),
+            other => panic!("空参形态 args[0] 必须是 Float 载荷，实得 {other:?}"),
+        }
     }
 
     fn find_popover(view: &View<DynamicMessage>) -> Option<&View<DynamicMessage>> {

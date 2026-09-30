@@ -1,0 +1,285 @@
+AURA Snapshot v2 (rendered)
+widget: "App"
+
+tree:
+col #vnode_14695981039346656037 {
+  style: "w-full h-screen flex-col bg-background text-foreground overflow-hidden"
+  row #vnode_12642422519345821663 {
+    style: "w-full h-12 items-center gap-3 px-4 border-b border-border bg-card"
+    row #vnode_4305065243889594349 {
+      style: "items-center gap-2"
+      text #vnode_4321691031005245367 "[Image]" {
+        style: "text-primary"
+      }
+      text #vnode_4321673438819200516 "Video Player" {
+        style: "text-sm font-semibold tracking-tight"
+      }
+    }
+    text #vnode_4305047651703549498 "caelestia.mp4" {
+      style: "text-xs text-muted-foreground font-mono"
+    }
+    col #vnode_4305030059517504647 {
+      style: "flex-1"
+    }
+    row #vnode_4305012467331459796 {
+      style: "items-center gap-1"
+      button #vnode_4275775425428751932 "" {
+        style: "theme-toggle w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+        onclick: .ToggleDarkMode
+        text #vnode_4363225525713770484 "[Image]"
+      }
+      button #vnode_4275793017614796783 "" {
+        style: "theme-toggle w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+        onclick: .TogglePlaylist
+        text #vnode_4378530727572601629 "[Image]"
+      }
+    }
+  }
+  row #vnode_12642404927159776812 {
+    style: "w-full flex-1 min-h-0"
+    col #vnode_4289760042030763204 {
+      style: "flex-1 min-w-0 min-h-0"
+      col #vnode_12781790891868631308 {
+        style: "w-full h-full flex-col bg-black min-h-0"
+        row #vnode_15900409796501198692 {
+          style: "h-9 items-center gap-3 px-4"
+          text #vnode_8766178259980025580 "caelestia" {
+            style: "text-xs font-medium text-white truncate max-w-sm"
+          }
+          col #vnode_8766195852166070431 {
+            style: "flex-1"
+          }
+          text #vnode_8766213444352115282 "根目录" {
+            style: "text-xs font-mono text-muted-foreground"
+          }
+          text #vnode_8766231036538160133 "7.3 MB" {
+            style: "text-xs font-mono text-muted-foreground"
+          }
+        }
+        col #vnode_15900427388687243543 {
+          style: "w-full h-full flex-1 min-h-0 items-center justify-center"
+          text #vnode_8781483461838856725 "[Video] 9b799b42370db383e78cfefdb49e4f3c824b42b323d7f0697077fcb4b9d11d3b" {
+            style: "w-full h-full object-contain"
+            onaudiotrack: .OnAudioTrack($0)
+            onclick: .TogglePlay
+            onended: .OnEnded
+            onloadedmetadata: .OnDuration($0)
+            onmediaerror: .OnMediaError($0)
+            onplaystatechange: .OnPlayState($0)
+            ontimeupdate: .OnTime($0)
+          }
+        }
+        row #vnode_15900444980873288394 {
+          style: "h-8 items-center justify-center gap-4 px-4"
+          text #vnode_8796788663697687870 "媒体库已就绪" {
+            style: "text-xs text-muted-foreground"
+          }
+          text #vnode_8796806255883732721 "画幅 自适应" {
+            style: "text-xs font-mono text-muted-foreground"
+          }
+          text #vnode_8796753479325598168 "时长 00:00" {
+            style: "text-xs font-mono text-muted-foreground"
+          }
+        }
+      }
+    }
+    col #vnode_4289777634216808055 {
+      style: "w-72 h-full flex-col border-l border-border bg-card min-h-0"
+      row #vnode_12797096093727462453 {
+        style: "h-12 items-center justify-between px-4 border-b border-border"
+        row #vnode_7440309935637812751 {
+          style: "items-center gap-2"
+          text #vnode_8742182554021542781 "[Image]" {
+            style: "text-muted-foreground"
+          }
+          text #vnode_8742164961835497930 "播放队列" {
+            style: "text-sm font-semibold"
+          }
+        }
+        button #vnode_7440292343451767900 "" {
+          style: "w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+          onclick: .TogglePlaylist
+          text #vnode_8726877352162711636 "[Image]"
+        }
+      }
+      scrollable #vnode_12797078501541417602 {
+        style: "w-full flex-1 min-h-0 overflow-y-auto p-2 gap-1"
+        col #vnode_7425004733778981606 {
+          col #vnode_17202282414884928722 [for: g, 0 = ] {
+            style: "queue-group w-full gap-0.5"
+            col #vnode_5417881931646064854 {
+              style: "h-7 items-center gap-2 px-2"
+              row #vnode_1760087849271948194 {
+                style: "text-xs font-semibold text-muted-foreground"
+                text #vnode_16183539577830308934 "根目录"
+              }
+              col #vnode_1760105441457993045 {
+                col #vnode_16198844779689140079 {
+                  text #vnode_18141321026384472477 "caelestia"
+                  text #vnode_18141303434198427626 "7.3 MB"
+                }
+              }
+            }
+            col #vnode_5417899523832109705 {
+              row #vnode_1775393051130779339 [for: item, 0 = <vmref>] {
+                style: "queue-item w-full px-3 py-2 rounded-md border border-transparent hover:bg-muted cursor-pointer gap-0.5"
+                onclick: .SelectIndex(i)
+                text #vnode_7723439716966922993 "TV/Loki" {
+                  style: "text-xs font-medium"
+                }
+              }
+              col #vnode_1775375458944734488 [for: item, 1 = <vmref>] {
+                col #vnode_7708134515108091848 {
+                  text #vnode_16590780968443209944 "Loki.S01E01.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组"
+                  text #vnode_16590798560629254795 "2.3 GB"
+                }
+                col #vnode_7708152107294136699 {
+                  text #vnode_16606086170302041089 "Loki.S01E02.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组v2"
+                  text #vnode_16606068578115996238 "2.4 GB"
+                }
+                col #vnode_7708169699480181550 {
+                  text #vnode_16621391372160872234 "Loki.S01E03.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组"
+                  text #vnode_16621408964346917085 "1.8 GB"
+                }
+                col #vnode_7708187291666226401 {
+                  text #vnode_16636696574019703379 "Loki.S01E04.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组"
+                  text #vnode_16636678981833658528 "2.2 GB"
+                }
+                col #vnode_7708204883852271252 {
+                  text #vnode_16652001775878534524 "Loki.S01E05.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组"
+                  text #vnode_16652019368064579375 "2.2 GB"
+                }
+                col #vnode_7708222476038316103 {
+                  text #vnode_16667306977737365669 "Loki.S01E06.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组"
+                  text #vnode_16667289385551320818 "2.0 GB"
+                }
+                col #vnode_7708240068224360954 {
+                  text #vnode_16682612179596196814 "Loki.S02E01.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX"
+                  text #vnode_16682629771782241665 "4.3 GB"
+                }
+                col #vnode_7708257660410405805 {
+                  text #vnode_16697917381455027959 "Loki.S02E02.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX"
+                  text #vnode_16697899789268983108 "4.4 GB"
+                }
+                col #vnode_7707993777619733040 {
+                  text #vnode_16468339353572560784 "Loki.S02E03.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX"
+                  text #vnode_16468356945758605635 "5.1 GB"
+                }
+                col #vnode_7708011369805777891 {
+                  text #vnode_16483644555431391929 "Loki.S02E04.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX"
+                  text #vnode_16483626963245347078 "4.5 GB"
+                }
+                col #vnode_7708028961991822742 {
+                  text #vnode_16498949757290223074 "Loki.S02E05.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX"
+                  text #vnode_16498967349476267925 "4.1 GB"
+                }
+                col #vnode_7708046554177867593 {
+                  text #vnode_16514254959149054219 "Loki.S02E06.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX"
+                  text #vnode_16514237366963009368 "5.4 GB"
+                }
+              }
+            }
+            col #vnode_5417846747273975152 {
+              row #vnode_1729477445554285904 {
+                text #vnode_14656995225847529200 "TV"
+              }
+              col #vnode_1729495037740330755 {
+                col #vnode_14672300427706360345 {
+                  text #vnode_18189312438301438075 "龙猫(蓝光国日粤三音轨中文字幕).My.Neighbor.Totoro.1988.BD-1080p.X264.AAC.3AUDIO.CHS-UUMp4"
+                  text #vnode_18189294846115393224 "1.7 GB"
+                }
+              }
+            }
+          }
+        }
+      }
+      col #vnode_12797060909355372751 {
+        style: "w-full p-3 border-t border-border gap-2"
+        button #vnode_7409699531920150461 "打开本地视频文件" {
+          style: "local-pick w-full h-9 items-center justify-center rounded-md bg-muted border border-border text-xs font-medium hover:bg-muted/70 cursor-pointer"
+          onclick: .LocalPick
+        }
+        button #vnode_7409681939734105610 "重新扫描媒体库" {
+          style: "rescan-btn w-full h-9 items-center justify-center rounded-md bg-muted border border-border text-xs font-medium hover:bg-muted/70 cursor-pointer"
+          onclick: .Rescan
+        }
+        text #vnode_7409664347548060759 "条目 14 · 分组 3" {
+          style: "text-xs text-muted-foreground"
+        }
+        col #vnode_7409646755362015908 {
+          onpick: .LocalPicked
+          onready: .LocalPickReady
+          text #vnode_7169722596462269612 "⚙ FilePicker（Web 端组件）"
+          text #vnode_7169740188648314463 "该内嵌容器为 Web 端组件，VM 端暂不内嵌示例画面；完整交互请使用 auto run（Vue 端）查看"
+        }
+      }
+    }
+  }
+  row #vnode_12642457703717911365 {
+    style: "w-full h-14 items-center gap-4 px-4 border-t border-border bg-card"
+    col #vnode_4335675647607256639 {
+      style: "flex-1 min-w-0 gap-1"
+      row #vnode_5848235382988025101 {
+        style: "w-full items-center gap-2 text-xs font-mono text-muted-foreground"
+        text #vnode_15828422678625750295 "00:00"
+        text #vnode_15828405086439705444 "/"
+        text #vnode_15828457862997839997 "00:00"
+        col #vnode_15828440270811795146 {
+          style: "flex-1"
+        }
+        text #vnode_15828352309881570891 "媒体库已就绪"
+      }
+      progress #vnode_5848217790801980250 {
+        style: "h-2 w-full"
+        onseek: .SeekFraction($0)
+      }
+    }
+    row #vnode_4335658055421211788 {
+      style: "items-center gap-1"
+      button #vnode_5832930181129193956 "" {
+        style: "transport-prev w-9 h-9 items-center justify-center rounded-md bg-muted border border-border text-foreground hover:bg-muted/70 cursor-pointer"
+        onclick: .Prev
+        text #vnode_5841778465779584620 "[Image]"
+      }
+      button #vnode_5832947773315238807 "" {
+        style: "transport-playpause w-9 h-9 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+        onclick: .TogglePlay
+        text #vnode_5857083667638415765 "[Image]"
+      }
+      button #vnode_5832965365501283658 "" {
+        style: "transport-next w-9 h-9 items-center justify-center rounded-md bg-muted border border-border text-foreground hover:bg-muted/70 cursor-pointer"
+        onclick: .Next
+        text #vnode_5872388869497246910 "[Image]"
+      }
+    }
+    row #vnode_4335710831979346341 {
+      style: "items-center gap-1 pl-3 border-l border-border"
+      button #vnode_5878845786705687391 "" {
+        style: "vol-mute w-9 h-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+        onclick: .ToggleMute
+        text #vnode_17354967030608530029 "[Image]"
+      }
+      button #vnode_5878828194519642540 "" {
+        style: "w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+        onclick: .VolDown
+        text #vnode_17339661828749698884 "[Image]"
+      }
+      text #vnode_5878880971077777093 "80%" {
+        style: "text-xs font-mono text-muted-foreground w-9 text-center"
+      }
+      button #vnode_5878863378891732242 "" {
+        style: "vol-up w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+        onclick: .VolUp
+        text #vnode_17370272232467361174 "[Image]"
+      }
+      button #vnode_5878775417961507987 "1.0x" {
+        style: "rate-btn h-9 px-3 items-center justify-center gap-1 rounded-md text-xs font-mono text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+        onclick: .RateUp
+        row #vnode_17293746223173205449 {
+          text #vnode_12638951301855984779 "[Image]"
+          text #vnode_12638933709669939928 "1.0x"
+        }
+      }
+    }
+  }
+}
