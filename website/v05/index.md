@@ -130,9 +130,9 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
     </ul>
   </div>
   <figure class="big-shot">
-    <!-- exists: dark main view -->
-    <img src="/v05/desktop-hero.png" alt="AutoOS Virtual Desktop (dark): taskbar, start menu, and multiple windows" />
-    <figcaption>Dark theme, main view — taskbar, start menu, and multiple windows</figcaption>
+    <!-- exists: dark-theme desktop with multiple apps -->
+    <img src="/v05/desktop-dark-apps.jpg" alt="Dark-theme desktop: music player, minesweeper, calculator, and system monitor side by side" />
+    <figcaption>Dark theme, main view — music player, minesweeper, calculator, and system monitor side by side</figcaption>
   </figure>
   <figure class="big-shot">
     <!-- exists: light-theme desktop -->
@@ -140,8 +140,9 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
     <figcaption>The same desktop in the light theme</figcaption>
   </figure>
   <figure class="big-shot">
-    <div class="shot-placeholder">TODO screenshot · several system apps open as windows on the desktop (suggestion: music-player + file-manager + settings, dark)</div>
-    <figcaption>Desktop tour I — system apps running as windows</figcaption>
+    <!-- exists: light-theme desktop with video player -->
+    <img src="/v05/desktop-tour-apps.jpg" alt="Light-theme desktop: video player window and desktop widgets (clock / Todo / AutoMusic Player)" />
+    <figcaption>Desktop tour I — desktop apps in the light theme: a video player window and widgets</figcaption>
   </figure>
   <figure class="big-shot">
     <div class="shot-placeholder">TODO screenshot · start menu + a game app window (suggestion: FreeCell / Minesweeper / Tetris; light theme welcome)</div>
@@ -200,7 +201,8 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
         <p>The structured shell for the AI era, combining the best of AutoLang + NuShell + Fish + Warp: commands exchange typed objects instead of text streams. Backed by the auto-term terminal infrastructure, with a built-in security sandbox and 79 agent tools.</p>
         <a class="flagship-link" href="/apps/autoshell/">Landing page →</a>
       </div>
-      <div class="shot-placeholder">TODO screenshot · AutoShell main interface (dark theme)</div>
+      <!-- exists: interactive session shot (typed tables / structured filtering / markdown rendering) -->
+      <img src="/v05/ash-interactive.png" alt="AutoShell interactive session: typed table output, structured filtering, and markdown rendering" />
     </article>
     <article class="flagship-item">
       <div class="flagship-text">

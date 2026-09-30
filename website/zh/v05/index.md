@@ -130,9 +130,9 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
     </ul>
   </div>
   <figure class="big-shot">
-    <!-- 已有：深色主视图 -->
-    <img src="/v05/desktop-hero.png" alt="AutoOS 虚拟桌面（深色）：任务栏、开始菜单与多窗口" />
-    <figcaption>深色主题主视图 —— 任务栏、开始菜单与多窗口</figcaption>
+    <!-- 已有：深色主题桌面多应用实拍 -->
+    <img src="/v05/desktop-dark-apps.jpg" alt="深色主题桌面：音乐播放器、扫雷、计算器与系统监视器同屏" />
+    <figcaption>深色主题主视图 —— 音乐播放器、扫雷、计算器与系统监视器同屏</figcaption>
   </figure>
   <figure class="big-shot">
     <!-- 已有：浅色同款桌面 -->
@@ -140,8 +140,9 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
     <figcaption>浅色主题同款桌面</figcaption>
   </figure>
   <figure class="big-shot">
-    <div class="shot-placeholder">待截图 · 桌面上同时打开多个系统应用（建议：music-player + file-manager + 设置中心，深色）</div>
-    <figcaption>桌面巡礼 Ⅰ —— 系统应用以窗口形式跑在桌面上</figcaption>
+    <!-- 已有：浅色主题桌面 + 视频播放器实拍 -->
+    <img src="/v05/desktop-tour-apps.jpg" alt="浅色主题桌面：视频播放器窗口与桌面小组件（时钟 / Todo / AutoMusic Player）" />
+    <figcaption>桌面巡礼 Ⅰ —— 浅色主题下的桌面应用：视频播放器窗口与桌面小组件</figcaption>
   </figure>
   <figure class="big-shot">
     <div class="shot-placeholder">待截图 · 开始菜单 + 游戏应用窗口（建议：空档接龙 / 扫雷 / 俄罗斯方块任选，可浅色）</div>
@@ -200,7 +201,8 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
         <p>AI 时代的结构化 Shell：AutoLang + NuShell + Fish + Warp 四家之长，命令交换类型化对象而非文本流；背后是 auto-term 终端设施，内置安全沙箱与 79 个 Agent 工具。</p>
         <a class="flagship-link" href="/zh/apps/autoshell/">查看落地页 →</a>
       </div>
-      <div class="shot-placeholder">待截图 · AutoShell 主界面（深色主题）</div>
+      <!-- 已有：交互式会话实拍（类型化表格 / 结构化过滤 / Markdown 渲染） -->
+      <img src="/v05/ash-interactive.png" alt="AutoShell 交互式会话：类型化表格输出、结构化过滤与 Markdown 渲染" />
     </article>
     <article class="flagship-item">
       <div class="flagship-text">
