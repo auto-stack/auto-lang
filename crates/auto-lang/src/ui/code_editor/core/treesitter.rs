@@ -41,11 +41,17 @@ pub(crate) struct TsLangSpec {
     pub injections_query: Option<&'static str>,
 }
 
-/// 语言路由表——P0 批次（714 §2.2 表，T-02）。查询全部直用 grammar crate
-/// 导出常量（HIGHLIGHT*_QUERY/INJECTION*_QUERY——crate 自带查询零 vendoring，
+/// 语言路由表——首批 21 语言全量在册（714 §2.2 表：P0 10+P1 8+P2 3；
+/// T-02/T-04/T-05 批）。查询全部直用 grammar crate 导出常量
+/// （HIGHLIGHT*_QUERY/INJECTION*_QUERY——crate 自带查询零 vendoring，
 /// 714 §3.1 定案成立）。`markdown-inline` 为注入专用键（md block 查询的
 /// `injection.language` 元数据路由），非用户语言。
-/// tail 语言（.at/mermaid/vue/console）任何批次都不得入表（路由纪律）。
+///
+/// **tail 路由固化（714 §4.1 (a) 裁定，T-05 成文）**：.at/mermaid/vue/console
+/// 四 tail 语言固定不入表、恒走 syntect 臂（产品身份语言 .at 在 T-7 自建
+/// grammar 前不过 ts；mermaid 无实用 grammar；vue/console 留 syntect）——
+/// `tail_langs_never_route` 测试为固化锚。two-face 退役后 tail 由缩减 syntect
+/// 集（default-syntaxes+在册 .at YAML）承载（T-06）。
 pub(crate) static LANG_TABLE: &[TsLangSpec] = &[
     TsLangSpec {
         lang_keys: &["rust", "rs"],
@@ -206,6 +212,31 @@ pub(crate) static LANG_TABLE: &[TsLangSpec] = &[
         name: "xml",
         language_fn: || tree_sitter_xml::LANGUAGE_XML.into(),
         highlights_query: tree_sitter_xml::XML_HIGHLIGHT_QUERY,
+        highlights_query_extra: None,
+        injections_query: None,
+    },
+    // ── P2 3 语言（714 §2.2，T-05；ini=Apache-2.0——Cargo 依赖节许可注记）──
+    TsLangSpec {
+        lang_keys: &["batch", "bat", "cmd"],
+        name: "batch",
+        language_fn: || tree_sitter_batch::LANGUAGE.into(),
+        highlights_query: tree_sitter_batch::HIGHLIGHTS_QUERY,
+        highlights_query_extra: None,
+        injections_query: None,
+    },
+    TsLangSpec {
+        lang_keys: &["powershell", "ps1", "pwsh"],
+        name: "powershell",
+        language_fn: || tree_sitter_powershell::LANGUAGE.into(),
+        highlights_query: tree_sitter_powershell::HIGHLIGHTS_QUERY,
+        highlights_query_extra: None,
+        injections_query: None,
+    },
+    TsLangSpec {
+        lang_keys: &["ini", "properties"],
+        name: "ini",
+        language_fn: || tree_sitter_ini::LANGUAGE.into(),
+        highlights_query: tree_sitter_ini::HIGHLIGHTS_QUERY,
         highlights_query_extra: None,
         injections_query: None,
     },
@@ -658,7 +689,8 @@ mod tests {
         for lang in ["rust", "Rust", "rs", "python", "py", "javascript", "js",
             "typescript", "ts", "tsx", "json", "toml", "yaml", "yml",
             "markdown", "md", "shell", "sh", "bash", "c",
-            "html", "css", "cpp", "c++", "csharp", "cs", "go", "java", "sql", "xml"]
+            "html", "css", "cpp", "c++", "csharp", "cs", "go", "java", "sql", "xml",
+            "batch", "bat", "powershell", "ps1", "ini", "properties"]
         {
             assert!(route(lang).is_some(), "P0/P1 lang must route: {lang}");
         }

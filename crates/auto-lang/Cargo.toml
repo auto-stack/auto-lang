@@ -94,6 +94,10 @@ highlight-treesitter = [
     "dep:tree-sitter-java",
     "dep:tree-sitter-sequel",
     "dep:tree-sitter-xml",
+    # P2 3 语言（T-05；ini=Apache-2.0 许可注记见依赖节）
+    "dep:tree-sitter-batch",
+    "dep:tree-sitter-powershell",
+    "dep:tree-sitter-ini",
 ]
 # Plan 418: OS clipboard natives (arboard) + native file dialogs (rfd).
 # Both mount under ui-iced; each can also be enabled standalone.
@@ -307,6 +311,11 @@ tree-sitter-go = { version = "0.25", optional = true }
 tree-sitter-java = { version = "0.23", optional = true }
 tree-sitter-sequel = { version = "0.3", optional = true }
 tree-sitter-xml = { version = "0.7", optional = true }
+# P2 3 语言（714 §2.2 表，T-05 批）。tree-sitter-ini=Apache-2.0（714 §2.2
+# 许可面唯一例外，合规相容——714 契约注记继承）。
+tree-sitter-batch = { version = "0.11", optional = true }
+tree-sitter-powershell = { version = "0.26", optional = true }
+tree-sitter-ini = { version = "1.4", optional = true }
 notify = { workspace = true }
 ureq = { version = "2", features = ["json"], optional = true }
 # Plan 299: Streamable HTTP transport for AutoUI MCP server.
