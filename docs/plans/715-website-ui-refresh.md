@@ -1,12 +1,13 @@
 ---
 plan_id: PLAN-715
-status: execution_done
+status: reviewed
 feature_name: VitePress 全站 UI 与 v0.5 发布展示改进
 author: [Codex]
 created_at: 2026-09-30
 updated_at: 2026-09-30
 plan_revision: 1
 work_commit: 675306b71（worktree plan-715-dev，基线 ff32d7004）
+reviewed_commit: 675306b71
 supersedes_spec_components: [docs/specs/website/project.md]
 new_spec_components: [docs/specs/website/design/ui-presentation.md]
 touched_goals: []
@@ -207,6 +208,17 @@ T-01就为 website/playwright.config.ts 增加 AUTO_WEBSITE_TEST_PORT（默认41
 - 偏差登记：①计划 §5.2 的 `/api/transpile` 实为 `/api/trans`（按实际端点）；②示例 7 行而非 10–18 行（全仓唯一证据齐全族，真实性优先）；③apps.md 目录页保持共享 landing.css 骨架（目录页≠单应用骨架）；④DemoFrame 未抽取（HomeDemo 自包含无第二使用方）；⑤a2ui 目录 URL 行为与 /playground hydration 告警为 pre-existing，测试内注记豁免
 - blockers: 无
 - next: review（T-08，独立复审核对 AC/SD/diff 后 reviewed 交 merge）
+
+### 2026-09-30 复审（T-08）
+
+- stage: review | plan_id: PLAN-715 | plan_revision: 1 | outcome: pass | reviewed_commit: 675306b71 | base_commit: ff32d7004（master）
+- dependency_revisions: 无跨仓依赖（纯 website/ 改动；auto-playground-vue 仅安装声明依赖未改源，alias 引 src）
+- spec_inputs: docs/specs/website/project.md=9eb3ca3990aa0a2c（pre-merge 基线；merge 按 SD-01/03/05 回写）；docs/specs/website/design/ui-presentation.md=新建（SD-02/04/06）；docs/specs/overview.md=65e1541870a3a892
+- acceptance_results: AC-01..14 全 pass——复审自证=worktree clean、零 crates/test/parity/packages 改动（231 文件均 website/+docs/reports/，Category A 成立、cargo 门禁不适用）、reviewed_commit 上新鲜重跑 build（43.3s）+ 全量 e2e 64/64（1.7m）、final 截图矩阵 96 行 problems=0（heroTop 533@390、386@1440）；工件抽验=示例证据链 hash 四件逐一比对 git hash-object 相符（bb1b46d8/9a26a7cb/2b28eacf/3bc80a25）、release-v05.ts 内容保全计数（journey leads、工具链 5 卡、roadmap 6 卡、无冻结标签注记、8 系统应用卡、launcher 实图 EN+ZH、kanban 双臂、AutoEdit 无假图）
+- findings: 无新增阻塞项。登记三点：①独立性受限——本复审为实现会话自审，已按技能要求以工件重建裁定（重跑门禁+直接核验 diff/计数/hash），未假称独立代理；②两处初检 FAIL（系统卡计数/launcher 计数）经精确复核为检查脚本断言粗糙，非实现缺陷；③SD-01..06 描述与实现行为一致，canonical 回写留 merge（起草不改 Spec 分工维持）
+- touched_goals 说明: 空集成立——本计划目标 G-01..04 为计划局部目标，未触及仓级 canonical goals 注册面
+- evidence: docs/reports/p715-website-ui-review.md（§1 门禁表、§2 修复实录、§3 AC 映射、§4 SD 映射、§6 遗留）；docs/reports/p715-website-ui-baseline.md（接线勘定/映射表/端口）；docs/reports/p715-website-ui/{baseline,final}-report.json + 192 PNG（worktree 移除前持久化于仓内 docs/reports/）
+- next: merge
 
 ### 2026-09-30 起草交接
 
