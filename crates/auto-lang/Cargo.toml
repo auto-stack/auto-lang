@@ -85,6 +85,15 @@ highlight-treesitter = [
     "dep:tree-sitter-md",
     "dep:tree-sitter-bash",
     "dep:tree-sitter-c",
+    # P1 8 语言（T-04）
+    "dep:tree-sitter-html",
+    "dep:tree-sitter-css",
+    "dep:tree-sitter-cpp",
+    "dep:tree-sitter-c-sharp",
+    "dep:tree-sitter-go",
+    "dep:tree-sitter-java",
+    "dep:tree-sitter-sequel",
+    "dep:tree-sitter-xml",
 ]
 # Plan 418: OS clipboard natives (arboard) + native file dialogs (rfd).
 # Both mount under ui-iced; each can also be enabled standalone.
@@ -289,6 +298,15 @@ tree-sitter-yaml = { version = "0.7", optional = true }
 tree-sitter-md = { version = "0.5", optional = true }
 tree-sitter-bash = { version = "0.25", optional = true }
 tree-sitter-c = { version = "0.24", optional = true }
+# P1 8 语言（714 §2.2 表，T-04 批）。
+tree-sitter-html = { version = "0.23", optional = true }
+tree-sitter-css = { version = "0.25", optional = true }
+tree-sitter-cpp = { version = "0.23", optional = true }
+tree-sitter-c-sharp = { version = "0.23", optional = true }
+tree-sitter-go = { version = "0.25", optional = true }
+tree-sitter-java = { version = "0.23", optional = true }
+tree-sitter-sequel = { version = "0.3", optional = true }
+tree-sitter-xml = { version = "0.7", optional = true }
 notify = { workspace = true }
 ureq = { version = "2", features = ["json"], optional = true }
 # Plan 299: Streamable HTTP transport for AutoUI MCP server.

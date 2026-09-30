@@ -144,6 +144,71 @@ pub(crate) static LANG_TABLE: &[TsLangSpec] = &[
         highlights_query_extra: None,
         injections_query: None,
     },
+    // ── P1 8 语言（714 §2.2，T-04）─────────────────────────────────────
+    TsLangSpec {
+        lang_keys: &["html"],
+        name: "html",
+        language_fn: || tree_sitter_html::LANGUAGE.into(),
+        highlights_query: tree_sitter_html::HIGHLIGHTS_QUERY,
+        highlights_query_extra: None,
+        injections_query: Some(tree_sitter_html::INJECTIONS_QUERY),
+    },
+    TsLangSpec {
+        lang_keys: &["css"],
+        name: "css",
+        language_fn: || tree_sitter_css::LANGUAGE.into(),
+        highlights_query: tree_sitter_css::HIGHLIGHTS_QUERY,
+        highlights_query_extra: None,
+        injections_query: None,
+    },
+    TsLangSpec {
+        lang_keys: &["cpp", "c++"],
+        name: "cpp",
+        language_fn: || tree_sitter_cpp::LANGUAGE.into(),
+        highlights_query: tree_sitter_cpp::HIGHLIGHT_QUERY,
+        highlights_query_extra: None,
+        injections_query: None,
+    },
+    TsLangSpec {
+        lang_keys: &["csharp", "cs"],
+        name: "csharp",
+        language_fn: || tree_sitter_c_sharp::LANGUAGE.into(),
+        highlights_query: tree_sitter_c_sharp::HIGHLIGHTS_QUERY,
+        highlights_query_extra: None,
+        injections_query: None,
+    },
+    TsLangSpec {
+        lang_keys: &["go"],
+        name: "go",
+        language_fn: || tree_sitter_go::LANGUAGE.into(),
+        highlights_query: tree_sitter_go::HIGHLIGHTS_QUERY,
+        highlights_query_extra: None,
+        injections_query: None,
+    },
+    TsLangSpec {
+        lang_keys: &["java"],
+        name: "java",
+        language_fn: || tree_sitter_java::LANGUAGE.into(),
+        highlights_query: tree_sitter_java::HIGHLIGHTS_QUERY,
+        highlights_query_extra: None,
+        injections_query: None,
+    },
+    TsLangSpec {
+        lang_keys: &["sql"],
+        name: "sql",
+        language_fn: || tree_sitter_sequel::LANGUAGE.into(),
+        highlights_query: tree_sitter_sequel::HIGHLIGHTS_QUERY,
+        highlights_query_extra: None,
+        injections_query: None,
+    },
+    TsLangSpec {
+        lang_keys: &["xml"],
+        name: "xml",
+        language_fn: || tree_sitter_xml::LANGUAGE_XML.into(),
+        highlights_query: tree_sitter_xml::XML_HIGHLIGHT_QUERY,
+        highlights_query_extra: None,
+        injections_query: None,
+    },
 ];
 
 /// lang → ts 规格路由。表外语言一律 None（syntect 基线）。
@@ -587,14 +652,15 @@ fn line_count(bytes: &[u8]) -> usize {
 mod tests {
     use super::*;
 
-    /// T-02 P0 表：核心语言路由在位（大小写不敏感，与 lang_to_extension 同口径）。
+    /// P0+P1 表：语言路由在位（大小写不敏感，与 lang_to_extension 同口径）。
     #[test]
     fn p0_routes_registered() {
         for lang in ["rust", "Rust", "rs", "python", "py", "javascript", "js",
             "typescript", "ts", "tsx", "json", "toml", "yaml", "yml",
-            "markdown", "md", "shell", "sh", "bash", "c"]
+            "markdown", "md", "shell", "sh", "bash", "c",
+            "html", "css", "cpp", "c++", "csharp", "cs", "go", "java", "sql", "xml"]
         {
-            assert!(route(lang).is_some(), "P0 lang must route: {lang}");
+            assert!(route(lang).is_some(), "P0/P1 lang must route: {lang}");
         }
         assert!(route("Rust").is_some(), "路由键大小写不敏感");
     }
