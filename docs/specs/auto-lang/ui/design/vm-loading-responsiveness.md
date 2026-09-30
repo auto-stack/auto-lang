@@ -1,6 +1,6 @@
-# VM 渲染加载响应性（PLAN-708 已交付面 + 目标态链接）
+# VM 渲染加载响应性（PLAN-708 S 档 + PLAN-711 已交付面 + 目标态链接）
 
-> 状态：current-state 为已交付行为（PLAN-708 S 档，2026-09-30 归档基线）；目标态为 **proposed**（PLAN-711 承接，未实施）。两态严格分离，proposed 面不构成现行契约。
+> 状态：current-state 为已交付行为（PLAN-708 S 档 + PLAN-711，2026-09-30）；目标态（§2 worker 线程边界）为 **proposed**（另立 Plan，未实施）。两态严格分离，proposed 面不构成现行契约。
 
 ## 1. 已交付面（PLAN-708 S 档，实测锚定）
 
@@ -24,7 +24,16 @@
 - `AUTO_MEMO_DIAG=1`：`[VM-VIEW] build_ms` / `[VM-VIEW-OUTLET] outlet_ms` / `[MEMO-DIAG] site=N HIT fast|version-fast|slow|MISS|FILL|DEGRADE`。
 - MCP `press` 往返 ≈ UI 线程 update+render 轮时长（action 等待渲染轮）——可作占用代理，不可作上屏证明（在屏证据用截图）。
 
-## 2. 目标态（proposed — PLAN-711，未实施）
+## 1.5 已交付面（PLAN-711，2026-09-30 实证锚定）
+
+- **CPU 可续跑片**：`DriveBudget::{Legacy, CpuSlice}` 双档（片 4ms 墙钟/指令天花板 1M/64 步查钟；10M 累计护栏跨片）；预算耗尽 slice 档=Runnable（栈完整可续跑）、legacy 档=真错误——静默假成功缺陷已除。
+- **Init demand 登记簿**：渲染期只登记（判定≠完成）；同代际去重、身份变化=新代际+旧代际一次取消（凭据映射清理）；props 快照重播种（统一根态交错等价）；派发泵 FIFO 依赖序（页先 child 后）、五态观察。
+- **帧通知泵**：`listen_raw` 条件订阅（零 demand 无订阅）+ 8ms 轮次有界泵；tick 泵退回纯 I/O；完成 bump 宿主 epoch（memo 失效）+ dirty 链。
+- **骨架/失败占位**：pending→`Loading… (Widget)`、Failed→可诊断错误占位（不无限 Loading）。
+- **computed/冷构建残面**：outlet 扫描穿入 MemoBlock/Conditional（DataTable memo 生效）；memo_slots_fp 不可展开槽标记回退+dyn_deps 防护（FileTree 破恒 FILL）——两病灶页实机 memo 命中。
+- 实测：`docs/plans/reports/711-runtime.md`（长 CPU 20 样本+泵占用 4ms 恒+gallery HIT 序列）；单测族 plan711_cpu_slice（8）+ plan711_init_demand（6）。
+
+## 2. 目标态（proposed — worker 线程边界，另立 Plan 未实施）
 
 以下为 PLAN-708 r2 设计并经 T-00 冻结裁决、随 r3 移出单独立项的调度契约；完整设计见 [proposed 设计文档](../../../../../design/autoui/vm-loading-responsiveness.md)：
 

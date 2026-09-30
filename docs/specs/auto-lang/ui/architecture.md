@@ -184,12 +184,12 @@ graph TD
 - 后果：契约测试锁声明→发射全链（cap_chart_family_props_contract_in_registry）；奇偶校验证明新旧臂输出仅属性序差异；后续 chart 属性扩展只改 schema。
 - 状态：active
 
-### ADR-19: VM 轨子组件 Init 渲染期补发（props 播种 → Init → build）
-- 日期 / 来源：plan-437 Phase 2（2026-08-28，组件化的真阻塞）
-- 决策：VM 轨视图中实例化的子组件（组件包/本地 widget），在 prepare_child_render_state 播种 props（含 prop 声明默认值）后由渲染器补发一次 Init（call_handler_for 放宽 &self，AutoVM 全链 interior-mutable）；每渲染帧重放，纯派生 Init 幂等；tracked 双胎同步。配套五项解析臂补全：Expr::Array props、svg 子树 ForLoop 展开（445 Conditional 修复同族）、Index 属性求值、prop 默认值播种、VM 包装载路径基准对齐（pages/ 候选）。
-- 备选：computed 求值器扩展块体/循环（cons：view-build 快速路径复杂化，与 VM 字节码执行语义重复）；子组件独立 VM（cons：破坏单 VM 合成架构）。
-- 后果：vue 轨 onMounted 与 VM 轨语义对齐，chart 等派生计算型组件双轨可用；**副作用型子组件 Init 随脏重建重放**（v1 近似，组件 Init 应保持纯派生）；vue-tsc/结构同源已证，视觉并排未重做。
-- 状态：active（重放语义收敛留后续：dirty-prop 比对后重放）
+### ADR-19: VM 轨子组件 Init demand 登记簿——渲染期登记（判定≠完成）、泵驱动派发、骨架/失败占位（PLAN-437 → PLAN-536 → PLAN-711）
+- 日期 / 来源：plan-437 Phase 2（2026-08-28）初立渲染期补发；PLAN-536（挂载语义收敛）；PLAN-711（2026-09-30，本版：登记≠完成 + 延迟派发 + 代际生命周期）
+- 决策：VM 轨视图中实例化的子组件，渲染路径**只登记 Init demand 不派发**（`register_init_demand`：组件名+`key:` prop 构成挂载身份；同代际重复构建——显示/MCP 双路径——只确认簿记不二次入队；身份变化=新代际，旧代际一次取消）。派发由调度泵驱动（`dispatch_pending_inits`：FIFO=渲染登记序=页先 child 后的依赖序，前序 park 即停本轮；五态观察 Missing 静默/Failed 终态不重试/Completed/Waiting+Runnable=InFlight）。`prepare_child_render_state_snap` 捕获 resolve 后 props 快照随 demand 携带，派发前经 `ensure_child_state` 重播种——**统一根态约束**：子件 props 为根态同名共享字段，后渲染组件播种会覆盖前者，快照重播种等价复刻旧"播种即派发"交错语义。pending 相位渲染轻量骨架占位（`Loading… (Widget)`），Failed 渲染可诊断错误占位（不无限 Loading；reload 换身份即重试）；完成 bump 宿主 UI epoch 失效 memo 产物（pending 占位不作可永久命中缓存）。props 播种纪律保留：prop 声明默认值播种（4b 缺字段守卫）+ 模型缺省播种（536-T8 缺字段守卫）+ demand 快照补录被守卫跳过的声明默认值。tracked 双胎同步。
+- 备选：保留渲染期同步派发（cons：长 Init 占满构建帧——708 baseline 实测连续占用 9.5-26s；统一根态下"播种即派发"交错使视图烘焙瞬态值，与终态不一致——plan484 8000-tick 伪影实录）；demand 无快照裸延迟（cons：慢派发读到后写者数据——donut 除零实录）。
+- 后果：副作用型子组件 Init 每挂载代际恰一次且真完成才刷新（vue onMounted 语义完整化）；构建零派发（AC-04）；首建一帧骨架、完成帧全量（epoch 失效驱动）；取消不回滚前缀副作用。旧"每渲染帧重放"与"判定即写身份"（`child_init_should_fire`）语义退役。
+- 状态：active（取代 437 v1 渲染期补发/536 判定即写两版）
 
 ### ADR-20: 内嵌 demo 模块组件桥接——use.web 适配器链与根 use 环同权装载
 - 日期 / 来源：plan-632（2026-09-15，ui-gallery VM 保真度核查会话裁定）
@@ -224,6 +224,7 @@ graph TD
 - 决策：①**派发契约**——`VmBridge::call_handler` / `call_handler_for` / `call_handler_with_record` / `run_module_init` 全部经 `call_fn_by_name_segment`：`Completed` 等价旧语义（Ok→dirty 置脏、Err→既有失败通道），`Parked{wait,seg}` 即 task 入 `parked_tasks` 注册表（task+seg+wait+重入键+来源清账纪律）并**立即返回**，iced 事件循环零占用。②**恢复泵**——`__parked_resume_tick` 条件订阅（`__timer_tick` 同族，16ms，仅 `has_parked_tasks()` 时在册）→ update 臂内联 `poll_parked_resumes`：wait 就绪段续跑，Completed 出清落账置脏，仍 Waiting 再 park；恢复 Err 经既有 `[VM-HANDLER] ... failed` syslog 通道。选型注记：AppTick Poll 静态泵是进程级通道（多 App 会话串投歧义），条件订阅按 AppId 打标天然隔离且免静态通道。③**重入默认策略**——同 (widget,handler) 键（namespaced fn 名）parked 在途时后续触发**忽略**（队列/合并留待使用反馈）；busy 可见面 = 根态 `__busy_handlers` List<str> 堆镜像随 park/完成翻转（宿主读路径可查；.at 编译期 GET_FIELD 按静态 field_idx，运行期追加字段不可达——.at 原生查询需合成期注入字段，延期项）。④**view 侧例外**——`call_vm_fn`/`call_computed_fn` 保持同步驱动（本次调用返回 Value 的契约无 park 形态，视图每帧重算），带 legacy 保留位标记封顶两处。
 - 备选：重入排队/合并（cons：无使用反馈前属过度设计）；busy 走 .at 可查询的合成字段（cons：全 widget 状态面膨胀，等真实查询需求立项）。
 - 后果：handler 内任意时长异步等待（含人在环模态端点）期间窗口保持交互与重绘；挂载自发 Init 含 api 拉数时先渲染中途态再泵续落账；`read_state` 取数路径零改动。测试侧适配：断言 api 落账的测试须经 `plan370_test_support::drive_parked_segments` 驱动泵（"dispatch 即落账"假设退役）。
+- **PLAN-711 扩展（2026-09-30）**：①Init 派发迁移 demand 登记簿（ADR-19；`call_handler_for_cpu_slice` CPU slice 入口+`ParkedWait::CpuRunnable` 凭据入同一注册表）；②恢复泵双驱动分化——16ms tick 退回**纯 I/O 凭据**（`has_parked_io_tasks` 订阅门；CpuRunnable 对 tick 恒不就绪），CPU continuation/Init demand 由**帧通知泵**驱动（`__frame_pump`：listen_raw 条件订阅+`resume_cpu_slices` FIFO 快照/8ms 轮次预算）；③同 App VM 写事件有界串行队列（128，满拒 `WriteQueueFull` 可观察 busy，可覆盖输入同键合并，片间消费）；④完成失效链：完成 bump 宿主 UI epoch + component/view dirty（完成帧重建，屏幕与 MCP 同相）。
 - 状态：active
 
 ### ADR-25: Vue 生成 lucide 字面量校验回退 Circle（PLAN-706）
