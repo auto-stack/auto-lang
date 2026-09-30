@@ -5,9 +5,9 @@ completion_kind: delivered    # r1 交付面保持（勘定件已 delivered）�
 feature_name: tree-sitter 首批勘定件（auto-edit M4 供料包供④ 前半——语言集定界/管线选型+烟测/syntect 共存策略/增量高亮管线要点+实施件契约草案）
 author: [agent]
 created_at: 2026-09-30T16:15:39+08:00
-updated_at: 2026-09-30T17:40:00+08:00
+updated_at: 2026-09-30T19:05:00+08:00
 plan_revision: 2
-current_step: 7
+current_step: 9
 total_steps: 10
 supersedes_spec_components: []
 new_spec_components:
@@ -306,8 +306,8 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
 | 5 | T-05 契约草案 | T-01..04 | 报告 §实施件契约 | 715+ 立项基 | AC-05 | [x] 骨架在档——报告 §6（T-1..T-7 任务骨架+AC 草案+715/716 拆分+工期量级+基准/验收设计） |
 | 6 | T-06 落账 | T-01..05 | SD-01+报告+specs.json | 勘定收口 | AC-06 | [x] P714-1 True+零 diff 断言——specs.json reviews P714-1（外科插入：roundtrip 字节等价 1,183,344B 先证+五段零扰动回读+reinsert stable；git diff master crates/+Cargo.toml=0 行） |
 
-| 7 | R2-T1 back 通路 Try 臂 | — | trans/rust.rs 语句分派（~:12300）+单测 | 供① 残余两面单点解锁 | AC-R2-1/2/3 | [ ] 臂落+三判据（exit 0+零 skip 警告+fresh workspace check 过+front 实体形） |
-| 8 | R2-T2 corpus 判据三行 | R2-T1 | p710 census 判定面 | 盲区堵截（掩蔽/桩形/skip 警告） | AC-R2-1 | [ ] 三行判定集在档+corpus 复跑绿 |
+| 7 | R2-T1 back 通路 Try 臂 | — | trans/rust.rs 语句分派（~:12300）+单测 | 供① 残余两面单点解锁 | AC-R2-1/2/3 | [x] 臂落+单测三绿@4534b5004（plan714_back_try_arm_* 入 plan710_supply_probes）+零 skip 警告+front 实体形（AC-R2-2 实质达成）；**AC-R2-1 部分**：exit 0/cargo check 未达——fresh fsys.rs 暴露掩蔽层 26 错/8 类（route-A 深修=710 §10 延后面）→ needs_replan（§10 Q-R2-2） |
+| 8 | R2-T2 corpus 判据三行 | R2-T1 | p710 census 判定面 | 盲区堵截（掩蔽/桩形/skip 警告） | AC-R2-1 | [x] 判定集三行入 p710-census.md §7@4534b5004（①skip 0 命中②fresh 卫生③实体形非桩=AC-R2-2 实证）；corpus 复跑=fresh fsys.rs 生成，掩蔽层 26 错暴露在档 |
 | 9 | R2-T3 下游解阻确认+落账 | R2-T1/2 | auto-edit 复验位+specs.json | 跨仓收口 | AC-R2-4 | [ ] 下游 a2r 三重判据全绿+P714-2 投影回读 True |
 
 ## 9. 复审记录
@@ -395,6 +395,27 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
   715/716 实施件预留位不受扰）。r1 交付收据与五检查点不变。next=work
   （R2-T1 起；r2 执行期簿记沿 712 r2 形态直接落 master docs/plans）。
 
+
+- 2026-09-30 r2 work handoff：`stage: work`，PLAN-714，plan_revision 2。
+  `outcome: needs_replan`（目标不变——供① 解阻成立面已交付；fresh 层
+  暴露 710 §10 延后的 route-A 深修=有界修订路由 new）。`code_commit`:
+  plan-714-dev 4534b5004（Try 臂 trans/rust.rs:12300 前插+三单测
+  plan710_supply_probes+census §7 判定集三行；基线 master@99405c675，
+  worktree D:/autostack/.wt/lang-714/auto-lang）。`task_ids`: R2-T1
+  （臂+单测三绿+AC-R2-2 实质）、R2-T2（判定集三行+fresh 收据）；
+  R2-T3 未启动（下游复验位候深修件）。`evidence`: tt 全谱零新增归因红
+  （fail-fast 3 红+no-fail-fast 3 红均基线：e4=P707-R1、desktop_bus/
+  surface=主检出同败实证、p053=known flake 族 no-fail-fast 转绿）；
+  corpus fresh 跑（AUTO_BIN=v0.4.2-2330-g99405c675-dirty，git archive
+  快照零触碰真仓）——skip 警告 0、fsys.rs 全新生成、env_str/read_text
+  实体形非 D-7 桩；26 错/8 类清单在 census §7（fs.metadata/copy_
+  recursive、json.from_value+struct-literal、Regex.test、list 型、
+  diff 三件套、File.write_bytes、E0308×3[try 尾 bool+闭包内 return
+  传播=710 边界条款实实例]）。`blockers`: AC-R2-1 exit 0/check 过
+  需 route-A 深修件（新增 stdlib 面 fs::copy_recursive+diff 三件套+
+  json from-struct+list 型映射+闭包 return 传播）。`next: new`
+  （有界修订：扩 R2-T1 或立深修件承 710 §10——715 位）。
+
 ## 10. 待澄清事项
 
 - **Q-1 语言集预裁定（可选）**：默认 T-01 按下游现实+战略「常见
@@ -416,3 +437,14 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
   补跑（bench --l2 三档+smoke_gen 三域，zero 重设计）与对比表 L2 列
   转正由 PLAN-021 承接；本件验收含其解阻确认单（AC-R2-4）。裁定量级
   注记=710 D-4..D-8 快速修订件同档（供料档 §6）。
+- **Q-R2-2 route-A 深修层（2026-09-30 r2 执行期暴露，needs_replan 路由）**：
+  Try 臂解锁后 fresh fsys.rs/前 bin 嵌入段暴露 710 §10 显式延后的深修层
+  （26 错/8 类）：①内建表缺臂 fs.metadata[→file_size 语义]/fs.copy_
+  recursive/json.from_value[含 struct-literal arg→json! 形]/Regex.test/
+  File.write_bytes；②`list` 型映射缺失；③diff 三件套（diff_files/dirs/
+  snapshots）无 a2r_std 面（引擎在 ui/code_editor/diff——imara 703 线）；
+  ④E0308×3（preview=ln 借用+try 尾 bool×2）；⑤**闭包内 return 传播**——
+  corpus 演化出 710 G-B 边界条款「return 不出闭包」的实实例（fsys.at
+  copy/delete 路径 return-in-try），臂形需 Option<Ret> 传播形
+  （Ok(Some(v))=>return v/Ok(None)=>default）。量级=M 档独立件（715 位
+  ——承 710 §10 边界+本条清单）。auto-edit PLAN-021 复验位候其落地。
