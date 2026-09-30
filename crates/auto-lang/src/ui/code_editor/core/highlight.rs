@@ -40,6 +40,33 @@ contexts:
       scope: comment.line.number-sign.auto
 "#;
 
+/// TOML grammar for the reduced default set (PLAN-716 T-06: syntect defaults
+/// lack TOML — the editor face keeps it; the readonly face routes toml to
+/// tree-sitter). Mirrors the `.at` in-tree definition pattern.
+const TOML_SYNTAX_YAML: &str = r#"
+%YAML 1.2
+---
+name: TOML
+file_extensions: [toml]
+scope: source.toml
+contexts:
+  main:
+    - match: '#.*$'
+      scope: comment.line.number-sign.toml
+    - match: '^\s*\[.*\]\s*$'
+      scope: entity.name.section.toml
+    - match: '\b(true|false)\b'
+      scope: constant.language.toml
+    - match: '\b\d+(\.\d+)?\b'
+      scope: constant.numeric.toml
+    - match: '"([^"\\]|\\.)*"'
+      scope: string.quoted.double.toml
+    - match: '^\s*[A-Za-z0-9_.-]+(?=\s*=)'
+      scope: variable.other.toml
+    - match: '='
+      scope: keyword.operator.toml
+"#;
+
 /// Map a DSL `lang` token to a syntect file extension.
 pub fn lang_to_extension(lang: &str) -> Option<&'static str> {
     let ext = match lang.to_ascii_lowercase().as_str() {
@@ -140,10 +167,12 @@ fn build_syntax_system() -> SyntaxSystem {
     // 统一强制在场，iced 0.14 钉 cosmic-text 0.15——外部契约，摘除另档）。
     let syntax_set = {
         let mut builder = syntect::parsing::SyntaxSet::load_defaults_newlines().into_builder();
-        if let Ok(auto_def) =
-            syntect::parsing::SyntaxDefinition::load_from_str(AUTO_SYNTAX_YAML, false, None)
-        {
-            builder.add(auto_def);
+        for def in [AUTO_SYNTAX_YAML, TOML_SYNTAX_YAML] {
+            if let Ok(parsed) =
+                syntect::parsing::SyntaxDefinition::load_from_str(def, false, None)
+            {
+                builder.add(parsed);
+            }
         }
         builder.build()
     };
@@ -381,6 +410,29 @@ pub fn warm_up(font_system: &mut FontSystem) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-716 T-06 装载计时探针：语法系统单例构建墙钟（two-face 退役后
+    /// 底座=syntect defaults——数字随 --nocapture 在档；断言 CI 安全上界）。
+    #[test]
+    fn syntax_system_build_wall_clock() {
+        let t0 = std::time::Instant::now();
+        let system = syntax_system();
+        let elapsed = t0.elapsed();
+        eprintln!(
+            "[P716 装载] syntax_system 首建 {:?}（syntaxes={} themes={}）",
+            elapsed,
+            system.syntax_set.syntaxes().len(),
+            system.theme_set.themes.len()
+        );
+        assert!(elapsed.as_millis() < 5000, "单例构建超 CI 上界 {elapsed:?}");
+        // 缩减集功能面守卫：.at 在册+常见 tail/fallback 扩展名仍可解析。
+        for ext in ["at", "rs", "py", "js", "json", "toml", "yaml", "md", "sh", "c", "cpp", "html", "css", "go", "java", "sql", "xml"] {
+            assert!(
+                system.syntax_set.find_syntax_by_extension(ext).is_some(),
+                "缩减集缺扩展名 {ext}"
+            );
+        }
+    }
 
     #[test]
     fn auto_syntax_is_available() {
