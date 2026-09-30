@@ -326,7 +326,10 @@ reviews 段 P714-1 外科插入（703/710 先例）。
   @7fcf913eb，收据 2026-09-30T08:04:49Z 仅 9h；714%5=4 非五倍数；
   无 48h+合并触发）。**部署观察**：docs-only 落地（crates/ 零 diff
   断言在案）——backend release/daemon/gen front 三面零重建项维持。
-  **cleaned**：待下笔（清理后补）。
+  **cleaned**：移除前 fresh 复核双净——worktree 0 dirty+HEAD=41ace6107
+  （全部落库）+wt-guard clean（零 reparse point）；worktree 注销+分支
+  删除（was 41ace6107）+组目录 .wt/lang-714 rmdir；worktree list 零
+  714 残留复核在案。五检查点全落 delivered。
 
 ## 10. 待澄清事项
 
