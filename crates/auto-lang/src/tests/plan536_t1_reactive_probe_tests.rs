@@ -225,6 +225,11 @@ mod plan536_t1_reactive_probe_tests {
         let mut dc = crate::plan370_test_support::build_component_from_app(&corpus)
             .expect("build plan536_reactive component");
 
+        // PLAN-711 T-05 契约迁移：pending demand 首建产出骨架占位，驱动至
+        // 终态后取基线。
+        let _ = dc.view_with_debug_gated(false);
+        dc.drive_scheduler_to_quiescence(10_000);
+
         // 基线：两臂都显示 initial
         let base = rendered_texts(&dc);
         assert!(

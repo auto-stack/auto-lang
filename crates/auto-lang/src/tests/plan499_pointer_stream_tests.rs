@@ -184,6 +184,10 @@ mod plan499_axispointer {
             eprintln!("plan499 M3: SKIPPED — charts-gallery not found");
             return;
         };
+        // PLAN-711 T-05 契约迁移：pending demand 首建产出骨架占位，驱动至
+        // 终态后重建断言真实子树。
+        let _ = dc.view_with_debug_gated(true);
+        dc.drive_scheduler_to_quiescence(10_000);
         let (view, _, _) = dc.view_with_debug_gated(true);
         let dump = format!("{:?}", view);
         assert!(

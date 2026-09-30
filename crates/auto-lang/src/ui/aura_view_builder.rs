@@ -6752,6 +6752,33 @@ let tabs_inner = View::Row {
         // props → Init → build,每个渲染帧重放:纯派生 Init 幂等;副作用
         // 型子组件 Init 会在每次脏重建时重放(v1 近似,债务在案)。
         self.fire_child_init_if_any(child_widget, child_state_id, init_props, props, bindings);
+        // PLAN-711 T-05 (M-04/Q-01): pending demand → 轻量骨架占位。Init
+        // 完成（epoch 失效→重建全量）前不渲染子树产物——pending 占位不成
+        // 为可永久命中的 memo 产物（完成 bump epoch 已失效）；嵌套需求按
+        // 依赖阶段发现：子件嵌套 child 由完成帧的下一次构建发现（占位不
+        // 永久早退）。失败相位给可诊断错误占位（不无限 Loading；reload
+        // 换身份即重试）。无 demand/已终态原样全量构建。
+        match self.bridge.init_demand_phase(&child_widget.name) {
+            Some(crate::ui::vm_bridge::InitDemandPhase::Queued)
+            | Some(crate::ui::vm_bridge::InitDemandPhase::InFlight) => {
+                return View::Text {
+                    content: format!("Loading… ({})", child_widget.name),
+                    style: None,
+                    selectable: false,
+                };
+            }
+            Some(crate::ui::vm_bridge::InitDemandPhase::Failed) => {
+                return View::Text {
+                    content: format!(
+                        "⚠ {}.Init failed — see [VM-HANDLER] log (reload to retry)",
+                        child_widget.name
+                    ),
+                    style: None,
+                    selectable: false,
+                };
+            }
+            _ => {}
+        }
 
         // Build a child view builder using the SAME bridge but with
         // override_state_obj_id pointing to the child's state object.
@@ -6833,6 +6860,33 @@ let tabs_inner = View::Row {
         // Plan 437 Phase 2: 同 render_child_widget —— 子组件 Init 补发
         // (tracked 双胎保持同一渲染语义)。
         self.fire_child_init_if_any(child_widget, child_state_id, init_props, props, bindings);
+        // PLAN-711 T-05 (M-04/Q-01): pending demand → 轻量骨架占位。Init
+        // 完成（epoch 失效→重建全量）前不渲染子树产物——pending 占位不成
+        // 为可永久命中的 memo 产物（完成 bump epoch 已失效）；嵌套需求按
+        // 依赖阶段发现：子件嵌套 child 由完成帧的下一次构建发现（占位不
+        // 永久早退）。失败相位给可诊断错误占位（不无限 Loading；reload
+        // 换身份即重试）。无 demand/已终态原样全量构建。
+        match self.bridge.init_demand_phase(&child_widget.name) {
+            Some(crate::ui::vm_bridge::InitDemandPhase::Queued)
+            | Some(crate::ui::vm_bridge::InitDemandPhase::InFlight) => {
+                return View::Text {
+                    content: format!("Loading… ({})", child_widget.name),
+                    style: None,
+                    selectable: false,
+                };
+            }
+            Some(crate::ui::vm_bridge::InitDemandPhase::Failed) => {
+                return View::Text {
+                    content: format!(
+                        "⚠ {}.Init failed — see [VM-HANDLER] log (reload to retry)",
+                        child_widget.name
+                    ),
+                    style: None,
+                    selectable: false,
+                };
+            }
+            _ => {}
+        }
 
         // Plan 476: slot_fills 透传(untracked 双胎同款语义)。
         let child_builder = AuraViewBuilder {

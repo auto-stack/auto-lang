@@ -129,7 +129,15 @@ widget ChildGeo (data: List, field: str = "v") {
     fn child_init_fires_during_render() {
         let mut dc = build_inline(SRC);
         dc.fire_init();
-        let _ = dc.view_with_debug_gated(true);
+        // PLAN-711 T-05 (Q-01)：pending demand 首建渲染轻量骨架占位（不渲染
+        // 子树产物、不永久早退）；驱动至终态后重建出全量几何。
+        let (view0, _, _) = dc.view_with_debug_gated(true);
+        let dump0 = format!("{view0:?}");
+        assert!(
+            dump0.contains("Loading…"),
+            "pending Init demand must render the skeleton placeholder; dump head: {}",
+            &dump0[..dump0.len().min(800)]
+        );
         dc.drive_scheduler_to_quiescence(10_000);
         let (view, _, _) = dc.view_with_debug_gated(true);
         let dump = format!("{:?}", view);
