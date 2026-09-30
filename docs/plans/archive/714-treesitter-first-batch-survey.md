@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-714
-status: archived               # r1+r2+r3 三阶段 delivered；r3 merge 收口 2026-09-30（archived → executing，用户指令收纳通道——712 r2 先例同款）；终态待再 merge
+status: executing             # r4 收纳复开（archived → executing，用户指令「(a) 714 r4 收纳」通道——712 r2/r2/r3 同款）；终态待再 merge
 completion_kind: delivered    # r1 勘定件+r2 供① 残余解锁（Try 臂）+r3 route-A 深修——三阶段全 delivered
 feature_name: tree-sitter 首批勘定件（auto-edit M4 供料包供④ 前半——语言集定界/管线选型+烟测/syntect 共存策略/增量高亮管线要点+实施件契约草案）
 author: [agent]
 created_at: 2026-09-30T16:15:39+08:00
-updated_at: 2026-09-30T20:55:00+08:00
-plan_revision: 3
+updated_at: 2026-09-30T22:05:00+08:00
+plan_revision: 4
 current_step: 16
-total_steps: 16
+total_steps: 19
 supersedes_spec_components: []
 new_spec_components:
   - "docs/specs/auto-lang/ui/design/treesitter-highlight-survey.md（SD-01：勘定契约——语言集表/选型决策记录/共存策略/增量管线要点/实施件边界）"
@@ -64,6 +64,22 @@ R3-T3 Try 臂闭包内 return 传播（Option<Ret> 形——710 边界条款的
 corpus 实实例）+preview=ln 借用、R3-T4 corpus 收口（fresh regen→
 exit 0→fresh check——AC-R2-1 补全）、R3-T5 下游解阻确认（原 R2-T3
 顺位承接）、R3-T6 落账。
+
+**r4 追加（2026-09-30，用户指令「(a) 714 r4 收纳（本次同款通道）」）**：
+供料档 §7 缺陷解锁 phase——**a2r 形态 code_editor 注册断链**（r3 解阻
+后下游 L2 判定谱补跑暴露）：store 装载探测门 `code_editor_edit(
+load_key,0,0,"")` 永 false（stderr 刷 `no editor registered for key
+"__code_editor_tab-N"`）→装载链永递延。三连对照=VM 轨正常+旧 a2r 构建
+正常[019 probe_surface]+新旧生成物 editor 视图构造**逐字节一致**
+（`View::code_editor("editor")` 无 key 绑定参数——buffer 键=运行时
+推导）→缺口在 **ui 运行时/widget 注册面**（.at `code_editor (key:
+t.key)` 动态 key 属性在 a2r 视图构建→iced 注册路径未达 CODE_EDITORS
+registry）。回归窗口=ui 构建 2205→2366（嫌疑：710 ui_gen 774 行面
+[33a5d56c3]/fix-ui-tier WidgetRegistry 增量注册改造[c80887ab7]/r3
+内建分发器三处+借位 clone 窄门[29563c588]）。影响=下游 open_100mb/
+warm_start 两预算行 L2 判定+装载/编辑回路冒烟面（auto-edit evidence
+p021-blocked-survey §⑥）。r4 三任务：二分定谳→修复+探针→census 判定
+④行+下游解阻确认。
 
 ## 1. 目标
 
@@ -264,6 +280,35 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
 |---|---|---|---|---|---|
 | SD-01 | add | docs/specs/auto-lang/ui/design/treesitter-highlight-survey.md | before：语法高亮面=syntect/two-face 现状无专册（feature 面散于 Cargo 注记）；tree-sitter 化无契约 / after：勘定契约册——语言集表（20±×来源/许可/维护度）/管线选型决策记录（crate 形态+分发形+烟测证据）/共存策略（双轨 vs 切换定案+two-face 退役联动量化）/增量管线要点（快照消费/失效域/big 旁路边界）/实施件边界（715+ 契约指向） | 供④ 前半落账；实施件的内核侧真源 | AC-01..05 |
 
+### R4-T1 回归二分定谳（勘定纪律——证据先行）
+
+a2r 轨注册探针：fresh regen exe 内 dump CODE_EDITORS registry 键集
+（编辑器实例化后）vs store 查找键（storage_key("tab-N")）对照——
+**注册键与查找键脱节形态定谳**（候选：注册键=「editor」/widget 名派生
+vs 查找键=__code_editor_tab-N；或注册时点先于 key 绑定）。二分面=
+窗口 2205→2366 内三嫌疑逐面 revert 探针：①710 ui_gen 774 行面
+[33a5d56c3]②fix-ui-tier WidgetRegistry 增量注册改造[c80887ab7]③r3
+内建分发器三处+借位 clone 窄门[29563c588]。证据基=auto-edit 供料档
+§7+evidence-p021-blocked-survey §⑥（warm-0/open-probe 实录+VM 对照+
+视图代码逐字节比对）。
+
+### R4-T2 修复+单测（贯通 .at key 属性→注册键）
+
+定谳面修复：`code_editor (key: t.key)` 的动态 key 属性在 a2r 视图
+构建路径贯通到 iced widget 注册（注册键≡storage_key(t.key)≡store
+查找键）。单测同 r2 纪律：构造用例（per-tab key 注册断言+动态 key
+属性消费+VM/a2r 双轨同源对拍——plan714_back_try_arm_* 先例形态入
+plan710_supply_probes）。
+
+### R4-T3 census 判定④行+下游解阻确认
+
+census 判定集增**第④行：fresh a2r exe 装载标记对 E2E**（AUTO_OPEN_PATH
+小文件→bench_open_start/done 标记对——r3 判定集缺运行时装载 E2E 的
+盲区补截，编译级三判据之外的运行时面）。下游复验位=auto-edit
+`bench open --l2`（100MB 谱+拒绝探针）+`bench warm --l2`（20tab active
+装载）+`smoke_gen.py` 三域全绿+五行判定收口（open/warm armed 判定+
+对比表 open 行 L2 补列）——PLAN-021 残余面 zero 重设计补跑。
+
 ## 6. 测试设计
 
 - **spike 烟测**（隔离，不入主线）：parse 烟测（2-3 语言最小样本
@@ -316,6 +361,16 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
   账本断言。
 
 
+- **AC-R4-1 定谳+修复贯通**：二分定谳结论在档+修复后 fresh regen
+  exe 内注册键≡store 查找键（探针对照绿）；VM/a2r 双轨对拍不回退。
+  验证：探针收据+单测绿。
+- **AC-R4-2 下游装载链复绿**：auto-edit `bench open --l2` 标记对达成
+  （open_100mb N≥4 谱+513MB/1GB 拒绝探针形）+`bench warm --l2`
+  20tab active 装载完成+`smoke_gen.py` 三域 7/7 全绿。验证：下游
+  JSONL 收据（跨仓）。
+- **AC-R4-3 census ④行+落账**：判定集第④行入 p710-census §7+
+  P714-4 投影回读 True。验证：账本断言。
+
 ## 8. 执行步骤
 
 | # | 任务 | 依赖 | 落点（实勘锚） | 产出/意图 | AC | 验证（命令/预期） |
@@ -337,6 +392,9 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
 | 13 | R3-T4 corpus 收口 | R3-T1..3 | 组内 tmp corpus | fresh regen→exit 0→fresh check（AC-R2-1 补全） | AC-R2-1 | [x] fresh regen **exit 0**+工作区 check 过（1m07s）+skip=0+实体形在位——**AC-R2-1 补全**（r3f 轮；迭代谱 r2b 26 错→r3d 16→r3e 3→r3f 0 在档 a2r-r3*-run.log） |
 | 14 | R3-T5 下游解阻确认（原 R2-T3 承接） | R3-T4 | auto-edit perf.py a2r | 跨仓收口（021 复验位） | AC-R2-4 | [x] 下游真仓 perf.py a2r 绿（AUTO_BIN+AUTO_LANG_CRATE 钉 worktree 工具链；deps 预置真实拷贝修复半拉 materialize 态）+三占位 0/0/0+fresh check 59.82s 过——**AC-R2-4 交付，PLAN-021 解阻** |
 | 15 | R3-T6 落账 | R3-T4/5 | census+specs.json+计划 | census §7 更新+P714-3 投影+完态 | AC-R3-4 | [x] census §7 r3 收口判定@211ef5237+P714-3 投影（master 外科插入）回读 True——本行即完态 |
+| 16 | R4-T1 回归二分定谳 | — | a2r 轨注册探针+2205→2366 三嫌疑 revert 面 | 注册键/查找键脱节形态定谳 | AC-R4-1 | [ ] 探针对照绿+二分结论在档 |
+| 17 | R4-T2 修复+单测 | R4-T1 | ui 视图构建→iced 注册路径 | .at key 属性贯通注册键 | AC-R4-1 | [ ] 修复+单测绿+双轨对拍不回退 |
+| 18 | R4-T3 census ④行+下游解阻确认 | R4-T2 | p710 census §7+auto-edit 复验位 | 运行时装载 E2E 入判定集+跨仓收口 | AC-R4-2/3 | [ ] 下游 open/warm --l2 标记对+smoke_gen 7/7+P714-4 回读 True |
 
 ## 9. 复审记录
 
@@ -522,6 +580,14 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
   所建 2 junction（deps/bps→blueprints、deps/stylekit→specs/stylekit）
   经 cmd rmdir 摘链（link-only，目标 intact 实证）后方清树；两仓
   worktree list 零 714 残留复核在案。五检查点全落 delivered。
+
+- 2026-09-30 r4 收纳（用户指令「(a) 714 r4 收纳（本次同款通道）」——
+  auto-edit PLAN-021 Q-5 解锁件路由本件；712 r2/本件 r2/r3 同款通道）：
+  archived→executing、plan_revision 3→4、total_steps 16→19。scope=
+  供料档 §7 a2r 形态 code_editor 注册断链（二分定谳→修复贯通→census
+  判定④行+下游解阻确认）——非 tree-sitter 面（r1/r2/r3 交付收据保持
+  delivered）。next=work（R4-T1 起；r4 执行期簿记沿先例直接落 master
+  docs/plans）。
 ## 10. 待澄清事项
 
 - **Q-1 语言集预裁定（可选）**：默认 T-01 按下游现实+战略「常见
@@ -554,3 +620,7 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
   copy/delete 路径 return-in-try），臂形需 Option<Ret> 传播形
   （Ok(Some(v))=>return v/Ok(None)=>default）。量级=M 档独立件（715 位
   ——承 710 §10 边界+本条清单）。auto-edit PLAN-021 复验位候其落地。
+- **Q-R4 下游联动（2026-09-30 r4 登记）**：auto-edit PLAN-021 残余面
+  （open_100mb/warm_start 行+装载/编辑冒烟）随本件 R4-T2 清偿后补跑
+  收口（判据面已备 zero 重设计）；Q-R2 联动注记保持。量级注记=注册
+  路径修复+探针+判定一行——710 D-4..D-8 快速修订件同档。
