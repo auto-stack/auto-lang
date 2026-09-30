@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-714
-status: archived
-completion_kind: delivered
+status: executing             # r2 收纳复开（archived → executing，用户指令收纳通道——712 r2 先例同款）；终态待再 merge
+completion_kind: delivered    # r1 交付面保持（勘定件已 delivered）；r2=供① 残余解锁追加 phase
 feature_name: tree-sitter 首批勘定件（auto-edit M4 供料包供④ 前半——语言集定界/管线选型+烟测/syntect 共存策略/增量高亮管线要点+实施件契约草案）
 author: [agent]
 created_at: 2026-09-30T16:15:39+08:00
-updated_at: 2026-09-30T17:05:00+08:00
-plan_revision: 1
+updated_at: 2026-09-30T17:40:00+08:00
+plan_revision: 2
 current_step: 7
-total_steps: 7
+total_steps: 10
 supersedes_spec_components: []
 new_spec_components:
   - "docs/specs/auto-lang/ui/design/treesitter-highlight-survey.md（SD-01：勘定契约——语言集表/选型决策记录/共存策略/增量管线要点/实施件边界）"
@@ -40,6 +40,18 @@ vs 子 crate 族]/grammar 分发形[build-time 编译 vs 预编译嵌入 vs
 与 plan047 memo 依赖录制协同注记）。产出=**勘定报告+实施件契约
 草案**（715+ 立项基——任务骨架+AC 草案+验收设计）。**本件零
 crates 改动**（烟测 spike 隔离）。
+
+**r2 追加（2026-09-30，用户指令收纳）**：供① 残余两面解锁 phase——
+auto-edit PLAN-021（L2 链解阻兑现件）fresh worktree 消费复验发现
+**back 模块转译通路缺语句级 `Stmt::Try` 臂**（710 G-B 臂落点=ui_gen
+front 通路，back 通路不在其覆盖）：`fsys.at:208` try（PLAN-012
+find-in-files 兜底）转译失败→面一 back fsys.rs 整模块跳过→api_impl
+E0432（workspace check 红）；面二 front `merged_route_a_impl` 伴生链
+`.ok()?` 整体回退→api 客户端族恒空桩（env_str/read_text 死端）→
+下游 L2 全预算行不可测。forensics=auto-edit
+`specs/auto-edit/tests/evidence-p021-blocked-survey.md`（全档）+
+供料档 §6 登记。r2 三行任务：Try 臂镜像移植+corpus 判据三行增补
+（710 corpus 陈旧基面掩蔽盲区堵截）+下游 auto-edit 解阻确认收口。
 
 ## 1. 目标
 
@@ -209,6 +221,31 @@ treesitter-highlight-survey.md）+勘定报告（docs/plans/reports/
 714-treesitter-survey.md——四勘定结论+证据+spike 实录）+specs.json
 reviews 段 P714-1 外科插入（703/710 先例）。
 
+### R2-T1 back 通路 Try 臂（供① 残余两面单点解锁）
+
+落点=crates/auto-lang/src/trans/rust.rs 语句分派路径（现势 ~:12300
+`_ => Err("Rust Transpiler: unsupported statement: …")`——auto-man
+`api_gen::transpile_back_module_to_rs`[api_gen.rs:361，16MB 栈线程]
+所走通路）。臂形**镜像 710 G-B 臂**（33a5d56c3 落点 ui_gen/rust.rs）：
+`catch_unwind(AssertUnwindSafe)` 包装 try 体/Ok 丢弃/Err 进 catch 块/
+`catch(e)` 绑定=panic_message 载荷串（VM catch 帧 STORE_LOCAL 同源）/
+finally 跟发含 VM 侧 catch 内错误不触发 finally 的同形偏差注记。
+判据：fsys.at:208 形态（空 catch 体+for{if break} 体+If 嵌套）可转译；
+**单臂两面全解**=①back fsys.rs 恢复发射→workspace `cargo check` 过；
+②front route-A 伴生嵌入恢复（merged_route_a_impl[auto-man/src/
+rust_ui.rs:903]不再 `.ok()?` 中止）→api 客户端实体形（env_str/read_text
+非 D-7 桩——`String::new()` 恒返形消失）。
+
+### R2-T2 corpus 判据三行增补（710 corpus 盲区堵截）
+
+落点=plan710 census 判定面（p710-census.md 判据集+corpus 跑批脚木
+面）。三行：①「⚠ … transpile failed (module skipped)」grep 零命中
+（缺模块洞机读暴露——710 实录该警告行在案但不在判定集）；②
+fresh-copy 卫生（corpus regen 前清 rust-workspace 或生成文件清单
+diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷贝
+携带旧代 fsys.rs 满足导入的假绿，forensics §③ 实录）；③api 客户端
+桩形检测（`String::new()` 恒返形 grep——面二的编译绿假阴性堵截）。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
@@ -243,6 +280,20 @@ reviews 段 P714-1 外科插入（703/710 先例）。
 - **AC-06 落账+主线零改动**：SD-01 册+P714-1 投影回读 True+
   crates/Cargo.toml 零 diff。验证：账本断言+git diff 路径断言。
 
+- **AC-R2-1 Try 臂两面绿**：`auto build -r rust` exit 0 且 a2r 日志零
+  「transpile failed (module skipped)」警告行+**fresh workspace**
+  （regen 前清生成区）`cargo check --workspace` 过。验证：regen 日志
+  +check 收据。
+- **AC-R2-2 front route-A 恢复**：front 生成物含伴生嵌入（env_str/
+  read_text 实体形非 D-7 桩）。验证：生成物 grep 断言。
+- **AC-R2-3 单测面**：Try 臂构造用例（成功/异常两臂+空 catch 体+
+  for{if break} 嵌套——fsys.at:208 同形）绿；tu/tf 门零回退。验证：
+  cargo tu/tf 收据。
+- **AC-R2-4 下游解阻确认**：auto-edit 仓 `perf.py a2r` 三重判据全绿
+  （下游 PLAN-021 复验位——其 L2 判定谱补跑[bench --l2 三档+smoke_gen
+  三域，判据面已备]归 PLAN-021 承接，本件验收含解阻确认单）。验证：
+  下游复验收据（跨仓）。
+
 ## 8. 执行步骤
 
 | # | 任务 | 依赖 | 落点（实勘锚） | 产出/意图 | AC | 验证（命令/预期） |
@@ -254,6 +305,10 @@ reviews 段 P714-1 外科插入（703/710 先例）。
 | 4 | T-04 增量要点 | T-00 | SD-01 册 §增量 | 管线设计要点 | AC-04 | [x] 册节在档——SD-01 §4（快照消费/失效域含 spike API 纪要/big 旁路硬边界/047 协同注记） |
 | 5 | T-05 契约草案 | T-01..04 | 报告 §实施件契约 | 715+ 立项基 | AC-05 | [x] 骨架在档——报告 §6（T-1..T-7 任务骨架+AC 草案+715/716 拆分+工期量级+基准/验收设计） |
 | 6 | T-06 落账 | T-01..05 | SD-01+报告+specs.json | 勘定收口 | AC-06 | [x] P714-1 True+零 diff 断言——specs.json reviews P714-1（外科插入：roundtrip 字节等价 1,183,344B 先证+五段零扰动回读+reinsert stable；git diff master crates/+Cargo.toml=0 行） |
+
+| 7 | R2-T1 back 通路 Try 臂 | — | trans/rust.rs 语句分派（~:12300）+单测 | 供① 残余两面单点解锁 | AC-R2-1/2/3 | [ ] 臂落+三判据（exit 0+零 skip 警告+fresh workspace check 过+front 实体形） |
+| 8 | R2-T2 corpus 判据三行 | R2-T1 | p710 census 判定面 | 盲区堵截（掩蔽/桩形/skip 警告） | AC-R2-1 | [ ] 三行判定集在档+corpus 复跑绿 |
+| 9 | R2-T3 下游解阻确认+落账 | R2-T1/2 | auto-edit 复验位+specs.json | 跨仓收口 | AC-R2-4 | [ ] 下游 a2r 三重判据全绿+P714-2 投影回读 True |
 
 ## 9. 复审记录
 
@@ -331,6 +386,15 @@ reviews 段 P714-1 外科插入（703/710 先例）。
   删除（was 41ace6107）+组目录 .wt/lang-714 rmdir；worktree list 零
   714 残留复核在案。五检查点全落 delivered。
 
+
+- 2026-09-30 r2 收纳（用户指令「更新计划 714…给它加一个 phase」——
+  auto-edit PLAN-021 Q-4 解锁件路由本件；**712 r2 收纳复开先例同款
+  [用户预授权收纳通道]**）：archived→executing、plan_revision 1→2。
+  scope=供① 残余两面解锁（back 转译通路 Try 臂+corpus 判据三行+
+  下游解阻确认）——**非 tree-sitter 面**（r1 勘定交付保持 delivered；
+  715/716 实施件预留位不受扰）。r1 交付收据与五检查点不变。next=work
+  （R2-T1 起；r2 执行期簿记沿 712 r2 形态直接落 master docs/plans）。
+
 ## 10. 待澄清事项
 
 - **Q-1 语言集预裁定（可选）**：默认 T-01 按下游现实+战略「常见
@@ -347,3 +411,8 @@ reviews 段 P714-1 外科插入（703/710 先例）。
 - **执行注记（2026-09-30）**：Q-1 按默认定界执行（用户未另行裁定，
   §2.2 表定稿可复审调整）；Q-2 烟测定案=build-time cc（预编译案
   未升位——§3.1 判据表在档）；Q-3 仍待用户（715 立项基已备）。
+- **Q-R2 下游联动（2026-09-30 r2 登记）**：auto-edit PLAN-021（L2 链
+  解阻兑现件）blocked 挂账中——本件 R2-T1 落地后其 T-02/03/04 判据面
+  补跑（bench --l2 三档+smoke_gen 三域，zero 重设计）与对比表 L2 列
+  转正由 PLAN-021 承接；本件验收含其解阻确认单（AC-R2-4）。裁定量级
+  注记=710 D-4..D-8 快速修订件同档（供料档 §6）。
