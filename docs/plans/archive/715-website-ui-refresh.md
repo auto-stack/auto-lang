@@ -216,9 +216,9 @@ T-01就为 website/playwright.config.ts 增加 AUTO_WEBSITE_TEST_PORT（默认41
 - **landed** ✓：rebase master（并行前进：713 行 plans.md/712 复验 c86fe01a7）后 ff-only 落 master，tip=ddb47205e 无合并提交；range-diff 三=（d7a2c47ec=2c5b1e31a、7714f030b=a2a187e5a、675306b71=c3bc4e9f8）补丁等价即安全重写证明；plans.md 冲突双行保留（713+715）
 - **ledger_refreshed** ✓：d19537b72——store 写者不可用（8080 不在线、本会话无 spec 工具），循 713/714 外科插入先例：designs 段 P715-1（SD-01..05 现行知识投影，file=design/ui-presentation.md，docsha:137265b853eded5b）+ reviews 段 P715-2（复审/合入收据）；committed 形（indent1+LF，designs 118→119、reviews 180→181）roundtrip 字节守卫+语义回读全过；worktree 形（indent2+CRLF，reviews 181→182）同步插入，P712-1（plan712 会话在途 WIP）字节保全未裹挟提交
 - **archived** ✓：git mv → docs/plans/archive/715-website-ui-refresh.md，status: archived，completion_kind: delivered
-- **cleaned**：见下方补记
+- **cleaned** ✓：wt-guard clean（reparse point 零）→ worktree remove（node_modules 残留由 rm -rf 清，泄漏 esbuild/vitepress preview 子进程按命令行匹配终结——taskkill 精确 PID 22928/33756/22952/34876，未触碰他 会话进程）→ branch plan-715-dev 删除（@ddb47205e 已并）→ 组目录 D:/autostack/.wt/lang-715 移除，worktree 注册 0 匹配
 - 部署观察（landing≠deployment）：website 为静态站点，无线上部署授权（计划边界明示"不部署线上站点"）；主检出构建产物随下次部署重建，无生产进程消费本仓二进制，三项生产工件检查不适用（无后端/守护进程改动，Category A）
-- 批量回归到期判定：见下方补记
+- 批量回归到期判定：715 % 5 == 0 且晚于 .last-batch-regression.json 的 last_covered_plan_id → **到期**，移交 /auto-plan:regress 主检出单实例执行
 
 ### 2026-09-30 复审（T-08）
 
