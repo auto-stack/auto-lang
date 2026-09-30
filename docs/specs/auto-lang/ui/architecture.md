@@ -232,3 +232,11 @@ graph TD
 - 备选：跳过 icon 不渲染（cons：厨房水槽等占位演示会出现空洞）；仅警告仍发原名（cons：非法 import 仍炸页）。
 - 后果：kitchen-sink 等占位 `sample` 自动愈合为 Circle；真实 lucide 名零变化；lucide 缺表时静默降级而非模块加载失败。
 - 状态：active
+
+### ADR-26: VM 轨 memo 子树缓存——三态门、宿主 UI epoch 与 Degrade 诊断（PLAN-708 S 档）
+- 日期 / 来源：PLAN-708 r3（2026-09-30；基础机制 PLAN-045/046/047，本 ADR 首次成文 canonical）
+- 决策：VM 渲染轨子树产物缓存（MemoKey 六元组：ctx_state_obj/site/skeleton_fp/probe_on/item_key/**ui_epoch**；seq 快路径 + globals 指纹 + dyn 读槽指纹慢路径三级命中，LRU 容量封顶）的开关契约收敛为三态：`AUTO_OUTLET_MEMO=0` 诊断强制关（覆盖显式 prop true）> `=1` 强制开 > 未设/其他值回落 prop——outlet 页 prop 未设**缺省 on**（r2 G1 缺省面变更），菜单/nav 族字面量缺省关（PLAN-045 语义保留）。解析面 `outlet`/`outlet (memo: true)`/`outlet (memo: false)` 三形态（Option<bool> 贯通 parser→ast→extract→aura 四层）。**组件局部 UI 态失效走宿主 UI epoch**（MemoKey.ui_epoch；bump 点=preview toggle/tab/copy、nav 组开合、热重载 reload——此三面不 bump VM 状态突变 seq，epoch 是其唯一失效通道）。扫描不可证明（ScanVerdict::Degrade）不走缓存且不再静默——`AUTO_MEMO_DIAG=1` 输出 site=6 DEGRADE 行。
+- 配套（同计划）：`WidgetRegistry::with_defaults()` 进程级 OnceLock 单次构建 + Clone 深拷贝出借 + `run_session` 启动后台预热线程——preview-card 每实例生成器重建（实测 ~1.1-1.3s/卡）曾是页构建秒级成本的唯一来源，缓存后冷构建 20-350× 改善（实测数据见 specs design/vm-loading-responsiveness.md §1）。
+- 备选：env 二值 OR（cons：prop true 无法诊断关闭——实测 gallery 上 env=0 不生效）；逐臂 bump VM seq（cons：组件局部态本非 VM 状态，伪造 seq 突变污染三级命中快路径）。
+- 后果：已知未闭面=DataTable 静态扫描 Degrade 根因与 FileTree 恒 FILL（PLAN-711 承接）；加载期调度（Init demand/帧泵/CPU 片）另见 proposed 设计（711）。
+- 状态：active
