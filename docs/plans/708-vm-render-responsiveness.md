@@ -360,6 +360,19 @@ Worktree 复用：`D:/autostack/.wt/lang-708/auto-lang` / `plan-708-dev`，先�
 - T-02 残面（移交后续任务）：Row 冷 365ms 仍超 50ms 占用门禁（真实渲染工作，M 档骨架/泵与 T-12 继续压）；DataTable memo_block Degrade 根因（T-12）；FileTree 恒 FILL（T-12 computed 缓存）。
 - `next: T-11 CPU 可续跑执行片 → T-03 Init demand/代际 → T-04 帧通知泵 → T-05 骨架显示 → T-06/07/08/12 → T-09 实机矩阵 → T-10 交接`。
 
+### 2026-09-30 阶段复审（S 档：T-00/01/02 增量落地前）
+
+- `stage: review`（**阶段复审**——整体计划保持 executing，不授予终审 reviewed）| `plan_id: PLAN-708` | `plan_revision: 2` | `outcome: pass`（阶段范围）。
+- `reviewed_commit: worktree plan-708-dev @ 956d86a90`（T-01=7ac8f51c2 + T-02=956d86a90）| `base_commit: e1bab972e` | dependency: gallery `93050a6a`（auto-os，干净）/ auto-down `3373a5cc6e`（detached 兄弟）。
+- 复审者=实现会话本身（独立性受限声明）：裁定从工件重建——重读两提交全量 diff（8 文件 +454/−33，唯一新增 eprintln 为 AUTO_MEMO_DIAG 门控诊断行）、失败逐例 base 检出复跑定责。
+- 阶段门禁：`cargo tf --no-fail-fast`（排除 `default_headers_reach_wire_on_plain_get`——707 台账在案预存环境红，本机实测悬挂 >78min）= **5891 执行，PLAN-708 改动零回归**。预存红 12（base 同败或 707 台账在案）：musk p053/p054 ×6、a2vue ×1、projector ×1、plan606_gallery ×1、docs_gen ×2（core_reference/kitchen_sink，base 同败）、default_headers ×1。并行抖动 4（带改动单跑全过）：p508_g2_outproc_arm、clipboard_files_and_image、plan358_stress、plan707_wait_generator。环境中止 1：plan705_e2e_deadline（单跑 2.88s 过；tf 中止系复审中重复实例事故的僵尸进程占用 18511/18512 端口，已清理）。
+- AC 映射（阶段范围内）：AC-01/02/03/09 → **pass**（plan708 5 测试 + 045/046/memo/outlet 既有族 + 实机 A/B 数据）；AC-12 → **partial**（preview/nav/epoch 失效面已闭，"冷构建热点不逃过 UI 门禁"未达——Row 残余 365ms，映射 M 档 T-03..05/T-12，非未授权延期）；AC-04..08/10/11 → M 档任务未实施，不评。
+- 发现：F-1（低）非法 outlet 头参 parse-error 路径无直接测试——修正路由 T-08 测试族。fmt 漂移为仓库存量（base 同检确认），零新增 debug 残留。
+- Spec delta：SD-01..04 维持 proposed，不随阶段落地发布；canonical Specs 与 ledger 本轮未动。
+- 证据持久化：门禁全量日志 `tmp/708/tf_gate.log`（worktree 内易失）——结论摘录已固化于本记录；实机数据固化于 708-baseline.md §3 与 dfb2bf223 簿记。
+- `next: 阶段落地 plan-708-dev → master（ff-only），计划保持 executing，M 档（T-11→T-03..T-10/T-12）续作`。
+
+
 ## 10. 待澄清事项
 
 | ID | 项目 | r2 处置 / owner |
