@@ -14593,24 +14593,22 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
     *app.state.view_dirty.borrow_mut() = true;
 }
 
-/// Plan 496 M5 + Plan 540 T2：boot 壁纸解析（单源 `config.wallpaper_path`
-/// ——`#hex` 色值直传；`builtin:` 内嵌资产方案直传（Plan 518）；图片路径验
-/// 存在；缺席/空/坏值回退
-/// [`crate::ui::session::DESKTOP_WALLPAPER_DEFAULT`]）。
+/// Plan 496 M5 + Plan 540 T2 + PLAN-712 r2 T-13：boot 壁纸解析（单源
+/// `config.wallpaper_path`）。**优先级（T-13 用户裁定「任何时候打开都
+/// 加载默认壁纸」）**：存在图片路径 > 壁纸目录首图 > `#hex`/`builtin:`
+/// 色值 > [`crate::ui::session::DESKTOP_WALLPAPER_DEFAULT`]。纯色/builtin
+/// 不再短路目录回退——它们是「无图片壁纸」的表述，机器有壁纸目录时
+/// boot 面上目录首图优先（PLAN-526 T19 目录首图语义延伸到色值分支）；
+/// 无目录的机器色值仍直传（便携/极简场景诚实降级）。
 fn load_desktop_wallpaper(cfg: &crate::ui::desktop_config::DesktopConfig) -> String {
     use crate::ui::session::DESKTOP_WALLPAPER_DEFAULT;
-    let valid = |v: String| {
-        !v.is_empty()
-            && (v.starts_with('#')
-                || v.starts_with("builtin:")
-                || std::path::Path::new(&v).is_file())
-    };
     let v = cfg.wallpaper_path.trim().to_string();
-    if valid(v.clone()) {
+    let color_like = v.starts_with('#') || v.starts_with("builtin:");
+    // ① 图片路径（存在即用）。
+    if !v.is_empty() && !color_like && std::path::Path::new(&v).is_file() {
         return v;
     }
-    // PLAN-526 T19：缺省不再直接回退内置——优先取壁纸目录首图（机器
-    // 首启即有真壁纸；设置面板目录/手输写 config 后走上面的键）。
+    // ② 壁纸目录首图（config dir 字段 → env → stella 素材目录探测）。
     if let Some(dir) = wallpapers_dir_or_default(cfg) {
         let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
             .into_iter()
@@ -14633,6 +14631,11 @@ fn load_desktop_wallpaper(cfg: &crate::ui::desktop_config::DesktopConfig) -> Str
             return first.to_string_lossy().to_string();
         }
     }
+    // ③ 色值直传（仅当目录不可用——有目录时色值不再阻塞默认壁纸）。
+    if !v.is_empty() && color_like {
+        return v;
+    }
+    // ④ 内置兜底。
     DESKTOP_WALLPAPER_DEFAULT.to_string()
 }
 
@@ -32862,7 +32865,13 @@ mod tests {
             wallpaper_path: "#123456".to_string(),
             ..DesktopConfig::default()
         };
-        assert_eq!(load_desktop_wallpaper(&hex_cfg), "#123456", "#hex 直传");
+        // PLAN-712 r2 T-13：色值不再短路目录回退——有壁纸目录的机器上
+        // #hex 让位目录首图（返回存在文件路径），无目录机器保持色值直传。
+        let hex = load_desktop_wallpaper(&hex_cfg);
+        assert!(
+            hex == "#123456" || std::path::Path::new(&hex).is_file(),
+            "#hex → 目录首图或色值直传，得到 {hex}"
+        );
         let bad_cfg = DesktopConfig {
             wallpaper_path: "Z:/no/such/file.png".to_string(),
             ..DesktopConfig::default()
@@ -32895,10 +32904,11 @@ mod tests {
             wallpaper_path: "builtin:inkwash".to_string(),
             ..DesktopConfig::default()
         };
-        assert_eq!(
-            load_desktop_wallpaper(&builtin_cfg),
-            "builtin:inkwash",
-            "builtin 直传"
+        // PLAN-712 r2 T-13：builtin 同 #hex——目录在场让位目录首图。
+        let builtin = load_desktop_wallpaper(&builtin_cfg);
+        assert!(
+            builtin == "builtin:inkwash" || std::path::Path::new(&builtin).is_file(),
+            "builtin → 目录首图或直传，得到 {builtin}"
         );
         // 内嵌资产可解码:load_image_bytes 返回 JPEG 字节(FF D8 魔数)。
         let bytes = load_image_bytes("builtin:ricepaper").expect("内嵌壁纸字节");
