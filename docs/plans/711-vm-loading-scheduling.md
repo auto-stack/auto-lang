@@ -17,7 +17,7 @@ touched_goals: [GOAL-007, GOAL-009]
 
 affects: [auto-lang/ui, auto-lang/vm]
 current_step: 0
-total_steps: 7
+total_steps: 8
 ---
 
 # [PLAN-711] vm-loading-scheduling（自 PLAN-708 r3 移出）
@@ -39,6 +39,7 @@ PLAN-708 r2 的 M/L 档（Init demand、帧通知泵、骨架显示、CPU 可续
 | T-09 | VM 实机性能/终态 §7 全矩阵（每页 ≥20 样本+加载中交互） | r2 §6/§7 |
 | T-11 | CPU 可续跑执行片（**含 engine.rs:2691 预算耗尽静默假成功 `Completed(Ok(()))` 正确性缺陷修复**） | r2 §5 M-02 |
 | T-12 | computed/冷构建残面（DataTable memo_block Degrade 根因、FileTree 恒 FILL） | r2 §5 M-04 |
+| T-07' | AC-08 L 正式设计完备性核对/补齐——design/autoui/vm-loading-responsiveness.md 的 worker 边界/线程/状态/快照/队列/取消/退出/parked 边界逐项对照（r2 起草件未逐项验证）；proposed 与现状分离保持 | r2 §5 T-07（L 设计部分）|
 
 验收承接：AC-04..08、AC-10、AC-11 全量；AC-06/AC-12 的 computed/门禁残余部分。
 Spec delta 承接：SD-02（ADR-19/24 重写）、SD-04（vm ADR-23 CPU Runnable）。
