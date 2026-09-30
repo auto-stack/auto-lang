@@ -1188,6 +1188,15 @@ impl VueGenerator {
         self
     }
 
+    /// fix-ui-tier：显式 select 标记开关。PLAN-646 dev 运行面的默认激活
+    /// 仍是 AUTOUI_SELECT_MARKERS env（构造器读取，见 new()）；测试/嵌入
+    /// 侧一律走本 builder——env 是进程级全局，`cargo tu` 单进程档下测试
+    /// set_var 会串扰同进程所有后续生成器构造（a2vue golden 23 测齐红实录）。
+    pub fn with_select_markers(mut self, on: bool) -> Self {
+        self.select_markers = on;
+        self
+    }
+
     /// Set the `default_classes` toggle (pac.at `default_classes: off`).
     /// When false, `extract_classes` skips the doc-theme default Tailwind
     /// classes for everything except layout primitives (row/col/grid/...).
@@ -23284,6 +23293,26 @@ widget App {
         gen.generate(&widget).expect("generate SFC")
     }
 
+    /// Same as gen_sfc_from_widget_src, but with PLAN-646 select markers
+    /// force-enabled via the explicit builder（不走 env——单进程档串扰，
+    /// 见 with_select_markers 注）。
+    fn gen_sfc_from_widget_src_markers(src: &str) -> String {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("widget source must parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
+        let mut gen = VueGenerator::new().with_select_markers(true);
+        gen.generate(&widget).expect("generate SFC")
+    }
+
     /// PLAN-018：`icon (name: "iconfile:system-monitor")` → 双主题位图
     /// <img> 对（浅表常显 + 深表 .dark 切换）+ SFC 追加切换规则；
     /// 纯 lucide 名照旧推导组件不受影响。
@@ -23322,9 +23351,11 @@ widget IconProbe {
     /// （归父元素）。
     #[test]
     fn plan646_vue_emits_data_auto_markers() {
-        // dev 运行面开关（nextest 每测试一进程，env 设置无串扰）。
-        std::env::set_var("AUTOUI_SELECT_MARKERS", "1");
-        let sfc = gen_sfc_from_widget_src(
+        // fix-ui-tier：改走显式 builder 开关（原 set_var AUTOUI_SELECT_MARKERS
+        // 依赖 nextest 每测试一进程的隔离；cargo tu 单进程下串扰同进程全部
+        // 生成器构造——a2vue golden 23 测齐红实录）。dev 运行面的 env 读取
+        // 路径（构造器默认）保持不变、由生产侧另行守护。
+        let sfc = gen_sfc_from_widget_src_markers(
             r#"
 widget SelectMarkers {
     view {

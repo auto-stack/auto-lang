@@ -13,6 +13,11 @@
 #                      NO aavm since Plan 568 - aavm moved to its own taa tier)
 #   cargo tt         - transpiler tests
 #   cargo tb         - book listing tests (fast now: <0.4s each, Plan 568 measure)
+#   cargo tu         - UI codegen tier (vue/jet/ark/rust generators, ~854 inline
+#                      tests). Bare cargo test = SINGLE process on purpose: the
+#                      per-test WidgetRegistry rebuild tax (~1.2s) is paid once
+#                      for the whole tier instead of per nextest process
+#                      (fix-ui-tier 2026-09-30; daily tier excludes ui_gen::)
 #   cargo taa        - AAVM/AA2R self-hosting tier (auto/lib + aavm2 + a2r).
 #                      Run ONLY when aavm code changed - trigger conditions &
 #                      scope map in AGENTS.md. Bare = full set; append a filter
@@ -82,6 +87,14 @@ tf = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test 
 tv = "nextest run -p auto-lang --lib --profile tv"
 tt = "nextest run -p auto-lang --lib --features test-trans"
 tb = "nextest run -p auto-lang --lib --features test-book"
+# fix-ui-tier(2026-09-30): UI 代码生成档(vue/jet/ark/rust 四生成器内联测试,
+# ~854 例)。刻意用裸 cargo test(单进程 libtest 线程并行)而非 nextest:
+# 本族几乎每例都走 VueGenerator::new_shadcn() → WidgetRegistry::with_defaults()
+# (~1.2s 构建税),nextest 每测试一进程使 OnceLock 缓存逐例失效(实测日常档
+# 6250 测试秒几乎全在此);单进程下 setup 全档只付一次。纯函数代码生成测试
+# 无进程级全局态/重内存,单进程安全(重内存测试全在 taa 档,heavy_gate 亦
+# 不在本族)。日常档(default-filter)已排除 ui_gen::,tf 批量档仍全覆盖。
+tu = "test -p auto-lang --lib --features ui-iced ui_gen::"
 # Plan 568: AAVM/AA2R 专属档(独立空 feature,PLAN-700 起不再 imply 语料档;
 # full 配置含 1M churn 与
 # 全部重测试,无 XL 排除——裸跑=aavm 全集兜底,附带日常面)。仅当改动触及

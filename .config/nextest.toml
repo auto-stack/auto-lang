@@ -23,8 +23,13 @@
 #   无截止 accept/join 挂起曾把整跑无限卡死(双 run 现行实录)。日常档合法
 #   长测试 p508 内嵌重建 ~44s,60s 警告/120s 终止不误伤(e4 三臂最坏 90s 已由
 #   体内 recv_timeout 30s 定界,正常 <1s)。
+# fix-ui-tier(2026-09-30): ui_gen:: 整族移出日常档,归新 `cargo tu` 档——
+#   854 个代码生成测试每进程重付注册表构建税(nextest 每测试一进程,
+#   OnceLock 缓存失效;实测日常档 6250/7900 测试秒在此族),tu 用单进程
+#   libtest 使 setup 全档只付一次。tf 面(nextest-full.toml)不动=批量
+#   回归仍全覆盖;ui::(iced 运行时,均摊 0.28s/测)留日常档。
 [profile.default]
-default-filter = "not test(str_churn_bounded_large) and not test(aavm2_t3_tower_milestone) and not test(vm_file_tests::) and not test(cookbook_vm_tests::) and not test(conformance_tests::) and not test(widgets_gallery_all_front_pages_compile)"
+default-filter = "not test(str_churn_bounded_large) and not test(aavm2_t3_tower_milestone) and not test(vm_file_tests::) and not test(cookbook_vm_tests::) and not test(conformance_tests::) and not test(widgets_gallery_all_front_pages_compile) and not test(ui_gen::)"
 
 [profile.default.slow-timeout]
 period = "60s"

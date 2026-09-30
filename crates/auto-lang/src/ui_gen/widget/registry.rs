@@ -81,19 +81,18 @@ impl WidgetRegistry {
                 .collect::<String>()
                 .to_lowercase()
         };
-        // schema 元素 canonical 折叠键 → VueEntry
-        let mut entries: Vec<(String, VueEntry)> = Vec::new();
+        // schema 元素 canonical 折叠键 → VueEntry（fix-ui-tier：HashMap 直查
+        // 替代逐 widget 线性 find——with_defaults 每进程重建时 O(widgets×schema)
+        // 折叠扫描是 1.2s 构建税的大头；or_insert 保原 Vec.find 的首键胜出语义）
+        let mut entries: HashMap<String, VueEntry> = HashMap::new();
         for (tag, meta) in &schema.meta {
             if let Some(v) = &meta.vue {
-                entries.push((
-                    fold(tag),
-                    VueEntry {
-                        component: v.component.clone(),
-                        import: v.import.clone(),
-                        extras: v.extras.iter().map(|s| s.to_string()).collect(),
-                        npm: v.npm.clone(),
-                    },
-                ));
+                entries.entry(fold(tag)).or_insert(VueEntry {
+                    component: v.component.clone(),
+                    import: v.import.clone(),
+                    extras: v.extras.iter().map(|s| s.to_string()).collect(),
+                    npm: v.npm.clone(),
+                });
             }
         }
         for (_, spec) in self.widgets.iter_mut() {
@@ -105,7 +104,7 @@ impl WidgetRegistry {
                     schema
                         .resolve_tag(k)
                         .and_then(|(canon, def)| {
-                            entries.iter().find(|(t, _)| *t == fold(canon)).map(|(_, e)| {
+                            entries.get(&fold(canon)).map(|e| {
                                 // Plan 437 P1:props 契约随 vue 映射一并落库 ——
                                 // 声明名即 vue 属性名(kebab),发射侧(生成器)
                                 // 遍历此映射,实现与声明不再分离。
@@ -137,20 +136,26 @@ impl WidgetRegistry {
         // 元素（command 家族首例——此前 backends web:"none" 使它们压根没有
         // spec）在此补建 spec：上方 overlay 只更新既有 spec，缺 spec 时映射
         // 落空，is_backend_supported 恒 false，标签永远降级为无交互 stub。
+        // fix-ui-tier：既有 spec 覆盖的折叠键一次性预计算为 HashSet，逐 tag
+        // O(1) 查替代原 O(schema×widgets×aliases) 全量扫描；新 spec 登记
+        // 时增量入集，精确复刻原"逐 tag 重扫 widgets（含本循环新注册者）"
+        // 的增量可见语义。
+        let mut covered: std::collections::HashSet<String> = self
+            .widgets
+            .values()
+            .flat_map(|spec| {
+                std::iter::once(&spec.name).chain(spec.aliases.iter()).map(|k| {
+                    schema
+                        .resolve_tag(k)
+                        .map(|(canon, _)| fold(canon))
+                        .unwrap_or_else(|| fold(k))
+                })
+            })
+            .collect();
         for (tag, meta) in &schema.meta {
             let Some(v) = &meta.vue else { continue };
             let folded = fold(tag);
-            let exists = self.widgets.values().any(|spec| {
-                std::iter::once(&spec.name)
-                    .chain(spec.aliases.iter())
-                    .any(|k| {
-                        schema
-                            .resolve_tag(k)
-                            .map(|(canon, _)| fold(canon) == folded)
-                            .unwrap_or_else(|| fold(k) == folded)
-                    })
-            });
-            if exists {
+            if covered.contains(&folded) {
                 continue;
             }
             // ElementDef 承载 props/allows_children（ElementMeta 只有家族面）。
@@ -183,6 +188,11 @@ impl WidgetRegistry {
                 },
             );
             self.register(spec);
+            // 新 spec 覆盖的折叠键增量入集（复刻原全量重扫的增量可见语义）
+            covered.insert(folded);
+            for a in &meta.aliases {
+                covered.insert(fold(a));
+            }
         }
     }
 

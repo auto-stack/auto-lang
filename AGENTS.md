@@ -65,13 +65,20 @@ All AI coding assistants working in this repository must strictly adhere to the 
     - 开发迭代：`cargo t <module_name>`（如 `cargo t iced` 或 `cargo t ui`）
     - **复审门禁 = 分级门禁（fix-test-tiering，2026-09-30 裁定）**：复审/合入前在 plan
       worktree 跑**裸 `cargo t`**（全日常面）+ 触面档：VM/编译器→`cargo tv`、trans→
-      `cargo tt`、book→`cargo tb`、碰 aavm 触发路径→按 §AAVM/AA2R 作用域映射跑 `taa`。
+      `cargo tt`、book→`cargo tb`、**UI 代码生成（`ui_gen/**` 四生成器）→`cargo tu`**、
+      碰 aavm 触发路径→按 §AAVM/AA2R 作用域映射跑 `taa`。
       **`cargo tf` 不再是 per-plan 复审门禁**——已改判为**批量回归档**：merge 收尾时
       到期判定（计划号 %5 落地，或 >48h 且期间有合并——L0 `fix-*` 计入；收据
       `docs/plans/.last-batch-regression.json`，缺失即到期）后由 `/auto-plan:regress`
       技能在**主检出单实例**执行（Plan 466 全量语义保留：1M churn + 语料族 + 画廊围栏）。
       依据：tf 是机器独占负载（内嵌 cargo build + ~800s 零缓存围栏 + 全池测试进程），
       多 agent 并行 worktree 各跑 tf 必然资源互毁（2026-09-30 实录）。
+    - **`cargo tu` = UI 生成档（fix-ui-tier 2026-09-30）**：`ui_gen::` 整族已从日常档
+      default-filter 移除（854 例 × 每进程 ~1.2s 注册表构建税曾占日常档 6250/7900 测试秒）；
+      tu 刻意用**单进程 libtest**——`WidgetRegistry::with_defaults()` 的 OnceLock 在单进程内
+      全档只建一次。纯函数代码生成测试无进程级全局态/重内存，单进程安全；tu 无 nextest
+      slow-timeout 保护，新加入的 ui_gen 测试须自带截止时间（网络/等待类不得入此族）。
+      tf 批量档对 ui_gen 仍全覆盖（nextest-full 不排除）。
     - **并行纪律**：多 agent 并行时，worktree 内只跑 `cargo check` / scoped `t` / `tv`
       级负载；全量档（`tf`/`ta`/`taa`/`t3`）一律主检出单实例串行。
     - **AAVM 专项（Plan 568）**：改 VM/编译器的复审随身跑 `cargo tv`（PLAN-700 语料三族，
@@ -114,11 +121,12 @@ review/fold 前无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜�
 
 | 档位 | 适用场景 | 测试数 | 实测耗时 | 内存 |
 |---|---|---|---|---|
-| `cargo t` | 日常快速回归 + **per-plan 复审门禁**（1M churn + 语料族 + 画廊围栏排除，PLAN-700/fix-test-tiering） | 5527（=tf−语料162 推算） | 65s（2026-09-06 实测；7 预存红 564-Q6 在案） | 轻池 <50MB/测 |
+| `cargo t` | 日常快速回归 + **per-plan 复审门禁**（1M churn + 语料族 + 画廊围栏 + ui_gen 排除，PLAN-700/fix-tiering 系） | 4892（=5745−ui_gen 854；2026-09-30） | **62s**（fix-ui-tier 实测 2026-09-30，轻度竞争；e4 确定性红 P707-R1 占 30s——其修复后预计 ~32s） | 轻池 <50MB/测 |
 | `cargo tf` | **批量回归档**（`/auto-plan:regress` 触发，主检出单实例；含 1M churn + 语料族 + 画廊围栏，PLAN-700；fix-test-tiering 2026-09-30 起**非 per-plan 门禁**） | 5689（2026-09-24 实测） | 77.2s（Plan 564）+语料段 ~4s（tv 同源实测）；画廊围栏冷态 ~800s 另计（每进程全量重编，无跨进程缓存） | ≤2GB 预算 |
 | `cargo tv` | 改 VM/编译器后定向语料回归——filter 档（profile tv）与 t/tf 同二进制零重编（**不含 aavm**；PLAN-700） | 162 | 3.95s（2026-09-24 实测） | 同日常档 |
 | `cargo tt` | 改 transpiler 后 | 3786（trans 增量 ~360） | 43s（冷编译另计 ~1min） | 轻池 |
 | `cargo tb` | 改 book/文档后 | 3494（book 增量 69，单测 <0.4s——旧"5-7s/测"注释已过时） | 24s | 轻池 |
+| `cargo tu` | 改 UI 代码生成后（`ui_gen/**`：vue/jet/ark/rust 四生成器；fix-ui-tier 2026-09-30 从日常档析出） | 856（内联，2 ignored） | **测试段 0.85s**（单进程 libtest 实测 2026-09-30；warm 全档含 nextest→libtest 零重编切换 ~29s 内）；1 预存红=a2vue desktop 金样（4f123a50e 在案四红之一） | 轻池（无重内存/无全局态；tu 档内**禁止 env set_var 类进程级全局测试**——plan646 改 builder 前车之鉴） |
 | `cargo taa` | **仅** aavm 改动后（触发条件/作用域见上） | 3600（其中 aavm 21，XL 9 个 78-303s/个） | 182s（-j6 实测；564 组限流合入后 XL 串行将更长）。P574 后 Windows 本地：双重解释器 12 测试 cfg_attr 跳过（607 skipped），~24s，唯一余红=charts_gallery 预存 | XL 单测 0.8-1.2GB；并发受 jobs 限制 |
 | `cargo ta` | 终极全量（VM+aavm+trans+book+1M churn） | 4023 | 407s（-j6 实测） | 同上 |
 | `cargo th` | 改 HTTP 服务后（真 TCP，串行） | 20 | ~50s（本机实测 ≥3 环境相关红，归因见 plan 568 T7；fix-test-tiering 2026-09-30 后 back_proxy 固定端口族（39xx/40xx 撞 Hyper-V 保留段 WSAEACCES）已改 OS 临时分配清零，plan707 帧时序断言并行负载下偶发 flake 在案=4f123a50e） | 轻（真 TCP 端口） |
@@ -135,6 +143,7 @@ review/fold 前无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜�
 - `cargo tv` - 语料筛选档（nextest `--profile tv` 筛语料三族，与 t/tf 同二进制零重编，PLAN-700）——纯 .at 语料 golden，**不含 aavm**（aavm 在 `taa` 档）
 - `cargo tt` - Transpiler tests (`--features test-trans`)
 - `cargo tb` - Book listing tests (`--features test-book`)
+- `cargo tu` - UI codegen tier (vue/jet/ark/rust generator inline tests; **bare cargo test = single process on purpose** so the ~1.2s WidgetRegistry setup is paid once per tier, not per nextest process; fix-ui-tier 2026-09-30, daily tier excludes `ui_gen::`)
 - `cargo taa` - AAVM/AA2R self-hosting tier (`--features test-aavm`, PLAN-700 起独立空 feature)——**仅 aavm 改动后使用**，裸跑=全集兜底、追加滤串缩小作用域（如 `cargo taa aavm2_m5`）；触发条件/作用域映射/资源表见 §AAVM/AA2R Test Tier
 - `cargo ta` - All test suites combined (`--features test-aavm,test-trans,test-book`; full scale)
 - `cargo t3` - Milestone tier (大版本升级专用,Plan 532;频率最稀少档):全量
