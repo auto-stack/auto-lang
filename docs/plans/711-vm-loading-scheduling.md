@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-711
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived（2026-09-30，9/9 交付）
 # PLAN-708 r3 收窄移出件的承接计划（2026-09-30 用户裁定"M 档单独立项"）。
 # 设计依据：docs/design/autoui/vm-loading-responsiveness.md（proposed）+ 708-baseline/decision 全部冻结裁决。
 # r1（2026-09-30）：骨架按 /auto-plan:new 完整化为执行契约——承接清单展开为 9 个可执行任务（T-03..T-12），
@@ -387,6 +387,15 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 - T-07'：设计文档 §10 实施对照表——§3-6 契约（通道语义/取消清理/凭据/帧通知/computed 防护）单执行者先行交付实证；§7 worker 线程边界 proposed 保持（唯一架构跃迁面）；AC-08 满足。
 - **计划 9/9 任务全部交付**（T-09 为 wave-1+显式登记形态）——进入 execution_done 前的最后核对：全任务勾选 ✓、AC 映射（AC-04..08/10/11/12余/13 实机+单测证据在案）、SD-02/04/05 拟议待 review 冻结。**下一步=execution_done → /auto-plan:review（独立复审）**。
 - `next: /auto-plan:review（独立复审，新门禁口径）→ merge。`
+
+### 2026-09-30 work 收口（execution_done）
+
+- `stage: work` | `plan_id: PLAN-711` | `plan_revision: 1` | `outcome: pass` | `code_commit: worktree 5017ce8af（9/9 任务交付）`。
+- 终检（当前提交）：裸 cargo t 4906 跑满 4894 绿 + 3 并行抖动单跑全过（plan484 streaming/plan502 m3/plan707_wait——后两者既有抖动档案）= **真实红仅 9 已知预存（musk p053/p054×6、plan606、projector、e4），零新红**；tv 162/162。触面：plan711 族 14+plan437/484/492/498/499/502/536/537/632/643/633/702/705/707/708/memo/outlet/vm_bridge 全绿（本轮各节取证）。
+- 任务全景：T-11（CPU 可续跑片+AC-13 假成功修复）→ T-03（Init demand 登记簿/代际/取消）→ T-04（帧通知泵+R-1 闭环+D-2 校准）→ T-05（骨架/失败占位+实机）→ T-12（DataTable/FileTree memo 修复+实机）→ T-06余/T-08（观测面+F-1+24 例迁移）→ Q-05 解码（零设计修订）→ T-09 wave-1（711-runtime.md）→ T-07'（设计 §10 对照）。
+- 阻塞：无（Q-05 关闭；T-09 wave-2 格显式登记交终审裁定）。
+- Spec delta：SD-02/04/05 维持拟议，待 review 冻结、merge 写回。
+- `next: /auto-plan:review（独立复审）→ merge（含 tf 批量回归到期判定：711%5=1 非整除→按 >48h 且期间有合并判定，首跑归 /auto-plan:regress 主检出）。`
 - `next: T-05 骨架/完成/失败显示（Q-05 候选裁定 + 完成语义 MCP/展示缓存版本链收口）`。
 
 ## 10. 待澄清事项
