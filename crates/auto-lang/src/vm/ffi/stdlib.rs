@@ -6848,9 +6848,11 @@ pub fn shim_sse_parse(chunk: String) -> Vec<String> {
 /// (稳态 ~数条 ESTABLISHED),超时兜底保证 task 必然终结。
 
 /// PLAN-705 T-03: get_json/post_json 的发射体（原 simple_http_json 的
-/// async 形态）。错误映射契约零变：传输/读体错误走 Err，由消费端
-/// check_async_http_result 包成 `{"error":..,"status":0}`；非 2xx 在此
-/// 包成 `{"error":"HTTP n","status":n}`（同旧实现）。
+/// async 形态）。PLAN-712 T-17 起契约分层：传输/读体错误走 Err，由消费端
+/// shim 重入臂转成**可捕获 VMError**（.at try/catch 可接——旧形态包成
+/// `{"error":..,"status":0}` 成功值是吞错点）；非 2xx 在此包成
+/// `{"error":"HTTP n","status":n}`（fetch().json() 同律：HTTP 错误状态
+/// 不 reject，值面可检视 `.status`）。
 async fn simple_http_json_async(
     method: String,
     url: &str,
@@ -6924,11 +6926,6 @@ fn shared_async_http_client() -> &'static reqwest::Client {
     })
 }
 
-/// Minimal JSON string escaper for error messages embedded in JSON objects.
-fn escape_json(s: &str) -> String {
-    s.replace('\\', r"\\").replace('"', r#"\""#).replace('\n', r"\n")
-}
-
 /// `auto.http.get_json(url) -> String` — GET, return body as string.
 /// Helper: check if a previously spawned async HTTP request has completed.
 /// Returns Some(body_string) if ready, None if still pending.
@@ -6938,11 +6935,20 @@ fn escape_json(s: &str) -> String {
 /// 错误 body 契约(`{"error":..,"status":0}`),让调用方拿到可解析对象。
 /// PLAN-705 T-02:内部改指统一 live-op 表——take 只消费 Completed,
 /// Pending(未完成)不删除条目。
-fn check_async_http_result(request_id: u64) -> Option<String> {
+/// 消费一个已完成 async HTTP json 请求的结果（take 语义，单次终结）。
+///
+/// PLAN-712 T-17（候选②）：**传输层失败改抛，不再吞成错误形状 body**——
+/// 旧契约把 `Err(e)`（连接拒绝/超时/DNS/队满）包成 `{"error":..,"status":0}`
+/// 字符串当成功值推回，`.at` 侧 try/catch 永不触发，坏数据静默入态（018
+/// 详情页「0 entries」实机实证）。新契约对齐浏览器 `fetch()`：**网络层失败
+/// = 可捕获异常**（handler 的 catch 分支可呈现可诊断错误）；**非 2xx 仍返回
+/// 错误形状值**（含 `.status` 字段，语料可检视——与 fetch().json() 的
+/// 「HTTP 错误状态不 reject」语义同律）。
+fn check_async_http_result(request_id: u64) -> Option<Result<String, String>> {
     crate::vm::ffi::async_http::take_live_op(request_id).map(|result| match result {
-        Ok(AsyncResult::Body(s)) => s,
-        Ok(_) => r#"{"error":"unexpected async result variant","status":0}"#.to_string(),
-        Err(e) => format!(r#"{{"error":"{}","status":0}}"#, escape_json(&e)),
+        Ok(AsyncResult::Body(s)) => Ok(s),
+        Ok(_) => Err("http: unexpected async result variant".to_string()),
+        Err(e) => Err(e),
     })
 }
 
@@ -7447,10 +7453,19 @@ pub fn shim_http_get_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     // check the pending request BEFORE popping — otherwise we eat the wrong
     // values off the stack and underflow.
     if let Some(req_id) = task.waiting_http_request_id {
-        if let Some(body) = check_async_http_result(req_id) {
-            // Result ready — push and return.
-            task.waiting_http_request_id = None;
-            return push_string_result(task, vm, body);
+        // PLAN-712 T-17：传输层失败 = 可捕获异常（.at try/catch 可接），
+        // 不再吞成 `{"error":..,"status":0}` 成功值（详情见
+        // check_async_http_result 文档）。
+        match check_async_http_result(req_id) {
+            Some(Ok(body)) => {
+                task.waiting_http_request_id = None;
+                return push_string_result(task, vm, body);
+            }
+            Some(Err(e)) => {
+                task.waiting_http_request_id = None;
+                return Err(VMError::RuntimeError(format!("Http.get_json: {e}")));
+            }
+            None => {}
         }
         // Still pending — yield again.
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -7474,9 +7489,17 @@ pub fn shim_http_get_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 pub fn shim_http_post_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Re-entry check BEFORE popping args (see shim_http_get_json for rationale).
     if let Some(req_id) = task.waiting_http_request_id {
-        if let Some(resp) = check_async_http_result(req_id) {
-            task.waiting_http_request_id = None;
-            return push_string_result(task, vm, resp);
+        // PLAN-712 T-17：传输层失败 = 可捕获异常（同 get_json）。
+        match check_async_http_result(req_id) {
+            Some(Ok(resp)) => {
+                task.waiting_http_request_id = None;
+                return push_string_result(task, vm, resp);
+            }
+            Some(Err(e)) => {
+                task.waiting_http_request_id = None;
+                return Err(VMError::RuntimeError(format!("Http.post_json: {e}")));
+            }
+            None => {}
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -7500,9 +7523,17 @@ pub fn shim_http_post_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 pub fn shim_http_put_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Re-entry check BEFORE popping args (see shim_http_get_json for rationale).
     if let Some(req_id) = task.waiting_http_request_id {
-        if let Some(resp) = check_async_http_result(req_id) {
-            task.waiting_http_request_id = None;
-            return push_string_result(task, vm, resp);
+        // PLAN-712 T-17：传输层失败 = 可捕获异常（同 get_json）。
+        match check_async_http_result(req_id) {
+            Some(Ok(resp)) => {
+                task.waiting_http_request_id = None;
+                return push_string_result(task, vm, resp);
+            }
+            Some(Err(e)) => {
+                task.waiting_http_request_id = None;
+                return Err(VMError::RuntimeError(format!("Http.put_json: {e}")));
+            }
+            None => {}
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -7526,9 +7557,17 @@ pub fn shim_http_put_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 pub fn shim_http_delete_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Re-entry check BEFORE popping args (see shim_http_get_json for rationale).
     if let Some(req_id) = task.waiting_http_request_id {
-        if let Some(resp) = check_async_http_result(req_id) {
-            task.waiting_http_request_id = None;
-            return push_string_result(task, vm, resp);
+        // PLAN-712 T-17：传输层失败 = 可捕获异常（同 get_json）。
+        match check_async_http_result(req_id) {
+            Some(Ok(resp)) => {
+                task.waiting_http_request_id = None;
+                return push_string_result(task, vm, resp);
+            }
+            Some(Err(e)) => {
+                task.waiting_http_request_id = None;
+                return Err(VMError::RuntimeError(format!("Http.delete_json: {e}")));
+            }
+            None => {}
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -7555,9 +7594,17 @@ pub fn shim_http_delete_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 pub fn shim_http_patch_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Re-entry check BEFORE popping args (see shim_http_get_json for rationale).
     if let Some(req_id) = task.waiting_http_request_id {
-        if let Some(resp) = check_async_http_result(req_id) {
-            task.waiting_http_request_id = None;
-            return push_string_result(task, vm, resp);
+        // PLAN-712 T-17：传输层失败 = 可捕获异常（同 get_json）。
+        match check_async_http_result(req_id) {
+            Some(Ok(resp)) => {
+                task.waiting_http_request_id = None;
+                return push_string_result(task, vm, resp);
+            }
+            Some(Err(e)) => {
+                task.waiting_http_request_id = None;
+                return Err(VMError::RuntimeError(format!("Http.patch_json: {e}")));
+            }
+            None => {}
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -10536,19 +10583,22 @@ mod tests {
         assert_eq!(resolve_http_base_url("/api/x"), "/api/x");
     }
 
-    /// PLAN-027 缺陷 C:Err 条目必须映射为可解析错误 body——take 已在
+    /// PLAN-027 缺陷 C:Err 条目必须**可解析地终结**——take 已在
     /// check 内发生,返回 None 会让 shim 重入分支判"仍在等待"而永远挂起。
     /// PLAN-705 T-02:登记→完成(Err)→take→单次终结走统一 live-op 协议。
+    /// PLAN-712 T-17:Err 条目的消费形态从「包成错误 body 字符串」改判
+    /// 「**Err 透传**」——shim 重入臂转可捕获 VMError（.at try/catch 可接），
+    /// 本测钉住 Err 形态本身（body 包装退役）。
     #[test]
-    fn p027_check_async_result_err_maps_to_error_body() {
+    fn p027_check_async_result_err_resolves_once_as_err() {
         let id = alloc_async_id();
         crate::vm::ffi::async_http::register_live_op(id);
         assert!(crate::vm::ffi::async_http::complete_live_op(
             id,
             Err("conn refused".to_string())
         ));
-        let body = check_async_http_result(id).expect("Err entry must resolve, not None");
-        assert!(body.contains("\"error\"") && body.contains("conn refused"), "got: {body}");
+        let res = check_async_http_result(id).expect("Err entry must resolve, not None");
+        assert!(matches!(res, Err(ref e) if e.contains("conn refused")), "got: {res:?}");
         // 条目已被消费(二次 check 无结果)。
         assert!(check_async_http_result(id).is_none());
     }

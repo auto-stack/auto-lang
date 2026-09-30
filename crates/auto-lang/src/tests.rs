@@ -412,6 +412,10 @@ mod plan702_segment_tests;
 // 累计护栏 + bridge 有界泵/写队列 D-2 纪律）。
 #[cfg(test)]
 mod plan711_cpu_slice_tests;
+// PLAN-712 T-17（候选②）：Http.*_json 失败语义分层（传输失败 = 可捕获
+// 异常 / 非 2xx 保持值面）——018 详情页吞错链的语义层回归锁。
+#[cfg(test)]
+mod plan712_http_error_semantics_tests;
 // PLAN-711 T-03：Init demand 登记簿与代际生命周期（AC-04 一次登记 +
 // 代际取消一次清理 + 页→child 依赖序 + Missing/Failed 终态 + 渲染路径
 // 登记化集成）。

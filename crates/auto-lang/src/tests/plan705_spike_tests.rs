@@ -1182,21 +1182,64 @@ fn slow() str {
 
 /// T-07 (2) 线程数量稳定：M 个 client job 前后进程线程数不变（固定
 /// async runtime，零每请求线程；AC-03 数值探针，Windows 面）。
+///
+/// PLAN-712 T-17：mock 上游补**读全请求头**——accepted 流在 Windows 继承
+/// listener 的 nonblocking 标志，裸 read 立即 WouldBlock（旧代码丢弃该错、
+/// 盲等 40ms 就回写关连接）= 请求未收完即关的竞态。传输失败被旧吞错契约
+/// 掩盖（200 + 错误 body 假绿）；候选②让传输失败冒泡 500 后该竞态现形
+/// （worktree 3/3 稳定复现）。修 mock：阻塞读至头终结符，保留 40ms 慢上游
+/// 语义（线程重叠测量前提）。
+#[cfg(windows)]
+fn read_request_head_blocking(stream: &mut std::net::TcpStream) {
+    use std::io::Read;
+    let _ = stream.set_nonblocking(false);
+    let mut buf = [0u8; 4096];
+    let mut got = 0;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while got < buf.len() && std::time::Instant::now() < deadline {
+        match stream.read(&mut buf[got..]) {
+            Ok(0) => return,
+            Ok(n) => {
+                got += n;
+                if buf[..got].windows(4).any(|w| w == b"\r\n\r\n") {
+                    return;
+                }
+            }
+            Err(_) => return,
+        }
+    }
+}
+
 #[cfg(windows)]
 #[test]
 fn plan705_client_thread_count_stable_under_load() {
     let server_port = ephemeral_port();
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream");
-    let upstream_port = listener.local_addr().unwrap().port();
-    let up = std::thread::spawn(move || {
-        // 仅预热 1 连接（1 请求）——join 等待面必须与请求量一致。
-        for _ in 0..1 {
-            let Ok((mut stream, _)) = listener.accept() else { break };
-            let mut buf = [0u8; 4096];
-            let _ = std::io::Read::read(&mut stream, &mut buf);
-            std::thread::sleep(std::time::Duration::from_millis(60));
-            let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
-            let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
+    // PLAN-712 T-17：测试复活——旧形态 handler 烤的是预热上游（listener1）
+    // 的端口，而 listener1 随预热线程 join 即 drop；负载相 8 个上游 POST
+    // 全部打到死端口，旧吞错契约（传输失败 → 错误 body → 200 假绿）把
+    // 这一切掩盖，up2 无指向空转——测试从未真正测过「并发慢上游下的线程
+    // 稳定」。候选②让传输失败冒泡 500 后该空转现形。修复：预热与负载
+    // 同源指向 up2（活上游 + 40ms 慢应答语义保留），up1 退役。
+    let listener2 = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream2");
+    let upstream_port = listener2.local_addr().unwrap().port();
+    // 连接数 ≤ 请求数（reqwest 池对并发 job 复用连接）——accept 循环以
+    // 停机标志收口，不假设固定次数。
+    let up2_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let up2_flag = up2_done.clone();
+    let up2 = std::thread::spawn(move || {
+        let _ = listener2.set_nonblocking(true);
+        while !up2_flag.load(std::sync::atomic::Ordering::SeqCst) {
+            match listener2.accept() {
+                Ok((mut stream, _)) => {
+                    read_request_head_blocking(&mut stream);
+                    std::thread::sleep(std::time::Duration::from_millis(40));
+                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
+                    let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
+                }
+                Err(_) => {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+            }
         }
     });
     start_plan705_server(
@@ -1209,34 +1252,11 @@ fn fast() str {
         .replace("UP", &upstream_port.to_string()),
         server_port,
     );
-    // 预热（runtime/client 池建立后的稳态为基线）。
+    // 预热（runtime/client 池建立后的稳态为基线）——与负载同上游。
     let _ = http_get_raw(server_port, "/api/fast");
-    up.join().expect("upstream warmup");
     std::thread::sleep(std::time::Duration::from_millis(200));
     let before = current_process_thread_count();
     assert!(before > 0, "线程枚举失败");
-    let listener2 = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream2");
-    // 连接数 ≤ 请求数（reqwest 池对并发 job 复用连接）——accept 循环以
-    // 停机标志收口，不假设固定次数。
-    let up2_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let up2_flag = up2_done.clone();
-    let up2 = std::thread::spawn(move || {
-        let _ = listener2.set_nonblocking(true);
-        while !up2_flag.load(std::sync::atomic::Ordering::SeqCst) {
-            match listener2.accept() {
-                Ok((mut stream, _)) => {
-                    let mut buf = [0u8; 4096];
-                    let _ = std::io::Read::read(&mut stream, &mut buf);
-                    std::thread::sleep(std::time::Duration::from_millis(40));
-                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
-                    let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
-                }
-                Err(_) => {
-                    std::thread::sleep(std::time::Duration::from_millis(5));
-                }
-            }
-        }
-    });
     let mut clients = Vec::new();
     eprintln!("[probe] load phase start");
     for i in 0..8 {
@@ -1249,8 +1269,8 @@ fn fast() str {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     for c in clients {
-        let (status, _) = c.join().expect("client");
-        assert_eq!(status, 200);
+        let (status, body) = c.join().expect("client");
+        assert_eq!(status, 200, "上游活路径下必须 200，得到 {status} {body:?}");
     }
     eprintln!("[probe] all clients done");
     std::thread::sleep(std::time::Duration::from_millis(500));

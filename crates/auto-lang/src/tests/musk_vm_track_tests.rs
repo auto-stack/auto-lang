@@ -4032,9 +4032,16 @@ mod musk_vm_track_p080_http_web_family {
 
     #[test]
     fn http_get_rewrites_to_json_recipe() {
+        // PLAN-712 T-17：try 包裹——传输失败自候选②起为可捕获异常（相对
+        // URL 无 base = builder error），平价断言只看反汇编内的 native 名，
+        // 运行必须对失败免疫。
         let text = disasm_text("fn main() {
-    let data = Http.get(\"/api/workspace/list\")
-    print(data.workspaces)
+    try {
+        let data = Http.get(\"/api/workspace/list\")
+        print(data.workspaces)
+    } catch (e) {
+        print(\"err\")
+    }
 }");
         assert!(text.contains("auto.http.get_json"), "get_json missing:
 {text}");
@@ -4049,7 +4056,11 @@ mod musk_vm_track_p080_http_web_family {
     #[test]
     fn http_post_two_args_rewrites() {
         let text = disasm_text("fn main() {
-    Http.post(\"/api/x\", { \"a\": 1 })
+    try {
+        Http.post(\"/api/x\", { \"a\": 1 })
+    } catch (e) {
+        print(\"err\")
+    }
 }");
         assert!(text.contains("auto.http.post_json"), "post_json missing:
 {text}");
@@ -4064,9 +4075,14 @@ mod musk_vm_track_p080_http_web_family {
     #[test]
     fn http_get_json_alias_rewrites_same() {
         // ts_adapter 语义：get_json 与 get 同映射（双端一致取 JSON body）。
+        // try 包裹同上（PLAN-712 T-17 传输失败改抛）。
         let text = disasm_text("fn main() {
-    let d = Http.get_json(\"/api/x\")
-    print(d)
+    try {
+        let d = Http.get_json(\"/api/x\")
+        print(d)
+    } catch (e) {
+        print(\"err\")
+    }
 }");
         assert!(text.contains("auto.http.get_json"), "get_json missing:
 {text}");
@@ -4075,7 +4091,11 @@ mod musk_vm_track_p080_http_web_family {
     #[test]
     fn http_delete_rewrites() {
         let text = disasm_text("fn main() {
-    Http.delete(\"/api/x\")
+    try {
+        Http.delete(\"/api/x\")
+    } catch (e) {
+        print(\"err\")
+    }
 }");
         assert!(text.contains("auto.http.delete_json"), "delete_json missing:
 {text}");

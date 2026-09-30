@@ -4403,6 +4403,14 @@ fn build_dynamic_component_inner(
                 let module_path = resolve_module_path(base_dir, &page_module);
                 let Some(module_path) = module_path else { continue };
                 if let Ok(module_code) = std::fs::read_to_string(&module_path) {
+                    // PLAN-037: 路由页读点同过前缀化 overlay——PLAN-712 T-17：
+                    // 此前此处**裸读**（全部模块读点中唯一未包 apply 的），
+                    // routes 页（pages/*.at）的相对 `/api/` 字面量不被改写 →
+                    // fetch 解析到 app 自身 back origin（死端口）→ get_json
+                    // 吞错返空 = 018 详情页「0 entries」（实机实证：顶层
+                    // book_store.at 前缀生效、书架 2 REQ 到 proxy；pages/ 页
+                    // 零 REQ + 86ms 秒拒）。
+                    let module_code = crate::back_prefix::apply(&module_path, module_code);
                     let mod_session = CompilerSession::ui();
                     let mut mod_parser = Parser::from(module_code.as_str()).with_session(mod_session);
                     if let Ok(mod_ast) = mod_parser.parse() {
