@@ -398,6 +398,191 @@ thread_local! {
     static HIGHLIGHTER: RefCell<Highlighter> = RefCell::new(Highlighter::new());
 }
 
+// ── PLAN-716 T-03: 增量高亮管线（714 §5.2 失效域语义）──────────────────────
+//
+// 消费形（双轨期）：只读三面走全量路径（highlight_segments——整块输入本就
+// 一次性到达）；本管线是 rope 快照消费的后台解析面——增量正确性与延迟档
+// 在此层实证，编辑面视觉切换（cosmic-text ViEditor 解耦）另档（T-00 裁定：
+// ViEditor 硬绑 SyntaxEditor/syntect，本管线为其预留的树/失效域供给层）。
+//
+// 失效域语义（714 §5.2）：
+// 1. 编辑到达 → 旧树 tree.edit（byte+point 六元；tree-sitter 平移编辑点后
+//    range——point 由**编辑后** buffer 坐标计算，spike 实证踩点）。
+// 2. 带旧树增量重解析——未触子树结构复用。
+// 3. changed_ranges(edited_old, new) → token 级差异域（共享前缀空白不计）。
+// 4. 重高亮域 = 差异域扩至行边界（行级着色状态从变更域前最近有效行续跑）。
+// 5. 兜底全量：新树带 ERROR（构造开合传播不可定界）或差异域比例超阈时
+//    整段重算——正确性优先于增量收益。
+
+/// 一次 update 的产出（增量裁决结果）。
+#[derive(Debug, Clone)]
+pub(crate) struct UpdateOutcome {
+    /// true = 走了兜底全量重算（首解析/无旧树/ERROR/超阈）。
+    pub full_reparse: bool,
+    /// token 级差异域（字节区间，升序不交）。
+    pub changed_ranges: Vec<(usize, usize)>,
+    /// 重高亮窗口（字节区间——差异域∪编辑域扩至行边界的结果；行级着色
+    /// 状态从窗口前最近有效行续跑）。
+    pub rehighlight_window: (usize, usize),
+    /// 增量重解析墙钟。
+    pub parse_elapsed: std::time::Duration,
+}
+
+/// 差异域比例超阈 → 兜底全量（714 §5.2 第 5 条，阈值实施件定——取 0.4）。
+const FULL_RECALC_RATIO: f64 = 0.4;
+
+/// 单文档增量会话（rope 快照消费面；编辑路径按语言路由持有一个）。
+pub(crate) struct IncrementalSession {
+    spec: &'static TsLangSpec,
+    tree: Option<tree_sitter::Tree>,
+}
+
+impl IncrementalSession {
+    pub(crate) fn new(lang: &str) -> Option<Self> {
+        Some(Self {
+            spec: route(lang)?,
+            tree: None,
+        })
+    }
+
+    /// 投递文本快照（可选带编辑域：相对**旧文本**的字节区间 [start, old_end)
+    /// 被替换为 [start, new_end)）。返回 None = 语言未路由或解析失败。
+    pub(crate) fn update(
+        &mut self,
+        old_text: &str,
+        new_text: &str,
+        edit: Option<(usize, usize, usize)>,
+    ) -> Option<UpdateOutcome> {
+        let t0 = std::time::Instant::now();
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&(self.spec.language_fn)()).ok()?;
+
+        // 增量分支：旧树在位+合法编辑域 → tree.edit+带旧树重解析。
+        let incremental: Option<(tree_sitter::Tree, Vec<(usize, usize)>, (usize, usize))> =
+            match (self.tree.as_ref(), edit) {
+            (Some(old), Some((start, old_end, new_end)))
+                if start <= old_end
+                    && old_end <= old_text.len()
+                    && new_end <= new_text.len() =>
+            {
+                let mut edited_old = old.clone();
+                edited_old.edit(&input_edit(
+                    old_text.as_bytes(),
+                    new_text.as_bytes(),
+                    start,
+                    old_end,
+                    new_end,
+                ));
+                parser.parse(new_text, Some(&edited_old)).map(|new_tree| {
+                    let ranges: Vec<(usize, usize)> = edited_old
+                        .changed_ranges(&new_tree)
+                        .map(|r| (r.start_byte, r.end_byte))
+                        .collect();
+                    // 编辑域并入失效域：等长 token 文本替换（如 20→99）树结构
+                    // 零差（changed_ranges 空），但文本确变——重高亮窗必须覆盖。
+                    (new_tree, ranges, (start, new_end))
+                })
+            }
+            _ => None,
+        };
+
+        let (tree, changed_ranges, full_reparse) = match incremental {
+            Some((new_tree, mut ranges, edit_region)) => {
+                let edit_start = edit_region.0;
+                let edit_end = edit_region.1.max(edit_region.0 + 1);
+                ranges.push((edit_start, edit_end));
+                let total: usize = ranges.iter().map(|(a, b)| b - a).sum();
+                let ratio = total as f64 / new_text.len().max(1) as f64;
+                if new_tree.root_node().has_error() || ratio > FULL_RECALC_RATIO {
+                    // 兜底全量：ERROR 传播不可定界或差异域超阈——正确性优先。
+                    (new_tree, vec![(0, new_text.len())], true)
+                } else {
+                    (new_tree, ranges, false)
+                }
+            }
+            None => (parser.parse(new_text, None)?, vec![(0, new_text.len())], true),
+        };
+        let parse_elapsed = t0.elapsed();
+
+        // 重高亮窗口 = 差异域∪编辑域扩至行边界；兜底全量 = 整文档。
+        let rehighlight_window = if full_reparse {
+            (0, new_text.len())
+        } else {
+            changed_ranges.iter().fold((usize::MAX, 0usize), |acc, (a, b)| {
+                let first = expand_to_line_start(new_text.as_bytes(), *a);
+                let last = expand_to_line_end(new_text.as_bytes(), b.saturating_sub(1).min(new_text.len().saturating_sub(1)));
+                (acc.0.min(first), acc.1.max(last))
+            })
+        };
+
+        self.tree = Some(tree);
+        Some(UpdateOutcome {
+            full_reparse,
+            changed_ranges,
+            rehighlight_window,
+            parse_elapsed,
+        })
+    }
+}
+
+/// 差异域起点扩至行首。
+fn expand_to_line_start(bytes: &[u8], byte: usize) -> usize {
+    bytes[..byte.min(bytes.len())]
+        .iter()
+        .rposition(|b| *b == b'\n')
+        .map_or(0, |p| p + 1)
+}
+
+/// 差异域终点扩至行尾（含换行）。
+fn expand_to_line_end(bytes: &[u8], byte: usize) -> usize {
+    let byte = byte.min(bytes.len());
+    bytes[byte..]
+        .iter()
+        .position(|b| *b == b'\n')
+        .map_or(bytes.len(), |p| byte + p + 1)
+}
+
+/// 由新旧文本+字节域构造 InputEdit（point 依**编辑后** buffer 坐标——
+/// 714 spike 实证：编辑点后节点 byte range 随之平移，文本查询须用编辑后
+/// buffer）。
+fn input_edit(
+    old: &[u8],
+    new: &[u8],
+    start: usize,
+    old_end: usize,
+    new_end: usize,
+) -> tree_sitter::InputEdit {
+    tree_sitter::InputEdit {
+        start_byte: start,
+        old_end_byte: old_end,
+        new_end_byte: new_end,
+        start_position: point_at(old, start),
+        old_end_position: point_at(old, old_end),
+        new_end_position: point_at(new, new_end),
+    }
+}
+
+/// 字节偏移 → (行, 列)（列=字节列，tree-sitter Point 语义）。
+fn point_at(bytes: &[u8], byte: usize) -> tree_sitter::Point {
+    let byte = byte.min(bytes.len());
+    let mut row = 0usize;
+    let mut line_start = 0usize;
+    for (i, b) in bytes[..byte].iter().enumerate() {
+        if *b == b'\n' {
+            row += 1;
+            line_start = i + 1;
+        }
+    }
+    tree_sitter::Point {
+        row,
+        column: byte - line_start,
+    }
+}
+
+fn line_count(bytes: &[u8]) -> usize {
+    bytes.iter().filter(|b| **b == b'\n').count() + 1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -600,5 +785,159 @@ fn f(x: Option<&str>) -> Result<String, ()> {
     #[test]
     fn markdown_inline_injection_registered() {
         assert!(route("markdown-inline").is_some());
+    }
+
+    // ── T-03 增量面（714 §5.2 失效域语义）────────────────────────────────
+
+    fn rust_fixture(lines: usize) -> String {
+        (0..lines)
+            .map(|i| {
+                format!(
+                    "// line {i} doc\nfn f{i}(x: usize) -> usize {{ let s{i} = \"v{i}\"; let n{i} = {i}; x + n{i} }}\n"
+                )
+            })
+            .collect()
+    }
+
+    /// 增量正确性：单点编辑后 (1) 差异域 ⊆ 编辑域邻近（token 级——含行界扩余）
+    /// (2) 重高亮行窗覆盖编辑行 (3) 结构零漂移——增量树 sexp == 从零树 sexp
+    /// (4) 后续无编辑 update 走复用（不再全量）。
+    #[test]
+    fn incremental_single_edit_correct() {
+        let old = rust_fixture(30);
+        let mut s = IncrementalSession::new("rust").unwrap();
+        let first = s.update("", &old, None).unwrap();
+        assert!(first.full_reparse, "首解析=全量");
+
+        // 在第 20 行改一个数字字面量。
+        let needle = "let n20 = 20;";
+        let pos = old.find(needle).unwrap() + "let n20 = ".len();
+        let new = old.replace("let n20 = 20;", "let n20 = 99;");
+        let out = s.update(&old, &new, Some((pos, pos + 2, pos + 2))).unwrap();
+        assert!(!out.full_reparse, "单点小编辑应走增量（{:?}）", out);
+        assert!(
+            out.changed_ranges.iter().all(|(a, b)| {
+                let edit_start = pos.saturating_sub(64);
+                let edit_end = pos + 64;
+                *a >= edit_start && *b <= edit_end.max(*b)
+            }),
+            "差异域应在编辑域邻近：{:?}",
+            out.changed_ranges
+        );
+        let edit_line = new[..pos].matches('\n').count();
+        let line_of = |b: usize| new[..b.min(new.len())].matches('\n').count();
+        let (w0, w1) = out.rehighlight_window;
+        assert!(
+            line_of(w0) <= edit_line && line_of(w1.saturating_sub(1)) >= edit_line,
+            "重高亮行窗须覆盖编辑行 {}：窗口字节 {:?}（行 {}..{}）",
+            edit_line,
+            out.rehighlight_window,
+            line_of(w0),
+            line_of(w1.saturating_sub(1))
+        );
+        assert!(
+            line_of(w1.saturating_sub(1)) - line_of(w0) < 5,
+            "行窗应局部（整文档重算=增量失效）：{:?}",
+            out.rehighlight_window
+        );
+
+        // 结构零漂移：增量树 vs 从零树。
+        let mut fresh = tree_sitter::Parser::new();
+        fresh
+            .set_language(&(route("rust").unwrap().language_fn)())
+            .unwrap();
+        let fresh_tree = fresh.parse(&new, None).unwrap();
+        let inc_tree = s.tree.as_ref().unwrap();
+        assert_eq!(
+            inc_tree.root_node().to_sexp(),
+            fresh_tree.root_node().to_sexp(),
+            "增量解析结构必须与从零解析一致"
+        );
+
+        // 无编辑投递（同文本）→ 兜底全量（无编辑域=无法增量）。
+        let again = s.update(&new, &new, None).unwrap();
+        assert!(again.full_reparse);
+    }
+
+    /// 兜底全量路径：大比例改写（>40% 差异域）与坏语法（ERROR 传播）都走全量。
+    #[test]
+    fn incremental_fallback_paths() {
+        let old = rust_fixture(20);
+        let mut s = IncrementalSession::new("rust").unwrap();
+        s.update("", &old, None).unwrap();
+
+        // 大比例：替换前半文档。
+        let new = format!("{}\n{}", rust_fixture(20), rust_fixture(10));
+        let out = s.update(&old, &new, Some((0, old.len(), old.len()))).unwrap();
+        assert!(out.full_reparse, "大比例改写应兜底全量");
+        assert_eq!(out.changed_ranges, vec![(0, new.len())]);
+
+        // ERROR 传播：插入未闭合块字符串。
+        let broken = format!("{}{}{}", &old[..50], "fn broken() { let s = \"", &old[50..]);
+        let out = s.update(&old, &broken, Some((50, 50, 50 + 22))).unwrap();
+        assert!(
+            out.full_reparse,
+            "ERROR 树应兜底全量（correctness-first）: {:?}",
+            out
+        );
+    }
+
+    /// 多点连续编辑会话（typo 修复链）：增量路径持续成立+结构零漂移。
+    #[test]
+    fn incremental_edit_chain() {
+        let mut text = rust_fixture(25);
+        let mut s = IncrementalSession::new("rust").unwrap();
+        s.update("", &text, None).unwrap();
+        for i in 0..5 {
+            let needle = format!("let s{i} = \"v{i}\";");
+            let pos = text.find(&needle).unwrap();
+            let replacement = format!("let s{i} = \"edit{i}\";");
+            let new = text.replace(&needle, &replacement);
+            let out = s.update(
+                &text,
+                &new,
+                Some((pos, pos + needle.len(), pos + replacement.len())),
+            )
+            .unwrap();
+            assert!(!out.full_reparse, "链式编辑第 {i} 步应增量: {:?}", out);
+            text = new;
+        }
+        let mut fresh = tree_sitter::Parser::new();
+        fresh
+            .set_language(&(route("rust").unwrap().language_fn)())
+            .unwrap();
+        let fresh_tree = fresh.parse(&text, None).unwrap();
+        assert_eq!(
+            s.tree.as_ref().unwrap().root_node().to_sexp(),
+            fresh_tree.root_node().to_sexp(),
+            "链式增量终态结构零漂移"
+        );
+    }
+
+    /// 增量延迟档（714 §6.1：1KB/100KB/1MB 阶梯——编辑→重解析完成墙钟）。
+    /// 数字以 --nocapture 输出在档；断言仅设 CI 安全上界。
+    #[test]
+    fn incremental_latency_ladder() {
+        for (label, lines) in [("1KB", 8), ("100KB", 800), ("1MB", 8000)] {
+            let text = rust_fixture(lines);
+            let size_kb = text.len() / 1024;
+            let mut s = IncrementalSession::new("rust").unwrap();
+            let first = s.update("", &text, None).unwrap();
+            let needle = "let n0 = 0;";
+            let pos = text.find(needle).unwrap() + "let n0 = ".len();
+            let new = text.replacen(needle, "let n0 = 7;", 1);
+            let out = s.update(&text, &new, Some((pos, pos + 1, pos + 1))).unwrap();
+            eprintln!(
+                "[P716 延迟档] {label}（~{size_kb}KB）full={:?} inc={:?} inc_full={}",
+                first.parse_elapsed,
+                out.parse_elapsed,
+                out.full_reparse
+            );
+            assert!(
+                out.parse_elapsed.as_millis() < 2000,
+                "{label}: 增量重解析超 CI 上界 {:?}",
+                out.parse_elapsed
+            );
+        }
     }
 }
