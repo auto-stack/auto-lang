@@ -60,3 +60,7 @@
 ![中文深色脚本段落](./autoshell-website-review-2026-09-30/zh-scripts-dark.jpg)
 
 ![手机脚本段落](./autoshell-website-review-2026-09-30/zh-mobile-dark.jpg)
+
+## 用户反馈后的截图补充
+
+原图筛选过度已在 PLAN-713 r2 修正，两个原生总览图和 F1/F2/F3 图示均已加入。参见 [补充记录](./autoshell-modes-2026-09-30.md)。

@@ -9,7 +9,7 @@
 
 - 文档：语言指南、CLI、架构、特性、教程、releases（`docs/`，中文镜像 `zh/`）。
 - 书籍：byte-of-python / little-c / modern-c / rust / tapl / think-python / typescript / typescript-deepdive。
-- 应用介绍：AutoShell 的 EN/ZH 页面共用 `AutoShellLanding.vue`，按日常会话、数据管道、多行脚本、自动化和快速开始组织；版本、验证平台/日期和运行图来源随示例标注。`EvidenceImage.vue` 提供可键盘操作的截图放大；脚本标签支持方向键/Home/End、代码复制及样例下载，布局适配窄屏与深浅色主题（plan-713）。
+- 应用介绍：AutoShell 的 EN/ZH 页面共用 `AutoShellLanding.vue`，按日常会话、数据管道、多行脚本、自动化和快速开始组织；保留原生终端总览图与 F1/F2/F3 常见形式图示，分别说明原图和 PTY 记录重绘的来源；版本、验证平台/日期随示例标注。`EvidenceImage.vue` 提供可键盘操作的截图放大；脚本标签支持方向键/Home/End、代码复制及样例下载，布局适配窄屏与深浅色主题（plan-713）。
 - 内嵌 playground 页面（playground.md，CodeMirror 6），blocks/charts/ui/os 等专题页。
 - Playground Notes manifest 管线（Plan 581）：`prepare-content.js` 末段调 `scripts/build-playground-notes.mjs`，从仓内语料（vm-golden 460 / aavm 158 / books 围栏 634 / demo 28）确定性生成 `public/playground-data/notes.json`（gitignore 生成物，0.82MB 单文件；`--check` 幂等+计数断言供 CI 防采集回归）。
 - scripts/prepare-content.js 在 dev/build 前预处理内容；tests/ 为 Playwright e2e。

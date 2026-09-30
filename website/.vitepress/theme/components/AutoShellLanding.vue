@@ -18,9 +18,9 @@ onUnmounted(() => clearTimeout(copyTimer))
 const t = computed(() => zh.value ? {
   badge: 'AutoOS 应用 · Beta', title: '结构化 Shell',
   intro: '熟悉的日常命令，按字段处理的数据管道，还有可直接编辑运行的 Auto 脚本。交互式会话和 CLI 共用同一套执行引擎。',
-  start: '开始使用', source: '查看源码', meta: 'ash v0.1.0 · Windows 实测 · 2026-09-29',
+  start: '开始使用', source: '查看源码', meta: 'ash v0.1.0 · Windows 实测 · 2026-09-29/30',
   terminal: 'ash · 示例数据 users.json', zoom: '放大查看', close: '关闭', original: '打开原图', copy: '复制代码', copied: '已复制', copyFailed: '请选中代码复制',
-  nav: ['日常 Shell', '数据管道', '多行脚本', '自动化', '开始使用'],
+  nav: ['界面与模式', '日常 Shell', '数据管道', '多行脚本', '自动化', '开始使用'],
   facts: [
     { icon: '⌨️', title: '持续的交互会话', description: '目录、变量和别名在会话中延续；补全、历史和行内建议帮助你少打字。' },
     { icon: '↗', title: '按字段处理数据', description: '查询文件和 JSON，筛选、排序、投影；用 --json 将结果交给其他程序。' },
@@ -54,14 +54,14 @@ const t = computed(() => zh.value ? {
   launchLabels: ['交互式会话', '单条命令', '运行脚本'],
   launchHints: ['运行 ash，然后直接输入命令。', '用于脚本和其他程序的命令调用。', '将示例和 users.json 保存在同一目录。'],
   buildTitle: '从源码构建', buildNote: '构建需要 Rust 工具链，以及同级目录中的 auto-lang、auto-ai 和 auto-shell 仓库。请按源码仓库说明准备依赖；在 auto-shell/ash 中构建 CLI：',
-  evidenceNote: '本页展示依据 2026-09-29 的源码构建与实跑记录。AutoLang 网站的 v0.5 发布号与 ash v0.1.0 的程序版本分别标注。',
+  evidenceNote: '本页展示依据 2026-09-29/30 的源码构建与实跑记录。AutoLang 网站的 v0.5 发布号与 ash v0.1.0 的程序版本分别标注。',
   back: '全部应用', release: 'v0.5 发布专题',
 } : {
   badge: 'AutoOS application · Beta', title: 'The structured shell',
   intro: 'Everyday commands, pipelines that work with fields, and Auto scripts you can edit and run in your terminal. The interactive session and CLI share the same execution engine.',
-  start: 'Get started', source: 'View source', meta: 'ash v0.1.0 · Verified on Windows · 2026-09-29',
+  start: 'Get started', source: 'View source', meta: 'ash v0.1.0 · Verified on Windows · 2026-09-29/30',
   terminal: 'ash · sample data in users.json', zoom: 'Enlarge image', close: 'Close', original: 'Open original', copy: 'Copy code', copied: 'Copied', copyFailed: 'Select the code to copy',
-  nav: ['Daily shell', 'Data pipelines', 'Multiline scripts', 'Automation', 'Get started'],
+  nav: ['Interface & modes', 'Daily shell', 'Data pipelines', 'Multiline scripts', 'Automation', 'Get started'],
   facts: [
     { icon: '⌨️', title: 'A persistent session', description: 'Keep directory, variables and aliases between commands. Completion, history and inline suggestions reduce typing.' },
     { icon: '↗', title: 'Work with fields', description: 'Query files and JSON, filter, sort and select fields. Use --json to pass results to another program.' },
@@ -95,7 +95,7 @@ const t = computed(() => zh.value ? {
   launchLabels: ['Interactive session', 'One command', 'A script file'],
   launchHints: ['Start ash and type commands at its prompt.', 'For command calls from scripts and other programs.', 'Save the script and users.json in the same directory.'],
   buildTitle: 'Build from source', buildNote: 'You need the Rust toolchain and sibling auto-lang, auto-ai and auto-shell checkouts. Follow the repository instructions for dependencies; build the CLI from auto-shell/ash:',
-  evidenceNote: 'This page uses source builds and observed runs from 2026-09-29. The website release, AutoLang v0.5, and the executable version, ash v0.1.0, are identified separately.',
+  evidenceNote: 'This page uses source builds and observed runs from 2026-09-29/30. The website release, AutoLang v0.5, and the executable version, ash v0.1.0, are identified separately.',
   back: 'All applications', release: 'v0.5 release highlights',
 })
 
@@ -116,13 +116,29 @@ const examples = [
     output: 'Lin (35)\nNoah (42)\nmatching users: 2',
   },
 ]
+const nativeShots = computed(() => zh.value ? [
+  { image: 'ash-01.png', title: '文件列表与文档查看', description: 'ls 用彩色表格展示文件名、类型、大小和修改时间；管道筛选文件，show 展示文档内容。提示符同时给出当前目录与 Git 状态。', caption: '原生终端截图 ash-01。原图中的命令反映截图当时的版本。' },
+  { image: 'ash-2.png', title: 'Shell 会话与磁盘用量', description: 'Shell 提示符下连续查看目录和磁盘用量，再用 where、select 处理字段，to_json 输出结果。它展示了普通终端操作与结构化数据处理的结合。', caption: '原生终端截图 ash-02（实际文件名 ash-2.png）；下方复制示例使用本次验证过的写法。' },
+] : [
+  { image: 'ash-01.png', title: 'File tables and document viewing', description: 'ls displays names, types, sizes and timestamps in a colored table. A pipeline filters files, and show displays a document. The prompt also shows the directory and Git status.', caption: 'Original interface capture ash-01, preserved as supplied. Its command syntax reflects the version captured.' },
+  { image: 'ash-2.png', title: 'A shell session and disk usage', description: 'The Shell prompt keeps a sequence of directory and disk-usage commands. where and select work with fields, then to_json exports the result: terminal work and structured data in one session.', caption: 'Original ash-02 capture (actual filename ash-2.png). Copyable examples below use the syntax verified in these demonstrations.' },
+])
+const modeShots = computed(() => zh.value ? [
+  { key: 'F1', image: '21_f1-command-mode.png', title: '锁定 Shell 命令模式', description: 'F1 将输入锁定为 Shell 命令，右侧显示 Shell，命令提示符变为蓝色。连续运行命令时保留该模式，再按 F1 可解除锁定。', caption: '实际按 F1 并执行 pwd 的记录重绘。' },
+  { key: 'F2', image: '22_f2-editor-mode.png', title: '多行 AutoScript 编辑器', description: 'F2 打开带行号的编辑框。Enter 换行，F5 或 Ctrl+Enter 执行，Esc 取消；运行结束回到普通提示符。下面还有三个完整脚本实例。', caption: '实际打开 F2，输入并用 F5 运行；按 PTY 记录重绘。' },
+  { key: 'F3', image: '23_f3-ai-entry.png', title: 'AI 对话入口', description: 'F3 打开 AI 会话，右侧显示 AI，输入提示符为 ?。它需要可用的模型服务；Esc 可离开并回到 Shell。', caption: '实际进入 F3 的输入区记录重绘；未提交问题或触发模型回复。' },
+] : [
+  { key: 'F1', image: '21_f1-command-mode.png', title: 'Lock shell command mode', description: 'F1 locks input to shell commands. The right prompt reads Shell and the command prompt turns blue. Commands retain this mode; press F1 again to unlock.', caption: 'Redrawn from an actual F1 switch and pwd command.' },
+  { key: 'F2', image: '22_f2-editor-mode.png', title: 'Multiline AutoScript editor', description: 'F2 opens a numbered editor. Enter adds a line, F5 or Ctrl+Enter runs, and Esc cancels. Execution returns to the normal prompt. Three complete scripts follow below.', caption: 'Actual F2 input and F5 execution, redrawn from PTY output.' },
+  { key: 'F3', image: '23_f3-ai-entry.png', title: 'AI chat entry', description: 'F3 enters an AI session. The right prompt reads AI and input uses ?. A model service is required; Esc returns to the shell.', caption: 'Actual F3 input area, redrawn from PTY output. No question was submitted or model reply requested.' },
+])
 const example = computed(() => examples[selected.value])
 const heroCommand = 'cat users.json | from_json | .age > 30 | select .name .age'
 const pipeline = 'ls | .type == "dir" | select .name | first 5\n' + heroCommand
 const policies = "ash --dry-run -c 'touch output.txt'\nash --read-only -c 'touch output.txt'\nash --audit ash-audit.jsonl -c 'pwd'"
 const build = 'cargo build --release -p ash\ncargo run --release -p ash'
 const launches = ['ash', "ash --json -c 'ls | sort .size desc | select .name .size | first 5'", 'ash user-report.ash']
-const sections = ['daily-shell', 'data-pipelines', 'scripts', 'automation', 'quick-start']
+const sections = ['interface-overview', 'daily-shell', 'data-pipelines', 'scripts', 'automation', 'quick-start']
 const keyNames = ['F1', 'F2', 'F3', 'Tab', 'Ctrl+R', 'Ctrl+F', 'Ctrl+O']
 async function copyCode(code: string) {
   clearTimeout(copyTimer)
@@ -185,6 +201,35 @@ Noah   42</span>
         <FeatureCard v-for="fact in t.facts" :key="fact.title" v-bind="fact" color="color-mix(in srgb, var(--page-accent-1) 12%, transparent)" />
       </div>
     </div>
+
+    <section id="interface-overview" class="content-section interface-section" aria-labelledby="ash-interface-title">
+      <div class="section-heading">
+        <span class="section-eyebrow">Interface</span>
+        <h2 id="ash-interface-title">{{ zh ? '真实终端界面' : 'The terminal interface' }}</h2>
+        <p>{{ zh ? '从最初的两张界面截图认识 AutoShell：熟悉的提示符、可读的表格和连续的命令记录。' : 'Two original captures show the prompt, readable tables and a continuous record of commands.' }}</p>
+      </div>
+      <div class="native-gallery">
+        <article v-for="shot in nativeShots" :key="shot.image" class="interface-example">
+          <h3>{{ shot.title }}</h3><p>{{ shot.description }}</p>
+          <EvidenceImage :src="assets + shot.image" :alt="shot.title" :caption="shot.caption" :zoom-label="t.zoom" :close-label="t.close" :original-label="t.original" />
+        </article>
+      </div>
+    </section>
+
+    <section class="content-section modes-section" aria-labelledby="ash-modes-title">
+      <div class="section-heading">
+        <span class="section-eyebrow">F1 / F2 / F3</span>
+        <h2 id="ash-modes-title">{{ zh ? '三种常见交互形式' : 'Three common interaction forms' }}</h2>
+        <p>{{ zh ? '用快捷键在命令、脚本编辑与 AI 对话之间切换。每种形式都保留独立图示，点击可放大查看。' : 'Switch between commands, script editing and AI chat. Each form has a separate image you can enlarge.' }}</p>
+      </div>
+      <div class="mode-gallery">
+        <article v-for="shot in modeShots" :key="shot.key" class="mode-example">
+          <div class="mode-copy"><h3><kbd>{{ shot.key }}</kbd> {{ shot.title }}</h3><p>{{ shot.description }}</p></div>
+          <EvidenceImage :src="assets + shot.image" :alt="shot.key + ' / ' + shot.title" :caption="shot.caption" :zoom-label="t.zoom" :close-label="t.close" :original-label="t.original" />
+        </article>
+      </div>
+      <p class="small-note">{{ zh ? '上方两张为原生终端截图；本区三张按 2026-09-30 的实际 PTY 交互记录排版重绘。F3 只展示输入区，历史内容未纳入图片。' : 'The two captures above are original interface screenshots. These three images are redrawn from actual PTY interactions on 2026-09-30. F3 shows only its input area, excluding conversation history.' }}</p>
+    </section>
 
     <section id="daily-shell" class="content-section">
       <ShowcaseSection :title="t.shellTitle" :description="t.shellDesc" badge="01 / Shell">
@@ -289,6 +334,13 @@ Noah   42</span>
 .content-section { max-width: 1184px; margin: auto; padding: 56px 32px; scroll-margin-top: 128px; }
 .content-section + .content-section { border-top: 1px solid hsl(var(--border)); }
 .content-section :deep(.showcase-section) { padding: 0; gap: 40px; }
+.native-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; }
+.mode-gallery { display: grid; gap: 32px; }
+.interface-example, .mode-example { min-width: 0; }
+.interface-example h3, .mode-copy h3 { font-size: 19px; font-weight: 600; margin: 0 0 12px; line-height: 1.5; }
+.interface-example > p, .mode-copy > p { color: hsl(var(--muted-foreground)); font-size: 14px; line-height: 1.8; margin: 0 0 20px; }
+.mode-example { display: grid; grid-template-columns: 1fr 1.55fr; column-gap: 32px; align-items: start; }
+.mode-copy h3 { margin-top: 12px; }
 .shortcut-panel { margin-top: 32px; padding: 24px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--secondary) / 40%); }
 .shortcut-panel h3, .launch-card h3 { margin: 0 0 16px; font-size: 16px; font-weight: 600; }
 .shortcut-grid { display: flex; flex-wrap: wrap; gap: 18px 32px; font-size: 13px; }
@@ -331,6 +383,6 @@ summary { cursor: pointer; font-weight: 600; }
 .autoshell-page :is(a, button, summary, pre):focus-visible { outline: 3px solid var(--vp-c-brand-1); outline-offset: 4px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (max-width: 960px) { .hero-grid { gap: 28px; } .launch-grid { grid-template-columns: 1fr; } .launch-card > p { min-height: 0; } .launch-card .code-body { min-height: 0; } }
-@media (max-width: 768px) { .autoshell-hero { padding: 40px 24px; } .hero-grid, .script-panel { grid-template-columns: 1fr; } .hero-terminal { transform: none; margin-top: 12px; } .section-nav { justify-content: flex-start; padding: 10px 16px; } .section-nav a { padding: 8px 10px; } .content-section { padding: 40px 24px; } .overview-section { padding: 32px 24px 0; } .script-evidence { padding-top: 0; } .shortcut-panel { padding: 20px; } .script-tabs button { padding: 8px 12px; font-size: 13px; } }
+@media (max-width: 768px) { .native-gallery, .mode-example { grid-template-columns: 1fr; } .mode-example { row-gap: 0; } .autoshell-hero { padding: 40px 24px; } .hero-grid, .script-panel { grid-template-columns: 1fr; } .hero-terminal { transform: none; margin-top: 12px; } .section-nav { justify-content: flex-start; padding: 10px 16px; } .section-nav a { padding: 8px 10px; } .content-section { padding: 40px 24px; } .overview-section { padding: 32px 24px 0; } .script-evidence { padding-top: 0; } .shortcut-panel { padding: 20px; } .script-tabs button { padding: 8px 12px; font-size: 13px; } }
 @media (prefers-reduced-motion: reduce) { .autoshell-page * { scroll-behavior: auto !important; transition: none !important; } }
 </style>
