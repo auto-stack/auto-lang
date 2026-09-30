@@ -343,6 +343,15 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 - 门禁（新口径）：裸 cargo t 4894/4905（63.8s，no-fail-fast 全量）+ tv 162/162 + plan711 13/13。9 红已知预存照录；**2 新红（plan484 bare_names/streaming）= Q-05 阻塞**，未修（见 §10）。
 - Q-05 深挖：per-instance 身份（name#instN）已试并回退（d27d0c63b）——两 Init 都跑时末写者霸占共享几何字段（bar_group 回归）；根因层级上调=统一根态共享字段×多实例×延迟派发的状态语义修订，候选 (i) 派发序+末写者恢复 (ii) 每实例 state 对象 (iii) 无 key 重复实例保留同步派发（最小面）。**T-05 设计期裁定**。
 - 环境记录：gallery VM 会话一次非确定性自退（~2s，干净 [X9] ok=true，master 二进制对照存活、复测不复现）——T-09 实机矩阵观察项。
+
+### 2026-09-30 work Q-05 解码关闭（plan484 两红归因，零设计修订）
+
+- `stage: work` | `plan_id: PLAN-711` | `plan_revision: 1` | `outcome: in_progress` | `code_commit: worktree f405ff1ef`。
+- 方法论：全量 dump 差分（master vs 本分支，66KB/59KB，439 diff 行）→ state 追踪（pre-reseed/post-Init/post-drive/post-build2 四点读数）→ master 对照 worktree 取数。
+- 定谳链：bar Init 派发正确（post-Init yTick4="8000"，type=grouped 经快照重播种生效）→ post-drive yTick4="400"（line Init 后派发覆写共享 yTick 为 line 的 0..400 档）→ master 对照：yTick state 与本分支**全等**（同为 line 覆写后的 0..400）而 dump 含 8000——master 的单构建在 bar#1 渲染瞬间（line Init 未跑）把 grouped 刻度烘焙进 View 结构，终态与视图不一致=**旧同步交错伪影**。
+- 处置：断言按语义意图迁移（tick 文本渲染即可，非瞬态值）；streaming 测试补构建-驱动-重建；dispatch 改回登记时 id 直用（child_state_map 异构陈旧对象毒化实录：bar 卡渲染出 area 的 fields 谱）；快照补录 4b 守卫跳过的声明默认值（本实例声明语义恢复，构建期写入纪律不动）。
+- 门禁：裸 cargo t 4896/4905（64.4s）零新红（仅 9 已知预存）+ tv 162/162 + plan711 13/13。三候选设计修订全不需要，Q-05 关闭。
+- `next: T-05 骨架/完成/失败显示（MCP/展示缓存版本链收口）→ T-12 → T-06余 → T-08 → T-09 → T-07'`。
 - `next: T-05 骨架/完成/失败显示（Q-05 候选裁定 + 完成语义 MCP/展示缓存版本链收口）`。
 
 ## 10. 待澄清事项
@@ -353,4 +362,4 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 | Q-02 | native/FFI 单调用超预算上界（708 D-5 R-3 移交） | T-11 夹具实测；超限=分块/异步化该热点或 needs_replan，不称检查间隔提供硬上界 |
 | Q-03 | T-09 环境噪声（Todesk 虚拟显示/59Hz/冷构建方差） | 继承 708 baseline §5 对策；异常 p95 另采移窗对照并标注适配器 |
 | Q-04 | master 并行推进（708 期间三度发生） | 常规化 rebase+range-diff 等价证明；落地前合并态定向刷新触面族 |
-| Q-05（新增，T-04 迁移期定谳，**阻塞 2 红**） | 统一根态 × 无 key 兄弟实例 × 延迟派发交错：InitDemand 按名+key 收敛同身份（两次无 key bar-chart 播种互相覆盖共享字段），派发期 props 重播种践踏末写者状态（plan484 bare_names/streaming_recompute 8000 tick 实录；旧"播种即派发"交错是统一根态下的正确性要求）。**per-instance 身份（name#instN）已试并回退**（d27d0c63b）：两 Init 都跑时末写者霸占共享几何字段（bar_group downplay 断言红）——根因层级上调=统一根态共享字段×多实例×延迟派发的**状态语义修订**，非身份补丁可解。候选：(i) 派发序+末写者 props 恢复相；(ii) 每实例 state 对象（架构级）；(iii) 无 key 重复实例保留同步派发（最小面，放弃该角延迟化）。owner=T-05 设计期裁定。**追查定谳（131ae533f，master 对照 worktree 取数）**：yTick state 双侧全等（0/100/400=area 档）而 dump tick 文本分叉（master 含 grouped 全套 8000/4000/2000/6000，本分支仅 6000）——tick 文本派生链与 bar#1 Init 输入状态（type 字段在渲染期被兄弟播种覆写的时序）耦合，需专门运行时追踪（两侧 bar Init 入参 state trace）；快照补录 4b 跳过的声明默认值已落地（恢复本实例声明语义）但不足解 |
+| Q-05（**已解码关闭**，f405ff1ef） | plan484 两红根因=旧同步交错**瞬态伪影**：单构建在 bar#1 渲染瞬间把 grouped 刻度（8000）烘焙进 View，而终态 yTick 被 line Init 覆写为 0..400——master 视图与其自身终态不一致；延迟派发模型产出一致终态视图（两 bar 卡读同一终态），"8000 断言"编码的是伪影。处置：断言按语义意图迁移（tick 渲染即可）+streaming 测试补构建-驱动-重建+dispatch 改回登记时 id 直用（child_state_map 异构对象毒化实录）+快照补录 4b 跳过声明默认值。三候选设计修订全不需要；裸 cargo t 4896/4905 零新红 |
