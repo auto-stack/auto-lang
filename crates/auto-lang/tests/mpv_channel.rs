@@ -291,7 +291,20 @@ fn render_and_readback(
     width: u32,
     height: u32,
 ) -> Vec<u8> {
-    let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+    render_and_readback_fmt(device, queue, presenter, channel, width, height, wgpu::TextureFormat::Rgba8UnormSrgb)
+}
+
+/// 同上，但目标格式/编码臂可选（PLAN-712 T-03：非 sRGB 目标走
+/// `fs_main_raw_target` 臂；读回字节序随格式）。
+fn render_and_readback_fmt(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    presenter: &mut VideoPresenter,
+    channel: &VideoFrameChannel,
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+) -> Vec<u8> {
     let target = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("offscreen present target"),
         size: wgpu::Extent3d {
@@ -395,7 +408,15 @@ fn present_renormalizes_bt1886_bytes_to_srgb_domain() {
     const W: u32 = 64;
     const H: u32 = 64;
     let mut ch = VideoFrameChannel::new(&device, &queue, W, H);
-    let mut presenter = VideoPresenter::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+
+    // 两条编码臂都要钉住：sRGB 目标（硬件编码臂）与本构建的生产形态
+    // 非 sRGB 目标（shader 内编码臂，web-colors ⇒ Bgra8Unorm，T-01 实机修正）。
+    // 期望字节两臂一致（= Chromium `<video>` 的输出字节域）。
+    for fmt in [
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+        wgpu::TextureFormat::Bgra8Unorm,
+    ] {
+    let mut presenter = VideoPresenter::new(&device, fmt);
 
     // 已知字节填充一帧（绕过 mpv：直接把映射 staging 写满目标字节）。
     fn fill_frame(ch: &mut VideoFrameChannel, byte: u8) {
@@ -416,13 +437,19 @@ fn present_renormalizes_bt1886_bytes_to_srgb_domain() {
 
     for (input, expect_lo, expect_hi) in [(135u8, 127u8, 129u8), (0u8, 0, 0), (255u8, 254, 255)] {
         fill_frame(&mut ch, input);
-        let px = render_and_readback(&device, &queue, &mut presenter, &ch, W, H);
-        let (r, g, b) = (px[0], px[1], px[2]);
+        let px = render_and_readback_fmt(&device, &queue, &mut presenter, &ch, W, H, fmt);
+        // 读回字节序随目标格式：BGRA 格式 R 在第 3 字节。
+        let (r, g, b) = if fmt == wgpu::TextureFormat::Bgra8Unorm {
+            (px[2], px[1], px[0])
+        } else {
+            (px[0], px[1], px[2])
+        };
         assert!(
             (expect_lo..=expect_hi).contains(&r) && (expect_lo..=expect_hi).contains(&g)
                 && (expect_lo..=expect_hi).contains(&b),
-            "输入字节 {input}：期望输出 {expect_lo}..={expect_hi}，实际 RGB=({r},{g},{b})"
+            "{fmt:?} 输入字节 {input}：期望输出 {expect_lo}..={expect_hi}，实际 RGB=({r},{g},{b})"
         );
+    }
     }
 }
 
