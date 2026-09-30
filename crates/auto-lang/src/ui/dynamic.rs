@@ -1486,16 +1486,52 @@ impl DynamicComponent {
         self.bridge.has_parked_tasks()
     }
 
+    /// PLAN-711 T-03: 是否有未收敛的 Init 工作（排队 demand 或在途段）——
+    /// `__parked_resume_tick` 订阅门的 Init 扩展面（T-04 起由帧通知泵接管
+    /// 消费，订阅门形态届时重审）。
+    pub fn has_pending_init_work(&self) -> bool {
+        self.bridge.has_pending_init_work()
+    }
+
     /// PLAN-702 T-03/T-04: resume every parked handler segment whose wait is
     /// ready. Called from the iced render loop's `__parked_resume_tick` arm
     /// (serial with all other VM execution — 架构裁断 1). Marks the view
     /// dirty on completion/failure so mid-await state writes re-render.
     /// Uncaught resume errors go through the same `[VM-HANDLER] ... failed`
     /// syslog face as dispatch-time failures (E7 通道复用).
+    /// PLAN-711 T-03: 本臂前置 `dispatch_pending_inits`——渲染路径登记的
+    /// Init demand 在此驱动派发（CPU 片预算档）；在途 Init 段收敛后由
+    /// 本臂的下一轮驱动继续消费后继 demand（依赖序）。**临时驱动点**：
+    /// T-04 帧通知泵落地后移交给帧驱动（本臂保留为 I/O 凭据 resume）。
     pub fn poll_parked_resumes(&mut self) {
+        let init_report = self.bridge.dispatch_pending_inits(
+            crate::vm::engine::CpuSliceBudget::d2_default(),
+        );
         let report = self.bridge.resume_ready_parked();
-        if report.completed > 0 || !report.failed.is_empty() {
+        if report.completed > 0
+            || !report.failed.is_empty()
+            || init_report.completed > 0
+            || !init_report.failed.is_empty()
+        {
             self.dirty = true;
+        }
+        for (widget, err) in &init_report.failed {
+            let syslog_face = {
+                let face = self
+                    .source_path
+                    .as_ref()
+                    .and_then(|p| {
+                        let stem = p.file_stem()?.to_string_lossy().to_string();
+                        let dir = p.parent()?.file_name()?.to_string_lossy().to_string();
+                        Some(format!("{dir}/{stem}"))
+                    })
+                    .unwrap_or_else(|| self.widget_name.clone());
+                format!("vm:{face}")
+            };
+            crate::syslog!(
+                crate::ui::syslog::SyslogLevel::Error, syslog_face,
+                "[VM-HANDLER] {widget}.Init failed (dispatch): {}", err
+            );
         }
         for (fn_name, err) in &report.failed {
             let syslog_face = {

@@ -22007,7 +22007,10 @@ fn compare_pngs(
                 // are parked; ready resumes fire in update's
                 // __parked_resume_tick arm. 16ms ≠ 17/19ms 既有泵（Recipe
                 // 身份含事件名，去重安全）。
-                if app.component.has_parked_tasks() {
+                // PLAN-711 T-03: 订阅门扩展——排队/在途的 Init demand 也需要
+                // 本 tick 驱动（`poll_parked_resumes` 前置 dispatch_pending_inits
+                // 的临时驱动点；T-04 帧通知泵落地后重审订阅形态）。
+                if app.component.has_parked_tasks() || app.component.has_pending_init_work() {
                     subs.push(app_tick(app_id, "__parked_resume_tick", 16));
                 }
                 // F12 DevTools + key bindings（per-App bindings + 本窗过滤）。

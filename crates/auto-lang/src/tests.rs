@@ -410,6 +410,11 @@ mod plan702_segment_tests;
 // 累计护栏 + bridge 有界泵/写队列 D-2 纪律）。
 #[cfg(test)]
 mod plan711_cpu_slice_tests;
+// PLAN-711 T-03：Init demand 登记簿与代际生命周期（AC-04 一次登记 +
+// 代际取消一次清理 + 页→child 依赖序 + Missing/Failed 终态 + 渲染路径
+// 登记化集成）。
+#[cfg(test)]
+mod plan711_init_demand_tests;
 // PLAN-705 T-01 spike：notify 驱动 owner loop + 取消/迟到完成单次终结
 // 协议种子（T-02 统一登记表与 T-04 owner loop 的前提探针）。
 #[cfg(test)]

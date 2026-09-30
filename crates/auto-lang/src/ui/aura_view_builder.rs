@@ -5203,26 +5203,23 @@ let tabs_inner = View::Row {
         if self.active_child_widgets.borrow().contains(&page_widget.name) {
             return View::Empty;
         }
-        // Init 身份门：身份变化 → 本帧必须真实 build（Init 派发伴随渲染），
-        // 弃缓存走全量；身份不变 → 记账保持（不触发派发）。
+        // PLAN-711 T-03 (M-01): Init 登记化——渲染路径只登记 demand（判定
+        // ≠完成，派发由泵驱动）；身份变化帧仍走全量 build（memo 旁路保留：
+        // 新页内容必须真构建，Init 完成后的内容刷新由泵侧 dirty 传播承担）。
         let has_init = page_widget.lifecycle.iter().any(|l| l.name == "Init");
         if has_init {
             let identity = self.child_init_identity(page_widget, empty_props, bindings);
-            if self.bridge.child_init_should_fire(&page_widget.name, &identity) {
+            if self
+                .bridge
+                .init_identity_changed(&page_widget.name, &identity)
+            {
                 let child_state_id =
                     self.prepare_child_render_state(page_widget, empty_props, bindings);
-                if let Err(e) = self
-                    .bridge
-                    .call_handler_for(&page_widget.name, "Init", child_state_id, &[])
-                {
-                    if !matches!(e, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)) {
-                        log::warn!(
-                            "child {}.Init failed during render: {:?}",
-                            page_widget.name,
-                            e
-                        );
-                    }
-                }
+                let _decision = self.bridge.register_init_demand(
+                    &page_widget.name,
+                    &identity,
+                    child_state_id,
+                );
                 return self.render_outlet_page_full(
                     page_widget, empty_props, empty_events, bindings, tracked,
                 );
@@ -6598,21 +6595,11 @@ let tabs_inner = View::Row {
         // key)即重发 Init,否则子件继续渲染上一个 key 的数据体。无 key
         // 调用点身份即组件名,每帧不变,536 防重放语义不变。
         let init_identity = self.child_init_identity(child_widget, props, bindings);
-        if !self.bridge.child_init_should_fire(&child_widget.name, &init_identity) {
-            return;
-        }
-        if let Err(e) = self
+        // PLAN-711 T-03 (M-01): 只登记——同代际重复 build 不二次入队（AC-04）；
+        // 派发由泵驱动（FIFO 依赖序：页 demand 在前，本件等前序到终态）。
+        let _decision = self
             .bridge
-            .call_handler_for(&child_widget.name, "Init", state_obj_id, &[])
-        {
-            if !matches!(e, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)) {
-                log::warn!(
-                    "child {}.Init failed during render: {:?}",
-                    child_widget.name,
-                    e
-                );
-            }
-        }
+            .register_init_demand(&child_widget.name, &init_identity, state_obj_id);
     }
 
     /// PLAN-045 T-05b：子件挂载身份单源（组件名 + 调用位 `key:` prop）。

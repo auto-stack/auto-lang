@@ -181,12 +181,6 @@ pub struct VmBridge {
     /// 求值改为查自身 bridge 的存档（[`VmBridge::store_alias_real_name`]）。
     store_alias_snapshot: std::collections::HashMap<String, String>,
 
-    /// PLAN-536 T3(题2 收敛): 已派发过 Init 的子件名集合——Init 收敛为
-    /// 挂载语义(每组件生命周期一次),不随脏重建帧重放。子件 state 走统一
-    /// 根态、无独立堆对象可挂"首建"信号,故以名字集合在 bridge(唯一跨帧
-    /// 存活、渲染期可变的组件侧结构)上记账。
-    child_last_init_identity: std::cell::RefCell<std::collections::HashMap<String, String>>,
-
     /// PLAN-702 T-02: parked handler 段注册表——handler 派发遇 Yield+等待
     /// （异步 HTTP / 外部 future）时，执行中的 task（ip/bp/栈/闭包态）连
     /// 同引擎恢复上下文登记在此，等恢复泵（`__parked_resume_tick`）在其
@@ -205,6 +199,19 @@ pub struct VmBridge {
     /// 输入值，不合并点击等副作用事件。宿主滚动/resize/close 不入此队列。
     /// 生产者接线归 T-04（update_inner 各臂）；本任务交付队列原语+泵消费。
     cpu_write_queue: std::cell::RefCell<std::collections::VecDeque<QueuedVmWrite>>,
+
+    /// PLAN-711 T-03 (M-01): Init demand FIFO 队列——渲染路径登记、派发
+    /// 驱动消费（`dispatch_pending_inits`）。同代际重复登记不重复入队。
+    init_demand_queue: std::cell::RefCell<std::collections::VecDeque<InitDemand>>,
+
+    /// PLAN-711 T-03 (M-01): 每 widget 的 demand 簿记（最近身份/相位/代际）
+    /// ——PLAN-536 `child_last_init_identity`"判定即写身份"的替代面：
+    /// 登记≠完成，相位由派发驱动真实记账。
+    init_demand_records: std::cell::RefCell<std::collections::HashMap<String, InitDemandRecord>>,
+
+    /// PLAN-711 T-03 (M-01): 挂载代际计数器——每次身份变化 +1；A→B→A 的
+    /// 第二个 A 携带新代际号（708 设计 §4）。
+    init_generation: std::cell::Cell<u64>,
 
     /// PLAN-702 T-04: `__busy_handlers` 镜像的已写字集——parked 键集无变化
     /// 时跳过堆列表重铸（每 tick 调 sync_busy_flag，稳态零写）。
@@ -379,6 +386,71 @@ pub struct QueuedVmWrite {
 
 /// PLAN-711 T-11 (D-2): 队列上限——满即拒，可观察 busy，不无限增容。
 pub const VM_WRITE_QUEUE_CAP: usize = 128;
+
+/// PLAN-711 T-03 (M-01): 一条待派发的 Init demand——view 渲染路径只
+/// 登记（判定≠完成），真实派发由 [`VmBridge::dispatch_pending_inits`] 驱动。
+#[derive(Debug, Clone)]
+pub struct InitDemand {
+    pub widget_name: String,
+    /// 挂载身份（组件名 + 调用位 `key:` prop，PLAN-536/os-016 语义原样）。
+    pub identity: String,
+    pub state_obj_id: u64,
+    /// 登记时的代际号（每次身份变化前进；取消判定与诊断用）。
+    pub generation: u64,
+}
+
+/// PLAN-711 T-03 (M-01): demand 生命周期相位。
+/// ```text
+/// Registered → Queued（FIFO 等待派发）→ InFlight（段已 park）
+///            → Done / Failed（终态；Cancelled 由身份变化触发）
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitDemandPhase {
+    /// 已登记排队，未派发。
+    Queued,
+    /// 段已派发且 park（CPU/IO 凭据在 parked 注册表）。
+    InFlight,
+    /// 真正完成（Completed 或 Missing 静默）。
+    Done,
+    /// 派发/续跑失败（错误已走 `[VM-HANDLER]` 通道；不无限重试）。
+    Failed,
+}
+
+/// PLAN-711 T-03: 每 (widget) 的 demand 状态簿记——`child_init_should_fire`
+/// 的"判定即写身份"重排为"登记≠完成"：身份表记录**最近登记**的身份与
+/// 相位，完成与否由派发驱动真实记账。
+#[derive(Debug, Clone)]
+struct InitDemandRecord {
+    identity: String,
+    phase: InitDemandPhase,
+    generation: u64,
+}
+
+/// PLAN-711 T-03: [`VmBridge::register_init_demand`] 的判定结果。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitDemandDecision {
+    /// 新 demand 入队（首次登记或身份变化=新代际）。
+    Queued,
+    /// 同代际重复登记（重复 view/MCP 构建）——只确认簿记，不二次入队。
+    AlreadyKnown,
+    /// 前序 demand 仍在途（未完成）——同代际不重复派发。
+    InFlightKnown,
+}
+
+/// PLAN-711 T-03: 一轮 Init demand 派发驱动的报告。
+#[derive(Default)]
+pub struct InitDispatchReport {
+    /// 本轮真实派发的 demand 数。
+    pub dispatched: usize,
+    /// Missing（未声明导出的 Init）——静默记 Done。
+    pub missing: usize,
+    /// 派发即失败（VM error）。
+    pub failed: Vec<(String, String)>,
+    /// 同步跑完（无等待短 Init）。
+    pub completed: usize,
+    /// park 在途（CPU/IO），本轮停止派发后继 demand（依赖序）。
+    pub in_flight: usize,
+}
 
 /// PLAN-702 T-02: one parked handler segment.
 pub struct ParkedTask {
@@ -624,9 +696,11 @@ impl VmBridge {
             handler_param_names,
             import_aliases: import_aliases.clone(),
             store_alias_snapshot,
-            child_last_init_identity: std::cell::RefCell::new(std::collections::HashMap::new()),
             parked_tasks: std::cell::RefCell::new(Vec::new()),
             cpu_write_queue: std::cell::RefCell::new(std::collections::VecDeque::new()),
+            init_demand_queue: std::cell::RefCell::new(std::collections::VecDeque::new()),
+            init_demand_records: std::cell::RefCell::new(std::collections::HashMap::new()),
+            init_generation: std::cell::Cell::new(0),
             busy_flag_names: std::cell::RefCell::new(Vec::new()),
             #[cfg(feature = "ui-interpreter")]
             memo_cache: std::cell::RefCell::new(crate::ui::memo_deps::MemoCache::new()),
@@ -817,9 +891,11 @@ impl VmBridge {
             handler_param_names,
             import_aliases: import_aliases.clone(),
             store_alias_snapshot,
-            child_last_init_identity: std::cell::RefCell::new(std::collections::HashMap::new()),
             parked_tasks: std::cell::RefCell::new(Vec::new()),
             cpu_write_queue: std::cell::RefCell::new(std::collections::VecDeque::new()),
+            init_demand_queue: std::cell::RefCell::new(std::collections::VecDeque::new()),
+            init_demand_records: std::cell::RefCell::new(std::collections::HashMap::new()),
+            init_generation: std::cell::Cell::new(0),
             busy_flag_names: std::cell::RefCell::new(Vec::new()),
             #[cfg(feature = "ui-interpreter")]
             memo_cache: std::cell::RefCell::new(crate::ui::memo_deps::MemoCache::new()),
@@ -1535,17 +1611,6 @@ impl VmBridge {
     /// 并更新。这是 vue 按 key 重挂载的 vm 对应物:同一子件切回先前的 key
     /// （侧栏 A→B→A）也要重挂载重 Init,只记"首次"会让回访页渲染陈旧数据。
     /// 每帧重渲染身份不变,恒 false——536 防重放语义不变。
-    pub fn child_init_should_fire(&self, widget_name: &str, identity: &str) -> bool {
-        let mut last = self.child_last_init_identity.borrow_mut();
-        match last.get(widget_name) {
-            Some(prev) if prev == identity => false,
-            _ => {
-                last.insert(widget_name.to_string(), identity.to_string());
-                true
-            }
-        }
-    }
-
     /// Plan 320: read a state field from a SPECIFIC child widget's state object
     /// (by heap id), not the root widget's state.
     pub fn read_child_state(&self, child_state_id: u64, field_name: &str) -> Result<auto_val::Value> {
@@ -1949,6 +2014,263 @@ impl VmBridge {
                 format!("{:?}", e),
             ));
         }
+        true
+    }
+
+    // ==========================================================================
+    // PLAN-711 T-03 (M-01): Init demand 登记簿与代际生命周期
+    // =========================================================================
+
+    /// PLAN-711 T-03: 身份探测（**不写簿记、不消费**）——该 widget 最近
+    /// 登记的身份是否与传入身份不同（或从未登记）。供 memo 路径在"身份
+    /// 变化才准备 child state + 登记"的旁路判定用；真实登记仍走
+    /// [`Self::register_init_demand`]。
+    pub fn init_identity_changed(&self, widget_name: &str, identity: &str) -> bool {
+        match self.init_demand_records.borrow().get(widget_name) {
+            Some(rec) => rec.identity != identity,
+            None => true,
+        }
+    }
+
+    /// PLAN-711 T-03: 某 widget 的 demand 相位（诊断/测试/骨架态查询）。
+    pub fn init_demand_phase(&self, widget_name: &str) -> Option<InitDemandPhase> {
+        self.init_demand_records
+            .borrow()
+            .get(widget_name)
+            .map(|r| r.phase)
+    }
+
+    /// PLAN-711 T-03 (M-01): 登记 Init demand——渲染路径的**唯一** Init 入口
+    /// （替代 `child_init_should_fire` 判定即写身份 + 渲染内同步派发）。
+    ///
+    /// - 首次登记（或身份变化=新代际）：入队 FIFO，等待派发驱动；
+    ///   身份变化时对旧代际做**一次取消**（未执行的丢弃；已 park 的段清栈/
+    ///   等待凭据/忙态一次清理，见 [`Self::cancel_parked_by_fn`]）。
+    /// - 同代际重复登记（显示/MCP 双 build、脏重建帧）：只确认簿记，
+    ///   不二次入队（AC-04）。
+    pub fn register_init_demand(
+        &self,
+        widget_name: &str,
+        identity: &str,
+        state_obj_id: u64,
+    ) -> InitDemandDecision {
+        let mut records = self.init_demand_records.borrow_mut();
+        let generation = self.init_generation.get();
+        match records.get_mut(widget_name) {
+            Some(rec) if rec.identity == identity => {
+                // 同代际：Queued/InFlight 不重复入队；Done/Failed 终态同样
+                // 不重派（Init 挂载语义每代际一次，PLAN-536 语义保持）。
+                return match rec.phase {
+                    InitDemandPhase::Queued | InitDemandPhase::InFlight => {
+                        InitDemandDecision::InFlightKnown
+                    }
+                    InitDemandPhase::Done | InitDemandPhase::Failed => {
+                        InitDemandDecision::AlreadyKnown
+                    }
+                };
+            }
+            Some(rec) => {
+                // 身份变化 = 新代际：先取消旧代际（未执行丢弃/在途取消一次清理），
+                // 再推进代际号登记新 demand（A→B→A 的第二个 A 由此重跑 Init）。
+                let old_identity = rec.identity.clone();
+                let had_pending = rec.phase == InitDemandPhase::Queued;
+                let had_in_flight = rec.phase == InitDemandPhase::InFlight;
+                rec.identity = identity.to_string();
+                rec.phase = InitDemandPhase::Queued;
+                rec.generation = generation + 1;
+                self.init_generation.set(generation + 1);
+                drop(records);
+                if had_pending {
+                    self.cancel_queued_init(&old_identity);
+                }
+                if had_in_flight {
+                    let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(
+                        widget_name,
+                        "Init",
+                    );
+                    self.cancel_parked_by_fn(&fn_name);
+                }
+            }
+            None => {
+                records.insert(
+                    widget_name.to_string(),
+                    InitDemandRecord {
+                        identity: identity.to_string(),
+                        phase: InitDemandPhase::Queued,
+                        generation: generation + 1,
+                    },
+                );
+                self.init_generation.set(generation + 1);
+            }
+        }
+        self.init_demand_queue
+            .borrow_mut()
+            .push_back(InitDemand {
+                widget_name: widget_name.to_string(),
+                identity: identity.to_string(),
+                state_obj_id,
+                generation: self.init_generation.get(),
+            });
+        InitDemandDecision::Queued
+    }
+
+    /// PLAN-711 T-03: 是否有未收敛的 Init 工作（排队 demand 或在途段）——
+    /// 渲染订阅门与诊断用（`has_parked_tasks` 的 Init 扩展面）。
+    pub fn has_pending_init_work(&self) -> bool {
+        !self.init_demand_queue.borrow().is_empty()
+            || self
+                .init_demand_records
+                .borrow()
+                .values()
+                .any(|r| matches!(r.phase, InitDemandPhase::Queued | InitDemandPhase::InFlight))
+    }
+
+    /// PLAN-711 T-03: 排队 demand 数（诊断/测试）。
+    pub fn pending_init_demand_count(&self) -> usize {
+        self.init_demand_queue.borrow().len()
+    }
+
+    /// PLAN-711 T-03 (M-01): Init demand 派发驱动——FIFO 消费登记簿，经
+    /// [`Self::call_handler_for_cpu_slice`]（T-11 结果接口）派发并按五态
+    /// 观察记账：
+    /// - `Missing`（Init 未导出）：静默记 Done（正常程序契约）；
+    /// - 派发 `Err`：记 Failed，错误走既有 `[VM-HANDLER]` 通道，不无限重试；
+    /// - 同步 `Completed`：记 Done；
+    /// - park（CPU Runnable / I/O Waiting）：记 InFlight 并**停止本轮后续
+    ///   demand 派发**——同代际后继 demand（依赖父/页产物的 child）等前序
+    ///   到终态后再派发（根/页 → child 依赖序，渲染登记序即 FIFO 序）。
+    ///
+    /// 在途段收敛后的再驱动：段完成会出 parked 注册表，本方法的 InFlight
+    /// 探测（`is_handler_parked`）发现已不在册即记账 Done 并继续消费队列
+    /// （调用方=泵臂，每轮 tick/帧通知都会重入本方法）。
+    pub fn dispatch_pending_inits(
+        &self,
+        budget: crate::vm::engine::CpuSliceBudget,
+    ) -> InitDispatchReport {
+        let mut report = InitDispatchReport::default();
+        loop {
+            // 1. 先探测在途段是否已收敛（parked 出册=终态已发生）。
+            let inflight_done = {
+                let records = self.init_demand_records.borrow();
+                records
+                    .iter()
+                    .find(|(_, r)| r.phase == InitDemandPhase::InFlight)
+                    .map(|(w, _)| {
+                        let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(w, "Init");
+                        (w.clone(), !self.is_handler_parked(&fn_name))
+                    })
+            };
+            if let Some((widget, finished)) = inflight_done {
+                if finished {
+                    let mut records = self.init_demand_records.borrow_mut();
+                    if let Some(rec) = records.get_mut(&widget) {
+                        if rec.phase == InitDemandPhase::InFlight {
+                            rec.phase = InitDemandPhase::Done;
+                        }
+                    }
+                } else {
+                    // 仍在途：本轮不再派发新 demand（依赖序）。
+                    break;
+                }
+            }
+            // 2. FIFO 派发下一条。
+            let Some(demand) = self.init_demand_queue.borrow_mut().pop_front() else {
+                break;
+            };
+            report.dispatched += 1;
+            let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(
+                &demand.widget_name,
+                "Init",
+            );
+            if !self.vm.flash.exports_by_name.contains_key(&fn_name) {
+                // Missing：声明了 lifecycle.Init 但未导出——静默（正常程序
+                // 契约；异常导出缺失的显式失败面归 T-05 错误态）。
+                let mut records = self.init_demand_records.borrow_mut();
+                if let Some(rec) = records.get_mut(&demand.widget_name) {
+                    rec.phase = InitDemandPhase::Done;
+                }
+                report.missing += 1;
+                continue;
+            }
+            match self.call_handler_for_cpu_slice(
+                &demand.widget_name,
+                "Init",
+                demand.state_obj_id,
+                &[],
+                budget,
+            ) {
+                Ok(()) => {
+                    // Ok = 段已接受（同步完成 / park 在册 / 重入忽略）。
+                    if self.is_handler_parked(&fn_name) {
+                        let mut records = self.init_demand_records.borrow_mut();
+                        if let Some(rec) = records.get_mut(&demand.widget_name) {
+                            rec.phase = InitDemandPhase::InFlight;
+                        }
+                        report.in_flight += 1;
+                        break; // 依赖序：后继 demand 等本段终态
+                    }
+                    let mut records = self.init_demand_records.borrow_mut();
+                    if let Some(rec) = records.get_mut(&demand.widget_name) {
+                        rec.phase = InitDemandPhase::Done;
+                    }
+                    report.completed += 1;
+                }
+                Err(e) => {
+                    let mut records = self.init_demand_records.borrow_mut();
+                    if let Some(rec) = records.get_mut(&demand.widget_name) {
+                        rec.phase = InitDemandPhase::Failed;
+                    }
+                    eprintln!(
+                        "[VM-INIT] {} Init dispatch FAILED: {:?}",
+                        demand.widget_name, e
+                    );
+                    report
+                        .failed
+                        .push((demand.widget_name.clone(), format!("{:?}", e)));
+                }
+            }
+        }
+        self.sync_busy_flag();
+        report
+    }
+
+    /// PLAN-711 T-03: 丢弃指定身份的排队 demand（代际取消——未执行项直接
+    /// 丢弃，无副作用可回滚）。
+    fn cancel_queued_init(&self, identity: &str) {
+        self.init_demand_queue
+            .borrow_mut()
+            .retain(|d| d.identity != identity);
+    }
+
+    /// PLAN-711 T-03 (M-01): 取消指定 fn 的 parked 段（代际取消——已开始项
+    /// 清栈/等待凭据/忙态**一次清理**）。等待凭据逐种映射清理能力（D-3：
+    /// 不能只删桥登记项放任生产者存活）：
+    /// - `HttpRequest` → `drop_async_result`（PLAN-027 缺陷 A 纪律：迟到
+    ///   完成的响应体必须回收）；
+    /// - `HttpStream` → `stream_cancel`（上游流收口）；
+    /// - `Future` → 无宿主资源可回收（唤醒源在引擎侧，future 槽随 task 弃）；
+    /// - `CpuRunnable` → 纯栈份额，随清栈释放。
+    /// 取消不回滚已发生副作用（前缀写入保留，M-01 契约）。
+    pub fn cancel_parked_by_fn(&self, fn_name: &str) -> bool {
+        let pos = self.parked_tasks.borrow().iter().position(|p| p.fn_name == fn_name);
+        let Some(idx) = pos else {
+            return false;
+        };
+        let mut p = self.parked_tasks.borrow_mut().remove(idx);
+        match &p.wait {
+            ParkedWait::HttpRequest(req_id) => {
+                crate::vm::ffi::stdlib::drop_async_result(*req_id);
+            }
+            ParkedWait::HttpStream(stream_id) => {
+                crate::vm::ffi::http_stream::stream_cancel(*stream_id);
+            }
+            ParkedWait::Future(_) | ParkedWait::CpuRunnable => {}
+        }
+        if p.release_stack_on_complete {
+            self.vm.rc_release_task_stack(&mut p.task);
+        }
+        eprintln!("[VM-INIT] {} cancelled (generation superseded)", p.fn_name);
+        self.sync_busy_flag();
         true
     }
 
