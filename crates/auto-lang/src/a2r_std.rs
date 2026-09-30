@@ -1144,6 +1144,25 @@ pub mod diff {
         panic!("diff_files: the `code-editor` feature is disabled")
     }
 
+    /// 窗口投影形（PLAN-716 组C——rows_total+truncated 激活；offset/limit
+    /// 钳非负）。
+    #[cfg(feature = "code-editor")]
+    pub fn diff_files_window(
+        path_a: &str,
+        path_b: &str,
+        ctx: i64,
+        rows_offset: i64,
+        rows_limit: i64,
+    ) -> String {
+        crate::ui::code_editor::diff::envelope::diff_files_envelope_from_paths_window(
+            path_a,
+            path_b,
+            ctx.max(0) as usize,
+            rows_offset.max(0) as usize,
+            rows_limit.max(0) as usize,
+        )
+    }
+
     #[cfg(feature = "code-editor")]
     pub fn diff_dirs(path_a: &str, path_b: &str) -> String {
         crate::ui::code_editor::diff::envelope::diff_dirs_envelope(path_a, path_b)

@@ -215,4 +215,69 @@ widget App {{
             per_call * 1000.0 / budget_ns * 100.0
         );
     }
+
+    // ── T-11 (组C): 100MB 散点对 census——窗口 vs 全量（021 FAIL 清偿弹药）──
+
+    /// census 探针（710 形）：散点对全量 envelope vs 窗口投影的体量/墙钟
+    /// 对照。默认档=~2MB 散点对（CI 安全，语义+量级对照）；100MB 全尺寸
+    /// 由 AUTO_P716_CENSUS=1 显式驱动（每进程一次性成本，数字入 SD-C/
+    /// 计划簿记——下游切换件的依据数字）。
+    #[test]
+    #[cfg(feature = "code-editor")]
+    fn diff_window_census() {
+        let full_scale = std::env::var("AUTO_P716_CENSUS").ok().as_deref() == Some("1");
+        // 散点对生成：每 40 行一处单行改（021 形态微缩/全尺寸按行数放大）。
+        let hunks = if full_scale { 400_000 } else { 12_000 };
+        let lines = hunks * 40; // ~19B/行 → 全尺寸≈300MB? 控制在 ~100MB：~5.2M 行
+        let lines = if full_scale { 5_200_000 } else { 480_000 };
+        let mut a = String::with_capacity(lines * 20);
+        let mut b = String::with_capacity(lines * 20);
+        for i in 0..lines {
+            a.push_str("L");
+            a.push_str(&i.to_string());
+            a.push('\n');
+            if i % 40 == 20 {
+                b.push_str("L");
+                b.push_str(&i.to_string());
+                b.push_str("-changed\n");
+            } else {
+                b.push_str("L");
+                b.push_str(&i.to_string());
+                b.push('\n');
+            }
+        }
+        let mb = a.len() as f64 / (1024.0 * 1024.0);
+        let _ = lines;
+
+        // 全量 envelope（021 形——rows 全投影+双层 JSON）。
+        let t0 = std::time::Instant::now();
+        let full = crate::ui::code_editor::diff::envelope::diff_files_envelope(&a, &b, 3);
+        let full_ms = t0.elapsed().as_millis();
+
+        // 窗口投影（下游 600 行窗——016 渲染窗形态）。
+        let t1 = std::time::Instant::now();
+        let win = crate::ui::code_editor::diff::envelope::diff_files_envelope_window(&a, &b, 3, 0, 600);
+        let win_ms = t1.elapsed().as_millis();
+
+        // 越头窗（分页形）对照。
+        let t2 = std::time::Instant::now();
+        let win2 = crate::ui::code_editor::diff::envelope::diff_files_envelope_window(&a, &b, 3, 600, 600);
+        let win2_ms = t2.elapsed().as_millis();
+
+        eprintln!(
+            "[P716 census] {mb:.1}MB 散点对：full={}B/{full_ms}ms window(0,600)={}B/{win_ms}ms window(600,600)={}B/{win2_ms}ms",
+            full.len(),
+            win.len(),
+            win2.len()
+        );
+        // 语义断言：窗口体量数万倍级收缩（600 行 vs 全量）；首窗含 rows_total。
+        assert!(win.len() < full.len() / 10, "窗口体量应显著小于全量");
+        assert!(win.contains("rows_total"));
+        assert!(win.contains("\"truncated\":true"));
+        // 页窗时间量级：不劣于全量（走线相同+行物化大幅减少）。
+        assert!(
+            win_ms <= full_ms.max(1),
+            "窗口墙钟不应劣于全量: {win_ms}ms vs {full_ms}ms"
+        );
+    }
 }

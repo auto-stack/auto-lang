@@ -10482,6 +10482,16 @@ impl RustGenerator {
                 a0 = arg(0)?,
                 a1 = arg(1)?
             )),
+            // PLAN-716 组C: 窗口投影 endpoint（offset/limit 钳非负——与 VM
+            // shim 同源钳制语义）。
+            "diff_files_window" => Some(format!(
+                "auto_lang::ui::code_editor::diff::envelope::diff_files_envelope_from_paths_window(&({a0}), &({a1}), ({a2}).max(0) as usize, ({a3}).max(0) as usize, ({a4}).max(0) as usize)",
+                a0 = arg(0)?,
+                a1 = arg(1)?,
+                a2 = arg(2)?,
+                a3 = arg(3)?,
+                a4 = arg(4)?
+            )),
             // PLAN-716 组B: 帧时间戳观测（供②——直调纪律，实现体单源
             // ui::frame_bench；AUTO_FRAME_BENCH 门控在通道层）。
             "frame_begin_ms" => Some(

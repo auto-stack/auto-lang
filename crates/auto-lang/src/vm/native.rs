@@ -895,6 +895,30 @@ pub fn shim_frame_present_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     Ok(())
 }
 
+/// `auto.diff_files_window(path_a, path_b, ctx, rows_offset, rows_limit) -> Str`
+/// — 窗口投影 envelope（PLAN-716 组C；rows_total+truncated 激活语义）。
+#[cfg(feature = "code-editor")]
+pub fn shim_diff_files_window(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Args push left-to-right: pop the LAST (rows_limit) first.
+    let limit = pop_arg_i32(task).max(0) as usize;
+    let offset = pop_arg_i32(task).max(0) as usize;
+    let ctx = pop_arg_i32(task).max(0) as usize;
+    let path_b = pop_string_arg(task, vm);
+    let path_a = pop_string_arg(task, vm);
+    let json = crate::ui::code_editor::diff::envelope::diff_files_envelope_from_paths_window(
+        &path_a, &path_b, ctx, offset, limit,
+    );
+    let idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_diff_files_window(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = vm;
+    Err(VMError::RuntimeError("diff_files_window: the `code-editor` feature is disabled".into()))
+}
+
 #[cfg(not(feature = "code-editor"))]
 pub fn shim_diff_dirs(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let _ = vm;

@@ -5104,6 +5104,7 @@ impl RustTrans {
                 "diff_files" => Some("a2r_std::diff::diff_files"),
                 "diff_dirs" => Some("a2r_std::diff::diff_dirs"),
                 "diff_snapshots" => Some("a2r_std::diff::diff_snapshots"),
+                "diff_files_window" => Some("a2r_std::diff::diff_files_window"),
                 // PLAN-716 组B: 帧时间戳（供②——VM 9918/9919 同源 a2r 臂）。
                 "frame_begin_ms" => Some("a2r_std::frame::begin_ms"),
                 "frame_present_ms" => Some("a2r_std::frame::present_ms"),
