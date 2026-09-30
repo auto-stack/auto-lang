@@ -302,6 +302,15 @@ pub fn highlight_segments(
     let Some(ext) = lang_to_extension(lang) else {
         return fallback();
     };
+    // PLAN-716 组A: tree-sitter 路由面（feature 门控）——表内语言走 ts，
+    // 表外（含全部 tail 语言）None 回落 syntect 基线；plain 旁路已在上方
+    // lang_to_extension 处生效（013 硬边界先于任何引擎路由）。
+    #[cfg(feature = "highlight-treesitter")]
+    if let Some(segs) =
+        crate::ui::code_editor::core::treesitter::highlight_segments(lang, text, dark, accent)
+    {
+        return segs;
+    }
     let system = syntax_system();
     let theme_id = crate::ui::style::theme::theme_name();
     let Some(theme) = system.theme_set.themes.get(&theme_name(&theme_id, dark, accent)) else {

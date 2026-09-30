@@ -17,6 +17,10 @@ pub mod render;
 // Plan 673 T-04: self-implemented lightweight rope (document source of
 // truth, §3.1/§3.2). Standalone in T-04 — not yet wired into the editor.
 pub mod rope;
+// PLAN-716 组A: tree-sitter 双轨高亮 runtime（feature 关=零语义——模块整体
+// cfg 门控，syntect 基线逐字节等价）。
+#[cfg(feature = "highlight-treesitter")]
+pub mod treesitter;
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
