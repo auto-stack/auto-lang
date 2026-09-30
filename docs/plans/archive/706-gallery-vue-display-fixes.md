@@ -479,6 +479,6 @@ git -C D:/autostack/auto-os worktree add D:/autostack/.wt/lang-706/auto-os -b pl
 - `landed`: master tip **612514d5a**（ff-only，零合并提交）；main smoke cargo check 0 error
 - `ledger_refreshed`: n/a——r2 零规范增量（无 canonical Specs 改动、无账本条目增删；r1 的 ADR-25/shadcn 传递依赖条目不受影响）
 - `archived`: docs/plans/archive/706-gallery-vue-display-fixes.md；status archived（终态）；completion_kind delivered（r1+r2 双 phase）
-- `cleaned`: 待执行（wt-guard 双验后移除 lang-706 组 worktree×2+old-carrier+分支 plan-706-dev；组目录留 evidence 不删）
+- `cleaned`: wt-guard clean×3（auto-lang/auto-down/old-carrier）；worktree×3+old-carrier 移除、分支 plan-706-dev 删（was 612514d5a=landed tip）；组目录 .wt/lang-706/ 留 evidence+驱动脚本不入 git
 - `deployment_observation`: master release auto.exe 未重建（r1 同惯例）；桌面下次启动现场构建拾取；jade-edit 消费者以 master 612514d5a 重建双 exe 即得修复载体（其 PLAN-026 重入信号已生效=AC-10）
 - `findings 承接`: P706-D1..D4 已在 KNOWN-DEBT-AND-RISKS.md 在册（probe_mtime release 挂起/消费者 e2e flaky/gallery 侧栏 quirk/705 e2e 门禁违例）
