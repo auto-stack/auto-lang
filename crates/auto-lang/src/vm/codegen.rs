@@ -4824,6 +4824,18 @@ impl Codegen {
         name.to_string()
     }
 
+    /// PLAN-093 G-7 诊断（AUTO_DEBUG_G7 门控）：ext 方法体内裸调用解析
+    /// 观测——import_scope 内容与最终解析结果。
+    fn debug_resolve_call_symbol(&self, name: &str, resolved: &str) {
+        if std::env::var_os("AUTO_DEBUG_G7").is_some() && !name.contains('.') {
+            let scope: Vec<&String> = self.import_scope.keys().take(12).collect();
+            eprintln!(
+                "[G7] call `{}` -> `{}` (module={:?} fn_mod={:?} scope={:?})",
+                name, resolved, self.current_module, self.current_fn_module, scope
+            );
+        }
+    }
+
     /// Plan 340: Rewrite a bare API function call into an HTTP request.
     ///
     /// Emits bytecode equivalent to:
@@ -10381,6 +10393,7 @@ impl Codegen {
                         _ => unimplemented!("Dynamic call not supported: name expr = {:?}", call.name),
                     });
                     let reloc_name = self.resolve_call_symbol(&raw_name);
+                    self.debug_resolve_call_symbol(&raw_name, &reloc_name);
 
                     vm_debug!("DEBUG: Creating reloc for function '{}' at offset 0x{:04x}",
                         reloc_name, placeholder_idx
