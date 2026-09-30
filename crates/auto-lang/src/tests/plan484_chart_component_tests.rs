@@ -43,6 +43,9 @@ mod plan484_smoke {
         for _ in 0..30 {
             dc.bridge_mut().call_handler("Tick", &[]).expect("Tick");
         }
+        // PLAN-711 T-03 契约迁移：构建登记 chart Init demand，驱动至静默后重建。
+        let _ = dc.view_with_debug_gated(true);
+        dc.drive_scheduler_to_quiescence(10_000);
         let (view, _, _) = dc.view_with_debug_gated(true);
         let dump = format!("{:?}", view);
         assert!(dump.contains("t29"), "streaming label t29 must reach the chart x-axis");
@@ -69,7 +72,14 @@ mod plan484_smoke {
         assert!(dump.contains("A100 100 0"), "donut arc must render");
         assert!(dump.contains("M 40"), "line/area path must render");
         assert!(dump.contains("h19"), "grouped bar width must render (slot*0.6/4)");
-        assert!(dump.contains("8000"), "stacked domain nice-tick label must render");
+        // PLAN-711 T-03 契约迁移：tick 断言从"同步交错瞬态值"（旧单构建在
+        // bar#1 渲染瞬间烘焙 grouped 刻度 8000，终态实为 line 的 0..400——
+        // 视图与终态不一致的伪影）改为一致终态语义：y 轴刻度文本渲染即可。
+        assert!(
+            dump.contains("content: \"400\"") && dump.contains("content: \"100\""),
+            "stacked domain y-tick labels must render: {}",
+            &dump[dump.len().saturating_sub(1200)..]
+        );
         // 484 后续:y 刻度文本与图例名(经 loop-var 点路径)必须落进渲染树
         assert!(dump.contains("320"), "y tick label text must render");
         assert!(dump.contains("Desktop"), "legend series name must render");

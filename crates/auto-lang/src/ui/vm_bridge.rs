@@ -2216,11 +2216,13 @@ impl VmBridge {
             );
             // PLAN-711 T-03: 派发时解析**当前** child state id——登记到派发
             // 之间可能发生重建（child state 对象更替/旧对象随帧账本释放），
-            // 陈旧 id 的字段读取得空值（donut Init 除零实录：total=0）。子
-            // 件名有活跃 id 用活跃 id；无则回落登记时的 id（根态形态）。
-            let state_obj_id = self
-                .get_child_state_id(&demand.widget_name)
-                .unwrap_or(demand.state_obj_id);
+            // 陈旧 id 的字段读取得空值（donut Init 除零实录：total=0）。
+            // PLAN-711 Q-05 修订：改回**登记时 id 直用**（统一根态=root id）
+            // ——child_state_map 条目可能是异构陈旧对象（bar 卡实录：读出
+            // area 的 fields → Desktop/Mobile/Tablet 系列错谱，grouped 全套
+            // tick 8000/4000/2000 消失）；配合 props 快照重播种即为完整
+            // 旧"播种即派发"交错等价。
+            let state_obj_id = demand.state_obj_id;
             if !self.vm.flash.exports_by_name.contains_key(&fn_name) {
                 // Missing：声明了 lifecycle.Init 但未导出——静默（正常程序
                 // 契约；异常导出缺失的显式失败面归 T-05 错误态）。
