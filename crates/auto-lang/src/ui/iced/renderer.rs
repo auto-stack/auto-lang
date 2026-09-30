@@ -17581,6 +17581,13 @@ fn compare_pngs(
         // 恢复内联在 update 内天然满足单 VM 串行裁断）。
         if msg.event == "__parked_resume_tick" {
             state.component.poll_parked_resumes();
+            // PLAN-712 r2 T-16：恢复完成可能写状态（Init 挂起 fetch 回来
+            // 填数据）——不标脏则视图停在「Loading...」直到下一外部事件
+            // 强迫重渲染（018 书架/详情实机实证）。与 __frame_pump 臂同款
+            // is_dirty→view_dirty 回填。
+            if state.component.is_dirty() {
+                *state.app.view_dirty.borrow_mut() = true;
+            }
             return iced::Task::none();
         }
 
