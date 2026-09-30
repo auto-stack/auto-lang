@@ -373,6 +373,15 @@ Worktree 复用：`D:/autostack/.wt/lang-708/auto-lang` / `plan-708-dev`，先�
 - `next: 阶段落地 plan-708-dev → master（ff-only），计划保持 executing，M 档（T-11→T-03..T-10/T-12）续作`。
 
 
+### 2026-09-30 阶段落地（S 档 landed）
+
+- `stage: merge`（**阶段落地**——checkpoint `landed`；整体计划保持 executing，终审合并（Spec 沉淀/ledger/归档/清场）未触发：10/13 任务未完成、SD-01..04 维持 proposed）| `plan_id: PLAN-708:r2` | `outcome: pass`（阶段范围）。
+- rebase 收据：plan-708-dev 于 master 并行推进（706 收据 + **709 全量实现与归档**，另一会话在 708 门禁窗口期落地）后重放；旧→新映射 `7ac8f51c2→1c26e70b7`、`956d86a90→f169ad42f`；`git range-diff` 两行全 `=`（补丁等价，safe-rewrite proof）。
+- 合并态定向刷新（708/709 同触 renderer.rs）：cargo check 零错误；plan708 6/6、plan045 13/13、plan046 38/38、outlet 12/12 全绿。
+- landed：`git merge --ff-only` master tip == plan-708-dev tip == `f169ad42fc6bc63f213797b72759dcfa1477e2e9`（零合并提交）；树与已验证 worktree tip 逐字节一致（crates/ 面同一棵树），scope 验证即该树上的实跑结果。
+- 未做（按入口门禁本就不适用）：canonical Spec 沉淀、ledger 刷新、归档、wt-guard/清场；worktree `D:/autostack/.wt/lang-708/auto-lang`（auto-down 兄弟在组）保留供 M 档续作，分支与 master 同点。
+- `next: M 档 T-11 → T-03..T-10/T-12 续作于同一 worktree；完成后终审 review → 终审 merge`。
+
 ## 10. 待澄清事项
 
 | ID | 项目 | r2 处置 / owner |
