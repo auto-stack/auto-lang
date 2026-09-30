@@ -255,3 +255,195 @@ fn real_sw_render_writes_into_our_buffer_when_libmpv_is_present() {
         "渲染后缓冲不应仍全为 0——说明帧确实写进了我们的内存"
     );
 }
+
+/// PLAN-712 **T-02/DP-3 探针**：dump libmpv 对样本视频的**色彩协商结果**——
+/// `video-params`（解码面）与 `video-out-params`（渲染输出面）的 matrix/range/
+/// primaries/gamma，以及影响 SW 转换的选项现值。VM 端上屏字节 ≡ SW rgb0 输出
+/// 字节（目标/纹理双 Srgb + shader 直通，见 T-01 结论），故两终端（Web
+/// Chromium vs VM mpv）的色度差**只能**来自这里的协商差异。
+///
+/// 决策工件而非门禁：无 DLL / 无样本时静默跳过。运行：
+/// ```text
+/// AUTO_MPV_LIB=<...>\libmpv-2.dll AUTO_SPIKE_VIDEO=E:\Video\caelestia.mp4 \
+///   cargo test -p auto-lang --features mpv-native --test mpv_engine \
+///   probe_color_negotiation -- --nocapture
+/// ```
+#[test]
+fn probe_color_negotiation_dump() {
+    let Some(lib) = libmpv_path() else {
+        eprintln!("SKIP: 本机无 libmpv");
+        return;
+    };
+    let Some(video) = std::env::var_os("AUTO_SPIKE_VIDEO").map(PathBuf::from) else {
+        eprintln!("SKIP: 未设 AUTO_SPIKE_VIDEO");
+        return;
+    };
+    if !video.is_file() {
+        eprintln!("SKIP: AUTO_SPIKE_VIDEO 不存在：{}", video.display());
+        return;
+    }
+
+    let mut engine = MpvEngine::new().expect("构造引擎");
+    engine.create_sw_render_context().expect("建 render context");
+    engine
+        .set_flag("pause", true)
+        .expect("pause 下发应成功（首帧后仍可查询参数）");
+    engine
+        .command(&["loadfile", &video.to_string_lossy()])
+        .expect("loadfile 应被接受");
+    assert!(
+        engine
+            .wait_first_frame_event(20.0)
+            .expect("等待首帧事件不应报错"),
+        "20s 内应等到首帧"
+    );
+
+    // 解码面：视频自己声明的（或缺席时 mpv 的猜测依据）。
+    eprintln!("== video-params（解码面） ==");
+    for key in [
+        "pixelformat",
+        "colormatrix",
+        "colorlevels",
+        "primaries",
+        "gamma",
+        "sig-peak",
+    ] {
+        eprintln!("  {key} = {:?}", engine.get_string(&format!("video-params/{key}")));
+    }
+    // 渲染输出面：SW rgb0 实际交出的参数（= 我们纹理里的字节语义）。
+    eprintln!("== video-out-params（渲染输出面） ==");
+    for key in [
+        "pixelformat",
+        "colormatrix",
+        "colorlevels",
+        "primaries",
+        "gamma",
+    ] {
+        eprintln!(
+            "  {key} = {:?}",
+            engine.get_string(&format!("video-out-params/{key}"))
+        );
+    }
+    // 影响 SW 转换的选项现值（协商可调面）。
+    eprintln!("== 转换选项 ==");
+    for key in [
+        "sws-scaler",
+        "sws-allow-zimg",
+        "video-output-levels",
+        "target-prim",
+        "target-trc",
+    ] {
+        eprintln!("  {key} = {:?}", engine.get_string(key));
+    }
+}
+
+/// PLAN-712 **T-02/DP-3 差分探针**：同一帧在「默认协商」与「pre-init 显式协商」
+/// 下的 SW rgb0 输出是否不同——即 SW 转换是否吃 `target-prim`/`target-trc`
+/// （运行时 set 已证无效：`unsupported format for accessing property`，且
+/// `video-output-levels=full` 运行时设后输出**逐位不变**）。各配置独立建引擎
+/// （target-* 是 pre-init 选项面），seek 同一关键帧取帧。决策工件而非门禁。
+#[test]
+fn probe_color_output_tunable() {
+    let Some(lib) = libmpv_path() else {
+        eprintln!("SKIP: 本机无 libmpv");
+        return;
+    };
+    let Some(video) = std::env::var_os("AUTO_SPIKE_VIDEO").map(PathBuf::from) else {
+        eprintln!("SKIP: 未设 AUTO_SPIKE_VIDEO");
+        return;
+    };
+    if !video.is_file() {
+        eprintln!("SKIP: AUTO_SPIKE_VIDEO 不存在：{}", video.display());
+        return;
+    }
+
+    // seek 到 0.5s 关键帧并渲染一帧，返回全帧均值（降采样步进防大帧超时）。
+    fn mean_at(video: &str, options: &[(&str, &str)]) -> [f64; 3] {
+        // 与 MpvEngine::new() 同款默认前置（vo=libmpv 等），再叠加探针配置——
+        // 空表会把 vo=libmpv 也丢掉，帧面整个不成立。
+        let mut all: Vec<(&str, &str)> = vec![
+            ("vo", "libmpv"),
+            ("terminal", "no"),
+            ("msg-level", "all=error"),
+        ];
+        all.extend_from_slice(options);
+        let mut engine = MpvEngine::new_with_options(&all).expect("构造引擎");
+        engine.create_sw_render_context().expect("建 render context");
+        engine.set_flag("pause", true).expect("pause");
+        engine.command(&["loadfile", video]).expect("loadfile");
+        assert!(
+            engine.wait_first_frame_event(20.0).expect("等待首帧"),
+            "首帧超时"
+        );
+        // 先消费掉首帧的 UPDATE_FRAME 位（渲染一次），后续 seek 的新帧位才是
+        // 真信号——首帧位未消费时会立即「假就绪」。
+        {
+            let mut warm = FrameBuffer::new(64, 64);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+            loop {
+                if engine.has_new_frame() {
+                    engine.render_sw_frame(&warm.as_target()).expect("warm 渲染");
+                    break;
+                }
+                assert!(std::time::Instant::now() < deadline, "warm 无新帧");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+        engine
+            .command(&["seek", "0.5", "absolute+keyframes"])
+            .expect("seek");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            if engine.has_new_frame() {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "seek 后无新帧");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        eprintln!(
+            "    seek 后 time-pos={:?}",
+            engine.get_f64("time-pos")
+        );
+
+        const W: u32 = 640;
+        const H: u32 = 360;
+        let mut fb = FrameBuffer::new(W, H);
+        engine.render_sw_frame(&fb.as_target()).expect("渲染一帧");
+        let buf = fb.as_slice();
+        let stride = fb.stride() as usize;
+        let mut acc = [0f64; 3];
+        let mut n = 0u64;
+        for y in (0..H as usize).step_by(7) {
+            for x in (0..W as usize).step_by(7) {
+                let px = &buf[y * stride + x * 4..];
+                acc[0] += px[0] as f64;
+                acc[1] += px[1] as f64;
+                acc[2] += px[2] as f64;
+                n += 1;
+            }
+        }
+        eprintln!(
+            "    out gamma={:?} levels={:?} matrix={:?}",
+            engine.get_string("video-out-params/gamma"),
+            engine.get_string("video-out-params/colorlevels"),
+            engine.get_string("video-out-params/colormatrix")
+        );
+        [acc[0] / n as f64, acc[1] / n as f64, acc[2] / n as f64]
+    }
+
+    let v = video.to_string_lossy().into_owned();
+
+    let baseline = mean_at(&v, &[]);
+    eprintln!("[1] baseline（默认协商）              mean RGB = {baseline:.2?}");
+
+    let srgb = mean_at(&v, &[("target-prim", "srgb"), ("target-trc", "srgb")]);
+    eprintln!("[2] pre-init target-prim/trc=srgb     mean RGB = {srgb:.2?}");
+
+    let full = mean_at(&v, &[("video-output-levels", "full")]);
+    eprintln!("[3] pre-init video-output-levels=full mean RGB = {full:.2?}");
+
+    eprintln!(
+        "判读：[2]/[3] 与 [1] 的均值差即 SW 转换是否吃该协商面的直接证据；lib={}",
+        lib.display()
+    );
+}

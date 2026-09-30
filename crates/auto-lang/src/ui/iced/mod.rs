@@ -12,6 +12,10 @@ pub mod pointer_area;
 
 /// `progress` 的 `onseek` 在 iced 端的指针承载（可拖拽进度条）。
 pub mod seek_area;
+// PLAN-712 T-04: video 契约上行事件泵 wrapper（每帧从 mpv 运行时取走
+// pending 事件,按 View::Video 携带的 on* handler 合成宿主消息）。
+#[cfg(feature = "mpv-widget")]
+pub mod video_uplink;
 // PLAN-002 B: 布局件 hover 态 widget(row/col/div 的 `hover:` 变体类消费;
 // 共享标志 + request_redraw,无 view 重建)。
 pub mod hover_area;

@@ -254,8 +254,28 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VsOut {
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let c = textureSample(frame_tex, frame_sampler, in.uv);
+    // PLAN-712 T-03：传递函数归一（BT.1886 → sRGB）。
+    //
+    // mpv SW rgb0 输出的是**源签名传递函数**编码的显示域字节——SDR 即
+    // BT.1886 ≈ γ2.4（DP-3 探针定谳：SW 路径完全不吃 `target-prim`/
+    // `target-trc`/`video-output-levels` 协商，pre-init/运行时皆然，输出
+    // 参数恒为源传递）。而 sRGB 纹理采样按 ~γ2.2 线性化、Srgb 目标按
+    // sRGB 重编码：直通时屏幕字节 = mpv 字节（2.4 编码）被 2.2 解释，
+    // 中间调系统性偏亮（0.5 线性处 ≈ +4/255），与 Chromium `<video>`
+    //（sRGB 编码）对照恰好越过双端像素阈值。
+    //
+    // 补足法：采样值 c（≈2.2 解码域）→ 还原字节域 b = sRGB_encode(c)
+    // → 按 2.4 解出真实显示线性 lin = b^2.4 → 交给 Srgb 目标按 sRGB
+    // 重编码。端到端效果 = 字节域 2.4→sRGB 传递函数转换，白/黑点不动
+    //（letterbox 恒纯黑），中间调与 Web 端对齐。
+    let b = max(
+        vec3<f32>(1.055) * pow(max(c.rgb, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.4))
+            - vec3<f32>(0.055),
+        vec3<f32>(0.0),
+    );
+    let lin = pow(b, vec3<f32>(2.4));
     // mpv 的 "rgb0" 第 4 字节是未初始化垃圾，绝不能当 alpha 用（否则画面随机
     // 变半透明 = 闪烁）。这里只取 rgb，alpha 恒为不透明。
-    return vec4<f32>(c.rgb, 1.0);
+    return vec4<f32>(lin, 1.0);
 }
 "#;

@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-ui-gpui = ["auto-lang/ui-gpui"]
+# ui-gpui 行已删（PLAN-712 T-06）：该 feature 2026-09-22 随 PLAN-691 从
+# auto-lang 移除，残留声明令 cargo 惰性校验整 workspace 即败
+#（`auto-lang does not have that feature`）。生成器模板已清（rust_ui.rs
+# generate_cargo_toml），本件是历史生成产物的手工对齐。
 ui-iced = ["auto-lang/ui-iced"]
 default = ["ui-iced", "auto-lang/default"]
 

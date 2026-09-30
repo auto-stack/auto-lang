@@ -6423,8 +6423,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             //
             // 走自定义 shader widget（自持持久纹理、每帧原地更新），**不经过**
             // iced 的 Handle/atlas 通道——那条路正是 `renderer.rs:2889` 记录的
-            // 闪烁机理（见 Design 30 §4.5）。上行事件由渲染面按帧采集，
-            // 经 `mpv::widget::drain_events` 取走，故本节点不带消息。
+            // 闪烁机理（见 Design 30 §4.5）。上行事件由事件泵 wrapper
+            //（`video_uplink`，PLAN-712 T-04）按帧取走并合成宿主消息。
             AbstractView::Video {
                 src,
                 paused,
@@ -6433,8 +6433,27 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 muted,
                 rate,
                 label,
+                on_time_update,
+                on_loaded_metadata,
+                on_play_state,
+                on_ended,
+                on_media_error,
                 style,
-            } => render_video(src, paused, position, volume, muted, rate, label, style),
+            } => render_video(
+                src,
+                paused,
+                position,
+                volume,
+                muted,
+                rate,
+                label,
+                on_time_update,
+                on_loaded_metadata,
+                on_play_state,
+                on_ended,
+                on_media_error,
+                style,
+            ),
         }
     }
 }
@@ -6456,12 +6475,18 @@ fn render_video<M: Clone + Debug + 'static>(
     muted: bool,
     rate: f64,
     label: String,
+    on_time_update: Option<crate::ui::view::MediaEventHandler<M>>,
+    on_loaded_metadata: Option<crate::ui::view::MediaEventHandler<M>>,
+    on_play_state: Option<crate::ui::view::MediaEventHandler<M>>,
+    on_ended: Option<M>,
+    on_media_error: Option<crate::ui::view::MediaEventHandler<M>>,
     style: Option<Style>,
 ) -> iced::Element<'static, M> {
     use iced::Length;
 
     #[cfg(feature = "mpv-widget")]
     {
+        use crate::ui::iced::video_uplink::VideoUplink;
         use crate::ui::mpv::widget::{VideoProgram, VideoWidgetProps};
         use crate::ui::mpv::VideoContractDown;
 
@@ -6481,8 +6506,15 @@ fn render_video<M: Clone + Debug + 'static>(
         let shader = iced::widget::shader::Shader::new(program)
             .width(Length::Fill)
             .height(Length::Fill);
-        // 背景给黑底（视频比画面窄时露出的letterbox），与 Vue 端视口一致。
-        let inner: iced::Element<'static, M> = shader.into();
+        // PLAN-712 T-04: 事件泵 wrapper 直接包 shader（children[0] 即 shader
+        // 的 Tree,泵靠它定位运行时 id）——黑底 letterbox 容器包在 wrapper 外。
+        let inner: iced::Element<'static, M> = VideoUplink::new(shader)
+            .on_time_update(on_time_update)
+            .on_loaded_metadata(on_loaded_metadata)
+            .on_play_state(on_play_state)
+            .on_ended(on_ended)
+            .on_media_error(on_media_error)
+            .into();
         let mut surface = iced::widget::container(inner)
             .width(Length::Fill)
             .height(Length::Fill)
@@ -6508,7 +6540,10 @@ fn render_video<M: Clone + Debug + 'static>(
 
     #[cfg(not(feature = "mpv-widget"))]
     {
-        let _ = (src, paused, position, volume, muted, rate, style);
+        let _ = (
+            src, paused, position, volume, muted, rate, style,
+            on_time_update, on_loaded_metadata, on_play_state, on_ended, on_media_error,
+        );
         // 诚实占位：说明本后端没接上原生播放，而不是留一块黑。
         let text = if label.is_empty() {
             "视频：本后端未启用原生播放（构建时未开 `mpv-widget`）".to_string()
@@ -7644,10 +7679,40 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // PLAN-617 T-19: `video` **必须**显式臂——否则掉进下方 `_ => Empty`
         // 兜底，VM 动态路径下整个播放面静默消失（与上面 Grid / MouseArea / select
         // 同一坑：这已经是第四次踩它了）。
-        // 该节点**不携带消息**（上行事件由渲染面按帧采集，见 `View::Video` 文档），
-        // 故这里是平凡的恒等搬运。
-        AbstractView::Video { src, paused, position, volume, muted, rate, label, style } => {
-            AbstractView::Video { src, paused, position, volume, muted, rate, label, style }
+        // PLAN-712 T-04: 上行 handler 随消息类型重映射（DynamicMessage →
+        // IcedMessage，ScrollCallback 臂同款 Arc 包装）。
+        AbstractView::Video { src, paused, position, volume, muted, rate, label, on_time_update, on_loaded_metadata, on_play_state, on_ended, on_media_error, style } => {
+            AbstractView::Video {
+                src,
+                paused,
+                position,
+                volume,
+                muted,
+                rate,
+                label,
+                on_time_update: on_time_update.map(|cb| {
+                    crate::ui::view::MediaEventHandler::new(move |p| {
+                        IcedMessage::from_dynamic(&cb.call(p))
+                    })
+                }),
+                on_loaded_metadata: on_loaded_metadata.map(|cb| {
+                    crate::ui::view::MediaEventHandler::new(move |p| {
+                        IcedMessage::from_dynamic(&cb.call(p))
+                    })
+                }),
+                on_play_state: on_play_state.map(|cb| {
+                    crate::ui::view::MediaEventHandler::new(move |p| {
+                        IcedMessage::from_dynamic(&cb.call(p))
+                    })
+                }),
+                on_ended: on_ended.map(|m| IcedMessage::from_dynamic(&m)),
+                on_media_error: on_media_error.map(|cb| {
+                    crate::ui::view::MediaEventHandler::new(move |p| {
+                        IcedMessage::from_dynamic(&cb.call(p))
+                    })
+                }),
+                style,
+            }
         }
 
         // Plan 319: recurse into Grid cells. MUST be explicit — the `_ => Empty`

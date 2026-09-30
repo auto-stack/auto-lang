@@ -568,6 +568,33 @@ impl MpvEngine {
         Ok(())
     }
 
+    /// 设一个字符串属性（PLAN-712 T-03：`target-trc`/`video-output-levels`
+    /// 等色彩协商面是字符串选项；`None` = 恢复默认，同 `mpv_set_property_string`
+    /// 传 NULL）。
+    pub fn set_string(&self, name: &str, value: Option<&str>) -> Result<(), String> {
+        let cname = cstring(name)?;
+        let vbuf;
+        let vptr = match value {
+            Some(v) => {
+                vbuf = cstring(v)?;
+                vbuf.as_ptr()
+            }
+            None => std::ptr::null(),
+        };
+        let rc = unsafe {
+            // SAFETY: handle 非空；cname/vbuf 在本次调用期间存活，vbuf 满足
+            // NUL 结尾约定（cstring 保证）。
+            (self.api.symbols.set_property_string)(self.handle, cname.as_ptr(), vptr)
+        };
+        if rc < 0 {
+            return Err(format!(
+                "设置 {name}={value:?} 失败：{}",
+                self.api.error_text(rc)
+            ));
+        }
+        Ok(())
+    }
+
     /// `mpv_get_time_us()`：mpv 内部单调递增时钟（微秒）。
     pub fn time_us(&self) -> i64 {
         // SAFETY: 无参查询。

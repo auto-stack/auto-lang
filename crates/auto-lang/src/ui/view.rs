@@ -352,6 +352,51 @@ impl<M> ScrollCallback<M> {
     }
 }
 
+/// PLAN-712 T-04: 媒体元素上行事件载荷（§2.3 受控契约的上行侧）。
+///
+/// 载荷在**分发时刻**由播放引擎产生（不是构建期声明的事件参数）——
+/// `.at` 作者写 `ontimeupdate: .OnTime($0)`，`$0` 由 VM 端事件泵回填。
+#[derive(Debug, Clone, PartialEq)]
+pub enum MediaEventPayload {
+    /// `ontimeupdate`：当前播放位置（秒）。
+    Time(f64),
+    /// `onloadedmetadata`：总时长（秒）。
+    Duration(f64),
+    /// `onplaystatechange`：是否正在播放。
+    Playing(bool),
+    /// `onmediaerror`：加载/解码失败文案。
+    Error(String),
+}
+
+/// PLAN-712 T-04: 媒体上行 handler（[`ScrollCallback`] 同款 newtype 形态）。
+///
+/// 收 [`MediaEventPayload`] 返回宿主消息。Arc<dyn Fn> 使其可跨消息类型包装
+/// （VM 轨 view 树 `View<DynamicMessage>` 经 convert_view_messages 转
+/// `View<IcedMessage>`）；`None` = 作者未声明对应 `on*`，事件泵丢弃该事件。
+#[derive(Clone)]
+pub struct MediaEventHandler<M> {
+    callback: Arc<dyn Fn(MediaEventPayload) -> M + Send + Sync>,
+}
+
+impl<M> std::fmt::Debug for MediaEventHandler<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MediaEventHandler").finish()
+    }
+}
+
+impl<M> MediaEventHandler<M> {
+    pub fn new<F>(f: F) -> Self
+    where
+        F: Fn(MediaEventPayload) -> M + Send + Sync + 'static,
+    {
+        Self { callback: Arc::new(f) }
+    }
+
+    pub fn call(&self, payload: MediaEventPayload) -> M {
+        (self.callback)(payload)
+    }
+}
+
 /// PLAN-661 T-02: Slider 值变更回调（[`ScrollCallback`] 同款 newtype 形态）。
 ///
 /// 收新值（f32）返回宿主消息。Arc<dyn Fn> 使其可跨消息类型包装——VM 轨
@@ -968,9 +1013,9 @@ pub enum View<M: Clone + Debug> {
     ///
     /// 与 [`View::ImageSurface`] 同形的媒体节点，但帧来源是原生播放引擎
     /// （libmpv → 持久纹理），不是图片流水线；**上行**（`ontimeupdate` 等）
-    /// 不在此节点上——它由渲染面按帧采集，经
-    /// `auto_lang::ui::mpv::widget::drain_events` 取走，故本变体**不携带任何消息**，
-    /// 各后端的消息重映射臂因此都是平凡的。
+    /// 由渲染面的事件泵 wrapper 逐帧取走（`mpv::widget::drain_events`），按
+    /// 这里携带的 handler 合成宿主消息（PLAN-712 T-04——此前上行面整体缺失，
+    /// `ontimeupdate` 永不分发）。未声明的 `on*` 保持 `None`，对应事件被丢弃。
     ///
     /// `level` 记录本节点实际走的是哪条路（原生播放 / 缺库降级），
     /// 便于快照与诊断如实反映「这里到底有没有解码能力」。
@@ -987,6 +1032,16 @@ pub enum View<M: Clone + Debug> {
         rate: f64,
         /// 降级/无障碍用的显示名（真实文件名或标题）。
         label: String,
+        /// `ontimeupdate`：播放位置（秒）。
+        on_time_update: Option<MediaEventHandler<M>>,
+        /// `onloadedmetadata`：总时长（秒）。
+        on_loaded_metadata: Option<MediaEventHandler<M>>,
+        /// `onplaystatechange`：是否在播。
+        on_play_state: Option<MediaEventHandler<M>>,
+        /// `onended`：自然播完（无载荷）。
+        on_ended: Option<M>,
+        /// `onmediaerror`：加载/解码失败（附文案）。
+        on_media_error: Option<MediaEventHandler<M>>,
         style: Option<Style>,
     },
 
@@ -2472,10 +2527,36 @@ impl<M: Clone + Debug> View<M> {
                 style,
             },
             View::Image { src, style } => View::Image { src, style },
-            // PLAN-617 T-19: Video 不携带消息（上行事件由渲染面按帧采集，
-            // 见 `View::Video` 的文档），故无需重映射，原样搬运。
-            View::Video { src, paused, position, volume, muted, rate, label, style } =>
-                View::Video { src, paused, position, volume, muted, rate, label, style },
+            // PLAN-712 T-04: Video 携带上行 handler，随消息类型重映射
+            //（ScrollCallback 臂同款 Arc 包装）。
+            View::Video { src, paused, position, volume, muted, rate, label, on_time_update, on_loaded_metadata, on_play_state, on_ended, on_media_error, style } =>
+                View::Video {
+                    src,
+                    paused,
+                    position,
+                    volume,
+                    muted,
+                    rate,
+                    label,
+                    on_time_update: on_time_update.map(|cb| {
+                        let f = std::sync::Arc::clone(f);
+                        MediaEventHandler::new(move |p| f(cb.call(p)))
+                    }),
+                    on_loaded_metadata: on_loaded_metadata.map(|cb| {
+                        let f = std::sync::Arc::clone(f);
+                        MediaEventHandler::new(move |p| f(cb.call(p)))
+                    }),
+                    on_play_state: on_play_state.map(|cb| {
+                        let f = std::sync::Arc::clone(f);
+                        MediaEventHandler::new(move |p| f(cb.call(p)))
+                    }),
+                    on_ended: on_ended.map(|m| f(m)),
+                    on_media_error: on_media_error.map(|cb| {
+                        let f = std::sync::Arc::clone(f);
+                        MediaEventHandler::new(move |p| f(cb.call(p)))
+                    }),
+                    style,
+                },
             View::ImageSurface { src, alt, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, style } => View::ImageSurface {
                 src,
                 alt,

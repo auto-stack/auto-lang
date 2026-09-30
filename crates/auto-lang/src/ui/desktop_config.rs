@@ -704,6 +704,57 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// PLAN-712 T-05/AC-04：**首写无例外**——`load()` 即快照，进程首次
+    /// save 前落在盘上的手编/外写字段在「内存不变 save」后存活。
+    ///
+    /// E-7 实录（2026-09-30 旧实例退出 save 把手编壁纸冲回 `#101014`）的
+    /// 回归锚：若 load 不写快照（历史缺陷假设），首写 save 无基线走整份
+    /// 覆盖，步骤 4 会把 transparency 冲回 high——本测钉死该通道。
+    #[test]
+    fn save_after_external_edit_preserves_fields() {
+        let dir = std::env::temp_dir().join(format!("auto-712-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.at");
+        std::env::set_var("AUTOOS_DESKTOP_CONFIG", &path);
+        *LAST_SNAPSHOT.lock().unwrap() = None;
+
+        // 1) 手编/外写方先落一份自定义字段（不经 save，theme_source=manual
+        //    避免 load 走 OS 主题派生子进程，测试保持纯内存语义）。
+        std::fs::write(
+            &path,
+            "desktop {\n    wallpaper_path : \"#ABCDEF\"\n    transparency : \"high\"\n    theme_source : \"manual\"\n}\n",
+        )
+        .unwrap();
+
+        // 2) 进程 boot：load()——快照应即刻建立（PLAN-044 T-03 语义，
+        //    PLAN-712 复核确认在位）。
+        let cfg = load();
+        assert_eq!(cfg.wallpaper_path, "#ABCDEF", "盘上手编值应被装载");
+        assert_eq!(cfg.transparency, "high");
+
+        // 3) 外写方改盘：transparency → low（壁纸不动）。
+        let external = std::fs::read_to_string(&path)
+            .unwrap()
+            .replace("transparency : \"high\"", "transparency : \"low\"");
+        std::fs::write(&path, external).unwrap();
+
+        // 4) 进程内存对 transparency 仍是陈旧 high，只改 notes 开关 →
+        //    本次是进程**首次** save。
+        let mut memory = cfg.clone();
+        memory.notes_enabled = false;
+        save(&memory).unwrap();
+
+        // 5) 外写字段存活 + 宿主字段落盘（首写走字段级合并，非整份覆盖）。
+        let disk = std::fs::read_to_string(&path).unwrap();
+        assert!(disk.contains("transparency : \"low\""), "首写 save 冲掉外写字段: {disk}");
+        assert!(disk.contains("wallpaper_path : \"#ABCDEF\""), "手编壁纸被冲回: {disk}");
+        assert!(disk.contains("notes_enabled : false"), "宿主字段未落盘: {disk}");
+
+        std::env::remove_var("AUTOOS_DESKTOP_CONFIG");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// 全字段好值：逐字段命中（含引号剥除与 CSV 拆分）。
     #[test]
     fn parse_full_config_all_fields() {

@@ -171,6 +171,11 @@ pub struct MpvSymbols {
     /// 调用方**必须**用 [`MpvSymbols::free`] 释放。
     pub get_property_string:
         unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_char,
+    /// `mpv_set_property_string(handle, name, value)` —— 字符串形态设属性
+    ///（PLAN-712 T-03：色彩协商选项如 `target-trc`/`video-output-levels`
+    /// 是字符串选项面）。
+    pub set_property_string:
+        unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char) -> c_int,
     /// `mpv_free(void*)` —— 释放 mpv 分配的返回值（只用于本模块拿到的指针）。
     pub free: unsafe extern "C" fn(*mut c_void),
     /// `mpv_get_time_us(handle)` —— 单调递增的墙钟微秒，用作 A/V 与帧节奏的时基。
@@ -247,6 +252,10 @@ impl MpvApi {
             get_property_string: sym!(
                 b"mpv_get_property_string\0",
                 unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_char
+            ),
+            set_property_string: sym!(
+                b"mpv_set_property_string\0",
+                unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char) -> c_int
             ),
             free: sym!(b"mpv_free\0", unsafe extern "C" fn(*mut c_void)),
             get_time_us: sym!(
