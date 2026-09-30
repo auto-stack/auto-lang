@@ -4669,6 +4669,21 @@
             "docsha:c95f54e6a67edb25"
           ],
           "file": "docs/specs/auto-lang/ui/design/a2r-app-mapping-completeness.md"
+        },
+        {
+          "id": "P714-2",
+          "title": "tree-sitter 首批勘定契约：语言集 20 表/管线选型决策/双轨共存+two-face 退役量化/增量管线要点",
+          "content": "PLAN-714 勘定件落账（auto-lang ui 域 SD-01，docs/specs/auto-lang/ui/design/treesitter-highlight-survey.md；勘定报告 docs/plans/reports/714-treesitter-survey.md+spike 源档 docs/plans/spike-714-treesitter/ @ delivery 41ace6107）。四定案契约：①语言集=20 语言/21 grammar crate 三列实勘表（P0 rust/py/js/ts/json/toml-ng/yaml/md/bash/c、P1 html/css/cpp/c#/go/java/sequel/xml、P2 batch/powershell/ini；MIT 20/21+tree-sitter-ini Apache-2.0 唯一例外；弃养线规避=tree-sitter-md/toml-ng/sequel；.at 不含——自建=实施件 T-7 可选件，过渡期 .at 臂留 syntect 零回退）；②管线选型决策=tree-sitter 0.27 runtime（ABI v15/最低 v13，0.23-0.26 grammar 混搭零障碍实证）+子 crate 族+build-time cc（21/21 自带 build.rs，MSVC 零障碍，冷构建秒级）+自带 highlights.scm（21/21 .crate 直查实证）+体积初值 exe 3,618,304B（全栈）；③共存=双轨迁移（新 feature highlight-treesitter 按 lang 路由，tail .at/mermaid/vue/console 留 syntect）+two-face 退役=实施件终态（量级≈.rdata 12.4MB 主项→16.46MB 门控组合≈4.1MB 对 15MB 门富余；供料 §5 want 生命周期止于本线注记）；④增量要点=rope 快照后台解析（diff 后台任务同形）+tree.edit/changed_ranges token 级失效域（has_changes=标记面非复用判据；重高亮域=差异域扩行边界∪跨行构造尾域）+big plain 旁路硬边界（013 语义零扰动，零语法树构建）+全量兜底+047 协同注记（正交，memo 消费属实施件选型空间）。实施件边界=715（T-1..3）/716（T-4..6）+T-7 独立（草案不预支授权——PLAN-714 §2 frozen ④）。复审=pass（2026-09-30，AC-01..06 复放+修复环 1 轮 F-1/F-2，收据 plan §9）。",
+          "tags": [
+            "plan-714",
+            "treesitter",
+            "sd-01",
+            "highlight-survey",
+            "source:70c5c603dcaf auto-edit supply §4",
+            "commit:41ace6107",
+            "docsha:5e7c2fa187fee8ef"
+          ],
+          "file": "docs/specs/auto-lang/ui/design/treesitter-highlight-survey.md"
         }
       ]
     },
