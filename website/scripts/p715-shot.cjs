@@ -15,8 +15,8 @@ const base = `http://localhost:${port}`
 const PAGES = [
   { name: 'home-en', url: '/', zh: false },
   { name: 'home-zh', url: '/zh/', zh: true },
-  { name: 'v05-en', url: '/v05/', zh: false, heroImg: '/v05/desktop-dark-apps.jpg' },
-  { name: 'v05-zh', url: '/zh/v05/', zh: true, heroImg: '/v05/desktop-dark-apps.jpg' },
+  { name: 'v05-en', url: '/v05/', zh: false, heroImg: '/v05/desktop-hero.png' },
+  { name: 'v05-zh', url: '/zh/v05/', zh: true, heroImg: '/v05/desktop-hero.png' },
   { name: 'apps-en', url: '/apps', zh: false },
   { name: 'apps-zh', url: '/zh/apps', zh: true },
   { name: 'autoshell-en', url: '/apps/autoshell/', zh: false },
@@ -51,6 +51,18 @@ function startPreview() {
       shell: true,
       stdio: 'pipe',
     })
+    // Windows 下 shell:true 时 proc.kill 只杀 shell 不杀 node 子进程（实测泄漏）；
+    // 退出时用 taskkill /T 连树清理，防残留服务器固化旧 dist 文件清单。
+    const killTree = () => {
+      try {
+        if (process.platform === 'win32') {
+          require('child_process').execSync(`taskkill /PID ${proc.pid} /T /F`, { stdio: 'ignore' })
+        } else {
+          proc.kill('SIGTERM')
+        }
+      } catch (e) { /* already gone */ }
+    }
+    process.on('exit', killTree)
     let ready = false
     proc.stdout.on('data', (d) => {
       if (String(d).includes(String(port)) && !ready) { ready = true; resolve(proc) }

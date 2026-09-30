@@ -44,7 +44,9 @@ const outputText = computed(() => {
   return example.value.output
 })
 const errorText = computed(() => {
-  if (runState.value === 'fail' || runState.value === 'timeout' || runState.value === 'aborted') {
+  // stderr 在成功运行时也要如实展示（HTTP 200 + stderr 是合法响应）
+  if (liveStderr.value && (runState.value === 'ok' || runState.value === 'fail'
+    || runState.value === 'timeout' || runState.value === 'aborted')) {
     return liveStderr.value
   }
   return ''

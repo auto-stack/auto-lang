@@ -74,5 +74,7 @@ function lighten(hex: string, amount: number): string {
   font-size: 0.875rem;
   color: hsl(var(--muted-foreground));
   line-height: 1.5;
+  /* 长斜杠 token（如 parser/links/...）不可断会撑破 grid 轨道（实测 393px 溢出） */
+  overflow-wrap: anywhere;
 }
 </style>

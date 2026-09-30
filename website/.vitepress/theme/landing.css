@@ -16,6 +16,9 @@
      宽度改用全站令牌。 */
   --page-max-width: var(--site-max-width, 1200px);
   --page-text-width: var(--site-text-width, 720px);
+
+  /* 长 token（URL/路径串）兜底断行，防同类溢出扩散到其他卡片 */
+  overflow-wrap: break-word;
 }
 
 .landing-page .stats-section > *,

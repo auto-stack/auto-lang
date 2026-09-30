@@ -15,6 +15,9 @@ export default defineConfig({
   retries: 0,
   use: {
     baseURL,
+    // PLAN-715 T-07：钉住 locale——否则宿主 OS 中文 locale 泄入 navigator.language，
+    // 首页的浏览器语言自动跳转会把 '/ '测试整个搬到 /zh/ 上（实测复现）。
+    locale: 'en-US',
     trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

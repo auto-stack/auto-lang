@@ -305,7 +305,7 @@ function onMobileKeydown(event: KeyboardEvent) {
   font-size: 0.875rem;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1200px) {
   .desktop-nav {
     display: flex;
   }
@@ -503,7 +503,7 @@ function onMobileKeydown(event: KeyboardEvent) {
   display: inline-flex;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1200px) {
   .nav-mobile-trigger {
     display: none;
   }
@@ -518,7 +518,7 @@ function onMobileKeydown(event: KeyboardEvent) {
   background: hsl(var(--background));
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1200px) {
   .mobile-menu {
     display: none;
   }

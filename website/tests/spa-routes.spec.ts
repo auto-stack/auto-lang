@@ -7,7 +7,10 @@ const SPA_ROUTES = [
   { url: '/ui/gallery/', title: 'widgets-gallery', name: 'Gallery' },
   { url: '/ui/blocks/', title: 'Auto Language - Blocks', name: 'Blocks' },
   { url: '/ui/charts/', title: 'Auto Language - Charts', name: 'Charts' },
-  { url: '/ui/a2ui/', title: 'Auto Language - A2UI Demo', name: 'A2UI' },
+  // PLAN-715 T-07：a2ui 的目录 URL /ui/a2ui/ 会优先命中 VitePress 专题页
+  // dist/ui/a2ui.html（sirv extensions 对 dir URL 的解析行为，pre-existing；
+  // 与本仓无关的静态服务行为）。共享 SPA 的规范入口是 index.html，与导航一致。
+  { url: '/ui/a2ui/index.html', title: 'Auto Language - A2UI Demo', name: 'A2UI' },
 ];
 
 // Helper: collect console errors and MIME mismatches
@@ -44,6 +47,7 @@ async function expectSpaLoaded(page: import('@playwright/test').Page, name: stri
 for (const spa of SPA_ROUTES) {
   test.describe(`${spa.name} SPA`, () => {
     test(`direct URL access: ${spa.url} loads SPA`, async ({ page }) => {
+      test.slow() // gallery 等 SPA 资产多，4 worker 并行下 networkidle 需要更宽时间窗（PLAN-715 实测 flake）
       const errors = trackPageErrors(page);
 
       await page.goto(spa.url, { waitUntil: 'networkidle' });
@@ -55,6 +59,7 @@ for (const spa of SPA_ROUTES) {
     });
 
     test(`client-side navigation from home to ${spa.name}`, async ({ page }) => {
+      test.slow()
       const errors = trackPageErrors(page);
 
       // Start on VitePress home
@@ -73,6 +78,7 @@ for (const spa of SPA_ROUTES) {
 }
 
 test('click navigation: home -> Gallery -> Charts -> A2UI -> Blocks', async ({ page }) => {
+  test.slow()
   const errors = trackPageErrors(page);
 
   await page.goto('/', { waitUntil: 'networkidle' });

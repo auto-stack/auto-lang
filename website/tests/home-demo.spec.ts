@@ -32,8 +32,8 @@ test.describe('home demo: preset (no network)', () => {
       await page.goto(locale)
       const demo = page.locator('.home-demo')
       await expect(demo).toBeVisible()
-      // 预置源码可见
-      await expect(demo.locator('.demo-pane').first()).toContainText('fn main()')
+      // 预置源码可见（v-show 三份 pane 常驻 DOM，断言可视那份）
+      await expect(demo.locator('.demo-pane:visible')).toContainText('fn main()')
       // 未发任何 API 请求
       expect(apiCalls, 'no API request on load').toHaveLength(0)
       // 切到输出 tab：预置输出 + 来源标注（不显示为实时成功）
@@ -47,7 +47,7 @@ test.describe('home demo: preset (no network)', () => {
   test('three views on csv-delimiter: Auto/Output/Rust with golden content', async ({ page }) => {
     await page.goto('/')
     const demo = page.locator('.home-demo')
-    await expect(demo.locator('.demo-pane')).toContainText('data.split(";")')
+    await expect(demo.locator('.demo-pane:visible')).toContainText('data.split(";")')
     await demo.getByRole('button', { name: 'Rust (a2r)' }).click()
     await expect(demo.locator('.demo-pane:visible')).toContainText(EXAMPLES[0].rust!)
     // 证据链接指向仓内文件
@@ -59,7 +59,7 @@ test.describe('home demo: preset (no network)', () => {
     await page.goto('/')
     await page.locator('.demo-picker').getByRole('tab', { name: /Functions & loops|函数与循环/ }).click()
     const demo = page.locator('.home-demo')
-    await expect(demo.locator('.demo-pane').first()).toContainText('fn bucket(n)')
+    await expect(demo.locator('.demo-pane:visible')).toContainText('fn bucket(n)')
     await expect(demo.getByRole('button', { name: 'Rust (a2r)' })).toHaveCount(0)
   })
 
@@ -121,7 +121,7 @@ test.describe('home demo: run feedback (mocked same-origin API)', () => {
     // 示例仍可查看/复制
     await demo.getByRole('button', { name: /Auto source|Auto 源码/ }).click()
     await expect(demo.locator('.demo-pane:visible')).toContainText('fn main()')
-    await expect(demo.getByRole('button', { name: /^Run$|^运行$/ })).toBeEnabled()
+    await expect(demo.getByRole('button', { name: /^Run( again)?$|^运行$|^再次运行$/ })).toBeEnabled()
   })
 
   test('static hosting (no mock): connection failure degrades honestly', async ({ page }) => {
