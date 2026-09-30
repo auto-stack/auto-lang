@@ -456,6 +456,10 @@ pub struct InitDispatchReport {
     pub failed: Vec<(String, String)>,
     /// 同步跑完（无等待短 Init）。
     pub completed: usize,
+    /// PLAN-712 r2 T-16：InFlight→Done / Missing 的**静默终态翻转**数——
+    /// 翻转本身不派发不跑段，但要求一轮重渲染（outlet 的 Loading… 占位
+    /// 依赖它清场；018 书架实机实证）。
+    pub silent_done_transitions: usize,
     /// park 在途（CPU/IO），本轮停止派发后继 demand（依赖序）。
     pub in_flight: usize,
 }
@@ -2198,6 +2202,11 @@ impl VmBridge {
                     if let Some(rec) = records.get_mut(&widget) {
                         if rec.phase == InitDemandPhase::InFlight {
                             rec.phase = InitDemandPhase::Done;
+                            // PLAN-712 r2 T-16：静默翻转入账——否则帧泵
+                            // progressed=false 不置 dirty 不 bump epoch，
+                            // outlet 永久停留「Loading… (页名)」占位
+                            //（018 书架/详情实机实证）。
+                            report.silent_done_transitions += 1;
                         }
                     }
                 } else {
@@ -2229,6 +2238,10 @@ impl VmBridge {
                 let mut records = self.init_demand_records.borrow_mut();
                 if let Some(rec) = records.get_mut(&demand.widget_name) {
                     rec.phase = InitDemandPhase::Done;
+                    // PLAN-712 r2 T-16：Missing 翻转同样入账——「Loading…」
+                    // 占位符需要一次重建才能清除（否则未导出 Init 的页面
+                    // 永久停留占位符）。
+                    report.silent_done_transitions += 1;
                 }
                 report.missing += 1;
                 continue;

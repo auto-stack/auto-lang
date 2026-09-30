@@ -1578,7 +1578,10 @@ impl DynamicComponent {
             || !cpu_report.failed.is_empty()
             || init_report.completed > 0
             || init_report.dispatched > 0
-            || !init_report.failed.is_empty();
+            || !init_report.failed.is_empty()
+            // PLAN-712 r2 T-16：静默终态翻转（InFlight→Done / Missing）也
+            // 是进展——翻转后必须重建一轮清掉 outlet 的 Loading… 占位。
+            || init_report.silent_done_transitions > 0;
         if diag {
             eprintln!(
                 "[SCHED-DIAG] frame_pump exit t={}ms dispatched={} init_done={} cpu_done={} failed={} slices={} elapsed={}ms",
@@ -1596,7 +1599,10 @@ impl DynamicComponent {
             // ——宿主 UI epoch 失效组件局部 memo 产物（outlet site=6 缓存
             // 否则回放 pre-Init 骨架：plan437/plan502 实录），view_dirty 由
             // 下置 dirty 通道承担（T-05 补 MCP/展示缓存版本的完整失效链）。
-            if init_report.completed > 0 || cpu_report.completed > 0 {
+            if init_report.completed > 0
+                || cpu_report.completed > 0
+                || init_report.silent_done_transitions > 0
+            {
                 crate::ui::memo_deps::bump_ui_epoch();
             }
             self.dirty = true;
