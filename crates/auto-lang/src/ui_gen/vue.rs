@@ -18427,6 +18427,16 @@ export function cn(...inputs: ClassValue[]) {
             }
         }
 
+        // PLAN-093 G-12: store composable 路径同样直拼 body、从不注入
+        // range helper——本仓 fn 模块路径已有同款注入（PLAN-055），但
+        // store 本体动作与 use 导入 fn 内联（PLAN-671 ③）两条路经此发射
+        // 时，`for x in a..b` 产出的 range( 调用引用未定义符号（musk
+        // canvasSourceRows/canvasTreeVisible，vue-tsc TS2552 实证）。检测
+        // 到 range( 即注入与 fn 模块路径同形的最小整数区间 helper。
+        if code.contains("range(") {
+            code.push_str("\nfunction range(start: number, end: number, eq?: boolean): number[] {\n    const out: number[] = [];\n    for (let i = start; i < end; i++) { out.push(i); }\n    if (eq === true) { out.push(end); }\n    return out;\n}\n");
+        }
+
         // Plan 012 Batch A: drain ts_adapter passthrough notes into the
         // unified validation warning channel (R010, advisory).
         let mut warnings: Vec<crate::ui_gen::validators::ValidationWarning> = ctx
