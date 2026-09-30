@@ -10,6 +10,22 @@
 .landing-page {
   --page-accent-1: #6366f1;
   --page-accent-2: #8b5cf6;
+
+  /* PLAN-715 T-03：网格子项最小宽度归零——防止长代码行/长 URL 把 grid 轨道
+     撑破视口（基线实测 autodown 390px 溢出 449px 的根因）；宣传主体与文字列
+     宽度改用全站令牌。 */
+  --page-max-width: var(--site-max-width, 1200px);
+  --page-text-width: var(--site-text-width, 720px);
+}
+
+.landing-page .stats-section > *,
+.landing-page .features-section > *,
+.landing-page .showcase-wrapper > *,
+.landing-page .features-grid > *,
+.landing-page .stats-grid > *,
+.landing-page .cta-section > *,
+.landing-page .apps-list > * {
+  min-width: 0;
 }
 
 /* ---------------------------------------------------------------- hero */
@@ -158,12 +174,12 @@
 .landing-page .stats-section,
 .landing-page .features-section {
   padding: 4rem 2rem;
-  max-width: 1200px;
+  max-width: var(--page-max-width);
   margin: 0 auto;
 }
 
 .landing-page .showcase-wrapper {
-  max-width: 1200px;
+  max-width: var(--page-max-width);
   margin: 0 auto;
   padding: 2rem;
 }
@@ -181,9 +197,10 @@
 }
 
 .landing-page .section-desc {
-  font-size: 1.1rem;
+  font-size: 1.0625rem;
+  line-height: 1.75;
   color: hsl(var(--muted-foreground));
-  max-width: 600px;
+  max-width: var(--page-text-width);
   margin: 0 auto 2.5rem;
   text-align: center;
 }

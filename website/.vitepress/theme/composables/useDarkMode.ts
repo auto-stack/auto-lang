@@ -1,45 +1,16 @@
-import { ref } from 'vue'
+import { useData } from 'vitepress'
 
-const STORAGE_KEY = 'vitepress-theme-appearance'
-
-const isDark = ref(false)
-
-function readPreference(): boolean {
-  const saved = localStorage.getItem(STORAGE_KEY)
-  if (saved === 'dark') return true
-  if (saved === 'light') return false
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-}
-
-function applyDark(dark: boolean) {
-  if (dark) {
-    document.documentElement.classList.add('dark')
-  } else {
-    document.documentElement.classList.remove('dark')
-  }
-}
-
-function toggle(): boolean {
-  isDark.value = !isDark.value
-  applyDark(isDark.value)
-  localStorage.setItem(STORAGE_KEY, isDark.value ? 'dark' : 'light')
-  return isDark.value
-}
-
+// PLAN-715 T-02：主题态统一走 VitePress 运行时状态。
+// useData().isDark 即 VueUse useDark（storageKey=vitepress-theme-appearance，
+// 与站点既有存储 key 一致，appearance:'dark' 的初始偏好由 VitePress 处理）。
+// 旧实现自建 ref+独立读写与默认主题双源，会在切页/跨组件时漂移，已移除。
 export function useDarkMode() {
-  // Only run in browser
-  if (typeof window !== 'undefined') {
-    isDark.value = readPreference()
-    applyDark(isDark.value)
-
-    // Listen for storage changes (cross-tab sync)
-    window.addEventListener('storage', (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        isDark.value = e.newValue === 'dark'
-        applyDark(isDark.value)
-      }
-    })
+  const { isDark } = useData()
+  return {
+    isDark,
+    toggle: () => {
+      isDark.value = !isDark.value
+      return isDark.value
+    },
   }
-
-  return { isDark, toggle }
 }

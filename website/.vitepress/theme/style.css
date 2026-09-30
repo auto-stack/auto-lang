@@ -11,6 +11,15 @@
     --vp-c-brand-3: #4f46e5;
     --vp-c-brand-soft: rgba(99, 102, 241, 0.14);
 
+    /* PLAN-715 T-03：全站设计令牌。宣传主体宽度、文字列宽、导航高度与
+       正文节奏统一从这里取值；组件/页面不得再各自硬编码。 */
+    --site-nav-height: 56px;
+    --site-max-width: 1200px;
+    --site-text-width: 720px;
+    --site-radius: 0.5rem;
+    --site-body-size: 1rem;
+    --site-body-lh: 1.75;
+
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
@@ -72,6 +81,16 @@
 
 .VPContent {
   padding-top: 0 !important;
+}
+
+/* PLAN-715 T-03：默认主题文档页的锚点定位让出统一顶栏高度，
+   避免标题被 sticky 顶栏遮挡。 */
+.VPDoc .VPDocHasSidebar .content-container,
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3,
+.vp-doc h4 {
+  scroll-margin-top: calc(var(--site-nav-height, 56px) + 16px);
 }
 
 /* VitePress overrides for modern look */

@@ -14,6 +14,19 @@ export const shared = defineConfig({
       level: [2, 3],
       label: 'On this Page',
     },
+
+    // PLAN-715 T-02：站内搜索 = VitePress local provider（minisearch 离线索引，
+    // 按 locale 分库，覆盖专题正文/docs/books；接线与版本约束见
+    // docs/reports/p715-website-ui-baseline.md §3）。按钮/弹窗 UI 由主题层
+    // SiteSearch.vue + VPNavBarSearch(Teleport 到 body) 提供。
+    search: {
+      provider: 'local',
+      options: {
+        translations: {
+          search: { placeholder: 'Search docs…' },
+        },
+      },
+    },
   },
 
   markdown: {

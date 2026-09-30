@@ -1,6 +1,7 @@
 import { defineConfig, type DefaultTheme } from 'vitepress'
 import { sidebarDocsZh } from './sidebar-docs-zh'
 import { sidebarBooksZh } from './sidebar-books-zh'
+import { NAV_TOP_LEAVES, NAV_GROUPS, NAV_HIGHLIGHT } from '../theme/data/navigation'
 
 export const zh = defineConfig({
   lang: 'zh-CN',
@@ -12,6 +13,31 @@ export const zh = defineConfig({
     sidebar: {
       '/zh/docs/': { base: '/zh/docs/', items: sidebarDocsZh },
       '/zh/books/': { base: '/zh/books/', items: sidebarBooksZh },
+    },
+
+    // PLAN-715 T-02：local search 中文 UI 文案（索引由 shared 的 provider 声明建立）。
+    search: {
+      provider: 'local',
+      options: {
+        translations: {
+          search: {
+            placeholder: '搜索文档…',
+          },
+          button: {
+            buttonText: '搜索文档',
+            buttonAriaLabel: '搜索文档',
+          },
+          modal: {
+            noResultsText: '没有找到结果',
+            resetButtonTitle: '清空条件',
+            footer: {
+              selectText: '选择',
+              navigateText: '切换',
+              closeText: '关闭',
+            },
+          },
+        },
+      },
     },
 
     editLink: {
@@ -26,27 +52,16 @@ export const zh = defineConfig({
   },
 })
 
+// PLAN-715 T-02：默认主题 nav 与 UnifiedNavbar 同源自 navigation.ts（EN 链接为
+// 共享 SPA 时中英同链）；可见导航实际由 UnifiedNavbar 承载。
 function nav(): DefaultTheme.NavItem[] {
-  return [
-    { text: '首页', link: '/zh/' },
-    { text: '语言', link: '/zh/docs/language' },
-    { text: 'Rust', link: '/zh/rust' },
-    { text: 'Python', link: '/zh/python' },
-    { text: 'UI', link: '/zh/ui' },
-    { text: 'AI', link: '/zh/ai' },
-    { text: 'OS', link: '/zh/os' },
-    { text: '应用', link: '/zh/apps' },
-    { text: '文档', link: '/zh/docs/' },
-    { text: 'Playground', link: '/zh/playground' },
-    {
-      text: 'v0.5',
-      items: [
-        { text: 'v0.5 发布专题', link: '/zh/v05/' },
-        { text: 'v0.5 发布说明', link: '/zh/docs/releases/v0.5' },
-        { text: 'v0.4 发布说明', link: '/zh/docs/releases/v0.4' },
-        { text: 'v0.3 发布说明', link: '/zh/docs/releases/v0.3' },
-        { text: '参与贡献', link: '/zh/docs/' },
-      ],
-    },
+  const items: DefaultTheme.NavItem[] = [
+    ...NAV_TOP_LEAVES.map((i) => ({ text: i.labelZh, link: i.zh })),
+    ...NAV_GROUPS.map((g) => ({
+      text: g.labelZh,
+      items: g.items.map((i) => ({ text: i.labelZh, link: i.zh })),
+    })),
+    { text: NAV_HIGHLIGHT.labelZh, link: NAV_HIGHLIGHT.zh },
   ]
+  return items
 }

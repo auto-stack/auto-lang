@@ -132,23 +132,25 @@ const titleParts = computed(() => props.title.split('×'))
   position: absolute;
   border-radius: 50%;
   filter: blur(80px);
-  opacity: 0.4;
+  /* PLAN-715 T-03：降低大面积光晕强度——紫色保留给品牌/主按钮/当前位置，
+     背景氛围弱化为可读性让路。 */
+  opacity: 0.22;
 }
 
 .orb-1 {
-  width: 600px;
-  height: 600px;
+  width: 520px;
+  height: 520px;
   background: linear-gradient(135deg, #6366f1, #a855f7);
-  top: -200px;
-  right: -100px;
+  top: -220px;
+  right: -140px;
 }
 
 .orb-2 {
-  width: 400px;
-  height: 400px;
+  width: 360px;
+  height: 360px;
   background: linear-gradient(135deg, #3b82f6, #6366f1);
-  bottom: -100px;
-  left: -100px;
+  bottom: -140px;
+  left: -140px;
 }
 
 .grid-pattern {

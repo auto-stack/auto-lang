@@ -1,4 +1,4 @@
-import { h, defineComponent, watch, onMounted, nextTick } from 'vue'
+import { h, defineComponent, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vitepress'
 import type { Theme } from 'vitepress'
 import DefaultTheme from 'vitepress/theme'
@@ -63,13 +63,33 @@ const LayoutWrapper = defineComponent({
     const router = useRouter()
     const route = useRoute()
 
+    // PLAN-715 T-02：Ctrl/Cmd+K 不抢编辑器输入。VitePress local search 的
+    // Ctrl/Cmd+K 监听挂在 window（不检查编辑态），CodeMirror 用 contenteditable
+    // 不属于它豁免的 INPUT/TEXTAREA。这里在 document 捕获相拦截 .cm-editor 内的
+    // Ctrl/Cmd+K，事件不再到达 window 监听；搜索按钮（SiteSearch）直接向 window
+    // 派发合成事件、不经过 document 捕获路径，不受影响。
+    function cmHotkeyGuard(event: KeyboardEvent) {
+      if (
+        event.key === 'k'
+        && (event.ctrlKey || event.metaKey)
+        && (event.target as HTMLElement | null)?.closest?.('.cm-editor')
+      ) {
+        event.stopPropagation()
+      }
+    }
+
     onMounted(() => {
+      document.addEventListener('keydown', cmHotkeyGuard, true)
       // If we landed on a SPA route via initial load, force full reload
       if (isSpaRoute(route.path)) {
         window.location.href = route.path
         return
       }
       setupReveal()
+    })
+
+    onUnmounted(() => {
+      document.removeEventListener('keydown', cmHotkeyGuard, true)
     })
 
     watch(() => route.path, (to) => {
