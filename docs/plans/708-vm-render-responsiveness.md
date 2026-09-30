@@ -1,24 +1,24 @@
 ---
 plan_id: PLAN-708
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived（r3 终审 pass）
+# r3 收窄（2026-09-30 用户裁定）：S 档（T-00/01/02）+正确性观测与文档收口即关计划；
+# M/L 档（T-03/04/05/11/12 + T-06 余量/T-09 全矩阵）移出单独立项 PLAN-711。
 # r2 范围确认：用户 2026-09-30 明确调用 /auto-plan:work 实施 PLAN-708（Q-06 的 r2 契约确认）。
-# worktree WSL 登记已于开工时以可恢复手段修复（gitdir 两文件 /mnt/d → D:/），检出 clean、无未知改动。
 feature_name: vm-render-responsiveness
 author: [agent]
 created_at: 2026-09-29
 updated_at: 2026-09-30
-plan_revision: 2
+plan_revision: 3
 
-# 拟议影响；最终由实现 review 依据已交付行为收口。
+# r3 定案（已交付行为收口）。
 supersedes_spec_components:
   - docs/specs/auto-lang/ui/architecture.md
-  - docs/specs/auto-lang/vm/architecture.md
 new_spec_components:
   - docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md
-touched_goals: [GOAL-007, GOAL-009]
+touched_goals: [GOAL-007]
 
-affects: [auto-lang/ui, auto-lang/vm]
-current_step: 3
+affects: [auto-lang/ui]
+current_step: 7
 total_steps: 13
 ---
 
@@ -216,12 +216,12 @@ loading 文本默认“Loading…”，保留已有侧栏和窗口交互；嵌�
 
 以下均为拟议，实施后 review 冻结、merge 写回；本次不改 canonical Specs/ledger。
 
-| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
-|---|---|---|---|---|---|
-| SD-01 | modify | docs/specs/auto-lang/ui/architecture.md | memo prop/env 并集与未定义缺省 → 三态优先级、局部 epoch/代际失效及 Degrade | 默认面扩展须正确 | AC-01/02/03/12 |
-| SD-02 | modify | docs/specs/auto-lang/ui/architecture.md | ADR-19 陈旧重放文字、ADR-24 I/O parked → 当前身份契约 + deferred Init 真完成/取消、显示通知与 dirty 接线 | 不把接受段当完成 | AC-04/05/06/07/11 |
-| SD-03 | add | docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md（新） | 无现行加载契约 → 已验证挂载/缓存/泵/观测边界，链接 proposed worker 设计 | current-state 与目标态分离 | AC-04..08/11/12 |
-| SD-04 | modify | docs/specs/auto-lang/vm/architecture.md | ADR-23 仅 I/O 段化 → UI CPU Runnable、累计安全预算、帧/栈/RC及 legacy 边界 | 长 CPU 可续跑而非静默完成 | AC-10/11 |
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs | r3 处置 |
+|---|---|---|---|---|---|---|
+| SD-01 | modify | docs/specs/auto-lang/ui/architecture.md | memo prop/env 并集与未定义缺省 → 三态优先级、局部 epoch/组件局部态失效及 Degrade 诊断 | 默认面扩展须正确 | AC-01/02/03/12 | **沉淀**（已交付） |
+| SD-02 | modify | docs/specs/auto-lang/ui/architecture.md | ADR-19 陈旧重放文字、ADR-24 I/O parked → 当前身份契约 + deferred Init 真完成/取消、显示通知与 dirty 接线 | 不把接受段当完成 | AC-04/05/06/07/11 | **移出→711** |
+| SD-03 | add | docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md（新） | 无现行加载契约 → 已验证 memo/失效/热点观测边界（S 档），链接 proposed 调度设计（711） | current-state 与目标态分离 | AC-01/02/03/09/12 | **沉淀**（按已交付面收窄） |
+| SD-04 | modify | docs/specs/auto-lang/vm/architecture.md | ADR-23 仅 I/O 段化 → UI CPU Runnable、累计安全预算、帧/栈/RC及 legacy 边界 | 长 CPU 可续跑而非静默完成 | AC-10/11 | **移出→711** |
 
 ## 6. 测试设计
 
@@ -269,20 +269,20 @@ T-00 最多一轮完整调查加一轮纠正复测，产出 `reports/708-baselin
 - 报告 p50/p95/max、完整就绪时间、memo hit/miss/degrade、native 最大耗时、资源/队列峰值。优化后完整就绪 p95 不得劣于同配置基线 25%以上，避免用无限延迟换 UI 指标。
 - 超限若因系统调度/GPU等外部噪声，必须留独立证据并复测；不删坏样本或静默放宽。不满足为 fail/needs_replan。
 
-| ID | 可观察标准 | 任务 / 验证 |
-|---|---|---|
-| AC-01 | prop 缺省下 outlet memo 生效，重复稳定页不全量重建；开关行为等价 | T-01/02/08，hit/full 计数及状态/画面 |
-| AC-02 | env=0 覆盖 prop=true 强制关；完整三态矩阵符合 §5 | T-01/08，12 组合含其他值 |
-| AC-03 | gallery 既有 sidebar/outlet 开关保持有效，路由切换未变侧栏组复用；收益由热点报告量化 | T-02/06/09 |
-| AC-04 | 显示及 MCP build 均不派发 child/page Init，重复 build 同代际只登记一次 | T-03/08，派发计数/栈追踪 |
-| AC-05 | 通知证明骨架交付后启动 Init；一次完成正确传播至真实 display/MCP dirty，首次无输入也推进 | T-04/06/08/09 |
-| AC-06 | 重页首帧与加载期间窗口/侧栏交互满足上述 r2 提议门禁 | T-00/05/09，UI 侧时间线及在屏证据 |
-| AC-07 | Init/准备任务真正终结后内容完整；async、嵌套、失败/取消不无限 loading，不写回旧代际 | T-03/05/08/09/12 |
-| AC-08 | L 正式设计已登记，线程/状态/快照/队列/取消/退出/parked 边界完整，proposed 与现状分离 | T-07/10，设计审查 |
-| AC-09 | 分段基线可复现，Row/DataTable/Init/computed/构建/渲染/MCP成本区分，根因由数据支撑 | T-00/06/09 |
-| AC-10 | 长 CPU 首段/resume 可续跑；闭包/异常/参数/副作用/RC与参考一致，累计安全护栏不绕过 | T-11/08/09 |
-| AC-11 | 总泵有界、公平；取消/队满/关窗/重载与 707 wait 一次清理，无旧任务恢复 | T-03/04/08/09/11 |
-| AC-12 | preview/nav/props/params/theme/probe/reload失效正确；长 computed 或冷构建热点不逃过 UI门禁 | T-01/02/08/09/12 |
+| ID | 可观察标准 | 任务 / 验证 | r3 处置 |
+|---|---|---|---|
+| AC-01 | prop 缺省下 outlet memo 生效，重复稳定页不全量重建；开关行为等价 | T-01/02/08，hit/full 计数及状态/画面 | **pass**（plan708_bare_default_on + 实机 hit 计数） |
+| AC-02 | env=0 覆盖 prop=true 强制关；完整三态矩阵符合 §5 | T-01/08，12 组合含其他值 | **pass**（9 组合矩阵 + env 四形态解析测试） |
+| AC-03 | gallery 既有 sidebar/outlet 开关保持有效，路由切换未变侧栏组复用；收益由热点报告量化 | T-02/06/09 | **pass**（bench A/B bare7=0ms vs cards7=9.4s；实机复测矩阵 baseline §3） |
+| AC-04 | 显示及 MCP build 均不派发 child/page Init，重复 build 同代际只登记一次 | T-03/08，派发计数/栈追踪 | **移出→711** |
+| AC-05 | 通知证明骨架交付后启动 Init；一次完成正确传播至真实 display/MCP dirty，首次无输入也推进 | T-04/06/08/09 | **移出→711** |
+| AC-06 | 重页首帧与加载期间窗口/侧栏交互满足上述 r2 提议门禁 | T-00/05/09，UI 侧时间线及在屏证据 | **移出→711**（S 档实测：冷 27-365ms，门禁全达标路径待 711 复核） |
+| AC-07 | Init/准备任务真正终结后内容完整；async、嵌套、失败/取消不无限 loading，不写回旧代际 | T-03/05/08/09/12 | **移出→711** |
+| AC-08 | L 正式设计已登记，线程/状态/快照/队列/取消/退出/parked 边界完整，proposed 与现状分离 | T-07/10，设计审查 | **移出→711**（设计文档已存在，711 承接） |
+| AC-09 | 分段基线可复现，Row/DataTable/Init/computed/构建/渲染/MCP成本区分，根因由数据支撑 | T-00/06/09 | **pass**（baseline §3.1-3.2 判别实验+复测矩阵） |
+| AC-10 | 长 CPU 首段/resume 可续跑；闭包/异常/参数/副作用/RC与参考一致，累计安全护栏不绕过 | T-11/08/09 | **移出→711** |
+| AC-11 | 总泵有界、公平；取消/队满/关窗/重载与 707 wait 一次清理，无旧任务恢复 | T-03/04/08/09/11 | **移出→711** |
+| AC-12 | preview/nav/props/params/theme/probe/reload失效正确；长 computed 或冷构建热点不逃过 UI门禁 | T-01/02/08/09/12 | **拆分**：preview/nav/epoch 失效面 **pass**（epoch 五臂+测试）；computed 热点部分 **移出→711** |
 
 ## 8. 执行步骤
 
@@ -309,16 +309,16 @@ Worktree 复用：`D:/autostack/.wt/lang-708/auto-lang` / `plan-708-dev`，先�
 - [x] T-00 基线/安全探针/decision（reports/708-baseline.md §3/§4 + 708-decision.md D-1..D-6：帧屏障裁定 listen_raw 序障；归因闭环 preview-card 臂 VueGenerator 每实例 ~1.1-1.3s、DataTable 静默 Degrade、FileTree 恒 MISS；env=0 无强制关实证；无 T-00 级阻塞）
 - [x] T-01 outlet 三态与失效（worktree 7ac8f51c2：三态门+Outlet Option<bool> 四层贯通+memo:false 新形态+缺省 on；宿主 UI epoch+五处 bump 堵组件局部态 memo 陈旧缺口；Degrade 诊断面；plan708 5 测试全绿+既有族零回归）
 - [x] T-02 gallery 既有 memo 核查及热点减负（worktree 956d86a90：归因实证=preview-card 每卡每帧 VueGenerator::new ~1.27s；WidgetRegistry::with_defaults 进程级 OnceLock+boot 后台预热；实测冷构建 row 8.1s→365ms/datatable 9.6s→27ms/area-chart 1.2s→1ms/filetree 1.4s→2ms，warm 全 0-1ms；DEGRADE 诊断行实证生效；a2vue 预存红+plan358 并行抖动定责零回归）
-- [ ] T-03 Init demand/代际生命周期
-- [ ] T-04 真实入口帧通知与有界泵
-- [ ] T-05 骨架/完成/失败显示
-- [ ] T-06 分段诊断与性能事件
-- [ ] T-07 设计/拟议规范增量
-- [ ] T-08 scoped 回归
-- [ ] T-09 VM 实机性能/终态 + 最终门禁
-- [ ] T-10 证据与独立实现复审交接
-- [ ] T-11 CPU 可续跑执行片
-- [ ] T-12 computed/冷构建预算残面
+- [x] T-06（**部分交付**，余量→PLAN-711）：DEGRADE 诊断面 + AUTO_MEMO_DIAG 全链实测可用（本计划范围）；分段时间戳/在屏采集/资源计数随 M 档泵移 711
+- [x] T-07（**收口于已交付面**）：设计文档已登记（docs/design/autoui/vm-loading-responsiveness.md）；拟议 Spec delta 按已交付行为收窄（SD-01/SD-03 沉淀；SD-02/SD-04 移 711）
+- [x] T-08（**已交付面**）：scoped 回归=plan708 6 + 045 13 + 046 38 + memo 91 + outlet 12 + parser outlet；阶段门禁 tf no-fail-fast 5891 执行零回归（12 预存红+4 并行抖动+1 环境中止逐例定责，见 §9 阶段复审）
+- [x] T-10 证据与复审交接：复审记录+落地收据在册（§9），报告 708-baseline/708-decision 固化
+- [ ] T-03 Init demand/代际生命周期（**r3 移出→PLAN-711**）
+- [ ] T-04 真实入口帧通知与有界泵（**r3 移出→PLAN-711**）
+- [ ] T-05 骨架/完成/失败显示（**r3 移出→PLAN-711**）
+- [ ] T-09 VM 实机性能/终态 §7 全矩阵（**r3 移出→PLAN-711**；S 档实测数据已固化 baseline §3）
+- [ ] T-11 CPU 可续跑执行片（**r3 移出→PLAN-711**；engine 假成功缺陷一并移交）
+- [ ] T-12 computed/冷构建预算残面（**r3 移出→PLAN-711**；DataTable memo_block Degrade 根因与 FileTree 恒 FILL 随迁）
 
 ## 9. 复审记录
 
@@ -381,6 +381,22 @@ Worktree 复用：`D:/autostack/.wt/lang-708/auto-lang` / `plan-708-dev`，先�
 - landed：`git merge --ff-only` master tip == plan-708-dev tip == `f169ad42fc6bc63f213797b72759dcfa1477e2e9`（零合并提交）；树与已验证 worktree tip 逐字节一致（crates/ 面同一棵树），scope 验证即该树上的实跑结果。
 - 未做（按入口门禁本就不适用）：canonical Spec 沉淀、ledger 刷新、归档、wt-guard/清场；worktree `D:/autostack/.wt/lang-708/auto-lang`（auto-down 兄弟在组）保留供 M 档续作，分支与 master 同点。
 - `next: M 档 T-11 → T-03..T-10/T-12 续作于同一 worktree；完成后终审 review → 终审 merge`。
+
+### 2026-09-30 r3 修订（收窄，用户裁定）
+
+- `stage: new` | `plan_id: PLAN-708` | `plan_revision: 3` | `outcome: pass`（修订自检；scope 变更已获用户授权）。
+- **授权**：用户 2026-09-30 明示"计划 708 现在 review+merge，M 档单独立项"——r2 的 M/L 档契约移出，AC-04..08/10/11 随任务转 PLAN-711（新立项 vm-loading-scheduling，drafting，承接设计文档与 T-03/04/05/09/11/12 + T-06 余量 + SD-02/04）。此为 scope 缩减而非完成声明；不存在未授权延期。
+- 收窄依据（实测）：T-02 后冷构建 27-365ms/复访 0-1ms，原始 10-30s 病灶消除；骨架/延迟 Init 的设计动机被移除。
+- 修订影响面：任务清单（T-03/04/05/09/11/12 标记移出）、AC 表（新增 r3 处置列）、规范增量（SD-02/04 移出；SD-01/03 按已交付面收窄）、frontmatter（supersedes 收窄至 ui/architecture.md，touched_goals=[GOAL-007]）。
+
+### 2026-09-30 r3 复审（终审，收窄后契约）
+
+- `stage: review` | `plan_id: PLAN-708` | `plan_revision: 3` | `outcome: pass` | `reviewed_commit: f169ad42fc6bc63f213797b72759dcfa1477e2e9`（=master，S 档已落地态）| `base_commit: e1bab972e`。
+- 复审独立性受限声明（实现会话自审）：裁定从工件重建——r3 契约逐条对证：AC-01/02/03/09 + AC-12 失效面全部绑定已固化证据（plan708 6 测试 + 阶段门禁 tf 5891 执行零回归 + baseline 实测矩阵 + 落地收据 range-diff 等价证明）；移出项核对 PLAN-711 骨架承接完整性（T-03/04/05/09/11/12 + T-06 余量 + SD-02/04 + engine 假成功缺陷登记）。
+- 代码自 f169ad42f 未变更（仅 docs/簿记后继提交）；阶段复审证据（2026-09-30）对本基线持续有效，复用理由=同一代码树+同一测试配置。
+- 发现：F-1（低）沿用阶段复审登记，随 711 的 T-08 收口；无新增发现。
+- Spec delta 冻结：SD-01（modify ui/architecture.md：memo 三态/env 强制关/宿主 epoch/组件局部态失效/Degrade 诊断）+ SD-03（add ui/design/vm-loading-responsiveness.md：已验证 memo/失效/热点观测边界 + 链接 711 proposed 调度设计）；SD-02/04 不在本次沉淀范围。
+- `next: merge（沉淀 SD-01/03 + ledger + 归档 + 清场）`。
 
 ## 10. 待澄清事项
 
