@@ -1,18 +1,20 @@
 ---
 plan_id: PLAN-709
-status: execution_done      # drafting → executing → execution_done → reviewed → archived
+status: reviewed       # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-native-slot-interaction
 author: [zcode-agent]
 created_at: 2026-09-29
-updated_at: 2026-09-29
+updated_at: 2026-09-30
 plan_revision: 2
 current_step: 9
 total_steps: 9
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: [docs/specs/auto-lang/ui/overview.md, schema/projection-protocol-v1.md]
-touched_goals: [GOAL-009]      # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - docs/specs/auto-lang/ui/overview.md      # SD-01/SD-03：L425 段落族增 709 交互叙述 + win_rect 词表（review 定案：既有 canonical 文件的增量修改，非新组件）
+  - schema/projection-protocol-v1.md          # SD-02：v1.11（native 条目 workspace/focused 实时）
+new_spec_components: []                        # 零新 spec 文件——三 delta 全部落入既有 canonical 文件
+touched_goals: [GOAL-009]      # 引用 docs/specs/goals.md 的 GOAL-NNN（虚拟桌面与桌面 Shell——review 核实在册）
 
 affects: [auto-lang/ui]        # 受影响的 specs 路径，如 [auto-lang/vm]
 ---
@@ -487,6 +489,69 @@ dock 时 `workspace = WmState 当前分区`；分区切换遍历槽位：目标�
     不足以跟手，D3）；④槽位 dock 入 z_order/mru（统一序域注册）+
     FocusNative 并接 WM 置顶 + 切分区语义（AC-04/05 的任务栏面收口）。
   - **next**：/auto-plan:review（验证-勿信复审；AC-01..10 逐条对证）。
+- 2026-09-30 /auto-plan:review：`stage: review | plan_id: PLAN-709 |
+  plan_revision: 2 | outcome: pass（R1 修复回环后） |
+  reviewed_commit: 387b692f3（worktree plan-709-dev；R1 修复 a83f24fe3 +
+  证据 387b692f3） | base_commit: e1bab972e |
+  dependency_revisions: auto-down 3373a5c（lang-709 组内兄弟，detached） |
+  spec_inputs: overview.md（worktree 版，SD-01/03 已沉淀段）+
+  schema/projection-protocol-v1.md v1.11（worktree 版）——冻结哈希随
+  worktree 提交在案。`
+  **独立性声明**：复审与实现同会话——判定按工件重建（命令复跑 + 代码
+  实读），不依赖执行期摘要。
+  **验收结果**（AC → 证据）：
+  - AC-01 **pass**：session `native_slot_drag_follows_cursor_and_
+    persists_in_free`（rect 跟随+pending 排水+Free 写回）复跑绿；
+    E2E `programmatic_set_bounds_no_undock_drift` 复跑绿（detect_user_drag
+    零漂移两连排水断言）。
+  - AC-02 **pass**：session `native_slot_resize_clamps_to_min_size`
+    （NorthWest）+ `native_slot_resize_east_south_growth_and_viewport_
+    clamp`（East/South + 视口钳制；R0 期望修正后复绿）复跑绿。
+  - AC-03 **pass**：Free relayout 恒等断言在 drag 测试内（apply_layout
+    后 rect 不跳位）复跑绿。
+  - AC-04 **pass**：session `native_slot_focus_raises_band_order_and_
+    restack_flag` + E2E `slot_band_restack_orders_real_windows`（假洞/
+    聚焦翻转/真洞三态真窗序断言）复跑绿；FOREGROUND 钩子 E2E 腿绿
+    （ToDesk 环境自适应分诊在案）。
+  - AC-05 **pass**（R1 修复后）：session `native_slot_workspace_move_
+    and_visibility_semantics` + `send_to_parses_slot_entry_wid_and_
+    preserves_vwin`（R1 新增：N 形态/纯数字/伪 Wid 回放三态）复跑绿；
+    E2E `slot_workspace_visibility_round_trip` 绿。
+  - AC-06 **pass**：`projection_v13_native_slot_entries_and_fingerprint`
+    （workspace/focused 实时 + 指纹翻位）复跑绿。
+  - AC-07 **pass**：schema/projection-protocol-v1.md v1.11 落档审阅
+    （顶表/字段表/fp 注/§6 节）；schema_drift 7/7 复跑绿。
+  - AC-08 **pass**：门禁复跑 session 100/100 + iced 242/242 + projection
+    +native_dock 39/39；native_dock_e2e 12/13（t3 SendInput 环境抖动
+    solo 复绿；前轮 t4 同类，master 同源预存）+ p709 MCP 腿三拍 PASS
+    复现。`cargo tf --no-fail-fast` 全量 5899 记录在案（work 收据）：
+    失败集 10 项——9 项 master 预存（p054×2/docs_gen×2 于 master 检出
+    同现复证；ffi_dual_019 master tf 同红；p053×2/gallery/projector/
+    a2vue/plan358/default_headers = 707 名录在案）+ 1 项本计划 R0（已修
+    a83f24fe3 前身 176473b93）。本 baseline 复跑覆盖 R0 修改面（session
+    模块全量）；其余面与已归档 tf 运行无代码差异。
+  - AC-09 **partial**（非阻塞，用户项）：#[ignore] 冒烟清单已备
+    （notepad 全链/Chrome，五观测点在头注）；p709 验收通道实机腿三拍
+    PASS（win_rect/AC-10 面）+ p709b notepad 链驱动尝试留痕（dock 执行臂
+    在验收宿主实证运行：strip_chrome 生效——Win11 notepad XAML 窗口化
+    自毁/单实例行为使链路在本机不可判，环境未决 = 计划待澄清④用户项，
+    473/486 先例同款处置）。生命周期 OS 级行为由 fixture E2E 全链覆盖。
+  - AC-10 **pass**：p709 场景复跑 PASS（摆窗像素断言 + no-op 容错 + 二次
+    摆窗通道存活）；session win_rect 双测绿。
+  **findings**：
+  - R1（已修，AC-05）：send_to 解析不容 "N<slot>" 条目 wid——动词面死路。
+    修复 a83f24fe3（N 前缀容收 486 前例 + 纯数字/伪 Wid 数值回放兼容 +
+    vwin 路径保留断言）。severity: high→resolved。
+  - R2（不阻塞，记录）：AC-09 真机 notepad 链在验收宿主不可判（toast
+    不可读 + Win11 notepad XAML 自毁行为）——维持计划待澄清④用户项；
+    fixture E2E 覆盖生命周期。severity: low（范围内已按计划预留用户项）。
+  - R3（观察，不阻塞）：验收宿主 boot 为 "shell-only desktop
+    fullscreen=false" 变体，OS 级 toast 在该模式不可投影——后续验收
+    腿设计宜走 syslog/投影面取证（473 遗留观察，不绑本计划）。
+  **evidence**：evidence/p709/（三拍截图 + p709b 驱动与留痕，commit
+  387b692f3）；门禁数字见上；R0/R1 修复提交 a83f24fe3/176473b93 在案。
+  **next**：merge（worktree 保留至 merge 清理；canonical 沉淀 = SD-01/03
+  overview.md 段 + SD-02 schema v1.11 已在 worktree 备妥随 merge 发布）。
 
 ## 10. 待澄清事项
 
