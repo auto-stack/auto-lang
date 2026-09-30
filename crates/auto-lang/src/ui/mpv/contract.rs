@@ -219,10 +219,16 @@ impl MediaContract {
             }
         }
 
-        // ② 属性下行（全部做差量）。
+        // ② 属性下行（全部做差量）。PLAN-712 T-19：`pause` 写失败**不推进**
+        //    applied——差量判据以「内核实态」为准，一次瞬时失败若被记成已写，
+        //    作者值与内核实态就永久脱 sync（下次同值下行零写，表现为「点了
+        //    暂停没反应、再点又立即反转」的打架形态）。
+        let applied_paused_before = self.applied.paused;
+        let mut paused_write_failed = false;
         if down.paused != self.applied.paused {
-            if engine.set_flag("pause", down.paused).is_ok() {
-                ops += 1;
+            match engine.set_flag("pause", down.paused) {
+                Ok(()) => ops += 1,
+                Err(_) => paused_write_failed = true,
             }
         }
         if down.muted != self.applied.muted {
@@ -265,6 +271,9 @@ impl MediaContract {
         }
 
         self.applied = down.clone();
+        if paused_write_failed {
+            self.applied.paused = applied_paused_before;
+        }
         ops
     }
 
@@ -304,11 +313,22 @@ impl MediaContract {
 
         // ④ 播放状态：由 `pause` 属性**合成** `onplaystatechange`（§2.3 明写它
         //    不是原生 DOM 事件，是由 play/pause 合成的），故这里做边缘检测。
+        //    PLAN-712 T-19：**首次读到的是基线，不是边缘**——运行时刚建时引擎
+        //    是空闲默认态（pause=false），把基线当边缘会凭空合成一次
+        //    PlayStateChange(true)，把 app 侧受控状态（is_playing）顶成
+        //    「播放中」（实测探针：空闲引擎首 poll 事件=[PlayStateChange(true)]；
+        //    此后 app 的 paused 下行与上行镜像互为反转，toggle 永久反相——
+        //    「图标显示 play/点暂停停不下来」的引擎侧打架种子）。此后每次
+        //    真实翻转才回灌。
         if let Some(paused) = engine.get_flag("pause") {
             let playing = !paused;
-            if self.last_play_state != Some(playing) {
-                self.last_play_state = Some(playing);
-                out.push(VideoContractEvent::PlayStateChange(playing));
+            match self.last_play_state {
+                None => self.last_play_state = Some(playing),
+                Some(prev) if prev != playing => {
+                    self.last_play_state = Some(playing);
+                    out.push(VideoContractEvent::PlayStateChange(playing));
+                }
+                Some(_) => {}
             }
         }
 

@@ -558,3 +558,135 @@ fn audio_output_is_delegated_to_mpv() {
         "应能读到音轨编码名（说明音轨被识别，而非被当成无音轨文件）"
     );
 }
+
+
+// ───────────────────────── PLAN-712 T-19：暂停链回归锁 ─────────────────────────
+
+/// **T-19 锁①**：空闲引擎（未 loadfile）的首次 poll 是**基线采集**，不是边缘
+/// ——不得合成任何 play-state 事件。修复前实测：首 poll 事件 =
+/// [PlayStateChange(true)]，把 app 侧受控 is_playing 顶成「播放中」，此后
+/// paused 下行与上行镜像互为反转（图标反相/点暂停没反应的打架种子）。
+/// 基线采集后保持同值下行反复 poll 也必须零事件；作者显式翻转为 true 时
+/// 恰好回灌一次。
+#[test]
+fn idle_engine_first_poll_seeds_baseline_without_play_state_event() {
+    if libmpv_path().is_none() {
+        eprintln!("SKIP: 本机无 libmpv");
+        return;
+    }
+    let Some(engine) = contract_engine() else {
+        eprintln!("SKIP: 引擎构造失败");
+        return;
+    };
+    let mut contract = MediaContract::new();
+
+    // 首读（连续 5 帧同空态）：零事件。
+    let evs: Vec<_> = (0..5).flat_map(|_| contract.poll(&engine)).collect();
+    assert!(
+        evs.is_empty(),
+        "空闲引擎首读是基线不是边缘，不得合成 play-state 事件：{evs:?}"
+    );
+
+    // 加载（默认 paused=true——写下去），保持期继续零事件。
+    let Some(video) = sample_video() else {
+        eprintln!("SKIP: 未设 AUTO_SPIKE_VIDEO");
+        return;
+    };
+    let mut down = VideoContractDown::default();
+    down.src = Some(video.to_string_lossy().into_owned());
+    contract.apply(&engine, &down);
+    let evs: Vec<_> = (0..10).flat_map(|_| contract.poll(&engine)).collect();
+    assert!(
+        !evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(_))),
+        "paused=true 保持期不得有 play-state 事件：{evs:?}"
+    );
+
+    // 作者显式起播：恰好回灌一次 PlayStateChange(true)。
+    down.paused = false;
+    contract.apply(&engine, &down);
+    let evs = poll_until(&engine, &mut contract, Duration::from_secs(10), |evs, _| {
+        evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(true)))
+    });
+    assert!(
+        evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(true))),
+        "起播应回灌 PlayStateChange(true)：{evs:?}"
+    );
+}
+
+/// **T-19 锁②**：暂停长保持（渲染面每帧形态：同值下行反复 apply+poll）下
+/// 引擎/契约层不得自发 un-pause，pause 旗标持续为真、时间冻结；快速 toggle
+/// ×10 每步 applied 锁存与内核实态一致（错一次即「图标与实态脱 sync」的
+/// 引擎层证据）。PLAN-712 r3 探针定谳：本层全程干净——「停不下来」的驱动
+/// 在上游消息/视图层，本锁钉住引擎层不引入新打架。
+#[test]
+fn pause_hold_and_rapid_toggle_stay_in_sync() {
+    if libmpv_path().is_none() {
+        eprintln!("SKIP: 本机无 libmpv");
+        return;
+    }
+    let Some(video) = sample_video() else {
+        eprintln!("SKIP: 未设 AUTO_SPIKE_VIDEO");
+        return;
+    };
+    let Some(engine) = contract_engine() else {
+        eprintln!("SKIP: 引擎构造失败");
+        return;
+    };
+    let mut contract = MediaContract::new();
+    let _ = load(&engine, &mut contract, &video);
+
+    // 起播。
+    let mut down = VideoContractDown::default();
+    down.src = Some(video.to_string_lossy().into_owned());
+    down.paused = false;
+    contract.apply(&engine, &down);
+    let evs = poll_until(&engine, &mut contract, Duration::from_secs(10), |evs, _| {
+        evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(true)))
+    });
+    assert!(
+        evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(true))),
+        "起播应回灌 PlayStateChange(true)"
+    );
+
+    // 暂停。
+    down.paused = true;
+    contract.apply(&engine, &down);
+    let evs = poll_until(&engine, &mut contract, Duration::from_secs(5), |evs, _| {
+        evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(false)))
+    });
+    assert!(
+        evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(false))),
+        "暂停应回灌 PlayStateChange(false)"
+    );
+
+    // 长保持：~2s 同值 apply+poll，零自发 un-pause、旗标恒真、时间冻结。
+    for _ in 0..120 {
+        contract.apply(&engine, &down);
+        let evs = contract.poll(&engine);
+        assert!(
+            !evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(true))),
+            "暂停保持期出现自发 PlayStateChange(true)：{evs:?}"
+        );
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    assert_eq!(engine.get_flag("pause"), Some(true), "保持期 pause 旗标必须持续为真");
+    let t1 = engine.get_f64("time-pos").unwrap_or(0.0);
+    std::thread::sleep(Duration::from_millis(400));
+    let t2 = engine.get_f64("time-pos").unwrap_or(0.0);
+    assert!((t2 - t1).abs() < 0.2, "保持期时间应冻结（{t1} → {t2}）");
+
+    // 快速 toggle ×10：每步内核实态跟随下行（applied 锁存 vs 实态对账）。
+    for i in 0..10 {
+        down.paused = i % 2 == 0;
+        contract.apply(&engine, &down);
+        for _ in 0..5 {
+            contract.poll(&engine);
+            std::thread::sleep(Duration::from_millis(16));
+        }
+        assert_eq!(
+            engine.get_flag("pause"),
+            Some(down.paused),
+            "第 {i} 次翻转后 pause 旗标未跟随下行（applied 锁存 vs 引擎实态脱 sync）"
+        );
+    }
+}

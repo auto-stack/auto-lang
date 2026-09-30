@@ -3201,6 +3201,33 @@ impl DesktopSession {
         host.wm.add_win(app, title, rect)
     }
 
+    /// PLAN-712 r3 T-18（方案 A）：虚拟窗尺寸落定后标记归属 app 的视图脏。
+    ///
+    /// 为什么必须显式标：VM 视图构建器把响应式取值按 `window_size` 在
+    /// **构建期**烤定（`set_window_width` 通道），而 `dynamic_view_impl` 的
+    /// 元素缓存快门在 `!view_dirty` 时逐帧返回缓存的烤定像素树——虚拟窗
+    /// 缩放若只更新 `VWinState.window_size` 不标脏，app 内容恒停在旧尺寸
+    /// （实机形态：缩放后表面 1:1 锚定 + 右/下空白，播控条不重排）。
+    /// 交互八向缩放（`apply_cursor` 消费后）与编程 `win_rect` 两处执行臂
+    /// 调用本方法；纯移动不改内容尺寸，调用方自行门控。
+    /// 返回是否真的标了（未知 wid / 非 desktop 会话 = false，幂等无害）。
+    pub fn mark_vwin_resized_dirty(&mut self, wid: Wid) -> bool {
+        let app_id = {
+            let Some(host) = self.host.as_ref() else {
+                return false;
+            };
+            let Some(v) = host.wm.wins.get(&wid) else {
+                return false;
+            };
+            v.app
+        };
+        let Some(app) = self.apps.get_mut(&app_id) else {
+            return false;
+        };
+        *app.state.view_dirty.borrow_mut() = true;
+        true
+    }
+
     /// PLAN-030 D1：垫底虚拟窗（壳 background 伪窗）。
     pub fn wm_add_win_bottom(&mut self, app: AppId, title: String, rect: iced::Rectangle) -> Wid {
         let host = self.host.as_mut().expect("wm_add_win_bottom requires desktop mode");
@@ -7394,6 +7421,62 @@ mod tests {
         // 独立模式拆借无 vwin_rect（走 iced::window::resize 旧路径）。
         let view = ds.split_mut(app).expect("standalone split");
         assert!(view.vwin_rect.is_none());
+    }
+
+    /// PLAN-712 r3 T-18（方案 A）：虚拟窗缩放必须标记归属 app 视图脏——
+    /// VM builder 按 window_size 构建期烤定响应式取值 + dynamic_view 缓存
+    /// 快门（`!dirty → take cached`），不标脏则缩放后 app 内容恒停旧尺寸
+    /// （实机形态：表面 1:1 锚定 + 右/下空白，播控条不重排）。本锁钉住
+    /// resize 交互 → `mark_vwin_resized_dirty` 的 seam；未知 wid 幂等 false。
+    #[test]
+    fn wm_resize_marks_app_view_dirty() {
+        let mut ds = desktop_session_with_host();
+        let app = insert_app(&mut ds, "R");
+        let wid = ds.wm_add_win(
+            app,
+            "R".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(300.0, 200.0)),
+        );
+        // 装配期（allocate/add_win）本就置脏（首帧构建）——显式清零再锁
+        // 「缩放 → 置脏」这个增量。
+        *ds.apps[&app].state.view_dirty.borrow_mut() = false;
+
+        // 交互缩放（SE +50/+50）落定后标记 → 归属 app 视图脏。
+        ds.host.as_mut().unwrap().wm.interaction = Some(WmInteraction::Resize {
+            wid,
+            edge: ResizeEdge::SouthEast,
+            start_rect: iced::Rectangle::new(
+                iced::Point::new(0.0, 0.0),
+                iced::Size::new(300.0, 200.0),
+            ),
+            start_cursor: iced::Point::new(0.0, 0.0),
+        });
+        assert!(
+            ds.host.as_mut().unwrap().wm.apply_cursor(50.0, 50.0, iced::Size::new(1600.0, 900.0)),
+            "缩放交互应被消费"
+        );
+        assert!(ds.mark_vwin_resized_dirty(wid), "已知 wid 应标记成功");
+        assert!(
+            *ds.apps[&app].state.view_dirty.borrow(),
+            "缩放后归属 app 的视图必须置脏（重排随动的前提）"
+        );
+        ds.host.as_mut().unwrap().wm.end_interaction();
+
+        // 未知 wid：幂等 false，不炸。
+        assert!(!ds.mark_vwin_resized_dirty(Wid(9_999)));
+        // 纯移动（Drag 消费）：renderer 侧不调 mark（零重排纪律）——此处只
+        // 锁 helper 不误伤：清脏后再次 mark 仍可重置（幂等语义由调用方门控）。
+        *ds.apps[&app].state.view_dirty.borrow_mut() = false;
+        ds.host.as_mut().unwrap().wm.interaction = Some(WmInteraction::Drag {
+            wid,
+            grab: iced::Point::new(10.0, 10.0),
+        });
+        assert!(ds.host.as_mut().unwrap().wm.apply_cursor(60.0, 60.0, iced::Size::new(1600.0, 900.0)));
+        ds.host.as_mut().unwrap().wm.end_interaction();
+        assert!(
+            !*ds.apps[&app].state.view_dirty.borrow(),
+            "纯拖拽路径不应置脏（renderer 只在 Resize 交互臂调 mark）"
+        );
     }
 
     // ---- Plan 463 T4：DesktopBus 命令解析 ----

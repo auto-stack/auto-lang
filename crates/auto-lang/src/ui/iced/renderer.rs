@@ -12599,6 +12599,10 @@ fn execute_desktop_commands(
                         .is_none()
                     {
                         if let Some(v) = host.wm.wins.get(&wid) {
+                            let (old_w, old_h) = {
+                                let r = v.rect.borrow();
+                                (r.width, r.height)
+                            };
                             let mut r = v.rect.borrow_mut();
                             r.x = x;
                             r.y = y;
@@ -12610,6 +12614,14 @@ fn execute_desktop_commands(
                             if let Some(v) = host.wm.wins.get(&wid) {
                                 *v.window_size.borrow_mut() =
                                     iced::Size::new(width, height);
+                            }
+                            // PLAN-712 r3 T-18（方案 A）：尺寸真变才标视图脏
+                            // ——VM builder 按 window_size 构建期烤定响应式
+                            // 取值 + dynamic_view 缓存快门，不标脏则 app 内容
+                            // 恒停旧尺寸（表面 1:1 锚定 + 空白右/下）。纯移动
+                            // 不标（零重排纪律）。
+                            if (width - old_w).abs() >= 0.5 || (height - old_h).abs() >= 0.5 {
+                                state.mark_vwin_resized_dirty(wid);
                             }
                         }
                     }
@@ -21182,6 +21194,23 @@ fn compare_pngs(
                                         // （pending 空时零开销幂等；vwin 拖拽
                                         // 路径 pending 恒空零新增成本）。
                                         sync_native_geometry(state);
+                                        // PLAN-712 r3 T-18（方案 A）：八向缩放
+                                        // 的每一拍标记被缩放 app 视图脏——与
+                                        // WinRect 臂同理（烤定像素 + 缓存快门
+                                        // = 缩放全程不重排）；拖拽（Drag）不改
+                                        // 内容尺寸，不标。逐拍重建即活布局的
+                                        // 标准成本（独立窗 OS resize 同价）。
+                                        if let Some(host) = state.host.as_ref() {
+                                            if let Some(
+                                                crate::ui::session::WmInteraction::Resize {
+                                                    wid,
+                                                    ..
+                                                },
+                                            ) = host.wm.interaction
+                                            {
+                                                state.mark_vwin_resized_dirty(wid);
+                                            }
+                                        }
                                         return iced::Task::none();
                                     }
                                 }
