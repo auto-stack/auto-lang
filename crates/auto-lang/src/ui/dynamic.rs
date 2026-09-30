@@ -1555,11 +1555,17 @@ impl DynamicComponent {
         let diag = std::env::var("AUTO_SCHED_DIAG").ok().as_deref() == Some("1");
         let t0 = crate::ui::dynamic::sched_diag_t0();
         if diag {
+            // PLAN-711 T-06余：资源计数面——排队 demand/在途 CPU/I/O parked/
+            // 写事件队列深度一屏可见（分段时间戳的其余轴由 MEMO-DIAG 构建
+            // 时间戳、VM-CPU/INIT/PARKED 生命周期行、CpuPumpReport/
+            // InitDispatchReport 计数承担）。
             eprintln!(
-                "[SCHED-DIAG] frame_pump enter t={}ms queued_init={} cpu_cont={}",
+                "[SCHED-DIAG] frame_pump enter t={}ms queued_init={} cpu_cont={} parked_total={} write_q={}",
                 t0.elapsed().as_millis(),
                 self.bridge.pending_init_demand_count(),
                 self.bridge.cpu_continuation_count(),
+                self.bridge.parked_count(),
+                self.bridge.vm_write_queue_len(),
             );
         }
         let init_report = self

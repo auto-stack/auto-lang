@@ -313,3 +313,30 @@ widget Boom {
     assert_eq!(d, InitDemandDecision::AlreadyKnown);
     assert_eq!(bridge.pending_init_demand_count(), 0);
 }
+
+/// F-1（708 阶段复审登记，随 T-08 收口）：非法 outlet 头参 pointed
+/// parse error 直接测试——`outlet (foo: 1)` 必须得到指明非法键值的消息，
+/// 而非静默吞掉或泛化错误。
+#[test]
+fn plan711_f1_outlet_illegal_head_param_parse_error() {
+    let session = crate::session::CompilerSession::ui();
+    let mut parser = crate::Parser::from(
+        r#"
+widget P {
+  view {
+    outlet (foo: 1)
+  }
+}
+"#,
+    )
+    .with_session(session);
+    let err = parser
+        .parse()
+        .expect_err("illegal outlet head param must be a pointed parse error");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("outlet 头参只接受"),
+        "error should name the outlet head-param contract, got: {msg}"
+    );
+    assert!(msg.contains("foo"), "error should echo the illegal key, got: {msg}");
+}
