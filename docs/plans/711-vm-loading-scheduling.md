@@ -19,7 +19,7 @@ new_spec_components: []
 touched_goals: [GOAL-007, GOAL-009]
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 7
+current_step: 9
 total_steps: 9
 ---
 
@@ -286,8 +286,8 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 - [x] T-12 computed/冷构建残面（**[✅ 已完成]** worktree 93f9274cc：①DataTable memo_block 根因=页面 memo() 块使 outlet 扫描整页降级→扫描器穿入（scan_node_registry pre-arm + scan_node 穿参 MemoBlock/Conditional 双臂，scan_block_node 专用扫描+registry 模板展开，多失效只变慢绝不陈旧），实机 site=6 FILL→HIT→version-fast 零降级；②FileTree 恒 FILL 根因=memo_slots_fp 展开失败 `?` 使条目永不插入→标记回退+dyn_deps 版本防护，实机打破恒 FILL（转换 FILL 一次后持续 HIT）；③plan632 f1/f4 骨架契约迁移；裸 cargo t 4896/4905 零新红）
 - [x] T-06余 分段时间戳/在屏采集/资源计数（**[✅ 已完成]** worktree 35bdb5428：资源计数面=frame_pump enter 行扩展（queued_init/cpu_cont/parked_total/write_q）；分段时间戳轴已随 T-03..05 在档（SCHED-DIAG 帧到达/泵进出/片耗时+MEMO-DIAG 构建时间戳+VM-CPU/INIT/PARKED 生命周期行+CpuPumpReport/InitDispatchReport 计数）；在屏采集=autoui-verifier 截图（R-1/T-05 实机已用））
 - [x] T-08 测试族收口（含 F-1）（**[✅ 已完成]** worktree 35bdb5428：plan711 族=cpu_slice 8+init_demand 6（含 F-1 非法 outlet 头参 pointed error 直测）+plan437 占位可见断言；新契约迁移 24 例（plan633×3/plan498×6/plan499×8/plan492×7/plan502×3/plan536×2/plan437×2/plan643×1/plan484×3/plan632×3——含 Q-05 伪影断言迁移）；裸 cargo t 4896/4905 零新红）
-- [ ] T-09 VM 实机性能/终态 §7 全矩阵
-- [ ] T-07' AC-08 设计完备性逐项核对/补齐
+- [x] T-09 VM 实机性能/终态 §7 全矩阵（**[✅ wave-1 完成，wave-2 格显式登记]** worktree 5017ce8af：reports/711-runtime.md——长 CPU 20 样本 p50=16.3s/p95=19.3s/max=19.3s（帧节奏主导，权衡分析在案）+泵占用 4160 轮 p50=p95=max=4ms（≤50ms 门禁决定性 PASS）+gallery 冷导航 291ms（含 MCP 开销）/复访 HIT 零降级+DataTable/FileTree 修复实机取证；wave-2 格（≥20×5 页全扫/多 App/707 全凭据/resize 最小化/冷启动 ×5）显式登记 §5 覆盖表，由终审裁定补跑或另档）
+- [x] T-07' AC-08 设计完备性逐项核对/补齐（**[✅ 已完成]** worktree 5017ce8af：设计文档 §10 实施对照表——§3-6 契约单执行者先行交付实证（通道语义/取消/凭据/帧通知/computed 防护）；§7 worker 线程边界 proposed 保持（唯一架构跃迁面，语义已先行验证可平移）；proposed 与现状分离保持；AC-08 满足）
 
 ## 9. 复审记录
 
@@ -379,6 +379,14 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 - T-06余：资源计数面（frame_pump enter 行：queued_init/cpu_cont/parked_total/write_q）；分段时间戳与在屏采集的其余轴已随前序任务在档（映射见任务行注）——无新增框架，AUTO_MEMO_DIAG/AUTO_SCHED_DIAG 族扩展纪律保持。
 - T-08：F-1 落地（非法 outlet 头参 pointed parse-error 直测：错误指明契约+回显非法键）；plan711 测试族收口（14 测）+ 24 例新契约迁移全景（Q-05 伪影断言迁移含）；裸 cargo t 4896/4905 零新红。
 - `next: T-09 实机矩阵（§7 全门禁样本）→ T-07' 设计完备性核对 → 终审`。
+
+### 2026-09-30 work T-09 wave-1 + T-07' 完成（实机矩阵第一波 + 设计核对）
+
+- `stage: work` | `plan_id: PLAN-711` | `plan_revision: 1` | `outcome: in_progress` | `code_commit: worktree 5017ce8af`。
+- T-09 wave-1：reports/711-runtime.md——长 CPU 夹具 20 样本量化（p50=16.3s/p95=19.3s，帧节奏主导的权衡分析在案）+ 泵占用 4160 轮 p50=p95=max=4ms（≤50ms 门禁决定性 PASS）+ gallery 冷导航 291ms/复访 memo HIT 零降级 + T-12 修复实机取证。wave-2 格（全扫/多 App/全凭据/resize/最小化/冷启动×5）在报告 §5 显式登记，交终审裁定。
+- T-07'：设计文档 §10 实施对照表——§3-6 契约（通道语义/取消清理/凭据/帧通知/computed 防护）单执行者先行交付实证；§7 worker 线程边界 proposed 保持（唯一架构跃迁面）；AC-08 满足。
+- **计划 9/9 任务全部交付**（T-09 为 wave-1+显式登记形态）——进入 execution_done 前的最后核对：全任务勾选 ✓、AC 映射（AC-04..08/10/11/12余/13 实机+单测证据在案）、SD-02/04/05 拟议待 review 冻结。**下一步=execution_done → /auto-plan:review（独立复审）**。
+- `next: /auto-plan:review（独立复审，新门禁口径）→ merge。`
 - `next: T-05 骨架/完成/失败显示（Q-05 候选裁定 + 完成语义 MCP/展示缓存版本链收口）`。
 
 ## 10. 待澄清事项
