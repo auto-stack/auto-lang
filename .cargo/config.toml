@@ -3,7 +3,10 @@
 #   cargo t          - fast daily tests (no heavy test groups; 1M churn test
 #                      excluded via .config/nextest.toml default-filter, Plan 466)
 #   cargo tf         - full-scale daily tests (all tests incl. 1M churn, via
-#                      .config/nextest-full.toml) — review/pre-fold gate (Plan 466)
+#                      .config/nextest-full.toml) — batch regression tier:
+#                      /auto-plan:regress on the main checkout, single
+#                      instance; NOT a per-plan review gate (Plan 466
+#                      semantics; fix-test-tiering 2026-09-30)
 #   cargo tv         - corpus filter tier (pure .at corpus goldens via nextest
 #                      profile tv default-filter; SAME binary as t/tf - zero
 #                      recompile, PLAN-700;
@@ -58,7 +61,9 @@ jobs = 12
 # (2026-09-22 注:ui-iced 已入 auto-lang default feature——本行显式 flag 冗余
 # 但保留作文档;全部档位见 tf 注的新裁定。)
 t = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test component_registry_test --features ui-iced"
-# Plan 466: full 档 = 全部测试含 1M 大档 churn(review/fold 全量门禁专用)
+# Plan 466: full 档 = 全部测试含 1M 大档 churn(批量回归专用——fix-test-tiering
+# 2026-09-30 起不再作 per-plan review 门禁,由 auto-plan-regress 技能主检出
+# 单实例触发;复审门禁=裸 cargo t + 触面档,见 AGENTS.md Category B)
 # (2026-09-22 用户裁定:全档统一 feature 集——ui-iced 入 auto-lang default,
 # tf/tv/tt/tb/taa/ta/t3 与裸 cargo check/test 经 cargo 默认机制天然同源,
 # 档间切换零整库冷重编。Plan 507"tf 不带 ui-iced 复审档语义不动"保守残留

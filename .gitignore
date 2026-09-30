@@ -186,11 +186,12 @@ examples/widgets-gallery/src/front/tests/
 # auto CLI writes a local am.at cache into the run directory; keep generated copies out of the tree (assets copy is tracked explicitly)
 examples/**/am.at
 
-# auto-plan 四技能为 auto-musk 仓所有，本仓以 junction 引用（机器本地安装物，禁入库；源=../auto-musk/.agents/skills）
+# auto-plan 技能为 auto-musk 仓所有，本仓以 junction 引用（机器本地安装物，禁入库；源=../auto-musk/.agents/skills）
 .agents/skills/auto-plan-new/
 .agents/skills/auto-plan-work/
 .agents/skills/auto-plan-review/
 .agents/skills/auto-plan-merge/
+.agents/skills/auto-plan-regress/
 
 # cargo 探针构建目录（worktree-less probe builds，可再生；先例 target-412/）
 target-*/

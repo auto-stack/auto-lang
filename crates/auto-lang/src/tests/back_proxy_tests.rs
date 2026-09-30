@@ -12,6 +12,18 @@ use std::path::PathBuf;
 
 use crate::back_proxy::{start, BackProxyConfig, SessionSpec};
 
+/// OS 分配临时端口（fix-test-tiering：本文件原 12 处 `port: 39xx/40xx` 固定
+/// 字面量，撞上 Hyper-V 动态保留段（如 3941-4040）时 bind 得 WSAEACCES(10013)
+/// 且 bind_with_fallback 只回退 AddrInUse 不回退 PermissionDenied——16 测齐红
+/// 实录；临时端口顺带消除多 worktree 并行互踩）。
+fn ephemeral_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .expect("bind :0")
+        .local_addr()
+        .expect("local_addr")
+        .port()
+}
+
 /// 原始 socket HTTP 客户端（避免测试对 reqwest blocking 的额外依赖面）。
 fn http_request(port: u16, method: &str, path: &str, body: Option<&str>) -> (u16, String) {
     let (status, _headers, body) = http_request_raw(port, method, path, body, &[]);
@@ -138,7 +150,7 @@ fn fixture_config(tag: &str, port: u16) -> (BackProxyConfig, PathBuf) {
 /// 子前缀路由 + JSON 分发 + 跨请求 session 态存续。
 #[test]
 fn http_e2e_back_proxy_json_routes_and_session_state() {
-    let (config, _dir) = fixture_config("state", 3958);
+    let (config, _dir) = fixture_config("state", ephemeral_port());
     let proxy = start(config).expect("start back proxy");
 
     // GET 列表：__module_init 激活的种子数据。
@@ -180,7 +192,7 @@ fn http_e2e_back_proxy_json_routes_and_session_state() {
 /// 404 面：未知 app / 未知路由 / 前缀缺失。
 #[test]
 fn http_e2e_back_proxy_not_found_faces() {
-    let (config, _dir) = fixture_config("404", 3968);
+    let (config, _dir) = fixture_config("404", ephemeral_port());
     let proxy = start(config).expect("start back proxy");
 
     let (status, body) = http_request(proxy.port, "GET", "/apps/unknown/api/notes", None);
@@ -198,7 +210,7 @@ fn http_e2e_back_proxy_not_found_faces() {
 /// 缺参按名绑定的 400 面。
 #[test]
 fn http_e2e_back_proxy_missing_param_is_400() {
-    let (config, _dir) = fixture_config("400", 3978);
+    let (config, _dir) = fixture_config("400", ephemeral_port());
     let proxy = start(config).expect("start back proxy");
     let (status, body) = http_request(proxy.port, "POST", "/apps/fixture/api/notes", Some("{}"));
     assert_eq!(status, 400, "missing param, body: {body}");
@@ -285,7 +297,7 @@ fn path_param_config(tag: &str, port: u16) -> (BackProxyConfig, PathBuf) {
 /// str `:slug` 保形透传不受转型影响。
 #[test]
 fn http_e2e_back_proxy_path_param_typed_binding() {
-    let (config, _dir) = path_param_config("typed", 3948);
+    let (config, _dir) = path_param_config("typed", ephemeral_port());
     let proxy = start(config).expect("start back proxy");
 
     let (status, body) = http_request(proxy.port, "GET", "/apps/p675/api/echo/21", None);
@@ -315,7 +327,7 @@ fn http_e2e_back_proxy_path_param_typed_binding() {
 /// 半途压参污染。
 #[test]
 fn http_e2e_back_proxy_bad_path_param_is_400() {
-    let (config, _dir) = path_param_config("badval", 3949);
+    let (config, _dir) = path_param_config("badval", ephemeral_port());
     let proxy = start(config).expect("start back proxy");
 
     let (status, body) = http_request(proxy.port, "GET", "/apps/p675/api/echo/abc", None);
@@ -358,7 +370,7 @@ pub fn echo(n int) int {
 
     let config = BackProxyConfig {
         lazy_sessions: true,
-        port: 3960,
+        port: ephemeral_port(),
         sessions: vec![
             SessionSpec {
                 app_id: "good".to_string(),
@@ -418,7 +430,7 @@ fn http_e2e_back_proxy_real_routes_corpora_data_face() {
         // PLAN-675 T-08: lazy 档即证——冷代理零预装载,五家随探针首击
         // 逐家按需装载(活体 N2 场景的确定性镜像)。
         lazy_sessions: true,
-        port: 3959,
+        port: ephemeral_port(),
         sessions: vec![
             spec("018-book-reader"),
             spec("019-video-app"),
@@ -512,7 +524,7 @@ fn http_e2e_back_proxy_real_020_status_route() {
     }
     let config = BackProxyConfig {
         lazy_sessions: false,
-        port: 3988,
+        port: ephemeral_port(),
         sessions: vec![SessionSpec {
             app_id: "020-music-player".to_string(),
             back_entry: entry,
@@ -545,7 +557,7 @@ fn http_e2e_back_proxy_native_media_routes() {
 
     let config = BackProxyConfig {
         lazy_sessions: false,
-        port: 3998,
+        port: ephemeral_port(),
         sessions: Vec::new(),
         native_media: vec![crate::back_proxy::NativeMediaApp {
             app_id: "020-t".to_string(),
@@ -620,7 +632,7 @@ fn http_e2e_back_proxy_native_media_routes() {
 fn http_e2e_back_proxy_native_media_no_root_honest_empty() {
     let config = BackProxyConfig {
         lazy_sessions: false,
-        port: 3999,
+        port: ephemeral_port(),
         sessions: Vec::new(),
         native_media: vec![crate::back_proxy::NativeMediaApp {
             app_id: "no-root-t".to_string(),
@@ -648,7 +660,7 @@ fn http_e2e_back_proxy_real_017_crud_probe() {
     }
     let config = BackProxyConfig {
         lazy_sessions: false,
-        port: 3978,
+        port: ephemeral_port(),
         sessions: vec![SessionSpec {
             app_id: "017-chat".to_string(),
             back_entry: entry,
@@ -689,7 +701,7 @@ fn http_e2e_back_proxy_real_017_sse_stream() {
     }
     let config = BackProxyConfig {
         lazy_sessions: false,
-        port: 3968,
+        port: ephemeral_port(),
         sessions: vec![SessionSpec {
             app_id: "017-chat".to_string(),
             back_entry: entry,
@@ -782,7 +794,7 @@ fn http_e2e_back_proxy_real_031_native_ns_session() {
     }
     let config = BackProxyConfig {
         lazy_sessions: false,
-        port: 3958,
+        port: ephemeral_port(),
         sessions: vec![SessionSpec {
             app_id: "031-image-viewer".to_string(),
             back_entry: base.join("src/back/api.at"),
@@ -857,7 +869,7 @@ fn http_e2e_back_proxy_media_uri_byte_fidelity() {
 
     let config = BackProxyConfig {
         lazy_sessions: false,
-        port: 3938,
+        port: ephemeral_port(),
         sessions: Vec::new(),
         native_media: Vec::new(),
         #[cfg(feature = "image-pipeline")]
@@ -941,7 +953,7 @@ pub fn boom() str {
 
     let config = BackProxyConfig {
         lazy_sessions: false,
-        port: 3928,
+        port: ephemeral_port(),
         sessions: vec![
             SessionSpec {
                 app_id: "boom-app".to_string(),
@@ -1006,7 +1018,7 @@ fn http_e2e_back_proxy_runtime_add_remove_and_join_exit() {
     let dir = write_fixture("p037-rt");
     let config = BackProxyConfig {
         lazy_sessions: false,
-        port: 4018,
+        port: ephemeral_port(),
         sessions: Vec::new(),
         #[cfg(feature = "ui")]
         native_media: Vec::new(),
@@ -1079,7 +1091,7 @@ fn http_e2e_back_proxy_runtime_native_media_add_remove() {
 
     let config = BackProxyConfig {
         lazy_sessions: false,
-        port: 4028,
+        port: ephemeral_port(),
         sessions: Vec::new(),
         native_media: Vec::new(),
         #[cfg(feature = "image-pipeline")]

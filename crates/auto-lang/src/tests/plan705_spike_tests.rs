@@ -428,7 +428,19 @@ fn grab() str {
 // PLAN-705 T-04 E2E：段驱动 owner dispatch（真实 server 面）
 // ============================================================================
 
-/// 启动 AutoVM HTTP server（固定端口 + 等待可连接；plan326 同款约束）。
+/// OS 分配临时端口（fix-test-tiering：固定端口在并行 worktree/多 agent 下
+/// bind 互踩或跨 run 连错 mock；Windows 临时端口顺序分配，刚释放的端口
+/// 不会被立即重派，TOCTOU 窗口可忽略）。
+fn ephemeral_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .expect("bind :0")
+        .local_addr()
+        .expect("local_addr")
+        .port()
+}
+
+/// 启动 AutoVM HTTP server（临时端口 + 等待可连接；plan326 同款约束——
+/// 端口经 AUTO_HTTP_PORT env 传入，调用方用 ephemeral_port() 预分配）。
 fn start_plan705_server(code: &str, port: u16) {
     crate::vm::ffi::stdlib::clear_http_routes();
     std::env::set_var("AUTO_HTTP_PORT", port.to_string());
@@ -474,11 +486,11 @@ fn http_get_raw(port: u16, path: &str) -> (u16, String) {
 /// 的上游响应（AC-01 核心）。
 #[test]
 fn plan705_e2e_upstream_gate_health_two_parked() {
-    const SERVER_PORT: u16 = 18501;
-    const UPSTREAM_PORT: u16 = 18502;
+    let server_port = ephemeral_port();
     // 受控上游：两个连接各持一段 body，等 release 后才应答。
     let release = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let listener = std::net::TcpListener::bind(("127.0.0.1", UPSTREAM_PORT)).expect("bind upstream");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream");
+    let upstream_port = listener.local_addr().unwrap().port();
     let up = {
         let release = release.clone();
         std::thread::spawn(move || {
@@ -515,19 +527,19 @@ fn health() str {
     "ok"
 }
 "#
-        .replace("UPSTREAM", &UPSTREAM_PORT.to_string()),
-        SERVER_PORT,
+        .replace("UPSTREAM", &upstream_port.to_string()),
+        server_port,
     );
 
     // 两个 gate 请求并发发出（客户端线程阻塞在响应读上）。
-    let gate1 = std::thread::spawn(move || http_get_raw(SERVER_PORT, "/api/gate1"));
+    let gate1 = std::thread::spawn(move || http_get_raw(server_port, "/api/gate1"));
     std::thread::sleep(std::time::Duration::from_millis(150));
-    let gate2 = std::thread::spawn(move || http_get_raw(SERVER_PORT, "/api/gate2"));
+    let gate2 = std::thread::spawn(move || http_get_raw(server_port, "/api/gate2"));
     std::thread::sleep(std::time::Duration::from_millis(150));
 
     // 上游未解除：health 必须已完成（park 中的请求不占 owner）。
     let health_started = std::time::Instant::now();
-    let (hstatus, hbody) = http_get_raw(SERVER_PORT, "/api/health");
+    let (hstatus, hbody) = http_get_raw(server_port, "/api/health");
     assert!(
         health_started.elapsed() < std::time::Duration::from_secs(3),
         "health 在 gate park 期间被阻塞——owner 未交还"
@@ -549,7 +561,7 @@ fn health() str {
 /// future（AC-01 元数据门反例）。
 #[test]
 fn plan705_e2e_async_return_final_value_and_int_counterexample() {
-    const SERVER_PORT: u16 = 18503;
+    let server_port = ephemeral_port();
     start_plan705_server(
         r#"
 #[api(method = "GET", path = "/api/async-later")]
@@ -561,12 +573,12 @@ fn plain_int() int {
     return 240
 }
 "#,
-        SERVER_PORT,
+        server_port,
     );
-    let (s1, b1) = http_get_raw(SERVER_PORT, "/api/async-later");
+    let (s1, b1) = http_get_raw(server_port, "/api/async-later");
     assert_eq!(s1, 200, "async 返回应 200");
     assert_eq!(b1, "150", "~T 应解析为最终 T（150ms），非 future 位模式: {b1}");
-    let (s2, b2) = http_get_raw(SERVER_PORT, "/api/plain-int");
+    let (s2, b2) = http_get_raw(server_port, "/api/plain-int");
     assert_eq!(s2, 200);
     assert_eq!(b2, "240", "普通 int 240 不得被猜成 future: {b2}");
 }
@@ -575,9 +587,9 @@ fn plain_int() int {
 /// （两次 park），随后 0 除失败被 .at catch 截获——全程段恢复语义正确。
 #[test]
 fn plan705_e2e_chained_await_and_error_recovery() {
-    const SERVER_PORT: u16 = 18504;
-    const UPSTREAM_PORT: u16 = 18505;
-    let listener = std::net::TcpListener::bind(("127.0.0.1", UPSTREAM_PORT)).expect("bind upstream");
+    let server_port = ephemeral_port();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream");
+    let upstream_port = listener.local_addr().unwrap().port();
     let up = std::thread::spawn(move || {
         // 四个请求：plain 链 two + catch 链 two；catch 链 first 的
         // len 为偶数 → d=0 → 除零进 catch。
@@ -621,14 +633,14 @@ fn chain_plain() str {
     r2
 }
 "#
-        .replace("UP", &UPSTREAM_PORT.to_string()),
-        SERVER_PORT,
+        .replace("UP", &upstream_port.to_string()),
+        server_port,
     );
     // 先探纯链式双 park（无 catch），再探 catch 恢复。
     // 上游序列：chain-plain 消费 first+second，chain 消费 first+second。
-    let (sp, bp) = http_get_raw(SERVER_PORT, "/api/chain-plain");
+    let (sp, bp) = http_get_raw(server_port, "/api/chain-plain");
     eprintln!("[probe] chain-plain → {sp} {bp:?}");
-    let (status, body) = http_get_raw(SERVER_PORT, "/api/chain");
+    let (status, body) = http_get_raw(server_port, "/api/chain");
     up.join().expect("upstream");
     assert_eq!(sp, 200, "纯链式双 park");
     assert!(bp.contains("second-body"), "纯链式返回第二个 body: {bp}");
@@ -709,11 +721,11 @@ fn guarded() str {
 /// 被 presence 守卫丢弃）、scope/许可回基线（AC-04）。
 #[test]
 fn plan705_e2e_deadline_cancels_parked_and_reclaims() {
-    const SERVER_PORT: u16 = 18511;
-    const UPSTREAM_PORT: u16 = 18512;
+    let server_port = ephemeral_port();
     std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "400");
     let op_baseline = crate::vm::ffi::async_http::live_op_count();
-    let listener = std::net::TcpListener::bind(("127.0.0.1", UPSTREAM_PORT)).expect("bind upstream");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream");
+    let upstream_port = listener.local_addr().unwrap().port();
     let up = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().expect("accept upstream");
         let mut buf = [0u8; 4096];
@@ -729,11 +741,11 @@ fn slow() str {
     Http.post_json("http://127.0.0.1:UP/slow", "q=1")
 }
 "#
-        .replace("UP", &UPSTREAM_PORT.to_string()),
-        SERVER_PORT,
+        .replace("UP", &upstream_port.to_string()),
+        server_port,
     );
     let started = std::time::Instant::now();
-    let (status, body) = http_get_raw(SERVER_PORT, "/api/slow");
+    let (status, body) = http_get_raw(server_port, "/api/slow");
     let elapsed = started.elapsed();
     up.join().expect("upstream");
     assert_eq!(status, 503, "超 deadline 应 503");
@@ -809,10 +821,10 @@ fn plan705_e2e_shutdown_cancels_parked_side_effect_kept() {
     // 而非排水期内自然完成（200）。
     std::env::set_var("AUTO_HTTP_SHUTDOWN_DRAIN_MS", "500");
     std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "30000");
-    const SERVER_PORT: u16 = 18513;
-    const UPSTREAM_PORT: u16 = 18514;
+    let server_port = ephemeral_port();
     let op_baseline = crate::vm::ffi::async_http::live_op_count();
-    let listener = std::net::TcpListener::bind(("127.0.0.1", UPSTREAM_PORT)).expect("bind upstream");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream");
+    let upstream_port = listener.local_addr().unwrap().port();
     let up = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().expect("accept upstream");
         let mut buf = [0u8; 4096];
@@ -835,14 +847,14 @@ fn hits_fn() int {
     hits
 }
 "#
-        .replace("UP", &UPSTREAM_PORT.to_string()),
-        SERVER_PORT,
+        .replace("UP", &upstream_port.to_string()),
+        server_port,
     );
     // 客户端线程阻塞等待 /api/side（服务端 park 中）。
-    let client = std::thread::spawn(move || http_get_raw(SERVER_PORT, "/api/side"));
+    let client = std::thread::spawn(move || http_get_raw(server_port, "/api/side"));
     std::thread::sleep(std::time::Duration::from_millis(300));
     // 副作用已在 await 前提交。
-    let (_, hits_now) = http_get_raw(SERVER_PORT, "/api/hits");
+    let (_, hits_now) = http_get_raw(server_port, "/api/hits");
     assert_eq!(hits_now, "1", "await 前副作用应可见: {hits_now}");
     // 优雅关停：parked 请求废弃、503、资源回收。
     assert!(crate::vm::ffi::http_server::test_trigger_shutdown(), "关停触发");
@@ -869,7 +881,7 @@ fn hits_fn() int {
 /// 仍正常响应（半关闭不判取消；AC-04 断连判据边界）。
 #[test]
 fn plan705_e2e_half_close_still_responds() {
-    const SERVER_PORT: u16 = 18515;
+    let server_port = ephemeral_port();
     start_plan705_server(
         r#"
 #[api(method = "GET", path = "/api/ping")]
@@ -877,10 +889,10 @@ fn ping() int {
     42
 }
 "#,
-        SERVER_PORT,
+        server_port,
     );
     use std::io::{Read, Write};
-    let mut stream = std::net::TcpStream::connect(("127.0.0.1", SERVER_PORT)).expect("connect");
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", server_port)).expect("connect");
     let req = "GET /api/ping HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
     stream.write_all(req.as_bytes()).expect("write");
     stream.flush().expect("flush");
@@ -900,9 +912,9 @@ fn ping() int {
 /// middleware 阶段挂起，恢复后链继续到 handler（短路与续跑两臂）。
 #[test]
 fn plan705_e2e_middleware_park_then_chain() {
-    const SERVER_PORT: u16 = 18521;
-    const UPSTREAM_PORT: u16 = 18522;
-    let listener = std::net::TcpListener::bind(("127.0.0.1", UPSTREAM_PORT)).expect("bind upstream");
+    let server_port = ephemeral_port();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream");
+    let upstream_port = listener.local_addr().unwrap().port();
     let up = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().expect("accept upstream");
         let mut buf = [0u8; 4096];
@@ -930,12 +942,12 @@ fn after_mw() str {
     "reached"
 }
 "#
-        .replace("UP", &UPSTREAM_PORT.to_string()),
-        SERVER_PORT,
+        .replace("UP", &upstream_port.to_string()),
+        server_port,
     );
     // 注册 middleware（须在 server 编译后、请求前——MIDDLEWARE_CHAIN 全局）。
     use std::io::{Read, Write};
-    let mut stream = std::net::TcpStream::connect(("127.0.0.1", SERVER_PORT)).expect("connect");
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", server_port)).expect("connect");
     // middleware 经 main 面注册不可行（run() 已进 server），改由诊断：
     // 直接驱动 MIDDLEWARE_CHAIN 等价于 http.server.middleware 调用效果。
     drop(stream);
@@ -949,7 +961,7 @@ fn gate_mw(info) {
     "blocked"
 }
 "#
-    .replace("UPREG", &UPSTREAM_PORT.to_string());
+    .replace("UPREG", &upstream_port.to_string());
     let (vm_reg, _o, _e, _t) = crate::create_vm_from_source(&code_reg).expect("compile mw");
     let _ = vm_reg;
     crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
@@ -958,7 +970,7 @@ fn gate_mw(info) {
         .push("gate_mw".to_string());
     // middleware park 期间 handler 不会被调用；上游解除后链继续。
     let started = std::time::Instant::now();
-    let (status, body) = http_get_raw(SERVER_PORT, "/api/after-mw");
+    let (status, body) = http_get_raw(server_port, "/api/after-mw");
     up.join().expect("upstream");
     assert_eq!(status, 200, "middleware 续跑后应 200: {body:?}");
     assert_eq!(body, "\"reached\"", "handler 应在 middleware 恢复后到达: {body:?}");
@@ -1118,11 +1130,11 @@ fn current_process_thread_count() -> usize {
 /// 许可逐字节回基线（AC-02/04；"同样配置重复可复现"）。
 #[test]
 fn plan705_e2e_cancel_storm_reclaims_deterministically() {
-    const SERVER_PORT: u16 = 18531;
-    const UPSTREAM_PORT: u16 = 18532;
+    let server_port = ephemeral_port();
     std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "250");
     let op_baseline = crate::vm::ffi::async_http::live_op_count();
-    let listener = std::net::TcpListener::bind(("127.0.0.1", UPSTREAM_PORT)).expect("bind upstream");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream");
+    let upstream_port = listener.local_addr().unwrap().port();
     let up = std::thread::spawn(move || {
         // 接受 storm+loop×1 个连接（deadline 先收口，上游应答全部迟到）。
         for _ in 0..6 {
@@ -1141,14 +1153,14 @@ fn slow() str {
     Http.post_json("http://127.0.0.1:UP/slow", "q=1")
 }
 "#
-        .replace("UP", &UPSTREAM_PORT.to_string()),
-        SERVER_PORT,
+        .replace("UP", &upstream_port.to_string()),
+        server_port,
     );
     for round in 0..2 {
         let mut clients = Vec::new();
         for i in 0..3 {
             clients.push(std::thread::spawn(move || {
-                http_get_raw(SERVER_PORT, &format!("/api/slow?r={round}-{i}"))
+                http_get_raw(server_port, &format!("/api/slow?r={round}-{i}"))
             }));
             std::thread::sleep(std::time::Duration::from_millis(40));
         }
@@ -1173,9 +1185,9 @@ fn slow() str {
 #[cfg(windows)]
 #[test]
 fn plan705_client_thread_count_stable_under_load() {
-    const SERVER_PORT: u16 = 18533;
-    const UPSTREAM_PORT: u16 = 18534;
-    let listener = std::net::TcpListener::bind(("127.0.0.1", UPSTREAM_PORT)).expect("bind upstream");
+    let server_port = ephemeral_port();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream");
+    let upstream_port = listener.local_addr().unwrap().port();
     let up = std::thread::spawn(move || {
         // 仅预热 1 连接（1 请求）——join 等待面必须与请求量一致。
         for _ in 0..1 {
@@ -1194,16 +1206,16 @@ fn fast() str {
     Http.post_json("http://127.0.0.1:UP/fast", "q=1")
 }
 "#
-        .replace("UP", &UPSTREAM_PORT.to_string()),
-        SERVER_PORT,
+        .replace("UP", &upstream_port.to_string()),
+        server_port,
     );
     // 预热（runtime/client 池建立后的稳态为基线）。
-    let _ = http_get_raw(SERVER_PORT, "/api/fast");
+    let _ = http_get_raw(server_port, "/api/fast");
     up.join().expect("upstream warmup");
     std::thread::sleep(std::time::Duration::from_millis(200));
     let before = current_process_thread_count();
     assert!(before > 0, "线程枚举失败");
-    let listener2 = std::net::TcpListener::bind(("127.0.0.1", UPSTREAM_PORT + 1)).expect("bind upstream2");
+    let listener2 = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream2");
     // 连接数 ≤ 请求数（reqwest 池对并发 job 复用连接）——accept 循环以
     // 停机标志收口，不假设固定次数。
     let up2_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1230,7 +1242,7 @@ fn fast() str {
     for i in 0..8 {
         clients.push(std::thread::spawn(move || {
             eprintln!("[probe] client {i} connecting");
-            let r = http_get_raw(SERVER_PORT, &format!("/api/fast?i={i}"));
+            let r = http_get_raw(server_port, &format!("/api/fast?i={i}"));
             eprintln!("[probe] client {i} done {:?}", r.0);
             r
         }));

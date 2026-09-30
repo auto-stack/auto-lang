@@ -32,6 +32,16 @@ fn start_plan707_server(code: &str, port: u16) {
     panic!("plan707 server 未在 5s 内就绪 port={port}");
 }
 
+/// OS 分配临时端口（fix-test-tiering：固定端口在并行 worktree/多 agent 下
+/// bind 互踩或跨 run 连错 mock；Windows 临时端口顺序分配，TOCTOU 窗口可忽略）。
+fn ephemeral_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .expect("bind :0")
+        .local_addr()
+        .expect("local_addr")
+        .port()
+}
+
 /// 上游 SSE 服务器：accept 一连接，回 headers + frames（间隔 gap_ms），
 /// 之后**握住连接**不 EOF（由客户端断连/取消收尾）。返回关闭观测通道。
 fn serve_upstream_sse(
@@ -176,7 +186,7 @@ fn http_e2e_plan707_relay_frames_timed_single_termination() {
         250,
     );
 
-    const SERVER_PORT: u16 = 18701;
+    let server_port = ephemeral_port();
     start_plan707_server(
         &format!(
             r#"
@@ -188,10 +198,10 @@ fn relay() ~Iter<str> {{
 }}
 "#
         ),
-        SERVER_PORT,
+        server_port,
     );
 
-    let (frames, at, end) = sse_client_read(SERVER_PORT, "/api/relay", 8000);
+    let (frames, at, end) = sse_client_read(server_port, "/api/relay", 8000);
     // SSE 帧载荷为 JSON 值形态（sse_frame_from_nv 对 str 加引号）——线上
     // 契约即如此（017-chat publisher 同形）。
     assert_eq!(
@@ -231,7 +241,7 @@ fn http_e2e_plan707_relay_downstream_disconnect_cancels_upstream() {
     // 上游发 1 帧后握住——下游收帧后立即断连，上游读端应观测到关闭。
     let (up_port, up_rx) = serve_upstream_sse(vec!["data: only\n\n".to_string()], 0);
 
-    const SERVER_PORT: u16 = 18702;
+    let server_port = ephemeral_port();
     start_plan707_server(
         &format!(
             r#"
@@ -243,12 +253,12 @@ fn relay() ~Iter<str> {{
 }}
 "#
         ),
-        SERVER_PORT,
+        server_port,
     );
 
     // 下游：收 1 帧后 RST（SO_LINGER 0 硬断）。
     {
-        let mut stream = std::net::TcpStream::connect(("127.0.0.1", SERVER_PORT)).expect("connect");
+        let mut stream = std::net::TcpStream::connect(("127.0.0.1", server_port)).expect("connect");
         use std::io::{BufRead, BufReader, Write};
         let req = "GET /api/relay HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
         stream.write_all(req.as_bytes()).expect("write");

@@ -7,6 +7,10 @@
 #           常驻编译,日常档 t 经本 default-filter 排除(镜像 churn 待遇);
 #           tf(nextest-full.toml)不动=全档含语料;tv 走 [profile.tv]
 #           (语料三族白名单,见文件尾)。
+# fix-test-tiering(2026-09-30): 画廊围栏(widgets_gallery_all_front_pages_compile,
+#   ~800s 单线程冷态、零缓存长杆)移出日常档——归批量回归档(tf/上游
+#   auto-plan-regress 技能)所有;CI solo 检出无 auto-os 兄弟本就 SKIP,
+#   不受影响。
 # 裸 cargo test 不经 nextest,全量语义;重内存测试另有 Plan 564 heavy_gate
 # 体内守门(裸路径秒退,NEXTEST/AUTO_LANG_HEAVY_MEM 双通道)。
 #
@@ -16,7 +20,7 @@
 # 重测试全并发。组语义:mem-xl(max=1) ≥800MB 串行;mem-lg(max=1)
 # 300-800MB 串行;mem-md(max=2) 100-300MB 并发 2。
 [profile.default]
-default-filter = "not test(str_churn_bounded_large) and not test(aavm2_t3_tower_milestone) and not test(vm_file_tests::) and not test(cookbook_vm_tests::) and not test(conformance_tests::)"
+default-filter = "not test(str_churn_bounded_large) and not test(aavm2_t3_tower_milestone) and not test(vm_file_tests::) and not test(cookbook_vm_tests::) and not test(conformance_tests::) and not test(widgets_gallery_all_front_pages_compile)"
 
 [test-groups]
 mem-xl = { max-threads = 1 }

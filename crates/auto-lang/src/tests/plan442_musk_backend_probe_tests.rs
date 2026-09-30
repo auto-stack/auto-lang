@@ -222,6 +222,16 @@ mod plan442_musk_backend_probe {
         eprintln!("══════ end minimal repro ══════");
     }
 
+    /// OS 分配临时端口（fix-test-tiering：固定端口在并行 worktree/多 agent
+    /// 下互踩；手动门测试同样适用）。
+    fn ephemeral_port() -> u16 {
+        std::net::TcpListener::bind("127.0.0.1:0")
+            .expect("bind :0")
+            .local_addr()
+            .expect("local_addr")
+            .port()
+    }
+
     /// C2 serve-adapter vertical: run the REAL relay_api.at `relay_routes()`
     /// on the VM — axum Router.new + app.route(path, get(h).post(h2)) chains —
     /// then drive a live HTTP request through the auto-started server.
@@ -254,8 +264,8 @@ mod plan442_musk_backend_probe {
              fn main() {\n    let app = relay_routes()\n    print(\"router-built\")\n}\n");
         std::fs::write(&driver, src).expect("write driver");
 
-        const PORT: u16 = 18442;
-        std::env::set_var("AUTO_HTTP_PORT", PORT.to_string());
+        let port = ephemeral_port();
+        std::env::set_var("AUTO_HTTP_PORT", port.to_string());
         crate::vm::ffi::stdlib::clear_http_routes();
         let driver_path = driver.to_string_lossy().to_string();
         let _server = std::thread::Builder::new()
@@ -327,7 +337,7 @@ mod plan442_musk_backend_probe {
         // extern no-ops, so a 200 with any body proves the closure ran.
         let mut stream = None;
         for _ in 0..100 {
-            if let Ok(s) = TcpStream::connect(("127.0.0.1", PORT)) {
+            if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
                 stream = Some(s);
                 break;
             }

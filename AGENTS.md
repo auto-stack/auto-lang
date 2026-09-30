@@ -62,9 +62,23 @@ All AI coding assistants working in this repository must strictly adhere to the 
     - 若未修改 `crates/` 下的 Rust 源码（仅截图、更新 `docs/plans/` 矩阵或修改测试脚本），**严禁运行 `cargo t` 和 `docs_gen`**。仅完成目标验证即可直接合入。
   - **Category B: Scoped Rust Code Changes (局部 Rust 模块改动)**:
     - 快速语法/类型检查：`cargo check -p auto-lang`
-    - 局部模块验证：`cargo t <module_name>`（如 `cargo t iced` 或 `cargo t ui`）
-    - 涉及编译器/VM/核心协议重构时，才在最终合入前运行一次 `cargo tf`（full 档，含 1M churn；Plan 466）。
-    - **AAVM 专项（Plan 568）**：`cargo tf` 已含语料族（PLAN-700）——改 VM/编译器的复审由 tf 一次收口；`cargo tv`（语料三族筛选档，`--profile tv`，与 t/tf 同二进制零重编）仅作"改 VM 后只跑语料"的定向快捷档可选；aavm 无实用面，不需要关心是否被改坏，守护=CI+`ta`。只有 diff 触及 aavm 代码（`auto/lib/*.at`、`test/vm/aavm2/**`、`parity/**`、aavm2 测试基建）才跑 `cargo taa`，且按 §AAVM/AA2R Test Tier 作用域映射缩小范围，不全量跑。
+    - 开发迭代：`cargo t <module_name>`（如 `cargo t iced` 或 `cargo t ui`）
+    - **复审门禁 = 分级门禁（fix-test-tiering，2026-09-30 裁定）**：复审/合入前在 plan
+      worktree 跑**裸 `cargo t`**（全日常面）+ 触面档：VM/编译器→`cargo tv`、trans→
+      `cargo tt`、book→`cargo tb`、碰 aavm 触发路径→按 §AAVM/AA2R 作用域映射跑 `taa`。
+      **`cargo tf` 不再是 per-plan 复审门禁**——已改判为**批量回归档**：merge 收尾时
+      到期判定（计划号 %5 落地，或 >48h 且期间有合并——L0 `fix-*` 计入；收据
+      `docs/plans/.last-batch-regression.json`，缺失即到期）后由 `/auto-plan:regress`
+      技能在**主检出单实例**执行（Plan 466 全量语义保留：1M churn + 语料族 + 画廊围栏）。
+      依据：tf 是机器独占负载（内嵌 cargo build + ~800s 零缓存围栏 + 全池测试进程），
+      多 agent 并行 worktree 各跑 tf 必然资源互毁（2026-09-30 实录）。
+    - **并行纪律**：多 agent 并行时，worktree 内只跑 `cargo check` / scoped `t` / `tv`
+      级负载；全量档（`tf`/`ta`/`taa`/`t3`）一律主检出单实例串行。
+    - **AAVM 专项（Plan 568）**：改 VM/编译器的复审随身跑 `cargo tv`（PLAN-700 语料三族，
+      与 t/tf 同二进制零重编），全量收口归批量回归档；aavm 无实用面，不需要关心是否被
+      改坏，守护=CI+`ta`。只有 diff 触及 aavm 代码（`auto/lib/*.at`、`test/vm/aavm2/**`、
+      `parity/**`、aavm2 测试基建）才跑 `cargo taa`，且按 §AAVM/AA2R Test Tier 作用域
+      映射缩小范围，不全量跑。
   - **Category C: Docs / Schema Changes (文档与元数据改动)**:
     - **仅当**修改了文档生成器、Schema 定义文件或语法参考时，才运行 `cargo test -p auto-lang --test docs_gen`。
   - **AutoUI 跨端验证（双端模式）**:
@@ -100,14 +114,14 @@ review/fold 前无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜�
 
 | 档位 | 适用场景 | 测试数 | 实测耗时 | 内存 |
 |---|---|---|---|---|
-| `cargo t` | 日常快速回归（1M churn + 语料族排除，PLAN-700） | 5527（=tf−语料162 推算） | 65s（2026-09-06 实测；7 预存红 564-Q6 在案） | 轻池 <50MB/测 |
-| `cargo tf` | review/折叠前全量门禁（含 1M churn + 语料族，PLAN-700） | 5689（2026-09-24 实测） | 77.2s（Plan 564）+语料段 ~4s（tv 同源实测）；画廊围栏冷态 ~800s 另计（每进程全量重编，无跨进程缓存） | ≤2GB 预算 |
+| `cargo t` | 日常快速回归 + **per-plan 复审门禁**（1M churn + 语料族 + 画廊围栏排除，PLAN-700/fix-test-tiering） | 5527（=tf−语料162 推算） | 65s（2026-09-06 实测；7 预存红 564-Q6 在案） | 轻池 <50MB/测 |
+| `cargo tf` | **批量回归档**（`/auto-plan:regress` 触发，主检出单实例；含 1M churn + 语料族 + 画廊围栏，PLAN-700；fix-test-tiering 2026-09-30 起**非 per-plan 门禁**） | 5689（2026-09-24 实测） | 77.2s（Plan 564）+语料段 ~4s（tv 同源实测）；画廊围栏冷态 ~800s 另计（每进程全量重编，无跨进程缓存） | ≤2GB 预算 |
 | `cargo tv` | 改 VM/编译器后定向语料回归——filter 档（profile tv）与 t/tf 同二进制零重编（**不含 aavm**；PLAN-700） | 162 | 3.95s（2026-09-24 实测） | 同日常档 |
 | `cargo tt` | 改 transpiler 后 | 3786（trans 增量 ~360） | 43s（冷编译另计 ~1min） | 轻池 |
 | `cargo tb` | 改 book/文档后 | 3494（book 增量 69，单测 <0.4s——旧"5-7s/测"注释已过时） | 24s | 轻池 |
 | `cargo taa` | **仅** aavm 改动后（触发条件/作用域见上） | 3600（其中 aavm 21，XL 9 个 78-303s/个） | 182s（-j6 实测；564 组限流合入后 XL 串行将更长）。P574 后 Windows 本地：双重解释器 12 测试 cfg_attr 跳过（607 skipped），~24s，唯一余红=charts_gallery 预存 | XL 单测 0.8-1.2GB；并发受 jobs 限制 |
 | `cargo ta` | 终极全量（VM+aavm+trans+book+1M churn） | 4023 | 407s（-j6 实测） | 同上 |
-| `cargo th` | 改 HTTP 服务后（真 TCP，串行） | 20 | ~50s（本机实测 ≥3 环境相关红，归因见 plan 568 T7） | 轻（真 TCP 端口） |
+| `cargo th` | 改 HTTP 服务后（真 TCP，串行） | 20 | ~50s（本机实测 ≥3 环境相关红，归因见 plan 568 T7；fix-test-tiering 2026-09-30 后 back_proxy 固定端口族（39xx/40xx 撞 Hyper-V 保留段 WSAEACCES）已改 OS 临时分配清零，plan707 帧时序断言并行负载下偶发 flake 在案=4f123a50e） | 轻（真 TCP 端口） |
 #### Heavy-Mem Test Tiering (Plan 564)
 
 - Per-test peak weights live in `.config/test-mem-weights.md` (single source of truth; measured by `python scripts/measure_test_mem.py <filter>`, nextest `--jobs=1` serial + per-process peak polling).
@@ -116,8 +130,8 @@ review/fold 前无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜�
 - Registering a new heavy test (3 steps): measure → classify in the weights file → add to nextest overrides (all three configs) + wire `heavy_gate` at the test's first line.
 
 #### Cargo Test Aliases Reference (from `.cargo/config.toml`)
-- `cargo t`  - Fast daily tests (~3200 unit tests via nextest in parallel; 1M churn + corpus tiers excluded, Plan 466/PLAN-700)
-- `cargo tf` - Full-scale daily tests (all tests incl. 1M churn + corpus tiers) — the review / pre-fold full-suite gate (Plan 466)
+- `cargo t`  - Fast daily tests (~3200 unit tests via nextest in parallel; 1M churn + corpus tiers + gallery fence excluded, Plan 466/PLAN-700/fix-test-tiering)
+- `cargo tf` - Full-scale daily tests (all tests incl. 1M churn + corpus tiers) — batch regression tier: `/auto-plan:regress` on the main checkout, single instance, NOT a per-plan review gate (Plan 466 semantics; fix-test-tiering 2026-09-30)
 - `cargo tv` - 语料筛选档（nextest `--profile tv` 筛语料三族，与 t/tf 同二进制零重编，PLAN-700）——纯 .at 语料 golden，**不含 aavm**（aavm 在 `taa` 档）
 - `cargo tt` - Transpiler tests (`--features test-trans`)
 - `cargo tb` - Book listing tests (`--features test-book`)
