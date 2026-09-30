@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-713
-status: executing
+status: reviewed
 feature_name: AutoShell website evidence and presentation
 author: [Codex]
 created_at: 2026-09-30
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [website]
-current_step: 0
+current_step: 4
 total_steps: 4
 ---
 
@@ -68,10 +68,10 @@ VitePress/Vue compile; inspect ZH/EN desktop/mobile, light/dark, no document ove
 
 ## 8. 执行步骤
 
-- [ ] T-01 (AC-01/04): Create website/.vitepress/theme/components/AutoShellLanding.vue, replace EN/ZH wrappers; copy selected assets and portable samples.
-- [ ] T-02 (AC-02/03): Screenshot enlargement, script selection, section anchors, responsive presentation.
-- [ ] T-03 (AC-01/03): Correct EN/ZH home/apps entries and bounded landing.css; prepare SD-01 and review report.
-- [ ] T-04 (AC-01..04): Compile/browser/example validation, commit implementation and record results.
+- [x] T-01 (AC-01/04): Create website/.vitepress/theme/components/AutoShellLanding.vue, replace EN/ZH wrappers; copy selected assets and portable samples.
+- [x] T-02 (AC-02/03): Screenshot enlargement, script selection, section anchors, responsive presentation.
+- [x] T-03 (AC-01/03): Correct EN/ZH home/apps entries and bounded landing.css; prepare SD-01 and review report.
+- [x] T-04 (AC-01..04): Compile/browser/example validation, commit implementation and record results.
 
 ## 9. 复审记录
 
@@ -80,3 +80,29 @@ stage: new | revision: 1 | outcome: pass | next: work. Existing direct-optimizat
 ## 10. 待澄清事项
 
 None blocking. Preserve unrelated work. Production publishing is outside the request.
+
+## 执行完成记录
+
+Implementation commit: 17a28f12a82b9ebdfd0f6912f7914977f2aff72a. Branch plan-713-dev, worktree D:/autostack/.wt/lang-713/auto-lang. Category A: no Cargo suites/docs_gen. Final VitePress build exit 0, 161.46s. Existing Auto-highlighter fallback and >500kB bundle warnings recorded in report; no new runtime errors observed. Three portable scripts matched expected outputs. EN/ZH desktop/mobile, theme, keyboard tabs, clipboard and native-dialog checks are recorded in docs/reports/autoshell-website-review-2026-09-30.md and its three screenshots. Selected screenshot/sample asset existence and imports pass; git diff --check pass. JSON sample explicitly exempted in website/.gitignore to survive fresh checkout.
+
+Untracked preview copies and build log moved reversibly to D:/autostack/.wt/lang-713/preview-content-backup/verification-extra; original main-checkout assets and other sessions' changes preserved. No semantic scope change.
+
+## 复审结论（当前会话，基于产物重建）
+
+stage: review | plan_id: PLAN-713 | plan_revision: 1 | outcome: pass
+reviewed_commit: 17a28f12a82b9ebdfd0f6912f7914977f2aff72a
+base_commit: 8d917c469931f809bffa1d163f5765c29703f9a1
+
+- dependency_revisions: auto-shell HEAD fdc0f7839003d0f74c6a6e744982ebc67c778449 plus observed F5 working-tree overlay SHA256 B3289102BA1C9484DCC2304C5A558CA317FBF29B359FEE7242BD8A425A6921C9; ash.exe SHA256 51344FB1CE5C8CEEC2B49F1BA5CC2EC551DBC49DCB0C697D95476ACCD42AB7BF; main.rs SHA256 49AAE6D62FEAAFE9D4BE2F6364B3CC0D6157D06628D6F01D229EF15B0DB01B5A. Website package-lock Git blob 2d6f81791d5291c3c07a1131d4af59de6147f9de.
+- spec_inputs: docs/specs/website/project.md base Git blob 490c7e523402f6922af6367d9eb86fa28493cad6.
+- frozen SD-01: reviewed commit's docs/specs/website/project.md Git blob 5997aeaed592477b888b68e4d915223eca69ab90; file SHA256 2AD2A99FE97B7F9202A40883DE889206AE3AC8E31F4C7225FDD26317EF9A844E. Delta is exactly the shared page/evidence/interactions paragraph at line 12; baseline/after are recoverable with git diff base reviewed_commit.
+- AC-01 / T-01,T-03: pass. Read committed bilingual data, CLI routes and shortcut implementation; obsolete 79/four-mode/filter claims removed. Source/observed-vs-unverified boundaries explicit.
+- AC-02 / T-02: pass. Browser tab selection and key navigation, clipboard contents, images loaded, native dialog close focus and Esc return verified. Figure source is explicitly PTY reconstruction.
+- AC-03 / T-02,T-03: pass. 1440/390/360 layouts and both themes checked, scrollWidth below viewport. Homepage hero/card sizes preserved. Shared variables/components and scoped accent rules inspected.
+- AC-04 / T-01,T-04: pass. All 5 screenshot assets and 4 sample files now tracked, wrapper imports resolve, three actual scripts match output. VitePress build exit 0, 161.46s. Recommendations/report/screenshots committed.
+- Health: git diff base..reviewed_commit --check passes; worktree status clean. Existing site-wide Auto highlighting fallback and chunk-size warnings are documented. No new console errors or debug print additions. No Rust implementation touched.
+- Evidence reuse: final amendment only removed blank EOF lines; git diff ade8b2fb..17a28f12 --ignore-blank-lines is empty. Final build/browser/sample evidence remains applicable to unchanged executable source and dependencies.
+- Findings resolved before verdict: dark scoped selector corrected; explicit close-button focus added; JSON sample exempted from ignore and committed; EOF whitespace normalized. No deferred item inside AC scope.
+- touched_goals: [] because this bounded website documentation/presentation change does not advance a separately registered GOAL. Broader site redesign is report-only advice, outside this Plan.
+- Limitation: same implementation session; artifact/code/runtime evidence reconstructed, no independent agent claimed.
+- next: merge after preserving concurrent main-checkout work; production deployment remains outside scope.
