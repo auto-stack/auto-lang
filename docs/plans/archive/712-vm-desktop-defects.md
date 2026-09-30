@@ -174,6 +174,87 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
   - [~] **T-10 当前 master 不复现（裁定消散）**：本会话重建 worktree 二进制真机走查（零输入，MCP 只读快照+截图 evidence/712/master-binary-window.png）——主题切换/队列开关两按钮正常渲染于头部右缘、handler 接线在树；r2 会话的「双轨缺席」观察随 plan-711 视图构建/派发路径重写（Init 延迟派发等）消散。点击可达性归 AC-07 实机腿复核。
   - [~] **T-11 仍复现（未修复，归后续）**：真机二进制播控条塌缩原样——左列（时间+进度条）~45% 窗宽处收住（设计应贴传输键）、倍速「1.0x」与音量组间 ~250-330px 空档（截图 evidence/712/master-binary-window.png，与 r2 用户截图 7b9397df 同形态）。headless 三支确定性探针（控件行 flex / 完整 app 层级 / 头部按钮）全绿=纯 view→iced 布局分配健康（回归锁在库）；取证型组件形态探针呈**进程级翻转**（同源 col_right 438↔658px 随进程启动翻转，icon/窗宽/onseek 均排除）——嫌疑面收敛至动态视图构建的顺序敏感层（组件实例化/HashMap 序），修复前需先定谳非确定性源。探针已从门禁摘除（防 CI 抖动），取证细节入 §10。
 
+## 8.5 r2 交接批（HANDOFF——2026-09-30 深夜，移交下一 agent）
+
+> 本节为**自包含交接文档**：下一 agent 零上下文接手 T-17/T-18/T-19 三笔。
+> 环境搭建、诊断通道、已排雷项、逐问题（症状/实证/假说排序/修复方案/
+> 验证步骤）全部在案。执行前提：本计划 r2 已被用户裁定继续留在 712
+> （不拆新计划）；执行仓 = 本仓（auto-lang 主检出）。
+
+### 8.5.0 运维手册（环境与工具链）
+
+**验收桌面启动**（管理员不需要；Git Bash）：
+```
+cd /d/autostack/auto-os
+AUTO_SCHED_DIAG=1 AUTOUI_ACCEPTANCE=1 AUTOUI_MCP_PORT=9260 bash scripts/desktop.sh iced
+```
+- MCP 端口：固定请求 9260，**被占自动回退 9261+**（枚举 `netstat -ano | grep ":92"` 认桌面 PID——ui_desktop 的 iced 窗口 MainWindowHandle 恒 0，别用它判断）。
+- 诊断通道（全部经 POST http://127.0.0.1:{port}/mcp，JSON-RPC，先 initialize）：
+  - `autoui_screenshot`：渲染帧 PNG（落 `tmp/autoui-screenshot-*.png`，路径在返回 text 里）。
+  - `autoui_snapshot`：AURA 树（**只到桌面壳面，不达 app 虚拟窗内部**——工具缺口 T-DOCS-1）。
+  - `autoui_desktop`：`{action:"bus", verb:"launch	<app-id>"}` 发射 app；`win_rect	<wid>	<x>,<y>,<w>,<h>` 程序化缩放虚拟窗（**wid 无发现通道**——T-DOCS-2，盲扫或用户拖拽）。
+  - `AUTO_SCHED_DIAG=1`：帧泵/Init demand 生命周期 trace（stderr → 桌面日志）。
+- back proxy 请求日志：本计划已加（`[back-proxy:{app}] REQ/RSP` stderr）——前端实际请求一锤定音的通道。
+
+**已排雷项（踩过即记录，勿重蹈）**：
+1. **view 节点单行混写 = 解析雷区**：`row { style: "..." text ... }` prop+子同行 → 「Expected infix operator」×20 级联。全部多行书写。
+2. **后台命令管道陷阱**：`cargo ... | tail -1` 吞退出码（失败显示成功）；验证构建用 `grep -E "^error|Finished"`。
+3. **JSON 转义**：MCP curl 的 `	` 要写单反斜杠（`"verb":"win_rect	12	..."` 双反斜杠 = 字面量不解析）。
+4. **僵尸进程**：ui_desktop/auto 关窗后退化为不可杀内核僵尸（锁 exe 文件）——重建前 `mv <exe> <exe>.z<N>` 改名让路（Windows 允许改名运行中的映像）；僵尸积累至重启清理。
+5. **MCP 截图目标**：捕获**聚焦窗**；app 最小化/零尺寸报 "window size is zero"。OS 级遮挡用 PrintWindow（flags=2）。
+6. **probe 常驻**：VM 单窗脚本跑完即自退——探针 Init 里挂黑洞 fetch（`Http.get_json("http://10.255.255.1:9/x")`）保活。
+
+### 8.5.1 T-17：018 详情页「0 entries」（章节数据前端取数空化）
+
+**症状**：点书卡 → 详情页框架渲染（has_book=true 分支）但「0 entries」、章节列表空、书内容不可见。多次复现。
+
+**已实证排除**：
+- 数据面 ✓：proxy 逐书 curl（books/1、/2、/3 chapters）全部返回真实章节数组（Three Gate/Source/Keeper 各多章）——`http://127.0.0.1:3360/apps/018-book-reader/api/books/{id}/chapters`。
+- 路由 ✓：`list_chapters` 形参/占位符错配已修（`book_id`→`id`，本计划 T-15 第二层）。
+- 前端取数惯用法 ✓：`Http.get_json` → `.len()` 与书架 `.store.books.len()` 同款；独立数据链探针（layoutprobe，直取同 proxy URL）**端到端渲染 "3 entries" + 章节列表** ✓。
+
+**假说排序（下一步验证）**：
+1. **H1 前缀变换未覆盖重写后的字面量**：launch 期 `prefix_api_url_literals` 对 spec.code 的字面量前缀化——T-15 重写后的 Init（try/catch + 相同字面量）是否被前缀化未验证。验证：桌面日志 P041-DBG "prefix apply" 行——018 的 book_detail.at 是否在案（对照：030 的 player_store.at/playlist.at 在案 ✓）。修复 = 补前缀变换的覆盖或对账。
+2. **H2 router.param("id") 空值**：`__route_params` 的 VM 导航持久化（dynamic.rs sync_route_params，"Called after each handler"）——点击书卡 → OpenBook → router.push("/book/2") → sync —— 但 book_detail 的 Init **parked 恢复后**读 param 的时序（恢复后 __route_params 是否仍持有该路由的参数）。验证：Init 里 `router.param("id")` 的值写上屏（status_text 调试）。
+3. **H3 proxy 200+错误体**：proxy 参数绑定失败时返回体带 200 → get_json 不抛 → .chapters = 错误对象 → len()=0。验证：proxy REQ/RSP 日志（已生效）+ 响应状态码补记。
+
+**修复方案**（按定位落点）：H1 → back_prefix 覆盖对账/修复；H2 → 恢复完成后补 sync_route_params（poll_parked_resumes 尾部）；H3 → proxy 错误返回改 4xx + 前端 catch。
+
+**验证**：点书 → 详情显示标题/作者/「3 entries」+ 章节列表；proxy 日志对账无 4xx/空化。
+
+### 8.5.2 T-18：030 播控条布局（按钮拉伸/倍速超宽/头部按钮不可见）
+
+**症状**：播控条子元素挤左侧（seek 条止于 ~44-52%）；拖拽虚拟窗后**右侧按钮跟着变宽**（用户原话）；倍速组件特别宽；头部主题/队列按钮不可见。默认窗宽（~1005）下比例正确（本计划复验截图）。
+
+**已实证**：
+- 独立 OS 窗 resize → **重排完全正确**（600x420 PrintWindow 实测）——iced 运行时 + Fill 长度体系无恙。
+- 桌面内虚拟窗：app 按宿主视口布局（`vwin_rect` 恒 None，文档在案），虚拟窗显示该表面；拖大虚拟窗 = 表面 1:1 锚定 + 空白右/下（52% 冻结实测）——**按钮「变宽」= 表面被拉伸显示的缩放效应**。
+- 真实 controls.at 解析干净（探针 8.5.0 同构编译零错误）——非解析层。
+
+**根因定性**：**虚拟窗 rect 未喂给 app 布局基座**（`vwin_rect` 设计了未实现，session.rs 5504/5521 注释「恒 None」）——app 恒按宿主视口布局，虚拟窗缩放显示。
+
+**修复方案（用户裁定后实施）**：
+- **方案 A（特性实现，推荐）**：vwin rect → app 布局极限接线——`allocate_app`/虚拟窗构建时把 `vwin.rect` 作为该 app 的 host_viewport 替身（session.rs 5504 的 `vwin_rect: None` 落点）；虚拟窗 resize → `window_size` 已同步（session.rs:1646 ✓）→ 补 `view_dirty` 标记（resize 臂 1646 邻域缺脏标记——与 T-16 同族断链）→ app 重排。
+- **方案 B（维持现状）**：虚拟窗缩放显示宿主视口布局（写明文档）；播放器全屏使用无感。
+- 验证：win_rect 缩放虚拟窗（8.5.0 通道）→ 播控条重排随动（seek 条占满 col、按钮右聚不变形）；头部按钮可见。
+
+### 8.5.3 T-19：030 播放/暂停状态链（按钮图标错 + 停不下来）
+
+**症状**：播放中按钮显示 play（应 pause）；点击后暂停一下**又继续播放**，停不下来。
+
+**分析**：按钮 = `if .store.is_playing { pause 图标 } else { play 图标 }`——显示 play ⇒ **store.is_playing=false 与 mpv 实态（播放中）脱 sync**。「暂停一下又继续」⇒ 点击→paused=true→mpv 暂停→**随即被拉回播放**——嫌疑 = 契约 `paused` 下行的 apply 语义：store.paused 的变更锁存与 mpv 实态的上行事件互相打架（toggle 置 true → mpv 暂停 → 上行事件改写 is_playing/其它字段 → 下一轮 contract.apply 以陈旧 paused 或字段突变再发 unpause）。T-16 上行接通后此链首次活跃（此前上行死、状态恒假但无打架）。
+
+**修复方案**：读 player_store.at 的 TogglePlay/paused 字段 + contract.rs 的 paused apply/事件映射（contract.rs「position 的语义是目标变化才 seek」同族——paused 的锁存语义对齐）；对齐后实机验证：播放中点暂停 → mpv 真停（图标 pause）→ 再点续播。
+
+**验证**：播放中点按钮 → 暂停（图标翻转、帧停）→ 再点 → 续播；10 次无状态回弹。
+
+### 8.5.4 归并与关联
+
+- T-10（头部按钮不可见）= T-18 同族（缩放显示下的位置/可见性），随 T-18 方案 A 闭环。
+- T-DOCS 工具债：①autoui_snapshot/inspect/action 不达 app 虚拟窗内部（0-entries 与 T-12 的自动化验证被卡）；②wid 发现通道。修复 = MCP 服务器遍历 session.apps 的 per-app vtree/元素（mcp_server.rs tool_snapshot 的 shared 之外加 per-app 面）。
+- corpus 普查（下一批）：013-todo（`api.create_todo` 链接失败）、025-sys-monitor——通知流在案，同族「无法启动」。
+
+## 9. 复审记录
 ## 9. 复审记录
 
 - 2026-09-30 **r2 收纳复开**（archived → executing；用户预授权收纳通道）：新增 SD-05/T-09/AC-07（VM 本地播放接线，纯 app 层，引擎零改动）。实施随修订即落（T-09 体量 = 单 handler 分支）；AC-07 实机取证后随再 merge 回终态。
