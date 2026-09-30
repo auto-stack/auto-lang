@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-710
-status: reviewed
+completion_kind: delivered
+status: archived
 feature_name: a2r 生成缺口残余清偿（auto-edit M4 供料包供① 承接——G-C code_editor_delta ui_gen 臂/G-B try-catch trans 臂/G-A envelope 成员访问投影 三件+corpus 穷尽性判定）
 author: [agent]
 created_at: 2026-09-30T01:00:08+08:00
@@ -348,6 +349,33 @@ roundtrip 字节等价先证+前缀零扰动回读断言）。
     坐标形态零实例（误用由生成物编译错显式拦截，代码注记在案）。
   `next: merge`（含批量回归到期判定——收据 .last-batch-regression.json
   缺失=首次 merge 触发主检出单实例 tf，设计行为）。
+
+- 2026-09-30 merge（PLAN-710:r1）：`stage: merge`。
+  - **prepared**：reviewed 基线 1cb3ad662（门禁证据全绿）；canonical
+    delta=SD-01（worktree d5aa26215 已备）；ledger 目标=designs+reviews
+    双项；交付提交预期=e81e0a1c3。
+  - **landed**：分支 rebase 至 master tip 89c32153e（旧→新映射
+    5c1d43b52→33a5d56c3/fb47aea61→dcdad8a19/4d79b52d3→d5aa26215/
+    4b0845967→e81e0a1c3，`git range-diff` 全 `=` 补丁等价证明）；
+    `git merge --ff-only` 落地，**master tip=e81e0a1c3=交付提交**，零
+    合并提交。烟测：cargo check -p auto-lang/-p auto（Finished 绿）；
+    -p auto-man bin E0601=Plan-026 时代 main.rs 残留（master 预存，
+    lib 面 --lib 过，非本件回归）。
+  - **ledger_refreshed**：designs P710-2（SD-01 current-knowledge，
+    file=canonical doc + docsha c95f54e6a67edb25 + commit e81e0a1c3）
+    外科插入 115→116；reviews P710-1（2a419d93e 在位）回读 True；
+    插入证明=roundtrip 字节等价先证（indent=2/ascii=false/尾换行）+
+    前缀与他段零扰动回读；INDEX 再生（26 projects）。commit b0927e108。
+  - **archived**：git mv → docs/plans/archive/710-a2r-mapping-residuals.md
+    + status: archived（本笔）。
+  - cleaned：见下笔（guard→移除→回填）。
+  - **部署观察**（landing is not deployment）：本件触 auto-lang 生成器
+    面（ui_gen/a2r_std/auto-man 桩）——主检出 release 二进制
+    （target/release/auto.exe 等）与各下游仓工具链缓存不会因本笔自动
+    更新；下游 auto-edit L2 链按其自有工具链钉版纪律在 perf 复验件
+    （669 模式下游件）重建工具链时自然摄取（其 perf.py 有
+    MIN_TOOLCHAIN_BUILD 门），无本仓侧需重启的常驻进程。stale 面与
+    重建责任归下游消费件，此观察即登记。
 
 ## 10. 待澄清事项
 
