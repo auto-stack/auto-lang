@@ -368,7 +368,14 @@ roundtrip 字节等价先证+前缀零扰动回读断言）。
     前缀与他段零扰动回读；INDEX 再生（26 projects）。commit b0927e108。
   - **archived**：git mv → docs/plans/archive/710-a2r-mapping-residuals.md
     + status: archived（本笔）。
-  - cleaned：见下笔（guard→移除→回填）。
+  - **cleaned**：移除前 fresh guard 复核（wt-guard: clean 双 worktree
+    ——auto-lang 组内路径断言+auto-down 兄弟，零 reparse point）；
+    git worktree remove 双净 + plan-710-dev 删除（was e81e0a1c3=交付
+    提交，已含于 master）+ auto-down detach 兄弟移除 + 组目录产物
+    （p710-corpus/p710-run/p710-mini——tmp 证据，恒久数据已沉淀
+    census 报告与本件 §9 摘录）清除；组目录 .wt/lang-710 空后 rmdir。
+    worktree list 零 lang-710 残留、branch 零 plan-710* 残留（复核在
+    案）。
   - **部署观察**（landing is not deployment）：本件触 auto-lang 生成器
     面（ui_gen/a2r_std/auto-man 桩）——主检出 release 二进制
     （target/release/auto.exe 等）与各下游仓工具链缓存不会因本笔自动
