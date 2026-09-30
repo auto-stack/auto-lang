@@ -2,7 +2,7 @@
 
 > PLAN-714 勘定件（2026-09-30，auto-edit 供④ 承接前半）。本册=语法高亮
 > tree-sitter 化的内核侧真源——四勘定结论的契约面；烟测实录与逐项证据
-> 在 [docs/plans/reports/714-treesitter-survey.md](../../../plans/reports/714-treesitter-survey.md)。
+> 在 [docs/plans/reports/714-treesitter-survey.md](../../../../plans/reports/714-treesitter-survey.md)。
 > before：语法高亮面=syntect 5/two-face 0.4.5 全量内嵌（code-editor
 > feature，Cargo.toml:69/255-257；highlight.rs:135 实锚），无 tree-sitter
 > 依赖，无专册。本册为 715+ 实施件的立项基；实施语义（路由表落地/增量

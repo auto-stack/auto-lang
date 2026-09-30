@@ -21,7 +21,7 @@ cargo run --release   # 依赖经 aliyun sparse 镜像拉取
   ⊂ 字节域 [40..60)（token 级差异域）。
 - 查询：捆绑 highlights.scm 直载 rust 103 事件/10 类、python 76 事件/7
   类；最小内联查询类别断言绿。
-- 体积初值：release exe 3,578,368B（3.41MB，全栈未 strip）。
+- 体积初值：release exe 3,618,304B（3.45MB，全栈未 strip；归档终版源码实测）。
 - 冷构建：cargo clean 后 3.0s（Rust 侧 sccache 命中；C 侧 cc 真冷）。
 - 出口：**SMOKE-OK**（exit 0）。
 

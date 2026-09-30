@@ -13,7 +13,7 @@
 | 面 | 定案 | 关键证据 |
 |---|---|---|
 | ① 语言集 | **首批 20 语言**（21 个 grammar crate；P0=10/P1=8/P2=3），**.at 不含**（自建注记） | 围栏实勘+lang_to_extension 臂面+战略 §2.2 三源定界；crates.io 许可实勘 2026-09-30（§2） |
-| ② 管线选型 | **tree-sitter 0.27 runtime + `tree-sitter-<lang>` 子 crate 族 + build-time cc 编译 + 查询用 crate 自带 highlights.scm** | spike 烟测全绿（ABI v15 兼容 v13+、parse/增量/查询三段）、21/21 grammar 自带查询、体积初值 3.41MB exe、冷构建秒级（§3） |
+| ② 管线选型 | **tree-sitter 0.27 runtime + `tree-sitter-<lang>` 子 crate 族 + build-time cc 编译 + 查询用 crate 自带 highlights.scm** | spike 烟测全绿（ABI v15 兼容 v13+、parse/增量/查询三段）、21/21 grammar 自带查询、体积初值 3.45MB exe、冷构建秒级（§3） |
 | ③ 共存策略 | **双轨迁移**（新 feature `highlight-treesitter`，按 lang 路由；tail 语言留 syntect）；two-face 退役=实施件终态任务（收益量级 ≈.rdata 12.4MB → installer 门富余） | 围栏现实（auto 2066+rust 2628 等）+覆盖零回退+双付期有界；019 构成表（§4） |
 | ④ 增量要点 | rope 快照后台解析 + `tree.edit`/`changed_ranges` 失效域（token 级）+ big 态 plain 旁路上移不变 | spike 增量烟测（edit 标记 warm=true/cold=false；changed_ranges=[44..59)⊂[40..60)）；013 旁路实锚（§5） |
 
@@ -154,7 +154,7 @@
 | 判据 | build-time 编译/cc（定案） | 预编译嵌入 | 运行时加载 dll |
 |---|---|---|---|
 | 构建复杂度 | 低——cc 链 MSVC 实证零障碍（21/21 crate 自带 build.rs）；冷构建秒级（§3.2） | 自维护 20 语言 × 3 平台预编译产物缓存 | grammar 分发基础设施+版本对齐 |
-| 体积 | 3.41MB 初值（runtime+2 grammar+highlighter 全栈，§3.2）——按需 feature 门控增量 | 同为静态链接，无体积优势 | 最小，但破坏「单 exe 无运行时依赖」（战略 §2.1） |
+| 体积 | 3.45MB 初值（runtime+2 grammar+highlighter 全栈，§3.2）——按需 feature 门控增量 | 同为静态链接，无体积优势 | 最小，但破坏「单 exe 无运行时依赖」（战略 §2.1） |
 | 「单 exe」语义 | 保持 | 保持 | **冲突面**（供料 §4 注记成立）——排除 |
 
 **查询来源（第三轴，烟测升格实证）**：**crate 自带 highlights.scm**——
@@ -175,7 +175,7 @@ sparse 镜像拉取）。
 | parse 烟测 | 最小 .rs/.py → 根节点 kind+函数节点存在+无 ERROR | rust：`source_file` 52 节点；python：`module` 41 节点——双绿 |
 | 增量烟测 | 插入一行 → `tree.edit`+带旧树重解析 | **edit 标记**：warm 子树 `has_changes()==true`、cold `==false`（标记面挂在被编辑旧树）；**失效域**：`edited_tree.changed_ranges(&new_tree)` = 恰 1 段 `[44..59)` ⊂ 字节编辑域 `[40..60)`——**token 级差异域**（行首共享空白不计入）；微样本计时 full 45.4µs / inc 34.4µs（129B 样本，量级参考非基准） |
 | 查询烟测 | 捆绑 highlights.scm 直载 → Highlighter 事件流 | rust 103 事件/10 类捕获、python 76 事件/7 类——绿；最小内联查询（正确节点名 rust=`line_comment`）类别断言 comment/string/variable 全命中——绿。**API 注记**：0.27 `highlight()` 带 `encoding: Option<u32>` 参数；`Highlight.0` 为 usize 索引入 configure 名单 |
-| 体积初值 | release exe 尺寸 | **3,578,368B（3.41MB）**=runtime+highlighter+2 grammar 全栈（MSVC，opt3，未 strip）；对照 two-face 路线 .rdata 单节 12.4MB（019）——量级同段 |
+| 体积初值 | release exe 尺寸 | **3,618,304B（3.45MB）**=runtime+highlighter+2 grammar 全栈（MSVC，opt3，未 strip；归档终版源码实测——烟测段重写后的终版）；对照 two-face 路线 .rdata 单节 12.4MB（019）——量级同段 |
 | 构建复杂度 | `cargo clean && cargo build --release` | **3.0s**（Rust 侧 sccache 命中[RUSTC_WRAPPER 在效]；C 侧 cc 链真冷编译两 grammar——量级=秒级；首次构建含镜像拉取≈分钟级） |
 | exit | 全段断言 | **SMOKE-OK**（exit 0） |
 
