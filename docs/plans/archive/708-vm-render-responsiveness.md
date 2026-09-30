@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-708
-status: reviewed               # drafting → executing → execution_done → reviewed → archived（r3 终审 pass）
+status: archived               # 终态（r3 收窄交付，2026-09-30 归档；M/L 档承接=PLAN-711）
 # r3 收窄（2026-09-30 用户裁定）：S 档（T-00/01/02）+正确性观测与文档收口即关计划；
 # M/L 档（T-03/04/05/11/12 + T-06 余量/T-09 全矩阵）移出单独立项 PLAN-711。
 # r2 范围确认：用户 2026-09-30 明确调用 /auto-plan:work 实施 PLAN-708（Q-06 的 r2 契约确认）。
@@ -397,6 +397,15 @@ Worktree 复用：`D:/autostack/.wt/lang-708/auto-lang` / `plan-708-dev`，先�
 - 发现：F-1（低）沿用阶段复审登记，随 711 的 T-08 收口；无新增发现。
 - Spec delta 冻结：SD-01（modify ui/architecture.md：memo 三态/env 强制关/宿主 epoch/组件局部态失效/Degrade 诊断）+ SD-03（add ui/design/vm-loading-responsiveness.md：已验证 memo/失效/热点观测边界 + 链接 711 proposed 调度设计）；SD-02/04 不在本次沉淀范围。
 - `next: merge（沉淀 SD-01/03 + ledger + 归档 + 清场）`。
+
+### 2026-09-30 merge 收据（PLAN-708:r3）
+
+- `stage: merge` | `outcome: pass` | `completion_kind: delivered`（r3 收窄面）| delivery `a39ef6827`（ff-only，rebase 映射 1df3c0f30→a39ef6827 range-diff 全等；docs-only descendant of reviewed f169ad42f，delta 核对实现/依赖零变更）。
+- checkpoint 链：`prepared`（SD-01/SD-03 冻结于复审记录；711 骨架承接核对于 r3 记录）→ `landed`（a39ef6827，master==分支）→ `ledger_refreshed`（P708-1 designs/P708-2 reviews 外科插入；回读断言新条目在位且 P707/709 既有零扰动；INDEX 再生 26 projects）→ `archived`（本文件，git mv + status archived）→ `cleaned`（worktree/分支/组目录 wt-guard 后移除，收据随下一步提交补记）。
+- canonical：`docs/specs/auto-lang/ui/architecture.md` ADR-26 + `docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md`（新）+ `ui/plans.md` 708 行；SD-02/04 未沉淀（711 范围）。
+- 生产面观测（landing ≠ deployment）：主检出 release 二进制未随本次重建（worktree 探针用二进制为同源代码构建）；下次消费方构建自然刷新——显式登记，不声明已部署。
+- 并行会话窗口记录：本次 merge 期间 master 三度被并行推进（709 归档/706 复审），均以 rebase+range-diff 全等等价证明处理；无冲突。
+- `next: 无（终态）；PLAN-711（vm-loading-scheduling，drafting）承接 M/L 档`。
 
 ## 10. 待澄清事项
 
