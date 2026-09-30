@@ -19,7 +19,7 @@ new_spec_components: []
 touched_goals: [GOAL-007, GOAL-009]
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 4
+current_step: 5
 total_steps: 9
 ---
 
@@ -283,7 +283,7 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 - [x] T-03 Init demand/代际生命周期（**[✅ 已完成]** worktree 04b9552c9：register_init_demand 登记簿（判定≠完成/同代际不二次入队 AC-04/身份变化=新代际+旧代际一次取消）+dispatch_pending_inits 派发驱动（FIFO 依赖序=页先 child 后/五态观察/InFlight 探测收敛）+cancel_parked_by_fn 凭据映射清理（HttpRequest→drop_async_result/HttpStream→stream_cancel）+child_init_should_fire 退役移除；渲染路径两派发点（outlet :5211/fire_child_init_if_any）改只登记；tick 泵临时接线（dynamic poll 前置派发+订阅门扩展，T-04 移交）；plan711_init_demand 5 测+触面 233+tv 162 全绿）
 - [x] T-04 真实入口帧通知与有界泵（R-1 序障实证闭环）（**[✅ 已完成]** worktree 3809b58ea+97dcd7d75：listen_raw 条件订阅（AppId 去重身份/零 demand 无订阅）+ __frame_pump 消费臂（8ms 轮次有界泵+完成直置 view_dirty+epoch 失效）+ tick 退回纯 I/O（has_parked_io_tasks 门）+ is_dirty 燃料唤醒链（订阅重估时序 iced_winit :1337 定谳）；R-1 闭环实证=sub ON 同周期/帧消息驱动/4ms 校准片/598 万步跨 15.2s parked 完成/10M 累计护栏生产命中/重入忽略；D-2 校准 4096→1M 天花板（4ms 墙钟为活预算）；余 2 红=统一根态×无 key 兄弟实例有界修订点→§10 Q-05，随 T-05 完成语义收口）
 - [x] T-05 骨架/完成/失败显示（**[✅ 已完成]** worktree fa946bed4：pending demand 轻量骨架占位（Queued/InFlight→Loading… (Widget)、Failed→可诊断错误占位不无限 Loading、pending 非永久 memo 产物、嵌套需求依赖阶段发现）+ 完成传播链收口（dirty+epoch，T-04 落地）+ plan437 占位可见断言 + plan499/536 迁移 + 实机验证（widgets-gallery /line-chart：early MCP 快照含 Loading…→late 无残留、页面全渲染、屏幕与 MCP 同相））
-- [ ] T-12 computed/冷构建残面（DataTable memo_block 根因、FileTree 恒 FILL）
+- [x] T-12 computed/冷构建残面（**[✅ 已完成]** worktree 93f9274cc：①DataTable memo_block 根因=页面 memo() 块使 outlet 扫描整页降级→扫描器穿入（scan_node_registry pre-arm + scan_node 穿参 MemoBlock/Conditional 双臂，scan_block_node 专用扫描+registry 模板展开，多失效只变慢绝不陈旧），实机 site=6 FILL→HIT→version-fast 零降级；②FileTree 恒 FILL 根因=memo_slots_fp 展开失败 `?` 使条目永不插入→标记回退+dyn_deps 版本防护，实机打破恒 FILL（转换 FILL 一次后持续 HIT）；③plan632 f1/f4 骨架契约迁移；裸 cargo t 4896/4905 零新红）
 - [ ] T-06余 分段时间戳/在屏采集/资源计数
 - [ ] T-08 测试族收口（含 F-1）
 - [ ] T-09 VM 实机性能/终态 §7 全矩阵
@@ -362,6 +362,16 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
   - **实机验证**：auto-os widgets-gallery /line-chart 导航——early MCP 快照捕获 Loading… 骨架、late 无 Loading/无错误占位、页面全量渲染（LineChart 文档页 + 图表区）、应用存活。
 - 测试：plan437 补占位可见断言（首建含 Loading… → 驱动后全量几何）；plan499 axispointer/plan536 t1 契约迁移（骨架首建→驱动→重建）；触面全绿。
 - `next: T-12 computed/冷构建残面（DataTable memo_block 根因、FileTree 恒 FILL）`。
+
+### 2026-09-30 work T-12 完成（computed/冷构建残面）
+
+- `stage: work` | `plan_id: PLAN-711` | `plan_revision: 1` | `outcome: in_progress` | `code_commit: worktree 93f9274cc`。
+- T-12 交付面（对 §5 M-05）：
+  - **DataTable memo_block 根因**：页面 `memo () {}` 块（PLAN-046 MemoBlock，包裹静态安装说明）使 outlet 静态扫描整页降级（reason=memo_block，每帧全量重建）。修复=扫描器穿入：scan_node_registry pre-arm + scan_node 穿参（registry+visited），MemoBlock 体经专用 scan_block_node 扫描（嵌套 for/outlet/块仍整块降级、Component 模板 registry 递归展开使模板内状态读入槽）；Conditional 臂同扩（条件 parse_expr_fragment 入槽+双臂递归，解析失败仍降级）。**实机：site=6 FILL→HIT fast→HIT version-fast 零降级**（memo_slots_fp 恒 Some——之前的 None 分支为死路，恒 FILL 另有机制）。
+  - **FileTree 恒 FILL 根因**：memo_slots_fp 的 fingerprint_value `?` 使不可展开槽（computed 大列表，706 准入守卫拒绝信号网→每帧重算）失败整个 slots_fp → **条目永不插入** → 恒 FILL。修复=标记回退（unexpandable 常量入指纹）+ 该槽陈旧防护由 dyn_deps 版本检查承担（fill 渲染期已录 dep；deps_unchanged 失配即全量重渲）。**实机：打破恒 FILL**（转换 FILL 一次=Init 完成 epoch 失效，后持续 HIT/version-fast）。残余：computed 值稳定性（706 守卫拒绝列表）属更大设计面，本任务以 memo 层修复达成页面级收益。
+  - **双构建乘数**：memo HIT 后第二构建命中缓存，乘数随 HIT 消解（实机 HIT fast 序列佐证）。
+- 门禁：裸 cargo t 4896/4905 零新红（仅 9 已知预存）+ memo 族 121 全绿 + plan632 5/5（f1/f4 骨架契约迁移）。
+- `next: T-06余 分段时间戳/在屏采集/资源计数 → T-08 测试族收口 → T-09 实机矩阵 → T-07' 设计完备性核对`。
 - `next: T-05 骨架/完成/失败显示（Q-05 候选裁定 + 完成语义 MCP/展示缓存版本链收口）`。
 
 ## 10. 待澄清事项
