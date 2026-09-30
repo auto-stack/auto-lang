@@ -1700,30 +1700,108 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
 
         match method.as_str() {
             "GET" => {
-                if params.is_empty() {
-                    // list: return all
-                    code.push_str(&format!(
-                        "fn {}() -> Vec<Value> {{\n    API_DATA.lock().unwrap().clone()\n}}\n\n", fn_name
-                    ));
+                // PLAN-710 D-7（T-00 普查回补）：GET 桩按契约签名收口——
+                // 此前的 by-id 模板（`fn f(id: i32) -> Option<Value>`）与
+                // query 参数契约（`env_str(name str) str` 族）错位，调用点
+                // E0061/E0308 + Option Display E0599（auto-edit 018 普查中
+                // 被「占位符类型推断塌方」误并档的独立残面——普查报告
+                // docs/reports/p710-census.md D-7）。修形：参数/返回取
+                // 契约声明（auto_type_to_rust），体沿用 POST 同款请求记录
+                // 架构 + 返回缺省（str→""/bool→false/int→0/其它→Null）。
+                // 运行期真值由 merged back 服务端供（L2 下游件边界）。
+                let sig = endpoint
+                    .params
+                    .iter()
+                    .map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let ret_ty = {
+                    let r = endpoint.return_type.trim();
+                    if r.is_empty() || r == "void" {
+                        "()".to_string()
+                    } else {
+                        auto_type_to_rust(r)
+                    }
+                };
+                let default_expr = match ret_ty.as_str() {
+                    "String" => "String::new()".to_string(),
+                    "bool" => "false".to_string(),
+                    "i32" | "i64" | "u32" | "u64" | "f32" | "f64" => "0".to_string(),
+                    "()" => String::new(),
+                    _ => "serde_json::Value::Null".to_string(),
+                };
+                let discard = if endpoint.params.is_empty() {
+                    String::new()
                 } else {
-                    // get by id/path param
-                    let id_param = path_params.first().map(|p| p.name.as_str()).unwrap_or("id");
-                    code.push_str(&format!(
-                        "fn {}({}: i32) -> Option<Value> {{\n    API_DATA.lock().unwrap().iter().find(|n| n[\"id\"].as_i64() == Some({} as i64)).cloned()\n}}\n\n",
-                        fn_name, id_param, id_param
-                    ));
-                }
+                    format!(
+                        "    let _ = ({});\n",
+                        endpoint
+                            .params
+                            .iter()
+                            .map(|p| p.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                };
+                code.push_str(&format!(
+                    "fn {}({}) -> {} {{\n{}    {{\n        let mut data = API_DATA.lock().unwrap();\n        let id = {{ let mut next = API_NEXT_ID.lock().unwrap(); *next += 1; *next }};\n        data.push(serde_json::json!({{\"id\": id}}));\n    }}\n    {}\n}}\n\n",
+                    fn_name, sig, ret_ty, discard, default_expr
+                ));
             }
             "POST" => {
+                // PLAN-710 D-7 回补延伸：POST 返回型按契约收口——bool 返回
+                // （sync_copy/sync_delete 族）此前恒发 Value（→ 调用点
+                // `ok = sync_copy(...)` E0308 expected bool found Value）；
+                // bool 契约发 bool 桩（记录请求 + false 缺省），str/其它
+                // 维持 Value 形（envelope JSON 契约——regex_replace 先例，
+                // json.to_value 包裹消费）。
+                let post_ret = {
+                    let r = endpoint.return_type.trim();
+                    if r == "bool" {
+                        "bool".to_string()
+                    } else if r == "str" || r == "string" {
+                        "String".to_string()
+                    } else {
+                        "Value".to_string()
+                    }
+                };
                 let body_fields: Vec<String> = body_params.iter()
                     .map(|p| format!("\"{}\": {}", p.name, merged_param_to_value(&p.ty, &p.name)))
                     .collect();
-                code.push_str(&format!(
-                    "fn {}({}) -> Value {{\n    let mut data = API_DATA.lock().unwrap();\n    let id = {{ let mut next = API_NEXT_ID.lock().unwrap(); *next += 1; *next }};\n    let item = serde_json::json!({{\"id\": id, {}}});\n    data.push(item.clone());\n    item\n}}\n\n",
-                    fn_name,
-                    body_params.iter().map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty))).collect::<Vec<_>>().join(", "),
-                    body_fields.join(", ")
-                ));
+                if post_ret == "bool" {
+                    let discard = if body_params.is_empty() {
+                        String::new()
+                    } else {
+                        format!(
+                            "    let _ = ({});\n",
+                            body_params.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
+                        )
+                    };
+                    code.push_str(&format!(
+                        "fn {}({}) -> bool {{\n{}    {{\n        let mut data = API_DATA.lock().unwrap();\n        let id = {{ let mut next = API_NEXT_ID.lock().unwrap(); *next += 1; *next }};\n        data.push(serde_json::json!({{\"id\": id}}));\n    }}\n    false\n}}\n\n",
+                        fn_name,
+                        body_params.iter().map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty))).collect::<Vec<_>>().join(", "),
+                        discard
+                    ));
+                } else if post_ret == "String" {
+                    // PLAN-710 D-7：str 契约 POST 桩发 String（记录项序列化
+                    // 回传——`json.to_value(regex_replace(...))` 消费链按
+                    // 契约 parse；Value 直返型此前错位 = &Value/&str
+                    // E0308——regex_replace 株）。
+                    code.push_str(&format!(
+                        "fn {}({}) -> String {{\n    let mut data = API_DATA.lock().unwrap();\n    let id = {{ let mut next = API_NEXT_ID.lock().unwrap(); *next += 1; *next }};\n    let item = serde_json::json!({{\"id\": id, {}}});\n    data.push(item.clone());\n    serde_json::to_string(&item).unwrap_or_default()\n}}\n\n",
+                        fn_name,
+                        body_params.iter().map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty))).collect::<Vec<_>>().join(", "),
+                        body_fields.join(", ")
+                    ));
+                } else {
+                    code.push_str(&format!(
+                        "fn {}({}) -> Value {{\n    let mut data = API_DATA.lock().unwrap();\n    let id = {{ let mut next = API_NEXT_ID.lock().unwrap(); *next += 1; *next }};\n    let item = serde_json::json!({{\"id\": id, {}}});\n    data.push(item.clone());\n    item\n}}\n\n",
+                        fn_name,
+                        body_params.iter().map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty))).collect::<Vec<_>>().join(", "),
+                        body_fields.join(", ")
+                    ));
+                }
             }
             "PUT" => {
                 // PUT is fire-and-forget in the UI (callers don't use the

@@ -156,6 +156,10 @@ pub struct RustGenerator {
     /// "bool"）——后续 Asn 赋值的强转判据（`var card_id int = 0` 后
     /// `card_id = .col0_cards[i]` 的 __at_num 株）。
     declared_locals: std::collections::HashMap<String, String>,
+    /// PLAN-710 G-A：NullCoalesce 接收者根名集（`var c = v.counts` 后
+    /// `c.same ?? 0` 族）——无类型 Dot-on-Value 初始局部按 Value 格收格
+    /// （get_owned 链直发），保 coalesce 投影臂的 &Value 接收者型面。
+    coalesce_receivers: std::collections::HashSet<String>,
     /// PLAN-039 T-13（E-D2）：无类型集合局部的元素形状（数组名 → 子字段
     /// 表）——`scored[i].score` 元素字段访问器选型（push 实参/字面量推）。
     array_element_shapes:
@@ -317,6 +321,7 @@ impl RustGenerator {
             local_record_shapes: std::collections::HashMap::new(),
             loop_var_collections: std::collections::HashMap::new(),
             declared_locals: std::collections::HashMap::new(),
+            coalesce_receivers: std::collections::HashSet::new(),
             array_element_shapes: std::collections::HashMap::new(),
             has_init: false,
             init_api_info: None,
@@ -803,6 +808,7 @@ impl RustGenerator {
         self.local_record_shapes.clear();
         self.loop_var_collections.clear();
         self.declared_locals.clear();
+        self.coalesce_receivers.clear();
         self.array_element_shapes.clear();
         self.child_components.clear();
         self.loop_child_components.clear();
@@ -2636,6 +2642,11 @@ impl RustGenerator {
 
     /// Recursively scan AST statements for value-typed locals and loop vars
     fn scan_ast_stmts_for_value_locals(&mut self, stmts: &[crate::ast::Stmt]) {
+        // PLAN-710 G-A：coalesce 接收者根名预收集（`c.same ?? 0` → "c"）
+        // ——无类型 Dot-on-Value 初始局部的 Value 格判定键。
+        for st in stmts {
+            Self::collect_coalesce_receivers(st, &mut self.coalesce_receivers);
+        }
         // PLAN-039 T-14（批次 E，E-D3 第二轨）：无类型局部两遍收格——
         // 第一遍收集赋值 RHS 形态集（初始式 + 后续 Asn），联合含 Value
         // 用例（`var card = 999` + `card = waste_cards[i]`）→ Value 格
@@ -2648,12 +2659,126 @@ impl RustGenerator {
         let mut declared = std::collections::HashSet::new();
         self.collect_declared_names(stmts, &mut declared);
         self.collect_assign_kinds(stmts, &mut assign_kinds, &declared);
+        // PLAN-710 D-6 时序注：单遍收格先行——declared_locals 先落格，
+        // 联合格插入的显式声明名排除才有判据（`var e str = "lf"` + 
+        // `e = "crlf".to_string()`（Call RHS → value 误格）的 __at_str
+        // 错包裹 e 株由此切断；赋值点按声明型强转归 declared_locals 面）。
+        self.scan_stmts_no_union(stmts);
         for (name, kinds) in &assign_kinds {
-            if kinds.contains(&"value") {
+            if kinds.contains(&"value") && !self.declared_locals.contains_key(name) {
                 self.value_locals.insert(name.clone());
             }
         }
-        self.scan_stmts_no_union(stmts);
+    }
+
+    /// PLAN-710 G-A：语句树内 NullCoalesce 链根名收集（`v.a`、`t.path`、
+    /// `rows[i].lo` 的根 Ident 名）。只收 Ident 根（envelope 接收者形态；
+    /// Dot/Index 链剥层后取基座）。
+    fn collect_coalesce_receivers(st: &crate::ast::Stmt, out: &mut std::collections::HashSet<String>) {
+        match st {
+            crate::ast::Stmt::Store(s) => Self::collect_coalesce_receivers_expr(&s.expr, out),
+            crate::ast::Stmt::Expr(e) => Self::collect_coalesce_receivers_expr(e, out),
+            crate::ast::Stmt::Return(e) => Self::collect_coalesce_receivers_expr(e, out),
+            crate::ast::Stmt::If(i) => {
+                for b in &i.branches {
+                    Self::collect_coalesce_receivers_expr(&b.cond, out);
+                    for s in &b.body.stmts {
+                        Self::collect_coalesce_receivers(s, out);
+                    }
+                }
+                if let Some(eb) = &i.else_ {
+                    for s in &eb.stmts {
+                        Self::collect_coalesce_receivers(s, out);
+                    }
+                }
+            }
+            crate::ast::Stmt::For(f) => {
+                Self::collect_coalesce_receivers_expr(&f.range, out);
+                for s in &f.body.stmts {
+                    Self::collect_coalesce_receivers(s, out);
+                }
+            }
+            crate::ast::Stmt::Try(t) => {
+                for s in &t.body.stmts {
+                    Self::collect_coalesce_receivers(s, out);
+                }
+                for s in &t.catch_body.stmts {
+                    Self::collect_coalesce_receivers(s, out);
+                }
+                if let Some(fb) = &t.finally_body {
+                    for s in &fb.stmts {
+                        Self::collect_coalesce_receivers(s, out);
+                    }
+                }
+            }
+            crate::ast::Stmt::Block(b) => {
+                for s in &b.stmts {
+                    Self::collect_coalesce_receivers(s, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// 表达式侧收集：NullCoalesce 链根 + 复合形态递归（Object 对/调用
+    /// 实参/二元两侧/一元内层/索引偶/块尾）。
+    fn collect_coalesce_receivers_expr(e: &crate::ast::Expr, out: &mut std::collections::HashSet<String>) {
+        use crate::ast::Expr;
+        match e {
+            Expr::NullCoalesce(left, right) => {
+                let mut cur = left.as_ref();
+                loop {
+                    match cur {
+                        Expr::Dot(inner, _) => cur = inner.as_ref(),
+                        Expr::Index(t, _) => cur = t.as_ref(),
+                        Expr::Ident(n) => {
+                            let s = n.as_str().trim_start_matches('.');
+                            if !s.is_empty() && s != "self" {
+                                out.insert(s.to_string());
+                            }
+                            break;
+                        }
+                        _ => break,
+                    }
+                }
+                Self::collect_coalesce_receivers_expr(right, out);
+            }
+            Expr::Bina(l, _, r) => {
+                Self::collect_coalesce_receivers_expr(l, out);
+                Self::collect_coalesce_receivers_expr(r, out);
+            }
+            Expr::Unary(_, inner) => Self::collect_coalesce_receivers_expr(inner, out),
+            Expr::Index(t, ix) => {
+                Self::collect_coalesce_receivers_expr(t, out);
+                Self::collect_coalesce_receivers_expr(ix, out);
+            }
+            Expr::Dot(inner, _) => Self::collect_coalesce_receivers_expr(inner, out),
+            Expr::Object(pairs) => {
+                for p in pairs {
+                    Self::collect_coalesce_receivers_expr(&p.value, out);
+                }
+            }
+            Expr::Call(c) => {
+                for a in &c.args.args {
+                    if let crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) = a {
+                        Self::collect_coalesce_receivers_expr(e, out);
+                    }
+                }
+            }
+            Expr::Node(n) => {
+                for a in &n.args.args {
+                    if let crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) = a {
+                        Self::collect_coalesce_receivers_expr(e, out);
+                    }
+                }
+            }
+            Expr::Block(b) => {
+                for s in &b.stmts {
+                    Self::collect_coalesce_receivers(s, out);
+                }
+            }
+            _ => {}
+        }
     }
 
     /// 单遍收格（scan 的原逻辑体）——联合段由顶层统一先行。
@@ -2742,6 +2867,34 @@ impl RustGenerator {
                                     if let Some(shape) = self.object_literal_shape(first) {
                                         self.array_element_shapes
                                             .insert(name.to_string(), shape);
+                                    }
+                                }
+                            }
+                            // PLAN-710 G-A：无类型 Dot-on-Value 初始 + 本地是
+                            // coalesce 接收者（`var c = v.counts` + `c.same ?? 0`
+                            // 族）→ Value 格收格（对象型成员不落标量投影）。
+                            if let crate::ast::Expr::Dot(..) = &store.expr {
+                                if self.coalesce_receivers.contains(name)
+                                    && self.expr_is_value_typed(&store.expr)
+                                {
+                                    self.value_locals.insert(name.to_string());
+                                }
+                                // PLAN-710 D-6：无类型 Vec<Value> 态字段直读
+                                // （`var src = .diff_rows` 族）→ array_locals
+                                // 格（原生索引/迭代面；元素拷贝判据）。
+                                if let crate::ast::Expr::Dot(inner, field) = &store.expr {
+                                    if let crate::ast::Expr::Ident(n) = inner.as_ref() {
+                                        let ns = n.as_str().trim_start_matches('.');
+                                        let is_self = ns == "self" || ns.is_empty();
+                                        if is_self
+                                            && self
+                                                .state_types
+                                                .get(field.as_str())
+                                                .map(|t| t == "Vec<serde_json::Value>")
+                                                .unwrap_or(false)
+                                        {
+                                            self.array_locals.insert(name.to_string());
+                                        }
                                     }
                                 }
                             }
@@ -5009,7 +5162,12 @@ impl RustGenerator {
                 }
 
                 // scroll → View::scrollable（既有构造器；style 透传）。
-                if tag == "scroll" || tag == "scrollable" {
+                // PLAN-710 回补（T-00 普查第四类——schema.rs 492/499 的
+                // scroll-pane 别名此前未达本臂，落 col 兜底后 controller
+                // prop 撞 PLAN-027 拒绝门）：scroll-pane 入臂；controller
+                // 绑定透传（View::scrollable.controller——VM 轨 Scrollable
+                // PLAN-656 同源语义，句柄 = ScrollControllerBinding(Arc<str>)）。
+                if tag == "scroll" || tag == "scrollable" || tag == "scroll-pane" {
                     let user_style = user_style_str(props);
                     let child_view = if children.is_empty() {
                         "View::Empty".to_string()
@@ -5022,11 +5180,20 @@ impl RustGenerator {
                         }
                         format!("{col}.build()")
                     };
+                    let ctrl_chain = match props.get("controller") {
+                        Some(AuraPropValue::Expr(e)) => format!(
+                            // clone 形——&self 态字段（self.store.diff_scroll）
+                            // 直移出借位 E0507（scroll-pane 绑定株）。
+                            ".controller(auto_lang::ui::view::ScrollControllerBinding(std::sync::Arc::from(({}).clone())))",
+                            self.ast_expr_to_rust(e)
+                        ),
+                        _ => String::new(),
+                    };
                     if user_style.is_empty() {
-                        return format!("View::scrollable({child_view}).build()");
+                        return format!("View::scrollable({child_view}){ctrl_chain}.build()");
                     }
                     return format!(
-                        "View::scrollable({child_view}).style(\"{user_style}\").build()"
+                        "View::scrollable({child_view}).style(\"{user_style}\"){ctrl_chain}.build()"
                     );
                 }
 
@@ -7489,11 +7656,24 @@ impl RustGenerator {
                                 .loop_var_collections
                                 .get(var_name)
                                 .and_then(|coll| self.list_elem_shape(coll));
-                            let bracket_access = self.value_field_access_shaped(
-                                &output_var_name,
-                                field_name,
-                                elem_shape.as_ref(),
-                            );
+                            // PLAN-710 D-6：本函数只在条件位被调——Value 族
+                            // 元素字段在形状表未命中时落 truthy 投影（VM
+                            // is_true 同源：bool 直读/数值>0/串非空），不再
+                            // 按访问器启发式猜型（envelope 字段名表外落
+                            // as_str → 条件位 E0308「expected bool found
+                            // String」株——auto-edit diff 视图 ix_*/e_*/sx_*
+                            // 字段族，018 普查误并档「类型推断塌方」）。
+                            let bracket_access = match elem_shape.as_ref() {
+                                Some(shape) => self.value_field_access_shaped(
+                                    &output_var_name,
+                                    field_name,
+                                    Some(shape),
+                                ),
+                                None => format!(
+                                    "auto_lang::a2r_std::json::truthy(&({}[\"{}\"]))",
+                                    output_var_name, field_name
+                                ),
+                            };
                             // Remove the already-pushed var name and replace with bracket access
                             output.truncate(output.len() - var_name.len());
                             output.push_str(&bracket_access);
@@ -7514,7 +7694,12 @@ impl RustGenerator {
                             }
                             let field_name = &result[i + 1..field_end];
                             output.truncate(output.len() - var_name.len());
-                            output.push_str(&self.value_field_access(&format!("self.{}", var_name), field_name));
+                            // PLAN-710 D-6：条件位 truthy 投影（同上——形状
+                            // 表外字段不再落 as_str 猜型）。
+                            output.push_str(&format!(
+                                "auto_lang::a2r_std::json::truthy(&(self.{}[\"{}\"]))",
+                                var_name, field_name
+                            ));
                             i = field_end;
                             continue;
                         }
@@ -8820,6 +9005,45 @@ impl RustGenerator {
                         // 声明型局部收到 Value 型 RHS 时包访问器（str →
                         // as_str 降串、int → __at_num），VM 宽松降链的编译
                         // 等价；无类型局部的类型格是 T-14 域。
+                        // PLAN-710 G-A：无类型 Dot-on-Value 初始 + coalesce
+                        // 接收者（`var c = v.counts` 族）→ get_owned 链直发
+                        // （Value 格保形，标量投影不落——投影型见 scan 侧
+                        // value_locals 收格）。
+                        let mut value = value;
+                        if matches!(store.ty, crate::ast::Type::Unknown)
+                            && matches!(&store.expr, crate::ast::Expr::Dot(..))
+                            && self.coalesce_receivers.contains(store.name.as_str())
+                            && self.expr_is_value_typed(&store.expr)
+                        {
+                            value = format!(
+                                "{}.clone()",
+                                self.value_bracket_chain(&store.expr)
+                            );
+                        }
+                        // PLAN-710 D-6：无类型局部 ← state 非 Copy 字段直读
+                        // ——拷贝语义（`var src = .diff_rows` 株——Vec 态
+                        // move 出借位 E0507；标量态不动）。
+                        if matches!(store.ty, crate::ast::Type::Unknown)
+                            && value.starts_with("self.")
+                            && !value.contains('(')
+                            && !value.contains('[')
+                            && !value.contains(".clone()")
+                        {
+                            let field = &value["self.".len()..];
+                            let non_copy = self
+                                .state_types
+                                .get(field)
+                                .map(|t| {
+                                    !matches!(
+                                        t.as_str(),
+                                        "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool"
+                                    )
+                                })
+                                .unwrap_or(false);
+                            if non_copy {
+                                value = format!("{}.clone()", value);
+                            }
+                        }
                         let coerced = self.coerce_typed_local_init(&store.ty, &store.expr, &value);
                         if let crate::ast::Expr::Index(target, _idx) = &store.expr {
                             let coll_stripped: Option<&str> = match target.as_ref() {
@@ -8944,7 +9168,9 @@ impl RustGenerator {
             crate::ast::Stmt::If(if_stmt) => {
                 let mut parts = Vec::new();
                 for (i, branch) in if_stmt.branches.iter().enumerate() {
-                    let cond = self.ast_expr_to_rust(&branch.cond);
+                    // PLAN-710 D-6：条件位走 cond_expr_rust（Value 裸读
+                    // truthy 投影——同源 is_true 语义）。
+                    let cond = self.cond_expr_rust(&branch.cond);
                     // 分支体 = 语句位置:块尾恒补 `;`(#18:值调用块尾缺分号
                     // → E0308;旧 let 特判由 join_stmt_block 取代)。
                     let body_str = self.join_stmt_block(&branch.body.stmts, "; ");
@@ -8976,7 +9202,8 @@ impl RustGenerator {
                     }
                     crate::ast::Iter::Cond => {
                         // for i >= 0 { ... } → while i >= 0 { ... }
-                        let cond = self.ast_expr_to_rust(&for_stmt.range);
+                        // PLAN-710 D-6：条件位同 D-6 投影。
+                        let cond = self.cond_expr_rust(&for_stmt.range);
                         format!("while {} {{ {} }}", cond, body_str)
                     }
                     crate::ast::Iter::Ever => {
@@ -9016,6 +9243,39 @@ impl RustGenerator {
             }
             crate::ast::Stmt::Comment(_) => String::new(),
             crate::ast::Stmt::EmptyLine(_) => String::new(),
+            // PLAN-710 G-B: try/catch 语句臂——catch_unwind 形（back_proxy
+            // 先例）。try 块正常路径零语义扰动（闭包体直发，语句序列照
+            // join_stmt_block 规则补 `;`）；panic 兜底进 catch 块。变量逃逸
+            // 形（try 外声明、try 内赋值——editor_store fsize 株）：闭包
+            // AssertUnwindSafe 捕 &mut 回写，外层 `let mut`（Var 发射形）
+            // 所有权成立。panic 载荷不消费（.at 实例集 catch 无绑定形）；
+            // catch (e) 绑定形发射载荷消息串（VM shim 同源——catch 帧推入
+            // 错误消息字符串，vm/codegen.rs Stmt::Try STORE_LOCAL 形）。
+            // finally 子句跟发（VM 侧偏差——catch 内错误不触发 finally——
+            // 两侧同形：a2r catch 块 panic 直接传播，无嵌套 handler）。
+            crate::ast::Stmt::Try(t) => {
+                let body_str = self.join_stmt_block(&t.body.stmts, "; ");
+                let catch_str = self.join_stmt_block(&t.catch_body.stmts, "; ");
+                let catch_bind = match &t.catch_param {
+                    Some(p) => format!(
+                        "let {p} = auto_lang::a2r_std::panic_message(&__p); "
+                    ),
+                    None => String::new(),
+                };
+                let catch_arm = if catch_bind.is_empty() && catch_str.is_empty() {
+                    "Err(_p710) => {}".to_string()
+                } else {
+                    format!("Err(__p) => {{ {catch_bind}{catch_str} }}")
+                };
+                let mut out = format!(
+                    "match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {{ {body_str} }})) {{ Ok(_) => {{}}, {catch_arm} }}"
+                );
+                if let Some(fb) = &t.finally_body {
+                    let finally_str = self.join_stmt_block(&fb.stmts, "; ");
+                    out.push_str(&format!("; {{ {finally_str} }}"));
+                }
+                out
+            }
             _ => format!("/* unhandled stmt */"),
         }
     }
@@ -9024,6 +9284,10 @@ impl RustGenerator {
     /// 强转——str/int 声明收到 Value 型 RHS 时包访问器（str → as_str 降串
     /// 拷贝、int → __at_num），VM 宽松降链的编译等价。返回原串 = 无需
     /// 强转（RHS 非 Value 或声明无类型）。
+    /// PLAN-710 D-6：补 bool 声明臂——`var d bool = r.sx_del` 族此前落
+    /// `_` 直发（Value 读侧 String 投影赋给 bool 位 → E0308）。bool 声明
+    /// 收 Value 型 RHS 走 is_true 同源投影（truthy——bool 直读/数值>0/
+    /// 串非空）。
     fn coerce_typed_local_init(
         &self,
         ty: &crate::ast::Type,
@@ -9031,7 +9295,57 @@ impl RustGenerator {
         value: &str,
     ) -> String {
         use crate::ast::Type;
+        // PLAN-710 D-6：state String 字段直读初值——拷贝语义（VM str 值
+        // 语义的编译等价；裸直发 = move 出 &mut self 借位 E0507——
+        // `var path str = .diff_a` 株）。先于 Value 判定门（String 态读
+        // 非 Value 型，但拷贝语义独立成立）。
+        if matches!(
+            ty,
+            Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
+        ) && value.starts_with("self.")
+            && !value.contains('(')
+            && !value.contains('[')
+            && !value.contains(".clone()")
+        {
+            return format!("{}.clone()", value);
+        }
+        // 同纪律的局部→局部拷贝（`let mut out str = body` 后 body 复用株
+        // ——VM 值语义；裸名直发 = move 后续借用 E0382）。
+        if matches!(
+            ty,
+            Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
+        ) && !value.is_empty()
+            && !value.starts_with("self.")
+            && !value.contains('(')
+            && !value.contains('[')
+            && !value.contains(".clone()")
+            && value
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '_')
+        {
+            return format!("{}.clone()", value);
+        }
         if !self.expr_is_value_typed(expr) {
+            return value.to_string();
+        }
+        // PLAN-710 D-6：bool 声明臂——Value 型 RHS 的 is_true 同源投影
+        // （原生括号链直构、替换型而非包裹型——str/int 臂的已投影早退
+        // 不适用：`var d bool = r.sx_del` 的 RHS 已被访问器启发式降为
+        // String 形，bool 位需从原始链重建）。前置（早退之前）。
+        if matches!(ty, Type::Bool) {
+            return format!(
+                "auto_lang::a2r_std::json::truthy(&({}))",
+                self.value_bracket_chain(expr)
+            );
+        }
+        // PLAN-710 D-6：已投影形早退——expr_is_value_typed 扩面（envelope
+        // 循环变量字段读）后，ast_expr_to_rust 对这些 Dot 已直发访问器
+        // 投影（as_str/as_i64 收口形）；再包一层 = String::as_str 上的
+        // Option 法 E0599（dlo/dro 株）。投影形即终形。
+        if value.contains("as_str().unwrap_or_default()")
+            || value.contains("as_i64().unwrap_or(")
+            || value.contains("as_bool().unwrap_or(")
+        {
             return value.to_string();
         }
         match ty {
@@ -9096,6 +9410,18 @@ impl RustGenerator {
         if let Expr::Dot(inner, field) = expr {
             if let Expr::Ident(n) = inner.as_ref() {
                 if n.as_str() == "store" && self.store_field_is_value(field.as_str()) {
+                    return true;
+                }
+            }
+        }
+        // PLAN-710 D-6：Dot(Ident 基座, field)——基座在 Value 判定集
+        // （needs_index_access：value_locals/value_loop_vars/state Value/
+        // prop Value）→ Value 族（`var d bool = r.sx_del`/`var c = v.counts`
+        // 的强转/收格判据；envelope 循环变量字段读形）。
+        if let Expr::Dot(obj, _) = expr {
+            if let Expr::Ident(n) = obj.as_ref() {
+                let s = n.as_str().trim_start_matches('.');
+                if s != "self" && self.needs_index_access(s) {
                     return true;
                 }
             }
@@ -9245,6 +9571,31 @@ impl RustGenerator {
                 "slice" | "lower" | "upper" | "trim" | "replace" | "contains"
                 | "starts_with" | "ends_with" => self
                     .try_string_method_call(obj, method, call, /*force_string=*/ true),
+                // PLAN-710 D-8（T-00 普查残余）：to_int——串解析整形
+                // （失败 0，与 __at_num 宽松收敛同纪律）。
+                "to_int" => Some(format!(
+                    "(({}).trim().parse::<i32>().unwrap_or(0))",
+                    self.ast_expr_to_rust(obj)
+                )),
+                // PLAN-710 D-8（T-00 普查残余——018 基线 E0599 在册）：未知
+                // 串局部族同收 char_at/substr（字符语义）。
+                "char_at" => {
+                    let a = match call.args.args.first() {
+                        Some(crate::ast::Arg::Pos(e)) => self.ast_expr_to_rust(e),
+                        _ => return None,
+                    };
+                    Some(format!(
+                        "((({}).chars().nth((({a})).max(0) as usize)).map(|c| c as u32).unwrap_or(0)) as i32",
+                        self.ast_expr_to_rust(obj)
+                    ))
+                }
+                "substr" => {
+                    let (a, b) = self.two_i32_args(call)?;
+                    Some(format!(
+                        "({}).chars().skip(({}).max(0) as usize).take(({}).max(0) as usize).collect::<String>()",
+                        self.ast_expr_to_rust(obj), a, b
+                    ))
+                }
                 _ => None,
             };
         }
@@ -9276,6 +9627,47 @@ impl RustGenerator {
                     _ => None,
                 }
             }
+            // PLAN-710 D-8（T-00 普查残余——018 基线 E0599 在册，BOM 探测
+            // w.char_at(0)/w.substr(0,3) 株）：字符语义臂（VM 串按字符——
+            // len 同纪律）。char_at → 字符码 int（越界 0）；substr → 字符
+            // 窗拷贝（负参钳 0）。Value 接收者不在认知面（拒绝门纪律落
+            // 默认路径）。
+            "char_at" => match kind {
+                "string" | "int" => {
+                    let a = match call.args.args.first() {
+                        Some(crate::ast::Arg::Pos(e)) => self.ast_expr_to_rust(e),
+                        _ => return None,
+                    };
+                    Some(format!(
+                        "((({}).chars().nth((({a})).max(0) as usize)).map(|c| c as u32).unwrap_or(0)) as i32",
+                        self.ast_expr_to_rust(obj)
+                    ))
+                }
+                _ => None,
+            },
+            "substr" => match kind {
+                "string" => {
+                    let (a, b) = self.two_i32_args(call)?;
+                    Some(format!(
+                        "({}).chars().skip(({}).max(0) as usize).take(({}).max(0) as usize).collect::<String>()",
+                        self.ast_expr_to_rust(obj), a, b
+                    ))
+                }
+                _ => None,
+            },
+            // PLAN-710 D-8（T-00 普查残余——`.diff_buf_ia.to_int()` 株，
+            // E0605 String as i32）：串解析整形（失败 0）。
+            "to_int" => match kind {
+                "string" => Some(format!(
+                    "(({}).trim().parse::<i32>().unwrap_or(0))",
+                    self.ast_expr_to_rust(obj)
+                )),
+                "value" => Some(format!(
+                    "__at_num(&({}))",
+                    self.ast_expr_to_rust(obj)
+                )),
+                _ => None,
+            },
             "str" => match kind {
                 "value" => Some(format!("__at_str(&({}))", self.ast_expr_to_rust(obj))),
                 "int" | "string" => Some(format!("({}).to_string()", self.ast_expr_to_rust(obj))),
@@ -9425,6 +9817,270 @@ impl RustGenerator {
             format!("{}[\"{}\"].as_bool().unwrap_or(false)", obj_expr, field)
         } else {
             format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", obj_expr, field)
+        }
+    }
+
+    /// PLAN-710 G-A：`v.field ?? default` envelope 成员访问投影——
+    /// json.to_value 结果（serde_json::Value）的 NullCoalesce 发射。
+    /// 左链 Dot/Index 段逐段组合（成员段聚成 a2r_std::json 路径切片、
+    /// 索引段走 get_owned/at_owned，Vec<Value> 态基座的首索引走原生
+    /// 下标），投影型按 ?? 右值四族（str/int/bool/list——计划 §5 T-03
+    /// 类型投影表；调用等非字面量缺省走 str-with 计算变体）。
+    /// 语义与 VM 轨同源：路径缺段/字段缺席/类型不符 → ?? 右值缺省。
+    /// 接收者按 envelope 契约视作 Value（value_local/Value 循环变量/
+    /// 未知名一视同仁——corpus 防御式 envelope 风格的成员读全部
+    /// coalesce 门控）。非 Dot/Index 链的 NullCoalesce 不在认知面
+    /// （落 `_` 占位显式拦截——SD-01 边界注记）。
+    fn null_coalesce_rust(&self, left: &crate::ast::Expr, right: &crate::ast::Expr) -> String {
+        use crate::ast::Expr;
+        enum Seg<'a> {
+            Field(String),
+            Index(&'a crate::ast::Expr),
+        }
+        // 左链展平（外→内收集后反转：base 先）。
+        let mut segs: Vec<Seg> = Vec::new();
+        let mut cur = left;
+        loop {
+            match cur {
+                Expr::Dot(inner, f) => {
+                    segs.push(Seg::Field(f.as_str().to_string()));
+                    cur = inner.as_ref();
+                }
+                Expr::Index(target, ix) => {
+                    segs.push(Seg::Index(ix.as_ref()));
+                    cur = target.as_ref();
+                }
+                _ => break,
+            }
+        }
+        segs.reverse();
+        let recv = self.ast_expr_to_rust(cur);
+        // 基座 Vec<Value> 族判定（`.coll[i].f ?? d` 首索引走原生下标）。
+        let base_is_vec = (|| {
+            let Expr::Ident(n) = cur else {
+                return false;
+            };
+            let name = n.as_str().strip_prefix('.').unwrap_or(n.as_str());
+            self.state_types.get(name).map(|t| t.starts_with("Vec<")).unwrap_or(false)
+                || self.array_locals.contains(name)
+        })();
+        // 逐段构造 Value 基座：成员段聚路径，索引段切段组合。
+        let mut pending: Vec<String> = Vec::new();
+        let mut value_expr: Option<String> = None;
+        for seg in &segs {
+            match seg {
+                Seg::Field(f) => pending.push(format!("{f:?}")),
+                Seg::Index(ix) => {
+                    let idx_str = self.ast_expr_to_rust(ix);
+                    let base = if let Some(ve) = &value_expr {
+                        if pending.is_empty() {
+                            format!("({ve})")
+                        } else {
+                            format!(
+                                "auto_lang::a2r_std::json::get_owned(&({ve}), &[{}])",
+                                pending.join(", ")
+                            )
+                        }
+                    } else if base_is_vec {
+                        format!("({recv})[{idx_str}].clone()")
+                    } else if pending.is_empty() {
+                        format!("({recv})")
+                    } else {
+                        format!(
+                            "auto_lang::a2r_std::json::get_owned(&({recv}), &[{}])",
+                            pending.join(", ")
+                        )
+                    };
+                    value_expr = Some(if base_is_vec && value_expr.is_none() {
+                        base
+                    } else {
+                        format!(
+                            "auto_lang::a2r_std::json::at_owned(&({base}), ({idx_str}) as usize)"
+                        )
+                    });
+                    pending.clear();
+                }
+            }
+        }
+        let (subject, keys): (String, Vec<String>) = match &value_expr {
+            Some(ve) => (ve.clone(), pending.clone()),
+            None => (recv, pending),
+        };
+        let keys_str = keys.join(", ");
+        // 投影型按 ?? 右值四族（缺省=右值；负数字面量经 Unary(Sub, ·)
+        // 入臂；调用等非字面量缺省走 str-with 变体）。
+        let int_default = |n: String| {
+            format!(
+                "(auto_lang::a2r_std::json::get_int_or(&({subject}), &[{keys_str}], {n}) as i32)"
+            )
+        };
+        match right {
+            Expr::Str(s) => format!(
+                "auto_lang::a2r_std::json::get_str_or(&({subject}), &[{keys_str}], \"{}\")",
+                Self::rust_str_lit_body(s)
+            ),
+            Expr::Int(n) => int_default(n.to_string()),
+            Expr::I64(n) => int_default(n.to_string()),
+            Expr::Uint(n) => int_default(n.to_string()),
+            Expr::U64(n) => int_default(n.to_string()),
+            Expr::Unary(op, inner)
+                if matches!(op, auto_val::Op::Sub) && Self::int_literal_value(inner).is_some() =>
+            {
+                int_default(format!("-{}", Self::int_literal_value(inner).unwrap()))
+            }
+            Expr::Bool(b) => format!(
+                "auto_lang::a2r_std::json::get_bool_or(&({subject}), &[{keys_str}], {b})"
+            ),
+            Expr::Array(_) => format!(
+                "auto_lang::a2r_std::json::get_array_or(&({subject}), &[{keys_str}])"
+            ),
+            other => {
+                let d = self.ast_expr_to_rust(other);
+                format!(
+                    "auto_lang::a2r_std::json::get_str_or_with(&({subject}), &[{keys_str}], || ({d}))"
+                )
+            }
+        }
+    }
+
+    /// PLAN-710 D-6 辅件：整数字面量值提取（负缺省判定用——非整数
+    /// 字面量返回 None）。
+    fn int_literal_value(e: &crate::ast::Expr) -> Option<String> {
+        match e {
+            crate::ast::Expr::Int(n) => Some(n.to_string()),
+            crate::ast::Expr::I64(n) => Some(n.to_string()),
+            crate::ast::Expr::Uint(n) => Some(n.to_string()),
+            crate::ast::Expr::U64(n) => Some(n.to_string()),
+            _ => None,
+        }
+    }
+
+    /// PLAN-710 D-6（T-00 普查回补——018 普查中被并入「类型推断塌方」
+    /// 的独立残面，普查报告 D-6）：条件位发射器。Value 族裸读（Dot/Index
+    /// ——envelope 循环变量字段 `r.ix_del`/`r.e_same` 族）按 VM `is_true`
+    /// 同源投影（a2r_std::json::truthy——bool 直读/数值>0/串非空/其余
+    /// false，auto_val value.rs:682 同语义）；逻辑组合（&&/||/!）逐原子
+    /// 递归；比较与其余形态维持通用发射（比较位已有 Eq/Neq 降串归一）。
+    fn cond_expr_rust(&self, expr: &crate::ast::Expr) -> String {
+        use crate::ast::Expr;
+        use auto_val::Op;
+        match expr {
+            Expr::Dot(..) | Expr::Index(..) if self.cond_value_read(expr) => {
+                // 原生括号链直构（不复用 ast_expr_to_rust——其访问器会先
+                // 降型 as_str/as_i64，truthy 需原始 Value 形）。
+                let chain = self.value_bracket_chain(expr);
+                format!("auto_lang::a2r_std::json::truthy(&({chain}))")
+            }
+            // PLAN-710 D-6 延伸：裸局部条件（`if p`——str 串非空/int>0/
+            // Value truthy）——VM is_true 同源；bool/未知维持裸发射。
+            Expr::Ident(n) => {
+                let s = n.as_str().trim_start_matches('.');
+                // 判型注：declared_locals 是 widget 级平表——同名局部跨
+                // handler 的型可能碰撞（`var la str`/`var la bool` 双 decl
+                // 株），故此处只认无歧义投影（int→>0）；str 判型不投影
+                // （真 String 条件由生成物编译错显式拦截——与「未知不猜」
+                // 同纪律）。Value 格（Call 结果局部）走 truthy。
+                match self.declared_locals.get(s).map(|x| x.as_str()) {
+                    Some("bool") | Some("str") => s.to_string(),
+                    Some("int") => format!("({s}) > 0"),
+                    _ => {
+                        if self.value_locals.contains(s) {
+                            format!("auto_lang::a2r_std::json::truthy(&({s}))")
+                        } else {
+                            s.to_string()
+                        }
+                    }
+                }
+            }
+            Expr::Unary(op, inner) => {
+                let val = self.cond_expr_rust(inner);
+                match op {
+                    Op::Not => format!("!({})", val),
+                    Op::Sub => format!("-{}", val),
+                    _ => format!("/* unimplemented unary {:?} */", op),
+                }
+            }
+            Expr::Bina(l, op, r) if matches!(op, Op::And | Op::Or) => {
+                let op_str = if matches!(op, Op::And) { "&&" } else { "||" };
+                format!(
+                    "{} {op_str} {}",
+                    self.cond_expr_rust(l),
+                    self.cond_expr_rust(r)
+                )
+            }
+            _ => self.ast_expr_to_rust(expr),
+        }
+    }
+
+    /// D-6 辅件：Value 裸读的原生括号链（`r.f`→`r["f"]`、`r.a.b`→
+    /// `r["a"]["b"]`、`rows[i].f`→`rows[i]["f"]`——基座经 ast_expr_to_rust
+    /// 解析（self./store 前缀改写），段内不再降型）。
+    fn value_bracket_chain(&self, expr: &crate::ast::Expr) -> String {
+        use crate::ast::Expr;
+        // 段收集（外→内）后反转。
+        enum Seg<'a> {
+            Field(String),
+            Index(&'a crate::ast::Expr),
+        }
+        let mut segs: Vec<Seg> = Vec::new();
+        let mut cur = expr;
+        loop {
+            match cur {
+                Expr::Dot(inner, f) => {
+                    // self 载体形态（`.tabs` = Dot(Ident("."), tabs) /
+                    // Dot(Ident("self"), x)）为基座（ast_expr_to_rust 的
+                    // self 改写管）；不再剥层（否则 `self["tabs"]` 越权
+                    // 括号化——la bool 株）。
+                    if let Expr::Ident(n) = inner.as_ref() {
+                        if n.as_str() == "." || n.as_str() == "self" {
+                            break;
+                        }
+                    }
+                    segs.push(Seg::Field(f.as_str().to_string()));
+                    cur = inner.as_ref();
+                }
+                Expr::Index(target, ix) => {
+                    segs.push(Seg::Index(ix.as_ref()));
+                    cur = target.as_ref();
+                }
+                _ => break,
+            }
+        }
+        segs.reverse();
+        let mut out = self.ast_expr_to_rust(cur);
+        for seg in &segs {
+            match seg {
+                Seg::Field(f) => out = format!("{out}[{f:?}]"),
+                Seg::Index(ix) => {
+                    let idx = self.ast_expr_to_rust(ix);
+                    out = format!("{out}[({idx}) as usize]");
+                }
+            }
+        }
+        out
+    }
+
+    /// 条件位 Value 裸读判定——根名入 needs_index_access 判定集
+    /// （value_locals/value_loop_vars/state Value/prop Value——即会发射
+    /// 括号访问器的人群）；Index 形走 expr_is_value_typed。
+    fn cond_value_read(&self, expr: &crate::ast::Expr) -> bool {
+        use crate::ast::Expr;
+        match expr {
+            Expr::Index(..) => self.expr_is_value_typed(expr),
+            Expr::Dot(..) => {
+                let mut cur = expr;
+                loop {
+                    match cur {
+                        Expr::Dot(inner, _) => cur = inner.as_ref(),
+                        Expr::Ident(n) => {
+                            let s = n.as_str().trim_start_matches('.');
+                            return self.needs_index_access(s);
+                        }
+                        _ => return false,
+                    }
+                }
+            }
+            _ => false,
         }
     }
 
@@ -9720,6 +10376,15 @@ impl RustGenerator {
                 a2 = arg(2)?,
                 a3 = arg(3)?
             )),
+            // PLAN-710 G-C: delta 直调臂（703 直调纪律——实现体单源
+            // code_editor::code_editor_delta，不绕 VM shim）。Option→String
+            // 映射对齐 VM shim 同源语义（native.rs shim_code_editor_delta：
+            // 未注册键 = RuntimeError，非空串）——None → panic! 同消息形，
+            // 键值块内预绑一次（参数表达式只求值一次，与 VM pop 一次对齐）。
+            "code_editor_delta" => Some(format!(
+                "{{ let __key = ({a0}).clone(); auto_lang::ui::code_editor::code_editor_delta(&__key).unwrap_or_else(|| panic!(\"code_editor_delta: no editor registered for key {{:?}}\", __key.as_str())) }}",
+                a0 = arg(0)?
+            )),
             "code_editor_load_file" => Some(format!(
                 "(auto_lang::ui::code_editor::code_editor_load_file(&({a0}), &({a1})).unwrap_or(-1)) as i32",
                 a0 = arg(0)?,
@@ -9758,6 +10423,24 @@ impl RustGenerator {
                 "auto_lang::vm::native::shell_add_recent(&({}))",
                 arg(0)?
             )),
+            // PLAN-710 回补（T-00 普查第四类——基线解析期被 G-A 语法占位
+            // 吞没，三类清偿后显形）：scroll_to 臂。VM shim_scroll_to 同源
+            // 双形态（handle, x, y 双轴绝对 / handle, axis, offset 单轴
+            // 绝对——axis 实参字符串时按轴）。a2r 静态型面按 corpus 轴形
+            // 发射（轴串比较运行时分派；坐标形态 corpus 零实例，误用型
+            // 由生成物编译错显式拦截）。返回 true（shim 恒 push bool true
+            // ——intent 已入队语义）。
+            "scroll_to" => {
+                let a0 = arg(0)?;
+                let a1 = arg(1)?;
+                let a2 = arg(2)?;
+                Some(format!(
+                    "{{ let __h = ({a0}).clone(); let __a = ({a1}); let __b = ({a2}) as f64; if __a == \"x\" {{ auto_lang::ui::scroll::enqueue_intent(&__h, auto_lang::ui::scroll::ScrollIntent::ScrollTo {{ axis: auto_lang::ui::scroll::Axis::X, offset: __b, source: auto_lang::ui::scroll::ScrollSource::Programmatic }}); }} else {{ auto_lang::ui::scroll::enqueue_intent(&__h, auto_lang::ui::scroll::ScrollIntent::ScrollTo {{ axis: auto_lang::ui::scroll::Axis::Y, offset: __b, source: auto_lang::ui::scroll::ScrollSource::Programmatic }}); }}; true }}",
+                    a0 = a0,
+                    a1 = a1,
+                    a2 = a2
+                ))
+            }
             // PLAN-703 供⑤: diff envelope endpoints（a2r 臂——envelope JSON
             // 单源 diff::envelope；ctx 钳非负）。
             "diff_files" => Some(format!(
@@ -10173,13 +10856,44 @@ impl RustGenerator {
                     // __at_num / as_str）。
                     if let Expr::Ident(n) = left.as_ref() {
                         let ln = n.as_str().trim_start_matches('.');
+                        // PLAN-710 D-6：declared-str 局部 ← state String 直读
+                        // ——拷贝语义（先于 Value 判定门；`path = .diff_b` 株
+                        // ——move 出借位 E0507）。
+                        let bare_name = |v: &str| {
+                            !v.is_empty()
+                                && v.chars().all(|c| c.is_alphanumeric() || c == '_')
+                        };
+                        if self.declared_locals.get(ln).map(|k| k.as_str()) == Some("str")
+                            && ((value.starts_with("self.")
+                                || (bare_name(&value) && value.as_str() != ln))
+                                && !value.contains('(')
+                                && !value.contains('[')
+                                && !value.contains(".clone()"))
+                        {
+                            value = format!("{}.clone()", value);
+                        }
                         if let Some(kind) = self.declared_locals.get(ln) {
                             let rhs_is_value = self.expr_is_value_typed(right)
                                 || value.contains("[\"");
-                            if rhs_is_value && !value.contains("__at_num") {
+                            if rhs_is_value && !value.contains("__at_num")
+                                // PLAN-710 G-A：NullCoalesce 投影发射形自带
+                                // 具体型（i32/String/bool/Vec——a2r_std::json
+                                // 投影族），非 Value 直通——不入 __at_num/
+                                // as_str 强转（`fsize = vsize.size ?? -1` 株）。
+                                && !value.contains("a2r_std::json::get_")
+                            {
                                 match kind.as_str() {
                                     "int" => {
                                         value = format!("__at_num(&({}))", value);
+                                    }
+                                    // PLAN-710 D-6：bool 声明位的赋值强转——
+                                    // `la = .tabs[ii].loaded` 族（Value 型读侧
+                                    // RHS）is_true 同源投影（la bool 株）。
+                                    "bool" => {
+                                        value = format!(
+                                            "auto_lang::a2r_std::json::truthy(&({}))",
+                                            self.value_bracket_chain(right)
+                                        );
                                     }
                                     "str" => {
                                         if value.contains(
@@ -10415,12 +11129,36 @@ impl RustGenerator {
                     // PLAN-039 T-12（批次 E）：串接的 Value 侧降串——
                     // format! 的 `{}` 对 Value 走 Display 会带 JSON 引号
                     // （VM 串接是裸串拼接语义），包 __at_str 对齐。
-                    let left_str = if self.expr_is_value_typed(left) {
+                    // PLAN-710 D-6：已投影形早退——envelope 字段读的发射
+                    // 形已是 as_str 收口 String（__at_str 需 &Value——对已
+                    // 降串形包裹 = E0308）。投影形即终形。
+                    let already = |v: &str| {
+                        v.contains("as_str().unwrap_or_default()")
+                            || v.contains("as_i64().unwrap_or(")
+                            || v.contains("as_bool().unwrap_or(")
+                    };
+                    // 声明 str 局部恒 String——不包（__at_str 需 &Value；
+                    // `var e str = …` 串接 e 株）。
+                    let declared_str = |ex: &crate::ast::Expr| match ex {
+                        Expr::Ident(n) => self
+                            .declared_locals
+                            .get(n.as_str().trim_start_matches('.'))
+                            .map(|k| k.as_str())
+                            == Some("str"),
+                        _ => false,
+                    };
+                    let left_str = if self.expr_is_value_typed(left)
+                        && !already(&left_str)
+                        && !declared_str(left)
+                    {
                         format!("__at_str(&({}))", left_str)
                     } else {
                         left_str
                     };
-                    let right_str = if self.expr_is_value_typed(right) {
+                    let right_str = if self.expr_is_value_typed(right)
+                        && !already(&right_str)
+                        && !declared_str(right)
+                    {
                         format!("__at_str(&({}))", right_str)
                     } else {
                         right_str
@@ -10888,7 +11626,8 @@ impl RustGenerator {
                 // Convert if-expression to Rust if/else expression.
                 // Used for conditional style values like: style: if active { "x" } else { "y" }
                 let cond = if let Some(branch) = if_expr.branches.first() {
-                    self.ast_expr_to_rust(&branch.cond)
+                    // PLAN-710 D-6：条件位同 D-6 投影。
+                    self.cond_expr_rust(&branch.cond)
                 } else {
                     "true".to_string()
                 };
@@ -10948,6 +11687,7 @@ impl RustGenerator {
                 }
                 format!("{{ {} }}", parts.join("; "))
             }
+            Expr::NullCoalesce(left, right) => self.null_coalesce_rust(left, right),
             _ => format!("/* expr */"),
         }
     }

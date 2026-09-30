@@ -284,6 +284,19 @@ pub fn nil<T>() -> Option<T> {
     None
 }
 
+/// PLAN-710 G-B: catch (e) 绑定形的 panic 载荷消息串——VM shim catch 帧
+/// 推入错误消息字符串（vm/codegen.rs Stmt::Try 注记），a2r catch_unwind
+/// 臂以同源字符串绑定。未知载荷形退化为 "panic"（字符串化边界）。
+pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&'static str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "panic".to_string()
+    }
+}
+
 /// AutoLang's Json module - thin wrappers around serde_json for transpiled code
 #[allow(non_snake_case)]
 pub mod json {
@@ -309,6 +322,83 @@ pub mod json {
 
     pub fn get_owned(val: &Value, key: &str) -> Value {
         val.get(key).cloned().unwrap_or(Value::Null)
+    }
+
+    // PLAN-710 G-A: envelope 成员访问投影族（`v.field ?? default` 的
+    // a2r 发射形）。语义与 VM 轨同源：路径缺段/字段缺席/类型不符 →
+    // ?? 右值缺省（VM 侧缺字段 → Null → coalesce 右值的防御性收敛）。
+    // 路径为成员名切片（嵌套链 `v.a.b ?? d` → keys=&["a","b"]）；
+    // 索引混合形由生成器以 get_owned/at_owned 逐段组合后落最终投影。
+
+    /// 带缺省的成员路径 str 投影（字面量缺省形）。
+    pub fn get_str_or(val: &Value, keys: &[&str], default: &str) -> String {
+        get_str_or_with(val, keys, || default.to_string())
+    }
+
+    /// 带缺省的成员路径 str 投影（计算缺省形——`t.title ?? file_basename(p)`）。
+    pub fn get_str_or_with<F: FnOnce() -> String>(val: &Value, keys: &[&str], default: F) -> String {
+        let mut cur = val;
+        for k in keys {
+            match cur.get(k) {
+                Some(v) => cur = v,
+                None => return default(),
+            }
+        }
+        cur.as_str().map(|s| s.to_string()).unwrap_or_else(default)
+    }
+
+    /// 带缺省的成员路径 int 投影（.at int = i32 发射位再 `as i32`）。
+    pub fn get_int_or(val: &Value, keys: &[&str], default: i64) -> i64 {
+        let mut cur = val;
+        for k in keys {
+            match cur.get(k) {
+                Some(v) => cur = v,
+                None => return default,
+            }
+        }
+        cur.as_i64().unwrap_or(default)
+    }
+
+    /// 带缺省的成员路径 bool 投影。
+    pub fn get_bool_or(val: &Value, keys: &[&str], default: bool) -> bool {
+        let mut cur = val;
+        for k in keys {
+            match cur.get(k) {
+                Some(v) => cur = v,
+                None => return default,
+            }
+        }
+        cur.as_bool().unwrap_or(default)
+    }
+
+    /// 成员路径 list 投影（`?? []` 缺省 = 空 Vec<Value>）。
+    pub fn get_array_or(val: &Value, keys: &[&str]) -> Vec<Value> {
+        let mut cur = val;
+        for k in keys {
+            match cur.get(k) {
+                Some(v) => cur = v,
+                None => return Vec::new(),
+            }
+        }
+        cur.as_array().cloned().unwrap_or_default()
+    }
+
+    /// 数组位取值（`rows[i]` 混合链段——越界 → Null，与缺字段同收敛）。
+    pub fn at_owned(val: &Value, idx: usize) -> Value {
+        val.get(idx).cloned().unwrap_or(Value::Null)
+    }
+
+    /// PLAN-710 D-6：条件位 Value 裸读的真值投影——VM 轨 `Value::is_true`
+    /// 同源语义（auto_val value.rs:682：Bool 直读 / 数值 >0 / 串非空 /
+    /// 其余 false）。view/handler 条件位（`if r.ix_del` 族）的编译轨
+    /// 等价形。
+    pub fn truthy(val: &Value) -> bool {
+        match val {
+            Value::Bool(b) => *b,
+            Value::Number(n) => n.as_f64().map_or(false, |f| f > 0.0),
+            Value::String(s) => !s.is_empty(),
+            _ => false,
+        }
     }
 
     pub fn get_str(val: &Value, key: &str) -> String {
