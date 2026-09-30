@@ -4698,6 +4698,23 @@
       "docsha:55e0cbc54360a1ae"
      ],
      "file": "docs/specs/website/project.md"
+    },
+    {
+     "id": "P715-1",
+     "title": "全站 UI 呈现与导航契约：navigation 单源/local search/首页演示/发布展示骨架（PLAN-715 SD-01..05）",
+     "content": "PLAN-715 交付落账（website 域 SD-01/03/05 现行态投影；canonical 唯源=docs/specs/website/design/ui-presentation.md（新建，SD-02/04/06）+docs/specs/website/project.md 增补，landing ddb47205e）。契约：theme/data/navigation.ts 为中英导航单源，共享 SPA（/ui/gallery|blocks|charts|a2ui|demos）双语同 URL 标注\"共享\"禁造镜像路由，规范入口 index.html（sirv 目录 URL extensions 解析使 /ui/a2ui/ 优先命中专题页为既定行为）；aria-current/aria-expanded/Esc 焦点往返/44px 触控；主题态统一 useData().isDark。站内搜索=VitePress local provider，SiteSearch 合成 Ctrl/Cmd+K 热键接线（官方 poll 同法，弹窗 Teleport body 不受 VPNav 隐藏影响），CodeMirror 捕获守卫防抢编辑器输入，升级需回归 1.6.x 行为。HomeDemo 三视图：初始预置标源（纯 pre 不发请求），点击运行才发同源 /api/run，10s 超时可取消离页清理，stdout/stderr 分列，预置永不显示为实时成功，Rust 视图仅限有真实 a2r 金样的示例。图片骨架：EvidenceImage（Enter/Esc/焦点往返/loading/尺寸占位/framed）+ScreenshotGallery（tab 键盘/不自动轮播）+AppLandingLayout（hero 骨架；md 组件调用压单块禁空行、顶层内容去 4+ 空格缩进）+ReleaseLanding 数据驱动（首图 eager top<1.5 视口/理念 details 展开/统计后移/无 TODO 占位）。历史收据=plan §9（archive/715）。",
+     "tags": [
+      "plan-715",
+      "website",
+      "sd-01",
+      "sd-02",
+      "sd-03",
+      "sd-04",
+      "sd-05",
+      "commit:ddb47205e",
+      "docsha:137265b853eded5b"
+     ],
+     "file": "docs/specs/website/design/ui-presentation.md"
     }
    ]
   },
@@ -7623,6 +7640,19 @@
       "f515252ea"
      ],
      "file": "docs/plans/archive/713-autoshell-website-evidence.md"
+    },
+    {
+     "id": "P715-2",
+     "title": "PLAN-715 r1 复审 pass 与合入收尾收据",
+     "content": "review pass @ 675306b71（实现会话自审+工件重建裁定，独立性受限已声明）：worktree clean、零 crates/test/parity/packages 改动（231 文件均 website/+docs/reports/，Category A）、fresh build 43.3s + e2e 64/64 + 截图矩阵 96 行 problems=0；证据链 hash 四件逐一相符。landing：rebase master（并行前进含 713 行/712 复验）映射 d7a2c47ec→2c5b1e31a、7714f030b→a2a187e5a、675306b71→c3bc4e9f8（range-diff 三=补丁等价），specs 沉淀 d5d4d95e6→ddb47205e（plans.md 冲突双行保留）。ledger：store 写者不可用（8080 不在线/无 spec 工具），循 713/714 外科插入先例——designs P715-1 + reviews P715-2，committed 形 indent1+LF 与 worktree 形 indent2+CRLF 双向 roundtrip 守卫，P712-1 在途 WIP 字节保全不裹挟提交。部署观察：网站为静态产物无线上部署授权（计划边界），main 构建随下次部署重建。",
+     "tags": [
+      "plan-715",
+      "website",
+      "review-pass",
+      "commit:675306b71",
+      "commit:ddb47205e"
+     ],
+     "file": "docs/plans/archive/715-website-ui-refresh.md"
     }
    ]
   }
