@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-711
-status: reviewed               # drafting → executing → execution_done → reviewed → archived（2026-09-30 终审 pass）
+status: archived               # 终态（2026-09-30 终审 pass → merge 落地 → 归档；9/9 交付）
 # PLAN-708 r3 收窄移出件的承接计划（2026-09-30 用户裁定"M 档单独立项"）。
 # 设计依据：docs/design/autoui/vm-loading-responsiveness.md（proposed）+ 708-baseline/decision 全部冻结裁决。
 # r1（2026-09-30）：骨架按 /auto-plan:new 完整化为执行契约——承接清单展开为 9 个可执行任务（T-03..T-12），
