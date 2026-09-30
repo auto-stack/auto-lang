@@ -859,6 +859,35 @@ widget Counter {
 - **现状**：Vue 端已实现（`ui_gen/vue.rs` 的 `try_generate_controlled_video_html`
   / `video_script_block`）；iced 端为 **partial**（见「已知坑」的 SD-05 块）。
 
+#### PLAN-712 增补：VM 端上行分发与上屏色彩（双端契约收口）
+
+- **上行双端承诺（SD-01 收口）**：`ontimeupdate`/`onloadedmetadata`/
+  `onplaystatechange`/`onended`/`onmediaerror` 为**双端**契约——VM 端由
+  `iced/video_uplink.rs` 事件泵 wrapper 在每次重绘（`RedrawRequested`）时
+  `drain_events(id)` 取走契约事件，按 `View::Video` 携带的 handler
+  （`MediaEventHandler`/`MediaEventPayload`）合成宿主消息；仅真有事件时
+  publish（空队列零消息，不触发视图重建循环）。节流沿用契约 0.25s 门。
+  iced_winit 的合成 `press` 动作不达 SeekArea/裸事件 widget——实机驱动
+  需真鼠标事件（MCP press 合成路径对 raw-event widget 无效，PLAN-712
+  实机注记）。
+- **上屏色彩配对规则（SD-02）**：mpv SW `rgb0` 输出 = **源签名传递函数**
+  编码（SDR=BT.1886≈γ2.4；DP-3 探针：SW 路径不吃 `target-prim`/`target-trc`/
+  `video-output-levels` 任何协商，pre-init/运行时皆然）。帧纹理恒
+  `Rgba8UnormSrgb`（≈γ2.2 硬件解码）；目标格式由 iced 交付——**iced 0.14
+  default 含 `web-colors` ⇒ `GAMMA_CORRECTION=false` ⇒ 目标恒非 sRGB**
+  （本机实测 `Bgra8Unorm`）。`present.rs` shader 按目标格式选编码臂：
+  非 sRGB 目标在 shader 内完成 2.4→sRGB 字节域转换（生产臂）；sRGB 目标
+  写显示线性交硬件编码。端到端与 Chromium `<video>` 字节域对齐；letterbox
+  恒纯黑。像素回归 `mpv_channel::present_renormalizes_bt1886_bytes_to_srgb_domain`。
+- **desktop_config 合并语义（SD-03）**：`load()` 即写 `LAST_SNAPSHOT`，
+  `save()` 字段级合并**无首写例外**（仅盘上文件缺席/迁移首写保持整份——
+  语义上无外写字段可保）。手编/外部写方字段在任意运行实例 save 后存活，
+  回归锚 `save_after_external_edit_preserves_fields`。
+- **examples 生成产物 feature 面（SD-04）**：生成产物 Cargo.toml 不得引用
+  已退役 feature（现役集见 `crates/auto-lang/Cargo.toml`）；模板单源
+  `rust_ui.rs::generate_cargo_toml` 已无退役项，历史产物残留会以 cargo
+  workspace 惰性校验形式拖垮无关成员的解析——产物修复=删残留 feature 行。
+
 ### 媒体文件服务（SD-02）
 
 `crates/auto-lang/src/ui/media_service.rs` 提供**平台级**本地媒体索引与字节流，
