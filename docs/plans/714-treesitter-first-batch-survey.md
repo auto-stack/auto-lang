@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-714
-status: execution_done
+status: reviewed
 feature_name: tree-sitter 首批勘定件（auto-edit M4 供料包供④ 前半——语言集定界/管线选型+烟测/syntect 共存策略/增量高亮管线要点+实施件契约草案）
 author: [agent]
 created_at: 2026-09-30T16:15:39+08:00
@@ -248,7 +248,7 @@ reviews 段 P714-1 外科插入（703/710 先例）。
 |---|---|---|---|---|---|---|
 | 0 | T-00 现势复核 | — | highlight.rs+Cargo feature 面+046/047 注记 | 全貌+正交性基 | AC-03/04 | [x] 勘定记录在档——报告 §1（调用面清单 4 文件/闭包 syntect 5.3.0+two-face 0.4.5+onig 6.5.3/big 旁路 editor_store.at:595-602 实锚/046-047=auto-os memo 档 C） |
 | 1 | T-01 语言集定界 | T-00 | 报告 §语言集（下游实勘只读） | 首批清单+三列表 | AC-01 | [x] 表在档（许可实勘）——报告 §2（20 语言/21 crate 三源定界+crates.io 2026-09-30 实勘+围栏分布；ini=Apache-2.0 唯一例外；.at 不含自建注记） |
-| 2 | T-02 选型+烟测 | T-00 | spike 隔离目录+报告 §选型 | 两轴定案+实证 | AC-02 | [x] 烟测绿+体积初值在档——报告 §3（SMOKE-OK：ABI v15 兼容 v13+/parse 双绿/增量 changed_ranges=[44..59)/查询捆绑 21/21 实证/exe 3,578,368B/冷构建 3.0s） |
+| 2 | T-02 选型+烟测 | T-00 | spike 隔离目录+报告 §选型 | 两轴定案+实证 | AC-02 | [x] 烟测绿+体积初值在档——报告 §3（SMOKE-OK：ABI v15 兼容 v13+/parse 双绿/增量 changed_ranges=[44..59)/查询捆绑 21/21 实证/exe 3,618,304B[归档终版源码]/冷构建 3.0s） |
 | 3 | T-03 共存策略 | T-01/02 | 报告 §共存 | 定案+退役量化 | AC-03 | [x] 数字对照在档——报告 §4（双轨定案+退役≈12.4MB .rdata→16.46MB≈4.1MB 门富余对照 019+§5 want 生命周期止于本线注记） |
 | 4 | T-04 增量要点 | T-00 | SD-01 册 §增量 | 管线设计要点 | AC-04 | [x] 册节在档——SD-01 §4（快照消费/失效域含 spike API 纪要/big 旁路硬边界/047 协同注记） |
 | 5 | T-05 契约草案 | T-01..04 | 报告 §实施件契约 | 715+ 立项基 | AC-05 | [x] 骨架在档——报告 §6（T-1..T-7 任务骨架+AC 草案+715/716 拆分+工期量级+基准/验收设计） |
@@ -281,6 +281,30 @@ reviews 段 P714-1 外科插入（703/710 先例）。
   Category A 门禁：零 crates 改动、无测试面新增，cargo t/docs_gen 免。
   `blockers`: 无（Q-1 按默认下游现实定界执行；Q-2 烟测定案
   build-time cc；Q-3 实施件排期待用户）。`next: review`。
+
+- 2026-09-30 review handoff：`stage: review`，PLAN-714，plan_revision 1。
+  `outcome: pass`（含修复环 1 轮）。`reviewed_commit`: plan-714-dev
+  2530e6d6b（终版=work 9e935f423+修复 F-1/F-2）；`base_commit`:
+  master@05974f71d（merge-base；执行窗内 master 并行前进至 1f25465e7
+  [711 簿记/712 收纳]——与本案文件零交叠实证：git diff master...dev
+  仅 5 件本案交付物）。`dependency_revisions`: auto-edit main@70c5c60
+  （只读实勘面）/auto-os p047 evidence（046-047 身份锚）。
+  `spec_inputs`: SD-01 册（worktree 终版）+供料档 §4/§5+019 构成表。
+  `acceptance_results`: AC-01 pass（许可三项抽查复跑 crates.io API：
+  ini=Apache-2.0/rust=MIT/md=tree-sitter-grammars 全中）；AC-02 pass
+  （spike 复跑 SMOKE-OK）；AC-03 pass（019 数字 grep 4 处锚点吻合）；
+  AC-04 pass（SD-01 §4 在档 :82）；AC-05 pass（报告 §6.3 在档 :322）；
+  AC-06 pass（crates/+Cargo.toml/Cargo.lock 对 merge-base 零 diff=0 行
+  +specs.json P714-1 回读 True+INDEX 再生 no-op）。`findings`:
+  F-1（低，已修）exe 体积收据陈旧——旧引 3,578,368B 为高亮段重写前
+  构建值，归档终版源码复跑实测 3,618,304B（+40KB，量级结论 3.4-3.5MB
+  不变）——报告 §0/§3.1/§3.2+README+计划 §8+账本 P714-1 六处对齐
+  （账本外科再编辑：roundtrip 守卫+单行 ±）；F-2（低，已修）SD-01 册
+  报告链接相对路径少一级（../../../ → ../../../../，ls 解析断言过）。
+  `evidence`: 复审独立声明（实施会话内复审——判定从工件重建：烟测
+  复跑/许可 API 抽查/数字 grep/diff 断言/readback 全部本会话重放）；
+  修复提交 2530e6d6b（3 文件 ±5 行）；Category A 门禁维持（零 crates
+  改动，无测试面）。`next: merge`。
 
 ## 10. 待澄清事项
 
