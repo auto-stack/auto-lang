@@ -17580,6 +17580,7 @@ fn compare_pngs(
         // （`__timer_tick` 同族条件订阅——免静态通道、免跨 App 路由歧义，
         // 恢复内联在 update 内天然满足单 VM 串行裁断）。
         if msg.event == "__parked_resume_tick" {
+            // PLAN-712 r2 T-16 诊断：恢复泵到达/结果计数（stderr 对账）。
             state.component.poll_parked_resumes();
             // PLAN-712 r2 T-16：恢复完成可能写状态（Init 挂起 fetch 回来
             // 填数据）——不标脏则视图停在「Loading...」直到下一外部事件
