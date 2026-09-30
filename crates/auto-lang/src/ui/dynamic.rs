@@ -1486,6 +1486,13 @@ impl DynamicComponent {
         self.bridge.has_parked_tasks()
     }
 
+    /// PLAN-711 T-04 (D-2): I/O 凭据 parked 段门——`__parked_resume_tick`
+    /// 订阅门收窄为纯 I/O（CPU-only 注册表不吊 tick；帧泵见
+    /// [`Self::has_cpu_continuations`]）。
+    pub fn has_parked_io_tasks(&self) -> bool {
+        self.bridge.has_parked_io_tasks()
+    }
+
     /// PLAN-711 T-03: 是否有未收敛的 Init 工作（排队 demand 或在途段）——
     /// `__parked_resume_tick` 订阅门的 Init 扩展面（T-04 起由帧通知泵接管
     /// 消费，订阅门形态届时重审）。
@@ -1493,26 +1500,57 @@ impl DynamicComponent {
         self.bridge.has_pending_init_work()
     }
 
-    /// PLAN-702 T-03/T-04: resume every parked handler segment whose wait is
-    /// ready. Called from the iced render loop's `__parked_resume_tick` arm
-    /// (serial with all other VM execution — 架构裁断 1). Marks the view
-    /// dirty on completion/failure so mid-await state writes re-render.
-    /// Uncaught resume errors go through the same `[VM-HANDLER] ... failed`
-    /// syslog face as dispatch-time failures (E7 通道复用).
-    /// PLAN-711 T-03: 本臂前置 `dispatch_pending_inits`——渲染路径登记的
-    /// Init demand 在此驱动派发（CPU 片预算档）；在途 Init 段收敛后由
-    /// 本臂的下一轮驱动继续消费后继 demand（依赖序）。**临时驱动点**：
-    /// T-04 帧通知泵落地后移交给帧驱动（本臂保留为 I/O 凭据 resume）。
-    pub fn poll_parked_resumes(&mut self) {
-        let init_report = self.bridge.dispatch_pending_inits(
-            crate::vm::engine::CpuSliceBudget::d2_default(),
-        );
-        let report = self.bridge.resume_ready_parked();
-        if report.completed > 0
-            || !report.failed.is_empty()
+    /// PLAN-711 T-04 (D-1): 是否有存活的 CPU continuation——帧通知泵的
+    /// 订阅门之一（零 demand → 无订阅，防线 (a)：listen_raw 不过滤会
+    /// 自我续帧）。
+    pub fn has_cpu_continuations(&self) -> bool {
+        self.bridge.has_cpu_continuations()
+    }
+
+    /// PLAN-711 T-04 (D-1): 帧驱动有界泵——`__frame_pump` 消费臂的执行体。
+    /// **帧通知是 CPU continuation 与 Init demand 的唯一驱动点**（T-03 的
+    /// tick 临时驱动移交至此；16ms tick 退回纯 I/O 凭据 resume）。
+    ///
+    /// 序障（D-1 裁定）：帧消息经 runtime 通道异步回环，**消费帧消息发生
+    /// 在该帧 present 返回之后**——"消费帧消息才运行有界泵"实现骨架先
+    /// 呈现。预算：dispatch_pending_inits + resume_cpu_slices 共享
+    /// [`CPU_PUMP_ROUND_BUDGET`]（8ms/轮），片数受片预算约束，非全量 drain
+    /// （防线 (b)）；零任务时泵为廉价 no-op（防线 (c)：骨架帧命中 memo）。
+    /// AUTO_SCHED_DIAG=1 输出帧到达/推进时间戳（R-1 序障实证采集面）。
+    pub fn poll_frame_pump(&mut self) {
+        let diag = std::env::var("AUTO_SCHED_DIAG").ok().as_deref() == Some("1");
+        let t0 = crate::ui::dynamic::sched_diag_t0();
+        if diag {
+            eprintln!(
+                "[SCHED-DIAG] frame_pump enter t={}ms queued_init={} cpu_cont={}",
+                t0.elapsed().as_millis(),
+                self.bridge.pending_init_demand_count(),
+                self.bridge.cpu_continuation_count(),
+            );
+        }
+        let init_report = self
+            .bridge
+            .dispatch_pending_inits(crate::vm::engine::CpuSliceBudget::d2_default());
+        let cpu_report = self
+            .bridge
+            .resume_cpu_slices(crate::vm::engine::CpuSliceBudget::d2_default());
+        let progressed = cpu_report.completed > 0
+            || !cpu_report.failed.is_empty()
             || init_report.completed > 0
-            || !init_report.failed.is_empty()
-        {
+            || init_report.dispatched > 0
+            || !init_report.failed.is_empty();
+        if diag {
+            eprintln!(
+                "[SCHED-DIAG] frame_pump exit t={}ms dispatched={} init_done={} cpu_done={} failed={} elapsed={}ms",
+                t0.elapsed().as_millis(),
+                init_report.dispatched,
+                init_report.completed,
+                cpu_report.completed,
+                cpu_report.failed.len() + init_report.failed.len(),
+                cpu_report.round_elapsed.as_millis(),
+            );
+        }
+        if progressed {
             self.dirty = true;
         }
         for (widget, err) in &init_report.failed {
@@ -1532,6 +1570,41 @@ impl DynamicComponent {
                 crate::ui::syslog::SyslogLevel::Error, syslog_face,
                 "[VM-HANDLER] {widget}.Init failed (dispatch): {}", err
             );
+        }
+        for (fn_name, err) in &cpu_report.failed {
+            let syslog_face = {
+                let face = self
+                    .source_path
+                    .as_ref()
+                    .and_then(|p| {
+                        let stem = p.file_stem()?.to_string_lossy().to_string();
+                        let dir = p.parent()?.file_name()?.to_string_lossy().to_string();
+                        Some(format!("{dir}/{stem}"))
+                    })
+                    .unwrap_or_else(|| self.widget_name.clone());
+                format!("vm:{face}")
+            };
+            crate::syslog!(
+                crate::ui::syslog::SyslogLevel::Error, syslog_face,
+                "[VM-HANDLER] {} failed (cpu-resume): {}", fn_name, err
+            );
+        }
+    }
+
+    /// PLAN-702 T-03/T-04: resume every parked handler segment whose wait is
+    /// ready. Called from the iced render loop's `__parked_resume_tick` arm
+    /// (serial with all other VM execution — 架构裁断 1). Marks the view
+    /// dirty on completion/failure so mid-await state writes re-render.
+    /// Uncaught resume errors go through the same `[VM-HANDLER] ... failed`
+    /// syslog face as dispatch-time failures (E7 通道复用).
+    /// PLAN-711 T-04: 本臂退回**纯 I/O 凭据 resume**——Init demand 派发与
+    /// CPU continuation 推进移交帧通知泵（[`Self::poll_frame_pump`]，
+    /// D-1 序障：消费帧消息在该帧 present 返回之后）；tick 泵的
+    /// `parked_wait_ready` 对 CpuRunnable 恒 false，天然只拾取 I/O 凭据。
+    pub fn poll_parked_resumes(&mut self) {
+        let report = self.bridge.resume_ready_parked();
+        if report.completed > 0 || !report.failed.is_empty() {
+            self.dirty = true;
         }
         for (fn_name, err) in &report.failed {
             let syslog_face = {
@@ -3009,6 +3082,13 @@ fn scan_node_for_inputs(node: &crate::aura::AuraNode, map: &mut HashMap<String, 
         }
         _ => {}
     }
+}
+
+/// PLAN-711 T-04 (R-1): 调度诊断时间轴原点（进程首用时刻）——AUTO_SCHED_DIAG=1
+/// 的帧到达/推进时间戳统一基准（与 AUTO_MEMO_DIAG 的 build_ms 同轴对读）。
+pub fn sched_diag_t0() -> std::time::Instant {
+    static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    *T0.get_or_init(std::time::Instant::now)
 }
 
 /// DFS traversal to find the span of the N-th Element node with matching tag.

@@ -8007,6 +8007,48 @@ fn app_tick(
     })
 }
 
+/// PLAN-711 T-04 (D-1): 帧通知泵订阅——`listen_raw` 是唯一不过滤
+/// RedrawRequested 的公开 API（`listen()` 显式丢弃 redraw；无 post-present
+/// 回执，硬屏障需 fork iced_winit——计划约束禁止）。id 携带 AppId（订阅
+/// 表按 hash 去重——453 T4 教训：同 id 后注册者静默丢失，per-app 身份
+/// 必须进 id）。跨窗帧（多窗会话）会唤醒他窗 App 的泵——有界泵零任务时
+/// 廉价 no-op，可接受；per-window 路由精化归 T-06余 观测面复核。
+/// AUTO_SCHED_DIAG=1 时输出帧消息到达时间戳（R-1 序障实证：消费时刻
+/// 必须 ≥ 该帧 present 返回时刻，与构建时间戳/截图三轴对读）。
+fn frame_pump_sub(
+    app: crate::ui::session::AppId,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    use crate::ui::session::DesktopMessage as DM;
+    iced_futures::subscription::filter_map(
+        (app, "plan711_frame_pump"),
+        move |event| match event {
+            iced_futures::subscription::Event::Interaction {
+                event:
+                    iced::event::Event::Window(iced::window::Event::RedrawRequested(_)),
+                ..
+            } => {
+                if std::env::var("AUTO_SCHED_DIAG").ok().as_deref() == Some("1") {
+                    let t0 = crate::ui::dynamic::sched_diag_t0();
+                    eprintln!(
+                        "[SCHED-DIAG] frame_msg enqueue t={}ms app={:?}",
+                        t0.elapsed().as_millis(),
+                        app
+                    );
+                }
+                Some(DM::App(
+                    app,
+                    crate::ui::iced::IcedMessage {
+                        widget: String::new(),
+                        event: "__frame_pump".to_string(),
+                        input_value: None,
+                    },
+                ))
+            }
+            _ => None,
+        },
+    )
+}
+
 /// Plan 051 C7: timer 块条目订阅——每 `interval_ms` 产一条
 /// `DM::App(app, IcedMessage{widget, event})`（update 侧 fire_timer 门控）。
 fn widget_event_tick(
@@ -17542,6 +17584,21 @@ fn compare_pngs(
             return iced::Task::none();
         }
 
+        // PLAN-711 T-04 (D-1): 帧通知泵消费臂——listen_raw 收到的
+        // RedrawRequested 经 runtime 通道异步回环，**消费该消息时本帧
+        // present 已同步返回**（D-1 序障）——此处运行有界泵（Init demand
+        // 派发 + CPU continuation 续跑，共享 8ms 轮次预算），骨架先呈现。
+        // dirty 直置 view_dirty（早退臂不达 update 尾回填；与热重载臂
+        // ：18457 同款模式）——完成帧即重建，不等 Element 缓存 take 空
+        // 后的 fall-through 帧。
+        if msg.event == "__frame_pump" {
+            state.component.poll_frame_pump();
+            if state.component.is_dirty() {
+                *state.app.view_dirty.borrow_mut() = true;
+            }
+            return iced::Task::none();
+        }
+
         // Plan 409 §10 续 19: preview-card 的 toggle/tab(局部 UI state,存 DynamicComponent)。
         if msg.event.starts_with("__preview_toggle")
             || msg.event.starts_with("__preview_tab")
@@ -22007,11 +22064,21 @@ fn compare_pngs(
                 // are parked; ready resumes fire in update's
                 // __parked_resume_tick arm. 16ms ≠ 17/19ms 既有泵（Recipe
                 // 身份含事件名，去重安全）。
-                // PLAN-711 T-03: 订阅门扩展——排队/在途的 Init demand 也需要
-                // 本 tick 驱动（`poll_parked_resumes` 前置 dispatch_pending_inits
-                // 的临时驱动点；T-04 帧通知泵落地后重审订阅形态）。
-                if app.component.has_parked_tasks() || app.component.has_pending_init_work() {
+                // PLAN-711 T-04 (D-2): 订阅门收窄为**纯 I/O 凭据**——CPU
+                // continuation 对 tick 恒不就绪，CPU-only 注册表不吊 tick
+                //（帧通知泵接管其驱动，见下）。
+                if app.component.has_parked_io_tasks() {
                     subs.push(app_tick(app_id, "__parked_resume_tick", 16));
+                }
+                // PLAN-711 T-04 (D-1): 帧通知泵——listen_raw 收 RedrawRequested
+                // （唯一不过滤 redraw 的公开通道），经 runtime 通道异步回环
+                // 构成"消费帧消息在该帧 present 返回之后"的应用层序障（无
+                // post-present 回执 API，不 fork iced）。**仅在有未完成
+                // Init demand / CPU continuation 时激活**（零 demand → 无
+                // 订阅，防 listen_raw 自我续帧；无任务不跑周期泵）。消费臂
+                // 运行有界泵（8ms 轮次预算，非全量 drain）。
+                if app.component.has_pending_init_work() || app.component.has_cpu_continuations() {
+                    subs.push(frame_pump_sub(app_id));
                 }
                 // F12 DevTools + key bindings（per-App bindings + 本窗过滤）。
                 if let Some(win) = state.window_of_app(app_id) {

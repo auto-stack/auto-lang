@@ -415,3 +415,37 @@ fn plan711_cpu_pump_drives_continuation_and_queued_write_same_round() {
         "queued write consumed this round"
     );
 }
+
+/// T-04 (D-2): tick 泵订阅门收窄——CpuRunnable-only 注册表不吊 tick
+/// （`has_parked_io_tasks` 不计 CPU continuation）；I/O 凭据在册时门开。
+#[cfg(feature = "ui")]
+#[test]
+fn plan711_io_gate_ignores_cpu_runnable_registry() {
+    let bridge = pump_bridge();
+    let budget = test_budget(512, 10_000_000);
+    let state_id = bridge.state_obj_id();
+
+    assert!(
+        !bridge.has_parked_io_tasks(),
+        "empty registry: io gate closed"
+    );
+
+    // CPU continuation 入册：io 门仍关（tick 不该被吊起）。
+    bridge
+        .call_handler_for_cpu_slice("Pump", "Churn", state_id, &[], budget)
+        .expect("slice dispatch");
+    assert!(bridge.has_cpu_continuations());
+    assert!(
+        !bridge.has_parked_io_tasks(),
+        "CpuRunnable-only registry must not open the io tick gate"
+    );
+
+    // CPU continuation 推进到终态：注册表清空，门仍关。
+    let mut rounds = 0;
+    while bridge.has_cpu_continuations() {
+        rounds += 1;
+        assert!(rounds < 10_000, "pump not progressing");
+        bridge.resume_cpu_slices(budget);
+    }
+    assert!(!bridge.has_parked_io_tasks());
+}

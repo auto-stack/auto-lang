@@ -1681,6 +1681,17 @@ impl VmBridge {
         !self.parked_tasks.borrow().is_empty()
     }
 
+    /// PLAN-711 T-04 (D-2): 是否有 **I/O 凭据**的 parked 段——tick 泵的
+    /// 订阅门。CPU continuation（CpuRunnable 凭据）不计入：tick 泵对其
+    /// 恒不就绪，CPU-only 注册表不该吊着 16ms tick 空转（帧通知泵的门=
+    /// `has_cpu_continuations` ∪ `has_pending_init_work`）。
+    pub fn has_parked_io_tasks(&self) -> bool {
+        self.parked_tasks
+            .borrow()
+            .iter()
+            .any(|p| !matches!(p.wait, ParkedWait::CpuRunnable))
+    }
+
     /// PLAN-702 T-02/T-04: parked 段计数（测试与诊断用；重入忽略断言面）。
     pub fn parked_count(&self) -> usize {
         self.parked_tasks.borrow().len()
