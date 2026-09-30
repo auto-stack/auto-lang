@@ -6550,9 +6550,21 @@ let tabs_inner = View::Row {
         // prop 时 GET_FIELD 直接失败(donut 的 colors 即此)。父级显式传值
         // 优先(parent wins)。PLAN-536 T8: 同 4 的缺字段守卫——已存在的
         // 字段不重播种(防 handler 写入被逐帧打回默认)。
+        // PLAN-711 Q-05: 被守卫跳过的声明默认值另录 snapshot_defaults——
+        // 构建**不写**（536-T8 纪律原样），但进入 Init demand 快照：派发
+        // 重播种时把兄弟实例遗留的同名字段恢复回本实例声明语义（bar#1
+        // type 残留 bar#2 "stacked" 实录——快照缺 type 使派发 Init 走错
+        // 分支，yTick 全错档）。
+        let mut snapshot_defaults: Vec<(String, auto_val::Value)> = Vec::new();
         for prop in &child_widget.props {
             if !resolved_props.contains_key(&prop.name) {
                 if self.bridge.read_state(&prop.name).is_ok() {
+                    if let Some(default_expr) = &prop.default {
+                        snapshot_defaults.push((
+                            prop.name.clone(),
+                            eval_initial_without_vm(default_expr),
+                        ));
+                    }
                     continue;
                 }
                 if let Some(default_expr) = &prop.default {
@@ -6570,12 +6582,11 @@ let tabs_inner = View::Row {
             &child_field_names,
             &resolved_props,
         );
-        (
-            root_id,
-            resolved_props
-                .into_iter()
-                .collect::<Vec<(String, auto_val::Value)>>(),
-        )
+        let mut snapshot = resolved_props
+            .into_iter()
+            .collect::<Vec<(String, auto_val::Value)>>();
+        snapshot.extend(snapshot_defaults);
+        (root_id, snapshot)
     }
 
     /// Render a child widget by looking it up in the registry.
