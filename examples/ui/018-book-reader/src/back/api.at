@@ -51,9 +51,11 @@ pub fn get_book(id int) ?Book {
 }
 
 /// GET /api/books/:id/chapters — list chapters of a book.
+/// PLAN-712 r2 T-15：形参名必须与路径占位符一致（`:id` ↔ `id`）——
+/// proxy 按占位符名绑参，形参 book_id 曾致「missing param book_id」400。
 #[api(method = "GET", path = "/api/books/:id/chapters")]
-pub fn list_chapters(book_id int) []Chapter {
-    return db.chapters_of(book_id)
+pub fn list_chapters(id int) []Chapter {
+    return db.chapters_of(id)
 }
 
 /// GET /api/chapters — read a specific chapter by book + number.
