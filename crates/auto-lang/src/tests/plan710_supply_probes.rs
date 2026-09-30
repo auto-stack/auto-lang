@@ -424,3 +424,99 @@ widget App {{
         assert!(rs.contains("Err(_p714) => {} }; {"), "finally 跟发于 match 后: {rs}");
         assert!(rs.contains("let mut done"), "finally 体语句发射: {rs}");
     }
+
+    #[test]
+    fn plan714_back_try_arm_return_propagation() {
+        // r3 R3-T3: return-in-try 传播形——fn bool 体含 return → 闭包
+        // Option<bool>+Some 包装+Ok(Some(v))=>return v（VM return-in-try
+        // =从 fn 返回同源；710 边界条款的 corpus 实实例收口）。
+        let src = "pub fn probe() bool {
+    try {
+        let d = File.read_text(\"x\")
+        return true
+    } catch {
+        return false
+    }
+}
+";
+        let mut rcode = crate::trans::rust::transpile_rust("probe", src)
+            .expect("transpile failed");
+        let rs_bytes = rcode.done().expect("done failed");
+        let rs = String::from_utf8_lossy(rs_bytes);
+        assert!(rs.contains("|| -> Option<bool> {"), "闭包标注 Option<Ret>: {rs}");
+        assert!(rs.contains("Ok(Some(__v)) => return __v"), "Some 传播臂: {rs}");
+        assert!(
+            rs.contains("Ok(None) => return Default::default()"),
+            "None 尾臂（体必 return 形不可达）: {rs}"
+        );
+        assert!(rs.contains("return Some(true)"), "体 return 包 Some: {rs}");
+    }
+
+    #[test]
+    fn plan714_back_try_unit_fn_unchanged() {
+        // unit fn 的 try 保持 r2 形（无 Option 传播——门控条件）。
+        let src = "pub fn probe() {
+    try {
+        let d = File.read_text(\"x\")
+    } catch {
+    }
+}
+";
+        let mut rcode = crate::trans::rust::transpile_rust("probe", src)
+            .expect("transpile failed");
+        let rs_bytes = rcode.done().expect("done failed");
+        let rs = String::from_utf8_lossy(rs_bytes);
+        assert!(!rs.contains("-> Option<"), "unit fn 不传播: {rs}");
+        assert!(rs.contains("Ok(_) => {}"), "r2 形保持: {rs}");
+    }
+
+    #[test]
+    fn plan714_back_try_borrow_iter_clone() {
+        // r3 R3-T3: 借位迭代变量的闭包体内绑定 → .clone()（preview=ln 株）。
+        let src = "pub fn probe(path str) {
+    try {
+        let content str = File.read_text(path)
+        let lines = content.split(\"\\n\")
+        for ln in lines {
+            var preview str = ln
+            let _ = preview
+        }
+    } catch {
+    }
+}
+";
+        let mut rcode = crate::trans::rust::transpile_rust("probe", src)
+            .expect("transpile failed");
+        let rs_bytes = rcode.done().expect("done failed");
+        let rs = String::from_utf8_lossy(rs_bytes);
+        assert!(
+            rs.contains("= ln.clone()"),
+            "借位迭代变量绑定 .clone(): {rs}"
+        );
+    }
+
+    #[test]
+    fn plan714_r3_fsys_at_full_transpile_qualified() {
+        // r3 R3-T4 前哨：corpus fsys.at 全文直转——fs.metadata→file_size、
+        // copy_recursive、json.from_value、diff 裸名映射、Regex.test 全部
+        // 限定形（掩蔽层清单的发射面收口验证）。fixture 路径=组内 tmp
+        // corpus（不在 git——缺文件时跳过断言并打印 SKIP 标记）。
+        let path = "D:/autostack/.wt/lang-714/tmp-corpus/specs/auto-edit/src/back/fsys.at";
+        let Ok(src) = std::fs::read_to_string(path) else {
+            println!("SKIP: corpus fixture absent ({path})");
+            return;
+        };
+        let mut rcode = crate::trans::rust::transpile_rust("fsys", &src)
+            .expect("fsys.at transpile failed");
+        let rs_bytes = rcode.done().expect("done failed");
+        let rs = String::from_utf8_lossy(rs_bytes);
+        std::fs::write("D:/autostack/.wt/lang-714/tmp-corpus/fsys-transpiled.rs", rs.as_bytes()).unwrap();
+        assert!(!rs.contains("= fs.metadata("), "fs.metadata 裸名残留(赋值位)");
+        assert!(!rs.contains("return fs.metadata("), "fs.metadata 裸名残留(返回位)");
+        assert!(rs.contains("a2r_std::fs::file_size"), "file_size 限定: {rs}");
+        assert!(rs.contains("a2r_std::fs::copy_recursive"), "copy_recursive 限定");
+        assert!(rs.contains("a2r_std::json::from_value(a2r_std::json!("), "from_value json! 形");
+        assert!(rs.contains("a2r_std::re::test("), "Regex.test 限定");
+        assert!(rs.contains("a2r_std::diff::diff_files("), "diff 裸名限定");
+        assert!(rs.contains("a2r_std::fs::read_bytes_list"), "read_bytes list 形");
+    }

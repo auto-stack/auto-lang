@@ -5096,6 +5096,31 @@ impl RustTrans {
     }
 
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
+        // PLAN-714 r3 R3-T2: 裸名 diff 内建映射（VM codegen intrinsics
+        // 9915/9916/9917 同源——corpus fsys.at 裸名直调位；模块内无本地
+        // 同名符号[fsys.at:245 注记原文]）。
+        if let Expr::Ident(name) = call.name.as_ref() {
+            let mapped = match name.as_str() {
+                "diff_files" => Some("a2r_std::diff::diff_files"),
+                "diff_dirs" => Some("a2r_std::diff::diff_dirs"),
+                "diff_snapshots" => Some("a2r_std::diff::diff_snapshots"),
+                _ => None,
+            };
+            if let Some(q) = mapped {
+                self.a2r_std_used.set(true);
+                write!(out, "{q}(")?;
+                for (i, arg) in call.args.args.iter().enumerate() {
+                    if i > 0 { write!(out, ", ")?; }
+                    if let Arg::Pos(expr) = arg {
+                        self.expr(expr, out)?;
+                    } else {
+                        self.arg(arg, out)?;
+                    }
+                }
+                write!(out, ")")?;
+                return Ok(());
+            }
+        }
         // Plan 032 G4 (auto-ai consumer): serde_json::Value variant
         // construction (`Value.String(x)` / `Value.Number(n)` after
         // `use.rust serde_json[::Value]`). The external enum's variants take
@@ -5755,6 +5780,80 @@ impl RustTrans {
                                     self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::last_error()")?;
                                     return Ok(());
                                 }
+                                // PLAN-714 r3 R3-T2: fs.metadata/copy_recursive
+                                // （tuple 分发器——语句位 ns.method 调用面）。
+                                ("fs", "metadata") => {
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::file_size(")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("fs", "copy_recursive") => {
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::copy_recursive(")?;
+                                    for (i, arg) in call.args.args.iter().enumerate() {
+                                        if i > 0 { write!(out, ", ")?; }
+                                        if let Arg::Pos(expr) = arg {
+                                            self.expr_as_str(expr, out)?;
+                                        } else {
+                                            self.arg(arg, out)?;
+                                        }
+                                    }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("json", "from_value") => {
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::json::from_value(a2r_std::json!({{")?;
+                                    if let Some(Arg::Pos(Expr::Object(pairs))) = call.args.args.first() {
+                                        for (i, pair) in pairs.iter().enumerate() {
+                                            if i > 0 { write!(out, ", ")?; }
+                                            match &pair.key {
+                                            crate::ast::Key::NamedKey(n) => write!(out, "\"{}\": ", n)?,
+                                            crate::ast::Key::StrKey(k) => write!(out, "\"{}\": ", k)?,
+                                            crate::ast::Key::IntKey(i) => write!(out, "\"{}\": ", i)?,
+                                            crate::ast::Key::BoolKey(b) => write!(out, "\"{}\": ", b)?,
+                                        }
+                                            self.expr(&pair.value, out)?;
+                                        }
+                                    } else if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                        self.expr(a, out)?;
+                                    }
+                                    write!(out, "}})")?;
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("Regex", "test") => {
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::re::test(")?;
+                                    for (i, arg) in call.args.args.iter().enumerate() {
+                                        if i > 0 { write!(out, ", ")?; }
+                                        if let Arg::Pos(expr) = arg {
+                                            self.expr_as_str(expr, out)?;
+                                        } else {
+                                            self.arg(arg, out)?;
+                                        }
+                                    }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("File", "read_bytes") => {
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_bytes_list(")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("File", "write_bytes") => {
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_bytes_list(")?;
+                                    for (i, arg) in call.args.args.iter().enumerate() {
+                                        if i > 0 { write!(out, ", ")?; }
+                                        if let Arg::Pos(expr) = arg {
+                                            self.expr(expr, out)?;
+                                        } else {
+                                            self.arg(arg, out)?;
+                                        }
+                                    }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
                                 ("env", "set") => {
                                     self.a2r_std_used.set(true); write!(out, "a2r_std::env::set(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
@@ -6027,6 +6126,27 @@ impl RustTrans {
                                 write!(out, ")")?;
                                 return Ok(());
                             }
+                            "metadata" => {
+                                // PLAN-714 r3 R3-T2: fs.metadata→file_size（auto.fs.size
+                                // int 字节长语义——缺失 -1，census §92 口径）。
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::file_size(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "copy_recursive" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::copy_recursive(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr_as_str(expr, out)?;
+                                    } else {
+                                        self.arg(arg, out)?;
+                                    }
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
                             "write_text" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_text(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
@@ -6275,6 +6395,30 @@ impl RustTrans {
                             "parse" => {
                                 self.a2r_std_used.set(true); write!(out, "{}", if self.json_parse_as_opt { "a2r_std::json::parse_opt(" } else { "a2r_std::json::parse(" })?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "from_value" => {
+                                // PLAN-714 r3 R3-T2: json.from_value(struct-literal) →
+                                // json! 构造（键加引号、值表达式直发——Vec<Value>/i64 均
+                                // Serialize；宏经 a2r_std::json 再导出）。
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::from_value(a2r_std::json!({{")?;
+                                if let Some(Arg::Pos(Expr::Object(pairs))) = call.args.args.first() {
+                                    for (i, pair) in pairs.iter().enumerate() {
+                                        if i > 0 { write!(out, ", ")?; }
+                                        match &pair.key {
+                                            crate::ast::Key::NamedKey(n) => write!(out, "\"{}\": ", n)?,
+                                            crate::ast::Key::StrKey(k) => write!(out, "\"{}\": ", k)?,
+                                            crate::ast::Key::IntKey(i) => write!(out, "\"{}\": ", i)?,
+                                            crate::ast::Key::BoolKey(b) => write!(out, "\"{}\": ", b)?,
+                                        }
+                                        self.expr(&pair.value, out)?;
+                                    }
+                                } else if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, "}})")?;
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -6562,6 +6706,36 @@ impl RustTrans {
                         // a2r_std. Error convention matches the VM shim
                         // (ffi/stdlib.rs shim_file_*: read error → empty
                         // string, write → 0/-1, exists → bool).
+                        // PLAN-714 r3 R3-T2: Regex.test(text, pat)→bool（VM 实参序）。
+                        "Regex" => match method_name.as_str() {
+                            "test" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::re::test(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr_as_str(expr, out)?;
+                                    } else {
+                                        self.arg(arg, out)?;
+                                    }
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "replace" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::re::replace(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr_as_str(expr, out)?;
+                                    } else {
+                                        self.arg(arg, out)?;
+                                    }
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
                         "File" => match method_name.as_str() {
                             "read_text" | "read_to_string" => {
                                 write!(out, "std::fs::read_to_string(")?;
@@ -6590,6 +6764,27 @@ impl RustTrans {
                                 write!(out, ").is_ok()")?;
                                 return Ok(());
                             }
+                            "read_bytes" => {
+                                // PLAN-714 r3 R3-T2: read_bytes 的 list 形（Vec<Value>
+                                // ——VM int-list 同源；配 `list` 动态型映射）。
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_bytes_list(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "write_bytes" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_bytes_list(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr(expr, out)?;
+                                    } else {
+                                        self.arg(arg, out)?;
+                                    }
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
                             // PLAN-687: chunked-read envelope — true chunked
                             // window read in a2r_std (byte-identical with the
                             // VM shim, P670-D1). Auto int = i64 → usize cast.
@@ -6612,6 +6807,78 @@ impl RustTrans {
                                     }
                                 }
                                 write!(out, ")")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
+                        // PLAN-714 r3 R3-T2: fs.metadata/copy_recursive（Dot
+                        // 分发器——corpus fsys.at 两段形调用面）。
+                        "fs" => match method_name.as_str() {
+                            "metadata" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::file_size(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "copy_recursive" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::copy_recursive(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr_as_str(expr, out)?;
+                                    } else {
+                                        self.arg(arg, out)?;
+                                    }
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "remove_dir" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::remove_dir(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "list_dir" => {
+                                // VM fs.list_dir → JSON 目录清单——a2r 轨走
+                                // fs::walk 的 JSON 串形（Plan 626 面同源）。
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::walk(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
+                        // PLAN-714 r3 R3-T2: json.from_value(struct-literal)→
+                        // json! 构造（Dot 分发器）。
+                        "json" => match method_name.as_str() {
+                            "from_value" => {
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::from_value(a2r_std::json!({{")?;
+                                if let Some(Arg::Pos(Expr::Object(pairs))) = call.args.args.first() {
+                                    for (i, pair) in pairs.iter().enumerate() {
+                                        if i > 0 { write!(out, ", ")?; }
+                                        match &pair.key {
+                                            crate::ast::Key::NamedKey(n) => write!(out, "\"{}\": ", n)?,
+                                            crate::ast::Key::StrKey(k) => write!(out, "\"{}\": ", k)?,
+                                            crate::ast::Key::IntKey(i) => write!(out, "\"{}\": ", i)?,
+                                            crate::ast::Key::BoolKey(b) => write!(out, "\"{}\": ", b)?,
+                                        }
+                                        self.expr(&pair.value, out)?;
+                                    }
+                                } else if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, "}})")?;
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "to_value" => {
+                                // json.to_value(json-text) → list（VM 语义）——
+                                // a2r 轨=parse_list 的 Vec<Value>（for 直迭代面）。
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::parse_str_list(&(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, "))")?;
                                 return Ok(());
                             }
                             _ => {}
@@ -10738,6 +11005,14 @@ impl RustTrans {
     /// serde_json::json!, not bare struct-literal braces.
     fn receiver_elem_is_json_value(&self, object: &Expr) -> bool {
         if let Expr::Ident(name) = object {
+            // PLAN-714 r3 R3-T2: .at 裸 `list`（解析为 User("list")）=
+            // 动态 Value 桶——记录字面量 push 走 json! 构造（同 bare List
+            // Unknown 元素语义；a2r 形=Vec<Value> 别名）。
+            if let Some(ty) = self.local_var_types.get(name.as_str()) {
+                if matches!(ty, Type::User(td) if td.name.as_str() == "list") {
+                    return true;
+                }
+            }
             if let Some(Type::List(elem)) = self.local_var_types.get(name.as_str()) {
                 return match elem.as_ref() {
                     Type::User(td) => td.name.as_str() == "Value",
@@ -12011,6 +12286,51 @@ impl RustTrans {
         write!(out, ")").map_err(Into::into)
     }
 
+    /// PLAN-714 r3 R3-T3: try 体是否含 return（递归 If/For/Block）。
+    fn try_body_has_return(stmts: &[Stmt]) -> bool {
+        stmts.iter().any(|st| match st {
+            Stmt::Return(_) => true,
+            Stmt::If(if_) => if_.branches.iter().any(|b| Self::try_body_has_return(&b.body.stmts))
+                || if_.else_.as_ref().is_some_and(|b| Self::try_body_has_return(&b.stmts)),
+            Stmt::For(f) => Self::try_body_has_return(&f.body.stmts),
+            Stmt::Block(b) => Self::try_body_has_return(&b.stmts),
+            _ => false,
+        })
+    }
+
+    /// PLAN-714 r3 R3-T3: try 体 Return(e) → Return(Some(e)) 改写（递归）。
+    fn rewrite_try_returns(stmts: &mut [Stmt]) {
+        for st in stmts.iter_mut() {
+            match st {
+                Stmt::Return(expr) => {
+                    let inner = expr.as_ref().clone();
+                    *expr = Box::new(Expr::Call(crate::ast::Call {
+                        name: Box::new(Expr::Ident("Some".into())),
+                        args: crate::ast::Args {
+                            args: vec![crate::ast::Arg::Pos(inner)],
+                        },
+                        ret: Type::Unknown,
+                        type_args: Vec::new(),
+                        generic_args: Vec::new(),
+                        pos: None,
+                    }));
+                }
+                Stmt::If(if_) => {
+                    for b in if_.branches.iter_mut() {
+                        Self::rewrite_try_returns(&mut b.body.stmts);
+                    }
+                    if let Some(else_body) = if_.else_.as_mut() {
+                        Self::rewrite_try_returns(&mut else_body.stmts);
+                    }
+                }
+                Stmt::For(f) => Self::rewrite_try_returns(&mut f.body.stmts),
+                Stmt::Block(b) => Self::rewrite_try_returns(&mut b.stmts),
+                _ => {}
+            }
+        }
+    }
+
+
     fn stmt(&mut self, stmt: &Stmt, sink: &mut Sink) -> AutoResult<bool> {
         match stmt {
             Stmt::Expr(expr) => {
@@ -12319,9 +12639,32 @@ impl RustTrans {
             // enclosing loop outside the try — corpus zero instances;
             // break/continue targeting loops inside the body are unaffected).
             Stmt::Try(t) => {
-                sink.body.write(b"match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {\n")?;
+                // r3 R3-T3: 闭包内 return 传播形——fn 非 unit 且体含 return
+                // 时，闭包标注 `-> Option<T>`、体 Return 包 Some、Ok(Some(v))
+                // => return v 传播（VM return-in-try=从 fn 返回同源）；Ok(None)
+                // => return Default::default()（体必 return 的 corpus 形下不可
+                // 达；条件 return 形=242 边界注记）。体预变换：借位迭代变量
+                // 的 Ident 绑定/赋值改 .clone()（E0308 &String→String 株）。
+                let ret_nonunit = !matches!(
+                    self.current_fn_ret_type.as_ref(),
+                    None | Some(Type::Void) | Some(Type::Unknown)
+                );
+                let propagate = ret_nonunit && Self::try_body_has_return(&t.body.stmts);
+                let mut body = t.body.clone();
+                if propagate {
+                    Self::rewrite_try_returns(&mut body.stmts);
+                }
+                let try_body = body;
+                if propagate {
+                    let ret_ty = self.rust_type_name(
+                        self.current_fn_ret_type.as_ref().expect("checked above"),
+                    );
+                    write!(sink.body, "match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Option<{ret_ty}> {{\n")?;
+                } else {
+                    sink.body.write(b"match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {\n")?;
+                }
                 self.indent();
-                for inner in &t.body.stmts {
+                for inner in &try_body.stmts {
                     self.print_indent(&mut sink.body)?;
                     self.stmt(inner, sink)?;
                     if matches!(inner, Stmt::Expr(_)) {
@@ -12332,8 +12675,15 @@ impl RustTrans {
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 sink.body.write(b"}))")?;
+                if propagate {
+                    sink.body.write(
+                        b" { Ok(Some(__v)) => return __v, Ok(None) => return Default::default(), ",
+                    )?;
+                } else {
+                    sink.body.write(b" { Ok(_) => {}, ")?;
+                }
                 if t.catch_param.is_some() || !t.catch_body.stmts.is_empty() {
-                    sink.body.write(b" { Ok(_) => {}, Err(__p) => ")?;
+                    sink.body.write(b"Err(__p) => ")?;
                     if t.catch_body.stmts.is_empty() {
                         // Bound but empty handler: keep the payload accessible
                         // under its .at name (let it warn-free via usage in
@@ -12370,10 +12720,15 @@ impl RustTrans {
                         sink.body.write(b"}")?;
                     }
                     sink.body.write(b" }")?;
+                } else if propagate {
+                    // Empty unbound catch under propagation: r2 swallow
+                    // semantics preserved（match 臂 ()——中位安全；尾位
+                    // 空 catch+传播形=242 边界注记）。
+                    sink.body.write(b"Err(_p714) => {} }")?;
                 } else {
                     // Empty unbound catch (corpus fsys.at:208): discard the
                     // payload; `_`-prefixed name dodges the unused warning.
-                    sink.body.write(b" { Ok(_) => {}, Err(_p714) => {} }")?;
+                    sink.body.write(b"Err(_p714) => {} }")?;
                 }
                 if let Some(fb) = &t.finally_body {
                     sink.body.write(b"; {\n")?;
@@ -13214,6 +13569,38 @@ impl RustTrans {
 
     // Variable declaration
     fn store(&mut self, store: &Store, out: &mut impl Write) -> AutoResult<()> {
+        // PLAN-714 r3 R3-T3: 借位迭代变量的声明绑定 → `.clone()`（窄门：
+        // Var/Let 声明 + 声明型 String 族 + init=裸 Ident∈borrowed_iter_
+        // vars——E0308 &String→String 株；型门压住 1609 注记的 is-arm
+        // 假阳性顾虑——非 String 型不进此门，Clone 语义等价）。
+        if matches!(store.kind, StoreKind::Var | StoreKind::Let)
+            && matches!(
+                store.ty,
+                Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit
+            )
+            && matches!(
+                &store.expr,
+                Expr::Ident(n) if self.borrowed_iter_vars.contains(n)
+            )
+        {
+            let mut patched = store.clone();
+            if let Expr::Ident(n) = &patched.expr {
+                let name = n.clone();
+                patched.expr = Expr::Call(crate::ast::Call {
+                    name: Box::new(Expr::Dot(
+                        Box::new(Expr::Ident(name)),
+                        "clone".into(),
+                    )),
+                    args: crate::ast::Args::default(),
+                    ret: Type::Unknown,
+                    type_args: Vec::new(),
+                    generic_args: Vec::new(),
+                    pos: None,
+                });
+            }
+            return self.store(&patched, out);
+        }
+
         // Track local variable type for string concat detection
         // When type is Unknown, try to infer from the expression
         let effective_ty = if matches!(store.ty, Type::Unknown) {

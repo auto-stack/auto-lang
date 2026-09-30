@@ -417,6 +417,22 @@ pub mod json {
         val.and_then(|v| v.as_str().map(|s| s.to_string())).unwrap_or_default()
     }
 
+    /// PLAN-714 r3 R3-T1: json.from_value（VM 同语义——struct/map 值序列
+    /// 化为 JSON 文本；发射臂经 a2r_std::json! 宏构造 Value 后入此）。
+    pub fn from_value(val: Value) -> String {
+        val.to_string()
+    }
+    /// PLAN-714 r3 R3-T2: json.to_value 的 list 语义面（VM json.to_value
+    /// 返回 list——corpus 消费形=str 元素清单[路径族]，a2r 轨=Vec<String>
+    /// 供 for 直迭代；非 str 元素 as_str 兜空串。int 清单形=242 边界注记）。
+    pub fn parse_str_list(text: &str) -> Vec<String> {
+        serde_json::from_str::<Vec<Value>>(text)
+            .unwrap_or_default()
+            .iter()
+            .map(|v| v.as_str().map(|s| s.to_string()).unwrap_or_default())
+            .collect()
+    }
+
     pub fn get_u64(val: &Value, key: &str) -> u64 {
         val.get(key).and_then(|v| v.as_u64()).unwrap_or(0)
     }
@@ -558,6 +574,15 @@ pub fn value_len(val: &serde_json::Value) -> i32 {
     }
 }
 
+// PLAN-714 r3 R3-T1: json! 宏再导出——发射臂发 a2r_std::json!({...})
+// 构造 struct-literal 实参（宏与 json 模块分属不同命名空间，无碰撞）。
+pub use serde_json::json;
+
+// PLAN-714 r3 R3-T1: `.at` 裸 `list` 动态型的 a2r 形（Vec<Value>——
+// glob 导入下裸名直接解析；VM list 动态语义的 serde 对应面）。
+#[allow(non_camel_case_types)]
+pub type list = Vec<serde_json::Value>;
+
 // =============================================================================
 // IO module for a2r transpiler
 // =============================================================================
@@ -679,6 +704,47 @@ pub mod fs {
             Ok(meta) => meta.len() as i64,
             Err(_) => -1,
         }
+    }
+
+    /// PLAN-714 r3 R3-T1: fs.copy_recursive（VM 内建 2862 同语义——静默
+    /// bool：目录递归复制、文件单发 std::fs::copy；任一步失败即 false）。
+    pub fn copy_recursive(src: impl AsRef<str>, dst: impl AsRef<str>) -> bool {
+        fn rec(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+            if src.is_dir() {
+                std::fs::create_dir_all(dst)?;
+                for e in std::fs::read_dir(src)? {
+                    let e = e?;
+                    rec(&e.path(), &dst.join(e.file_name()))?;
+                }
+                Ok(())
+            } else {
+                std::fs::copy(src, dst).map(|_| ())
+            }
+        }
+        rec(std::path::Path::new(src.as_ref()), std::path::Path::new(dst.as_ref())).is_ok()
+    }
+
+    /// PLAN-714 r3 R3-T1: File.read_bytes 的 list 形（VM read_bytes→int
+    /// list 同源——a2r 轨裸 `list` 动态型=Vec<Value>，元素=Int 值）。
+    pub fn read_bytes_list(path: impl AsRef<str>) -> Vec<serde_json::Value> {
+        std::fs::read(path.as_ref())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|b| serde_json::Value::from(b as i64))
+            .collect()
+    }
+
+    /// PLAN-714 r3 R3-T1: fs.remove_dir（VM File.remove_dir 同语义——
+    /// 单层 remove_dir，非 _all）。
+    pub fn remove_dir(path: impl AsRef<str>) -> bool {
+        std::fs::remove_dir(path.as_ref()).is_ok()
+    }
+
+    /// PLAN-714 r3 R3-T1: File.write_bytes 的 list 形（read_bytes_list
+    /// 对偶——Value 元素按 as_i64 取低字节；缺失补 0 保长度）。
+    pub fn write_bytes_list(path: impl AsRef<str>, data: Vec<serde_json::Value>) -> bool {
+        let bytes: Vec<u8> = data.iter().map(|v| v.as_i64().unwrap_or(0) as u8).collect();
+        std::fs::write(path.as_ref(), bytes).is_ok()
     }
 
     pub fn walk(dir: impl AsRef<str>) -> String {
@@ -1002,6 +1068,30 @@ pub mod re {
         }
     }
 
+    /// PLAN-714 r3 R3-T1: Regex.test→bool（VM 实参序 (text, pattern)
+    /// 同源——stdlib.rs P-053-6 Regex.test(text, pat)）。
+    pub fn test(text: &str, pattern: &str) -> bool {
+        match ::regex::Regex::new(pattern) {
+            Ok(re) => re.is_match(text),
+            Err(_) => false,
+        }
+    }
+
+    /// PLAN-714 r3 R3-T1: Regex.replace（VM shim_regex_replace 同语义——
+    /// flags 含 g=replace_all 否则首替；replacement 直传 as_str 同 $ 语义）。
+    pub fn replace(text: &str, pattern: &str, replacement: &str, flags: &str) -> String {
+        match ::regex::Regex::new(pattern) {
+            Ok(re) => {
+                if flags.contains('g') {
+                    re.replace_all(text, replacement).into_owned()
+                } else {
+                    re.replace(text, replacement).into_owned()
+                }
+            }
+            Err(_) => text.to_string(),
+        }
+    }
+
     pub fn find_all(pattern: &str, text: &str) -> String {
         match ::regex::Regex::new(pattern) {
             Ok(re) => {
@@ -1010,6 +1100,50 @@ pub mod re {
             }
             Err(_) => "[]".to_string(),
         }
+    }
+}
+
+// =============================================================================
+// Diff module for a2r transpiler（PLAN-714 r3 R3-T1——703 imara 引擎包络，
+// VM native 9915/9916/9917 同源；code-editor 门双轨——feature 关=panic
+// 同 shim fallback 形[native.rs 非门控段同文案]）
+// =============================================================================
+
+/// AutoLang's diff module — envelope JSON wrappers over the diff engine.
+#[allow(non_snake_case)]
+pub mod diff {
+    #[cfg(feature = "code-editor")]
+    pub fn diff_files(path_a: &str, path_b: &str, ctx: i64) -> String {
+        crate::ui::code_editor::diff::envelope::diff_files_envelope_from_paths(
+            path_a,
+            path_b,
+            ctx.max(0) as usize,
+        )
+    }
+
+    #[cfg(not(feature = "code-editor"))]
+    pub fn diff_files(_path_a: &str, _path_b: &str, _ctx: i64) -> String {
+        panic!("diff_files: the `code-editor` feature is disabled")
+    }
+
+    #[cfg(feature = "code-editor")]
+    pub fn diff_dirs(path_a: &str, path_b: &str) -> String {
+        crate::ui::code_editor::diff::envelope::diff_dirs_envelope(path_a, path_b)
+    }
+
+    #[cfg(not(feature = "code-editor"))]
+    pub fn diff_dirs(_path_a: &str, _path_b: &str) -> String {
+        panic!("diff_dirs: the `code-editor` feature is disabled")
+    }
+
+    #[cfg(feature = "code-editor")]
+    pub fn diff_snapshots(key_a: &str, key_b: &str) -> String {
+        crate::ui::code_editor::diff::envelope::diff_snapshots_envelope(key_a, key_b)
+    }
+
+    #[cfg(not(feature = "code-editor"))]
+    pub fn diff_snapshots(_key_a: &str, _key_b: &str) -> String {
+        panic!("diff_snapshots: the `code-editor` feature is disabled")
     }
 }
 
