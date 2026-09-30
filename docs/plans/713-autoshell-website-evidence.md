@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-713
-status: execution_done
+status: reviewed
 feature_name: AutoShell website evidence and presentation
 author: [Codex]
 created_at: 2026-09-30
@@ -160,3 +160,16 @@ base_commit: f8395b1eb0fc5dcb79689f6694eabdc6082cc60e
 stage: work | plan_id: PLAN-713 | plan_revision: 3 | outcome: pass | code_commit: e728fa3f8995968f268e5c5a2654ff9eef272229 | task_ids: T-06 | evidence: docs/reports/autoshell-native-hero-2026-09-30.md plus four captures | blockers: none for delivery | next: review.
 
 VitePress exit 0, 180.93s; EN/ZH product/v05, 390px/default desktop, light/dark, full-image zoom/Esc verified. Worktree clean. Historical r2 record revision restored to 2 after a broad frontmatter replacement; semantic history unchanged.
+
+## revision 3 复审（当前会话，产物重建）
+
+stage: review | plan_id: PLAN-713 | plan_revision: 3 | outcome: pass
+reviewed_commit: e728fa3f8995968f268e5c5a2654ff9eef272229
+base_commit: 712778972
+
+- AC-06 / T-06: pass. Committed shared AutoShellPreview references the unchanged native ash-01 source; EvidenceImage's optional viewport preserves pixels and opens full original. Both locales and both showcase locations use that component. Fake hero output/F2-F5 line/tags removed, no body figure removed. Native color/table visible in four committed browser captures.
+- AC-01..05: pass. Shell/runtime/examples not changed; r1/r2 execution evidence reused for identical commands/dependencies. Shared EvidenceImage retains dialog/focus/keyboard paths; live zoom/Esc return verified. Originals/mode images loaded, layout and source inspected. EN/ZH default desktop and 390px, light/dark checked. No new console errors observed.
+- Build gate: exit 0, 180.93s. Category A no Cargo suites/docs_gen. Existing highlighting/bundle warnings retained, no new build error. git diff base..reviewed_commit --check passes; worktree clean, no debug additions or unmet AC.
+- Frozen SD-01: docs/specs/website/project.md blob 9eb3ca3990aa0a2cb5121cd681e8ef95867c3e0c; prior blob 975544b94c783ff35804dd47647fd1cd6936f429. Exact paragraph records shared native colored hero for product/v05 plus full-image enlargement. No new runtime requirement or global theme redesign.
+- Dependencies: website lockfile unchanged from r1/r2; original native image unchanged; no new shell execution claimed. touched_goals remains [] (presentation correction, no separately registered Goal).
+- Limitation: same-session reconstruction against committed artifacts, no independent agent claimed. Evidence: docs/reports/autoshell-native-hero-2026-09-30.md. No deferred acceptance item. next: linear landing; unavailable store-mediated ledger writer continues to block archival only.
