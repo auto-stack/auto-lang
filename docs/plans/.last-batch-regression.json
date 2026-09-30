@@ -1,0 +1,26 @@
+{
+  "last_covered_plan_id": 712,
+  "timestamp": "2026-09-30T08:04:49Z",
+  "covered_commit": "7fcf913eb",
+  "legs": [
+    "tf",
+    "tt",
+    "tb"
+  ],
+  "taa_skipped_reason": "window (first receipt; merges 710/712/fix-*) touched no aavm trigger paths (auto/lib/*.at, test/vm/aavm2, parity, aavm2 tests, lib.rs aavm sources)",
+  "new_reds": [],
+  "new_red_notes": "ffi_dual_019_dep_layout_invariants (tf) = batch-load flake: red in 5921-parallel batch, green isolated on BOTH pre-710 (c80887ab7, 3.27s) and post-710 (e81e0a1c3, 2.97s) — registered REG-2 in KNOWN-DEBT; not plan-attributable",
+  "known_reds_seen": [
+    "musk_vm_track_p053 x4 (widget_computed x2 / merged_api_warning / widget_content)",
+    "musk_vm_track_p054 x2 (icon_component x2)",
+    "plan606_gallery test_029_photo_gallery_thumbnails",
+    "projector_counter_layout_and_hits",
+    "e4_default_headers_reach_wire_on_plain_get (30s bounded, P707-R1)",
+    "plan707_wait_generator_park_drive_count_static",
+    "ui_gen::vue::test_a2vue_desktop_surface_asset (a2vue desktop golden, 4f123a50e)",
+    "book_ch06_09 (pre-existing, verified at c80887ab7 — REG-1)",
+    "book_ch09_02 (pre-existing, verified at c80887ab7 — REG-1)"
+  ],
+  "leg_timings": "tf 73.3s (5921 run, 5909 passed, 12 failed, 512 skipped; warm feature cache) / tt / tb — full logs .tf-full.log/.tt-full.log/.tb-full.log (session temp)",
+  "verdict": "known-reds-only + 1 batch-load flake (REG-2); zero plan-attributable new reds"
+}
