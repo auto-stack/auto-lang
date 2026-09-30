@@ -144,6 +144,10 @@ fn f1_embedded_store_state_seeds_and_interpolates() {
         ("counter_store.at", F1_STORE),
     ]);
     // 触发渲染（子件 Init 挂载/派生求值走渲染帧）。
+    // PLAN-711 T-05 契约迁移：pending demand 首建产出骨架占位，驱动至终态
+    // 后重建断言。
+    let _ = comp.view_with_debug();
+    comp.drive_scheduler_to_quiescence(10_000);
     let (view, _, _) = comp.view_with_debug();
     let rendered = format!("{view:?}");
     // store 字段直接可读（model 并根的直接证据）。
@@ -183,6 +187,9 @@ fn f4_embedded_adapter_module_fn_computed() {
         ("counter_store.at", F1_STORE),
         ("counter_util.at", F1_UTIL),
     ]);
+    // PLAN-711 T-05 契约迁移：驱动至终态后重建断言。
+    let _ = comp.view_with_debug();
+    comp.drive_scheduler_to_quiescence(10_000);
     let (view, _, _) = comp.view_with_debug();
     let rendered = format!("{view:?}");
     assert!(

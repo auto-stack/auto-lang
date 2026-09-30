@@ -418,7 +418,10 @@ pub enum ScanVerdict {
 ///   求值走 VM 代码，静态不可证其读面与纯度。
 pub fn scan_subtree_static(node: &AuraNode) -> ScanVerdict {
     let mut slots = Vec::new();
-    match scan_node(node, &mut slots) {
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // registry 缺席（该入口无 registry 面）：memo 块穿入仍生效，Component
+    // 模板展开退化为不展开（宁缺勿错，scan_static_with_components 为全量面）。
+    match scan_node(node, &mut slots, None, &mut visited) {
         Ok(()) => ScanVerdict::Slots(slots),
         Err(reason) => ScanVerdict::Degrade(reason),
     }
@@ -486,7 +489,17 @@ fn scan_node_registry(
         }
         return Ok(());
     }
-    scan_node(node, slots)
+    // PLAN-711 T-12: memo 块不再降级（DataTable 页安装说明 memo 块实录：
+    // 整页 site=6 恒 Degrade 每帧全量重建）——块体经专用 scan_block_node
+    // 扫描（保守不变：嵌套 for/outlet/块仍整块降级；Component 模板经
+    // registry 递归展开，模板内状态读也入槽——多失效只变慢，绝不陈旧）。
+    if let AuraNode::MemoBlock { body, .. } = node {
+        for c in body {
+            scan_block_node(c, slots, registry, visited)?;
+        }
+        return Ok(());
+    }
+    scan_node(node, slots, registry, visited)
 }
 
 /// PLAN-046 T-03：keyed-for **项级**扫描。正确性判据：项值指纹覆盖循环变量
@@ -618,7 +631,17 @@ fn scan_item_node(
             Ok(())
         }
         AuraNode::Outlet { .. } => Err("outlet"),
-        AuraNode::MemoBlock { .. } => Err("memo_block"),
+        AuraNode::MemoBlock { body, .. } => {
+            // PLAN-711 T-12: memo 块不再是 outlet 静态扫描的降级源——块体经
+            // 专用 scan_block_node 扫描（保守不变：嵌套 for/outlet/块仍整块
+            // 降级），块内插值/表达式入 outlet deps 槽（多失效只变慢，绝不
+            // 陈旧——PLAN-046 纪律）。DataTable 页安装说明 memo 块实录：整页
+            // site=6 因 memo_block 恒降级（每帧全量重建）。
+            for c in body {
+                scan_block_node(c, slots, registry, visited)?;
+            }
+            Ok(())
+        }
         AuraNode::Component { name, props, children, .. } => {
             let Some(reg) = registry else {
                 return Err("component");
@@ -678,7 +701,12 @@ pub fn for_site_fingerprint(
     h.finish()
 }
 
-fn scan_node(node: &AuraNode, slots: &mut Vec<Expr>) -> Result<(), &'static str> {
+fn scan_node(
+    node: &AuraNode,
+    slots: &mut Vec<Expr>,
+    registry: Option<&crate::ui::widget_registry::WidgetRegistry>,
+    visited: &mut std::collections::HashSet<String>,
+) -> Result<(), &'static str> {
     match node {
         AuraNode::Element { props, children, .. } => {
             for (_k, prop) in props.iter() {
@@ -690,7 +718,7 @@ fn scan_node(node: &AuraNode, slots: &mut Vec<Expr>) -> Result<(), &'static str>
                 }
             }
             for c in children {
-                scan_node(c, slots)?;
+                scan_node(c, slots, registry, visited)?;
             }
             Ok(())
         }
@@ -699,13 +727,40 @@ fn scan_node(node: &AuraNode, slots: &mut Vec<Expr>) -> Result<(), &'static str>
             Err("interpolated_text")
         }
         AuraNode::ForLoop { .. } => Err("for_loop"),
-        AuraNode::Conditional { .. } => Err("conditional"),
+        // PLAN-711 T-12: Conditional 不再无条件降级——条件串经
+        // parse_expr_fragment 入槽（check 时同通道重解析；解析失败仍降级），
+        // 双臂递归（镜像 scan_block_node 的已验证形态）。DataTable 页排序
+        // 指示条件渲染实录。
+        AuraNode::Conditional { condition, then_body, else_body, .. } => {
+            match crate::parser::Parser::parse_expr_fragment(condition) {
+                Some(e) => scan_expr(&e, slots)?,
+                None => return Err("conditional"),
+            }
+            for c in then_body {
+                scan_node(c, slots, registry, visited)?;
+            }
+            if let Some(els) = else_body {
+                for c in els {
+                    scan_node(c, slots, registry, visited)?;
+                }
+            }
+            Ok(())
+        }
         AuraNode::Component { .. } => Err("component"),
         AuraNode::Outlet { .. } => Err("outlet"),
-        AuraNode::MemoBlock { .. } => Err("memo_block"),
+        AuraNode::MemoBlock { body, .. } => {
+            // PLAN-711 T-12: 同 scan_node_registry——memo 块体经专用
+            // scan_block_node 扫描（保守不变：嵌套 for/outlet/块仍整块降级；
+            // registry 在档时 Component 模板递归展开，模板内状态读入槽——
+            // 多失效只变慢，绝不陈旧）。
+            for c in body {
+                scan_block_node(c, slots, registry, visited)?;
+            }
+            Ok(())
+        }
         AuraNode::Link { children, .. } => {
             for c in children {
-                scan_node(c, slots)?;
+                scan_node(c, slots, registry, visited)?;
             }
             Ok(())
         }

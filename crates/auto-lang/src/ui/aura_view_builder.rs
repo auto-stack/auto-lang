@@ -20505,10 +20505,21 @@ impl<'a> AuraViewBuilder<'a> {
         for e in slots {
             match self.resolve_expr_to_value(e, bindings) {
                 Some(v) => {
+                    // PLAN-711 T-12: 展开失败（深/大堆对象——FileTree computed
+                    // 列表实录）不再以 None 失败整个 slots_fp（那会让条目永不
+                    // 插入 → 恒 FILL 每帧全量重建）：以标记参与指纹，条目照
+                    // 插；该槽的陈旧防护由 dyn_deps 版本检查承担（fill 渲染
+                    // 期已录 dep；deps_unchanged 失配即全量重渲，绝不陈旧）。
                     let fp = crate::ui::memo_deps::fingerprint_value(
                         &v,
                         &|x| self.bridge.expand_heap_for_fingerprint(x),
-                    )?;
+                    )
+                    .unwrap_or_else(|| {
+                        use std::hash::{Hash, Hasher};
+                        let mut mh = std::collections::hash_map::DefaultHasher::new();
+                        "unexpandable".hash(&mut mh);
+                        mh.finish()
+                    });
                     fp.hash(&mut h);
                 }
                 None => {
