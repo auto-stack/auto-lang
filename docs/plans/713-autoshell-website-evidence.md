@@ -138,3 +138,11 @@ base_commit: f8395b1eb0fc5dcb79689f6694eabdc6082cc60e
 - Environment: build initially lacked already-known v05 preview assets; restored physical copies, final build passed, moved copies back outside worktree. No unrelated assets committed. Category A: no Cargo/tests/docs_gen.
 - Frozen SD-01 delta: docs/specs/website/project.md Git blob 975544b94c783ff35804dd47647fd1cd6936f429 at reviewed_commit, baseline 5997aeaed592477b888b68e4d915223eca69ab90. Adds native/F-key screenshot retention/provenance to existing paragraph, no runtime or global navigation redesign. Dependency versions/hash baseline unchanged from r1.
 - Same-session artifact-based review; no independent agent claimed. No remaining AC item or new debt. next: fast-forward landing, preserve other sessions' main work; existing ledger-publication blocker still governs archival.
+
+## 合入收据 PLAN-713:r2
+
+- stage: merge | outcome: blocked (post-landing ledger/archival only).
+- landed: main 6bcd6fd06 → 50b020d7ee26993aa574e4694f68c8e393a0b0ef via --ff-only; mapping 41cf4d434 → 50b020d7e, range-diff shows equal (=) implementation patch. wt-guard clean, no reparse points.
+- Main source, Spec and both original image hashes equal delivery. Main's original untracked ash-01/ash-2 matched bytes, preserved in D:/autostack/.wt/lang-713/main-assets-backup before landing; original paths now contain identical tracked assets. Other sessions' modifications preserved. Browser/build evidence valid after identical rebase.
+- Current user request complete: originals and F1/F2/F3 visible with explanations, no previously delivered screenshot removed. Both locales synchronized.
+- Ledger/archive/cleanup remain pending for the same unavailable store-mediated writer as r1; no direct JSON write, no production deployment. Worktree remains for preview and receipts.
