@@ -222,6 +222,14 @@ AUTO_SCHED_DIAG=1 AUTOUI_ACCEPTANCE=1 AUTOUI_MCP_PORT=9260 bash scripts/desktop.
 
 **验证**：点书 → 详情显示标题/作者/「3 entries」+ 章节列表；proxy 日志对账无 4xx/空化。
 
+**r3 定谳与修复（2026-10-01，worktree 0c4606ee5）**：
+- **根因（第 0 步 dump 定性，证据链闭合）**：**路由页装载臂裸读**——lib.rs 的 routes 块 `pages/{module}.at` 显式装载段（"Plan 401/VM-routing"，use_scanner 对 `-> use X` 不可见故单列）是**全部模块读点中唯一未包 `back_prefix::apply` 的**（其余 10 处全包，4259 顶层 use 臂即对照）。于是：顶层 `book_store.at` 前缀生效（书架 2 REQ 到 proxy ✓）；`pages/book_detail.at`/`reading.at` 的相对 `/api/` 字面量留原样 → fetch 解析到 app 自身 back origin（死端口）→ 86ms 秒拒 → get_json 吞错返空 → 0 entries。r2 的 H1/H2/H3 三假说归并：H1 成立但缺口在**装载臂漏包**（非行级规则/路径归一——子目录在 `path_under` 递归面内）；H2 排除；H3 排除（候选③审计：proxy 错误路径已全 4xx/5xx——404 无路由/未知 app、400 缺参/坏绑定、503 会话超时/媒体根未配；root_missing 200 是三态数据契约非缺陷）。
+- **候选①（根修）**：路由页读点补 `apply`（一行 + 注记）。回归锁 ×2（back_prefix.rs）：`subdir_modules_under_front_dir_are_transformed`（pages/ 子目录与顶层同面）+ `route_page_fetch_reaches_proxied_root_when_guard_active`（**真 TCP stub e2e，红→绿**：红相 = stub 零请求 + 状态滞留初值——与实机「零 REQ」同形；绿相 = `GET /apps/<key>/api/books/1 HTTP/1.1` 前缀命中 + 响应体经 get_json 回灌页状态，走 fire_init + demand/恢复泵真管线）。
+- **候选②（防御，fetch() 同律分层）**：`check_async_http_result` 的传输错误臂（连接拒绝/超时/DNS/队满）旧包成 `{"error":..,"status":0}` **成功值** = 吞错点（本例助燃层：点书后即使前缀修复，任何传输失败仍会静默空态）；改 **Err 透传 → 五 json shim（get/post/put/delete/patch）重入臂转 VMError**（与段内除零同路 = `.at` try/catch 可接，018 的 catch 可呈现可诊断错误）。非 2xx 保持错误形状值（`.status` 可读——fetch().json() 的「HTTP 错误状态不 reject」同律）。孤儿 `escape_json` 退役。回归锁 ×2（新 `plan712_http_error_semantics_tests.rs`）：死端口秒拒被 catch 截获（旧形态返回 "unreached"）+ 非 2xx 值面不抛。语料影响面审计：examples 全域零 `.error`/`.status` 字段读方。
+- **连带现形与修复（②让预存假绿现形）**：①musk p080 http 族 4 测（片段跑相对 URL，运行载体）→ try 包裹免疫化（断言主题=转写平价不变）；②**plan705 线程数测试复活**——handler 烤的是预热上游端口而 listener 随预热线程 join 即 drop，负载相 8 个上游 POST 全打死端口，旧吞错契约 200 假绿、up2 无指向空转（**测试从未真正测过并发慢上游**）；修复 = 预热/负载同源指向活上游 + mock 补阻塞读全请求头（accepted 流继承 nonblocking 竞态）；复活后 4/4 稳定绿。
+- **验证对账**：back_prefix 3/3 + plan712_http_error 2/2 + plan702 4/4 + p080 5/5 + plan705 4/4 绿；裸 `cargo t` 4934 跑 4922 绿，**12 红 = master 基线红族精确对齐，零新增**。
+- **实机（验收桌面，worktree 构建）**：MCP :9261（9260 被僵户占自动回退）→ launch 018 → **书架 3 本正常加载**（截图 evidence/712/t17-r3-desktop-bookshelf-3books.png）+ 桌面日志 `[back-proxy:018-book-reader] REQ GET /api/books ×2` 到达（迁移入档的 REQ/RSP 诊断首次实机服役）。**点书导航腿移交用户点验**：OS 级输入自动化在落点验证时发现用户前台占用（r2 同款墙），当即停手（两次点击落在用户浏览器空白区，无害）。桌面载体稳定性另见 §10⑧（本日重载下预存崩溃，非本计划回归）。
+
 ### 8.5.2 T-18：030 播控条布局（按钮拉伸/倍速超宽/头部按钮不可见）
 
 **症状**：播控条子元素挤左侧（seek 条止于 ~44-52%）；拖拽虚拟窗后**右侧按钮跟着变宽**（用户原话）；倍速组件特别宽；头部主题/队列按钮不可见。默认窗宽（~1005）下比例正确（本计划复验截图）。
@@ -271,6 +279,15 @@ AUTO_SCHED_DIAG=1 AUTOUI_ACCEPTANCE=1 AUTOUI_MCP_PORT=9260 bash scripts/desktop.
 ## 9. 复审记录
 ## 9. 复审记录
 
+- 2026-10-01 stage:work 续（**r3 第二批**，T-17 收口）| plan_id PLAN-712 | plan_revision 3 | outcome: pass（根修+防御双层落地，全锁绿，日常档零新增红；点书导航实机腿移交用户）| code_commit: plan-712-dev @0c4606ee5 + 32ced74f6（承 a817963b0）| task_ids: T-17 | evidence:
+  - **第 0 步定性**：back_prefix 机制审计（apply/path_under/prefix_api_url_literals）+ 018 取数点布局盘点（book_store.at 顶层 vs pages/ 子目录）→ lib.rs 路由页装载臂裸读实锤（10 处读点唯一未包 apply）。
+  - **候选①根修 + e2e 红绿锁**（真 TCP stub，红相=stub 零请求与实机零 REQ 同形）；**候选②传输失败改抛**（五 shim 分层契约 + 非 2xx 值面保留；语料零 `.error/.status` 读方审计）；**候选③审计免改**（proxy 错误面已全 4xx/5xx）。
+  - **连带修复**：p080 http 族 4 测 try 免疫化；plan705 线程数测试复活（旧形态上游 POST 打死端口、吞错 200 假绿、up2 空转——从未真正测过并发慢上游；复活后 4/4 稳定绿）。
+  - **AC-06 对表**：裸 `cargo t` 4934 跑 4922 绿，12 红 = master 基线红族精确对齐，零新增。
+  - **实机**：验收桌面（worktree 构建 MCP :9261）018 书架 3 本 ✓ + proxy REQ ×2 到达 ✓（截图 evidence/712/）；点书导航因用户前台占用停手移交（自动化两次落点经落屏比对确认无害）。
+  - **环境登记**：僵户 +1（旧 ui_desktop 20368，taskkill 不可终止）；yoke-derive 0.8.4 镜像缺席 → 锁降级 0.8.2 解锁；桌面壁纸克隆 OOM 新收纳候选（§10⑧，master A/B 同崩证明预存）。
+  | blockers: 无（点书复验步骤已写入 §8.5.1，用户随时可做）| next: 用户点书复验 → review（r3 批次 T-17/18/19 全收口后）。
+
 - 2026-09-30 stage:work 续（**r3**，复活后第一批）| plan_id PLAN-712 | plan_revision 3 | outcome: pass（T-19 引擎腿修复+锁、T-18 方案 A 接线+锁；实机腿归验收桌面复验）| code_commit: plan-712-dev @716ab0a6d + a817963b0（承 master 57b9afa60）| task_ids: T-18,T-19 | evidence:
   - **环境**：lang-712 worktree 残壳被僵进程 PID 35340（.tmp-712-app.log 句柄 + CWD 锁定 examples/ui/030-video-player 链）锁死不可清（Stop-Process/taskkill/mv 全败=内核态卡死实锤）→ 按组惯例重建 **`D:/autostack/.wt/lang-712b/auto-lang`**（路径偏离已在案，重启后残壳可清）；auto-down 兄弟 worktree @3373a5c 补建（`../../../auto-down` path 依赖解析）。上一会话遗留在**主检出工作副本**的 back_proxy.rs +7 行诊断 WIP 按 master 零 WIP 红线迁入 plan 分支（716ab0a6d），主检出还原干净（余 .autoos/specs.json/.next-id/716/717 系其他会话在途簿记，未触碰）。
   - **T-19**：全链静态读码（app/viewport/contract/uplink/builder/`!` 惯用法）+ 真引擎探针定谳——保持层干净（120 帧零自发 un-pause + toggle×10 实态一致）；红相=空闲引擎首 poll 自发 `PlayStateChange(true)`。修复：基线采集不回灌 + 写失败不推进 applied（contract.rs）；回归锁 ×2，mpv_contract 12/12（真引擎）。实机走查腿归桌面复验（与 T-16 同窗）。
@@ -317,6 +334,8 @@ AUTO_SCHED_DIAG=1 AUTOUI_ACCEPTANCE=1 AUTOUI_MCP_PORT=9260 bash scripts/desktop.
   - ④ **plan502_m3_layout_geometry_e2e 并行 flake 候选**：r3 日常档全量红（0.3s 失败）、worktree 与 master **隔离复跑双双绿**（0.15s）——并行负载序敏感，与 p053_6 同型；非 712 改动面（diagram 布局几何，本批只触 mpv contract/session resize 脏标记）。归 `/auto-plan:regress` 档观察。
   - ⑤ **僵进程残壳（lang-712 组目录）**：PID 35340（auto.exe @ 已剪除 worktree target，14:08 启动）锁 `.tmp-712-app.log` + CWD 锁 examples 空目录链；Stop-Process/taskkill/改名/mv 全败。**重启后删除 `D:/autostack/.wt/lang-712`** 即清；r3 起 plan worktree 在 lang-712b（本登记为 merge 清理时的例外指引）。
   - ⑥ **viewport.at 过时注释**：「`flex-1` 与 `shrink-0` 在 VM 不生效」已不成立（Plan 370 Issue 1 起.flex-1 → width=Fill 映射在位，iced_adapter.rs:1158）——T-11 播控条塌缩的成因不在 flex-1 缺失；该注释待语料清理批顺带更正（防误导后续排查）。
+  - ⑦ **yoke-derive 镜像缺席（env，r3）**：worktree 本地 Cargo.lock（gitignored）钉 yoke-derive 0.8.4，aliyun 镜像索引刷新后仅到 0.8.3 → 全构建拒绝解析；`cargo update -p yoke-derive --precise 0.8.2`（对齐主检出既有锁定）解锁。复发处置同款。
+  - ⑧ **ui_desktop 壁纸克隆 OOM（新收纳候选，r3 实证 2026-10-01）**：桌面启动后数秒~数分钟死于 `memory allocation of 2660706 bytes failed`——栈定谳 `load_image_bytes`（renderer.rs:6590）在**每次视图重建**裸 clone 壁纸图字节（本机 purple.png 2.55MB 配置在案，深色主题 boot 链②档），分配失败 = 进程提交耗尽形态。**非 712-r3 回归**：master 构建（A/B，desktop-master-ab.log）同签名同尺寸崩（t≈152s），worktree 构建 3/3 崩（11s/45s/273s 不定）；昨日 21:59 的同源桌面（用户 20368）存活 26h——变量是**当日机器负载**（用户前台浏览器 + 僵尸进程群 + 页面文件峰值 60GB 的提交压力史），重载下重建churn的 2.66MB 裸 clone 是 OOM 金丝雀。修法候选：壁纸字节/解码结果缓存一次（挂 config 或 handle 缓存，与 Plan 650 Element 缓存族同源）；登记待用户裁定收纳批次。**本轮 4 份崩溃日志**：desktop-r3.log / desktop-r3b.log / desktop-r3c.log（含 RUST_BACKTRACE 栈）/ desktop-master-ab.log（worktree 组目录，未入库）。
 - **r2 工作期新登记（2026-09-30，worktree 7f483e1ab）**：
   - ① **T-11 塌缩非确定性源（修复前置）**：headless 取证探针同源 col_right 438↔658px 随**进程启动**翻转（icon/窗宽/onseek/样式逐项排除），真机塌缩比例（~45%）落翻转域内；嫌疑=动态视图构建顺序敏感层（组件实例化/HashMap 迭代序）。探针已从门禁摘除；定谳入口=进程内两次构建同 view 比对 + builder 侧 HashMap 遍历审计。
   - ② **master 日常档基线 14 红**（较 T-09 时点 2 红扩大）：p053 族 4（含 p053_4/p053_6，并行负载序敏感——隔离可绿）+ p054 族 2 + plan606 029 + desktop_protocol（projector_counter/native_gate）2 + renderer（desktop_bus_inbox/desktop_surface_merge）2 + e4_default_http + plan707_wait_generator + app_registry 2（仅主检出）。归批量回归档（/auto-plan:regress）收口，非本计划范围。
