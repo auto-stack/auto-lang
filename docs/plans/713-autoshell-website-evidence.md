@@ -1,19 +1,19 @@
 ---
 plan_id: PLAN-713
-status: reviewed
+status: executing
 feature_name: AutoShell website evidence and presentation
 author: [Codex]
 created_at: 2026-09-30
 updated_at: 2026-09-30
 
-plan_revision: 1
+plan_revision: 2
 supersedes_spec_components: [docs/specs/website/project.md]
 new_spec_components: []
 touched_goals: []
 
 affects: [website]
 current_step: 4
-total_steps: 4
+total_steps: 5
 ---
 
 # [PLAN-713] autoshell-website-evidence
@@ -66,12 +66,16 @@ VitePress/Vue compile; inspect ZH/EN desktop/mobile, light/dark, no document ove
 - AC-03: Retain visual language, no mobile overflow, light/dark readability and homepage shared-style consistency; browser/style checks.
 - AC-04: Quick-start/sample links work and report contains concrete website recommendations; build/link/sample validation.
 
+- AC-05: 展示用户最初提供的 ash-01 / ash-2 原生截图并说明内容；常见 F1/F2/F3 形式各有可见图示和真实来源说明，中英文同步。
+
 ## 8. 执行步骤
 
 - [x] T-01 (AC-01/04): Create website/.vitepress/theme/components/AutoShellLanding.vue, replace EN/ZH wrappers; copy selected assets and portable samples.
 - [x] T-02 (AC-02/03): Screenshot enlargement, script selection, section anchors, responsive presentation.
 - [x] T-03 (AC-01/03): Correct EN/ZH home/apps entries and bounded landing.css; prepare SD-01 and review report.
 - [x] T-04 (AC-01..04): Compile/browser/example validation, commit implementation and record results.
+
+- [ ] T-05 (AC-05): 恢复两个原生截图，新增 F1/F2/F3 图示区；保留现有实跑图和脚本，更新证据/规范并检查显示。
 
 ## 9. 复审记录
 
@@ -118,3 +122,7 @@ stage: merge | outcome: blocked (post-landing consolidation only)
 - ledger_refreshed: pending. No read_specs/write_spec/update_spec tools are registered in this context and no configured store endpoint was identified. No direct .autoos/specs.json write attempted.
 - archived/cleaned: pending ledger verification. Plan remains reviewed; worktree/branch retained. No new approval required, no UI acceptance item remains open. Follow-up should finish only store-mediated projection, repository module/index bookkeeping if required, archival and guarded cleanup.
 - production artifacts: not deployed. Fresh VitePress dist exists in retained worktree; main deployment bundle and hosted website were not rebuilt/published by this task. No runtime/backend changes.
+
+## revision 2 用户纠正（2026-09-30）
+
+用户指出筛选导致图示覆盖不足，明确要求 F1/F2/F3 与最初两图都展示。沿用同一未归档 Plan/工作区；r1 交付及证据保留，但不覆盖新 AC-05。原生资源实际文件名为 ash-01.png 和 ash-2.png（用户称 ash-02），保留文件名不改写原图。追加常见形式图示区和原生界面介绍，未发起 AI 模型请求的截图只描述入口。规范增量 SD-01 扩展为保留原生界面总览和常见快捷键形式；无需重新申请已获授权的页面补充。
