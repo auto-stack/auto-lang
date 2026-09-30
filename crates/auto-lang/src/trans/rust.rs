@@ -12297,6 +12297,102 @@ impl RustTrans {
                 Ok(true)
             }
 
+            // PLAN-714 r2 R2-T1: try/catch statement arm — catch_unwind form,
+            // mirror of the PLAN-710 G-B arm in ui_gen/rust.rs (33a5d56c3).
+            // Unlocks the back-module path (api_gen::transpile_back_module_to_rs):
+            // corpus fsys.at find-in-files `try` previously fell into the
+            // `_ => Err(unsupported statement)` arm below, skipping the whole
+            // module (api_impl E0432) and cascading into the front route-A
+            // `.ok()?` stub form. Body/catch/finally recurse through this same
+            // stmt() entry (Stmt::Block delegation pattern — Expr members get
+            // `;` appended here, the same discipline as Block). AssertUnwindSafe
+            // carries &mut writes to outer locals (outer `var` emits `let mut`);
+            // `catch (e)` binds the panic payload message via
+            // auto_lang::a2r_std::panic_message (VM catch-frame STORE_LOCAL
+            // same-source — vm/codegen.rs Stmt::Try); unbound empty catch
+            // discards the payload via a `_`-prefixed binding (no unused
+            // warning; corpus fsys.at:208 shape). finally follows the match
+            // (VM same-shape deviation: an error raised inside the catch body
+            // propagates before finally — neither side nests handlers).
+            // Boundary inherited from 710 §2: return/break/continue inside the
+            // try body stay closure-local (semantic change if they targeted an
+            // enclosing loop outside the try — corpus zero instances;
+            // break/continue targeting loops inside the body are unaffected).
+            Stmt::Try(t) => {
+                sink.body.write(b"match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {\n")?;
+                self.indent();
+                for inner in &t.body.stmts {
+                    self.print_indent(&mut sink.body)?;
+                    self.stmt(inner, sink)?;
+                    if matches!(inner, Stmt::Expr(_)) {
+                        sink.body.write(b";")?;
+                    }
+                    sink.body.write(b"\n")?;
+                }
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"}))")?;
+                if t.catch_param.is_some() || !t.catch_body.stmts.is_empty() {
+                    sink.body.write(b" { Ok(_) => {}, Err(__p) => ")?;
+                    if t.catch_body.stmts.is_empty() {
+                        // Bound but empty handler: keep the payload accessible
+                        // under its .at name (let it warn-free via usage in
+                        // consumer code; empty-body binding is a rare shape).
+                        if let Some(p) = &t.catch_param {
+                            write!(
+                                sink.body,
+                                "{{ let {p} = auto_lang::a2r_std::panic_message(&__p); }}"
+                            )?;
+                        } else {
+                            sink.body.write(b"{}")?;
+                        }
+                    } else {
+                        sink.body.write(b"{\n")?;
+                        self.indent();
+                        if let Some(p) = &t.catch_param {
+                            self.print_indent(&mut sink.body)?;
+                            write!(
+                                sink.body,
+                                "let {p} = auto_lang::a2r_std::panic_message(&__p);"
+                            )?;
+                            sink.body.write(b"\n")?;
+                        }
+                        for inner in &t.catch_body.stmts {
+                            self.print_indent(&mut sink.body)?;
+                            self.stmt(inner, sink)?;
+                            if matches!(inner, Stmt::Expr(_)) {
+                                sink.body.write(b";")?;
+                            }
+                            sink.body.write(b"\n")?;
+                        }
+                        self.dedent();
+                        self.print_indent(&mut sink.body)?;
+                        sink.body.write(b"}")?;
+                    }
+                    sink.body.write(b" }")?;
+                } else {
+                    // Empty unbound catch (corpus fsys.at:208): discard the
+                    // payload; `_`-prefixed name dodges the unused warning.
+                    sink.body.write(b" { Ok(_) => {}, Err(_p714) => {} }")?;
+                }
+                if let Some(fb) = &t.finally_body {
+                    sink.body.write(b"; {\n")?;
+                    self.indent();
+                    for inner in &fb.stmts {
+                        self.print_indent(&mut sink.body)?;
+                        self.stmt(inner, sink)?;
+                        if matches!(inner, Stmt::Expr(_)) {
+                            sink.body.write(b";")?;
+                        }
+                        sink.body.write(b"\n")?;
+                    }
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"}")?;
+                }
+                Ok(true)
+            }
+
             _ => Err(format!("Rust Transpiler: unsupported statement: {:?}", stmt).into()),
         }
     }

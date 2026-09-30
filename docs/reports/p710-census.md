@@ -68,3 +68,24 @@ auto-edit 检出（D:/autostack/auto-edit）零触碰：corpus 全程组内 tmp 
 （仅其自有 WIP：specs/stylekit 两删除在录，非本件触碰）。组目录内零
 junction（reparse 扫描过；deps 两 dep 预置真实拷贝规避 materialize 的
 mklink /J 路径）。
+
+## 7. R2 增补判定集（PLAN-714 r2——盲区堵截三行）
+
+> 2026-09-30 r2 实录：本 census §4 的「cargo check 过」为**陈旧基面
+> 掩蔽假绿**——tmp 拷贝携带旧代 fsys.rs 满足导入（021 fresh 复验
+> E0432 实证）。以下三行入判定集，堵截三类掩蔽。
+
+| # | 判据 | 形态 | r2 收据（2026-09-30，工具链 v0.4.2-2330-g99405c675-dirty） |
+|---|---|---|---|
+| ① | **skip 警告 grep 零命中** | regen 日志 grep「⚠ … transpile failed (module skipped)」=0——缺模块洞机读暴露（710 实录该警告在案但不在判定集） | **0 命中**（fsys.at:208 try 臂落地后整模块恢复发射——a2r-run.log grep 实证） |
+| ② | **fresh-copy 卫生** | regen 前清生成区（`rm -rf rust-workspace`）或生成文件清单 diff——堵陈旧基面掩蔽 | 本轮 fresh（快照+清区后首跑）：fsys.rs 全新生成（try 闭包体在册），暴露掩蔽层=26 错（§8） |
+| ③ | **api 客户端桩形检测** | 生成物 grep `String::new()` 恒返形（D-7 桩）=0——编译绿假阴性堵截 | **实体形在位**：`pub fn env_str/read_text/search_files…` 实体委托 `fsys::env_lookup/read_text_range…`（非 D-7 恒返桩）——route-A 伴生嵌入恢复实证（AC-R2-2 实质达成） |
+
+**r2 判定结论**：①③ 绿、② fresh 成立；**exit 0/cargo check 未达**——
+fresh fsys.rs 暴露 710 §10 显式延后的 route-A 深修层（26 错/8 类：
+fs.metadata/copy_recursive、json.from_value+struct-literal、Regex.test、
+`list` 型映射、diff 三件套、File.write_bytes、E0308×3[含 try 尾 bool+
+闭包内 return 传播——corpus 演化出 710 边界条款「闭包内 return 不出
+闭包」的实实例]）——路由 PLAN-714 r2 §9 needs_replan（有界修订），
+详见计划 §10 Q-R2-2。
+

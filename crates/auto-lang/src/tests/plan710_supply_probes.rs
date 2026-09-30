@@ -351,3 +351,76 @@ widget App {{
         );
     }
 }
+
+    // ---- PLAN-714 r2: back-path Stmt::Try arm (trans/rust.rs emission) ----
+
+    #[test]
+    fn plan714_back_try_arm_catch_unwind_fsys_shape() {
+        let src = "pub fn find_in_files(fpath str) {
+    var n int = 0
+    try {
+        let content str = File.read_text(fpath)
+        for ln in content.split(\"\n\") {
+            n = n + 1
+            if n > 10 {
+                break
+            }
+        }
+    } catch {
+    }
+}
+";
+        let mut rcode = crate::trans::rust::transpile_rust("find_in_files", src)
+            .expect("transpile failed");
+        let rs_bytes = rcode.done().expect("done failed");
+        let rs = String::from_utf8_lossy(rs_bytes);
+        assert!(
+            rs.contains("std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {"),
+            "try 臂 catch_unwind 形: {rs}"
+        );
+        assert!(rs.contains("Ok(_) => {}"), "成功臂零扰动: {rs}");
+        assert!(rs.contains("Err(_p714) => {}"), "空 catch 载荷弃: {rs}");
+        assert!(rs.contains("break;"), "for{{if break}} 体保留: {rs}");
+    }
+
+    #[test]
+    fn plan714_back_try_arm_catch_binding_panic_message() {
+        let src = "pub fn probe() {
+    var r str = \"untouched\"
+    try {
+        let d = File.read_text(\"no-such-file\")
+        r = d
+    } catch (err) {
+        r = err
+    }
+}
+";
+        let mut rcode = crate::trans::rust::transpile_rust("probe", src)
+            .expect("transpile failed");
+        let rs_bytes = rcode.done().expect("done failed");
+        let rs = String::from_utf8_lossy(rs_bytes);
+        assert!(
+            rs.contains("let err = auto_lang::a2r_std::panic_message(&__p);"),
+            "catch 绑定形 = panic_message 载荷串: {rs}"
+        );
+        assert!(rs.contains("Err(__p) => {"), "异常臂非空 catch 体: {rs}");
+    }
+
+    #[test]
+    fn plan714_back_try_arm_finally_follows_match() {
+        let src = "pub fn probe() {
+    try {
+        let d = File.read_text(\"x\")
+    } catch {
+    } finally {
+        var done int = 1
+    }
+}
+";
+        let mut rcode = crate::trans::rust::transpile_rust("probe", src)
+            .expect("transpile failed");
+        let rs_bytes = rcode.done().expect("done failed");
+        let rs = String::from_utf8_lossy(rs_bytes);
+        assert!(rs.contains("Err(_p714) => {} }; {"), "finally 跟发于 match 后: {rs}");
+        assert!(rs.contains("let mut done"), "finally 体语句发射: {rs}");
+    }
