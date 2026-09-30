@@ -4,6 +4,7 @@ mod a2c_tests;
 // PLAN-701 供④/供⑥: time 族三面对拍 + shell_recent 签名冒烟
 mod plan701_supply_probes;
 mod plan703_supply_probes;
+mod plan710_supply_probes;
 // KNOWN-DEBT 396 rider (Plan 415-B1): stdlib .rs.at ↔ a2r-std signature parity
 mod a2r_std_signature_parity;
 #[cfg(feature = "test-trans")]
