@@ -1,10 +1,11 @@
 ---
 plan_id: PLAN-712
-status: archived               # drafting → executing → execution_done → reviewed → archived
+status: executing             # r2 收纳复开（archived → executing，用户预授权收纳通道）；终态待再 merge
 feature_name: VM 桌面验收缺陷收敛（视频引擎双缺陷 + 壳配置持久化 + examples 依赖）
 author: [zcode(auto-os 会话转介)]
 created_at: 2026-09-30
 updated_at: 2026-09-30
+plan_revision: 2
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -28,6 +29,8 @@ VM 虚拟桌面实机验收（auto-os 侧 2026-09-30 会话）暴露的 auto-lan
 - **D. examples 生成产物依赖失效**：`rust-workspace` 系 Cargo.toml 引用已退役 feature `ui-gpui`，`examples/ui/030-video-player` 无法独立 `auto run -r vm`，挡住 A/B 的独立窗验证载体。
 
 本计划同时是**桌面 VM 验收缺陷的收纳载体**：后续其他桌面 app 的 auto-lang 侧问题经 plan_revision 增补任务/AC 归入本计划（见 §10）。
+
+**r2 收纳（2026-09-30）**：VM 本地视频播放缺失——030 的 `.LocalPick` VM 分支仍走 PLAN-681 前的过时降级文案（「后端无文件选择能力」），而 `dialog_open`（natives 2927）与 mpv 本地路径契约（contract「本地路径与 http(s) URL 都接受」）均已就绪；修复 = 纯 app 层接线（player_store.at VM 分支 → dialog_open → LocalPicked 同一换片语义），引擎零改动。
 
 ## 1. 目标
 
@@ -106,6 +109,7 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
 | SD-01 | modify | `docs/specs/auto-lang/ui/overview.md`（媒体元素节） | before：`ontimeupdate`/`onloadedmetadata` 仅 Web 端承诺；after：双端承诺，VM 端经渲染路径事件泵分发、0.25s 节流口径不变 | 上行分发面缺失属平台契约缺口，必须成文 | AC-01, AC-02 |
 | SD-02 | modify | `docs/specs/auto-lang/ui/overview.md`（媒体元素节） | before：上屏色彩未规定；after：sRGB 编码配对规则（纹理/目标格式组合矩阵）+ mpv 色彩协商口径 + 双端像素对照验收阈值 | 「可选 + 可降级」同款——色彩行为必须成文否则被误当默认能力 | AC-03 |
 | SD-03 | modify | `docs/specs/auto-lang/ui/overview.md`（desktop_config 持久化面） | before：PLAN-044 锁+字段级合并（首写例外整份）；after：load 即快照，合并无首写例外（仅文件缺席首写保留整份） | E-7 实证首写例外即冲回通道 | AC-04 |
+| SD-05 | modify | `docs/specs/auto-lang/ui/overview.md`（媒体元素节，随再 merge 沉淀） | before：VM 端本地文件选择无契约（app 侧降级文案「仅 Web 端」）；after：VM 端本地播放 = dialog_open（PLAN-681 内建）→ 本地路径直入 mpv 契约，与 Web object URL 同级承诺 | r2 收纳：能力面已齐但 app 未接线，契约须成文 | AC-07 |
 | SD-04 | add（视 DP-4） | `docs/specs/auto-lang/ui/overview.md`（examples 生成产物 feature 面）或生成器 spec | before/after 工作期按 DP-4 定 | 生成产物 feature 失效属工具链契约缺口 | AC-05 |
 
 ## 6. 测试设计
@@ -125,6 +129,7 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
 - **AC-04**：config.at 手编字段在运行实例 save 后存活：单测 `save_after_external_edit_preserves_fields` 绿 + 实机复演（改壁纸 → 关实例 → 重开 → 值保持）。
 - **AC-05**：`cd examples/ui/030-video-player && auto run -r vm` 启动出窗可播。验证：命令实跑。
 - **AC-06**：日常档 `cargo t` 与 master 基线全等（无新增红）。验证：日常档跑批记录。
+- **AC-07**（r2）：VM 端（独立窗 + 桌面内）点「打开本地视频文件」→ 原生对话框选本地视频 → 直接播放（时长/进度回灌正常）；取消对话框静默返回。验证：实机走查 + 截图。
 
 ## 8. 执行步骤
 
@@ -150,10 +155,13 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
     - **死因注记（未定谳，预算外）**：MCP `press` 打 progress 元素后 wgpu `Reading from a BufferViewMut` 告警洪泛，随后 VM 解释器 `ok=true` 优雅退出（非 panic 非崩溃）；与本项目改动面的因果未定谳——复现路径=030 VM 窗 + MCP press progress 元素。已登记 §10。
     - **桌面腿（auto-os ui_desktop 内嵌 video）未走查**：需 auto-os 侧环境接线（AUTO_LANG_ROOT 指向本 worktree 或 fold 后走查）。
 - **T-08**：日常档回归同基线（AC-06）。依赖：T-03..T-06。
+- **T-09**（r2 收纳）：030 `player_store.at` `.LocalPick` VM 分支接 `dialog_open` + `file_basename` → `LocalPicked` 同一换片语义。文件：`examples/ui/030-video-player/src/front/player_store.at`。验证：AC-07 实机。→ AC-07。
   - [x] **已完成**（2026-09-30，**用户裁定收口：全量测试不跑**——当前全量档本身有问题）：fail-fast 跑批 1440/5747：1438 绿 + 2 红 `musk_vm_track_p053_1_widget_computed`（computed 透传解出 0 行）——**master 基线同测实跑复证同样 2 红 ⇒ 预存红，非本计划引入**，AC-06 口径（无新增红）满足。作用域绿面：desktop_config 20/20、video_uplink 3/3、video_contract 4/4、mpv_channel 像素归一双臂绿、`cargo check --features mpv-widget` 干净。`state_file::lock_serializes_critical_sections` 并跑红/隔离绿（flock 争用型 flaky，另案在档）。[✅ 已完成]
 
 ## 9. 复审记录
 
+- 2026-09-30 **r2 收纳复开**（archived → executing；用户预授权收纳通道）：新增 SD-05/T-09/AC-07（VM 本地播放接线，纯 app 层，引擎零改动）。实施随修订即落（T-09 体量 = 单 handler 分支）；AC-07 实机取证后随再 merge 回终态。
+- 2026-09-30 **r2 验证期新发现（下一笔收纳候选 T-10）**：712 二进制下播放器头部动作按钮（主题切换 + 队列开关）在 VM 双轨（独立窗 + 桌面内嵌）均不渲染/不可达——712 前实机截图在案有按钮（用户首报截图），712 后 hover 探针无高亮；队列面板因此不可达，T-09 的 UI 路径被该回归挡住。嫌疑面 = 712 渲染器改动（video_uplink wrapper / 契约类型）对非 video 节点布局/icon 的影响，待 lang 侧定位。注：键盘快捷键缺失（pac「全套键盘快捷键」未实现）为同屏发现的语料债。
 - 2026-09-30 stage:new 起草（drafting）。`outcome: pass`——四项初始范围已按实证落档，DP-1..4 为工作期决策点（均含决策工件要求）。`next: work`（执行前按范式开 `.wt/lang-712` 组 worktree）。
 - 2026-09-30 stage:work | plan_id PLAN-712 | plan_revision r1（起草态即执行，无修订）| outcome: pass（T-01..T-06 完成，代码面验证全绿；T-07/T-08 进行中）| code_commit: worktree `plan-712-dev`（见提交）| task_ids: T-01,T-02,T-03,T-04,T-05,T-06 | evidence:
   - T-01/T-02 探针定谳 + T-03/T-04 实现 = worktree 提交（evidence/712/{dp2,dp3} 两档 + mpv_engine/mpv_channel/video_contract/video_uplink 四测面全绿）。

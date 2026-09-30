@@ -413,12 +413,21 @@ store PlayerStore {
         // ---- 本地文件（T-09）----
         // ready 事件由 file_picker.vue 挂载时发来；VM 端组件不渲染，
         // local_pick_ready 恒 false → 走诚实降级分支，不做假动作。
+        // PLAN-712 r2（收纳：VM 本地播放）：VM 分支改走 PLAN-681 原生文件
+        // 对话框（dialog_open，natives 2927；041-auto-edit 同款）——「后端无
+        // 文件选择能力」自该交付起已不成立。mpv 契约接受本地路径（contract
+        // 「本地路径与 http(s) URL 都接受」），选中即走 LocalPicked 同一
+        // 换片语义；取消（""）静默不打扰。对话框为模态阻塞形态（PLAN-681
+        // §9 F1 边界在案：父窗绑定 v1 不做）。
         .LocalPick -> {
             if .local_pick_ready {
                 .pick_seq = .pick_seq + 1
                 .status_text = "请在文件对话框中选择视频…"
             } else {
-                .status_text = "本地文件浏览仅 Web 端可用：当前后端无文件选择能力"
+                var p str = dialog_open("mp4, mkv, webm, mov, avi, m4v")
+                if p != "" {
+                    PlayerStore.LocalPicked(p, file_basename(p))
+                }
             }
         }
 
