@@ -213,6 +213,8 @@ pub struct VmBridge {
     /// 第二个 A 携带新代际号（708 设计 §4）。
     init_generation: std::cell::Cell<u64>,
 
+
+
     /// PLAN-702 T-04: `__busy_handlers` 镜像的已写字集——parked 键集无变化
     /// 时跳过堆列表重铸（每 tick 调 sync_busy_flag，稳态零写）。
     busy_flag_names: std::cell::RefCell<Vec<String>>,
