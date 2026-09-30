@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-714
-status: executing             # r4 收纳复开（archived → executing，用户指令「(a) 714 r4 收纳」通道——712 r2/r2/r3 同款）；终态待再 merge
+status: archived              # r4 收口再归档（2026-09-30 r4 merge 收据——executing → archived 终态）
 completion_kind: delivered    # r1 勘定件+r2 供① 残余解锁（Try 臂）+r3 route-A 深修——三阶段全 delivered
 feature_name: tree-sitter 首批勘定件（auto-edit M4 供料包供④ 前半——语言集定界/管线选型+烟测/syntect 共存策略/增量高亮管线要点+实施件契约草案）
 author: [agent]
 created_at: 2026-09-30T16:15:39+08:00
-updated_at: 2026-09-30T23:25:00+08:00
+updated_at: 2026-09-30T23:55:00+08:00
 plan_revision: 4
 current_step: 19
 total_steps: 19
@@ -637,6 +637,72 @@ census 判定集增**第④行：fresh a2r exe 装载标记对 E2E**（AUTO_OPEN
   `blockers`: 无（供料档 §7 清偿；PLAN-021 残余面 open/warm 两行 L2
   正式判定+对比表转正归其收口轮——判据面已备实测已绿）。
   `next: review`。
+
+- 2026-09-30 r4 review handoff：`stage: review`，PLAN-714，plan_revision 4。
+  `outcome: pass`。`reviewed_commit`: plan-714-dev 489b0a364（=ba4380152
+  修复+16fae8922 census+489b0a364 复审 fmt 微整；rebase 后 form；
+  worktree 净 0 dirty+wt-guard clean）；`base_commit`: master@d7a2ddc14
+  （r4 收纳；执行窗内 master 并行前进 1b21c3be4[本案簿记]/6aa9a2142
+  [712 T-16 renderer 1 行+plan 1 行——与本案 3 交付文件零交叠，
+  range-diff 基线含入实证]）。`dependency_revisions`: auto-edit
+  edit-021@3e01e2a（下游复验位）/auto-down detached@3373a5c（组兄弟树
+  重建——path 依赖解析面）。
+  `acceptance_results`: AC-R4-1 pass（定谳在档 census §7 r4 段
+  @16fae8922；修复后 fresh regen 生成物
+  `View::code_editor(t["key"].as_str()...)` 在位+④行探针双标记达成+
+  注册表层门反转 E2E 单测绿=注册键≡storage_key(t.key)≡store 查找键；
+  VM/a2r 双轨对拍=VM 轨 vm_init→ws_loaded→open_start→open_done 全序
+  绿[r4-open-probe-vm.log，钉版 2389 工具链]+tu 档零新增红）；
+  AC-R4-2 pass（bench open --l2 N=4 谱 median 863.2ms+513MB/1GB 双
+  拒绝探针形+bench warm --l2 20tab 恢复链 active 装载完成
+  [restore≈18.4ms/load≈1124ms]+smoke_gen 三域 7/7——r3 轮 4/7 三 FAIL
+  全转绿；三 JSONL 收据在案）；AC-R4-3 pass（census §7 ④行在档
+  @16fae8922+P714-4 投影回读 True@2a2b14e1c）。
+  `findings`: F-1（低，已修）新代码 match 臂 rustfmt 单行形——489b0a364
+  收敛（region 内预存 hunk[lang/bool_prop 原始行]不动，登记文件级
+  rustfmt 欠账=既有态非本案引入）；F-2（低，登记债）handler 侧
+  payload 读键（code_editor_sources）仍登记字面量/回落名——handler 无
+  循环变量作用域，per-tab `code_editor_text` 读键解析属后续件
+  （census §7 r4 段+生成器注释双落位）；F-3（低，注记）019 surface
+  open 38.2ms 行与 007-era blocked 记录冲突、产物已随 edit-019 清理
+  不可复验——判测量通道异常记录，不入判定集（对照②承重面改写已在
+  census 定谳段成文）。`evidence`: 复审独立声明（实施会话内复审——
+  判定从工件重建）：plan714 全族 11/11 复跑绿[含 r2/r3 先例七测]+四枚
+  r4 新测+单进程 tu 4/4 root_resolution 复绿[flake 反证]+fmt region
+  断言+裸 cargo t no-fail-fast 全档 4901/4915=14 红与 712 r2 收据
+  master 既有集完全一致（零新增归因红）。`next: merge`。
+
+- 2026-09-30 r4 merge 收据：`stage: merge`，PLAN-714:r4，
+  `completion_kind: delivered`（四阶段累计）。**prepared**：reviewed
+  基线 489b0a364（pass，AC-R4-1/2/3 复放全绿）；canonical delta=无新增
+  申报（r4 知识落位=census §7 r4 段+账本 P714-4+单测四枚——canonical
+  SD 册零扰动）；projection=specs.json reviews 段新项 P714-4。
+  **landed**：rebase master 后 range-diff 三 `=`（e93a717da→ba4380152、
+  d143932f2→16fae8922、9c55b0969→489b0a364 补丁全等证明）；ff-only
+  合并零合并提交，master tip=delivery 489b0a364 实证（3 文件 240 行：
+  ui_gen/rust.rs+plan710_supply_probes.rs+p710-census.md）。
+  **ledger_refreshed**：reviews 段 P714-4 外科插入（双向 roundtrip
+  守卫：committed 形 indent1+LF[head blob dabb732fc184101e 先证 1:1]
+  +worktree 形 indent2+CRLF 同步插入 reviews 182→183 且 P712-1 在途
+  WIP 字节保全不裹挟提交；他五段零扰动回读断言全过）@ 2a2b14e1c；
+  INDEX 再生 no-op 复核（内容零 diff，CRLF 噪声复位）。
+  **archived**：本件自 r1 起居 archive/（r2/r3/r4 收纳原位复开先例）
+  ——frontmatter status: archived+completion_kind: delivered（本节
+  收据）。批量回归到期判定=**到期维持**（.last-batch-regression.json
+  last_covered=712@7fcf913eb；715%5=0 晚于 last_covered 已移交
+  regress 在案[db2b71912]；本件 714%5=4 非触发——到期面归
+  /auto-plan:regress 主检出单实例执行，不在本档内跑）。
+  **部署观察**：本件改 a2r 生成器（ui_gen/rust.rs）——主检出工具链
+  debug/release 二进制相对本件落地为陈旧态（本轮下游复验用 worktree
+  钉版 v2389 debug 工具链完成）；主检出二进制随下轮 auto-lang 构建
+  周期或 021 会话钉版重建。edit-021 worktree 的 rust-workspace/
+  release 产物=本轮复验态（2389 工具链+489b0a364 前身 e93a717da 生成
+  ——rebase 三 `=` 补丁全等，产物语义等价），021 收口轮可复用或按其
+  纪律重钉。**cleaned**：移除前 fresh 复核双净——worktree 0 dirty+
+  HEAD=489b0a364（全部落库）+wt-guard clean（零 reparse point）；
+  worktree 注销+分支删除（was 489b0a364）+auto-down detached 兄弟自
+  彼仓注销（3373a5c 未动）+组目录 rmdir；两仓 worktree list 零 714
+  残留复核在案。五检查点全落 delivered。
 ## 10. 待澄清事项
 
 - **Q-1 语言集预裁定（可选）**：默认 T-01 按下游现实+战略「常见
