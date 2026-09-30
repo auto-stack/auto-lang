@@ -22078,6 +22078,16 @@ fn compare_pngs(
                 // 订阅，防 listen_raw 自我续帧；无任务不跑周期泵）。消费臂
                 // 运行有界泵（8ms 轮次预算，非全量 drain）。
                 if app.component.has_pending_init_work() || app.component.has_cpu_continuations() {
+                    if std::env::var("AUTO_SCHED_DIAG").ok().as_deref() == Some("1") {
+                        let t0 = crate::ui::dynamic::sched_diag_t0();
+                        eprintln!(
+                            "[SCHED-DIAG] frame_pump sub ON t={}ms app={:?} init_work={} cpu={}",
+                            t0.elapsed().as_millis(),
+                            app_id,
+                            app.component.has_pending_init_work(),
+                            app.component.has_cpu_continuations(),
+                        );
+                    }
                     subs.push(frame_pump_sub(app_id));
                 }
                 // F12 DevTools + key bindings（per-App bindings + 本窗过滤）。

@@ -2122,6 +2122,17 @@ impl VmBridge {
                 state_obj_id,
                 generation: self.init_generation.get(),
             });
+        if std::env::var("AUTO_SCHED_DIAG").ok().as_deref() == Some("1") {
+            let t0 = crate::ui::dynamic::sched_diag_t0();
+            eprintln!(
+                "[SCHED-DIAG] init_demand registered widget={} identity={} gen={} queue={} t={}ms",
+                widget_name,
+                identity,
+                self.init_generation.get(),
+                self.init_demand_queue.borrow().len(),
+                t0.elapsed().as_millis(),
+            );
+        }
         InitDemandDecision::Queued
     }
 
