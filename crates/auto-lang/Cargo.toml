@@ -70,7 +70,22 @@ code-editor = ["ui", "dep:cosmic-text", "dep:syntect", "dep:two-face"]
 # PLAN-716 组A (714 契约 T-1): tree-sitter 双轨高亮 runtime。feature 关=零语义
 # （syntect 基线逐字节等价——ts 代码面全量 cfg 门控）；开启后按 lang 路由表
 # 分流（tail 语言仍走 syntect，路由纪律见 core/treesitter.rs）。
-highlight-treesitter = ["code-editor", "dep:tree-sitter", "dep:tree-sitter-highlight"]
+highlight-treesitter = [
+    "code-editor",
+    "dep:tree-sitter",
+    "dep:tree-sitter-highlight",
+    # P0 10 语言（T-02）
+    "dep:tree-sitter-rust",
+    "dep:tree-sitter-python",
+    "dep:tree-sitter-javascript",
+    "dep:tree-sitter-typescript",
+    "dep:tree-sitter-json",
+    "dep:tree-sitter-toml-ng",
+    "dep:tree-sitter-yaml",
+    "dep:tree-sitter-md",
+    "dep:tree-sitter-bash",
+    "dep:tree-sitter-c",
+]
 # Plan 418: OS clipboard natives (arboard) + native file dialogs (rfd).
 # Both mount under ui-iced; each can also be enabled standalone.
 ui-clipboard = ["dep:arboard"]
@@ -263,6 +278,17 @@ two-face = { version = "0.4", optional = true }
 # 0.23-0.26 grammar 混搭零障碍）。grammar 子 crate 随语言批次在 T-02+ 续挂。
 tree-sitter = { version = "0.27", optional = true }
 tree-sitter-highlight = { version = "0.27", optional = true }
+# P0 10 语言（714 §2.2 表，crates.io 实勘 2026-09-30；T-02 批）。
+tree-sitter-rust = { version = "0.24", optional = true }
+tree-sitter-python = { version = "0.25", optional = true }
+tree-sitter-javascript = { version = "0.25", optional = true }
+tree-sitter-typescript = { version = "0.23", optional = true }
+tree-sitter-json = { version = "0.24", optional = true }
+tree-sitter-toml-ng = { version = "0.7", optional = true }
+tree-sitter-yaml = { version = "0.7", optional = true }
+tree-sitter-md = { version = "0.5", optional = true }
+tree-sitter-bash = { version = "0.25", optional = true }
+tree-sitter-c = { version = "0.24", optional = true }
 notify = { workspace = true }
 ureq = { version = "2", features = ["json"], optional = true }
 # Plan 299: Streamable HTTP transport for AutoUI MCP server.

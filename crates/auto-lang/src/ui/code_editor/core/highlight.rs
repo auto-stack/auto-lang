@@ -311,6 +311,24 @@ pub fn highlight_segments(
     {
         return segs;
     }
+    highlight_segments_syntect(lang, text, dark, accent)
+}
+
+/// syntect 双轨基线内核（PLAN-716 组A 折出——双轨类别级对照测试与 ts 回落
+/// 共用同一路径；语义与折出前逐字节等价）。
+pub(crate) fn highlight_segments_syntect(
+    lang: &str,
+    text: &str,
+    dark: bool,
+    accent: &str,
+) -> Vec<(String, Option<(u8, u8, u8)>)> {
+    use syntect::easy::HighlightLines;
+    use syntect::util::LinesWithEndings;
+
+    let fallback = || vec![(text.to_string(), None)];
+    let Some(ext) = lang_to_extension(lang) else {
+        return fallback();
+    };
     let system = syntax_system();
     let theme_id = crate::ui::style::theme::theme_name();
     let Some(theme) = system.theme_set.themes.get(&theme_name(&theme_id, dark, accent)) else {
