@@ -6369,7 +6369,7 @@ impl Codegen {
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
                         } else if self.known_module_prefixes.contains(&name_str)
-                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "sys" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage" | "dom" | "location" | "image" | "bus")
+                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "sys" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage" | "dom" | "location" | "image" | "bus" | "frame")
                         {
                             // Module prefix from module-level import or built-in stdlib module
                             self.emit(OpCode::CONST_I32);
@@ -8651,6 +8651,10 @@ impl Codegen {
                             ("time", "now_sec") => Some("auto.time.now_sec".to_string()),
                             ("time", "sleep_ms") => Some("auto.time.sleep_ms".to_string()),
                             ("time", "now") => Some("auto.time.now".to_string()),
+                            // PLAN-716 组B: 帧时间戳观测（供②——9918/9919 固定
+                            // 位；stdlib/auto/frame.vm.at 编译器签名面）。
+                            ("frame", "begin_ms") => Some("auto.frame.begin_ms".to_string()),
+                            ("frame", "present_ms") => Some("auto.frame.present_ms".to_string()),
                             // Plan 442 A5: one-shot scheduler primitives
                             // (set_timeout/clear_timeout; callback = closure or
                             // event-name string, fires on the render tick).

@@ -10482,6 +10482,14 @@ impl RustGenerator {
                 a0 = arg(0)?,
                 a1 = arg(1)?
             )),
+            // PLAN-716 组B: 帧时间戳观测（供②——直调纪律，实现体单源
+            // ui::frame_bench；AUTO_FRAME_BENCH 门控在通道层）。
+            "frame_begin_ms" => Some(
+                "auto_lang::ui::frame_bench::frame_begin_ms()".to_string(),
+            ),
+            "frame_present_ms" => Some(
+                "auto_lang::ui::frame_bench::frame_present_ms()".to_string(),
+            ),
             "code_editor_fold_toggle" => Some(format!(
                 "auto_lang::ui::code_editor::code_editor_with(&({a0}), |core| core.fold_toggle(({a1}).max(1) as usize - 1)).unwrap_or(false)",
                 a0 = arg(0)?,

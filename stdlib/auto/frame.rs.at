@@ -1,0 +1,15 @@
+/// Rust implementation of Frame timestamp observation
+/// Single source: crates/auto-lang/src/ui/frame_bench.rs (VM shim 9918/9919
+/// 与 a2r 臂同源读——SD-B 双轨同源契约)
+
+/// Frame-begin timestamp (monotonic ms; 0 = not captured)
+#[rs]
+pub fn begin_ms() i64 {
+    return auto_lang::ui::frame_bench::frame_begin_ms()
+}
+
+/// Frame-present timestamp (monotonic ms; 0 = not captured)
+#[rs]
+pub fn present_ms() i64 {
+    return auto_lang::ui::frame_bench::frame_present_ms()
+}

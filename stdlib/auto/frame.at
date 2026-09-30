@@ -1,0 +1,15 @@
+/// Frame module - 帧时间戳观测（PLAN-716 组B，M4 供②——type_latency/
+/// scroll_fps 测量解锁 + steady_start 首帧段分解）
+///
+/// AUTO_FRAME_BENCH=1 门控（AUTO_BENCH 纪律族）：门关=捕获关闭，读回 0；
+/// 门开=单调毫秒时间戳。时间源=进程起点起算的 Instant。
+/// 呈现完成=711 帧泵（RedrawRequested）消息消费时刻——R-1 序障下
+/// ≥ present 返回（合法代理，硬屏障需 fork iced_winit——禁）。
+
+/// Get the frame-begin timestamp (monotonic ms; 0 = not captured)
+/// Example: let b = begin_ms()
+pub fn begin_ms() i64;
+
+/// Get the frame-present timestamp (monotonic ms; 0 = not captured)
+/// Example: let p = present_ms()
+pub fn present_ms() i64;

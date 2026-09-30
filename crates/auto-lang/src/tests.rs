@@ -5,6 +5,8 @@ mod a2c_tests;
 mod plan701_supply_probes;
 mod plan703_supply_probes;
 mod plan710_supply_probes;
+// PLAN-716 供料包: 组B 帧时间戳通道（VM/a2r 双轨+门控+开销两态）+组C 窗口投影
+mod plan716_supply_probes;
 // KNOWN-DEBT 396 rider (Plan 415-B1): stdlib .rs.at ↔ a2r-std signature parity
 mod a2r_std_signature_parity;
 #[cfg(feature = "test-trans")]

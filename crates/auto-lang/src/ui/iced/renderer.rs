@@ -16979,6 +16979,10 @@ fn compare_pngs(
                         app_id: crate::ui::session::AppId,
                         msg: IcedMessage|
          -> iced::Task<IcedMessage> {
+        // PLAN-716 组B（供②）: 帧开始时间戳=update 入口到达时刻。门控
+        // AUTO_FRAME_BENCH——未设零开销（OnceLock 布尔读+分支），不染
+        // 调度语义（712 r2 帧泵域边界）。
+        crate::ui::frame_bench::note_frame_begin();
         // T4c：拆借视图承接旧 DynamicState 平铺命名（施工图 §2 路线甲）。
         // Plan 459：按消息归属 App 拆借（窗口级字段随该 App 的窗口条目）；
         // 缺 App/窗口仅在会话被外部破坏时发生，空转返回。
@@ -17608,6 +17612,9 @@ fn compare_pngs(
         // ：18457 同款模式）——完成帧即重建，不等 Element 缓存 take 空
         // 后的 fall-through 帧。
         if msg.event == "__frame_pump" {
+            // PLAN-716 组B（供②）: 呈现完成时间戳=帧泵消息消费时刻（711
+            // D-1 序障：消费时本帧 present 已同步返回——合法代理）。
+            crate::ui::frame_bench::note_frame_present();
             state.component.poll_frame_pump();
             if state.component.is_dirty() {
                 *state.app.view_dirty.borrow_mut() = true;

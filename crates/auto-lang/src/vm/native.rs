@@ -879,6 +879,22 @@ pub fn shim_diff_dirs(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
+/// `auto.frame.begin_ms() -> i64` — 帧开始时间戳（单调毫秒；PLAN-716 组B
+/// 供②观测通道，AUTO_FRAME_BENCH 门控；未捕获=0）。
+pub fn shim_frame_begin_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = vm;
+    vm.push_i64_vm(task, crate::ui::frame_bench::frame_begin_ms());
+    Ok(())
+}
+
+/// `auto.frame.present_ms() -> i64` — 呈现完成时间戳（711 帧泵消费时刻，
+/// R-1 序障≥present；单调毫秒；未捕获=0）。
+pub fn shim_frame_present_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = vm;
+    vm.push_i64_vm(task, crate::ui::frame_bench::frame_present_ms());
+    Ok(())
+}
+
 #[cfg(not(feature = "code-editor"))]
 pub fn shim_diff_dirs(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let _ = vm;

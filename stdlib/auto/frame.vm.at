@@ -1,0 +1,11 @@
+/// VM function declarations for Frame timestamp observation
+/// Implemented in crates/auto-lang/src/ui/frame_bench.rs (9918/9919 固定位，
+/// NATIVE_ID_ENTRIES 钉扎——register_vm_declarations 按 MAP 取固定 ID)
+
+/// Frame-begin timestamp (monotonic ms; 0 = not captured)
+#[vm]
+fn begin_ms() i64
+
+/// Frame-present timestamp (monotonic ms; 0 = not captured)
+#[vm]
+fn present_ms() i64

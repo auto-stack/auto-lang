@@ -1104,6 +1104,24 @@ pub mod re {
 }
 
 // =============================================================================
+// Frame module for a2r transpiler（PLAN-716 组B——供②帧时间戳观测通道，
+// VM native 9918/9919 同源；AUTO_FRAME_BENCH 门控在通道层，双轨同源读）
+// =============================================================================
+
+/// AutoLang's frame module — 帧时间戳只读观测（单调毫秒；未捕获=0）。
+pub mod frame {
+    /// 帧开始时间戳（桌面 update 入口到达时刻）。
+    pub fn begin_ms() -> i64 {
+        crate::ui::frame_bench::frame_begin_ms()
+    }
+
+    /// 呈现完成时间戳（711 帧泵消费时刻，≥ present 返回）。
+    pub fn present_ms() -> i64 {
+        crate::ui::frame_bench::frame_present_ms()
+    }
+}
+
+// =============================================================================
 // Diff module for a2r transpiler（PLAN-714 r3 R3-T1——703 imara 引擎包络，
 // VM native 9915/9916/9917 同源；code-editor 门双轨——feature 关=panic
 // 同 shim fallback 形[native.rs 非门控段同文案]）

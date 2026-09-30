@@ -58,6 +58,10 @@ macro_rules! for_each_native {
             (9915, NATIVE_DIFF_FILES, shim_diff_files, "auto.diff_files"),
             (9916, NATIVE_DIFF_SNAPSHOTS, shim_diff_snapshots, "auto.diff_snapshots"),
             (9917, NATIVE_DIFF_DIRS, shim_diff_dirs, "auto.diff_dirs"),
+            // === PLAN-716 组B: 帧时间戳观测通道（供②——AUTO_FRAME_BENCH
+            // 门控零开销；701 time 族只读内建先例；9918/9919 空闲位实勘）===
+            (9918, NATIVE_FRAME_BEGIN_MS, shim_frame_begin_ms, "auto.frame.begin_ms"),
+            (9919, NATIVE_FRAME_PRESENT_MS, shim_frame_present_ms, "auto.frame.present_ms"),
             // === Plan 413 follow-up: console natives (in-app Console panel) ===
             (2916, NATIVE_CONSOLE_LOG, shim_console_log, "auto.console.log"),
             (2917, NATIVE_CONSOLE_LINES, shim_console_lines, "auto.console.lines"),
@@ -847,6 +851,9 @@ macro_rules! for_each_bigvm_native {
             ("auto.diff_files", 9915, String),
             ("auto.diff_snapshots", 9916, String),
             ("auto.diff_dirs", 9917, String),
+            // PLAN-716 组B: 帧时间戳（701 time 族 I64 形）。
+            ("auto.frame.begin_ms", 9918, I64),
+            ("auto.frame.present_ms", 9919, I64),
             // === Plan 413 follow-up: console natives (in-app Console panel) ===
             ("auto.console.log", 2916, Bool),
             ("auto.console.lines", 2917, String),
@@ -1986,6 +1993,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.code_editor.delta", 2939),
     ("auto.code_editor.edit", 9906),
     ("auto.code_editor.load_file", 9908),
+    // PLAN-716 组B: 帧时间戳观测（9918/9919 空闲位）。
+    ("auto.frame.begin_ms", 9918),
+    ("auto.frame.present_ms", 9919),
     // Plan 555 T06: 分发组合子（interop.* 限定名 + 裸名别名——裸名
     // resolve_qualified 经 NATIVE_ID_MAP 惰性注册命中）。
     ("interop.obj_get", 1860),
