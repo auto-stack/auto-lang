@@ -403,7 +403,7 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 - checkpoint 链：`prepared`（SD-02→ui ADR-19 重写+ADR-24 PLAN-711 扩展；SD-04→vm ADR-23 PLAN-711 扩展；SD-05→canonical 设计组件 §1.5 已交付面+§2 目标态收窄 worker 边界）→ `landed`（master tip == a6dc2bbab；rebase 态认证 check 零错+plan711 14/14）→ `ledger_refreshed`（P708-1 同 canonical 目标复用更新 S+M 档交付面；P711-2 复审收据追加；ui/plans.md 711 行；INDEX 再生；read-back 断言 P708-1/2 零扰动；specs.json 写入器规范化全文重排语义等价）→ `archived`（本文件，git mv+status archived）→ `cleaned`（见下）。
 - 副作用事故与修正：merge 期 `git add -A` 误吞主检出他两会话 60+ 未跟踪残留（.tmp-vm-* 走查件/website 资产/docs/reports 页图）——soft reset 逐名 unstage 后仅计划文件重提交，残留恢复未跟踪原状零丢失。
 - tf 到期判定：711%5=1 非整除；`.last-batch-regression.json` 在档与否+48h 判定归 `/auto-plan:regress`（本次收据登记判定态，batch 本体未跑）。
-- `cleaned`：wt-guard 双 clean（lang-711 主 worktree + auto-down 兄弟）→ worktree/分支移除 → 组目录 rmdir → worktree list 零登记（收据回填见下）。
+- `cleaned`：**已验**——wt-guard 三 clean（lang-711 主 worktree + auto-down 兄弟 + tmp-711-probe 诊断 worktree）后全部移除；plan-711-dev 分支删 @a6dc2bbab 全合并；孤儿 app-013-todo-back.exe（探针 back 子进程，terminate 未及子进程）清杀后组目录 rmdir 净；worktree list/磁盘双重零登记（tmp-711-probe 首轮清场验证疏漏——guard 过但 remove 未执行——本轮补齐并记录）。
 - 生产面观测（landing ≠ deployment）：主检出 release `auto.exe` 未随本次重建（worktree 探针二进制为同源代码构建）；消费方下次构建自然刷新——显式登记。
 
 ### 2026-09-30 终审（review，实现会话自审——独立性受限声明）
