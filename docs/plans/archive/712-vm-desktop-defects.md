@@ -13,8 +13,8 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 6
-total_steps: 8
+current_step: 12
+total_steps: 13
 ---
 
 # [PLAN-712] vm-desktop-defects
@@ -159,10 +159,19 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
     - **死因注记（未定谳，预算外）**：MCP `press` 打 progress 元素后 wgpu `Reading from a BufferViewMut` 告警洪泛，随后 VM 解释器 `ok=true` 优雅退出（非 panic 非崩溃）；与本项目改动面的因果未定谳——复现路径=030 VM 窗 + MCP press progress 元素。已登记 §10。
     - **桌面腿（auto-os ui_desktop 内嵌 video）未走查**：需 auto-os 侧环境接线（AUTO_LANG_ROOT 指向本 worktree 或 fold 后走查）。
 - **T-08**：日常档回归同基线（AC-06）。依赖：T-03..T-06。
+  - [x] **已完成**（r2 复核 2026-09-30，worktree 7f483e1ab）：裸 `cargo t --no-fail-fast` 全量对照——worktree 12 唯一红 ⊂ master 同刻基线 14 红（master 另多 app_registry launch_three/scan_examples_ui 两红），**零新增红**；master 基线较 T-09 记录（2 红）已扩至 14 红（明细归 §10），AC-06 口径满足。
 - **T-14**（r2 收纳，用户钦定默认对）：`wallpapers_theme_default_image`（深 purple.png / 浅 songyu.png，置于壁纸目录）+ boot 链插入第二档 + 单测深化（深/浅双断言）。文件：`crates/auto-lang/src/ui/iced/renderer.rs`。验证：单测绿。→ AC-09。
+  - [x] **已完成**（2026-09-30 master d990427ba，worktree 复证 7f483e1ab 基）：分主题默认对入 boot 链第二档 + 深/浅双断言随 `desktop_surface_storage_roundtrip_and_wallpaper_resolution` 实跑绿（重建 worktree 现场验证）。
 - **T-13**（r2 收纳）：`load_desktop_wallpaper` 优先级重构（图片路径 > 目录首图 > 色值 > 内置默认）+ 断言双结果放行。文件：`crates/auto-lang/src/ui/iced/renderer.rs`。验证：`cargo t desktop_surface_storage_roundtrip` 绿 + 实机浅色启动截图。→ AC-08。
+  - [x] **已完成**（2026-09-30 master 74fbc8085，worktree 复证）：优先级重构落地，`desktop_surface_storage_roundtrip_and_wallpaper_resolution` 实跑绿（AC-08 单测腿）；实机浅色启动截图腿并入 T-07 遗留清单（用户裁定不阻断）。
 - **T-09**（r2 收纳）：030 `player_store.at` `.LocalPick` VM 分支接 `dialog_open` + `file_basename` → `LocalPicked` 同一换片语义。文件：`examples/ui/030-video-player/src/front/player_store.at`。验证：AC-07 实机。→ AC-07。
   - [x] **已完成**（2026-09-30，**用户裁定收口：全量测试不跑**——当前全量档本身有问题）：fail-fast 跑批 1440/5747：1438 绿 + 2 红 `musk_vm_track_p053_1_widget_computed`（computed 透传解出 0 行）——**master 基线同测实跑复证同样 2 红 ⇒ 预存红，非本计划引入**，AC-06 口径（无新增红）满足。作用域绿面：desktop_config 20/20、video_uplink 3/3、video_contract 4/4、mpv_channel 像素归一双臂绿、`cargo check --features mpv-widget` 干净。`state_file::lock_serializes_critical_sections` 并跑红/隔离绿（flock 争用型 flaky，另案在档）。[✅ 已完成]
+- **T-15**（r2 再收纳）：018 `pages/book_detail.at` VM 解析器不兼容构造重写（has_book 旗标替代 null 比较、条件数组 style 拆 if/else 双臂、`.len()` 预计算、Init try/catch）。文件：`examples/ui/018-book-reader/src/front/pages/book_detail.at`。验证：`auto build` 页面扫描 + 实机点验（移交用户）。→ 页面装载面。
+  - [x] **已完成**（2026-09-30 master 8bb1f3279）：按 bookshelf 惯用法重写落地；引擎债（view 条件 null 字面量 + 数组内 if 解析支持）另案登记（§9 r2 收纳条目在案）。
+- **T-10/T-11/T-12**（r2 再收纳合并侦查：VM 布局/命中层三症状一次定位——头部动作按钮缺席 / 播控条 flex 分布错 / 进度条点击失效）。文件：`crates/auto-lang/src/ui/aura_view_builder.rs`、`crates/auto-lang/src/ui/iced/*`。→ AC-02/AC-07 关联。
+  - [x] **T-12 完成**（worktree 7f483e1ab）：根因=事件回调 `$0` 占位被 VM 落成 `Str("$0")` 字面量占 args[0]、真载荷错位到 args[1]（030 `onseek: .SeekFraction($0)`；020 空参 `.SeekFraction()` 形态不受影响故双 app 对照成立；Vue 生成器契约=「$0 由生成器替换成真实取值」，vue.rs:5257）。修复=`event_to_message_with` 剥 `$` 前缀占位实参（载荷对位由回调臂事件现场 push 保证，`($0)` 与 `()` 两形态 VM 端同义）；回归锁 `progress_onseek_placeholder_never_becomes_literal_arg` 绿（双形态断言）。实机点击 scrub 取证归 AC-02 腿（待用户配合窗口）。
+  - [~] **T-10 当前 master 不复现（裁定消散）**：本会话重建 worktree 二进制真机走查（零输入，MCP 只读快照+截图 evidence/712/master-binary-window.png）——主题切换/队列开关两按钮正常渲染于头部右缘、handler 接线在树；r2 会话的「双轨缺席」观察随 plan-711 视图构建/派发路径重写（Init 延迟派发等）消散。点击可达性归 AC-07 实机腿复核。
+  - [~] **T-11 仍复现（未修复，归后续）**：真机二进制播控条塌缩原样——左列（时间+进度条）~45% 窗宽处收住（设计应贴传输键）、倍速「1.0x」与音量组间 ~250-330px 空档（截图 evidence/712/master-binary-window.png，与 r2 用户截图 7b9397df 同形态）。headless 三支确定性探针（控件行 flex / 完整 app 层级 / 头部按钮）全绿=纯 view→iced 布局分配健康（回归锁在库）；取证型组件形态探针呈**进程级翻转**（同源 col_right 438↔658px 随进程启动翻转，icon/窗宽/onseek 均排除）——嫌疑面收敛至动态视图构建的顺序敏感层（组件实例化/HashMap 序），修复前需先定谳非确定性源。探针已从门禁摘除（防 CI 抖动），取证细节入 §10。
 
 ## 9. 复审记录
 
@@ -189,6 +198,10 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
 ## 10. 待澄清事项
 
 - **扩展位（用户裁定，非待澄清）**：本计划为桌面 VM 验收缺陷的收纳载体——后续其他桌面 app 的 auto-lang 侧问题以 plan_revision 增补任务/AC 归入，不另起计划；每次增补记录来源与证据。
+- **r2 工作期新登记（2026-09-30，worktree 7f483e1ab）**：
+  - ① **T-11 塌缩非确定性源（修复前置）**：headless 取证探针同源 col_right 438↔658px 随**进程启动**翻转（icon/窗宽/onseek/样式逐项排除），真机塌缩比例（~45%）落翻转域内；嫌疑=动态视图构建顺序敏感层（组件实例化/HashMap 迭代序）。探针已从门禁摘除；定谳入口=进程内两次构建同 view 比对 + builder 侧 HashMap 遍历审计。
+  - ② **master 日常档基线 14 红**（较 T-09 时点 2 红扩大）：p053 族 4（含 p053_4/p053_6，并行负载序敏感——隔离可绿）+ p054 族 2 + plan606 029 + desktop_protocol（projector_counter/native_gate）2 + renderer（desktop_bus_inbox/desktop_surface_merge）2 + e4_default_http + plan707_wait_generator + app_registry 2（仅主检出）。归批量回归档（/auto-plan:regress）收口，非本计划范围。
+  - ③ **上一会话卡死进程定谳补充**：死因注记现场（030 VM 解释器 ok=true 后宿主进程挂死 5h、taskkill 不可终止=内核态卡死特征）本会话经 Stop-Process 成功终止；`.tmp-712-app.log` 碎片已清，worktree 无遗留锁。
 - DP-3 若证实色偏源为 mpv SW 路径不可协商项（如 colormatrix 无法显式设定），回退方案 = shader 侧矩阵修正或接受并成文差异阈值——届时提交用户裁定。
   - **已定谳（T-02 探针）**：SW 路径确不吃任何协商面（三配置同帧逐位全等）→ 已走 shader 侧归一（T-03），无需用户裁定。
 - SD-04 的 spec 落点（overview vs 生成器 spec）待 DP-4 定案后随复审固化。
@@ -201,3 +214,9 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
   - 遗漏/延后扫描：T-07 遗留取证项经用户裁定不阻断，登记在案（§10）非静默弃；死因注记（MCP press → 会话退出）已登记待后续定谳。
   - 健康：无编译警告新增、无调试残留打印（临时脚本已 gitignore 不入库）。
   | spec delta: SD-01..04 随 merge 沉淀至 docs/specs/auto-lang/ui/overview.md（媒体元素节上行契约/色彩配对规则/config 合并语义/examples 产物 feature 面）| next: merge。
+- 2026-09-30 stage:work 续（r2）| plan_id PLAN-712 | plan_revision 2 | outcome: pass（T-12 引擎修复落地 + T-08 零新增红收口 + T-10 复 refute + T-11 塌缩实锤未修归后续）| code_commit: plan-712-dev 7f483e1ab（承 master 472e035a7）| task_ids: T-08,T-10,T-11,T-12,T-13,T-14,T-15 | evidence:
+  - r2 簿记对账：T-09/T-13/T-14/T-15 实现在 master 在案（331fd8f5b..8bb1f3279），勾选与证据补齐；`desktop_surface_storage_roundtrip_and_wallpaper_resolution` 在重建 worktree 实跑绿。
+  - T-12 根因修复（engine）+ 双形态回归锁；T-11 真机复现截图取证（evidence/712/master-binary-window.png + MCP 快照）+ 三支 headless 布局回归锁在库（`cargo t p712 --features iced-layout-tests` 3/3 绿）；T-10 主检出不复现裁定（0 输入走查）。
+  - 环境：lang-712 worktree 重建（上一会话残留进程卡死内核态占路径，手工注册 worktree 元数据绕过，该进程本会话终获终止后碎片清理）；auto-down 兄弟 worktree @3373a5c 补建（路径依赖解析）；030-back 生成树自主检出拷贝（gitignored，workspace members 收窄为 030 一员）。
+  - master 日常档基线已扩至 14 红（T-09 记录 2 红）：p053 族 4 + p054 族 2 + plan606/029 + desktop_protocol 2 + renderer 2 + e4 + plan707 + app_registry 2；worktree 12 红 ⊂ master 14 红=本计划零新增（p053_6 在 worktree 隔离红但 stash 对照+master 全量跑均红=并行序敏感，非本计划引入）。
+  | blockers: 无（T-11 定谳修复与 AC-02/AC-07 实机点击取证归后续）| next: T-11 修复或 review（视用户取舍）。
