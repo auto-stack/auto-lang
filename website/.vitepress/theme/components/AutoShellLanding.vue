@@ -3,6 +3,7 @@ import { computed, nextTick, onUnmounted, ref } from 'vue'
 import FeatureCard from './FeatureCard.vue'
 import ShowcaseSection from './ShowcaseSection.vue'
 import EvidenceImage from './EvidenceImage.vue'
+import AutoShellPreview from './AutoShellPreview.vue'
 
 const props = withDefaults(defineProps<{ lang?: 'zh' | 'en' }>(), { lang: 'en' })
 const zh = computed(() => props.lang === 'zh')
@@ -19,7 +20,7 @@ const t = computed(() => zh.value ? {
   badge: 'AutoOS 应用 · Beta', title: '结构化 Shell',
   intro: '熟悉的日常命令，按字段处理的数据管道，还有可直接编辑运行的 Auto 脚本。交互式会话和 CLI 共用同一套执行引擎。',
   start: '开始使用', source: '查看源码', meta: 'ash v0.1.0 · Windows 实测 · 2026-09-29/30',
-  terminal: 'ash · 示例数据 users.json', zoom: '放大查看', close: '关闭', original: '打开原图', copy: '复制代码', copied: '已复制', copyFailed: '请选中代码复制',
+  zoom: '放大查看', close: '关闭', original: '打开原图', copy: '复制代码', copied: '已复制', copyFailed: '请选中代码复制',
   nav: ['界面与模式', '日常 Shell', '数据管道', '多行脚本', '自动化', '开始使用'],
   facts: [
     { icon: '⌨️', title: '持续的交互会话', description: '目录、变量和别名在会话中延续；补全、历史和行内建议帮助你少打字。' },
@@ -60,7 +61,7 @@ const t = computed(() => zh.value ? {
   badge: 'AutoOS application · Beta', title: 'The structured shell',
   intro: 'Everyday commands, pipelines that work with fields, and Auto scripts you can edit and run in your terminal. The interactive session and CLI share the same execution engine.',
   start: 'Get started', source: 'View source', meta: 'ash v0.1.0 · Verified on Windows · 2026-09-29/30',
-  terminal: 'ash · sample data in users.json', zoom: 'Enlarge image', close: 'Close', original: 'Open original', copy: 'Copy code', copied: 'Copied', copyFailed: 'Select the code to copy',
+  zoom: 'Enlarge image', close: 'Close', original: 'Open original', copy: 'Copy code', copied: 'Copied', copyFailed: 'Select the code to copy',
   nav: ['Interface & modes', 'Daily shell', 'Data pipelines', 'Multiline scripts', 'Automation', 'Get started'],
   facts: [
     { icon: '⌨️', title: 'A persistent session', description: 'Keep directory, variables and aliases between commands. Completion, history and inline suggestions reduce typing.' },
@@ -175,20 +176,7 @@ async function handleTabs(event: KeyboardEvent, index: number) {
           </div>
           <p class="hero-meta">{{ t.meta }}</p>
         </div>
-        <div class="hero-terminal code-window">
-          <div class="code-header">
-            <div class="code-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-            <span class="code-title">{{ t.terminal }}</span>
-          </div>
-          <pre class="code-body" tabindex="0"><code><span class="prompt">❯ </span>{{ heroCommand }}
-
-<span class="output">name   age
-Lin    35
-Noah   42</span>
-
-<span class="prompt">❯ </span><span class="comment">F2 → AutoScript → F5</span></code></pre>
-          <div class="terminal-tags"><span>Shell</span><span>JSON</span><span>AutoScript</span></div>
-        </div>
+        <AutoShellPreview :lang="lang" />
       </div>
     </div>
 
@@ -314,7 +302,7 @@ Noah   42</span>
 :global(.dark .autoshell-page) { --page-accent-1: #f59e0b; --page-accent-2: #60a5fa; }
 .autoshell-page .btn-primary { background: linear-gradient(135deg, #b45309, #2563eb); color: #fff; }
 .autoshell-hero { padding: 64px 32px 56px; }
-.hero-grid { display: grid; grid-template-columns: 1.05fr 1fr; align-items: center; gap: 56px; max-width: 1120px; margin: auto; text-align: left; }
+.hero-grid { display: grid; grid-template-columns: 0.9fr 1.2fr; align-items: center; gap: 56px; max-width: 1120px; margin: auto; text-align: left; }
 .hero-grid > *, .script-panel > * { min-width: 0; }
 .hero-back { display: block; margin-bottom: 24px; color: hsl(var(--muted-foreground)); font-size: 13px; }
 .autoshell-hero .badge { margin-bottom: 20px; }
@@ -323,10 +311,6 @@ Noah   42</span>
 .autoshell-hero .actions { justify-content: flex-start; }
 .hero-meta { margin: 24px 0 0; color: hsl(var(--muted-foreground)); font-size: 12px; line-height: 1.7; }
 .autoshell-page .code-window { max-width: none; box-shadow: 0 16px 40px rgb(0 0 0 / 10%); }
-.hero-terminal { transform: rotate(-1deg); border: 1px solid #313244; }
-.hero-terminal .code-body { font-size: 13px; padding: 28px 24px; line-height: 1.9; }
-.terminal-tags { display: flex; gap: 8px; padding: 0 24px 20px; }
-.terminal-tags span { border: 1px solid #41445b; color: #bac2de; font-size: 11px; border-radius: 5px; padding: 2px 8px; }
 .section-nav { position: sticky; top: 56px; z-index: 20; display: flex; gap: 8px; justify-content: center; padding: 12px 24px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--background) / 95%); backdrop-filter: blur(12px); overflow-x: auto; }
 .section-nav a { white-space: nowrap; padding: 8px 14px; border-radius: 6px; color: hsl(var(--muted-foreground)); font-size: 13px; font-weight: 600; }
 .section-nav a:hover { background: hsl(var(--secondary)); color: hsl(var(--foreground)); }
@@ -383,6 +367,6 @@ summary { cursor: pointer; font-weight: 600; }
 .autoshell-page :is(a, button, summary, pre):focus-visible { outline: 3px solid var(--vp-c-brand-1); outline-offset: 4px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (max-width: 960px) { .hero-grid { gap: 28px; } .launch-grid { grid-template-columns: 1fr; } .launch-card > p { min-height: 0; } .launch-card .code-body { min-height: 0; } }
-@media (max-width: 768px) { .native-gallery, .mode-example { grid-template-columns: 1fr; } .mode-example { row-gap: 0; } .autoshell-hero { padding: 40px 24px; } .hero-grid, .script-panel { grid-template-columns: 1fr; } .hero-terminal { transform: none; margin-top: 12px; } .section-nav { justify-content: flex-start; padding: 10px 16px; } .section-nav a { padding: 8px 10px; } .content-section { padding: 40px 24px; } .overview-section { padding: 32px 24px 0; } .script-evidence { padding-top: 0; } .shortcut-panel { padding: 20px; } .script-tabs button { padding: 8px 12px; font-size: 13px; } }
+@media (max-width: 768px) { .native-gallery, .mode-example { grid-template-columns: 1fr; } .mode-example { row-gap: 0; } .autoshell-hero { padding: 40px 24px; } .hero-grid, .script-panel { grid-template-columns: 1fr; } .section-nav { justify-content: flex-start; padding: 10px 16px; } .section-nav a { padding: 8px 10px; } .content-section { padding: 40px 24px; } .overview-section { padding: 32px 24px 0; } .script-evidence { padding-top: 0; } .shortcut-panel { padding: 20px; } .script-tabs button { padding: 8px 12px; font-size: 13px; } }
 @media (prefers-reduced-motion: reduce) { .autoshell-page * { scroll-behavior: auto !important; transition: none !important; } }
 </style>

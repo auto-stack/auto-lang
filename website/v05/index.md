@@ -3,6 +3,7 @@ layout: home
 ---
 
 <script setup>
+import AutoShellPreview from '../.vitepress/theme/components/AutoShellPreview.vue'
 import HomeHero from '../.vitepress/theme/components/HomeHero.vue'
 import FeatureCard from '../.vitepress/theme/components/FeatureCard.vue'
 import StatCard from '../.vitepress/theme/components/StatCard.vue'
@@ -201,8 +202,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
         <p>The structured shell for the AI era, combining the best of AutoLang + NuShell + Fish + Warp: commands exchange typed objects instead of text streams. Backed by the auto-term terminal infrastructure, with a built-in security sandbox and 79 agent tools.</p>
         <a class="flagship-link" href="/apps/autoshell/">Landing page →</a>
       </div>
-      <!-- exists: interactive session shot (typed tables / structured filtering / markdown rendering) -->
-      <img src="/v05/ash-interactive.png" alt="AutoShell interactive session: typed table output, structured filtering, and markdown rendering" />
+      <AutoShellPreview lang="en" />
     </article>
     <article class="flagship-item">
       <div class="flagship-text">
@@ -947,6 +947,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 }
 
 .flagship-item.reverse img,
+.flagship-item.reverse .autoshell-preview,
 .flagship-item.reverse .shot-placeholder {
   order: 1;
 }
@@ -970,7 +971,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
   color: var(--page-accent-1, #6366f1);
 }
 
-.flagship-item img {
+.flagship-item > img {
   width: 100%;
   border-radius: var(--radius);
   border: 1px solid hsl(var(--border));
@@ -988,6 +989,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
     order: 1;
   }
   .flagship-item.reverse img,
+  .flagship-item.reverse .autoshell-preview,
   .flagship-item.reverse .shot-placeholder {
     order: 2;
   }

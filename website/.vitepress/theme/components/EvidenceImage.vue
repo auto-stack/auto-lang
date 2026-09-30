@@ -8,6 +8,7 @@ defineProps<{
   zoomLabel: string
   closeLabel: string
   originalLabel: string
+  tablePreview?: boolean
 }>()
 const dialog = ref<HTMLDialogElement>()
 function open() {
@@ -23,7 +24,9 @@ function backdrop(event: MouseEvent) {
 <template>
   <figure class="evidence-figure">
     <button type="button" class="evidence-image" :aria-label="zoomLabel + ': ' + alt" @click="open">
-      <img :src="src" :alt="alt" loading="lazy" decoding="async" />
+      <span :class="{ 'table-preview': tablePreview }">
+        <img :src="src" :alt="alt" :loading="tablePreview ? 'eager' : 'lazy'" decoding="async" />
+      </span>
       <span class="zoom-label">{{ zoomLabel }} <span aria-hidden="true">↗</span></span>
     </button>
     <figcaption>{{ caption }}</figcaption>
@@ -44,6 +47,8 @@ function backdrop(event: MouseEvent) {
 .evidence-figure { margin: 0; min-width: 0; width: 100%; }
 .evidence-image { display: block; position: relative; padding: 0; width: 100%; border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: #0b1020; cursor: zoom-in; }
 .evidence-image img { display: block; width: 100%; height: auto; }
+.table-preview { display: block; aspect-ratio: 1000 / 502; overflow: hidden; text-align: left; }
+.table-preview img { width: 192%; max-width: none; }
 .zoom-label { display: flex; justify-content: space-between; padding: 10px 16px; color: #cdd6f4; background: #151d2e; font-size: 12px; font-weight: 600; }
 figcaption { margin-top: 12px; color: hsl(var(--muted-foreground)); font-size: 12px; line-height: 1.7; }
 .evidence-dialog { width: min(1280px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; padding: 0; border: 1px solid hsl(var(--border)); border-radius: 14px; color: hsl(var(--foreground)); background: hsl(var(--background)); overflow: auto; }

@@ -3,6 +3,7 @@ layout: home
 ---
 
 <script setup>
+import AutoShellPreview from '../../.vitepress/theme/components/AutoShellPreview.vue'
 import HomeHero from '../../.vitepress/theme/components/HomeHero.vue'
 import FeatureCard from '../../.vitepress/theme/components/FeatureCard.vue'
 import StatCard from '../../.vitepress/theme/components/StatCard.vue'
@@ -201,8 +202,7 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
         <p>AI 时代的结构化 Shell：AutoLang + NuShell + Fish + Warp 四家之长，命令交换类型化对象而非文本流；背后是 auto-term 终端设施，内置安全沙箱与 79 个 Agent 工具。</p>
         <a class="flagship-link" href="/zh/apps/autoshell/">查看落地页 →</a>
       </div>
-      <!-- 已有：交互式会话实拍（类型化表格 / 结构化过滤 / Markdown 渲染） -->
-      <img src="/v05/ash-interactive.png" alt="AutoShell 交互式会话：类型化表格输出、结构化过滤与 Markdown 渲染" />
+      <AutoShellPreview lang="zh" />
     </article>
     <article class="flagship-item">
       <div class="flagship-text">
@@ -947,6 +947,7 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
 }
 
 .flagship-item.reverse img,
+.flagship-item.reverse .autoshell-preview,
 .flagship-item.reverse .shot-placeholder {
   order: 1;
 }
@@ -970,7 +971,7 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
   color: var(--page-accent-1, #6366f1);
 }
 
-.flagship-item img {
+.flagship-item > img {
   width: 100%;
   border-radius: var(--radius);
   border: 1px solid hsl(var(--border));
@@ -988,6 +989,7 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
     order: 1;
   }
   .flagship-item.reverse img,
+  .flagship-item.reverse .autoshell-preview,
   .flagship-item.reverse .shot-placeholder {
     order: 2;
   }
