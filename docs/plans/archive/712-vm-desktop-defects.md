@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-712
-status: reviewed             # r2 复审 pass（2026-09-30，实现会话自审+工件重建裁定）；next=merge
+status: archived             # r2 终态（2026-09-30 merge：delivery 451dc1401+ff32d7004，SD-01..08 沉淀，账本 P712-1；T-11 登记态随档）
 feature_name: VM 桌面验收缺陷收敛（视频引擎双缺陷 + 壳配置持久化 + examples 依赖）
 author: [zcode(auto-os 会话转介)]
 created_at: 2026-09-30
@@ -230,3 +230,11 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
   - **findings**：F-712-1 T-11 播控条塌缩未修（用户裁定登记态；定谳入口 §10①）；F-712-2 实机取证腿 4 项登记归后续（AC-02 scrub/AC-07 走查/AC-08 截图/AC-04 复演）；F-712-3 master 日常档基线 14 红扩容归 `/auto-plan:regress` 档（§10②）。
   - **知识增量**：SD-01..07 核验——目标路径 `docs/specs/auto-lang/ui/overview.md` 有效，before/after 与实现一致（上行契约双端 0.25s 节流不变/2.4→sRGB 归一规则/config 合并无首写例外/壁纸 boot 优先级四档/分主题默认对/VM 本地播放 dialog_open 契约）；**补 SD-08**（事件回调 `$` 占位实参契约=T-12 修复的持久语义，本复审新增）；supersedes/new 空表理由见 frontmatter 注；touched_goals=[GOAL-007,GOAL-009,GOAL-010]。
   | spec delta: SD-01..08 随 merge 沉淀至 docs/specs/auto-lang/ui/overview.md | next: merge。
+- 2026-09-30 **合并收据（PLAN-712:r2）**——五检查点：
+  - **prepared** ✓：reviewed 基线 = plan-712-dev @7f483e1ab（rebase 后 e228b7c1a，patch-id `75daac76a4c01ee94c0fbf3d915de8fe24a27e3a` 两点全等=安全重写证明）；依赖 auto-down 3373a5c；canonical 目标 `docs/specs/auto-lang/ui/overview.md`（媒体节 PLAN-712 增补块族）+ `docs/specs/auto-lang/ui/plans.md`；SD-01..04 已由 r1 merge 在位（复核无需重写），r2 增量 SD-05..08 新增 27 行。
+  - **landed** ✓：ff-only 零合并提交——master tip 依次 451dc1401（SD-05..08 沉淀，对 e228b7c1a 纯文档 +27 行）→ ff32d7004（ui/plans.md 712 行回写）；当前 master=ff32d7004。
+  - **ledger_refreshed** ✓：`.autoos/specs.json` reviews 节追加 `P712-1`（手工回退路径——musk 后端 127.0.0.1:8080 不可达实测，README §112 文档化回退；读回验证通过、六节完整、无重复项）；`scripts/spec-index.py` 再生 INDEX.md 零 diff（project.md 未变）。
+  - **archived** ✓：`docs/plans/archive/712-vm-desktop-defects.md` status archived（本件，归档位置 r1 时已就位）。
+  - **cleaned**：见下补记。
+  - **陈旧产物观察（PLAN-092 先例口径）**：本计划触及 auto-lang UI 引擎（aura_view_builder/iced renderer/mpv present）——release 档二进制与 `gen/front/vue/dist` 未随本次合并重建；桌面实机消费面当前为 r2 验证 worktree debug 二进制形态（重建+重启归生产面会话）。
+  - **批量回归到期判定**：不到期——712%5=2 非整除，收据当日新鲜（last_covered=712@7fcf913eb，2026-09-30T08:04:49Z）。
