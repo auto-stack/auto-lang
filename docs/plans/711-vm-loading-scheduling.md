@@ -3,6 +3,8 @@ plan_id: PLAN-711
 status: drafting               # drafting → executing → execution_done → reviewed → archived
 # PLAN-708 r3 收窄移出件的承接计划（2026-09-30 用户裁定"M 档单独立项"）。
 # 设计依据：docs/design/autoui/vm-loading-responsiveness.md（proposed）+ 708-baseline/decision 全部冻结裁决。
+# r1（2026-09-30）：骨架按 /auto-plan:new 完整化为执行契约——承接清单展开为 9 个可执行任务（T-03..T-12），
+# 冻结裁决（D-1/D-2/D-3）直接继承不重开；engine.rs:2748 假成功缺陷修复绑入 T-11 并新增 AC-13。
 feature_name: vm-loading-scheduling
 author: [agent]
 created_at: 2026-09-30
@@ -12,12 +14,13 @@ plan_revision: 1
 supersedes_spec_components:
   - docs/specs/auto-lang/ui/architecture.md
   - docs/specs/auto-lang/vm/architecture.md
+  - docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md
 new_spec_components: []
 touched_goals: [GOAL-007, GOAL-009]
 
 affects: [auto-lang/ui, auto-lang/vm]
 current_step: 0
-total_steps: 8
+total_steps: 9
 ---
 
 # [PLAN-711] vm-loading-scheduling（自 PLAN-708 r3 移出）
@@ -28,29 +31,279 @@ PLAN-708 r2 的 M/L 档（Init demand、帧通知泵、骨架显示、CPU 可续
 
 **注意**：.next-id 曾为 710 与未跟踪的 710-a2r-mapping-residuals.md 冲突，本计划手动取 711 并将 .next-id 推进至 712（偏差已记录）。
 
-## 1. 承接清单（自 708 r3 原样移入，ID 保持）
+**r1（2026-09-30，本次）**：骨架完整化为执行契约。承接清单（708 r3 原样移入，ID 保持）展开为 9 个可执行任务；验收承接 AC-04..08、AC-10、AC-11 全量 + AC-06/AC-12 残余；规范增量承接 SD-02（ADR-19/24 重写）、SD-04（vm ADR-23 CPU Runnable），新增 SD-05（canonical 设计组件 current-state 面）。新增 AC-13（预算耗尽假成功缺陷修复，独立可验）。708 冻结裁决 D-1/D-2/D-3 直接继承不重开。
 
-| ID | 内容 | 708 来源 |
+## 1. 目标
+
+### 目标
+
+- G1（=708 G3）：显示路径不执行 child/page Init；view 发现需求后，按可验证的骨架帧交付顺序启动有预算任务；真正完成后刷新完整内容。
+- G2（=708 G4）：加载时继续处理滚动、窗口操作、取消和再导航；首帧与完整就绪分别验收；长 CPU Init/恢复段不能占满一次 update。
+- G3（=708 M-02，含正确性缺陷）：VM 专用执行入口区分 Completed/Waiting/Runnable/Cancelled；**预算耗尽不得伪装为成功**（engine.rs:2748 现状缺陷）；闭包/异常/RC/写序与同步参考一致，累计安全护栏跨片不重置。
+- G4（=708 M-04）：computed/冷构建残面（DataTable memo_block Degrade 根因、FileTree 恒 FILL）不逃过 UI 门禁。
+- G5（=708 G5，核对范围）：正式 worker 设计逐项完备性核对/补齐（AC-08）；仅设计核对，不实施 worker。
+
+### 非目标与边界（继承 708，不重开）
+
+- 不做 JIT、字节码 ISA 重设计、handler 类型限制或全局 actor/store 所有权迁移。
+- 不改 Vue/Web 生成行为；不把 AutoVM 整体搬线程；不实施通用列表虚拟化或 iced 渲染器替换；**不 fork iced_winit**（D-1 已裁定 listen_raw 序障）。
+- L 档 worker **不实施**（另立 Plan）；本计划 T-07' 仅做设计文档逐项完备性核对与补齐，proposed 与现状分离保持。
+- 不重开已冻结裁决：帧屏障=D-1、CPU 片初值=D-2、memo 三态=D-4（已随 708 S 档落地）、热点归因=D-5。
+- 保留共享根态/当前实例支持面；取消不回滚已发生副作用。
+- S 档已交付面（memo 三态/宿主 epoch/Degrade 诊断/WidgetRegistry 缓存）只复用不返工。
+
+### 影响模块
+
+| 仓/文件 | 改动 |
+|---|---|
+| auto-lang `crates/auto-lang/src/vm/engine.rs` | SegmentOutcome 增 Runnable、ParkedWait 增 CpuRunnable 凭据、drive_handler_segment 预算参数化 + 耗尽路径假成功修复；保留非 UI legacy 同步契约 |
+| auto-lang `crates/auto-lang/src/ui/vm_bridge.rs` | Init demand 登记簿（判定≠写身份重排）、带观察结果的段派发、代际取消/一次清理、CPU continuation 泵就绪集 |
+| auto-lang `crates/auto-lang/src/ui/aura_view_builder.rs` | 渲染路径 Init 派发点（:5216/:6606）改 demand 登记；骨架/完成/失败 placeholder |
+| auto-lang `crates/auto-lang/src/ui/dynamic.rs`、`ui/iced/renderer.rs`、`ui/session.rs` | 帧通知订阅（listen_raw 条件化）、有界泵接线、全 early-return 臂 dirty 传播 |
+| auto-lang `crates/auto-lang/src/ui/memo_deps.rs` | computed 热点具名 prepare / 依赖版本缓存（T-12） |
+| auto-lang `docs/design/autoui/vm-loading-responsiveness.md` | T-07' 逐项完备性核对与补齐 |
+| auto-lang `docs/specs/auto-lang/{ui,vm}/...` | SD-02/04/05 拟议沉淀，review/merge 后写回 |
+| auto-os widgets-gallery | 只读固定语料做 T-09 实机矩阵；不改展示需求 |
+
+## 2. 架构方案
+
+### 当前事实（2026-09-30 主检出 8d917c469 逐一核实；行号为该提交锚点）
+
+```text
+UI 输入 → run_session/update_inner → handler 首段/恢复段（同步 CPU，702 泵串行）
+                     ↓
+            dynamic_view_impl
+              ├ MCP 同步构建（门控，复用已提交构建）
+              └ 显示构建 → 渲染路径内同步 child/page Init（:5216/:6606）
+                        → computed 冷 miss 同步重算（call_vm_fn/call_computed_fn）
+                        → Element → layout/draw/present
+```
+
+- **engine.rs:2748 缺陷实锤**（708 baseline §2.1 定谳，今日核实仍在）：`drive_handler_segment`（:2536）步预算 `10_000_000`（:2544）耗尽后打印 WARN（:2708-2723）即落入 `Completed(Ok(()))`——task 停在函数中部（ip 指向函数内、bp≠saved_bp）无结果值，调用方无从分辨，静默假成功。
+- SegmentOutcome（:312）只有 `Completed | Parked`，无可续跑变体；ParkedWait（:330）= HttpRequest/Future/HttpStream 三凭据（707），无 CPU 变体。
+- `child_init_should_fire`（vm_bridge.rs:1483）**判定即写身份**——Init 派发决策在检查时消费身份，与真实完成无关。
+- 渲染路径同步 Init 派发：`render_outlet_page_memo`（aura_view_builder.rs:5188）内 `call_handler_for(Init)`（:5216）；子件通用路径 `fire_child_init_if_any`（:6576，派发 :6606，调用位 :6731/:6811）。
+- `call_vm_fn`（:1740）/`call_computed_fn`（:2160）：每次新开 AutoTask + legacy 同步驱动，冷 miss 同步重算。
+- 702 泵：`has_parked_tasks`（:1560）/`resume_ready_parked`（:1580）/`register_parked`（:1642）；订阅面=16ms 条件 tick `__parked_resume_tick`（renderer.rs:17450 消费、:21918-21921 订阅，has_parked_tasks 门控）——时间驱动轮询，I/O 凭据仍需它。
+- S 档已交付：memo 三态门 + 宿主 UI epoch 五臂 + Degrade 诊断行（AUTO_MEMO_DIAG 门控）+ WidgetRegistry 进程级缓存（708 T-01/T-02，master 已含）。
+- 帧屏障机制（D-1 静态已证）：iced_winit 0.14 RedrawRequested 臂内 frames 广播先于 present；frames 消息经 runtime 通道异步回环，**消费帧消息发生在该帧 present 返回之后**。唯一公开收帧通道=`listen_raw()`。
+
+### 实施顺序（继承 708 r2 依赖序，T-00 已由 708 完成）
+
+```text
+T-11 CPU 可续跑片 + 假成功缺陷修复（结果接口）
+   → T-03 Init demand/代际生命周期（消费结果接口）
+      → T-04 真实入口帧通知与有界泵（R-1 序障实证首验）
+         → T-05 骨架/完成/失败显示
+T-12 computed/冷构建残面（依赖 T-11，可与 T-04/05 并行）
+T-06余 观测面（随 T-03..05/11/12 增量）
+   → T-08 测试族（收口，含 F-1）
+   → T-09 实机矩阵
+T-07' 设计完备性核对（阶段决策后，review 前）
+```
+
+## 3. 技术栈
+
+- Rust + iced 0.14（Cargo.lock 锁定；本地补丁 patches/iced_widget 仅 PLAN-043 布局，不新增 fork）；AutoVM/AutoTask 原执行栈。
+- 702 parked/重入/清栈纪律；707 三凭据（HttpRequest/Future/HttpStream）只增不改；706 computed 信号网准入守卫（value_carries_heap_identity）复用于任何新缓存。
+- 045/046/047 memo、dep/path version、computed signal；708 S 档三态门/宿主 epoch/Degrade 诊断。
+- 调度在真实 `run_session` / DesktopSession 内；单 VM 执行者 + iced update 上下文串行纪律（D-2），不引入第二执行线程。
+- 验证复用 autoui-verifier 的 `test_vm_mcp.py`、`test_vue_playwright.mjs`；性能事件采集在既有脚本增能力。
+
+## 4. 需求分析与背景调查
+
+### 用户授权与实施边界
+
+- 立项授权：2026-09-30 用户裁定 PLAN-708 r3 收窄（"现在 review+merge，M 档单独立项"），M/L 档移出本计划（708 §9 r3 修订记录在案）。
+- 工作授权：2026-09-30 用户明确调用 `/auto-plan:work` 实施本计划（本会话），并确认"继续"——作为骨架完整化（r1）后进入 executing 的开工确认。
+- 预算/自动续跑上限：未指定——按 auto-plan-work 技能默认，自动修复/复审循环上限 3 次，超限诊断或交还阻塞。
+- main 仅写计划簿记；所有实现、构建与运行在 711 worktree（`D:/autostack/.wt/lang-711/auto-lang`，分支 `plan-711-dev`）。
+
+### 版本/规格基线
+
+| 输入 | 版本或锚点 |
+|---|---|
+| auto-lang master（契约锚点） | `8d917c469`（worktree 创建时 ff 同步，行号锚点以实际同步点重核） |
+| 708 S 档实现落地 | `f169ad42f`（T-01/T-02），docs 合并 `a39ef6827`（已归档终态） |
+| engine 缺陷证据基线 | 708 baseline 行号基于 `e1bab972e`（:2691）；现主检出同缺陷位移至 :2748 |
+| gallery / auto-os | `93050a6a`（708 计划钉定值） |
+| 冻结裁决 | 708-decision D-1（listen_raw 序障）/ D-2（4ms/4096/64/8ms + 队列128 + 串行纪律）/ D-3（707 配对）/ D-5（归因）；R-1 为 T-04 首验遗留 |
+| 708 baseline §3 | 冷构建优化后实测 row 365ms / datatable 27ms / area-chart 1ms / filetree 2ms，warm 0-1ms——本计划性能对照基线 |
+
+### 静态调查与证据限制
+
+- 708 baseline §2 静态探针结论对本计划持续有效（同一代码族；S 档增量已逐点核实，见 §2 当前事实行号）。
+- S 档优化后冷构建 27-365ms 仍超 50ms 连续占用门禁（row 365ms 为真实渲染工作）——骨架/泵与 T-12 继续压，不以 S 档数据冒充本计划验收。
+- DataTable memo_block Degrade **根因未修**（诊断面已交付，根因归 T-12）；FileTree 恒 FILL 未修（T-12）。
+- 每导航双构建乘数（FILL 成对出现）随 M-03 通知合并核查。
+- `resume_ready_parked` 的 loop 取出/续跑/放回形态是 D-2 明令禁止在 CPU pump 中复制的反模式——CPU 就绪集调度必须先捕获有限 ready 集。
+- 未运行任何本计划门禁；本轮产物为计划契约，无实现验收声明。
+
+## 5. 详细设计
+
+### M-01 Init demand 与代际生命周期（T-03）
+
+以 AppId、当前 widget/实例路径、key、mount generation 定位需求。view 经共享 interior-mutable sink 登记，不直接派发；首次发现预留身份，MCP/显示双 build 不重复排队。
+
+状态机（继承设计 §4）：`Discovered → Queued → Running → Completed`，旁路 `Runnable/Waiting → Running`、`Failed`；`Queued/Running/Runnable/Waiting → Cancelled`（卸载、key/route 代际、reload/close）。
+
+- `child_init_should_fire`（:1483）重排：判定与写身份分离——登记簿化（首次发现原子预留；重复 view/MCP 构建只更新簿记，不二次入队、不消费身份）。命中帧重放实际 child mount/timer/事件路由簿记（render_outlet_page_memo 现有逻辑 :5236-5239 保留）。
+- 两个渲染路径派发点（:5216/:6606）改为 demand 登记；页无 Init 仍发现嵌套 child；父/页完成并产出 props 后才启动依赖 child。
+- Init dispatcher 观察结果：`Completed | Waiting | Runnable | Missing | Failed`。`call_handler_for` 的 Ok（段已接受）不清 loading；Missing 静默；异常失败保留错误面（`[VM-HANDLER] ... failed`），不无限 Loading。
+- 取消：key/route/reload/close 使代际失效→先取消 continuation 再提交新 route/props；未执行项直接丢弃，已开始项清栈/等待凭据/忙态/队列槽一次清理。取消不回滚前缀副作用；Cancelled 项禁止再次调用 VM。普通长 handler 不因任意导航无声被杀。
+- 根/module/store 初始化保持 module → root/store → dependent child 既有依赖顺序（`run_module_init` :1346 段派发现状核实）；不笼统并发启动。
+
+### M-02 CPU 可续跑执行片与假成功缺陷修复（T-11，D-2 冻结初值）
+
+- **AC-13 缺陷修复**：`drive_handler_segment` 预算耗尽路径（:2708-2748）改返回 `Runnable`（携带完整栈的 continuation），删除"打印 WARN 后落入 `Completed(Ok(()))`"的假成功臂。非 UI legacy 同步入口（`call_fn_by_name` :2305 busy-wait 家族）返回契约不变——`Result<Value>` 不塞未完成结果。
+- SegmentOutcome（:312）增加 `Runnable { seg: ParkedSegment }` 变体（只增不改 Completed/Parked 语义）；ParkedWait（:330）增加 CPU Runnable 凭据变体（只增不改 707 三凭据），使 CPU continuation 进入既有 parked 注册表复用 702 串行纪律与清栈面。
+- 预算参数（D-2 冻结初值，实测校准不下调指标）：每片 4ms / 4096 指令，至多每 64 指令查时钟；会话每轮 CPU pump 总预算 8ms；10M 累计护栏跨片累计（I/O 等待不计忙时），不让出重置绕过 runaway 保护。
+- 首次派发与 resume 共用预算策略；保存 ip/bp/ram、调用/异常/闭包帧、原始调用参数和返回槽所有权；到片末不执行 completion 清栈、不重进 prologue、不重发 native 请求；同 handler 在途重入门保留（702）。
+- 就绪集调度：每次先捕获有限 ready 集，FIFO 起步，本轮让出任务本轮不重跑（防饥饿自旋）；多 App 轮次预算共享；繁忙消息批次同受轮次预算约束。
+- 写序纪律（D-2）：全部 CPU continuation 与写事件消费只在 iced update 上下文串行执行（唯一泵消费点，共享堆不加锁）。同 App VM 写事件在 CPU continuation 存活期间有界串行队列（128），覆盖 input 代写/timer/props/MCP fixture/reload；宿主滚动/resize/close 不入队。队满拒绝入队并给可观察 busy/错误，只合并明确可覆盖输入值，不合并点击等副作用事件。
+- native/FFI 单调用超预算：仍是失败热点，必须处理或 replan（D-5 R-3：gallery 无 native 主导段；重 native 单调用上界由 T-11 夹具验证）。
+- I/O park 沿 702 交错边界；`resume_fn_by_name_segment`（:2378）唤醒语义不动（D-3：wait 集合只增不改）。
+
+### M-03 帧通知与有界泵（T-04，D-1 裁定）
+
+- **R-1 序障实证首验**（T-04 开工第一步）：实测帧消息到达时间 vs AUTO_MEMO_DIAG 构建时间戳 vs 截图可见性，闭环"消费帧消息在该帧 present 返回之后"；实测矛盾即本裁定作废回 needs_replan，不得静默退回 sleep/tick。
+- 接线面：`run_session`（renderer.rs:15906）/`update_inner`（:16597）/DesktopSession update/`dynamic_view_impl` 及 session 挂载入口。流程：demand → 带版本骨架 → draw/present 交付 → 按 window/AppId/generation 消费帧通知 → 有预算 Init 泵 → 完成通知 + component dirty + AppState.view_dirty + MCP/cache 失效 → 完整内容帧。
+- 订阅形态：`listen_raw()` 收 RedrawRequested；**仅在存在未完成 demand 时激活**（零 demand → Subscription::none，同 702 has_parked_tasks 条件订阅家族）；帧消息消费即运行有界泵（片数上限，非全量 drain）。防线：listen_raw 无过滤会自我续帧——骨架帧必须命中 memo 廉价路径（S-01 联动）。
+- 通知通道按 AppId 预先建立；view 首次登记需求仅发一次调度信号，不依赖 pending 发现后才挂上的条件订阅；无任务不跑周期计算泵。最小化/不可见窗按可见性判据推进，恢复可见后显示最新已提交代际。
+- `update_inner` 全部提前 return 臂（baseline §2.5：`__mcp_fixture`/`OnEditorFocus`/`OnColResize`/`__mcp_resize_col`/`__mcp_click`…）逐臂覆盖真实状态变更→AppState.view_dirty 传播；component dirty 与 AppState dirty 分开验证；MCP 快照与屏幕用相同完成代际。
+- 702 的 16ms tick（I/O 凭据就绪轮询）保留不动；CPU continuation 泵不沿用 tick 形态（帧通知驱动 + 有界预算），注册表/串行纪律复用。泵执行时 I/O 就绪任务照常消费（同一就绪集）。
+
+### M-04 骨架/完成/失败显示（T-05）
+
+- loading 文本默认 "Loading…"（708 Q-01）；保留已有侧栏和窗口交互；终态基线不变。
+- 嵌套需求按依赖阶段发现；占位能继续准备子件而非永久早退；pending 子树不成为可永久命中的 memo 产物。
+- 完成/失败/cancel 更新 component dirty、AppState.view_dirty、memo/已提交展示/MCP 版本；失败进入可诊断错误/重试状态，不无限 Loading；所有提前 return 臂覆盖。
+
+### M-05 computed/冷构建残面（T-12）
+
+预算不覆盖 `call_vm_fn/call_computed_fn` 的同步 Value 契约（冷 miss 同步重算）。已测热点（708 baseline §3.1/§4 排序）：
+
+- **DataTable memo_block Degrade 根因**：T-01 诊断面已交付（DEGRADE reason 可观测）；本任务定位静态扫描不可证明的具体成因并修复或按保守失效正确降级——目标是 site=6 memo 在该页真实生效或 Degrade 有据，不是消除诊断。
+- **FileTree flatten_tree 恒 FILL**：computed 依赖/树态每帧变 seq。先复用已有 computed signal/依赖版本缓存（706 准入守卫家族），分段准备具名热点，让 view 只读 Ready 值；缺值维持 loading，不能用 Nil/空成功占位污染缓存。
+- 异步准备的依赖/props 版本与失效闭合；结果槽 RC 接管与 062/047 同纪律；裸 Value 携带堆身份不入信号网（706 value_carries_heap_identity 守卫复用）。
+- 副作用或依赖不可证明的表达式不得自动搬所有 computed；需具名适配或 replan。无法在预算内达成 gallery 门禁则 needs_replan。
+- 每导航双构建乘数在此核查（M-03 通知合并）。
+
+### T-06余 观测面
+
+AUTO_MEMO_DIAG 已交付；本任务补齐：分段时间戳（输入接收、handler/Init 每片起止、computed/build/codegen/convert/layout/draw/present、首次骨架与终态、MCP sync、state/view 版本）、在屏采集（运行期截图，AC-06 佐证——D-1 措辞纪律：验收用"present 已返回的帧"，在屏证据用截图）、资源计数（ready 集/队列深度/parked 数/各代际任务数）。env 门控增量，不另建框架。
+
+### T-07' 设计完备性核对（AC-08）
+
+`docs/design/autoui/vm-loading-responsiveness.md` §7 worker 边界/线程/状态/快照/队列/取消/退出/parked 边界逐项对照——r2 起草件未逐项验证。产物：逐项核对清单（对照表 + 缺口补齐 diff），proposed 与现状分离保持；缺口无法在文档层面补齐（需要实施证据）的显式登记为 L 档 Plan 待办，不写为已交付。
+
+### 规范增量
+
+以下均为拟议，实施后 review 冻结、merge 写回；本次不改 canonical Specs/ledger。
+
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-02 | modify | docs/specs/auto-lang/ui/architecture.md | ADR-19（:187 渲染期补发 Init）陈旧重放文字、ADR-24（:222 段执行契约）→ demand 身份契约（登记≠完成、判定与写身份分离）+ deferred Init 真完成/取消语义、显示通知与 dirty 接线（全 early-return 臂） | 不把接受段当完成 | AC-04/05/06/07/11 |
+| SD-04 | modify | docs/specs/auto-lang/vm/architecture.md | ADR-23（:145 仅 I/O 段化）→ UI CPU Runnable 变体、累计安全预算、帧/栈/RC 及 legacy 边界、**预算耗尽=Runnable 非假成功** | 长 CPU 可续跑而非静默完成 | AC-10/11/13 |
+| SD-05 | modify | docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md | M 档已验证面进入 current-state 节（帧通知/有界泵/Init 状态机/骨架交付实测边界）；proposed worker 节保持分离 | current-state 与目标态分离（708 SD-03 建立的分离纪律延续） | AC-05/08 |
+
+## 6. 测试设计
+
+### 单元/族测试（T-08 收口，随各任务红绿推进）
+
+| 族 | 覆盖/预期 |
+|---|---|
+| plan711 新族（命名纳入计划族） | 预算耗尽返回 Runnable 非 Completed（AC-13 红→绿）；跨片累计护栏不重置；闭包/异常/多帧/返回槽 RC 与同步参考等价（AC-10） |
+| demand/代际族 | 重复 view/MCP 同代际登记一次；A→B→A 新代际；取消后不续跑、资源一次清理、Cancelled 禁止再调 VM（AC-04/07/11） |
+| 泵/队列族 | 有界泵片数上限；队满可观察 busy；两 App 公平轮转；帧通知仅 demand 时激活（AC-05/11） |
+| computed/缓存族 | FileTree 具名 prepare Ready 值；DataTable Degrade 根因修复后 site=6 行为正确；pending 不污染缓存；props 变化合法失效（AC-12余） |
+| F-1（708 阶段复审登记，低） | 非法 outlet 头参 parse-error 路径直接测试 |
+| 既有族回归 | plan702 泵/清栈、plan707 wait 三凭据、plan708 三态/epoch、memo/outlet/vm_bridge 家族零回归 |
+
+### 实机矩阵（T-09，autoui-verifier 基建）
+
+| 用例 | 覆盖/预期 |
+|---|---|
+| Row/DataTable/AreaChart/FileTree/Home | 每页首访+复访各 ≥20 样本，冷启动 ≥5 次；装载/开窗前耗时单列 |
+| 加载中交互 | 每轮注入滚动/切页/resize，不等就绪后测 |
+| 长 CPU 首段及 async 后 CPU 恢复段 | ≥2s（同步参考）切成 Runnable，结果/副作用等价 |
+| 持续压力 | 多任务 ≥30s、≥2 App 同时运行 |
+| 707 wait→CPU resume→取消 | {HttpRequest, Future, HttpStream} 逐种串联验证，资源一次终结 |
+| 首帧无输入、resize/surface retry、最小化恢复 | 主动唤醒；代际/窗口对应正确；真实屏幕与 MCP 更新一致 |
+
+### 验证门禁（按 AGENTS.md fix-test-tiering 2026-09-30 裁定）
+
+- 开发迭代：`cargo check -p auto-lang` + `cargo t plan711` / 触面 scoped（`cargo t iced`、`cargo t vm_bridge`、engine 触面模块）。
+- **per-plan 复审门禁**：裸 `cargo t`（全日常面）+ 触面档——本计划改 VM 执行契约 → **`cargo tv`**（语料三族）。engine.rs 不在 aavm 触发清单（§AAVM/AA2R）→ 零 taa 触发；不改 trans/book → 不跑 tt/tb；不改 schema/文档生成器 → 不跑 docs_gen。
+- 并行纪律：多 agent 并行时 worktree 内只跑 check/scoped 档；全量档主检出单实例（本计划无 tf 触发——711 %5=1 非整除，批量回归按 >48h 到期判定归 `/auto-plan:regress`）。
+- T-09 实机矩阵复用 autoui-verifier；MCP 开启为正式验收形态（开关只作测量对照）。
+- 画廊围栏（widgets_gallery_all_front_pages_compile，~800s）已移出日常档——本计划实机验证以 autoui-verifier 驱动为准，不依赖围栏测试。
+
+## 7. 验收标准
+
+### 性能门禁参数（继承 708 r2 §7 拟议值 + D-2 冻结初值；非当前实测，不得为通过下调）
+
+- 60Hz 的 16.7ms 单帧预算保留为优化目标；切页输入到首次骨架真实呈现：p95≤100ms、max≤250ms。
+- 正常加载期间连续 UI 线程占用 max≤50ms；窗口/侧栏输入到可见反馈：p95≤100ms、max≤250ms。区分接受反馈与 VM 业务动作完成。
+- 优化后完整就绪 p95 不得劣于同配置基线（708 baseline §3：row 冷 365ms 等）25% 以上，避免用无限延迟换 UI 指标。
+- 超限若因系统调度/GPU 等外部噪声，必须留独立证据并复测；不删坏样本或静默放宽。不满足为 fail/needs_replan。
+- 环境警示（baseline §5 继承）：窗口固定物理显示器（Todesk 虚拟显示路径外）；59Hz 按帧取整解读；冷构建跨启动方差 ±12%，≥20 样本报 p50/p95/max。
+
+| ID | 可观察标准 | 任务 / 验证 | 来源 |
+|---|---|---|---|
+| AC-04 | 显示及 MCP build 均不派发 child/page Init，重复 build 同代际只登记一次 | T-03/08，派发计数/登记簿追踪 | 708 r2 承接 |
+| AC-05 | 通知证明骨架交付后启动 Init；一次完成正确传播至真实 display/MCP dirty，首次无输入也推进 | T-04/06/08/09，帧时间戳 vs 构建时间戳 vs 截图 | 708 r2 承接 |
+| AC-06 | 重页首帧与加载期间窗口/侧栏交互满足上述门禁 | T-05/09，UI 侧时间线及在屏截图证据 | 708 r2 承接 |
+| AC-07 | Init/准备任务真正终结后内容完整；async、嵌套、失败/取消不无限 loading，不写回旧代际 | T-03/05/08/12 | 708 r2 承接 |
+| AC-08 | L 正式设计逐项完备（线程/状态/快照/队列/取消/退出/parked 边界），proposed 与现状分离 | T-07'，逐项对照清单 | 708 r2 承接（范围收窄为核对/补齐） |
+| AC-10 | 长 CPU 首段/resume 可续跑；闭包/异常/参数/副作用/RC 与参考一致，累计安全护栏不绕过 | T-11/08/09 | 708 r2 承接 |
+| AC-11 | 总泵有界、公平；取消/队满/关窗/重载与 707 wait 一次清理，无旧任务恢复 | T-03/04/08/09/11 | 708 r2 承接 |
+| AC-12余 | 长 computed 或冷构建热点不逃过 UI 门禁（DataTable memo_block 根因、FileTree 恒 FILL 收口） | T-12/09 | 708 r2 AC-12 残余 |
+| AC-13（新） | 预算耗尽返回 `Runnable`（栈完整可续跑），不再静默假成功 `Completed(Ok(())`；非 UI legacy 同步契约不变 | T-11/08，plan711 红绿单测 + 引擎触面回归 | 本计划新增（708 移交缺陷） |
+
+## 8. 执行步骤
+
+Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自 master 8d917c469 起）；实现/构建/测试全部在 worktree；计划簿记在主检出。移除前必须 wt-guard clean（merge 阶段）。gallery 只读；若须改语料另走 auto-os worktree，禁止 junction/symlink。
+
+所有任务未实施，T-03..T-12 共 9 步（T-06 为 708 部分交付的余量任务，ID 保持）。阶段内保留稳定 ID；不为让勾选通过删除失败项。
+
+| ID | 依赖 | 文件/符号及产物 | 预期 / AC |
+|---|---|---|---|
+| T-11 | 无（首个） | engine.rs `SegmentOutcome::Runnable`、`ParkedWait::CpuRunnable`、`drive_handler_segment`（:2536）预算参数化 + 耗尽路径假成功修复（:2708-2748）、跨片累计护栏、就绪集调度 + 有界写队列（D-2）；native 夹具上界验证 | Runnable 非 Completed 假成功；首发/resume 预算；护栏/写序；AC-10/11/13 |
+| T-03 | T-11 | vm_bridge.rs demand 登记簿、`child_init_should_fire`（:1483）重排、`call_handler_for`（:2182）观察结果五态、代际取消/一次清理、:5216/:6606 派发点改登记 | demand/代际/observer/取消；根-child 顺序；AC-04/07/11 |
+| T-04 | T-03；R-1 序障实证首验 pass | renderer.rs `listen_raw` 条件订阅、有界泵接线（run_session/update_inner 全臂 dirty）、AppId 通知通道 | 帧后有限 pump、首次唤醒/AppId、公平与 dirty；AC-05/11 |
+| T-05 | T-03/04 | outlet/child placeholder、真实显示缓存、完成/失败/取消终态刷新 | 依赖骨架/就绪/error 状态，不永久早退；AC-06/07 |
+| T-12 | T-11 | call_computed_fn/call_vm_fn 热点具名 prepare、DataTable memo_block 根因、FileTree flatten_tree 依赖缓存（706 守卫复用）；双构建乘数核查 | Ready 值/RC/失效闭合；AC-07/12余 |
+| T-06余 | 随 T-03..05/11/12 增量 | 分段时间戳、在屏截图采集、资源计数（AUTO_MEMO_DIAG 族扩展） | 全阶段时间戳、ready 代际/占用/资源计数；AC-05/06/12余 |
+| T-08 | T-03..05/11/12 | plan711 测试族（§6 六族）+ F-1 outlet 头参 parse-error 直测 | check + scoped 全绿；调度/栈/RC/失效/取消红测变绿；AC-04..07/10..13 |
+| T-09 | T-06余/08 | autoui-verifier 实机矩阵 + `docs/plans/reports/711-runtime.md`（新） | §7 全门禁样本（≥20/页 + 加载中交互 + 多 App + 终态）；AC-05/06/10/11/12余 |
+| T-07' | 阶段决策冻结后 | 设计文档逐项对照清单 + 缺口补齐（docs/design/autoui/vm-loading-responsiveness.md） | worker 边界逐项完备，proposed/现状分离；AC-08 |
+
+- [ ] T-11 CPU 可续跑执行片（含 engine.rs:2748 假成功缺陷修复）
+- [ ] T-03 Init demand/代际生命周期
+- [ ] T-04 真实入口帧通知与有界泵（R-1 序障实证闭环）
+- [ ] T-05 骨架/完成/失败显示
+- [ ] T-12 computed/冷构建残面（DataTable memo_block 根因、FileTree 恒 FILL）
+- [ ] T-06余 分段时间戳/在屏采集/资源计数
+- [ ] T-08 测试族收口（含 F-1）
+- [ ] T-09 VM 实机性能/终态 §7 全矩阵
+- [ ] T-07' AC-08 设计完备性逐项核对/补齐
+
+## 9. 复审记录
+
+### 2026-09-30 new 起草（r1，骨架完整化）
+
+- `stage: new` | `plan_id: PLAN-711` | `plan_revision: 1` | `outcome: pass` | `next: work`。
+- 骨架（承接清单 8 项）按 /auto-plan:new 完整化为执行契约：9 个可执行任务（T-03/04/05/06余/07'/08/09/11/12）、9 条 AC（AC-04..08/10/11/12余 承接 + AC-13 新增）、3 条 SD（SD-02/04 承接 + SD-05 新增）。
+- grounding：全部行号/符号在主检出 8d917c469 逐点核实（§2 当前事实）；708 冻结裁决 D-1/D-2/D-3/D-5 直接继承；R-1（帧序障实证）绑入 T-04 首验；F-1 绑入 T-08。
+- 工作授权在案（用户 2026-09-30 调用 /auto-plan:work + "继续"）：契约完整化后即可进入 executing 开工，无待澄清阻塞。
+- `next: /auto-plan:work T-11（首个，无依赖）`。
+
+## 10. 待澄清事项
+
+| ID | 项目 | 处置 / owner |
 |---|---|---|
-| T-03 | Init demand/代际生命周期（child_init_should_fire 判定即写身份的重排） | r2 §5 M-01 |
-| T-04 | 真实入口帧通知与有界泵（listen_raw 序障，D-1 已裁决） | r2 §5 M-03 |
-| T-05 | 骨架/完成/失败显示 | r2 §5 M-03 |
-| T-06余 | 分段时间戳/在屏采集/资源计数 | r2 §5 T-06 部分（DEGRADE 诊断已随 708 交付） |
-| T-09 | VM 实机性能/终态 §7 全矩阵（每页 ≥20 样本+加载中交互） | r2 §6/§7 |
-| T-11 | CPU 可续跑执行片（**含 engine.rs:2691 预算耗尽静默假成功 `Completed(Ok(()))` 正确性缺陷修复**） | r2 §5 M-02 |
-| T-12 | computed/冷构建残面（DataTable memo_block Degrade 根因、FileTree 恒 FILL） | r2 §5 M-04 |
-| T-07' | AC-08 L 正式设计完备性核对/补齐——design/autoui/vm-loading-responsiveness.md 的 worker 边界/线程/状态/快照/队列/取消/退出/parked 边界逐项对照（r2 起草件未逐项验证）；proposed 与现状分离保持 | r2 §5 T-07（L 设计部分）|
-
-验收承接：AC-04..08、AC-10、AC-11 全量；AC-06/AC-12 的 computed/门禁残余部分。
-Spec delta 承接：SD-02（ADR-19/24 重写）、SD-04（vm ADR-23 CPU Runnable）。
-
-## 2. 关键既有裁决（直接继承，勿重开）
-
-- 帧屏障：listen_raw 异步回环序障（708-decision.md D-1）；条件订阅仅在有 demand 时激活。
-- CPU 片初值：4ms/4096 指令/64 步查时钟/轮次 8ms（D-2）；ParkedWait 增 CPU 凭据，只增不改 707 三凭据。
-- 热点已销账面：preview-card 生成器缓存（708 T-02）——708-baseline §3 数据是本计划的对照基线。
-- F-1（低）：非法 outlet 头参 parse-error 路径无直接测试——并入本计划 T-08 测试族。
-
-## 3. 待办
-
-- [ ] 按 /auto-plan:new 完整化需求分析与任务设计（本文件为承接骨架）
+| Q-01 | R-1 帧序障实证（708 D-6 遗留） | T-04 首验闭环：帧消息时间戳 vs 构建时间戳 vs 截图；矛盾即 needs_replan，不得静默退 tick |
+| Q-02 | native/FFI 单调用超预算上界（708 D-5 R-3 移交） | T-11 夹具实测；超限=分块/异步化该热点或 needs_replan，不称检查间隔提供硬上界 |
+| Q-03 | T-09 环境噪声（Todesk 虚拟显示/59Hz/冷构建方差） | 继承 708 baseline §5 对策；异常 p95 另采移窗对照并标注适配器 |
+| Q-04 | master 并行推进（708 期间三度发生） | 常规化 rebase+range-diff 等价证明；落地前合并态定向刷新触面族 |
