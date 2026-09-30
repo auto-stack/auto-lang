@@ -19,7 +19,7 @@ new_spec_components: []
 touched_goals: [GOAL-007, GOAL-009]
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 5
+current_step: 7
 total_steps: 9
 ---
 
@@ -284,8 +284,8 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 - [x] T-04 真实入口帧通知与有界泵（R-1 序障实证闭环）（**[✅ 已完成]** worktree 3809b58ea+97dcd7d75：listen_raw 条件订阅（AppId 去重身份/零 demand 无订阅）+ __frame_pump 消费臂（8ms 轮次有界泵+完成直置 view_dirty+epoch 失效）+ tick 退回纯 I/O（has_parked_io_tasks 门）+ is_dirty 燃料唤醒链（订阅重估时序 iced_winit :1337 定谳）；R-1 闭环实证=sub ON 同周期/帧消息驱动/4ms 校准片/598 万步跨 15.2s parked 完成/10M 累计护栏生产命中/重入忽略；D-2 校准 4096→1M 天花板（4ms 墙钟为活预算）；余 2 红=统一根态×无 key 兄弟实例有界修订点→§10 Q-05，随 T-05 完成语义收口）
 - [x] T-05 骨架/完成/失败显示（**[✅ 已完成]** worktree fa946bed4：pending demand 轻量骨架占位（Queued/InFlight→Loading… (Widget)、Failed→可诊断错误占位不无限 Loading、pending 非永久 memo 产物、嵌套需求依赖阶段发现）+ 完成传播链收口（dirty+epoch，T-04 落地）+ plan437 占位可见断言 + plan499/536 迁移 + 实机验证（widgets-gallery /line-chart：early MCP 快照含 Loading…→late 无残留、页面全渲染、屏幕与 MCP 同相））
 - [x] T-12 computed/冷构建残面（**[✅ 已完成]** worktree 93f9274cc：①DataTable memo_block 根因=页面 memo() 块使 outlet 扫描整页降级→扫描器穿入（scan_node_registry pre-arm + scan_node 穿参 MemoBlock/Conditional 双臂，scan_block_node 专用扫描+registry 模板展开，多失效只变慢绝不陈旧），实机 site=6 FILL→HIT→version-fast 零降级；②FileTree 恒 FILL 根因=memo_slots_fp 展开失败 `?` 使条目永不插入→标记回退+dyn_deps 版本防护，实机打破恒 FILL（转换 FILL 一次后持续 HIT）；③plan632 f1/f4 骨架契约迁移；裸 cargo t 4896/4905 零新红）
-- [ ] T-06余 分段时间戳/在屏采集/资源计数
-- [ ] T-08 测试族收口（含 F-1）
+- [x] T-06余 分段时间戳/在屏采集/资源计数（**[✅ 已完成]** worktree 35bdb5428：资源计数面=frame_pump enter 行扩展（queued_init/cpu_cont/parked_total/write_q）；分段时间戳轴已随 T-03..05 在档（SCHED-DIAG 帧到达/泵进出/片耗时+MEMO-DIAG 构建时间戳+VM-CPU/INIT/PARKED 生命周期行+CpuPumpReport/InitDispatchReport 计数）；在屏采集=autoui-verifier 截图（R-1/T-05 实机已用））
+- [x] T-08 测试族收口（含 F-1）（**[✅ 已完成]** worktree 35bdb5428：plan711 族=cpu_slice 8+init_demand 6（含 F-1 非法 outlet 头参 pointed error 直测）+plan437 占位可见断言；新契约迁移 24 例（plan633×3/plan498×6/plan499×8/plan492×7/plan502×3/plan536×2/plan437×2/plan643×1/plan484×3/plan632×3——含 Q-05 伪影断言迁移）；裸 cargo t 4896/4905 零新红）
 - [ ] T-09 VM 实机性能/终态 §7 全矩阵
 - [ ] T-07' AC-08 设计完备性逐项核对/补齐
 
@@ -372,6 +372,13 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
   - **双构建乘数**：memo HIT 后第二构建命中缓存，乘数随 HIT 消解（实机 HIT fast 序列佐证）。
 - 门禁：裸 cargo t 4896/4905 零新红（仅 9 已知预存）+ memo 族 121 全绿 + plan632 5/5（f1/f4 骨架契约迁移）。
 - `next: T-06余 分段时间戳/在屏采集/资源计数 → T-08 测试族收口 → T-09 实机矩阵 → T-07' 设计完备性核对`。
+
+### 2026-09-30 work T-06余 + T-08/F-1 完成（观测面与测试族收口）
+
+- `stage: work` | `plan_id: PLAN-711` | `plan_revision: 1` | `outcome: in_progress` | `code_commit: worktree 35bdb5428`。
+- T-06余：资源计数面（frame_pump enter 行：queued_init/cpu_cont/parked_total/write_q）；分段时间戳与在屏采集的其余轴已随前序任务在档（映射见任务行注）——无新增框架，AUTO_MEMO_DIAG/AUTO_SCHED_DIAG 族扩展纪律保持。
+- T-08：F-1 落地（非法 outlet 头参 pointed parse-error 直测：错误指明契约+回显非法键）；plan711 测试族收口（14 测）+ 24 例新契约迁移全景（Q-05 伪影断言迁移含）；裸 cargo t 4896/4905 零新红。
+- `next: T-09 实机矩阵（§7 全门禁样本）→ T-07' 设计完备性核对 → 终审`。
 - `next: T-05 骨架/完成/失败显示（Q-05 候选裁定 + 完成语义 MCP/展示缓存版本链收口）`。
 
 ## 10. 待澄清事项
