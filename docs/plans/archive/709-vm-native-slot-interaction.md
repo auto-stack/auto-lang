@@ -552,6 +552,32 @@ dock 时 `workspace = WmState 当前分区`；分区切换遍历槽位：目标�
   387b692f3）；门禁数字见上；R0/R1 修复提交 a83f24fe3/176473b93 在案。
   **next**：merge（worktree 保留至 merge 清理；canonical 沉淀 = SD-01/03
   overview.md 段 + SD-02 schema v1.11 已在 worktree 备妥随 merge 发布）。
+- 2026-09-30，`stage: merge`，`PLAN-709:r2`，`outcome: pass`，
+  `completion_kind: delivered`，delivery_commit `cc27a110b`（ff-only 落
+  master 线性；= reviewed_commit `387b692f3` 经 rebase 映射 `ee541b533`
+  + docs-only 沉淀 delta `cc27a110b`（ui/plans.md 709 行，实现/依赖零
+  变化）——range-diff 12/12 全等安全重写实证在录）。canonical_specs：
+  `docs/specs/auto-lang/ui/overview.md`（SD-01 709 交互叙述段 + SD-03
+  win_rect 词表行，随 T-06/T-09 提交落 worktree 线）+ `schema/
+  projection-protocol-v1.md`（SD-02 v1.11——根级 schema 契约位：472 起
+  v1→v1.11 十版既定 reviewed 先例，overview.md 契约引用在案）+
+  `docs/specs/auto-lang/ui/plans.md` 709 行（随 delivery 提交）。
+  ledger：`.autoos/specs.json` designs `P709-1` / reviews `P709-2`（外科
+  插入 +10 行；去新条目重序列化==原字节的前缀零扰动实证+回读断言）+
+  INDEX 再生 26 projects 零漂移。checkpoint：prepared✓（delivery=
+  reviewed+docs-only delta，实现/依赖零变化）→ landed✓（ff-only；
+  master 冒烟 check 0 error + ui::session 100/100 绿；old→new 映射
+  387b692f3→ee541b533 等与 range-diff 全等在录）→ ledger_refreshed✓ →
+  archived✓（本行，git mv 至 docs/plans/archive/）→ **cleaned✓**（wt-guard
+  clean 双验：auto-lang 与 auto-down detached sibling 均 clean 后移除；
+  worktree `D:/autostack/.wt/lang-709/auto-lang` + sibling
+  `auto-down @ 3373a5c`（经 auto-down 仓移除）+ branch `plan-709-dev` @
+  cc27a110b + 组目录 lang-709 全部移除，worktree list 零残留）。
+  **并行 WIP 零触碰**：主检出上 706/708/KNOWN-DEBT/design 文档与
+  .tmp-* 走查脚本为并行会话未提交改动，与落地零重叠，保持原样。
+  **落地非部署**：release 二进制与 gen/front 产物未重建——本计划消费方
+  为 ui-iced 桌面运行时（`cargo build --release` / example 面按需重建，
+  观察项登记）。
 
 ## 10. 待澄清事项
 
