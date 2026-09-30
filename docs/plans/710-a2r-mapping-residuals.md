@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-710
-status: execution_done
+status: reviewed
 feature_name: a2r 生成缺口残余清偿（auto-edit M4 供料包供① 承接——G-C code_editor_delta ui_gen 臂/G-B try-catch trans 臂/G-A envelope 成员访问投影 三件+corpus 穷尽性判定）
 author: [agent]
 created_at: 2026-09-30T01:00:08+08:00
@@ -306,6 +306,48 @@ roundtrip 字节等价先证+前缀零扰动回读断言）。
   边界登记：R-1 route-A 深修（merged back-api 运行期真值桩形维持，
   下游 L2 按需立项）。
   `next: review`。
+
+- 2026-09-30 review（复审会话=实现会话同 context，独立性局限在案——
+  结论从工件/复跑证据重建而非执行者转述）：`stage: review`，PLAN-710，
+  plan_revision 1，`outcome: pass`，reviewed_commit=**plan-710-dev@
+  1cb3ad662**（rebase 后新链 e891ca323/8e41c3214/48f9f3649/1cb3ad662，
+  基=c80887ab7 测试规则改版 master；旧基 b310acafd 上的原链
+  5c1d43b52/fb47aea61/4d79b52d3 语义等价重放）。dependency_revisions：
+  auto-down@3373a5c（组内兄弟 detach）；corpus=auto-edit main@70c5c60
+  组内 tmp 钉版。spec_inputs：SD-01
+  docs/specs/auto-lang/ui/design/a2r-app-mapping-completeness.md
+  （plan 分支 48f9f3649 落档，合并时随分支入 master——canonical 发布
+  流 intact）。
+  acceptance_results（新门禁口径=裸 cargo t+触面档；AC-05 旧 tf 口径
+  由门禁改版自然取代——tf 已改判批量回归档，归 merge 收尾到期判定）：
+  - AC-01/02/03（G-C/G-B/G-A 语义+清偿）：`cargo test --lib plan710`
+    **11/11 绿**（@1cb3ad662 复跑）；corpus grep 三占位零命中。
+  - AC-04（corpus 三重判据）：**r24 复跑 @1cb3ad662 工具链**——exit 0
+    + expr/stmt/裸 delta=0 + 生成 workspace cargo check 过（1m28s，
+    fix-ui-tier 动过 ui_gen 后在新基重立）。
+  - AC-05（回归门）：按改版门禁执行——裸 `cargo t --no-fail-fast`
+    4903 例 4892 绿 11 红：9 例=已知红基线逐名对上（musk p053×4/
+    p054×2/plan606 gallery/projector/e4 default_headers 30s 有界）；
+    2 例 app_registry（scan_examples_ui_curation_set/
+    launch_three_real_apps）**归因=corpus 判定副作用污染**（生成
+    workspace 产物按 Stage B 共享 target-dir 落仓根 target/debug/
+    auto-edit.exe→041-auto-edit 被 exe 背书挤出策展集）——产物清理后
+    隔离复跑 **26/26 绿**，非代码回归；`cargo tu` 855/856 绿，1 红=
+    a2vue desktop 金样（4f123a50e 在案）。**零新增红**。
+  - AC-06（规范+账本）：SD-01/242 #18 行 plan 分支在档（grep 锚）；
+    specs.json P710-1 回读 True（176 项；插入时 roundtrip 字节等价
+    先证+前缀/他五段零扰动断言，sha 7e65c8be9e271ac5）。
+  findings：
+  - F-710-1（已解决，工具性）：corpus regen 与 app_registry 策展
+    扫描共享仓根 target 的干涉面（Stage B 共享 target-dir 设计副
+    作用）——corpus 判定后须清 target/debug/auto-edit.exe 再跑族测；
+    已清理并断言。非阻塞。
+  - F-710-2（记录，非阻塞）：D-7 merged 桩运行期真值=记录+缺省形，
+    route-A 深修=R-1 后续件（§10）。
+  - F-710-3（记录，非阻塞）：scroll_to 臂按 corpus 轴串形发射，
+    坐标形态零实例（误用由生成物编译错显式拦截，代码注记在案）。
+  `next: merge`（含批量回归到期判定——收据 .last-batch-regression.json
+  缺失=首次 merge 触发主检出单实例 tf，设计行为）。
 
 ## 10. 待澄清事项
 
