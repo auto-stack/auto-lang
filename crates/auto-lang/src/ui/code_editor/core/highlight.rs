@@ -64,7 +64,7 @@ pub fn lang_to_extension(lang: &str) -> Option<&'static str> {
         "none" | "plain" | "plaintext" | "" => return None,
         other => {
             // Unknown language: try the token itself as an extension so new
-            // languages work when two-face knows them.
+            // languages work when the syntax set knows them.
             return Some(Box::leak(other.to_owned().into_boxed_str()));
         }
     };
@@ -131,8 +131,15 @@ fn normalize_accent(accent: &str) -> &str {
 }
 
 fn build_syntax_system() -> SyntaxSystem {
+    // PLAN-716 T-06: two-face 退役（714 §4 定案——.rdata 12.4MB 主项清偿）。
+    // 语法底座= syntect default-syntaxes（Sublime 默认包 ~90 语法，含 rust/
+    // python/js/ts/json/toml/yaml/md/html/css/c/cpp/go/java/sql/xml/bash/c#/
+    // powershell/batch/ini 等编辑面 fallback；20 首批语言只读面已路由 ts，
+    // tail（.at/mermaid/vue/console）+未知透传臂由本缩减集承载）。onig 保留：
+    // cosmic-text 0.15 fontconfig(default) 以 default-onig 拉 syntect（特性
+    // 统一强制在场，iced 0.14 钉 cosmic-text 0.15——外部契约，摘除另档）。
     let syntax_set = {
-        let mut builder = two_face::syntax::extra_no_newlines().into_builder();
+        let mut builder = syntect::parsing::SyntaxSet::load_defaults_newlines().into_builder();
         if let Ok(auto_def) =
             syntect::parsing::SyntaxDefinition::load_from_str(AUTO_SYNTAX_YAML, false, None)
         {
@@ -140,10 +147,9 @@ fn build_syntax_system() -> SyntaxSystem {
         }
         builder.build()
     };
-    let mut theme_set: syntect::highlighting::ThemeSet = {
-        let lazy: two_face::theme::LazyThemeSet = two_face::theme::extra().into();
-        lazy.into()
-    };
+    // 主题底座= syntect default-themes（含 base16-eighties.dark——SyntaxEditor
+    // bootstrap 键与 warm-up 依赖）；AutoUI 合成主题照旧预烘焙覆盖其上。
+    let mut theme_set: syntect::highlighting::ThemeSet = syntect::highlighting::ThemeSet::load_defaults();
     // Pre-register the synthesized AutoUI themes (builtin themes × dark/light
     // × accents). PLAN-601 T-10: every named builtin joins the baked set so
     // switching themes re-keys without re-synthesis; composed (declared)

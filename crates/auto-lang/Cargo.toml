@@ -66,7 +66,7 @@ ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "dep:iced_ru
 # Plan 413: cross-platform code editor widget (cosmic-text ViEditor engine,
 # syntect/two-face highlighting). Mounted under ui-iced — enabling the iced
 # backend brings the editor along.
-code-editor = ["ui", "dep:cosmic-text", "dep:syntect", "dep:two-face"]
+code-editor = ["ui", "dep:cosmic-text", "dep:syntect"]
 # PLAN-716 组A (714 契约 T-1): tree-sitter 双轨高亮 runtime。feature 关=零语义
 # （syntect 基线逐字节等价——ts 代码面全量 cfg 门控）；开启后按 lang 路由表
 # 分流（tail 语言仍走 syntect，路由纪律见 core/treesitter.rs）。
@@ -286,7 +286,9 @@ kamadak-exif = { version = "0.6", optional = true }
 # unify to a single 5.x instance.
 cosmic-text = { version = "0.15", optional = true, features = ["vi", "syntect"] }
 syntect = { version = "5", optional = true }
-two-face = { version = "0.4", optional = true }
+# two-face 已退役（PLAN-716 T-06：.rdata 12.4MB 主项——语法底座改 syntect
+# default-syntaxes 缩减集+AutoUI 合成主题；onig 经 cosmic-text default-onig
+# 特性统一保留，摘除受 iced 0.14/cosmic-text 0.15 外部契约阻断）
 # PLAN-716 组A: tree-sitter 0.27 runtime（714 spike 实证 ABI v15 兼容 v13+，
 # 0.23-0.26 grammar 混搭零障碍）。grammar 子 crate 随语言批次在 T-02+ 续挂。
 tree-sitter = { version = "0.27", optional = true }

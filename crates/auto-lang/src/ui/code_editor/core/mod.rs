@@ -513,7 +513,7 @@ impl CodeEditorCore {
 
         let system = highlight::syntax_system();
         let mut syntax_editor = SyntaxEditor::new(arc, system, "base16-eighties.dark")
-            .expect("bootstrap syntax theme must exist in two-face defaults");
+            .expect("bootstrap syntax theme must exist in syntax defaults");
         if let Some(ext) = highlight::lang_to_extension(&config.lang) {
             syntax_editor.syntax_by_extension(ext);
         }
