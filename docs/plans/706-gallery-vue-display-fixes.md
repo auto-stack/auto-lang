@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-706
-status: execution_done        # r2 work 阶段收口（2026-09-30）——T-09..T-11 全链完成，next=review
+status: reviewed              # r2 复审 pass（2026-09-30）——next=merge
 # r2 重开（2026-09-29）：r1 交付簇携入的 vm UI 脏标/确认弹层交互面回归——追加修复
 # phase（T-09..T-11，§11）。立项=消费者仓 jade-edit PLAN-026 回执批冒烟败形实证 +
 # 用户直接裁定；rev1 交付记录（§8 勾选/§9 既有收据）原样保留。
@@ -396,6 +396,23 @@ git -C D:/autostack/auto-os worktree add D:/autostack/.wt/lang-706/auto-os -b pl
   - 定谳为非本回归：probe_mtime release 挂起（old-carrier release 同挂→P706-D1）；消费者 e2e flaky（双载体同 flaky→P706-D2）；gallery 侧栏连按 quirk（双载体同→P706-D3）
 - `blockers`: 无
 - `next`: review（worktree 保留；spec delta=无新增——SD-01..04 已于 r1 沉淀，r2 为纯回归修复不动 canonical Specs 契约面）
+
+### stage: review | plan_id: PLAN-706 | plan_revision: 2 | outcome: pass（2026-09-30）
+- `reviewed_commit`: plan-706-dev **9420eb7a2**（84befb240+f509b47ff+9420eb7a2 三提交链）；`base_commit`: 4dae03122；`dependency_revisions`: auto-down 组兄弟 3373a5c detached（未改）
+- 独立性声明：本复审在实现会话内进行——结论由工件重建（门禁全量重跑+基线对照），不依赖执行摘要
+- `spec_inputs`: 无 canonical Specs 引用变更——r2 零规范增量（grep docs/specs 无 memo/信号网契约文本，plan046/047 未沉淀 canonical；准入守卫=代码内已成文降级哲学的同族应用）；frontmatter spec 元数据沿 r1 不动
+- `acceptance_results`（复审基线全量重放）:
+  - AC-09 **pass**：定谳报告在档（worktree 提交，merge 随链落 master）；A/B 锚与 panic 栈实证在案
+  - AC-10 **pass**：消费者 merged 矩阵 16/16 ALL GREEN——复审基线重放第三绿（`p706-review-matrix.log`，HEAD 重建 exe）；家族弧 HEAD 3/3（2 轮带 load）
+  - AC-11 **pass**：probe_mtime 定谳独立缺陷（P706-D1，old-carrier release 同挂）+家族 UI 面零回归=tf 红集基线对照证
+- **tf 门禁（Category B 全量档，VM/engine 改动触发）**：`cargo tf` 全量普查 HEAD 18 红 vs base(4dae03122) 27 红——16 红双面同集（musk_vm_track p053/p054 族×5、docs_gen core_reference+kitchen_sink×2、plan394 c1、projector_counter、plan606 029、a2vue_desktop、p508_g2、plan358 stress、serve_once/enable_broker）；2 HEAD-only 红（broker_incubation_full_flow/desktop_connect_adopts_live_serve）单测复跑即绿，且 base 侧同族 11 红为 run-unique（desktop_protocol 进程族环境 flaky，双基线红集方差自证）⇒ **净回归=0，base-only 红 11 项=环境方差**。已知预存红中 musk p053 ×2 于 base 同红单测复证（复审首跑即遇）
+- **tf 异常定谳（新债 P706-D4）**：`plan705_e2e_deadline_cancels_parked_and_reclaims` 在 tf 并行池内 >62min 挂起（全量套件无法收尾）；单测隔离 <3min 绿。根因=705 时代门禁违例：裸 `#[test]` 绑定固定端口 18511/18512 + 全局 env 变更（`AUTO_HTTP_REQUEST_TIMEOUT_MS`），其自家计划 §6 明示真 TCP e2e 应入 `test-http-e2e` 门/th 串行池——非 706 r2 引入。普查按 `-E 'not test(...)'` 排除后完成，排除项已单测复证
+- `findings`:
+  - `F-r2-01 medium(pre-existing): plan705 e2e 门禁违例入 tf 并行池（固定端口+env 污染）→ 全量套件挂起风险——登记 P706-D4，清偿归属 705 域治理（cfg 门收编 th 串行池），不阻塞本计划`
+  - `F-r2-02 info(pre-existing): tf 红集家族（musk/docs_gen/desktop_protocol）双基线方差在案——base 27 红中 11 项 run-unique，红册治理归后续档位`
+  - `F-r2-03 process: master 漂移至 b310acafd（707 code 落地+708/709 推进；709 同域 aura_view_builder）——merge 必须 merge-sync master 入分支后重跑定向门禁（plan706/047/046/memo/vm_bridge+双形态 check+arc/matrix 抽查）再落地`
+- `evidence`: tf-review-full.log（HEAD 18 红）/tf-base-census.log（base 27 红）/red-diff 处置/arc rrun-1..3.log/p706-review-matrix.log（均组目录 .wt/lang-706/，不入 git；结论与命令已录本记录可复跑）
+- `next`: merge（前置=merge-sync master 重验；无 canonical Specs 沉淀项——r2 零规范增量）
 
 ## 10. 待澄清事项
 
