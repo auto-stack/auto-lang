@@ -336,7 +336,11 @@ pub mod json {
     }
 
     /// 带缺省的成员路径 str 投影（计算缺省形——`t.title ?? file_basename(p)`）。
-    pub fn get_str_or_with<F: FnOnce() -> String>(val: &Value, keys: &[&str], default: F) -> String {
+    pub fn get_str_or_with<F: FnOnce() -> String>(
+        val: &Value,
+        keys: &[&str],
+        default: F,
+    ) -> String {
         let mut cur = val;
         for k in keys {
             match cur.get(k) {

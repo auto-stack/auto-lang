@@ -2674,7 +2674,10 @@ impl RustGenerator {
     /// PLAN-710 G-A：语句树内 NullCoalesce 链根名收集（`v.a`、`t.path`、
     /// `rows[i].lo` 的根 Ident 名）。只收 Ident 根（envelope 接收者形态；
     /// Dot/Index 链剥层后取基座）。
-    fn collect_coalesce_receivers(st: &crate::ast::Stmt, out: &mut std::collections::HashSet<String>) {
+    fn collect_coalesce_receivers(
+        st: &crate::ast::Stmt,
+        out: &mut std::collections::HashSet<String>,
+    ) {
         match st {
             crate::ast::Stmt::Store(s) => Self::collect_coalesce_receivers_expr(&s.expr, out),
             crate::ast::Stmt::Expr(e) => Self::collect_coalesce_receivers_expr(e, out),
