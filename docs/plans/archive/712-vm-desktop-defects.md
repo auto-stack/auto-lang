@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-712
-status: executing             # r2 收纳复开（archived → executing，用户预授权收纳通道）；2026-09-30 用户裁定先收口 → execution_done（T-11 登记后续修）
+status: reviewed             # r2 复审 pass（2026-09-30，实现会话自审+工件重建裁定）；next=merge
 feature_name: VM 桌面验收缺陷收敛（视频引擎双缺陷 + 壳配置持久化 + examples 依赖）
 author: [zcode(auto-os 会话转介)]
 created_at: 2026-09-30
@@ -8,9 +8,9 @@ updated_at: 2026-09-30
 plan_revision: 2
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components: []  # 空=无退役组件：8 条 delta 全为 docs/specs/auto-lang/ui/overview.md 既有节的 modify/add（复审核验，见 §9）
+new_spec_components: []         # 空=无新 spec 文件：所有增量落 overview.md 既有文件内
+touched_goals: [GOAL-007, GOAL-009, GOAL-010]  # 007=跨端一致(上行契约/事件占位双端同义)；009=桌面 Shell(壁纸 boot 链/config 合并)；010=示例轨道(030/018)
 
 affects: [auto-lang/ui]
 current_step: 12
@@ -113,6 +113,7 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
 | SD-06 | modify | `docs/specs/auto-lang/ui/overview.md`（壁纸解析节，随再 merge 沉淀） | before：`#hex`/`builtin:` 直传短路目录首图回退（纯色槽位可致 boot 恒无图）；after：boot 优先级 = 存在图片路径 > 壁纸目录首图 > 色值直传（仅无目录机器）> 内置默认——「任何时候打开都加载默认壁纸」（用户裁定） | r2 收纳 T-13 | AC-08 |
 | SD-05 | modify | `docs/specs/auto-lang/ui/overview.md`（媒体元素节，随再 merge 沉淀） | before：VM 端本地文件选择无契约（app 侧降级文案「仅 Web 端」）；after：VM 端本地播放 = dialog_open（PLAN-681 内建）→ 本地路径直入 mpv 契约，与 Web object URL 同级承诺 | r2 收纳：能力面已齐但 app 未接线，契约须成文 | AC-07 |
 | SD-04 | add（视 DP-4） | `docs/specs/auto-lang/ui/overview.md`（examples 生成产物 feature 面）或生成器 spec | before/after 工作期按 DP-4 定 | 生成产物 feature 失效属工具链契约缺口 | AC-05 |
+| SD-08 | add | `docs/specs/auto-lang/ui/overview.md`（媒体元素节/事件契约面，随 merge 沉淀） | before：事件回调 `$N` 占位实参仅 Vue 生成器替换语义，VM 端落 `Str("$0")` 字面量占 args[0]、真载荷错位（`($0)` 与 `()` 形态分叉）；after：`$` 前缀占位实参 VM 端剥除，载荷对位由回调臂事件现场 push 保证，`($0)` 与 `()` 两形态 VM 端同义、与 Vue 生成器同契约 | T-12 根因修复（030 进度条点击失效）引入的持久语义，必须成文防回归 | T-12 回归锁 `progress_onseek_placeholder_never_becomes_literal_arg` |
 
 ## 6. 测试设计
 
@@ -222,3 +223,10 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
   | blockers: 无（T-11 定谳修复与 AC-02/AC-07 实机点击取证归后续）| next: T-11 修复或 review（视用户取舍）。
 - 2026-09-30 **验收裁定（用户，r2）**：「先收口（T11记录下来）」——T-11 保留在案为登记态（§8 [~] + §10 ①：真机塌缩实锤 + 非确定性源定谳入口），不阻断本轮收口；后续按引擎计划/收纳通道再修。r2 自有用例口径全绿（desktop_config 20/20、video_uplink 3/3、video_contract 4/4、mpv_channel 双臂、T-12 回归锁双形态、p712 布局探针 3/3、AC-06 零新增红），与 r1 裁定同口径。
 - 2026-09-30 stage:work 收口 | plan_id PLAN-712 | plan_revision 2 | outcome: pass | code_commit: plan-712-dev 7f483e1ab（承 master 472e035a7；簿记 170e5e3b8）| task_ids: T-01..T-15 | evidence: §8 勾选与子证据全对账；开放项=T-11（登记态）+ 实机取证腿（AC-02 scrub/AC-07 走查/AC-08 浅色截图），均经用户裁定不阻断 | blockers: 无 | next: review。
+- 2026-09-30 stage:review | plan_id PLAN-712 | plan_revision 2 | outcome: **pass** | reviewed_commit: plan-712-dev 7f483e1ab | base_commit: 472e035a7（master；r1 提交 cc46d64c1..c3aa6d7be 已在 master 祖先）| dependency_revisions: auto-down 3373a5c（detached 只读兄弟 worktree，路径依赖解析）| spec_inputs: docs/specs/auto-lang/ui/overview.md（SD-01..08 冻结于本件 r2 文本）|
+  - **独立性声明**：实现会话自审（同会话无独立复审上下文），裁定从工件重建（r1 先例同款）——判据全部来自本基线新鲜复跑与在库工件，不采信执行期摘要。
+  - **验收映射**（AC→证据→裁定）：AC-01 pass（r1 实机实锤：OSD 时长 00:49 真值+进度随动，截图 evidence/712/vm-030-playing.png）；AC-02 pass（用户裁定口径=T-12 修复+OnTime 回灌链实机连续跨文件推进；scrub 三采样全证登记归后续）；AC-03 pass（T-03 shader 传递归一+VM 视觉验证；Web 同帧对照登记归后续）；AC-04 pass（desktop_config 20/20 含 `save_after_external_edit_preserves_fields` 回归锚；实机复演登记）；AC-05 pass（r1 `auto run -r vm` 命令实跑出窗可播）；AC-06 pass（全量对照 worktree 12 唯一红 ⊂ master 14 红=零新增，本基线新鲜复跑）；AC-07 partial→登记（T-09 接线在树+MCP 快照在案，对话框实机走查归后续）；AC-08 pass（`desktop_surface_storage_roundtrip_and_wallpaper_resolution` 双结果放行绿；实机浅色截图登记）；AC-09 pass（深 purple/浅 songyu 双断言绿）。
+  - **新鲜复跑**（worktree @7f483e1ab）：验收族 23/23 绿（desktop_config 20+video_uplink/video_contract+progress_onseek 双测+present_renormalizes+desktop_surface_storage）+ `cargo tv` 162/162 + p712 布局探针 3/3（iced-layout-tests）。
+  - **findings**：F-712-1 T-11 播控条塌缩未修（用户裁定登记态；定谳入口 §10①）；F-712-2 实机取证腿 4 项登记归后续（AC-02 scrub/AC-07 走查/AC-08 截图/AC-04 复演）；F-712-3 master 日常档基线 14 红扩容归 `/auto-plan:regress` 档（§10②）。
+  - **知识增量**：SD-01..07 核验——目标路径 `docs/specs/auto-lang/ui/overview.md` 有效，before/after 与实现一致（上行契约双端 0.25s 节流不变/2.4→sRGB 归一规则/config 合并无首写例外/壁纸 boot 优先级四档/分主题默认对/VM 本地播放 dialog_open 契约）；**补 SD-08**（事件回调 `$` 占位实参契约=T-12 修复的持久语义，本复审新增）；supersedes/new 空表理由见 frontmatter 注；touched_goals=[GOAL-007,GOAL-009,GOAL-010]。
+  | spec delta: SD-01..08 随 merge 沉淀至 docs/specs/auto-lang/ui/overview.md | next: merge。
