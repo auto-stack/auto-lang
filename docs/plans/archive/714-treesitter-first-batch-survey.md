@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-714
-status: execution_done        # r3 深修阶段完成（r2 needs_replan 有界修订兑现）；终态待 review/merge（archived → executing，用户指令收纳通道——712 r2 先例同款）；终态待再 merge
+status: reviewed               # r3 复审 pass（2026-09-30）；终态待 merge（archived → executing，用户指令收纳通道——712 r2 先例同款）；终态待再 merge
 completion_kind: delivered    # r1 交付面保持（勘定件已 delivered）；r2=供① 残余解锁追加 phase；r3=route-A 深修追加 phase
 feature_name: tree-sitter 首批勘定件（auto-edit M4 供料包供④ 前半——语言集定界/管线选型+烟测/syntect 共存策略/增量高亮管线要点+实施件契约草案）
 author: [agent]
 created_at: 2026-09-30T16:15:39+08:00
-updated_at: 2026-09-30T20:25:00+08:00
+updated_at: 2026-09-30T20:40:00+08:00
 plan_revision: 3
 current_step: 16
 total_steps: 16
@@ -468,6 +468,33 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
   AC-R2-1 补全+AC-R2-4 交付——**供① 残余两面全解锁，PLAN-021 解阻**。
   `blockers`: 无。`next: review`。
 
+
+- 2026-09-30 r3 review handoff：`stage: review`，PLAN-714，plan_revision 3。
+  `outcome: pass`。`reviewed_commit`: plan-714-dev 211ef52377655b9eb2d25cf
+  47c9eca8050eaa626（=96e848ea5 深修+3574b47c8 夹具+211ef5237 census；
+  worktree 净 0 dirty）；`base_commit`: master@99405c675（r3 收纳；
+  merge-base 实证）；master 现势 559aa0c45（712 r2/711 并行落地——与本案
+  文件零交叠待 merge 时 range-diff 复证）。`dependency_revisions`: auto-edit
+  main（只读+perf.py 复验位）/auto-down detached sibling（浮 HEAD——cargo
+  解析面）。`spec_inputs`: SD-01 册（r1 不变仍有效——r3 深修无 canonical
+  增量申报；知识落位=census §7+账本 P714-3+单测，canonical a2r 书扩展
+  =F-2 建议位）。`acceptance_results`: AC-R3-1 pass（stdlib 五 fns+diff
+  模块编译+探针覆盖）；AC-R3-2 pass（三分发器臂——fsys 全文直转探针
+  限定断言绿）；AC-R3-3 pass（传播形/unit 保持/borrow clone 三单测绿）；
+  AC-R3-4 pass（census §7 r3 收口@211ef5237+P714-3 回读 True）；**AC-R2-1
+  补全 pass**（复审 fresh regen 重放：exit 0+skip 0+0 编译错+工作区 check
+  58.99s 过）；**AC-R2-4 pass**（下游 perf.py a2r 三重判据全绿——同二进制/
+  同 corpus 复用 20:15 凭证[tools/perf/logs/a2r-20260930-201506.log+实仓
+  rust-workspace check 59.82s]，复用理由=二进制与 corpus 态自凭证后零变化）。
+  `findings`: F-1（低，不阻塞）plan714 探针落位 plan710_supply_probes.rs
+  （新文件解析异常未定谳的绕行——同族归家，七绿在案）；F-2（低，建议）
+  canonical a2r 书（710 SD-01 册）未扩展新映射族——知识已由 census §7+
+  账本 P714-3+单测钉住，建议后续 a2r 域件补书；环境注记=scan/launch 两红
+  =worktree 缺 debug 应用二进制（主检出同测绿）+plan707_cancel 负载 flake
+  （隔离绿）。`evidence`: 复审重放（实施会话内复审——工件重建）=plan714
+  七测绿+corpus fresh regen 重放（a2r-review-run.log：EXIT=0/SKIP=0/
+  check 58.99s）+P714-3 回读 True+census §7 在案；tt 全谱 5266/5280
+  （零新增归因红）+cookbook 125/125。`next: merge`。
 ## 10. 待澄清事项
 
 - **Q-1 语言集预裁定（可选）**：默认 T-01 按下游现实+战略「常见
