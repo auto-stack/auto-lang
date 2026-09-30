@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-714
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: tree-sitter 首批勘定件（auto-edit M4 供料包供④ 前半——语言集定界/管线选型+烟测/syntect 共存策略/增量高亮管线要点+实施件契约草案）
 author: [agent]
 created_at: 2026-09-30T16:15:39+08:00
@@ -305,6 +306,27 @@ reviews 段 P714-1 外科插入（703/710 先例）。
   复跑/许可 API 抽查/数字 grep/diff 断言/readback 全部本会话重放）；
   修复提交 2530e6d6b（3 文件 ±5 行）；Category A 门禁维持（零 crates
   改动，无测试面）。`next: merge`。
+
+- 2026-09-30 merge 收据：`stage: merge`，PLAN-714:r1，
+  `completion_kind: delivered`。**prepared**：reviewed 基线 2530e6d6b
+  （pass，AC-01..06 复放在案）；canonical delta=SD-01 add（
+  docs/specs/auto-lang/ui/design/treesitter-highlight-survey.md，分支
+  内已备）；projection target=specs.json designs 段新项 P714-2
+  （file+docsha+commit 标签）；归档目标 docs/plans/archive/。
+  **landed**：rebase master 后 range-diff 双等（9e935f423→0697929b6、
+  2530e6d6b→41ace6107，补丁全等证明）；ff-only 合并零合并提交，
+  master tip=delivery 41ace6107 实证（5 文件 867 行）；docs-only
+  集成烟=INDEX 再生 no-op。**ledger_refreshed**：designs 段 P714-2
+  外科插入（roundtrip 字节等价先证+五段零扰动 designs 116→117+回读
+  True，docsha 5e7c2fa187fee8ef）@ ad95f78e7；INDEX 再生 no-op 复核；
+  plans.md/overview 行回写按 710 先例不适用（勘定件无行为面——
+  710/711/712 均无行实证）。**archived**：git mv 至 archive/+
+  status: archived+completion_kind: delivered（本节收据）。批量回归
+  到期判定=**不到期**（.last-batch-regression.json last_covered=712
+  @7fcf913eb，收据 2026-09-30T08:04:49Z 仅 9h；714%5=4 非五倍数；
+  无 48h+合并触发）。**部署观察**：docs-only 落地（crates/ 零 diff
+  断言在案）——backend release/daemon/gen front 三面零重建项维持。
+  **cleaned**：待下笔（清理后补）。
 
 ## 10. 待澄清事项
 
