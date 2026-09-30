@@ -7591,6 +7591,11 @@
       "a6dc2bbab"
      ],
      "file": "docs/plans/archive/711-vm-loading-scheduling.md"
+    },
+    {
+     "id": "P714-3",
+     "title": "route-A 深修 work 收据（供① 残余两面全解锁，PLAN-021 解阻 @ plan-714-dev 211ef5237）",
+     "content": "PLAN-714 r3 route-A 深修 work 收据（R3-T1..T6 全账 @ plan-714-dev 96e848ea5+3574b47c8+211ef5237，基线 master@dfa9e86e5=r3 收纳）。深修面：①stdlib=a2r_std fs::copy_recursive/remove_dir/read_bytes_list/write_bytes_list+re::test[text,pad 实参序 VM 同源]/replace[g 旗]+json::from_value/parse_str_list+diff 三件套模块（703 imara 引擎包络，code-editor 门双轨=shim 同 panic 文案）+list=Vec<Value> 别名+json! 再导出；②内建表臂三处分发器齐装（Bina 元组/两段 ns/Dot method_name——r3d 迭代 实证第三处才拦 corpus 两段形）：fs.metadata→file_size[census §92 size 语义]/copy_recursive/remove_dir/list_dir→walk/json.from_value[Key 枚举 四型引号修 (name X) 错键+json! 形]/to_value→parse_str_list[list 语义]/Regex.test+replace/File.read_bytes+write_bytes list 形/裸名 diff 三件；③Try 臂 return 传播形（fn 非 unit+体含 return 门控→闭包 Option<Ret>+Some AST 改写+Ok(Some(v))=>return v/Ok(None)=>Default——710 G-B 边界 条款「return 不出闭包」的 corpus 实实例收口）+借位迭代变量 clone 窄门 （store 声明+String 族型门压 1609 假阳性顾虑）。验证：单测 7 枚（plan714_* 六+fsys.at 全文直转限定探针）+cookbook 125/125 全绿（file 003/004 夹具随 VM fs.metadata→size 现行语义同步[.len()/.modified() 死形退役]）；tt 全谱 5266/5280（14 红全数已知/flake[plan707_cancel 隔离绿]/worktree 环境[scan/launch=缺 debug 应用二进制主检出绿]）零新增归因红；corpus fresh regen exit 0+工作区 check 过（1m07s）+skip=0——AC-R2-1 补全；下游真仓 perf.py a2r 三重判据全绿（exit 0+三占位 0/0/0+fresh check 59.82s；deps 预置真实拷贝修复半拉 materialize 态=710 配方复刻）——AC-R2-4 交付，PLAN-021 解阻。AC-R3-1..4 全绿。next: review。"
     }
    ]
   }

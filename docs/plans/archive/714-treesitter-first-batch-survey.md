@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-714
-status: executing             # r2 收纳复开+ r3 深修阶段收纳（同通道——712/714-r2 先例）；终态待再 merge（archived → executing，用户指令收纳通道——712 r2 先例同款）；终态待再 merge
+status: execution_done        # r3 深修阶段完成（r2 needs_replan 有界修订兑现）；终态待 review/merge（archived → executing，用户指令收纳通道——712 r2 先例同款）；终态待再 merge
 completion_kind: delivered    # r1 交付面保持（勘定件已 delivered）；r2=供① 残余解锁追加 phase；r3=route-A 深修追加 phase
 feature_name: tree-sitter 首批勘定件（auto-edit M4 供料包供④ 前半——语言集定界/管线选型+烟测/syntect 共存策略/增量高亮管线要点+实施件契约草案）
 author: [agent]
 created_at: 2026-09-30T16:15:39+08:00
-updated_at: 2026-09-30T19:35:00+08:00
+updated_at: 2026-09-30T20:25:00+08:00
 plan_revision: 3
-current_step: 9
+current_step: 16
 total_steps: 16
 supersedes_spec_components: []
 new_spec_components:
@@ -331,12 +331,12 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
 | 7 | R2-T1 back 通路 Try 臂 | — | trans/rust.rs 语句分派（~:12300）+单测 | 供① 残余两面单点解锁 | AC-R2-1/2/3 | [x] 臂落+单测三绿@4534b5004（plan714_back_try_arm_* 入 plan710_supply_probes）+零 skip 警告+front 实体形（AC-R2-2 实质达成）；**AC-R2-1 部分**：exit 0/cargo check 未达——fresh fsys.rs 暴露掩蔽层 26 错/8 类（route-A 深修=710 §10 延后面）→ needs_replan（§10 Q-R2-2） |
 | 8 | R2-T2 corpus 判据三行 | R2-T1 | p710 census 判定面 | 盲区堵截（掩蔽/桩形/skip 警告） | AC-R2-1 | [x] 判定集三行入 p710-census.md §7@4534b5004（①skip 0 命中②fresh 卫生③实体形非桩=AC-R2-2 实证）；corpus 复跑=fresh fsys.rs 生成，掩蔽层 26 错暴露在档 |
 | 9 | R2-T3 下游解阻确认+落账 | R2-T1/2 | auto-edit 复验位+specs.json | 跨仓收口 | AC-R2-4 | [ ] 下游 a2r 三重判据全绿+P714-2 投影回读 True |
-| 10 | R3-T1 stdlib 面 | — | a2r_std.rs（fs/re/+新 diff 模块） | copy_recursive/write_bytes/re::test/diff 三件套（703 引擎包络，code-editor 门双轨） | AC-R3-1 | [ ] a2r_std 单测绿 |
-| 11 | R3-T2 内建表臂+型映射 | R3-T1 | trans/rust.rs Dot 表+rust_type_name | fs.metadata→file_size/copy_recursive/json.from_value[json! 形]/Regex.test/File.write_bytes/list→Vec<Value> | AC-R3-2 | [ ] 发射形单测绿 |
-| 12 | R3-T3 Try return 传播+借用 | R3-T2 | trans/rust.rs Try 臂 | 闭包 Option<Ret> 形（Some 改写/Default 尾臂）+preview=ln clone | AC-R3-3 | [ ] 两 E0308 形单测转绿 |
-| 13 | R3-T4 corpus 收口 | R3-T1..3 | 组内 tmp corpus | fresh regen→exit 0→fresh check（AC-R2-1 补全） | AC-R2-1 | [ ] 26 错→0+三判据全绿 |
-| 14 | R3-T5 下游解阻确认（原 R2-T3 承接） | R3-T4 | auto-edit perf.py a2r | 跨仓收口（021 复验位） | AC-R2-4 | [ ] 下游三重判据全绿 |
-| 15 | R3-T6 落账 | R3-T4/5 | census+specs.json+计划 | census §7 更新+P714-3 投影+完态 | AC-R3-4 | [ ] 投影回读 True |
+| 10 | R3-T1 stdlib 面 | — | a2r_std.rs（fs/re/+新 diff 模块） | copy_recursive/write_bytes/re::test/diff 三件套（703 引擎包络，code-editor 门双轨） | AC-R3-1 | [x] 五 fns+diff 模块落 a2r_std@96e848ea5（code-editor 门双轨=shim 同 panic 文案）；fsys.at 全文直转探针限定断言绿 |
+| 11 | R3-T2 内建表臂+型映射 | R3-T1 | trans/rust.rs Dot 表+rust_type_name | fs.metadata→file_size/copy_recursive/json.from_value[json! 形]/Regex.test/File.write_bytes/list→Vec<Value> | AC-R3-2 | [x] 三处分发器（Bina 元组/两段 ns/Dot method_name）齐装@96e848ea5+3574b47c8 前身（Key 枚举四型引号修 (name X) 错键/list=Vec<Value> 别名 glob 解析/裸名 diff 三件+Regex.replace/remove_dir/list_dir→walk/to_value→parse_str_list）；fsys 直转探针绿 |
+| 12 | R3-T3 Try return 传播+借用 | R3-T2 | trans/rust.rs Try 臂 | 闭包 Option<Ret> 形（Some 改写/Default 尾臂）+preview=ln clone | AC-R3-3 | [x] 传播形（体含 return 门控+Some AST 改写+Ok(Some(v))=>return v）+借位 clone 窄门（store 声明+String 族型门）@96e848ea5；传播形/unit 保持/borrow clone 三单测绿 |
+| 13 | R3-T4 corpus 收口 | R3-T1..3 | 组内 tmp corpus | fresh regen→exit 0→fresh check（AC-R2-1 补全） | AC-R2-1 | [x] fresh regen **exit 0**+工作区 check 过（1m07s）+skip=0+实体形在位——**AC-R2-1 补全**（r3f 轮；迭代谱 r2b 26 错→r3d 16→r3e 3→r3f 0 在档 a2r-r3*-run.log） |
+| 14 | R3-T5 下游解阻确认（原 R2-T3 承接） | R3-T4 | auto-edit perf.py a2r | 跨仓收口（021 复验位） | AC-R2-4 | [x] 下游真仓 perf.py a2r 绿（AUTO_BIN+AUTO_LANG_CRATE 钉 worktree 工具链；deps 预置真实拷贝修复半拉 materialize 态）+三占位 0/0/0+fresh check 59.82s 过——**AC-R2-4 交付，PLAN-021 解阻** |
+| 15 | R3-T6 落账 | R3-T4/5 | census+specs.json+计划 | census §7 更新+P714-3 投影+完态 | AC-R3-4 | [x] census §7 r3 收口判定@211ef5237+P714-3 投影（master 外科插入）回读 True——本行即完态 |
 
 ## 9. 复审记录
 
@@ -451,6 +451,22 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
   表臂+型映射/Try return 传播/corpus 收口[AC-R2-1 补全]/下游解阻确认
   [原 R2-T3 顺位承接]/落账。r1/r2 交付收据不变。next=work（R3-T1 起，
   worktree lang-714 延用）。
+
+
+- 2026-09-30 r3 work handoff：`stage: work`，PLAN-714，plan_revision 3。
+  `outcome: pass`。`code_commit`: plan-714-dev 96e848ea5+3574b47c8+
+  211ef5237（基线 master@dfa9e86e5=r3 收纳，worktree lang-714 延用）。
+  `task_ids`: R3-T1..T6 全账（6/6，current_step 16/16）。
+  `evidence`: stdlib 面五 fns+diff 三件套模块（code-editor 门双轨）；
+  表臂三处分发器齐装（Bina 元组/两段 ns/Dot method_name——r3d 迭代
+  实证第三处才拦到 corpus 两段形）；Try 传播形+借位 clone 窄门；单测
+  7 枚（plan714_* 六+fsys 全文探针）+cookbook 125/125 全绿；tt 全谱
+  5266/5280（14 红全数已知/flake[plan707_cancel 隔离绿]/worktree 环境
+  [scan/launch=缺 debug 应用二进制，主检出同测绿]）——零新增归因红；
+  corpus fresh regen exit 0+check 过；下游 perf.py a2r 三重判据全绿
+  （deps 预置真实拷贝修复半拉 materialize 态=710 配方复刻）。
+  AC-R2-1 补全+AC-R2-4 交付——**供① 残余两面全解锁，PLAN-021 解阻**。
+  `blockers`: 无。`next: review`。
 
 ## 10. 待澄清事项
 
