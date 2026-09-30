@@ -19,7 +19,7 @@ new_spec_components: []
 touched_goals: [GOAL-007, GOAL-009]
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 2
+current_step: 3
 total_steps: 9
 ---
 
@@ -329,6 +329,22 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 - Spec delta 更新：SD-02 的 ADR-19/24 重写对象即本次登记簿/派发驱动/取消语义，维持拟议。
 - `next: T-04 真实入口帧通知与有界泵（R-1 序障实证首验 → listen_raw 条件订阅 + 帧驱动有界泵接管 dispatch/resume 驱动点）`。
 
+### 2026-09-30 work T-04 完成（帧通知泵 + R-1 闭环 + 门禁改版适配）
+
+- `stage: work` | `plan_id: PLAN-711` | `plan_revision: 1` | `outcome: in_progress` | `code_commit: worktree 3809b58ea+97dcd7d75+d27d0c63b`。
+- worktree 同步：rebase 到测试门禁改版后 master（零冲突，4 提交干净重放）。
+- T-04 交付面（对 §5 M-03/D-1）：
+  - **帧泵接线**：`frame_pump_sub`（listen_raw 收 RedrawRequested，subscription::filter_map id 携带 AppId 防 453-T4 去重丢失；门=has_pending_init_work ∪ has_cpu_continuations，零 demand 无订阅防自我续帧）；`__frame_pump` 消费臂（dispatch_pending_inits + resume_cpu_slices 共享 8ms 轮次预算；完成直置 view_dirty 同帧重建——早退臂不达尾回填，与热重载臂同款；完成 bump 宿主 epoch 失效 outlet memo——plan437/502 pre-Init 骨架回放实录定谳）；tick 泵退回纯 I/O（`has_parked_io_tasks` 门，CpuRunnable-only 注册表不吊 16ms tick）。
+  - **订阅重估时序定谳**：iced_winit 订阅重估在 update() 内部、view() 之前（lib.rs :1337/:1300）——渲染期 demand 必须 update 侧唤醒：dispatch_app 以 is_dirty 为燃料链 ready 唤醒（泵推进才置脏，I/O 在途不空转，收敛无自旋）。
+  - **R-1 闭环实证**（013-todo + 自建夹具 + AUTO_CPU_PROBE 门控）：sub ON 同周期/112+ 帧消息→泵配对/4ms 校准片推进/598 万步跨 15.2s parked 完成 cpu_cont 归零/10M 累计护栏生产命中/重入忽略。措辞纪律保持 D-1："present 已返回的帧"序障（异步回环），非硬在屏证明。
+  - **D-2 实测校准**：CPU_SLICE_MAX_STEPS 4096→1M 天花板（解释器 ~1-3ns/步，4096 步 ≪4ms 帽成实际预算；校准后 4ms 墙钟为活预算）——D-2 授权面，簿记在案。
+  - **统一根态约束补全**：InitDemand 携带登记时 props 快照 + 派发前 ensure_child_state 重播种（donut 除零定谳：子件 props=根态同名共享字段，后渲染播种覆盖前者）；`prepare_child_render_state_snap` 变体。
+  - **新契约测试迁移 22 例**（10 文件）：构建登记→drive_scheduler_to_quiescence→重建断言；plan633×3/plan498×6/plan499×7/plan492×7/plan502×3/plan536×1/plan437×2/plan643×1/plan484×1/plan632×1。
+- 门禁（新口径）：裸 cargo t 4894/4905（63.8s，no-fail-fast 全量）+ tv 162/162 + plan711 13/13。9 红已知预存照录；**2 新红（plan484 bare_names/streaming）= Q-05 阻塞**，未修（见 §10）。
+- Q-05 深挖：per-instance 身份（name#instN）已试并回退（d27d0c63b）——两 Init 都跑时末写者霸占共享几何字段（bar_group 回归）；根因层级上调=统一根态共享字段×多实例×延迟派发的状态语义修订，候选 (i) 派发序+末写者恢复 (ii) 每实例 state 对象 (iii) 无 key 重复实例保留同步派发（最小面）。**T-05 设计期裁定**。
+- 环境记录：gallery VM 会话一次非确定性自退（~2s，干净 [X9] ok=true，master 二进制对照存活、复测不复现）——T-09 实机矩阵观察项。
+- `next: T-05 骨架/完成/失败显示（Q-05 候选裁定 + 完成语义 MCP/展示缓存版本链收口）`。
+
 ## 10. 待澄清事项
 
 | ID | 项目 | 处置 / owner |
@@ -337,4 +353,4 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 | Q-02 | native/FFI 单调用超预算上界（708 D-5 R-3 移交） | T-11 夹具实测；超限=分块/异步化该热点或 needs_replan，不称检查间隔提供硬上界 |
 | Q-03 | T-09 环境噪声（Todesk 虚拟显示/59Hz/冷构建方差） | 继承 708 baseline §5 对策；异常 p95 另采移窗对照并标注适配器 |
 | Q-04 | master 并行推进（708 期间三度发生） | 常规化 rebase+range-diff 等价证明；落地前合并态定向刷新触面族 |
-| Q-05（新增，T-04 迁移期定谳，**阻塞 2 红**） | 统一根态 × 无 key 兄弟实例 × 延迟派发交错：InitDemand 按名+key 收敛同身份（两次无 key bar-chart 播种互相覆盖共享字段），派发期 props 重播种践踏末写者状态（plan484 bare_names/streaming_recompute 8000 tick 实录；旧"播种即派发"交错是统一根态下的正确性要求）。owner=T-05 完成语义设计一并收口：候选=无 key 兄弟实例 per-instance 身份（vue 每实例挂载语义）或完成帧以快照渲染 |
+| Q-05（新增，T-04 迁移期定谳，**阻塞 2 红**） | 统一根态 × 无 key 兄弟实例 × 延迟派发交错：InitDemand 按名+key 收敛同身份（两次无 key bar-chart 播种互相覆盖共享字段），派发期 props 重播种践踏末写者状态（plan484 bare_names/streaming_recompute 8000 tick 实录；旧"播种即派发"交错是统一根态下的正确性要求）。**per-instance 身份（name#instN）已试并回退**（d27d0c63b）：两 Init 都跑时末写者霸占共享几何字段（bar_group downplay 断言红）——根因层级上调=统一根态共享字段×多实例×延迟派发的**状态语义修订**，非身份补丁可解。候选：(i) 派发序+末写者 props 恢复相；(ii) 每实例 state 对象（架构级）；(iii) 无 key 重复实例保留同步派发（最小面，放弃该角延迟化）。owner=T-05 设计期裁定 |
