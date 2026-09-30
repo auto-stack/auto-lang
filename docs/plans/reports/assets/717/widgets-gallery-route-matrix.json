@@ -1,0 +1,1500 @@
+{
+  "plan": "PLAN-717",
+  "route_count": 70,
+  "preview_card_count": 159,
+  "home_card_count": 69,
+  "sidebar_entry_count": 70,
+  "matrix": [
+    {
+      "route": "/",
+      "page_file": "index.at",
+      "title": "Auto UI",
+      "preview_cards": 0,
+      "home_card": false,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 5,
+        "Vue dark": 5,
+        "VM light": 6,
+        "VM dark": 6
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/absolute",
+      "page_file": "absolute.at",
+      "title": "Absolute",
+      "preview_cards": 3,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/accordion",
+      "page_file": "accordion.at",
+      "title": "Accordion",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/alert",
+      "page_file": "alert.at",
+      "title": "Alert",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/alertdialog",
+      "page_file": "alertdialog.at",
+      "title": "AlertDialog",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/alignment",
+      "page_file": "alignment.at",
+      "title": "Alignment",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 6,
+        "Vue dark": 6,
+        "VM light": 5,
+        "VM dark": 5
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/area-chart",
+      "page_file": "area-chart.at",
+      "title": "AreaChart",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/aspectratio",
+      "page_file": "aspectratio.at",
+      "title": "AspectRatio",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 4,
+        "Vue dark": 4,
+        "VM light": 5,
+        "VM dark": 5
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/avatar",
+      "page_file": "avatar.at",
+      "title": "Avatar",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 3,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/badge",
+      "page_file": "badge.at",
+      "title": "Badge",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/bar-chart",
+      "page_file": "bar-chart.at",
+      "title": "BarChart",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 3,
+        "VM dark": 3
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/breadcrumb",
+      "page_file": "breadcrumb.at",
+      "title": "Breadcrumb",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/button",
+      "page_file": "button.at",
+      "title": "Button",
+      "preview_cards": 4,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 3,
+        "VM dark": 3
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/calendar",
+      "page_file": "calendar.at",
+      "title": "Calendar",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/card",
+      "page_file": "card.at",
+      "title": "Card",
+      "preview_cards": 4,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 9,
+        "Vue dark": 9,
+        "VM light": 7,
+        "VM dark": 7
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/carousel",
+      "page_file": "carousel.at",
+      "title": "Carousel",
+      "preview_cards": 5,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 10,
+        "Vue dark": 10,
+        "VM light": 10,
+        "VM dark": 10
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/center",
+      "page_file": "center.at",
+      "title": "Center",
+      "preview_cards": 4,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 3,
+        "VM dark": 3
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/checkbox",
+      "page_file": "checkbox.at",
+      "title": "Checkbox",
+      "preview_cards": 3,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 3,
+        "VM dark": 3
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/code-editor",
+      "page_file": "code-editor.at",
+      "title": "CodeEditor",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 4,
+        "Vue dark": 4,
+        "VM light": 4,
+        "VM dark": 4
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/col",
+      "page_file": "col.at",
+      "title": "Column",
+      "preview_cards": 6,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 6,
+        "Vue dark": 6,
+        "VM light": 6,
+        "VM dark": 6
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/collapsible",
+      "page_file": "collapsible.at",
+      "title": "Collapsible",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/combobox",
+      "page_file": "combobox.at",
+      "title": "Combobox",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 3,
+        "VM dark": 3
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/command",
+      "page_file": "command.at",
+      "title": "Command",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 3,
+        "VM dark": 3
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/contextmenu",
+      "page_file": "contextmenu.at",
+      "title": "ContextMenu",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/datatable",
+      "page_file": "datatable.at",
+      "title": "Data Table",
+      "preview_cards": 8,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 29,
+        "Vue dark": 29,
+        "VM light": 25,
+        "VM dark": 25
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/datepicker",
+      "page_file": "datepicker.at",
+      "title": "DatePicker",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/dialog",
+      "page_file": "dialog.at",
+      "title": "Dialog",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/donut-chart",
+      "page_file": "donut-chart.at",
+      "title": "DonutChart",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/drawer",
+      "page_file": "drawer.at",
+      "title": "Drawer",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/dropdownmenu",
+      "page_file": "dropdownmenu.at",
+      "title": "DropdownMenu",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/filetree",
+      "page_file": "filetree.at",
+      "title": "FileTree",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/flex",
+      "page_file": "flex.at",
+      "title": "Flex",
+      "preview_cards": 5,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 5,
+        "Vue dark": 5,
+        "VM light": 5,
+        "VM dark": 5
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/flow-diagram",
+      "page_file": "flow-diagram.at",
+      "title": "FlowDiagram",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 4,
+        "Vue dark": 4,
+        "VM light": 3,
+        "VM dark": 3
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/form",
+      "page_file": "form.at",
+      "title": "Form",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/grid",
+      "page_file": "grid.at",
+      "title": "Grid",
+      "preview_cards": 4,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 4,
+        "Vue dark": 4,
+        "VM light": 4,
+        "VM dark": 4
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/grid-span",
+      "page_file": "grid-span.at",
+      "title": "GridSpan",
+      "preview_cards": 4,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 4,
+        "Vue dark": 4,
+        "VM light": 4,
+        "VM dark": 4
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/hovercard",
+      "page_file": "hovercard.at",
+      "title": "HoverCard",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/input",
+      "page_file": "input.at",
+      "title": "Input",
+      "preview_cards": 5,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 4,
+        "Vue dark": 4,
+        "VM light": 4,
+        "VM dark": 4
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/kitchen-sink",
+      "page_file": "kitchen-sink.at",
+      "title": "Kitchen Sink",
+      "preview_cards": 0,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 16,
+        "Vue dark": 16,
+        "VM light": 15,
+        "VM dark": 15
+      },
+      "visible_schema_examples": {
+        "Vue light": {
+          "total": 53,
+          "visible": 53,
+          "invisible": []
+        },
+        "Vue dark": {
+          "total": 53,
+          "visible": 53,
+          "invisible": []
+        },
+        "VM light": {
+          "total": 53,
+          "visible": 53,
+          "invisible": []
+        },
+        "VM dark": {
+          "total": 53,
+          "visible": 53,
+          "invisible": []
+        }
+      }
+    },
+    {
+      "route": "/label",
+      "page_file": "label.at",
+      "title": "Label",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/line-chart",
+      "page_file": "line-chart.at",
+      "title": "LineChart",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 3,
+        "VM dark": 3
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/menubar",
+      "page_file": "menubar.at",
+      "title": "Menubar",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 7,
+        "Vue dark": 7,
+        "VM light": 7,
+        "VM dark": 7
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/navigationmenu",
+      "page_file": "navigationmenu.at",
+      "title": "NavigationMenu",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/pagination",
+      "page_file": "pagination.at",
+      "title": "Pagination",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/popover",
+      "page_file": "popover.at",
+      "title": "Popover",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/position",
+      "page_file": "position.at",
+      "title": "Position",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 3,
+        "VM dark": 3
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/progress",
+      "page_file": "progress.at",
+      "title": "Progress",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/radiogroup",
+      "page_file": "radiogroup.at",
+      "title": "RadioGroup",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/responsive",
+      "page_file": "responsive.at",
+      "title": "Responsive",
+      "preview_cards": 4,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 3,
+        "VM dark": 3
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/row",
+      "page_file": "row.at",
+      "title": "Row",
+      "preview_cards": 6,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 7,
+        "Vue dark": 7,
+        "VM light": 6,
+        "VM dark": 6
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/scroll",
+      "page_file": "scroll.at",
+      "title": "Scroll",
+      "preview_cards": 4,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 5,
+        "Vue dark": 5,
+        "VM light": 5,
+        "VM dark": 5
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/scrollarea",
+      "page_file": "scrollarea.at",
+      "title": "ScrollArea",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/select",
+      "page_file": "select.at",
+      "title": "Select",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 3,
+        "VM dark": 3
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/separator",
+      "page_file": "separator.at",
+      "title": "Separator",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/sheet",
+      "page_file": "sheet.at",
+      "title": "Sheet",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/sidebar",
+      "page_file": "sidebar.at",
+      "title": "Sidebar",
+      "preview_cards": 8,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 16,
+        "Vue dark": 16,
+        "VM light": 16,
+        "VM dark": 16
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/sizing",
+      "page_file": "sizing.at",
+      "title": "Sizing",
+      "preview_cards": 4,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 4,
+        "Vue dark": 4,
+        "VM light": 4,
+        "VM dark": 4
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/skeleton",
+      "page_file": "skeleton.at",
+      "title": "Skeleton",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/slider",
+      "page_file": "slider.at",
+      "title": "Slider",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/sonner",
+      "page_file": "sonner.at",
+      "title": "Sonner",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/spacing",
+      "page_file": "spacing.at",
+      "title": "Spacing",
+      "preview_cards": 5,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 5,
+        "Vue dark": 5,
+        "VM light": 5,
+        "VM dark": 5
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/switch",
+      "page_file": "switch.at",
+      "title": "Switch",
+      "preview_cards": 3,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/table",
+      "page_file": "table.at",
+      "title": "Table",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 4,
+        "Vue dark": 4,
+        "VM light": 4,
+        "VM dark": 4
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/tabs",
+      "page_file": "tabs.at",
+      "title": "Tabs",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/textarea",
+      "page_file": "textarea.at",
+      "title": "Textarea",
+      "preview_cards": 3,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 3,
+        "VM dark": 3
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/toast",
+      "page_file": "toast.at",
+      "title": "Toast",
+      "preview_cards": 4,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 7,
+        "Vue dark": 7,
+        "VM light": 7,
+        "VM dark": 7
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/toggle",
+      "page_file": "toggle.at",
+      "title": "Toggle",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/togglegroup",
+      "page_file": "togglegroup.at",
+      "title": "ToggleGroup",
+      "preview_cards": 2,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 3,
+        "VM dark": 3
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/tooltip",
+      "page_file": "tooltip.at",
+      "title": "Tooltip",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 2,
+        "Vue dark": 2,
+        "VM light": 2,
+        "VM dark": 2
+      },
+      "visible_schema_examples": null
+    },
+    {
+      "route": "/treeview",
+      "page_file": "treeview.at",
+      "title": "TreeView",
+      "preview_cards": 1,
+      "home_card": true,
+      "sidebar_entry": true,
+      "checks": {
+        "Vue light": "pass",
+        "Vue dark": "pass",
+        "VM light": "pass",
+        "VM dark": "pass"
+      },
+      "scroll_captures": {
+        "Vue light": 3,
+        "Vue dark": 3,
+        "VM light": 3,
+        "VM dark": 3
+      },
+      "visible_schema_examples": null
+    }
+  ]
+}
