@@ -53,6 +53,51 @@ ui_gen/rust.rs（a2r 臂——实现体单源 `diff::envelope`）+ 静态绑定�
 - **错误形**（值不 raise）：文件不存在/读取失败 → `hunks:[], rows:[]`、
   计数 0、`err` 带消息（「文件不存在: …」/「读取失败: …」）。
 
+## rows 窗口投影（PLAN-716 组C——`diff_files_window`，9920）
+
+**新端点**（9915 签名 frozen——加参即破 3 参调用方[下游 in-proc 直调
+main.rs:1327 + HTTP Query 双消费面]，窗口走新端点）：
+
+| native id | catalog 名 | 裸名 | 签名 | 返回 |
+|---|---|---|---|---|
+| 9920 | `auto.diff_files_window` | `diff_files_window` | `(path_a str, path_b str, ctx int, rows_offset int, rows_limit int) → str` | 窗口 envelope JSON |
+
+```json
+{"hunks":[{"a1,a2,b1,b2"}],
+ "rows":[{12 字段——同 9915 行形}],
+ "adds":int, "dels":int, "rows_total":int, "truncated":bool,
+ "degraded":false, "err":""}
+```
+
+- **rows_total**：全量行计数（窗口只影响物化，不影响计数）——下游
+  分页/滚动条真源。
+- **truncated 激活语义**（011 保留字段）：有行被省略即置位——头部
+  省略（offset>0）与尾部省略（offset+返回行数 < rows_total）都算；
+  9915 默认形 truncated 恒 false（不变）。
+- **边界形**：offset ≥ rows_total → `rows:[]`（diff_snapshots 净形
+  复用）+ truncated=true（total>0 时）；limit 0 → 空+truncated 同
+  语义；窗口跨 hunk 任意切片=全量 rows[offset..offset+limit] 逐行
+  等价（单趟流走线单源——计数与物化恒一致）。
+- **hunks 全量保持**（导航域不受窗口影响）。
+- **默认形零扰动（frozen ③）**：`diff_files`（9915）签名与输出
+  **逐字节不变**（不增 rows_total 字段——最严形）；窗口形增量参数
+  非破坏。016 消费面零改动（golden 钉测试在档）。
+- HTTP query 串形（下游 auto-edit-back 消费形，本件 only 记载）：
+  `GET /api/diff_files_window?path_a=..&path_b=..&ctx=..&rows_offset=..&rows_limit=..`
+  （rows_offset/rows_limit 可选 int，缺省=全量语义由下游钳定）。
+- Rust/a2r 面：`envelope::diff_files_envelope_window` /
+  `envelope::diff_files_envelope_from_paths_window`（缺文件 → err 形
+  同 9915）；`a2r_std::diff::diff_files_window`（offset/limit 钳非负）；
+  trans 裸名臂 `diff_files_window` + ui_gen handler 直调臂。
+- **收益数字（census，release 构建，AUTO_P716_CENSUS 门控复现）**：
+  43.6MB 散点对（每 40 行一处单行改）——
+  full=153,422,332B/1922ms → window(0,600)=6,994,427B/1360ms
+  **（payload 21.9×↓，墙钟 −29%）**；window(600,600) 同形（分页稳态）。
+  021 armed FAIL 5183.2ms（L2 直拉）清偿语义=envelope 双层 JSON
+  主耗（rows 全投影+过界体量）清偿——余量=引擎核心（histogram/
+  分组/流走线，语义 frozen 不动）；下游切换件（窗口调用改造+FAIL
+  复验判定）据本表立项。
+
 ## diff_snapshots envelope（`diff_snapshots_envelope`）
 
 `key_a/key_b` 直读 buffer registry（`CodeEditorCore::doc_snapshot`——
