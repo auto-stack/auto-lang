@@ -19,7 +19,7 @@ new_spec_components: []
 touched_goals: [GOAL-007, GOAL-009]
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 3
+current_step: 4
 total_steps: 9
 ---
 
@@ -282,7 +282,7 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 - [x] T-11 CPU 可续跑执行片（含 engine.rs:2748 假成功缺陷修复）（**[✅ 已完成]** worktree 80de86f04：DriveBudget 双档+SegmentOutcome::Runnable+ParkedWait::CpuRunnable+跨片累计护栏（cpu_steps_total/跨片 runaway 基线/50k 节拍跨片累计）+resume_parked_wake 提取+slice 双入口；AC-13=耗尽 slice 档 Runnable/legacy 档真错误；bridge 有界泵 resume_cpu_slices（tick 泵 CpuRunnable=false 隔离/8ms 轮次/FIFO 快照不重拾）+写队列 128（满拒 WriteQueueFull/同键合并/片间消费）+call_handler_for_cpu_slice；plan711 7 测+触面 115+tv 162 全绿，plan707_wait_generator 并行抖动单跑过=708 复审档案同例）
 - [x] T-03 Init demand/代际生命周期（**[✅ 已完成]** worktree 04b9552c9：register_init_demand 登记簿（判定≠完成/同代际不二次入队 AC-04/身份变化=新代际+旧代际一次取消）+dispatch_pending_inits 派发驱动（FIFO 依赖序=页先 child 后/五态观察/InFlight 探测收敛）+cancel_parked_by_fn 凭据映射清理（HttpRequest→drop_async_result/HttpStream→stream_cancel）+child_init_should_fire 退役移除；渲染路径两派发点（outlet :5211/fire_child_init_if_any）改只登记；tick 泵临时接线（dynamic poll 前置派发+订阅门扩展，T-04 移交）；plan711_init_demand 5 测+触面 233+tv 162 全绿）
 - [x] T-04 真实入口帧通知与有界泵（R-1 序障实证闭环）（**[✅ 已完成]** worktree 3809b58ea+97dcd7d75：listen_raw 条件订阅（AppId 去重身份/零 demand 无订阅）+ __frame_pump 消费臂（8ms 轮次有界泵+完成直置 view_dirty+epoch 失效）+ tick 退回纯 I/O（has_parked_io_tasks 门）+ is_dirty 燃料唤醒链（订阅重估时序 iced_winit :1337 定谳）；R-1 闭环实证=sub ON 同周期/帧消息驱动/4ms 校准片/598 万步跨 15.2s parked 完成/10M 累计护栏生产命中/重入忽略；D-2 校准 4096→1M 天花板（4ms 墙钟为活预算）；余 2 红=统一根态×无 key 兄弟实例有界修订点→§10 Q-05，随 T-05 完成语义收口）
-- [ ] T-05 骨架/完成/失败显示
+- [x] T-05 骨架/完成/失败显示（**[✅ 已完成]** worktree fa946bed4：pending demand 轻量骨架占位（Queued/InFlight→Loading… (Widget)、Failed→可诊断错误占位不无限 Loading、pending 非永久 memo 产物、嵌套需求依赖阶段发现）+ 完成传播链收口（dirty+epoch，T-04 落地）+ plan437 占位可见断言 + plan499/536 迁移 + 实机验证（widgets-gallery /line-chart：early MCP 快照含 Loading…→late 无残留、页面全渲染、屏幕与 MCP 同相））
 - [ ] T-12 computed/冷构建残面（DataTable memo_block 根因、FileTree 恒 FILL）
 - [ ] T-06余 分段时间戳/在屏采集/资源计数
 - [ ] T-08 测试族收口（含 F-1）
@@ -352,6 +352,16 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 - 处置：断言按语义意图迁移（tick 文本渲染即可，非瞬态值）；streaming 测试补构建-驱动-重建；dispatch 改回登记时 id 直用（child_state_map 异构陈旧对象毒化实录：bar 卡渲染出 area 的 fields 谱）；快照补录 4b 守卫跳过的声明默认值（本实例声明语义恢复，构建期写入纪律不动）。
 - 门禁：裸 cargo t 4896/4905（64.4s）零新红（仅 9 已知预存）+ tv 162/162 + plan711 13/13。三候选设计修订全不需要，Q-05 关闭。
 - `next: T-05 骨架/完成/失败显示（MCP/展示缓存版本链收口）→ T-12 → T-06余 → T-08 → T-09 → T-07'`。
+
+### 2026-09-30 work T-05 完成（骨架/完成/失败显示）
+
+- `stage: work` | `plan_id: PLAN-711` | `plan_revision: 1` | `outcome: in_progress` | `code_commit: worktree fa946bed4`。
+- T-05 交付面（对 §5 M-04/Q-01）：
+  - **骨架占位**：render_child_widget 双变体在 `fire_child_init_if_any` 后按相位占位——Queued/InFlight → `Loading… (Widget)`；Failed → `⚠ {widget}.Init failed — see [VM-HANDLER] log (reload to retry)`（可诊断、reload 换身份即重试、不无限 Loading）；Done/无 demand 原样全量构建。pending 占位非永久 memo 产物（完成 epoch 失效闭环于 T-04）；嵌套需求依赖阶段发现=完成帧下次构建发现（占位不永久早退）。
+  - **终态传播链收口**：完成/失败 → component dirty + AppState.view_dirty + 宿主 epoch（T-04 落地）→ 重建；MCP 快照经既有 gate_dirty 链同相（实机验证：early 快照含 Loading… → late 无残留——屏幕与 MCP 同相贯通）。
+  - **实机验证**：auto-os widgets-gallery /line-chart 导航——early MCP 快照捕获 Loading… 骨架、late 无 Loading/无错误占位、页面全量渲染（LineChart 文档页 + 图表区）、应用存活。
+- 测试：plan437 补占位可见断言（首建含 Loading… → 驱动后全量几何）；plan499 axispointer/plan536 t1 契约迁移（骨架首建→驱动→重建）；触面全绿。
+- `next: T-12 computed/冷构建残面（DataTable memo_block 根因、FileTree 恒 FILL）`。
 - `next: T-05 骨架/完成/失败显示（Q-05 候选裁定 + 完成语义 MCP/展示缓存版本链收口）`。
 
 ## 10. 待澄清事项
