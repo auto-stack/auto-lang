@@ -1,0 +1,19 @@
+# PLAN-714 spike — tree-sitter runtime + 2 representative grammars smoke test.
+# Standalone scratch crate (NOT a workspace member of any repo; built outside
+# auto-lang). Precedent: docs/plans/spike-428-bench (Plan 428 P0 fold-bench).
+# Purpose: parse smoke + highlight query smoke + incremental edit API smoke +
+# size initial values — evidence feeds docs/plans/reports/714-treesitter-survey.md.
+[package]
+name = "spike-714-treesitter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tree-sitter = "0.27"
+tree-sitter-highlight = "0.27"
+tree-sitter-rust = "0.24"
+tree-sitter-python = "0.25"
+
+[profile.release]
+opt-level = 3
+lto = false
