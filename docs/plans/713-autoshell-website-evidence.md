@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-713
-status: executing
+status: execution_done
 feature_name: AutoShell website evidence and presentation
 author: [Codex]
 created_at: 2026-09-30
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [website]
-current_step: 5
+current_step: 6
 total_steps: 6
 ---
 
@@ -53,7 +53,7 @@ Shared styling: narrow hero-title selector, readable code metadata/output, visib
 
 | delta_id | operation | target | before/after rule | rationale | acceptance |
 |---|---|---|---|---|---|
-| SD-01 | modify | docs/specs/website/project.md | Shared EN/ZH AutoShell page, preserve native overview captures and visible F1/F2/F3 forms, evidence/provenance, responsive screenshot/script interactions | Record enduring presentation contract | AC-01..04 |
+| SD-01 | modify | docs/specs/website/project.md | Shared EN/ZH AutoShell page, preserve native overview captures and visible F1/F2/F3 forms, evidence/provenance, responsive screenshot/script interactions and shared native colored hero for product/v0.5 | Record enduring presentation contract | AC-01..06 |
 
 ## 6. 测试设计
 
@@ -79,7 +79,7 @@ VitePress/Vue compile; inspect ZH/EN desktop/mobile, light/dark, no document ove
 
 - [x] T-05 (AC-05): 恢复两个原生截图，新增 F1/F2/F3 图示区；保留现有实跑图和脚本，更新证据/规范并检查显示。
 
-- [ ] T-06 (AC-06): 共享原生彩色表格主图，同步 v0.5 双语展示，更新规范/证据并构建检查。
+- [x] T-06 (AC-06): 共享原生彩色表格主图，同步 v0.5 双语展示，更新规范/证据并构建检查。
 
 ## 9. 复审记录
 
@@ -133,7 +133,7 @@ stage: merge | outcome: blocked (post-landing consolidation only)
 
 ## revision 2 复审与执行完成
 
-stage: review | plan_id: PLAN-713 | plan_revision: 3 | outcome: pass
+stage: review | plan_id: PLAN-713 | plan_revision: 2 | outcome: pass
 reviewed_commit: 41cf4d434db4d436ae3965bd84a475dad6999b19
 base_commit: f8395b1eb0fc5dcb79689f6694eabdc6082cc60e
 
@@ -154,3 +154,9 @@ base_commit: f8395b1eb0fc5dcb79689f6694eabdc6082cc60e
 ## revision 3 用户纠正（2026-09-30）
 
 用户要求主介绍及 v0.5 宣传使用真实彩色命令/表格截图，移除主图内无意义 F2/F5 说明。复用已保留 ash-01 原图，以 CSS 视窗展示 ls 表格，放大仍显示完整原图。沿用授权和工作区；r1/r2 证据保留但不覆盖 AC-06。SD-01 追加真实彩色主图共享契约。stage: new | revision: 3 | outcome: pass | next: work.
+
+## revision 3 执行完成
+
+stage: work | plan_id: PLAN-713 | plan_revision: 3 | outcome: pass | code_commit: e728fa3f8995968f268e5c5a2654ff9eef272229 | task_ids: T-06 | evidence: docs/reports/autoshell-native-hero-2026-09-30.md plus four captures | blockers: none for delivery | next: review.
+
+VitePress exit 0, 180.93s; EN/ZH product/v05, 390px/default desktop, light/dark, full-image zoom/Esc verified. Worktree clean. Historical r2 record revision restored to 2 after a broad frontmatter replacement; semantic history unchanged.
