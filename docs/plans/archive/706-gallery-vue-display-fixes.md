@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-706
-status: reviewed              # r2 复审 pass（2026-09-30）——next=merge
+status: archived              # 终态（2026-09-30 r2 merge pass——archived）
 # r2 重开（2026-09-29）：r1 交付簇携入的 vm UI 脏标/确认弹层交互面回归——追加修复
 # phase（T-09..T-11，§11）。立项=消费者仓 jade-edit PLAN-026 回执批冒烟败形实证 +
 # 用户直接裁定；rev1 交付记录（§8 勾选/§9 既有收据）原样保留。
-completion_kind: delivered     # 系 rev1 收据；r2 新 phase 完成时随其 merge 更新
+completion_kind: delivered     # r1+r2 双 phase delivered（r2 delivery 612514d5a）
 feature_name: gallery-vue-display-fixes
 author: [agent]
 created_at: 2026-09-28
-updated_at: 2026-09-29
+updated_at: 2026-09-30
 plan_revision: 2
 
 # /auto-plan:review 结束时填写：
@@ -471,3 +471,14 @@ git -C D:/autostack/auto-os worktree add D:/autostack/.wt/lang-706/auto-os -b pl
 - **零产品特性扩张**：本 phase 仅还原交互语义；gallery 新能力面不在范围。
 - 消费者等待态：jade-edit PLAN-026 blocked-waiting（r1 裁定选项 a）——**AC-10 已兑现（2026-09-30，merged 16/16 ALL GREEN debug+release）= 其重入信号**。
 - r2 work 落地注记：PLAN-709 未动 src（本 phase 基 master 4dae03122 无 rebase 需求）；plan047 提交定谳为肇事（432068075）——修复按 §11.4 预设在本 phase 收口，plan047 交付语义不变（其单测面全绿）。
+
+### stage: merge PLAN-706:r2
+- `outcome: pass`
+- `prepared`: reviewed 9420eb7a2（复审 pass c948a3b13）；r2 零规范增量（复审 grep 实证 docs/specs 无 memo/信号网契约文本；准入守卫=代码内已成文降级哲学同族）→ ledger 零新条目（no-impact 有据）
+- `rebase 映射`: master 两度漂移两度重验——①b310acafd（709 archive 链+708 S 档落地）：84befb240→f6758fb1d / f509b47ff→b716082d0 / 9420eb7a2→af8690984，range-diff `=` 全等；合并态 scope 重跑全绿（plan706 3/plan047 24/plan046 38/memo 91[含 708 新测]/vm_bridge 55+双形态 check 0 error+arc 2/2+消费者矩阵 16/16 ALL GREEN）；②6e4e1d07a（PLAN-711 簿记）：f6758fb1d→ed81a3295 / b716082d0→3776035e3 / af8690984→612514d5a，range-diff `=` 全等（区间纯 docs 簿记，代码验证沿用①）
+- `landed`: master tip **612514d5a**（ff-only，零合并提交）；main smoke cargo check 0 error
+- `ledger_refreshed`: n/a——r2 零规范增量（无 canonical Specs 改动、无账本条目增删；r1 的 ADR-25/shadcn 传递依赖条目不受影响）
+- `archived`: docs/plans/archive/706-gallery-vue-display-fixes.md；status archived（终态）；completion_kind delivered（r1+r2 双 phase）
+- `cleaned`: 待执行（wt-guard 双验后移除 lang-706 组 worktree×2+old-carrier+分支 plan-706-dev；组目录留 evidence 不删）
+- `deployment_observation`: master release auto.exe 未重建（r1 同惯例）；桌面下次启动现场构建拾取；jade-edit 消费者以 master 612514d5a 重建双 exe 即得修复载体（其 PLAN-026 重入信号已生效=AC-10）
+- `findings 承接`: P706-D1..D4 已在 KNOWN-DEBT-AND-RISKS.md 在册（probe_mtime release 挂起/消费者 e2e flaky/gallery 侧栏 quirk/705 e2e 门禁违例）
