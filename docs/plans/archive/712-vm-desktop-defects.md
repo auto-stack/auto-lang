@@ -162,6 +162,10 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
 
 - 2026-09-30 **r2 收纳复开**（archived → executing；用户预授权收纳通道）：新增 SD-05/T-09/AC-07（VM 本地播放接线，纯 app 层，引擎零改动）。实施随修订即落（T-09 体量 = 单 handler 分支）；AC-07 实机取证后随再 merge 回终态。
 - 2026-09-30 **r2 验证期新发现（下一笔收纳候选 T-10）**：712 二进制下播放器头部动作按钮（主题切换 + 队列开关）在 VM 双轨（独立窗 + 桌面内嵌）均不渲染/不可达——712 前实机截图在案有按钮（用户首报截图），712 后 hover 探针无高亮；队列面板因此不可达，T-09 的 UI 路径被该回归挡住。嫌疑面 = 712 渲染器改动（video_uplink wrapper / 契约类型）对非 video 节点布局/icon 的影响，待 lang 侧定位。注：键盘快捷键缺失（pac「全套键盘快捷键」未实现）为同屏发现的语料债。
+- 2026-09-30 **r2 用户实机反馈再收纳两笔（T-11/T-12，同属 VM 布局/命中层）**：
+  - **T-11 播控条布局分布错**：controls.at 设计意图 = 左 `col flex-1`（时间行 + `w-full` 进度条）+ 传输键 + 音量/倍速组右聚；实渲染进度条仅占左侧 ~2/3、倍速「1.0x」与音量组之间 ~350px 空档——VM 渲染器对该 flex 行结构的宽度分配偏离设计（用户截图 7b9397df；对比：712 前同布局即已如此 = 非本计划回归，属 VM 布局面存量缺陷被可用性提升后显形）。
+  - **T-12 进度条点击跳转失效**：时长 53:12 > 0（store 门已过），SeekFraction → seek_target → 契约 position 的 app 侧链路代码完整；断点疑似与 T-11 同源（绘制位置与命中 bounds 错位）或 SeekArea 命中层。实机自动化验证因用户前台占用中止（探针点击落入用户编辑器窗口，输入自动化即刻停止），待用户配合窗口再取证。
+  - 处置：T-10/T-11/T-12 合并侦查——VM 渲染器行布局的 flex 宽度分配 + 命中 bounds 一致性，一次定位三处症状。712 二进制下播放器头部动作按钮（主题切换 + 队列开关）在 VM 双轨（独立窗 + 桌面内嵌）均不渲染/不可达——712 前实机截图在案有按钮（用户首报截图），712 后 hover 探针无高亮；队列面板因此不可达，T-09 的 UI 路径被该回归挡住。嫌疑面 = 712 渲染器改动（video_uplink wrapper / 契约类型）对非 video 节点布局/icon 的影响，待 lang 侧定位。注：键盘快捷键缺失（pac「全套键盘快捷键」未实现）为同屏发现的语料债。
 - 2026-09-30 stage:new 起草（drafting）。`outcome: pass`——四项初始范围已按实证落档，DP-1..4 为工作期决策点（均含决策工件要求）。`next: work`（执行前按范式开 `.wt/lang-712` 组 worktree）。
 - 2026-09-30 stage:work | plan_id PLAN-712 | plan_revision r1（起草态即执行，无修订）| outcome: pass（T-01..T-06 完成，代码面验证全绿；T-07/T-08 进行中）| code_commit: worktree `plan-712-dev`（见提交）| task_ids: T-01,T-02,T-03,T-04,T-05,T-06 | evidence:
   - T-01/T-02 探针定谳 + T-03/T-04 实现 = worktree 提交（evidence/712/{dp2,dp3} 两档 + mpv_engine/mpv_channel/video_contract/video_uplink 四测面全绿）。
