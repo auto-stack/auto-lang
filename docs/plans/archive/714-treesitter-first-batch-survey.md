@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-714
-status: reviewed               # r3 复审 pass（2026-09-30）；终态待 merge（archived → executing，用户指令收纳通道——712 r2 先例同款）；终态待再 merge
-completion_kind: delivered    # r1 交付面保持（勘定件已 delivered）；r2=供① 残余解锁追加 phase；r3=route-A 深修追加 phase
+status: archived               # r1+r2+r3 三阶段 delivered；r3 merge 收口 2026-09-30（archived → executing，用户指令收纳通道——712 r2 先例同款）；终态待再 merge
+completion_kind: delivered    # r1 勘定件+r2 供① 残余解锁（Try 臂）+r3 route-A 深修——三阶段全 delivered
 feature_name: tree-sitter 首批勘定件（auto-edit M4 供料包供④ 前半——语言集定界/管线选型+烟测/syntect 共存策略/增量高亮管线要点+实施件契约草案）
 author: [agent]
 created_at: 2026-09-30T16:15:39+08:00
-updated_at: 2026-09-30T20:40:00+08:00
+updated_at: 2026-09-30T20:55:00+08:00
 plan_revision: 3
 current_step: 16
 total_steps: 16
@@ -495,6 +495,27 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
   七测绿+corpus fresh regen 重放（a2r-review-run.log：EXIT=0/SKIP=0/
   check 58.99s）+P714-3 回读 True+census §7 在案；tt 全谱 5266/5280
   （零新增归因红）+cookbook 125/125。`next: merge`。
+
+- 2026-09-30 r3 merge 收据：`stage: merge`，PLAN-714:r3，
+  `completion_kind: delivered`（三阶段累计）。**prepared**：reviewed 基线
+  211ef5237（r3 pass，AC 复放全绿@2cbd5e6b8）；canonical delta=r1 SD-01
+  （已 landed，本阶段无新增 canonical 申报——知识落位=census §7+账本
+  P714-3+单测，F-2 建议位在案）；projection=既有 P714-2/P714-3 验证性
+  刷新。**landed**：wt-guard clean→rebase master（4 提交改写）→range-diff
+  四 `=`（4534b5004→d22318fc5/96e848ea5→29563c588/3574b47c8→5f07a97eb/
+  211ef5237→acf653d3f 补丁全等）→ff-only 落地，master tip=delivery
+  **acf653d3f**（9 文件 858 行）；集成烟=INDEX 再生 no-op。**ledger_
+  refreshed**：既有投影验证性回读（designs P714-2+docsha 5e7c2fa187fee8ef
+  在位/reviews P714-1+P714-3 在位[reviews 179]）+INDEX 再生 no-op——
+  r3 账务已于 work 档落（P714-3@559aa0c45），本档零重复写。**archived**：
+  本件自 r1 起居 archive/（r2/r3 收纳原位复开先例）——frontmatter
+  status: archived+completion_kind: delivered（本节收据）。批量回归到期
+  判定=**不到期**（.last-batch-regression.json last_covered=712@7fcf913eb，
+  收据 2026-09-30T08:04:49Z；落地集 711/712-r2/714 均非 %5=0；<48h）。
+  **部署观察**：本件改 trans/a2r 发射面——主检出工具链二进制（release
+  auto 等）相对本件落地为陈旧态；下游 PLAN-021 复验已用 worktree 钉版
+  二进制完成（AC-R2-4），主检出二进制随下轮 auto-lang release 周期或
+  021 会话钉版重建，不做本档内重建。**cleaned**：待下笔。
 ## 10. 待澄清事项
 
 - **Q-1 语言集预裁定（可选）**：默认 T-01 按下游现实+战略「常见
