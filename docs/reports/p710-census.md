@@ -98,3 +98,51 @@ re::test/replace、json::from_value/parse_str_list、diff 三件套[code-editor
 同步（.len()/.modified() 死形退役）。工具链 v0.4.2-2330-g99405c675-dirty
 →r3 提交链（96e848ea5+3574b47c8）。
 
+**r4 增补判定第④行（2026-09-30，PLAN-714 r4 R4-T1..T3——a2r 形态
+code_editor 注册断链定谳+修复+运行时装载 E2E 入判定集）**：
+
+| ④ | **fresh a2r exe 装载标记对 E2E**（r3 判定集缺运行时装载 E2E 的盲区补截——编译级三判据之外的运行时面） | fresh regen+release 产物 `AUTO_OPEN_PATH` 小文件直拉（AUTO_BENCH=1）→ `bench_open_start/done` 标记对达成+零注册刷屏 |
+
+定谳（R4-T1）：供料档 §7 的「no editor registered for key
+__code_editor_tab-N」装载门永假=**a2r 生成器原始缺口非运行时回归**——
+ui_gen/rust.rs code_editor key 属性提取只认 `Expr::Str`（Plan 413
+Phase 3 原始形态），`(key: t.key)` 动态表达式静默回落 widget 名
+"editor"→注册键 `__code_editor_editor`≠store 查找键
+`__code_editor_tab-N`。回归窗口前提（2205→2366）证伪：生成器/renderer
+（build_code_editor_generic）/widget（CodeEditor::new）/core
+（normalize+edit+set_text）四面与 019 钉版 5bb3f53be 逐字节一致；09-22
+快照生成工具链（a747531cd）同形；007 时代上游自证（15ec408 §10「Tick
+改 store 后 code_editor 不注册——L2 open 段 blocked」）同期在案；静态
+key 的 probe fixture 应用（probe_bufdiff_app "tab-1"/"tab-2"）走
+Expr::Str 路径本就正常——「旧 a2r 构建正常」对照的承重面实为静态 key
+应用+编译级判据，非主应用动态 key 装载链（019 surface open 38.2ms 行
+与 007-era blocked 记录冲突且产物已随 edit-019 清理不可复验——判为
+测量通道异常记录，不作「旧正常」承重证据）。三嫌疑提交
+（33a5d56c3/c80887ab7/29563c588）无一触及上述四面——零 revert 项。
+
+修复（R4-T2）：动态 key 经 ast_expr_to_rust 发射（与视图条件同源：
+`t.key`→`t["key"].as_str().unwrap_or_default().to_string()`），静态
+Str 维持字面量（金样零扰动）。单测四枚 plan714_r4_*（发射形三态+注册
+表层门反转 E2E）+tu 档零新增归因红（855 绿+1 预存金样红
+4f123a50e 在案）。提交 e93a717da（worktree plan-714-dev）。
+
+④行 E2E 实测（工具链 v0.4.2-2389-ge93a717da，edit-021 真仓）：
+fresh regen（rm -rf rust-workspace 后首跑）exit 0+skip 0+生成物
+`View::code_editor(t["key"].as_str()...)` 在位+fresh check 53.2s；
+release 双产物（auto-edit.exe 40,707,072B+back 14,407,168B，sccache
+旁路配方）；**小文件 open 探针=双标记达成**（r4-open-probe.log：
+vm_init→ws_loaded→open_start→open_done，注册刷屏=1 行瞬态递延[设计
+内——编辑器实化前存在性探针的既定重试形]，坏构建对照=无限刷屏+零
+标记）；**bench open --l2** N=4 谱 [863.2, 863.2, 862.7, 889.5]
+median=863.2ms+reject_513mb=True+open_1gb rejected=True（exit 0，
+open-20260930-230121.jsonl）；**bench warm --l2** 20tab 恢复链
+restore mean≈18.4ms+active 装载完成 load mean=1124.0ms+Δmem=265MB
+（懒装载语义维持——非全量 200MB 读盘形，warm-20260930-230317.jsonl）；
+**smoke_gen 三域 7/7**（r3 轮 4/7 的三 FAIL——G-B②后半腿「后续打开
+绿」/G-C⑥ 装载 E2E/G-B③ 前置面——全数转绿，
+gen-smoke-20260930-230652.jsonl）。**AC-R4-1/2 交付，供料档 §7 清偿，
+PLAN-021 残余面（open/warm 两行 L2 判定+装载/编辑冒烟）解阻**。
+
+handler 侧 payload 读键债（登记非本件）：code_editor_sources 仍登记
+字面量/回落名——handler 无循环变量作用域，per-tab `code_editor_text`
+读键解析（store 镜像键形）属后续件。
