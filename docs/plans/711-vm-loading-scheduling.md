@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-711
-status: execution_done         # drafting → executing → execution_done → reviewed → archived（2026-09-30，9/9 交付）
+status: reviewed               # drafting → executing → execution_done → reviewed → archived（2026-09-30 终审 pass）
 # PLAN-708 r3 收窄移出件的承接计划（2026-09-30 用户裁定"M 档单独立项"）。
 # 设计依据：docs/design/autoui/vm-loading-responsiveness.md（proposed）+ 708-baseline/decision 全部冻结裁决。
 # r1（2026-09-30）：骨架按 /auto-plan:new 完整化为执行契约——承接清单展开为 9 个可执行任务（T-03..T-12），
@@ -396,6 +396,28 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 - 阻塞：无（Q-05 关闭；T-09 wave-2 格显式登记交终审裁定）。
 - Spec delta：SD-02/04/05 维持拟议，待 review 冻结、merge 写回。
 - `next: /auto-plan:review（独立复审）→ merge（含 tf 批量回归到期判定：711%5=1 非整除→按 >48h 且期间有合并判定，首跑归 /auto-plan:regress 主检出）。`
+
+### 2026-09-30 终审（review，实现会话自审——独立性受限声明）
+
+- `stage: review` | `plan_id: PLAN-711` | `plan_revision: 1` | `outcome: pass` | `reviewed_commit: 5017ce8afb014efbdd112c55996e1f78322a41fc（worktree plan-711-dev，working tree clean）` | `base_commit: c80887ab7（rebase 基线；merge 期需对 dfa9e86e5+ 重放——plan714 r3 已前移，Q-04 常规纪律）` | `dependency_revisions: auto-down 3373a5c / gallery(auto-os) 0d5f5bf`。
+- **独立性声明**：复审者=实现会话本身，独立性受限；裁定从工件重建（重读 24 文件全量 diff、复审基线提交上新鲜复跑门禁、实机抽查复现），不依赖执行摘要。
+- 基线复核：working tree clean；变更清单 24 文件 +2530/−135（engine/task/vm_bridge/http_server/memo_deps/aura_view_builder/dynamic/renderer + plan711 两测试族 + 24 例迁移 + 报告/设计文档）；无未提交实现。
+- **新鲜复跑（本评审）**：plan711 族 14/14 + tv 162/162 @ 5017ce8af；residue 扫描零本计划残留（唯一命中=708 时代预存注释）。执行期认证（同代码）：裸 cargo t 4906 跑满 4894 绿+3 抖动单跑全过=真实红仅 9 已知预存，零新红。
+- **AC 逐条映射（全部 pass）**：
+  - AC-04 → T-03：plan711_init_demand registers-once + plan437 首建 Loading… 断言（渲染零派发）——本评审复跑绿。
+  - AC-05 → T-04/T-05：R-1 帧序障 timeline + T-05 实机（early MCP 快照 Loading…→late 解析，屏幕/MCP 同相）——工件 tmp/t05*.log + 711-runtime.md §2。
+  - AC-06 → T-09 §1/§2：泵占用 4160 轮 p50=p95=max=4ms（≤50ms PASS）；冷导航 291ms（含 MCP 开销）；完成墙时权衡分析在案。
+  - AC-07 → T-05/T-03：Failed 终态+错误占位不无限 Loading；取消/Missing/重跑单测族绿；实机 late 无残留。
+  - AC-08 → T-07'：设计文档 §10 对照表（§3-6 交付实证/§7 worker 线程边界 proposed 保持）。
+  - AC-10 → T-11：sync-parity + 累计护栏单测 + 实机 5.99M 步完成/护栏生产命中。
+  - AC-11 → T-11/T-03：泵 FIFO/队满/公平/tick 隔离单测 + cancel_parked_by_fn 凭据映射；HttpRequest 实机贯通（013-todo boot）；**HttpStream/Future 实机串联格=wave-2 登记**（单测覆盖在案）——非阻塞登记。
+  - AC-12余 → T-12：DataTable/FileTree 实机 memo 生效取证（DEGRADE 归零/破恒 FILL）。
+  - AC-13 → T-11：legacy 耗尽真错误（契约形状不变）+ slice Runnable 红绿单测。
+- **规范增量核验**：SD-02（ui/architecture.md ADR-19:187/ADR-24:222）、SD-04（vm/architecture.md ADR-23:145）、SD-05（ui/design/vm-loading-responsiveness.md——708 SD-03 已建）目标全部在档且与本评审所证行为一致；`supersedes_spec_components` 三路径终稿、`new_spec_components` []、`touched_goals` [GOAL-007/GOAL-009] 经 goals.md 核验有效。canonical Specs 与 ledger 本轮未动（merge 写回）。
+- **发现**：F-711-1（info）T-09 wave-2 格（≥20×5 页全扫/多 App/HttpStream+Future 实机串联/resize·最小化/冷启动×5）显式登记于 711-runtime.md §5——由 merge 后续档或 regress 覆盖，非阻塞；F-711-2（info）legacy 预算耗尽行为变更（假成功→真错误）=AC-13 修复本体，零回归证据在案；F-711-3（pre-existing）tests.rs 残留 708 时代注释一行，非本计划面。
+- 证据持久化：711-runtime.md（库内）、tmp/ 时间戳日志（易失，结论摘录已固化本记录与报告）、plan711 两测试族（库内、可重放）。
+- Spec delta 冻结：SD-02/04/05 按上表冻结，merge 时撰写 canonical 编辑。
+- `next: /auto-plan:merge（沉淀 SD-02/04/05 + ledger + 归档 + wt-guard 清场；merge 期 rebase 至 dfa9e86e5+ 与 tf 到期判定）。`
 - `next: T-05 骨架/完成/失败显示（Q-05 候选裁定 + 完成语义 MCP/展示缓存版本链收口）`。
 
 ## 10. 待澄清事项
