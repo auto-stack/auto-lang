@@ -1,16 +1,17 @@
 ---
 plan_id: PLAN-715
-status: drafting
+status: execution_done
 feature_name: VitePress 全站 UI 与 v0.5 发布展示改进
 author: [Codex]
 created_at: 2026-09-30
 updated_at: 2026-09-30
 plan_revision: 1
+work_commit: 675306b71（worktree plan-715-dev，基线 ff32d7004）
 supersedes_spec_components: [docs/specs/website/project.md]
 new_spec_components: [docs/specs/website/design/ui-presentation.md]
 touched_goals: []
 affects: [website]
-current_step: 0
+current_step: 7
 total_steps: 8
 ---
 
@@ -184,18 +185,28 @@ T-01就为 website/playwright.config.ts 增加 AUTO_WEBSITE_TEST_PORT（默认41
 
 | 任务 | 依赖 | 文件/操作 | 验证与预期 | 验收 |
 |---|---|---|---|---|
-| T-01 [ ] 基线/接线勘定 | 无 | 专用worktree；package/lock、theme/index.ts、配置、ScriptShipView、EvidenceImage；先改playwright.config.ts支持独占端口；新报告docs/reports/p715-website-ui-baseline.md，定搜索入口、真实示例、locale fallback及内容映射 | 基线build/定向e2e/截图/来源；接线决定明确，不延期搜索或演示 | AC-02/05/07/08/10/13/14 |
-| T-02 [ ] 导航/搜索 | T-01 | UnifiedNavbar.vue、theme/index.ts、config/shared.ts/en.ts/zh.ts、composables/useDarkMode.ts；新data/navigation.ts、SiteSearch.vue | 定向site-ui导航/搜索/locale/主题；docs/books/SPA点击及直达通过 | AC-01..03/06/13 |
-| T-03 [ ] 视觉/响应式 | T-01,T-02 | theme/style.css/landing.css、HomeHero/FeatureCard/ShowcaseSection；核对AIHero/OSHero和目标页scoped样式 | 五断点和深浅截图/bbox；无裁切，文档保全 | AC-04..06/13 |
-| T-04 [ ] 截图/应用骨架 | T-01,T-03 | EvidenceImage、AutoShellLanding必要接口；新ScreenshotGallery/AppLandingLayout；website/apps.md/zh/apps.md及automusk/autodown/autoui双语页 | site-ui画廊/键盘/专题有效入口、ash交互回归及截图 | AC-01/04..06/11/12 |
-| T-05 [ ] 首页演示 | T-01,T-03,T-04 | website/index.md/zh/index.md、HomeHero；新HomeDemo、data/home-demo.ts、必要DemoFrame；统一CodeView/ScriptShipView呈现 | home-demo三视图/复制/API成功失败；真实示例来源、产品入口 | AC-04..08/12 |
-| T-06 [ ] 发布展示 | T-01,T-03,T-04 | website/v05/index.md/zh/v05/index.md；新ReleaseLanding、data/release-v05.ts、SectionNav；产品前置/对照/理念展开/统计后移/清占位 | site-ui首图位置/hash/画廊；映射逐项核验/手机视觉 | AC-04..06/09..11 |
-| T-07 [ ] 全站验证/报告 | T-02..06 | 新website/tests/site-ui.spec.ts/home-demo.spec.ts；保留spa-routes/playground-notes；docs/reports/p715-website-ui-review.md与截图目录（新） | npm run build、独占端口npm run test:e2e、git diff --check、完整视觉矩阵 | AC-01..14 |
+| T-01 [x] 基线/接线勘定 | 无 | 专用worktree；package/lock、theme/index.ts、配置、ScriptShipView、EvidenceImage；先改playwright.config.ts支持独占端口；新报告docs/reports/p715-website-ui-baseline.md，定搜索入口、真实示例、locale fallback及内容映射 | 基线build/定向e2e/截图/来源；接线决定明确，不延期搜索或演示 | AC-02/05/07/08/10/13/14 |
+| T-02 [x] 导航/搜索 | T-01 | UnifiedNavbar.vue、theme/index.ts、config/shared.ts/en.ts/zh.ts、composables/useDarkMode.ts；新data/navigation.ts、SiteSearch.vue | 定向site-ui导航/搜索/locale/主题；docs/books/SPA点击及直达通过 | AC-01..03/06/13 |
+| T-03 [x] 视觉/响应式 | T-01,T-02 | theme/style.css/landing.css、HomeHero/FeatureCard/ShowcaseSection；核对AIHero/OSHero和目标页scoped样式 | 五断点和深浅截图/bbox；无裁切，文档保全 | AC-04..06/13 |
+| T-04 [x] 截图/应用骨架 | T-01,T-03 | EvidenceImage、AutoShellLanding必要接口；新ScreenshotGallery/AppLandingLayout；website/apps.md/zh/apps.md及automusk/autodown/autoui双语页 | site-ui画廊/键盘/专题有效入口、ash交互回归及截图 | AC-01/04..06/11/12 |
+| T-05 [x] 首页演示 | T-01,T-03,T-04 | website/index.md/zh/index.md、HomeHero；新HomeDemo、data/home-demo.ts、必要DemoFrame；统一CodeView/ScriptShipView呈现 | home-demo三视图/复制/API成功失败；真实示例来源、产品入口 | AC-04..08/12 |
+| T-06 [x] 发布展示 | T-01,T-03,T-04 | website/v05/index.md/zh/v05/index.md；新ReleaseLanding、data/release-v05.ts、SectionNav；产品前置/对照/理念展开/统计后移/清占位 | site-ui首图位置/hash/画廊；映射逐项核验/手机视觉 | AC-04..06/09..11 |
+| T-07 [x] 全站验证/报告 | T-02..06 | 新website/tests/site-ui.spec.ts/home-demo.spec.ts；保留spa-routes/playground-notes；docs/reports/p715-website-ui-review.md与截图目录（新） | npm run build、独占端口npm run test:e2e、git diff --check、完整视觉矩阵 | AC-01..14 |
 | T-08 [ ] 独立复审/交接 | T-07 | auto-plan-review核对实际diff/AC/SD；遗漏/延期/workaround扫描，候选写KNOWN-DEBT-AND-RISKS.md | revision/commit绑定复审，reviewed后交merge沉淀/归档/guard清理 | AC-01..14、SD-01..06 |
 
 需要定向e2e的阶段可先建立相关新测试的阶段子集，不等T-07才首次验证；T-07补齐并跑完整档。独立复审为与实现分开的证据核验步骤，不假称独立代理；只有用户明确委派才启动子代理，本起草不委派。
 
 ## 9. 复审记录
+
+### 2026-09-30 work 交接（T-01..T-07）
+
+- stage: work | plan_id: PLAN-715 | plan_revision: 1 | outcome: pass | code_commit: 675306b71（worktree plan-715-dev @ 基线 ff32d7004）
+- task_ids: T-01..T-07 完成；T-08=独立复审待执行
+- evidence: docs/reports/p715-website-ui-baseline.md（T-01 勘定：搜索接线=VitePress local+合成热键法/示例 csv_delimiter 金样三件套+classify.ash 实跑/locale 前缀规则/v05 内容映射表/端口 4185）；docs/reports/p715-website-ui-review.md（T-07：build 通过、e2e 64/64、final 截图矩阵 96 行 0 问题、AC-01..14 与 SD-01..06 逐项映射）；前后对照 baseline-*.png/final-*.png
+- 实测修复（记录供复审核验）：md 插槽大块内容被 markdown 块规则切断→AppLandingLayout 收敛 hero 骨架+调用压单块+顶层去缩进+泄漏回归锁；导航 1024 溢出 39px→桌面断点 1200；StatCard 长斜杠 token 393px 溢出→overflow-wrap；宿主 OS 中文 locale 泄入 e2e→playwright locale 钉定；4185 残留 preview 固化旧 dist 清单→进程 taskkill /T 清理
+- 偏差登记：①计划 §5.2 的 `/api/transpile` 实为 `/api/trans`（按实际端点）；②示例 7 行而非 10–18 行（全仓唯一证据齐全族，真实性优先）；③apps.md 目录页保持共享 landing.css 骨架（目录页≠单应用骨架）；④DemoFrame 未抽取（HomeDemo 自包含无第二使用方）；⑤a2ui 目录 URL 行为与 /playground hydration 告警为 pre-existing，测试内注记豁免
+- blockers: 无
+- next: review（T-08，独立复审核对 AC/SD/diff 后 reviewed 交 merge）
 
 ### 2026-09-30 起草交接
 
