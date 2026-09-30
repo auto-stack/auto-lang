@@ -15,7 +15,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 <HomeHero
   badge="The biggest update yet"
   title=": v0.5 Is Here"
-  description="Dynamic dev with static shipping, decoupled frontends, and Language as OS — three ideas have grown into a platform: the AutoUI dual-backend architecture has matured, the AutoOS virtual desktop is becoming usable, and four flagship apps plus 28 system apps are all written in Auto. This time, Auto starts to become itself."
+  description="Dynamic dev with static shipping, decoupled frontends, and Language as OS — three ideas have grown into a platform: the AutoUI dual-backend architecture has matured, the AutoOS virtual desktop is becoming usable, and Auto apps and Rust services form a desktop ecosystem. This time, Auto starts to become itself."
   primary-text="Read the Release Notes"
   primary-link="/docs/releases/v0.5"
   secondary-text="Open Playground"
@@ -24,11 +24,11 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 >
   <div class="hero-stats">
     <StatCard value="100 Billion" label="AI R&D Tokens" description="Platform-scale engineering written with deep AI involvement." color="#6366f1" />
-    <StatCard value="5,700+" label="Commits" description="5,711 commits since v0.3, every one merged through dual test gates." color="#8b5cf6" />
+    <StatCard value="5,700+" label="Commits" description="September 7, 2026 snapshot: 5,711 commits since v0.3." color="#8b5cf6" />
     <StatCard value="578K+" label="Lines of Rust" description="Compiler, AutoVM, the iced desktop shell, and system services." color="#14b8a6" />
     <StatCard value="135K+" label="Lines of Auto" description="Bootstrap libraries, apps, and corpus — the platform's own language is growing." color="#ec4899" />
   </div>
-  <p class="hero-stats-note">From v0.3 to v0.5 (Apr — Sep 2026), the quantified footprint of the Auto platform.</p>
+  <p class="hero-stats-note">Scale figures are a September 7, 2026 repository snapshot including tests and corpus; token usage is author-provided. September 30 audit: 8,033 commits from v0.3 to 14e444f02; no frozen v0.5 tag yet.</p>
 </HomeHero>
 
 <div class="features-section">
@@ -45,8 +45,8 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
         <li class="sub">In development, the AutoVM interprets your code — instant startup, hot reload, with REPL and LSP at your side.</li>
         <li class="sub">At release, the same source transpiles to native Rust via a2r (or to C via a2c).</li>
         <li class="sub">Not just Rust — this dynamic-static pairing is the shared design origin of every ecosystem across Auto's map.</li>
-        <li><strong>A dynamic-static pairing for every ecosystem</strong> — UI development (VM/iced hot-reload preview ↔ transpiled release), embedded MCUs (the VM doubles as the simulator ↔ a2c cross-compiles and flashes), Godot (emit GDScript for in-editor hot tweaks ↔ stitch static C/Rust into the engine), scientific computing (use.py calls PyTorch directly ↔ a2r ships the service). Before entering any ecosystem, two questions must be answered: how does it run dynamically, and how does it ship statically?</li>
-        <li><strong>Hot reload is the soul of the dynamic side</strong> — the value of dynamic mode is more than fast startup: edit without restarting, keep your running state, and see exactly what you just changed. The AutoUI desktop runs dual VM/a2r tracks with hot reload — the moment you save is the moment you see.</li>
+        <li><strong>A dynamic-static pairing for every ecosystem</strong> — UI development (VM/iced hot-reload preview ↔ transpiled release), MCU and Godot dynamic/static pairings still being explored in stages, scientific computing (use.py calls PyTorch directly ↔ a2r ships the service). Before entering any ecosystem, two questions must be answered: how does it run dynamically, and how does it ship statically?</li>
+        <li><strong>Hot reload is the soul of the dynamic side</strong> — the value of dynamic mode is more than fast startup: edit without restarting, keep your running state, and see exactly what you just changed. AutoUI desktop development supports hot reload; state preservation depends on the path and the change.</li>
         <li><strong>Consistency guarded by machines</strong> — the parity harness runs every test through AutoVM, transpiled Rust, and native Rust, requiring identical output; 20+ replicated third-party Rust libraries serve as standing regression corpus.</li>
       </ul>
       <div class="philosophy-proof"><code>auto run</code> (interpreted) ↔ <code>a2r</code> (native Rust) · dynamic-static across ecosystems · three-backend parity</div>
@@ -75,7 +75,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
         <li class="sub">An operating system's three duties — sharing, abstraction, and services — are precisely the three questions a language must answer.</li>
         <li class="sub">Auto writes its answers into the language itself: the Task/Msg Actor model is the scheduler; the view/mut/move memory triple is memory management; the io/net/http/fs standard library is the system-call surface; multi-platform rendering arms are the device drivers.</li>
         <li class="sub">One step further: every OS module has two supply routes — implemented by Auto itself, or bridged to an existing implementation — and gets assembled per target platform.</li>
-        <li><strong>Language-level modules, two supply routes</strong> — running on Windows: apps and UI transpile to Rust/iced while the kernel borrows Windows' own capabilities; running on an MCU: apps and UI can transpile to C/LVGL while the kernel becomes an RTOS written in Auto. One language, assembled differently per machine.</li>
+        <li><strong>Language-level modules, two supply routes</strong> — running on Windows: apps and UI transpile to Rust/iced while the kernel borrows Windows' own capabilities; on the future MCU roadmap: apps and UI could target C/LVGL while the kernel could become an RTOS written in Auto. One language, assembled differently per machine.</li>
         <li><strong>The shape of an OS is already visible</strong> — the AutoOS virtual desktop is running, and the window manager itself is an AutoUI app (next section); auto-os-config turns the shape of config files into the settings center, automatically.</li>
         <li><strong>AI compute scheduled like an OS device</strong> — the Client/Daemon architecture already powers AutoAI: ask the system for compute, instead of every app building its own AI stack.</li>
       </ul>
@@ -89,7 +89,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
   <p class="section-desc">From v0.3 to v0.5 (Apr — Sep 2026), each release took on a new question to answer.</p>
   <div class="journey">
     <p class="journey-lead">v0.3 answered <em>"is it a language?"</em>; v0.4 answered <em>"can it run real things?"</em>. With v0.5, the question is the hardest one yet: <em>"can it become something you open every day?"</em></p>
-    <p class="journey-lead">To answer it, we wrote 578K lines of Rust and 135K lines of Auto over the past five months — but the line counts are just footnotes. The real change: Auto no longer lives only in compilers and test corpora. It has grown an interface, a desktop, and a whole app ecosystem. Here is the report, in order.</p>
+    <p class="journey-lead">To answer it, the repository reached 578K lines of Rust and 135K lines of Auto (September 7 snapshot, including tests and corpus) — but the line counts are just footnotes. The real change: Auto no longer lives only in compilers and test corpora. It has grown an interface, a desktop, and a whole app ecosystem. Here is the report, in order.</p>
     <div class="timeline">
       <div class="timeline-item">
         <span class="timeline-version">v0.3</span>
@@ -109,7 +109,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
         <span class="timeline-version">v0.5</span>
         <div class="timeline-card">
           <h3>Desktop and app ecosystem</h3>
-          <p>The AutoUI dual-backend architecture matured, the AutoOS virtual desktop became usable, and four flagship apps plus 28 system apps were all written in Auto.</p>
+          <p>The AutoUI dual-backend architecture matured, the AutoOS virtual desktop became usable, and Auto apps and Rust services formed a desktop ecosystem.</p>
         </div>
       </div>
     </div>
@@ -121,9 +121,9 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
   <h2 class="section-title">The AutoOS Virtual Desktop</h2>
   <p class="section-desc">A virtual compositor inside a single OS window fits AutoUI apps into a cross-platform desktop — available on Windows today, with Linux desktop environments and HarmonyOS on the roadmap.</p>
   <div class="vd-intro">
-    <p class="narrative">This time, the first thing we want to show you isn't a language feature — it's a desktop you can use. The window manager itself is an AutoUI app: not a single system window API was called; dragging, focus, and the taskbar are all ordinary Auto code. Both light and dark themes are in place, and the four flagship apps plus 28 system apps ship inside it.</p>
+    <p class="narrative">This time, the first thing we want to show you isn't a language feature — it's a desktop you can use. The window manager itself is an AutoUI app: virtual-window behavior is implemented in Auto above the host window; dragging, focus, and the taskbar are all ordinary Auto code. Both light and dark themes are in place, and apps are progressively integrated, with varying maturity.</p>
     <ul class="vd-points">
-      <li><strong>WM-as-App</strong> — the chrome, dragging, focus, and taskbar of virtual windows are all written as ordinary AutoUI apps; dual-backend consistency is guaranteed by construction.</li>
+      <li><strong>WM-as-App</strong> — the chrome, dragging, focus, and taskbar of virtual windows are all written as ordinary AutoUI apps; a shared contract supports consistency across renderers.</li>
       <li><strong>Light & dark themes</strong> — the desktop and the main apps ship both themes, switchable at runtime (both shown below).</li>
       <li><strong>The desktop is the app container</strong> — the start menu lists everything: four flagship apps and 20+ system apps open as real windows on the desktop, in the full-width shots below.</li>
       <li><strong>Unified Settings Center</strong> — auto-os-config: one daemon auto-renders config forms from .at file shapes, onboarding new modules with zero frontend code.</li>
@@ -158,11 +158,11 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
     badge="AutoUI · Headline"
     reverse
   >
-    <p class="narrative">The desktop runs because of an earlier decision: pulling the UI contract out of the renderer. We worked on this architecture for two years, and v0.5 is where we can finally say it was right — the same .at now genuinely grows both a Web end and a desktop end at once, with identical behavior.</p>
+    <p class="narrative">The desktop runs because of an earlier decision: pulling the UI contract out of the renderer. We worked on this architecture for two years, and v0.5 is where we can finally say it was right — the same .at now genuinely grows both a Web end and a desktop end at once, with behavior checked by corpus tests.</p>
     <ul>
-      <li><strong>Contract-layer decoupling</strong> — component declarations, state, and the event protocol depend on no renderer; swapping rendering arms is like swapping backends, freely switching between Vue / iced / ArkTS / Jetpack Compose.</li>
-      <li><strong>Dual-backend parity</strong> — the same tests run through both the Vue and iced rendering paths with identical output; what you see is what ships, beyond the Web.</li>
-      <li><strong>Hot reload is the soul of development</strong> — the moment you save is the moment you see, with running state intact; the desktop runs dual VM / a2r hot-reload tracks.</li>
+      <li><strong>Contract-layer decoupling</strong> — component declarations, state, and the event protocol depend on no renderer; swapping rendering arms is like swapping backends, using Vue / iced as the main paths, with ArkTS / Jetpack Compose at feasibility-demo maturity.</li>
+      <li><strong>Cross-renderer verification</strong> — Vue and iced have component, event and layout checks; verified corpus protects consistency while known differences continue to be addressed.</li>
+      <li><strong>Hot reload is the soul of development</strong> — desktop development supports hot reload; state preservation depends on the path and the change.</li>
       <li><strong>Tokenized light/dark theming</strong> — one theme declaration, one look across both ends; the example ecosystem defaults to dark, one CLI flag flips to light.</li>
     </ul>
     <template #visual>
@@ -184,13 +184,13 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 </div>
 
 <div class="features-section">
-  <h2 class="section-title">Four Flagship Apps, 100% Built in Auto</h2>
-  <p class="section-desc">The desktop answers "what can Auto run?" — these four apps answer "what can Auto do?". An agent, a shell, a knowledge base, an editor: four entirely different application paradigms, all written in Auto, each with its own landing page.</p>
+  <h2 class="section-title">Four Flagship Apps: Auto Meets Rust</h2>
+  <p class="section-desc">The desktop answers "what can Auto run?" — these four apps answer "what can Auto do?". An agent, a shell, a knowledge base, an editor: four entirely different application paradigms, built from Auto apps and Rust services, with dedicated pages for further exploration.</p>
   <div class="flagship-list">
     <article class="flagship-item">
       <div class="flagship-text">
         <h3>🤖 AutoMusk</h3>
-        <p>The agent for developing Auto apps, backed by the auto-ai architecture: Client/Daemon centrally schedules LLM compute. Driven by the AutoPlan mode, its five frontend views are generated from a single .at source.</p>
+        <p>The agent for developing Auto apps, backed by the auto-ai architecture: Client/Daemon centrally schedules LLM compute. Driven by the AutoPlan mode, its five frontend views are generated from a single .at source, backed by Rust services.</p>
         <a class="flagship-link" href="/apps/automusk/">Landing page →</a>
       </div>
       <!-- exists: desktop shape screenshot -->
@@ -199,7 +199,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
     <article class="flagship-item reverse">
       <div class="flagship-text">
         <h3>🐚 AutoShell</h3>
-        <p>The structured shell for the AI era, combining the best of AutoLang + NuShell + Fish + Warp: commands exchange typed objects instead of text streams. Backed by the auto-term terminal infrastructure, with a built-in security sandbox and 79 agent tools.</p>
+        <p>A Rust shell with AutoLang as its embedded scripting and GUI language, combining the best of AutoLang + NuShell + Fish + Warp: commands exchange typed objects instead of text streams. Backed by the auto-term terminal infrastructure, with a built-in security sandbox and 79 agent tools.</p>
         <a class="flagship-link" href="/apps/autoshell/">Landing page →</a>
       </div>
       <AutoShellPreview lang="en" />
@@ -216,7 +216,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
     <article class="flagship-item reverse">
       <div class="flagship-text">
         <h3>📝 AutoEdit</h3>
-        <p>A text editor for the Auto language with a Zed-class experience — an editor written in Auto, editing Auto. The ultimate form of dogfooding.</p>
+        <p>A text editor for the Auto language with an evolving code-editing experience — an editor written in Auto, editing Auto. The ultimate form of dogfooding.</p>
         <!-- landing page TBD: <a class="flagship-link" href="/apps/autoedit/">Landing page →</a> -->
       </div>
       <div class="shot-placeholder">TODO screenshot · AutoEdit editor (dark theme)</div>
@@ -226,10 +226,10 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 
 <div class="features-section">
   <h2 class="section-title">28 System App Demos</h2>
-  <p class="section-desc">Whether a desktop deserves to be opened every day depends on what apps it ships with. AutoOS's answer is 28. The stars below are complete; 20+ more (calculator, clock, todo, weather, notes, chat, book reader, kanban, photo gallery...) have runnable demos at various stages of polish — all collected in the <a href="/ui/demos/" target="_self">Demo Apps Gallery</a>.</p>
+  <p class="section-desc">Whether a desktop deserves to be opened every day depends on what apps it ships with. AutoOS's answer is 28. App features and maturity vary; 20+ more (calculator, clock, todo, weather, notes, chat, book reader, kanban, photo gallery...) have runnable demos at various stages of polish — all collected in the <a href="/ui/demos/" target="_self">Demo Apps Gallery</a>.</p>
   <div class="features-grid">
-    <FeatureCard icon="🎵" title="Music Player" description="A complete local music player on both Web and desktop: playlist, progress, cover art — nothing missing." color="rgba(236, 72, 153, 0.15)" />
-    <FeatureCard icon="🎬" title="Video Player" description="Plays local video on Web and desktop, with progress bar, volume, and fullscreen." color="rgba(59, 130, 246, 0.15)" />
+    <FeatureCard icon="🎵" title="Music Player" description="Web and desktop music-player forms, with playlists, progress and cover art; real media interactions continue to improve." color="rgba(236, 72, 153, 0.15)" />
+    <FeatureCard icon="🎬" title="Video Player" description="Web and desktop video-player forms with real media services; desktop controls and hit testing continue to improve." color="rgba(59, 130, 246, 0.15)" />
     <FeatureCard icon="🗂️" title="File Manager" description="A complete file browser: directory tree, preview, multi-select operations — a real window on the virtual desktop." color="rgba(14, 165, 233, 0.15)" />
     <FeatureCard icon="🚀" title="Launcher" description="The app launcher — the entry point to all 28 system apps, and the foundation of the AutoOS start menu." color="rgba(20, 184, 166, 0.15)" />
     <FeatureCard icon="🃏" title="FreeCell" description="The classic card game fully recreated, running on both AutoUI backends." color="rgba(34, 197, 94, 0.15)" />
@@ -238,16 +238,10 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
     <FeatureCard icon="🖥️" title="Sys Monitor" description="System monitor: KPI curves + process table, fed by real system data." color="rgba(99, 102, 241, 0.15)" />
   </div>
   <!-- TODO screenshots (one main shot per star app, dark theme is enough; no need to dual-theme):
-  <div class="apps-shot-grid">
-    <img src="/v05/app-music-player.png" alt="Music Player: playback and playlist" />
-    <img src="/v05/app-video-player.png" alt="Video Player: local video playing" />
-    <img src="/v05/app-file-manager.png" alt="File Manager: browsing and preview" />
-    <img src="/v05/app-launcher.png" alt="Launcher: the app launcher" />
-    <img src="/v05/app-freecell.png" alt="FreeCell" />
-    <img src="/v05/app-minesweeper.png" alt="Minesweeper" />
-    <img src="/v05/app-tetris.png" alt="Tetris" />
-    <img src="/v05/app-sys-monitor.png" alt="Sys Monitor: KPIs and processes" />
-  </div>
+  <figure class="big-shot">
+    <img src="/v05/gallery-home.png" alt="AutoUI gallery overview" />
+    <figcaption>The checked-in gallery overview; app maturity follows the implementation and notes.</figcaption>
+  </figure>
   -->
 </div>
 
@@ -280,9 +274,9 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
   >
     <p class="narrative">Last but not least, the language itself. v0.5's answer is full-ecosystem scripting: Rust, Python, and Web advancing in parallel — and deep in the toolchain, the bootstrap loop closed, along a curved route.</p>
     <ul>
-      <li><strong>Rust ecosystem (90%)</strong> — run Auto as a scripting language for Rust: the AutoVM can call over 90% of Rust code, and the same source transpiles to native Rust via a2r — dynamic development, static release, a drop-in replacement for today's Rust workflow.</li>
-      <li><strong>Python ecosystem (66%)</strong> — call Python scripts directly (e.g. PyTorch, the AI environment ready to use), or translate Auto into Python.</li>
-      <li><strong>Vue / TS / JS ecosystem (80%)</strong> — can recreate most websites built with Vue; another way to write frontend.</li>
+      <li><strong>Rust ecosystem</strong> — AutoVM calls Rust through natives and dep/use.rs shims, with a2r as the static release path. Layout probes, concrete generic instances and real-library parity provide evidence; compatibility depends on interfaces and signatures rather than an ecosystem-wide percentage.</li>
+      <li><strong>Python ecosystem</strong> — use.py calls CPython and a2py emits Python. The .as script mode adds bridge syntax, exceptions and context managers; PyTorch inference, training and Module/Dataset callbacks have three-way parity tests.</li>
+      <li><strong>Vue / TS / JS ecosystem</strong> — Vue is the main Web renderer, supporting state, events and full-stack APIs; component support follows concrete examples and verified coverage.</li>
       <li><strong>Curved bootstrap</strong> — host side (avm, a2r) × bootstrap side (aavm, aa2r): since Auto doesn't yet have a compiler backend that emits binaries, bootstrapping takes a curved route — the VM and transpiler written in Auto are transpiled to Rust by <strong>aa2r</strong> and compiled into binaries, then run the VM and transpiler written in Auto.</li>
     </ul>
     <template #visual>
@@ -298,6 +292,19 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
       </div>
     </template>
   </ShowcaseSection>
+</div>
+
+<div class="features-section">
+  <h2 class="section-title">New: inspectable, maintainable applications</h2>
+  <p class="section-desc">Beyond the desktop, these toolchain changes are part of the v0.5 milestone.</p>
+  <div class="features-grid">
+    <FeatureCard icon="🔗" title="Real Rust libraries" description="dep/use.rs, layout probes and concrete generic instances, checked against real dependencies through three-way parity." color="rgba(99, 102, 241, 0.15)" />
+    <FeatureCard icon="🐍" title="Python scripts and PyTorch" description=".as lowering, exceptions and with-as, with inference, training and Module/Dataset callback corpus." color="rgba(99, 102, 241, 0.15)" />
+    <FeatureCard icon="🔎" title="Structured UI inspection" description="Live MCP trees, layout and screenshots, plus Select Anything rectangle export to Auto/JSON/Atom." color="rgba(99, 102, 241, 0.15)" />
+    <FeatureCard icon="📝" title="Shared editor foundation" description="Rope, COW snapshots, edit deltas and text/directory diff; full-document materialization remains a large-file limit." color="rgba(99, 102, 241, 0.15)" />
+    <FeatureCard icon="⚙️" title="Backend and cache" description="Axum/Hyper HTTP transport, segmented UI-handler waiting and automatic UI-cache invalidation on generator updates." color="rgba(99, 102, 241, 0.15)" />
+  </div>
+  <p class="section-desc"><a href="/docs/releases/v0.5">Read the full notes and known limits →</a></p>
 </div>
 
 <div class="features-section">

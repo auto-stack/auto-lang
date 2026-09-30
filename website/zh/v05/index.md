@@ -15,7 +15,7 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
 <HomeHero
   badge="有史以来最大的一次更新"
   title="：v0.5 正式发布"
-  description="动静相宜、前后解耦、Language as OS —— 三个理念长成一个平台：AutoUI 双端架构成熟、AutoOS 虚拟桌面走向可用、四大旗舰应用与 28 个系统应用全部用 Auto 写成。这一次，Auto 开始成为它自己。"
+  description="动静相宜、前后解耦、Language as OS —— 三个理念长成一个平台：AutoUI 双端架构成熟、AutoOS 虚拟桌面走向可用、Auto 应用与 Rust 服务共同组成的桌面生态。这一次，Auto 开始成为它自己。"
   primary-text="阅读发布说明"
   primary-link="/zh/docs/releases/v0.5"
   secondary-text="打开 Playground"
@@ -24,11 +24,11 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
 >
   <div class="hero-stats">
     <StatCard value="1000 亿" label="AI 研发 Token" description="由 AI 深度参与编写的平台级工程。" color="#6366f1" />
-    <StatCard value="5,700+" label="Commits" description="v0.3 以来 5,711 次提交，全部经双测门禁合入。" color="#8b5cf6" />
+    <StatCard value="5,700+" label="Commits" description="2026-09-07 宣传快照：v0.3 以来 5,711 次提交。" color="#8b5cf6" />
     <StatCard value="57.8 万" label="行 Rust 代码" description="编译器、AutoVM、iced 桌面端与系统服务。" color="#14b8a6" />
     <StatCard value="13.5 万" label="行 Auto 代码" description="自举库、应用与语料 —— 平台自己的语言在生长。" color="#ec4899" />
   </div>
-  <p class="hero-stats-note">从 v0.3 到 v0.5（2026.04 — 2026.09），Auto 平台的量化足迹。</p>
+  <p class="hero-stats-note">规模数据为 2026-09-07 全仓宣传快照（含测试与语料）；Token 数据由作者提供。2026-09-30 核查：v0.3 至 14e444f02 共 8,033 次提交；v0.5 尚无冻结标签。</p>
 </HomeHero>
 
 <div class="features-section">
@@ -43,10 +43,10 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
       <ul class="philosophy-list">
         <li class="sub">多数语言逼你二选一：脚本语言秒级周转，却把性能留在门外；系统语言性能拉满，却让你用编译周期偿还每一次灵感。Auto 拒绝选择。</li>
         <li class="sub">开发态由 AutoVM 解释执行 —— 秒级启动、热重载、REPL 与 LSP 常伴左右。</li>
-        <li class="sub">发布态，同一份源码经 a2r 转译为原生 Rust（或经 a2c 转译为 C）。</li>
+        <li class="sub">发布态，同一份源码经 a2r 转译为原生 Rust（C 也有转译与 FFI 验证路径，MCU 产品化仍在路线图上）。</li>
         <li class="sub">不止 Rust 一家 —— 这套动静组合是整个版图里每个生态共用的设计原点。</li>
-        <li><strong>全生态动静组合</strong> —— UI 开发（VM/iced 热重载预览 ↔ 转译发布）、MCU 嵌入式（VM 即在线模拟器 ↔ a2c 交叉编译烧录）、Godot（发射 GDScript 编辑器内热改 ↔ C/Rust 静态缝合引擎）、科学计算（use.py 直调 PyTorch ↔ a2r 发布服务）——进入任何生态，两问必答：动态态怎么跑，静态态怎么发。</li>
-        <li><strong>热重载是动态态的灵魂</strong> —— 动态的含金量不止"启动快"：改代码不重启、运行状态不丢、所见即所改。AutoUI 桌面端 VM / a2r 双轨热重载，保存的瞬间就是看到的瞬间。</li>
+        <li><strong>全生态动静组合</strong> —— UI 开发（VM/iced 热重载预览 ↔ 转译发布）、MCU 与 Godot 的动态/静态组合仍在分阶段探索、科学计算（use.py 直调 PyTorch ↔ a2r 发布服务）——进入任何生态，两问必答：动态态怎么跑，静态态怎么发。</li>
+        <li><strong>热重载是动态态的灵魂</strong> —— 动态的含金量不止"启动快"：改代码不重启、运行状态不丢、所见即所改。AutoUI 桌面开发支持热重载，状态保留范围随运行路径和改动而异。</li>
         <li><strong>一致性由机器守护</strong> —— parity 对拍让同一测试跑遍 AutoVM、转译 Rust、原生 Rust 三条通路，输出必须全等；20+ 三方 Rust 库复刻语料常态回归。</li>
       </ul>
       <div class="philosophy-proof"><code>auto run</code>（VM 直跑）↔ <code>a2r</code>（原生 Rust）· 全生态动静矩阵 · 三后端对拍</div>
@@ -58,7 +58,7 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
       <p class="philosophy-tagline">前端负责表达，后端负责兑现 —— 接缝清晰，两端皆可替换。</p>
       <ul class="philosophy-list">
         <li class="sub">前后解耦不是 UI 的专利，而是 Auto 在每一层反复使用的架构元模式。</li>
-        <li class="sub">最外层是 AutoUI：契约独立于宿主框架，同一份 .at 在 Vue、iced、ArkTS、Jetpack Compose 之间切换渲染臂。</li>
+        <li class="sub">最外层是 AutoUI：契约独立于宿主框架，同一份 .at 面向 Vue 与 iced；ArkTS、Jetpack Compose 仍以可行性 Demo 为主。</li>
         <li class="sub">往里走，模式一路重现 —— 直到操作系统的顶层：外壳与内核，也是一对前后端。</li>
         <li><strong>OS 外壳 ↔ OS 内核，后端可切换</strong> —— Windows 上，前端是虚拟桌面，后端是 Windows 内核；未来的 AutoOS 发行版里，AutoOS 桌面与 Linux 内核直接耦合；后端还可以切换到 OpenHarmony。换内核，不换你的应用。</li>
         <li><strong>同一模式，层层重现</strong> —— AutoUI ↔ 渲染引擎（Vue / iced / ArkTS / Jetpack）；AutoOS 应用架构：auto-ui ↔ auto-compositor（RenderQueue 共享内存无锁通讯）；AutoAI：各类 Agent 与 AI-App ↔ ai-daemon（LLM 资源统一调度）。</li>
@@ -75,7 +75,7 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
         <li class="sub">操作系统的三大天职 —— 共享、抽象、服务 —— 正是一门语言必须回答的三问。</li>
         <li class="sub">Auto 把答案写进语言本体：Task/Msg Actor 并发模型是调度器，view/mut/move 内存三元组是内存管理，io/net/http/fs 标准库是系统调用，多端渲染臂是外设驱动。</li>
         <li class="sub">更进一步：每个 OS 模块都有两条供给路线 —— Auto 亲手实现，或经生态桥调用现成实现 —— 按目标平台自由"装机"。</li>
-        <li><strong>模块语言化，双路供给</strong> —— 跑在 Windows 上：应用与 UI 转译为 Rust/iced，内核调用 Windows 现成能力；跑进 MCU：应用与 UI 可转译为 C/LVGL，内核换成 Auto 自写的 RTOS。同一门语言，按机器"装机"。</li>
+        <li><strong>模块语言化，双路供给</strong> —— 跑在 Windows 上：应用与 UI 转译为 Rust/iced，内核调用 Windows 现成能力；未来面向 MCU：应用与 UI 可探索 C/LVGL，内核可探索 Auto 自写的 RTOS。同一门语言，按机器"装机"。</li>
         <li><strong>OS 的形状已经可见</strong> —— AutoOS 虚拟桌面正在运行，窗口管理器本身就是一个 AutoUI 应用（见下一节）；auto-os-config 让配置文件的形状自动长成设置中心。</li>
         <li><strong>AI 算力按 OS 设备调度</strong> —— Client/Daemon 架构已在 AutoAI 落地：向系统要算力，而不是每个应用自建 AI 栈。</li>
       </ul>
@@ -89,7 +89,7 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
   <p class="section-desc">从 v0.3 到 v0.5（2026.04 — 2026.09），每到一个版本，Auto 就换一个问题来回答。</p>
   <div class="journey">
     <p class="journey-lead">v0.3 回答的是<em>"它是一门语言吗"</em>；v0.4 回答的是<em>"它能跑真的东西吗"</em>。到 v0.5，问题换成了最难的一个：<em>"它能不能成为你每天打开的东西？"</em></p>
-    <p class="journey-lead">为了回答这个问题，过去的五个月里，我们写了 57.8 万行 Rust 和 13.5 万行 Auto —— 但行数只是脚注。真正的变化是：Auto 不再只活在编译器和测试语料里，它长出了界面、长出了桌面、长出了一整个应用生态。下面按顺序汇报。</p>
+    <p class="journey-lead">为了回答这个问题，过去的五个月里，仓库形成了 57.8 万行 Rust 和 13.5 万行 Auto 的规模（9 月 7 日全仓快照，含测试与语料） —— 但行数只是脚注。真正的变化是：Auto 不再只活在编译器和测试语料里，它长出了界面、长出了桌面、长出了一整个应用生态。下面按顺序汇报。</p>
     <div class="timeline">
       <div class="timeline-item">
         <span class="timeline-version">v0.3</span>
@@ -102,14 +102,14 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
         <span class="timeline-version">v0.4</span>
         <div class="timeline-card">
           <h3>运行时与转译</h3>
-          <p>AutoVM 全功能化，a2r 转译生产级可用，AI Agent 基础设施搭建 —— Auto 开始跑真实的应用。</p>
+          <p>AutoVM 全功能化，a2r 开始承载真实后端，AI Agent 基础设施搭建 —— Auto 开始跑真实的应用。</p>
         </div>
       </div>
       <div class="timeline-item">
         <span class="timeline-version">v0.5</span>
         <div class="timeline-card">
           <h3>桌面与应用生态</h3>
-          <p>AutoUI 双端架构成熟，AutoOS 虚拟桌面走向可用，四大旗舰与 28 个系统应用全部用 Auto 写成。</p>
+          <p>AutoUI 双端架构成熟，AutoOS 虚拟桌面走向可用，Auto 应用与 Rust 服务共同组成的桌面生态。</p>
         </div>
       </div>
     </div>
@@ -121,9 +121,9 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
   <h2 class="section-title">AutoOS 虚拟桌面</h2>
   <p class="section-desc">单 OS 窗口内的虚拟合成器，把 AutoUI 应用装进一个跨平台桌面 —— Windows 今天可用，Linux 桌面环境与鸿蒙在路线图上。</p>
   <div class="vd-intro">
-    <p class="narrative">这一次，我们想先给你看的不是语言特性，而是一块能用的桌面。窗口管理器本身是一个 AutoUI 应用 —— 我们没有调用一行系统窗口 API，拖拽、焦点、任务栏全是普通 Auto 代码。深浅两套主题已经就位，四大旗舰与 28 个系统应用，就装在这张桌面里。</p>
+    <p class="narrative">这一次，我们想先给你看的不是语言特性，而是一块能用的桌面。窗口管理器本身是一个 AutoUI 应用 —— 虚拟窗口行为由 Auto 在宿主窗口之上实现，拖拽、焦点、任务栏全是普通 Auto 代码。深浅两套主题已经就位，应用逐步接入这张桌面，完成度各异。</p>
     <ul class="vd-points">
-      <li><strong>WM-as-App</strong> —— 虚拟窗口的 chrome、拖拽、焦点、任务栏全部用 AutoUI 写成普通应用，双端一致性是构造性保证。</li>
+      <li><strong>WM-as-App</strong> —— 虚拟窗口的 chrome、拖拽、焦点、任务栏全部用 AutoUI 写成普通应用，同一契约支撑双端一致性。</li>
       <li><strong>深浅色双主题</strong> —— 桌面与主要应用已完成两套主题适配，运行中一键切换（下方案例同时给出两套主题）。</li>
       <li><strong>桌面即应用容器</strong> —— 开始菜单列出全部应用：四大旗舰与 20+ 系统应用直接在桌面上开窗口运行，见下方大图。</li>
       <li><strong>统一设置中心</strong> —— auto-os-config：一个 Daemon 按 .at 文件形状自动渲染配置表单，零前端代码接入新模块。</li>
@@ -158,11 +158,11 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
     badge="AutoUI · 第一重点"
     reverse
   >
-    <p class="narrative">桌面能跑起来，靠的是一个更早的决定：把 UI 契约从渲染器里抽出来。这个架构做了两年，v0.5 终于可以说它是对的 —— 因为同一份 .at，今天真的同时长出了 Web 和桌面两端，而且行为一致。</p>
+    <p class="narrative">桌面能跑起来，靠的是一个更早的决定：把 UI 契约从渲染器里抽出来。这个架构做了两年，v0.5 终于可以说它是对的 —— 因为同一份 .at，今天真的同时长出了 Web 和桌面两端，并以语料验证行为一致性。</p>
     <ul>
-      <li><strong>契约层前后解耦</strong> —— 组件声明、状态与事件协议不依赖任何渲染器；换渲染臂如同换后端，Vue / iced / ArkTS / Jetpack Compose 自由切换。</li>
-      <li><strong>双端对拍</strong> —— 同一测试跑遍 Vue 与 iced 两条渲染通路，输出全等；所见即所得不止于 Web。</li>
-      <li><strong>热重载是开发态的灵魂</strong> —— 保存的瞬间就是看到的瞬间，运行状态不丢；桌面端 VM / a2r 双轨热重载。</li>
+      <li><strong>契约层前后解耦</strong> —— 组件声明、状态与事件协议不依赖任何渲染器；换渲染臂如同换后端，Vue / iced 是主要可用路径，ArkTS / Jetpack Compose 仍以可行性 Demo 为主。</li>
+      <li><strong>双端对拍</strong> —— Vue 与 iced 分别验证组件、事件和布局；已验证语料守护一致性，已知差异继续收敛。</li>
+      <li><strong>热重载是开发态的灵魂</strong> —— 桌面开发支持热重载；状态保留范围随运行路径和改动而异。</li>
       <li><strong>深浅色主题 token 化</strong> —— 一份主题声明，双端同一外观；示例生态默认深色，CLI 一行切浅色。</li>
     </ul>
     <template #visual>
@@ -184,13 +184,13 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
 </div>
 
 <div class="features-section">
-  <h2 class="section-title">四大旗舰应用，100% Auto 构建</h2>
-  <p class="section-desc">桌面回答的是"Auto 能跑什么"，这四个应用回答的是"Auto 能做什么"。Agent、Shell、知识库、编辑器 —— 四种完全不同的应用范式，全部由 Auto 自己写成，每个都有独立落地页。</p>
+  <h2 class="section-title">四大旗舰应用，Auto 与 Rust 协作</h2>
+  <p class="section-desc">桌面回答的是"Auto 能跑什么"，这四个应用回答的是"Auto 能做什么"。Agent、Shell、知识库、编辑器 —— 四种完全不同的应用范式，由 Auto 应用和 Rust 服务共同构成，已有专题页面可继续探索。</p>
   <div class="flagship-list">
     <article class="flagship-item">
       <div class="flagship-text">
         <h3>🤖 AutoMusk</h3>
-        <p>开发 Auto App 的 Agent，背后是 auto-ai 架构：Client/Daemon 统一调度 LLM 算力。AutoPlan 模式驱动，前端五个视图由 .at 单源生成。</p>
+        <p>开发 Auto App 的 Agent，背后是 auto-ai 架构：Client/Daemon 统一调度 LLM 算力。AutoPlan 模式驱动，后端为 Rust，前端五个视图由 .at 单源生成。</p>
         <a class="flagship-link" href="/zh/apps/automusk/">查看落地页 →</a>
       </div>
       <!-- 已有：桌面形态截图 -->
@@ -199,7 +199,7 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
     <article class="flagship-item reverse">
       <div class="flagship-text">
         <h3>🐚 AutoShell</h3>
-        <p>AI 时代的结构化 Shell：AutoLang + NuShell + Fish + Warp 四家之长，命令交换类型化对象而非文本流；背后是 auto-term 终端设施，内置安全沙箱与 79 个 Agent 工具。</p>
+        <p>以 Rust 为核心、AutoLang 为内置脚本与 GUI 语言的结构化 Shell：AutoLang + NuShell + Fish + Warp 四家之长，命令交换类型化对象而非文本流；背后是 auto-term 终端设施，内置安全沙箱与 79 个 Agent 工具。</p>
         <a class="flagship-link" href="/zh/apps/autoshell/">查看落地页 →</a>
       </div>
       <AutoShellPreview lang="zh" />
@@ -216,7 +216,7 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
     <article class="flagship-item reverse">
       <div class="flagship-text">
         <h3>📝 AutoEdit</h3>
-        <p>Auto 语言的文本编辑器，类 Zed 的极速体验 —— 用 Auto 写成的编辑器，编辑 Auto。Dogfooding 的终极形态。</p>
+        <p>Auto 语言的文本编辑器，探索面向代码的编辑体验 —— 用 Auto 写成的编辑器，编辑 Auto。Dogfooding 的终极形态。</p>
         <!-- 落地页待补：<a class="flagship-link" href="/zh/apps/autoedit/">查看落地页 →</a> -->
       </div>
       <div class="shot-placeholder">待截图 · AutoEdit 编辑器主界面（深色主题）</div>
@@ -226,10 +226,10 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
 
 <div class="features-section">
   <h2 class="section-title">28 个系统应用 Demo</h2>
-  <p class="section-desc">一个桌面值不值得每天打开，要看它自带什么应用。AutoOS 的答案是 28 个 —— 其中明星应用完整可用，其余 20+（计算器、时钟、待办、天气、记事本、聊天、读书器、看板、图库……）均有不同进度的可运行 demo，全部收录在 <a href="/ui/demos/" target="_self">Demo Apps Gallery</a>。</p>
+  <p class="section-desc">一个桌面值不值得每天打开，要看它自带什么应用。AutoOS 的答案是 28 个 —— 其中应用的功能与完成度各异，其余 20+（计算器、时钟、待办、天气、记事本、聊天、读书器、看板、图库……）均有不同进度的可运行 demo，全部收录在 <a href="/ui/demos/" target="_self">Demo Apps Gallery</a>。</p>
   <div class="features-grid">
-    <FeatureCard icon="🎵" title="Music Player" description="完整的本地音乐播放器，Web / 桌面双端可用：播放列表、进度、封面，一个不缺。" color="rgba(236, 72, 153, 0.15)" />
-    <FeatureCard icon="🎬" title="Video Player" description="本地视频播放器，Web / 桌面双端可跑，进度条、音量、全屏俱全。" color="rgba(59, 130, 246, 0.15)" />
+    <FeatureCard icon="🎵" title="Music Player" description="本地音乐播放器的 Web / 桌面形态：播放列表、进度与封面，持续完善真实媒体交互。" color="rgba(236, 72, 153, 0.15)" />
+    <FeatureCard icon="🎬" title="Video Player" description="本地视频播放器的 Web / 桌面形态，真实视频服务已接入，桌面控制与命中仍在完善。" color="rgba(59, 130, 246, 0.15)" />
     <FeatureCard icon="🗂️" title="File Manager" description="完整的文件浏览器：目录树、预览、多选操作，跑在虚拟桌面上的一个真窗口。" color="rgba(14, 165, 233, 0.15)" />
     <FeatureCard icon="🚀" title="Launcher" description="应用启动器 —— 28 个系统应用的入口，也是 AutoOS 开始菜单的底座。" color="rgba(20, 184, 166, 0.15)" />
     <FeatureCard icon="🃏" title="空档接龙" description="经典纸牌游戏完整复刻，AutoUI 双端运行。" color="rgba(34, 197, 94, 0.15)" />
@@ -238,16 +238,10 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
     <FeatureCard icon="🖥️" title="Sys Monitor" description="系统监视器：KPI 曲线 + 进程表，真实系统数据。" color="rgba(99, 102, 241, 0.15)" />
   </div>
   <!-- 待截图（每个明星应用一张主界面截图，深色主题即可，不必双主题）：
-  <div class="apps-shot-grid">
-    <img src="/v05/app-music-player.png" alt="Music Player：播放界面与播放列表" />
-    <img src="/v05/app-video-player.png" alt="Video Player：本地视频播放中" />
-    <img src="/v05/app-file-manager.png" alt="File Manager：目录浏览与预览" />
-    <img src="/v05/app-launcher.png" alt="Launcher：应用启动器" />
-    <img src="/v05/app-freecell.png" alt="空档接龙" />
-    <img src="/v05/app-minesweeper.png" alt="扫雷" />
-    <img src="/v05/app-tetris.png" alt="俄罗斯方块" />
-    <img src="/v05/app-sys-monitor.png" alt="Sys Monitor：KPI 与进程" />
-  </div>
+  <figure class="big-shot">
+    <img src="/v05/gallery-home.png" alt="AutoUI 画廊概览" />
+    <figcaption>已入库的画廊概览；应用的完成度以对应实现与说明为准。</figcaption>
+  </figure>
   -->
 </div>
 
@@ -280,9 +274,9 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
   >
     <p class="narrative">最后汇报语言本身的进展。v0.5 的答案是全生态脚本化：Rust、Python、Web 三条生态线同时推进；而在 toolchain 深处，自举闭环了 —— 走的是一条曲线。</p>
     <ul>
-      <li><strong>Rust 生态（90%）</strong> —— 当作 Rust 的脚本来跑：AutoVM 可调用 90% 以上的 Rust 代码；同一份源码经 a2r 转译为原生 Rust —— 动态开发、静态发布，完美替代现有 Rust 开发流程。</li>
-      <li><strong>Python 生态（66%）</strong> —— 直接调用 Python 脚本（如 PyTorch，AI 开发环境即刻可用），也可以把 Auto 翻译成 Python。</li>
-      <li><strong>Vue / TS / JS 生态（80%）</strong> —— 可以复刻大部分 Vue 做出来的网站；前端开发的另一种写法。</li>
+      <li><strong>Rust 生态</strong> — AutoVM 通过 native 与 dep/use.rs shim 调用 Rust，同源经 a2r 发布；布局探针、具体泛型实例与真实库三方语料提供验证依据。兼容范围取决于接口和签名，不以全生态百分比衡量。</li>
+      <li><strong>Python 生态</strong> — use.py 直调 CPython，a2py 输出 Python；.as 脚本模式支持常用桥接语法糖、异常和上下文管理，PyTorch 推理、训练及 Module/Dataset 回调有三方对拍。</li>
+      <li><strong>Vue / TS / JS 生态</strong> — Vue 是主要 Web 渲染路径，支持状态、事件及全栈 API 集成；各组件以实际示例与验证范围为准。</li>
       <li><strong>曲线自举</strong> —— 宿主侧 (avm, a2r) × 自举侧 (aavm, aa2r)：Auto 暂未实现编译器后端的二进制生成，自举因此走了一条曲线 —— Auto 写的虚拟机与转译器，经 <strong>aa2r</strong> 转译为 Rust、再编译成二进制，跑起 Auto 写的虚拟机与转译器。</li>
     </ul>
     <template #visual>
@@ -298,6 +292,19 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
       </div>
     </template>
   </ShowcaseSection>
+</div>
+
+<div class="features-section">
+  <h2 class="section-title">新增：从能运行到能检查、能维护</h2>
+  <p class="section-desc">桌面之外，这些工具链进展同样构成 v0.5 的重要变化。</p>
+  <div class="features-grid">
+    <FeatureCard icon="🔗" title="Rust 真实库桥" description="dep/use.rs、布局探针与具体泛型实例，配真实依赖三方对拍；支持范围按接口验证。" color="rgba(99, 102, 241, 0.15)" />
+    <FeatureCard icon="🐍" title="Python 脚本与 PyTorch" description=".as lowering、异常与 with-as；推理、训练和 Module/Dataset 回调语料。" color="rgba(99, 102, 241, 0.15)" />
+    <FeatureCard icon="🔎" title="结构化界面采集" description="MCP 实时树、布局与截图，加上 Select Anything 框选导出 Auto/JSON/Atom。" color="rgba(99, 102, 241, 0.15)" />
+    <FeatureCard icon="📝" title="编辑器共同底座" description="rope、COW 快照、统一编辑 delta 与文本/目录 diff；大文件全文物化仍待优化。" color="rgba(99, 102, 241, 0.15)" />
+    <FeatureCard icon="⚙️" title="后端与缓存" description="HTTP 传输换为 Axum/Hyper，UI handler 分段等待；生成器升级自动失效旧 UI 缓存。" color="rgba(99, 102, 241, 0.15)" />
+  </div>
+  <p class="section-desc"><a href="/zh/docs/releases/v0.5">阅读完整说明与已知边界 →</a></p>
 </div>
 
 <div class="features-section">
