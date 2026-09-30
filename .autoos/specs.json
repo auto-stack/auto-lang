@@ -7653,6 +7653,19 @@
       "commit:ddb47205e"
      ],
      "file": "docs/plans/archive/715-website-ui-refresh.md"
+    },
+    {
+     "id": "P714-4",
+     "title": "a2r code_editor 注册键贯通 r4 收据（定谳非回归+下游解阻 @ master 489b0a364）",
+     "content": "PLAN-714 r4 收据（R4-T1..T3 全账 @ master 489b0a364=ba4380152+16fae8922+489b0a364 三笔，基线 master@d7a2ddc14、并行 6aa9a2142 零交叠、range-diff 三=补丁全等）。定谳（R4-T1）=非回归：a2r 生成器 code_editor key 属性提取只认 Expr::Str（Plan 413 Phase 3 原始形态 ui_gen/rust.rs:4507），(key: t.key) 动态表达式静默回落 widget 名 editor→注册键 __code_editor_editor≠store 查找键 __code_editor_tab-N→装载探测门永假（供料档 §7 现象全解释）。2205→2366 回归窗口前提证伪：生成器/renderer build_code_editor_generic/widget CodeEditor::new/core normalize+edit+set_text 四面 git show 对照 019 钉版 5bb3f53be 逐字节一致+09-22 快照工具链 a747531cd 同形+007 时代上游自证（15ec408「Tick 改 store 后 code_editor 不注册——L2 open 段 blocked」）同期在案；三嫌疑提交（33a5d56c3/c80887ab7/29563c588）零触及=零 revert 项；「旧 a2r 构建正常」对照②承重面改写=静态 key probe fixture 应用+编译级判据（019 surface open 38.2ms 行与 007-era blocked 记录冲突且产物已清理——判测量通道异常记录不入判定）。修复（R4-T2）=动态 key 经 ast_expr_to_rust 发射（t[key].as_str().unwrap_or_default().to_string() 形——与视图条件同源），静态 Str 字面量/缺省回落零扰动；handler 侧 payload 读键债登记（code_editor_sources 字面量——per-tab 读键解析属后续件）。单测四枚 plan714_r4_*（动态发射形/静态不变/回落不变/注册表层门反转 E2E）+tu 档 855 绿+1 预存金样红（4f123a50e 在案）+裸 cargo t 全档 4901/4915=14 红与 712 r2 收据 master 既有集完全一致（零新增归因红）。下游解阻（R4-T3/AC-R4-2，工具链 v0.4.2-2389-ge93a717da+edit-021 真仓）：fresh regen exit 0+skip 0+生成物动态键发射在位+fresh check 53.2s；release 双产物 40.7MB+14.4MB；census ④行小文件 open 探针双标记达成（注册刷屏 1 行瞬态=设计内递延形，坏构建对照=无限刷屏+零标记）；bench open --l2 N=4 谱 [863.2,863.2,862.7,889.5] median=863.2ms+reject_513mb=True+open_1gb rejected=True；bench warm --l2 restore≈18.4ms+active 装载完成 1124.0ms+Δmem=265MB 懒装载语义维持；smoke_gen 三域 7/7（r3 轮 4/7 三 FAIL 全转绿）；VM/a2r 双轨对拍=VM 轨 vm_init→ws_loaded→open_start→open_done 全序绿（r4-open-probe-vm.log）。census §7 判定集第④行在档（16fae8922）。供料档 §7 清偿——PLAN-021 残余面 open/warm 两行 L2 正式判定+对比表转正归其收口轮（判据面已备+本轮实测全绿）。批量回归到期维持（715 移交在案——714%5=4 非触发）。",
+     "tags": [
+      "plan-714",
+      "a2r",
+      "code-editor",
+      "review-pass",
+      "commit:489b0a364"
+     ],
+     "file": "docs/plans/archive/714-treesitter-first-batch-survey.md"
     }
    ]
   }
