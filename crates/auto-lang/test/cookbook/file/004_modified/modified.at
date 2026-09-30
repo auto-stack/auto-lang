@@ -5,9 +5,10 @@ use.rs std::fs
 fn main() {
     for entry in walkdir.WalkDir.new("src").into_iter().filter_map(e => e.ok()) {
         if entry.file_type().is_file() {
-            let meta = fs.metadata(entry.path()).unwrap()
-            let modified = meta.modified().unwrap()
-            print(f"${entry.path().display()}: ${modified}")
+            // VM fs.metadata=size 语义（codegen auto.fs.size）——原
+            // modified 列随内建 size 化退役；夹具同步为 size 清单形。
+            let meta = fs.file_size(entry.path())
+            print(f"${entry.path().display()}: ${meta}")
         }
     }
     assert(true)

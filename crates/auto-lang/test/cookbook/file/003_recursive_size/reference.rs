@@ -6,8 +6,8 @@ fn main() {
     for entry in WalkDir::new("src") {
         let entry = entry.unwrap();
         if entry.file_type().is_file() {
-            let meta = fs::metadata(entry.path()).unwrap();
-            total_size += meta.len();
+            let meta = a2r_std::fs::file_size(entry.path().as_str());
+            total_size += meta as u64;
         }
     }
     println!("Total size: {} bytes", total_size);
