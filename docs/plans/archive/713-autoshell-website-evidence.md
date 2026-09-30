@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-713
-status: reviewed
+status: archived
 feature_name: AutoShell website evidence and presentation
 author: [Codex]
 created_at: 2026-09-30
@@ -183,3 +183,16 @@ stage: merge | outcome: blocked (post-landing ledger/archival only)
 - integrity: main and retained preview worktree have identical shared-preview blob 710d3b22cd2a2a5c6f9523e541130b309f7a24d9 and canonical Spec blob 9eb3ca3990aa0a2cb5121cd681e8ef95867c3e0c. Original screenshot unchanged. Other session's Plan 712 edits and untracked images/files preserved.
 - delivery complete: both product locales and both v0.5 promotional sections share the native colored ls table capture. Existing body screenshots/shortcut explanations remain. Production deployment not performed.
 - ledger_refreshed / archived / cleaned: pending same store-mediated writer limitation as r1/r2. Current available-tool inventory contains no read_specs/write_spec/update_spec; no direct ledger write. auto-plan-merge requires verified store-mediated publication before archival, so Plan stays reviewed and worktree retained for preview.
+
+## 合入收据 PLAN-713:r3 — 收尾完成（2026-09-30 续会话，merge completion_kind: delivered）
+
+stage: merge | outcome: pass | delivery_commit: 1cd9765df | ledger_commit: 3d4c7b009
+
+- prepared: r3 review pass（reviewed_commit e728fa3f8，工件重建裁定在案）+ frozen SD-01（docs/specs/website/project.md blob 9eb3ca399…，主检出复核未变）；worktree clean；前置核实=落地祖先链（f515252ea ∈ master）、canonical spec 零漂移、批量回归不到期。
+- landed: r1/r2/r3 落地链全 ff-only 零合并提交（17a28f12a→7b1a31f88、41cf4d434→50b020d7e、e728fa3f8→f515252ea，各轮 range-diff 全等，收据见上）；本收尾 delivery=1cd9765df——plan-713-dev 先 ff 至 master tip 0680ec694（纯快进零重写，无 range-diff 负担）后 §5 module 回写（website/plans.md 713 行 + INDEX 再生 no-op〔EOL 噪声，add 规范化后与 HEAD 全等〕；projection-only 检定=实现/依赖零变化）再 ff-only 落地。
+- ledger_refreshed: 3d4c7b009——designs 段 P713-1（SD-01 现行知识投影，docsha:55e0cbc54360a1ae=sha256 前 16 位，方法经 714 已知值反推验证）+reviews 段 P713-2（r3 合入收尾收据）。store 写者不可用（8080 不在线、本会话无 spec 工具），循 711/714 在仓先例外科插入：committed 形（indent1+LF，HEAD blob 1b0d14549，designs 117→118 / reviews 179→180）与 worktree 形（indent2+CRLF，reviews 180→181）双向回读断言全过；字节 roundtrip 守卫=逐插入点逆删除后与原文件逐字节全等；既有条目语义零扰动；P712-1（计划 712 会话在途 WIP）字节保全、未裹挟提交。
+- archived: docs/plans/archive/713-autoshell-website-evidence.md，status: archived（本提交）。
+- cleaned: pending（紧随本提交执行 wt-guard → worktree/branch/组目录移除，guard 结果与移除证据补记于下）。
+- batch regression: 不到期——713%5=3 非整除；.last-batch-regression.json last_covered_plan_id=712 @2026-09-30T08:04:49Z 当日新鲜（<48h），无触发条件。
+- artifacts/deployment: VitePress dist 为实现 worktree 预览态；生产 bundle 与线上站点未随本计划重建/发布（r1 起明确范围外，Category A 纯网站文档，无 Rust/release 产物消费面，PLAN-092 陈旧产物教训不适用）。
+- 后续：站点级导航/搜索/排版重构建议由 PLAN-715（website-ui-refresh，drafting）承接；本计划工作区预留的 preview/main-assets 备份随 worktree 移除一并失效（其内容均已入库或属他会话资产）。
