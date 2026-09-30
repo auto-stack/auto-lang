@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-712
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: VM 桌面验收缺陷收敛（视频引擎双缺陷 + 壳配置持久化 + examples 依赖）
 author: [zcode(auto-os 会话转介)]
 created_at: 2026-09-30
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 0
+current_step: 6
 total_steps: 8
 ---
 
@@ -129,20 +129,54 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
 ## 8. 执行步骤
 
 - **T-01**（DP-2 探针）：确认 iced_wgpu 0.14 交付 `Pipeline::new` 的目标格式（独立窗 vs 桌面 layer 两形态）。文件：`ui/mpv/widget.rs`（临时诊断日志）。产出：evidence/712/dp2-target-format.md。→ 支撑 AC-03。
+  - [x] **已完成**（2026-09-30）：**静态定案，无需运行时日志**——`web-colors` 未启用 ⇒ `GAMMA_CORRECTION=true` ⇒ compositor 取首个 sRGB 格式 ⇒ 窗口面 `Bgra8UnormSrgb`（headless `Rgba8UnormSrgb`）。目标/纹理双 Srgb + shader 直通 ⇒ 上屏字节 ≡ mpv rgb0 字节，机制候选 1（sRGB 配对断裂）排除。证据：`docs/plans/evidence/712/dp2-target-format.md`（worktree 提交）。附产：iced_winit 重绘事件传播链确认（DP-1 wrapper 前提 + 空队列零 publish 纪律）。[✅ 已完成]
 - **T-02**（DP-3 探针）：caelestia.mp4 色彩元数据解析 + Web/VM 同帧对比定位色偏源。产出：evidence/712/dp3-color-source.md。→ 支撑 AC-03。
+  - [x] **已完成**（2026-09-30）：本机无 ffprobe，改用**引擎级探针**（`tests/mpv_engine.rs::probe_color_negotiation_dump`，AUTO_MPV_LIB 门控）：源片 bt.709/limited/bt.709/**bt.1886**。差分探针（`probe_color_output_tunable`）：默认 vs pre-init `target-prim/trc=srgb` vs `video-output-levels=full`——同帧输出**逐位全等** ⇒ SW 路径完全不吃协商面，输出=源传递函数编码。定谳：双端色度差=传递函数错配（mpv 2.4 vs Chromium sRGB 2.2）。证据：`docs/plans/evidence/712/dp3-color-source.md`（worktree 提交）。[✅ 已完成]
 - **T-03**：色彩修复实现（按 T-01/T-02 决策：编码配对 + 显式色彩参数）。文件：`ui/mpv/{widget,channel,present,engine}.rs`。验证：AC-03 探针脚本。依赖：T-01、T-02。→ AC-03。
+  - [x] **已完成**（2026-09-30）：按 DP-3 定谳落 **shader 侧传递函数归一**（协商面已证死路）：`present.rs` fs_main 把采样值还原字节域→按 2.4 解码→交 Srgb 目标按 sRGB 重编码，端到端与 Chromium 字节域对齐；`engine.rs` 补 `set_string`（探针/后续协商面用），`loader.rs` 补 `set_property_string` 符号。像素级回归 `mpv_channel::present_renormalizes_bt1886_bytes_to_srgb_domain`（135→~128 / 0→0 / 255→255）绿。**AC-03 的双端同帧实机探针归 T-07**。E-3 实录（偏暗偏暖）与传递错配方向（偏亮）不符，判读注记见 dp3 证据档。[✅ 已完成]
 - **T-04**：上行分发实现（按 DP-1 取向：wrapper 事件泵）。文件：`ui/iced/renderer.rs`（video 节点臂）、`ui/mpv/widget.rs`（如需导出事件类型）。验证：单测 + 实机 AC-01/02。→ AC-01, AC-02。
+  - [x] **已完成**（2026-09-30）：**DP-1 定案 wrapper 事件泵**（thread_local 运行时排除 Subscription 线程；iced_winit 每次重绘把 `RedrawRequested` 传播给整棵树，tick 驱动下每帧可达）。新增 `ui/iced/video_uplink.rs`（薄包装 wrapper + 纯映射 `synth_messages`）；`View::Video` 增 5 上行 handler 字段（`MediaEventHandler`/`MediaEventPayload` 新型，view.rs）；aura builder `convert_video` 从 events 构建handler；`convert_view_messages`/render 臂随消息类型映射；wrapper 仅真有事件时 publish（避 iced_winit 重建循环）。验证：`video_uplink` 单测 3/3（映射/未声明丢弃/零消息）+ `video_contract::video_uplink_bindings_wire_through_the_builder`（真实管线接线）+ video_contract 全套 4/4 绿；`cargo check --features mpv-widget` 干净。**AC-01/02 实机归 T-07**。[✅ 已完成]
 - **T-05**：desktop_config 快照修复。文件：`ui/desktop_config.rs`（load 尾 + 新单测）。验证：`cargo t desktop_config` 全绿。→ AC-04。
+  - [x] **已完成**（2026-09-30，含**证据偏差更正**）：现场复核发现 E-6 前提已过时——`load()` 尾部写 `LAST_SNAPSHOT` 早在 PLAN-044 T-03（d164b1d50，2026-09-23）在位；E-7 实录（10:34 冲回）与「修复前内存态」措辞自洽=预修二进制旧实例退出，现行 master 的 load 即快照 + 字段级合并已覆盖首写缺口。落点收敛为计划要求的回归锚：新增 `save_after_external_edit_preserves_fields`（load → 外部改盘 → 内存不变首写 save → 外写字段存活；若 load 不写快照该测必红，钉死通道）。`cargo t desktop_config` 20/20 绿（既有 19 + 新增 1）。[✅ 已完成]
 - **T-06**（DP-4）：examples `ui-gpui` 修复（模板源头 or 产物批量）。验证：AC-05 命令实跑。→ AC-05。
+  - [x] **已完成**（2026-09-30）：**DP-4 定案=历史产物**（生成器模板经 PLAN-691 已清，`rust_ui.rs::generate_cargo_toml` 无 ui-gpui）。两层产物修复：① 主检出 gitignored 生成树 `examples/rust-workspace/`（E-8 失败现场：030-video-player-back 的 cargo run 因 workspace 成员 011-calculator 等残留 `ui-gpui = ["auto-lang/ui-gpui"]` 被惰性校验拖垮）14 份 Cargo.toml 批量删除该行，`cargo metadata --no-deps` 全 workspace 解析恢复；② tracked 产物 `examples/ui/015-notes/examples/rust-workspace/015-notes/Cargo.toml` 同步删除（worktree 提交）。**AC-05 命令实跑归 T-07**。[✅ 已完成]
 - **T-07**：实机验收走查（auto-os 桌面 + 独立 VM）：AC-01..05 逐条取证归档 evidence/712。依赖：T-03、T-04、(T-06)。
+  - [~] **进行中**（2026-09-30，独立 VM 窗腿已走查，桌面腿与 Web 对照腿未完）：
+    - **AC-05 ✅**：`examples/ui/030-video-player && auto run -r vm` 独立出窗可播——mpv 真加载（client API 2.5）、媒体库 14 条、播放控制全套。截图 evidence/712/vm-030-playing.png。**附带产物修复**：worktree 内 `examples/rust-workspace/030-video-player-back`（gitignored 生成物）为 030 尚有 back/ 契约时代的旧生成残留，scan 响应裸数组与现行前端 `{entries,root_missing}` 期望错位 → 媒体库恒空；已按现役生成器（api_gen auto_media_scan）字段面手工对齐（title/size_str/url 族 + 三态）。
+    - **AC-01 ✅**：时长真值回灌——状态条「时长 00:49」（caelestia 实测 49s；修复前恒 00:00，E-2 同款场景）+ 底部进度文本 00:40/00:49 随播随动。`onloadedmetadata → OnDuration → store` 全链实机工作。
+    - **AC-02 部分**：`ontimeupdate → OnTime → current_time/progress_pct` 回灌链实机连续工作（跨 caelestia 49s → Loki S01E01 ~50min 两文件推进，6.57% ↔ 198s/3014s 自洽）；**scrub 腿未取全证**——MCP 合成 press 不达 SeekArea 裸事件路径，真鼠标拖动被 VM 会话提前终止截断（死因注记见下），待补：真鼠标三采样点拖动 + 位置单调断言。
+    - **AC-03 部分**：VM 侧视觉验证 ✅（截图色彩鲜活无偏暗/暖压，对比 E-3 机理修复前形态）；**Web 同帧像素对照未跑**（需 Vue 端 + playwright，工具链在 autoui-verifier）。
+    - **AC-04 部分**：单测 ✅（20/20）；实机复演（改壁纸→关实例→重开→值保持）未跑。
+    - **死因注记（未定谳，预算外）**：MCP `press` 打 progress 元素后 wgpu `Reading from a BufferViewMut` 告警洪泛，随后 VM 解释器 `ok=true` 优雅退出（非 panic 非崩溃）；与本项目改动面的因果未定谳——复现路径=030 VM 窗 + MCP press progress 元素。已登记 §10。
+    - **桌面腿（auto-os ui_desktop 内嵌 video）未走查**：需 auto-os 侧环境接线（AUTO_LANG_ROOT 指向本 worktree 或 fold 后走查）。
 - **T-08**：日常档回归同基线（AC-06）。依赖：T-03..T-06。
+  - [x] **已完成**（2026-09-30，**用户裁定收口：全量测试不跑**——当前全量档本身有问题）：fail-fast 跑批 1440/5747：1438 绿 + 2 红 `musk_vm_track_p053_1_widget_computed`（computed 透传解出 0 行）——**master 基线同测实跑复证同样 2 红 ⇒ 预存红，非本计划引入**，AC-06 口径（无新增红）满足。作用域绿面：desktop_config 20/20、video_uplink 3/3、video_contract 4/4、mpv_channel 像素归一双臂绿、`cargo check --features mpv-widget` 干净。`state_file::lock_serializes_critical_sections` 并跑红/隔离绿（flock 争用型 flaky，另案在档）。[✅ 已完成]
 
 ## 9. 复审记录
 
 - 2026-09-30 stage:new 起草（drafting）。`outcome: pass`——四项初始范围已按实证落档，DP-1..4 为工作期决策点（均含决策工件要求）。`next: work`（执行前按范式开 `.wt/lang-712` 组 worktree）。
+- 2026-09-30 stage:work | plan_id PLAN-712 | plan_revision r1（起草态即执行，无修订）| outcome: pass（T-01..T-06 完成，代码面验证全绿；T-07/T-08 进行中）| code_commit: worktree `plan-712-dev`（见提交）| task_ids: T-01,T-02,T-03,T-04,T-05,T-06 | evidence:
+  - T-01/T-02 探针定谳 + T-03/T-04 实现 = worktree 提交（evidence/712/{dp2,dp3} 两档 + mpv_engine/mpv_channel/video_contract/video_uplink 四测面全绿）。
+  - T-05：E-6 偏差更正（load 快照已在位，PLAN-044），回归锚测试补齐 20/20。
+  - T-06：DP-4=历史产物；主检出 14 份 gitignored 生成 Cargo.toml 已批量清理（cargo metadata 解析恢复）+ tracked 015-notes 产物修正。
+  - 环境注记：worktree 组补建 auto-down 兄弟（detached @3373a5c，只读依赖约定）。
+  - 预存 flaky 在案：`state_file::lock_serializes_critical_sections` 全库并跑时红、隔离复跑绿（flock 争用型，非本计划改动面，T-08 与 master 基线对表裁决）。
+  | blockers: 无 | next: T-07 实机走查（AC-01..05，auto-os 桌面 + 独立 VM 窗）→ T-08 日常档对表。
+- 2026-09-30 stage:work 续 | T-07 实机走查（独立 VM 窗腿）+ T-08 回归收口：AC-01/05 实锤（时长 00:49 真值回灌 + 独立窗可播，截图 evidence/712/vm-030-playing.png）；AC-02/03/04 部分取证（遗留项与死因注记见 §8/§10）；T-08 经用户裁定不跑全量（全量档现状有问题），以 master 同测对照收口（2 红预存）。当前 step=8/8 全部处置，**plan 维持 `executing`**：T-07 桌面腿 + Web 对照腿、AC-02 scrub 全证、AC-03 双端像素对照未完，完整收口后走 review。`next: work 续行或 review（视用户对遗留项的取舍）`。
+- 2026-09-30 **验收裁定（用户）**：「只要通过了本计划自己的用例，就可以 review 通过并 merge」——本计划自有用例（desktop_config 20/20、video_uplink 3/3、video_contract 4/4、mpv_channel 传递归一双臂、mpv_engine 探针）全绿即满足验收；T-07 遗留取证项（桌面腿/Web 对照/scrub 全证/AC-04 实机复演）不再阻断。
 
 ## 10. 待澄清事项
 
 - **扩展位（用户裁定，非待澄清）**：本计划为桌面 VM 验收缺陷的收纳载体——后续其他桌面 app 的 auto-lang 侧问题以 plan_revision 增补任务/AC 归入，不另起计划；每次增补记录来源与证据。
 - DP-3 若证实色偏源为 mpv SW 路径不可协商项（如 colormatrix 无法显式设定），回退方案 = shader 侧矩阵修正或接受并成文差异阈值——届时提交用户裁定。
+  - **已定谳（T-02 探针）**：SW 路径确不吃任何协商面（三配置同帧逐位全等）→ 已走 shader 侧归一（T-03），无需用户裁定。
 - SD-04 的 spec 落点（overview vs 生成器 spec）待 DP-4 定案后随复审固化。
+  - **DP-4 已定案**（历史产物，模板已洁）；SD-04 落点待复审随 SD-01..03 一并固化。
+- **T-07 遗留死因（预算外登记）**：030 VM 窗内 MCP `press` progress 元素 → wgpu BufferViewMut 告警洪泛 → VM 解释器 `ok=true` 优雅退出。非崩溃、非 panic，因果未定谳；本计划改动面（uplink wrapper 仅在真事件时 publish，与 press 无关）初步排除但未证。复现路径在案，建议后续会话定谳或归入收纳载体。
+- **E-2/E-3 证据勘误**：auto-os 会话证据基于"修复前"二进制（E-7 明示"修复前内存态"）；E-3 的偏暗偏暖机理 = web-colors 形态下 sRGB 纹理双重解码（dp3 证据档闭环复算吻合），非传递函数方向问题。
+- 2026-09-30 stage:review | plan_id PLAN-712 | plan_revision r1 | outcome: **pass** | code_commit: plan-712-dev cc46d64c1（3 提交：c3aa6d7be/3896b92fe/cc46d64c1）| task_ids: T-01..T-08 | evidence:
+  - 用例面（用户验收口径）全绿：desktop_config 20/20（含首写快照回归锚）、video_uplink 3/3、video_contract 4/4（真实管线接线钉）、mpv_channel present_renormalizes 双目标臂、mpv_engine 探针两测；`cargo check -p auto-lang --features mpv-widget` 干净。
+  - 清单复核：AC-01/05 实机实锤（截图+state 断言）；AC-02/03/04 按用户裁定以自有用例口径收口；AC-06 master 同测对照无新增红（2 红预存复证）。
+  - 遗漏/延后扫描：T-07 遗留取证项经用户裁定不阻断，登记在案（§10）非静默弃；死因注记（MCP press → 会话退出）已登记待后续定谳。
+  - 健康：无编译警告新增、无调试残留打印（临时脚本已 gitignore 不入库）。
+  | spec delta: SD-01..04 随 merge 沉淀至 docs/specs/auto-lang/ui/overview.md（媒体元素节上行契约/色彩配对规则/config 合并语义/examples 产物 feature 面）| next: merge。
