@@ -7554,7 +7554,7 @@ let tabs_inner = View::Row {
         Some(s)
     }
 
-    /// PLAN-617 T-19: 把 AURA 的 `video` 节点翻成后端中立的 [`View::Video`]。
+    /// PLAN-712 T-04: 把 AURA 的 `video` 节点翻成后端中立的 [`View::Video`]。
     ///
     /// **契约（§2.3）在这一层做「作者面 → 节点字段」的翻译**，两端一致：
     /// - `paused` —— 作者写 `paused: .is_playing == false`，此处拿到的是**已求值的
@@ -7563,12 +7563,13 @@ let tabs_inner = View::Row {
     /// - `rate` —— 倍速 float，`<= 0` 一律按 1.0（0 倍速会冻住播放）；
     /// - `position` —— seek 目标（秒），缺省 `None` 表示不下发位置。
     ///
-    /// **上行**（`ontimeupdate` 等）不在此节点上：由渲染面按帧采集，见
-    /// [`View::Video`] 的文档。
+    /// **上行**（`ontimeupdate` 等）：按声明的 `on*` 构建带载荷 handler
+    ///（载荷由 VM 端事件泵在分发时刻回填，见 [`MediaEventPayload`]）；
+    /// 未声明的键保持 `None`。
     fn convert_video(
         &self,
         props: &HashMap<String, AuraPropValue>,
-        _events: &HashMap<String, AuraEvent>,
+        events: &HashMap<String, AuraEvent>,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let src = self
@@ -7601,6 +7602,31 @@ let tabs_inner = View::Row {
                     .to_string()
             });
         let style = self.extract_style(props);
+        // 上行 handler：载荷在分发时刻回填（ScrollCallback 同款——事件名取自
+        // `.OnTime` 这类 handler 模式，widget 名用于宿主路由）。
+        let media_up = |key: &str| {
+            aura_events_get_base(events, key).map(|ev| {
+                let handler = extract_handler_name(&ev.handler).to_string();
+                let widget = self.widget_name.clone();
+                crate::ui::view::MediaEventHandler::new(
+                    move |payload: crate::ui::view::MediaEventPayload| {
+                        let arg = match payload {
+                            crate::ui::view::MediaEventPayload::Time(s) => Value::Float(s),
+                            crate::ui::view::MediaEventPayload::Duration(s) => Value::Float(s),
+                            crate::ui::view::MediaEventPayload::Playing(b) => Value::Bool(b),
+                            crate::ui::view::MediaEventPayload::Error(s) => {
+                                Value::Str(s.into())
+                            }
+                        };
+                        DynamicMessage::Typed {
+                            widget_name: widget.clone(),
+                            event_name: handler.clone(),
+                            args: vec![arg],
+                        }
+                    },
+                )
+            })
+        };
         View::Video {
             src,
             paused,
@@ -7609,6 +7635,18 @@ let tabs_inner = View::Row {
             muted,
             rate,
             label,
+            on_time_update: media_up("ontimeupdate"),
+            on_loaded_metadata: media_up("onloadedmetadata"),
+            on_play_state: media_up("onplaystatechange"),
+            on_media_error: media_up("onmediaerror"),
+            on_ended: aura_events_get_base(events, "onended").map(|ev| {
+                let handler = extract_handler_name(&ev.handler).to_string();
+                DynamicMessage::Typed {
+                    widget_name: self.widget_name.clone(),
+                    event_name: handler,
+                    args: Vec::new(),
+                }
+            }),
             style,
         }
     }

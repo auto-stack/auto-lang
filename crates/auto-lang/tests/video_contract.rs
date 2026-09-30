@@ -136,3 +136,81 @@ widget VideoClamp {
     assert_eq!(volume, 100, "越界音量应夹到 100，不得原样下发给 mpv");
     assert_eq!(rate, 1.0, "rate<=0 应换成 1.0，而不是把播放冻住");
 }
+
+/// PLAN-712 T-04：`.at` 上行绑定 → [`View::Video`] 的 `MediaEventHandler`
+/// 接线（真实管线：解析 → VM bridge → builder）。断言 ① 声明的五个 `on*`
+/// 全部挂上；② handler 在事件泵回填载荷后产出正确的宿主 `DynamicMessage`
+///（事件名/widget 路由/实参类型）；③ 未声明的 `on*` 保持 `None`。
+#[test]
+fn video_uplink_bindings_wire_through_the_builder() {
+    use auto_lang::ui::interpreter::DynamicMessage;
+    use auto_lang::ui::view::MediaEventPayload;
+
+    let view = build("VideoPlayer");
+    let View::Video {
+        on_time_update,
+        on_loaded_metadata,
+        on_play_state,
+        on_ended,
+        on_media_error,
+        ..
+    } = view
+    else {
+        panic!("video 节点应产出 View::Video");
+    };
+
+    // ① 全部挂上。
+    let on_time_update = on_time_update.expect("ontimeupdate 应已挂上");
+    let on_loaded_metadata = on_loaded_metadata.expect("onloadedmetadata 应已挂上");
+    let on_play_state = on_play_state.expect("onplaystatechange 应已挂上");
+    let on_ended = on_ended.expect("onended 应已挂上");
+    let on_media_error = on_media_error.expect("onmediaerror 应已挂上");
+
+    // ② 载荷回填 → 宿主消息（$0 = 引擎时刻的值）。
+    let DynamicMessage::Typed { widget_name, event_name, args } =
+        on_time_update.call(MediaEventPayload::Time(73.25))
+    else {
+        panic!("ontimeupdate 应产出 Typed 消息");
+    };
+    assert_eq!(event_name, "OnTime");
+    assert_eq!(widget_name, "VideoPlayer");
+    assert_eq!(args, vec![auto_val::Value::Float(73.25)], "$0 应回填秒值");
+
+    let DynamicMessage::Typed { event_name, args, .. } =
+        on_loaded_metadata.call(MediaEventPayload::Duration(180.0))
+    else {
+        panic!("onloadedmetadata 应产出 Typed 消息");
+    };
+    assert_eq!(event_name, "OnDuration");
+    assert_eq!(args, vec![auto_val::Value::Float(180.0)]);
+
+    let DynamicMessage::Typed { event_name, args, .. } =
+        on_play_state.call(MediaEventPayload::Playing(true))
+    else {
+        panic!("onplaystatechange 应产出 Typed 消息");
+    };
+    assert_eq!(event_name, "OnPlayState");
+    assert_eq!(args, vec![auto_val::Value::Bool(true)]);
+
+    let DynamicMessage::Typed { event_name, args, .. } =
+        on_media_error.call(MediaEventPayload::Error("无法播放".into()))
+    else {
+        panic!("onmediaerror 应产出 Typed 消息");
+    };
+    assert_eq!(event_name, "OnMediaError");
+    assert_eq!(args, vec![auto_val::Value::Str("无法播放".into())]);
+
+    let DynamicMessage::Typed { event_name, args, .. } = on_ended else {
+        panic!("onended 应产出 Typed 消息");
+    };
+    assert_eq!(event_name, "OnEnded");
+    assert!(args.is_empty(), "onended 无载荷");
+
+    // ③ 未声明 on* 的节点保持 None（事件被事件泵丢弃，不误触）。
+    let defaults = build("VideoDefaults");
+    let View::Video { on_time_update: none_time, on_ended: none_ended, .. } = defaults else {
+        panic!("应产出 View::Video");
+    };
+    assert!(none_time.is_none(), "未声明 ontimeupdate 应保持 None");
+    assert!(none_ended.is_none(), "未声明 onended 应保持 None");
+}

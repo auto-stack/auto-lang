@@ -190,6 +190,14 @@ pub struct VideoWidgetState {
     id: u64,
 }
 
+impl VideoWidgetState {
+    /// 本 widget 的运行时 id（PLAN-712：上行事件泵 wrapper 用它定位
+    /// thread-local 运行时；与 `draw` 交给 `VideoPrimitive` 的是同一个值）。
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+}
+
 impl Default for VideoWidgetState {
     fn default() -> Self {
         Self {

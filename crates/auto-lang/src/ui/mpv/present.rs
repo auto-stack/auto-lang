@@ -125,7 +125,14 @@ impl VideoPresenter {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: Some("fs_main"),
+                // PLAN-712 T-03：按目标格式选编码臂——sRGB 目标硬件编码，写
+                // 显示线性（`fs_main`）；非 sRGB 目标（本构建恒此，见下）须在
+                // shader 内完成 sRGB 编码（`fs_main_raw_target`）。
+                entry_point: Some(if format.is_srgb() {
+                    "fs_main"
+                } else {
+                    "fs_main_raw_target"
+                }),
                 targets: &[Some(wgpu::ColorTargetState {
                     format,
                     blend: None,
@@ -225,7 +232,26 @@ impl VideoPresenter {
     }
 }
 
-/// WGSL：全屏三角形 + 采样。alpha 强制 1.0（理由见模块文档）。
+/// WGSL：全屏三角形 + 采样 + 传递函数归一。alpha 强制 1.0（理由见模块文档）。
+///
+/// # PLAN-712 T-03：BT.1886 → sRGB 传递函数归一（含目标格式分支）
+///
+/// 输入字节域：mpv SW rgb0 = **源签名传递函数**编码（SDR = BT.1886 ≈ γ2.4；
+/// DP-3 探针：SW 路径不吃任何色彩协商）。纹理是 sRGB：硬件采样按 ~γ2.2
+/// 线性化——旧 shader 直通在非 sRGB 目标上构成**双重解码**（decode∘decode
+/// ≈ γ4.4+），近白内容 G/B 被压、整体偏暗偏暖——这正是 E-3 实录的机理
+///（数值复算 (255,244,238)→(255,234,222) 与实录 (251,237,230) 同形）。
+///
+/// 本仓构建形态（T-01 实机修正）：iced 0.14 **default 含 `web-colors`** ⇒
+/// `GAMMA_CORRECTION=false` ⇒ 目标恒为**非 sRGB**（Bgra8Unorm，iced 自身
+/// chrome 即以 sRGB 编码字节直写）。因此：
+/// * 非 sRGB 目标（`fs_main_raw_target`，本构建恒此）：shader 内完成
+///   字节域 2.4→sRGB 转换后直写——与 Chromium `<video>` 字节域对齐；
+/// * sRGB 目标（`fs_main`，防御性保留）：写显示线性，交硬件编码。
+///
+/// 两臂的公共前段：采样值 c（≈2.2 解码域）→ 还原 mpv 字节域 b =
+/// sRGB_encode(c) → 按 2.4 解出真实显示线性 lin = b^2.4。白/黑点不动
+///（letterbox 恒纯黑），中间调与 Web 端对齐。
 const WGSL: &str = r#"
 struct VsOut {
     @builtin(position) pos: vec4<f32>,
@@ -251,11 +277,30 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VsOut {
 @group(0) @binding(0) var frame_tex: texture_2d<f32>;
 @group(0) @binding(1) var frame_sampler: sampler;
 
+fn srgb_encode(v: vec3<f32>) -> vec3<f32> {
+    let c = clamp(v, vec3<f32>(0.0), vec3<f32>(1.0));
+    let hi = vec3<f32>(1.055) * pow(c, vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055);
+    let lo = c * vec3<f32>(12.92);
+    return select(lo, hi, c > vec3<f32>(0.0031308));
+}
+
+// 公共前段：采样 → mpv 字节域 b → 真实显示线性 lin。
+fn to_display_linear(c: vec4<f32>) -> vec3<f32> {
+    let b = srgb_encode(max(c.rgb, vec3<f32>(0.0)));
+    return pow(b, vec3<f32>(2.4));
+}
+
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let c = textureSample(frame_tex, frame_sampler, in.uv);
-    // mpv 的 "rgb0" 第 4 字节是未初始化垃圾，绝不能当 alpha 用（否则画面随机
-    // 变半透明 = 闪烁）。这里只取 rgb，alpha 恒为不透明。
-    return vec4<f32>(c.rgb, 1.0);
+    // sRGB 目标：硬件按 sRGB 编码，写显示线性即可。
+    return vec4<f32>(to_display_linear(c), 1.0);
+}
+
+@fragment
+fn fs_main_raw_target(in: VsOut) -> @location(0) vec4<f32> {
+    let c = textureSample(frame_tex, frame_sampler, in.uv);
+    // 非 sRGB 目标：字节被 OS 按 sRGB 解释，须在 shader 内编码到位。
+    return vec4<f32>(srgb_encode(to_display_linear(c)), 1.0);
 }
 "#;

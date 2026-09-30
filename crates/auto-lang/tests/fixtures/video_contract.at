@@ -3,8 +3,9 @@
 // 播控矩阵两个 widget 都写同一种来源：
 //   auto video ( src: .src, paused: .is_playing == false, position: .seek, volume: .volume,
 //                muted: .muted, rate: .rate, title: "现场") {}
+// PLAN-712 T-04: VideoPlayer 带全套 §2.3 上行绑定（事件泵接线回归锚）。
 widget VideoPlayer {
-    msg { Play }
+    msg { Play, OnTime(float), OnDuration(float), OnPlayState(bool), OnEnded, OnMediaError(str) }
 
     model {
         var src str = "/api/media/stream/abc123"
@@ -25,11 +26,21 @@ widget VideoPlayer {
             rate: .rate
             title: "现场"
             onclick: .Play
+            ontimeupdate: .OnTime($0)
+            onloadedmetadata: .OnDuration($0)
+            onplaystatechange: .OnPlayState($0)
+            onended: .OnEnded
+            onmediaerror: .OnMediaError($0)
         }
     }
 
     on {
         .Play -> { }
+        .OnTime(t) -> { }
+        .OnDuration(d) -> { }
+        .OnPlayState(p) -> { }
+        .OnEnded -> { }
+        .OnMediaError(m) -> { }
     }
 }
 
