@@ -106,3 +106,15 @@ base_commit: 8d917c469931f809bffa1d163f5765c29703f9a1
 - touched_goals: [] because this bounded website documentation/presentation change does not advance a separately registered GOAL. Broader site redesign is report-only advice, outside this Plan.
 - Limitation: same implementation session; artifact/code/runtime evidence reconstructed, no independent agent claimed.
 - next: merge after preserving concurrent main-checkout work; production deployment remains outside scope.
+
+## 合入收据 PLAN-713:r1
+
+stage: merge | outcome: blocked (post-landing consolidation only)
+
+- prepared: review pass for revision 1 and frozen SD-01. Worktree clean and wt-guard clean (no reparse points).
+- landed: main 1cd928407 → 7b1a31f884e2c450e0b8110e7f8def45587d1868 via git merge --ff-only plan-713-dev. Rebase mapping 17a28f12a82b9ebdfd0f6912f7914977f2aff72a → 7b1a31f884e2c450e0b8110e7f8def45587d1868; git range-diff old_base..old_reviewed master_before_landing..delivery shows one equal (=) patch. Only concurrent Plan bookkeeping was inherited; implementation/Spec/dependencies unchanged.
+- integration smoke: main page, dialog, users.json and canonical Spec hashes equal delivery branch; worktree browser reload displays the page, no console errors. Website build/runtime verification remains on the implementation worktree per AGENTS. Main's unrelated dirty Plans 711/712 and untracked files preserved.
+- asset preservation: five preexisting untracked main images matched reviewed bytes and were moved to D:/autostack/.wt/lang-713/main-assets-backup before fast-forward; their original paths now hold the identical tracked delivery assets. Other images untouched.
+- ledger_refreshed: pending. No read_specs/write_spec/update_spec tools are registered in this context and no configured store endpoint was identified. No direct .autoos/specs.json write attempted.
+- archived/cleaned: pending ledger verification. Plan remains reviewed; worktree/branch retained. No new approval required, no UI acceptance item remains open. Follow-up should finish only store-mediated projection, repository module/index bookkeeping if required, archival and guarded cleanup.
+- production artifacts: not deployed. Fresh VitePress dist exists in retained worktree; main deployment bundle and hosted website were not rebuilt/published by this task. No runtime/backend changes.
