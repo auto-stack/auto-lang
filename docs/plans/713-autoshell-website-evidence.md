@@ -173,3 +173,13 @@ base_commit: 712778972
 - Frozen SD-01: docs/specs/website/project.md blob 9eb3ca3990aa0a2cb5121cd681e8ef95867c3e0c; prior blob 975544b94c783ff35804dd47647fd1cd6936f429. Exact paragraph records shared native colored hero for product/v05 plus full-image enlargement. No new runtime requirement or global theme redesign.
 - Dependencies: website lockfile unchanged from r1/r2; original native image unchanged; no new shell execution claimed. touched_goals remains [] (presentation correction, no separately registered Goal).
 - Limitation: same-session reconstruction against committed artifacts, no independent agent claimed. Evidence: docs/reports/autoshell-native-hero-2026-09-30.md. No deferred acceptance item. next: linear landing; unavailable store-mediated ledger writer continues to block archival only.
+
+## 合入收据 PLAN-713:r3
+
+stage: merge | outcome: blocked (post-landing ledger/archival only)
+
+- prepared: current r3 review pass and frozen SD-01; worktree clean. Default Windows bash resolved to WSL and could not address D:/; reran the repository guard with C:/Program Files/Git/bin/bash.exe, exit 0 / clean, no reparse points.
+- landed: main 0662c2cff2f664893f2e3f3677230f428ed27ab5 → f515252ea4e996e75dee36206b1c6abb3eb22723 via --ff-only. Rebase e728fa3f8995968f268e5c5a2654ff9eef272229 → f515252ea4e996e75dee36206b1c6abb3eb22723; range-diff equal (=), no implementation or Spec conflict. Browser/build evidence remains applicable.
+- integrity: main and retained preview worktree have identical shared-preview blob 710d3b22cd2a2a5c6f9523e541130b309f7a24d9 and canonical Spec blob 9eb3ca3990aa0a2cb5121cd681e8ef95867c3e0c. Original screenshot unchanged. Other session's Plan 712 edits and untracked images/files preserved.
+- delivery complete: both product locales and both v0.5 promotional sections share the native colored ls table capture. Existing body screenshots/shortcut explanations remain. Production deployment not performed.
+- ledger_refreshed / archived / cleaned: pending same store-mediated writer limitation as r1/r2. Current available-tool inventory contains no read_specs/write_spec/update_spec; no direct ledger write. auto-plan-merge requires verified store-mediated publication before archival, so Plan stays reviewed and worktree retained for preview.
