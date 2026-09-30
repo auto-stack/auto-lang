@@ -109,6 +109,7 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
 | SD-01 | modify | `docs/specs/auto-lang/ui/overview.md`（媒体元素节） | before：`ontimeupdate`/`onloadedmetadata` 仅 Web 端承诺；after：双端承诺，VM 端经渲染路径事件泵分发、0.25s 节流口径不变 | 上行分发面缺失属平台契约缺口，必须成文 | AC-01, AC-02 |
 | SD-02 | modify | `docs/specs/auto-lang/ui/overview.md`（媒体元素节） | before：上屏色彩未规定；after：sRGB 编码配对规则（纹理/目标格式组合矩阵）+ mpv 色彩协商口径 + 双端像素对照验收阈值 | 「可选 + 可降级」同款——色彩行为必须成文否则被误当默认能力 | AC-03 |
 | SD-03 | modify | `docs/specs/auto-lang/ui/overview.md`（desktop_config 持久化面） | before：PLAN-044 锁+字段级合并（首写例外整份）；after：load 即快照，合并无首写例外（仅文件缺席首写保留整份） | E-7 实证首写例外即冲回通道 | AC-04 |
+| SD-07 | modify | `docs/specs/auto-lang/ui/overview.md`（壁纸解析节，随再 merge 沉淀） | before：无分主题默认壁纸概念（默认值只存在于配置）；after：钦定默认对 = 深 `purple.png` / 浅 `songyu.png`（壁纸目录下），boot 链第二档；「恢复默认」从此有系统定义的标的 | r2 收纳 T-14（用户钦定） | AC-09 |
 | SD-06 | modify | `docs/specs/auto-lang/ui/overview.md`（壁纸解析节，随再 merge 沉淀） | before：`#hex`/`builtin:` 直传短路目录首图回退（纯色槽位可致 boot 恒无图）；after：boot 优先级 = 存在图片路径 > 壁纸目录首图 > 色值直传（仅无目录机器）> 内置默认——「任何时候打开都加载默认壁纸」（用户裁定） | r2 收纳 T-13 | AC-08 |
 | SD-05 | modify | `docs/specs/auto-lang/ui/overview.md`（媒体元素节，随再 merge 沉淀） | before：VM 端本地文件选择无契约（app 侧降级文案「仅 Web 端」）；after：VM 端本地播放 = dialog_open（PLAN-681 内建）→ 本地路径直入 mpv 契约，与 Web object URL 同级承诺 | r2 收纳：能力面已齐但 app 未接线，契约须成文 | AC-07 |
 | SD-04 | add（视 DP-4） | `docs/specs/auto-lang/ui/overview.md`（examples 生成产物 feature 面）或生成器 spec | before/after 工作期按 DP-4 定 | 生成产物 feature 失效属工具链契约缺口 | AC-05 |
@@ -130,6 +131,7 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
 - **AC-04**：config.at 手编字段在运行实例 save 后存活：单测 `save_after_external_edit_preserves_fields` 绿 + 实机复演（改壁纸 → 关实例 → 重开 → 值保持）。
 - **AC-05**：`cd examples/ui/030-video-player && auto run -r vm` 启动出窗可播。验证：命令实跑。
 - **AC-06**：日常档 `cargo t` 与 master 基线全等（无新增红）。验证：日常档跑批记录。
+- **AC-09**（r2）：色值/空槽位在深色主题 boot → purple.png、浅色主题 boot → songyu.png（主题默认图在场机器）；无目录机器色值直传。验证：单测断言（hex 深→purple / 浅→songyu 双结果）。
 - **AC-08**（r2）：任意槽位/活跃值为纯色或 builtin 时，boot 仍加载壁纸图片（有壁纸目录机器：目录首图；无目录：色值直传诚实降级）。验证：`desktop_surface_storage_roundtrip_and_wallpaper_resolution`（双结果放行断言）+ 实机浅色启动截图。
 - **AC-07**（r2）：VM 端（独立窗 + 桌面内）点「打开本地视频文件」→ 原生对话框选本地视频 → 直接播放（时长/进度回灌正常）；取消对话框静默返回。验证：实机走查 + 截图。
 
@@ -157,6 +159,7 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
     - **死因注记（未定谳，预算外）**：MCP `press` 打 progress 元素后 wgpu `Reading from a BufferViewMut` 告警洪泛，随后 VM 解释器 `ok=true` 优雅退出（非 panic 非崩溃）；与本项目改动面的因果未定谳——复现路径=030 VM 窗 + MCP press progress 元素。已登记 §10。
     - **桌面腿（auto-os ui_desktop 内嵌 video）未走查**：需 auto-os 侧环境接线（AUTO_LANG_ROOT 指向本 worktree 或 fold 后走查）。
 - **T-08**：日常档回归同基线（AC-06）。依赖：T-03..T-06。
+- **T-14**（r2 收纳，用户钦定默认对）：`wallpapers_theme_default_image`（深 purple.png / 浅 songyu.png，置于壁纸目录）+ boot 链插入第二档 + 单测深化（深/浅双断言）。文件：`crates/auto-lang/src/ui/iced/renderer.rs`。验证：单测绿。→ AC-09。
 - **T-13**（r2 收纳）：`load_desktop_wallpaper` 优先级重构（图片路径 > 目录首图 > 色值 > 内置默认）+ 断言双结果放行。文件：`crates/auto-lang/src/ui/iced/renderer.rs`。验证：`cargo t desktop_surface_storage_roundtrip` 绿 + 实机浅色启动截图。→ AC-08。
 - **T-09**（r2 收纳）：030 `player_store.at` `.LocalPick` VM 分支接 `dialog_open` + `file_basename` → `LocalPicked` 同一换片语义。文件：`examples/ui/030-video-player/src/front/player_store.at`。验证：AC-07 实机。→ AC-07。
   - [x] **已完成**（2026-09-30，**用户裁定收口：全量测试不跑**——当前全量档本身有问题）：fail-fast 跑批 1440/5747：1438 绿 + 2 红 `musk_vm_track_p053_1_widget_computed`（computed 透传解出 0 行）——**master 基线同测实跑复证同样 2 红 ⇒ 预存红，非本计划引入**，AC-06 口径（无新增红）满足。作用域绿面：desktop_config 20/20、video_uplink 3/3、video_contract 4/4、mpv_channel 像素归一双臂绿、`cargo check --features mpv-widget` 干净。`state_file::lock_serializes_critical_sections` 并跑红/隔离绿（flock 争用型 flaky，另案在档）。[✅ 已完成]
@@ -164,6 +167,7 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
 ## 9. 复审记录
 
 - 2026-09-30 **r2 收纳复开**（archived → executing；用户预授权收纳通道）：新增 SD-05/T-09/AC-07（VM 本地播放接线，纯 app 层，引擎零改动）。实施随修订即落（T-09 体量 = 单 handler 分支）；AC-07 实机取证后随再 merge 回终态。
+- 2026-09-30 **r2 再收纳 T-14（用户钦定默认对）**：「默认深色用 purple.png；浅色用 songyu.png」——默认对升级为引擎概念（boot 链第二档），恢复默认从此有系统定义的标的；os-config「恢复默认壁纸」按钮留后续（写臂就绪后属设置面工作）。
 - 2026-09-30 **r2 再收纳 T-13（用户裁定）**：新开桌面（浅色）无壁纸——浅色槽位测试残留纯色 #101014 被 boot 如实渲染。T-13 = boot 壁纸优先级重构（图片 > 目录首图 > 色值 > 内置默认），「任何时候打开都加载默认壁纸」从此有引擎保证；单测绿。
 - 2026-09-30 **r2 验证期新发现（下一笔收纳候选 T-10）**：712 二进制下播放器头部动作按钮（主题切换 + 队列开关）在 VM 双轨（独立窗 + 桌面内嵌）均不渲染/不可达——712 前实机截图在案有按钮（用户首报截图），712 后 hover 探针无高亮；队列面板因此不可达，T-09 的 UI 路径被该回归挡住。嫌疑面 = 712 渲染器改动（video_uplink wrapper / 契约类型）对非 video 节点布局/icon 的影响，待 lang 侧定位。注：键盘快捷键缺失（pac「全套键盘快捷键」未实现）为同屏发现的语料债。
 - 2026-09-30 **r2 用户实机反馈再收纳两笔（T-11/T-12，同属 VM 布局/命中层）**：

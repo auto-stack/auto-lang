@@ -14593,12 +14593,30 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
     *app.state.view_dirty.borrow_mut() = true;
 }
 
-/// Plan 496 M5 + Plan 540 T2 + PLAN-712 r2 T-13：boot 壁纸解析（单源
+/// PLAN-712 r2 T-14：分主题默认壁纸（用户钦定对：**深 `purple.png` /
+/// 浅 `songyu.png`**），置于解析出的壁纸目录下（与目录探测默认同源——
+/// stella-os 素材目录，见 `wallpapers_dir_or_default`）。文件缺席 =
+/// 无主题默认（None → 走下一档目录首图）。
+fn wallpapers_theme_default_image(
+    cfg: &crate::ui::desktop_config::DesktopConfig,
+) -> Option<String> {
+    let dir = wallpapers_dir_or_default(cfg)?;
+    let name = if cfg.dark_theme {
+        "purple.png"
+    } else {
+        "songyu.png"
+    };
+    let p = dir.join(name);
+    p.is_file().then(|| p.to_string_lossy().to_string())
+}
+
+/// Plan 496 M5 + Plan 540 T2 + PLAN-712 r2 T-13/T-14：boot 壁纸解析（单源
 /// `config.wallpaper_path`）。**优先级（T-13 用户裁定「任何时候打开都
-/// 加载默认壁纸」）**：存在图片路径 > 壁纸目录首图 > `#hex`/`builtin:`
+/// 加载默认壁纸」+ T-14 钦定默认对）**：存在图片路径 > 分主题默认图
+/// （深 `purple.png` / 浅 `songyu.png`）> 壁纸目录首图 > `#hex`/`builtin:`
 /// 色值 > [`crate::ui::session::DESKTOP_WALLPAPER_DEFAULT`]。纯色/builtin
-/// 不再短路目录回退——它们是「无图片壁纸」的表述，机器有壁纸目录时
-/// boot 面上目录首图优先（PLAN-526 T19 目录首图语义延伸到色值分支）；
+/// 不再短路图片回退——它们是「无图片壁纸」的表述，机器有壁纸目录时
+/// boot 面上默认图优先（PLAN-526 T19 目录首图语义延伸到色值分支）；
 /// 无目录的机器色值仍直传（便携/极简场景诚实降级）。
 fn load_desktop_wallpaper(cfg: &crate::ui::desktop_config::DesktopConfig) -> String {
     use crate::ui::session::DESKTOP_WALLPAPER_DEFAULT;
@@ -14608,7 +14626,11 @@ fn load_desktop_wallpaper(cfg: &crate::ui::desktop_config::DesktopConfig) -> Str
     if !v.is_empty() && !color_like && std::path::Path::new(&v).is_file() {
         return v;
     }
-    // ② 壁纸目录首图（config dir 字段 → env → stella 素材目录探测）。
+    // ② 分主题默认壁纸（T-14 钦定对：深 purple.png / 浅 songyu.png）。
+    if let Some(d) = wallpapers_theme_default_image(cfg) {
+        return d;
+    }
+    // ③ 壁纸目录首图（config dir 字段 → env → stella 素材目录探测）。
     if let Some(dir) = wallpapers_dir_or_default(cfg) {
         let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
             .into_iter()
@@ -14631,11 +14653,11 @@ fn load_desktop_wallpaper(cfg: &crate::ui::desktop_config::DesktopConfig) -> Str
             return first.to_string_lossy().to_string();
         }
     }
-    // ③ 色值直传（仅当目录不可用——有目录时色值不再阻塞默认壁纸）。
+    // ④ 色值直传（仅当目录不可用——有目录时色值不再阻塞默认壁纸）。
     if !v.is_empty() && color_like {
         return v;
     }
-    // ④ 内置兜底。
+    // ⑤ 内置兜底。
     DESKTOP_WALLPAPER_DEFAULT.to_string()
 }
 
@@ -32865,12 +32887,22 @@ mod tests {
             wallpaper_path: "#123456".to_string(),
             ..DesktopConfig::default()
         };
-        // PLAN-712 r2 T-13：色值不再短路目录回退——有壁纸目录的机器上
-        // #hex 让位目录首图（返回存在文件路径），无目录机器保持色值直传。
+        // PLAN-712 r2 T-13/T-14：色值不再短路图片回退——主题默认图在场
+        // （深 purple.png）时让位钦定对；无目录机器保持色值直传。
         let hex = load_desktop_wallpaper(&hex_cfg);
         assert!(
-            hex == "#123456" || std::path::Path::new(&hex).is_file(),
-            "#hex → 目录首图或色值直传，得到 {hex}"
+            hex.ends_with("purple.png") || hex == "#123456",
+            "#hex → 主题默认图或（无目录机器）色值直传，得到 {hex}"
+        );
+        let light_hex_cfg = DesktopConfig {
+            wallpaper_path: "#123456".to_string(),
+            dark_theme: false,
+            ..DesktopConfig::default()
+        };
+        let light_hex = load_desktop_wallpaper(&light_hex_cfg);
+        assert!(
+            light_hex.ends_with("songyu.png") || light_hex == "#123456",
+            "浅色 hex → songyu.png 或色值直传，得到 {light_hex}"
         );
         let bad_cfg = DesktopConfig {
             wallpaper_path: "Z:/no/such/file.png".to_string(),
