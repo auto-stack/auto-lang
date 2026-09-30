@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-714
-status: executing             # r2 收纳复开（archived → executing，用户指令收纳通道——712 r2 先例同款）；终态待再 merge
-completion_kind: delivered    # r1 交付面保持（勘定件已 delivered）；r2=供① 残余解锁追加 phase
+status: executing             # r2 收纳复开+ r3 深修阶段收纳（同通道——712/714-r2 先例）；终态待再 merge（archived → executing，用户指令收纳通道——712 r2 先例同款）；终态待再 merge
+completion_kind: delivered    # r1 交付面保持（勘定件已 delivered）；r2=供① 残余解锁追加 phase；r3=route-A 深修追加 phase
 feature_name: tree-sitter 首批勘定件（auto-edit M4 供料包供④ 前半——语言集定界/管线选型+烟测/syntect 共存策略/增量高亮管线要点+实施件契约草案）
 author: [agent]
 created_at: 2026-09-30T16:15:39+08:00
-updated_at: 2026-09-30T19:05:00+08:00
-plan_revision: 2
+updated_at: 2026-09-30T19:35:00+08:00
+plan_revision: 3
 current_step: 9
-total_steps: 10
+total_steps: 16
 supersedes_spec_components: []
 new_spec_components:
   - "docs/specs/auto-lang/ui/design/treesitter-highlight-survey.md（SD-01：勘定契约——语言集表/选型决策记录/共存策略/增量管线要点/实施件边界）"
@@ -52,6 +52,18 @@ E0432（workspace check 红）；面二 front `merged_route_a_impl` 伴生链
 `specs/auto-edit/tests/evidence-p021-blocked-survey.md`（全档）+
 供料档 §6 登记。r2 三行任务：Try 臂镜像移植+corpus 判据三行增补
 （710 corpus 陈旧基面掩蔽盲区堵截）+下游 auto-edit 解阻确认收口。
+
+**r3 追加（2026-09-30，用户指令「不需要新计划；而是继续在计划714上加
+新的阶段即可」——r2 needs_replan 的有界修订兑现，收纳通道同款，不另立
+新件）**：route-A 深修阶段（r2 §10 Q-R2-2 八类清单承 710 §10 延后
+边界）——R3-T1 stdlib 面（fs::copy_recursive/write_bytes、re::test、
+diff 三件套模块包 703 imara 引擎[code-editor 门双轨]）、R3-T2 内建表
+臂+型映射（fs.metadata→file_size/copy_recursive/json.from_value
+[struct-literal→json! 形]/Regex.test/File.write_bytes/list→Vec<Value>）、
+R3-T3 Try 臂闭包内 return 传播（Option<Ret> 形——710 边界条款的
+corpus 实实例）+preview=ln 借用、R3-T4 corpus 收口（fresh regen→
+exit 0→fresh check——AC-R2-1 补全）、R3-T5 下游解阻确认（原 R2-T3
+顺位承接）、R3-T6 落账。
 
 ## 1. 目标
 
@@ -293,6 +305,16 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
   （下游 PLAN-021 复验位——其 L2 判定谱补跑[bench --l2 三档+smoke_gen
   三域，判据面已备]归 PLAN-021 承接，本件验收含解阻确认单）。验证：
   下游复验收据（跨仓）。
+- **AC-R3-1 stdlib 面在位**：a2r_std fs::copy_recursive/write_bytes、
+  re::test、diff 三件套（code-editor 门双轨——feature 关=panic 同 shim
+  fallback 形）编译+单测绿。验证：cargo t a2r_std 族。
+- **AC-R3-2 内建臂发射形**：新臂单测绿（fs.metadata→file_size 等六臂
+  +list 映射）。验证：plan710_supply_probes 增测。
+- **AC-R3-3 Try 传播形**：return-in-try 两 E0308 形单测转绿（Some 传播
+  +Default 尾臂）。验证：同上。
+- **AC-R3-4 落账**：census §7 更新+specs.json P714-3 回读 True。验证：
+  账本断言。
+
 
 ## 8. 执行步骤
 
@@ -309,6 +331,12 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
 | 7 | R2-T1 back 通路 Try 臂 | — | trans/rust.rs 语句分派（~:12300）+单测 | 供① 残余两面单点解锁 | AC-R2-1/2/3 | [x] 臂落+单测三绿@4534b5004（plan714_back_try_arm_* 入 plan710_supply_probes）+零 skip 警告+front 实体形（AC-R2-2 实质达成）；**AC-R2-1 部分**：exit 0/cargo check 未达——fresh fsys.rs 暴露掩蔽层 26 错/8 类（route-A 深修=710 §10 延后面）→ needs_replan（§10 Q-R2-2） |
 | 8 | R2-T2 corpus 判据三行 | R2-T1 | p710 census 判定面 | 盲区堵截（掩蔽/桩形/skip 警告） | AC-R2-1 | [x] 判定集三行入 p710-census.md §7@4534b5004（①skip 0 命中②fresh 卫生③实体形非桩=AC-R2-2 实证）；corpus 复跑=fresh fsys.rs 生成，掩蔽层 26 错暴露在档 |
 | 9 | R2-T3 下游解阻确认+落账 | R2-T1/2 | auto-edit 复验位+specs.json | 跨仓收口 | AC-R2-4 | [ ] 下游 a2r 三重判据全绿+P714-2 投影回读 True |
+| 10 | R3-T1 stdlib 面 | — | a2r_std.rs（fs/re/+新 diff 模块） | copy_recursive/write_bytes/re::test/diff 三件套（703 引擎包络，code-editor 门双轨） | AC-R3-1 | [ ] a2r_std 单测绿 |
+| 11 | R3-T2 内建表臂+型映射 | R3-T1 | trans/rust.rs Dot 表+rust_type_name | fs.metadata→file_size/copy_recursive/json.from_value[json! 形]/Regex.test/File.write_bytes/list→Vec<Value> | AC-R3-2 | [ ] 发射形单测绿 |
+| 12 | R3-T3 Try return 传播+借用 | R3-T2 | trans/rust.rs Try 臂 | 闭包 Option<Ret> 形（Some 改写/Default 尾臂）+preview=ln clone | AC-R3-3 | [ ] 两 E0308 形单测转绿 |
+| 13 | R3-T4 corpus 收口 | R3-T1..3 | 组内 tmp corpus | fresh regen→exit 0→fresh check（AC-R2-1 补全） | AC-R2-1 | [ ] 26 错→0+三判据全绿 |
+| 14 | R3-T5 下游解阻确认（原 R2-T3 承接） | R3-T4 | auto-edit perf.py a2r | 跨仓收口（021 复验位） | AC-R2-4 | [ ] 下游三重判据全绿 |
+| 15 | R3-T6 落账 | R3-T4/5 | census+specs.json+计划 | census §7 更新+P714-3 投影+完态 | AC-R3-4 | [ ] 投影回读 True |
 
 ## 9. 复审记录
 
@@ -415,6 +443,14 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
   需 route-A 深修件（新增 stdlib 面 fs::copy_recursive+diff 三件套+
   json from-struct+list 型映射+闭包 return 传播）。`next: new`
   （有界修订：扩 R2-T1 或立深修件承 710 §10——715 位）。
+
+- 2026-09-30 r3 收纳（用户指令「不需要新计划；而是继续在计划714上加
+  新的阶段即可」——r2 needs_replan 的有界修订兑现，收纳通道同款，
+  不另立新件）：plan_revision 2→3，+R3-T1..T6（总步 10→16）。scope=
+  route-A 深修（Q-R2-2 八类清单承 710 §10 延后边界）：stdlib 面/内建
+  表臂+型映射/Try return 传播/corpus 收口[AC-R2-1 补全]/下游解阻确认
+  [原 R2-T3 顺位承接]/落账。r1/r2 交付收据不变。next=work（R3-T1 起，
+  worktree lang-714 延用）。
 
 ## 10. 待澄清事项
 
