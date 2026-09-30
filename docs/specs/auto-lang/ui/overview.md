@@ -289,6 +289,8 @@ VM TYPE_CAST_I32 的 Rust `f as i32` 截断语义；浮点目标 JS 原生 f64 �
 
 **ui-gallery 画廊与应用内嵌架构（plan-549 落地）**：对齐 widgets-gallery 交互体验，建立 examples/ui-gallery 示例画廊应用；构建期自动扫描与元数据提炼（auto-man generate_gallery_host + demos-registry 动态装配），左栏导航聚合全部 43 个 UI 示例（分类折叠与实时过滤），右侧上部提供真实可交互的 AppViewport 沙盒视口（独立 createApp 挂载隔离、异常边界 errorHandler、状态一键重置与 Desktop 100% / 1024px / Tablet 768px / Mobile 375px 多端尺寸切换），右侧下部提供基于 AutoDown/Markdown 的教程与源码逐行剖析；形成跨目录应用沙盒化内嵌的通用规范。
 
+**widgets-gallery 双端展示验收（PLAN-717，2026-10-01）**：画廊以源码路由、页面与预览卡片作为唯一核对清单；Vue 与 VM/Iced 均逐页核验浅色/深色主题、整页滚动、示例可见性及代表性交互状态。VM 可用原生控件表达组件，但须保留示例主要语义与内容，并在报告解释简化。复用契约、截图与矩阵规则见 [design/widgets-gallery-parity.md](design/widgets-gallery-parity.md)。
+
 **029-photo-gallery（plan-537 落地）**：image widget 首个应用级双端示范
 （picsum 固定 seed 网络图源，缩略 cover/查看 contain）；单组件+平行列表
 数据流形态第四例。执行期实证两基建缺口（P537-D1 VM lucide 闭集 85 项（**2026-09-13 已根治：改为 lucide 官方数据生成的全量表 1401 项，见 `ui/iced/lucide_generated.rs` + `scripts/gen-lucide-table.mjs`**）——
