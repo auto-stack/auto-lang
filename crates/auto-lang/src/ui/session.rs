@@ -8543,7 +8543,7 @@ mod tests {
         });
         assert!(host.wm.apply_cursor(400.0, 999.0, host_size));
         let r = *host.wm.native_slot_local_rects.get(&id).unwrap();
-        assert!((r.width - 300.0).abs() < 0.01, "East +100: {r:?}");
+        assert!((r.width - 200.0).abs() < 0.01, "East dx=100 于 start 100 宽: {r:?}");
         assert!((r.height - 100.0).abs() < 0.01, "East 不动高: {r:?}");
     }
 
