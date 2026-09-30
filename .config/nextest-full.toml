@@ -10,6 +10,13 @@
 [profile.default]
 default-filter = "not test(aavm2_t3_tower_milestone)"
 
+# fix-test-stability(2026-09-30): slow-timeout 保护——无截止挂起(e4 式 accept/
+# join)在全量档同样会卡死批量回归。全量档合法长测试:画廊围栏 ~800s 冷态、
+# aavm XL 单测 78-303s → 900s 警告/1800s 终止不误伤。
+[profile.default.slow-timeout]
+period = "900s"
+terminate-after = 2
+
 [test-groups]
 mem-xl = { max-threads = 1 }
 mem-lg = { max-threads = 1 }

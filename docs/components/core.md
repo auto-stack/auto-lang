@@ -1495,7 +1495,7 @@ Sidebar menu item
 
 ### `sidebar_menu_sub_button`
 
-`builtin_widget` · `sidebar_menu_sub_button` · web: `native` · iced: `full` · category: `navigation`
+`builtin_widget` · `sidebar_menu_sub_button` · web: `component` · iced: `full` · category: `navigation`
 
 Sidebar menu sub-button (nested collapsible trigger; 561 full contract)
 
@@ -1504,6 +1504,9 @@ Sidebar menu sub-button (nested collapsible trigger; 561 full contract)
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `class` | `union: string|class_binding` | — | CSS class(es) |
+| `text` | `string` | — | Button text |
+| `to` | `string` | — | Router target |
+| `active` | `bool` | false | Active state |
 
 ---
 

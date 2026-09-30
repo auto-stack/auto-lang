@@ -4219,8 +4219,15 @@ mod tests {
     /// G1 落的 launch_app outproc 分支）——spawn→attach Active（launch_app
     /// 返回）→首帧 composed 时机；宿主 + 子进程 Private 阶梯采样；交互
     /// 端到端（broker_pointer_down → 帧文本变化，自旋泵）。
+    /// fix-test-stability(2026-09-30): 加 AUTO_DESKTOP_E2E 门（p031/033/034
+    /// 同型）——auto_exe 陈旧守卫会在测试体内 cargo build（每次代码合入后
+    /// 首跑 ~44s）+ 真窗口 spawn，属 e2e 环境类而非日常单测面；日常档曾
+    /// 因其 44s 长尾+环境敏感红拖慢/打红整跑。
     #[test]
     fn p508_g2_outproc_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
         let broker_pipe = format!("autodesk-broker-508g2-{}", std::process::id());
         let mut session = DesktopSession::__test_session();
         session.open_desktop(iced::window::Id::unique());

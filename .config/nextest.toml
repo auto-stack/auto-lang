@@ -19,8 +19,16 @@
 # 防裸 `cargo nextest run --features test-aavm`(未指定 --config-file)时
 # 重测试全并发。组语义:mem-xl(max=1) ≥800MB 串行;mem-lg(max=1)
 # 300-800MB 串行;mem-md(max=2) 100-300MB 并发 2。
+# fix-test-stability(2026-09-30): slow-timeout 保护——e4_default_http_tests 式
+#   无截止 accept/join 挂起曾把整跑无限卡死(双 run 现行实录)。日常档合法
+#   长测试 p508 内嵌重建 ~44s,60s 警告/120s 终止不误伤(e4 三臂最坏 90s 已由
+#   体内 recv_timeout 30s 定界,正常 <1s)。
 [profile.default]
 default-filter = "not test(str_churn_bounded_large) and not test(aavm2_t3_tower_milestone) and not test(vm_file_tests::) and not test(cookbook_vm_tests::) and not test(conformance_tests::) and not test(widgets_gallery_all_front_pages_compile)"
+
+[profile.default.slow-timeout]
+period = "60s"
+terminate-after = 2
 
 [test-groups]
 mem-xl = { max-threads = 1 }

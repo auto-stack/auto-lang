@@ -10338,7 +10338,11 @@ mod e4_default_http_tests {
         }
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        let server = std::thread::spawn(move || {
+        // fix-test-stability: accept/join 无截止会无限挂（2026-09-30 双 run
+        // 现行实录——异步 op 未落线时 mock 永远等不到连接）。channel+
+        // recv_timeout 定界，超时即红并给出可归因信息。
+        let (tx_req, rx_req) = std::sync::mpsc::channel::<String>();
+        std::thread::spawn(move || {
             use std::io::{Read, Write};
             let (mut s, _) = listener.accept().unwrap();
             let mut buf = [0u8; 4096];
@@ -10350,10 +10354,12 @@ Content-Length: 2
 
 {}";
             s.write_all(resp.as_bytes()).unwrap();
-            req
+            let _ = tx_req.send(req);
         });
         spawn_async_http_handle("GET".into(), format!("http://127.0.0.1:{port}/api/probe"), None, 999_001);
-        let req = server.join().unwrap();
+        let req = rx_req
+            .recv_timeout(std::time::Duration::from_secs(30))
+            .expect("e4 plain 臂 30s 内 mock 未收到请求——异步 http op 未落线");
         assert!(req.contains("GET /api/probe?workspace=ws-9 "), "query missing: {req}");
         let req_lc = req.to_ascii_lowercase();
         assert!(req_lc.contains("authorization: bearer t-ok"), "header missing: {req}");
@@ -10374,7 +10380,8 @@ Content-Length: 2
         // GET 臂(chats_list_sessions 形态)。
         let listener_json = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port_json = listener_json.local_addr().unwrap().port();
-        let server_json = std::thread::spawn(move || {
+        let (tx_json, rx_json) = std::sync::mpsc::channel::<String>();
+        std::thread::spawn(move || {
             use std::io::{Read, Write};
             let (mut s, _) = listener_json.accept().unwrap();
             let mut buf = [0u8; 4096];
@@ -10382,10 +10389,12 @@ Content-Length: 2
             let req = String::from_utf8_lossy(&buf[..n]).to_string();
             let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}";
             s.write_all(resp.as_bytes()).unwrap();
-            req
+            let _ = tx_json.send(req);
         });
         spawn_async_http("GET".into(), format!("http://127.0.0.1:{port_json}/api/chats/sessions"), None, 999_101);
-        let req_json = server_json.join().unwrap();
+        let req_json = rx_json
+            .recv_timeout(std::time::Duration::from_secs(30))
+            .expect("e4 get_json 臂 30s 内 mock 未收到请求——异步 http op 未落线");
         assert!(req_json.contains("GET /api/chats/sessions?workspace=ws-j "), "get_json query missing: {req_json}");
         assert!(
             req_json.to_ascii_lowercase().contains("authorization: bearer t-json"),
@@ -10394,7 +10403,8 @@ Content-Length: 2
         // POST 臂(auth_login 形态):默认头/查询同在 + body 完整落线。
         let listener_post = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port_post = listener_post.local_addr().unwrap().port();
-        let server_post = std::thread::spawn(move || {
+        let (tx_post, rx_post) = std::sync::mpsc::channel::<String>();
+        std::thread::spawn(move || {
             use std::io::{Read, Write};
             let (mut s, _) = listener_post.accept().unwrap();
             let mut buf = [0u8; 4096];
@@ -10402,7 +10412,7 @@ Content-Length: 2
             let req = String::from_utf8_lossy(&buf[..n]).to_string();
             let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}";
             s.write_all(resp.as_bytes()).unwrap();
-            req
+            let _ = tx_post.send(req);
         });
         spawn_async_http(
             "POST".into(),
@@ -10410,7 +10420,9 @@ Content-Length: 2
             Some(r#"{"username":"u","password":"p"}"#.into()),
             999_102,
         );
-        let req_post = server_post.join().unwrap();
+        let req_post = rx_post
+            .recv_timeout(std::time::Duration::from_secs(30))
+            .expect("e4 post_json 臂 30s 内 mock 未收到请求——异步 http op 未落线");
         assert!(req_post.contains("POST /api/auth/login?workspace=ws-j "), "post_json query missing: {req_post}");
         assert!(
             req_post.to_ascii_lowercase().contains("authorization: bearer t-json"),
