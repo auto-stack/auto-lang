@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-715
-status: reviewed
+status: archived
 feature_name: VitePress 全站 UI 与 v0.5 发布展示改进
 author: [Codex]
 created_at: 2026-09-30
@@ -208,6 +208,17 @@ T-01就为 website/playwright.config.ts 增加 AUTO_WEBSITE_TEST_PORT（默认41
 - 偏差登记：①计划 §5.2 的 `/api/transpile` 实为 `/api/trans`（按实际端点）；②示例 7 行而非 10–18 行（全仓唯一证据齐全族，真实性优先）；③apps.md 目录页保持共享 landing.css 骨架（目录页≠单应用骨架）；④DemoFrame 未抽取（HomeDemo 自包含无第二使用方）；⑤a2ui 目录 URL 行为与 /playground hydration 告警为 pre-existing，测试内注记豁免
 - blockers: 无
 - next: review（T-08，独立复审核对 AC/SD/diff 后 reviewed 交 merge）
+
+### 2026-09-30 合入收尾收据（PLAN-715:r1）
+
+- stage: merge | plan_id: PLAN-715 | plan_revision: 1 | outcome: pass | delivery_commit: ddb47205e | ledger_commit: d19537b72
+- **prepared** ✓：canonical 沉淀 d5d4d95e6（reviewed_commit 675306b71 的 docs/specs-only 后裔——website/design/ui-presentation.md 新建（SD-02/04/06）、website/project.md 增补（SD-01/03/05）、plans.md 回写 715 行、spec-index 重建 INDEX；实现/依赖零变化）
+- **landed** ✓：rebase master（并行前进：713 行 plans.md/712 复验 c86fe01a7）后 ff-only 落 master，tip=ddb47205e 无合并提交；range-diff 三=（d7a2c47ec=2c5b1e31a、7714f030b=a2a187e5a、675306b71=c3bc4e9f8）补丁等价即安全重写证明；plans.md 冲突双行保留（713+715）
+- **ledger_refreshed** ✓：d19537b72——store 写者不可用（8080 不在线、本会话无 spec 工具），循 713/714 外科插入先例：designs 段 P715-1（SD-01..05 现行知识投影，file=design/ui-presentation.md，docsha:137265b853eded5b）+ reviews 段 P715-2（复审/合入收据）；committed 形（indent1+LF，designs 118→119、reviews 180→181）roundtrip 字节守卫+语义回读全过；worktree 形（indent2+CRLF，reviews 181→182）同步插入，P712-1（plan712 会话在途 WIP）字节保全未裹挟提交
+- **archived** ✓：git mv → docs/plans/archive/715-website-ui-refresh.md，status: archived，completion_kind: delivered
+- **cleaned**：见下方补记
+- 部署观察（landing≠deployment）：website 为静态站点，无线上部署授权（计划边界明示"不部署线上站点"）；主检出构建产物随下次部署重建，无生产进程消费本仓二进制，三项生产工件检查不适用（无后端/守护进程改动，Category A）
+- 批量回归到期判定：见下方补记
 
 ### 2026-09-30 复审（T-08）
 
