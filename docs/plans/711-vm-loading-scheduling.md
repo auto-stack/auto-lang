@@ -19,7 +19,7 @@ new_spec_components: []
 touched_goals: [GOAL-007, GOAL-009]
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 1
+current_step: 2
 total_steps: 9
 ---
 
@@ -280,7 +280,7 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 | T-07' | 阶段决策冻结后 | 设计文档逐项对照清单 + 缺口补齐（docs/design/autoui/vm-loading-responsiveness.md） | worker 边界逐项完备，proposed/现状分离；AC-08 |
 
 - [x] T-11 CPU 可续跑执行片（含 engine.rs:2748 假成功缺陷修复）（**[✅ 已完成]** worktree 80de86f04：DriveBudget 双档+SegmentOutcome::Runnable+ParkedWait::CpuRunnable+跨片累计护栏（cpu_steps_total/跨片 runaway 基线/50k 节拍跨片累计）+resume_parked_wake 提取+slice 双入口；AC-13=耗尽 slice 档 Runnable/legacy 档真错误；bridge 有界泵 resume_cpu_slices（tick 泵 CpuRunnable=false 隔离/8ms 轮次/FIFO 快照不重拾）+写队列 128（满拒 WriteQueueFull/同键合并/片间消费）+call_handler_for_cpu_slice；plan711 7 测+触面 115+tv 162 全绿，plan707_wait_generator 并行抖动单跑过=708 复审档案同例）
-- [ ] T-03 Init demand/代际生命周期
+- [x] T-03 Init demand/代际生命周期（**[✅ 已完成]** worktree 04b9552c9：register_init_demand 登记簿（判定≠完成/同代际不二次入队 AC-04/身份变化=新代际+旧代际一次取消）+dispatch_pending_inits 派发驱动（FIFO 依赖序=页先 child 后/五态观察/InFlight 探测收敛）+cancel_parked_by_fn 凭据映射清理（HttpRequest→drop_async_result/HttpStream→stream_cancel）+child_init_should_fire 退役移除；渲染路径两派发点（outlet :5211/fire_child_init_if_any）改只登记；tick 泵临时接线（dynamic poll 前置派发+订阅门扩展，T-04 移交）；plan711_init_demand 5 测+触面 233+tv 162 全绿）
 - [ ] T-04 真实入口帧通知与有界泵（R-1 序障实证闭环）
 - [ ] T-05 骨架/完成/失败显示
 - [ ] T-12 computed/冷构建残面（DataTable memo_block 根因、FileTree 恒 FILL）
@@ -314,6 +314,20 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 - legacy 耗尽行为变更登记：非 UI legacy 同步路径预算耗尽从"静默假成功"变"真错误"——这是 AC-13 缺陷修复本身（契约形状 Result 不变）；触面与语料门禁零回归证明无既有调用图依赖假成功。
 - Spec delta 更新：SD-02/04/05 维持拟议（本次改动与拟议一致，无范围漂移）。
 - `next: T-03 Init demand/代际生命周期（消费 T-11 结果接口：call_handler_for_cpu_slice + CpuRunnable 凭据 + resume_cpu_slices 泵）`。
+
+### 2026-09-30 work T-03 完成（Init demand 登记簿与代际生命周期）
+
+- `stage: work` | `plan_id: PLAN-711` | `plan_revision: 1` | `outcome: in_progress` | `code_commit: worktree 04b9552c9`。
+- T-03 交付面（对 §5 M-01）：
+  - **登记簿**：`register_init_demand`——判定与写身份分离（708 baseline §2.2 缺陷面修复）；同代际重复登记（显示/MCP 双 build）只确认簿记不二次入队（AC-04）；身份变化=新代际（`init_generation` 计数器），旧代际一次取消（排队丢弃+在途 `cancel_parked_by_fn` 清栈/凭据映射清理：HttpRequest→`drop_async_result`、HttpStream→`stream_cancel`、Future/CpuRunnable→纯栈释放）；A→B→A 的第二个 A 重跑 Init（测试实证：前缀副作用保留 + 全量重跑，界断言 [20001,40000)）。
+  - **派发驱动**：`dispatch_pending_inits`——FIFO（=渲染登记序=页先 child 后的依赖序）；五态观察（Missing 静默 Done/Failed 终态不重试/Completed/Waiting+Runnable=InFlight 并停止本轮后继派发——前序 park 即停，child 等页终态）；InFlight 探测收敛（parked 出册即记账 Done）。
+  - **渲染路径**：outlet 页 memo 派发点改"身份变化才 prepare state + 登记"（全量 build 旁路保留——新页内容仍真构建，Init 完成刷新由泵侧 dirty 承担）；`fire_child_init_if_any` 改只登记；渲染零派发（AC-04）；`child_init_should_fire` + `child_last_init_identity` 退役移除（判定即写身份语义消亡）。
+  - **临时接线**（T-04 移交）：`poll_parked_resumes` 前置 `dispatch_pending_inits`（D-2 默认预算档）+ init 失败走 syslog `[VM-HANDLER] {widget}.Init failed (dispatch)`；订阅门 `has_parked_tasks() ∪ has_pending_init_work()`。
+- 测试过程中发现并修正的三点：①取消契约断言——前缀副作用不回滚（27 前缀+20000 重跑），断言改界检查；②child handler 走单 VM 统一根态——桥级直登记的 child demand 用纯计算 Init 规避（真实 child state id 由渲染路径 prepare_child_render_state 提供）；③50 次迭代循环在 512 步预算边缘也 park——child 用 10 次迭代保确定性。渲染路径完整集成（组件调用→fire_child_init_if_any 登记）不入单测：需完整模块装载管道，该面由 memo/outlet/045/046 渲染家族回归 + T-09 实机矩阵覆盖。
+- 门禁证据：cargo check 零错误；plan711 全族 12/12（T-11 7 + T-03 5）；触面 plan702/705/707/708/vm_bridge/plan045/plan046/memo/outlet 233/232+1抖动；tv 162/162。
+- 抖动定责（零回归）：`plan707_wait_generator_park_drive_count_static` 负载敏感（id_gen 墙钟窗口计数断言，"容忍到 30"自证）——隔离恒过、机制未被本计划触碰、708 复审档案同例；`stage3_memory_baseline_n1_3_5` 为 "memo" 过滤子串误匹配 "memory" 的并行内存基线抖动，单跑过，非触面。
+- Spec delta 更新：SD-02 的 ADR-19/24 重写对象即本次登记簿/派发驱动/取消语义，维持拟议。
+- `next: T-04 真实入口帧通知与有界泵（R-1 序障实证首验 → listen_raw 条件订阅 + 帧驱动有界泵接管 dispatch/resume 驱动点）`。
 
 ## 10. 待澄清事项
 
