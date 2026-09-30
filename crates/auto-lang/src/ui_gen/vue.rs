@@ -1069,7 +1069,6 @@ impl VueGenerator {
     /// bare `on_x()` — both rewrite to `emit('<Pascal>', ...)`). Drivers
     /// harvest this per sub-widget and hand it to the parents' generators.
     pub fn widget_emit_set(widget: &AuraWidget) -> Vec<String> {
-        use crate::ast::Expr;
         let mut emits: Vec<String> = widget
             .messages
             .iter()
@@ -1085,53 +1084,8 @@ impl VueGenerator {
             return emits;
         }
 
-        fn calls_callback(expr: &Expr, props: &[String]) -> bool {
-            match expr {
-                Expr::Call(call) => match call.name.as_ref() {
-                    Expr::Dot(obj, method) => {
-                        // `.on_x(...)` self-call
-                        (matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self")
-                            && method.as_str().starts_with("on_")
-                            && props.iter().any(|p| method.as_str() == format!("on_{}", p).as_str()))
-                            || call.args.args.iter().any(|a| calls_callback(&a.get_expr(), props))
-                    }
-                    // bare `on_x(...)`
-                    Expr::Ident(name) => {
-                        (name.as_str().starts_with("on_")
-                            && props.iter().any(|p| name.as_str() == format!("on_{}", p).as_str()))
-                            || call.args.args.iter().any(|a| calls_callback(&a.get_expr(), props))
-                    }
-                    _ => call.args.args.iter().any(|a| calls_callback(&a.get_expr(), props)),
-                },
-                Expr::Bina(l, _, r) => calls_callback(l, props) || calls_callback(r, props),
-                Expr::Unary(_, e) => calls_callback(e, props),
-                Expr::Dot(obj, _) => calls_callback(obj, props),
-                Expr::Array(items) => items.iter().any(|e| calls_callback(e, props)),
-                _ => false,
-            }
-        }
-        fn stmt_calls_callback(stmts: &[crate::ast::Stmt], props: &[String]) -> bool {
-            use crate::ast::Stmt;
-            stmts.iter().any(|s| match s {
-                Stmt::Expr(e) => calls_callback(e, props),
-                Stmt::Store(st) => calls_callback(&st.expr, props),
-                Stmt::If(i) => {
-                    i.branches.iter().any(|b| calls_callback(&b.cond, props) || stmt_calls_callback(&b.body.stmts, props))
-                        || i.else_.as_ref().map(|e| stmt_calls_callback(&e.stmts, props)).unwrap_or(false)
-                }
-                Stmt::For(f) => calls_callback(&f.range, props) || stmt_calls_callback(&f.body.stmts, props),
-                Stmt::Block(b) => stmt_calls_callback(&b.stmts, props),
-                Stmt::Try(t) => {
-                    stmt_calls_callback(&t.body.stmts, props)
-                        || stmt_calls_callback(&t.catch_body.stmts, props)
-                        || t.finally_body.as_ref().map(|fb| stmt_calls_callback(&fb.stmts, props)).unwrap_or(false)
-                }
-                _ => false,
-            })
-        }
-
         for payload in widget.handlers.values() {
-            if let crate::aura::LogicPayload::AstStmts(stmts) = payload {
+            if matches!(payload, crate::aura::LogicPayload::AstStmts(_)) {
                 for snake in &callback_props {
                     let pascal = Self::snake_to_pascal(snake);
                     if !emits.contains(&pascal) {
