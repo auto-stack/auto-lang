@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-712
-status: archived             # r2 终态（2026-09-30 merge：delivery 451dc1401+ff32d7004，SD-01..08 沉淀，账本 P712-1；T-11 登记态随档）
+status: executing          # r3 复活执行中（用户裁定 7e4258c31 git mv 回活跃区；交接批 8.5 T-17/18/19 + r2 遗留实机腿）
 feature_name: VM 桌面验收缺陷收敛（视频引擎双缺陷 + 壳配置持久化 + examples 依赖）
 author: [zcode(auto-os 会话转介)]
 created_at: 2026-09-30
 updated_at: 2026-09-30
-plan_revision: 2
+plan_revision: 3
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []  # 空=无退役组件：8 条 delta 全为 docs/specs/auto-lang/ui/overview.md 既有节的 modify/add（复审核验，见 §9）
@@ -238,6 +238,13 @@ AUTO_SCHED_DIAG=1 AUTOUI_ACCEPTANCE=1 AUTOUI_MCP_PORT=9260 bash scripts/desktop.
 - **方案 B（维持现状）**：虚拟窗缩放显示宿主视口布局（写明文档）；播放器全屏使用无感。
 - 验证：win_rect 缩放虚拟窗（8.5.0 通道）→ 播控条重排随动（seek 条占满 col、按钮右聚不变形）；头部按钮可见。
 
+**r3 修复记录（2026-09-30，worktree a817963b0）**：
+- **根因定性修正（递增实证修正 r2 初判）**：「`vwin_rect` 恒 None / app 按宿主视口布局」**不成立**——`split_mut_at`/`split_ref_at` 桌面分支早已传 `vwin_rect: Some`（session.rs 5548/5598，PLAN-024 T-01）且 `virtual_window_element` 的 win_stack 本身就是 `Fixed(rect.width/height)`（virtual_window.rs:540）——app 的 iced 布局 bounds 就是虚拟窗尺寸。r2 所引「5504 恒 None」实为 **windowless overlay 垫片分支**（shell/launcher 等，合法 None）。
+- **真根因（代码级闭环）**：VM 视图构建器把响应式取值按 `window_size` 在**构建期烤定**（`set_window_width` 通道，renderer.rs:22643），而 `dynamic_view_impl` 的元素缓存快门在 `!view_dirty` 时逐帧返回**缓存的烤定像素树**（renderer.rs:22706-22714）。虚拟窗缩放只更新 `VWinState.rect/window_size`、**不标 view_dirty**（交互臂 apply_cursor 消费后直接 return；编程 WinRect 臂自述「无 relayout」）→ app 内容恒停旧尺寸 = 表面 1:1 锚定 + 空白右/下 + 播控条不重排。
+- **方案 A 落地**：`DesktopSession::mark_vwin_resized_dirty(wid)`（helper，headless 可测）+ 两执行臂接线：① `DC::WinRect` 臂——**尺寸真变才标**（≥0.5px 阈值，纯移动零重排纪律）；② `__mouse_moved` 交互臂——`apply_cursor` 消费且 interaction 为 `Resize` 时逐拍标（拖拽 Drag 不标）；逐拍重建即活布局的标准成本（独立窗 OS resize 同价）。
+- 回归锁 `wm_resize_marks_app_view_dirty`（headless seam：缩放交互→置脏增量断言 + 未知 wid 幂等 false + Drag 不误伤）+ `wm_` 族 10/10 绿；`cargo check`（默认 + mpv-widget）干净。
+- **实机腿未走查**（win_rect/拖拽缩放虚拟窗 → 播控条重排随动 + 头部按钮可见）——归验收桌面复验（本会话无实机桌面环境）。
+
 ### 8.5.3 T-19：030 播放/暂停状态链（按钮图标错 + 停不下来）
 
 **症状**：播放中按钮显示 play（应 pause）；点击后暂停一下**又继续播放**，停不下来。
@@ -248,6 +255,13 @@ AUTO_SCHED_DIAG=1 AUTOUI_ACCEPTANCE=1 AUTOUI_MCP_PORT=9260 bash scripts/desktop.
 
 **验证**：播放中点按钮 → 暂停（图标翻转、帧停）→ 再点 → 续播；10 次无状态回弹。
 
+**r3 诊断+修复记录（2026-09-30，worktree a817963b0）**：
+- **全链静态读码**：player_store.at（`.TogglePlay` 翻转 is_playing / `.OnPlayState` 回灌同字段）/ viewport.at（`paused: .store.is_playing == false` 下行绑定 + `onplaystatechange: .OnPlayState($0)`）/ contract.rs（paused 差量下发 + poll 边缘检测合成 PlayStateChange）/ video_uplink.rs（载荷映射 `Playing(b)→Value::Bool(b)` 直进 args[0]，不经 event_to_message_with）/ aura_view_builder convert_video（`extract_bool_expr` 走 `resolve_expr_to_value`，`Op::Eq` 臂对 `Value::Bool` 全等比较正确）。`!` 前缀 = 全语料惯用法（014/015/016/019/020 dark_mode 同款），排除。
+- **引擎级实证探针（真引擎 + 契约帧循环，AUTO_SPIKE_VIDEO=caelestia.mp4）**：① 空闲引擎（未 loadfile）首 poll **自发合成 `PlayStateChange(true)`**（空闲 pause=false 被当边缘）——红相在案；② **暂停长保持 120 帧（渲染面每帧同值 apply+poll 形态）零自发 un-pause**、pause 旗标恒真、时间冻结；③ 快速 toggle ×10 applied 锁存与内核实态逐拍一致；④ 同 src 重新 loadfile 后 30 帧窗口无 play-state 事件（get_flag 过渡期返 None 被跳过）。**定谳：引擎/契约保持层干净，「停不下来」的驱动不在本层**。
+- **打架种子修复 ×2（contract.rs）**：① poll ④ **首次 pause 读 = 基线采集不回灌**（`last_play_state: None → seed`，不再把空闲默认态当边缘——修复后 app 侧 is_playing 不再被顶成假「播放中」，下行/上行镜像不再互为反转）；② apply **pause 写失败不推进 applied**（差量判据以内核实态为准，一次瞬时失败不再永久丢写）。
+- **回归锁 ×2（mpv_contract.rs，12/12 绿）**：`idle_engine_first_poll_seeds_baseline_without_play_state_event`（红→绿对：基线零事件 + 同值保持零事件 + 作者显式翻转恰好一次）+ `pause_hold_and_rapid_toggle_stay_in_sync`（长保持 + toggle×10 实态对账）。既有 `real_playback_advances_time_and_reports_play_state` 的真实起播边沿断言不受基线种子影响（绿）。
+- **残留定性**：实机「图标错 + 停不下来」的完整复现需要**桌面轨消息/视图链**参与（T-16 同族：update 可达但视图重建滞后/丢失 → down 原语陈旧 → pause 写永不下发；重建迟到则「暂停一下」后用户再点即「又继续」）。引擎腿已清白并加固，实机走查（播放中暂停→图标翻转→10 次无回弹）**归验收桌面复验**（与 T-16 桌面轨修复同窗）。
+
 ### 8.5.4 归并与关联
 
 - T-10（头部按钮不可见）= T-18 同族（缩放显示下的位置/可见性），随 T-18 方案 A 闭环。
@@ -256,6 +270,13 @@ AUTO_SCHED_DIAG=1 AUTOUI_ACCEPTANCE=1 AUTOUI_MCP_PORT=9260 bash scripts/desktop.
 
 ## 9. 复审记录
 ## 9. 复审记录
+
+- 2026-09-30 stage:work 续（**r3**，复活后第一批）| plan_id PLAN-712 | plan_revision 3 | outcome: pass（T-19 引擎腿修复+锁、T-18 方案 A 接线+锁；实机腿归验收桌面复验）| code_commit: plan-712-dev @716ab0a6d + a817963b0（承 master 57b9afa60）| task_ids: T-18,T-19 | evidence:
+  - **环境**：lang-712 worktree 残壳被僵进程 PID 35340（.tmp-712-app.log 句柄 + CWD 锁定 examples/ui/030-video-player 链）锁死不可清（Stop-Process/taskkill/mv 全败=内核态卡死实锤）→ 按组惯例重建 **`D:/autostack/.wt/lang-712b/auto-lang`**（路径偏离已在案，重启后残壳可清）；auto-down 兄弟 worktree @3373a5c 补建（`../../../auto-down` path 依赖解析）。上一会话遗留在**主检出工作副本**的 back_proxy.rs +7 行诊断 WIP 按 master 零 WIP 红线迁入 plan 分支（716ab0a6d），主检出还原干净（余 .autoos/specs.json/.next-id/716/717 系其他会话在途簿记，未触碰）。
+  - **T-19**：全链静态读码（app/viewport/contract/uplink/builder/`!` 惯用法）+ 真引擎探针定谳——保持层干净（120 帧零自发 un-pause + toggle×10 实态一致）；红相=空闲引擎首 poll 自发 `PlayStateChange(true)`。修复：基线采集不回灌 + 写失败不推进 applied（contract.rs）；回归锁 ×2，mpv_contract 12/12（真引擎）。实机走查腿归桌面复验（与 T-16 同窗）。
+  - **T-18**：根因定性修正（r2「vwin_rect 恒 None/按宿主布局」不成立——桌面拆借分支早已接线，win_stack 即 Fixed(rect)；真根因=构建期烤定像素 × 缓存快门 × resize 不标脏）。方案 A 落地：`mark_vwin_resized_dirty` + WinRect/交互缩放双臂接线（尺寸真变/Resize 交互才标）；回归锁 `wm_resize_marks_app_view_dirty` + `wm_` 族 10/10。实机腿归桌面复验。
+  - **AC-06 对表**：裸 `cargo t --no-fail-fast` 4930 跑 4918 绿，12 红 ⊆ master 基线红族（p053×4+p054×2+plan606/029+desktop_protocol projector_counter+renderer×2+e4；plan707/app_registry/native_gate 本轮未复现=flake 族）——**零新增红**。`plan502_m3_layout_geometry_e2e` 全量跑红、worktree/master **隔离双双绿** = 并行负载序敏感 flake 候选（非本计划引入），登记 §10。
+  | blockers: 无 | next: 验收桌面实机复验（T-19 暂停走查 + T-18 win_rect 缩放重排随动 + AC-02 scrub/AC-07 对话框走查）→ T-16 桌面轨 AppTick 路由/T-17 cdylib 重编两笔遗留 → review。
 
 - 2026-09-30 **r2 收纳复开**（archived → executing；用户预授权收纳通道）：新增 SD-05/T-09/AC-07（VM 本地播放接线，纯 app 层，引擎零改动）。实施随修订即落（T-09 体量 = 单 handler 分支）；AC-07 实机取证后随再 merge 回终态。
 - 2026-09-30 **r2 再收纳 T-15（图书阅读器打开书详情即占位）**：018 `pages/book_detail.at` 用了 VM 解析器不支持的构造——view 条件 `== null`（null 字面量不在 view 条件语法内，20 连解析错首错「expected LBrace, found null」）+ 条件数组 style，页面被 VM 装载器静默丢弃 → outlet 占位（VM 装载 `if let Ok` 静默吞页 = 可观测性债）；vue 构建同文件硬失败（曾被 VM 静默吞掩盖）。**修复 = app 层按 bookshelf 惯用法重写**（has_book 旗标替代 null 比较、条件数组 style 拆 if/else 双臂、`.len()` 预计算 store 字段、Init try/catch），`auto build` 页面扫描通过。
@@ -292,6 +313,10 @@ AUTO_SCHED_DIAG=1 AUTOUI_ACCEPTANCE=1 AUTOUI_MCP_PORT=9260 bash scripts/desktop.
 ## 10. 待澄清事项
 
 - **扩展位（用户裁定，非待澄清）**：本计划为桌面 VM 验收缺陷的收纳载体——后续其他桌面 app 的 auto-lang 侧问题以 plan_revision 增补任务/AC 归入，不另起计划；每次增补记录来源与证据。
+- **r3 工作期新登记（2026-09-30，worktree a817963b0）**：
+  - ④ **plan502_m3_layout_geometry_e2e 并行 flake 候选**：r3 日常档全量红（0.3s 失败）、worktree 与 master **隔离复跑双双绿**（0.15s）——并行负载序敏感，与 p053_6 同型；非 712 改动面（diagram 布局几何，本批只触 mpv contract/session resize 脏标记）。归 `/auto-plan:regress` 档观察。
+  - ⑤ **僵进程残壳（lang-712 组目录）**：PID 35340（auto.exe @ 已剪除 worktree target，14:08 启动）锁 `.tmp-712-app.log` + CWD 锁 examples 空目录链；Stop-Process/taskkill/改名/mv 全败。**重启后删除 `D:/autostack/.wt/lang-712`** 即清；r3 起 plan worktree 在 lang-712b（本登记为 merge 清理时的例外指引）。
+  - ⑥ **viewport.at 过时注释**：「`flex-1` 与 `shrink-0` 在 VM 不生效」已不成立（Plan 370 Issue 1 起.flex-1 → width=Fill 映射在位，iced_adapter.rs:1158）——T-11 播控条塌缩的成因不在 flex-1 缺失；该注释待语料清理批顺带更正（防误导后续排查）。
 - **r2 工作期新登记（2026-09-30，worktree 7f483e1ab）**：
   - ① **T-11 塌缩非确定性源（修复前置）**：headless 取证探针同源 col_right 438↔658px 随**进程启动**翻转（icon/窗宽/onseek/样式逐项排除），真机塌缩比例（~45%）落翻转域内；嫌疑=动态视图构建顺序敏感层（组件实例化/HashMap 迭代序）。探针已从门禁摘除；定谳入口=进程内两次构建同 view 比对 + builder 侧 HashMap 遍历审计。
   - ② **master 日常档基线 14 红**（较 T-09 时点 2 红扩大）：p053 族 4（含 p053_4/p053_6，并行负载序敏感——隔离可绿）+ p054 族 2 + plan606 029 + desktop_protocol（projector_counter/native_gate）2 + renderer（desktop_bus_inbox/desktop_surface_merge）2 + e4_default_http + plan707_wait_generator + app_registry 2（仅主检出）。归批量回归档（/auto-plan:regress）收口，非本计划范围。
