@@ -888,6 +888,33 @@ widget Counter {
   `rust_ui.rs::generate_cargo_toml` 已无退役项，历史产物残留会以 cargo
   workspace 惰性校验形式拖垮无关成员的解析——产物修复=删残留 feature 行。
 
+#### PLAN-712 r2 增补：本地播放、事件占位契约与桌面壁纸 boot 链
+
+- **VM 端本地播放契约（SD-05）**：`video` 受控 `src` 接受**本地路径**，与
+  http(s) URL 同级承诺（mpv 直接加载）；应用层经 `dialog_open`（PLAN-681
+  内建，模态阻塞形态——PLAN-681 §9 F1 边界在案：父窗绑定 v1 不做）选取本地
+  视频 → 路径直入受控契约，换片语义与队列选片一致（复位 seek/时长/进度）。
+  取消对话框返回空串 = 静默无动作。Web 端对应面为 File API object URL
+  （`blob:` 一等媒体源）。
+- **事件回调 `$` 占位实参契约（SD-08）**：`.at` 事件回调的 `$N`/`$event`
+  占位实参由**回调臂在事件现场 push 载荷**对位——VM 端视图构建期剥除
+  `$` 前缀占位（不落字面量进 args），`($0)` 与 `()` 两形态同义；与 Vue
+  生成器「`$0` 由生成器替换成真实取值」同契约（`ui_gen/vue.rs`）。回归锚
+  `progress_onseek_placeholder_param_never_becomes_literal_arg`（双形态
+  断言）。此前字面量化曾致 `onseek: .SeekFraction($0)` 形参绑定 `Str("$0")`
+  垃圾、真载荷错位到 args[1]（030 进度条点击换算恒 0 的根因；020 空参形态
+  不受影响故双 app 对照成立；P657-D1「跨 widget 回调载荷字面量化」同族
+  先例）。
+- **桌面壁纸 boot 解析优先级（SD-06）**：boot 优先级 = 存在图片路径 >
+  壁纸目录首图 > 色值直传（`#hex`/`builtin:` 仅在无壁纸目录机器诚实降级）>
+  内置默认——纯色/`builtin:` 槽位不再短路目录回退，「任何时候打开都加载
+  默认壁纸」有引擎保证（用户裁定语义）。回归锚
+  `desktop_surface_storage_roundtrip_and_wallpaper_resolution`（双结果
+  放行断言）。
+- **分主题默认壁纸对（SD-07）**：钦定默认对 = 深 `purple.png` / 浅
+  `songyu.png`（置于壁纸目录），boot 链第二档；「恢复默认壁纸」从此有
+  系统定义标的（os-config「恢复默认壁纸」按钮属后续设置面工作，写臂已就绪）。
+
 ### 媒体文件服务（SD-02）
 
 `crates/auto-lang/src/ui/media_service.rs` 提供**平台级**本地媒体索引与字节流，
