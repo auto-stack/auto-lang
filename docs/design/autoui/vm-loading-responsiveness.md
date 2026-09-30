@@ -130,3 +130,26 @@ r2 提议的初始门禁：60Hz 单帧 16.7ms 是优化目标；加载期 UI 连
 ## 9. 实施与知识沉淀
 
 设计先行登记；PLAN-708 保留 T/AC 稳定 ID并补新项，按阶段在同一 worktree 实施。最终修改 ui/VM Spec 的只有已验证的开关、挂载、预算与同步边界；不先占 ADR-27 发布 worker 目标态。707 并行接口变化必须按实际落地 commit 重新验证。r2 自检不是独立实现复审。
+
+## 10. PLAN-711 实施对照（T-07' 完备性核对，2026-09-30）
+
+> 逐项对照 §7 worker 边界表与 §3-§5 契约在本计划（单执行者形态）的落地状态。
+> **proposed 与现状分离保持**：worker 线程边界未实施，仍为 proposed（另立 Plan）；
+> 其语义等价物已在单执行者上先行交付。
+
+| §7/§3-5 项 | 设计态 | 711 落地态 | 判定 |
+|---|---|---|---|
+| UI→worker：AppId/generation 输入、有界 128、可覆盖合并、满拒 busy | worker 通道 | `cpu_write_queue`（128 有界/同键合并/`WriteQueueFull` 可观察 busy）——单线程同构 | 语义先行 ✓ |
+| worker→UI：SnapshotReady/task terminal/错误、完成不静默覆盖 | worker 通道 | 完成通知→epoch 失效+component/view dirty+`[VM-HANDLER]` syslog 面（MCP/屏幕同相经 gate_dirty 链，T-05/T-09 实机） | 语义先行 ✓ |
+| I/O→worker：702/707 凭据原样、栈不跨线程 | worker 通道 | 702 tick 泵+三凭据原样+`CpuRunnable` 只增（D-3）；全部单线程 | 原样 ✓ |
+| MCP：已提交快照只读、同一排序入口、接受/完成区分 | 通道契约 | 既有 shared-state 快照+完成代际同相（T-09 §2 取证） | 语义先行 ✓ |
+| 取消/退出：generation 撤销、资源一次清理、退出回执 | worker 通道 | `register_init_demand` 代际取消+`cancel_parked_by_fn` 凭据映射清理（drop_async_result/stream_cancel/纯栈） | 语义先行 ✓ |
+| parked 边界：CpuRunnable 凭据、帧驱动、轮次预算 | §3 契约 | `ParkedWait::CpuRunnable`+`resume_cpu_slices`（FIFO 快照/8ms 轮次/4ms 片，D-2 校准） | 已交付 ✓ |
+| Init 状态机（判定≠完成、五态观察、依赖序） | §4 契约 | demand 登记簿+`dispatch_pending_inits`+骨架/失败占位 | 已交付 ✓ |
+| 帧通知序障（listen_raw 异步回环、消费在 present 后） | §5/D-1 | 条件订阅+消费臂+R-1 实证（§711-runtime） | 已交付 ✓ |
+| **worker 线程边界（独占所有权、快照跨线程、不跨线程 Rc/Element、退出 join）** | **proposed** | **未实施**——单执行者不涉及；worker 化 Plan 的核心面 | **proposed 保持** |
+| computed 值稳定性（列表入信号网） | §6 保守面 | 706 准入守卫拒绝维持；memo 层标记回退+dyn_deps 防护达成页面级收益；值稳定性属后续设计面 | 部分交付（登记） |
+
+核对结论：§3-§6 的调度/状态机/帧通知/computed 契约已按"单执行者先行"交付并实证；
+§7 的线程边界（本设计唯一的架构跃迁面）保持 proposed——其全部通道语义已在单线程
+形态先行验证，worker 化 Plan 可平移。无缺口需要回补本设计文档正文。
