@@ -4654,6 +4654,21 @@
             "a39ef6827"
           ],
           "file": "docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md"
+        },
+        {
+          "id": "P710-2",
+          "title": "a2r 应用映射完备性契约：host-call delta 臂 / try-catch catch_unwind 臂 / envelope 投影族+corpus 三重判定面",
+          "content": "PLAN-710 供① 落账（auto-lang ui 域 SD-01，docs/specs/auto-lang/ui/design/a2r-app-mapping-completeness.md）。三类映射语义契约：G-C `vm_builtin_host_call` code_editor_delta 直调臂（Option→String unwrap_or_else panic! 与 VM shim 同消息，键值块内预绑一次求值）；G-B try/catch catch_unwind(AssertUnwindSafe) 臂（成功路径零扰动、变量逃逸=外层 let mut+闭包回写、catch(e) 绑定=panic_message 载荷串与 VM STORE_LOCAL 同源、finally 两侧同形偏差注记、try 体 return/break/continue 不出闭包=边界）；G-A envelope NullCoalesce 投影族（a2r_std::json get_str_or/get_int_or/get_bool_or/get_array_or 路径切片+get_owned/at_owned 索引混合组合，类型投影按 ?? 右值四族含负字面量，str-with 计算缺省变体；条件位 truthy 投影=Value::is_true value.rs:682 同源）。普查回补五面（D-4 scroll_to/D-5 scroll-pane controller/D-6 条件位投影+拷贝语义/D-7 merged GET-POST 桩契约收口/D-8 char_at·substr·to_int）同册注记。corpus 三重判定面（exit 0+grep 零占位+cargo check）实机 133→0（docs/reports/p710-census.md；r24 @1cb3ad662 复立）。对拍锚=plan710_supply_probes 11 测试。对拍纪律：VM 轨与 a2r 轨同输入同输出（673 惯例）——frozen。",
+          "tags": [
+            "plan-710",
+            "a2r",
+            "sd-01",
+            "mapping-completeness",
+            "source:70c5c603dcaf corpus",
+            "commit:e81e0a1c3",
+            "docsha:c95f54e6a67edb25"
+          ],
+          "file": "docs/specs/auto-lang/ui/design/a2r-app-mapping-completeness.md"
         }
       ]
     },
