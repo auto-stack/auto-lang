@@ -14,7 +14,7 @@
         >
           <Play v-if="!vmLoading" :size="12" />
           <Loader2 v-else :size="12" class="spin" />
-          {{ vmLoading ? 'Running...' : 'Run in VM' }}
+          {{ vmLoading ? t.running : t.run }}
         </button>
         <button
           v-if="showRust"
@@ -24,7 +24,7 @@
         >
           <RefreshCw v-if="!transpileLoading" :size="12" />
           <Loader2 v-else :size="12" class="spin" />
-          {{ transpileLoading ? 'Transpiling...' : 'Transpile to Rust' }}
+          {{ transpileLoading ? t.transpiling : t.transpile }}
         </button>
         <button
           v-if="compareRun"
@@ -34,7 +34,7 @@
         >
           <GitCompare v-if="!compareLoading" :size="12" />
           <Loader2 v-else :size="12" class="spin" />
-          {{ compareLoading ? 'Comparing...' : 'Run Both & Compare' }}
+          {{ compareLoading ? t.comparing : t.compare }}
         </button>
       </div>
     </div>
@@ -43,7 +43,7 @@
       <!-- Left: Auto source editor -->
       <div class="ship-pane ship-pane-auto">
         <div class="ship-pane-label">
-          <Terminal :size="12" /> Auto source
+          <Terminal :size="12" /> {{ t.autoSource }}
         </div>
         <div ref="autoContainer" class="ship-editor"></div>
       </div>
@@ -51,11 +51,11 @@
       <!-- Middle: Transpiled Rust (read-only) -->
       <div v-if="showRust" class="ship-pane ship-pane-rust">
         <div class="ship-pane-label">
-          <FileCode2 :size="12" /> Rust (a2r output)
+          <FileCode2 :size="12" /> {{ t.rustOut }}
         </div>
         <div ref="rustContainer" class="ship-editor">
           <div v-if="!rustCode" class="ship-empty">
-            Click "Transpile to Rust" to see the transpiled code.
+            {{ t.transpileHint }}
           </div>
         </div>
       </div>
@@ -64,22 +64,22 @@
     <!-- Output + compare row -->
     <div class="ship-outputs" :class="{ 'with-compare': compareRun }">
       <div class="ship-output">
-        <div class="ship-output-header">VM output</div>
-        <pre class="ship-output-content">{{ vmOutput || (vmLoading ? '...' : 'No output yet') }}</pre>
+        <div class="ship-output-header">{{ t.vmOutput }}</div>
+        <pre class="ship-output-content">{{ vmOutput || (vmLoading ? '...' : t.noOutput) }}</pre>
       </div>
 
       <div v-if="compareRun" class="ship-output">
         <div class="ship-output-header">
-          Rust output
+          {{ t.rustOutput }}
           <span
             v-if="consistent !== null"
             class="ship-consistent"
             :class="consistent ? 'ok' : 'diff'"
           >
-            {{ consistent ? '✓ Consistent' : '✗ Differ' }}
+            {{ consistent ? t.consistent : t.differ }}
           </span>
         </div>
-        <pre class="ship-output-content">{{ rustOutput || (rustLoading ? '...' : 'No output yet') }}</pre>
+        <pre class="ship-output-content">{{ rustOutput || (rustLoading ? '...' : t.noOutput) }}</pre>
       </div>
     </div>
 
@@ -88,7 +88,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useRoute } from 'vitepress'
 import { EditorState, Compartment, type Extension } from '@codemirror/state'
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
@@ -98,6 +99,28 @@ import { oneDarkTheme, oneDarkHighlightStyle } from '@codemirror/theme-one-dark'
 import { rust } from '@codemirror/lang-rust'
 import { autoLanguage } from 'auto-playground-vue'
 import { Play, Loader2, RefreshCw, GitCompare, Terminal, FileCode2 } from 'lucide-vue-next'
+
+const route = useRoute()
+const zh = computed(() => route.path.startsWith('/zh'))
+const t = computed(() => zh.value ? {
+  run: 'VM 运行', running: '运行中…',
+  transpile: '转译 Rust', transpiling: '转译中…',
+  compare: '双跑对比', comparing: '对比中…',
+  autoSource: 'Auto 源码', rustOut: 'Rust（a2r 输出）',
+  vmOutput: 'VM 输出', rustOutput: 'Rust 输出',
+  noOutput: '暂无输出', transpileHint: '点击「转译 Rust」查看转译产物。',
+  consistent: '✓ 一致', differ: '✗ 不一致',
+  connectErr: '错误：无法连接 Playground 服务。',
+} : {
+  run: 'Run in VM', running: 'Running…',
+  transpile: 'Transpile to Rust', transpiling: 'Transpiling…',
+  compare: 'Run Both & Compare', comparing: 'Comparing…',
+  autoSource: 'Auto source', rustOut: 'Rust (a2r output)',
+  vmOutput: 'VM output', rustOutput: 'Rust output',
+  noOutput: 'No output yet', transpileHint: 'Click "Transpile to Rust" to see the transpiled code.',
+  consistent: '✓ Consistent', differ: '✗ Differ',
+  connectErr: 'Error: Could not connect to playground server.',
+})
 
 const props = withDefaults(
   defineProps<{
@@ -250,7 +273,7 @@ async function runInVm() {
     // RunResponse: { stdout, result, time_ms, bytecode }
     vmOutput.value = data.stdout || data.result || ''
   } catch (e) {
-    vmOutput.value = 'Error: Could not connect to playground server.'
+    vmOutput.value = t.value.connectErr
   } finally {
     vmLoading.value = false
   }
@@ -278,7 +301,7 @@ async function transpileToRust() {
     rustCode.value = mainFile?.code ?? ''
     await initOrUpdateRustEditor()
   } catch (e) {
-    rustCode.value = 'Error: Could not connect to playground server.'
+    rustCode.value = t.value.connectErr
     await initOrUpdateRustEditor()
   } finally {
     transpileLoading.value = false
@@ -300,7 +323,7 @@ async function runRust() {
     // RunCodeResponse: { stdout, stderr, exit_code, time_ms }
     rustOutput.value = data.stdout || data.stderr || ''
   } catch (e) {
-    rustOutput.value = 'Error: Could not connect to playground server.'
+    rustOutput.value = t.value.connectErr
   } finally {
     rustLoading.value = false
   }

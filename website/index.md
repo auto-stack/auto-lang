@@ -5,6 +5,8 @@ layout: home
 <script setup>
 import { onMounted } from 'vue'
 import HomeHero from './.vitepress/theme/components/HomeHero.vue'
+import HomeDemo from './.vitepress/theme/components/HomeDemo.vue'
+import AutoShellPreview from './.vitepress/theme/components/AutoShellPreview.vue'
 import FeatureCard from './.vitepress/theme/components/FeatureCard.vue'
 const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
 onMounted(() => {
@@ -22,12 +24,14 @@ onMounted(() => {
   badge="v0.5 is now available"
   badge-link="/v05/"
   title=": AI × Lang × OS"
-  description="Auto is a dynamic-meets-static, cross-ecosystem language<br>Written by AI, born for OS"
+  description="Auto is a dynamic-meets-static, cross-ecosystem language.<br>Script instantly on the AutoVM — ship the same source as Rust."
   primary-text="Get Started"
   primary-link="/docs/"
   secondary-text="Try Online"
   secondary-link="/playground"
 />
+
+<HomeDemo />
 
 <div class="pillars-section">
   <h2 class="section-title">One Language, Every Layer</h2>
@@ -47,19 +51,22 @@ onMounted(() => {
   <p class="section-desc">Real applications that prove the platform works.</p>
   <div class="apps-grid">
     <div class="app-card">
+      <div class="app-shot"><AutoShellPreview lang="en" /></div>
       <h3>AutoShell</h3>
       <p>An interactive shell, field-based pipelines and multiline AutoScript. Explore practical use cases and observed runs.</p>
       <a href="/apps/autoshell/">Learn more →</a>
     </div>
     <div class="app-card">
+      <div class="app-shot"><img src="/v05/automusk-app.png" alt="AutoMusk coding agent main interface" loading="lazy" /></div>
       <h3>AutoMusk</h3>
       <p>General-purpose coding agent built on AutoPlan, implemented in Auto itself.</p>
-      <a href="/apps#automusk">Learn more →</a>
+      <a href="/apps/automusk/">Learn more →</a>
     </div>
     <div class="app-card">
+      <div class="app-shot"><img src="/v05/autodown-desktop.png" alt="AutoDown Jade Garden desktop edition" loading="lazy" /></div>
       <h3>AutoDown</h3>
       <p>An Auto dialect that combines Markdown and YAML for structured knowledge bases.</p>
-      <a href="/apps#autodown">Learn more →</a>
+      <a href="/apps/autodown/">Learn more →</a>
     </div>
   </div>
 </div>
@@ -119,6 +126,22 @@ onMounted(() => {
   border: 1px solid hsl(var(--border));
   background: hsl(var(--card));
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  min-width: 0;
+}
+
+.app-shot {
+  margin: -0.5rem -0.5rem 1rem;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.app-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
 }
 
 .app-card:hover {

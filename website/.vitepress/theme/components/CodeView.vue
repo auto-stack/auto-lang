@@ -16,7 +16,7 @@
         <button class="run-btn" @click="runCode" :disabled="isLoading">
           <Play v-if="!isLoading" :size="12" />
           <Loader2 v-else :size="12" class="spin" />
-          {{ isLoading ? 'Running...' : 'Run' }}
+          {{ isLoading ? (zhLabels ? '运行中…' : 'Running...') : (zhLabels ? '运行' : 'Run') }}
         </button>
       </div>
     </div>
@@ -24,8 +24,8 @@
       <div ref="editorContainer" class="editor-pane"></div>
     </div>
     <div v-if="showOutput" class="output-pane">
-      <div class="output-header">Output</div>
-      <pre class="output-content">{{ stdout || stderr || 'No output' }}</pre>
+      <div class="output-header">{{ zhLabels ? '输出' : 'Output' }}</div>
+      <pre class="output-content">{{ stdout || stderr || (zhLabels ? '无输出' : 'No output') }}</pre>
     </div>
     <div v-if="caption" class="code-view-caption">{{ caption }}</div>
   </div>
@@ -33,6 +33,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onUnmounted, nextTick } from 'vue'
+import { useRoute } from 'vitepress'
 import { EditorState, Compartment, type Extension } from '@codemirror/state'
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
@@ -45,6 +46,9 @@ import { javascript } from '@codemirror/lang-javascript'
 import { python } from '@codemirror/lang-python'
 import { autoLanguage } from 'auto-playground-vue'
 import { Play, Loader2 } from 'lucide-vue-next'
+
+const route = useRoute()
+const zhLabels = computed(() => route.path.startsWith('/zh'))
 
 const props = defineProps<{
   auto?: string
@@ -213,7 +217,9 @@ async function runCode() {
     stdout.value = data.stdout || ''
     stderr.value = data.stderr || ''
   } catch (e) {
-    stderr.value = 'Error: Could not connect to playground server.'
+    stderr.value = zhLabels.value
+      ? '错误：无法连接 Playground 服务。'
+      : 'Error: Could not connect to playground server.'
   } finally {
     isLoading.value = false
   }

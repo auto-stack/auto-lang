@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// PLAN-715 T-04：应用专题共享骨架。
-// 章节：简介/状态/入口(hero slot) → 实图(evidence) → 核心用例(showcase) →
-// 开始使用(start) → 已有边界/来源(notes)。
-// apps.md 目录页与 automusk/autodown/autoui 专题经此布局共享排版；
-// 页面差异经插槽传入，不在此发明能力/下载入口。AutoShell 专题保持其
+// PLAN-715 T-04：应用专题共享 hero 骨架。
+// 渲染：返回链接 → badge/状态 → 标题 → 简介 → 入口按钮 →（可选）实图。
+// 其余章节由页面顶层用共享 landing.css 排版——不在本组件插槽里塞大块内容，
+// 因为 .md 中 <template> 插槽内容遇空行会被 markdown HTML 块规则切断
+// （实证：apps/autoui 75:1 missing end tag）。AutoShell 专题保持其
 // AutoShellLanding 自有布局（仅接共享视觉令牌），不经本组件。
 import EvidenceImage from './EvidenceImage.vue'
 import { computed, useSlots } from 'vue'
@@ -72,9 +72,6 @@ const statusLabel = computed(() =>
       </slot>
     </section>
 
-    <section v-if="slots.showcase" class="app-showcase"><slot name="showcase" /></section>
-    <section v-if="slots.start" class="app-start" :aria-label="zh ? '开始使用' : 'Get started'"><slot name="start" /></section>
-    <section v-if="slots.notes" class="app-notes" :aria-label="zh ? '边界与来源' : 'Boundaries and sources'"><slot name="notes" /></section>
   </div>
 </template>
 
@@ -161,21 +158,6 @@ const statusLabel = computed(() =>
 
 .app-evidence {
   padding: 1.5rem 0 2.5rem;
-}
-
-.app-showcase {
-  padding: 1rem 0 2.5rem;
-  border-top: 1px solid hsl(var(--border));
-}
-
-.app-start {
-  padding: 2.5rem 0;
-  border-top: 1px solid hsl(var(--border));
-}
-
-.app-notes {
-  padding: 2.5rem 0 3.5rem;
-  border-top: 1px solid hsl(var(--border));
 }
 
 @media (max-width: 640px) {

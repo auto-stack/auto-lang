@@ -4,6 +4,8 @@ layout: home
 
 <script setup>
 import HomeHero from '../.vitepress/theme/components/HomeHero.vue'
+import HomeDemo from '../.vitepress/theme/components/HomeDemo.vue'
+import AutoShellPreview from '../.vitepress/theme/components/AutoShellPreview.vue'
 import FeatureCard from '../.vitepress/theme/components/FeatureCard.vue'
 const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
 </script>
@@ -14,12 +16,14 @@ const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
   badge="v0.5 现已发布"
   badge-link="/zh/v05/"
   title=": AI × Lang × OS"
-  description="Auto 是一门动静结合的跨生态语言<br>Auto 由 AI 编写，为 OS 而生"
+  description="Auto 是一门动静结合的跨生态语言。<br>在 AutoVM 上即时编写脚本 —— 同一份源码发布为地道的 Rust。"
   primary-text="快速开始"
   primary-link="/zh/docs/"
   secondary-text="在线体验"
   secondary-link="/zh/playground"
 />
+
+<HomeDemo />
 
 <div class="pillars-section">
   <h2 class="section-title">一门语言，贯穿每一层</h2>
@@ -39,19 +43,22 @@ const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
   <p class="section-desc">证明平台可用的真实应用。</p>
   <div class="apps-grid">
     <div class="app-card">
+      <div class="app-shot"><AutoShellPreview lang="zh" /></div>
       <h3>AutoShell</h3>
       <p>交互式 Shell、按字段处理的数据管道与多行 AutoScript。查看实际用例和运行记录。</p>
       <a href="/zh/apps/autoshell/">了解更多 →</a>
     </div>
     <div class="app-card">
+      <div class="app-shot"><img src="/v05/automusk-app.png" alt="AutoMusk 主界面" loading="lazy" /></div>
       <h3>AutoMusk</h3>
       <p>基于 AutoPlan 的通用 Coding Agent，用 Auto 语言自身实现。</p>
-      <a href="/zh/apps#automusk">了解更多 →</a>
+      <a href="/zh/apps/automusk/">了解更多 →</a>
     </div>
     <div class="app-card">
+      <div class="app-shot"><img src="/v05/autodown-desktop.png" alt="AutoDown Jade Garden 桌面版" loading="lazy" /></div>
       <h3>AutoDown</h3>
       <p>Auto 语言的方言，融合 Markdown 与 YAML，可用于表达任意知识库。</p>
-      <a href="/zh/apps#autodown">了解更多 →</a>
+      <a href="/zh/apps/autodown/">了解更多 →</a>
     </div>
   </div>
 </div>
@@ -111,6 +118,22 @@ const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
   border: 1px solid hsl(var(--border));
   background: hsl(var(--card));
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  min-width: 0;
+}
+
+.app-shot {
+  margin: -0.5rem -0.5rem 1rem;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.app-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
 }
 
 .app-card:hover {

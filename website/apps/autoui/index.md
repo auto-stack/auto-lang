@@ -3,6 +3,7 @@ layout: home
 ---
 
 <script setup>
+import AppLandingLayout from '../../.vitepress/theme/components/AppLandingLayout.vue'
 import FeatureCard from '../../.vitepress/theme/components/FeatureCard.vue'
 import StatCard from '../../.vitepress/theme/components/StatCard.vue'
 import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.vue'
@@ -10,83 +11,81 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
 
 <div class="landing-page" style="--page-accent-1: #8b5cf6; --page-accent-2: #ec4899">
 
-<div class="landing-hero">
-  <div class="badge">AutoOS Flagship App · Alpha</div>
-  <h1 class="title">AutoUI Apps: <span class="accent">UI as Code</span></h1>
-  <p class="description">
+<AppLandingLayout app-name="autoui" badge="AutoOS Flagship App" status="alpha">
+  <template #title>AutoUI Apps: <span class="accent">UI as Code</span></template>
+  <template #intro>
     Dozens of demos and a complete Widgets Gallery, all implemented in the Auto language.
     One .at declaration generates both Web (Vue) and desktop (iced) ends — the live gallery is right below, not a screenshot.
-  </p>
-  <div class="actions">
+  </template>
+  <template #actions>
     <a href="/ui/gallery/" class="btn btn-primary">Open the Gallery Fullscreen</a>
     <a href="/ui" class="btn btn-secondary">AutoUI Capabilities Overview</a>
-  </div>
-</div>
-
+  </template>
+</AppLandingLayout>
 <div class="stats-section">
-  <h2 class="section-title">AutoUI Apps at a Glance</h2>
-  <div class="stats-grid">
-    <StatCard value="46+" label="Core Components" description="From buttons to calendars, charts to layouts — a semantic component catalog." color="#8b5cf6" />
-    <StatCard value="24" label="Blocks" description="Ready-made page sections: nav, footer, pricing table, and more." color="#ec4899" />
-    <StatCard value="30+" label="Demo Apps" description="Hero sections, pricing tables, chat, minesweeper, sketchpad, video…" color="#6366f1" />
-    <StatCard value="2" label="Render Backends" description="Vue (web) and iced (desktop), verified item-by-item parity." color="#14b8a6" />
-  </div>
+<h2 class="section-title">AutoUI Apps at a Glance</h2>
+<div class="stats-grid">
+  <StatCard value="46+" label="Core Components" description="From buttons to calendars, charts to layouts — a semantic component catalog." color="#8b5cf6" />
+  <StatCard value="24" label="Blocks" description="Ready-made page sections: nav, footer, pricing table, and more." color="#ec4899" />
+  <StatCard value="30+" label="Demo Apps" description="Hero sections, pricing tables, chat, minesweeper, sketchpad, video…" color="#6366f1" />
+  <StatCard value="2" label="Render Backends" description="Vue (web) and iced (desktop), verified item-by-item parity." color="#14b8a6" />
+</div>
 </div>
 
 <div class="showcase-wrapper">
-  <ShowcaseSection
-    title="A Live Widgets Gallery"
-    description="The gallery below is a real running app — the Vue implementation runs right in your browser. The same .at source renders natively on desktop via iced."
-    badge="Live Demo"
-  >
-    <ul>
-      <li><strong>Component catalog</strong> — buttons, forms, dialogs, charts, tabs… click and try.</li>
-      <li><strong>Themes & accents</strong> — dark/light and five accent tiers switch in real time.</li>
-      <li><strong>Mobile layout</strong> — one-click preview via the gallery_mobile mode.</li>
-    </ul>
-    <template #visual>
-      <div class="live-frame">
-        <div class="live-bar"><span></span><span></span><span></span><em>/ui/gallery/ — live</em></div>
-        <iframe src="/ui/gallery/" title="Widgets Gallery live demo" loading="lazy"></iframe>
-      </div>
-    </template>
-  </ShowcaseSection>
+<ShowcaseSection
+  title="A Live Widgets Gallery"
+  description="The gallery below is a real running app — the Vue implementation runs right in your browser. The same .at source renders natively on desktop via iced."
+  badge="Live Demo"
+>
+  <ul>
+    <li><strong>Component catalog</strong> — buttons, forms, dialogs, charts, tabs… click and try.</li>
+    <li><strong>Themes & accents</strong> — dark/light and five accent tiers switch in real time.</li>
+    <li><strong>Mobile layout</strong> — one-click preview via the gallery_mobile mode.</li>
+  </ul>
+  <template #visual>
+    <div class="live-frame">
+      <div class="live-bar"><span></span><span></span><span></span><em>/ui/gallery/ — live</em></div>
+      <iframe src="/ui/gallery/" title="Widgets Gallery live demo" loading="lazy"></iframe>
+    </div>
+  </template>
+</ShowcaseSection>
 
-  <ShowcaseSection
-    title="The Demo Matrix and Cross-Backend Consistency"
-    description="Every demo is a complete .at project; VM captures and Vue captures are compared item by item — consistency guaranteed by the system, not by promises."
-    badge="Parity"
-    reverse
-  >
-    <ul>
-      <li><strong>Full-stack example</strong> — 015-notes: a Vue frontend + Rust backend, generated by Auto.</li>
-      <li><strong>Desktop demos</strong> — iced apps with hot reload and Chrome-style DevTools.</li>
-      <li><strong>MCP protocol</strong> — agents can operate and query AutoUI interfaces freely.</li>
-    </ul>
-    <template #visual>
-      <div class="shot-pair">
-        <img src="/v05/gallery-home.png" alt="Widgets Gallery desktop shape (VM)" />
-        <div class="demo-list">
-          <div>006 Hero Section</div>
-          <div>008 Pricing Table</div>
-          <div>009 Article Feed</div>
-          <div>015 Notes (full-stack)</div>
-          <div>017 Chat</div>
-          <div>038 Minesweeper</div>
-        </div>
+<ShowcaseSection
+  title="The Demo Matrix and Cross-Backend Consistency"
+  description="Every demo is a complete .at project; VM captures and Vue captures are compared item by item — consistency guaranteed by the system, not by promises."
+  badge="Parity"
+  reverse
+>
+  <ul>
+    <li><strong>Full-stack example</strong> — 015-notes: a Vue frontend + Rust backend, generated by Auto.</li>
+    <li><strong>Desktop demos</strong> — iced apps with hot reload and Chrome-style DevTools.</li>
+    <li><strong>MCP protocol</strong> — agents can operate and query AutoUI interfaces freely.</li>
+  </ul>
+  <template #visual>
+    <div class="shot-pair">
+      <img src="/v05/gallery-home.png" alt="Widgets Gallery desktop shape (VM)" loading="lazy" />
+      <div class="demo-list">
+        <div>006 Hero Section</div>
+        <div>008 Pricing Table</div>
+        <div>009 Article Feed</div>
+        <div>015 Notes (full-stack)</div>
+        <div>017 Chat</div>
+        <div>038 Minesweeper</div>
       </div>
-    </template>
-  </ShowcaseSection>
+    </div>
+  </template>
+</ShowcaseSection>
 </div>
 
 <div class="features-section">
-  <h2 class="section-title">AutoUI's Three Layers</h2>
-  <div class="features-grid">
-    <FeatureCard icon="🌐" title="Web (Beta)" description="Can replicate most websites built on Vue.js." color="rgba(139, 92, 246, 0.15)" />
-    <FeatureCard icon="🖥️" title="Desktop (Alpha)" description="Native rendering via Rust/iced, available on both the VM and a2r tracks — effectively hot reload built in." color="rgba(236, 72, 153, 0.15)" />
-    <FeatureCard icon="📱" title="Mobile (POC)" description="HarmonyOS and Android have passed feasibility checks and can run demos." color="rgba(99, 102, 241, 0.15)" />
-    <FeatureCard icon="🤖" title="Agent-Friendly" description="The MCP protocol lets AI operate and verify the UI directly — a UI framework for the AI era." color="rgba(20, 184, 166, 0.15)" />
-  </div>
+<h2 class="section-title">AutoUI's Three Layers</h2>
+<div class="features-grid">
+  <FeatureCard icon="🌐" title="Web (Beta)" description="Can replicate most websites built on Vue.js." color="rgba(139, 92, 246, 0.15)" />
+  <FeatureCard icon="🖥️" title="Desktop (Alpha)" description="Native rendering via Rust/iced, available on both the VM and a2r tracks — effectively hot reload built in." color="rgba(236, 72, 153, 0.15)" />
+  <FeatureCard icon="📱" title="Mobile (POC)" description="HarmonyOS and Android have passed feasibility checks and can run demos." color="rgba(99, 102, 241, 0.15)" />
+  <FeatureCard icon="🤖" title="Agent-Friendly" description="The MCP protocol lets AI operate and verify the UI directly — a UI framework for the AI era." color="rgba(20, 184, 166, 0.15)" />
+</div>
 </div>
 
 <div class="cta-section">
