@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-712
-status: executing             # r2 收纳复开（archived → executing，用户预授权收纳通道）；终态待再 merge
+status: executing             # r2 收纳复开（archived → executing，用户预授权收纳通道）；2026-09-30 用户裁定先收口 → execution_done（T-11 登记后续修）
 feature_name: VM 桌面验收缺陷收敛（视频引擎双缺陷 + 壳配置持久化 + examples 依赖）
 author: [zcode(auto-os 会话转介)]
 created_at: 2026-09-30
@@ -220,3 +220,5 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
   - 环境：lang-712 worktree 重建（上一会话残留进程卡死内核态占路径，手工注册 worktree 元数据绕过，该进程本会话终获终止后碎片清理）；auto-down 兄弟 worktree @3373a5c 补建（路径依赖解析）；030-back 生成树自主检出拷贝（gitignored，workspace members 收窄为 030 一员）。
   - master 日常档基线已扩至 14 红（T-09 记录 2 红）：p053 族 4 + p054 族 2 + plan606/029 + desktop_protocol 2 + renderer 2 + e4 + plan707 + app_registry 2；worktree 12 红 ⊂ master 14 红=本计划零新增（p053_6 在 worktree 隔离红但 stash 对照+master 全量跑均红=并行序敏感，非本计划引入）。
   | blockers: 无（T-11 定谳修复与 AC-02/AC-07 实机点击取证归后续）| next: T-11 修复或 review（视用户取舍）。
+- 2026-09-30 **验收裁定（用户，r2）**：「先收口（T11记录下来）」——T-11 保留在案为登记态（§8 [~] + §10 ①：真机塌缩实锤 + 非确定性源定谳入口），不阻断本轮收口；后续按引擎计划/收纳通道再修。r2 自有用例口径全绿（desktop_config 20/20、video_uplink 3/3、video_contract 4/4、mpv_channel 双臂、T-12 回归锁双形态、p712 布局探针 3/3、AC-06 零新增红），与 r1 裁定同口径。
+- 2026-09-30 stage:work 收口 | plan_id PLAN-712 | plan_revision 2 | outcome: pass | code_commit: plan-712-dev 7f483e1ab（承 master 472e035a7；簿记 170e5e3b8）| task_ids: T-01..T-15 | evidence: §8 勾选与子证据全对账；开放项=T-11（登记态）+ 实机取证腿（AC-02 scrub/AC-07 走查/AC-08 浅色截图），均经用户裁定不阻断 | blockers: 无 | next: review。
