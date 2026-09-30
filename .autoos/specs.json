@@ -7531,6 +7531,19 @@
             "a39ef6827"
           ],
           "file": "docs/plans/archive/708-vm-render-responsiveness.md"
+        },
+        {
+          "id": "P710-1",
+          "title": "a2r 供① 三类清偿 work 收据（corpus exit 0 133→0 @ plan-710-dev 4d79b52d3）",
+          "content": "PLAN-710 work 全任务 T-00..T-06 落账（实施链 5c1d43b52 三类+回补 D-4..D-8 / fb47aea61 探针族 / 4d79b52d3 SD-01+242 #18+census 报告）。核心实证：corpus=auto-edit main@70c5c60 组内 tmp 钉版（零 junction，AUTO_LANG_CRATE 钉 worktree 工具链 v0.4.2-2243-gb310acafd）——auto build -r rust exit 0 + 生成物 grep 三占位零命中（delta 直调臂×3 在位）+ 生成 workspace cargo check 过（56.55s 0 error），普查对照 133→0 穷尽性实证（docs/reports/p710-census.md：基线 133 错逐数吻合 018 口径 17/4/3+E0425×1+PLAN-027 门×1；018『类型推断塌方』误并档更正=D-4 scroll_to/D-5 scroll-pane controller/D-6 条件位 truthy 投影/D-7 merged GET-POST 桩契约收口/D-8 char_at·substr·to_int 五独立残面逐一归因清偿）。语义同源对拍：plan710_supply_probes 11/11 绿（G-C VM envelope/watermark/未注册错误消息 vs core 直读；G-B try 成功臂零扰动+错误臂 catch(e) 绑定 panic_message 串=VM STORE_LOCAL 同源；G-A envelope 五段投影+truthy↔Value::is_true 逐格；发射形七断言）。门禁偏差：全集 tf 由用户裁定豁免（2026-09-30 会话指令——本计划相关测试已全绿，直接 review/merge）；已留部分证据=tf fail-fast 跑 1564 例 2 红（musk p053 族）+ master@b310acafd 双检出隔离复跑同数（35 passed/4 failed 一致）归因预存非本件回归（P707 收据『musk p053 双向 flaky』族现势成员）。边界登记：R-1 route-A 深修（fsys.at 转译链静默失败→运行期真值桩形维持，下游 L2 按需立项）/R-2 musk p053 稳定化另件。pristine 断言：auto-edit 检出零触碰（前后 status 一致，仅其自有 WIP）。SD：docs/specs/auto-lang/ui/design/a2r-app-mapping-completeness.md （三类映射语义契约+同源纪律+corpus 三重判定面）。next=review。",
+          "tags": [
+            "plan-710",
+            "a2r",
+            "work-receipt",
+            "supply-1",
+            "corpus-exit-0"
+          ],
+          "file": "docs/plans/archive/710-a2r-mapping-residuals.md"
         }
       ]
     }
