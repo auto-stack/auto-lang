@@ -173,8 +173,9 @@ fn f5_embedded_fullstack_api_data_reaches_state() {
         ("d013todo_api.at", API),
         ("d013todo_db.at", DB),
     ]);
-    let (view, _, _) = comp.view_with_debug();
-    let _rendered = format!("{view:?}");
+    // PLAN-711 T-03 契约迁移：构建只登记 demand，驱动泵至终态再断言。
+    let _ = comp.view_with_debug();
+    comp.drive_scheduler_to_quiescence(10_000);
     let todos = comp
         .read_state_as_vec("todos")
         .expect("store 字段 todos 应为可展开列表(统一根态)");
@@ -223,6 +224,11 @@ fn f5_embedded_fullstack_grandchild_viewport() {
         ("d013todo_api.at", API),
         ("d013todo_db.at", DB),
     ]);
+    // PLAN-711 T-03 契约迁移：构建只登记 Init demand（AC-04——显示构建
+    // 不再内联派发），测试载体经 drive_scheduler_to_quiescence 驱动泵
+    //（生产=帧通知泵）至终态后重建视图断言。
+    let _ = comp.view_with_debug();
+    comp.drive_scheduler_to_quiescence(10_000);
     let (view, _, _) = comp.view_with_debug();
     let rendered = format!("{view:?}");
     assert!(
@@ -277,7 +283,7 @@ widget AppViewport(app: str, reloadKey: int, viewportMode: str) {
 /// 第二套全栈 demo 的加入不得破坏第一套的数据面。
 #[test]
 fn f5_embedded_fullstack_multi_store_isolation() {
-    let (comp, _keep) = build_embedded(&[
+    let (mut comp, _keep) = build_embedded(&[
         ("host.at", MULTI_HOST),
         ("demo013.at", DEMO),
         ("d013todo_todo_list.at", TODO_LIST),
@@ -289,7 +295,9 @@ fn f5_embedded_fullstack_multi_store_isolation() {
         ("d015notes_api.at", API15),
         ("d015notes_db.at", DB15),
     ]);
+    // PLAN-711 T-03 契约迁移：构建只登记 demand，驱动泵至终态再断言。
     let _ = comp.view_with_debug();
+    comp.drive_scheduler_to_quiescence(10_000);
     let todos = comp.read_state_as_vec("todos").expect("todos 可读");
     assert_eq!(todos.len(), 4, "013 种子在多 store 语境仍应 4 条");
     let notes = comp.read_state_as_vec("notes").expect("notes 可读");

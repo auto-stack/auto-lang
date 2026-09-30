@@ -188,6 +188,8 @@ widget ChildGeo (data: List, field: str = "v") {
         #[test]
         fn child_init_fstr_dollar_bracket_lands() {
             let mut dc = build_inline(SRC_DOLLAR);
+            let _ = dc.view_with_debug_gated(true);
+            dc.drive_scheduler_to_quiescence(10_000);
             let (view, _, _) = dc.view_with_debug_gated(true);
             let _ = format!("{view:?}");
             let s = dc.bridge().read_state("s").map(|v| v.to_string()).unwrap_or_else(|e| format!("<err {e}>"));
@@ -204,6 +206,8 @@ widget ChildGeo (data: List, field: str = "v") {
         fn child_init_fstr_dollar_nobracket_control() {
             let src = SRC_DOLLAR.replace("f\"w-[${slot}px] h-full\"", "f\"w-${slot}px h-full\"");
             let mut dc = build_inline(&src);
+            let _ = dc.view_with_debug_gated(true);
+            dc.drive_scheduler_to_quiescence(10_000);
             let (view, _, _) = dc.view_with_debug_gated(true);
             let _ = format!("{view:?}");
             let s = dc.bridge().read_state("s").map(|v| v.to_string()).unwrap_or_else(|e| format!("<err {e}>"));
@@ -220,6 +224,8 @@ widget ChildGeo (data: List, field: str = "v") {
         fn child_init_fstr_brace_form_control() {
             let src = SRC_DOLLAR.replace("f\"w-[${slot}px] h-full\"", "f\"w-[{slot}px] h-full\"");
             let mut dc = build_inline(&src);
+            let _ = dc.view_with_debug_gated(true);
+            dc.drive_scheduler_to_quiescence(10_000);
             let (view, _, _) = dc.view_with_debug_gated(true);
             let _ = format!("{view:?}");
             let s = dc.bridge().read_state("s").map(|v| v.to_string()).unwrap_or_else(|e| format!("<err {e}>"));
@@ -298,6 +304,10 @@ pub(crate) mod pkg_harness {
     pub(crate) fn render_dump(dc: &mut crate::ui::dynamic::DynamicComponent) -> String {
         dc.fire_init();
         dc.set_route("/");
+        // PLAN-711 T-03 契约迁移：构建登记 Init demand，驱动泵至静默后重建
+        //（生产=帧通知泵），dump 反映 Init 完成态。
+        let _ = dc.view_with_debug_gated(true);
+        dc.drive_scheduler_to_quiescence(10_000);
         let (view, _, _) = dc.view_with_debug_gated(true);
         format!("{view:?}")
     }

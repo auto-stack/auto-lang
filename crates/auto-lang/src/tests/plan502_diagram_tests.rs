@@ -271,6 +271,8 @@ description: \"e2e fixture\"
         .expect("fixture must build");
         dc.fire_init();
         dc.set_route("/");
+        let _ = dc.view_with_debug_gated(true);
+        dc.drive_scheduler_to_quiescence(10_000);
         let (view, _, _) = dc.view_with_debug_gated(true);
         format!("{:?}", view)
     };
@@ -750,6 +752,8 @@ widget App {
     dc.set_route("/");
 
     let dump0 = {
+        let _ = dc.view_with_debug_gated(true);
+        dc.drive_scheduler_to_quiescence(10_000);
         let (view, _, _) = dc.view_with_debug_gated(true);
         format!("{:?}", view)
     };

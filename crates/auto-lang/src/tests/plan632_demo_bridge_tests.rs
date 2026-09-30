@@ -254,6 +254,9 @@ fn f2_embedded_dep_component_expands_with_props() {
         ("deps/settings/settings_popover.at", F2_POPOVER),
         ("pac.at", "dep \"settings\" { path: \"deps/settings\" }"),
     ]);
+    // PLAN-711 T-03 契约迁移：构建登记 Init demand，驱动至静默后重建。
+    let _ = comp.view_with_debug();
+    comp.drive_scheduler_to_quiescence(10_000);
     let (view, _, _) = comp.view_with_debug();
     let rendered = format!("{view:?}");
     assert!(

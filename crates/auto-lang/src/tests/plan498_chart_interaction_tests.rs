@@ -99,6 +99,11 @@ mod plan498_charts {
     }
 
     fn dump(dc: &mut crate::ui::dynamic::DynamicComponent) -> String {
+        // PLAN-711 T-03 契约迁移：构建只登记 Init demand（AC-04）——构建后
+        // 驱动泵至静默（生产=帧通知泵）再重建，dump 反映 Init 完成态；首轮
+        // 后 demand 已终态，驱动零开销。
+        let _ = dc.view_with_debug_gated(true);
+        dc.drive_scheduler_to_quiescence(10_000);
         let (view, _, _) = dc.view_with_debug_gated(true);
         format!("{:?}", view)
     }

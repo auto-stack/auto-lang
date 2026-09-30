@@ -357,7 +357,12 @@ impl CpuSliceBudget {
 }
 
 /// PLAN-711 T-11 (D-2): 每片 4096 指令。
-pub const CPU_SLICE_MAX_STEPS: u64 = 4096;
+/// **T-04 R-1 实测校准（2026-09-30，D-2 授权的按实测校准面）**：4096 步
+/// 在解释器实际速度（~1-3ns/指令）下 ≈ 4-12μs ≪ 4ms 墙钟帽——指令帽成为
+/// 实际预算，长 handler 每 ~93ms 帧仅推进 4K 指令（5M 迭代夹具实测
+/// 11s+ 未完）。校准为 1M 指令天花板：正常片由 4ms 墙钟帽收口（实测
+/// ~0.2-0.5ms 提前让出），1M 只兜病理长指令；累计 10M 护栏不变。
+pub const CPU_SLICE_MAX_STEPS: u64 = 1_000_000;
 /// PLAN-711 T-11 (D-2): 每片 4ms。
 pub const CPU_SLICE_MAX_DURATION: std::time::Duration = std::time::Duration::from_millis(4);
 /// PLAN-711 T-11 (D-2): 至多每 64 指令查时钟。

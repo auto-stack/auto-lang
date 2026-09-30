@@ -128,10 +128,10 @@ fn plan711_init_demand_registers_once_per_generation() {
     let state_id = bridge.state_obj_id();
     let budget = test_budget(4096, 10_000_000);
 
-    let d1 = bridge.register_init_demand("Flow", "Flow#k1", state_id);
+    let d1 = bridge.register_init_demand("Flow", "Flow#k1", state_id, Vec::new());
     assert_eq!(d1, InitDemandDecision::Queued, "first registration queues");
     // 重复 build（显示/MCP 双路径）：只确认簿记，不二次入队。
-    let d2 = bridge.register_init_demand("Flow", "Flow#k1", state_id);
+    let d2 = bridge.register_init_demand("Flow", "Flow#k1", state_id, Vec::new());
     assert_eq!(d2, InitDemandDecision::InFlightKnown, "queued duplicate");
     assert_eq!(bridge.pending_init_demand_count(), 1, "single queue entry");
 
@@ -143,7 +143,7 @@ fn plan711_init_demand_registers_once_per_generation() {
     assert!(matches!(inited, auto_val::Value::Bool(true)), "Init ran");
 
     // 完成后同代际登记：不重派（Done 终态）。
-    let d3 = bridge.register_init_demand("Flow", "Flow#k1", state_id);
+    let d3 = bridge.register_init_demand("Flow", "Flow#k1", state_id, Vec::new());
     assert_eq!(d3, InitDemandDecision::AlreadyKnown, "done is terminal");
     assert_eq!(bridge.pending_init_demand_count(), 0);
 }
@@ -158,7 +158,7 @@ fn plan711_init_demand_identity_change_supersedes_and_cancels() {
     let budget = test_budget(512, 10_000_000);
 
     // A 代际登记 + 派发 → CPU 片耗尽 park 在途。
-    let d = bridge.register_init_demand("SlowInit", "Slow", state_id);
+    let d = bridge.register_init_demand("SlowInit", "Slow", state_id, Vec::new());
     assert_eq!(d, InitDemandDecision::Queued);
     let report = bridge.dispatch_pending_inits(budget);
     assert_eq!(report.in_flight, 1, "long init parks as CpuRunnable");
@@ -168,7 +168,7 @@ fn plan711_init_demand_identity_change_supersedes_and_cancels() {
     );
 
     // B 代际登记：旧在途段一次取消，新 demand 入队。
-    let d = bridge.register_init_demand("SlowInit", "Slow#v2", state_id);
+    let d = bridge.register_init_demand("SlowInit", "Slow#v2", state_id, Vec::new());
     assert_eq!(d, InitDemandDecision::Queued);
     assert_eq!(
         bridge.cpu_continuation_count(),
@@ -179,7 +179,7 @@ fn plan711_init_demand_identity_change_supersedes_and_cancels() {
 
     // A→B→A：第二个 A 是新代际（身份 B≠A）——B 的排队 demand 被丢弃，
     // A 重新入队；派发 + 泵推进到终态后副作用完整（重跑而非复活旧段）。
-    let d = bridge.register_init_demand("SlowInit", "Slow", state_id);
+    let d = bridge.register_init_demand("SlowInit", "Slow", state_id, Vec::new());
     assert_eq!(d, InitDemandDecision::Queued);
     assert_eq!(bridge.pending_init_demand_count(), 1, "B demand dropped");
     let report = bridge.dispatch_pending_inits(budget);
@@ -224,8 +224,8 @@ fn plan711_init_dependency_order_child_waits_for_parent() {
 
     // 页（长 Init）先登记，child 后登记——渲染路径的登记序天然如此
     //（outlet 页 memo 先于 child 渲染）。
-    bridge.register_init_demand("SlowInit", "SlowInit#1", state_id);
-    bridge.register_init_demand("Tick", "Tick#1", state_id);
+    bridge.register_init_demand("SlowInit", "SlowInit#1", state_id, Vec::new());
+    bridge.register_init_demand("Tick", "Tick#1", state_id, Vec::new());
 
     // 一轮派发：页 park → 本轮停止，child 仍在队列（依赖序）。
     let report = bridge.dispatch_pending_inits(budget);
@@ -263,7 +263,7 @@ fn plan711_init_missing_handler_silently_done() {
     let state_id = bridge.state_obj_id();
     let budget = test_budget(4096, 10_000_000);
 
-    bridge.register_init_demand("NoSuchWidget", "NoSuchWidget", state_id);
+    bridge.register_init_demand("NoSuchWidget", "NoSuchWidget", state_id, Vec::new());
     let report = bridge.dispatch_pending_inits(budget);
     assert_eq!(report.missing, 1, "missing init recorded");
     assert!(report.failed.is_empty(), "missing is silent");
@@ -300,7 +300,7 @@ widget Boom {
     let state_id = bridge.state_obj_id();
     let budget = test_budget(4096, 10_000_000);
 
-    bridge.register_init_demand("Boom", "Boom", state_id);
+    bridge.register_init_demand("Boom", "Boom", state_id, Vec::new());
     let report = bridge.dispatch_pending_inits(budget);
     assert_eq!(report.failed.len(), 1, "dispatch error recorded: {:?}", report.failed);
     assert_eq!(
@@ -309,7 +309,7 @@ widget Boom {
         "failed is terminal"
     );
     // 同身份登记：不重派（不无限重试）。
-    let d = bridge.register_init_demand("Boom", "Boom", state_id);
+    let d = bridge.register_init_demand("Boom", "Boom", state_id, Vec::new());
     assert_eq!(d, InitDemandDecision::AlreadyKnown);
     assert_eq!(bridge.pending_init_demand_count(), 0);
 }

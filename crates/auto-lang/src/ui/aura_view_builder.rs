@@ -5213,12 +5213,13 @@ let tabs_inner = View::Row {
                 .bridge
                 .init_identity_changed(&page_widget.name, &identity)
             {
-                let child_state_id =
-                    self.prepare_child_render_state(page_widget, empty_props, bindings);
+                let (child_state_id, init_props) = self
+                    .prepare_child_render_state_snap(page_widget, empty_props, bindings);
                 let _decision = self.bridge.register_init_demand(
                     &page_widget.name,
                     &identity,
                     child_state_id,
+                    init_props,
                 );
                 return self.render_outlet_page_full(
                     page_widget, empty_props, empty_events, bindings, tracked,
@@ -6479,6 +6480,19 @@ let tabs_inner = View::Row {
         props: &HashMap<String, AuraPropValue>,
         bindings: &Bindings,
     ) -> u64 {
+        self.prepare_child_render_state_snap(child_widget, props, bindings)
+            .0
+    }
+
+    /// PLAN-711 T-03: 同 [`Self::prepare_child_render_state`]，另返回本次
+    /// resolve 的 props 快照——Init demand 登记携带（统一根态约束：延迟
+    /// 派发前按快照重播种，见 `InitDemand.props` 注）。
+    fn prepare_child_render_state_snap(
+        &self,
+        child_widget: &crate::aura::AuraWidget,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> (u64, Vec<(String, auto_val::Value)>) {
         // 1. Resolve prop values from parent state.
         let mut resolved_props: HashMap<String, Value> = HashMap::new();
         for (prop_name, prop_value) in props {
@@ -6551,10 +6565,16 @@ let tabs_inner = View::Row {
         }
 
         // 5. Ensure child state object exists on the VM heap + write props.
-        self.bridge.ensure_child_state(
+        let root_id = self.bridge.ensure_child_state(
             &child_widget.name,
             &child_field_names,
             &resolved_props,
+        );
+        (
+            root_id,
+            resolved_props
+                .into_iter()
+                .collect::<Vec<(String, auto_val::Value)>>(),
         )
     }
 
@@ -6574,6 +6594,7 @@ let tabs_inner = View::Row {
         &self,
         child_widget: &crate::aura::AuraWidget,
         state_obj_id: u64,
+        init_props: Vec<(String, auto_val::Value)>,
         props: &HashMap<String, AuraPropValue>,
         bindings: &Bindings,
     ) {
@@ -6597,9 +6618,12 @@ let tabs_inner = View::Row {
         let init_identity = self.child_init_identity(child_widget, props, bindings);
         // PLAN-711 T-03 (M-01): 只登记——同代际重复 build 不二次入队（AC-04）；
         // 派发由泵驱动（FIFO 依赖序：页 demand 在前，本件等前序到终态）。
-        let _decision = self
-            .bridge
-            .register_init_demand(&child_widget.name, &init_identity, state_obj_id);
+        let _decision = self.bridge.register_init_demand(
+            &child_widget.name,
+            &init_identity,
+            state_obj_id,
+            init_props,
+        );
     }
 
     /// PLAN-045 T-05b：子件挂载身份单源（组件名 + 调用位 `key:` prop）。
@@ -6708,14 +6732,15 @@ let tabs_inner = View::Row {
             psink.register(&child_widget.name);
         }
         Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
-        let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
+        let (child_state_id, init_props) =
+            self.prepare_child_render_state_snap(child_widget, props, bindings);
         // Plan 437 Phase 2: 子组件 Init 补发 —— 此前 VM 轨只有根 widget 的
         // Init 会触发(fire_init),视图中实例化的子组件 Init 从不运行,
         // 派生计算型组件(chart 几何)在 VM 轨无渲染期计算路径(vue 轨
         // onMounted 正常,跨轨语义缺口)。统一 state 架构下逐实例顺序
         // props → Init → build,每个渲染帧重放:纯派生 Init 幂等;副作用
         // 型子组件 Init 会在每次脏重建时重放(v1 近似,债务在案)。
-        self.fire_child_init_if_any(child_widget, child_state_id, props, bindings);
+        self.fire_child_init_if_any(child_widget, child_state_id, init_props, props, bindings);
 
         // Build a child view builder using the SAME bridge but with
         // override_state_obj_id pointing to the child's state object.
@@ -6792,10 +6817,11 @@ let tabs_inner = View::Row {
             );
         }
 
-        let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
+        let (child_state_id, init_props) =
+            self.prepare_child_render_state_snap(child_widget, props, bindings);
         // Plan 437 Phase 2: 同 render_child_widget —— 子组件 Init 补发
         // (tracked 双胎保持同一渲染语义)。
-        self.fire_child_init_if_any(child_widget, child_state_id, props, bindings);
+        self.fire_child_init_if_any(child_widget, child_state_id, init_props, props, bindings);
 
         // Plan 476: slot_fills 透传(untracked 双胎同款语义)。
         let child_builder = AuraViewBuilder {

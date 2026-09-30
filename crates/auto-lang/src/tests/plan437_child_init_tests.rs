@@ -129,6 +129,8 @@ widget ChildGeo (data: List, field: str = "v") {
     fn child_init_fires_during_render() {
         let mut dc = build_inline(SRC);
         dc.fire_init();
+        let _ = dc.view_with_debug_gated(true);
+        dc.drive_scheduler_to_quiescence(10_000);
         let (view, _, _) = dc.view_with_debug_gated(true);
         let dump = format!("{:?}", view);
         assert!(
@@ -163,6 +165,8 @@ widget ChildGeo (data: List, field: str = "v") {
                 .unwrap_or_else(|e| panic!("{route}: gallery must build: {e}"));
             dc.fire_init();
             dc.set_route(route);
+            let _ = dc.view_with_debug_gated(true);
+            dc.drive_scheduler_to_quiescence(10_000);
             let (view, _, _) = dc.view_with_debug_gated(true);
             let dump = format!("{:?}", view);
             assert!(

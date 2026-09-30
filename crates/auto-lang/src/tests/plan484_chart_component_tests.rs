@@ -15,6 +15,9 @@ mod plan484_smoke {
             .expect("024-charts must build");
         dc.fire_init();
         dc.set_route("/");
+        // PLAN-711 T-03 契约迁移：构建登记 Init demand，驱动至静默后重建。
+        let _ = dc.view_with_debug_gated(true);
+        dc.drive_scheduler_to_quiescence(10_000);
         let (view, _, _) = dc.view_with_debug_gated(true);
         let dump = format!("{:?}", view);
         assert!(dump.contains("svgdoc:"), "line chart svg must render");
@@ -57,6 +60,9 @@ mod plan484_smoke {
             .expect("charts-gallery must build");
         dc.fire_init();
         dc.set_route("/");
+        // PLAN-711 T-03 契约迁移：构建登记 Init demand，驱动至静默后重建。
+        let _ = dc.view_with_debug_gated(true);
+        dc.drive_scheduler_to_quiescence(10_000);
         let (view, _, _) = dc.view_with_debug_gated(true);
         let dump = format!("{:?}", view);
         // 六图卡:四类几何全部落图(A 弧线/M 路径/L 折线)

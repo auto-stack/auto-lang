@@ -19835,7 +19835,40 @@ fn compare_pngs(
                     {
                         state.mark_fit_dirty(app_id);
                     }
-                    task.map(move |m| DM::App(app_id, m))
+                    // PLAN-711 T-04 (D-1) "view 登记需求仅发一次调度信号"
+                    // 的 update 侧实现：Init demand 在**渲染期**登记，而订阅
+                    // 重估在 update() 内部、view() **之前**（iced_winit
+                    // lib.rs :1337 in update/:1300——本周期 update 后重估
+                    // 看不到本周期 view 将登记的 demand）。凡本 update 致脏
+                    // （重建将发生、可能登记 demand）即链一个 ready 唤醒：
+                    // 下一轮 update 的订阅重估必然看到 demand → 帧泵订阅
+                    // 装配 → 帧消息接管驱动。收斂性：唤醒链以 is_dirty 为
+                    // 燃料——泵有推进才置脏，I/O 在途（泵零推进）时不再
+                    // 链（tick 泵接管其 I/O 就绪），demand 排空后自然熄火，
+                    // 无消息自旋。
+                    let needs_wake = state
+                        .apps
+                        .get(&app_id)
+                        .map(|a| a.component.is_dirty())
+                        .unwrap_or(false);
+                    let task = task.map(move |m| DM::App(app_id, m));
+                    if needs_wake {
+                        task.chain(iced::Task::perform(
+                            std::future::ready(()),
+                            move |()| {
+                                DM::App(
+                                    app_id,
+                                    crate::ui::iced::IcedMessage {
+                                        widget: String::new(),
+                                        event: "__frame_pump".to_string(),
+                                        input_value: None,
+                                    },
+                                )
+                            },
+                        ))
+                    } else {
+                        task
+                    }
                 }
                 Err(payload) => {
                     eprintln!(

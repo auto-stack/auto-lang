@@ -54,8 +54,11 @@ fn materialize_with_charts_fixture() -> PathBuf {
 fn t01_with_charts_vm_track_renders_charts() {
     let fixture = materialize_with_charts_fixture();
     let src = std::fs::read_to_string(&fixture).expect("fixture readable");
-    let dc = crate::build_dynamic_component(&src, Some(&fixture.to_string_lossy()))
+    let mut dc = crate::build_dynamic_component(&src, Some(&fixture.to_string_lossy()))
         .expect("with_charts reference must compile through the VM pipeline");
+    // PLAN-711 T-03 契约迁移：构建登记 Init demand，驱动至静默后重建。
+    let _ = dc.view_with_debug();
+    dc.drive_scheduler_to_quiescence(10_000);
     let (view, _debug_map, _probe) = dc.view_with_debug();
     let mut texts = Vec::new();
     collect_view_texts(&view, &mut texts);

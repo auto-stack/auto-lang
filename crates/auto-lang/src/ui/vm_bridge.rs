@@ -397,6 +397,12 @@ pub struct InitDemand {
     pub state_obj_id: u64,
     /// 登记时的代际号（每次身份变化前进；取消判定与诊断用）。
     pub generation: u64,
+    /// PLAN-711 T-03: 登记时的 props 快照（resolve 后值）。**统一根态约束**：
+    /// 子件 props 以同名共享字段形态落在根态（ensure_child_state 返回
+    /// root_id），后渲染组件的播种会覆盖前者——旧同步路径"播种后立刻派发"
+    /// 是该架构下的正确性要求。延迟派发必须携带快照、派发前重播种，等价
+    /// 复刻旧交错语义（donut 除零实录：慢派发读到后写者/空 data）。
+    pub props: Vec<(String, auto_val::Value)>,
 }
 
 /// PLAN-711 T-03 (M-01): demand 生命周期相位。
@@ -2064,6 +2070,7 @@ impl VmBridge {
         widget_name: &str,
         identity: &str,
         state_obj_id: u64,
+        props: Vec<(String, auto_val::Value)>,
     ) -> InitDemandDecision {
         let mut records = self.init_demand_records.borrow_mut();
         let generation = self.init_generation.get();
@@ -2121,6 +2128,7 @@ impl VmBridge {
                 identity: identity.to_string(),
                 state_obj_id,
                 generation: self.init_generation.get(),
+                props,
             });
         if std::env::var("AUTO_SCHED_DIAG").ok().as_deref() == Some("1") {
             let t0 = crate::ui::dynamic::sched_diag_t0();
@@ -2204,6 +2212,13 @@ impl VmBridge {
                 &demand.widget_name,
                 "Init",
             );
+            // PLAN-711 T-03: 派发时解析**当前** child state id——登记到派发
+            // 之间可能发生重建（child state 对象更替/旧对象随帧账本释放），
+            // 陈旧 id 的字段读取得空值（donut Init 除零实录：total=0）。子
+            // 件名有活跃 id 用活跃 id；无则回落登记时的 id（根态形态）。
+            let state_obj_id = self
+                .get_child_state_id(&demand.widget_name)
+                .unwrap_or(demand.state_obj_id);
             if !self.vm.flash.exports_by_name.contains_key(&fn_name) {
                 // Missing：声明了 lifecycle.Init 但未导出——静默（正常程序
                 // 契约；异常导出缺失的显式失败面归 T-05 错误态）。
@@ -2214,10 +2229,18 @@ impl VmBridge {
                 report.missing += 1;
                 continue;
             }
+            // PLAN-711 T-03: 派发前重播种登记时 props 快照（统一根态约束，
+            // 见 InitDemand.props 注）——等价复刻旧同步路径"播种后立即派发"
+            // 的交错语义；值变化才 bump（ensure_child_state 既有纪律）。
+            if !demand.props.is_empty() {
+                let props_map: std::collections::HashMap<String, auto_val::Value> =
+                    demand.props.iter().cloned().collect();
+                self.ensure_child_state(&demand.widget_name, &[], &props_map);
+            }
             match self.call_handler_for_cpu_slice(
                 &demand.widget_name,
                 "Init",
-                demand.state_obj_id,
+                state_obj_id,
                 &[],
                 budget,
             ) {

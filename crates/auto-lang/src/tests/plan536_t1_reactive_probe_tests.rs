@@ -308,6 +308,7 @@ mod plan536_t1_reactive_probe_tests {
 
         // 首次渲染 = 挂载：ChatBubble.Init 恰好一次
         let _ = dc.view_with_debug_gated(false);
+        dc.drive_scheduler_to_quiescence(10_000);
         assert_eq!(
             dc.read_state("bubble_init_count"),
             Ok(auto_val::Value::Int(1)),

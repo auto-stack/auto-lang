@@ -1507,6 +1507,40 @@ impl DynamicComponent {
         self.bridge.has_cpu_continuations()
     }
 
+    /// PLAN-711 T-03/T-04: 驱动 Init demand / CPU continuation 到静默——
+    /// **测试与嵌入宿主载体用**。生产驱动点=帧通知泵（`poll_frame_pump`，
+    /// D-1 序障）；单元/嵌入测试没有 iced 循环，靠本方法对齐"构建→派发→
+    /// 完成→再构建"的新契约（AC-04：构建不再内联派发 Init）。推进顺序：
+    /// demand 派发 → I/O 就绪 resume（tick 等价）→ CPU 片续跑；一轮无
+    /// 进展且仍在途（I/O 未就绪）即退出——生产由 tick/帧泵等就绪，测试
+    /// 载体无更多驱动手段。
+    pub fn drive_scheduler_to_quiescence(&mut self, max_rounds: usize) {
+        let budget = crate::vm::engine::CpuSliceBudget::d2_default();
+        for _ in 0..max_rounds {
+            let init = self.bridge.dispatch_pending_inits(budget);
+            let io = self.bridge.resume_ready_parked();
+            let cpu = self.bridge.resume_cpu_slices(budget);
+            let progressed = init.dispatched > 0
+                || init.completed > 0
+                || cpu.completed > 0
+                || io.completed > 0;
+            if init.completed > 0 || cpu.completed > 0 {
+                // 完成失效 memo（与生产 poll_frame_pump 同语义）。
+                crate::ui::memo_deps::bump_ui_epoch();
+            }
+            let busy =
+                self.bridge.has_pending_init_work() || self.bridge.has_cpu_continuations();
+            if !busy {
+                break;
+            }
+            if !progressed {
+                // 在途但无驱动手段（I/O 未就绪）——退出，调用方据
+                // has_pending_init_work 自行判断。
+                break;
+            }
+        }
+    }
+
     /// PLAN-711 T-04 (D-1): 帧驱动有界泵——`__frame_pump` 消费臂的执行体。
     /// **帧通知是 CPU continuation 与 Init demand 的唯一驱动点**（T-03 的
     /// tick 临时驱动移交至此；16ms tick 退回纯 I/O 凭据 resume）。
@@ -1541,16 +1575,24 @@ impl DynamicComponent {
             || !init_report.failed.is_empty();
         if diag {
             eprintln!(
-                "[SCHED-DIAG] frame_pump exit t={}ms dispatched={} init_done={} cpu_done={} failed={} elapsed={}ms",
+                "[SCHED-DIAG] frame_pump exit t={}ms dispatched={} init_done={} cpu_done={} failed={} slices={} elapsed={}ms",
                 t0.elapsed().as_millis(),
                 init_report.dispatched,
                 init_report.completed,
                 cpu_report.completed,
                 cpu_report.failed.len() + init_report.failed.len(),
+                cpu_report.slices_run,
                 cpu_report.round_elapsed.as_millis(),
             );
         }
         if progressed {
+            // PLAN-711 T-04 (M-03 完成语义前半)：Init/CPU 完成 = 状态面突变
+            // ——宿主 UI epoch 失效组件局部 memo 产物（outlet site=6 缓存
+            // 否则回放 pre-Init 骨架：plan437/plan502 实录），view_dirty 由
+            // 下置 dirty 通道承担（T-05 补 MCP/展示缓存版本的完整失效链）。
+            if init_report.completed > 0 || cpu_report.completed > 0 {
+                crate::ui::memo_deps::bump_ui_epoch();
+            }
             self.dirty = true;
         }
         for (widget, err) in &init_report.failed {
@@ -2500,6 +2542,29 @@ impl DynamicComponent {
                 record_arity_mismatch(msg);
                 return;
             }
+        }
+        // PLAN-711 T-04/R-1 探针面（AUTO_CPU_PROBE=1，仅诊断/实证用）：常规
+        // msg handler 改经 CPU slice 入口派发——长 CPU handler 在 update 期
+        // park 成 CpuRunnable（同 702 注册时序，订阅重估同周期可见），帧泵
+        // 接管续驱。R-1 序障实证的载体：帧消息消费 vs 片推进 vs 完成刷新
+        // 三轴时间轴。生产派发不受此门影响（缺省 legacy 段入口）。
+        if std::env::var("AUTO_CPU_PROBE").ok().as_deref() == Some("1")
+            && !clean_name.starts_with("__")
+        {
+            let t0 = crate::ui::dynamic::sched_diag_t0();
+            eprintln!(
+                "[SCHED-DIAG] cpu_probe dispatch {}::{} t={}ms",
+                emit_widget, clean_name, t0.elapsed().as_millis()
+            );
+            let _ = self.bridge.call_handler_for_cpu_slice(
+                &emit_widget,
+                &clean_name,
+                state_obj_id,
+                &args,
+                crate::vm::engine::CpuSliceBudget::d2_default(),
+            );
+            self.dirty = true;
+            return;
         }
         match self.bridge.call_handler_for(widget_name, &clean_name, state_obj_id, &args) {
             Ok(()) => {
