@@ -281,7 +281,7 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 
 - [x] T-11 CPU 可续跑执行片（含 engine.rs:2748 假成功缺陷修复）（**[✅ 已完成]** worktree 80de86f04：DriveBudget 双档+SegmentOutcome::Runnable+ParkedWait::CpuRunnable+跨片累计护栏（cpu_steps_total/跨片 runaway 基线/50k 节拍跨片累计）+resume_parked_wake 提取+slice 双入口；AC-13=耗尽 slice 档 Runnable/legacy 档真错误；bridge 有界泵 resume_cpu_slices（tick 泵 CpuRunnable=false 隔离/8ms 轮次/FIFO 快照不重拾）+写队列 128（满拒 WriteQueueFull/同键合并/片间消费）+call_handler_for_cpu_slice；plan711 7 测+触面 115+tv 162 全绿，plan707_wait_generator 并行抖动单跑过=708 复审档案同例）
 - [x] T-03 Init demand/代际生命周期（**[✅ 已完成]** worktree 04b9552c9：register_init_demand 登记簿（判定≠完成/同代际不二次入队 AC-04/身份变化=新代际+旧代际一次取消）+dispatch_pending_inits 派发驱动（FIFO 依赖序=页先 child 后/五态观察/InFlight 探测收敛）+cancel_parked_by_fn 凭据映射清理（HttpRequest→drop_async_result/HttpStream→stream_cancel）+child_init_should_fire 退役移除；渲染路径两派发点（outlet :5211/fire_child_init_if_any）改只登记；tick 泵临时接线（dynamic poll 前置派发+订阅门扩展，T-04 移交）；plan711_init_demand 5 测+触面 233+tv 162 全绿）
-- [ ] T-04 真实入口帧通知与有界泵（R-1 序障实证闭环）
+- [x] T-04 真实入口帧通知与有界泵（R-1 序障实证闭环）（**[✅ 已完成]** worktree 3809b58ea+97dcd7d75：listen_raw 条件订阅（AppId 去重身份/零 demand 无订阅）+ __frame_pump 消费臂（8ms 轮次有界泵+完成直置 view_dirty+epoch 失效）+ tick 退回纯 I/O（has_parked_io_tasks 门）+ is_dirty 燃料唤醒链（订阅重估时序 iced_winit :1337 定谳）；R-1 闭环实证=sub ON 同周期/帧消息驱动/4ms 校准片/598 万步跨 15.2s parked 完成/10M 累计护栏生产命中/重入忽略；D-2 校准 4096→1M 天花板（4ms 墙钟为活预算）；余 2 红=统一根态×无 key 兄弟实例有界修订点→§10 Q-05，随 T-05 完成语义收口）
 - [ ] T-05 骨架/完成/失败显示
 - [ ] T-12 computed/冷构建残面（DataTable memo_block 根因、FileTree 恒 FILL）
 - [ ] T-06余 分段时间戳/在屏采集/资源计数
@@ -337,3 +337,4 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 | Q-02 | native/FFI 单调用超预算上界（708 D-5 R-3 移交） | T-11 夹具实测；超限=分块/异步化该热点或 needs_replan，不称检查间隔提供硬上界 |
 | Q-03 | T-09 环境噪声（Todesk 虚拟显示/59Hz/冷构建方差） | 继承 708 baseline §5 对策；异常 p95 另采移窗对照并标注适配器 |
 | Q-04 | master 并行推进（708 期间三度发生） | 常规化 rebase+range-diff 等价证明；落地前合并态定向刷新触面族 |
+| Q-05（新增，T-04 迁移期定谳，**阻塞 2 红**） | 统一根态 × 无 key 兄弟实例 × 延迟派发交错：InitDemand 按名+key 收敛同身份（两次无 key bar-chart 播种互相覆盖共享字段），派发期 props 重播种践踏末写者状态（plan484 bare_names/streaming_recompute 8000 tick 实录；旧"播种即派发"交错是统一根态下的正确性要求）。owner=T-05 完成语义设计一并收口：候选=无 key 兄弟实例 per-instance 身份（vue 每实例挂载语义）或完成帧以快照渲染 |
