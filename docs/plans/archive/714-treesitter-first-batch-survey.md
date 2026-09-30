@@ -515,7 +515,13 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
   **部署观察**：本件改 trans/a2r 发射面——主检出工具链二进制（release
   auto 等）相对本件落地为陈旧态；下游 PLAN-021 复验已用 worktree 钉版
   二进制完成（AC-R2-4），主检出二进制随下轮 auto-lang release 周期或
-  021 会话钉版重建，不做本档内重建。**cleaned**：待下笔。
+  021 会话钉版重建，不做本档内重建。**cleaned**：移除前 fresh 复核双净——worktree 0 dirty+HEAD=acf653d3f
+  （全部落库）+wt-guard clean（零 reparse point）；worktree 注销+分支
+  删除（was acf653d3f）+auto-down detached 兄弟自彼仓注销（3373a5c
+  未动）+组目录 rmdir；**junction 红线处置**=tmp-corpus 内 materialize
+  所建 2 junction（deps/bps→blueprints、deps/stylekit→specs/stylekit）
+  经 cmd rmdir 摘链（link-only，目标 intact 实证）后方清树；两仓
+  worktree list 零 714 残留复核在案。五检查点全落 delivered。
 ## 10. 待澄清事项
 
 - **Q-1 语言集预裁定（可选）**：默认 T-01 按下游现实+战略「常见
