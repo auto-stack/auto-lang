@@ -33,6 +33,7 @@ This tracker serves as a **living document** that inventories all outstanding a2
 | 15 | a2r UI generator (GPUI/ICED) | 🔮 未来项 | 180 | ⭐⭐⭐⭐⭐ Extreme | — | AURA → GPUI mapping layer; auto-ui integration。**延后（2026-09-15 用户裁定,入 KNOWN-DEBT 415-C）**:虚拟桌面 M0-M4 已交付但渲染双轨定型（iced+Vue,路线 B 叶子=RenderCommand）,GPUI 非关键路径——重启条件=GPUI 生态特定需求或路线 B 变更;骨架现状/限制见 415 归档件 C 节与 DEBTS 365 条目 | — |
 | 16 | Self-hosting a2r transpiler (in Auto) | 🔧 Partial | 229 / 237 / **415-D** | ⭐⭐⭐⭐⭐ Maximum | — | Generics, pattern matching, trait system completion | — |
 | 17 | Build-time codegen (`dep cc`) + `memmap2` FFI | ✅ Done | **415-E** | ⭐⭐⭐⭐ High | — | 2026-09-15 重定+落地（415-E1）：memmap2 经 **dep 轨**（591/596,`dep memmap2`+`use.rs`）去桩 safety/001_memmap（原 build.rs+cc+FFI 方案被 610 use.c 双形态/manifest IR 与 dep 轨双重取代,重定方案见 415-E 节）；"dep cc" 重定性为非 Auto 侧（产物 Cargo 传递处理,415-E2）；Phase 13 四文件实勘=1 桩（已去桩）+1 已完成+2 不可定位 | 2026-09-15 |
+| 18 | a2r 应用映射完备性（host-call/try-catch/envelope 投影三面+普查回补 D-4..D-8） | ✅ Done | **710** | ⭐⭐⭐ Mid | — | PLAN-710 供① 承接（auto-edit M4 供料）：G-C `code_editor_delta` 直调臂/G-B try-catch catch_unwind 臂（变量逃逸+catch 绑定形）/G-A envelope `??` 投影族（str/int/bool/list 四型+嵌套+索引混合）+D-4 scroll_to/D-5 scroll-pane controller/D-6 条件位 truthy 投影/D-7 merged GET-POST 桩契约收口/D-8 char_at·substr·to_int；corpus 判据 exit 0（133→0，docs/reports/p710-census.md）；语义册 docs/specs/auto-lang/ui/design/a2r-app-mapping-completeness.md | 2026-09-30 |
 
 **Legend**
 - ⏳ Planned = Not yet started
