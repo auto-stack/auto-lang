@@ -1450,7 +1450,14 @@ impl SessionRuntime {
     }
 
     fn handle_request(&mut self, req: &ProxyRequest) -> ProxyReply {
+        // PLAN-712 r2 T-15 诊断：请求对账面（method/path + 路由/参数绑定
+        // 结果——018 章节路由错配与前端取数空化的实机观测通道）。
+        eprintln!(
+            "[back-proxy:{}] REQ {} {}",
+            self.app_id, req.method, req.path
+        );
         let Some(route_match) = match_route(&self.routes, &req.method, &req.path) else {
+            eprintln!("[back-proxy:{}] RSP 404 no-route", self.app_id);
             return ProxyReply::json(
                 404,
                 error_json(&format!(
