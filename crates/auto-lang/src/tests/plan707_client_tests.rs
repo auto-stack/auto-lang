@@ -29,6 +29,9 @@ fn drive_to_completion(
                         crate::vm::ffi::stdlib::async_http_result_ready(*id)
                     }
                     ParkedWait::Future(_) => true,
+                    // PLAN-711 T-11: CPU continuation 对本测试驱动器不可达
+                    //（legacy 段派发不产生；防御臂按就绪处理避免死循环）。
+                    ParkedWait::CpuRunnable => true,
                 } {
                     assert!(
                         std::time::Instant::now() < deadline,

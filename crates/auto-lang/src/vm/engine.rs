@@ -322,6 +322,58 @@ pub enum SegmentOutcome {
     /// `drop_async_result` 回收只属于"真正放弃等待"的超时路径，恢复时按
     /// req_id 从 ASYNC_RESULTS 取用。
     Parked { wait: ParkedWait, seg: ParkedSegment },
+    /// PLAN-711 T-11 (M-02/D-2): CPU 预算耗尽——栈完整（ip 停在函数内、
+    /// bp≠saved_bp、闭包/异常帧原样），下一轮由 CPU 泵在预算内继续。
+    /// **不得**伪装为 `Completed`：预算耗尽假成功（旧实现落入
+    /// `Completed(Ok(()))` 无结果值）是本变体要替换的正确性缺陷（AC-13）。
+    /// 仅 `DriveBudget::CpuSlice` 驱动产生；legacy 档耗尽返回真错误。
+    Runnable { seg: ParkedSegment },
+}
+
+/// PLAN-711 T-11 (D-2 冻结初值): UI CPU 片预算。数值为 708-decision §D-2
+/// 冻结的提议初值，按实测校准时不得为通过而下调验收指标。
+#[derive(Clone, Copy, Debug)]
+pub struct CpuSliceBudget {
+    /// 每片指令上限（初值 4096）。
+    pub max_steps: u64,
+    /// 每片墙钟上限（初值 4ms）——至多每 [`Self::clock_check_every`] 步查一次。
+    pub max_duration: std::time::Duration,
+    /// 查钟间隔（初值 64 步）。
+    pub clock_check_every: u64,
+    /// 跨片累计指令护栏（初值 10M，与 legacy 单调用预算同量级）——
+    /// I/O 等待不计忙时；不让出重置绕过原 runaway 保护。
+    pub cumulative_steps: u64,
+}
+
+impl CpuSliceBudget {
+    pub const fn d2_default() -> Self {
+        Self {
+            max_steps: CPU_SLICE_MAX_STEPS,
+            max_duration: CPU_SLICE_MAX_DURATION,
+            clock_check_every: CPU_SLICE_CLOCK_CHECK_EVERY,
+            cumulative_steps: CPU_CUMULATIVE_STEP_BUDGET,
+        }
+    }
+}
+
+/// PLAN-711 T-11 (D-2): 每片 4096 指令。
+pub const CPU_SLICE_MAX_STEPS: u64 = 4096;
+/// PLAN-711 T-11 (D-2): 每片 4ms。
+pub const CPU_SLICE_MAX_DURATION: std::time::Duration = std::time::Duration::from_millis(4);
+/// PLAN-711 T-11 (D-2): 至多每 64 指令查时钟。
+pub const CPU_SLICE_CLOCK_CHECK_EVERY: u64 = 64;
+/// PLAN-711 T-11 (D-2): 跨片累计护栏 10M 指令（I/O 等待不计）。
+pub const CPU_CUMULATIVE_STEP_BUDGET: u64 = 10_000_000;
+/// PLAN-711 T-11 (D-2): 会话宿主每轮 CPU pump 总预算 8ms（消费方=vm_bridge
+/// 有界泵；引擎片内不感知轮次）。
+pub const CPU_PUMP_ROUND_BUDGET: std::time::Duration = std::time::Duration::from_millis(8);
+
+/// PLAN-711 T-11: 段驱动预算档。Legacy 保持既有 10M 步预算与逐字节同的
+/// 同步语义（非 UI 契约）；CpuSlice 为 UI 专用可续跑片。
+#[derive(Clone, Copy, Debug)]
+pub enum DriveBudget {
+    Legacy,
+    CpuSlice(CpuSliceBudget),
 }
 
 /// What a parked segment is waiting on (readiness credential for the UI
@@ -341,6 +393,11 @@ pub enum ParkedWait {
     /// the shim's re-entry branch consumes it when the re-driven CALL_NAT
     /// re-fires (same protocol as HttpRequest).
     HttpStream(u64),
+    /// PLAN-711 T-11 (D-2): CPU 预算耗尽的 continuation 凭据——非 I/O 等待，
+    /// 就绪性由 CPU 泵的轮次预算/公平策略裁决（tick 泵不拾取；见 vm_bridge
+    /// `parked_wait_ready` CpuRunnable 臂与 `resume_cpu_slices`）。只增不改
+    /// 707 三凭据（HttpRequest/Future/HttpStream 语义原样）。
+    CpuRunnable,
 }
 
 /// Resume context captured at park time; immutable across repeated
@@ -2296,6 +2353,7 @@ impl AutoVM {
             saved_bp,
             saved_fn_n_args,
             false,
+            DriveBudget::Legacy,
         );
         if matches!(outcome, SegmentOutcome::Completed(_)) {
             task.segment_no_busy_wait = false;
@@ -2331,10 +2389,15 @@ impl AutoVM {
         // (vm_bridge) must dispatch via [`Self::call_fn_by_name_segment`]
         // instead: busy-waiting here freezes the iced event loop for the
         // whole wait (PLAN-083 T-01: auto-edit 切换冻结 20.9s 即此).
-        match self.dispatch_fn_by_name(task, fn_name, n_args, true) {
+        match self.dispatch_fn_by_name(task, fn_name, n_args, true, DriveBudget::Legacy) {
             SegmentOutcome::Completed(res) => res,
             SegmentOutcome::Parked { .. } => Err(VMError::RuntimeError(
                 "internal: segment driver parked under busy-wait mode (unreachable)".into(),
+            )),
+            // PLAN-711 T-11: Runnable 仅由 CpuSlice 驱动产生；legacy 同步
+            // 调用图到不了这里（防御臂保持 Result 契约形状）。
+            SegmentOutcome::Runnable { .. } => Err(VMError::RuntimeError(
+                "internal: cpu-slice outcome escaped legacy sync driver (unreachable)".into(),
             )),
         }
     }
@@ -2363,7 +2426,33 @@ impl AutoVM {
         // 据此跳过同步 drain（rewind+Yield → park）。Parked 时保持置位
         // （task 静置，无人驱动；resume 入口会重新置位）；Completed 复位。
         task.segment_no_busy_wait = true;
-        let outcome = self.dispatch_fn_by_name(task, fn_name, n_args, false);
+        let outcome = self.dispatch_fn_by_name(task, fn_name, n_args, false, DriveBudget::Legacy);
+        if matches!(outcome, SegmentOutcome::Completed(_)) {
+            task.segment_no_busy_wait = false;
+        }
+        outcome
+    }
+
+    /// PLAN-711 T-11 (M-02/D-2): UI 专用 CPU slice 首次派发——与
+    /// [`Self::call_fn_by_name_segment`] 同一套帧建立/park 语义，但驱动
+    /// 预算为 [`DriveBudget::CpuSlice`]：片耗尽返回 [`SegmentOutcome::Runnable`]
+    /// （栈完整可续跑），不再有 10M 步同步长占用。首次派发与 resume 共用
+    /// 同一预算策略（调用方传同一 [`CpuSliceBudget`]）。
+    pub fn call_fn_by_name_cpu_slice(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+        budget: CpuSliceBudget,
+    ) -> SegmentOutcome {
+        task.segment_no_busy_wait = true;
+        let outcome = self.dispatch_fn_by_name(
+            task,
+            fn_name,
+            n_args,
+            false,
+            DriveBudget::CpuSlice(budget),
+        );
         if matches!(outcome, SegmentOutcome::Completed(_)) {
             task.segment_no_busy_wait = false;
         }
@@ -2380,6 +2469,61 @@ impl AutoVM {
         task: &mut AutoTask,
         seg: &ParkedSegment,
     ) -> SegmentOutcome {
+        if let Some(o) = self.resume_parked_wake(task, seg) {
+            return o;
+        }
+        // PLAN-705 T-03: 段标志复位语义同首次入口（Completed 复位，Parked
+        // 保持——见 call_fn_by_name_segment 注）。
+        task.segment_no_busy_wait = true;
+        let outcome = self.drive_handler_segment(
+            task,
+            &seg.fn_name,
+            seg.saved_bp,
+            seg.saved_fn_n_args,
+            false,
+            DriveBudget::Legacy,
+        );
+        if matches!(outcome, SegmentOutcome::Completed(_)) {
+            task.segment_no_busy_wait = false;
+        }
+        outcome
+    }
+
+    /// PLAN-711 T-11 (M-02/D-2): CPU slice 档 resume——唤醒序障与 legacy
+    /// resume 相同（外部 future wake / Phase B body 续驱），驱动预算换为
+    /// [`DriveBudget::CpuSlice`]。首次派发与 resume 共用预算策略（D-2）。
+    pub fn resume_fn_by_name_cpu_slice(
+        &self,
+        task: &mut AutoTask,
+        seg: &ParkedSegment,
+        budget: CpuSliceBudget,
+    ) -> SegmentOutcome {
+        if let Some(o) = self.resume_parked_wake(task, seg) {
+            return o;
+        }
+        task.segment_no_busy_wait = true;
+        let outcome = self.drive_handler_segment(
+            task,
+            &seg.fn_name,
+            seg.saved_bp,
+            seg.saved_fn_n_args,
+            false,
+            DriveBudget::CpuSlice(budget),
+        );
+        if matches!(outcome, SegmentOutcome::Completed(_)) {
+            task.segment_no_busy_wait = false;
+        }
+        outcome
+    }
+
+    /// PLAN-711 T-11: resume 前置唤醒序障（外部 future wake + Phase B
+    /// suspended body 续驱）。返回 `Some(outcome)` = 已被唤醒路径终结
+    /// （仍未就绪再 park / body 出错），调用方直接上浮；`None` = 继续段驱动。
+    fn resume_parked_wake(
+        &self,
+        task: &mut AutoTask,
+        seg: &ParkedSegment,
+    ) -> Option<SegmentOutcome> {
         // Wake source 6 mirror (Plan 394 Phase A): an external `~{}` future
         // reached Ready/Failed — push the await result and clear the slot so
         // the suspended body resumes at the instruction after the await.
@@ -2390,10 +2534,10 @@ impl AutoVM {
                 .map(|f| f.read().unwrap().state != FutureState::Pending)
                 .unwrap_or(true); // future gone → wake (nil fallback)
             if !ready {
-                return SegmentOutcome::Parked {
+                return Some(SegmentOutcome::Parked {
                     wait: ParkedWait::Future(fid),
                     seg: seg.clone(),
-                };
+                });
             }
             if let Some(future_arc) = self.futures.get(&fid) {
                 let future = future_arc.read().unwrap();
@@ -2424,17 +2568,17 @@ impl AutoVM {
             if let Some(frame) = task.async_frames.last().copied() {
                 match self.resume_suspended_body(task, frame) {
                     Ok(TaskStatus::Waiting(_)) => {
-                        return SegmentOutcome::Parked {
+                        return Some(SegmentOutcome::Parked {
                             wait: ParkedWait::Future(
                                 task.waiting_future_id.unwrap_or(0),
                             ),
                             seg: seg.clone(),
-                        };
+                        });
                     }
                     Ok(_) => {}
                     Err(e) => {
                         task.current_fn_n_args = seg.saved_fn_n_args;
-                        return SegmentOutcome::Completed(Err(e));
+                        return Some(SegmentOutcome::Completed(Err(e)));
                     }
                 }
             }
@@ -2443,26 +2587,20 @@ impl AutoVM {
         // re-fires, the shim's re-entry branch consumes ASYNC_RESULTS[req_id]
         // (Plan 349 step 7 protocol; the driver loop below is identical to
         // what the busy-wait arm continued into).
-        // PLAN-705 T-03: 段标志复位语义同首次入口（Completed 复位，Parked
-        // 保持——见 call_fn_by_name_segment 注）。
-        task.segment_no_busy_wait = true;
-        let outcome =
-            self.drive_handler_segment(task, &seg.fn_name, seg.saved_bp, seg.saved_fn_n_args, false);
-        if matches!(outcome, SegmentOutcome::Completed(_)) {
-            task.segment_no_busy_wait = false;
-        }
-        outcome
+        None
     }
 
-    /// Shared first-entry path of [`Self::call_fn_by_name`] and
-    /// [`Self::call_fn_by_name_segment`]: fn lookup, Plan 321 generator
-    /// short-circuit, frame setup, then the segment drive loop.
+    /// Shared first-entry path of [`Self::call_fn_by_name`],
+    /// [`Self::call_fn_by_name_segment`] and [`Self::call_fn_by_name_cpu_slice`]:
+    /// fn lookup, Plan 321 generator short-circuit, frame setup, then the
+    /// segment drive loop.
     fn dispatch_fn_by_name(
         &self,
         task: &mut AutoTask,
         fn_name: &str,
         n_args: usize,
         allow_busy_wait: bool,
+        budget: DriveBudget,
     ) -> SegmentOutcome {
         // 1. Look up function address
         let addr = match self.flash.exports_by_name.get(fn_name) {
@@ -2526,7 +2664,7 @@ impl AutoVM {
         task.ip = addr as usize;
 
         // 5. Execute until function returns (BP restored to saved_bp)
-        self.drive_handler_segment(task, fn_name, saved_bp, saved_fn_n_args, allow_busy_wait)
+        self.drive_handler_segment(task, fn_name, saved_bp, saved_fn_n_args, allow_busy_wait, budget)
     }
 
     /// PLAN-702 T-01: the shared step loop behind `call_fn_by_name`
@@ -2540,19 +2678,65 @@ impl AutoVM {
         saved_bp: usize,
         saved_fn_n_args: usize,
         allow_busy_wait: bool,
+        budget: DriveBudget,
     ) -> SegmentOutcome {
-        let budget = 10_000_000;
+        let (max_steps, slice) = match budget {
+            DriveBudget::Legacy => (10_000_000u64, None),
+            DriveBudget::CpuSlice(b) => (b.max_steps, Some(b)),
+        };
+        let slice_started = std::time::Instant::now();
         let mut steps = 0u64;
+        // PLAN-711 AC-13: 段是否真正完成（RET 恢复 saved_bp）——与"预算/片
+        // 耗尽"分开记账。旧实现两者共用尾部且都返回 `Completed(Ok(()))`，
+        // 预算耗尽 = 静默假成功（task 停在函数中部、无结果值）。
+        let mut finished = false;
         // Plan 423 P5 加固:步预算只限时长不限内存 —— 字节码错位后可在垃圾
         // 指令里无界生长字符串池/堆(实机 20G 内存事故)。每 RUNAWAY_CHECK_EVERY
         // 步核对一次增量,超阈即以明确错误中止,把内存炸弹变成可读失败。
         // (段驱动语义:每个段独立基线与预算——非 yield handler 只有首段,
         // 与同步驱动逐字节同;会 park 的 handler 每段重新计,比同步更宽。)
-        let baseline_strings = self.strings.read().map(|s| s.len()).unwrap_or(0);
-        let baseline_heap = self.heap_objects.len();
-        for _ in 0..budget {
+        // PLAN-711 T-11 (D-2): CPU slice 档的 runaway 基线跨片延续——首片
+        // 初始化到 task，后续片沿用，慢速跨片泄漏不因逐片重置基线而漏检；
+        // legacy 档保持段独立基线（既有语义逐字节不动）。
+        let baseline_strings = match slice {
+            Some(_) => match task.cpu_baseline_strings {
+                Some(b) => b,
+                None => {
+                    let b = self.strings.read().map(|s| s.len()).unwrap_or(0);
+                    task.cpu_baseline_strings = Some(b);
+                    b
+                }
+            },
+            None => self.strings.read().map(|s| s.len()).unwrap_or(0),
+        };
+        let baseline_heap = match slice {
+            Some(_) => match task.cpu_baseline_heap {
+                Some(b) => b,
+                None => {
+                    let b = self.heap_objects.len();
+                    task.cpu_baseline_heap = Some(b);
+                    b
+                }
+            },
+            None => self.heap_objects.len(),
+        };
+        while steps < max_steps {
             steps += 1;
-            if steps % RUNAWAY_CHECK_EVERY == 0
+            // PLAN-711 T-11 (D-2): slice 档至多每 clock_check_every 步查一次
+            // 墙钟，超 4ms 即到片末——在安全指令边界（step 之间）让出。
+            if let Some(b) = slice {
+                if steps % b.clock_check_every == 0
+                    && slice_started.elapsed() >= b.max_duration
+                {
+                    steps -= 1; // 本步未执行，不计入片消耗
+                    break;
+                }
+            }
+            // PLAN-711 T-11: runaway 检查节拍跨片累计——slice 档内 steps 每片
+            // 归零，若只看片内步数则 50k 节拍在 4096 步片内永不命中，堆增长
+            // 护栏形同虚设；legacy 档 cpu_steps_total 恒 0，语义逐字节不变。
+            let runaway_step_clock = task.cpu_steps_total + steps;
+            if runaway_step_clock % RUNAWAY_CHECK_EVERY == 0
                 && self.runaway_growth_exceeded(baseline_strings, baseline_heap)
             {
                 let s_growth = self
@@ -2581,6 +2765,7 @@ impl AutoVM {
             match step {
                 StepResult::Continue => {
                     if task.bp == saved_bp {
+                        finished = true;
                         break;
                     }
                     continue;
@@ -2705,21 +2890,49 @@ impl AutoVM {
             }
         }
 
-        // Budget exhausted — likely an infinite loop or very expensive operation.
-        if steps >= budget as u64 {
-            let ip = task.ip;
-            // Dump 10 instructions around current ip for diagnosis
-            let mut trace = String::new();
-            let start = ip.saturating_sub(20);
-            for i in start..(start + 30).min(self.flash.memory.len()) {
-                let b = self.flash.memory[i];
-                if b == 0x06 { // RESERVE_STACK = fn prologue marker
-                    trace.push_str(&format!("[FN_PROLOGUE@{}] ", i));
+        // PLAN-711 T-11 (AC-13): 预算/片耗尽分支——task 状态完整（ip 指向
+        // 函数内、bp≠saved_bp、闭包/异常帧/返回槽原样）。
+        if !finished {
+            match budget {
+                DriveBudget::CpuSlice(b) => {
+                    // 跨片累计护栏：只累计实际执行的指令（I/O 等待不计忙时）；
+                    // 达累计上限即真错误，逐片让出不得重置护栏绕过 runaway 保护。
+                    task.cpu_steps_total = task.cpu_steps_total.saturating_add(steps);
+                    if task.cpu_steps_total >= b.cumulative_steps {
+                        task.current_fn_n_args = saved_fn_n_args;
+                        return SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                            "cumulative CPU budget exhausted in '{}' ({} steps across slices) — runaway handler?",
+                            fn_name, task.cpu_steps_total
+                        ))));
+                    }
+                    // 栈完整可续跑：返回 Runnable，栈/帧/闭包全部原样留给
+                    // CPU 泵下一轮在预算内继续（不清栈、不重进 prologue）。
+                    return SegmentOutcome::Runnable {
+                        seg: ParkedSegment {
+                            fn_name: fn_name.to_string(),
+                            saved_bp,
+                            saved_fn_n_args,
+                        },
+                    };
+                }
+                DriveBudget::Legacy => {
+                    // legacy 档耗尽：保留既有 WARN 诊断（近旁 FN_PROLOGUE 扫描），
+                    // 但**不再落入 `Completed(Ok(()))` 静默假成功**——真实错误
+                    // 上浮（`Result` 契约形状不变；旧假成功即 AC-13 缺陷本身）。
+                    let ip = task.ip;
+                    let mut trace = String::new();
+                    let start = ip.saturating_sub(20);
+                    for i in start..(start + 30).min(self.flash.memory.len()) {
+                        let b = self.flash.memory[i];
+                        if b == 0x06 { // RESERVE_STACK = fn prologue marker
+                            trace.push_str(&format!("[FN_PROLOGUE@{}] ", i));
+                        }
+                    }
+                    let cur_fn = task.call_stack.last().and_then(|f| f.fn_name.clone()).unwrap_or_default();
+                    let call_depth = task.call_stack.len();
+                    eprintln!("WARN[budget] fn='{}' ip={} call_depth={} trace={}", cur_fn, ip, call_depth, trace);
                 }
             }
-            let fn_name = task.call_stack.last().and_then(|f| f.fn_name.clone()).unwrap_or_default();
-            let call_depth = task.call_stack.len();
-            eprintln!("WARN[budget] fn='{}' ip={} call_depth={} trace={}", fn_name, ip, call_depth, trace);
         }
 
         // 6. Restore non-stack state (return value already on stack top)
@@ -2745,7 +2958,14 @@ impl AutoVM {
                 );
             }
         }
-        SegmentOutcome::Completed(Ok(()))
+        if finished {
+            SegmentOutcome::Completed(Ok(()))
+        } else {
+            SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                "instruction budget exhausted in '{}' at ip=0x{:04x} (infinite loop or runaway handler; legacy budget 10M steps)",
+                fn_name, task.ip
+            ))))
+        }
     }
 
     /// Plan 321: Check if a function body contains YIELD_VAL (0x8D) opcode.

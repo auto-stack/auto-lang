@@ -130,6 +130,17 @@ pub struct AutoTask {
     /// (call_fn_by_name_segment / resume_fn_by_name_segment / call_closure
     /// 段形态)置位，legacy 同步入口保持 false（忙等语义留给非段调用图）。
     pub segment_no_busy_wait: bool,
+    /// PLAN-711 T-11 (M-02/D-2): 跨 CPU 片累计指令数。I/O 等待不计（只统计
+    /// 实际执行的指令）；累计达 `CPU_CUMULATIVE_STEP_BUDGET` 即硬错——
+    /// 逐片让出不得重置护栏绕过原 runaway 保护。仅 CPU slice 驱动写入，
+    /// 其余路径恒 0（惰性字段，对既有调用图零影响）。
+    pub cpu_steps_total: u64,
+    /// PLAN-711 T-11: 跨片延续的 runaway 内存基线（字符串池长度）。首片
+    /// 初始化，后续片沿用——慢速泄漏摊薄到逐片基线下方也能被累计视角
+    /// 捕获；legacy 单调用路径不读此字段（保留段独立基线语义）。
+    pub cpu_baseline_strings: Option<usize>,
+    /// PLAN-711 T-11: 跨片延续的 runaway 内存基线（堆对象数），同上。
+    pub cpu_baseline_heap: Option<usize>,
 }
 
 /// Plan 394: continuation snapshot for a suspended async body.
@@ -251,6 +262,9 @@ impl AutoTask {
             frame_ids: Vec::new(),      // PLAN-667: 帧身份表
             frame_uid_gen: 0,           // PLAN-667: 首个真帧 uid 从 1 起
             segment_no_busy_wait: false, // PLAN-705 T-03: 段驱动模式标志
+            cpu_steps_total: 0,         // PLAN-711 T-11: 跨片累计指令数
+            cpu_baseline_strings: None, // PLAN-711 T-11: 跨片 runaway 基线
+            cpu_baseline_heap: None,    // PLAN-711 T-11: 跨片 runaway 基线
         }
     }
 }

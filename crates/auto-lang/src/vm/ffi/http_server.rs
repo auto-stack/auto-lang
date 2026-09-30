@@ -3639,6 +3639,9 @@ fn cancel_all_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) 
                 crate::vm::ffi::http_stream::stream_cancel(*stream_id);
             }
             ParkedWait::Future(_) => {}
+            // PLAN-711 T-11: CPU continuation 无 I/O 资源可取消——栈随任务
+            // 弃置清账（HTTP 轨不产 CPU continuation，防御臂）。
+            ParkedWait::CpuRunnable => {}
         }
         // T-05: scope 幂等终结（取消信号唤醒等它的桥臂；许可释放）。
         if let Some(s) = lookup_scope(p.scope_id) {
@@ -3973,6 +3976,9 @@ fn run_middleware_at(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, index: usize) 
             // legacy：middleware Err → None → 继续链（行为保持）。
             SegmentOutcome::Completed(Err(_)) => MWEnd::Null,
             SegmentOutcome::Parked { wait, seg } => MWEnd::Parked(wait, seg),
+            // PLAN-711 T-11: Runnable 仅由 CpuSlice 驱动产生；HTTP server
+            // 走 legacy 段契约（非 UI 轨），防御臂按 Err 同族继续链。
+            SegmentOutcome::Runnable { .. } => MWEnd::Null,
         }
     };
     match end {
@@ -4158,6 +4164,14 @@ fn start_handler(
                     SegmentOutcome::Completed(Ok(())) => HandlerEnd::Value(ht.ram.pop_nv()),
                     SegmentOutcome::Completed(Err(e)) => HandlerEnd::Err(e),
                     SegmentOutcome::Parked { wait, seg } => HandlerEnd::Parked(wait, seg),
+                    // PLAN-711 T-11: Runnable 仅由 CpuSlice 驱动产生；HTTP
+                    // server 走 legacy 段契约（非 UI 轨），防御臂按 Err 同族。
+                    SegmentOutcome::Runnable { .. } => {
+                        HandlerEnd::Err(crate::vm::engine::VMError::RuntimeError(
+                            "internal: cpu-slice outcome escaped legacy http dispatch (unreachable)"
+                                .into(),
+                        ))
+                    }
                 }
             }
         }
@@ -4748,6 +4762,9 @@ pub(crate) fn parked_is_ready(vm: &std::rc::Rc<AutoVM>, p: &ParkedRequest) -> bo
         ParkedWait::HttpStream(stream_id) => {
             crate::vm::ffi::http_stream::stream_ready(*stream_id)
         }
+        // PLAN-711 T-11: CPU continuation 归 vm_bridge 的 CPU 泵，HTTP 泵
+        // 不拾取（防御臂；HTTP 轨不产该凭据）。
+        ParkedWait::CpuRunnable => false,
     }
 }
 
@@ -4811,6 +4828,9 @@ pub(crate) fn resume_parked_request(
                     }
                     // legacy：middleware Err → 无响应继续链。
                     SegmentOutcome::Completed(Err(_)) => MWResume::ContinueChain,
+                    // PLAN-711 T-11: HTTP 轨不产 CPU continuation（防御臂：
+                    // 未完成=仍 park，凭据 CpuRunnable 对 HTTP 泵恒不就绪）。
+                    SegmentOutcome::Runnable { seg } => MWResume::Parked(ParkedWait::CpuRunnable, seg),
                 }
             } else {
                 MWResume::Missing
@@ -4859,6 +4879,10 @@ pub(crate) fn resume_parked_request(
                     SegmentOutcome::Parked { wait, seg } => HResume::Parked(wait, seg),
                     SegmentOutcome::Completed(Ok(())) => HResume::Value(t.ram.pop_nv()),
                     SegmentOutcome::Completed(Err(e)) => HResume::Err(e),
+                    // PLAN-711 T-11: HTTP 轨不产 CPU continuation（防御臂）。
+                    SegmentOutcome::Runnable { .. } => HResume::Err(crate::vm::engine::VMError::RuntimeError(
+                        "internal: cpu-slice outcome escaped legacy http resume (unreachable)".into(),
+                    )),
                 }
             } else {
                 HResume::Missing
@@ -4924,6 +4948,12 @@ pub(crate) fn resume_parked_request(
                 Some(SegmentOutcome::Parked { wait, seg }) => {
                     p.wait = wait;
                     p.seg = seg;
+                    return ParkedResume::StillParked;
+                }
+                // PLAN-711 T-11: HTTP 轨不产 CPU continuation（防御臂：视为
+                // 未完成继续 park，凭据 CpuRunnable 对 HTTP 泵恒不就绪）。
+                Some(SegmentOutcome::Runnable { .. }) => {
+                    p.wait = ParkedWait::CpuRunnable;
                     return ParkedResume::StillParked;
                 }
                 Some(SegmentOutcome::Completed(Ok(()))) => {}

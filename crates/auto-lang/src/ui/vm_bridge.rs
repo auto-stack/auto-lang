@@ -66,6 +66,9 @@ pub enum VmBridgeError {
     VmError(String),
     /// Invalid state (e.g., corrupt heap object)
     InvalidState(String),
+    /// PLAN-711 T-11 (D-2): CPU continuation 存活期的同 App VM 写事件队列
+    /// 已满（上限 128）——拒绝入队并给可观察 busy，不无限增容或静默丢动作。
+    WriteQueueFull { len: usize },
 }
 
 impl std::fmt::Display for VmBridgeError {
@@ -82,6 +85,9 @@ impl std::fmt::Display for VmBridgeError {
             }
             VmBridgeError::InvalidState(msg) => {
                 write!(f, "invalid state: {}", msg)
+            }
+            VmBridgeError::WriteQueueFull { len } => {
+                write!(f, "vm write queue full ({len}) — handler busy")
             }
         }
     }
@@ -190,6 +196,15 @@ pub struct VmBridge {
     /// RefCell 与 child_state_map 同款内可变性理由（call_handler_for 是
     /// `&self`）。
     parked_tasks: std::cell::RefCell<Vec<ParkedTask>>,
+
+    /// PLAN-711 T-11 (D-2): 同 App VM 写事件有界串行队列——CPU continuation
+    /// 存活期间，input 代写/timer/props 播种/MCP fixture/reload 等经此排队，
+    /// 由 `resume_cpu_slices` 在片间/终态后消费，避免与在途 continuation
+    /// 交错写共享堆。上限 128（`VM_WRITE_QUEUE_CAP`）：满队列拒绝入队并给
+    /// 可观察 busy（`VmBridgeError::WriteQueueFull`），只合并明确可覆盖的
+    /// 输入值，不合并点击等副作用事件。宿主滚动/resize/close 不入此队列。
+    /// 生产者接线归 T-04（update_inner 各臂）；本任务交付队列原语+泵消费。
+    cpu_write_queue: std::cell::RefCell<std::collections::VecDeque<QueuedVmWrite>>,
 
     /// PLAN-702 T-04: `__busy_handlers` 镜像的已写字集——parked 键集无变化
     /// 时跳过堆列表重铸（每 tick 调 sync_busy_flag，稳态零写）。
@@ -333,6 +348,37 @@ pub struct ResumeReport {
     /// Segments whose resumed execution failed uncaught: (fn_name, error).
     pub failed: Vec<(String, String)>,
 }
+
+/// PLAN-711 T-11 (D-2): CPU slice 有界泵一轮的报告（测试/诊断/AC-11 计数）。
+#[derive(Default)]
+pub struct CpuPumpReport {
+    /// 本轮实际驱动的 CPU 片数（含排队写事件的首片）。
+    pub slices_run: usize,
+    /// 本轮跑到终态的 continuation 数。
+    pub completed: usize,
+    /// 本轮续跑失败：(fn_name, error)。
+    pub failed: Vec<(String, String)>,
+    /// 本轮消费的排队写事件数。
+    pub queue_drained: usize,
+    /// 本轮墙钟耗时（对照 `CPU_PUMP_ROUND_BUDGET`）。
+    pub round_elapsed: std::time::Duration,
+}
+
+/// PLAN-711 T-11 (D-2): 排队的同 App VM 写事件——一个待派发 handler
+/// （input 代写/timer/props 播种/MCP fixture/reload 的统一落点）。
+#[derive(Debug, Clone)]
+pub struct QueuedVmWrite {
+    pub widget_name: String,
+    pub event_name: String,
+    pub state_obj_id: u64,
+    pub args: Vec<Value>,
+    /// 该事件是否可与队尾同键事件合并（明确可覆盖的输入值，如滚动位置/
+    /// 文本草稿；点击等副作用事件必须 false）。
+    pub overwritable: bool,
+}
+
+/// PLAN-711 T-11 (D-2): 队列上限——满即拒，可观察 busy，不无限增容。
+pub const VM_WRITE_QUEUE_CAP: usize = 128;
 
 /// PLAN-702 T-02: one parked handler segment.
 pub struct ParkedTask {
@@ -580,6 +626,7 @@ impl VmBridge {
             store_alias_snapshot,
             child_last_init_identity: std::cell::RefCell::new(std::collections::HashMap::new()),
             parked_tasks: std::cell::RefCell::new(Vec::new()),
+            cpu_write_queue: std::cell::RefCell::new(std::collections::VecDeque::new()),
             busy_flag_names: std::cell::RefCell::new(Vec::new()),
             #[cfg(feature = "ui-interpreter")]
             memo_cache: std::cell::RefCell::new(crate::ui::memo_deps::MemoCache::new()),
@@ -772,6 +819,7 @@ impl VmBridge {
             store_alias_snapshot,
             child_last_init_identity: std::cell::RefCell::new(std::collections::HashMap::new()),
             parked_tasks: std::cell::RefCell::new(Vec::new()),
+            cpu_write_queue: std::cell::RefCell::new(std::collections::VecDeque::new()),
             busy_flag_names: std::cell::RefCell::new(Vec::new()),
             #[cfg(feature = "ui-interpreter")]
             memo_cache: std::cell::RefCell::new(crate::ui::memo_deps::MemoCache::new()),
@@ -1357,6 +1405,13 @@ impl VmBridge {
                 self.register_parked(task, seg, wait, "__module_init".to_string(), false);
                 Ok(())
             }
+            SegmentOutcome::Runnable { .. } => {
+                // PLAN-711 T-11: legacy 段入口不产生 Runnable（防御臂）。
+                self.vm.rc_release_task_stack(&mut task);
+                Err(VmBridgeError::VmError(
+                    "internal: cpu-slice outcome escaped module init dispatch".into(),
+                ))
+            }
         }
     }
 
@@ -1613,6 +1668,13 @@ impl VmBridge {
                     p.wait = wait;
                     self.parked_tasks.borrow_mut().push(p);
                 }
+                SegmentOutcome::Runnable { .. } => {
+                    // PLAN-711 T-11: legacy resume 不产生 Runnable（Legacy 预算
+                    // 耗尽=真错误）；防御臂转挂 CpuRunnable 凭据交 CPU 泵接管，
+                    // 不丢弃已存的执行栈份额。
+                    p.wait = ParkedWait::CpuRunnable;
+                    self.parked_tasks.borrow_mut().push(p);
+                }
             }
         }
         self.sync_busy_flag();
@@ -1635,6 +1697,11 @@ impl VmBridge {
             ParkedWait::HttpStream(stream_id) => {
                 crate::vm::ffi::http_stream::stream_ready(*stream_id)
             }
+            // PLAN-711 T-11 (D-2): CPU continuation 对 tick 泵**永不就绪**——
+            // 其推进由 `resume_cpu_slices` 的轮次预算/公平策略裁决（帧通知泵
+            // 的消费面，T-04 接线），不进 16ms tick 的无预算 drain（否则逐片
+            // 续跑 × tick 频率 = 同轮自旋）。tick 泵的 scan 借此臂天然跳过。
+            ParkedWait::CpuRunnable => false,
         }
     }
 
@@ -1713,6 +1780,176 @@ impl VmBridge {
         // + 新镜像堆列表 wildcard（read_state_as_vec 容器 dep）。
         self.vm.bump_path(self.state_obj_id, Some(BUSY_STATE_FIELD));
         self.vm.bump_path(id as u64, None);
+    }
+
+    // ==========================================================================
+    // PLAN-711 T-11: CPU slice 有界泵与同 App 写事件队列（D-2）
+    // ==========================================================================
+
+    /// PLAN-711 T-11: 是否存在存活的 CPU continuation（帧通知泵的条件订阅
+    /// 门控与 T-04 接线的 gate 面；与 `has_parked_tasks` 的 I/O 语义分开）。
+    pub fn has_cpu_continuations(&self) -> bool {
+        self.parked_tasks
+            .borrow()
+            .iter()
+            .any(|p| matches!(p.wait, ParkedWait::CpuRunnable))
+    }
+
+    /// PLAN-711 T-11: CPU continuation 计数（诊断/测试/资源计数面）。
+    pub fn cpu_continuation_count(&self) -> usize {
+        self.parked_tasks
+            .borrow()
+            .iter()
+            .filter(|p| matches!(p.wait, ParkedWait::CpuRunnable))
+            .count()
+    }
+
+    /// PLAN-711 T-11: 排队写事件计数（诊断/测试/AC-11 队满观测面）。
+    pub fn vm_write_queue_len(&self) -> usize {
+        self.cpu_write_queue.borrow().len()
+    }
+
+    /// PLAN-711 T-11 (D-2): 同 App VM 写事件入队——CPU continuation 存活
+    /// 期间的 input 代写/timer/props/MCP fixture/reload 统一走此入口（生产
+    /// 者接线归 T-04）。可覆盖输入（`overwritable=true`）与队尾同键事件
+    /// 合并（新值覆盖旧值）；满队列拒绝并返回
+    /// [`VmBridgeError::WriteQueueFull`]（可观察 busy，不无限增容）。
+    pub fn enqueue_vm_write(&self, ev: QueuedVmWrite) -> Result<()> {
+        let mut q = self.cpu_write_queue.borrow_mut();
+        if ev.overwritable {
+            if let Some(last) = q.back_mut() {
+                if last.widget_name == ev.widget_name
+                    && last.event_name == ev.event_name
+                    && last.overwritable
+                {
+                    *last = ev;
+                    return Ok(());
+                }
+            }
+        }
+        if q.len() >= VM_WRITE_QUEUE_CAP {
+            return Err(VmBridgeError::WriteQueueFull { len: q.len() });
+        }
+        q.push_back(ev);
+        Ok(())
+    }
+
+    /// PLAN-711 T-11 (D-2): CPU slice 有界泵——CPU continuation 的唯一
+    /// 消费点（tick 泵经 `parked_wait_ready` 的 CpuRunnable=false 臂天然
+    /// 跳过；帧通知泵的接线归 T-04，消费的也是本方法）。
+    ///
+    /// 公平与预算（D-2 冻结纪律）：
+    /// - 先整体摘出就绪集（CpuRunnable 凭据任务，FIFO 序），本轮**只处理
+    ///   快照**——旧 tick 泵"取出-续跑-放回后再取出"的 drain 形态在此
+    ///   不复制；本轮让出的任务放回注册表队尾，同轮不再重拾。
+    /// - 每轮总预算 [`CPU_PUMP_ROUND_BUDGET`]（8ms）：超时即停，余下任务
+    ///   原样放回下一轮继续。
+    /// - 片间消费至多一条排队写事件（同 App 写序纪律：写事件只在泵上下文
+    ///   串行落堆，不与在途 continuation 交错）；轮末兜底清剩余队列。
+    pub fn resume_cpu_slices(
+        &self,
+        budget: crate::vm::engine::CpuSliceBudget,
+    ) -> CpuPumpReport {
+        let round_start = std::time::Instant::now();
+        let mut report = CpuPumpReport::default();
+        let mut ready: Vec<ParkedTask> = {
+            let mut parked = self.parked_tasks.borrow_mut();
+            let (cpu, rest): (Vec<_>, Vec<_>) = parked
+                .drain(..)
+                .partition(|p| matches!(p.wait, ParkedWait::CpuRunnable));
+            *parked = rest;
+            cpu
+        };
+        for p in ready.drain(..) {
+            let mut p = p;
+            if round_start.elapsed() >= crate::vm::engine::CPU_PUMP_ROUND_BUDGET {
+                // 轮次预算耗尽：余下任务原样放回（仍 CpuRunnable，下一轮）。
+                self.parked_tasks.borrow_mut().push(p);
+                continue;
+            }
+            self.drain_one_queued_write(&mut report, budget);
+            if round_start.elapsed() >= crate::vm::engine::CPU_PUMP_ROUND_BUDGET {
+                self.parked_tasks.borrow_mut().push(p);
+                continue;
+            }
+            report.slices_run += 1;
+            match self.vm.resume_fn_by_name_cpu_slice(&mut p.task, &p.seg, budget) {
+                SegmentOutcome::Completed(Ok(())) => {
+                    if p.release_stack_on_complete {
+                        self.vm.rc_release_task_stack(&mut p.task);
+                    }
+                    eprintln!(
+                        "[VM-CPU] {} slice-resumed to completion (parked {:?}, {} total steps)",
+                        p.fn_name, p.parked_at.elapsed(), p.task.cpu_steps_total
+                    );
+                    report.completed += 1;
+                }
+                SegmentOutcome::Completed(Err(e)) => {
+                    if p.release_stack_on_complete {
+                        self.vm.rc_release_task_stack(&mut p.task);
+                    }
+                    eprintln!("[VM-CPU] {} slice-resume FAILED: {:?}", p.fn_name, e);
+                    report.failed.push((p.fn_name.clone(), format!("{:?}", e)));
+                }
+                SegmentOutcome::Runnable { seg } => {
+                    // 本轮让出：放回队尾，同轮不重拾（快照外）。
+                    p.seg = seg;
+                    p.wait = ParkedWait::CpuRunnable;
+                    self.parked_tasks.borrow_mut().push(p);
+                }
+                SegmentOutcome::Parked { wait, seg } => {
+                    // continuation 期间遇到 I/O 等待——换凭据交 tick 泵接管
+                    //（wait 集合只增不改 707 三凭据，D-3）。
+                    p.seg = seg;
+                    p.wait = wait;
+                    self.parked_tasks.borrow_mut().push(p);
+                }
+            }
+        }
+        // 轮末兜底：清剩余排队写事件（continuation 已全部终态/让出后仍排队
+        // 的写），仍受轮次预算约束。
+        while !self.cpu_write_queue.borrow().is_empty() {
+            if round_start.elapsed() >= crate::vm::engine::CPU_PUMP_ROUND_BUDGET {
+                break;
+            }
+            if !self.drain_one_queued_write(&mut report, budget) {
+                break;
+            }
+        }
+        self.sync_busy_flag();
+        report.round_elapsed = round_start.elapsed();
+        report
+    }
+
+    /// PLAN-711 T-11: 消费一条排队写事件（经 CPU slice 入口派发——排队
+    /// 的 handler 自身也可能长，同样受片预算约束）。返回是否消费了事件。
+    fn drain_one_queued_write(
+        &self,
+        report: &mut CpuPumpReport,
+        budget: crate::vm::engine::CpuSliceBudget,
+    ) -> bool {
+        let Some(ev) = self.cpu_write_queue.borrow_mut().pop_front() else {
+            return false;
+        };
+        report.queue_drained += 1;
+        report.slices_run += 1;
+        if let Err(e) = self.call_handler_for_cpu_slice(
+            &ev.widget_name,
+            &ev.event_name,
+            ev.state_obj_id,
+            &ev.args,
+            budget,
+        ) {
+            eprintln!(
+                "[VM-CPU] queued write {}::{} FAILED: {:?}",
+                ev.widget_name, ev.event_name, e
+            );
+            report.failed.push((
+                format!("{}::{}", ev.widget_name, ev.event_name),
+                format!("{:?}", e),
+            ));
+        }
+        true
     }
 
     /// Call a handler by name with arguments.
@@ -2180,6 +2417,105 @@ impl VmBridge {
     }
 
     pub fn call_handler_for(&self, widget_name: &str, event_name: &str, state_obj_id: u64, args: &[Value]) -> Result<()> {
+        let Some((fn_name, mut task)) =
+            self.prepare_handler_dispatch(widget_name, event_name, state_obj_id, args)?
+        else {
+            // parked 段在途重入——702 T-04 契约：静默忽略（Ok）。
+            return Ok(());
+        };
+
+        // Plan 446 批一 (F1): 失败时带上崩点 ip + handler 名 —— VMError 本身
+        // 无位置信息,task.ip 在 Err 返回后指向失败指令附近。
+        // PLAN-702 T-02: 段派发——Yield+等待即 park（task 入注册表、零忙等，
+        // UI 立即恢复事件循环）；从不 yield 的 handler 在本次 update 内跑完，
+        // 与同步驱动逐字节同（兼容性论证见计划 §架构方案 4）。
+        match self.vm.call_fn_by_name_segment(&mut task, &fn_name, 1 + args.len()) {
+            SegmentOutcome::Completed(res) => {
+                // PLAN-062 F2 配套: 主任务边界 RET 无帧清扫(见 call_vm_fn 注)——
+                // 任务弃前整栈清账。Err 路径同样清(局部/临时槽可能已持 stake,
+                // 不清则崩掉的 handler 额外漏一份)。
+                self.vm.rc_release_task_stack(&mut task);
+                res.map_err(|e| {
+                    VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
+                })
+            }
+            SegmentOutcome::Parked { wait, seg } => {
+                // parked 段的栈份额随 task 存活——不得中途清账（T-02）。
+                self.register_parked(task, seg, wait, event_name.to_string(), true);
+                Ok(())
+            }
+            SegmentOutcome::Runnable { .. } => {
+                // PLAN-711 T-11: legacy 段入口不产生 Runnable（防御臂）；真
+                // slice 入口见 [`Self::call_handler_for_cpu_slice`]。
+                self.vm.rc_release_task_stack(&mut task);
+                Err(VmBridgeError::VmError(format!(
+                    "internal: cpu-slice outcome escaped legacy handler dispatch in {}",
+                    fn_name
+                )))
+            }
+        }
+    }
+
+    /// PLAN-711 T-11 (M-02/D-2): UI 专用 CPU slice 派发入口——与
+    /// [`Self::call_handler_for`] 同一套导出检查/重入忽略/入参纪律，但驱动
+    /// 预算为 [`DriveBudget::CpuSlice`]：片耗尽挂 `ParkedWait::CpuRunnable`
+    /// 凭据入注册表（CPU 泵的下一轮在轮次预算内续跑），而非同步占满一次
+    /// update。长 Init/handler 的调用方迁移到此入口（T-03/T-04 接线）。
+    pub fn call_handler_for_cpu_slice(
+        &self,
+        widget_name: &str,
+        event_name: &str,
+        state_obj_id: u64,
+        args: &[Value],
+        budget: crate::vm::engine::CpuSliceBudget,
+    ) -> Result<()> {
+        let Some((fn_name, mut task)) =
+            self.prepare_handler_dispatch(widget_name, event_name, state_obj_id, args)?
+        else {
+            // parked 段在途重入——702 T-04 契约：静默忽略（Ok）。
+            return Ok(());
+        };
+        match self
+            .vm
+            .call_fn_by_name_cpu_slice(&mut task, &fn_name, 1 + args.len(), budget)
+        {
+            SegmentOutcome::Completed(res) => {
+                self.vm.rc_release_task_stack(&mut task);
+                res.map_err(|e| {
+                    VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
+                })
+            }
+            SegmentOutcome::Parked { wait, seg } => {
+                self.register_parked(task, seg, wait, event_name.to_string(), true);
+                Ok(())
+            }
+            SegmentOutcome::Runnable { seg } => {
+                // 片耗尽：栈份额随 task 存活（不得中途清账），凭据
+                // CpuRunnable——tick 泵不拾取，`resume_cpu_slices` 消费。
+                self.register_parked(
+                    task,
+                    seg,
+                    ParkedWait::CpuRunnable,
+                    event_name.to_string(),
+                    true,
+                );
+                Ok(())
+            }
+        }
+    }
+
+    /// PLAN-711 T-11: `call_handler_for` 与 slice 入口的共享派发准备——
+    /// 导出检查（`__` 探测事件缺失静默降 debug）、parked 在途重入忽略、
+    /// 实参入栈（PLAN-053 P-053-8 双 canary 纪律原样）。`Ok(None)` =
+    /// 重入被静默忽略（702 T-04 契约，调用方直接返回 `Ok(())`）；其余
+    /// 返回 namespaced fn 名与已备好实参的 task。
+    fn prepare_handler_dispatch(
+        &self,
+        widget_name: &str,
+        event_name: &str,
+        state_obj_id: u64,
+        args: &[Value],
+    ) -> Result<Option<(String, AutoTask)>> {
         let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(widget_name, event_name);
         if !event_name.starts_with("__") {
             if crate::is_vm_hot_trace() {
@@ -2207,7 +2543,7 @@ impl VmBridge {
         // 使用反馈）；`__busy_handlers` 镜像已在 park 时置位，.at 可查询。
         if self.is_handler_parked(&fn_name) {
             eprintln!("[VM-PARKED] {} re-entry ignored (segment in flight)", fn_name);
-            return Ok(());
+            return Ok(None);
         }
 
         let mut task = AutoTask::new(0, 4096, 0);
@@ -2244,28 +2580,7 @@ impl VmBridge {
                 push_value(&mut task.ram, a);
             }
         }
-
-        // Plan 446 批一 (F1): 失败时带上崩点 ip + handler 名 —— VMError 本身
-        // 无位置信息,task.ip 在 Err 返回后指向失败指令附近。
-        // PLAN-702 T-02: 段派发——Yield+等待即 park（task 入注册表、零忙等，
-        // UI 立即恢复事件循环）；从不 yield 的 handler 在本次 update 内跑完，
-        // 与同步驱动逐字节同（兼容性论证见计划 §架构方案 4）。
-        match self.vm.call_fn_by_name_segment(&mut task, &fn_name, 1 + args.len()) {
-            SegmentOutcome::Completed(res) => {
-                // PLAN-062 F2 配套: 主任务边界 RET 无帧清扫(见 call_vm_fn 注)——
-                // 任务弃前整栈清账。Err 路径同样清(局部/临时槽可能已持 stake,
-                // 不清则崩掉的 handler 额外漏一份)。
-                self.vm.rc_release_task_stack(&mut task);
-                res.map_err(|e| {
-                    VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
-                })
-            }
-            SegmentOutcome::Parked { wait, seg } => {
-                // parked 段的栈份额随 task 存活——不得中途清账（T-02）。
-                self.register_parked(task, seg, wait, event_name.to_string(), true);
-                Ok(())
-            }
-        }
+        Ok(Some((fn_name, task)))
     }
 
     /// Plan 442 A5: fire every due one-shot timer (set_timeout). Event-form
@@ -2345,6 +2660,14 @@ impl VmBridge {
             SegmentOutcome::Parked { wait, seg } => {
                 self.register_parked(task, seg, wait, event_name.to_string(), false);
                 Ok(())
+            }
+            SegmentOutcome::Runnable { .. } => {
+                // PLAN-711 T-11: legacy 段入口不产生 Runnable（防御臂）。
+                self.vm.rc_release_task_stack(&mut task);
+                Err(VmBridgeError::VmError(format!(
+                    "internal: cpu-slice outcome escaped legacy dispatch in {}",
+                    fn_name
+                )))
             }
         }
     }
@@ -2436,6 +2759,14 @@ impl VmBridge {
             SegmentOutcome::Parked { wait, seg } => {
                 self.register_parked(task, seg, wait, event_name.to_string(), false);
                 Ok(())
+            }
+            SegmentOutcome::Runnable { .. } => {
+                // PLAN-711 T-11: legacy 段入口不产生 Runnable（防御臂；
+                // 本入口弃栈行为保持既有纪律）。
+                Err(VmBridgeError::VmError(format!(
+                    "internal: cpu-slice outcome escaped legacy call_handler in {}",
+                    fn_name
+                )))
             }
         }
     }

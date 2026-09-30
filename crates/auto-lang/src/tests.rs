@@ -406,6 +406,10 @@ mod plan082_shell_query_tests;
 // 非 yield handler 同步对拍 + resume 段 .at try/catch 捕获）。
 #[cfg(test)]
 mod plan702_segment_tests;
+// PLAN-711 T-11：CPU 可续跑执行片（AC-13 假成功修复红绿 + 片等价性 +
+// 累计护栏 + bridge 有界泵/写队列 D-2 纪律）。
+#[cfg(test)]
+mod plan711_cpu_slice_tests;
 // PLAN-705 T-01 spike：notify 驱动 owner loop + 取消/迟到完成单次终结
 // 协议种子（T-02 统一登记表与 T-04 owner loop 的前提探针）。
 #[cfg(test)]
