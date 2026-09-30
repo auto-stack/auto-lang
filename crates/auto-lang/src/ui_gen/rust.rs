@@ -4517,9 +4517,7 @@ impl RustGenerator {
                 if tag == "code_editor" {
                     let key_prop = props.get("key").or_else(|| props.get("id"));
                     let dynamic_key = match key_prop {
-                        Some(AuraPropValue::Expr(e))
-                            if !matches!(e, crate::ast::Expr::Str(_)) =>
-                        {
+                        Some(AuraPropValue::Expr(e)) if !matches!(e, crate::ast::Expr::Str(_)) => {
                             Some(self.ast_expr_to_rust(e))
                         }
                         _ => None,
