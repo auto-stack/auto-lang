@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-711
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 # PLAN-708 r3 收窄移出件的承接计划（2026-09-30 用户裁定"M 档单独立项"）。
 # 设计依据：docs/design/autoui/vm-loading-responsiveness.md（proposed）+ 708-baseline/decision 全部冻结裁决。
 # r1（2026-09-30）：骨架按 /auto-plan:new 完整化为执行契约——承接清单展开为 9 个可执行任务（T-03..T-12），
@@ -19,7 +19,7 @@ new_spec_components: []
 touched_goals: [GOAL-007, GOAL-009]
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 0
+current_step: 1
 total_steps: 9
 ---
 
@@ -279,7 +279,7 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 | T-09 | T-06余/08 | autoui-verifier 实机矩阵 + `docs/plans/reports/711-runtime.md`（新） | §7 全门禁样本（≥20/页 + 加载中交互 + 多 App + 终态）；AC-05/06/10/11/12余 |
 | T-07' | 阶段决策冻结后 | 设计文档逐项对照清单 + 缺口补齐（docs/design/autoui/vm-loading-responsiveness.md） | worker 边界逐项完备，proposed/现状分离；AC-08 |
 
-- [ ] T-11 CPU 可续跑执行片（含 engine.rs:2748 假成功缺陷修复）
+- [x] T-11 CPU 可续跑执行片（含 engine.rs:2748 假成功缺陷修复）（**[✅ 已完成]** worktree 80de86f04：DriveBudget 双档+SegmentOutcome::Runnable+ParkedWait::CpuRunnable+跨片累计护栏（cpu_steps_total/跨片 runaway 基线/50k 节拍跨片累计）+resume_parked_wake 提取+slice 双入口；AC-13=耗尽 slice 档 Runnable/legacy 档真错误；bridge 有界泵 resume_cpu_slices（tick 泵 CpuRunnable=false 隔离/8ms 轮次/FIFO 快照不重拾）+写队列 128（满拒 WriteQueueFull/同键合并/片间消费）+call_handler_for_cpu_slice；plan711 7 测+触面 115+tv 162 全绿，plan707_wait_generator 并行抖动单跑过=708 复审档案同例）
 - [ ] T-03 Init demand/代际生命周期
 - [ ] T-04 真实入口帧通知与有界泵（R-1 序障实证闭环）
 - [ ] T-05 骨架/完成/失败显示
@@ -297,7 +297,23 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 - 骨架（承接清单 8 项）按 /auto-plan:new 完整化为执行契约：9 个可执行任务（T-03/04/05/06余/07'/08/09/11/12）、9 条 AC（AC-04..08/10/11/12余 承接 + AC-13 新增）、3 条 SD（SD-02/04 承接 + SD-05 新增）。
 - grounding：全部行号/符号在主检出 8d917c469 逐点核实（§2 当前事实）；708 冻结裁决 D-1/D-2/D-3/D-5 直接继承；R-1（帧序障实证）绑入 T-04 首验；F-1 绑入 T-08。
 - 工作授权在案（用户 2026-09-30 调用 /auto-plan:work + "继续"）：契约完整化后即可进入 executing 开工，无待澄清阻塞。
-- `next: /auto-plan:work T-11（首个，无依赖）`。
+- 落地：master `1cdfb9e25`（docs-only）。
+
+### 2026-09-30 work 开工 + T-11 完成（CPU 可续跑执行片 + AC-13 假成功修复）
+
+- `stage: work` | `plan_id: PLAN-711` | `plan_revision: 1` | `outcome: in_progress` | `code_commit: worktree 80de86f04` | `base_commit: 1cdfb9e25`（=master r1 契约）。
+- worktree 新建：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（断言 rev-parse/branch 通过）；组内依赖 auto-down 兄弟 detached @3373a5c（主检出同点，只读消费 autodown-core）。
+- 主检出预检：仅 `.tmp-vm-*` 走查残留与网站资产未跟踪文件，无 crates/test 代码 WIP，符合 master 零 WIP 规则。
+- T-11 交付面（对 §5 M-02/D-2）：
+  - engine：`DriveBudget::{Legacy, CpuSlice}` 双档；`SegmentOutcome::Runnable { seg }`、`ParkedWait::CpuRunnable`（只增不改 707 三凭据）；`drive_handler_segment` 预算参数化，耗尽路径三分支——slice 档累计护栏（10M 跨片）→ 真错误、否则 `Runnable`（栈完整）；legacy 档耗尽改真错误（**AC-13 假成功修复**：旧 :2748 `Completed(Ok(()))` 臂删除）；resume 唤醒序障提取 `resume_parked_wake` 共享；新入口 `call_fn_by_name_cpu_slice` / `resume_fn_by_name_cpu_slice`（首发与 resume 同预算，D-2）。
+  - 交互缺口修复：RUNAWAY_CHECK_EVERY=50k > 片上限 4096 → 片内 steps 计数使堆增长护栏永不命中；改为 `cpu_steps_total + steps` 跨片节拍（legacy 语义逐字节不变）。
+  - vm_bridge：`resume_cpu_slices` 有界泵（就绪集 FIFO 快照本轮不重拾/8ms 轮次预算/片间消费排队写/轮末兜底清队）；`ParkedWait::CpuRunnable` 对 tick 泵恒不就绪（16ms tick 零拾取）；同 App 写事件队列 128（满拒 `WriteQueueFull`、可覆盖输入同键合并）；`call_handler_for_cpu_slice` 派发入口（与 legacy 共享 `prepare_handler_dispatch`，702 重入静默忽略契约保持）。
+  - 防御臂：http_server 6 处 + legacy 派发图 4 处（HTTP 轨非 UI 不产 Runnable）。
+- 门禁证据：`cargo check` 零错误零新增告警；plan711 新族 7/7（AC-13 红绿、同步对拍等价、累计护栏、tick 泵隔离、队满/合并/片间消费/公平）；触面 plan702/705/707/708/vm_bridge 115/115；`cargo tv` 162/162。plan707_wait_generator_park_drive_count_static 组合档偶红=并行抖动（单跑恒过、同代码复跑过、708 阶段复审档案同例登记）。
+- 过程事故（已恢复，零入提交）：rustfmt 对触碰文件递归格式化模块树，把仓库存量 fmt 漂移刷进 140 文件——保存副本→`git checkout -- .` 恢复净基线→语义改动手工重放，最终 diff 664+/62− 仅 7 文件。**教训：本仓 fmt 漂移为存量，不得整文件 rustfmt。**
+- legacy 耗尽行为变更登记：非 UI legacy 同步路径预算耗尽从"静默假成功"变"真错误"——这是 AC-13 缺陷修复本身（契约形状 Result 不变）；触面与语料门禁零回归证明无既有调用图依赖假成功。
+- Spec delta 更新：SD-02/04/05 维持拟议（本次改动与拟议一致，无范围漂移）。
+- `next: T-03 Init demand/代际生命周期（消费 T-11 结果接口：call_handler_for_cpu_slice + CpuRunnable 凭据 + resume_cpu_slices 泵）`。
 
 ## 10. 待澄清事项
 
