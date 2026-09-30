@@ -1,26 +1,28 @@
 {
-  "last_covered_plan_id": 712,
-  "timestamp": "2026-09-30T08:04:49Z",
-  "covered_commit": "7fcf913eb",
+  "last_covered_plan_id": 715,
+  "timestamp": "2026-09-30T15:22:26Z",
+  "covered_commit": "db2b71912",
   "legs": [
     "tf",
     "tt",
     "tb"
   ],
-  "taa_skipped_reason": "window (first receipt; merges 710/712/fix-*) touched no aavm trigger paths (auto/lib/*.at, test/vm/aavm2, parity, aavm2 tests, lib.rs aavm sources)",
   "new_reds": [],
-  "new_red_notes": "ffi_dual_019_dep_layout_invariants (tf) = batch-load flake: red in 5921-parallel batch, green isolated on BOTH pre-710 (c80887ab7, 3.27s) and post-710 (e81e0a1c3, 2.97s) — registered REG-2 in KNOWN-DEBT; not plan-attributable",
   "known_reds_seen": [
-    "musk_vm_track_p053 x4 (widget_computed x2 / merged_api_warning / widget_content)",
-    "musk_vm_track_p054 x2 (icon_component x2)",
-    "plan606_gallery test_029_photo_gallery_thumbnails",
-    "projector_counter_layout_and_hits",
-    "e4_default_headers_reach_wire_on_plain_get (30s bounded, P707-R1)",
-    "plan707_wait_generator_park_drive_count_static",
-    "ui_gen::vue::test_a2vue_desktop_surface_asset (a2vue desktop golden, 4f123a50e)",
-    "book_ch06_09 (pre-existing, verified at c80887ab7 — REG-1)",
-    "book_ch09_02 (pre-existing, verified at c80887ab7 — REG-1)"
+    "musk_vm_track p053/p054 族 6（712 §10② 基线 14 红成员；并行序敏感，隔离可绿）",
+    "plan606_029_photo_gallery_thumbnails（712 基线）",
+    "desktop_protocol projector_counter_layout_and_hits（712 基线；基线另含 native_gate 本轮未现）",
+    "iced renderer desktop_bus_inbox + desktop_surface_merge（712 基线）",
+    "e4_default_http default_headers_reach_wire_on_plain_get（P707-R1 在案确定性红）",
+    "plan707_wait_generator_park_drive_count_static（4f123a50e 在案并行 flake）",
+    "app_registry launch_three + scan_examples_ui（712 基线，仅主检出；关联 021 钉版重建注记）",
+    "ui_gen a2vue_desktop_surface_asset（4f123a50e 在案四红之一，tf 全覆盖 ui_gen 故现）",
+    "plan484_024_charts_streaming_recompute（711 §10 登记红）"
   ],
-  "leg_timings": "tf 73.3s (5921 run, 5909 passed, 12 failed, 512 skipped; warm feature cache) / tt / tb — full logs .tf-full.log/.tt-full.log/.tb-full.log (session temp)",
-  "verdict": "known-reds-only + 1 batch-load flake (REG-2); zero plan-attributable new reds"
+  "environmental_flakes_registered": [
+    "ffi_dual_019_dep_layout_invariants——tf 并行红，隔离单测×2+整族 23/23×2 全绿=并行负载序敏感（同 p053 已登记模式），非语义回归",
+    "plan502_m3_layout_geometry_e2e——tt/tb 并行红，隔离单测绿=同上负载序敏感",
+    "book_listing ch02_05/ch03_08/ch06_05/ch06_06/ch06_08/ch06_09/ch09_02——确定性红但输入源为外部兄弟仓 D:/autostack/book 的在途编辑态（d7a71a7 重生成金样+ch06 金样未提交 WIP），非本仓窗口回归；随书仓落定自然收敛"
+  ],
+  "notes": "窗口 7fcf913eb..HEAD（87 提交）crates 面零 parser/lexer 改动，engine/vm_bridge/renderer 改动来自 plan711/712 合并（各有 per-plan 门禁在档）；tt 一度报 test-book 编译 2 errors 未复现（与 edit-021 兄弟仓 cargo build 并发期的暂态，重跑干净）；aavm 触发路径窗口零命中故免 taa 腿；本计划 PLAN-715 自身零 crates 改动"
 }
