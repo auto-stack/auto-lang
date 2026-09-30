@@ -401,7 +401,7 @@ Worktree 复用：`D:/autostack/.wt/lang-708/auto-lang` / `plan-708-dev`，先�
 ### 2026-09-30 merge 收据（PLAN-708:r3）
 
 - `stage: merge` | `outcome: pass` | `completion_kind: delivered`（r3 收窄面）| delivery `a39ef6827`（ff-only，rebase 映射 1df3c0f30→a39ef6827 range-diff 全等；docs-only descendant of reviewed f169ad42f，delta 核对实现/依赖零变更）。
-- checkpoint 链：`prepared`（SD-01/SD-03 冻结于复审记录；711 骨架承接核对于 r3 记录）→ `landed`（a39ef6827，master==分支）→ `ledger_refreshed`（P708-1 designs/P708-2 reviews 外科插入；回读断言新条目在位且 P707/709 既有零扰动；INDEX 再生 26 projects）→ `archived`（本文件，git mv + status archived）→ `cleaned`（worktree/分支/组目录 wt-guard 后移除，收据随下一步提交补记）。
+- checkpoint 链：`prepared`（SD-01/SD-03 冻结于复审记录；711 骨架承接核对于 r3 记录）→ `landed`（a39ef6827，master==分支）→ `ledger_refreshed`（P708-1 designs/P708-2 reviews 外科插入；回读断言新条目在位且 P707/709 既有零扰动；INDEX 再生 26 projects）→ `archived`（本文件，git mv + status archived）→ `cleaned`（**已验**：wt-guard 双检 clean 后移除 auto-lang/auto-down 两 worktree——后者属 auto-down 仓，从该仓 remove；分支 plan-708-dev 已删 @a39ef6827 全合并；组目录 .wt/lang-708 rmdir 净；worktree list 零 lang-708 登记）。
 - canonical：`docs/specs/auto-lang/ui/architecture.md` ADR-26 + `docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md`（新）+ `ui/plans.md` 708 行；SD-02/04 未沉淀（711 范围）。
 - 生产面观测（landing ≠ deployment）：主检出 release 二进制未随本次重建（worktree 探针用二进制为同源代码构建）；下次消费方构建自然刷新——显式登记，不声明已部署。
 - 并行会话窗口记录：本次 merge 期间 master 三度被并行推进（709 归档/706 复审），均以 rebase+range-diff 全等等价证明处理；无冲突。
