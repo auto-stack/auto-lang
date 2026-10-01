@@ -248,6 +248,8 @@ MCP 契约不变（autoui_snapshot 增量字段），消费端 test_vm_mcp.py
   - 健康：无编译警告新增（255 基线持平）、无调试残留打印（全部门控 AUTO_SCHED_DIAG/AUTO_VM_TRACE）。
   | spec delta: SD-721-01 受控媒体契约下行世代单调门（epoch 门语义）+ SD-721-02 验收通道任意内嵌 app handler 直呼——随 merge 沉淀 docs/specs/auto-lang/ui/overview.md 候选 | next: review → merge（用户已授权合并）。
 
+- 2026-10-01 **cleaned**（续会话）：auto-lang 侧 `git worktree remove` + 分支 `plan-721-dev` 删除（was 57f96c2e4，全 landed；首跑因 018-book-reader-back 载具 PID 38636 占 CWD 报 Invalid argument，git 注册即时摘除，终止载具后净删 22051 文件）+ auto-down 侧 detached 兄弟 worktree（@895f8d0=master 零独有提交）移除；双仓 `git worktree prune` 零残留。**组目录 `D:/autostack/.wt/lang-721/` 保留**：desktop-721{b..i}.log、030-standalone{,2,3,4}.log 等为 `evidence/721/apptick-verdict.md` 明记「未入库」的实机证据（P721-R1/R3/R4/R5 债务证据指针），入库或删除待用户裁定（沿 713 残留组目录先例）。018 载具无勿杀标注已终止；实例 I（视频）清理前已自行退出，未触碰。
+
 ## 待澄清事项
 
 - 桌面实机的 OS 级输入自动化墙（用户前台占用）沿用 712 处置：
