@@ -167,7 +167,7 @@ stage: merge | plan_id: PLAN-720 | plan_revision: 1 | outcome: pass（补全 r1 
 | archived | git mv 本文件至 docs/plans/archive/720-website-desktop-showcase.md，status: archived。 |
 | cleaned | wt-guard clean（无 reparse point）；`git worktree remove` 首次报 Invalid argument——4220 端口 vitepress preview（PID 28460，计划自身预览服务，CommandLine 归属核实于本 worktree）锁 website/ 目录；taskkill 终止后 rm -rf 残留（12703 文件均在 website/）+ `git worktree prune` + `git branch -d plan-720-dev`（was 764508169，已并入）+ 组目录 `D:/autostack/.wt/lang-720` 移除；worktree list / branch --list / 目录三重复核均 0。预览如需重建：主检出落地后重跑 vitepress。 |
 | artifacts | 非部署收尾：公开站未部署（计划明示范围外，用户授权仅入库+合入）；零 Rust/后端/daemon 改动，release 二进制不涉及；本地 website dist=repair-1 稳定构建（2026-10-01 197.08s），公开更新须另行重建部署。 |
-| batch handoff | .last-batch-regression.json last_covered=715（2026-09-30T16:20Z）；720 已落地且 720%5=0 → 批量回归到期，cleaned 后移交 /auto-plan:regress 主检出单实例（Category A 不把网站 e2e 写成 Rust 批量覆盖）。 |
+| batch handoff | .last-batch-regression.json last_covered=715（2026-09-30T16:20Z）；720 已落地且 720%5=0 → 批量回归到期。**2026-10-01 用户裁定：本轮跳过 tf/tt/tb，不写收据**（收据保持 last_covered=715 原样，下次到期判定照常触发：720/后续 %5 节点或 48h+合并任一成立即到期）；终止 tf 时无孤儿 nextest/cargo 残留（仅 lang-721 会话自有的示例应用 cargo run 在跑）。Category A 不把网站 e2e 写成 Rust 批量覆盖。 |
 
 ## 10. 待澄清事项
 
