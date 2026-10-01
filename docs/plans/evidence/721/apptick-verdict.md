@@ -67,3 +67,10 @@ mpv_contract 13/13 绿，含 712-r3 双锁零扰动）。
 - 注入静默丢：desktop-721i 中 handler inject 排队后零派发（同仓 g/h
   正常）——候选=窗口 registry 反查在窗重用/多实例下的 miss；无日志
   面（inject 臂 `let _` 吞错），补 trace 后复查。
+- **新发现：030 独立轨 seek 全失效（2026-10-01 15:15，030-standalone4.log）**：
+  用户实机点击/拖拽进度条 → `[VM-ARITY] Controls.SeekFraction declares 1
+  param(s) but dispatch supplies 2 — skipping dispatch (plan-576 D4)` ×6
+  ——seek 派发被 arity 守卫整体跳过（点击零响应）。与 712 T-12 `$0` 占位
+  剥离修复同域（SeekFraction 实参形态 vs handler 形参声明的失配——疑拖拽
+  事件路径多带一参）。随后进程 ok=true 退出（无 wgpu 告警，非 T-07 press
+  死因；用户主动关窗不可排除）。归 PLAN-721 待办面复查。
