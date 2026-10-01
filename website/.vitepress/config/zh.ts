@@ -53,6 +53,9 @@ export const zh = defineConfig({
     docFooter: { prev: '上一页', next: '下一页' },
     returnToTopLabel: '回到顶部',
 
+    // PLAN-718 T-04：复制按钮标题由围栏渲染插件按 env.relativePath 本地化
+    // （locale 级 markdown.codeCopyButtonTitle 不参与 SSG 渲染，VitePress 限制）。
+
     editLink: {
       pattern: editLinkPattern,
       text: '编辑此页',
