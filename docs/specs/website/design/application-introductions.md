@@ -6,7 +6,7 @@
 
 /apps (EN/ZH) distinguishes four main products—AutoEdit, AutoShell, AutoMusk, JadeEdit—from system apps and demos. AutoDown and AutoUI retain related resource pages; neither replaces one of the four product entries. AutoEdit and JadeEdit remain separate products with shared foundations.
 
-AppsOverview.vue and data/applications.ts provide SSR cards, a two-column desktop grid, a single-column narrow layout, system categories, and ecosystem/resource links. No business API or runtime gallery is loaded by the introduction. Global navigation is a separate change.
+AppsOverview.vue and data/applications.ts provide SSR cards, a two-column desktop grid, a single-column narrow layout, the inline six-category 28-demo catalog, and ecosystem/resource links. No business API or runtime gallery is loaded by the introduction. Global navigation is a separate change.
 
 ## Reading topics and truthful progress
 
@@ -22,4 +22,4 @@ AutoShell's existing evidence and interactive examples remain at /apps/autoshell
 
 ## Verification
 
-Build and verify SSR, routes, local links, outline/locale behavior, approved image hashes and loading, absence of unready-product images/iframes/backend requests, original guide interactions, and EN/ZH at five widths in both themes. Demo images follow [the capture catalog contract](demo-capture-catalog.md). Prepared Spec changes belong to the plan worktree until landing. Category A does not trigger Cargo tests or docs_gen.
+Build and verify SSR, routes, local links, outline/locale behavior, approved image hashes and loading, absence of unready-product images/iframes/backend requests, original guide interactions, and EN/ZH at five widths in both themes. Demo introductions stay in the overview, with native disclosures and shareable anchors; only the four main products retain standalone detail topics. Legacy demo URLs redirect to the overview. Demo images follow [the capture catalog contract](demo-capture-catalog.md). Prepared Spec changes belong to the plan worktree until landing. Category A does not trigger Cargo tests or docs_gen.

@@ -10,10 +10,9 @@ Apps 的系统应用区先回答用途和典型操作；目录采用 VitePress �
 
 ## 2. 页面层次与视觉
 
-/apps：四主产品卡片 + 系统类别简介，点击 /apps/demos/。
-/apps/demos/（EN/ZH）：用途说明 → 本地六分类筛选 → 28张图文卡片 → 开发资料与发布版本说明。卡片含应用名、用途、实图/图注/放大和详情链接。桌面3列，平板2列，手机1列；筛选只对本地数据操作，不需要后端。
-28项各有 /apps/demos/<stable-slug>/ EN/ZH 阅读页：用途 → 实图 → 三步典型操作 → 当前范围与条件 → 源码/相关介绍。单H1、四H2、默认阅读大纲，图片可键盘放大，Esc回焦。说明操作不等于该次截图验证了全部功能。
-内容单源 website/.vitepress/theme/data/demos.json；scripts/generate-demo-pages.mjs 生成58个双语页，--check检测漂移；DemoCatalog.vue从同源数据SSR，确保列表和详情一致。
+/apps（EN/ZH）：四主产品卡片 → 六类28项真实图文 → 生态与资料。DemoCatalog.vue嵌入AppsOverview.vue，单个H1；系统应用H2、分类H3、应用H4。每项用途和图直接可见，原生details收三步操作、条件、范围、截图日期/形态、源码；可键盘展开和放大图片，静态SSR包含完整文字。
+稳定#demo-<slug>定位且自动展开；深链清除过滤避免隐藏目标，普通查看仅展开所选卡片。桌面3列/平板2列/手机1列，六类筛选本地执行。四主产品保留独立阅读页，Demo不另开阅读专题。
+内容单源website/.vitepress/theme/data/demos.json。原/apps/demos/和28项详情路由及ZH镜像由generate-demo-pages.mjs生成58个兼容跳转：当前语言/apps#system-apps或#demo-<slug>；SSR兜底链接、canonical与noindex、meta refresh和SPA跳转；--check检测漂移。产品入口直接指向概览锚点，不依赖旧路由。
 
 ## 3. 三种展示形式与验收门
 
@@ -73,4 +72,4 @@ Apps 的系统应用区先回答用途和典型操作；目录采用 VitePress �
 
 ## 7. 本轮实现
 
-28项/56个详情与两个目录页静态图文，六分类本地筛选；无iframe、无业务API。25项新拍，Launcher/AutoTerm/Config复用已有真图并披露来源/版本；未开展双端全功能一致性验收。构建/SSR/链接/locale/断点/图像hash/键盘测试见 PLAN-723 报告。
+28项合并在双语/apps内静态图文与就地详情，旧58路由仅兼容锚点跳转，六分类本地筛选；无iframe、无业务API。25项新拍，Launcher/AutoTerm/Config复用已有真图并披露来源/版本；未开展双端全功能一致性验收。构建/SSR/链接/locale/断点/图像hash/键盘测试见 PLAN-723 报告。

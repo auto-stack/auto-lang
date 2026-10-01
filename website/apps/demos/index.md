@@ -1,11 +1,20 @@
 ---
-title: System applications and demos
-description: Real captures, purpose, operations, and runtime requirements for 28 Auto applications and examples.
+title: "System applications and demos"
 layout: page
+head:
+  - - meta
+    - name: robots
+      content: noindex
+  - - link
+    - rel: canonical
+      href: "/apps#system-apps"
+  - - meta
+    - http-equiv: refresh
+      content: "0;url=/apps#system-apps"
 ---
 
 <script setup>
-import DemoCatalog from '../../.vitepress/theme/components/DemoCatalog.vue'
+import AppDemoRedirect from '../../.vitepress/theme/components/AppDemoRedirect.vue'
 </script>
 
-<DemoCatalog />
+<AppDemoRedirect target="/apps#system-apps" />

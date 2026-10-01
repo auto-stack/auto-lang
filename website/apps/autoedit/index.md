@@ -13,7 +13,7 @@ import EvidenceImage from '../../.vitepress/theme/components/EvidenceImage.vue'
 
 AutoEdit is the Auto ecosystem's lightweight text editor. Browsing, comparing, and reviewing code are priorities alongside everyday editing and saving. Native desktop use guides its current development. Auto sources organize application logic and interfaces, with editing and rendering foundations supplied by AutoLang and AutoUI.
 
-[All applications](/apps) · [System apps and examples](/apps/demos/)
+[All applications](/apps) · [System apps and examples](/apps#system-apps)
 
 <EvidenceImage src="/apps/autoedit/overview-dark.png" alt="autoedit native main interface" caption="AutoEdit dark native workspace · user-provided 2026-10-01 main capture" :width="1924" :height="1247" :framed="false" loading="eager" zoom-label="Enlarge image" close-label="Close" original-label="View original" />
 

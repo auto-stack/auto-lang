@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const topics = ['autoedit', 'autoshell', 'automusk', 'jadeedit', 'demos']
+const topics = ['autoedit', 'autoshell', 'automusk', 'jadeedit']
 const widths = [360, 390, 768, 1024, 1440]
 
 for (const prefix of ['', '/zh']) {
@@ -19,10 +19,10 @@ for (const prefix of ['', '/zh']) {
       expect(html).toContain('2026-10-01')
       expect(html).toContain(topic === 'overview' ? 'AutoEdit' : '<h2 id=')
       await page.goto(route)
-      const content = page.locator(topic === 'overview' ? '.apps-overview' : topic === 'demos' ? '.demo-directory' : '.vp-doc')
+      const content = page.locator(topic === 'overview' ? '.apps-overview' : '.vp-doc')
       await expect(content.locator('h1')).toHaveCount(1)
       await expect(content.locator('iframe')).toHaveCount(0)
-      const imageCount = topic === 'overview' ? 4 : topic === 'demos' ? 56 : ['autoedit', 'autoshell'].includes(topic) ? 2 : 0
+      const imageCount = topic === 'overview' ? 60 : ['autoedit', 'autoshell'].includes(topic) ? 2 : 0
       await expect(content.locator('img')).toHaveCount(imageCount)
       expect((await content.innerText()).length).toBeGreaterThan(600)
       expect(await content.innerText()).not.toMatch(/TODO|Screenshot slot|截图待补|100% Auto/)
@@ -41,7 +41,7 @@ for (const prefix of ['', '/zh']) {
         const cards = content.locator('.main-app-card')
         await expect(cards).toHaveCount(4)
         for (const key of topics.slice(0, 4)) await expect(cards.locator(`a[href="${prefix}/apps/${key}/"]`)).toHaveCount(1)
-      } else if (topic !== 'demos') {
+      } else {
         const id = await content.locator('h2').first().getAttribute('id')
         await expect(page.locator(`.VPDocAsideOutline a[href="#${id}"]`)).toBeAttached()
       }

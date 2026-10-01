@@ -13,7 +13,7 @@ import EvidenceImage from '../../../.vitepress/theme/components/EvidenceImage.vu
 
 AutoEdit 是 Auto 生态中的轻量文本编辑器。它把浏览、比较和审阅代码放在重要位置，也支持日常编辑与保存。当前以原生桌面体验为主要方向；应用逻辑与界面由 Auto 源码组织，底层编辑和渲染能力来自 AutoLang 与 AutoUI。
 
-[全部应用](/zh/apps) · [系统应用与示例](/zh/apps/demos/)
+[全部应用](/zh/apps) · [系统应用与示例](/zh/apps#system-apps)
 
 <EvidenceImage src="/apps/autoedit/overview-dark.png" alt="autoedit 原生主界面" caption="AutoEdit 深色原生工作台 · 用户提供的 2026-10-01 主图" :width="1924" :height="1247" :framed="false" loading="eager" zoom-label="放大图片" close-label="关闭" original-label="查看原图" />
 

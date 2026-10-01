@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useData } from 'vitepress'
 import { applicationCopy } from '../data/applications'
 import EvidenceImage from './EvidenceImage.vue'
+import DemoCatalog from './DemoCatalog.vue'
 const { lang } = useData()
 const zh = computed(() => lang.value.startsWith('zh'))
 const c = computed(() => applicationCopy(zh.value))
@@ -38,12 +39,7 @@ const href = (path: string) => (zh.value ? '/zh' : '') + path
         </article>
       </div>
     </section>
-    <section id="system-apps" aria-labelledby="system-apps-title" class="system-app-section">
-      <h2 id="system-apps-title">{{ c.systemTitle }}</h2>
-      <p class="section-lead">{{ c.systemLead }}</p>
-      <dl class="category-list"><div v-for="category in c.categories" :key="category[0]"><dt>{{ category[0] }}</dt><dd>{{ category[1] }}</dd></div></dl>
-      <a class="section-link" :href="href('/apps/demos/')">{{ c.systemLink }} <span aria-hidden="true">→</span></a>
-    </section>
+    <DemoCatalog />
     <section aria-labelledby="app-ecosystem-title">
       <h2 id="app-ecosystem-title">{{ c.relatedTitle }}</h2>
       <div class="ecosystem-links"><div v-for="item in c.related" :key="item.href"><a :href="href(item.href)">{{ item.name }} <span aria-hidden="true">→</span></a><p>{{ item.text }}</p></div></div>
@@ -80,11 +76,8 @@ h3 { font-size: 1.6rem; line-height: 1.3; margin: .75rem 0; }
 .main-app-card p { line-height: 1.8; color: var(--vp-c-text-2); margin: 0; }
 ul { list-style: disc; padding-left: 1.25rem; line-height: 1.9; margin: 1rem 0; }
 .main-app-card a { align-self: flex-start; margin-top: auto; }
-.category-list { margin: 1.5rem 0; }
-.category-list div { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 1rem; padding: .85rem 0; border-bottom: 1px solid var(--vp-c-divider); }
-dt { font-weight: 600; } dd { margin: 0; color: var(--vp-c-text-2); line-height: 1.7; }
 .ecosystem-links { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2rem; }
 .ecosystem-links div { min-width: 0; }.ecosystem-links p, .app-resources p { line-height: 1.8; color: var(--vp-c-text-2); }
 .app-resources { padding-bottom: 0; }.content-date { font-size: .85rem; margin-top: 1.5rem; }
-@media (max-width: 640px) { .apps-overview { padding: 2.5rem 1.25rem; }.main-app-grid, .ecosystem-links { grid-template-columns: 1fr; }.main-app-card { padding: 1.25rem; }.category-list div { grid-template-columns: 1fr; gap: .25rem; }.apps-intro { padding-bottom: 1.5rem; }section { padding: 2rem 0; } }
+@media (max-width: 640px) { .apps-overview { padding: 2.5rem 1.25rem; }.main-app-grid, .ecosystem-links { grid-template-columns: 1fr; }.main-app-card { padding: 1.25rem; }.apps-intro { padding-bottom: 1.5rem; }section { padding: 2rem 0; } }
 </style>

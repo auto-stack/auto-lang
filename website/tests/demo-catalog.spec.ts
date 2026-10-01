@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test'
 import fs from 'node:fs'
-import path from 'node:path'
 import crypto from 'node:crypto'
 
 const rows = JSON.parse(fs.readFileSync('.vitepress/theme/data/demos.json', 'utf8'))
@@ -35,13 +34,18 @@ test('frozen 28-entry catalog has real, versioned, unchanged image assets', asyn
 
 for (const prefix of ['', '/zh']) {
   const zh = !!prefix
-  test(`${prefix || 'en'} catalog SSR, category filtering, keyboard enlargement and focus return`, async ({ page, request }) => {
+  test(`${prefix || 'en'} overview contains the SSR catalog, filters and keyboard image controls`, async ({ page, request }) => {
     const errors: string[] = [], business: string[] = []
     page.on('pageerror', error => errors.push(error.message))
-    page.on('request', req => { if (/\/(api|apps\/[^/]+\/api)\//.test(new URL(req.url()).pathname)) business.push(req.url()) })
-    const html = await (await request.get(prefix + '/apps/demos/')).text()
-    for (const row of rows) expect(html).toContain(`data-demo-id="${row.id}"`)
-    await page.goto(prefix + '/apps/demos/')
+    page.on('request', req => { if (new URL(req.url()).pathname.includes('/api/')) business.push(req.url()) })
+    const html = await (await request.get(prefix + '/apps')).text()
+    for (const row of rows) {
+      expect(html).toContain(`data-demo-id="${row.id}"`)
+      expect(html).toContain(row[zh ? 'zh' : 'en'].requirements)
+    }
+    await page.goto(prefix + '/apps')
+    await expect(page.locator('h1')).toHaveCount(1)
+    await expect(page.locator('.main-app-card')).toHaveCount(4)
     await expect(page.locator('.demo-card')).toHaveCount(28)
     await expect(page.locator('.demo-category')).toHaveCount(6)
     const filters = page.locator('.demo-filters button')
@@ -49,7 +53,6 @@ for (const prefix of ['', '/zh']) {
       await filters.nth(index + 1).click()
       await expect(filters.nth(index + 1)).toHaveAttribute('aria-pressed', 'true')
       await expect(page.locator('.demo-card')).toHaveCount(rows.filter(row => row.category === group).length)
-      await expect(page.locator('.demo-category')).toHaveCount(1)
     }
     await filters.first().focus()
     await page.keyboard.press('Enter')
@@ -57,79 +60,80 @@ for (const prefix of ['', '/zh']) {
     const trigger = page.locator('.demo-card .evidence-image').first()
     await trigger.focus()
     await page.keyboard.press('Enter')
-    const dialog = page.locator('dialog[open]')
-    await expect(dialog).toHaveCount(1)
-    await expect(dialog.getByRole('button', { name: zh ? '关闭' : 'Close', exact: false })).toBeFocused()
+    await expect(page.locator('dialog[open]')).toHaveCount(1)
+    await expect(page.locator('dialog[open]').getByRole('button', { name: zh ? '关闭' : 'Close', exact: false })).toBeFocused()
     await page.keyboard.press('Escape')
-    await expect(dialog).toHaveCount(0)
+    await expect(page.locator('dialog[open]')).toHaveCount(0)
     await expect(trigger).toBeFocused()
-    for (const image of await page.locator('.demo-card .evidence-image img').all()) {
+    for (const row of rows) {
+      const card = page.locator(`#demo-${row.slug}`)
+      const summary = card.locator('summary')
+      await summary.focus()
+      await page.keyboard.press('Enter')
+      await expect(card.locator('details')).toHaveAttribute('open', '')
+      await expect(card.locator('ol li')).toHaveCount(3)
+      await expect(card.locator('.demo-expanded')).toContainText(row[zh ? 'zh' : 'en'].requirements)
+      await expect(card.locator('.demo-expanded')).toContainText(row[zh ? 'zh' : 'en'].state)
+      await expect(card.locator(`a[href^="https://github.com/auto-stack/${row.sourceRepo}/"]`)).toHaveCount(1)
+      const image = card.locator('.evidence-image img')
       await image.scrollIntoViewIfNeeded()
       await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true)
+      await summary.click()
     }
+    await expect(page.locator('.demo-card a[href*="/apps/demos/"]:not([href$=".png"])')).toHaveCount(0)
+    await expect(page.locator('iframe')).toHaveCount(0)
+    await page.locator('header.site-navbar').getByRole('link', { name: zh ? 'English' : '中文', exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`${zh ? '' : '/zh'}/apps$`))
+    await expect(page.locator('.demo-card')).toHaveCount(28)
     expect(errors).toEqual([])
     expect(business).toEqual([])
   })
 
-  test(`${prefix || 'en'} all 28 reading topics have loaded images, source, outline and reciprocal locale`, async ({ page, request }) => {
+  test(`${prefix || 'en'} legacy directory and 28 topics lead to expanded overview anchors`, async ({ page, request }) => {
     test.setTimeout(180_000)
-    const business: string[] = [], errors: string[] = []
-    page.on('request', req => { if (new URL(req.url()).pathname.includes('/api/')) business.push(req.url()) })
-    page.on('pageerror', error => errors.push(error.message))
-    const captureDir = '.p723-runtime/pages'
-    fs.mkdirSync(captureDir, { recursive: true })
+    const directory = prefix + '/apps/demos/'
+    await page.goto(directory)
+    await expect(page).toHaveURL(new RegExp(`${prefix}/apps#system-apps$`))
     for (const row of rows) {
-      const route = `${prefix}/apps/demos/${row.slug}/`
-      const response = await request.get(route)
-      expect(response.ok(), route).toBe(true)
-      const html = await response.text()
-      expect(html).toContain(row[zh ? 'zh' : 'en'].name)
-      expect(html).toContain('v0.5.1')
-      await page.goto(route)
-      const content = page.locator('.vp-doc')
-      await expect(content.locator('h1')).toHaveCount(1)
-      await expect(content.locator('h2')).toHaveCount(4)
-      await expect(content.locator('iframe')).toHaveCount(0)
-      const image = content.locator('.evidence-image img')
-      await expect(image).toHaveAttribute('src', row.image.src)
-      await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true)
-      await expect(content.locator('li')).toHaveCount(3)
-      await expect(content.locator(`a[href^="https://github.com/auto-stack/${row.sourceRepo}/"]`)).toHaveCount(1)
-      const links = await content.locator('a').evaluateAll(nodes => nodes.map(node => node.getAttribute('href')!).filter(href => href.startsWith('/') && !href.endsWith('.png')))
-      for (const link of new Set(links)) expect((await request.get(link as string)).ok(), link as string).toBe(true)
-      const id = await content.locator('h2').first().getAttribute('id')
-      await expect(page.locator(`.VPDocAsideOutline a[href="#${id}"]`)).toBeAttached()
-      await page.screenshot({ path: path.join(captureDir, `${zh ? 'zh' : 'en'}-${row.slug}.png`), fullPage: true })
-      await page.locator('header.site-navbar').getByRole('link', { name: zh ? 'English' : '中文', exact: true }).click()
-      await expect(page).toHaveURL(new RegExp(`${zh ? '' : '/zh'}/apps/demos/${row.slug}/$`))
+      const target = `${prefix}/apps#demo-${row.slug}`
+      const old = `${prefix}/apps/demos/${row.slug}/`
+      const html = await (await request.get(old)).text()
+      expect(html).toContain(target)
+      expect(html).toContain('noindex')
+      expect(html).not.toContain('class="demo-card"')
+      await page.goto(old)
+      await expect(page).toHaveURL(new RegExp(`${target}$`))
+      await expect(page.locator(`#demo-${row.slug} details`)).toHaveAttribute('open', '')
+      await expect(page.locator(`#demo-${row.slug}`)).toBeInViewport()
     }
-    expect(business).toEqual([])
-    expect(errors).toEqual([])
+    await page.goto(`${prefix}/apps#demo-terminal`)
+    await expect(page.locator('#demo-terminal details')).toHaveAttribute('open', '')
+    await page.locator('.demo-filters button').nth(1).click()
+    await expect(page.locator('#demo-terminal')).toHaveCount(0)
+    await page.evaluate(() => { location.hash = 'demo-settings' })
+    await expect(page.locator('#demo-settings details')).toHaveAttribute('open', '')
+    await expect(page.locator('.demo-card')).toHaveCount(28)
+    await page.locator('#demo-calculator .demo-permalink').click()
+    await expect(page.locator('#demo-calculator details')).toHaveAttribute('open', '')
   })
 
-  test(`${prefix || 'en'} catalog and every detail fit five widths in both themes`, async ({ page }) => {
-    test.setTimeout(300_000)
+  test(`${prefix || 'en'} merged overview and expanded cards fit five widths and both themes`, async ({ page }) => {
+    test.setTimeout(120_000)
+    fs.mkdirSync('.p723-runtime/r2-pages', { recursive: true })
     for (const dark of [false, true]) {
-      await page.goto(prefix + '/apps/demos/')
+      await page.goto(prefix + '/apps')
       await page.evaluate(value => localStorage.setItem('vitepress-theme-appearance', value), dark ? 'dark' : 'light')
       for (const width of [360, 390, 768, 1024, 1440]) {
         await page.setViewportSize({ width, height: 900 })
-        for (const route of ['/apps/demos/', ...rows.map(row => `/apps/demos/${row.slug}/`)]) {
-          await page.goto(prefix + route)
-          await expect(page.locator('.demo-directory h1, .vp-doc h1')).toBeVisible()
-          await expect(page.locator('html')).toHaveClass(dark ? /dark/ : /^(?!.*\bdark\b)/)
-          expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${prefix + route} ${width} ${dark}`).toBe(true)
-          if (route === '/apps/demos/') {
-            const columns = await page.locator('.demo-grid').first().evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length)
-            expect(columns).toBe(width <= 640 ? 1 : width < 1024 ? 2 : 3)
-            for (const image of await page.locator('.demo-card .evidence-image img').all()) {
-              await image.scrollIntoViewIfNeeded()
-              await image.evaluate((img: HTMLImageElement) => img.decode())
-            }
-            await page.evaluate(() => scrollTo(0, 0))
-            await page.screenshot({ path: `.p723-runtime/pages/${zh ? 'zh' : 'en'}-catalog-${width}-${dark ? 'dark' : 'light'}.png`, fullPage: true })
-          }
-        }
+        await page.goto(prefix + '/apps')
+        await expect(page.locator('html')).toHaveClass(dark ? /dark/ : /^(?!.*\bdark\b)/)
+        const columns = await page.locator('.demo-grid').first().evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length)
+        expect(columns).toBe(width <= 640 ? 1 : width < 1024 ? 2 : 3)
+        await page.locator('.demo-more').evaluateAll(nodes => nodes.forEach((node: HTMLDetailsElement) => { node.open = true }))
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${prefix}/apps ${width} ${dark}`).toBe(true)
+        await page.locator('#demo-calculator').scrollIntoViewIfNeeded()
+        await page.locator('#demo-calculator .evidence-image img').evaluate((img: HTMLImageElement) => img.decode())
+        await page.screenshot({ path: `.p723-runtime/r2-pages/${zh ? 'zh' : 'en'}-${width}-${dark ? 'dark' : 'light'}.png` })
       }
     }
   })

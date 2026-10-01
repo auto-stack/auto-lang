@@ -1,11 +1,20 @@
 ---
-title: 系统应用与 Demo
-description: 28 个 Auto 应用与示例的真实界面、用途、操作和运行条件。
+title: "系统应用与 Demo"
 layout: page
+head:
+  - - meta
+    - name: robots
+      content: noindex
+  - - link
+    - rel: canonical
+      href: "/zh/apps#system-apps"
+  - - meta
+    - http-equiv: refresh
+      content: "0;url=/zh/apps#system-apps"
 ---
 
 <script setup>
-import DemoCatalog from '../../../.vitepress/theme/components/DemoCatalog.vue'
+import AppDemoRedirect from '../../../.vitepress/theme/components/AppDemoRedirect.vue'
 </script>
 
-<DemoCatalog />
+<AppDemoRedirect target="/zh/apps#system-apps" />

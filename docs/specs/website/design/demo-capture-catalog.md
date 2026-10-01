@@ -6,7 +6,7 @@
 
 沿application-demos.md的28项候选建立稳定id与slug，覆盖auto-lang示例、auto-os系统应用、auto-term与auto-os-config。数量描述这批网站介绍材料，不等于桌面注册项、所有系统app或同等产品完成度。不得因拍摄困难悄悄删项、合并019/030视频、将022冒充auto-kanban产品，或将AutoTerm冒充AutoShell。
 
-目录内容：website/.vitepress/theme/data/demos.json；公开图片：website/public/apps/demos/<slug>.png；对应中英详情：website/{zh/,}apps/demos/<slug>/index.md。脚本generate-demo-pages.mjs生成58页，--check要求内容与JSON一致。六分类只筛选本地状态，SSR初始显示全部28项。
+目录内容：website/.vitepress/theme/data/demos.json；公开图片：website/public/apps/demos/<slug>.png；双语概览：website/{zh/,}apps.md嵌入DemoCatalog.vue。脚本generate-demo-pages.mjs生成58个旧路由兼容跳转，--check要求目标与JSON一致。六分类只筛选本地状态，SSR初始显示全部28项。
 
 ## 真图资格与内容边界
 
@@ -22,6 +22,6 @@ docs/reports/p723-capture-catalog.json冻结稳定ID、来源仓/路径/采样HE
 
 ## 网站行为与验证
 
-目录桌面3列/平板2列/手机1列；有名称的分类按钮aria-pressed，结果计数aria-live；图片按钮用EvidenceImage，键盘Enter开启，Esc/关闭回焦，查看原图是图片链接。详情单H1/四H2/大纲、locale互链、正确源码入口。v0.5不运行应用/桌面后台，不嵌iframe；v0.5.1在线体验与UI Playground按后续设计独立交付。
+目录桌面3列/平板2列/手机1列；有名称的分类按钮aria-pressed，结果计数aria-live；图片按钮用EvidenceImage，键盘Enter开启，Esc/关闭回焦，查看原图是图片链接。概览单H1，分类/条目层级正确、locale互链、正确源码入口；就地details含操作/条件/状态/截图版本；原详情路由跳转概览稳定锚点并展开。v0.5不运行应用/桌面后台，不嵌iframe；v0.5.1在线体验与UI Playground按后续设计独立交付。
 
-验收检查28个唯一ID/slug、原图字节hash/尺寸、双语内容、56个详情路由/图片资源、locale、大纲、六类筛选/放大回焦、五宽度×深浅×中英无溢出，以及原产品指南与OS/v05展示回归。Category A不运行Cargo tests/docs_gen；实拍注明实际端，不等于28项跨端一致性证明。
+验收检查28个唯一ID/slug、原图字节hash/尺寸、双语内容、概览28项完整SSR/图片资源、locale、58兼容跳转、直接锚点与筛选后深链、就地展开、六类筛选/放大回焦、五宽度×深浅×中英（含全部条目展开）无溢出，以及原产品指南与OS/v05展示回归。Category A不运行Cargo tests/docs_gen；实拍注明实际端，不等于28项跨端一致性证明。

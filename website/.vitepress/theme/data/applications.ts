@@ -12,16 +12,6 @@ export function applicationCopy(zh: boolean) {
       { key: 'automusk', name: 'AutoMusk', role: 'AI 辅助开发', summary: '围绕 Plan 与 Spec 组织开发任务的 Coding Agent。让需求、执行过程、验证结果和项目知识保持可追溯。', uses: ['项目对话与工具调用', '规划、执行、复审与知识沉淀', '模型、角色与技能配置'] },
       { key: 'jadeedit', name: 'JadeEdit', role: '文档与知识', summary: '面向 AutoDown 文档和本地知识库的编辑器。将写作、页面链接、搜索与目录组织连起来，逐步形成个人知识工作台。', uses: ['文档编辑与多页面浏览', '链接、反链、标签与检索', '页面组织与本地草稿恢复'] },
     ],
-    systemTitle: '系统应用与 Demo',
-    systemLead: '从待办、日历和媒体工具，到文件管理、启动器和小游戏。先按用途认识应用，再看具体操作；需要后台服务的功能，在介绍中说明运行条件。',
-    categories: [
-      ['工作与生活', '待办、日历、备忘录、天气'],
-      ['阅读与交流', '图书阅读器、博客、聊天'],
-      ['媒体与创作', '音乐、视频、图片、画板'],
-      ['系统与数据', '启动器、文件管理、监视器、数据库'],
-      ['小游戏', '俄罗斯方块、纸牌接龙、扫雷'],
-    ],
-    systemLink: '查看系统应用与示例',
     relatedTitle: '应用与生态',
     related: [
       { href: '/os', name: 'AutoOS', text: '了解应用所在的桌面、系统服务，以及 LaOS 与 OS over OS 的关系。' },
@@ -44,16 +34,6 @@ export function applicationCopy(zh: boolean) {
       { key: 'automusk', name: 'AutoMusk', role: 'AI-assisted development', summary: 'A coding agent that organizes development around Plans and Specs, keeping requirements, execution, verification, and project knowledge traceable.', uses: ['Project conversations and tool calls', 'Planning, execution, review, and consolidation', 'Model, role, and skill configuration'] },
       { key: 'jadeedit', name: 'JadeEdit', role: 'Documents and knowledge', summary: 'An editor for AutoDown documents and local knowledge bases. Writing, page links, search, and directory organization form a developing personal knowledge workspace.', uses: ['Document editing and multiple pages', 'Links, backlinks, tags, and search', 'Page organization and local draft recovery'] },
     ],
-    systemTitle: 'System applications and demos',
-    systemLead: 'Explore tasks, calendars, media tools, file management, launchers, and games. Introductions explain their purpose and operations, including service requirements where applicable.',
-    categories: [
-      ['Work and daily life', 'Tasks, calendars, notes, weather'],
-      ['Reading and communication', 'Books, blogs, chat'],
-      ['Media and creation', 'Music, video, images, painting'],
-      ['System and data', 'Launcher, files, monitor, database'],
-      ['Games', 'Tetris, Solitaire, Minesweeper'],
-    ],
-    systemLink: 'Explore system apps and examples',
     relatedTitle: 'Applications in the ecosystem',
     related: [
       { href: '/os', name: 'AutoOS', text: 'The desktop and system services, and the relationship between LaOS and OS over OS.' },

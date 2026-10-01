@@ -1,0 +1,26 @@
+{
+  "plan": "PLAN-723:r2",
+  "implementationBase": "a35a908a70ffe38abe0fa051f0465cb2270c9435",
+  "delta": [
+    {
+      "path": "docs/specs/website/project.md",
+      "sha256": "97f5a52b7c55d1d2d8bc77be44754448130431c20427d2d42e5649ff44677b84",
+      "operation": "modify"
+    },
+    {
+      "path": "docs/specs/website/design/application-introductions.md",
+      "sha256": "fd047779695dcb48cf7bedca6dd877a4578d153b400d4023952dd0ffba8b771c",
+      "operation": "modify"
+    },
+    {
+      "path": "docs/specs/website/design/application-demos.md",
+      "sha256": "bd5c5218b19e19299ca363cab6eb01343b4ca4633b8bf6937abf8d11fb6a409d",
+      "operation": "modify"
+    },
+    {
+      "path": "docs/specs/website/design/demo-capture-catalog.md",
+      "sha256": "2a664270c9f04dbfa086e5f50a22dcd1c6296a3bb96720de1b6951225b196b4a",
+      "operation": "add"
+    }
+  ]
+}
