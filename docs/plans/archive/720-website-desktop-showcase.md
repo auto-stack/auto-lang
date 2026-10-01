@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-720
-status: reviewed
+status: archived
 feature_name: 网站虚拟桌面实景展示
 author: [agent]
 created_at: 2026-10-01
@@ -154,6 +154,20 @@ stage: review | plan_id: PLAN-720 | plan_revision: 1 | repair: 1 | outcome: pass
 | AC-06 | 集成 build exit0 197.08s 为已记录证据，本次不重跑 | pass |
 
 merge 前置检查：specs.json 现状 designs 124/reviews 187/reports 110、无 P720 条目；`json.dumps(ensure_ascii=False, indent=2)` 字节 roundtrip 守卫通过；store 写者 8080 连接拒绝（循 711/713/714/715/717/718 先例手工外科插入）。findings：无新增遗漏/延后/workaround；批量回归收据 last_covered=715、720 为 %5 节点 → 归档后到期，移交 /auto-plan:regress 主检出单实例。
+
+### PLAN-720:r1 合并收尾检查点（2026-10-01，独立会话）
+
+stage: merge | plan_id: PLAN-720 | plan_revision: 1 | outcome: pass（补全 r1 与 repair-1 两次检查点遗留的 pending 收尾；代码早已落地，本会话零代码变更） | delivery_commit: 764508169a2bc7a869ab3fa1f4f48ed2c32d8c9b | next: 批量回归到期移交 /auto-plan:regress。
+
+| checkpoint | evidence |
+|---|---|
+| prepared | reviewed=764508169a（=plan-720-dev 顶端，repair-1 复审 pass 绑定 + 独立确认 b7da25a28）；canonical Spec 已随 r1/repair-1 落地——`git diff 699368fd8e79a 764508169a2b -- website docs/specs` 为空，SD-01/02 现状契约核实（project.md:20 / ui-presentation.md:31，现行 hash 994113f2…/07a644d9…与 repair-1 记录一致）；无剩余规范文档编辑。 |
+| landed | 既往落地：master ec27ff80a→764508169a ff-only 无 merge commit，range-diff 三项全等（5b0426b7c→8a67682ca、8c05b56f2→29515ead6、699368fd8→764508169）。本会话簿记链 a19be0e84→b7da25a28（独立复审）→beae54b07（ledger），worktree/分支零新提交。 |
+| ledger_refreshed | beae54b07：specs.json 外科插入 P720-1/P720-2（designs，docsha 994113f25acd2261 / 07a644d95f92d73e，@ 764508169a）、P720-3（reviews）、P720-4（reports）；designs 124→126 / reviews 187→188 / reports 110→111；字节 roundtrip 守卫 + 他三段对备份零扰动回读断言；spec-lint 0 错误（6 预存警告）；spec-index 再生无改动；store 写者 8080 不可达（000）循 711/713/714/715/717/718 先例。 |
+| archived | git mv 本文件至 docs/plans/archive/720-website-desktop-showcase.md，status: archived。 |
+| cleaned | pending：待 wt-guard clean 后移除 worktree/分支/组目录并回填。 |
+| artifacts | 非部署收尾：公开站未部署（计划明示范围外，用户授权仅入库+合入）；零 Rust/后端/daemon 改动，release 二进制不涉及；本地 website dist=repair-1 稳定构建（2026-10-01 197.08s），公开更新须另行重建部署。 |
+| batch handoff | .last-batch-regression.json last_covered=715（2026-09-30T16:20Z）；720 已落地且 720%5=0 → 批量回归到期，cleaned 后移交 /auto-plan:regress 主检出单实例（Category A 不把网站 e2e 写成 Rust 批量覆盖）。 |
 
 ## 10. 待澄清事项
 
