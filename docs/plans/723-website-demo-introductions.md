@@ -5,7 +5,7 @@ feature_name: Website 应用介绍与28个Demo真实截图
 author: [Codex]
 created_at: 2026-10-01
 updated_at: 2026-10-01
-plan_revision: 1
+plan_revision: 2
 current_step: 6
 total_steps: 6
 supersedes_spec_components: [docs/specs/website/project.md, docs/specs/website/design/application-introductions.md, docs/specs/website/design/application-demos.md]
@@ -18,7 +18,7 @@ affects: [website]
 
 ## 0. 变更摘要
 
-承接722双语应用介绍，将约28个候选Demo制作成六类静态目录和逐项介绍，配真实运行图；补AutoEdit/AutoShell已批准主图。Musk和Jade截图继续等待已约定的准备条件。v0.5不新增桌面/app在线体验，不实施UI Playground。
+承接722双语应用介绍，将28个Demo的六类图文及逐项介绍合并进应用概览/apps；补AutoEdit/AutoShell已批准主图。四主应用保留独立详情，Demo不再需要单独阅读页。Musk和Jade截图继续等待已约定的准备条件。v0.5不新增桌面/app在线体验，不实施UI Playground。
 
 ## 1. 目标
 
@@ -41,7 +41,7 @@ VitePress/Vue3/TypeScript；Playwright捕获Vue实际画面；必要时AutoUI MC
 
 ## 5. 详细设计
 
-新 /apps/demos/ 六类目录，桌面3列/平板2列/手机1列；每条真实缩略图、用途、典型操作与详情链接。逐项介绍可采用28 EN/ZH阅读路由或SSR同等详情方式，单H1、目录、互链与locale正确。典型流程说明初始→操作→结果；每项至少主图，复杂项按已取得素材补步骤图，不假装测试过全部功能。
+双语/apps概览按四主应用→六类28 Demo→生态/资料展开。Demo桌面3列/平板2列/手机1列；每条真实缩略图和用途直接可见，三步操作、运行条件、当前范围、截图版本及源码链接收在原生details中，SSR内容完整，键盘可展开。概览仅一个H1；系统应用H2、分类H3、应用H4。每项稳定#demo-<slug>可分享并自动展开，筛选不会阻挡深链。原/apps/demos/及28详情路由只保留兼容跳转与静态兜底链接，目标为当前语言/apps锚点，不再承担独立介绍；四主应用详情继续独立。
 稳定ID/来源沿722候选28项。明确系统集成应用与学习示例、video-app vs player、kanban示例vs独立产品。v0.5静态介绍，无新增app/桌面运行按钮；既有画廊为开发资料且说明服务前置。
 AutoEdit使用PixPin_2026-10-01_15-14-27.png；Shell使用ash-01；Musk/Jade保持无图文字布局，不展示空框。Capture-only采样不要求28项双端一致性认证，图注明实际Vue/VM，不虚构另一端。
 
@@ -50,20 +50,20 @@ AutoEdit使用PixPin_2026-10-01_15-14-27.png；Shell使用ash-01；Musk/Jade保�
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
 | SD-01 | modify | docs/specs/website/design/application-introductions.md | 722本轮留空→723已获素材可展示，Musk/Jade仍等待 | 尊重素材授权 | AC-01 |
-| SD-02 | modify | docs/specs/website/design/application-demos.md | 分类首版正文→28逐项真实图静态介绍 | 完成P0 | AC-02..05 |
-| SD-03 | add | docs/specs/website/design/demo-capture-catalog.md | 无素材契约→稳定清单、来源与UI捕获质量、发布版本边界 | 真实可追踪 | AC-03..06 |
+| SD-02 | modify | docs/specs/website/design/application-demos.md | r1独立目录/详情→/apps内六类28项实图及就地展开，旧路由兼容锚点跳转 | 用户r2页面合并要求 | AC-02..05 |
+| SD-03 | add | docs/specs/website/design/demo-capture-catalog.md | 无素材契约→稳定清单、来源与UI捕获质量、发布版本边界；r2更新页面/验证位置 | 真实可追踪 | AC-03..06 |
 | SD-04 | modify | docs/specs/website/project.md | 补介绍素材和静态目录现状 | 与交付一致 | AC-01..06 |
 
 ## 6. 测试设计
 
-Category A：禁止cargo t/docs_gen；不修改Rust。工作树website npm build；Playwright scoped apps/demos+原网站/OS/展示/路由回归。新SSR条目/唯一ID/图片hash与尺寸/无破图/详情和locale链接/分类/键盘放大/无业务API；360/390/768/1024/1440×双语×深浅，截图人工检查。每图至少确认非空、应用身份、资源已加载、无遮挡报错；记录真实页面/场景与操作，捕获失败有结构化诊断，不伪图。
+Category A：禁止cargo t/docs_gen；不修改Rust。工作树website npm build；Playwright scoped apps-introduction/demo-catalog/site-ui/spa-routes回归。新SSR条目/唯一ID/图片hash与尺寸/无破图/就地完整介绍和locale链接/分类/键盘放大/无业务API；58旧路由均校验跳转到正确语言/锚点；直接hash和筛选后hash展开；360/390/768/1024/1440×双语×深浅，含详情展开无溢出、截图人工检查。实图来源资格沿r1不变，不重新拍摄。
 
 ## 7. 验收标准
 
 - AC-01：AutoEdit/Shell主图真实、共览与详情合理；Musk/Jade未就绪不插假图，旧Shell指南/v05保持。
-- AC-02：冻结的28项皆有双语逐项介绍：用途/典型操作/运行条件/来源/状态；分类/详情链接有效，未冒领集成或全部功能。
+- AC-02：冻结的28项皆在双语应用概览有逐项完整介绍：用途/典型操作/运行条件/来源/状态；不跳到单独阅读页；四主应用详情独立保留，未冒领集成或全部功能。
 - AC-03：28项各至少一张合格真实UI截图；hash/尺寸/来源/运行形态/日期/捕获或复用证据入清单，空白/服务错误图不算通过。
-- AC-04：六分类目录、稳定ID、可读卡片、放大/返回焦点与双语互链可用。
+- AC-04：概览内六分类、稳定ID、可读卡片、原生详情展开、放大/返回焦点与双语互链可用；原目录及28旧详情路由兼容跳转当前语言/apps锚点，直接深链自动展开且不被筛选隐藏。
 - AC-05：v0.5静态可读无业务服务请求，不出现本轮新桌面/app在线运行入口；v0.5.1方向标注准确。
 - AC-06：build/触面回归/五宽度双主题/图像视觉检查通过，来源和SD冻结，独立复审逐项重建。
 
@@ -71,10 +71,10 @@ Category A：禁止cargo t/docs_gen；不修改Rust。工作树website npm build
 
 - [x] T-01（AC-02,03）：worktree承接722；核定28来源/README/素材，提交目录与捕获清单。
 - [x] T-02（AC-03）：在受控本地运行环境捕获或复核复用28项图；逐图人工审查/来源记录，不改应用实现。
-- [x] T-03（AC-02,04,05）：双语28介绍与六类图文目录、互链、来源/条件；服务版示例明确。
+- [x] T-03（AC-02,04,05）：将六类28图文和完整介绍合并/apps，就地details、锚点和58兼容旧路由，四主详情独立；同步设计与Spec候选。
 - [x] T-04（AC-01）：AutoEdit/Shell主图接入总览/详情，Musk/Jade保持约定，旧Shell功能不回退。
-- [x] T-05（AC-01..06）：构建、适配/链接/API/交互测试和页面视觉走查，准备SD与报告。
-- [x] T-06（AC-06）：提交实现，auto-plan-review逐AC复核（同会话明确独立性限制），记录缺项/债务，不默默缩减28。
+- [x] T-05（AC-01..06）：构建、适配/链接/API/就地交互/兼容跳转测试和页面视觉走查，刷新SD与报告。
+- [x] T-06（AC-06）：提交r2实现，auto-plan-review逐AC复核（同会话明确独立性限制），保留r1复审历史，不默默缩减28。
 
 ## 9. 复审记录
 
@@ -82,7 +82,7 @@ stage: new | PLAN-723:r1 | outcome: pass | next: work
 work-started: D:/autostack/.wt/lang-723/auto-lang (plan-723-dev); master base42fa2e0c0; development branch merged reviewed722 without landing website on master. Capture inventory underway.
 用户已授权介绍和截图；直接实施。捕获某项若遇依赖/环境阻塞，记录证据继续独立内容，未经解决不把AC-03或全计划宣布完成。
 
-stage: review | plan_id: PLAN-723 | plan_revision: 1 | outcome: pass
+stage: review | plan_id: PLAN-723 | plan_revision: 1 | outcome: pass（历史；r2页面结构变更使AC-02/04/06及相关回归失效，须重新验证）
 
 - reviewed_commit: 19beb3046fc3d888000514e651071ad4f2748f8c
 - base_commit: ce280b0a3f733a3119d32b57f0e7995e86b1f674
@@ -94,8 +94,25 @@ stage: review | plan_id: PLAN-723 | plan_revision: 1 | outcome: pass
 - independence: 同实施会话内按auto-plan-review从已提交diff、断言、实图和冻结材料重建；无独立第二评审者，不将角色名冒充独立性。
 - next: merge（尚未执行）。开发分支保留预览供用户查看；未合入master、未归档或移除worktree。
 
+stage: work | plan_id: PLAN-723 | plan_revision: 2 | outcome: pass | code_commit: 137bc5557855c7757a0f3754ed4466226fa752f3 | task_ids: T-03,T-05,T-06 | evidence: docs/reports/p723-r2-review.md | blockers: none | next: review（已完成，下记收据）
+
+stage: review | plan_id: PLAN-723 | plan_revision: 2 | outcome: pass
+
+- reviewed_commit: 137bc5557855c7757a0f3754ed4466226fa752f3；base_commit: a35a908a70ffe38abe0fa051f0465cb2270c9435；receipt_commit: 62eb4886f9f9b20e930dc681a061db6a4de4bb84（仅记录，无实施变化）。
+- dependency_revisions: 722 reviewed bb8bcefd389589f0522fc0b23951843bb975a8ab；沿r1冻结demos.json、28 PNG与p723-capture-catalog.json，素材hash和来源集合再次校验。
+- spec_inputs: r2 base中的四准备Spec；p723-r2-spec-delta.json四hash匹配；p723-r2-spec-delta.patch SHA-256=584a552c2c13d79639623c8b354cd2c315af672c8b6bf4fda0f41faedd3e16a5；master canonical/ledger未发布。
+- acceptance_results: AC-01..06全部pass；T-01..06代码/行为/材料对应矩阵见docs/reports/p723-r2-review.md。完整正文迁入/apps的SSR及原生details，四主专题独立，58旧路径兼容定位。
+- findings: 无新增阻塞；P723-D1素材限制保持明确，28项正文、步骤、条件及状态无遗漏，无mock/伪图/新执行入口；r1结构测试未冒充r2证据。
+- evidence: docs/reports/p723-r2-review.md、p723-r2-spec-delta.json、p723-r2-spec-delta.patch；冻结实施最终build177.57s，70 passed(3.2m)；双语就地28项、58旧路由、直接/筛选后hash、图片键盘交互、5宽×双语×主题全部展开无溢出；人工桌面/手机视觉检查；git diff --check与wt-guard clean。
+- independence: 在实施会话从已提交代码、断言与实图重新核验，没有第二独立评审者。
+- next: merge（未执行）；保留723工作树及4235最新预览供查看。
+
 ## 10. 待澄清事项
 
 无当前必需用户决策。未就绪Musk/Jade素材依此前决定等待，不属于本轮28 demo必需素材；技术阻塞将按逐项证据登记。
 
-执行完成：28项双语用途/操作/条件/边界与58个阅读/目录页面；28项真图逐图审查，25项新拍，Launcher、AutoTerm、Config三项复用并标来源。AutoTerm当前VM拍摄失败未发布，采用注明版本的2026-09-22原生留存图。真实媒体与文件服务使用公开/专用资源，无mock API/替换UI。AutoEdit/Shell批准主图已接入；实施19beb3046fc3d888000514e651071ad4f2748f8c复审pass，构建与95个唯一检查通过。更详证据与准备Spec保留在计划分支，尚未合入master。
+r2 revision handoff：2026-10-01用户查看后明确要求将28 Demo页面合并进应用概览，四主应用独立详情保留。stage:new | PLAN-723:r2 | outcome:pass | next:work；同723 worktree，r2 base=a35a908a70ffe38abe0fa051f0465cb2270c9435。T-01/02/04素材和主图成果保留，T-03/05/06重开；未复用r1页面结构验收。直接请求已授权本修订，无必需决策；touched_goals仍为空，现有网站介绍范围。
+
+r1执行完成（历史，结构测试不覆盖r2）：28项双语用途/操作/条件/边界与58个阅读/目录页面；28项真图逐图审查，25项新拍，Launcher、AutoTerm、Config三项复用并标来源。AutoTerm当前VM拍摄失败未发布，采用注明版本的2026-09-22原生留存图。真实媒体与文件服务使用公开/专用资源，无mock API/替换UI。AutoEdit/Shell批准主图已接入；实施19beb3046fc3d888000514e651071ad4f2748f8c复审pass，构建与95个唯一检查通过。更详证据与准备Spec保留在计划分支，尚未合入master。
+
+r2执行完成：137bc5557855c7757a0f3754ed4466226fa752f3提交概览合并；28项正文仍由原demos.json提供，没有删除或改写素材。就地原生details与稳定深链、58兼容跳转接入；四主产品独立保留。npm run build首次187.22s；最终冻结实现npx vitepress build 177.57s通过，未在构建过程中继续改实现。r2专项+全站UI/SPA触面回归70项通过，逐AC复审pass；现有4235预览已更新，未合入master。
