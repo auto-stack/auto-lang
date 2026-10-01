@@ -30,7 +30,7 @@
 ## 3. .at 可达双轨（同源）
 
 - **VM 内建**：9918 `auto.frame.begin_ms` / 9919
-  `auto.frame.present_ms`（→I64；catalog+RET+NATIVE_ID_ENTRIES 钉扎
+  `auto.frame.present_ms`（→**int**；catalog+RET+NATIVE_ID_ENTRIES 钉扎
   ——`register_vm_declarations` 按 NATIVE_ID_MAP 取固定 id）。
   编译器面=stdlib/auto/frame.vm.at（#[vm] 声明）+codegen
   (module,method) 路由对+内置模块名白名单 `frame`（勘定：缺白名单=
@@ -43,6 +43,40 @@
 - 探针族 `plan716_supply_probes`：VM 读回+a2r 臂 grep 锚+a2r_std
   同源对拍+门开序（note begin→present 单调）+门关零捕获+开销两态
   微基准。实机帧序 live-fire 归下游 bench 档（供②验收分工原文）。
+
+## 3b. 出口形与值流契约（PLAN-716 Phase 2 供⑨-a 修订）
+
+> 下游 auto-edit PLAN-022 消费首跑实录三断（.at 侧赋值落 0/`.str()`
+> 出 None/json 出 0——供料档 §8 供⑨）触发的出口形定形。勘定+
+> 修复=plan-716-dev 5fe510539。
+
+- **出口 lane=int（i32 单槽）**：frame.vm.at 判型 `-> int`（原
+  `-> i64`——I64 声明驱动编译器 2 槽 Uint 消费路径，与 shim 单槽
+  nv 推栈错配，是三断的类型面根因）；shim 出口 `push_i32`
+  （原 `push_i64_vm` 推 TAG_I64 nv）。int 承接/`.str()`/复合
+  obj 字段读三面保真由探针钉住（`frame_value_flow_gate_on`
+  门开真值+`frame_begin_ms_str_fingerprint` 门态无关）。
+- **值域边界（i32 封顶 ≈24.8 天进程存活）**：帧时间戳=进程单调
+  毫秒，常态 <2^31；越界 saturating 截断（`min(i32::MAX)`）——
+  超长存活会话的帧观测需求出现时另档（届时出口形需重勘，
+  i64 变量承接形已在案）。
+- **时源坐标注记（勘定实录）**：`process_start` 定格于模块首次
+  触及（非进程起点）——首个 note 恒存 ~0；spawn→首帧段分解的
+  消费方须在同坐标系内自行标记 spawn 时刻（如进程入口先读一次
+  `frame_begin_ms()` 定格坐标系）。SD-B 首版「进程起点起算」
+  措辞按实测修正。
+- **time 族同根因面（PLAN-005 登记的现势复核）**：`var int =
+  time.now_ms()` 落 32 位伪影（epoch ms 1790847058147 →
+  4140720794 实测——「返 0」形的真身=截断 Hazard）。time 族
+  **不改**（epoch 值域 >2^31，改判型必截真值）；宽值消费契约=
+  **i64 变量承接或 `.str()` 全宽出口**（701 全宽值字符串出口
+  先例的值域边界——`time_family_vm_readback_recheck` 探针
+  as-is 形钉住）；now_sec 值域 <2^31，int 承接正确。
+- **下游回执位（随下游件排程，非上游 gate）**：front 探针臂
+  重埋（handler 体 `frame.begin_ms()` regen exit 0——供⑨-b
+  补臂后解封，12e49f78c）+T-03 帧两行判定面（type_latency=
+  帧内 P95≤1 帧/scroll_fps=distinct present 计数≥面板率×0.9）
+  重驱动。
 
 ## 4. 边界注记
 

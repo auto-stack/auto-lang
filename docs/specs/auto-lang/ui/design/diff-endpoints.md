@@ -53,14 +53,24 @@ ui_gen/rust.rs（a2r 臂——实现体单源 `diff::envelope`）+ 静态绑定�
 - **错误形**（值不 raise）：文件不存在/读取失败 → `hunks:[], rows:[]`、
   计数 0、`err` 带消息（「文件不存在: …」/「读取失败: …」）。
 
-## rows 窗口投影（PLAN-716 组C——`diff_files_window`，9920）
+## rows 窗口投影（PLAN-716 组C——`diff_files_window`，9921）
 
 **新端点**（9915 签名 frozen——加参即破 3 参调用方[下游 in-proc 直调
 main.rs:1327 + HTTP Query 双消费面]，窗口走新端点）：
 
 | native id | catalog 名 | 裸名 | 签名 | 返回 |
 |---|---|---|---|---|
-| 9920 | `auto.diff_files_window` | `diff_files_window` | `(path_a str, path_b str, ctx int, rows_offset int, rows_limit int) → str` | 窗口 envelope JSON |
+| 9921 | `auto.diff_files_window` | `diff_files_window` | `(path_a str, path_b str, ctx int, rows_offset int, rows_limit int) → str` | 窗口 envelope JSON |
+
+> **id 改签注记（PLAN-716 Phase 2 供⑧——原 9920 撞号）**：Phase 1
+> 注册时取 9920，与 PLAN-095 `auto.ui.focus`（9920，9900+ 高段先占）
+> 撞号——shim 绑定表按清单序后注册者覆盖，VM 轨窗口调用恒派发
+> ui_focus shim（静默 no-op → Int(0)，下游 probe_diffwin HTTP 挂死/
+> 悬挂实测根因）。Phase 2 改签 **9921**（全表扫重号唯一重=9920、
+> 9921 空闲实证）；ui.focus 已交付消费面不回改。VM 轨裸名臂同步补
+> 全（codegen intrinsics 表 Phase 1 漏登记——五面注册缺一）。
+> 守护=`native_catalog_ids_and_names_unique`（本件修复其预存红）+
+> `diff_files_window_vm_bare_name`（VM 轨 .at 裸名→envelope 真值）。
 
 ```json
 {"hunks":[{"a1,a2,b1,b2"}],
