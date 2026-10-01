@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useData } from 'vitepress'
 import { applicationCopy } from '../data/applications'
+import EvidenceImage from './EvidenceImage.vue'
 const { lang } = useData()
 const zh = computed(() => lang.value.startsWith('zh'))
 const c = computed(() => applicationCopy(zh.value))
@@ -24,7 +25,11 @@ const href = (path: string) => (zh.value ? '/zh' : '') + path
       <p class="section-lead">{{ c.mainLead }}</p>
       <div class="main-app-grid">
         <article v-for="(app, index) in c.apps" :key="app.key" class="main-app-card">
-          <!-- Capture slot: insert the approved product overview image here later. -->
+          <EvidenceImage v-if="app.key === 'autoedit' || app.key === 'autoshell'"
+            :src="app.key === 'autoedit' ? '/apps/autoedit/overview-dark.png' : '/apps/autoshell/ash-01.png'"
+            :alt="app.name + (zh ? '原生主界面' : ' native main interface')"
+            :caption="app.key === 'autoedit' ? (zh ? 'AutoEdit · 深色原生工作台' : 'AutoEdit · dark native workspace') : (zh ? 'AutoShell · ls 的彩色目录结果' : 'AutoShell · colored ls directory results')"
+            :zoom-label="zh ? '放大图片' : 'Enlarge image'" :close-label="zh ? '关闭' : 'Close'" :original-label="zh ? '查看原图' : 'View original'" :framed="false" />
           <div class="app-role"><span>{{ String(index + 1).padStart(2, '0') }}</span>{{ app.role }}</div>
           <h3>{{ app.name }}</h3>
           <p>{{ app.summary }}</p>
@@ -67,6 +72,8 @@ h2 { font-size: 1.65rem; line-height: 1.4; margin: 0 0 .75rem; }
 .section-lead { max-width: var(--site-text-width); color: var(--vp-c-text-2); margin: 0 0 1.75rem; line-height: 1.8; }
 .main-app-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
 .main-app-card { min-width: 0; padding: 1.75rem; border: 1px solid var(--vp-c-divider); border-radius: var(--site-radius); background: var(--vp-c-bg-soft); display: flex; flex-direction: column; }
+.main-app-card :deep(.evidence-figure) { margin-bottom: 1.5rem; }
+.main-app-card :deep(.evidence-image img) { aspect-ratio: 16 / 10; object-fit: contain; background: var(--vp-c-bg-alt); }
 .app-role { font-size: .85rem; color: var(--vp-c-text-2); display: flex; gap: .75rem; align-items: center; }
 .app-role span { color: var(--vp-c-brand-1); font-variant-numeric: tabular-nums; }
 h3 { font-size: 1.6rem; line-height: 1.3; margin: .75rem 0; }

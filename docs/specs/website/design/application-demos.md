@@ -1,19 +1,19 @@
 # 系统应用与 Demo 的网站展示设计
 
-> PLAN-722 · 2026-10-01 · 本轮交付介绍入口与方案，不改 gallery/app 源码，不做 mock，不宣布在线覆盖。
+> PLAN-722 / PLAN-723 · 2026-10-01 · 28项静态图文介绍，不改应用/画廊源码，不做mock，不宣布在线覆盖。
 
 ## 1. 选择：分类静态介绍为主，交互画廊为辅
 
-Apps 的系统应用区先回答用途和典型操作；完整目录采用 VitePress 静态阅读/卡片列表。后续在卡片和详情补实际界面图。现有 /ui/demos/ 保留为开发体验入口，但不自动嵌入或作为所有系统应用的产品介绍。
+Apps 的系统应用区先回答用途和典型操作；目录采用 VitePress 静态图文卡片与逐项阅读页。28项各有真实运行图，来源、日期和数据性质另记。现有 /ui/demos/ 保留为开发体验入口，但不自动嵌入或作为所有系统应用的产品介绍。
 
 理由：有后台、文件系统、系统状态或外部服务的应用不能靠加载前端证明功能。静态介绍可索引、可分享、移动可读、离线部署无需业务服务；交互页面仅承担经验证的体验范围。
 
 ## 2. 页面层次与视觉
 
 /apps：四主产品卡片 + 系统类别简介，点击 /apps/demos/。
-/apps/demos/：一句用途说明 → 六类目录 → 代表性截图/流程 → 画廊与本地运行条件。当前首版只有正文/分类，不显示占位图。
-下一轮目录卡片：应用名、类别、两句用途、真实缩略图（可放大）、当前演示形式、介绍/源码/运行入口。桌面3列，平板2列，手机1列；筛选只对本地目录数据操作，不需要后端。
-单应用详情：用途 → 一次2–3步操作 → 1–3张图 → 当前能力与环境 → 源码/运行方式。28项不都新建长篇专题：短说明可在目录详情中展开，只有复杂应用建立独立阅读页。
+/apps/demos/（EN/ZH）：用途说明 → 本地六分类筛选 → 28张图文卡片 → 开发资料与发布版本说明。卡片含应用名、用途、实图/图注/放大和详情链接。桌面3列，平板2列，手机1列；筛选只对本地数据操作，不需要后端。
+28项各有 /apps/demos/<stable-slug>/ EN/ZH 阅读页：用途 → 实图 → 三步典型操作 → 当前范围与条件 → 源码/相关介绍。单H1、四H2、默认阅读大纲，图片可键盘放大，Esc回焦。说明操作不等于该次截图验证了全部功能。
+内容单源 website/.vitepress/theme/data/demos.json；scripts/generate-demo-pages.mjs 生成58个双语页，--check检测漂移；DemoCatalog.vue从同源数据SSR，确保列表和详情一致。
 
 ## 3. 三种展示形式与验收门
 
@@ -58,7 +58,7 @@ Apps 的系统应用区先回答用途和典型操作；完整目录采用 ViteP
 | 19 | 照片图库 | auto-lang: examples/ui/029-photo-gallery | 样例媒体、目录/上传依赖 |
 | 20 | 视频播放器 | auto-lang: examples/ui/030-video-player | 资源、播放/进度、后端与9的差异 |
 | 21 | 图片查看器 | auto-lang: examples/ui/031-image-viewer | 资源装载、缩放、宿主文件入口 |
-| 22 | 画板 | auto-lang: examples/ui/031-paint | 绘制、导出、资源与保存 |
+| 22 | 画板 | auto-lang: examples/ui/031-paint | 逐格绘制、历史与Storage保存；不承诺通用导出 |
 | 23 | 俄罗斯方块 | auto-os: apps/036-tetris | 键盘/状态/计时器、焦点隔离 |
 | 24 | 纸牌接龙 | auto-os: apps/037-klondike | 发牌、拖动、重置与持久化 |
 | 25 | 扫雷 | auto-os: apps/038-minesweeper | 开格、标记、输赢、重置 |
@@ -68,9 +68,9 @@ Apps 的系统应用区先回答用途和典型操作；完整目录采用 ViteP
 
 ## 6. 逐项素材规范与后续顺序
 
-每项目录数据至少有稳定 id/name/category/summary/sourceRepo/sourcePath/presentation/runtimeRequirements/verifiedAt。截图记录captureDate/runtime/theme/dimensions/sampleData说明；无图卡片保持文字布局，非空白占位。
-第一批：已能稳定运行的日常工具/小游戏，获取真实图并补介绍；第二批：服务依赖明显的媒体/系统/数据应用，实图+本地条件；第三批：验证少量无服务在线体验；最后按需求评估少量fixture版。每批更新发布清单并记录已核查版本，不把开发源码或可挂载标记直接升级成发布可用承诺。
+每项保持稳定id/slug、分类、双语用途/操作/条件/状态/图注、sourceRepo/sourcePath、图片路径/尺寸/运行形态/日期。素材依据 docs/reports/p723-capture-catalog.json 冻结，标准见 [demo capture catalog](demo-capture-catalog.md)。
+当前v0.5以真实图和静态介绍交付；v0.5.1安排网页桌面与app体验，UI Playground先验证少量Auto→Vue预览再扩展。此前在线体验的逐项验证原则保留，禁止本次增设桌面/app运行按钮或把开发可挂载标记升级成发布承诺。
 
 ## 7. 本轮实现
 
-双语 /apps/demos/ 静态正文、分类、桌面实景链接和共享画廊入口；无 iframe、无业务API；对应构建/SSR/链接/locale/断点测试见 PLAN-722 报告。素材补齐、逐项运行验证和fixture实现是本设计列明的后续批，未在本轮声称完成。
+28项/56个详情与两个目录页静态图文，六分类本地筛选；无iframe、无业务API。25项新拍，Launcher/AutoTerm/Config复用已有真图并披露来源/版本；未开展双端全功能一致性验收。构建/SSR/链接/locale/断点/图像hash/键盘测试见 PLAN-723 报告。

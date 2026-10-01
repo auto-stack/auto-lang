@@ -28,3 +28,5 @@ playwright-report/
 # Authored AutoShell sample data (root ignore excludes JSON by default).
 !public/apps/autoshell/examples/users.json
 .vitepress/config/author-source.ts
+
+/.p723-runtime/

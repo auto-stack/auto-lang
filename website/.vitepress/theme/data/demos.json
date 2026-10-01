@@ -1,0 +1,1066 @@
+[
+  {
+    "id": "011-calculator",
+    "slug": "calculator",
+    "category": "daily",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/011-calculator",
+    "zh": {
+      "name": "计算器",
+      "summary": "从日常四则运算开始，也可以切换科学计算与程序员模式。键盘、数字按钮和结果区组成一个紧凑的工具窗口。",
+      "steps": [
+        "输入数字和运算符，查看表达式与结果。",
+        "用 Basic / Scientific / Programmer 切换计算模式。",
+        "清空当前输入，开始下一次计算。"
+      ],
+      "requirements": "基础运算不需要业务后台；需要对应的 AutoUI 运行环境。",
+      "state": "它是计算工具与输入交互示例；不同模式的运算覆盖以对应版本实现为准。",
+      "caption": "VM 原生窗口 · 基础计算模式。"
+    },
+    "en": {
+      "name": "Calculator",
+      "summary": "A compact tool for everyday arithmetic, with scientific and programmer modes available from the same window.",
+      "steps": [
+        "Enter numbers and operators to inspect the expression and result.",
+        "Switch between Basic, Scientific, and Programmer modes.",
+        "Clear the current input and start a new calculation."
+      ],
+      "requirements": "Basic arithmetic needs an AutoUI runtime and no application backend.",
+      "state": "This introduces calculator input and modes; operator coverage depends on the implementation version.",
+      "caption": "Native VM window · basic calculation mode."
+    },
+    "image": {
+      "src": "/apps/demos/calculator.png",
+      "width": 576,
+      "height": 678,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "012-clock",
+    "slug": "clock",
+    "category": "daily",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/012-clock",
+    "zh": {
+      "name": "时钟",
+      "summary": "把时钟、世界时钟、闹钟、秒表与计时器放在一个应用中。桌面小组件让时间信息可以在窗口之外持续查看。",
+      "steps": [
+        "查看本地时间与日期。",
+        "切换到世界时钟、闹钟、秒表或计时器。",
+        "在桌面形态下保持应用运行，并最小化窗口查看小组件。"
+      ],
+      "requirements": "计时需要应用保持运行；小组件需要 AutoOS 桌面宿主。",
+      "state": "独立时钟窗口与桌面小组件是两种呈现方式，小组件当前需打开应用后才显示。",
+      "caption": "VM 原生窗口 · 运行时的本地时间。"
+    },
+    "en": {
+      "name": "Clock",
+      "summary": "Clock, world time, alarms, stopwatch, and timer share one application. A desktop widget keeps time visible outside its main window.",
+      "steps": [
+        "Inspect the local time and date.",
+        "Select world time, alarms, stopwatch, or timer.",
+        "In the desktop runtime, keep the app running and minimize it to see its widget."
+      ],
+      "requirements": "Timers require a running application; desktop widgets require the AutoOS host.",
+      "state": "The standalone window and desktop widget are separate presentations. The widget currently appears after launching the application.",
+      "caption": "Native VM window · local time at capture."
+    },
+    "image": {
+      "src": "/apps/demos/clock.png",
+      "width": 720,
+      "height": 868,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "013-todo",
+    "slug": "todo",
+    "category": "daily",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/013-todo",
+    "zh": {
+      "name": "待办",
+      "summary": "用一张任务列表管理日常事项：新增、完成、筛选，再清理已完成项目。它也展示前端状态如何与应用后端联动。",
+      "steps": [
+        "在输入框中添加一项任务。",
+        "勾选完成状态，切换全部、未完成和已完成列表。",
+        "检查剩余数量，按需清理已完成任务。"
+      ],
+      "requirements": "需要任务后端或支持应用后端逻辑的本地 VM 运行环境。",
+      "state": "截图使用应用内置任务数据；不会向访问这个介绍页的人提供跨设备任务同步。",
+      "caption": "VM 原生窗口 · 应用内置的四条示例任务。"
+    },
+    "en": {
+      "name": "Tasks",
+      "summary": "A task list for adding, completing, filtering, and clearing everyday items. It also introduces application state connected to a backend.",
+      "steps": [
+        "Add a task using the input field.",
+        "Toggle completion and switch between all, active, and completed items.",
+        "Inspect the remaining count and clear completed items when needed."
+      ],
+      "requirements": "Requires the task backend or a local VM runtime that executes its backend logic.",
+      "state": "The capture uses application seed tasks. This introduction page does not provide cross-device task synchronization.",
+      "caption": "Native VM window · four built-in example tasks."
+    },
+    "image": {
+      "src": "/apps/demos/todo.png",
+      "width": 960,
+      "height": 720,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "014-weather",
+    "slug": "weather",
+    "category": "daily",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/014-weather",
+    "zh": {
+      "name": "天气",
+      "summary": "按城市浏览当前天气、小时变化与天气指标。图标、信息层级和桌面小组件用于解释一组天气数据。",
+      "steps": [
+        "选择城市，查看温度与天气概况。",
+        "阅读小时预报、湿度、风速等指标。",
+        "在桌面宿主中打开应用后查看天气小组件。"
+      ],
+      "requirements": "当前内置天气数据可离线展示；小组件依赖 AutoOS 宿主。",
+      "state": "当前数据是演示天气，不能用于判断实时天气或出行条件。",
+      "caption": "VM 原生窗口 · 北京的内置演示天气。"
+    },
+    "en": {
+      "name": "Weather",
+      "summary": "City weather, hourly changes, and related measurements introduce information layout and desktop widgets.",
+      "steps": [
+        "Select a city and inspect its temperature and overview.",
+        "Read hourly conditions, humidity, wind, and other measurements.",
+        "Launch the app in the desktop host to display its weather widget."
+      ],
+      "requirements": "Built-in weather data can be shown offline; the widget requires the AutoOS host.",
+      "state": "The current data is demonstration weather, not a live weather feed or travel forecast.",
+      "caption": "Native VM window · built-in demonstration weather for Beijing."
+    },
+    "image": {
+      "src": "/apps/demos/weather.png",
+      "width": 1440,
+      "height": 1020,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "015-notes",
+    "slug": "notes",
+    "category": "daily",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/015-notes",
+    "zh": {
+      "name": "便笺",
+      "summary": "用列表和正文编辑区记录短笔记，按文件夹、标签或置顶状态组织内容。适合轻量记录，也展示列表选择与编辑状态。",
+      "steps": [
+        "从左侧列表选择一条便笺。",
+        "修改标题与正文，或新建记录。",
+        "用文件夹、标签和置顶入口整理已有便笺。"
+      ],
+      "requirements": "需要便笺后端或本地 VM 后端逻辑；持久化行为以运行形态为准。",
+      "state": "它是短笔记应用；页面关系与知识库工作由 JadeEdit 的独立介绍说明。",
+      "caption": "VM 原生窗口 · 内置便笺与编辑区。"
+    },
+    "en": {
+      "name": "Notes",
+      "summary": "Short notes combine a list and a text editor, with folders, tags, and pinning for organization.",
+      "steps": [
+        "Choose a note from the left-hand list.",
+        "Edit its title and body or create another note.",
+        "Organize notes using folders, tags, and pinning."
+      ],
+      "requirements": "Requires the notes backend or local VM backend logic; persistence depends on the runtime.",
+      "state": "This is a short-note application. Page relationships and knowledge-base work are described separately for JadeEdit.",
+      "caption": "Native VM window · built-in notes and editing area."
+    },
+    "image": {
+      "src": "/apps/demos/notes.png",
+      "width": 1920,
+      "height": 1200,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "016-calendar",
+    "slug": "calendar",
+    "category": "daily",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/016-calendar",
+    "zh": {
+      "name": "日历",
+      "summary": "用月历查看日期、前后切换月份，并保留当前选择。简洁的日期网格适合日常查阅，也可用于理解日期选择组件。",
+      "steps": [
+        "查看当前展示的月份。",
+        "用左右箭头切换月份，选择一个日期。",
+        "通过 Today 返回应用的今日定位。"
+      ],
+      "requirements": "基础月历不需要业务后台；桌面小组件依赖宿主与运行中的应用。",
+      "state": "这是月历与日期选择示例，截图中的选定日期来自应用示例初始状态；未将它介绍为完整日程协作服务。",
+      "caption": "VM 原生窗口 · 示例初始月份与选定日期。"
+    },
+    "en": {
+      "name": "Calendar",
+      "summary": "A month grid for looking up dates, switching months, and keeping the current selection.",
+      "steps": [
+        "Inspect the displayed month.",
+        "Move between months and select a date.",
+        "Use Today to return to the application’s current-day location."
+      ],
+      "requirements": "The month view needs no business backend; a desktop widget needs the host and a running app.",
+      "state": "This introduces a calendar and date selection. The captured initial month is sample state, not a full collaborative scheduling service.",
+      "caption": "Native VM window · initial sample month and selected date."
+    },
+    "image": {
+      "src": "/apps/demos/calendar.png",
+      "width": 720,
+      "height": 717,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "017-chat",
+    "slug": "chat",
+    "category": "reading",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/017-chat",
+    "zh": {
+      "name": "聊天",
+      "summary": "联系人、消息记录与输入区组成一个即时通信界面示例。它用应用自己的后端解释会话选择、发消息与事件更新。",
+      "steps": [
+        "选择联系人，阅读对应会话。",
+        "输入消息或选择快捷回复，再发送。",
+        "观察消息列表与联系人摘要的变化。"
+      ],
+      "requirements": "需要聊天 API；事件通知还依赖对应的流服务与运行形态。",
+      "state": "联系人与对话是内置演示内容；AutoBot 标签不代表已接入真实模型服务，也没有连接微信网络。",
+      "caption": "VM 原生窗口连接实际聊天后端 · 内置联系人与消息。"
+    },
+    "en": {
+      "name": "Chat",
+      "summary": "Contacts, message history, and an input area introduce a messaging interface connected to its own application backend.",
+      "steps": [
+        "Select a contact and read the conversation.",
+        "Enter a message or choose a quick reply, then send it.",
+        "Observe changes to the conversation and contact summary."
+      ],
+      "requirements": "Requires the chat API; event notifications also need the corresponding streaming service and runtime support.",
+      "state": "Contacts and messages are built-in examples. The AutoBot label does not establish a live model connection, and this app is not connected to WeChat.",
+      "caption": "Native VM window connected to the actual chat backend · built-in contacts and messages."
+    },
+    "image": {
+      "src": "/apps/demos/chat.png",
+      "width": 1920,
+      "height": 1200,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "018-book-reader",
+    "slug": "book-reader",
+    "category": "reading",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/018-book-reader",
+    "zh": {
+      "name": "图书阅读器",
+      "summary": "从书架进入图书、章节和阅读设置。书目、进度与阅读页面组成一个可导航的阅读应用结构。",
+      "steps": [
+        "在书架中选择一本书。",
+        "进入章节，阅读正文并切换章节。",
+        "查看阅读进度与设置，再返回书架。"
+      ],
+      "requirements": "需要图书和章节 API；本地示例后端提供内置书目与正文。",
+      "state": "截图是应用内置书架，不代表已经提供在线书城或通用电子书导入。",
+      "caption": "VM 原生窗口连接实际阅读后端 · 三本示例图书。"
+    },
+    "en": {
+      "name": "Book reader",
+      "summary": "A library leads into books, chapters, and reading settings, introducing navigation and reading progress.",
+      "steps": [
+        "Select a book from the library.",
+        "Open a chapter, read its text, and move between chapters.",
+        "Inspect progress and settings, then return to the library."
+      ],
+      "requirements": "Requires book and chapter APIs; the local example backend supplies built-in books and text.",
+      "state": "The capture shows the built-in library. It does not establish an online bookstore or general ebook import.",
+      "caption": "Native VM window connected to the actual reading backend · three sample books."
+    },
+    "image": {
+      "src": "/apps/demos/book-reader.png",
+      "width": 1920,
+      "height": 1200,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "021-blog-viewer",
+    "slug": "blog",
+    "category": "reading",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/021-blog-viewer",
+    "zh": {
+      "name": "博客阅读器",
+      "summary": "按分类浏览文章、进入正文，并查看作者等信息。阅读列表与文章页面也可以用于学习内容应用的组织方式。",
+      "steps": [
+        "从文章列表选择主题或分类。",
+        "进入文章正文，阅读作者与内容。",
+        "返回列表，继续查看其他文章。"
+      ],
+      "requirements": "需要文章后端或本地 VM 后端逻辑。",
+      "state": "内容来自内置示例文章，页面不是外部博客聚合服务；写作等入口以具体版本实现为准。",
+      "caption": "VM 原生窗口 · 内置文章列表。"
+    },
+    "en": {
+      "name": "Blog reader",
+      "summary": "Browse articles by category and open their text and author information. The list and article views introduce a content application.",
+      "steps": [
+        "Choose a topic or category from the article list.",
+        "Open an article and read its author information and text.",
+        "Return to the list to explore another article."
+      ],
+      "requirements": "Requires the article backend or local VM backend logic.",
+      "state": "Content comes from built-in articles rather than an external blog aggregation service; writing features depend on the version.",
+      "caption": "Native VM window · built-in article list."
+    },
+    "image": {
+      "src": "/apps/demos/blog.png",
+      "width": 1920,
+      "height": 1200,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "019-video-app",
+    "slug": "video-app",
+    "category": "media",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/019-video-app",
+    "zh": {
+      "name": "视频社区示例",
+      "summary": "用视频卡片、分类和观看页面组织内容。它展示类似视频门户的页面结构，与直接打开本地文件的视频播放器分开介绍。",
+      "steps": [
+        "在首页浏览视频卡片与分类。",
+        "选择一条内容进入观看页面。",
+        "查看内容信息，再返回首页。"
+      ],
+      "requirements": "列表和内容信息需要应用后端；真正播放还需要有效媒体资源与解码能力。",
+      "state": "截图中的标题与卡片来自内置数据，只记录内容浏览界面，不证明每条视频都能播放。",
+      "caption": "VM 原生窗口 · 内置视频内容卡片。"
+    },
+    "en": {
+      "name": "Video community example",
+      "summary": "Video cards, categories, and watch pages introduce a portal-style content application, distinct from the local-file video player.",
+      "steps": [
+        "Browse video cards and categories on the home page.",
+        "Choose an item to open its watch page.",
+        "Inspect its information and return to the home page."
+      ],
+      "requirements": "Lists and metadata need the application backend; playback additionally needs valid media and decoding support.",
+      "state": "The capture shows built-in titles and cards. It records content browsing, not successful playback of every listed video.",
+      "caption": "Native VM window · built-in video content cards."
+    },
+    "image": {
+      "src": "/apps/demos/video-app.png",
+      "width": 1920,
+      "height": 1200,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "020-music-player",
+    "slug": "music-player",
+    "category": "media",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/020-music-player",
+    "zh": {
+      "name": "音乐播放器",
+      "summary": "扫描本地音乐，结合曲库、播放队列与唱片舞台查看当前曲目。媒体数据和播放控制在同一界面中呈现。",
+      "steps": [
+        "配置可访问的媒体目录并扫描曲库。",
+        "选择一首曲目，查看标题、格式与播放位置。",
+        "用播放控制、队列和音量入口安排收听。"
+      ],
+      "requirements": "需要实际媒体扫描/流服务、音频文件和运行形态支持的播放能力。",
+      "state": "截图使用本地 WAV 测试音频；界面上的 Hi-Res 文案不能作为文件实际采样率或音质的证明。",
+      "caption": "VM 原生窗口连接真实媒体扫描服务 · 本地 WAV 测试曲目。"
+    },
+    "en": {
+      "name": "Music player",
+      "summary": "Local music scanning, a library, queue, and record stage present tracks and playback controls together.",
+      "steps": [
+        "Configure an accessible media directory and scan the library.",
+        "Select a track to inspect its title, format, and position.",
+        "Use playback controls, the queue, and volume to organize listening."
+      ],
+      "requirements": "Needs the real media scanning/streaming service, audio files, and playback support in the chosen runtime.",
+      "state": "The capture uses a local WAV test tone. The Hi-Res interface label is not evidence of the file’s sample rate or audio quality.",
+      "caption": "Native VM window connected to the real media scan service · local WAV test track."
+    },
+    "image": {
+      "src": "/apps/demos/music-player.png",
+      "width": 1920,
+      "height": 1200,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "029-photo-gallery",
+    "slug": "photo-gallery",
+    "category": "media",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/029-photo-gallery",
+    "zh": {
+      "name": "照片图库",
+      "summary": "直接扫描配置目录，用照片网格浏览图片和子目录，再进入大图查看。搜索、排序、密度与收藏帮助整理浏览过程。",
+      "steps": [
+        "配置照片根目录，让后端扫描真实图片。",
+        "选择子目录或搜索关键词，调整网格密度与排序。",
+        "打开大图，前后查看或收藏，再返回网格。"
+      ],
+      "requirements": "需要照片扫描、缩略图和原图服务，以及有访问权限的本地图片目录。",
+      "state": "当前目录逐层浏览，收藏可跨目录聚合。截图扫描的是公开 AutoOS 截图文件，不使用私人照片。",
+      "caption": "VM 原生窗口连接实际照片服务 · 扫描三张公开 AutoOS 截图。"
+    },
+    "en": {
+      "name": "Photo gallery",
+      "summary": "Scan a configured directory, browse images and subdirectories in a grid, then open a larger view with search, sorting, density, and favorites.",
+      "steps": [
+        "Configure a photo root and let the backend scan real images.",
+        "Choose a subdirectory or search term and adjust density or sorting.",
+        "Open an image, move between images or favorite it, then return to the grid."
+      ],
+      "requirements": "Requires scan, thumbnail, and full-image services plus an accessible local image directory.",
+      "state": "Browsing proceeds directory by directory; favorites can span directories. The capture scans public AutoOS screenshots rather than personal photos.",
+      "caption": "Native VM window connected to the actual photo service · three public AutoOS screenshot files."
+    },
+    "image": {
+      "src": "/apps/demos/photo-gallery.png",
+      "width": 1920,
+      "height": 1200,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "030-video-player",
+    "slug": "video-player",
+    "category": "media",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/030-video-player",
+    "zh": {
+      "name": "视频播放器",
+      "summary": "以本地视频为中心，用大视口、进度条和播放队列控制观看。它与视频社区示例的内容门户用途不同。",
+      "steps": [
+        "扫描本地媒体目录，或选择可播放的视频文件。",
+        "打开视频，使用进度条定位到需要的位置。",
+        "调整音量、倍速或队列，并在需要时收起侧栏。"
+      ],
+      "requirements": "需要真实媒体文件与扫描/流服务；Vue 使用浏览器解码，原生视频能力还取决于 libmpv 等运行库。",
+      "state": "图中真实解码的是本地 WebM 测试片段。Vue 画面不等于已经验证所有原生格式与播放能力。",
+      "caption": "Vue 运行界面 · 实际读取并定位本地 WebM 测试视频。"
+    },
+    "en": {
+      "name": "Video player",
+      "summary": "A large viewport, timeline, and queue focus on local video playback, separate from the video community example.",
+      "steps": [
+        "Scan a local media directory or choose a playable video file.",
+        "Open the video and seek to the desired position.",
+        "Adjust volume, speed, or queue options and collapse the sidebar as needed."
+      ],
+      "requirements": "Needs real media and scanning/streaming services. Vue uses browser decoding; native playback additionally depends on libraries such as libmpv.",
+      "state": "The capture decodes a local WebM test clip. A Vue capture does not verify every native format or playback capability.",
+      "caption": "Vue runtime · a real local WebM test video opened and positioned."
+    },
+    "image": {
+      "src": "/apps/demos/video-player.png",
+      "width": 1440,
+      "height": 900,
+      "runtime": "Vue",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "031-image-viewer",
+    "slug": "image-viewer",
+    "category": "media",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/031-image-viewer",
+    "zh": {
+      "name": "图片查看器",
+      "summary": "打开图片或目录，以适应窗口、缩放、旋转与前后导航检查图像。侧栏呈现文件选择，大视口负责查看。",
+      "steps": [
+        "打开图片或目录，选中一张图像。",
+        "使用适应窗口、1:1 或缩放控制查看细节。",
+        "旋转或平移图像，再切换到相邻文件。"
+      ],
+      "requirements": "需要可访问的图片文件；支持格式与解码能力以对应运行库为准。",
+      "state": "它用于查看而非修图；截图打开源码测试目录中的 scenic-320x240.png。",
+      "caption": "VM 原生窗口 · 实际打开 320×240 测试图像。"
+    },
+    "en": {
+      "name": "Image viewer",
+      "summary": "Open an image or directory and inspect it using fit, zoom, rotation, and navigation in a large viewport.",
+      "steps": [
+        "Open an image or directory and select an image.",
+        "Use fit, 1:1, or zoom controls to inspect details.",
+        "Rotate or pan the image, then move to a neighboring file."
+      ],
+      "requirements": "Requires accessible image files; supported formats and decoding depend on the runtime libraries.",
+      "state": "This is a viewer rather than an image editor. The capture opens scenic-320x240.png from the source test fixtures.",
+      "caption": "Native VM window · a real 320×240 test image opened."
+    },
+    "image": {
+      "src": "/apps/demos/image-viewer.png",
+      "width": 1920,
+      "height": 1200,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "031-paint",
+    "slug": "paint",
+    "category": "media",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/031-paint",
+    "zh": {
+      "name": "像素画板",
+      "summary": "在 16×16 网格上逐格绘制，用画笔、橡皮、填充和取色器组织一幅小型像素画。颜色与历史操作都在应用状态中维护。",
+      "steps": [
+        "选择颜色，用画笔点击网格绘制。",
+        "切换橡皮、填充或取色器调整图案。",
+        "撤销、重做，或保存并重新载入画板。"
+      ],
+      "requirements": "本地交互不需要业务后台；保存依赖运行形态提供的 Storage。",
+      "state": "当前以点击逐格绘制为主，不将它介绍为已有连续拖画和通用图像导出的绘图软件。",
+      "caption": "VM 原生窗口 · 通过真实点击绘制的网格图案。"
+    },
+    "en": {
+      "name": "Pixel paint",
+      "summary": "Draw cell by cell on a 16×16 grid with pencil, eraser, fill, and picker tools, with colors and history kept in application state.",
+      "steps": [
+        "Choose a color and click grid cells to draw.",
+        "Switch to eraser, fill, or picker to adjust the pattern.",
+        "Undo, redo, or save and reload the canvas."
+      ],
+      "requirements": "Local interaction needs no business backend; saving uses the runtime’s Storage support.",
+      "state": "The current interaction is cell clicking. This is not presented as continuous drag painting or a general image-export editor.",
+      "caption": "Native VM window · a grid pattern drawn through real clicks."
+    },
+    "image": {
+      "src": "/apps/demos/paint.png",
+      "width": 669,
+      "height": 772,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "025-sys-monitor",
+    "slug": "system-monitor",
+    "category": "system",
+    "sourceRepo": "auto-os",
+    "sourcePath": "apps/025-sys-monitor",
+    "zh": {
+      "name": "系统监视器",
+      "summary": "查看 CPU、内存与进程等系统信息。独立窗口与桌面小组件把较完整的监控视图和简短状态显示分开。",
+      "steps": [
+        "查看资源使用概况。",
+        "进入进程或资源面板，检查具体条目。",
+        "在桌面中保持应用运行并最小化，以查看监控小组件。"
+      ],
+      "requirements": "需要宿主系统采样能力；不同平台的可用指标可能不同。",
+      "state": "截图采样的是拍摄机器当时的状态，不是网站访客设备的信息。",
+      "caption": "VM 原生窗口 · 拍摄机器的实际资源采样。"
+    },
+    "en": {
+      "name": "System monitor",
+      "summary": "Inspect CPU, memory, and process information in a full window, with a compact desktop widget for ongoing status.",
+      "steps": [
+        "Read the resource usage overview.",
+        "Inspect process or resource panels for details.",
+        "Keep the app running and minimize it in the desktop to display its monitoring widget."
+      ],
+      "requirements": "Requires host system sampling; available measurements vary across platforms.",
+      "state": "The capture records the capture machine at that moment, not the website visitor’s device.",
+      "caption": "Native VM window · actual capture-machine resource samples."
+    },
+    "image": {
+      "src": "/apps/demos/system-monitor.png",
+      "width": 1920,
+      "height": 1200,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "026-database",
+    "slug": "database",
+    "category": "system",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/026-database",
+    "zh": {
+      "name": "数据库界面示例",
+      "summary": "用树状结构浏览表与字段，再查看记录、编辑入口和查询面板。它展示数据工具的工作台结构。",
+      "steps": [
+        "从数据库树选择一张表。",
+        "查看列、记录和数据编辑入口。",
+        "切换到查询面板，观察查询输入与结果的组织方式。"
+      ],
+      "requirements": "示例数据可在应用中展示；实际数据库连接、执行与持久化需要相应后端实现。",
+      "state": "截图使用内置 Northwind 风格数据；SQLite 标题、查询与事务入口不证明已连到真实 SQLite 数据库，事务部分含模拟行为。",
+      "caption": "VM 原生窗口 · 内置表结构与示例记录。"
+    },
+    "en": {
+      "name": "Database interface example",
+      "summary": "A database tree, records, editing controls, and query panel introduce the structure of a data workspace.",
+      "steps": [
+        "Choose a table from the database tree.",
+        "Inspect columns, records, and editing controls.",
+        "Switch to the query panel to inspect input and result layout."
+      ],
+      "requirements": "The application can display sample data; real connections, execution, and persistence need their corresponding backend.",
+      "state": "The capture uses built-in Northwind-style data. SQLite labels and query/transaction controls do not prove a real database connection; transaction behavior includes simulation.",
+      "caption": "Native VM window · built-in table structure and sample records."
+    },
+    "image": {
+      "src": "/apps/demos/database.png",
+      "width": 1920,
+      "height": 1200,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "027-file-manager",
+    "slug": "file-manager",
+    "category": "system",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/027-file-manager",
+    "zh": {
+      "name": "文件管理器",
+      "summary": "从目录导航进入列表或网格，按名称、大小和时间查找文件。文件操作与路径状态围绕真实文件系统组织。",
+      "steps": [
+        "通过地址栏打开一个可访问的目录。",
+        "切换列表或网格，按需排序、搜索和显示隐藏项。",
+        "选择文件查看信息；执行改名、复制或删除前检查目标路径。"
+      ],
+      "requirements": "真实读写需要文件系统能力和目录权限；Vue 需要对应文件 API。",
+      "state": "截图浏览专用测试目录的真实文件。带有文件接口的本地运行与静态网页里的演示后备状态分开说明。",
+      "caption": "VM 原生窗口 · 专用媒体测试目录的真实文件。"
+    },
+    "en": {
+      "name": "File manager",
+      "summary": "Navigate directories in list or grid form and find files by name, size, or date, with operations organized around a real filesystem.",
+      "steps": [
+        "Open an accessible directory using the address bar.",
+        "Switch list/grid views and use sorting, search, or hidden-file controls.",
+        "Inspect selected files and check target paths before rename, copy, or delete operations."
+      ],
+      "requirements": "Real reads and writes require filesystem capabilities and permissions; Vue needs the corresponding file API.",
+      "state": "The capture browses real files in a dedicated fixture directory. Local filesystem use is distinct from static-web fallback demonstration state.",
+      "caption": "Native VM window · real files in a dedicated media fixture directory."
+    },
+    "image": {
+      "src": "/apps/demos/file-manager.png",
+      "width": 1920,
+      "height": 1200,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "028-launcher",
+    "slug": "launcher",
+    "category": "system",
+    "sourceRepo": "auto-os",
+    "sourcePath": "apps/028-launcher",
+    "zh": {
+      "name": "应用启动器",
+      "summary": "集中查找和启动应用，用列表或图标视图组织入口。桌面版本从宿主注册表读取应用，独立示例用于展示启动器交互。",
+      "steps": [
+        "打开启动器。",
+        "输入关键词，或切换到图标视图浏览应用。",
+        "选择应用启动，再返回已有桌面窗口。"
+      ],
+      "requirements": "真正启动应用需要 AutoOS 桌面宿主、应用注册与对应运行能力。",
+      "state": "本页主图来自已拍摄的桌面启动器。独立 028 示例的数据与当前桌面应用注册表并不完全相同。",
+      "caption": "AutoOS VM 虚拟桌面 · 图标形式的真实启动器。"
+    },
+    "en": {
+      "name": "Application launcher",
+      "summary": "Find and launch applications in list or icon form. The desktop version uses the host registry; the standalone example introduces launcher interaction.",
+      "steps": [
+        "Open the launcher.",
+        "Search by keyword or browse applications in icon view.",
+        "Choose an application to launch and return to existing desktop windows."
+      ],
+      "requirements": "Actual launching requires the AutoOS desktop host, application registration, and the relevant runtime capabilities.",
+      "state": "The main image is an existing desktop launcher capture. The standalone 028 example’s data is not identical to the current desktop registry.",
+      "caption": "AutoOS VM virtual desktop · actual launcher in icon view."
+    },
+    "image": {
+      "src": "/apps/demos/launcher.png",
+      "width": 2560,
+      "height": 1600,
+      "runtime": "VM",
+      "date": "retained / 留存素材"
+    }
+  },
+  {
+    "id": "039-syslog",
+    "slug": "system-log",
+    "category": "system",
+    "sourceRepo": "auto-os",
+    "sourcePath": "apps/039-syslog",
+    "zh": {
+      "name": "系统日志",
+      "summary": "把时间、来源、等级和消息组成可筛选的日志列表。桌面宿主可以将系统与应用事件接入同一查看器。",
+      "steps": [
+        "查看日志时间、来源与等级。",
+        "按等级或关键词筛选消息。",
+        "回到完整列表，持续观察运行中的事件。"
+      ],
+      "requirements": "真实宿主日志需要桌面注入的日志源；独立示例可展示内置记录。",
+      "state": "本次截图是独立运行的三条演示日志，图中也标为 mock；它们不是操作系统实际故障或实时宿主事件。",
+      "caption": "VM 独立窗口 · 应用内置的三条演示日志。"
+    },
+    "en": {
+      "name": "System log",
+      "summary": "A filterable list combines time, source, level, and message. The desktop host can supply system and application events.",
+      "steps": [
+        "Inspect log times, sources, and levels.",
+        "Filter messages by level or keyword.",
+        "Return to the complete list and observe running events."
+      ],
+      "requirements": "Real host logs need a desktop-injected log source; standalone mode can display built-in records.",
+      "state": "This standalone capture contains three demonstration records labeled mock. They are not actual operating-system failures or live host events.",
+      "caption": "Standalone VM window · three built-in demonstration log records."
+    },
+    "image": {
+      "src": "/apps/demos/system-log.png",
+      "width": 1920,
+      "height": 1200,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "auto-term",
+    "slug": "terminal",
+    "category": "system",
+    "sourceRepo": "auto-term",
+    "sourcePath": "app",
+    "zh": {
+      "name": "AutoTerm 终端",
+      "summary": "为桌面应用提供通用终端窗口，在标签页与分屏中运行宿主 Shell 或其他交互程序。它承载终端会话，AutoShell 则提供命令语言与执行引擎。",
+      "steps": [
+        "打开终端，进入配置的 Shell 会话。",
+        "新建标签页，按需要横向或纵向分屏。",
+        "在活动窗格中输入命令，查看输出与滚动记录。"
+      ],
+      "requirements": "原生交互需要 autoterm-core、平台 PTY 与配置的 Shell；Vue 视口当前为只读形态。",
+      "state": "复用已有原生验证图，记录当时的 Windows 命令会话；截图版本与当前源码分开记录，不把它当作新的全部功能验收。",
+      "caption": "原生验证资料 · Windows Shell 会话（2026-09-22 留存图）。"
+    },
+    "en": {
+      "name": "AutoTerm terminal",
+      "summary": "A general desktop terminal runs host shells and interactive programs in tabs and split panes. AutoTerm hosts terminal sessions; AutoShell supplies a command language and engine.",
+      "steps": [
+        "Open the terminal into its configured shell.",
+        "Create another tab and split panes horizontally or vertically as needed.",
+        "Enter commands in the active pane and inspect output and scrollback."
+      ],
+      "requirements": "Native interaction needs autoterm-core, platform PTY support, and a configured shell. The Vue viewport is currently read-only.",
+      "state": "An existing native verification image records a Windows command session. Its capture version is tracked separately from current sources and is not a new full feature acceptance.",
+      "caption": "Native verification material · Windows shell session (retained 2026-09-22 image)."
+    },
+    "image": {
+      "src": "/apps/demos/terminal.png",
+      "width": 1100,
+      "height": 800,
+      "runtime": "Rust native (retained verification capture)",
+      "date": "2026-09-22"
+    }
+  },
+  {
+    "id": "auto-os-config",
+    "slug": "settings",
+    "category": "system",
+    "sourceRepo": "auto-os-config",
+    "sourcePath": ".",
+    "zh": {
+      "name": "AutoOS 配置",
+      "summary": "用图形界面组织 AutoOS 与 AI 工具的配置，例如模型、角色、Agent、技能与主题。它让配置项可以按用途查找和管理。",
+      "steps": [
+        "选择要配置的模块。",
+        "查看已有条目与对应配置字段。",
+        "修改后按应用提供的保存方式写回，再让使用方读取配置。"
+      ],
+      "requirements": "读写需要配置文件权限；模型、Agent 和守护进程的运行需要各自服务。",
+      "state": "复用网站已有技能管理实拍图。配置界面里存在条目不等于对应服务已运行或模型已连通。",
+      "caption": "已有原生实拍资料 · 技能配置列表。"
+    },
+    "en": {
+      "name": "AutoOS settings",
+      "summary": "A graphical workspace organizes AutoOS and AI-tool settings such as models, roles, agents, skills, and themes.",
+      "steps": [
+        "Select the configuration module to manage.",
+        "Inspect existing entries and their fields.",
+        "Save changes using the application’s controls, then let the consuming tool read them."
+      ],
+      "requirements": "Read/write operations require configuration-file permissions; models, agents, and daemons need their own services.",
+      "state": "This reuses the website’s existing skills-management capture. An entry in settings does not establish a running service or model connection.",
+      "caption": "Existing native capture material · skills configuration list."
+    },
+    "image": {
+      "src": "/apps/demos/settings.png",
+      "width": 1280,
+      "height": 720,
+      "runtime": "Native configuration UI (existing website capture)",
+      "date": "retained / 留存素材"
+    }
+  },
+  {
+    "id": "036-tetris",
+    "slug": "tetris",
+    "category": "games",
+    "sourceRepo": "auto-os",
+    "sourcePath": "apps/036-tetris",
+    "zh": {
+      "name": "俄罗斯方块",
+      "summary": "用下落方块、旋转、移动和落下组织一个实时小游戏。分数、等级与下一块信息围绕棋盘呈现。",
+      "steps": [
+        "开始游戏，观察当前方块和下一块。",
+        "用方向键移动和旋转，按界面提示快速落下。",
+        "暂停或重新开始，查看得分与记录。"
+      ],
+      "requirements": "游戏需要持续计时与键盘输入；记录功能需要对应存储或后端。",
+      "state": "截图是真实启动后的棋盘状态，运行中的方块位置会随时间变化。",
+      "caption": "VM 原生窗口 · 开始游戏后的实际棋盘。"
+    },
+    "en": {
+      "name": "Tetris",
+      "summary": "Falling blocks, rotation, movement, and dropping introduce a real-time game, with score, level, and next-piece information around the board.",
+      "steps": [
+        "Start the game and inspect the current and next pieces.",
+        "Move and rotate with the keys shown by the interface, then drop a piece.",
+        "Pause or restart and inspect scores and records."
+      ],
+      "requirements": "Requires continuous timing and keyboard input; records use the corresponding storage or backend.",
+      "state": "The capture shows an actual started game. Piece positions change as the game runs.",
+      "caption": "Native VM window · actual board after starting a game."
+    },
+    "image": {
+      "src": "/apps/demos/tetris.png",
+      "width": 816,
+      "height": 1101,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "037-klondike",
+    "slug": "solitaire",
+    "category": "games",
+    "sourceRepo": "auto-os",
+    "sourcePath": "apps/037-klondike",
+    "zh": {
+      "name": "纸牌接龙",
+      "summary": "在牌堆、桌面列与收集区之间移动纸牌，按接龙规则整理一副牌。窗口中也有撤销、重开与外观设置入口。",
+      "steps": [
+        "开始一局，观察桌面列与发牌堆。",
+        "点击发牌或按规则移动纸牌。",
+        "撤销一步、重新发牌，或查看游戏记录。"
+      ],
+      "requirements": "基本游戏需要 AutoUI 运行环境；记录的持久化取决于对应后端或存储。",
+      "state": "主图是真实发牌后的窗口，不将一张截图当作整局胜利或全部规则验证。",
+      "caption": "VM 原生窗口 · 实际发牌后的接龙牌桌。"
+    },
+    "en": {
+      "name": "Solitaire",
+      "summary": "Move cards between stock, tableau, and foundations using Klondike rules, with undo, restart, and appearance controls.",
+      "steps": [
+        "Start a game and inspect the tableau and stock.",
+        "Draw cards or move them according to the rules.",
+        "Undo a move, deal again, or inspect game records."
+      ],
+      "requirements": "Basic play needs an AutoUI runtime; persistent records depend on its backend or storage.",
+      "state": "The main image shows an actual dealt board. It does not establish a completed game or full rule verification.",
+      "caption": "Native VM window · actual dealt Klondike board."
+    },
+    "image": {
+      "src": "/apps/demos/solitaire.png",
+      "width": 1920,
+      "height": 1200,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "038-minesweeper",
+    "slug": "minesweeper",
+    "category": "games",
+    "sourceRepo": "auto-os",
+    "sourcePath": "apps/038-minesweeper",
+    "zh": {
+      "name": "扫雷",
+      "summary": "通过数字线索打开安全格、标记地雷，按难度调整棋盘。计时和剩余标记数帮助查看当前局面。",
+      "steps": [
+        "选择初级、中级或高级棋盘。",
+        "打开一个格子，按线索继续探索。",
+        "用标记动作标出可疑格，必要时重新开始。"
+      ],
+      "requirements": "基本游戏不需要外部服务；鼠标操作与标记方式以当前界面提示为准。",
+      "state": "主图显示一局打开安全区域后的真实棋盘。难度与首步安全等行为由应用实现提供。",
+      "caption": "VM 原生窗口 · 实际打开格子后的初级棋盘。"
+    },
+    "en": {
+      "name": "Minesweeper",
+      "summary": "Open safe cells and mark mines using numerical clues, with difficulty, timer, and remaining-marker information.",
+      "steps": [
+        "Choose an easy, medium, or hard board.",
+        "Open a cell and continue using its clues.",
+        "Mark suspect cells or start another game when needed."
+      ],
+      "requirements": "Basic play needs no external service; pointer and marking gestures follow the current interface.",
+      "state": "The capture shows a real beginner board after opening a safe area. Difficulty and first-move behavior come from the application.",
+      "caption": "Native VM window · actual beginner board with cells opened."
+    },
+    "image": {
+      "src": "/apps/demos/minesweeper.png",
+      "width": 498,
+      "height": 637,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "022-kanban",
+    "slug": "kanban",
+    "category": "structure",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/022-kanban",
+    "zh": {
+      "name": "看板示例",
+      "summary": "用工作区、列和卡片整理任务状态，理解任务从一个阶段进入下一阶段的过程。它也是较完整的应用界面结构示例。",
+      "steps": [
+        "选择工作区或看板。",
+        "查看不同列中的卡片，进入任务详情。",
+        "调整任务内容或状态，观察看板变化。"
+      ],
+      "requirements": "需要示例后端或本地 VM 后端逻辑。",
+      "state": "这是 022-kanban 示例，与独立的 auto-kanban 产品工程分开介绍；截图使用内置工作区数据。",
+      "caption": "VM 原生窗口 · 内置工作区与任务卡片。"
+    },
+    "en": {
+      "name": "Kanban example",
+      "summary": "Workspaces, columns, and cards organize task states and introduce how a task moves between stages.",
+      "steps": [
+        "Select a workspace or board.",
+        "Inspect cards in different columns and open task details.",
+        "Adjust task content or state and observe the board."
+      ],
+      "requirements": "Requires the example backend or local VM backend logic.",
+      "state": "This is the 022-kanban example, distinct from the separate auto-kanban product project. The capture uses built-in workspace data.",
+      "caption": "Native VM window · built-in workspace and task cards."
+    },
+    "image": {
+      "src": "/apps/demos/kanban.png",
+      "width": 1680,
+      "height": 1110,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "023-realworld",
+    "slug": "realworld",
+    "category": "structure",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/023-realworld",
+    "zh": {
+      "name": "RealWorld 应用示例",
+      "summary": "用文章社区的结构展示路由、账号入口、文章列表与详情。多页面与前后端数据链比单个组件更接近完整应用。",
+      "steps": [
+        "在 Global Feed 浏览文章与标签。",
+        "进入一篇文章，查看内容与评论入口。",
+        "按需要研究登录、写作等路由及其后端契约。"
+      ],
+      "requirements": "需要 RealWorld API；账号与内容操作使用示例后端，不连接公开社区。",
+      "state": "主图来自连接真实示例后端的 Vue 运行，文章为内置内容。其他运行形态的覆盖需单独验证。",
+      "caption": "Vue 画廊运行连接实际后端 · 内置文章与标签。"
+    },
+    "en": {
+      "name": "RealWorld application example",
+      "summary": "An article-community structure introduces routing, account entry points, feeds, and details, connecting multiple pages to backend data.",
+      "steps": [
+        "Browse articles and tags in Global Feed.",
+        "Open an article and inspect its content and comment entry point.",
+        "Study sign-in and writing routes and their backend contracts as needed."
+      ],
+      "requirements": "Requires the RealWorld API; account and content operations use the example backend rather than a public community.",
+      "state": "The main capture is a Vue runtime connected to the actual example backend with built-in articles. Other runtime coverage needs separate verification.",
+      "caption": "Vue gallery runtime connected to its actual backend · built-in articles and tags."
+    },
+    "image": {
+      "src": "/apps/demos/realworld.png",
+      "width": 1022,
+      "height": 718,
+      "runtime": "Vue",
+      "date": "2026-10-01"
+    }
+  },
+  {
+    "id": "024-charts",
+    "slug": "charts",
+    "category": "structure",
+    "sourceRepo": "auto-lang",
+    "sourcePath": "examples/ui/024-charts",
+    "zh": {
+      "name": "图表工坊",
+      "summary": "在同一工作台中切换图表类型、数据系列和展示形态，观察数据与图形之间的关系。适合研究图表组件的配置与状态。",
+      "steps": [
+        "选择折线、柱形等图表类型。",
+        "切换数据系列与桌面/移动/平板展示设置。",
+        "播放或重置示例数据，观察图表更新。"
+      ],
+      "requirements": "当前工作台使用本地示例数据；实时业务数据需要应用另行接入。",
+      "state": "主图展示的是内置销售等示例系列，不是项目真实经营指标。",
+      "caption": "VM 原生窗口 · 本地示例数据绘制的折线图。"
+    },
+    "en": {
+      "name": "Chart workshop",
+      "summary": "Switch chart types, series, and presentation settings to explore how data and graphics relate in a configurable workspace.",
+      "steps": [
+        "Select a chart type such as line or bar.",
+        "Change series and desktop/mobile/tablet presentation settings.",
+        "Play or reset example data and observe updates."
+      ],
+      "requirements": "The current workshop uses local sample data; live business data requires separate integration.",
+      "state": "The capture shows built-in example series rather than real project business measurements.",
+      "caption": "Native VM window · line chart rendered from local sample data."
+    },
+    "image": {
+      "src": "/apps/demos/charts.png",
+      "width": 1920,
+      "height": 1200,
+      "runtime": "VM",
+      "date": "2026-10-01"
+    }
+  }
+]

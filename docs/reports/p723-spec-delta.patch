@@ -1,0 +1,51 @@
+diff --git a/docs/specs/website/design/application-demos.md b/docs/specs/website/design/application-demos.md
+index 46abff88d..cd2591564 100644
+--- a/docs/specs/website/design/application-demos.md
++++ b/docs/specs/website/design/application-demos.md
+@@ -3 +3 @@
+-> PLAN-722 · 2026-10-01 · 本轮交付介绍入口与方案，不改 gallery/app 源码，不做 mock，不宣布在线覆盖。
++> PLAN-722 / PLAN-723 · 2026-10-01 · 28项静态图文介绍，不改应用/画廊源码，不做mock，不宣布在线覆盖。
+@@ -7 +7 @@
+-Apps 的系统应用区先回答用途和典型操作；完整目录采用 VitePress 静态阅读/卡片列表。后续在卡片和详情补实际界面图。现有 /ui/demos/ 保留为开发体验入口，但不自动嵌入或作为所有系统应用的产品介绍。
++Apps 的系统应用区先回答用途和典型操作；目录采用 VitePress 静态图文卡片与逐项阅读页。28项各有真实运行图，来源、日期和数据性质另记。现有 /ui/demos/ 保留为开发体验入口，但不自动嵌入或作为所有系统应用的产品介绍。
+@@ -14,3 +14,3 @@ Apps 的系统应用区先回答用途和典型操作；完整目录采用 ViteP
+-/apps/demos/：一句用途说明 → 六类目录 → 代表性截图/流程 → 画廊与本地运行条件。当前首版只有正文/分类，不显示占位图。
+-下一轮目录卡片：应用名、类别、两句用途、真实缩略图（可放大）、当前演示形式、介绍/源码/运行入口。桌面3列，平板2列，手机1列；筛选只对本地目录数据操作，不需要后端。
+-单应用详情：用途 → 一次2–3步操作 → 1–3张图 → 当前能力与环境 → 源码/运行方式。28项不都新建长篇专题：短说明可在目录详情中展开，只有复杂应用建立独立阅读页。
++/apps/demos/（EN/ZH）：用途说明 → 本地六分类筛选 → 28张图文卡片 → 开发资料与发布版本说明。卡片含应用名、用途、实图/图注/放大和详情链接。桌面3列，平板2列，手机1列；筛选只对本地数据操作，不需要后端。
++28项各有 /apps/demos/<stable-slug>/ EN/ZH 阅读页：用途 → 实图 → 三步典型操作 → 当前范围与条件 → 源码/相关介绍。单H1、四H2、默认阅读大纲，图片可键盘放大，Esc回焦。说明操作不等于该次截图验证了全部功能。
++内容单源 website/.vitepress/theme/data/demos.json；scripts/generate-demo-pages.mjs 生成58个双语页，--check检测漂移；DemoCatalog.vue从同源数据SSR，确保列表和详情一致。
+@@ -61 +61 @@ Apps 的系统应用区先回答用途和典型操作；完整目录采用 ViteP
+-| 22 | 画板 | auto-lang: examples/ui/031-paint | 绘制、导出、资源与保存 |
++| 22 | 画板 | auto-lang: examples/ui/031-paint | 逐格绘制、历史与Storage保存；不承诺通用导出 |
+@@ -71,2 +71,2 @@ Apps 的系统应用区先回答用途和典型操作；完整目录采用 ViteP
+-每项目录数据至少有稳定 id/name/category/summary/sourceRepo/sourcePath/presentation/runtimeRequirements/verifiedAt。截图记录captureDate/runtime/theme/dimensions/sampleData说明；无图卡片保持文字布局，非空白占位。
+-第一批：已能稳定运行的日常工具/小游戏，获取真实图并补介绍；第二批：服务依赖明显的媒体/系统/数据应用，实图+本地条件；第三批：验证少量无服务在线体验；最后按需求评估少量fixture版。每批更新发布清单并记录已核查版本，不把开发源码或可挂载标记直接升级成发布可用承诺。
++每项保持稳定id/slug、分类、双语用途/操作/条件/状态/图注、sourceRepo/sourcePath、图片路径/尺寸/运行形态/日期。素材依据 docs/reports/p723-capture-catalog.json 冻结，标准见 [demo capture catalog](demo-capture-catalog.md)。
++当前v0.5以真实图和静态介绍交付；v0.5.1安排网页桌面与app体验，UI Playground先验证少量Auto→Vue预览再扩展。此前在线体验的逐项验证原则保留，禁止本次增设桌面/app运行按钮或把开发可挂载标记升级成发布承诺。
+@@ -76 +76 @@ Apps 的系统应用区先回答用途和典型操作；完整目录采用 ViteP
+-双语 /apps/demos/ 静态正文、分类、桌面实景链接和共享画廊入口；无 iframe、无业务API；对应构建/SSR/链接/locale/断点测试见 PLAN-722 报告。素材补齐、逐项运行验证和fixture实现是本设计列明的后续批，未在本轮声称完成。
++28项/56个详情与两个目录页静态图文，六分类本地筛选；无iframe、无业务API。25项新拍，Launcher/AutoTerm/Config复用已有真图并披露来源/版本；未开展双端全功能一致性验收。构建/SSR/链接/locale/断点/图像hash/键盘测试见 PLAN-723 报告。
+diff --git a/docs/specs/website/design/application-introductions.md b/docs/specs/website/design/application-introductions.md
+index aded873fc..8e1d55aea 100644
+--- a/docs/specs/website/design/application-introductions.md
++++ b/docs/specs/website/design/application-introductions.md
+@@ -3 +3 @@
+-> PLAN-722 · 2026-10-01 · VitePress / Vue 3
++> PLAN-722 / PLAN-723 · 2026-10-01 · VitePress / Vue 3
+@@ -17 +17 @@ Do not claim all-Auto, full runtime parity, unattended coding, completed Milesto
+-## Screenshot contract for this content phase
++## Approved product screenshot contract
+@@ -19 +19 @@ Do not claim all-Auto, full runtime parity, unattended coding, completed Milesto
+-The user explicitly requested image-free introductions. HTML comments reserve planned capture positions; do not render empty frames, broken images, visible TODOs, or fake screenshots. The approved AutoEdit PixPin capture and AutoShell ash-01 selection remain future introduction inputs. Musk captures await its sample-project walkthrough; Jade captures await its Milestone.
++The initial writing phase was image-free. PLAN-723 introduces the approved AutoEdit PixPin_2026-10-01_15-14-27.png capture and AutoShell ash-01 native colored ls capture in the four-product overview and their EN/ZH details. Use EvidenceImage for keyboard enlargement and return focus. Never render empty frames, broken images, visible TODOs, or fake screenshots. Musk remains text-only until its sample-project walkthrough is ready; Jade remains text-only until its Milestone. Further operation images require their own real evidence.
+@@ -25 +25 @@ AutoShell's existing evidence and interactive examples remain at /apps/autoshell
+-Build and verify SSR, routes, local links, outline/locale behavior, absence of intro images/iframes/backend requests, original guide interactions, and EN/ZH at five widths in both themes. Prepared Spec changes belong to the plan worktree until landing. Category A does not trigger Cargo or docs_gen.
++Build and verify SSR, routes, local links, outline/locale behavior, approved image hashes and loading, absence of unready-product images/iframes/backend requests, original guide interactions, and EN/ZH at five widths in both themes. Demo images follow [the capture catalog contract](demo-capture-catalog.md). Prepared Spec changes belong to the plan worktree until landing. Category A does not trigger Cargo tests or docs_gen.
+diff --git a/docs/specs/website/project.md b/docs/specs/website/project.md
+index 1893b8c74..ad328101e 100644
+--- a/docs/specs/website/project.md
++++ b/docs/specs/website/project.md
+@@ -13 +13 @@
+-- 应用介绍（PLAN-722）：Apps 总览由 `AppsOverview.vue` / `theme/data/applications.ts` 双语 SSR 呈现四主产品 AutoEdit、AutoShell、AutoMusk、JadeEdit，与系统 Demo 分组；四产品专题使用默认阅读布局，当前阶段截图留在源注释槽、不显示空图。AutoShell 介绍链接独立 guide 保留原生图和交互示例；AutoDown/AutoUI 原资料保留。系统介绍 `/apps/demos/` 静态可读，分类/真图优先，在线入口需逐项无后台验证，28 项仅设计候选不冒充统一发布数；不自动嵌入画廊/加载业务API。规则见 [application introductions](design/application-introductions.md) 与 [application demos](design/application-demos.md)。
++- 应用介绍（PLAN-722/723）：AppsOverview / applications.ts 双语SSR区分四主产品与系统Demo；AutoEdit/Shell获批准原生主图进入总览与阅读专题，Musk/Jade按既定准备条件保持无图文字。AutoShell guide交互/原图与v05展示保留。/apps/demos/含六类28项真实图卡片，本地筛选/键盘放大，56个双语详情逐项说明用途、操作、运行条件、内置/真实数据与版本。demos.json单源，generate-demo-pages.mjs生成58页并校验；无iframe/业务API/本轮新增运行入口，v0.5.1网页体验独立推进。28是这批介绍集合，不是统一发布数量或端间全功能验收。规则见 [application introductions](design/application-introductions.md)、[application demos](design/application-demos.md)、[demo capture catalog](design/demo-capture-catalog.md)。

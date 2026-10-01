@@ -5,6 +5,10 @@ outline: [2, 3]
 editLink: false
 ---
 
+<script setup>
+import EvidenceImage from '../../.vitepress/theme/components/EvidenceImage.vue'
+</script>
+
 # AutoShell: commands, data pipelines, and AutoScript
 
 AutoShell, invoked as `ash`, brings everyday commands, structured pipelines, and AutoScript into one execution engine. Keep an interactive session open, or use the CLI to execute a command or script file.
@@ -13,7 +17,7 @@ It connects exploration with repeatable work: inspect files or data, filter and 
 
 [All applications](/apps) · [Usage guide and recorded examples](/apps/autoshell/guide/)
 
-<!-- Screenshot slot: ash-01 native colored ls table is the approved main capture. Main introduction remains image-free for this writing phase; existing captures are retained in guide. -->
+<EvidenceImage src="/apps/autoshell/ash-01.png" alt="autoshell native main interface" caption="AutoShell native session · colored ls directory results" :width="1920" :height="1201" :framed="false" loading="eager" zoom-label="Enlarge image" close-label="Close" original-label="View original" />
 
 ## Keep working in one session
 

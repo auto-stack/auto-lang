@@ -5,13 +5,17 @@ outline: [2, 3]
 editLink: false
 ---
 
+<script setup>
+import EvidenceImage from '../../.vitepress/theme/components/EvidenceImage.vue'
+</script>
+
 # AutoEdit: a code and text workspace
 
 AutoEdit is the Auto ecosystem's lightweight text editor. Browsing, comparing, and reviewing code are priorities alongside everyday editing and saving. Native desktop use guides its current development. Auto sources organize application logic and interfaces, with editing and rendering foundations supplied by AutoLang and AutoUI.
 
 [All applications](/apps) · [System apps and examples](/apps/demos/)
 
-<!-- Screenshot slot: approved dark AutoEdit overview, PixPin_2026-10-01_15-14-27.png. No image inserted in this writing phase. -->
+<EvidenceImage src="/apps/autoedit/overview-dark.png" alt="autoedit native main interface" caption="AutoEdit dark native workspace · user-provided 2026-10-01 main capture" :width="1924" :height="1247" :framed="false" loading="eager" zoom-label="Enlarge image" close-label="Close" original-label="View original" />
 
 ## Start with a file in a project
 

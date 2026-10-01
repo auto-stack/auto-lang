@@ -1,0 +1,1998 @@
+{
+  "asOf": "2026-10-01",
+  "plan": "PLAN-723:r1",
+  "toolchain": {
+    "path": "D:/autostack/auto-lang/target/debug/auto.exe",
+    "sha256": "d23bd5338d27259807eb31f5c3eea7457fbafdf7a0453bcfa692b82db22129de",
+    "binarySourceCommit": "not established; file hash is the executable identity"
+  },
+  "capturePolicy": "Actual VM/Vue renders only; built-in/sample datasets named; no mocked API responses or replacement UI. Runtime config api=vm in ordinary copies, source unchanged. Vue media proxy uses actual auto_lang native services linked from existing library.",
+  "items": [
+    {
+      "id": "011-calculator",
+      "slug": "calculator",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/011-calculator",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "e1aa30a8cd11c1379e9933a5feee521970b8a04ce274e976c402b1a3e35a6cec"
+        },
+        {
+          "path": "src\\front\\prog_util.at",
+          "sha256": "cb4298175a6314e6ae4de5f7ab1a1e5e2b518dd0519e7956fb083594b67d3308"
+        }
+      ],
+      "published": "website/public/apps/demos/calculator.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/011-calculator-vm.png",
+      "sha256": "b74e38de42a5e7c2c43508470d2baefdbb02f1b54635127d0dfda2c3dfa2361b",
+      "dimensions": [
+        576,
+        678
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · basic calculation mode.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "60c2aed43b3d67decc8f85cf9898388ef5be5826ac0a94b1020888914b72bfad"
+    },
+    {
+      "id": "012-clock",
+      "slug": "clock",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/012-clock",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "3d6b98d6ce34efb45eeab7b8e7b8cadca6eeedd9379103e7b5ce32986b819b98"
+        }
+      ],
+      "published": "website/public/apps/demos/clock.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/012-clock-vm.png",
+      "sha256": "70743bccf23f75cef31d50a6aa79a3cdedafe854374d0714b136343bb6ee95ab",
+      "dimensions": [
+        720,
+        868
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · local time at capture.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "c898cbe4db94c4fb61b2b6ad6649741f63bc0ff4f88fb740b0bc899b7b05cf66"
+    },
+    {
+      "id": "013-todo",
+      "slug": "todo",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/013-todo",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "0238b47e4e87e5823ed5549b4bb3339b9a50406a23dac3f3b4c3f18a13901321"
+        },
+        {
+          "path": "src\\back\\db.at",
+          "sha256": "c4a7687db12dbd68ac93f5663d8628834181a89912b80dd5a97c7fa37221c02a"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "0cfb11e6b07a382e3c4644cb4b51ef98162cddeb467af37a4d23f09fa52fe235"
+        },
+        {
+          "path": "src\\front\\todo_list.at",
+          "sha256": "18a31cb476dca6ae019304afc122942872e69cd64d55b69bd0a5ba2f9c135959"
+        },
+        {
+          "path": "src\\front\\todo_store.at",
+          "sha256": "80090867afe41d0954b507dd11a6cb8d212fb439112a2ef11a0d95c837bd55bf"
+        },
+        {
+          "path": "src\\front\\types.at",
+          "sha256": "b4cec1f2cc54612c769602c3a89f02a4b1a5c3a68abd2822d31d0ab3d4d7504d"
+        }
+      ],
+      "published": "website/public/apps/demos/todo.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/013-todo-compact-vm.png",
+      "sha256": "23072c6fe53e35733bc2525501d4af0d31f9caa293ee7558f7ff8a1936805388",
+      "dimensions": [
+        960,
+        720
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · four built-in example tasks.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "1b544d8f4fd60eaa6376758672c8a1820ce90edd9ebe035b6cb5bcb1b4236c04",
+      "runtimeWindow": "AUTO_VM_WINDOW=640x480; actual application render, no image crop"
+    },
+    {
+      "id": "014-weather",
+      "slug": "weather",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/014-weather",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "8ba0fc1dcedd9ea44ab633ab69942c55b10374e58cde6252d1464bbb262770de"
+        },
+        {
+          "path": "src\\front\\types.at",
+          "sha256": "f95e759791a8257bade3366513601c09d154a212e0a480ed98c4ac26388329b6"
+        },
+        {
+          "path": "src\\front\\weather_data.at",
+          "sha256": "4cb2c1d7497689bf1a8a226a2fca623d3e1acac1b991f14781d29c6e2735c4c1"
+        }
+      ],
+      "published": "website/public/apps/demos/weather.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/014-weather-vm.png",
+      "sha256": "57828dcb9f82a838356557c5d3b8add6f2cf8dde22ecbe8be6875e2eb49d3f2e",
+      "dimensions": [
+        1440,
+        1020
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · built-in demonstration weather for Beijing.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "8e0cc5ace35ea79361848c2b8c67c2d04bf65ef051d73d0640040396952829b7"
+    },
+    {
+      "id": "015-notes",
+      "slug": "notes",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/015-notes",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "ac99b3fd3d6a98010d5cb3ef47a2ab74a5e83a7fddee88ee7aa50d510fe65a5c"
+        },
+        {
+          "path": "src\\back\\db.at",
+          "sha256": "a7664dc6c168dafeef53f276185f82756dc360ec0cc4b0a0ec1cf0057ee1ab0a"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "b6985ad8b5c31a330c08765b586863464d5267d833403ac3e185af4c2f707dfd"
+        },
+        {
+          "path": "src\\front\\editor.at",
+          "sha256": "333c583788796f28b2e59345e59f1e32f0a32007cd5a961ee7b8aeefcff61265"
+        },
+        {
+          "path": "src\\front\\notes_store.at",
+          "sha256": "26d7a1b989ee1fed2a4be063a691623c7d767cf5db02b066bed1e0c6db2fef5e"
+        },
+        {
+          "path": "src\\front\\sidebar.at",
+          "sha256": "1708846d252a10f765148ff739bbda981239a06c684a028e01d9f5a20efcaedc"
+        },
+        {
+          "path": "src\\front\\types.at",
+          "sha256": "b06969d30d5c93a9ff1fa7b5474c0bea9a56045201f9d000fcf9103e05bbd64e"
+        }
+      ],
+      "published": "website/public/apps/demos/notes.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/015-notes-vm.png",
+      "sha256": "0f35cf0c3e098446bfdbf01a5747a33f8272ac43fa25356a5b7ab697826cba48",
+      "dimensions": [
+        1920,
+        1200
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · built-in notes and editing area.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "34bcbe7d91e63f527645e283b3b69802f2e36f2e9fe7029b6203c63d5f91652f"
+    },
+    {
+      "id": "016-calendar",
+      "slug": "calendar",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/016-calendar",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "ed759e5aaf11825292f9ead8fcdd023b7960d3efe8d54d1fdd5355233784c5f4"
+        },
+        {
+          "path": "src\\front\\calendar_store.at",
+          "sha256": "c3b3ded5d4f04e7cb7b019440992e2c87197b8959ce4e5c93d1f8ff6e702e200"
+        },
+        {
+          "path": "src\\front\\calendar_util.at",
+          "sha256": "bd15f63a28533da344dcd128ddebfd797ca7a4f11ecaebad6cac5db0169cf33f"
+        }
+      ],
+      "published": "website/public/apps/demos/calendar.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/016-calendar-vm.png",
+      "sha256": "e14e60054664a6c2ae2533b498fe777b50127d75e7bdfbf4b6b768b1eb43ad1b",
+      "dimensions": [
+        720,
+        717
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · initial sample month and selected date.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "e2b6e98ded7072e7ea5d6767f8d77c4d3ad668ae9b5709704e35f56aa95afa38"
+    },
+    {
+      "id": "017-chat",
+      "slug": "chat",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/017-chat",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "4430a679f76f68edb3698ced0ff9717a8c25fb2e61aa1a0b4d1ac31d3ed35ec2"
+        },
+        {
+          "path": "src\\back\\db.at",
+          "sha256": "decfdb2533f491df3308a4395b665eac81d730d4ba84e12e275330b36cc75deb"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "b768af58306262f5f3141ae2bcbced9daadf1e4f8946af9b1e5851c63747915f"
+        },
+        {
+          "path": "src\\front\\chat_sidebar.at",
+          "sha256": "08e7b105a8004dadbc0ea26cc57c2fbfc91b3c1ebfa2355b19e024f95797b476"
+        },
+        {
+          "path": "src\\front\\chat_store.at",
+          "sha256": "7695e2dac2aad500bb6afa3b60ae8e1e96bac38cf3498715ced4e974f1d7b998"
+        },
+        {
+          "path": "src\\front\\composer.at",
+          "sha256": "514effb15062ac82b908d066d2121d0e82db74b2c4bbabf74e9c6c2fe0f772c4"
+        },
+        {
+          "path": "src\\front\\message_thread.at",
+          "sha256": "388e07a484668813b9f3eea66937989c542aa856f7b3db8291a6d8fce54fb12c"
+        },
+        {
+          "path": "src\\front\\types.at",
+          "sha256": "617f92437f9d083b99e230cb2052e450a26c9d71c1ec2acd1a48a9cfccadb6fa"
+        }
+      ],
+      "published": "website/public/apps/demos/chat.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/017-chat-service-vm.png",
+      "sha256": "f00e85e78be49c71ccdfc9405e6a6f976b4fc069235edab9feae0eed7b840ab0",
+      "dimensions": [
+        1920,
+        1200
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window connected to the actual chat backend · built-in contacts and messages.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "03779c34f5f794276180839b3fd20add380e257a6bdb2d6525ab326b559775a7"
+    },
+    {
+      "id": "018-book-reader",
+      "slug": "book-reader",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/018-book-reader",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "f06519dbba4573d0d59487b1a3d95f2c0be39303fe575375d05e17cebde27d4f"
+        },
+        {
+          "path": "src\\back\\db.at",
+          "sha256": "fbadd8b8a0b21907e56fcc1742ac25c8b940a34fb4dcfd1fd5d8a6c6f52b97ec"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "c4227c9b5892013f8939ac0ebe4f4bea54d37e56ccc91fdd61cd1cbdee2eee01"
+        },
+        {
+          "path": "src\\front\\book_store.at",
+          "sha256": "fd7b6bdc14e4b512593a68a4976e0e897f5324fcef41e8943106a88c06401c07"
+        },
+        {
+          "path": "src\\front\\fmt.at",
+          "sha256": "1affd3b94b056bc14dbc4fb5db2a99ebedbff8b00cc7bc5b4a4e1cde3d007b08"
+        },
+        {
+          "path": "src\\front\\components\\filetree.at",
+          "sha256": "27e88afdc9dd25aaafadd7641403fc3672f1e825cc2d59824ee665f5e6884eee"
+        },
+        {
+          "path": "src\\front\\components\\package.at",
+          "sha256": "9688745193197f15f9ada160678b573abaa385cd654a6085f4bd7447f3c005e7"
+        },
+        {
+          "path": "src\\front\\components\\treeview.at",
+          "sha256": "d1571ef0fa6f7cb0655eb81833a0cfc277f9e803586b7e5a5ed5c3b2f2bd0047"
+        },
+        {
+          "path": "src\\front\\components\\tree_icon.at",
+          "sha256": "5c36454142070609c5216dbce9f748325986490a1d362dca51f0d8737844e258"
+        },
+        {
+          "path": "src\\front\\components\\tree_util.at",
+          "sha256": "4f4ba6028ca4bc1a39091b3de8103a0bcb1a5c02ae348bebbb6ac1af268ba7a7"
+        },
+        {
+          "path": "src\\front\\pages\\bookshelf.at",
+          "sha256": "29840cf35c9981f3defa5d6e10309f8c60134b237f756b6321ad1a98630aff2d"
+        },
+        {
+          "path": "src\\front\\pages\\book_detail.at",
+          "sha256": "338f06b41149a08cf454dfe12260b1a62ab2aac98bbe999f008fdb35c591af11"
+        },
+        {
+          "path": "src\\front\\pages\\reading.at",
+          "sha256": "426f357eeb3314d13b72258f788bf5008b590b212bfd3817c1033154fdc1249a"
+        },
+        {
+          "path": "src\\front\\pages\\settings.at",
+          "sha256": "b5dec9b687af478ec67564df001ca4347ac099b41684045f5ab2ad03bec099eb"
+        }
+      ],
+      "published": "website/public/apps/demos/book-reader.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/018-book-reader-service-vm.png",
+      "sha256": "94c47fb57483585f2cf680a6073b41938eb1406591e7c42fd2e06b30589a7ded",
+      "dimensions": [
+        1920,
+        1200
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window connected to the actual reading backend · three sample books.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "388d4c27c170c39da2c9218b63d3b9f6dbf4a5214d4a7c5736034738dffec933"
+    },
+    {
+      "id": "021-blog-viewer",
+      "slug": "blog",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/021-blog-viewer",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "afab875118e0b3a2d833c9f918e5eb7d781bbc0edcbe94fc5d1c0ace050340a6"
+        },
+        {
+          "path": "src\\back\\db.at",
+          "sha256": "6f7f84800ebef8486563f260ecf20d36e4aa914382d1d155a0f902380fb8c8b4"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "a6d6c25dd6a1fba70f86595cfa8b4a6768de039b4321088e2cc51282e1a4b839"
+        },
+        {
+          "path": "src\\front\\blog_store.at",
+          "sha256": "c5dc9b3005c413323db5376bcf9480e7333ad5db218cf7ac49fbbdeca381e542"
+        },
+        {
+          "path": "src\\front\\pages\\detail.at",
+          "sha256": "ebac2e18e441b6b620314e519339bf4c2b896b4e639942d48abf38874b857b1a"
+        },
+        {
+          "path": "src\\front\\pages\\editor.at",
+          "sha256": "b265be9a7fc337b5a9b072fc744c5b289cb1f53ec876b77c41fed244d957bd58"
+        },
+        {
+          "path": "src\\front\\pages\\home.at",
+          "sha256": "78243dcba13fe7a42f6b978c146fcc162cadd3b34763e6c62a1c6550e350f217"
+        }
+      ],
+      "published": "website/public/apps/demos/blog.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/021-blog-viewer-vm.png",
+      "sha256": "72a3e20b1155c8b2a5418f4e86d42be6053364cb809b39d8bf694da5fdc7cc2d",
+      "dimensions": [
+        1920,
+        1200
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · built-in article list.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "abf75708ee32a3361e4595abac6c6bb15fb793cd65a38bda2accd8284d01d9ff"
+    },
+    {
+      "id": "019-video-app",
+      "slug": "video-app",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/019-video-app",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "eae694467915369702c05961939515c7743e8ed718ab43cc15d2f4f2d3b6be90"
+        },
+        {
+          "path": "src\\back\\db.at",
+          "sha256": "3a5fc7963d17e8c24d98ad0182bfa2e53f32cf27f951dbc254196e070823b1a0"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "ce0fabae3b5a8368fd2cc874fd4a3c7dc1ce3e4a33c9de946719dfbfdc3ae6ed"
+        },
+        {
+          "path": "src\\front\\settings.at",
+          "sha256": "26aeb31edd03cd2aaf71c78fc4bcacb24093f4771dfd4eef90c6be43909a09f7"
+        },
+        {
+          "path": "src\\front\\video_store.at",
+          "sha256": "13cc937c82b20ec83f0a434f58f6b65b600944adcc1527ebf5a257f711429c14"
+        },
+        {
+          "path": "src\\front\\pages\\home.at",
+          "sha256": "0ab04f62b8ba3dae88841e246bc0eb4099bf99c46f3312627cf1aaa6c86d0d09"
+        },
+        {
+          "path": "src\\front\\pages\\watch.at",
+          "sha256": "d7084fa86972e08519109da128bd06685f3eb07a211a3450ac4eccb27a2daad4"
+        }
+      ],
+      "published": "website/public/apps/demos/video-app.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/019-video-app-vm.png",
+      "sha256": "258ee268fbdf59b357aaf1215681711f755cec3d1f88eb8093a8ecfa5a6a8b19",
+      "dimensions": [
+        1920,
+        1200
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · built-in video content cards.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "7d7707e5d93f162a5c6613e6e0f63a427d25865bd7dbc06fca2f98a6286d1a22"
+    },
+    {
+      "id": "020-music-player",
+      "slug": "music-player",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/020-music-player",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "7b89c20dbfd50599c3d14bb495880831e249f48787c322f3982df3e635c10a06"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "36d29090e96efd036de5438b9535bacdd0e805a593f1fb26a36a6412fd2343e2"
+        },
+        {
+          "path": "src\\front\\controls.at",
+          "sha256": "00447c96052d55200d9cdf63b9e9fafb17a6004f93e1b8a5aadb020525ae9952"
+        },
+        {
+          "path": "src\\front\\nav_sidebar.at",
+          "sha256": "657b1721720a63c6bae3062caea95bdc48e0d4e77df5b232941c431de6a7d0ee"
+        },
+        {
+          "path": "src\\front\\player_store.at",
+          "sha256": "ed6dbe0fe44a77c00b0b8190d3b78bc20160b1fffaf3109884bc380818252fb5"
+        },
+        {
+          "path": "src\\front\\queue_drawer.at",
+          "sha256": "3839fbbf5510f66e4bff83ae34d49c571a8e32589b587233dd6c642faf75e4c6"
+        },
+        {
+          "path": "src\\front\\stage.at",
+          "sha256": "bd726d1ecab8e1ea22c4f0c84eead2e3e26ca30ce75f6ebe5ce5a4779a249032"
+        },
+        {
+          "path": "src\\front\\tracklist.at",
+          "sha256": "355be0c3b2a1ae936848f60b76d1f27f8b54d44790561af0ccbf06f11e3c7067"
+        },
+        {
+          "path": "src\\front\\viewport.at",
+          "sha256": "e6504407f6d8f0f42a11de28fdc7ed57194f5be3b90ff089443defcca6980267"
+        }
+      ],
+      "published": "website/public/apps/demos/music-player.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/020-music-player-service-vm.png",
+      "sha256": "9c183efc39a61f053f0a02a8e5d0bf8b62ec0053eeee78e548f5c21642b96355",
+      "dimensions": [
+        1920,
+        1200
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window connected to the real media scan service · local WAV test track.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "ab779e52bd43a46d481965ac74caf64422109935933e4b4f5431e7000db8d014"
+    },
+    {
+      "id": "029-photo-gallery",
+      "slug": "photo-gallery",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/029-photo-gallery",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "b320055020c01826e5f2f6bbedeaf5417bbd414b357f325f4ea1756d58d3371b"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "6e4124e01f56df969881837e23e09f702e157f75b661e56d463f3375633bcc91"
+        }
+      ],
+      "published": "website/public/apps/demos/photo-gallery.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/029-photo-gallery-grid-vm.png",
+      "sha256": "17f0cb676dd35f4e1737c28e42c7e1a28e332d689b284d8ca59c21b6faa6df45",
+      "dimensions": [
+        1920,
+        1200
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window connected to the actual photo service · three public AutoOS screenshot files.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "03e42eadbc0d113890e4f1b5adebce41c6298b04bfd00aaae5114004d9f276fb"
+    },
+    {
+      "id": "030-video-player",
+      "slug": "video-player",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/030-video-player",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "49d84f801af4093166ce0462d3d11141383e40e08722ee560e358070f2b015fb"
+        },
+        {
+          "path": "src\\front\\controls.at",
+          "sha256": "8b944da9b1609ff30f6963988646197317d305efb11d31ac840b0d81d7d50b5a"
+        },
+        {
+          "path": "src\\front\\player_store.at",
+          "sha256": "e5eb6f41f3353a0d12fc32c0d1d66020fe964bf15c6d1a1af182ca6a0f2803a6"
+        },
+        {
+          "path": "src\\front\\playlist.at",
+          "sha256": "80d7a49ba1f9c539dbef59cc56f7a025854a6c5aa059a292e90d9c172a9ada86"
+        },
+        {
+          "path": "src\\front\\viewport.at",
+          "sha256": "38bd6f6901b93dfa5672633f9b99cb884696b362e7c7133a5d4f7f2ed0ef3b1e"
+        },
+        {
+          "path": "src\\front\\file_picker.vue",
+          "sha256": "700a33d685cf19bc51b58fe314e495d7dee8ccfe2199a37898d497cf4884c900"
+        }
+      ],
+      "published": "website/public/apps/demos/video-player.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/030-video-player-dark-vue.png",
+      "sha256": "6489c40c43af148f3b62e3123322573ee6e26999b1ab13f5ecd567193ef5f0b1",
+      "dimensions": [
+        1440,
+        900
+      ],
+      "runtime": "Vue",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Vue runtime · a real local WebM test video opened and positioned.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": null
+    },
+    {
+      "id": "031-image-viewer",
+      "slug": "image-viewer",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/031-image-viewer",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "8a841986388e811c9b00df3aad7e2f63255836f1c7288cc54984135fffb2302f"
+        },
+        {
+          "path": "src\\back\\directory_index.at",
+          "sha256": "5f1098cb503241f8d54d504c8d168ceda27868bcab66bbdce76752fa97440168"
+        },
+        {
+          "path": "src\\back\\image_service.at",
+          "sha256": "63cea45feb5d7363ea3ddda43470c2728b38700aea30c3960c1a02b16bfab1a1"
+        },
+        {
+          "path": "src\\back\\types.at",
+          "sha256": "0ebbb4cc4bffd9a1a6d37d46f37420863b81b0a6c4dfa4fd781011373102f7aa"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "0c32419f5eeb21609b5e6307f1af556df1dddc2fd0ba0315ac079f6df2b8c0f8"
+        },
+        {
+          "path": "src\\front\\image_viewport.at",
+          "sha256": "84d748abdfae2a7b5bfca37592b7c8757b3af5250e14011e6d4b7e914b552525"
+        }
+      ],
+      "published": "website/public/apps/demos/image-viewer.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/031-image-viewer-open-vm.png",
+      "sha256": "234acc2b34da84a86bcbee829c3127f713012c965a09baa436673112d67a2d2e",
+      "dimensions": [
+        1920,
+        1200
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · a real 320×240 test image opened.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [
+        {
+          "action": {
+            "type": "press",
+            "text": "Open File",
+            "wait": 1
+          },
+          "status": "ok",
+          "resultSha256": "11d8da479cab26af78f83f8d23243737d461c2909b30318e42a56bde21b080d3"
+        }
+      ],
+      "snapshotSha256": "341838f111467cd4d3c2efa93cd8bf17a3fcbd6899721640a3ec285970895963"
+    },
+    {
+      "id": "031-paint",
+      "slug": "paint",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/031-paint",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "5ff7495d2e6e6b2ffe0f3779635c5378775abc084f5837ef0a54ed5b9d953c97"
+        }
+      ],
+      "published": "website/public/apps/demos/paint.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/031-paint-drawing-vm.png",
+      "sha256": "185ece04267df10ecea8f94b05213da233c63bfd3cf73fcd1a60dce8ab057761",
+      "dimensions": [
+        669,
+        772
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · a grid pattern drawn through real clicks.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [
+        {
+          "action": {
+            "type": "event",
+            "event": ".Paint(c.i)",
+            "index": 85
+          },
+          "status": "ok",
+          "resultSha256": "4b4973e84670a312fbdb5a7d2ca281395979ebd71ebf564f7d0afc44807fe289"
+        },
+        {
+          "action": {
+            "type": "event",
+            "event": ".Paint(c.i)",
+            "index": 86
+          },
+          "status": "ok",
+          "resultSha256": "563d5049cde6b02a53de683eabf977332cd3e7245075932eb6ccfc03072f137d"
+        },
+        {
+          "action": {
+            "type": "event",
+            "event": ".Paint(c.i)",
+            "index": 87
+          },
+          "status": "ok",
+          "resultSha256": "6417b84536a138e7afe4c0500b654daec79105f3b2d42749fed9f7434b267f1d"
+        },
+        {
+          "action": {
+            "type": "event",
+            "event": ".Paint(c.i)",
+            "index": 103
+          },
+          "status": "ok",
+          "resultSha256": "c2c2ec4cc3498716febbf077402291c6cfb6d69dd93333be5101276ac93144fb"
+        },
+        {
+          "action": {
+            "type": "event",
+            "event": ".Paint(c.i)",
+            "index": 119
+          },
+          "status": "ok",
+          "resultSha256": "a737e726498f7327c91062072c9d226bd42d782ddd215fd7f3ef2689c53c1b3d"
+        },
+        {
+          "action": {
+            "type": "event",
+            "event": ".Paint(c.i)",
+            "index": 117
+          },
+          "status": "ok",
+          "resultSha256": "7d97f93afee9e35099497f4599329d224048d30800d034f261e774f5790d86d2"
+        },
+        {
+          "action": {
+            "type": "event",
+            "event": ".Paint(c.i)",
+            "index": 133
+          },
+          "status": "ok",
+          "resultSha256": "4afc28c7879f70881ed4fd02720e1fdbb410cb03aea0fd31a09e70d6ae5335aa"
+        },
+        {
+          "action": {
+            "type": "event",
+            "event": ".Paint(c.i)",
+            "index": 134
+          },
+          "status": "ok",
+          "resultSha256": "7b9db2139862ee5e3c9408cc0e73291fef51ef1b82f36d1e9450c5c41761cd52"
+        },
+        {
+          "action": {
+            "type": "event",
+            "event": ".Paint(c.i)",
+            "index": 135
+          },
+          "status": "ok",
+          "resultSha256": "170e511f12a0a9423075a9bd77cbb87aac6813dde10aec2b16a0138f1d9e7b0e"
+        }
+      ],
+      "snapshotSha256": "868df0ba33032b2f3212c3d83cd3aa9935b00748b3be5c4ec26030dcaeb318d7"
+    },
+    {
+      "id": "025-sys-monitor",
+      "slug": "system-monitor",
+      "sourceRepo": "auto-os",
+      "sourcePath": "apps/025-sys-monitor",
+      "sourceRepoHeadAtInventory": "73d02b50f535543bd635c6f6f49dad6835efff45",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "3db4324bb4f7a472cc7939ddd6d9b321e9be05c2e713c4a91fc949cda5501634"
+        },
+        {
+          "path": "src\\back\\sys_info.at",
+          "sha256": "fbf306d9efff5bba1c55c34b8c811536dceaf85d041c9d03792b0e8d764e56ef"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "5e108c5fbffd944ad847943c2bbe1f8212e9cf0f15ab52eecc5f4e0f286ac982"
+        },
+        {
+          "path": "src\\front\\details_users.at",
+          "sha256": "8bf33bc366c3f9e9cd3cd489afb662f4f5942a282f3825b7b826ad2a861b0aa2"
+        },
+        {
+          "path": "src\\front\\performance.at",
+          "sha256": "e3ec7bfbc7def716c0d4e9d164289f0e1af8b8e10385529f6b5ff01741757c53"
+        },
+        {
+          "path": "src\\front\\processes.at",
+          "sha256": "8fdaa3f0492ae90215937da2f94da3d1dd20a0790f6b463987783aece01047b9"
+        },
+        {
+          "path": "src\\front\\sys_store.at",
+          "sha256": "b5174d38bb8574e182aa6be67c0a1b3d8ecc4bf52dfb8c27a60ef50c0c1a61fd"
+        },
+        {
+          "path": "src\\front\\types.at",
+          "sha256": "6ce2836d1410fe8930268aeb0b069424ed676eaf99ea7be1009ceb8f5e28490c"
+        }
+      ],
+      "published": "website/public/apps/demos/system-monitor.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/025-sys-monitor-vm.png",
+      "sha256": "bedccdbd37aee35ac228a1d692f5fb4e4b28b633e632b47cf30e5dd46f626400",
+      "dimensions": [
+        1920,
+        1200
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · actual capture-machine resource samples.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "bd470bf2636878983dc58413f22e5dce4269c9d4f76386ebe06bcc8d7b0f41be"
+    },
+    {
+      "id": "026-database",
+      "slug": "database",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/026-database",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "b08c79c9f6ed794a19b51303435518d20cc84c1e4cf8c3266e0bbc29d113e365"
+        },
+        {
+          "path": "src\\front\\components\\filetree.at",
+          "sha256": "ba5de834ced6d3fc3af0ba8da558f834a1078ea6528ae73b991610a14651f298"
+        },
+        {
+          "path": "src\\front\\components\\package.at",
+          "sha256": "b6ff9789c1eda5afa914dd12724120f8ac2ed61f683a23315e0b8466ffe0317e"
+        },
+        {
+          "path": "src\\front\\components\\treeview.at",
+          "sha256": "31bb0990910c124f575e380561efd5b467ac0e5b4421678fd70be3f322934335"
+        },
+        {
+          "path": "src\\front\\components\\tree_icon.at",
+          "sha256": "28f42744a474eb9953abd965aff9c64c54bbd802dc4c7740e7ce32053fefe391"
+        },
+        {
+          "path": "src\\front\\components\\tree_util.at",
+          "sha256": "4f4ba6028ca4bc1a39091b3de8103a0bcb1a5c02ae348bebbb6ac1af268ba7a7"
+        }
+      ],
+      "published": "website/public/apps/demos/database.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/026-database-vm.png",
+      "sha256": "fcc894f6dc896fc78c9e9ae8aa1a49ff3a0ec09cd1a07bdb88a925a78a486a44",
+      "dimensions": [
+        1920,
+        1200
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · built-in table structure and sample records.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "bc789f76a82c25c44c69e9b54769f2860a048ebaab354cb35574ae6b18600296"
+    },
+    {
+      "id": "027-file-manager",
+      "slug": "file-manager",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/027-file-manager",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "49ea61b6691b5cd79154e50372db19466786448242b53771f5cb669047735c08"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "15508026b406b5f5369841a6add2257c0ebf36bd96823e9f04f8ab89f0422d89"
+        },
+        {
+          "path": "src\\front\\components\\filetree.at",
+          "sha256": "ea4d4d1587299a1012f2ef636725e14e4d19c26299667feaebfb49e8ede30a7d"
+        },
+        {
+          "path": "src\\front\\components\\file_icon.at",
+          "sha256": "332442f16d6a4bd7e6045f3c1c230d562678231effd89fd0126a9e58e34c19f3"
+        },
+        {
+          "path": "src\\front\\components\\fs_util.at",
+          "sha256": "5d2518a5f0ae664bac89573466c66eb8139f90cb4647e5a259a89c9c85b31827"
+        },
+        {
+          "path": "src\\front\\components\\package.at",
+          "sha256": "d169df5e0baa3d16550f3fe57ee015e19027f0d01b957122245483413dfb05fb"
+        },
+        {
+          "path": "src\\front\\components\\treeview.at",
+          "sha256": "83a275dfea55cce223538ab89d32521476e6de7d75b2be65da1557340de5c49f"
+        },
+        {
+          "path": "src\\front\\components\\tree_icon.at",
+          "sha256": "5c36454142070609c5216dbce9f748325986490a1d362dca51f0d8737844e258"
+        },
+        {
+          "path": "src\\front\\components\\tree_util.at",
+          "sha256": "4f4ba6028ca4bc1a39091b3de8103a0bcb1a5c02ae348bebbb6ac1af268ba7a7"
+        }
+      ],
+      "published": "website/public/apps/demos/file-manager.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/027-file-manager-fixture-vm.png",
+      "sha256": "89917c59d304b159b7acd45ce4b66ed0ba4cc23463b214024dea3544eb6c4681",
+      "dimensions": [
+        1920,
+        1200
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · real files in a dedicated media fixture directory.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [
+        {
+          "action": {
+            "type": "event",
+            "event": ".AddrEdit"
+          },
+          "status": "ok",
+          "resultSha256": "e5e77ced19248928179684f5e31a0fa9f9572a82759f50a74b56d6233f3799c4"
+        },
+        {
+          "action": {
+            "type": "type",
+            "text": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/media-fixtures"
+          },
+          "status": "ok",
+          "resultSha256": "355c536eb2f0828783d6a858f478dc53479491103211318e77aac4c4ba6f5e7c"
+        },
+        {
+          "action": {
+            "type": "event",
+            "event": ".AddrGo",
+            "wait": 2
+          },
+          "status": "ok",
+          "resultSha256": "36b86e458d0a59e018faeca742c6f89a0fa6de536f17036b94d9cb7ccc8c8454"
+        }
+      ],
+      "snapshotSha256": "5d95a0d0d489c7a9df3eb453cdd6125e0c49ea12217b3eeccb52c05fb8007d85"
+    },
+    {
+      "id": "028-launcher",
+      "slug": "launcher",
+      "sourceRepo": "auto-os",
+      "sourcePath": "apps/028-launcher",
+      "sourceRepoHeadAtInventory": "73d02b50f535543bd635c6f6f49dad6835efff45",
+      "sourceFiles": [
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "7907e77ec1de55dd81728eb733b56210623c101819bace3b1ebf4b80516fff6d"
+        }
+      ],
+      "published": "website/public/apps/demos/launcher.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/public/desktop-showcase/04-launcher-dark.png",
+      "sha256": "d2409be62d526261a3dffeca3c0af7b0b5ab72c8b7efff9e350357ad2af9cce3",
+      "dimensions": [
+        2560,
+        1600
+      ],
+      "runtime": "VM",
+      "captureDate": null,
+      "reusedAt": "2026-10-01",
+      "dateEvidence": "prior approved asset; exact capture time not established",
+      "scene": "AutoOS VM virtual desktop · actual launcher in icon view.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": null
+    },
+    {
+      "id": "039-syslog",
+      "slug": "system-log",
+      "sourceRepo": "auto-os",
+      "sourcePath": "apps/039-syslog",
+      "sourceRepoHeadAtInventory": "73d02b50f535543bd635c6f6f49dad6835efff45",
+      "sourceFiles": [
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "2b1c7a4200955f09bee1bb2591bd77f1459e6686ebd8f473207dac75b1c3980f"
+        }
+      ],
+      "published": "website/public/apps/demos/system-log.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/039-syslog-vm.png",
+      "sha256": "42bf92aa93c856c814379d869c558dc948650311f21d3bdf40da8fa7439ff084",
+      "dimensions": [
+        1920,
+        1200
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Standalone VM window · three built-in demonstration log records.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "e8096d91a7b8fa466d54c1d62270a2a89cb9e478abe3f3701dc5e2140312abaf"
+    },
+    {
+      "id": "auto-term",
+      "slug": "terminal",
+      "sourceRepo": "auto-term",
+      "sourcePath": "app",
+      "sourceRepoHeadAtInventory": "7a0d0e8b718fb260641f0d09ada95a7346771cd3",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "8023b8540697a7a19e1b78d7881b2b9601e13af633ed1ebde41932c9b180c2b9"
+        },
+        {
+          "path": "src\\back\\db.at",
+          "sha256": "702b4afce11f3bbf72206d20883007879b7d40ea3c02196ac3a69c0099e903d6"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "677c63793ca396aebb722e41d27d69119e528b9149103397c3bab5e180173b11"
+        }
+      ],
+      "published": "website/public/apps/demos/terminal.png",
+      "originalCapture": "D:/autostack/auto-term/docs/plans/evidence/028/rust-track.png",
+      "sha256": "eeeb6a8c8f08d2806a7c78f013b296692d7785bd19ba24b9ce0bd6b0dd183917",
+      "dimensions": [
+        1100,
+        800
+      ],
+      "runtime": "Rust native (retained verification capture)",
+      "captureDate": "2026-09-22",
+      "reusedAt": "2026-10-01",
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native verification material · Windows shell session (retained 2026-09-22 image).",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": null,
+      "retainedEvidenceCommit": "6ff3bad0ff0f780e81e7c9c13af2f0b3f8902040",
+      "freshCaptureDiagnostic": "current source with this local VM executable: App.Tick future_all/race empty or invalid future list; failed blank screenshot rejected; existing Rust verification capture used with version/date disclosure"
+    },
+    {
+      "id": "auto-os-config",
+      "slug": "settings",
+      "sourceRepo": "auto-os-config",
+      "sourcePath": ".",
+      "sourceRepoHeadAtInventory": "76970a6552ea9517bb132140814966ce91d0eb6c",
+      "sourceFiles": [
+        {
+          "path": "README.md",
+          "sha256": "25352189ae3b426eaca56cfed50f2f7b701cef4df54ba5851f92a9ebcd765679"
+        }
+      ],
+      "published": "website/public/apps/demos/settings.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/public/v05/autoos-config-skills.png",
+      "sha256": "70584d5f8a03eb085b28a1442f4b325380e59b1c089d07e405784a6ac2e63956",
+      "dimensions": [
+        1280,
+        720
+      ],
+      "runtime": "Native configuration UI (existing website capture)",
+      "captureDate": null,
+      "reusedAt": "2026-10-01",
+      "dateEvidence": "prior approved asset; exact capture time not established",
+      "scene": "Existing native capture material · skills configuration list.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": null
+    },
+    {
+      "id": "036-tetris",
+      "slug": "tetris",
+      "sourceRepo": "auto-os",
+      "sourcePath": "apps/036-tetris",
+      "sourceRepoHeadAtInventory": "73d02b50f535543bd635c6f6f49dad6835efff45",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "9bca4d9150fa1b9c5f664cc895afae23aec661279ea6a3bde03ca722dcb96fa9"
+        },
+        {
+          "path": "src\\back\\db.at",
+          "sha256": "c5ec3fcd9ffc9a6be883361daadc3ea1ff01401e09ea0e9f99c3a19bb0c04614"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "8e160a6da2be26052258f0cdb28d6ae07449fddd56c3b67962a166c34ce827e9"
+        },
+        {
+          "path": "src\\front\\tetris_store.at",
+          "sha256": "53987d68fdc77981c1fbf4d7cc93e905a90d3e6930e5e29befa5019ce0e3ccae"
+        }
+      ],
+      "published": "website/public/apps/demos/tetris.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/036-tetris-play-vm.png",
+      "sha256": "d10242f9f6777afc50c939414f06a4a2d003c93a8ca9a6c8c66b4ca38ea490bb",
+      "dimensions": [
+        816,
+        1101
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · actual board after starting a game.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [
+        {
+          "action": {
+            "type": "press",
+            "text": "开始",
+            "wait": 1
+          },
+          "status": "ok",
+          "resultSha256": "4a9f3c7dee24f6cb168ad7ed1625b7aed09b1b487ce4c4dd71291354601b3b29"
+        }
+      ],
+      "snapshotSha256": "f7aee05dd76ae42d2fae2a6544d3c3b39952028e76999e1ef446d618837895f5"
+    },
+    {
+      "id": "037-klondike",
+      "slug": "solitaire",
+      "sourceRepo": "auto-os",
+      "sourcePath": "apps/037-klondike",
+      "sourceRepoHeadAtInventory": "73d02b50f535543bd635c6f6f49dad6835efff45",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "cbe2deac95d1efa0e3f9e369882ead072195a381f89dc6fd94287c43f10e99e6"
+        },
+        {
+          "path": "src\\back\\db.at",
+          "sha256": "b56436e5299fad0dd302ec342690d4dafc73d518ba012210bfc074f2926f49f3"
+        },
+        {
+          "path": "src\\back\\records.at",
+          "sha256": "48458234964018ca04a981ee2786dc3203806c9c72bc84f127b76804faa821b0"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "ba0ce2a6e0f52c4cc8834e8844967f36b8e698468d9ff756fdde4a3126efa94c"
+        },
+        {
+          "path": "src\\front\\klondike_store.at",
+          "sha256": "a3e8d5e0d349c35132d859f252012cbcc263b46a2281622d682117e1a203f85e"
+        },
+        {
+          "path": "src\\front\\components\\card_face.at",
+          "sha256": "033ce726b1da1e49d3f3e216779fd2950ebc45c9422f6619e06d4e4b8b26c5e0"
+        },
+        {
+          "path": "src\\front\\components\\card_suit.at",
+          "sha256": "0f4177566511967fa22f7d9f57bc0b5e489f21fc9adeaeaa01f37284de3b2d0f"
+        },
+        {
+          "path": "src\\front\\components\\court_badge.at",
+          "sha256": "c43b47372414c665d38c9186160380b5cd809c16407a0ad9657afb2f6692d370"
+        }
+      ],
+      "published": "website/public/apps/demos/solitaire.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/037-klondike-vm.png",
+      "sha256": "7b034e00b819a1857a768af1850daa9353f0b076ac328f24d4bb68b1bcd02130",
+      "dimensions": [
+        1920,
+        1200
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · actual dealt Klondike board.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "823e67aff452847467836d1ed3290df34f1399b36aa2017ef9315475e75bf6c5"
+    },
+    {
+      "id": "038-minesweeper",
+      "slug": "minesweeper",
+      "sourceRepo": "auto-os",
+      "sourcePath": "apps/038-minesweeper",
+      "sourceRepoHeadAtInventory": "73d02b50f535543bd635c6f6f49dad6835efff45",
+      "sourceFiles": [
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "e78a682e6a8f1233b397e4889f485f611794b55fccdd740e71aaaceda286fb6e"
+        },
+        {
+          "path": "src\\front\\minesweeper_store.at",
+          "sha256": "12b3fa7a2dcb344520a2a92da47abd112ba2cef9891771690a9116f648314daa"
+        }
+      ],
+      "published": "website/public/apps/demos/minesweeper.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/038-minesweeper-open-vm.png",
+      "sha256": "cc978a1993f7632e4d45fb494897661fe3b06e8c1b6f2371a82a7f155dbbf30a",
+      "dimensions": [
+        498,
+        637
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · actual beginner board with cells opened.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [
+        {
+          "action": {
+            "type": "event",
+            "event": ".Reveal(cell.x, cell.y)",
+            "index": 40
+          },
+          "status": "ok",
+          "resultSha256": "d2ce0b38ec0fc00b899df27c8d64357c11bf35b62a372dd87a6755a2bdae8f1b"
+        }
+      ],
+      "snapshotSha256": "6dedd322731531b0d1ea5fcb2c46068cc013905443a94f68ebe0cccf1a90d741"
+    },
+    {
+      "id": "022-kanban",
+      "slug": "kanban",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/022-kanban",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "3a2fc483a8ea7d5a0cc39143882540d2a6ef374b58a29ae0ea9fa9d4921287bc"
+        },
+        {
+          "path": "src\\back\\db.at",
+          "sha256": "147c4872500a56db29893241fab60975f1cb35b7f0a07866dfab617f63e14b82"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "f03fc3f040ff83254fd7c24a091f895aa14171e263e88c2f7d788b571555b494"
+        },
+        {
+          "path": "src\\front\\board_store.at",
+          "sha256": "a4b229992c4125eee9d19ddddfd8847d43bce5f217764da53e725d4fa07f61b7"
+        },
+        {
+          "path": "src\\front\\pages\\board.at",
+          "sha256": "331456b64a6e4608ee5ea4c1216cd3e4a598d62d5adc958e23bf5f7fefc89009"
+        }
+      ],
+      "published": "website/public/apps/demos/kanban.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/022-kanban-vm.png",
+      "sha256": "43068ee8a438917ac94112566e0cb525eb01d357e6574ba91b50bdfd1b4b3fb4",
+      "dimensions": [
+        1680,
+        1110
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · built-in workspace and task cards.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "795ad60afc8dbf49212a928910db43b3bb96542c09a73701733c5f84d6cd6cc9"
+    },
+    {
+      "id": "023-realworld",
+      "slug": "realworld",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/023-realworld",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\back\\api.at",
+          "sha256": "4c3311a1dd14717d921d098a12b7831f25fe190dee4bb0bad3fef03a3e449d4e"
+        },
+        {
+          "path": "src\\back\\db.at",
+          "sha256": "aee03706ed6f4b516a40d916b785f5b01170b7b89b5f49c83fdc6425d41767ac"
+        },
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "371dd9abe7ed1a4cee22ad98c2d1ddb6b3f32b486aa0765c54b2d828e172a1d3"
+        },
+        {
+          "path": "src\\front\\article_store.at",
+          "sha256": "71c1f67013c5a7c775fdb16838cf54a209b5e6511174a04a4939003d0895c9d2"
+        },
+        {
+          "path": "src\\front\\auth_store.at",
+          "sha256": "4c7cf169c12bfd794deac68f4b52791f0c492198c45281de0458727d4bd9e858"
+        },
+        {
+          "path": "src\\front\\pages\\article_detail.at",
+          "sha256": "6fe9d139396dea4ee68ae2bb374d215a31b25fb262eef87d2b9b0bb7e8ae078c"
+        },
+        {
+          "path": "src\\front\\pages\\editor.at",
+          "sha256": "a9c38dcd282c8b8c995862b526e4b9cb47bc8c9f53b4cfb9f339729b2d28200b"
+        },
+        {
+          "path": "src\\front\\pages\\home.at",
+          "sha256": "eda0b8a6c482601f281075f9b4c7ca992facf5a7668f3cb335e14281de823616"
+        },
+        {
+          "path": "src\\front\\pages\\login.at",
+          "sha256": "a7a37bcbdc3a6fe2865416d237eef4947b272e64ca21ba3fe330c3d07bcbd41d"
+        },
+        {
+          "path": "src\\front\\pages\\profile.at",
+          "sha256": "e80589a51f84037fc662307a76b5a674b3af21976b998d14da43bd88396e61dd"
+        },
+        {
+          "path": "src\\front\\pages\\register.at",
+          "sha256": "a2661e16ade1cce1584c4ed17017a8e4b51a918b5f2dfa6ca009780810b6f315"
+        },
+        {
+          "path": "src\\front\\pages\\settings.at",
+          "sha256": "153b211acb354cf64ac262fada555e826b02d4131658b6310e2d61b3d2568f6e"
+        }
+      ],
+      "published": "website/public/apps/demos/realworld.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/023-realworld-service-vue.png",
+      "sha256": "536a63d0012949e261d079867231ee173210c2cee57e61e699ea364d1cd00709",
+      "dimensions": [
+        1022,
+        718
+      ],
+      "runtime": "Vue",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Vue gallery runtime connected to its actual backend · built-in articles and tags.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": null
+    },
+    {
+      "id": "024-charts",
+      "slug": "charts",
+      "sourceRepo": "auto-lang",
+      "sourcePath": "examples/ui/024-charts",
+      "sourceRepoHeadAtInventory": "ae5dcdd7928874dc468acc7880eff0cdb6bec037",
+      "sourceFiles": [
+        {
+          "path": "src\\front\\app.at",
+          "sha256": "6c62b74bc5eaddada9945efd427ac9329f28c20d2eba4e0e845264fd2a7ea857"
+        },
+        {
+          "path": "src\\front\\components\\area_chart.at",
+          "sha256": "e0a175a93c44196303b3189b6124350c4e1d8ec50442215c48e5201847853754"
+        },
+        {
+          "path": "src\\front\\components\\bar_chart.at",
+          "sha256": "8b619ac3161a8aab927e22d87fa50eae5cce9265daefc6ca24a984b7078eec73"
+        },
+        {
+          "path": "src\\front\\components\\chart_geom.at",
+          "sha256": "78a02b598d169d0caa278a32aa913be1800ab76a02084a9c389f3ea64aa58863"
+        },
+        {
+          "path": "src\\front\\components\\donut_chart.at",
+          "sha256": "39b30a5e7e6dd2a6dc299b27a56d7bf29fee7f350fef7d928df8ef1c6ef77048"
+        },
+        {
+          "path": "src\\front\\components\\line_chart.at",
+          "sha256": "7e0390893ecf9ce669ae4082652b07883ef09d7dad5c6f951c2616bcec56ba4b"
+        },
+        {
+          "path": "src\\front\\components\\package.at",
+          "sha256": "935433152eb02cd69344b64e1a9514b0cd0aeedff2f3937f9a605eecf8729030"
+        }
+      ],
+      "published": "website/public/apps/demos/charts.png",
+      "originalCapture": "D:/autostack/.wt/lang-723/auto-lang/website/.p723-runtime/024-charts-vm.png",
+      "sha256": "ee3cbc77739c7e28beca1cd98beb9c408c62aec5e8d6818b0407cb037e70f4e8",
+      "dimensions": [
+        1920,
+        1200
+      ],
+      "runtime": "VM",
+      "captureDate": "2026-10-01",
+      "reusedAt": null,
+      "dateEvidence": "native screenshot receipt / retained verification commit date / local browser capture",
+      "scene": "Native VM window · line chart rendered from local sample data.",
+      "qualityCheck": "pass: reviewed actual identity, populated UI, image assets, no blocking error/blank-loading scene; built-in data distinguished in caption",
+      "actions": [],
+      "snapshotSha256": "b9afed5017f8e2178dfaa67636ed91bf40d0766945945121746be542a212ad3d"
+    }
+  ],
+  "fixtureFiles": [
+    {
+      "name": "AutoOS-3.png",
+      "sha256": "d2409be62d526261a3dffeca3c0af7b0b5ab72c8b7efff9e350357ad2af9cce3",
+      "purpose": "public AutoOS screenshots as photo files / local WAV tone / generated WebM fixture decoded by actual player"
+    },
+    {
+      "name": "AutoOS-dark.png",
+      "sha256": "77ef82ea50beaa99a29dc1ca9492ea11cdd47535b0866c10b537f4bdca3dc042",
+      "purpose": "public AutoOS screenshots as photo files / local WAV tone / generated WebM fixture decoded by actual player"
+    },
+    {
+      "name": "AutoOS-light.png",
+      "sha256": "644b503f395bfc2d49e3b187815d3162660f76bfa709cb9bfe3d16862526d7e6",
+      "purpose": "public AutoOS screenshots as photo files / local WAV tone / generated WebM fixture decoded by actual player"
+    },
+    {
+      "name": "demo-clip.webm",
+      "sha256": "ba2b321b58b42059a53fb0e1f6098feedb762055024c30f0c6e003f882ee0d11",
+      "purpose": "public AutoOS screenshots as photo files / local WAV tone / generated WebM fixture decoded by actual player"
+    },
+    {
+      "name": "demo-tone.wav",
+      "sha256": "39ea637080b9a9ef0ae8a7e29667b44d9cee1b86785098b0884280ca3e50c974",
+      "purpose": "public AutoOS screenshots as photo files / local WAV tone / generated WebM fixture decoded by actual player"
+    }
+  ],
+  "browserArtifacts": [
+    {
+      "path": "assets/abnfDiagram-VRR7QNED.js",
+      "sha256": "2dc9ae19ed8fbc79239233910dd3c1736a16225cb28b99436529fccaaf6656a0"
+    },
+    {
+      "path": "assets/AlertDialogTitle.vue_vue_type_script_setup_true_lang.js",
+      "sha256": "75c0f8e9332121d795771aff7441a7c164495eeeec32f69a8f63fd3025cd280b"
+    },
+    {
+      "path": "assets/App.js",
+      "sha256": "a1fb837c1521c8b2c83d0f6479b9ef0f354e4cbff320e4cf25edd70147ad9013"
+    },
+    {
+      "path": "assets/App10.js",
+      "sha256": "8ed640d73b480b2cbf1767ca28e290184669dac926078f9121433194294161d8"
+    },
+    {
+      "path": "assets/App11.js",
+      "sha256": "f2e5caeb61e1d9940e553149f488b78352d22b42f0f603b7002275622148113f"
+    },
+    {
+      "path": "assets/App12.js",
+      "sha256": "47002e303ee5f3d63d3956f30cabf06b5251c1fd0584e3169196d90e54152457"
+    },
+    {
+      "path": "assets/App13.js",
+      "sha256": "50469044e6ae7d3a9d37f63a59f7c2fce8ee8c80e6e7aa2265fc961fe1944f38"
+    },
+    {
+      "path": "assets/App14.js",
+      "sha256": "ca2ece7a375b80b0129bee92c55057685179b3de745ff5f88aeb2bf1192cde26"
+    },
+    {
+      "path": "assets/App15.js",
+      "sha256": "d4ed93ab14e43f1bfa77eff90e5678e1547452adcad87494d8e9e65f5b92ebf3"
+    },
+    {
+      "path": "assets/App16.js",
+      "sha256": "6ef3c97f4a5214c69499fa04c9a8f088f539ce1b1980b4ee512bfe872cce0776"
+    },
+    {
+      "path": "assets/App17.js",
+      "sha256": "6cfb4a03d4cd8d0930f9a964e727878bd6d6d6e38f40ab899d3d4301d6c4e62b"
+    },
+    {
+      "path": "assets/App18.js",
+      "sha256": "5000fd239fd234ce48bcf082568e1dafbaa53c5895a4be69b781162b54df8f74"
+    },
+    {
+      "path": "assets/App19.js",
+      "sha256": "6ebdca303fb6af11bcde97dd19e76522f3c7fd3000f0c95e9be198741e59fcc6"
+    },
+    {
+      "path": "assets/App2.js",
+      "sha256": "2b5c8df73498ef2b78a947a0178d27d30a91c841c2f543c801a48c77af3b97a2"
+    },
+    {
+      "path": "assets/App20.js",
+      "sha256": "2a528bb3d1178c5eb70adcf6c3a8b46d8f33e82203167e3d87c7c68e9aeaf87b"
+    },
+    {
+      "path": "assets/App21.js",
+      "sha256": "8f3bde12cad928333a53f478c100a008cdf45f72e909a1625bdca5b8206e489e"
+    },
+    {
+      "path": "assets/App22.js",
+      "sha256": "8ca676afaae4223bf519e6d4a5ff87c0697fe213b4d35fda3b3f64eca0dffca3"
+    },
+    {
+      "path": "assets/App23.js",
+      "sha256": "8d81b47a0dab4c06599ef7010a2dbfdb33b81534bf85c48fa0ca419f97b34653"
+    },
+    {
+      "path": "assets/App24.js",
+      "sha256": "6694b2b9c371a00b9e32ce4d95299abe9f664f2b73a840f8ccf95f18823a4213"
+    },
+    {
+      "path": "assets/App25.js",
+      "sha256": "6cea28bbe862fe3ffc5522caed9422b57c8d36306e157b01fe99c5196dae3e83"
+    },
+    {
+      "path": "assets/App26.js",
+      "sha256": "b8ffd8a2bb31c12f34ac8d9fe11bf1b0b9641ace3e60cec2e94d0f2001b831d8"
+    },
+    {
+      "path": "assets/App27.js",
+      "sha256": "21061264739764cc5185cd2a6c5c69c0158aaffe31a9e8ed1cbfa2095722cb02"
+    },
+    {
+      "path": "assets/App28.js",
+      "sha256": "d8f1cbfde024b0bd93a306b68f8be13dcc8d6fb5b4209754eb92b19044510960"
+    },
+    {
+      "path": "assets/App3.js",
+      "sha256": "f045385948826aa85bd8df6bbd29de8f900e65fedcc71082d0a32bf45633ab21"
+    },
+    {
+      "path": "assets/App4.js",
+      "sha256": "acbeb47be5e08f8508892fffe7f9d731f09fc67668e382eb443c931fb7bd70c7"
+    },
+    {
+      "path": "assets/App5.js",
+      "sha256": "077b7f90dedfe2321850644211fea002ef9c26232f47d3feb177c5fb391f848c"
+    },
+    {
+      "path": "assets/App6.js",
+      "sha256": "4fbb361dedd4b875a6c2baa243e35e5c86318fcfbb4e86582a1c2eadcc16f2de"
+    },
+    {
+      "path": "assets/App7.js",
+      "sha256": "71fd0c64a420444990dac2a72721ece71aaddf05755cdd4cfd28a0f8014bde6b"
+    },
+    {
+      "path": "assets/App8.js",
+      "sha256": "1afc6712c0a34ad09c996abd5bde9e4bbff384585a25dbebe1e4177ce3ca6256"
+    },
+    {
+      "path": "assets/App9.js",
+      "sha256": "e4e78cd02443e17ba4e0a577c3750c3028058af3ed328c41e68e7c508ae44864"
+    },
+    {
+      "path": "assets/arc.js",
+      "sha256": "c068ff6bf4fd438b1d70332d671fc3c16a0fe3a26b6c443c15dc65a178eaa369"
+    },
+    {
+      "path": "assets/architectureDiagram-ZJ3FMSHR.js",
+      "sha256": "d23713635e0215fe2edf7664773e8f56c399f5a7be76a0bf2eb7ab88aa9c5e3f"
+    },
+    {
+      "path": "assets/article_detail.js",
+      "sha256": "5f18d71f26036f95034e79de9b00adc5689c61331ac6558d6033baff4a1b94f5"
+    },
+    {
+      "path": "assets/blockDiagram-677ZJIJ3.js",
+      "sha256": "1ab5990fb42c1bdc2bbd000b9391a2256f124d4175d5d6666fe94a54dbccba26"
+    },
+    {
+      "path": "assets/board.js",
+      "sha256": "2d2b545e3540e3fbd473eef50b816f91f1d1d48281e7c14ce5b7d8b996241cb0"
+    },
+    {
+      "path": "assets/bookshelf.js",
+      "sha256": "c8b9a2874d0a988b75a59a16f2b3efe6929f9c7b039285eabaeefabaf5035b3c"
+    },
+    {
+      "path": "assets/book_detail.js",
+      "sha256": "df2eb6e3422f9bf95cad6e05ea56b94c681fc001720c2e659309d7edb051c116"
+    },
+    {
+      "path": "assets/c4Diagram-LMCZKHZV.js",
+      "sha256": "def53d6a0fc2f1a32860320f27a8dfe59fea984c1eb0a2082253febde6784207"
+    },
+    {
+      "path": "assets/channel.js",
+      "sha256": "d5c84bfb3bcf972be4d394d396d94c7da68645d2c09dbde1eb5598822eaa2185"
+    },
+    {
+      "path": "assets/check.js",
+      "sha256": "19aca9e2b4f8eef37de1aac70f136d248feb98d629fbcfaa6258e1d6a4210a06"
+    },
+    {
+      "path": "assets/chevron-right.js",
+      "sha256": "ee7bc7e00cc3ff3a89e8fab76366a7382f8686fede03d56589873d5f2ec1a48c"
+    },
+    {
+      "path": "assets/chunk-2Q5K7J3B.js",
+      "sha256": "6005469d3c49ca8bf79327d35c02ee85e4c79dc54dbc69ba92cea142b08e0eac"
+    },
+    {
+      "path": "assets/chunk-32BRIVSS.js",
+      "sha256": "8918700b7d11e6bf958447717ea59e26a8dee9ba008bdcb14283fbaa6fc3d71a"
+    },
+    {
+      "path": "assets/chunk-5VM5RSS4.js",
+      "sha256": "5efd4001c6a440c49f2e88fd3c3f9b78061f48cfe47247c9b65f12abdd177a15"
+    },
+    {
+      "path": "assets/chunk-EX3LRPZG.js",
+      "sha256": "f85a75af6f15f1642f341f3ffc03222044f8a7743675e4806895ba4401d3e039"
+    },
+    {
+      "path": "assets/chunk-JWPE2WC7.js",
+      "sha256": "142587dd12ef8e165564e10f74f53957b5ebfe24cd20be58ef5c27b758386584"
+    },
+    {
+      "path": "assets/chunk-MOJQB5TN.js",
+      "sha256": "59b5cad3a00b98eab00190ffc0026c026b1c263efd3bad1a44cdf96a52967d6a"
+    },
+    {
+      "path": "assets/chunk-RYQCIY6F.js",
+      "sha256": "0b6e552b65b7ea1f302c4559afa675bbdd02fd2a5e6ed1b99f7767c2975afe61"
+    },
+    {
+      "path": "assets/chunk-V7JOEXUC.js",
+      "sha256": "aee3f35862520b2acae61235fcb2904ecca3b50bf7d6610eb8ee07d876001c39"
+    },
+    {
+      "path": "assets/chunk-VR4S4FIN.js",
+      "sha256": "18719a48ff5352e03b74c7f9c1d32b67c67477e983ba00dbd841ed436115c18a"
+    },
+    {
+      "path": "assets/chunk-XXDRQBXY.js",
+      "sha256": "0c11f2f5babd5c7e356d1b90e0dbcf671b365eb67f83768553eecd13854ab5dd"
+    },
+    {
+      "path": "assets/classDiagram-OUVF2IWQ.js",
+      "sha256": "3e0feaf9d4f39d7108fec2427bb2ef7820e5ba8ced214af1eca95c352c859703"
+    },
+    {
+      "path": "assets/classDiagram-v2-EOCWNBFH.js",
+      "sha256": "3e0feaf9d4f39d7108fec2427bb2ef7820e5ba8ced214af1eca95c352c859703"
+    },
+    {
+      "path": "assets/cose-bilkent-JH36ORCC.js",
+      "sha256": "8666d82e1a8be70844817aac639853087dae5a85e7b875ade0371f4680b0cc87"
+    },
+    {
+      "path": "assets/cynefin-VYW2F7L2.js",
+      "sha256": "4948ab330e8eabfe266f1b1185919354a86ff156b840679de4efb458ee38acba"
+    },
+    {
+      "path": "assets/cynefinDiagram-TSTJHNR4.js",
+      "sha256": "7b4a63cae64e8ba05d9278726cc88d54371b3273519f1452936ff61c4ac607e2"
+    },
+    {
+      "path": "assets/cytoscape.esm.js",
+      "sha256": "9bb1dbac73bc986536b9d4f3c6509da2c104606dc115b3e03114361719388b7c"
+    },
+    {
+      "path": "assets/dagre-VKFMJZFB.js",
+      "sha256": "02dc45338e01d675ab7a06ce83fd23f536b7980fbaedf4be696cba8c55157580"
+    },
+    {
+      "path": "assets/defaultLocale.js",
+      "sha256": "0cefbd76f932c4eea4758d28169802589b1ad15b46607253de4bd82328998ece"
+    },
+    {
+      "path": "assets/detail.js",
+      "sha256": "733f5f11a0489545476980c48a0ca3b44c0825852c3a742d3f5ad5462b7f16d9"
+    },
+    {
+      "path": "assets/diagram-FQU43EPY.js",
+      "sha256": "94da4b74dd8a541c3b834bfd082572f3c72efc6c569ed79ef4986c16e37013f7"
+    },
+    {
+      "path": "assets/diagram-G47NLZAW.js",
+      "sha256": "7615a7de86ea3f839065daf0c209747b4b0b3e88b095b4d06533c9342c16cdc4"
+    },
+    {
+      "path": "assets/diagram-NH7WQ7WH.js",
+      "sha256": "c3b3076f127583c8670e6907a6abcc4ac24ef5b66844422eeec7e0e2aea39a07"
+    },
+    {
+      "path": "assets/diagram-OA4YK3LP.js",
+      "sha256": "6f476641198660b11e5ae87cf8a6940ec17b839f9a7661057d4a74ff9a8d1c4c"
+    },
+    {
+      "path": "assets/diagram-WEI45ONY.js",
+      "sha256": "6533b0d805fb7f345f89d436ad54c4e263a2eb991cc4c92e90b26d7608a536e4"
+    },
+    {
+      "path": "assets/ebnfDiagram-CCIWWBDH.js",
+      "sha256": "b6fc07e03f1375897c177c4145dfbbc7baff936e00c966f55c2fde191c692338"
+    },
+    {
+      "path": "assets/editor.js",
+      "sha256": "11be790609ecab0d88b9f2a44e12c393c5672b4b15bc367170c2d404cd3421eb"
+    },
+    {
+      "path": "assets/editor2.js",
+      "sha256": "e1ae4b8ad55af1355fc2e56651dddd623b51875d9798adb580b0626872fac3a5"
+    },
+    {
+      "path": "assets/erDiagram-Q63AITRT.js",
+      "sha256": "c70db7177d256e8bc3bf93171aab10a4c47ba02ca401036829241504839955f8"
+    },
+    {
+      "path": "assets/flowDiagram-23GEKE2U.js",
+      "sha256": "176a8d5cb683f4a180b4bc2cb71e9267406903dc40f57618f3bfc4c1bf741df4"
+    },
+    {
+      "path": "assets/folder.js",
+      "sha256": "e159b568a4d49650cf0c747c0372b3e91622ef2c328d85cc10cc79eaed4ca931"
+    },
+    {
+      "path": "assets/ganttDiagram-NO4QXBWP.js",
+      "sha256": "43bb30941f98c0cbf370d6287abf81fb759e03e093fe5c4e47666a69adcccd7c"
+    },
+    {
+      "path": "assets/gitGraphDiagram-IHSO6WYX.js",
+      "sha256": "e694dfc1407ffe474c5815cccc5f9e277c467f344cd72dc3716736feaec31a49"
+    },
+    {
+      "path": "assets/graph.js",
+      "sha256": "1f128885327d2603001178162ccc4ec24dcaa7026046780dde4e8c7a3eceaab5"
+    },
+    {
+      "path": "assets/home.js",
+      "sha256": "c2cea14434804e0776ae063f935d5a0cb05ecf08e46b8d4f4ef8b293108cf66c"
+    },
+    {
+      "path": "assets/home2.js",
+      "sha256": "72be4f817cd6212cf1f8a51e8ad931ca0791ee43348ee912bd2e6df96e49f8c7"
+    },
+    {
+      "path": "assets/home3.js",
+      "sha256": "07be3cfedb4cddb0be257719d84c334518371bc44b612a00bf115145c1fe05ce"
+    },
+    {
+      "path": "assets/index.js",
+      "sha256": "1459f1c1b836f7e46615ee5db5ee8ff104f5994e91019ea4dbe79eb265f7643e"
+    },
+    {
+      "path": "assets/index2.js",
+      "sha256": "eae16cf7012eb9633c2bab55161b6bfd7c343f8d49a18f5acbc7c6a5d8ef1d2b"
+    },
+    {
+      "path": "assets/index3.js",
+      "sha256": "ed51cbda571d43ac29d79aebce279c7f20d9ed0ec0a396c9f5cf2d24d325084e"
+    },
+    {
+      "path": "assets/infoDiagram-FWYZ7A6U.js",
+      "sha256": "1f2c97c5c36b7f91c83cfa2d7c93df454cc44a88ae6a552efa7b44b1dbced088"
+    },
+    {
+      "path": "assets/init.js",
+      "sha256": "379fa880c14ad48f43b0c23ff56b30b2b808e8460fd9f9cad8bf7cb278c5b814"
+    },
+    {
+      "path": "assets/Input.vue_vue_type_script_setup_true_lang.js",
+      "sha256": "92969dec34b2886d25dbba36863389ddc44e6608a32ae5a77fb9d2493eb961f3"
+    },
+    {
+      "path": "assets/ishikawaDiagram-FXEZZL3T.js",
+      "sha256": "0a7b1bf78f9ecb9c54a8def74be5583c660be491e94246f35f9c4967ca321662"
+    },
+    {
+      "path": "assets/journeyDiagram-5HDEW3XC.js",
+      "sha256": "6ff96c766f2cdc497fc0cba4413e3958c54170fbba0af6c6159573abe7222392"
+    },
+    {
+      "path": "assets/kanban-definition-HUTT4EX6.js",
+      "sha256": "6e752bea65a6de766ef8d2fada4594d36752456bab65a28ea9d20755fc511327"
+    },
+    {
+      "path": "assets/layout-grid.js",
+      "sha256": "9b30680978c796e231cf9cb353ab801423b0747e2b325bbc946f6fefa141efa6"
+    },
+    {
+      "path": "assets/layout.js",
+      "sha256": "16e2f2e0b76873814f1497abcee6138f212f9d6a52da6a39bb1b4999aa05cbe5"
+    },
+    {
+      "path": "assets/linear.js",
+      "sha256": "56d85802548cc1a603fe3520716352bc0ea286e6680749551094d91ea945fb1e"
+    },
+    {
+      "path": "assets/login.js",
+      "sha256": "024cf93dd07566ddc684a191bdda4309bd43b39a62380926265d9b74b7f534c4"
+    },
+    {
+      "path": "assets/main.js",
+      "sha256": "5d3abb9a89a622b73f4d54ae66a20788547166c5d45e2e2787cf778bbfbc3e5c"
+    },
+    {
+      "path": "assets/main2.js",
+      "sha256": "a7c367f364e95ee73702dc9a2e648b514d403469c9c49d68b68db61869439894"
+    },
+    {
+      "path": "assets/main3.js",
+      "sha256": "1d1047c343812ad2ace96ba9f1955d16d52fec4488b4d7116fe8a357099cd41c"
+    },
+    {
+      "path": "assets/main4.js",
+      "sha256": "b52415fcae84cbf49409f30d5903926de1204d2e7802eb0c08f429745116e06b"
+    },
+    {
+      "path": "assets/main5.js",
+      "sha256": "bc469e1a8ac92c46193d059248ec752e9cda0a7c42338a50c3bf51bd4e7c5ee8"
+    },
+    {
+      "path": "assets/map.js",
+      "sha256": "1da14820c51e8e9940f68f9f986a95a2791da8c86210c59b862664da15a35e6f"
+    },
+    {
+      "path": "assets/mindmap-definition-LN4V7U3C.js",
+      "sha256": "56fcf625379430acf6b40cfe73b1164c0d7a807808c152e0c33f50566b443af8"
+    },
+    {
+      "path": "assets/music.js",
+      "sha256": "69ed53e13e5a7d58bc9dc61323f36758e123d42d78d6d6471efd38abef2aa582"
+    },
+    {
+      "path": "assets/ordinal.js",
+      "sha256": "1bc4d1051a7b5027edb719d99bc378732fb90a131a823f27c2adda3bdcdd1ae7"
+    },
+    {
+      "path": "assets/pegDiagram-2B236MQR.js",
+      "sha256": "6216d7c7e20bfa6d025eb718f92d7d2454b121c29461e1764dc2c0fa2a1f31c5"
+    },
+    {
+      "path": "assets/pieDiagram-ENE6RG2P.js",
+      "sha256": "3f3602143b136cc848c5d7adcdb4c64a1117d4a0800bd8a05f6c0a5cf71cb5ee"
+    },
+    {
+      "path": "assets/profile.js",
+      "sha256": "8b4e07e0033f596487799e791fc408fa2d316ac9e4d885955cab16a0637b5b71"
+    },
+    {
+      "path": "assets/Progress.vue_vue_type_script_setup_true_lang.js",
+      "sha256": "3d5558ad0dfd01b694278a45ad01173c9598d03126e529294dc6eb15f427a6a0"
+    },
+    {
+      "path": "assets/quadrantDiagram-ABIIQ3AL.js",
+      "sha256": "bfe72e85d3ac601f333cfa89ebedbc782200f5d36ca118a6d7561354dc40d45b"
+    },
+    {
+      "path": "assets/railroadDiagram-RFXS5EU6.js",
+      "sha256": "f3af17f798ed57dbf5010738ab60fa32570b9d25d9542bb63d43945a3b96a110"
+    },
+    {
+      "path": "assets/reading.js",
+      "sha256": "89d9f25e97df1c83f51ceae09041a8b5a063527b100234b22f36ab27cd4572e9"
+    },
+    {
+      "path": "assets/register.js",
+      "sha256": "038dc4c75827d5e909d633e3b42d98e19a14e15ede19c9ee2014f3cf6531aa3c"
+    },
+    {
+      "path": "assets/requirementDiagram-TGXJPOKE.js",
+      "sha256": "bdd0bcb9e07acae6eab91a14fec21eae5af497bff5bc4cc10d10dfa97186ad9b"
+    },
+    {
+      "path": "assets/RovingFocusGroup.js",
+      "sha256": "b6fdafc5bea15acd4c2add51b5441fbefff0b11312c99d0294f8da3328dffdf4"
+    },
+    {
+      "path": "assets/sankeyDiagram-HTMAVEWB.js",
+      "sha256": "b77288666c003e5b69f287da04c26fd16bc5a07c980c41e63109d9dd9e0cf87e"
+    },
+    {
+      "path": "assets/search.js",
+      "sha256": "8390e5a7473c9386ef157337ce6e179f71a34fe4d7b4c645df859ace574b8c09"
+    },
+    {
+      "path": "assets/sequenceDiagram-DBY2YBRQ.js",
+      "sha256": "a6b8b3f915360212fb9dcc96c62c3412dc4467730e654b751143470d2644f1d9"
+    },
+    {
+      "path": "assets/settings.js",
+      "sha256": "fecefc89cddcd03170d09dd55368421ea0bb0aef6e67c14b4a4ed5dd8d8b1efa"
+    },
+    {
+      "path": "assets/settings2.js",
+      "sha256": "c476e3d9f52cfecd6198637131ac38cffee6964b7f38748844a6844199dd7a7e"
+    },
+    {
+      "path": "assets/settings3.js",
+      "sha256": "93dbe25619788d6218fe6cead9a7aba426241bcd36099d3512e77167e3c7b507"
+    },
+    {
+      "path": "assets/SidebarGroupLabel.vue_vue_type_script_setup_true_lang.js",
+      "sha256": "cd76fd1b348f3ad01a7c33c985d0361c9d1610267e2f517a0976ae144fd16e28"
+    },
+    {
+      "path": "assets/sizeCapture-X5ZJPWSS.js",
+      "sha256": "7a8e1b248a2f7330f2101e64a12e505982fcd6643e391b551f2e46c6d43322a8"
+    },
+    {
+      "path": "assets/stateDiagram-2N3HPSRC.js",
+      "sha256": "e3ec905eeecf58560970f57f64c59fe30a147108e9135916b3fe4e85cf9d07cd"
+    },
+    {
+      "path": "assets/stateDiagram-v2-6OUMAXLB.js",
+      "sha256": "5a4c5f3b721a635c71cd2dd63ed65285f95a234981d6e09b31f05621a41cd42b"
+    },
+    {
+      "path": "assets/sun.js",
+      "sha256": "0ed447858d7a15f8fe96391382f3a0ddd15cdbef495ea70c07f4ce2ebf8457fd"
+    },
+    {
+      "path": "assets/swimlanes-5IMT3BWC.js",
+      "sha256": "d8eb21652810c3e5018f9078e6771de01d9e0dddeab41bed24748ad94dd5206a"
+    },
+    {
+      "path": "assets/swimlanesDiagram-G3AALYLV.js",
+      "sha256": "f3e6dbc217b947136ff1083245257fa2ef32e504cc4ef3c0d85bce60c3dcdb9a"
+    },
+    {
+      "path": "assets/TableHeader.vue_vue_type_script_setup_true_lang.js",
+      "sha256": "82df980bcbdc2b64c283cb54ec13e0df4c235c78fd62ef6ec217c8b3b4329938"
+    },
+    {
+      "path": "assets/timeline-definition-FHXFAJF6.js",
+      "sha256": "d3c799be61a38ca9dbae4ac93ca47dcbb1ea04c9458be487a35800fcb61ef4b0"
+    },
+    {
+      "path": "assets/TreeView.vue_vue_type_style_index_0_lang.js",
+      "sha256": "9e5f403ae65c2a54e739b0a218261f64daeb792c94211636bffb2450a847850d"
+    },
+    {
+      "path": "assets/useArticleStore.js",
+      "sha256": "f6c6424f7b49cb1de5022085c10b7594ac3511ad82a316eebb3bb45f6b94b240"
+    },
+    {
+      "path": "assets/vennDiagram-L72KCM5P.js",
+      "sha256": "b798545e7829106e6f103a0a28e434e9fe525bf48844926fa9dce5fea47745da"
+    },
+    {
+      "path": "assets/vue-router.js",
+      "sha256": "61de3caca3d9a8b3de4070651e0bc2c342999349caaa43cd60d9d06f1b870049"
+    },
+    {
+      "path": "assets/wardleyDiagram-EHGQE667.js",
+      "sha256": "702656a8b4d16af755612956154e89d63ba1b6ca1da4ab3cef5ffd687bad7524"
+    },
+    {
+      "path": "assets/watch.js",
+      "sha256": "4cadf7326df5ce57f689e2f1005708e0bb19ddd61c8b8dd9d11744f57bcef09e"
+    },
+    {
+      "path": "assets/x.js",
+      "sha256": "6f51eb8ad24579efcc284a0335ae831652362b7a1ddae32b48ba69a38fcfbec0"
+    },
+    {
+      "path": "assets/xychartDiagram-FW5EYKEG.js",
+      "sha256": "5c911853b20e288d47a41643b768fa345b6e184132871967c6dd2ca8198b7ea3"
+    }
+  ],
+  "mainApplications": [
+    {
+      "published": "website/public/apps/autoedit/overview-dark.png",
+      "source": "C:/Users/zhaop/Pictures/PixPin/PixPin_2026-10-01_15-14-27.png",
+      "dimensions": [
+        1924,
+        1247
+      ],
+      "sha256": "fc52cc6cee4818237fae74652f3391c64054061748b818ff68bcfbbc4528fd26"
+    },
+    {
+      "published": "website/public/apps/autoshell/ash-01.png",
+      "source": "previously approved colored ls native capture",
+      "dimensions": [
+        1920,
+        1201
+      ],
+      "sha256": "5c5512cc8eaaadfa810977f1b732b3db89b236952310a921c1bf2915b36f7d0c"
+    }
+  ]
+}

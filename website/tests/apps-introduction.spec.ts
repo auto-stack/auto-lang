@@ -19,9 +19,11 @@ for (const prefix of ['', '/zh']) {
       expect(html).toContain('2026-10-01')
       expect(html).toContain(topic === 'overview' ? 'AutoEdit' : '<h2 id=')
       await page.goto(route)
-      const content = page.locator(topic === 'overview' ? '.apps-overview' : '.vp-doc')
+      const content = page.locator(topic === 'overview' ? '.apps-overview' : topic === 'demos' ? '.demo-directory' : '.vp-doc')
       await expect(content.locator('h1')).toHaveCount(1)
-      await expect(content.locator('img, iframe')).toHaveCount(0)
+      await expect(content.locator('iframe')).toHaveCount(0)
+      const imageCount = topic === 'overview' ? 4 : topic === 'demos' ? 56 : ['autoedit', 'autoshell'].includes(topic) ? 2 : 0
+      await expect(content.locator('img')).toHaveCount(imageCount)
       expect((await content.innerText()).length).toBeGreaterThan(600)
       expect(await content.innerText()).not.toMatch(/TODO|Screenshot slot|截图待补|100% Auto/)
       const links = await content.locator('a').evaluateAll(nodes => nodes.map(node => node.getAttribute('href')!).filter(href => href.startsWith('/')))
@@ -30,8 +32,8 @@ for (const prefix of ['', '/zh']) {
         expect(dest.status(), href).toBe(200)
         const body = await dest.text()
         expect(body, href).not.toContain('class="VPNotFound"')
-        // Shared galleries keep their unprefixed route.
-        if (!href.startsWith('/ui/')) expect(href.startsWith(zh ? '/zh/' : '/') && (!zh || href !== '/apps')).toBe(true)
+        // Shared galleries and original image assets keep their unprefixed route.
+        if (!href.startsWith('/ui/') && !href.endsWith('.png')) expect(href.startsWith(zh ? '/zh/' : '/') && (!zh || href !== '/apps')).toBe(true)
         const hash = href.split('#')[1]
         if (hash) expect(body, `missing anchor ${href}`).toContain(`id="${hash}"`)
       }
@@ -39,7 +41,7 @@ for (const prefix of ['', '/zh']) {
         const cards = content.locator('.main-app-card')
         await expect(cards).toHaveCount(4)
         for (const key of topics.slice(0, 4)) await expect(cards.locator(`a[href="${prefix}/apps/${key}/"]`)).toHaveCount(1)
-      } else {
+      } else if (topic !== 'demos') {
         const id = await content.locator('h2').first().getAttribute('id')
         await expect(page.locator(`.VPDocAsideOutline a[href="#${id}"]`)).toBeAttached()
       }
@@ -60,7 +62,7 @@ for (const prefix of ['', '/zh']) {
         await page.setViewportSize({ width, height: 900 })
         for (const route of ['/apps', ...topics.map(topic => `/apps/${topic}/`)]) {
           await page.goto(prefix + route)
-          await expect(page.locator('.apps-overview h1, .vp-doc h1')).toBeVisible()
+          await expect(page.locator('.apps-overview h1, .demo-directory h1, .vp-doc h1')).toBeVisible()
           await expect(page.locator('html')).toHaveClass(dark ? /dark/ : /^(?!.*\bdark\b)/)
           const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }))
           expect(dimensions.scroll, `${prefix + route}, ${width}, ${dark}`).toBeLessThanOrEqual(dimensions.width + 1)

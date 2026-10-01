@@ -1,6 +1,6 @@
 # Website application introductions
 
-> PLAN-722 · 2026-10-01 · VitePress / Vue 3
+> PLAN-722 / PLAN-723 · 2026-10-01 · VitePress / Vue 3
 
 ## Product structure
 
@@ -14,12 +14,12 @@ Four EN/ZH product topics use the default reading layout with a single H1, an ou
 
 Do not claim all-Auto, full runtime parity, unattended coding, completed Milestones, universal performance budgets, or collaboration from project direction alone. AutoMusk distinguishes skill contracts from runtime Relay, and provider/daemon communication from application tool execution. JadeEdit distinguishes single-document draft/reload protection from in-progress multi-document operations.
 
-## Screenshot contract for this content phase
+## Approved product screenshot contract
 
-The user explicitly requested image-free introductions. HTML comments reserve planned capture positions; do not render empty frames, broken images, visible TODOs, or fake screenshots. The approved AutoEdit PixPin capture and AutoShell ash-01 selection remain future introduction inputs. Musk captures await its sample-project walkthrough; Jade captures await its Milestone.
+The initial writing phase was image-free. PLAN-723 introduces the approved AutoEdit PixPin_2026-10-01_15-14-27.png capture and AutoShell ash-01 native colored ls capture in the four-product overview and their EN/ZH details. Use EvidenceImage for keyboard enlargement and return focus. Never render empty frames, broken images, visible TODOs, or fake screenshots. Musk remains text-only until its sample-project walkthrough is ready; Jade remains text-only until its Milestone. Further operation images require their own real evidence.
 
 AutoShell's existing evidence and interactive examples remain at /apps/autoshell/guide/ and the ZH mirror, using unchanged AutoShellLanding.vue. The introduction links the guide; the guide links back. Retain the native ls overview, mode records and their provenance, script tabs, keyboard navigation, copy, downloads, and version/platform boundaries. Release AutoShellPreview remains unchanged.
 
 ## Verification
 
-Build and verify SSR, routes, local links, outline/locale behavior, absence of intro images/iframes/backend requests, original guide interactions, and EN/ZH at five widths in both themes. Prepared Spec changes belong to the plan worktree until landing. Category A does not trigger Cargo or docs_gen.
+Build and verify SSR, routes, local links, outline/locale behavior, approved image hashes and loading, absence of unready-product images/iframes/backend requests, original guide interactions, and EN/ZH at five widths in both themes. Demo images follow [the capture catalog contract](demo-capture-catalog.md). Prepared Spec changes belong to the plan worktree until landing. Category A does not trigger Cargo tests or docs_gen.

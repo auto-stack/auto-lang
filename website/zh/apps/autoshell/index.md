@@ -5,6 +5,10 @@ outline: [2, 3]
 editLink: false
 ---
 
+<script setup>
+import EvidenceImage from '../../../.vitepress/theme/components/EvidenceImage.vue'
+</script>
+
 # AutoShell：命令、数据管道与 AutoScript
 
 AutoShell（命令名 `ash`）将日常命令、结构化数据管道和 AutoScript 放在同一套执行引擎中。可以保持一个交互会话，也可以通过 CLI 执行单条命令或脚本文件。
@@ -13,7 +17,7 @@ AutoShell（命令名 `ash`）将日常命令、结构化数据管道和 AutoScr
 
 [全部应用](/zh/apps) · [使用指南与实跑示例](/zh/apps/autoshell/guide/)
 
-<!-- Screenshot slot: ash-01 native colored ls table is the approved main capture. Main introduction remains image-free for this writing phase; existing captures are retained in guide. -->
+<EvidenceImage src="/apps/autoshell/ash-01.png" alt="autoshell 原生主界面" caption="AutoShell 原生会话 · ls 的彩色目录结果" :width="1920" :height="1201" :framed="false" loading="eager" zoom-label="放大图片" close-label="关闭" original-label="查看原图" />
 
 ## 在一个会话里连续工作
 
