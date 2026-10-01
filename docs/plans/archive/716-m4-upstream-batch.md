@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-716
-status: reviewed             # Phase 2 修复轮 review pass（2026-10-01 终判——AC-D1..D4+REG2 全 pass，next=merge）
+status: archived             # Phase 2 修复轮交付归档（2026-10-01 merge r3 收据——delivery 33dd018cb，终态不再回改）
 feature_name: M4 上游三组合一件（用户合并裁定 2026-09-30——组A tree-sitter 首批实施[714 契约 T-1..T-6 承接]/组B 帧时间戳插桩[供②]/组C diff rows 惰性投影[021 armed FAIL 清偿路径]+供③ 顺手确认）+ Phase 2 修复轮（2026-10-01——下游消费首跑实证交付缺口：供⑧ 9920 VM 裸名臂/供⑨ 9918-9919 .at 消费面双缺口/供⑪ highlight-treesitter cc 夹缝）
 author: [agent]
 created_at: 2026-09-30T22:17:32+08:00
@@ -790,6 +790,35 @@ AppTick 泵断链在案调查——矩阵 app=桌面模式动态 app，楔死形
   tb 37vs38，差集均为 catalog 撞号守护红一枝）。
   `next`: merge（specs.json P716-1 刷新[SD-B/C 册更新投影]+
   worktree 清理+供③ P716-D1 挂账维持确认）。
+
+- 2026-10-01 merge 收据 `PLAN-716:r3`：`stage: merge`，`outcome: pass`
+  （Phase 2 修复轮五 checkpoint）。
+  - **prepared**：reviewed 基线=6c5c5b714（r3 契约 pass 终判）+SD-B/C
+    冻结哈希 1ccabb88/4de7b1c8+依赖 auto-down@3373a5c；canonical diff
+    已在 worktree 提交（SD-B §3b/SD-C 改签补记=T-18 f35863780）。
+  - **landed**：rebase d85bc928b 基 5 提交→master@48dcf8422 上，
+    range-diff 5/5 全等（零分歧——安全重写证明），旧→新映射
+    97236b4a2→685eb3d36/5fe510539→d402676d4/12e49f78c→687691830/
+    6c5c5b714→f35863780/fd64e8ce0→**33dd018cb**（delivery 提交；
+    T-14/T-15/T-16/T-18/账本备稿逐对映射见 rebase 记录）；
+    `git merge --ff-only` 零合并提交，master tip=33dd018cb 实证；
+    main 烟雾=cargo check 绿（51.8s）+canonical 断言（9921×4/§3b×1
+    grep）绿。
+  - **ledger_refreshed**：tracked 路径（specs.json git 在册）循 r2
+    五项外科成例——worktree 内守卫式改稿（designs P716-2/3 原位更新
+    =SD-B §3b 出口形/SD-C 9921 改签投影+docsha 1ccabb88/4de7b1c8+
+    tag commit:6c5c5b714；reviews P716-6=r3 复审/合入收据；reports
+    P716-7=Phase 2 交付摘要追加），守卫=未触段零扰动+designs 未授权
+    变动断言+reviews/reports 仅追加 P716-6/7+parse-back 全过；随
+    delivery commit 33dd018cb 落 master，main 上 parse-back 复验
+    （P716-1..5+6/7 七项在位）。store 写者不可用（8080 不在线/无
+    spec 工具）循 711/713/714/715/717/r2 成例。
+  - **archived**：本件 git mv docs/plans/archive/716-m4-upstream-
+    batch.md + status archived（本提交）。
+  - **供③ 关联**：P716-D1 挂账维持（环境面不入本轮——r3 范围
+    显式排除）；解阻动作不变（712 T-16..T-19 修复交付后复跑 ×3）。
+  - **批量回归 due check**：716%5=1 非整除；.last-batch-regression
+    收据新鲜度见 cleaned 后复查（随 cleaned 收据更新落档）。
 
 ## 10. 待澄清事项
 
