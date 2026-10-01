@@ -3487,3 +3487,54 @@ widget App {
     );
 }
 
+
+/// PLAN-712 T-17 第三层探针（用户复验反证：三本书点开内容恒第一本，fetch
+/// 恒 /api/books/1；构建期实参烘焙已洗清——Go(7)/Go(8) 逐实例正确）。剩余
+/// 嫌疑 = **grid 子元素的命中/布局 bounds 塌缩**：三卡 bounds 若重叠/恒卡 1
+/// 的矩形，物理点击哪张都命中卡 1 的 handler。判据：三张卡哨兵的 x 互异且
+/// 横向递增、宽度非零。
+#[test]
+fn p712_grid_cards_hit_bounds_are_distinct_per_column() {
+    let src = r#"
+widget App {
+    msg { Open(int) }
+    model {
+        var cards = []
+    }
+    view {
+        grid {
+            cols: 3
+            gap: 20
+            col {
+                style: "h-52 rounded-xl items-center justify-center"
+                text "B1" {}
+            }
+            col {
+                style: "h-52 rounded-xl items-center justify-center"
+                text "B2" {}
+            }
+            col {
+                style: "h-52 rounded-xl items-center justify-center"
+                text "B3" {}
+            }
+        }
+    }
+    on { .Open(i int) -> {} }
+}
+"#;
+    let dc = crate::build_dynamic_component(src, None).expect("build component");
+    let (view, _, _) = dc.view_with_debug_gated(false);
+    let mut ui = simulator(view.into_iced());
+    let (x1, _y1, w1, h1) = bounds_of(&mut ui, "B1");
+    let (x2, _y2, w2, _h2) = bounds_of(&mut ui, "B2");
+    let (x3, _y3, w3, _h3) = bounds_of(&mut ui, "B3");
+    eprintln!(
+        "[p712-grid] B1=({x1:.1},{w1:.1}) B2=({x2:.1},{w2:.1}) B3=({x3:.1},{w3:.1})"
+    );
+    assert!(w1 > 0.0 && w2 > 0.0 && w3 > 0.0, "三卡宽度必须非零");
+    assert!(
+        x2 > x1 + 10.0 && x3 > x2 + 10.0,
+        "grid 三卡必须横向铺开（B2.x>B1.x+10、B3.x>B2.x+10），\
+         实测 B1.x={x1:.1} B2.x={x2:.1} B3.x={x3:.1}——bounds 塌缩即命中全落卡 1"
+    );
+}

@@ -122,3 +122,87 @@ fn route_param_survives_push_and_reaches_page_init() {
         "页 Init 的 router.param(\"id\") 应取到路由段；实际 {got:?}"
     );
 }
+
+/// PLAN-712 T-17 第三层探针：`for it in .items { button onclick: .Go(it.id) }`
+/// 的**逐实例实参烘焙**——018 书架三卡同内容（fetch 恒 /api/books/1）的
+/// 候选根因：循环变量字段实参若烘焙失败（全塌首项/0），点击哪张卡都开
+/// 第一本。015 先例只覆盖裸循环变量实参（`k`），字段实参（`it.id`）在案
+/// 面未见。本测检查构建产物里两只按钮各自烘焙的实参。
+#[test]
+#[cfg(feature = "ui-iced")]
+fn loop_item_field_event_args_bake_per_instance() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let pages = dir.path().join("pages");
+    std::fs::create_dir_all(&pages).expect("pages dir");
+    std::fs::write(
+        dir.path().join("app.at"),
+        r#"
+widget App {
+    routes {
+        "/" -> use home
+    }
+    view {
+        outlet
+    }
+}
+"#,
+    )
+    .expect("write app.at");
+    std::fs::write(
+        pages.join("home.at"),
+        r#"
+widget home {
+    msg { Go(int) }
+
+    model {
+        var items = []
+        var seeded str = "no"
+    }
+
+    view {
+        col {
+            for it in .items {
+                button "open" {
+                    onclick: .Go(it.id)
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            .items.push({ id: 7, t: "a" })
+            .items.push({ id: 8, t: "b" })
+            .seeded = "yes"
+        }
+    }
+}
+"#,
+    )
+    .expect("write pages/home.at");
+
+    let app_path = dir.path().join("app.at");
+    let code = std::fs::read_to_string(&app_path).expect("read app.at");
+    let mut dc = build_dynamic_component(&code, app_path.to_str()).expect("编译");
+    dc.fire_init();
+    let _ = dc.view_with_debug_gated(true);
+    dc.drive_scheduler_to_quiescence(10_000);
+    let _ = dc.view_with_debug_gated(true);
+    assert_eq!(
+        dc.read_state("seeded").ok(),
+        Some(auto_val::Value::Str("yes".into())),
+        "Init 种子必须已跑"
+    );
+
+    // 构建产物的 Debug 串里检查逐实例烘焙实参。
+    let (view, _, _) = dc.view_with_debug_gated(true);
+    let dump = format!("{view:?}");
+    eprintln!("T17L3-DBG view dump（截 800）: {}", &dump[..dump.len().min(800)]);
+    let has_go7 = dump.contains("Go") && dump.contains("Int(7)");
+    let has_go8 = dump.contains("Go") && dump.contains("Int(8)");
+    assert!(
+        has_go7 && has_go8,
+        "逐卡实参应分别为 7 与 8（全塌首项/0 = 烘焙断链）；dump 头：{}",
+        &dump[..dump.len().min(600)]
+    );
+}
