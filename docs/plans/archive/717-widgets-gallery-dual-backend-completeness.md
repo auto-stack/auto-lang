@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-717
-status: reviewed
+status: archived
 feature_name: widgets-gallery-dual-backend-completeness
 author: [agent]
 created_at: 2026-09-30T00:00:00+08:00
-updated_at: 2026-10-01T05:31:00+08:00
+updated_at: 2026-10-01T12:10:55+08:00
 plan_revision: 5
 current_step: 8
 total_steps: 8
@@ -168,6 +168,16 @@ PLAN-706 已交付 Vue 首轮问题及 VM 四页抽查；PLAN-711 将“至少 2
 - stage: merge | plan_id: PLAN-717 | plan_revision: 5 | checkpoint: landed | result: pass | default_branch_tips: auto-down master `895f8d0f9355c9f5ec3ce8fca268bdb768395846`; auto-lang master `c48007bc5f4dec623aaf5050fcbcd99321b3d427`; auto-os main `73d02b50f535543bd635c6f6f49dad6835efff45`; each tip equals its verified delivery commit after `--ff-only` | integration_check: merged-checkout `cargo check -p auto-lang` exit 0 (375 repository warnings remain; review found no new Plan-717 warning); `git diff --check` clean for all three landed ranges | preserved_concurrent_work: auto-lang `.autoos/specs.json`, `docs/plans/.next-id`, temporary VM evidence and website images remain unstaged; auto-os desktop scripts, `.auto/ui-cache.json`, and other user files remain unstaged; auto-down checkout clean | next: refresh the workspace ledger through its store writer, then archive and clean only after read-back succeeds.
 - stage: merge | plan_id: PLAN-717 | plan_revision: 5 | checkpoint: ledger_refreshed | result: blocked | target: workspace `D:\autostack\auto-lang`, `.autoos/specs.json`; no mutation attempted | evidence: no `read_specs`/`list_specs`/`write_spec`/`update_spec` capability is exposed in this session; documented local store API port `127.0.0.1:8080` has no listener. Direct JSON editing is forbidden by the merge workflow, and the tracked ledger file already contains unrelated user changes. | recovery: keep the Plan active at `status: reviewed`; do not archive or remove any worktree until a store-mediated writer is available and the item projection is read back. Canonical Specs and all three code branches are landed; `ledger_refreshed`, archival and cleanup remain outstanding.
 
+- stage: merge | plan_id: PLAN-717 | plan_revision: 5 | checkpoint: ledger_refreshed | result: pass | date: 2026-10-01T12:10+08:00 | reconciliation_first: 重跑 gate 核对——三仓 worktree 复验 clean;`plan-717-dev` c48007bc5 复验为 master 祖先(ahead=0);canonical spec 文件在主检出 SHA256 与冻结值全等(C34DD993…);8080 仍无监听且本会话无 spec 工具 → 循 `docs/specs/README.md` §5 路径映射表「musk 后端通常不可用→手工回退+§4 扩展」与 711/713/714/715 在案先例执行外科插入 | mutation: `.autoos/specs.json` 三段插入——designs `P717-1`(widgets-gallery-parity 现行知识投影,file=canonical doc,docsha:c34dd993aa7e918b,commit:c48007bc5)/reviews `P717-2`(r5 复审+三仓 ff-only 合入收据)/reports `P717-3`(交付摘要);counts designs 119→120/reviews 182→183/reports 107→108,goals 84/architecture 118/tests 95 零扰动 | guards: 双形态 roundtrip 字节守卫(committed 形 indent1+LF;worktree 形 indent2+CRLF)先证后写;五段零扰动回读断言;worktree 形 `P712-1` 在途 WIP 条目字节保全不裹挟提交(首次提交误以 `git commit --only` 裹挟 worktree 形,即觉 reset 重做,最终提交 77e54aeaf 净 42 行纯插入,blob f9edea3e1a26e211) | index: `scripts/spec-index.py` 再生内容零漂移(仅 CRLF 幻影,已还原);全局件:GOAL-007 按 projection_targets 保持原状,无结构性变化 overview.md 不动 | next: archive then guarded cleanup.
+- stage: merge | plan_id: PLAN-717 | plan_revision: 5 | checkpoint: archived | result: pass | archive_path: `docs/plans/archive/717-widgets-gallery-dual-backend-completeness.md`(本仓归档目录=archive/,非技能文档的 archived/,§5 路径映射);status flipped reviewed→archived;spec-sync 回写记录见文末 §11 | deployment_observation(landing≠deployment): 本计划触及 `ui_gen/vue.rs` 生成器(auto-lang c48007bc5)与 auto-os widgets-gallery 页面(73d02b5)——主检出 `auto` release 二进制与 auto-os desktop release 二进制相对落地为陈旧态(构建日期早于交付 commit),gen/front 生成束随下次构建再生,auto-down engine 为 JS 包无独立二进制随前端构建消费;按 714 先例记录观察项,不阻断归档,随下轮 release 周期重建 | batch_regression_due_check: `.last-batch-regression.json` last_covered_plan_id=715 @ 2026-09-30T16:20Z;717 非 5 的倍数,收据未满 48h → **不到期**,无需 `/auto-plan:regress`;下次到期=计划号 720 落地,或收据满 48h 且期间有任何合并。
+- stage: merge | plan_id: PLAN-717 | plan_revision: 5 | checkpoint: cleaned | result: pending-guard
+
 ## 10. 待澄清事项
 
 - 当前无阻塞问题。视觉判定采用组件/示例语义正确、内容完整可读、布局无意外裁切或遮挡，并参照既有 AutoUI 跨端样式规范；逐像素相等不是本计划的统一门槛。若执行中发现某类组件规范与目标冲突，先记录证据并修订本计划，再继续相关实现。
+
+## 11. spec-sync 回写记录
+
+- canonical：`docs/specs/auto-lang/ui/design/widgets-gallery-parity.md`（SD-01 全量投影，SHA256 `C34DD993…` 与复审冻结值全等，@c48007bc5）；`docs/specs/auto-lang/ui/overview.md` 现行态回写、`docs/specs/auto-lang/ui/plans.md` 追加 717 行、INDEX 再生——均随 prepared spec commit c48007bc5 落主。
+- ledger：`.autoos/specs.json` designs `P717-1` / reviews `P717-2` / reports `P717-3` 外科插入（77e54aeaf）；INDEX 再生零漂移。
+- 全局件：`goals.md` GOAL-007 状态保持（projection_targets 明示 preserve）；无新模块/新 crate/状态翻转，全局 `overview.md` 无需更新。
