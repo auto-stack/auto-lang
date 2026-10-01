@@ -1,8 +1,10 @@
 import { defineConfig, type DefaultTheme } from 'vitepress'
 import { sidebarDocsZh } from './sidebar-docs-zh'
-import { sidebarBooksZh } from './sidebar-books-zh'
+import { sidebarBooksZh, sidebarBooksZhByBook } from './sidebar-books-zh'
+import { editLinkPattern } from './author-source'
 import { NAV_TOP_LEAVES, NAV_GROUPS, NAV_HIGHLIGHT } from '../theme/data/navigation'
 
+// PLAN-718 T-03：编辑链接 pattern 来自生成的自包含函数（见 author-source.ts 头注）。
 export const zh = defineConfig({
   lang: 'zh-CN',
   description: 'Auto — 全栈应用平台。一门语言编写脚本、后端、UI、AI Agent 与操作系统组件。',
@@ -12,6 +14,11 @@ export const zh = defineConfig({
     nav: nav(),
     sidebar: {
       '/zh/docs/': { base: '/zh/docs/', items: sidebarDocsZh },
+      ...Object.fromEntries(
+        Object.entries(sidebarBooksZhByBook).map(
+          ([id, items]) => [`/zh/books/${id}/`, { base: `/zh/books/${id}/`, items } satisfies DefaultTheme.Sidebar],
+        ),
+      ),
       '/zh/books/': { base: '/zh/books/', items: sidebarBooksZh },
     },
 
@@ -40,9 +47,15 @@ export const zh = defineConfig({
       },
     },
 
+    // PLAN-718 T-03：原生阅读控件双语。
+    outline: { level: [2, 3], label: '此页内容' },
+    sidebarMenuLabel: '目录',
+    docFooter: { prev: '上一页', next: '下一页' },
+    returnToTopLabel: '回到顶部',
+
     editLink: {
-      pattern: 'https://github.com/autostack/auto-lang/edit/main/docs/:path',
-      text: '在 GitHub 上编辑此页',
+      pattern: editLinkPattern,
+      text: '编辑此页',
     },
 
     footer: {

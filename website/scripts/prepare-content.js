@@ -42,6 +42,13 @@ const BOOKS_DST_ZH = path.join(WEBSITE_ROOT, 'zh', 'books')
 
 const SIDEBAR_CONFIG_DIR = path.join(WEBSITE_ROOT, '.vitepress', 'config')
 
+// PLAN-718 T-03：作者源映射。生成页文件路径（相对 website/）→ 真实作者源标记：
+//   lang:docs/...   仓内 docs 源文件（github auto-stack/auto-lang）
+//   book:<book>/... 相邻 book 仓源文件（gitee auto-stack/book）
+//   site:<rel>      website 手工页自身
+// 缺失条目 = 纯生成入口（hub/书目 index），由生成 frontmatter editLink:false 关闭。
+const AUTHOR_SOURCE = {}
+
 // ------------------------------------------------------------------
 // Helpers
 // ------------------------------------------------------------------
@@ -416,6 +423,10 @@ function shouldIncludeDoc(relPath) {
   return DOCS_INCLUDE.has(parts[0])
 }
 
+// PLAN-718 T-03：Windows 下 path.relative 产生反斜杠——AUTHOR_SOURCE 键/值与
+// VitePress PageData.filePath（posix）对齐，一律转 posix 斜杠。
+const toPosixRel = (p) => p.split(path.sep).join('/')
+
 function prepareDocs() {
   console.log('Preparing docs...')
   removeDir(DOCS_DST_EN)
@@ -461,6 +472,7 @@ function prepareDocs() {
       copyFile(fullPath, zhDstPath, docBookDir)
       zhFiles.push(zhRelPath)
       zhFilledByCn.add(zhRelPath)
+      AUTHOR_SOURCE['zh/docs/' + toPosixRel(zhRelPath)] = 'lang:docs/' + toPosixRel(relPath)
       return
     }
 
@@ -468,12 +480,14 @@ function prepareDocs() {
     const enDstPath = path.join(DOCS_DST_EN, relPath)
     copyFile(fullPath, enDstPath, docBookDir)
     enFiles.push(relPath)
+    AUTHOR_SOURCE['docs/' + toPosixRel(relPath)] = 'lang:docs/' + toPosixRel(relPath)
 
     // EN fallback to ZH — but skip if a .cn.md translation already filled it.
     if (!zhFilledByCn.has(relPath)) {
       const zhDstPath = path.join(DOCS_DST_ZH, relPath)
       copyFile(fullPath, zhDstPath, docBookDir)
       zhFiles.push(relPath)
+      AUTHOR_SOURCE['zh/docs/' + toPosixRel(relPath)] = 'lang:docs/' + toPosixRel(relPath)
     }
   })
 
@@ -532,17 +546,21 @@ function prepareBooks() {
       const enDstPath = path.join(BOOKS_DST_EN, book, relPath)
       copyFile(fullPath, enDstPath, srcDir)
       enFiles[book].push(relPath)
+      AUTHOR_SOURCE['books/' + book + '/' + toPosixRel(relPath)] = 'book:' + book + '/' + toPosixRel(relPath)
 
       if (name.endsWith('.cn.md')) {
         // Chinese version goes to ZH without .cn suffix
-        const zhDstPath = path.join(BOOKS_DST_ZH, book, relPath.replace(/\.cn\.md$/, '.md'))
+        const zhRel = relPath.replace(/\.cn\.md$/, '.md')
+        const zhDstPath = path.join(BOOKS_DST_ZH, book, zhRel)
         copyFile(fullPath, zhDstPath, srcDir)
-        zhFiles[book].push(relPath.replace(/\.cn\.md$/, '.md'))
+        zhFiles[book].push(zhRel)
+        AUTHOR_SOURCE['zh/books/' + book + '/' + toPosixRel(zhRel)] = 'book:' + book + '/' + toPosixRel(relPath)
       } else if (!hasCnVersion.has(relPath)) {
         // Only copy non-Chinese files to ZH if there's no .cn.md version
         const zhDstPath = path.join(BOOKS_DST_ZH, book, relPath)
         copyFile(fullPath, zhDstPath, srcDir)
         zhFiles[book].push(relPath)
+        AUTHOR_SOURCE['zh/books/' + book + '/' + toPosixRel(relPath)] = 'book:' + book + '/' + toPosixRel(relPath)
       }
     })
 
@@ -980,7 +998,14 @@ function buildDocsSidebar(files, lang = 'en') {
     return items
   }
 
-  return toSidebarItems(tree)
+  const tree2 = toSidebarItems(tree)
+  // PLAN-718 T-03：入门路径置顶（真实内容：Auto Tour 第一章）；完整参考目录
+  // 保持不动。链接相对 docs base（'/docs/'）。
+  tree2.unshift({
+    text: lang === 'zh' ? '开始使用' : 'Start here',
+    link: 'tour/ch01-hello',
+  })
+  return tree2
 }
 
 // ------------------------------------------------------------------
@@ -1031,8 +1056,8 @@ function generateBookIndex(bookDir, summaryPath, lang = 'en') {
 
   const tocHeading = lang === 'zh' ? '目录' : 'Table of Contents'
   const fallbackText = lang === 'zh' ? '章节列表将在此处显示。' : 'Chapters will be listed here.'
-
-  let content = `---\ntitle: ${bookTitle}\n---\n\n# ${bookTitle}\n\n`
+  // editLink:false：书目首页为生成入口（PLAN-718 T-03）。
+  let content = `---\ntitle: ${bookTitle}\neditLink: false\n---\n\n# ${bookTitle}\n\n`
 
   if (fs.existsSync(summaryPath)) {
     const summary = fs.readFileSync(summaryPath, 'utf-8')
@@ -1110,7 +1135,9 @@ function generateDocsIndex(docsDir, lang) {
   const indexPath = path.join(docsDir, 'index.md')
   const title = zh ? '文档' : 'Documentation'
 
-  let content = `---\ntitle: ${title}\n---\n\n# ${title}\n\n`
+  // editLink:false：纯生成入口不显示虚假编辑链接（PLAN-718 T-03）。
+  // next:false：hub 不是章节序列的一环，取消无语义的"下一页 Autocache"。
+  let content = `---\ntitle: ${title}\neditLink: false\nnext: false\n---\n\n# ${title}\n\n`
   content += `${t(DOCS_HUB.intro)}\n\n`
   content += `<LearningHub kind="docs" />\n`
 
@@ -1123,7 +1150,7 @@ function generateBooksIndex(booksDir, lang) {
   const indexPath = path.join(booksDir, 'index.md')
   const title = zh ? '教程' : 'Tutorials'
 
-  let content = `---\ntitle: ${title}\n---\n\n# ${title}\n\n`
+  let content = `---\ntitle: ${title}\neditLink: false\nnext: false\n---\n\n# ${title}\n\n`
   content += `${zh ? '八本教程覆盖从零基础到系统编程——主书优先，也可按你已有的语言背景选择。' : 'Eight tutorials cover everything from first steps to systems programming — start with the main book, or pick by a language you already know.'}\n\n`
   content += `<LearningHub kind="books" />\n`
 
@@ -1138,8 +1165,13 @@ function prefixBookLinks(items, book) {
   }))
 }
 
+// PLAN-718 T-03：返回 { sidebar, byBook }——sidebar 为 books hub 的全书列表
+// （每书折叠组，链接带书前缀，base=/books/）；byBook[id] 为该书章节树
+// （链接相对书根，配合 en/zh 配置的 '/books/<id>/' 最长前缀侧栏，使上一章/
+// 下一章与侧栏只覆盖当前书，消除跨书 prev/next）。
 function buildBooksSidebar(bookFiles, lang = 'en') {
   const sidebar = []
+  const byBook = {}
   const booksDst = lang === 'zh' ? BOOKS_DST_ZH : BOOKS_DST_EN
 
   for (const book of BOOKS) {
@@ -1160,6 +1192,7 @@ function buildBooksSidebar(bookFiles, lang = 'en') {
     }
 
     if (items && items.length > 0) {
+      byBook[book] = items
       sidebar.push({
         text: bookTitle,
         link: `${book}/`,
@@ -1167,9 +1200,12 @@ function buildBooksSidebar(bookFiles, lang = 'en') {
         items: prefixBookLinks(items, book),
       })
     } else {
-      // Fallback: list all markdown files
+      // Fallback: list all markdown files. PLAN-718 T-03：EN 侧栏排除 *.cn.md
+      // （中文重复条目泄漏）；页面仍存在于 EN 树，仅不再进导航（ZH 侧经
+      // /zh/books 覆盖，目的地不丢）。
       const leafs = files
         .filter((f) => f.endsWith('.md') && !f.endsWith('SUMMARY.md') && f !== 'index.md')
+        .filter((f) => !(lang === 'en' && f.endsWith('.cn.md')))
         .map((f) => {
           const name = path.basename(f, '.md')
           const title = name
@@ -1181,6 +1217,10 @@ function buildBooksSidebar(bookFiles, lang = 'en') {
           }
         })
 
+      byBook[book] = leafs.map(({ link, ...rest }) => ({
+        ...rest,
+        link: link.slice(book.length + 1),
+      }))
       sidebar.push({
         text: bookTitle,
         link: `${book}/`,
@@ -1190,7 +1230,7 @@ function buildBooksSidebar(bookFiles, lang = 'en') {
     }
   }
 
-  return sidebar
+  return { sidebar, byBook }
 }
 
 // ------------------------------------------------------------------
@@ -1213,6 +1253,65 @@ export const ${varName}: DefaultTheme.SidebarItem[] = ${JSON.stringify(sidebar, 
 `
   fs.writeFileSync(filePath, content, 'utf-8')
   console.log(`  Generated sidebar config: ${filePath}`)
+}
+
+// PLAN-718 T-03：books 侧栏双导出——hub 全书列表 + 每书章节树。
+function writeBooksSidebarConfigs(lang, sidebar, byBook) {
+  const name = `books-${lang}`
+  const filePath = path.join(SIDEBAR_CONFIG_DIR, `sidebar-${name}.ts`)
+  const varName = 'sidebarBooks' + (lang === 'zh' ? 'Zh' : 'En')
+  const content = `import type { DefaultTheme } from 'vitepress'
+
+export const ${varName}: DefaultTheme.SidebarItem[] = ${JSON.stringify(sidebar, null, 2)}
+
+export const ${varName}ByBook: Record<string, DefaultTheme.SidebarItem[]> = ${JSON.stringify(byBook, null, 2)}
+`
+  fs.writeFileSync(filePath, content, 'utf-8')
+  console.log(`  Generated sidebar config: ${filePath}`)
+}
+
+// PLAN-718 T-03：site 手工页作者源映射（website 根与子目录的 .md，排除生成树）。
+function collectSiteAuthorSource() {
+  const GENERATED = new Set(['docs', 'books', 'node_modules', '.vitepress', 'public', 'scripts', 'tests', 'content'])
+  const walk = (dir, rel) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const relPath = rel ? rel + '/' + entry.name : entry.name
+      if (entry.isDirectory()) {
+        if (GENERATED.has(entry.name)) continue
+        walk(path.join(dir, entry.name), relPath)
+      } else if (entry.name.endsWith('.md')) {
+        AUTHOR_SOURCE[relPath.split(path.sep).join('/')] = 'site:' + relPath.split(path.sep).join('/')
+      }
+    }
+  }
+  walk(WEBSITE_ROOT, '')
+}
+
+function writeAuthorSource() {
+  const filePath = path.join(SIDEBAR_CONFIG_DIR, 'author-source.ts')
+  const keys = Object.keys(AUTHOR_SOURCE).sort()
+  const lines = keys.map((k) => `  ${JSON.stringify(k)}: ${JSON.stringify(AUTHOR_SOURCE[k])},`)
+  // 注意：VitePress 会把 themeConfig 里的函数序列化到 app bundle（deserializeFunctions
+  // 重新求值），闭包导入全部丢失——所以 pattern 必须自包含：映射与 URL 常量都
+  // 内联在函数体内（实测 ReferenceError: authorSource is not defined 的教训）。
+  const content = `// PLAN-718 T-03：生成文件——勿手改（owner=prepare-content.js）。
+// 生成页 → 作者源映射的 editLink pattern。lang:docs/… → github
+// auto-stack/auto-lang（分支 master）；book:… → gitee auto-stack/book（分支
+// master）；site:… → 仓内 website/。生成入口页不在表中（frontmatter editLink:false）。
+export const editLinkPattern = (page: { filePath: string }): string => {
+  const map: Record<string, string> = {
+${lines.join('\n')}
+  }
+  const src = map[page.filePath]
+  if (!src) return ''
+  if (src.startsWith('lang:')) return 'https://github.com/auto-stack/auto-lang/edit/master/' + src.slice(5)
+  if (src.startsWith('book:')) return 'https://gitee.com/auto-stack/book/edit/master/' + src.slice(5)
+  if (src.startsWith('site:')) return 'https://github.com/auto-stack/auto-lang/edit/master/website/' + src.slice(5)
+  return ''
+}
+`
+  fs.writeFileSync(filePath, content, 'utf-8')
+  console.log(`  Generated author-source map: ${filePath} (${keys.length} entries)`)
 }
 
 // ------------------------------------------------------------------
@@ -1240,13 +1339,17 @@ function main() {
 
   const docsSidebarEn = buildDocsSidebar(docs.en, 'en')
   const docsSidebarZh = buildDocsSidebar(docs.zh, 'zh')
-  const booksSidebarEn = buildBooksSidebar(books.en, 'en')
-  const booksSidebarZh = buildBooksSidebar(books.zh, 'zh')
+  const booksEn = buildBooksSidebar(books.en, 'en')
+  const booksZh = buildBooksSidebar(books.zh, 'zh')
 
   writeSidebarConfig('docs-en', docsSidebarEn)
   writeSidebarConfig('docs-zh', docsSidebarZh)
-  writeSidebarConfig('books-en', booksSidebarEn)
-  writeSidebarConfig('books-zh', booksSidebarZh)
+  writeBooksSidebarConfigs('en', booksEn.sidebar, booksEn.byBook)
+  writeBooksSidebarConfigs('zh', booksZh.sidebar, booksZh.byBook)
+
+  // PLAN-718 T-03：作者源映射（docs/books 拷贝 + site 手工页）。
+  collectSiteAuthorSource()
+  writeAuthorSource()
 
   // Plan 581: books/docs 物化完成后生成 Playground Notes manifest（dev/build/deploy
   // 三态自动触发——本脚本位于三者构建链最前端）。book 仓缺失时采集脚本内部跳过

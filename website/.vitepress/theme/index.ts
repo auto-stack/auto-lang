@@ -15,6 +15,7 @@ import CodeView from './components/CodeView.vue'
 import ScriptShipView from './components/ScriptShipView.vue'
 import UnifiedNavbar from './components/UnifiedNavbar.vue'
 import LearningHub from './components/LearningHub.vue'
+import ReaderContext from './components/ReaderContext.vue'
 
 // SPA routes served from public/ui/*/index.html.
 // VitePress client-side router doesn't know about these, so we must
@@ -103,6 +104,8 @@ const LayoutWrapper = defineComponent({
 
     return () => h(DefaultTheme.Layout, null, {
       'layout-top': () => h(UnifiedNavbar),
+      // PLAN-718 T-03：书页顶部的书籍/目录上下文（组件内部自判，非书页不渲染）。
+      'doc-top': () => h(ReaderContext),
     })
   },
 })

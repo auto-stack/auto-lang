@@ -84,13 +84,36 @@
 }
 
 /* PLAN-715 T-03：默认主题文档页的锚点定位让出统一顶栏高度，
-   避免标题被 sticky 顶栏遮挡。 */
+   避免标题被 sticky 顶栏遮挡。PLAN-718 T-03：<1280px 还有原生 VPLocalNav
+   （移动目录）叠在顶栏下，锚点让位按两层固定元素的实际高度计算。 */
+:root {
+  --site-reading-offset: calc(var(--site-nav-height, 56px) + 16px);
+}
+
+@media (max-width: 1279.9px) {
+  :root {
+    /* VPLocalNav 实测高 48px（menu 按钮行高 24 + 上下 padding 23 + 边框 1），
+       e2e 几何断言校验锚点落位。 */
+    --site-reading-offset: calc(var(--site-nav-height, 56px) + 48px + 16px);
+  }
+}
+
 .VPDoc .VPDocHasSidebar .content-container,
 .vp-doc h1,
 .vp-doc h2,
 .vp-doc h3,
 .vp-doc h4 {
-  scroll-margin-top: calc(var(--site-nav-height, 56px) + 16px);
+  scroll-margin-top: var(--site-reading-offset);
+}
+
+/* PLAN-718 T-03：原生 VPLocalNav（<1280px）默认 sticky top:0，与 layout-top 的
+   UnifiedNavbar 叠压（T-01 基线：390px 滚动态 16/16 行重叠）；960-1279 段
+   VitePress 默认 top: var(--vp-nav-height)=64px 也与 56px 顶栏错位。统一让位。
+   组件 scoped 样式特异性更高，需 !important（与上方 .VPNav 隐藏同法）。 */
+@media (max-width: 1279.9px) {
+  .VPLocalNav {
+    top: var(--site-nav-height, 56px) !important;
+  }
 }
 
 /* VitePress overrides for modern look */
