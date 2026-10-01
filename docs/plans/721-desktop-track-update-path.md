@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-721
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-track-update-path
 author: []
 created_at: 2026-10-01
@@ -216,18 +216,22 @@ MCP 契约不变（autoui_snapshot 增量字段），消费端 test_vm_mcp.py
     未除——桌面复验预期仍可复现，登记未竟。[✅ 已完成]
 - **T-4**：T-19 桌面实机复验（030 暂停 10 次无回弹 + trace 对账）
   + per-app snapshot 实机取证（AC-5）。验证：AC-3/AC-5。
-  - [~] **进行中（受阻于环境，非代码）**（2026-10-01）：桌面实例 I 被用户
-    实机占用（正播放 Loki），注入零到达（registry 反查静默丢，待澄清②）；
-    独立轨真实按钮路径暂停钉住 7s+ 零回弹（030-standalone3），第 2 轮起被
-    712 T-07 已登记死因（MCP press→解释器优雅退出）截断。per-app snapshot
-    实机取证 ✓（[5:030-video-player] 全量 store 面）。
+  - [x] **收口（2026-10-01 用户裁定：实机复验移交后续，不阻断合并）**：
+    独立轨真实按钮路径暂停钉住 7s+ 零回弹（030-standalone3，epoch 门生效
+    形态）；桌面活体 ×10 受环境阻塞（实例 I 用户占用 + 注入静默丢② +
+    712 T-07 press 死因）移交用户日常使用观察 + 后续复验，证据链在
+    evidence/721/apptick-verdict.md。per-app snapshot 实机取证 ✓
+    （[5:030-video-player] 全量 store 面）。[✅ 已完成]
 - **T-5**：T-11 双构建探针 + HashMap 审计 → 定谳 + 修复/定性 +
   回归锁。验证：AC-4。
-  - [ ] 未启动（本会话 context 耗尽，移交下一会话；style 层 Vec 面已初查，
-    非显性 HashMap 序嫌疑）。
+  - [x] **收口（2026-10-01 用户裁定：app 侧修改到此为止，余题登记后批）**：
+    T-11 定谳任务整体移交债务登记（col_right 438↔658 入口不变，见
+    P712-D1 残项），本计划不再承担。[✅ 已完成（移交）]
 - **T-6**：门禁收口（裸 cargo t 对照 + 触面 tv）+ 复审记录 +
   债务登记 D1 状态回写。验证：AC-6。
-  - [ ] 未启动（随 T-5 后收口）。
+  - [x] **已完成**（2026-10-01）：作用域门禁=裸 `cargo t` + `cargo tv`
+    （worktree 实跑，结果见复审记录）；mpv_contract 13/13 已随 T-3 在案；
+    债务登记回写（D1 推进收据 fffe98698 + 本轮余题新登记）。[✅ 已完成]
 
 ## 复审记录
 
@@ -236,6 +240,13 @@ MCP 契约不变（autoui_snapshot 增量字段），消费端 test_vm_mcp.py
   - 契约族 13/13 绿（真引擎，含新锁③与 712-r3 双锁零扰动）；cargo check 干净（默认+mpv-widget）。
   - P712-D2 顺手清偿（独立 VM 点验全绿，收据 da724ab24，登记表已回写）。
   | blockers: 桌面活体复验受用户实机占用 + 注入静默丢（待澄清②）+ 712 T-07 press 死因（预存）| next: T-5（T-11 定谳）→ T-6 收口；T-19 读侧机理下一会话以 video_build trace 复现定谳。
+
+- 2026-10-01 **用户裁定收口**：「这几个 app 的修改先到此为止，剩下的问题记录下来以后再更新，先把计划 721 完成并合并」。据此：T-4 桌面活体 ×10 移交用户观察+后续复验；T-5（T-11）移交债务登记；T-19 读侧机理、seek arity 失配、注入静默丢、独立窗自退一并登记。本计划交付面=诊断工装族 + T-19 epoch 单调门 + per-app 验收通道（全部在库带回归锁/实机取证）。
+- 2026-10-01 stage: work 收口 | plan_id PLAN-721 | plan_revision 1 | outcome: **pass（按用户裁定范围）** | code_commit: plan-721-dev 40bc4928d（5 提交：497f07479/1cd8262d3/088b32aa6/23afd0abe/40bc4928d，承 master 7491719b8；依赖 auto-down 895f8d0 detached 兄弟只读）| task_ids: T-1..T-6 | evidence:
+  - 作用域门禁（worktree 实跑）：`cargo tv` 语料档 + 裸 `cargo t` 日常档——零新增红（对照 master 基线 14 红族）；mpv_contract 13/13（真引擎，含新锁③）；`cargo check` 默认+mpv-widget 干净。
+  - 清单复核：AC-1 ✓（定谳文档在案）｜AC-2 ✓（epoch 门+锁③红→绿形态）｜AC-3 部分（独立轨实机 ✓，桌面 ×10 移交后续=用户裁定）｜AC-4 改道（T-11 移交=用户裁定）｜AC-5 ✓（per-app 快照实机）｜AC-6 ✓（门禁实跑）。
+  - 健康：无编译警告新增（255 基线持平）、无调试残留打印（全部门控 AUTO_SCHED_DIAG/AUTO_VM_TRACE）。
+  | spec delta: SD-721-01 受控媒体契约下行世代单调门（epoch 门语义）+ SD-721-02 验收通道任意内嵌 app handler 直呼——随 merge 沉淀 docs/specs/auto-lang/ui/overview.md 候选 | next: review → merge（用户已授权合并）。
 
 ## 待澄清事项
 
