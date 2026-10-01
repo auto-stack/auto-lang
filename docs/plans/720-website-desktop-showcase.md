@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-720
-status: executing
+status: reviewed
 feature_name: 网站虚拟桌面实景展示
 author: [agent]
 created_at: 2026-10-01
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [website]
-current_step: 1
+current_step: 3
 total_steps: 3
 ---
 
@@ -61,18 +61,18 @@ total_steps: 3
 
 ## 7. 验收标准
 
-- [ ] AC-01 六图原样入库，有源路径、捕获日、尺寸、SHA256。
+- [x] AC-01 六图原样入库，有源路径、捕获日、尺寸、SHA256。
 - [x] AC-02 v05/autoos 双语顺序为桌面双主题→Launcher→游戏→工作；OS 预览进入正确语言专题。
 - [x] AC-03 单一作者数据、六路由无死图/裸组件源文；原 URL、统计与其他章节保留。
-- [ ] AC-04 小组件前提、游戏名称、工作布局描述与画面一致，不虚构音乐播放/日历当前日期。
-- [ ] AC-05 五宽度×双主题无横向溢出，图片键盘放大/原图/Esc 回焦、尺寸占位与延迟加载正常。
-- [ ] AC-06 build、既有与新增网站 e2e 通过；24截图落地/正文有效、看图无遮挡，无新警告或范围外修改。
+- [x] AC-04 小组件前提、游戏名称、工作布局描述与画面一致，不虚构音乐播放/日历当前日期。
+- [x] AC-05 五宽度×双主题无横向溢出，图片键盘放大/原图/Esc 回焦、尺寸占位与延迟加载正常。
+- [x] AC-06 build、既有与新增网站 e2e 通过；24截图落地/正文有效、看图无遮挡，无新警告或范围外修改。
 
 ## 8. 执行步骤
 
-- [ ] T-01 入库与共享展示：复制六 PNG，新增 data/desktop-showcase.ts、components/DesktopShowcase.vue，报告 docs/reports/p720-desktop-showcase.md 记录源证据；核对 hash/尺寸。AC-01/04/05，SD-01/02。（用户重拍替换，原源图验收失效，组件与数据结构复用。）
+- [x] T-01 入库与共享展示：复制六 PNG，新增 data/desktop-showcase.ts、components/DesktopShowcase.vue，报告 docs/reports/p720-desktop-showcase.md 记录源证据；核对 hash/尺寸。AC-01/04/05，SD-01/02。（重拍六图同步，4张实际变化；最新 hash/尺寸与画面已复验。）
 - [x] T-02 页面接线：修改 ReleaseLanding.vue/release-v05.ts、autoos/index.md、zh/autoos/index.md、os.md、zh/os.md，双语接线与首图/旧图替换；prepare/build/源码核查。AC-02/03/04，SD-01/02。
-- [ ] T-03 验证交付：新增 tests/desktop-showcase.spec.ts，24图入 docs/reports/p720-desktop-showcase/；网站 e2e、逐项 AC/SD 复核，review 后按已授权网站合入范围落 master。store writer 不可用时 ledger pending、保持 reviewed，不提前归档。AC-01..06。（重拍修正需刷新受影响的图片、构建与视觉证据；保留旧历史记录。）
+- [x] T-03 验证交付：新增 tests/desktop-showcase.spec.ts，24图入 docs/reports/p720-desktop-showcase/；网站 e2e、逐项 AC/SD 复核，review 后按已授权网站合入范围落 master。store writer 不可用时 ledger pending、保持 reviewed，不提前归档。AC-01..06。（重拍修正的图片、构建与视觉证据已刷新；保留旧历史记录。）
 
 ## 9. 复审记录
 
@@ -119,6 +119,18 @@ stage: merge | plan_id: PLAN-720 | plan_revision: 1 | outcome: blocked（仅 led
 stage: work | plan_id: PLAN-720 | plan_revision: 1 | outcome: executing | reason: 用户明确报告桌面快捷方式缺失，要求将新六图替换到网站并合入 master | next: 同工作树资产替换、核对、复核后再次 ff-only 合入。原协议与 AC/SD 不变，不新建计划或改写旧 review；旧 pass 仅覆盖旧资产。T-01/T-03、AC-01/04/05/06 重新验证。
 
 取材当前主线 da724ab24；新 01..04 分别在 14:18..14:23 重拍，人工查看确认桌面多列快捷方式恢复，Launcher 背景相应更新；05/06 与原图 hash 相同。只替换资产并更新来源/视觉证据，不改页面 Vue/路由/正文。验证按 Category A：build、现有六路由展示用例/五宽双主题与24图刷新，以及相关发布页图片/console 检查；未触及行为的旧77整站证据明确复用，非伪称重跑。
+
+### repair-1 完成与复审
+
+stage: work | plan_id: PLAN-720 | plan_revision: 1 | outcome: execution_done | code_commit: 699368fd8e79a533c8a594bc197904877a152fe9 | task_ids: T-01/T-03 | evidence: docs/reports/p720-desktop-showcase.md 修正验证结果与刷新24图 | next: review。
+
+stage: review | plan_id: PLAN-720 | plan_revision: 1 | repair: 1 | outcome: pass | reviewed_commit: 699368fd8e79a533c8a594bc197904877a152fe9 | base_commit: 1867dfce452a59bef8c098afb7e6fcf6c2c3fd96 | dependency_revisions: book=d7a71a7fb1fa42ddd26d6cec859715ed98161f7a，继承已合入 PLAN-718 阅读实现 | next: merge。
+
+acceptance_results：AC-01=6张源/入库/构建/HTTP hash 一致且均2560×1600；AC-02/03=六路由逐帧/专题链接、原接线与正文未改；AC-04=4张重拍原图与新视觉包人工对照，快捷方式恢复、小组件/Launcher/游戏/半屏工作布局说明准确；AC-05=键盘/放大/原图/回焦、60组合几何与解码后24图；AC-06=集成 build exit0（197.08s）、相关14项 pass（1.2m），仅受影响矩阵补 img.decode 后重跑1项 pass（35.4s），其他13项实现/依赖/断言不变明确复用，旧77项仅作为历史结果。每项 pass。复审在本实施上下文按提交/diff/原图/HTTP/hash/运行和视觉证据重建，不声称独立人员。
+
+spec_inputs：主线718当前 website/project.md=994113f25acd22617fb92862204fe14a737077d6caa0e66d35c53c4a55a8ebdc；design/ui-presentation.md=07a644d95f92d73ef244fcebafb4a1cd75c4b6ce32cde8825ac25323ec7734c0；plans.md=cb47183bc0416aec065a740815fcd5a30f06c914e5d75151703a806b732326ea。修正无额外 Spec delta；原 SD-01/02 现状契约保留且未覆盖718变更，影响元数据仍为空，无新组件/目标/架构。source SHA256 冻结于报告首表和 reviewed_commit。
+
+findings：早期视觉取景1张异步解码空白，已增加 decode 等待并重新生成24图；旧4220服务元数据按旧尺寸截断响应，已确认进程归属后重启，六张 HTTP bytes hash 全相同。没有修改网页行为、删除断言或延期验收；无新增债务，无 Rust/Cargo/docs_gen。原资产 264c0ec6c→5b0426b7c range-diff 全等；主线并发网站718变更已同步后重建复验。
 
 ## 10. 待澄清事项
 
