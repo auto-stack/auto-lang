@@ -2,41 +2,45 @@
 // 用法：node scripts/p715-shot.cjs <outDir> [baseline|final]
 // 对固定页面矩阵（EN/ZH × 390/1440 × 深/浅）截整页图，并输出首图位置测量 JSON。
 // 前置：npm run build 完成；服务由本脚本以 vitepress preview 启动（独占端口）。
+// PLAN-718 T-01 修正：PAGES.url 即真实 URL（不再从 zh 布尔值二次拼装 /zh——
+// 旧逻辑对已含 /zh/ 的 URL 产生 /zh/zh/...）；goto 后校验 pathname/locale/
+// 正文非 404；浏览器 locale 固定 en-US；URL/404 断言失败使脚本退出码非 0。
 const { chromium } = require('@playwright/test')
-const { spawn } = require('child_process')
 const fs = require('fs')
 const path = require('path')
+const { startPreview, stopPreview, waitAlive, validateLanding } = require('./shot-common.cjs')
 
 const outDir = process.argv[2] || 'docs/p715-shots'
 const mode = process.argv[3] || 'final'
 const port = Number(process.env.AUTO_WEBSITE_TEST_PORT || 4185)
 const base = `http://localhost:${port}`
 
+// url 即最终访问 URL（zh 页面已带 /zh 前缀）。
 const PAGES = [
-  { name: 'home-en', url: '/', zh: false },
-  { name: 'home-zh', url: '/zh/', zh: true },
-  { name: 'v05-en', url: '/v05/', zh: false, heroImg: '/v05/desktop-hero.png' },
-  { name: 'v05-zh', url: '/zh/v05/', zh: true, heroImg: '/v05/desktop-hero.png' },
-  { name: 'apps-en', url: '/apps', zh: false },
-  { name: 'apps-zh', url: '/zh/apps', zh: true },
-  { name: 'autoshell-en', url: '/apps/autoshell/', zh: false },
-  { name: 'autoshell-zh', url: '/zh/apps/autoshell/', zh: true },
-  { name: 'automusk-en', url: '/apps/automusk/', zh: false },
-  { name: 'automusk-zh', url: '/zh/apps/automusk/', zh: true },
-  { name: 'autodown-en', url: '/apps/autodown/', zh: false },
-  { name: 'autodown-zh', url: '/zh/apps/autodown/', zh: true },
-  { name: 'autoui-en', url: '/apps/autoui/', zh: false },
-  { name: 'autoui-zh', url: '/zh/apps/autoui/', zh: true },
-  { name: 'rust-en', url: '/rust', zh: false },
-  { name: 'rust-zh', url: '/zh/rust', zh: true },
-  { name: 'docs-en', url: '/docs/', zh: false },
-  { name: 'docs-zh', url: '/zh/docs/', zh: true },
-  { name: 'books-en', url: '/books/', zh: false },
-  { name: 'books-zh', url: '/zh/books/', zh: true },
-  { name: 'playground-en', url: '/playground', zh: false },
-  { name: 'playground-zh', url: '/zh/playground', zh: true },
-  { name: 'uidesktop-en', url: '/ui-desktop', zh: false },
-  { name: 'uidesktop-zh', url: '/zh/ui-desktop', zh: true },
+  { name: 'home-en', url: '/' },
+  { name: 'home-zh', url: '/zh/' },
+  { name: 'v05-en', url: '/v05/', heroImg: '/v05/desktop-hero.png' },
+  { name: 'v05-zh', url: '/zh/v05/', heroImg: '/v05/desktop-hero.png' },
+  { name: 'apps-en', url: '/apps' },
+  { name: 'apps-zh', url: '/zh/apps' },
+  { name: 'autoshell-en', url: '/apps/autoshell/' },
+  { name: 'autoshell-zh', url: '/zh/apps/autoshell/' },
+  { name: 'automusk-en', url: '/apps/automusk/' },
+  { name: 'automusk-zh', url: '/zh/apps/automusk/' },
+  { name: 'autodown-en', url: '/apps/autodown/' },
+  { name: 'autodown-zh', url: '/zh/apps/autodown/' },
+  { name: 'autoui-en', url: '/apps/autoui/' },
+  { name: 'autoui-zh', url: '/zh/apps/autoui/' },
+  { name: 'rust-en', url: '/rust' },
+  { name: 'rust-zh', url: '/zh/rust' },
+  { name: 'docs-en', url: '/docs/' },
+  { name: 'docs-zh', url: '/zh/docs/' },
+  { name: 'books-en', url: '/books/' },
+  { name: 'books-zh', url: '/zh/books/' },
+  { name: 'playground-en', url: '/playground' },
+  { name: 'playground-zh', url: '/zh/playground' },
+  { name: 'uidesktop-en', url: '/ui-desktop' },
+  { name: 'uidesktop-zh', url: '/zh/ui-desktop' },
 ]
 
 const VIEWPORTS = [
@@ -44,62 +48,33 @@ const VIEWPORTS = [
   { w: 1440, h: 1000, tag: '1440' },
 ]
 
-function startPreview() {
-  return new Promise((resolve, reject) => {
-    const proc = spawn('npx', ['vitepress', 'preview', '--port', String(port), '--strictPort'], {
-      cwd: path.resolve(__dirname, '..'),
-      shell: true,
-      stdio: 'pipe',
-    })
-    // Windows 下 shell:true 时 proc.kill 只杀 shell 不杀 node 子进程（实测泄漏）；
-    // 退出时用 taskkill /T 连树清理，防残留服务器固化旧 dist 文件清单。
-    const killTree = () => {
-      try {
-        if (process.platform === 'win32') {
-          require('child_process').execSync(`taskkill /PID ${proc.pid} /T /F`, { stdio: 'ignore' })
-        } else {
-          proc.kill('SIGTERM')
-        }
-      } catch (e) { /* already gone */ }
-    }
-    process.on('exit', killTree)
-    let ready = false
-    proc.stdout.on('data', (d) => {
-      if (String(d).includes(String(port)) && !ready) { ready = true; resolve(proc) }
-    })
-    proc.stderr.on('data', (d) => process.stderr.write(d))
-    proc.on('exit', (code) => { if (!ready) reject(new Error('preview exited ' + code)) })
-    setTimeout(() => { if (!ready) reject(new Error('preview timeout')) }, 60000)
-  })
-}
-
-async function waitAlive() {
-  for (let i = 0; i < 60; i++) {
-    try { await fetch(base + '/'); return } catch { await new Promise(r => setTimeout(r, 500)) }
-  }
-  throw new Error('preview not reachable')
-}
-
 ;(async () => {
   fs.mkdirSync(outDir, { recursive: true })
-  const server = await startPreview()
-  await waitAlive()
+  const server = await startPreview(port)
+  await waitAlive(base)
   const browser = await chromium.launch()
   const report = []
+  const hardFails = []
   try {
     for (const vp of VIEWPORTS) {
       for (const theme of ['dark', 'light']) {
-        const ctx = await browser.newContext({ viewport: { width: vp.w, height: vp.h } })
+        const ctx = await browser.newContext({
+          viewport: { width: vp.w, height: vp.h },
+          // 宿主 OS locale 不得泄入：语言跳转按 URL 判定，不按 navigator.language。
+          locale: 'en-US',
+        })
         await ctx.addInitScript((t) => {
           localStorage.setItem('vitepress-theme-appearance', t)
         }, theme)
         const page = await ctx.newPage()
         for (const p of PAGES) {
-          const url = p.zh ? ('/zh' + (p.url === '/' ? '/' : p.url)) : p.url
+          const url = p.url
           await page.goto(base + url, { waitUntil: 'networkidle' })
+          const landing = await validateLanding(page, url)
+          for (const f of landing.fails) hardFails.push(`${p.name} [${vp.tag}/${theme}]: ${f}`)
           const file = path.join(outDir, `${mode}-${p.name}-${vp.tag}-${theme}.png`)
           await page.screenshot({ path: file, fullPage: true })
-          const row = { page: p.name, url, viewport: vp.tag, theme, file }
+          const row = { page: p.name, url, landedPathname: landing.pathname, viewport: vp.tag, theme, file }
           // 首图位置：AC-09 主图 top < 1.5×视口高（仅 v05 页在 390/1440 上记录）
           if (p.heroImg && (vp.tag === '390' || vp.tag === '1440')) {
             const img = page.locator(`img[src="${p.heroImg}"]`).first()
@@ -121,10 +96,12 @@ async function waitAlive() {
     }
   } finally {
     await browser.close()
-    server.kill()
+    stopPreview(server)
   }
   fs.writeFileSync(path.join(outDir, `${mode}-report.json`), JSON.stringify(report, null, 2))
   const bad = report.filter(r => r.hasHScroll || r.within15 === false)
-  console.log('shots done:', report.length, 'problem rows:', bad.length)
+  console.log('shots done:', report.length, 'landing fails:', hardFails.length, 'problem rows:', bad.length)
+  for (const f of hardFails) console.log('LANDING-FAIL', f)
   for (const b of bad) console.log('PROBLEM', JSON.stringify(b))
+  if (hardFails.length) process.exit(1)
 })().catch((e) => { console.error(e); process.exit(1) })

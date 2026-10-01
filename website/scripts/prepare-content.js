@@ -13,7 +13,24 @@ import { fileURLToPath } from 'url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const WEBSITE_ROOT = path.resolve(__dirname, '..')
 const REPO_ROOT = path.resolve(WEBSITE_ROOT, '..')
-const BOOK_ROOT = path.resolve(REPO_ROOT, '..', 'book')
+
+// PLAN-718 T-01：worktree 布局（.wt/<group>/auto-lang）下相邻解析会落在
+// .wt/<group>/book（不存在）。按 AGENTS.md 跨仓依赖序解析：env 覆盖 → 相邻
+// sibling（主检出布局即命中）→ 组目录上溯（worktree 布局落主检出相邻）。
+// 候选以 tapl 书目目录存在性验证，全部未命中时返回首个候选保持可读的报错路径。
+function resolveBookRoot() {
+  const candidates = [
+    process.env.AUTO_BOOK_ROOT,
+    path.resolve(REPO_ROOT, '..', 'book'),
+    path.resolve(REPO_ROOT, '..', '..', '..', 'book'),
+  ].filter((c) => !!c)
+  for (const c of candidates) {
+    if (fs.existsSync(path.join(c, 'tapl'))) return c
+  }
+  return candidates[0]
+}
+
+const BOOK_ROOT = resolveBookRoot()
 
 const DOCS_SRC = path.join(REPO_ROOT, 'docs')
 const DOCS_DST_EN = path.join(WEBSITE_ROOT, 'docs')

@@ -207,3 +207,6 @@ scratch026/
 examples/rust-workspace/003-converter/
 examples/rust-workspace/025-inputs/
 examples/rust-workspace/testt1/
+
+# PLAN-718 T-01: 截图 manifest 属于验收证据（AC-11），不受全局 *.json 影响
+!docs/reports/**/*.json
