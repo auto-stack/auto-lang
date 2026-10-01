@@ -229,7 +229,7 @@ PLAN-715 已归档，网站已有统一导航、搜索、首页演示、发布�
 | landed | **ff-only 无合并提交，master tip=delivery commit `95a3e71c7`**。rebase 映射：T-01..T-04 与 master 阶段版补丁等价自动吸收（对方 p718-website-phase-landing.md 记 abc9dae09/8a76aeab2/e3e6699a6/ece321dd5，range-diff 四项 `=`）；T-05 484921d71→798fb6f47；T-06 deb99d81e→50586f35e→1852a120c（style.css 冲突并集，+1px 行双方一致）；T-07 3d758c29a→a4909040d→2be694512（KNOWN-DEBT 并集 P712-D1..7+P718-D1..3）；SD 落盘 b3f03638f→0d1ff9beb→**95a3e71c7**（project.md 冲突=720 条目并集）。落地门禁：调和后全新构建+全套 e2e（106 用例，104 过+2 F1 族 flake 隔离 40/40 绿）；主检出烟测 prepare 幂等 79936af5 与工作树收据一致 |
 | ledger_refreshed | e8f4105e8：designs P718-1（learning-reading 现行契约投影，docsha:2dc4daae68765342 @ 95a3e71c7）+reviews P718-2（复审 pass+调和收据）+reports P718-3（交付摘要）；designs 123→124/reviews 186→187/reports 109→110；字节 roundtrip 守卫+他段零扰动回读；8080 不可达，循 711/713/714/715/717 先例手工外科插入；spec-lint 0 错误（6 警告均 auto-lang/ui 既存断链） |
 | archived | docs/plans/archive/718-website-learning-reading-ui.md（git mv，status: archived，本收据同提交） |
-| cleaned | 待回填（wt-guard clean 后 worktree/分支/组目录移除） |
+| cleaned | **pass**——两轮 wt-guard clean（落地前/删除前）；worktree D:/autostack/.wt/lang-718/auto-lang 移除、分支 plan-718-dev 删除（was 95a3e71c7）、组目录 .wt/lang-718 已空删除；worktree list 零 lang-718 残留 |
 
 - 产物新鲜度（landing≠deployment）：本计划零 crates/stdlib 触碰，后端 release 二进制与 gen/front/vue/dist 不涉；website 生产站点未部署（既定范围排除），落地后需从主分支重新构建预览（当前 4197/4198 预览均为临时工作区形态）。
 - 批量回归到期判定：.last-batch-regression.json last_covered=715 @2026-09-30T16:20Z；**720（%5=0）在收据后落地 → 到期**，merge 收尾移交 /auto-plan:regress 主检出单实例执行（718 自身 %5≠0）。
