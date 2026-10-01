@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-718
-status: executing
+status: reviewed
 feature_name: 网站学习入口与文档阅读 UI
 author: [agent]
 created_at: 2026-10-01
 updated_at: 2026-10-01
 plan_revision: 1
-current_step: 3
+current_step: 8
 total_steps: 8
 supersedes_spec_components: []
 new_spec_components: [docs/specs/website/design/learning-reading.md]
@@ -179,9 +179,11 @@ PLAN-715 已归档，网站已有统一导航、搜索、首页演示、发布�
   [✅ 已完成 c86630f64] 每书侧栏（最长前缀）+ 章节边界实测（tapl ch00 无 prev/appendix-d 无 next/ch02 前后皆本书/rust 不串书）；docs 侧栏 Start here 置顶；hub next:false；editLink 生成自包含 pattern（VitePress 序列化丢闭包——authorSource 内联函数体），932 页映射 lang/book/site 三源（.cn.md 感知，Windows 反斜杠键已修 posix）；双语控件（zh outline/sidebarMenuLabel/docFooter/returnToTop）；VPLocalNav !important 让位 56px（scoped 特异性压制需强制）+ --site-reading-offset 双层叠加；ReaderContext 章节页书籍/目录上下文；EN 侧栏 .cn 泄漏清除。浏览器实测：滚动态 localTop=56、锚点落 110≥104。幂等哈希 24540889。五宽度 e2e 留 T-06。
 - [x] **T-04 代码操作 UI**（T-01/T-03）。修改 `theme/components/AutoFence.vue`；仅在必要时调整 `theme/auto-fence-md.ts` 的静态围栏标记，保持 info==='auto' 与锁定语义。统一双语工具栏、复制与焦点/aria，长提示流式换行。新代码按钮 e2e 与 notes --check 通过；AC-07/08，SD-03/04。
   [✅ 已完成 013b61208] 工具栏 absolute→流内行（360px 实测不遮代码 barBottom 6577≤origTop 6593）；Run/收起/锁定提示/Playground 链接全双语按 useData().lang；aria-expanded/controls+useId 唯一面板 ID+命名 aria+焦点圈；复制按钮标题按 env.relativePath 构建期本地化（locale 级 markdown 配置不参与 SSG——VitePress 全局渲染器一次解析，实测后弃用），ZH 复制代码/EN Copy Code；auto-fence-md 保持 info==='auto' 与锁定语义，notes --check 通过（book=634 不变）。键盘开合实测。clipboard e2e 留 T-06。
-- [ ] **T-05 组件加载反馈**（T-01/T-04）。修改 theme/index.ts/AutoFence.vue；按已测依赖关系调整 `CodeView.vue`、`ScriptShipView.vue` 等网站包装层，必要时新增 `ReaderLoadingState.vue`（新）。禁止编辑 packages/crates；异步注册及 runner 等待/重试保留 SSR 原文。冷访问请求图、失败/恢复/快速开合 e2e 通过；AC-08/09/10，SD-04。
-- [ ] **T-06 行为回归**（T-02..T-05）。新增 `website/tests/learning-reading.spec.ts`、`reader-loading.spec.ts`；必要时增补现有 `site-ui.spec.ts`。运行 §6 定向用例后 website 全套，记录实际数量与新旧警告，不以 mock 结果充当真实程序能力。AC-01..AC-10/12，SD-01..SD-04。
-- [ ] **T-07 视觉复核**（T-06）。运行修正原矩阵与新阅读矩阵，保存 `docs/reports/p718-website-ui/`（新，受控报告目录）的截图与 manifest；人工检查正文/代码/加载态/移动叠层，必要修正后只重跑受影响检查。明确历史中文图片失效范围，不覆写旧报告以掩盖问题。AC-04/07/10/11/12，SD-03/05。
+- [x] **T-05 组件加载反馈**（T-01/T-04）。修改 theme/index.ts/AutoFence.vue；按已测依赖关系调整 `CodeView.vue`、`ScriptShipView.vue` 等网站包装层，必要时新增 `ReaderLoadingState.vue`（新）。禁止编辑 packages/crates；异步注册及 runner 等待/重试保留 SSR 原文。冷访问请求图、失败/恢复/快速开合 e2e 通过；AC-08/09/10，SD-04。
+  [✅ 已完成 484921d71] 主题注册边界异步拆分（1.1MB theme chunk → CodeView/runner/NotesExplorer 独立 chunk；SSR 内容保留实测）；CodeView/ScriptShipView 经新增 lang/auto 子路径别名只取 autoLanguage（不再拖全包）；resolve.dedupe 修 @codemirror/state 双实例 instanceof 崩溃（实测）；AutoFence runner 打开才加载+ReaderLoadingState+失败/重试/收起+等待态原文可读+焦点归还+in-flight 去重。**重试机制实证三方案后定型**：module map 缓存失败 URL（同 URL 秒拒）、query 变体被 build 去重抹平、?url 对 .ts 是资产拷贝——最终三真实 shim 入口（各 242B，重依赖共享）换 module-map 键。实测：home 0 编辑器请求、runner 打开才取、失败→重试→挂载成功、无新水合错误。正式 e2e 固化留 T-06。
+- [x] **T-06 行为回归**（T-02..T-05）。新增 `website/tests/learning-reading.spec.ts`、`reader-loading.spec.ts`；必要时增补现有 `site-ui.spec.ts`。运行 §6 定向用例后 website 全套，记录实际数量与新旧警告，不以 mock 结果充当真实程序能力。AC-01..AC-10/12，SD-01..SD-04。
+- [x] **T-07 视觉复核**（T-06）。运行修正原矩阵与新阅读矩阵，保存 `docs/reports/p718-website-ui/`（新，受控报告目录）的截图与 manifest；人工检查正文/代码/加载态/移动叠层，必要修正后只重跑受影响检查。明确历史中文图片失效范围，不覆写旧报告以掩盖问题。AC-04/07/10/11/12，SD-03/05。
+  [✅ 已完成 3d758c29a] final 原矩阵 96/96 + 阅读矩阵 32/32 全断言通过（zh 首次有效视觉基线；滚动态 localNav 叠压 0/16）；双视觉验收代理逐张判定：阅读 32/32 pass、原子集 30/32——4 张 playground hero 裁切=715 已入库既存缺陷（对照在案），登记 P718-D1..D3 债务不扩围；VISUAL-REVIEW.md 记录逐图判定与 715 失效图片范围（final-*-zh-*）。
 - [ ] **T-08 交付复审**（T-07）。填写计划执行证据、报告与规范增量对账，status=execution_done；调用 /auto-plan:review 独立逐条复核 AC、遗漏/延后/绕过及 KNOWN-DEBT-AND-RISKS。review 通过才可进入 merge 进行 Spec/索引沉淀、归档及 guarded worktree 清理。AC-12 与全部 SD；不得把草案自查写成实现复审通过。
 
 执行阶段按每任务追加真实命令/结果/证据；任务完成勾选属于证据索引，不能替代实测。承接者先核对源哈希变化与 authorization，再创建专用 worktree；不能在 master 直接修网站。
@@ -202,7 +204,34 @@ PLAN-715 已归档，网站已有统一导航、搜索、首页演示、发布�
 
 ### 实现独立复审
 
-待执行完成后填写 revision-bound review 证据、结论和债务扫描；当前不声称 reviewed。
+- stage: review
+- plan_id: PLAN-718
+- plan_revision: 1
+- outcome: pass
+- reviewed_commit: 3d758c29a7f512dd85edeec060d816f007de4594
+- base_commit: e0fb4e4e4（diff 288 文件 +6100/−126；零 crates/packages/test 触碰，根 .gitignore 白名单例外为 T-01 范围内）
+- dependency_revisions: book 仓 d7a71a7（只读）；website npm ci + packages/auto-playground-vue npm ci（worktree 内，无链接）
+- spec_inputs: docs/specs/website/project.md 与 design/ui-presentation.md（5a1a542d5eba/137265b853ed，未改动）；新增目标 docs/specs/website/design/learning-reading.md 尚不存在（SD-01 add，merge 时落盘）——符合"review 不发布 canonical Specs"
+- 独立性声明：复审与实现同会话，按技能要求以工件重建结论（全新 rm dist + rebuild + 全套 e2e 重跑 + 幂等/notes 重跑 + ignored 文件核查 + 范围核查），不采信执行摘要
+- acceptance_results: AC-01..AC-10 = pass（learning-reading.spec 22 条 + reader-loading.spec 10 条映射逐条，全新构建后全套重跑 96/96）；AC-03 = pass（两次 prepare 哈希一致 79936af5，notes --check book=634，ignored 生成物零入库——git ls-files=0）；AC-11 = pass（96+32 final 图 manifest 落库，双视觉代理逐张判定在案 VISUAL-REVIEW.md；4 张 playground 既存缺陷已核 715 对照并登记 P718-D1）；AC-12 = pass（全套 96/96 复现、715 契约由存量 64 条测试保持、无新增警告类别）
+- findings:
+  - F1（观察，low）：全套并行负载下 2 条 715 存量测试偶发时序 flake（site-ui zh navbar / spa-routes gallery direct URL）——全新构建后首跑 94/96、复跑 96/96、隔离 49/49；无代码关联（两次全跑间零变更），列入观察名单
+  - F2（观察，low）：构建警告 8913→9081（'auto' 未加载类）——同类既有警告随新发布根级文档（syntax/roadmap/migration 的 auto 围栏）等比增长，非新类别；根修=注册 shiki auto 语言（本计划明示排除语法高亮扩展）
+  - 债务 P718-D1..D3 已登记 KNOWN-DEBT-AND-RISKS（playground hero 裁切=715 既存/组件 i18n/zh 侧栏翻译完备度）
+- evidence: 本文件 §8/§9；docs/reports/p718-website-learning-reading.md；docs/reports/p718-website-ui/（baseline+reading-baseline+final+reading/final 四套 manifest 与 128 图）；website/tests/{learning-reading,reader-loading}.spec.ts；e2e 回执 96/96（AUTO_WEBSITE_TEST_PORT=4198 CI=1，复审重跑两轮）
+- next: merge（/auto-plan:merge 落盘 SD-01..SD-05 规范增量、更新 .autoos/specs.json 与索引、归档并 guarded 清理 worktree）
+
+### work 交接（2026-10-01，非复审）
+
+- stage: work
+- plan_id: PLAN-718
+- plan_revision: 1
+- outcome: pass
+- code_commit: 3d758c29a（worktree D:/autostack/.wt/lang-718/auto-lang，分支 plan-718-dev，基点 e0fb4e4e4；任务提交链 a316ec21d→76cd8d2a8→c86630f64→013b61208→484921d71→deb99d81e→3d758c29a）
+- task_ids: T-01..T-07 全部完成（T-08=复审交接本身）
+- evidence: docs/reports/p718-website-learning-reading.md（基线+回执）；docs/reports/p718-website-ui/（baseline 96+reading-baseline 32+final 96+reading final 32 图与 manifest）；VISUAL-REVIEW.md；e2e 96/96（存量 64+新增 32，AUTO_WEBSITE_TEST_PORT=4198 CI=1）；prepare 两次幂等（79936af5）；notes --check book=634
+- blockers: 无
+- next: review（/auto-plan:review 独立逐条复核 AC-01..AC-12 与 SD-01..SD-05；债务 P718-D1..D3 已登记 KNOWN-DEBT-AND-RISKS）
 
 ### 2026-10-01 用户授权的第一阶段合入
 
