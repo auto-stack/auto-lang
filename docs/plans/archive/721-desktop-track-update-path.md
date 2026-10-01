@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-721
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: archived                # r1 终态（2026-10-01 merge a450ba09d：T-1..T-4 交付 + T-5/T-6 按用户裁定移交登记 P721-R1..R6；T-19 读侧机理/桌面活体 ×10 归后续）
 feature_name: desktop-track-update-path
 author: []
 created_at: 2026-10-01
