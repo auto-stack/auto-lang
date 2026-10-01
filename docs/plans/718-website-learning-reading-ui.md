@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-718
-status: drafting
+status: executing
 feature_name: 网站学习入口与文档阅读 UI
 author: [agent]
 created_at: 2026-10-01
 updated_at: 2026-10-01
 plan_revision: 1
-current_step: 0
+current_step: 3
 total_steps: 8
 supersedes_spec_components: []
 new_spec_components: [docs/specs/website/design/learning-reading.md]
@@ -171,10 +171,14 @@ PLAN-715 已归档，网站已有统一导航、搜索、首页演示、发布�
 
 ## 8. 执行步骤
 
-- [ ] **T-01 基线与验证修正**（无依赖）。在专用树核实版本、八书源、截图脚本错误、移动导航及编辑器生产请求图；修改 `website/scripts/p715-shot.cjs`，新增 `website/scripts/p718-shot.cjs` 与 `docs/reports/p718-website-learning-reading.md`（新），固定真实长文/章节 URL、源文件映射和基线截图。build + baseline 截图路径/正文断言必须通过；AC-02/03/04/06/09/11，SD-05。
-- [ ] **T-02 学习入口**（T-01）。新增 `website/content/learning-navigation.mjs`、`website/.vitepress/theme/components/LearningHub.vue`；修改 prepare-content 的根页生成与 theme 注册，入口以可索引 SSR 内容输出；完成四页与八书选择说明。prepare 两次幂等、build 静态 HTML、入口链接 e2e；AC-01/02/03，SD-01。
-- [ ] **T-03 阅读导航与来源**（T-02）。修改 prepare-content 的侧栏/源映射，`website/.vitepress/config/en.ts`、`zh.ts`、`theme/index.ts` 与 `style.css`；必要时新增 `ReaderContext.vue`（新，仅简短书籍/目录上下文）。实现原生目录偏移、双语控件、当前书路径配置、章节边界和可信 editLink。五宽度/锚点/首末章节/路径 e2e；AC-02/04/05/06，SD-02/03。
-- [ ] **T-04 代码操作 UI**（T-01/T-03）。修改 `theme/components/AutoFence.vue`；仅在必要时调整 `theme/auto-fence-md.ts` 的静态围栏标记，保持 info==='auto' 与锁定语义。统一双语工具栏、复制与焦点/aria，长提示流式换行。新代码按钮 e2e 与 notes --check 通过；AC-07/08，SD-03/04。
+- [x] **T-01 基线与验证修正**（无依赖）。在专用树核实版本、八书源、截图脚本错误、移动导航及编辑器生产请求图；修改 `website/scripts/p715-shot.cjs`，新增 `website/scripts/p718-shot.cjs` 与 `docs/reports/p718-website-learning-reading.md`（新），固定真实长文/章节 URL、源文件映射和基线截图。build + baseline 截图路径/正文断言必须通过；AC-02/03/04/06/09/11，SD-05。
+  [✅ 已完成 a316ec21d] 报告 docs/reports/p718-website-learning-reading.md：VitePress 1.6.4 核实；八书源全在但 BOOK_ROOT worktree 解析断裂已修（env/sibling/上溯链，notes book total 634）；p715-shot zh 双前缀已修+落地断言+locale 钉死+直接 spawn node（npx shell 链孤儿进程实测）；p718-shot 32 图矩阵+滚动态 localNav 测量；基线回执 96+32 图 landing 0 失败；390 滚动态 localNav 重叠 16/16（T-03 关闭）；theme chunk 1.1MB 含全部 CodeMirror（AC-09 基线，T-05 关闭）；editLink org/branch 双失实确认（autostack/main → auto-stack/master）。
+- [x] **T-02 学习入口**（T-01）。新增 `website/content/learning-navigation.mjs`、`website/.vitepress/theme/components/LearningHub.vue`；修改 prepare-content 的根页生成与 theme 注册，入口以可索引 SSR 内容输出；完成四页与八书选择说明。prepare 两次幂等、build 静态 HTML、入口链接 e2e；AC-01/02/03，SD-01。
+  [✅ 已完成 76cd8d2a8] 作者数据+LearningHub.vue（SSR 卡片、双语、.html 共享 SPA 不加前缀）；prepare 内建 33 href 校验（不解析即失败，替代 ignoreDeadLinks 掩盖）；e2e 留 T-06。**附带缺陷修复**：shouldIncludeDoc 根级文件恒 false → 旧 hub 的 syntax/roadmap/migration-guide 出口全是死链，白名单修复（219 docs EN/ZH 物化）；书籍卡重构为标题→书首页+CTA→第一章双链接。幂等：两次 prepare 内容+侧栏哈希一致（a7bf9135…）。build 126.9s 干净。
+- [x] **T-03 阅读导航与来源**（T-02）。修改 prepare-content 的侧栏/源映射，`website/.vitepress/config/en.ts`、`zh.ts`、`theme/index.ts` 与 `style.css`；必要时新增 `ReaderContext.vue`（新，仅简短书籍/目录上下文）。实现原生目录偏移、双语控件、当前书路径配置、章节边界和可信 editLink。五宽度/锚点/首末章节/路径 e2e；AC-02/04/05/06，SD-02/03。
+  [✅ 已完成 c86630f64] 每书侧栏（最长前缀）+ 章节边界实测（tapl ch00 无 prev/appendix-d 无 next/ch02 前后皆本书/rust 不串书）；docs 侧栏 Start here 置顶；hub next:false；editLink 生成自包含 pattern（VitePress 序列化丢闭包——authorSource 内联函数体），932 页映射 lang/book/site 三源（.cn.md 感知，Windows 反斜杠键已修 posix）；双语控件（zh outline/sidebarMenuLabel/docFooter/returnToTop）；VPLocalNav !important 让位 56px（scoped 特异性压制需强制）+ --site-reading-offset 双层叠加；ReaderContext 章节页书籍/目录上下文；EN 侧栏 .cn 泄漏清除。浏览器实测：滚动态 localTop=56、锚点落 110≥104。幂等哈希 24540889。五宽度 e2e 留 T-06。
+- [x] **T-04 代码操作 UI**（T-01/T-03）。修改 `theme/components/AutoFence.vue`；仅在必要时调整 `theme/auto-fence-md.ts` 的静态围栏标记，保持 info==='auto' 与锁定语义。统一双语工具栏、复制与焦点/aria，长提示流式换行。新代码按钮 e2e 与 notes --check 通过；AC-07/08，SD-03/04。
+  [✅ 已完成 013b61208] 工具栏 absolute→流内行（360px 实测不遮代码 barBottom 6577≤origTop 6593）；Run/收起/锁定提示/Playground 链接全双语按 useData().lang；aria-expanded/controls+useId 唯一面板 ID+命名 aria+焦点圈；复制按钮标题按 env.relativePath 构建期本地化（locale 级 markdown 配置不参与 SSG——VitePress 全局渲染器一次解析，实测后弃用），ZH 复制代码/EN Copy Code；auto-fence-md 保持 info==='auto' 与锁定语义，notes --check 通过（book=634 不变）。键盘开合实测。clipboard e2e 留 T-06。
 - [ ] **T-05 组件加载反馈**（T-01/T-04）。修改 theme/index.ts/AutoFence.vue；按已测依赖关系调整 `CodeView.vue`、`ScriptShipView.vue` 等网站包装层，必要时新增 `ReaderLoadingState.vue`（新）。禁止编辑 packages/crates；异步注册及 runner 等待/重试保留 SSR 原文。冷访问请求图、失败/恢复/快速开合 e2e 通过；AC-08/09/10，SD-04。
 - [ ] **T-06 行为回归**（T-02..T-05）。新增 `website/tests/learning-reading.spec.ts`、`reader-loading.spec.ts`；必要时增补现有 `site-ui.spec.ts`。运行 §6 定向用例后 website 全套，记录实际数量与新旧警告，不以 mock 结果充当真实程序能力。AC-01..AC-10/12，SD-01..SD-04。
 - [ ] **T-07 视觉复核**（T-06）。运行修正原矩阵与新阅读矩阵，保存 `docs/reports/p718-website-ui/`（新，受控报告目录）的截图与 manifest；人工检查正文/代码/加载态/移动叠层，必要修正后只重跑受影响检查。明确历史中文图片失效范围，不覆写旧报告以掩盖问题。AC-04/07/10/11/12，SD-03/05。
@@ -199,6 +203,16 @@ PLAN-715 已归档，网站已有统一导航、搜索、首页演示、发布�
 ### 实现独立复审
 
 待执行完成后填写 revision-bound review 证据、结论和债务扫描；当前不声称 reviewed。
+
+### 2026-10-01 用户授权的第一阶段合入
+
+- 授权：“最近关于 website 的修改都先提交到主分支”。范围为 T-01..T-04 已提交实现及 13 张既存未入库 PNG；原 `lang-718` 的 T-05 WIP 保留。临时合入快照树为 `D:/autostack/.wt/lang-718-land/auto-lang`，分支 `codex/website-718-land`，不替代计划的原工作区。
+- `stage: review | plan_id: PLAN-718 | plan_revision: 1 | phase: first-landing | outcome: pass (PC-01..PC-05 only) | reviewed_commit: e00e952bf | base_commit: 417aff474 | dependency_revisions: book=d7a71a7fb1fa42ddd26d6cec859715ed98161f7a`。
+- 证据：[阶段复核](../reports/p718-website-phase-landing.md)。最终实现基线 39d8be103；154.19s 构建成功，977 文件重复生成零差异，notes --check 通过；既有 64 e2e 在最终构建通过，新增 6 用例后续定向全绿；32 阅读截图 landing failures=0 / problem rows=0。原实现来自另一执行上下文；本会话对 1px sticky 偏移和作者映射误收测试目录作小修后自复核，独立性限制已明确记录。
+- 冻结阶段 SD 与 SHA256 见报告：新增 learning-reading.md，修改 project.md/ui-presentation.md 的已实现部分；尚未实现的按需加载/失败重试不写成现状。不勾选全计划 AC、不改变总任务合同、不声称 final reviewed。原 T-05..T-08 及完整验收继续执行。
+- `prepared: e00e952bf`，初次原四提交 rebase range-diff 全 `=`；最终主分支同步映射与 landed/cleaned 回执待合入后补。
+- `ledger_refreshed: pending`：无可用 store writer，8080 不可达；禁止手写主仓脏 `.autoos/specs.json`。保持计划 executing，在最终 merge 收口补派生索引。
+- 后续执行前必须吸收本阶段 master 的两处小修与阶段测试；原分支四提交的等价 rebase 映射见报告，不普通 merge 旧父分支。4197 当前预览与公开网站未部署本次修正。
 
 ## 10. 待澄清事项
 
