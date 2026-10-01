@@ -210,7 +210,9 @@ PLAN-715 已归档，网站已有统一导航、搜索、首页演示、发布�
 - `stage: review | plan_id: PLAN-718 | plan_revision: 1 | phase: first-landing | outcome: pass (PC-01..PC-05 only) | reviewed_commit: e00e952bf | base_commit: 417aff474 | dependency_revisions: book=d7a71a7fb1fa42ddd26d6cec859715ed98161f7a`。
 - 证据：[阶段复核](../reports/p718-website-phase-landing.md)。最终实现基线 39d8be103；154.19s 构建成功，977 文件重复生成零差异，notes --check 通过；既有 64 e2e 在最终构建通过，新增 6 用例后续定向全绿；32 阅读截图 landing failures=0 / problem rows=0。原实现来自另一执行上下文；本会话对 1px sticky 偏移和作者映射误收测试目录作小修后自复核，独立性限制已明确记录。
 - 冻结阶段 SD 与 SHA256 见报告：新增 learning-reading.md，修改 project.md/ui-presentation.md 的已实现部分；尚未实现的按需加载/失败重试不写成现状。不勾选全计划 AC、不改变总任务合同、不声称 final reviewed。原 T-05..T-08 及完整验收继续执行。
-- `prepared: e00e952bf`，初次原四提交 rebase range-diff 全 `=`；最终主分支同步映射与 landed/cleaned 回执待合入后补。
+- `prepared: e00e952bf`；最终 rebase 后六提交 range-diff 全 `=`：abc9dae09→6a3bb3f2e、8a76aeab2→e9f119954、e3e6699a6→086d25b15、ece321dd5→dc7119c03、39d8be103→2dc45f6e7、e00e952bf→b0fd69c79。新增测试仅修正 Windows CRLF/LF 对比，生产实现不变。
+- `landed: pass`：`git merge --ff-only`，主分支 1e65e5272→`b0fd69c793045ca8b1b52a23927acf4481a70cfe`；198 个交付文件逐一 SHA256 与 reviewed snapshot 相等，website 目录零未提交文件。13 个主仓原 untracked PNG 经内容比对后用限定路径 stash 暂存，合入验证后已删除该临时 stash，未裹挟其他会话 WIP。
+- `cleaned (temporary landing snapshot): pass`：fresh wt-guard clean，临时工作树/分支/空组目录已移除；原 `lang-718`/plan-718-dev 及其后续 WIP 均保留，计划未归档。批量回归不到期：718 非 5 的倍数，距 2026-09-30T16:20:00Z 上批收据不足 48h；Category A 未运行 Cargo。
 - `ledger_refreshed: pending`：无可用 store writer，8080 不可达；禁止手写主仓脏 `.autoos/specs.json`。保持计划 executing，在最终 merge 收口补派生索引。
 - 后续执行前必须吸收本阶段 master 的两处小修与阶段测试；原分支四提交的等价 rebase 映射见报告，不普通 merge 旧父分支。4197 当前预览与公开网站未部署本次修正。
 
