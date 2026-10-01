@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-723
-status: drafting
+status: reviewed
 feature_name: Website 应用介绍与28个Demo真实截图
 author: [Codex]
 created_at: 2026-10-01
 updated_at: 2026-10-01
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 6
 supersedes_spec_components: [docs/specs/website/project.md, docs/specs/website/design/application-introductions.md, docs/specs/website/design/application-demos.md]
 new_spec_components: [docs/specs/website/design/demo-capture-catalog.md]
@@ -69,18 +69,33 @@ Category A：禁止cargo t/docs_gen；不修改Rust。工作树website npm build
 
 ## 8. 执行步骤
 
-- [ ] T-01（AC-02,03）：worktree承接722；核定28来源/README/素材，提交目录与捕获清单。
-- [ ] T-02（AC-03）：在受控本地运行环境捕获或复核复用28项图；逐图人工审查/来源记录，不改应用实现。
-- [ ] T-03（AC-02,04,05）：双语28介绍与六类图文目录、互链、来源/条件；服务版示例明确。
-- [ ] T-04（AC-01）：AutoEdit/Shell主图接入总览/详情，Musk/Jade保持约定，旧Shell功能不回退。
-- [ ] T-05（AC-01..06）：构建、适配/链接/API/交互测试和页面视觉走查，准备SD与报告。
-- [ ] T-06（AC-06）：提交实现，auto-plan-review逐AC复核（同会话明确独立性限制），记录缺项/债务，不默默缩减28。
+- [x] T-01（AC-02,03）：worktree承接722；核定28来源/README/素材，提交目录与捕获清单。
+- [x] T-02（AC-03）：在受控本地运行环境捕获或复核复用28项图；逐图人工审查/来源记录，不改应用实现。
+- [x] T-03（AC-02,04,05）：双语28介绍与六类图文目录、互链、来源/条件；服务版示例明确。
+- [x] T-04（AC-01）：AutoEdit/Shell主图接入总览/详情，Musk/Jade保持约定，旧Shell功能不回退。
+- [x] T-05（AC-01..06）：构建、适配/链接/API/交互测试和页面视觉走查，准备SD与报告。
+- [x] T-06（AC-06）：提交实现，auto-plan-review逐AC复核（同会话明确独立性限制），记录缺项/债务，不默默缩减28。
 
 ## 9. 复审记录
 
 stage: new | PLAN-723:r1 | outcome: pass | next: work
+work-started: D:/autostack/.wt/lang-723/auto-lang (plan-723-dev); master base42fa2e0c0; development branch merged reviewed722 without landing website on master. Capture inventory underway.
 用户已授权介绍和截图；直接实施。捕获某项若遇依赖/环境阻塞，记录证据继续独立内容，未经解决不把AC-03或全计划宣布完成。
+
+stage: review | plan_id: PLAN-723 | plan_revision: 1 | outcome: pass
+
+- reviewed_commit: 19beb3046fc3d888000514e651071ad4f2748f8c
+- base_commit: ce280b0a3f733a3119d32b57f0e7995e86b1f674
+- dependency_revisions: reviewed722=bb8bcefd389589f0522fc0b23951843bb975a8ab；各拍摄源采样HEAD/文件hash见p723-capture-catalog.json，未将其冒充二进制构建commit。
+- spec_inputs: base上的三个既有Spec及722候选；四个prepared Spec的SHA-256见p723-spec-delta.json，全部匹配；delta.patch SHA-256=0206ee23a5e4afd5e1041cb438a683852a538f94dcbb82a083a69b2ed9e49845。规范只在worktree准备，master ledger未更新。
+- acceptance_results: AC-01..06全部pass；T-01..06对应代码、素材与验证矩阵见docs/reports/p723-review.md。
+- findings: P723-D1（medium，非静态介绍阻塞）当前AutoTerm本地VM拍摄无有效会话，失败空图拒收，复用已公开日期/形态的2026-09-22原生图；登记KNOWN-DEBT-AND-RISKS.md。无28项遗漏、隐性缩减、mock替代或未经授权的应用源码修补。
+- evidence: docs/reports/p723-review.md、p723-verification.md、p723-capture-catalog.json、p723-spec-delta.json、p723-spec-delta.patch（均在docs/reports）；receipt_commit=a35a908a70ffe38abe0fa051f0465cb2270c9435，仅增验证记录。build155.37s，88旧检查+7新检查=95唯一通过，580布局无横向溢出，58页生成核验，PNG原始字节hash/尺寸，git diff --check与wt-guard clean。一次构建未完成时启动sirv造成/zh/ui 404，构建后独立端口完整重跑ZH28详情与冻结来源断言2 passed；未降低断言。
+- independence: 同实施会话内按auto-plan-review从已提交diff、断言、实图和冻结材料重建；无独立第二评审者，不将角色名冒充独立性。
+- next: merge（尚未执行）。开发分支保留预览供用户查看；未合入master、未归档或移除worktree。
 
 ## 10. 待澄清事项
 
 无当前必需用户决策。未就绪Musk/Jade素材依此前决定等待，不属于本轮28 demo必需素材；技术阻塞将按逐项证据登记。
+
+执行完成：28项双语用途/操作/条件/边界与58个阅读/目录页面；28项真图逐图审查，25项新拍，Launcher、AutoTerm、Config三项复用并标来源。AutoTerm当前VM拍摄失败未发布，采用注明版本的2026-09-22原生留存图。真实媒体与文件服务使用公开/专用资源，无mock API/替换UI。AutoEdit/Shell批准主图已接入；实施19beb3046fc3d888000514e651071ad4f2748f8c复审pass，构建与95个唯一检查通过。更详证据与准备Spec保留在计划分支，尚未合入master。
