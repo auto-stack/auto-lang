@@ -17605,14 +17605,37 @@ fn compare_pngs(
         // 恢复内联在 update 内天然满足单 VM 串行裁断）。
         if msg.event == "__parked_resume_tick" {
             // PLAN-712 r2 T-16 诊断：恢复泵到达/结果计数（stderr 对账）。
+            // PLAN-721 T-1：到达 + 泵后置脏传播 trace（桌面轨断链定谳轴）。
+            let parked_before = state.component.has_parked_io_tasks();
+            crate::ui::sched_diag::trace(
+                Some(app_id),
+                "arm_parked",
+                &format!(
+                    "arrive parked_io_before={} pending_init={} cpu={}",
+                    parked_before,
+                    state.component.has_pending_init_work(),
+                    state.component.has_cpu_continuations(),
+                ),
+            );
             state.component.poll_parked_resumes();
             // PLAN-712 r2 T-16：恢复完成可能写状态（Init 挂起 fetch 回来
             // 填数据）——不标脏则视图停在「Loading...」直到下一外部事件
             // 强迫重渲染（018 书架/详情实机实证）。与 __frame_pump 臂同款
             // is_dirty→view_dirty 回填。
-            if state.component.is_dirty() {
+            let dirty = state.component.is_dirty();
+            if dirty {
                 *state.app.view_dirty.borrow_mut() = true;
             }
+            crate::ui::sched_diag::trace(
+                Some(app_id),
+                "arm_parked",
+                &format!(
+                    "done parked_io_after={} dirty={} view_dirty_set={}",
+                    state.component.has_parked_io_tasks(),
+                    dirty,
+                    dirty,
+                ),
+            );
             return iced::Task::none();
         }
 
@@ -17628,9 +17651,24 @@ fn compare_pngs(
             // D-1 序障：消费时本帧 present 已同步返回——合法代理）。
             crate::ui::frame_bench::note_frame_present();
             state.component.poll_frame_pump();
-            if state.component.is_dirty() {
+            let dirty = state.component.is_dirty();
+            if dirty {
                 *state.app.view_dirty.borrow_mut() = true;
             }
+            // PLAN-721 T-1：泵后置脏传播 trace（桌面轨断链定谳轴——到达面
+            // 由 poll_frame_pump 内既有 frame_pump enter 行承担）。
+            crate::ui::sched_diag::trace(
+                Some(app_id),
+                "arm_frame",
+                &format!(
+                    "done pending_init={} cpu={} parked={} dirty={} view_dirty_set={}",
+                    state.component.has_pending_init_work(),
+                    state.component.has_cpu_continuations(),
+                    state.component.has_parked_io_tasks(),
+                    dirty,
+                    dirty,
+                ),
+            );
             return iced::Task::none();
         }
 
@@ -19848,6 +19886,15 @@ fn compare_pngs(
          -> iced::Task<crate::ui::session::DesktopMessage> {
             // console 打标：update 期间 print/console_log 归属本 App。
             crate::libs::builtin::set_console_current_app(app_id.0);
+            // PLAN-721 T-1：泵族消息到达 trace（`__` 前缀 = 框架内务事件；
+            // 桌面轨断链定谳轴——r2「桌面内嵌轨 0 条 T16-DIAG」的复测面）。
+            if m.event.starts_with("__") {
+                crate::ui::sched_diag::trace(
+                    Some(app_id),
+                    "msg",
+                    &format!("widget={:?} event={}", m.widget, m.event),
+                );
+            }
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 // Plan 459 T5 探针：验收用 panic 注入（见 PANIC_PROBE_CRASHED_APP）。
                 // 必须在 catch_unwind **内部** panic（与 update_inner 同一边界），
@@ -22153,6 +22200,12 @@ fn compare_pngs(
                 // continuation 对 tick 恒不就绪，CPU-only 注册表不吊 tick
                 //（帧通知泵接管其驱动，见下）。
                 if app.component.has_parked_io_tasks() {
+                    // PLAN-721 T-1：恢复泵订阅装配 trace（桌面轨断链定谳轴）。
+                    crate::ui::sched_diag::trace(
+                        Some(app_id),
+                        "sub_parked",
+                        &format!("parked_total={}", app.component.bridge().parked_count()),
+                    );
                     subs.push(app_tick(app_id, "__parked_resume_tick", 16));
                 }
                 // PLAN-711 T-04 (D-1): 帧通知泵——listen_raw 收 RedrawRequested
@@ -22163,16 +22216,16 @@ fn compare_pngs(
                 // 订阅，防 listen_raw 自我续帧；无任务不跑周期泵）。消费臂
                 // 运行有界泵（8ms 轮次预算，非全量 drain）。
                 if app.component.has_pending_init_work() || app.component.has_cpu_continuations() {
-                    if std::env::var("AUTO_SCHED_DIAG").ok().as_deref() == Some("1") {
-                        let t0 = crate::ui::dynamic::sched_diag_t0();
-                        eprintln!(
-                            "[SCHED-DIAG] frame_pump sub ON t={}ms app={:?} init_work={} cpu={}",
-                            t0.elapsed().as_millis(),
-                            app_id,
+                    // PLAN-721 T-1：帧泵订阅装配 trace（原 inline 打印归一）。
+                    crate::ui::sched_diag::trace(
+                        Some(app_id),
+                        "sub_frame",
+                        &format!(
+                            "init_work={} cpu={}",
                             app.component.has_pending_init_work(),
                             app.component.has_cpu_continuations(),
-                        );
-                    }
+                        ),
+                    );
                     subs.push(frame_pump_sub(app_id));
                 }
                 // F12 DevTools + key bindings（per-App bindings + 本窗过滤）。
@@ -22528,6 +22581,43 @@ fn dynamic_view_impl(
     // 同步 + capture 路径（view_with_debug_gated/vtree/id_map），用于
     // A/B 判别每帧保留源。
     let p530_nomcp = std::env::var("P530_NOMCP").as_deref() == Ok("1");
+
+    // PLAN-721 T-DOCS-1: desktop 内嵌 app 轻量快照自发布（T8 单 App 语义
+    // 之外的 per-app 面）——primary 走下方完整同步块；内嵌 app 在自身脏帧
+    // 发布紧凑面（state 全量 + 源模板 AURA 文本）到 app_surfaces，供
+    // autoui_snapshot 的 `app` 选择器消费。双门控防每帧税：仅 MCP 最近
+    // 活跃（Plan 314 心跳纪律）+ 自身视图真脏。
+    if !sync_mcp && !p530_nomcp {
+        if let Some(ref mcp_handle) = state.desktop.mcp_shared {
+            let mcp_active = mcp_handle.lock().unwrap().mcp_active_recently(5);
+            if mcp_active && *state.app.view_dirty.borrow() {
+                let state_vals = state.component.read_all_state_materialized();
+                let mut pairs: Vec<(&String, &auto_val::Value)> = state_vals.iter().collect();
+                pairs.sort_by(|a, b| a.0.cmp(b.0));
+                let mut state_text = String::new();
+                for (k, v) in pairs {
+                    state_text.push_str(&format!("  {} = {}\n", k, v));
+                }
+                let ws_now = *state.window_size.borrow();
+                let mut builder =
+                    crate::ui::aura_snapshot_builder::AuraSnapshotBuilder::new(&state_vals)
+                        .with_status(false);
+                if ws_now.width > 0.0 && ws_now.height > 0.0 {
+                    builder = builder.with_viewport(ws_now.width, ws_now.height);
+                }
+                let template_text = builder
+                    .build(state.component.widget_name(), state.component.view_template());
+                let key = format!("{}:{}", state.app_id.0, state.component.widget_name());
+                let surface = crate::ui::mcp_server::AppSurface {
+                    widget_name: state.component.widget_name().to_string(),
+                    state_text,
+                    template_text,
+                    updated_ms: crate::ui::dynamic::sched_diag_t0().elapsed().as_millis() as u64,
+                };
+                mcp_handle.lock().unwrap().set_app_surface(key, surface);
+            }
+        }
+    }
 
     // Sync state to MCP shared handle for AI agent inspection (Plan 278)
     // Must run in view() — not update() — because iced may not fire any events
