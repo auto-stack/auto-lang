@@ -1869,10 +1869,14 @@ impl DynamicComponent {
                 }
             }
             if matched {
-                let _ = self.bridge.write_state(
-                    "__route_params",
-                    auto_val::Value::Obj(Box::new(params)),
-                );
+                // PLAN-712 T-17 第二层：params 以**堆 ObjectData 引用**入字段
+                //（状态字段持有约定）——裸 `Value::Obj` 会被 GET_FIELD 实例
+                // 臂的值分发兜底吞成 0（`_ => push_i32(0)`，Obj 无 push 臂），
+                // 页 handler 读 `router.param("id")` 恒 0 → book_id=0 →
+                // 0 entries（桌面 + 独立 VM 双轨实机同证）。物化细节见
+                // [`VmBridge::materialize_obj_to_heap`]。
+                let v = self.bridge.materialize_obj_to_heap(params);
+                let _ = self.bridge.write_state("__route_params", v);
                 return;
             }
         }

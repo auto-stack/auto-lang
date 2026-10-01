@@ -846,7 +846,15 @@ impl VmBridge {
             }
             if !field_names.iter().any(|n| n == "__route_params") {
                 field_names.push("__route_params".to_string());
-                field_values.push(auto_val::Value::Obj(Box::new(auto_val::Obj::new())));
+                // PLAN-712 T-17：与 sync_route_params 写侧同律——字段持堆引用
+                //（裸 Value::Obj 读侧被 GET_FIELD 兜底吞 0）。
+                let mut od = crate::vm::types::ObjectData::new();
+                let seeded = vm.insert_heap_object(od);
+                // 实例常驻字段对堆值的永久 stake（与 state_obj_id 自身的
+                // rc_retain 同寿命语义；write_state 路径的对称面见
+                // stake/release_state_value）。
+                vm.rc_retain_id(seeded as u64);
+                field_values.push(auto_val::Value::VmRef(auto_val::VmRef { id: seeded as usize }));
             }
         }
 
@@ -1114,6 +1122,25 @@ impl VmBridge {
             }
             _ => {}
         }
+    }
+
+    /// PLAN-712 T-17 第二层：把 `auto_val::Obj` 物化为堆 `ObjectData` 并以
+    /// `Value::VmRef` 返回——**状态字段的持有约定是堆引用**（对象字面量/
+    /// JSON 解析都落堆 id：Plan 390 H3b / Plan 057 Bug 2）。GET_FIELD 实例
+    /// 臂的值分发只认 Int≥堆基/VmRef/标量，**裸 `Value::Obj` 落
+    /// `_ => push_i32(0)` 兜底**——`router.param` 曾因此恒 0：
+    /// `sync_route_params` 直写裸 Obj，详情页读回 book_id=0 → 0 entries
+    /// （桌面 + 独立 VM 双轨实机同证，2026-10-01）。
+    /// 持有记账不在此处——`write_state` 的 stake/release 对称面负责。
+    pub fn materialize_obj_to_heap(&self, obj: auto_val::Obj) -> Value {
+        let mut od = crate::vm::types::ObjectData::new();
+        for (k, v) in obj.iter() {
+            if let Some(name) = k.name() {
+                od.set(auto_val::ValueKey::Str(name.into()), v.clone());
+            }
+        }
+        let id = self.vm.insert_heap_object(od);
+        auto_val::Value::VmRef(auto_val::VmRef { id: id as usize })
     }
 
     /// Read a state field that holds an array_id and return the actual Vec<Value>.

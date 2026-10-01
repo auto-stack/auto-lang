@@ -416,6 +416,9 @@ mod plan711_cpu_slice_tests;
 // 异常 / 非 2xx 保持值面）——018 详情页吞错链的语义层回归锁。
 #[cfg(test)]
 mod plan712_http_error_semantics_tests;
+// PLAN-712 T-17 第二层：router.param 的 VM 取值链（push → sync → 页 Init）。
+#[cfg(test)]
+mod plan712_route_param_tests;
 // PLAN-711 T-03：Init demand 登记簿与代际生命周期（AC-04 一次登记 +
 // 代际取消一次清理 + 页→child 依赖序 + Missing/Failed 终态 + 渲染路径
 // 登记化集成）。
