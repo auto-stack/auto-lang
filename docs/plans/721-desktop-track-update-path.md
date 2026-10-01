@@ -253,3 +253,9 @@ MCP 契约不变（autoui_snapshot 增量字段），消费端 test_vm_mcp.py
   复查（验收通道可靠性债）。
 - **③desktop-721i 实例遗留**：实例 I 仍在运行（用户正在其中观看视频），
   归用户处置；勿杀。
+- **④独立窗 mpv 降级陷阱（2026-10-01 15:14 已处置）**：本会话给 worktree
+  重建 `auto.exe` 时用默认 feature 集（`cargo build -p auto`）——video 元素
+  在 mpv-widget 缺席时按 AC-10 走诚实降级面板（「无法打开录像」提示），
+  非黑屏非缺陷。修法=`cargo build -p auto --features mpv-widget`
+  （auto-lang 侧 mpv-widget ⇒ mpv-gpu+ui-iced）。桌面壳
+  ui_desktop 一直带 `--features ui-iced,mpv-widget` 不受影响。
