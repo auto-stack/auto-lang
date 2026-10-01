@@ -1,18 +1,18 @@
 ---
 plan_id: PLAN-716
-status: archived
-feature_name: M4 上游三组合一件（用户合并裁定 2026-09-30——组A tree-sitter 首批实施[714 契约 T-1..T-6 承接]/组B 帧时间戳插桩[供②]/组C diff rows 惰性投影[021 armed FAIL 清偿路径]+供③ 顺手确认）
+status: drafting               # Phase 2 修复轮激活（2026-10-01 用户裁定「重新激活计划716,记录成新的phase」——归档件出库，Phase 1 交付史全保留）
+feature_name: M4 上游三组合一件（用户合并裁定 2026-09-30——组A tree-sitter 首批实施[714 契约 T-1..T-6 承接]/组B 帧时间戳插桩[供②]/组C diff rows 惰性投影[021 armed FAIL 清偿路径]+供③ 顺手确认）+ Phase 2 修复轮（2026-10-01——下游消费首跑实证交付缺口：供⑧ 9920 VM 裸名臂/供⑨ 9918-9919 .at 消费面双缺口/供⑪ highlight-treesitter cc 夹缝）
 author: [agent]
 created_at: 2026-09-30T22:17:32+08:00
-updated_at: 2026-10-01T03:30:00+08:00
-plan_revision: 2
-current_step: 13
-total_steps: 14
+updated_at: 2026-10-01T17:20:00+08:00
+plan_revision: 3              # r3=Phase 2 修复轮（r2=交付时归档修订——供③ 摘出挂账；r3 语义契约增补=消费面缺口修复，Phase 1 目标/验收不回改）
+current_step: 13              # Phase 1 十四任务账（T-00..T-13 全收口）——Phase 2 T-14..T-17 待执行
+total_steps: 18
 supersedes_spec_components: []
 new_spec_components:
   - "docs/specs/auto-lang/ui/design/treesitter-highlight-pipeline.md（SD-A：实施契约册——714 勘定册姊妹，before=勘定结论/after=实施语义）"
-  - "docs/specs/auto-lang/ui/design/frame-observability.md（SD-B：帧时间戳观测通道契约——门控零开销纪律+双轨可达）"
-  - "docs/specs/auto-lang/ui/design/diff-endpoints.md（SD-C：modify——rows 窗口投影参数节[默认全量兼容]）"
+  - "docs/specs/auto-lang/ui/design/frame-observability.md（SD-B：帧时间戳观测通道契约——门控零开销纪律+双轨可达；Phase 2 modify=.at 消费面出口形修正节）"
+  - "docs/specs/auto-lang/ui/design/diff-endpoints.md（SD-C：modify——rows 窗口投影参数节[默认全量兼容]；Phase 2 modify=9920 注册面补记 codegen intrinsics 裸名臂）"
 touched_goals: []             # 无 goals.md 正式 GOAL-NNN 锚定本面（供料驱动面，703/714 先例注记式）
 affects: [crates/auto-lang/Cargo.toml, crates/auto-lang/src/ui/code_editor/core/highlight.rs, crates/auto-lang/src/ui/code_editor/core/mod.rs, crates/auto-lang/src/ui/iced/, crates/auto-lang/src/ui/code_editor/diff/envelope.rs, crates/auto-lang/src/vm/native_catalog.rs, crates/auto-lang/src/vm/native.rs]
 ---
@@ -37,6 +37,25 @@ want 升格——auto-edit 021 L2 直拉 **armed FAIL 5183.2ms** 的清偿
 投影参数[默认全量兼容]）+**供③ 顺手确认件**（大文件卡死回归
 v2205 复绿后的多跑复核销账——M4 供料包全清尾）。三组独立可验、
 组内任务序贯；组B/组C 为短件先落，组A 为长件主轴。
+
+**Phase 2 修复轮（2026-10-01 激活——用户裁定「重新激活计划716,
+记录成新的phase，然后我们去单独执行修复」）**：下游 auto-edit
+PLAN-022（M4-05 消费件，worktree plan-022-dev@600ba65）消费首跑
+实证本件 Phase 1 交付面的**三处缺口**（全证据链=auto-edit
+docs/upstream/2026-09-m4-perf-unblock-supply.md §8，供⑧⑨⑪ 登记
+在案）：**供⑧=组C 9920 五面注册缺一**（vm/codegen.rs intrinsics
+裸名表漏登记 diff_files_window——catalog/shim/trans/ui_gen 四面
+在册，VM 轨调用挂死实测；a2r 轨不受累）；**供⑨=组B 通道 .at
+消费面双缺口**（VM 轨 i64→int 桥退化——shim 真值实测但 .at 侧
+赋值落 0/.str()→None/json→0[time 族 now_ms 返 0 同根因，PLAN-005
+登记面]；a2r ui_gen handler 直调臂不路由 handler 体 frame 二段名
+〔下游 front 探针臂预埋 regen E0425 实录〕——上游探针驻 Rust
+i64 lane 未过 .at 面）；**供⑪=组A sql 登记位依赖夹缝**（tree-
+sitter-sequel 0.3.2 cc `~1.0.90` 紧钉 vs 新纪元 blake3 `^1.1.12`
+——同 major 单版本选一空交集，下游以 blake3 1.5.5 回避钉在案）。
+Phase 2 范围=三缺口修复+下游回执位（Phase 1 目标/验收/交付史
+零回改；供③ P716-D1=环境面非代码缺陷，维持 KNOWN-DEBT 挂账
+不入本轮）。
 
 ## 1. 目标
 
@@ -97,6 +116,22 @@ v2205 复绿后的多跑复核销账——M4 供料包全清尾）。三组独�
   scroll 锚定/平滑滚动（滚动**测量**解锁≠滚动**行为**变更）。
 - diff 引擎算法变更（组C=envelope 投影层——histogram/分组语义
   frozen）；diff_snapshots 净形扩 rows（另一 want 域，不混）。
+
+- **G-D1 供⑧ 裸名臂补全**（组C 收口）：vm/codegen.rs intrinsics
+  表补 `diff_files_window`→NATIVE_DIFF_FILES_WINDOW——9920 五面
+  注册齐装；VM 轨 .at 裸名调用贯通（HTTP/merged 双形不再挂死）。
+- **G-D2 供⑨-a .at 消费面桥修复**（组B 收口）：9918/9919 的 .at
+  侧值流贯通——`var int = frame.begin_ms()` 落真值/`.str()` 出数字/
+  json.from_value 保真三面全断修复（勘定=出口形三候选择一：
+  stdlib 判型重勘 `-> int`/VM native 返回边界 i64→int 强转修复/
+  701 全宽值字符串出口先例变体——T-14 勘定定形）；time 族
+  now_ms 返 0 同根因面随桥修复一并复验（同根因不另立任务）。
+- **G-D3 供⑨-b ui_gen handler 臂补全**（组B 收口）：ui_gen/rust.rs
+  直调臂路由 handler 体 frame 二段名（code_editor_delta 直调纪律
+  同款）——handler 体调用 regen exit 0+生成码 a2r_std::frame 路由。
+- **G-D4 供⑪ 依赖夹缝解钉**（组A 收口）：highlight-treesitter+
+  blake3 现势共解析可建（sequel 升版/换源或 auto-lang 侧需求面
+  放宽——上游定形）；下游回避钉（blake3 1.5.5）具备撤钉条件。
 
 ## 2. 架构方案
 
@@ -313,6 +348,77 @@ observability.md——通道/门控/时源/双轨）+SD-C（diff-endpoints.md
 | SD-B | add | docs/specs/auto-lang/ui/design/frame-observability.md | before：.at 层无帧观测通道（PLAN-005 勘） / after：观测通道契约——帧开始/呈现完成时间戳面+门控零开销纪律+单调时源+VM 内建/a2r 双轨+712 r2 帧泵域边界注记 | 供② 落账；下游帧两行测量的内核侧真源 | AC-B1/B2 |
 | SD-C | modify | docs/specs/auto-lang/ui/design/diff-endpoints.md | before：diff_files envelope=全量 rows 投影（truncated 恒 false） / after：增窗口投影节——rows_offset/rows_limit 参数（默认全量=016 消费面零扰动）+rows_total+truncated 激活语义+hunks 全量保持 | 021 FAIL 清偿路径；envelope frozen 契约的增字段扩展 | AC-C1/C2 |
 
+### Phase 2 补充（r3——2026-10-01）
+
+**授权记录**：用户 2026-10-01 指令「block的内容都是716计划没实现好
+的吗？请重新激活计划716,记录成新的pahse，然后我们去单独执行修复。」
+——授权=**本件出库重激活+Phase 2 修复范围记录**；执行（work）待
+用户单独启动。范围=供⑧⑨⑪ 三缺口（auto-lang 单仓）；下游 auto-edit
+侧回执位（probe_diffwin VM 形/T-03 探针臂重埋）非本轮任务。无预算/
+自动续跑授权。证据锚=auto-edit 供料档 §8+worktree plan-022-dev
+实录（evidence-p022-t01.json/probe 过程记录/budgets 供⑨ 行）。
+
+### T-14 供⑧ 勘定（定案级）
+
+- **根因**（已勘定，下游实录）：五面注册中 `vm/codegen.rs`
+  intrinsics 裸名表缺 `diff_files_window`（:559-561 三 diff 面在册；
+  catalog:67/shim native.rs:901,917/trans rust.rs:5107/ui_gen
+  rust.rs:10487 四面在册）——裸名无本地符号亦无 intrinsic→VM 轨
+  解析挂死（HTTP 线程无响应实测，请求不达 handler）。
+- **修复形**：intrinsics 表补
+  `("diff_files_window", NATIVE_DIFF_FILES_WINDOW)`（NATIVE 常量
+  已在册——catalog 引用实证）。
+- **验收锚**：VM 轨 .at 直调返回窗口 envelope（rows_total 在场）；
+  下游回执位=auto-edit `probe_diffwin.py` 缺省 VM 形 8/8。
+
+### T-15 供⑨-a .at 桥勘定+修复（本轮深水件——bounded 勘定前置）
+
+- **实证面（下游三断）**：`var fb int = frame.begin_ms()` 落 0；
+  `frame.begin_ms().str()`→None〔下游 Tick TypeError 'str'+
+  'NoneType' 实录〕；`json.from_value({b: frame.begin_ms()})`→0。
+  shim 直读真值在案（进程内同址单调 0→1435→1451——下游临时插桩
+  FB-DBG，已还原）。上游探针 `frame_timestamps_vm_readback` 驻
+  Rust i64 lane（call_i64 直读）——.at 消费面=716 测试盲区。
+- **根因候选（T-15 勘定定形，三择一或组合）**：①stdlib/auto/
+  frame.vm.at 判型 `-> i64` 与 shim 推栈形（push_i64_vm→
+  encode_i64_with_heap nv 编码）错配——.at int lane 预期 vs i64
+  lane 标记丢失；②VM native 返回边界缺 i64→int 强转/降级臂；
+  ③701 全宽值字符串出口先例的字符串变体（epoch 级值语义保全）。
+  **勘定产出=定形记录+所选形对照三断实证**。
+- **time 族同根因面**：PLAN-005 T-03 登记「VM 轨 time 族内建未
+  接线（now_ms/now_sec 返 0）」——若根因=native i64 返回桥，
+  桥修复后 time 族随行复验（同根因注记，不另立任务；若独立根因
+  如实拆出）。
+- **回归锚**：plan716_supply_probes 增 .at 面断言（赋值/str/json
+  三保真）+现役五探针零扰动。
+
+### T-16 供⑨-b ui_gen handler 臂
+
+- **实证**：下游 front store handler 内 `frame.begin_ms()` 采样臂
+  →a2r regen **E0425 cannot find value `frame`**（ui_gen/rust.rs
+  :10487 直调臂仅覆盖模块 fn 体面？——trans rust.rs:5107 裸名臂
+  与 handler 直调臂的覆盖面勘定=本轮首任务子步）。
+- **修复形**：handler 体二段名路由补臂（code_editor_delta 直调
+  纪律同款——生成码落 a2r_std::frame::{begin_ms,present_ms}）。
+- **验收锚**：含 handler 体 frame 调用的 .at regen exit 0+生成码
+  grep a2r_std::frame 臂；下游 front 探针臂重埋回执（auto-edit
+  侧，非本轮任务）。
+
+### T-17 供⑪ 夹缝解钉
+
+- **实证**：`tree-sitter-sequel v0.3.2` 钉 cc `~1.0.90`〔≥1.0.90
+  <1.1〕vs 新纪元 blake3 1.8.7 钉 `cc ^1.1.12`——同 major 单版本
+  选一→空交集〔下游首建败 release-20261001-160555.log 实录〕；
+  716 执行期 lock 处于兼容纪元（推测其 lock 的 blake3/cc 组合未
+  过 1.1 缝），现势 fresh 解析即触。
+- **修复形（上游定形，候选）**：sequel 升版（上游 crate 新版是
+  否放宽 cc 需求——registry 实勘）/换 sql 引擎 crate/auto-lang
+  Cargo.toml 对 blake3 需求面放宽（若其 cc 需求可降级兼容）。
+  **不采用**：lock 手工钉（下游回避钉已演示其脆弱性——1.5.5 纪元
+  随 registry 演进会再失效）。
+- **验收锚**：fresh `cargo update`+highlight-treesitter 全量解析
+  可建（无 blake3 降钉）；下游撤钉回执位注记。
+
 ## 6. 测试设计
 
 - **组A**：金样本 fixture 族（每语言≥1——capture 流→金 token 对照）
@@ -352,6 +458,19 @@ observability.md——通道/门控/时源/双轨）+SD-C（diff-endpoints.md
 - **AC-SD 规范+账本**：SD-A/B/C 落档+P716-1 回读 True。验证：
   文件在档+账本断言。
 
+- **AC-D1 供⑧ 裸名臂**（Phase 2）：VM 轨 9920 .at 裸名调用贯通
+  （envelope rows_total 在场）；四面在册面零扰动。验证：上游探针
+  +下游回执 probe_diffwin VM 形 8/8。
+- **AC-D2 供⑨-a .at 桥**（Phase 2）：.at 侧三断全修复（赋值真值/
+  .str() 数字/json 保真）+time 族同根因复验在档+supply 探针 .at
+  面增补绿。验证：探针报告。
+- **AC-D3 供⑨-b handler 臂**（Phase 2）：handler 体 frame 调用
+  regen exit 0+生成码路由臂 grep 锚。验证：regen+grep。
+- **AC-D4 供⑪ 解钉**（Phase 2）：fresh 解析 highlight-treesitter
+  可建（无 blake3 降钉）+两态构建绿。验证：cargo update+构建。
+- **AC-REG2 回归门**（Phase 2——AC-REG 同款口径）：裸 cargo t 全量
+  对账零新增+触面档（tv/tb/tu）预存族零新增。验证：对账记录。
+
 ## 8. 执行步骤
 
 | # | 任务 | 依赖 | 落点（实勘锚） | 产出/意图 | AC | 验证（命令/预期） |
@@ -379,6 +498,16 @@ AppTick 泵断链在案调查——矩阵 app=桌面模式动态 app，楔死形
 712 T-16..T-19 修复交付后复跑 ×3（T17.2/17.3/17.8 全绿）→018 注记
 销账 |
 | 13 | T-13 规范+账本 | 全 | SD-A/B/C+specs.json | 三组落账 | AC-SD | [x] SD-A/B/C 落档 [✅ 已完成]（commit（SD）：SD-A treesitter-highlight-pipeline.md（实施契约册——714 勘定册 after 面：feature 语义/路由表+tail 固化/查询零 vendoring/同主题配色/双轨对照口径/增量管线/退役面+尺寸三态表+installer 联动注记实测修订）；SD-B frame-observability.md（通道/门控/双轨/值语义/域边界）；SD-C=diff-endpoints.md 增窗口投影节（9920/rows_total/truncated 激活/边界形/零扰动 frozen ③/HTTP query 串形/census 收益表）；**specs.json P716-1 外科插入按 §4 归 merge 档执行**（skill 纪律：live ledger 不作独立需求源——AC-SD 账本断言随 merge 回读）） |
+
+**Phase 2 修复轮任务（r3——2026-10-01 激活，T-14..T-18）**：
+
+| # | 任务 | 依赖 | 落点（实勘锚） | 产出/意图 | AC | 验证（命令/预期） |
+|---|---|---|---|---|---|---|
+| 14 | T-14 供⑧ 裸名臂 | — | vm/codegen.rs intrinsics 表 | 9920 五面齐装 | AC-D1 | [ ] VM 轨裸名调用 envelope 绿+四面零扰动（cargo t plan716+新增裸名探针；下游回执=auto-edit probe_diffwin 缺省形 8/8） |
+| 15 | T-15 供⑨-a .at 桥勘定+修复 | — | stdlib/frame.vm.at+vm 桥面（T-15 勘定定形——三候选见 §5） | .at 三断修复+time 族同根因复验 | AC-D2 | [ ] 三断保真探针绿+time 族注记（supply 探针 .at 面新增 3 断言+现役五探针零扰动） |
+| 16 | T-16 供⑨-b handler 臂 | — | ui_gen/rust.rs 直调臂覆盖面勘定+补臂 | handler 体路由贯通 | AC-D3 | [ ] regen exit 0+生成码 grep 臂（含 handler 调用 .at 样张 regen+grep a2r_std::frame） |
+| 17 | T-17 供⑪ 解钉+回归门 | T-14..16 | Cargo.toml/lock 面 | 现势解析可建+回归零新增 | AC-D4/REG2 | [ ] fresh 解析构建绿（无 blake3 降钉）+对账零新增（cargo update+两态构建+cargo t 对账+tv/tb/tu） |
+| 18 | T-18 规范+回执位 | T-14..17 | SD-B modify[出口形节]+SD-C modify[注册面补记]+回执注记 | 缺口修复落账 | AC-D* | [ ] SD 增补在档+下游回执位注记在案（probe_diffwin VM 形/探针臂重埋/撤钉回执——随下游件排程） |
 
 ## 9. 复审记录
 
@@ -538,6 +667,18 @@ AppTick 泵断链在案调查——矩阵 app=桌面模式动态 app，楔死形
   `next`: merge（specs.json P716-1 外科插入+tf 批量回归 due-check
   +worktree 清理——磁盘释放 27GB target 随 worktree 移除）。
 
+- 2026-10-01 r3（Phase 2 修复轮）handoff：`stage: new`，PLAN-716，
+  plan_revision 3（出库重激活——archive→docs/plans/，Phase 1 交付史
+  零回改）。`outcome: pass`（Phase 2 范围四缺口逐一有锚：供⑧ 根因
+  已勘定〔五面注册缺一——下游 codegen.rs:559-561 实录+VM 挂死实测〕；
+  供⑨ 双面实证链完整〔三断实录+FB-DBG shim 真值+ui_gen E0425+上游
+  探针盲区自证〕，修复形三候选列明待 T-15 勘定定形；供⑪ 夹缝机理
+  clear〔cc 空交集〕+修复候选列明禁 lock 手工钉；下游回执位明确
+  〔probe_diffwin VM 形/探针臂重埋/撤钉回执——非本轮任务〕；授权=
+  用户指令原文在录〔重激活+记录 phase，执行单独启动〕）。`next:
+  work`（worktree=D:/autostack/.wt/lang-716/auto-lang，branch
+  plan-716-dev——AGENTS 惯例；启动待用户）。
+
 ## 10. 待澄清事项
 
 - **Q-1 组C（惰性投影）纳入确认**：按用户「两者」语义（tree-sitter
@@ -583,3 +724,12 @@ AppTick 泵断链在案调查——矩阵 app=桌面模式动态 app，楔死形
   712 调查会话处置（stash/fix worktree）。另 `.autoos/specs.json`
   大 diff（7683/7670 行，疑 CRLF 归一）+`.next-id` 716→718 为簿记
   面，同样非本计划所有。
+
+- **Q-6 Phase 2 执行协调（执行启动时核）**：①供⑨-a 勘定若定形为
+  「stdlib 判型 `-> int`」——核对 int lane 位宽是否承载毫秒级值域
+  （进程起点单调 ms<2^31 常态；epoch 级全宽值=701 字符串出口注记
+  口径不回改）；②721 desktop 会话/桌面实例共栖窗口（P716-D1 环境
+  前提）与本轮无耦合（纯代码面）——但 worktree lang-716 建树时
+  避开其在途 worktree 惯例位；③下游回执时点=本轮 review 通过后
+  （auto-edit probe_diffwin VM 形+T-03 探针臂重埋+撤钉回执——随
+  下游件排程，非本轮 gate）。
