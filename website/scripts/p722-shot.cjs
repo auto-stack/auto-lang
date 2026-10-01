@@ -18,7 +18,7 @@ const base = process.env.AUTO_WEBSITE_SHOT_URL || 'http://127.0.0.1:4227'
         await page.setViewportSize({ width, height: 1000 })
         for (const route of routes) {
           await page.goto(base + route)
-          const heading = page.locator('main h1')
+          const heading = page.locator('.apps-overview h1, .VPDoc h1, .autoshell-page h1')
           await heading.waitFor()
           assert.equal(await heading.count(), 1)
           assert.equal(new URL(page.url()).pathname.replace(/\/$/, ''), route.replace(/\/$/, ''))
@@ -32,7 +32,7 @@ const base = process.env.AUTO_WEBSITE_SHOT_URL || 'http://127.0.0.1:4227'
           assert.ok(headingBox.y >= navBox.y + navBox.height, `${route}: heading under navigation`)
           const item = { route, actualUrl: page.url(), width, theme, overflow, h1: await heading.innerText() }
           if ([390, 1440].includes(width)) {
-            for (const img of await page.locator('main img:visible').all()) {
+            for (const img of await page.locator('.vp-doc img:visible, .autoshell-page img:visible').all()) {
               await img.scrollIntoViewIfNeeded()
               await img.evaluate(el => el.decode())
               assert.ok(await img.evaluate(el => el.naturalWidth > 0))
