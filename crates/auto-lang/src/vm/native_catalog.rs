@@ -64,7 +64,11 @@ macro_rules! for_each_native {
             (9919, NATIVE_FRAME_PRESENT_MS, shim_frame_present_ms, "auto.frame.present_ms"),
             // === PLAN-716 组C: diff rows 窗口投影（diff-engine-supply §6
             // want——021 FAIL 清偿路径；9915 签名冻结，窗口走新端点）===
-            (9920, NATIVE_DIFF_FILES_WINDOW, shim_diff_files_window, "auto.diff_files_window"),
+            // PLAN-716 Phase 2 (供⑧): 9920 与 PLAN-095 ui.focus 撞号——本表
+            // shim 槽按清单序后注册者覆盖（:419 ui_focus 在后），VM 轨窗口
+            // 调用恒派发 ui_focus shim（静默 no-op→Int(0)，下游 plan-022
+            // 挂死实测根因）。窗口件改签 9921；ui.focus 已交付消费面不回改。
+            (9921, NATIVE_DIFF_FILES_WINDOW, shim_diff_files_window, "auto.diff_files_window"),
             // === Plan 413 follow-up: console natives (in-app Console panel) ===
             (2916, NATIVE_CONSOLE_LOG, shim_console_log, "auto.console.log"),
             (2917, NATIVE_CONSOLE_LINES, shim_console_lines, "auto.console.lines"),
@@ -859,7 +863,9 @@ macro_rules! for_each_bigvm_native {
             // PLAN-716 组B: 帧时间戳（701 time 族 I64 形）。
             ("auto.frame.begin_ms", 9918, I64),
             ("auto.frame.present_ms", 9919, I64),
-            ("auto.diff_files_window", 9920, String),
+            // PLAN-716 Phase 2 (供⑧): 9921——原 9920 与 ui.focus 撞号（见
+            // for_each_native 组C 注）。
+            ("auto.diff_files_window", 9921, String),
             // === Plan 413 follow-up: console natives (in-app Console panel) ===
             ("auto.console.log", 2916, Bool),
             ("auto.console.lines", 2917, String),
@@ -2006,7 +2012,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     // PLAN-716 组B: 帧时间戳观测（9918/9919 空闲位）。
     ("auto.frame.begin_ms", 9918),
     ("auto.frame.present_ms", 9919),
-    ("auto.diff_files_window", 9920),
+    // PLAN-716 Phase 2 (供⑧): 9921——原 9920 与 ui.focus 撞号（见
+    // for_each_native 组C 注）。
+    ("auto.diff_files_window", 9921),
     // Plan 555 T06: 分发组合子（interop.* 限定名 + 裸名别名——裸名
     // resolve_qualified 经 NATIVE_ID_MAP 惰性注册命中）。
     ("interop.obj_get", 1860),

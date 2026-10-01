@@ -98,6 +98,35 @@ widget App {{
         }
     }
 
+    fn call_str(bridge: &crate::ui::vm_bridge::VmBridge, name: &str) -> String {
+        match bridge.call_vm_fn(name, &[]) {
+            Ok(auto_val::Value::Str(s)) => s.to_string(),
+            other => panic!("{name} must return Str, got {other:?}"),
+        }
+    }
+
+    /// plan703 同款临时文件对（T-14 裸名探针的 diff 输入）。
+    struct TempFixture(std::path::PathBuf);
+    impl TempFixture {
+        fn new(tag: &str) -> Self {
+            let p = std::env::temp_dir().join(format!("p716_probe_{tag}_{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&p);
+            std::fs::create_dir_all(&p).unwrap();
+            TempFixture(p)
+        }
+        fn write(&self, name: &str, content: &str) -> String {
+            let path = self.0.join(name);
+            std::fs::write(&path, content).unwrap();
+            // Forward slashes — no .at escape hazards on Windows paths.
+            path.to_string_lossy().replace('\\', "/")
+        }
+    }
+    impl Drop for TempFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     // ── AC-B2: .at 可达双轨（VM 9918/9919 + a2r 臂同源）──────────────────
 
     /// VM 轨：.at 直调 frame.begin_ms/present_ms（两段名→canonical 归一；
@@ -279,5 +308,55 @@ widget App {{
             win_ms <= full_ms.max(1),
             "窗口墙钟不应劣于全量: {win_ms}ms vs {full_ms}ms"
         );
+    }
+
+    // ── T-14 (Phase 2 供⑧): 9921 VM 轨裸名臂 ────────────────────────────
+
+    /// VM 轨 .at 裸名直调 diff_files_window——Phase 1 注册面有一处双缺：
+    /// ① codegen intrinsics 裸名表漏登记（计划勘定面）；② 9920 号位与
+    /// PLAN-095 ui.focus 撞号（T-00 槽位复核漏扫 :419 段——shim 表按清单
+    /// 序后注册者覆盖，VM 轨窗口调用恒派发 ui_focus shim 静默 no-op，
+    /// 下游 plan-022 挂死实测根因）。修复=补臂+改签 9921；本探针走完整
+    /// 调用链（parse→codegen→VM→shim→envelope）锁真值形。
+    #[test]
+    #[cfg(feature = "code-editor")]
+    fn diff_files_window_vm_bare_name() {
+        let fx = TempFixture::new("win");
+        let pa = fx.write("a.txt", "alpha\nbeta\ngamma\n");
+        let pb = fx.write("b.txt", "alpha\nbeta2\ngamma\n");
+        // limit=2 < rows_total=3 → truncated 置位形（截断语义随链路验证）。
+        let bridge = probe_bridge_with(&format!(
+            "fn probe_diffwin() str {{\n    return diff_files_window(\"{pa}\", \"{pb}\", 3, 0, 2)\n}}\n"
+        ));
+        let json = call_str(&bridge, "probe_diffwin");
+        assert!(json.contains("rows_total"), "窗口 envelope rows_total 在场: {json}");
+        assert!(json.contains("\"rows_total\":3"), "rows_total 真值: {json}");
+        assert!(json.contains("\"truncated\":true"), "窗口截断置位: {json}");
+        assert!(json.contains("\"adds\":1"), "行内容真值（非 err 净形）: {json}");
+        assert!(json.contains("\"hunks\":[{\"a1\":0,\"a2\":3,\"b1\":0,\"b2\":3}]"), "hunks 全量保持: {json}");
+        assert!(!json.contains("gamma"), "窗口外行不物化: {json}");
+    }
+
+    /// 四面在册零扰动锚（供⑧ 修复不回改 Phase 1 注册面）：catalog 条目、
+    /// trans 裸名臂、ui_gen handler 直调臂的 grep 锚（plan703/710 形）。
+    /// 9921=供⑧ 改签位；ui.focus 独占 9920 断言防回撞。
+    #[test]
+    fn diff_files_window_faces_registered() {
+        // catalog: 9921 canonical 归一（native_catalog.rs for_each_native 表）。
+        let src = include_str!("../vm/native_catalog.rs");
+        assert!(
+            src.contains("(9921, NATIVE_DIFF_FILES_WINDOW, shim_diff_files_window, \"auto.diff_files_window\")"),
+            "catalog 9921 条目在册（供⑧ 改签位）"
+        );
+        assert!(
+            !src.contains("(9920, NATIVE_DIFF_FILES_WINDOW"),
+            "9920 撞号残留（ui.focus 独占位）"
+        );
+        // trans 裸名臂（a2r 轨）。
+        let tr = include_str!("../trans/rust.rs");
+        assert!(tr.contains("diff_files_window"), "trans 裸名臂在册");
+        // ui_gen handler 直调臂。
+        let ug = include_str!("../ui_gen/rust.rs");
+        assert!(ug.contains("diff_files_window"), "ui_gen 直调臂在册");
     }
 }
