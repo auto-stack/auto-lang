@@ -1101,6 +1101,13 @@ impl<'a> AuraViewBuilder<'a> {
                         return self.render_child_widget(child_widget, &prop_values, events, bindings, fills.as_ref());
                     }
                 }
+                // PLAN-095 T-07 (G-11): 未解析子件引用给可定位诊断——此前
+                // 静默降级 `<Name />` 文本占位（093 §8.16「子件整体空渲染」
+                // 的构成面之一），消费方无从定位。
+                eprintln!(
+                    "[AURA-CHILD-MISS] component '{}' not resolvable at this site — declare it in the same file (sibling widget) or import via `use <module>: {}`",
+                    name, name
+                );
                 View::Text {
                     content: format!("<{} />", name),
                     style: None,

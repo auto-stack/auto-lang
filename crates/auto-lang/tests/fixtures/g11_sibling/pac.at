@@ -1,0 +1,12 @@
+// pac.at — PLAN-095 T-01 G-11 minimal repro: same-file sibling widget
+// referenced from the root widget's view with NO use line. 093 capability-map
+// §8.16 observed the child subtree rendering zero nodes on the VM track
+// (host shell styles intact). Evidence: AutoUI MCP autoui_snapshot.
+name: "t01-g11-sibling"
+version: "0.1.0"
+scene: "ui"
+render: "vue"
+api: "rust"
+title: "T01 G11 Sibling"
+title_zh: "T01 G11 同文件兄弟"
+theme: "dark"

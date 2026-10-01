@@ -1,0 +1,52 @@
+// app.at — PLAN-095 T-01 G-11 minimal repro. G11Host view references its
+// same-file sibling widget G11Child directly (no use line — the suspected
+// trigger face from 093 §8.16). Expected per contract: the child widget's
+// subtree (border col + "child body node" text) instantiates on the VM
+// track; observed before fix: host shell renders, child content zero nodes
+// (registry miss falls to <G11Child /> placeholder per aura_view_builder
+// component arm).
+
+widget G11Host {
+    msg {
+        Init,
+    }
+
+    model {
+        var marker str = "host-shell"
+    }
+
+    view {
+        col {
+            style: "w-full h-screen flex-col bg-background text-foreground p-4 gap-2"
+            text "host above sibling"
+            G11Child { }
+            text "host below sibling"
+        }
+    }
+
+    on {
+        Init -> {
+            print("[g11] host init")
+        }
+    }
+}
+
+widget G11Child {
+    msg {
+    }
+
+    model {
+        var label str = "child-content"
+    }
+
+    view {
+        col {
+            style: "border border-border p-2 gap-1"
+            text "child body node"
+            text .label
+        }
+    }
+
+    on {
+    }
+}

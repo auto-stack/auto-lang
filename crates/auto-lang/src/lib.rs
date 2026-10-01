@@ -4051,14 +4051,22 @@ fn build_dynamic_component_inner(
     .map_err(|e| e.to_string())?;
     let mut root_decl: Option<crate::ast::WidgetDecl> = None;
     let mut widget = None;
+    // PLAN-095 T-07 (G-11): 同文件兄弟 widget 一并提取注册——此前 break 只取
+    // 首个 WidgetDecl，同文件兄弟不进 WidgetRegistry，组件臂 miss 静默降级，
+    // 子件整体零节点（093 §8.16 实证）。兄弟先于 use 导入注册（显式 use
+    // 稍后装载时同名覆写——显式导入优先）。
+    let mut sibling_decls: Vec<crate::ast::WidgetDecl> = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
-            root_decl = Some(decl.clone());
-            widget = Some(
-                crate::aura::extract_widget_from_decl(decl)
-                    .map_err(|e| e.to_string())?
-            );
-            break;
+            if root_decl.is_none() {
+                root_decl = Some(decl.clone());
+                widget = Some(
+                    crate::aura::extract_widget_from_decl(decl)
+                        .map_err(|e| e.to_string())?
+                );
+            } else {
+                sibling_decls.push(decl.clone());
+            }
         }
     }
 
@@ -4091,6 +4099,14 @@ fn build_dynamic_component_inner(
     // PR-3b Step 4: collect child WidgetDecls alongside child AuraWidgets so the
     // decl-based synthesis path can compile child handlers into the single VM.
     let mut child_decls: Vec<crate::ast::WidgetDecl> = Vec::new();
+    // PLAN-095 T-07 (G-11): 同文件兄弟 widget 注册进 registry + child_decls
+    //（handler 编入单 VM，与 use 导入子件同面）。
+    for decl in &sibling_decls {
+        let aura = crate::aura::extract_widget_from_decl(decl)
+            .map_err(|e| e.to_string())?;
+        registry.register(aura);
+        child_decls.push(decl.clone());
+    }
     let mut import_stmts: Vec<crate::ast::Stmt> = Vec::new();
     // Visited-module / seen-symbol sets span ALL top-level use stmts so shared
     // transitive deps load once.
