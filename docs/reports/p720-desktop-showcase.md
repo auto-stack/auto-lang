@@ -81,3 +81,14 @@ base commit：ccf1b9b78e43b49ec6913234df7d0d88dbfa45e7；book 只读依赖 d7a71
 | 04-launcher-dark.png | 6e5974124f3b337a58d46e6d6d749e229593c3fce57fe4699c4504101e660622 |
 
 修正仅资产与证据，Vue/数据/路由/正文/测试断言和 canonical Spec 均不变；无需新语义修订。受影响验收重新验证：六图 source hash/尺寸、新构建、既有展示与发布页图片/console 用例、60 组合/24 图更新及人工看图。未触及网站行为的旧完整回归保留为已识别基线，Category A 不运行 Cargo/docs_gen。
+
+### 修正验证结果
+
+实施过程中主线合入 PLAN-718 后续阅读 UI。已同步至 `1867dfce452a59bef8c098afb7e6fcf6c2c3fd96`，资产提交从 `264c0ec6ca1d1e0057103ffbdb4610b8409ebd57` rebase 为 `5b0426b7c63e0e5654c4f31ee5be0e267b1fc19b`，range-diff 一项全等。旧基线构建 160.95s 不作为最终集成构建，集成后重新构建完成 197.08s、exit 0；沿用主线现有高亮与 bundle 提示，无资产引入的代码/构建警告。
+
+- `AUTO_WEBSITE_TEST_PORT=4222 CI=1 npx playwright test tests/desktop-showcase.spec.ts tests/site-ui.spec.ts --grep 'real desktop|six pages|hero image|screenshot gallery|start menu uses|no new console errors on /v05/' --workers=2 --reporter=line`：14 passed（1.2m），六路由逐帧、四组 hero 几何、真实 Launcher、gallery、keyboard/dialog、v05 console。
+- 看图发现一张窄屏 EN dark 图在异步图片解码前截图，naturalWidth/complete 尚不足以保证像素已绘制。测试只增加 `img.decode()` 等待（commit `8c05b56f22ad1d751d1a7823054b5e186bed8f90`），不改断言或网页行为。仅重新运行受影响的矩阵：`AUTO_WEBSITE_TEST_PORT=4223 CI=1 npx playwright test tests/desktop-showcase.spec.ts --grep 'six pages' --workers=1 --reporter=line`，1 passed（35.4s），60 组合/24 图全部重新生成。其他13项在同一网页实现/依赖/断言上不变，复用上项证据。
+- 最终视觉包 `p720-desktop-showcase/manifest.json` 为 24 条（六路由各四条）；人工查看 ZH 宽屏专题、ZH 窄屏发布页及曾有解码问题的 EN dark 窄屏发布页：图片完整、新快捷方式可见、正文与顶栏无遮挡。首批完整77项为历史基线，不声称本轮跑了77项或覆盖 PLAN-718 新增测试。
+- 六张源图/入库/构建 dist/HTTP 返回字节的 SHA256 全部相同，尺寸均 2560×1600。旧 4220 preview 的静态文件元数据缓存曾使新图片按旧长度截断，已核对进程属于本工作区并重启；现 `http://127.0.0.1:4220/` 六图 HTTP200 且完整 hash 与当前来源表相符。此次仅管理自有预览进程。
+- 当前 canonical inputs（继承主线718，不覆盖其变更）：project SHA256 `994113f25acd22617fb92862204fe14a737077d6caa0e66d35c53c4a55a8ebdc`；ui-presentation `07a644d95f92d73ef244fcebafb4a1cd75c4b6ce32cde8825ac25323ec7734c0`；plans `cb47183bc0416aec065a740815fcd5a30f06c914e5d75151703a806b732326ea`。桌面展示契约逐字不变，本修正没有额外 Spec delta、结构/目标变化或债务延期。
+- AC-01/04：来源 hash、原图查看与现有说明匹配；AC-02/03：六路由与单源接线复验，网页源未改；AC-05：原图/dialog/键盘与矩阵；AC-06：最终集成 build、相关14项与更新后的矩阵、视觉包和 diff check。全部 pass；复审仍在实施上下文中按 artifact 重建，不声称人员独立。最终 commit-bound 记录见共享 Plan §9。
