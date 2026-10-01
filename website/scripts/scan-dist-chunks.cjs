@@ -8,9 +8,10 @@ const path = require('path')
 const distArgIdx = process.argv.indexOf('--dist')
 const dist = distArgIdx > -1 ? process.argv[distArgIdx + 1] : path.resolve(__dirname, '..', '.vitepress', 'dist')
 const assets = path.join(dist, 'assets')
+// PLAN-718 T-05：编辑器 chunk 判据用 EditorState——'.cm-editor' 字符串会误报
+// （theme 入口含 715 的 CodeMirror 热键守卫选择器字面量，实测假阳性）。
 const MARKERS = {
-  'cm-editor': 'codemirror-editor',
-  'EditorState': 'codemirror-state',
+  'EditorState': 'codemirror',
   'SnippetRunner': 'snippet-runner',
   'CodeView': 'codeview',
   'ScriptShipView': 'scriptship',

@@ -111,3 +111,15 @@ localNav 叠层几何、auto-fence 数、outline 数、页面级横向溢出）�
 - 构建：`npm run build` 成功（122s）。构建告警 8913 条 `The language 'auto' is not loaded`
   为 715 既有基线（shiki 未注册 auto 围栏语言由 AutoFence 承接；语法高亮扩展不在本计划范围），
   非新增。水合错误：0。
+
+## 9. T-07 视觉复核回执
+
+- 原矩阵 final：96/96 图 landing 断言 0 失败、problem 行 0（脚本 receipts；zh 页首次全部
+  落在真实 `/zh/` URL——715 的 zh 截图 `/zh/zh/` 404 缺口就此闭合）。
+- 阅读矩阵 final：32/32 图 landing 断言 0 失败、problem 行 0（滚动态 localNav 叠压 0/16，
+  T-03 修正生效）。
+- 人工看图（视觉验收代理 ×2，逐张判定见 `docs/reports/p718-website-ui/VISUAL-REVIEW.md`）：
+  阅读矩阵 32/32 pass；原矩阵子集 30/32——4 张 playground 桌面图 hero 标题顶部裁切为
+  **715 已入库同缺陷（既存，非本计划引入）**，记入 KNOWN-DEBT-AND-RISKS，不扩围修复。
+- 715 历史失效范围：`p715-website-ui/final-*-zh-*.png`（/zh/zh/ 404）由本计划 baseline/
+  final 的 zh 图取代；715 EN 图仍有效；未覆写 715 目录。
