@@ -132,6 +132,14 @@ spec_inputs：主线718当前 website/project.md=994113f25acd22617fb92862204fe14
 
 findings：早期视觉取景1张异步解码空白，已增加 decode 等待并重新生成24图；旧4220服务元数据按旧尺寸截断响应，已确认进程归属后重启，六张 HTTP bytes hash 全相同。没有修改网页行为、删除断言或延期验收；无新增债务，无 Rust/Cargo/docs_gen。原资产 264c0ec6c→5b0426b7c range-diff 全等；主线并发网站718变更已同步后重建复验。
 
+### repair-1 合入检查点
+
+stage: merge | plan_id: PLAN-720 | plan_revision: 1 | repair: 1 | outcome: blocked（仅原有 ledger/归档收尾；重拍资产已合入） | prepared: 699368fd8e79a533c8a594bc197904877a152fe9 review pass，工作树 clean，wt-guard clean | landed: master 从 ec27ff80ab43bdc3c3c851885e770cd6872e42e3 ff-only 至 764508169a2bc7a869ab3fa1f4f48ed2c32d8c9b，实测两者HEAD相同，无merge commit。
+
+rebase range-diff 三项全等：5b0426b7c63e0e5654c4f31ee5be0e267b1fc19b→8a67682caf44ec9cf1b2c1d871b1319ab1bd3364；8c05b56f22ad1d751d1a7823054b5e186bed8f90→29515ead6e99807c2c4aa008c24cf66e69a380e7；699368fd8e79a533c8a594bc197904877a152fe9→764508169a2bc7a869ab3fa1f4f48ed2c32d8c9b。旧 reviewed_commit→delivery 的 website/Spec diff 为空，当前构建与证据仍适用。main 六资产均与最新源文件 hash 一致，/zh/v05/、/zh/autoos/、/zh/os 最终 preview smoke HTTP200 且图片src正确。
+
+production artifacts：197.08s 集成构建与重启后的 http://127.0.0.1:4220/ 已提供本批新图，公开站未部署。ledger_refreshed/archived/cleaned 沿用原 pending（无新 Spec delta，不手写 live ledger）；Plan 保持 reviewed，原720工作树 clean且已合入，留作预览和收尾。公开部署、Rust批量回归均不伪称完成。
+
 ## 10. 待澄清事项
 
 无阻塞偏好；采用站点现有视觉与用户截图顺序，保留其他会话 WIP。
