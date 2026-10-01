@@ -1,0 +1,106 @@
+
+[WebServer] (node:17480) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+[WebServer] (node:13756) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 88 tests using 1 worker
+
+
+(node:32572) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+(node:32572) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/88] [chromium] › tests\apps-introduction.spec.ts:10:5 › static application introduction and navigation: /apps
+[2/88] [chromium] › tests\apps-introduction.spec.ts:10:5 › static application introduction and navigation: /apps/autoedit/
+[3/88] [chromium] › tests\apps-introduction.spec.ts:10:5 › static application introduction and navigation: /apps/autoshell/
+[4/88] [chromium] › tests\apps-introduction.spec.ts:10:5 › static application introduction and navigation: /apps/automusk/
+[5/88] [chromium] › tests\apps-introduction.spec.ts:10:5 › static application introduction and navigation: /apps/jadeedit/
+[6/88] [chromium] › tests\apps-introduction.spec.ts:10:5 › static application introduction and navigation: /apps/demos/
+[7/88] [chromium] › tests\apps-introduction.spec.ts:54:3 › en introductions remain readable at five widths in both themes
+[8/88] [chromium] › tests\apps-introduction.spec.ts:72:3 › en Shell introduction and retained evidence guide link both ways
+[9/88] [chromium] › tests\apps-introduction.spec.ts:10:5 › static application introduction and navigation: /zh/apps
+[10/88] [chromium] › tests\apps-introduction.spec.ts:10:5 › static application introduction and navigation: /zh/apps/autoedit/
+[11/88] [chromium] › tests\apps-introduction.spec.ts:10:5 › static application introduction and navigation: /zh/apps/autoshell/
+[12/88] [chromium] › tests\apps-introduction.spec.ts:10:5 › static application introduction and navigation: /zh/apps/automusk/
+[13/88] [chromium] › tests\apps-introduction.spec.ts:10:5 › static application introduction and navigation: /zh/apps/jadeedit/
+[14/88] [chromium] › tests\apps-introduction.spec.ts:10:5 › static application introduction and navigation: /zh/apps/demos/
+[15/88] [chromium] › tests\apps-introduction.spec.ts:54:3 › /zh introductions remain readable at five widths in both themes
+[16/88] [chromium] › tests\apps-introduction.spec.ts:72:3 › /zh Shell introduction and retained evidence guide link both ways
+[17/88] [chromium] › tests\desktop-showcase.spec.ts:9:3 › real desktop sequence, source and keyboard zoom: /v05/
+[18/88] [chromium] › tests\desktop-showcase.spec.ts:9:3 › real desktop sequence, source and keyboard zoom: /zh/v05/
+[19/88] [chromium] › tests\desktop-showcase.spec.ts:9:3 › real desktop sequence, source and keyboard zoom: /autoos/
+[20/88] [chromium] › tests\desktop-showcase.spec.ts:9:3 › real desktop sequence, source and keyboard zoom: /zh/autoos/
+[21/88] [chromium] › tests\desktop-showcase.spec.ts:9:3 › real desktop sequence, source and keyboard zoom: /os
+[22/88] [chromium] › tests\desktop-showcase.spec.ts:9:3 › real desktop sequence, source and keyboard zoom: /zh/os
+[23/88] [chromium] › tests\desktop-showcase.spec.ts:57:1 › six pages: five widths, both themes, and 24 verified visual captures
+[24/88] [chromium] › tests\os-ai-introduction.spec.ts:7:5 › readable introduction, sources, outline and locale: /os
+[25/88] [chromium] › tests\os-ai-introduction.spec.ts:7:5 › readable introduction, sources, outline and locale: /ai
+[26/88] [chromium] › tests\os-ai-introduction.spec.ts:7:5 › readable introduction, sources, outline and locale: /autoos/
+[27/88] [chromium] › tests\os-ai-introduction.spec.ts:7:5 › readable introduction, sources, outline and locale: /ui-desktop
+[28/88] [chromium] › tests\os-ai-introduction.spec.ts:7:5 › readable introduction, sources, outline and locale: /articles/autoos-history
+[29/88] [chromium] › tests\os-ai-introduction.spec.ts:7:5 › readable introduction, sources, outline and locale: /articles/auto-ai-history
+[30/88] [chromium] › tests\os-ai-introduction.spec.ts:58:3 › search finds overview and history in English
+[31/88] [chromium] › tests\os-ai-introduction.spec.ts:7:5 › readable introduction, sources, outline and locale: /zh/os
+[32/88] [chromium] › tests\os-ai-introduction.spec.ts:7:5 › readable introduction, sources, outline and locale: /zh/ai
+[33/88] [chromium] › tests\os-ai-introduction.spec.ts:7:5 › readable introduction, sources, outline and locale: /zh/autoos/
+[34/88] [chromium] › tests\os-ai-introduction.spec.ts:7:5 › readable introduction, sources, outline and locale: /zh/ui-desktop
+[35/88] [chromium] › tests\os-ai-introduction.spec.ts:7:5 › readable introduction, sources, outline and locale: /zh/articles/autoos-history
+[36/88] [chromium] › tests\os-ai-introduction.spec.ts:7:5 › readable introduction, sources, outline and locale: /zh/articles/auto-ai-history
+[37/88] [chromium] › tests\os-ai-introduction.spec.ts:58:3 › search finds overview and history in Chinese
+[38/88] [chromium] › tests\os-ai-introduction.spec.ts:76:3 › home and release keep product entry points and the corrected gallery: English
+[39/88] [chromium] › tests\os-ai-introduction.spec.ts:76:3 › home and release keep product entry points and the corrected gallery: /zh
+[40/88] [chromium] › tests\site-ui.spec.ts:27:3 › navigation & locale › zh homepage navbar links stay in /zh
+[41/88] [chromium] › tests\site-ui.spec.ts:40:3 › navigation & locale › en homepage navbar links are EN paths
+[42/88] [chromium] › tests\site-ui.spec.ts:46:3 › navigation & locale › language switch preserves path and locale
+[43/88] [chromium] › tests\site-ui.spec.ts:54:3 › navigation & locale › logo routes to locale home
+[44/88] [chromium] › tests\site-ui.spec.ts:60:3 › navigation & locale › current position marked on section page
+[45/88] [chromium] › tests\site-ui.spec.ts:66:3 › navigation & locale › shared SPA entries labeled and reachable from nav
+[46/88] [chromium] › tests\site-ui.spec.ts:81:3 › navigation & locale › mobile menu: opens, groups, closes on navigate, Esc returns focus
+[47/88] [chromium] › tests\site-ui.spec.ts:117:3 › site search › search button opens VitePress local search modal
+[48/88] [chromium] › tests\site-ui.spec.ts:130:3 › site search › zh locale: 所有权 hits zh docs
+[49/88] [chromium] › tests\site-ui.spec.ts:143:3 › site search › AutoShell query hits the AutoShell topic page
+[50/88] [chromium] › tests\site-ui.spec.ts:153:3 › site search › mobile search opens from navbar
+[51/88] [chromium] › tests\site-ui.spec.ts:163:3 › controls & keyboard › dropdown: aria-expanded, Esc close + focus return
+[52/88] [chromium] › tests\site-ui.spec.ts:174:3 › controls & keyboard › theme toggle has name and persists across navigation
+[53/88] [chromium] › tests\site-ui.spec.ts:193:5 › viewports › no horizontal overflow at 360x800 (home+v05)
+[54/88] [chromium] › tests\site-ui.spec.ts:193:5 › viewports › no horizontal overflow at 390x844 (home+v05)
+[55/88] [chromium] › tests\site-ui.spec.ts:193:5 › viewports › no horizontal overflow at 768x1024 (home+v05)
+[56/88] [chromium] › tests\site-ui.spec.ts:193:5 › viewports › no horizontal overflow at 1024x768 (home+v05)
+[57/88] [chromium] › tests\site-ui.spec.ts:193:5 › viewports › no horizontal overflow at 1440x1000 (home+v05)
+[58/88] [chromium] › tests\site-ui.spec.ts:213:3 › viewports › 360px: navbar controls reachable and ≥44px touch targets
+[59/88] [chromium] › tests\site-ui.spec.ts:231:7 › v05 release page › hero image top < 1.5 viewport at 390 (/v05/)
+[60/88] [chromium] › tests\site-ui.spec.ts:231:7 › v05 release page › hero image top < 1.5 viewport at 390 (/zh/v05/)
+[61/88] [chromium] › tests\site-ui.spec.ts:231:7 › v05 release page › hero image top < 1.5 viewport at 1440 (/v05/)
+[62/88] [chromium] › tests\site-ui.spec.ts:231:7 › v05 release page › hero image top < 1.5 viewport at 1440 (/zh/v05/)
+[63/88] [chromium] › tests\site-ui.spec.ts:243:3 › v05 release page › stats moved to journey: desktop section precedes stats
+[64/88] [chromium] › tests\site-ui.spec.ts:250:3 › v05 release page › section nav: hash direct + click + no heading cover
+[65/88] [chromium] › tests\site-ui.spec.ts:268:3 › v05 release page › screenshot gallery: tabs switch main image
+[66/88] [chromium] › tests\site-ui.spec.ts:280:3 › v05 release page › start menu uses real launcher image; no TODO placeholders
+[67/88] [chromium] › tests\site-ui.spec.ts:290:3 › v05 release page › philosophy details expandable and locatable
+[68/88] [chromium] › tests\site-ui.spec.ts:300:3 › v05 release page › kanban comparison present with both arms
+[69/88] [chromium] › tests\site-ui.spec.ts:310:3 › image dialog keyboard › Enter opens, Esc closes, focus returns
+[70/88] [chromium] › tests\site-ui.spec.ts:327:3 › autoshell regression › native overview, F1/F2/F3 sections and script tabs intact
+[71/88] [chromium] › tests\site-ui.spec.ts:342:3 › autoshell regression › copy button writes clipboard
+[72/88] [chromium] › tests\site-ui.spec.ts:351:3 › autoshell regression › app topic pages render no literal component source (md indent regression)
+[73/88] [chromium] › tests\site-ui.spec.ts:361:3 › autoshell regression › download links for scripts and sample data
+[74/88] [chromium] › tests\site-ui.spec.ts:371:3 › reduced motion › content visible with reduced motion (reveal disabled)
+[75/88] [chromium] › tests\site-ui.spec.ts:385:5 › console hygiene › no new console errors on /
+[76/88] [chromium] › tests\site-ui.spec.ts:385:5 › console hygiene › no new console errors on /zh/
+[77/88] [chromium] › tests\site-ui.spec.ts:385:5 › console hygiene › no new console errors on /v05/
+[78/88] [chromium] › tests\site-ui.spec.ts:385:5 › console hygiene › no new console errors on /apps
+[79/88] [chromium] › tests\site-ui.spec.ts:385:5 › console hygiene › no new console errors on /playground
+[80/88] [chromium] › tests\spa-routes.spec.ts:49:5 › Gallery SPA › direct URL access: /ui/gallery/ loads SPA
+[81/88] [chromium] › tests\spa-routes.spec.ts:61:5 › Gallery SPA › client-side navigation from home to Gallery
+[82/88] [chromium] › tests\spa-routes.spec.ts:49:5 › Blocks SPA › direct URL access: /ui/blocks/ loads SPA
+[83/88] [chromium] › tests\spa-routes.spec.ts:61:5 › Blocks SPA › client-side navigation from home to Blocks
+[84/88] [chromium] › tests\spa-routes.spec.ts:49:5 › Charts SPA › direct URL access: /ui/charts/ loads SPA
+[85/88] [chromium] › tests\spa-routes.spec.ts:61:5 › Charts SPA › client-side navigation from home to Charts
+[86/88] [chromium] › tests\spa-routes.spec.ts:49:5 › A2UI SPA › direct URL access: /ui/a2ui/index.html loads SPA
+[87/88] [chromium] › tests\spa-routes.spec.ts:61:5 › A2UI SPA › client-side navigation from home to A2UI
+[88/88] [chromium] › tests\spa-routes.spec.ts:80:1 › click navigation: home -> Gallery -> Charts -> A2UI -> Blocks
+  88 passed (5.2m)

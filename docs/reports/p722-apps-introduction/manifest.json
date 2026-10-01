@@ -1,0 +1,1181 @@
+{
+  "checkedAt": "2026-10-01T09:12:25.672Z",
+  "checks": [
+    {
+      "route": "/apps",
+      "actualUrl": "http://127.0.0.1:4227/apps",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto applications"
+    },
+    {
+      "route": "/zh/apps",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto 应用"
+    },
+    {
+      "route": "/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoedit/",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoEdit: a code and text workspace\n​"
+    },
+    {
+      "route": "/zh/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoedit/",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoEdit：代码与文本工作台\n​"
+    },
+    {
+      "route": "/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell: commands, data pipelines, and AutoScript\n​"
+    },
+    {
+      "route": "/zh/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell：命令、数据管道与 AutoScript\n​"
+    },
+    {
+      "route": "/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/apps/automusk/",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoMusk: a coding agent built around Plans and Specs\n​"
+    },
+    {
+      "route": "/zh/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/automusk/",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoMusk：围绕 Plan 与 Spec 的 Coding Agent\n​"
+    },
+    {
+      "route": "/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/jadeedit/",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "JadeEdit: documents and local knowledge\n​"
+    },
+    {
+      "route": "/zh/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/jadeedit/",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "JadeEdit：文档与本地知识工作台\n​"
+    },
+    {
+      "route": "/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/apps/demos/",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "System applications and demos\n​"
+    },
+    {
+      "route": "/zh/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/demos/",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "系统应用与 Demo\n​"
+    },
+    {
+      "route": "/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/guide/",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell\nThe structured shell"
+    },
+    {
+      "route": "/zh/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/guide/",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell\n结构化 Shell"
+    },
+    {
+      "route": "/apps",
+      "actualUrl": "http://127.0.0.1:4227/apps",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto applications",
+      "screenshot": "apps-390-light.png"
+    },
+    {
+      "route": "/zh/apps",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto 应用",
+      "screenshot": "zh-apps-390-light.png"
+    },
+    {
+      "route": "/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoedit/",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoEdit: a code and text workspace\n​",
+      "screenshot": "apps-autoedit-390-light.png"
+    },
+    {
+      "route": "/zh/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoedit/",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoEdit：代码与文本工作台\n​",
+      "screenshot": "zh-apps-autoedit-390-light.png"
+    },
+    {
+      "route": "/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell: commands, data pipelines, and AutoScript\n​",
+      "screenshot": "apps-autoshell-390-light.png"
+    },
+    {
+      "route": "/zh/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell：命令、数据管道与 AutoScript\n​",
+      "screenshot": "zh-apps-autoshell-390-light.png"
+    },
+    {
+      "route": "/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/apps/automusk/",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoMusk: a coding agent built around Plans and Specs\n​",
+      "screenshot": "apps-automusk-390-light.png"
+    },
+    {
+      "route": "/zh/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/automusk/",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoMusk：围绕 Plan 与 Spec 的 Coding Agent\n​",
+      "screenshot": "zh-apps-automusk-390-light.png"
+    },
+    {
+      "route": "/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/jadeedit/",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "JadeEdit: documents and local knowledge\n​",
+      "screenshot": "apps-jadeedit-390-light.png"
+    },
+    {
+      "route": "/zh/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/jadeedit/",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "JadeEdit：文档与本地知识工作台\n​",
+      "screenshot": "zh-apps-jadeedit-390-light.png"
+    },
+    {
+      "route": "/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/apps/demos/",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "System applications and demos\n​",
+      "screenshot": "apps-demos-390-light.png"
+    },
+    {
+      "route": "/zh/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/demos/",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "系统应用与 Demo\n​",
+      "screenshot": "zh-apps-demos-390-light.png"
+    },
+    {
+      "route": "/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/guide/",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell\nThe structured shell",
+      "screenshot": "apps-autoshell-guide-390-light.png"
+    },
+    {
+      "route": "/zh/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/guide/",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell\n结构化 Shell",
+      "screenshot": "zh-apps-autoshell-guide-390-light.png"
+    },
+    {
+      "route": "/apps",
+      "actualUrl": "http://127.0.0.1:4227/apps",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto applications"
+    },
+    {
+      "route": "/zh/apps",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto 应用"
+    },
+    {
+      "route": "/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoedit/",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoEdit: a code and text workspace\n​"
+    },
+    {
+      "route": "/zh/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoedit/",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoEdit：代码与文本工作台\n​"
+    },
+    {
+      "route": "/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell: commands, data pipelines, and AutoScript\n​"
+    },
+    {
+      "route": "/zh/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell：命令、数据管道与 AutoScript\n​"
+    },
+    {
+      "route": "/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/apps/automusk/",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoMusk: a coding agent built around Plans and Specs\n​"
+    },
+    {
+      "route": "/zh/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/automusk/",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoMusk：围绕 Plan 与 Spec 的 Coding Agent\n​"
+    },
+    {
+      "route": "/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/jadeedit/",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "JadeEdit: documents and local knowledge\n​"
+    },
+    {
+      "route": "/zh/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/jadeedit/",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "JadeEdit：文档与本地知识工作台\n​"
+    },
+    {
+      "route": "/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/apps/demos/",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "System applications and demos\n​"
+    },
+    {
+      "route": "/zh/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/demos/",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "系统应用与 Demo\n​"
+    },
+    {
+      "route": "/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/guide/",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell\nThe structured shell"
+    },
+    {
+      "route": "/zh/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/guide/",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell\n结构化 Shell"
+    },
+    {
+      "route": "/apps",
+      "actualUrl": "http://127.0.0.1:4227/apps",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto applications"
+    },
+    {
+      "route": "/zh/apps",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto 应用"
+    },
+    {
+      "route": "/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoedit/",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoEdit: a code and text workspace\n​"
+    },
+    {
+      "route": "/zh/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoedit/",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoEdit：代码与文本工作台\n​"
+    },
+    {
+      "route": "/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell: commands, data pipelines, and AutoScript\n​"
+    },
+    {
+      "route": "/zh/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell：命令、数据管道与 AutoScript\n​"
+    },
+    {
+      "route": "/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/apps/automusk/",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoMusk: a coding agent built around Plans and Specs\n​"
+    },
+    {
+      "route": "/zh/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/automusk/",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoMusk：围绕 Plan 与 Spec 的 Coding Agent\n​"
+    },
+    {
+      "route": "/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/jadeedit/",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "JadeEdit: documents and local knowledge\n​"
+    },
+    {
+      "route": "/zh/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/jadeedit/",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "JadeEdit：文档与本地知识工作台\n​"
+    },
+    {
+      "route": "/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/apps/demos/",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "System applications and demos\n​"
+    },
+    {
+      "route": "/zh/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/demos/",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "系统应用与 Demo\n​"
+    },
+    {
+      "route": "/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/guide/",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell\nThe structured shell"
+    },
+    {
+      "route": "/zh/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/guide/",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell\n结构化 Shell"
+    },
+    {
+      "route": "/apps",
+      "actualUrl": "http://127.0.0.1:4227/apps",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto applications",
+      "screenshot": "apps-1440-light.png"
+    },
+    {
+      "route": "/zh/apps",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto 应用",
+      "screenshot": "zh-apps-1440-light.png"
+    },
+    {
+      "route": "/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoedit/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoEdit: a code and text workspace\n​",
+      "screenshot": "apps-autoedit-1440-light.png"
+    },
+    {
+      "route": "/zh/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoedit/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoEdit：代码与文本工作台\n​",
+      "screenshot": "zh-apps-autoedit-1440-light.png"
+    },
+    {
+      "route": "/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell: commands, data pipelines, and AutoScript\n​",
+      "screenshot": "apps-autoshell-1440-light.png"
+    },
+    {
+      "route": "/zh/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell：命令、数据管道与 AutoScript\n​",
+      "screenshot": "zh-apps-autoshell-1440-light.png"
+    },
+    {
+      "route": "/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/apps/automusk/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoMusk: a coding agent built around Plans and Specs\n​",
+      "screenshot": "apps-automusk-1440-light.png"
+    },
+    {
+      "route": "/zh/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/automusk/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoMusk：围绕 Plan 与 Spec 的 Coding Agent\n​",
+      "screenshot": "zh-apps-automusk-1440-light.png"
+    },
+    {
+      "route": "/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/jadeedit/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "JadeEdit: documents and local knowledge\n​",
+      "screenshot": "apps-jadeedit-1440-light.png"
+    },
+    {
+      "route": "/zh/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/jadeedit/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "JadeEdit：文档与本地知识工作台\n​",
+      "screenshot": "zh-apps-jadeedit-1440-light.png"
+    },
+    {
+      "route": "/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/apps/demos/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "System applications and demos\n​",
+      "screenshot": "apps-demos-1440-light.png"
+    },
+    {
+      "route": "/zh/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/demos/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "系统应用与 Demo\n​",
+      "screenshot": "zh-apps-demos-1440-light.png"
+    },
+    {
+      "route": "/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/guide/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell\nThe structured shell",
+      "screenshot": "apps-autoshell-guide-1440-light.png"
+    },
+    {
+      "route": "/zh/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/guide/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoShell\n结构化 Shell",
+      "screenshot": "zh-apps-autoshell-guide-1440-light.png"
+    },
+    {
+      "route": "/apps",
+      "actualUrl": "http://127.0.0.1:4227/apps",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto applications"
+    },
+    {
+      "route": "/zh/apps",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto 应用"
+    },
+    {
+      "route": "/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoedit/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoEdit: a code and text workspace\n​"
+    },
+    {
+      "route": "/zh/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoedit/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoEdit：代码与文本工作台\n​"
+    },
+    {
+      "route": "/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell: commands, data pipelines, and AutoScript\n​"
+    },
+    {
+      "route": "/zh/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell：命令、数据管道与 AutoScript\n​"
+    },
+    {
+      "route": "/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/apps/automusk/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoMusk: a coding agent built around Plans and Specs\n​"
+    },
+    {
+      "route": "/zh/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/automusk/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoMusk：围绕 Plan 与 Spec 的 Coding Agent\n​"
+    },
+    {
+      "route": "/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/jadeedit/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "JadeEdit: documents and local knowledge\n​"
+    },
+    {
+      "route": "/zh/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/jadeedit/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "JadeEdit：文档与本地知识工作台\n​"
+    },
+    {
+      "route": "/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/apps/demos/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "System applications and demos\n​"
+    },
+    {
+      "route": "/zh/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/demos/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "系统应用与 Demo\n​"
+    },
+    {
+      "route": "/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/guide/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell\nThe structured shell"
+    },
+    {
+      "route": "/zh/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/guide/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell\n结构化 Shell"
+    },
+    {
+      "route": "/apps",
+      "actualUrl": "http://127.0.0.1:4227/apps",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto applications",
+      "screenshot": "apps-390-dark.png"
+    },
+    {
+      "route": "/zh/apps",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto 应用",
+      "screenshot": "zh-apps-390-dark.png"
+    },
+    {
+      "route": "/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoedit/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoEdit: a code and text workspace\n​",
+      "screenshot": "apps-autoedit-390-dark.png"
+    },
+    {
+      "route": "/zh/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoedit/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoEdit：代码与文本工作台\n​",
+      "screenshot": "zh-apps-autoedit-390-dark.png"
+    },
+    {
+      "route": "/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell: commands, data pipelines, and AutoScript\n​",
+      "screenshot": "apps-autoshell-390-dark.png"
+    },
+    {
+      "route": "/zh/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell：命令、数据管道与 AutoScript\n​",
+      "screenshot": "zh-apps-autoshell-390-dark.png"
+    },
+    {
+      "route": "/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/apps/automusk/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoMusk: a coding agent built around Plans and Specs\n​",
+      "screenshot": "apps-automusk-390-dark.png"
+    },
+    {
+      "route": "/zh/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/automusk/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoMusk：围绕 Plan 与 Spec 的 Coding Agent\n​",
+      "screenshot": "zh-apps-automusk-390-dark.png"
+    },
+    {
+      "route": "/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/jadeedit/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "JadeEdit: documents and local knowledge\n​",
+      "screenshot": "apps-jadeedit-390-dark.png"
+    },
+    {
+      "route": "/zh/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/jadeedit/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "JadeEdit：文档与本地知识工作台\n​",
+      "screenshot": "zh-apps-jadeedit-390-dark.png"
+    },
+    {
+      "route": "/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/apps/demos/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "System applications and demos\n​",
+      "screenshot": "apps-demos-390-dark.png"
+    },
+    {
+      "route": "/zh/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/demos/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "系统应用与 Demo\n​",
+      "screenshot": "zh-apps-demos-390-dark.png"
+    },
+    {
+      "route": "/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/guide/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell\nThe structured shell",
+      "screenshot": "apps-autoshell-guide-390-dark.png"
+    },
+    {
+      "route": "/zh/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/guide/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell\n结构化 Shell",
+      "screenshot": "zh-apps-autoshell-guide-390-dark.png"
+    },
+    {
+      "route": "/apps",
+      "actualUrl": "http://127.0.0.1:4227/apps",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto applications"
+    },
+    {
+      "route": "/zh/apps",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto 应用"
+    },
+    {
+      "route": "/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoedit/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoEdit: a code and text workspace\n​"
+    },
+    {
+      "route": "/zh/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoedit/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoEdit：代码与文本工作台\n​"
+    },
+    {
+      "route": "/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell: commands, data pipelines, and AutoScript\n​"
+    },
+    {
+      "route": "/zh/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell：命令、数据管道与 AutoScript\n​"
+    },
+    {
+      "route": "/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/apps/automusk/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoMusk: a coding agent built around Plans and Specs\n​"
+    },
+    {
+      "route": "/zh/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/automusk/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoMusk：围绕 Plan 与 Spec 的 Coding Agent\n​"
+    },
+    {
+      "route": "/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/jadeedit/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "JadeEdit: documents and local knowledge\n​"
+    },
+    {
+      "route": "/zh/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/jadeedit/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "JadeEdit：文档与本地知识工作台\n​"
+    },
+    {
+      "route": "/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/apps/demos/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "System applications and demos\n​"
+    },
+    {
+      "route": "/zh/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/demos/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "系统应用与 Demo\n​"
+    },
+    {
+      "route": "/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/guide/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell\nThe structured shell"
+    },
+    {
+      "route": "/zh/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/guide/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell\n结构化 Shell"
+    },
+    {
+      "route": "/apps",
+      "actualUrl": "http://127.0.0.1:4227/apps",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto applications"
+    },
+    {
+      "route": "/zh/apps",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto 应用"
+    },
+    {
+      "route": "/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoedit/",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoEdit: a code and text workspace\n​"
+    },
+    {
+      "route": "/zh/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoedit/",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoEdit：代码与文本工作台\n​"
+    },
+    {
+      "route": "/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell: commands, data pipelines, and AutoScript\n​"
+    },
+    {
+      "route": "/zh/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell：命令、数据管道与 AutoScript\n​"
+    },
+    {
+      "route": "/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/apps/automusk/",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoMusk: a coding agent built around Plans and Specs\n​"
+    },
+    {
+      "route": "/zh/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/automusk/",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoMusk：围绕 Plan 与 Spec 的 Coding Agent\n​"
+    },
+    {
+      "route": "/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/jadeedit/",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "JadeEdit: documents and local knowledge\n​"
+    },
+    {
+      "route": "/zh/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/jadeedit/",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "JadeEdit：文档与本地知识工作台\n​"
+    },
+    {
+      "route": "/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/apps/demos/",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "System applications and demos\n​"
+    },
+    {
+      "route": "/zh/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/demos/",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "系统应用与 Demo\n​"
+    },
+    {
+      "route": "/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/guide/",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell\nThe structured shell"
+    },
+    {
+      "route": "/zh/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/guide/",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell\n结构化 Shell"
+    },
+    {
+      "route": "/apps",
+      "actualUrl": "http://127.0.0.1:4227/apps",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto applications",
+      "screenshot": "apps-1440-dark.png"
+    },
+    {
+      "route": "/zh/apps",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto 应用",
+      "screenshot": "zh-apps-1440-dark.png"
+    },
+    {
+      "route": "/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoedit/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoEdit: a code and text workspace\n​",
+      "screenshot": "apps-autoedit-1440-dark.png"
+    },
+    {
+      "route": "/zh/apps/autoedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoedit/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoEdit：代码与文本工作台\n​",
+      "screenshot": "zh-apps-autoedit-1440-dark.png"
+    },
+    {
+      "route": "/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell: commands, data pipelines, and AutoScript\n​",
+      "screenshot": "apps-autoshell-1440-dark.png"
+    },
+    {
+      "route": "/zh/apps/autoshell/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell：命令、数据管道与 AutoScript\n​",
+      "screenshot": "zh-apps-autoshell-1440-dark.png"
+    },
+    {
+      "route": "/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/apps/automusk/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoMusk: a coding agent built around Plans and Specs\n​",
+      "screenshot": "apps-automusk-1440-dark.png"
+    },
+    {
+      "route": "/zh/apps/automusk/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/automusk/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoMusk：围绕 Plan 与 Spec 的 Coding Agent\n​",
+      "screenshot": "zh-apps-automusk-1440-dark.png"
+    },
+    {
+      "route": "/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/apps/jadeedit/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "JadeEdit: documents and local knowledge\n​",
+      "screenshot": "apps-jadeedit-1440-dark.png"
+    },
+    {
+      "route": "/zh/apps/jadeedit/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/jadeedit/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "JadeEdit：文档与本地知识工作台\n​",
+      "screenshot": "zh-apps-jadeedit-1440-dark.png"
+    },
+    {
+      "route": "/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/apps/demos/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "System applications and demos\n​",
+      "screenshot": "apps-demos-1440-dark.png"
+    },
+    {
+      "route": "/zh/apps/demos/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/demos/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "系统应用与 Demo\n​",
+      "screenshot": "zh-apps-demos-1440-dark.png"
+    },
+    {
+      "route": "/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/apps/autoshell/guide/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell\nThe structured shell",
+      "screenshot": "apps-autoshell-guide-1440-dark.png"
+    },
+    {
+      "route": "/zh/apps/autoshell/guide/",
+      "actualUrl": "http://127.0.0.1:4227/zh/apps/autoshell/guide/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoShell\n结构化 Shell",
+      "screenshot": "zh-apps-autoshell-guide-1440-dark.png"
+    }
+  ]
+}
