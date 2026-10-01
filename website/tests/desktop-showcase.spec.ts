@@ -72,6 +72,8 @@ test('six pages: five widths, both themes, and 24 verified visual captures', asy
         await expect(story).toBeVisible()
         await story.scrollIntoViewIfNeeded()
         await expect.poll(() => story.locator('.evidence-image img').evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth === 2560)).toBe(true)
+        // decoding="async" can expose naturalWidth before the pixels are ready.
+        await story.locator('.evidence-image img').evaluate((el: HTMLImageElement) => el.decode())
         expect(await page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(theme === 'dark')
         expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), `${route} ${width} ${theme}`).toBeLessThanOrEqual(1)
         expect(await page.locator('.VPNotFound, .NotFound').count()).toBe(0)
