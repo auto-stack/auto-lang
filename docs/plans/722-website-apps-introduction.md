@@ -104,4 +104,3 @@ next: merge when landing is requested; keep worktree/preview for user inspection
 ## 10. 待澄清事项
 
 无阻塞用户问题。精确发布集合/无后台体验覆盖为设计内后续逐项验证项，本轮不承诺固定28项全可用。
-
