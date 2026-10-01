@@ -9090,11 +9090,51 @@ pub fn shim_dom_set_css_var(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 }
 
 /// `dom.focus_first(selector)` — Stack: sel -> (void). Keyboard focus routing
-/// differs on desktop; no-op stub.
+/// differs on desktop; no-op stub (web 走 ts_adapter querySelector 真聚焦；
+/// 桌面聚焦合同归 `ui.focus`，见下）。
 pub fn shim_dom_focus_first(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
         let nv = crate::vm::native::pop_arg_nv(task);
         let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
+    }
+    Ok(())
+}
+
+/// PLAN-095 T-04: `ui.focus(target_key)` 请求槽（进程级，renderer update
+/// 轮询消费）。native 无 bridge 状态写面——经全局槽递交，命中/缺失结果由
+/// renderer 落 `__focus_result` 状态（"ok" / "miss:<key>"）可观察。
+pub static UI_FOCUS_REQUEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// renderer 侧取走一次聚焦请求（take 语义，防重复消费）。
+pub fn take_ui_focus_request() -> Option<String> {
+    UI_FOCUS_REQUEST.lock().ok().and_then(|mut slot| slot.take())
+}
+
+/// `ui.focus(target_key)` — Stack: key -> (void). 平台中立程序化聚焦：
+/// 目标键=输入控件的 .at 输入 handler 事件键（如 ".Input($event)"，比较时
+/// 剥点前缀与实参尾）或 "Widget.event" 限定形。web 轨经 ts_adapter 直译
+/// querySelector（等价 dom.focus_first 语义）。
+pub fn shim_ui_focus(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
+        let key = if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        if !key.is_empty() {
+            if let Ok(mut slot) = UI_FOCUS_REQUEST.lock() {
+                *slot = Some(key);
+            }
+        }
     }
     Ok(())
 }

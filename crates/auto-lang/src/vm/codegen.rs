@@ -6369,7 +6369,8 @@ impl Codegen {
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
                         } else if self.known_module_prefixes.contains(&name_str)
-                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "sys" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage" | "dom" | "location" | "image" | "bus" | "frame")
+                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "sys" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage" | "dom" | "location" | "image" | "bus" | "frame" | "ui")
+                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "sys" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage" | "dom" | "location" | "image" | "bus" | "ui")
                         {
                             // Module prefix from module-level import or built-in stdlib module
                             self.emit(OpCode::CONST_I32);
@@ -8677,6 +8678,7 @@ impl Codegen {
                             ("dom", "prefers_dark") => Some("auto.dom.prefers_dark".to_string()),
                             ("dom", "set_css_var") => Some("auto.dom.set_css_var".to_string()),
                             ("dom", "focus_first") => Some("auto.dom.focus_first".to_string()),
+                            ("ui", "focus") => Some("auto.ui.focus".to_string()),
                             ("dom", "click_first") => Some("auto.dom.click_first".to_string()),
                             ("dom", "open_url") => Some("auto.dom.open_url".to_string()),
                             ("dom", "copy_text") => Some("auto.clipboard.set_text".to_string()),

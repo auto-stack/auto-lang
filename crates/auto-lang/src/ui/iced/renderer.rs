@@ -3137,6 +3137,126 @@ fn percent_floating_layer<M: Clone + Debug + 'static>(
     col.into()
 }
 
+#[cfg(test)]
+mod plan095_focus_tests {
+    use super::*;
+
+    fn input(widget: &str, event: &str) -> FocusableInput {
+        FocusableInput {
+            id: iced::widget::Id::from(format!("textarea_{widget}_{event}")),
+            widget: widget.to_string(),
+            event: event.to_string(),
+        }
+    }
+
+    #[test]
+    fn focus_key_resolution_normalizes_at_event_keys() {
+        let inputs = vec![input("FocusProbe", "Input"), input("FocusProbe", "TiInput")];
+        // .at 事件键全形（带点前缀与 $event 实参尾）。
+        assert!(resolve_focus_target(&inputs, ".Input($event)").is_some());
+        assert!(resolve_focus_target(&inputs, ".TiInput").is_some());
+        // 裸事件名。
+        assert!(resolve_focus_target(&inputs, "TiInput").is_some());
+        // widget.event 限定形。
+        assert!(resolve_focus_target(&inputs, "FocusProbe.TiInput").is_some());
+        // 缺失目标 → None（可定位 miss，不猜第一个控件）。
+        assert!(resolve_focus_target(&inputs, ".NoSuch").is_none());
+        assert!(resolve_focus_target(&inputs, "").is_none());
+    }
+}
+
+/// PLAN-095 T-04: 当前视图中可聚焦输入控件（Input/Textarea）的稳定 Id 与
+/// handler 寻址键（遍历面与 collect_input_ids/collect_media_surfaces 同族）。
+pub(crate) struct FocusableInput {
+    pub id: iced::widget::Id,
+    pub widget: String,
+    pub event: String,
+}
+
+fn collect_focusable_inputs(view: &AbstractView<IcedMessage>, out: &mut Vec<FocusableInput>) {
+    match view {
+        AbstractView::Input { placeholder, on_change, on_submit, width, password, .. } => {
+            let primary = on_change
+                .as_ref()
+                .map(|m| (m.widget.as_str(), m.event.as_str()))
+                .or_else(|| on_submit.as_ref().map(|m| (m.widget.as_str(), m.event.as_str())));
+            out.push(FocusableInput {
+                id: derive_input_id(primary, placeholder, *width, *password),
+                widget: primary.map(|(w, _)| w.to_string()).unwrap_or_default(),
+                event: primary.map(|(_, e)| e.to_string()).unwrap_or_default(),
+            });
+        }
+        AbstractView::Textarea { placeholder, on_change, .. } => {
+            // 与 Textarea 构建臂的 Id 派生严格同式（主键优先/legacy 回退）。
+            let legacy = format!("__textarea_{}", placeholder.len());
+            let id = match on_change.as_ref() {
+                Some(m) if !m.widget.is_empty() && !m.event.is_empty() => {
+                    iced::widget::Id::from(format!("textarea_{}_{}", m.widget, m.event))
+                }
+                _ => iced::widget::Id::from(format!("textarea_{}", legacy)),
+            };
+            let (widget, event) = on_change
+                .as_ref()
+                .map(|m| (m.widget.clone(), m.event.clone()))
+                .unwrap_or_default();
+            out.push(FocusableInput { id, widget, event });
+        }
+        AbstractView::Column { children, .. }
+        | AbstractView::Row { children, .. }
+        | AbstractView::List { items: children, .. } => {
+            for child in children {
+                collect_focusable_inputs(child, out);
+            }
+        }
+        AbstractView::MouseArea { content, .. } => collect_focusable_inputs(content, out),
+        AbstractView::Popover { anchor, content, .. } => {
+            if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                collect_focusable_inputs(w, out);
+            }
+            collect_focusable_inputs(content, out);
+        }
+        AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
+            collect_focusable_inputs(child, out);
+        }
+        AbstractView::Grid { cells, .. } => {
+            for cell in cells {
+                collect_focusable_inputs(cell, out);
+            }
+        }
+        AbstractView::Overlay { base, content, .. } => {
+            collect_focusable_inputs(base, out);
+            collect_focusable_inputs(content, out);
+        }
+        _ => {}
+    }
+}
+
+/// 目标键解析：剥 `.` 前缀与 `($event)` 实参尾后与 (event) 或 "widget.event"
+/// 限定形比较（大小写敏感；web 形 CSS 选择器在 VM 轨无对应物，不猜测）。
+fn resolve_focus_target(inputs: &[FocusableInput], key: &str) -> Option<iced::widget::Id> {
+    let normalized = key
+        .trim()
+        .trim_start_matches('.')
+        .split("($")
+        .next()
+        .unwrap_or("")
+        .trim_end()
+        .to_string();
+    if normalized.is_empty() {
+        return None;
+    }
+    let by_event = inputs.iter().find(|i| i.event == normalized);
+    if let Some(hit) = by_event {
+        return Some(hit.id.clone());
+    }
+    if let Some((w, e)) = normalized.split_once('.') {
+        if let Some(hit) = inputs.iter().find(|i| i.widget == w && i.event == e) {
+            return Some(hit.id.clone());
+        }
+    }
+    None
+}
+
 /// PLAN-095 T-03: 浮层根声明 pointer-events-none → 被动框（不截获下方点选）。
 pub(crate) fn abs_layer_passthrough<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> bool {
     extract_view_style(view)
@@ -4869,6 +4989,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                   // (update 内 state.focus(id) 仅在 id 存在时执行;无 Id 则点
                   // 击永不聚焦=无光标无法输入,composer 命中区修复后仍复现
                   // 的最后缺口)。镜像 ash-gui 臂的 textarea_{key} 派生。
+                  // PLAN-095 T-04 注：VM 动态主路径(render_dynamic_view)的
+                  // Textarea 臂以 on_input handler 主键派生 Id（聚焦寻址面）；
+                  // 本泛型臂保 legacy 键（非 IcedMessage 树不可读 handler）。
                 editor = editor
                     .id(iced::widget::Id::from(format!("textarea_{}", key)))
                     // 此前不消费,可见容器内可点区只有顶部 30px 条(composer 命中区)。
@@ -19899,6 +20022,34 @@ fn compare_pngs(
         // 失败单次派发 on_error（fn(str) 收原因串）。表项随视图存在性生死
         // （卸载即退订）；不在 view 构建/paint 期重入 handler。
         media_notify_sweep(&mut state.component, &state.app);
+
+        // PLAN-095 T-04: ui.focus(target_key) 消费——native 请求槽 → 当前
+        // 视图 Input/Textarea 稳定 Id 解析 → iced focus 任务；结果落
+        // __focus_result（"ok" / "miss:<key>"）可观察，不做 no-op 降级。
+        // 挂载时序竞态沿用 __focus_input 的 5 轮重试口径（有更新周期才推进）。
+        if let Some(key) = crate::vm::native::take_ui_focus_request() {
+            *state.app.focus_pending.borrow_mut() = Some((key, 0));
+        }
+        if let Some((key, tries)) = state.app.focus_pending.borrow().clone() {
+            let (view, _, _) = state.component.view_with_debug_gated(false);
+            let converted = convert_view_messages(view);
+            let mut inputs: Vec<FocusableInput> = Vec::new();
+            collect_focusable_inputs(&converted, &mut inputs);
+            if let Some(id) = resolve_focus_target(&inputs, &key) {
+                tail_tasks.push(iced::widget::operation::focus(id));
+                let _ = state.component.write_state("__focus_result", auto_val::Value::str("ok"));
+                *state.app.focus_pending.borrow_mut() = None;
+            } else if !inputs.is_empty() || tries >= 5 {
+                // 视图已含可聚焦输入而目标缺席 = 稳定 miss（立即落结果）；
+                // 视图尚无任何输入 = 挂载竞态窗口，走 5 轮重试上限。
+                let _ = state
+                    .component
+                    .write_state("__focus_result", auto_val::Value::str(format!("miss:{key}")));
+                *state.app.focus_pending.borrow_mut() = None;
+            } else {
+                *state.app.focus_pending.borrow_mut() = Some((key, tries + 1));
+            }
+        }
 
         // Plan 402: pending window resize。
         if let Some(size) = state.pending_window_resize.borrow_mut().take() {

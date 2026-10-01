@@ -415,6 +415,8 @@ macro_rules! for_each_native {
             (2776, NATIVE_DOM_SET_CSS_VAR, shim_dom_set_css_var, "auto.dom.set_css_var"),
             (2777, NATIVE_DOM_FOCUS_FIRST, shim_dom_focus_first, "auto.dom.focus_first"),
             (2778, NATIVE_DOM_CLICK_FIRST, shim_dom_click_first, "auto.dom.click_first"),
+            // PLAN-095 T-04: 平台中立程序化聚焦（desktop 真实现；web=dom.focus_first 同义直译）。
+            (9920, NATIVE_UI_FOCUS, shim_ui_focus, "auto.ui.focus"),
             (2779, NATIVE_DOM_OPEN_URL, shim_dom_open_url, "auto.dom.open_url"),
             (2784, NATIVE_DOM_RELOAD, shim_dom_reload, "auto.dom.reload"),
 
@@ -1255,6 +1257,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.dom.prefers_dark", 2775, Bool),
             ("auto.dom.set_css_var", 2776, Void),
             ("auto.dom.focus_first", 2777, Void),
+            ("auto.ui.focus", 9920, Void),
             ("auto.dom.click_first", 2778, Void),
             ("auto.dom.open_url", 2779, Void),
             ("auto.dom.reload", 2784, Void),
@@ -1987,6 +1990,9 @@ pub static NATIVE_RET_ENTRIES: &[(&str, crate::vm::native_registry::NativeRetTyp
 // Used by resolve_qualified() for lazy registration.
 // IDs must match NATIVE_* constants in for_each_native! (shim bindings).
 pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
+    // PLAN-095 T-04: ui.focus 固定 id（9920，9900+ 高段惯例）——惰性注册
+    // 白名单条目；缺行时编译期 func_name 重写落空、运行时静默 no-op。
+    ("auto.ui.focus", 9920),
     // Plan 673: code_editor delta/edit fixed IDs. 2939 pins the delta read
     // side against register_vm_declarations' dynamic #[vm] id counter (which
     // walks up from 100 through the 29xx band — T-02 e2e caught a stdlib
@@ -2773,6 +2779,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("dom.prefers_dark", 2775),
     ("dom.set_css_var", 2776),
     ("dom.focus_first", 2777),
+    ("ui.focus", 9920),
     ("dom.click_first", 2778),
     ("dom.open_url", 2779),
     ("dom.copy_text", 2926),

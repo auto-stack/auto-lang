@@ -2295,6 +2295,20 @@ fn try_transpile_builtin_call(
                 _ => false,
             }
         }
+        // PLAN-095 T-04: ui.focus(sel) web 轨 = dom.focus_first 同义直译
+        // （桌面真实现走 auto.ui.focus native → iced focus 任务；目标键
+        // web 形即 CSS 选择器，musk 平台端口保留既有 TS 逃生舱不强制迁移）。
+        "ui" => {
+            match method {
+                "focus" => {
+                    write!(out, "(document.querySelector(").ok();
+                    transpile_expr(&args.args[0].get_expr(), ctx, out);
+                    write!(out, ") as HTMLElement | null)?.focus()").ok();
+                    true
+                }
+                _ => false,
+            }
+        }
         // event.dispatch(name) → window.dispatchEvent(new CustomEvent(name))
         // event.dispatch(name, detail) → window.dispatchEvent(new CustomEvent(name, detail))
         "event" => {

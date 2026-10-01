@@ -75,6 +75,9 @@ pub struct AppState {
     /// PLAN-095 T-02: ImageSurface loaded/error 通知门表（per-App，
     /// update sweep 维护；语义见 [`MediaNotifyEntry`]）。
     pub media_notify: RefCell<Vec<MediaNotifyEntry>>,
+    /// PLAN-095 T-04: ui.focus 待解析目标（target_key, 重试计数）——挂载
+    /// 时序竞态的有限重试面，消费成功或 5 轮 miss 后清空。
+    pub focus_pending: RefCell<Option<(String, u32)>>,
     /// Plan 459：DevTools 全量状态下沉为 per-App（验收：双窗 DevTools
     /// 选择/日志互不串扰）。字段与布局逻辑保持原形状。
     pub devtools: DevToolsState,
@@ -99,6 +102,7 @@ impl AppState {
             line_to_aura_ids: RefCell::new(HashMap::new()),
             aura_to_id_cache: RefCell::new(HashMap::new()),
             media_notify: RefCell::new(Vec::new()),
+            focus_pending: RefCell::new(None),
             devtools: DevToolsState::new(),
         }
     }
