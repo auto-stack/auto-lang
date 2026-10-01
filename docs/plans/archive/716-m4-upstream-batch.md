@@ -819,6 +819,20 @@ AppTick 泵断链在案调查——矩阵 app=桌面模式动态 app，楔死形
     显式排除）；解阻动作不变（712 T-16..T-19 修复交付后复跑 ×3）。
   - **批量回归 due check**：716%5=1 非整除；.last-batch-regression
     收据新鲜度见 cleaned 后复查（随 cleaned 收据更新落档）。
+  - **cleaned**：guard 双过闸（auto-lang worktree clean+auto-down
+    兄弟 clean——均无 reparse point）→worktree/分支 plan-716-dev
+    （was 33dd018cb）/组目录 .wt/lang-716 全移除实证（双仓 worktree
+    list 零残留）。
+  - **陈旧产物观察**（PLAN-092 先例）：本件触及 auto-lang VM 面
+    （codegen intrinsics/native catalog/shim/stdlib frame.vm.at）+
+    trans/ui_gen 臂——master 的 release 档二进制与下游 auto-edit/
+    auto-musk 消费面未随本次合并重建（main 检出 target/release 无
+    auto.exe 在档）；下游取用时需重编（VM 轨 diff 窗口/frame 值流
+    修复只有重编后可达）。下游回执三件（probe_diffwin VM 形/探针臂
+    重埋/撤钉）以重编后的 master 基为前提。
+  - **批量回归 due check（复核）**：716%5=1 非整除+收据
+    2026-09-30T16:20Z（<48h）→不到期，跳过（regress 技能留待下个
+    到期窗口）。
 
 ## 10. 待澄清事项
 
