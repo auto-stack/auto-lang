@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-720
-status: reviewed
+status: executing
 feature_name: 网站虚拟桌面实景展示
 author: [agent]
 created_at: 2026-10-01
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [website]
-current_step: 3
+current_step: 1
 total_steps: 3
 ---
 
@@ -61,18 +61,18 @@ total_steps: 3
 
 ## 7. 验收标准
 
-- [x] AC-01 六图原样入库，有源路径、捕获日、尺寸、SHA256。
+- [ ] AC-01 六图原样入库，有源路径、捕获日、尺寸、SHA256。
 - [x] AC-02 v05/autoos 双语顺序为桌面双主题→Launcher→游戏→工作；OS 预览进入正确语言专题。
 - [x] AC-03 单一作者数据、六路由无死图/裸组件源文；原 URL、统计与其他章节保留。
-- [x] AC-04 小组件前提、游戏名称、工作布局描述与画面一致，不虚构音乐播放/日历当前日期。
-- [x] AC-05 五宽度×双主题无横向溢出，图片键盘放大/原图/Esc 回焦、尺寸占位与延迟加载正常。
-- [x] AC-06 build、既有与新增网站 e2e 通过；24截图落地/正文有效、看图无遮挡，无新警告或范围外修改。
+- [ ] AC-04 小组件前提、游戏名称、工作布局描述与画面一致，不虚构音乐播放/日历当前日期。
+- [ ] AC-05 五宽度×双主题无横向溢出，图片键盘放大/原图/Esc 回焦、尺寸占位与延迟加载正常。
+- [ ] AC-06 build、既有与新增网站 e2e 通过；24截图落地/正文有效、看图无遮挡，无新警告或范围外修改。
 
 ## 8. 执行步骤
 
-- [x] T-01 入库与共享展示：复制六 PNG，新增 data/desktop-showcase.ts、components/DesktopShowcase.vue，报告 docs/reports/p720-desktop-showcase.md 记录源证据；核对 hash/尺寸。AC-01/04/05，SD-01/02。
+- [ ] T-01 入库与共享展示：复制六 PNG，新增 data/desktop-showcase.ts、components/DesktopShowcase.vue，报告 docs/reports/p720-desktop-showcase.md 记录源证据；核对 hash/尺寸。AC-01/04/05，SD-01/02。（用户重拍替换，原源图验收失效，组件与数据结构复用。）
 - [x] T-02 页面接线：修改 ReleaseLanding.vue/release-v05.ts、autoos/index.md、zh/autoos/index.md、os.md、zh/os.md，双语接线与首图/旧图替换；prepare/build/源码核查。AC-02/03/04，SD-01/02。
-- [x] T-03 验证交付：新增 tests/desktop-showcase.spec.ts，24图入 docs/reports/p720-desktop-showcase/；网站 e2e、逐项 AC/SD 复核，review 后按已授权网站合入范围落 master。store writer 不可用时 ledger pending、保持 reviewed，不提前归档。AC-01..06。（实施与验证完成，合入检查点见下。）
+- [ ] T-03 验证交付：新增 tests/desktop-showcase.spec.ts，24图入 docs/reports/p720-desktop-showcase/；网站 e2e、逐项 AC/SD 复核，review 后按已授权网站合入范围落 master。store writer 不可用时 ledger pending、保持 reviewed，不提前归档。AC-01..06。（重拍修正需刷新受影响的图片、构建与视觉证据；保留旧历史记录。）
 
 ## 9. 复审记录
 
@@ -113,6 +113,12 @@ stage: merge | plan_id: PLAN-720 | plan_revision: 1 | outcome: blocked（仅 led
 | archived / cleaned | pending：Plan 保持 reviewed；保留 D:/autostack/.wt/lang-720/auto-lang 与 plan-720-dev（clean、已合入）用于来源复核和预览。 |
 | production artifacts | website/.vitepress/dist 是 2026-10-01 本次稳定构建（146.75s）；本地 http://127.0.0.1:4220/zh/v05/ 与 /zh/autoos/ 使用此产物。公开 http://112.74.45.241 未部署，本请求只加入图片并沿用已授权主分支合入，不声称线上已更新；无后端或依赖二进制变更。 |
 | batch handoff | 读取 .last-batch-regression.json：last_covered_plan_id=715、2026-09-30T16:20:00Z，720 为 %5 节点。归档/cleaned 之后的批量回归检查点尚未到达，且本次 Category A 禁止 Cargo；到达该检查点再交 /auto-plan:regress 主检出单实例，不改旧收据、不把网站 77 pass 写成 Rust 批量覆盖。 |
+
+### 2026-10-01 用户重拍修正（repair-1）
+
+stage: work | plan_id: PLAN-720 | plan_revision: 1 | outcome: executing | reason: 用户明确报告桌面快捷方式缺失，要求将新六图替换到网站并合入 master | next: 同工作树资产替换、核对、复核后再次 ff-only 合入。原协议与 AC/SD 不变，不新建计划或改写旧 review；旧 pass 仅覆盖旧资产。T-01/T-03、AC-01/04/05/06 重新验证。
+
+取材当前主线 da724ab24；新 01..04 分别在 14:18..14:23 重拍，人工查看确认桌面多列快捷方式恢复，Launcher 背景相应更新；05/06 与原图 hash 相同。只替换资产并更新来源/视觉证据，不改页面 Vue/路由/正文。验证按 Category A：build、现有六路由展示用例/五宽双主题与24图刷新，以及相关发布页图片/console 检查；未触及行为的旧77整站证据明确复用，非伪称重跑。
 
 ## 10. 待澄清事项
 
