@@ -20,7 +20,7 @@ fn detail_chapter_from_progress(progress int, chapter_count int) int {
 }
 
 widget book_detail {
-    msg { Init, Back, ReadChapter(int), ContinueReading }
+    msg { Init, Back, ReadChapter(int), ContinueReading, OpenChapter(int) }
 
     model {
         var book_id int = 0
@@ -54,6 +54,18 @@ widget book_detail {
                         text .book.title { style: "text-2xl font-bold text-foreground" }
                         text .book.author { style: "text-muted-foreground" }
                         text .chapters_label { style: "text-xs text-muted-foreground" }
+                        // PLAN-712 r3：章节目录列表——点击进阅读页（此前本页
+                        // 只有计数标签，章节入口只能绕 ContinueReading）。
+                        col {
+                            style: "gap-1"
+                            for ch in .chapters {
+                                button {
+                                    onclick: .OpenChapter(ch.number)
+                                    style: "w-full text-left px-3 py-2 rounded-md hover:bg-muted transition-colors cursor-pointer"
+                                    text ch.title { style: "text-sm text-foreground" }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -80,6 +92,10 @@ widget book_detail {
             .loaded = true
         }
         .Back -> { router.push("/") }
+        // PLAN-712 r3：点章节 → 阅读页（路由 /book/:id/chapter/:ch）。
+        .OpenChapter(n int) -> {
+            router.push("/book/" + .book_id.to_string() + "/chapter/" + n.to_string())
+        }
         .ContinueReading -> {
             var current int = 1
             if .has_book == true {
