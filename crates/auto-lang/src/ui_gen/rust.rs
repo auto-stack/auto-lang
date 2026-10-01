@@ -10500,6 +10500,17 @@ impl RustGenerator {
             "frame_present_ms" => Some(
                 "auto_lang::ui::frame_bench::frame_present_ms()".to_string(),
             ),
+            // PLAN-716 Phase 2 (供⑨-b): handler 体二段名路由（stdlib
+            // frame.vm.at 声明形）——Phase 1 直调臂只认裸名 Expr::Ident
+            // 形，二段名 Expr::Dot 原文发射 → rustc E0425 cannot find
+            // value `frame`（下游 plan-022 front 探针臂 regen 实录）。
+            // 直调纪律同款：实现体单源 ui::frame_bench，不绕 VM shim。
+            "frame.begin_ms" => Some(
+                "auto_lang::ui::frame_bench::frame_begin_ms()".to_string(),
+            ),
+            "frame.present_ms" => Some(
+                "auto_lang::ui::frame_bench::frame_present_ms()".to_string(),
+            ),
             "code_editor_fold_toggle" => Some(format!(
                 "auto_lang::ui::code_editor::code_editor_with(&({a0}), |core| core.fold_toggle(({a1}).max(1) as usize - 1)).unwrap_or(false)",
                 a0 = arg(0)?,

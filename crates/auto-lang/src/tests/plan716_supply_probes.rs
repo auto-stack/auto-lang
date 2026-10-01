@@ -520,4 +520,51 @@ widget App {{
             "now_ms().str() 须为全宽真值: got={s_val} window=[{before_ms},{after_ms}]"
         );
     }
+    // ── T-16 (Phase 2 供⑨-b): handler 体 frame 二段名路由 ────────────────
+
+    /// handler 体二段名 frame.begin_ms()/present_ms() → 宿主直调臂
+    /// （code_editor_delta 直调纪律——实现体单源 ui::frame_bench）。
+    /// 下游实录：臂缺席时原文发射 → rustc E0425 cannot find value `frame`。
+    /// 覆盖面勘定：ui_gen 直调臂（handler 体）与 trans 裸名臂（:5107，
+    /// 模块 fn 体） Phase 1 均只认裸名 Expr::Ident 形——二段名 Expr::Dot
+    /// 形两轨同缺，本探针两轨同锁。
+    #[test]
+    fn frame_two_segment_handler_arm() {
+        let rs = gen_rust(
+            ".Init -> { let _b = frame.begin_ms(); let _p = frame.present_ms() }",
+        );
+        assert!(
+            !rs.contains("frame.begin_ms"),
+            "handler 体二段名不得原文发射（E0425 源）: {}",
+            rs.lines().filter(|l| l.contains("frame")).collect::<Vec<_>>().join("\n")
+        );
+        assert!(
+            rs.contains("auto_lang::ui::frame_bench::frame_begin_ms()"),
+            "handler 体 frame.begin_ms 直调臂缺失"
+        );
+        assert!(
+            rs.contains("auto_lang::ui::frame_bench::frame_present_ms()"),
+            "handler 体 frame.present_ms 直调臂缺失"
+        );
+    }
+
+    /// a2r 模块 fn 体二段名 → a2r_std::frame 限定臂（trans Dot-path，
+    /// time.now_ms A4 先例同款——裸名臂 :5107 的二段名姊妹）。
+    #[test]
+    fn frame_two_segment_module_trans_arm() {
+        let src = "fn probe_module_frame() int {\n    return frame.begin_ms()\n}\n";
+        let mut sink =
+            crate::trans::rust::transpile_rust("p716_frame_mod", src).expect("transpile");
+        let bytes = sink.done().expect("done");
+        let code = String::from_utf8(bytes.to_vec()).expect("utf8");
+        assert!(
+            !code.contains("frame.begin_ms"),
+            "模块体二段名不得原文发射: {}",
+            code.lines().filter(|l| l.contains("frame")).collect::<Vec<_>>().join("\n")
+        );
+        assert!(
+            code.contains("a2r_std::frame::begin_ms"),
+            "trans 二段名 frame.begin_ms 臂缺失"
+        );
+    }
 }

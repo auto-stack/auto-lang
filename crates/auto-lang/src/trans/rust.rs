@@ -8557,6 +8557,20 @@ impl RustTrans {
                         write!(out, "a2r_std::time::now()")?;
                         return Ok(());
                     }
+                    // PLAN-716 Phase 2 (供⑨-b): frame 二段名 Dot-path 臂
+                    // （time A4 先例同款——缺失时原文发射 → E0425 cannot
+                    // find value `frame`，下游 plan-022 实录；裸名姊妹臂
+                    // 在 call() 的 Expr::Ident 映射表）。
+                    ("frame", "begin_ms") => {
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::frame::begin_ms()")?;
+                        return Ok(());
+                    }
+                    ("frame", "present_ms") => {
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::frame::present_ms()")?;
+                        return Ok(());
+                    }
                     _ => {} // fall through to remap table
                 }
                 } // if !is_local_var
