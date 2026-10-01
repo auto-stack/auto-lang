@@ -1173,6 +1173,18 @@
       "commit:c48007bc5"
      ],
      "file": "docs/plans/archive/717-widgets-gallery-dual-backend-completeness.md"
+    },
+    {
+     "id": "P716-5",
+     "title": "716-m4-upstream-batch — 交付摘要",
+     "content": "交付摘要:M4 上游三组合一件全落地——组A tree-sitter 首批（highlight-treesitter feature 关=零语义+21 语言 22 位接入+增量管线 3×+two-face 退役+尺寸三态实测）；组B 帧观测通道（9918/9919 双轨+AUTO_FRAME_BENCH 门控零开销）；组C rows 窗口投影（9920+默认形逐字节等价 golden+census 43.6MB 载荷 21.9×↓/墙钟 −29%=021 FAIL 清偿弹药）。canonical 三册=treesitter-highlight-pipeline.md/frame-observability.md/diff-endpoints.md（SD-A/B/C）。供③ 确认复核件降级挂账 P716-D1（KNOWN-DEBT，712 残余窗口期或下游复核承接）。随 auto-lang master ec45f911c ff-only 落地。",
+     "tags": [
+      "plan-716",
+      "m4-supply",
+      "delivery",
+      "commit:ec45f911c"
+     ],
+     "file": "docs/plans/archive/716-m4-upstream-batch.md"
     }
    ]
   },
@@ -4742,6 +4754,45 @@
       "docsha:c34dd993aa7e918b"
      ],
      "file": "docs/specs/auto-lang/ui/design/widgets-gallery-parity.md"
+    },
+    {
+     "id": "P716-1",
+     "title": "tree-sitter 双轨高亮管线实施契约（PLAN-716 SD-A）",
+     "content": "PLAN-716 组A 落账（canonical 唯源=docs/specs/auto-lang/ui/design/treesitter-highlight-pipeline.md，landing ec45f911c，docsha:d06af7a35584；姊妹勘定册=treesitter-highlight-survey.md 为 before 面）。契约：feature highlight-treesitter 关=零语义（ts 代码全量 cfg 门控，syntect 基线逐字节）；plain/none 旁路先于引擎路由（013 硬边界，big 态零 parse）；路由表 21 语言 22 位（P0 10+P1 8+P2 3；tail .at/mermaid/vue/console 恒 syntect，固化锚测试）；查询零 vendoring（21/21 crate 导出 HIGHLIGHT*_QUERY 常量；typescript/tsx=js 基础查询+TS 层叠加）；配色=同 AutoUI 主题 scope 匹配（9 槽词表）+基前景归一 None；双轨类别级对照三层口径（锚点着色/主题色板子集/交集，非逐 token 等价）；增量管线=tree.edit+changed_ranges∪编辑域+行边界扩窗+兜底全量（ERROR 传播/40% 比例阈；等长 token 替换树结构零差实勘）；two-face 退役+syntect 缩减集（default-syntaxes+in-tree .at/TOML YAML）+尺寸三态表（BASE 20,284,928B→ts-off 19,655,680B[−629KB]→ts-on 39,063,040B[+18.8MB]——two-face 压缩内嵌实勘，019「.rdata 12.4MB」归因不成立；ts 门控=installer 约束构建载荷开关）；onig 保留=cosmic-text 0.15 default-onig 特性统一外部契约（iced 0.14 钉 cosmic-text 0.15）。落账数据：22 语言 fixture 矩阵全绿；增量 ~758KB 307→103ms（3×）；装载首建 477ms（debug）。",
+     "tags": [
+      "PLAN-716",
+      "treesitter",
+      "highlight",
+      "design",
+      "commit:ec45f911c"
+     ],
+     "file": "docs/specs/auto-lang/ui/design/treesitter-highlight-pipeline.md"
+    },
+    {
+     "id": "P716-2",
+     "title": "帧观测通道契约：帧开始/呈现完成时间戳+门控零开销+.at 双轨（PLAN-716 SD-B）",
+     "content": "PLAN-716 组B 落账（canonical 唯源=docs/specs/auto-lang/ui/design/frame-observability.md，landing ec45f911c，docsha:08c36b6c415a）。契约：ui::frame_bench 双只读单调时间戳（毫秒 i64）——帧开始=update_inner 入口到达时刻、呈现完成=__frame_pump 消息消费时刻（711 R-1 序障「消费≥present 返回」合法代理；硬屏障需 fork iced_winit=禁）；AUTO_FRAME_BENCH=1 门控（AUTO_BENCH 纪律族）——门关=OnceLock 布尔读+分支（实测 ns 级，60fps@1000msg 占比 <0.01%），未捕获=0 值语义；.at 双轨：VM 内建 9918 auto.frame.begin_ms/9919 present_ms（I64；NATIVE_ID_ENTRIES 钉扎+stdlib frame.vm.at #[vm] 声明面+codegen (module,method) 路由对+内置模块白名单 frame）+a2r 臂（trans 裸名映射+ui_gen handler 直调臂+a2r_std::frame 同源读）；712 r2 帧泵域边界=只读观测不染调度语义；多窗 runner 第二泵臂待办注记。落账数据：VM 读回+a2r 对拍+两态开销全绿。",
+     "tags": [
+      "PLAN-716",
+      "frame-bench",
+      "observability",
+      "design",
+      "commit:ec45f911c"
+     ],
+     "file": "docs/specs/auto-lang/ui/design/frame-observability.md"
+    },
+    {
+     "id": "P716-3",
+     "title": "diff rows 窗口投影端点：9920 diff_files_window+rows_total/truncated 激活语义（PLAN-716 SD-C modify）",
+     "content": "PLAN-716 组C 落账（canonical 唯源=docs/specs/auto-lang/ui/design/diff-endpoints.md 增窗口投影节，landing ec45f911c，docsha:55214e5877d3）。契约：新端点 9920 auto.diff_files_window(path_a,path_b,ctx,rows_offset,rows_limit)→str（9915 三参签名 frozen——加参即破下游 in-proc 直调+HTTP Query 双消费面）；窗口形增 rows_total（全量行计数）+truncated 激活（头部省略 offset>0 与尾部省略 offset+len<total 皆置位）；边界形：offset≥total→rows:[]（diff_snapshots 净形复用）+truncated=total>0；limit0 同形；任意切片=全量 rows[offset..offset+limit] 逐行等价（build_rows 单趟流走线单源）；hunks 全量保持；默认三参调用逐字节不变（frozen ③ 最严形，016 消费面零改动 golden 钉）；HTTP query 串形=可选 rows_offset/rows_limit（缺省全量，下游钳定）。收益数字（release census，AUTO_P716_CENSUS 可复现）：43.6MB 散点对 full=153,422,332B/1922ms→window(0,600)=6,994,427B/1360ms——载荷 21.9×↓/墙钟 −29%；021 armed FAIL 5183.2ms 清偿语义=envelope 双层 JSON 主耗清偿，余量=引擎核心（frozen）。",
+     "tags": [
+      "PLAN-716",
+      "diff",
+      "envelope",
+      "design",
+      "commit:ec45f911c"
+     ],
+     "file": "docs/specs/auto-lang/ui/design/diff-endpoints.md"
     }
    ]
   },
@@ -7708,6 +7759,20 @@
       "commit:7506d7d7"
      ],
      "file": "docs/plans/archive/717-widgets-gallery-dual-backend-completeness.md"
+    },
+    {
+     "id": "P716-4",
+     "title": "M4 上游三组合一件 r2 复审/合入收据（AC 全映射 pass@v2 契约；供③ 降级挂账 P716-D1；ff-only 落地 ec45f911c）",
+     "content": "PLAN-716 r2 收据。复审 pass @ ec45f911c（plan_revision 2；自实现会话重构判定：全部 AC 验证在复审基线重跑复现，不采信执行摘要）。AC-A1..A4/B1/B2/C1/C2/SD 全 pass（两态 golden 12+12、ts 12、增量 4、two-face cargo tree 零匹配、探针 6、窗口 5、SD 哈希冻结 d06af7a3/08c36b6c/55214e58）；AC-REG=v2 缩窄形 pass（裸 t 对账零新增：head 13=base 12+1 flake 全族 KNOWN-DEBT L119 一致+tv 162/162+tb/tu 预存族零新增）。供③ 多跑×3 降级挂账=用户裁定 2026-10-01（KNOWN-DEBT P716-D1：6 次矩阵启动实录——端口 TOCTOU 死占[ui_desktop.exe 占 9247]+app 事件循环楔死[SYN_SENT→8018+MCP 套接字消失]；根因假说=712 T-16 桌面轨族未证实；018 未回写不假销账）。merge：rebase 57b9afa60 基 10 提交→master 417aff474 上 ec45f911c，range-diff 10/10 全等（62073229c→ec45f911c 映射在案），ff-only 零合并提交；SD blob 哈希随 rebase 不变。偏差在案：T-06 onig/syntect 保留（cosmic-text 0.15 default-onig 外部契约）+two-face 退役实收 −629KB（019 归因实测不成立）；T-03 增量管线为模块层 rope 快照面（编辑面切换随 cosmic-text 解耦另档）。批量回归：716%5=1 非整除+收据新鲜→不到期。",
+     "tags": [
+      "PLAN-716",
+      "r2",
+      "review",
+      "merge",
+      "commit:ec45f911c",
+      "P716-D1"
+     ],
+     "file": "docs/plans/archive/716-m4-upstream-batch.md"
     }
    ]
   }
