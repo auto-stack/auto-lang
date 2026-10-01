@@ -17714,6 +17714,10 @@ fn compare_pngs(
                     // down 带 $event 冻结标记实参（与真实转换器的
                     // onmousedown DynamicMessage 同构——handler 声明 (e) 时
                     // 0 参派发会错帧，函数体静默不执行）。
+                    // PLAN-095 T-05: move 坐标改 Float 编码——真实指针通道
+                    // (mouse_area_move_arm) 推 Float(x+1e-3)，合成通道此前
+                    // 推 Double：同一 float 形参双通道位型分叉（nanbox
+                    // fallback 位型错读风险，AC-06 ≤0.5px 合同）。
                     let down_ev = encode_payload(down, &[auto_val::Value::str("$event")]);
                     state.component.on_with_input_for(w, &down_ev, None);
                     for pair in pts.split(';').filter(|s| !s.is_empty()) {
@@ -17724,7 +17728,7 @@ fn compare_pngs(
                         ) {
                             let ev = encode_payload(
                                 mv,
-                                &[auto_val::Value::Double(x + 0.001), auto_val::Value::Double(y + 0.001)],
+                                &[auto_val::Value::Float(x + 0.001), auto_val::Value::Float(y + 0.001)],
                             );
                             state.component.on_with_input_for(w, &ev, None);
                         }
@@ -17758,21 +17762,21 @@ fn compare_pngs(
                     if let Some(&(x, y)) = pairs.first() {
                         let ev = encode_payload(
                             start,
-                            &[auto_val::Value::Double(x + 0.001), auto_val::Value::Double(y + 0.001)],
+                            &[auto_val::Value::Float(x + 0.001), auto_val::Value::Float(y + 0.001)],
                         );
                         state.component.on_with_input_for(w, &ev, None);
                     }
                     for &(x, y) in pairs.iter().skip(1) {
                         let ev = encode_payload(
                             mv,
-                            &[auto_val::Value::Double(x + 0.001), auto_val::Value::Double(y + 0.001)],
+                            &[auto_val::Value::Float(x + 0.001), auto_val::Value::Float(y + 0.001)],
                         );
                         state.component.on_with_input_for(w, &ev, None);
                     }
                     if let Some(&(x, y)) = pairs.last() {
                         let ev = encode_payload(
                             end,
-                            &[auto_val::Value::Double(x + 0.001), auto_val::Value::Double(y + 0.001)],
+                            &[auto_val::Value::Float(x + 0.001), auto_val::Value::Float(y + 0.001)],
                         );
                         state.component.on_with_input_for(w, &ev, None);
                     }
