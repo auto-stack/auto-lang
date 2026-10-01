@@ -501,7 +501,10 @@ AppTick 泵断链在案调查——矩阵 app=桌面模式动态 app，楔死形
     逐字快照完整复原，实录在案）；回读=committed blob 五项在位。
   - **archived**：本件 git mv docs/plans/archive/716-m4-upstream-
     batch.md + status archived（本提交）。
-  - **cleaned**：guard 后回填（本提交先记 pending，移除后回填）。
+  - **cleaned**：guard 双过闸（auto-lang worktree clean+auto-down
+    兄弟 clean——均无 reparse point）→worktree/分支 plan-716-dev/
+    组目录 .wt/lang-716 全移除实证（worktree list 双仓零残留；
+    D: 释放 ~7GB）。
   - **陈旧产物观察**（PLAN-092 先例）：本计划触及 auto-lang UI 引擎
     （highlight/treesitter/frame_bench/envelope）+VM 面（codegen/
     natives/stdlib frame）——master 的 release 档二进制与下游
