@@ -1,0 +1,1013 @@
+{
+  "checkedAt": "2026-10-01T07:40:20.473Z",
+  "checks": [
+    {
+      "route": "/os",
+      "actualUrl": "http://127.0.0.1:4225/os",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS: an operating environment built around Auto"
+    },
+    {
+      "route": "/zh/os",
+      "actualUrl": "http://127.0.0.1:4225/zh/os",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS：以 Auto 语言为基础的操作系统环境"
+    },
+    {
+      "route": "/ai",
+      "actualUrl": "http://127.0.0.1:4225/ai",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI: shared capabilities and work tools in the Auto ecosystem"
+    },
+    {
+      "route": "/zh/ai",
+      "actualUrl": "http://127.0.0.1:4225/zh/ai",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI：Auto 体系中的共享能力与工作工具"
+    },
+    {
+      "route": "/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/autoos/",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "The current desktop: windows, applications and system entry points"
+    },
+    {
+      "route": "/zh/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/zh/autoos/",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "当前桌面：窗口、应用与系统入口"
+    },
+    {
+      "route": "/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/ui-desktop",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoUI desktop paths"
+    },
+    {
+      "route": "/zh/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/zh/ui-desktop",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoUI 的桌面运行路径"
+    },
+    {
+      "route": "/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/autoos-history",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS — From Language as OS to AI, Language, and System Collaboration\n​"
+    },
+    {
+      "route": "/zh/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/autoos-history",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS：从 Language as OS 到 AI、语言与系统的协作\n​"
+    },
+    {
+      "route": "/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/auto-ai-history",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI in the Auto Ecosystem — From Shared Model Services to Traceable Work\n​"
+    },
+    {
+      "route": "/zh/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/auto-ai-history",
+      "width": 360,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto 生态中的 AI：从共享模型服务到可追溯的工作过程\n​"
+    },
+    {
+      "route": "/os",
+      "actualUrl": "http://127.0.0.1:4225/os",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS: an operating environment built around Auto",
+      "screenshot": "os-390-light.png"
+    },
+    {
+      "route": "/zh/os",
+      "actualUrl": "http://127.0.0.1:4225/zh/os",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS：以 Auto 语言为基础的操作系统环境",
+      "screenshot": "zh-os-390-light.png"
+    },
+    {
+      "route": "/ai",
+      "actualUrl": "http://127.0.0.1:4225/ai",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI: shared capabilities and work tools in the Auto ecosystem",
+      "screenshot": "ai-390-light.png"
+    },
+    {
+      "route": "/zh/ai",
+      "actualUrl": "http://127.0.0.1:4225/zh/ai",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI：Auto 体系中的共享能力与工作工具",
+      "screenshot": "zh-ai-390-light.png"
+    },
+    {
+      "route": "/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/autoos/",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "The current desktop: windows, applications and system entry points",
+      "screenshot": "autoos-390-light.png"
+    },
+    {
+      "route": "/zh/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/zh/autoos/",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "当前桌面：窗口、应用与系统入口",
+      "screenshot": "zh-autoos-390-light.png"
+    },
+    {
+      "route": "/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/ui-desktop",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoUI desktop paths",
+      "screenshot": "ui-desktop-390-light.png"
+    },
+    {
+      "route": "/zh/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/zh/ui-desktop",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoUI 的桌面运行路径",
+      "screenshot": "zh-ui-desktop-390-light.png"
+    },
+    {
+      "route": "/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/autoos-history",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS — From Language as OS to AI, Language, and System Collaboration\n​",
+      "screenshot": "articles-autoos-history-390-light.png"
+    },
+    {
+      "route": "/zh/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/autoos-history",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS：从 Language as OS 到 AI、语言与系统的协作\n​",
+      "screenshot": "zh-articles-autoos-history-390-light.png"
+    },
+    {
+      "route": "/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/auto-ai-history",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI in the Auto Ecosystem — From Shared Model Services to Traceable Work\n​",
+      "screenshot": "articles-auto-ai-history-390-light.png"
+    },
+    {
+      "route": "/zh/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/auto-ai-history",
+      "width": 390,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto 生态中的 AI：从共享模型服务到可追溯的工作过程\n​",
+      "screenshot": "zh-articles-auto-ai-history-390-light.png"
+    },
+    {
+      "route": "/os",
+      "actualUrl": "http://127.0.0.1:4225/os",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS: an operating environment built around Auto"
+    },
+    {
+      "route": "/zh/os",
+      "actualUrl": "http://127.0.0.1:4225/zh/os",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS：以 Auto 语言为基础的操作系统环境"
+    },
+    {
+      "route": "/ai",
+      "actualUrl": "http://127.0.0.1:4225/ai",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI: shared capabilities and work tools in the Auto ecosystem"
+    },
+    {
+      "route": "/zh/ai",
+      "actualUrl": "http://127.0.0.1:4225/zh/ai",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI：Auto 体系中的共享能力与工作工具"
+    },
+    {
+      "route": "/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/autoos/",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "The current desktop: windows, applications and system entry points"
+    },
+    {
+      "route": "/zh/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/zh/autoos/",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "当前桌面：窗口、应用与系统入口"
+    },
+    {
+      "route": "/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/ui-desktop",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoUI desktop paths"
+    },
+    {
+      "route": "/zh/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/zh/ui-desktop",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoUI 的桌面运行路径"
+    },
+    {
+      "route": "/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/autoos-history",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS — From Language as OS to AI, Language, and System Collaboration\n​"
+    },
+    {
+      "route": "/zh/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/autoos-history",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS：从 Language as OS 到 AI、语言与系统的协作\n​"
+    },
+    {
+      "route": "/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/auto-ai-history",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI in the Auto Ecosystem — From Shared Model Services to Traceable Work\n​"
+    },
+    {
+      "route": "/zh/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/auto-ai-history",
+      "width": 768,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto 生态中的 AI：从共享模型服务到可追溯的工作过程\n​"
+    },
+    {
+      "route": "/os",
+      "actualUrl": "http://127.0.0.1:4225/os",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS: an operating environment built around Auto"
+    },
+    {
+      "route": "/zh/os",
+      "actualUrl": "http://127.0.0.1:4225/zh/os",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS：以 Auto 语言为基础的操作系统环境"
+    },
+    {
+      "route": "/ai",
+      "actualUrl": "http://127.0.0.1:4225/ai",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI: shared capabilities and work tools in the Auto ecosystem"
+    },
+    {
+      "route": "/zh/ai",
+      "actualUrl": "http://127.0.0.1:4225/zh/ai",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI：Auto 体系中的共享能力与工作工具"
+    },
+    {
+      "route": "/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/autoos/",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "The current desktop: windows, applications and system entry points"
+    },
+    {
+      "route": "/zh/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/zh/autoos/",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "当前桌面：窗口、应用与系统入口"
+    },
+    {
+      "route": "/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/ui-desktop",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoUI desktop paths"
+    },
+    {
+      "route": "/zh/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/zh/ui-desktop",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoUI 的桌面运行路径"
+    },
+    {
+      "route": "/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/autoos-history",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS — From Language as OS to AI, Language, and System Collaboration\n​"
+    },
+    {
+      "route": "/zh/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/autoos-history",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS：从 Language as OS 到 AI、语言与系统的协作\n​"
+    },
+    {
+      "route": "/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/auto-ai-history",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI in the Auto Ecosystem — From Shared Model Services to Traceable Work\n​"
+    },
+    {
+      "route": "/zh/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/auto-ai-history",
+      "width": 1024,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto 生态中的 AI：从共享模型服务到可追溯的工作过程\n​"
+    },
+    {
+      "route": "/os",
+      "actualUrl": "http://127.0.0.1:4225/os",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS: an operating environment built around Auto",
+      "screenshot": "os-1440-light.png"
+    },
+    {
+      "route": "/zh/os",
+      "actualUrl": "http://127.0.0.1:4225/zh/os",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS：以 Auto 语言为基础的操作系统环境",
+      "screenshot": "zh-os-1440-light.png"
+    },
+    {
+      "route": "/ai",
+      "actualUrl": "http://127.0.0.1:4225/ai",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI: shared capabilities and work tools in the Auto ecosystem",
+      "screenshot": "ai-1440-light.png"
+    },
+    {
+      "route": "/zh/ai",
+      "actualUrl": "http://127.0.0.1:4225/zh/ai",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI：Auto 体系中的共享能力与工作工具",
+      "screenshot": "zh-ai-1440-light.png"
+    },
+    {
+      "route": "/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/autoos/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "The current desktop: windows, applications and system entry points",
+      "screenshot": "autoos-1440-light.png"
+    },
+    {
+      "route": "/zh/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/zh/autoos/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "当前桌面：窗口、应用与系统入口",
+      "screenshot": "zh-autoos-1440-light.png"
+    },
+    {
+      "route": "/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/ui-desktop",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoUI desktop paths",
+      "screenshot": "ui-desktop-1440-light.png"
+    },
+    {
+      "route": "/zh/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/zh/ui-desktop",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoUI 的桌面运行路径",
+      "screenshot": "zh-ui-desktop-1440-light.png"
+    },
+    {
+      "route": "/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/autoos-history",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS — From Language as OS to AI, Language, and System Collaboration\n​",
+      "screenshot": "articles-autoos-history-1440-light.png"
+    },
+    {
+      "route": "/zh/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/autoos-history",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AutoOS：从 Language as OS 到 AI、语言与系统的协作\n​",
+      "screenshot": "zh-articles-autoos-history-1440-light.png"
+    },
+    {
+      "route": "/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/auto-ai-history",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "AI in the Auto Ecosystem — From Shared Model Services to Traceable Work\n​",
+      "screenshot": "articles-auto-ai-history-1440-light.png"
+    },
+    {
+      "route": "/zh/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/auto-ai-history",
+      "width": 1440,
+      "theme": "light",
+      "overflow": 0,
+      "h1": "Auto 生态中的 AI：从共享模型服务到可追溯的工作过程\n​",
+      "screenshot": "zh-articles-auto-ai-history-1440-light.png"
+    },
+    {
+      "route": "/os",
+      "actualUrl": "http://127.0.0.1:4225/os",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS: an operating environment built around Auto"
+    },
+    {
+      "route": "/zh/os",
+      "actualUrl": "http://127.0.0.1:4225/zh/os",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS：以 Auto 语言为基础的操作系统环境"
+    },
+    {
+      "route": "/ai",
+      "actualUrl": "http://127.0.0.1:4225/ai",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI: shared capabilities and work tools in the Auto ecosystem"
+    },
+    {
+      "route": "/zh/ai",
+      "actualUrl": "http://127.0.0.1:4225/zh/ai",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI：Auto 体系中的共享能力与工作工具"
+    },
+    {
+      "route": "/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/autoos/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "The current desktop: windows, applications and system entry points"
+    },
+    {
+      "route": "/zh/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/zh/autoos/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "当前桌面：窗口、应用与系统入口"
+    },
+    {
+      "route": "/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/ui-desktop",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoUI desktop paths"
+    },
+    {
+      "route": "/zh/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/zh/ui-desktop",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoUI 的桌面运行路径"
+    },
+    {
+      "route": "/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/autoos-history",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS — From Language as OS to AI, Language, and System Collaboration\n​"
+    },
+    {
+      "route": "/zh/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/autoos-history",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS：从 Language as OS 到 AI、语言与系统的协作\n​"
+    },
+    {
+      "route": "/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/auto-ai-history",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI in the Auto Ecosystem — From Shared Model Services to Traceable Work\n​"
+    },
+    {
+      "route": "/zh/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/auto-ai-history",
+      "width": 360,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto 生态中的 AI：从共享模型服务到可追溯的工作过程\n​"
+    },
+    {
+      "route": "/os",
+      "actualUrl": "http://127.0.0.1:4225/os",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS: an operating environment built around Auto",
+      "screenshot": "os-390-dark.png"
+    },
+    {
+      "route": "/zh/os",
+      "actualUrl": "http://127.0.0.1:4225/zh/os",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS：以 Auto 语言为基础的操作系统环境",
+      "screenshot": "zh-os-390-dark.png"
+    },
+    {
+      "route": "/ai",
+      "actualUrl": "http://127.0.0.1:4225/ai",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI: shared capabilities and work tools in the Auto ecosystem",
+      "screenshot": "ai-390-dark.png"
+    },
+    {
+      "route": "/zh/ai",
+      "actualUrl": "http://127.0.0.1:4225/zh/ai",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI：Auto 体系中的共享能力与工作工具",
+      "screenshot": "zh-ai-390-dark.png"
+    },
+    {
+      "route": "/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/autoos/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "The current desktop: windows, applications and system entry points",
+      "screenshot": "autoos-390-dark.png"
+    },
+    {
+      "route": "/zh/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/zh/autoos/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "当前桌面：窗口、应用与系统入口",
+      "screenshot": "zh-autoos-390-dark.png"
+    },
+    {
+      "route": "/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/ui-desktop",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoUI desktop paths",
+      "screenshot": "ui-desktop-390-dark.png"
+    },
+    {
+      "route": "/zh/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/zh/ui-desktop",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoUI 的桌面运行路径",
+      "screenshot": "zh-ui-desktop-390-dark.png"
+    },
+    {
+      "route": "/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/autoos-history",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS — From Language as OS to AI, Language, and System Collaboration\n​",
+      "screenshot": "articles-autoos-history-390-dark.png"
+    },
+    {
+      "route": "/zh/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/autoos-history",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS：从 Language as OS 到 AI、语言与系统的协作\n​",
+      "screenshot": "zh-articles-autoos-history-390-dark.png"
+    },
+    {
+      "route": "/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/auto-ai-history",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI in the Auto Ecosystem — From Shared Model Services to Traceable Work\n​",
+      "screenshot": "articles-auto-ai-history-390-dark.png"
+    },
+    {
+      "route": "/zh/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/auto-ai-history",
+      "width": 390,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto 生态中的 AI：从共享模型服务到可追溯的工作过程\n​",
+      "screenshot": "zh-articles-auto-ai-history-390-dark.png"
+    },
+    {
+      "route": "/os",
+      "actualUrl": "http://127.0.0.1:4225/os",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS: an operating environment built around Auto"
+    },
+    {
+      "route": "/zh/os",
+      "actualUrl": "http://127.0.0.1:4225/zh/os",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS：以 Auto 语言为基础的操作系统环境"
+    },
+    {
+      "route": "/ai",
+      "actualUrl": "http://127.0.0.1:4225/ai",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI: shared capabilities and work tools in the Auto ecosystem"
+    },
+    {
+      "route": "/zh/ai",
+      "actualUrl": "http://127.0.0.1:4225/zh/ai",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI：Auto 体系中的共享能力与工作工具"
+    },
+    {
+      "route": "/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/autoos/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "The current desktop: windows, applications and system entry points"
+    },
+    {
+      "route": "/zh/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/zh/autoos/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "当前桌面：窗口、应用与系统入口"
+    },
+    {
+      "route": "/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/ui-desktop",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoUI desktop paths"
+    },
+    {
+      "route": "/zh/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/zh/ui-desktop",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoUI 的桌面运行路径"
+    },
+    {
+      "route": "/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/autoos-history",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS — From Language as OS to AI, Language, and System Collaboration\n​"
+    },
+    {
+      "route": "/zh/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/autoos-history",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS：从 Language as OS 到 AI、语言与系统的协作\n​"
+    },
+    {
+      "route": "/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/auto-ai-history",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI in the Auto Ecosystem — From Shared Model Services to Traceable Work\n​"
+    },
+    {
+      "route": "/zh/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/auto-ai-history",
+      "width": 768,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto 生态中的 AI：从共享模型服务到可追溯的工作过程\n​"
+    },
+    {
+      "route": "/os",
+      "actualUrl": "http://127.0.0.1:4225/os",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS: an operating environment built around Auto"
+    },
+    {
+      "route": "/zh/os",
+      "actualUrl": "http://127.0.0.1:4225/zh/os",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS：以 Auto 语言为基础的操作系统环境"
+    },
+    {
+      "route": "/ai",
+      "actualUrl": "http://127.0.0.1:4225/ai",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI: shared capabilities and work tools in the Auto ecosystem"
+    },
+    {
+      "route": "/zh/ai",
+      "actualUrl": "http://127.0.0.1:4225/zh/ai",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI：Auto 体系中的共享能力与工作工具"
+    },
+    {
+      "route": "/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/autoos/",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "The current desktop: windows, applications and system entry points"
+    },
+    {
+      "route": "/zh/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/zh/autoos/",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "当前桌面：窗口、应用与系统入口"
+    },
+    {
+      "route": "/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/ui-desktop",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoUI desktop paths"
+    },
+    {
+      "route": "/zh/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/zh/ui-desktop",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoUI 的桌面运行路径"
+    },
+    {
+      "route": "/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/autoos-history",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS — From Language as OS to AI, Language, and System Collaboration\n​"
+    },
+    {
+      "route": "/zh/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/autoos-history",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS：从 Language as OS 到 AI、语言与系统的协作\n​"
+    },
+    {
+      "route": "/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/auto-ai-history",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI in the Auto Ecosystem — From Shared Model Services to Traceable Work\n​"
+    },
+    {
+      "route": "/zh/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/auto-ai-history",
+      "width": 1024,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto 生态中的 AI：从共享模型服务到可追溯的工作过程\n​"
+    },
+    {
+      "route": "/os",
+      "actualUrl": "http://127.0.0.1:4225/os",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS: an operating environment built around Auto",
+      "screenshot": "os-1440-dark.png"
+    },
+    {
+      "route": "/zh/os",
+      "actualUrl": "http://127.0.0.1:4225/zh/os",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS：以 Auto 语言为基础的操作系统环境",
+      "screenshot": "zh-os-1440-dark.png"
+    },
+    {
+      "route": "/ai",
+      "actualUrl": "http://127.0.0.1:4225/ai",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI: shared capabilities and work tools in the Auto ecosystem",
+      "screenshot": "ai-1440-dark.png"
+    },
+    {
+      "route": "/zh/ai",
+      "actualUrl": "http://127.0.0.1:4225/zh/ai",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI：Auto 体系中的共享能力与工作工具",
+      "screenshot": "zh-ai-1440-dark.png"
+    },
+    {
+      "route": "/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/autoos/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "The current desktop: windows, applications and system entry points",
+      "screenshot": "autoos-1440-dark.png"
+    },
+    {
+      "route": "/zh/autoos/",
+      "actualUrl": "http://127.0.0.1:4225/zh/autoos/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "当前桌面：窗口、应用与系统入口",
+      "screenshot": "zh-autoos-1440-dark.png"
+    },
+    {
+      "route": "/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/ui-desktop",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoUI desktop paths",
+      "screenshot": "ui-desktop-1440-dark.png"
+    },
+    {
+      "route": "/zh/ui-desktop",
+      "actualUrl": "http://127.0.0.1:4225/zh/ui-desktop",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoUI 的桌面运行路径",
+      "screenshot": "zh-ui-desktop-1440-dark.png"
+    },
+    {
+      "route": "/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/autoos-history",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS — From Language as OS to AI, Language, and System Collaboration\n​",
+      "screenshot": "articles-autoos-history-1440-dark.png"
+    },
+    {
+      "route": "/zh/articles/autoos-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/autoos-history",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AutoOS：从 Language as OS 到 AI、语言与系统的协作\n​",
+      "screenshot": "zh-articles-autoos-history-1440-dark.png"
+    },
+    {
+      "route": "/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/articles/auto-ai-history",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "AI in the Auto Ecosystem — From Shared Model Services to Traceable Work\n​",
+      "screenshot": "articles-auto-ai-history-1440-dark.png"
+    },
+    {
+      "route": "/zh/articles/auto-ai-history",
+      "actualUrl": "http://127.0.0.1:4225/zh/articles/auto-ai-history",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": 0,
+      "h1": "Auto 生态中的 AI：从共享模型服务到可追溯的工作过程\n​",
+      "screenshot": "zh-articles-auto-ai-history-1440-dark.png"
+    }
+  ]
+}
