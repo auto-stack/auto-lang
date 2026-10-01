@@ -94,6 +94,11 @@ fn image_surface_contract_is_preserved_across_generators() {
 
     // Vue generator: the same media URI and interactive props/events are
     // emitted without introducing a browser-side decode/cache implementation.
+    // PLAN-095 T-01: markers re-anchored to the receipted generator form —
+    // 61394be07 moved the :style binding from object form (vue-tsc TS2345)
+    // to a CSS declaration string, and replaced the never-fired bare `@pan`
+    // DOM alias with an explicit pointer three-phase wrapper (buttons&1
+    // gated) that calls the same PanBy handler.
     let vue = generated
         .all_widget_codes
         .iter()
@@ -103,12 +108,14 @@ fn image_surface_contract_is_preserved_across_generators() {
     for marker in [
         "class=\"relative overflow-hidden\"",
         ":src=\"asset_src\"",
-        "objectFit: 'width'",
-        "translate(",
+        ";object-fit:' + ('width')",
+        "'translate(' + (",
         "@load=\"ImageLoaded\"",
         "@error=\"ImageFailed\"",
         "@wheel=\"ZoomAt\"",
-        "@pan=\"PanBy\"",
+        "@pointerdown=\"__surfPanD_0\"",
+        "@pointermove=\"__surfPanM_0\"",
+        "@pointerup=\"__surfPanU_0\"",
         "@dblclick=\"ToggleFit\"",
     ] {
         assert!(vue.contains(marker), "Vue contract marker missing: {marker}\n{vue}");
