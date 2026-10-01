@@ -103,4 +103,19 @@ next: merge when landing is requested; keep worktree/preview for user inspection
 
 ## 10. 待澄清事项
 
+### PLAN-722:r1 合入检查点（2026-10-01）
+
+stage: merge | plan_id: PLAN-722 | plan_revision: 1 | outcome: blocked（仅账本/归档/清理；网站与canonical已交付）
+
+- authorization: 用户要求本会话所有修改合入master，包含722及723后续修订；此前719已落地主线，715/718/720已归档。
+- prepared: reviewed_commit=bb8bcefd389589f0522fc0b23951843bb975a8ab；723承接基础后统一在723专用树rebase最新master，三项722 patch由git range-diff证明全部等价。映射与完整来源见docs/reports/p722-p723-merge.md。
+- landed: 939497eadc5b189aca61a10c91387c6f0e7a32d6，经master从142458d21ad25c434880cb9d1998911ab08d327d的ff-only；随后723:r2快进交付02f4b1a90e288ad3dc9d970a435ad29693f9fe43。收据文档后继f504b506d62ace4b0f6554934ec7d171c61c89f8，实施未变。722的初始无图阶段由批准的723实图/就地详情扩展，未重施旧Spec覆盖新现状。
+- spec-sync: website/project.md及design/application-introductions.md、application-demos.md均已落地；website/plans.md补历史，spec-index.py再生无语义变化；723更新同一canonical后内容以723:r2为准。touched_goals=[]不造假Goal。
+- integration: 原70项最终测试与重放website全等；合入后独占4249冒烟3 passed(15.2s)，master与分支website/Spec diff为空，master生成器--check58兼容路由通过。
+- ledger_refreshed: blocked；既有musk.exe真实store在4248 GET /api/specs返回500 failed to load specs，受跟踪历史账本缺project/version等当前schema字段。不写/删/手工迁移.autoos/specs.json；临时store已按PID归属停止。719同类旧检查点未冒领解除。
+- archived/cleaned: pending；保持reviewed和原722工作树/分支，账本可读并验证后仅续做缺失检查点；不重复合入代码。
+- artifacts/batch: 4235预览使用已验证723产物，公开站未部署；主检出dist不存在，未重建后台（本轮无后台源码）。Category A零Cargo；722/723非%5且不足48h，历史720批量档已获用户跳过，收据不改。
+
+next: 修复旧账本与store的兼容后，派生投影读回、归档与guard清理。全部请求的网站修改已经进入master。
+
 无阻塞用户问题。精确发布集合/无后台体验覆盖为设计内后续逐项验证项，本轮不承诺固定28项全可用。

@@ -109,6 +109,21 @@ stage: review | plan_id: PLAN-723 | plan_revision: 2 | outcome: pass
 
 ## 10. 待澄清事项
 
+### PLAN-723:r2 合入检查点（2026-10-01）
+
+stage: merge | plan_id: PLAN-723 | plan_revision: 2 | outcome: blocked（仅账本/归档/清理；网站与canonical已交付）
+
+- prepared: reviewed_commit=137bc5557855c7757a0f3754ed4466226fa752f3，receipt=62eb4886f9f9b20e930dc681a061db6a4de4bb84。最新master142458d21上rebase七项全部range-diff等价；当前实施映射fd2d09c58d763737dbe13090fe8ba8ff84a5c955，review收据映射1cfd65993d3b35107af5a1fec029f1325707211e；规范准备仅增plans/合入记录，未改实施/依赖/测试。完整映射docs/reports/p722-p723-merge.md。
+- landed: delivery_commit=02f4b1a90e288ad3dc9d970a435ad29693f9fe43；master先ff-only落722，再ff-only到本交付，实际HEAD相等验证。后继f504b506d62ace4b0f6554934ec7d171c61c89f8仅增加成功收据，网站全等。
+- spec-sync: 四r2目标落地且p723-r2-spec-delta.json hash均匹配；website/plans.md补722/723，spec-index.py再生无语义变化；现有介绍目标，不新增Goal。
+- integration: master与plan分支website/Spec diff为空，master生成器--check58路由通过；等价重放后的独占4249冒烟3 passed(15.2s)，含冻结28图及中英整页/筛选/就地展开/图片键盘行为；70项最终回归证据代码未变可复用。
+- ledger_refreshed: blocked；4248官方musk既有调试程序真实workspace store GET /api/specs=500 failed to load specs；历史账本格式缺project/version，不直接编辑/删除/迁移，不发POST。main与重放树既有.autoos/specs.json未改；临时store已验证PID归属后停止。
+- archived/cleaned: pending；保持reviewed和723工作树/分支，4235当前预览保留。账本兼容后仅续做派生投影、读回、归档、guard清理，不重合代码。719之前的相同收尾阻塞保留。
+- artifacts: 已验证网站产物在723树，4235可用；main dist/index.html不存在，公开站未部署；未触后台与其他仓产品代码，不重建release。其他会话进程/未跟踪探针不动。
+- batch: 722/723非%5、距2026-09-30T16:20Z不足48h；历史720到期已获用户显式跳过(4717753c3)，本轮Category A不跑Rust批量档，last-batch receipt不改。
+
+next: 处理旧账本与store格式兼容，再完成缺失收尾检查点；本会话全部网站修改已合入master。
+
 无当前必需用户决策。未就绪Musk/Jade素材依此前决定等待，不属于本轮28 demo必需素材；技术阻塞将按逐项证据登记。
 
 r2 revision handoff：2026-10-01用户查看后明确要求将28 Demo页面合并进应用概览，四主应用独立详情保留。stage:new | PLAN-723:r2 | outcome:pass | next:work；同723 worktree，r2 base=a35a908a70ffe38abe0fa051f0465cb2270c9435。T-01/02/04素材和主图成果保留，T-03/05/06重开；未复用r1页面结构验收。直接请求已授权本修订，无必需决策；touched_goals仍为空，现有网站介绍范围。
