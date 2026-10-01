@@ -99,6 +99,21 @@ spec_inputs / frozen_delta（完整差异固定于 reviewed_commit）：SD-01 pr
 
 findings：遗漏/延后/workaround 扫描无新增债务，无 Rust/后端/桌面应用改动，无 debug/TODO 替身。首次 console 检查曾 transient hydration fail，未降低原断言；在最终稳定 dist 上专项与整站均 pass，历史结果保留报告。既有高亮回退与 bundle 提示未增加。原 worktree guard 已确认 clean、无 junction/symlink。公开部署不属本次范围。
 
+### PLAN-720:r1 合入检查点（2026-10-01）
+
+stage: merge | plan_id: PLAN-720 | plan_revision: 1 | outcome: blocked（仅 ledger 发布/归档收尾；网站代码已交付） | delivery_commit: 19bbbdeeab77e6c57aa4d7031c5fc3be14eb23f5 | next: store writer 恢复后校对既有条目、发布并读回，再归档与 guard 清理。
+
+| checkpoint | evidence |
+|---|---|
+| prepared | reviewed_commit ecdfcc7655a5409cac42449c674958ae216b1815；SD-01/02 已冻结且 plans.md 附随行复核，工作树 clean；Git Bash wt-guard 显示 clean、无 reparse point。目标投影为 designs→website/project.md、designs→website/design/ui-presentation.md，tests/reviews/reports 引用本报告与 PLAN-720:r1；服务恢复后按 canonical target 复用真实 item ID，未盲目创建重复条目。 |
+| landed | master 从 cf38117503c601c2afe1f33561d093c8240ea524 ff-only 到 19bbbdeeab77e6c57aa4d7031c5fc3be14eb23f5，无 merge commit；当时 master HEAD 与 delivery 相同。并发主线仅 718/720/721 簿记，没有 website/Spec 变更。 |
+| rebase equivalence | `git range-diff ccf1b9b78e43b49ec6913234df7d0d88dbfa45e7..ecdfcc7655a5409cac42449c674958ae216b1815 cf38117503c601c2afe1f33561d093c8240ea524..19bbbdeeab77e6c57aa4d7031c5fc3be14eb23f5` 三项全等：333a2042ccc5dfbd128caf4b9423ddea3e249a1e→41e8b686c619867c3888969ecc426fbcfc61eb8b；d2eb9f8935ab0109cadba8779a2baade933c0c92→ba66d2ad1ff14f73b9dbcee56a2d46255a906d9c；ecdfcc7655a5409cac42449c674958ae216b1815→19bbbdeeab77e6c57aa4d7031c5fc3be14eb23f5。旧 review 绑定的 website/Spec 内容不变。 |
+| integration | 主线三份 Spec SHA256 与冻结值一致；旧 reviewed_commit→delivery 的 website/Spec diff 为空；最终 production preview 的 /zh/v05/、/zh/autoos/、/zh/os 均 HTTP200、包含真实桌面 src 与最小化说明。无代码更改，复用已识别的 77 pass 证据，无额外 Cargo。 |
+| ledger_refreshed | pending：会话无 read/list/write/update Spec tools；HTTP 127.0.0.1:8080/api/specs 连接拒绝。没有手写 .autoos/specs.json，没有提前归档。目标 workspace D:/autostack/auto-lang，runtime ledger .autoos/specs.json。 |
+| archived / cleaned | pending：Plan 保持 reviewed；保留 D:/autostack/.wt/lang-720/auto-lang 与 plan-720-dev（clean、已合入）用于来源复核和预览。 |
+| production artifacts | website/.vitepress/dist 是 2026-10-01 本次稳定构建（146.75s）；本地 http://127.0.0.1:4220/zh/v05/ 与 /zh/autoos/ 使用此产物。公开 http://112.74.45.241 未部署，本请求只加入图片并沿用已授权主分支合入，不声称线上已更新；无后端或依赖二进制变更。 |
+| batch handoff | 读取 .last-batch-regression.json：last_covered_plan_id=715、2026-09-30T16:20:00Z，720 为 %5 节点。归档/cleaned 之后的批量回归检查点尚未到达，且本次 Category A 禁止 Cargo；到达该检查点再交 /auto-plan:regress 主检出单实例，不改旧收据、不把网站 77 pass 写成 Rust 批量覆盖。 |
+
 ## 10. 待澄清事项
 
 无阻塞偏好；采用站点现有视觉与用户截图顺序，保留其他会话 WIP。
