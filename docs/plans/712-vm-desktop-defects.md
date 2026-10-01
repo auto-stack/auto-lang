@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-712
-status: execution_done     # r3 收口（2026-10-01 用户裁定建议A：三层修复+章节目录全实证，T-11/T-19 桌面轨残留登记归 T-16 批次；review 待跑）
+status: reviewed           # r3 复审 pass（2026-10-01，reviewed_commit=plan-712-dev@884bcfa67；next merge）
 feature_name: VM 桌面验收缺陷收敛（视频引擎双缺陷 + 壳配置持久化 + examples 依赖）
 author: [zcode(auto-os 会话转介)]
 created_at: 2026-09-30
@@ -114,6 +114,11 @@ Rust；iced 0.14 / iced_wgpu 0.14（shader 自定义 Primitive 管线）；libmp
 | SD-05 | modify | `docs/specs/auto-lang/ui/overview.md`（媒体元素节，随再 merge 沉淀） | before：VM 端本地文件选择无契约（app 侧降级文案「仅 Web 端」）；after：VM 端本地播放 = dialog_open（PLAN-681 内建）→ 本地路径直入 mpv 契约，与 Web object URL 同级承诺 | r2 收纳：能力面已齐但 app 未接线，契约须成文 | AC-07 |
 | SD-04 | add（视 DP-4） | `docs/specs/auto-lang/ui/overview.md`（examples 生成产物 feature 面）或生成器 spec | before/after 工作期按 DP-4 定 | 生成产物 feature 失效属工具链契约缺口 | AC-05 |
 | SD-08 | add | `docs/specs/auto-lang/ui/overview.md`（媒体元素节/事件契约面，随 merge 沉淀） | before：事件回调 `$N` 占位实参仅 Vue 生成器替换语义，VM 端落 `Str("$0")` 字面量占 args[0]、真载荷错位（`($0)` 与 `()` 形态分叉）；after：`$` 前缀占位实参 VM 端剥除，载荷对位由回调臂事件现场 push 保证，`($0)` 与 `()` 两形态 VM 端同义、与 Vue 生成器同契约 | T-12 根因修复（030 进度条点击失效）引入的持久语义，必须成文防回归 | T-12 回归锁 `progress_onseek_placeholder_never_becomes_literal_arg` |
+| SD-09 | modify | `docs/specs/auto-lang/ui/overview.md`（桌面后端供给/URL 前缀化面，随 merge 沉淀） | before：launch 期 URL 前缀变换的模块读点覆盖未成文（routes 页 pages/*.at 装载臂裸读，前缀化静默缺席）；after：**全部前端模块读点（含 routes 块 `pages/{module}.at` 装载臂）必须过 `back_prefix::apply`**——行级规则（行含 `Http.` + `"/api/` 字面量）与 `path_under` 递归面成文 | T-17 第一层根修（018 详情页 fetch 不达 proxy 的根因），读点覆盖面是契约缺口必须成文 | 回归锁 `route_page_fetch_reaches_proxied_root_when_guard_active`（真 TCP e2e）+ `subdir_modules_under_front_dir_are_transformed` |
+| SD-10 | modify | `docs/specs/auto-lang/ui/overview.md`（Http.*_json 失败语义面，随 merge 沉淀） | before：传输层失败（连接拒绝/超时/DNS/队满）被包成 `{"error":..,"status":0}` 成功值，try/catch 永不触发；after：**分层契约对齐 fetch()**——网络层失败 = 可捕获异常（VMError，.at catch 可接，五 json shim 同律）；HTTP 非 2xx = 保持错误形状值（`.status` 可读，HTTP 错误状态不 reject） | T-17 候选②（吞错点拔除，018 详情页助燃层）；影响全部 get_json 调用方失败路径，必须成文 | 回归锁 `transport_error_is_caught_by_at_try_not_swallowed` + `http_error_status_still_returns_value_not_throw` |
+| SD-11 | modify | `docs/specs/auto-lang/ui/overview.md`（路由页装载/Init 生命周期面，随 merge 沉淀） | before：outlet 页 Init demand 代际身份 = key prop 或裸 widget 名（与路由参数无关）→ 同页不同参不重派；after：**outlet 页 Init 代际身份并入当前路由路径（base@route）**——参数变化 = 新代际 = cancel 旧代际 + 重派 Init（导航=新装载语义，与书架回退重取数行为一致） | T-17 第三层根修（三卡同内容），路由参数变化必须反映到页装载 | 回归锁 `page_init_reruns_when_route_param_changes` |
+| SD-12 | modify | `docs/specs/auto-lang/ui/overview.md`（虚拟窗缩放/视图重建面，随 merge 沉淀） | before：vwin rect/window_size 双更新后不标 view_dirty（VM builder 构建期烤定响应式像素 + 元素缓存快门 = 缩放后内容恒停旧尺寸）；after：**虚拟窗尺寸落定（交互八向缩放逐拍 / 编程 win_rect 尺寸真变）必须标记归属 app 视图脏**，纯移动不标（零重排纪律） | T-18 方案 A（用户裁定推荐案落地），缩放重排随动的契约保证 | 回归锁 `wm_resize_marks_app_view_dirty` + `wm_` 族 10/10 |
+| SD-13 | modify | `docs/specs/auto-lang/ui/overview.md`（媒体元素节上行契约面，SD-01 增补，随 merge 沉淀） | before：onplaystatechange 边缘检测未定义首读语义（运行时首帧把引擎空闲默认态当边缘合成假事件）；after：**首次 pause 读 = 基线采集不回灌**（此后真实翻转才回灌）；另 `pause` 写失败不推进 applied 锁存（差量判据以内核实态为准） | T-19 引擎腿加固（打架种子拔除：空闲假「播放中」顶掉受控状态致下行/上行镜像互为反转） | 回归锁 `idle_engine_first_poll_seeds_baseline_without_play_state_event` + `pause_hold_and_rapid_toggle_stay_in_sync` |
 
 ## 6. 测试设计
 
@@ -285,6 +290,13 @@ AUTO_SCHED_DIAG=1 AUTOUI_ACCEPTANCE=1 AUTOUI_MCP_PORT=9260 bash scripts/desktop.
 ## 9. 复审记录
 ## 9. 复审记录
 
+- 2026-10-01 stage:review | plan_id PLAN-712 | plan_revision 3 | outcome: **pass** | reviewed_commit: plan-712-dev@884bcfa67 | base_commit: 57b9afa60（master 簿记 417aff474）| dependency_revisions: auto-down 3373a5c（只读兄弟 worktree）| spec_inputs: docs/specs/auto-lang/ui/overview.md（r3 增量 SD-09..13 冻结于本件文本，全部 modify）|
+  - **独立性声明**：实现会话自审（r1/r2 同款裁定从工件重建）——判据全部来自本基线新鲜复跑与在库工件，不采信执行期摘要。
+  - **验收映射（r3 批次 → 证据 → 裁定）**：T-17 三层 pass（层①route-page e2e 红绿锁 + 层②死端口 catch 锁 + 层③重导航重派锁全绿；**用户实机终验「三本书各自内容正确」**+ 章节目录列表点验中）；T-19 引擎腿 pass（契约层 12/12 真引擎锁；桌面轨残留=F-712-4 登记态）；T-18 接线 pass（headless 锁；实机腿=F-712-6 登记态）。
+  - **新鲜复跑（本基线）**：日常档 `cargo t` 4937 跑 4926 绿，**11 红 ⊆ master 基线红族零新增**（plan707/plan484/plan502 flake 本轮未复现）；`cargo tv` 162/162；作用域面 route 98 + dynamic 58 + plan712 5（含三层红绿锁）+ layout 探针 + mpv_contract 12/12（真引擎）。
+  - **findings**：F-712-4 T-19 桌面轨残留（暂停失败，T-16 更新路径家族，引擎契约层已洗清并锁——登记归下一引擎批）；F-712-5 T-11 布局塌缩（r2 登记态，本轮截图形态一致）；F-712-6 T-18 实机腿未走查（win_rect 缩放重排，锁在库）；F-712-7 D 盘满事件致层③批全量档分两次补齐（本批已补齐）；§10⑧ 壁纸 OOM 为独立环境缺陷（master 同崩 A/B 在案）。
+  - **知识增量核验**：SD-09..13 目标路径有效、before/after 与实现一致（路由页前缀覆盖面 / HTTP 失败语义分层 / outlet Init 代际身份并入路由 / vwin 缩放视图脏标记 / 媒体上行契约基线采集+写失败锁存）；supersedes/new 维持空表（全 modify 至既有 overview.md），touched_goals=[GOAL-007, GOAL-010]。
+  | spec delta: SD-09..13 随 merge 沉淀至 docs/specs/auto-lang/ui/overview.md | next: merge。
 - 2026-10-01 stage:work 收口 | plan_id PLAN-712 | plan_revision 3 | outcome: pass（用户裁定建议A：三层修复+章节目录全实证后收口）| code_commit: plan-712-dev @c5a60e8a3 + 32dad29da + 884bcfa67 | task_ids: T-17,T-18,T-19 | evidence:
   - **T-17 三层全闭环（用户实机实证）**：①前缀覆盖（路由页装载臂补 apply）→ ②router.param 堆化（GET_FIELD 实例臂 Obj 缺臂）→ ③outlet Init 代际身份并入路由（重复导航重派）——用户终验「三本书各自内容正确」；app 层章节目录列表补齐（884bcfa67）。
   - **T-19 引擎腿**：契约层探针洗清 + 双锁（空闲自发事件修复/保持层干净）；桌面轨残留（暂停失败）= T-16 桌面轨更新路径家族，登记归下一引擎批（§9 T-19 走查记录）。
