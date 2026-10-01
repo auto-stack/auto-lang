@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-721
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-track-update-path
 author: []
 created_at: 2026-10-01
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径
-current_step: 0
+current_step: 4
 total_steps: 6
 ---
 
@@ -193,20 +193,60 @@ MCP 契约不变（autoui_snapshot 增量字段），消费端 test_vm_mcp.py
   `crates/auto-lang/src/ui/iced/renderer.rs`（接线 4 点）、
   `crates/auto-lang/src/ui/mcp_server.rs`（per-app 面）。验证：
   `cargo check -p auto-lang` + sched_diag/mcp 单测。
+  - [x] **已完成**（2026-10-01，worktree 497f07479 + 1cd8262d3）：sched_diag
+    五相 trace + video_build/mpv_apply/mpv_poll 定谳轴 + per-app snapshot
+    （app 目录名键）+ autoui_desktop handler inject 任意 registry app +
+    vm_bridge read_all_child_states/read_root_field_objects。check 干净；
+    桌面实机 trace 全部服役（evidence/721/apptick-verdict.md）。[✅ 已完成]
 - **T-2**：双轨对照定谳——独立轨 + 桌面轨 AUTO_SCHED_DIAG 采集
   （030 暂停链 + 018 Loading 链），四轴对账 →
   `docs/plans/evidence/721/apptick-verdict.md`。验证：AC-1。
+  - [x] **已完成**（2026-10-01）：①T-16 桌面轨断链**不成立**（r2 伪象/已被
+    712-r3 治愈：sub_parked/arrive/推进/置脏四轴全绿，bookshelf park→resume
+    50.9ms）；②T-19 帧级序列捕获：下行链全通，回弹写=OnTime 触发的全新构建
+    烤回 paused=false（读侧分裂/陈旧 memo 回放=开放机理，trace 已就位）。
+    [✅ 已完成]
 - **T-3**：断链修复 + headless 回归锁 ×2。文件：renderer.rs（按
   定谳落点）+ `crates/auto-lang/src/tests/`（锁）。验证：锁红→绿
   + `cargo t plan721` 绿。
+  - [x] **已完成（按 T-2 定谳改道）**（2026-10-01，1cd8262d3）：改修 T-19
+    暴露面=**下行世代单调门**（VideoContractDown.epoch + apply 回退整包拒绝
+    + convert 打戳）。回归锁 stale_epoch_down_cannot_unpause_fresher_apply
+    真引擎在库，mpv_contract **13/13 绿**（712-r3 双锁零扰动）。读侧机理
+    未除——桌面复验预期仍可复现，登记未竟。[✅ 已完成]
 - **T-4**：T-19 桌面实机复验（030 暂停 10 次无回弹 + trace 对账）
   + per-app snapshot 实机取证（AC-5）。验证：AC-3/AC-5。
+  - [x] **收口（2026-10-01 用户裁定：实机复验移交后续，不阻断合并）**：
+    独立轨真实按钮路径暂停钉住 7s+ 零回弹（030-standalone3，epoch 门生效
+    形态）；桌面活体 ×10 受环境阻塞（实例 I 用户占用 + 注入静默丢② +
+    712 T-07 press 死因）移交用户日常使用观察 + 后续复验，证据链在
+    evidence/721/apptick-verdict.md。per-app snapshot 实机取证 ✓
+    （[5:030-video-player] 全量 store 面）。[✅ 已完成]
 - **T-5**：T-11 双构建探针 + HashMap 审计 → 定谳 + 修复/定性 +
   回归锁。验证：AC-4。
+  - [x] **收口（2026-10-01 用户裁定：app 侧修改到此为止，余题登记后批）**：
+    T-11 定谳任务整体移交债务登记（col_right 438↔658 入口不变，见
+    P712-D1 残项），本计划不再承担。[✅ 已完成（移交）]
 - **T-6**：门禁收口（裸 cargo t 对照 + 触面 tv）+ 复审记录 +
   债务登记 D1 状态回写。验证：AC-6。
+  - [x] **已完成**（2026-10-01）：作用域门禁=裸 `cargo t` + `cargo tv`
+    （worktree 实跑，结果见复审记录）；mpv_contract 13/13 已随 T-3 在案；
+    债务登记回写（D1 推进收据 fffe98698 + 本轮余题新登记）。[✅ 已完成]
 
 ## 复审记录
+
+- 2026-10-01 stage: work | plan_id PLAN-721 | plan_revision 1 | outcome: **needs_replan（部分）→ 继续 executing**（T-1..T-4 实证收口，T-5 未动，T-19 机理层开放）| code_commit: plan-721-dev 1cd8262d3（承 master 7491719b8；依赖 auto-down 895f8d0 detached 兄弟）| task_ids: T-1,T-2,T-3,T-4（部分） | evidence:
+  - 定谳文档 docs/plans/evidence/721/apptick-verdict.md（T-16 结案 + T-19 帧级序列 + 已落修复/未竟清单）。
+  - 契约族 13/13 绿（真引擎，含新锁③与 712-r3 双锁零扰动）；cargo check 干净（默认+mpv-widget）。
+  - P712-D2 顺手清偿（独立 VM 点验全绿，收据 da724ab24，登记表已回写）。
+  | blockers: 桌面活体复验受用户实机占用 + 注入静默丢（待澄清②）+ 712 T-07 press 死因（预存）| next: T-5（T-11 定谳）→ T-6 收口；T-19 读侧机理下一会话以 video_build trace 复现定谳。
+
+- 2026-10-01 **用户裁定收口**：「这几个 app 的修改先到此为止，剩下的问题记录下来以后再更新，先把计划 721 完成并合并」。据此：T-4 桌面活体 ×10 移交用户观察+后续复验；T-5（T-11）移交债务登记；T-19 读侧机理、seek arity 失配、注入静默丢、独立窗自退一并登记。本计划交付面=诊断工装族 + T-19 epoch 单调门 + per-app 验收通道（全部在库带回归锁/实机取证）。
+- 2026-10-01 stage: work 收口 | plan_id PLAN-721 | plan_revision 1 | outcome: **pass（按用户裁定范围）** | code_commit: plan-721-dev 40bc4928d（5 提交：497f07479/1cd8262d3/088b32aa6/23afd0abe/40bc4928d，承 master 7491719b8；依赖 auto-down 895f8d0 detached 兄弟只读）| task_ids: T-1..T-6 | evidence:
+  - 作用域门禁（worktree 实跑）：`cargo tv` 语料档 + 裸 `cargo t` 日常档——零新增红（对照 master 基线 14 红族）；mpv_contract 13/13（真引擎，含新锁③）；`cargo check` 默认+mpv-widget 干净。
+  - 清单复核：AC-1 ✓（定谳文档在案）｜AC-2 ✓（epoch 门+锁③红→绿形态）｜AC-3 部分（独立轨实机 ✓，桌面 ×10 移交后续=用户裁定）｜AC-4 改道（T-11 移交=用户裁定）｜AC-5 ✓（per-app 快照实机）｜AC-6 ✓（门禁实跑）。
+  - 健康：无编译警告新增（255 基线持平）、无调试残留打印（全部门控 AUTO_SCHED_DIAG/AUTO_VM_TRACE）。
+  | spec delta: SD-721-01 受控媒体契约下行世代单调门（epoch 门语义）+ SD-721-02 验收通道任意内嵌 app handler 直呼——随 merge 沉淀 docs/specs/auto-lang/ui/overview.md 候选 | next: review → merge（用户已授权合并）。
 
 ## 待澄清事项
 
@@ -218,3 +258,15 @@ MCP 契约不变（autoui_snapshot 增量字段），消费端 test_vm_mcp.py
   r2 旧测量为断链铁证。
 - T-11 若定谳为进程级全局态初始化序（OnceLock 族），修复成本可能
   超出本批边界——届时定性归档 + 用户裁定是否另起收纳。
+- **②注入静默丢（2026-09-01 desktop-721i 实测）**：handler inject 排队后
+  零派发（g/h 同代码正常；i 实例复现两形态全哑）——候选=registry_id 窗口
+  反查在窗重用/多实例下 miss；inject 臂 `let _` 吞错无日志面。补 trace 后
+  复查（验收通道可靠性债）。
+- **③desktop-721i 实例遗留**：实例 I 仍在运行（用户正在其中观看视频），
+  归用户处置；勿杀。
+- **④独立窗 mpv 降级陷阱（2026-10-01 15:14 已处置）**：本会话给 worktree
+  重建 `auto.exe` 时用默认 feature 集（`cargo build -p auto`）——video 元素
+  在 mpv-widget 缺席时按 AC-10 走诚实降级面板（「无法打开录像」提示），
+  非黑屏非缺陷。修法=`cargo build -p auto --features mpv-widget`
+  （auto-lang 侧 mpv-widget ⇒ mpv-gpu+ui-iced）。桌面壳
+  ui_desktop 一直带 `--features ui-iced,mpv-widget` 不受影响。

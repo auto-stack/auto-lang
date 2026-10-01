@@ -185,6 +185,21 @@ pub struct SharedState {
     /// 周期性 view 重建(大 Code 块下该循环会触发静默退出:实测 ~10s 内
     /// 进程消失,关掉心跳后 30s+ 存活)。
     last_activity_ms: std::sync::atomic::AtomicU64,
+    /// PLAN-721 T-DOCS-1: desktop 内嵌 app 的轻量快照面（primary 槽只承载
+    /// T8 单 App 语义的完整同步面；本 map 由各内嵌 app 的脏帧自发布——
+    /// state 全量 + 源模板 AURA 文本）。键 "<app_id>:<widget_name>"。
+    pub app_surfaces: std::collections::BTreeMap<String, AppSurface>,
+}
+
+/// PLAN-721 T-DOCS-1: 单个内嵌 app 的紧凑快照（autoui_snapshot `app` 选择
+/// 器消费）。`template_text` 为源模板 AURA（子 widget 裸引用、for 未展开
+/// ——与首帧前回退同语义），`state_text` 为物化后的全量状态行。
+pub struct AppSurface {
+    pub widget_name: String,
+    pub state_text: String,
+    pub template_text: String,
+    /// 发布时刻（sched_diag_t0 起算毫秒——诊断对读同轴）。
+    pub updated_ms: u64,
 }
 
 /// Screenshot request stored in SharedState for the iced thread to pick up (Plan 285).
@@ -281,7 +296,28 @@ impl SharedState {
             screenshot_request: None,
             key_bindings: HashMap::new(),
             last_activity_ms: std::sync::atomic::AtomicU64::new(0),
+            app_surfaces: std::collections::BTreeMap::new(),
         }
+    }
+
+    /// PLAN-721 T-DOCS-1: 内嵌 app 脏帧自发布（renderer 每脏帧调用一次）。
+    pub fn set_app_surface(&mut self, key: String, surface: AppSurface) {
+        self.app_surfaces.insert(key, surface);
+    }
+
+    /// PLAN-721 T-DOCS-1: 选择器查找——精确键、数字 app-id 前缀或 widget
+    /// 名匹配（"018" / "bookshelf" / "3:bookshelf" 均可）。
+    pub fn find_app_surface(&self, selector: &str) -> Option<(&String, &AppSurface)> {
+        if let Some((k, s)) = self.app_surfaces.get_key_value(selector) {
+            return Some((k, s));
+        }
+        self.app_surfaces
+            .iter()
+            .find(|(k, _)| {
+                k.split(':').next() == Some(selector)
+                    || k.split(':').nth(1) == Some(selector)
+                    || k.contains(selector)
+            })
     }
 
     /// 记一次 MCP 请求到达(HTTP 任何入口)。
@@ -656,6 +692,10 @@ fn tool_definitions() -> Vec<serde_json::Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "app": {
+                        "type": "string",
+                        "description": "PLAN-721 T-DOCS-1: desktop mode only — select an embedded app's surface by numeric app-id or widget name (e.g. \"3\" or \"bookshelf\"). The primary/shell surface is the default when omitted. Per-app surfaces are source-template AURA + full state, published on each app's dirty frame while an MCP agent is active."
+                    },
                     "include_styles": {
                         "type": "boolean",
                         "default": false,
@@ -1129,7 +1169,7 @@ fn tool_definitions() -> Vec<serde_json::Value> {
         json!({
             "name": "autoui_desktop",
             "title": "Desktop Acceptance Injection",
-            "description": "Inject desktop-surface interactions through the REAL consumption arms (no OS input synthesis — the CUA pixel-identity guard family bypass). Requires AUTOUI_ACCEPTANCE=1 on the desktop host process (production default: refused).\n\n## When to use\n- Acceptance-channel live verification of shell/settings/desktop interactions (gear → settings panel, dock position hot-switch, wallpaper writer, Esc self-hide)\n- Where OS-level SendInput/CUA clicks are blocked by the live-render pixel-identity guard\n\n## Actions\n- {action:\"bus\", verb:\"open_settings\"} — queue a DesktopBus verb record (same drain/execute arm as real shell buttons; e.g. \"layout\\tgrid\", \"summon\\tlauncher\")\n- {action:\"handler\", app:\"settings\", handler:\"Escape\"} — call a privileged app handler directly (app: shell|settings|notification|launcher; same handler pipeline as onclick)\n\nEffects land on the ServiceTick cadence (≤400ms); capture evidence with autoui_screenshot. Procedure: docs/plans/reports/505-acceptance-channel.md",
+            "description": "Inject desktop-surface interactions through the REAL consumption arms (no OS input synthesis — the CUA pixel-identity guard family bypass). Requires AUTOUI_ACCEPTANCE=1 on the desktop host process (production default: refused).\n\n## When to use\n- Acceptance-channel live verification of shell/settings/desktop interactions (gear → settings panel, dock position hot-switch, wallpaper writer, Esc self-hide)\n- Where OS-level SendInput/CUA clicks are blocked by the live-render pixel-identity guard\n\n## Actions\n- {action:\"bus\", verb:\"open_settings\"} — queue a DesktopBus verb record (same drain/execute arm as real shell buttons; e.g. \"layout\\tgrid\", \"summon\\tlauncher\")\n- {action:\"handler\", app:\"settings\", handler:\"Escape\"} — call a privileged app handler directly (app: shell|settings|notification|launcher; same handler pipeline as onclick)\n- PLAN-721 T-DOCS-1: app may also be any embedded app's registry id (e.g. \\\"030-video-player\\\") — window registry_id reverse lookup, same handler pipeline; optional widget arg for sub-widget targeting\n\nEffects land on the ServiceTick cadence (≤400ms); capture evidence with autoui_screenshot. Procedure: docs/plans/reports/505-acceptance-channel.md",
             "inputSchema": {
                 "type": "object",
                 "required": ["action"],
@@ -1299,6 +1339,31 @@ fn tool_snapshot(shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
         .unwrap_or(false);
 
     let shared = shared.lock().unwrap();
+
+    // PLAN-721 T-DOCS-1: per-app 选择器——desktop 内嵌 app 的轻量快照面
+    // （primary 槽只承载 T8 单 App 语义；内嵌 app 的 AURA/状态经脏帧
+    // 自发布到 app_surfaces）。选择器 = 数字 app-id、widget 名或完整键。
+    if let Some(sel) = args.get("app").and_then(|v| v.as_str()) {
+        return match shared.find_app_surface(sel) {
+            Some((key, surface)) => text_result(format!(
+                "(autoui) per-app surface [{}] widget={} updated_ms={} (source-template AURA: child widgets unexpanded, loops unrolled — same semantics as the pre-render fallback)\n\n== state ==\n{}== aura ==\n{}",
+                key, surface.widget_name, surface.updated_ms, surface.state_text, surface.template_text
+            )),
+            None => {
+                if shared.app_surfaces.is_empty() {
+                    error_result(format!(
+                        "No per-app surfaces published yet (embedded apps publish on their dirty frames). Known selector tried: '{sel}'. If the target is the primary app, omit the 'app' argument."
+                    ))
+                } else {
+                    let keys: Vec<&str> = shared.app_surfaces.keys().map(|s| s.as_str()).collect();
+                    error_result(format!(
+                        "No per-app surface matches '{sel}'. Published: {}",
+                        keys.join(", ")
+                    ))
+                }
+            }
+        };
+    }
 
     // Plan: prefer the RENDERED VTree snapshot (styled_vtree) — it reflects
     // the actual on-screen tree with child widgets inlined and `for` loops
@@ -2590,7 +2655,10 @@ fn tool_desktop(_shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
                 "launcher" => "launcher",
                 "desktop" => "desktop",
                 "dashboard" => "dashboard",
-                _ => return error_result(format!("Unknown privileged app: '{app}' (shell|settings|notification|launcher|desktop|dashboard)")),
+                // PLAN-721 T-4/T-DOCS-1：任意内嵌 app 直呼——registry_id
+                // 反查（renderer Handler 臂泛化臂消费）。验收通道专用
+                // （AUTOUI_ACCEPTANCE 门在工具入口）；名字一次性 leak。
+                other => Box::leak(other.to_string().into_boxed_str()),
             };
             #[cfg(feature = "ui-iced")]
             {

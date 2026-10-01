@@ -16,6 +16,10 @@ pub mod component;
 // VM 内建 9918/9919 + a2r 臂同源，SD-B 契约）。
 pub mod frame_bench;
 
+// PLAN-721 T-1: 桌面轨更新路径家族诊断通道（AUTO_SCHED_DIAG 门控——泵/
+// 恢复链路订阅装配/消息到达/泵臂消费/置脏传播的统一 trace 面）。
+pub mod sched_diag;
+
 // Plan 547: backend-neutral media runtime.  Concrete registries and worker
 // machinery are feature-gated so default language builds stay image-free.
 #[cfg(feature = "image-pipeline")]

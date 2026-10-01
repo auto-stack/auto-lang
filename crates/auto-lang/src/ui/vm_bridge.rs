@@ -1668,6 +1668,58 @@ impl VmBridge {
             .ok_or_else(|| VmBridgeError::FieldNotFound(field_name.to_string()))
     }
 
+    /// PLAN-721 T-4: 全子命名空间 dump（验收/诊断面）——child_state_map 逐
+    /// 实例按**其自有 field_names** 展开（子件布局各异，根字段名槽位不适用；
+    /// read_child_state 同款解析）。T-19 家族定谳用：handler 作用域对象与
+    /// 视图绑定对象是否同一（桌面 VM_EXEC 已见 4000002/4000003 分裂）。
+    pub fn read_all_child_states(&self) -> Vec<(String, HashMap<String, auto_val::Value>)> {
+        use crate::vm::generic_registry::GenericInstanceData;
+        let map = self.child_state_map.borrow();
+        let mut out: Vec<(String, HashMap<String, auto_val::Value>)> = Vec::new();
+        for (name, id) in map.iter() {
+            let Some(obj) = self.vm.get_heap_object(*id) else { continue };
+            let guard = obj.read().unwrap();
+            let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() else { continue };
+            let mut fields = HashMap::new();
+            for (i, fname) in inst.field_names.iter().enumerate() {
+                if let Some(v) = inst.get_field(i) {
+                    fields.insert(fname.clone(), v.clone());
+                }
+            }
+            out.push((name.clone(), fields));
+        }
+        out
+    }
+
+    /// PLAN-721 T-4: root 字段持有的**可寻址实例对象**展开——`store` 等字段
+    /// 值为 VmRef/堆 id 时，按目标对象自有 field_names dump 其全字段。
+    /// T-19 定谳用：root 的扁平镜像字段 vs store 实例对象字段是否分裂
+    /// （`store.TogglePlay()` 是 VM 内方法调用，翻的是 store Obj；快照的
+    /// read_all_state 只见 root 扁平面）。
+    pub fn read_root_field_objects(&self) -> Vec<(String, u64, HashMap<String, auto_val::Value>)> {
+        use crate::vm::generic_registry::GenericInstanceData;
+        let mut out: Vec<(String, u64, HashMap<String, auto_val::Value>)> = Vec::new();
+        let root = self.read_all_state();
+        for (fname, val) in root.iter() {
+            let id = match val {
+                auto_val::Value::VmRef(r) => r.id as u64,
+                auto_val::Value::Int(id) if *id >= 4_000_000 => *id as u64,
+                _ => continue,
+            };
+            let Some(obj) = self.vm.get_heap_object(id) else { continue };
+            let guard = obj.read().unwrap();
+            let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() else { continue };
+            let mut fields = HashMap::new();
+            for (i, n) in inst.field_names.iter().enumerate() {
+                if let Some(v) = inst.get_field(i) {
+                    fields.insert(n.clone(), v.clone());
+                }
+            }
+            out.push((fname.clone(), id, fields));
+        }
+        out
+    }
+
     /// Plan 320: write child widget's prop values directly into the ROOT state
     /// object. Since all handlers run against root state (single VM, unified
     /// state), props must live in the same GenericInstanceData as the parent's

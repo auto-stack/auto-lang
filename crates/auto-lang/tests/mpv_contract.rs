@@ -690,3 +690,76 @@ fn pause_hold_and_rapid_toggle_stay_in_sync() {
         );
     }
 }
+
+/// **PLAN-721 T-19 锁③**：下行世代单调门——陈旧 primitive 的迟到 apply
+/// 不得逆转新世代已落盘的下行。桌面实测定谳形态：新世代 pause 落盘
+/// ~100ms 后，旧世代（视图重建前的烤定值）prepare 携 paused=false 一写
+/// 回弹（「暂停一下又继续」的隐形恢复写）。epoch=0（未打戳）保持旧行为。
+#[test]
+fn stale_epoch_down_cannot_unpause_fresher_apply() {
+    if libmpv_path().is_none() {
+        eprintln!("SKIP: 本机无 libmpv");
+        return;
+    }
+    let Some(video) = sample_video() else {
+        eprintln!("SKIP: 未设 AUTO_SPIKE_VIDEO");
+        return;
+    };
+    let Some(engine) = contract_engine() else {
+        eprintln!("SKIP: 引擎构造失败");
+        return;
+    };
+    let mut contract = MediaContract::new();
+
+    // 载入段（load 助手，epoch=0 未打戳——基线/LoadedMetadata 语义与既有锁同）。
+    let _ = load(&engine, &mut contract, &video);
+
+    // 世代 1：起播（epoch=1，playing）。
+    let down1 = VideoContractDown {
+        src: Some(video.to_string_lossy().into_owned()),
+        paused: false,
+        epoch: 1,
+        ..Default::default()
+    };
+    contract.apply(&engine, &down1);
+    let evs = poll_until(&engine, &mut contract, Duration::from_secs(10), |evs, _| {
+        evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(true)))
+    });
+    assert!(
+        evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(true))),
+        "世代 1 起播应回灌 PlayStateChange(true)"
+    );
+
+    // 世代 2：用户暂停——pause 真落盘（桌面序列 t=37955 的 WRITE 形态）。
+    let down2 = VideoContractDown { paused: true, epoch: 2, ..down1.clone() };
+    contract.apply(&engine, &down2);
+    let evs = poll_until(&engine, &mut contract, Duration::from_secs(5), |evs, _| {
+        evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(false)))
+    });
+    assert_eq!(engine.get_flag("pause"), Some(true), "世代 2 暂停必须落盘");
+
+    // 陈旧世代 1 迟到 prepare（桌面序列 t=38054 的回弹写）：必须被单调门
+    // 整包拒绝——零 ops、引擎保持暂停、零 PlayStateChange(true)。
+    let ops = contract.apply(&engine, &down1);
+    assert_eq!(ops, 0, "陈旧世代 apply 必须零操作（单调门拒绝），实测写入了 {ops} 笔");
+    assert_eq!(engine.get_flag("pause"), Some(true), "陈旧世代回弹写不得逆转暂停");
+    let evs = poll_until(&engine, &mut contract, Duration::from_millis(600), |evs, _| {
+        evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(true)))
+    });
+    assert!(
+        !evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(true))),
+        "陈旧世代回弹后不得出现 PlayStateChange(true)：{evs:?}"
+    );
+
+    // 世代 3（更新）：合法续播仍可达——单调门只拦回退，不拦前进。
+    let down3 = VideoContractDown { paused: false, epoch: 3, ..down1.clone() };
+    contract.apply(&engine, &down3);
+    let evs = poll_until(&engine, &mut contract, Duration::from_secs(5), |evs, _| {
+        evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(true)))
+    });
+    assert_eq!(engine.get_flag("pause"), Some(false), "世代 3 续播必须落盘");
+    assert!(
+        evs.iter().any(|e| matches!(e, VideoContractEvent::PlayStateChange(true))),
+        "世代 3 续播应回灌 PlayStateChange(true)：{evs:?}"
+    );
+}
