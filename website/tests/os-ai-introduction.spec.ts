@@ -13,6 +13,7 @@ for (const zh of [false, true]) {
       const html = await response.text()
       // Content survives without client execution; prose must be emitted by SSG.
       expect(html).toContain('2026')
+      expect(html).toContain('<h2 id=')
       await page.goto(route)
       await expect(page.locator('.VPDoc h1')).toHaveCount(1)
       await expect(page.locator('.VPNotFound')).toHaveCount(0)

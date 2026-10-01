@@ -11,7 +11,7 @@ import EvidenceImage from '../.vitepress/theme/components/EvidenceImage.vue'
 
 <IntroductionFrame kind="desktop" />
 
-<DesktopShowcase embedded />
+<DesktopShowcase style="padding: 0" />
 
 ## Windows, workspaces, and launch
 
