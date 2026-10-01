@@ -37,3 +37,11 @@
 网页已验证静态产物保留在723工作树，由4235预览服务读取；主检出website/.vitepress/dist/index.html不存在，本轮未公开部署。无后端/依赖仓产品代码改动，不触发Rust release重建。ledger阻塞导致工作树不移除，用户现有预览持续可看。
 
 本轮Category A纯网站与内容任务，不运行Cargo tests/docs_gen。批量收据last_covered=715、2026-09-30T16:20Z，722/723不是%5且不足48h；历史720节点已获用户明确跳过（4717753c3），保持原收据，不借本次网站合入启动Rust重型回归。后续真实到期节点仍按规则处理。
+
+## 已落地检查点
+
+- 722：master以`git merge --ff-only 939497eadc5b189aca61a10c91387c6f0e7a32d6`从142458d21快进，先落入四主产品基础；723：再`git merge --ff-only plan-723-dev`到`02f4b1a90e288ad3dc9d970a435ad29693f9fe43`。实际main HEAD与该交付提交相等，两次均无merge commit。
+- master与交付分支的website/docs/specs/website diff为空；master生成器--check58兼容路由通过；同步后的独占4249集成冒烟`npx playwright test demo-catalog.spec.ts --grep 'frozen|overview contains' --workers=1`：3 passed(15.2s)，包括冻结28实图与EN/ZH整页完整内容/筛选/键盘图片行为。原70检查基线与重放网站代码全等。
+- 4个r2 canonical hash匹配，模块plans已回写，INDEX重生成无语义变化；原.autoos/specs.json保留，未通过失败的store发出任何写请求。只停止本计划4248临时musk store，验证监听PID命令行后停止，其他实例和4235预览保留。
+- outcome：网站与canonical交付完成；ledger_refreshed/archived/cleaned blocked（旧schema读取失败）。722/723保持reviewed，719旧检查点不冒领解除。单独记录到主检出计划，可在账本兼容后仅续做缺失检查点，不重复合入代码。
+- 主线无本会话未提交的实现；已有其他会话.tmp-vm探针、.snap.new等未跟踪文件保留，不纳入合入。未push或部署公开站。
