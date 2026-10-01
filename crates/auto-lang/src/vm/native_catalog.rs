@@ -860,9 +860,10 @@ macro_rules! for_each_bigvm_native {
             ("auto.diff_files", 9915, String),
             ("auto.diff_snapshots", 9916, String),
             ("auto.diff_dirs", 9917, String),
-            // PLAN-716 组B: 帧时间戳（701 time 族 I64 形）。
-            ("auto.frame.begin_ms", 9918, I64),
-            ("auto.frame.present_ms", 9919, I64),
+            // PLAN-716 组B: 帧时间戳（供⑨-a Phase 2 改判 int——原 I64 形
+            // 驱动 2 槽消费路径致 .at 值流三断；值域=进程单调 ms<2^31）。
+            ("auto.frame.begin_ms", 9918, Int),
+            ("auto.frame.present_ms", 9919, Int),
             // PLAN-716 Phase 2 (供⑧): 9921——原 9920 与 ui.focus 撞号（见
             // for_each_native 组C 注）。
             ("auto.diff_files_window", 9921, String),

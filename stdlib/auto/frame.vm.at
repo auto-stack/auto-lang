@@ -1,11 +1,15 @@
 /// VM function declarations for Frame timestamp observation
 /// Implemented in crates/auto-lang/src/ui/frame_bench.rs (9918/9919 固定位，
 /// NATIVE_ID_ENTRIES 钉扎——register_vm_declarations 按 MAP 取固定 ID)
+///
+/// PLAN-716 Phase 2 (供⑨-a)：返回型 int（i32 lane）——原 i64 声明驱动
+/// 2 槽消费路径，.at 值流三断（下游 plan-022 实录）。值域=进程单调毫秒，
+/// <2^31（i32 封顶 ≈24.8 天进程存活；saturating 截断，SD-B 注记面）。
 
 /// Frame-begin timestamp (monotonic ms; 0 = not captured)
 #[vm]
-fn begin_ms() i64
+fn begin_ms() int
 
 /// Frame-present timestamp (monotonic ms; 0 = not captured)
 #[vm]
-fn present_ms() i64
+fn present_ms() int

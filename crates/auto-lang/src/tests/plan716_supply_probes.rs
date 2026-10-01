@@ -127,6 +127,71 @@ widget App {{
         }
     }
 
+    // ── T-15 (Phase 2 供⑨-a): .at 消费面值流保真 ────────────────────────
+    //
+    // 下游 plan-022 三断实录：var int 赋值落 0 / .str() 出 None /
+    // json.from_value 字段落 0——shim 真值在案（FB-DBG 0→1435→1451），
+    // 断面在 .at 侧值流（上游探针 frame_timestamps_vm_readback 驻 Rust
+    // i64 lane 直读，是消费面盲区）。
+
+    /// 断②指纹（门态无关）：.str() 出口=数字串（含 0 值形）。下游实录
+    /// None——I64 声明驱动 2 槽消费路径读串栈的形态指纹，0 值即断。
+    #[test]
+    fn frame_begin_ms_str_fidelity() {
+        let bridge = probe_bridge_with(concat!(
+            "fn probe_str() str {\n",
+            "    return frame.begin_ms().str()\n",
+            "}\n",
+        ));
+        let s = call_str(&bridge, "probe_str");
+        let expected = crate::ui::frame_bench::frame_begin_ms().to_string();
+        assert_eq!(s, expected, ".str() 出口须为 Rust lane 同值数字串");
+    }
+
+    /// 断①③真值（门开形态，gate_on 探针同款 env 模式——nextest 每测
+    /// 进程隔离安全；裸 cargo test 下门关自跳）：var int 赋值 + json
+    /// from_value 字段保真对照 Rust lane 真值。
+    #[test]
+    fn frame_value_flow_gate_on() {
+        if std::env::var("AUTO_FRAME_BENCH").ok().as_deref() != Some("1") {
+            eprintln!("[P716] 值流探针需 AUTO_FRAME_BENCH=1（跳过）");
+            return;
+        }
+        // 出零区：process_start=首次触及时定格（非进程起点——SD-B 注记面），
+        // 首个 note 恒存 ~0。双 note 形：首触定格坐标系→睡 2ms→二次捕获
+        // 真值 ≥2（与未捕获态 0 可区分）。
+        crate::ui::frame_bench::note_frame_begin();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        crate::ui::frame_bench::note_frame_begin();
+        let truth = crate::ui::frame_bench::frame_begin_ms();
+        assert!(truth >= 2, "二次捕获须落真值（首触=坐标系定格 ~0）");
+        let bridge = probe_bridge_with(concat!(
+            "fn probe_assign() int {\n",
+            "    var fb int = frame.begin_ms()\n",
+            "    return fb\n",
+            "}\n",
+            "fn probe_str() str {\n",
+            "    return frame.begin_ms().str()\n",
+            "}\n",
+            "fn probe_field() int {\n",
+            "    var o = {b: frame.begin_ms()}\n",
+            "    return o.b\n",
+            "}\n",
+        ));
+        // 断① 赋值保真：int 局部变量落真值（下游实录 0）。
+        let b = as_int_i64(bridge.call_vm_fn("probe_assign", &[]).expect("call ok"));
+        assert_eq!(b, truth, "var int 赋值须落 Rust lane 同值（下游实录 0）");
+        // 断② str 保真：真值数字串（下游实录 None）。
+        let s = call_str(&bridge, "probe_str");
+        assert_eq!(s, truth.to_string(), ".str() 出口须为真值数字串（下游实录 None）");
+        // 断③ 复合面保真：obj 字面量构造+字段读真值（下游实录
+        // json.from_value→0）。注记：json.encode/from_value 的 obj 编码链
+        // 在 bridge 语境预存断（纯字面量同断出垃圾值——独立发现随任务行
+        // 登记，非 frame 值流面），保真锚取干净复合形字段读。
+        let f = as_int_i64(bridge.call_vm_fn("probe_field", &[]).expect("call ok"));
+        assert_eq!(f, truth, "obj 字面量字段读须保真（下游实录 json→0）");
+    }
+
     // ── AC-B2: .at 可达双轨（VM 9918/9919 + a2r 臂同源）──────────────────
 
     /// VM 轨：.at 直调 frame.begin_ms/present_ms（两段名→canonical 归一；
@@ -199,8 +264,12 @@ widget App {{
             return;
         }
         // 模拟帧序：begin → present（真实序由桌面泵在实机产生）。
+        // 双 note 形（供⑨-a 勘定）：process_start=首次触及时定格——首个
+        // note 恒存 ~0（as_millis 截断），b>0 断言亚毫秒窗内恒假；首触
+        // 定格坐标系后睡 2ms 二次捕获落真值。
         crate::ui::frame_bench::note_frame_begin();
         std::thread::sleep(std::time::Duration::from_millis(2));
+        crate::ui::frame_bench::note_frame_begin();
         crate::ui::frame_bench::note_frame_present();
         let b = crate::ui::frame_bench::frame_begin_ms();
         let p = crate::ui::frame_bench::frame_present_ms();
@@ -358,5 +427,97 @@ widget App {{
         // ui_gen handler 直调臂。
         let ug = include_str!("../ui_gen/rust.rs");
         assert!(ug.contains("diff_files_window"), "ui_gen 直调臂在册");
+    }
+    // ── T-15 (供⑨-a) 程序轨：VM server/api.at 同构面 ────────────────────
+    //
+    // 下游实录运行面=独立 VM 程序轨（run --server vm 的 api.at handler
+    // fns），非 VmBridge 合成面——三断（赋值 0/.str() None/json 0）在此
+    // 轨实录。本探针同构：fn 体消费 frame 值经 print 出口对照 Rust lane。
+
+    /// 程序轨值流保真：赋值/str 两断（门开真值形；门关 0 值形自跳——
+    /// 0==0 无判别力）。
+    #[test]
+    fn frame_program_track_gate_on() {
+        if std::env::var("AUTO_FRAME_BENCH").ok().as_deref() != Some("1") {
+            eprintln!("[P716] 程序轨值流探针需 AUTO_FRAME_BENCH=1（跳过）");
+            return;
+        }
+        crate::ui::frame_bench::note_frame_begin();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        crate::ui::frame_bench::note_frame_begin();
+        let truth = crate::ui::frame_bench::frame_begin_ms();
+        assert!(truth >= 2, "二次捕获须落真值");
+        let src = "fn main() {\n    var fb int = frame.begin_ms()\n    print(fb)\n    print(frame.begin_ms().str())\n}\n";
+        let (_, stdout) = crate::run_with_capture(src).expect("program run");
+        let lines: Vec<&str> = stdout.lines().collect();
+        assert_eq!(
+            lines.first().copied().unwrap_or(""),
+            truth.to_string(),
+            "程序轨 var int 赋值须落真值（下游实录 0）: stdout={stdout:?}"
+        );
+        assert_eq!(
+            lines.get(1).copied().unwrap_or(""),
+            truth.to_string(),
+            "程序轨 .str() 出口须为真值数字串（下游实录 None）: stdout={stdout:?}"
+        );
+    }
+    /// time 族同根因复验（T-15 附带——PLAN-005 登记 now_ms 返 0 的现势
+    /// 复核）。勘定实录（2026-10-01）：i64 声明 native 赋 .at int（i32
+    /// lane）变量=32 位截断伪影（epoch ms 1790847058147 → 4140663010
+    /// 实测）——「i64→int 桥退化」活体；now_sec 值域 <2^31 不触。i64
+    /// 变量承接与 .str() 全宽两形为宽值合法出口（701 字符串出口注记的
+    /// 值域边界实证）。断言锚：int 承接=截断形如实固定+str 出口全宽。
+    #[test]
+    fn time_family_vm_readback_recheck() {
+        let before_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let src = concat!(
+            "fn main() {
+",
+            "    var ms int = time.now_ms()
+",
+            "    print(ms)
+",
+            "    print(time.now_sec())
+",
+            "    print(time.now_ms().str())
+",
+            "}
+",
+        );
+        let (_, stdout) = crate::run_with_capture(src).expect("program run");
+        let after_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let lines: Vec<&str> = stdout.lines().collect();
+        println!("[time recheck] stdout={stdout:?} window=[{before_ms},{after_ms}]");
+        // 断形一（如实固定）：int 承接 i64 声明 native 值=32 位截断——
+        // 值域>2^31 的 now_ms 落 int 变量必然伪影；此断钉住现状形，
+        // 宽值消费契约=i64 变量/str 出口（SD-B 注记面）。
+        let got_ms: i64 = lines.first().copied().unwrap_or("0").parse().unwrap_or(0);
+        assert_ne!(
+            got_ms, 0,
+            "int 承接不再落 0（PLAN-005 返 0 形已不成立）: got={got_ms}"
+        );
+        assert!(
+            !(before_ms..=after_ms).contains(&got_ms),
+            "int 承接=伪影形（非全宽真值——值域>2^31 截断 Hazard 在案，宽值消费契约=i64 变量/str 出口）: got={got_ms} truth window=[{before_ms},{after_ms}]"
+        );
+        // now_sec：值域 <2^31——int 承接真值贯通（epoch 秒带内）。
+        let got_sec: i64 = lines.get(1).copied().unwrap_or("0").parse().unwrap_or(0);
+        assert!(
+            got_sec >= before_ms / 1000 && got_sec <= after_ms / 1000 + 1,
+            "time.now_sec int 承接须落 epoch 秒带: got={got_sec}"
+        );
+        // .str()：全宽真值数字串（宽值合法出口其一）。
+        let s = lines.get(2).copied().unwrap_or("");
+        let s_val: i64 = s.parse().unwrap_or(0);
+        assert!(
+            s_val >= before_ms && s_val <= after_ms,
+            "now_ms().str() 须为全宽真值: got={s_val} window=[{before_ms},{after_ms}]"
+        );
     }
 }

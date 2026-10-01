@@ -879,19 +879,25 @@ pub fn shim_diff_dirs(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
-/// `auto.frame.begin_ms() -> i64` — 帧开始时间戳（单调毫秒；PLAN-716 组B
+/// `auto.frame.begin_ms() -> int` — 帧开始时间戳（单调毫秒；PLAN-716 组B
 /// 供②观测通道，AUTO_FRAME_BENCH 门控；未捕获=0）。
+/// PLAN-716 Phase 2 (供⑨-a)：出口 int lane（i32 单槽）——原 push_i64_vm
+/// 推 TAG_I64 vs .at int (i32) 消费面错配，json obj 字面量等消费形全断
+/// （下游 plan-022 三断实录）；frame.vm.at 判型同步 `-> int`。值域=进程
+/// 单调 ms <2^31（i32 封顶 ≈24.8 天，saturating——SD-B 注记面）。
 pub fn shim_frame_begin_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let _ = vm;
-    vm.push_i64_vm(task, crate::ui::frame_bench::frame_begin_ms());
+    task.ram
+        .push_i32(crate::ui::frame_bench::frame_begin_ms().min(i32::MAX as i64) as i32);
     Ok(())
 }
 
-/// `auto.frame.present_ms() -> i64` — 呈现完成时间戳（711 帧泵消费时刻，
-/// R-1 序障≥present；单调毫秒；未捕获=0）。
+/// `auto.frame.present_ms() -> int` — 呈现完成时间戳（711 帧泵消费时刻，
+/// R-1 序障≥present；单调毫秒；未捕获=0）。出口 int lane 同上（供⑨-a）。
 pub fn shim_frame_present_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let _ = vm;
-    vm.push_i64_vm(task, crate::ui::frame_bench::frame_present_ms());
+    task.ram
+        .push_i32(crate::ui::frame_bench::frame_present_ms().min(i32::MAX as i64) as i32);
     Ok(())
 }
 
