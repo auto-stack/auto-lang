@@ -7,6 +7,8 @@ import OSHero from '../.vitepress/theme/components/OSHero.vue'
 import FeatureCard from '../.vitepress/theme/components/FeatureCard.vue'
 import StatCard from '../.vitepress/theme/components/StatCard.vue'
 import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
+import DesktopShowcase from '../.vitepress/theme/components/DesktopShowcase.vue'
+import EvidenceImage from '../.vitepress/theme/components/EvidenceImage.vue'
 </script>
 
 <div class="landing-page" style="--page-accent-1: #14b8a6; --page-accent-2: #3b82f6">
@@ -20,6 +22,8 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
   secondary-text="Virtual Desktop Design"
   secondary-link="/docs/design/autoui/virtual-desktop"
 />
+
+<DesktopShowcase />
 
 <div class="stats-section">
   <h2 class="section-title">Virtual Desktop · Key Facts</h2>
@@ -43,13 +47,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
       <li><strong>Theming</strong> — wallpaper, light/dark themes, and accent tiers switch in real time.</li>
     </ul>
     <template #visual>
-      <div class="shot-stack">
-        <img src="/v05/desktop-hero.png" alt="AutoOS Virtual Desktop: taskbar, start menu, and multiple windows" class="shot-main" />
-        <div class="shot-pair">
-          <img src="/v05/desktop-multiwindow.png" alt="Multiple virtual windows" />
-          <img src="/v05/desktop-light.png" alt="Light-themed desktop" />
-        </div>
-      </div>
+      <EvidenceImage src="/desktop-showcase/06-productivity-dark.png" alt="AutoEdit on the left, Todo above Calendar on the right" caption="One workspace: editor, tasks and calendar, arranged together. Actual capture, 2026-10-01." zoom-label="View full size" close-label="Close" original-label="Open original" :width="2560" :height="1600" />
     </template>
   </ShowcaseSection>
 

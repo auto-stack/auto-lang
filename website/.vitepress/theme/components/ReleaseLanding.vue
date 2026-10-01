@@ -8,7 +8,7 @@ import { computed } from 'vue'
 import { useRoute } from 'vitepress'
 import { RELEASE_V05, releaseNavSections } from '../data/release-v05'
 import EvidenceImage from './EvidenceImage.vue'
-import ScreenshotGallery from './ScreenshotGallery.vue'
+import DesktopShowcase from './DesktopShowcase.vue'
 import AutoShellPreview from './AutoShellPreview.vue'
 import FeatureCard from './FeatureCard.vue'
 import StatCard from './StatCard.vue'
@@ -92,14 +92,7 @@ const t = computed(() => zh.value ? {
         </ul>
       </div>
       <div class="desktop-gallery">
-        <ScreenshotGallery
-          :shots="c.desktop.shots"
-          :group-label="t.gallery"
-          :zoom-label="t.zoom"
-          :close-label="t.close"
-          :original-label="t.original"
-          :loading="'eager'"
-        />
+        <DesktopShowcase embedded />
       </div>
     </section>
 

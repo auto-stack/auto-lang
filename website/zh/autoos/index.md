@@ -7,6 +7,8 @@ import OSHero from '../../.vitepress/theme/components/OSHero.vue'
 import FeatureCard from '../../.vitepress/theme/components/FeatureCard.vue'
 import StatCard from '../../.vitepress/theme/components/StatCard.vue'
 import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.vue'
+import DesktopShowcase from '../../.vitepress/theme/components/DesktopShowcase.vue'
+import EvidenceImage from '../../.vitepress/theme/components/EvidenceImage.vue'
 </script>
 
 <div class="landing-page" style="--page-accent-1: #14b8a6; --page-accent-2: #3b82f6">
@@ -20,6 +22,8 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
   secondary-text="虚拟桌面设计"
   secondary-link="/zh/docs/design/autoui/virtual-desktop"
 />
+
+<DesktopShowcase />
 
 <div class="stats-section">
   <h2 class="section-title">虚拟桌面 · 核心事实</h2>
@@ -43,13 +47,7 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
       <li><strong>主题外观</strong> —— 壁纸、明暗主题、accent 档位实时可换。</li>
     </ul>
     <template #visual>
-      <div class="shot-stack">
-        <img src="/v05/desktop-hero.png" alt="AutoOS 虚拟桌面:任务栏、开始菜单与多窗口" class="shot-main" />
-        <div class="shot-pair">
-          <img src="/v05/desktop-multiwindow.png" alt="多虚拟窗口" />
-          <img src="/v05/desktop-light.png" alt="浅色主题桌面" />
-        </div>
-      </div>
+      <EvidenceImage src="/desktop-showcase/06-productivity-dark.png" alt="AutoEdit 位于左侧，待办在右上，日历在右下" caption="同一个工作场景：编辑器、任务和日历并排摆放。实际截图，2026-10-01。" zoom-label="放大查看" close-label="关闭" original-label="打开原图" :width="2560" :height="1600" />
     </template>
   </ShowcaseSection>
 

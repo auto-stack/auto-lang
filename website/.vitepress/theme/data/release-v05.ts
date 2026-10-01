@@ -4,6 +4,8 @@
 // AutoEdit 去空图位保留文字。计数/日期/来源/无冻结标签声明逐字保全。
 // 实图尺寸实测（2560×1600 等）用于宽高占位防 CLS。
 
+import { desktopShots } from './desktop-showcase'
+
 export interface ReleaseShot {
   src: string
   label: string
@@ -55,10 +57,10 @@ const en = {
     secondaryText: 'See it in action ↓',
     secondaryLink: '#desktop',
     heroShot: {
-      src: '/v05/desktop-hero.png',
+      src: '/desktop-showcase/02-desktop-dark.png',
       label: 'Desktop',
-      alt: 'AutoOS virtual desktop hero view',
-      caption: 'The AutoOS virtual desktop — a real, windowed desktop running inside a single OS window.',
+      alt: 'AutoOS dark desktop with wallpaper, icons and widgets, without expanded app windows',
+      caption: 'Start at the desktop — wallpaper, app icons and taskbar, with widgets from apps that have been started and minimized. Actual capture, 2026-10-01.',
       width: 2560,
       height: 1600,
     } as ReleaseShot,
@@ -138,46 +140,13 @@ const en = {
     narrative: 'This time, the first thing we want to show you isn\'t a language feature — it\'s a desktop you can use. The window manager itself is an AutoUI app: virtual-window behavior is implemented in Auto above the host window; dragging, focus, and the taskbar are all ordinary Auto code. Both light and dark themes are in place, and apps are progressively integrated, with varying maturity.',
     points: [
       'WM-as-App — the chrome, dragging, focus, and taskbar of virtual windows are all written as ordinary AutoUI apps; a shared contract supports consistency across renderers.',
-      'Light & dark themes — the desktop and the main apps ship both themes, switchable at runtime (use the picker below).',
+      'Light & dark views — the first two captures compare the desktop themes; the later views show Launcher, games and an editor workspace.',
       'The desktop is the app container — the start menu lists everything: four flagship apps and 20+ system apps open as real windows on the desktop, in the shots below.',
       'Unified Settings Center — auto-os-config: one daemon auto-renders config forms from .at file shapes, onboarding new modules with zero frontend code.',
       'AutoTerm terminal infrastructure — PTY + an alacritty emulation core, the terminal foundation of AutoOS.',
     ],
     galleryLabel: 'Desktop views',
-    shots: [
-      {
-        src: '/v05/desktop-dark-apps.jpg',
-        label: 'Dark · apps',
-        alt: 'Dark-theme desktop: music player, minesweeper, calculator, and system monitor side by side',
-        caption: 'Dark theme, main view — music player, minesweeper, calculator, and system monitor side by side',
-        width: 1920,
-        height: 1120,
-      },
-      {
-        src: '/v05/desktop-light.png',
-        label: 'Light',
-        alt: 'AutoOS Virtual Desktop (light theme)',
-        caption: 'The same desktop in the light theme',
-        width: 2560,
-        height: 1600,
-      },
-      {
-        src: '/v05/desktop-tour-apps.jpg',
-        label: 'Tour I',
-        alt: 'Light-theme desktop: video player window and desktop widgets (clock / Todo / AutoMusic Player)',
-        caption: 'Desktop tour I — desktop apps in the light theme: a video player window and widgets',
-        width: 1920,
-        height: 1120,
-      },
-      {
-        src: '/v05/desktop-launcher.png',
-        label: 'Start menu',
-        alt: 'The launcher listing all system apps — the foundation of the AutoOS start menu',
-        caption: 'Desktop tour II — the launcher: every system app one click away (previously listed as a pending capture; now the real launcher shot)',
-        width: 3840,
-        height: 2560,
-      },
-    ] as ReleaseShot[],
+    shots: desktopShots(false),
   },
 
   autoui: {
@@ -414,10 +383,10 @@ const zh = {
     secondaryText: '先看实际效果 ↓',
     secondaryLink: '#desktop',
     heroShot: {
-      src: '/v05/desktop-hero.png',
+      src: '/desktop-showcase/02-desktop-dark.png',
       label: '桌面',
-      alt: 'AutoOS 虚拟桌面主视图',
-      caption: 'AutoOS 虚拟桌面 —— 在单一操作系统窗口里运行的真实多窗口桌面。',
+      alt: 'AutoOS 深色桌面：壁纸、图标与小组件，没有展开的应用窗口',
+      caption: '从桌面开始 —— 壁纸、应用图标与任务栏；小组件来自已启动并最小化的应用。实际截图，2026-10-01。',
       width: 2560,
       height: 1600,
     } as ReleaseShot,
@@ -497,46 +466,13 @@ const zh = {
     narrative: '这一次，我们想给你看的第一样东西不是语言特性 —— 是一个能用的桌面。窗口管理器本身是一个 AutoUI 应用：虚拟窗口的行为用 Auto 实现在宿主窗口之上；拖拽、焦点与任务栏都是普通 Auto 代码。深浅两主题都已就位，应用在逐步接入，成熟度不一。',
     points: [
       'WM-as-App —— 虚拟窗口的边框、拖拽、焦点与任务栏都是普通 AutoUI 应用；共享契约支撑渲染器间的一致性。',
-      '深浅主题 —— 桌面与主要应用双主题齐备，运行时可切（下方选择器）。',
+      '深浅主题对照 —— 前两张截图展示桌面主题，接着看 Launcher、小游戏与编辑器工作场景。',
       '桌面就是应用容器 —— 开始菜单列出一切：四个旗舰应用与 20+ 系统应用在桌面上开成真窗口，见下方整幅截图。',
       '统一设置中心 —— auto-os-config：一个 daemon 按 .at 文件形状自动渲染配置表单，新模块零前端代码接入。',
       'AutoTerm 终端基建 —— PTY + alacritty 仿真内核，AutoOS 的终端底座。',
     ],
     galleryLabel: '桌面视图',
-    shots: [
-      {
-        src: '/v05/desktop-dark-apps.jpg',
-        label: '深色 · 多应用',
-        alt: '深色主题桌面：音乐播放器、扫雷、计算器与系统监视器并排',
-        caption: '深色主题主视图 —— 音乐播放器、扫雷、计算器与系统监视器并排',
-        width: 1920,
-        height: 1120,
-      },
-      {
-        src: '/v05/desktop-light.png',
-        label: '浅色',
-        alt: 'AutoOS 虚拟桌面（浅色主题）',
-        caption: '同一桌面的浅色主题',
-        width: 2560,
-        height: 1600,
-      },
-      {
-        src: '/v05/desktop-tour-apps.jpg',
-        label: '巡礼 I',
-        alt: '浅色主题桌面：视频播放器窗口与桌面小部件（时钟 / Todo / AutoMusic Player）',
-        caption: '桌面巡礼 I —— 浅色主题下的桌面应用：视频播放器窗口与小部件',
-        width: 1920,
-        height: 1120,
-      },
-      {
-        src: '/v05/desktop-launcher.png',
-        label: '开始菜单',
-        alt: '列出全部系统应用的启动器 —— AutoOS 开始菜单的基座',
-        caption: '桌面巡礼 II —— 启动器：所有系统应用一步直达（此前为待截图项，现为真实启动器截图）',
-        width: 3840,
-        height: 2560,
-      },
-    ] as ReleaseShot[],
+    shots: desktopShots(true),
   },
 
   autoui: {

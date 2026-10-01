@@ -7,6 +7,7 @@ import OSHero from '../.vitepress/theme/components/OSHero.vue'
 import FeatureCard from '../.vitepress/theme/components/FeatureCard.vue'
 import StatCard from '../.vitepress/theme/components/StatCard.vue'
 import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
+import DesktopShowcase from '../.vitepress/theme/components/DesktopShowcase.vue'
 </script>
 
 <div class="landing-page" style="--page-accent-1: #14b8a6; --page-accent-2: #3b82f6">
@@ -20,6 +21,8 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
   secondary-text="探索 auto-os-config"
   secondary-link="/zh/docs/os#auto-os-config"
 />
+
+<DesktopShowcase preview />
 
 <div class="stats-section">
   <h2 class="section-title">AutoOS 基础</h2>

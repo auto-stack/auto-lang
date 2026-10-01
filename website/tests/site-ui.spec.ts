@@ -282,9 +282,9 @@ test.describe('v05 release page', () => {
     const html = await page.content()
     expect(html).not.toContain('TODO screenshot')
     expect(html).not.toContain('shot-placeholder')
-    // launcher 属于画廊第 4 帧：选中后渲染（其余帧不常驻 DOM）
-    await page.locator('.shot-tabs').getByRole('tab', { name: /Start menu|开始菜单/ }).click()
-    await expect(page.locator('#shot-panel .evidence-image img[src="/v05/desktop-launcher.png"]')).toHaveCount(1)
+    // PLAN-720：实际 Launcher 图标网格；保留“真实启动器图、非占位”回归。
+    await page.locator('.shot-tabs').getByRole('tab', { name: 'Launcher · Light', exact: true }).click()
+    await expect(page.locator('#shot-panel .evidence-image img[src="/desktop-showcase/03-launcher-light.png"]')).toHaveCount(1)
   })
 
   test('philosophy details expandable and locatable', async ({ page }) => {

@@ -17,6 +17,7 @@
 - Playground Notes manifest 管线（Plan 581）：`prepare-content.js` 末段调 `scripts/build-playground-notes.mjs`，从仓内语料（vm-golden 460 / aavm 158 / books 围栏 634 / demo 28）确定性生成 `public/playground-data/notes.json`（gitignore 生成物，0.82MB 单文件；`--check` 幂等+计数断言供 CI 防采集回归）。
 - 图片与展示骨架（plan-713 起单页规则推广，plan-715 收敛）：`EvidenceImage.vue` 统一"缩略可放大"展示——Enter/Space 打开原生 dialog、Esc/背板点击关闭、焦点返回缩略图、原图链接与说明保留；可选 `loading`（首图 eager）、`width/height` 占位防 CLS、`framed` 深色容器（缺省 true 兼容旧调用）。跨主题多帧截图用 `ScreenshotGallery.vue`（tab 选择器、键盘方向键、不自动轮播、选中态 `aria-selected`+live 区域）；应用专题 hero 共用 `AppLandingLayout.vue`（返回链接/badge/状态/标题/简介/入口/实图；后续章节由页面顶层排版——`.md` 中 Vue 组件调用必须压成单一 HTML 块且内部不留空行、插槽不放多段大块内容，否则被 markdown 块规则切断；提升到顶层的内容须去 4+ 空格缩进，防被解析成缩进代码块）。发布页截图用 `ReleaseLanding.vue` + `theme/data/release-v05.ts` 数据驱动，理念完整论述用原生 `details` 可键盘展开。禁止 TODO 占位空图、假截图与死链；AutoShell 原生主图契约（ash-01）不变。
 - scripts/prepare-content.js 在 dev/build 前预处理内容；tests/ 为 Playwright e2e。
+- 桌面实景展示（PLAN-720）：`DesktopShowcase.vue` 与 `theme/data/desktop-showcase.ts` 共用六张 2026-10-01 原生截图，按无展开窗口的浅/深桌面、浅/深 Launcher、三小游戏、多应用工作场景递进。v0.5 和 AutoOS 专题展示完整过程，OS 总览显示双主题预览并链接到当前语言专题。小组件来自已启动并最小化的应用；保留完整 PNG、捕获日、尺寸、可键盘放大和原图链接，不把静态演示状态当成功能证明。
 - 学习与阅读（PLAN-718 第一阶段）：docs/books 双语根页共用作者数据与 SSR 学习卡片；书籍按当前书分侧栏，提供本书目录和正确作者源链接；AutoFence 操作栏及提示双语。规则见 [learning-reading](design/learning-reading.md)。按需加载与最终验收仍在进行。
 - 不做：不实现 playground 后端（crates/auto-playground）与可复用组件库（packages/auto-playground-vue）。
 
