@@ -165,7 +165,7 @@ stage: merge | plan_id: PLAN-720 | plan_revision: 1 | outcome: pass（补全 r1 
 | landed | 既往落地：master ec27ff80a→764508169a ff-only 无 merge commit，range-diff 三项全等（5b0426b7c→8a67682ca、8c05b56f2→29515ead6、699368fd8→764508169）。本会话簿记链 a19be0e84→b7da25a28（独立复审）→beae54b07（ledger），worktree/分支零新提交。 |
 | ledger_refreshed | beae54b07：specs.json 外科插入 P720-1/P720-2（designs，docsha 994113f25acd2261 / 07a644d95f92d73e，@ 764508169a）、P720-3（reviews）、P720-4（reports）；designs 124→126 / reviews 187→188 / reports 110→111；字节 roundtrip 守卫 + 他三段对备份零扰动回读断言；spec-lint 0 错误（6 预存警告）；spec-index 再生无改动；store 写者 8080 不可达（000）循 711/713/714/715/717/718 先例。 |
 | archived | git mv 本文件至 docs/plans/archive/720-website-desktop-showcase.md，status: archived。 |
-| cleaned | pending：待 wt-guard clean 后移除 worktree/分支/组目录并回填。 |
+| cleaned | wt-guard clean（无 reparse point）；`git worktree remove` 首次报 Invalid argument——4220 端口 vitepress preview（PID 28460，计划自身预览服务，CommandLine 归属核实于本 worktree）锁 website/ 目录；taskkill 终止后 rm -rf 残留（12703 文件均在 website/）+ `git worktree prune` + `git branch -d plan-720-dev`（was 764508169，已并入）+ 组目录 `D:/autostack/.wt/lang-720` 移除；worktree list / branch --list / 目录三重复核均 0。预览如需重建：主检出落地后重跑 vitepress。 |
 | artifacts | 非部署收尾：公开站未部署（计划明示范围外，用户授权仅入库+合入）；零 Rust/后端/daemon 改动，release 二进制不涉及；本地 website dist=repair-1 稳定构建（2026-10-01 197.08s），公开更新须另行重建部署。 |
 | batch handoff | .last-batch-regression.json last_covered=715（2026-09-30T16:20Z）；720 已落地且 720%5=0 → 批量回归到期，cleaned 后移交 /auto-plan:regress 主检出单实例（Category A 不把网站 e2e 写成 Rust 批量覆盖）。 |
 
