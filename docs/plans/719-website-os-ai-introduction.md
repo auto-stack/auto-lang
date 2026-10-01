@@ -284,3 +284,17 @@ acceptance_results：AC-01 pass（LaOS 连续关系/接口）；AC-02 pass（三
 dependency_revisions：auto-os 73d02b50f535543bd635c6f6f49dad6835efff45；auto-ai 5a50a55844d7aa3523b593f21ba0fb03d18eac48；auto-musk 6e6b6cc847639805c796e0e5a7cc6091b96f4319（前后 plan-flow Spec diff 为空）；book d7a71a7fb1fa42ddd26d6cec859715ed98161f7a。Spec inputs 见报告基线；SD-01/04 新 os-ai-introduction.md SHA256=93e021ec16ac2fed2e78876eb5aeccba9d563d2ad6ee37a02a0972256ed46fae；SD-02 project.md=15003f95fd1b19c62a38500430fe413c060c9bbb8646fce52982463dfdcf275a；SD-03 ui-presentation.md=fe0d8d50cf3167217707c02fd6605d3fec468215f06230a296ac8480e7935fef。三项与实际文件 hash 全等；SD-04 共用 SD-01 文件。plans.md 仅标准模块跟踪，并修正已归档720的旧 active 链接，不引入新行为。
 
 spec-impact：new_spec_components=[docs/specs/website/design/os-ai-introduction.md]；supersedes_spec_components=[]，无规范退役；touched_goals=[]，继续既有网站目标，无新增 goal ID。findings：新增实现债务=0；归档后置前提为 store-mediated ledger writer，8080 当前连接拒绝，未直接写 .autoos/specs.json。代码/Canonical Specs 复核通过可先落地，ledger 未验证不得提前归档或清理工作树。
+### PLAN-719:r2 合入检查点（2026-10-01）
+
+stage: merge | plan_id: PLAN-719 | plan_revision: 2 | outcome: blocked（仅 ledger/归档收尾；网站与规范已交付） | delivery_commit: dfb2bbb3ae214a0f7c1f9c50f6cd79cdfe64d4dc | next: store writer 恢复后按 canonical target 对账、发布并读回，再归档与 guard 清理。
+
+| checkpoint | evidence |
+|---|---|
+| prepared | 复审 pass 绑定4c0fc7f7c3f784e1d4e2feb311dbcec32f18957d；8任务/12AC、SD-01..04齐全。规范及模块plans跟踪已在专用树提交；工作树 clean，Git Bash wt-guard 实际输出 clean/无reparse point。 |
+| rebase equivalence | main 同期落地的是721运行时/Spec及720归档簿记，website及本计划三份Spec目标无改动；UI overview 新增样式/ImageSurface/focus/composition注记，不改变本次取材结论。rebase到017cb6dc669a62dbfca1db2c10d822ff6aff05de，range-diff四项全等：cce4df6657a293df537b6cbd5a10bf172b22d875→6aa3fd44ec982cd69436179009524899f551af25；1536c8e5c→a26ad1455efedc6c3d9a558a87d15b49fab073c3；3c6ea4c9ba753b7bd6ebf0b43dab3bc28174df20→509b48b329558af210f9b7290e3da91e387f343f；4c0fc7f7c3f784e1d4e2feb311dbcec32f18957d→dfb2bbb3ae214a0f7c1f9c50f6cd79cdfe64d4dc。旧review→delivery的website/website Specs/证据diff为空。 |
+| landed | master 017cb6dc6→dfb2bbb3a ff-only，无merge commit；落地后master HEAD等于delivery，website/Canonical Specs与验证树零diff，三Spec SHA256与冻结值全等。 |
+| integration | 保留固定生产产物与125 pass/48图，因相关代码/依赖/测试配置不变复用；落地后对 /zh/os、/zh/ai、/zh/autoos/、/zh/v05/、两篇中文文章做HTTP200及关键正文核验通过。原六图仍字节全等，无Rust/Cargo/docs_gen。 |
+| ledger_refreshed | pending：本会话无write/update Spec tools；127.0.0.1:8080/api/specs连接拒绝。未手写.autoos/specs.json；保留main已有条目（含重复canonical target），待store回读时按目标对账复用，不能盲目追加副本。目标designs=website/project.md、website/design/ui-presentation.md、website/design/os-ai-introduction.md，tests/reviews/reports分别引用本报告、125e2e/120矩阵和PLAN-719:r2。 |
+| archived / cleaned | pending：计划保持reviewed，保留clean的D:/autostack/.wt/lang-719/auto-lang与plan-719-dev；不提前归档/删除；公开站未部署。 |
+| preview | 本次稳定dist在719工作树，http://127.0.0.1:4225/zh/os（可进入AI/桌面与两篇长文）；已向当前聊天右侧提交打开请求，app返回queued。不误称原4197旧标签或公开站已更新。 |
+| batch | 719非%5节点，距.last-batch-regression.json的2026-09-30T16:20Z不足48h，本计划不新增到期；720的已登记跳过收据保持原样。本次Category A不跑Rust批量档，不改.last-batch-regression.json。 |
