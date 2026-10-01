@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-722
-status: drafting
+status: reviewed
 feature_name: Website Apps 总览、四应用介绍与系统 Demo 展示方案
 author: [Codex]
 created_at: 2026-10-01
 updated_at: 2026-10-01
 plan_revision: 1
-current_step: 0
+current_step: 5
 total_steps: 5
 supersedes_spec_components: [docs/specs/website/project.md]
 new_spec_components: [docs/specs/website/design/application-introductions.md, docs/specs/website/design/application-demos.md]
@@ -72,17 +72,36 @@ npm run build；apps-introduction.spec.ts 验证双语SSR/链接/无图无业务
 
 ## 8. 执行步骤
 
-- [ ] T-01（AC-02,05,06）：核对四产品规范/源码和gallery清单，事实及28候选入设计/报告。
-- [ ] T-02（AC-01,03）：新 AppsOverview.vue/数据、双语apps.md，四卡片+系统入口，无图/API。
-- [ ] T-03（AC-02..04）：四专题双语、Shell guide互链、截图注释槽。
-- [ ] T-04（AC-05,06）：双语系统介绍与设计、SD-01..03准备。
-- [ ] T-05（AC-01..07）：构建/触面测试/几何/截图/链接/事实复核，提交实现与报告，独立复审。
+- [x] T-01（AC-02,05,06）：核对四产品规范/源码和gallery清单，事实及28候选入设计/报告。
+- [x] T-02（AC-01,03）：新 AppsOverview.vue/数据、双语apps.md，四卡片+系统入口，无图/API。
+- [x] T-03（AC-02..04）：四专题双语、Shell guide互链、截图注释槽。
+- [x] T-04（AC-05,06）：双语系统介绍与设计、SD-01..03准备。
+- [x] T-05（AC-01..07）：构建/触面测试/几何/截图/链接/事实复核，提交实现与报告，独立复审。
 
 ## 9. 复审记录
 
 stage: new | PLAN-722:r1 | outcome: pass | next: work
 范围与本轮明确授权一致，直接在worktree执行。复审将说明同会话的独立性限制并重建证据。
 
+work-started: D:/autostack/.wt/lang-722/auto-lang (plan-722-dev), base 992d730de4ad71a1579f2ce5d50ebfd9e7b0975c. T-01..04 implemented: bilingual overview, eight topics, two retained guides, two demo pages, 28 verified candidate paths, prepared SD-01..03. T-05 verification pending.
+
+work-completed: T-01..05 complete. Website baseline a4456ad520027d382ade7b4116f77ed248e1b1da; build exit 0; scoped Playwright 88/88; visual 140 geometry checks and 56 captures complete. Durable evidence: docs/reports/p722-apps-introduction.md and companion directory. Category A, zero Cargo. stage: work | PLAN-722:r1 | outcome: pass | next: review.
+
+stage: review | plan_id: PLAN-722 | plan_revision: 1 | outcome: pass
+reviewed_commit: bb8bcefd389589f0522fc0b23951843bb975a8ab
+base_commit: 992d730de4ad71a1579f2ce5d50ebfd9e7b0975c
+website_tested_commit: a4456ad520027d382ade7b4116f77ed248e1b1da (reviewed HEAD differs only by committed evidence; website diff empty)
+dependency_revisions: docs/reports/p722-source-baseline.json exact 10 source hashes/revisions and 28 candidate paths; investigation revisions preserved above, later snapshot wins current facts.
+spec_inputs: docs/specs/website/design/application-introductions.md sha256=4b4e27141ce6b2941ea897f108edb562a54f693c84c461d6e9edd926a05ca957; docs/specs/website/design/application-demos.md sha256=f9ce55be1ac6e75cc357f76306e9801865e43bced5387caf25cf3a9b25754104; docs/specs/website/project.md sha256=f94bd932e21c2d3247d54994b0208dbd6a74744dd05f787d3220fc8fa5232aa0
+acceptance_results: AC-01..07 pass, mapped to T-01..05 in docs/reports/p722-apps-introduction.md.
+verification: build exit 0; 88 Playwright passed (5.2m); 140 route/width/theme checks; 56 PNG captures reviewed through eight contact sheets plus full-size ZH Apps; clean committed worktree, git diff --check and frozen SD hash checks pass. Runtime evidence reused because exact website code, lockfile and test configuration unchanged from tested baseline; report-only descendant commit. Category A, no Cargo/docs_gen.
+independence: 同实施会话；重新读取真实差异、测试断言、规范与来源，并逐AC重建结论，不宣称独立会话/独立agent。
+findings: P722-D1 low, existing gallery ID drift, outside agreed scope; no missing required sub-item or unapproved deferral/workaround. Main KNOWN-DEBT-AND-RISKS.md recorded. SD-01..03 pass and frozen in durable evidence.
+spec-impact: supersedes/new paths finalized in frontmatter; touched_goals=[] because website current canonical Spec has prose goals, no stable goal IDs; do not fabricate IDs from this Plan's local G-01..03.
+evidence: docs/reports/p722-apps-introduction.md, p722-apps-introduction/{manifest.json,playwright-results.txt,reviewed-spec-delta.json,56 captures,8 contact sheets}, p722-source-baseline.json.
+next: merge when landing is requested; keep worktree/preview for user inspection. 本轮写作及设计工作完成，不执行master合入/ledger/归档，不将计划已归档冒领。
+
 ## 10. 待澄清事项
 
 无阻塞用户问题。精确发布集合/无后台体验覆盖为设计内后续逐项验证项，本轮不承诺固定28项全可用。
+
