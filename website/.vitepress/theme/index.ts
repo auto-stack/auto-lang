@@ -1,4 +1,4 @@
-import { h, defineComponent, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { h, defineComponent, defineAsyncComponent, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vitepress'
 import type { Theme } from 'vitepress'
 import DefaultTheme from 'vitepress/theme'
@@ -9,13 +9,25 @@ import OSHero from './components/OSHero.vue'
 import FeatureCard from './components/FeatureCard.vue'
 import StatCard from './components/StatCard.vue'
 import ShowcaseSection from './components/ShowcaseSection.vue'
-import { AutoPlayground, NotesExplorer } from 'auto-playground-vue'
-import AutoFence from './components/AutoFence.vue'
-import CodeView from './components/CodeView.vue'
-import ScriptShipView from './components/ScriptShipView.vue'
 import UnifiedNavbar from './components/UnifiedNavbar.vue'
 import LearningHub from './components/LearningHub.vue'
 import ReaderContext from './components/ReaderContext.vue'
+
+// PLAN-718 T-05：重组件在主题注册边界异步拆分。T-01 基线：theme 入口 chunk
+// 1.1MB 同时内联 CodeMirror/SnippetRunner/CodeView/ScriptShipView/NotesExplorer/
+// AutoPlayground——冷访问首页即下载全套编辑器代码。改为异步后这些组件进入独立
+// chunk，仅渲染它们的页面（主动渲染专题，如 tour/script-to-ship/playground）
+// 才按需请求；SSR 由 server-renderer 等待异步加载，静态 HTML 内容保留
+// （构建产物验证），水合由 Vue async wrapper 原生接管。
+const CodeView = defineAsyncComponent(() => import('./components/CodeView.vue'))
+const ScriptShipView = defineAsyncComponent(() => import('./components/ScriptShipView.vue'))
+const AutoFence = defineAsyncComponent(() => import('./components/AutoFence.vue'))
+const AutoPlayground = defineAsyncComponent(() =>
+  import('auto-playground-vue').then((m) => m.AutoPlayground),
+)
+const NotesExplorer = defineAsyncComponent(() =>
+  import('auto-playground-vue').then((m) => m.NotesExplorer),
+)
 
 // SPA routes served from public/ui/*/index.html.
 // VitePress client-side router doesn't know about these, so we must

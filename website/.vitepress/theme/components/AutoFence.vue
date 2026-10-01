@@ -3,13 +3,14 @@
     <div class="af-toolbar">
       <button
         v-if="!locked"
+        ref="toggleBtn"
         type="button"
         class="af-run"
         :class="{ open }"
         :aria-expanded="open"
         :aria-controls="panelId"
         :aria-label="open ? t.collapseAria : t.runAria"
-        @click="open = !open"
+        @click="toggle"
       >
         <Play v-if="!open" :size="13" />
         <Square v-else :size="13" />
@@ -27,19 +28,37 @@
       <a :href="playgroundHref">Playground</a>
     </p>
     <div v-if="open" :id="panelId" class="af-runner">
-      <SnippetRunner :code="source" autorun height="auto" />
+      <!-- PLAN-718 T-05：runner（CodeMirror 链）按需异步加载——SSR 静态页只保留
+           原始高亮代码；点击运行才拉取 chunk；失败给本地化说明与重试/收起，不冒充
+           程序运行错误。 -->
+      <component
+        :is="runnerComp"
+        v-if="runnerState === 'ready' && runnerComp"
+        :code="source"
+        autorun
+        height="auto"
+      />
+      <ReaderLoadingState v-else-if="runnerState === 'loading'" :label="t.loading" />
+      <div v-else-if="runnerState === 'error'" class="af-load-error">
+        <p class="af-error-text">{{ t.runnerFailed }}</p>
+        <div class="af-error-actions">
+          <button type="button" class="af-run" @click="loadRunner">{{ t.retry }}</button>
+          <button type="button" class="af-run" @click="collapse">{{ t.collapse }}</button>
+        </div>
+      </div>
     </div>
-    <div v-show="!open" class="af-original">
+    <!-- PLAN-718 T-05：加载/失败等待态保持原文可读（AC-10），runner 就绪后才让位。 -->
+    <div v-show="!open || runnerState !== 'ready'" class="af-original">
       <slot />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, useId } from 'vue'
+import { ref, computed, useId, shallowRef, type Component } from 'vue'
 import { useData } from 'vitepress'
 import { Play, Square, Lock } from 'lucide-vue-next'
-import { SnippetRunner } from 'auto-playground-vue'
+import ReaderLoadingState from './ReaderLoadingState.vue'
 
 const props = defineProps<{
   /** 围栏原文（encodeURIComponent 编码传入；主题层 fence 渲染器注入）。 */
@@ -54,7 +73,6 @@ const panelId = `af-panel-${useId()}`
 const { lang } = useData()
 const zh = computed(() => lang.value.startsWith('zh'))
 
-// PLAN-718 T-05：runner 异步加载与重试状态将扩展此处；T-04 仅 UI 与语义。
 const t = computed(() => zh.value
   ? {
       run: '运行',
@@ -63,6 +81,9 @@ const t = computed(() => zh.value
       collapseAria: '收起示例运行器',
       locked: '依赖模块示例',
       lockNote: '此示例依赖多文件模块，不能在书页内运行——请到',
+      loading: '运行器加载中…',
+      runnerFailed: '运行器未加载（网络或资源错误）。原始代码保持不变，可重试或收起。',
+      retry: '重试',
     }
   : {
       run: 'Run',
@@ -71,6 +92,9 @@ const t = computed(() => zh.value
       collapseAria: 'Collapse the example runner',
       locked: 'Needs modules',
       lockNote: 'This example depends on multi-file modules and cannot run inline — open it in the',
+      loading: 'Loading the runner…',
+      runnerFailed: 'The runner failed to load (network or asset error). The original code is unchanged — retry or collapse.',
+      retry: 'Retry',
     })
 
 const playgroundHref = computed(() => (zh.value ? '/zh/playground' : '/playground'))
@@ -86,6 +110,62 @@ const source = computed(() => {
 // 启发式 import 检测（与 build-playground-notes.mjs isStandalone 同规则）：
 // 含 use/import 顶层声明的围栏是多文件依赖片段，书页内不可独立运行。
 const locked = computed(() => /^[ \t]*(use|import)[ \t]/m.test(source.value))
+
+// ---------------------------------------------------------------- PLAN-718 T-05
+// runner 异步加载。in-flight promise 去重：快速开合/双击不会并发重复加载，
+// 也不会挂载多个 runner 实例（v-if 单实例 + 组件引用复用）。
+// 重试：HTML module map 会缓存失败的模块脚本（同 URL 重试秒拒；query 变体在
+// build 解析时被去重抹平，?url 对 .ts 是资产拷贝不是 chunk——均已实测不可用）。
+// 因此用三个真实 shim 入口（不同模块 id → 不同入口 chunk → 不同 module-map 键，
+// 重型依赖 chunk 跨 shim 共享）：重试=换下一个入口；两次后错误态保持。
+type RunnerState = 'idle' | 'loading' | 'ready' | 'error'
+const runnerState = ref<RunnerState>('idle')
+const runnerComp = shallowRef<Component | null>(null)
+let loadPromise: Promise<void> | null = null
+let attempt = 0
+const toggleBtn = ref<HTMLButtonElement>()
+
+function loadAttempt(n: number): Promise<typeof import('auto-playground-vue')> {
+  if (n === 0) return import('./runner-entry.ts')
+  if (n === 1) return import('./runner-entry-retry1.ts')
+  return import('./runner-entry-retry2.ts')
+}
+
+function loadRunner(): Promise<void> {
+  if (runnerState.value === 'ready') return Promise.resolve()
+  if (loadPromise) return loadPromise
+  runnerState.value = 'loading'
+  loadPromise = loadAttempt(attempt)
+    .then((m) => {
+      runnerComp.value = m.SnippetRunner
+      runnerState.value = 'ready'
+    })
+    .catch(() => {
+      if (attempt < 2) attempt++
+      runnerState.value = 'error'
+      loadPromise = null
+    })
+  return loadPromise
+}
+
+function toggle() {
+  open.value = !open.value
+  if (open.value) {
+    void loadRunner()
+  } else {
+    collapse()
+  }
+}
+
+/** 收起：若焦点在将卸载的运行面板内，先归还到开关按钮（焦点不丢进不可见元素）。 */
+function collapse() {
+  const active = document.activeElement
+  if (open.value && active instanceof HTMLElement && panelId) {
+    const panel = document.getElementById(panelId)
+    if (panel && panel.contains(active)) toggleBtn.value?.focus()
+  }
+  open.value = false
+}
 </script>
 
 <style scoped>
@@ -170,6 +250,30 @@ const locked = computed(() => /^[ \t]*(use|import)[ \t]/m.test(source.value))
 
 .af-runner {
   margin: 0.25rem 0 0.5rem;
+}
+
+.af-load-error {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--vp-c-border, #313244);
+  border-left: 3px solid var(--vp-c-yellow, #e0af68);
+  border-radius: var(--site-radius, 0.5rem);
+  background: var(--vp-c-bg-soft, #11111b);
+}
+
+.af-error-text {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--vp-c-text-2, #a6adc8);
+  overflow-wrap: anywhere;
+}
+
+.af-error-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

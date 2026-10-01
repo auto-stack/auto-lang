@@ -97,7 +97,7 @@ import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { oneDarkTheme, oneDarkHighlightStyle } from '@codemirror/theme-one-dark'
 import { rust } from '@codemirror/lang-rust'
-import { autoLanguage } from 'auto-playground-vue'
+import { autoLanguage } from 'auto-playground-vue/lang/auto'
 import { Play, Loader2, RefreshCw, GitCompare, Terminal, FileCode2 } from 'lucide-vue-next'
 
 const route = useRoute()

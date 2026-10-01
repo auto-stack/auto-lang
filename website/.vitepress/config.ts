@@ -50,8 +50,27 @@ export default defineConfig({
     resolve: {
       alias: {
         '@': __dirname,
+        // PLAN-718 T-05：lang/auto 子路径别名必须排在包别名前（前缀匹配）——
+        // CodeView/ScriptShipView 只需 autoLanguage（StreamLanguage 小模块），
+        // 经包 index 会拖入全包（NotesExplorer/PlaygroundCard 等）。
+        'auto-playground-vue/lang/auto': path.resolve(__root, 'packages/auto-playground-vue/src/lang/auto.ts'),
         'auto-playground-vue': path.resolve(__root, 'packages/auto-playground-vue/src/index.ts'),
       },
+      // PLAN-718 T-05：auto-playground-vue 有自己的 node_modules（@codemirror/*、
+      // highlight.js、vue）——不去重会把两份 @codemirror/state 打进同一页面，
+      // instanceof 失效（"Unrecognized extension value" 实测）。强制从 website
+      // 根解析单一实例。
+      dedupe: [
+        'vue',
+        'lucide-vue-next',
+        'highlight.js',
+        '@codemirror/state',
+        '@codemirror/view',
+        '@codemirror/language',
+        '@codemirror/commands',
+        '@codemirror/theme-one-dark',
+        '@lezer/highlight',
+      ],
     },
     server: {
       proxy: {
