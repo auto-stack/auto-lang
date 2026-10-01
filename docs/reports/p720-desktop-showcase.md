@@ -6,10 +6,10 @@
 
 | 原文件与入库文件名 | 尺寸 | SHA256 |
 |---|---|---|
-| 01-desktop-light.png | 2560×1600 | 3126c9fd652d05442dce2f61c71bbb1d152b0d5eeea861324e34b42521eed04b |
-| 02-desktop-dark.png | 2560×1600 | 552120488abc87b3ea471114505e07054d7b128053415ae137b9f2f443ce5d40 |
-| 03-launcher-light.png | 2560×1600 | a143c62d07c47270a9e0f33cb3390befd71a81f2911e17b5760a4389b2e0f166 |
-| 04-launcher-dark.png | 2560×1600 | 6e5974124f3b337a58d46e6d6d749e229593c3fce57fe4699c4504101e660622 |
+| 01-desktop-light.png | 2560×1600 | 644b503f395bfc2d49e3b187815d3162660f76bfa709cb9bfe3d16862526d7e6 |
+| 02-desktop-dark.png | 2560×1600 | 77ef82ea50beaa99a29dc1ca9492ea11cdd47535b0866c10b537f4bdca3dc042 |
+| 03-launcher-light.png | 2560×1600 | 20696b4380e10bb933b169ff4b941f225d52980db083141527a7cf63259b9ce3 |
+| 04-launcher-dark.png | 2560×1600 | d2409be62d526261a3dffeca3c0af7b0b5ab72c8b7efff9e350357ad2af9cce3 |
 | 05-games-dark.png | 2560×1600 | 40cd4c89d87b7e23398771d9eda1d5781c6b9a3779551cbd7fab3f90fc6cd480 |
 | 06-productivity-dark.png | 2560×1600 | d488fb14350f9db3d9cd83cc95eee38ebc1e3bd6c1059eaaf3bdd8b7b3dbe63b |
 
@@ -26,7 +26,7 @@
 
 base commit：ccf1b9b78e43b49ec6913234df7d0d88dbfa45e7；book 只读依赖 d7a71a7fb1fa42ddd26d6cec859715ed98161f7a。Spec 输入 SHA256：project=ae221cbbadcaac30daef10976c002fcd08b169fbe9717a5bb33cfe6a4064b8cf，ui-presentation=b5bbbeee215fb26b856f33ed12fdf2479cd7bd215f3aa3d740fe2bd79580ae8d。
 
-## 验证证据（2026-10-01）
+## 首批验证证据（2026-10-01，历史资产）
 
 网站实现基线：`d2eb9f8935ab0109cadba8779a2baade933c0c92`（在 `333a2042ccc5dfbd128caf4b9423ddea3e249a1e` 展示实现上补专题锚点偏移）。仅网站/文档改动，Category A，未运行 Cargo 或 docs_gen。
 
@@ -68,3 +68,16 @@ base commit：ccf1b9b78e43b49ec6913234df7d0d88dbfa45e7；book 只读依赖 d7a71
 ## 发布与收尾边界
 
 本次只合入网站源代码并提供本地生产构建预览，不部署公开站点。当前会话未注册 store-mediated Spec writer，`127.0.0.1:8080/api/specs` 连接拒绝；ledger 更新/归档/原 worktree 清理保留为后续检查点，不直接改 `.autoos/specs.json`。规范正文及测试证据随代码保留。
+
+## 用户重拍修正（repair-1）
+
+用户报告首批截图缺少桌面快捷方式，并明确要求重拍六图替换、合入 master。2026-10-01 14:18..14:23 更新了 01..04；人工查看四张新原图，桌面恢复多列快捷方式，Launcher 后方桌面同步更新。05 游戏、06 工作图与原批 hash 相同，整组六文件均同步并重新核对；上方来源表现在记录最新批次。旧截图与首批页面视觉包可由 `19bbbdeeab77e6c57aa4d7031c5fc3be14eb23f5` 恢复，不将旧 77 项测试伪称为新图片测试。
+
+| 文件 | 首批 SHA256（仅历史溯源） |
+|---|---|
+| 01-desktop-light.png | 3126c9fd652d05442dce2f61c71bbb1d152b0d5eeea861324e34b42521eed04b |
+| 02-desktop-dark.png | 552120488abc87b3ea471114505e07054d7b128053415ae137b9f2f443ce5d40 |
+| 03-launcher-light.png | a143c62d07c47270a9e0f33cb3390befd71a81f2911e17b5760a4389b2e0f166 |
+| 04-launcher-dark.png | 6e5974124f3b337a58d46e6d6d749e229593c3fce57fe4699c4504101e660622 |
+
+修正仅资产与证据，Vue/数据/路由/正文/测试断言和 canonical Spec 均不变；无需新语义修订。受影响验收重新验证：六图 source hash/尺寸、新构建、既有展示与发布页图片/console 用例、60 组合/24 图更新及人工看图。未触及网站行为的旧完整回归保留为已识别基线，Category A 不运行 Cargo/docs_gen。
