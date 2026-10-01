@@ -325,7 +325,7 @@ test.describe('image dialog keyboard', () => {
 
 test.describe('autoshell regression', () => {
   test('native overview, F1/F2/F3 sections and script tabs intact', async ({ page }) => {
-    await page.goto('/apps/autoshell/')
+    await page.goto('/apps/autoshell/guide/')
     await expect(page.locator('img[src="/apps/autoshell/ash-01.png"]').first()).toBeVisible()
     for (const id of ['interface-overview', 'daily-shell', 'data-pipelines', 'scripts', 'automation', 'quick-start']) {
       await expect(page.locator('#' + id)).toBeAttached()
@@ -341,7 +341,7 @@ test.describe('autoshell regression', () => {
 
   test('copy button writes clipboard', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-    await page.goto('/apps/autoshell/')
+    await page.goto('/apps/autoshell/guide/')
     const btn = page.locator('#data-pipelines .copy-button')
     await btn.click()
     const text = await page.evaluate(() => navigator.clipboard.readText())
@@ -359,7 +359,7 @@ test.describe('autoshell regression', () => {
   })
 
   test('download links for scripts and sample data', async ({ page }) => {
-    await page.goto('/apps/autoshell/')
+    await page.goto('/apps/autoshell/guide/')
     await expect(page.locator('a[download][href*="users.json"]').first()).toBeAttached()
     await expect(page.locator('a[download][href*="user-report.ash"]').first()).toBeAttached()
   })

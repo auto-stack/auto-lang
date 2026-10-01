@@ -1,0 +1,207 @@
+{
+  "as_of": "2026-10-01",
+  "sources": [
+    {
+      "repo": "auto-lang",
+      "path": "docs/specs/website/project.md",
+      "commit": "d85bc928bb8182e12a370e4be37aac1e177435ef",
+      "sha256": "15003f95fd1b19c62a38500430fe413c060c9bbb8646fce52982463dfdcf275a"
+    },
+    {
+      "repo": "auto-edit",
+      "path": "docs/specs/00-overview.md",
+      "commit": "a7b07f9ab279d8446340b6ace26610b428651300",
+      "sha256": "df7ca3304db2360e168cbd63852b5306e43b4a4be036e771628a848fca9116cf"
+    },
+    {
+      "repo": "auto-edit",
+      "path": "docs/specs/modules/diff-view.md",
+      "commit": "a7b07f9ab279d8446340b6ace26610b428651300",
+      "sha256": "161cca22e286f69b4d12e3b17582c084e176f15c966dae36c2c1d0d73a5be91a"
+    },
+    {
+      "repo": "jade-edit",
+      "path": "docs/README.md",
+      "commit": "2b25cefe6c78d42ff519481f24b79ebe53231ba3",
+      "sha256": "e6945eaacb202318040b5e2b8709ed8543ae19358722e57d3e7af3913031fba6"
+    },
+    {
+      "repo": "jade-edit",
+      "path": "docs/ARCHITECTURE.md",
+      "commit": "2b25cefe6c78d42ff519481f24b79ebe53231ba3",
+      "sha256": "dcb7ed9fc21d6e0cd2ddc674fa017f050cf6985b9983fc9860ab04b6350b6f05"
+    },
+    {
+      "repo": "jade-edit",
+      "path": "docs/specs/editor-safety.md",
+      "commit": "2b25cefe6c78d42ff519481f24b79ebe53231ba3",
+      "sha256": "a1ab8d57556580985ea5e0bfb3e0c6f66ae7dd1c12ccd9699fd88cd74e1da2ae"
+    },
+    {
+      "repo": "jade-edit",
+      "path": "docs/specs/draft-recovery.md",
+      "commit": "2b25cefe6c78d42ff519481f24b79ebe53231ba3",
+      "sha256": "c9b2cd3122db24e1126441e4f41f2ef368bc456e04cf26a7c084aed2f92b301c"
+    },
+    {
+      "repo": "auto-musk",
+      "path": "README.md",
+      "commit": "6e6b6cc847639805c796e0e5a7cc6091b96f4319",
+      "sha256": "213e001aa6c64de4ec59610dbba9c8dd6e659f1596d58beea9a528f89369c69d"
+    },
+    {
+      "repo": "auto-os",
+      "path": "apps.manifest",
+      "commit": "73d02b50f535543bd635c6f6f49dad6835efff45",
+      "sha256": "41c7ed73b53f27e9b179d3796beccd6a605608909c3506f323b6125f555295a4"
+    },
+    {
+      "repo": "auto-os",
+      "path": "ui-gallery/src/front/registry.at",
+      "commit": "73d02b50f535543bd635c6f6f49dad6835efff45",
+      "sha256": "6ba42b773eb317f6ccf7805c443b2e5b87501d4a55e07c9bd260df0d50173a12"
+    }
+  ],
+  "demo_candidates": [
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/011-calculator",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/012-clock",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/013-todo",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/014-weather",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/015-notes",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/016-calendar",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/017-chat",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/018-book-reader",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/019-video-app",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/020-music-player",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/021-blog-viewer",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/022-kanban",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/023-realworld",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/024-charts",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/026-database",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/027-file-manager",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/029-photo-gallery",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/030-video-player",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/031-image-viewer",
+      "exists": true
+    },
+    {
+      "repo": "auto-lang",
+      "path": "examples/ui/031-paint",
+      "exists": true
+    },
+    {
+      "repo": "auto-os",
+      "path": "apps/025-sys-monitor",
+      "exists": true
+    },
+    {
+      "repo": "auto-os",
+      "path": "apps/028-launcher",
+      "exists": true
+    },
+    {
+      "repo": "auto-os",
+      "path": "apps/036-tetris",
+      "exists": true
+    },
+    {
+      "repo": "auto-os",
+      "path": "apps/037-klondike",
+      "exists": true
+    },
+    {
+      "repo": "auto-os",
+      "path": "apps/038-minesweeper",
+      "exists": true
+    },
+    {
+      "repo": "auto-os",
+      "path": "apps/039-syslog",
+      "exists": true
+    },
+    {
+      "repo": "auto-term",
+      "path": "app",
+      "exists": true
+    },
+    {
+      "repo": "auto-os-config",
+      "path": ".",
+      "exists": true
+    }
+  ]
+}

@@ -1,121 +1,67 @@
 ---
-layout: home
+title: AutoMusk — 围绕 Plan 与 Spec 的 Coding Agent
+description: 对话、工具调用、开发计划、复审和项目知识，以及当前自动化边界。
+outline: [2, 3]
+editLink: false
 ---
 
-<script setup>
-import AppLandingLayout from '../../../.vitepress/theme/components/AppLandingLayout.vue'
-import FeatureCard from '../../../.vitepress/theme/components/FeatureCard.vue'
-import StatCard from '../../../.vitepress/theme/components/StatCard.vue'
-import ShowcaseSection from '../../../.vitepress/theme/components/ShowcaseSection.vue'
-</script>
+# AutoMusk：围绕 Plan 与 Spec 的 Coding Agent
 
-<div class="landing-page automusk-page" style="--page-accent-1: #ec4899; --page-accent-2: #a855f7">
+AutoMusk 是 Auto 生态中的 Coding Agent 应用。它把项目对话、工具调用和开发过程放在一个工作台中，用 Plan 组织一次变更，用 Spec 保留项目已有的知识与约束。
 
-<AppLandingLayout app-name="automusk" badge="AutoOS 旗舰应用 · 100% Auto" status="beta" back-label="查看全部应用" back-href="/zh/apps">
-  <template #title>AutoMusk Coding Agent</template>
-  <template #intro>
-    通用 Coding Agent,以 AutoPlan 模式驱动:规划、执行、复审全流程结构化。用 Auto 语言自身实现 —— 平台能造 Agent 的最好证明。
-  </template>
-  <template #actions>
-    <a href="/zh/playground" class="btn btn-primary">在线体验 Playground</a>
-    <a href="/zh/ai" class="btn btn-secondary">AutoAI 架构</a>
-  </template>
-</AppLandingLayout>
-<div class="stats-section">
-<h2 class="section-title">AutoMusk 速览</h2>
-<div class="stats-grid">
-<StatCard value="AutoPlan" label="规划模式" description="计划→执行→复审的结构化编码闭环。" color="#ec4899" />
-<StatCard value=".at" label="前端单源" description="五个视图由 .at 源经 auto build 生成,148 项对拍全等。" color="#a855f7" />
-<StatCard value="多模型" label="提供商无关" description="经 aaid Daemon 路由 OpenAI/Anthropic/智谱等任意模型。" color="#6366f1" />
-<StatCard value="2" label="形态" description="iced 桌面应用与 Web 工作台双形态。" color="#14b8a6" />
-</div>
-</div>
+它希望解决的具体问题是：任务经过多轮分析和执行后，需求、决策、改动和验证结果仍能被找到，下一次工作也有可靠的起点。
 
-<div class="showcase-wrapper">
-<ShowcaseSection
-title="桌面工作台"
-description="会话、计划、规范、知识库一栏贯通;Block 卡片让 Agent 的每一步产出结构化可见。"
-badge="iced 桌面"
->
-<ul>
-<li><strong>AutoPlan 流水线</strong> —— 规划→执行→复审,spec 单一真源,token 更省。</li>
-<li><strong>Block 卡片渲染</strong> —— Agent 产出以 Block 呈现,而非一坨文本。</li>
-<li><strong>工作目录感知</strong> —— 选择工作目录后按仓内约定干活。</li>
-</ul>
-<template #visual>
-<div class="shot-stack">
-<img src="/v05/automusk-app.png" alt="AutoMusk 桌面主界面" class="shot-main" loading="lazy" />
-</div>
-</template>
-</ShowcaseSection>
+[全部应用](/zh/apps) · [AutoAI 架构](/zh/ai)
 
-<ShowcaseSection
-title="Web 工作台:Forge / Specs / Relay / Wiki"
-description="前端五个视图(Login/Chats/Plans/Specs/Wiki)的 .at 单源,经 auto build 生成 Vue 工程 —— .at 是唯一真源,双端对拍 148 项全等。"
-badge="Web"
-reverse
->
-<ul>
-<li><strong>Forge</strong> —— 与 Agent 的对话主战场,计划逐项推进。</li>
-<li><strong>Specs</strong> —— 规范台账,Agent 的长期记忆与验收标准。</li>
-<li><strong>Relay</strong> —— 多 Agent 编排,任务接力。</li>
-<li><strong>Wiki</strong> —— 项目知识库沉淀。</li>
-</ul>
-<template #visual>
-<div class="shot-pair">
-<img src="/v05/automusk-workspace.png" alt="AutoMusk Web 工作区" loading="lazy" />
-<img src="/v05/automusk-plans.png" alt="AutoMusk 计划视图" loading="lazy" />
-</div>
-</template>
-</ShowcaseSection>
-</div>
+<!-- Screenshot slot: overview from the agreed sample-project walkthrough, after AutoMusk preparation is complete. -->
 
-<div class="features-section">
-<h2 class="section-title">为什么 AutoMusk 重要</h2>
-<div class="features-grid">
-<FeatureCard icon="🧩" title="AutoPlan 方法论" description="spec-driven 的串行 Agent:先规划、再执行、后复审,结构化推进复杂任务。" color="rgba(236, 72, 153, 0.15)" />
-<FeatureCard icon="🦾" title="自托管" description="用 Auto 写、跑在 AutoVM 上 —— Agent 开发本身就是 Auto 的吃狗粮现场。" color="rgba(168, 85, 247, 0.15)" />
-<FeatureCard icon="🔐" title="aaid 加持" description="密钥托管、并发仲裁、模型路由与用量统计,全部由 AI Daemon 承担。" color="rgba(99, 102, 241, 0.15)" />
-<FeatureCard icon="⚙️" title="统一配置" description="Roles、Skills、Modes 在 auto-os-config 中按 .at 形状编辑,零前端代码。" color="rgba(20, 184, 166, 0.15)" />
-</div>
-</div>
+## 从对话进入项目工作
 
+选择工作目录后，可以先让 Agent 阅读项目并解释结构，再讨论一个具体变更。应用呈现消息、工具事件、计划进度、确认门和报告；用户据此检查发生了什么，并在需要决策的位置继续参与。
 
-<div class="cta-section">
-<h2 class="section-title">继续探索</h2>
-<div class="cta-actions">
-<a href="/zh/v05/" class="cta-btn cta-primary">返回 v0.5 发布专题</a>
-<a href="/zh/apps" class="cta-btn cta-secondary">查看全部应用</a>
-</div>
-</div>
+一个有代表性的示例应该贯穿同一个小工程：理解项目 → 提出需求 → 检查计划 → 执行改动 → 查看复审与结果。本页先说明这个过程，完整截图将在应用准备好后按该流程补齐。
 
-</div>
+## Plan 与 Spec 各自记录什么
 
-<style scoped>
-.shot-stack {
-width: 100%;
-max-width: 480px;
-}
+| 资料 | 用途 |
+|---|---|
+| Plan | 一次变更的目标、设计、任务、验收条件、进展与复审结果 |
+| 模块 Specs | 项目当前约定的行为、接口和设计知识 |
+| Spec Ledger | 对知识、关系和历史的派生索引，不替代模块规范 |
+| 对话与报告 | 解释执行过程、工具活动与需要人工处理的问题 |
 
-.shot-main {
-width: 100%;
-border-radius: var(--radius);
-border: 1px solid hsl(var(--border));
-box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-}
+Plan 的完成意味着这次工作满足了验收条件；项目知识的沉淀则要把交付结果反映到规范中。这两件事不应仅凭“运行结束”就视为完成。
 
-.shot-pair {
-display: grid;
-grid-template-columns: 1fr 1fr;
-gap: 0.75rem;
-width: 100%;
-max-width: 480px;
-}
+## 规划、执行、复审与沉淀
 
-.shot-pair img {
-width: 100%;
-border-radius: var(--radius);
-border: 1px solid hsl(var(--border));
-box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-}
-</style>
+AutoMusk 使用四阶段方法：先形成可检查的计划，再实施变更，复查实际代码与测试结果，最后沉淀知识。应用内置 Relay 的 `plan` 流程当前串行使用 `plan-dev` 角色，在执行前设置人工确认门。
+
+仓库的四个开发技能与应用内 Relay 是两个入口。技能侧的 worktree、复审、合入和沉淀规约，不应被描述为所有应用运行都已自动强制执行。当前复审失败后还需要跟进修复和再次复审；服务重启也不会恢复内存中的活动 Relay 运行。
+
+<!-- Screenshot slot: the same sample project's Plan, confirmation gate, tool activity, and reviewed result. -->
+
+## 模型、工具与应用的分工
+
+AutoMusk 负责开发任务、项目资料、本地工具、API 与界面。公共 Agent 循环、角色、技能和通用编排能力来自 AutoAI；模型通信通过客户端连接到 aaid，由它管理模型服务、并发和用量。应用需要文件或命令操作时，执行仍属于工具所在的应用或 Agent 层。
+
+模型、角色与技能可以配置；实际可用模型取决于已配置的提供商、账户权限与运行环境。生态提供共享配置入口，具体模型服务关系见 [AI 介绍](/zh/ai)。
+
+## 当前实现与使用条件
+
+主 Web 界面由 Auto 源码生成 Vue；默认 HTTP 后端由 Rust 基础设施与 Auto 生成的 Rust 组成。仓库也保留 AutoVM 后端和原生 UI 路径，不能据此宣称整个应用已经是纯 VM 或全部由 Auto 单独实现。
+
+使用需要匹配的 Auto 工具链、Rust、Node.js/pnpm、相关仓库依赖，以及模型任务所需的 aaid 配置。CLI 的常见入口包括：
+
+```sh
+musk chat
+musk run "阅读当前项目并总结结构"
+musk serve
+```
+
+在目标项目目录里发起 CLI 任务；启动服务前按该版本的构建说明准备应用与前端，并设置合适的工作目录。网站的 Playground 是语言体验入口，不是已经部署的 AutoMusk 服务。
+
+应用当前仍在开发与演示流程准备阶段。持久运行、重启恢复、自动修复循环和更完整的运行时规约收口属于后续工作，不在本页冒领。
+
+介绍依据当前 README 与架构资料整理，资料时点为 **2026-10-01**。
+
+[AI 的历史与展望](/zh/articles/auto-ai-history) · [AutoEdit](/zh/apps/autoedit/) · [返回应用总览](/zh/apps)
