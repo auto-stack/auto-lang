@@ -206,3 +206,43 @@ widget home {
         &dump[..dump.len().min(600)]
     );
 }
+
+/// PLAN-712 T-17 第三层（实锤复现）：**重复导航不重跑页 Init**——018 实机
+/// （独立 VM + 桌面双轨）：点第 2/3 张卡详情恒第一本；standalone 日志仅
+/// 一次 `book_detail_Init`。机理：outlet 页 Init 身份 = key prop 或裸
+/// widget 名（`child_init_identity`），与路由参数无关 → `/book/1` 与
+/// `/book/2` 同代际 → `register_init_demand` AlreadyKnown 不重派 → 页面
+/// 状态滞留首次装载。语义应为「导航 = 新装载」：路由路径进身份，参数
+/// 变化 = 新代际 = Init 重跑（与书架回退重取数的既有行为一致）。
+#[test]
+#[cfg(feature = "ui-iced")]
+fn page_init_reruns_when_route_param_changes() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let app_path = write_fixture(&dir);
+    let code = std::fs::read_to_string(&app_path).expect("read app.at");
+    let mut dc = build_dynamic_component(&code, app_path.to_str()).expect("编译");
+
+    // 首次装载：/book/7。
+    dc.fire_init();
+    let _ = dc.view_with_debug_gated(true);
+    dc.drive_scheduler_to_quiescence(10_000);
+    dc.on_with_input_for("home", "Go", None);
+    let _ = dc.view_with_debug_gated(true);
+    dc.drive_scheduler_to_quiescence(10_000);
+    assert_eq!(
+        dc.read_state("got").ok(),
+        Some(auto_val::Value::Str("7".into())),
+        "首次装载应取到 7"
+    );
+
+    // 二次导航：/book/8 —— fixture 的 home.Go 固定 push 7，这里直写路由
+    // 通道（与 navigate 等价面：__current_route 写入 + sync + 重建）。
+    dc.set_route("/book/8");
+    let _ = dc.view_with_debug_gated(true);
+    dc.drive_scheduler_to_quiescence(10_000);
+    assert_eq!(
+        dc.read_state("got").ok(),
+        Some(auto_val::Value::Str("8".into())),
+        "参数变化必须重跑页 Init（导航=新装载）；滞留 7 = 同代际不重派复现"
+    );
+}

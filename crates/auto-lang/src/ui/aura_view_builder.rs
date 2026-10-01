@@ -64,6 +64,34 @@ use crate::ui::style::{Style, StyleClass, SizeValue};
 // 对齐 vue codegen(vue.rs:1459 category_color_classes)。
 thread_local! {
     static CATEGORY_COLOR: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
+    /// PLAN-712 T-17 第三层：outlet 页渲染期的路由身份后缀。Init demand 的
+    /// 代际判定（`child_init_identity` → `init_identity_changed`）此前对
+    /// outlet 页恒为裸 widget 名（outlet 不传 props，路由参数走
+    /// `__route_params` 状态）——同页不同参（/book/1 → /book/2）同代际，
+    /// Init 不重派 → 页面状态滞留首次装载（018 三卡同内容实机实证）。
+    /// outlet 渲染期置 Some(当前路由路径)（guard 保证任一返回路径清零），
+    /// 页 Init 身份并入路由 → 参数变化 = 新代际 = 重派（导航=新装载语义，
+    /// 与书架回退重取数的既有行为一致）。
+    static OUTLET_INIT_IDENTITY: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// [`OUTLET_INIT_IDENTITY`] 的作用域守卫：outlet 渲染是同步单线程的，
+/// 构造即置值、Drop 即清零——`render_outlet_inner` 的多返回路径无需各自
+/// 清理。
+struct OutletInitIdentityGuard;
+impl OutletInitIdentityGuard {
+    fn set(route: &str) -> Self {
+        OUTLET_INIT_IDENTITY.with(|c| {
+            *c.borrow_mut() = Some(route.to_string());
+        });
+        Self
+    }
+}
+impl Drop for OutletInitIdentityGuard {
+    fn drop(&mut self) {
+        OUTLET_INIT_IDENTITY.with(|c| *c.borrow_mut() = None);
+    }
 }
 
 // ============================================================================
@@ -5454,6 +5482,9 @@ let tabs_inner = View::Row {
             Ok(auto_val::Value::Str(s)) if !s.is_empty() => s.to_string(),
             _ => routes.first().map(|r| r.path.clone()).unwrap_or_default(),
         };
+        // PLAN-712 T-17 第三层：本 outlet 渲染覆盖到的所有页 Init 登记，其
+        // 代际身份并入当前路由路径（guard 于本函数任一返回路径清零）。
+        let _outlet_identity_guard = OutletInitIdentityGuard::set(&current);
 
         // Match the current path against each route pattern. A pattern segment
         // starting with ':' matches any single path segment and is captured as
@@ -6994,10 +7025,17 @@ let tabs_inner = View::Row {
         props: &HashMap<String, AuraPropValue>,
         bindings: &Bindings,
     ) -> String {
-        self.extract_string_with(props, "key", bindings)
+        let base = self
+            .extract_string_with(props, "key", bindings)
             .filter(|k| !k.is_empty())
             .map(|k| format!("{}#{}", child_widget.name, k))
-            .unwrap_or_else(|| child_widget.name.clone())
+            .unwrap_or_else(|| child_widget.name.clone());
+        // PLAN-712 T-17 第三层：outlet 页渲染期并入路由身份（见
+        // OUTLET_INIT_IDENTITY 文档）——参数变化 = 新代际 = Init 重派。
+        OUTLET_INIT_IDENTITY.with(|c| match c.borrow().as_deref() {
+            Some(route) => format!("{}@{}", base, route),
+            None => base,
+        })
     }
 
     /// PLAN-051 C2: 把 Component 调用位上的回调绑定（`onsend: .SendInput($event)`
