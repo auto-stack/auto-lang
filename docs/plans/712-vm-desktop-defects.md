@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-712
-status: executing          # r3 复活执行中（用户裁定 7e4258c31 git mv 回活跃区；交接批 8.5 T-17/18/19 + r2 遗留实机腿）
+status: execution_done     # r3 收口（2026-10-01 用户裁定建议A：三层修复+章节目录全实证，T-11/T-19 桌面轨残留登记归 T-16 批次；review 待跑）
 feature_name: VM 桌面验收缺陷收敛（视频引擎双缺陷 + 壳配置持久化 + examples 依赖）
 author: [zcode(auto-os 会话转介)]
 created_at: 2026-09-30
@@ -285,6 +285,13 @@ AUTO_SCHED_DIAG=1 AUTOUI_ACCEPTANCE=1 AUTOUI_MCP_PORT=9260 bash scripts/desktop.
 ## 9. 复审记录
 ## 9. 复审记录
 
+- 2026-10-01 stage:work 收口 | plan_id PLAN-712 | plan_revision 3 | outcome: pass（用户裁定建议A：三层修复+章节目录全实证后收口）| code_commit: plan-712-dev @c5a60e8a3 + 32dad29da + 884bcfa67 | task_ids: T-17,T-18,T-19 | evidence:
+  - **T-17 三层全闭环（用户实机实证）**：①前缀覆盖（路由页装载臂补 apply）→ ②router.param 堆化（GET_FIELD 实例臂 Obj 缺臂）→ ③outlet Init 代际身份并入路由（重复导航重派）——用户终验「三本书各自内容正确」；app 层章节目录列表补齐（884bcfa67）。
+  - **T-19 引擎腿**：契约层探针洗清 + 双锁（空闲自发事件修复/保持层干净）；桌面轨残留（暂停失败）= T-16 桌面轨更新路径家族，登记归下一引擎批（§9 T-19 走查记录）。
+  - **T-18**：方案 A 接线 + headless 锁在库；实机腿未验（用户本轮未测缩放），登记态随档。
+  - **T-11**：布局塌缩 = 登记态（r2 裁定维持），本轮截图确认形态一致；归 T-16 批次。
+  - **验证口径（r3）**：plan712 全家 5/5 + route 98 + dynamic 58 + mpv_contract 12/12（真引擎）+ video_contract/uplink/desktop_config 沿用绿；裸 cargo t 于层①②批全量跑齐（12 红 ⊆ 基线族零新增）；层③批受 D 盘满事件约束走作用域门禁（plan712/dynamic/route/layout 探针），全量档归 review/批量回归补跑。
+  | blockers: 无 | next: review。
 - 2026-10-01 stage:work 续（**r3 第二批**，T-17 收口）| plan_id PLAN-712 | plan_revision 3 | outcome: pass（根修+防御双层落地，全锁绿，日常档零新增红；点书导航实机腿移交用户）| code_commit: plan-712-dev @0c4606ee5 + 32ced74f6（承 a817963b0）| task_ids: T-17 | evidence:
   - **第 0 步定性**：back_prefix 机制审计（apply/path_under/prefix_api_url_literals）+ 018 取数点布局盘点（book_store.at 顶层 vs pages/ 子目录）→ lib.rs 路由页装载臂裸读实锤（10 处读点唯一未包 apply）。
   - **候选①根修 + e2e 红绿锁**（真 TCP stub，红相=stub 零请求与实机零 REQ 同形）；**候选②传输失败改抛**（五 shim 分层契约 + 非 2xx 值面保留；语料零 `.error/.status` 读方审计）；**候选③审计免改**（proxy 错误面已全 4xx/5xx）。
