@@ -1363,10 +1363,28 @@ impl PopoverPlacement {
 /// right-N/top-N/left-N/bottom-N 解析;iced_adapter 已解析但之前忽略)。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OverlayPosition {
-    pub top: Option<f32>,
-    pub right: Option<f32>,
-    pub bottom: Option<f32>,
-    pub left: Option<f32>,
+    pub top: Option<OverlayLength>,
+    pub right: Option<OverlayLength>,
+    pub bottom: Option<OverlayLength>,
+    pub left: Option<OverlayLength>,
+}
+
+/// PLAN-095 T-03: 浮层定位长度。musk canvas 框样式以宿主内容矩形百分比
+/// 为基准（bbox_pct），iced 侧 Percent → Length::Relative(v/100)；
+/// 历史形态保持 Px。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OverlayLength {
+    Px(f32),
+    Percent(f32),
+}
+
+impl OverlayLength {
+    /// 是否为正长度（hoist 判定用）。
+    pub fn is_positive(&self) -> bool {
+        match self {
+            OverlayLength::Px(v) | OverlayLength::Percent(v) => *v > 0.0,
+        }
+    }
 }
 
 /// View builder for fluent layout construction

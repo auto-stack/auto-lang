@@ -396,8 +396,8 @@ mod plan536_t1_reactive_probe_tests {
             overlays.iter().any(|(base, content, pos)| {
                 matches!(base.as_ref(), View::Row { .. })
                     && matches!(content.as_ref(), View::Column { .. })
-                    && pos.right == Some(8.0)
-                    && pos.top == Some(8.0)
+                    && pos.right == Some(crate::ui::view::OverlayLength::Px(8.0))
+                    && pos.top == Some(crate::ui::view::OverlayLength::Px(8.0))
             }),
             "row 父容器的 absolute(z) 子件必须 hoist 为 Overlay(right/top 偏移); overlays={}",
             overlays.len()
@@ -434,8 +434,8 @@ mod plan536_t1_reactive_probe_tests {
         assert!(
             overlays.iter().any(|(_base, content, pos)| {
                 matches!(content.as_ref(), View::Button { .. })
-                    && pos.right == Some(6.0)
-                    && pos.top == Some(8.0)
+                    && pos.right == Some(crate::ui::view::OverlayLength::Px(6.0))
+                    && pos.top == Some(crate::ui::view::OverlayLength::Px(8.0))
             }),
             "button 载体的 absolute(z) 必须 hoist(right=6/top=8); overlays={}",
             overlays.len()
@@ -614,8 +614,8 @@ mod plan536_t1_reactive_probe_tests {
             _ => None,
         }).expect("noz-x in tree");
         let pos = dynamic_abs_layer_position(&noz).expect("无 z 偏移浮层必须产出定位");
-        assert_eq!(pos.right, Some(6.0));
-        assert_eq!(pos.top, Some(8.0));
+        assert_eq!(pos.right, Some(crate::ui::view::OverlayLength::Px(6.0)));
+        assert_eq!(pos.top, Some(crate::ui::view::OverlayLength::Px(8.0)));
 
         let ghost = all.iter().find(|v| matches!(v,
             View::Text { content, .. } if content.contains("layer-text"))).expect("ghost in tree");

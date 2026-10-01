@@ -14257,11 +14257,16 @@ fn extract_absolute_position(v: &View<DynamicMessage>) -> Option<crate::ui::view
     if !matches!(is.position, Some(IcedPosition::Absolute)) || is.z_index.is_none() {
         return None;
     }
+    let px_or_pct = |px: Option<f32>, pct: Option<f32>| match (px, pct) {
+        (Some(v), _) => Some(crate::ui::view::OverlayLength::Px(v)),
+        (None, Some(p)) => Some(crate::ui::view::OverlayLength::Percent(p)),
+        (None, None) => None,
+    };
     Some(crate::ui::view::OverlayPosition {
-        top: is.top_offset,
-        right: is.right_offset,
-        bottom: is.bottom_offset,
-        left: is.left_offset,
+        top: px_or_pct(is.top_offset, is.top_percent),
+        right: px_or_pct(is.right_offset, is.right_percent),
+        bottom: px_or_pct(is.bottom_offset, is.bottom_percent),
+        left: px_or_pct(is.left_offset, is.left_percent),
     })
 }
 

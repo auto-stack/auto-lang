@@ -109,6 +109,54 @@ impl Color {
         Ok(Self::Hex(value))
     }
 
+    /// PLAN-095 T-03: parse a CSS color literal — `#hex`, `rgb(r,g,b)`,
+    /// `rgba(r,g,b,a)` — as emitted by musk's canvas frame style builders
+    /// (`border:2px solid rgb(59,130,246)` 族). Component values may carry
+    /// whitespace; `%` components scale to the 0-255 byte range; alpha is
+    /// clamped to 0..=1.
+    pub fn from_css(value: &str) -> Result<Self, String> {
+        let value = value.trim();
+        if value.starts_with('#') {
+            return Self::from_hex(value);
+        }
+        let parse_rgb_body = |body: &str| -> Result<(f64, f64, f64, f64), String> {
+            let mut parts = Vec::new();
+            for piece in body.split(',') {
+                let piece = piece.trim();
+                let num = piece
+                    .trim_end_matches('%')
+                    .parse::<f64>()
+                    .map_err(|e| format!("Invalid CSS color component '{piece}': {e}"))?;
+                let num = if piece.ends_with('%') { num / 100.0 * 255.0 } else { num };
+                parts.push(num);
+            }
+            if parts.len() != 3 && parts.len() != 4 {
+                return Err(format!(
+                    "CSS color expects 3 or 4 components, got {}",
+                    parts.len()
+                ));
+            }
+            let a = parts.get(3).copied().unwrap_or(1.0).clamp(0.0, 1.0);
+            Ok((parts[0], parts[1], parts[2], a))
+        };
+        let rgba_from = |body: &str| -> Result<Self, String> {
+            let (r, g, b, a) = parse_rgb_body(body)?;
+            Ok(Self::Rgba {
+                r: r.round().clamp(0.0, 255.0) as u8,
+                g: g.round().clamp(0.0, 255.0) as u8,
+                b: b.round().clamp(0.0, 255.0) as u8,
+                a: (a * 255.0).round().clamp(0.0, 255.0) as u8,
+            })
+        };
+        if let Some(body) = value.strip_prefix("rgb(").and_then(|v| v.strip_suffix(')')) {
+            return rgba_from(body);
+        }
+        if let Some(body) = value.strip_prefix("rgba(").and_then(|v| v.strip_suffix(')')) {
+            return rgba_from(body);
+        }
+        Err(format!("Unsupported CSS color literal: {value}"))
+    }
+
     /// Parse a color from a Tailwind color name (e.g., "red-500", "blue", "white")
     /// or a semantic token name (e.g., "primary", "foreground", "background").
     pub fn from_tailwind(name: &str) -> Result<Self, String> {

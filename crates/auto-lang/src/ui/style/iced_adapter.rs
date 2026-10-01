@@ -168,6 +168,13 @@ pub struct IcedStyle {
     // NOTE: Iced doesn't support absolute positioning - these fields are ignored
     pub position: Option<IcedPosition>,
     pub z_index: Option<i16>,       // Not supported by Iced
+    /// PLAN-095 T-03: 浮层穿透标记（pointer-events-none）与百分比定位/尺寸。
+    pub pointer_events_none: bool,
+    pub top_percent: Option<f32>,
+    pub right_percent: Option<f32>,
+    pub bottom_percent: Option<f32>,
+    pub left_percent: Option<f32>,
+
 
     // Overflow (L3)
     pub overflow_x: Option<IcedOverflow>,
@@ -304,6 +311,9 @@ pub enum IcedSize {
     /// PLAN-526 T27：`w-auto`/`h-auto`（hug 内容）。此前 Auto 误映射
     /// Full——popover 面板等"无 width 类"场景被撑满宿主宽。
     Shrink,
+    /// PLAN-095 T-03: 百分比尺寸（`width:30%`/`w-[30%]`）——iced
+    /// Length::Relative(v/100)，浮层语境相对宿主内容矩形。
+    Percent(f32),
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -456,6 +466,13 @@ impl IcedStyle {
             bottom_offset: None,
             right_offset: None,
             left_offset: None,
+            // PLAN-095 T-03: 浮层穿透与百分比定位/尺寸
+            pointer_events_none: false,
+            top_percent: None,
+            bottom_percent: None,
+            right_percent: None,
+            left_percent: None,
+
             // Transform
             rotate: None,
             // Visibility
@@ -766,8 +783,14 @@ impl IcedStyle {
             StyleClass::Width(size) => {
                 self.width = Some(convert_size(size));
             }
+            StyleClass::WidthPercent(v) => {
+                self.width = Some(IcedSize::Percent(*v));
+            }
             StyleClass::Height(size) => {
                 self.height = Some(convert_size(size));
+            }
+            StyleClass::HeightPercent(v) => {
+                self.height = Some(IcedSize::Percent(*v));
             }
             StyleClass::MaxWidth(px) => {
                 self.max_width = Some(*px);
@@ -1380,6 +1403,21 @@ impl IcedStyle {
             // ========== Position Offsets ==========
             StyleClass::TopOffset(px) => {
                 self.top_offset = Some(*px);
+            }
+            StyleClass::TopPercent(v) => {
+                self.top_percent = Some(*v);
+            }
+            StyleClass::BottomPercent(v) => {
+                self.bottom_percent = Some(*v);
+            }
+            StyleClass::RightPercent(v) => {
+                self.right_percent = Some(*v);
+            }
+            StyleClass::LeftPercent(v) => {
+                self.left_percent = Some(*v);
+            }
+            StyleClass::PointerEventsNone => {
+                self.pointer_events_none = true;
             }
             StyleClass::BottomOffset(px) => {
                 self.bottom_offset = Some(*px);

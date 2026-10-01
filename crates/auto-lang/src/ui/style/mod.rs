@@ -317,8 +317,14 @@ impl Style {
         let mut hover_classes = Vec::new();
         let mut variant_classes: Vec<(Variant, StyleClass)> = Vec::new();
         let mut unmapped = Vec::new();
+        // PLAN-095 T-03: CSS 声明链直推（musk canvas 框样式形态）。';' 分隔
+        // 的 `prop:value` 段按已知子集映射为 StyleClass；其余（含变体前缀
+        // token）交还既有 Tailwind token 管线，未知声明维持 unmapped。
+        let (decl_classes, decl_unmapped, remainder) = split_css_declarations(input);
+        classes.extend(decl_classes);
+        unmapped.extend(decl_unmapped);
         let width = theme::window_width();
-        for token in input.split_whitespace() {
+        for token in remainder.split_whitespace() {
             if let Some((prefix, rest)) = token.split_once(':') {
                 // Plan 527 T8: dark: 前缀 —— 主题态门控(dark 态命中进 base,
                 // light 态仅登记 variant,可见不静默;主题切换走 view 重建)
@@ -686,5 +692,224 @@ mod plan411_tests {
         assert!(matches!(StyleClass::parse_single("text-5xl"), Ok(StyleClass::Text5Xl)));
         assert!(matches!(StyleClass::parse_single("lg:text-7xl"), Ok(StyleClass::Text7Xl)));
         assert!(matches!(StyleClass::parse_single("text-9xl"), Ok(StyleClass::Text9Xl)));
+    }
+}
+
+
+/// PLAN-095 T-03: CSS 声明段直推（`position:absolute;left:40%;…` 族，
+/// musk canvas 框样式的生产形态）。返回 (直推类, 未映射段, 余下 token 串)。
+/// 无 ';' 的输入原样返回（Tailwind token 管线零改动）；已知变体前缀
+/// （hover:/dark:/断点: 等）不属声明面，交还 token 管线。
+fn split_css_declarations(input: &str) -> (Vec<StyleClass>, Vec<String>, String) {
+    const KNOWN_PROPS: &[&str] = &[
+        "position", "pointer-events", "z-index", "left", "top", "right", "bottom",
+        "width", "height", "max-width", "max-height", "border", "background", "overflow",
+    ];
+    if !input.contains(';') {
+        return (Vec::new(), Vec::new(), input.to_string());
+    }
+    let mut classes = Vec::new();
+    let mut unmapped = Vec::new();
+    let mut remainder = String::new();
+    // ';' 分块；块内允许「Tailwind token + 一条声明」混合（声明值含空格，
+    // 如 border:2px solid rgb(59,130,246)）——按已知 prop 词边界扫描声明
+    // 起点，声明值延伸到块尾。
+    for chunk in input.split(';') {
+        let chunk = chunk.trim();
+        if chunk.is_empty() {
+            continue;
+        }
+        let decl_start = KNOWN_PROPS
+            .iter()
+            .filter_map(|prop| {
+                let mut from = 0;
+                loop {
+                    let idx = chunk[from..].find(prop)?;
+                    let at = from + idx;
+                    let before_ok = at == 0 || !chunk.as_bytes()[at - 1].is_ascii_alphanumeric();
+                    let after = &chunk[at + prop.len()..];
+                    let after_ok = after.starts_with(':')
+                        || after.starts_with(|c: char| c.is_ascii_whitespace())
+                            && after.trim_start().starts_with(':');
+                    if before_ok && after_ok {
+                        return Some((at, prop));
+                    }
+                    from = at + prop.len();
+                    if from >= chunk.len() {
+                        return None;
+                    }
+                }
+            })
+            .min_by_key(|(at, _)| *at);
+        let Some((at, prop)) = decl_start else {
+            remainder.push_str(chunk);
+            remainder.push(' ');
+            continue;
+        };
+        let tailwind_part = chunk[..at].trim();
+        if !tailwind_part.is_empty() {
+            remainder.push_str(tailwind_part);
+            remainder.push(' ');
+        }
+        let after_prop = &chunk[at + prop.len()..];
+        let value = after_prop.trim_start().strip_prefix(':').map(|v| v.trim()).unwrap_or("");
+        let segment = format!("{prop}:{value}");
+        match (*prop, value) {
+            ("position", "absolute") => classes.push(StyleClass::Absolute),
+            ("position", "relative") => classes.push(StyleClass::Relative),
+            ("pointer-events", "none") => classes.push(StyleClass::PointerEventsNone),
+            ("overflow", "hidden") => classes.push(StyleClass::OverflowHidden),
+            ("z-index", v) => match v.parse::<i16>() {
+                Ok(n) if (0..=50).contains(&n) => classes.push(StyleClass::ZIndex(n)),
+                _ => unmapped.push(segment),
+            },
+            ("left", v) => match parse_css_len(v) {
+                Some(CssLen::Px(px)) => classes.push(StyleClass::LeftOffset(px)),
+                Some(CssLen::Pct(p)) => classes.push(StyleClass::LeftPercent(p)),
+                None => unmapped.push(segment),
+            },
+            ("top", v) => match parse_css_len(v) {
+                Some(CssLen::Px(px)) => classes.push(StyleClass::TopOffset(px)),
+                Some(CssLen::Pct(p)) => classes.push(StyleClass::TopPercent(p)),
+                None => unmapped.push(segment),
+            },
+            ("right", v) => match parse_css_len(v) {
+                Some(CssLen::Px(px)) => classes.push(StyleClass::RightOffset(px)),
+                Some(CssLen::Pct(p)) => classes.push(StyleClass::RightPercent(p)),
+                None => unmapped.push(segment),
+            },
+            ("bottom", v) => match parse_css_len(v) {
+                Some(CssLen::Px(px)) => classes.push(StyleClass::BottomOffset(px)),
+                Some(CssLen::Pct(p)) => classes.push(StyleClass::BottomPercent(p)),
+                None => unmapped.push(segment),
+            },
+            ("width", v) => match parse_css_len(v) {
+                Some(CssLen::Px(px)) => classes.push(StyleClass::Width(SizeValue::Pixels(px))),
+                Some(CssLen::Pct(p)) => classes.push(StyleClass::WidthPercent(p)),
+                None => unmapped.push(segment),
+            },
+            ("height", v) => match parse_css_len(v) {
+                Some(CssLen::Px(px)) => classes.push(StyleClass::Height(SizeValue::Pixels(px))),
+                Some(CssLen::Pct(p)) => classes.push(StyleClass::HeightPercent(p)),
+                None => unmapped.push(segment),
+            },
+            ("max-width", v) => match parse_css_len(v) {
+                Some(CssLen::Pct(100.0)) => classes.push(StyleClass::MaxWidth(f32::INFINITY)),
+                Some(CssLen::Px(px)) => classes.push(StyleClass::MaxWidth(px)),
+                _ => unmapped.push(segment),
+            },
+            ("max-height", v) => match parse_css_len(v) {
+                Some(CssLen::Pct(100.0)) => classes.push(StyleClass::MaxHeight(f32::INFINITY)),
+                Some(CssLen::Px(px)) => classes.push(StyleClass::MaxHeight(px)),
+                _ => unmapped.push(segment),
+            },
+            ("border", v) => match parse_css_border(v) {
+                Some((width, color)) => {
+                    if let Some(w) = width {
+                        classes.push(StyleClass::BorderWidth(w));
+                    }
+                    if let Some(c) = color {
+                        classes.push(StyleClass::BorderColor(c));
+                    }
+                }
+                None => unmapped.push(segment),
+            },
+            ("background", v) => match crate::ui::style::Color::from_css(v) {
+                Ok(c) => classes.push(StyleClass::BackgroundColor(c)),
+                Err(_) => unmapped.push(segment),
+            },
+            _ => unmapped.push(segment),
+        }
+    }
+    (classes, unmapped, remainder)
+}
+
+/// CSS 长度：px / 百分比（musk canvas 框面两形；其余单位不收）。
+enum CssLen {
+    Px(f32),
+    Pct(f32),
+}
+
+fn parse_css_len(value: &str) -> Option<CssLen> {
+    if let Some(p) = value.strip_suffix('%') {
+        return p.trim().parse::<f32>().ok().map(CssLen::Pct);
+    }
+    if let Some(px) = value.strip_suffix("px") {
+        return px.trim().parse::<f32>().ok().map(CssLen::Px);
+    }
+    None
+}
+
+/// `border` 声明：`2px solid rgb(59,130,246)` / `1px` / `none`。
+/// 返回 (宽度, 颜色)；识别不出任何成分时 None。
+fn parse_css_border(value: &str) -> Option<(Option<f32>, Option<crate::ui::style::Color>)> {
+    let value = value.trim();
+    if value == "none" {
+        return Some((None, None));
+    }
+    let mut width = None;
+    let mut color = None;
+    let mut tokens = value.split_whitespace().peekable();
+    if let Some(first) = tokens.peek().and_then(|first| {
+        first
+            .strip_suffix("px")
+            .and_then(|n| n.trim().parse::<f32>().ok())
+    }) {
+        width = Some(first);
+        tokens.next();
+    }
+    let rest_trim = tokens.collect::<Vec<_>>().join(" ");
+    // 色值可跟在 solid/dashed 等线型关键字后——按 token 找 rgb(/rgba(/# 形。
+    if let Some(color_token) = rest_trim
+        .split_whitespace()
+        .find(|t| t.starts_with("rgb(") || t.starts_with("rgba(") || t.starts_with('#'))
+    {
+        color = crate::ui::style::Color::from_css(color_token).ok();
+    }
+    if width.is_none() && color.is_none() {
+        return None;
+    }
+    Some((width, color))
+}
+
+
+#[cfg(test)]
+mod plan095_tests {
+    use super::*;
+
+    #[test]
+    fn css_declaration_chain_parses_musk_canvas_frame() {
+        // musk canvasPickStyleFromBbox 同形声明串——VM 轨此前整体静默丢弃
+        // （T-01 实证）。合同：几何/穿透/层序/色四成分全部落 IR。
+        let (style, unmapped) = Style::parse_reported(
+            "position:absolute;left:25%;top:25%;width:50%;height:50%;border:2px solid rgb(59,130,246);background:rgba(59,130,246,0.12);pointer-events:none;border-radius:2px;z-index:10",
+        );
+        let has = |c: &StyleClass| style.classes.iter().any(|x| std::mem::discriminant(x) == std::mem::discriminant(c));
+        assert!(has(&StyleClass::Absolute), "position:absolute must map; unmapped={unmapped:?}");
+        assert!(has(&StyleClass::LeftPercent(25.0)));
+        assert!(has(&StyleClass::TopPercent(25.0)));
+        assert!(has(&StyleClass::WidthPercent(50.0)));
+        assert!(has(&StyleClass::HeightPercent(50.0)));
+        assert!(has(&StyleClass::PointerEventsNone), "pointer-events:none must map");
+        assert!(has(&StyleClass::ZIndex(10)));
+        assert!(style.classes.iter().any(|c| matches!(c, StyleClass::BorderColor(_))), "border rgb color must map");
+        assert!(style.classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(_))), "background rgba must map");
+        // 未知声明（aspect-ratio 族）维持 unmapped 不静默造语义。
+        assert!(unmapped.iter().any(|u| u.starts_with("border-radius") || u.starts_with("aspect-ratio") || u.starts_with("margin")));
+    }
+
+    #[test]
+    fn css_declarations_mixed_with_tailwind_tokens() {
+        let (style, _) = Style::parse_reported("flex items-center position:absolute;left:10px");
+        assert!(style.classes.iter().any(|c| matches!(c, StyleClass::Absolute)));
+        assert!(style.classes.len() >= 2, "tailwind tokens still parse alongside declarations");
+    }
+
+    #[test]
+    fn css_color_from_css_rgb_rgba_hex() {
+        use super::Color;
+        assert_eq!(Color::from_css("#6CB0DD"), Color::from_hex("#6CB0DD"));
+        assert!(matches!(Color::from_css("rgb(59, 130, 246)"), Ok(Color::Rgba { r: 59, g: 130, b: 246, a: 255 })));
+        assert!(matches!(Color::from_css("rgba(59,130,246,0.12)"), Ok(Color::Rgba { a, .. } ) if a > 0 && a < 40));
     }
 }

@@ -2815,6 +2815,7 @@ fn build_scrollable<M: Clone + Debug + 'static>(
                 IcedSize::Full | IcedSize::Screen => s = s.width(iced::Length::Fill),
                 IcedSize::FillPortion(n) => s = s.width(iced::Length::FillPortion(*n)),
                 IcedSize::Shrink => s = s.width(iced::Length::Shrink),
+                IcedSize::Percent(v) => s = s.width(iced::Length::FillPortion(percent_fill_units(*v))),
             }
         } else if let Some(w) = width {
             if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); }
@@ -2831,6 +2832,9 @@ fn build_scrollable<M: Clone + Debug + 'static>(
             }
             Some(IcedSize::Shrink) => {
                 if cap.is_none() { s = s.height(iced::Length::Shrink); }
+            }
+            Some(IcedSize::Percent(v)) => {
+                if cap.is_none() { s = s.height(iced::Length::FillPortion(percent_fill_units(v))); }
             }
             None => {
                 if cap.is_none() {
@@ -2946,6 +2950,7 @@ fn build_input_shape<M: Clone + Debug + 'static>(
                 IcedSize::Full | IcedSize::Screen => None,
                 IcedSize::FillPortion(_) => None,
                 IcedSize::Shrink => None,
+                IcedSize::Percent(_) => None,
             })
             .unwrap_or(width);
         if let Some(w) = effective_width {
@@ -3050,6 +3055,117 @@ fn build_floating_layer<M: Clone + Debug + 'static>(
     content: iced::Element<'static, M>,
     position: crate::ui::view::OverlayPosition,
 ) -> iced::Element<'static, M> {
+    build_floating_layer_capture(content, position, None)
+}
+
+/// `capture=None` = 默认 opaque（交互浮层既有语义）；`Some(false)` =
+/// 浮层根带 pointer-events-none（被动框不截获下方点选）。
+fn build_floating_layer_capture<M: Clone + Debug + 'static>(
+    content: iced::Element<'static, M>,
+    position: crate::ui::view::OverlayPosition,
+    capture: Option<bool>,
+) -> iced::Element<'static, M> {
+    build_floating_layer_full(content, position, capture.unwrap_or(true), (None, None))
+}
+
+/// PLAN-095 T-03: 百分比浮层装配（musk canvas 框形态：left/top/width/height
+/// 全 %）。Fill 容器内 [spacer(top), row[spacer(left), content(w%), filler],
+/// filler(bottom)] —— FillPortion 三段=精确百分比份额；缺配对单元的轴按
+/// 0/自然尺寸退化（不半猜半偏移）。capture=false（pointer-events-none 根）
+/// 不包 opaque：被动框不截获下方点选（AC-04）。
+#[allow(clippy::too_many_arguments)]
+fn percent_floating_layer<M: Clone + Debug + 'static>(
+    content: iced::Element<'static, M>,
+    position: crate::ui::view::OverlayPosition,
+    capture: bool,
+    content_units: (Option<u16>, Option<u16>),
+) -> iced::Element<'static, M> {
+    let (w_units, h_units) = content_units;
+    let top_units = match position.top {
+        Some(crate::ui::view::OverlayLength::Percent(t)) if t > 0.0 && h_units.is_some() => {
+            Some(percent_fill_units(t))
+        }
+        _ => None,
+    };
+    let left_units = match position.left {
+        Some(crate::ui::view::OverlayLength::Percent(l)) if l > 0.0 && w_units.is_some() => {
+            Some(percent_fill_units(l))
+        }
+        _ => None,
+    };
+    let top_px = match position.top {
+        Some(crate::ui::view::OverlayLength::Px(v)) => v,
+        _ => 0.0,
+    };
+    let opaque_content = |content: iced::Element<'static, M>| {
+        if capture {
+            iced::widget::opaque(content)
+        } else {
+            content
+        }
+    };
+    let mut col = iced::widget::Column::<M>::new()
+        .width(iced::Length::Fill)
+        .height(if top_units.is_some() { iced::Length::Fill } else { iced::Length::Shrink });
+    if let Some(tu) = top_units {
+        col = col.push(iced::widget::Space::new().height(iced::Length::FillPortion(tu)));
+    }
+    let mut mid = iced::widget::Row::<M>::new().width(iced::Length::Fill).height(
+        match (h_units, top_units) {
+            (Some(hu), Some(_)) => iced::Length::FillPortion(hu),
+            _ => iced::Length::Shrink,
+        },
+    );
+    if let Some(lu) = left_units {
+        mid = mid.push(iced::widget::Space::new().width(iced::Length::FillPortion(lu)));
+    }
+    mid = mid.push(opaque_content(content));
+    if let (Some(lu), Some(wu)) = (left_units, w_units) {
+        let filler = 1000u16.saturating_sub(lu).saturating_sub(wu);
+        if filler > 0 {
+            mid = mid.push(iced::widget::Space::new().width(iced::Length::FillPortion(filler)));
+        }
+    }
+    col = col.push(mid);
+    if let (Some(tu), Some(hu)) = (top_units, h_units) {
+        let filler = 1000u16.saturating_sub(tu).saturating_sub(hu);
+        if filler > 0 {
+            col = col.push(iced::widget::Space::new().height(iced::Length::FillPortion(filler)));
+        }
+    }
+    let col = col.padding(iced::Padding { top: top_px, ..iced::Padding::ZERO });
+    col.into()
+}
+
+/// PLAN-095 T-03: 浮层根声明 pointer-events-none → 被动框（不截获下方点选）。
+pub(crate) fn abs_layer_passthrough<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> bool {
+    extract_view_style(view)
+        .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::PointerEventsNone)))
+        .unwrap_or(false)
+}
+
+/// 内容根的百分比宽/高 → FP 单位（三段装配 filler 平衡输入）。
+fn overlay_percent_units<M: Clone + std::fmt::Debug>(
+    view: &AbstractView<M>,
+) -> (Option<u16>, Option<u16>) {
+    let Some(s) = extract_view_style(view) else {
+        return (None, None);
+    };
+    let is = crate::ui::style::iced_adapter::IcedStyle::from_style(&s);
+    let units = |sz: Option<IcedSize>| match sz {
+        Some(IcedSize::Percent(v)) => Some(percent_fill_units(v)),
+        _ => None,
+    };
+    (units(is.width), units(is.height))
+}
+
+/// 带内容百分比单元的浮层装配（百分比几何 + 穿透的完整入参形态）。
+fn build_floating_layer_full<M: Clone + Debug + 'static>(
+    content: iced::Element<'static, M>,
+    position: crate::ui::view::OverlayPosition,
+    capture: bool,
+    content_units: (Option<u16>, Option<u16>),
+) -> iced::Element<'static, M> {
 
     // PLAN-536 重测修正(2026-09-04)：悬浮层几何改**显式 spacer**——原
     // container(Fill)+align_x 在 Stack 子路径不生效(× 落左上,musk 会话卡
@@ -3076,30 +3192,69 @@ fn build_floating_layer<M: Clone + Debug + 'static>(
     // y 不动;w=1 → 正确 +100;iced_core-0.14.0 flex.rs 源码推演与二进
     // 制矛盾,零宽空间主轴尺寸失效,归因记判决工件)。padding 是 flex
     // 一等语义(pad.1 起始偏移),实车槽位 top-[y] 全依赖此路径。
-    let top = position.top.unwrap_or(0.0) as f32;
+    // PLAN-095 T-03: 百分比几何（musk canvas 框 left/top/width/height 全 %）
+    // 走三段 FillPortion 装配——iced 0.14 无 Relative 长度，portion 三段在
+    // Fill 容器内=精确份额；缺 width%/height% 配对的轴退化为 px/0（记录
+    // 在案，不半猜）。
+    let percent_mode = matches!(
+        position.top,
+        Some(crate::ui::view::OverlayLength::Percent(_))
+    ) || matches!(
+        position.left,
+        Some(crate::ui::view::OverlayLength::Percent(_))
+    );
+    if percent_mode {
+        return percent_floating_layer(content, position, capture, content_units);
+    }
+    let fl_len = |l: Option<crate::ui::view::OverlayLength>| -> Option<iced::Length> {
+        l.map(|v| match v {
+            crate::ui::view::OverlayLength::Px(px) => iced::Length::Fixed(px),
+            crate::ui::view::OverlayLength::Percent(p) => {
+                iced::Length::FillPortion(percent_fill_units(p))
+            }
+        })
+    };
+    let top = position.top.unwrap_or(crate::ui::view::OverlayLength::Px(0.0));
+    let top = match top {
+        crate::ui::view::OverlayLength::Px(v) => v,
+        crate::ui::view::OverlayLength::Percent(_) => 0.0, // % top 交由 padding 形态见下
+    };
     let right_anchored = position.left.is_none() && position.right.is_some();
+    // PLAN-095 T-03: 浮层穿透——content 根带 PointerEventsNone（musk canvas
+    // 框 pointer-events:none 族）时不包 opaque：opaque 的捕获边界=内容矩形，
+    // 被动选择框/Agent 框会截获下方 canvas 点选（AC-04）。空白 spacer 仍在
+    // 捕获边界外（PLAN-023 语义不变）。
+    let opaque_content = |content: iced::Element<'static, M>| {
+        if capture {
+            iced::widget::opaque(content)
+        } else {
+            content
+        }
+    };
     let mut row = iced::widget::Row::<M>::new();
     match position.left {
         Some(left) => {
-            if left > 0.0 {
-                row = row.push(iced::widget::Space::new().width(iced::Length::Fixed(left)));
+            if let Some(len) = fl_len(Some(left)) {
+                if left.is_positive() {
+                    row = row.push(iced::widget::Space::new().width(len));
+                }
             }
-            row = row.push(iced::widget::opaque(content));
+            row = row.push(opaque_content(content));
         }
         None => {
             if right_anchored {
                 row = iced::widget::Row::<M>::new().width(iced::Length::Fill);
                 row = row.push(iced::widget::Space::new().width(iced::Length::Fill));
-                row = row.push(iced::widget::opaque(content));
+                row = row.push(opaque_content(content));
                 if let Some(right) = position.right {
-                    if right > 0.0 {
-                        row = row.push(iced::widget::Space::new().width(
-                            iced::Length::Fixed(right),
-                        ));
+                    if right.is_positive() {
+                        if let Some(len) = fl_len(Some(right)) {
+                            row = row.push(iced::widget::Space::new().width(len));
+                        }
                     }
                 }
             } else {
-                row = row.push(iced::widget::opaque(content));
+                row = row.push(opaque_content(content));
             }
         }
     }
@@ -3128,15 +3283,20 @@ pub(crate) fn dynamic_abs_layer_position<M: Clone + std::fmt::Debug>(
     view: &AbstractView<M>,
 ) -> Option<crate::ui::view::OverlayPosition> {
     let is = crate::ui::style::iced_adapter::IcedStyle::from_style(extract_view_style(view)?);
-    let pos = crate::ui::view::OverlayPosition {
-        top: is.top_offset,
-        right: is.right_offset,
-        bottom: is.bottom_offset,
-        left: is.left_offset,
+    let px_or_pct = |px: Option<f32>, pct: Option<f32>| match (px, pct) {
+        (Some(v), _) => Some(crate::ui::view::OverlayLength::Px(v)),
+        (None, Some(p)) => Some(crate::ui::view::OverlayLength::Percent(p)),
+        (None, None) => None,
     };
-    let has_offset = pos.top.map_or(false, |v| v > 0.0)
-        || pos.right.map_or(false, |v| v > 0.0)
-        || pos.left.map_or(false, |v| v > 0.0);
+    let pos = crate::ui::view::OverlayPosition {
+        top: px_or_pct(is.top_offset, is.top_percent),
+        right: px_or_pct(is.right_offset, is.right_percent),
+        bottom: px_or_pct(is.bottom_offset, is.bottom_percent),
+        left: px_or_pct(is.left_offset, is.left_percent),
+    };
+    let has_offset = pos.top.as_ref().map_or(false, |v| v.is_positive())
+        || pos.right.as_ref().map_or(false, |v| v.is_positive())
+        || pos.left.as_ref().map_or(false, |v| v.is_positive());
     has_offset.then_some(pos)
 }
 
@@ -4541,15 +4701,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         if is_empty_stack_layer(&child) { continue; }
                         // PLAN-536 T10: 偏移判定在 move 前取好(child 随分区 move)。
                         let pos = dynamic_abs_layer_position(&child);
+                        // PLAN-095 T-03: 被动框穿透（pointer-events-none 根
+                        // 不包 opaque，不截获下方点选）+ 百分比几何入参。
+                        let passthrough = abs_layer_passthrough(&child);
+                        let units = overlay_percent_units(&child);
                         let abs_el = child.into_iced();
                         // PLAN-536 T10: 非零偏移浮层消费 offset(× 落左上)。
                         // PLAN-023 T-02: 带偏移分支的 opaque 已在
                         // build_floating_layer 内下沉到 content 级(spacer
                         // 空白区穿透);零偏移层无 spacer,外层 opaque 边界
-                        // 本=内容矩形,保持。
+                        // 本=内容矩形,保持（穿透根除外）。
                         let abs_el = match pos {
-                            Some(pos) => build_floating_layer(abs_el, pos),
-                            None => iced::widget::opaque(abs_el),
+                            Some(pos) => build_floating_layer_full(abs_el, pos, !passthrough, units),
+                            None if !passthrough => iced::widget::opaque(abs_el),
+                            None => abs_el,
                         };
                         stk = stk.push(abs_el);
                     }
@@ -4627,14 +4792,18 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     for &i in &abs_idx {
                         // PLAN-051 P2: 空层不渲染不入栈(挡死下层交互件聚焦/点击)。
                         if is_empty_stack_layer(&children[i]) { continue; }
+                        // PLAN-095 T-03: 被动框穿透 + 百分比几何入参。
+                        let passthrough_b = abs_layer_passthrough(&children[i]);
+                        let units_b = overlay_percent_units(&children[i]);
                         let abs_el = children[i].clone().into_iced();
                         // PLAN-536 T10: 非零偏移浮层消费 offset(× 落左上根修);
                         // 零偏移(inset-0 ghost 族)保持落原点。
                         // PLAN-023 T-02: 同 Row 臂——opaque 下沉 content 级,
-                        // 零偏移分支维持外层 opaque。
+                        // 零偏移分支维持外层 opaque（穿透根除外）。
                         let abs_el = match dynamic_abs_layer_position(&children[i]) {
-                            Some(pos) => build_floating_layer(abs_el, pos),
-                            None => iced::widget::opaque(abs_el),
+                            Some(pos) => build_floating_layer_full(abs_el, pos, !passthrough_b, units_b),
+                            None if !passthrough_b => iced::widget::opaque(abs_el),
+                            None => abs_el,
                         };
                         stk = stk.push(abs_el);
                     }
@@ -5118,7 +5287,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let base_el = base.into_iced();
                 // PLAN-023 T-02: build_floating_layer 已含 content 级 opaque,
                 // 不再包外层(spacer 空白区穿透到 base,命中=内容矩形)。
-                let content_el = build_floating_layer(content.into_iced(), position);
+                // PLAN-095 T-03: Overlay content 穿透判定（被动框不拦点选）。
+                let overlay_passthrough = abs_layer_passthrough(&content);
+                let overlay_units = overlay_percent_units(&content);
+                let content_el =
+                    build_floating_layer_full(content.into_iced(), position, !overlay_passthrough, overlay_units);
                 iced::widget::stack![base_el, content_el].into()
             }
 
@@ -25555,10 +25728,10 @@ fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
     let is = IcedStyle::from_style(s);
     let mut props = Vec::new();
     if let Some(ref w) = is.width {
-        props.push(("w".into(), match w { IcedSize::Full | IcedSize::Screen => "fill".into(), IcedSize::FillPortion(n) => format!("portion-{}", n), IcedSize::Fixed(f) => format!("{}px", *f as u16), IcedSize::Shrink => "auto".into() }));
+        props.push(("w".into(), match w { IcedSize::Full | IcedSize::Screen => "fill".into(), IcedSize::FillPortion(n) => format!("portion-{}", n), IcedSize::Fixed(f) => format!("{}px", *f as u16), IcedSize::Shrink => "auto".into(), IcedSize::Percent(v) => format!("{}%", v) }));
     }
     if let Some(ref h) = is.height {
-        props.push(("h".into(), match h { IcedSize::Full | IcedSize::Screen => "fill".into(), IcedSize::FillPortion(n) => format!("portion-{}", n), IcedSize::Fixed(f) => format!("{}px", *f as u16), IcedSize::Shrink => "auto".into() }));
+        props.push(("h".into(), match h { IcedSize::Full | IcedSize::Screen => "fill".into(), IcedSize::FillPortion(n) => format!("portion-{}", n), IcedSize::Fixed(f) => format!("{}px", *f as u16), IcedSize::Shrink => "auto".into(), IcedSize::Percent(v) => format!("{}%", v) }));
     }
     if let Some(p) = is.padding { props.push(("pad".into(), format!("{}", p as u16))); }
     if let Some(g) = is.gap { props.push(("gap".into(), format!("{}", g as u16))); }
@@ -26254,9 +26427,17 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             let base_el = render_dynamic_view(*base, debug_ctx, path);
             path.pop();
             path.push(1);
+            // PLAN-095 T-03: Overlay content 穿透 + 百分比几何入参（移动前取）。
+            let overlay_passthrough = abs_layer_passthrough(content.as_ref());
+            let overlay_units = overlay_percent_units(content.as_ref());
             let content_el = render_dynamic_view(*content, debug_ctx, path);
             path.pop();
-            let floating = build_floating_layer(content_el, position);
+            let floating = build_floating_layer_full(
+                content_el,
+                position,
+                !overlay_passthrough,
+                overlay_units,
+            );
             let el: iced::Element<'static, IcedMessage> = iced::widget::stack![base_el, floating].into();
             if let Some(ctx) = debug_ctx {
                 ctx.wrap_debug(path, "overlay", el, vec![], None)
@@ -26503,14 +26684,18 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     // PLAN-051 P2: 空层不渲染不入栈(挡死下层交互件聚焦/点击)。
                     if is_empty_stack_layer(&children[i]) { continue; }
                     path.push(i);
+                    // PLAN-095 T-03: 被动框穿透 + 百分比几何入参。
+                    let passthrough_c = abs_layer_passthrough(&children[i]);
+                    let units_c = overlay_percent_units(&children[i]);
                     let abs_el = render_dynamic_view(children[i].clone(), debug_ctx, path);
                     path.pop();
                     // PLAN-536 T10: 非零偏移浮层消费 offset(× 落左上根修);
                     // 零偏移(inset-0 ghost 族)保持落原点。
                     let abs_el = match dynamic_abs_layer_position(&children[i]) {
-                        Some(pos) => build_floating_layer(abs_el, pos),
+                        Some(pos) => build_floating_layer_full(abs_el, pos, !passthrough_c, units_c),
                         // PLAN-023 T-02: opaque 下沉 content 级(同 builder 臂)。
-                        None => iced::widget::opaque(abs_el),
+                        None if !passthrough_c => iced::widget::opaque(abs_el),
+                        None => abs_el,
                     };
                     stk = stk.push(abs_el);
                 }
@@ -26618,13 +26803,17 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     // PLAN-051 P2: 空层不渲染不入栈(同 Column 站点)。
                     if is_empty_stack_layer(&child) { continue; }
                     path.push(i);
+                    // PLAN-095 T-03: 被动框穿透 + 百分比几何入参。
+                    let passthrough_d = abs_layer_passthrough(&child);
+                    let units_d = overlay_percent_units(&child);
                     let abs_el = render_dynamic_view(child, debug_ctx, path);
                     path.pop();
                     // PLAN-536 T10: 同 Column 站点——非零偏移消费 offset,
                     // 零偏移(inset-0 ghost 族)保持落原点。
                     let abs_el = match pos {
-                        Some(pos) => build_floating_layer(abs_el, pos),
-                        None => iced::widget::opaque(abs_el),
+                        Some(pos) => build_floating_layer_full(abs_el, pos, !passthrough_d, units_d),
+                        None if !passthrough_d => iced::widget::opaque(abs_el),
+                        None => abs_el,
                     };
                     stk = stk.push(abs_el);
                 }
@@ -27033,6 +27222,13 @@ fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_values: &st
 }
 
 /// Convert IcedSize to iced::Length
+/// PLAN-095 T-03: 百分比尺寸 → FillPortion 单位（×10 精度，100% = 1000）。
+/// 语义前提： siblings 同为 portion（浮层三段装配保证）；普通 Shrink 父
+/// 语境退化为占满（记录在案）。
+pub(crate) fn percent_fill_units(v: f32) -> u16 {
+    (v * 10.0).round().clamp(1.0, 1000.0) as u16
+}
+
 fn iced_length(size: &IcedSize) -> iced::Length {
     match size {
         IcedSize::Full => iced::Length::Fill,
@@ -27043,6 +27239,8 @@ fn iced_length(size: &IcedSize) -> iced::Length {
         IcedSize::Fixed(px) => iced::Length::Fixed(*px),
         // PLAN-526 T27：w-auto/h-auto = hug 内容。
         IcedSize::Shrink => iced::Length::Shrink,
+        // PLAN-095 T-03: 百分比 → FillPortion（浮层三段装配下=精确份额）。
+        IcedSize::Percent(v) => iced::Length::FillPortion(percent_fill_units(*v)),
     }
 }
 /// PLAN-051 P2 追加（composer 输入框命中区）: textarea 编辑器高度解析——

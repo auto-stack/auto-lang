@@ -459,6 +459,22 @@ pub enum StyleClass {
     /// Z-index: z-{0-50} - L3
     ZIndex(i16),
 
+    /// PLAN-095 T-03: 非交互浮层穿透——`pointer-events-none`（Tailwind 形）
+    /// / `pointer-events:none`（CSS 声明形）。VM 轨消费 = Overlay/absolute
+    /// 浮层根带本类时跳过 opaque 捕获包装（空白区与内容区都不截获下方
+    /// 点选）；Vue 轨由浏览器原生语义承担，IR 仅作合同载体。
+    PointerEventsNone,
+
+    /// PLAN-095 T-03: 浮层百分比定位/尺寸（musk canvas 框样式为 % 基准
+    /// 形态）。解析自 CSS 声明 `left:12.5%` 族与 Tailwind `left-[12.5%]`
+    /// 任意值形；语义=相对宿主内容矩形的百分比（iced Length::Relative）。
+    LeftPercent(f32),
+    TopPercent(f32),
+    RightPercent(f32),
+    BottomPercent(f32),
+    WidthPercent(f32),
+    HeightPercent(f32),
+
     // ========== Min/Max Sizing ==========
     /// Min height: min-h-screen, min-h-[Npx]
     MinHeight(f32),
@@ -1363,12 +1379,19 @@ impl StyleClass {
 
         // Parse width: w-{size} (supports arbitrary: w-[30px])
         if let Some(rest) = class.strip_prefix("w-") {
+            // PLAN-095 T-03: w-[12.5%] 百分比（浮层相对宿主内容矩形）。
+            if let Some(v) = parse_percent_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::WidthPercent(v));
+            }
             let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::Width(size));
         }
 
         // Parse height: h-{size} (supports arbitrary: h-[65px])
         if let Some(rest) = class.strip_prefix("h-") {
+            if let Some(v) = parse_percent_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::HeightPercent(v));
+            }
             let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::Height(size));
         }
@@ -1687,6 +1710,9 @@ impl StyleClass {
             // Plan 412: fixed/sticky — iced 无视口定位,解析保存,VM 降级为就近布局位。
             "fixed" => return Ok(StyleClass::Fixed),
             "sticky" => return Ok(StyleClass::Sticky),
+            // PLAN-095 T-03: 非交互浮层穿透（CSS 声明形在 Style::parse 的
+            // 声明模式里归一化到本 token）。
+            "pointer-events-none" => return Ok(StyleClass::PointerEventsNone),
             _ => {}
         }
 
@@ -1723,6 +1749,9 @@ impl StyleClass {
         // Plan 527 T3: 补 px 刻度(top-px = 1px);分数/auto/full 百分比语义
         // 无容器查询,白名单受限。
         if let Some(rest) = class.strip_prefix("top-") {
+            if let Some(v) = parse_percent_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::TopPercent(v));
+            }
             if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
                 return Ok(StyleClass::TopOffset(px));
             }
@@ -1734,6 +1763,9 @@ impl StyleClass {
             }
         }
         if let Some(rest) = class.strip_prefix("bottom-") {
+            if let Some(v) = parse_percent_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::BottomPercent(v));
+            }
             if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
                 return Ok(StyleClass::BottomOffset(px));
             }
@@ -1745,6 +1777,9 @@ impl StyleClass {
             }
         }
         if let Some(rest) = class.strip_prefix("right-") {
+            if let Some(v) = parse_percent_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::RightPercent(v));
+            }
             if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
                 return Ok(StyleClass::RightOffset(px));
             }
@@ -1756,6 +1791,9 @@ impl StyleClass {
             }
         }
         if let Some(rest) = class.strip_prefix("left-") {
+            if let Some(v) = parse_percent_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::LeftPercent(v));
+            }
             if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
                 return Ok(StyleClass::LeftOffset(px));
             }
@@ -2101,6 +2139,13 @@ fn parse_pixel_arbitrary(arbitrary: Option<&str>) -> Option<f32> {
         let v = v.strip_suffix("px").unwrap_or(v);
         v.parse::<f32>().ok()
     })
+}
+
+/// PLAN-095 T-03: `left-[12.5%]` 任意值百分比（浮层相对宿主内容矩形）。
+fn parse_percent_arbitrary(arbitrary: Option<&str>) -> Option<f32> {
+    arbitrary
+        .and_then(|v| v.strip_suffix('%'))
+        .and_then(|v| v.parse::<f32>().ok())
 }
 
 /// Helper to parse max-width/height named sizes to pixels.
@@ -2466,6 +2511,13 @@ mod tests {
     fn test_parse_position() {
         assert_eq!(StyleClass::parse_single("relative"), Ok(StyleClass::Relative));
         assert_eq!(StyleClass::parse_single("absolute"), Ok(StyleClass::Absolute));
+
+        // PLAN-095 T-03: 浮层穿透与百分比 token。
+        assert_eq!(StyleClass::parse_single("pointer-events-none"), Ok(StyleClass::PointerEventsNone));
+        assert_eq!(StyleClass::parse_single("left-[12.5%]"), Ok(StyleClass::LeftPercent(12.5)));
+        assert_eq!(StyleClass::parse_single("top-[5%]"), Ok(StyleClass::TopPercent(5.0)));
+        assert_eq!(StyleClass::parse_single("w-[30%]"), Ok(StyleClass::WidthPercent(30.0)));
+        assert_eq!(StyleClass::parse_single("h-[25%]"), Ok(StyleClass::HeightPercent(25.0)));
     }
 
     #[test]
