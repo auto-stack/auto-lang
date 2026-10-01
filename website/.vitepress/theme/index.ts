@@ -14,6 +14,7 @@ import AutoFence from './components/AutoFence.vue'
 import CodeView from './components/CodeView.vue'
 import ScriptShipView from './components/ScriptShipView.vue'
 import UnifiedNavbar from './components/UnifiedNavbar.vue'
+import LearningHub from './components/LearningHub.vue'
 
 // SPA routes served from public/ui/*/index.html.
 // VitePress client-side router doesn't know about these, so we must
@@ -121,5 +122,6 @@ export default {
     app.component('AutoFence', AutoFence)
     app.component('CodeView', CodeView)
     app.component('ScriptShipView', ScriptShipView)
+    app.component('LearningHub', LearningHub)
   },
 } satisfies Theme

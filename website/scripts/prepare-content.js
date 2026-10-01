@@ -9,6 +9,7 @@ import fs from 'fs'
 import path from 'path'
 import { spawnSync } from 'child_process'
 import { fileURLToPath } from 'url'
+import { DOCS_HUB, BOOKS as LEARNING_BOOKS, localeHref } from '../content/learning-navigation.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const WEBSITE_ROOT = path.resolve(__dirname, '..')
@@ -399,10 +400,20 @@ const DOCS_INCLUDE = new Set([
   'components',  // Plan 435 P5: schema 生成的组件 API 参考(core.md)
 ])
 
+// PLAN-718 T-02：根级读者文档白名单。原 shouldIncludeDoc 对无分隔符的根级文件
+// 恒 false（split()[0] 是文件名本身），docs/syntax、roadmap、migration-guide 从未
+// 发布——旧 docs hub Quick Links 的这些出口全是死链（ignoreDeadLinks 掩盖）。
+// 白名单只收读者向文档；其余根级内部工作文档（handoff/status/plan 摘要等）
+// 维持不发布。
+const ROOT_DOCS_INCLUDE = new Set(['syntax', 'roadmap', 'migration-guide'])
+
 function shouldIncludeDoc(relPath) {
-  const topDir = relPath.split(path.sep)[0]
-  // Include root-level files and whitelisted directories
-  return !topDir || DOCS_INCLUDE.has(topDir)
+  const parts = relPath.split(path.sep)
+  if (parts.length === 1) {
+    const base = relPath.replace(/\.cn\.md$/, '').replace(/\.md$/, '')
+    return ROOT_DOCS_INCLUDE.has(base)
+  }
+  return DOCS_INCLUDE.has(parts[0])
 }
 
 function prepareDocs() {
@@ -1047,26 +1058,74 @@ function generateBookIndex(bookDir, summaryPath, lang = 'en') {
   fs.writeFileSync(indexPath, content, 'utf-8')
 }
 
+// ------------------------------------------------------------------
+// Learning hub pages（PLAN-718 T-02）
+// ------------------------------------------------------------------
+
+// 学习导航 href → 生成页/公共资产文件映射校验：入口必须落在真实内容上，
+// 任何失效引用在 prepare 阶段直接失败（不静默、不依赖 ignoreDeadLinks）。
+function hubTargetExists(href) {
+  const clean = href.split('#')[0].split('?')[0]
+  // .html（共享 SPA public/ui/*/index.html）双语同 URL，不加 zh 前缀（与
+  // theme/data/navigation.ts sharedSpa 同口径），仅按 public 资产校验一次。
+  const variants = clean.endsWith('.html') ? [clean] : [clean, localeHref(clean, true)]
+  for (const p of variants) {
+    if (p.endsWith('.html')) {
+      if (!fs.existsSync(path.join(WEBSITE_ROOT, 'public', p))) return `missing public asset: ${p}`
+      continue
+    }
+    let rel
+    if (p === '/' || p === '') rel = 'index.md'
+    else if (p.endsWith('/')) rel = p.slice(1) + 'index.md'
+    else rel = p.slice(1) + '.md'
+    if (!fs.existsSync(path.join(WEBSITE_ROOT, rel))) return `no generated page for ${p}`
+  }
+  return null
+}
+
+function collectHubHrefs() {
+  const hrefs = []
+  for (const card of [...DOCS_HUB.primary, ...DOCS_HUB.cards]) hrefs.push(card.href)
+  for (const group of DOCS_HUB.tasks) for (const item of group.items) hrefs.push(item.href)
+  for (const book of LEARNING_BOOKS) hrefs.push(book.href, book.entry)
+  return hrefs
+}
+
+function validateHubLinks() {
+  const fails = []
+  for (const href of collectHubHrefs()) {
+    const err = hubTargetExists(href)
+    if (err) fails.push(err)
+  }
+  if (fails.length) {
+    throw new Error(`learning-navigation hrefs not resolvable:\n  ${fails.join('\n  ')}`)
+  }
+  console.log(`  Learning hub links validated: ${collectHubHrefs().length} hrefs all resolve`)
+}
+
 function generateDocsIndex(docsDir, lang) {
   ensureDir(docsDir)
+  const zh = lang === 'zh'
+  const t = (pair) => (zh ? pair.zh : pair.en)
   const indexPath = path.join(docsDir, 'index.md')
-  if (fs.existsSync(indexPath)) return
+  const title = zh ? '文档' : 'Documentation'
 
-  const content = lang === 'zh'
-    ? `---\ntitle: 文档\n---\n\n# 文档\n\n欢迎使用 Auto 语言文档。这里提供从语言规范到高级指南的所有内容。\n\n## 快速链接\n\n- [语言语法](./syntax) — 快速语法参考\n- [语言规范](./language/specification) — 完整语言规范\n- [路线图](./roadmap) — 项目路线图和未来计划\n- [迁移指南](./migration-guide) — 从其他语言迁移\n\n## 章节\n\n### [设计](./design/)\n架构和语言设计文档。\n\n### [语言](./language/)\n语言规范、语法和特性文档。\n\n### [教程](./tutorials/)\n学习 Auto 的逐步指南。\n\n### [指南](./guides/)\n特定用例的实用指南。\n\n### [架构](./architecture/)\n系统架构和内部设计文档。\n\n### [CLI](./cli/)\n命令行接口文档。\n\n### [示例](./examples/)\n示例项目和代码样本。\n`
-    : `---\ntitle: Documentation\n---\n\n# Documentation\n\nWelcome to the Auto Language documentation. Here you'll find everything from language specifications to advanced guides.\n\n## Quick Links\n\n- [Language Syntax](./syntax) — Quick syntax reference\n- [Language Specification](./language/specification) — Full language spec\n- [Roadmap](./roadmap) — Project roadmap and future plans\n- [Migration Guide](./migration-guide) — Migrating from other languages\n\n## Sections\n\n### [Design](./design/)\nArchitecture and language design documents.\n\n### [Language](./language/)\nLanguage specification, syntax, and feature documentation.\n\n### [Tutorials](./tutorials/)\nStep-by-step guides for learning Auto.\n\n### [Guides](./guides/)\nPractical guides for specific use cases.\n\n### [Architecture](./architecture/)\nSystem architecture and internal design docs.\n\n### [CLI](./cli/)\nCommand-line interface documentation.\n\n### [Examples](./examples/)\nExample projects and code samples.\n`
+  let content = `---\ntitle: ${title}\n---\n\n# ${title}\n\n`
+  content += `${t(DOCS_HUB.intro)}\n\n`
+  content += `<LearningHub kind="docs" />\n`
 
   fs.writeFileSync(indexPath, content, 'utf-8')
 }
 
 function generateBooksIndex(booksDir, lang) {
   ensureDir(booksDir)
+  const zh = lang === 'zh'
   const indexPath = path.join(booksDir, 'index.md')
-  if (fs.existsSync(indexPath)) return
+  const title = zh ? '教程' : 'Tutorials'
 
-  const content = lang === 'zh'
-    ? `---\ntitle: 教程\n---\n\n# 教程\n\n学习 Auto 的教程集合，涵盖从初学者教程到高级系统编程的所有内容。\n\n## [Auto 编程语言](./tapl/)\nAuto 主书 — 全面的语言介绍。\n\n## [Auto版Rust Book](./rust/)\n通过与 Rust 比较来学习 Auto。\n\n## [Auto版TypeScript Handbook](./typescript/)\n面向 TypeScript 开发者的 Auto 手册。\n\n## [Auto版TypeScript DeepDive](./typescript-deepdive/)\n深入比较 Auto 和 TypeScript 的类型系统。\n\n## [Auto版The Little Book of C](./little-c/)\n通过 C 语言概念温和地介绍 Auto。\n\n## [Auto版Modern C](./modern-c/)\n使用 Auto 和 C 进行现代系统编程。\n\n## [Auto版A Byte of Python](./byte-of-python/)\n受《A Byte of Python》启发的初学者友好教程。\n\n## [Auto版Think Python](./think-python/)\n基于《Think Python》的 Auto 计算思维。\n`
-    : `---\ntitle: Tutorials\n---\n\n# Tutorials\n\nA collection of tutorials for learning Auto, covering everything from beginner tutorials to advanced systems programming.\n\n## [The Auto Programming Language](./tapl/)\nThe main Auto tutorial — a comprehensive introduction to the language.\n\n## [Auto vs Rust](./rust/)\nLearn Auto by comparing it with Rust.\n\n## [Auto vs TypeScript](./typescript/)\nA handbook for TypeScript developers learning Auto.\n\n## [Auto vs TypeScript DeepDive](./typescript-deepdive/)\nDeep dive into Auto's type system compared to TypeScript.\n\n## [Auto vs The Little Book of C](./little-c/)\nA gentle introduction to Auto through C concepts.\n\n## [Auto vs Modern C](./modern-c/)\nModern systems programming with Auto and C.\n\n## [A Byte of Auto](./byte-of-python/)\nA beginner-friendly tutorial inspired by "A Byte of Python".\n\n## [Think Auto](./think-python/)\nComputational thinking with Auto, based on "Think Python".\n`
+  let content = `---\ntitle: ${title}\n---\n\n# ${title}\n\n`
+  content += `${zh ? '八本教程覆盖从零基础到系统编程——主书优先，也可按你已有的语言背景选择。' : 'Eight tutorials cover everything from first steps to systems programming — start with the main book, or pick by a language you already know.'}\n\n`
+  content += `<LearningHub kind="books" />\n`
 
   fs.writeFileSync(indexPath, content, 'utf-8')
 }
@@ -1173,6 +1232,9 @@ function main() {
   generateDocsIndex(DOCS_DST_ZH, 'zh')
   generateBooksIndex(BOOKS_DST_EN, 'en')
   generateBooksIndex(BOOKS_DST_ZH, 'zh')
+
+  // PLAN-718 T-02：学习入口数据校验——所有 href 必须落在真实生成页上
+  validateHubLinks()
 
   console.log('\nGenerating sidebars...')
 
