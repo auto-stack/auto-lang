@@ -1185,6 +1185,17 @@
             "commit:ec45f911c"
           ],
           "file": "docs/plans/archive/716-m4-upstream-batch.md"
+        },
+        {
+          "id": "P718-3",
+          "title": "网站学习入口与阅读 UI 交付摘要（PLAN-718 r1）",
+          "content": "T-01..T-08 全交付：学习入口（作者数据+LearningHub SSR+33 入口校验+根级白名单修复既存死链）；阅读导航（每书侧栏/章节边界/localNav 让位+44px 触达/双语控件）；来源可信（932 页作者源映射 editLink）；按需加载（theme chunk 1.1MB 拆分/runner 打开才加载/三 shim 失败重试/dedupe 单实例）。验证：全套 e2e（96 基线+6 阶段+4 720 时代）、prepare 幂等、notes --check book=634、128 张截图矩阵+双视觉代理判定（715 zh 404 证据缺口闭合）。债务 P718-D1..3（playground hero 裁切既存/组件 i18n/zh 侧栏翻译完备度）。生产站点未部署；预览需落地后从主分支重建。",
+          "tags": [
+            "plan-718",
+            "website",
+            "commit:95a3e71c7"
+          ],
+          "file": "docs/plans/archive/718-website-learning-reading-ui.md"
         }
       ]
     },
@@ -4793,6 +4804,23 @@
             "commit:ec45f911c"
           ],
           "file": "docs/specs/auto-lang/ui/design/diff-endpoints.md"
+        },
+        {
+          "id": "P718-1",
+          "title": "学习入口与阅读导航契约：作者数据驱动 hub/每书侧栏/章节边界/双语控件/按需加载与失败恢复（PLAN-718 SD-01..05）",
+          "content": "PLAN-718 交付落账（website 域现行态投影；canonical 唯源=docs/specs/website/design/learning-reading.md（718 阶段 landing 新建、本次升全契约）+ui-presentation.md/project.md 增补升级，delivery 95a3e71c7）。契约：作者数据 learning-navigation.mjs 单源驱动四双语 hub 与 LearningHub SSR 卡片（静态 HTML+local search 均可索引，33 入口生成期校验，死链不靠 ignoreDeadLinks 掩盖）；BOOK_ROOT 解析 env→相邻→主检出相邻；根级读者白名单 syntax/roadmap/migration-guide；SUMMARY 兼 mdbook 裸顶层链接；每书独立侧栏 prev/next 不跨书首末章自然收敛；ReaderContext 本书目录入口；editLink 自包含 pattern 映射 932 页（github auto-stack/auto-lang 与 gitee auto-stack/book@master，.cn.md 感知，生成入口 editLink:false）；AutoFence 流内工具栏双语+aria+键盘，复制标题 env.relativePath 构建期本地化；运行器按需异步（主题注册边界异步拆分，theme chunk 1.1MB→独立 chunk），失败经三真实 shim 换 module-map 键重试、原文等待/失败态可读；@codemirror 系 resolve.dedupe 单实例。历史收据=plan §9（archive/718）+阶段收据 p718-website-phase-landing.md。",
+          "tags": [
+            "plan-718",
+            "website",
+            "sd-01",
+            "sd-02",
+            "sd-03",
+            "sd-04",
+            "sd-05",
+            "commit:95a3e71c7",
+            "docsha:2dc4daae68765342"
+          ],
+          "file": "docs/specs/website/design/learning-reading.md"
         }
       ]
     },
@@ -7800,6 +7828,20 @@
           ],
           "file": "docs/plans/archive/712-vm-desktop-defects.md",
           "status": "published"
+        },
+        {
+          "id": "P718-2",
+          "title": "PLAN-718 r1 复审 pass 与合并收尾收据（AC-01..12 pass；并发阶段 landing 调和 rebase）",
+          "content": "复审=工件重建式（同会话限制已声明）：全新构建+全套 e2e 96/96 复现、幂等（79936af5）/notes（book=634）重跑、范围与 ignored 零入库核查；观察项 F1 负载 flake（site-ui/spa-routes 存量用例，隔离全绿）/F2 auto 围栏警告随新发布页等比增长（同类既存）。合并调和：master 已含用户授权第一阶段 landing（T-01..T-04 采纳米实现+两小修：作者映射排除 playwright 产物目录、style.css 1px 偏移）；rebase 补丁等价自动吸收四提交（对方报告 range-diff = 在案），T-05..T-07 重放 484921d71→798fb6f47、deb99d81e→50586f35e（style.css 冲突=并集，+1px 行双方一致）、3d758c29a→a4909040d（KNOWN-DEBT 并集 P712-D1..7+P718-D1..3），其后两轮并发竞速再重放至 95a3e71c7；吸收 GENERATED+=test-results/playwright-report；调和后全新构建+e2e 101/102 与 104/106（失败均为 F1 族，隔离绿）。720 会话 manifest 副产物还原不裹挟。规范 SD-01..05 落盘=learning-reading 升全契约（去阶段注记）+ui-presentation/project 升交付措辞；账本：8080 不可达，循 711/713/714/715/717 先例手工外科插入（本条）。",
+          "tags": [
+            "plan-718",
+            "website",
+            "commit:3d758c29a",
+            "commit:95a3e71c7",
+            "rebase-mapping",
+            "concurrent-phase-landing"
+          ],
+          "file": "docs/plans/archive/718-website-learning-reading-ui.md"
         }
       ]
     }
