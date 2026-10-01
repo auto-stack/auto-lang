@@ -1272,7 +1272,7 @@ export const ${varName}ByBook: Record<string, DefaultTheme.SidebarItem[]> = ${JS
 
 // PLAN-718 T-03：site 手工页作者源映射（website 根与子目录的 .md，排除生成树）。
 function collectSiteAuthorSource() {
-  const GENERATED = new Set(['docs', 'books', 'node_modules', '.vitepress', 'public', 'scripts', 'tests', 'content'])
+  const GENERATED = new Set(['docs', 'books', 'node_modules', '.vitepress', 'public', 'scripts', 'tests', 'content', 'test-results', 'playwright-report'])
   const walk = (dir, rel) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const relPath = rel ? rel + '/' + entry.name : entry.name

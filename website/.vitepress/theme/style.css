@@ -94,7 +94,7 @@
   :root {
     /* VPLocalNav 实测高 48px（menu 按钮行高 24 + 上下 padding 23 + 边框 1），
        e2e 几何断言校验锚点落位。 */
-    --site-reading-offset: calc(var(--site-nav-height, 56px) + 48px + 16px);
+    --site-reading-offset: calc(var(--site-nav-height, 56px) + 1px + 48px + 16px);
   }
 }
 
@@ -112,7 +112,8 @@
    组件 scoped 样式特异性更高，需 !important（与上方 .VPNav 隐藏同法）。 */
 @media (max-width: 1279.9px) {
   .VPLocalNav {
-    top: var(--site-nav-height, 56px) !important;
+    /* UnifiedNavbar 的内部行高之外还有 1px 底边框。 */
+    top: calc(var(--site-nav-height, 56px) + 1px) !important;
   }
 }
 
