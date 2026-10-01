@@ -917,6 +917,45 @@ widget Counter {
   `songyu.png`（置于壁纸目录），boot 链第二档；「恢复默认壁纸」从此有
   系统定义标的（os-config「恢复默认壁纸」按钮属后续设置面工作，写臂已就绪）。
 
+#### PLAN-712 r3 增补：路由页前缀覆盖、HTTP 失败语义分层、导航装载语义与虚拟窗重建
+
+- **前端模块前缀化全覆盖（SD-09）**：launch 期 URL 前缀变换（`back_prefix`）
+  的**模块读点覆盖面 = 全部前端 .at 编译读点，含 routes 块 `pages/{module}.at`
+  装载臂**——行级规则（行含 `Http.` 且含 `"/api/` 字面量）+ `path_under`
+  canonicalize 递归面（front_dir 之下任意深度，含 pages/ 子目录）。任何新增
+  模块读点必须同过 `apply`，否则该模块的相对取数字面量静默缺席前缀化（fetch
+  落 app 自身 back origin 死端口）。回归锚 `route_page_fetch_reaches_
+  proxied_root_when_guard_active`（真 TCP stub e2e）+
+  `subdir_modules_under_front_dir_are_transformed`。
+- **`Http.*_json` 失败语义分层（SD-10）**：对齐浏览器 `fetch()`——
+  **网络层失败（连接拒绝/超时/DNS/队满）= 可捕获异常**（shim 重入臂转
+  VMError，`.at` try/catch 可接；get/post/put/delete/patch 五 shim 同律）；
+  **HTTP 非 2xx = 保持错误形状值**（`{"error":"HTTP n","status":n}`，`.status`
+  可读——HTTP 错误状态不 reject）。空 body 规范化为 `"null"` 不变。此前传输
+  失败被包成 `status:0` 成功值 = 吞错点（catch 永不触发，坏数据静默入态）。
+  回归锚 `transport_error_is_caught_by_at_try_not_swallowed` +
+  `http_error_status_still_returns_value_not_throw`。
+- **路由页 Init 代际身份并入路由（SD-11）**：outlet 页 Init demand 的代际
+  身份 = key prop / 裸 widget 名 **⊕ 当前路由路径**（`base@route`）——参数
+  变化（/book/1 → /book/2）= 新代际 = cancel 旧代际 + 重派 Init（**导航 =
+  新装载**语义，与书架回退重取数行为一致）。此前身份与路由无关 → 同页不同参
+  不重派，页面状态滞留首次装载（018 三卡同内容实机实证）。回归锚
+  `page_init_reruns_when_route_param_changes`（红相 got 滞留首参）。
+- **虚拟窗缩放 → 视图脏标记（SD-12）**：VM builder 把响应式取值按
+  `window_size` 构建期烤定 + dynamic_view 元素缓存快门（`!view_dirty` 逐帧
+  返回缓存树）⇒ **虚拟窗尺寸落定必须标记归属 app 视图脏**：交互八向缩放
+  （`apply_cursor` 消费且 interaction=Resize）逐拍标、编程 `win_rect` 尺寸
+  真变（≥0.5px）标；纯拖拽不标（零重排纪律）。不标脏 = 缩放后 app 内容恒停
+  旧尺寸（表面 1:1 锚定 + 右/下空白）。回归锚 `wm_resize_marks_app_view_dirty`。
+- **媒体上行契约基线采集与写失败锁存（SD-13，SD-01 增补）**：
+  `onplaystatechange` 由 `pause` 属性边缘检测合成——**首次读 = 基线采集不
+  回灌**（运行时首帧引擎空闲默认态不是边缘；此前空闲假 `PlayStateChange(true)`
+  顶掉受控 is_playing → 下行/上行镜像互为反转）；此后真实翻转才回灌。
+  `pause` 下行**写失败不推进 applied 锁存**（差量判据以内核实态为准，防瞬时
+  失败永久丢写）。src 变化重置 `last_play_state` 后首读同按基线采集。
+  回归锚 `idle_engine_first_poll_seeds_baseline_without_play_state_event` +
+  `pause_hold_and_rapid_toggle_stay_in_sync`。
+
 ### 媒体文件服务（SD-02）
 
 `crates/auto-lang/src/ui/media_service.rs` 提供**平台级**本地媒体索引与字节流，
