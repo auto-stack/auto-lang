@@ -3998,10 +3998,15 @@ fn register_transitive_widgets_inner(
                         // 臂）——545 的"bare=命名空间"针对 fn 符号冲突面；
                         // UI 子件码道收紧后裸 use 孙件 handler 不再合成
                         // （同 demo CustomScrollbar 断裂）。
-                        if (use_stmt.is_wildcard
-                            || use_stmt.items.is_empty()
-                            || use_stmt.items.iter().any(|s| s == &child_widget.name))
-                            && registry.get(&child_widget.name).is_none()
+                        // PLAN-093 G-16（095 T-07 根文件修复的传递装载对应
+                        // 面）：同文件兄弟 widget 一并注册——items 过滤只决定
+                        // "显式引用谁"，不应把同文件其他 widget 逐出 registry
+                        // （musk canvas_panel.at 实证：use 只列
+                        // CanvasPanel/CanvasStudioSlot，兄弟 CanvasCanvasColumn
+                        // 被 skip → 组件臂 miss → 画布列空渲染）。registry
+                        // 已有者仍跳过（先到优先，显式 use 同名覆写沿 095
+                        // 口径由后装载覆盖）。
+                        if registry.get(&child_widget.name).is_none()
                         {
                             // Plan 049:孙组件 handler 也要编译进 VM 模块,
                             // 否则点击其按钮(如 BlockItem.ToggleCollapse)会
@@ -4327,16 +4332,18 @@ fn build_dynamic_component_inner(
                                 // 的 handler 不再合成（handler_<Child>_* 导出
                                 // 缺席→运行时派发全灭，demo CustomScrollbar
                                 // 拖拽死——vm-smoke 组 4(d) 实证）。
-                                if use_stmt.is_wildcard
-                                    || use_stmt.items.is_empty()
-                                    || use_stmt.items.iter().any(|s| s == &child_widget.name)
-                                {
-                                    // PR-3b Step 4: collect the child WidgetDecl
-                                    // alongside the AuraWidget so the decl-based
-                                    // synthesis path can compile child handlers.
-                                    child_decls.push(decl.clone());
-                                    registry.register(child_widget);
+                                // PLAN-093 G-16（095 T-07 的导入模块对应面）：
+                                // 同文件兄弟 widget 一并注册——use items 过滤
+                                // 只决定"显式引用谁"，不应把同文件其他 widget
+                                // 逐出 registry（musk canvas_panel.at 实证：
+                                // 兄弟 CanvasCanvasColumn 被 skip → 组件臂
+                                // miss → 画布列空渲染）。显式 use 同名覆写
+                                // 优先沿 095 根文件修复口径（后到覆盖）。
+                                if std::env::var_os("AUTO_DEBUG_G16").is_some() {
+                                    eprintln!("[G16] load-site register: {} from {:?} (matched={})", child_widget.name, module_path.display(), use_stmt.items.iter().any(|s| s == &child_widget.name));
                                 }
+                                child_decls.push(decl.clone());
+                                registry.register(child_widget);
                             }
                         } else if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
                             // Plan 370 D-GAP-4: stores imported via `use module: Store`

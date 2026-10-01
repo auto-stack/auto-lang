@@ -1,0 +1,16 @@
+// app.at — PLAN-093 G-16 repro: a use-IMPORTED child widget (Panel) whose
+// template references its SAME-FILE sibling (Item). The use line imports
+// only Panel; Item must still resolve at render time (registry semantics
+// per 095 root-file fix — imported-module counterpart).
+use panel: Panel
+
+widget App {
+    view {
+        col {
+            style: "w-full h-screen flex-col bg-background text-foreground p-4 gap-2"
+            text "host above panel"
+            Panel { }
+            text "host below panel"
+        }
+    }
+}

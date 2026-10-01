@@ -1462,6 +1462,13 @@ impl<'a> AuraViewBuilder<'a> {
                         );
                     }
                 }
+                // PLAN-093 G-16：tracked 臂 miss 诊断——此前的静默文本占位
+                // 使导入子件模板的组件引用零痕迹空渲染（095 根文件臂有
+                // AURA-CHILD-MISS，本臂没有——排障时两臂都必须可观测）。
+                eprintln!(
+                    "[AURA-CHILD-MISS][tracked] component '{}' not resolvable at this site — declare it in the same file (sibling widget) or import via `use <module>: {}`",
+                    name, name
+                );
                 View::Text {
                     content: format!("<{} />", name),
                     style: None,

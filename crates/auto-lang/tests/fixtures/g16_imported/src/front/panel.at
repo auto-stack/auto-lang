@@ -1,0 +1,20 @@
+// panel.at — G-16 shape: two same-file widgets; the use line names only
+// the first. The second (Item) is referenced from Panel's template.
+widget Panel {
+    view {
+        col {
+            style: "w-full gap-2"
+            text "panel shell"
+            Item { }
+        }
+    }
+}
+
+widget Item {
+    view {
+        col {
+            style: "w-full gap-1"
+            text "item body node"
+        }
+    }
+}
