@@ -1196,6 +1196,17 @@
             "commit:95a3e71c7"
           ],
           "file": "docs/plans/archive/718-website-learning-reading-ui.md"
+        },
+        {
+          "id": "P720-4",
+          "title": "网站桌面实景展示交付摘要（PLAN-720 r1+repair-1）",
+          "content": "T-01..03 全交付：六张 2026-10-01 原生截图入库（源-库 SHA256 保全、2560×1600）+desktop-showcase.ts 单源+DesktopShowcase.vue 共用组件；v05/zh/v05 hero=深色纯桌面+四步六图选择器；autoos/zh/autoos 完整展示置于介绍后统计前、旧三图换新工作场景；os/zh/os 双主题预览+对应语言专题链接；键盘放大/原图/Esc 回焦、非首图 lazy、60 组合（六路由×五宽×双主题）无横向溢出。验证：build exit0 终态 197.08s、相关 14 项 pass+补跑 1 项、24 截图+manifest（docs/reports/p720-desktop-showcase/）。repair-1 重拍恢复桌面快捷方式。公开站点未部署（计划范围外）；本地预览需落地后重建 dist。",
+          "tags": [
+            "plan-720",
+            "website",
+            "commit:764508169a"
+          ],
+          "file": "docs/plans/archive/720-website-desktop-showcase.md"
         }
       ]
     },
@@ -4821,6 +4832,32 @@
             "docsha:2dc4daae68765342"
           ],
           "file": "docs/specs/website/design/learning-reading.md"
+        },
+        {
+          "id": "P720-1",
+          "title": "桌面实景展示契约：六图同源四步说明与 OS 总览专题链接（PLAN-720 SD-01）",
+          "content": "PLAN-720 交付落账（website 域现行态投影；canonical 唯源=docs/specs/website/project.md，r1 落地 19bbbdee、repair-1 仅换 01..04 资产，delivery 764508169a）。契约：theme/data/desktop-showcase.ts 单源驱动六张 2026-10-01 原生截图的双语标签/alt/caption/尺寸与四步说明，DesktopShowcase.vue 复用 ScreenshotGallery/EvidenceImage；v0.5 与 AutoOS 专题按无展开窗口浅/深桌面→浅/深 Launcher→三小游戏→多应用工作递进展示全过程，OS 总览仅双主题预览并链接当前语言专题（/autoos/#desktop-showcase）；小组件来自已启动并最小化的应用，静态画面不当作功能/跨端/实时证明；保留完整 PNG、捕获日、尺寸、可键盘放大与原图链接。",
+          "tags": [
+            "plan-720",
+            "website",
+            "sd-01",
+            "commit:764508169a",
+            "docsha:994113f25acd2261"
+          ],
+          "file": "docs/specs/website/project.md"
+        },
+        {
+          "id": "P720-2",
+          "title": "发布实图契约：本批首推无窗口桌面与循序原图保全（PLAN-720 SD-02）",
+          "content": "PLAN-720 交付落账（website 域现行态投影；canonical 唯源=docs/specs/website/design/ui-presentation.md，delivery 764508169a）。契约：发布页首图使用无展开窗口的深色桌面实拍；桌面选择器先浅/深主题对照，再 Launcher、游戏多窗口、编辑器工作布局；作者数据 desktop-showcase.ts 单源维护、中英文同构；caption 明确小组件应用已启动并最小化的前提；源 PNG 字节保全、2560×1600 尺寸占位、非首图 lazy、原图可访问；主题对照表示截图切换，不宣称操作静态图片会切换实际桌面状态。",
+          "tags": [
+            "plan-720",
+            "website",
+            "sd-02",
+            "commit:764508169a",
+            "docsha:07a644d95f92d73e"
+          ],
+          "file": "docs/specs/website/design/ui-presentation.md"
         }
       ]
     },
@@ -7842,6 +7879,20 @@
             "concurrent-phase-landing"
           ],
           "file": "docs/plans/archive/718-website-learning-reading-ui.md"
+        },
+        {
+          "id": "P720-3",
+          "title": "PLAN-720 r1 复审 pass、repair-1 与独立确认收据（AC-01..06 pass）",
+          "content": "r1 复审 pass（reviewed ecdfcc765：build 146.75s exit0、专项 8/8、完整 77/77、24 图 manifest 可追溯无遮挡）。用户报告桌面快捷方式缺失→repair-1 仅换 01..04 资产（05/06 hash 不变）+视觉包补 img.decode：build 197.08s exit0、相关 14 项 pass、decode 补跑 1 项 pass，页面 Vue/路由/正文零改动。落地两次 ff-only（19bbbdee、764508169a）均 range-diff 三项全等且旧 reviewed_commit→delivery 的 website/Spec diff 为空。独立会话复审确认（b7da25a28）：六图源-库 SHA256 全等均 2560×1600、五处接线、SD-01/02 现状契约（docsha 994113f25acd2261/07a644d95f92d73e）、Category A 不重跑 Cargo。账本：8080 不可达，循 711/713/714/715/717/718 先例手工外科插入（本条）。",
+          "tags": [
+            "plan-720",
+            "website",
+            "repair-1",
+            "commit:764508169a",
+            "commit:b7da25a28",
+            "rebase-mapping"
+          ],
+          "file": "docs/plans/archive/720-website-desktop-showcase.md"
         }
       ]
     }
