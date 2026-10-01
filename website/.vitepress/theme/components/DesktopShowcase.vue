@@ -30,7 +30,7 @@ const steps = computed(() => desktopSteps(zh.value))
 </template>
 
 <style scoped>
-.desktop-showcase { max-width: var(--site-max-width, 1200px); margin: 0 auto; padding: 2.5rem 1.5rem; min-width: 0; }
+.desktop-showcase { max-width: var(--site-max-width, 1200px); margin: 0 auto; padding: 2.5rem 1.5rem; min-width: 0; scroll-margin-top: calc(var(--site-nav-height, 56px) + 16px); }
 .desktop-showcase.embedded { padding: 0; }
 h2 { font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.3; font-weight: 700; margin-bottom: 1rem; }
 .desktop-intro { max-width: var(--site-text-width, 720px); line-height: 1.75; color: hsl(var(--muted-foreground)); margin-bottom: 1.5rem; }

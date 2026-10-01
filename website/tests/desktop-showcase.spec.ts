@@ -42,6 +42,15 @@ for (const route of routes) {
     await expect(dialog).toHaveCount(0)
     await expect(trigger).toBeFocused()
     expect(await page.locator('.vp-doc pre').count()).toBe(0)
+    if (preview) {
+      await story.locator('.desktop-more').click()
+      await expect(page).toHaveURL(new RegExp(`${zh ? '/zh' : ''}/autoos/#desktop-showcase$`))
+      await expect.poll(async () => {
+        const heading = await page.locator('#desktop-showcase h2').boundingBox()
+        const navbar = await page.locator('header.site-navbar').boundingBox()
+        return heading !== null && navbar !== null && heading.y >= navbar.y + navbar.height
+      }).toBe(true)
+    }
   })
 }
 
@@ -54,7 +63,9 @@ test('six pages: five widths, both themes, and 24 verified visual captures', asy
   for (const theme of ['light', 'dark']) {
     await page.evaluate(t => localStorage.setItem('vitepress-theme-appearance', t), theme)
     for (const width of [360, 390, 768, 1024, 1440]) {
-      await page.setViewportSize({ width, height: 1000 })
+      // Room for the complete showcase prevents sticky bars from covering
+      // the top of the element screenshot; narrow-width layout is unchanged.
+      await page.setViewportSize({ width, height: 1800 })
       for (const route of routes) {
         await page.goto(route)
         const story = page.locator('#desktop-showcase')
