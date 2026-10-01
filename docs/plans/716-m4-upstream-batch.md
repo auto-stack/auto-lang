@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-716
-status: drafting               # Phase 2 修复轮激活（2026-10-01 用户裁定「重新激活计划716,记录成新的phase」——归档件出库，Phase 1 交付史全保留）
+status: execution_done        # Phase 2 修复轮 work 收口（2026-10-01 work handoff outcome: pass——T-14..T-18 全收口，next=review）
 feature_name: M4 上游三组合一件（用户合并裁定 2026-09-30——组A tree-sitter 首批实施[714 契约 T-1..T-6 承接]/组B 帧时间戳插桩[供②]/组C diff rows 惰性投影[021 armed FAIL 清偿路径]+供③ 顺手确认）+ Phase 2 修复轮（2026-10-01——下游消费首跑实证交付缺口：供⑧ 9920 VM 裸名臂/供⑨ 9918-9919 .at 消费面双缺口/供⑪ highlight-treesitter cc 夹缝）
 author: [agent]
 created_at: 2026-09-30T22:17:32+08:00
-updated_at: 2026-10-01T17:20:00+08:00
+updated_at: 2026-10-01T18:30:00+08:00
 plan_revision: 3              # r3=Phase 2 修复轮（r2=交付时归档修订——供③ 摘出挂账；r3 语义契约增补=消费面缺口修复，Phase 1 目标/验收不回改）
-current_step: 13              # Phase 1 十四任务账（T-00..T-13 全收口）——Phase 2 T-14..T-17 待执行
+current_step: 18              # 全任务账 T-00..T-18 收口（Phase 1 十四+Phase 2 五）
 total_steps: 18
 supersedes_spec_components: []
 new_spec_components:
@@ -503,11 +503,11 @@ AppTick 泵断链在案调查——矩阵 app=桌面模式动态 app，楔死形
 
 | # | 任务 | 依赖 | 落点（实勘锚） | 产出/意图 | AC | 验证（命令/预期） |
 |---|---|---|---|---|---|---|
-| 14 | T-14 供⑧ 裸名臂 | — | vm/codegen.rs intrinsics 表 | 9920 五面齐装 | AC-D1 | [ ] VM 轨裸名调用 envelope 绿+四面零扰动（cargo t plan716+新增裸名探针；下游回执=auto-edit probe_diffwin 缺省形 8/8） |
-| 15 | T-15 供⑨-a .at 桥勘定+修复 | — | stdlib/frame.vm.at+vm 桥面（T-15 勘定定形——三候选见 §5） | .at 三断修复+time 族同根因复验 | AC-D2 | [ ] 三断保真探针绿+time 族注记（supply 探针 .at 面新增 3 断言+现役五探针零扰动） |
-| 16 | T-16 供⑨-b handler 臂 | — | ui_gen/rust.rs 直调臂覆盖面勘定+补臂 | handler 体路由贯通 | AC-D3 | [ ] regen exit 0+生成码 grep 臂（含 handler 调用 .at 样张 regen+grep a2r_std::frame） |
-| 17 | T-17 供⑪ 解钉+回归门 | T-14..16 | Cargo.toml/lock 面 | 现势解析可建+回归零新增 | AC-D4/REG2 | [ ] fresh 解析构建绿（无 blake3 降钉）+对账零新增（cargo update+两态构建+cargo t 对账+tv/tb/tu） |
-| 18 | T-18 规范+回执位 | T-14..17 | SD-B modify[出口形节]+SD-C modify[注册面补记]+回执注记 | 缺口修复落账 | AC-D* | [ ] SD 增补在档+下游回执位注记在案（probe_diffwin VM 形/探针臂重埋/撤钉回执——随下游件排程） |
+| 14 | T-14 供⑧ 裸名臂 | — | vm/codegen.rs intrinsics 表 | 9920 五面齐装 | AC-D1 | [x] VM 轨裸名调用 envelope 绿+四面零扰动 [✅ 已完成]（commit 97236b4a2：**勘定发现根因=双缺**——①intrinsics 裸名表漏登记（计划勘定面）②**9920 号位与 PLAN-095 ui.focus 撞号**（T-00 槽位复核漏扫 native_catalog.rs:419 段；shim 绑定表清单序后注册者覆盖→VM 轨窗口调用恒派发 ui_focus shim 静默 no-op→Int(0)，下游挂死实测根因的代码面真身）；修复=窗口件改签 **9921**（三表：for_each_native/for_each_bigvm_native/NATIVE_ID_ENTRIES）+intrinsics 补臂（ui.focus 已交付面独占 9920 不回改）；全表扫重号实证=shim 绑定表唯一重号即 9920、9921 空闲；探针 diff_files_window_vm_bare_name（VM 轨 .at 裸名→envelope rows_total/truncated 真值）红→绿+faces_registered 锚；**修复连带清偿预存红** native_catalog_ids_and_names_unique（撞号守护测试 base 红→绿）；验证：cargo t plan716 13/13 绿+cargo tv 162/162 绿；下游回执=probe_diffwin 缺省 VM 形 8/8（随下游件排程）） |
+| 15 | T-15 供⑨-a .at 桥勘定+修复 | — | stdlib/frame.vm.at+vm 桥面（T-15 勘定定形——三候选见 §5） | .at 三断修复+time 族同根因复验 | AC-D2 | [x] 三断保真探针绿+time 族注记 [✅ 已完成]（commit 5fe510539：**定形=候选①+②组合**——frame.vm.at 判型 `->i64` 改 `->int`（.at int=i32 lane，值域=进程单调 ms<2^31≈24.8 天 saturating，Q-6① 值域核对过）+shim 出口 push_i64_vm 改 push_i32（TAG_I64 单槽 vs .at int 消费面 lane 错配消除）+catalog ret 表 I64→Int；**勘定实录**=三轨复现矩阵（VmBridge/程序轨 run_with_capture/evaluator×修前修后）最小形全绿——下游三断（95dcfb55 基+桌面合成上下文+下游自有 json.from_value 库）当前上游树不可重构，修复按 i64→int 桥根因假说落 lane 统一形；**time 族同根因复验=截断 Hazard 活体实证**：var int=time.now_ms() 落 32 位伪影（epoch ms 1790847058147→4140720794 实测——PLAN-005「返 0」形的现势真身），值域>2^31 不改判型防真值截断，合法出口=i64 变量/str 全宽（701 先例值域边界），now_sec 值域<2^31 int 承接正确——as-is 形探针钉住；探针=frame_value_flow_gate_on（断①赋值/②str/③复合字段读三保真门开真值）+frame_begin_ms_str_fingerprint（门态无关）+frame_program_track_gate_on（程序轨=下游 api.at 同构面）+time_family_vm_readback_recheck；Phase 1 gate_on 探针亚毫秒 flake 修复（process_start 首触定格→首 note 恒存 ~0——双 note 形出零区）；**独立发现登记**：bridge 语境 json.encode({b:字面量}) obj 编码链预存断（垃圾值，非 frame 面——KNOWN-DEBT 候选随 review 判）；验证：cargo t plan716 17/17 双门态绿+frame_timestamps 3/3 绿） |
+| 16 | T-16 供⑨-b handler 臂 | — | ui_gen/rust.rs 直调臂覆盖面勘定+补臂 | handler 体路由贯通 | AC-D3 | [x] regen exit 0+生成码 grep 臂 [✅ 已完成]（commit 12e49f78c：覆盖面勘定=Phase 1 两臂均只认裸名 Expr::Ident 形（ui_gen vm_builtin_host_call handler 体/trans call():5107 模块体），二段名 Expr::Dot 原文发射→E0425；补臂三处=ui_gen vm_builtin_host_call 增 frame.begin_ms/present_ms 二段名臂（直调纪律同款——实现体单源 ui::frame_bench 不绕 shim；计划原文「生成码落 a2r_std::frame」按在册直调纪律修正为 frame_bench 直调——与既有裸名臂同源，语义等价单源）+trans 元组匹配 Dot-path 增 (frame,begin_ms/present_ms) 臂（time.now_ms A4 cat1 先例同款同位）；探针红绿链=frame_two_segment_handler_arm（原文发射红→frame_bench 直调绿）+frame_two_segment_module_trans_arm（原文发射红→a2r_std::frame 绿）；触面档=cargo tu 858/1（唯一红=a2vue desktop 金样 4f123a50e 在案预存；bp registry falls_back flake 基线同形复现非本件引入）+cargo tt frame 50/50 绿（encountered 红 merged_api_warning/lock_serializes/projector_counter 三件均基线 solo 复现=预存非新增）；下游回执=front 探针臂重埋 regen exit 0（随下游件排程）） |
+| 17 | T-17 供⑪ 解钉+回归门 | T-14..16 | Cargo.toml/lock 面 | 现势解析可建+回归零新增 | AC-D4/REG2 | [x] fresh 解析构建绿（无 blake3 降钉）+对账零新增 [✅ 已完成]（**供⑪=零 diff 修复**：registry 实勘=tree-sitter-sequel 已升 **0.3.11**（cc 需求 `~1.0.90`→`~1.2.1` 放宽——下游实录 0.3.2 的钉已非现势），与 blake3 1.8.7（cc 1.1.12）交集 [1.2.1,1.3) 非空=候选①「sequel 升版」由 registry 演进自然给出；现有 Cargo.toml 需求 `version="0.3"` 零改动即解析 0.3.11+cc 1.2.67 双满足；主检出 lock 实勘已在兼容纪元（0.3.11+cc 1.2.67）；验证=cargo update fresh 解析零降钉+cargo check --features highlight-treesitter 全量解析构建绿 43.9s+ts 套件 12/12 绿；上游零 blake3 --precise 钉 grep 净；**下游撤钉条件成立**（撤 blake3 1.5.5 回避钉+工具链重解析即绿——撤钉回执随下游件排程）。**AC-REG2 对账**（fix-test-tiering 口径=nextest 全量 --no-fail-fast）：裸 cargo t 全量 head 29 红 vs base 30 红——**红集全等+1 预存红修复**（native_catalog_ids_and_names_unique=T-14 撞号守护）；tv 162/162 绿；tb（--features test-book 全量）head 37 红 vs base 38 红——红集全等+同 1 红修复；tu 858/1（预存 a2vue desktop 金样）；预存红族全景=721 carousel 围栏双红（aura.at element_coverage 未登记+kitchen-sink 未再生——721 域）+musk_vm_track 族+vue_capabilities 族+ui_snapshots×3+gallery/plan707 flake/clipboard env 等全族 base=head） |
+| 18 | T-18 规范+回执位 | T-14..17 | SD-B modify[出口形节]+SD-C modify[注册面补记]+回执注记 | 缺口修复落账 | AC-D* | [x] SD 增补在档+下游回执位注记在案 [✅ 已完成]（commit 6c5c5b714（初版 dacb53ea6 误裹挟 ui_snapshots .snap.new 测试副产物，amend 剔除）：SD-B §3b 出口形与值流契约（int lane 出口定形+值域 i32 封顶 saturating+时源坐标勘定修正[process_start=首次触及时定格非进程起点——spawn 段分解消费方同坐标系标记]+time 族 as-is 复核[截断 Hazard+宽值合法出口]+下游回执位[front 探针臂重埋+T-03 帧两行判定面重驱动]）；SD-C 窗口节 9920→9921 改签补记（PLAN-095 ui.focus 撞号机理+codegen 裸名臂漏登记+守护探针锚）；**供⑪ 撤钉回执位**=下游撤 blake3 1.5.5 钉+工具链重解析（本节 T-17 行在案——随下游件排程）） |
 
 ## 9. 复审记录
 
@@ -679,6 +679,40 @@ AppTick 泵断链在案调查——矩阵 app=桌面模式动态 app，楔死形
   work`（worktree=D:/autostack/.wt/lang-716/auto-lang，branch
   plan-716-dev——AGENTS 惯例；启动待用户）。
 
+- 2026-10-01 work handoff（Phase 2 修复轮）：`stage: work`，PLAN-716，
+  plan_revision 3，`outcome: pass`（T-14..T-18 五任务全收口）。
+  `code_commit`: worktree plan-716-dev @ dacb53ea6（T-18 amend 后
+  tip；实现链=T-14 97236b4a2 / T-15 5fe510539 / T-16 12e49f78c /
+  T-17 零 diff / T-18 dacb53ea6；base=master@d85bc928b；依赖兄弟
+  auto-down@3373a5c detach 重建——Phase 1 复审绑定版，merge 清理后
+  组内重建）。`task_ids`: T-14..T-18 全完成。`evidence`:
+  - **T-14（AC-D1）**：根因实勘升级=双缺（intrinsics 漏登记+
+    **9920 撞号 PLAN-095 ui.focus**——T-00 槽位复核漏扫 :419 段）；
+    改签 9921 三表+补臂；裸名探针红→绿；**连带修复预存红**
+    native_catalog_ids_and_names_unique。
+  - **T-15（AC-D2）**：定形=候选①+②（frame 判型 `->int`+shim
+    push_i32+ret Int）；三断保真探针（赋值/str/复合字段读）门开
+    真值绿；time 族截断 Hazard 活体实证+合法出口在案（as-is 探针）；
+    下游三断当前上游树不可重构（三轨×修前修后全绿实录）——修复按
+    i64→int 桥根因假说落 lane 统一形；Phase 1 gate_on 探针亚毫秒
+    flake 修复在案。
+  - **T-16（AC-D3）**：二段名臂双轨补全（ui_gen 直调 frame_bench+
+    trans Dot-path a2r_std::frame——time A4 先例同款）；两探针红→绿。
+  - **T-17（AC-D4/REG2）**：**零 diff 解钉**（sequel 0.3.11 cc 放宽
+    ~1.2.1——registry 演进自然闭合，candidate① 原文）；fresh 解析
+    ts-on 构建绿+无降钉；**AC-REG2 对账**：裸 t head 29 红 vs base
+    30 红（红集全等+1 修复）/tv 162 绿/tb head 37 vs base 38（同形）
+    /tu 858+1 预存（a2vue desktop 金样 4f123a50e）——零新增。
+  - **T-18（AC-D*）**：SD-B §3b 出口形节+SD-C 9921 改签补记落档；
+    下游回执位注记在案（probe_diffwin VM 形/探针臂重埋/撤钉——
+    随下游件排程）。
+  `blockers`: 无。`next`: review（/auto-plan:review——r3 契约
+  AC-D1..D4+REG2 独立复审；review 通过后 merge 档含 specs.json
+  P716-1 刷新[SD-B/C 册哈希更新]+下游回执排程移交）。
+  环境注记：worktree 构建期间组内兄弟 auto-down 重建为
+  D:/autostack/.wt/lang-716/auto-down@3373a5c detach（原 Phase 1
+  兄弟随 merge 清理移除——autodown-core path 依赖解析所需）。
+
 ## 10. 待澄清事项
 
 - **Q-1 组C（惰性投影）纳入确认**：按用户「两者」语义（tree-sitter
@@ -733,3 +767,13 @@ AppTick 泵断链在案调查——矩阵 app=桌面模式动态 app，楔死形
   避开其在途 worktree 惯例位；③下游回执时点=本轮 review 通过后
   （auto-edit probe_diffwin VM 形+T-03 探针臂重埋+撤钉回执——随
   下游件排程，非本轮 gate）。
+  【2026-10-01 执行收口应答】：①frame 族定形 int lane——值域核对过
+  （进程单调 ms<2^31；i32 封顶 ≈24.8 天 saturating 注记入 SD-B §3b）；
+  time 族 epoch 值域 >2^31 不回改判型（截断 Hazard 活体实证+宽值
+  合法出口=i64 变量/str 全宽，as-is 探针钉住）。②组内 worktree
+  D:/autostack/.wt/lang-716/auto-lang 无位冲突（721 在途域未触及）；
+  兄弟 auto-down@3373a5c 重建（Phase 1 复审绑定版）。③下游回执位
+  三件（probe_diffwin VM 形/front 探针臂重埋/撤钉）注记在案——
+  随下游件排程，非本轮 gate。另 Q-6(前) 主检出外来 WIP 项：
+  back_proxy.rs +7 行与本轮启动预检不再在册（712 会话已处置）；
+  本轮主检出改动仅本件簿记。
