@@ -32,6 +32,8 @@
 
 ## 4. 测试服务隔离与回归纪律（SD-06）
 
+PLAN-719 补充：OS/AI 介绍、AutoOS 与 desktop 专题使用默认文档阅读布局，概要/双语关系图由 `IntroductionFrame.vue` 呈现，Markdown 正文默认展开且可 SSR/search。关系示意显著标注，呈现宿主内核及渲染/合成设施；真实图遵循 PLAN-720，禁止用假代码输出/无限模型/缺依据数字墙作为能力证据。历史文章用目录、锚点和来源链接；五宽度两主题几何及十二路由 × 390/1440 × 深浅共 48 图校验实际正文。规则见 [OS/AI introduction](os-ai-introduction.md)。
+
 PLAN-718 补充（交付契约，规则见 [learning-reading](design/learning-reading.md)）：移动阅读 `.VPLocalNav` 的 sticky 偏移包含统一顶栏 56px 内部行和 1px 底边框；锚点 scroll-margin 按"顶栏+目录条"两层实际高度让位（`--site-reading-offset`）；窄屏目录弹层触发按钮触达 ≥44px（清零弹层根节点垂直 padding，条高保持不变）。AutoFence 操作栏在源码上方占独立文档流空间。截图使用数据中的原始 URL，不按 locale 再拼前缀；校验 pathname、正文非 404、语言正确后才接收图片（截图 manifest 随报告入库，`*.json` 有 `!docs/reports/**` 白名单）。715 原中文 `/zh/zh/` 图片无效，新证据使用修正后的脚本；独立 preview 直接启动 Node 进程，避免 Windows shell 子进程残留。
 
 - e2e/截图端口由 `AUTO_WEBSITE_TEST_PORT` 控制（默认 4173 兼容；strictPort，baseURL 与 webServer 同源）——并行 worktree 各选独占空闲端口（715 用 4186），不复用未知服务；**Windows 下 `shell:true` spawn 的 kill 只杀 shell 不杀 node 子进程**，长驻 preview 会固化旧 dist 的文件清单导致重建后 404（715 实证），脚本清理须 `taskkill /PID <pid> /T /F`。

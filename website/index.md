@@ -3,6 +3,8 @@ layout: home
 ---
 
 <script setup>
+import { introCopy } from './.vitepress/theme/data/os-ai-introduction'
+const copy = introCopy(false)
 import { onMounted } from 'vue'
 import HomeHero from './.vitepress/theme/components/HomeHero.vue'
 import HomeDemo from './.vitepress/theme/components/HomeDemo.vue'
@@ -41,8 +43,8 @@ onMounted(() => {
     <FeatureCard icon="🦀" title="Rust" description="AutoVM as a Rust scripting environment. A2R transpiles Auto to production-grade Rust. Dual stdlib modes." color="rgba(222, 165, 132, 0.15)" link="/rust" />
     <FeatureCard icon="🐍" title="Python" description="Call Python code directly from AutoVM. a2py transpiles Auto to Python." color="rgba(59, 130, 246, 0.15)" link="/python" />
     <FeatureCard icon="🎨" title="UI" description="Vue and Tauri are mature. Desktop (Rust/iced) is usable. Harmony and Android demos validated." color="rgba(168, 85, 247, 0.15)" link="/ui" />
-    <FeatureCard icon="🤖" title="AI" description="Client/Daemon architecture. AutoAI-Cli terminal agent. AutoMusk general-purpose coding agent." color="rgba(236, 72, 153, 0.15)" link="/ai" />
-    <FeatureCard icon="💻" title="OS" description="Client/Daemon architecture, unified config system. Future: standalone AutoOS and embedded virtual desktop." color="rgba(20, 184, 166, 0.15)" link="/os" />
+    <FeatureCard icon="🤖" title="AI" :description="copy.home.ai" color="rgba(236, 72, 153, 0.15)" link="/ai" />
+    <FeatureCard icon="💻" title="OS" :description="copy.home.os" color="rgba(20, 184, 166, 0.15)" link="/os" />
   </div>
 </div>
 

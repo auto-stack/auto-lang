@@ -20,6 +20,7 @@
 - 桌面实景展示（PLAN-720）：`DesktopShowcase.vue` 与 `theme/data/desktop-showcase.ts` 共用六张 2026-10-01 原生截图，按无展开窗口的浅/深桌面、浅/深 Launcher、三小游戏、多应用工作场景递进。v0.5 和 AutoOS 专题展示完整过程，OS 总览显示双主题预览并链接到当前语言专题。小组件来自已启动并最小化的应用；保留完整 PNG、捕获日、尺寸、可键盘放大和原图链接，不把静态演示状态当成功能证明。
 - 学习与阅读（PLAN-718）：docs/books 双语根页共用作者数据与 SSR 学习卡片（静态 HTML 与本地搜索均可索引）；书籍按当前书分侧栏、章节 prev/next 不跨书，提供本书目录和正确作者源链接；AutoFence 操作栏及提示双语；运行器按需异步加载（冷访问不取编辑器 chunk、不调 `/api/run`），失败可重试且原文保持可读。规则见 [learning-reading](design/learning-reading.md)。
 - 不做：不实现 playground 后端（crates/auto-playground）与可复用组件库（packages/auto-playground-vue）。
+- OS/AI 介绍（PLAN-719）：LaOS 实现理念、OS over OS 当前形态与 AI + Lang + OS 长期人本方向连续说明；宿主/现有内核独立系统/自有内核分清现状。OS、AI、AutoOS、ui-desktop 双语采用默认阅读布局及同源概要/架构关系，首页与 v0.5 同步相关摘要；两篇双语独立历史文章提供总览互链、资料时点与公开来源。规则见 [os-ai-introduction](design/os-ai-introduction.md)。
 
 ## 模块架构
 

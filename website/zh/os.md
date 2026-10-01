@@ -1,238 +1,68 @@
 ---
-layout: home
+title: AutoOS：理念、组成与当前进展
+description: AutoOS：理念、组成与当前进展
 ---
 
 <script setup>
-import OSHero from '../.vitepress/theme/components/OSHero.vue'
-import FeatureCard from '../.vitepress/theme/components/FeatureCard.vue'
-import StatCard from '../.vitepress/theme/components/StatCard.vue'
-import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
+import OSIntroduction from '../.vitepress/theme/components/OSIntroduction.vue'
 import DesktopShowcase from '../.vitepress/theme/components/DesktopShowcase.vue'
+import IntroductionRelation from '../.vitepress/theme/components/IntroductionRelation.vue'
 </script>
 
-<div class="landing-page" style="--page-accent-1: #14b8a6; --page-accent-2: #3b82f6">
+<OSIntroduction />
 
-<OSHero
-  badge="AutoOS 架构"
-  title="Client / Daemon OS 基础"
-  description="AutoOS 正在演进为完整的操作系统层。Client/Daemon 架构、统一配置系统，以及两条未来路线：独立发行版与嵌入式虚拟桌面。"
-  primary-text="阅读文档"
-  primary-link="/zh/docs/os"
-  secondary-text="探索 auto-os-config"
-  secondary-link="/zh/docs/os#auto-os-config"
-/>
+<DesktopShowcase preview embedded />
 
-<DesktopShowcase preview />
+## 从 Language as OS 到 OS over OS
 
-<div class="stats-section">
-  <h2 class="section-title">AutoOS 基础</h2>
-  <div class="stats-grid">
-    <StatCard value="1" label="配置 Daemon" description="auto-os-config —— 所有配置模块的统一 Daemon。" color="#14b8a6" />
-    <StatCard value="2" label="未来路线" description="独立 AutoOS 发行版或嵌入式虚拟桌面。" color="#3b82f6" />
-    <StatCard value="4+" label="配置模块" description="AI Daemon、Harness、Skills、Roles、Auto Musk 等。" color="#8b5cf6" />
-    <StatCard value="0" label="前端代码" description="通用编辑器根据 .at 文件形状自动渲染表单。" color="#f59e0b" />
-  </div>
-</div>
+**Language as OS（LaOS）** 是项目最初的实现理念：用 Auto 组织和实现操作系统的各个部件，让语言及其运行时适配不同的软硬件环境，同时维持对外接口和使用体验的一致性。
 
-<div class="showcase-wrapper">
-  <ShowcaseSection
-    title="auto-os-config —— 统一设置中心"
-    description="一个 Daemon，一个通用编辑器，服务所有配置模块。Vue 3 SPA + Rust 后端直接读写任意 .at 配置文件。"
-    badge="配置"
-  >
-    <ul>
-      <li><strong>统一 Daemon</strong> —— 唯一的配置读写服务。URL 按约定映射为文件路径。</li>
-      <li><strong>通用编辑器</strong> —— 根据 .at 数据形状与键名约定自动渲染表单。新模块零前端代码。</li>
-      <li><strong>模块注册表</strong> —— 在 <code>modules.d/</code> 中放入 .at 文件即可自动注册新模块。</li>
-      <li><strong>自定义 UX</strong> —— 通用编辑器不够用时，可通过 <code>createComponent(Vue)</code> 工厂接入远程 Vue 组件。</li>
-    </ul>
-    <template #visual>
-      <div class="config-tree">
-        <div class="config-file">~/.config/autoos/</div>
-        <div class="config-item">├── ai-client.at</div>
-        <div class="config-item">├── ai-daemon.at</div>
-        <div class="config-item">├── auto-musk.at</div>
-        <div class="config-item">├── modules.d/</div>
-        <div class="config-item">│   └── my-module.at</div>
-        <div class="config-item">├── roles/</div>
-        <div class="config-item">└── skills/</div>
-      </div>
-    </template>
-  </ShowcaseSection>
+这包括 UI 库、合成器、系统应用、配置、启动器、监控、命令 Shell、AI 服务和桌面；内核也是长期设想的一部分，但目前尚未实现自有内核。现阶段的语言运行时与底层系统设施主要建立在 Rust 和既有生态上。未来也可能探索语言底座的自实现原生路径。
 
-  <ShowcaseSection
-    title="Client / Daemon 架构"
-    description="AutoOS 应用遵循一致模式：系统 Daemon 掌握共享状态与资源；轻量客户端连接它。"
-    badge="架构"
-    reverse
-  >
-    <ul>
-      <li><strong>aaid</strong> —— AI Daemon，负责 LLM 路由、并发与用量追踪</li>
-      <li><strong>auto-os-config-daemon</strong> —— 统一配置读写服务</li>
-      <li><strong>AutoShell daemon</strong> —— Shell 会话与任务管理</li>
-      <li><strong>未来</strong> —— 窗口管理器、文件系统与设备 Daemon</li>
-    </ul>
-    <template #visual>
-      <div class="arch-diagram">
-        <div class="arch-box clients">客户端<br /><small>AutoShell · AutoMusk · 配置 UI</small></div>
-        <div class="arch-arrow">↓</div>
-        <div class="arch-box daemons">Daemons<br /><small>aaid · config · shell</small></div>
-        <div class="arch-arrow">↓</div>
-        <div class="arch-box system">系统<br /><small>~/.config/autoos · .at 文件</small></div>
-      </div>
-    </template>
-  </ShowcaseSection>
+**OS over OS** 从 AutoOS 的使用形态描述同一方向：AutoOS 作为虚拟桌面与宿主桌面并行，自带应用在自己的桌面中运行，同时逐步对接宿主应用与系统能力。它是 LaOS 在当前阶段的产品形态，两者承接同一套架构。
 
-  <ShowcaseSection
-    title="通往 AutoOS 的两条路线"
-    description="AutoOS 设计为朝两个方向生长，共享同一套核心架构。"
-    badge="路线图"
-  >
-    <ul>
-      <li><strong>独立 AutoOS</strong> —— 基于 Pop!_OS 与 COSMIC Desktop。AutoOS ISO 镜像，搭载 Auto 原生系统应用。</li>
-      <li><strong>嵌入式虚拟桌面</strong> —— 运行在 Windows、Linux、macOS 与鸿蒙系统内。基于 AutoUI 构建的虚拟桌面操作系统。</li>
-    </ul>
-    <template #visual>
-      <div class="path-grid">
-        <div class="path-card standalone">
-          <h4>独立发行版</h4>
-          <p>Pop!_OS + COSMIC</p>
-          <span>完整系统</span>
-        </div>
-        <div class="path-card embedded">
-          <h4>嵌入式</h4>
-          <p>AutoUI 虚拟桌面</p>
-          <span>Windows · Linux · macOS · 鸿蒙</span>
-        </div>
-      </div>
-    </template>
-  </ShowcaseSection>
+## 系统如何组成
 
-  <ShowcaseSection
-    title="系统应用"
-    description="AutoOS 将搭载一整套原生应用，全部使用 Auto 编写。"
-    badge="应用"
-    reverse
-  >
-    <ul>
-      <li><strong>文本编辑器</strong> —— 代码高亮与 AutoDown 支持</li>
-      <li><strong>计算器</strong> —— 科学模式与编程模式</li>
-      <li><strong>扫雷</strong> —— 经典游戏，AutoUI 实现</li>
-      <li><strong>日历</strong> —— 日程管理</li>
-      <li><strong>Launcher</strong> —— 类 Everything 的快速文件搜索</li>
-      <li><strong>任务管理器</strong> —— 类 HTOP 系统监控</li>
-      <li><strong>文件浏览器</strong> —— 双面板、键盘驱动</li>
-      <li><strong>文件比较器</strong> —— 类 Beyond Compare 的差异对比</li>
-    </ul>
-    <template #visual>
-      <div class="apps-grid-visual">
-        <div class="app-icon">📝</div>
-        <div class="app-icon">🧮</div>
-        <div class="app-icon">💣</div>
-        <div class="app-icon">📅</div>
-        <div class="app-icon">🔍</div>
-        <div class="app-icon">📊</div>
-        <div class="app-icon">📁</div>
-        <div class="app-icon">🔀</div>
-      </div>
-    </template>
-  </ShowcaseSection>
-</div>
+<IntroductionRelation kind="os" />
 
-<div class="features-section">
-  <h2 class="section-title">AutoOS 设计原则</h2>
-  <div class="features-grid">
-    <FeatureCard icon="⚙️" title="一种配置格式" description="所有系统设置使用 .at（auto-atom）文件。一致、可解析、可版本控制。" color="rgba(20, 184, 166, 0.15)" />
-    <FeatureCard icon="🔌" title="Daemon 优先" description="共享状态保存在 Daemon 中，而非应用里。应用是轻量、可替换的客户端。" color="rgba(59, 130, 246, 0.15)" />
-    <FeatureCard icon="🎨" title="AutoUI 原生" description="系统 UI 使用 AutoUI 构建。一套框架覆盖桌面、Web 与移动端。" color="rgba(168, 85, 247, 0.15)" />
-    <FeatureCard icon="🤖" title="AI 集成" description="AI 能力是系统服务，而非应用插件。每个应用都可通过 aaid 使用 AI。" color="rgba(236, 72, 153, 0.15)" />
-    <FeatureCard icon="📦" title="即插即用模块" description="新配置模块只需将 .at 文件放入 modules.d/ 即可注册。无需修改源码。" color="rgba(245, 158, 11, 0.15)" />
-    <FeatureCard icon="🌐" title="跨平台" description="可作为独立发行版运行，也可嵌入现有操作系统。" color="rgba(139, 92, 246, 0.15)" />
-  </div>
-</div>
+| 部分 | 作用 |
+|---|---|
+| AutoLang 与运行时 | 提供语言、执行、代码生成及系统能力的接入方式 |
+| AutoUI 与渲染/合成宿主 | 描述组件和界面，适配浏览器与原生渲染环境 |
+| 桌面与窗口管理 | 组织应用窗口、工作区、任务栏、启动入口与通知 |
+| 配置与系统服务 | 管理共享设置、资源与应用间协作所需的能力 |
+| 系统应用与工作工具 | 承载终端、编辑、监控、看板和知识工作等实际任务 |
+| 平台适配层 | 对接宿主窗口系统、进程、文件、设备与既有内核 |
 
-<div class="cta-section">
-  <h2 class="section-title">探索 AutoOS</h2>
-  <p class="section-desc">阅读设计文档、本地体验 auto-os-config，或跟随路线图走向完整的操作系统。</p>
-  <div class="cta-actions">
-    <a href="/zh/docs/os" class="cta-btn cta-primary">阅读 OS 文档</a>
-    <a href="/zh/docs/releases/v0.5" class="cta-btn cta-secondary">v0.5 发布说明</a>
-  </div>
-</div>
+`auto-lang` 是语言与框架的实现根；`auto-os` 是桌面表面、系统应用与产品集成的组织根。配置、Shell、终端、AI 与工作应用分布在各自项目中，由共同的接口和集成规则连接。
 
-</div>
+Client/Daemon 是其中共享资源与服务的一种组织方式，并非所有组件都必须独立为 Daemon。UI 定义、窗口语义与平台渲染/合成之间也有各自的边界。
 
-<style scoped>
-.arch-box.clients { background: linear-gradient(135deg, #14b8a6, #0d9488); }
-.arch-box.daemons { background: linear-gradient(135deg, #3b82f6, #2563eb); }
-.arch-box.system { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+## 在不同环境中运行
 
-.path-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  width: 100%;
-  max-width: 420px;
-}
+**宿主中的虚拟桌面**是当前主要形态。它复用宿主的内核、驱动和系统能力，在一个桌面环境中运行 AutoOS 应用，并与宿主桌面共存。宿主应用互操作按平台推进，具体支持取决于窗口系统与接入方式。
 
-.path-card {
-  padding: 1.5rem;
-  border-radius: var(--radius);
-  border: 1px solid hsl(var(--border));
-  background: hsl(var(--card));
-  text-align: center;
-}
+**复用现有内核的独立系统**是后续方向。在条件成熟的设备上，AutoOS 可以提供桌面和系统外壳，对接 Linux 内核及必要的系统服务，形成独立发行版；与 OpenHarmony 结合也是长期路线之一。Linux 合成宿主已有早期实现基础，这些独立产品形态尚未完成。
 
-.path-card h4 {
-  margin: 0 0 0.5rem;
-  color: hsl(var(--foreground));
-}
+**自有内核的完整系统**属于更长期的研究方向，目前没有自有内核，也没有由它构成的独立 OS。
 
-.path-card p {
-  margin: 0 0 0.5rem;
-  font-size: 0.875rem;
-  color: hsl(var(--muted-foreground));
-}
+这些形态共享语言、组件与接口设计，具体平台适配和部署方式仍需分别实现。“一套代码适配不同生态”是持续推进的目标；当前支持按已实现、已验证的环境说明。
 
-.path-card span {
-  font-size: 0.8rem;
-  color: #14b8a6;
-  font-weight: 600;
-}
+## 当前进展
 
-.path-card.standalone {
-  border-color: rgba(20, 184, 166, 0.3);
-  background: rgba(20, 184, 166, 0.05);
-}
+| 领域 | 当前状态 |
+|---|---|
+| UI 与桌面 | 已有 Vue 与原生桌面运行路径、虚拟窗口、工作区、启动器及桌面表面；各功能仍有具体边界 |
+| 应用与配置 | 已有系统应用和独立工具的集成清单；设置中心使用 Auto 源码组织 UI，并支持 Web/桌面形态 |
+| Shell 与终端 | AutoShell 提供跨平台结构化命令与脚本接口；AutoTerm 提供终端基础设施。常用命令采用 POSIX 风格接口，具体兼容范围按命令说明 |
+| AI 服务 | 已有共享模型服务、客户端与 Agent 应用的接入；应用按需要逐步接入 AI |
+| 宿主互操作 | 已有针对具体平台的原生窗口与剪贴板等接入；支持范围按平台和功能核实 |
+| 独立系统与内核 | Linux 合成宿主处于早期实现阶段；完整发行版、OpenHarmony 独立系统和自有内核仍属未来方向 |
 
-.path-card.embedded {
-  border-color: rgba(59, 130, 246, 0.3);
-  background: rgba(59, 130, 246, 0.05);
-}
+跨平台一致性覆盖组件、命令、服务接口、通知、启动与通信的设计目标；当前覆盖需要逐项实现和验证。UI 的一致性主要关注布局、交互和主题，平台文本渲染等差异仍会存在。
 
-.apps-grid-visual {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.75rem;
-  width: 100%;
-  max-width: 320px;
-}
+## 长期方向：AI + Lang + OS
 
-.app-icon {
-  width: 100%;
-  aspect-ratio: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5rem;
-  border-radius: var(--radius);
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-}
+AutoOS 的长期目标是一套面向人的知识管理与工作生活环境。AI 深入参与了 Auto 的开发，也将作为系统服务和应用协作能力继续融入其中；AutoLang 提供可表达、可执行的实现底座；OS 与应用则承载实际的知识、任务和工作过程。
 
-@media (max-width: 768px) {
-  .path-grid {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
+已有编辑器、知识工具、看板、Shell 和 Agent 应用提供了不同入口。让个人知识、任务与应用中的操作形成更连贯的体验，仍是需要继续建设的方向。这一目标不预设所有任务都交给 AI，而是让人能够理解、选择和控制系统提供的能力。

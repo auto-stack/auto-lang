@@ -1,162 +1,50 @@
 ---
-layout: home
+title: AutoOS 虚拟桌面
+description: 当前 AutoOS 桌面、应用、设置与宿主集成。
 ---
 
 <script setup>
-import OSHero from '../../.vitepress/theme/components/OSHero.vue'
-import FeatureCard from '../../.vitepress/theme/components/FeatureCard.vue'
-import StatCard from '../../.vitepress/theme/components/StatCard.vue'
-import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.vue'
+import IntroductionFrame from '../../.vitepress/theme/components/IntroductionFrame.vue'
 import DesktopShowcase from '../../.vitepress/theme/components/DesktopShowcase.vue'
 import EvidenceImage from '../../.vitepress/theme/components/EvidenceImage.vue'
 </script>
 
-<div class="landing-page" style="--page-accent-1: #14b8a6; --page-accent-2: #3b82f6">
+<IntroductionFrame kind="desktop" />
 
-<OSHero
-  badge="AutoOS · v0.5"
-  title="跑在窗口里的桌面"
-  description="窗口管理器本身就是一个 AutoUI 应用。虚拟桌面把 AutoUI 应用装进统一的跨平台桌面 shell —— 同一套窗口语义，从 Windows 到 Linux 再到鸿蒙。"
-  primary-text="阅读 OS 文档"
-  primary-link="/zh/docs/os"
-  secondary-text="虚拟桌面设计"
-  secondary-link="/zh/docs/design/autoui/virtual-desktop"
-/>
+<DesktopShowcase embedded />
 
-<DesktopShowcase />
+## 窗口、工作区与启动
 
-<div class="stats-section">
-  <h2 class="section-title">虚拟桌面 · 核心事实</h2>
-  <div class="stats-grid">
-    <StatCard value="1" label="个 OS 窗口" description="Win/Mac 上宿主即单窗口虚拟合成器，应用窗口是它内部的虚拟窗口。" color="#14b8a6" />
-    <StatCard value="100%" label="AutoUI 写成" description="chrome、拖拽、resize、焦点、任务栏 —— 窗口管理器本身是个 AutoUI 应用。" color="#3b82f6" />
-    <StatCard value="4" label="条叶子接缝" description="同一套 WM 代码：iced 元素树、离屏纹理、Wayland surface、DOM 节点。" color="#8b5cf6" />
-    <StatCard value="2" label="条生长路线" description="独立 AutoOS 发行版（Pop!_OS/COSMIC）或嵌入现有系统的虚拟桌面。" color="#ec4899" />
-  </div>
-</div>
+虚拟桌面是当前 **OS over OS** 的形态：AutoOS 应用在宿主系统中的桌面环境里运行，与宿主桌面并行。内核、驱动与系统服务继续由宿主提供。
 
-<div class="showcase-wrapper">
-  <ShowcaseSection
-    title="把应用装进同一个桌面"
-    description="任务栏、开始菜单、多虚拟窗口、主题外观 —— 全部由 AutoUI 绘制。这不是套壳的窗口管理器,它自己就是 AutoUI 应用。"
-    badge="桌面 shell"
-  >
-    <ul>
-      <li><strong>开始菜单与任务栏</strong> —— 应用启动、焦点切换、窗口召唤,一套桌面交互齐备。</li>
-      <li><strong>多虚拟窗口</strong> —— DualApp 同屏多窗口,拖拽/resize/焦点全可操作。</li>
-      <li><strong>主题外观</strong> —— 壁纸、明暗主题、accent 档位实时可换。</li>
-    </ul>
-    <template #visual>
-      <EvidenceImage src="/desktop-showcase/06-productivity-dark.png" alt="AutoEdit 位于左侧，待办在右上，日历在右下" caption="同一个工作场景：编辑器、任务和日历并排摆放。实际截图，2026-10-01。" zoom-label="放大查看" close-label="关闭" original-label="打开原图" :width="2560" :height="1600" />
-    </template>
-  </ShowcaseSection>
+桌面外壳本身使用 AutoUI，组织虚拟窗口、焦点、拖拽、缩放、工作区、任务栏、启动器与通知。应用窗口与桌面表面共享窗口语义，渲染与宿主接入则有各自的职责。
 
-  <ShowcaseSection
-    title="统一设置中心 —— auto-os-config"
-    description="一个 Daemon，一个通用编辑器，服务所有配置模块。URL 按约定映射 .at 文件，表单按数据形状自动渲染 —— 新模块零前端代码。"
-    badge="设置中心"
-  >
-    <ul>
-      <li><strong>模块注册表</strong> —— 在 modules.d/ 放入 .at 文件即自动注册。</li>
-      <li><strong>AI Daemon 管理</strong> —— aaid、Roles、Skills、Musk 配置开箱即管。</li>
-      <li><strong>主题系统</strong> —— accent 档位（indigo/coral/ocean/sage/amber）实时切换。</li>
-    </ul>
-    <template #visual>
-      <div class="shot-pair">
-        <img src="/v05/autoos-config-agents.png" alt="设置中心 Agents 模块" />
-        <img src="/v05/autoos-config-skills.png" alt="设置中心 Skills 模块" />
-      </div>
-    </template>
-  </ShowcaseSection>
+上面的截图从桌面开始，依次展示 Launcher、小游戏与工作布局。小组件来自已经启动并最小化的应用。静态截图记录捕获时的演示状态，不代表所有平台或应用行为都已完成验证。
 
-  <ShowcaseSection
-    title="首个真实应用 —— auto-kanban"
-    description="配置驱动的通用只读看板，几乎 100% Auto 编写（13 个 .at 文件，零手写 Rust）。同一份源码，Web 与桌面双轨渲染。"
-    badge="应用"
-    reverse
-  >
-    <ul>
-      <li><strong>配置驱动</strong> —— 看板长什么样由 .at 配置描述，不改代码换场景。</li>
-      <li><strong>双轨 parity</strong> —— Vue 网页端与 iced 桌面端逐项对拍。</li>
-      <li><strong>v0.6 首发系统应用</strong> —— 它是 AutoOS 内置应用矩阵的第一个成员。</li>
-    </ul>
-    <template #visual>
-      <div class="shot-pair">
-        <img src="/v05/kanban-web.png" alt="auto-kanban Web 形态" />
-        <img src="/v05/kanban-desktop.png" alt="auto-kanban 桌面形态" />
-      </div>
-    </template>
-  </ShowcaseSection>
+## 应用与工作工具
 
-  <ShowcaseSection
-    title="通往 AutoOS 的两条路线"
-    description="共享同一套核心架构，朝两个方向生长。"
-    badge="路线图"
-  >
-    <ul>
-      <li><strong>嵌入式虚拟桌面</strong> —— 运行在 Windows、Linux、macOS 与鸿蒙之内；v0.6 完善跨平台体验，并基于 AutoWeb 打通远程桌面。</li>
-      <li><strong>独立 AutoOS 发行版</strong> —— 基于 Pop!_OS 与 COSMIC Desktop 制作 ISO 镜像，用 Auto 自制的系统应用替换原生应用。</li>
-    </ul>
-    <template #visual>
-      <div class="arch-diagram">
-        <div class="arch-box clients">应用层<br /><small>看板 · 设置中心 · 终端 · 系统应用矩阵</small></div>
-        <div class="arch-arrow">↓</div>
-        <div class="arch-box daemons">虚拟桌面 shell<br /><small>WM-as-App · 单窗口虚拟合成器</small></div>
-        <div class="arch-arrow">↓</div>
-        <div class="arch-box system">宿主<br /><small>Windows / Linux(Smithay) / 鸿蒙 / 发行版</small></div>
-      </div>
-    </template>
-  </ShowcaseSection>
-</div>
+`auto-os` 组织桌面表面与应用集成。启动清单声明当前应用的运行路径，主要采用 VM 执行；编译壳与原生应用生成是另外的路径，有各自的集成要求。
 
-<div class="features-section">
-  <h2 class="section-title">v0.6 系统应用矩阵（预告）</h2>
-  <div class="features-grid">
-    <FeatureCard icon="📝" title="文本编辑器" description="代码高亮 + AutoDown 支持。" color="rgba(20, 184, 166, 0.15)" />
-    <FeatureCard icon="🧮" title="计算器" description="科学模式与编程模式。" color="rgba(59, 130, 246, 0.15)" />
-    <FeatureCard icon="🔍" title="Launcher" description="类 Everything 的快速文件搜索。" color="rgba(168, 85, 247, 0.15)" />
-    <FeatureCard icon="📊" title="任务管理器" description="类 HTOP 的系统监控。" color="rgba(236, 72, 153, 0.15)" />
-    <FeatureCard icon="📁" title="文件浏览器" description="双面板、键盘驱动。" color="rgba(245, 158, 11, 0.15)" />
-    <FeatureCard icon="🔀" title="文件比较器" description="类 Beyond Compare 的差异对比。" color="rgba(139, 92, 246, 0.15)" />
-  </div>
-</div>
+图集中可以看到 AutoEdit、Todo、日期与三个小游戏。独立项目还提供 [AutoShell](/zh/apps/autoshell/)、[AutoMusk](/zh/apps/automusk/) 和看板等工具。各应用的集成程度和成熟度不同，源码示例并不自动等同于完整接入的系统应用。
 
-<div class="cta-section">
-  <h2 class="section-title">探索 AutoOS</h2>
-  <div class="cta-actions">
-    <a href="/zh/docs/os" class="cta-btn cta-primary">阅读 OS 文档</a>
-    <a href="/zh/v05/" class="cta-btn cta-secondary">返回 v0.5 发布专题</a>
-  </div>
-</div>
+Kanban 展示了数据驱动的看板及其 Web、桌面形态。下面保留的项目截图记录这些界面，不属于 10 月 1 日的桌面截图序列。
 
-</div>
+<EvidenceImage src="/v05/kanban-web.png" alt="Kanban 看板的 Web 界面" caption="已有项目截图：Kanban Web 界面。" zoom-label="放大查看" close-label="关闭" original-label="打开原图" />
 
-<style scoped>
-.shot-stack {
-  width: 100%;
-  max-width: 480px;
-}
+<EvidenceImage src="/v05/kanban-desktop.png" alt="Kanban 看板的桌面界面" caption="已有项目截图：Kanban 桌面界面。" zoom-label="放大查看" close-label="关闭" original-label="打开原图" />
 
-.shot-main {
-  width: 100%;
-  border-radius: var(--radius);
-  border: 1px solid hsl(var(--border));
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-}
+## 共享设置
 
-.shot-pair {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-  width: 100%;
-  max-width: 480px;
-  margin-top: 0.75rem;
-}
+`auto-os-config` 使用 Auto 源码组织设置 UI，提供 Web 与桌面形态。共享配置包括应用、角色、技能与模型。通用编辑器从支持的数据形状生成表单，具体模块仍可能需要自身的规则和集成。
 
-.shot-pair img {
-  width: 100%;
-  border-radius: var(--radius);
-  border: 1px solid hsl(var(--border));
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-}
-</style>
+<EvidenceImage src="/v05/autoos-config-agents.png" alt="设置中心的 Agent 配置界面" caption="已有项目截图：Agent 设置。" zoom-label="放大查看" close-label="关闭" original-label="打开原图" />
+
+<EvidenceImage src="/v05/autoos-config-skills.png" alt="设置中心的技能配置界面" caption="已有项目截图：技能设置。" zoom-label="放大查看" close-label="关闭" original-label="打开原图" />
+
+## 框架、产品与宿主
+
+`auto-lang` 负责语言、UI 框架、执行与渲染契约；`auto-os` 负责桌面表面、应用组装与产品集成。底层执行与系统设施目前结合 Auto 源码、生成代码、Rust 基础设施与既有生态。
+
+宿主应用与系统服务按平台接入。共享 UI 定义以布局、交互和主题一致为目标，平台适配与文本渲染仍会有差异。Linux 合成宿主已有早期工作，完整独立发行版、OpenHarmony 集成和自有内核仍是未来方向。
+
+[了解 OS 的组成与运行形态](/zh/os) · [阅读 AutoOS 历史与展望](/zh/articles/autoos-history) · [了解桌面运行路径](/zh/ui-desktop) · [返回 v0.5](/zh/v05/)

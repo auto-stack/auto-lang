@@ -3,6 +3,8 @@ layout: home
 ---
 
 <script setup>
+import { introCopy } from '../.vitepress/theme/data/os-ai-introduction'
+const copy = introCopy(true)
 import HomeHero from '../.vitepress/theme/components/HomeHero.vue'
 import HomeDemo from '../.vitepress/theme/components/HomeDemo.vue'
 import AutoShellPreview from '../.vitepress/theme/components/AutoShellPreview.vue'
@@ -33,8 +35,8 @@ const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
     <FeatureCard icon="🦀" title="Rust" description="AutoVM 可作为 Rust 脚本环境。A2R 将 Auto 转译为生产级 Rust。支持双标准库模式。" color="rgba(222, 165, 132, 0.15)" link="/zh/rust" />
     <FeatureCard icon="🐍" title="Python" description="AutoVM 可直接调用 Python 代码。a2py 将 Auto 转译为 Python。" color="rgba(59, 130, 246, 0.15)" link="/zh/python" />
     <FeatureCard icon="🎨" title="UI" description="Vue 和 Tauri 版本已成熟。桌面版（Rust/iced）基本可用。鸿蒙与 Android 通过可行性验证。" color="rgba(168, 85, 247, 0.15)" link="/zh/ui" />
-    <FeatureCard icon="🤖" title="AI" description="Client/Daemon 架构。AutoAI-Cli 终端 Coding Agent。AutoMusk 通用 Coding Agent。" color="rgba(236, 72, 153, 0.15)" link="/zh/ai" />
-    <FeatureCard icon="💻" title="OS" description="Client/Daemon 架构、统一配置系统。未来双路线：独立 AutoOS 发行版与嵌入式虚拟桌面。" color="rgba(20, 184, 166, 0.15)" link="/zh/os" />
+    <FeatureCard icon="🤖" title="AI" :description="copy.home.ai" color="rgba(236, 72, 153, 0.15)" link="/zh/ai" />
+    <FeatureCard icon="💻" title="OS" :description="copy.home.os" color="rgba(20, 184, 166, 0.15)" link="/zh/os" />
   </div>
 </div>
 
