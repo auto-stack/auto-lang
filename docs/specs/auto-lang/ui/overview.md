@@ -1422,3 +1422,16 @@ queue 臂内联帧）+ 宿主孵化/双表面层位/投影泵改推（指纹门�
 §1.11；e2e `p030_shell_outproc_arm` 四腿（assets/030/ 留痕）。
 v1 边界：常驻双面 outproc，overlay 三面 + launcher 维持 in-proc；
 a2r 编译面轨随缺省翻转计划另立。
+
+## PLAN-095 注记（2026-10-01）
+
+- 样式系统新增 CSS 声明串支持与类族：PointerEventsNone、
+  LeftPercent 等 6 个浮层百分比类、IcedSize::Percent；Color::from_css
+  （hex/rgb/rgba）。规则详见 design/overlay-interaction.md 增量节。
+- 新 design 文档：image-surface-events.md（ImageSurface 运行时事件）、
+  programmatic-focus.md（ui.focus 原语）、widget-composition.md
+  （同文件兄弟与 use 两形态）、mcp-pointer-input.md（合成指针坐标
+  Float 编码）。
+- ImageSurface onload/onerror 运行时事件已接通（管线代次+50ms 唤醒
+  轮询+notify sweep，规则见 design/image-surface-events.md）；renderer
+  6399 处回调丢弃臂已由 notify sweep 替代消费。

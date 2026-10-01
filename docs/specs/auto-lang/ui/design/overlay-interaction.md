@@ -60,3 +60,20 @@ p023_probe.rs`(V/R 矩阵 + 载具形状 R3)。
 - divider 拖拽捕获层(z-30 全窗 MouseArea,Press 期 dragW=clientW)
   依赖"捕获边界=自身矩形"规则:拖拽期有意吞全窗按压,Drop 后
   归零释放——常驻不构成空闲态杀手(c793bd2 语义,T-04 探针佐证)。
+
+## PLAN-095 增量：穿透语义与百分比浮层几何（2026-10-01）
+
+- **pointer-events:none = 被动浮层**：浮层根样式含该类（CSS 声明串
+  `pointer-events:none` 或 Tailwind `pointer-events-none`）时，装配跳过
+  opaque 捕获包装——空白区与内容区都不截获下方点选。未声明的浮层维持
+  capture（交互浮层/popover 依赖）。
+- **百分比浮层几何**：`LeftPercent/TopPercent/RightPercent/BottomPercent/
+  WidthPercent/HeightPercent`（CSS 声明 `left:12.5%` 族或 Tailwind
+  `left-[12.5%]` 族）→ OverlayLength/IcedSize::Percent → 三段
+  FillPortion 装配（iced 0.14 无 Relative 长度的替代；份额相对宿主内容
+  矩形）。边界：% 偏移须与 % 尺寸配对（缺配对轴退化为 px/0，不半猜）。
+- **CSS 声明串解析**：';' 分块 + 已知 prop 词边界扫描直推 StyleClass
+  （position/left/top/right/bottom/width/height/max-*/border/background/
+  pointer-events/z-index/overflow）；值含空格完整保留（border:2px solid
+  rgb(...)）；未知声明维持 unmapped 不静默造语义。
+- 验收锚：auto-musk 095-evidence/t03（真指针穿透 + musk 形 % 框落位）。

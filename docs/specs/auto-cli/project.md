@@ -42,3 +42,11 @@ graph LR
 | cmd_bp | `auto bp list/show/add/check`：blueprints 目录浏览、参考实现拷贝、`--bind` L1 绑定工件、校验（`auto block` 为弃用别名） | active |
 | cmd_a2c_stdlib | `auto a2c-stdlib`：生成 a2c 标准库 | active |
 | cmd_vue / cmd_tauri | Vue/Tauri 工程脚手架源码 | orphan（文件存在但未被 main.rs 挂接） |
+
+## 版本消费规则补强（PLAN-095，2026-10-01）
+
+- 生成/构建收据必须绑定**实际采用的 CLI 文件 hash**（如
+  89c22af15c048019），不以提交号或"已构建"表述替代——主二进制被运行中
+  进程锁定时，worktree 独立构建的产物与共享主二进制是两个事实源。
+- 主二进制替换（部署）是显式步骤：exe 锁定不强杀共享实例，保留部署
+  观察项。

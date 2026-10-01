@@ -166,3 +166,12 @@ routes 外无其余内嵌否决（vm-only/ext/locales/i18n；`vp` None → false
   臂为 675 补——缺则路由 demo API 404 unknown app）。
 - **依赖注入**：任一 routable 行 → npm_merge 通道注入 vue-router ^4.2.0。
 
+
+## strict 生成门现状（PLAN-095 复验，2026-10-01）
+
+- 历史"静默 abort"（e2deb4f87/gc8f86ef 时代，stderr 恒 5 条 S001 后无消息
+  退出）在 3b3014e3→e0fb4e4e 区间已解除——旧→新收据：musk 消费工程
+  `auto build --gen-only --strict` EXIT=0（65 组件，CLI 89c22af15c048019）。
+- 非法输入口径：未知组件引用 → 非零退出 + 可定位诊断
+  （"App.vue 引用的组件 SFC 未编译落盘（dep 源未解析？）：X"）。
+- S001 schema drift 维持 Severity::Info；升级/删除逐条判断，不批量改级。
