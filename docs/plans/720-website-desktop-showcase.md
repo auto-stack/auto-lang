@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-720
-status: drafting
+status: reviewed
 feature_name: 网站虚拟桌面实景展示
 author: [agent]
 created_at: 2026-10-01
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [website]
-current_step: 0
+current_step: 3
 total_steps: 3
 ---
 
@@ -61,22 +61,43 @@ total_steps: 3
 
 ## 7. 验收标准
 
-- [ ] AC-01 六图原样入库，有源路径、捕获日、尺寸、SHA256。
-- [ ] AC-02 v05/autoos 双语顺序为桌面双主题→Launcher→游戏→工作；OS 预览进入正确语言专题。
-- [ ] AC-03 单一作者数据、六路由无死图/裸组件源文；原 URL、统计与其他章节保留。
-- [ ] AC-04 小组件前提、游戏名称、工作布局描述与画面一致，不虚构音乐播放/日历当前日期。
-- [ ] AC-05 五宽度×双主题无横向溢出，图片键盘放大/原图/Esc 回焦、尺寸占位与延迟加载正常。
-- [ ] AC-06 build、既有与新增网站 e2e 通过；24截图落地/正文有效、看图无遮挡，无新警告或范围外修改。
+- [x] AC-01 六图原样入库，有源路径、捕获日、尺寸、SHA256。
+- [x] AC-02 v05/autoos 双语顺序为桌面双主题→Launcher→游戏→工作；OS 预览进入正确语言专题。
+- [x] AC-03 单一作者数据、六路由无死图/裸组件源文；原 URL、统计与其他章节保留。
+- [x] AC-04 小组件前提、游戏名称、工作布局描述与画面一致，不虚构音乐播放/日历当前日期。
+- [x] AC-05 五宽度×双主题无横向溢出，图片键盘放大/原图/Esc 回焦、尺寸占位与延迟加载正常。
+- [x] AC-06 build、既有与新增网站 e2e 通过；24截图落地/正文有效、看图无遮挡，无新警告或范围外修改。
 
 ## 8. 执行步骤
 
-- [ ] T-01 入库与共享展示：复制六 PNG，新增 data/desktop-showcase.ts、components/DesktopShowcase.vue，报告 docs/reports/p720-desktop-showcase.md 记录源证据；核对 hash/尺寸。AC-01/04/05，SD-01/02。
-- [ ] T-02 页面接线：修改 ReleaseLanding.vue/release-v05.ts、autoos/index.md、zh/autoos/index.md、os.md、zh/os.md，双语接线与首图/旧图替换；prepare/build/源码核查。AC-02/03/04，SD-01/02。
-- [ ] T-03 验证交付：新增 tests/desktop-showcase.spec.ts，24图入 docs/reports/p720-desktop-showcase/；网站 e2e、逐项 AC/SD 复核，review 后按已授权网站合入范围落 master。store writer 不可用时 ledger pending、保持 reviewed，不提前归档。AC-01..06。
+- [x] T-01 入库与共享展示：复制六 PNG，新增 data/desktop-showcase.ts、components/DesktopShowcase.vue，报告 docs/reports/p720-desktop-showcase.md 记录源证据；核对 hash/尺寸。AC-01/04/05，SD-01/02。
+- [x] T-02 页面接线：修改 ReleaseLanding.vue/release-v05.ts、autoos/index.md、zh/autoos/index.md、os.md、zh/os.md，双语接线与首图/旧图替换；prepare/build/源码核查。AC-02/03/04，SD-01/02。
+- [x] T-03 验证交付：新增 tests/desktop-showcase.spec.ts，24图入 docs/reports/p720-desktop-showcase/；网站 e2e、逐项 AC/SD 复核，review 后按已授权网站合入范围落 master。store writer 不可用时 ledger pending、保持 reviewed，不提前归档。AC-01..06。（实施与验证完成，合入检查点见下。）
 
 ## 9. 复审记录
 
 stage: new | plan_id: PLAN-720 | plan_revision: 1 | outcome: pass (contract) | next: work。T-01..03 覆盖 AC-01..06、SD-01/02，用户已明确授权本次截图更新，不代表实现完成。
+
+### 2026-10-01 execution_done → review
+
+stage: work | plan_id: PLAN-720 | plan_revision: 1 | outcome: execution_done | implementation_commit: d2eb9f8935ab0109cadba8779a2baade933c0c92 | evidence_commit: ecdfcc7655a5409cac42449c674958ae216b1815 | next: review。
+
+stage: review | plan_id: PLAN-720 | plan_revision: 1 | outcome: pass | reviewed_commit: ecdfcc7655a5409cac42449c674958ae216b1815 | base_commit: ccf1b9b78e43b49ec6913234df7d0d88dbfa45e7 | dependency_revisions: book=d7a71a7fb1fa42ddd26d6cec859715ed98161f7a（只读） | evidence: docs/reports/p720-desktop-showcase.md 与同名目录 manifest/24 PNG | next: merge。
+
+复审上下文限制：在实施会话中按 review 技能重建证据，未创建独立会话/agent，不声称人员独立。已提交实现与 diff、六张原图、最终生产构建、专项及完整回归、视觉包逐项复核；未以勾选框或执行摘要代替证据。
+
+| acceptance_results | tasks | evidence | verdict |
+|---|---|---|---|
+| AC-01 | T-01 | 源/入库 6 SHA256 一致，PNG IHDR 均 2560×1600，报告首表 | pass |
+| AC-02 | T-02/03 | 六路由逐帧检查，四步顺序，OS 专题当前语言 href/实际跳转/标题避顶栏 | pass |
+| AC-03 | T-01/02/03 | 作者单源、六路由无裸组件/404/死图；既有统计、导航和应用回归 | pass |
+| AC-04 | T-01/02 | 六源图与双语文案逐一核查；小组件最小化、三游戏与半屏工作布局准确 | pass |
+| AC-05 | T-01/03 | 六路由×五宽×双主题共60组合；键盘打开/关闭/回焦、原图、lazy 与占位 | pass |
+| AC-06 | T-03 | build 146.75s exit0；最终专项8/8、完整77/77（3.9m），24截图可追溯且无遮挡 | pass |
+
+spec_inputs / frozen_delta（完整差异固定于 reviewed_commit）：SD-01 project.md hash ae221cbbadcaac30daef10976c002fcd08b169fbe9717a5bb33cfe6a4064b8cf → 71e2ddeeaf83158593599a5652b8a80abf6f641e266300fcf4c8578e9196f7ba；SD-02 design/ui-presentation.md hash b5bbbeee215fb26b856f33ed12fdf2479cd7bd215f3aa3d740fe2bd79580ae8d → 25d3a9920fd5e60999fc88abc977fe8967bd9260b645c4c577c928f74a7dbdd7。两项 modify 与实现/AC 一致，无新增要求；website/plans.md 附随行 hash cb47183bc0416aec065a740815fcd5a30f06c914e5d75151703a806b732326ea，spec-index 再生无语义改动。supersedes/new/touched_goals 均空：更新既有网站展示契约，不新增/替代组件或目标。
+
+findings：遗漏/延后/workaround 扫描无新增债务，无 Rust/后端/桌面应用改动，无 debug/TODO 替身。首次 console 检查曾 transient hydration fail，未降低原断言；在最终稳定 dist 上专项与整站均 pass，历史结果保留报告。既有高亮回退与 bundle 提示未增加。原 worktree guard 已确认 clean、无 junction/symlink。公开部署不属本次范围。
 
 ## 10. 待澄清事项
 
