@@ -1028,7 +1028,14 @@ function parseSummary(summaryPath, lang = 'en') {
   const stack = [{ items: root, depth: -1 }]
 
   for (const line of lines) {
-    const match = line.match(/^(\s*)-\s*\[([^\]]+)\]\s*\(([^)]+)\)/)
+    // PLAN-718 T-06：mdbook SUMMARY 的顶层章节也允许裸 [Text](target.md) 形式
+    // （无列表标记，如 tapl 的 Introduction / rust 的 title-page）——此前被跳过，
+    // 导致首章不在侧栏、prev/next 缺失（tapl ch00 无 next 实测）。
+    let match = line.match(/^(\s*)-\s*\[([^\]]+)\]\s*\(([^)]+)\)/)
+    if (!match) {
+      const plain = line.match(/^\[([^\]]+)\]\s*\(([^)]+)\)/)
+      if (plain) match = [line, '', plain[1], plain[2]]
+    }
     if (!match) continue
 
     const depth = match[1].length
@@ -1064,7 +1071,12 @@ function generateBookIndex(bookDir, summaryPath, lang = 'en') {
     content += `## ${tocHeading}\n\n`
     const lines = summary.split('\n')
     for (const line of lines) {
-      const match = line.match(/^(\s*)-\s*\[([^\]]+)\]\s*\(([^)]+)\)/)
+      // 与 parseSummary 同口径：列表项与裸顶层链接都收（PLAN-718 T-06）。
+      let match = line.match(/^(\s*)-\s*\[([^\]]+)\]\s*\(([^)]+)\)/)
+      if (!match) {
+        const plain = line.match(/^\[([^\]]+)\]\s*\(([^)]+)\)/)
+        if (plain) match = [line, '', plain[1], plain[2]]
+      }
       if (match) {
         const depth = match[1].length
         const text = translateTitle(match[2], lang)
@@ -1128,6 +1140,36 @@ function validateHubLinks() {
   console.log(`  Learning hub links validated: ${collectHubHrefs().length} hrefs all resolve`)
 }
 
+// PLAN-718 T-06：搜索索引桥接。VitePress local search 索引由 md.render(markdown 源)
+// 构建（dist node chunk 实测），<LearningHub> 组件文本不进索引——hub 页在组件后
+// 追加"全部入口"纯 markdown 清单：进入静态 HTML 与搜索索引（AC-01）。
+// 尝试过 sr-only <div> 包裹 markdown——markdown-it 的 HTML 块在空行截断，闭合标签
+// 游离导致 Vue 编译失败（实测），故为可见的紧凑清单段。
+function hubSearchBridgeDocs(lang) {
+  const zh = lang === 'zh'
+  const t = (pair) => (zh ? pair.zh : pair.en)
+  const lines = [`## ${zh ? '全部入口' : 'All entries'}`, '']
+  for (const card of [...DOCS_HUB.primary, ...DOCS_HUB.cards]) {
+    lines.push(`- [${t(card.title)}](${localeHref(card.href, zh)}) — ${t(card.desc)}`)
+  }
+  for (const group of DOCS_HUB.tasks) {
+    lines.push(`- ${t(group.title)}`)
+    for (const item of group.items) lines.push(`  - [${t(item.label)}](${localeHref(item.href, zh)})`)
+  }
+  return lines.join('\n')
+}
+
+function hubSearchBridgeBooks(lang) {
+  const zh = lang === 'zh'
+  const t = (pair) => (zh ? pair.zh : pair.en)
+  const lines = [`## ${zh ? '全部入口' : 'All entries'}`, '']
+  for (const book of LEARNING_BOOKS) {
+    lines.push(`- [${t(book.title)}](${localeHref(book.href, zh)}) — ${t(book.blurb)} ${t(book.audience)}`)
+    lines.push(`  - [${zh ? '第一章' : 'First chapter'}](${localeHref(book.entry, zh)})`)
+  }
+  return lines.join('\n')
+}
+
 function generateDocsIndex(docsDir, lang) {
   ensureDir(docsDir)
   const zh = lang === 'zh'
@@ -1139,7 +1181,8 @@ function generateDocsIndex(docsDir, lang) {
   // next:false：hub 不是章节序列的一环，取消无语义的"下一页 Autocache"。
   let content = `---\ntitle: ${title}\neditLink: false\nnext: false\n---\n\n# ${title}\n\n`
   content += `${t(DOCS_HUB.intro)}\n\n`
-  content += `<LearningHub kind="docs" />\n`
+  content += `<LearningHub kind="docs" />\n\n`
+  content += hubSearchBridgeDocs(lang) + '\n'
 
   fs.writeFileSync(indexPath, content, 'utf-8')
 }
@@ -1152,7 +1195,8 @@ function generateBooksIndex(booksDir, lang) {
 
   let content = `---\ntitle: ${title}\neditLink: false\nnext: false\n---\n\n# ${title}\n\n`
   content += `${zh ? '八本教程覆盖从零基础到系统编程——主书优先，也可按你已有的语言背景选择。' : 'Eight tutorials cover everything from first steps to systems programming — start with the main book, or pick by a language you already know.'}\n\n`
-  content += `<LearningHub kind="books" />\n`
+  content += `<LearningHub kind="books" />\n\n`
+  content += hubSearchBridgeBooks(lang) + '\n'
 
   fs.writeFileSync(indexPath, content, 'utf-8')
 }

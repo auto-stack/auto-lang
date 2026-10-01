@@ -108,12 +108,25 @@
 
 /* PLAN-718 T-03：原生 VPLocalNav（<1280px）默认 sticky top:0，与 layout-top 的
    UnifiedNavbar 叠压（T-01 基线：390px 滚动态 16/16 行重叠）；960-1279 段
-   VitePress 默认 top: var(--vp-nav-height)=64px 也与 56px 顶栏错位。统一让位。
-   组件 scoped 样式特异性更高，需 !important（与上方 .VPNav 隐藏同法）。 */
+   VitePress 默认 top: var(--vp-nav-height)=64px 也与 56px 顶栏错位。统一让位
+   （+1px 计入顶栏边框线）。组件 scoped 样式特异性更高，需 !important
+   （与上方 .VPNav 隐藏同法）。 */
 @media (max-width: 1279.9px) {
   .VPLocalNav {
-    /* UnifiedNavbar 的内部行高之外还有 1px 底边框。 */
     top: calc(var(--site-nav-height, 56px) + 1px) !important;
+  }
+
+  /* PLAN-718 T-06：目录弹层触发按钮默认高 24px，不满足移动触达 ≥44px；
+     按钮加高同时清掉弹层根节点的 12/11px 垂直 padding（否则目录条被撑到
+     68px，锚点 scroll-margin 随之失准——实测）。44 < 菜单按钮 47，条高不变。 */
+  .VPLocalNavOutlineDropdown {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  .VPLocalNavOutlineDropdown > button {
+    min-height: 44px;
+
   }
 }
 
