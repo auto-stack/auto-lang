@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-716
-status: execution_done        # Phase 2 修复轮 work 收口（2026-10-01 work handoff outcome: pass——T-14..T-18 全收口，next=review）
+status: reviewed             # Phase 2 修复轮 review pass（2026-10-01 终判——AC-D1..D4+REG2 全 pass，next=merge）
 feature_name: M4 上游三组合一件（用户合并裁定 2026-09-30——组A tree-sitter 首批实施[714 契约 T-1..T-6 承接]/组B 帧时间戳插桩[供②]/组C diff rows 惰性投影[021 armed FAIL 清偿路径]+供③ 顺手确认）+ Phase 2 修复轮（2026-10-01——下游消费首跑实证交付缺口：供⑧ 9920 VM 裸名臂/供⑨ 9918-9919 .at 消费面双缺口/供⑪ highlight-treesitter cc 夹缝）
 author: [agent]
 created_at: 2026-09-30T22:17:32+08:00
@@ -712,6 +712,84 @@ AppTick 泵断链在案调查——矩阵 app=桌面模式动态 app，楔死形
   环境注记：worktree 构建期间组内兄弟 auto-down 重建为
   D:/autostack/.wt/lang-716/auto-down@3373a5c detach（原 Phase 1
   兄弟随 merge 清理移除——autodown-core path 依赖解析所需）。
+
+- 2026-10-01 review（Phase 2 修复轮终判）：`stage: review`，PLAN-716，
+  **plan_revision 3**，`outcome: pass`。
+  **独立性声明**：复审在实施会话内进行——结论从工件重建（下列
+  验收验证在本复审基线重跑复现，不采信实施摘要）。
+  `reviewed_commit`: 6c5c5b714（worktree plan-716-dev HEAD，树干净
+  零未提交实现）；`base_commit`: d85bc928b（master，diff=4 commits：
+  97236b4a2/5fe510539/12e49f78c/6c5c5b714+T-17 零 diff）；
+  `dependency_revisions`: auto-down@3373a5c（组内兄弟 detach 重建，
+  Phase 1 复审绑定版）；`spec_inputs`: SD-B
+  frame-observability.md（§3b 增补）+SD-C diff-endpoints.md（9921
+  改签补记）@6c5c5b714（评审冻结）；SD-A 本轮零触碰。
+  `acceptance_results`（本基线重跑实录）：
+  - **AC-D1 pass**：diff_files_window_vm_bare_name 绿（VM 轨 .at
+    裸名→窗口 envelope rows_total/truncated 真值——29 字节 fixture
+    对 rows_total:3/limit2 截断置位/hunks 全量）+faces_registered
+    锚（9921 三表在册+9920 撞号残留零断言+trans/ui_gen 臂 grep）+
+    **base 预存红 native_catalog_ids_and_names_unique 修复复现绿**。
+  - **AC-D2 pass**：plan716 套件 19/19 双门态（门关+AUTO_FRAME_BENCH=1
+    门开各一跑）——frame_value_flow_gate_on（断①var int 赋值/②.str()/
+    ③复合字段读三面真值==Rust lane）+frame_begin_ms_str_fingerprint
+    （门态无关）+frame_program_track_gate_on（程序轨=下游 api.at
+    同构面，门开）；time_family_vm_readback_recheck 绿（截断 Hazard
+    as-is 钉：int 承接≠0≠真值+now_sec 秒带+.str() 全宽带）；现役
+    Phase 1 五探针零扰动（同套件绿）。
+  - **AC-D3 pass**：frame_two_segment_handler_arm
+    （handler 体二段名→frame_bench 直调臂，原文发射零断言）+
+    frame_two_segment_module_trans_arm（模块体→a2r_std::frame 臂）
+    双绿——regen exit 0（gen_rust/transpile expect 通过）+生成码
+    grep 锚即断言本体。计划原文「生成码落 a2r_std::frame」在
+    handler 臂按在册直调纪律修正为 frame_bench（与既有裸名臂同源
+    单源——语义等价，偏差已随任务行记录）。
+  - **AC-D4 pass**：Cargo.lock 现势=sequel 0.3.11/blake3 1.8.7/
+    cc 1.2.67（交集 [1.2.1,1.3) 非空）+`cargo check --features
+    highlight-treesitter` 绿（复审基线复现 0.85s warm）+.cargo/
+    scripts 零 precise 钉 grep 净。
+  - **AC-REG2 pass**：对账零新增（fix-test-tiering 口径）——裸
+    nextest 全量 --no-fail-fast：head 29 红 vs base 30 红（红集
+    diff 全等，唯一差=被本件修复的 catalog 撞号守护红）；tb 全量
+    head 37 vs base 38（同形）；tv 162/162 绿；tu 858/1（唯一红=
+    a2vue desktop 金样 4f123a50e 在案预存）。全量电池运行与
+    reviewed_commit 代码态一致（其后仅 docs/specs 两文件落档）；
+    docs 围栏 T-18 后复跑零新增（docs_gen 3/4——kitchen_sink 红=
+    base 携带 721 域，book lib 绿）。
+  - **AC-D\*（T-18）pass**：SD-B §3b+SD-C 9921 补记落档于
+    reviewed_commit；断言与代码证据对绑复现（frame.vm.at `->int`
+    ×2/shim push_i32 saturating ×2/catalog 9921 行）。
+  `findings`:
+  - **F-1（severity=info，非阻塞债候选）**：bridge 语境
+    `json.encode({b: 字面量})` obj 编码链预存断（字面量同断出
+    垃圾值 18443647848969734401 形；obj `.str()` → CALL_SPEC
+    no HashMap.str 同族）——T-15 勘定 incidental 发现；非 Phase 2
+    AC 面（下游 json.from_value 为其自有库，供⑨ 验收不以该链为锚）；
+    base 同态非本件引入。**处置建议=KNOWN-DEBT 登记**（随 merge
+    批注）。
+  - **F-2（info）**：base 预存红族 29 件全景（721 carousel 围栏
+    双红=aura.at element_coverage 未登记+kitchen-sink 未再生、
+    musk_vm_track 族、vue_capabilities 族、ui_snapshots×3、
+    plan707 flake、clipboard/projector env 族等）——base=head
+    红集全等，非本轮面；围栏双红建议随 721 域处置路由。
+  - **F-3（note，无需行动）**：Phase 1 T-00 槽位复核漏扫
+    （9920/ui.focus 撞号）已由 T-14 修复并全链记录——全表扫重号
+    应入后续勘定 checklist（流程教训在案）。
+  - 无未授权缩减、无 workaround、无新增编译警告（385 全为预存族；
+    codegen.rs:7 NATIVE_PRINT_F64/U64 未用导入 base 在册）。
+  `spec delta 复审`：SD-B modify+SD-C modify 内容=现行行为的持久
+  契约（出口形/值域边界/时源坐标/撞号记录/回执位），非执行日记；
+  与现势 canonical 册无冲突（本件即真源更新方）；frontmatter
+  new_spec_components 的 Phase 2 modify 注记与实际相符；
+  supersedes_spec_components=[]/touched_goals=[]（供料驱动面注记
+  式）成立。
+  `evidence`: 本记录命令+结果=worktree plan-716-dev@6c5c5b714 实测；
+  SD 册冻结@6c5c5b714（merge 落 master 后可溯）；对账红集清单
+  /tmp/base-reds.txt、/tmp/head-reds.txt、/tmp/base-tb.txt、
+  /tmp/head-tb.txt（会话易失——红集结论已转录本记录：t 29vs30/
+  tb 37vs38，差集均为 catalog 撞号守护红一枝）。
+  `next`: merge（specs.json P716-1 刷新[SD-B/C 册更新投影]+
+  worktree 清理+供③ P716-D1 挂账维持确认）。
 
 ## 10. 待澄清事项
 
