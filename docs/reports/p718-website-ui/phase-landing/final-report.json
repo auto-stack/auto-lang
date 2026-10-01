@@ -1,0 +1,834 @@
+[
+  {
+    "page": "docs-hub-en",
+    "url": "/docs/",
+    "landedPathname": "/docs/",
+    "viewport": "390",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-docs-hub-en-390-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "docs-hub-zh",
+    "url": "/zh/docs/",
+    "landedPathname": "/zh/docs/",
+    "viewport": "390",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-docs-hub-zh-390-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "books-hub-en",
+    "url": "/books/",
+    "landedPathname": "/books/",
+    "viewport": "390",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-books-hub-en-390-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "books-hub-zh",
+    "url": "/zh/books/",
+    "landedPathname": "/zh/books/",
+    "viewport": "390",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-books-hub-zh-390-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "article-en",
+    "url": "/docs/features/actor-concurrency",
+    "landedPathname": "/docs/features/actor-concurrency",
+    "viewport": "390",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-article-en-390-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 1,
+    "outlineItems": 3,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "article-zh",
+    "url": "/zh/docs/features/actor-concurrency",
+    "landedPathname": "/zh/docs/features/actor-concurrency",
+    "viewport": "390",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-article-zh-390-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 1,
+    "outlineItems": 3,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "chapter-en",
+    "url": "/books/tapl/ch01-getting-started",
+    "landedPathname": "/books/tapl/ch01-getting-started",
+    "viewport": "390",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-chapter-en-390-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 2,
+    "outlineItems": 15,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "chapter-zh",
+    "url": "/zh/books/tapl/ch01-getting-started",
+    "landedPathname": "/zh/books/tapl/ch01-getting-started",
+    "viewport": "390",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-chapter-zh-390-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 2,
+    "outlineItems": 15,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "docs-hub-en",
+    "url": "/docs/",
+    "landedPathname": "/docs/",
+    "viewport": "390",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-docs-hub-en-390-light.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "docs-hub-zh",
+    "url": "/zh/docs/",
+    "landedPathname": "/zh/docs/",
+    "viewport": "390",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-docs-hub-zh-390-light.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "books-hub-en",
+    "url": "/books/",
+    "landedPathname": "/books/",
+    "viewport": "390",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-books-hub-en-390-light.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "books-hub-zh",
+    "url": "/zh/books/",
+    "landedPathname": "/zh/books/",
+    "viewport": "390",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-books-hub-zh-390-light.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "article-en",
+    "url": "/docs/features/actor-concurrency",
+    "landedPathname": "/docs/features/actor-concurrency",
+    "viewport": "390",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-article-en-390-light.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 1,
+    "outlineItems": 3,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "article-zh",
+    "url": "/zh/docs/features/actor-concurrency",
+    "landedPathname": "/zh/docs/features/actor-concurrency",
+    "viewport": "390",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-article-zh-390-light.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 1,
+    "outlineItems": 3,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "chapter-en",
+    "url": "/books/tapl/ch01-getting-started",
+    "landedPathname": "/books/tapl/ch01-getting-started",
+    "viewport": "390",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-chapter-en-390-light.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 2,
+    "outlineItems": 15,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "chapter-zh",
+    "url": "/zh/books/tapl/ch01-getting-started",
+    "landedPathname": "/zh/books/tapl/ch01-getting-started",
+    "viewport": "390",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-chapter-zh-390-light.png",
+    "localNav": {
+      "present": true,
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 2,
+    "outlineItems": 15,
+    "localNavScrolled": {
+      "visible": true,
+      "navbarBottom": 57,
+      "localNavTop": 57,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 390,
+    "docClientW": 390,
+    "hasHScroll": false
+  },
+  {
+    "page": "docs-hub-en",
+    "url": "/docs/",
+    "landedPathname": "/docs/",
+    "viewport": "1440",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-docs-hub-en-1440-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "docs-hub-zh",
+    "url": "/zh/docs/",
+    "landedPathname": "/zh/docs/",
+    "viewport": "1440",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-docs-hub-zh-1440-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "books-hub-en",
+    "url": "/books/",
+    "landedPathname": "/books/",
+    "viewport": "1440",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-books-hub-en-1440-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "books-hub-zh",
+    "url": "/zh/books/",
+    "landedPathname": "/zh/books/",
+    "viewport": "1440",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-books-hub-zh-1440-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "article-en",
+    "url": "/docs/features/actor-concurrency",
+    "landedPathname": "/docs/features/actor-concurrency",
+    "viewport": "1440",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-article-en-1440-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 1,
+    "outlineItems": 3,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "article-zh",
+    "url": "/zh/docs/features/actor-concurrency",
+    "landedPathname": "/zh/docs/features/actor-concurrency",
+    "viewport": "1440",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-article-zh-1440-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 1,
+    "outlineItems": 3,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "chapter-en",
+    "url": "/books/tapl/ch01-getting-started",
+    "landedPathname": "/books/tapl/ch01-getting-started",
+    "viewport": "1440",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-chapter-en-1440-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 2,
+    "outlineItems": 15,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "chapter-zh",
+    "url": "/zh/books/tapl/ch01-getting-started",
+    "landedPathname": "/zh/books/tapl/ch01-getting-started",
+    "viewport": "1440",
+    "theme": "dark",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-chapter-zh-1440-dark.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 2,
+    "outlineItems": 15,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "docs-hub-en",
+    "url": "/docs/",
+    "landedPathname": "/docs/",
+    "viewport": "1440",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-docs-hub-en-1440-light.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "docs-hub-zh",
+    "url": "/zh/docs/",
+    "landedPathname": "/zh/docs/",
+    "viewport": "1440",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-docs-hub-zh-1440-light.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "books-hub-en",
+    "url": "/books/",
+    "landedPathname": "/books/",
+    "viewport": "1440",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-books-hub-en-1440-light.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "books-hub-zh",
+    "url": "/zh/books/",
+    "landedPathname": "/zh/books/",
+    "viewport": "1440",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-books-hub-zh-1440-light.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 0,
+    "outlineItems": 0,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "article-en",
+    "url": "/docs/features/actor-concurrency",
+    "landedPathname": "/docs/features/actor-concurrency",
+    "viewport": "1440",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-article-en-1440-light.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 1,
+    "outlineItems": 3,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "article-zh",
+    "url": "/zh/docs/features/actor-concurrency",
+    "landedPathname": "/zh/docs/features/actor-concurrency",
+    "viewport": "1440",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-article-zh-1440-light.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 1,
+    "outlineItems": 3,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "chapter-en",
+    "url": "/books/tapl/ch01-getting-started",
+    "landedPathname": "/books/tapl/ch01-getting-started",
+    "viewport": "1440",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-chapter-en-1440-light.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 2,
+    "outlineItems": 15,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  },
+  {
+    "page": "chapter-zh",
+    "url": "/zh/books/tapl/ch01-getting-started",
+    "landedPathname": "/zh/books/tapl/ch01-getting-started",
+    "viewport": "1440",
+    "theme": "light",
+    "file": "..\\docs\\reports\\p718-website-ui\\phase-landing\\final-chapter-zh-1440-light.png",
+    "localNav": {
+      "present": true,
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "autoFenceCount": 2,
+    "outlineItems": 15,
+    "localNavScrolled": {
+      "visible": false,
+      "navbarBottom": 57,
+      "localNavTop": null,
+      "overlapsNavbar": false
+    },
+    "docScrollW": 1440,
+    "docClientW": 1440,
+    "hasHScroll": false
+  }
+]

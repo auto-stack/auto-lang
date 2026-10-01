@@ -39,7 +39,8 @@ for (const prefix of ['', '/zh']) {
     const source = (await fence.locator('pre code').innerText()).trimEnd()
     await fence.hover()
     await fence.locator('button.copy').click({ force: true })
-    await expect.poll(async () => (await page.evaluate(() => navigator.clipboard.readText())).trimEnd()).toBe(source)
+    // Clipboard preserves Windows CRLF; rendered innerText uses LF.
+    await expect.poll(async () => (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, '\n').trimEnd()).toBe(source)
     await run.focus()
     await page.keyboard.press('Enter')
     await expect(run).toHaveAttribute('aria-expanded', 'true')

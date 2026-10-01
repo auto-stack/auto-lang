@@ -31,6 +31,8 @@
 
 ## 4. 测试服务隔离与回归纪律（SD-06）
 
+PLAN-718 第一阶段补充：移动阅读 `.VPLocalNav` 的 sticky 偏移包含统一顶栏 56px 内部行和 1px 底边框；锚点再让出原生目录栏高度。AutoFence 操作栏在源码上方占独立文档流空间。截图使用数据中的原始 URL，不按 locale 再拼前缀；校验 pathname、正文非 404、语言正确后才接收图片。715 原中文 `/zh/zh/` 图片无效，新证据使用修正后的脚本。独立 preview 直接启动 Node 进程，避免 Windows shell 子进程残留。
+
 - e2e/截图端口由 `AUTO_WEBSITE_TEST_PORT` 控制（默认 4173 兼容；strictPort，baseURL 与 webServer 同源）——并行 worktree 各选独占空闲端口（715 用 4186），不复用未知服务；**Windows 下 `shell:true` spawn 的 kill 只杀 shell 不杀 node 子进程**，长驻 preview 会固化旧 dist 的文件清单导致重建后 404（715 实证），脚本清理须 `taskkill /PID <pid> /T /F`。
 - Playwright 配置钉定 `locale: 'en-US'`：否则宿主 OS 中文 locale 泄入 `navigator.language`，首页的浏览器语言自动跳转会把 `/` 的测试整个搬到 `/zh/` 上（715 实证）。
 - 新增/重排页面的回归面：`tests/site-ui.spec.ts`（导航/搜索/键盘/断点/画廊/ash 回归/md 缩进代码块泄漏锁）+ `tests/home-demo.spec.ts`（预置/实时/失败/超时/取消/静态降级）+ 既有 `spa-routes` / `playground-notes`；spa-routes 的 gallery 直连等重 SPA 用例标 `test.slow()`（4 worker 并行下 networkidle 需更宽时间窗）。
