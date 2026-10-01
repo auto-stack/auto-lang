@@ -8525,6 +8525,38 @@ fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage>
 }
 
 /// MCP action channel 轮询（AppTickRecipe::Poll 用；读进程级静态通道）。
+/// PLAN-095 T-02: pipeline → event-loop wake. Subscription-time gates evaluate
+/// per update, and a millisecond decode window falls between evaluations — an
+/// otherwise-idle app would never wake to run the notify sweep. This
+/// desktop-level recipe polls the pipeline generation at 50ms and yields
+/// `__media_tick` only when it advanced (idle = zero messages, no update
+/// storm); the per-app awaiting gate tick continues from there.
+static MEDIA_WAKE_SEEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static MEDIA_SWEEP_SEEN_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn poll_media_wake() -> Option<IcedMessage> {
+    let gen = crate::ui::image_pipeline::media_change_generation();
+    let last = MEDIA_WAKE_SEEN.swap(gen, std::sync::atomic::Ordering::AcqRel);
+    if gen != last {
+        Some(IcedMessage {
+            widget: String::new(),
+            event: "__media_tick".to_string(),
+            input_value: None,
+        })
+    } else {
+        None
+    }
+}
+
+fn media_wake_subscription(
+    app: crate::ui::session::AppId,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    iced_futures::subscription::from_recipe(AppTickRecipe {
+        app,
+        kind: AppTickKind::Poll(poll_media_wake, 50),
+    })
+}
+
 fn poll_mcp_actions() -> Option<IcedMessage> {
     let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
 
@@ -19689,6 +19721,12 @@ fn compare_pngs(
             }
         }
 
+        // PLAN-095 T-02: ImageSurface loaded/error 通知 sweep —— 解码完成
+        // 且下一拍（其间已有一帧消费 rendition）单次派发 on_loaded；终态
+        // 失败单次派发 on_error（fn(str) 收原因串）。表项随视图存在性生死
+        // （卸载即退订）；不在 view 构建/paint 期重入 handler。
+        media_notify_sweep(&mut state.component, &state.app);
+
         // Plan 402: pending window resize。
         if let Some(size) = state.pending_window_resize.borrow_mut().take() {
             *state.window_size.borrow_mut() = size;
@@ -22155,6 +22193,22 @@ fn compare_pngs(
                 if app.component.has_parked_io_tasks() {
                     subs.push(app_tick(app_id, "__parked_resume_tick", 16));
                 }
+                // PLAN-095 T-02: 媒体就绪泵 —— 仅在存在未终态媒体资产或有
+                // 待派发的 loaded/error 通知时吊 tick（__media_tick 不匹配
+                // 任何 update 臂，仅驱动 notify sweep 心跳）。解码完成/失败
+                // 都是终态：pending 归零 + 通知派发完 → 订阅自动消失（有界，
+                // 无重绘死循环）。
+                {
+                    let media_awaiting = app
+                        .state
+                        .media_notify
+                        .borrow()
+                        .iter()
+                        .any(crate::ui::session::MediaNotifyEntry::awaiting_notify);
+                    if crate::ui::image_pipeline::pending_media_count() > 0 || media_awaiting {
+                        subs.push(app_tick(app_id, "__media_tick", 50));
+                    }
+                }
                 // PLAN-711 T-04 (D-1): 帧通知泵——listen_raw 收 RedrawRequested
                 // （唯一不过滤 redraw 的公开通道），经 runtime 通道异步回环
                 // 构成"消费帧消息在该帧 present 返回之后"的应用层序障（无
@@ -22301,6 +22355,8 @@ fn compare_pngs(
                 }
                 // MCP action channel — polls for injected actions from AI agent (Plan 278)
                 subs.push(mcp_action_subscription(primary));
+                // PLAN-095 T-02: 管线代次唤醒（桌面级常驻；空拍零消息）。
+                subs.push(media_wake_subscription(primary));
                 // Shell SSE → store bridge (ash-gui M1). Polls SHELL_EVENT_RX and
                 // dispatches command_output/command_result to ShellStore handlers.
                 subs.push(shell_event_subscription(primary));
@@ -25877,6 +25933,237 @@ fn collect_input_ids(view: &AbstractView<IcedMessage>, out: &mut Vec<iced::widge
         }
         _ => {}
     }
+}
+
+// =====================================================================
+// PLAN-095 T-02: ImageSurface loaded/error 运行时通知
+// =====================================================================
+
+/// 当前视图中的一个 ImageSurface 通知面（converted 树上收集）。
+struct MediaSurfaceRef {
+    src: String,
+    on_loaded: Option<IcedMessage>,
+    on_error: Option<IcedMessage>,
+}
+
+impl MediaSurfaceRef {
+    /// 订阅身份键：handler 身份 + src。同一实例跨重建键稳定；换 src
+    /// 自然产生新键（旧键被 prune → 重挂回旧 src = 新订阅）。
+    fn key(&self) -> String {
+        let identity = |m: Option<&IcedMessage>| {
+            m.map(|m| format!("{}\u{1}{}", m.widget, m.event)).unwrap_or_default()
+        };
+        format!("{}\u{1}{}\u{1}{}", identity(self.on_loaded.as_ref()), identity(self.on_error.as_ref()), self.src)
+    }
+}
+
+/// 收集当前视图中带 on_loaded/on_error 的 ImageSurface（遍历面与
+/// collect_input_ids 同族——Column/Row/List/MouseArea/Popover/Container/
+/// Scrollable/Grid/Overlay；更外层容器中的 surface 与 focus 登记同边界）。
+fn collect_media_surfaces(view: &AbstractView<IcedMessage>, out: &mut Vec<MediaSurfaceRef>) {
+    match view {
+        AbstractView::ImageSurface { src, on_loaded, on_error, .. } => {
+            out.push(MediaSurfaceRef {
+                src: src.clone(),
+                on_loaded: on_loaded.clone(),
+                on_error: on_error.clone(),
+            });
+        }
+        AbstractView::Column { children, .. }
+        | AbstractView::Row { children, .. }
+        | AbstractView::List { items: children, .. } => {
+            for child in children {
+                collect_media_surfaces(child, out);
+            }
+        }
+        AbstractView::MouseArea { content, .. } => collect_media_surfaces(content, out),
+        AbstractView::Popover { anchor, content, .. } => {
+            if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                collect_media_surfaces(w, out);
+            }
+            collect_media_surfaces(content, out);
+        }
+        AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
+            collect_media_surfaces(child, out);
+        }
+        AbstractView::Grid { cells, .. } => {
+            for cell in cells {
+                collect_media_surfaces(cell, out);
+            }
+        }
+        AbstractView::Overlay { base, content, .. } => {
+            collect_media_surfaces(base, out);
+            collect_media_surfaces(content, out);
+        }
+        _ => {}
+    }
+}
+
+/// PLAN-095 T-02: ImageSurface loaded/error 通知 sweep（update 尾部驱动）。
+///
+/// - Pending 等待不报成功；重绘/轮询/同 ticket 重复构树不重复通知
+///   （单次门在 [`crate::ui::session::MediaNotifyEntry`]）。
+/// - Ready 两拍语义：第一拍仅记录可消费，下一拍（其间必有渲染帧消费
+///   rendition）单次派发 on_loaded——与「当前有效 ImageSurface 已在
+///   渲染帧中消费可绘制 rendition」的 loaded 最低语义对齐。
+/// - 终态失败（损坏/缺票/过期/后台 decode 失败）单次派发 on_error，
+///   `fn(str)` 声明按实参收原因短文；永不先 loaded 再称同一请求失败。
+/// - 表项随视图存在性生死：卸载/换 src 即退订，重挂载 = 新订阅。
+/// - 不在 view 构建/paint 期重入 handler：派发经 on_with_input_for 在
+///   update 周期同步走既有 VM 派发（与 __mcp 合成事件同通道）。
+/// - 实参按 handler 声明数对齐（plan-576 D4 口径）：loaded 0..=3 形参
+///   投影 []/[rev]/[w,h]/[w,h,rev]，error 0/1 形参投影 []/[原因串]；
+///   超出面响亮跳过不误派。
+fn media_notify_sweep(
+    component: &mut crate::ui::dynamic::DynamicComponent,
+    app: &crate::ui::session::AppState,
+) {
+    let table_empty = app.media_notify.borrow().is_empty();
+    let gen = crate::ui::image_pipeline::media_change_generation();
+    if table_empty
+        && crate::ui::image_pipeline::pending_media_count() == 0
+        && MEDIA_SWEEP_SEEN_GEN.load(std::sync::atomic::Ordering::Acquire) == gen
+    {
+        return;
+    }
+    MEDIA_SWEEP_SEEN_GEN.store(gen, std::sync::atomic::Ordering::Release);
+    let (view, _, _) = component.view_with_debug_gated(false);
+    let converted = convert_view_messages(view);
+    let mut surfaces: Vec<MediaSurfaceRef> = Vec::new();
+    collect_media_surfaces(&converted, &mut surfaces);
+
+    enum Fire {
+        Loaded { msg: IcedMessage, width: u32, height: u32, revision: u64 },
+        Error { msg: IcedMessage, reason: String },
+    }
+    let mut fire: Vec<Fire> = Vec::new();
+
+    {
+        let mut table = app.media_notify.borrow_mut();
+        let current_keys: Vec<String> = surfaces.iter().map(|s| s.key()).collect();
+        table.retain(|e| current_keys.iter().any(|k| *k == e.key));
+        for surf in &surfaces {
+            if surf.on_loaded.is_none() && surf.on_error.is_none() {
+                continue; // 无回调组件：照常显示，不入表（旧组件零改动兼容）
+            }
+            let key = surf.key();
+            let entry = match table.iter_mut().find(|e| e.key == key) {
+                Some(e) => e,
+                None => {
+                    table.push(crate::ui::session::MediaNotifyEntry {
+                        key,
+                        ready_seen: false,
+                        loaded_emitted: false,
+                        error_emitted: false,
+                        failed_reason: None,
+                    });
+                    table.last_mut().expect("entry just pushed")
+                }
+            };
+            match crate::ui::image_pipeline::media_surface_status(&surf.src) {
+                crate::ui::image_pipeline::MediaSurfaceStatus::Ready => {
+                    if !entry.ready_seen {
+                        // 第一拍：只记录可消费；渲染帧在两拍之间消费 rendition。
+                        entry.ready_seen = true;
+                    } else if !entry.loaded_emitted {
+                        entry.loaded_emitted = true;
+                        if let Some(msg) = surf.on_loaded.clone() {
+                            let (w, h) = crate::ui::image_pipeline::resolve_media_render(&surf.src)
+                                .map(|(_, w, h, _)| (w, h))
+                                .unwrap_or((0, 0));
+                            // URI 末段 = 入队时资产 revision（parse_media_path 同形）。
+                            let revision = surf
+                                .src
+                                .rsplit('/')
+                                .next()
+                                .and_then(|r| r.parse::<u64>().ok())
+                                .unwrap_or(0);
+                            fire.push(Fire::Loaded { msg, width: w, height: h, revision });
+                        }
+                    }
+                }
+                crate::ui::image_pipeline::MediaSurfaceStatus::Failed(reason) => {
+                    if entry.failed_reason.is_none() {
+                        entry.failed_reason = Some(reason.clone());
+                    }
+                    if !entry.error_emitted && entry.failed_reason.is_some() {
+                        entry.error_emitted = true;
+                        if let Some(msg) = surf.on_error.clone() {
+                            fire.push(Fire::Error { msg, reason });
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    for action in fire {
+        match action {
+            Fire::Loaded { msg, width, height, revision } => {
+                media_dispatch_loaded(component, &msg, width, height, revision);
+            }
+            Fire::Error { msg, reason } => {
+                media_dispatch_error(component, &msg, &reason);
+            }
+        }
+    }
+}
+
+/// loaded 通知派发：实参帧按声明数对齐（见 sweep 文档），payload 走
+/// PAYLOAD_SEP 类型化编码，与真实输入实参同一解码口径。
+fn media_dispatch_loaded(
+    component: &mut crate::ui::dynamic::DynamicComponent,
+    msg: &IcedMessage,
+    width: u32,
+    height: u32,
+    revision: u64,
+) {
+    let (clean, _) = crate::ui::dynamic::decode_payload(&msg.event);
+    let args: Vec<auto_val::Value> = match component.handler_param_count(&msg.widget, &clean) {
+        Some(0) => Vec::new(),
+        Some(1) => vec![auto_val::Value::Int(revision as i32)],
+        Some(2) => vec![
+            auto_val::Value::Int(width as i32),
+            auto_val::Value::Int(height as i32),
+        ],
+        Some(3) => vec![
+            auto_val::Value::Int(width as i32),
+            auto_val::Value::Int(height as i32),
+            auto_val::Value::Int(revision as i32),
+        ],
+        other => {
+            eprintln!(
+                "[VM-MEDIA] {}.{}(loaded) declares {other:?} params — media notify projects 0..=3; skipping dispatch",
+                msg.widget, clean
+            );
+            return;
+        }
+    };
+    let encoded = encode_payload(&clean, &args);
+    component.on_with_input_for(&msg.widget, &encoded, None);
+}
+
+/// error 通知派发：`fn(str)` 声明收原因短文；0 形参不塞载荷。
+fn media_dispatch_error(
+    component: &mut crate::ui::dynamic::DynamicComponent,
+    msg: &IcedMessage,
+    reason: &str,
+) {
+    let (clean, _) = crate::ui::dynamic::decode_payload(&msg.event);
+    let args: Vec<auto_val::Value> = match component.handler_param_count(&msg.widget, &clean) {
+        Some(0) => Vec::new(),
+        Some(1) => vec![auto_val::Value::str(reason)],
+        other => {
+            eprintln!(
+                "[VM-MEDIA] {}.{}(error) declares {other:?} params — media notify projects 0..=1; skipping dispatch",
+                msg.widget, clean
+            );
+            return;
+        }
+    };
+    let encoded = encode_payload(&clean, &args);
+    component.on_with_input_for(&msg.widget, &encoded, None);
 }
 
 /// Plan 491: 登记表焦点环遍历求址。`ids` 为 483 登记表(DFS 序 = 视觉树

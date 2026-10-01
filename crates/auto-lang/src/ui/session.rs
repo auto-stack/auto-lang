@@ -72,6 +72,9 @@ pub struct AppState {
     /// 源码行 ↔ widget id 双向映射（源码点击跳高亮）。
     pub line_to_aura_ids: RefCell<HashMap<usize, Vec<AuraNodeId>>>,
     pub aura_to_id_cache: RefCell<HashMap<AuraNodeId, String>>,
+    /// PLAN-095 T-02: ImageSurface loaded/error 通知门表（per-App，
+    /// update sweep 维护；语义见 [`MediaNotifyEntry`]）。
+    pub media_notify: RefCell<Vec<MediaNotifyEntry>>,
     /// Plan 459：DevTools 全量状态下沉为 per-App（验收：双窗 DevTools
     /// 选择/日志互不串扰）。字段与布局逻辑保持原形状。
     pub devtools: DevToolsState,
@@ -95,8 +98,39 @@ impl AppState {
             cached_rendered: RefCell::new(None),
             line_to_aura_ids: RefCell::new(HashMap::new()),
             aura_to_id_cache: RefCell::new(HashMap::new()),
+            media_notify: RefCell::new(Vec::new()),
             devtools: DevToolsState::new(),
         }
+    }
+}
+
+/// PLAN-095 T-02: per-App ImageSurface loaded/error 通知门状态。
+///
+/// 表项由 renderer 的 update 内 sweep 以「当前视图里实际存在的
+/// ImageSurface」为准维护——表项随实例在视图中的存在性生死：
+/// 卸载/换 src 即移除，重挂载视为新订阅（A→B→A 会再次通知）；
+/// 同一实例的重绘/轮询不重复通知（loaded/error 各至多一次）。
+/// ready_seen 两拍语义：第一拍观察到解码 Ready，下一拍（其间必有
+/// 一帧渲染消费 rendition）才派发 on_loaded —— 与「当前有效
+/// ImageSurface 已在渲染帧中消费可绘制 rendition」的 loaded 最低语义对齐。
+#[derive(Debug)]
+pub struct MediaNotifyEntry {
+    /// 实例键：handler 身份 + src（同 widget 同 handler 同 src 视为同一
+    /// 订阅面；多 surface 共享 handler 的场景 v1 合并为一，登记边界）。
+    pub key: String,
+    /// 第一拍观察到 Ready（rendition 已可消费）。
+    pub ready_seen: bool,
+    pub loaded_emitted: bool,
+    pub error_emitted: bool,
+    /// 已观察到的终态失败原因（Failed 状态时置位）。
+    pub failed_reason: Option<String>,
+}
+
+impl MediaNotifyEntry {
+    /// 是否仍在等待派发（订阅门的「保持心跳」判据）。
+    pub fn awaiting_notify(&self) -> bool {
+        (self.ready_seen && !self.loaded_emitted)
+            || (self.failed_reason.is_some() && !self.error_emitted)
     }
 }
 

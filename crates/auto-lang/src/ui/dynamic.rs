@@ -2386,6 +2386,14 @@ impl DynamicComponent {
         self.on_with_input_for(&widget_name, event_name, input_value);
     }
 
+    /// PLAN-095 T-02: declared param count for `(widget, event)` — thin bridge
+    /// wrapper so renderer-side synthetic dispatch (media loaded/error notify)
+    /// can align arg frames to the handler declaration (plan-576 D4 口径：
+    /// 不给 0 形参 handler 塞载荷、≥2 形参给足实参或响亮跳过)。
+    pub fn handler_param_count(&self, widget_name: &str, event_name: &str) -> Option<usize> {
+        self.bridge.handler_param_count(widget_name, event_name)
+    }
+
     /// Plan 320: dispatch event to a specific widget's handler in the single VM.
     /// Resolves the widget's state_obj_id (root or child) and calls the
     /// namespaced handler fn (handler_<Widget>_<Event>).

@@ -229,6 +229,26 @@ pub fn global_media_registry() -> &'static MediaAssetRegistry {
     &REGISTRY
 }
 
+/// PLAN-095 T-02: process-wide count of non-terminal media assets — the
+/// ImageSurface readiness-pump subscription gate.
+pub fn pending_media_count() -> usize {
+    global_media_registry().pending_count()
+}
+
+/// PLAN-095 T-02: monotonic media lifecycle generation — bumped on every
+/// queue/transition/publish/fail. The renderer's desktop-level wake poll
+/// compares generations: subscription-time gates cannot see millisecond
+/// decode windows, but a changed generation reliably wakes one sweep.
+static MEDIA_CHANGE_GEN: AtomicU64 = AtomicU64::new(0);
+
+pub fn media_change_generation() -> u64 {
+    MEDIA_CHANGE_GEN.load(Ordering::Acquire)
+}
+
+fn bump_media_change_gen() {
+    MEDIA_CHANGE_GEN.fetch_add(1, Ordering::AcqRel);
+}
+
 impl MediaAssetRegistry {
     pub const DEFAULT_TTL: Duration = Duration::from_secs(2);
     pub const MAX_ENTRIES: usize = 512;
@@ -299,6 +319,7 @@ impl MediaAssetRegistry {
             },
         );
         self.inner.changed.notify_all();
+        bump_media_change_gen();
         MediaAssetTicket { id, revision }
     }
 
@@ -320,6 +341,7 @@ impl MediaAssetRegistry {
             entry.error = Some(MediaAssetError::Corrupt);
         }
         self.inner.changed.notify_all();
+        bump_media_change_gen();
         Ok(())
     }
 
@@ -343,6 +365,7 @@ impl MediaAssetRegistry {
         entry.encoded = Some(bytes);
         entry.state = MediaAssetState::Ready;
         self.inner.changed.notify_all();
+        bump_media_change_gen();
         Ok(())
     }
 
@@ -358,6 +381,7 @@ impl MediaAssetRegistry {
         entry.state = MediaAssetState::Error;
         entry.error = Some(error);
         self.inner.changed.notify_all();
+        bump_media_change_gen();
         Ok(())
     }
 
@@ -382,6 +406,19 @@ impl MediaAssetRegistry {
             MediaAssetState::Expired | MediaAssetState::Stale => MediaLookup::Expired,
             _ => MediaLookup::Pending,
         }
+    }
+
+    /// PLAN-095 T-02: number of assets still short of a terminal state
+    /// (queued/reading/decoding/transforming). Transient by construction —
+    /// worker lanes drive every ticket to Ready/Error/Stale/Expired — so it
+    /// is safe as a liveness-pump gate (ticks stop when it reaches zero).
+    pub fn pending_count(&self) -> usize {
+        let state = self.inner.state.lock().expect("media registry lock poisoned");
+        state
+            .entries
+            .values()
+            .filter(|entry| !entry.state.is_terminal())
+            .count()
     }
 
     pub fn metadata(&self, id: MediaAssetId) -> Option<MediaMetadata> {
@@ -1295,6 +1332,42 @@ pub fn resolve_media_render(uri: &str) -> Option<(MediaAssetId, u32, u32, Arc<[u
     global_media_worker_pool().decoded_pixels(id).map(|(w, h, px)| (id, w, h, px))
 }
 
+/// PLAN-095 T-02: renderer-facing terminal status of one media URI, consumed
+/// by the ImageSurface loaded/error notify sweep. `NotMedia` URIs (no media
+/// route prefix) never participate in notification — they keep today's
+/// placeholder-forever display semantics.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MediaSurfaceStatus {
+    /// Decoded rendition is consumable by the current frame.
+    Ready,
+    /// Ticket still queued/decoding (or not yet terminal).
+    Pending,
+    /// Terminal failure with a locatable reason (corrupt bytes, missing or
+    /// evicted ticket, expired entry…).
+    Failed(String),
+    /// Not a process-local media URI — outside the notify contract.
+    NotMedia,
+}
+
+/// PLAN-095 T-02: resolve the notify status of a rendered `src`.
+pub fn media_surface_status(uri: &str) -> MediaSurfaceStatus {
+    if !uri.starts_with("/api/__auto/media/") {
+        return MediaSurfaceStatus::NotMedia;
+    }
+    let Some((id, revision)) = parse_media_path(uri) else {
+        return MediaSurfaceStatus::Failed("media uri is not a well-formed ticket path".into());
+    };
+    match global_media_registry().lookup(id, revision) {
+        MediaLookup::Ready(_) => MediaSurfaceStatus::Ready,
+        MediaLookup::Pending => MediaSurfaceStatus::Pending,
+        MediaLookup::Failed(e) => MediaSurfaceStatus::Failed(e.to_string()),
+        // 缺票（registry 驱逐/进程内从未入队）与过期都是终态失败——
+        // 占位图永远不会自行变好，按合同派发 error。
+        MediaLookup::Missing => MediaSurfaceStatus::Failed("media ticket missing".into()),
+        MediaLookup::Expired => MediaSurfaceStatus::Failed("media ticket expired".into()),
+    }
+}
+
 fn parse_media_path(path: &str) -> Option<(MediaAssetId, u64)> {
     let route = path.strip_prefix("/api/__auto/media/")?;
     let (id, revision) = route.split_once('/')?;
@@ -1495,6 +1568,43 @@ mod tests {
         assert!(super::close_media_session(&session));
         assert!(!super::close_media_session(&session));
     }
+
+    // PLAN-095 T-02: renderer-facing notify contract (status projection +
+    // lifecycle generation wake source).
+
+    #[test]
+    fn media_surface_status_projects_notify_contract() {
+        use super::{media_surface_status, MediaSurfaceStatus};
+        // Non-media URIs stay outside the notify contract (placeholder
+        // display semantics unchanged for legacy components).
+        assert_eq!(media_surface_status("https://example.com/x.png"), MediaSurfaceStatus::NotMedia);
+        assert_eq!(media_surface_status(""), MediaSurfaceStatus::NotMedia);
+        // Media-prefixed but malformed ticket path = terminal failure with a
+        // locatable reason (缺票族——占位图不会自行变好).
+        assert!(matches!(
+            media_surface_status("/api/__auto/media/notahexticket/1"),
+            MediaSurfaceStatus::Failed(_)
+        ));
+        // Well-formed yet never-queued ticket = missing → failed.
+        assert!(matches!(
+            media_surface_status("/api/__auto/media/00000000000000000000000000000000/1"),
+            MediaSurfaceStatus::Failed(reason) if reason.contains("missing")
+        ));
+    }
+
+    #[test]
+    fn media_change_generation_advances_on_queue_and_terminal() {
+        use super::{media_change_generation, queue_media_path, MediaPriority};
+        let before = media_change_generation();
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png");
+        let ticket = queue_media_path(&fixture, MediaPriority::Current);
+        assert_ne!(media_change_generation(), before, "queue must bump generation");
+        let mid = media_change_generation();
+        let _ = super::global_media_registry().fail(ticket.id, super::MediaAssetError::Corrupt);
+        assert_ne!(media_change_generation(), mid, "terminal failure must bump generation");
+    }
+
 
     #[test]
     fn thumbnail_queue_rejects_unsupported_and_queues_supported_paths() {
