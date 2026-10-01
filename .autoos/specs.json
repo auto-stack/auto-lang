@@ -1207,6 +1207,19 @@
             "commit:764508169a"
           ],
           "file": "docs/plans/archive/720-website-desktop-showcase.md"
+        },
+        {
+          "id": "P716-7",
+          "title": "716 Phase 2 修复轮交付摘要（供⑧⑨⑪ 三缺口清偿+REG2 零新增）",
+          "content": "PLAN-716 Phase 2 交付（plan-716-dev 4 提交，landing 见 P716-6）。供⑧：VM 轨 diff_files_window 裸名贯通（9921 改签+intrinsics 补臂——撞号根因全链记录，守护双探针）；供⑨-a：frame 族 .at 值流三断修复（int lane 统一——赋值/.str()/复合字段读门开真值绿；time 族 Hazard 与合法出口成文）；供⑨-b：handler/模块体二段名 frame 路由双轨补臂（E0425 清偿）；供⑪：零 diff 解钉（sequel 0.3.11，下游撤 blake3 1.5.5 钉条件成立）。回归：t 29vs30/tb 37vs38 红集全等零新增+1 预存红修复；tv 162/162；tu 858+1 在案预存。下游回执位（随下游件排程）：probe_diffwin VM 形 8/8/front 探针臂重埋/撤钉。KNOWN-DEBT：P716-D1 维持；新债候选 F-1 json obj 编码链（bridge 语境）。",
+          "tags": [
+            "PLAN-716",
+            "phase2",
+            "delivery",
+            "report",
+            "commit:6c5c5b714"
+          ],
+          "file": "docs/plans/archive/716-m4-upstream-batch.md"
         }
       ]
     },
@@ -4792,27 +4805,29 @@
         },
         {
           "id": "P716-2",
-          "title": "帧观测通道契约：帧开始/呈现完成时间戳+门控零开销+.at 双轨（PLAN-716 SD-B）",
-          "content": "PLAN-716 组B 落账（canonical 唯源=docs/specs/auto-lang/ui/design/frame-observability.md，landing ec45f911c，docsha:08c36b6c415a）。契约：ui::frame_bench 双只读单调时间戳（毫秒 i64）——帧开始=update_inner 入口到达时刻、呈现完成=__frame_pump 消息消费时刻（711 R-1 序障「消费≥present 返回」合法代理；硬屏障需 fork iced_winit=禁）；AUTO_FRAME_BENCH=1 门控（AUTO_BENCH 纪律族）——门关=OnceLock 布尔读+分支（实测 ns 级，60fps@1000msg 占比 <0.01%），未捕获=0 值语义；.at 双轨：VM 内建 9918 auto.frame.begin_ms/9919 present_ms（I64；NATIVE_ID_ENTRIES 钉扎+stdlib frame.vm.at #[vm] 声明面+codegen (module,method) 路由对+内置模块白名单 frame）+a2r 臂（trans 裸名映射+ui_gen handler 直调臂+a2r_std::frame 同源读）；712 r2 帧泵域边界=只读观测不染调度语义；多窗 runner 第二泵臂待办注记。落账数据：VM 读回+a2r 对拍+两态开销全绿。",
+          "title": "帧观测通道契约：帧开始/呈现完成时间戳+门控零开销+int lane 出口形+.at 双轨（PLAN-716 SD-B）",
+          "content": "PLAN-716 组B 落账+Phase 2 供⑨-a 修订（canonical 唯源=docs/specs/auto-lang/ui/design/frame-observability.md，landing 见 P716-7，docsha:1ccabb88824b205cf86c2c7c11131a66ac408bab）。契约：ui::frame_bench 双只读单调时间戳——帧开始=update_inner 入口到达时刻、呈现完成=__frame_pump 消息消费时刻（711 R-1 序障「消费≥present 返回」合法代理）；AUTO_FRAME_BENCH=1 门控（AUTO_BENCH 纪律族）——门关=OnceLock 布尔读+分支（ns 级），未捕获=0 值语义；出口形（Phase 2 定形）：.at 判型 ->int（i32 单槽 lane）+shim push_i32 saturating——值域=进程单调 ms<2^31（i32 封顶≈24.8 天），三面保真（int 承接/.str()/复合字段读）探针钉住；时源坐标=process_start 首次触及时定格（非进程起点——spawn 段分解消费方同坐标系标记）；time 族同根因 as-is：int 承接 epoch 宽值=32 位截断 Hazard，宽值合法出口=i64 变量/.str() 全宽（701 值域边界），now_sec 值域<2^31 正确；.at 双轨：VM 内建 9918/9919（int ret；NATIVE_ID_ENTRIES 钉扎+frame.vm.at 声明面+codegen 路由对+白名单 frame）+a2r 臂（trans 裸名+Dot-path 二段名+ui_gen handler 直调臂含二段名+a2r_std::frame 同源）；712 r2 域边界=只读观测不染调度语义；多窗第二泵臂待办。",
           "tags": [
             "PLAN-716",
             "frame-bench",
             "observability",
             "design",
-            "commit:ec45f911c"
+            "phase2",
+            "commit:6c5c5b714"
           ],
           "file": "docs/specs/auto-lang/ui/design/frame-observability.md"
         },
         {
           "id": "P716-3",
-          "title": "diff rows 窗口投影端点：9920 diff_files_window+rows_total/truncated 激活语义（PLAN-716 SD-C modify）",
-          "content": "PLAN-716 组C 落账（canonical 唯源=docs/specs/auto-lang/ui/design/diff-endpoints.md 增窗口投影节，landing ec45f911c，docsha:55214e5877d3）。契约：新端点 9920 auto.diff_files_window(path_a,path_b,ctx,rows_offset,rows_limit)→str（9915 三参签名 frozen——加参即破下游 in-proc 直调+HTTP Query 双消费面）；窗口形增 rows_total（全量行计数）+truncated 激活（头部省略 offset>0 与尾部省略 offset+len<total 皆置位）；边界形：offset≥total→rows:[]（diff_snapshots 净形复用）+truncated=total>0；limit0 同形；任意切片=全量 rows[offset..offset+limit] 逐行等价（build_rows 单趟流走线单源）；hunks 全量保持；默认三参调用逐字节不变（frozen ③ 最严形，016 消费面零改动 golden 钉）；HTTP query 串形=可选 rows_offset/rows_limit（缺省全量，下游钳定）。收益数字（release census，AUTO_P716_CENSUS 可复现）：43.6MB 散点对 full=153,422,332B/1922ms→window(0,600)=6,994,427B/1360ms——载荷 21.9×↓/墙钟 −29%；021 armed FAIL 5183.2ms 清偿语义=envelope 双层 JSON 主耗清偿，余量=引擎核心（frozen）。",
+          "title": "diff rows 窗口投影端点：9921 diff_files_window+rows_total/truncated 激活语义（PLAN-716 SD-C modify×2）",
+          "content": "PLAN-716 组C 落账+Phase 2 供⑧ 注册面修订（canonical 唯源=docs/specs/auto-lang/ui/design/diff-endpoints.md 窗口投影节，docsha:4de7b1c824ae5dbf90103382f6c3eac587bd7fdd）。契约：端点 auto.diff_files_window(path_a,path_b,ctx,rows_offset,rows_limit)→str（9915 三参签名 frozen——加参即破下游 in-proc 直调+HTTP Query 双消费面）；**native id=9921（Phase 2 改签——原 9920 与 PLAN-095 auto.ui.focus 撞号：shim 绑定表清单序后注册者覆盖，VM 轨窗口调用恒派发 ui_focus shim 静默 no-op=下游挂死实测根因；ui.focus 已交付面独占 9920 不回改；codegen intrinsics 裸名臂同步补全）**；窗口形增 rows_total+truncated 激活（头/尾省略皆置位）；边界形：offset≥total→rows:[]+truncated、limit0 同形、任意切片=全量 rows[offset..offset+limit] 逐行等价（单趟流走线单源）；hunks 全量保持；默认三参调用逐字节不变（frozen ③，016 消费面零改动 golden 钉）；HTTP query 串形=可选 rows_offset/rows_limit。收益数字（release census）：43.6MB 散点对 full=153,422,332B/1922ms→window(0,600)=6,994,427B/1360ms——载荷 21.9×↓/墙钟 −29%。守护=diff_files_window_vm_bare_name（VM 轨裸名真值探针）+native_catalog_ids_and_names_unique（撞号守护——本件修复其预存红）。",
           "tags": [
             "PLAN-716",
             "diff",
             "envelope",
             "design",
-            "commit:ec45f911c"
+            "phase2",
+            "commit:6c5c5b714"
           ],
           "file": "docs/specs/auto-lang/ui/design/diff-endpoints.md"
         },
@@ -7893,6 +7908,21 @@
             "rebase-mapping"
           ],
           "file": "docs/plans/archive/720-website-desktop-showcase.md"
+        },
+        {
+          "id": "P716-6",
+          "title": "M4 上游三组合一件 r3（Phase 2 修复轮）复审/合入收据（AC-D1..D4+REG2 全 pass@6c5c5b714）",
+          "content": "PLAN-716 r3 收据。激活=用户裁定 2026-10-01「重新激活计划716,记录成新的phase」（archive 出库，Phase 1 史零回改）；范围=下游 auto-edit PLAN-022 消费首跑实证缺口 供⑧⑨⑪+REG2。work：T-14 97236b4a2（9920 撞号 PLAN-095 ui.focus 实勘——改签 9921 三表+codegen intrinsics 补臂，连带修复预存红 native_catalog_ids_and_names_unique）/T-15 5fe510539（frame int lane 统一+time 族截断 Hazard 活体实证+合法出口=i64/str 全宽；下游三断上游树不可重构实录在案）/T-16 12e49f78c（二段名臂双轨：ui_gen frame_bench 直调+trans Dot-path a2r_std）/T-17 零 diff（sequel 0.3.11 cc 放宽~1.2.1 registry 自然闭合）/T-18 6c5c5b714（SD-B §3b+SD-C 改签补记）。review pass@6c5c5b714（自实现会话重构判定：AC-D1/D2/D3/D4/REG2 全部本基线重跑复现——plan716 19/19 双门态+tv 162+ts-on check+对账）；AC-REG2 零新增（t head29vs base30/tb 37vs38——红集全等-1 修复）。findings：F-1 json obj 编码链债候选（bridge 语境预存断，非本轮面）/F-2 base 预存红族 29 件路由（721 carousel 围栏双红等）/F-3 槽位复核漏扫流程教训。偏差在案：handler 臂生成码=frame_bench 直调（计划原文 a2r_std::frame 按直调纪律修正——语义等价单源）。供③ P716-D1 挂账维持；下游回执三件随下游件排程。",
+          "tags": [
+            "PLAN-716",
+            "r3",
+            "phase2",
+            "review",
+            "merge",
+            "commit:6c5c5b714",
+            "P716-D1"
+          ],
+          "file": "docs/plans/archive/716-m4-upstream-batch.md"
         }
       ]
     }
