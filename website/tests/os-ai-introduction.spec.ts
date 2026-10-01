@@ -75,7 +75,7 @@ for (const zh of [false, true]) {
 for (const prefix of ['', '/zh']) {
   test(`home and release keep product entry points and the corrected gallery: ${prefix || 'English'}`, async ({ page }) => {
     await page.goto(prefix + '/')
-    await page.locator(`.features-section a[href="${prefix}/os"]`).click()
+    await page.locator(`a.feature-card[href="${prefix}/os"]`).click()
     await expect(page.locator('.introduction-header h1')).toBeVisible()
     await page.goto(prefix + '/v05/')
     await expect(page.locator('#desktop-showcase').getByRole('tab')).toHaveCount(6)
