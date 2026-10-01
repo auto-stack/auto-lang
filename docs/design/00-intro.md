@@ -104,6 +104,8 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 **模块子目录**：[documents/](documents/README.md)——文档与在线体验大模块（website/书籍/Playground
 线的需求级设计，slug 命名不带号；域级概要章待目录整体重组时补立，2026-09-07 用户裁定）。
 
+在线体验演进：[Website 在线体验与 UI Playground](documents/website-interactive-experiences.md)——2026-10-01 用户确认方向；v0.5 介绍/截图、v0.5.1 Web 桌面/app、Auto→Vue 预览和分批数据适配，待实施。
+
 ## 三、AutoUI 与 App 生成域
 
 **域级章（仅此四篇拿号）**：

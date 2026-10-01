@@ -64,6 +64,8 @@ Playground 前端资产目前是**一个组件库、两个页面入口**，两�
 - 不扩展后端能力（run/trans/debug/notebook API 维持现状）。
 - 不做用户账号/云保存（分享沿用 `?code=` 链接形态）。
 
+**后续扩展（2026-10-01）**：[Website 在线体验与 UI Playground](website-interactive-experiences.md) 新增 Auto→Vue UI 轨道的设计。以上非目标是本设计及 Plan 581/582 的实施边界，仍保留；新增轨道另立实施 Plan，不表示现有文本执行 API 已支持 UI。v0.5 当前网站先补介绍与真实截图，Web 桌面/app 在线体验安排在 v0.5.1。
+
 ## 3. 总体架构
 
 ```

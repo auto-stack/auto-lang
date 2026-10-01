@@ -12,6 +12,7 @@
 |---|---|---|
 | [playground-architecture](playground-architecture.md) | Playground 在线体验层：三层组件（SnippetRunner/Card/IDE）、Notes manifest 管线、笔记站、电子书 Run 嵌入、双宿主合一 | 581/582（起草中） |
 | [v05-release-promo](v05-release-promo.md) | v0.5 发布宣传页：badge 落地页 + AutoOS/4 大应用独立落地页 + 宣传数字口径 | 用户专项（2026-09-07） |
+| [website-interactive-experiences](website-interactive-experiences.md) | v0.5 静态介绍/实图 → v0.5.1 Web 桌面与应用体验；Auto→Vue UI Playground、共享清单、服务边界与分阶段验收 | 方向已确认（2026-10-01），实施计划待拆分 |
 
 ## 待归位候选（重组时裁定，本期不动）
 
