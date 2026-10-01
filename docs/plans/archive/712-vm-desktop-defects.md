@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-712
-status: reviewed           # r3 复审 pass（2026-10-01，reviewed_commit=plan-712-dev@884bcfa67；next merge）
+status: archived           # r3 终态（2026-10-01 merge：delivery 68000a5bd，SD-09..13 沉淀，账本 P712-2；T-11/T-19 桌面轨残留与章节列表点验随档登记）
 feature_name: VM 桌面验收缺陷收敛（视频引擎双缺陷 + 壳配置持久化 + examples 依赖）
 author: [zcode(auto-os 会话转介)]
 created_at: 2026-09-30
@@ -290,6 +290,12 @@ AUTO_SCHED_DIAG=1 AUTOUI_ACCEPTANCE=1 AUTOUI_MCP_PORT=9260 bash scripts/desktop.
 ## 9. 复审记录
 ## 9. 复审记录
 
+- 2026-10-01 **合并收据（PLAN-712:r3）**——五检查点：
+  - **prepared** ✓：reviewed 基线 = plan-712-dev @884bcfa67（基 57b9afa60），canonical 目标 `docs/specs/auto-lang/ui/overview.md`（PLAN-712 r3 增补块 SD-09..13），delivery_commit 候选 24fd2d1a8（reviewed 纯文档后代，diff=overview.md 39 行）。
+  - **landed** ✓：rebase 9 提交至 master（range-diff 8 对全等=安全重写证明，884bcfa67→885de602b），ff-only 零合并提交；master tip = **68000a5bd**（实现 8 提交 + 规范沉淀 1 提交）。
+  - **ledger_refreshed** ✓：`.autoos/specs.json` reviews 追加 **P712-2**（r3 merge 收据）+ 补落 r2 遗留未提交的 **P712-1**（上一 merge 写入未提交的计划残留，一并落库）；手工回退路径（musk 后端不可达，README §112）；读回验证通过（reviews 186 项）。commit ec616b18f。
+  - **archived** ✓：本件 git mv 至 `docs/plans/archive/`，status archived。批量回归到期判定：712%5=2 非整除且收据 ~14h 新鲜 → 不到期。
+  - **cleaned ◑ pending**：worktree `D:/autostack/.wt/lang-712b/auto-lang`（路径偏离 lang-712 系僵进程残壳锁死，登记 §10⑤）+ 分支 `plan-712-dev` 待删——**阻塞 = 验收桌面与运行进程正从该 worktree target 运行（用户复验载具）**；用户复验完成后杀进程 → wt-guard → git worktree remove + branch -d（残留注意事项：lang-712 老残壳仍待重启后删，§10⑤）。陈旧产物观察（PLAN-092 先例）：release 档二进制与 gen/front/vue/dist 未随本次合并重建——桌面实机消费面=worktree debug 二进制形态，重建+重启归生产面会话。
 - 2026-10-01 stage:review | plan_id PLAN-712 | plan_revision 3 | outcome: **pass** | reviewed_commit: plan-712-dev@884bcfa67 | base_commit: 57b9afa60（master 簿记 417aff474）| dependency_revisions: auto-down 3373a5c（只读兄弟 worktree）| spec_inputs: docs/specs/auto-lang/ui/overview.md（r3 增量 SD-09..13 冻结于本件文本，全部 modify）|
   - **独立性声明**：实现会话自审（r1/r2 同款裁定从工件重建）——判据全部来自本基线新鲜复跑与在库工件，不采信执行期摘要。
   - **验收映射（r3 批次 → 证据 → 裁定）**：T-17 三层 pass（层①route-page e2e 红绿锁 + 层②死端口 catch 锁 + 层③重导航重派锁全绿；**用户实机终验「三本书各自内容正确」**+ 章节目录列表点验中）；T-19 引擎腿 pass（契约层 12/12 真引擎锁；桌面轨残留=F-712-4 登记态）；T-18 接线 pass（headless 锁；实机腿=F-712-6 登记态）。
