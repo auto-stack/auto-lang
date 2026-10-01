@@ -8,6 +8,7 @@
 - `/os`：解释 AutoOS 是什么、LaOS 与 OS over OS 的关系、组成与运行形态、当前进展、长期方向。
 - `/autoos/`：实际桌面体验与项目入口；复用总览中的能力状态，展示现有真实桌面/设置/应用截图。详情解释窗口管理、配置与应用，不再重复一整套愿景。
 - `/ai`：解释 AI 在体系中的位置、应用/Agent/服务的关系、已有接入和长期的人本方向。
+- `/articles/autoos-history` 与 `/articles/auto-ai-history`：独立的历史/展望长文，正文含项目来源和资料时点，由对应总览提供阅读入口；均有中文镜像。
 - `/ui-desktop`：解释 AutoUI 的 Vue 与原生桌面运行方式，更新“即将推出”的过时描述；移动/其他生态只按核实的状态链接出去。
 - 中文路由与上述一一对应。首页两张卡片只做摘要；v0.5 页仅对 OS/AI 相关的架构、现状和未来路线作必要同步，不重编其他发布内容。
 - UI：小型介绍首屏 → 真实桌面图/架构关系 → 分节说明 → 状态表 → 文档入口。取消无依据的统计数字、无限符号和促销 CTA。理念段落默认可读，细节可折叠；状态必须有文字，不只靠颜色。
@@ -19,6 +20,8 @@
 AutoOS 正在构建一套跨平台的系统环境，包含桌面、应用、配置、命令接口和系统服务。当前可见的形态是运行在宿主系统中的虚拟桌面；长期方向是让这些组件根据设备与系统环境组合起来，逐步形成可以独立部署的操作系统。
 
 [了解当前桌面](/zh/autoos/) · [阅读桌面架构](/zh/docs/design/autoui/virtual-desktop)
+
+深入阅读：[AutoOS：从 Language as OS 到 AI、语言与系统的协作](/zh/articles/autoos-history)。
 
 ### 从 Language as OS 到 OS over OS
 
@@ -80,6 +83,8 @@ AI 参与了 Auto 的开发，也正在成为应用可以接入的系统能力�
 
 [了解 AutoMusk](/zh/apps/automusk/) · [了解 AutoShell](/zh/apps/autoshell/) · [阅读 AutoOS 总览](/zh/os)
 
+深入阅读：[Auto 生态中的 AI：从共享模型服务到可追溯的工作过程](/zh/articles/auto-ai-history)。
+
 ### 为什么放在系统层
 
 多个应用使用模型时，会遇到相同的问题：连接哪个提供商、如何配置模型与密钥、如何控制并发、如何查看用量。AutoAI 将这些公共能力放到共享服务中，让接入的应用专注于自己的任务。
@@ -130,6 +135,8 @@ AI 参与了 Auto 的开发，也正在成为应用可以接入的系统能力�
 AutoOS is developing a cross-platform system environment spanning the desktop, applications, configuration, command interfaces, and services. Its current visible form is a virtual desktop running within a host system. The longer-term direction is to assemble these components for different devices and system environments, including independently deployable operating systems.
 
 [Explore the current desktop](/autoos/) · [Read the desktop architecture](/docs/design/autoui/virtual-desktop)
+
+Further reading: [AutoOS — From Language as OS to AI, Language, and System Collaboration](/articles/autoos-history).
 
 ### From Language as OS to OS over OS
 
@@ -190,6 +197,8 @@ Existing editors, knowledge tools, boards, shells, and Agent applications provid
 AI has participated in Auto's development and is becoming a system capability that applications can use. Current work centers on shared model services, Agent execution, and development tools. The longer-term direction brings AI, language, desktop, and applications together for human-centered knowledge management, work, and everyday life.
 
 [Explore AutoMusk](/apps/automusk/) · [Explore AutoShell](/apps/autoshell/) · [Read the AutoOS overview](/os)
+
+Further reading: [AI in the Auto Ecosystem — From Shared Model Services to Traceable Work](/articles/auto-ai-history).
 
 ### Why a shared system layer
 

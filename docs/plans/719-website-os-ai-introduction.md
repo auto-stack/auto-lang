@@ -5,9 +5,9 @@ feature_name: Website OS 与 AI 介绍重组
 author: [agent]
 created_at: 2026-10-01
 updated_at: 2026-10-01
-plan_revision: 1
+plan_revision: 2
 current_step: 0
-total_steps: 6
+total_steps: 8
 supersedes_spec_components: []
 new_spec_components: [docs/specs/website/design/os-ai-introduction.md]
 touched_goals: []
@@ -22,6 +22,8 @@ affects: [website]
 
 具体可审阅文案在 [中英文介绍稿](proposals/719-os-ai-copy.md)，包含 OS/AI 完整正文、页面分工、配套首屏和首页卡片摘要。本计划将其落到 VitePress 网站，核对相关 AutoOS/桌面 UI/发布页内容，清除过时路线和缺证据的统计/示例。
 
+r2 另加入两篇独立历史/展望文章，四份完整中英文稿已交付：[AutoOS 中文](proposals/719-autoos-history.zh.md)、[英文](proposals/719-autoos-history.en.md)、[AI 中文](proposals/719-auto-ai-history.zh.md)、[英文](proposals/719-auto-ai-history.en.md)。取材与引用核验见 [研究收据](proposals/719-history-sources.md)。
+
 本计划不与执行中的 PLAN-718 合并。718 负责学习入口与阅读体验；719 负责 OS/AI 介绍，实施时在独立 worktree 中吸收实际已合入的主题状态。
 
 ## 1. 目标
@@ -31,6 +33,7 @@ affects: [website]
 - 描述 AI 深度参与项目开发、共享模型服务与 Agent 工作工具的现状，并呈现面向知识管理、工作生活的人本长期方向。
 - 从真实项目文件说明 auto-lang（语言/框架）与 auto-os（桌面/应用/产品集成）的分工；明确当前 Auto + Rust 实现基础。
 - 中英文介绍、首屏图示、桌面页、首页入口与 v0.5 相关摘要一致，读者可查到实际能力与资料入口。
+- 在概括介绍外提供两篇独立长文，解释关键架构变化的动因、历史落地与未来方向；正文附设计/提交/计划来源，从 OS/AI 总览可进入阅读。
 
 **非目标**：实现内核/发行版/新平台支持、修改跨仓运行时或 API、重写网站框架、设计 AI 自动代理权限体系、给未来路线承诺发布日期、全面重新编辑 v0.5 或历史架构文档、替代 718 的阅读 UI 改造、部署上线。
 
@@ -45,6 +48,8 @@ affects: [website]
 | `/ai` | AI 的角色、应用/Agent/服务分层、已有接入、长期知识工作方向 |
 | `/ui-desktop` | 当前 Vue/原生桌面运行与生成路径，不再写桌面后端尚未推出 |
 | `/` 与 `/v05/` | 同步相关简要表述与链接，保留其他内容 |
+| `/articles/autoos-history` | AutoOS 的理念起点、桌面/产品/合成接缝演进、现状与展望 |
+| `/articles/auto-ai-history` | AI 服务、Role/编排、Auto 化、使用行为与知识工作方向的演进 |
 
 新增 `website/.vitepress/theme/data/os-ai-introduction.ts`（新）保存两语言的介绍、状态与架构关系；新增 `OSIntroduction.vue`、`AIIntroduction.vue`（新）用于相应总览页。AutoOS 桌面页和配套页面只复用有关摘要/状态，不再复制完整理念。实施可采用等价的可索引 Markdown 正文 + 数据组件组合，但需记录取舍，不能让首屏与正文成为相互矛盾的数据源。
 
@@ -60,7 +65,9 @@ affects: [website]
 
 2026-10-01 用户要求：结合 LaOS → OS over OS → AI + Lang + OS 的概述、现有网站以及 auto-lang/auto-os 现状，重新组织 OS/AI 板块，减少宣传、加强介绍；明确自有内核未做、未来会做，未来也可能探索语言底座自实现 native。
 
-这授权本次事实调查、介绍稿和具体改版计划。按仓库 AGENTS.md L1 的“present for confirmation before executing”，将可审阅计划与完整双语稿提交确认后再实施；没有把新的内容范围加入已经 executing 的 718。
+用户随后明确追加：除概括介绍，还写 AutoOS 历史沿革/未来展望，以及经过设计文档、代码与计划历史研究的 AI 相关文章，从网站介绍提供链接。r2 将两篇文章与双语镜像、引用核验、总览入口纳入范围；四份具体长文稿已在 proposals 中交付。
+
+这授权本次事实调查、介绍稿、文章撰写和具体改版计划。按仓库 AGENTS.md L1 的“present for confirmation before executing”，将可审阅计划与完整双语稿提交确认后再实施；没有把新的内容范围加入已经 executing 的 718。
 
 实施只写 auto-lang 的 website 和计划/报告；auto-os、auto-ai、auto-musk、auto-os-config、auto-shell、auto-term 与相关工具只读取材。无需各仓实现工作树。实现树为 `D:/autostack/.wt/lang-719/auto-lang`，分支 `plan-719-dev`，禁止 junction/symlink。当前主仓其他会话的 .autoos/specs.json、718 状态及未跟踪资源不得带入本计划。
 
@@ -112,6 +119,16 @@ affects: [website]
 
 本计划仅交付网站介绍，不将对应 GOAL-009 等运行时目标标成新能力达成，touched_goals 留空。用户对自有内核和 native 底座的未来设想按“长期方向”表达，不修改其他项目的路线优先级。
 
+### 4.4 r2 历史研究与现状修正
+
+研究材料与 33 个唯一源引用收据见 `proposals/719-history-sources.md`；版本锚仍为 §4.3 的跨仓 HEAD，本仓稿件父提交为 `731aa42bcdff59297db6f35659da40d24b3f9660`。
+
+- OS 早期 Task/lifetime 设计可追到 2025-12-22（84cdb6dc1）；2026-08-26 虚拟桌面裁定（caa802981）；09-01 Smithay Stage 1；09-07 产品仓/桌面表面迁移（f05bcec/1dcabf0）；09 月编译壳与协议/RQHost 继续演进。不得把源码改名日期当理念诞生日。
+- AI 2026-06-17 初始化（f95d6ec）、06-18 职责重构（3b4976f）；07-01 Role 命名（73aecc6）；07-16 编排下沉完成（2aa3700）；08-04 Workflow 物理退役（2bb84c9）；08-07 历史 Auto daemon 全链验证（afc803a）；08 月事件/content-details/compaction；09 月 ash-first、显式模型链及 Plan 验证机制。
+- 实现核对发现 auto-ai `src/lib.at` 部分注释仍说 Workflow deprecated，而当前导出是 orchestration，workflow 源已不存在；文章按实际导出和删除提交讲述，不照抄旧注释。
+- musk README 对“当前 plan-dev 单角色四阶段”的描述滞后于 `docs/specs/modules/plan-flow.md`。当前 Spec 为 advisor/coder/reviewer/assistant 的职业分工与 execute Human gate；文中把单角色作为前史，当前结论以 Spec 为准。
+- 历史 live/e2e 证据仅说明当时版本，不是本次重新运行；AI 长期个人知识与会话压缩的职责区分。LaOS/OS over OS 连续关系、自有内核/native 与人本目标依据用户概述，不虚构最早口号日期或代码落地。
+
 ## 5. 详细设计
 
 ### 5.1 内容与状态表达
@@ -136,6 +153,22 @@ App/桌面 Shell（窗口/通知表面）、命令 Shell（AutoShell）、终端
 
 资料链接逐一核实目标，入口名称区分“历史设计”和“当前项目资料”。原有 /docs/os、/docs/ai 没有输出正文时替换为明确存在的目标，不制造跳到 404 的 CTA。站内搜索应检索得到新介绍，不能将全部内容藏于图片、不可索引 JS 或默认折叠区。
 
+### 5.4 独立历史与展望文章（r2）
+
+采用普通 VitePress 文档布局（默认 layout），正文 H2/H3、阅读宽度与页内目录，避免长文套用 landing 的卡片/大数字。新增四个网站作者源：
+
+- `website/articles/autoos-history.md`、`website/zh/articles/autoos-history.md`（新）。
+- `website/articles/auto-ai-history.md`、`website/zh/articles/auto-ai-history.md`（新）。
+
+从 OS/AI 总览的清楚命名入口进入对应文章，文章返回总览、两篇互链，EN/ZH 切换保持主题。四份 proposals 稿为 r2 文字基线，执行时逐篇复制与整合到专用工作树；网站正式作者源不放入生成/ignored docs。
+
+文章叙述“当时的问题 → 为什么改变 → 具体变化与证据 → 仍需继续做的事”，避免编年条目替代解释。文章覆盖：
+
+- AutoOS：早期 LaOS、UI 到桌面、WM-as-App/宿主合成、OS over OS、Linux 初期接缝、语言/产品分工、解释/编译与协议、三种未来形态、人本知识工作方向。
+- AI：AutoForge 前史与共享服务拆分、Profession/Role、编排下沉与旧引擎退役、Auto 化、回合事件/工具数据/压缩、命令执行与模型选择、Plan/Specs/人工门及更广知识协作方向。
+
+关键历史节点附近附一级项目源链接，显著标注资料截止日；事实、历史状态与作者归纳区分。编排阶段数不等于 Agent 数量，会话压缩不等于长期个人知识库，自有内核与独立发行版仍是未来方向。所有链接应在合入时可公开访问；不可访问的 local-only commit 改用已发布的等价设计/归档计划，不把失效引用悄悄删除。
+
 ### 规范增量
 
 这里只提案；review 对账，merge 才落 Canonical Specs/ledger。
@@ -144,7 +177,8 @@ App/桌面 Shell（窗口/通知表面）、命令 Shell（AutoShell）、终端
 |---|---|---|---|---|---|
 | SD-01 | add | docs/specs/website/design/os-ai-introduction.md | 缺乏统一叙事 → LaOS/OS over OS/AI+Lang+OS 连续关系与三种形态、现状状态规则 | 忠实用户理念，避免未来能力误写 | AC-01, AC-02, AC-03 |
 | SD-02 | modify | docs/specs/website/project.md | OS/AI 零散介绍 → 页面职责、同源双语介绍与来源审计 | 维护入口与详细说明一致 | AC-04, AC-05, AC-06 |
-| SD-03 | modify | docs/specs/website/design/ui-presentation.md | 宣传 hero/数字墙 → 实图/关系示意/文字状态，SSR/search 与窄屏要求 | 介绍可读、可核实 | AC-07, AC-08, AC-09 |
+| SD-03 | modify | docs/specs/website/design/ui-presentation.md | 宣传 hero/数字墙 → 实图/关系示意/文字状态，SSR/search 与窄屏要求 | 介绍可读、可核实 | AC-07, AC-08, AC-09, AC-12 |
+| SD-04 | add | docs/specs/website/design/os-ai-introduction.md | 只有概括页 → 两篇双语独立叙事长文、来源/时点与总览互链 | 保留可追溯的架构历史与阅读入口 | AC-10, AC-11, AC-12 |
 
 无组件退役，仅主题展示可替换；supersedes_spec_components 留空。
 
@@ -153,11 +187,11 @@ App/桌面 Shell（窗口/通知表面）、命令 Shell（AutoShell）、终端
 所有实际网站修改/构建在 719 worktree，计划状态在主检出。Category A，不运行 Rust 门禁。
 
 - `npm run build`（cwd=worktree website）：生成与 SSG 成功，OS/AI 的标题/正文/状态能在 HTML 读取。仅修改文字不写镜像文案的逐字测试。
-- 新增 `website/tests/os-ai-introduction.spec.ts` 验证真实行为：八条 EN/ZH 路由正文非 404、语言切换保留页、CTA 到真实正文、图片放大键盘开关、站内搜索命中新介绍，以及新状态/关系图的可访问名称。
+- 新增 `website/tests/os-ai-introduction.spec.ts` 验证真实行为：十二条 EN/ZH 路由（八个原介绍页 + 四个文章页）正文非 404、语言切换保留页、CTA 到真实正文、图片放大键盘开关、站内搜索命中新介绍，以及新状态/关系图的可访问名称。
 - 固定 locale en-US，以空闲独占端口（例 `$env:AUTO_WEBSITE_TEST_PORT='4199'; $env:CI='1'`）运行 `npx playwright test tests/os-ai-introduction.spec.ts tests/site-ui.spec.ts`；不复用他人服务，strictPort 端口冲突直接失败，退出只清自己进程树。
-- 360/390/768/1024/1440 × light/dark 的正文/表格几何与移动交互检查；主要四页 EN/ZH × 390/1440 × light/dark 共 32 份图，明确 goto 实际 URL、locale、h1/body 非 404。新脚本 `website/scripts/p719-shot.cjs`（新），复用已经修正的截图流程，不复制 715 重复 /zh 的错误。
+- 360/390/768/1024/1440 × light/dark 的正文/表格几何与移动交互检查；原四个主要页面与两篇文章 EN/ZH × 390/1440 × light/dark 共 48 份图，明确 goto 实际 URL、locale、h1/body 非 404。新脚本 `website/scripts/p719-shot.cjs`（新），复用已经修正的截图流程，不复制 715 重复 /zh 的错误。
 - 完成后若修改主题共享控件/全局样式，扩展至 website 全套 e2e；仅局部正文组件则以上 scoped gate 加 homepage/v05 冒烟即可。报告精确记载采用范围与原因。
-- 人工内容审计以主张→来源表检查未来/现状与双语语义；搜索/构建通过不能替代事实审阅。没有对跨仓内核、平台、Agent 实际能力做新的运行验收。
+- 人工内容审计以主张→来源表检查未来/现状与双语语义；文章关键日期与转折具备设计或提交/计划证据，引用在本地核验，落地前再验证公开源链接；区分 document move、plan archive、设计提出与实现日期。搜索/构建通过不能替代事实审阅。没有对跨仓内核、平台、Agent 实际能力做新的运行验收。
 
 ## 7. 验收标准
 
@@ -168,23 +202,29 @@ App/桌面 Shell（窗口/通知表面）、命令 Shell（AutoShell）、终端
 - [ ] **AC-05 配套更新**：AutoOS 页反映已有桌面/app 集成，desktop 页不再“即将推出”；首页两卡与 v05 的相关 OS/AI 表述一致，其余发布内容与截图契约保留。验证：八路由 + home/v05 内容审读与冒烟。
 - [ ] **AC-06 入口有效**：旧路由与语言切换保持；所有新/改 CTA 有正文/真实资料，/docs/os、/docs/ai 若缺失已修正；相关历史设计资料明确标识。验证：链接清单、e2e 正文/URL。
 - [ ] **AC-07 介绍可发现**：新介绍默认可读、SSR 有正文、local search 能检索核心内容；不是只有 hero 图片或数字墙。验证：生产 HTML 与搜索 e2e。
-- [ ] **AC-08 视觉可用**：五宽度两主题无页面级横向溢出、乱码/标题遮挡；状态有文字、移动目标≥44px，截图放大可键盘操作；32 份图均对应真实正文。验证：几何/交互断言与人工看图。
+- [ ] **AC-08 视觉可用**：五宽度两主题无页面级横向溢出、乱码/标题遮挡；状态有文字、移动目标≥44px，截图放大可键盘操作；48 份图均对应真实正文。验证：几何/交互断言与人工看图。
 - [ ] **AC-09 交付守约**：build 与适用 website 门禁通过，无新增警告，无跨仓代码改动/新 runtime 能力承诺；r1 文案与最终增量有对账，独立 review 检查遗漏/延后/绕过。验证：diff、执行报告、revision-bound review。
+
+- [ ] **AC-10 历史可追溯**：两篇文章包含明确的问题/动因、变化、历史证据、当前结果和未来方向；关键日期与转折有主张→来源对账，公开引用可访问。没有将重命名/归档日期当功能诞生，或将旧注释当当前架构。验证：研究收据、文案审读、提交/源链接核验。
+- [ ] **AC-11 长文入口完整**：新增四个文章路由有真实正文；对应 OS/AI 总览入口、文章返回总览和两篇互链均有效，EN/ZH 切换保留主题。验证：十二路由 e2e 与导航行为。
+- [ ] **AC-12 长文双语可读**：两篇 EN/ZH 的事件、解释与状态语义一致；正文使用默认阅读排版、可用目录/锚点、SSR 与搜索，五宽度两主题不溢出；48 图包含四个文章页。验证：双语人工对账、生产 HTML/search/几何和人工看图。
 
 ## 8. 执行步骤
 
 - [ ] **T-01 事实与入口复核**（无依赖）。按 §4 source/hash 和介绍稿核对执行时最新已合入代码；生成实际 docs，核实旧 CTA，固定主张→来源→当前状态表。新建 `docs/reports/p719-os-ai-introduction.md`（新），记录 718 共享文件改动及资料入口。产出经核对的文字/链接表，不自行改变理念；AC-01/02/03/06，SD-01/02。
 - [ ] **T-02 OS 介绍与桌面页**（T-01）。新增 theme/data/os-ai-introduction.ts、components/OSIntroduction.vue；修改 website/os.md、zh/os.md、autoos/index.md、zh/autoos/index.md。更新理念/组成/形态/状态与真实截图，适配现有 OSHero.vue 或由新组件替换其使用。build 静态正文通过；AC-01/02/03/04/07，SD-01/02/03。
 - [ ] **T-03 AI 介绍**（T-01/T-02）。新增 AIIntroduction.vue，共享双语 data，修改 website/ai.md、zh/ai.md 及必要的 AIHero.vue。删除缺源代码/终端输出和数字墙，呈现当前接入与长期方向。build + 关系图/正文检查；AC-03/04/07，SD-01/02/03。
-- [ ] **T-04 配套同步**（T-02/T-03）。修改 website/ui-desktop.md、zh/ui-desktop.md、index.md、zh/index.md 与 theme/data/release-v05.ts 的相关 OS/AI 字段；使用真实入口和准确后端/阶段。保留无关发布内容与导航契约。链接检查及 home/v05 冒烟通过；AC-02/04/05/06，SD-02。
-- [ ] **T-05 验证与视觉复核**（T-04）。新增 tests/os-ai-introduction.spec.ts、scripts/p719-shot.cjs，补齐 §6 scoped/full gate 与 32 图；报告目录 `docs/reports/p719-website-os-ai/`（新）。人工查看所有正文与双语稿，修正发现的问题后只重验受影响范围。AC-01..AC-09，SD-01..SD-03。
+- [ ] **T-07 AutoOS 长文落地**（T-01/T-02）。已交付的 proposals/719-autoos-history.zh.md 与 .en.md 整合到新 website/articles/autoos-history.md、zh/articles/autoos-history.md；核对 LaOS/桌面/Linux/产品分工/渲染与展望的来源，正文默认文档布局。HTML 正文、源链接与双语审读通过；AC-01/02/03/10/11/12，SD-01/04。
+- [ ] **T-08 AI 长文落地**（T-01/T-03）。已交付的 proposals/719-auto-ai-history.zh.md 与 .en.md 整合到新 website/articles/auto-ai-history.md、zh/articles/auto-ai-history.md；根据研究收据核对 Role/Pipeline/Auto 化/事件/压缩/命令/模型/Plan 的历史与当前。完整文字及引用、前史/当前语义、默认阅读布局通过；AC-03/04/10/11/12，SD-01/04。
+- [ ] **T-04 配套同步**（T-02/T-03/T-07/T-08）。修改 website/ui-desktop.md、zh/ui-desktop.md、index.md、zh/index.md 与 theme/data/release-v05.ts 的相关 OS/AI 字段；使用真实入口和准确后端/阶段；OS/AI 概括页增加对应长文入口，AutoOS 桌面页可补充历史文章链接。保留无关发布内容与导航契约。链接检查及 home/v05 冒烟通过；AC-02/04/05/06/11，SD-02/04。
+- [ ] **T-05 验证与视觉复核**（T-04）。新增 tests/os-ai-introduction.spec.ts、scripts/p719-shot.cjs，补齐 §6 scoped/full gate 与 48 图；报告目录 `docs/reports/p719-website-os-ai/`（新）。人工查看所有正文与双语稿，修正发现的问题后只重验受影响范围。AC-01..AC-12，SD-01..SD-04。
 - [ ] **T-06 完成交接**（T-05）。提交实现，记录 code revision 与各 AC 证据、delta 对账，状态 execution_done；按 /auto-plan:review 做独立验收、债务/遗漏扫描。review 通过后才可 /auto-plan:merge 进行 Spec 回写/索引/归档与 guarded worktree 清理。AC-09 与全部 SD；无授权不得发布。
 
 执行时先在专用树断言路径/分支。718 若仍在执行，只依赖稳定已合入基线，不复制其 WIP 或覆盖其 index/style 变更；719 完成前回核相关文件并解决交叉改动。
 
 ## 9. 复审记录
 
-### 规划与文案交接（非实现复审）
+### r1 规划与文案交接（历史记录，非实现复审）
 
 - stage: new
 - plan_id: PLAN-719
@@ -197,12 +237,26 @@ App/桌面 Shell（窗口/通知表面）、命令 Shell（AutoShell）、终端
 - evidence: proposals/719-os-ai-copy.md；§4 项目版本与事实表。
 - 草案自查：全部 AC 有任务覆盖；现状与长期方向有来源区分；新旧路由与 718 交叉文件有处理责任；没有写 canonical Specs、网站代码或跨仓源。
 
+### r2 文章范围交接（当前，非实现复审）
+
+- stage: new
+- plan_id: PLAN-719
+- plan_revision: 2
+- outcome: pass（完成历史研究与四份具体文章稿；可供网站落地）
+- next: work（沿既有计划确认流程进入实施，不重复询问文章是否需要撰写）
+- changed_tasks: T-01/T-04/T-05/T-06，新增 T-07/T-08；既有 T/AC 身份保留。
+- changed_acceptance: 新增 AC-10/AC-11/AC-12；既有 AC-01..AC-09 保留。
+- spec_delta: 新增 SD-04，SD-03 补充长文阅读验收。
+- evidence: proposals/719-autoos-history.{zh,en}.md、719-auto-ai-history.{zh,en}.md、719-history-sources.md。
+- superseded: r1 交接仅为 6 任务/9 验收的历史范围；r2 为 8 任务/12 验收/4 delta，没有覆盖或删除 r1 记录。
+- implementation_status: drafting，current_step=0；本次交付的是已写完的文章稿和修改后的执行契约，尚未声称网站路由/构建通过。
+
 ### 实现复审
 
 待实现交付后填写，不能以本节规划 pass 代替独立 review。
 
 ## 10. 待澄清事项
 
-- 待用户确认具体双语稿与页面分工；缘由是 AGENTS.md L1 的先展示计划再执行要求。本阶段调查和可审阅文案已完成，不再询问用户已给出的理念或技术栈。
+- 本次文章范围已获用户明确追加授权，研究与四份稿件已完成；无需重复确认是否写文章。具体网站落地仍按既有 AGENTS.md L1 的计划确认流程；最终确认对象为 r2 稿件与页面分工。
 - 未核实的新平台状态、资料链接与组件边界由 T-01 查证；若只能得到架构目标，文案保持目标/探索，不伪造兼容性验证。
 - 若实际需要修改 OS/AI 运行时或改动 718 的验收范围，进入 needs_replan，不能借内容改版扩大实施面。
