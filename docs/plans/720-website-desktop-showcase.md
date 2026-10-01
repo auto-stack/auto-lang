@@ -140,6 +140,21 @@ rebase range-diff 三项全等：5b0426b7c63e0e5654c4f31ee5be0e267b1fc19b→8a67
 
 production artifacts：197.08s 集成构建与重启后的 http://127.0.0.1:4220/ 已提供本批新图，公开站未部署。ledger_refreshed/archived/cleaned 沿用原 pending（无新 Spec delta，不手写 live ledger）；Plan 保持 reviewed，原720工作树 clean且已合入，留作预览和收尾。公开部署、Rust批量回归均不伪称完成。
 
+### 2026-10-01 独立复审确认（另一会话，merge 前）
+
+stage: review | plan_id: PLAN-720 | plan_revision: 1 | repair: 1 | outcome: pass | reviewed_commit: 764508169a2bc7a869ab3fa1f4f48ed2c32d8c9b（=plan-720-dev，已 ff-only 落 master） | base_commit: 1867dfce452a59bef8c098afb7e6fcf6c2c3fd96 | dependency_revisions: book=d7a71a7fb1fa42ddd26d6cec859715ed98161f7a（只读，不变） | next: merge（仅 ledger_refreshed/archived/cleaned 收尾）。
+
+独立会话以工件重建而非执行摘要为准：`git range-diff ec27ff80ab43..699368fd8e79a ec27ff80ab43..764508169a2b` 三项全等，且 `git diff 699368fd8e79a 764508169a2b -- website docs/specs` 为空——落地内容与 repair-1 复审绑定提交在相关路径字节等价，已记录的运行时证据（14 项专项 + img.decode 补跑 1 项、60 组合几何、24 图视觉包）按"代码/依赖/测试配置未变"显式理由复用，Category A 不重跑 Cargo/docs_gen。本会话新做实证：
+
+| acceptance | 独立证据 | verdict |
+|---|---|---|
+| AC-01 | 六图源（D:/autostack/auto-os/desktop-shots/showcase）与 `website/public/desktop-showcase/` SHA256 逐一全等（644b503f…/77ef82ea…/20696b43…/d2409be6…/40cd4c89…/d488fb14…），PNG IHDR 均 2560×1600，与报告首表冻结值一致 | pass |
+| AC-02/03 | ReleaseLanding.vue+release-v05.ts（hero=02-desktop-dark）、autoos/zh/autoos、os/zh/os 五处接线均在 master；evidence 24 PNG+manifest 在案 | pass |
+| AC-04/05 | 画面断言以 repair-1 记录证据+落地字节等价背书；SD-01/02 现状契约核实于 project.md:20、ui-presentation.md:31（docsha 994113f25acd2261 / 07a644d95f92d73e） | pass |
+| AC-06 | 集成 build exit0 197.08s 为已记录证据，本次不重跑 | pass |
+
+merge 前置检查：specs.json 现状 designs 124/reviews 187/reports 110、无 P720 条目；`json.dumps(ensure_ascii=False, indent=2)` 字节 roundtrip 守卫通过；store 写者 8080 连接拒绝（循 711/713/714/715/717/718 先例手工外科插入）。findings：无新增遗漏/延后/workaround；批量回归收据 last_covered=715、720 为 %5 节点 → 归档后到期，移交 /auto-plan:regress 主检出单实例。
+
 ## 10. 待澄清事项
 
 无阻塞偏好；采用站点现有视觉与用户截图顺序，保留其他会话 WIP。
