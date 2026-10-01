@@ -58,6 +58,19 @@ pub struct VideoContractDown {
     /// `src`：媒体地址。**本地路径与 http(s) URL 都接受**（mpv 自带网络栈）。
     /// `None` = 不换片。
     pub src: Option<String>,
+    /// PLAN-721 T-19：**下行世代号**——视图构建（convert）时打戳，同一
+    /// 视图生成的全部 VideoPrimitive 共享同号。apply 的单调门据此拒绝
+    /// 「陈旧 primitive 迟到 prepare」的回退写（桌面实测：新值 pause 落盘
+    /// 后 ~100ms，旧世代 prepare 携 paused=false 一写回弹）。0 = 未打戳
+    /// （引擎级测试/legacy 构造）——单调门放行，语义与旧行为全等。
+    pub epoch: u64,
+}
+
+/// PLAN-721 T-19：下行世代号发生器（视图构建打戳；全局单调即可——
+/// 单调门按 contract 各自的 applied.epoch 比较，全局序列的子列仍单调）。
+pub fn next_down_epoch() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 impl Default for VideoContractDown {
@@ -73,6 +86,7 @@ impl Default for VideoContractDown {
             muted: false,
             rate: 1.0,
             src: None,
+            epoch: 0,
         }
     }
 }
@@ -135,6 +149,7 @@ impl MediaContract {
                 muted: false,
                 rate: f64::NAN,
                 src: None,
+                epoch: 0,
             },
             generation: 0,
             last_seek_target: None,
@@ -172,6 +187,23 @@ impl MediaContract {
     /// 返回本次实际执行的 mpv 操作数（诊断用；稳态下应接近 0）。
     pub fn apply(&mut self, engine: &MpvEngine, down: &VideoContractDown) -> usize {
         let mut ops = 0;
+
+        // ⓪ 单调下行门（PLAN-721 T-19）：epoch 回退的 down = 陈旧 primitive
+        //    的迟到 prepare（桌面实测：新世代 pause 落盘后 ~100ms，旧世代
+        //    prepare 搏回 paused=false → 「暂停一下又继续」）。整包拒绝——
+        //    旧世代的 src/属性/seek 全部过时。epoch=0（未打戳）放行。
+        if down.epoch != 0 && down.epoch < self.applied.epoch {
+            if crate::ui::sched_diag::enabled() {
+                eprintln!(
+                    "[SCHED-DIAG] mpv_apply t={}ms STALE skip: epoch={} < applied={} (paused={})",
+                    crate::ui::dynamic::sched_diag_t0().elapsed().as_millis(),
+                    down.epoch,
+                    self.applied.epoch,
+                    down.paused,
+                );
+            }
+            return 0;
+        }
 
         // ① 换片：src 变化才 loadfile。**必须先于其它属性**——否则会先给旧片
         //    设置暂停/音量，无谓地扰动。
@@ -224,6 +256,28 @@ impl MediaContract {
         //    作者值与内核实态就永久脱 sync（下次同值下行零写，表现为「点了
         //    暂停没反应、再点又立即反转」的打架形态）。
         let applied_paused_before = self.applied.paused;
+        // PLAN-721 T-4：下行写 trace——T-19 桌面轨「暂停即回弹」定谳轴。
+        // apply 驱动点=VideoPrimitive::prepare（烤定 props 逐帧 apply），
+        // 陈旧 primitive 的迟到 prepare 会在这里现形（down 与最新 desired
+        // 相反的写）。
+        if crate::ui::sched_diag::enabled() {
+            let src_head = down
+                .src
+                .as_deref()
+                .map(|s| s.chars().rev().take(36).collect::<String>())
+                .unwrap_or_default();
+            eprintln!(
+                "[SCHED-DIAG] mpv_apply t={}ms paused: applied={} -> down={}{} vol={:.0} mute={} pos={:?} src..{}",
+                crate::ui::dynamic::sched_diag_t0().elapsed().as_millis(),
+                applied_paused_before,
+                down.paused,
+                if down.paused != applied_paused_before { " WRITE" } else { " same" },
+                down.volume,
+                down.muted,
+                down.position,
+                src_head.chars().rev().collect::<String>(),
+            );
+        }
         let mut paused_write_failed = false;
         if down.paused != self.applied.paused {
             match engine.set_flag("pause", down.paused) {
@@ -323,9 +377,27 @@ impl MediaContract {
         if let Some(paused) = engine.get_flag("pause") {
             let playing = !paused;
             match self.last_play_state {
-                None => self.last_play_state = Some(playing),
+                None => {
+                    // PLAN-721 T-4：基线采集 trace（T-19 定谳轴）。
+                    if crate::ui::sched_diag::enabled() {
+                        eprintln!(
+                            "[SCHED-DIAG] mpv_poll t={}ms play_state baseline={} (no event)",
+                            crate::ui::dynamic::sched_diag_t0().elapsed().as_millis(),
+                            playing,
+                        );
+                    }
+                    self.last_play_state = Some(playing)
+                }
                 Some(prev) if prev != playing => {
                     self.last_play_state = Some(playing);
+                    // PLAN-721 T-4：边缘回灌 trace。
+                    if crate::ui::sched_diag::enabled() {
+                        eprintln!(
+                            "[SCHED-DIAG] mpv_poll t={}ms play_state EDGE -> {} (PlayStateChange event)",
+                            crate::ui::dynamic::sched_diag_t0().elapsed().as_millis(),
+                            playing,
+                        );
+                    }
                     out.push(VideoContractEvent::PlayStateChange(playing));
                 }
                 Some(_) => {}

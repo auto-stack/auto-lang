@@ -6439,21 +6439,36 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 on_ended,
                 on_media_error,
                 style,
-            } => render_video(
-                src,
-                paused,
-                position,
-                volume,
-                muted,
-                rate,
-                label,
-                on_time_update,
-                on_loaded_metadata,
-                on_play_state,
-                on_ended,
-                on_media_error,
-                style,
-            ),
+            } => {
+                // PLAN-721 T-19：build-time trace——T-19 定谳最后一轴。同一
+                // binding 的两次相邻构建烤出相反 paused（TogglePlay 写 false
+                // 后的 OnTime 重建烤回 true）即「读侧世界分裂/陈旧 memo 回放」
+                // 实锤（本作用域无 session state，对照读由 per-app snapshot
+                // 面承担）。
+                if crate::ui::sched_diag::enabled() {
+                    eprintln!(
+                        "[SCHED-DIAG] video_build t={}ms paused(baked)={} src..{}",
+                        crate::ui::dynamic::sched_diag_t0().elapsed().as_millis(),
+                        paused,
+                        src.chars().rev().take(24).collect::<String>(),
+                    );
+                }
+                render_video(
+                    src,
+                    paused,
+                    position,
+                    volume,
+                    muted,
+                    rate,
+                    label,
+                    on_time_update,
+                    on_loaded_metadata,
+                    on_play_state,
+                    on_ended,
+                    on_media_error,
+                    style,
+                )
+            },
         }
     }
 }
@@ -6491,6 +6506,8 @@ fn render_video<M: Clone + Debug + 'static>(
         use crate::ui::mpv::VideoContractDown;
 
         // 尺寸：交给父容器（布局说了算）；widget 自身撑满可用空间。
+        // PLAN-721 T-19：下行世代打戳——每次视图构建（convert）取新 epoch，
+        // 该代全部 primitive 同号；contract 的单调门据此拒绝旧代迟到 prepare。
         let program = VideoProgram::new(VideoWidgetProps {
             down: VideoContractDown {
                 paused,
@@ -6499,6 +6516,7 @@ fn render_video<M: Clone + Debug + 'static>(
                 muted,
                 rate,
                 src: if src.is_empty() { None } else { Some(src.clone()) },
+                epoch: crate::ui::mpv::contract::next_down_epoch(),
             },
             width: 0,
             height: 0,
@@ -15512,17 +15530,26 @@ pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSessi
                     // Plan 551：settings 槽 = os-config 窗（⚙️ 同靶——
                     // 540 的 045 专用槽随窗退役，验收通道按 registry_id
                     // 定位 launch-or-focus 后的 os-config 前端）。
-                    "settings" => state.host.as_ref().and_then(|h| {
-                        h.wm
-                            .wins
-                            .iter()
-                            .find(|(_, v)| {
-                                v.registry_id.as_deref() == Some(OSCONFIG_APP_ID)
-                            })
-                            .map(|(_, v)| v.app)
-                    }),
-                    _ => None,
-                };
+                "settings" => state.host.as_ref().and_then(|h| {
+                    h.wm
+                        .wins
+                        .iter()
+                        .find(|(_, v)| {
+                            v.registry_id.as_deref() == Some(OSCONFIG_APP_ID)
+                        })
+                        .map(|(_, v)| v.app)
+                }),
+                // PLAN-721 T-4/T-DOCS-1：验收通道任意内嵌 app 直呼——
+                // registry_id 反查（settings 臂同款机制泛化；launch 后窗
+                // 条目带注册名）。特权名先行匹配不受遮蔽（上方臂优先）。
+                which => state.host.as_ref().and_then(|h| {
+                    h.wm
+                        .wins
+                        .iter()
+                        .find(|(_, v)| v.registry_id.as_deref() == Some(which))
+                        .map(|(_, v)| v.app)
+                }),
+            };
                 let Some(app_id) = app_id else { continue };
                 let Some(sess) = state.apps.get_mut(&app_id) else { continue };
                 let args = arg
@@ -22589,33 +22616,82 @@ fn dynamic_view_impl(
     // 活跃（Plan 314 心跳纪律）+ 自身视图真脏。
     if !sync_mcp && !p530_nomcp {
         if let Some(ref mcp_handle) = state.desktop.mcp_shared {
-            let mcp_active = mcp_handle.lock().unwrap().mcp_active_recently(5);
-            if mcp_active && *state.app.view_dirty.borrow() {
-                let state_vals = state.component.read_all_state_materialized();
-                let mut pairs: Vec<(&String, &auto_val::Value)> = state_vals.iter().collect();
-                pairs.sort_by(|a, b| a.0.cmp(b.0));
-                let mut state_text = String::new();
-                for (k, v) in pairs {
-                    state_text.push_str(&format!("  {} = {}\n", k, v));
+                let mcp_active = mcp_handle.lock().unwrap().mcp_active_recently(5);
+                if mcp_active && *state.app.view_dirty.borrow() {
+                    // 键身份：源路径上溯（跳过 front/src/pages 段）取 app 目录
+                    // 名——根 widget 名全 app 撞名（"App"），app 目录名才是
+                    // 稳定唯一面（registry id 同源目录名）。
+                    let app_label = {
+                        let from_source = state.component.source_path().and_then(|p| {
+                            let mut cur: &std::path::Path = p.as_ref();
+                            loop {
+                                let parent = cur.parent()?;
+                                let name = parent
+                                    .file_name()
+                                    .map(|s| s.to_string_lossy().to_string())
+                                    .unwrap_or_default();
+                                if name.is_empty()
+                                    || name == "front"
+                                    || name == "src"
+                                    || name == "pages"
+                                {
+                                    cur = parent;
+                                } else {
+                                    return Some(name);
+                                }
+                            }
+                        });
+                        from_source.unwrap_or_else(|| state.component.widget_name().to_string())
+                    };
+                    let state_vals = state.component.read_all_state_materialized();
+                    let mut pairs: Vec<(&String, &auto_val::Value)> = state_vals.iter().collect();
+                    pairs.sort_by(|a, b| a.0.cmp(b.0));
+                    let mut state_text = String::new();
+                    for (k, v) in pairs {
+                        state_text.push_str(&format!("  {} = {}\n", k, v));
+                    }
+                    // PLAN-721 T-4：子命名空间段——child_state_map 逐实例自有
+                    // 字段面（T-19 作用域分裂定谳：写入是否落错对象）。
+                    for (cname, cfields) in state.component.bridge().read_all_child_states() {
+                        state_text.push_str(&format!("== child [{}] ==\n", cname));
+                        let mut cpairs: Vec<(&String, &auto_val::Value)> =
+                            cfields.iter().collect();
+                        cpairs.sort_by(|a, b| a.0.cmp(b.0));
+                        for (k, v) in cpairs {
+                            state_text.push_str(&format!("  {} = {}\n", k, v));
+                        }
+                    }
+                    // PLAN-721 T-4：root 字段可达实例对象段（store Obj 全字段
+                    // ——VM 内方法调用 world vs root 扁平镜像分裂对质）。
+                    for (fname, fid, ffields) in state.component.bridge().read_root_field_objects()
+                    {
+                        state_text.push_str(&format!("== obj {}@{} ==\n", fname, fid));
+                        let mut fpairs: Vec<(&String, &auto_val::Value)> =
+                            ffields.iter().collect();
+                        fpairs.sort_by(|a, b| a.0.cmp(b.0));
+                        for (k, v) in fpairs {
+                            state_text.push_str(&format!("  {} = {}\n", k, v));
+                        }
+                    }
+                    let ws_now = *state.window_size.borrow();
+                    let mut builder =
+                        crate::ui::aura_snapshot_builder::AuraSnapshotBuilder::new(&state_vals)
+                            .with_status(false);
+                    if ws_now.width > 0.0 && ws_now.height > 0.0 {
+                        builder = builder.with_viewport(ws_now.width, ws_now.height);
+                    }
+                    let template_text = builder
+                        .build(state.component.widget_name(), state.component.view_template());
+                    let key = format!("{}:{}", state.app_id.0, app_label);
+                    let surface = crate::ui::mcp_server::AppSurface {
+                        widget_name: app_label,
+                        state_text,
+                        template_text,
+                        updated_ms: crate::ui::dynamic::sched_diag_t0().elapsed().as_millis()
+                            as u64,
+                    };
+                    mcp_handle.lock().unwrap().set_app_surface(key, surface);
                 }
-                let ws_now = *state.window_size.borrow();
-                let mut builder =
-                    crate::ui::aura_snapshot_builder::AuraSnapshotBuilder::new(&state_vals)
-                        .with_status(false);
-                if ws_now.width > 0.0 && ws_now.height > 0.0 {
-                    builder = builder.with_viewport(ws_now.width, ws_now.height);
-                }
-                let template_text = builder
-                    .build(state.component.widget_name(), state.component.view_template());
-                let key = format!("{}:{}", state.app_id.0, state.component.widget_name());
-                let surface = crate::ui::mcp_server::AppSurface {
-                    widget_name: state.component.widget_name().to_string(),
-                    state_text,
-                    template_text,
-                    updated_ms: crate::ui::dynamic::sched_diag_t0().elapsed().as_millis() as u64,
-                };
-                mcp_handle.lock().unwrap().set_app_surface(key, surface);
-            }
         }
     }
 

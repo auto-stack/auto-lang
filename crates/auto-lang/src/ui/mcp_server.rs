@@ -1169,7 +1169,7 @@ fn tool_definitions() -> Vec<serde_json::Value> {
         json!({
             "name": "autoui_desktop",
             "title": "Desktop Acceptance Injection",
-            "description": "Inject desktop-surface interactions through the REAL consumption arms (no OS input synthesis — the CUA pixel-identity guard family bypass). Requires AUTOUI_ACCEPTANCE=1 on the desktop host process (production default: refused).\n\n## When to use\n- Acceptance-channel live verification of shell/settings/desktop interactions (gear → settings panel, dock position hot-switch, wallpaper writer, Esc self-hide)\n- Where OS-level SendInput/CUA clicks are blocked by the live-render pixel-identity guard\n\n## Actions\n- {action:\"bus\", verb:\"open_settings\"} — queue a DesktopBus verb record (same drain/execute arm as real shell buttons; e.g. \"layout\\tgrid\", \"summon\\tlauncher\")\n- {action:\"handler\", app:\"settings\", handler:\"Escape\"} — call a privileged app handler directly (app: shell|settings|notification|launcher; same handler pipeline as onclick)\n\nEffects land on the ServiceTick cadence (≤400ms); capture evidence with autoui_screenshot. Procedure: docs/plans/reports/505-acceptance-channel.md",
+            "description": "Inject desktop-surface interactions through the REAL consumption arms (no OS input synthesis — the CUA pixel-identity guard family bypass). Requires AUTOUI_ACCEPTANCE=1 on the desktop host process (production default: refused).\n\n## When to use\n- Acceptance-channel live verification of shell/settings/desktop interactions (gear → settings panel, dock position hot-switch, wallpaper writer, Esc self-hide)\n- Where OS-level SendInput/CUA clicks are blocked by the live-render pixel-identity guard\n\n## Actions\n- {action:\"bus\", verb:\"open_settings\"} — queue a DesktopBus verb record (same drain/execute arm as real shell buttons; e.g. \"layout\\tgrid\", \"summon\\tlauncher\")\n- {action:\"handler\", app:\"settings\", handler:\"Escape\"} — call a privileged app handler directly (app: shell|settings|notification|launcher; same handler pipeline as onclick)\n- PLAN-721 T-DOCS-1: app may also be any embedded app's registry id (e.g. \\\"030-video-player\\\") — window registry_id reverse lookup, same handler pipeline; optional widget arg for sub-widget targeting\n\nEffects land on the ServiceTick cadence (≤400ms); capture evidence with autoui_screenshot. Procedure: docs/plans/reports/505-acceptance-channel.md",
             "inputSchema": {
                 "type": "object",
                 "required": ["action"],
@@ -2655,7 +2655,10 @@ fn tool_desktop(_shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
                 "launcher" => "launcher",
                 "desktop" => "desktop",
                 "dashboard" => "dashboard",
-                _ => return error_result(format!("Unknown privileged app: '{app}' (shell|settings|notification|launcher|desktop|dashboard)")),
+                // PLAN-721 T-4/T-DOCS-1：任意内嵌 app 直呼——registry_id
+                // 反查（renderer Handler 臂泛化臂消费）。验收通道专用
+                // （AUTOUI_ACCEPTANCE 门在工具入口）；名字一次性 leak。
+                other => Box::leak(other.to_string().into_boxed_str()),
             };
             #[cfg(feature = "ui-iced")]
             {
