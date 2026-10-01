@@ -1160,6 +1160,19 @@
      "status": "published",
      "created": "2026-09-23",
      "last_modified": "2026-09-23"
+    },
+    {
+     "id": "P717-3",
+     "title": "717-widgets-gallery-dual-backend-completeness — 交付摘要",
+     "content": "交付摘要:widgets-gallery 双端完备核验——Vue/VM 各 70 路由×明暗主题矩阵全绿(69 Home 卡/70 侧栏项/159 preview-card/Kitchen Sink 53 公共示例×4 变体逐项可见);执行中新增 T-07 修复 auto-down CodeBlockMenu 编辑器 DOM 挂载时序(Kitchen Sink 整页崩溃根因,auto-down 895f8d0);canonical spec=ui/design/widgets-gallery-parity.md(SD-01,docsha:c34dd993aa7e918b);矩阵报告 docs/plans/reports/717-widgets-gallery-matrix.md;跨仓交付 auto-os(73d02b5)/auto-down(895f8d0)随 auto-lang(c48007bc5)同步 ff-only 落地。",
+     "tags": [
+      "plan-717",
+      "autoui",
+      "widgets-gallery",
+      "delivery",
+      "commit:c48007bc5"
+     ],
+     "file": "docs/plans/archive/717-widgets-gallery-dual-backend-completeness.md"
     }
    ]
   },
@@ -4715,6 +4728,20 @@
       "docsha:137265b853eded5b"
      ],
      "file": "docs/specs/website/design/ui-presentation.md"
+    },
+    {
+     "id": "P717-1",
+     "title": "widgets-gallery 双端展示核验契约:源单驱动 70 路由×双后端×明暗全绿、159 preview-card、53 公共 Kitchen Sink 示例(PLAN-717 SD-01)",
+     "content": "PLAN-717 交付落账(widgets-gallery 域 SD-01 现行态投影;canonical 唯源=docs/specs/auto-lang/ui/design/widgets-gallery-parity.md,landing c48007bc5,docsha:c34dd993aa7e918b)。契约:路由清单从画廊源页面与路由定义解析,禁维护第二份手写路由表;每个用户页面必须可从首页卡片或侧边栏到达,特殊示例页须有明确入口;每页全部 preview-card 示例首屏或滚动后可见且标题/主体/属性说明/代码示例可读;schema 生成的 Kitchen Sink 须逐项显示当前公共示例集,非公开测试夹具由生成器显式排除并说明原因(scroll_test_content 即此形态,排除后公共示例 53);菜单/弹层/日期选择器等动作型示例至少记录一组可见打开或选择态;VM 后端可用原生控件表达 Vue 示例但须保留主要语义与内容,简化须在核验报告说明;双端明暗主题逐页核验+长页全滚动覆盖,逐 route/theme 保存截图或等价视觉证据,记录运行错误/页面错误/采集失败;组件 API 有意交互差异允许,视觉与内容差异必须说明,缺失内容不得记作通过;verifier 从源清单驱动双端检查并输出机器可读路线矩阵;基线失败在干净 base 复现后单独归档,不得记为本计划通过或回归。落账数据:Vue/VM 各 70 路由明暗矩阵全绿,Home 69 卡/侧栏 70 项零遗漏,159 preview-card,53×4 变体可见;矩阵报告=docs/plans/reports/717-widgets-gallery-matrix.md,截图资产 docs/plans/reports/assets/717/。历史收据=plan §9(archive/717)。",
+     "tags": [
+      "plan-717",
+      "autoui",
+      "widgets-gallery",
+      "sd-01",
+      "commit:c48007bc5",
+      "docsha:c34dd993aa7e918b"
+     ],
+     "file": "docs/specs/auto-lang/ui/design/widgets-gallery-parity.md"
     }
    ]
   },
@@ -7666,6 +7693,21 @@
       "commit:489b0a364"
      ],
      "file": "docs/plans/archive/714-treesitter-first-batch-survey.md"
+    },
+    {
+     "id": "P717-2",
+     "title": "widgets-gallery 双端完备 r5 复审/合入收据(AC-01..07 pass;三仓 ff-only 落地 auto-lang c48007bc5/auto-os 73d02b5/auto-down 895f8d0)",
+     "content": "PLAN-717 r5 收据。复审 pass @ auto-lang 7506d7d7(自实现会话重构判定:committed diffs+源生 manifest+截图+clean-base 复现,非执行者摘要):AC-01 70 路由/69 Home 卡/70 侧栏零遗漏;AC-02 Vue 70/70 明暗零 pageerror;AC-03 VM 70/70 明暗侧栏转移全达;AC-04 159 preview-card+53/53 公共 schema×4 变体全页滚动取证;AC-05 Vue 15/15+VM 9/9 代表态(Tabs 内部标签限制在案,路由/截图过);AC-06 门禁:cargo tv 162/162+docs_gen 4/4+tu 858 过/1 clean-base 桌面金样红(4f123a50e 在案)/2 ignored+裸 t 三红均 clean-base 既有;AC-07 SD-01 过审,canonical 投影=merge 档。F-717-R1(回调门控移除遗留死代码 calls_callback/stmt_calls_callback 新警告)已修 @7506d7d,tu 终跑零诊断。merge:landed pass——依赖序 auto-down master 895f8d0→auto-lang master c48007bc5(prepared spec commit;rebase 6359635→5bad66e/7506d7d→676d7e3,range-diff 两对补丁全等;基线后 master 仅 712 plan 簿记)→auto-os main 73d02b5,ff-only 三仓 tip=交付 commit;集成 cargo check -p auto-lang 过+git diff --check 三仓净。ledger_refreshed 初判 blocked(store 8080 不在线/无 spec 工具),循 README §5 手工回退+711/713/714/715 先例外科插入收口。证据=docs/plans/reports/717-widgets-gallery-matrix.md(docsha:3866c8d482028fa0)+assets/717/;P706-D3 VM 侧栏间歇性为在案旧债非本计划新增。",
+     "tags": [
+      "plan-717",
+      "autoui",
+      "widgets-gallery",
+      "review-pass",
+      "merge",
+      "commit:c48007bc5",
+      "commit:7506d7d7"
+     ],
+     "file": "docs/plans/archive/717-widgets-gallery-dual-backend-completeness.md"
     }
    ]
   }
