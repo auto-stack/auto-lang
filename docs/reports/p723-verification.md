@@ -16,7 +16,7 @@ Category A：未改crates/** Rust源码，未运行Cargo tests/docs_gen。拍摄
 - node scripts/generate-demo-pages.mjs --check：58页通过。
 - python -m py_compile scripts/p723-capture-vm.py：通过。
 - AUTO_WEBSITE_TEST_PORT=4236 npx playwright test apps-introduction.spec.ts site-ui.spec.ts desktop-showcase.spec.ts os-ai-introduction.spec.ts spa-routes.spec.ts --workers=2：88 passed（3.5m）。含原指南脚本交互、OS/AI介绍与搜索、desktop展示、v05、全局导航/主题/SPA入口回归。
-- 新目录测试最终运行结果在复审收据补记；覆盖28素材hash/冻结来源集合，EN/ZH六分类与键盘放大回焦、56详情图片/互链/大纲/源码入口、580次目录和详情布局（29路由×5宽度×2主题×2语言）、无业务API请求。
+- 新目录7项最终全部通过（含新端口完整重跑ZH详情及冻结来源断言），与88项旧检查合计95个唯一检查。覆盖28素材hash/冻结来源集合，EN/ZH六分类与键盘放大回焦、56详情图片/互链/大纲/源码入口、580次目录和详情布局（29路由×5宽度×2主题×2语言）、无业务API请求。启动时build未完成造成的一次sirv alias 404与复跑依据见p723-review.md。
 
 初次23例运行：19通过，4个中文旧介绍断言把新增“查看原图”PNG链接误当必须带/zh/的页面链接。校正为共享PNG资源豁免，页面链接locale断言保持。修正后88回归全部通过，不降低链接/图像资格。
 
