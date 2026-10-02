@@ -11,9 +11,21 @@
 //! ureq，不为删除依赖扩展范围。
 
 pub mod client;
+pub mod transfer;
 
 // 内核 typed 类型的一等再导出（原生 Rust 消费者面）。
-pub use crate::http::client::{ClientError, HttpRequest, HttpResponse, StreamItem, StreamMode, StreamSpec};
+pub use crate::http::client::{
+    ClientError, HttpRequest, HttpResponse, StreamItem, StreamMode, StreamSpec,
+};
+
+// PLAN-727：文件传输公共面再导出（VM/a2r/原生 Rust 同词汇自由函数）。
+pub use crate::http::transfer::{
+    cancel_transfer_by_id, transfer_cancel, transfer_download, transfer_error,
+    transfer_next_progress, transfer_upload, transfer_wait, transfer_wait_async, DownloadOptions,
+    FileTransfer, OnExists, TransferError, TransferErrorKind, TransferHooks, TransferKind,
+    TransferLimits, TransferOutcome, TransferPhase, TransferProgress, TransferReceipt, UploadMode,
+    UploadOptions, Validator,
+};
 
 use crate::http::client::HttpClientStream;
 use crate::http::client::HttpResponse as KernelResponse;
@@ -61,7 +73,10 @@ pub fn post_sync(url: &str, body: &str, api_key: &str) -> (u32, String) {
     match client::execute_blocking(req) {
         Ok(resp) => {
             set_last_status(resp.status as u32);
-            (resp.status as u32, String::from_utf8_lossy(&resp.body).into_owned())
+            (
+                resp.status as u32,
+                String::from_utf8_lossy(&resp.body).into_owned(),
+            )
         }
         Err(e) => {
             set_last_status(0);
@@ -89,7 +104,10 @@ pub fn post_bearer_sync(url: &str, body: &str, api_key: &str) -> (u32, String) {
     match client::execute_blocking(req) {
         Ok(resp) => {
             set_last_status(resp.status as u32);
-            (resp.status as u32, String::from_utf8_lossy(&resp.body).into_owned())
+            (
+                resp.status as u32,
+                String::from_utf8_lossy(&resp.body).into_owned(),
+            )
         }
         Err(e) => {
             set_last_status(0);
@@ -127,12 +145,20 @@ pub fn get(url: &str) -> Response {
 /// Perform a POST request (two-arg normal form). Mirrors Auto's
 /// `http.post(url, body) -> Response`。与三参认证 [`post_sync`] 按元数分派。
 pub fn post(url: &str, body: &str) -> Response {
-    verb_response(client::execute_blocking(verb_request("POST", url, Some(body))))
+    verb_response(client::execute_blocking(verb_request(
+        "POST",
+        url,
+        Some(body),
+    )))
 }
 
 /// Perform a PUT request. Mirrors Auto's `http.put(url, body) -> Response`.
 pub fn put(url: &str, body: &str) -> Response {
-    verb_response(client::execute_blocking(verb_request("PUT", url, Some(body))))
+    verb_response(client::execute_blocking(verb_request(
+        "PUT",
+        url,
+        Some(body),
+    )))
 }
 
 /// Perform a DELETE request. Mirrors Auto's `http.delete(url) -> Response`.
@@ -163,13 +189,19 @@ pub async fn delete_async(url: &str) -> Response {
 /// Legacy `http.get_sync`（历史发射面引用）：返回 (status, body 文本)。
 pub fn get_sync(url: &str) -> (u32, String) {
     let resp = get(url);
-    (resp.status_code(), String::from_utf8_lossy(&resp.body_bytes()).into_owned())
+    (
+        resp.status_code(),
+        String::from_utf8_lossy(&resp.body_bytes()).into_owned(),
+    )
 }
 
 /// [`get_sync`] 的 async 面（async 上下文专用）。
 pub async fn get_sync_async(url: &str) -> (u32, String) {
     let resp = get_async(url).await;
-    (resp.status_code(), String::from_utf8_lossy(&resp.body_bytes()).into_owned())
+    (
+        resp.status_code(),
+        String::from_utf8_lossy(&resp.body_bytes()).into_owned(),
+    )
 }
 
 /// [`post_sync`] 的 async 面（tuple 形状不变；async 上下文专用）。
@@ -188,7 +220,10 @@ pub async fn post_sync_async(url: &str, body: &str, api_key: &str) -> (u32, Stri
     match client::execute(req).await {
         Ok(resp) => {
             set_last_status(resp.status as u32);
-            (resp.status as u32, String::from_utf8_lossy(&resp.body).into_owned())
+            (
+                resp.status as u32,
+                String::from_utf8_lossy(&resp.body).into_owned(),
+            )
         }
         Err(e) => {
             set_last_status(0);
@@ -212,7 +247,10 @@ pub async fn post_bearer_sync_async(url: &str, body: &str, api_key: &str) -> (u3
     match client::execute(req).await {
         Ok(resp) => {
             set_last_status(resp.status as u32);
-            (resp.status as u32, String::from_utf8_lossy(&resp.body).into_owned())
+            (
+                resp.status as u32,
+                String::from_utf8_lossy(&resp.body).into_owned(),
+            )
         }
         Err(e) => {
             set_last_status(0);
@@ -626,96 +664,66 @@ pub fn stream_close_async(s: &AsyncHTTPStream) {
 
 // ===========================================================================
 // Plan 349: File download + multipart upload (parity with VM http module).
-// 文件 helper 仍走 ureq（PLAN-724 §3 边界，不改返回形状）。
-// ===========================================================================
+// PLAN-727 T-03/T-04：旧三 helper 迁移至共享传输核心 [`transfer`]——
+// 增量落盘、staging 原子提交、失败保留原目标、写盘失败不再假成功。
+// 返回形状逐字节保留（`-> u32` status/0），差异登记为 legacy adapter：
+//   - download：成功 = 收据 kind==success（status 可信）；写盘失败 → 0
+//     （旧代码 create 成功后 copy 失败仍返回状态 = 假成功，已纠正）。
+//   - download_resume：严格字节对齐续传（offset 必须等于本地长度）；206 需
+//     合法 Content-Range；200 = 完整重启（旧代码盲目 append 已纠正）。
+//     无 validator：不能证明远端版本一致（legacy 限制，明示不承诺）。
+//   - upload：raw POST（旧形状保留；新可移植 multipart 面用 transfer_upload）。
+// ============================================================================
+
+/// legacy 三 helper 的共享收据 → (status|0) 映射：
+/// 成功 / HTTP 状态失败 → status；传输/文件/options/取消 → 0（可观察失败）。
+fn legacy_status_from(receipt: &transfer::TransferReceipt) -> u32 {
+    match receipt.kind {
+        transfer::TransferOutcome::Success => receipt.status.unwrap_or(0) as u32,
+        transfer::TransferOutcome::Failed => receipt.status.unwrap_or(0) as u32,
+        transfer::TransferOutcome::Cancelled => 0,
+    }
+}
+
+fn legacy_set_last_status(receipt: &transfer::TransferReceipt) {
+    set_last_status(legacy_status_from(receipt));
+}
 
 /// Download a file from `url` and save it to `file_path`.
 ///
-/// Returns the HTTP status code (200 on success, 0 on transport error).
+/// Returns the HTTP status code (200 on success, 0 on transport/file error).
 /// Mirrors Auto's `http.download(url, file_path) -> int`.
+/// PLAN-727：共享传输核心执行——staging 原子提交，任何失败保留原目标。
 pub fn download(url: &str, file_path: &str) -> u32 {
-    let resp = ureq::get(url).call();
-    match resp {
-        Ok(response) => {
-            let status = response.status() as u32;
-            if let Ok(mut file) = std::fs::File::create(file_path) {
-                let _ = std::io::copy(&mut response.into_reader(), &mut file);
-            }
-            set_last_status(status);
-            status
-        }
-        Err(ureq::Error::Status(code, _)) => {
-            set_last_status(code as u32);
-            code as u32
-        }
-        Err(ureq::Error::Transport(_)) => {
-            set_last_status(0);
-            0
-        }
-    }
+    let t = transfer::transfer_download(url, file_path, "{}");
+    let receipt = transfer::transfer_wait_typed(&t);
+    legacy_set_last_status(&receipt);
+    legacy_status_from(&receipt)
 }
 
 /// Upload a single file to `url` via raw POST body.
 ///
 /// Returns the HTTP status code. The file contents are sent as the request
-/// body with `Content-Type: application/octet-stream`.
+/// body with `Content-Type: application/octet-stream`（流式读取；缺失/读
+/// 失败 = 0，不再吞错）。
 /// Mirrors Auto's `http.upload(url, file_path) -> int`.
 pub fn upload(url: &str, file_path: &str) -> u32 {
-    let data = match std::fs::read(file_path) {
-        Ok(d) => d,
-        Err(_) => {
-            set_last_status(0);
-            return 0;
-        }
-    };
-    let resp = ureq::post(url)
-        .set("Content-Type", "application/octet-stream")
-        .send_bytes(&data);
-    match resp {
-        Ok(response) => {
-            let status = response.status() as u32;
-            set_last_status(status);
-            status
-        }
-        Err(ureq::Error::Status(code, _)) => {
-            set_last_status(code as u32);
-            code as u32
-        }
-        Err(ureq::Error::Transport(_)) => {
-            set_last_status(0);
-            0
-        }
-    }
+    let t = transfer::transfer_upload(url, file_path, r#"{"mode":"raw"}"#);
+    let receipt = transfer::transfer_wait_typed(&t);
+    legacy_set_last_status(&receipt);
+    legacy_status_from(&receipt)
 }
 
 /// Download with resume support — sends a Range header for `offset` bytes.
 ///
-/// If the server supports range requests (206), appends to the existing file.
-/// Otherwise (200), overwrites from the beginning.
+/// 严格续传：offset 必须等于本地文件长度；206 需合法 Content-Range 且起点
+/// 一致；200（上游忽略 Range）= 从零完整重启，绝不盲目 append。文件/范围
+/// 错误保留原目标并返回 0。
 /// Mirrors Auto's `http.download_resume(url, file_path, offset) -> int`.
 pub fn download_resume(url: &str, file_path: &str, offset: u64) -> u32 {
-    let req = ureq::get(url).set("Range", &format!("bytes={offset}-"));
-    match req.call() {
-        Ok(response) => {
-            let status = response.status() as u32;
-            let file_result = if status == 206 {
-                std::fs::OpenOptions::new().append(true).open(file_path)
-            } else {
-                std::fs::File::create(file_path)
-            };
-            if let Ok(mut file) = file_result {
-                let _ = std::io::copy(&mut response.into_reader(), &mut file);
-            }
-            set_last_status(status);
-            status
-        }
-        Err(ureq::Error::Status(code, _)) => {
-            set_last_status(code as u32);
-            code as u32
-        }
-        Err(ureq::Error::Transport(_)) => {
-            set_last_status(0);
-            0
-        }
-    }
+    let options = format!("{{\"offset\":{offset}}}");
+    let t = transfer::transfer_download(url, file_path, &options);
+    let receipt = transfer::transfer_wait_typed(&t);
+    legacy_set_last_status(&receipt);
+    legacy_status_from(&receipt)
 }

@@ -7,10 +7,9 @@ description = "Auto language standard library for a2r transpiled Rust code"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-ureq = { version = "2", features = ["tls"] }
-# PLAN-724 T-03: 共享 async HTTP 客户端内核的网络执行底座（reqwest async +
-# bytes_stream）。文件 helper 仍走 ureq，不为删除依赖扩展范围。
-reqwest = { workspace = true, features = ["stream"] }
+# PLAN-727 T-03/T-04: 文件 helper 全部迁移至共享传输核心（http/transfer.rs），
+# ureq 依赖退役（最后消费者 legacy 三 helper 已于本计划迁走）。
+reqwest = { workspace = true, features = ["stream", "multipart"] }
 futures = "0.3"
 # Plan 387: actor runtime for transpiled `task` definitions (unbounded mpsc +
 # current-thread tokio spawn). `full` is required by the workspace default

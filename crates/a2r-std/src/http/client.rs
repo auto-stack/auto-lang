@@ -34,6 +34,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use super::transfer::TransferLimits;
+
 // ============================================================================
 // 限额（默认对齐 705/707 交付值；env 首次使用时读取一次）
 // ============================================================================
@@ -110,7 +112,9 @@ impl ClientLimits {
             max_active: env_usize("AUTO_A2R_HTTP_MAX_ACTIVE", 8),
             queue_capacity: env_usize("AUTO_A2R_HTTP_QUEUE", 64),
             body_limit: env_usize("AUTO_A2R_HTTP_BODY_LIMIT", 10 * 1024 * 1024),
-            total_timeout: Duration::from_millis(env_usize("AUTO_A2R_HTTP_TIMEOUT_MS", 30_000) as u64),
+            total_timeout: Duration::from_millis(
+                env_usize("AUTO_A2R_HTTP_TIMEOUT_MS", 30_000) as u64
+            ),
         }
     }
 }
@@ -144,6 +148,9 @@ pub const RAW_CHUNK_BYTES: usize = 16 * 1024;
 /// 一个独立内核实例。全局单例（[`kernel_handle`] 等入口）服务两个 HTTP
 /// facade；测试经 [`KernelInstance::new`] 构造独立小预算实例，不碰进程
 /// env、不受全局初始化顺序影响（PLAN-724 §6 资源/计数隔离要求）。
+///
+/// PLAN-727：文件传输在实例内持**独立**许可组（`transfer_active/queue`）
+/// 与受限 FS 并发（`fs_ops`）——大文件传输不占用普通 HTTP/SSE 配额。
 pub struct KernelInstance {
     rt: tokio::runtime::Runtime,
     client: reqwest::Client,
@@ -153,17 +160,30 @@ pub struct KernelInstance {
     stream_active: Arc<tokio::sync::Semaphore>,
     stream_queue: Arc<tokio::sync::Semaphore>,
     stream_limits: StreamLimits,
+    transfer_active: Arc<tokio::sync::Semaphore>,
+    transfer_queue: Arc<tokio::sync::Semaphore>,
+    transfer_limits: TransferLimits,
+    fs_ops: Arc<tokio::sync::Semaphore>,
 }
 
 impl KernelInstance {
     pub fn new(client_limits: ClientLimits, stream_limits: StreamLimits) -> Self {
+        Self::new_with_transfers(client_limits, stream_limits, TransferLimits::default())
+    }
+
+    /// 带自定义文件传输限额的实例构造（PLAN-727 测试隔离入口）。
+    pub fn new_with_transfers(
+        client_limits: ClientLimits,
+        stream_limits: StreamLimits,
+        transfer_limits: TransferLimits,
+    ) -> Self {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(client_limits.workers)
             .thread_name("a2r-http-kernel")
             .enable_all()
             .build()
             .expect("a2r http kernel runtime");
-        // 复用连接的共享 Client：所有请求/流同池，无每请求 Client。
+        // 复用连接的共享 Client：所有请求/流/传输同池，无每请求 Client。
         let client = reqwest::Client::builder()
             .build()
             .expect("a2r http kernel client");
@@ -176,6 +196,10 @@ impl KernelInstance {
             stream_active: Arc::new(tokio::sync::Semaphore::new(stream_limits.max_active)),
             stream_queue: Arc::new(tokio::sync::Semaphore::new(stream_limits.queue_capacity)),
             stream_limits,
+            transfer_active: Arc::new(tokio::sync::Semaphore::new(transfer_limits.max_active)),
+            transfer_queue: Arc::new(tokio::sync::Semaphore::new(transfer_limits.queue_capacity)),
+            transfer_limits,
+            fs_ops: Arc::new(tokio::sync::Semaphore::new(transfer_limits.fs_ops_max)),
         }
     }
 
@@ -194,7 +218,32 @@ impl KernelInstance {
         self.stream_active.available_permits()
     }
 
+    /// 非流式队列许可探针（PLAN-727 排队取消测试用）。
+    pub fn queue_available(&self) -> usize {
+        self.queue.available_permits()
+    }
+
+    /// 传输活跃许可探针（PLAN-727 资源报告）。
+    pub fn transfer_active_available(&self) -> usize {
+        self.transfer_active.available_permits()
+    }
+
+    /// 传输队列许可探针。
+    pub fn transfer_queue_available(&self) -> usize {
+        self.transfer_queue.available_permits()
+    }
+
+    /// 受限文件操作许可探针。
+    pub fn fs_ops_available(&self) -> usize {
+        self.fs_ops.available_permits()
+    }
+
     /// 在 async 上下文执行一个请求（见模块级拓扑）。
+    ///
+    /// PLAN-727 T-02 闭合：排队等待同样被调用方取消与总期限覆盖——
+    /// 先等 active 许可的旧形态下，排队 job 既不响应丢弃 future 也不受
+    /// 总期限约束（静态差距实证）。现在 select 三臂同权：
+    /// `acquire(active)` / `tx.closed()`（调用方取消）/ `total`（自提交起）。
     pub async fn execute(&self, req: HttpRequest) -> Result<HttpResponse, ClientError> {
         let Ok(queue_permit) = Arc::clone(&self.queue).try_acquire_owned() else {
             return Err(ClientError::QueueFull);
@@ -205,14 +254,29 @@ impl KernelInstance {
         let limits = self.limits;
         self.rt.spawn(async move {
             let _queue_slot = queue_permit;
-            let Ok(_active_slot) = active.acquire_owned().await else {
+            // 总期限自 job 提交（排队起点）计时——等待计入总期限。
+            let total = tokio::time::sleep(limits.total_timeout);
+            tokio::pin!(total);
+            let acquire = active.acquire_owned();
+            tokio::pin!(acquire);
+            let slot = tokio::select! {
+                slot = &mut acquire => slot,
+                // 取消传播（排队期）：调用方丢弃 rx → tx.closed() → 退出并
+                // 归还队列/活跃许可。
+                _ = tx.closed() => { return; }
+                _ = &mut total => {
+                    let _ = tx.send(Err(ClientError::Timeout));
+                    return;
+                }
+            };
+            let Ok(_active_slot) = slot else {
                 return; // runtime 关闭：许可随 guard 释放，调用方拿 Cancelled
             };
             let work =
-                tokio::time::timeout(limits.total_timeout, execute_owned(client, limits, req));
+                tokio::time::timeout_at(total.deadline(), execute_owned(client, limits, req));
             tokio::pin!(work);
-            // 取消传播：调用方丢弃 rx → tx.closed() → work future 在当前
-            // await 点被丢弃（建立/读体随之停止），许可随本任务退出归还。
+            // 取消传播（执行期）：调用方丢弃 rx → tx.closed() → work future
+            // 在当前 await 点被丢弃（建立/读体随之停止），许可随任务退出归还。
             tokio::select! {
                 r = &mut work => {
                     let result = match r {
@@ -250,8 +314,14 @@ impl KernelInstance {
             abort: std::sync::Mutex::new(None),
         });
         let Ok(queue_permit) = Arc::clone(&self.stream_queue).try_acquire_owned() else {
-            finalize(&shared, StreamState::Failed("stream queue full".to_string()));
-            return HttpClientStream { shared, done: false };
+            finalize(
+                &shared,
+                StreamState::Failed("stream queue full".to_string()),
+            );
+            return HttpClientStream {
+                shared,
+                done: false,
+            };
         };
         let active = Arc::clone(&self.stream_active);
         let client = self.client.clone();
@@ -267,19 +337,50 @@ impl KernelInstance {
         // 登记生产者 abort 句柄（spawn→登记窗口内的 close：finalize 已生效，
         // 生产者在首个终态检查点自行退出——abort 缺席不漏取消）。
         *shared.abort.lock().unwrap() = Some(task.abort_handle());
-        HttpClientStream { shared, done: false }
+        HttpClientStream {
+            shared,
+            done: false,
+        }
     }
 }
 
 static KERNEL: std::sync::OnceLock<KernelInstance> = std::sync::OnceLock::new();
 
 fn kernel() -> &'static KernelInstance {
-    KERNEL.get_or_init(|| KernelInstance::new(ClientLimits::from_env(), StreamLimits::from_env()))
+    KERNEL.get_or_init(|| {
+        KernelInstance::new_with_transfers(
+            ClientLimits::from_env(),
+            StreamLimits::from_env(),
+            TransferLimits::from_env(),
+        )
+    })
 }
 
 /// 内核 runtime 句柄（同步桥接用；async 消费者不得用其 block_on）。
 pub fn kernel_handle() -> tokio::runtime::Handle {
     kernel().handle()
+}
+
+// ---- PLAN-727 全局传输子系统入口（transfer.rs 消费） ----
+
+pub(crate) fn transfer_active() -> &'static Arc<tokio::sync::Semaphore> {
+    &kernel().transfer_active
+}
+
+pub(crate) fn transfer_queue() -> &'static Arc<tokio::sync::Semaphore> {
+    &kernel().transfer_queue
+}
+
+pub(crate) fn fs_ops() -> &'static Arc<tokio::sync::Semaphore> {
+    &kernel().fs_ops
+}
+
+pub(crate) fn transfer_limits() -> TransferLimits {
+    kernel().transfer_limits
+}
+
+pub(crate) fn shared_http_client() -> reqwest::Client {
+    kernel().client.clone()
 }
 
 // ============================================================================
@@ -364,10 +465,7 @@ impl std::error::Error for ClientError {}
 
 /// 增量读取响应体并强制预算：Content-Length 预检 + 分块累计超限即终结性
 /// 错误（不把无限响应体读进内存）。
-async fn read_body_capped(
-    resp: reqwest::Response,
-    cap: usize,
-) -> Result<Vec<u8>, ClientError> {
+async fn read_body_capped(resp: reqwest::Response, cap: usize) -> Result<Vec<u8>, ClientError> {
     if let Some(len) = resp.content_length() {
         if len > cap as u64 {
             return Err(ClientError::BodyTooLarge { limit: cap });
@@ -417,7 +515,11 @@ async fn execute_owned(
         .filter_map(|(k, v)| Some((k.to_string(), v.to_str().ok()?.to_string())))
         .collect();
     let body = read_body_capped(resp, limits.body_limit).await?;
-    Ok(HttpResponse { status, headers, body })
+    Ok(HttpResponse {
+        status,
+        headers,
+        body,
+    })
 }
 
 // ============================================================================
@@ -708,7 +810,10 @@ async fn run_producer(
     client: reqwest::Client,
 ) {
     let Ok(_active_slot) = active.acquire_owned().await else {
-        finalize(shared, StreamState::Failed("stream executor closed".to_string()));
+        finalize(
+            shared,
+            StreamState::Failed("stream executor closed".to_string()),
+        );
         return;
     };
     if shared.cell.lock().unwrap().state.is_terminal() {
@@ -735,7 +840,10 @@ async fn run_producer(
             return;
         }
         Ok(Err(e)) => {
-            finalize(shared, StreamState::Failed(format!("stream open failed: {e}")));
+            finalize(
+                shared,
+                StreamState::Failed(format!("stream open failed: {e}")),
+            );
             return;
         }
         Ok(Ok(resp)) => resp,
@@ -767,12 +875,18 @@ async fn run_producer(
         // 读空闲期限只包上游 read；队满背压等待在 enqueue 内、不计时。
         let chunk = match tokio::time::timeout(limits.idle_timeout, upstream.next()).await {
             Err(_) => {
-                finalize(shared, StreamState::Failed("stream idle timeout".to_string()));
+                finalize(
+                    shared,
+                    StreamState::Failed("stream idle timeout".to_string()),
+                );
                 return;
             }
             Ok(None) => break, // 上游 EOF
             Ok(Some(Err(e))) => {
-                finalize(shared, StreamState::Failed(format!("stream read error: {e}")));
+                finalize(
+                    shared,
+                    StreamState::Failed(format!("stream read error: {e}")),
+                );
                 return;
             }
             Ok(Some(Ok(bytes))) => bytes,
@@ -803,7 +917,10 @@ async fn run_producer(
                         return;
                     }
                     Err(crate::sse::SseDecodeError::InvalidUtf8) => {
-                        finalize(shared, StreamState::Failed("sse decode invalid utf-8".to_string()));
+                        finalize(
+                            shared,
+                            StreamState::Failed("sse decode invalid utf-8".to_string()),
+                        );
                         return;
                     }
                 }
@@ -847,7 +964,6 @@ fn split_utf8_chunks(text: &str, max: usize) -> Vec<String> {
     }
     out
 }
-
 
 // ============================================================================
 // 内核测试：独立小预算实例 + 回环 TCP stub（PLAN-724 §6 布局：内核单测
@@ -1024,9 +1140,7 @@ mod tests {
         // active=2 + queue=4：前 6 个被接受，第 7 个 QueueFull。
         let mut inflight = Vec::new();
         for i in 0..6 {
-            inflight.push(h.spawn(inst.execute(get(format!(
-                "http://127.0.0.1:{port}/hold{i}"
-            )))));
+            inflight.push(h.spawn(inst.execute(get(format!("http://127.0.0.1:{port}/hold{i}")))));
         }
         // 等 active 许可占满（确定性判据），队列槽随后被其余 job 占住。
         let deadline = std::time::Instant::now() + Duration::from_secs(3);
@@ -1035,9 +1149,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         wait_server_ready(&_ready); // 首个 active job 的请求已落线
-        let seventh = h.block_on(inst.execute(get(format!(
-            "http://127.0.0.1:{port}/overflow"
-        ))));
+        let seventh = h.block_on(inst.execute(get(format!("http://127.0.0.1:{port}/overflow"))));
         assert_eq!(seventh, Err(ClientError::QueueFull));
         // 清理：取消全部在途 → 许可回基线。
         for j in inflight {
@@ -1059,16 +1171,14 @@ mod tests {
             let _ = std::io::Read::read(&mut s, &mut [0u8; 1]);
         });
         let h = inst.handle();
-        let caller = h.spawn(inst.execute(get(format!(
-            "http://127.0.0.1:{port}/cancel-me"
-        ))));
+        let caller = h.spawn(inst.execute(get(format!("http://127.0.0.1:{port}/cancel-me"))));
         let deadline = std::time::Instant::now() + Duration::from_secs(3);
         while inst.active_available() > 1 {
             assert!(std::time::Instant::now() < deadline, "job 未进入 active");
             std::thread::sleep(Duration::from_millis(10));
         }
         wait_server_ready(&_ready); // 请求已落线，连接可被取消关闭
-        // 调用方取消：丢弃等待 future → job 必须退出并归还许可。
+                                    // 调用方取消：丢弃等待 future → job 必须退出并归还许可。
         caller.abort();
         let deadline = std::time::Instant::now() + Duration::from_secs(3);
         while inst.active_available() < 2 {
@@ -1158,7 +1268,7 @@ mod tests {
             headers: Vec::new(),
             mode: StreamMode::Sse,
         });
-wait_server_ready(&_ready);
+        wait_server_ready(&_ready);
         let deadline = std::time::Instant::now() + Duration::from_secs(3);
         while stream.terminal_error().is_none() {
             assert!(std::time::Instant::now() < deadline, "SSE 404 未终结");
@@ -1201,7 +1311,10 @@ wait_server_ready(&_ready);
         wait_server_ready(&_ready); // 慢上游已收到请求（headers 已写）
         let deadline = std::time::Instant::now() + Duration::from_secs(3);
         while inst.stream_active_available() > 1 {
-            assert!(std::time::Instant::now() < deadline, "流生产者未进入 active");
+            assert!(
+                std::time::Instant::now() < deadline,
+                "流生产者未进入 active"
+            );
             std::thread::sleep(Duration::from_millis(10));
         }
         stream.close();
@@ -1309,9 +1422,12 @@ wait_server_ready(&_ready);
         let inst = test_instance();
         // SSE 事件 data 超实例 item 预算（4096 < 8 KiB < decoder 256 KiB）
         // → 内核级预算终结可观察。
-        let huge_event = format!("data: {}
+        let huge_event = format!(
+            "data: {}
 
-", "z".repeat(8 * 1024));
+",
+            "z".repeat(8 * 1024)
+        );
         let (port, _ready, server) = spawn_server(move |_head, mut s| {
             respond(&mut s, "HTTP/1.1 200 OK", &[], huge_event.as_bytes());
         });
@@ -1322,7 +1438,7 @@ wait_server_ready(&_ready);
             headers: Vec::new(),
             mode: StreamMode::Sse,
         });
-wait_server_ready(&_ready);
+        wait_server_ready(&_ready);
         let deadline = std::time::Instant::now() + Duration::from_secs(3);
         while stream.terminal_error().is_none() {
             assert!(std::time::Instant::now() < deadline, "超预算流未终结");
@@ -1369,15 +1485,24 @@ wait_server_ready(&_ready);
         // JSON 形态（Auto 表面）。
         let h = parse_json_headers(r#"{"Authorization":"Bearer t","X-A":"1"}"#).unwrap();
         assert_eq!(h.len(), 2);
-        assert!(parse_json_headers("not-json").is_err(), "坏 JSON 必须终结性报错");
-        assert!(parse_json_headers(r#"{"K":123}"#).is_err(), "非字符串值必须报错");
+        assert!(
+            parse_json_headers("not-json").is_err(),
+            "坏 JSON 必须终结性报错"
+        );
+        assert!(
+            parse_json_headers(r#"{"K":123}"#).is_err(),
+            "非字符串值必须报错"
+        );
         assert!(parse_json_headers("[]").is_err(), "非对象必须报错");
         assert!(parse_json_headers("").unwrap().is_empty());
 
         // 行形态（历史 Rust facade）。
         let h = parse_line_headers("K: v\r\nB: 2\n").unwrap();
         assert_eq!(h, vec![("K".into(), "v".into()), ("B".into(), "2".into())]);
-        assert!(parse_line_headers("no-colon-line").is_err(), "缺冒号必须报错");
+        assert!(
+            parse_line_headers("no-colon-line").is_err(),
+            "缺冒号必须报错"
+        );
         assert!(parse_line_headers(": value-only").is_err(), "空键必须报错");
         assert!(parse_line_headers("").unwrap().is_empty());
     }
@@ -1388,9 +1513,7 @@ wait_server_ready(&_ready);
         let (port, _ready, server) = spawn_server(|_head, mut s| {
             respond(&mut s, "HTTP/1.1 200 OK", &[], b"bridge");
         });
-        let resp = inst.execute_blocking(get(format!(
-            "http://127.0.0.1:{port}/bridge"
-        )));
+        let resp = inst.execute_blocking(get(format!("http://127.0.0.1:{port}/bridge")));
         let resp = resp.expect("同步桥接在非 runtime 线程必须可用");
         assert_eq!(resp.body, b"bridge");
         join_server(server);
@@ -1530,5 +1653,113 @@ stream-",
         assert!(pieces.iter().all(|p| p.len() <= RAW_CHUNK_BYTES));
         assert_eq!(pieces.concat(), text);
         assert_eq!(split_utf8_chunks("abc", 16), vec!["abc".to_string()]);
+    }
+
+    // ========================================================================
+    // PLAN-727 T-02：排队取消与准入期限闭合（active=1 gate 不开的复现）
+    // ========================================================================
+
+    /// active=1：job1 占住活跃许可且 gate 不放行；排队中的 job2 被调用方
+    /// 取消（abort 等待 future）——必须在未获得活跃许可的情况下退出并归还
+    /// 队列许可（旧形态下排队 job 不响应调用方取消，静态差距的运行时实证）。
+    #[test]
+    fn plan727_execute_queued_cancel_returns_permit_without_gate() {
+        let inst = Box::leak(Box::new(KernelInstance::new(
+            ClientLimits {
+                workers: 2,
+                max_active: 1,
+                queue_capacity: 4,
+                body_limit: 64 * 1024,
+                total_timeout: Duration::from_secs(30),
+            },
+            StreamLimits::default(),
+        )));
+        // 服务器 accept 后只读不响应（gate 不开），客户端断连后退出。
+        let (port, _ready, server) = spawn_server(|_head, mut s| {
+            let _ = std::io::Read::read(&mut s, &mut [0u8; 1]);
+        });
+        let h = inst.handle();
+        let job1 = h.spawn(inst.execute(get(format!("http://127.0.0.1:{port}/hold"))));
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while inst.active_available() > 0 {
+            assert!(std::time::Instant::now() < deadline, "job1 未进入 active");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        // job2 排队：job1 已占 1 个队列许可（基线 q=3），job2 外层入队后 q=2。
+        let job2 = h.spawn(inst.execute(get(format!("http://127.0.0.1:{port}/queued"))));
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while inst.queue_available() > 2 {
+            assert!(std::time::Instant::now() < deadline, "job2 未进入队列");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        // 内核 job 已 spawn 并即将在 acquire 上排队（active=1 被 job1 占满，
+        // 不可能前进一步）；给一次 poll 机会后取消。
+        std::thread::sleep(Duration::from_millis(50));
+        // 取消排队 job2：gate 未开也要退出并归还队列许可。
+        job2.abort();
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while inst.queue_available() < 3 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "排队取消后队列许可未归还 q={}",
+                inst.queue_available()
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        // 清理 job1：活跃许可回基线。
+        job1.abort();
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while inst.active_available() < 1 {
+            assert!(std::time::Instant::now() < deadline, "取消后活跃许可未归还");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        join_server(server);
+    }
+
+    /// active=1 占满时，排队 job 的总期限自提交起覆盖排队等待——到期收到
+    /// Timeout（旧形态排队 job 无期限约束）。
+    #[test]
+    fn plan727_execute_queued_deadline_bounded() {
+        let inst = Box::leak(Box::new(KernelInstance::new(
+            ClientLimits {
+                workers: 2,
+                max_active: 1,
+                queue_capacity: 4,
+                body_limit: 64 * 1024,
+                total_timeout: Duration::from_millis(700),
+            },
+            StreamLimits::default(),
+        )));
+        // 服务器 accept job1 后保持连接（gate 不开）直到客户端断连。
+        let (port, _ready, server) = spawn_server(|_head, mut s| {
+            let _ = std::io::Read::read(&mut s, &mut [0u8; 1]);
+        });
+        let h = inst.handle();
+        let job1 = h.spawn(inst.execute(get(format!("http://127.0.0.1:{port}/hold"))));
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while inst.active_available() > 0 {
+            assert!(std::time::Instant::now() < deadline, "job1 未进入 active");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        // job2 排队：总期限 700ms 到期必须以 Timeout 终结（等待计入期限）。
+        let started = std::time::Instant::now();
+        let job2 = h.block_on(inst.execute(get(format!("http://127.0.0.1:{port}/queued"))));
+        assert_eq!(
+            job2,
+            Err(ClientError::Timeout),
+            "排队 job 须在总期限到期时 Timeout"
+        );
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= Duration::from_millis(600) && elapsed < Duration::from_secs(5),
+            "排队期限耗时异常: {elapsed:?}"
+        );
+        job1.abort();
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while inst.active_available() < 1 {
+            assert!(std::time::Instant::now() < deadline, "取消后活跃许可未归还");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        join_server(server);
     }
 }
