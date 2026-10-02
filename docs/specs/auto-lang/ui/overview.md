@@ -29,6 +29,26 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
   DesktopBus v0——单 OS 窗口内多 App 虚拟桌面。
 - **a2ui 协议** 与 **`#[api]` 前后端契约**（`src/api/`）。
 
+## 现状（2026-10-02）——文件后援分页 rope（PLAN-728）
+
+> auto-edit M4 供⑮ 承接：>50MB 文档装载链从全量读改后援分页（下游
+> open_1gb/512MB 拒绝位的上游解阻件）。契约真源=
+> [design/paged-rope.md](design/paged-rope.md)（SD-01）；基准谱=
+> docs/reports/p728-bench.jsonl。
+
+- **后援形 rope**：`Node::Chunk` 叶变体（页描述符+预扫摘要）——行数/
+  长度/内容摘要/diff 剪枝 Merkle **零驻留应答**；`Rope`/`RopeSnapshot`
+  公共 API 零破坏（签名钉探针）。装载阈值 50MB（下游 big 态对齐）；
+  小文件臂逐字节原样。
+- **内存上界契约**：LRU 页缓存 6MB+结构计量 ≤12MB@1GB（实测 3.03MB/
+  RSS 峰值 17MB LT）；异步预取 ±16 页（页面态可观测）保温滚动/编辑窗。
+- **保存合并**：`write_backed` 未改区段基底句柄磁盘到磁盘照抄+temp+
+  原子改名+外部修改拒绝（byte-for-byte；BOM/EOL 解释归下游）。
+- **窗口视图**：>50MB 档 cosmic Buffer 物化=2MB 头窗口；跳转/查找落点
+  rewindow；提交漏斗窗口基址映射；S2 全文档视口物化=下游消费件（供料
+  档 §10 回执预告位在档）。
+- **顺手修复**：703 对齐行走字符中间切片隐患（leaf 比较改字节基）。
+
 ## 现状（2026-10-02）——编辑路径帧管线增量更新（PLAN-725）
 
 > auto-edit M4 帧两行 FAIL（type_latency/scroll_fps）清偿本体：编辑路径
