@@ -284,7 +284,7 @@ TCP 用 OS 临时端口、有限 accept/read/关闭截止时间与清理守卫�
 - landed: rebase master（range-diff 986e765ac..2ded9a1f5 vs master..plan-724-dev **7/7 全等**）→ ff-only 合入 → master tip = **8a7fa3cee**（= delivery_commit）。旧→新映射：7e7c6b3f8→2b3736ccf、14e9cc389→d8b90e2ce、93b012b08→bd4f84b4e、53836eca1→92fadc8bf、96a9ed707→1e6155067、6fc4a6023→5cc8a936a、2ded9a1f5→8a7fa3cee。主检出 smoke：plan724 5/5、e4 绿、a2r-std 43/43。
 - ledger_refreshed: specs.json 外科插入（store 写者 8080 不可达，循 711/713..720 先例）——designs P724-1..7（七投影，docsha:d059f123acac4347/23a29f0f534c934b/72640ccca1d690d5/f27c3442a1798746/de34e79043b00234/d3b46a525eccf9da/9ea9a622fa76d69c @8a7fa3cee）+ reviews P724-8 + reports P724-9；designs 126→133/reviews 189→190/reports 112→113；json 回读+四段字节零扰动+条目唯一性守卫过；spec-lint 0 错误（6 预存警告）；spec-index 再生。提交 479ff6be1。
 - archived: docs/plans/archive/724-a2r-http-client-async-convergence.md，status: archived
-- cleaned: （待清理后回填）
+- cleaned: wt-guard 双证 clean（auto-lang 与 auto-down sibling，无 reparse point）；worktree 双移除（auto-down 注册在首次 remove 时已消，目录残留为普通检出副本，rm -rf 清除）；分支 plan-724-dev 已删（was 8a7fa3cee=master 祖先）；组目录 .wt/lang-724 已删；worktree list 零 lang-724 条目
 - tail: 产物/批量回归检查见下（待执行回填）
 
 ## 10. 待澄清事项
