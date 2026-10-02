@@ -1,7 +1,7 @@
 # a2r-std
 
 > **Status**: active
-> 路径：`crates/a2r-std`  | 技术栈：Rust（serde_json / ureq / rusqlite / redis）
+> 路径：`crates/a2r-std`  | 技术栈：Rust（serde_json / reqwest async / ureq / rusqlite / redis）
 
 a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代码有与 Auto 语义对齐的 std 实现。
 
@@ -18,10 +18,20 @@ a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代
 | list / hashmap / string_builder | 集合与字符串构建 | active |
 | str | 字符串函数 | active |
 | json | JSON 读写（serde_json） | active |
-| http | HTTP 客户端（ureq） | active |
+| http | HTTP 客户端（**共享 async 内核** `http::client`：reqwest async + 固定 runtime + 有界准入 + typed 结果 + 真取消；PLAN-724。设计契约见 [http-client-runtime](design/http-client-runtime.md)。文件 helper download/upload/download_resume 仍走 ureq——登记的剩余差异，不为删除依赖扩展范围） | active |
 | fs / env / math / time | 文件系统、环境、数学、时间 | active |
 | sqlite | 嵌入式 SQL 数据库（rusqlite 0.30 bundled，Plan 415-B1） | active |
 | redis | Redis 客户端（redis 0.27 纯 Rust 同步 API，Plan 415-B2） | active |
+
+## http 模块约定（PLAN-724 收口）
+
+- 两条 facade（本 crate `a2r_std::http` 与 `auto_lang::a2r_std::http`）的
+  全部网络执行单源化到共享内核；历史签名（认证 tuple、Response/HTTPStream
+  形状、last_status TLS）保留，`HTTPStream.close` 为真取消（原占位退役）。
+- 调用矩阵/同步边界/限额/错误分层/SSE 解码单源详见
+  [http-client-runtime](design/http-client-runtime.md)。
+- VM 的 `sse_open/sse_poll` 等 int id 族不在 a2r 支持集（a2r 用流手柄 +
+  for-in 表达同等消费）。
 
 ## sqlite 模块约定（Plan 415-B1）
 

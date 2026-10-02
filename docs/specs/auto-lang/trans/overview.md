@@ -46,6 +46,14 @@ Python（a2p）、JavaScript（a2j）、GDScript（a2gd）及 Godot 场景（tsc
   oracle 黑盒 stdout 全等,共享 fake_core stub rlib）;未解析类型名 F6
   透传不变,告警面 env 门控 `AUTO_WARN_UNRESOLVED_TYPES=1`(默认静默,全量
   跑实测非类型标识常规性抵达该兜底)。
+- a2r HTTP 客户端 typed 发射（PLAN-724）：`http.*` 客户端面从分散特判
+  收敛为**上下文感知分派**——async 上下文（~T/Future fn、含 .await 的
+  main、generator body、.go）选 `*_async().await` 内核面，同步上下文走
+  同步桥接；两参普通 post 与三参认证按元数分流；builder 链/重绑定感知
+  `send_async`；流生产者/方法/自由函数/for-in 按变量分型发射。分派表与
+  编译运行支持面见
+  [http-client-lowering](design/http-client-lowering.md)（运行时契约 =
+  [http-client-runtime](../../a2r-std/design/http-client-runtime.md)）。
 - a2c 闭包原型入头（plan-595）：闭包定义发射在 main 之后，其**前向
   原型必须写入头文件**（`generate_closure_definitions` 先于 header 装配
   执行，原型并入 `self.header`）——无原型则 main 内引用闭包为 C2065

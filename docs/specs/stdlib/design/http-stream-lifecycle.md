@@ -1,6 +1,6 @@
 # 外部 HTTP/SSE 流生命周期(http stream lifecycle)
 
-> **Status**: current(PLAN-707,Design 33 阶段 C2a) | 层:vm ffi http_stream/stdlib | 2026-09-30
+> **Status**: current(PLAN-707,Design 33 阶段 C2a;PLAN-724 SD-06 修订——a2r 客户端迁移落地) | 层:vm ffi http_stream/stdlib | 2026-10-02
 
 ## 执行模型
 
@@ -113,8 +113,15 @@ headers/POST body 原样透传,不对 POST 自动重试/重连。
 - **已支持**:上述全部(探针族 `plan707` 31 项 + E2E 三例真 TCP relay:
   分时帧/断连级联取消/close 基线,见 plans/reports/707-{parity,
   resource-lifecycle,verification}.md)。
-- **非目标**:a2r-std/auto-man/Rust 生成服务流客户端迁移(线程/无界/
-  close 占位仍在);bus.subscribe/文件进度流线程形态全面改造(共同句柄
+- **Rust 客户端已迁移(PLAN-724 SD-06)**:a2r 两 facade 的外部流消费
+  收敛到共享 async 内核(有界队列/背压/建立与 idle 期限/真取消/SSE 共享
+  解码),本篇的 707 状态机/预算/单次终结语义在
+  [http-client-runtime](../../a2r-std/design/http-client-runtime.md)
+  以 Rust 形态同构落地;**协议差异明示**——VM 轨 = park/resume 凭据 +
+  引擎泵恢复(本篇),Rust 轨 = async await/通知等待(无 park 概念),
+  两者不共享资源表与许可。
+- **非目标**:auto-man 生成服务的任意外部流 handler(事件总线模板为主,
+  重写另案);bus.subscribe/文件进度流线程形态全面改造(共同句柄
   清理适配而已);通用 WS/TLS/HTTP2;自动 SSE 重连/Last-Event-ID 重放;
   async-for 语法;`HTTPStream.iter()` 方法式派发(自由函数
   `Http.stream_iter` + 变量形态已覆盖);run_task_loop 流唤醒的事件化
