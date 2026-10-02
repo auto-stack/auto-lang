@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-725
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: 键入帧增量更新管线优化件（auto-edit M4 帧两行 FAIL 清偿本体——脏域/增量更新，学 Zed 三课「增量一切」）
 author: [agent]
 created_at: 2026-10-02T00:00:00+08:00
 updated_at: 2026-10-02T00:00:00+08:00
 plan_revision: 1
-current_step: 0
+current_step: 8
 total_steps: 8
 
 # /auto-plan:review 结束时填写：
@@ -46,6 +46,18 @@ scroll_fps 8.01fps vs 阈值 54=面板 60Hz×0.9，谱
 §8 余留小缺口（供⑫ print 拼接形+供⑬ frame i32 收窄——Q-1 并入
 裁定）。下游重判（type_latency/scroll_fps 转绿）=本件 delivered 后
 auto-edit 补跑件。
+
+### 执行期落点注记（2026-10-02 work）
+
+- 供⑬ 修复落点=**`crates/auto-lang/src/a2r_std.rs`**（frame fn i32 收窄）
+  非 affects 表列的 trans/rust.rs——发射形无需改动，值域收窄在 std 层单点。
+- 探针通道新增 **`crates/auto-lang/src/ui/frame_segments.rs`** + frame_bench
+  门控开放（`ui/mod.rs` 注册）——T-00/T-05 常驻门控面（AUTO_FRAME_BENCH 族）。
+- T-03 memo 扩面=**零代码交付**（勘定记录 §2③：定量门已由元素级根因修复
+  达成；memo 消费面归下游 app opt-in——SD-01 §4 注记）；aura_view_builder/
+  memo_deps/component 未触。
+- 供⑫ 勘定修正：现势 master 发射形已合法（`println!("{}", format!(…))`），
+  缺口不复发——处置=金样锁定（`test/a2r/04_strings/010_print_concat`）。
 
 ## 1. 目标
 
@@ -354,17 +366,34 @@ SD 表——L2 设计文档惯例。）
 
 | # | 任务 | 依赖 | 落点（实勘锚） | 产出/意图 | AC | 验证（命令/预期） | 状态 |
 |---|---|---|---|---|---|---|---|
-| 0 | T-00 分段剖析+勘定 | — | 本件 §5 T-00 节（renderer.rs 五段锚+P631/sched_diag/frame_bench 复用） | 分段谱基线+四项勘定+定量门定参 | AC-01/04 | 勘定记录+基线谱 JSONL 在档 | [ ] |
-| 1 | T-01 单帧单建 | T-00 | renderer.rs:23085-23154（MCP 同步块）+:23368（主重建） | 脏帧 build=1+快照等价 | AC-02 | 探针断言+对拍+回归绿 | [ ] |
-| 2 | T-02 载荷增量 | T-00 | renderer.rs CodeEditor on_change 臂（~:27288）+dynamic.rs:2402 消费点+editor-kernel.md | O(doc) clone 退役+契约保真 | AC-03 | clone 计数断言+对拍绿 | [ ] |
-| 3 | T-03 脏域化 | T-00/T-01 | aura_view_builder.rs convert_code_editor（:11663）+memo_deps.rs+component.rs | 编辑路径转换产物脏域复用 | AC-04 | memo 族回归+计数断言+快照绿 | [ ] |
-| 4 | T-04 渲染段处置 | T-00 | renderer.rs:23695（缓存）+S5 计量 | 定谳择做或注记（允许零代码交付） | AC-04 | 勘定记录+（若做）探针 | [ ] |
-| 5 | T-05 阶梯谱收口 | T-01..T-04 | 基准 app+谱脚本+evidence/725/ | 改后谱+对照+分段表 | AC-04 | 双态谱 JSONL 在档可复跑 | [ ] |
-| 6 | T-06 供⑫⑬ | — | trans/rust.rs print 臂+frame 臂 | 两臂清偿+回执登记 | AC-05 | trans 单测红→绿+cargo tt/tu | [ ] |
-| 7 | T-07 门禁+规范+账本 | T-01..T-06 | SD-01..04+specs.json+KNOWN-DEBT | 收口落账 | AC-06/07 | 账本断言+双仓 porcelain+门禁收据 | [ ] |
+| 0 | T-00 分段剖析+勘定 | — | 本件 §5 T-00 节（renderer.rs 五段锚+P631/sched_diag/frame_bench 复用） | 分段谱基线+四项勘定+定量门定参 | AC-01/04 | 勘定记录+基线谱 JSONL 在档 | [x] |
+| 1 | T-01 单帧单建 | T-00 | renderer.rs:23085-23154（MCP 同步块）+:23368（主重建） | 脏帧 build=1+快照等价 | AC-02 | 探针断言+对拍+回归绿 | [x] |
+| 2 | T-02 载荷增量 | T-00 | renderer.rs CodeEditor on_change 臂（~:27288）+dynamic.rs:2402 消费点+editor-kernel.md | O(doc) clone 退役+契约保真 | AC-03 | clone 计数断言+对拍绿 | [x] |
+| 3 | T-03 脏域化 | T-00/T-01 | aura_view_builder.rs convert_code_editor（:11663）+memo_deps.rs+component.rs | 编辑路径转换产物脏域复用 | AC-04 | memo 族回归+计数断言+快照绿 | [x] |
+| 4 | T-04 渲染段处置 | T-00 | renderer.rs:23695（缓存）+S5 计量 | 定谳择做或注记（允许零代码交付） | AC-04 | 勘定记录+（若做）探针 | [x] |
+| 5 | T-05 阶梯谱收口 | T-01..T-04 | 基准 app+谱脚本+evidence/725/ | 改后谱+对照+分段表 | AC-04 | 双态谱 JSONL 在档可复跑 | [x] |
+| 6 | T-06 供⑫⑬ | — | trans/rust.rs print 臂+frame 臂 | 两臂清偿+回执登记 | AC-05 | trans 单测红→绿+cargo tt/tu | [x] |
+| 7 | T-07 门禁+规范+账本 | T-01..T-06 | SD-01..04+specs.json+KNOWN-DEBT | 收口落账 | AC-06/07 | 账本断言+双仓 porcelain+门禁收据 | [x] |
 
 ## 9. 复审记录
 
+- 2026-10-02 work handoff：`stage: work`，PLAN-725，plan_revision 1。
+  `outcome: pass`（全部 8 任务执行完；证据：勘定记录+双态谱
+  evidence/725/T-00-survey.md——①put-then-take 死缓存定谳+死写移除；
+  ②载荷静态消费判定形择路（三消费点静态可知）；③根因=iced scrollable
+  构造期 size_hint→content_height→fresh_fold_map 逐行物化（1MB 95ms/帧
+  实测）→无折叠快道 O(1)（等价单测锁）；④S2 非瓶颈/S5 残差口径注记。
+  双态谱：5KB segsum P50 11.68→5.30ms、100KB 24.04→5.88、1MB 126.76→8.07
+  （尺寸缩放清零，1MB/5KB=1.52；builds=1 单帧单建探针断言实锤；快照
+  .snap.new 与主检出残片逐字节一致=渲染输出零变化强证）。门禁：裸
+  cargo t/tt 零新增红（musk×6/renderer×2/漂移×3/docs_gen/gallery/e4/
+  projector 主检出同形复现——预存红对照在案；plan502/plan707 隔离绿=
+  负载 flake）；tv 162/162 绿；tu 未触发（ui_gen 零触面）；警告数
+  385=385 零新增。规范：SD-01 新档+SD-02 §5+SD-03 注记+SD-04
+  downstream-handoff.md（Q-3 fallback 形）+editor-kernel §8 契约节；
+  specs.json P725-1 投影+spec-index 零 diff。供⑫⑬清偿回执建议文在档
+  （downstream-handoff.md——auto-edit 仓零触碰）。`code_commit`:
+  plan-725-dev worktree（本提交）。`next: review`。
 - 2026-10-02 起草 handoff：`stage: new`，PLAN-725，plan_revision 1。
   `outcome: pass`（起草完备：根因归因+测量通道+工作负载三面下游在
   案〔PLAN-022 归档件+frame JSONL 实读〕；五段成本链起草期代码实锚
