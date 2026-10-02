@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-729
-status: drafting
+status: execution_done
 feature_name: http-server-file-responses
 author: [agent]
 created_at: 2026-10-02
 updated_at: 2026-10-02
 plan_revision: 1
-current_step: 0
+current_step: 8
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -222,6 +222,15 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-01：基线核对、根目录打开与真实生成原型
 
+- [x] 已完成（2026-10-02；worktree `D:/autostack/.wt/lang-729/auto-lang`，基线 master@e5b068bd0a，提交 67e194661）
+  - 决策报告 `docs/plans/reports/729-server-files-decision.md`：基线核对 11 项、Windows 平台探针
+    （junction 逃逸/伪装、NUL 设备句柄、rename-over-open 同句柄钉住、截断提前 EOF；真 symlink
+    环境缺项如实记录）、打开算法冻结（词法校验+逐段 no-follow walk+终段 REPARSE_POINT+同句柄服务）、
+    协议/配额/期限/诊断矩阵冻结、模块拆分（a2r-std server_file 纯决策 + auto-lang
+    http_file_service 宿主执行 + 版本无关 FileReply——生成 workspace 钉 axum 0.7 vs 本仓 0.8
+    的关键约束）。零新依赖。AC-01..06/SD-01..07 映射成立，无 needs_replan 项。
+  - 最小真实编译原型（api.at→a2r+auto-man→二进制 adapter）按报告 §7 落于 T-06 e2e fixture
+    统一交付（其所需代码即 T-02..T-05 全部产物）。
 - 依赖：727 已复审归档并 landed；起点 master 实际 hash 记录于报告。
 - 创建实施组：`bash scripts/new-wt-group.sh lang-729 --branch plan-729-dev`；只用返回的 worktree，auto-down 兄弟依赖只读。禁止 junction/symlink（测试链接只可在 worktree 外独占临时目录创建，并在同一测试回收，不能链接进工作检出）。
 - 核对 `http_server.rs::marshal_handler_value`、`http_transport.rs::api_reply_to_response`、`api/{types,mod}.rs`、`api/targets/*`、`auto-man/src/api_gen.rs`、`back_proxy.rs` 和实际 merged/split 消费点；原型让同一 api.at 的 descriptor 经 a2r + auto-man 编译为二进制 adapter，明确失败诊断挂点。
@@ -230,6 +239,9 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-02：共享描述符、公共声明与协议决策
 
+- [x] 已完成（2026-10-02；提交 861962d99）——`a2r-std/src/http/server_file.rs`（描述符/严格
+  options/Range/前置条件/If-Range/IMF-fixdate/响应头策略，15 表驱动测试绿）+ http.rs 导出 +
+  http.at/http.vm.at 声明 + a2r_std.rs 转发壳；`cargo test -p a2r-std server_file` 15/15。
 - 依赖：T-01。
 - 新 `crates/a2r-std/src/http/server_file.rs`，修改 `src/http.rs` 导出；修改 `stdlib/auto/http.at` / `http.vm.at`、`auto-lang/src/a2r_std.rs`：opaque 构造/严格 options；纯决策代码归一处，绝不复制 VM/Rust 两套 Range/validator 实现。
 - 完成 method/HEAD、单范围解析和 checked u64、条件顺序、etag/日期/响应头策略；坏 options 不产生成功 descriptor，或 descriptor 内明确 Failed 并由 adapter 映射（具体形态以 T-01 冻结）。
@@ -237,6 +249,10 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-03：共同宿主文件打开、增量 body 与资源 guard
 
+- [x] 已完成（2026-10-02；提交 500aa757d）——`auto-lang/src/http_file_service.rs` + lib.rs：
+  逐段 no-follow walk + 终段 REPARSE_POINT + 同句柄服务、双信号量准入、读驱动 pump（≤2 块/
+  active）、独立 watchdog、恰一次收口（finish hook）；12 单元测试绿（junction 403/截断失败/
+  断连回收/恰一次/百分比名 404 等）；`cargo t plan729` 绿；零新依赖。
 - 依赖：T-02。
 - 新 `crates/auto-lang/src/http_file_service.rs`，修改 `src/lib.rs` 和必要 Cargo.toml：受限根目录打开、同句柄 metadata/seek、错误映射、准入/排队、读盘窗口与 body/计时 guard；正常/故障/Drop 都有一次终结状态。
 - 覆盖 body 未 poll、在途 FS 取消、提前 EOF 和 shutdown；保留 guard 到真实 FS 退出，拒绝 unbounded blocking job。记录应用内总缓冲公式和计数接口（测试用途），不把 Content-Length 当硬件发送完成凭证。
@@ -244,6 +260,10 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-04：VM 返回类型、HEAD 路由与 scope 交接
 
+- [x] 已完成（2026-10-02；提交 f1bd17655）——`vm/ffi/http_server_file.rs` 桥（注册表+shim 9936+
+  scope 组收口）+ `ApiBody::File` + 声明返回类型门（marshal/final_value_reply 两点）+ HEAD 二遍
+  路由 + 405 + legacy 500 诊断 + transport File 臂（两期限交接/scope 代持/无 body 即终结）；
+  `cargo t plan729`/`http_server` 42/`vm::ffi::http` 44 绿。
 - 依赖：T-03。
 - 修改 `vm/ffi/{http_server,http_transport,stdlib}.rs`、`vm/ffi/mod.rs`、`vm/{native,native_catalog}.rs` 和实际返回类型元数据发布点（T-01 定位，现有 codegen）；必要时新 `vm/ffi/http_server_file.rs` 拆分 native。
 - native 构造只存有类型 descriptor；FileResponse / ~FileResponse 编组为 owned `ApiBody::File`，不跨桥传 VM 引用。文件 GET 的 HEAD 选路、middleware 和原样请求 headers 传递到共同宿主；scope 在 prepare/body 各阶段取消可靠，不能 Text 分支提前完成。
@@ -252,6 +272,11 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-05：a2r/auto-man 文件 handler 与各消费形态
 
+- [x] 已完成（2026-10-02；提交 4f35bd1ce）——trans lowering + `FileResponse` 类型映射（参数/
+  返回位）；api_gen 主路径/委派路径文件分支（Response 签名+method/headers+`__file_reply` 胶水+
+  `.head()` 路由+405+转译失败诊断不落模板）；api targets：axum Response 分支+glue、TS 原生
+  Response、Tauri Unsupported；back_proxy 501 拒绝；golden `32_plan729`。api_gen 33 绿 +
+  `cargo t api::` 30 绿 + tt 1062 trans 例绿。
 - 依赖：T-02/03/04。
 - 修改 `trans/rust.rs`、`api/types.rs`/`api/mod.rs`、`api/targets/{typescript,tauri,axum}.rs`、`auto-man/src/api_gen.rs` 及 T-01 确认的实际 split/merged/backend 消费点；`back_proxy.rs` 仅做新增文件端点明确拒绝。若 `ui_gen/api.rs` 等有独立消费，仅加本类型识别并履行 UI 门禁。
 - qualified/alias 构造与 sync/~ 返回按类型发射，生成 handler 自动提取 method+headers、调用共享宿主、不包 JsonResponse；新文件体转译失败诊断到 api.at 位置，不落模板。TS HTTP 方法返回 Response；非 HTTP 面的诊断必须经过实际调用/生成路径。
@@ -259,6 +284,10 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-06：协议、根目录与兼容回归矩阵
 
+- [x] 已完成（2026-10-02；提交 7b1738d10）——VM 真 TCP 6 族（基本/12MiB hash/Range/条件/
+  路径安全/方法+int 门，9 测全绿）+ 生成服务实编 e2e（auto-man 真实生成产物 cargo build +
+  axum 0.7 wire 矩阵绿）+ `examples/http_server/files/`（README/pac.at/back/api.at）；
+  报告 `729-server-files-protocol.md`（§6.1 双端逐行表）。
 - 依赖：T-04/05。
 - 新 `crates/auto-lang/src/tests/plan729_http_server_file_tests.rs`，修改 `src/tests.rs` 注册；auto-man 现有 api_gen tests 加实际生成 fixture；新 `examples/http_server/files/{README.md,src/back/api.at,pac.at}`（pac.at 采用已有最小项目格式，T-01 冻结），确定数据在测试临时生成。
 - 完成 §6.1 双端 wire 表、根目录/文件名/故障 probes 与现有媒体 parse_range/普通 JSON/SSE scoped 回归；safe-open OS 临时目录不在 worktree 内创建链接。
@@ -266,6 +295,10 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-07：慢发送/取消/关闭与 727 客户端互通
 
+- [x] 已完成（2026-10-02；提交 8eecd9f0d）——慢客户端断连回收/配额 N+Q+1 队满 503+恢复/
+  727 五态互通（完整/206 强 validator 续传/If-Range 失配 200/416 保旧/取消后 server 资源
+  退出）全绿；idle 覆写旋钮（生产面恒 None）；报告 `729-server-files-lifecycle.md` +
+  `729-server-files-parity.md`（含 OS 缓冲吸收/晋升语义/hyper 304 剥离等如实观察）。
 - 依赖：T-06。
 - 在新测试族和生成服务 fixture 完成 §6.2；请求/文件资源计数贯穿 VM 与生成 Rust 两端，慢读/不 poll、队满、取消 queued/preparing/body、FS 在途和 drain gate 有确定证据。
 - 用共享 727 transfer_download 调用实际 VM/Rust 文件路由，覆盖完整/206/200 fallback/416保旧/取消；两个 Rust facade 与 VM 客户端腿使用共同确定数据和 receipts，对照 server hash/资源结果。
@@ -273,12 +306,33 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-08：门禁、独立复审与规范增量交接
 
+- [x] 已完成（2026-10-02；提交 2db246b3f）——门禁全表见
+  `729-server-files-verification.md`：裸 `cargo t` 14 红与 master 基线**逐名一致**（零新增
+  确定性红；5025=5006+19 新全绿）、tv 162/162、tt 1062 trans 例、th 30+（2 预存在案）、
+  a2r-std 全量、rustfmt 清洁、调试输出零残留；tf 为批量档未跑。SD-01 全文 + SD-02..07 增量
+  worktree 就位；AC-01..06 证据绑定成表。独立复审（`/auto-plan:review`）为下一技能入口。
 - 依赖：T-01..07。
 - 按 §6.3 跑触面门禁，不用 tf 代替 per-plan 验收；警告差分/格式/调试输出/未批准延期扫描。新 `729-server-files-verification.md` 绑定最终代码 revision、所有 AC 与 SD、逐名基线红和准确平台覆盖。
 - `/auto-plan:review` 独立逐项验证；标记完工只是证据索引，不等于 review。已约定的 SD-01..07 在 worktree 准备沉淀稿，merge 最终更新 canonical、ledger、Design 33 与项目卡，按 repo archive 映射归档。
 - worktree cleanup 前必须 `bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-729/auto-lang` 和兄弟仓检查 clean；不删除其他计划资产。本任务覆盖全部 AC/SD；复审通过后才 merge/归档。
 
 ## 9. 复审记录
+
+### work 交接（2026-10-02）
+
+- stage: work
+- plan_id: PLAN-729
+- plan_revision: 1
+- outcome: pass
+- code_commit: plan-729-dev @ 2db246b3f（T-01 67e194661 → T-08 2db246b3f 八提交；worktree
+  `D:/autostack/.wt/lang-729/auto-lang`，基面 master@e5b068bd0a）
+- task_ids: T-01..T-08（全部完成；证据见各任务标记 + 5 份报告
+  `docs/plans/reports/729-server-files-{decision,protocol,lifecycle,parity,verification}.md`）
+- evidence: 裸 cargo t 与 master 基线逐名对照零新增红（5011/5025 过，14 预存红名称一致）；
+  VM e2e 9/9 + 生成服务实编 e2e 1/1 + a2r-std 15+76/7/6 + api_gen 33 + tv 162 + tt 1062 +
+  th（2 预存在案）；AC-01..06/SD-01..07 绑定见 verification 报告 §3/§4
+- blockers: 无（复审入口就绪；tf 批量档归 merge 到期判定；Linux 腿归 CI）
+- next: review（`/auto-plan:review` 独立逐项验证）
 
 ### 起草交接（2026-10-02）
 
