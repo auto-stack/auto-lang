@@ -75,6 +75,31 @@ fn main() {
     );
 }
 
+/// [R1 G-01] 异步形态发射：`~FileResponse` handler 的 a2r 降级——构造
+/// 同形（async fn 体 + a2r_std::http::file_response 直发）。
+#[test]
+fn plan729_probe_async_file_handler_emission() {
+    let src = r#"
+fn fetch_async(name str) ~FileResponse {
+    return http.file_response("files", name, "{}")
+}
+fn main() {
+    let f = fetch_async("a")
+}
+"#;
+    let mut rcode =
+        crate::trans::rust::transpile_rust("plan729_async_probe", src).expect("transpile");
+    let rs = String::from_utf8(rcode.done().expect("finalize").clone()).expect("utf8");
+    assert!(
+        rs.contains("a2r_std::http::file_response("),
+        "构造 lowering（async 上下文同形）: {rs}"
+    );
+    assert!(
+        rs.contains("FileResponse") && !rs.contains("impl FileResponse"),
+        "类型不误判 trait: {rs}"
+    );
+}
+
 /// 类型映射：`FileResponse` → `a2r_std::http::FileResponse`（全限定，
 /// StringBuilder/SqliteDb 先例同款——无 glob import 也解析）。
 #[test]
@@ -140,6 +165,32 @@ print("done")
             "普通 fn 不在文件返回表"
         );
     }
+}
+
+/// [G-11] 显式 HEAD 路由优先：无论注册顺序，HEAD 请求命中显式 HEAD 路由
+/// 而非 GET 文件路由的自动 HEAD（两遍匹配语义）。
+#[test]
+fn plan729_match_route_explicit_head_precedence() {
+    use crate::vm::ffi::http_server::{match_route, record_api_return_type, HttpRoute};
+    crate::vm::ffi::stdlib::clear_http_routes();
+    record_api_return_type("get_file", "FileResponse".into());
+    record_api_return_type("head_file", "FileResponse".into());
+    let mk = |method: &str, fn_name: &str| HttpRoute {
+        method: method.to_string(),
+        path: "/f/:name".to_string(),
+        fn_name: fn_name.to_string(),
+    };
+    let get_first = vec![mk("GET", "get_file"), mk("HEAD", "head_file")];
+    let m = match_route(&get_first, "HEAD", "/f/x").expect("HEAD matches");
+    assert_eq!(m.fn_name, "head_file", "显式 HEAD 优先（GET 在前）");
+    let head_first: Vec<HttpRoute> = get_first.into_iter().rev().collect();
+    let m = match_route(&head_first, "HEAD", "/f/x").expect("HEAD matches");
+    assert_eq!(m.fn_name, "head_file", "显式 HEAD 优先（HEAD 在前）");
+    let get_only = vec![mk("GET", "get_file")];
+    let m = match_route(&get_only, "HEAD", "/f/x").expect("fallback HEAD");
+    assert_eq!(m.fn_name, "get_file", "无显式 HEAD → 自动 HEAD 回退");
+    assert!(match_route(&get_only, "GET", "/f/x").is_some());
+    assert!(match_route(&get_only, "POST", "/f/x").is_none());
 }
 
 // ===========================================================================
@@ -303,6 +354,33 @@ fn get_deep(d str, name str) FileResponse {{
 #[api(method = "GET", path = "/plain")]
 fn plain_int() int {{
     return 729729
+}}
+
+#[api(method = "GET", path = "/async/:name")]
+fn get_async(name str) ~FileResponse {{
+    return http.file_response("{root}", name, "{{}}")
+}}
+
+#[api(method = "GET", path = "/named/:name")]
+fn get_named(name str) FileResponse {{
+    return http.file_response("{root}", name, "{{\"download_name\":\"报告 v1.bin\"}}")
+}}
+
+#[api(method = "GET", path = "/badopts/:name")]
+fn get_badopts(name str) FileResponse {{
+    return http.file_response("{root}", name, "{{\"bogus\":1}}")
+}}
+
+fn plan729_guard(info str) str {{
+    if info.contains("/guarded/") {{
+        return "{{\"error\":\"auth required\"}}"
+    }}
+    return ""
+}}
+
+#[api(method = "GET", path = "/guarded/:name")]
+fn get_guarded(name str) FileResponse {{
+    return http.file_response("{root}", name, "{{}}")
 }}
 "#
         )
@@ -492,6 +570,22 @@ fn plain_int() int {{
         assert_eq!(s, 304);
         let (s, _, _) = raw_request(port, "GET", "/files/c.bin", &[("if-modified-since", &past)]);
         assert_eq!(s, 200);
+        // [G-06] If-Unmodified-Since：lm 早于（过去日期）→ 200；lm 晚于（未来
+        // 日期）→ 412（前置修改检测）。
+        let (s, _, _) = raw_request(
+            port,
+            "GET",
+            "/files/c.bin",
+            &[("if-unmodified-since", &past)],
+        );
+        assert_eq!(s, 412, "If-Unmodified-Since 早于 lm → 412");
+        let (s, _, _) = raw_request(
+            port,
+            "GET",
+            "/files/c.bin",
+            &[("if-unmodified-since", &future)],
+        );
+        assert_eq!(s, 200, "If-Unmodified-Since 晚于 lm → 200");
 
         let (s, _, _) = raw_request(
             port,
@@ -657,15 +751,15 @@ mod lifecycle {
     const PORT_INTEROP: u16 = 18958;
 
     /// 只读响应头、不读 body 的慢客户端（黑洞——body 不被 poll）。
-    struct Blackhole {
-        stream: Option<TcpStream>,
-        status: u16,
+    pub(super) struct Blackhole {
+        pub(super) stream: Option<TcpStream>,
+        pub(super) status: u16,
         content_length: usize,
     }
 
     impl Blackhole {
         /// 只发请求不读（排队持有者：headers 要等 active 释放才会来）。
-        fn fire(port: u16, path: &str) -> Self {
+        pub(super) fn fire(port: u16, path: &str) -> Self {
             let mut stream = None;
             for _ in 0..50 {
                 if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
@@ -691,7 +785,7 @@ Connection: close
             }
         }
 
-        fn open(port: u16, path: &str) -> Self {
+        pub(super) fn open(port: u16, path: &str) -> Self {
             let mut stream = None;
             for _ in 0..50 {
                 if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
@@ -1008,6 +1102,312 @@ Connection: close
             0,
             "客户端取消后 server 文件资源退出"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+// ===========================================================================
+// R1 修复批（needs_fix G-01/03/06/07/08/09/11/13/16/17）——异步形态/健康门/
+// 头值 wire/路径替换/auth 计数/半关闭/idle/缓冲公式/HEAD 优先级。
+// ===========================================================================
+
+#[cfg(feature = "test-http-e2e")]
+mod r1_fixes {
+    use super::http_e2e::*;
+    use super::lifecycle::Blackhole;
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    const PORT_ASYNC: u16 = 18961;
+    const PORT_HEALTH: u16 = 18962;
+    const PORT_RENAME: u16 = 18963;
+    const PORT_AUTH: u16 = 18964;
+
+    /// [G-01] 异步 `~FileResponse` handler：GET 二进制/HEAD 表示长度/Range
+    /// ——与同步形态同一表示（AC-01）。
+    #[test]
+    fn http_e2e_plan729_vm_async_file_handler() {
+        let root = temp_root("async");
+        let data: Vec<u8> = (0u8..=99).collect();
+        std::fs::write(root.join("a.bin"), &data).unwrap();
+        std::fs::write(root.join("raw.bin"), [0x00u8, 0xFF, 0xFE]).unwrap();
+        let port = start_server(
+            &program(&root.to_str().unwrap().replace('\\', "/")),
+            PORT_ASYNC,
+        );
+
+        let (s, h, b) = raw_request(port, "GET", "/async/a.bin", &[]);
+        assert_eq!((s, header_of(&h, "content-length").as_str()), (200, "100"));
+        assert_eq!(b, data, "异步 handler 字节同形");
+        let (s, h, b) = raw_request(port, "HEAD", "/async/a.bin", &[]);
+        assert_eq!((s, header_of(&h, "content-length").as_str()), (200, "100"));
+        assert!(b.is_empty());
+        let (s, h, b) = raw_request(port, "GET", "/async/a.bin", &[("range", "bytes=10-19")]);
+        assert_eq!(
+            (s, header_of(&h, "content-range").as_str()),
+            (206, "bytes 10-19/100")
+        );
+        assert_eq!(b, (10u8..=19).collect::<Vec<u8>>());
+        let (s, _, b) = raw_request(port, "GET", "/async/raw.bin", &[]);
+        assert_eq!((s, b.as_slice()), (200u16, [0x00u8, 0xFF, 0xFE].as_slice()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// [G-07] download_name wire：非 ASCII 名 → RFC 5987 filename* + 净化回退；
+    /// 坏 options → 500 wire（应用错误可见）。
+    #[test]
+    fn http_e2e_plan729_vm_download_name_and_bad_options() {
+        let root = temp_root("named");
+        std::fs::write(root.join("f.bin"), b"named").unwrap();
+        let port = start_server(
+            &program(&root.to_str().unwrap().replace('\\', "/")),
+            PORT_ASYNC + 5,
+        );
+        let (s, h, b) = raw_request(port, "GET", "/named/f.bin", &[]);
+        assert_eq!(s, 200);
+        assert_eq!(b, b"named");
+        let cd = header_of(&h, "content-disposition");
+        assert!(
+            cd.starts_with("attachment; filename=") && cd.contains("filename*=UTF-8''"),
+            "RFC 5987 双形: {cd}"
+        );
+        assert!(
+            cd.contains("%E6%8A%A5%E5%91%8A"),
+            "UTF-8 百分号编码在: {cd}"
+        );
+        // 引号/反斜杠在 ASCII 回退名中被净化（ "_" 替代）。
+        assert!(
+            !cd.contains('"') || cd.starts_with("attachment; filename=\""),
+            "引号只作定界: {cd}"
+        );
+
+        // 坏 options（未知键）→ 500（不静默默认成功）。
+        let (s, _, b) = raw_request(port, "GET", "/badopts/f.bin", &[]);
+        assert_eq!(s, 500, "坏 options wire 500");
+        assert!(
+            String::from_utf8_lossy(&b).contains("bogus"),
+            "诊断消息可见: {}",
+            String::from_utf8_lossy(&b)
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// [G-03] 慢下载饱和期普通端点 20 次 <500ms（对照基线）——文件配额不阻塞
+    /// 普通请求（AC-04）。
+    #[test]
+    fn http_e2e_plan729_health_under_slow_downloads() {
+        let root = temp_root("health");
+        std::fs::write(root.join("big.bin"), vec![7u8; 64 * 1024 * 1024]).unwrap();
+        let port = start_server(
+            &program(&root.to_str().unwrap().replace('\\', "/")),
+            PORT_HEALTH,
+        );
+        // 基线（无慢下载）：20 次 /plain 计时。
+        let baseline: Vec<Duration> = (0..20)
+            .map(|_| {
+                let t0 = std::time::Instant::now();
+                let (s, _, b) = raw_request(port, "GET", "/plain", &[]);
+                assert_eq!((s, b.len() > 0), (200, true));
+                t0.elapsed()
+            })
+            .collect();
+        let baseline_max = baseline.iter().max().copied().unwrap();
+        // 4 个黑洞占满文件 active。
+        let mut holes = Vec::new();
+        for _ in 0..4 {
+            let h = Blackhole::open(port, "/files/big.bin");
+            assert_eq!(h.status, 200);
+            holes.push(h);
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while crate::http_file_service::file_active_count() < 4
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(crate::http_file_service::file_active_count(), 4);
+        // 饱和期：20 次 /plain 全部 <500ms 且不劣于基线 10×。
+        let mut worst = Duration::from_millis(0);
+        for _ in 0..20 {
+            let t0 = std::time::Instant::now();
+            let (s, _, _) = raw_request(port, "GET", "/plain", &[]);
+            assert_eq!(s, 200, "慢下载期普通端点不受阻");
+            let el = t0.elapsed();
+            assert!(el < Duration::from_millis(500), "单次 {el:?} ≥ 500ms");
+            worst = worst.max(el);
+        }
+        assert!(
+            worst < baseline_max.max(Duration::from_millis(200)) * 10,
+            "饱和最差 {worst:?} vs 基线 {baseline_max:?}"
+        );
+        for h in holes.iter_mut() {
+            h.stream.take();
+        }
+        drop(holes);
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        while crate::http_file_service::file_active_count() > 0
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// [G-08] 路径替换（rename mid-send）：已开句柄钉住原表示——读到一半
+    /// rename 覆盖后继续读，全量 hash == 原内容（AC-03）。
+    #[test]
+    fn http_e2e_plan729_vm_path_replacement_pinned() {
+        let root = temp_root("rename");
+        let mut expect_hasher = blake3::Hasher::new();
+        let mut data = Vec::new();
+        for i in 0u64..(512 * 1024 / 8) {
+            let bytes = i.to_le_bytes();
+            data.extend_from_slice(&bytes);
+        }
+        expect_hasher.update(&data);
+        let expect = expect_hasher.finalize();
+        std::fs::write(root.join("p.bin"), &data).unwrap();
+        let port = start_server(
+            &program(&root.to_str().unwrap().replace('\\', "/")),
+            PORT_RENAME,
+        );
+        // 半开读：读头部 + 前半 body，暂停。
+        let mut stream = None;
+        for _ in 0..50 {
+            if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
+                stream = Some(s);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let mut stream = stream.expect("connect");
+        stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
+        stream
+            .write_all(b"GET /files/p.bin HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+            .unwrap();
+        let mut got = Vec::new();
+        let mut buf = [0u8; 16384];
+        while got.len() < data.len() / 2 {
+            let n = stream.read(&mut buf).unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            got.extend_from_slice(&buf[..n]);
+        }
+        // rename 覆盖（句柄已开——同句柄语义钉住原内容）。
+        std::fs::write(root.join("p.new"), vec![9u8; 8]).unwrap();
+        std::fs::rename(root.join("p.new"), root.join("p.bin")).unwrap();
+        while got.len() < data.len() {
+            let n = stream.read(&mut buf).unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            got.extend_from_slice(&buf[..n]);
+        }
+        // 剥离响应头块后对账 body（头块 ~399B 在前）。
+        let he = got
+            .windows(4)
+            .position(|w| w == b"\r\n\r\n")
+            .expect("header terminator");
+        let body = got.split_off(he + 4);
+        assert_eq!(body.len(), data.len(), "全量送达（不因替换中断）");
+        assert_eq!(blake3::hash(&body), expect, "内容为原表示（句柄钉住）");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// [G-09] auth（middleware 拒绝）先于打开：拒绝响应送达且受限打开计数
+    /// 不增长；随后放行请求计数 +1（AC-03 的计数证据）。
+    #[test]
+    fn http_e2e_plan729_auth_middleware_no_open() {
+        let root = temp_root("auth");
+        std::fs::write(root.join("g.bin"), b"guarded-data").unwrap();
+        let port = start_server(
+            &program(&root.to_str().unwrap().replace('\\', "/")),
+            PORT_AUTH,
+        );
+        // 注册拒绝 middleware（测试直接注入链——.at 面为 http.server.use）。
+        {
+            let mut chain = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
+                .lock()
+                .expect("middleware chain");
+            chain.push("plan729_guard".to_string());
+        }
+        let (s, _, b) = raw_request(port, "GET", "/guarded/g.bin", &[]);
+        // 清链（防污染后续测试）。
+        {
+            let mut chain = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
+                .lock()
+                .expect("middleware chain");
+            chain.clear();
+        }
+        assert_eq!(s, 200, "middleware 短路响应状态（既有语义）");
+        let text = String::from_utf8_lossy(&b);
+        assert!(text.contains("auth required"), "拒绝体: {text}");
+        assert!(!text.contains("guarded-data"), "文件字节未泄露");
+        assert_eq!(
+            crate::http_file_service::file_open_count(),
+            0,
+            "auth 拒绝时受限打开计数不增长"
+        );
+        // 放行请求（无 /guarded/ 前缀路径不经 guard）：文件正常服务 + 计数 +1。
+        let before = crate::http_file_service::file_open_count();
+        let (s, _, b) = raw_request(port, "GET", "/files/g.bin", &[]);
+        assert_eq!((s, b.as_slice()), (200u16, b"guarded-data".as_slice()));
+        assert_eq!(
+            crate::http_file_service::file_open_count(),
+            before + 1,
+            "放行请求恰好打开一次"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// [G-13] 半关闭：客户端请求后 shutdown(WRITE)（输入半关闭）——服务端
+    /// 仍完整送达响应（AC-05 前半句；transport half_close(true) 语义）。
+    #[test]
+    fn http_e2e_plan729_vm_half_close_response() {
+        let root = temp_root("halfclose");
+        std::fs::write(root.join("hc.bin"), (0u8..=49).collect::<Vec<u8>>()).unwrap();
+        let port = start_server(
+            &program(&root.to_str().unwrap().replace('\\', "/")),
+            PORT_ASYNC + 6,
+        );
+        let mut stream = None;
+        for _ in 0..50 {
+            if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
+                stream = Some(s);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let mut stream = stream.expect("connect");
+        stream.set_read_timeout(Some(Duration::from_secs(10))).ok();
+        stream
+            .write_all(
+                b"GET /files/hc.bin HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+            )
+            .unwrap();
+        stream
+            .shutdown(std::net::Shutdown::Write)
+            .expect("half close write side");
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 8192];
+        loop {
+            let n = stream.read(&mut buf).unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            raw.extend_from_slice(&buf[..n]);
+        }
+        let text = String::from_utf8_lossy(&raw).into_owned();
+        assert!(
+            text.starts_with("HTTP/1.1 200"),
+            "半关闭后仍 200: {}",
+            &text[..40.min(text.len())]
+        );
+        assert!(text.contains("\r\n\r\n"), "headers 完整");
+        let body = &raw[text.find("\r\n\r\n").unwrap() + 4..];
+        assert_eq!(body, &(0u8..=49).collect::<Vec<u8>>(), "body 完整送达");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

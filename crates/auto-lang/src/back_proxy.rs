@@ -1483,7 +1483,7 @@ impl SessionRuntime {
         // 可序列化数据（决策报告 §6：Unsupported + 改走 HTTP URL 指引）。
         if let Some((_, ret)) = self.fn_meta.get(&route_match.fn_name) {
             if ret.contains("FileResponse") {
-                eprintln!(
+                log::info!(
                     "[back-proxy:{}] RSP 501 file endpoint (use HTTP URL)",
                     self.app_id
                 );

@@ -11,7 +11,7 @@
 //! service, and `shim_http_server_listen`/`back_proxy` are separate server
 //! paths (see docs/specs/stdlib/design/backend-assembly.md).
 
-use std::io::{Read, Write, BufRead};
+use std::io::{BufRead, Read, Write};
 use std::net::TcpListener;
 
 /// An HTTP route registered with the server.
@@ -49,8 +49,9 @@ pub struct ApiParamSig {
     pub ty: String,
 }
 
-static API_PARAM_SIGS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, Vec<ApiParamSig>>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+static API_PARAM_SIGS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, Vec<ApiParamSig>>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
 
 /// Codegen publishes each `#[api]` fn's declared params at fn-compile time
 /// (dep-module Codegen instances publish here too, so by-name binding resolves
@@ -110,9 +111,8 @@ pub fn clear_api_param_sigs() {
 /// 位模式猜成 future ID 后误消费；AC-01 普通 int 反例由此挡住）。对全部
 /// fn 发布（非仅 #[api]——段驱动 handler/`__axum:` fn-ref closure 同样
 /// 依此判定；closure 经 func_addr → exports 反查名，同 resolve_params）。
-static API_ASYNC_RETURNS: std::sync::LazyLock<
-    std::sync::Mutex<std::collections::HashSet<String>>,
-> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+static API_ASYNC_RETURNS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
 
 /// Codegen 在 fn 编译时发布（声明 ret 为 Future<T> 时调用）。
 pub fn record_api_async_return(fn_name: &str) {
@@ -123,7 +123,11 @@ pub fn record_api_async_return(fn_name: &str) {
 
 /// 编组期判定：该函数（或 fn-ref closure 反查出的函数）声明 `~T` 返回。
 pub(crate) fn fn_is_api_async(fn_name: &str) -> bool {
-    API_ASYNC_RETURNS.lock().ok().map(|t| t.contains(fn_name)).unwrap_or(false)
+    API_ASYNC_RETURNS
+        .lock()
+        .ok()
+        .map(|t| t.contains(fn_name))
+        .unwrap_or(false)
 }
 
 /// PLAN-729 T-04：编组期文件返回门——声明返回类型（`FileResponse` 或
@@ -198,7 +202,8 @@ pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<Rou
     let query_params: Vec<(String, String)> = if query_string.is_empty() {
         Vec::new()
     } else {
-        query_string.split('&')
+        query_string
+            .split('&')
             .filter_map(|pair| {
                 let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
                 Some((url_decode(k), url_decode(v)))
@@ -206,51 +211,58 @@ pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<Rou
             .collect()
     };
 
-    // PLAN-729 T-04：HEAD 二遍扫描——声明文件返回的 GET 路由自动具备
-    // HEAD 匹配（决策报告 §4；显式同路径 HEAD 路由在第一遍先匹配优先）。
-    let head_over_get_file = method.eq_ignore_ascii_case("HEAD");
-    for route in routes {
-        let method_ok = route.method.to_uppercase() == method.to_uppercase()
-            || (head_over_get_file
-                && route.method.eq_ignore_ascii_case("GET")
-                && fn_is_api_file_return(&route.fn_name));
-        if !method_ok {
-            continue;
-        }
-        let route_segments: Vec<&str> = route.path.split('/').collect();
-        let path_segments: Vec<&str> = path_only.split('/').collect();
-        if route_segments.len() != path_segments.len() {
-            continue;
-        }
-        let mut params = Vec::new();
-        let mut matched = true;
-        for (rs, ps) in route_segments.iter().zip(path_segments.iter()) {
-            if let Some(param_name) = rs.strip_prefix(':') {
-                // Plan 022 (auto-down): Path params must arrive
-                // percent-DECODED (axum Path semantics): the front calls
-                // encodeURIComponent on wiki titles ("Hello%20World.ad"),
-                // and the undecoded form misses the file on disk.
-                let decoded = url_decode(ps);
-                if let Some(wild_name) = param_name.strip_prefix('*') {
-                    params.push((wild_name.to_string(), decoded));
-                } else {
-                    params.push((param_name.to_string(), decoded));
-                }
-            } else if *rs == "*" || rs.starts_with('*') {
-                // Plan 346: Wildcard route — matches any remaining segments.
+    // PLAN-729 R1（G-11 修复）：两遍匹配——第一遍精确 method；HEAD 请求在
+    // 第二遍回退到声明文件返回的 GET 路由（自动 HEAD）。显式同路径 HEAD
+    // 路由因第一遍先匹配而优先，与注册顺序无关（SD-01 §3 承诺对齐）。
+    let head_fallback = method.eq_ignore_ascii_case("HEAD");
+    let mut pass = 0;
+    while pass < 2 {
+        let use_fallback = pass == 1;
+        for route in routes {
+            let method_ok = route.method.to_uppercase() == method.to_uppercase()
+                || (use_fallback
+                    && head_fallback
+                    && route.method.eq_ignore_ascii_case("GET")
+                    && fn_is_api_file_return(&route.fn_name));
+            if !method_ok {
                 continue;
-            } else if rs != ps {
-                matched = false;
-                break;
+            }
+            let route_segments: Vec<&str> = route.path.split('/').collect();
+            let path_segments: Vec<&str> = path_only.split('/').collect();
+            if route_segments.len() != path_segments.len() {
+                continue;
+            }
+            let mut params = Vec::new();
+            let mut matched = true;
+            for (rs, ps) in route_segments.iter().zip(path_segments.iter()) {
+                if let Some(param_name) = rs.strip_prefix(':') {
+                    // Plan 022 (auto-down): Path params must arrive
+                    // percent-DECODED (axum Path semantics): the front calls
+                    // encodeURIComponent on wiki titles ("Hello%20World.ad"),
+                    // and the undecoded form misses the file on disk.
+                    let decoded = url_decode(ps);
+                    if let Some(wild_name) = param_name.strip_prefix('*') {
+                        params.push((wild_name.to_string(), decoded));
+                    } else {
+                        params.push((param_name.to_string(), decoded));
+                    }
+                } else if *rs == "*" || rs.starts_with('*') {
+                    // Plan 346: Wildcard route — matches any remaining segments.
+                    continue;
+                } else if rs != ps {
+                    matched = false;
+                    break;
+                }
+            }
+            if matched {
+                return Some(RouteMatch {
+                    fn_name: route.fn_name.clone(),
+                    path_params: params,
+                    query_params,
+                });
             }
         }
-        if matched {
-            return Some(RouteMatch {
-                fn_name: route.fn_name.clone(),
-                path_params: params,
-                query_params,
-            });
-        }
+        pass += 1;
     }
     None
 }
@@ -283,8 +295,7 @@ pub(crate) fn cors_headers() -> String {
 /// Plan 346 5e (B6): active rate-limit config `(max_requests, window_ms)`.
 /// `None` (default) = no limiting — backwards compatible until
 /// `http.rate_limit(n, ms)` is called.
-static RATE_LIMIT_CFG: std::sync::Mutex<Option<(u32, u64)>> =
-    std::sync::Mutex::new(None);
+static RATE_LIMIT_CFG: std::sync::Mutex<Option<(u32, u64)>> = std::sync::Mutex::new(None);
 /// Plan 346 5e (B6): per-IP fixed-window buckets `ip -> (window_start_ms, count)`.
 static RATE_BUCKETS: std::sync::Mutex<Option<std::collections::HashMap<String, (u64, u32)>>> =
     std::sync::Mutex::new(None);
@@ -377,9 +388,7 @@ fn find_sub(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || haystack.len() < needle.len() {
         return None;
     }
-    haystack
-        .windows(needle.len())
-        .position(|w| w == needle)
+    haystack.windows(needle.len()).position(|w| w == needle)
 }
 
 /// Plan 346 5a: save a file part under the upload dir (env `AUTO_UPLOAD_DIR`,
@@ -397,7 +406,11 @@ fn store_multipart_file(filename: &str, data: &[u8]) -> String {
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
         .collect::<String>();
-    let base = if base.is_empty() { "upload".to_string() } else { base };
+    let base = if base.is_empty() {
+        "upload".to_string()
+    } else {
+        base
+    };
     let n = FILE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let path = std::path::Path::new(&dir).join(format!("{}_{}", n, base));
     let _ = std::fs::write(&path, data);
@@ -444,7 +457,11 @@ pub fn multipart_to_handler_json(parts: Vec<MultipartPart>) -> String {
 /// Called by the `http.rate_limit(max_requests, window_ms)` native.
 pub fn set_rate_limit(max_requests: u32, window_ms: u64) {
     if let Ok(mut cfg) = RATE_LIMIT_CFG.lock() {
-        *cfg = if max_requests == 0 { None } else { Some((max_requests, window_ms.max(1))) };
+        *cfg = if max_requests == 0 {
+            None
+        } else {
+            Some((max_requests, window_ms.max(1)))
+        };
     }
 }
 
@@ -526,10 +543,7 @@ fn http_status_reason(code: u16) -> &'static str {
 /// continue normal routing. Used by both blocking and async servers.
 pub(crate) fn handle_cors_preflight(method: &str) -> Option<String> {
     if method.eq_ignore_ascii_case("OPTIONS") {
-        Some(format!(
-            "HTTP/1.1 204 No Content\r\n{}\r\n",
-            cors_headers()
-        ))
+        Some(format!("HTTP/1.1 204 No Content\r\n{}\r\n", cors_headers()))
     } else {
         None
     }
@@ -559,7 +573,11 @@ fn url_decode(s: &str) -> String {
 pub fn get_routes() -> Vec<HttpRoute> {
     crate::vm::ffi::stdlib::get_http_routes()
         .into_iter()
-        .map(|(method, path, fn_name)| HttpRoute { method, path, fn_name })
+        .map(|(method, path, fn_name)| HttpRoute {
+            method,
+            path,
+            fn_name,
+        })
         .collect()
 }
 
@@ -576,13 +594,20 @@ pub fn get_routes() -> Vec<HttpRoute> {
 /// - Option `Some(x)` → the inner value's JSON; `None` → HTTP caller maps to 404
 ///
 /// `depth` guards against cyclic references (objects referencing each other).
-pub fn nv_to_json(vm: &crate::vm::engine::AutoVM, nv: auto_val::NanoValue, depth: u32) -> Option<String> {
+pub fn nv_to_json(
+    vm: &crate::vm::engine::AutoVM,
+    nv: auto_val::NanoValue,
+    depth: u32,
+) -> Option<String> {
     const MAX_DEPTH: u32 = 32;
 
     // Tagged string (the canonical handler-returns-string path)
     if auto_val::is_string(nv) {
         let idx = auto_val::decode_string(nv);
-        let s = vm.strings.read().unwrap()
+        let s = vm
+            .strings
+            .read()
+            .unwrap()
             .get(idx as usize)
             .map(|b| String::from_utf8_lossy(b).to_string())?;
         return Some(json_escape_string(&s));
@@ -595,7 +620,11 @@ pub fn nv_to_json(vm: &crate::vm::engine::AutoVM, nv: auto_val::NanoValue, depth
         return Some(format_f64_json(auto_val::decode_f32(nv) as f64));
     }
     if auto_val::is_bool(nv) {
-        return Some(if auto_val::decode_bool(nv) { "true".to_string() } else { "false".to_string() });
+        return Some(if auto_val::decode_bool(nv) {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        });
     }
     if auto_val::is_null(nv) {
         return Some("null".to_string());
@@ -637,11 +666,7 @@ pub fn nv_to_json(vm: &crate::vm::engine::AutoVM, nv: auto_val::NanoValue, depth
 /// Option handling: a `GenericInstanceData` whose mono_name starts with
 /// "Option.Some" is unwrapped to its single inner field; "Option.None"
 /// yields `None` (the HTTP layer maps this to 404).
-fn heap_object_to_json(
-    vm: &crate::vm::engine::AutoVM,
-    id: u64,
-    depth: u32,
-) -> Option<String> {
+fn heap_object_to_json(vm: &crate::vm::engine::AutoVM, id: u64, depth: u32) -> Option<String> {
     use crate::vm::generic_registry::GenericInstanceData;
 
     // 1. heap_objects: GenericInstanceData (user-defined struct instances)
@@ -673,18 +698,23 @@ fn heap_object_to_json(
             return Some(format!("{{{}}}", parts.join(", ")));
         }
         // Plan 346: ListData<Value> (List<T>.new(...) collections).
-        if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+        if let Some(list) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+        {
             let mut parts: Vec<String> = Vec::new();
             for elem in &list.elems {
-                let json = value_to_json(vm, elem, depth + 1)
-                    .unwrap_or_else(|| "null".to_string());
+                let json = value_to_json(vm, elem, depth + 1).unwrap_or_else(|| "null".to_string());
                 parts.push(json);
             }
             return Some(format!("[{}]", parts.join(", ")));
         }
         // ListData<i32> (int collections, or struct lists where elements are
         // stored as heap object IDs >= 4000000).
-        if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+        if let Some(list) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<i32>>()
+        {
             let mut parts: Vec<String> = Vec::new();
             for &i in &list.elems {
                 if i >= 4_000_000 {
@@ -699,12 +729,15 @@ fn heap_object_to_json(
             return Some(format!("[{}]", parts.join(", ")));
         }
         // Plan 390 §15 H3b: ObjectData (obj literals { k: v }) in heap_objects.
-        if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+        if let Some(od) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ObjectData>()
+        {
             let mut parts: Vec<String> = Vec::new();
             for (key, val) in od.fields.iter() {
                 let key_json = json_escape_string(&key.to_string());
-                let val_json = value_to_json(vm, val, depth + 1)
-                    .unwrap_or_else(|| "null".to_string());
+                let val_json =
+                    value_to_json(vm, val, depth + 1).unwrap_or_else(|| "null".to_string());
                 parts.push(format!("{}: {}", key_json, val_json));
             }
             return Some(format!("{{{}}}", parts.join(", ")));
@@ -719,7 +752,11 @@ fn heap_object_to_json(
 /// Serialize a `Value` (the enum used inside arrays / struct fields) to JSON.
 /// Struct/array `Value`s carry heap object IDs in `Value::Int` (>= 4_000_000),
 /// which we re-dispatch through `heap_object_to_json`.
-fn value_to_json(vm: &crate::vm::engine::AutoVM, value: &auto_val::Value, depth: u32) -> Option<String> {
+fn value_to_json(
+    vm: &crate::vm::engine::AutoVM,
+    value: &auto_val::Value,
+    depth: u32,
+) -> Option<String> {
     use auto_val::Value;
     const MAX_DEPTH: u32 = 32;
     if depth >= MAX_DEPTH {
@@ -742,7 +779,11 @@ fn value_to_json(vm: &crate::vm::engine::AutoVM, value: &auto_val::Value, depth:
         Value::I64(i) => Some(i.to_string()),
         Value::Byte(b) => Some(b.to_string()),
         Value::USize(u) => Some(u.to_string()),
-        Value::Bool(b) => Some(if *b { "true".to_string() } else { "false".to_string() }),
+        Value::Bool(b) => Some(if *b {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        }),
         Value::Float(f) | Value::Double(f) => Some(format_f64_json(*f)),
         Value::Char(c) => Some(json_escape_string(&c.to_string())),
         Value::Str(s) => Some(json_escape_string(&s.to_string())),
@@ -874,16 +915,30 @@ mod plan326_tests {
         //   - "echo_id" at addr 0: FN_PROLOG, n_args=1, n_locals=0, RET
         //   - "create_note" at addr 4: FN_PROLOG, n_args=2, n_locals=0, RET
         let bytecode: Vec<u8> = vec![
-            OpCode::FN_PROLOG as u8, 1, 0, OpCode::RET as u8,            // echo_id (1 param)
-            OpCode::FN_PROLOG as u8, 2, 0, OpCode::RET as u8,            // create_note (2 params)
+            OpCode::FN_PROLOG as u8,
+            1,
+            0,
+            OpCode::RET as u8, // echo_id (1 param)
+            OpCode::FN_PROLOG as u8,
+            2,
+            0,
+            OpCode::RET as u8, // create_note (2 params)
         ];
         let mut flash = VirtualFlash::new_with_code(bytecode);
         flash.exports_by_name.insert("echo_id".to_string(), 0);
         flash.exports_by_name.insert("create_note".to_string(), 4);
         let vm = AutoVM::new(flash, 1024);
 
-        assert_eq!(vm.get_fn_n_args("echo_id"), Some(1), "1-param handler arity");
-        assert_eq!(vm.get_fn_n_args("create_note"), Some(2), "2-param handler arity");
+        assert_eq!(
+            vm.get_fn_n_args("echo_id"),
+            Some(1),
+            "1-param handler arity"
+        );
+        assert_eq!(
+            vm.get_fn_n_args("create_note"),
+            Some(2),
+            "2-param handler arity"
+        );
         assert_eq!(vm.get_fn_n_args("nonexistent"), None, "unknown fn -> None");
     }
 
@@ -903,7 +958,10 @@ mod plan326_tests {
             strings.len() - 1
         };
         let nv = auto_val::encode_string(idx as u32);
-        assert_eq!(super::nv_to_json(&vm, nv, 0), Some(r#""hello""#.to_string()));
+        assert_eq!(
+            super::nv_to_json(&vm, nv, 0),
+            Some(r#""hello""#.to_string())
+        );
     }
 
     #[test]
@@ -942,28 +1000,34 @@ mod plan326_tests {
         let vm = fresh_vm();
         let a = GenericInstanceData::new_with_names(
             "Note".to_string(),
-            vec![auto_val::Value::Int(0), auto_val::Value::Str(auto_val::AutoStr::from("a"))],
+            vec![
+                auto_val::Value::Int(0),
+                auto_val::Value::Str(auto_val::AutoStr::from("a")),
+            ],
             vec!["id".to_string(), "title".to_string()],
         );
         let b = GenericInstanceData::new_with_names(
             "Note".to_string(),
-            vec![auto_val::Value::Int(1), auto_val::Value::Str(auto_val::AutoStr::from("b"))],
+            vec![
+                auto_val::Value::Int(1),
+                auto_val::Value::Str(auto_val::AutoStr::from("b")),
+            ],
             vec!["id".to_string(), "title".to_string()],
         );
         let id_a = vm.insert_heap_object(a) as i32;
         let id_b = vm.insert_heap_object(b) as i32;
         // Allocate an array id the same way CREATE_ARRAY does now.
         let arr_id = vm.insert_heap_object(crate::vm::types::ListData {
-            elems: vec![
-                auto_val::Value::Int(id_a),
-                auto_val::Value::Int(id_b),
-            ],
+            elems: vec![auto_val::Value::Int(id_a), auto_val::Value::Int(id_b)],
             storage: None,
         });
         // The handler returns the array id as i32.
         let nv = auto_val::encode_i32(arr_id as i32);
         let json = super::nv_to_json(&vm, nv, 0).unwrap();
-        assert_eq!(json, r#"[{"id": 0, "title": "a"}, {"id": 1, "title": "b"}]"#);
+        assert_eq!(
+            json,
+            r#"[{"id": 0, "title": "a"}, {"id": 1, "title": "b"}]"#
+        );
     }
 
     /// Option.Some(x) → unwrap to inner value's JSON.
@@ -977,7 +1041,10 @@ mod plan326_tests {
         );
         let id = vm.insert_heap_object(inst);
         let nv = auto_val::encode_i32(id as i32);
-        assert_eq!(super::nv_to_json(&vm, nv, 0), Some(r#""found""#.to_string()));
+        assert_eq!(
+            super::nv_to_json(&vm, nv, 0),
+            Some(r#""found""#.to_string())
+        );
     }
 
     /// Option.None → JSON null (Plan 326: we serialize None as `null` to keep
@@ -985,11 +1052,7 @@ mod plan326_tests {
     #[test]
     fn nv_to_json_option_none() {
         let vm = fresh_vm();
-        let inst = GenericInstanceData::new_with_names(
-            "Option.None".to_string(),
-            vec![],
-            vec![],
-        );
+        let inst = GenericInstanceData::new_with_names("Option.None".to_string(), vec![], vec![]);
         let id = vm.insert_heap_object(inst);
         let nv = auto_val::encode_i32(id as i32);
         assert_eq!(super::nv_to_json(&vm, nv, 0), Some("null".to_string()));
@@ -1027,8 +1090,14 @@ mod plan326_tests {
         record_api_param_sigs(
             "create_note",
             vec![
-                ApiParamSig { name: "title".into(), ty: "str".into() },
-                ApiParamSig { name: "id".into(), ty: "int".into() },
+                ApiParamSig {
+                    name: "title".into(),
+                    ty: "str".into(),
+                },
+                ApiParamSig {
+                    name: "id".into(),
+                    ty: "int".into(),
+                },
             ],
         );
         let sigs = api_param_sigs("create_note").expect("recorded");
@@ -1044,15 +1113,16 @@ mod plan326_tests {
     // stack values are inspected directly; e2e shapes run in http_e2e).
     // ---------------------------------------------------------------------
     mod plan669_bind_tests {
-        use super::super::{
-            bind_api_args_by_name, ApiArgBindError, ApiParamSig, RouteMatch,
-        };
+        use super::super::{bind_api_args_by_name, ApiArgBindError, ApiParamSig, RouteMatch};
         use crate::vm::engine::AutoVM;
         use crate::vm::task::AutoTask;
         use crate::vm::virt_memory::VirtualFlash;
 
         fn sig(name: &str, ty: &str) -> ApiParamSig {
-            ApiParamSig { name: name.into(), ty: ty.into() }
+            ApiParamSig {
+                name: name.into(),
+                ty: ty.into(),
+            }
         }
         fn rm(path_params: Vec<(&str, &str)>, query_params: Vec<(&str, &str)>) -> RouteMatch {
             RouteMatch {
@@ -1091,9 +1161,15 @@ mod plan326_tests {
             let body: serde_json::Value =
                 serde_json::from_str(r#"{"body":"second","title":"first"}"#).unwrap();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("title", "str"), sig("body", "str")],
-                &rm(vec![], vec![]), Some(&body), "", None, "POST", "/api/notes",
+                &rm(vec![], vec![]),
+                Some(&body),
+                "",
+                None,
+                "POST",
+                "/api/notes",
             )
             .expect("bind");
             assert_eq!(n, 2);
@@ -1106,10 +1182,15 @@ mod plan326_tests {
         fn query_binds_by_name() {
             let (vm, mut task) = rig();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("query", "str")],
                 &rm(vec![], vec![("q", "ignored"), ("query", "Build")]),
-                None, "", None, "GET", "/api/search",
+                None,
+                "",
+                None,
+                "GET",
+                "/api/search",
             )
             .expect("bind");
             assert_eq!(n, 1);
@@ -1120,20 +1201,35 @@ mod plan326_tests {
         fn typed_int_query_converts_and_rejects() {
             let (vm, mut task) = rig();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("page", "int")],
-                &rm(vec![], vec![("page", "7")]), None, "", None, "GET", "/x",
+                &rm(vec![], vec![("page", "7")]),
+                None,
+                "",
+                None,
+                "GET",
+                "/x",
             )
             .expect("bind");
             assert_eq!(n, 1);
             let nv = task.ram.pop_nv();
-            assert!(auto_val::is_i32(nv) || auto_val::decode_i32(nv) == 7, "int nv {nv:?}");
+            assert!(
+                auto_val::is_i32(nv) || auto_val::decode_i32(nv) == 7,
+                "int nv {nv:?}"
+            );
 
             let (vm2, mut task2) = rig();
             let err = bind_api_args_by_name(
-                &vm2, &mut task2,
+                &vm2,
+                &mut task2,
                 &[sig("page", "int")],
-                &rm(vec![], vec![("page", "seven")]), None, "", None, "GET", "/x",
+                &rm(vec![], vec![("page", "seven")]),
+                None,
+                "",
+                None,
+                "GET",
+                "/x",
             )
             .unwrap_err();
             match err {
@@ -1148,40 +1244,62 @@ mod plan326_tests {
         fn bool_query_converts() {
             let (vm, mut task) = rig();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("done", "bool")],
-                &rm(vec![], vec![("done", "true")]), None, "", None, "GET", "/x",
+                &rm(vec![], vec![("done", "true")]),
+                None,
+                "",
+                None,
+                "GET",
+                "/x",
             )
             .expect("bind");
             assert_eq!(n, 1);
             let nv = task.ram.pop_nv();
-            assert!(auto_val::is_bool(nv) && auto_val::decode_bool(nv), "bool nv {nv:?}");
+            assert!(
+                auto_val::is_bool(nv) && auto_val::decode_bool(nv),
+                "bool nv {nv:?}"
+            );
         }
 
         #[test]
         fn path_wins_over_body_and_query() {
             let (vm, mut task) = rig();
-            let body: serde_json::Value =
-                serde_json::from_str(r#"{"id": 999}"#).unwrap();
+            let body: serde_json::Value = serde_json::from_str(r#"{"id": 999}"#).unwrap();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("id", "int")],
                 &rm(vec![("id", "42")], vec![("id", "7")]),
-                Some(&body), "", None, "GET", "/api/notes/42",
+                Some(&body),
+                "",
+                None,
+                "GET",
+                "/api/notes/42",
             )
             .expect("bind");
             assert_eq!(n, 1);
             let nv = task.ram.pop_nv();
-            assert!(auto_val::decode_i32(nv) == 42, "path source must win, nv {nv:?}");
+            assert!(
+                auto_val::decode_i32(nv) == 42,
+                "path source must win, nv {nv:?}"
+            );
         }
 
         #[test]
         fn missing_param_is_400_naming_param() {
             let (vm, mut task) = rig();
             let err = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("title", "str"), sig("body", "str")],
-                &rm(vec![], vec![]), None, "", None, "POST", "/api/notes",
+                &rm(vec![], vec![]),
+                None,
+                "",
+                None,
+                "POST",
+                "/api/notes",
             )
             .unwrap_err();
             match err {
@@ -1195,12 +1313,17 @@ mod plan326_tests {
         #[test]
         fn trailing_unbound_param_receives_metadata() {
             let (vm, mut task) = rig();
-            let body: serde_json::Value =
-                serde_json::from_str(r#"{"title":"t"}"#).unwrap();
+            let body: serde_json::Value = serde_json::from_str(r#"{"title":"t"}"#).unwrap();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("title", "str"), sig("meta", "str")],
-                &rm(vec![], vec![]), Some(&body), "", Some(r#"{"cookies":{}}"#), "POST", "/x",
+                &rm(vec![], vec![]),
+                Some(&body),
+                "",
+                Some(r#"{"cookies":{}}"#),
+                "POST",
+                "/x",
             )
             .expect("bind");
             assert_eq!(n, 2);
@@ -1212,9 +1335,15 @@ mod plan326_tests {
         fn non_trailing_unbound_is_missing_even_with_metadata() {
             let (vm, mut task) = rig();
             let err = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("a", "str"), sig("meta", "str")],
-                &rm(vec![], vec![]), None, "", Some("{}"), "GET", "/x",
+                &rm(vec![], vec![]),
+                None,
+                "",
+                Some("{}"),
+                "GET",
+                "/x",
             )
             .unwrap_err();
             assert!(matches!(err, ApiArgBindError::BadRequest(_)));
@@ -1224,9 +1353,15 @@ mod plan326_tests {
         fn raw_body_single_param_tolerance() {
             let (vm, mut task) = rig();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("data", "str")],
-                &rm(vec![], vec![]), None, "plain text not json", None, "POST", "/x",
+                &rm(vec![], vec![]),
+                None,
+                "plain text not json",
+                None,
+                "POST",
+                "/x",
             )
             .expect("bind");
             assert_eq!(n, 1);
@@ -1242,9 +1377,15 @@ mod plan326_tests {
             let body: serde_json::Value =
                 serde_json::from_str(r#"{"fields":{"title":"hello"}}"#).unwrap();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("form", "str")],
-                &rm(vec![], vec![]), Some(&body), r#"{"fields":{"title":"hello"}}"#, None, "POST", "/x",
+                &rm(vec![], vec![]),
+                Some(&body),
+                r#"{"fields":{"title":"hello"}}"#,
+                None,
+                "POST",
+                "/x",
             )
             .expect("bind");
             assert_eq!(n, 1);
@@ -1259,9 +1400,15 @@ mod plan326_tests {
             let (vm, mut task) = rig();
             let body: serde_json::Value = serde_json::from_str(r#"{"title":"t"}"#).unwrap();
             let err = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("title", "str"), sig("body", "str")],
-                &rm(vec![], vec![]), Some(&body), r#"{"title":"t"}"#, Some("{}"), "POST", "/x",
+                &rm(vec![], vec![]),
+                Some(&body),
+                r#"{"title":"t"}"#,
+                Some("{}"),
+                "POST",
+                "/x",
             )
             .unwrap_err();
             match err {
@@ -1276,7 +1423,15 @@ mod plan326_tests {
         fn empty_sigs_bind_zero() {
             let (vm, mut task) = rig();
             let n = bind_api_args_by_name(
-                &vm, &mut task, &[], &rm(vec![], vec![]), None, "", None, "GET", "/x",
+                &vm,
+                &mut task,
+                &[],
+                &rm(vec![], vec![]),
+                None,
+                "",
+                None,
+                "GET",
+                "/x",
             )
             .expect("bind");
             assert_eq!(n, 0);
@@ -1296,7 +1451,10 @@ mod plan326_tests {
                 &vm,
                 &mut task,
                 "h_legacy_never_published",
-                &[("id".to_string(), "42".to_string()), ("slug".to_string(), "hello".to_string())],
+                &[
+                    ("id".to_string(), "42".to_string()),
+                    ("slug".to_string(), "hello".to_string()),
+                ],
                 &[("ignored".to_string(), "q".to_string())],
                 "raw-body",
                 "GET",
@@ -1308,7 +1466,10 @@ mod plan326_tests {
             assert_eq!(pop_str(&vm, &mut task), "raw-body");
             assert_eq!(pop_str(&vm, &mut task), "hello");
             let nv = task.ram.pop_nv();
-            assert!(auto_val::decode_i32(nv) == 42, "numeric path param as i32, nv {nv:?}");
+            assert!(
+                auto_val::decode_i32(nv) == 42,
+                "numeric path param as i32, nv {nv:?}"
+            );
         }
     }
 
@@ -1347,7 +1508,12 @@ mod plan326_tests {
             }
             let mut stream = stream.expect("could not connect to test HTTP server");
             stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-            write!(stream, "GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n", path).unwrap();
+            write!(
+                stream,
+                "GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+                path
+            )
+            .unwrap();
             let mut resp = String::new();
             stream.read_to_string(&mut resp).ok();
             resp
@@ -1366,7 +1532,10 @@ mod plan326_tests {
             }
             let mut stream = stream.expect("could not connect to test HTTP server");
             stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-            let mut req = format!("GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n", path);
+            let mut req = format!(
+                "GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n",
+                path
+            );
             for (k, v) in headers {
                 req.push_str(&format!("{}: {}\r\n", k, v));
             }
@@ -1562,31 +1731,38 @@ mod plan326_tests {
 
         #[test]
         fn e2e_struct_handler_returns_json() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 type Note { id int; title str }
 
 #[api(method = "GET", path = "/api/notes/test")]
 fn get_note() Note {
     Note { id: 1, title: "hello" }
 }
-"#, 18731);
+"#,
+                18731,
+            );
             let resp = http_get(port, "/api/notes/test");
             let body = body_of(&resp);
             // The fix: body must be JSON object, not the bare heap-id "4000000".
             assert_eq!(
                 body, r#"{"id": 1, "title": "hello"}"#,
-                "struct handler JSON: full resp = {:?}", resp
+                "struct handler JSON: full resp = {:?}",
+                resp
             );
         }
 
         #[test]
         fn e2e_int_path_param_handler() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/echo/:id")]
 fn echo_id(id int) int {
     id
 }
-"#, 18732);
+"#,
+                18732,
+            );
             let resp = http_get(port, "/api/echo/42");
             let body = body_of(&resp);
             // Phase 5: :id injected as int 42, returned as-is.
@@ -1598,14 +1774,17 @@ fn echo_id(id int) int {
         /// next() runs only to the next yield (not the whole body upfront).
         #[test]
         fn e2e_sse_generator_handler() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/counter")]
 fn counter_handler() ~Iter<int> {
     yield 1
     yield 2
     yield 3
 }
-"#, 18733);
+"#,
+                18733,
+            );
             let resp = http_get(port, "/api/counter");
             // SSE response: the body should contain three "data: N\n\n" frames.
             let body = body_of(&resp);
@@ -1620,7 +1799,8 @@ fn counter_handler() ~Iter<int> {
         /// fire on that iter_id.
         #[test]
         fn e2e_sse_indirect_generator() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 fn counter() ~Iter<int> {
     yield 1
     yield 2
@@ -1630,12 +1810,26 @@ fn counter() ~Iter<int> {
 fn stream_handler() ~Iter<int> {
     return counter()
 }
-"#, 18734);
+"#,
+                18734,
+            );
             let resp = http_get(port, "/api/stream");
             let body = body_of(&resp);
-            assert!(body.contains("data: 1"), "indirect SSE frame 1: body={:?}", body);
-            assert!(body.contains("data: 2"), "indirect SSE frame 2: body={:?}", body);
-            assert!(body.contains("data: 3"), "indirect SSE frame 3: body={:?}", body);
+            assert!(
+                body.contains("data: 1"),
+                "indirect SSE frame 1: body={:?}",
+                body
+            );
+            assert!(
+                body.contains("data: 2"),
+                "indirect SSE frame 2: body={:?}",
+                body
+            );
+            assert!(
+                body.contains("data: 3"),
+                "indirect SSE frame 3: body={:?}",
+                body
+            );
         }
 
         /// Plan 442 C2 item ②: the SSE form — a generator yielding
@@ -1645,22 +1839,27 @@ fn stream_handler() ~Iter<int> {
         /// opaque Event object; `sse_frame_from_nv` formats it.
         #[test]
         fn e2e_sse_named_event_frames() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/events")]
 fn events_handler() ~Iter<int> {
     yield sse_named_event("e1", "hello")
     yield sse_named_event("e2", "world")
 }
-"#, 18738);
+"#,
+                18738,
+            );
             let resp = http_get(port, "/api/events");
             let body = body_of(&resp);
             assert!(
                 body.contains("event: e1\ndata: \"hello\""),
-                "named SSE frame 1: body={:?}", body
+                "named SSE frame 1: body={:?}",
+                body
             );
             assert!(
                 body.contains("event: e2\ndata: \"world\""),
-                "named SSE frame 2: body={:?}", body
+                "named SSE frame 2: body={:?}",
+                body
             );
         }
 
@@ -1670,7 +1869,8 @@ fn events_handler() ~Iter<int> {
         /// streams the yielded Event frames through the dispatch-3000 SSE arms.
         #[test]
         fn e2e_sse_chain() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 dep axum
 use.rs axum::response::sse::{Event, KeepAlive, Sse}
 
@@ -1683,12 +1883,15 @@ fn chain_handler() int {
 fn events_stream() ~Iter<int> {
     yield sse_named_event("tick", "42")
 }
-"#, 18746);
+"#,
+                18746,
+            );
             let resp = http_get(port, "/api/sse-chain");
             let body = body_of(&resp);
             assert!(
                 body.contains("event: tick\ndata: \"42\""),
-                "Sse chain SSE frame: body={:?}", body
+                "Sse chain SSE frame: body={:?}",
+                body
             );
         }
 
@@ -1697,7 +1900,8 @@ fn events_stream() ~Iter<int> {
         /// a `Value` built by `json.to_value`. They resolve as bare natives.
         #[test]
         fn e2e_value_accessors() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/acc")]
 fn acc() str {
     let obj = json.to_value("{\"msg\":\"hi\",\"ok\":true}")
@@ -1751,53 +1955,80 @@ fn hash() str {
 fn path() str {
     return path_inner("seg/ment")
 }
-"#, 18747);
+"#,
+                18747,
+            );
 
             let acc = http_get(port, "/acc");
             assert!(
                 acc.starts_with("HTTP/1.1 200"),
-                "value accessor status: {}", acc.lines().next().unwrap_or("")
+                "value accessor status: {}",
+                acc.lines().next().unwrap_or("")
             );
             assert_eq!(
-                body_of(&acc), "\"hi\"",
-                "value_get_str/value_get_bool: full = {:?}", acc
+                body_of(&acc),
+                "\"hi\"",
+                "value_get_str/value_get_bool: full = {:?}",
+                acc
             );
 
             let isnull = http_get(port, "/isnull");
             assert_eq!(
-                body_of(&isnull), "\"yes\"",
-                "value_is_null on JSON null: full = {:?}", isnull
+                body_of(&isnull),
+                "\"yes\"",
+                "value_is_null on JSON null: full = {:?}",
+                isnull
             );
 
             let arr = http_get(port, "/arr");
             assert_eq!(
-                body_of(&arr), "[1, 2, 3]",
-                "value_get_array: full = {:?}", arr
+                body_of(&arr),
+                "[1, 2, 3]",
+                "value_get_array: full = {:?}",
+                arr
             );
 
             let nested = http_get(port, "/nested");
             assert_eq!(
-                body_of(&nested), r#"{"x": 7}"#,
-                "value_get nested object: full = {:?}", nested
+                body_of(&nested),
+                r#"{"x": 7}"#,
+                "value_get nested object: full = {:?}",
+                nested
             );
 
             // random_hex/new_id return a hex string of the request length.
-            let h = body_of(&http_get(port, "/hex")).trim_matches('"').to_string();
+            let h = body_of(&http_get(port, "/hex"))
+                .trim_matches('"')
+                .to_string();
             assert_eq!(h.len(), 8, "random_hex(4) should be 8 hex chars: {:?}", h);
-            assert!(h.chars().all(|c| c.is_ascii_hexdigit()), "random_hex not hex: {:?}", h);
+            assert!(
+                h.chars().all(|c| c.is_ascii_hexdigit()),
+                "random_hex not hex: {:?}",
+                h
+            );
 
-            let n = body_of(&http_get(port, "/newid")).trim_matches('"').to_string();
+            let n = body_of(&http_get(port, "/newid"))
+                .trim_matches('"')
+                .to_string();
             assert_eq!(n.len(), 16, "new_id(8) should be 16 hex chars: {:?}", n);
 
             // hash_password = sha256(salt || p) hex (64 chars, deterministic).
-            let h = body_of(&http_get(port, "/hash")).trim_matches('"').to_string();
+            let h = body_of(&http_get(port, "/hash"))
+                .trim_matches('"')
+                .to_string();
             assert_eq!(h.len(), 64, "hash_password should be 64 hex chars: {:?}", h);
-            assert!(h.chars().all(|c| c.is_ascii_hexdigit()), "hash_password not hex: {:?}", h);
+            assert!(
+                h.chars().all(|c| c.is_ascii_hexdigit()),
+                "hash_password not hex: {:?}",
+                h
+            );
 
             // path_inner on a string is identity (axum Path pushes a string).
             assert_eq!(
-                body_of(&http_get(port, "/path")), "\"seg/ment\"",
-                "path_inner identity: full = {:?}", http_get(port, "/path")
+                body_of(&http_get(port, "/path")),
+                "\"seg/ment\"",
+                "path_inner identity: full = {:?}",
+                http_get(port, "/path")
             );
         }
 
@@ -1809,18 +2040,23 @@ fn path() str {
         /// object RC pitfalls.
         #[test]
         fn e2e_host_forward_app_config_daemon() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/daemon")]
 fn daemon() str {
     return app_config_effective_daemon_url(0)
 }
-"#, 18748);
+"#,
+                18748,
+            );
 
             // Phase 1: no host call registered → default constant.
             let d = http_get(port, "/daemon");
             assert_eq!(
-                body_of(&d), "\"http://127.0.0.1:17654\"",
-                "app_config_effective_daemon_url default: full = {:?}", d
+                body_of(&d),
+                "\"http://127.0.0.1:17654\"",
+                "app_config_effective_daemon_url default: full = {:?}",
+                d
             );
 
             // Phase 2: register a host call → the VM extern forwards to it.
@@ -1832,8 +2068,10 @@ fn daemon() str {
             );
             let f = http_get(port, "/daemon");
             assert_eq!(
-                body_of(&f), "\"http://10.0.0.5:9999\"",
-                "app_config_effective_daemon_url host-forwarded: full = {:?}", f
+                body_of(&f),
+                "\"http://10.0.0.5:9999\"",
+                "app_config_effective_daemon_url host-forwarded: full = {:?}",
+                f
             );
         }
 
@@ -1843,33 +2081,40 @@ fn daemon() str {
         /// `{runs: []}` object survives the CALL_NAT dead-zone release.
         #[test]
         fn e2e_host_forward_relay_runs() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/runs")]
 fn runs() int {
     return ok_response(relay_runs_list(0, 0))
 }
-"#, 18749);
+"#,
+                18749,
+            );
 
             // Phase 1: no host call → empty-store default shape.
             let d = http_get(port, "/runs");
             assert_eq!(
-                body_of(&d), r#"{"runs": []}"#,
-                "relay_runs_list default (empty store): full = {:?}", d
+                body_of(&d),
+                r#"{"runs": []}"#,
+                "relay_runs_list default (empty store): full = {:?}",
+                d
             );
 
             // Phase 2: register host call → the VM extern forwards to it,
             // passing the (marshalled) request args in args_json.
-            crate::vm::host_bridge::register_host_call("relay_runs_list", std::sync::Arc::new(
-                move |args: &str| -> Result<String, String> {
+            crate::vm::host_bridge::register_host_call(
+                "relay_runs_list",
+                std::sync::Arc::new(move |args: &str| -> Result<String, String> {
                     Ok(format!(r#"{{"runs":[{{"run_id":"r1","arg":{}}}]}}"#, args))
-                },
-            ));
+                }),
+            );
             let f = http_get(port, "/runs");
             let fbody = body_of(&f);
             // The shim marshalled q (an int 0 in this test) → "0", and forwarded it.
             assert!(
                 fbody.contains(r#""run_id": "r1""#) && fbody.contains(r#""arg": 0"#),
-                "relay_runs_list host-forwarded with args: full = {:?}", fbody
+                "relay_runs_list host-forwarded with args: full = {:?}",
+                fbody
             );
         }
 
@@ -1884,7 +2129,12 @@ fn runs() int {
         /// not a server bug. Since the endpoint is an idempotent GET, retrying
         /// the connection is a faithful client behavior and removes the test's
         /// dependence on scheduler timing.
-        fn http_get_until(port: u16, path: &str, need_fragments: &[&str], max_attempts: usize) -> String {
+        fn http_get_until(
+            port: u16,
+            path: &str,
+            need_fragments: &[&str],
+            max_attempts: usize,
+        ) -> String {
             let mut last_body = String::new();
             for _ in 0..max_attempts {
                 let resp = http_get(port, path);
@@ -1903,14 +2153,17 @@ fn runs() int {
         /// two handlers interleave (Goroutine-style cooperative scheduling).
         #[test]
         fn e2e_concurrent_sse() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/count")]
 fn counter_handler() ~Iter<int> {
     yield 1
     yield 2
     yield 3
 }
-"#, 18735);
+"#,
+                18735,
+            );
 
             let need = &["data: 1", "data: 2", "data: 3"];
             // Fire two connections concurrently from separate threads; each retries
@@ -1923,10 +2176,16 @@ fn counter_handler() ~Iter<int> {
             let body1 = h1.join().expect("conn1");
             let body2 = h2.join().expect("conn2");
             // Both connections must receive all three frames.
-            assert!(body1.contains("data: 1") && body1.contains("data: 2") && body1.contains("data: 3"),
-                "conn1 incomplete: body={:?}", body1);
-            assert!(body2.contains("data: 1") && body2.contains("data: 2") && body2.contains("data: 3"),
-                "conn2 incomplete: body={:?}", body2);
+            assert!(
+                body1.contains("data: 1") && body1.contains("data: 2") && body1.contains("data: 3"),
+                "conn1 incomplete: body={:?}",
+                body1
+            );
+            assert!(
+                body2.contains("data: 1") && body2.contains("data: 2") && body2.contains("data: 3"),
+                "conn2 incomplete: body={:?}",
+                body2
+            );
         }
 
         /// PLAN-696 T-02 red sample: ordinary request bodies must be read in
@@ -1935,24 +2194,39 @@ fn counter_handler() ~Iter<int> {
         /// an escaped newline in a string value.
         #[test]
         fn e2e_plan696_body_split_across_tcp_writes() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "POST", path = "/api/echo")]
 fn echo(text str) str { text }
-"#, 18760);
+"#,
+                18760,
+            );
             let body = "{\n  \"text\": \"first\\nsecond\"\n}";
             let resp = http_post_json_in_chunks(port, "/api/echo", body);
-            assert!(resp.starts_with("HTTP/1.1 200 OK"), "split body status: {:?}", resp);
-            assert_eq!(body_of(&resp), r#""first\nsecond""#, "split body response: {:?}", resp);
+            assert!(
+                resp.starts_with("HTTP/1.1 200 OK"),
+                "split body status: {:?}",
+                resp
+            );
+            assert_eq!(
+                body_of(&resp),
+                r#""first\nsecond""#,
+                "split body response: {:?}",
+                resp
+            );
         }
 
         /// PLAN-696 T-02 red sample: EOF before Content-Length is satisfied
         /// must reject the request before dispatching a body-independent route.
         #[test]
         fn e2e_plan696_short_body_rejected() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "POST", path = "/api/ready")]
 fn ready() str { "ready" }
-"#, 18761);
+"#,
+                18761,
+            );
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
             stream.write_all(
@@ -1961,17 +2235,24 @@ fn ready() str { "ready" }
             stream.shutdown(std::net::Shutdown::Write).unwrap();
             let mut resp = String::new();
             stream.read_to_string(&mut resp).unwrap();
-            assert!(resp.starts_with("HTTP/1.1 400"), "short body must be rejected, got: {:?}", resp);
+            assert!(
+                resp.starts_with("HTTP/1.1 400"),
+                "short body must be rejected, got: {:?}",
+                resp
+            );
         }
 
         /// PLAN-696 T-02: reject Content-Length above the shared request-body
         /// limit before allocating or dispatching the request.
         #[test]
         fn e2e_plan696_over_limit_body_rejected() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "POST", path = "/api/ready")]
 fn ready() str { "ready" }
-"#, 18763);
+"#,
+                18763,
+            );
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
             stream.write_all(
@@ -1979,17 +2260,24 @@ fn ready() str { "ready" }
             ).unwrap();
             let mut resp = String::new();
             stream.read_to_string(&mut resp).unwrap();
-            assert!(resp.starts_with("HTTP/1.1 413"), "oversize body must be rejected, got: {:?}", resp);
+            assert!(
+                resp.starts_with("HTTP/1.1 413"),
+                "oversize body must be rejected, got: {:?}",
+                resp
+            );
         }
 
         /// PLAN-696 T-03: reject malformed Content-Length instead of silently
         /// treating it as a bodyless request.
         #[test]
         fn e2e_plan696_invalid_content_length_rejected() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "POST", path = "/api/ready")]
 fn ready() str { "ready" }
-"#, 18764);
+"#,
+                18764,
+            );
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
             stream.write_all(
@@ -1997,14 +2285,19 @@ fn ready() str { "ready" }
             ).unwrap();
             let mut resp = String::new();
             stream.read_to_string(&mut resp).unwrap();
-            assert!(resp.starts_with("HTTP/1.1 400"), "malformed length must be rejected, got: {:?}", resp);
+            assert!(
+                resp.starts_with("HTTP/1.1 400"),
+                "malformed length must be rejected, got: {:?}",
+                resp
+            );
         }
 
         /// PLAN-696 T-02 red sample: a delayed generator must not keep the
         /// single-thread I/O reactor from serving an unrelated health request.
         #[test]
         fn e2e_plan696_slow_sse_does_not_block_health() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/slow")]
 fn slow() ~Iter<int> {
     yield 1
@@ -2013,16 +2306,23 @@ fn slow() ~Iter<int> {
 }
 #[api(method = "GET", path = "/health")]
 fn health() str { "ok" }
-"#, 18762);
+"#,
+                18762,
+            );
 
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-            stream.write_all(
-                b"GET /api/slow HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
-            ).unwrap();
+            stream
+                .write_all(
+                    b"GET /api/slow HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+                )
+                .unwrap();
             let mut received = Vec::new();
             let mut chunk = [0u8; 512];
-            while !received.windows(b"data: 1\n\n".len()).any(|w| w == b"data: 1\n\n") {
+            while !received
+                .windows(b"data: 1\n\n".len())
+                .any(|w| w == b"data: 1\n\n")
+            {
                 let n = stream.read(&mut chunk).expect("read first SSE frame");
                 assert!(n > 0, "SSE closed before first frame: {:?}", received);
                 received.extend_from_slice(&chunk[..n]);
@@ -2032,13 +2332,20 @@ fn health() str { "ok" }
             let started = std::time::Instant::now();
             let health = http_get(port, "/health");
             let elapsed = started.elapsed();
-            assert!(health.starts_with("HTTP/1.1 200"), "health response: {:?}", health);
+            assert!(
+                health.starts_with("HTTP/1.1 200"),
+                "health response: {:?}",
+                health
+            );
             assert!(
                 elapsed < Duration::from_millis(1500),
                 "health request waited {elapsed:?} behind the slow SSE producer"
             );
 
-            while !received.windows(b"data: 2\n\n".len()).any(|w| w == b"data: 2\n\n") {
+            while !received
+                .windows(b"data: 2\n\n".len())
+                .any(|w| w == b"data: 2\n\n")
+            {
                 let n = stream.read(&mut chunk).expect("read second SSE frame");
                 assert!(n > 0, "SSE closed before second frame: {:?}", received);
                 received.extend_from_slice(&chunk[..n]);
@@ -2054,7 +2361,8 @@ fn health() str { "ok" }
         /// before its post-sleep side effect runs.
         #[test]
         fn e2e_plan696_sse_disconnect_cancels_generator() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 var produced int = 0
 #[api(method = "GET", path = "/api/cancel")]
 fn cancel_stream() ~Iter<int> {
@@ -2065,7 +2373,9 @@ fn cancel_stream() ~Iter<int> {
 }
 #[api(method = "GET", path = "/api/produced")]
 fn produced_count() int { produced }
-"#, 18765);
+"#,
+                18765,
+            );
 
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
@@ -2074,7 +2384,10 @@ fn produced_count() int { produced }
             ).unwrap();
             let mut received = Vec::new();
             let mut chunk = [0u8; 512];
-            while !received.windows(b"data: 1\n\n".len()).any(|w| w == b"data: 1\n\n") {
+            while !received
+                .windows(b"data: 1\n\n".len())
+                .any(|w| w == b"data: 1\n\n")
+            {
                 let n = stream.read(&mut chunk).expect("read first SSE frame");
                 assert!(n > 0, "SSE closed before first frame: {:?}", received);
                 received.extend_from_slice(&chunk[..n]);
@@ -2083,7 +2396,11 @@ fn produced_count() int { produced }
 
             std::thread::sleep(Duration::from_millis(3200));
             let state = http_get(port, "/api/produced");
-            assert_eq!(body_of(&state), "0", "disconnected SSE generator continued: {state:?}");
+            assert_eq!(
+                body_of(&state),
+                "0",
+                "disconnected SSE generator continued: {state:?}"
+            );
         }
 
         /// PLAN-696 T-07: the real 015-notes api.at/db.at pair preserves CRUD
@@ -2092,9 +2409,16 @@ fn produced_count() int { produced }
         fn e2e_plan696_real_015_notes_crud_parity() {
             let port = start_example_api_server("015-notes", 18766);
             let initial = http_get(port, "/api/notes");
-            assert!(initial.starts_with("HTTP/1.1 200"), "initial list: {initial}");
+            assert!(
+                initial.starts_with("HTTP/1.1 200"),
+                "initial list: {initial}"
+            );
             let notes: serde_json::Value = serde_json::from_str(body_of(&initial)).unwrap();
-            assert!(notes.as_array().unwrap().iter().any(|n| n["title"] == "Welcome"));
+            assert!(notes
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["title"] == "Welcome"));
 
             let created = http_post_json_with_headers(
                 port,
@@ -2102,7 +2426,10 @@ fn produced_count() int { produced }
                 r#"{"title":"Plan 696 parity","body":"body split","folder":"work"}"#,
                 &[],
             );
-            assert!(created.starts_with("HTTP/1.1 200"), "create response: {created}");
+            assert!(
+                created.starts_with("HTTP/1.1 200"),
+                "create response: {created}"
+            );
             let created_note: serde_json::Value =
                 serde_json::from_str(body_of(&created)).expect("created note JSON");
             assert_eq!(created_note["title"], "Plan 696 parity");
@@ -2120,7 +2447,10 @@ fn produced_count() int { produced }
             let port = start_example_api_server("017-chat", 18768);
             let contacts = http_get(port, "/api/contacts");
             assert!(contacts.starts_with("HTTP/1.1 200"), "contacts: {contacts}");
-            assert!(body_of(&contacts).contains("Alice"), "contact seed: {contacts}");
+            assert!(
+                body_of(&contacts).contains("Alice"),
+                "contact seed: {contacts}"
+            );
 
             let sent = http_post_json_with_headers(
                 port,
@@ -2136,7 +2466,11 @@ fn produced_count() int { produced }
             let listed = http_get(port, "/api/messages");
             assert!(listed.starts_with("HTTP/1.1 200"), "message list: {listed}");
             let messages: serde_json::Value = serde_json::from_str(body_of(&listed)).unwrap();
-            assert!(messages.as_array().unwrap().iter().any(|m| m["text"] == "Plan 696 parity"));
+            assert!(messages
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|m| m["text"] == "Plan 696 parity"));
         }
 
         /// PLAN-696 T-07: real 023-realworld auth and article responses retain
@@ -2154,7 +2488,10 @@ fn produced_count() int { produced }
             assert!(login.starts_with("HTTP/1.1 200"), "login response: {login}");
             let user: serde_json::Value = serde_json::from_str(body_of(&login)).unwrap();
             assert_eq!(user["username"], "Sarah Chen");
-            assert!(user["token"].as_str().unwrap_or_default().starts_with("tok-"));
+            assert!(user["token"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("tok-"));
             assert!(user.get("password").is_none(), "password leaked: {user}");
 
             let token = user["token"].as_str().unwrap();
@@ -2164,7 +2501,10 @@ fn produced_count() int { produced }
                 "/api/user",
                 &[("Authorization", authorization.as_str())],
             );
-            assert!(current.starts_with("HTTP/1.1 200"), "current user: {current}");
+            assert!(
+                current.starts_with("HTTP/1.1 200"),
+                "current user: {current}"
+            );
             let current: serde_json::Value = serde_json::from_str(body_of(&current)).unwrap();
             assert_eq!(current["username"], "Sarah Chen");
 
@@ -2174,7 +2514,10 @@ fn produced_count() int { produced }
                 r#"{"slug":"plan-696-parity","title":"Plan 696","description":"runtime check","body":"auth owner","tagList":"verification"}"#,
                 &[("Authorization", authorization.as_str())],
             );
-            assert!(article.starts_with("HTTP/1.1 200"), "authenticated article: {article}");
+            assert!(
+                article.starts_with("HTTP/1.1 200"),
+                "authenticated article: {article}"
+            );
             let article: serde_json::Value = serde_json::from_str(body_of(&article)).unwrap();
             assert_eq!(article["slug"], "plan-696-parity");
             assert_eq!(article["author"], "Sarah Chen");
@@ -2185,7 +2528,10 @@ fn produced_count() int { produced }
                 r#"{"slug":"anonymous","title":"Anonymous","description":"","body":"","tagList":""}"#,
                 &[],
             );
-            assert!(anonymous_article.starts_with("HTTP/1.1 200"), "anonymous article convention changed: {anonymous_article}");
+            assert!(
+                anonymous_article.starts_with("HTTP/1.1 200"),
+                "anonymous article convention changed: {anonymous_article}"
+            );
             let anonymous_article: serde_json::Value =
                 serde_json::from_str(body_of(&anonymous_article)).unwrap();
             assert_eq!(anonymous_article["slug"], "");
@@ -2196,7 +2542,10 @@ fn produced_count() int { produced }
                 r#"{"email":"sarah@vercel.com","password":"wrong"}"#,
                 &[],
             );
-            assert!(rejected.starts_with("HTTP/1.1 200"), "invalid-login convention changed: {rejected}");
+            assert!(
+                rejected.starts_with("HTTP/1.1 200"),
+                "invalid-login convention changed: {rejected}"
+            );
             let rejected: serde_json::Value = serde_json::from_str(body_of(&rejected)).unwrap();
             assert_eq!(rejected["id"], 0);
         }
@@ -2212,7 +2561,8 @@ fn produced_count() int { produced }
         /// pre-existing harness race (see Plan 317 §11 detached-server notes).
         #[test]
         fn e2e_a_redirect_302_with_location() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/old")]
 fn old_handler() int {
     return http.response_redirect("/new", 302)
@@ -2222,7 +2572,9 @@ fn old_handler() int {
 fn new_handler() str {
     return "arrived"
 }
-"#, 18740);
+"#,
+                18740,
+            );
             let resp = http_get(port, "/old");
             assert!(
                 resp.starts_with("HTTP/1.1 302"),
@@ -2251,7 +2603,8 @@ fn new_handler() str {
         /// extern_sigs` is needed here.
         #[test]
         fn e2e_musk_response_constructors() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/ok")]
 fn ok_handler() int {
     return ok_response("hello")
@@ -2271,7 +2624,9 @@ fn text_handler() int {
 fn to_handler() int {
     return to_response(null, "failed", 500)
 }
-"#, 18739);
+"#,
+                18739,
+            );
 
             let ok = http_get(port, "/ok");
             assert!(
@@ -2280,8 +2635,10 @@ fn to_handler() int {
                 ok.lines().next().unwrap_or("")
             );
             assert_eq!(
-                body_of(&ok), "\"hello\"",
-                "ok_response JSON body: full = {:?}", ok
+                body_of(&ok),
+                "\"hello\"",
+                "ok_response JSON body: full = {:?}",
+                ok
             );
 
             let err = http_get(port, "/err");
@@ -2291,8 +2648,10 @@ fn to_handler() int {
                 err.lines().next().unwrap_or("")
             );
             assert_eq!(
-                body_of(&err), r#"{"error":"boom"}"#,
-                "err_response body: full = {:?}", err
+                body_of(&err),
+                r#"{"error":"boom"}"#,
+                "err_response body: full = {:?}",
+                err
             );
 
             let text = http_get(port, "/text");
@@ -2302,8 +2661,10 @@ fn to_handler() int {
                 text.lines().next().unwrap_or("")
             );
             assert_eq!(
-                body_of(&text), "not found",
-                "text_response body: full = {:?}", text
+                body_of(&text),
+                "not found",
+                "text_response body: full = {:?}",
+                text
             );
 
             // to_response with a null value degrades to err_response.
@@ -2314,8 +2675,10 @@ fn to_handler() int {
                 to.lines().next().unwrap_or("")
             );
             assert_eq!(
-                body_of(&to), r#"{"error":"failed"}"#,
-                "to_response(null,…) body: full = {:?}", to
+                body_of(&to),
+                r#"{"error":"failed"}"#,
+                "to_response(null,…) body: full = {:?}",
+                to
             );
         }
 
@@ -2337,16 +2700,12 @@ fn to_handler() int {
                     return;
                 }
             };
-            let db_src = std::fs::read_to_string(back.join("db.at"))
-                .expect("023 db.at must exist in-repo");
+            let db_src =
+                std::fs::read_to_string(back.join("db.at")).expect("023 db.at must exist in-repo");
 
             // Types block from api.at (up to `use db`), db.at minus its own
             // `use api:` import, plus bearer_token/json_str extracted verbatim.
-            let types_block: String = api_src
-                .split("use db")
-                .next()
-                .unwrap_or("")
-                .to_string();
+            let types_block: String = api_src.split("use db").next().unwrap_or("").to_string();
             let db_body = db_src
                 .lines()
                 .filter(|l| !l.starts_with("use api:"))
@@ -2407,7 +2766,11 @@ fn h_create_article(slug str, title str, description str, body str, tagList str,
                 &[],
             ))
             .to_string();
-            assert!(bad.contains("\"id\": 0"), "wrong password must fail: {}", bad);
+            assert!(
+                bad.contains("\"id\": 0"),
+                "wrong password must fail: {}",
+                bad
+            );
 
             // 2. Correct login → real user + fresh unique token.
             let ok = body_of(&http_post_json_with_headers(
@@ -2476,12 +2839,15 @@ fn h_create_article(slug str, title str, description str, body str, tagList str,
             let upload_dir = std::env::temp_dir().join("auto_multipart_e2e");
             let _ = std::fs::remove_dir_all(&upload_dir);
             std::env::set_var("AUTO_UPLOAD_DIR", upload_dir.to_str().unwrap());
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "POST", path = "/api/upload")]
 fn upload(form str) str {
     return form
 }
-"#, 18744);
+"#,
+                18744,
+            );
 
             let boundary = "AutoBoundary7381";
             let mut file_data: Vec<u8> = Vec::new();
@@ -2543,10 +2909,18 @@ fn upload(form str) str {
                 .filter(|p| p.is_file())
                 .collect();
             stored_files.sort();
-            assert_eq!(stored_files.len(), 1, "exactly one stored file: {:?}", stored_files);
+            assert_eq!(
+                stored_files.len(),
+                1,
+                "exactly one stored file: {:?}",
+                stored_files
+            );
             let stored = std::fs::read(&stored_files[0])
                 .unwrap_or_else(|e| panic!("stored file readable: {}", e));
-            assert_eq!(stored, file_data, "persisted bytes must match uploaded bytes exactly");
+            assert_eq!(
+                stored, file_data,
+                "persisted bytes must match uploaded bytes exactly"
+            );
 
             let _ = std::fs::remove_dir_all(&upload_dir);
         }
@@ -2555,12 +2929,15 @@ fn upload(form str) str {
         /// (`req-<ms>-<n>`) when the client sends none.
         #[test]
         fn e2e_b6_request_id_generated_and_echoed() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/rid")]
 fn rid() int {
     return 7
 }
-"#, 18741);
+"#,
+                18741,
+            );
             let resp = http_get(port, "/api/rid");
             assert!(
                 resp.to_lowercase().contains("x-request-id: req-"),
@@ -2580,17 +2957,16 @@ fn rid() int {
         /// (trace propagation).
         #[test]
         fn e2e_b6_request_id_incoming_passthrough() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/rid2")]
 fn rid2() int {
     return 8
 }
-"#, 18742);
-            let resp = http_get_with_headers(
-                port,
-                "/api/rid2",
-                &[("X-Request-Id", "my-trace-42")],
+"#,
+                18742,
             );
+            let resp = http_get_with_headers(port, "/api/rid2", &[("X-Request-Id", "my-trace-42")]);
             assert!(
                 resp.to_lowercase().contains("x-request-id: my-trace-42"),
                 "incoming request id should be echoed verbatim, got: {:?}",
@@ -2608,18 +2984,29 @@ fn rid2() int {
         /// limiter via clear_http_routes, so this test cannot poison others.
         #[test]
         fn e2e_zz_rate_limit_429_after_quota() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 http.rate_limit(2, 60000)
 
 #[api(method = "GET", path = "/api/rl")]
 fn rl() int {
     return 1
 }
-"#, 18743);
+"#,
+                18743,
+            );
             let first = http_get(port, "/api/rl");
             let second = http_get(port, "/api/rl");
-            assert!(first.starts_with("HTTP/1.1 200"), "first should pass, got: {:?}", first);
-            assert!(second.starts_with("HTTP/1.1 200"), "second should pass, got: {:?}", second);
+            assert!(
+                first.starts_with("HTTP/1.1 200"),
+                "first should pass, got: {:?}",
+                first
+            );
+            assert!(
+                second.starts_with("HTTP/1.1 200"),
+                "second should pass, got: {:?}",
+                second
+            );
             let third = http_get(port, "/api/rl");
             assert!(
                 third.starts_with("HTTP/1.1 429"),
@@ -2651,7 +3038,8 @@ fn rl() int {
         /// Uses a module-level var for in-memory storage (like db.at's `var notes`).
         #[test]
         fn e2e_notes_crud() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 type Note { id int; title str; body str; time str }
 
 var notes = [
@@ -2681,26 +3069,43 @@ fn create_note(title str, body str) Note {
     nextid = nextid + 1
     return note
 }
-"#, 18736);
+"#,
+                18736,
+            );
 
             // GET /api/notes → JSON array of Note objects
             let resp_list = http_get(port, "/api/notes");
             let body_list = body_of(&resp_list);
-            assert!(body_list.contains("\"title\": \"Welcome\""),
-                "list: body={:?}", body_list);
-            assert!(body_list.contains("\"title\": \"Shopping\""),
-                "list: body={:?}", body_list);
+            assert!(
+                body_list.contains("\"title\": \"Welcome\""),
+                "list: body={:?}",
+                body_list
+            );
+            assert!(
+                body_list.contains("\"title\": \"Shopping\""),
+                "list: body={:?}",
+                body_list
+            );
             // Should be a JSON array: starts with [
-            assert!(body_list.trim_start().starts_with('['),
-                "list not array: body={:?}", body_list);
+            assert!(
+                body_list.trim_start().starts_with('['),
+                "list not array: body={:?}",
+                body_list
+            );
 
             // GET /api/notes/1 → single Note (Option.Some unwrapped)
             let resp_get = http_get(port, "/api/notes/1");
             let body_get = body_of(&resp_get);
-            assert!(body_get.contains("\"id\": 1"),
-                "get id=1: body={:?}", body_get);
-            assert!(body_get.contains("\"title\": \"Shopping\""),
-                "get title: body={:?}", body_get);
+            assert!(
+                body_get.contains("\"id\": 1"),
+                "get id=1: body={:?}",
+                body_get
+            );
+            assert!(
+                body_get.contains("\"title\": \"Shopping\""),
+                "get title: body={:?}",
+                body_get
+            );
 
             // PLAN-669 AC-01: POST body fields bind by param name — the
             // handler's `title`/`body` slots receive the JSON fields, not the
@@ -2713,12 +3118,21 @@ fn create_note(title str, body str) Note {
                 &[],
             );
             let body_post = body_of(&resp_post);
-            assert!(body_post.contains("\"title\": \"probe-item\""),
-                "post title by name: body={:?}", body_post);
-            assert!(body_post.contains("\"body\": \"probe-body\""),
-                "post body by name: body={:?}", body_post);
-            assert!(!body_post.contains("{\\\"title\\\""),
-                "raw body literal must not leak into fields: body={:?}", body_post);
+            assert!(
+                body_post.contains("\"title\": \"probe-item\""),
+                "post title by name: body={:?}",
+                body_post
+            );
+            assert!(
+                body_post.contains("\"body\": \"probe-body\""),
+                "post body by name: body={:?}",
+                body_post
+            );
+            assert!(
+                !body_post.contains("{\\\"title\\\""),
+                "raw body literal must not leak into fields: body={:?}",
+                body_post
+            );
         }
 
         /// PLAN-669 AC-01: POST JSON body fields bind by param name — the
@@ -2726,7 +3140,8 @@ fn create_note(title str, body str) Note {
         /// string used to land in `text` as a JSON literal).
         #[test]
         fn http_e2e_api_post_body_by_name() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 type Todo { id int; text str; done bool }
 var nextid int = 4
 
@@ -2736,19 +3151,23 @@ fn create_todo(text str) Todo {
     nextid = nextid + 1
     return todo
 }
-"#, 18750);
-
-            let resp = http_post_json_with_headers(
-                port,
-                "/api/todos",
-                r#"{"text":"probe-item"}"#,
-                &[],
+"#,
+                18750,
             );
+
+            let resp =
+                http_post_json_with_headers(port, "/api/todos", r#"{"text":"probe-item"}"#, &[]);
             let body = body_of(&resp);
-            assert!(body.contains("\"text\": \"probe-item\""),
-                "text bound from body field: body={:?}", body);
-            assert!(!body.contains("{\\\"text\\\""),
-                "raw body literal leaked into field: body={:?}", body);
+            assert!(
+                body.contains("\"text\": \"probe-item\""),
+                "text bound from body field: body={:?}",
+                body
+            );
+            assert!(
+                !body.contains("{\\\"text\\\""),
+                "raw body literal leaked into field: body={:?}",
+                body
+            );
         }
 
         /// PLAN-669 AC-02: GET query params bind by name (the 015-notes
@@ -2756,67 +3175,87 @@ fn create_todo(text str) Todo {
         /// name wins).
         #[test]
         fn http_e2e_api_query_by_name() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 type Hit { text str }
 
 #[api(method = "GET", path = "/api/search")]
 fn search(query str) Hit {
     return Hit { text: query }
 }
-"#, 18751);
+"#,
+                18751,
+            );
 
             let resp = http_get(port, "/api/search?q=wrong&query=Build");
             let body = body_of(&resp);
-            assert!(body.contains("\"text\": \"Build\""),
-                "query bound by name: body={:?}", body);
+            assert!(
+                body.contains("\"text\": \"Build\""),
+                "query bound by name: body={:?}",
+                body
+            );
         }
 
         /// PLAN-669 AC-03: declared `int` params convert exactly from the
         /// query string; non-numeric input is a named 400.
         #[test]
         fn http_e2e_api_typed_query_int() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/page")]
 fn page(p int) int {
     return p
 }
-"#, 18752);
+"#,
+                18752,
+            );
 
             let resp = http_get(port, "/api/page?p=7");
             let body = body_of(&resp);
             assert!(body.trim() == "7", "int query converted: body={:?}", body);
 
             let resp_bad = http_get(port, "/api/page?p=seven");
-            assert!(resp_bad.starts_with("HTTP/1.1 400"),
-                "non-numeric int → 400: resp={:?}", &resp_bad[..resp_bad.len().min(80)]);
-            assert!(body_of(&resp_bad).contains("param `p`"),
-                "400 names the param: body={:?}", body_of(&resp_bad));
+            assert!(
+                resp_bad.starts_with("HTTP/1.1 400"),
+                "non-numeric int → 400: resp={:?}",
+                &resp_bad[..resp_bad.len().min(80)]
+            );
+            assert!(
+                body_of(&resp_bad).contains("param `p`"),
+                "400 names the param: body={:?}",
+                body_of(&resp_bad)
+            );
         }
 
         /// PLAN-669 AC-04: a missing body field is a 400 naming the param
         /// (back_proxy parity — silently wrong args are the defect itself).
         #[test]
         fn http_e2e_api_missing_param_400() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 type Note { title str; body str }
 
 #[api(method = "POST", path = "/api/notes")]
 fn create_note(title str, body str) Note {
     return Note { title: title, body: body }
 }
-"#, 18753);
-
-            let resp = http_post_json_with_headers(
-                port,
-                "/api/notes",
-                r#"{"title": "only-title"}"#,
-                &[],
+"#,
+                18753,
             );
-            assert!(resp.starts_with("HTTP/1.1 400"),
-                "missing body field → 400: resp={:?}", &resp[..resp.len().min(80)]);
+
+            let resp =
+                http_post_json_with_headers(port, "/api/notes", r#"{"title": "only-title"}"#, &[]);
+            assert!(
+                resp.starts_with("HTTP/1.1 400"),
+                "missing body field → 400: resp={:?}",
+                &resp[..resp.len().min(80)]
+            );
             let body = body_of(&resp);
-            assert!(body.contains("missing param `body`"),
-                "400 names the missing param: body={:?}", body);
+            assert!(
+                body.contains("missing param `body`"),
+                "400 names the missing param: body={:?}",
+                body
+            );
         }
 
         /// PLAN-669 AC-07: single str param + unparseable body → the raw
@@ -2824,18 +3263,24 @@ fn create_note(title str, body str) Note {
         /// convention's one correct case, preserved).
         #[test]
         fn http_e2e_api_raw_body_single_param() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "POST", path = "/api/save")]
 fn save(data str) str {
     return data
 }
-"#, 18754);
+"#,
+                18754,
+            );
 
             // Not JSON — parse fails, lone str param receives it verbatim.
             let resp = http_post_json_with_headers(port, "/api/save", "plain text probe", &[]);
             let body = body_of(&resp);
-            assert!(body.contains("plain text probe"),
-                "raw body passthrough: body={:?}", body);
+            assert!(
+                body.contains("plain text probe"),
+                "raw body passthrough: body={:?}",
+                body
+            );
         }
 
         /// Plan 317 final validation: 015-notes backend pattern with List<Note>
@@ -2843,7 +3288,8 @@ fn save(data str) str {
         /// This mirrors db.at's `var notes List<Note>` + `fn all_notes() []Note`.
         #[test]
         fn e2e_notes_list_generic() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 type Note { id int; title str; body str; time str }
 
 var notes = [
@@ -2855,17 +3301,28 @@ var notes = [
 fn list_notes() []Note {
     return notes
 }
-"#, 18737);
+"#,
+                18737,
+            );
 
             let resp = http_get(port, "/api/notes");
             let body = body_of(&resp);
             // List<Note> serialized as JSON array of Note objects.
-            assert!(body.contains("\"title\": \"Welcome\""),
-                "list generic frame 1: body={:?}", body);
-            assert!(body.contains("\"title\": \"Shopping\""),
-                "list generic frame 2: body={:?}", body);
-            assert!(body.trim_start().starts_with('['),
-                "list generic should be JSON array: body={:?}", body);
+            assert!(
+                body.contains("\"title\": \"Welcome\""),
+                "list generic frame 1: body={:?}",
+                body
+            );
+            assert!(
+                body.contains("\"title\": \"Shopping\""),
+                "list generic frame 2: body={:?}",
+                body
+            );
+            assert!(
+                body.trim_start().starts_with('['),
+                "list generic should be JSON array: body={:?}",
+                body
+            );
         }
 
         // ============ PLAN-699: Axum/Hyper transport protocol probes ========
@@ -3045,8 +3502,7 @@ fn ping() str { "pong" }
             // Wait for accept, then exercise the real dispatch (404 path).
             let mut s = connect_retry(port);
             s.write_all(
-                "GET /api/nope HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
-                    .as_bytes(),
+                "GET /api/nope HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n".as_bytes(),
             )
             .unwrap();
             let mut resp = String::new();
@@ -3066,7 +3522,6 @@ fn ping() str { "pong" }
             let rebind = std::net::TcpListener::bind(("127.0.0.1", port));
             assert!(rebind.is_ok(), "port must be rebindable after shutdown");
         }
-
     }
 }
 
@@ -3082,7 +3537,11 @@ fn ping() str { "pong" }
 /// 消费侧任何 release 即凭空多扣(over-release 注入源;P-053-5 把
 /// native.rs/stdlib.rs 收口到 add_string 时漏掉本文件)。
 /// 统一走 intern_runtime_str(add_string + rc 入栈 +1)。
-pub(crate) fn push_str_arg(vm: &crate::vm::engine::AutoVM, task: &mut crate::vm::task::AutoTask, s: &str) {
+pub(crate) fn push_str_arg(
+    vm: &crate::vm::engine::AutoVM,
+    task: &mut crate::vm::task::AutoTask,
+    s: &str,
+) {
     vm.intern_runtime_str(task, s.as_bytes().to_vec());
 }
 
@@ -3115,7 +3574,10 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
         }
         let parts: Vec<&str> = request_line.split_whitespace().collect();
         if parts.len() < 2 {
-            let resp = format!("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n{}\r\n", cors_headers());
+            let resp = format!(
+                "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n{}\r\n",
+                cors_headers()
+            );
             let _ = stream.write_all(resp.as_bytes());
             continue;
         }
@@ -3133,9 +3595,13 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
         let mut content_length = 0usize;
         loop {
             let mut header = String::new();
-            if reader.read_line(&mut header).is_err() { break; }
+            if reader.read_line(&mut header).is_err() {
+                break;
+            }
             let header = header.trim();
-            if header.is_empty() { break; }
+            if header.is_empty() {
+                break;
+            }
             if header.to_lowercase().starts_with("content-length:") {
                 content_length = header[15..].trim().parse().unwrap_or(0);
             }
@@ -3162,7 +3628,9 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
 
         // Call VM handler
         let handler_task_id = vm.spawn_task(0, 8192);
-        let result_json: Option<String> = if let Some(handler_task_arc) = vm.tasks.get(&handler_task_id) {
+        let result_json: Option<String> = if let Some(handler_task_arc) =
+            vm.tasks.get(&handler_task_id)
+        {
             let mut ht = handler_task_arc.blocking_lock();
 
             // PLAN-669: by-name binding when the fn's sigs are published;
@@ -3225,7 +3693,8 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
                             loop {
                                 // Create a temp task for the next() call
                                 let next_task_id = vm.spawn_task(0, 1024);
-                                let next_result = if let Some(nt_arc) = vm.tasks.get(&next_task_id) {
+                                let next_result = if let Some(nt_arc) = vm.tasks.get(&next_task_id)
+                                {
                                     let mut nt = nt_arc.blocking_lock();
                                     // Push iterator_id for auto.iterator.next
                                     nt.ram.push_i32(iter_id as i32);
@@ -3256,7 +3725,10 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
                                     }
                                     Some(val) if auto_val::is_string(val) => {
                                         let idx = auto_val::decode_string(val);
-                                        let s = vm.strings.read().unwrap()
+                                        let s = vm
+                                            .strings
+                                            .read()
+                                            .unwrap()
                                             .get(idx as usize)
                                             .map(|b| String::from_utf8_lossy(b).to_string())
                                             .unwrap_or_default();
@@ -3284,7 +3756,8 @@ Content-Length: {}
 Connection: close
 {}
 {{\"error\":\"file responses require the default HTTP transport\"}}",
-                            br#"{"error":"file responses require the default HTTP transport"}"#.len(),
+                            br#"{"error":"file responses require the default HTTP transport"}"#
+                                .len(),
                             cors_headers()
                         );
                         let _ = stream.write_all(resp.as_bytes());
@@ -3568,7 +4041,9 @@ async fn serve_with(
         // 事件唤醒后的消费点——取消信号同经 COMPLETION_NOTIFY）。
         drain_ready_parked(&vm, &mut parked);
         // 最早 deadline 定时臂（parked 非空时唤醒失效检查，防无事件悬挂）。
-        let next_deadline = parked.iter().filter_map(|p| lookup_scope(p.scope_id))
+        let next_deadline = parked
+            .iter()
+            .filter_map(|p| lookup_scope(p.scope_id))
             .map(|s| tokio::time::Instant::from_std(s.deadline))
             .min();
         // (1) 注册完成通知兴趣（Notified 首次 poll 才登记 waiter，enable()
@@ -3660,13 +4135,15 @@ pub(crate) fn dispatch_owner_request(
         return;
     }
     if let Some(s) = &scope {
-        s.state.store(SCOPE_RUNNING, std::sync::atomic::Ordering::SeqCst);
+        s.state
+            .store(SCOPE_RUNNING, std::sync::atomic::Ordering::SeqCst);
     }
     match dispatch_api_request_segment(vm, routes, api_req, reply_tx, scope_id) {
         DispatchOutcome::Replied => {}
         DispatchOutcome::Parked(p) => {
             if let Some(s) = lookup_scope(scope_id) {
-                s.state.store(SCOPE_PARKED, std::sync::atomic::Ordering::SeqCst);
+                s.state
+                    .store(SCOPE_PARKED, std::sync::atomic::Ordering::SeqCst);
             }
             parked.push(*p);
         }
@@ -3699,9 +4176,7 @@ fn cancel_all_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) 
             let _ = tx.send(ApiReply::Full {
                 status: 503,
                 headers: json_reply_headers(&p.ctx.request_id),
-                body: ApiBody::Text(
-                    br#"{"error":"server shutting down"}"#.to_vec(),
-                ),
+                body: ApiBody::Text(br#"{"error":"server shutting down"}"#.to_vec()),
             });
         }
     }
@@ -3723,7 +4198,6 @@ fn cancel_all_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) 
 /// 所有用到的 VM 状态访问都发生在 owner 线程（AutoVM !Send 契约不变）；
 /// 跨线程仍只有 owned `ApiRequest`/`ApiReply`。单执行段顺序执行、跨
 /// await 非原子事务（SD-01 契约：副作用不因取消/交错回滚）。
-
 use crate::vm::engine::{AutoVM, ParkedSegment, ParkedWait, SegmentOutcome};
 
 /// 编组延续所需的全部请求上下文（park 后恢复重建 reply 的最小集）。
@@ -3894,21 +4368,15 @@ pub(crate) fn dispatch_api_request_segment(
 
     // PLAN-729 T-04：文件端点仅 GET/HEAD（决策报告 §4）——非 GET/HEAD 的
     // 文件返回注解在路由命中处即 405（不执行 handler）。
-    if fn_is_api_file_return(&route_match.fn_name)
-        && !matches!(req_method.as_str(), "GET" | "HEAD")
+    if fn_is_api_file_return(&route_match.fn_name) && !matches!(req_method.as_str(), "GET" | "HEAD")
     {
         let mut headers = cors_header_pairs();
         headers.push(("X-Request-Id".to_string(), request_id.clone()));
-        headers.push((
-            "Allow".to_string(),
-            "GET, HEAD".to_string(),
-        ));
+        headers.push(("Allow".to_string(), "GET, HEAD".to_string()));
         let _ = reply_tx.send(ApiReply::Full {
             status: 405,
             headers,
-            body: ApiBody::Text(
-                br#"{"error":"file endpoints support GET/HEAD only"}"#.to_vec(),
-            ),
+            body: ApiBody::Text(br#"{"error":"file endpoints support GET/HEAD only"}"#.to_vec()),
         });
         return DispatchOutcome::Replied;
     }
@@ -4001,7 +4469,11 @@ fn advance_dispatch(
 enum MWStep {
     Continue,
     Reply(ApiReply),
-    Parked { task_id: u64, seg: ParkedSegment, wait: ParkedWait },
+    Parked {
+        task_id: u64,
+        seg: ParkedSegment,
+        wait: ParkedWait,
+    },
 }
 
 /// 运行 middleware_names[index]（spawn 任务 + 段驱动）。
@@ -4050,17 +4522,18 @@ fn run_middleware_at(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, index: usize) 
         }
     };
     match end {
-        MWEnd::Parked(wait, seg) => MWStep::Parked { task_id: mw_task_id, seg, wait },
+        MWEnd::Parked(wait, seg) => MWStep::Parked {
+            task_id: mw_task_id,
+            seg,
+            wait,
+        },
         MWEnd::Null => {
             vm.tasks.remove(&mw_task_id);
             MWStep::Continue
         }
         MWEnd::Response(resp) => {
             vm.tasks.remove(&mw_task_id);
-            let mut headers = vec![(
-                "Content-Type".to_string(),
-                "application/json".to_string(),
-            )];
+            let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
             headers.extend(cors_header_pairs());
             headers.push(("X-Request-Id".to_string(), ctx.request_id.clone()));
             MWStep::Reply(ApiReply::Full {
@@ -4100,10 +4573,8 @@ fn start_handler(
                     ctx.req_method, ctx.req_path, ctx.route.fn_name
                 );
                 vm.tasks.remove(&handler_task_id);
-                let mut headers = vec![(
-                    "Content-Type".to_string(),
-                    "application/json".to_string(),
-                )];
+                let mut headers =
+                    vec![("Content-Type".to_string(), "application/json".to_string())];
                 headers.extend(cors_header_pairs());
                 let reply = ApiReply::Full {
                     status: 500,
@@ -4145,7 +4616,10 @@ fn start_handler(
                 let headers_json = if ctx.auth_header.is_empty() {
                     "{}".to_string()
                 } else {
-                    format!("{{\"authorization\":\"{}\"}}", ctx.auth_header.replace('"', ""))
+                    format!(
+                        "{{\"authorization\":\"{}\"}}",
+                        ctx.auth_header.replace('"', "")
+                    )
                 };
                 pushed = crate::vm::ffi::axum_adapter::push_extractor_args(
                     vm,
@@ -4177,10 +4651,8 @@ fn start_handler(
                 eprintln!("[HTTP] {} {} → 400 ({})", ctx.req_method, ctx.req_path, msg);
                 vm.tasks.remove(&handler_task_id);
                 let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
-                let mut headers = vec![(
-                    "Content-Type".to_string(),
-                    "application/json".to_string(),
-                )];
+                let mut headers =
+                    vec![("Content-Type".to_string(), "application/json".to_string())];
                 headers.extend(cors_header_pairs());
                 let reply = ApiReply::Full {
                     status: 400,
@@ -4196,10 +4668,8 @@ fn start_handler(
                 eprintln!("[HTTP] {} {} → 500 ({})", ctx.req_method, ctx.req_path, msg);
                 vm.tasks.remove(&handler_task_id);
                 let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
-                let mut headers = vec![(
-                    "Content-Type".to_string(),
-                    "application/json".to_string(),
-                )];
+                let mut headers =
+                    vec![("Content-Type".to_string(), "application/json".to_string())];
                 headers.extend(cors_header_pairs());
                 let reply = ApiReply::Full {
                     status: 500,
@@ -4398,9 +4868,11 @@ fn marshal_handler_value(
         if (bits & 0xFF) == 0xF0 {
             let fid = ((bits as u32) >> 8) as u32;
             let handler_async = match ctx.axum_route {
-                Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
-                    .map(|n| fn_is_api_async(&n))
-                    .unwrap_or(false),
+                Some(ref r) => {
+                    crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
+                        .map(|n| fn_is_api_async(&n))
+                        .unwrap_or(false)
+                }
                 None => fn_is_api_async(&ctx.route.fn_name),
             };
             if handler_async {
@@ -4480,19 +4952,19 @@ fn marshal_handler_value(
         }
         // PLAN-729 T-04：文件响应描述符（声明返回类型门 + 登记命中）。
         if handler_declares_file_return(vm, ctx) {
-            return MarshalOutcome::Reply(match super::http_server_file::take_file_response(
-                iter_id as u64,
-            ) {
-                Some(descriptor) => ApiReply::Full {
-                    status: 200, // 占位：File 臂由宿主 serve 决定
-                    headers: Vec::new(),
-                    body: ApiBody::File(FileReplySeed {
-                        descriptor,
-                        request_id: ctx.request_id.clone(),
-                    }),
+            return MarshalOutcome::Reply(
+                match super::http_server_file::take_file_response(iter_id as u64) {
+                    Some(descriptor) => ApiReply::Full {
+                        status: 200, // 占位：File 臂由宿主 serve 决定
+                        headers: Vec::new(),
+                        body: ApiBody::File(FileReplySeed {
+                            descriptor,
+                            request_id: ctx.request_id.clone(),
+                        }),
+                    },
+                    None => file_contract_mismatch_reply(ctx, iter_id as u64),
                 },
-                None => file_contract_mismatch_reply(ctx, iter_id as u64),
-            });
+            );
         }
         if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(iter_id as u64) {
             return MarshalOutcome::Reply(response_handle_reply(ctx, res));
@@ -4583,10 +5055,7 @@ fn handler_error_reply(ctx: &DispatchCtx, e: &crate::vm::engine::VMError) -> Api
 
 /// CORS + JSON content-type + 请求 id（task-lock 失败臂用）。
 fn cors_json_headers(request_id: &str) -> Vec<(String, String)> {
-    let mut headers = vec![(
-        "Content-Type".to_string(),
-        "application/json".to_string(),
-    )];
+    let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
     headers.extend(cors_header_pairs());
     headers.push(("X-Request-Id".to_string(), request_id.to_string()));
     headers
@@ -4728,9 +5197,11 @@ pub(crate) fn set_life_permit_capacity_for_test(cap: usize) {
 
 fn life_permits() -> &'static std::sync::Arc<tokio::sync::Semaphore> {
     LIFE_PERMITS.get_or_init(|| {
-        let cap = TEST_PERMIT_CAPACITY.lock().unwrap().take().unwrap_or_else(|| {
-            super::http_transport::TransportConfig::from_env().queue_capacity
-        });
+        let cap = TEST_PERMIT_CAPACITY
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap_or_else(|| super::http_transport::TransportConfig::from_env().queue_capacity);
         std::sync::Arc::new(tokio::sync::Semaphore::new(cap))
     })
 }
@@ -4925,7 +5396,6 @@ pub(crate) fn life_permit_available() -> usize {
     life_permits().available_permits()
 }
 
-
 /// 就绪探测（parked 表扫描用；不消费任何状态）。
 pub(crate) fn parked_is_ready(vm: &std::rc::Rc<AutoVM>, p: &ParkedRequest) -> bool {
     match &p.wait {
@@ -4937,9 +5407,7 @@ pub(crate) fn parked_is_ready(vm: &std::rc::Rc<AutoVM>, p: &ParkedRequest) -> bo
             .unwrap_or(true), // future 消失 → 唤醒（引擎恢复臂同款 nil fallback）
         // PLAN-707 T-05: 外部流——数据入队或终态即就绪（stream_ready 含
         // 条目消失的终结臂）。
-        ParkedWait::HttpStream(stream_id) => {
-            crate::vm::ffi::http_stream::stream_ready(*stream_id)
-        }
+        ParkedWait::HttpStream(stream_id) => crate::vm::ffi::http_stream::stream_ready(*stream_id),
         // PLAN-711 T-11: CPU continuation 归 vm_bridge 的 CPU 泵，HTTP 泵
         // 不拾取（防御臂；HTTP 轨不产该凭据）。
         ParkedWait::CpuRunnable => false,
@@ -5008,7 +5476,9 @@ pub(crate) fn resume_parked_request(
                     SegmentOutcome::Completed(Err(_)) => MWResume::ContinueChain,
                     // PLAN-711 T-11: HTTP 轨不产 CPU continuation（防御臂：
                     // 未完成=仍 park，凭据 CpuRunnable 对 HTTP 泵恒不就绪）。
-                    SegmentOutcome::Runnable { seg } => MWResume::Parked(ParkedWait::CpuRunnable, seg),
+                    SegmentOutcome::Runnable { seg } => {
+                        MWResume::Parked(ParkedWait::CpuRunnable, seg)
+                    }
                 }
             } else {
                 MWResume::Missing
@@ -5058,9 +5528,12 @@ pub(crate) fn resume_parked_request(
                     SegmentOutcome::Completed(Ok(())) => HResume::Value(t.ram.pop_nv()),
                     SegmentOutcome::Completed(Err(e)) => HResume::Err(e),
                     // PLAN-711 T-11: HTTP 轨不产 CPU continuation（防御臂）。
-                    SegmentOutcome::Runnable { .. } => HResume::Err(crate::vm::engine::VMError::RuntimeError(
-                        "internal: cpu-slice outcome escaped legacy http resume (unreachable)".into(),
-                    )),
+                    SegmentOutcome::Runnable { .. } => {
+                        HResume::Err(crate::vm::engine::VMError::RuntimeError(
+                            "internal: cpu-slice outcome escaped legacy http resume (unreachable)"
+                                .into(),
+                        ))
+                    }
                 }
             } else {
                 HResume::Missing
@@ -5196,11 +5669,7 @@ fn placeholder_reply() -> ApiReply {
 
 /// 按返回 future 终态编组（Ready → 终值；Failed/缺失 → null；Pending →
 /// 继续等）。
-fn probe_return_future(
-    vm: &std::rc::Rc<AutoVM>,
-    p: &mut ParkedRequest,
-    fid: u32,
-) -> ParkedResume {
+fn probe_return_future(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedRequest, fid: u32) -> ParkedResume {
     let Some(fut) = vm.futures.get(&fid) else {
         let reply = final_value_reply(vm, &p.ctx, None);
         vm.tasks.remove(&p.task_id);
@@ -5265,7 +5734,10 @@ fn abort_parked_request(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedRequest) {
     // PLAN-707 T-06（D-7）：废弃请求的任务持有的流一并取消（首段 open
     // 后 park 的形态）。
     if let Some(t) = vm.tasks.get(&p.task_id) {
-        let owned = t.try_lock().ok().map(|mut t| std::mem::take(&mut t.owned_stream_ids));
+        let owned = t
+            .try_lock()
+            .ok()
+            .map(|mut t| std::mem::take(&mut t.owned_stream_ids));
         if let Some(ids) = owned {
             for stream_id in ids {
                 crate::vm::ffi::http_stream::stream_cancel(stream_id);
@@ -5325,10 +5797,7 @@ fn json_value_reply(
 
 /// Standard headers of a JSON `#[api]` reply (content-type + CORS + request id).
 fn json_reply_headers(request_id: &str) -> Vec<(String, String)> {
-    let mut headers = vec![(
-        "Content-Type".to_string(),
-        "application/json".to_string(),
-    )];
+    let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
     headers.extend(cors_header_pairs());
     headers.push(("X-Request-Id".to_string(), request_id.to_string()));
     headers
@@ -5358,7 +5827,10 @@ fn cleanup_sse_iterator(vm: &crate::vm::engine::AutoVM, iterator_id: u32) {
                 // 回收（首次 pull 发生在 SSE serve 循环，scope 守卫已退出，
                 // 资源组登记靠 task.owned_stream_ids 第二线承载）。
                 if let Some(t) = vm.tasks.get(&task_id) {
-                    let owned = t.try_lock().ok().map(|mut t| std::mem::take(&mut t.owned_stream_ids));
+                    let owned = t
+                        .try_lock()
+                        .ok()
+                        .map(|mut t| std::mem::take(&mut t.owned_stream_ids));
                     if let Some(ids) = owned {
                         for stream_id in ids {
                             crate::vm::ffi::http_stream::stream_cancel(stream_id);
@@ -5410,7 +5882,10 @@ fn wake_sse_generator(vm: &crate::vm::engine::AutoVM, iterator_id: u32) {
     if let Some(task_id) = task_id {
         if let Some(task) = vm.tasks.get(&task_id) {
             if let Ok(mut task) = task.try_lock() {
-                if task.wake_time.is_some_and(|deadline| deadline <= std::time::Instant::now()) {
+                if task
+                    .wake_time
+                    .is_some_and(|deadline| deadline <= std::time::Instant::now())
+                {
                     task.wake_time = None;
                     task.status = crate::vm::task::TaskStatus::Ready;
                 }
@@ -5421,10 +5896,7 @@ fn wake_sse_generator(vm: &crate::vm::engine::AutoVM, iterator_id: u32) {
 
 /// PLAN-707 T-05（D-6）：读取 generator 任务的等待凭据（cooperative sleep
 /// 之外的凭据化等待源）——外部流 id 或外部 future id。
-fn generator_wait_credential(
-    vm: &crate::vm::engine::AutoVM,
-    iterator_id: u32,
-) -> GeneratorWait {
+fn generator_wait_credential(vm: &crate::vm::engine::AutoVM, iterator_id: u32) -> GeneratorWait {
     use crate::vm::engine::Iterator;
     let task_id = match vm.iterators.get(&iterator_id) {
         Some(state) => match &*state {
@@ -5556,10 +6028,8 @@ async fn next_sse_generator_value(
                     GeneratorWait::None => {
                         if let Some(deadline) = sse_generator_wake_deadline(vm, iterator_id) {
                             if deadline > std::time::Instant::now() {
-                                tokio::time::sleep_until(tokio::time::Instant::from_std(
-                                    deadline,
-                                ))
-                                .await;
+                                tokio::time::sleep_until(tokio::time::Instant::from_std(deadline))
+                                    .await;
                             }
                             wake_sse_generator(vm, iterator_id);
                         } else {
@@ -5749,7 +6219,11 @@ pub(crate) fn bind_api_args_by_name(
             n_args += 1;
             continue;
         }
-        if let Some((_, v)) = route_match.query_params.iter().find(|(n, _)| n == &sig.name) {
+        if let Some((_, v)) = route_match
+            .query_params
+            .iter()
+            .find(|(n, _)| n == &sig.name)
+        {
             push_typed_string_arg(vm, task, sig, v, method, req_path)?;
             n_args += 1;
             continue;
@@ -5771,7 +6245,10 @@ pub(crate) fn bind_api_args_by_name(
     // metadata-param convention (the 023-realworld / e2e corpus names it
     // `meta`) → cookies/auth JSON. Anything else unbound is a missing param.
     if unbound.len() == 1
-        && std::ptr::eq(unbound[0], sigs.last().expect("unbound implies sigs nonempty"))
+        && std::ptr::eq(
+            unbound[0],
+            sigs.last().expect("unbound implies sigs nonempty"),
+        )
         && is_meta_param_name(&unbound[0].name)
     {
         if let Some(meta) = metadata_json {
@@ -5857,26 +6334,40 @@ fn cookies_auth_metadata(cookie_header: &str, auth_header: &str) -> String {
     let cookies_json: String = if cookie_header.is_empty() {
         "{}".to_string()
     } else {
-        let pairs: Vec<String> = cookie_header.split(';')
+        let pairs: Vec<String> = cookie_header
+            .split(';')
             .filter_map(|pair| {
                 let pair = pair.trim();
                 let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
-                Some(format!("\"{}\":\"{}\"", k.trim().replace('"', "\\\""), v.trim().replace('"', "\\\"")))
+                Some(format!(
+                    "\"{}\":\"{}\"",
+                    k.trim().replace('"', "\\\""),
+                    v.trim().replace('"', "\\\"")
+                ))
             })
             .collect();
         format!("{{{}}}", pairs.join(","))
     };
-    let auth_val = if auth_header.is_empty() { "".to_string() } else { auth_header.replace('"', "\\\"") };
+    let auth_val = if auth_header.is_empty() {
+        "".to_string()
+    } else {
+        auth_header.replace('"', "\\\"")
+    };
     format!(r#"{{"cookies":{},"auth":"{}"}}"#, cookies_json, auth_val)
 }
 
 /// PLAN-669: form-urlencoded body → JSON object string (fields addressable
 /// by name; k/v percent-decoded), same conversion the legacy branch pushes.
 fn form_urlencoded_to_json_object(body: &str) -> String {
-    let pairs: Vec<String> = body.split('&')
+    let pairs: Vec<String> = body
+        .split('&')
         .filter_map(|pair| {
             let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
-            Some(format!("\"{}\":\"{}\"", url_decode(k).replace('"', "\\\""), url_decode(v).replace('"', "\\\"")))
+            Some(format!(
+                "\"{}\":\"{}\"",
+                url_decode(k).replace('"', "\\\""),
+                url_decode(v).replace('"', "\\\"")
+            ))
         })
         .collect();
     format!("{{{}}}", pairs.join(","))
@@ -5914,8 +6405,7 @@ fn build_handler_args(
                 } else {
                     body.to_string()
                 };
-                let body_json: Option<serde_json::Value> =
-                    serde_json::from_str(&body_source).ok();
+                let body_json: Option<serde_json::Value> = serde_json::from_str(&body_source).ok();
                 let metadata = cookies_auth_metadata(cookie_header, auth_header);
                 return bind_api_args_by_name(
                     vm,
@@ -5936,19 +6426,27 @@ fn build_handler_args(
                     task.ram.push_i32(i);
                 } else {
                     // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
-                        push_str_arg(vm, &mut task, &param_val);
+                    push_str_arg(vm, &mut task, &param_val);
                 }
                 n_args += 1;
             }
 
             // Plan 346: Push query params as a JSON object string if no body.
             if !route_match.query_params.is_empty() && body.is_empty() {
-                let json_parts: Vec<String> = route_match.query_params.iter()
-                    .map(|(k, v)| format!("\"{}\":\"{}\"", k.replace('"', "\\\""), v.replace('"', "\\\"")))
+                let json_parts: Vec<String> = route_match
+                    .query_params
+                    .iter()
+                    .map(|(k, v)| {
+                        format!(
+                            "\"{}\":\"{}\"",
+                            k.replace('"', "\\\""),
+                            v.replace('"', "\\\"")
+                        )
+                    })
                     .collect();
                 let json_str = format!("{{{}}}", json_parts.join(","));
                 // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
-                    push_str_arg(vm, &mut task, &json_str);
+                push_str_arg(vm, &mut task, &json_str);
                 n_args += 1;
             }
 
@@ -5957,7 +6455,7 @@ fn build_handler_args(
                 // Plan 346 5a (B6): multipart push — fields + persisted-file
                 // metadata as JSON (takes the body arg slot).
                 // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
-                    push_str_arg(vm, &mut task, &mp);
+                push_str_arg(vm, &mut task, &mp);
                 n_args += 1;
             } else if !body.is_empty() {
                 let body_to_push = if content_type.contains("application/x-www-form-urlencoded") {
@@ -5966,7 +6464,7 @@ fn build_handler_args(
                     body.to_string()
                 };
                 // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
-                    push_str_arg(vm, &mut task, &body_to_push);
+                push_str_arg(vm, &mut task, &body_to_push);
                 n_args += 1;
             }
 
@@ -5985,12 +6483,12 @@ fn build_handler_args(
             let declared_n_args = vm.get_fn_n_args(&route_match.fn_name);
             let push_meta = match declared_n_args {
                 Some(declared) => declared > n_args, // handler wants an extra param
-                None => true, // unknown — preserve old behavior (defensive)
+                None => true,                        // unknown — preserve old behavior (defensive)
             };
             if push_meta {
                 let meta_json = cookies_auth_metadata(cookie_header, auth_header);
                 // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
-                    push_str_arg(vm, &mut task, &meta_json);
+                push_str_arg(vm, &mut task, &meta_json);
                 n_args += 1;
             }
         }
@@ -6003,11 +6501,16 @@ fn build_handler_args(
 #[cfg(test)]
 mod plan698_publisher_tests {
     use super::cleanup_sse_iterator;
-    use super::{publish_post_broadcast, record_api_param_sigs, record_api_return_type, ApiParamSig};
+    use super::{
+        publish_post_broadcast, record_api_param_sigs, record_api_return_type, ApiParamSig,
+    };
     use crate::vm::ffi::stdlib::bus_subscribe_for_test;
 
     fn sig(name: &str, ty: &str) -> ApiParamSig {
-        ApiParamSig { name: name.to_string(), ty: ty.to_string() }
+        ApiParamSig {
+            name: name.to_string(),
+            ty: ty.to_string(),
+        }
     }
 
     #[test]
@@ -6105,7 +6608,10 @@ mod plan698_f1_cleanup_tests {
             (tid, iter_id, stream_id)
         };
         assert!(
-            crate::vm::ffi::stdlib::ASYNC_STREAMS.lock().unwrap().contains_key(&stream_id),
+            crate::vm::ffi::stdlib::ASYNC_STREAMS
+                .lock()
+                .unwrap()
+                .contains_key(&stream_id),
             "handle registered by subscribe"
         );
 
@@ -6114,10 +6620,16 @@ mod plan698_f1_cleanup_tests {
         cleanup_sse_iterator(&vm, iter_id);
 
         assert!(
-            !crate::vm::ffi::stdlib::ASYNC_STREAMS.lock().unwrap().contains_key(&stream_id),
+            !crate::vm::ffi::stdlib::ASYNC_STREAMS
+                .lock()
+                .unwrap()
+                .contains_key(&stream_id),
             "F-1: handle reclaimed on cleanup — forwarder thread unblocks and exits"
         );
-        assert!(!vm.iterators.contains_key(&iter_id), "iterator entry removed");
+        assert!(
+            !vm.iterators.contains_key(&iter_id),
+            "iterator entry removed"
+        );
     }
 }
 
@@ -6219,14 +6731,22 @@ mod spike699_axum_transport {
             let port = ready_rx
                 .recv_timeout(Duration::from_secs(10))
                 .expect("spike server ready");
-            SpikeServer { port, shutdown_tx, done_rx }
+            SpikeServer {
+                port,
+                shutdown_tx,
+                done_rx,
+            }
         }
     }
 
     fn connect(port: u16) -> TcpStream {
         let stream = TcpStream::connect(("127.0.0.1", port)).expect("spike connect");
-        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-        stream.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        stream
+            .set_write_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
         stream
     }
 
@@ -6307,10 +6827,7 @@ mod spike699_axum_transport {
                 "/api/echo-len",
                 axum::routing::post(|body: String| async move { body.len().to_string() }),
             )
-            .route(
-                "/api/hello",
-                axum::routing::get(|| async { "hi" }),
-            )
+            .route("/api/hello", axum::routing::get(|| async { "hi" }))
             .route(
                 "/api/sse",
                 axum::routing::get(|| async {
@@ -6342,15 +6859,17 @@ mod spike699_axum_transport {
         s.write_all(req.as_bytes()).unwrap();
         s.write_all(req.as_bytes()).unwrap();
         let resp = read_response_until(&mut s, &|resp, _head, _bytes| {
-            resp.matches("HTTP/1.1").count() >= 2
-                && {
-                    // Second head must also have its (content-length) body.
-                    let second = resp.split("HTTP/1.1").nth(2).unwrap_or("");
-                    second.contains("\r\n\r\n")
-                }
+            resp.matches("HTTP/1.1").count() >= 2 && {
+                // Second head must also have its (content-length) body.
+                let second = resp.split("HTTP/1.1").nth(2).unwrap_or("");
+                second.contains("\r\n\r\n")
+            }
         });
         let count = resp.matches("HTTP/1.1 200 OK").count();
-        assert_eq!(count, 2, "two keep-alive responses on one connection, got: {resp:?}");
+        assert_eq!(
+            count, 2,
+            "two keep-alive responses on one connection, got: {resp:?}"
+        );
     }
 
     /// AC-01 probe: chunked request body is decoded by the transport.
@@ -6367,8 +6886,14 @@ mod spike699_axum_transport {
         );
         s.write_all(req.as_bytes()).unwrap();
         let resp = read_response(&mut s);
-        assert!(resp.starts_with("HTTP/1.1 200"), "chunked body accepted, got: {resp:?}");
-        assert!(resp.contains(&body.len().to_string()), "decoded length echoed, got: {resp:?}");
+        assert!(
+            resp.starts_with("HTTP/1.1 200"),
+            "chunked body accepted, got: {resp:?}"
+        );
+        assert!(
+            resp.contains(&body.len().to_string()),
+            "decoded length echoed, got: {resp:?}"
+        );
     }
 
     /// AC-03 probe: oversized headers must produce a determinate outcome.
@@ -6385,7 +6910,10 @@ mod spike699_axum_transport {
             status.contains("431") || status.contains("400") || resp.is_empty(),
             "oversized headers → 431/400/close, got: {status:?}"
         );
-        eprintln!("[spike699] oversized headers outcome: {status:?} (bytes={})", resp.len());
+        eprintln!(
+            "[spike699] oversized headers outcome: {status:?} (bytes={})",
+            resp.len()
+        );
     }
 
     /// AC-03 probe: slow headers must hit the header read timeout and close.
@@ -6405,7 +6933,10 @@ mod spike699_axum_transport {
         );
         eprintln!(
             "[spike699] slow headers outcome: {:?} after {elapsed:?}",
-            String::from_utf8_lossy(&resp).lines().next().unwrap_or("<eof>")
+            String::from_utf8_lossy(&resp)
+                .lines()
+                .next()
+                .unwrap_or("<eof>")
         );
     }
 
@@ -6414,11 +6945,15 @@ mod spike699_axum_transport {
     fn spike_sse_frames_stream() {
         let server = SpikeServer::start(futures::executor::block_on(spike_router()));
         let mut s = connect(server.port);
-        s.write_all(b"GET /api/sse HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n").unwrap();
+        s.write_all(b"GET /api/sse HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+            .unwrap();
         let resp = read_response_until(&mut s, &|resp, _head, _bytes| resp.contains("data: 2"));
         assert!(resp.contains("200 OK"), "SSE status, got {resp:?}");
         assert!(resp.contains("text/event-stream"), "SSE content-type");
-        assert!(resp.contains("data: 0") && resp.contains("data: 2"), "frames streamed");
+        assert!(
+            resp.contains("data: 0") && resp.contains("data: 2"),
+            "frames streamed"
+        );
     }
 
     /// AC-05 probe: graceful shutdown stops accept, drains, releases the port.
@@ -6426,7 +6961,8 @@ mod spike699_axum_transport {
     fn spike_graceful_shutdown_releases_port() {
         let server = SpikeServer::start(futures::executor::block_on(spike_router()));
         let mut s = connect(server.port);
-        s.write_all(b"GET /api/hello HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n").unwrap();
+        s.write_all(b"GET /api/hello HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+            .unwrap();
         let _ = read_response(&mut s);
         server.shutdown_tx.send(true).unwrap();
         std::thread::sleep(Duration::from_millis(200));

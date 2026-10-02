@@ -530,6 +530,47 @@ fn split_top_level_commas(s: &str) -> Vec<&str> {
 
 #[cfg(test)]
 mod tests {
+    /// PLAN-729 R1 [G-02]：文件端点 TS 面——类型映射 Response、fetch 返回
+    /// 原生 Response（不调 .json()）。
+    #[test]
+    fn test_plan729_file_endpoint_returns_native_response() {
+        use crate::api::{ApiAttrs, ApiEndpoint};
+        let mut attrs = ApiAttrs::new();
+        attrs.method = Some("GET".to_string());
+        attrs.path = Some("/api/files/:name".to_string());
+        let endpoint = ApiEndpoint {
+            fn_name: "download".to_string(),
+            params: vec![crate::api::ApiParam {
+                name: "name".to_string(),
+                ty: "str".to_string(),
+                optional: false,
+                default: None,
+            }],
+            return_type: "FileResponse".to_string(),
+            attrs,
+            body: None,
+            doc: None,
+        };
+        let gen = super::TypeScriptGenerator::default();
+        let ts_type = gen.to_ts_type("FileResponse");
+        assert_eq!(ts_type, "Response");
+        let ts_type_async = gen.to_ts_type("Future<FileResponse>");
+        assert_eq!(ts_type_async, "Response", "异步形态同映射");
+        let fetch = gen.generate_fetch_function(&endpoint);
+        assert!(
+            fetch.contains("): Promise<Response>"),
+            "返回类型 Response: {fetch}"
+        );
+        assert!(
+            fetch.contains("return response;"),
+            "原生 Response 返回: {fetch}"
+        );
+        assert!(
+            !fetch.contains("response.json()"),
+            "不得 .json(): {fetch}"
+        );
+    }
+
     use super::*;
     use crate::api::{ApiAttrs, ApiField, ApiParam};
 

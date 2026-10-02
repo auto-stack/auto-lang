@@ -4125,6 +4125,17 @@ path = "src/main.rs"
             std::fs::write(root.join("hello.txt"), b"hello generated").unwrap();
             std::fs::write(root.join("empty.bin"), b"").unwrap();
             std::fs::write(root.join("raw.bin"), [0x00u8, 0xFF, 0xFE, 0x80]).unwrap();
+            // 12MiB 确定样本（与 VM 腿同式模式生成；hash 对拍）。
+            let mut big = Vec::with_capacity(12 * 1024 * 1024);
+            for i in 0u64..3072 {
+                let bytes = i.to_le_bytes();
+                for j in 0..4096usize {
+                    big.push(bytes[j % 8] ^ (j as u8) ^ (i as u8));
+                }
+            }
+            let expect_big = blake3::hash(&big);
+            std::fs::write(root.join("big.bin"), &big).unwrap();
+            drop(big);
             let root_fwd = root.to_str().unwrap().replace('\\', "/");
             let api_at = format!(
                 r#"
@@ -4138,6 +4149,11 @@ pub fn download(name str) FileResponse {{
 #[api(method = "GET", path = "/etag/:name")]
 pub fn download_etag(name str) FileResponse {{
     return http.file_response("{root}", name, "{{\"etag\":\"v1\"}}")
+}}
+
+#[api(method = "GET", path = "/api/async/:name")]
+pub fn download_async(name str) ~FileResponse {{
+    return http.file_response("{root}", name, "{{}}")
 }}
 "#,
                 root = root_fwd
@@ -4179,6 +4195,17 @@ pub fn download_etag(name str) FileResponse {{
                 assert_eq!(s, 404);
                 let (s, _, _) = raw_request(PORT, "GET", "/files/..%2Fetc%2Fpasswd", &[]);
                 assert_eq!(s, 403);
+                // [G-01] 异步端点 wire：同一文件表示。
+                let (s, h, b) = raw_request(PORT, "GET", "/api/async/r.bin", &[("range", "bytes=10-19")]);
+                assert_eq!((s, header_of(&h, "content-range").as_str()), (206, "bytes 10-19/200"));
+                assert_eq!(b, (10u8..=19).collect::<Vec<u8>>());
+                let (s, h, _) = raw_request(PORT, "HEAD", "/api/async/hello.txt", &[]);
+                assert_eq!((s, header_of(&h, "content-length").as_str()), (200, "15"));
+                // [G-05] 12MiB 同源 hash（生成腿全量流式读）。
+                let (s, h, b) = raw_request(PORT, "GET", "/files/big.bin", &[]);
+                assert_eq!((s, header_of(&h, "content-length").as_str()), (200, "12582912"));
+                assert_eq!(b.len(), 12 * 1024 * 1024);
+                assert_eq!(blake3::hash(&b), expect_big, "生成腿 12MiB hash 一致");
             });
             let _ = child.kill();
             let _ = child.wait();
@@ -4188,6 +4215,97 @@ pub fn download_etag(name str) FileResponse {{
                 std::panic::resume_unwind(panic);
             }
         }
+    }
+
+    /// PLAN-729 R1 [G-01]：异步 `~FileResponse`（Future<FileResponse>）端点——
+    /// 同一文件分支（Response 签名 + 宿主 serve；类型门按 contains 命中）。
+    #[test]
+    fn test_plan729_async_file_endpoint_generation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type FileMeta = { name: str }
+
+#[api(method = "GET", path = "/api/async/:name")]
+pub fn download_async(name str) ~FileResponse {
+    let root = env.get("FILES_ROOT")
+    return http.file_response(root, name, "{}")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        assert!(
+            module.endpoints[0].return_type.contains("FileResponse"),
+            "Future<FileResponse> 返回类型: {}",
+            module.endpoints[0].return_type
+        );
+        let api_rs = generate_api_rs(&module, None, false);
+        assert!(api_rs.contains("-> axum::response::Response"), "{api_rs}");
+        assert!(api_rs.contains("__file_reply("), "{api_rs}");
+        let main = generate_main_rs(&module, None, false, &[], false);
+        assert!(main.contains(".head(api::download_async))"), "{main}");
+    }
+
+    /// PLAN-729 R1 [G-04]：体无尾 return（契约缺口）→ 诊断 500 handler，
+    /// 不落 JsonResponse/模板（与转译失败同族的不回退路径）。
+    #[test]
+    fn test_plan729_file_endpoint_no_return_diagnostic() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type FileMeta = { name: str }
+
+#[api(method = "GET", path = "/api/broken")]
+pub fn broken() FileResponse {
+    let x = 1
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let api_rs = generate_api_rs(&module, None, false);
+        assert!(
+            api_rs.contains("file_response_reply_missing("),
+            "诊断 500 handler: {api_rs}"
+        );
+        assert!(
+            !api_rs.contains("JsonResponse::"),
+            "不得回退 JsonResponse 模板"
+        );
+        assert!(
+            !api_rs.contains("Default::default()"),
+            "不得回退 CRUD Default 模板"
+        );
+    }
+
+    /// PLAN-729 R1 [G-12]：用户同名函数不被重写——分支以声明返回类型为门，
+    /// 非 `file_response` 名字。
+    #[test]
+    fn test_plan729_user_same_name_fn_untouched() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type FileMeta = { name: str }
+
+// 用户自定义同名函数（返回 int）——不因名字撞 native 而被文件分支改写。
+#[api(method = "GET", path = "/api/legacy")]
+pub fn file_response(name str) int {
+    return 42
+}
+
+#[api(method = "GET", path = "/api/file/:name")]
+pub fn download(name str) FileResponse {
+    return http.file_response("files", name, "{}")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let api_rs = generate_api_rs(&module, None, false);
+        // 同名 int 端点保持 JSON 面：其 handler 签名是 JsonResponse，不被
+        // 文件分支改写（名字撞 native 不触发分支——门是声明返回类型）。
+        let legacy_sig = api_rs
+            .lines()
+            .find(|l| l.contains("pub async fn file_response("))
+            .unwrap_or_default();
+        assert!(
+            legacy_sig.contains("JsonResponse") && !legacy_sig.contains("axum::response::Response"),
+            "同名 int 函数保持 JSON 面: {legacy_sig}"
+        );
+        // 文件端点仍走文件分支。
+        assert!(api_rs.contains("__file_reply("), "{api_rs}");
     }
 
     /// PLAN-729 T-05: 文件端点生成——Response 签名 + 宿主 serve 胶水 +

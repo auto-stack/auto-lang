@@ -117,6 +117,8 @@ struct FileServeState {
     fs_ops: std::sync::Arc<tokio::sync::Semaphore>,
     active_count: AtomicUsize,
     queued_count: AtomicUsize,
+    open_count: std::sync::atomic::AtomicU64,
+    inflight_block_bytes: AtomicUsize,
 }
 
 impl FileServeState {
@@ -131,6 +133,8 @@ impl FileServeState {
             fs_ops,
             active_count: AtomicUsize::new(0),
             queued_count: AtomicUsize::new(0),
+            open_count: std::sync::atomic::AtomicU64::new(0),
+            inflight_block_bytes: AtomicUsize::new(0),
         }
     }
 }
@@ -150,6 +154,20 @@ pub fn file_active_count() -> usize {
     FILE_SERVE.active_count.load(Ordering::SeqCst)
 }
 
+/// 累计受限打开次数（测试探针：auth 拒绝时不得增长——打开晚于 owner
+/// 全部段的中介证据，§6.1 读取故障族）。
+#[doc(hidden)]
+pub fn file_open_count() -> u64 {
+    FILE_SERVE.open_count.load(Ordering::SeqCst)
+}
+
+/// 应用侧在途块字节数（测试探针：≤ max_pending_blocks × app_block 公式
+/// 的运行时对账，§6.2）。
+#[doc(hidden)]
+pub fn file_inflight_block_bytes() -> usize {
+    FILE_SERVE.inflight_block_bytes.load(Ordering::SeqCst)
+}
+
 /// 排队中文件请求数（测试探针）。
 #[doc(hidden)]
 pub fn file_queued_count() -> usize {
@@ -167,7 +185,7 @@ enum OpenError {
     NotFound,
     /// 存在但非普通文件（目录/设备/管道）→ 404。
     NotARegularFile,
-    /// 越界/链接/reparse → 403。
+    /// 越界/链接/reparse/权限拒绝 → 403。
     Escape(String),
     /// 其他 I/O 故障 → 500。
     Io(String),
@@ -256,8 +274,9 @@ fn safe_open_file(root: &Path, relative: &str) -> Result<OpenedFile, OpenError> 
     let file = match opts.open(&prefix) {
         Ok(f) => f,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Err(OpenError::NotFound),
+        // PLAN-729 R1（G-10）：无权限 → 403（§5.3 对齐；此前误映射 500）。
         Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
-            return Err(OpenError::Io("permission".into()))
+            return Err(OpenError::Escape("permission denied".into()))
         }
         Err(_) => return Err(OpenError::Io("open".into())),
     };
@@ -506,7 +525,10 @@ pub async fn serve_file_response(
         }
     };
     let opened = match opened {
-        Ok(o) => o,
+        Ok(o) => {
+            FILE_SERVE.open_count.fetch_add(1, Ordering::SeqCst);
+            o
+        }
         Err(e) => {
             release_active_only();
             return FileReply::error(e.status(), &e.message(), false);
@@ -655,6 +677,10 @@ async fn pump_file_body(
     let mut cancel_rx = shared.cancelled.subscribe();
     let mut remaining = len;
     let mut buf = vec![0u8; block_bytes.max(1)];
+    // §6.2 对账：在读块计数（读驱动——一次至多一块在途）。
+    FILE_SERVE
+        .inflight_block_bytes
+        .fetch_add(buf.len(), Ordering::SeqCst);
     let outcome = loop {
         // 取消检查（watch 保值：订阅前触发的终结也能在此观察到）。
         if let Some(kind) = cancel_rx.borrow().clone() {
@@ -723,6 +749,9 @@ async fn pump_file_body(
             }
         }
     };
+    FILE_SERVE
+        .inflight_block_bytes
+        .fetch_sub(buf.len(), Ordering::SeqCst);
     shared.finish(outcome);
 }
 
@@ -1086,6 +1115,101 @@ mod tests {
         assert_eq!(r.status, 404, "percent-named missing → 404");
         let r2 = serve_simple(&root, "a%25b.txt", "GET", &[]).await;
         assert_eq!(r2.status, 404);
+    }
+
+    /// [G-16] idle watchdog：body 不被 poll（持有流不消费）时由独立计时
+    /// 收口——finish hook 收到 IdleTimeout（覆写旋钮 300ms，测试面专用）。
+    #[tokio::test]
+    async fn plan729_idle_watchdog_reclaims_unpolled_body() {
+        let root = temp_root("idle");
+        std::fs::write(root.join("i.bin"), vec![1u8; 1024 * 1024]).unwrap();
+        let finishes: Arc<std::sync::Mutex<Vec<FileFinish>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let f2 = Arc::clone(&finishes);
+        let hook: FileFinishHook = Arc::new(move |k: &FileFinish| {
+            f2.lock().unwrap().push(k.clone());
+        });
+        let desc = a2r_std::http::file_response(root.to_str().unwrap(), "i.bin", "{}");
+        let hdrs = Vec::new();
+        let reply = serve_file_response(
+            &desc,
+            ServeFileRequest {
+                method: "GET",
+                request_headers: &hdrs,
+                prepare_deadline: Instant::now() + Duration::from_secs(10),
+                finish_hook: Some(hook),
+                idle_timeout: Some(Duration::from_millis(300)),
+            },
+        )
+        .await;
+        assert_eq!(reply.status, 200);
+        // 持有流、不 poll（黑洞客户端形态）——等待 watchdog 收口。
+        let held = reply.body;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let done = matches!(
+                finishes.lock().unwrap().first(),
+                Some(FileFinish::IdleTimeout)
+            );
+            if done || Instant::now() > deadline {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(
+            finishes.lock().unwrap().first(),
+            Some(&FileFinish::IdleTimeout),
+            "不 poll 的 body 由 idle watchdog 收口"
+        );
+        // 收口后 active 归还（pump 退出），held 流随后 drop 为 no-op（幂等）。
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while file_active_count() > 0 && Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(file_active_count(), 0, "idle 收口后 active 归还");
+        drop(held);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// [G-17] 缓冲公式对账：stalled body 的应用侧在途块字节 ≤ 每活跃
+    /// max_pending_blocks × app_block_bytes（读驱动——pump 恒一块）。
+    #[tokio::test]
+    async fn plan729_inflight_block_bytes_within_formula() {
+        let root = temp_root("formula");
+        std::fs::write(root.join("f.bin"), vec![2u8; 512 * 1024]).unwrap();
+        let limits = file_serve_limits();
+        let desc = a2r_std::http::file_response(root.to_str().unwrap(), "f.bin", "{}");
+        let hdrs = Vec::new();
+        let reply = serve_file_response(
+            &desc,
+            ServeFileRequest {
+                method: "GET",
+                request_headers: &hdrs,
+                prepare_deadline: Instant::now() + Duration::from_secs(10),
+                finish_hook: None,
+                idle_timeout: Some(Duration::from_secs(30)), // 观察窗内不收口
+            },
+        )
+        .await;
+        assert_eq!(reply.status, 200);
+        // 观察窗：pump 读一块后停在通道满（无人消费）。
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let active = file_active_count();
+        assert_eq!(active, 1);
+        let inflight = file_inflight_block_bytes();
+        let cap = limits.max_pending_blocks * limits.app_block_bytes;
+        assert!(
+            inflight > 0 && inflight <= cap,
+            "在途块 {inflight} 超公式上限 {cap}"
+        );
+        drop(reply.body); // 断连收口
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while file_active_count() > 0 && Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(file_active_count(), 0);
+        assert_eq!(file_inflight_block_bytes(), 0, "pump 退出后块字节归还");
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[tokio::test]

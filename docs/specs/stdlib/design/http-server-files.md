@@ -43,7 +43,8 @@ http.file_response(root str, relative_path str, options str) FileResponse
 - **GET 200**：identity 字节；Content-Length=打开句柄表示长度；`Accept-Ranges: bytes`；
   零字节文件 200 + 长度 0。
 - **HEAD**：按 GET 同表示 metadata（同前置条件）；忽略 Range；wire body 0 但
-  Content-Length 保持表示长度。GET 文件路由自动具备 HEAD（显式同路径 HEAD 路由优先）。
+  Content-Length 保持表示长度。GET 文件路由自动具备 HEAD；**显式同路径 HEAD 路由
+  优先（两遍匹配：先精确 method 再回退，与注册顺序无关）**。
   **文件端点仅 GET/HEAD**：其他注解方法 → 405 + `Allow: GET, HEAD`（VM dispatch 与
   生成器双面）。
 - **单区间 Range**：`bytes=S-E`/`S-`/`-N`；end 越 EOF 截至 EOF；suffix≥len → 整文件 206；
@@ -54,8 +55,9 @@ http.file_response(root str, relative_path str, options str) FileResponse
   If-Modified-Since（GET/HEAD）。日期仅接受 IMF-fixdate；坏日期忽略。
 - **If-Range**（仅当 Range 将产 206 时评估）：强 etag 精确匹配 → 206；失配/弱标签 → 完整
   200；HTTP-date：`lm 截秒 ≤ date 截秒` → 206，否则 200；无法解析/无验证器 → 200。
-- **错误映射**：缺失/非普通文件 404；越界/链接/reparse/设备 403（不泄露主机绝对路径）；
-  坏应用 options 500；打开/读取内部故障 500；队满/排队超 503 + `Retry-After: 1`。
+- **错误映射**：缺失/非普通文件 404；越界/链接/reparse/设备/**无权限** 403（不泄露
+  主机绝对路径）；坏应用 options 500；打开/读取内部故障 500；队满/排队超 503 +
+  `Retry-After: 1`。
   已有 auth/middleware 先于打开。headers 后故障只能终结 body/连接（记 request id），
   不得伪造 JSON 500。
 - **同句柄服务**：metadata/seek/read 用同一打开句柄（路径替换不换文件；句柄被截断导致
@@ -79,7 +81,8 @@ http.file_response(root str, relative_path str, options str) FileResponse
 max_active=4  queue_capacity=16  app_block=64KiB  max_pending_blocks=2  fs_ops=4
 prepare_timeout=30s  body_idle_timeout=60s  body_total=none
 env: AUTO_HTTP_FILE_{ACTIVE,QUEUE,BLOCK,PENDING,FS_OPS,PREPARE_MS,IDLE_MS,TOTAL_MS}
-（0/非法回默认；TOTAL_MS 显式 >0 才启用；不把 0 当无限——与传输限额同规约）
+（数值键 0/非法回默认；TOTAL_MS 需显式 >0 才启用总限，未设/0/非法 = 无总限——
+与传输限额族其余键的差异明示：文件 body 无限总限是安全默认，带宽风险由 idle 期限兜底）
 ```
 
 - 排队期零句柄零缓冲；队满即时 503。准备期限（等许可+open+metadata+seek）与调用方
@@ -99,11 +102,11 @@ env: AUTO_HTTP_FILE_{ACTIVE,QUEUE,BLOCK,PENDING,FS_OPS,PREPARE_MS,IDLE_MS,TOTAL_
 |---|---|
 | VM 默认 `#[api]` GET/HEAD（同步/`~` 异步） | ✅（auth/middleware/请求 ID/CORS 不变） |
 | auto-man 生成 Rust HTTP（axum 0.7） | ✅（同 api.at 生成文件 adapter；转译失败 = 位置诊断 500，**不落模板**） |
-| `api/targets/axum` 单独生成器 | ✅ 生成（Response glue 同形；实编验证于 auto-man fixture） |
-| TypeScript HTTP 客户端 | ✅ 文件方法返回原生 `Response`（不 `.json()`；状态/headers 保留） |
-| Tauri IPC | ❌ 明确 Unsupported 诊断（Err + 改走 HTTP URL 指引） |
-| 进程内 back-proxy | ❌ 501 明确拒绝（描述符非可序列化数据） |
-| legacy stdnet / `Server.static` | ❌ 500 诊断 / 占位不支持（本期非交付面） |
+| `api/targets/axum` 单独生成器 | ✅ 生成（Response glue 同形；实编 wire 验证于 auto-man fixture 腿——本生成器输出无独立实编档） |
+| TypeScript HTTP 客户端 | ✅ 文件方法返回原生 `Response`（不 `.json()`；状态/headers 保留；生成串测试锁定） |
+| Tauri IPC | ❌ 明确 Unsupported 诊断（Err + 改走 HTTP URL 指引；生成串测试锁定） |
+| 进程内 back-proxy | ❌ 501 明确拒绝（描述符非可序列化数据；真 TCP e2e 锁定） |
+| legacy stdnet / `Server.static` | ❌ 500 诊断（代码面；非默认调用图，无独立 wire 档——KNOWN-DEBT P729-D2）/ 占位不支持（本期非交付面） |
 | multipart/byteranges、压缩、目录列表 | ❌ 非本期面 |
 
 ## 7. 跨实现一致性（单源）

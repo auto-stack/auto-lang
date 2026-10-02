@@ -20,7 +20,7 @@
 | `cargo tt` | `cargo tt` | 1062 trans 例绿（见 §2 预存 flake） |
 | `cargo th` | `cargo th` | 30+/…（见 §2 预存 2 红） |
 | 格式 | `rustfmt --check`（新文件） | ✅ 清洁（已格式化） |
-| 调试输出扫描 | 新增代码无 eprintln/println 残留（测试内 eprintln 为 SKIP/诊断记录面，与既有测试惯例一致） | ✅ |
+| 调试输出扫描 | 生产路径新增日志用 log::info!（back_proxy 501 臂，r1 修正）；api_gen 生成器 eprintln 为该文件既有惯例；测试内 eprintln 为 SKIP/诊断记录面 | ✅（r1 复核） |
 
 **tf 未跑**：批量回归档（fix-test-tiering 2026-09-30 裁定非 per-plan 门禁；merge 到期后
 由 `/auto-plan:regress` 主检出单实例执行）。
@@ -39,8 +39,8 @@
 - `cargo tt` 曾见 `lock_serializes` / `merged_api_warning` 闪红——PLAN-716 收据在案
   基线 solo 复现预存；复跑 tt 时 1062 trans 例绿。
 - `cargo check -p auto-lang --no-default-features` 的 4 个 frame_bench 引用错误为
-  master 预存（PLAN-716 的 `crate::ui::frame_bench` 未门控引用）；本计划未改依赖/feature，
-  条件门禁不触发。
+  master 预存（PLAN-716 的 `crate::ui::frame_bench` 未门控引用）；本计划未改 auto-lang
+  依赖/feature（auto-man 新增测试专用 feature `test-http-e2e`——非生产面）。
 - `cargo check -p auto-man`（bin target "main not found"）：main.rs 预存空壳；lib 门禁
   （`--lib`）清洁。
 
@@ -51,9 +51,9 @@
 | AC-01 公共声明/VM+两 facade 同形/真实 api.at 二进制返回 | http.at/http.vm.at 声明；shim 9936 + ApiBody::File + 声明门；trans lowering + a2r_std 转发壳；VM e2e basic/12MiB hash + 生成服务实编 e2e（非 JSON/base64）；plain-int 反例绿（method_and_int_guard） |
 | AC-02 GET/HEAD/单区间/条件子集 | §6.1 双端 wire 表全行（protocol 报告）：零文件不变 1（basic）、u64 无截断（range u64 大值 416）、If-Range 失配完整重下（VM+生成）、字节窗精确断言 |
 | AC-03 root 限制/头值安全/同句柄 | T-01 平台探针（junction 伪装/设备句柄/rename 钉住/截断 EOF）+ 单元 junction 403 + e2e 路径安全族（traversal/编码/双重编码/junction 404/403，无主机路径泄露）+ auth 先于打开（打开在 transport，晚于 owner 全部段）+ 截断→发送失败帧（单元+探针） |
-| AC-04 有界/不占 owner | owner 零 I/O（构造零 I/O + serve 在 transport/生成 handler 的 tokio 上下文）；N+Q+1 队满 503+Retry-After（quota e2e + 时间戳证据）；排队期零句柄（queued 探针）；块/队列峰值=pump 读驱动 ≤2 块公式；慢下载时 plain 端点 200（quota 恢复段）；无每请求线程/runtime（pump/watchdog 任务） |
-| AC-05 恰一次回收/半关闭 | finish hook 恰一次（单元 Completed 单条）；断连 active→0（slow_client e2e + 单元 client_gone）；取消→server 资源退出（727 互通取消臂）；headers 后故障不假成功（截断发送失败帧）；不 poll 的 body 由独立 watchdog 收口（idle 覆写旋钮在 serve 面就绪；60s 默认）；排队到期出队（30s 准备期，quota e2e） |
-| AC-06 真实生成 handler/互通/不支持形态 | 生成服务实编 e2e（真实产物 cargo build + wire 全绿）；转译失败不 fallback（api_gen 测试：诊断 500，无模板断言）；TS Response 不 `.json()`（to_ts_type + return 路径）；IPC/merged/back-proxy/legacy 明确拒绝（tauri Err 诊断生成测试 + back_proxy 501 e2e 面代码 + legacy 500 诊断 + Server.static 占位不变）；727 五态互通（完整/206 续传/失配 200/416 保旧/取消）双端；JSON/SSE/媒体 scoped 回归（http_server 42 + vm::ffi::http 44 + api:: 30 + api_gen 33 绿） |
+| AC-04 有界/不占 owner | owner 零 I/O（构造零 I/O + serve 在 transport/生成 handler 的 tokio 上下文）；N+Q+1 队满 503+Retry-After（quota e2e + 时间戳证据）；排队期零句柄（queued 探针）；在途块字节计数对账 ≤ 公式（r1 单元）；慢下载饱和期 /plain 20 次 <500ms + 基线对照（r1 health e2e）；无每请求线程/runtime（pump/watchdog 任务） |
+| AC-05 恰一次回收/半关闭 | finish hook 恰一次（单元 Completed 单条）；断连 active→0（slow_client e2e + 单元 client_gone）；取消→server 资源退出（727 互通取消臂）；headers 后故障不假成功（截断发送失败帧）；不 poll 的 body 由独立 watchdog 收口（r1 单元：覆写 300ms → IdleTimeout 恰一次）；半关闭输入保留完整响应（r1 e2e：shutdown(WRITE) 后 200+全量 body）；排队到期出队（30s 准备期，quota e2e）；shutdown drain 专项 wire 未做（KNOWN-DEBT P729-D1，收口臂与 SSE 共用路径） |
+| AC-06 真实生成 handler/互通/不支持形态 | 生成服务实编 e2e（真实产物 cargo build + wire 全绿）；契约缺口诊断不 fallback（r1 api_gen 测试：无尾 return → file_response_reply_missing，无 JsonResponse/Default 模板断言）；TS 生成串测试锁定 Response 映射 + 不 `.json()`；Tauri 生成串测试锁定 Err + HTTP URL 指引；back_proxy 文件端点真 TCP 501 e2e；legacy stdnet 500 为代码面（非默认调用图，无 wire 档——KNOWN-DEBT P729-D2）+ Server.static 占位不变；生成腿 12MiB hash + 异步端点 wire（r1）；727 五态互通（完整/206 续传/失配 200/416 保旧/取消）双端；JSON/SSE/媒体 scoped 回归（http_server 42 + vm::ffi::http 44 + api:: 30 + api_gen 33 绿） |
 
 ## 4. SD 绑定（规范稿就位）
 
@@ -85,3 +85,20 @@ canonical ledger（`.autoos/specs.json`）与 specs 索引刷新按范式归 **m
   KNOWN-DEBT 或修复计划）。
 - shutdown drain 的文件 body 窗语义沿 serve_with 现状（未做专项 wire 演练——scope
   收口臂与 SSE 同形已由共用路径覆盖）。
+
+## 7. R1 修订记录（2026-10-02，needs_fix 修复循环）
+
+- 复审 R1（needs_fix，25 项差距）后修复：异步 `~FileResponse` wire/生成/发射三面
+  （G-01）；TS/Tauri 生成串 + back_proxy 真 TCP 501（G-02 部分；legacy 归
+  KNOWN-DEBT P729-D2）；health 20×<500ms 饱和期 e2e（G-03）；契约缺口诊断不
+  fallback 测试（G-04）；生成腿 12MiB hash（G-05）；If-Unmodified-Since wire
+  （G-06）；download_name/坏 options wire（G-07）；路径替换 rename 钉住 wire
+  （G-08）；open 计数 + auth middleware e2e（G-09）；PermissionDenied→403（G-10）；
+  HEAD 两遍优先级 + 单元（G-11）；同名函数反例（G-12）；半关闭 e2e（G-13）；
+  idle watchdog 单元（G-16）；在途块字节计数 + 公式对账（G-17）；back_proxy
+  log 宏（G-20）；SD-01 四处修正（G-21/22/23/24）；本报告失实表述修正
+  （G-02/03/04 关联行 + G-19/G-20）。
+- 显式债务（KNOWN-DEBT）：P729-D1 shutdown drain 专项 wire；P729-D2 legacy
+  stdnet 500 wire 档；P729-D3 端口可重绑专项；P729-D4 排队取消的直接观测
+  （现由 socket 生命周期/准备期限间接覆盖）；P729-D5 权限拒绝 wire 级
+  （Windows ACL 环境不稳，映射已对齐 403）。

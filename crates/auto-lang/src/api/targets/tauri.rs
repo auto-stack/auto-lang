@@ -335,6 +335,37 @@ impl TargetGenerator for TauriGenerator {
 
 #[cfg(test)]
 mod tests {
+    /// PLAN-729 R1 [G-02]：文件端点 → Tauri IPC 明确 Unsupported 诊断
+    /// （Err + 改走 HTTP URL 指引；不 opaque 当成功数据）。
+    #[test]
+    fn test_plan729_file_endpoint_unsupported_diagnostic() {
+        use crate::api::{ApiAttrs, ApiEndpoint};
+        let mut attrs = ApiAttrs::new();
+        attrs.method = Some("GET".to_string());
+        attrs.path = Some("/api/files/:name".to_string());
+        let endpoint = ApiEndpoint {
+            fn_name: "download".to_string(),
+            params: Vec::new(),
+            return_type: "FileResponse".to_string(),
+            attrs,
+            body: None,
+            doc: None,
+        };
+        let gen = super::TauriGenerator::default();
+        let cmd = gen.generate_command(&endpoint);
+        assert!(cmd.contains("#[tauri::command]"), "{cmd}");
+        assert!(cmd.contains("Result<String, String>"), "{cmd}");
+        assert!(
+            cmd.contains("requires HTTP transport"),
+            "改走 HTTP URL 指引: {cmd}"
+        );
+        assert!(
+            cmd.contains("call the HTTP URL directly"),
+            "指引文案: {cmd}"
+        );
+        assert!(!cmd.contains("a2r_std::http::FileResponse"), "不得回 opaque 数据: {cmd}");
+    }
+
     use super::*;
     use crate::api::{ApiAttrs, ApiParam};
 
