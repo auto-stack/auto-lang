@@ -1220,15 +1220,29 @@
             "commit:6c5c5b714"
           ],
           "file": "docs/plans/archive/716-m4-upstream-batch.md"
-        }
-      ,
+        },
         {
           "id": "P724-9",
           "title": "Rust/a2r HTTP 客户端异步收敛交付摘要（PLAN-724）",
           "content": "T-01..T-08 全交付：两条 Rust HTTP facade（独立 a2r_std::http 与 auto_lang::a2r_std::http）网络执行单源化到共享 async 内核（crates/a2r-std/src/http/client.rs：reqwest async + 固定 runtime + 有界准入 + 总期限 + 增量体预算 + owned typed Response + 真取消；流=有界队列/背压/期限/UTF-8 carry/SSE 共享解码/单次终结/close 真取消）；P707-R1 红转绿（e4 直驱未 register_live_op 被 707 取消竞态守卫中止——测试走生产协议，守卫零改动，债务销号）；trans/rust.rs typed 上下文感知 lowering（元数分派/builder 分型/流分型/for-in 哨兵循环）。验证：内核 36+集成 7+golden 2+探针 3+编译运行 e2e 3 腿全绿；tt/t/th 红集与主检出基线逐名一致（全部在案预存族）；四报告（client-decision/parity/resource-lifecycle/verification）入库。delivery 8a7fa3cee；ff-only 落地（rebase 后 range-diff 7/7 全等）；Spec delta SD-01..06 沉淀（7 designs 投影 docsha 见 designs 段）。",
-          "tags": ["plan-724", "delivery", "commit:8a7fa3cee"],
+          "tags": [
+            "plan-724",
+            "delivery",
+            "commit:8a7fa3cee"
+          ],
           "file": "docs/plans/724-a2r-http-client-async-convergence.md"
-        }]
+        },
+        {
+          "id": "P727-8",
+          "title": "HTTP 文件传输生命周期交付摘要（PLAN-727）",
+          "content": "PLAN-727 交付：共享传输核心 http::transfer（a2r-std）为 VM/a2r/原生 Rust 三方单源——增量下载/staging 原子提交（失败/取消保留原目标）/严格续传/流式上传/独立配额与取消收口；VM 6 natives（9930-9935，首版 3114 撞 *_response 族实测迁移）+scope 有类型传输组+legacy 四件迁移（形状保留，假成功/盲目追加纠正）+builder 流式 multipart 预算；a2r typed 发射+31_plan727 金样+4 件 e2e 编译运行；ureq 依赖退役；T-02 闭合 724 遗留的 execute 排队取消/总期限差距。证据：reports/727-transfer-{decision,parity,resources,verification}.md。预存红登记 P727-F1（book 仓语法脱同步，另案）。",
+          "tags": [
+            "plan-727",
+            "delivery"
+          ],
+          "file": "docs/plans/727-http-file-transfer-lifecycle.md"
+        }
+      ]
     },
     {
       "id": "goals",
@@ -4885,57 +4899,172 @@
           "id": "P725-1",
           "title": "帧管线增量更新契约（PLAN-725 SD-01）",
           "content": "auto-edit M4 帧两行 FAIL 清偿本体（canonical 唯源=docs/specs/auto-lang/ui/design/frame-pipeline-incremental.md；勘定+双态谱=docs/plans/evidence/725/）。契约：五段成本链分段口径（ui::frame_segments 探针——AUTO_FRAME_BENCH 同门，[P725-FRAME] 行 prev/cur 双槽配对+孤儿帧观测）；脏帧 view_with_debug_gated 恰一次（单帧单建——MCP 同步块复用主重建产物，dark 同步块上移保 PLAN-633 状态采集序）；编辑器 on_change 载荷静态消费判定（三消费点 $event/input_state_map/空 payload 首实参均不命中→input_value=None，O(doc) 携带退役；保守语义=绑定表缺席携带；.at 消费面零改动——editor-kernel §8 契约节）；hosted 编辑器 content_height 无折叠快道（rope 摘要 O(1)——根因链 iced scrollable::new 构造期 size_hint→fresh_fold_map 逐行物化，1MB 实测 95ms/帧清零）；Element 缓存 put-then-take 死写移除（勘定在案）。阶梯谱基准：5KB/100KB/1MB×VM 轨 ladder.py 双态可复跑，定量门 5KB segsum P95≤16.7ms PASS（改后 10.59ms；1MB/5KB P50 比 1.52 尺寸缩放清零）。SD-02=frame-observability §5 上游阶梯谱节；SD-03=ui overview 增量管线注记；a2r frame fn i32 收窄（SD-B §3b saturating 口径，供⑬ E0308 清偿）。下游帧档两行真判定=下游补跑件（重判指引随 evidence/725/downstream-handoff.md）。"
-        }
-      ,
+        },
         {
           "id": "P724-1",
           "title": "共享 HTTP 客户端内核契约：单执行源与有界准入/真取消（PLAN-724 SD-01）",
           "content": "PLAN-724 交付落账（a2r-std 域现行态投影；canonical 唯源=docs/specs/a2r-std/design/http-client-runtime.md，delivery 8a7fa3cee）。契约：两条 Rust facade（独立 a2r_std::http 与 auto_lang::a2r_std::http 生成服务限定名面）全部网络执行单源到共享内核 http::client——reqwest async + 固定 multi-thread runtime（OnceLock 单例，AUTO_A2R_HTTP_WORKERS 默认 2）+ 复用连接 Client；async 面通知等待（丢 future 即取消），同步桥接为响亮边界（async 上下文 panic 不静默阻塞）；限额 active 8/queue 64/体 10MiB/总期限 30s、流 active 16/queue 32/队列 16×256KiB/raw 16KiB/建立 10s/idle 60s；流单次终结（Data/Eof/Failed），close/Drop=finalize+abort 生产者，EOF 先排空；headers JSON/行双适配器终结性报错；707 SSE decoder 原样提取 a2r_std::sse 单源共享（plan707_decode 零漂移守卫）；文件 helper 仍 ureq、sse_open int id 族不在 a2r 支持集。证据：724-client-decision/parity/resource-lifecycle 报告 + http_e2e_plan724 三腿 + a2r-std 43 测试。",
-          "tags": ["plan-724", "a2r-std", "sd-01", "commit:8a7fa3cee", "docsha:d059f123acac4347"],
+          "tags": [
+            "plan-724",
+            "a2r-std",
+            "sd-01",
+            "commit:8a7fa3cee",
+            "docsha:d059f123acac4347"
+          ],
           "file": "docs/specs/a2r-std/design/http-client-runtime.md"
         },
         {
           "id": "P724-2",
           "title": "a2r-std 模块卡 http 行：共享 async 内核与剩余差异登记（PLAN-724 SD-02）",
           "content": "PLAN-724 交付落账（canonical 唯源=docs/specs/a2r-std/project.md，delivery 8a7fa3cee）。模块表 http 行从 ureq 客户端改为共享 async 内核（reqwest async + 固定 runtime + 有界准入 + typed 结果 + 真取消），并登记剩余差异：文件 helper download/upload/download_resume 仍走 ureq（不为删除依赖扩展范围）；历史签名（认证 tuple、Response/HTTPStream 形状、last_status TLS）保留，HTTPStream.close 真取消（原占位退役）；VM sse_open int id 族不在 a2r 支持集。",
-          "tags": ["plan-724", "a2r-std", "sd-02", "commit:8a7fa3cee", "docsha:23a29f0f534c934b"],
+          "tags": [
+            "plan-724",
+            "a2r-std",
+            "sd-02",
+            "commit:8a7fa3cee",
+            "docsha:23a29f0f534c934b"
+          ],
           "file": "docs/specs/a2r-std/project.md"
         },
         {
           "id": "P724-3",
           "title": "a2r HTTP 客户端 typed 发射契约：上下文感知分派表（PLAN-724 SD-03 add）",
           "content": "PLAN-724 交付落账（trans 域现行态投影；canonical 唯源=docs/specs/auto-lang/trans/design/http-client-lowering.md，delivery 8a7fa3cee）。契约：http.* 客户端面发射按模块/接收者分型/元数/async 上下文分派——async 上下文（~T/Future fn、含 .await main、generator body、.go）选 *_async().await 内核面，同步上下文走同步桥接；两参普通 post 与三参认证按实参元数分流不冲突；builder 链与变量重绑定保持分型（send/send_async）；流生产者/方法/自由函数按 http_stream_async_vars 分型；for-in 流循环 = \"\" 哨兵 loop（break 不冒充关闭，作用域 Drop 回收）；非流接收者 next/close 与非 builder send 零打扰。编译运行支持面：30_plan724 金样 + http_e2e_plan724_{sync,async}（临时 cargo 工程实编实跑）。",
-          "tags": ["plan-724", "trans", "sd-03", "commit:8a7fa3cee", "docsha:72640ccca1d690d5"],
+          "tags": [
+            "plan-724",
+            "trans",
+            "sd-03",
+            "commit:8a7fa3cee",
+            "docsha:72640ccca1d690d5"
+          ],
           "file": "docs/specs/auto-lang/trans/design/http-client-lowering.md"
         },
         {
           "id": "P724-4",
           "title": "trans overview：a2r HTTP typed 发射能力入现状（PLAN-724 SD-03 modify）",
           "content": "PLAN-724 交付落账（canonical 唯源=docs/specs/auto-lang/trans/overview.md，delivery 8a7fa3cee）。现状清单增 a2r HTTP 客户端 typed 发射条目：分散特判收敛为上下文感知分派（async 面选择、元数分流、builder 分型、流分型 for-in），指向 http-client-lowering 设计契约与 http-client-runtime 运行时契约。",
-          "tags": ["plan-724", "trans", "sd-03", "commit:8a7fa3cee", "docsha:f27c3442a1798746"],
+          "tags": [
+            "plan-724",
+            "trans",
+            "sd-03",
+            "commit:8a7fa3cee",
+            "docsha:f27c3442a1798746"
+          ],
           "file": "docs/specs/auto-lang/trans/overview.md"
         },
         {
           "id": "P724-5",
           "title": "异步 HTTP 结果通道：登记协议钉与错误消费分层（PLAN-724 SD-04）",
           "content": "PLAN-724 交付落账（stdlib 域现行态投影；canonical 唯源=docs/specs/stdlib/design/async-http-result-lifecycle.md，delivery 8a7fa3cee）。规则 1 增登记协议钉：register_live_op 先于 submit 是提交方义务（生产 shim 与测试同责），未登记 managed 提交被 707 取消竞态守卫中止（e4 30s 恒红实证，修复走生产协议，守卫不得削弱）；规则 3 改写为槽终结与消费接口分离：Err 落表=通道终结（take 可取不复活），消费面按 712 错误分层——网络失败可 catch、非 2xx 是错误形状值不 throw，历史\"Err 统一折 status:0 JSON\"表述退休；规则 4 增 Rust 内核同构注记（a2r_std::http::client 独立实现）；规则 6 增 PLAN-724 登记协议回归钉（e4 配对+未登记反例）。",
-          "tags": ["plan-724", "stdlib", "sd-04", "commit:8a7fa3cee", "docsha:de34e79043b00234"],
+          "tags": [
+            "plan-724",
+            "stdlib",
+            "sd-04",
+            "commit:8a7fa3cee",
+            "docsha:de34e79043b00234"
+          ],
           "file": "docs/specs/stdlib/design/async-http-result-lifecycle.md"
         },
         {
           "id": "P724-6",
           "title": "标准库后台装配：客户端面收敛与剩余后台差异（PLAN-724 SD-05）",
           "content": "PLAN-724 交付落账（stdlib 域现行态投影；canonical 唯源=docs/specs/stdlib/design/backend-assembly.md，delivery 8a7fa3cee）。http 行 Rust/其他后端列更新：a2r-std/src/http.rs 与 auto_lang::a2r_std::http 客户端面收敛到共享 async 内核（PLAN-724，文件 helper 仍 ureq）；消费端列改写：客户端面已收敛（两 facade 单内核、auto_lang::a2r_std 限定名有真 TCP 腿），仍不同后台面=VM 流 park/resume 与 Rust await 协议独立、生成服务任意外部流 handler/文件传输 API/装配 manifest 未收敛（另案分期）。",
-          "tags": ["plan-724", "stdlib", "sd-05", "commit:8a7fa3cee", "docsha:d3b46a525eccf9da"],
+          "tags": [
+            "plan-724",
+            "stdlib",
+            "sd-05",
+            "commit:8a7fa3cee",
+            "docsha:d3b46a525eccf9da"
+          ],
           "file": "docs/specs/stdlib/design/backend-assembly.md"
         },
         {
           "id": "P724-7",
           "title": "外部流生命周期：Rust 客户端迁移落地与协议差异明示（PLAN-724 SD-06）",
           "content": "PLAN-724 交付落账（stdlib 域现行态投影；canonical 唯源=docs/specs/stdlib/design/http-stream-lifecycle.md，delivery 8a7fa3cee）。支持矩阵增\"Rust 客户端已迁移\"：a2r 两 facade 外部流消费收敛到共享 async 内核（有界队列/背压/期限/真取消/SSE 共享解码），707 状态机/预算/单次终结语义以 Rust 形态同构落地于 http-client-runtime；协议差异明示——VM 轨=park/resume 凭据+引擎泵恢复，Rust 轨=async await/通知等待，两者不共享资源表与许可；非目标项移除 a2r-std 迁移（已完成），保留 auto-man 生成服务任意外部流 handler（另案）。",
-          "tags": ["plan-724", "stdlib", "sd-06", "commit:8a7fa3cee", "docsha:9ea9a622fa76d69c"],
+          "tags": [
+            "plan-724",
+            "stdlib",
+            "sd-06",
+            "commit:8a7fa3cee",
+            "docsha:9ea9a622fa76d69c"
+          ],
           "file": "docs/specs/stdlib/design/http-stream-lifecycle.md"
-        }]
+        },
+        {
+          "id": "P727-1",
+          "title": "HTTP 文件传输：可取消、增量、原子提交——stdlib 客户端文件传输契约（PLAN-727 SD-01）",
+          "content": "PLAN-727 交付落账（stdlib 域现行态投影；canonical 唯源=docs/specs/stdlib/design/http-file-transfer.md）。新 FileTransfer 公共面（transfer_download/upload/wait/wait_async/next_progress/cancel/error 自由函数，Auto/VM/原生 Rust 同词汇）、收据/进度 JSON 契约（error.kind 十类；非 2xx=failed）、严格 options、状态机与 staging 原子提交（Windows rename=REPLACE_EXISTING 不先删旧文件）、严格续传（offset==本地长度+206 Content-Range 对齐+identity；200 完整重启绝不追加；无 validator 不承诺版本一致）、上传流式 raw/multipart+显式重试复核（source_changed）、取消=停发新写等在途 FS 收口+清理、同目标仲裁、独立预算（在途总量=queue_capacity 16）、VM 桥（live-op park/scope 有类型组/进度 relay 迁移）、legacy 四件形状保留执行迁移。",
+          "tags": [
+            "plan-727",
+            "sd-01",
+            "stdlib",
+            "docsha:c324ca3d3151"
+          ],
+          "file": "docs/specs/stdlib/design/http-file-transfer.md"
+        },
+        {
+          "id": "P727-2",
+          "title": "a2r-std 模块卡与内核契约更新：文件传输并入共享核心、ureq 退役、排队取消闭合（PLAN-727 SD-02）",
+          "content": "PLAN-727 交付落账（a2r-std 域现行态投影；canonical 唯源=docs/specs/a2r-std/{project.md,design/http-client-runtime.md}）。project.md：技术栈去 ureq（PLAN-727 起退役），http 行增文件传输共享核心 http::transfer 并指 stdlib http-file-transfer 契约；http-client-runtime.md「非目标：文件 helper 仍走 ureq」改写为文件传输已入共享核心 + T-02 排队取消/总期限闭合（execute 的 active 许可等待纳入 tx.closed()/总期限 select）。",
+          "tags": [
+            "plan-727",
+            "sd-02",
+            "a2r-std",
+            "docsha:9e867ccef1e9",
+            "docsha:95fb3be49403"
+          ],
+          "file": "docs/specs/a2r-std/design/http-client-runtime.md"
+        },
+        {
+          "id": "P727-3",
+          "title": "标准库后台装配：文件传输面收敛、服务端上传仍另案（PLAN-727 SD-03）",
+          "content": "PLAN-727 交付落账（stdlib 域现行态投影；canonical 唯源=docs/specs/stdlib/design/backend-assembly.md）。http 行 Rust/其他后端列：文件传输面已收敛（http::transfer 共享核心 + vm/ffi/http_transfer.rs 桥，独立传输配额）；消费端列：『文件传输 API 未收敛』移除，服务端上传路由/Range 响应仍另案的边界显式保留。",
+          "tags": [
+            "plan-727",
+            "sd-03",
+            "stdlib",
+            "docsha:5392d794e5b0"
+          ],
+          "file": "docs/specs/stdlib/design/backend-assembly.md"
+        },
+        {
+          "id": "P727-4",
+          "title": "a2r 文件传输发射契约：submit/observe 同形、wait 分叉、legacy 锁定（PLAN-727 SD-04）",
+          "content": "PLAN-727 交付落账（trans 域现行态投影；canonical 唯源=docs/specs/auto-lang/trans/design/http-client-lowering.md 文件传输节）。transfer_download/upload/next_progress/cancel/error 在 sync/async 上下文同形发射（非阻塞，无 async 变体）；transfer_wait 分叉——sync 同步桥接面 / async transfer_wait_async(&t).await（future 丢弃=结构化取消）；句柄 & 借用形；builder multipart_file/multipart_text 方法直发；legacy 三 helper 发射逐字节不变锁定（不重定新面）。金样 31_plan727 sync/async + http_e2e_plan727_* 编译运行腿。",
+          "tags": [
+            "plan-727",
+            "sd-04",
+            "trans",
+            "docsha:d117572e57ef"
+          ],
+          "file": "docs/specs/auto-lang/trans/design/http-client-lowering.md"
+        },
+        {
+          "id": "P727-5",
+          "title": "外部流生命周期：文件进度流生产者迁移共享传输核心（PLAN-727 SD-05）",
+          "content": "PLAN-727 交付落账（stdlib 域现行态投影；canonical 唯源=docs/specs/stdlib/design/http-stream-lifecycle.md）。非目标段更新：文件进度流已迁共享传输核心（download_with_progress 生产者=http::transfer 观察句柄泵，专用线程/独立 runtime 退役；进度 try_send 满则合并、终态不丢）；bus.subscribe 全面改造仍另案；其余 IO/bus 流不变。",
+          "tags": [
+            "plan-727",
+            "sd-05",
+            "stdlib",
+            "docsha:bcc0c3563177"
+          ],
+          "file": "docs/specs/stdlib/design/http-stream-lifecycle.md"
+        },
+        {
+          "id": "P727-6",
+          "title": "网络标准库运行时设计：C2 现状刷新（a2r 客户端与文件传输已落地）（PLAN-727 SD-06）",
+          "content": "PLAN-727 交付落账（runtime 域现行态投影；canonical 唯源=docs/specs/auto-lang/runtime/design/networking-stdlib.md）。『C 其余仍独立未迁』中移除 a2r 客户端迁移（724 已落）并新增 C2 文件传输已落地（727 共享传输核心三方单源）；C 剩余=task actor/mailbox、CPU 时间片。",
+          "tags": [
+            "plan-727",
+            "sd-06",
+            "runtime",
+            "docsha:831208e12aa6"
+          ],
+          "file": "docs/specs/auto-lang/runtime/design/networking-stdlib.md"
+        }
+      ]
     },
     {
       "id": "tests",
@@ -7984,15 +8113,31 @@
             "P716-D1"
           ],
           "file": "docs/plans/archive/716-m4-upstream-batch.md"
-        }
-      ,
+        },
         {
           "id": "P724-8",
           "title": "PLAN-724 复审 pass 收据（AC-01..06 pass，r1 @5cc8a936a）",
           "content": "复审 pass（reviewed_commit 5cc8a936a=6fc4a6023 rebase 等价映射，range-diff 7/7 全等；worktree 零脏文件；同会话复审局限已声明，裁定从工件重建）。代码级核查：async_http.rs 取消守卫对基线 diff=0 行；两 facade 零 blocking client/spawn_blocking/每请求线程（grep 实证仅文档注释）；e4 register→submit→consume/cancel 配对与未登记反例在码；内核 status 先行/raw min 切分/try_lock async 安全在码。复跑：a2r-std 43/43、plan724 5/5、http_e2e_plan724 3/3、e4 0.4s 绿、plan712 2/2、tv 162/162、tt 1832/1835（3 红=p053 族主检出基线同红复现，712 §10② 在案）；裸 t/th 红集与基线逐名一致（差异仅 e4 修复）；plan707_wait 序敏感 flake 两侧隔离均绿。SD-01..06 目标路径核对（2 add 缺席/5 modify 存在）、canonical specs 全 diff 零触碰、spec-lint 0 错误。账本：8080 不可达，循 711/713..720 先例手工外科插入（本条）。",
-          "tags": ["plan-724", "review-pass", "commit:8a7fa3cee", "same-session-review-disclosed"],
+          "tags": [
+            "plan-724",
+            "review-pass",
+            "commit:8a7fa3cee",
+            "same-session-review-disclosed"
+          ],
           "file": "docs/plans/724-a2r-http-client-async-convergence.md"
-        }]
+        },
+        {
+          "id": "P727-7",
+          "title": "PLAN-727 复审 pass 收据（AC-01..06 pass，r1 @1fa1a49a4）",
+          "content": "复审 pass（reviewed_commit 1fa1a49a4；worktree 零脏；实现会话复审局限已声明，裁定从工件重建：HEAD scoped 复测 a2r-std 61+7+6 绿/plan727 8/8/plan349 16/16/tv 162/162；大宗门禁 t/tv/tt/th 证据复用理由=8ba5199d2→1fa1a49a4 语义零差（仅 allow(dead_code) 注解+报告），红逐名与 master 同命令对照零新增；AC-03 提交路径/AC-04 续传验证/AC-05 取消收口代码事实独立抽查一致；SD before 六处逐一核实为过时表述）。findings：P727-F1（预存——book 仓 is 臂旧语法，基线全新 worktree 同红，登记 KNOWN-DEBT，不阻塞）。T-07 实测纠偏：在途总量上限=queue_capacity（队列许可提交即取）。",
+          "tags": [
+            "plan-727",
+            "review",
+            "commit:1fa1a49a4"
+          ],
+          "file": "docs/plans/727-http-file-transfer-lifecycle.md"
+        }
+      ]
     }
   ]
 }

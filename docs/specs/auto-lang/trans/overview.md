@@ -172,3 +172,4 @@ auto test                                    # 跑 tests/a2*_tests.at 声明的�
 - `docs/plan-indices/06-transpilers.md` 及各 plan 文件（见 plans.md）
 - `crates/auto-lang/src/trans.rs`、`trans/`、`crates/auto-lang/src/lib.rs`、`crates/auto/src/main.rs`
 - `tests/a2c_tests.at`、`a2r_tests.at`、`a2ts_tests.at`
+- a2r 文件传输发射（PLAN-727）：`http.transfer_*` submit/observe 面在 sync/async 上下文同形发射（非阻塞提交/观察无 async 变体），仅 `transfer_wait` 分叉（sync 桥接面 / `transfer_wait_async(&t).await`）；builder `.multipart_file/.multipart_text` 方法直发（路径描述到发送）；发射契约见 [http-client-lowering](design/http-client-lowering.md) 文件传输节，运行契约见 stdlib [http-file-transfer](../../stdlib/design/http-file-transfer.md)

@@ -121,8 +121,9 @@ headers/POST body 原样透传,不对 POST 自动重试/重连。
   引擎泵恢复(本篇),Rust 轨 = async await/通知等待(无 park 概念),
   两者不共享资源表与许可。
 - **非目标**:auto-man 生成服务的任意外部流 handler(事件总线模板为主,
-  重写另案);bus.subscribe/文件进度流线程形态全面改造(共同句柄
-  清理适配而已);通用 WS/TLS/HTTP2;自动 SSE 重连/Last-Event-ID 重放;
+  重写另案);bus.subscribe 全面改造另案；**文件进度流已迁共享传输核心**
+  (PLAN-727:download_with_progress 生产者=http::transfer 观察句柄泵,线程
+  形态退役;契约见 [http-file-transfer](http-file-transfer.md));通用 WS/TLS/HTTP2;自动 SSE 重连/Last-Event-ID 重放;
   async-for 语法;`HTTPStream.iter()` 方法式派发(自由函数
   `Http.stream_iter` + 变量形态已覆盖);run_task_loop 流唤醒的事件化
   (保留每轮扫描 wake source 4/4b)。

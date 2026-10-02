@@ -61,7 +61,7 @@
 | list / hashmap / string_builder | 集合与字符串构建 | active |
 | str | 字符串函数 | active |
 | json | JSON 读写（serde_json） | active |
-| http | HTTP 客户端（**共享 async 内核** `http::client`：reqwest async + 固定 runtime + 有界准入 + typed 结果 + 真取消；PLAN-724。设计契约见 [http-client-runtime](design/http-client-runtime.md)。文件 helper download/upload/download_resume 仍走 ureq——登记的剩余差异，不为删除依赖扩展范围） | active |
+| http | HTTP 客户端（**共享 async 内核** `http::client`：reqwest async + 固定 runtime + 有界准入 + typed 结果 + 真取消；PLAN-724。设计契约见 [http-client-runtime](design/http-client-runtime.md)）+ **文件传输共享核心** `http::transfer`（增量/staging 原子提交/严格续传/可取消；PLAN-727，契约见 stdlib [http-file-transfer](../../stdlib/design/http-file-transfer.md)）；legacy download/upload/download_resume 已迁移共享核心（ ureq 依赖退役） | active |
 | fs / env / math / time | 文件系统、环境、数学、时间 | active |
 | sqlite | 嵌入式 SQL 数据库（rusqlite 0.30 bundled，Plan 415-B1） | active |
 | redis | Redis 客户端（redis 0.27 纯 Rust 同步 API，Plan 415-B2） | active |
