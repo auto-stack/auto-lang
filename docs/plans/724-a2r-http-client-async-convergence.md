@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-724
-status: drafting
+status: execution_done
 feature_name: a2r-http-client-async-convergence
 author: [agent]
 created_at: 2026-10-01
-updated_at: 2026-10-01
+updated_at: 2026-10-02
 
 plan_revision: 1
 supersedes_spec_components:
@@ -19,7 +19,7 @@ new_spec_components:
 touched_goals: [GOAL-003]
 
 affects: [crates/a2r-std, crates/auto-lang/src/a2r_std.rs, crates/auto-lang/src/trans/rust.rs, crates/auto-lang/src/sse, crates/auto-lang/src/vm/ffi/stdlib.rs, stdlib/auto/http.at, docs/specs/a2r-std, docs/specs/stdlib, docs/specs/auto-lang/trans]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
@@ -238,6 +238,25 @@ TCP 用 OS 临时端口、有限 accept/read/关闭截止时间与清理守卫�
 - changed_acceptance: AC-01..AC-06（新）
 - 静态核对 707 归档/current Specs、712 失败语义、两 Rust runtime、HTTP 发射/consumer；任务覆盖所有 AC/SD。pass 表示文档可交给 work，不是实现复审通过。
 - 本次仅起草计划、更新 Design 33/索引；文档编号结构、T/AC/SD 覆盖、已有引用路径与本次新增/修改链接、`git diff --check` 均已核对。未运行 Cargo、未创建实施 worktree、未改 canonical Specs。
+
+### work 交接（2026-10-02，T-01..T-08 全部执行完毕）
+
+- stage: work
+- plan_id: PLAN-724
+- plan_revision: 1
+- outcome: pass
+- code_commit: plan-724-dev `6fc4a6023`（实施基线 `986e765ac`；提交链 7e7c6b3f8 → 14e9cc389 → 93b012b08 → 53836eca1 → 96a9ed707 → 6fc4a6023）
+- worktree: `D:/autostack/.wt/lang-724/auto-lang`（分支 `plan-724-dev`；组内 sibling `D:/autostack/.wt/lang-724/auto-down` 只读 detached @895f8d0f9，供跨仓 path 依赖解析，未修改）
+- task_ids: T-01..T-08 全部完成（current_step 8/8）
+- evidence:
+  - T-02：P707-R1 红（30.0s 确定性超时复现）→绿（0.46s）——真因=测试直驱未 `register_live_op` 被 707 取消竞态守卫中止；修复走生产协议（register→submit→wire→消费配对+未登记反例钉）；取消守卫零改动（`plan707_cancel` 5/5、plan712 2/2 复证）；`KNOWN-DEBT-AND-RISKS.md` P707-R1 已销号。
+  - T-03/T-04：`crates/a2r-std/src/http/client.rs` 共享内核（固定 runtime+复用 Client+有界准入+总期限+增量体预算+owned typed Response+真取消传播；流=有界队列/背压/建立与 idle 期限/UTF-8 carry/raw 16KiB/SSE 子集/单次终结/close+Drop 真取消）+ `crates/a2r-std/src/sse.rs`（707 decoder 原样提取，auto-lang 侧 facade 复用，plan707_decode 9/9 零漂移）；内核单测 36 例 + `KernelInstance` 独立小预算测试实例。
+  - T-05：`auto_lang::a2r_std::http` 接同一内核（reqwest::blocking/spawn_blocking/每请求线程全部退役；tuple 形状与 TLS last_status 保留）；全仓扫描零重复网络执行。
+  - T-06：trans/rust.rs typed 上下文感知 lowering（in_async_ctx 跟踪 ~T/Future/main-await/generator/.go；http.get/post/put/delete 两参族、post 元数分派、builder 链+重绑定 send/send_async、流生产者 sync/async 分型、流方法与自由函数分型、for-in ""哨兵循环 break 不冒充关闭）；golden 2 件冻结（30_plan724）+发射探针 3 例。
+  - T-07/T-08：`crates/a2r-std/tests/http_client.rs` 串行原生矩阵 7 例；`http_e2e_plan724_{sync,async,qualified_facade_kernel}` 编译运行腿（cargo th 收集）3/3 绿；报告四件（client-decision/client-parity/resource-lifecycle/verification）。
+  - 门禁：a2r-std 43/43、tv 162/162、tt 1831/1834（3 红=p053 族主检出同红复现，712 §10② 在案）、裸 t 红集与基线逐名一致（差异仅 e4 修复）、th 与基线同红（back_proxy/relay 帧时序在案）+ plan724 3 新绿；触面文件零新增警告/调试输出。
+- blockers: 无
+- next: review（`/auto-plan:review`；Spec delta SD-01..SD-06 待验证后由 merge 沉淀；复审通过前 worktree 保留）
 
 ## 10. 待澄清事项
 
