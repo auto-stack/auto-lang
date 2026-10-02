@@ -142,6 +142,26 @@ pub(crate) fn fn_is_api_file_return(fn_name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// PLAN-730 T-02：编组期上传收据返回门——声明返回类型（`UploadReceipt`
+/// 或 `Future<UploadReceipt>`）含 "UploadReceipt"。与登记命中
+/// （http_upload::take_upload_receipt）共同识别；普通 int 撞号走 JSON
+/// 兜底（同 729 三重命中形态）。
+pub(crate) fn fn_is_api_upload_return(fn_name: &str) -> bool {
+    API_RETURN_TYPES
+        .lock()
+        .ok()
+        .and_then(|t| t.get(fn_name).map(|r| r.contains("UploadReceipt")))
+        .unwrap_or(false)
+}
+
+/// PLAN-730 T-02：路由的上传能力分类——方法+参数类型双条件（不按
+/// Content-Type/URL 猜）。bridge deferral 与 owner dispatch 共用同一判定。
+pub fn route_declares_upload(fn_name: &str) -> bool {
+    api_param_sigs(fn_name)
+        .map(|sigs| sigs.iter().any(|p| p.ty.contains("UploadRequest")))
+        .unwrap_or(false)
+}
+
 /// PLAN-698 T-02/SD-02: POST 成功后的 SSE 广播臂——生成 Axum 侧
 /// void-POST+broadcast 路径（api_gen broadcast_event_name + events::broadcast）
 /// 的 VM 运行面对照实现。仅当工程声明 ~Stream 端点时发布（has_sse 门控同
@@ -5164,6 +5184,13 @@ pub(crate) struct RequestScope {
     /// PLAN-729 T-04：文件响应描述符组——finalize 时移除闲置描述符
     /// （handler 未返回的构造防注册表无界增长）。
     pub file_response_resources: std::sync::Mutex<Vec<u64>>,
+    /// PLAN-730 T-02：上传资源组（注入能力/会话/收据句柄混用同一 id 空间
+    /// 的三张表按 id 幂等收口——take 已消费的 no-op）。finalize 时取消在途
+    /// 接收、清理 staged、释放未消费 body 能力。
+    pub upload_resources: std::sync::Mutex<Vec<u64>>,
+    /// PLAN-730 T-05：请求起点（bridge 入队时刻）——上传总期限
+    /// （started_at + total_timeout）切换的锚点。
+    pub started_at: std::time::Instant,
 }
 
 impl RequestScope {
@@ -5226,6 +5253,8 @@ pub(crate) fn create_scope(
         resources: std::sync::Mutex::new(Vec::new()),
         transfer_resources: std::sync::Mutex::new(Vec::new()),
         file_response_resources: std::sync::Mutex::new(Vec::new()),
+        upload_resources: std::sync::Mutex::new(Vec::new()),
+        started_at: std::time::Instant::now(),
     });
     if let Ok(mut map) = REQUEST_SCOPES.lock() {
         map.insert(id, scope.clone());
@@ -5271,6 +5300,14 @@ fn finalize_scope(scope: &RequestScope, to: u8) {
         .map(|mut r| std::mem::take(&mut *r))
         .unwrap_or_default();
     crate::vm::ffi::http_server_file::scope_finalize_file_responses(&descriptors);
+    // PLAN-730 T-02：上传资源组收口（幂等；取消在途接收 + 清理 staged +
+    /// 释放未消费 body 能力 + 移除闲置收据）。
+    let uploads: Vec<u64> = scope
+        .upload_resources
+        .lock()
+        .map(|mut r| std::mem::take(&mut *r))
+        .unwrap_or_default();
+    crate::vm::ffi::http_upload::scope_finalize_uploads(&uploads);
     scope.permit.lock().unwrap().take(); // 释放生命期许可（幂等）
     if let Ok(mut map) = REQUEST_SCOPES.lock() {
         map.remove(&scope.id);
@@ -5380,6 +5417,19 @@ pub(crate) fn register_scope_file_response(descriptor_id: u64) {
     if let Some(scope) = lookup_scope(scope_id) {
         if let Ok(mut r) = scope.file_response_resources.lock() {
             r.push(descriptor_id);
+        }
+    }
+}
+
+/// PLAN-730 T-02：上传句柄（注入能力/会话/收据）登记进当前请求的上传
+/// 资源组（无 scope → no-op；非请求上下文构造不能进入 HTTP 编组面）。
+pub(crate) fn register_scope_upload(upload_id: u64) {
+    let Some(scope_id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
+        return;
+    };
+    if let Some(scope) = lookup_scope(scope_id) {
+        if let Ok(mut r) = scope.upload_resources.lock() {
+            r.push(upload_id);
         }
     }
 }

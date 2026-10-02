@@ -1622,6 +1622,18 @@ macro_rules! for_each_bigvm_native {
             // 编组由声明返回类型门+登记命中共同识别，普通 int 不误判）。
             ("auto.http.file_response", 9936, Int),
             ("http.file_response", 9936, Int),
+            // PLAN-730 T-02/T-05: 服务端上传公共面（receive/commit/reject
+            // 返回句柄 Int；park 经 live-op；编组门同 9936 三重命中形态）。
+            ("auto.http.upload_receive", 9937, Int),
+            ("http.upload_receive", 9937, Int),
+            ("auto.http.upload_metadata", 9938, String),
+            ("http.upload_metadata", 9938, String),
+            ("auto.http.upload_commit", 9939, Int),
+            ("http.upload_commit", 9939, Int),
+            ("auto.http.upload_reject", 9940, Int),
+            ("http.upload_reject", 9940, Int),
+            ("auto.http.upload_error", 9941, Int),
+            ("http.upload_error", 9941, Int),
             // Plan 350: WebSocket client
             ("auto.ws.connect", 2280, Void),
             ("ws.connect", 2280, Void),
@@ -2536,6 +2548,17 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("http.transfer_error", 9935),
     ("auto.http.file_response", 9936),
     ("http.file_response", 9936),
+    // PLAN-730 T-02: 服务端上传公共面。
+    ("auto.http.upload_receive", 9937),
+    ("http.upload_receive", 9937),
+    ("auto.http.upload_metadata", 9938),
+    ("http.upload_metadata", 9938),
+    ("auto.http.upload_commit", 9939),
+    ("http.upload_commit", 9939),
+    ("auto.http.upload_reject", 9940),
+    ("http.upload_reject", 9940),
+    ("auto.http.upload_error", 9941),
+    ("http.upload_error", 9941),
     ("auto.ws.connect", 2280),
     ("ws.connect", 2280),
     ("auto.ws.send", 2281),

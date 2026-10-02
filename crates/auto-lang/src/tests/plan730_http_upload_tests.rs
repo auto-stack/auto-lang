@@ -122,3 +122,90 @@ mod plan730_probe {
         c.starts_with(&p)
     }
 }
+
+// ============================================================================
+// T-02：路由能力分类 + 加载期合同诊断 + VM 纯面 native 探针
+// ============================================================================
+
+mod plan730_t02 {
+    /// 路由分类门：方法+参数类型双条件——声明 UploadRequest 参数的 fn 才
+    /// 是上传路由；同名用户函数/普通参数不误判（AC-01 反例）。
+    #[test]
+    fn plan730_route_classification_by_param_type() {
+        use crate::vm::ffi::http_server::{
+            record_api_param_sigs, route_declares_upload, ApiParamSig,
+        };
+        let sig = |name: &str, ty: &str| ApiParamSig {
+            name: name.to_string(),
+            ty: ty.to_string(),
+        };
+        record_api_param_sigs(
+            "upload_doc",
+            vec![sig("req", "UploadRequest"), sig("meta", "str")],
+        );
+        record_api_param_sigs("plain_json", vec![sig("data", "str")]);
+        record_api_param_sigs("req_named_str", vec![sig("req", "str")]);
+        assert!(route_declares_upload("upload_doc"));
+        assert!(!route_declares_upload("plain_json"));
+        // 名为 req 的普通 str 参数不是注入参数（类型识别优先于命名约定）。
+        assert!(!route_declares_upload("req_named_str"));
+        assert!(!route_declares_upload("no_such_fn"));
+    }
+
+    /// 加载期合同诊断：GET 上传方法、body 参数混用、缺 UploadRequest 的
+    /// UploadReceipt 返回——编译错误指名（AC-01/AC-07 的加载面）。
+    #[test]
+    fn plan730_codegen_upload_contract_diagnostics() {
+        let get_upload = r#"
+#[api(method = "GET", path = "/up")]
+fn up(req UploadRequest) UploadReceipt {
+    return http.upload_error(500, "x")
+}
+"#;
+        let err = crate::run_with_capture(get_upload).expect_err("GET upload must be rejected");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("POST/PUT"), "method diagnostic: {msg}");
+
+        let mixed_body = r#"
+#[api(method = "POST", path = "/up")]
+fn up(req UploadRequest, note str) UploadReceipt {
+    return http.upload_error(500, "x")
+}
+"#;
+        let err = crate::run_with_capture(mixed_body).expect_err("body param must be rejected");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("upload endpoints allow only path params"), "{msg}");
+
+        let no_param = r#"
+#[api(method = "POST", path = "/up")]
+fn up() UploadReceipt {
+    return http.upload_error(500, "x")
+}
+"#;
+        let err = crate::run_with_capture(no_param).expect_err("receipt without request rejected");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("no UploadRequest param"), "{msg}");
+    }
+
+    /// 合法形态的编译/运行证明经 T-05/T-08 e2e（start_server fixture——
+    /// run_with_capture 对含 #[api] 路由的程序会自动起服并阻塞，不适用）。
+
+    /// VM 纯面 native：upload_error 构造登记收据（零 I/O）；upload_metadata
+    /// 未知句柄返回可观察冲突形态（不挂死）。
+    #[test]
+    fn plan730_vm_upload_error_and_metadata_probe() {
+        let code = r#"
+let receipt = http.upload_error(401, "missing token")
+let unknown = http.upload_metadata(99999)
+print("done")
+"#;
+        let (_, out) = crate::run_with_capture(code).expect("run");
+        assert!(out.contains("done"), "{out}");
+        let (reqs, sessions, receipts) = crate::vm::ffi::http_upload::vm_upload_counts();
+        assert_eq!(reqs, 0, "no injected capability in plain script");
+        assert!(receipts >= 1, "upload_error receipt registered");
+        assert_eq!(sessions, 0);
+        // 编组门反例：普通 fn（非 #[api]）不在上传返回表。
+        assert!(!crate::vm::ffi::http_server::fn_is_api_upload_return("main"));
+    }
+}

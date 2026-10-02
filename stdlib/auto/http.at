@@ -354,3 +354,57 @@ type FileResponse
 /// (500 at serve time); they never silently fall back to defaults.
 /// Example: return http.file_response(files_root, name, "{}")
 pub fn file_response(root str, relative_path str, options str) FileResponse;
+
+// ═══════════════════════════════════════════════════════════
+// PLAN-730: Server-side Upload Ingress (multipart/raw receive)
+// ═══════════════════════════════════════════════════════════
+
+/// HTTP-injected upload request capability. Only the HTTP host constructs
+/// one (POST/PUT `#[api]` handler parameter); it cannot be built from JSON,
+/// query data, or any request field, and is consumed exactly once. Routing
+/// and header/path/query auth run before any byte of the body is parsed or
+/// written — returning `http.upload_error(401, ...)` before receive never
+/// touches disk.
+type UploadRequest
+
+/// Receive outcome snapshot (id + bounded metadata; may carry a receive
+/// failure — inspect with upload_metadata, settle with upload_reject).
+type UploadSession
+
+/// Owned terminal result (real HTTP status + bounded JSON; copies do not
+/// re-commit). Returning it from an `#[api]` handler makes the HTTP layer
+/// reply with the receipt's status and JSON body.
+type UploadReceipt
+
+/// Receive the full upload into private staging (awaitable inside `~`
+/// handlers; parks VM tasks without blocking the owner). `root` and
+/// `staging_root` are trusted app config (never request data): staging must
+/// exist, live on the same volume as root, and sit outside the public root.
+/// `options` is strict JSON: {"mode":"multipart"|"raw", "file_field":str,
+/// "text_fields":[str], "raw_content_types":[str], "max_file_bytes":n, ...}
+/// — every limit can only tighten the server caps; unknown keys fail before
+/// any I/O. Single file + bounded ordered text fields; multipart without a
+/// file part, a second file, or unknown fields are explicit errors.
+pub fn upload_receive(req UploadRequest, root str, staging_root str, options str) UploadSession;
+
+/// Bounded receive-snapshot JSON (sync): received → {"state":"received",
+/// "mode","field","filename","size":"<decimal-string>","content_type",
+/// "fields":[ordered, duplicates kept]}; failed → {"state":"failed",
+/// "kind","message","suggested_status"}.
+pub fn upload_metadata(session UploadSession) str;
+
+/// Publish the staged file to `relative_target` under the receive root
+/// (awaitable). Atomic create-only: an existing target is a 409 receipt and
+/// the old file's bytes stay untouched; traversal/drive/UNC/device targets
+/// are 403; the client filename never becomes the storage path.
+pub fn upload_commit(session UploadSession, relative_target str) UploadReceipt;
+
+/// Reject the session: staging is cleaned up (awaitable) and the receipt
+/// carries your status (400..599; 0 on a failed session adopts the
+/// suggested status). A staged lease (30s default) expires sessions that
+/// neither commit nor reject.
+pub fn upload_reject(session UploadSession, status int, message str) UploadReceipt;
+
+/// Early-reject receipt with no I/O (sync) — use it for auth/target gate
+/// failures before receive; it can never fabricate a 201 success.
+pub fn upload_error(status int, message str) UploadReceipt;

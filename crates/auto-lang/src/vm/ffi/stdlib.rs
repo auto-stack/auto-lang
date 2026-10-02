@@ -8777,6 +8777,18 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // 侧共享宿主服务）。
     natives.register_shim_by_name("auto.http.file_response", super::http_server_file::shim_http_file_response);
     natives.register_shim_by_name("http.file_response", super::http_server_file::shim_http_file_response);
+    // PLAN-730 T-02: 服务端上传公共面（执行在共享宿主 executor，
+    // a2r_std::http facade → http_upload_service 注入 hook）。
+    natives.register_shim_by_name("auto.http.upload_receive", super::http_upload::shim_http_upload_receive);
+    natives.register_shim_by_name("http.upload_receive", super::http_upload::shim_http_upload_receive);
+    natives.register_shim_by_name("auto.http.upload_metadata", super::http_upload::shim_http_upload_metadata);
+    natives.register_shim_by_name("http.upload_metadata", super::http_upload::shim_http_upload_metadata);
+    natives.register_shim_by_name("auto.http.upload_commit", super::http_upload::shim_http_upload_commit);
+    natives.register_shim_by_name("http.upload_commit", super::http_upload::shim_http_upload_commit);
+    natives.register_shim_by_name("auto.http.upload_reject", super::http_upload::shim_http_upload_reject);
+    natives.register_shim_by_name("http.upload_reject", super::http_upload::shim_http_upload_reject);
+    natives.register_shim_by_name("auto.http.upload_error", super::http_upload::shim_http_upload_error);
+    natives.register_shim_by_name("http.upload_error", super::http_upload::shim_http_upload_error);
 
     // Plan 350: WebSocket client
     crate::vm::ffi::websocket::register_ws_natives(natives);

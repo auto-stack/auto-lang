@@ -255,3 +255,31 @@ fn http_transfer_error(t FileTransfer) str
 /// a FileResponse return yields it to the default HTTP transport.
 #[vm]
 fn http_file_response(root str, path str, options str) FileResponse
+
+// ═══════════════════════════════════════════════════════════
+// PLAN-730: Server-side upload ingress natives (receive/commit)
+// ═══════════════════════════════════════════════════════════
+
+/// Receive a full upload into private staging (native id 9937; parks until
+/// the body is complete). The session carries a receive snapshot — failures
+/// included (inspect via upload_metadata; commit cannot succeed then).
+#[vm]
+fn http_upload_receive(req UploadRequest, root str, staging_root str, options str) UploadSession
+
+/// Bounded receive-snapshot JSON (native id 9938; sync, no I/O).
+#[vm]
+fn http_upload_metadata(session UploadSession) str
+
+/// Atomic create-only publish inside the trusted root (native id 9939;
+/// parks until the publish result). Existing target → 409, never overwrite.
+#[vm]
+fn http_upload_commit(session UploadSession, relative_target str) UploadReceipt
+
+/// Cleanup staging and return a receipt (native id 9940; parks until
+/// cleanup settles). status 0 on a failed session adopts the suggested one.
+#[vm]
+fn http_upload_reject(session UploadSession, status int, message str) UploadReceipt
+
+/// Early-reject receipt with no I/O (native id 9941; sync). status 400..599.
+#[vm]
+fn http_upload_error(status int, message str) UploadReceipt

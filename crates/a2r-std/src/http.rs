@@ -12,6 +12,7 @@
 
 pub mod client;
 pub mod server_file;
+pub mod server_upload;
 pub mod transfer;
 
 // PLAN-729 T-02：服务端文件响应公共面再导出（描述符 + 纯协议决策；
@@ -22,6 +23,17 @@ pub use crate::http::server_file::{
     parse_range_header, validate_relative_path, Disposition, FileInitError, FileInitErrorKind,
     FileProtocolDecision, FileRangePlan, FileRequestConditions, FileResponse, FileResponseOptions,
     IfRangeOutcome, PreconditionOutcome, RepresentationValidators,
+};
+
+// PLAN-730 T-02：服务端上传公共面再导出（owned 类型 + async facade；
+// 接收/落盘/发布执行经 install_upload_executor 注入的宿主 hook——
+// `auto_lang::http_upload_service`，依赖方向不变）。
+pub use crate::http::server_upload::{
+    cancel_upload_session, failed_session, install_upload_executor,
+    parse_upload_receive_options, upload_commit, upload_error, upload_metadata_json,
+    upload_receive, upload_reject, upload_request_from_parts, UploadBodyStream, UploadErrorKind,
+    UploadExecutor, UploadPhase, UploadReceiveMode, UploadReceiveOptions, UploadReceivedMeta,
+    UploadRequest, UploadReceipt, UploadServeLimits, UploadSession, UploadSessionState,
 };
 
 // 内核 typed 类型的一等再导出（原生 Rust 消费者面）。

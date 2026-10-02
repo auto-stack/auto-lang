@@ -49,6 +49,7 @@ pub mod http_stream;  // PLAN-707: 外部 HTTP/SSE 流统一资源表与生产�
 // 注册表/park/legacy 迁移面。
 pub mod http_transfer;
 pub mod http_server_file;  // PLAN-729: 服务端文件响应描述符桥
+pub mod http_upload;  // PLAN-730: 服务端上传句柄/会话/收据桥
 // PLAN-699: Axum/Hyper HTTP/1.1 transport (network thread + owned bridge).
 pub mod http_transport;
 pub mod websocket;   // Plan 350: WebSocket client

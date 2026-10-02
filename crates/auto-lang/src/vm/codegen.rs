@@ -1418,6 +1418,62 @@ impl Codegen {
                         &fn_decl.name.to_string(),
                         fn_decl.ret.unique_name().to_string(),
                     );
+                    // PLAN-730 T-02: 上传端点加载期合同诊断——UploadRequest
+                    // 注入参数仅 POST/PUT；其余参数必须 path/query/meta 可
+                    // 绑定（不允许同时声明 JSON whole-body 注入）；返回类型
+                    // 不得是 UploadRequest/UploadSession（必须是 UploadReceipt）。
+                    let sigs = &fn_decl.params;
+                    let upload_param = sigs
+                        .iter()
+                        .find(|p| p.ty.to_string().contains("UploadRequest"));
+                    if let Some(up) = upload_param {
+                        if !matches!(
+                            api.method.to_uppercase().as_str(),
+                            "POST" | "PUT"
+                        ) {
+                            return Err(crate::error::AutoError::Msg(format!(
+                                "api fn '{}' declares an UploadRequest param '{}' but method is {} (uploads are POST/PUT only)",
+                                fn_decl.name, up.name, api.method
+                            )));
+                        }
+                        for p in sigs {
+                            let ty = p.ty.to_string();
+                            if ty.contains("UploadRequest") || ty.contains("UploadReceipt")
+                                || ty.contains("UploadSession")
+                            {
+                                continue;
+                            }
+                            // path 参数必须在路径模板中；其余仅 meta 约定名。
+                            let in_path = api
+                                .path
+                                .contains(&format!(":{}", p.name));
+                            let is_meta = matches!(
+                                p.name.as_str(),
+                                "meta" | "metadata"
+                            );
+                            if !in_path && !is_meta {
+                                return Err(crate::error::AutoError::Msg(format!(
+                                    "api fn '{}': upload endpoints allow only path params and meta alongside UploadRequest (param '{}' would be JSON-body bound)",
+                                    fn_decl.name, p.name
+                                )));
+                            }
+                        }
+                        let ret_name = fn_decl.ret.unique_name().to_string();
+                        if !ret_name.contains("UploadReceipt") {
+                            return Err(crate::error::AutoError::Msg(format!(
+                                "api fn '{}' declares an UploadRequest param but returns {} (must return UploadReceipt / ~UploadReceipt)",
+                                fn_decl.name, ret_name
+                            )));
+                        }
+                    } else {
+                        let ret_name = fn_decl.ret.unique_name().to_string();
+                        if ret_name.contains("UploadReceipt") {
+                            return Err(crate::error::AutoError::Msg(format!(
+                                "api fn '{}' returns UploadReceipt but has no UploadRequest param",
+                                fn_decl.name
+                            )));
+                        }
+                    }
                 }
 
                 // Plan 321/327: Detect generator functions (return type ~Iter<T>
