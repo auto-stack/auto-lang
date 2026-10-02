@@ -65,3 +65,14 @@ SD-04 async-lifecycle body capability/staging 资源组/分阶段期限/仲裁�
 - **P730-D3** 独立 axum 生成器的上传 glue 实编 wire 验证复用 auto-man fixture 腿
   （同 729 惯例——该生成器输出无独立实编档）。
 - 接收中（未 staged）VM 取消依赖 body 流终结（断连自然发生）——lifecycle 报告 §5 如实记录。
+
+## 6. 复审 R1 回工后门禁（回工提交见分支）
+
+- 定向面：`cargo t plan730` 26/26；e2e 全族 `http_e2e_plan730` 14/14
+  （新增 chunked/quoted-wire/配额+health/断连/total 五用例）。
+- 回归：裸 `cargo t`（预存 musk p053 族 2-3 红同名）、`cargo tv` 162/162、
+  `cargo tt`（同 3 预存）、a2r-std 串行全绿（首轮 1 传输族 flake 复跑绿——
+  plan724 同族）、auto-man plan730 5/5。
+- 复审发现并修复的实现缺陷：准入期限误用 total（§lifecycle 6）；
+  测试数据事故两起（heredoc 转义损坏 0B 用例体、批量替换误伤 wire-caps 的
+  CL 值）均已修正并在位复跑——不改变 R1 结论的发现归属。

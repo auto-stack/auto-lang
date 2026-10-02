@@ -45,3 +45,17 @@ await（网络读暂停）——磁盘慢反压网络。计数探针：`upload_s
   运行中临时空间由上述硬预算+lease 回收承载。
 - 中间件空串返回 `""` 在既有实现中按 JSON 响应短路（Plan 352 文档语义分歧）——
   本计划不改写该契约；示例/测试用 `?str` nil 放行形态。
+
+## 6. R1 修复补记（复审驱动）
+
+- **准入期限缺陷（F-4 暴露）**：active 等待臂此前误用 total（10min）而非队列
+  阶段期限——满额时第二笔上传吊到桥 30s 超时，而非 queue_timeout（600ms）内
+  的 503。修复=准入阶段（queue+active 等待）统一受
+  `min(total, started+queue_timeout)` 约束。证据：
+  `http_e2e_plan730_vm_quota_and_health_under_load` 修复前 31.8s 桥超时挂死 →
+  修复后 2.5s 全绿（queue_full 收据 + 600ms 级等待）。
+- 收据 scope 登记（F-1）：`insert_upload_receipt` 补 `register_scope_upload`
+  ——未编组收据随 scope finalize 出表（729 shim 同款）。
+- R1 新增证据面：0B 文件任意切块、quoted boundary（单测+wire）、chunked
+  上传、断连清理、total 期限 408（滴流）、20×health<500ms（负载中实测
+  0ms 级）。

@@ -912,10 +912,13 @@ async fn run_receive(
     let total_deadline = started + Duration::from_millis(hard.total_timeout_ms);
     let idle_timeout = Duration::from_millis(hard.idle_timeout_ms);
 
-    // 排队（不读 body、不开文件）：queue 许可或 queue 期限/total。
+    // 排队（不读 body、不开文件）：queue 许可或 queue 期限/total。准入阶段
+    // （queue+active 等待）统一受 queue 期限约束——R1 F-4 修复：active 等待
+    // 臂此前误用 total（10min），满额时第二笔吊到桥 30s 超时而非 600ms 503。
+    let admission_deadline =
+        total_deadline.min(started + Duration::from_millis(hard.queue_timeout_ms));
     let queue_permit = {
-        let deadline =
-            total_deadline.min(started + Duration::from_millis(hard.queue_timeout_ms));
+        let deadline = admission_deadline;
         tokio::select! {
             p = SERVICE.queue.clone().acquire_owned() => match p {
                 Ok(p) => p,
@@ -943,7 +946,7 @@ async fn run_receive(
         r.insert(session_id, entry.clone());
     }
 
-    // active 许可（total/cancel 内）。
+    // active 许可（准入期限/cancel 内——queue 期限覆盖整个准入阶段）。
     let active_permit = tokio::select! {
         p = SERVICE.active.clone().acquire_owned() => match p {
             Ok(p) => p,
@@ -952,7 +955,7 @@ async fn run_receive(
                 return s;
             }
         },
-        _ = tokio::time::sleep_until(tokio::time::Instant::from_std(total_deadline)) => {
+        _ = tokio::time::sleep_until(tokio::time::Instant::from_std(admission_deadline)) => {
             return fail_receive(&entry, UploadErrorKind::QueueFull, "upload admission timed out").await;
         }
         _ = wait_cancel(&cancel_rx) => {
@@ -1700,6 +1703,79 @@ mod tests {
             ],
             "重复字段保序"
         );
+    }
+
+    /// R1 F-2：0B 文件 part 合法（空文件；size=0、无内容块产出）——
+    /// 任意切块粒度（1..=body.len()）内容一致。
+    #[test]
+    fn plan730_parser_zero_byte_file_any_chunking() {
+        let crlf = format!("\r\n");
+        let body = format!(
+            "--B{crlf}Content-Disposition: form-data; name=\"file\"; filename=\"empty\"{crlf}{crlf}{crlf}--B--{crlf}",
+            crlf = crlf,
+        )
+        .into_bytes();
+        let options = opts(r#"{"mode":"multipart"}"#);
+        for cs in 1..=body.len() {
+            let (chunks, mp) = drive_parser("B", &body, cs, &options)
+                .unwrap_or_else(|e| panic!("chunk {cs}: {e:?}"));
+            assert!(chunks.is_empty(), "no file bytes for 0B file (cs={cs})");
+            assert_eq!(mp.file_size, 0, "cs={cs}");
+            let meta = mp.snapshot("file");
+            assert_eq!(meta.size, 0);
+            assert_eq!(meta.filename.as_deref(), Some("empty"));
+        }
+    }
+
+    /// R1 F-2：quoted boundary——run_receive 提取剥引号后同非引号解析
+    ///（此处锁解析面；wire 面 quoted-boundary 用例在 tests/plan730 R1 增补）。
+    #[test]
+    fn plan730_parser_quoted_boundary_accepted() {
+        let options = opts(r#"{"mode":"multipart"}"#);
+        let crlf = format!("\r\n");
+        let body = format!(
+            "--QB{crlf}Content-Disposition: form-data; name=\"file\"{crlf}{crlf}DATA{crlf}--QB--{crlf}",
+            crlf = crlf,
+        )
+        .into_bytes();
+        let (chunks, mp) = drive_parser("QB", &body, 4, &options).unwrap();
+        assert_eq!(chunks.concat(), b"DATA");
+        assert_eq!(mp.file_size, 4);
+    }
+
+    /// R1 F-5：total 期限到期（旋钮 300ms + 滴流 stream）→ 408 total_timeout。
+    #[test]
+    fn plan730_total_timeout_fails_with_cleanup() {
+        std::env::set_var("AUTO_HTTP_UPLOAD_TOTAL_MS", "300");
+        install();
+        let (root, staging) = temp_roots("total");
+        let runtime = rt();
+        // 滴流 body：每 40ms 一字节，永不主动 EOF——total 300ms 必然先到。
+        let trickle: UploadBodyStream = Box::pin(futures::stream::unfold((), |()| async move {
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            Some((Ok(vec![b't']), ()))
+        }));
+        let req = upload_request_from_parts(
+            "POST",
+            "/up",
+            vec![("content-type".to_string(), "application/octet-stream".to_string())],
+            trickle,
+        );
+        let session = runtime.block_on(a2r_std::http::upload_receive(
+            req,
+            root.to_str().unwrap(),
+            staging.to_str().unwrap(),
+            r#"{"mode":"raw"}"#,
+        ));
+        let meta = a2r_std::http::upload_metadata_json(&session);
+        assert!(meta.contains("total_timeout"), "{meta}");
+        assert!(meta.contains("\"suggested_status\":408"), "{meta}");
+        assert!(drive_until(
+            &runtime,
+            || std::fs::read_dir(&staging).unwrap().next().is_none(),
+            5
+        ), "staging cleaned after total timeout");
+        assert_eq!(upload_session_count(), 0);
     }
 
     /// preamble/epilogue 字节不参与内容（计入 wire 由调用方负责）。

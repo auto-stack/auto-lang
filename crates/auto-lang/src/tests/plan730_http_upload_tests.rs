@@ -642,6 +642,134 @@ fn plain_int() int {{
         );
     }
 
+    /// R1 F-3：chunked 上传（Transfer-Encoding，无声明 Content-Length）——
+    /// 逐块 wire 计数承载总量（不能只信声明值）；raw 201 字节一致。
+    #[test]
+    fn http_e2e_plan730_vm_chunked_upload() {
+        let (root, staging) = temp_roots("chunked");
+        let port = start_server(&upload_program(&root, &staging), 18981);
+        let payload: Vec<u8> = (0..300_000usize).map(|i| (i % 251) as u8).collect();
+        let mut stream = connect(port);
+        stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
+        // keep-alive（无 Connection: close）：hyper 应答后不关闭连接——避免
+        // 快速应答 + 客户端仍在写的 RST 竞态丢弃未读响应（loopback 14ms 收完）。
+        let head = "POST /api/uploads/raw HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/octet-stream\r\nTransfer-Encoding: chunked\r\n\r\n";
+        stream.write_all(head.as_bytes()).unwrap();
+        for chunk in payload.chunks(64 * 1024) {
+            let frame = format!("{:x}\r\n", chunk.len());
+            stream.write_all(frame.as_bytes()).unwrap();
+            stream.write_all(chunk).unwrap();
+            stream.write_all(b"\r\n").unwrap();
+        }
+        // 终块：keep-alive 下无关闭竞态——严格写入。
+        stream.write_all(b"0\r\n\r\n");
+        let (status, _h, b) = read_response(&mut stream);
+        assert_eq!(status, 201, "{}", String::from_utf8_lossy(&b));
+        assert_eq!(std::fs::read(root.join("raw/data.bin")).unwrap(), payload);
+    }
+
+    /// R1 F-2/F-4：quoted boundary wire + 配额满 503（active=1/queue=1 旋钮：
+    /// 慢上传占住 active，第二笔在队列 600ms 期限后 503）+ 慢传输期间
+    /// 20 次 health 独立连接均 <500ms（owner 不被接收阻塞）。
+    #[test]
+    fn http_e2e_plan730_vm_quota_and_health_under_load() {
+        std::env::set_var("AUTO_HTTP_UPLOAD_ACTIVE", "1");
+        std::env::set_var("AUTO_HTTP_UPLOAD_QUEUE", "1");
+        std::env::set_var("AUTO_HTTP_UPLOAD_QUEUE_TIMEOUT_MS", "600");
+        let (root, staging) = temp_roots("quota");
+        let port = start_server(&upload_program(&root, &staging), 18982);
+        // 占位连接：raw 慢上传（占住唯一 active 许可）。
+        let mut holder = connect(port);
+        holder.set_read_timeout(Some(Duration::from_secs(60))).ok();
+        let head = "POST /api/uploads/raw HTTP/1.1\r\nHost: x\r\nConnection: close\r\nContent-Type: application/octet-stream\r\nContent-Length: 524288\r\n\r\n";
+        holder.write_all(head.as_bytes()).unwrap();
+        holder.write_all(&vec![b'H'; 64 * 1024]).unwrap();
+        // health 探测（20 次独立连接，每次 <500ms——owner 在接收 park 期仍服务）。
+        for i in 0..20 {
+            let t0 = std::time::Instant::now();
+            let (s, _h, b) = raw_request_with_body(port, "GET", "/plain", &[], b"");
+            let dt = t0.elapsed();
+            assert_eq!(s, 200, "health #{i}: {}", String::from_utf8_lossy(&b));
+            assert!(dt.as_millis() < 500, "health #{i} took {dt:?} (owner blocked?)");
+            std::thread::sleep(Duration::from_millis(60));
+        }
+        // 第二笔上传：queue=1 满且 active 被占 → 600ms 队列期限 → 503。
+        let t0 = std::time::Instant::now();
+        let (s2, h2, b2) = raw_request_with_body(
+            port,
+            "POST",
+            "/api/uploads/raw",
+            &[("Content-Type", "application/octet-stream")],
+            b"SECOND",
+        );
+        let dt2 = t0.elapsed();
+        assert_eq!(s2, 503, "{}", String::from_utf8_lossy(&b2));
+        // R1 F-4 修复后走真实配额路径：queue_full 收据 + 准入期限（~600ms）内。
+        assert!(
+            String::from_utf8_lossy(&b2).contains("queue_full"),
+            "queue-full receipt: {dt2:?} {b2:?}"
+        );
+        assert!(dt2.as_secs() < 5, "admission deadline bounds the wait: {dt2:?}");
+        assert!(h2.iter().any(|(k, _)| k == "content-type"), "receipt JSON reply");
+        // holder 完成（写完剩余 body）→ 201（active 释放、字节完整）。
+        let rest = vec![b'H'; 524288 - 64 * 1024];
+        holder.write_all(&rest).unwrap();
+        let (sh, _hh, bh) = read_response(&mut holder);
+        assert_eq!(sh, 201, "holder completes: {}", String::from_utf8_lossy(&bh));
+        assert_eq!(std::fs::read(root.join("raw/data.bin")).unwrap().len(), 524288);
+        std::env::remove_var("AUTO_HTTP_UPLOAD_ACTIVE");
+        std::env::remove_var("AUTO_HTTP_UPLOAD_QUEUE");
+        std::env::remove_var("AUTO_HTTP_UPLOAD_QUEUE_TIMEOUT_MS");
+    }
+
+    /// R1 F-2：quoted boundary wire（独立测试——默认配额环境）。
+    #[test]
+    fn http_e2e_plan730_vm_quoted_boundary_wire() {
+        let (root, staging) = temp_roots("quoted");
+        let port = start_server(&upload_program(&root, &staging), 18983);
+        let payload: Vec<u8> = (0..4096usize).map(|i| (i % 251) as u8).collect();
+        let body = multipart_body("QB730", "hi", &payload);
+        let (sq, _hq, bq) = raw_request_with_body(
+            port,
+            "POST",
+            "/api/uploads/mp",
+            &[(
+                "Content-Type",
+                "multipart/form-data; boundary=\"QB730\"",
+            )],
+            &body,
+        );
+        assert_eq!(sq, 201, "quoted boundary: {}", String::from_utf8_lossy(&bq));
+        assert_eq!(std::fs::read(root.join("mp/blob.bin")).unwrap(), payload);
+    }
+
+    /// R1 F-5：断连收口——接收中途客户端关连接 → staging 清理（无残留）。
+    #[test]
+    fn http_e2e_plan730_vm_disconnect_cleans_staging() {
+        let (root, staging) = temp_roots("disc");
+        let port = start_server(&upload_program(&root, &staging), 18383 + 600);
+        let mut s = connect(port);
+        let head = "POST /api/uploads/raw HTTP/1.1\r\nHost: x\r\nConnection: close\r\nContent-Type: application/octet-stream\r\nContent-Length: 524288\r\n\r\n";
+        s.write_all(head.as_bytes()).unwrap();
+        s.write_all(&vec![b'D'; 128 * 1024]).unwrap();
+        let _ = s.flush();
+        // 确证断连：drop（close）客户端侧。
+        drop(s);
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while (std::fs::read_dir(&staging).unwrap().next().is_some()
+            || crate::http_upload_service::upload_session_count() > 0)
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert!(
+            std::fs::read_dir(&staging).unwrap().next().is_none(),
+            "disconnect mid-upload cleans staging"
+        );
+        assert_eq!(crate::http_upload_service::upload_session_count(), 0);
+        assert!(!root.join("raw/data.bin").exists(), "nothing published");
+    }
+
     /// T-08 互通闭环：727 客户端 transfer_upload（multipart/raw/字段）→
     /// 730 服务端 201 → 729 路由下载比对 → 727 transfer_download 落盘比对
     /// （同 hash 链，不是两组各自 mock）；拒绝/超限路径客户端收到非 2xx。

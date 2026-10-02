@@ -86,6 +86,9 @@ pub(crate) fn insert_upload_receipt(receipt: UploadReceipt) -> u64 {
     if let Ok(mut m) = VM_UPLOAD_RECEIPTS.lock() {
         m.insert(id, receipt);
     }
+    // R1 F-1：收据同注入/会话登记 scope 组——构造后未编组的收据（handler
+    // 丢弃收据返回他值）随 finalize 出表，防注册表无界增长（729 shim 同款）。
+    super::http_server::register_scope_upload(id);
     id
 }
 
