@@ -4,7 +4,7 @@
 // 背景：动态 app 的恢复泵（`__parked_resume_tick`）与帧泵（`__frame_pump`）
 // 消息在独立轨全链工作（712-r2 实测 51 条到达），桌面内嵌轨 r2 测得 0 条
 // ——断链点（订阅装配门 / 消息路由 / 泵臂消费 / view_dirty 传播）待
-// 双轨对照定谳。本模块提供统一定时轴 + 门控打印，四类 trace 行：
+// 双轨对照定案。本模块提供统一定时轴 + 门控打印，四类 trace 行：
 // - `sub_parked` / `sub_frame`：订阅装配点（泵订阅 per-app 推入）
 // - `msg`：dispatch_app 入口到达（泵族事件过滤，`__` 前缀）
 // - `arm_parked` / `arm_frame`：update_inner 泵臂消费（到达 + 置脏传播）

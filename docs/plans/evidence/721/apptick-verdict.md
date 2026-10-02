@@ -1,4 +1,4 @@
-# PLAN-721 定谳文档：桌面轨更新路径家族（P712-D1 承接）
+# PLAN-721 定案文档：桌面轨更新路径家族（P712-D1 承接）
 
 日期：2026-10-01 ｜ 载具：lang-721 worktree（plan-721-dev @1cd8262d3，承 master 7491719b8）
 日志：desktop-721{b..i}.log（D:/autostack/.wt/lang-721/，未入库）
@@ -40,7 +40,7 @@ t=35344 mpv_poll EDGE→true                                ← mpv 恢复
    视频元素每 ~40ms 全新构建，element cache 不旁路 video 子树）；
    该构建把 `.store.is_playing == false` 解析为 false（即 is_playing=true），
    而两次 handler 写全部是 false——**同一 binding 相邻构建读值不稳定**
-   （读侧世界分裂 / memo 陈旧回放），为**待下一会话定谳的开放机理**
+   （读侧世界分裂 / memo 陈旧回放），为**待下一会话定案的开放机理**
    （video_build trace 已就位，复现即现形）。
 3. VM_EXEC 显示 handler 上下文分裂：App_Tick@4000003 vs Viewport/@4000002
    （bridge.state_obj_id 世界=快照所见，is_playing 恒 true）；
@@ -62,7 +62,7 @@ mpv_contract 13/13 绿，含 712-r3 双锁零扰动）。
   712 T-07 已登记死因（MCP press → wgpu 告警 → 解释器优雅退出）中断于
   第 2 轮。修法后机理层（读侧分裂）未除前，桌面复验预期仍可复现——
   **本轮修复只挡「世代回退」子类**。
-- **T-11 布局塌缩非确定性源**：未动（col_right 438↔658 定谳入口仍 =
+- **T-11 布局塌缩非确定性源**：未动（col_right 438↔658 定案入口仍 =
   进程内双构建比对 + builder HashMap 审计）。
 - 注入静默丢：desktop-721i 中 handler inject 排队后零派发（同仓 g/h
   正常）——候选=窗口 registry 反查在窗重用/多实例下的 miss；无日志

@@ -252,7 +252,7 @@ impl VideoFrameChannel {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             // mpv 的 "rgb0" 是 8 位/分量、字节序 R,G,B,X；字节域是**源签名
-            // 传递函数**（SDR=BT.1886，PLAN-712 T-03 DP-3 探针定谳）。用 sRGB
+            // 传递函数**（SDR=BT.1886，PLAN-712 T-03 DP-3 探针定案）。用 sRGB
             // 让采样按 sRGB 曲线线性化——shader 侧（present.rs）再补足 2.4
             // 解码，端到端与 Chromium 的 sRGB 编码对齐。
             format: wgpu::TextureFormat::Rgba8UnormSrgb,

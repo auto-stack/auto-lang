@@ -99,11 +99,11 @@ re::test/replace、json::from_value/parse_str_list、diff 三件套[code-editor
 →r3 提交链（96e848ea5+3574b47c8）。
 
 **r4 增补判定第④行（2026-09-30，PLAN-714 r4 R4-T1..T3——a2r 形态
-code_editor 注册断链定谳+修复+运行时装载 E2E 入判定集）**：
+code_editor 注册断链定案+修复+运行时装载 E2E 入判定集）**：
 
 | ④ | **fresh a2r exe 装载标记对 E2E**（r3 判定集缺运行时装载 E2E 的盲区补截——编译级三判据之外的运行时面） | fresh regen+release 产物 `AUTO_OPEN_PATH` 小文件直拉（AUTO_BENCH=1）→ `bench_open_start/done` 标记对达成+零注册刷屏 |
 
-定谳（R4-T1）：供料档 §7 的「no editor registered for key
+定案（R4-T1）：供料档 §7 的「no editor registered for key
 __code_editor_tab-N」装载门永假=**a2r 生成器原始缺口非运行时回归**——
 ui_gen/rust.rs code_editor key 属性提取只认 `Expr::Str`（Plan 413
 Phase 3 原始形态），`(key: t.key)` 动态表达式静默回落 widget 名

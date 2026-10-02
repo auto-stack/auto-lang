@@ -79,7 +79,7 @@ UI 输入 → run_session/update_inner → handler 首段/恢复段（同步 CPU
                         → Element → layout/draw/present
 ```
 
-- **engine.rs:2748 缺陷实锤**（708 baseline §2.1 定谳，今日核实仍在）：`drive_handler_segment`（:2536）步预算 `10_000_000`（:2544）耗尽后打印 WARN（:2708-2723）即落入 `Completed(Ok(()))`——task 停在函数中部（ip 指向函数内、bp≠saved_bp）无结果值，调用方无从分辨，静默假成功。
+- **engine.rs:2748 缺陷实锤**（708 baseline §2.1 定案，今日核实仍在）：`drive_handler_segment`（:2536）步预算 `10_000_000`（:2544）耗尽后打印 WARN（:2708-2723）即落入 `Completed(Ok(()))`——task 停在函数中部（ip 指向函数内、bp≠saved_bp）无结果值，调用方无从分辨，静默假成功。
 - SegmentOutcome（:312）只有 `Completed | Parked`，无可续跑变体；ParkedWait（:330）= HttpRequest/Future/HttpStream 三凭据（707），无 CPU 变体。
 - `child_init_should_fire`（vm_bridge.rs:1483）**判定即写身份**——Init 派发决策在检查时消费身份，与真实完成无关。
 - 渲染路径同步 Init 派发：`render_outlet_page_memo`（aura_view_builder.rs:5188）内 `call_handler_for(Init)`（:5216）；子件通用路径 `fire_child_init_if_any`（:6576，派发 :6606，调用位 :6731/:6811）。
@@ -281,7 +281,7 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 
 - [x] T-11 CPU 可续跑执行片（含 engine.rs:2748 假成功缺陷修复）（**[✅ 已完成]** worktree 80de86f04：DriveBudget 双档+SegmentOutcome::Runnable+ParkedWait::CpuRunnable+跨片累计护栏（cpu_steps_total/跨片 runaway 基线/50k 节拍跨片累计）+resume_parked_wake 提取+slice 双入口；AC-13=耗尽 slice 档 Runnable/legacy 档真错误；bridge 有界泵 resume_cpu_slices（tick 泵 CpuRunnable=false 隔离/8ms 轮次/FIFO 快照不重拾）+写队列 128（满拒 WriteQueueFull/同键合并/片间消费）+call_handler_for_cpu_slice；plan711 7 测+触面 115+tv 162 全绿，plan707_wait_generator 并行抖动单跑过=708 复审档案同例）
 - [x] T-03 Init demand/代际生命周期（**[✅ 已完成]** worktree 04b9552c9：register_init_demand 登记簿（判定≠完成/同代际不二次入队 AC-04/身份变化=新代际+旧代际一次取消）+dispatch_pending_inits 派发驱动（FIFO 依赖序=页先 child 后/五态观察/InFlight 探测收敛）+cancel_parked_by_fn 凭据映射清理（HttpRequest→drop_async_result/HttpStream→stream_cancel）+child_init_should_fire 退役移除；渲染路径两派发点（outlet :5211/fire_child_init_if_any）改只登记；tick 泵临时接线（dynamic poll 前置派发+订阅门扩展，T-04 移交）；plan711_init_demand 5 测+触面 233+tv 162 全绿）
-- [x] T-04 真实入口帧通知与有界泵（R-1 序障实证闭环）（**[✅ 已完成]** worktree 3809b58ea+97dcd7d75：listen_raw 条件订阅（AppId 去重身份/零 demand 无订阅）+ __frame_pump 消费臂（8ms 轮次有界泵+完成直置 view_dirty+epoch 失效）+ tick 退回纯 I/O（has_parked_io_tasks 门）+ is_dirty 燃料唤醒链（订阅重估时序 iced_winit :1337 定谳）；R-1 闭环实证=sub ON 同周期/帧消息驱动/4ms 校准片/598 万步跨 15.2s parked 完成/10M 累计护栏生产命中/重入忽略；D-2 校准 4096→1M 天花板（4ms 墙钟为活预算）；余 2 红=统一根态×无 key 兄弟实例有界修订点→§10 Q-05，随 T-05 完成语义收口）
+- [x] T-04 真实入口帧通知与有界泵（R-1 序障实证闭环）（**[✅ 已完成]** worktree 3809b58ea+97dcd7d75：listen_raw 条件订阅（AppId 去重身份/零 demand 无订阅）+ __frame_pump 消费臂（8ms 轮次有界泵+完成直置 view_dirty+epoch 失效）+ tick 退回纯 I/O（has_parked_io_tasks 门）+ is_dirty 燃料唤醒链（订阅重估时序 iced_winit :1337 定案）；R-1 闭环实证=sub ON 同周期/帧消息驱动/4ms 校准片/598 万步跨 15.2s parked 完成/10M 累计护栏生产命中/重入忽略；D-2 校准 4096→1M 天花板（4ms 墙钟为活预算）；余 2 红=统一根态×无 key 兄弟实例有界修订点→§10 Q-05，随 T-05 完成语义收口）
 - [x] T-05 骨架/完成/失败显示（**[✅ 已完成]** worktree fa946bed4：pending demand 轻量骨架占位（Queued/InFlight→Loading… (Widget)、Failed→可诊断错误占位不无限 Loading、pending 非永久 memo 产物、嵌套需求依赖阶段发现）+ 完成传播链收口（dirty+epoch，T-04 落地）+ plan437 占位可见断言 + plan499/536 迁移 + 实机验证（widgets-gallery /line-chart：early MCP 快照含 Loading…→late 无残留、页面全渲染、屏幕与 MCP 同相））
 - [x] T-12 computed/冷构建残面（**[✅ 已完成]** worktree 93f9274cc：①DataTable memo_block 根因=页面 memo() 块使 outlet 扫描整页降级→扫描器穿入（scan_node_registry pre-arm + scan_node 穿参 MemoBlock/Conditional 双臂，scan_block_node 专用扫描+registry 模板展开，多失效只变慢绝不陈旧），实机 site=6 FILL→HIT→version-fast 零降级；②FileTree 恒 FILL 根因=memo_slots_fp 展开失败 `?` 使条目永不插入→标记回退+dyn_deps 版本防护，实机打破恒 FILL（转换 FILL 一次后持续 HIT）；③plan632 f1/f4 骨架契约迁移；裸 cargo t 4896/4905 零新红）
 - [x] T-06余 分段时间戳/在屏采集/资源计数（**[✅ 已完成]** worktree 35bdb5428：资源计数面=frame_pump enter 行扩展（queued_init/cpu_cont/parked_total/write_q）；分段时间戳轴已随 T-03..05 在档（SCHED-DIAG 帧到达/泵进出/片耗时+MEMO-DIAG 构建时间戳+VM-CPU/INIT/PARKED 生命周期行+CpuPumpReport/InitDispatchReport 计数）；在屏采集=autoui-verifier 截图（R-1/T-05 实机已用））
@@ -334,11 +334,11 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 - `stage: work` | `plan_id: PLAN-711` | `plan_revision: 1` | `outcome: in_progress` | `code_commit: worktree 3809b58ea+97dcd7d75+d27d0c63b`。
 - worktree 同步：rebase 到测试门禁改版后 master（零冲突，4 提交干净重放）。
 - T-04 交付面（对 §5 M-03/D-1）：
-  - **帧泵接线**：`frame_pump_sub`（listen_raw 收 RedrawRequested，subscription::filter_map id 携带 AppId 防 453-T4 去重丢失；门=has_pending_init_work ∪ has_cpu_continuations，零 demand 无订阅防自我续帧）；`__frame_pump` 消费臂（dispatch_pending_inits + resume_cpu_slices 共享 8ms 轮次预算；完成直置 view_dirty 同帧重建——早退臂不达尾回填，与热重载臂同款；完成 bump 宿主 epoch 失效 outlet memo——plan437/502 pre-Init 骨架回放实录定谳）；tick 泵退回纯 I/O（`has_parked_io_tasks` 门，CpuRunnable-only 注册表不吊 16ms tick）。
-  - **订阅重估时序定谳**：iced_winit 订阅重估在 update() 内部、view() 之前（lib.rs :1337/:1300）——渲染期 demand 必须 update 侧唤醒：dispatch_app 以 is_dirty 为燃料链 ready 唤醒（泵推进才置脏，I/O 在途不空转，收敛无自旋）。
+  - **帧泵接线**：`frame_pump_sub`（listen_raw 收 RedrawRequested，subscription::filter_map id 携带 AppId 防 453-T4 去重丢失；门=has_pending_init_work ∪ has_cpu_continuations，零 demand 无订阅防自我续帧）；`__frame_pump` 消费臂（dispatch_pending_inits + resume_cpu_slices 共享 8ms 轮次预算；完成直置 view_dirty 同帧重建——早退臂不达尾回填，与热重载臂同款；完成 bump 宿主 epoch 失效 outlet memo——plan437/502 pre-Init 骨架回放实录定案）；tick 泵退回纯 I/O（`has_parked_io_tasks` 门，CpuRunnable-only 注册表不吊 16ms tick）。
+  - **订阅重估时序定案**：iced_winit 订阅重估在 update() 内部、view() 之前（lib.rs :1337/:1300）——渲染期 demand 必须 update 侧唤醒：dispatch_app 以 is_dirty 为燃料链 ready 唤醒（泵推进才置脏，I/O 在途不空转，收敛无自旋）。
   - **R-1 闭环实证**（013-todo + 自建夹具 + AUTO_CPU_PROBE 门控）：sub ON 同周期/112+ 帧消息→泵配对/4ms 校准片推进/598 万步跨 15.2s parked 完成 cpu_cont 归零/10M 累计护栏生产命中/重入忽略。措辞纪律保持 D-1："present 已返回的帧"序障（异步回环），非硬在屏证明。
   - **D-2 实测校准**：CPU_SLICE_MAX_STEPS 4096→1M 天花板（解释器 ~1-3ns/步，4096 步 ≪4ms 帽成实际预算；校准后 4ms 墙钟为活预算）——D-2 授权面，簿记在案。
-  - **统一根态约束补全**：InitDemand 携带登记时 props 快照 + 派发前 ensure_child_state 重播种（donut 除零定谳：子件 props=根态同名共享字段，后渲染播种覆盖前者）；`prepare_child_render_state_snap` 变体。
+  - **统一根态约束补全**：InitDemand 携带登记时 props 快照 + 派发前 ensure_child_state 重播种（donut 除零定案：子件 props=根态同名共享字段，后渲染播种覆盖前者）；`prepare_child_render_state_snap` 变体。
   - **新契约测试迁移 22 例**（10 文件）：构建登记→drive_scheduler_to_quiescence→重建断言；plan633×3/plan498×6/plan499×7/plan492×7/plan502×3/plan536×1/plan437×2/plan643×1/plan484×1/plan632×1。
 - 门禁（新口径）：裸 cargo t 4894/4905（63.8s，no-fail-fast 全量）+ tv 162/162 + plan711 13/13。9 红已知预存照录；**2 新红（plan484 bare_names/streaming）= Q-05 阻塞**，未修（见 §10）。
 - Q-05 深挖：per-instance 身份（name#instN）已试并回退（d27d0c63b）——两 Init 都跑时末写者霸占共享几何字段（bar_group 回归）；根因层级上调=统一根态共享字段×多实例×延迟派发的状态语义修订，候选 (i) 派发序+末写者恢复 (ii) 每实例 state 对象 (iii) 无 key 重复实例保留同步派发（最小面）。**T-05 设计期裁定**。
@@ -348,7 +348,7 @@ Worktree：`D:/autostack/.wt/lang-711/auto-lang` / `plan-711-dev`（新建，自
 
 - `stage: work` | `plan_id: PLAN-711` | `plan_revision: 1` | `outcome: in_progress` | `code_commit: worktree f405ff1ef`。
 - 方法论：全量 dump 差分（master vs 本分支，66KB/59KB，439 diff 行）→ state 追踪（pre-reseed/post-Init/post-drive/post-build2 四点读数）→ master 对照 worktree 取数。
-- 定谳链：bar Init 派发正确（post-Init yTick4="8000"，type=grouped 经快照重播种生效）→ post-drive yTick4="400"（line Init 后派发覆写共享 yTick 为 line 的 0..400 档）→ master 对照：yTick state 与本分支**全等**（同为 line 覆写后的 0..400）而 dump 含 8000——master 的单构建在 bar#1 渲染瞬间（line Init 未跑）把 grouped 刻度烘焙进 View 结构，终态与视图不一致=**旧同步交错伪影**。
+- 定案链：bar Init 派发正确（post-Init yTick4="8000"，type=grouped 经快照重播种生效）→ post-drive yTick4="400"（line Init 后派发覆写共享 yTick 为 line 的 0..400 档）→ master 对照：yTick state 与本分支**全等**（同为 line 覆写后的 0..400）而 dump 含 8000——master 的单构建在 bar#1 渲染瞬间（line Init 未跑）把 grouped 刻度烘焙进 View 结构，终态与视图不一致=**旧同步交错伪影**。
 - 处置：断言按语义意图迁移（tick 文本渲染即可，非瞬态值）；streaming 测试补构建-驱动-重建；dispatch 改回登记时 id 直用（child_state_map 异构陈旧对象毒化实录：bar 卡渲染出 area 的 fields 谱）；快照补录 4b 守卫跳过的声明默认值（本实例声明语义恢复，构建期写入纪律不动）。
 - 门禁：裸 cargo t 4896/4905（64.4s）零新红（仅 9 已知预存）+ tv 162/162 + plan711 13/13。三候选设计修订全不需要，Q-05 关闭。
 - `next: T-05 骨架/完成/失败显示（MCP/展示缓存版本链收口）→ T-12 → T-06余 → T-08 → T-09 → T-07'`。

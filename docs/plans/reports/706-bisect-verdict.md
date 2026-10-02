@@ -1,4 +1,4 @@
-# PLAN-706 r2 T-09 定谳报告：vm UI 脏标/确认弹层交互面回归
+# PLAN-706 r2 T-09 定案报告：vm UI 脏标/确认弹层交互面回归
 
 - 日期：2026-09-30；执行窗：PLAN-706 rev2 work（worktree `D:/autostack/.wt/lang-706/auto-lang`，branch `plan-706-dev` @ master 4dae03122 基）
 - 断言面：消费者仓 jade-edit `tests/vm_matrix.mjs` merged 臂（AUTOUI_MCP_PORT 驱动真 UI，进程内直调）
@@ -11,7 +11,7 @@
 | pre（旧载体） | `c8f86ef92` | **GREEN** | 家族驱动全弧过（本窗实测）；消费者 `p25-merge-smoke.log` merged 16/16 ALL GREEN 在库 |
 | post（新载体） | master tip `4dae03122`（code 同 `66c9cac19`+707 族） | **RED（exit=101 进程死亡）** | 家族驱动首跑即红：死亡点=「切回 Tasks（脏标投影还原）」；消费者 debug `p26-matrix-r1/r2.log` ×2 同点 |
 
-## 2. bisect 定谳（`git bisect start 66c9cac19 c8f86ef92` + `bisect-run`）
+## 2. bisect 定案（`git bisect start 66c9cac19 c8f86ef92` + `bisect-run`）
 
 - 步进测试=每提交 `cargo build -p auto` + 家族驱动弧（docs-only 非 merge 提交按改动面跳过 exit 125）。
 - 判定序（绿→红边界）：
@@ -19,13 +19,13 @@
 | 提交 | 内容 | 弧结果 |
 |---|---|---|
 | `c8f86ef92` | pre 锚 | GREEN |
-| `7b8a3ccbc` | 706 r1 主提交（vue.rs gallery fixes） | GREEN（**消费者 grep 定谳「7b8a3ccbc 不含 checkbox/menubar 域」复证**） |
+| `7b8a3ccbc` | 706 r1 主提交（vue.rs gallery fixes） | GREEN（**消费者 grep 定案「7b8a3ccbc 不含 checkbox/menubar 域」复证**） |
 | `bb303e914` | plan047 T-04 引擎读臂拦截 | GREEN |
 | `3a72d0f15` | plan047 T-05 memo 门三级判定 | GREEN |
 | **`432068075`** | **plan047 T-06 computed 信号网**（`aura_view_builder.rs` +209 / `vm_bridge.rs` +88，纯增） | **RED（exit=101）** |
 | `43f02f195`..master | plan047 T-07 及后 | RED |
 
-- **定谳：first bad commit = `432068075`（plan047 T-06 computed 信号网）。** 705 HTTP 簇与 706 vue.rs 面均绿（消费者预期排除成立）。
+- **定案：first bad commit = `432068075`（plan047 T-06 computed 信号网）。** 705 HTTP 簇与 706 vue.rs 面均绿（消费者预期排除成立）。
 
 ## 3. 触发机制（panic 实证 + 机制初判）
 
@@ -105,15 +105,15 @@ UAF 只被值守卫断掉，**死键版本冻结伪命中**仍在：`path_versio
 | 家族 ui:: 域 1617 测 | 修复 exe | 1616/1617（1 红 `projector_counter_layout_and_hits` 为 **base 预存**——old-carrier c8f86ef92 同红复证） |
 | gallery 实机抽查四页 | 修复 exe | **GREEN**——Sidebar/Menubar/Area Chart/Command 四路由真达（__current_route 断言）+ 渲染非空（74821/55750/36659/35335 字节异构内容；`gallery-spot.log`） |
 
-### 7.1 probe_mtime release 挂起面：独立缺陷定谳（AC-11 后半臂）
+### 7.1 probe_mtime release 挂起面：独立缺陷定案（AC-11 后半臂）
 
 - 修复 exe debug：probe_mtime **全案通过**（merged+split 五案，`p706-probe-mtime-dbg.log`）。
 - 修复 exe release：`done` 恒 false（`p706-probe-mtime-rel.log`）。
 - **old-carrier c8f86ef92 release：同形红**（`p706-probe-mtime-oldrel.log`）——pre-delta
   载体同挂 ⇒ **非 706 r2 回归，系独立预存缺陷**（merged 直调臂 back-bridge call 挂起，
-  release 特异）。按 AC-11 预设臂「或定谳为独立缺陷另立记账」处置 → KNOWN-DEBT。
+  release 特异）。按 AC-11 预设臂「或定案为独立缺陷另立记账」处置 → KNOWN-DEBT。
 
-### 7.2 消费者 e2e（vue 轨 Playwright）：预存 flaky 定谳
+### 7.2 消费者 e2e（vue 轨 Playwright）：预存 flaky 定案
 
 - 载体 delta 内 e2e `快速打开` menubar 弹层点击偶发不稳（元素反复 detach → click 重试
   到超时）。样本统计：old-carrier release **2/4 pass**（run1 绿/连跑 1 绿 2 红）、

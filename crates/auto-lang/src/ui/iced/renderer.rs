@@ -6736,7 +6736,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 on_media_error,
                 style,
             } => {
-                // PLAN-721 T-19：build-time trace——T-19 定谳最后一轴。同一
+                // PLAN-721 T-19：build-time trace——T-19 定案最后一轴。同一
                 // binding 的两次相邻构建烤出相反 paused（TogglePlay 写 false
                 // 后的 OnTime 重建烤回 true）即「读侧世界分裂/陈旧 memo 回放」
                 // 实锤（本作用域无 session state，对照读由 per-app snapshot
@@ -17964,7 +17964,7 @@ fn compare_pngs(
         // 恢复内联在 update 内天然满足单 VM 串行裁断）。
         if msg.event == "__parked_resume_tick" {
             // PLAN-712 r2 T-16 诊断：恢复泵到达/结果计数（stderr 对账）。
-            // PLAN-721 T-1：到达 + 泵后置脏传播 trace（桌面轨断链定谳轴）。
+            // PLAN-721 T-1：到达 + 泵后置脏传播 trace（桌面轨断链定案轴）。
             let parked_before = state.component.has_parked_io_tasks();
             crate::ui::sched_diag::trace(
                 Some(app_id),
@@ -18014,7 +18014,7 @@ fn compare_pngs(
             if dirty {
                 *state.app.view_dirty.borrow_mut() = true;
             }
-            // PLAN-721 T-1：泵后置脏传播 trace（桌面轨断链定谳轴——到达面
+            // PLAN-721 T-1：泵后置脏传播 trace（桌面轨断链定案轴——到达面
             // 由 poll_frame_pump 内既有 frame_pump enter 行承担）。
             crate::ui::sched_diag::trace(
                 Some(app_id),
@@ -20280,7 +20280,7 @@ fn compare_pngs(
             // console 打标：update 期间 print/console_log 归属本 App。
             crate::libs::builtin::set_console_current_app(app_id.0);
             // PLAN-721 T-1：泵族消息到达 trace（`__` 前缀 = 框架内务事件；
-            // 桌面轨断链定谳轴——r2「桌面内嵌轨 0 条 T16-DIAG」的复测面）。
+            // 桌面轨断链定案轴——r2「桌面内嵌轨 0 条 T16-DIAG」的复测面）。
             if m.event.starts_with("__") {
                 crate::ui::sched_diag::trace(
                     Some(app_id),
@@ -22593,7 +22593,7 @@ fn compare_pngs(
                 // continuation 对 tick 恒不就绪，CPU-only 注册表不吊 tick
                 //（帧通知泵接管其驱动，见下）。
                 if app.component.has_parked_io_tasks() {
-                    // PLAN-721 T-1：恢复泵订阅装配 trace（桌面轨断链定谳轴）。
+                    // PLAN-721 T-1：恢复泵订阅装配 trace（桌面轨断链定案轴）。
                     crate::ui::sched_diag::trace(
                         Some(app_id),
                         "sub_parked",
@@ -23035,7 +23035,7 @@ fn dynamic_view_impl(
                         state_text.push_str(&format!("  {} = {}\n", k, v));
                     }
                     // PLAN-721 T-4：子命名空间段——child_state_map 逐实例自有
-                    // 字段面（T-19 作用域分裂定谳：写入是否落错对象）。
+                    // 字段面（T-19 作用域分裂定案：写入是否落错对象）。
                     for (cname, cfields) in state.component.bridge().read_all_child_states() {
                         state_text.push_str(&format!("== child [{}] ==\n", cname));
                         let mut cpairs: Vec<(&String, &auto_val::Value)> =

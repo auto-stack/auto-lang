@@ -28,7 +28,7 @@ video-out-params（输出面） = 同上（pixelformat yuv420p → rgb0 由 rend
 运行时设 `target-prim` 经 `mpv_set_property_string` 报
 `unsupported format for accessing property`（target-* 是 pre-init 选项面）。
 
-**定谳：SW render 路径完全不吃色彩协商——输出字节恒为源签名传递函数
+**定案：SW render 路径完全不吃色彩协商——输出字节恒为源签名传递函数
 （SDR = BT.1886 ≈ γ2.4）编码的显示域值。**
 
 ## 色偏机制闭环（结合 DP-2）

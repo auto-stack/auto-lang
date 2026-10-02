@@ -350,8 +350,8 @@ widget App {{
             "D-8 to_int 解析整形（失败 0）: {code}"
         );
     }
-    // ---- PLAN-714 r4: code_editor 注册键贯通（供料档 §7 定谳+修复） ----
-    // 定谳（R4-T1）：a2r 生成器 key 属性只认 Str 字面量（Plan 413 原始
+    // ---- PLAN-714 r4: code_editor 注册键贯通（供料档 §7 定案+修复） ----
+    // 定案（R4-T1）：a2r 生成器 key 属性只认 Str 字面量（Plan 413 原始
     // 形态），`(key: t.key)` 动态表达式静默回落 widget 名 "editor" →
     // 注册键 `__code_editor_editor` ≠ store 装载门查找键
     // `__code_editor_tab-N` → 装载链永递延。非 2205→2366 回归（生成器/

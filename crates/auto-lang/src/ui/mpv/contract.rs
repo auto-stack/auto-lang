@@ -256,7 +256,7 @@ impl MediaContract {
         //    作者值与内核实态就永久脱 sync（下次同值下行零写，表现为「点了
         //    暂停没反应、再点又立即反转」的打架形态）。
         let applied_paused_before = self.applied.paused;
-        // PLAN-721 T-4：下行写 trace——T-19 桌面轨「暂停即回弹」定谳轴。
+        // PLAN-721 T-4：下行写 trace——T-19 桌面轨「暂停即回弹」定案轴。
         // apply 驱动点=VideoPrimitive::prepare（烤定 props 逐帧 apply），
         // 陈旧 primitive 的迟到 prepare 会在这里现形（down 与最新 desired
         // 相反的写）。
@@ -378,7 +378,7 @@ impl MediaContract {
             let playing = !paused;
             match self.last_play_state {
                 None => {
-                    // PLAN-721 T-4：基线采集 trace（T-19 定谳轴）。
+                    // PLAN-721 T-4：基线采集 trace（T-19 定案轴）。
                     if crate::ui::sched_diag::enabled() {
                         eprintln!(
                             "[SCHED-DIAG] mpv_poll t={}ms play_state baseline={} (no event)",

@@ -616,7 +616,7 @@ fn idle_engine_first_poll_seeds_baseline_without_play_state_event() {
 /// **T-19 锁②**：暂停长保持（渲染面每帧形态：同值下行反复 apply+poll）下
 /// 引擎/契约层不得自发 un-pause，pause 旗标持续为真、时间冻结；快速 toggle
 /// ×10 每步 applied 锁存与内核实态一致（错一次即「图标与实态脱 sync」的
-/// 引擎层证据）。PLAN-712 r3 探针定谳：本层全程干净——「停不下来」的驱动
+/// 引擎层证据）。PLAN-712 r3 探针定案：本层全程干净——「停不下来」的驱动
 /// 在上游消息/视图层，本锁钉住引擎层不引入新打架。
 #[test]
 fn pause_hold_and_rapid_toggle_stay_in_sync() {
@@ -692,7 +692,7 @@ fn pause_hold_and_rapid_toggle_stay_in_sync() {
 }
 
 /// **PLAN-721 T-19 锁③**：下行世代单调门——陈旧 primitive 的迟到 apply
-/// 不得逆转新世代已落盘的下行。桌面实测定谳形态：新世代 pause 落盘
+/// 不得逆转新世代已落盘的下行。桌面实测定案形态：新世代 pause 落盘
 /// ~100ms 后，旧世代（视图重建前的烤定值）prepare 携 paused=false 一写
 /// 回弹（「暂停一下又继续」的隐形恢复写）。epoch=0（未打戳）保持旧行为。
 #[test]

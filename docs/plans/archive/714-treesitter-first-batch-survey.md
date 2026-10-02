@@ -78,7 +78,7 @@ registry）。回归窗口=ui 构建 2205→2366（嫌疑：710 ui_gen 774 行�
 [33a5d56c3]/fix-ui-tier WidgetRegistry 增量注册改造[c80887ab7]/r3
 内建分发器三处+借位 clone 窄门[29563c588]）。影响=下游 open_100mb/
 warm_start 两预算行 L2 判定+装载/编辑回路冒烟面（auto-edit evidence
-p021-blocked-survey §⑥）。r4 三任务：二分定谳→修复+探针→census 判定
+p021-blocked-survey §⑥）。r4 三任务：二分定案→修复+探针→census 判定
 ④行+下游解阻确认。
 
 ## 1. 目标
@@ -280,11 +280,11 @@ diff——堵陈旧基面掩蔽：710 corpus「cargo check 过」实为 tmp 拷�
 |---|---|---|---|---|---|
 | SD-01 | add | docs/specs/auto-lang/ui/design/treesitter-highlight-survey.md | before：语法高亮面=syntect/two-face 现状无专册（feature 面散于 Cargo 注记）；tree-sitter 化无契约 / after：勘定契约册——语言集表（20±×来源/许可/维护度）/管线选型决策记录（crate 形态+分发形+烟测证据）/共存策略（双轨 vs 切换定案+two-face 退役联动量化）/增量管线要点（快照消费/失效域/big 旁路边界）/实施件边界（715+ 契约指向） | 供④ 前半落账；实施件的内核侧真源 | AC-01..05 |
 
-### R4-T1 回归二分定谳（勘定纪律——证据先行）
+### R4-T1 回归二分定案（勘定纪律——证据先行）
 
 a2r 轨注册探针：fresh regen exe 内 dump CODE_EDITORS registry 键集
 （编辑器实例化后）vs store 查找键（storage_key("tab-N")）对照——
-**注册键与查找键脱节形态定谳**（候选：注册键=「editor」/widget 名派生
+**注册键与查找键脱节形态定案**（候选：注册键=「editor」/widget 名派生
 vs 查找键=__code_editor_tab-N；或注册时点先于 key 绑定）。二分面=
 窗口 2205→2366 内三嫌疑逐面 revert 探针：①710 ui_gen 774 行面
 [33a5d56c3]②fix-ui-tier WidgetRegistry 增量注册改造[c80887ab7]③r3
@@ -294,7 +294,7 @@ vs 查找键=__code_editor_tab-N；或注册时点先于 key 绑定）。二分�
 
 ### R4-T2 修复+单测（贯通 .at key 属性→注册键）
 
-定谳面修复：`code_editor (key: t.key)` 的动态 key 属性在 a2r 视图
+定案面修复：`code_editor (key: t.key)` 的动态 key 属性在 a2r 视图
 构建路径贯通到 iced widget 注册（注册键≡storage_key(t.key)≡store
 查找键）。单测同 r2 纪律：构造用例（per-tab key 注册断言+动态 key
 属性消费+VM/a2r 双轨同源对拍——plan714_back_try_arm_* 先例形态入
@@ -361,7 +361,7 @@ census 判定集增**第④行：fresh a2r exe 装载标记对 E2E**（AUTO_OPEN
   账本断言。
 
 
-- **AC-R4-1 定谳+修复贯通**：二分定谳结论在档+修复后 fresh regen
+- **AC-R4-1 定案+修复贯通**：二分定案结论在档+修复后 fresh regen
   exe 内注册键≡store 查找键（探针对照绿）；VM/a2r 双轨对拍不回退。
   验证：探针收据+单测绿。
 - **AC-R4-2 下游装载链复绿**：auto-edit `bench open --l2` 标记对达成
@@ -392,7 +392,7 @@ census 判定集增**第④行：fresh a2r exe 装载标记对 E2E**（AUTO_OPEN
 | 13 | R3-T4 corpus 收口 | R3-T1..3 | 组内 tmp corpus | fresh regen→exit 0→fresh check（AC-R2-1 补全） | AC-R2-1 | [x] fresh regen **exit 0**+工作区 check 过（1m07s）+skip=0+实体形在位——**AC-R2-1 补全**（r3f 轮；迭代谱 r2b 26 错→r3d 16→r3e 3→r3f 0 在档 a2r-r3*-run.log） |
 | 14 | R3-T5 下游解阻确认（原 R2-T3 承接） | R3-T4 | auto-edit perf.py a2r | 跨仓收口（021 复验位） | AC-R2-4 | [x] 下游真仓 perf.py a2r 绿（AUTO_BIN+AUTO_LANG_CRATE 钉 worktree 工具链；deps 预置真实拷贝修复半拉 materialize 态）+三占位 0/0/0+fresh check 59.82s 过——**AC-R2-4 交付，PLAN-021 解阻** |
 | 15 | R3-T6 落账 | R3-T4/5 | census+specs.json+计划 | census §7 更新+P714-3 投影+完态 | AC-R3-4 | [x] census §7 r3 收口判定@211ef5237+P714-3 投影（master 外科插入）回读 True——本行即完态 |
-| 16 | R4-T1 回归二分定谳 | — | a2r 轨注册探针+2205→2366 三嫌疑 revert 面 | 注册键/查找键脱节形态定谳 | AC-R4-1 | [x] 定谳在档 census §7 r4 段@e93a717da（**非回归**——生成器 Plan 413 原始缺口：key 属性只认 Str 字面量静默回落 "editor"→注册键 __code_editor_editor≠查找键 __code_editor_tab-N；四面[生成器/renderer/widget/core]与 019 钉版 5bb3f53be 逐字节一致+09-22 工具链 a747531cd 同形+007 时代上游自证 15ec408「code_editor 不注册——L2 open 段 blocked」同期在案；三嫌疑零触及——零 revert 项；「旧构建正常」对照②改写=静态 key 探针应用+编译级判据承重，019 surface 38.2ms 行判测量通道异常） |
+| 16 | R4-T1 回归二分定案 | — | a2r 轨注册探针+2205→2366 三嫌疑 revert 面 | 注册键/查找键脱节形态定案 | AC-R4-1 | [x] 定案在档 census §7 r4 段@e93a717da（**非回归**——生成器 Plan 413 原始缺口：key 属性只认 Str 字面量静默回落 "editor"→注册键 __code_editor_editor≠查找键 __code_editor_tab-N；四面[生成器/renderer/widget/core]与 019 钉版 5bb3f53be 逐字节一致+09-22 工具链 a747531cd 同形+007 时代上游自证 15ec408「code_editor 不注册——L2 open 段 blocked」同期在案；三嫌疑零触及——零 revert 项；「旧构建正常」对照②改写=静态 key 探针应用+编译级判据承重，019 surface 38.2ms 行判测量通道异常） |
 | 17 | R4-T2 修复+单测 | R4-T1 | ui 视图构建→iced 注册路径 | .at key 属性贯通注册键 | AC-R4-1 | [x] e93a717da（ui_gen/rust.rs 动态 key 经 ast_expr_to_rust 发射=t["key"].as_str()...to_string() 形；静态 Str 字面量/缺省回落零扰动）+单测四枚 plan714_r4_*（发射三态+注册表层门反转 E2E）全绿+tu 档 855 绿+1 预存金样红（4f123a50e 在案）+root_resolution 两红=nextest 并行 env flake 单进程全绿 |
 | 18 | R4-T3 census ④行+下游解阻确认 | R4-T2 | p710 census §7+auto-edit 复验位 | 运行时装载 E2E 入判定集+跨仓收口 | AC-R4-2/3 | [x] census ④行在档 d143932f2+下游全绿（工具链 v0.4.2-2389-ge93a717da/edit-021 真仓：fresh regen exit 0+skip 0+动态键发射在位+fresh check 53.2s；release 40.7MB+14.4MB；④行探针双标记达成+注册刷屏 1 行瞬态[设计内]；bench open --l2 N=4 谱 median 863.2ms+513MB/1GB 双拒绝；bench warm --l2 restore≈18.4ms+active 装载 1124ms 完成+Δmem 265MB 懒装载语义；smoke_gen 7/7——r3 轮 4/7 三 FAIL 全转绿）；P714-4 投影见本档 §9 r4 收据 |
 
@@ -545,7 +545,7 @@ census 判定集增**第④行：fresh a2r exe 装载标记对 E2E**（AUTO_OPEN
   同 corpus 复用 20:15 凭证[tools/perf/logs/a2r-20260930-201506.log+实仓
   rust-workspace check 59.82s]，复用理由=二进制与 corpus 态自凭证后零变化）。
   `findings`: F-1（低，不阻塞）plan714 探针落位 plan710_supply_probes.rs
-  （新文件解析异常未定谳的绕行——同族归家，七绿在案）；F-2（低，建议）
+  （新文件解析异常未定案的绕行——同族归家，七绿在案）；F-2（低，建议）
   canonical a2r 书（710 SD-01 册）未扩展新映射族——知识已由 census §7+
   账本 P714-3+单测钉住，建议后续 a2r 域件补书；环境注记=scan/launch 两红
   =worktree 缺 debug 应用二进制（主检出同测绿）+plan707_cancel 负载 flake
@@ -584,7 +584,7 @@ census 判定集增**第④行：fresh a2r exe 装载标记对 E2E**（AUTO_OPEN
 - 2026-09-30 r4 收纳（用户指令「(a) 714 r4 收纳（本次同款通道）」——
   auto-edit PLAN-021 Q-5 解锁件路由本件；712 r2/本件 r2/r3 同款通道）：
   archived→executing、plan_revision 3→4、total_steps 16→19。scope=
-  供料档 §7 a2r 形态 code_editor 注册断链（二分定谳→修复贯通→census
+  供料档 §7 a2r 形态 code_editor 注册断链（二分定案→修复贯通→census
   判定④行+下游解阻确认）——非 tree-sitter 面（r1/r2/r3 交付收据保持
   delivered）。next=work（R4-T1 起；r4 执行期簿记沿先例直接落 master
   docs/plans）。
@@ -592,10 +592,10 @@ census 判定集增**第④行：fresh a2r exe 装载标记对 E2E**（AUTO_OPEN
 - 2026-09-30 r4 work handoff：`stage: work`，PLAN-714，plan_revision 4。
   `outcome: pass`。`code_commit`: plan-714-dev e93a717da（R4-T1/T2——
   ui_gen/rust.rs 动态 key 贯通+单测四枚）+d143932f2（census §7 ④行+
-  定谳/修复/E2E 全收据；基线 master@d7a2ddc14，worktree lang-714 重建
+  定案/修复/E2E 全收据；基线 master@d7a2ddc14，worktree lang-714 重建
   [r3 merge 清理后]+auto-down 兄弟树 detached@3373a5c 重建）。
   `task_ids`: R4-T1/T2/T3 全账（3/3，current_step 19/19）。
-  `evidence`: **定谳（R4-T1）=非回归**——a2r 生成器 code_editor key
+  `evidence`: **定案（R4-T1）=非回归**——a2r 生成器 code_editor key
   属性提取只认 Expr::Str（Plan 413 Phase 3 原始形态，ui_gen/rust.rs
   :4507），`(key: t.key)` 动态表达式静默回落 widget 名 "editor"→注册
   键 `__code_editor_editor`≠store 装载门查找键 `__code_editor_tab-N`
@@ -647,7 +647,7 @@ census 判定集增**第④行：fresh a2r exe 装载标记对 E2E**（AUTO_OPEN
   range-diff 基线含入实证]）。`dependency_revisions`: auto-edit
   edit-021@3e01e2a（下游复验位）/auto-down detached@3373a5c（组兄弟树
   重建——path 依赖解析面）。
-  `acceptance_results`: AC-R4-1 pass（定谳在档 census §7 r4 段
+  `acceptance_results`: AC-R4-1 pass（定案在档 census §7 r4 段
   @16fae8922；修复后 fresh regen 生成物
   `View::code_editor(t["key"].as_str()...)` 在位+④行探针双标记达成+
   注册表层门反转 E2E 单测绿=注册键≡storage_key(t.key)≡store 查找键；
@@ -666,7 +666,7 @@ census 判定集增**第④行：fresh a2r exe 装载标记对 E2E**（AUTO_OPEN
   （census §7 r4 段+生成器注释双落位）；F-3（低，注记）019 surface
   open 38.2ms 行与 007-era blocked 记录冲突、产物已随 edit-019 清理
   不可复验——判测量通道异常记录，不入判定集（对照②承重面改写已在
-  census 定谳段成文）。`evidence`: 复审独立声明（实施会话内复审——
+  census 定案段成文）。`evidence`: 复审独立声明（实施会话内复审——
   判定从工件重建）：plan714 全族 11/11 复跑绿[含 r2/r3 先例七测]+四枚
   r4 新测+单进程 tu 4/4 root_resolution 复绿[flake 反证]+fmt region
   断言+裸 cargo t no-fail-fast 全档 4901/4915=14 红与 712 r2 收据
