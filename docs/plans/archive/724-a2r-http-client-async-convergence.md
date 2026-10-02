@@ -285,7 +285,8 @@ TCP 用 OS 临时端口、有限 accept/read/关闭截止时间与清理守卫�
 - ledger_refreshed: specs.json 外科插入（store 写者 8080 不可达，循 711/713..720 先例）——designs P724-1..7（七投影，docsha:d059f123acac4347/23a29f0f534c934b/72640ccca1d690d5/f27c3442a1798746/de34e79043b00234/d3b46a525eccf9da/9ea9a622fa76d69c @8a7fa3cee）+ reviews P724-8 + reports P724-9；designs 126→133/reviews 189→190/reports 112→113；json 回读+四段字节零扰动+条目唯一性守卫过；spec-lint 0 错误（6 预存警告）；spec-index 再生。提交 479ff6be1。
 - archived: docs/plans/archive/724-a2r-http-client-async-convergence.md，status: archived
 - cleaned: wt-guard 双证 clean（auto-lang 与 auto-down sibling，无 reparse point）；worktree 双移除（auto-down 注册在首次 remove 时已消，目录残留为普通检出副本，rm -rf 清除）；分支 plan-724-dev 已删（was 8a7fa3cee=master 祖先）；组目录 .wt/lang-724 已删；worktree list 零 lang-724 条目
-- tail: 产物/批量回归检查见下（待执行回填）
+- tail 产物观测：本仓主检出无 target/release/auto.exe（无常驻发布二进制在机）；web bundle 不适用（本计划未触 website）；依赖仓 release 二进制不适用（auto-down 零改动）——PLAN-724 交付以源+测试形态存在，消费方（auto.exe 发行构建）在下次发布构建时自然携带。
+- tail 批量回归到期判定：**DUE（规则一）**——收据 .last-batch-regression.json last_covered=715@2026-09-30T16:20Z，窗口内 720（%5==0）已落地（720 合并时漏跑，本次 merge 到期判定补触发）；规则二不触发（age≈44h<48h）。按 fix-test-tiering 裁定移交 /auto-plan:regress 主检出单实例执行（不在 worktree）。
 
 ## 10. 待澄清事项
 
