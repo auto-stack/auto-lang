@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-725
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                 # drafting → executing → execution_done → reviewed → archived
 feature_name: 键入帧增量更新管线优化件（auto-edit M4 帧两行 FAIL 清偿本体——脏域/增量更新，学 Zed 三课「增量一切」）
 author: [agent]
 created_at: 2026-10-02T00:00:00+08:00
@@ -402,6 +402,27 @@ SD 表——L2 设计文档惯例。）
   〔基线先行+T-00 冻结+不可达如实上调〕；下游重判=通路交付非判定
   冒领；跨仓零触碰纪律+frozen 五条）。`next: work`（执行待用户
   启动；建议优先排期——M4 tag 唯一关键路径）。
+
+- 2026-10-02 review：`stage: review`，PLAN-725，plan_revision 1。
+  `outcome: pass`（复审与实施同会话——独立性限制已声明；结论自工件重建：
+  双态谱 JSONL 直接重算〔builds 分布 {1:56}/数值逐项吻合〕、新鲜 cargo t、
+  证据包 SHA256 短哈在录、master 侧红集对照）。`reviewed_commit`:
+  e86b91062（worktree plan-725-dev）；`base_commit`: 96c876cea；依赖
+  auto-down@895f8d0（组内兄弟，零改动）。AC 结果：AC-01 pass（勘定+
+  基线谱 cb99c2ab1ca9/be729058e80a）；AC-02 pass+P725-R1（builds=1 工件
+  重建 56/56；自动化断言未立→债务）；AC-03 pass+P725-R2（谓词契约单测
+  绿；clone 计数自动化受 MCP 驱动实测约束——s1 探针在库）；AC-04 pass
+  （5KB P95 10.59≤16.7；1MB/5KB=1.52；渲染不变=提取层快照字节一致+
+  功能证据——P725-R3 前提勘正：ui_snapshots 为 .at→AuraWidget 提取层
+  非渲染层）；AC-05 pass（010_print_concat 金样+parity 扩展绿；tt 零
+  新增红；回执建议文 d297096d067a）；AC-06 pass（SD-01..04 落档，SD-04
+  Q-3 fallback 形）；AC-07 pass（P725-1 回读 TRUE@designs；tv 162/162；
+  tu 未触面；auto-edit porcelain clean+本件 diff 零跨仓路径；diff 限
+  affects——两处落点偏差已注记）。规范增量核验：SD-01 4c361a79923c/
+  SD-02 1d1d657bffbc/SD-03 ab2b2a098809/editor-kernel §8 02680218c990
+  ——描述现势行为与持久决策 ✓；touched_goals=[] 有据（auto-edit 侧目标
+  不入本仓 goals 表）。findings：P725-R1(P2)/P725-R2(P3)/P725-R3(P3)
+  ——前两者已入 KNOWN-DEBT（复审提交）。`next: merge`。
 
 ## 10. 待澄清事项
 
