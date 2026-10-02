@@ -76,14 +76,18 @@ pub fn render(
     // Plan 428 P1: the chevron set comes from real fold regions (brace
     // matching) instead of the Phase A per-line heuristic.
     let (gutter_total, digits, regions) = if config.line_numbers {
-        // PLAN-731 T-00：fold 域发现臂钻取（O(total lines) 文本扫描——滚动
-        // 帧嫌疑面，[P725-ARMS] 累积表）。
+        // PLAN-731 T-01：fold 域发现退 revision 缓存——此前每帧全文档逐行
+        // 扫描（1MB 档 debug 6.3ms/帧 = 90% S5——T-00 勘定 #1 成本）；缓存
+        // 命中=小 Vec 克隆，未编辑帧零重扫。臂钻取保留在重扫闭包内（命中
+        // 帧为 0——命中谱即 T-05 对照面）。
         let p731_fold_t = crate::ui::frame_bench::segments_gate().then(std::time::Instant::now);
         let (line_count, regions) = editor.with_buffer(|b| {
-            // Region discovery is pure text work (no shaping); the borrowed
-            // texts die inside the closure, the owned regions escape.
-            let texts: Vec<&str> = b.lines.iter().map(|l| l.text()).collect();
-            (b.lines.len(), fold::regions_from_texts(&texts))
+            let line_count = b.lines.len();
+            let regions = core.cached_fold_regions(|| {
+                let texts: Vec<&str> = b.lines.iter().map(|l| l.text()).collect();
+                fold::regions_from_texts(&texts)
+            });
+            (line_count, regions)
         });
         if let Some(t0) = p731_fold_t {
             crate::ui::frame_segments::arm_acc("ce_fold_scan", t0.elapsed());

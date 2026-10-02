@@ -370,6 +370,16 @@ pub struct CodeEditorCore {
     /// state — deliberately NOT in the undo stack; openers that stop being
     /// valid after an edit are pruned by the next render pass.
     folds: Mutex<BTreeSet<usize>>,
+    /// PLAN-731 T-01: fold region cache, keyed by `revision` — the
+    /// whole-document brace scan (`regions_from_texts`) ran on EVERY draw
+    /// frame (O(total lines); 1MB 档 debug 6.3ms/帧 = 90% S5, release
+    /// 0.78ms = 67%——T-00 勘定 #1 成本). Regions are pure text structure:
+    /// revision bumps on every text change (edit/undo/redo/load), fold
+    /// toggles don't touch them. 未编辑行缓存保持（725 脏域协同——编辑行
+    /// 窄化失效域的载体）; recompute closures read buffer lines (render)
+    /// or doc lines (fresh_fold_map) under their own locks — lock order
+    /// cache → editor/doc, no reverse path exists.
+    fold_regions_cache: Mutex<Option<(u64, Vec<fold::FoldRegion>)>>,
     /// Plan 428 P1: the fold map computed by the last render (regions +
     /// merged hidden ranges). Hit testing and the gutter read this.
     fold_map: Mutex<Arc<fold::FoldMap>>,
@@ -579,6 +589,7 @@ impl CodeEditorCore {
             last_used: AtomicU64::new(0),
             gutter_width_cache: Mutex::new((0, 0.0)),
             folds: Mutex::new(BTreeSet::new()),
+            fold_regions_cache: Mutex::new(None),
             fold_map: Mutex::new(Arc::new(fold::FoldMap::default())),
             caret_follow: Mutex::new(None),
         };
@@ -1346,10 +1357,36 @@ impl CodeEditorCore {
         if self.is_paged() {
             return fold::FoldMap::build(Vec::new(), &BTreeSet::new(), line_height);
         }
-        let doc = self.doc.lock().unwrap();
-        let owned: Vec<String> = doc.lines().map(|l| l.into_owned()).collect();
-        let texts: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
-        fold::FoldMap::build(fold::regions_from_texts(&texts), &folded, line_height)
+        // PLAN-731 T-01: region scan retires to the revision-keyed cache —
+        // only recompute when text actually changed (closure reads the
+        // rope; owned line materialization only on the stale path).
+        let regions = self.cached_fold_regions(|| {
+            let doc = self.doc.lock().unwrap();
+            let owned: Vec<String> = doc.lines().map(|l| l.into_owned()).collect();
+            let texts: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
+            fold::regions_from_texts(&texts)
+        });
+        fold::FoldMap::build(regions, &folded, line_height)
+    }
+
+    /// PLAN-731 T-01: revision-keyed fold region cache. Cache hit = clone of
+    /// the small region vec (foldable opener lines only); miss (revision
+    /// bumped by any text change) = `recompute` under the caller's own
+    /// buffer/doc lock. 失效域=编辑行窄化载体：未编辑帧零重扫。
+    pub fn cached_fold_regions(
+        &self,
+        recompute: impl FnOnce() -> Vec<fold::FoldRegion>,
+    ) -> Vec<fold::FoldRegion> {
+        let rev = self.revision.load(Ordering::Relaxed);
+        let mut cache = self.fold_regions_cache.lock().unwrap();
+        if let Some((cached_rev, regions)) = cache.as_ref() {
+            if *cached_rev == rev {
+                return regions.clone();
+            }
+        }
+        let regions = recompute();
+        *cache = Some((rev, regions.clone()));
+        regions
     }
 
     /// Whether `line_0` currently opens a folded region.
@@ -2835,6 +2872,84 @@ fn add(a int, b int) int {
         // 再展开：回到 5 行（慢路径 → 快道值一致）。
         assert!(!core.fold_toggle(1));
         assert!((core.content_height() - 5.0 * lh).abs() < f32::EPSILON);
+    }
+
+    /// PLAN-731 T-01：fold 域 revision 缓存——命中零重扫（未编辑帧缓存
+    /// 保持；AC-02 失效域窄化单测）。
+    #[test]
+    fn p731_fold_regions_cache_hit_no_rescan() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-p731-fold-cache-hit");
+        code_editor_dispose(&key);
+        let core = code_editor(&key, &CodeEditorConfig::default());
+        code_editor_set_text(&key, "fn a() {\n    body\n}\nfn b() {\n    body\n}\n");
+
+        let scans = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let s2 = scans.clone();
+        let r1 = core.cached_fold_regions(move || {
+            s2.fetch_add(1, Ordering::Relaxed);
+            vec![fold::FoldRegion { opener: 0, end: 2 }]
+        });
+        let s3 = scans.clone();
+        let r2 = core.cached_fold_regions(move || {
+            s3.fetch_add(1, Ordering::Relaxed);
+            vec![fold::FoldRegion { opener: 9, end: 9 }]
+        });
+        assert_eq!(scans.load(Ordering::Relaxed), 1, "revision 未变不得重扫");
+        assert_eq!(r1, r2, "命中返回缓存同一区域集");
+    }
+
+    /// PLAN-731 T-01：编辑（revision bump）失效缓存——重扫一次后新值入缓。
+    #[test]
+    fn p731_fold_regions_cache_edit_invalidates() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-p731-fold-cache-inval");
+        code_editor_dispose(&key);
+        let core = code_editor(&key, &CodeEditorConfig::default());
+        code_editor_set_text(&key, "fn a() {\n    body\n}\n");
+
+        let scans = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let probe = |n: &std::sync::Arc<std::sync::atomic::AtomicUsize>| {
+            let n = n.clone();
+            move || {
+                n.fetch_add(1, Ordering::Relaxed);
+                Vec::new()
+            }
+        };
+        let _ = core.cached_fold_regions(probe(&scans));
+        // set_text → revision bump → 缓存失效。
+        code_editor_set_text(&key, "fn b() {\n}\n");
+        let _ = core.cached_fold_regions(probe(&scans));
+        let _ = core.cached_fold_regions(probe(&scans));
+        assert_eq!(
+            scans.load(Ordering::Relaxed),
+            2,
+            "两次 revision 间各重扫一次；末次命中"
+        );
+    }
+
+    /// PLAN-731 T-01：render 路径缓存等价——同一未编辑态两次 render，fold
+    /// 区域/fold map 逐值一致（缓存不改变渲染语义）。
+    #[test]
+    fn p731_render_fold_cache_equivalence() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-p731-fold-cache-equiv");
+        code_editor_dispose(&key);
+        let config = CodeEditorConfig::default();
+        let core = code_editor(&key, &config);
+        core.set_text("fn a() {\n    body\n}\nplain\n", &mut FontSystem::new());
+
+        let l1 = with_font_system(|fs| render::render(core, fs, 400.0, 200.0, None));
+        let hidden1 = l1.fold_hidden;
+        let l2 = with_font_system(|fs| render::render(core, fs, 400.0, 200.0, None));
+        assert_eq!(l1.fold_hidden, l2.fold_hidden);
+        assert_eq!(hidden1, l2.fold_hidden);
+        // 折叠态一致性经 fresh_fold_map（同缓存源）。
+        assert!(core.fold_toggle(0));
+        assert_eq!(core.content_height(), 3.0 * config.line_height());
     }
 
     /// External-dirty handshake: natives mark, the widget consumes once.
