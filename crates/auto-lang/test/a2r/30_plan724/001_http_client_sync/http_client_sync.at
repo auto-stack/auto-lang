@@ -1,0 +1,45 @@
+// PLAN-724 T-01/T-06: sync-context HTTP client lowering matrix.
+// Exercises the required sync surfaces against a loopback stub:
+// get/post(2-arg)/put/delete, builder chain, stream for-in, last_status.
+// URL comes from env (PLAN724_URL) so the same source runs VM/a2r/native.
+
+fn main() {
+    let base = env.get("PLAN724_URL")
+
+    // 1. GET + Response accessors
+    let res = http.get(base)
+    let code = res.status_code()
+    let ct = res.header_get("X-Plan724")
+    let body = str.from_bytes(res.body_bytes())
+    print("get status:", code)
+    print("get header:", ct)
+    print("get body:", body)
+
+    // 2. Builder chain with custom header
+    let req = http.request("POST", base)
+    let req2 = req.header("X-Plan724", "builder")
+    let req3 = req2.body("builder-payload")
+    let bres = req3.send()
+    let bcode = bres.status_code()
+    let bbody = str.from_bytes(bres.body_bytes())
+    print("builder status:", bcode)
+    print("builder body:", bbody)
+
+    // 3. Two-arg normal post (must NOT hit the auth tuple)
+    let pres = http.post(base, "post-payload")
+    let pcode = pres.status_code()
+    let pbody = str.from_bytes(pres.body_bytes())
+    print("post status:", pcode)
+    print("post body:", pbody)
+
+    // 4. Stream for-in (EOF sentinel ""; explicit close)
+    let s = http.get_stream(base)
+    for c in s.iter() {
+        print("chunk:", c)
+    }
+    s.close()
+
+    // 5. last_status reflects the latest sync call
+    let code2 = http.last_status()
+    print("last_status:", code2)
+}

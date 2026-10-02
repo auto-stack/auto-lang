@@ -810,90 +810,75 @@ pub fn sleep_ms(ms: u64) {
 }
 
 /// AutoLang's http module — async HTTP helpers
+///
+/// PLAN-724 T-05：网络执行单源化——本模块全部请求改走独立 a2r-std crate
+/// 的共享 async 内核（`::a2r_std::http::client`，reqwest async + 固定
+/// runtime + 有界准入 + owned typed 结果）。reqwest::blocking、
+/// spawn_blocking 与每请求线程全部退役。历史签名（认证 tuple 形状、
+/// last_status 线程局部）逐字节保留；线程局部状态只作同步兼容信息，
+/// 异步消费使用调用方 own 的返回值（不依赖 TLS 关联并发请求）。
 #[allow(non_snake_case)]
 pub mod http {
+    use ::a2r_std::http::client::{self, ClientError, HttpRequest};
+
+    fn auth_request_json(url: &str, body: &str, api_key: &str, bearer: bool) -> HttpRequest {
+        let mut req = HttpRequest::new("POST", url);
+        req.headers.push(("content-type".into(), "application/json".into()));
+        if bearer {
+            req.headers.push(("Authorization".into(), format!("Bearer {}", api_key)));
+        } else {
+            req.headers.push(("x-api-key".into(), api_key.to_string()));
+            req.headers.push(("anthropic-version".into(), "2023-06-01".into()));
+        }
+        req.body = Some(body.as_bytes().to_vec());
+        req
+    }
+
+    fn error_message(e: &ClientError) -> String {
+        match e {
+            ClientError::Transport(m) => m.clone(),
+            other => format!("{other}"),
+        }
+    }
+
     /// Async HTTP POST with Anthropic API headers.
     /// Returns (status, body, error, kind) for constructing a local HttpResponse.
-    /// Uses spawn_blocking to run reqwest::blocking on the tokio runtime.
+    /// 内核 async 执行：排队/建立/读体全程让出执行线程；丢弃 future 即取消。
     pub async fn post(url: &str, body: &str, api_key: &str) -> (i32, String, String, String) {
-        let url = url.to_string();
-        let body = body.to_string();
-        let api_key = api_key.to_string();
-        tokio::task::spawn_blocking(move || {
-            let client = reqwest::blocking::Client::new();
-            let result = client
-                .post(&url)
-                .header("content-type", "application/json")
-                .header("x-api-key", &api_key)
-                .header("anthropic-version", "2023-06-01")
-                .body(body)
-                .send();
-            match result {
-                Ok(resp) => {
-                    let status = resp.status().as_u16() as i32;
-                    let resp_body = resp.text().unwrap_or_default();
-                    if status >= 200 && status < 300 {
-                        (status, resp_body, String::new(), "ok".to_string())
-                    } else {
-                        (status, resp_body, format!("HTTP {}", status), "error".to_string())
-                    }
+        let req = auth_request_json(url, body, api_key, false);
+        match client::execute(req).await {
+            Ok(resp) => {
+                let status = resp.status as i32;
+                let resp_body = String::from_utf8_lossy(&resp.body).into_owned();
+                if (200..300).contains(&status) {
+                    (status, resp_body, String::new(), "ok".to_string())
+                } else {
+                    (status, resp_body, format!("HTTP {}", status), "error".to_string())
                 }
-                Err(e) => (0, String::new(), e.to_string(), "error".to_string())
             }
-        }).await.unwrap_or((0, String::new(), "spawn failed".to_string(), "error".to_string()))
+            Err(e) => (0, String::new(), error_message(&e), "error".to_string()),
+        }
     }
 
     /// Synchronous HTTP POST — blocking version for use in non-async contexts.
     /// Used by Auto's http.post_sync() when transpiled via a2r.
+    /// 同步桥接边界：仅在允许阻塞的边界调用；async 上下文请用 [`post`]。
     pub fn post_sync(url: impl AsRef<str>, body: impl AsRef<str>, api_key: impl AsRef<str>) -> (i32, String) {
-        let url = url.as_ref().to_string();
-        let body = body.as_ref().to_string();
-        let api_key = api_key.as_ref().to_string();
-        let result = std::thread::spawn(move || -> Result<reqwest::blocking::Response, String> {
-            let client = reqwest::blocking::Client::new();
-            client
-                .post(&url)
-                .header("content-type", "application/json")
-                .header("x-api-key", &api_key)
-                .header("anthropic-version", "2023-06-01")
-                .body(body)
-                .send()
-                .map_err(|e| e.to_string())
-        }).join().unwrap_or_else(|_| Err("thread panicked".to_string()));
-        match result {
-            Ok(resp) => {
-                let status = resp.status().as_u16() as i32;
-                let resp_body = resp.text().unwrap_or_default();
-                (status, resp_body)
-            }
-            Err(e) => (0, e),
+        let req = auth_request_json(url.as_ref(), body.as_ref(), api_key.as_ref(), false);
+        match client::execute_blocking(req) {
+            Ok(resp) => (resp.status as i32, String::from_utf8_lossy(&resp.body).into_owned()),
+            Err(e) => (0, error_message(&e)),
         }
     }
 
     /// Async HTTP POST with Bearer token auth (for OpenAI-compatible APIs).
     /// Returns (status, body).
     pub async fn post_bearer(url: impl AsRef<str>, body: impl AsRef<str>, api_key: impl AsRef<str>) -> (i32, String) {
-        let url = url.as_ref().to_string();
-        let body = body.as_ref().to_string();
-        let api_key = api_key.as_ref().to_string();
-        let result = tokio::task::spawn_blocking(move || {
-            let client = reqwest::blocking::Client::new();
-            let result = client
-                .post(&url)
-                .header("content-type", "application/json")
-                .header("Authorization", format!("Bearer {}", api_key))
-                .body(body)
-                .send();
-            match result {
-                Ok(resp) => {
-                    let status = resp.status().as_u16() as i32;
-                    let resp_body = resp.text().unwrap_or_default();
-                    (status, resp_body)
-                }
-                Err(e) => (0, format!("HTTP error: {}", e)),
-            }
-        }).await;
-        result.unwrap_or((0, "spawn failed".to_string()))
+        let req = auth_request_json(url.as_ref(), body.as_ref(), api_key.as_ref(), true);
+        match client::execute(req).await {
+            Ok(resp) => (resp.status as i32, String::from_utf8_lossy(&resp.body).into_owned()),
+            Err(e) => (0, format!("HTTP error: {}", error_message(&e))),
+        }
     }
 
     thread_local! {
@@ -910,26 +895,10 @@ pub mod http {
 
     /// Synchronous HTTP POST with Bearer token auth (blocking, for non-async contexts).
     pub fn post_bearer_sync(url: impl AsRef<str>, body: impl AsRef<str>, api_key: impl AsRef<str>) -> (i32, String) {
-        let url = url.as_ref().to_string();
-        let body = body.as_ref().to_string();
-        let api_key = api_key.as_ref().to_string();
-        let result = std::thread::spawn(move || {
-            let client = reqwest::blocking::Client::new();
-            client
-                .post(&url)
-                .header("content-type", "application/json")
-                .header("Authorization", format!("Bearer {}", api_key))
-                .body(body)
-                .send()
-                .map_err(|e| e.to_string())
-        }).join().unwrap_or_else(|_| Err("thread panicked".to_string()));
-        match result {
-            Ok(resp) => {
-                let status = resp.status().as_u16() as i32;
-                let resp_body = resp.text().unwrap_or_default();
-                (status, resp_body)
-            }
-            Err(e) => (0, format!("HTTP error: {}", e)),
+        let req = auth_request_json(url.as_ref(), body.as_ref(), api_key.as_ref(), true);
+        match client::execute_blocking(req) {
+            Ok(resp) => (resp.status as i32, String::from_utf8_lossy(&resp.body).into_owned()),
+            Err(e) => (0, format!("HTTP error: {}", error_message(&e))),
         }
     }
 }

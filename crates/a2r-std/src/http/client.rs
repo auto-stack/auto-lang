@@ -1396,6 +1396,133 @@ wait_server_ready(&_ready);
         join_server(server);
     }
 
+    /// AC-02：current-thread 消费者 runtime 的 reactor 不被内核等待阻塞——
+    /// 慢上游（500ms 响应）期间本地定时器持续触发（健康事件先于 gate 放行）。
+    #[test]
+    fn plan724_kernel_current_thread_consumer_reactor_stays_live() {
+        let inst = test_instance();
+        let (port, _ready, server) = spawn_server(|_head, mut s| {
+            std::thread::sleep(Duration::from_millis(500)); // 慢建立
+            respond(&mut s, "HTTP/1.1 200 OK", &[], b"slow");
+        });
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let url = format!("http://127.0.0.1:{port}/slow-open");
+        let ticks = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let ticks2 = std::sync::Arc::clone(&ticks);
+        rt.block_on(async move {
+            let ticker = tokio::spawn(async move {
+                for _ in 0..50 {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    ticks2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            });
+            let result = inst
+                .execute(get(url))
+                .await
+                .expect("current-thread 消费者上的内核 async 请求");
+            assert_eq!(result.body, b"slow");
+            let ticks_during = ticks.load(std::sync::atomic::Ordering::SeqCst);
+            ticker.abort();
+            // 请求等待期间（≥500ms）reactor 持续调度定时器（≥10 tick）。
+            assert!(
+                ticks_during >= 10,
+                "reactor 被阻塞：等待期间仅 {ticks_during} tick"
+            );
+        });
+        join_server(server);
+    }
+
+    /// AC-02：current-thread 消费者上的流等待不阻塞 reactor（逐块让出）。
+    #[test]
+    fn plan724_kernel_current_thread_stream_wait_yields() {
+        let inst = test_instance();
+        let (port, _ready, server) = spawn_server(|_head, mut s| {
+            // 分帧 drip：先给半截 body，停 300ms 再补全——next() 必须真实
+            // 挂起等待，期间的 reactor 定时器 tick 是「不阻塞」的判据。
+            s.write_all(
+                b"HTTP/1.1 200 OK
+Content-Length: 11
+
+stream-",
+            )
+            .unwrap();
+            let _ = s.flush();
+            std::thread::sleep(Duration::from_millis(300));
+            s.write_all(b"body").unwrap();
+            let _ = s.flush();
+        });
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let url = format!("http://127.0.0.1:{port}/s");
+        let ticks = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let ticks2 = std::sync::Arc::clone(&ticks);
+        rt.block_on(async move {
+            let ticker = tokio::spawn(async move {
+                for _ in 0..100 {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    ticks2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            });
+            let mut stream = inst.open_stream(StreamSpec {
+                method: "GET".into(),
+                url,
+                body: None,
+                headers: Vec::new(),
+                mode: StreamMode::Raw,
+            });
+            let mut got = String::new();
+            loop {
+                match stream.next().await {
+                    Some(StreamItem::Data(s)) => got.push_str(&s),
+                    Some(StreamItem::Eof) => break,
+                    other => panic!("期望 Eof，得到 {other:?}"),
+                }
+            }
+            assert_eq!(got, "stream-body");
+            let ticks_during = ticks.load(std::sync::atomic::Ordering::SeqCst);
+            ticker.abort();
+            assert!(
+                ticks_during >= 5,
+                "流等待阻塞了 reactor（等待期间仅 {ticks_during} tick）"
+            );
+            stream.close();
+        });
+        join_server(server);
+    }
+
+    /// 同步桥接响亮边界：async 上下文内调用 *_blocking 必须 panic
+    /// （tokio 嵌套执行检测）——不做静默阻塞兜底。
+    #[test]
+    fn plan724_kernel_sync_bridge_panics_loudly_in_async_ctx() {
+        let inst = test_instance();
+        let (port, _ready, server) = spawn_server(|_head, mut s| {
+            respond(&mut s, "HTTP/1.1 200 OK", &[], b"x");
+        });
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let url = format!("http://127.0.0.1:{port}/bridge-panic");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            rt.block_on(async {
+                // async 上下文内的同步桥接：设计上响亮失败。
+                let _ = inst.execute_blocking(get(url));
+            });
+        }));
+        assert!(
+            result.is_err(),
+            "async 上下文内的同步桥接必须 panic（响亮诊断），不得静默阻塞"
+        );
+        // 请求在 block_on 边界就被拒绝——连接从未建立，不 join（stub 线程
+        // 阻塞在 accept，随测试进程回收）。
+        drop(server);
+    }
+
     #[test]
     fn plan724_kernel_split_utf8_chunks_boundary_safe() {
         let text = "你好世界".repeat(1000);

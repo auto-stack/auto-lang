@@ -330,6 +330,17 @@ pub struct RustTrans {
 
     // Track local variable types for string concat detection in Op::Add
     local_var_types: HashMap<AutoStr, Type>,
+    // PLAN-724 T-06: 当前发射是否处于 async 上下文（~T/Future 返回 fn、
+    // async main、generator body、.go spawn 块）。HTTP 客户端分派据此选
+    // async 面（.await）或同步桥接面；不支持位置回落同步发射并在运行期
+    // 得到响亮诊断（内核同步桥接在 async 上下文 panic，不静默阻塞）。
+    in_async_ctx: std::cell::Cell<bool>,
+    // PLAN-724 T-06: 绑定自 HTTP 流生产者的变量（同步/异步分型）。
+    // 异步集合决定 .next()/.is_done()/.close() 与 for-in 的发射形态。
+    http_stream_vars: HashSet<AutoStr>,
+    http_stream_async_vars: HashSet<AutoStr>,
+    // PLAN-724 T-06: 绑定自 http.request(...) 的 builder 变量（.send 分派）。
+    http_builder_vars: HashSet<AutoStr>,
     // Plan 447 H5: per-function count of `is` statements per identifier scrutinee.
     // `match &v` (borrow instead of move) is only emitted when the same ident is
     // matched >= 2 times in one function — narrower scope keeps a2r goldens stable
@@ -534,6 +545,10 @@ impl RustTrans {
             current_assoc_bindings: HashMap::new(), // Plan 417-E2 followup
             value_if_tail: false,
             local_var_types: HashMap::new(),
+            in_async_ctx: std::cell::Cell::new(false),
+            http_stream_vars: HashSet::new(),
+            http_stream_async_vars: HashSet::new(),
+            http_builder_vars: HashSet::new(),
             fn_is_scrutinee_counts: HashMap::new(),
             is_hoist_counter: 0,
             int_match_scrutinee: false,
@@ -635,6 +650,10 @@ impl RustTrans {
             current_assoc_bindings: HashMap::new(), // Plan 417-E2 followup
             value_if_tail: false,
             local_var_types: HashMap::new(),
+            in_async_ctx: std::cell::Cell::new(false),
+            http_stream_vars: HashSet::new(),
+            http_stream_async_vars: HashSet::new(),
+            http_builder_vars: HashSet::new(),
             fn_is_scrutinee_counts: HashMap::new(),
             is_hoist_counter: 0,
             int_match_scrutinee: false,
@@ -716,6 +735,9 @@ impl RustTrans {
         params: &[(AutoStr, Type)],
     ) -> AutoResult<Vec<String>> {
         self.local_var_types.clear();
+        self.http_stream_vars.clear();
+        self.http_stream_async_vars.clear();
+        self.http_builder_vars.clear();
         self.str_slice_pattern_bindings.clear();
         // Plan 016 (auto-down R1): loop-var tracking sets are function-scoped
         // too — a leaked `for a in ...` binding from an earlier fn shadows a
@@ -4872,9 +4894,14 @@ impl RustTrans {
                             let m = method.as_str();
                             if obj_name.as_str() == "http" && (m == "post_sync" || m == "post_bearer" || m == "post_bearer_sync") {
                                 // http.post_sync/post_bearer/post_bearer_sync with .await: generate with .as_str() for str args
-                                let func_name = format!("a2r_std::http::{}", m);
+                                // PLAN-724 T-06：async 上下文走 *_async 内核面（post_bearer 本就 async）。
+                                let func_name = if self.in_async_ctx.get() && m != "post_bearer" {
+                                    format!("a2r_std::http::{}_async", m)
+                                } else {
+                                    format!("a2r_std::http::{}", m)
+                                };
                                 self.a2r_std_used.set(true);
-                                let needs_await = m == "post_bearer"; // only post_bearer is async
+                                let needs_await = m == "post_bearer" || self.in_async_ctx.get();
                                 write!(out, "{{ let __resp = {}(", func_name)?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
@@ -4935,7 +4962,9 @@ impl RustTrans {
             // The expression is spawned as a background task, result is discarded
             Expr::Go { expr } => {
                 write!(out, "tokio::spawn(async move {{ ")?;
+                let prev_async_ctx = self.in_async_ctx.replace(true);
                 self.expr(expr, out)?;
+                self.in_async_ctx.set(prev_async_ctx);
                 write!(out, ".await; }})")?;
                 Ok(())
             }
@@ -5512,6 +5541,60 @@ impl RustTrans {
                     write!(out, " as u64))")?;
                     return Ok(());
                 }
+                // PLAN-724 T-06：流自由函数面（707 手工接口）。接收者分型
+                // 决定同步/异步 facade 形态；EOF 哨兵 "" 与 VM 契约一致。
+                "stream_next" | "stream_is_done" | "stream_close" => {
+                    let is_async = call.args.args.first().and_then(|a| match a {
+                        Arg::Pos(Expr::Ident(name)) => Some(self.http_stream_async_vars.contains(name)),
+                        _ => None,
+                    }).unwrap_or(false);
+                    self.a2r_std_used.set(true);
+                    let m = name.as_str();
+                    if is_async {
+                        match m {
+                            "stream_next" => {
+                                write!(out, "a2r_std::http::stream_next_async(&")?;
+                                if let Some(Arg::Pos(expr)) = call.args.args.first() { self.expr(expr, out)?; }
+                                write!(out, ").await")?;
+                            }
+                            "stream_is_done" => {
+                                write!(out, "a2r_std::http::stream_is_done_async(&")?;
+                                if let Some(Arg::Pos(expr)) = call.args.args.first() { self.expr(expr, out)?; }
+                                write!(out, ")")?;
+                            }
+                            _ => {
+                                write!(out, "a2r_std::http::stream_close_async(&")?;
+                                if let Some(Arg::Pos(expr)) = call.args.args.first() { self.expr(expr, out)?; }
+                                write!(out, ")")?;
+                            }
+                        }
+                    } else {
+                        match m {
+                            "stream_next" => {
+                                write!(out, "a2r_std::http::stream_next(&")?;
+                                if let Some(Arg::Pos(expr)) = call.args.args.first() { self.expr(expr, out)?; }
+                                write!(out, ")")?;
+                            }
+                            "stream_is_done" => {
+                                write!(out, "a2r_std::http::stream_is_done(&")?;
+                                if let Some(Arg::Pos(expr)) = call.args.args.first() { self.expr(expr, out)?; }
+                                write!(out, ")")?;
+                            }
+                            _ => {
+                                write!(out, "a2r_std::http::stream_close(&")?;
+                                if let Some(Arg::Pos(expr)) = call.args.args.first() { self.expr(expr, out)?; }
+                                write!(out, ")")?;
+                            }
+                        }
+                    }
+                    return Ok(());
+                }
+                // PLAN-724 T-06：裸名流生产者（use http: get_stream 形态）。
+                "get_stream" | "post_stream" | "post_stream_with_headers" => {
+                    self.a2r_std_used.set(true);
+                    emit_http_verb_call(self, out, name.as_str(), call)?;
+                    return Ok(());
+                }
                 "http_post" => {
                     // http_post(url, body, api_key) → async { let (s,b,e,k) = a2r_std::http_post(...).await; HttpResponse { ... } }
                     self.a2r_std_used.set(true);
@@ -5557,7 +5640,14 @@ impl RustTrans {
                 match (obj_name.as_str(), method.as_str()) {
                     ("http", "post_sync") => {
                         self.a2r_std_used.set(true);
-                        write!(out, "{{ let __resp = a2r_std::http::post_sync(")?;
+                        // PLAN-724 T-06：async 上下文走内核 async 面（同步桥接
+                        // 面在 async 上下文会被响亮拒绝）。
+                        let (fname, await_suffix) = if self.in_async_ctx.get() {
+                            ("a2r_std::http::post_sync_async", ".await")
+                        } else {
+                            ("a2r_std::http::post_sync", "")
+                        };
+                        write!(out, "{{ let __resp = {}(", fname)?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
@@ -5573,12 +5663,17 @@ impl RustTrans {
                                 }
                             }
                         }
-                        write!(out, "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                        write!(out, "){}; a2r_std::http::set_last_status(__resp.0); __resp.1 }}", await_suffix)?;
                         return Ok(());
                     }
                     ("http", "get_sync") => {
                         self.a2r_std_used.set(true);
-                        write!(out, "{{ let __resp = a2r_std::http::get_sync(")?;
+                        let (fname, await_suffix) = if self.in_async_ctx.get() {
+                            ("a2r_std::http::get_sync_async", ".await")
+                        } else {
+                            ("a2r_std::http::get_sync", "")
+                        };
+                        write!(out, "{{ let __resp = {}(", fname)?;
                         if let Some(Arg::Pos(expr)) = call.args.args.first() {
                             self.expr(expr, out)?;
                             let already_str = matches!(expr, Expr::Str(_) | Expr::CStr(_))
@@ -5589,7 +5684,7 @@ impl RustTrans {
                                 } else { false };
                             if !already_str { write!(out, ".as_str()")?; }
                         }
-                        write!(out, "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                        write!(out, "){}; a2r_std::http::set_last_status(__resp.0); __resp.1 }}", await_suffix)?;
                         return Ok(());
                     }
                     ("http", "last_status") => {
@@ -5619,7 +5714,12 @@ impl RustTrans {
                     }
                     ("http", "post_bearer_sync") => {
                         self.a2r_std_used.set(true);
-                        write!(out, "{{ let __resp = a2r_std::http::post_bearer_sync(")?;
+                        let (fname, await_suffix) = if self.in_async_ctx.get() {
+                            ("a2r_std::http::post_bearer_sync_async", ".await")
+                        } else {
+                            ("a2r_std::http::post_bearer_sync", "")
+                        };
+                        write!(out, "{{ let __resp = {}(", fname)?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
@@ -5635,25 +5735,62 @@ impl RustTrans {
                                 }
                             }
                         }
-                        write!(out, "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                        write!(out, "){}; a2r_std::http::set_last_status(__resp.0); __resp.1 }}", await_suffix)?;
                         return Ok(());
                     }
                     ("http", "post") => {
                         self.a2r_std_used.set(true);
-                        write!(out, "async {{ let (status, body, error, kind) = a2r_std::http::post(")?;
-                        for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
-                            if let Arg::Pos(expr) = arg {
-                                self.expr(expr, out)?;
-                                if let Expr::Ident(name) = expr {
-                                    if self.local_var_types.get(name)
-                                        .map(|ty| !matches!(ty, Type::StrSlice))
-                                        .unwrap_or(true)
-                                    { write!(out, ".as_str()")?; }
+                        // PLAN-724 T-06：元数分派——三参=历史认证 tuple（生成
+                        // 的 HttpResponse 面）；两参=普通客户端 post（内核
+                        // Response）。名称/元数/返回约定按 §5.1 冻结，不冲突。
+                        if call.args.args.len() >= 3 {
+                            write!(out, "async {{ let (status, body, error, kind) = a2r_std::http::post(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 { write!(out, ", ")?; }
+                                if let Arg::Pos(expr) = arg {
+                                    self.expr(expr, out)?;
+                                    if let Expr::Ident(name) = expr {
+                                        if self.local_var_types.get(name)
+                                            .map(|ty| !matches!(ty, Type::StrSlice))
+                                            .unwrap_or(true)
+                                        { write!(out, ".as_str()")?; }
+                                    }
                                 }
                             }
+                            write!(out, ").await; HttpResponse {{ status, body, error, kind }} }}")?;
+                            return Ok(());
                         }
-                        write!(out, ").await; HttpResponse {{ status, body, error, kind }} }}")?;
+                        let (fname, await_suffix) = if self.in_async_ctx.get() {
+                            ("a2r_std::http::post_async", ".await")
+                        } else {
+                            ("a2r_std::http::post", "")
+                        };
+                        write!(out, "{}(", fname)?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg { self.expr_as_str(expr, out)?; }
+                        }
+                        write!(out, "){}", await_suffix)?;
+                        return Ok(());
+                    }
+                    // PLAN-724 T-06：普通动词族（两参 post 同型）——async 上下文
+                    // 发射 *_async().await；同步上下文发射同步桥接面。
+                    ("http", "get") | ("http", "put") | ("http", "delete") => {
+                        self.a2r_std_used.set(true);
+                        let Expr::Dot(_, method) = call.name.as_ref() else {
+                            unreachable!("http verb dispatch requires Dot name");
+                        };
+                        emit_http_verb_call(self, out, method.as_str(), call)?;
+                        return Ok(());
+                    }
+                    // PLAN-724 T-06：流生产者——async 上下文产出 AsyncHTTPStream
+                    // （内部记录变量分型），同步上下文产出 HTTPStream。
+                    ("http", "get_stream") | ("http", "post_stream") => {
+                        self.a2r_std_used.set(true);
+                        let Expr::Dot(_, method) = call.name.as_ref() else {
+                            unreachable!("http stream dispatch requires Dot name");
+                        };
+                        emit_http_verb_call(self, out, method.as_str(), call)?;
                         return Ok(());
                     }
                     ("http", "request") => {
@@ -5705,9 +5842,16 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("http", "post_stream_with_headers") => {
-                        // http.post_stream_with_headers(url, body, headers) → a2r_std::http::post_stream_with_headers(...)
-                        // (Plan 013 G6: returns an HTTPStream for SSE.)
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::http::post_stream_with_headers(")?;
+                        // http.post_stream_with_headers(url, body, headers) → facade
+                        // (Plan 013 G6: returns an HTTPStream; PLAN-724: async 上下文
+                        // 产出 AsyncHTTPStream。)
+                        self.a2r_std_used.set(true);
+                        let (fname, await_suffix) = if self.in_async_ctx.get() {
+                            ("a2r_std::http::post_stream_with_headers_async", ".await")
+                        } else {
+                            ("a2r_std::http::post_stream_with_headers", "")
+                        };
+                        write!(out, "{}(", fname)?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
@@ -5716,7 +5860,7 @@ impl RustTrans {
                                 self.arg(arg, out)?;
                             }
                         }
-                        write!(out, ")")?;
+                        write!(out, "){}", await_suffix)?;
                         return Ok(());
                     }
                     ("json", "encode") | ("Json", "encode") => {
@@ -7507,6 +7651,75 @@ impl RustTrans {
                     self.expr(object, out)?;
                     write!(out, ")")?;
                     return Ok(());
+                }
+                // PLAN-724 T-06：HTTP 流接收者方法（next/is_done/close）。
+                // async 分型变量走 stream_next_async（"" 哨兵与 VM 契约一致，
+                // 不暴露内核 Option 形）；is_done/close 对两种 facade 均为
+                // &self 方法，直发。非流接收者原样回落通用路径（不全局改写
+                // 用户 next/close）。
+                "next" | "is_done" | "close" => {
+                    let stream_kind = if let Expr::Ident(name) = object.as_ref() {
+                        if self.http_stream_async_vars.contains(name) {
+                            Some(true)
+                        } else if self.http_stream_vars.contains(name) {
+                            Some(false)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(is_async) = stream_kind {
+                        self.a2r_std_used.set(true);
+                        match (method_name.as_str(), is_async) {
+                            ("next", false) => {
+                                self.expr(object, out)?;
+                                write!(out, ".next()")?;
+                            }
+                            ("next", true) => {
+                                write!(out, "a2r_std::http::stream_next_async(&")?;
+                                self.expr(object, out)?;
+                                write!(out, ").await")?;
+                            }
+                            ("is_done", false) => {
+                                self.expr(object, out)?;
+                                write!(out, ".is_done()")?;
+                            }
+                            ("is_done", true) => {
+                                self.expr(object, out)?;
+                                write!(out, ".is_done()")?;
+                            }
+                            _ => {
+                                // close：两种 facade 均为 &self 方法。
+                                self.expr(object, out)?;
+                                write!(out, ".close()")?;
+                            }
+                        }
+                        return Ok(());
+                    }
+                    // 非 HTTP 流接收者：回落通用路径。
+                }
+                // PLAN-724 T-06：builder .send 分派——链根是 http.request(...)
+                // 或变量绑定自其。async 上下文发射 send_async().await。
+                "send" => {
+                    let is_builder = match object.as_ref() {
+                        Expr::Ident(name) => self.http_builder_vars.contains(name),
+                        other => {
+                            expr_root_is_http_request(other)
+                                || expr_root_is_builder_var(self, other)
+                        }
+                    };
+                    if is_builder {
+                        self.a2r_std_used.set(true);
+                        self.expr(object, out)?;
+                        if self.in_async_ctx.get() {
+                            write!(out, ".send_async().await")?;
+                        } else {
+                            write!(out, ".send()")?;
+                        }
+                        return Ok(());
+                    }
+                    // 非 builder 接收者：回落通用路径。
                 }
                 // Plan 347: StringBuilder method dispatch. The a2r-std
                 // `StringBuilder` runtime type exposes methods with the same
@@ -13669,6 +13882,52 @@ impl RustTrans {
         if !keep_existing {
             self.local_var_types.insert(store.name.clone(), effective_ty.clone());
         }
+        // PLAN-724 T-06: HTTP 客户端变量分型登记——流生产者绑定（async/
+        // sync 面按当前上下文定型，决定 .next()/.is_done()/.close()/for-in
+        // 的发射形态）；http.request(...) 绑定（.send 分派）。
+        {
+            let producer = match &store.expr {
+                Expr::Call(call) => match call.name.as_ref() {
+                    Expr::Dot(obj, method) => {
+                        matches!(obj.as_ref(), Expr::Ident(m) if m.as_str() == "http")
+                            && matches!(
+                                method.as_str(),
+                                "get_stream" | "post_stream" | "post_stream_with_headers"
+                            )
+                    }
+                    Expr::Ident(fname) => matches!(
+                        fname.as_str(),
+                        "get_stream" | "post_stream" | "post_stream_with_headers"
+                    ),
+                    _ => false,
+                },
+                _ => false,
+            };
+            if producer {
+                if self.in_async_ctx.get() {
+                    self.http_stream_async_vars.insert(store.name.clone());
+                } else {
+                    self.http_stream_vars.insert(store.name.clone());
+                }
+            }
+            // builder：直接 http.request(...)，或方法链根仍是 builder 变量
+            // / http.request(...)（`let b2 = b.header(..)` 重绑定保持分型）。
+            let builder = match &store.expr {
+                Expr::Call(call) => match call.name.as_ref() {
+                    Expr::Dot(obj, method) => {
+                        (matches!(obj.as_ref(), Expr::Ident(m) if m.as_str() == "http")
+                            && method.as_str() == "request")
+                            || (method.as_str() != "send" && expr_root_is_builder_var(self, obj))
+                    }
+                    Expr::Ident(fname) => fname.as_str() == "request",
+                    _ => false,
+                },
+                _ => false,
+            };
+            if builder {
+                self.http_builder_vars.insert(store.name.clone());
+            }
+        }
 
         // Plan 387 follow-up: record `let h = Task.spawn("Counter", cap)` so
         // `h.send(Variant)` can resolve the message enum from the receiver's
@@ -15735,7 +15994,13 @@ pub use auto_cabi_kit::*;"#
 
         // Plan 091: scope removed
         self.in_fn_body = true; // Plan 523 W3:fn 内全局 store 走写块形
+        // PLAN-724 T-06: HTTP 分派的 async 上下文窗口（async fn / async
+        // main / generator body 内 await 合法；同步 fn 内回落同步桥接面）。
+        let prev_async_ctx = self.in_async_ctx.replace(
+            is_async_fn || (is_generator_fn && body_yields),
+        );
         self.body(&fn_decl.body, sink, &effective_ret_type, "")?;
+        self.in_async_ctx.set(prev_async_ctx);
         self.in_fn_body = false;
         // Plan 091: scope removed
 
@@ -15831,6 +16096,60 @@ pub use auto_cabi_kit::*;"#
     fn for_stmt(&mut self, for_stmt: &For, sink: &mut Sink) -> AutoResult<()> {
         match &for_stmt.iter {
             Iter::Named(name) => {
+                // PLAN-724 T-06：HTTP 流 for-in（`for c in s.iter()` /
+                // `for c in stream_iter(s)` / 直接生产调用）。EOF 哨兵 ""
+                // 与 VM 手工接口契约一致；局部 break 不冒充关闭（消费者变量
+                // 仍归用户所有，显式 close 或作用域 Drop 回收）。
+                if let Some(stream_is_async) = for_range_is_http_stream(self, &for_stmt.range) {
+                    let var = name.as_str();
+                    self.local_var_types.insert(name.clone(), Type::StrOwned);
+                    self.current_fn_str_params.insert(name.clone());
+                    self.print_indent(&mut sink.body)?;
+                    // 生产调用形态 → 临时拥有绑定；变量借用形态 → 直接引用。
+                    let owned_temp = !matches!(&for_stmt.range,
+                        Expr::Call(c) if matches!(c.name.as_ref(),
+                            Expr::Dot(_, m) if m.as_str() == "iter")
+                            || matches!(c.name.as_ref(), Expr::Ident(f) if f.as_str() == "stream_iter"));
+                    let mut recv_expr = String::new();
+                    if owned_temp {
+                        write!(sink.body, "let __hs = ")?;
+                        self.expr(&for_stmt.range, &mut sink.body)?;
+                        sink.body.write(b";
+")?;
+                        recv_expr = "__hs".to_string();
+                    } else if let Expr::Call(c) = &for_stmt.range {
+                        if let Expr::Dot(obj, _) = c.name.as_ref() {
+                            let mut buf = std::io::Cursor::new(Vec::new());
+                            self.expr(obj, &mut buf)?;
+                            recv_expr = String::from_utf8(buf.into_inner()).unwrap_or_default();
+                        } else if let Expr::Ident(_) = c.name.as_ref() {
+                            if let Some(Arg::Pos(e)) = c.args.args.first() {
+                                let mut buf = std::io::Cursor::new(Vec::new());
+                                self.expr(e, &mut buf)?;
+                                recv_expr = String::from_utf8(buf.into_inner()).unwrap_or_default();
+                            }
+                        }
+                    }
+                    sink.body.write(b"loop {
+")?;
+                    self.indent();
+                    self.print_indent(&mut sink.body)?;
+                    if stream_is_async {
+                        write!(sink.body, "let {var} = a2r_std::http::stream_next_async(&{recv_expr}).await;
+")?;
+                    } else {
+                        write!(sink.body, "let {var} = a2r_std::http::stream_next(&{recv_expr});
+")?;
+                    }
+                    self.print_indent(&mut sink.body)?;
+                    write!(sink.body, "if {var}.is_empty() {{ break; }}
+")?;
+                    self.emit_loop_body(&for_stmt.body, sink)?;
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"}")?;
+                    return Ok(());
+                }
                 // Plan 364 Phase 8 F1: if the iterable is a ~Stream<T> generator
                 // call, emit `while let Some(x) = s.next().await` instead of a
                 // `for` loop — `impl futures::Stream` does not implement
@@ -26655,4 +26974,116 @@ fn discover_modules(
     }
 
     Ok(())
+}
+
+/// PLAN-724 T-06：HTTP 普通动词/流生产者的统一发射——async 上下文发
+/// `a2r_std::http::<verb>_async(args).await`（内核 async 面），同步上下文发
+/// `a2r_std::http::<verb>(args)`（同步桥接面）。实参按 str 形发射。
+fn emit_http_verb_call(
+    tr: &mut RustTrans,
+    out: &mut impl std::io::Write,
+    verb: &str,
+    call: &crate::ast::Call,
+) -> AutoResult<()> {
+    if tr.in_async_ctx.get() {
+        write!(out, "a2r_std::http::{}_async(", verb)?;
+        for (i, arg) in call.args.args.iter().enumerate() {
+            if i > 0 { write!(out, ", ")?; }
+            if let crate::ast::Arg::Pos(expr) = arg { tr.expr_as_str(expr, out)?; }
+        }
+        write!(out, ").await")?;
+    } else {
+        write!(out, "a2r_std::http::{}(", verb)?;
+        for (i, arg) in call.args.args.iter().enumerate() {
+            if i > 0 { write!(out, ", ")?; }
+            if let crate::ast::Arg::Pos(expr) = arg { tr.expr_as_str(expr, out)?; }
+        }
+        write!(out, ")")?;
+    }
+    Ok(())
+}
+
+/// PLAN-724 T-06：链根是否 builder（builder 变量或 http.request(...)）——
+/// `let b2 = b.header(..)` 形态的重绑定保持 builder 分型。
+fn expr_root_is_builder_var(tr: &RustTrans, e: &Expr) -> bool {
+    let mut cur = e;
+    loop {
+        match cur {
+            Expr::Dot(base, _) => cur = base.as_ref(),
+            Expr::Ident(name) => return tr.http_builder_vars.contains(name),
+            Expr::Call(call) => {
+                return match call.name.as_ref() {
+                    Expr::Dot(obj, m) => {
+                        matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "http")
+                            && m.as_str() == "request"
+                    }
+                    Expr::Ident(n) => n.as_str() == "request",
+                    _ => false,
+                };
+            }
+            _ => return false,
+        }
+    }
+}
+
+/// PLAN-724 T-06：表达式根是否 http.request(...)（链式 builder 的 send 分派）。
+fn expr_root_is_http_request(e: &Expr) -> bool {
+    let mut cur = e;
+    loop {
+        match cur {
+            Expr::Dot(base, _) => cur = base.as_ref(),
+            Expr::Call(call) => {
+                return match call.name.as_ref() {
+                    Expr::Dot(obj, m) => {
+                        matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "http")
+                            && m.as_str() == "request"
+                    }
+                    Expr::Ident(n) => n.as_str() == "request",
+                    _ => false,
+                };
+            }
+            _ => return false,
+        }
+    }
+}
+
+/// PLAN-724 T-06：for-in 的可迭代是否 HTTP 流消费面（`s.iter()` /
+/// `stream_iter(s)` / 直接流生产调用）。
+fn for_range_is_http_stream(tr: &RustTrans, range: &Expr) -> Option<bool> {
+    // Some(is_async) = 命中流消费面并给出 async 分型。
+    if let Expr::Call(call) = range {
+        match call.name.as_ref() {
+            Expr::Dot(obj, m) if m.as_str() == "iter" => {
+                if let Expr::Ident(name) = obj.as_ref() {
+                    if tr.http_stream_async_vars.contains(name) {
+                        return Some(true);
+                    }
+                    if tr.http_stream_vars.contains(name) {
+                        return Some(false);
+                    }
+                }
+                None
+            }
+            Expr::Ident(fname) if fname.as_str() == "stream_iter" => {
+                if let Some(crate::ast::Arg::Pos(Expr::Ident(name))) = call.args.args.first() {
+                    if tr.http_stream_async_vars.contains(name) {
+                        return Some(true);
+                    }
+                    if tr.http_stream_vars.contains(name) {
+                        return Some(false);
+                    }
+                }
+                None
+            }
+            Expr::Dot(obj, m)
+                if matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "http")
+                    && matches!(m.as_str(), "get_stream" | "post_stream" | "post_stream_with_headers") =>
+            {
+                Some(tr.in_async_ctx.get())
+            }
+            _ => None,
+        }
+    } else {
+        None
+    }
 }

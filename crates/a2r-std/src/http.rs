@@ -96,6 +96,129 @@ pub fn post_bearer_sync(url: &str, body: &str, api_key: &str) -> (u32, String) {
 }
 
 // =============================================================================
+// PLAN-724 T-06：普通动词族（Auto http.get/post/put/delete 两参形）。
+// 同步形态 = 内核同步桥接（仅同步边界）；async 形态 = 内核 async 面。
+// 返回 kernel-backed Response（状态/headers/body typed）。
+// =============================================================================
+
+fn verb_request(method: &str, url: &str, body: Option<&str>) -> HttpRequest {
+    HttpRequest {
+        method: method.to_string(),
+        url: url.to_string(),
+        headers: Vec::new(),
+        body: body.map(|b| b.as_bytes().to_vec()),
+        timeout_ms: None,
+    }
+}
+
+fn verb_response(result: Result<KernelResponse, ClientError>) -> Response {
+    RequestBuilder::from_kernel(result)
+}
+
+/// Perform a GET request. Mirrors Auto's `http.get(url) -> Response`.
+/// 同步边界专用；async 上下文用 [`get_async`]。
+pub fn get(url: &str) -> Response {
+    verb_response(client::execute_blocking(verb_request("GET", url, None)))
+}
+
+/// Perform a POST request (two-arg normal form). Mirrors Auto's
+/// `http.post(url, body) -> Response`。与三参认证 [`post_sync`] 按元数分派。
+pub fn post(url: &str, body: &str) -> Response {
+    verb_response(client::execute_blocking(verb_request("POST", url, Some(body))))
+}
+
+/// Perform a PUT request. Mirrors Auto's `http.put(url, body) -> Response`.
+pub fn put(url: &str, body: &str) -> Response {
+    verb_response(client::execute_blocking(verb_request("PUT", url, Some(body))))
+}
+
+/// Perform a DELETE request. Mirrors Auto's `http.delete(url) -> Response`.
+pub fn delete(url: &str) -> Response {
+    verb_response(client::execute_blocking(verb_request("DELETE", url, None)))
+}
+
+/// Async GET（内核 async 面；async 上下文的正确入口）。
+pub async fn get_async(url: &str) -> Response {
+    verb_response(client::execute(verb_request("GET", url, None)).await)
+}
+
+/// Async POST（两参普通形）。
+pub async fn post_async(url: &str, body: &str) -> Response {
+    verb_response(client::execute(verb_request("POST", url, Some(body))).await)
+}
+
+/// Async PUT。
+pub async fn put_async(url: &str, body: &str) -> Response {
+    verb_response(client::execute(verb_request("PUT", url, Some(body))).await)
+}
+
+/// Async DELETE。
+pub async fn delete_async(url: &str) -> Response {
+    verb_response(client::execute(verb_request("DELETE", url, None)).await)
+}
+
+/// Legacy `http.get_sync`（历史发射面引用）：返回 (status, body 文本)。
+pub fn get_sync(url: &str) -> (u32, String) {
+    let resp = get(url);
+    (resp.status_code(), String::from_utf8_lossy(&resp.body_bytes()).into_owned())
+}
+
+/// [`get_sync`] 的 async 面（async 上下文专用）。
+pub async fn get_sync_async(url: &str) -> (u32, String) {
+    let resp = get_async(url).await;
+    (resp.status_code(), String::from_utf8_lossy(&resp.body_bytes()).into_owned())
+}
+
+/// [`post_sync`] 的 async 面（tuple 形状不变；async 上下文专用）。
+pub async fn post_sync_async(url: &str, body: &str, api_key: &str) -> (u32, String) {
+    let req = HttpRequest {
+        method: "POST".into(),
+        url: url.to_string(),
+        headers: vec![
+            ("Content-Type".into(), "application/json".into()),
+            ("x-api-key".into(), api_key.to_string()),
+            ("anthropic-version".into(), "2023-06-01".into()),
+        ],
+        body: Some(body.as_bytes().to_vec()),
+        timeout_ms: None,
+    };
+    match client::execute(req).await {
+        Ok(resp) => {
+            set_last_status(resp.status as u32);
+            (resp.status as u32, String::from_utf8_lossy(&resp.body).into_owned())
+        }
+        Err(e) => {
+            set_last_status(0);
+            (0, transport_message(&e))
+        }
+    }
+}
+
+/// [`post_bearer_sync`] 的 async 面（tuple 形状不变；async 上下文专用）。
+pub async fn post_bearer_sync_async(url: &str, body: &str, api_key: &str) -> (u32, String) {
+    let req = HttpRequest {
+        method: "POST".into(),
+        url: url.to_string(),
+        headers: vec![
+            ("Content-Type".into(), "application/json".into()),
+            ("Authorization".into(), format!("Bearer {}", api_key)),
+        ],
+        body: Some(body.as_bytes().to_vec()),
+        timeout_ms: None,
+    };
+    match client::execute(req).await {
+        Ok(resp) => {
+            set_last_status(resp.status as u32);
+            (resp.status as u32, String::from_utf8_lossy(&resp.body).into_owned())
+        }
+        Err(e) => {
+            set_last_status(0);
+            (0, transport_message(&e))
+        }
+    }
+}
+
+// =============================================================================
 // Plan 013 G6: request-builder + streaming HTTP (for transpiled auto-ai-client)
 //
 // Auto's `http.request(method, url)` returns a `RequestBuilder` whose chained
@@ -231,8 +354,10 @@ impl Response {
 ///
 /// PLAN-724：内核 typed 流（有界队列/背压/真取消）的**同步兼容壳**——
 /// `next()` 经内核同步桥接等待（仅同步上下文）；close 真正回收上游。
+/// 内部可变性（Mutex）：消费方法取 `&self`，与 VM 手柄语义一致（let 绑定
+/// 无需 mut）；跨线程消费不在支持面（VM 同为 owner 线程拉取）。
 pub struct HTTPStream {
-    inner: HttpClientStream,
+    inner: std::sync::Mutex<HttpClientStream>,
 }
 
 /// Create a streaming POST request with custom headers.
@@ -253,7 +378,9 @@ pub fn post_stream_with_headers(url: &str, body: &str, headers: &str) -> HTTPStr
             });
             inner.close();
             let _ = e;
-            return HTTPStream { inner };
+            return HTTPStream {
+                inner: std::sync::Mutex::new(inner),
+            };
         }
     };
     let inner = client::open_stream(StreamSpec {
@@ -263,7 +390,37 @@ pub fn post_stream_with_headers(url: &str, body: &str, headers: &str) -> HTTPStr
         headers,
         mode: StreamMode::Raw,
     });
-    HTTPStream { inner }
+    HTTPStream {
+        inner: std::sync::Mutex::new(inner),
+    }
+}
+
+/// Create a streaming GET request. Mirrors Auto's `http.get_stream(url)`.
+pub fn get_stream(url: &str) -> HTTPStream {
+    let inner = client::open_stream(StreamSpec {
+        method: "GET".into(),
+        url: url.to_string(),
+        body: None,
+        headers: Vec::new(),
+        mode: StreamMode::Raw,
+    });
+    HTTPStream {
+        inner: std::sync::Mutex::new(inner),
+    }
+}
+
+/// Create a streaming POST request. Mirrors Auto's `http.post_stream(url, body)`.
+pub fn post_stream(url: &str, body: &str) -> HTTPStream {
+    let inner = client::open_stream(StreamSpec {
+        method: "POST".into(),
+        url: url.to_string(),
+        body: Some(body.as_bytes().to_vec()),
+        headers: Vec::new(),
+        mode: StreamMode::Raw,
+    });
+    HTTPStream {
+        inner: std::sync::Mutex::new(inner),
+    }
 }
 
 impl HTTPStream {
@@ -272,8 +429,9 @@ impl HTTPStream {
     ///
     /// 同步桥接边界：阻塞等待仅在同步上下文合法；async 消费请用
     /// [`AsyncHTTPStream`]。
-    pub fn next(&mut self) -> String {
-        match client::kernel_handle().block_on(self.inner.next()) {
+    pub fn next(&self) -> String {
+        let mut guard = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        match client::kernel_handle().block_on(guard.next()) {
             Some(StreamItem::Data(s)) => s,
             _ => String::new(),
         }
@@ -282,7 +440,8 @@ impl HTTPStream {
     /// `HTTPStream.is_done(self) -> int`（不因上游写完丢尾部——队列排空且
     /// 终结才算 done）。
     pub fn is_done(&self) -> u32 {
-        if self.inner.is_finished() {
+        let guard = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        if guard.is_finished() {
             1
         } else {
             0
@@ -292,8 +451,25 @@ impl HTTPStream {
     /// Close/release the stream. Mirrors `HTTPStream.close(self)`.
     /// PLAN-724：真实取消——终结流并 abort 生产者（幂等），不再是占位。
     pub fn close(&self) {
-        self.inner.close();
+        let guard = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        guard.close();
     }
+}
+
+// PLAN-724 T-06：流自由函数面（707 手工接口的 a2r 形态；EOF 哨兵 ""）。
+/// Read the next chunk（自由函数形）。Mirrors `stream_next(stream) -> str`。
+pub fn stream_next(s: &HTTPStream) -> String {
+    s.next()
+}
+
+/// 1 if finished（自由函数形）。Mirrors `stream_is_done(stream) -> int`。
+pub fn stream_is_done(s: &HTTPStream) -> u32 {
+    s.is_done()
+}
+
+/// Close（自由函数形）。Mirrors `stream_close(stream)`。
+pub fn stream_close(s: &HTTPStream) {
+    s.close()
 }
 
 // ===========================================================================
@@ -305,7 +481,9 @@ impl HTTPStream {
 /// Each item is a text `String` (UTF-8 lossy carry；raw 模式单块 ≤16 KiB)。
 /// The stream ends when `next()` yields `None`（EOF/错误/取消后）。
 pub struct AsyncHTTPStream {
-    inner: HttpClientStream,
+    /// tokio Mutex（跨 await 持有守卫，future 保持 Send——.go spawn 兼容）。
+    /// Arc 外壳：close 的 kernel-spawn 回退路径需要克隆句柄。
+    inner: std::sync::Arc<tokio::sync::Mutex<HttpClientStream>>,
 }
 
 /// Create an async streaming POST request with custom headers.
@@ -328,7 +506,9 @@ pub async fn post_stream_with_headers_async(
                 mode: StreamMode::Raw,
             });
             inner.close();
-            return AsyncHTTPStream { inner };
+            return AsyncHTTPStream {
+                inner: std::sync::Arc::new(tokio::sync::Mutex::new(inner)),
+            };
         }
     };
     let inner = client::open_stream(StreamSpec {
@@ -338,35 +518,100 @@ pub async fn post_stream_with_headers_async(
         headers,
         mode: StreamMode::Raw,
     });
-    AsyncHTTPStream { inner }
+    AsyncHTTPStream {
+        inner: std::sync::Arc::new(tokio::sync::Mutex::new(inner)),
+    }
+}
+
+/// Create an async streaming GET request. Mirrors Auto's `http.get_stream`
+/// in async 上下文。
+pub async fn get_stream_async(url: &str) -> AsyncHTTPStream {
+    let inner = client::open_stream(StreamSpec {
+        method: "GET".into(),
+        url: url.to_string(),
+        body: None,
+        headers: Vec::new(),
+        mode: StreamMode::Raw,
+    });
+    AsyncHTTPStream {
+        inner: std::sync::Arc::new(tokio::sync::Mutex::new(inner)),
+    }
+}
+
+/// Create an async streaming POST request. Mirrors Auto's `http.post_stream`
+/// in async 上下文。
+pub async fn post_stream_async(url: &str, body: &str) -> AsyncHTTPStream {
+    let inner = client::open_stream(StreamSpec {
+        method: "POST".into(),
+        url: url.to_string(),
+        body: Some(body.as_bytes().to_vec()),
+        headers: Vec::new(),
+        mode: StreamMode::Raw,
+    });
+    AsyncHTTPStream {
+        inner: std::sync::Arc::new(tokio::sync::Mutex::new(inner)),
+    }
 }
 
 impl AsyncHTTPStream {
     /// Await the next chunk. Returns `Some(chunk)` for each text piece, or
     /// `None` when the stream is fully read（含错误/取消终结）。
-    pub async fn next(&mut self) -> Option<String> {
-        if let Some(status) = self.inner.status() {
+    pub async fn next(&self) -> Option<String> {
+        let mut guard = self.inner.lock().await;
+        if let Some(status) = guard.status() {
             set_last_status(status as u32);
         }
-        match self.inner.next().await {
+        match guard.next().await {
             Some(StreamItem::Data(s)) => Some(s),
             _ => None,
         }
     }
 
     /// 1 if the stream is finished (queue drained + terminal), 0 otherwise.
+    /// async 安全：try_lock 失败（消费中）视为未完成，不阻塞执行线程。
     pub fn is_done(&self) -> u32 {
-        if self.inner.is_finished() {
-            1
-        } else {
-            0
+        match self.inner.try_lock() {
+            Ok(guard) => {
+                if guard.is_finished() {
+                    1
+                } else {
+                    0
+                }
+            }
+            Err(_) => 0,
         }
     }
 
     /// 真取消：终结 + abort 生产者（幂等；Drop 同样回收）。
+    /// async 安全：try_lock（常规 close-after-loop 路径无竞争）；若消费方
+    /// 正持锁等待，把 close 抛到内核 runtime 执行（不阻塞调用线程）。
     pub fn close(&self) {
-        self.inner.close();
+        match self.inner.try_lock() {
+            Ok(guard) => guard.close(),
+            Err(_) => {
+                let inner = self.inner.clone();
+                client::kernel_handle().spawn(async move {
+                    inner.lock().await.close();
+                });
+            }
+        }
     }
+}
+
+// PLAN-724 T-06：async 上下文的流自由函数面。EOF 哨兵 ""（VM 契约）。
+/// Await the next chunk（自由函数形；"" = 结束）。
+pub async fn stream_next_async(s: &AsyncHTTPStream) -> String {
+    s.next().await.unwrap_or_default()
+}
+
+/// 1 if finished（自由函数形）。
+pub fn stream_is_done_async(s: &AsyncHTTPStream) -> u32 {
+    s.is_done()
+}
+
+/// Close（自由函数形）。
+pub fn stream_close_async(s: &AsyncHTTPStream) {
+    s.close()
 }
 
 // ===========================================================================

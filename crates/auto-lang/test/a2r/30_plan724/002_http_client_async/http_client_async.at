@@ -1,0 +1,45 @@
+// PLAN-724 T-01/T-06: async-context HTTP client lowering matrix.
+// main contains .await -> async main (tokio); all surfaces take the async
+// facade path (*_async(...).await). One-layer helper: fetch_and_summarize.
+
+fn fetch_and_summarize(url str) ~str {
+    let res = http.post(url, "async-post-payload")
+    let code = res.status_code()
+    let body = str.from_bytes(res.body_bytes())
+    return body
+}
+
+fn main() {
+    let base = env.get("PLAN724_URL")
+
+    // 1. async GET via async facade
+    let res = http.get(base)
+    let code = res.status_code()
+    let ct = res.header_get("X-Plan724")
+    print("get status:", code)
+    print("get header:", ct)
+
+    // 2. async two-arg post through a one-layer ~ helper (await at call)
+    let body = fetch_and_summarize(base).await
+    print("helper body:", body)
+
+    // 3. async builder chain: send becomes send_async().await
+    let req = http.request("POST", base)
+    let req2 = req.header("X-Plan724", "async-builder")
+    let req3 = req2.body("async-builder-payload")
+    let bres = req3.send()
+    let bbody = str.from_bytes(bres.body_bytes())
+    print("builder body:", bbody)
+
+    // 4. async stream for-in (stream_next_async; "" sentinel)
+    let s = http.get_stream(base)
+    for c in s.iter() {
+        print("chunk:", c)
+    }
+    s.close()
+
+    // 5. auth post_sync in async context (must be the _async kernel face)
+    let auth = http.post_sync(base, "auth-payload", "")
+    print("auth status:", http.last_status())
+    print("auth body:", auth)
+}
