@@ -359,6 +359,18 @@ P729-7（reviews）、P729-8（reports）；读回验证 4 条在册；plans.md 
 status: archived；completion_kind: delivered；批量回归到期判定：未到期
 （729 % 5 ≠ 0；.last-batch-regression.json 回执 2026-10-02 新鲜，covered 726）。
 
+**cleaned**：wt-guard 双 worktree clean（auto-lang + auto-down 兄弟，reparse 扫描
+零命中）；`git worktree remove` 两处 + `git branch -d plan-729-dev`（was 050e2ee90，
+已合入）+ 组目录 `D:/autostack/.wt/lang-729` 移除；未动其他计划资产（719/722/723/
+musk-093/096/097 在途）。
+
+**部署观察（landing ≠ deployment）**：本仓为库仓——无本仓内生产进程随本次合入
+重启；下游消费面（auto-musk daemon/auto-os 侧 release 二进制与生成 web bundle）
+若在运行，其构建时间早于 050e2ee90，含本次文件响应能力前状态，属预期（能力为
+新增面，无修复性缺陷回灌）；下游按需重建即可。
+
+**outcome: pass**（delivery/derived view/archival/cleanup 全验证）。
+
 ### R2 复议（2026-10-02，pass）
 
 - stage: review
