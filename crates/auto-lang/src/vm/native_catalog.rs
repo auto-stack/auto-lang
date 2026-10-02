@@ -1618,6 +1618,10 @@ macro_rules! for_each_bigvm_native {
             ("http.transfer_cancel", 9934, Void),
             ("auto.http.transfer_error", 9935, String),
             ("http.transfer_error", 9935, String),
+            // PLAN-729 T-04: 服务端文件响应描述符构造（Int = 描述符句柄；
+            // 编组由声明返回类型门+登记命中共同识别，普通 int 不误判）。
+            ("auto.http.file_response", 9936, Int),
+            ("http.file_response", 9936, Int),
             // Plan 350: WebSocket client
             ("auto.ws.connect", 2280, Void),
             ("ws.connect", 2280, Void),
@@ -2530,6 +2534,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("http.transfer_cancel", 9934),
     ("auto.http.transfer_error", 9935),
     ("http.transfer_error", 9935),
+    ("auto.http.file_response", 9936),
+    ("http.file_response", 9936),
     ("auto.ws.connect", 2280),
     ("ws.connect", 2280),
     ("auto.ws.send", 2281),

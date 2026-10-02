@@ -126,6 +126,18 @@ pub(crate) fn fn_is_api_async(fn_name: &str) -> bool {
     API_ASYNC_RETURNS.lock().ok().map(|t| t.contains(fn_name)).unwrap_or(false)
 }
 
+/// PLAN-729 T-04：编组期文件返回门——声明返回类型（`FileResponse` 或
+/// `Future<FileResponse>`）含 "FileResponse"。与登记命中（
+/// http_server_file::take_file_response）共同识别文件结果；普通 int 即使
+/// 数值撞上描述符 id 也走 JSON 兜底（AC-01 反例防线）。
+pub(crate) fn fn_is_api_file_return(fn_name: &str) -> bool {
+    API_RETURN_TYPES
+        .lock()
+        .ok()
+        .and_then(|t| t.get(fn_name).map(|r| r.contains("FileResponse")))
+        .unwrap_or(false)
+}
+
 /// PLAN-698 T-02/SD-02: POST 成功后的 SSE 广播臂——生成 Axum 侧
 /// void-POST+broadcast 路径（api_gen broadcast_event_name + events::broadcast）
 /// 的 VM 运行面对照实现。仅当工程声明 ~Stream 端点时发布（has_sse 门控同
@@ -194,8 +206,15 @@ pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<Rou
             .collect()
     };
 
+    // PLAN-729 T-04：HEAD 二遍扫描——声明文件返回的 GET 路由自动具备
+    // HEAD 匹配（决策报告 §4；显式同路径 HEAD 路由在第一遍先匹配优先）。
+    let head_over_get_file = method.eq_ignore_ascii_case("HEAD");
     for route in routes {
-        if route.method.to_uppercase() != method.to_uppercase() {
+        let method_ok = route.method.to_uppercase() == method.to_uppercase()
+            || (head_over_get_file
+                && route.method.eq_ignore_ascii_case("GET")
+                && fn_is_api_file_return(&route.fn_name));
+        if !method_ok {
             continue;
         }
         let route_segments: Vec<&str> = route.path.split('/').collect();
@@ -3253,6 +3272,24 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
                         }
                     }
 
+                    // PLAN-729 T-04：legacy stdnet 不承载文件响应——声明
+                    // 文件返回的路由在此入口明确 500 诊断（决策报告 §6：
+                    // 未接入入口不冒充支持；描述符不序列化为 JSON）。
+                    if fn_is_api_file_return(&route_match.fn_name) {
+                        drop(ht);
+                        let resp = format!(
+                            "HTTP/1.1 500 Internal Server Error
+Content-Type: application/json
+Content-Length: {}
+Connection: close
+{}
+{{\"error\":\"file responses require the default HTTP transport\"}}",
+                            br#"{"error":"file responses require the default HTTP transport"}"#.len(),
+                            cors_headers()
+                        );
+                        let _ = stream.write_all(resp.as_bytes());
+                        continue;
+                    }
                     // Normal JSON response mode (Plan 326 Phase 3)
                     // nv_to_json handles string/i32/f64/bool/null, and recognizes
                     // heap object IDs (>= 4_000_000) to expand struct/array/Option
@@ -3314,11 +3351,21 @@ impl ApiRequest {
     }
 }
 
-/// Reply body payload: plain bytes, or SSE frames streamed from a producer
-/// task on the VM owner thread.
+/// Reply body payload: plain bytes, SSE frames streamed from a producer
+/// task on the VM owner thread, or a file response descriptor (PLAN-729).
 pub(crate) enum ApiBody {
     Text(Vec<u8>),
     Sse(tokio::sync::mpsc::Receiver<String>),
+    /// PLAN-729 T-04：文件响应描述符（编组单次取出；打开/协议决策/发送
+    /// 在 transport 侧的共享宿主服务，不在 VM owner）。status/headers 由
+    /// 宿主 serve 决定，`Full` 携带的占位被 File 臂忽略。
+    File(FileReplySeed),
+}
+
+/// [`ApiBody::File`] 载荷：owned 描述符 + 请求 id（日志/CORS 追加用）。
+pub(crate) struct FileReplySeed {
+    pub descriptor: a2r_std::http::FileResponse,
+    pub request_id: String,
 }
 
 /// Structured reply produced by the VM owner for one request.
@@ -3845,6 +3892,27 @@ pub(crate) fn dispatch_api_request_segment(
         }
     };
 
+    // PLAN-729 T-04：文件端点仅 GET/HEAD（决策报告 §4）——非 GET/HEAD 的
+    // 文件返回注解在路由命中处即 405（不执行 handler）。
+    if fn_is_api_file_return(&route_match.fn_name)
+        && !matches!(req_method.as_str(), "GET" | "HEAD")
+    {
+        let mut headers = cors_header_pairs();
+        headers.push(("X-Request-Id".to_string(), request_id.clone()));
+        headers.push((
+            "Allow".to_string(),
+            "GET, HEAD".to_string(),
+        ));
+        let _ = reply_tx.send(ApiReply::Full {
+            status: 405,
+            headers,
+            body: ApiBody::Text(
+                br#"{"error":"file endpoints support GET/HEAD only"}"#.to_vec(),
+            ),
+        });
+        return DispatchOutcome::Replied;
+    }
+
     if is_websocket {
         if let Some(key) = req.header("sec-websocket-key") {
             let _ = reply_tx.send(ApiReply::WebSocket {
@@ -4294,6 +4362,32 @@ fn ctx_await_outer(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> Option<u32> {
     t.waiting_future_id
 }
 
+/// ctx 声明文件返回（axum_route closure 反查同 async 门）。
+fn handler_declares_file_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> bool {
+    match ctx.axum_route {
+        Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
+            .map(|n| fn_is_api_file_return(&n))
+            .unwrap_or(false),
+        None => fn_is_api_file_return(&ctx.route.fn_name),
+    }
+}
+
+/// 声明文件返回但值不是登记描述符 → 500 诊断（不 JSON 200；决策报告 §6）。
+fn file_contract_mismatch_reply(ctx: &DispatchCtx, raw: u64) -> ApiReply {
+    eprintln!(
+        "[HTTP] {} {} [{}] → 500 (handler '{}' declares FileResponse but returned non-descriptor value {})",
+        ctx.req_method, ctx.req_path, ctx.request_id, ctx.route.fn_name, raw
+    );
+    let mut headers = json_reply_headers(&ctx.request_id);
+    let body = br#"{"error":"handler did not return a FileResponse descriptor"}"#.to_vec();
+    headers[0].1 = "application/json".to_string();
+    ApiReply::Full {
+        status: 500,
+        headers,
+        body: ApiBody::Text(body),
+    }
+}
+
 fn marshal_handler_value(
     vm: &std::rc::Rc<AutoVM>,
     ctx: &DispatchCtx,
@@ -4382,6 +4476,22 @@ fn marshal_handler_value(
                     ("Connection".to_string(), "keep-alive".to_string()),
                 ],
                 body: ApiBody::Sse(receiver),
+            });
+        }
+        // PLAN-729 T-04：文件响应描述符（声明返回类型门 + 登记命中）。
+        if handler_declares_file_return(vm, ctx) {
+            return MarshalOutcome::Reply(match super::http_server_file::take_file_response(
+                iter_id as u64,
+            ) {
+                Some(descriptor) => ApiReply::Full {
+                    status: 200, // 占位：File 臂由宿主 serve 决定
+                    headers: Vec::new(),
+                    body: ApiBody::File(FileReplySeed {
+                        descriptor,
+                        request_id: ctx.request_id.clone(),
+                    }),
+                },
+                None => file_contract_mismatch_reply(ctx, iter_id as u64),
             });
         }
         if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(iter_id as u64) {
@@ -4492,6 +4602,25 @@ fn final_value_reply(
     let nv = value
         .and_then(|v| value_to_nv_via_task(vm, ctx, v))
         .unwrap_or_else(auto_val::encode_null);
+    // PLAN-729 T-04：`~FileResponse` 终值（Value::Int = 描述符句柄）在
+    // JSON 兜底前按同一门识别（sync/异步同形）。
+    if handler_declares_file_return(vm, ctx) {
+        if auto_val::is_i32(nv) {
+            let id = auto_val::decode_i32(nv) as u64;
+            return match super::http_server_file::take_file_response(id) {
+                Some(descriptor) => ApiReply::Full {
+                    status: 200,
+                    headers: Vec::new(),
+                    body: ApiBody::File(FileReplySeed {
+                        descriptor,
+                        request_id: ctx.request_id.clone(),
+                    }),
+                },
+                None => file_contract_mismatch_reply(ctx, id),
+            };
+        }
+        return file_contract_mismatch_reply(ctx, u64::MAX);
+    }
     json_value_reply(
         vm,
         nv,
@@ -4563,6 +4692,9 @@ pub(crate) struct RequestScope {
     /// PLAN-727 T-05：有类型的传输资源组——与流 id 分开登记，finalize 时
     /// 取消传输并出 VM 注册表（transfer id 不与 HTTPStream id 混淆清理）。
     pub transfer_resources: std::sync::Mutex<Vec<u64>>,
+    /// PLAN-729 T-04：文件响应描述符组——finalize 时移除闲置描述符
+    /// （handler 未返回的构造防注册表无界增长）。
+    pub file_response_resources: std::sync::Mutex<Vec<u64>>,
 }
 
 impl RequestScope {
@@ -4622,6 +4754,7 @@ pub(crate) fn create_scope(
         cancel_notify: tokio::sync::Notify::new(),
         resources: std::sync::Mutex::new(Vec::new()),
         transfer_resources: std::sync::Mutex::new(Vec::new()),
+        file_response_resources: std::sync::Mutex::new(Vec::new()),
     });
     if let Ok(mut map) = REQUEST_SCOPES.lock() {
         map.insert(id, scope.clone());
@@ -4660,6 +4793,13 @@ fn finalize_scope(scope: &RequestScope, to: u8) {
         .map(|mut r| std::mem::take(&mut *r))
         .unwrap_or_default();
     crate::vm::ffi::http_transfer::scope_finalize_transfers(&transfers);
+    // PLAN-729 T-04：文件描述符组收口（幂等；编组已取出的 no-op）。
+    let descriptors: Vec<u64> = scope
+        .file_response_resources
+        .lock()
+        .map(|mut r| std::mem::take(&mut *r))
+        .unwrap_or_default();
+    crate::vm::ffi::http_server_file::scope_finalize_file_responses(&descriptors);
     scope.permit.lock().unwrap().take(); // 释放生命期许可（幂等）
     if let Ok(mut map) = REQUEST_SCOPES.lock() {
         map.remove(&scope.id);
@@ -4756,6 +4896,19 @@ pub(crate) fn register_scope_transfer(transfer_id: u64) {
     if let Some(scope) = lookup_scope(scope_id) {
         if let Ok(mut r) = scope.transfer_resources.lock() {
             r.push(transfer_id);
+        }
+    }
+}
+
+/// PLAN-729 T-04：file_response 构造 shim 调用——描述符登记进当前请求的
+/// 文件描述符资源组（无 scope → no-op；编组取出或 scope 终结时移除）。
+pub(crate) fn register_scope_file_response(descriptor_id: u64) {
+    let Some(scope_id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
+        return;
+    };
+    if let Some(scope) = lookup_scope(scope_id) {
+        if let Ok(mut r) = scope.file_response_resources.lock() {
+            r.push(descriptor_id);
         }
     }
 }

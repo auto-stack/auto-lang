@@ -3712,6 +3712,11 @@ pub fn clear_http_routes() {
     // from a prior test would by-name-bind a same-named handler against the
     // wrong signature.
     super::http_server::clear_api_param_sigs();
+    // PLAN-729 T-04: also drop idle file-response descriptors — a stale entry
+    // from a prior test would let a plain int marshal as a file body.
+    if let Ok(mut map) = super::http_server_file::VM_FILE_RESPONSES.lock() {
+        map.clear();
+    }
 }
 
 // Thread-local storage for TCP listeners
@@ -8768,6 +8773,10 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("http.transfer_cancel", super::http_transfer::shim_http_transfer_cancel);
     natives.register_shim_by_name("auto.http.transfer_error", super::http_transfer::shim_http_transfer_error);
     natives.register_shim_by_name("http.transfer_error", super::http_transfer::shim_http_transfer_error);
+    // PLAN-729 T-04: 服务端文件响应描述符构造（零 I/O；执行在 transport
+    // 侧共享宿主服务）。
+    natives.register_shim_by_name("auto.http.file_response", super::http_server_file::shim_http_file_response);
+    natives.register_shim_by_name("http.file_response", super::http_server_file::shim_http_file_response);
 
     // Plan 350: WebSocket client
     crate::vm::ffi::websocket::register_ws_natives(natives);

@@ -310,11 +310,101 @@ async fn bridge_handler(
     // SSE：许可随 scope 移交响应体（FrameStream Drop 释放——流结束/断连/
     // 关闭均触发）；普通回复立即终结 scope。
     match &reply {
-        // SSE 的许可随 scope 移交响应体代持；其余回复立即终结 scope。
+        // SSE/文件体的许可随 scope 移交响应体代持；其余回复立即终结 scope。
         ApiReply::Full { body: ApiBody::Sse(_), .. } => {}
+        ApiReply::Full { body: ApiBody::File(_), .. } => {}
         _ => super::http_server::complete_scope(&scope),
     }
     api_reply_to_response(reply, parts, shutdown, Some(scope)).await
+}
+
+/// PLAN-729 T-04：文件 seed 的宿主 serve 结果。`finalize_scope` = 无 body
+/// 回复（HEAD/304/412/416/错误）待终结的 scope；流回复的 scope 已随
+/// `FileBodyAdapter` 代持。
+struct FileReplyOutcome {
+    reply: crate::http_file_service::FileReply,
+    scope: Option<std::sync::Arc<super::http_server::RequestScope>>,
+    finalize_scope: Option<std::sync::Arc<super::http_server::RequestScope>>,
+}
+
+/// 文件 seed → 宿主 serve。准备期限 = min(30s, scope 剩余)；finish hook =
+/// scope 幂等终结（body 收口恰一次）。
+async fn serve_file_seed(
+    seed: super::http_server::FileReplySeed,
+    request: axum::http::request::Parts,
+    scope: Option<std::sync::Arc<super::http_server::RequestScope>>,
+) -> FileReplyOutcome {
+    use crate::http_file_service::{serve_file_response, ServeFileRequest};
+    let method = request.method.as_str().to_string();
+    let headers: Vec<(String, String)> = request
+        .headers
+        .iter()
+        .filter_map(|(k, v)| {
+            v.to_str()
+                .ok()
+                .map(|val| (k.as_str().to_string(), val.to_string()))
+        })
+        .collect();
+    let limits = crate::http_file_service::file_serve_limits();
+    let now = std::time::Instant::now();
+    let cap = now + limits.prepare_timeout;
+    let prepare_deadline = match &scope {
+        Some(s) if s.deadline < cap => s.deadline,
+        _ => cap,
+    };
+    let hook_scope = scope.clone();
+    let finish_hook = hook_scope.map(|s| {
+        let hook: crate::http_file_service::FileFinishHook =
+            std::sync::Arc::new(move |_finish: &crate::http_file_service::FileFinish| {
+                super::http_server::complete_scope(&s);
+            });
+        hook
+    });
+    let reply = serve_file_response(
+        &seed.descriptor,
+        ServeFileRequest {
+            method: &method,
+            request_headers: &headers,
+            prepare_deadline,
+            finish_hook,
+        },
+    )
+    .await;
+    let is_stream = matches!(
+        reply.body,
+        crate::http_file_service::FileReplyBody::Stream(_)
+    );
+    FileReplyOutcome {
+        reply,
+        // 流回复：scope 随适配器代持；无 body 回复：带回终结。
+        scope: if is_stream { scope.clone() } else { None },
+        finalize_scope: if is_stream { None } else { scope },
+    }
+}
+
+/// PLAN-729 T-04：文件 body 适配器——宿主流 + scope 代持（EOF/Drop/断连/
+/// watchdog 收口恰一次，SSE FrameStream 同形）。
+struct FileBodyAdapter {
+    inner: crate::http_file_service::FileBodyStream,
+    scope: Option<std::sync::Arc<super::http_server::RequestScope>>,
+}
+
+impl Drop for FileBodyAdapter {
+    fn drop(&mut self) {
+        if let Some(scope) = self.scope.take() {
+            super::http_server::complete_scope(&scope);
+        }
+    }
+}
+
+impl futures::Stream for FileBodyAdapter {
+    type Item = Result<Vec<u8>, std::io::Error>;
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        std::pin::Pin::new(&mut self.inner).poll_next(cx)
+    }
 }
 
 /// Map the VM owner's structured reply onto the Axum response world.
@@ -361,6 +451,55 @@ async fn api_reply_to_response(
                         scope,
                     }))
                     .unwrap_or_else(|_| error_response(500, "internal error")),
+                // PLAN-729 T-04：文件响应——宿主 serve（准入/打开/协议决策/
+                // 有界 body）在此 async 完成，不在 VM owner。scope 随 body
+                // 移交（pump 收口恰一次）；无 body 回复（HEAD/304/412/416/
+                // 错误）由本臂直接终结 scope。
+                ApiBody::File(seed) => {
+                    let outcome = serve_file_seed(seed, request, scope).await;
+                    let mut builder = Response::builder().status(
+                        axum::http::StatusCode::from_u16(outcome.reply.status)
+                            .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                    );
+                    {
+                        let map = builder.headers_mut().expect("fresh builder");
+                        for (k, v) in &outcome.reply.headers {
+                            if let (Ok(name), Ok(value)) = (
+                                axum::http::HeaderName::try_from(k.as_str()),
+                                axum::http::HeaderValue::from_str(v),
+                            ) {
+                                map.insert(name, value);
+                            }
+                        }
+                        // CORS 追加（与其他回复形态一致）。
+                        for (k, v) in super::http_server::cors_header_pairs() {
+                            if let (Ok(name), Ok(value)) = (
+                                axum::http::HeaderName::try_from(k.as_str()),
+                                axum::http::HeaderValue::from_str(&v),
+                            ) {
+                                map.insert(name, value);
+                            }
+                        }
+                    }
+                    let mut resp = match outcome.reply.body {
+                        crate::http_file_service::FileReplyBody::None => builder
+                            .body(axum::body::Body::empty())
+                            .unwrap_or_else(|_| error_response(500, "internal error")),
+                        crate::http_file_service::FileReplyBody::Inline(bytes) => builder
+                            .body(axum::body::Body::from(bytes))
+                            .unwrap_or_else(|_| error_response(500, "internal error")),
+                        crate::http_file_service::FileReplyBody::Stream(stream) => builder
+                            .body(axum::body::Body::from_stream(FileBodyAdapter {
+                                inner: stream,
+                                scope: outcome.scope,
+                            }))
+                            .unwrap_or_else(|_| error_response(500, "internal error")),
+                    };
+                    if let Some(scope) = outcome.finalize_scope {
+                        super::http_server::complete_scope(&scope);
+                    }
+                    resp
+                }
             }
         }
         ApiReply::WebSocket { accept } => {
