@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-733
-status: execution_done
+status: reviewed
 feature_name: VM 运行时模块级 fn 调用返空语义修复（store handler 域/computed 族）
 author: [agent]
 created_at: 2026-10-02T22:10:00Z
@@ -10,9 +10,10 @@ current_step: 4
 total_steps: 4
 supersedes_spec_components:
   - docs/specs/auto-lang/vm/architecture.md
-new_spec_components: []
+new_spec_components:
+  - docs/specs/auto-lang/vm/design/vm-fn-call-semantics.md
 touched_goals:
-  - goal-vm-parity
+  - GOAL-007
 ---
 
 # PLAN-733 — VM 运行时模块级 fn 调用返空语义修复（store handler 域/computed 族）
@@ -191,6 +192,59 @@ T-02（同计划内由调查结论选择,不另开计划）。
 - blockers: 无（musk 侧行源缺口为 auto-musk PLAN-097 侧接线项,非本仓阻断）
 - next: review（独立 auto-plan:review 在 lang-733 worktree 复验;跨仓证据
   双侧落账——musk 侧 T-05 解阻记录由 auto-musk 会话执笔）
+
+### review 阶段记录（2026-10-02，独立复审——同会话声明+工件重建）
+
+- stage: review | plan_id: PLAN-733 | plan_revision: 1 | outcome: **pass**
+- reviewed_commit: 6bd9fa174（worktree D:/autostack/.wt/lang-733/auto-lang @ plan-733-dev；
+  102d20652+6bd9fa174 两提交,基面 master 3053f1fdf；树 clean,无未审脏改）
+- base_commit: 3053f1fdf
+- dependency_revisions: auto-down 兄弟 worktree .wt/lang-733/auto-down @ 895f8d0
+  （detached=master,仅 workspace 解析用,零代码改动）；跨仓证据基
+  auto-musk .wt/musk-097 @ b1d9250（含 b2285ac,树 clean）
+- spec_inputs: docs/specs/auto-lang/vm/architecture.md（ADR-23 末态基线）+
+  vm/overview.md + docs/specs/goals.md（GOAL-NNN 账本）；worktree 内
+  SD-01/SD-02 落稿（ADR-24/design/vm-fn-call-semantics.md/overview 登记）
+  已按 merge 前可审稿形态复核——描述当前行为与持久决策,无执行日志化文本
+- acceptance_results:
+  - **AC-01 pass**（V01）：`cargo nextest … p733` 2/2——矩阵测试
+    `p733_store_handler_module_fn_call_matrix` 断言 handler 域全形态真值
+    （0/1/2/3/6 参×同文件/跨模块×.length/==[]/for-in/成员读消费+跨轮次
+    /timer+跨模块同名歧义格 f_dup="local"）；红相证据=work 期 musk 实链
+    `Undefined symbol: canvasProgressRows` 整链接失败摘录（§8 T-01 格）
+    +修复前 cc2="running:0:…" 进程内红值
+  - **AC-02 pass**（V01/V02）：`p733_computed_fn_call_face`——computed
+    三形态（f-string/直读/状态引用与 obj 字面量实参）+call_vm_fn 直调
+    双形（VmRef/Array 实参）值精确断言；异根判定落 §10.1,三腿修复
+    全在本计划 charter 面内（优于纯边界登记）
+  - **AC-03 pass（含前提更正 F-2）**（V04）：probe-g15 SMOKE PASS 收据
+    `.demo/lang-733/t05-g15-p733fix/snapshot-g15.txt` 关键行摘录——
+    `text … "生成进度" {` / `text … "启动预览 已可见"`（=t() 动态键双形态
+    真值）；smoke-t07 六步 ALL PASS（manifest
+    `.demo/musk-097/t07-20261002152709/evidence-manifest.json`）；musk
+    V02 30/30（contract13/evidence8/focusboard4/vm-session5）；AUTO_EXE=
+    本 worktree 构建；musk 树插桩已回滚 clean
+  - **AC-04 pass**（V03）：daily 档 no-fail-fast 全量×4 失败集与 master
+    基线**确定性红逐名全等**（15 预存红零增减）；plan502_m3 闪红=F-1
+    预存 flake（master 同发 2/5,同错 FlowDiagram Init CPU-slice parked
+    x=108,非本 diff——零触 diagram/layout/parking 面）；diff 零
+    trans/vue/ui_gen/aavm 触面（--stat 十文件全 VM/UI 面+规范+测试）
+- findings:
+  - F-1（nonblocking,已入 KNOWN-DEBT P733-R1）：plan502_m3_layout_
+    geometry_e2e 并行负载 flake（双树同发,机理=Init CPU-slice parked）
+  - F-2（前提更正,跨仓路由）：musk 提交树 cp_prog_rows 重算调用点从未
+    入册,"零改动解阻"前提不实——musk 侧需 8 行接线（本仓复验同款插桩
+    SMOKE PASS 已证）；归 auto-musk PLAN-097 会话落账（§10.3）
+  - F-3（nonblocking,已入 KNOWN-DEBT P733-R2）：musk_vm_track p053_1/
+    p053_4/p053_6/p054 预存红族=同族深层腿（子件 override 态链）,修复
+    前后零行为变化,边界登记于设计文档
+  - F-4（frontmatter 定稿,本次执行）：touched_goals 原稿 "goal-vm-parity"
+    为不存在的 ID——按 docs/specs/goals.md 账本定稿 **GOAL-007**；
+    new_spec_components 补 design/vm-fn-call-semantics.md
+- evidence: 复审门禁命令与结果如上（全量失败集 diff=空/逐名全等；
+  `cargo tv` 162/162；p733 2/2）；收据文件在审后仍核读存在
+- next: merge（/auto-plan:merge 在 lang-733 worktree 执行;SD-01/SD-02
+  canonical 沉淀+ledger 刷新+KNOWN-DEBT P733-R1/R2 已随本记录落账）
 
 ## 10. 待澄清事项
 
