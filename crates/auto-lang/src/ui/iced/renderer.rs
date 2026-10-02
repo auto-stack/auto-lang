@@ -23411,7 +23411,11 @@ fn dynamic_view_impl(
     // Fast path: return cached Element when nothing changed.
     if !dirty {
         if let Some(el) = state.app.cached_rendered.borrow_mut().take() {
-            return el;
+            // PLAN-731 T-00: 防御快道同样过 S5 根探针（路径覆盖一致）。
+            return crate::ui::iced::frame_probe::FrameProbe::new(
+                crate::ui::iced::right_press_area::PointerPressArea::new(el),
+            )
+            .into();
         }
         // Cache empty — fall through to rebuild (uses cached AbstractView if available)
     }
@@ -23803,6 +23807,11 @@ fn dynamic_view_impl(
     // 根单包装,纯委托,ButtonPressed 事件现场记账;见 ui::iced::right_press_area)。
     let result: iced::Element<'static, IcedMessage> =
         crate::ui::iced::right_press_area::PointerPressArea::new(result).into();
+
+    // PLAN-731 T-00: S5 分段根包装探针（最外层——括号覆盖含指针包装在内的
+    // 全树 layout/draw；纯委托零行为差，门关零开销）。
+    let result: iced::Element<'static, IcedMessage> =
+        crate::ui::iced::frame_probe::FrameProbe::new(result).into();
 
     // PLAN-725 T-04① 勘定：put-then-take 死写移除。iced view() 契约要求
     // owned Element 返回——原「写缓存后立即 take 返回」使缓存入口态恒空，

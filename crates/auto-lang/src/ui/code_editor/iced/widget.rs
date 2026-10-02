@@ -480,6 +480,10 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
 
         // Render (shape + geometry) and the gutter raster share one font
         // system guard — single short critical section.
+        // PLAN-731 T-00：编辑器 draw 关键段臂钻取（[P725-ARMS] 累积表——
+        // 含 sync/整形/几何/gutter 光栅全链）。
+        let p731_block_t =
+            crate::ui::frame_bench::segments_gate().then(std::time::Instant::now);
         let list = crate::ui::code_editor::core::with_font_system(|fs| {
             if self.hosted {
                 // Double-guard the offset sync (the scroller's on_scroll is
@@ -498,8 +502,14 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
                 // Plan 428: fold toggles change the gutter image without a
                 // text revision — mix the hidden count into the cache key.
                 let cache_key = list.revision ^ ((list.fold_hidden as u64) << 52);
+                let p731_gutter_t =
+                    crate::ui::frame_bench::segments_gate().then(std::time::Instant::now);
                 let mut gutter = state.gutter.borrow_mut();
-                if let Some((handle, _)) = gutter.image(section, fs, cache_key) {
+                let out = gutter.image(section, fs, cache_key);
+                if let Some(t0) = p731_gutter_t {
+                    crate::ui::frame_segments::arm_acc("ce_gutter", t0.elapsed());
+                }
+                if let Some((handle, _)) = out {
                     renderer.draw_image(
                         adv_image::Image {
                             filter_method: adv_image::FilterMethod::Nearest,
@@ -512,6 +522,11 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
             }
             list
         });
+        if let Some(t0) = p731_block_t {
+            crate::ui::frame_segments::arm_acc("ce_draw_block", t0.elapsed());
+            // 段计数（fill_text 件数——flush 侧整形量代理）。
+            crate::ui::frame_segments::arm_count("ce_text_runs");
+        }
 
         let to_color = |c: theme::Rgba| {
             Color::from_rgba(

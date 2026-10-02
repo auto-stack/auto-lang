@@ -13,6 +13,9 @@
 //   （如非脏 fall-through 自身）滞留 prev 至被覆写 → 孤儿行。
 // - **残差=layout+draw**：S5 不插桩（iced 内部段无公开钩子）——分析侧以
 //   `total=present-begin` 减 S1..S4 得残差（含 iced 内务开销，归因上界口径）。
+//   **PLAN-731 T-00 起退役**：S5 升为分段口径（s5_layout/s5_shaping/s5_draw
+//   三时间戳——根包装探针 frame_probe + 编辑器整形打点；present 侧 wgpu
+//   flush 仍为小残差，谱分析单列）。
 // - **线程域**：update/view 同主线程——thread_local 累加，无锁。
 //
 // 段定义（与 plan §5 T-00 对齐）：
@@ -35,6 +38,9 @@ struct Segments {
     s3a_mcp_us: u64,
     s3b_build_us: u64,
     s4_element_us: u64,
+    s5_layout_us: u64,
+    s5_shaping_us: u64,
+    s5_draw_us: u64,
     builds: u32,
     dirty: Option<bool>,
 }
@@ -117,6 +123,9 @@ impl Segments {
             || self.s3a_mcp_us > 0
             || self.s3b_build_us > 0
             || self.s4_element_us > 0
+            || self.s5_layout_us > 0
+            || self.s5_shaping_us > 0
+            || self.s5_draw_us > 0
     }
 }
 
@@ -127,7 +136,7 @@ fn emit(s: Segments, present_ms: i64) {
         None => -1,
     };
     eprintln!(
-        "[P725-FRAME] begin={} present={} s1_payload_us={} s2_vm_us={} s3a_mcp_us={} s3b_build_us={} s4_element_us={} builds={} dirty={}",
+        "[P725-FRAME] begin={} present={} s1_payload_us={} s2_vm_us={} s3a_mcp_us={} s3b_build_us={} s4_element_us={} s5_layout_us={} s5_shaping_us={} s5_draw_us={} builds={} dirty={}",
         s.begin_ms,
         present_ms,
         s.s1_payload_us,
@@ -135,6 +144,9 @@ fn emit(s: Segments, present_ms: i64) {
         s.s3a_mcp_us,
         s.s3b_build_us,
         s.s4_element_us,
+        s.s5_layout_us,
+        s.s5_shaping_us,
+        s.s5_draw_us,
         s.builds,
         dirty
     );
@@ -183,6 +195,33 @@ pub fn note_s3b_clone(elapsed: std::time::Duration) {
 /// S4：Element 段（render_dynamic_view 全树新建）耗时。
 pub fn note_s4_element(elapsed: std::time::Duration) {
     with_current(|s| s.s4_element_us += elapsed.as_micros() as u64);
+}
+
+// ── PLAN-731 T-00：S5 子段打点（门关=即时返回，零开销） ─────────────────
+//
+// 口径（SD-02 扩展面）：
+// - s5_layout：根包装探针（frame_probe）layout() 括号时长——含全树
+//   layout 与非编辑器文本件的布局期整形。纯滚动帧不重建 view → 本字段
+//   为 0（正确反映无 layout 段）。
+// - s5_shaping：编辑器核心 render 内 cosmic-text 整形括号（shape_until_
+//   scroll 窗口整形+新暴露行）。多编辑器实例逐次累加。
+// - s5_draw：根包装探针 draw() 括号时长——含编辑器 render/光栅与全树
+//   绘制入队。present 侧 wgpu flush（文本管线/GPU）不在其中，谱分析以
+//   残差单列（对账口径见 plan §5 T-00）。
+
+/// S5a：layout 段（根包装探针 layout 括号）耗时。
+pub fn note_s5_layout(elapsed: std::time::Duration) {
+    with_current(|s| s.s5_layout_us += elapsed.as_micros() as u64);
+}
+
+/// S5b：整形段（编辑器 cosmic-text 窗口整形）耗时。
+pub fn note_s5_shaping(elapsed: std::time::Duration) {
+    with_current(|s| s.s5_shaping_us += elapsed.as_micros() as u64);
+}
+
+/// S5c：draw 段（根包装探针 draw 括号）耗时。
+pub fn note_s5_draw(elapsed: std::time::Duration) {
+    with_current(|s| s.s5_draw_us += elapsed.as_micros() as u64);
 }
 
 /// 帧脏标记（view() 主路径取 view_dirty 时调用）。
@@ -237,6 +276,20 @@ pub fn flush_arms() {
             .collect();
         eprintln!("[P725-ARMS] {}", parts.join(" "));
         map.clear();
+    });
+}
+
+/// PLAN-731 T-00：纯计数臂（无时长事件——如 fill_text 段数）；与 arm_acc
+/// 共表，发布点随 `[P725-ARMS]` 行。
+pub fn arm_count(name: &'static str) {
+    if !enabled() {
+        return;
+    }
+    ARM_ACC.with(|m| {
+        m.borrow_mut()
+            .entry(name)
+            .and_modify(|(_, n)| *n += 1)
+            .or_insert((0, 1));
     });
 }
 

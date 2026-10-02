@@ -26,6 +26,8 @@ pub mod right_press_area;
 // iced-layout-tests 门控)。
 #[cfg(all(test, feature = "iced-layout-tests"))]
 mod pointer_placement_tests;
+// PLAN-731 T-00: S5 分段根包装探针(layout/draw 括号计量,纯委托)。
+pub mod frame_probe;
 // Plan 547: native display surface backed by the shared media registry.
 pub mod image_surface;
 // Plan 563: pen 事件层 widget(canvas onpenstart/onpenmove/onpenend 承载,

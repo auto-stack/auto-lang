@@ -76,12 +76,18 @@ pub fn render(
     // Plan 428 P1: the chevron set comes from real fold regions (brace
     // matching) instead of the Phase A per-line heuristic.
     let (gutter_total, digits, regions) = if config.line_numbers {
+        // PLAN-731 T-00：fold 域发现臂钻取（O(total lines) 文本扫描——滚动
+        // 帧嫌疑面，[P725-ARMS] 累积表）。
+        let p731_fold_t = crate::ui::frame_bench::segments_gate().then(std::time::Instant::now);
         let (line_count, regions) = editor.with_buffer(|b| {
             // Region discovery is pure text work (no shaping); the borrowed
             // texts die inside the closure, the owned regions escape.
             let texts: Vec<&str> = b.lines.iter().map(|l| l.text()).collect();
             (b.lines.len(), fold::regions_from_texts(&texts))
         });
+        if let Some(t0) = p731_fold_t {
+            crate::ui::frame_segments::arm_acc("ce_fold_scan", t0.elapsed());
+        }
         let digits = digits_of(line_count.max(1)).max(2);
         let mut width = 0.0f32;
         {
@@ -116,7 +122,15 @@ pub fn render(
             Some(viewport_h),
         )
     });
-    editor.shape_as_needed(font_system, true);
+    {
+        // PLAN-731 T-00：S5b 整形段（cosmic-text 窗口整形+新暴露行——SD-02
+        // 分段口径的 shaping 时间戳）。门关不取时刻。
+        let t0 = crate::ui::frame_bench::segments_gate().then(std::time::Instant::now);
+        editor.shape_as_needed(font_system, true);
+        if let Some(t0) = t0 {
+            crate::ui::frame_segments::note_s5_shaping(t0.elapsed());
+        }
+    }
 
     // ── fold map (Plan 428 P1/P2) ─────────────────────────────────────────
     // Regions were discovered above (line texts, no shaping needed); the
