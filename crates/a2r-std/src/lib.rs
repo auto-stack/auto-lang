@@ -15,6 +15,7 @@ pub mod math;
 pub mod process;
 pub mod redis;
 pub mod sqlite;
+pub mod sse;
 pub mod sys;
 pub mod str;
 pub mod string_builder;
