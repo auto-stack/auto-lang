@@ -107,7 +107,10 @@
   `ui::iced::frame_probe` layout() 括号；S5b shaping=编辑器核心
   render 内 cosmic-text 整形括号；S5c draw=根包装探针 draw() 括号）；
   present 侧 wgpu flush 以 gpu_residual 单列（配对帧）。门控纪律同款
-  （门关不取 Instant——`.then(Instant::now)` 形）。
+  （门关不取 Instant——`.then(Instant::now)` 形）。**覆盖边界（R1 F-5
+  注记）**：探针包装 dynamic_view_impl 主路径（含防御快道）；
+  `view_named(face)` 早退路径（dashboard face 面）未包装——face 会话
+  的 S5 观测为待办注记（帧档 bench/ladder 主路径不受影响）。
 - **谱面**：文档尺寸阶梯 5KB/100KB/1MB × VM 轨 × MCP autoui_type 驱动
   （单字符 30 键 60ms 节拍——下游 stage_frame 协议同源）；判据
   **segsum（S1..S4 和）P50/P95**（present 配对受 bounds 回路竞争不稳定

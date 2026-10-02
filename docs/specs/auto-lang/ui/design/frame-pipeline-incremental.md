@@ -80,8 +80,11 @@ handler 解释）→ ③builder 段（模板→AbstractView）→ ④Element 段
   begin 行数对照为证。泵率谱（distinct present/秒+孤儿计数）入阶梯
   谱脚本（§5b）；呈现节奏真值归下游 live-fire 档。
 - **改后阶梯谱（731 定量门）**：1MB 档 s5 P50 debug ≤1.0ms / release
-  ≤0.5ms；滚动尾帧（s5 P95）debug ≤2.0ms；S1-S4 segsum 零回退带
-  （±5%）；视觉 golden 三形（键入/滚动/resize）改前/改后 0.00% 全等。
+  ≤0.5ms；滚动尾帧（s5 P95）debug ≤2.0ms；S1-S4 打点/实现路径零改动
+  （diff 事实），segsum 均值跨跑带无系统性劣化（实测 1MB +3.8%/
+  5KB -4.2% 同带；100KB -36% 为改善向，s3a MCP 同步块跨跑波动主源
+  ——波动带注记见 evidence/731/T-05-comparison.md §1）；视觉 golden
+  三形（键入/滚动/resize）改前/改后 0.00% 全等。
 
 ## 5. 阶梯谱基准口径（上游对偶面）
 

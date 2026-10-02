@@ -524,8 +524,12 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         });
         if let Some(t0) = p731_block_t {
             crate::ui::frame_segments::arm_acc("ce_draw_block", t0.elapsed());
-            // 段计数（fill_text 件数——flush 侧整形量代理）。
-            crate::ui::frame_segments::arm_count("ce_text_runs");
+            // 段计数（fill_text 件数——flush 侧整形量代理；R1 F-3 实计
+            // list.text_runs.len()，非 draw 调用数）。
+            crate::ui::frame_segments::arm_count_n(
+                "ce_text_runs",
+                list.text_runs.len() as u32,
+            );
         }
 
         let to_color = |c: theme::Rgba| {

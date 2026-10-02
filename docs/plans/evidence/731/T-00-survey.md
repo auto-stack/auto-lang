@@ -14,15 +14,16 @@
 
 ## 2. 基线谱（改前；debug 与 release 双态，041-auto-edit VM 轨）
 
-### debug（ladder-baseline.jsonl）
+### debug（ladder-baseline.jsonl；R1 注：T-00 态二进制全档重跑归档版——
+首轮控制台数字 7.06/38.66 见 §3 波动注记）
 
 | 档 | 相位 | s5 P50 | s5 均值分解（layout/shaping/draw） | ce_fold_scan 均值 |
 |---|---|---|---|---|
-| 5kb | type | 0.50ms | 0.14/0.08/0.30 | 0.045ms |
-| 100kb | type | 1.21ms | 0.13/0.10/0.99 | **0.72ms** |
-| 1mb | type | 7.06ms | 0.14/0.26/**6.71** | **6.29ms（90%）** |
-| 1mb | scroll | 7.01ms（P95 38.66） | 0.18/0.29/8.61 | 6.91ms |
-| 1mb | typenl（024 换行协议形） | 6.22ms（P95 6.56） | 0.13/0.21/5.52 | 5.52ms |
+| 5kb | type | 0.49ms | 0.14/0.08/0.30 | 0.047ms |
+| 100kb | type | 2.04ms | 0.20/0.14/1.68 | **1.20ms** |
+| 1mb | type | 6.60ms | 0.15/0.26/**6.74** | **6.32ms（96%）** |
+| 1mb | scroll | 8.67ms（P95 13.88） | 0.19/0.29/8.36 | 7.82ms |
+| 1mb | typenl（024 换行协议形） | 6.62ms（P95 12.86） | 0.16/0.26/6.58 | 6.90ms |
 
 ### release（ladder-baseline-release.jsonl）
 
@@ -34,7 +35,7 @@
 
 ## 3. 归因定谳
 
-1. **ce_fold_scan=S5 绝对主导**：`render()` 每帧 `fold::regions_from_texts`（O(total lines) 全文档逐行文本收集+括号扫描），随文档尺寸线性；typing/scroll/typenl 全相位每帧执行（与是否编辑无关）。1MB 档 debug 6.3ms/帧（90% S5）、release 0.78ms/帧（67%）。**直对策=按 revision 缓存**（编辑才失效——725 脏域协同）。
+1. **ce_fold_scan=S5 绝对主导**：`render()` 每帧 `fold::regions_from_texts`（O(total lines) 全文档逐行文本收集+括号扫描），随文档尺寸线性；typing/scroll/typenl 全相位每帧执行（与是否编辑无关）。1MB 档 debug 6.3-7.8ms/帧（90-96% S5）、release 0.78ms/帧（67%）。**直对策=按 revision 缓存**（编辑才失效——725 脏域协同）。（波动注记：两轮基线实测 s5 P50 6.24-7.06、滚动 P95 13.88-38.66——首轮尾帙含 900px 首步 sync 臂整形突发，二轮起 OS 页缓存热。）
 2. **s5_shaping 已受控**（release 1MB 0.10-0.18ms/帧）：cosmic-text 窗口整形+725/629 已落虚拟化（hosted sync_external_scroll 粗定位+shape_until_scroll 窗口臂）。滚动尾帧（debug 38ms）=首大步进 sync 臂突发（shape_until_scroll 从 scroll.line 到窗底新行）——量级受步幅约束，release ~2ms。**「行级整形缓存」的主体已由 cosmic-text BufferLine 内建承载**（shape_until_scroll prune=false 保留已整形行）——731 增量=首帧行渐进（现状即渐进——虚拟化窗口）+失效域窄化（revision 键 fold 缓存即其载体）。
 3. **s5_layout 非瓶颈**（release 0.02-0.03ms/帧）：iced 0.14 全窗 layout 在本 app 树（041 例）上极廉。
 4. **ce_widget_new 非成本**：code_editor 臂（含 CodeEditor::new+set_text diff）debug 0.17ms/rebuild。024 归因「编辑器组件重建→全量重整形」的重建计数关联=**同帧伴随**（重建帧必过 draw→fold_scan+整形），非因果成本——插桩定谳。
