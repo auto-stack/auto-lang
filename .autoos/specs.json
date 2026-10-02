@@ -3501,6 +3501,18 @@
           "id": "P702-1",
           "title": "ui-handler-async — VM UI handler 段执行驱动（park/resume）与忙等退役（SD-01..02）",
           "content": "PLAN-702 全 delivered。①engine 段驱动（SD-01→vm/architecture.md ADR-23）：call_fn_by_name_segment/resume_fn_by_name_segment（共享核 drive_handler_segment(allow_busy_wait)）——Yield+waiting_http_request_id/waiting_future_id 即返回 SegmentOutcome::Parked{wait,seg} 零忙等；resume 镜像 wake source 6（外部 future 推结果+async_frames resume_suspended_body 续体）后续跑同核；drop_async_result 回收只属真正放弃等待的超时路径（PLAN-027 缺陷 A 边界），parked 不回收按 req_id 取用；call_fn_by_name 忙等退役为 legacy 非 UI 调用方语义。等待上限契约变更：30s 忙等硬超时→RuntimeError（catch 接不住）变为 reqwest 客户端 30s 超时以错误体数据落账（.at 可捕获，E7 静默失败面结构性消除）。②ui 桥契约（SD-02→ui/architecture.md ADR-24）：call_handler/call_handler_for/call_handler_with_record/run_module_init 四派发点全切段驱动；parked_tasks 注册表（task+seg+wait+重入键+来源清账纪律）；恢复=__parked_resume_tick 条件订阅（__timer_tick 同族 16ms，仅 has_parked_tasks 在册；AppTick Poll 静态泵有进程级多 App 串投歧义故弃）→update 臂内联 poll_parked_resumes（单 VM 串行执行点，恢复 Err 走 [VM-HANDLER] failed 通道）；重入默认忽略（namespaced fn 名键）+busy 镜像 __busy_handlers List<str>（宿主读路径可查；.at GET_FIELD 静态 field_idx 对运行期字段不可达，.at 原生查询延期 P702-D1）；view 侧 call_vm_fn/call_computed_fn 保留同步驱动（Value 返回契约无 park 形态）带 legacy 标记封顶两处（门禁测试强制）。从不 yield 的 handler 与同步驱动逐字节同（同 step 核/预算/try-catch）。③决策工件 Design 34（store 所有权建议 Go 式共享+单写者纪律/handler 阻塞纪律建议 ui_lint+段切预算两步走，待用户裁定）。债 P702-D1..D4；账本三件套+archive 见收据。"
+        },
+        {
+          "id": "P733-1",
+          "title": "ADR-24 模块级 fn 调用语义契约——H2 栈编码统一覆盖 call_vm_fn 桥实参",
+          "content": "PLAN-733 delivered。VM 渲染目标下模块级 fn 调用（store handler 域与视图 computed 域）契约：返回真实值/参数逐位绑定/失败显式报错不静默返空。执行锚=call_vm_fn 堆引用实参栈编码 encode_list→encode_object 对齐 H2 统一约定（engine 数值臂只认 TAG_OBJECT/裸 i32,TAG_LIST 按空迭代=computed 列表实参恒空根因）+store_scope_module own-module 绑定域（同文件裸名跨模块歧义不再整链接失败）+视图求值器 t() 动态键/Expr::Object 臂。T-01 实证 handler 域本无缺陷（musk\"handler 域返空\"系输入面误归因）。矩阵锚 plan733_fn_call_semantics_tests;边界见 design/vm-fn-call-semantics.md。",
+          "file": "docs/specs/auto-lang/vm/architecture.md",
+          "related": [
+            "PLAN-733",
+            "GOAL-007"
+          ],
+          "status": "stable",
+          "created": "2026-10-02T16:30:00Z"
         }
       ]
     },
@@ -5111,6 +5123,18 @@
             "docsha:ae933b5157c4"
           ],
           "file": "docs/specs/auto-lang/trans/design/http-file-response-lowering.md"
+        },
+        {
+          "id": "P733-2",
+          "title": "vm-fn-call-semantics — VM 模块级 fn 调用语义矩阵与已知边界",
+          "content": "语义矩阵 8 行（handler 域全参型真值/跨轮次 timer 消费/computed 三形态含列表与 obj 字面量实参/歧义格/t 动态键）+已知边界 4 条：①懒挂载时序（PLAN-711 pending demand,每拍重算自愈）②push_value 对 Rust 外发堆引用实参占位 0（既有约定,主链只传标量）③musk_vm_track p053/p054 预存红族=同族深层腿（P733-R2）④视图 .length 成员链表现层（分层归因）。维护规则：改 call_vm_fn 实参编码先对照矩阵补格。",
+          "file": "docs/specs/auto-lang/vm/design/vm-fn-call-semantics.md",
+          "related": [
+            "PLAN-733",
+            "GOAL-007"
+          ],
+          "status": "stable",
+          "created": "2026-10-02T16:30:00Z"
         }
       ]
     },
@@ -8195,6 +8219,17 @@
             "commit:ae414a45b"
           ],
           "file": "docs/plans/archive/729-http-server-file-responses.md"
+        },
+        {
+          "id": "P733-3",
+          "title": "PLAN-733 复审 pass 收据（@6bd9fa174,基 3053f1fdf）",
+          "content": "独立工件重建（同会话声明+从提交/测试/收据重建,未采信实施摘要）。门禁：daily 全量×4 确定性红集与 master 基线逐名全等（15 预存红零增减）;plan502_m3 闪红归 F-1 预存 flake（master 同发同错 2/5,机理=FlowDiagram Init CPU-slice parked）;tv 162/162;p733 2/2。AC-01..04 全 pass;AC-03 含 F-2 musk 前提更正（其 cp_prog_rows 重算调用从未入册,\"零改动解阻\"不实,8 行接线归 PLAN-097 落账）;F-4 frontmatter 定稿 touched_goals=GOAL-007。KNOWN-DEBT P733-R1/R2。rebase 102d→481bcb0b9/6bd9fa174→0b5c8758d range-diff 2/2 全等。",
+          "file": "docs/plans/archive/733-vm-fn-call-semantics.md",
+          "related": [
+            "PLAN-733"
+          ],
+          "status": "stable",
+          "created": "2026-10-02T16:30:00Z"
         }
       ]
     }
