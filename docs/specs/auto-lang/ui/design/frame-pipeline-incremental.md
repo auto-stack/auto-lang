@@ -75,10 +75,21 @@ handler 解释）→ ③builder 段（模板→AbstractView）→ ④Element 段
   模式——widget 每帧轻构 ~0.17ms debug 含 set_text diff）；「实例缓存」
   在 iced 即时模式语义下无可实施面，重建计数受控谱在档（code_editor
   臂）。046 memo 面正交（零触碰 memo_deps/ui_epoch）。
-- **泵治理语义**：`present=-1` 孤儿行=**测量配对面**（帧泵消息消费
-  滞后/合并——`__frame_pump` 异步回环），非呈现丢失；相位墙钟与
-  begin 行数对照为证。泵率谱（distinct present/秒+孤儿计数）入阶梯
-  谱脚本（§5b）；呈现节奏真值归下游 live-fire 档。
+- **泵治理语义（PLAN-735 升格——交付节奏契约）**：731 的「`present=-1`
+  孤儿行=测量配对面（泵消费滞后/合并）非呈现丢失」定谳在本件细化
+  并修复：**配对损耗根因=发布点错位**——稳态通知面走 ready 唤醒链
+  （每致脏 update 链一条 `__frame_pump`，711 D-2 订阅门稳态关闭），
+  链式消费先于本帧重建落 prev，紧随的 `__bounds_collected` 更新旋转
+  把已建已呈现帧以 -1 落账、bounds 帧窃得配对（实测建帧 87% 配对
+  损耗、行配对率 9-26%）。修复=发布点 truthful present（draw_end_ms
+  优先，frame_segments 双发布点同规则）——建帧 100% 拿行且行值=真实
+  呈现完成时刻。呈现节奏=驱动器节奏传递（交付节奏契约全文见
+  frame-observability §4）；呈现/通知分离谱与四轴根因在档
+  （evidence/735/T-01-T-02-separation-and-rootcause.md）。泵率谱
+  （distinct present/秒+孤儿计数）口径随修复后行通道（-1=真未呈现），
+  帧率判定连同驱动周期归因（§5b）。呈现节奏真值通道=draw_end_ms
+  列+frame_bench `frame_draw_end_ms()`（呈现面）——下游 live-fire
+  消费建议走真相通道（VM 9920 内建=下游重判件建议项）。
 - **改后阶梯谱（731 定量门）**：1MB 档 s5 P50 debug ≤1.0ms / release
   ≤0.5ms；滚动尾帧（s5 P95）debug ≤2.0ms；S1-S4 打点/实现路径零改动
   （diff 事实），segsum 均值跨跑带无系统性劣化（实测 1MB +3.8%/

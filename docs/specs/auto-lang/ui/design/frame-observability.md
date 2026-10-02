@@ -2,7 +2,8 @@
 
 > SD-B（PLAN-716 组B 落账真源——M4 供料包供②「内核帧时间戳插桩」
 > 承接）。before=.at 层无帧观测通道（PLAN-005 T-03 勘定）；after=本文
-> 通道契约。基=auto-lang plan-716-dev。
+> 通道契约。基=auto-lang plan-716-dev。PLAN-735 升格：呈现/通知分离
+> 语义+呈现真相通道（§1/§4/§5）。
 
 ## 1. 通道面
 
@@ -10,13 +11,25 @@
 - 两个只读单调时间戳（毫秒 i64，进程起点起算）：
   - **帧开始** `begin_ms`：桌面 update 入口到达时刻——锚点=
     `update_inner` 闭包入口（iced renderer.rs，VM 桌面路径全消息流经点）。
-  - **呈现完成** `present_ms`：`__frame_pump` 消息消费时刻——711 帧通知
-    泵（`listen_raw` 过滤 RedrawRequested）的 D-1/R-1 序障实证：**消费
-    时刻 ≥ 该帧 present 同步返回**——present 的合法代理。硬 post-present
-    屏障需 fork iced_winit（计划约束禁止，711 勘定在案）。
+  - **呈现完成（通知面）** `present_ms`：`__frame_pump` 消息消费时刻
+    ——通知消费时戳（R-1 序障实证：**消费时刻 ≥ 该帧 present 同步
+    返回**）。735 定谳（§5 分离谱）：稳态通知面走 ready 唤醒链
+    （每致脏 update 链一条 `__frame_pump`，711 D-2 订阅门控仅在
+    Init/CPU 工作窗口在册）——本字段语义=**通知消费时刻**，非呈现
+    真值；硬 post-present 屏障需 fork iced_winit（计划约束禁止，
+    711 勘定在案）。
+  - **呈现完成（呈现面真值）** `draw_end_ms`（PLAN-735）：根包装探针
+    （`ui::iced::frame_probe`）draw() 括号结束的绝对墙钟——iced_winit
+    RedrawRequested 臂内同步先行于 compositor present（同调用栈，
+    µs 级间隙），**逐帧真实呈现节奏**的直接代理。Rust 读侧
+    `frame_draw_end_ms()`；逐帧行通道见 §5 `[P725-FRAME]`
+    `draw_end_ms` 列。VM 9920 内建/a2r 扩展=下游重判件建议项
+    （本件下游判定零触碰不接线）。
 - 首帧段分解（steady_start）：spawn→首帧 begin→首帧 present 由读侧
   差分（present/begin 首个非零值）；type_latency=键入消息 begin→下一
-  present 差；scroll_fps=相邻 present 差倒数。
+  present 差；scroll_fps=相邻 present 差倒数。**735 注记**：帧率/时延
+  类判定的呈现面读数应取 `draw_end_ms` 族（§5 分离谱——`present_ms`
+  为通知面，受配对/驱动节奏双层伪影，见 §4 交付节奏契约行）。
 
 ## 2. 门控零开销纪律
 
@@ -84,6 +97,20 @@
   语义（dirty/epoch/poll_frame_pump 泵臂零触碰）；712 r2 已
   delivered+archived（2026-09-30，451dc1401+ff32d7004），残余
   T-16..T-19 为桌面轨调查（无 renderer 域代码 WIP）。
+- **交付节奏契约（PLAN-735 升格）**：呈现节奏=**驱动器节奏传递**
+  （每输入更新一轮 AboutToWait 无条件 request_redraw（unconditional-
+  rendering 钉版）→ 下一轮 RedrawRequested 臂同步 draw+present，
+  更新→呈现 +6-10ms 实测）；驱动停摆则呈现停摆，呈现速率上限=
+  事件循环轮速率（滚动突发实测 2-3ms/轮，数百 fps 能力）。~100ms
+  级「恒定节拍」观测=驱动器调用周期+服务端锁竞争长尾的传递读数，
+  **非渲染/通知天花板**——帧率类判定必须连同驱动协议周期一起归因
+  （evidence/735/T-01-T-02-separation-and-rootcause.md §2/§3）。
+  通知面（`present_ms`+行配对）735 起配对修复（§5），`draw_end_ms`
+  为呈现面真值；两通道读数分离对读，单通道不作呈现事实断言。
+- **呈现真相通道边界**：`draw_end_ms` 单窗精确（多窗会话=最后结束
+  窗口值，多窗帧观测仍为待办注记——renderer.rs 第二泵臂同域）；
+  `frame_probe` 覆盖 dynamic_view_impl 主路径，`view_named(face)`
+  早退路径（dashboard face）不包装（731 R1 F-5 注记沿用）。
 - 多窗 runner 第二泵臂（renderer.rs:19871 __frame_pump 推送点）未
   插桩——多窗会话帧观测为待办注记（单窗主路径已覆盖；per-window
   路由精化归 711 T-06余 观测面复核）。
@@ -98,9 +125,12 @@
 - **分段探针**：`ui::frame_segments`（与本文通道**同一 AUTO_FRAME_BENCH
   门**——单一门语义不引第二门）：`[P725-FRAME]` 行随帧吐出五段
   （S1 载荷/S2 VM/S3a MCP 同步/S3b 主重建/S4 Element）+builds+dirty；
-  prev/cur 双槽配对（泵序 begin→present）；`present=-1` 孤儿行=测量
-  配对面（帧泵消息消费滞后/合并——SD-01 §4b 泵治理语义）。门关零
-  分支零写入（§2 纪律同款）。
+  prev/cur 双槽配对（泵序 begin→present）。**PLAN-735 配对修复（§5
+  配对面口径升格）**：发布点 present 列=真实呈现完成时刻
+  （`draw_end_ms` 优先）；`present=-1` 仅剩真未呈现帧（建后零 draw
+  ——例：最小化/零尺寸窗早退）。731 的「-1 孤儿=测量配对面」伪影
+  已修（发布点错位——建帧 87% 配对损耗根因，§4 交付节奏契约行）。
+  门关零分支零写入（§2 纪律同款）。
 - **S5 子段插桩扩展（PLAN-731）**：`[P725-FRAME]` 行增
   `s5_layout_us/s5_shaping_us/s5_draw_us` 三时间戳——**残差口径
   （total−segsum）退役**，S5 升分段口径（S5a layout=根包装探针
