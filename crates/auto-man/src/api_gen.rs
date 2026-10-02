@@ -3942,6 +3942,253 @@ pub fn listusers() []User {
         A2R_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+
+    // =======================================================================
+    // PLAN-729 T-06: 生成文件 handler 实编 wire e2e（test-http-e2e 串行档）。
+    // 真实生成产物（api.rs/main.rs/types.rs/Cargo.toml）→ 临时 crate →
+    // cargo run（共享 worktree target 缓存）→ 真 TCP wire 断言。
+    // =======================================================================
+    #[cfg(feature = "test-http-e2e")]
+    mod plan729_e2e {
+        use super::*;
+        use std::io::{Read, Write};
+        use std::net::TcpStream;
+        use std::time::Duration;
+
+        const PORT: u16 = 18960;
+
+        fn temp_root(tag: &str) -> std::path::PathBuf {
+            let dir = std::env::temp_dir().join(format!("plan729-gen-{}-{}", tag, std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            dir
+        }
+
+        fn raw_request(
+            port: u16,
+            method: &str,
+            path: &str,
+            headers: &[(&str, &str)],
+        ) -> (u16, Vec<(String, String)>, Vec<u8>) {
+            let mut stream = None;
+            for _ in 0..100 {
+                if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
+                    stream = Some(s);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let mut stream = stream.expect("connect to generated server");
+            stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
+            let mut req =
+                format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n");
+            for (k, v) in headers {
+                req.push_str(&format!("{k}: {v}\r\n"));
+            }
+            req.push_str("\r\n");
+            stream.write_all(req.as_bytes()).unwrap();
+            let mut raw = Vec::new();
+            let mut buf = [0u8; 65536];
+            let header_end = loop {
+                let n = stream.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break None;
+                }
+                raw.extend_from_slice(&buf[..n]);
+                if let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break Some(pos + 4);
+                }
+            };
+            let header_end = header_end.expect("response headers");
+            let head = String::from_utf8_lossy(&raw[..header_end]).into_owned();
+            let mut lines = head.split("\r\n");
+            let status_line = lines.next().unwrap_or_default().to_string();
+            let status: u16 = status_line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let mut hdrs = Vec::new();
+            for line in lines {
+                if let Some((k, v)) = line.split_once(':') {
+                    hdrs.push((k.trim().to_ascii_lowercase(), v.trim().to_string()));
+                }
+            }
+            let cl: usize = hdrs
+                .iter()
+                .find(|(k, _)| k == "content-length")
+                .and_then(|(_, v)| v.parse().ok())
+                .unwrap_or(0);
+            let mut body = raw[header_end..].to_vec();
+            while body.len() < cl {
+                let n = stream.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                body.extend_from_slice(&buf[..n]);
+            }
+            body.truncate(cl);
+            (status, hdrs, body)
+        }
+
+        fn header_of(hdrs: &[(String, String)], name: &str) -> String {
+            hdrs
+                .iter()
+                .find(|(k, _)| k == name)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default()
+        }
+
+        /// 生成 → 写 crate → cargo run（子进程；监听后返回 Child）。
+        fn spawn_generated_server(api_at: &str, port: u16) -> std::process::Child {
+            let module = try_full_parse(api_at).expect("full parse");
+            let api_rs = generate_api_rs(&module, None, false);
+            let main_rs = generate_main_rs(&module, None, false, &[], false);
+            let types_rs = generate_types_rs(&module);
+            let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            // crates/auto-man → 仓库根（ancestors: [auto-man, crates, <root>]）。
+            let repo_root = manifest.ancestors().nth(2).unwrap().to_path_buf();
+            let dir = temp_root("crate");
+            let src = dir.join("src");
+            std::fs::create_dir_all(&src).unwrap();
+            // 与生产生成 crate 同形依赖（rust_ui.rs workspace 集的直 dep 形）；
+            // 共享 worktree target —— auto-lang 重产物复用，首编只有 glue。
+            std::fs::write(
+                dir.join("Cargo.toml"),
+                format!(
+                    r#"[package]
+name = "plan729-gen-e2e"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+tokio = {{ version = "1", features = ["full"] }}
+tokio-util = {{ version = "0.7", features = ["io"] }}
+serde = {{ version = "1", features = ["derive"] }}
+serde_json = "1"
+tower-http = {{ version = "0.5", features = ["cors"] }}
+auto-lang = {{ path = {auto_lang:?}, features = ["ui", "image-pipeline"] }}
+a2r-std = {{ path = {a2r_std:?} }}
+
+[[bin]]
+name = "plan729-gen-e2e"
+path = "src/main.rs"
+
+[workspace]
+"#,
+                    auto_lang = repo_root.join("crates/auto-lang"),
+                    a2r_std = repo_root.join("crates/a2r-std"),
+                ),
+            )
+            .unwrap();
+            std::fs::write(src.join("api.rs"), &api_rs).unwrap();
+            std::fs::write(src.join("types.rs"), &types_rs).unwrap();
+            std::fs::write(src.join("main.rs"), &main_rs).unwrap();
+            let target = repo_root.join("target");
+            let log_path = dir.join("server.log");
+            let log = std::fs::File::create(&log_path).expect("log file");
+            let mut child = std::process::Command::new("cargo")
+                .args(["run", "--bin", "plan729-gen-e2e"])
+                .env("AUTO_HTTP_PORT", port.to_string())
+                .env("CARGO_TARGET_DIR", &target)
+                .current_dir(&dir)
+                .stdout(log.try_clone().expect("stdout log"))
+                .stderr(log)
+                .spawn()
+                .expect("cargo run spawn");
+            for _ in 0..450 {
+                if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                    return child;
+                }
+                if let Ok(Some(_)) = child.try_wait() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            let log = std::fs::read_to_string(&log_path).unwrap_or_default();
+            panic!(
+                "generated server did not listen on {port}; log tail:
+{}",
+                log.lines().rev().take(40).collect::<Vec<_>>().join("
+")
+            );
+        }
+
+        /// 生成服务 wire 矩阵（AC-01/02/06：同源 fixture、真实编译运行）。
+        #[test]
+        fn http_e2e_plan729_generated_service_wire_matrix() {
+            let root = temp_root("files");
+            let data: Vec<u8> = (0u8..=199).collect();
+            std::fs::write(root.join("r.bin"), &data).unwrap();
+            std::fs::write(root.join("hello.txt"), b"hello generated").unwrap();
+            std::fs::write(root.join("empty.bin"), b"").unwrap();
+            std::fs::write(root.join("raw.bin"), [0x00u8, 0xFF, 0xFE, 0x80]).unwrap();
+            let root_fwd = root.to_str().unwrap().replace('\\', "/");
+            let api_at = format!(
+                r#"
+pub type FileMeta = {{ name: str, size: int }}
+
+#[api(method = "GET", path = "/files/:name")]
+pub fn download(name str) FileResponse {{
+    return http.file_response("{root}", name, "{{}}")
+}}
+
+#[api(method = "GET", path = "/etag/:name")]
+pub fn download_etag(name str) FileResponse {{
+    return http.file_response("{root}", name, "{{\"etag\":\"v1\"}}")
+}}
+"#,
+                root = root_fwd
+            );
+            let mut child = spawn_generated_server(&api_at, PORT);
+            let result = std::panic::catch_unwind(|| {
+                let (s, h, b) = raw_request(PORT, "GET", "/files/hello.txt", &[]);
+                assert_eq!(s, 200);
+                assert_eq!(header_of(&h, "content-length"), "15");
+                assert_eq!(b, b"hello generated");
+                let (s, h, b) = raw_request(PORT, "HEAD", "/files/hello.txt", &[]);
+                assert_eq!(s, 200, "GET 文件路由自动 HEAD");
+                assert_eq!(header_of(&h, "content-length"), "15");
+                assert!(b.is_empty());
+                let (s, _, b) = raw_request(PORT, "GET", "/files/raw.bin", &[]);
+                assert_eq!(s, 200);
+                assert_eq!(b, vec![0x00u8, 0xFF, 0xFE, 0x80]);
+                let (s, h, b) = raw_request(PORT, "GET", "/files/empty.bin", &[]);
+                assert_eq!(s, 200);
+                assert_eq!(header_of(&h, "content-length"), "0");
+                assert!(b.is_empty());
+                let (s, h, b) = raw_request(PORT, "GET", "/files/r.bin", &[("range", "bytes=10-19")]);
+                assert_eq!((s, header_of(&h, "content-range").as_str()), (206, "bytes 10-19/200"));
+                assert_eq!(b, (10u8..=19).collect::<Vec<u8>>());
+                let (s, _, _) = raw_request(PORT, "GET", "/files/r.bin", &[("range", "bytes=-0")]);
+                assert_eq!(s, 416);
+                let (s, _, b) = raw_request(PORT, "GET", "/etag/r.bin", &[("if-none-match", "v1")]);
+                assert_eq!((s, b.len()), (304, 0));
+                let (s, _, _) = raw_request(PORT, "GET", "/etag/r.bin", &[("if-match", "v2")]);
+                assert_eq!(s, 412);
+                let (s, _, b) = raw_request(
+                    PORT,
+                    "GET",
+                    "/etag/r.bin",
+                    &[("range", "bytes=10-19"), ("if-range", "v2")],
+                );
+                assert_eq!((s, b.len()), (200, 200));
+                let (s, _, _) = raw_request(PORT, "GET", "/files/nope.bin", &[]);
+                assert_eq!(s, 404);
+                let (s, _, _) = raw_request(PORT, "GET", "/files/..%2Fetc%2Fpasswd", &[]);
+                assert_eq!(s, 403);
+            });
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_dir_all(&root);
+            let _ = std::fs::remove_dir_all(temp_root("crate"));
+            if let Err(panic) = result {
+                std::panic::resume_unwind(panic);
+            }
+        }
+    }
+
     /// PLAN-729 T-05: 文件端点生成——Response 签名 + 宿主 serve 胶水 +
     /// .head() 路由 + 转译体（file_response lowering 同源）。
     #[test]

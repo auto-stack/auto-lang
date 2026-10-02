@@ -1,0 +1,28 @@
+// PLAN-729: file-download API — GET/HEAD with single-range and conditional
+// request support on both the VM default HTTP transport and the generated
+// Rust/Axum backend. The root is app-trusted config (env), the relative path
+// comes from the (untrusted) route param.
+
+pub type FileEntry = { name: str, size: int }
+
+#[api(method = "GET", path = "/api/files/:name")]
+pub fn download(name str) FileResponse {
+    let root = env.get("FILES_ROOT")
+    return http.file_response(root, name, "{}")
+}
+
+#[api(method = "GET", path = "/api/etagged/:name")]
+pub fn download_etagged(name str) FileResponse {
+    let root = env.get("FILES_ROOT")
+    // Strong validator supplied by the app: enables If-None-Match (304) and
+    // If-Range resume for stable content versions.
+    return http.file_response(root, name, "{\"etag\":\"v1\"}")
+}
+
+#[api(method = "GET", path = "/api/download/:name")]
+pub fn download_named(name str) FileResponse {
+    let root = env.get("FILES_ROOT")
+    // attachment with an explicit download name (path components stripped,
+    // non-ASCII encoded via RFC 5987 filename*).
+    return http.file_response(root, name, "{\"download_name\":\"report.bin\"}")
+}

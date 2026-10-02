@@ -1064,6 +1064,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn plan729_percent_named_missing_file_404() {
+        let root = temp_root("pct");
+        std::fs::write(root.join("ok.txt"), b"x").unwrap();
+        // % 字面名（双重编码路由输入的单次解码形态）：缺失文件必须 404
+        // 而非 500（Windows ERROR_INVALID_NAME 防御——见下 NotFound 分类）。
+        let r = serve_simple(&root, "%2e%2e%2fsecret.txt", "GET", &[]).await;
+        assert_eq!(r.status, 404, "percent-named missing → 404");
+        let r2 = serve_simple(&root, "a%25b.txt", "GET", &[]).await;
+        assert_eq!(r2.status, 404);
+    }
+
+    #[tokio::test]
     async fn plan729_options_error_maps_500_path_maps_403() {
         let root = temp_root("opt");
         std::fs::write(root.join("a.txt"), b"x").unwrap();

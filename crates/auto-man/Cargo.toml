@@ -3,6 +3,11 @@ name = "auto-man"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+# PLAN-729 T-06: 生成文件 handler 的实编 wire e2e（串行真 TCP；与 auto-lang
+# 同名 feature 同语义）。
+test-http-e2e = []
+
 [dependencies]
 auto-lang = { path = "../auto-lang", features = ["ui-iced"] }
 regex = "1"
