@@ -1,19 +1,20 @@
 ---
 plan_id: PLAN-732
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: autodown 编辑壳正文内链激活供给（jade-edit PLAN-037 上游供料 U-01..06）
 author: [agent]
 created_at: 2026-10-02
-updated_at: 2026-10-02
+updated_at: 2026-10-03
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components:
   - "docs/specs/auto-lang/ui/design/autodown-wikilink.md（SD-01：add——内链语义消费/区间命中/激活出口/载荷/origin/兼容矩阵）"
+  - "docs/specs/auto-lang/ui/architecture.md（SD-02：modify——ADR-27 内链激活供给裁定）"
 touched_goals: []             # 供料/下游谱驱动面（jade-edit PLAN-037 消费解锁），无 goals.md 正式 GOAL-NNN——731/728 先例注记式
 
 affects: [crates/auto-lang/src/ui/autodown_editor/, crates/auto-lang/src/ui/view.rs, crates/auto-lang/src/ui/aura_view_builder.rs, crates/auto-lang/src/ui/iced/]
-current_step: 0
+current_step: 6
 total_steps: 6
 ---
 
@@ -99,14 +100,14 @@ Rust（`crates/auto-lang/src/ui/autodown_editor/**`、`view.rs`、`aura_view_bui
 - `target` 为引擎侧已 trim 页面名原文（中文/别名/带 .ad 等不做身份判断——四级解析归 jade 后端）。
 - 代码域安全：parser 层已保证代码块/行内代码内 `[[` 不产 wikilink span（负例测试锁定）；`href` span（Markdown 外链）不产 wiki 激活。
 
-### 5.2 T-01 有界原型冻结（四未知，每项一次原型＋一次针对复测）
+### 5.2 T-01 有界原型冻结（四未知，每项一次原型＋一次针对复测）——**已冻结（2026-10-03 work 阶段落定，SD-01 §2..6 为权威文本）**
 
-| # | 未知 | 原型裁决物 | 记录处 |
+| # | 未知 | 裁决（原型+复测在案） | 记录处 |
 | --- | --- | --- | --- |
-| K-01 | 命中映射 | 链接区间 byte→行几何的取域精度（折行/首块/块型覆盖、像素阈值）；整块矩形禁用 | SD-01 §命中 |
-| K-02 | origin 公开形态 | 载荷显式携 key vs 结构性实例绑定；双实例/换内容反例通过判据 | SD-01 §origin |
-| K-03 | 事件公开名与签名 | `open-wiki-link` 全名消费 vs 备选别名；handler 形参数（2 参定版）与 Vue 兼容证据 | SD-01 §载荷 |
-| K-04 | 真实事件 seam | iced Event 注入 DocEditor::update 的测试形态（与生产共一实现）；MCP 辅助通道是否扩展（不改 __mcp_click 语义） | SD-01 §验证面 |
+| K-01 | 命中映射 | `DocLayout.links` 单 layout-run 段矩形（push_link_regions：行前缀偏移+run 钳制+index_x，选区同路）；折行每 run 一段独立命中；无外加命中带；拖动容差 LINK_DRAG_SLOP=4.0px；快照失配/折叠/只读实例零区间。复测=`plan732_wikilink_regions_semantics`/`_wrapped_regions_split`/`_negative_code_and_href` | SD-01 §2 |
+| K-02 | origin 公开形态 | **结构性实例绑定**（per-View-node LinkCallback/per-widget-instance 发布，无全局单槽）；载荷不携 key。复测=`plan732_dual_instance_isolated_activation`+六环语料单实例派发 | SD-01 §5 |
+| K-03 | 事件公开名与签名 | 绑定双形态：`on "open-wiki-link"`（完整 kebab，Plan-367 引号式键 `on"open-wiki-link"`——jade Vue 同名，主形态）+`onopenwikilink` 简写；handler 名作 Typed 事件名；双 Str 经 encode/decode_payload。复测=`test_autodown_editor_on_link_message_channel`/`dual_str_payload_crosses_send_boundary` | SD-01 §4 |
+| K-04 | 真实事件 seam | `UserInterface::build/update` 生产事件泵（widget.layout→measure→render_frame + update 真实 Event::Mouse/Cursor + Shell 消息），与生产共一实现；MCP `__mcp_click` 语义不变只作负例锚。复测=`plan732_real_iced_events_full_click_publishes_on_link`/`plan732_six_ring_full_click_reaches_vm_handler`/`plan732_mcp_click_ghost_semantics_zero_wiki_activation` | SD-01 §6 |
 
 原型只在本 Plan 专属 worktree（`D:/autostack/.wt/lang-732/auto-lang`）进行；任一项不可达=精确 blocker/needs_replan，不删 U 条款、不降 AC。
 
@@ -155,7 +156,14 @@ Rust（`crates/auto-lang/src/ui/autodown_editor/**`、`view.rs`、`aura_view_bui
 | T-05 真实事件验证面 | T-04 | widget.rs `update` iced 注入 seam（K-04 冻结形态）；mcp_server.rs 负例锚(:1855+) | R 组证据包（脚本+指纹）；`__mcp_click` 负例绿 | AC-05 |
 | T-06 兼容回归、规范落位与证据包 | T-05 | §6 X 组；docs/specs/auto-lang/ui/design/autodown-wikilink.md（SD-01）+architecture.md ADR-27（SD-02）；AC-07 回执五件套 | X 组+既有编辑器/视图族回归绿；裸 `cargo t` 全绿+触面档如实评估；SD 落位；execution_done → review | AC-06, AC-07 |
 
-进度 0/6；每步完成后在步骤行追加 [✅ 已完成] 证据行（前沿 v2 范式）。
+进度 6/6；每步完成后在步骤行追加 [✅ 已完成] 证据行（前沿 v2 范式）。
+
+- [x] T-01 [✅ 已完成] 四未知原型+复测全过（§5.2 冻结表）；SD-01 草案=worktree `docs/specs/auto-lang/ui/design/autodown-wikilink.md`；jade 契约回填建议=事件名/双参/origin 与其 C-01..C-04 冻结值逐条对齐无需修订（本仓证据见回执 ③）。
+- [x] T-02 [✅ 已完成] flatten_inlines 三元组（text/marks/links）+BlockBuf.links 全构造点+DocLayout.links+push_link_regions；C 组 3 测绿（`plan732_wikilink_regions_semantics`/`_negative_code_and_href`/`_wrapped_regions_split`）。
+- [x] T-03 [✅ 已完成] DocOutput.link_activated（退 Copy）+link_pending 完整点击门（三重身份+single+plain+4px slop+rebuild/FocusLost/非左键清除）+MouseReleased 补坐标；W 组 3 测绿（`plan732_full_click_activates_with_payload`/`plan732_click_gate_negatives` 七负例/`plan732_stale_hit_after_content_change`）。
+- [x] T-04 [✅ 已完成] View::AutodownEditor.on_link（LinkCallback newtype+map/cloning+scroll_sync 双臂）+aura `on "open-wiki-link"`/`onopenwikilink` 双形态绑定+renderer 三降层臂；L/O 组+`test_autodown_editor_on_link_message_channel`+`dual_str_payload_crosses_send_boundary`+六环语料 `plan732_six_ring_full_click_reaches_vm_handler`（VM handler state 落地）全绿。
+- [x] T-05 [✅ 已完成] K-04 seam=UserInterface 生产事件泵（`plan732_real_iced_events_full_click_publishes_on_link`：真实 Event::Mouse→Shell 消息逐值+越界/拖选负例）；MCP `__mcp_click` 语义零改动+负例锚绿（`plan732_mcp_click_ghost_semantics_zero_wiki_activation`）。
+- [x] T-06 [✅ 已完成] X 组（`plan732_local_edit_deactivates_until_rebuild`/`test_autodown_editor_on_link_callback_and_map`）+裸 `cargo t` 日常档 5033 测红集与 master@26a5af68e 逐名全等（14 预存红+plan502_m3/plan707 两在案 flake 复跑绿，0 新红）；`--features autodown` 档全量红集与 master 同基线全等（9 预存红+2 flake，0 新红）；SD-01/SD-02 落位（ADR-27）；AC-07 五件套回执 `docs/reports/p732-wikilink-supply-receipt.md`（binary 指纹 v0.4.2-2638-g713119788-dirty/2287A536…AD2+诚实边界注记）。触 `ui_gen/**` 生成器=零（tu 不触发）；VM/编译器核心零触及（tv 不触发——renderer/aura 为 UI 面非 VM 桥派发语义改动，派发链零改动）。
 
 ## 9. 复审记录
 
@@ -166,10 +174,25 @@ Rust（`crates/auto-lang/src/ui/autodown_editor/**`、`view.rs`、`aura_view_bui
 - 关键裁定：零 autodown-core/auto-down 改动（wikilink attr 已在模型，markdown_parser.rs:2869-2876 实勘）；载荷沿 Plan 499 M2 实参先例；MCP `__mcp_click` ghost 语义保持不变、只作负例锚；不做输入期解析承诺（B-6 族如实维持）。
 - next: work——用户授权后在专属 worktree `D:/autostack/.wt/lang-732/auto-lang`（分支 `plan-732-dev`）从 T-01 开始；jade-edit PLAN-037 的 T-02 解锁门在本 Plan reviewed/delivered + AC-07 回执后核验。
 
+### work 阶段收口记录（2026-10-03）
+
+- stage: work | PLAN-732 / plan_revision: 1 | outcome: **pass**
+- code_commit: `10abc4500`（worktree `D:/autostack/.wt/lang-732/auto-lang` @ `plan-732-dev`，基面 master@1cabfeb89；auto-down 兄弟 detached@895f8d0 零改动零消费）
+- task_ids: T-01..T-06 全勾（6/6，证据行见 §8）
+- evidence:
+  - 实现：core.rs（flatten_inlines 三元组/BlockBuf.links/DocLayout.links+push_link_regions/link_pending 完整点击门/DocOutput.link_activated+split_wikilink_target）、widget.rs（on_link+publish 转发+release 坐标）、view.rs（on_link 字段+LinkCallback+map/cloning）、aura_view_builder.rs（双形态绑定臂）、renderer.rs（generic/convert/VM 三臂）、autodown_render.rs/mod.rs（构造点/导出）。
+  - 测试：13 个新测试 + 语料 `test/ui/plan732_wikilink/`（C3/W3/L3/O1/R3/X2 + 六环语料）——`cargo nextest run -p auto-lang --lib --features autodown plan732 test_autodown_editor_on_link` 全绿。
+  - 门禁：`cargo check -p auto-lang` ✅；`cargo t autodown` 78/78 ✅；裸 `cargo t` 日常档红集与 master@26a5af68e 逐名全等（14 预存红+2 在案 flake 复跑绿，0 新红）；`--features autodown` 档全量同基线全等（9 预存红+2 flake，0 新红）；tu/tv/tt 零触发（不动生成器/VM 编译器/transpiler）；fmt 差异仅预存 examples/、零残留调试输出。
+  - 规范：SD-01 新增 + SD-02（ADR-27）追加；AC-07 五件套回执 `docs/reports/p732-wikilink-supply-receipt.md`（含交付时 binary 指纹与诚实边界注记）。
+- blockers: 无（四未知全冻结、七验收全有证据、无未闭合澄清）。
+- 实现期微调（均在授权范围内，未弱化任何 AC）：①完整点击门落 core handle_input（计划 §2.3 文案为「widget 层」——实际落点是 widget 两鼠标臂的 DocInput 汇聚点，语义同为「按下/抬起两事件臂都落同一链接区间才激活」且与生产共一实现，SD-01 §3 在案）；②`DocInput::MouseReleased` 补 x,y 字段（iced ButtonReleased 本体不带位置，widget 层取 cursor.position——计划未预见的小扩展，MCP 拖拽合成臂同步适配）；③首帧行为发现：`autodown_editor_sync` 槽位缺席时 no-op（预存事实，非本计划引入），六环语料测试显式两段降层模拟生产次帧节律（ADR-27 注记）。
+- next: review（/auto-plan:review）——复审门=裸 `cargo t` 已跑（红集对拍在案）+触面档评估已记录（零触发）；review 后 merge 收口回执终稿指纹。
+
 ## 10. 待澄清事项
 
-- **D-01 K-01..04 原型未决**（owner=本 Plan T-01）：命中映射精度、origin 公开形态、事件公开名与签名、真实事件 seam——见 §5.2；与 jade 契约 §6 同表对应，冻结后回填。
-- **D-02 事件公开名**：`open-wiki-link` 全名优先（与 jade Vue 消费同名兼容）；若 K-03 裁决改用别名/扩签名，须回填 jade 契约 §3 C-01 并经其 T-02 复核，不得单方漂移。
-- **D-03 VM 轨样式 parity**：wikilink span 现无 `Mark::Link`（VM 编辑器内为纯文本）——本供给补 `style.link` 对齐 Vue 观感（AC-01 内）；观感细节（下划线/色值）沿主题族既有 link 样式，不另立视觉验收。
-- **D-04 binary 外部重建漂移**：交付回执绑定交付时 binary 指纹；jade T-02 按其契约 §1 重绑规则复验，本 Plan 不锁全局版本。
-- **D-05 输入期行为**：编辑壳重建模型下键入 `[[x]]` 后的解析时机为实勘观察项（T-02 如实记录），不进承诺、不冒称 B-6 已解（owner=auto-down）。
+- ~~D-01 K-01..04 原型未决~~ **已闭合（2026-10-03）**：四未知全冻结（§5.2 冻结表；SD-01 §2..6 权威文本）；与 jade 契约 §6 同表对应，冻结值与其 C-01..C-04 验收条款逐条对齐，无需回填修订。
+- ~~D-02 事件公开名~~ **已闭合**：`open-wiki-link` 完整 kebab 名（引号式绑定 `on "open-wiki-link"` 主形态 + `onopenwikilink` 简写）；未改签名未用别名——无需回填 jade 契约 C-01。
+- D-03 VM 轨样式 parity：**已供给**——wikilink span 补 `style.link`（LINK_COLOR 既有链），观感沿主题族既有 link 样式未另立视觉验收（AC-01 内测锁定）。
+- D-04 binary 外部重建漂移：回执已绑定交付时指纹（v0.4.2-2638-g713119788-dirty / 2287A536…AD2）+ 诚实边界注记（该 binary 不含本供给代码；jade T-02 按其契约 §1 重绑规则复验）。**开放项（归属 merge/后续）**：合并后外部重建的新 binary 指纹由 jade T-02 自行重绑，本 Plan 不锁全局版本。
+- D-05 输入期行为：**如实记录**——编辑壳重建模型下键入 `[[x]]` 后解析时机=外部真变化 rebuild（自回显走 PLAN-057 回声守卫不重建，暂态失活为既有语义）；不进承诺、不冒称 B-6 已解（owner=auto-down）。六环语料测试两段降层注记在 ADR-27。
+- **新增登记（work 期发现，非本 Plan 修域）**：`autodown_editor_sync` 在 core 槽位缺席时 no-op——生产动态循环靠次帧重降层补内容（首帧空窗）。潜在改进（首帧直接建核同步）归后续计划评估，不改变本供给语义。
