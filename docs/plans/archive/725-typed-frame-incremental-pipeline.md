@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-725
-status: reviewed                 # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: 键入帧增量更新管线优化件（auto-edit M4 帧两行 FAIL 清偿本体——脏域/增量更新，学 Zed 三课「增量一切」）
 author: [agent]
 created_at: 2026-10-02T00:00:00+08:00
@@ -423,6 +423,23 @@ SD 表——L2 设计文档惯例。）
   ——描述现势行为与持久决策 ✓；touched_goals=[] 有据（auto-edit 侧目标
   不入本仓 goals 表）。findings：P725-R1(P2)/P725-R2(P3)/P725-R3(P3)
   ——前两者已入 KNOWN-DEBT（复审提交）。`next: merge`。
+
+- 2026-10-02 merge（收据 PLAN-725:r1，completion_kind: delivered）：
+  `prepared`=reviewed e86b91062+复审债务提交（doc-only 后裔）；canonical
+  Spec diff=SD-01 新档/SD-02 §5/SD-03 注记+editor-kernel §8+KNOWN-DEBT
+  注记与 P725-R1/R2+P721-R1/P712-D1 关联；投影目标=specs.json designs
+  P725-1。`landed`=master tip **8c5bcf34a**（两次 rebase 吸收并行会话
+  c9c992907 menubar/9e97276e5 PLAN-726 簿记；旧→新映射 e86b91062→
+  d7e48e8b5→（再衍）→8c5bcf34a 链；唯一冲突=KNOWN-DEBT 同区行——本件侧
+  超集取定；rebase 后冒烟：check 零错+新测 5/5+金样/parity 2/2+guard
+  clean；主检出落后冒烟：新测 5/5+4/4+tv 162/162）。`ledger_refreshed`=
+  P725-1 主检出回读 True（并行 P724-6..9/P695 条目全保留——追加区自动
+  合并，顺序非身份）。`archived`=docs/plans/archive/725-typed-frame-
+  incremental-pipeline.md（本提交）。`cleaned`=待执行（收据尾注随补）。
+  生产工件观察：主检出 target/debug/auto（PATH `auto`）合并后重建；
+  release 二进制/gen dist 未重建（观察项——P712-D4 同族，消费面为
+  debug CLI 形态）。批量回归到期检查：725%5==0 → 到期，移交
+  /auto-plan:regress（主检出单实例）。
 
 ## 10. 待澄清事项
 
