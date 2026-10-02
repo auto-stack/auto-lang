@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-734
-status: drafting
+status: execution_done
 feature_name: api-contract-and-generation-integrity
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-03
 plan_revision: 1
-current_step: 0
+current_step: 8
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -208,7 +208,7 @@ HTTP TS生成client须真正执行请求并验证path/body/错误，不仅检查
 
 ## 8. 执行步骤
 
-### T-01：依赖基线、兼容裁定与最小五形态原型
+### T-01：依赖基线、兼容裁定与最小五形态原型 [✅ e67e46bba]
 
 - 前置730独立review通过并merge；读取其最终Spec/receipt及729文件契约，记录master基线。
 - `bash scripts/new-wt-group.sh lang-734 --branch plan-734-dev`；auto-down兄弟只读，禁止链接。
@@ -216,51 +216,80 @@ HTTP TS生成client须真正执行请求并验证path/body/错误，不仅检查
 - 复现fallback/旧产物启动、整数截断/error载荷与资源碰撞；建立canonical/源码/消费者兼容表（str/Str/?T/void/meta/int/i64及存储/传输宽度）。冻结支持子集/参数默认与重复query/响应矩阵、generation bundle机制、scaffold挂点、真实Tauri test dispatcher及generated TS runner。
 - `734-api-decision.md`和最小同源普通scalar五模式原型；无法闭合验收或需改变已约定wire时明确revision/裁定，不靠仅golden/直接函数替代dispatcher。覆盖全部AC/SD设计可实施性。
 
-### T-02：normalized contract、diagnostic与checked接口
+### T-02：normalized contract、diagnostic与checked接口 [✅ 4a2eb9c74]
 
 - 依赖T-01。新`api/contract.rs`/`api/diagnostic.rs`，修改`api/{types,mod}.rs`、`api/targets/mod.rs`、必要source span提取；保留旧String返回接口仅compat/scaffold，运行消费者转checked。
 - 类型身份/参数来源/响应kind/能力/实现源与指纹单源；纯验证可被VM和auto-man调用，unknown不能降Str；修正已失实body字段注释。
 - 验证`cargo t api::`、`cargo t plan734`；普通/文件/上传/流与未知/别名/同名反例，diagnostic位置完整；AC-01/04/07，SD-01/03/04/06。
 
-### T-03：VM/back-proxy参数与响应编组
+### T-03：VM/back-proxy参数与响应编组 [✅ d8a93d2b4+9d341b7e9]
 
 - 依赖T-02。修改`vm/codegen.rs`、`vm/ffi/{http_server,stdlib}.rs`、`back_proxy.rs`；必要marshal纯helper归contract，VM资源执行保留宿主模块。
 - session-local contract绑定，checked input和i64 marshal；response声明kind先分派、ordinary JSON不猜error字段/id、序列化失败不是空200；sync/~T合法终值一致。
 - merged缺实现定位失败，不能warning+null；legacy无metadata接口边界明示。不是更换owner/CPU调度，不改所有FFI资源表。
 - 验证`cargo t plan734`、VM/back-proxy真HTTP、merged真实调用/双session；AC-01/02/03/06，SD-01/02/07。
 
-### T-04：auto-man真实实现与生成原子发布
+### T-04：auto-man真实实现与生成原子发布 [✅ 0015ec764]
 
 - 依赖T-02。修改`auto-man/src/api_gen.rs::generate_api/generate_rust_server/generate_api_rs/try_transpile_body`及委派/提供者检测；纯generation计划可新`auto-man/src/api_contract.rs`。
 - strict mode解析/实现/能力前置检查，真实body或明确delegate生成；错误返回Result而不warn/fallback，scaffold与TS provider显式。全部产物先进immutable bundle，ready+源/实现hash最后发布，失败不覆盖/冒用旧bundle。
 - 验证`cargo test -p auto-man api_gen:: -- --test-threads=1`与真实Rust build/run；非CRUD/分支/有状态/缺实现/解析和FS故障/source变动负测；AC-04/05，SD-04/05/06。
 
-### T-05：HTTP/IPC适配器与实际客户端
+### T-05：HTTP/IPC适配器与实际客户端 [✅ 437683bee]
 
 - 依赖T-02/03/04。修改`api/targets/{typescript,tauri,axum}.rs`、`api_gen.rs`两套TS/client/handler生成；T-01确认实际UI消费者需改时才窄触`ui_gen/{vue,rust}.rs`。
 - 共用绑定来源和checked型，正确path编码/prefix/PATCH-body/meta，JSON和HTTP-only资源分离；Tauri command按真实backend执行sync/async、typed reject，保留原生函数数据语义。
 - 必要a2r修复只在`trans/rust.rs`真实lowering（T-01定位）；unsupported不是默认值或模板；生成服务Axum0.7与VM0.8分别适配，不通过版本混用强转。
 - 验证TS实际HTTP、生成backend/command实编+Tauri dispatcher，scoped/golden+tu按触面；AC-01/02/03/06/07，SD-01/03/06。
 
-### T-06：build/run错误传播与旧产物启动门
+### T-06：build/run错误传播与旧产物启动门 [✅ 75dabeda8]
 
 - 依赖T-04/05。修改`auto-man/src/{vue,rust_ui,tauri,tauri_backend}.rs`所有API生成消费者、必要初始化/构建挂点；尤其generate Err后start_api_server、`let _`与旧`.api_functions`。
 - 当前有API消费者时错误非零且spawn0；无API项目/明确外部provider正常。启动验证ready与当前source/transport，watch失败诚实保留旧运行版并报失败，不标成功reload。
 - 验证auto-man入口单测和最小project实际CLI/run失败退出码、spawn sentinel、原产物hash；AC-04/05，SD-04/05。
 
-### T-07：五形态对拍、资源分类与兼容矩阵
+### T-07：五形态对拍、资源分类与兼容矩阵 [✅ 438d22c47+2850e7d24——Tauri MockRuntime fixture 债 P734-D6]
 
 - 依赖T-03..06。新`crates/auto-lang/src/tests/plan734_api_contract_tests.rs`，修改`src/tests.rs`；auto-man新/现有integration test生成fixture；新`examples/http_server/api_contract/{README.md,pac.at,src/back/api.at}`，按T-01格式。
 - 完成§6.1全部表，真实生成Rust/TS/Tauri test runner、merged和back-proxy session，不为测试手写替代业务；729/730HTTP正向与非HTTP拒绝回归；015/017/023/027代表契约只验证本期消费面，不做全UI画廊负载。
 - 验证串行`http_e2e_plan734`及生成/TS/IPC运行入口；报告`734-api-{binding,generation,parity}.md`每格记录真入口/返回/status/hash/诊断；覆盖全部AC/SD。
 
-### T-08：门禁、独立review与规范交接
+### T-08：门禁、独立review与规范交接 [✅ 2850e7d24——门禁+六报告；review=下一阶段]
 
 - 依赖T-01..07。按§6.2分级门禁、warning/format/debug/未批准延期扫描，`734-api-verification.md`绑定最终代码revision/全部AC/SD；新红与基线逐名对比，禁止用skipped/退回scaffold清账。
 - `/auto-plan:review`独立验证真实执行和Spec冲突裁定；准备SD-01..07沉淀稿，merge再更新canonical/ledger/Design33与索引，归档不重开729/730。
 - 清理前`bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-734/auto-lang`及兄弟仓guard clean；tf仅到期main单实例。全AC/SD闭合才可标reviewed/archived。
 
 ## 9. 复审记录
+
+### 工作交接（2026-10-03，/auto-plan:work）
+
+- stage: work
+- plan_id: PLAN-734
+- plan_revision: 1
+- outcome: pass
+- code_commit: 2850e7d24（分支 plan-734-dev，master 基线 6dd609ed9；11 提交
+  e67e46bba..2850e7d24，worktree D:/autostack/.wt/lang-734/auto-lang 保留待审）
+- task_ids: T-01..T-08 完成（T-07 Tauri MockRuntime fixture 登记 P734-D6）
+- evidence: 六报告（decision/binding/generation/parity/verification +
+  binding 补充），docs/plans/reports/734-api-*.md；门禁面——plan734 7/7、
+  plan730 26/26、api:: 36/36、a2r-std 100 全、auto-man api_gen 41+1、
+  VM HTTP e2e 4/4（参数校验/i64 全域/error 字段/plain int）、裸 cargo t
+  1492/1495 + tv 162/162 + tt 1877/1880（3 预存 musk p053 族）、th 99/101
+  （2 预存：corpora_data_face merge-base 实测 + plan707 flake 在案）——零新增
+  确定性红。
+- blockers: 无阻塞项。债：P734-D4（stdlib i32-lane 泛型转换）、P734-D5
+  （run_with_capture 测试基建非确定挂死）、P734-D6（Tauri MockRuntime
+  fixture）、P734-D7（D9 iterator/Response 臂兼容回退——Plan 326 int 声明
+  wire 契约，6 e2e 二分定位后裁定保留注册表制；strict 分派保留于
+  Upload/File 臂）。
+- next: /auto-plan:review PLAN-734。
+- 执行注记：复审驱动三项真修正——is_upload_param s-expr 双族（VM 签名侧
+  Display 是 s-expr，裸名精确匹配致上传路由失识别/100-continue 泄漏）、
+  back_proxy fn_meta primary 半段分类 + 参数面补充（501 守卫恢复）、
+  vm_value_to_json I64 臂缺失（664 值域回归根修）。tauri 2.12 dev-dep
+  （test feature）已加并编译通过（E7）。AC-06 的 Tauri 腿以生成串测试+
+  E7 依赖证据部分覆盖。
 
 ### 起草交接（2026-10-03）
 
