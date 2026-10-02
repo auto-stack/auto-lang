@@ -1425,7 +1425,9 @@ impl Codegen {
                     let sigs = &fn_decl.params;
                     let upload_param = sigs
                         .iter()
-                        .find(|p| crate::api::contract::is_upload_param(&p.ty.to_string()));
+                        .find(|p| {
+                            crate::api::contract::is_upload_param(&p.ty.unique_name().to_string())
+                        });
                     if let Some(up) = upload_param {
                         if !matches!(
                             api.method.to_uppercase().as_str(),
@@ -1437,7 +1439,9 @@ impl Codegen {
                             )));
                         }
                         for p in sigs {
-                            let ty = p.ty.to_string();
+                            // PLAN-734 T-03：类型身份用 unique_name（User 的
+                            // Display 是 s-expr 形态——旧 contains 恰好子串命中）。
+                            let ty = p.ty.unique_name().to_string();
                             if crate::api::contract::is_upload_param(&ty)
                                 || ty.trim() == "UploadReceipt"
                                 || ty.trim() == "UploadSession"
