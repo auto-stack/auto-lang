@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-726
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: exec-throughput-batch-1
 author: [agent]
 created_at: 2026-10-02
@@ -11,8 +11,8 @@ supersedes_spec_components: []
 new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
-affects: [auto-lang/vm, auto-lang]   # T-01 触 vm ffi；T-02..T-04 为测试基建/工作流（无 specs 树对应）
-current_step: 0
+affects: [auto-lang]   # T-02/T-03 测试基建 + T-04 脚本；T-01 经查已由 PLAN-724 清偿（本计划零 vm 代码改动）
+current_step: 5
 total_steps: 5
 ---
 
@@ -37,7 +37,7 @@ total_steps: 5
 ## 1. 目标
 
 - 日常档验证时长 62s → ~32s（e4 红修复，长尾 30s 消失）。
-- 重型测试族（画廊围栏 / 1M churn / taa XL 族）多进程并发时第二实例快速失败，
+- 重型测试族（画廊围栏 / 1M churn）多进程并发时第二实例快速失败，
   不再出现挂死与资源互毁。
 - book 仓 WIP 期间 book_listing 族不再产生需要人工定案的红。
 - 新建 worktree 组从"手工多步+踩坑"变为一键，组内 cargo 解析即开即用。
@@ -60,8 +60,10 @@ total_steps: 5
   （env 门 + SKIP）扩展出 `machine_gate(family)`：锁文件置于机器级固定路径
   （`D:/autostack/.locks/<family>.lock`，Linux 回落 /tmp），O_EXCL 创建 + 写入
   PID/cwd/tier，冲突时读持锁者并核验进程存活性（死进程=陈锁可夺），存活则
-  panic 输出"heavy family X already running (PID N, cwd W)"。接入点=三族
-  重测试首行（与既有 heavy_gate 同位）。**别名方案已否决**：cargo 别名只能
+  panic 输出"heavy family X already running (PID N, cwd W)"。接入点=两族
+  重测试首行（画廊围栏 + 1M churn，与既有 heavy_gate 同位；aavm XL 族经
+  2026-10-02 用户裁定豁免——aavm/aa2r 未来路线拟取消/替换，相关测试短期
+  不再运行，不接入）。**别名方案已否决**：cargo 别名只能
   组合 cargo 子命令（现有 `t = "nextest run"` 依赖 cargo-nextest 外部子命令
   约定），无法直接调外部包装脚本——此结论入档防止后续会话再走弯路。
 - **T-03**（测试守卫）：`crates/auto-lang/src/tests/book_listing_tests.rs`
@@ -83,6 +85,9 @@ Rust（stdlib e4 测试、heavy_gate、book_listing guard）、Python 3 无涉�
 **授权记录**（2026-10-02 用户裁定）：按性价比分两批治理计划执行变慢；第一批=
 本计划四项（e4 红修复 / 重型闸门 / book 守卫 / worktree 脚手架）；第二批登记
 DEBTS 下次再做。仓库范围 auto-lang；无预算与自动续行限定。
+**追加裁定（2026-10-02，合同修订）**：aavm/aa2r 未来路线拟取消/替换，相关
+测试不再作为关注点（短期不运行）——本计划去掉 aavm 接入与 taa 验证面，
+T-02 收敛为两族（画廊围栏 + 1M churn）。
 
 **背景数据**（2026-10-02 本会话实测/在档）：
 
@@ -121,11 +126,14 @@ DEBTS 下次再做。仓库范围 auto-lang；无预算与自动续行限定。
   O_EXCL 建锁→写 `pid|cwd|family`；冲突→读持锁 PID→存活核验（Windows
   OpenProcess / Unix kill -0；进程亡=陈锁删除重建）→存活则
   `panic!("heavy family '{family}' already running (PID {pid}, cwd {cwd}); single-instance rule — retry after it exits")`。
-- 接入三族重测试首行：画廊围栏族、1M churn 族、taa XL 族（aavm 21 测中
-  78-303s 档）——具体测试名执行期按 `.config/test-mem-weights.md` XL/LG
-  清单对齐。
+- 接入两族重测试首行：画廊围栏族（`gallery-fence`，
+  `widgets_gallery_all_front_pages_compile`）+ 1M churn 族（`churn-1m`，
+  `str_churn_bounded_large`）。aavm XL/LG 族（`.config/test-mem-weights.md`
+  清单，原稿 17 站点）经 2026-10-02 用户裁定豁免：aavm/aa2r 未来路线拟
+  取消/替换，相关测试短期不再运行，不接入（曾按原稿接入后依裁定回退；
+  恢复运行时补接线即可）。
 - CI（Linux 独立机）锁路径机器隔离，天然零影响；日常档（t/tv/tt/tb/tu）
-  不触三族，零开销。
+  不触两族，零开销。
 
 ### T-03 book 脏态守卫
 
@@ -149,7 +157,7 @@ DEBTS 下次再做。仓库范围 auto-lang；无预算与自动续行限定。
 | delta_id | add/modify/retire | target | before/after | rationale | AC |
 |---|---|---|---|---|---|
 | SD-01 | modify | docs/specs/auto-lang/vm/overview.md（直驱臂注记，若修复涉契约文本；纯缺陷修复则记录"无规范增量"理由） | 直驱 fire-and-forget 派发期望在档 | P707-R1 清偿 | AC-01 |
-| SD-02 | add | AGENTS.md §并行纪律（工作流规约，非 specs 树） | 重型族"单实例纪律"约定 → 机器级闸门机械强制 | 2026-09-30 互毁实录 | AC-02 |
+| SD-02 | add | AGENTS.md §并行纪律（工作流规约，非 specs 树） | 重型族（画廊围栏/1M churn）"单实例纪律"约定 → 机器级闸门机械强制（aavm 族豁免在案） | 2026-09-30 互毁实录 | AC-02 |
 | SD-03 | add | crates/auto-lang/src/tests/book_listing_tests.rs 文件头契约注释 | 无守卫 → 外部书仓脏态确定性 skip 规则 | 测试基建无 specs 树对应 | AC-03 |
 | SD-04 | add | AGENTS.md §1/§5 + scripts/（组脚手架入口规约） | 手工多步建组 → 脚本一键（含兄弟仓） | L0/L1 冷启动摩擦 | AC-04 |
 
@@ -168,8 +176,8 @@ DEBTS 下次再做。仓库范围 auto-lang；无预算与自动续行限定。
 
 - **AC-01**：`default_headers_reach_wire_on_plain_get` 日常档绿（直驱三臂到线
   断言通过）；KNOWN-DEBT P707-R1 复审销号；4f123a50e 误标更正注记在案。
-- **AC-02**：三 heavy 族并发第二实例立即确定性红（含持锁者 PID/cwd 提示），
-  隔离单跑绿；日常档（t）时长与行为零变化。
+- **AC-02**：两 heavy 族（gallery-fence / churn-1m）并发第二实例立即确定性红
+  （含持锁者 PID/cwd 提示），隔离单跑绿；日常档（t）时长与行为零变化。
 - **AC-03**：book 仓脏态→book_listing 族确定性 skip（非红非 fail，原因可见）；
   干净态全量行为不变（基线对照跑）。
 - **AC-04**：`new-wt-group.sh` 一键建组含 auto-down 兄弟，组内
@@ -179,29 +187,114 @@ DEBTS 下次再做。仓库范围 auto-lang；无预算与自动续行限定。
 
 ## 8. 执行步骤
 
-- [ ] **T-01** e4 直驱臂修复（依赖：无）
+- [x] **T-01** e4 直驱臂修复（依赖：无）
   - 复现+勘定（§5 T-01）→ 修复 `async_http.rs`/`stdlib.rs` 直驱臂 →
     `cargo t default_headers` 绿 → `cargo tv` 零回归 → 误标更正注记。
   - 验证：`cargo t default_headers && cargo tv`。
-- [ ] **T-02** heavy 机器闸门（依赖：无，可与 T-01 并行）
-  - `heavy_gate.rs` 增 `machine_gate` → 三族接入 → 并发/隔离/陈锁三态实测。
+  - **work 阶段调整（2026-10-02）**：前提已过时——P707-R1 已被 PLAN-724 T-02
+    清偿（commit `2b3736ccf`，2026-10-02 09:16 入 master，早于本计划起草
+    `ca00819a8`）。§2 嫌疑域定案：**非** `submit_detached_client_job`（
+    async_http.rs:364）消息桥派发缺陷，桥分离逻辑完好；真因=e4 测试三臂
+    直接提交 managed job 未先 `register_live_op`，被 707 cancel-before-install
+    闭合中止（测试侧协议违规）。本计划零代码改动，收敛为验证回执：
+    `cargo t default_headers`→1 passed 0.394s（worktree@17292c07e，冷编译
+    2m 另计）；`cargo tv`→162/162 绿 1.9s。AC-01 材料在案：KNOWN-DEBT
+    P707-R1 已划销（2026-10-02 PLAN-724 T-02）；4f123a50e 误标更正已在
+    `ea2fbf0df` ⑤ 与债务条目内。
+- [x] **T-02** heavy 机器闸门（依赖：无，可与 T-01 并行）
+  - `heavy_gate.rs` 增 `machine_gate` → 两族接入（画廊围栏 + 1M churn；aavm
+    族依 2026-10-02 追加裁定豁免）→ 并发/隔离/陈锁三态实测。
   - 验证：§6 T-02 三场景。
-- [ ] **T-03** book 脏态守卫（依赖：无）
+  - **work 回执（2026-10-02）**：`machine_gate` 落地（O_EXCL + `pid|cwd|family`
+    + Windows 裸 FFI OpenProcess/Unix kill -0 存活核验 + 死进程陈锁接管 +
+    同进程重入协议违规红 + 半写窗口重读）；接入 `gallery-fence`（SKIP 路径
+    不取锁）与 `churn-1m` 两族；模块拆除 test-aavm 门并升 pub(crate)
+    （跨树引用：lib.rs 顶层 gallery / crate::vm churn / crate::tests）。
+    单测 4 态（roundtrip/conflict/stale/reentry）5/5 绿 0.13s 零 LEAK（首版
+    conflict 测试 panic 后未收割 sleeper 被 nextest 标 LEAK，已改
+    catch_unwind→收割→resume_unwind）。真机三态（churn-1m 滤串，full 配置）：
+    隔离单跑 PASS 13.0s；P1 持锁期 P2 确定性红 0.067s（heavy_gate.rs:137
+    "already running (PID 23812, cwd=…worktree)"）；taskkill 持锁进程后
+    陈锁留存、P2 接管 PASS 11.0s。日常档两族均被 default-filter 排除零开销，
+    闸门单测 +0.13s（计时回执归 T-05）。**原稿曾按 XL/LG 清单接入 aavm
+    17 站点，依 2026-10-02 追加裁定全部回退**（diff 不再触 aavm 路径，
+    taa 复审触发条件随之消除；恢复运行时补接线即可）。
+- [x] **T-03** book 脏态守卫（依赖：无）
   - `book_listing_tests.rs` 公共守卫 helper + 文件头契约注释 → 脏/净/缺三态。
   - 验证：`cargo tb book_listing`（脏态 skip / 净态基线）。
-- [ ] **T-04** worktree 组脚手架（依赖：无）
+  - **work 回执（2026-10-02）**：`book_repo_dirty()`（OnceLock 单探测 + `git
+    -C <root> status --porcelain`）落 `test_book_listing` 首行；排除项=`??
+    …main.wrong.rs`（本族 mismatch 转储的自家产物，不排除则红一次后书仓
+    恒"脏"恒 skip——实测发现后补的设计修正）；generate_book_expected
+    （编辑期再生成工作流）不经守卫。验证（干净克隆 + AUTO_BOOK_LISTINGS
+    env 注入，`book_ch` 确定性滤串）：净态 68 测=52 过/16 红，双跑逐字一致
+    （排除项实证）；+1 未跟踪文件→68 全 skip 0.55s；删文件→复现 52/16
+    零滞回；真实书仓（当前 M 脏，PLAN-715 实况）→68 全 skip 0.54s，消息
+    含脏项数与样例；缺失路径→原读失败形态（os error 3）不变。**预存发现
+    （非本计划范围）**：`generate_book_expected` 无条件改写全部 expected 且
+    与对拍族在 tb 档同跑竞态（跨进程读写 expected.rs，红集非确定：同克隆
+    实测 7 红/16 红两采样）——先于本计划存在，复审时登记债。
+- [x] **T-04** worktree 组脚手架（依赖：无）
   - 新增 `scripts/new-wt-group.sh` → 自建自拆一轮全流程。
   - 验证：§6 T-04 全流程含 wt-guard。
-- [ ] **T-05** 计时回执与收尾（依赖：T-01..T-04）
+  - **work 回执（2026-10-02）**：脚本落地（组名白名单防穿越/组目录已存在
+    即拒/分支已存在即拒/plan-NNN-dev 取号提示/失败中途回滚不留半组/建组
+    基面恒钉 master——主检出与 auto-down 兄弟经 porcelain 首行解析，
+    可从任意 auto-lang 检出运行；首版"必须主检出运行"护栏实测踩 msys
+    `/d/` vs `D:/` 路径形态错配且致自测鸡生蛋，重构撤销）。自测全流程：
+    worktree 内运行→建 `fix-scaffold-selftest` 组（lang 分支+down detached）
+    →组内 `cargo check -p auto-lang` **直接通过**（54s 冷态，兄弟仓解析即
+    开即用）→wt-guard 双仓 clean→双 worktree remove→删分支→rmdir 组。
+    负例：已存在组名 exit 1；缺参 usage exit 1。
+- [x] **T-05** 计时回执与收尾（依赖：T-01..T-04）
   - 修复前后 `cargo t` 计时（同竞争态标注）落 §9；SD 落点核对；
     P707-R1 销号材料备齐。
   - 验证：§9 回执在档。
+  - **work 回执（2026-10-02）**：
+    - **计时**：裸 `cargo t --no-fail-fast`（worktree@2feb50a6c，轻度竞争——
+      8 组并行 worktree 在场）= **54.1s 测试段 / 55.2s wall**，4976 测
+      4962 过 14 红（全为预存，见归因）。对照 2026-09-30 基线 62s（含 e4
+      30s 长尾）：e4 尾已消（现 0.39s 绿），但基面 17292c07e 的 14 预存红
+      中 plan606（10.2s）/schema_drift_fence（10.5s）/plan707 flake（5.1s）
+      的红时长并入读数；fail-fast 形态 28.2s。AGENTS.md 资源表数字刷新
+      移交 merge（AC-05 在案）。
+    - **红集归因（14 红零归因本 diff）**：stash 严格对照——pristine 基面
+      scoped 9 红 vs 带 diff scoped 9 红**名单逐一相同**；musk p053 三红在
+      当前 master 主检出复现（master@991c0197e）；plan707 帧时序与
+      p053_6 为负载敏感 flake（scoped 双侧绿；flake 族在案 4f123a50e）；
+      11 红已由今日 PLAN-725 合入在 master 修复——14 红族=§1 非目标在档的
+      THR-D 第二批范围。本 diff 新增/触面测试全绿（heavy_gate 5/5、e4 绿、
+      book 四态、tv 162/162）。
+    - **SD 核对**：SD-01=无规范增量（T-01 调整为验证回执，无契约文本变化，
+      理由在档）；SD-02=AGENTS.md 并行纪律注记（merge 期落）；SD-03=文件
+      头契约注释已落码（book_listing_tests.rs）；SD-04=AGENTS.md §1/§5 入口
+      规约（merge 期落）+ 脚本已入库 scripts/new-wt-group.sh。
+    - **P707-R1 销号材料**：KNOWN-DEBT 已划销（PLAN-724 T-02，2026-10-02）；
+      4f123a50e 误标更正注记在 ea2fbf0df ⑤ 与债务条目内——零补作。
+    - **复审门禁**：裸 `cargo t`（跑讫，如上）；触面档 tv=162/162 绿；
+      book 档=scoped book_listing 族四态验证（**刻意不跑裸 tb**：
+      generate_book_expected 无条件改写真实书仓 expected——用户 ch06 WIP
+      在场，裸 tb 会覆盖之；该预存破坏性风险登记复审定案）；aavm 触发
+      条件经裁定回退后 diff 已不触 aavm 路径，taa 免。
+    - **预存发现（复审登记候选）**：①裸 `cargo tb` 经 generate_book_expected
+      无条件改写外部书仓（WIP 覆盖风险 + 与对拍族跨进程竞态致红集非确定，
+      同克隆实测 7/16 红两采样）；②stage3.rs 内 K32GetProcessMemoryInfo/
+      EnumWindows 双声明签名不一致预存警告（本 diff 的 OpenProcess 声明已
+      对齐 isize 形态规避）。
 
 ## 9. 复审记录
 
 - 2026-10-02 /auto-plan:new 起草：`stage: new`，`outcome: pass`（授权=2026-10-02
   用户分批裁定在 §4），`next: work`（worktree：`D:/autostack/.wt/lang-726/auto-lang`
   分支 `plan-726-dev`）。别名闸门方案否决记录见 §2 T-02。
+- 2026-10-02 /auto-plan:work 执行完毕：`stage: work` | PLAN-726 | base=17292c07e
+  | `outcome: pass` | code_commit=`2feb50a6c`（plan-726-dev）| tasks=T-01..T-05
+  （5/5，T-01 依证据调整=PLAN-724 已清偿、aavm 面依追加裁定移除并回退）|
+  evidence=各任务回执（e4 0.394s 绿+tv 162/162；机器闸门真机三态；book 四态；
+  脚手架自建自拆含 wt-guard；裸 cargo t 54.1s/14 预存红零归因本 diff——
+  stash 严格对照在档）| blockers=无 | next: review（裸 cargo t 已跑讫；
+  tb 裸跑避让理由与 aavm 免触发理由见 T-05 回执；复审需定案两项预存发现
+  登记去向）。worktree/分支保留待 review/merge。
 
 ## 10. 待澄清事项
 
