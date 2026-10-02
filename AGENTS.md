@@ -28,6 +28,8 @@ All AI coding assistants working in this repository must strictly adhere to the 
   - *Criteria*: Minor typos, comment updates, or 1-2 line simple bugfixes without side-effects.
   - *Action* (**2026-09-15 用户裁定：小型改动同样必须走 worktree，master 零 WIP 代码**):
     轻量路径（无需正式 plan 文档）：`git worktree add D:/autostack/.wt/fix-<slug>/auto-lang -b fix-<slug>`
+    （或一键建组含 auto-down 兄弟仓：`bash scripts/new-wt-group.sh fix-<slug> --branch fix-<slug>`，
+    PLAN-726 T-04——组内 cargo 解析即开即用，缺兄弟仓时 check 直接失败）
     → 修改 + 按改动范围跑验证门禁 → 提交 → 合回 master → `bash D:/autostack/wt-guard.sh
     D:/autostack/.wt/fix-<slug>/auto-lang`（必须 clean）→ 移除 worktree/分支/组目录。
     实机走查/核查会话中的**顺手修复**同样适用本条（2026-09-15 三线 WIP 直接落 master 的事后矫正）。
@@ -37,7 +39,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
   - *Action*:
     1. Run `scripts/new-plan.sh <slug>` on the default checkout (master) to atomically take the next `<NNN>` plan ID from `docs/plans/.next-id` and create the plan skeleton (v2 frontmatter).
     2. Fill `docs/plans/<NNN>-<plan-name>.md` (needs-analysis seeded from [docs/specs/overview.md](docs/specs/overview.md)) detailing goals, design, task checklist, and verification plan; present for confirmation before executing.
-    3. Create a dedicated worktree in the sibling-group layout (Plan 529): `git worktree add D:/autostack/.wt/lang-<NNN>/auto-lang -b plan-<NNN>-dev`. Cross-repo plans add sibling worktrees into the same group dir (e.g. `.wt/down-047/{auto-down, auto-lang}`) so `../auto-lang` resolves uniformly.
+    3. Create a dedicated worktree in the sibling-group layout (Plan 529): `git worktree add D:/autostack/.wt/lang-<NNN>/auto-lang -b plan-<NNN>-dev`，或一键 `bash scripts/new-wt-group.sh lang-<NNN> --branch plan-<NNN>-dev`（自动补 auto-down 兄弟 detached；基面恒钉 master，PLAN-726 T-04）. Cross-repo plans add sibling worktrees into the same group dir (e.g. `.wt/down-047/{auto-down, auto-lang}`) so `../auto-lang` resolves uniformly.
     4. Perform all code implementation and testing inside that worktree; plan-file bookkeeping (`[✅]` markers, frontmatter flips) stays on the default checkout.
 - **L2: Architectural Overhaul (重大架构级任务)**
   - *Criteria*: Changes impacting overall architecture, compiler/VM pipelines, core protocol definitions, or cross-system runtime contracts.
@@ -81,6 +83,11 @@ All AI coding assistants working in this repository must strictly adhere to the 
       tf 批量档对 ui_gen 仍全覆盖（nextest-full 不排除）。
     - **并行纪律**：多 agent 并行时，worktree 内只跑 `cargo check` / scoped `t` / `tv`
       级负载；全量档（`tf`/`ta`/`taa`/`t3`）一律主检出单实例串行。
+      重型测试族（画廊围栏 / 1M churn）自 PLAN-726 T-02 起带**机器级单实例闸门**
+      （`heavy_gate.rs::machine_gate`，锁 `D:/autostack/.locks/<family>.lock`）：
+      多跑并发时第二实例秒级确定性红（含持锁者 PID/cwd 提示），不再互毁挂死；
+      持锁进程死亡的陈锁自动接管。aavm XL/LG 族经 2026-10-02 裁定豁免
+      （aavm/aa2r 拟退役短期不跑；恢复运行时补接线即可）。
     - **AAVM 专项（Plan 568）**：改 VM/编译器的复审随身跑 `cargo tv`（PLAN-700 语料三族，
       与 t/tf 同二进制零重编），全量收口归批量回归档；aavm 无实用面，不需要关心是否被
       改坏，守护=CI+`ta`。只有 diff 触及 aavm 代码（`auto/lib/*.at`、`test/vm/aavm2/**`、
@@ -121,8 +128,8 @@ review/fold 前无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜�
 
 | 档位 | 适用场景 | 测试数 | 实测耗时 | 内存 |
 |---|---|---|---|---|
-| `cargo t` | 日常快速回归 + **per-plan 复审门禁**（1M churn + 语料族 + 画廊围栏 + ui_gen 排除，PLAN-700/fix-tiering 系） | 4892（=5745−ui_gen 854；2026-09-30） | **62s**（fix-ui-tier 实测 2026-09-30，轻度竞争；e4 确定性红 P707-R1 占 30s——其修复后预计 ~32s） | 轻池 <50MB/测 |
-| `cargo tf` | **批量回归档**（`/auto-plan:regress` 触发，主检出单实例；含 1M churn + 语料族 + 画廊围栏，PLAN-700；fix-test-tiering 2026-09-30 起**非 per-plan 门禁**） | 5689（2026-09-24 实测） | 77.2s（Plan 564）+语料段 ~4s（tv 同源实测）；画廊围栏冷态 ~800s 另计（每进程全量重编，无跨进程缓存） | ≤2GB 预算 |
+| `cargo t` | 日常快速回归 + **per-plan 复审门禁**（1M churn + 语料族 + 画廊围栏 + ui_gen 排除，PLAN-700/fix-tiering 系） | 4976（2026-10-02 实测选择面；含 PLAN-726 闸门单测 5） | **54.1s**（PLAN-726 merge 实测 2026-10-02，轻度竞争；e4 红已清偿[PLAN-724 T-02]——62s 旧值含其 30s 长尾；余量含预存红族红时长：plan606 10.2s/schema_fence 10.5s/plan707 flake 5.1s，14 预存红族见 §1 非目标/批量回执） | 轻池 <50MB/测 |
+| `cargo tf` | **批量回归档**（`/auto-plan:regress` 触发，主检出单实例；含 1M churn + 语料族 + 画廊围栏，PLAN-700；fix-test-tiering 2026-09-30 起**非 per-plan 门禁**） | 5689（2026-09-24 实测） | 77.2s（Plan 564）+语料段 ~4s（tv 同源实测）；画廊围栏冷态 ~800s 另计（每进程全量重编，无跨进程缓存）；围栏与 1M churn 自 PLAN-726 带机器级单实例闸门（并发第二实例秒级红，见 §2 并行纪律） | ≤2GB 预算 |
 | `cargo tv` | 改 VM/编译器后定向语料回归——filter 档（profile tv）与 t/tf 同二进制零重编（**不含 aavm**；PLAN-700） | 162 | 3.95s（2026-09-24 实测） | 同日常档 |
 | `cargo tt` | 改 transpiler 后 | 3786（trans 增量 ~360） | 43s（冷编译另计 ~1min） | 轻池 |
 | `cargo tb` | 改 book/文档后 | 3494（book 增量 69，单测 <0.4s——旧"5-7s/测"注释已过时） | 24s | 轻池 |
