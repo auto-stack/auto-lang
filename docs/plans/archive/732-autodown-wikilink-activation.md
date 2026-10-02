@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-732
-status: reviewed            # drafting → executing → execution_done → reviewed → archived
+status: archived            # drafting → executing → execution_done → reviewed → archived
 feature_name: autodown 编辑壳正文内链激活供给（jade-edit PLAN-037 上游供料 U-01..06）
 author: [agent]
 created_at: 2026-10-02
@@ -207,3 +207,16 @@ Rust（`crates/auto-lang/src/ui/autodown_editor/**`、`view.rs`、`aura_view_bui
 - D-04 binary 外部重建漂移：回执已绑定交付时指纹（v0.4.2-2638-g713119788-dirty / 2287A536…AD2）+ 诚实边界注记（该 binary 不含本供给代码；jade T-02 按其契约 §1 重绑规则复验）。**开放项（归属 merge/后续）**：合并后外部重建的新 binary 指纹由 jade T-02 自行重绑，本 Plan 不锁全局版本。
 - D-05 输入期行为：**如实记录**——编辑壳重建模型下键入 `[[x]]` 后解析时机=外部真变化 rebuild（自回显走 PLAN-057 回声守卫不重建，暂态失活为既有语义）；不进承诺、不冒称 B-6 已解（owner=auto-down）。六环语料测试两段降层注记在 ADR-27。
 - **新增登记（work 期发现，非本 Plan 修域）**：`autodown_editor_sync` 在 core 槽位缺席时 no-op——生产动态循环靠次帧重降层补内容（首帧空窗）。潜在改进（首帧直接建核同步）归后续计划评估，不改变本供给语义。
+
+### merge 阶段收据（2026-10-03，PLAN-732:r1）
+
+- **prepared**：reviewed 基线=review pass@10abc4500e（基 1cabfeb89f，依赖 auto-down 兄弟@895f8d0 零改动）；冻结 Spec delta=SD-01 SHA256 `8bf534bc…282ae`+SD-02 ADR-27；canonical 投影目标=ui/design/autodown-wikilink.md（新）、ui/architecture.md（ADR-27）、ui/plans.md（732 行）、ui/overview.md（注记）、.autoos/specs.json（P732-1/2/3）。projection-only descendant `f7e758e27`。
+- **landed**：master 基线前移（733/731 projection+archive 落地）→ rebase：代码 commit `10abc4500`=（range-diff 全等）`7bf7dc179`；投影 commit specs.json/ui-plans.md 双追加冲突调和（实录：首次调和丢数组逗号致 JSON 无效，git 链未拦已 rebase——确定性重建自 master 版+P732 追加并 amend 修复，P014-1 双份为 master 预存态非本次引入）；rebased 态复验=SD-01 哈希恒等+ADR-27 在册+plan732 族 15/15 绿。wt-guard clean → 主检出 `git merge --ff-only` → **master tip=`12fa9fd100c02640bfe99813b55977bcadaea9be`（=delivery commit，无 merge commit）**；轨后主检出冒烟 plan732 族 15/15 绿。
+- **ledger_refreshed**：`.autoos/specs.json`（git-tracked，worktree 投影 commit 内落盘）——P732-1（designs→docs/specs/auto-lang/ui/design/autodown-wikilink.md）/P732-2（architecture→ui/architecture.md ADR-27）/P732-3（reviews→本归档件）；主检出回读三条各恰一次、JSON 有效（754 项）。索引再生 `python scripts/spec-index.py`（INDEX.md 内容零变化=仅项目级索引）。
+- **archived**：`docs/plans/archive/732-autodown-wikilink-activation.md`（git mv）+ frontmatter `status: archived`；completion_kind: **delivered**。
+- **部署观察**：生产面 artifact——主检出 debug `auto.exe` 为外部会话持续重建产物（merge 前 v0.4.2-2638-g713119788-dirty 不含本供给）；合并后需外部重建方含 PLAN-732（jade T-02 按其契约 §1 重绑规则以当时 binary 复验——回执 ② 诚实边界在案）。release 二进制/web bundle（auto build）无独立消费面（本供给为 VM 轨 UI 库改动，jade 联验未开始），登记待外部会话重建。
+- **批量回归到期判定（fix-test-tiering）**：732 非 5 整除；`docs/plans/.last-batch-regression.json` 回执 2026-10-03 00:22（PLAN-733 merge 写入，<48h）——**未到期**，732 合并不触发 `/auto-plan:regress`。
+
+## spec-sync 回写记录（v1 惯例）
+
+- 2026-10-03 merge：SD-01 canonical 落 `docs/specs/auto-lang/ui/design/autodown-wikilink.md`（新，SHA256 8bf534bc…282ae）；SD-02 落 `ui/architecture.md` ADR-27；`ui/plans.md` +732 行；`ui/overview.md` +PLAN-732 注记；`.autoos/specs.json` upsert P732-1/2/3；spec-index 再生。
