@@ -485,6 +485,43 @@ impl<M> FocusCallback<M> {
     }
 }
 
+/// PLAN-732：wikilink 激活读出（[`View::AutodownEditor::on_link`] 载荷）。
+/// target＝引擎已 trim 页面名；anchor＝`[[t#a]]` 首个 `#` 后段 trim，
+/// 无锚＝空串（契约 C-01：明确空值，不以 undefined/null 字面泄漏）。
+/// 第二参语义＝目标锚点，非源块身份。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WikiLinkMetrics {
+    pub target: String,
+    pub anchor: String,
+}
+
+/// PLAN-732：wikilink 激活回调（[`FocusCallback`] 同款 newtype 形态，
+/// Arc<dyn Fn> 可跨消息类型包装——VM 轨 DynamicMessage→IcedMessage 转换
+/// 不丢）。
+#[derive(Clone)]
+pub struct LinkCallback<M> {
+    callback: Arc<dyn Fn(WikiLinkMetrics) -> M + Send + Sync>,
+}
+
+impl<M> std::fmt::Debug for LinkCallback<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LinkCallback").finish()
+    }
+}
+
+impl<M> LinkCallback<M> {
+    pub fn new<F>(f: F) -> Self
+    where
+        F: Fn(WikiLinkMetrics) -> M + Send + Sync + 'static,
+    {
+        Self { callback: Arc::new(f) }
+    }
+
+    pub fn call(&self, metrics: WikiLinkMetrics) -> M {
+        (self.callback)(metrics)
+    }
+}
+
 /// Plan 045 T1: 表格列宽拖拽落定测量（[`View::Table::on_col_resize`] 载荷）。
 /// 拖拽的列序号 + 落定宽（px，已按 [`MIN_COL_WIDTH`] clamp）。表键不由
 /// 载荷携带——closure 捕获（details_onclick 同款通道，autodown_render
@@ -776,6 +813,9 @@ pub enum View<M: Clone + Debug> {
         /// [`FocusMetrics`] 携块索引 + DocLayout 实测高（043 on_scroll 同款
         /// 扩字段非新变体）。
         on_focus: Option<FocusCallback<M>>,
+        /// PLAN-732：wikilink 激活读出——完整点击门放行的链接激活回调
+        ///（缺省 None = 应用零行为变化，契约 C-06；载荷双 string）。
+        on_link: Option<LinkCallback<M>>,
         /// PLAN-048 T7（W4）：空态提示文案——content 空且非聚焦时编辑壳
         /// 渲染浅灰占位（043/044 同款扩字段模式）。
         placeholder: Option<String>,
@@ -2487,7 +2527,7 @@ impl<M: Clone + Debug> View<M> {
                 shortcuts: shortcuts.into_iter().map(|(k, m)| (k, f(m))).collect(),
                 style,
             },
-            View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style } => View::AutodownEditor {
+            View::AutodownEditor { key, value, is_final, on_change, on_focus, on_link, placeholder, style } => View::AutodownEditor {
                 key,
                 value,
                 is_final,
@@ -2497,6 +2537,11 @@ impl<M: Clone + Debug> View<M> {
                 on_focus: on_focus.map(|cb| {
                     let f = std::sync::Arc::clone(f);
                     FocusCallback::new(move |m| f(cb.call(m)))
+                }),
+                // PLAN-732: on_link 为 LinkCallback newtype,同款包装。
+                on_link: on_link.map(|cb| {
+                    let f = std::sync::Arc::clone(f);
+                    LinkCallback::new(move |m| f(cb.call(m)))
                 }),
                 placeholder,
                 style,
@@ -3924,6 +3969,7 @@ mod tests {
             is_final: true,
             on_change: None,
             on_focus: Some(FocusCallback::new(|m| FocusMsg::Focused(m.block, m.height))),
+            on_link: None,
             placeholder: None,
             style: None,
         };
@@ -3935,6 +3981,62 @@ mod tests {
                 assert_eq!(blur, FocusMsg::Focused(None, 0.0));
             }
             _ => panic!("Expected View::AutodownEditor with on_focus"),
+        }
+    }
+
+    /// PLAN-732 X 组：on_link 读出回调（LinkCallback newtype）+ View map
+    /// 跨消息类型包装 + 缺省 None（契约 C-06：未声明回调应用零行为变化）。
+    #[test]
+    fn test_autodown_editor_on_link_callback_and_map() {
+        #[derive(Debug, Clone, PartialEq)]
+        enum LinkMsg {
+            Opened(String, String),
+        }
+        let view = View::<LinkMsg>::AutodownEditor {
+            key: "k".into(),
+            value: String::new(),
+            is_final: true,
+            on_change: None,
+            on_focus: None,
+            on_link: Some(LinkCallback::new(|m| LinkMsg::Opened(m.target, m.anchor))),
+            placeholder: None,
+            style: None,
+        };
+        match &view {
+            View::AutodownEditor { on_link: Some(cb), .. } => {
+                let msg = cb.call(WikiLinkMetrics {
+                    target: "目标页".into(),
+                    anchor: "锚点甲".into(),
+                });
+                assert_eq!(msg, LinkMsg::Opened("目标页".into(), "锚点甲".into()));
+                let no_anchor = cb.call(WikiLinkMetrics { target: "无锚页".into(), anchor: String::new() });
+                assert_eq!(no_anchor, LinkMsg::Opened("无锚页".into(), String::new()));
+            }
+            _ => panic!("Expected View::AutodownEditor with on_link"),
+        }
+        // map 换型：LinkCallback 经 map_msg 包装后消息类型转换不丢。
+        let mapped = view.map_msg(|m| format!("{m:?}"));
+        match mapped {
+            View::AutodownEditor { on_link: Some(cb), .. } => {
+                let msg: String = cb.call(WikiLinkMetrics { target: "目标页".into(), anchor: String::new() });
+                assert!(msg.contains("目标页"), "map 换型保真：{msg}");
+            }
+            _ => panic!("Expected mapped View::AutodownEditor with on_link"),
+        }
+        // 缺省 None 单测。
+        let bare = View::<LinkMsg>::AutodownEditor {
+            key: "k2".into(),
+            value: String::new(),
+            is_final: true,
+            on_change: None,
+            on_focus: None,
+            on_link: None,
+            placeholder: None,
+            style: None,
+        };
+        match &bare {
+            View::AutodownEditor { on_link: None, .. } => {}
+            _ => panic!("Expected default on_link None"),
         }
     }
 

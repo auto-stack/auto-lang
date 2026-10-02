@@ -65,6 +65,9 @@ pub const BLOCK_GAP: f32 = 8.0; // PLAN-053 T15：与只读臂文档列 spacing 
 pub const CARET_WIDTH: f32 = 2.0;
 /// 多击窗口（对齐 413 CLICK_TIMING）。
 const CLICK_TIMING: Duration = Duration::from_millis(400);
+/// PLAN-732：完整点击门的拖动容差（px，按下点起算的累计位移）——超阈
+/// 即判拖选、取消激活（契约 U-02 拖选零激活；413 同量级 slob）。
+const LINK_DRAG_SLOP: f32 = 4.0;
 /// 链接色（v1 固定蓝；主题变量接线登记余量）。
 const LINK_COLOR: Rgba = Rgba { r: 0.30, g: 0.56, b: 1.0, a: 1.0 };
 
@@ -114,6 +117,19 @@ struct MarkInterval {
     style: SpanStyle,
 }
 
+/// PLAN-732：wikilink 链接区间（全块字节坐标）。target 为引擎已 trim 的
+/// inner 原文（`target#anchor` 或 `target`——锚点拆分在激活载荷构造处归
+/// 一，jade 契约 C-01）。autodown-core parser 对 `[[inner]]` 产带
+/// `attr "wikilink" = inner` 的 InlineSpan（markdown_parser.rs convertInlines
+/// wikilink 臂）；代码块/行内代码内 `[[` 不产该 span（负例由 parser 层
+/// 保证）。
+#[derive(Debug, Clone, PartialEq)]
+struct LinkInterval {
+    lo: usize,
+    hi: usize,
+    target: String,
+}
+
 /// 合并相邻同款样式、剔除空区间。
 fn normalize(mut ivs: Vec<MarkInterval>) -> Vec<MarkInterval> {
     ivs.retain(|iv| iv.hi > iv.lo);
@@ -128,10 +144,14 @@ fn normalize(mut ivs: Vec<MarkInterval>) -> Vec<MarkInterval> {
     out
 }
 
-/// 行内 span 序列 → 扁平文本 + mark byte 区间表。
-fn flatten_inlines(inlines: &[InlineSpan]) -> (String, Vec<MarkInterval>) {
+/// 行内 span 序列 → 扁平文本 + mark byte 区间表 + wikilink 区间表。
+/// PLAN-732：`attrGetStr(attrs,"wikilink")` 命中即链接 span——
+/// `style.link = true`（VM 轨样式补齐：wikilink span 无 `Mark::Link`，
+/// 原先渲染为纯文本）+ `LinkInterval`（target 原文随区间保留）。
+fn flatten_inlines(inlines: &[InlineSpan]) -> (String, Vec<MarkInterval>, Vec<LinkInterval>) {
     let mut text = String::new();
     let mut ivs: Vec<MarkInterval> = Vec::new();
+    let mut links: Vec<LinkInterval> = Vec::new();
     for s in inlines {
         let mut style = SpanStyle::default();
         for m in &s.marks {
@@ -144,14 +164,23 @@ fn flatten_inlines(inlines: &[InlineSpan]) -> (String, Vec<MarkInterval>) {
                 Mark::Underline => style.underline = true,
             }
         }
+        let wiki = attrGetStr(s.attrs.clone(), "wikilink", "");
+        if !wiki.is_empty() {
+            style.link = true;
+        }
         let lo = text.len();
         text.push_str(&s.text);
         let hi = text.len();
-        if hi > lo && style.any() {
-            ivs.push(MarkInterval { lo, hi, style });
+        if hi > lo {
+            if style.any() {
+                ivs.push(MarkInterval { lo, hi, style });
+            }
+            if !wiki.is_empty() {
+                links.push(LinkInterval { lo, hi, target: wiki });
+            }
         }
     }
-    (text, normalize(ivs))
+    (text, normalize(ivs), links)
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +241,9 @@ struct BlockBuf {
     /// 解析期扁平文本；渲染期与实时 buffer 文本比对——相等才启用区间切片。
     snapshot: String,
     intervals: Vec<MarkInterval>,
+    /// PLAN-732：wikilink 区间（与 intervals 同快照口径——本地编辑后
+    /// snapshot 失配即整块失活，直到外部回写重建恢复）。
+    links: Vec<LinkInterval>,
     /// PLAN-651 T-01 R-ANCH：块锚（parser extractAnchorBlock 收 ` ^id` 进
     /// anchor attr；emit 侧 serializer withIdSuffix 同形尾补往返）。拆分
     /// 随头块（头块字段不动）、尾块新缓冲空锚；合并保头锚（尾块消亡，
@@ -382,6 +414,11 @@ pub enum DocInput {
     },
     MouseReleased {
         button: EditorButton,
+        /// PLAN-732：抬起点坐标（widget 本地）——完整点击门第二腿的
+        /// 同区间核对用（iced ButtonReleased 本体不带位置，widget 层取
+        /// 当前 cursor.position）。
+        x: f32,
+        y: f32,
     },
     ImePreedit(String),
     ImeCommit(String),
@@ -389,13 +426,38 @@ pub enum DocInput {
 }
 
 /// 输出变化位：驱动消息发布与重绘请求。
-#[derive(Debug, Clone, Copy, Default)]
+/// PLAN-732：`link_activated` 携 wikilink 完整点击激活载荷（Option 使
+/// DocOutput 退 Copy——各臂均为单次消费，无隐式拷贝依赖）。
+#[derive(Debug, Clone, Default)]
 pub struct DocOutput {
     pub text_changed: bool,
     pub cursor_changed: bool,
     pub focus_changed: bool,
     pub request_redraw: bool,
     pub captured: bool,
+    pub link_activated: Option<LinkActivation>,
+}
+
+/// PLAN-732：wikilink 激活载荷。target/anchor 已按首个 `#` 拆分并两侧
+/// trim（[`split_wikilink_target`]）；无锚 = 空串（契约 C-01：明确空值，
+/// 不以 undefined/null 字面泄漏）。第二参不是源块身份。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct LinkActivation {
+    pub target: String,
+    pub anchor: String,
+}
+
+/// PLAN-732：载荷归一——inner 原文按首个 `#` 拆分、两侧 trim（jade spec
+/// wiki-link-navigation §1 同语义；`[[ t # a ]]` 双侧空白已由 parser trim
+/// inner 整体、此处按段再 trim 与 Vue 消费逐值一致）。
+pub fn split_wikilink_target(raw: &str) -> LinkActivation {
+    match raw.split_once('#') {
+        Some((t, a)) => LinkActivation {
+            target: t.trim().to_string(),
+            anchor: a.trim().to_string(),
+        },
+        None => LinkActivation { target: raw.trim().to_string(), anchor: String::new() },
+    }
 }
 
 impl DocOutput {
@@ -409,6 +471,20 @@ impl DocOutput {
 #[derive(Debug, Clone, Default)]
 pub struct DocLayout {
     pub blocks: Vec<BlockLayout>,
+    /// PLAN-732：wikilink 命中区（单 layout-run 段矩形——折行链接每 run
+    /// 一段、各段独立命中；整块矩形禁用，契约 U-01）。
+    pub links: Vec<LinkRegion>,
+}
+
+/// PLAN-732：单段链接命中区。block+lo/hi+target 三重同一 = 链接身份
+///（完整点击门按下/抬起同区间的核对口径）；rect 为 widget 本地像素。
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinkRegion {
+    pub block: usize,
+    pub lo: usize,
+    pub hi: usize,
+    pub target: String,
+    pub rect: Rect,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -573,6 +649,21 @@ enum Drag {
     Buffer,
 }
 
+/// PLAN-732：完整点击门的按下登记。`single` = 按下即单击节律（多击第
+/// 二/三击不起激活——双击词选不重复发链接）；`plain` = 按下时无任何
+/// 修饰键（shift 扩选/ctrl/alt/logo 不激活，契约 U-02 普通左键）。
+#[derive(Debug, Clone, PartialEq)]
+struct PendingLink {
+    block: usize,
+    lo: usize,
+    hi: usize,
+    target: String,
+    press_x: f32,
+    press_y: f32,
+    single: bool,
+    plain: bool,
+}
+
 /// 跨块选区端点（PLAN-048 T2）：块下标 + 块内字节偏移（`SendEdit::text`
 /// 扁平字节流口径）。锚/焦点双端点经 dfs 叶序规范化求范围。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -617,6 +708,9 @@ pub struct AutodownEditorCore {
     /// 读全文即记录）——逐键连发时中途落地的旧自回显据此甄别（回声绝
     /// 不 rebuild，见 sync_external 回声守卫）。有界环形，容量 32。
     emitted_echo: Mutex<std::collections::VecDeque<String>>,
+    /// PLAN-732：完整点击门第一腿——按下命中的链接区间（抬起同区间才
+    /// 激活）。drag 超阈/FocusLost/rebuild/多击第二击/修饰键按下时清空。
+    link_pending: Mutex<Option<PendingLink>>,
     layout: Mutex<DocLayout>,
     revision: AtomicU64,
     external_dirty: AtomicBool,
@@ -657,7 +751,8 @@ impl AutodownEditorCore {
             table_geom: Mutex::new(HashMap::new()),
             details_geom: Mutex::new(Vec::new()),
             emitted_echo: Mutex::new(std::collections::VecDeque::new()),
-            layout: Mutex::new(DocLayout { blocks: Vec::new() }),
+            link_pending: Mutex::new(None),
+            layout: Mutex::new(DocLayout { blocks: Vec::new(), links: Vec::new() }),
             revision: AtomicU64::new(0),
             anchor_block: AtomicI32::new(-1),
             external_dirty: AtomicBool::new(false),
@@ -702,6 +797,12 @@ impl AutodownEditorCore {
     /// widget 内部消费 + 单测锚定，不对 DSL 开放查询面。
     pub fn block_rects(&self) -> Vec<Rect> {
         self.layout.lock().unwrap().blocks.iter().map(|b| b.rect).collect()
+    }
+
+    /// PLAN-732：链接命中区快照（`render_frame` 布局写回的读出；测试/
+    /// 观察面——widget 激活出口走 DocOutput 载荷，不读此口）。
+    pub fn link_regions(&self) -> Vec<LinkRegion> {
+        self.layout.lock().unwrap().links.clone()
     }
 
     /// PLAN-063 T-04d: 锚块索引读写（scroll 回调写，draw 臂读）。
@@ -798,6 +899,7 @@ impl AutodownEditorCore {
                 syntax: None,
                 snapshot: String::new(),
                 intervals: Vec::new(),
+                links: Vec::new(),
                 anchor: String::new(),
             });
             segs.push(Seg::Leaf(0));
@@ -809,6 +911,9 @@ impl AutodownEditorCore {
         *self.nav_goal_x.lock().unwrap() = None;
         *self.doc_sel.lock().unwrap() = None;
         *self.drag_anchor.lock().unwrap() = None;
+        // PLAN-732：整树重建（外部真变化/换内容）——按下期链接区间失效，
+        // 排队旧激活清空（契约 C-04：换内容后零冒领）。
+        *self.link_pending.lock().unwrap() = None;
         // PLAN-069：文档整体重建（外部真变化）——弹层锚块失效，随重建关闭。
         *self.slash.lock().unwrap() = None;
         *self.slash_geom.lock().unwrap() = None;
@@ -892,6 +997,8 @@ impl AutodownEditorCore {
                 *self.preedit.lock().unwrap() = None;
                 *self.drag.lock().unwrap() = Drag::None;
                 *self.drag_anchor.lock().unwrap() = None;
+                // PLAN-732：失焦取消链接激活（契约 U-02 失焦零激活）。
+                *self.link_pending.lock().unwrap() = None;
                 // PLAN-069：失焦关层（web 编辑器 blur 同语义）。
                 *self.slash.lock().unwrap() = None;
                 DocOutput { request_redraw: true, ..Default::default() }
@@ -917,16 +1024,45 @@ impl AutodownEditorCore {
             }
             DocInput::MousePressed { button, x, y } => self.handle_mouse_press(font_system, button, x, y),
             DocInput::MouseDragged { x, y } => self.handle_mouse_drag(font_system, x, y),
-            DocInput::MouseReleased { button } => {
+            DocInput::MouseReleased { button, x, y } => {
                 *self.drag.lock().unwrap() = Drag::None;
                 *self.drag_anchor.lock().unwrap() = None;
                 // PLAN-055 T6：列宽拖拽落定（宽度已在拖拽中写 table_widths
                 // ——状态持久于 core，落定即保留）。
                 *self.col_drag.lock().unwrap() = None;
-                if matches!(button, EditorButton::Left | EditorButton::Right) {
-                    DocOutput::default().captured()
+                let mut out = DocOutput::default();
+                // PLAN-732：完整点击门第二腿——抬起点命中**同一链接区间**
+                //（block + byte 区间 + target 三重同一）才激活；拖选超阈/
+                // 修饰键/多击第二击（按下期已清或不登记）、越界抬起（widget
+                // is_over 门已挡）、换内容（rebuild 已清 pending）零冒领。
+                if button == EditorButton::Left {
+                    if let Some(pl) = self.link_pending.lock().unwrap().take() {
+                        if pl.single && pl.plain {
+                            let same = self
+                                .layout
+                                .lock()
+                                .unwrap()
+                                .links
+                                .iter()
+                                .any(|r| {
+                                    r.block == pl.block
+                                        && r.lo == pl.lo
+                                        && r.hi == pl.hi
+                                        && r.target == pl.target
+                                        && r.rect.contains(Pt::new(x, y))
+                                });
+                            if same {
+                                out.link_activated = Some(split_wikilink_target(&pl.target));
+                            }
+                        }
+                    }
                 } else {
-                    DocOutput::default()
+                    *self.link_pending.lock().unwrap() = None;
+                }
+                if matches!(button, EditorButton::Left | EditorButton::Right) {
+                    out.captured()
+                } else {
+                    out
                 }
             }
             DocInput::ImePreedit(p) => {
@@ -1366,6 +1502,8 @@ impl AutodownEditorCore {
         y: f32,
     ) -> DocOutput {
         if !matches!(button, EditorButton::Left) {
+            // PLAN-732：非左键按下即弃链接激活（右/中键零激活）。
+            *self.link_pending.lock().unwrap() = None;
             return DocOutput::default();
         }
         // PLAN-069 T2：弹层命中优先（项点击执行；层外点击关闭且不落文档
@@ -1423,6 +1561,28 @@ impl AutodownEditorCore {
             *click = Some((k, Instant::now()));
             k
         };
+
+        // PLAN-732：完整点击门第一腿——按下命中链接区间即登记（纯观察：
+        // 建焦/caret 正常流程不变；激活与否在抬起腿核对）。多击第二/三
+        // 击不起激活；修饰键按下（shift 扩选等）不登记 plain。
+        {
+            let mods = *self.modifiers.lock().unwrap();
+            let plain = !(mods.shift || mods.control || mods.alt || mods.logo);
+            *self.link_pending.lock().unwrap() = layout
+                .links
+                .iter()
+                .find(|r| r.rect.contains(Pt::new(x, y)))
+                .map(|r| PendingLink {
+                    block: r.block,
+                    lo: r.lo,
+                    hi: r.hi,
+                    target: r.target.clone(),
+                    press_x: x,
+                    press_y: y,
+                    single: kind == ClickKind::Single,
+                    plain,
+                });
+        }
 
         let bl = layout.blocks[hit];
         let bx = ((x - bl.origin.x).max(0.0)) as i32;
@@ -1567,6 +1727,18 @@ impl AutodownEditorCore {
     /// 越叶（或已入跨块模式）→ 目标块定位字节偏移，doc_sel 端点推进 +
     /// 焦点随动。非拖选零操作。
     fn handle_mouse_drag(&self, fs: &mut FontSystem, x: f32, y: f32) -> DocOutput {
+        // PLAN-732：拖动超阈取消链接激活（拖选不激活，契约 U-02——按下
+        // 点起算的累计位移超 LINK_DRAG_SLOP 即判拖选意图）。
+        {
+            let mut pending = self.link_pending.lock().unwrap();
+            if let Some(pl) = pending.as_ref() {
+                let dx = x - pl.press_x;
+                let dy = y - pl.press_y;
+                if dx * dx + dy * dy > LINK_DRAG_SLOP * LINK_DRAG_SLOP {
+                    *pending = None;
+                }
+            }
+        }
         // PLAN-055 T6：列宽拖拽——实时改宽写 table_widths（下一帧
         // relayout），优先于拖选路径。
         if matches!(*self.col_drag.lock().unwrap(), Some(_)) {
@@ -1705,6 +1877,8 @@ impl AutodownEditorCore {
             }
         }
         let mut layouts: Vec<Option<BlockLayout>> = vec![None; blocks.len()];
+        // PLAN-732：链接命中区累计（两叶臂写入；DocLayout.links 落布局）。
+        let mut link_regions: Vec<LinkRegion> = Vec::new();
         // PLAN-054 T5/T6：task done 态 accent 色（theme 语义 primary，双档
         // 感知）——帧内一次解析。
         let accent_rgb = crate::ui::style::theme::resolve_semantic_rgb(
@@ -1947,6 +2121,13 @@ impl AutodownEditorCore {
                 let run_base = list.runs.len();
                 let block_h = ed
                     .with_buffer(|buf| buffer_block_runs(buf, text_x, text_y, size, line_h, &ctx, &mut list.runs));
+                // PLAN-732：cell 叶链接命中区（快照匹配期才产——本地编辑
+                // 暂态失活，与 mark 区间同口径）。
+                if styled_ok && !b.links.is_empty() {
+                    ed.with_buffer(|buf| {
+                        push_link_regions(buf, &b.links, bi, text_x, text_y, &mut link_regions)
+                    });
+                }
                 // T4：表头行文字加粗（加粗经 run.bold → iced Bold 字重）。
                 if cell.row == 0 {
                     for r in &mut list.runs[run_base..] {
@@ -2104,6 +2285,14 @@ impl AutodownEditorCore {
             };
             let block_h =
                 ed.with_buffer(|buf| buffer_block_runs(buf, x_off, text_y, size, line_h, &ctx, &mut list.runs));
+
+            // PLAN-732：顶层/容器叶链接命中区（快照匹配期才产；折行链接
+            // 每 run 一段，各段独立命中——整块矩形禁用）。
+            if styled_ok && !b.links.is_empty() {
+                ed.with_buffer(|buf| {
+                    push_link_regions(buf, &b.links, bi, x_off, text_y, &mut link_regions)
+                });
+            }
 
             // PLAN-054 T5/T6：列表 marker（项首叶独立 run，画在 gutter 左
             // 缘；task done 态 accent 色——五截图根因③④）。
@@ -2456,6 +2645,7 @@ impl AutodownEditorCore {
                     None => panic!("render covers every block"),
                 })
                 .collect(),
+            links: link_regions,
         };
         DocFrame { list, height: (y - BLOCK_GAP).max(0.0) + banner_h + menu_h }
     }
@@ -2671,9 +2861,65 @@ fn push_styled_pieces(
     }
 }
 
+/// PLAN-732：链接 byte 区间 → 命中区段矩形（`push_byte_range_rects`
+/// 选区同路的字节→像素映射：行前缀偏移平移 + run 内钳制 + `index_x`）。
+/// 折行链接每 layout-run 一段、各段独立命中——整块矩形禁用（契约
+/// U-01）。纯函数：只读已整形 buffer。
+fn push_link_regions(
+    buf: &Buffer,
+    links: &[LinkInterval],
+    block: usize,
+    x_off: f32,
+    y_top: f32,
+    out: &mut Vec<LinkRegion>,
+) {
+    if links.is_empty() {
+        return;
+    }
+    let mut line_bases: Vec<usize> = Vec::with_capacity(buf.lines.len());
+    {
+        let mut acc = 0usize;
+        for l in buf.lines.iter() {
+            line_bases.push(acc);
+            acc += l.text().len() + 1;
+        }
+    }
+    for run in buf.layout_runs() {
+        let (Some(first), Some(last)) = (run.glyphs.first(), run.glyphs.last()) else {
+            continue;
+        };
+        let run_lo = first.start;
+        let run_hi = last.end;
+        if run_hi <= run_lo {
+            continue;
+        }
+        let base_off = line_bases.get(run.line_i).copied().unwrap_or(0);
+        for l in links {
+            let s = l.lo.saturating_sub(base_off).max(run_lo);
+            let e = l.hi.saturating_sub(base_off).min(run_hi);
+            if e <= s {
+                continue;
+            }
+            if let (Some(x0), Some(x1)) = (index_x(&run, s), index_x(&run, e)) {
+                out.push(LinkRegion {
+                    block,
+                    lo: l.lo,
+                    hi: l.hi,
+                    target: l.target.clone(),
+                    rect: Rect::new(
+                        x_off + x0.min(x1),
+                        y_top + run.line_top,
+                        (x1 - x0).abs().max(2.0),
+                        run.line_height,
+                    ),
+                });
+            }
+        }
+    }
+}
+
 /// byte index → run 内 x 偏移（借自 413 render.rs）。
-fn index_x(run: &cosmic_text::LayoutRun, index: usize) -> Option<f32> {
-    let mut prev_end = 0.0f32;
+fn index_x(run: &cosmic_text::LayoutRun, index: usize) -> Option<f32> {    let mut prev_end = 0.0f32;
     for glyph in run.glyphs.iter() {
         if index < glyph.start {
             return Some(prev_end);
@@ -2755,7 +3001,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                 } else {
                     LeafKind::Paragraph
                 };
-                let (text, ivs) = flatten_inlines(&node.inlines);
+                let (text, ivs, links) = flatten_inlines(&node.inlines);
                 // PLAN-651 T-01 R-ANCH：块锚随骨架保形（emit withIdSuffix
                 // 往返；serializer headingMd/默认路径同源）。
                 let anchor = attrGetStr(node.attrs.clone(), "anchor", "");
@@ -2765,6 +3011,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                     syntax: None,
                     snapshot: text,
                     intervals: ivs,
+                    links,
                     anchor,
                 });
                 segs.push(Seg::Leaf(blocks.len() - 1));
@@ -2772,7 +3019,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
             BlockType::Fence => {
                 // 建缓冲前剥尾随换行（发射侧补围栏；cosmic 光标为字符
                 // 索引，尾随空行会干扰软尾判定）。
-                let (raw, _) = flatten_inlines(&node.inlines);
+                let (raw, _, _) = flatten_inlines(&node.inlines);
                 let text = raw.trim_end_matches('\n').to_owned();
                 // 家族 header 标签 + T4 语法着色的语言 token（只读轨同源）。
                 let lang = attrGetStr(node.attrs.clone(), "language", "");
@@ -2794,6 +3041,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                     syntax,
                     snapshot: text,
                     intervals: Vec::new(),
+                    links: Vec::new(),
                     anchor: String::new(),
                 });
                 segs.push(Seg::Leaf(blocks.len() - 1));
@@ -2804,7 +3052,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                 // 编辑面 mono 源码（对齐 TS edit=源码编辑器）；图形预览维持
                 // web-only 豁免（PARITY #9）。语言随 syntax 进发射（R1 通道，
                 // serializer mermaidMd ` ```mermaid ` 同形）。
-                let (raw, _) = flatten_inlines(&node.inlines);
+                let (raw, _, _) = flatten_inlines(&node.inlines);
                 let text = raw.trim_end_matches('\n').to_owned();
                 blocks.push(BlockBuf {
                     editor: SendEditor(new_leaf_buffer(
@@ -2819,6 +3067,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                     syntax: Some("mermaid".to_string()),
                     snapshot: text,
                     intervals: Vec::new(),
+                    links: Vec::new(),
                     anchor: String::new(),
                 });
                 segs.push(Seg::Leaf(blocks.len() - 1));
@@ -2828,7 +3077,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                 // `%{ }%` 回写降级段落）。mono 源码可编辑（对齐 TS edit=源码
                 // 编辑器）；katex 预览维持 web-only 豁免。Enter/合并/slash/
                 // 行首规则随 Fence 守卫（构造不拆）。
-                let (raw, _) = flatten_inlines(&node.inlines);
+                let (raw, _, _) = flatten_inlines(&node.inlines);
                 let text = raw.trim_end_matches('\n').to_owned();
                 blocks.push(BlockBuf {
                     editor: SendEditor(new_leaf_buffer(
@@ -2843,6 +3092,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                     syntax: None,
                     snapshot: text,
                     intervals: Vec::new(),
+                    links: Vec::new(),
                     anchor: String::new(),
                 });
                 segs.push(Seg::Leaf(blocks.len() - 1));
@@ -2934,7 +3184,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                 for row in &node.children {
                     let mut cells: Vec<Vec<Seg>> = Vec::new();
                     for cell in &row.children {
-                        let (text, ivs) = flatten_inlines(&cell.inlines);
+                        let (text, ivs, links) = flatten_inlines(&cell.inlines);
                         blocks.push(BlockBuf {
                             editor: SendEditor(new_leaf_buffer(
                                 fs,
@@ -2948,6 +3198,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                             syntax: None,
                             snapshot: text,
                             intervals: ivs,
+                            links,
                             anchor: String::new(),
                         });
                         cells.push(vec![Seg::Leaf(blocks.len() - 1)]);
@@ -2962,7 +3213,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
             // PLAN-651 T-01 R-ANCH：降级叶仍携带块锚（serializer 默认路径
             // withIdSuffix 同源——wikilink 等手工模型块的锚不因降级丢失）。
             _ => {
-                let (text, ivs) = flatten_inlines(&node.inlines);
+                let (text, ivs, links) = flatten_inlines(&node.inlines);
                 let anchor = attrGetStr(node.attrs.clone(), "anchor", "");
                 blocks.push(BlockBuf {
                     editor: SendEditor(new_leaf_buffer(fs, &text, false, BODY_SIZE, None, LINE_H_PARA)),
@@ -2970,6 +3221,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                     syntax: None,
                     snapshot: text,
                     intervals: ivs,
+                    links,
                     anchor,
                 });
                 segs.push(Seg::Leaf(blocks.len() - 1));
@@ -4017,6 +4269,8 @@ impl AutodownEditorCore {
         ));
         buf.snapshot = text;
         buf.intervals.clear();
+        // PLAN-732：链接区间随快照同口径保守清空（结构操作后字节坐标失配）。
+        buf.links.clear();
     }
 
     fn block_kind_of(&self, bi: usize) -> LeafKind {
@@ -4220,6 +4474,7 @@ impl AutodownEditorCore {
                 syntax: None,
                 snapshot: right,
                 intervals: Vec::new(),
+                links: Vec::new(),
                 // PLAN-651 T-01 R-ANCH：拆分尾块空锚（锚随头块——头块字段
                 // 不动即自然保锚；TS 模型 op 同语义）。
                 anchor: String::new(),
@@ -4309,6 +4564,7 @@ impl AutodownEditorCore {
                 syntax: None,
                 snapshot: String::new(),
                 intervals: Vec::new(),
+                links: Vec::new(),
                 anchor: String::new(),
             });
             id
@@ -4569,6 +4825,7 @@ impl AutodownEditorCore {
                     focus_changed,
                     request_redraw: true,
                     captured: true,
+                    link_activated: None,
                 })
             }
             EditorKey::Escape => {
@@ -4646,6 +4903,7 @@ impl AutodownEditorCore {
             focus_changed,
             request_redraw: true,
             captured: true,
+            link_activated: None,
         })
     }
 
@@ -4807,6 +5065,7 @@ impl AutodownEditorCore {
                         syntax: None,
                         snapshot: String::new(),
                         intervals: Vec::new(),
+                        links: Vec::new(),
                         anchor: String::new(),
                     });
                     cell_ids[r][c] = id;
@@ -7219,7 +7478,7 @@ fn main() { let s = \"hi\"; }
         let _ = run_fs(|fs| {
             c.handle_input(
                 fs,
-                DocInput::MouseReleased { button: EditorButton::Left },
+                DocInput::MouseReleased { button: EditorButton::Left, x: 10.0, y: 20.0 },
                 &mut NullClipboard,
             )
         });
@@ -7728,5 +7987,335 @@ fn t651_details_fold_toggle_roundtrip() {
     assert!(f2.list.runs.iter().any(|r| r.text.contains("内容甲")), "re-expanded");
     assert!(c.emit_document().contains("open:true"), "re-open roundtrips");
 }
+
+    // ------------------------------------------------------------------
+    // PLAN-732：wikilink 供给——C 语义/命中、W 点击门、L 载荷、O 来源。
+    // 命中点一律取 link_regions() 段矩形中心（真实布局产物，不猜坐标——
+    // 契约 U-01「Jade 不猜坐标」的同侧实现）。
+    // ------------------------------------------------------------------
+
+    /// 链接段矩形中心（命中测试用点击点）。
+    fn region_center(r: &LinkRegion) -> (f32, f32) {
+        (r.rect.x + r.rect.w / 2.0, r.rect.y + r.rect.h / 2.0)
+    }
+
+    fn click_at(core: &AutodownEditorCore, x: f32, y: f32) -> DocOutput {
+        run_fs(|fs| {
+            core.handle_input(
+                fs,
+                DocInput::MousePressed { button: EditorButton::Left, x, y },
+                &mut NullClipboard,
+            )
+        })
+    }
+    fn release_at(core: &AutodownEditorCore, x: f32, y: f32) -> DocOutput {
+        run_fs(|fs| {
+            core.handle_input(
+                fs,
+                DocInput::MouseReleased { button: EditorButton::Left, x, y },
+                &mut NullClipboard,
+            )
+        })
+    }
+
+    /// 测试辅助：重置多击节律（模拟两次点击间隔 > CLICK_TIMING 的真
+    /// 用户节奏——测试进程内连续 click_at 会恒落 Double/Triple 而吃掉
+    /// 激活的 single 判定）。
+    fn reset_click_kind(core: &AutodownEditorCore) {
+        *core.click.lock().unwrap() = None;
+    }
+
+    /// C 组：加载期语义保留——英文/中文/别名/带锚链接的目标逐值 + 行内
+    /// 前后文 + 首块 + 标题/列表/引用域；VM 样式补齐（link run 上色）；
+    /// 命中区非整块矩形。
+    #[test]
+    fn plan732_wikilink_regions_semantics() {
+        let src = "前 [[Alpha]] 后\n\n# 标题 [[标题页#节]] 尾\n\n- 项 [[列表页]] 文\n\n> 引 [[引用页#锚]] 文\n";
+        let c = core_for("p732_c_sem", src);
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let regions = c.link_regions();
+        let targets: Vec<&str> = regions.iter().map(|r| r.target.as_str()).collect();
+        assert_eq!(targets, vec!["Alpha", "标题页#节", "列表页", "引用页#锚"], "target 原文逐值（含中文/锚点）");
+        // 首块（块 0）+ 标题（块 1）+ 列表（块 2）+ 引用（块 3）全覆盖。
+        let blocks: Vec<usize> = regions.iter().map(|r| r.block).collect();
+        assert_eq!(blocks, vec![0, 1, 2, 3], "段落/标题/列表/引用文本域");
+        // 命中区非整块矩形：宽度显著小于块宽、矩形严格内含于块域
+        //（单行块高度=行高属正常——判据在宽度与内含性）。
+        let r0 = &regions[0];
+        let b0 = c.block_rects()[0];
+        assert!(r0.rect.w < b0.w * 0.6, "首块链接命中区非整块宽：{:?} vs {:?}", r0.rect, b0);
+        assert!(r0.rect.h <= b0.h + 1e-3, "命中区高（{}）≤ 块高（{}）", r0.rect.h, b0.h);
+        // VM 轨样式补齐：链接文本 run 携 LINK_COLOR（style.link）。
+        let link_run = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "Alpha")
+            .expect("链接文本 run 在册");
+        assert_eq!(link_run.color, LINK_COLOR, "wikilink span 获链接样式（D-03 补齐）");
+        // 行内前后文保留（同块文本完整——链接边界切片后前后文各成段）。
+        assert!(
+            frame.list.runs.iter().any(|r| r.text.contains("前"))
+                && frame.list.runs.iter().any(|r| r.text.contains("后")),
+            "行内前后文保留"
+        );
+    }
+
+    /// C 组负例：代码块/行内代码字面 `[[x]]` 与 Markdown 外链 href 均零
+    /// wiki 区间（parser 层保证——本测试锁定回归）。
+    #[test]
+    fn plan732_wikilink_negative_code_and_href() {
+        let src = "行内 `[[NotLink]]` 代码。\n\n```text\n[[BlockNotLink]]\n```\n\n[外链](https://example.com/a) 文。\n";
+        let c = core_for("p732_c_neg", src);
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert!(c.link_regions().is_empty(), "代码块/行内代码/外链零 wiki 区间");
+    }
+
+    /// C 组：折行链接分段——长链接在窄视口折行后每 run 一段、各段独立
+    /// 命中（同一下半段点击可激活）。
+    #[test]
+    fn plan732_wikilink_wrapped_regions_split() {
+        let long = "很长的中文链接页面名".repeat(6);
+        let src = format!("前 [[{long}]] 后");
+        let c = core_for("p732_c_wrap", &src);
+        let _ = run_fs(|fs| c.render_frame(fs, 120.0, WHITE, None));
+        let regions = c.link_regions();
+        assert!(regions.len() >= 2, "折行链接分段：{:?}", regions);
+        assert!(
+            regions.windows(2).all(|w| w[0].rect.y < w[1].rect.y),
+            "各段行位单调下移"
+        );
+        // 末段独立命中激活（W 组口径在折行末段上复验）。
+        let (x, y) = region_center(regions.last().unwrap());
+        let _ = click_at(c, x, y);
+        let out = release_at(c, x, y);
+        assert_eq!(
+            out.link_activated,
+            Some(LinkActivation { target: long.clone(), anchor: String::new() }),
+            "末段完整点击激活"
+        );
+    }
+
+    /// L 组：载荷归一 known-answer——首个 `#` 拆分 + 两侧 trim + 无锚空串。
+    #[test]
+    fn plan732_split_wikilink_target_known_answers() {
+        let f = split_wikilink_target;
+        assert_eq!(f("Page"), LinkActivation { target: "Page".into(), anchor: "".into() });
+        assert_eq!(f("Page#Sec"), LinkActivation { target: "Page".into(), anchor: "Sec".into() });
+        assert_eq!(f(" Page # Sec "), LinkActivation { target: "Page".into(), anchor: "Sec".into() });
+        assert_eq!(f("P#A#B"), LinkActivation { target: "P".into(), anchor: "A#B".into() }, "仅首个 # 拆分");
+        assert_eq!(f("#A"), LinkActivation { target: "".into(), anchor: "A".into() });
+        assert_eq!(f("P#"), LinkActivation { target: "P".into(), anchor: "".into() });
+    }
+
+    /// W 组：完整点击恰一次激活 + 载荷逐值。
+    #[test]
+    fn plan732_full_click_activates_with_payload() {
+        let c = core_for("p732_w_click", "见 [[目标页#锚点甲]] 与 [[无锚页]]。");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let regions = c.link_regions();
+        assert_eq!(regions.len(), 2);
+        let (x, y) = region_center(&regions[0]);
+        let _ = click_at(c, x, y);
+        let out = release_at(c, x, y);
+        assert_eq!(
+            out.link_activated,
+            Some(LinkActivation { target: "目标页".into(), anchor: "锚点甲".into() }),
+            "双 Str 载荷逐值（拆分+trim）"
+        );
+        // 第二个链接：无锚 → 空串。
+        reset_click_kind(c);
+        let (x2, y2) = region_center(&regions[1]);
+        let _ = click_at(c, x2, y2);
+        let out2 = release_at(c, x2, y2);
+        assert_eq!(
+            out2.link_activated,
+            Some(LinkActivation { target: "无锚页".into(), anchor: String::new() }),
+            "无锚=空串（非 None/undefined 字面）"
+        );
+        // 编辑行为零回退：点击建焦、caret 在册（普通点击流程保留）。
+        assert!(c.focused_block().is_some(), "点击仍建焦（编辑兼容）");
+    }
+
+    /// W 组负例族：拖选超阈、右/中键、越点抬起（抬起点不在任何链接区）、
+    /// 非链接按下、修饰键按下、多击第二击——零激活。
+    #[test]
+    fn plan732_click_gate_negatives() {
+        let c = core_for("p732_w_neg", "甲 [[甲页#甲锚]] 乙 [[乙页]] 丙 普通文本段。");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let regions = c.link_regions();
+        let (x, y) = region_center(&regions[0]);
+
+        // ① 拖选超阈（>4px）后回到原点抬起：零激活。
+        let _ = click_at(c, x, y);
+        run_fs(|fs| {
+            c.handle_input(fs, DocInput::MouseDragged { x: x + 20.0, y: y + 6.0 }, &mut NullClipboard)
+        });
+        assert_eq!(release_at(c, x, y).link_activated, None, "拖选零激活");
+
+        // ② 右键完整序列：零激活。
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MousePressed { button: EditorButton::Right, x, y },
+                &mut NullClipboard,
+            )
+        });
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MouseReleased { button: EditorButton::Right, x, y },
+                &mut NullClipboard,
+            )
+        });
+        assert!(c.link_pending.lock().unwrap().is_none(), "右键不登记 pending");
+
+        // ③ 中键：零激活。
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MousePressed { button: EditorButton::Middle, x, y },
+                &mut NullClipboard,
+            )
+        });
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MouseReleased { button: EditorButton::Middle, x, y },
+                &mut NullClipboard,
+            )
+        });
+
+        // ④ 按下链接、抬起点移到另一链接：零激活（区间不同）。
+        let (x2, y2) = region_center(&regions[1]);
+        let _ = click_at(c, x, y);
+        assert_eq!(release_at(c, x2, y2).link_activated, None, "跨链接抬起零激活");
+
+        // ⑤ 非链接点按下（普通文本）+ 原点抬起：零激活。
+        let plain = c.block_rects()[0];
+        let _ = click_at(c, plain.x + 4.0, plain.y + 4.0);
+        assert_eq!(release_at(c, plain.x + 4.0, plain.y + 4.0).link_activated, None, "非链接零激活");
+
+        // ⑥ shift 按下（扩选意图）：零激活。
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::ModifiersChanged(EditorModifiers { shift: true, ..EditorModifiers::none() }),
+                &mut NullClipboard,
+            )
+        });
+        let _ = click_at(c, x, y);
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::ModifiersChanged(EditorModifiers::none()),
+                &mut NullClipboard,
+            )
+        });
+        assert_eq!(release_at(c, x, y).link_activated, None, "shift 按下零激活");
+
+        // ⑦ 多击节律：首击激活恰一次，第二击（Double）不重复激活。
+        reset_click_kind(c);
+        let _ = click_at(c, x, y);
+        let first = release_at(c, x, y).link_activated;
+        assert!(first.is_some(), "首击激活");
+        let _ = click_at(c, x, y); // CLICK_TIMING 窗口内 → Double
+        assert_eq!(release_at(c, x, y).link_activated, None, "双击第二击零激活");
+    }
+
+    /// W/O 组：按下后换内容（外部真变化 rebuild）——排队旧激活零冒领。
+    #[test]
+    fn plan732_stale_hit_after_content_change() {
+        let c = core_for("p732_w_stale", "见 [[旧页#旧锚]] 也。");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let (x, y) = region_center(&c.link_regions()[0]);
+        let _ = click_at(c, x, y);
+        // 按住期间外部推新内容 → 整树重建（清 pending + 布局重算）。
+        assert!(c.sync_external("全新内容，无链接。", true), "外部真变化触发重建");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert!(c.link_regions().is_empty(), "新内容零链接区");
+        assert_eq!(release_at(c, x, y).link_activated, None, "换内容后旧命中零冒领");
+        assert!(c.link_pending.lock().unwrap().is_none(), "rebuild 清 pending");
+    }
+
+    /// O 组：双同正文实例各发各来源——两个 key 各自独立 core 状态，
+    /// A 的激活不污染 B（pending/link_regions 按实例隔离；VM 轨 widget
+    /// 实例级 callback 的结构性证据见 widget 测试）。
+    #[test]
+    fn plan732_dual_instance_isolated_activation() {
+        let src = "同 [[同页#同锚]] 文。";
+        let a = core_for("p732_o_a", src);
+        let b = core_for("p732_o_b", src);
+        let _ = run_fs(|fs| a.render_frame(fs, 400.0, WHITE, None));
+        let _ = run_fs(|fs| b.render_frame(fs, 400.0, WHITE, None));
+        assert!(!std::ptr::eq(a, b), "两实例不同核");
+        let (x, y) = region_center(&a.link_regions()[0]);
+        let _ = click_at(a, x, y);
+        assert!(a.link_pending.lock().unwrap().is_some(), "A 登记 pending");
+        assert!(b.link_pending.lock().unwrap().is_none(), "B 零 pending（无全局单槽）");
+        let out = release_at(a, x, y);
+        assert_eq!(
+            out.link_activated,
+            Some(LinkActivation { target: "同页".into(), anchor: "同锚".into() })
+        );
+        // B 的同位点完整点击仍可独立激活（各发各来源）。
+        reset_click_kind(a);
+        reset_click_kind(b);
+        let (bx, by) = region_center(&b.link_regions()[0]);
+        let _ = click_at(b, bx, by);
+        assert_eq!(
+            release_at(b, bx, by).link_activated,
+            Some(LinkActivation { target: "同页".into(), anchor: "同锚".into() })
+        );
+    }
+
+    /// X 组：本地编辑暂态（snapshot 失配）——链接区随样式区间同口径失活，
+    /// 回写重建后恢复（编辑兼容面：暂态不激活、恢复后可激活）。
+    #[test]
+    fn plan732_local_edit_deactivates_until_rebuild() {
+        let c = core_for("p732_x_edit", "见 [[编辑页#锚]] 文。");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert_eq!(c.link_regions().len(), 1);
+        let (x, y) = region_center(&c.link_regions()[0]);
+        let _ = click_at(c, x, y);
+        // 本地编辑（文字变化，snapshot 失配）。
+        let _ = press(c, EditorKey::Char('z'));
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert!(c.link_regions().is_empty(), "本地编辑暂态链接区失活（陈旧命中归零）");
+        assert_eq!(release_at(c, x, y).link_activated, None, "暂态零激活");
+        // 自回显（on_change → .at 回写 = emit 全文）走 PLAN-057 回声守卫，
+        // 不整树重建（防连打丢键）——区间维持失活直到外部真变化：
+        let doc = c.emit_document();
+        assert!(!c.sync_external(&doc, true), "自回显按回声处理（零重建）");
+        // 外部真变化（非自回显）触发重建 → 链接区间恢复。
+        assert!(c.sync_external("恢复 [[新页#新锚]] 文。", true), "外部真变化触发重建");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert_eq!(c.link_regions().len(), 1, "重建后链接区恢复");
+        assert_eq!(c.link_regions()[0].target, "新页#新锚");
+    }
+
+    /// R 组 MCP 负例锚（K-04）：`__mcp_click` 合成通道 = 单次
+    /// MousePressed 直调（renderer.rs __mcp_click 臂同构——ghost 落点语
+    /// 义），无抬起腿 → 完整点击门不闭合 → wikilink 零激活。ghost 语义
+    /// （建焦/focus_changed）保持不变——wikilink 激活非该通道职责。
+    #[test]
+    fn plan732_mcp_click_ghost_semantics_zero_wiki_activation() {
+        let c = core_for("p732_r_mcp", "见 [[Mcp页#锚]] 文。");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let (x, y) = region_center(&c.link_regions()[0]);
+        // __mcp_click 同构：仅 MousePressed 一次。
+        let out = click_at(c, x, y);
+        assert!(out.focus_changed, "ghost 语义保持：MCP click 建焦不变");
+        assert!(c.focused_block().is_some(), "焦点在册（ghost 数据源）");
+        assert_eq!(out.link_activated, None, "无抬起腿零激活（__mcp_click 非激活通道）");
+        // 后续别处完整点击不冒领旧 pending：pending 随下一次按下覆写。
+        let plain = c.block_rects()[0];
+        let _ = click_at(c, plain.x + 4.0, plain.y + plain.h - 4.0);
+        assert_eq!(
+            release_at(c, plain.x + 4.0, plain.y + plain.h - 4.0).link_activated,
+            None,
+            "旧 pending 不冒领"
+        );
+    }
 }
 

@@ -3870,6 +3870,33 @@ impl<'a> AuraViewBuilder<'a> {
         })
     }
 
+    /// PLAN-732：wikilink 激活读出装配——事件绑定双形态：引号完整名
+    /// `on "open-wiki-link"`（Plan-367 引号式监听键 `on"open-wiki-link"`，
+    /// split_aura_event_key 引号感知 base；jade Vue `on "open-wiki-link"`
+    /// 同名，契约 C-01 主形态）与属性简写 `onopenwikilink`。载荷双 Str
+    ///（target/target_anchor，核心侧已按首个 `#` 拆分 trim）；事件名 =
+    /// handler 名（onfocusblock 同族 codegen 直映，如 `.OpenWikiLink` →
+    /// "OpenWikiLink"）——派发侧 decode_payload 直达 VM handler 形参。
+    fn autodown_on_link_binding(
+        &self,
+        events: &HashMap<String, AuraEvent>,
+    ) -> Option<crate::ui::view::LinkCallback<DynamicMessage>> {
+        let ev = aura_events_get_base(events, "on\"open-wiki-link\"")
+            .or_else(|| aura_events_get_base(events, "onopenwikilink"))?;
+        let handler = extract_handler_name(&ev.handler).to_string();
+        let widget = self.widget_name.clone();
+        Some(crate::ui::view::LinkCallback::new(
+            move |m: crate::ui::view::WikiLinkMetrics| DynamicMessage::Typed {
+                widget_name: widget.clone(),
+                event_name: handler.clone(),
+                args: vec![
+                    auto_val::Value::Str(m.target.into()),
+                    auto_val::Value::Str(m.anchor.into()),
+                ],
+            },
+        ))
+    }
+
     /// PLAN-066 T2: `autodown_editor` 转换体——原两站点硬编码字符串臂
     /// （"autodown_editor" | "autodowneditor"，臂体逐字节相同）的公共提取，
     /// 经 NativeWidgetRegistry 派发（native_widget::global 注册；案 a
@@ -3920,13 +3947,15 @@ impl<'a> AuraViewBuilder<'a> {
         let (scroll_sync, offset, on_scroll, _details) =
             self.autodown_scroll_binding(props, events, bindings, Some(p063_editor_sk.as_str()));
         let on_focus = self.autodown_on_focus_binding(events);
+        // PLAN-732：wikilink 激活读出（on "open-wiki-link" / onopenwikilink）。
+        let on_link = self.autodown_on_link_binding(events);
         // PLAN-043 T6：包装层取纯 w-full h-full 合成样式——元素
         // class（flex-1/min-h-0/overflow-hidden 混合）直接挂
         // Scrollable 实测炸布局；Fill×Fill 视口约束 + 内层收缩
         // 到内容全高（外滚）。编辑壳自身样式保留在内层。
         if scroll_sync {
             return View::Scrollable {
-                child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }),
+                child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, on_link, placeholder, style }),
                 width: None,
                 height: None,
                 style: Style::parse("w-full h-full").ok(),
@@ -3938,7 +3967,7 @@ impl<'a> AuraViewBuilder<'a> {
                 controller: None,
             };
         }
-        View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }
+        View::AutodownEditor { key, value, is_final, on_change, on_focus, on_link, placeholder, style }
     }
 
     /// PLAN-066: 原生外部组件注册表派发——内置臂穷尽后、.at AuraWidget 前查
@@ -16575,6 +16604,95 @@ mod tests {
                 assert!(matches!(args[0], auto_val::Value::Int(0)));
             }
             other => panic!("tracked arm: expected Typed message, got {:?}", other),
+        }
+    }
+
+    /// PLAN-732 L 组（AURA 环）：wikilink 激活读出装配——事件绑定双形态
+    ///（引号完整名 `on "open-wiki-link"`（jade Vue 同名，契约 C-01 主
+    /// 形态）与属性简写 `onopenwikilink`）→ View::AutodownEditor.on_link =
+    /// LinkCallback → Typed 消息 args = [Str target, Str anchor]（事件名 =
+    /// handler 名）。缺省无事件 → on_link None（契约 C-06）。
+    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+    #[test]
+    fn test_autodown_editor_on_link_message_channel() {
+        use crate::ui::view::{LinkCallback, WikiLinkMetrics};
+
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        // 引号完整名形态（Plan-367 引号式监听键原样 on"open-wiki-link"）。
+        let node = AuraNode::element("autodown_editor")
+            .with_prop("content", Expr::Str("段甲。\n".into()))
+            .with_event("on\"open-wiki-link\"", ".OpenWikiLink");
+        match builder.build(&node) {
+            View::AutodownEditor { on_link: Some(cb), .. } => {
+                assert_wiki_link_payload(cb, "OpenWikiLink");
+            }
+            _ => panic!("expected View::AutodownEditor with on_link (quoted full name)"),
+        }
+
+        // 属性简写形态。
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("autodown_editor")
+            .with_prop("content", Expr::Str("段乙。\n".into()))
+            .with_event("onopenwikilink", ".OpenLinkShort");
+        match builder.build(&node) {
+            View::AutodownEditor { on_link: Some(cb), .. } => {
+                assert_wiki_link_payload(cb, "OpenLinkShort");
+            }
+            _ => panic!("expected View::AutodownEditor with on_link (attr shorthand)"),
+        }
+
+        // 缺省：未声明事件 → on_link None（应用零行为变化）。
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("autodown_editor")
+            .with_prop("content", Expr::Str("段丙。\n".into()));
+        match builder.build(&node) {
+            View::AutodownEditor { on_link, .. } => {
+                assert!(on_link.is_none(), "undeclared on_link defaults to None");
+            }
+            _ => panic!("expected View::AutodownEditor"),
+        }
+
+        fn assert_wiki_link_payload(cb: LinkCallback<DynamicMessage>, handler: &str) {
+            let msg = cb.call(WikiLinkMetrics {
+                target: "目标页".to_string(),
+                anchor: "锚点甲".to_string(),
+            });
+            match msg {
+                DynamicMessage::Typed { widget_name, event_name, args } => {
+                    assert_eq!(widget_name, "Test");
+                    assert_eq!(event_name, handler);
+                    assert_eq!(args.len(), 2, "双参（第二参非源块身份）");
+                    assert!(
+                        matches!(&args[0], auto_val::Value::Str(s) if s.as_str() == "目标页"),
+                        "args[0] = target, got {:?}",
+                        args[0]
+                    );
+                    assert!(
+                        matches!(&args[1], auto_val::Value::Str(s) if s.as_str() == "锚点甲"),
+                        "args[1] = target_anchor, got {:?}",
+                        args[1]
+                    );
+                }
+                other => panic!("expected Typed message, got {:?}", other),
+            }
+            // 无锚变体：空串（非 None/undefined 字面）。
+            let msg = cb.call(WikiLinkMetrics { target: "无锚页".to_string(), anchor: String::new() });
+            match msg {
+                DynamicMessage::Typed { args, .. } => {
+                    assert!(
+                        matches!(&args[1], auto_val::Value::Str(s) if s.as_str().is_empty()),
+                        "no-anchor encodes empty string, got {:?}",
+                        args[1]
+                    );
+                }
+                other => panic!("expected Typed message, got {:?}", other),
+            }
         }
     }
 

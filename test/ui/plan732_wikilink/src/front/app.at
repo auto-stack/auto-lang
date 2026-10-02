@@ -1,0 +1,30 @@
+// app.at — PLAN-732 金样语料：autodown 编辑壳正文内链激活供给（六环贯通）。
+// 消费形态与 jade-edit src/front/app.at:1646 同源：autodown_editor 块内
+// `on "open-wiki-link": .OpenWikiLink`（完整 kebab 事件名，双参
+// target/target_anchor）。handler 落 state 供测试断言（jade 侧同形收参）。
+widget App {
+    msg { OpenWikiLink }
+
+    model {
+        var wiki_target str = ""
+        var wiki_anchor str = ""
+        var wiki_calls int = 0
+    }
+
+    on {
+        .OpenWikiLink(target, anchor) -> {
+            .wiki_target = target
+            .wiki_anchor = anchor
+            .wiki_calls = .wiki_calls + 1
+        }
+    }
+
+    view {
+        col {
+            autodown_editor (key: "p732doc", final: true) {
+                content: "见 [[目标页#锚点甲]] 与 [[无锚页]] 文。"
+                on "open-wiki-link": .OpenWikiLink
+            }
+        }
+    }
+}

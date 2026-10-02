@@ -228,6 +228,9 @@ mod plan442_ext_link_tests;
 // PLAN-019 T-06: own-module bare-call binding (vm merged link) corpus.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan019_vm_own_module_link_tests;
+// PLAN-732: autodown 编辑壳 wikilink 激活供给六环贯通 corpus。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan732_wikilink_tests;
 mod plan051_ext_widget_tests;
 // Plan 051 C7: `timer { ... }` 声明块（widget/store 周期计时器 DSL）。
 mod plan051_timer_tests;

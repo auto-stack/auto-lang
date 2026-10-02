@@ -480,6 +480,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     is_final,
                     on_change: None,
                     on_focus: None,
+                    on_link: None,
                     placeholder: None,
                     style: None,
                 }

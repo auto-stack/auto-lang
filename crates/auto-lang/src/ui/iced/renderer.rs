@@ -3155,6 +3155,48 @@ fn percent_floating_layer<M: Clone + Debug + 'static>(
 }
 
 #[cfg(test)]
+mod plan732_wikilink_payload_tests {
+    use super::*;
+
+    /// PLAN-732 L 组（VM 桥腿）：Typed args 双 Str 经 `from_dynamic` →
+    /// `encode_payload` 编码进 IcedMessage.event（Send 边界）→ 派发侧
+    /// `decode_payload` 还原——`.OpenWikiLink(str, str)` 形参绑定口径
+    ///（499 M2 mouse-area 坐标实参同路；空锚 = 空串占位，非缺席）。
+    #[test]
+    fn dual_str_payload_crosses_send_boundary() {
+        let msg = DynamicMessage::Typed {
+            widget_name: "Editor".into(),
+            event_name: "OpenWikiLink".into(),
+            args: vec![
+                auto_val::Value::Str("目标页".into()),
+                auto_val::Value::Str("锚点甲".into()),
+            ],
+        };
+        let iced_msg = IcedMessage::from_dynamic(&msg);
+        assert_eq!(iced_msg.widget, "Editor");
+        let (clean, args) = crate::ui::dynamic::decode_payload(&iced_msg.event);
+        assert_eq!(clean, "OpenWikiLink", "事件名与 PAYLOAD_SEP 不冲突");
+        assert_eq!(args.len(), 2, "双实参到齐");
+        assert!(matches!(&args[0], auto_val::Value::Str(s) if s.as_str() == "目标页"), "{args:?}");
+        assert!(matches!(&args[1], auto_val::Value::Str(s) if s.as_str() == "锚点甲"), "{args:?}");
+
+        // 无锚变体：空串实参在位（decode 后 args[1] = Str("")，非空缺）。
+        let msg = DynamicMessage::Typed {
+            widget_name: "Editor".into(),
+            event_name: "OpenWikiLink".into(),
+            args: vec![
+                auto_val::Value::Str("无锚页".into()),
+                auto_val::Value::Str(String::new().into()),
+            ],
+        };
+        let iced_msg = IcedMessage::from_dynamic(&msg);
+        let (clean, args) = crate::ui::dynamic::decode_payload(&iced_msg.event);
+        assert_eq!(clean, "OpenWikiLink");
+        assert!(matches!(&args[1], auto_val::Value::Str(s) if s.as_str().is_empty()), "{args:?}");
+    }
+}
+
+#[cfg(test)]
 mod plan095_focus_tests {
     use super::*;
 
@@ -5240,8 +5282,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style: _ } => {
-                build_autodown_editor_generic(&key, &value, is_final, on_change, on_focus, placeholder)
+            AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, on_link, placeholder, style: _ } => {
+                build_autodown_editor_generic(&key, &value, is_final, on_change, on_focus, on_link, placeholder)
             }
 
             AbstractView::Checkbox { is_checked, label, on_toggle, style } => {
@@ -7835,6 +7877,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             is_final,
             on_change,
             on_focus,
+            on_link,
             placeholder,
             style,
         } => AbstractView::AutodownEditor {
@@ -7845,6 +7888,12 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             // Plan 044 T2: 块聚焦读出回调跨消息类型包装（FocusCallback newtype）。
             on_focus: on_focus.map(|cb| {
                 crate::ui::view::FocusCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
+            }),
+            // PLAN-732: wikilink 激活回调跨消息类型包装（LinkCallback
+            // newtype；Typed args 双 Str 经 from_dynamic→encode_payload 过
+            // Send 边界，decode 后直达 VM handler 形参——499 M2 同路）。
+            on_link: on_link.map(|cb| {
+                crate::ui::view::LinkCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
             }),
             placeholder,
             style,
@@ -17668,11 +17717,14 @@ fn compare_pngs(
                             focus_changed |= out.focus_changed;
                             text_changed |= out.text_changed;
                         }
+                        let (last_x, last_y) = seq.last().copied().unwrap_or((0.0, 0.0));
                         let out = crate::ui::code_editor::core::with_font_system(|fs| {
                             core.handle_input(
                                 fs,
                                 DocInput::MouseReleased {
                                     button: crate::ui::code_editor::core::EditorButton::Left,
+                                    x: last_x,
+                                    y: last_y,
                                 },
                                 &mut crate::ui::code_editor::core::NullClipboard,
                             )
@@ -26240,6 +26292,7 @@ fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
     is_final: bool,
     on_change: Option<M>,
     on_focus: Option<crate::ui::view::FocusCallback<M>>,
+    on_link: Option<crate::ui::view::LinkCallback<M>>,
     placeholder: Option<String>,
 ) -> iced::Element<'static, M> {
     #[cfg(all(feature = "autodown", feature = "code-editor"))]
@@ -26262,11 +26315,16 @@ fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
         if let Some(cb) = on_focus {
             widget = widget.on_focus(move |m| cb.call(m));
         }
+        // PLAN-732：wikilink 激活回调直挂 widget（WikiLinkMetrics 双 Str
+        // 载荷；per-widget-instance 结构性绑定——契约 C-04）。
+        if let Some(cb) = on_link {
+            widget = widget.on_link(move |m| cb.call(m));
+        }
         widget.into()
     }
     #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
     {
-        let _ = (key, is_final, on_focus);
+        let _ = (key, is_final, on_focus, on_link);
         AbstractView::<M>::Text { content: value.to_owned(), style: None, selectable: false }.into_iced()
     }
 }
@@ -27504,7 +27562,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 
         // Plan 019 Phase 3: autodown doc editor (VM path) — on_change 发布携带
         // 全文的新消息（input_value: Some，PLAN-057 textarea 先例同款）。
-        AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style: _ } => {
+        AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, on_link, placeholder, style: _ } => {
             let use_ade = cfg!(all(feature = "autodown", feature = "code-editor"));
             #[cfg(all(feature = "autodown", feature = "code-editor"))]
             {
@@ -27554,6 +27612,14 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 if let Some(cb) = on_focus {
                     widget = widget.on_focus(move |m| cb.call(m));
                 }
+                // PLAN-732：VM 轨 wikilink 激活——LinkCallback 已在
+                // convert_view_messages 换型为 IcedMessage（Typed args 双
+                // Str 经 encode_payload 过 Send 边界），直挂 widget 后
+                // publish → 派发 decode → DSL handler（.OpenWikiLink(str,str)）
+                // 形参绑定（无 update 层拦截——真 handler 消费，契约 C-03）。
+                if let Some(cb) = on_link {
+                    widget = widget.on_link(move |m| cb.call(m));
+                }
                 let el: iced::Element<'static, IcedMessage> = widget.into();
                 let _ = dbg_props;
                 el
@@ -27561,7 +27627,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
             {
                 // 双 feature 缺一时退化只读文本（markdown 只读轨的兜底路径）。
-                let _ = (use_ade, on_focus);
+                let _ = (use_ade, on_focus, on_link);
                 let el: iced::Element<'static, IcedMessage> =
                     AbstractView::Text { content: value, style: None, selectable: false }.into_iced();
                 el

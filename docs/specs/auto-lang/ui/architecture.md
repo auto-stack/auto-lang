@@ -241,3 +241,10 @@ graph TD
 - 备选：env 二值 OR（cons：prop true 无法诊断关闭——实测 gallery 上 env=0 不生效）；逐臂 bump VM seq（cons：组件局部态本非 VM 状态，伪造 seq 突变污染三级命中快路径）。
 - 后果：已知未闭面=DataTable 静态扫描 Degrade 根因与 FileTree 恒 FILL（PLAN-711 承接）；加载期调度（Init demand/帧泵/CPU 片）另见 proposed 设计（711）。
 - 状态：active
+
+### ADR-27: autodown 编辑壳正文内链激活供给——零模型扩展复用 wikilink attr、run 段命中区进 DocLayout、激活经 publish 出口、双 Str 载荷沿 499 M2 实参先例（PLAN-732）
+- 日期 / 来源：2026-10-03 / plan-732（jade-edit PLAN-037 的上游供给本体；局部 spec 见 design/autodown-wikilink.md）
+- 决策：①**零模型扩展**——`[[inner]]` 的语义载荷复用 autodown-core 既有 `attr "wikilink"`（markdown_parser convertInlines wikilink 臂，解析期 inner 已 trim），编辑壳入口 `flatten_inlines` 补读 attrs 即得目标+样式（wikilink span 原无 `Mark::Link`，VM 轨同步补 `style.link`），autodown-core/auto-down 仓零改动。②**命中区模型**——`LinkInterval`（全块字节坐标+target 原文）随 `BlockBuf` 与 mark 区间同快照口径；`render_frame` 经 `push_link_regions`（选区 push_byte_range_rects 同路字节→像素）产 `DocLayout.links` 单 layout-run 段矩形，折行链接逐段独立命中、整块矩形禁用。③**完整点击门在 core handle_input**（widget 两鼠标臂的 DocInput 汇聚点，与生产共一实现）——按下登记 pending（block+lo/hi+target 三重身份+单击节律+无修饰键）、拖动 4px 容差取消、抬起同区间才激活；rebuild/FocusLost/非左键清除。④**激活出口**——`DocOutput.link_activated`（DocOutput 由此退 Copy）→ `DocEditor.publish` → `View::AutodownEditor.on_link`（LinkCallback newtype，map/scroll_sync 双臂透传）。⑤**载荷**——激活构造处单点归一（首个 `#` 拆分+两侧 trim，无锚空串）；`.at` 绑定双形态 `on "open-wiki-link"`（完整 kebab，jade Vue 同名）/`onopenwikilink`；`DynamicMessage::Typed` args 双 `Value::Str` 经 encode/decode_payload 过 Send 边界直达 handler 形参（Plan 499 M2 mouse-area 坐标实参同路），无 update 层拦截。⑥**origin=结构性实例绑定**——回调 per-View-node/per-widget-instance，无全局 last-mounted 单槽；换内容 rebuild 清 pending 零冒领。
+- 备选：MCP `__mcp_click` 扩展携带激活（cons：合成通道语义冻结为 ghost 落点，wikilink 激活非其职责——负例锚在案）；载荷显式携 key（cons：契约第二参=锚点，来源由结构保证）；门在 widget 层实现（cons：与 DocInput 生产汇聚点分裂两套 hit-test）。
+- 后果：VM 编辑器内 wikilink 获链接观感且可激活；验证面=真实 iced 事件经 UserInterface 生产事件泵（六环语料 test/ui/plan732_wikilink 从 parse 到 VM handler state 落地贯通）；输入期 `[[x]]` 键入解析时机维持重建模型（B-6 族 owner=auto-down，不承诺）。已知预存事实（非本 ADR 引入）：`autodown_editor_sync` 在 core 槽位缺席时 no-op，生产动态循环靠次帧重降层补内容（六环语料测试显式两段降层同此节律）。
+- 状态：active

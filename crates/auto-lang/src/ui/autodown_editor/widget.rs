@@ -57,6 +57,9 @@ pub struct DocEditor<'a, M> {
     /// Plan 044 T2：块聚焦读出——焦点变化现场打包 (block_index, height)
     /// （高度取 core 布局快照，宿主零查询）。
     on_focus: Option<Box<dyn Fn(crate::ui::view::FocusMetrics) -> M + 'a>>,
+    /// PLAN-732：wikilink 激活读出——完整点击门放行的激活现场打包
+    /// [`crate::ui::view::WikiLinkMetrics`]（target/anchor 已归一）。
+    on_link: Option<Box<dyn Fn(crate::ui::view::WikiLinkMetrics) -> M + 'a>>,
     width: Length,
     /// 外层传入的基数前景色（正文基色；渲染器 lowering 由语义主题注入）。
     base_color: Rgba,
@@ -73,6 +76,7 @@ impl<'a, M: Clone> DocEditor<'a, M> {
             core: super::autodown_editor(key),
             on_change: None,
             on_focus: None,
+            on_link: None,
             width: Length::Fill,
             base_color,
             placeholder: None,
@@ -97,6 +101,13 @@ impl<'a, M: Clone> DocEditor<'a, M> {
     /// 载荷 = 焦点块索引 + DocLayout 实测高，ghost 定高单源）。
     pub fn on_focus(mut self, f: impl Fn(crate::ui::view::FocusMetrics) -> M + 'a) -> Self {
         self.on_focus = Some(Box::new(f));
+        self
+    }
+
+    /// PLAN-732：fires when a wikilink full-click activates（载荷 =
+    /// target/anchor 双 string，已按首个 `#` 拆分 trim——契约 C-01）。
+    pub fn on_link(mut self, f: impl Fn(crate::ui::view::WikiLinkMetrics) -> M + 'a) -> Self {
+        self.on_link = Some(Box::new(f));
         self
     }
 
@@ -125,6 +136,16 @@ impl<'a, M: Clone> DocEditor<'a, M> {
                     .and_then(|i| self.core.block_rects().get(i).map(|r| r.h))
                     .unwrap_or(0.0);
                 shell.publish(f(crate::ui::view::FocusMetrics { block, height }));
+            }
+        }
+        // PLAN-732：链接激活出口——完整点击门放行的激活转发 on_link 回调
+        //（core LinkActivation → view WikiLinkMetrics，契约面类型在 view）。
+        if let Some(act) = &out.link_activated {
+            if let Some(f) = &self.on_link {
+                shell.publish(f(crate::ui::view::WikiLinkMetrics {
+                    target: act.target.clone(),
+                    anchor: act.anchor.clone(),
+                }));
             }
         }
     }
@@ -256,7 +277,12 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                     mouse::Button::Middle => EditorButton::Middle,
                     _ => EditorButton::Other,
                 };
-                Some(DocInput::MouseReleased { button: b })
+                // PLAN-732：抬起坐标进 DocInput（iced ButtonReleased 本体不
+                // 带位置——取当前 cursor 位置；完整点击门同区间核对用）。
+                cursor.position().map(|p| {
+                    let (x, y) = local(p);
+                    DocInput::MouseReleased { button: b, x, y }
+                })
             }
             Event::Mouse(mouse::Event::CursorMoved { position }) => {
                 // 拖选移动通路（PLAN-048 T3）：core 侧以 drag 状态门控，
@@ -614,5 +640,127 @@ mod tests {
         let mut shell = Shell::new(&mut msgs);
         editor.publish(&out, &mut shell);
         assert_eq!(msgs, vec![FocusMsg::F(Some(0), expected_h)]);
+    }
+
+    /// PLAN-732 R 组（K-04 冻结 seam）：真实 iced 事件注入生产事件泵——
+    /// `UserInterface::build`（widget.layout → measure → render_frame 同生
+    /// 产布局）+ `ui.update`（widget.update 同生产事件臂：ButtonPressed/
+    /// ButtonReleased/cursor.position → DocInput → core → publish → Shell
+    /// 消息）。与生产共一实现，无第二套 hit-test。
+    #[test]
+    fn plan732_real_iced_events_full_click_publishes_on_link() {
+        // 测试字体系统引导（首个 DocEditor::new 的 install_font_system_
+        // source 首写者胜——先装测试 callback）。
+        static FS: std::sync::OnceLock<std::sync::RwLock<cosmic_text::FontSystem>> =
+            std::sync::OnceLock::new();
+        crate::ui::code_editor::core::set_font_system_call(|with| {
+            let mut guard =
+                FS.get_or_init(|| std::sync::RwLock::new(cosmic_text::FontSystem::new())).write().unwrap();
+            with(&mut guard);
+        });
+        let sk = storage_key("p732_r_real_event");
+        let core = autodown_editor(&sk);
+        core.sync_external("见 [[目标页#锚点甲]] 与普通文本。", true);
+        crate::ui::code_editor::core::with_font_system(|fs| {
+            let _ = core.render_frame(fs, 400.0, WHITE, None);
+        });
+        let region = core.link_regions()[0].clone();
+        let (cx, cy) = (region.rect.x + region.rect.w / 2.0, region.rect.y + region.rect.h / 2.0);
+
+        #[derive(Debug, Clone, PartialEq)]
+        enum LinkMsg {
+            Link(String, String),
+        }
+        let editor = DocEditor::<LinkMsg>::new(&sk, WHITE)
+            .on_link(|m| LinkMsg::Link(m.target, m.anchor));
+        let element: iced::Element<'_, LinkMsg> = editor.into();
+        // tiny_skia Secondary 臂：纯 CPU 记录器（iced::Renderer 的合法值，
+        // headless 同款构造）。
+        let mut renderer = iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(
+            crate::ui::iced::renderer::INTER_FONT,
+            iced::Pixels(16.0),
+        ));
+        let mut ui = iced_runtime::user_interface::UserInterface::build(
+            element,
+            iced::Size::new(400.0, 600.0),
+            iced_runtime::user_interface::Cache::default(),
+            &mut renderer,
+        );
+        let mut messages: Vec<LinkMsg> = Vec::new();
+        fn drive(
+            ui: &mut iced_runtime::user_interface::UserInterface<'_, LinkMsg, iced::Theme, iced::Renderer>,
+            evts: &[iced::event::Event],
+            cursor: iced::mouse::Cursor,
+            renderer: &mut iced::Renderer,
+            messages: &mut Vec<LinkMsg>,
+        ) {
+            let _ = ui.update(evts, cursor, renderer, &mut iced::advanced::clipboard::Null, messages);
+        }
+
+        // 按下（cursor 在链接段中心）→ 无消息（激活只在完整点击）。
+        drive(
+            &mut ui,
+            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left))],
+            iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
+            &mut renderer,
+            &mut messages,
+        );
+        assert!(messages.is_empty(), "按下零消息：{messages:?}");
+        // 抬起（同点）→ 恰一条激活消息，载荷双 Str 逐值。
+        drive(
+            &mut ui,
+            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left))],
+            iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
+            &mut renderer,
+            &mut messages,
+        );
+        assert_eq!(
+            messages,
+            vec![LinkMsg::Link("目标页".to_string(), "锚点甲".to_string())],
+            "完整点击恰一次激活（Shell.publish 真实路径）"
+        );
+
+        // 负例：越界抬起——按下在链接、抬起点移出 widget 边界（is_over
+        // 门挡在 widget 层）→ 零新消息。
+        messages.clear();
+        drive(
+            &mut ui,
+            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left))],
+            iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
+            &mut renderer,
+            &mut messages,
+        );
+        drive(
+            &mut ui,
+            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left))],
+            iced::mouse::Cursor::Available(iced::Point::new(9999.0, 9999.0)),
+            &mut renderer,
+            &mut messages,
+        );
+        assert!(messages.is_empty(), "越界抬起零激活：{messages:?}");
+
+        // 负例：拖选超阈（CursorMoved 走生产 MouseDragged 臂）后抬起 → 零激活。
+        drive(
+            &mut ui,
+            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left))],
+            iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
+            &mut renderer,
+            &mut messages,
+        );
+        drive(
+            &mut ui,
+            &[iced::event::Event::Mouse(iced::mouse::Event::CursorMoved { position: iced::Point::new(cx + 40.0, cy + 8.0) })],
+            iced::mouse::Cursor::Available(iced::Point::new(cx + 40.0, cy + 8.0)),
+            &mut renderer,
+            &mut messages,
+        );
+        drive(
+            &mut ui,
+            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left))],
+            iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
+            &mut renderer,
+            &mut messages,
+        );
+        assert!(messages.is_empty(), "拖选零激活：{messages:?}");
     }
 }
