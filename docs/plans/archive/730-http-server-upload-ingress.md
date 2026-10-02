@@ -338,7 +338,11 @@ legacy 存储迁入有界宿主执行，不在 owner `std::fs::write`；正常�
   组目录 `D:/autostack/.wt/lang-730` 移除（零残留）。
 - 部署观察：landing 非部署——本计划改动面（stdlib/VM/生成器）无在运行生产进程
   消费本仓发布二进制（auto 桌面壳未在本机常驻）；无 `auto build` 产物待重建。
-- 批量回归到期判定：**730 % 5 = 0 → 到期**（landing of plan id divisible by 5；
+- 批量回归（已执行）：tf 65.9s（6085 run，15 fail=13 已知+2 图表负载 flake 隔离绿）/
+  tt 85.9s（12 fail 全已知族）/tb 57.2s（11 fail 全已知族）——零新增确定性红；
+  taa 跳过（窗口零触 aavm 路径）；回执 `docs/plans/.last-batch-regression.json`
+  last_covered_plan_id=732。
+- 原到期判定：**730 % 5 = 0 → 到期**（landing of plan id divisible by 5；
   另 `.last-batch-regression.json` 收据 2026-10-02 已 >48h 窗口临界）→ 交接
   `/auto-plan:regress` 主检出单实例执行 tf 批量档。
 
