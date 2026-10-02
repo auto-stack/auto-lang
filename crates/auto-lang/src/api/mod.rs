@@ -31,9 +31,16 @@
 
 pub mod types;
 pub mod targets;
+pub mod contract;
+pub mod diagnostic;
 
 // Re-export main types
 pub use types::{ApiAttrs, ApiEndpoint, ApiField, ApiModule, ApiParam, ApiType};
+pub use contract::{
+    is_meta_alias, is_upload_param, ApiContract, EndpointContract, ParamKind, ParamPlan,
+    ParamSource, ResponseKind, META_PARAM_NAMES,
+};
+pub use diagnostic::{ApiDiagnostic, DiagnosticStage};
 pub use targets::{Target, TargetGenerator, TypeScriptGenerator, TauriGenerator, AxumGenerator};
 
 use crate::ast::{Fn, Stmt, Type};

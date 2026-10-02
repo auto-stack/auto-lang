@@ -31,13 +31,13 @@ fn main() {
         assert!(!out.is_empty());
     }
 
-    /// VM 中 int 值经 json.to_value / 序列化的往返与 typeof。
+/// VM 中 int 值的字符串化边界（E1 后续）：字面量拼接走 str 转换路径。
     #[test]
     fn plan734_probe_vm_i64_roundtrip() {
         let code = r#"
 fn main() {
     let x = 5000000000
-    let s = str(x)
+    let s = "id=" + x
     print(s)
 }
 "#;
