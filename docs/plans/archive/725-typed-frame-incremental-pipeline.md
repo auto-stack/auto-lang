@@ -435,7 +435,9 @@ SD 表——L2 设计文档惯例。）
   clean；主检出落后冒烟：新测 5/5+4/4+tv 162/162）。`ledger_refreshed`=
   P725-1 主检出回读 True（并行 P724-6..9/P695 条目全保留——追加区自动
   合并，顺序非身份）。`archived`=docs/plans/archive/725-typed-frame-
-  incremental-pipeline.md（本提交）。`cleaned`=待执行（收据尾注随补）。
+  incremental-pipeline.md（本提交）。`cleaned`=已执行（双 worktree guard clean→remove：lang-725/auto-lang +
+  lang-725/auto-down〔依赖兄弟，零改动脚手架〕；branch plan-725-dev 删
+  @8c5bcf34a=landed tip；组目录 rmdir）。
   生产工件观察：主检出 target/debug/auto（PATH `auto`）合并后重建；
   release 二进制/gen dist 未重建（观察项——P712-D4 同族，消费面为
   debug CLI 形态）。批量回归到期检查：725%5==0 → 到期，移交
