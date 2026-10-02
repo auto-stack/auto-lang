@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-730
-status: reviewed
+status: archived
 feature_name: http-server-upload-ingress
 author: [agent]
 created_at: 2026-10-02
@@ -312,6 +312,33 @@ legacy 存储迁入有界宿主执行，不在 owner `std::fs::write`；正常�
 - 清理前`bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-730/auto-lang`和兄弟仓guard输出clean再移除；tf到期只主检出单实例；所有AC/SD闭合才可归档。
 
 ## 9. 复审记录
+
+### 合并收据 PLAN-730:r1（2026-10-03，/auto-plan:merge）
+
+- stage: merge | plan_id: PLAN-730 | plan_revision: 1 | outcome: pass
+- **prepared**：reviewed 基线 dcd151932（R2 pass）→ rebase 到 master@36912a975
+  （master 前移：731/732 已并、735 簿记在途，规范目标零冲突）→ 新链
+  e88d06f45'..05645a444（`git range-diff` 11 提交逐对全等——安全改写证明）→
+  canonical 沉淀 SD-01..08（新 stdlib/design/http-server-uploads.md、
+  auto-lang/trans/design/http-upload-lowering.md；改 http-server.md §10+当前支持面、
+  backend-assembly.md、stdlib/project.md、http-handler-async-lifecycle.md、
+  a2r-std/project.md、trans/overview.md、auto-man/project.md）+ plans 索引三行 +
+  ledger upsert P730-1(designs)/P730-2(designs)/P730-7(reviews)/P730-8(reports)
+  （docsha 绑定）+ `scripts/spec-index.py` 再生 → 投影后裔 **delivery commit
+  f60cfeea2**（实现/依赖与 reviewed 状态零改动）。
+- **landed**：主检出 `git merge --ff-only plan-730-dev` → tip=f60cfeea2（无 merge
+  提交）；主检出冒烟 `cargo t plan730` 26/26（一次并行 flake=plan730_commit_target_matrix
+  磁盘重测试，隔离+复跑皆绿——在案观察，非确定性红）。
+- **ledger_refreshed**：`.autoos/specs.json`（本仓 tracked，worktree 内 upsert +
+  git 提交——仓惯例）P730-1/2/7/8 回读在档；INDEX.md 再生（26 projects）。
+- **archived**：`docs/plans/archive/730-http-server-upload-ingress.md`
+  （git mv；status archived；completion_kind: delivered）。
+- **cleaned**：见下一提交（wt-guard ×2 + worktree/branch/组目录移除后回填）。
+- 部署观察：landing 非部署——本计划改动面（stdlib/VM/生成器）无在运行生产进程
+  消费本仓发布二进制（auto 桌面壳未在本机常驻）；无 `auto build` 产物待重建。
+- 批量回归到期判定：**730 % 5 = 0 → 到期**（landing of plan id divisible by 5；
+  另 `.last-batch-regression.json` 收据 2026-10-02 已 >48h 窗口临界）→ 交接
+  `/auto-plan:regress` 主检出单实例执行 tf 批量档。
 
 ### 复审 R2（2026-10-03，/auto-plan:review）
 
