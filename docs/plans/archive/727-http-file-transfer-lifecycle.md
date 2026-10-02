@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-727
-status: reviewed
+status: archived
 feature_name: http-file-transfer-lifecycle
 author: [agent]
 created_at: 2026-10-02
@@ -233,6 +233,16 @@ Rust FileTransfer 最后拥有者 Drop、显式 cancel、终结等待 Future Dro
 - 验证：AC/SD 实证全覆盖；兼容/FS 取消限制明确，所有代码在计划 worktree，主检出只簿记。覆盖全部 AC/SD。
 
 ## 9. 复审记录
+
+### merge 收据（PLAN-727:r1，2026-10-02）
+
+- prepared: 复审基线 1fa1a49a4（rebase 前映射：b1638a5e1/38454a3bf/0a5cec371/8ba5199d2/1fa1a49a4 + a358bc380 沉淀预备）；canonical delta=SD-01..06（plan §5 规范增量）；投影目标=stdlib/{design/http-file-transfer.md 新, plans.md, backend-assembly.md, http-stream-lifecycle.md}、a2r-std/{project.md, design/http-client-runtime.md}、auto-lang/trans/{design/http-client-lowering.md, plans.md, overview.md}、runtime/design/networking-stdlib.md、.autoos/specs.json（P727-1..8）
+- landed: `git merge --ff-only plan-727-dev` → master tip = delivery commit **6eb396e5a**（零合并提交）；rebase 到 master（a3bdc221a，含 726 合并推进）后 range-diff 5/5 全等（安全重写证明），旧→新哈希映射：b1638a5e1→5f32a6cfb、38454a3bf→3e0f0cc0b、0a5cec371→18da4d9d4、8ba5199d2→4d97c6464、1fa1a49a4→ccc61dc37、a358bc380→6eb396e5a；rebase 唯一冲突=.autoos/specs.json（726 期间账本条目 vs P727 追加），按 master 基重放 P727 条目解决；落 master 冒烟：cargo check 双 crate 过、plan727 8/8、transfer 内核 23/23
+- ledger_refreshed: .autoos/specs.json（tracked 兼容投影，README §6）P727-1..6 designs / P727-7 reviews / P727-8 reports，upsert 经本仓 §4 扩展惯例（musk 后端 8080 通常不可用→手工回退）；`python scripts/spec-index.py` 索引再生（INDEX.md 26 projects）
+- archived: docs/plans/archive/727-http-file-transfer-lifecycle.md（status: archived）
+- cleaned: （guard+移除后回填，见下）
+- artifacts 观察（landing≠deployment）：后端 release 二进制 / 依赖仓 daemon release / gen/front/vue/dist 均未随本次合并重建——本计划纯 stdlib/转译器/VM 面，无部署消费面变更；如需实机消费按 PLAN-092 惯例另行重建
+- spec-sync 回写记录：SD-01..06 已按 §4 扩展落 canonical（新设计卡 http-file-transfer.md + 五处现状修正 + 两 module plans.md 行 + trans overview bullet + INDEX 再生）
 
 ### review（2026-10-02）
 
