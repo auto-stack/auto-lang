@@ -107,6 +107,7 @@ pub mod autovm_daemon; // Plan 269: AutoVM daemon (serve/req)
 pub mod autovm_client; // Plan 269: AutoVM client for req command
 pub mod back_proxy; // PLAN-658: 单进程多后端宿主（画廊内嵌 demo 后端 session）
 pub mod back_prefix; // PLAN-037: launch 期作用域化模块源前缀化 overlay（桌面后端供给——un-gated，模块读点在本文核心装载链）
+pub mod http_file_service; // PLAN-729: 服务端文件响应宿主执行（VM/生成 Rust 共用；无 ui 依赖）
 pub mod compile;
 pub mod config;
 pub mod database;
