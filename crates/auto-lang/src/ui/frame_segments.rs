@@ -41,6 +41,13 @@ struct Segments {
     s5_layout_us: u64,
     s5_shaping_us: u64,
     s5_draw_us: u64,
+    /// PLAN-735 T-01：呈现真相时戳——根包装探针 draw() 括号**结束**的
+    /// 绝对墙钟（进程坐标系毫秒）。draw 在 iced_winit RedrawRequested 臂
+    /// 内同步先行于 compositor present（同调用栈，µs 级间隙）——本字段
+    /// 是逐帧真实呈现节奏的直接代理（present_ms=泵通知消费时刻，二者
+    /// 分离即呈现/通知分离谱）。多窗会话=最后结束窗口的值（单窗主路径
+    /// 精确；多窗为待办注记，同 frame_bench §4 边界）。
+    draw_end_ms: i64,
     builds: u32,
     dirty: Option<bool>,
 }
@@ -126,6 +133,7 @@ impl Segments {
             || self.s5_layout_us > 0
             || self.s5_shaping_us > 0
             || self.s5_draw_us > 0
+            || self.draw_end_ms > 0
     }
 }
 
@@ -136,7 +144,7 @@ fn emit(s: Segments, present_ms: i64) {
         None => -1,
     };
     eprintln!(
-        "[P725-FRAME] begin={} present={} s1_payload_us={} s2_vm_us={} s3a_mcp_us={} s3b_build_us={} s4_element_us={} s5_layout_us={} s5_shaping_us={} s5_draw_us={} builds={} dirty={}",
+        "[P725-FRAME] begin={} present={} s1_payload_us={} s2_vm_us={} s3a_mcp_us={} s3b_build_us={} s4_element_us={} s5_layout_us={} s5_shaping_us={} s5_draw_us={} builds={} dirty={} draw_end_ms={}",
         s.begin_ms,
         present_ms,
         s.s1_payload_us,
@@ -148,7 +156,8 @@ fn emit(s: Segments, present_ms: i64) {
         s.s5_shaping_us,
         s.s5_draw_us,
         s.builds,
-        dirty
+        dirty,
+        s.draw_end_ms
     );
 }
 
@@ -222,6 +231,13 @@ pub fn note_s5_shaping(elapsed: std::time::Duration) {
 /// S5c：draw 段（根包装探针 draw 括号）耗时。
 pub fn note_s5_draw(elapsed: std::time::Duration) {
     with_current(|s| s.s5_draw_us += elapsed.as_micros() as u64);
+}
+
+/// PLAN-735 T-01：呈现真相时戳（根包装探针 draw 括号结束点调用——
+/// present 直接代理，见 Segments.draw_end_ms 字段注）。末值覆盖语义
+/// （单窗单 draw/重绘遍）。
+pub fn note_draw_end_abs() {
+    with_current(|s| s.draw_end_ms = elapsed_ms());
 }
 
 /// 帧脏标记（view() 主路径取 view_dirty 时调用）。

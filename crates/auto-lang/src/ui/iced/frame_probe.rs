@@ -149,6 +149,10 @@ where
             viewport,
         );
         note_elapsed(t0, crate::ui::frame_segments::note_s5_draw);
+        // PLAN-735 T-01：draw 括号结束点=呈现真相时戳（iced_winit
+        // RedrawRequested 臂内同步先行于 compositor present——逐帧
+        // 真实呈现节奏代理，与 present_ms 泵通知消费时刻分离对读）。
+        crate::ui::frame_segments::note_draw_end_abs();
     }
 
     fn operate(

@@ -8437,6 +8437,37 @@ fn frame_pump_sub(
     )
 }
 
+/// PLAN-735 T-02（轴①——发放/送达节奏观测）：RedrawRequested 送达
+/// 旁路观测订阅。**恒 None 不产消息**（filter_map 产出过滤——不进
+/// runtime 通道，零自续帧面）；仅 AUTO_SCHED_DIAG=1 装配（订阅集
+/// OnceLock 稳定）。与 `frame_pump_sub`（711 D-2 门控——仅 Init/CPU
+/// 工作窗口在册）互补：本观测不受泵门控，RedrawRequested **送达**
+/// 节奏轴（winit 合并后、iced present 臂内 broadcast）在全程可见
+/// ——与 frame_msg enqueue（门控窗口内到达）分离对读。
+fn redraw_diag_sub(
+    app: crate::ui::session::AppId,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    iced_futures::subscription::filter_map(
+        (app, "plan735_redraw_diag"),
+        move |event| match event {
+            iced_futures::subscription::Event::Interaction {
+                event:
+                    iced::event::Event::Window(iced::window::Event::RedrawRequested(_)),
+                ..
+            } => {
+                let t0 = crate::ui::dynamic::sched_diag_t0();
+                eprintln!(
+                    "[SCHED-DIAG] redraw_deliver t={}ms app={:?}",
+                    t0.elapsed().as_millis(),
+                    app
+                );
+                None
+            }
+            _ => None,
+        },
+    )
+}
+
 /// Plan 051 C7: timer 块条目订阅——每 `interval_ms` 产一条
 /// `DM::App(app, IcedMessage{widget, event})`（update 侧 fire_timer 门控）。
 fn widget_event_tick(
@@ -17418,6 +17449,24 @@ fn compare_pngs(
         crate::ui::frame_bench::note_frame_begin();
         // PLAN-725 T-00：分段探针帧开始（同门同点——孤儿帧在此落账）。
         crate::ui::frame_segments::frame_begin();
+        // PLAN-735 T-02（轴②③④——消息到达/消费时序轴）：update 入口
+        // 逐消息 trace（AUTO_SCHED_DIAG 门）——MCP 动作到达 vs 重绘送达
+        // （redraw_deliver）vs 泵消费（arm_frame）三轴同一 t0 对读。
+        if crate::ui::sched_diag::enabled() {
+            let t0 = crate::ui::dynamic::sched_diag_t0();
+            let event_disp: String = if msg.event.chars().count() > 48 {
+                msg.event.chars().take(48).collect()
+            } else {
+                msg.event.clone()
+            };
+            eprintln!(
+                "[SCHED-DIAG] update t={}ms app={:?} widget={} event={}",
+                t0.elapsed().as_millis(),
+                app_id,
+                msg.widget,
+                event_disp
+            );
+        }
         // T4c：拆借视图承接旧 DynamicState 平铺命名（施工图 §2 路线甲）。
         // Plan 459：按消息归属 App 拆借（窗口级字段随该 App 的窗口条目）；
         // 缺 App/窗口仅在会话被外部破坏时发生，空转返回。
@@ -22712,6 +22761,11 @@ fn compare_pngs(
                         ),
                     );
                     subs.push(frame_pump_sub(app_id));
+                }
+                // PLAN-735 T-02 轴①：RedrawRequested 送达观测（恒 None
+                // 零消息面）——AUTO_SCHED_DIAG=1 时全程装配。
+                if crate::ui::sched_diag::enabled() {
+                    subs.push(redraw_diag_sub(app_id));
                 }
                 // F12 DevTools + key bindings（per-App bindings + 本窗过滤）。
                 if let Some(win) = state.window_of_app(app_id) {
