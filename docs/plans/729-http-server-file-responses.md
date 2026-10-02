@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-729
-status: executing
+status: reviewed
 feature_name: http-server-file-responses
 author: [agent]
 created_at: 2026-10-02
@@ -20,7 +20,7 @@ new_spec_components:
   - docs/specs/stdlib/design/http-server-files.md
   - docs/specs/auto-lang/trans/design/http-file-response-lowering.md
 touched_goals: [GOAL-003]
-affects: [stdlib/auto/http.at, stdlib/auto/http.vm.at, crates/a2r-std/src/http, crates/auto-lang/src/a2r_std.rs, crates/auto-lang/src/vm/ffi, crates/auto-lang/src/vm/native.rs, crates/auto-lang/src/trans/rust.rs, crates/auto-lang/src/api, crates/auto-man/src/api_gen.rs, crates/auto-lang/src/back_proxy.rs]
+affects: [stdlib/auto/http.at, stdlib/auto/http.vm.at, crates/a2r-std/src/http, crates/auto-lang/src/a2r_std.rs, crates/auto-lang/src/vm/ffi, crates/auto-lang/src/vm/native_catalog.rs, crates/auto-lang/src/trans/rust.rs, crates/auto-lang/src/api, crates/auto-man/src/api_gen.rs, crates/auto-lang/src/back_proxy.rs, crates/auto-lang/src/http_file_service.rs, crates/auto-lang/src/lib.rs, crates/auto-lang/src/tests.rs, crates/auto-lang/test/a2r/32_plan729, examples/http_server/files, crates/auto-man/Cargo.toml]
 ---
 
 # [PLAN-729] HTTP 服务端文件响应：流式下载、HEAD/Range、条件请求与生命期
@@ -272,8 +272,7 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-05：a2r/auto-man 文件 handler 与各消费形态
 
-- [ ] 修复中（R1 复审 needs_fix：G-01 异步零覆盖/G-02 不支持形态零测试/G-04 转译失败无测试/G-12 别名与同名反例——见 §9 R1 记录）
-- [x] 主体已完成（2026-10-02；提交 4f35bd1ce）——trans lowering + `FileResponse` 类型映射（参数/
+- [x] 已完成（R1 修复 @ae414a45b：异步生成测试/契约缺口诊断/同名反例；G-12 别名以登记面事实+727 先例处置）——trans lowering + `FileResponse` 类型映射（参数/
   返回位）；api_gen 主路径/委派路径文件分支（Response 签名+method/headers+`__file_reply` 胶水+
   `.head()` 路由+405+转译失败诊断不落模板）；api targets：axum Response 分支+glue、TS 原生
   Response、Tauri Unsupported；back_proxy 501 拒绝；golden `32_plan729`。api_gen 33 绿 +
@@ -285,8 +284,7 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-06：协议、根目录与兼容回归矩阵
 
-- [ ] 修复中（R1：G-01 异步 wire/G-05 生成腿 12MiB hash/G-06 If-Unmodified-Since wire/G-07 download_name wire/G-08 路径替换 wire/G-10 权限映射/G-11 HEAD 优先级/G-13 半关闭——见 §9 R1 记录）
-- [x] 主体已完成（2026-10-02；提交 7b1738d10）——VM 真 TCP 6 族（基本/12MiB hash/Range/条件/
+- [x] 已完成（R1 修复 @ae414a45b：异步 wire/12MiB hash/If-Unmodified-Since/download_name/路径替换/权限 403/HEAD 两遍/半关闭全数补测）——VM 真 TCP 6 族（基本/12MiB hash/Range/条件/
   路径安全/方法+int 门，9 测全绿）+ 生成服务实编 e2e（auto-man 真实生成产物 cargo build +
   axum 0.7 wire 矩阵绿）+ `examples/http_server/files/`（README/pac.at/back/api.at）；
   报告 `729-server-files-protocol.md`（§6.1 双端逐行表）。
@@ -297,8 +295,7 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-07：慢发送/取消/关闭与 727 客户端互通
 
-- [ ] 修复中（R1：G-03 health 20×<500ms/G-09 open 计数+auth/G-16 idle watchdog 测试/G-17 缓冲峰值计数——见 §9 R1 记录）
-- [x] 主体已完成（2026-10-02；提交 8eecd9f0d）——慢客户端断连回收/配额 N+Q+1 队满 503+恢复/
+- [x] 已完成（R1 修复 @ae414a45b：health 20×<500ms/open 计数+auth e2e/idle watchdog 单元/在途块公式；G-14/15/18 归 P729-D1/D3/D4 债）——慢客户端断连回收/配额 N+Q+1 队满 503+恢复/
   727 五态互通（完整/206 强 validator 续传/If-Range 失配 200/416 保旧/取消后 server 资源
   退出）全绿；idle 覆写旋钮（生产面恒 None）；报告 `729-server-files-lifecycle.md` +
   `729-server-files-parity.md`（含 OS 缓冲吸收/晋升语义/hyper 304 剥离等如实观察）。
@@ -309,8 +306,7 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-08：门禁、独立复审与规范增量交接
 
-- [ ] 修复中（R1：验证报告三处表述失实修正 + affects 簿记 + SD-01 三处偏差——见 §9 R1 记录）
-- [x] 主体已完成（2026-10-02；提交 2db246b3f）——门禁全表见
+- [x] 已完成（R1 修复 @ae414a45b：验证报告失实行修正+R1 修订节；affects 簿记补全；SD-01 四处修正；KNOWN-DEBT P729-D1..D5 登记）——门禁全表见
   `729-server-files-verification.md`：裸 `cargo t` 14 红与 master 基线**逐名一致**（零新增
   确定性红；5025=5006+19 新全绿）、tv 162/162、tt 1062 trans 例、th 30+（2 预存在案）、
   a2r-std 全量、rustfmt 清洁、调试输出零残留；tf 为批量档未跑。SD-01 全文 + SD-02..07 增量
@@ -337,6 +333,38 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
   th（2 预存在案）；AC-01..06/SD-01..07 绑定见 verification 报告 §3/§4
 - blockers: 无（复审入口就绪；tf 批量档归 merge 到期判定；Linux 腿归 CI）
 - next: review（`/auto-plan:review` 独立逐项验证）
+
+### R2 复议（2026-10-02，pass）
+
+- stage: review
+- plan_id: PLAN-729
+- plan_revision: 1
+- outcome: pass
+- reviewed_commit: plan-729-dev @ ae414a45b4c1e7c2f6ea54f37b6a06cb2b04bd01（R1 修复提交；worktree clean）
+- base_commit: master @ e5b068bd0a
+- dependency_revisions: 无外部变更（同 R1）
+- spec_inputs: worktree SD 草稿（R1 修正后：SD-01 错误映射/HEAD 两遍/TOTAL_MS 措辞/
+  矩阵验证锚已对齐实现）
+- acceptance_results: AC-01 pass（异步 `~FileResponse` wire/生成/发射三面 + 生成腿 12MiB
+  hash 补齐——r1_fixes async e2e、test_plan729_async_file_endpoint_generation、
+  plan729_probe_async_file_handler_emission、生成 e2e 扩展）；AC-02 pass（If-Unmodified-
+  Since wire 行补齐）；AC-03 pass（路径替换 rename wire/auth+open 计数/PermissionDenied
+  403 对齐/HEAD 两遍优先；权限 wire 级=P729-D5 债）；AC-04 pass（health 20×<500ms+
+  基线对照、在途块字节公式对账）；AC-05 pass（半关闭 e2e/idle watchdog 单元；shutdown
+  drain=P729-D1 债）；AC-06 pass（TS/Tauri 生成串+back_proxy 真 TCP 501+契约缺口诊断
+  不 fallback+同名反例；legacy=代码面+P729-D2 债——非默认调用图，spike 锁单点）
+- findings: R1 的 25 项全部处置——blocker 2/major 11 中 12 项修复（G-01/03/04/05/06/
+  07/08/09/10/11/13/16/17），minor 中 G-12 同名反例已测（别名=登记面事实，727 先例同
+  形）、G-19/20/21/22/23/24/25 修复；G-14/15/18 + legacy wire + 权限 wire 归
+  KNOWN-DEBT P729-D1..D5（显式登记，非静默）。G-04 以同族诊断臂（无尾 return）锁定
+  不回退形状；真转译失败臂与该臂共用同一 helper，发射面等价。
+- evidence: R1 后新跑——裸 cargo t --no-fail-fast 5031 测（红集与 master 基线 14 名
+  逐名一致 + 1 瞬态 plan707 取消测试**两侧树单跑皆绿**=在案 flake 家族）；tv 162/162；
+  http_e2e_plan729 15/15；生成 e2e 1/1（12MiB+async）；api_gen 36+1；a2r-std 4 组 ok；
+  th 37 中 2 红均为 master 基线在案（back_proxy corpora 字面 :id + plan707 relay
+  时序）。复用证据（R1 后代码未变区域）：a2r-std server_file 15 表驱动、VM wire 6 族
+  ——R1 仅增不改。
+- next: merge（`/auto-plan:merge`）
 
 ### R1 复审（2026-10-02，needs_fix）
 
