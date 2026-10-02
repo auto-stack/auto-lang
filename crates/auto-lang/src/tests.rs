@@ -432,6 +432,8 @@ mod plan724_http_client_tests; // PLAN-724: a2r HTTP 客户端收敛（golden + 
 mod plan727_http_transfer_tests;
 // PLAN-729: 服务端文件响应（32_plan729 golden + 发射/类型映射/VM native 探针 + http_e2e_plan729 T-06 增补）
 mod plan729_http_server_file_tests;
+// PLAN-734: API 契约与生成一致性（探针→§6.1 矩阵）
+mod plan734_api_contract_tests;
 // PLAN-730: 服务端上传（平台探针 + parser/预算/存储矩阵 + http_e2e_plan730 双端）
 mod plan730_http_upload_tests;
 // PLAN-712 T-17 第二层：router.param 的 VM 取值链（push → sync → 页 Init）。
