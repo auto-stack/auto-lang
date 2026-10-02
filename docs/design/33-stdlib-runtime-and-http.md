@@ -1,16 +1,16 @@
 # 33 - Auto 标准库多后台与 Web 服务运行时
 
-> 状态：方案稿（2026-09-23 静态审计；2026-10-01 更新 C2a 交付与 C2b 计划）；现状以 `docs/specs/` 与源码为准。
-> 实施入口：阶段 A [PLAN-696](../plans/archive/696-stdlib-http-server-runtime-hardening.md)、阶段 B [PLAN-699](../plans/archive/699-vm-http-transport-axum-bridge.md)、阶段 C1 [PLAN-705](../plans/archive/705-vm-http-handler-async-lifecycle.md)、阶段 C2a [PLAN-707](../plans/archive/707-vm-http-stream-async-relay.md) 已交付；阶段 C2b [PLAN-724](../plans/724-a2r-http-client-async-convergence.md) 已起草，待实施。
+> 状态：方案稿（2026-09-23 静态审计；2026-10-02 更新 C2b 交付与 C2c 计划）；现状以 `docs/specs/` 与源码为准。
+> 实施入口：阶段 A [PLAN-696](../plans/archive/696-stdlib-http-server-runtime-hardening.md)、阶段 B [PLAN-699](../plans/archive/699-vm-http-transport-axum-bridge.md)、阶段 C1 [PLAN-705](../plans/archive/705-vm-http-handler-async-lifecycle.md)、阶段 C2a [PLAN-707](../plans/archive/707-vm-http-stream-async-relay.md)、阶段 C2b [PLAN-724](../plans/archive/724-a2r-http-client-async-convergence.md) 已交付；阶段 C2c [PLAN-727](../plans/727-http-file-transfer-lifecycle.md) 已起草，待实施。
 > 历史输入：[Design 13](13-networking.md)、[多平台填充草案](raw/stdlib-organization.md)、[HTTP 草案](raw/http-server-stdlib.md)。
 
 ## 1. 结论与适用边界
 
-**阶段状态**：下文 §2 与 §5 的风险表保留 PLAN-696 实施前的审计基线，不能当成 2026-10-01 的现状。PLAN-696 已修复分段 body、慢 SSE 阻塞和 VM 指针跨线程转运；PLAN-698 已交付 VM publisher SSE；PLAN-699 已用 Axum/Hyper 替换 VM `#[api]` 手写 HTTP 默认入口，补齐协议/队列预算和优雅关闭。PLAN-705 已交付普通 handler 的段执行/完成通知、请求作用域、迟到结果不复活和有界非流式客户端。PLAN-707 已闭合 VM 外部流的等待、背压、增量解码与 managed job 实际取消；Rust/a2r 客户端仍有阻塞、无界通道、close 占位和发射差异，由 PLAN-724 接续。CPU 纪律、文件传输与阶段 D 继续独立规划。
+**阶段状态**：下文 §2 与 §5 的风险表保留 PLAN-696 实施前的审计基线，不能当成 2026-10-02 的现状。PLAN-696 已修复分段 body、慢 SSE 阻塞和 VM 指针跨线程转运；PLAN-698 已交付 VM publisher SSE；PLAN-699 已用 Axum/Hyper 替换 VM `#[api]` 手写 HTTP 默认入口，补齐协议/队列预算和优雅关闭。PLAN-705 已交付普通 handler 的段执行/完成通知、请求作用域、迟到结果不复活和有界非流式客户端。PLAN-707 已闭合 VM 外部流等待、背压与 managed 实际取消；724 已交付两 Rust facade 的共享 async 内核、流背压/取消、增量 decoder 单源和 a2r async lowering，并清偿 P707-R1。文件 helper 仍有 blocking/整文件读/错误与续传差异，由 727 接续。CPU 纪律与阶段 D 继续独立规划。
 
 Auto 当前足以支撑示例级、本机开发用的 CRUD API，以及已经验证的部分 SSE/媒体路径；不能据此认定 VM HTTP 入口已经具备通用 Web 服务器的协议正确性、并发隔离和运维能力。`#[api]` 是跨后台的用户契约，实际服务能力分散在 AutoVM 原生 shim、`auto-man` 生成的 Axum 服务、VM 合并调用、Tauri IPC，以及 gallery back-proxy 中。不能把“使用同一份 `api.at`”等同于“使用同一 HTTP 实现”。
 
-保持 `api.at` 与 `auto.http` 的平台无关接口，以宿主实现传输层。Rust 生成轨继续用 Axum；VM 轨已由 PLAN-699 接入 Axum/Hyper、705 补请求作用域与普通等待通知、707 补外部流等待/背压/实际取消。下一步让 Rust/a2r 客户端及实际转译产物满足同类资源与等待契约。Auto `task`/`~T` 仍是语言语义，不直接暴露 Tokio 句柄。Auto 自实现 HTTP 解析器可作为教学或协议实验，不作为默认生产服务入口。
+保持 `api.at` 与 `auto.http` 的平台无关接口，以宿主实现传输层。Rust 生成轨继续用 Axum；VM 轨已由 PLAN-699 接入 Axum/Hyper、705 补请求作用域与普通等待通知、707 补外部流等待/背压/实际取消。724 已将 Rust 客户端与其转译消费面纳入 async 契约；下一步处理文件传输的增量读写、结果/兼容与取消清理。Auto `task`/`~T` 仍是语言语义，不直接暴露 Tokio 句柄。Auto 自实现 HTTP 解析器可作为教学或协议实验，不作为默认生产服务入口。
 
 ## 2. PLAN-696 前审计基线：从声明到服务的路径
 
@@ -84,11 +84,12 @@ HTTP/IPC/合并适配器
 | B：VM HTTP 传输替换（PLAN-699，已交付） | Axum/Hyper 接入 VM owner 消息桥；旧手写解析退出默认路径；body/header、队列、读取/回复期限与关闭预算 | chunked/keep-alive/431/慢头/503/关闭复绑与示例回归已验证；CLI Ctrl+C 实机终端受环境限制在归档注记，不扩大交付声明。 |
 | C1：普通 HTTP handler 异步等待与取消（PLAN-705，已交付） | PLAN-702 段执行复用、完成通知、请求作用域/生命期上限、迟到结果不复活、有界非流式 async 客户端 | handler gate/恢复和登记回收已有证据；managed job 的实际取消由 707 接续闭合。 |
 | C2a：外部 HTTP/SSE 流（PLAN-707，已交付） | 共享固定 runtime 流 job、可等待 raw/Iter/SSE relay、增量解析、有界队列/事件/carry、资源组与实际取消；补齐 705 managed job 取消 | 慢流 health、queued/active/retry 取消与解析/生命周期已有证据；边界以 current http-stream-lifecycle Spec 为准。 |
-| C2b：Rust/a2r 客户端（PLAN-724，待实施） | 两 Rust facade 共用 async 内核；headers/metadata、bounded 流、close/Drop、typed 状态与 async lowering；核实修复 P707-R1 | 同源 VM/a2r/原生 Rust 对拍；两链接方式实际编译运行；current-thread 慢上游 health 与取消/背压资源证据。 |
-| C2 后续：CPU 与文件流（待分别立项） | CPU 预算/阻塞纪律依独立裁定；流式上传下载 | 各自独立支持矩阵、真实消费证据与资源边界，不能从 C2a/b 推定其他能力已实现。 |
+| C2b：Rust/a2r 客户端（PLAN-724，已交付） | 两 Rust facade 共用 async 内核；headers/metadata、bounded 流、close/Drop、typed 状态与 async lowering；P707-R1 清偿 | 同源与两 facade 编译运行已验证；边界见 current http-client-runtime/lowering Spec；同步 helper 嵌套 async 仍有限制，文件 helper 未迁。 |
+| C2c：客户端文件传输（PLAN-727，待实施） | 共享增量下载/上传、staging 提交、Range 校验、进度/owned 结果、取消/FS 清理、multipart 与 legacy adapter；核实 queued 取消/期限差距 | 同源实编、binary wire、保旧文件/续传矩阵、慢网络/磁盘 health、资源回基线；服务端文件路由不在本期。 |
+| C2 后续：CPU 纪律（待立项） | CPU 预算/阻塞纪律依独立裁定 | 独立负载与共享状态证据，不能从异步网络等待推定 CPU 能力已实现。 |
 | D：多后台收敛与部署 | Rust 生成/VM/IPC/合并/back-proxy 共用 API 契约和失败诊断；覆盖 manifest；安全配置与性能报告 | 指定示例矩阵跨后台同语义；p95、内存、最大连接与拒绝策略有可重复记录，明确支持等级。 |
 
-阶段 C1/C2/D 各自按独立验收立 Plan；本轮仅起草 PLAN-724 和更新路线，不运行 Cargo 测试。实施门禁以最新 AGENTS.md 为准：裸 cargo t 为 per-plan 基础门禁，按触面加 tv/tt/th 等；tf 已改为主检出单实例的到期批量回归，不是每计划门禁。
+阶段 C1/C2/D 各自按独立验收立 Plan；本轮仅起草 PLAN-727 和更新路线，不运行 Cargo 测试。实施门禁以最新 AGENTS.md 为准：裸 cargo t 为 per-plan 基础门禁，按触面加 tv/tt/th 等；tf 已改为主检出单实例的到期批量回归，不是每计划门禁。
 
 ### 6.1 阶段 C1 的设计收敛（2026-09-28 设计基线；705 已交付）
 
@@ -102,21 +103,31 @@ HTTP/IPC/合并适配器
 
 707 前 HTTPStream 建立使用 blocking reqwest + spawn/join，next/iterator 直接 read；外部 SSE 每流自建线程/runtime，事件通道缺单事件/解析缓冲预算。707 已统一到共享 705 client runtime 和流资源表，建立/读取/解析/发送可等待与取消；流 active=16、queue=32、数据队列=16 项，raw 单块≤16 KiB、SSE 单事件与解析 carry 各≤256 KiB；generator 用通知 park/resume。有界缓冲的总量须按队列与 carry 求和，不能把单事件上限当整个队列上限。
 
-705 原有「取消=丢弃网络 future」的代码/Spec 差距也由 707 修复：managed job 的 abort 句柄随完成/取消回收，插入后复查闭合竞态；queued/active/retry 取消与许可归还已有验证。无 live-op 的 detached 消息桥继续用显式分离入口。债务 P707-R1 是直接驱动测试确定性失败；静态看到测试缺 register_live_op，724 要通过复现确认后修复验证协议，不能因测试失败退回弱取消。
+705 原有「取消=丢弃网络 future」的代码/Spec 差距也由 707 修复：managed job 的 abort 句柄随完成/取消回收，插入后复查闭合竞态；queued/active/retry 取消与许可归还已有验证。无 live-op 的 detached 消息桥继续用显式分离入口。P707-R1 已由 724 复现确认：测试缺 register_live_op，被取消竞态守卫中止；修复测试协议后红转绿，取消守卫保持。
 
 请求内建立的上游流/job 与 generator 子资源归同一资源组，SSE headers 发送后所有权随响应体继续；断连/请求终结/close 回收内层上游。非请求 UI/CLI 手工消费者仍需显式 close，局部 break 可能只暂停读取；不能扩张为任意 break 都关闭连接。首响应与长流 idle 预算分开。raw next:str 与 poll 哨兵保留为 adapter，内部 Pending/Data/EOF/Error 不猜载荷；VM 的方法式 HTTPStream.iter 仍有分派限制，应使用已验自由函数形式。SSE 使用跨块增量 decoder 的已约定子集，不代表完整 EventSource。
 
 本阶段不改 a2r 客户端、全 actor 调度或 CPU 抢占；也不迁移共用 ASYNC_STREAMS 的文件/进度 worker。多后台文件装配已在 696 的 canonical [backend-assembly](../specs/stdlib/design/backend-assembly.md) 固化，覆盖 manifest、生成失败诊断及部署支持等级仍由阶段 D 接续。
 
-### 6.3 阶段 C2b：Rust/a2r 客户端收敛（PLAN-724）
+### 6.3 阶段 C2b：Rust/a2r 客户端收敛（724 已交付）
 
-Rust 客户端存在独立 a2r-std 与 auto-lang 内 a2r_std 两个实现；前者为 ureq/线程/无界队列，后者为 blocking reqwest + spawn_blocking，返回类型、认证 helper 与状态机制不同。发射器还直接生成同步 builder/stream 调用，并对 post 的普通二参和历史认证三参做不同程度的硬编码。仅换成 reqwest async 无法证明源代码的调用链异步可用。
+724 前 Rust 客户端存在独立 a2r-std 与 auto-lang 内 a2r_std 两个实现；前者为 ureq/线程/无界队列，后者为 blocking reqwest + spawn_blocking，返回类型、认证 helper 与状态机制不同。发射器还直接生成同步 builder/stream 调用。724 已收敛到共享内核和 typed 上下文发射；当前依据为 canonical [http-client-runtime](../specs/a2r-std/design/http-client-runtime.md) 与 [http-client-lowering](../specs/auto-lang/trans/design/http-client-lowering.md)。
 
 724 在独立 a2r-std 内建立共享客户端内核，由两个 HTTP facade 分别适配；auto-lang 已依赖该 crate，不引入反向依赖。固定 runtime/Client、有限准入与读体/流预算、typed 状态、owned metadata、close/Drop/Future 取消共同设计；纯字节 decoder 可提取复用，VM owner/资源表保持独立。同步桥接不得在 async reactor 静默阻塞。
 
-执行前先冻结源符号、类型、元数、上下文、返回/失败形状矩阵；同一 .at 的 VM/a2r 与原生 Rust 样本做行为对拍，两种 runtime 限定名均实际编译运行。current-thread 健康事件顺序、背压高水位和五阶段取消资源回基线是必选验收，golden 文本不能替代。712 已落地的 JSON 网络失败可捕获/非 2xx 返回值规则须保留并修正标准库文档旧表述。
+源符号/元数/上下文映射、同源与限定名编译运行、流生命周期已有 724 证据；同步 helper 被 async 路径调用仍有响亮 panic 的边界，VM int SSE id 族不是 a2r 面。后续新增文件面仍要做实际编译运行和 gate 实验，golden 文本不能替代。此次静态调研另见 execute 在 active 等待后才 select 取消/timeout，727 先定向核实 queued 差距，不将报告结论直接扩张。
 
-客户端收敛不包含生成任意外部 SSE api handler；auto-man 的事件总线流模板仍属独立服务生成契约。完成 724 后仍依次规划文件传输、API 多形态契约/失败诊断、装配 manifest、CPU 纪律及部署支持等级，必要时按实测拆分，不预先承诺固定计划数量。
+客户端收敛不包含生成任意外部 SSE api handler；auto-man 的事件总线流模板仍属独立服务生成契约。文件传输由 727 接续，API 多形态契约/失败诊断、装配 manifest、CPU 纪律及部署支持等级仍独立规划，不预先承诺固定计划数量。
+
+### 6.4 阶段 C2c：客户端文件传输（PLAN-727）
+
+VM download 仍 response.bytes 全量缓冲并覆盖目标，resume 对任意响应 append；upload 使用 blocking multipart，builder 文件 part 预读为 Vec 并静默略过读盘失败。独立 Rust 文件 helper 仍 ureq，上传为 raw 而非 multipart，copy 失败仍返回 HTTP 状态；progress worker 每任务创建线程/runtime。公共 .at 声明与这些 native/发射面尚未形成完整契约。
+
+727 在 a2r-std 建共享文件传输核心，VM 桥与两 Rust facade 复用；新 FileTransfer 面给一致的 owned 结果/进度/取消，旧 bool/Response/status/raw 的不同形状明确保留为 legacy adapter。增量块、独立文件准入/体积/期限预算、受限磁盘 I/O 避免挤占普通请求；multipart 按路径流式读，每次允许的重试重新打开并核对源文件，不吞文件错误。
+
+下载采用目标同目录 staging，成功完整落盘后替换；失败或提交前取消保留旧目标。206 校验 Content-Range/offset/长度，200 完整重下，416/坏范围不追加。新面无 validator 默认完整重下，不能从 offset 证明版本一致。Windows 替换、同目标冲突和取消时在途 FS 收口必须有实证；Tokio 文件 I/O 底层不能像网络 Future 一样一概强制 abort。
+
+验收包括真 binary wire、同源 VM/a2r 实编、续传/文件故障/提交竞态、慢网络/磁盘期间 health 与许可/文件句柄/temp 回基线。本期仅客户端与必要 VM 生命周期桥接，服务端上传路由/文件 Range 响应和 API 多形态收敛另案。
 
 ## 7. 待决策
 
