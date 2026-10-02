@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-728
-status: drafting
+status: executing
 feature_name: 文件后援分页 rope 实施件（auto-edit 供⑮ 承接——不可变基底页表+编辑覆盖层+LRU 内存上界+异步预取+保存合并+消费方 overlay 意识+512MB 拒绝位退役弹药）
 author: [agent]
 created_at: 2026-10-02T15:06:46+08:00
-updated_at: 2026-10-02T15:06:46+08:00
+updated_at: 2026-10-02T16:20:00+08:00
 plan_revision: 1
-current_step: 0
-total_steps: 12
+current_step: 1
+total_steps: 11
 supersedes_spec_components: []
 new_spec_components:
   - "docs/specs/auto-lang/ui/design/paged-rope.md（SD-01：后援分页 rope 契约——七面语义+内存上界契约+快照兼容+装载链+保存语义+big 态/拒绝位退役）"
@@ -169,6 +169,63 @@ rope 既有 23 测试族零回退为硬门）+探针（plan728_supply_probes—�
 6. **S5/725 协同注记**：fault-in 载荷到达→脏域更新的接线面（帧域
    正交性+S5 余题不阻塞本件）。
 
+#### 勘定结论（2026-10-02 work 会话，基面 master@526e7688e 实勘）
+
+1. **形态=就地扩展 `core::rope` 模块**（rope.rs 主体 + 新子模块文件
+   `rope/file_backing.rs`，模块路径/公共类型零移动——703 先例的"就地"
+   取模块路径不变义）。**后援形=新 `Node::Chunk` 叶变体**（页描述符：
+   共享 `Arc<PageStore>`+页号+页内区间+预扫摘要 {bytes/chars/newlines/
+   hash}），不是独立 crate、不是平行 Rope 类型。判据：Rope/RopeSnapshot
+   结构体与全部公共方法签名零改动（frozen ① 以构造达成而非以分派达成
+   ——消费方四族零接线）；703 摘要/剪枝机制对 Chunk 免费复用（整页
+   Merkle 快捷不需驻留文本）。抽包（Q-1 备选）证据不支持：无跨仓复用
+   面、测试面同 crate 即可隔离（file_backing 子模块+探针族）。
+2. **阈值=50MB**（下游 big 态 013 域 50MB 界对齐——auto-lang 内核现
+   无 big 判定（grep 50MB/big_file 零命中，语法臂在渲染层下游驱动），
+   阈值首次成文于内核侧装载臂：`metadata.len() > 50MB` → 后援形）。
+   阈值下路径逐字节原样（read_to_string→from_str，frozen ②）。
+3. **页=64KB，页表=扁平 `Vec<PageDesc>`**（{offset:u64, len:u32,
+   chars:u32, newlines:u32, hash:u64}≈32B；1GB=16384 页≈0.5MB 表）。
+   页边界预扫时回退至 UTF-8 字符边界（页内文本独立合法）。树形页表
+   无收益：行号跳转定位走 rope 树 O(log n)（页表只在树外做预扫记帐
+   与保存照抄映射）。
+4. **overlay=持久化 rope 复用（选项 A）**：编辑走既有 `replace_bytes`
+   split/concat 路径——FileChunk 节点不可变（frozen ③：split 产出新
+   Chunk 描述符+两侧摘要，fault-in 仅读），插入文本=普通 Leaf。快照
+   语义免费（frozen ①）；gap buffer/journal 弃（快照成本/读合并成本
+   无补偿）。
+5. **预扫=一次顺序读（1MB 缓冲）**逐页记摘要+UTF-8 验证；全文件
+   digest 由树 combine 自动合成。预期 1GB 墙钟 1-2s（NVMe 顺序读
+   ~2GB/s+单遍字节计数），T-08 实测入谱；降级预案（异步预扫+渐进
+   行数）不启用，除非实测>5s。
+6. **S5/725 协同=fault-in 不接脏域管线**（帧域正交：cosmic Buffer
+   窗口与 rope 分层，预取载荷到达不触 725 脏帧——窗口重物化属下游
+   S2 消费件，注记入 SD-01）。**占位语义裁定**：内核=同步 fault-in
+   （单页 64KB NVMe ~100μs，远低于帧预算）+异步预取保温（滚动方向
+   ±16 页）+页面态可观测（`PageState::{Resident,Cold}` 探针面）；
+   frozen ④ 达成方式=预取保温使滚动/编辑路径命中内存，冷跳转单页
+   同步读在帧预算内；UI 级占位渲染表达=下游窗口件（S2，回执注记）。
+7. **随形裁定（超纲注记）**：内存上界常数=页缓存预算 6MB 默认
+   （`PageConfig`）+页表/树常驻 ~3MB@1GB → 契约"RSS ~10MB 级"以
+   **结构计量断言 ≤12MB@1GB** 成文（SD-01）；后援形 core 的 cosmic
+   Buffer 物化=头部窗口（默认 2MB 截断至行边界），交互打字窗口化
+   （S2 视口物化）=673 延后裁定在案的下游件——本件 E2E 面=键控
+   native 面（load/edit/save/find/diff/undo-snapshot），窗口基址
+   偏移使窗口内打字正确映射全文档区间。保存=合并写流（Chunk span
+   →基底句柄 pread 照抄**绕过 LRU**；Leaf→直写），temp+rename 原子
+   改名，外部修改检测=len+mtime 对预扫基线（不符→拒绝保存报错），
+   写后基线刷新。512MB 拒绝位退役=回执两案不动（Q-3）。
+
+**实勘修正（affects 对账）**：vm/native.rs 与 ui_gen/rust.rs 预期
+**零 diff**——load/save shim 既存且转发键控 API（装载形内化于
+`code_editor_load_file`，计划 §5 T-07"无新 native 预期"成立）；
+Cargo.toml 预期零 diff（零新依赖）。落点收敛为 rope.rs+rope/
+file_backing.rs+core/mod.rs+src/tests/plan728_supply_probes.rs。
+**T-09 门禁修正（fix-test-tiering 2026-09-30 裁定）**：per-plan
+复审门=裸 `cargo t`+触面档（本件无 vm 编译器/trans/book/ui_gen
+触面→无 tv/tt/tb/tu 追加）；`cargo tf` 归批量回归档（主检出
+`/auto-plan:regress`），计划原文"tf 全量"按仓规修正。
+
 ### T-01 基底页表+预扫（G-1，面①）
 
 只读句柄+页表构建（预扫一次顺序读逐页记{偏移,长度,行数}）；
@@ -281,7 +338,7 @@ P728-1（703/710 先例）+供料档 §10 回执节预告位。
 
 | # | 任务 | 依赖 | 落点（实勘锚） | 产出/意图 | AC | 验证（命令/预期） |
 |---|---|---|---|---|---|---|
-| 0 | T-00 勘定决策件 | — | 本件 §5 T-00 节+勘定报告 | 六定参（形态/阈值/页参/overlay/预扫/协同） | 全 | [ ] 报告在档 |
+| 0 | T-00 勘定决策件 | — | 本件 §5 T-00 节+勘定报告 | 六定参（形态/阈值/页参/overlay/预扫/协同） | 全 | [x] 勘定报告在档（§5 T-00 勘定结论节，2026-10-02；六定参全落+随形裁定三条+affects/tf 门修正） |
 | 1 | T-01 基底页表+预扫 | T-00 | rope.rs（扩展） | 面① | AC-01 | [ ] 单测绿 |
 | 2 | T-02 overlay | T-01 | rope.rs（扩展） | 面② | AC-02 | [ ] 双轨等价绿 |
 | 3 | T-03 LRU+上界 | T-02 | rope.rs（缓存层） | 面③ | AC-03 | [ ] 上界断言绿 |
