@@ -1,31 +1,28 @@
 {
-  "last_covered_plan_id": 726,
-  "timestamp": "2026-10-02T05:25:00Z",
-  "covered_commit": "4614bd9df",
+  "last_covered_plan_id": 732,
+  "timestamp": "2026-10-03T00:00:00Z",
+  "covered_commit": "6988b1d7f75cd1e135ac2431c798def293b9d735",
   "legs": [
     "tf",
     "tt",
     "tb"
   ],
-  "taa_skipped_reason": "window c19b5351a..4614bd9df touched zero aavm trigger paths (git log --name-only verified: no auto/lib/*.at, test/vm/aavm2, parity, aavm2_*, aavm_runner_tests, lib.rs aavm sources)",
-  "tb_deviation_note": "tb leg ran as nextest -E 'not test(generate_book_expected)': bare tb 经 generate 无条件改写真实书仓 expected (P726-R1 在案破坏性), book 仓用户 ch06 WIP 在场; 对拍族经 PLAN-726 T-03 脏态守卫确定性 skip 绿 (68/68), generate 排除零覆盖损失零副作用",
-  "new_reds": [
-    "schema_drift::schema_drift_fence",
-    "schema_drift::queue_coverage_drift_fence",
-    "docs_gen::kitchen_sink_page_in_sync"
+  "taa_skipped_reason": "window 4614bd9df..HEAD touched zero aavm trigger paths (git log --name-only verified: no auto/lib/*.at, test/vm/aavm2, parity, aavm2_*, aavm_runner_tests, lib.rs aavm sources)",
+  "new_reds": [],
+  "load_flakes_observed": [
+    "plan502_m3_layout_geometry_e2e / plan484_024_charts_streaming_recompute (tf 并行全池负载下红, 隔离复跑绿——图表/图解时序族)",
+    "plan730_commit_target_matrix (tf/日常并行红 x2, 隔离+全滤复跑绿——磁盘重测试 30s 级: 6 目标 x canonicalize+receive+commit; 候选后续拆分或降 IO, 非确定性红)"
   ],
-  "new_red_notes": "三红同根 = kitchen-sink.at/schema 金样脱同步, 归因跨仓 auto-os commit 73d02b5 (Plan 717 'show all component examples', 2026-10-01 05:05 +0800 手改金样未走 KITCHEN_SINK_UPDATE 再生) —— 时间线: 0d5f5bf 重采样 (09-30 14:21) → 09-30 批量回执跑于 10-01 00:20 三绿 → 73d02b5 手改 5h 后破红; auto-lang 侧窗口 c19b5351a..4614bd9df 零触 docs/components 与 schema 源; 亦非 PLAN-726 (stash 严格对照: pristine@17292c07e 同三红, 先于 726 diff). 登记 KNOWN-DEBT REG-4, 清偿 = KITCHEN_SINK_UPDATE=1 再生 + auto-os 侧提交重采样金样 (跨仓修复)",
   "known_reds_seen": [
-    "musk_vm_track_p053 x4 (widget_computed x2 / merged_api_warning / widget_content)",
+    "musk_vm_track_p053 x3-4 (widget_computed x2 / merged_api_warning / widget_content)",
     "musk_vm_track_p054 x2 (icon_component x2)",
-    "plan606_gallery test_029_photo_gallery_thumbnails",
+    "schema_drift x2 + docs_gen kitchen_sink (REG-4 跨仓金样脱同步, 上批在案债)",
+    "ash_stream_leak_probe",
     "projector_counter_layout_and_hits",
-    "desktop_bus_inbox_drains_through_real_arms",
-    "desktop_surface_merge_dedupe_and_injection",
-    "plan707_wait_generator_park_drive_count_static (负载敏感 flake 维持, scoped 绿)",
-    "ui_gen::vue::test_a2vue_desktop_surface_asset (a2vue desktop golden, 4f123a50e)"
+    "desktop_bus_inbox_drains_through_real_arms + desktop_surface_merge_dedupe_and_injection",
+    "plan606_gallery test_029_photo_gallery_thumbnails",
+    "ui_gen::vue::test_a2vue_desktop_surface_asset (4f123a50e)"
   ],
-  "known_red_changes": "e4_default_headers_reach_wire 清偿 (PLAN-724 T-02, 本批首次批量面绿); ffi_dual_019 (REG-2) 与 app_registry x2 (REG-3) 本批未见; book_listing parse-family x7 → 经 PLAN-726 T-03 脏态守卫转为确定性 skip 绿 (非红非阻断, book 仓 WIP 期行为)",
-  "leg_timings": "tf 57.9s (6000 run, 5985 passed, 15 failed, 512 skipped; 画廊围栏主检出暖缓存快速通过, 机器闸门单实例正常) / tt 88.5s (5350 run, 5340 passed, 10 failed; real 2m4s 含编译) / tb 54.9s (5033 run, 5022 passed, 11 failed, generate 排除); logs session temp",
-  "verdict": "known-reds-only + 1 项跨仓金样脱同步新红族 (3 测, auto-os Plan 717 归因, 登记 REG-4 债非阻断); zero auto-lang plan-attributable new reds in c19b5351a..4614bd9df (716 r 系列/717 联动/722/723/724/725/726 窗口)"
+  "leg_timings": "tf 65.9s no-fail-fast (6085 run, 6070 pass, 15 fail: 13 已知 + 2 图表负载 flake; 画廊围栏暖缓存过) / tt 85.9s (5435 run, 12 fail 全已知族) / tb 57.2s (5119 run, 11 fail 全已知族); 三腿红集隔离复跑核对完成",
+  "verdict": "known-reds-only; zero new deterministic reds in window 4614bd9df..HEAD (PLAN-726 后: 727/729/730 合并 + 731/732/735 会话窗口); PLAN-730 全部新增面 (plan730 26 测 + e2e 14 + 生成 e2e) 在批量档全绿"
 }
