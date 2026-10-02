@@ -1478,3 +1478,12 @@ a2r 编译面轨随缺省翻转计划另立。
 - ImageSurface onload/onerror 运行时事件已接通（管线代次+50ms 唤醒
   轮询+notify sweep，规则见 design/image-surface-events.md）；renderer
   6399 处回调丢弃臂已由 notify sweep 替代消费。
+
+## PLAN-732 注记（2026-10-03）
+
+- autodown 编辑壳正文内链激活供给：`[[t#a]]` 经 flatten_inlines 语义消费
+  （attr wikilink 单源）→ DocLayout.links 单 run 段命中区 → 完整点击门
+  （core handle_input 汇聚点）→ on_link 回调（`.at` 绑定
+  `on "open-wiki-link"` 完整 kebab，与 jade Vue 同名）→ 双 Str 载荷直达
+  VM handler。新 design 文档：autodown-wikilink.md（契约八节+测试索引）；
+  裁定沉淀 architecture.md ADR-27。
