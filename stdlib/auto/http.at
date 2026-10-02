@@ -329,3 +329,28 @@ pub fn RequestBuilder.multipart_file(self RequestBuilder, field str, path str) R
 /// PLAN-727: Attach a text field to the multipart form (see multipart_file
 /// budgets).
 pub fn RequestBuilder.multipart_text(self RequestBuilder, field str, value str) RequestBuilder;
+
+// ═══════════════════════════════════════════════════════════
+// PLAN-729: Server-side File Response (GET/HEAD download face)
+// ═══════════════════════════════════════════════════════════
+
+/// Server file response descriptor. Constructing one never touches the
+/// filesystem: it only records the trusted root, the (untrusted) relative
+/// path and strictly-parsed options. Returning it from a `#[api]` GET/HEAD
+/// handler makes the HTTP layer serve the file with GET/HEAD, single-range
+/// and conditional-request semantics (VM default HTTP and generated Rust
+/// services alike); the body streams bounded blocks and holds its resources
+/// until completion. Not a JSON model, not a FileTransfer, and never a
+/// serializable handle for non-HTTP call forms.
+type FileResponse
+
+/// Build a file response descriptor (no I/O; safe to call anywhere).
+/// `root` comes from trusted app config; `relative_path` may come from route
+/// params — traversal (".."), absolute/drive/UNC paths, NUL and DOS device
+/// names are rejected (403 at serve time). `options` is strict JSON, `{}`
+/// valid: {"content_type":str, "download_name":str,
+/// "disposition":"attachment"|"inline", "etag":str}. Unknown keys, wrong
+/// types, unsafe header values and weak ("W/") etags fail the descriptor
+/// (500 at serve time); they never silently fall back to defaults.
+/// Example: return http.file_response(files_root, name, "{}")
+pub fn file_response(root str, relative_path str, options str) FileResponse;

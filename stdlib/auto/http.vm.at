@@ -245,3 +245,13 @@ fn http_transfer_cancel(t FileTransfer) void
 /// Terminal error message, "" = none (native id 9935).
 #[vm]
 fn http_transfer_error(t FileTransfer) str
+
+// ═══════════════════════════════════════════════════════════
+// PLAN-729: Server-side file response native (descriptor bridge)
+// ═══════════════════════════════════════════════════════════
+
+/// Build a file response descriptor (no I/O; native id 9936). The returned
+/// handle marshals as a file body only when an #[api] handler that declares
+/// a FileResponse return yields it to the default HTTP transport.
+#[vm]
+fn http_file_response(root str, path str, options str) FileResponse

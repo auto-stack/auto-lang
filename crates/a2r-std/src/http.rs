@@ -11,7 +11,18 @@
 //! ureq，不为删除依赖扩展范围。
 
 pub mod client;
+pub mod server_file;
 pub mod transfer;
+
+// PLAN-729 T-02：服务端文件响应公共面再导出（描述符 + 纯协议决策；
+// 宿主执行在消费端 auto_lang::http_file_service）。
+pub use crate::http::server_file::{
+    build_file_headers, decide_file_protocol, evaluate_if_range, evaluate_preconditions,
+    extract_request_conditions, file_response, format_http_date, parse_http_date,
+    parse_range_header, validate_relative_path, Disposition, FileInitError, FileInitErrorKind,
+    FileProtocolDecision, FileRangePlan, FileRequestConditions, FileResponse, FileResponseOptions,
+    IfRangeOutcome, PreconditionOutcome, RepresentationValidators,
+};
 
 // 内核 typed 类型的一等再导出（原生 Rust 消费者面）。
 pub use crate::http::client::{

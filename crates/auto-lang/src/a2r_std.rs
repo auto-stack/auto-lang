@@ -830,6 +830,14 @@ pub mod http {
         transfer_wait_typed, FileTransfer, TransferObserver,
     };
 
+    // PLAN-729 T-02：服务端文件响应公共面——同形转发（描述符 + 纯协议
+    // 决策在 a2r_std::http::server_file；宿主执行在
+    // crate::http_file_service，供 VM 与生成 Rust 两腿共用）。
+    pub use ::a2r_std::http::{
+        file_response, FileInitError, FileInitErrorKind, FileProtocolDecision, FileRangePlan,
+        FileRequestConditions, FileResponse, FileResponseOptions, RepresentationValidators,
+    };
+
     fn auth_request_json(url: &str, body: &str, api_key: &str, bearer: bool) -> HttpRequest {
         let mut req = HttpRequest::new("POST", url);
         req.headers.push(("content-type".into(), "application/json".into()));
