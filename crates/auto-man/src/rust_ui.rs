@@ -3724,6 +3724,70 @@ pub fn back_member_name(project_dir: &Path) -> String {
 /// Run the generated Rust UI project.
 /// Start the API backend server if a backend exists in the shared workspace.
 /// Returns the child process handle so the caller can clean it up on exit.
+
+/// PLAN-734 T-04：复用路径的 ready 新鲜度校验——在跑 bundle 的
+/// generation.json 源指纹与当前 api.at（+db.at）内容一致才允许复用。
+fn backend_generation_is_fresh(project_dir: &Path) -> bool {
+    fn fnv1a(bytes: &[u8]) -> u32 {
+        let mut h: u32 = 0x811c9dc5;
+        for b in bytes {
+            h ^= *b as u32;
+            h = h.wrapping_mul(0x01000193);
+        }
+        h
+    }
+    let Some(api_file) = auto_lang::config::resolve_back_api(project_dir) else {
+        return true; // 无契约项目：无新鲜度可校验，维持旧行为
+    };
+    let ws_dir = resolve_rust_workspace_dir(project_dir);
+    let back_name = back_member_name(project_dir);
+    let record_path = ws_dir.join(&back_name).join("generation.json");
+    let Ok(record_text) = std::fs::read_to_string(&record_path) else {
+        return false; // 无 ready 记录（旧产物）——不复用
+    };
+    let Ok(record) = serde_json::from_str::<serde_json::Value>(&record_text) else {
+        return false;
+    };
+    let Some(hashes) = record.get("source_hashes").and_then(|h| h.as_array()) else {
+        return false;
+    };
+    for entry in hashes {
+        let Some(name) = entry.get("0").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(recorded) = entry.get("1").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let source_path = match name {
+            "api.at" => api_file.clone(),
+            "db.at" => api_file.parent().map(|d| d.join("db.at")).unwrap_or_default(),
+            _ => continue,
+        };
+        let Ok(text) = std::fs::read_to_string(&source_path) else {
+            continue;
+        };
+        if format!("{:x}", fnv1a(text.as_bytes())) != recorded {
+            return false;
+        }
+    }
+    true
+}
+
+/// PLAN-734 T-04：新鲜度失配时绕过复用臂的再生入口（等价默认路径）。
+fn start_api_server_fresh(
+    project_dir: &Path,
+) -> Result<Option<std::process::Child>, String> {
+    // 递归调用自身但复用臂已被调用方语义绕开——直接内联默认路径太长；
+    // 以临时屏蔽 AUTO_REUSE_BACKEND 的方式走完整默认流程。
+    let prev = std::env::var("AUTO_REUSE_BACKEND").ok();
+    std::env::remove_var("AUTO_REUSE_BACKEND");
+    let result = start_api_server(project_dir);
+    if let Some(v) = prev {
+        std::env::set_var("AUTO_REUSE_BACKEND", v);
+    }
+    result
+}
+
 pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child>, String> {
     // daemon-ensure 语义（auto-os apps.manifest / pac.at back_port daemon 链）：
     // AUTO_REUSE_BACKEND=1 且端口已有活监听时直接复用——不杀（Plan 354 的
@@ -3733,11 +3797,22 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
         let port = crate::util::http_port();
         let probe_addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
         if std::net::TcpStream::connect_timeout(&probe_addr, std::time::Duration::from_secs(1)).is_ok() {
-            println!();
-            println!(
-                "  {} Backend port {} already serving — reusing it (AUTO_REUSE_BACKEND=1)",
-                "✓".bright_green(), port
-            );
+            // PLAN-734 T-04：ready 新鲜度校验——在跑后端的 generation.json 源
+            // 指纹与当前 api.at/db.at 不一致时拒绝复用（旧产物不冒充当前契约），
+            // 回落到默认 kill+重生成+spawn 路径。
+            if backend_generation_is_fresh(project_dir) {
+                println!();
+                println!(
+                    "  {} Backend port {} already serving — reusing it (AUTO_REUSE_BACKEND=1)",
+                    "✓".bright_green(), port
+                );
+            } else {
+                println!(
+                    "  ⛔ Backend port {} serves a STALE generation (source hash mismatch) — regenerating",
+                    port
+                );
+                return start_api_server_fresh(project_dir);
+            }
             if std::env::var_os("AUTO_HTTP_BASE").is_none() {
                 std::env::set_var("AUTO_HTTP_BASE", format!("http://127.0.0.1:{}", port));
             }

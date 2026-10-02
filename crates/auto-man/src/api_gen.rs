@@ -29,6 +29,18 @@ use auto_lang::api::{ApiModule, ApiType, ApiField, ApiEndpoint, ApiParam, ApiAtt
 /// It reads the backend API definitions and generates:
 /// - Backend: Tauri commands or Axum routes
 /// - Frontend: TypeScript types and API client
+
+/// PLAN-734 T-04：32 位 FNV-1a（generation.json 的内容指纹——与
+/// ui_cache invalidate_if_api_functions_changed 同族）。
+fn fnv1a(bytes: &[u8]) -> u32 {
+    let mut h: u32 = 0x811c9dc5;
+    for b in bytes {
+        h ^= *b as u32;
+        h = h.wrapping_mul(0x01000193);
+    }
+    h
+}
+
 pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
     // Plan 061:统一契约定位 —— 本地 src/back/ | back/,或 pac.at
     // `back: { project }` 指向的外部后端项目(前端可无本地 back/)。
@@ -46,14 +58,26 @@ pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
     let api_content = std::fs::read_to_string(&api_file)
         .map_err(|e| format!("Failed to read {}: {}", api_file.display(), e))?;
 
-    // Try full parsing first, fall back to lenient extraction
+    // PLAN-734 T-04（D4）：strict 解析门——full-parse 失败 = Err（解析错误
+    // 不再静默落 lenient/空提取；AC-04）。lenient 退役为显式
+    // `AUTO_API_LENIENT=1`（产物按 scaffold 语义——不含业务体）。
+    let strict_parse = std::env::var("AUTO_API_LENIENT")
+        .map(|v| v != "1")
+        .unwrap_or(true);
     let api_module = match try_full_parse(&api_content) {
         Some(module) => module,
+        None if strict_parse => {
+            return Err(format!(
+                "api.at parse failed ({}); fix the parse error or set AUTO_API_LENIENT=1 for scaffold-only extraction",
+                api_file.display()
+            )
+            .into());
+        }
         None => {
             // Lenient extraction for files with module references like `use db`
             match extract_api_lenient(&api_content) {
                 Some(m) => {
-                    println!("  ℹ Using lenient API extraction (module references skipped)");
+                    println!("  ℹ Using lenient API extraction (scaffold: no bodies)");
                     m
                 }
                 None => {
@@ -81,6 +105,24 @@ pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
             install_project_api_glue(root_dir);
         }
         return Ok(());
+    }
+
+    // PLAN-734 T-04：契约预检——HTTP 专属种类（File/Upload）在非 HTTP 消费
+    // 面（tauri 命令生成）按矩阵拒绝；显式 Response/Stream 保持各自形态。
+    // （rust/vue 后端经 HTTP 承载，无此限制。）
+    if backend == "tauri" {
+        for ep in &api_module.endpoints {
+            let kind = auto_lang::api::contract::ResponseKind::from_return_string(&ep.return_type);
+            if kind.is_http_exclusive() {
+                return Err(format!(
+                    "api endpoint `{}.{}` returns an HTTP-exclusive kind ({:?}); Tauri IPC cannot carry it — call the HTTP URL instead",
+                    api_file.display(),
+                    ep.fn_name,
+                    kind
+                )
+                .into());
+            }
+        }
     }
 
     // Generate code based on backend
@@ -868,6 +910,47 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     let _ = crate::rust_ui::ensure_shared_workspace(root_dir);
 
     println!("  ✓ Generated Rust server: {}/", back_name);
+
+    // PLAN-734 T-04：ready 记录——源内容指纹（api.at/db.at）+ 端点清单 +
+    // scaffold 标志，随 bundle 最后写入；复用路径据此校验新鲜度。
+    {
+        let mut sources: Vec<(String, String)> = Vec::new();
+        if let Some(api_file) = auto_lang::config::resolve_back_api(root_dir) {
+            if let Ok(api_text) = std::fs::read_to_string(&api_file) {
+                sources.push((
+                    "api.at".into(),
+                    format!("{:x}", fnv1a(api_text.as_bytes())),
+                ));
+            }
+            if let Some(db_path) = api_file.parent().map(|d| d.join("db.at")) {
+                if let Ok(db_text) = std::fs::read_to_string(&db_path) {
+                    sources.push((
+                        "db.at".into(),
+                        format!("{:x}", fnv1a(db_text.as_bytes())),
+                    ));
+                }
+            }
+        }
+        let endpoints: Vec<String> = api_module
+            .endpoints
+            .iter()
+            .map(|e| e.fn_name.clone())
+            .collect();
+        let scaffold = std::env::var("AUTO_A2R_BODY")
+            .map(|v| v == "0")
+            .unwrap_or(false);
+        let record = serde_json::json!({
+            "schema_version": 1,
+            "generated_at": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
+            "endpoints": endpoints,
+            "source_hashes": sources,
+            "scaffold": scaffold,
+        });
+        let _ = std::fs::write(rust_dir.join("generation.json"), record.to_string());
+    }
 
     Ok(())
 }
@@ -2445,19 +2528,36 @@ fn generate_api_rs(
     // PLAN-729 T-05: 文件端点 glue——method/headers 提取 + 共享宿主 serve +
     // 版本无关 FileReply → 本地 axum Response（生成 crate 的 axum 版本与
     // auto-lang 不同也成立：FileReply 不含 axum 类型）。
-    if api_module.endpoints.iter().any(|e| e.return_type.contains("FileResponse")) {
+    // PLAN-734 T-04：契约分类（假同名不命中）。
+    if api_module.endpoints.iter().any(|e| {
+        auto_lang::api::contract::ResponseKind::from_return_string(&e.return_type)
+            == auto_lang::api::contract::ResponseKind::File
+    }) {
         lines.extend(FILE_RESPONSE_GLUE.lines().map(|l| l.to_string()));
         lines.push("".to_string());
     }
 
     // PLAN-730 T-06: 上传端点 glue——Request → UploadRequest + 收据回复。
-    if api_module
-        .endpoints
-        .iter()
-        .any(|e| e.params.iter().any(|p| p.ty.contains("UploadRequest")))
-    {
+    // PLAN-734 T-04：类型身份判定（契约单源）。
+    if api_module.endpoints.iter().any(|e| {
+        e.params
+            .iter()
+            .any(|p| auto_lang::api::contract::is_upload_param(&p.ty))
+            || auto_lang::api::contract::ResponseKind::from_return_string(&e.return_type)
+                == auto_lang::api::contract::ResponseKind::Upload
+    }) {
         lines.extend(UPLOAD_GLUE.lines().map(|l| l.to_string()));
         lines.push("".to_string());
+    }
+
+    // PLAN-734 T-04（SD-04）：AUTO_A2R_BODY=0 = 显式 scaffold 模式——模板桩
+    // 而非真实业务体；头部标注防冒充同源。
+    if std::env::var("AUTO_A2R_BODY").map(|v| v == "0").unwrap_or(false) {
+        lines.insert(
+            0,
+            "// PLAN-734: SCAFFOLD MODE (AUTO_A2R_BODY=0) — handlers below are template stubs, NOT the api.at business bodies."
+                .to_string(),
+        );
     }
 
     // Determine primary type and generate Db type alias
@@ -5784,10 +5884,16 @@ pub fn get_item(id int) Item {
         let module = try_full_parse(api).expect("full_parse");
         let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false);
         std::env::remove_var("AUTO_A2R_BODY");
-        // With a2r disabled, falls back to CRUD template.
+        // PLAN-734 T-04：AUTO_A2R_BODY=0 = 显式 scaffold 模式——CRUD 模板可达
+        // 但必须带 SCAFFOLD 标注（不冒充同源；SD-04）。
         assert!(
             api_rs.contains("db.lock()"),
             "AUTO_A2R_BODY=0 should use CRUD template:\n{}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("SCAFFOLD MODE"),
+            "scaffold mode must be labeled:\n{}",
             api_rs
         );
     }
