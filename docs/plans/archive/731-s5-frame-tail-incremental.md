@@ -394,7 +394,12 @@ cargo tf 全量（预存对账零新增）+725 谱零回退（S1-S4 段和带）
   变更——预期）。
 - **archived**：docs/plans/archive/731-s5-frame-tail-incremental.md
   （git mv+status: archived；completion_kind: delivered）。
-- **cleaned**：（待清理后回填——见下收据补记章）
+- **cleaned**：wt-guard 双仓 clean（auto-lang+auto-down——reparse point 扫描
+  双绿）；auto-down worktree 经属主仓移除（auto-lang 侧 remove 报 not a
+  working tree 属预期——跨仓属主）、auto-lang worktree 移除、分支
+  plan-731-dev 删除（指向 30bda6831=已合并）、组目录 .wt/lang-731 rmdir
+  完成；主检出冒烟 cargo check -p auto-lang Finished 无错（落地后
+  master known-good）。
 - **部署观察**：主检出 target/release/auto.exe 与 gen/front 产物**陈旧**
   （predates 30bda6831——fold 缓存未入主检出 release 面）；消费面=下游
   auto-edit bench（其组树自建二进制，不受主检出陈旧影响）+本机桌面实机
