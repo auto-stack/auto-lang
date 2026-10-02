@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-727
-status: drafting
+status: execution_done
 feature_name: http-file-transfer-lifecycle
 author: [agent]
 created_at: 2026-10-02
@@ -20,7 +20,7 @@ new_spec_components:
 touched_goals: [GOAL-003]
 
 affects: [stdlib/auto/http.at, stdlib/auto/http.vm.at, crates/a2r-std/src/http, crates/auto-lang/src/a2r_std.rs, crates/auto-lang/src/trans/rust.rs, crates/auto-lang/src/vm/ffi, crates/auto-lang/src/vm/native.rs, crates/auto-lang/src/vm/engine.rs, crates/auto-lang/src/vm/native_catalog.rs, docs/specs/stdlib, docs/specs/a2r-std]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
@@ -176,56 +176,56 @@ Rust FileTransfer 最后拥有者 Drop、显式 cancel、终结等待 Future Dro
 
 ## 8. 执行步骤
 
-### T-01：冻结公共与兼容契约，验证文件提交原型
+### T-01：冻结公共与兼容契约，验证文件提交原型 ——【✅ 已完成】决策报告+独立 t01-probe 实编三场景（404 保旧/Windows 持读句柄替换/取消收据）
 
 - 依赖：724 archived；记录新基线/hash，核对 725/726 已落地差异，按 AGENTS 创建唯一实施 worktree。
 - 触面：§4 Specs、http.at/http.vm.at、stdlib.rs 文件 helper/native_catalog、a2r-std http/client/facade、trans/rust.rs、旧 plan349 与 a2r 011 样本。
 - 输出新 `docs/plans/reports/727-transfer-decision.md`：精确签名/结果 JSON、legacy 差异、64 位 ABI、取消/FS/commit 规则、独立预算与文件重试矩阵。做 FileTransfer 最小 VM/a2r 转译实编、Windows 保旧替换与有限 FS 并发原型。
 - 验证：最小脚本实际编译运行，新 API 不需泛化语言语义改动，替换故障保留旧文件。不能以调查未决删减 AC；若需公共语义超范围改动提交 needs_replan。覆盖 AC-01/03/04/05、SD-01/03/04。
 
-### T-02：闭合共享准入取消与实现文件传输执行骨架
+### T-02：闭合共享准入取消与实现文件传输执行骨架 ——【✅ 已完成】KernelInstance::execute 排队取消/总期限闭合 + plan727_execute_queued_* 双门禁；plan724 内核 20 例无回归
 
 - 依赖：T-01。
 - 文件：a2r-std/src/http/client.rs、新 `crates/a2r-std/src/http/transfer.rs`、Cargo.toml/必要 lock。
 - 先用 active=1 gate 验证现行 execute queued Drop/timeout；取消与总期限从提交/许可等待开始覆盖。实施 transfer typed state/Receipt/Error、独立许可、Client/runtime 复用、受限 FS 操作及观测，保持普通 HTTP/SSE 基线协议。
 - 验证：`cargo test -p a2r-std http_transfer`，旧 gate 不放行也能取消并回队列/许可；普通 execute 排队 deadline 有界；`cargo test -p a2r-std http_client` 无回归。覆盖 AC-02/05、SD-01/02。
 
-### T-03：增量下载、提交与严格续传
+### T-03：增量下载、提交与严格续传 ——【✅ 已完成】增量下载/staging 提交/严格续传/If-Range/416/200 重启；内核 23 例回环绿
 
 - 依赖：T-02。
 - 文件：新 transfer.rs（必要子模块 paths 在 T-01 登记），平台提交 helper；独立核心单测。
 - 流读/分块写/staging/唯一提交、同目标仲裁、response/header 验证、206/200/416 与 validator、64 位 offset；文件错误与清理结果进入 typed receipt。
 - 验证：`cargo test -p a2r-std http_transfer`；Range/故障/commit race 全绿、原目标字节符合 AC，应用缓冲不随文件扩大。覆盖 AC-02/03/04/05、SD-01/02。
 
-### T-04：流式 raw/multipart 上传与 builder 文件 part
+### T-04：流式 raw/multipart 上传与 builder 文件 part ——【✅ 已完成】流式 raw/multipart 上传 + 重试重开复核（source_changed）+ ureq 退役
 
 - 依赖：T-02。
 - 文件：a2r-std/src/http.rs/client.rs/transfer.rs，auto-lang/src/a2r_std.rs HTTP facade；后续 VM builder 接入在 T-05。
 - 路径描述到发送时开文件，支持 multipart file/text + raw；每次允许的重试重开/复核；缺失文件/读取失败不跳过 part；response 有界；旧直接 Rust raw/status adapter 与新 portable 面分开。
 - 验证：`cargo test -p a2r-std http_transfer`，native fixture 检查 binary wire/fields、缺文件/读失败/变更/重放及非 2xx。覆盖 AC-01/02/05/06、SD-01/02/03。
 
-### T-05：VM native、请求 scope 与进度桥接
+### T-05：VM native、请求 scope 与进度桥接 ——【✅ 已完成】VM 6 natives（9930-9935）+ scope 有类型组 + legacy 迁移（yield 模式）+ builder 流式 part；plan349 16/16
 
 - 依赖：T-03/04。
 - 文件：stdlib/auto/http.at/http.vm.at；vm/ffi/stdlib.rs、http_server.rs、必要 ffi/mod.rs 与新 `http_transfer.rs` VM adapter、native_catalog.rs、vm/native.rs/engine.rs。
 - 添加新 public/native 面；CALL_NAT 重入通知等待、typed transfer scope 归属/清理；旧 helper/进度迁移 producer，multipart builder 去掉 mp_file_data 全量预读/静默省略；不重做其它 ASYNC_STREAMS worker。
 - 验证：`cargo check -p auto-lang`、`cargo t plan727` 与 feature 门下 VM gate；scope/iterator 销毁取消、进度不热循环、原栈/返回类型与 native ID 无碰撞。覆盖 AC-01/02/05/06、SD-03/05。
 
-### T-06：a2r typed 文件接口发射与兼容 adapter
+### T-06：a2r typed 文件接口发射与兼容 adapter ——【✅ 已完成】transfer_* 发射（wait sync/async 分叉）+ builder multipart 方法 + 31_plan727 goldens + e2e 编译运行 4 件
 
 - 依赖：T-01、T-04/05。
 - 文件：trans/rust.rs、a2r_std.rs、a2r-std/src/http.rs；新测试/31_plan727 fixtures、旧 17_rust_std/011 样本与 tests/a2r_tests.rs 必要更新。
 - FileTransfer 类型与自由函数 sync/async lowering；multipart builder typed 方法；旧 helper 在 async 上下文不落阻塞面；合法整型转换保 legacy 显式 int 样本。用户同名方法不重写，受限同步 helper 边界明示。
 - 验证：`cargo t plan727` 与 scoped golden；新 sync/async、legacy、两 runtime 限定名 fixture 实际编译运行，64 位位置/bytes 无截断。覆盖 AC-01/02/06、SD-04。
 
-### T-07：文件故障、资源与三方端到端矩阵
+### T-07：文件故障、资源与三方端到端矩阵 ——【✅ 已完成】串行矩阵 6 例（If-Range/416/12MiB/chunked/饱和回基线）+ VM 腿 4 例 + parity/resources 报告
 
 - 依赖：T-02..T-06。
 - 新文件：a2r-std/tests/http_transfer.rs、auto-lang/src/tests/plan727_http_transfer_tests.rs；src/tests.rs 注册；报告 `docs/plans/reports/727-transfer-parity.md`、`727-transfer-resources.md`。
 - 按 §6 完整矩阵跑真实下载/上传/续传、FS 注入、提交竞态/资源计数与 slow health；不是只比状态字符串。大文件用确定数据/hash，offset 大值用稀疏/metadata 探针避免重载。
 - 验证：`cargo test -p a2r-std --test http_transfer -- --test-threads=1`、`cargo nextest run -p auto-lang --lib --features test-http-e2e --test-threads=1 http_e2e_plan727`；矩阵命令/退出码、缓冲公式与基线回收入报告。覆盖全部 AC、SD-01..05。
 
-### T-08：触面门禁、独立复审与规范沉淀提案
+### T-08：触面门禁、独立复审与规范沉淀提案 ——【✅ 已完成】触面门禁红逐名对照（零新增确定性红）+ verification 报告 + 警告差分归零
 
 - 依赖：T-01..T-07。
 - 按 §6 分级门禁，保留 plan707/724 scoped 回归；差异扫描无新增警告/调试输出/未批准延后。新 `docs/plans/reports/727-transfer-verification.md` 逐项绑定 AC/SD 与代码 revision；确定性红逐名与新基线比较，不笼统归环境。
@@ -233,6 +233,20 @@ Rust FileTransfer 最后拥有者 Drop、显式 cancel、终结等待 Future Dro
 - 验证：AC/SD 实证全覆盖；兼容/FS 取消限制明确，所有代码在计划 worktree，主检出只簿记。覆盖全部 AC/SD。
 
 ## 9. 复审记录
+
+### work 交接（2026-10-02）
+
+- stage: work
+- plan_id: PLAN-727
+- plan_revision: 1
+- outcome: pass
+- code_commit: plan-727-dev @ 1fa1a49a4（基线 b34852532；链：b1638a5e1 核心 / 38454a3bf VM 桥 / 0a5cec371 a2r 发射 / 8ba5199d2 矩阵 / 1fa1a49a4 验证报告）
+- worktree: D:/autostack/.wt/lang-727/auto-lang（分支 plan-727-dev，保留待 review/merge）；依赖 auto-down 兄弟 worktree（detached 895f8d0，只读解析）
+- task_ids: T-01..T-08 全部完成（current_step 8/8）
+- evidence: docs/plans/reports/727-transfer-decision.md（契约冻结+原型）、727-transfer-parity.md（三方矩阵 13 项）、727-transfer-resources.md（资源/取消收口）、727-transfer-verification.md（AC/SD 绑定+门禁红逐名对照）
+- blockers: 无
+- findings: P727-F1（预存，非本计划引入）——book_ch* 四例在基线提交全新 worktree 同红（book 仓 is 臂旧语法 `0 =>` vs 现行 `0 ->`，主检出通过为其 target 增量假象），修复归属 book 仓另案；plan707 client/stream 族 t 档 11 红为 master 预存污染族
+- next: review（/auto-plan:review 独立复审；SD-01..06 实证材料齐备，canonical Specs 落盘归 merge）
 
 ### 起草交接（2026-10-02）
 
