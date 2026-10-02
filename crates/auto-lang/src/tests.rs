@@ -84,8 +84,11 @@ mod book_listing_tests;
 mod vm_file_tests;
 #[cfg(feature = "test-aavm")] // Plan 568: vm_file_tests 内嵌 aavm 腿整体迁入
 mod aavm_runner_tests;
-#[cfg(feature = "test-aavm")] // Plan 564: 重内存测试守门(NEXTEST/AUTO_LANG_HEAVY_MEM 双通道,防裸 cargo test 全并发;aavm 系迁入 test-aavm 后随系门控)
-mod heavy_gate;
+// Plan 564: 重内存测试守门(NEXTEST/AUTO_LANG_HEAVY_MEM 双通道,防裸 cargo test
+// 全并发)。PLAN-726 T-02 拆除 test-aavm feature 门并升 pub(crate):machine_gate
+// 机器级单实例闸门为跨档跨树基建(画廊围栏在 lib.rs 顶层、churn-1m 在 crate::vm、
+// aavm 族在 crate::tests,三树共用)。
+pub(crate) mod heavy_gate;
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
 #[cfg(feature = "test-aavm")] // Plan 565 L1: 语料闸门 once-compiled runner(编译一次+File.read_text 注入)
 mod aavm2_corpus_runner;

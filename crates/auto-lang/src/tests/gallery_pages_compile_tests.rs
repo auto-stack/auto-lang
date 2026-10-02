@@ -49,6 +49,10 @@ fn widgets_gallery_all_front_pages_compile() {
         );
         return;
     };
+    // PLAN-726 T-02: 画廊围栏机器级单实例闸门——本测试 ~800s 单线程冷态、
+    // 每进程全量重编零缓存，两跑并发必然资源互毁（2026-09-30 实录）。
+    // SKIP 路径（solo 检出）不占资源，不取锁。
+    let _machine = crate::tests::heavy_gate::machine_gate("gallery-fence");
     let mut pages = Vec::new();
     collect_pages(&dir, &mut pages);
     assert!(

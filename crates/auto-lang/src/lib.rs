@@ -7388,7 +7388,7 @@ pub fn run_file_with_auto_mode(path: &Path) -> AutoResult<String> {
 
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests; // PLAN-726 T-02: heavy_gate 机器闸门跨档共用(crate::vm churn 族引用)
 
 
 

@@ -671,5 +671,8 @@ async fn str_churn_bounded() {
 
 #[tokio::test]
 async fn str_churn_bounded_large() {
+    // PLAN-726 T-02: 1M churn 机器级单实例闸门（tf 批量档独有，日常档
+    // default-filter 排除）——多跑并发即互毁，第二实例确定性红。
+    let _machine = crate::tests::heavy_gate::machine_gate("churn-1m");
     str_churn_bounded_impl(1_000_000).await;
 }

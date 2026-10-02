@@ -1,6 +1,13 @@
 // Book listing a2r transpilation tests
 // Verifies that main.at transpiles to match main.expected.rs
 // Run: cargo test -p auto-lang --lib -- book_listing
+//
+// PLAN-726 T-03 契约：book 仓（外部兄弟仓 D:/autostack/book）脏态
+// （git status --porcelain 非空）期间，本族对拍测试确定性 skip（打印原因），
+// 不产生需要人工定案的红——在途编辑期的红是复审对账税（PLAN-715 登记）。
+// 干净态行为零变化；git 不可用/路径非 git 仓 → 不经守卫，维持原有行为
+// （不新增失败面）。generate_book_expected 是书仓编辑期的再生成工作流，
+// 不经守卫。
 
 use crate::{
     error::AutoResult,
@@ -33,7 +40,52 @@ fn legacy_fallback() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../book/rust/listings")
 }
 
+/// PLAN-726 T-03：book 仓脏态守卫（进程内一次探测，OnceLock 缓存复用）。
+///
+/// 返回 `Some(概要)` = 脏态（对拍族应 skip）；`None` = 干净，或 git 不可用
+/// /路径非 git 仓/探测失败（维持现状，不新增失败面）。
+///
+/// 排除项：`?? …main.wrong.rs`——本族 mismatch 时的对比转储产物（测试自身
+/// 副作用），非书仓作者 WIP；不排除则红一次后书仓永久"脏"，后续恒 skip。
+fn book_repo_dirty() -> Option<String> {
+    static PROBE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    PROBE
+        .get_or_init(|| {
+            let out = std::process::Command::new("git")
+                .arg("-C")
+                .arg(book_listings_root())
+                .args(["status", "--porcelain"])
+                .output()
+                .ok()?;
+            if !out.status.success() {
+                return None;
+            }
+            let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+            let lines: Vec<&str> = stdout
+                .lines()
+                .filter(|l| {
+                    let t = l.trim();
+                    !t.is_empty()
+                        && !(t.starts_with("??") && t.ends_with("main.wrong.rs"))
+                })
+                .collect();
+            if lines.is_empty() {
+                None
+            } else {
+                Some(format!("{} dirty entries, e.g. {}", lines.len(), lines[0].trim()))
+            }
+        })
+        .clone()
+}
+
 fn test_book_listing(chapter: &str, listing: &str) -> AutoResult<()> {
+    if let Some(dirty) = book_repo_dirty() {
+        eprintln!(
+            "SKIP book_listing {chapter}/{listing}: book repo has WIP ({dirty}); \
+             in-flight book edits make listing goldens red (PLAN-715; PLAN-726 T-03 guard)"
+        );
+        return Ok(());
+    }
     let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let listing_dir = book_listings_root().join(chapter).join(listing);
 
