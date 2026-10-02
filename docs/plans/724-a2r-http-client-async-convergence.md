@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-724
-status: execution_done
+status: reviewed
 feature_name: a2r-http-client-async-convergence
 author: [agent]
 created_at: 2026-10-01
@@ -257,6 +257,22 @@ TCP 用 OS 临时端口、有限 accept/read/关闭截止时间与清理守卫�
   - 门禁：a2r-std 43/43、tv 162/162、tt 1831/1834（3 红=p053 族主检出同红复现，712 §10② 在案）、裸 t 红集与基线逐名一致（差异仅 e4 修复）、th 与基线同红（back_proxy/relay 帧时序在案）+ plan724 3 新绿；触面文件零新增警告/调试输出。
 - blockers: 无
 - next: review（`/auto-plan:review`；Spec delta SD-01..SD-06 待验证后由 merge 沉淀；复审通过前 worktree 保留）
+
+### review 裁定（2026-10-02）
+
+- stage: review
+- plan_id: PLAN-724
+- plan_revision: 1
+- outcome: pass
+- reviewed_commit: `6fc4a6023`（worktree `D:/autostack/.wt/lang-724/auto-lang`，分支 plan-724-dev，复审时零脏文件）
+- base_commit: `986e765ac`（diff 基；master 侧 96c876ce 仅 plan 簿记）
+- dependency_revisions: auto-down sibling @`895f8d0f9355`（detached 只读，供跨仓 path 解析，零修改）
+- spec_inputs: 决策报告 `docs/plans/reports/724-client-decision.md`、对拍 `724-client-parity.md`、资源 `724-resource-lifecycle.md`、验证 `724-verification.md`（均随 reviewed_commit 入库）；canonical `docs/specs/**` 全 diff 零触碰（0 文件）
+- 独立性声明：复审与实施同会话完成，裁定从工件重建（代码级核查 + 命令复跑），未采信实施期摘要。
+- acceptance_results: AC-01..AC-06 全部 **pass**（核查+复跑：两 facade 零 blocking/spawn_blocking/每请求线程（grep 实证仅文档注释）；async_http.rs 取消守卫对基线 diff=0 行；e4 register→consume→cancel 配对与未登记反例在码（stdlib.rs:10413-10511）；内核 status 先行/raw min 切分/try_lock async 安全在码；复跑 a2r-std 43/43、plan724 5/5、http_e2e_plan724 3/3、e4 0.4s 绿、plan712 2/2、tt 1832/1835（同 3 红=p053 族，主检出基线同红复现在案）；SD 目标路径 2 add 正确缺席/5 modify 目标存在）
+- findings: 无阻断发现。非阻断注记：①同会话复审局限（上述声明）；②p053/plan606 等 tt/t 日档红为 712 §10② 在案基线族，非本计划回归（主检出同红复现在案）。
+- evidence: 本计划 §8 各任务证据行 + `docs/plans/reports/724-verification.md` §1-§4；复审复跑命令与结果同 verification 报告档位，代码级核查点（async_http 零 diff、facade 零 blocking、e4 协议行号、内核修复点行号）见本记录
+- next: merge（`/auto-plan:merge`；Spec delta SD-01..SD-06 随 merge 沉淀）
 
 ## 10. 待澄清事项
 
