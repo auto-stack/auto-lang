@@ -4,6 +4,7 @@ mod a2c_tests;
 // PLAN-701 供④/供⑥: time 族三面对拍 + shell_recent 签名冒烟
 mod plan701_supply_probes;
 mod plan728_supply_probes; // PLAN-728: 文件后援分页 rope 探针族（710 形态）
+mod plan728_bench; // PLAN-728 T-08: 阶梯基准谱（#[ignore] 显式跑，JSONL 入 docs/reports）
 mod plan703_supply_probes;
 mod plan710_supply_probes;
 // PLAN-716 供料包: 组B 帧时间戳通道（VM/a2r 双轨+门控+开销两态）+组C 窗口投影

@@ -1,0 +1,7 @@
+{"meta": "PLAN-728 T-08 基准谱", "machine": "dev win32/NVMe", "build": "release（cargo test --release --lib plan728_bench --ignored，AUTO_LANG_P728_BENCH=50m,512m,1g）", "date": "2026-10-02", "note": "结构计量=树节点+页表+页缓存（契约 ≤12MB@1GB）；RSS 线由 measure_test_mem.py 进程峰值轮询另补（debug 档）"}
+{"tier": "50m", "bytes": 52428812, "lines": 1174122, "gen_ms": 69.2, "load_ms": 203.3, "answer_ms": 3.004, "digest": "0xb194c6589a9f3f4", "edit_50_ms": 23.1, "edit_max_ms": 0.491, "structural_resident_bytes": 227704, "save_ms": 37.1, "cache_bytes": 65744}
+{"tier": "512m", "bytes": 536870923, "lines": 11759272, "gen_ms": 716.8, "load_ms": 2010.5, "answer_ms": 0.828, "digest": "0x1560fb1d23d59562", "edit_50_ms": 7.0, "edit_max_ms": 0.53, "structural_resident_bytes": 1589697, "save_ms": 349.4, "cache_bytes": 67609}
+{"tier": "1g", "bytes": 1073741834, "lines": 23280107, "gen_ms": 1415.3, "load_ms": 4010.4, "answer_ms": 0.157, "digest": "0x17dcf2bba1afe59f", "edit_50_ms": 1.2, "edit_max_ms": 0.037, "structural_resident_bytes": 3033695, "save_ms": 656.9, "cache_bytes": 4279}
+{"tier": "typing-small-5m", "edits": 200, "p50_ms": 0.0178, "p95_ms": 0.0212, "max_ms": 0.0398, "note": "小文件臂逐键带（frozen ② 不劣化基线）"}
+{"tier": "typing-paged-1g", "edits": 200, "p50_ms": 0.1662, "p95_ms": 0.1753, "max_ms": 0.2859, "note": "1GB 后援形远端逐键带（fault-in 保温后帧预算内）"}
+{"tier": "1g", "rss": {"via": "scripts/measure_test_mem.py p728_bench_ladder --ignored（debug 档）", "peak_MB": 17, "tier_class": "LT", "note": "进程峰值含预扫瞬态与测试基线；稳态结构计量 3.03MB"}}
