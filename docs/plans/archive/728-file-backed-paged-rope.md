@@ -423,7 +423,11 @@ P728-1（703/710 先例）+供料档 §10 回执节预告位。
   P024 先例的外科投影+roundtrip 模式）。
   `archived`=docs/plans/archive/728-file-backed-paged-rope.md
   （completion_kind: delivered）。
-  `cleaned`=待回填（worktree/branch 移除后追加）。
+  `cleaned`=wt-guard 双树 clean（auto-lang+auto-down reparse 扫描零命中）→
+  worktree remove ×2 → branch -d plan-728-dev（was 69059dfaa=delivery 尖
+  已在 master 祖先链）→ 组目录清（残留=bench 首跑误路径空目录树
+  docs/reports，文件早经 mv 入仓，rm -rf 空树收尾）——worktree 注册表
+  零 lang-728 项复验。
   **部署观察**（PLAN-092 教训面）：auto-lang 无自体常驻部署产物——release
   二进制与 gen/front/vue/dist 均按需构建（本会话零构建请求）；落地后
   各消费面（auto-edit 桌面/下游 E2E）按需重建，stale 观察项=无（无运行
