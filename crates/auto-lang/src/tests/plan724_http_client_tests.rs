@@ -303,4 +303,80 @@ mod e2e {
         assert!(stdout.contains("auth status: 200"), "stdout: {stdout}");
         assert!(stdout.contains("auth body: echo:auth-payload"), "stdout: {stdout}");
     }
+
+    /// 第二 facade 腿（AC-01/AC-05）：`auto_lang::a2r_std::http`（生成服务
+    /// 限定名消费面，api_gen 发射 `auto_lang::a2r_std` 路径）——同内核
+    /// 执行、认证 tuple 形状、500 值语义、传输失败可观察。真 TCP。
+    #[test]
+    fn http_e2e_plan724_qualified_facade_kernel() {
+        use crate::a2r_std::http;
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            // 恰好 4 个落线请求（死端口臂不连接）——循环结束线程退出，join 有界。
+            for _ in 0..4 {
+                let Ok((mut s, _)) = listener.accept() else { break };
+                let mut buf = [0u8; 8192];
+                let Ok(n) = s.read(&mut buf) else { break };
+                if n == 0 {
+                    continue;
+                }
+                let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                // 认证头恒在（历史行为：空 key 也发 x-api-key: ""）——
+                // 500 臂按 key 值为空判定。
+                let key_empty = req.lines().any(|l| {
+                    let ll = l.to_ascii_lowercase();
+                    ll.starts_with("x-api-key:")
+                        && l["x-api-key:".len()..].trim().is_empty()
+                });
+                let (status, body) = if key_empty {
+                    ("500 Internal Server Error", "no-auth".to_string())
+                } else {
+                    ("200 OK", "qualified-ok".to_string())
+                };
+                let resp = format!(
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = s.write_all(resp.as_bytes());
+            }
+        });
+        let base = format!("http://127.0.0.1:{port}/api");
+
+        // async post（4-tuple）：x-api-key/anthropic-version 落线 → 200 "ok"。
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let b = base.clone();
+        let (status, body, error, kind) = rt.block_on(async { http::post(&b, "{}", "sk-q").await });
+        assert_eq!(status, 200, "qualified post status");
+        assert_eq!(kind, "ok");
+        assert!(error.is_empty());
+        assert_eq!(body, "qualified-ok");
+
+        // 500 值语义：无认证头 → 500 是错误形状值（kind=error，不 throw，712）。
+        let b2 = base.clone();
+        let (status, _body, error, kind) =
+            rt.block_on(async { http::post(&b2, "{}", "").await });
+        assert_eq!(status, 500);
+        assert_eq!(kind, "error");
+        assert_eq!(error, "HTTP 500");
+
+        // 同步面（同步桥接，测试线程无 runtime 上下文）。
+        let (scode, sbody) = http::post_sync(&base, "sync-p", "sk-s");
+        assert_eq!(scode, 200, "post_sync status");
+        assert_eq!(sbody, "qualified-ok");
+        let (bcode, _) = http::post_bearer_sync(&base, "sync-b", "tok");
+        assert_eq!(bcode, 200, "post_bearer_sync 走 authorization（200 臂）");
+
+        // 传输失败可观察（死端口）。
+        let (code, msg) = http::post_sync("http://127.0.0.1:1/dead", "x", "k");
+        assert_eq!(code, 0, "传输失败 status 0");
+        assert!(!msg.is_empty(), "传输失败带错误信息");
+
+        server.join().unwrap();
+    }
 }
