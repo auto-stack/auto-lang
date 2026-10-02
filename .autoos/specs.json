@@ -1241,6 +1241,16 @@
             "delivery"
           ],
           "file": "docs/plans/727-http-file-transfer-lifecycle.md"
+        },
+        {
+          "id": "P729-8",
+          "title": "HTTP 服务端文件响应交付摘要（PLAN-729）",
+          "content": "PLAN-729 交付：服务端文件下载以普通 api.at FileResponse 返回面覆盖 VM 默认 HTTP 与生成 Rust/Axum 服务（同一执行代码：a2r-std server_file 描述符+纯协议决策单源；auto-lang http_file_service 宿主执行=受限打开/准入/有界 pump/idle watchdog/恰一次收口，版本无关 FileReply 投影 axum 0.7/0.8）；VM 编组（ApiBody::File+声明返回类型门+shim 9936+HEAD 两遍路由+405+scope 代持两期限交接）；trans lowering+类型映射+api_gen 主/委派文件分支（诊断不落模板）+api targets（axum Response/TS Response/Tauri Unsupported）+back_proxy 501；golden 32_plan729+VM e2e 15 测（基本/12MiB hash/Range/条件/路径安全/方法+int 门/async/download_name/health/路径替换/auth+open 计数/半关闭/配额/断连/727 五态互通）+生成服务实编 e2e（真实产物 cargo build+wire+12MiB+async）。债务 P729-D1..D5（shutdown drain wire/legacy wire 档/端口重绑/排队取消直接观测/权限 wire）。证据：reports/729-server-files-{decision,protocol,lifecycle,parity,verification}.md。",
+          "tags": [
+            "plan-729",
+            "delivery"
+          ],
+          "file": "docs/plans/729-http-server-file-responses.md"
         }
       ]
     },
@@ -5077,6 +5087,30 @@
             "docsha:afd7a6142ce6"
           ],
           "file": "docs/specs/auto-lang/ui/design/paged-rope.md"
+        },
+        {
+          "id": "P729-1",
+          "title": "HTTP 服务端文件响应：GET/HEAD/单区间/条件请求/受限根目录——stdlib 服务端文件契约（PLAN-729 SD-01）",
+          "content": "PLAN-729 交付落账（canonical 唯源=docs/specs/stdlib/design/http-server-files.md）。新 FileResponse 公共面（http.file_response(root, rel, options) 零 I/O 描述符；严格 options：content_type/download_name/disposition/etag 强验证器，mtime+len 永不冒充强 ETag）；协议子集（GET 200/Accept-Ranges/零字节不变 1；HEAD 同表示 metadata 忽略 Range；单区间 206/416 bytes */len/未知单位畸形多区间忽略→200；前置条件 If-Match>If-Unmodified-Since>If-None-Match>If-Modified-Since 先于 Range；If-Range 强 etag/日期形态）；受限根目录打开（词法校验拒 ../绝对/drive/UNC/NUL/DOS 设备名 + 逐段 no-follow walk 检出 junction/symlink + Windows 终段 OPEN_REPARSE_POINT + 同句柄 metadata/seek/read 钉住表示）；配额与收口（active 4/queue 16/64KiB 读驱动块 ≤2 在途/fs_ops 4/prepare 30s/idle watchdog 60s 独立计时/env AUTO_HTTP_FILE_*；排队零句柄零缓冲，队满即时 503+Retry-After；恰一次收口 finish hook）；错误映射（404 缺失非普通文件/403 越界链接设备权限/500 坏 options 内部/503 队满超时）；支持矩阵（VM+生成 Rust ✅/TS Response ✅/Tauri+back_proxy 明确拒绝/legacy 500 诊断/Server.static 占位）；版本无关 FileReply 单源投影（axum 0.7/0.8 两代消费端）。",
+          "tags": [
+            "plan-729",
+            "sd-01",
+            "stdlib",
+            "docsha:d2b94da7c3b5"
+          ],
+          "file": "docs/specs/stdlib/design/http-server-files.md"
+        },
+        {
+          "id": "P729-2",
+          "title": "FileResponse a2r 降级契约（PLAN-729 SD-06）",
+          "content": "PLAN-729 交付落账（canonical 唯源=docs/specs/auto-lang/trans/design/http-file-response-lowering.md）。构造发射 http.file_response → a2r_std::http::file_response（三实参 expr_as_str，options 字面量字节保真；sync/async 同形零 I/O）；类型映射 FileResponse → a2r_std::http::FileResponse（参数/返回位全限定，返回位具体类型不产 impl）；api_gen 文件分支（声明返回类型含 FileResponse 为门：Response 签名+method/headers 提取器+尾 return __file_reply await；委派路径补 Path 提取；转译失败/契约缺口=诊断 500 不落模板；GET 自动 .head()；非 GET/HEAD 405；同名用户函数不重写）；golden 32_plan729 冻结。",
+          "tags": [
+            "plan-729",
+            "sd-06",
+            "trans",
+            "docsha:ae933b5157c4"
+          ],
+          "file": "docs/specs/auto-lang/trans/design/http-file-response-lowering.md"
         }
       ]
     },
@@ -8150,6 +8184,17 @@
             "commit:1fa1a49a4"
           ],
           "file": "docs/plans/727-http-file-transfer-lifecycle.md"
+        },
+        {
+          "id": "P729-7",
+          "title": "PLAN-729 复议 pass 收据（R1 needs_fix 25 项→R2 pass @ae414a45b）",
+          "content": "复审两轮：R1 needs_fix（差距猎捕 25 项：blocker2=异步 ~FileResponse 零覆盖/不支持形态零测试+验证报告三处失实；major11；minor8）→work 修复循环（异步 wire/生成/发射三面、TS/Tauri 生成串、back_proxy 真 TCP 501、health 20×<500ms+基线、契约缺口诊断不 fallback、生成腿 12MiB hash、If-Unmodified-Since/download_name/路径替换 rename/半关闭 wire、open 计数+auth middleware、idle watchdog 单元、在途块公式、HEAD 两遍优先级、PermissionDenied→403、log 宏、SD-01 四处、报告失实修正；G-14/15/18+legacy wire+权限 wire 归 KNOWN-DEBT P729-D1..D5）。R2 pass @ae414a45b（实现会话复审局限已声明，裁定从工件重建：裸 cargo t 红集与 master 基线 14 名逐名一致+1 瞬态 plan707 两侧单跑皆绿；tv 162/162；http_e2e_plan729 15/15；生成 e2e 12MiB+async；api_gen 36；th 2 红均为基线在案）。",
+          "tags": [
+            "plan-729",
+            "review",
+            "commit:ae414a45b"
+          ],
+          "file": "docs/plans/729-http-server-file-responses.md"
         }
       ]
     }
