@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-728
-status: execution_done
+status: reviewed
 feature_name: 文件后援分页 rope 实施件（auto-edit 供⑮ 承接——不可变基底页表+编辑覆盖层+LRU 内存上界+异步预取+保存合并+消费方 overlay 意识+512MB 拒绝位退役弹药）
 author: [agent]
 created_at: 2026-10-02T15:06:46+08:00
-updated_at: 2026-10-02T17:55:00+08:00
+updated_at: 2026-10-02T18:30:00+08:00
 plan_revision: 1
 current_step: 11
 total_steps: 11
@@ -379,6 +379,33 @@ P728-1（703/710 先例）+供料档 §10 回执节预告位。
   与 ui_gen 与 Cargo 实际零 diff；tf 门改裸 cargo t 批量归档；量级
   注记 1GB 装载 4.0s 在降级预案 5s 界内未触发）。`blockers`: 无。
   `next: review`（独立复审→merge；worktree lang-728 组保留待复审）。
+
+
+- 2026-10-02 复审（同会话独立性局限已声明——结论由工件重建：fresh 门禁复跑
+  +diff 级取证，不采信执行摘要）：`stage: review`，PLAN-728，plan_revision 1。
+  `reviewed_commit`: plan-728-dev@c19fec79f（3bc929ca0+c19fec79f 两笔）。
+  `base_commit`: master@8bf65335d。`dependency_revisions`: auto-down sibling
+  detached@895f8d0（组内解析，零依赖改动）。`spec_inputs`:
+  docs/specs/auto-lang/ui/design/paged-rope.md（worktree 在档，随 merge 落
+  master）+rope-subtree-hash.md（703 册，扩展非取代）。
+  `acceptance_results`: AC-01..09 全 **pass**（fresh 复现：p728 全族
+  39/39 绿@worktree；裸 cargo t 全日常面两跑——工_session 54.7s 11 红全预存
+  对账+复审跑 55.2s 14 红=11 已知+3 负载 flake 三重定类〔基面 scoped 绿/
+  worktree scoped 绿/前跑全脸绿〕+ffi_dual_018 一次 120s TIMEOUT scoped 1.6s
+  绿同判；frozen 取证：rope.rs 公共 API 零删除零改签〔diff 实证，仅增量
+  5 面〕+装载臂 0 语法引用〔grep 实证〕+常数五项与 SD-01 逐项一致+
+  affects 收敛〔vm/native.rs、ui_gen/rust.rs、Cargo.toml 零 diff〕）。
+  `findings`: **P728-R1**（low，非阻塞）set_doc_file_backed 装载位未挂
+  prefetch_around(0)——头窗口装载时已同步驻留，收益归下游 S2 滚动消费件，
+  对称保温随消费件加；**P728-R2**（info）ffi_dual_018/plan484×2/plan502
+  全脸偶发红=负载敏感 flake（plan707/REG-2 同模式），非 728 归因，批量
+  回归档追踪；**P728-R3**（low）AC-07「big 绕语法臂」为结构断言（装载臂
+  零语法引用+高亮界限=2MB 窗口），运行时强化断言随下游消费件。
+  `evidence`: 任务表 T-01..T-10 逐项命令/结果+docs/reports/p728-bench.jsonl
+  （仓内可解析）+探针/单测族名（merge 后 master 可复跑）。规范增量复审：
+  SD-01=现行行为+持久决策（非执行日记）✓；supersedes 空=扩展非取代（703
+  册仍有效，delta 表 before/after 已界）✓；touched_goals 空+书面解释（供料
+  驱动面无 GOAL-NNN 锚，前注在案）✓。`next: merge`。
 
 ## 10. 待澄清事项
 
