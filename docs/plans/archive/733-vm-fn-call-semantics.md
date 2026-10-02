@@ -273,9 +273,15 @@ T-02（同计划内由调查结论选择,不另开计划）。
 - 批量回归到期判定：**未到期**——回执 last_covered_plan_id=726
   （2026-10-02T05:25Z,~11h 新鲜<48h）；其后落地 727/728/729 与本计划
   733 均非 5 整除（733%5=3）；无 L0 fix-* 合入记录
-- 部署观察：主检出 `target/debug/auto.exe` 落地前为 2026-10-02 13:06
-  构建（落后本修复）——默认 AUTO_EXE 消费面（auto-musk 探针/演示按
-  主检出 debug 路径解析）需重建,见 cleaned 后观察项
+- **cleaned**：双 worktree wt-guard clean → `auto-down` 兄弟经其主仓
+  移除 + `auto-lang` worktree 移除 + `plan-733-dev` 分支删（was
+  550895b68）+ 组目录 `.wt/lang-733/` 移除；`git worktree list` 零 733
+  残留
+- 部署观察（cleaned 后执行）：主检出 `target/debug/auto.exe` 已随 merge
+  重建（2026-10-03 00:22,129,796,096 B,含 PLAN-733 全部修复）——默认
+  AUTO_EXE 消费面（auto-musk 探针/演示按主检出 debug 路径解析）现势；
+  release 档无独立消费面（消费方均自源构建）,web bundle 不适用（本仓
+  非 musk 型部署面）
 
 ## 10. 待澄清事项
 
