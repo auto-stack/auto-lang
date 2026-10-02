@@ -179,6 +179,35 @@ impl VMConvertible for String {
             return Ok(val.to_string());
         }
 
+        // PLAN-734 T-07（E2 根修）：i64/bigint 值按数值转十进制——此前落
+        // `format!("{:?}", nv)` 输出原始 NV 位型十进制（json.encode 大整数
+        // 损坏的编组层根因；48 位内联 + 堆装箱两态）。
+        if auto_val::is_i64(nv) {
+            return Ok(auto_val::decode_i64(nv).to_string());
+        }
+        // 算术 lane 可能产出 U64 形态（如 5000000000+1）——同按数值转十进制。
+        if auto_val::is_u64(nv) {
+            return Ok(auto_val::decode_u64(nv).to_string());
+        }
+        if auto_val::is_bigint(nv) {
+            let id = auto_val::decode_bigint_handle(nv) as u64;
+            if let Some(obj) = vm.get_heap_object(id) {
+                if let Ok(g) = obj.read() {
+                    if let Some(b) = g
+                        .as_any()
+                        .downcast_ref::<crate::vm::heap_object::BigIntData>()
+                    {
+                        return Ok(if b.is_unsigned {
+                            format!("{}", b.as_u64())
+                        } else {
+                            format!("{}", b.as_i64())
+                        });
+                    }
+                }
+            }
+            return Ok("0".to_string());
+        }
+
         Ok(format!("{:?}", nv))
     }
 

@@ -701,6 +701,32 @@ pub fn nv_to_json(
         let id = auto_val::decode_list(nv) as u64;
         return heap_object_to_json(vm, id, depth);
     }
+    // PLAN-734 T-03（E3 修复）：i64/u64/BigInt 全域——48 位内联与堆装箱均按
+    // 数值序列化（此前无臂落 null——i64 响应体损坏为 "null"）。
+    if auto_val::is_i64(nv) {
+        return Some(auto_val::decode_i64(nv).to_string());
+    }
+    if auto_val::is_u64(nv) {
+        return Some(auto_val::decode_u64(nv).to_string());
+    }
+    if auto_val::is_bigint(nv) {
+        let id = auto_val::decode_bigint_handle(nv) as u64;
+        if let Some(obj) = vm.get_heap_object(id) {
+            if let Ok(g) = obj.read() {
+                if let Some(b) = g
+                    .as_any()
+                    .downcast_ref::<crate::vm::heap_object::BigIntData>()
+                {
+                    return Some(if b.is_unsigned {
+                        format!("{}", b.as_u64())
+                    } else {
+                        format!("{}", b.as_i64())
+                    });
+                }
+            }
+        }
+        return Some("0".to_string());
+    }
     // i32: either a plain integer OR a heap/array object ID stored as i32.
     // Heap object ids start at 4_000_000 (heap_object_id_gen); array literals
     // are ListData<Value> in heap_objects too (Plan 390 §15 H3b). Rather than

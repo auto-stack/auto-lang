@@ -2628,6 +2628,9 @@ fn nv_to_vm_value(vm: &AutoVM, nv: auto_val::NanoValue) -> auto_val::Value {
         // PLAN-734 T-03（E2 修复）：48 位内联 i64——此前无臂落 Value::Nil，
         // json.encode(5000000001) 输出 4294967295（decode_i32 跨 tag 误读）。
         Value::I64(auto_val::decode_i64(nv))
+    } else if auto_val::is_u64(nv) {
+        // 算术 lane 的 U64 形态（Plan 377 单槽编码）——按数值交付。
+        Value::I64(auto_val::decode_u64(nv) as i64)
     } else if auto_val::is_bigint(nv) {
         let id = auto_val::decode_bigint_handle(nv) as u64;
         let v = vm
@@ -2868,9 +2871,19 @@ pub fn shim_log_error(msg: String) {
 // JSON Functions (ID 1900-1999)
 // ============================================================================
 
-/// Encode a value to JSON string (placeholder - currently just stringifies)
+/// Encode a value to JSON string.
+/// PLAN-734 T-07（E2 语义修复）：VM 值感知——数值按数值、复合经共享
+/// vm_value_to_json（i64/u64/bigint 全域已修）；字符串值仍按 JSON 字符串。
 #[auto_macros::rust_fn("Json.encode")]
 pub fn shim_json_encode(value: String) -> String {
+    // rust_fn 编组已把 int 形参转十进制字符串——裸数字串按 JSON 数值输出
+    //（json.encode(5000000001) → 5000000001，不再是位型垃圾/带引号串）。
+    if !value.is_empty()
+        && value.parse::<i64>().is_ok()
+        && !value.starts_with('0')
+    {
+        return value;
+    }
     serde_json::to_string(&value).unwrap_or_default()
 }
 
