@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-732
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed            # drafting → executing → execution_done → reviewed → archived
 feature_name: autodown 编辑壳正文内链激活供给（jade-edit PLAN-037 上游供料 U-01..06）
 author: [agent]
 created_at: 2026-10-02
@@ -187,6 +187,17 @@ Rust（`crates/auto-lang/src/ui/autodown_editor/**`、`view.rs`、`aura_view_bui
 - blockers: 无（四未知全冻结、七验收全有证据、无未闭合澄清）。
 - 实现期微调（均在授权范围内，未弱化任何 AC）：①完整点击门落 core handle_input（计划 §2.3 文案为「widget 层」——实际落点是 widget 两鼠标臂的 DocInput 汇聚点，语义同为「按下/抬起两事件臂都落同一链接区间才激活」且与生产共一实现，SD-01 §3 在案）；②`DocInput::MouseReleased` 补 x,y 字段（iced ButtonReleased 本体不带位置，widget 层取 cursor.position——计划未预见的小扩展，MCP 拖拽合成臂同步适配）；③首帧行为发现：`autodown_editor_sync` 槽位缺席时 no-op（预存事实，非本计划引入），六环语料测试显式两段降层模拟生产次帧节律（ADR-27 注记）。
 - next: review（/auto-plan:review）——复审门=裸 `cargo t` 已跑（红集对拍在案）+触面档评估已记录（零触发）；review 后 merge 收口回执终稿指纹。
+
+### review 阶段记录（2026-10-03，实施同会话复审——按技能要求从工件重建裁决，独立性受限已在节首声明）
+
+- stage: review | plan_id: PLAN-732 | plan_revision: 1 | outcome: **pass**
+- reviewed_commit: `10abc4500e024291f424337f47cd7cc819717b90`（worktree clean，无未提交实现改动）| base_commit: `1cabfeb89fe1d276bcca0c8e36a87a7d304ed191` | dependency_revisions: auto-down 兄弟 detached@895f8d0（零改动零消费）| spec_inputs: ui/architecture.md（ADR 日志至 ADR-26）、jade 契约冻结件 037-native-link-contract.md（对岸验收文本）
+- 验证重跑（本基线）：`cargo nextest run -p auto-lang --lib --features autodown plan732 test_autodown_editor_on_link` = **15/15 绿**；裸日常档（--lib+schema_drift+docs_gen+component_registry_test, ui-iced, no-fail-fast）红集与 master@26a5af68e 基线 **diff 逐名全等（exit=0，14 预存红，本次零 flake 触发）**；diff 扫描零 TODO/FIXME/workaround/unimplemented（「autodown」含「todo」子串的 73 处误报已甄别）；fmt 差异仅预存 examples/。
+- acceptance_results: AC-01 ✅（C 组 3 测：语义/样式 LINK_COLOR/非整块矩形/折行分段/负例）/ AC-02 ✅（W 组：恰一次+七负例+越界/拖选 widget 层+陈旧命中；既有族回归=日常档逐名全等）/ AC-03 ✅（L 组 known-answer 三层+六环语料到 VM handler state 逐值+Vue 同名绑定经真实 parser 装配验证）/ AC-04 ✅（双实例隔离+结构性 grep 零全局槽+pending 为 per-core 字段 core.rs:713）/ AC-05 ✅（UserInterface 生产事件泵+__mcp_click 零改 diff+负例锚+回执指纹）/ AC-06 ✅（map/cloning/缺省 None 单测+scroll_sync 双臂+零新红）/ AC-07 ✅（五件套回执在案，不冒称已联验）。
+- findings: 无阻塞项。两条非阻塞观察：F-NB1 `autodown_editor_sync` 首帧 no-op 预存事实已登记（ADR-27/§10，潜在改进归后续）；F-NB2 work 记录「13 测」为 filter 组合计数口径，复审重跑 15/15（含六环语料+payload mod）为本基线权威数。
+- spec delta 冻结：SD-01 `docs/specs/auto-lang/ui/design/autodown-wikilink.md` SHA256 `8bf534bccb162b23a3ece0caf5696d0e54714b288dd01ddb6bed4b8fbcf282ae`（131 行，add）；SD-02 `ui/architecture.md` ADR-27（+7 行，modify，@10abc4500）。文本=当前行为与持久裁定（非执行日记），与 ADR-25/26 格式同构。frontmatter：supersedes=[]（新供给面无替代）、new_spec_components=SD-01+SD-02、touched_goals=[] 带书面解释（731/728 先例）。
+- evidence: worktree 仓内工件（测试源码/语料/规范/回执均随 10abc4500 落 git，merge 后于 master 持久）；命令摘录见上。binary 指纹 v0.4.2-2638-g713119788-dirty/2287A536…AD2（回执含不含本供给代码的诚实边界）。
+- next: merge——合入 master、specs.json/索引回写、归档、worktree 组清理；merge 后外部重建 binary 由 jade T-02 按其契约 §1 重绑复验。
 
 ## 10. 待澄清事项
 
