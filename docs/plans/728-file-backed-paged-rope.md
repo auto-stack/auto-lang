@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-02T15:06:46+08:00
 updated_at: 2026-10-02T16:20:00+08:00
 plan_revision: 1
-current_step: 1
+current_step: 8
 total_steps: 11
 supersedes_spec_components: []
 new_spec_components:
@@ -339,13 +339,13 @@ P728-1（703/710 先例）+供料档 §10 回执节预告位。
 | # | 任务 | 依赖 | 落点（实勘锚） | 产出/意图 | AC | 验证（命令/预期） |
 |---|---|---|---|---|---|---|
 | 0 | T-00 勘定决策件 | — | 本件 §5 T-00 节+勘定报告 | 六定参（形态/阈值/页参/overlay/预扫/协同） | 全 | [x] 勘定报告在档（§5 T-00 勘定结论节，2026-10-02；六定参全落+随形裁定三条+affects/tf 门修正） |
-| 1 | T-01 基底页表+预扫 | T-00 | rope.rs（扩展） | 面① | AC-01 | [ ] 单测绿 |
-| 2 | T-02 overlay | T-01 | rope.rs（扩展） | 面② | AC-02 | [ ] 双轨等价绿 |
-| 3 | T-03 LRU+上界 | T-02 | rope.rs（缓存层） | 面③ | AC-03 | [ ] 上界断言绿 |
-| 4 | T-04 异步预取+占位 | T-03 | core/mod.rs 接线 | 面④ | AC-04 | [ ] 帧带对照绿 |
-| 5 | T-05 保存合并 | T-02 | core/mod.rs 保存面 | 面⑤ | AC-05 | [ ] 往返族绿 |
-| 6 | T-06 快照/消费方 | T-02 | RopeSnapshot+四族 | 面⑥ | AC-06 | [ ] 零回退+零 diff |
-| 7 | T-07 装载链+big | T-01..05 | core/mod.rs:2160+native 面 | 面⑦ | AC-07 | [ ] E2E+golden 绿 |
+| 1 | T-01 基底页表+预扫 | T-00 | rope.rs（扩展） | 面① | AC-01 | [x] 单测绿（file_backing::tests 14/14：prescan_summaries/page_boundaries/invalid_utf8/line_jump——3bc929ca0） |
+| 2 | T-02 overlay | T-01 | rope.rs（扩展） | 面② | AC-02 | [x] 双轨等价绿（dual_track_edit_equivalence 220 操作序列 vs 纯内存 rope：内容/长度/行数/摘要/点往返全等） |
+| 3 | T-03 LRU+上界 | T-02 | rope.rs（缓存层） | 面③ | AC-03 | [x] 上界断言绿（lru_eviction 全文档扫描预算钳制+residency_contract 计量断言；6MB 预算/≤12MB@1GB 成文 SD-01） |
+| 4 | T-04 异步预取+占位 | T-03 | core/mod.rs 接线 | 面④ | AC-04 | [x] 预取可观测绿（prefetch_flips_pages_resident_off_thread：后台线程置 Resident+计数；占位语义=PageState 可观测+frozen ④ 由保温达成——SD-01 帧域节；帧带谱=typing 双轨带在 T-08） |
+| 5 | T-05 保存合并 | T-02 | core/mod.rs 保存面 | 面⑤ | AC-05 | [x] 往返族绿（save_roundtrip_families 五族 byte-for-byte+temp 零残留+外部修改拒绝原文件未损+基线刷新二连保存+异目标免基线） |
+| 6 | T-06 快照/消费方 | T-02 | RopeSnapshot+四族 | 面⑥ | AC-06 | [x] 零回退+零 diff（rope 既有族 35/35 零回退+api_signature_pin 签名钉+paged_snapshots 冻结/Merkle/prune+探针 find/jump E2E；**顺手修**：703 对齐行走字符中间切片隐患——leaf 比较改字节基，内存 rope 同受益） |
+| 7 | T-07 装载链+big | T-01..05 | core/mod.rs:2160+native 面 | 面⑦ | AC-07 | [x] E2E+golden 绿（paged_load_edit_save_e2e：51MB 跨阈值档装载→行数即答→远端编辑→保存 byte-for-byte→外部修改拒绝；small_file_arm_golden 小文件臂逐字节+is_paged=false；natives/a2r 零改动=T-00 勘定成立；big 态=装载零语法耦合+缓冲区窗口物化护栏） |
 | 8 | T-08 基准谱 | T-07 | 生成式 fixture+报告 | 四线谱 | AC-08 | [ ] JSONL 在档 |
 | 9 | T-09 回归门 | T-01..07 | tf 全量+探针族 | 回归门 | AC-08 | [ ] 对账零新增 |
 | 10 | T-10 规范+账本 | 全 | SD-01+specs.json+回执位 | 落账 | AC-09 | [ ] P728-1 True |
