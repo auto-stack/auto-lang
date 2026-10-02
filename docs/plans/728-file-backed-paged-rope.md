@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-728
-status: executing
+status: execution_done
 feature_name: 文件后援分页 rope 实施件（auto-edit 供⑮ 承接——不可变基底页表+编辑覆盖层+LRU 内存上界+异步预取+保存合并+消费方 overlay 意识+512MB 拒绝位退役弹药）
 author: [agent]
 created_at: 2026-10-02T15:06:46+08:00
