@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-733
-status: reviewed
+status: archived
 feature_name: VM 运行时模块级 fn 调用返空语义修复（store handler 域/computed 族）
 author: [agent]
 created_at: 2026-10-02T22:10:00Z
@@ -245,6 +245,37 @@ T-02（同计划内由调查结论选择,不另开计划）。
   `cargo tv` 162/162；p733 2/2）；收据文件在审后仍核读存在
 - next: merge（/auto-plan:merge 在 lang-733 worktree 执行;SD-01/SD-02
   canonical 沉淀+ledger 刷新+KNOWN-DEBT P733-R1/R2 已随本记录落账）
+
+### merge 阶段收据（PLAN-733:r1，2026-10-02）
+
+- stage: merge | plan_id: PLAN-733 | plan_revision: 1 | outcome: pass
+  （completion_kind: delivered）
+- **prepared**：审基=review 记录（reviewed_commit 6bd9fa174 @ r1 pass）；
+  canonical delta 已在审内提交（ADR-24/design/vm-fn-call-semantics.md/
+  overview 登记）；rebase master（102d20652→481bcb0b9、6bd9fa174→
+  0b5c8758d，git range-diff 2/2 全等=补丁等价证明；基座增量仅 docs/plans
+  簿记,crates/ 内容与受审树逐字节一致免重验）；投影提交 550895b68
+  （projection-only descendant → delivery commit：vm/plans.md 733 行/
+  goals.md GOAL-007 关联 733/specs.json upsert P733-1/2/3+INDEX 再生）
+- **landed**：`wt-guard.sh D:/autostack/.wt/lang-733/auto-lang` clean →
+  主检出 `git merge --ff-only plan-733-dev` 成功（无合并提交）；master
+  tip==plan-733-dev==**550895b68**；主检出冒烟 known-good：`p733` 2/2 +
+  `cargo tv` 162/162（landed tip 上重跑）
+- **ledger_refreshed**：workspace=D:/autostack/auto-lang（tracked
+  `.autoos/specs.json`,worktree 内 upsert 随 delivery 落地）;verified
+  item IDs：P733-1（architecture）/P733-2（designs）/P733-3（reviews,
+  file 随归档指 archive/ 路径）；source=canonical docs/specs/auto-lang/
+  vm/{architecture.md,design/vm-fn-call-semantics.md}；INDEX.md 再生
+  （26 projects,内容无漂移）
+- **archived**：git mv → docs/plans/archive/733-vm-fn-call-semantics.md；
+  frontmatter status: archived；provenance（review 记录/收据/KNOWN-DEBT
+  P733-R1/R2/目标 GOAL-007）链接闭合
+- 批量回归到期判定：**未到期**——回执 last_covered_plan_id=726
+  （2026-10-02T05:25Z,~11h 新鲜<48h）；其后落地 727/728/729 与本计划
+  733 均非 5 整除（733%5=3）；无 L0 fix-* 合入记录
+- 部署观察：主检出 `target/debug/auto.exe` 落地前为 2026-10-02 13:06
+  构建（落后本修复）——默认 AUTO_EXE 消费面（auto-musk 探针/演示按
+  主检出 debug 路径解析）需重建,见 cleaned 后观察项
 
 ## 10. 待澄清事项
 
