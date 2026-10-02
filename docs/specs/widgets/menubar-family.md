@@ -5,12 +5,13 @@
 ## 契约
 
 - **schema**：15 元素全量注册（`schema/aura.at` 权威面；`iced: component` 如实注记，root `menubar` 为 builtin_widget 其余 web_component）。schema.rs 硬编码 fallback 照 menubar_checkbox_item 先例不镜像新增件（围栏 rs 维度防孤儿）。
-- **vue 臂**：全 kind 发射 reka-ui 标准件（`@/components/ui/menubar`，16 资产在库）。radio-group `value` → `:model-value` 单向绑定（回写走 radio-item onclick，与 checkbox `:checked` 同源语义）；item 的 shortcut prop 与独立 `menubar-shortcut` 子件均发射 `MenubarShortcut`（muted token——硬编码 zinc span 已退役）；静态 `disabled` bool → `disabled` 属性。
+- **vue 臂**：全 kind 发射 reka-ui 标准件（`@/components/ui/menubar`，16 资产在库；**烘焙偏离上游 2026-10-02**：trigger/sub-trigger 补 `hover:bg-accent hover:text-accent-foreground`，item/checkbox/radio/sub-trigger 补 `data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground`——上游 trigger 无 hover、item 仅 `focus:` 钩子，桌面惯例悬停应有反馈且 data-highlighted 比 focus 稳，见 SNAPSHOT.md baked patch）。radio-group `value` → `:model-value` 单向绑定（回写走 radio-item onclick，与 checkbox `:checked` 同源语义）；item 的 shortcut prop 与独立 `menubar-shortcut` 子件均发射 `MenubarShortcut`（muted token——硬编码 zinc span 已退役）；静态 `disabled` bool → `disabled` 属性。
 - **registry**：15 spec 别名纪律（`menu-bar-*` 官方 kebab / `menubar_*` schema snake / `menubar-*` DSL kebab）；vue 映射自 schema overlay 按折叠键灌入。
 - **VM 臂（双解释态同源）**：
   - 面板/项/分隔线/trigger 配色全量消费语义 token：`bg-popover`/`text-popover-foreground`/`border-border`/`bg-border`/`text-foreground`/`text-muted-foreground`（`Color::Popover/PopoverForeground` 独立投影 registry 双盘，浅色白板深字可读——字面 `#16171B`/zinc 族全退役）。
   - 开合走 `MENUBAR_OPEN` 全局注册表（`__MenubarToggle`/`__MenubarClose`，menubar-snapshot 四规则承袭）；**复合键** `<menu_id>::sub-<idx>` 表 submenu 层级，外层开态判**前缀感知**（`o==id || o.starts_with(id::)`——单值注册表下子键曾连带关闭外层，实锤修正）。
   - hover-switch：开态下其他 trigger 包 `MouseArea(on_enter=toggle)`（关闭态悬停不开、已开不重入）；开态 trigger `bg-accent text-accent-foreground rounded-sm`。
+  - **hover 默认（2026-10-02 组件族根修）**：可点菜单项/子菜单触发行 `hover:bg-accent`（iced 按钮变体管道 `hover:` = shadcn `focus:bg-accent` 悬停对位；accent 双盘 token 随主题自解，零配置）；闭态 trigger `hover:bg-accent hover:text-accent-foreground`；disabled/无 handler 静态行不挂 hover（置灰语义）；`rounded-sm` 同批补齐（静止态零视觉）。a2r 静态降层同词汇（`emit_item_button` enabled 臂补 `h-7 w-full px-0 py-0 justify-start text-left rounded-sm hover:bg-accent`，几何对齐 dimmed 臂）。
   - **submenu = 浮动式（PLAN-698 T-03 终态，翻案 T-11）**：子面板为嵌套 `View::Popover`（placement `RightTop` 顶对齐右弹，T-06 变体；面板样式与顶层一致 w-44/popover chrome），chevron 随开合翻转。T-11 降级的真因勘定=iced 0.14 官方嵌套协议（runtime `overlay::Nested` 递归 `Overlay::overlay` 钩子）未被子面板 Panel 实现——钩子落地（content 子树 overlay 收集，绝对坐标零平移）后嵌套 Popover 正常注册渲染；P695-D2 债务划线。降级路径保留：`AUTO_MENU_SUBMENU_INLINE=1` 回旧内联形态（父面板内缩进节，判位/回退用）。Vue 臂 reka 真 submenu 不受影响。
   - disabled/无 onclick 项**置灰非隐藏**（muted 前景 + opacity-50，对齐 shadcn `data-[disabled]:opacity-50`）；radio 选中 `lucide:circle-dot`、checkbox 勾选 `lucide:check`（leading_icon 参数化）；label/独立 shortcut 为 muted 静态文本。
   - a2r 静态降层（`a2r_menubar_panel_children` 递归发射）与解释态同 kind 表、同复合键、同 token 词汇。

@@ -21,6 +21,15 @@
 - **Baked patch (PLAN-641, 2026-09-18)**: `tabs/` 四件增 `variant` 形态（`default`=shadcn 托盘原样；`enclosed`=激活 tab 与内容面板连通、非激活扁平 cell）——Tabs 根 provide `autoTabsVariant`，List/Trigger/Content inject 切换 class 结构；与 `packages/widgets/registry/tabs/`（手工维护源）及 `ui_gen/vue.rs` WidgetTemplate 三处同源。
   改名烘焙（对应 `fix_shadcn_compatibility_issues` 的兼容性改写；该函数
   保留作为 CLI 兜底路径的保险）。
+- **Baked patch (menubar hover 默认正确, 2026-10-02)**: `menubar/` 五件
+  偏离上游——`MenubarTrigger`/`MenubarSubTrigger` 补
+  `hover:bg-accent hover:text-accent-foreground`（上游 trigger 无 hover,
+  桌面 menubar 惯例悬停标题应有反馈；vm 轨 `menu_item_button_view`/双
+  trigger 臂同批同词汇）；`MenubarItem`/`MenubarCheckboxItem`/
+  `MenubarRadioItem`/`MenubarSubTrigger` 补
+  `data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground`
+  （reka 悬停/键盘导航置 data-highlighted,比 `focus:` 钩子更稳）。全部
+  消费语义 token,主题/深浅/accent 预设零配置自解;重放抓取后需重打。
 - **Dependency contract**: 快照只含源码。缺口依赖 = charts 家族的
   `@unovis/vue` / `@unovis/ts`（^1.6.7），已按 Plan-442 模式接入
   `OPTIONAL_DEPS` + `VueDependencyUsage::chart`；其余外部依赖

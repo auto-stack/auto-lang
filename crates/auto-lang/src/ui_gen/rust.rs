@@ -3393,8 +3393,11 @@ impl RustGenerator {
             match handler {
                 None => btn_dimmed,
                 Some(handler_fn) if !enabled_off => {
+                    // 几何对齐 dimmed 臂(h-7 w-full px-0 py-0)+ hover:bg-accent
+                    // (与解释态 menu_item_button_view 同词汇——静态 Rust 侧
+                    // Style::parse 运行期消费 hover: 变体,同一渲染器通道)。
                     let btn = format!(
-                        "View::button(format!(\"{icon_pua}{{}}{{}}{{}}\", {prefix_expr}, \"{title}\".to_string(), \"{sc}\".to_string())).on_click({handler_fn}).build()"
+                        "View::button(format!(\"{icon_pua}{{}}{{}}{{}}\", {prefix_expr}, \"{title}\".to_string(), \"{sc}\".to_string())).on_click({handler_fn}).with_style(auto_lang::ui::style::Style::parse(\"h-7 w-full px-0 py-0 justify-start text-left rounded-sm hover:bg-accent\").unwrap_or_default()).build()"
                     );
                     btn
                 }
@@ -3533,7 +3536,7 @@ impl RustGenerator {
                         }
                     }
                     let sub_trigger = format!(
-                        "View::button(\"{sub_title}\".to_string()).on_click(|_| {msg_name}::__MenubarToggle(\"{sub_id}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 w-full px-0 py-0 justify-start text-left text-[12px] text-popover-foreground\").unwrap_or_default()).build()"
+                        "View::button(\"{sub_title}\".to_string()).on_click(|_| {msg_name}::__MenubarToggle(\"{sub_id}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 w-full px-0 py-0 justify-start text-left text-[12px] text-popover-foreground rounded-sm hover:bg-accent\").unwrap_or_default()).build()"
                     );
                     let sub_children_code = self.a2r_menubar_panel_children(
                         &sub_content,
@@ -5807,7 +5810,7 @@ impl RustGenerator {
                             }
                         }
                         let trigger = format!(
-                            "View::button(\"{}\".to_string()).on_click(|_| {}::__MenubarToggle(\"{}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 px-3 text-[12px] text-foreground\").unwrap_or_default()).build()",
+                            "View::button(\"{}\".to_string()).on_click(|_| {}::__MenubarToggle(\"{}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 px-3 rounded-sm text-[12px] text-foreground hover:bg-accent hover:text-accent-foreground\").unwrap_or_default()).build()",
                             trigger_title, msg_name, menu_id
                         );
                         // PLAN-695 T-04：面板配色字面 #16171B/zinc-700 →

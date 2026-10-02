@@ -8446,8 +8446,12 @@ let tabs_inner = View::Row {
             .ok(),
             selectable: false,
         };
+        // hover:bg-accent = shadcn `focus:bg-accent` 的 iced 对位（iced 无
+        // menu 高亮协议，按钮 Status::Hovered 即悬停反馈）；accent 双盘
+        // token 随主题/深浅自解。disabled 走置灰通道，不挂 hover。
+        // rounded-sm 静止态零视觉（radius 无 border 不上色），仅 hover 块圆角。
         let row_style =
-            Style::parse(&format!("h-7 w-full px-0 py-0 justify-start text-left{item_opacity}"))
+            Style::parse(&format!("h-7 w-full px-0 py-0 justify-start text-left rounded-sm{item_opacity}"))
                 .ok();
         let Some(onclick) = onclick else {
             // 无 handler：置灰静态行（不可点、可读——不再隐藏）。
@@ -8466,7 +8470,10 @@ let tabs_inner = View::Row {
             onclick,
             // PLAN-626 T-02: 显式 justify-start/text-left 走 plan050→plan414
             // 让位通道压过按钮 content 容器的 Center 默认。
-            style: row_style,
+            style: Style::parse(&format!(
+                "h-7 w-full px-0 py-0 justify-start text-left rounded-sm hover:bg-accent{item_opacity}"
+            ))
+            .ok(),
             on_right_click: None,
             content: Some(Box::new(View::Row {
                 children: vec![left_group, shortcut_text],
@@ -8723,7 +8730,7 @@ let tabs_inner = View::Row {
                         label: sub_title,
                         onclick: toggle_msg.clone(),
                         style: Style::parse(
-                            "h-7 w-full px-0 py-0 justify-start text-left",
+                            "h-7 w-full px-0 py-0 justify-start text-left rounded-sm hover:bg-accent",
                         )
                         .ok(),
                         on_right_click: None,
@@ -8932,7 +8939,10 @@ let tabs_inner = View::Row {
                 .unwrap_or(false);
             record!(children_out.len(), 0 => &format!(r#"__menubar_toggle("{}")"#, menu_id));
             // PLAN-695 T-05：trigger 文本 token 化（T-04）+ 开态 accent 高亮
-            //（对齐 shadcn data-[state=open]:bg-accent）。
+            //（对齐 shadcn data-[state=open]:bg-accent）。闭态 hover 高亮
+            //（hover:bg-accent）为组件族默认——shadcn 上游 trigger 无 hover,
+            // 桌面 menubar 惯例悬停标题应有反馈,资产侧 MenubarTrigger.vue
+            // 同批补齐,两轨同词汇。
             let trigger_btn = View::Button {
                 disabled: false,
                 label: trigger_title.clone(),
@@ -8946,7 +8956,7 @@ let tabs_inner = View::Row {
                     if is_open {
                         "bg-accent text-accent-foreground"
                     } else {
-                        "mr-1 text-foreground"
+                        "mr-1 text-foreground hover:bg-accent hover:text-accent-foreground"
                     }
                 ))
                 .ok(),
@@ -9119,7 +9129,7 @@ let tabs_inner = View::Row {
                     if is_open {
                         "bg-accent text-accent-foreground"
                     } else {
-                        "mr-1 text-foreground"
+                        "mr-1 text-foreground hover:bg-accent hover:text-accent-foreground"
                     }
                 ))
                 .ok(),
@@ -15585,7 +15595,27 @@ mod tests {
         // 三项齐渲染：可点 + disabled 置灰 + 无 handler 置灰（不再隐藏）。
         assert_eq!(items.len(), 4, "enabled + disabled + no-handler + sep");
         match &items[0] {
-            View::Button { disabled, .. } => assert!(!disabled, "item 0 enabled"),
+            View::Button { disabled, style, .. } => {
+                assert!(!disabled, "item 0 enabled");
+                // hover 默认（组件族根修）：可点项挂 hover:bg-accent 变体，
+                // 基础 classes 不含底色（静止态 chromeless）。
+                let s = style.as_ref().expect("item 0 style");
+                assert!(
+                    s.has_variant(crate::ui::style::Variant::Hover)
+                        && s.variant_slice(crate::ui::style::Variant::Hover).iter().any(
+                            |c| matches!(c, StyleClass::BackgroundColor(crate::ui::style::Color::Accent))
+                        ),
+                    "enabled item must carry hover:bg-accent, got {:?}",
+                    s.variant_classes
+                );
+                assert!(
+                    !s.classes.iter().any(
+                        |c| matches!(c, StyleClass::BackgroundColor(_))
+                    ),
+                    "item rest state must stay chromeless, got {:?}",
+                    s.classes
+                );
+            }
             other => panic!("item 0 must be Button, got {other:?}"),
         }
         for (idx, label, as_button) in
@@ -15733,6 +15763,20 @@ mod tests {
                 crate::ui::view::PopoverAnchor::Widget(b) => {
                     assert!(matches!(b.as_ref(), View::Button { .. }), "closed state: bare button");
                     assert!(!accent_on(b), "closed state: no accent");
+                    // hover 默认：闭态 trigger 挂 hover:bg-accent 变体（基础
+                    // classes 仍无 accent——静止态与断言上行为不变）。
+                    match b.as_ref() {
+                        View::Button { style: Some(s), .. } => {
+                            assert!(
+                                s.variant_slice(crate::ui::style::Variant::Hover).iter().any(
+                                    |c| matches!(c, StyleClass::BackgroundColor(crate::ui::style::Color::Accent))
+                                ),
+                                "closed trigger must carry hover:bg-accent, got {:?}",
+                                s.variant_classes
+                            );
+                        }
+                        other => panic!("closed trigger style missing, got {other:?}"),
+                    }
                 }
                 other => panic!("closed state anchor must be Widget, got {other:?}"),
             }
