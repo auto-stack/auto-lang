@@ -1425,7 +1425,7 @@ impl Codegen {
                     let sigs = &fn_decl.params;
                     let upload_param = sigs
                         .iter()
-                        .find(|p| p.ty.to_string().contains("UploadRequest"));
+                        .find(|p| crate::api::contract::is_upload_param(&p.ty.to_string()));
                     if let Some(up) = upload_param {
                         if !matches!(
                             api.method.to_uppercase().as_str(),
@@ -1438,8 +1438,9 @@ impl Codegen {
                         }
                         for p in sigs {
                             let ty = p.ty.to_string();
-                            if ty.contains("UploadRequest") || ty.contains("UploadReceipt")
-                                || ty.contains("UploadSession")
+                            if crate::api::contract::is_upload_param(&ty)
+                                || ty.trim() == "UploadReceipt"
+                                || ty.trim() == "UploadSession"
                             {
                                 continue;
                             }
@@ -1459,7 +1460,9 @@ impl Codegen {
                             }
                         }
                         let ret_name = fn_decl.ret.unique_name().to_string();
-                        if !ret_name.contains("UploadReceipt") {
+                        if crate::api::contract::ResponseKind::from_return_string(&ret_name)
+                            != crate::api::contract::ResponseKind::Upload
+                        {
                             return Err(crate::error::AutoError::Msg(format!(
                                 "api fn '{}' declares an UploadRequest param but returns {} (must return UploadReceipt / ~UploadReceipt)",
                                 fn_decl.name, ret_name
@@ -1467,7 +1470,9 @@ impl Codegen {
                         }
                     } else {
                         let ret_name = fn_decl.ret.unique_name().to_string();
-                        if ret_name.contains("UploadReceipt") {
+                        if crate::api::contract::ResponseKind::from_return_string(&ret_name)
+                            == crate::api::contract::ResponseKind::Upload
+                        {
                             return Err(crate::error::AutoError::Msg(format!(
                                 "api fn '{}' returns UploadReceipt but has no UploadRequest param",
                                 fn_decl.name

@@ -2623,7 +2623,24 @@ fn nv_to_vm_value(vm: &AutoVM, nv: auto_val::NanoValue) -> auto_val::Value {
     } else if let Some(id) = web_builtin_heap_id(nv) {
         Value::VmRef(auto_val::VmRef { id: id as usize })
     } else if auto_val::is_i32(nv) {
-        Value::Int(auto_val::decode_i32(nv))
+        Value::I64(auto_val::decode_i32(nv) as i64)
+    } else if auto_val::is_i64(nv) {
+        // PLAN-734 T-03（E2 修复）：48 位内联 i64——此前无臂落 Value::Nil，
+        // json.encode(5000000001) 输出 4294967295（decode_i32 跨 tag 误读）。
+        Value::I64(auto_val::decode_i64(nv))
+    } else if auto_val::is_bigint(nv) {
+        let id = auto_val::decode_bigint_handle(nv) as u64;
+        let v = vm
+            .get_heap_object(id)
+            .and_then(|o| {
+                let g = o.read().ok()?;
+                let b = g
+                    .as_any()
+                    .downcast_ref::<crate::vm::heap_object::BigIntData>()?;
+                Some(b.as_i64())
+            })
+            .unwrap_or(0);
+        Value::I64(v)
     } else if auto_val::is_f64(nv) {
         Value::Double(auto_val::decode_f64(nv))
     } else if auto_val::is_f32(nv) {
@@ -3062,12 +3079,20 @@ pub(crate) fn json_to_vm_value(
             task.ram.push_nv(auto_val::encode_bool(*b));
         }
         serde_json::Value::Number(n) => {
+            // PLAN-734 T-03（E4 修复）：Auto int 语义 = i64 全域——
+            // 此前 `as i32` 静默截断；48 位内联/堆装箱经共享 helper。
             if let Some(i) = n.as_i64() {
-                task.ram.push_nv(auto_val::encode_i32(i as i32));
+                task.ram
+                    .push_nv(crate::vm::ffi::convert::encode_i64_with_heap(vm, i));
+            } else if let Some(u) = n.as_u64() {
+                task.ram
+                    .push_nv(crate::vm::ffi::convert::encode_u64_with_heap(vm, u));
             } else if let Some(f) = n.as_f64() {
                 task.ram.push_f64(f);
             } else {
-                task.ram.push_nv(auto_val::encode_i32(0));
+                return Err(VMError::RuntimeError(
+                    "json_to_vm_value: unrepresentable number".into(),
+                ));
             }
         }
         serde_json::Value::String(s) => {
@@ -7290,16 +7315,12 @@ pub fn shim_warn_api_noop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     } else {
         auto_val::decode_i32(name_nv).to_string()
     };
-    if let Ok(mut set) = WARNED_API_NOOP.lock() {
-        if set.insert(api_name.clone()) {
-            eprintln!(
-                "[VM-API] merged-mode #[api] \"{}\" no-op (set AUTO_VM_MERGE=0 or AUTO_BACKEND=<url> to enable HTTP bridge)",
-                api_name
-            );
-        }
-    }
-    task.ram.push_nv(auto_val::encode_null());
-    Ok(())
+    // PLAN-734 T-03（D7）：merged 缺实现 = 可定位失败——不再 warn+null 假
+    // 成功（AC-04）；行动指引保留在错误信息里。
+    Err(VMError::RuntimeError(format!(
+        "merged-mode #[api] \"{}\" has no implementation (set AUTO_VM_MERGE=0 or AUTO_BACKEND=<url> to enable the HTTP bridge)",
+        api_name
+    )))
 }
 
 fn spawn_async_http_handle(

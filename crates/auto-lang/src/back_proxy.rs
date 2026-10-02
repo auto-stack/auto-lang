@@ -1482,9 +1482,11 @@ impl SessionRuntime {
         // PLAN-729 T-05：文件端点不经进程内 back-proxy 透传——描述符不是
         // 可序列化数据（决策报告 §6：Unsupported + 改走 HTTP URL 指引）。
         if let Some((_, ret)) = self.fn_meta.get(&route_match.fn_name) {
+            // PLAN-734 T-03：守卫按契约身份分类（假同名类型不命中）。
+            let kind = crate::api::contract::ResponseKind::from_return_string(ret);
             // PLAN-730 T-06：上传端点同规——UploadRequest 是宿主注入能力
             //（非可序列化数据；501 + 改走 HTTP URL 指引）。
-            if ret.contains("UploadReceipt") || ret.contains("UploadRequest") {
+            if kind == crate::api::contract::ResponseKind::Upload {
                 log::info!(
                     "[back-proxy:{}] RSP 501 upload endpoint (use HTTP URL)",
                     self.app_id
@@ -1497,7 +1499,7 @@ impl SessionRuntime {
                     )),
                 );
             }
-            if ret.contains("FileResponse") {
+            if kind == crate::api::contract::ResponseKind::File {
                 log::info!(
                     "[back-proxy:{}] RSP 501 file endpoint (use HTTP URL)",
                     self.app_id
@@ -1510,7 +1512,7 @@ impl SessionRuntime {
                     )),
                 );
             }
-            if ret.contains("Stream<") {
+            if kind == crate::api::contract::ResponseKind::Stream {
                 let rx = self.bus.subscribe();
                 log::info!(
                     "[back-proxy:{}] SSE subscribe {} {} (subs={})",
@@ -1560,6 +1562,27 @@ impl SessionRuntime {
             if let Some(v) = query_map.get(&sig.name) {
                 bound.push(serde_json::Value::String(v.clone()));
                 arg_srcs.push(ArgSrc::TypedString(sig.clone(), v.clone()));
+                continue;
+            }
+            // PLAN-734 T-03（D8）：meta 约定名参数从请求头构造 cookies/auth
+            // JSON（与 standalone bind 同形——ProxyRequest.headers 已随请求
+            // 传递；此前 meta 端点在 back-proxy 恒 400）。
+            if crate::api::contract::is_meta_alias(&sig.name) {
+                let cookie = req
+                    .headers
+                    .iter()
+                    .find(|(k, _)| k == "cookie")
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                let auth = req
+                    .headers
+                    .iter()
+                    .find(|(k, _)| k == "authorization")
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                let meta_json = crate::vm::ffi::http_server::build_meta_json(&cookie, &auth);
+                bound.push(serde_json::Value::String(meta_json.clone()));
+                arg_srcs.push(ArgSrc::TypedString(sig.clone(), meta_json));
                 continue;
             }
             return ProxyReply::json(
@@ -1625,7 +1648,11 @@ impl SessionRuntime {
         // ~Stream 端点时才广播）：typing 型（fn 名含 "typing"）void POST →
         // {"event":"Typing","name":<首参>}；create 型非 void POST → 返回实体
         // 加 "event":"New<主类型>" 判别后广播。
-        let has_sse = self.fn_meta.values().any(|(_, r)| r.contains("Stream<"));
+        // PLAN-734 T-03：SSE 广播门按契约分类。
+        let has_sse = self.fn_meta.values().any(|(_, r)| {
+            crate::api::contract::ResponseKind::from_return_string(r)
+                == crate::api::contract::ResponseKind::Stream
+        });
         if has_sse {
             if let Some((method, meta)) = self.fn_meta.get(&route_match.fn_name).cloned() {
                 let (primary, display) = meta.split_once('|').unwrap_or((meta.as_str(), ""));

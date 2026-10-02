@@ -135,11 +135,7 @@ pub(crate) fn fn_is_api_async(fn_name: &str) -> bool {
 /// http_server_file::take_file_response）共同识别文件结果；普通 int 即使
 /// 数值撞上描述符 id 也走 JSON 兜底（AC-01 反例防线）。
 pub(crate) fn fn_is_api_file_return(fn_name: &str) -> bool {
-    API_RETURN_TYPES
-        .lock()
-        .ok()
-        .and_then(|t| t.get(fn_name).map(|r| r.contains("FileResponse")))
-        .unwrap_or(false)
+    fn_response_kind(fn_name) == crate::api::contract::ResponseKind::File
 }
 
 /// PLAN-730 T-02：编组期上传收据返回门——声明返回类型（`UploadReceipt`
@@ -147,18 +143,27 @@ pub(crate) fn fn_is_api_file_return(fn_name: &str) -> bool {
 /// （http_upload::take_upload_receipt）共同识别；普通 int 撞号走 JSON
 /// 兜底（同 729 三重命中形态）。
 pub(crate) fn fn_is_api_upload_return(fn_name: &str) -> bool {
+    fn_response_kind(fn_name) == crate::api::contract::ResponseKind::Upload
+}
+
+/// PLAN-734 T-03：返回种类单源——API_RETURN_TYPES 条目经契约身份分类
+/// （ResponseKind::from_return_string；假同名类型不命中）。
+pub(crate) fn fn_response_kind(fn_name: &str) -> crate::api::contract::ResponseKind {
     API_RETURN_TYPES
         .lock()
         .ok()
-        .and_then(|t| t.get(fn_name).map(|r| r.contains("UploadReceipt")))
-        .unwrap_or(false)
+        .and_then(|t| t.get(fn_name).map(|r| crate::api::contract::ResponseKind::from_return_string(r)))
+        .unwrap_or(crate::api::contract::ResponseKind::Json)
 }
 
 /// PLAN-730 T-02：路由的上传能力分类——方法+参数类型双条件（不按
 /// Content-Type/URL 猜）。bridge deferral 与 owner dispatch 共用同一判定。
 pub fn route_declares_upload(fn_name: &str) -> bool {
     api_param_sigs(fn_name)
-        .map(|sigs| sigs.iter().any(|p| p.ty.contains("UploadRequest")))
+        .map(|sigs| {
+            sigs.iter()
+                .any(|p| crate::api::contract::is_upload_param(&p.ty))
+        })
         .unwrap_or(false)
 }
 
@@ -5143,6 +5148,25 @@ fn handler_declares_file_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> 
     }
 }
 
+/// ctx 的声明返回串（named fn 经 API_RETURN_TYPES；axum closure 反查导出名）。
+fn declared_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> String {
+    let lookup = |name: &str| -> Option<String> {
+        API_RETURN_TYPES.lock().ok().and_then(|t| t.get(name).cloned())
+    };
+    match ctx.axum_route {
+        Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
+            .and_then(|n| lookup(&n))
+            .unwrap_or_default(),
+        None => lookup(&ctx.route.fn_name).unwrap_or_default(),
+    }
+}
+
+/// ctx 声明显式 Response 返回（axum_route closure 反查同门）。
+fn handler_declares_response_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> bool {
+    crate::api::contract::ResponseKind::from_return_string(&declared_return(vm, ctx))
+        == crate::api::contract::ResponseKind::ExplicitResponse
+}
+
 /// ctx 声明上传收据返回（axum_route closure 反查同门）。
 fn handler_declares_upload_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> bool {
     match ctx.axum_route {
@@ -5283,7 +5307,13 @@ fn marshal_handler_value(
             });
         }
         let iter_id = bits as u32;
-        if vm.iterators.contains_key(&iter_id) {
+        // PLAN-734 T-03（D9）：SSE 臂加声明门——仅声明 Stream/Iter 返回的
+        // 端点消费 iterator 注册表；普通 int 撞 iterator id 返回数值（AC-03）。
+        let declared_stream = matches!(
+            crate::api::contract::ResponseKind::from_return_string(&declared_return(vm, ctx)),
+            crate::api::contract::ResponseKind::Stream
+        );
+        if declared_stream && vm.iterators.contains_key(&iter_id) {
             eprintln!(
                 "[HTTP] {} {} → 200 SSE ({}ms)",
                 ctx.req_method,
@@ -5321,8 +5351,12 @@ fn marshal_handler_value(
                 },
             );
         }
-        if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(iter_id as u64) {
-            return MarshalOutcome::Reply(response_handle_reply(ctx, res));
+        // PLAN-734 T-03（D9）：显式 Response 臂加声明门——普通 int 撞
+        // handle id 返回数值（AC-03）。
+        if handler_declares_response_return(vm, ctx) {
+            if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(iter_id as u64) {
+                return MarshalOutcome::Reply(response_handle_reply(ctx, res));
+            }
         }
         return MarshalOutcome::Reply(json_value_reply(
             vm,
@@ -5337,8 +5371,10 @@ fn marshal_handler_value(
     }
     if auto_val::is_i64(nv) {
         let handle = auto_val::decode_i64(nv) as u64;
-        if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(handle) {
-            return MarshalOutcome::Reply(response_handle_reply(ctx, res));
+        if handler_declares_response_return(vm, ctx) {
+            if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(handle) {
+                return MarshalOutcome::Reply(response_handle_reply(ctx, res));
+            }
         }
         return MarshalOutcome::Reply(json_value_reply(
             vm,
@@ -6249,28 +6285,29 @@ fn json_value_reply(
 ) -> ApiReply {
     match nv_to_json(vm, nv, 0) {
         Some(result_json) => {
-            let is_error = result_json.starts_with("{\"error\":");
-            let status = if is_error { 500 } else { 200 };
+            // PLAN-734 T-03（D3）：`{"error":` 前缀猜测退役——业务 record
+            // 含 error 字段是数据（200）；错误状态由执行/序列化失败决定。
+            let status = 200;
             // PLAN-698 SD-02: POST 广播臂（Typing / New{Type}，has_sse 门控）。
-            if !is_error && req_method == "POST" {
+            if req_method == "POST" {
                 publish_post_broadcast(fn_name, request_body, &result_json);
             }
-            if !is_error {
-                eprintln!(
-                    "[HTTP] {} {} [{}] → 200 ({}ms)",
-                    req_method, req_path, request_id, elapsed_ms
-                );
-            }
+            eprintln!(
+                "[HTTP] {} {} [{}] → 200 ({}ms)",
+                req_method, req_path, request_id, elapsed_ms
+            );
             ApiReply::Full {
                 status,
                 headers: json_reply_headers(request_id),
                 body: ApiBody::Text(result_json.into_bytes()),
             }
         }
+        // PLAN-734 T-03（D3）：序列化失败 → 500 诊断（不再 200 空 body
+        // 冒充成功；AC-03）。
         None => ApiReply::Full {
-            status: 200,
+            status: 500,
             headers: json_reply_headers(request_id),
-            body: ApiBody::Text(Vec::new()),
+            body: ApiBody::Text(br#"{"error":"response serialization failed"}"#.to_vec()),
         },
     }
 }
@@ -6630,6 +6667,88 @@ impl ApiTyKind {
 /// push_str_arg throat. PLAN-675 T-02: back_proxy session dispatch consumes
 /// this too (crate-internal) so gallery proxy path params coerce per `#[api]`
 /// signature — the standalone-server semantics, one implementation.
+/// PLAN-734 T-03：body JSON 值按声明类型校验（AC-02）。
+/// str/bool/int/float 形态精确匹配；optional 接受 null；数组/record 走
+/// 结构存在性（深度展开由 marshal 承担）。未知声明类型不在此拒绝
+/// （Unsupported 类按 transport 矩阵在生成期诊断；运行期按原行为 marshal）。
+fn validate_body_value(declared_ty: &str, v: &serde_json::Value) -> Result<(), String> {
+    use crate::api::contract::ParamKind;
+    let kind = ParamKind::from_param_string(declared_ty, &[]);
+    let mismatch = |expect: &str| format!("expected {expect}, got {}", json_value_kind_name(v));
+    match kind {
+        ParamKind::Str => {
+            if !v.is_string() {
+                return Err(mismatch("str"));
+            }
+        }
+        ParamKind::Bool => {
+            if !v.is_boolean() {
+                return Err(mismatch("bool"));
+            }
+        }
+        ParamKind::Int => {
+            if !v.is_i64() && !v.is_u64() {
+                return Err(mismatch("int"));
+            }
+        }
+        ParamKind::Float => {
+            if !v.is_number() {
+                return Err(mismatch("float"));
+            }
+            if let Some(f) = v.as_f64() {
+                if !f.is_finite() {
+                    return Err("float must be finite (NaN/Infinity rejected)".into());
+                }
+            }
+        }
+        ParamKind::Optional(_) => {
+            if !v.is_null() {
+                let inner = declared_ty.trim().trim_start_matches('?').trim_end_matches('?');
+                let inner_kind = ParamKind::from_param_string(inner, &[]);
+                let bad_scalar = match (&inner_kind, v) {
+                    (ParamKind::Str, serde_json::Value::String(_)) => false,
+                    (ParamKind::Bool, serde_json::Value::Bool(_)) => false,
+                    (ParamKind::Int, v) => !(v.is_i64() || v.is_u64()),
+                    (ParamKind::Float, v) => !v.is_number(),
+                    _ => false,
+                };
+                if bad_scalar {
+                    return Err(mismatch(inner));
+                }
+            }
+        }
+        ParamKind::Array(_) => {
+            if !v.is_array() {
+                return Err(mismatch("array"));
+            }
+        }
+        ParamKind::Record(_) => {
+            if !v.is_object() {
+                return Err(mismatch("record"));
+            }
+        }
+        ParamKind::Unsupported(_) => {}
+    }
+    Ok(())
+}
+
+fn json_value_kind_name(v: &serde_json::Value) -> &'static str {
+    match v {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Number(n) => {
+            if n.is_i64() || n.is_u64() {
+                "int"
+            } else {
+                "float"
+            }
+        }
+        serde_json::Value::String(_) => "str",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "record",
+    }
+}
+
 pub(crate) fn push_typed_string_arg(
     vm: &crate::vm::engine::AutoVM,
     task: &mut crate::vm::task::AutoTask,
@@ -6646,7 +6765,23 @@ pub(crate) fn push_typed_string_arg(
     };
     match ApiTyKind::from_ty(&sig.ty) {
         ApiTyKind::Int => match val.parse::<i64>() {
-            Ok(i) => task.ram.push_nv(auto_val::encode_i32(i as i32)),
+            Ok(i) => {
+                // PLAN-734 T-03（E4 修复）：int 语义 = i64 全域（不截断）；
+                // 定点变体按各自范围校验（超界 400，不静默回绕）。
+                let range_ok = match sig.ty.trim() {
+                    "u32" => (0..=u32::MAX as i64).contains(&i),
+                    "u64" | "usize" => i >= 0,
+                    "uint" => (0..=4_294_967_295i64).contains(&i),
+                    "byte" => (0..=255).contains(&i),
+                    _ => true, // int / i64 / i32：i64 全域交付
+                };
+                if !range_ok {
+                    return Err(bad(sig.ty.trim()));
+                }
+                task.ram.push_nv(crate::vm::ffi::convert::encode_i64_with_heap(
+                    vm, i,
+                ));
+            }
             Err(_) => return Err(bad(sig.ty.trim())),
         },
         ApiTyKind::Float => match val.parse::<f64>() {
@@ -6685,10 +6820,10 @@ pub(crate) fn bind_api_args_by_name(
     let mut n_args = 0usize;
     let mut unbound: Vec<&ApiParamSig> = Vec::new();
     for sig in sigs {
-        // PLAN-730 T-05：UploadRequest 注入参数——类型识别置于 path/body/
-        // query/meta 全部规则**之前**（防 "req" meta 名约定与 whole-body
-        // 单参容忍吞掉注入参数；AC-01 反例防线）。
-        if sig.ty.contains("UploadRequest") {
+        // PLAN-730 T-05：UploadRequest 注入参数——类型身份识别（734 契约
+        // 单源）置于 path/body/query/meta 全部规则**之前**（防 "req" meta
+        // 名约定与 whole-body 单参容忍吞掉注入参数；AC-01 反例防线）。
+        if crate::api::contract::is_upload_param(&sig.ty) {
             match upload_handle {
                 Some(h) => {
                     task.ram.push_i32(h as i32);
@@ -6709,6 +6844,14 @@ pub(crate) fn bind_api_args_by_name(
             continue;
         }
         if let Some(v) = body_json.and_then(|b| b.get(&sig.name)) {
+            // PLAN-734 T-03：body 值按声明类型校验（错形态 400，不静默
+            // 按值自身形态 marshal；AC-02）。int 语义 i64 全域。
+            if let Err(msg) = validate_body_value(&sig.ty, v) {
+                return Err(ApiArgBindError::BadRequest(format!(
+                    "invalid value for param `{}`: {}",
+                    sig.name, msg
+                )));
+            }
             crate::vm::ffi::stdlib::json_to_vm_value(task, vm, v, 0).map_err(|e| {
                 ApiArgBindError::Internal(format!(
                     "body param `{}` marshal failed: {e:?}",
@@ -6748,7 +6891,7 @@ pub(crate) fn bind_api_args_by_name(
             unbound[0],
             sigs.last().expect("unbound implies sigs nonempty"),
         )
-        && is_meta_param_name(&unbound[0].name)
+        && crate::api::contract::is_meta_alias(&unbound[0].name)
     {
         if let Some(meta) = metadata_json {
             push_str_arg(vm, task, meta);
@@ -6830,6 +6973,11 @@ pub(crate) fn bind_api_args_or_legacy(
 /// Build handler arguments on the task's stack (path params + body).
 /// Returns the number of args pushed.
 /// PLAN-669: cookies + auth metadata JSON (the Plan 346 stage 4 payload).
+/// PLAN-734 T-03：meta 构造单源（standalone 与 back-proxy 共用）。
+pub(crate) fn build_meta_json(cookie_header: &str, auth_header: &str) -> String {
+    cookies_auth_metadata(cookie_header, auth_header)
+}
+
 fn cookies_auth_metadata(cookie_header: &str, auth_header: &str) -> String {
     let cookies_json: String = if cookie_header.is_empty() {
         "{}".to_string()
