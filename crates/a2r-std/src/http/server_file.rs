@@ -132,10 +132,12 @@ pub fn file_response(root: &str, relative_path: &str, options_json: &str) -> Fil
         options_json
     };
     let (options, options_err) = parse_file_options(options_json_normalized);
-    let path_err = validate_relative_path(relative_path).err().map(|message| FileInitError {
-        kind: FileInitErrorKind::Path,
-        message,
-    });
+    let path_err = validate_relative_path(relative_path)
+        .err()
+        .map(|message| FileInitError {
+            kind: FileInitErrorKind::Path,
+            message,
+        });
     FileResponse {
         id,
         root: PathBuf::from(root),
@@ -276,10 +278,7 @@ fn option_err(msg: impl Into<String>) -> (Option<FileResponseOptions>, Option<Fi
 
 /// 剥离路径成分：按 `/` 与 `\` 取最后一段，再去 Windows drive 前缀。
 fn basename_of(name: &str) -> String {
-    let after_slashes = name
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or("");
+    let after_slashes = name.rsplit(['/', '\\']).next().unwrap_or("");
     // "C:foo" → "foo"；裸 "C:" → ""。
     match after_slashes.find(':') {
         Some(idx) if idx == 1 => after_slashes[idx + 1..].to_string(),
@@ -416,7 +415,10 @@ pub fn parse_range_header(header: Option<&str>, file_len: u64) -> FileRangePlan 
         Some(h) => h,
         None => return FileRangePlan::Full,
     };
-    let spec = match raw.strip_prefix("bytes=").or_else(|| raw.strip_prefix("BYTES=")) {
+    let spec = match raw
+        .strip_prefix("bytes=")
+        .or_else(|| raw.strip_prefix("BYTES="))
+    {
         Some(s) => s.trim(),
         None => return FileRangePlan::Full, // unknown unit: RFC MUST ignore
     };
@@ -442,7 +444,10 @@ pub fn parse_range_header(header: Option<&str>, file_len: u64) -> FileRangePlan 
     match (a, b) {
         // bytes=S-
         (start_s, "") => match start_s.parse::<u64>() {
-            Ok(s) if s <= last => FileRangePlan::Partial { start: s, end: last },
+            Ok(s) if s <= last => FileRangePlan::Partial {
+                start: s,
+                end: last,
+            },
             Ok(_) => FileRangePlan::Unsatisfiable,
             Err(_) => FileRangePlan::Full,
         },
@@ -457,9 +462,10 @@ pub fn parse_range_header(header: Option<&str>, file_len: u64) -> FileRangePlan 
         },
         // bytes=S-E
         (start_s, end_s) => match (start_s.parse::<u64>(), end_s.parse::<u64>()) {
-            (Ok(s), Ok(e)) if s <= e && s <= last => {
-                FileRangePlan::Partial { start: s, end: e.min(last) }
-            }
+            (Ok(s), Ok(e)) if s <= e && s <= last => FileRangePlan::Partial {
+                start: s,
+                end: e.min(last),
+            },
             (Ok(s), Ok(e)) if s > e => FileRangePlan::Full, // 畸形（S>E）→ 忽略
             (Ok(_), Ok(_)) => FileRangePlan::Unsatisfiable, // s > last
             _ => FileRangePlan::Full,
@@ -553,8 +559,14 @@ pub fn parse_http_date(s: &str) -> Option<SystemTime> {
     if bytes.len() != 29 {
         return None;
     }
-    if bytes[3] != b',' || bytes[4] != b' ' || bytes[7] != b' ' || bytes[11] != b' '
-        || bytes[16] != b' ' || bytes[19] != b':' || bytes[22] != b':' || bytes[25] != b' '
+    if bytes[3] != b','
+        || bytes[4] != b' '
+        || bytes[7] != b' '
+        || bytes[11] != b' '
+        || bytes[16] != b' '
+        || bytes[19] != b':'
+        || bytes[22] != b':'
+        || bytes[25] != b' '
     {
         return None;
     }
@@ -594,12 +606,11 @@ pub struct RepresentationValidators {
 
 impl RepresentationValidators {
     fn last_modified_secs(&self) -> Option<i64> {
-        self.last_modified
-            .map(|t| {
-                t.duration_since(UNIX_EPOCH)
-                    .map(|d| d.as_secs() as i64)
-                    .unwrap_or(0)
-            })
+        self.last_modified.map(|t| {
+            t.duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0)
+        })
     }
 }
 
@@ -653,9 +664,8 @@ pub fn evaluate_preconditions(
                     .as_deref()
                     .map(|etag| {
                         // 强比较：弱验证器永不匹配 If-Match。
-                        list.iter().any(|c| {
-                            !c.starts_with("W/") && etag_literal_match(c, etag)
-                        })
+                        list.iter()
+                            .any(|c| !c.starts_with("W/") && etag_literal_match(c, etag))
                     })
                     .unwrap_or(false);
                 if !matched {
@@ -665,8 +675,7 @@ pub fn evaluate_preconditions(
         }
     } else if let Some(ius) = conds.header("if-unmodified-since") {
         // 2. If-Unmodified-Since（仅无 If-Match 时评估）
-        if let (Some(date), Some(lm)) =
-            (parse_http_date_secs(ius), validators.last_modified_secs())
+        if let (Some(date), Some(lm)) = (parse_http_date_secs(ius), validators.last_modified_secs())
         {
             if lm > date {
                 return PreconditionOutcome::PreconditionFailed;
@@ -1017,8 +1026,11 @@ mod tests {
         assert_eq!(d.options().disposition, Disposition::Attachment);
         // 空串按空对象（宽容入口同传输 options）。
         assert!(file_response("/srv", "a.txt", "").init_error().is_none());
-        let d2 = file_response("/srv", "a.txt",
-            r#"{"content_type":"text/plain","download_name":"x.bin","disposition":"inline","etag":"\"v1\""}"#);
+        let d2 = file_response(
+            "/srv",
+            "a.txt",
+            r#"{"content_type":"text/plain","download_name":"x.bin","disposition":"inline","etag":"\"v1\""}"#,
+        );
         assert!(d2.init_error().is_none());
         assert_eq!(d2.options().content_type.as_deref(), Some("text/plain"));
         assert_eq!(d2.options().etag.as_deref(), Some("\"v1\""));
@@ -1029,11 +1041,16 @@ mod tests {
     fn server_file_options_strict_rejects() {
         // 未知键
         assert_eq!(
-            file_response("/srv", "a", r#"{"bogus":1}"#).init_error().unwrap().kind,
+            file_response("/srv", "a", r#"{"bogus":1}"#)
+                .init_error()
+                .unwrap()
+                .kind,
             FileInitErrorKind::Options
         );
         // 错类型
-        assert!(file_response("/srv", "a", r#"{"etag":5}"#).init_error().is_some());
+        assert!(file_response("/srv", "a", r#"{"etag":5}"#)
+            .init_error()
+            .is_some());
         // 坏 JSON
         assert!(file_response("/srv", "a", "{oops").init_error().is_some());
         // 弱 etag
@@ -1044,9 +1061,11 @@ mod tests {
         assert_eq!(e.kind, FileInitErrorKind::Options);
         assert!(e.message.contains("strong"));
         // 头值注入
-        assert!(file_response("/srv", "a", "{\"content_type\":\"a\\r\\nb: 1\"}")
-            .init_error()
-            .is_some());
+        assert!(
+            file_response("/srv", "a", "{\"content_type\":\"a\\r\\nb: 1\"}")
+                .init_error()
+                .is_some()
+        );
         // 非 ASCII content_type
         assert!(file_response("/srv", "a", "{\"content_type\":\"类型\"}")
             .init_error()
@@ -1077,16 +1096,35 @@ mod tests {
     #[test]
     fn server_file_path_validation() {
         for bad in [
-            "", "..", "a/../b", "../x", "a/..", "/abs", "\\abs", "C:\\x", "C:x", "\\\\srv\\share",
-            "a\0b", "NUL", "nul.bin", "CON.txt", "dir/COM1", "aux", "lpt9.tar.gz",
+            "",
+            "..",
+            "a/../b",
+            "../x",
+            "a/..",
+            "/abs",
+            "\\abs",
+            "C:\\x",
+            "C:x",
+            "\\\\srv\\share",
+            "a\0b",
+            "NUL",
+            "nul.bin",
+            "CON.txt",
+            "dir/COM1",
+            "aux",
+            "lpt9.tar.gz",
         ] {
-            assert!(
-                validate_relative_path(bad).is_err(),
-                "应拒绝 {bad:?}"
-            );
+            assert!(validate_relative_path(bad).is_err(), "应拒绝 {bad:?}");
         }
-        for good in ["a.txt", "dir/sub/file.bin", "中文 名.txt", "a.b.c", ".", "dir/./x", "a\\b"]
-        {
+        for good in [
+            "a.txt",
+            "dir/sub/file.bin",
+            "中文 名.txt",
+            "a.b.c",
+            ".",
+            "dir/./x",
+            "a\\b",
+        ] {
             assert!(validate_relative_path(good).is_ok(), "应接受 {good:?}");
         }
         // 构造面：路径错误 → Path kind（403）
@@ -1103,20 +1141,47 @@ mod tests {
             (None, FileRangePlan::Full),
             (Some(""), FileRangePlan::Full),
             // bounded
-            (Some("bytes=0-9"), FileRangePlan::Partial { start: 0, end: 9 }),
-            (Some("bytes=50-99"), FileRangePlan::Partial { start: 50, end: 99 }),
-            (Some("bytes=90-200"), FileRangePlan::Partial { start: 90, end: 99 }), // end 截至 EOF
-            (Some("bytes=99-99"), FileRangePlan::Partial { start: 99, end: 99 }),
+            (
+                Some("bytes=0-9"),
+                FileRangePlan::Partial { start: 0, end: 9 },
+            ),
+            (
+                Some("bytes=50-99"),
+                FileRangePlan::Partial { start: 50, end: 99 },
+            ),
+            (
+                Some("bytes=90-200"),
+                FileRangePlan::Partial { start: 90, end: 99 },
+            ), // end 截至 EOF
+            (
+                Some("bytes=99-99"),
+                FileRangePlan::Partial { start: 99, end: 99 },
+            ),
             (Some("bytes=100-200"), FileRangePlan::Unsatisfiable), // start==EOF
             (Some("bytes=150-"), FileRangePlan::Unsatisfiable),
             // open
-            (Some("bytes=0-"), FileRangePlan::Partial { start: 0, end: 99 }),
-            (Some("bytes=42-"), FileRangePlan::Partial { start: 42, end: 99 }),
+            (
+                Some("bytes=0-"),
+                FileRangePlan::Partial { start: 0, end: 99 },
+            ),
+            (
+                Some("bytes=42-"),
+                FileRangePlan::Partial { start: 42, end: 99 },
+            ),
             (Some("bytes=100-"), FileRangePlan::Unsatisfiable), // 起点=EOF
             // suffix
-            (Some("bytes=-10"), FileRangePlan::Partial { start: 90, end: 99 }),
-            (Some("bytes=-100"), FileRangePlan::Partial { start: 0, end: 99 }), // suffix==len → 整文件
-            (Some("bytes=-5000"), FileRangePlan::Partial { start: 0, end: 99 }), // suffix>len → 整文件
+            (
+                Some("bytes=-10"),
+                FileRangePlan::Partial { start: 90, end: 99 },
+            ),
+            (
+                Some("bytes=-100"),
+                FileRangePlan::Partial { start: 0, end: 99 },
+            ), // suffix==len → 整文件
+            (
+                Some("bytes=-5000"),
+                FileRangePlan::Partial { start: 0, end: 99 },
+            ), // suffix>len → 整文件
             (Some("bytes=-0"), FileRangePlan::Unsatisfiable),
             // 忽略类（→ 200 full）
             (Some("bytes=abc"), FileRangePlan::Full),
@@ -1124,8 +1189,14 @@ mod tests {
             (Some("bytes=,"), FileRangePlan::Full),
             (Some("bytes=1-2,5-9"), FileRangePlan::Full), // 多区间
             (Some("chunks=0-9"), FileRangePlan::Full),    // 未知单位
-            (Some("BYTES=0-9"), FileRangePlan::Partial { start: 0, end: 9 }), // 单位大小写不敏感
-            (Some("bytes=99999999999999999999999999-"), FileRangePlan::Full), // u64 溢出 → 忽略
+            (
+                Some("BYTES=0-9"),
+                FileRangePlan::Partial { start: 0, end: 9 },
+            ), // 单位大小写不敏感
+            (
+                Some("bytes=99999999999999999999999999-"),
+                FileRangePlan::Full,
+            ), // u64 溢出 → 忽略
             (Some("bytes=+5-9"), FileRangePlan::Full),
         ];
         for (header, want) in cases {
@@ -1137,10 +1208,22 @@ mod tests {
     fn server_file_range_zero_len() {
         // 零字节文件：无 Range → 200/0；带任何有效 bytes 区间 → 416。
         assert_eq!(parse_range_header(None, 0), FileRangePlan::Full);
-        assert_eq!(parse_range_header(Some("bytes=0-"), 0), FileRangePlan::Unsatisfiable);
-        assert_eq!(parse_range_header(Some("bytes=0-0"), 0), FileRangePlan::Unsatisfiable);
-        assert_eq!(parse_range_header(Some("bytes=-5"), 0), FileRangePlan::Unsatisfiable);
-        assert_eq!(parse_range_header(Some("bytes=1-2,3-4"), 0), FileRangePlan::Full); // 多区间仍忽略
+        assert_eq!(
+            parse_range_header(Some("bytes=0-"), 0),
+            FileRangePlan::Unsatisfiable
+        );
+        assert_eq!(
+            parse_range_header(Some("bytes=0-0"), 0),
+            FileRangePlan::Unsatisfiable
+        );
+        assert_eq!(
+            parse_range_header(Some("bytes=-5"), 0),
+            FileRangePlan::Unsatisfiable
+        );
+        assert_eq!(
+            parse_range_header(Some("bytes=1-2,3-4"), 0),
+            FileRangePlan::Full
+        ); // 多区间仍忽略
     }
 
     #[test]
@@ -1152,10 +1235,7 @@ mod tests {
             FileRangePlan::Partial { start: 0, end: 0 }
         );
         assert_eq!(
-            parse_range_header(
-                Some(&format!("bytes={}-", u64::MAX - 1)),
-                len
-            ),
+            parse_range_header(Some(&format!("bytes={}-", u64::MAX - 1)), len),
             FileRangePlan::Partial {
                 start: u64::MAX - 1,
                 end: u64::MAX - 1
@@ -1315,15 +1395,30 @@ mod tests {
             IfRangeOutcome::FullResponse
         );
         // 日期：等于 lm（截秒）→ 206；晚于 lm → 206；早于 lm → 200。
-        assert_eq!(evaluate_if_range(Some(&lm), &v), IfRangeOutcome::ServePartial);
+        assert_eq!(
+            evaluate_if_range(Some(&lm), &v),
+            IfRangeOutcome::ServePartial
+        );
         let later = format_http_date(UNIX_EPOCH + std::time::Duration::from_secs(2_000));
-        assert_eq!(evaluate_if_range(Some(&later), &v), IfRangeOutcome::ServePartial);
+        assert_eq!(
+            evaluate_if_range(Some(&later), &v),
+            IfRangeOutcome::ServePartial
+        );
         let earlier = format_http_date(UNIX_EPOCH + std::time::Duration::from_secs(500));
-        assert_eq!(evaluate_if_range(Some(&earlier), &v), IfRangeOutcome::FullResponse);
+        assert_eq!(
+            evaluate_if_range(Some(&earlier), &v),
+            IfRangeOutcome::FullResponse
+        );
         // 无 etag 且非日期 → 200；坏日期 → 200；无 If-Range → Range 正常。
         let no_etag = validators(None, Some(1_000));
-        assert_eq!(evaluate_if_range(Some("\"x\""), &no_etag), IfRangeOutcome::FullResponse);
-        assert_eq!(evaluate_if_range(Some("garbage"), &v), IfRangeOutcome::FullResponse);
+        assert_eq!(
+            evaluate_if_range(Some("\"x\""), &no_etag),
+            IfRangeOutcome::FullResponse
+        );
+        assert_eq!(
+            evaluate_if_range(Some("garbage"), &v),
+            IfRangeOutcome::FullResponse
+        );
         assert_eq!(evaluate_if_range(None, &v), IfRangeOutcome::ServePartial);
     }
 
@@ -1334,16 +1429,17 @@ mod tests {
         let v = validators(Some("\"v1\""), Some(1_000));
         // GET plain → 200 full。
         let d = decide_file_protocol("GET", &conds(&[]), 100, &v);
-        assert_eq!((d.status, d.include_body, d.content_length), (200, true, 100));
+        assert_eq!(
+            (d.status, d.include_body, d.content_length),
+            (200, true, 100)
+        );
         assert_eq!(d.window, Some((0, 99)));
         // HEAD：忽略 Range、Content-Length=表示长、无 body。
-        let d2 = decide_file_protocol(
-            "HEAD",
-            &conds(&[("range", "bytes=0-9")]),
-            100,
-            &v,
+        let d2 = decide_file_protocol("HEAD", &conds(&[("range", "bytes=0-9")]), 100, &v);
+        assert_eq!(
+            (d2.status, d2.include_body, d2.content_length),
+            (200, false, 100)
         );
-        assert_eq!((d2.status, d2.include_body, d2.content_length), (200, false, 100));
         assert_eq!(d2.window, None);
         // 前置条件先于 Range：304 与 Range 并存 → 304（无 body、长度=表示长）。
         let d3 = decide_file_protocol(
@@ -1352,7 +1448,10 @@ mod tests {
             100,
             &v,
         );
-        assert_eq!((d3.status, d3.include_body, d3.content_length), (304, false, 100));
+        assert_eq!(
+            (d3.status, d3.include_body, d3.content_length),
+            (304, false, 100)
+        );
         // 412 同理。
         let d4 = decide_file_protocol(
             "GET",
@@ -1386,7 +1485,10 @@ mod tests {
         assert_eq!((d8.status, d8.content_length, d8.window), (200, 0, None));
         // 零字节 HEAD：Content-Length=0（不是 1）。
         let d9 = decide_file_protocol("HEAD", &conds(&[]), 0, &v);
-        assert_eq!((d9.status, d9.include_body, d9.content_length), (200, false, 0));
+        assert_eq!(
+            (d9.status, d9.include_body, d9.content_length),
+            (200, false, 0)
+        );
     }
 
     // ---- 响应头构建 ----
@@ -1413,7 +1515,9 @@ mod tests {
         // 206 → Content-Range。
         let d206 = decide_file_protocol("GET", &conds(&[("range", "bytes=10-19")]), 100, &v);
         let h206 = build_file_headers(&opts, &d206, &v, "application/octet-stream");
-        assert!(h206.iter().any(|(n, val)| n == "Content-Range" && val == "bytes 10-19/100"));
+        assert!(h206
+            .iter()
+            .any(|(n, val)| n == "Content-Range" && val == "bytes 10-19/100"));
 
         // 416 → bytes */100。
         let d416 = decide_file_protocol("GET", &conds(&[("range", "bytes=500-")]), 100, &v);
@@ -1448,7 +1552,10 @@ mod tests {
             disposition: Disposition::Inline,
             ..Default::default()
         };
-        assert_eq!(build_content_disposition(&opts_in).as_deref(), Some("inline"));
+        assert_eq!(
+            build_content_disposition(&opts_in).as_deref(),
+            Some("inline")
+        );
     }
 
     #[test]

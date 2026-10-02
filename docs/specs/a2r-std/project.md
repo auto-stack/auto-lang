@@ -81,3 +81,8 @@ a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代
 `stdlib/auto/*.rs.at` 与 `crates/a2r-std/src/*.rs` 的 `pub fn` 名称集与元数
 （json 分派改名表 / list 型块隐式 self 归一化；遗留漂移入显式允许清单）。
 类型级比对（int↔i32/i64 类映射不可机械反转）与生成路线仍属 396 原始债面。
+
+- `http::server_file`（PLAN-729）：服务端文件响应的**可移植构造面与纯协议决策**
+  （描述符/严格 options/Range/前置条件/If-Range/HTTP 日期/响应头策略）；宿主执行
+  （打开/发送/收口）在消费端 `auto_lang::http_file_service`——本 crate 不启动服务器。
+  契约见 stdlib [http-server-files](../stdlib/design/http-server-files.md)。

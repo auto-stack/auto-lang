@@ -491,8 +491,7 @@ pub async fn serve_file_response(
     let opened = {
         let deadline = req.prepare_deadline;
         let relative_for_open = relative.clone();
-        let task =
-            tokio::task::spawn_blocking(move || safe_open_file(&root, &relative_for_open));
+        let task = tokio::task::spawn_blocking(move || safe_open_file(&root, &relative_for_open));
         let deadline_tokio = tokio::time::Instant::from_std(deadline);
         match tokio::time::timeout_at(deadline_tokio, task).await {
             Ok(Ok(o)) => o,
@@ -522,7 +521,8 @@ pub async fn serve_file_response(
     };
     let decision = proto::decide_file_protocol(req.method, &conds, opened.len, &validators);
     let inferred_mime = infer_content_type(&relative);
-    let headers = proto::build_file_headers(descriptor.options(), &decision, &validators, &inferred_mime);
+    let headers =
+        proto::build_file_headers(descriptor.options(), &decision, &validators, &inferred_mime);
 
     if !decision.include_body {
         // HEAD / 304 / 412 / 416：无文件字节；句柄即弃，资源即收。
@@ -565,7 +565,11 @@ pub async fn serve_file_response(
     // 全量回收（决策报告 §5：执行槽在在途读退出后复用）。
     let shared = finish_shared(Some(active_permit), req.finish_hook.as_ref());
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Vec<u8>, io::Error>>(
-        FILE_SERVE.limits.max_pending_blocks.saturating_sub(1).max(1),
+        FILE_SERVE
+            .limits
+            .max_pending_blocks
+            .saturating_sub(1)
+            .max(1),
     );
     let limits = FILE_SERVE.limits;
     let pump_shared = Arc::clone(&shared);
@@ -946,7 +950,10 @@ mod tests {
         // suffix。
         let suf = serve_simple(&root, "r.bin", "GET", &[("range", "bytes=-7")]).await;
         assert_eq!(suf.status, 206);
-        assert_eq!(drain(suf).await.unwrap(), (193u8..=199).collect::<Vec<u8>>());
+        assert_eq!(
+            drain(suf).await.unwrap(),
+            (193u8..=199).collect::<Vec<u8>>()
+        );
         // 416。
         let un = serve_simple(&root, "r.bin", "GET", &[("range", "bytes=500-")]).await;
         assert_eq!(un.status, 416);
@@ -1085,11 +1092,8 @@ mod tests {
     async fn plan729_options_error_maps_500_path_maps_403() {
         let root = temp_root("opt");
         std::fs::write(root.join("a.txt"), b"x").unwrap();
-        let desc_bad_opts = proto::file_response(
-            root.to_str().unwrap(),
-            "a.txt",
-            r#"{"unknown_key":true}"#,
-        );
+        let desc_bad_opts =
+            proto::file_response(root.to_str().unwrap(), "a.txt", r#"{"unknown_key":true}"#);
         let hdrs = Vec::new();
         let r = serve_file_response(
             &desc_bad_opts,

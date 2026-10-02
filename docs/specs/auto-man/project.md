@@ -175,3 +175,9 @@ routes 外无其余内嵌否决（vm-only/ext/locales/i18n；`vp` None → false
 - 非法输入口径：未知组件引用 → 非零退出 + 可定位诊断
   （"App.vue 引用的组件 SFC 未编译落盘（dep 源未解析？）：X"）。
 - S001 schema drift 维持 Severity::Info；升级/删除逐条判断，不批量改级。
+
+- api_gen 文件分支（PLAN-729）：声明 `FileResponse` 返回的端点生成真实文件 adapter
+  （method/headers 提取器 + 委托/内联体 + 共享宿主 serve，`-> axum::response::Response`，
+  不包 JsonResponse）；转译失败 = 位置诊断 500 handler，**不落 CRUD 模板**；GET 文件
+  路由自动 `.head()`；非 GET/HEAD → 405。TS HTTP 文件方法返回原生 `Response`；Tauri
+  IPC 明确 Unsupported。见 stdlib [http-server-files §6](../stdlib/design/http-server-files.md)。

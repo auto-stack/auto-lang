@@ -14,7 +14,14 @@ use std::path::PathBuf;
 const FILE_RESPONSE_CASE_DIR: &str = "test/a2r/32_plan729/001_http_file_response";
 
 fn case_name(case_dir: &str) -> String {
-    case_dir.rsplit('/').next().unwrap_or(case_dir).split_once('_').unwrap().1.to_string()
+    case_dir
+        .rsplit('/')
+        .next()
+        .unwrap_or(case_dir)
+        .split_once('_')
+        .unwrap()
+        .1
+        .to_string()
 }
 
 fn transpile_case(case_dir: &str) -> Vec<u8> {
@@ -22,16 +29,15 @@ fn transpile_case(case_dir: &str) -> Vec<u8> {
     let full = d.join(case_dir);
     let name = case_name(case_dir);
     let src = read_to_string(full.join(format!("{name}.at"))).expect("case .at");
-    let mut rcode =
-        transpile_rust_with_source_dir(&full, &name, &src).expect("transpile");
+    let mut rcode = transpile_rust_with_source_dir(&full, &name, &src).expect("transpile");
     rcode.done().expect("finalize").clone()
 }
 
 fn assert_golden(case_dir: &str) {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let name = case_name(case_dir);
-    let expected = read_to_string(d.join(case_dir).join(format!("{name}.expected.rs")))
-        .unwrap_or_default();
+    let expected =
+        read_to_string(d.join(case_dir).join(format!("{name}.expected.rs"))).unwrap_or_default();
     let rs = transpile_case(case_dir);
     if rs != expected.as_bytes() {
         let wrong = d.join(case_dir).join(format!("{name}.wrong.rs"));
@@ -58,8 +64,7 @@ fn main() {
     let b = http.file_response("root", "y.bin", "{\"etag\":\"\\\"e\\\"\"}")
 }
 "#;
-    let mut rcode = crate::trans::rust::transpile_rust("plan729_probe", src)
-        .expect("transpile");
+    let mut rcode = crate::trans::rust::transpile_rust("plan729_probe", src).expect("transpile");
     let rs = String::from_utf8(rcode.done().expect("finalize").clone()).expect("utf8");
     assert!(rs.contains("a2r_std::http::file_response("), "{rs}");
     // options 字面量字节保真（含转义引号）。
@@ -82,8 +87,7 @@ fn main() {
     let f = helper("a")
 }
 "#;
-    let mut rcode = crate::trans::rust::transpile_rust("plan729_type_map", src)
-        .expect("transpile");
+    let mut rcode = crate::trans::rust::transpile_rust("plan729_type_map", src).expect("transpile");
     let rs = String::from_utf8(rcode.done().expect("finalize").clone()).expect("utf8");
     assert!(
         rs.contains("-> a2r_std::http::FileResponse"),
@@ -108,10 +112,7 @@ let fr = http.file_response("C:/definitely/not/a/real/root", "missing.bin", "{}"
 print("ok")
 "#;
         let (_, out) = crate::run_with_capture(code).expect("run");
-        assert!(
-            out.contains("ok"),
-            "构造零 I/O（缺 root 不失败）: {out}"
-        );
+        assert!(out.contains("ok"), "构造零 I/O（缺 root 不失败）: {out}");
         assert!(
             crate::vm::ffi::http_server_file::vm_file_response_count() >= 1,
             "描述符登记进 VM 注册表"
@@ -140,7 +141,6 @@ print("done")
         );
     }
 }
-
 
 // ===========================================================================
 // e2e（`test-http-e2e` 串行档）：VM 默认 HTTP 真 TCP wire 矩阵（T-06）。
@@ -204,7 +204,8 @@ mod http_e2e {
         }
         let mut stream = stream.expect("connect to test server");
         stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
-        let mut req = format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n");
+        let mut req =
+            format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n");
         for (k, v) in headers {
             req.push_str(&format!("{k}: {v}\r\n"));
         }
@@ -255,8 +256,7 @@ mod http_e2e {
     }
 
     pub(super) fn header_of(hdrs: &[(String, String)], name: &str) -> String {
-        hdrs
-            .iter()
+        hdrs.iter()
             .find(|(k, _)| k == name)
             .map(|(_, v)| v.clone())
             .unwrap_or_default()
@@ -315,7 +315,10 @@ fn plain_int() int {{
         std::fs::write(root.join("hello.txt"), b"hello plan729 e2e").unwrap();
         std::fs::write(root.join("raw.bin"), [0x00u8, 0xFF, 0xFE, 0x80, 0x01]).unwrap();
         std::fs::write(root.join("empty.bin"), b"").unwrap();
-        let port = start_server(&program(&root.to_str().unwrap().replace('\\', "/")), PORT_BASIC);
+        let port = start_server(
+            &program(&root.to_str().unwrap().replace('\\', "/")),
+            PORT_BASIC,
+        );
 
         let (status, hdrs, body) = raw_request(port, "GET", "/files/hello.txt", &[]);
         assert_eq!(status, 200, "{hdrs:?}");
@@ -339,7 +342,11 @@ fn plain_int() int {{
         let (status, hdrs, body) =
             raw_request(port, "HEAD", "/files/hello.txt", &[("range", "bytes=0-3")]);
         assert_eq!(status, 200);
-        assert_eq!(header_of(&hdrs, "content-length"), "17", "HEAD 表示长度（Range 忽略）");
+        assert_eq!(
+            header_of(&hdrs, "content-length"),
+            "17",
+            "HEAD 表示长度（Range 忽略）"
+        );
         assert!(body.is_empty(), "HEAD wire body 必须为 0");
         assert!(!header_of(&hdrs, "access-control-allow-origin").is_empty());
         let _ = std::fs::remove_dir_all(&root);
@@ -350,7 +357,10 @@ fn plain_int() int {{
     fn http_e2e_plan729_vm_large_12mib() {
         let root = temp_root("large");
         let expect = write_large(&root.join("big.bin"));
-        let port = start_server(&program(&root.to_str().unwrap().replace('\\', "/")), PORT_LARGE);
+        let port = start_server(
+            &program(&root.to_str().unwrap().replace('\\', "/")),
+            PORT_LARGE,
+        );
 
         let (status, hdrs, body) = raw_request(port, "GET", "/files/big.bin", &[]);
         assert_eq!(status, 200);
@@ -371,10 +381,16 @@ fn plain_int() int {{
         let root = temp_root("range");
         let data: Vec<u8> = (0u8..=199).collect();
         std::fs::write(root.join("r.bin"), &data).unwrap();
-        let port = start_server(&program(&root.to_str().unwrap().replace('\\', "/")), PORT_RANGE);
+        let port = start_server(
+            &program(&root.to_str().unwrap().replace('\\', "/")),
+            PORT_RANGE,
+        );
 
         let (s, h, b) = raw_request(port, "GET", "/files/r.bin", &[("range", "bytes=10-19")]);
-        assert_eq!((s, header_of(&h, "content-range").as_str()), (206, "bytes 10-19/200"));
+        assert_eq!(
+            (s, header_of(&h, "content-range").as_str()),
+            (206, "bytes 10-19/200")
+        );
         assert_eq!(header_of(&h, "content-length"), "10");
         assert_eq!(b, (10u8..=19).collect::<Vec<u8>>());
 
@@ -387,14 +403,23 @@ fn plain_int() int {{
         assert_eq!(s, 206u16);
 
         let (s, h, _) = raw_request(port, "GET", "/files/r.bin", &[("range", "bytes=90-99999")]);
-        assert_eq!((s, header_of(&h, "content-range").as_str()), (206, "bytes 90-199/200"));
+        assert_eq!(
+            (s, header_of(&h, "content-range").as_str()),
+            (206, "bytes 90-199/200")
+        );
 
         let (s, h, b) = raw_request(port, "GET", "/files/r.bin", &[("range", "bytes=-5000")]);
-        assert_eq!((s, header_of(&h, "content-range").as_str()), (206, "bytes 0-199/200"));
+        assert_eq!(
+            (s, header_of(&h, "content-range").as_str()),
+            (206, "bytes 0-199/200")
+        );
         assert_eq!(b.len(), 200);
 
         let (s, h, b) = raw_request(port, "GET", "/files/r.bin", &[("range", "bytes=-0")]);
-        assert_eq!((s, header_of(&h, "content-range").as_str()), (416, "bytes */200"));
+        assert_eq!(
+            (s, header_of(&h, "content-range").as_str()),
+            (416, "bytes */200")
+        );
         assert!(b.is_empty());
 
         let (s, _, _) = raw_request(port, "GET", "/files/r.bin", &[("range", "bytes=200-")]);
@@ -430,7 +455,10 @@ fn plain_int() int {{
     fn http_e2e_plan729_vm_conditional_matrix() {
         let root = temp_root("cond");
         std::fs::write(root.join("c.bin"), (0u8..=99).collect::<Vec<u8>>()).unwrap();
-        let port = start_server(&program(&root.to_str().unwrap().replace('\\', "/")), PORT_COND);
+        let port = start_server(
+            &program(&root.to_str().unwrap().replace('\\', "/")),
+            PORT_COND,
+        );
         let future = httpdate_offset(3600);
         let past = httpdate_offset(-3600);
 
@@ -455,7 +483,12 @@ fn plain_int() int {{
         let (s, _, _) = raw_request(port, "GET", "/files/c.bin", &[("if-match", "v1")]);
         assert_eq!(s, 412, "无 etag 可比");
 
-        let (s, _, _) = raw_request(port, "GET", "/files/c.bin", &[("if-modified-since", &future)]);
+        let (s, _, _) = raw_request(
+            port,
+            "GET",
+            "/files/c.bin",
+            &[("if-modified-since", &future)],
+        );
         assert_eq!(s, 304);
         let (s, _, _) = raw_request(port, "GET", "/files/c.bin", &[("if-modified-since", &past)]);
         assert_eq!(s, 200);
@@ -584,7 +617,12 @@ fn plain_int() int {{
         );
         let port = start_server(&code, PORT_METHOD);
 
-        let (s, h, _) = raw_request(port, "POST", "/upload", &[("content-type", "application/json")]);
+        let (s, h, _) = raw_request(
+            port,
+            "POST",
+            "/upload",
+            &[("content-type", "application/json")],
+        );
         assert_eq!(s, 405);
         assert_eq!(header_of(&h, "allow"), "GET, HEAD");
 

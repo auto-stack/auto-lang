@@ -47,3 +47,6 @@ graph LR
 | collections | hashmap（C 后端） | active |
 | may | 协程库绑定 | experimental（.at.skip，未启用） |
 | result | option/result（C 后端） | experimental（.at.skip，未启用） |
+
+- 设计：[http-server-files](design/http-server-files.md)（PLAN-729 服务端文件响应：
+  GET/HEAD/单区间/条件请求/受限根目录/配额收口——VM 与生成 Rust 单源执行）。

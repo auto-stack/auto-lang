@@ -564,3 +564,16 @@ auto-musk 后端 handler **同时是消费者和生产者**:
 - VM generator next() 驱动正确工作(Plan 321 遗留 #1)
 - AutoHttpServer 检测 `~Stream<T>` 返回类型,自动进入 SSE 流模式
 - HTTPStream 统一到 Iter 协议(for 循环消费)
+
+
+## 12. 服务端文件响应（PLAN-729）
+
+- 命名 `#[api]` GET/HEAD handler 返回 `http.file_response(root, rel, options)`
+  （`FileResponse` 描述符，同步/`~` 异步同形）→ VM 默认 HTTP 与生成 Rust 服务以
+  **同一执行代码**提供文件下载：GET/HEAD、单区间 Range、前置条件与 If-Range、受限
+  根目录打开、有界发送与生命期收口。完整契约见
+  [http-server-files](http-server-files.md)。
+- 服务端接收文件上传（multipart/raw 流式 ingress）与通用静态目录挂载
+  （`Server.static`）**仍未交付**；多区间 `multipart/byteranges` 与压缩表示同非面。
+- §8.1 的旧 ureq 客户端描述已过时：客户端文件传输/流/结果通道现以 727/724/707
+  Spec 为准（[http-file-transfer](http-file-transfer.md) 等）。

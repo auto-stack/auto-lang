@@ -39,3 +39,14 @@ VM HTTP/SSE 的请求绑定、所有权、取消和错误行为详见 [HTTP Serv
 - `AutoVM` 是 `!Send`；VM owner 循环独占 VM（单线程 `LocalSet`），网络层与 owner 之间只传 owned `Send` 的 `ApiRequest`/`ApiReply`（有界队列 + oneshot）。禁止把 VM 引用编码成整数跨线程转运、禁止 `spawn_blocking` 调 VM。
 - SSE generator 以有界指令批次执行并让出 LocalSet；帧通道容量 1 背压，断连/关闭经 `FrameStream` 收流并在 owner 线程回收 iterator/task/订阅。服务有优雅关闭（§7.3 引 [http-server](http-server.md)）。
 - VM 与生成 Axum 的 CRUD、SSE 事件和认证样本有独立 live 验证；VM `auto.bus.subscribe()` publisher 面（PLAN-698）在 017-chat 有全环实测，但 VM 总线与生成侧事件互不相通。`https`、TLS、HTTP/2/3、通用 WebSocket（现有为简化 echo）与统一 Axum server 仍不属于当前支持面。
+
+
+## PLAN-729 锁定的文件响应单源
+
+- 文件宿主执行单源：受限打开/准入/有界 pump/收口只在
+  `auto_lang::http_file_service`（**不含 axum 类型**——版本无关 `FileReply` 投影）；
+  VM 默认 HTTP（本仓 axum 0.8）与 auto-man 生成服务（生成 workspace axum 0.7）
+  各自组装 Response，协议决策单源在 `a2r_std::http::server_file`。
+- IPC（Tauri）/进程内 back-proxy 对文件端点明确拒绝（Unsupported/501 + 改走 HTTP
+  URL 指引）；legacy stdnet 500 诊断。支持矩阵见
+  [http-server-files §6](http-server-files.md)。

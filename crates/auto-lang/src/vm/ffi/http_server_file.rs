@@ -39,7 +39,10 @@ pub(crate) fn insert_file_response(descriptor: FileResponse) -> u64 {
 
 /// 编组取出（单次交付；未登记 id → None）。
 pub(crate) fn take_file_response(id: u64) -> Option<FileResponse> {
-    VM_FILE_RESPONSES.lock().ok().and_then(|mut m| m.remove(&id))
+    VM_FILE_RESPONSES
+        .lock()
+        .ok()
+        .and_then(|mut m| m.remove(&id))
 }
 
 /// `http.file_response(root, relative_path, options) -> FileResponse`

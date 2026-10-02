@@ -100,3 +100,16 @@ owner parked 表，**owner loop 立即空出**服务后续请求；完成端经�
 - [http-server §8.1](http-server.md)（协议预算/装配）、
   [async-http-result-lifecycle](async-http-result-lifecycle.md)（结果通道单次终结）
 - [networking-stdlib](../../auto-lang/runtime/design/networking-stdlib.md)（阶段 C1 落地面）
+
+
+## PLAN-729：文件 body 的 scope 与期限
+
+- 文件回复与 SSE 同形：scope/许可随响应体代持（`FileBodyAdapter` Drop/pump finish
+  恰一次幂等终结），**不沿用普通 Text 回复的立即 `complete_scope` 分支**。
+- 两期限交接：handler 段沿用既有 30s deadline；回复送达后文件准备
+  （等许可+open+metadata+seek）取 min(30s, scope 剩余)；headers 之后转入 body
+  idle watchdog（60s 默认，独立计时任务覆盖不被 poll 的客户端）+ 可选总期限。
+  大下载不被 handler deadline 误杀。
+- 在途 FS 读不强制中断：取消 = 停止 issuance + 等收口；active 执行槽随 pump 退出
+  归还（逻辑取消与 FS 实际退出分开计数）。契约详见
+  [http-server-files §5](http-server-files.md)。
