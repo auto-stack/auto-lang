@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-729
-status: execution_done
+status: executing
 feature_name: http-server-file-responses
 author: [agent]
 created_at: 2026-10-02
@@ -272,7 +272,8 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-05：a2r/auto-man 文件 handler 与各消费形态
 
-- [x] 已完成（2026-10-02；提交 4f35bd1ce）——trans lowering + `FileResponse` 类型映射（参数/
+- [ ] 修复中（R1 复审 needs_fix：G-01 异步零覆盖/G-02 不支持形态零测试/G-04 转译失败无测试/G-12 别名与同名反例——见 §9 R1 记录）
+- [x] 主体已完成（2026-10-02；提交 4f35bd1ce）——trans lowering + `FileResponse` 类型映射（参数/
   返回位）；api_gen 主路径/委派路径文件分支（Response 签名+method/headers+`__file_reply` 胶水+
   `.head()` 路由+405+转译失败诊断不落模板）；api targets：axum Response 分支+glue、TS 原生
   Response、Tauri Unsupported；back_proxy 501 拒绝；golden `32_plan729`。api_gen 33 绿 +
@@ -284,7 +285,8 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-06：协议、根目录与兼容回归矩阵
 
-- [x] 已完成（2026-10-02；提交 7b1738d10）——VM 真 TCP 6 族（基本/12MiB hash/Range/条件/
+- [ ] 修复中（R1：G-01 异步 wire/G-05 生成腿 12MiB hash/G-06 If-Unmodified-Since wire/G-07 download_name wire/G-08 路径替换 wire/G-10 权限映射/G-11 HEAD 优先级/G-13 半关闭——见 §9 R1 记录）
+- [x] 主体已完成（2026-10-02；提交 7b1738d10）——VM 真 TCP 6 族（基本/12MiB hash/Range/条件/
   路径安全/方法+int 门，9 测全绿）+ 生成服务实编 e2e（auto-man 真实生成产物 cargo build +
   axum 0.7 wire 矩阵绿）+ `examples/http_server/files/`（README/pac.at/back/api.at）；
   报告 `729-server-files-protocol.md`（§6.1 双端逐行表）。
@@ -295,7 +297,8 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-07：慢发送/取消/关闭与 727 客户端互通
 
-- [x] 已完成（2026-10-02；提交 8eecd9f0d）——慢客户端断连回收/配额 N+Q+1 队满 503+恢复/
+- [ ] 修复中（R1：G-03 health 20×<500ms/G-09 open 计数+auth/G-16 idle watchdog 测试/G-17 缓冲峰值计数——见 §9 R1 记录）
+- [x] 主体已完成（2026-10-02；提交 8eecd9f0d）——慢客户端断连回收/配额 N+Q+1 队满 503+恢复/
   727 五态互通（完整/206 强 validator 续传/If-Range 失配 200/416 保旧/取消后 server 资源
   退出）全绿；idle 覆写旋钮（生产面恒 None）；报告 `729-server-files-lifecycle.md` +
   `729-server-files-parity.md`（含 OS 缓冲吸收/晋升语义/hyper 304 剥离等如实观察）。
@@ -306,7 +309,8 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
 
 ### T-08：门禁、独立复审与规范增量交接
 
-- [x] 已完成（2026-10-02；提交 2db246b3f）——门禁全表见
+- [ ] 修复中（R1：验证报告三处表述失实修正 + affects 簿记 + SD-01 三处偏差——见 §9 R1 记录）
+- [x] 主体已完成（2026-10-02；提交 2db246b3f）——门禁全表见
   `729-server-files-verification.md`：裸 `cargo t` 14 红与 master 基线**逐名一致**（零新增
   确定性红；5025=5006+19 新全绿）、tv 162/162、tt 1062 trans 例、th 30+（2 预存在案）、
   a2r-std 全量、rustfmt 清洁、调试输出零残留；tf 为批量档未跑。SD-01 全文 + SD-02..07 增量
@@ -333,6 +337,44 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
   th（2 预存在案）；AC-01..06/SD-01..07 绑定见 verification 报告 §3/§4
 - blockers: 无（复审入口就绪；tf 批量档归 merge 到期判定；Linux 腿归 CI）
 - next: review（`/auto-plan:review` 独立逐项验证）
+
+### R1 复审（2026-10-02，needs_fix）
+
+- stage: review
+- plan_id: PLAN-729
+- plan_revision: 1
+- outcome: needs_fix
+- reviewed_commit: plan-729-dev @ 2db246b3f9cb4a712f1a3ab35ddec77905954a52（worktree clean）
+- base_commit: master @ e5b068bd0a
+- dependency_revisions: a2r-std 同分支内（无外部 rev 变更）；auto-down 兄弟只读未用
+- spec_inputs: docs/specs/stdlib/design/http-server.md@e5b068bd0a、backend-assembly.md@e5b068bd0a、
+  http-handler-async-lifecycle.md@e5b068bd0a、stdlib/project.md@e5b068bd0a、a2r-std/project.md@e5b068bd0a、
+  trans/overview.md@e5b068bd0a、auto-man/project.md@e5b068bd0a + worktree SD 草稿全文审读
+- acceptance_results: AC-01 partial（同步双端全绿；**异步 `~FileResponse` 零 wire/生成/golden 断言**）；
+  AC-02 pass（VM 全矩阵；生成腿为子集）；AC-03 partial（探针+单元+e2e 在案；**prepare 路径替换
+  无自动化测试、auth 拒绝无 open 计数证据、PermissionDenied 映射与 §5.3 的 403 不符、显式 HEAD
+  优先级实现为单趟注册序**）；AC-04 partial（配额/背压/回收在案；**health 20×<500ms 零测试、
+  缓冲峰值无计数器**）；AC-05 partial（断连/取消/到期在案；**半关闭/shutdown drain/idle watchdog
+  零测试**）；AC-06 partial（生成双端+互通在案；**Tauri/TS/back_proxy/legacy 不支持形态零测试、
+  转译失败不 fallback 零测试；验证报告三处表述失实**）
+- findings: G-01(blocker,AC-01/T-04/T-05) 异步形态零断言；G-02(blocker,AC-06/T-05) 不支持形态
+  零测试+verification:56 失实；G-03(major,AC-04/T-07) health 门零测试+verification:54 失实；
+  G-04(major,AC-06/T-05) 转译失败无测试；G-05(major,AC-01/T-06) 生成腿 12MiB hash 缺；
+  G-06(minor) If-Unmodified-Since wire 缺；G-07(major,AC-03) download_name/恶意头值 wire 缺；
+  G-08(major,AC-03) 路径替换无自动化测试；G-09(major,AC-03) open 计数+auth 证据缺；
+  G-10(major,AC-03) PermissionDenied→500 与计划 403 偏离（无声）；G-11(minor~major) 显式 HEAD
+  优先级实现与 Spec 承诺不符；G-12(minor) 别名/同名反例缺；G-13(major,AC-05) 半关闭零测试；
+  G-14(major,AC-05) shutdown drain 零专项；G-16(major,AC-05) idle watchdog 零测试；
+  G-17(major,AC-04) 缓冲峰值无计数；G-20(minor) back_proxy 生产 eprintln；
+  G-21/G-22/G-23(minor) SD-01 措辞/映射/优先级三处偏差；G-25(minor) affects 簿记不全。
+  已核对为达标的关键面（防误报）：同步双端 wire 矩阵/727 五态互通/生成不落 JsonResponse/
+  int 反例/截断失败/no-follow walk/协议单源——独立探查属实。
+- evidence: 新跑门禁（裸 cargo t --no-fail-fast 5025 测：14 基线红逐名一致 + 2 负载 flake
+  单跑绿 clipboard_files_set_get_roundtrip/plan502_m3_layout_geometry_e2e；tv 162/162；
+  http_e2e_plan729 9/9；api_gen 33；a2r-std server_file 15）；只读差距猎捕代理报告
+  （file:line 级证据全录于上）；diff 全量审读（41 文件 +5714/-6）
+- next: work 修复循环 R1（重开 T-05/T-06/T-07/T-08；修复上限 3 循环内）——优先 blocker
+  G-01/G-02 + 报告失实三处，其次 majors；G-14/G-15/G-18 归 KNOWN-DEBT 显式记录
 
 ### 起草交接（2026-10-02）
 
