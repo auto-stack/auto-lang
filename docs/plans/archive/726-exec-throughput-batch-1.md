@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-726
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: exec-throughput-batch-1
 author: [agent]
 created_at: 2026-10-02
@@ -318,6 +318,23 @@ T-02 收敛为两族（画廊围栏 + 1M churn）。
   AGENTS.md 沉淀+资源表刷新+归档+worktree 清理）。**frontmatter spec 字段
   空值理由**：本计划为测试基建+工作流工具，未触任何 docs/specs 模块契约
   （vm 行为零变化，SD-01 论证在档）；touched_goals 无对应 GOAL-NNN。
+- 2026-10-02 /auto-plan:merge 收据（`PLAN-726:r<draft+aavm 修订>`）：
+  `stage: merge` | `outcome: pass` | **prepared**=reviewed 基线 2feb50a6c +
+  AGENTS.md SD 沉淀（纯文档后代 0b042191b→rebase 后 529fb8099；实现/依赖
+  零变化）+ 空 spec 增量论证（AGENTS.md 为工作流规约载体，在案先例=
+  fix-test-tiering/fix-ui-tier 等计划沉淀惯例）；**landed**=rebase 上
+  master（range-diff 补丁恒等：旧 2feb50a6c = 新 8cbd330d7）→ 主检出
+  `git merge --ff-only plan-726-dev`，master tip=529fb8099=dev 头（无
+  merge commit），落地后主检出冒烟 `cargo t heavy_gate` 5/5 绿；主检出
+  在途脏文件仅他会话 723/727 簿记（共享簿记例外，原样保留）；**ledger
+  _refreshed**=no-op（有据：spec 增量为空，无 docs/specs 变更可投影；
+  `.autoos/specs.json` 未手写——本会话无 store-mediated 写入面且无需
+  写入）；**archived**=`git mv docs/plans/726-exec-throughput-batch-1.md
+  docs/plans/archive/` + `status: archived`，`completion_kind: delivered`；
+  **cleaned**=（见下）；**部署面核查**=N/A 有据——改动全部为 `#[cfg(test)]`
+  测试基建+脚本，release 二进制/依赖仓 daemon/web bundle 零消费面；
+  **批量回归到期判定**=due（回执 last_covered_plan_id=715 < 已落地的 725
+  且 725%5==0；亦超 48h）→ 移交 `/auto-plan:regress` 主检出单实例执行。
 
 ## 10. 待澄清事项
 
