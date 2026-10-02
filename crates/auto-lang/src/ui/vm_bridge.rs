@@ -2461,11 +2461,20 @@ impl VmBridge {
                 // 回收成悬垂 id,computed 透传链每帧传死引用
                 // (musk filteredMessages: [VM-IDX] id no-heap-object ×N,
                 // 消息气泡整体空)。
+                // PLAN-733 T-02: 栈编码对齐 H2 统一约定（engine.rs "H2
+                // unified the *stack encoding* (everything → encode_object)"）
+                // ——列表实参原按 encode_list(TAG_LIST,tag 6)推栈，而 engine
+                // 数值操作臂（ARRAY_LEN/GET_ELEM/for-in 头部）只认
+                // encode_object(TAG_OBJECT,tag 5)/裸 i32：TAG_LIST 落入未知臂
+                // 按空迭代——视图 computed 内 fn 调用的列表实参恒空
+                // （auto-musk PLAN-097 附页①"computed 内函数调用❌恒空"的
+                // 运行时根因）。encode_object 后 heap_ref_id（双 tag 识别）
+                // 记账不变。
                 Value::Int(id) if *id >= 4_000_000 => {
-                    self.vm.rc_push(&mut task, auto_val::encode_list(*id as u32));
+                    self.vm.rc_push(&mut task, auto_val::encode_object(*id as u32));
                 }
                 Value::VmRef(r) if r.id >= 4_000_000 => {
-                    self.vm.rc_push(&mut task, auto_val::encode_list(r.id as u32));
+                    self.vm.rc_push(&mut task, auto_val::encode_object(r.id as u32));
                 }
                 Value::VmRef(r) => {
                     self.vm.rc_push(&mut task, auto_val::encode_object(r.id as u32));

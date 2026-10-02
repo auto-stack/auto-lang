@@ -289,6 +289,9 @@ mod plan606_gallery_tests;
 // PLAN-615 T-07: calc 011 Programmer HEX 首光回归（VM 侧逻辑锚）。
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan615_calc_prog_tests;
+// PLAN-733 T-01: VM 运行时模块级 fn 调用语义最小复现矩阵（handler 域/computed 面）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan733_fn_call_semantics_tests;
 // Plan 046 (auto-musk T2): obj receiver method family regression corpus.
 #[cfg(test)]
 mod plan046_obj_natives_tests;

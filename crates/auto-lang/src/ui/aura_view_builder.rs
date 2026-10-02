@@ -12408,6 +12408,28 @@ let tabs_inner = View::Row {
                 }
                 Some(Value::Array(auto_val::Array { values }))
             }
+            // PLAN-733 T-02: 对象字面量臂——computed 实参/嵌套元素里的
+            // `{ key: v }` 形此前落 `_ => None`，整个实参解析判 incomplete
+            // → fn 调用 computed 整体字面回退（`${cc}` 形）。键限字面量
+            // 形态（Named/Int/Bool/Str Key），值递归求值。
+            Expr::Object(pairs) => {
+                let mut obj = auto_val::Obj::new();
+                for pair in pairs {
+                    let v = self.resolve_expr_to_value(&pair.value, bindings)?;
+                    let key: auto_val::ValueKey = match &pair.key {
+                        crate::ast::Key::NamedKey(n) => {
+                            auto_val::ValueKey::Str(n.to_string().into())
+                        }
+                        crate::ast::Key::IntKey(i) => auto_val::ValueKey::Int(*i),
+                        crate::ast::Key::BoolKey(b) => auto_val::ValueKey::Bool(*b),
+                        crate::ast::Key::StrKey(s) => {
+                            auto_val::ValueKey::Str(s.as_str().to_string().into())
+                        }
+                    };
+                    obj.set(key, v);
+                }
+                Some(Value::Obj(Box::new(obj)))
+            }
             // PLAN-048 L1 (musk VM 数据桥): None/Nil/Null literals resolve to
             // Value::Nil so computed comparisons like `.token != None` can
             // evaluate. Previously the literal fell to `_ => None`, voiding
