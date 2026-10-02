@@ -768,6 +768,11 @@ pub async fn upload_commit(
     }
     let target = relative_target.as_ref();
     if let Err(message) = validate_relative_path(target) {
+        // PLAN-734 T-05 修复（泄漏）：词法拒绝此前短路返回——Staged 会话的
+        // staging 文件与 active 许可滞留到 lease 过期（同目标矩阵多笔时
+        // 准入饿死；lease≈准入期限的时序巧合掩盖了它）。拒绝 = 终结会话：
+        // 级联 cancel（executor 清理；未安装时 no-op）。
+        cancel_upload_session(session.id());
         return UploadReceipt::failed(UploadErrorKind::ForbiddenPath, message);
     }
     let Some(exec) = executor() else {

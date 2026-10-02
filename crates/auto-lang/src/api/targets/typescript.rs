@@ -33,15 +33,14 @@ impl TypeScriptGenerator {
 
         // PLAN-729 T-05: 文件端点（FileResponse / Future<FileResponse>）→
         // 原生 Response（fetch 返回原样交付，不 .json()）。
-        if trimmed.contains("FileResponse") {
+        if crate::api::contract::ResponseKind::from_return_string(trimmed) == crate::api::contract::ResponseKind::File {
             return "Response".to_string();
         }
 
         // PLAN-730 T-06: 上传三类型 → 收据 JSON（动态形状；UploadRequest 是
         // 注入参数——签名侧被 FormData 替换，此映射兜 interface/返回位）。
-        if trimmed.contains("UploadReceipt")
-            || trimmed.contains("UploadSession")
-            || trimmed.contains("UploadRequest")
+        if crate::api::contract::ResponseKind::from_return_string(trimmed) == crate::api::contract::ResponseKind::Upload
+            || crate::api::contract::is_upload_param(trimmed)
         {
             return "any".to_string();
         }

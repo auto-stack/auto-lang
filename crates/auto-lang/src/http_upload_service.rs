@@ -1968,6 +1968,10 @@ mod tests {
     /// 目标矩阵：traversal/绝对/drive/UNC/父目录缺失 → 403（零发布）。
     #[test]
     fn plan730_commit_target_matrix() {
+        // 734 回执在案：本测为 30s 级磁盘重测（6 迭代×create/sync/canonicalize），
+        // 默认 30s lease 在慢盘下于迭代中途过期 → 后续 commit 变 409/410。
+        // 测试主题是目标矩阵而非租约——lease 覆写 5min 消除边界（回执候选修复）。
+        std::env::set_var("AUTO_HTTP_UPLOAD_LEASE_MS", "300000");
         install();
         let (root, staging) = temp_roots("tgt");
         let runtime = rt();

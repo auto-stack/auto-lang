@@ -102,8 +102,9 @@ impl TauriGenerator {
         lines.push("#[tauri::command]".to_string());
 
         // Plan 329: SSE handler → Channel command (async, streaming via emit)
-        let is_sse = endpoint.return_type.contains("~Iter")
-            || endpoint.return_type.contains("~Stream");
+        // PLAN-734 T-05：契约分类（身份判定）。
+        let is_sse = crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
+            == crate::api::contract::ResponseKind::Stream;
 
         // Build function signature
         let mut params: Vec<String> = endpoint.params
@@ -151,8 +152,8 @@ impl TauriGenerator {
         let is_upload_endpoint = endpoint
             .params
             .iter()
-            .any(|p| p.ty.contains("UploadRequest"))
-            || endpoint.return_type.contains("UploadReceipt");
+            .any(|p| crate::api::contract::is_upload_param(&p.ty))
+            || crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type) == crate::api::contract::ResponseKind::Upload;
         if is_upload_endpoint {
             lines.clear();
             lines.push(format!(
@@ -175,7 +176,7 @@ impl TauriGenerator {
 
         // PLAN-729 T-05: 文件端点不经 Tauri IPC——描述符不是可序列化数据
         // （明确 Unsupported 诊断 + 改走 HTTP URL 指引，不 opaque 当成功数据）。
-        if endpoint.return_type.contains("FileResponse") {
+        if crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type) == crate::api::contract::ResponseKind::File {
             lines.clear();
             lines.push(format!(
                 "// PLAN-729: file endpoint `{}` — Tauri IPC is unsupported for file responses;",
