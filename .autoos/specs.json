@@ -1250,7 +1250,7 @@
             "plan-729",
             "delivery"
           ],
-          "file": "docs/plans/729-http-server-file-responses.md"
+          "file": "docs/plans/archive/729-http-server-file-responses.md"
         }
       ]
     },
@@ -8194,7 +8194,7 @@
             "review",
             "commit:ae414a45b"
           ],
-          "file": "docs/plans/729-http-server-file-responses.md"
+          "file": "docs/plans/archive/729-http-server-file-responses.md"
         }
       ]
     }

@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-729
-status: reviewed
+status: archived
 feature_name: http-server-file-responses
 author: [agent]
 created_at: 2026-10-02
@@ -333,6 +333,31 @@ root 由应用选择并授权；本功能不会给远端选择任意主机路径
   th（2 预存在案）；AC-01..06/SD-01..07 绑定见 verification 报告 §3/§4
 - blockers: 无（复审入口就绪；tf 批量档归 merge 到期判定；Linux 腿归 CI）
 - next: review（`/auto-plan:review` 独立逐项验证）
+
+### PLAN-729:r1 merge 收据（2026-10-02）
+
+- stage: merge
+- outcome: delivered（prepared/landed/ledger_refreshed/archived 四章；cleaned 补记随后）
+
+**prepared**：reviewed baseline = R2 pass @ae414a45b（plan_revision 1）；canonical
+Spec delta = worktree 内 SD-01..07（SD-01 新件 116 行 + SD-02..07 增量 + SD-06 新件）；
+projection targets = .autoos/specs.json（git 跟踪，worktree 内提交）+
+docs/specs/{stdlib,auto-lang/trans,auto-man}/plans.md 三行 + INDEX 再生；delivery
+commit = cec59e2a4（@ae414a45b 的 docs/projection-only 后代——实现/依赖零变）。
+
+**landed**：rebase 后 master ff-only 合入，无 merge commit；git range-diff
+master..ae414a45b vs master..050e2ee90 十提交全等（`=`，重写仅哈希映射
+67e194661→563104ab4 … cec59e2a4→050e2ee90）；master tip = 050e2ee90 = delivery
+commit。主检出冒烟：cargo t plan729 25/25 绿；canonical 两新件在位。
+
+**ledger_refreshed**：.autoos/specs.json 经 worktree 提交 + scripts/spec-index.py
+再生（本仓既定 store 路径，AGENTS §4）；条目 P729-1/P729-2（designs，docsha 锚）、
+P729-7（reviews）、P729-8（reports）；读回验证 4 条在册；plans.md 索引三行
+（reviewed→archived 状态列随本归档生效）。
+
+**archived**：docs/plans/archive/729-http-server-file-responses.md（git mv），
+status: archived；completion_kind: delivered；批量回归到期判定：未到期
+（729 % 5 ≠ 0；.last-batch-regression.json 回执 2026-10-02 新鲜，covered 726）。
 
 ### R2 复议（2026-10-02，pass）
 
