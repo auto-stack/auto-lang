@@ -99,6 +99,131 @@ fn main() {
 }
 
 // ===========================================================================
+// VM 腿（日常档）：新面 natives 经 Auto 源直跑 VM（run_with_capture）
+// ===========================================================================
+
+#[cfg(test)]
+mod vm {
+    use crate::run_with_capture;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    fn spawn_mock(response_body: &str) -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let body = response_body.to_string();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 4096];
+                let _ = stream.read(&mut buf);
+                let resp = format!(
+                    "HTTP/1.1 200 OK
+Content-Length: {}
+Connection: close
+
+{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(resp.as_bytes());
+                let _ = stream.shutdown(std::net::Shutdown::Both);
+            }
+        });
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        port
+    }
+
+    fn dead_port() -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        port
+    }
+
+    /// 新面：transfer_download + transfer_wait 成功收据 + 目标替换。
+    #[test]
+    fn plan727_vm_transfer_download_wait_success() {
+        let port = spawn_mock("vm-transfer-body");
+        let url = format!("http://127.0.0.1:{port}/f");
+        let dir = std::env::temp_dir().join(format!("plan727-vm-{}", port));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("f.bin");
+        std::fs::write(&path, b"OLD").unwrap();
+        let code = format!(
+            r#"
+let t = http.transfer_download("{}", "{}", "{{}}")
+let r = http.transfer_wait(t)
+print(r)
+"#,
+            url,
+            path.to_str().unwrap()
+        );
+        let result = run_with_capture(&code);
+        assert!(result.is_ok(), "VM run failed: {:?}", result.err());
+        let (_, stdout) = result.unwrap();
+        eprintln!("DEBUG vm stdout = [{stdout}]");
+        assert!(stdout.contains("\"kind\":\"success\""), "{stdout}");
+        assert_eq!(std::fs::read(&path).unwrap(), b"vm-transfer-body");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 新面：坏 options → Failed(options)，请求不发出（死端口也不挂死）。
+    #[test]
+    fn plan727_vm_transfer_bad_options_terminal() {
+        let port = dead_port();
+        let dir = std::env::temp_dir().join(format!("plan727-vm-bad-{}", port));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("f.bin");
+        let code = format!(
+            r#"
+let t = http.transfer_download("http://127.0.0.1:{}/f", "{}", "{{bad json")
+let r = http.transfer_wait(t)
+print(r)
+"#,
+            port,
+            path.to_str().unwrap()
+        );
+        let result = run_with_capture(&code);
+        assert!(result.is_ok(), "VM run failed: {:?}", result.err());
+        let (_, stdout) = result.unwrap();
+        assert!(stdout.contains("\"kind\":\"failed\""), "{stdout}");
+        assert!(stdout.contains("\"kind\":\"options\""), "{stdout}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 新面：取消词汇——cancel + wait 交付 cancelled（或已完成的 success）。
+    #[test]
+    fn plan727_vm_transfer_cancel_observable() {
+        let port = spawn_mock("quick");
+        let url = format!("http://127.0.0.1:{port}/f");
+        let dir = std::env::temp_dir().join(format!("plan727-vm-cancel-{}", port));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("f.bin");
+        let code = format!(
+            r#"
+let t = http.transfer_download("{}", "{}", "{{}}")
+http.transfer_cancel(t)
+let r = http.transfer_wait(t)
+print(r)
+let e = http.transfer_error(t)
+print(e)
+"#,
+            url,
+            path.to_str().unwrap()
+        );
+        let result = run_with_capture(&code);
+        assert!(result.is_ok(), "VM run failed: {:?}", result.err());
+        let (_, stdout) = result.unwrap();
+        assert!(
+            stdout.contains("\"kind\":\"cancelled\"") || stdout.contains("\"kind\":\"success\""),
+            "{stdout}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+}
+
+// ===========================================================================
 // e2e：真 TCP + 转译 + cargo build/run（test-http-e2e；cargo th 串行）
 // ===========================================================================
 

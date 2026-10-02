@@ -307,8 +307,8 @@ pub(crate) fn consume_legacy_upload(
 pub(crate) fn spawn_core_download_with_progress(
     url: &str,
     file_path: &str,
-    tx: tokio::sync::mpsc::Sender<super::stdlib::AsyncStreamEvent>,
-    stream_handle: std::sync::Arc<super::stdlib::AsyncStreamHandle>,
+    tx: tokio::sync::mpsc::Sender<crate::vm::ffi::stdlib::AsyncStreamEvent>,
+    stream_handle: std::sync::Arc<crate::vm::ffi::stdlib::AsyncStreamHandle>,
 ) {
     let transfer = a2r_std::http::transfer_download(url, file_path, "");
     let observer = transfer.observer();
@@ -323,7 +323,7 @@ pub(crate) fn spawn_core_download_with_progress(
             let p = observer.latest_progress_json();
             if !p.is_empty() {
                 // 进度保留最新值：通道满 = 慢消费者合并丢弃，不反压落盘。
-                let _ = tx.try_send(super::stdlib::AsyncStreamEvent::Data(p));
+                let _ = tx.try_send(crate::vm::ffi::stdlib::AsyncStreamEvent::Data(p));
             }
         }
         // 终态（不因通道满丢失）：失败 → Error+Done；成功/取消 → 收据+Done。
@@ -335,12 +335,12 @@ pub(crate) fn spawn_core_download_with_progress(
                     .as_ref()
                     .map(|e| e.message.clone())
                     .unwrap_or_else(|| "download failed".to_string());
-                let _ = tx.send(super::stdlib::AsyncStreamEvent::Error(msg)).await;
-                let _ = tx.send(super::stdlib::AsyncStreamEvent::Done).await;
+                let _ = tx.send(crate::vm::ffi::stdlib::AsyncStreamEvent::Error(msg)).await;
+                let _ = tx.send(crate::vm::ffi::stdlib::AsyncStreamEvent::Done).await;
             }
             _ => {
-                let _ = tx.try_send(super::stdlib::AsyncStreamEvent::Data(receipt.json()));
-                let _ = tx.send(super::stdlib::AsyncStreamEvent::Done).await;
+                let _ = tx.try_send(crate::vm::ffi::stdlib::AsyncStreamEvent::Data(receipt.json()));
+                let _ = tx.send(crate::vm::ffi::stdlib::AsyncStreamEvent::Done).await;
             }
         }
         stream_handle.done.store(true, Ordering::SeqCst);
@@ -360,4 +360,80 @@ pub(crate) fn scope_finalize_transfers(group: &[u64]) {
 #[cfg(test)]
 pub(crate) fn vm_transfer_count() -> usize {
     VM_TRANSFERS.lock().map(|m| m.len()).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    /// 进度迭代器 producer（迁移面）：relay 泵产出进度/终态事件并以 Done
+    /// 终结；目标文件经 staging 提交落盘。消费端（AsyncStreamIterator 臂/
+    /// for-in）为既有机制不在本测范围。
+    #[test]
+    fn plan727_progress_relay_data_then_done() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let body = b"relay-body-123".to_vec();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 4096];
+                let _ = stream.read(&mut buf);
+                let resp = format!(
+                    "HTTP/1.1 200 OK
+Content-Length: {}
+Connection: close
+
+",
+                    body.len()
+                );
+                let _ = stream.write_all(resp.as_bytes());
+                let _ = stream.write_all(&body);
+                let _ = stream.flush();
+            }
+        });
+        let dir = std::env::temp_dir().join(format!("plan727-relay-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("f.bin");
+        let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        spawn_core_download_with_progress(
+            &format!("http://127.0.0.1:{port}/f"),
+            path.to_str().unwrap(),
+            tx,
+            std::sync::Arc::new(crate::vm::ffi::stdlib::AsyncStreamHandle {
+                rx: std::sync::Mutex::new(tokio::sync::mpsc::channel(1).1),
+                done: std::sync::atomic::AtomicBool::new(false),
+            }),
+        );
+        let _ = done.clone();
+        let mut saw_progress_or_receipt = false;
+        let mut saw_done = false;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while std::time::Instant::now() < deadline {
+            match rx.try_recv() {
+                Ok(crate::vm::ffi::stdlib::AsyncStreamEvent::Data(ev)) => {
+                    assert!(ev.starts_with("{"), "事件须为 JSON: {ev}");
+                    saw_progress_or_receipt = true;
+                }
+                Ok(crate::vm::ffi::stdlib::AsyncStreamEvent::Done) => {
+                    saw_done = true;
+                    break;
+                }
+                Ok(crate::vm::ffi::stdlib::AsyncStreamEvent::Error(e)) => {
+                    panic!("意外错误事件: {e}");
+                }
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
+            }
+        }
+        assert!(saw_progress_or_receipt, "进度/收据事件缺失");
+        assert!(saw_done, "Done 终结缺失");
+        assert_eq!(std::fs::read(&path).unwrap(), b"relay-body-123", "staging 提交落盘");
+        let _ = done;
+        std::fs::remove_dir_all(dir).ok();
+    }
 }

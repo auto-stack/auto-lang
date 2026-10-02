@@ -222,26 +222,26 @@ fn http_last_status() int
 // PLAN-727: File Transfer natives (shared transfer core bridge)
 // ═══════════════════════════════════════════════════════════
 
-/// Start a file download (non-blocking submit; native id 3114).
+/// Start a file download (non-blocking submit; native id 9930).
 #[vm]
 fn http_transfer_download(url str, path str, options str) FileTransfer
 
-/// Start a file upload (non-blocking submit; native id 3115).
+/// Start a file upload (non-blocking submit; native id 9931).
 #[vm]
 fn http_transfer_upload(url str, path str, options str) FileTransfer
 
-/// Park until terminal; re-entry returns the receipt JSON (native id 3116).
+/// Park until terminal; re-entry returns the receipt JSON (native id 9932).
 #[vm]
 fn http_transfer_wait(t FileTransfer) str
 
-/// Latest progress / one-shot terminal receipt (native id 3117).
+/// Latest progress / one-shot terminal receipt (native id 9933).
 #[vm]
 fn http_transfer_next_progress(t FileTransfer) str
 
-/// Idempotent cancel (native id 3118).
+/// Idempotent cancel (native id 9934).
 #[vm]
 fn http_transfer_cancel(t FileTransfer) void
 
-/// Terminal error message, "" = none (native id 3119).
+/// Terminal error message, "" = none (native id 9935).
 #[vm]
 fn http_transfer_error(t FileTransfer) str

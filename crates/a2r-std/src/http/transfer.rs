@@ -781,6 +781,24 @@ fn unregister_active(id: u64) {
     }
 }
 
+/// 存活传输注册数（doc(hidden)：测试/资源报告探针；终态即出表）。
+#[doc(hidden)]
+pub fn active_transfer_len() -> usize {
+    ACTIVE_TRANSFERS
+        .lock()
+        .map(|m| m.as_ref().map(|m| m.len()).unwrap_or(0))
+        .unwrap_or(0)
+}
+
+/// 同目标仲裁表存活数（doc(hidden)：测试/资源报告探针）。
+#[doc(hidden)]
+pub fn in_flight_target_len() -> usize {
+    IN_FLIGHT_TARGETS
+        .lock()
+        .map(|m| m.as_ref().map(|m| m.len()).unwrap_or(0))
+        .unwrap_or(0)
+}
+
 /// 宿主按 id 级联取消（VM scope finalize；句柄独立于注册表生命周期）。
 pub fn cancel_transfer_by_id(id: u64) -> bool {
     let guard = ACTIVE_TRANSFERS.lock().unwrap();
@@ -908,7 +926,11 @@ impl TransferObserver {
     /// 终结错误消息；"" = 无/未终结。
     pub fn error_message(&self) -> String {
         match self.shared.terminal_rx.borrow().clone() {
-            Some(r) => r.error.as_ref().map(|e| e.message.clone()).unwrap_or_default(),
+            Some(r) => r
+                .error
+                .as_ref()
+                .map(|e| e.message.clone())
+                .unwrap_or_default(),
             None => String::new(),
         }
     }

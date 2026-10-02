@@ -19,13 +19,14 @@ pub use crate::http::client::{
 };
 
 // PLAN-727：文件传输公共面再导出（VM/a2r/原生 Rust 同词汇自由函数）。
+#[doc(hidden)]
+pub use crate::http::transfer::{active_transfer_len, in_flight_target_len};
 pub use crate::http::transfer::{
     cancel_transfer_by_id, transfer_cancel, transfer_download, transfer_error,
     transfer_next_progress, transfer_upload, transfer_wait, transfer_wait_async,
-    transfer_wait_typed, DownloadOptions, FileTransfer, OnExists, TransferError,
-    TransferErrorKind, TransferHooks, TransferKind, TransferLimits, TransferObserver,
-    TransferOutcome, TransferPhase, TransferProgress, TransferReceipt, UploadMode, UploadOptions,
-    Validator,
+    transfer_wait_typed, DownloadOptions, FileTransfer, OnExists, TransferError, TransferErrorKind,
+    TransferHooks, TransferKind, TransferLimits, TransferObserver, TransferOutcome, TransferPhase,
+    TransferProgress, TransferReceipt, UploadMode, UploadOptions, Validator,
 };
 
 use crate::http::client::HttpClientStream;
@@ -366,8 +367,9 @@ impl RequestBuilder {
     /// 预算：文件 part ≤ 16；越界 = send 终结性失败。
     pub fn multipart_file(mut self, field: &str, path: &str) -> RequestBuilder {
         if self.multipart_files.len() >= BUILDER_MAX_FILES {
-            self.build_error =
-                Some(format!("multipart file parts exceed budget {BUILDER_MAX_FILES}"));
+            self.build_error = Some(format!(
+                "multipart file parts exceed budget {BUILDER_MAX_FILES}"
+            ));
             return self;
         }
         self.multipart_files
@@ -394,7 +396,8 @@ impl RequestBuilder {
                     total + value.len()
                 ));
             } else {
-                self.multipart_texts.push((field.to_string(), value.to_string()));
+                self.multipart_texts
+                    .push((field.to_string(), value.to_string()));
             }
         }
         self
@@ -412,7 +415,9 @@ impl RequestBuilder {
     /// 缺失/读失败 = 终结性失败（status 0 Response，不跳过 part）。
     pub fn send(self) -> Response {
         if self.is_multipart() {
-            return Self::from_kernel(client::kernel_handle().block_on(Self::execute_multipart(self)));
+            return Self::from_kernel(
+                client::kernel_handle().block_on(Self::execute_multipart(self)),
+            );
         }
         Self::from_kernel(client::execute_blocking(self.into_request()))
     }
@@ -437,9 +442,11 @@ impl RequestBuilder {
             .map_err(|e| ClientError::Transport(format!("invalid method: {e}")))?;
         let mut builder = client::shared_http_client()
             .request(method, &self.url)
-            .timeout(self.timeout_ms.map(std::time::Duration::from_millis).unwrap_or(
-                std::time::Duration::from_secs(600),
-            ));
+            .timeout(
+                self.timeout_ms
+                    .map(std::time::Duration::from_millis)
+                    .unwrap_or(std::time::Duration::from_secs(600)),
+            );
         for (k, v) in &self.headers {
             builder = builder.header(k.as_str(), v.as_str());
         }
@@ -481,7 +488,11 @@ impl RequestBuilder {
             }
             body.extend_from_slice(&chunk);
         }
-        Ok(KernelResponse { status, headers, body })
+        Ok(KernelResponse {
+            status,
+            headers,
+            body,
+        })
     }
 }
 
