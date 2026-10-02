@@ -23,6 +23,7 @@ pub mod rope;
 pub mod treesitter;
 
 use std::collections::{BTreeSet, HashMap};
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
@@ -255,6 +256,31 @@ enum Drag {
 /// module are used (single UI-thread app + serialized MCP access).
 struct SendEditor(ViEditor<'static, 'static>);
 
+/// PLAN-728: files above this size load through the file-backed paged arm
+/// (prescan + page table; the full-read `read_to_string` stays for small
+/// files — frozen ② 零回退). 50MB aligns with the downstream big-file mode
+/// boundary (auto-edit 013 域).
+pub(crate) const PAGED_LOAD_THRESHOLD: u64 = 50 * 1024 * 1024;
+/// PLAN-728: materialized head-window budget for a paged core's cosmic
+/// Buffer view (viewport windowing — S2 — stays a downstream consumer
+/// item; the window keeps the widget rendering while the rope holds the
+/// full document).
+pub(crate) const PAGED_WINDOW_BYTES: usize = 2 * 1024 * 1024;
+
+/// PLAN-728: file-backed paged state. `Some` = the doc rope is file-backed
+/// and the cosmic Buffer holds a WINDOW of the full document starting at
+/// `window_base` bytes / `base_line` lines (typed edits in the window map
+/// onto full-document intervals through the commit funnels).
+pub(crate) struct PagedWindowState {
+    pub(crate) store: Arc<rope::PageStore>,
+    /// Doc byte offset where the buffer window starts (char boundary).
+    pub(crate) window_base: usize,
+    /// Doc line index where the window starts.
+    pub(crate) base_line: usize,
+    /// Window length in bytes.
+    pub(crate) window_bytes: usize,
+}
+
 // SAFETY: see the struct docs — all accesses are serialized through the
 // containing Mutex; the value is never touched from two threads at once.
 unsafe impl Send for SendEditor {}
@@ -350,6 +376,10 @@ pub struct CodeEditorCore {
     /// PLAN-629 T-03: pending follow-scroll target (content-space y), set
     /// by the widget on keyboard/IME caret moves; drained by dispatch_app.
     caret_follow: Mutex<Option<f32>>,
+    /// PLAN-728: file-backed paged state (see `PagedWindowState`). Cleared
+    /// by any wholesale buffer rewrite (`rewrite`) — those paths rebuild
+    /// the doc as an in-memory rope.
+    paged: Mutex<Option<PagedWindowState>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -544,6 +574,7 @@ impl CodeEditorCore {
             revision: AtomicU64::new(0),
             delta_queue: Mutex::new(Vec::new()),
             doc: Mutex::new(rope::Rope::new()),
+            paged: Mutex::new(None),
             external_dirty: std::sync::atomic::AtomicBool::new(false),
             last_used: AtomicU64::new(0),
             gutter_width_cache: Mutex::new((0, 0.0)),
@@ -643,6 +674,9 @@ impl CodeEditorCore {
     /// contents without driving the whole edit pipeline.
     pub fn doc_replace(&self, text: &str) {
         *self.doc.lock().unwrap() = rope::Rope::from_str(text);
+        // PLAN-728: the doc is no longer file-backed; a stale paged window
+        // would mis-map the commit funnels.
+        *self.paged.lock().unwrap() = None;
     }
 
     pub fn text(&self) -> String {
@@ -661,6 +695,16 @@ impl CodeEditorCore {
     /// Programmatic set (external value diff). Only rewrites when the text
     /// actually differs, preserving cursor/scroll when it matches (§5.4).
     pub fn set_text(&self, text: &str, font_system: &mut FontSystem) {
+        // PLAN-728: paged cores compare by content digest first — a value
+        // re-push of unchanged content must not materialize the whole
+        // document (the rope's root digest is O(1); content-determined,
+        // same ~n/2^61 bound the diff engine already trusts).
+        if self.is_paged() {
+            let digest = self.doc.lock().unwrap().content_hash();
+            if digest == rope::Rope::content_hash_of(text) {
+                return;
+            }
+        }
         let current = self.text();
         if current == text {
             return;
@@ -686,7 +730,12 @@ impl CodeEditorCore {
         replacement: &str,
         font_system: &mut FontSystem,
     ) -> bool {
-        let old = self.text();
+        // PLAN-728: file-backed docs edit the ROPE directly (byte offsets
+        // are full-document coordinates) — no whole-document materialization.
+        if self.is_paged() {
+            return self.edit_paged(start, end, replacement, font_system);
+        }
+        let old = self.edit_baseline();
         let old_len = old.len();
         if start > end || end > old_len {
             eprintln!(
@@ -713,11 +762,73 @@ impl CodeEditorCore {
         true
     }
 
-    /// Rewrite the buffer with new content: viewport-presizing (lazy
-    /// shaping), `Buffer::set_text`, cursor clamp/reset. Shared by
-    /// `set_text` and `edit`; does NOT bump the revision or queue a delta —
-    /// callers own both (they queue different delta shapes).
-    fn rewrite(&self, text: &str, font_system: &mut FontSystem) {
+    /// PLAN-728: structured write on a file-backed doc — validate against
+    /// the rope, apply `replace_bytes` (page fault-ins stay local), keep
+    /// the buffer window coherent, queue the delta with FULL-DOCUMENT
+    /// offsets. Same 报错不静默 contract as the memory arm.
+    fn edit_paged(
+        &self,
+        start: usize,
+        end: usize,
+        replacement: &str,
+        font_system: &mut FontSystem,
+    ) -> bool {
+        let mut doc = self.doc.lock().unwrap();
+        let old_len = doc.len_bytes();
+        if start > end || end > old_len {
+            eprintln!(
+                "code_editor_edit: invalid range [{start}, {end}) for {old_len}-byte document"
+            );
+            return false;
+        }
+        if !doc.is_char_boundary(start) || !doc.is_char_boundary(end) {
+            eprintln!("code_editor_edit: offsets [{start}, {end}) are not char boundaries");
+            return false;
+        }
+        if doc.slice_bytes(start, end) == *replacement {
+            // Valid but effect-free — nothing to rewrite, nothing to queue.
+            return true;
+        }
+        doc.replace_bytes(start, end, replacement);
+        // Window bookkeeping while the doc guard is held (buffer/editor
+        // locks come after — lock order per `rewrite`).
+        let delta = replacement.len() as isize - (end - start) as isize;
+        let mut rewindow = None;
+        {
+            let mut paged = self.paged.lock().unwrap();
+            if let Some(st) = paged.as_mut() {
+                st.store.prefetch_byte_range(start as u64, end as u64);
+                if end <= st.window_base {
+                    // Edit entirely before the window: shift the window.
+                    st.window_base = (st.window_base as isize + delta) as usize;
+                    st.base_line = doc.byte_to_point(st.window_base).0;
+                } else if start < st.window_base + st.window_bytes {
+                    // Intersecting (or inside): re-materialize at the same
+                    // base line so the view tracks the edit.
+                    rewindow = Some(Self::materialize_window(&doc, st.base_line, PAGED_WINDOW_BYTES));
+                }
+            }
+        }
+        drop(doc);
+        if let Some((text, base, base_line)) = rewindow {
+            self.set_buffer_window(&text, font_system);
+            let mut paged = self.paged.lock().unwrap();
+            if let Some(st) = paged.as_mut() {
+                st.window_base = base;
+                st.base_line = base_line;
+                st.window_bytes = text.len();
+            }
+        }
+        self.revision.fetch_add(1, Ordering::Relaxed);
+        self.push_delta(TextDelta { start, end, replacement: replacement.to_string() });
+        true
+    }
+
+    /// PLAN-728: rewrite ONLY the buffer view (viewport-presizing, lazy
+    /// shaping, cursor clamp/reset) — the buffer-half of `rewrite`, used by
+    /// paged window (re)materialization where the doc rope is already in
+    /// place and must NOT be rebuilt from the window text.
+    fn set_buffer_window(&self, text: &str, font_system: &mut FontSystem) {
         let attrs = Attrs::new().family(mono_family());
         // Give the buffer a viewport before rewriting: with no size set,
         // Buffer::set_text's internal shape_until_scroll treats the scroll
@@ -752,15 +863,88 @@ impl CodeEditorCore {
             cursor.index = index;
         });
         editor.set_cursor(cursor);
-        drop(editor);
-        // Plan 673 T-05: the rope is the document source of truth — rebuild
-        // it from the rewritten text. `rewrite` serves the LOW-frequency
-        // full-document paths (set_text re-sync, agent `code_editor_edit`),
-        // which already pay an O(n) buffer rewrite, so the O(n) rope rebuild
-        // is the same asymptotics (justified per design §3.2: the per-
-        // keystroke paths go through the interval edit instead). Lock
-        // order: the editor guard is dropped before the doc lock.
+    }
+
+    /// Rewrite the buffer with new content AND rebuild the doc rope from
+    /// it (the document source of truth). Serves the LOW-frequency
+    /// full-document paths (set_text re-sync, agent `code_editor_edit`),
+    /// which already pay an O(n) buffer rewrite, so the O(n) rope rebuild
+    /// is the same asymptotics (justified per design §3.2: the per-
+    /// keystroke paths go through the interval edit instead). Lock order:
+    /// the editor guard is dropped before the doc lock. A wholesale
+    /// rewrite ends any paged windowing (PLAN-728) — the doc becomes an
+    /// in-memory rope.
+    fn rewrite(&self, text: &str, font_system: &mut FontSystem) {
+        self.set_buffer_window(text, font_system);
         *self.doc.lock().unwrap() = rope::Rope::from_str(text);
+        *self.paged.lock().unwrap() = None;
+    }
+
+    /// PLAN-728: doc byte range of the head window starting at
+    /// `from_line`, capped at `budget` bytes and cut back to a char
+    /// boundary. Returns (text, base_byte, base_line).
+    fn materialize_window(
+        doc: &rope::Rope,
+        from_line: usize,
+        budget: usize,
+    ) -> (String, usize, usize) {
+        let total_lines = doc.line_count();
+        let from_line = from_line.min(total_lines.saturating_sub(1));
+        let base = doc.line_start_byte(from_line);
+        let mut end = (base + budget).min(doc.len_bytes());
+        while end > base && !doc.is_char_boundary(end) {
+            end -= 1;
+        }
+        let text = doc.slice_bytes(base, end).into_owned();
+        (text, base, from_line)
+    }
+
+    /// PLAN-728 T-07 load arm: install a file-backed rope as the document
+    /// source of truth and materialize the head window into the buffer.
+    /// Full-viewport windowing (S2) stays a downstream consumer item; the
+    /// window keeps the widget renderable while summaries/jumps/edits/save
+    /// answer over the full paged document.
+    pub(crate) fn set_doc_file_backed(
+        &self,
+        rope: rope::Rope,
+        store: Arc<rope::PageStore>,
+        font_system: &mut FontSystem,
+    ) {
+        let (text, base, base_line) = Self::materialize_window(&rope, 0, PAGED_WINDOW_BYTES);
+        *self.doc.lock().unwrap() = rope;
+        self.set_buffer_window(&text, font_system);
+        *self.paged.lock().unwrap() = Some(PagedWindowState {
+            store,
+            window_base: base,
+            base_line,
+            window_bytes: text.len(),
+        });
+        self.revision.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// PLAN-728: whether this core's doc is file-backed (paged).
+    pub(crate) fn is_paged(&self) -> bool {
+        self.paged.lock().unwrap().is_some()
+    }
+
+    /// PLAN-728: re-materialize the buffer window so it covers doc line
+    /// `line` (jump/find landing outside the current window). Returns the
+    /// window's base line (cursor rows are window-relative afterwards).
+    fn rewindow_to_line(&self, line: usize, font_system: &mut FontSystem) -> usize {
+        let (text, base, base_line) = {
+            let doc = self.doc.lock().unwrap();
+            let target = line.min(doc.line_count().saturating_sub(1));
+            Self::materialize_window(&doc, target.saturating_sub(50), PAGED_WINDOW_BYTES)
+        };
+        self.set_buffer_window(&text, font_system);
+        let mut paged = self.paged.lock().unwrap();
+        if let Some(st) = paged.as_mut() {
+            st.window_base = base;
+            st.base_line = base_line;
+            st.window_bytes = text.len();
+            st.store.prefetch_byte_range(base as u64, (base + text.len()) as u64);
+        }
+        base_line
     }
 
     /// Plan 673 §4: append one delta to the unified queue. T-01 producer is
@@ -819,9 +1003,41 @@ impl CodeEditorCore {
         let Some(d) = Self::derive_interval(old, new) else {
             return;
         };
-        // The delta interval IS the rope edit — O(log n) locate + O(k).
-        self.doc.lock().unwrap().replace_bytes(d.start, d.end, &d.replacement);
-        self.push_delta(d);
+        // PLAN-728: on a paged core `old`/`new` are WINDOW texts — the
+        // derived interval is window-local, so it applies at window_base
+        // in the full document, and the queued delta carries full-document
+        // offsets like every other producer.
+        let mut paged = self.paged.lock().unwrap();
+        if let Some(st) = paged.as_mut() {
+            let base = st.window_base;
+            st.window_bytes =
+                (st.window_bytes as isize + d.replacement.len() as isize - (d.end - d.start) as isize)
+                    as usize;
+            drop(paged);
+            self.doc.lock().unwrap().replace_bytes(base + d.start, base + d.end, &d.replacement);
+            self.push_delta(TextDelta {
+                start: base + d.start,
+                end: base + d.end,
+                replacement: d.replacement,
+            });
+        } else {
+            drop(paged);
+            // The delta interval IS the rope edit — O(log n) locate + O(k).
+            self.doc.lock().unwrap().replace_bytes(d.start, d.end, &d.replacement);
+            self.push_delta(d);
+        }
+    }
+
+    /// PLAN-728: the pre-edit baseline for the commit funnels — the FULL
+    /// doc text on memory cores, the WINDOW text on paged cores (the
+    /// buffer IS the window there; diffing it against the full document
+    /// would materialize gigabytes per keystroke).
+    fn edit_baseline(&self) -> String {
+        if self.is_paged() {
+            self.buffer_text()
+        } else {
+            self.text()
+        }
     }
 
     /// Plan 673 §4: destructive read — drain everything queued since the
@@ -879,6 +1095,23 @@ impl CodeEditorCore {
     /// placement does not republish on_cursor — the next widget event flow
     /// (or the caller's own read) observes the new position.
     pub fn set_cursor_position(&self, line: usize, char_col: usize) {
+        // PLAN-728: a jump outside the materialized window re-materializes
+        // around the target line first, then rebases the target into the
+        // window's coordinate system (cursor rows are window-relative).
+        let mut line = line;
+        if self.is_paged() {
+            let (base_line, win_lines) = {
+                let paged = self.paged.lock().unwrap();
+                let st = paged.as_ref().expect("is_paged");
+                let win_lines = self.editor_lock().with_buffer(|b| b.lines.len());
+                (st.base_line, win_lines)
+            };
+            if line < base_line || line >= base_line + win_lines {
+                let base = with_font_system(|fs| self.rewindow_to_line(line, fs));
+                line -= base;
+                self.mark_external_dirty();
+            }
+        }
         let mut editor = self.editor_lock();
         let cursor = {
             let (line, index) = editor.with_buffer(|b| {
@@ -1000,6 +1233,39 @@ impl CodeEditorCore {
             return false;
         };
 
+        // PLAN-728: on a paged core the buffer holds a window — a match
+        // outside it re-materializes the window around the match line
+        // (rows are window-relative afterwards).
+        let row = {
+            let paged = self.paged.lock().unwrap();
+            if let Some(st) = paged.as_ref() {
+                let win_lines = editor.with_buffer(|b| b.lines.len());
+                if line < st.base_line || line >= st.base_line + win_lines {
+                    drop(editor);
+                    drop(paged);
+                    let base = with_font_system(|fs| self.rewindow_to_line(line, fs));
+                    let mut editor = self.editor_lock();
+                    editor.set_cursor(Cursor::new(line - base, e));
+                    editor.set_selection(Selection::Normal(Cursor::new(line - base, s)));
+                    drop(editor);
+                    self.unfold_line(line);
+                    let mut editor = self.editor_lock();
+                    editor.with_buffer_mut(|b| {
+                        let mut scroll = b.scroll();
+                        let target = (line - base).saturating_sub(2);
+                        if target < scroll.line || (line - base) >= scroll.line + 20 {
+                            scroll.line = target;
+                            b.set_scroll(scroll);
+                        }
+                        b.set_redraw(true);
+                    });
+                    return true;
+                }
+            }
+            line
+        };
+        let line = row;
+
         editor.set_cursor(Cursor::new(line, e));
         editor.set_selection(Selection::Normal(Cursor::new(line, s)));
         // Plan 428 P4: a match inside a folded region reveals it — the
@@ -1072,6 +1338,14 @@ impl CodeEditorCore {
     fn fresh_fold_map(&self) -> fold::FoldMap {
         let folded = self.folds.lock().unwrap().clone();
         let line_height = self.config.lock().unwrap().line_height();
+        // PLAN-728: fold region discovery is a whole-document scan — on a
+        // paged core that would fault every page of a gigabyte document
+        // for a navigation nicety the downstream big-file mode already
+        // skips. No regions, no folds (receipt note: fold UI on >50MB
+        // docs rides the downstream S2 windowing consumer item).
+        if self.is_paged() {
+            return fold::FoldMap::build(Vec::new(), &BTreeSet::new(), line_height);
+        }
         let doc = self.doc.lock().unwrap();
         let owned: Vec<String> = doc.lines().map(|l| l.into_owned()).collect();
         let texts: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
@@ -1222,7 +1496,7 @@ impl CodeEditorCore {
                 if self.is_readonly() {
                     return CoreOutput::default();
                 }
-                let old = self.text();
+                let old = self.edit_baseline();
                 let mut editor = self.editor_lock();
                 editor.insert_string(&content, None);
                 drop(editor);
@@ -1267,7 +1541,7 @@ impl CodeEditorCore {
         if !Self::key_may_mutate(&key, text.as_deref(), modifiers) {
             return self.handle_key_inner(font_system, key, text, modifiers, clipboard);
         }
-        let old = self.text();
+        let old = self.edit_baseline();
         let out = self.handle_key_inner(font_system, key, text, modifiers, clipboard);
         self.push_delta_from_texts(&old, &self.buffer_text());
         out
@@ -1924,7 +2198,7 @@ impl CodeEditorCore {
 
     fn do_undo(&self) {
         // Plan 673 §4.3: native-driven edits join the same delta queue.
-        let old = self.text();
+        let old = self.edit_baseline();
         let mut editor = self.editor_lock();
         // Clear the selection first: a selection spanning text that undo is
         // about to remove would panic the engine's delete_range later.
@@ -1936,7 +2210,7 @@ impl CodeEditorCore {
     }
 
     fn do_redo(&self) {
-        let old = self.text();
+        let old = self.edit_baseline();
         let mut editor = self.editor_lock();
         editor.set_selection(Selection::None);
         editor.redo();
@@ -1966,7 +2240,7 @@ impl CodeEditorCore {
 
     #[cfg(feature = "ui-clipboard")]
     fn do_cut(&self, font_system: &mut FontSystem) {
-        let old = self.text();
+        let old = self.edit_baseline();
         let mut editor = self.editor_lock();
         if let Some(selection) = editor.copy_selection() {
             crate::ui::clipboard::clipboard_set(&selection);
@@ -1980,7 +2254,7 @@ impl CodeEditorCore {
     #[cfg(feature = "ui-clipboard")]
     fn do_paste(&self) {
         if let Some(contents) = crate::ui::clipboard::clipboard_get() {
-            let old = self.text();
+            let old = self.edit_baseline();
             self.editor_lock().insert_string(&contents, None);
             self.bump_after_edit();
             self.push_delta_from_texts(&old, &self.buffer_text());
@@ -2158,13 +2432,39 @@ pub fn code_editor_set_text(key: &str, text: &str) -> bool {
 /// queue). Returns total bytes loaded; None = no editor / IO error /
 /// invalid UTF-8.
 pub fn code_editor_load_file(key: &str, path: &str) -> Option<i64> {
-    let text = std::fs::read_to_string(path).ok()?;
     let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
     let core = map.get(&key)?;
-    with_font_system(|fs| core.set_text(&text, fs));
-    let _ = core.take_deltas();
-    Some(text.len() as i64)
+    // PLAN-728 面⑦: oversized files load through the file-backed paged arm
+    // (prescan page table + head window — the full read lives on ONLY in
+    // the small-file arm, frozen ②). Returns the file size (loaded bytes).
+    let file_len = match std::fs::metadata(path) {
+        Ok(m) => m.len(),
+        Err(_) => return None,
+    };
+    if file_len > PAGED_LOAD_THRESHOLD {
+        let paged = rope::Rope::open_file_backed(
+            Path::new(path),
+            rope::PageConfig::default(),
+        );
+        match paged {
+            Ok((rope, store)) => {
+                with_font_system(|fs| core.set_doc_file_backed(rope, store, fs));
+                let _ = core.take_deltas();
+                Some(file_len as i64)
+            }
+            Err(e) => {
+                // 报错不静默 (None still signals failure to the .at face).
+                eprintln!("code_editor_load_file: paged open {path:?} failed: {e}");
+                None
+            }
+        }
+    } else {
+        let text = std::fs::read_to_string(path).ok()?;
+        with_font_system(|fs| core.set_text(&text, fs));
+        let _ = core.take_deltas();
+        Some(text.len() as i64)
+    }
 }
 
 /// PLAN-701 供①: rope→disk direct write — the dual of
@@ -2191,6 +2491,20 @@ pub fn code_editor_save(key: &str, path: &str) -> bool {
         eprintln!("code_editor_save: no editor registered for key {key:?}");
         return false;
     };
+    // PLAN-728 面⑤: file-backed docs save through the streaming merge
+    // writer (unchanged base spans copy disk→disk; temp file + atomic
+    // rename; external-modification refusal) — no whole-document
+    // materialization. Small files keep the 701 direct write untouched.
+    if core.is_paged() {
+        let doc = core.doc.lock().unwrap();
+        return match doc.write_backed(Path::new(path)) {
+            Ok(_) => true,
+            Err(e) => {
+                eprintln!("code_editor_save: {e}");
+                false
+            }
+        };
+    }
     let text = core.text();
     match std::fs::write(path, text.as_bytes()) {
         Ok(()) => true,

@@ -39,9 +39,24 @@
 // `subtree_equal`, which pairs the shortcuts (ptr_eq structural sharing,
 // whole-node digest match) with an aligned exact walk — verdicts are
 // proven, never guessed.
+//
+// File-backed pages (PLAN-728): a `Node::Chunk` is a leaf whose text lives
+// in the immutable base FILE (an {store, page, range} descriptor plus
+// prescan-computed summaries). The summary/digest machinery above works
+// over chunks WITHOUT materializing them; text-resolving paths fault the
+// page in through the store's LRU cache (see `rope/file_backing.rs`).
+// Base pages are never modified in place — offsets stay true, which the
+// merge-save copy path depends on.
 
 use std::borrow::Cow;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+pub(crate) mod file_backing;
+
+pub(crate) use file_backing::PageConfig;
+pub use file_backing::{PageState, PageStore};
 
 /// Target leaf payload. Oversized inserted text is split toward this size.
 const LEAF_TARGET_BYTES: usize = 1024;
@@ -127,6 +142,22 @@ enum Node {
         /// Content digest of the leaf text (PLAN-703 T-01).
         hash: u64,
     },
+    /// File-backed page slice (PLAN-728): text lives in the immutable base
+    /// file at `store.pages[page] + off`, length `len` bytes. Summaries are
+    /// prescan- (whole page) or split- (sub-range) computed, so every
+    /// summary/digest query answers without materializing; only
+    /// text-resolving paths fault the page in through the LRU cache.
+    Chunk {
+        store: Arc<PageStore>,
+        page: u32,
+        off: u32,
+        len: u32,
+        chars: u32,
+        newlines: u32,
+        start_chars: u32,
+        end_chars: u32,
+        hash: u64,
+    },
     Internal {
         left: Arc<Node>,
         right: Arc<Node>,
@@ -152,6 +183,50 @@ impl Node {
         Arc::new(Node::Leaf { text, chars, newlines, hash })
     }
 
+    /// Whole-page chunk — summaries come from the prescan `PageDesc`
+    /// (zero IO; the page need not be resident).
+    fn chunk_whole(store: Arc<PageStore>, page: u32) -> Arc<Node> {
+        // Copy the descriptor (PageDesc is Copy) so the store Arc can move
+        // into the node while the fields ride along.
+        let d = *store.page_desc(page);
+        Arc::new(Node::Chunk {
+            store,
+            page,
+            off: 0,
+            len: d.len,
+            chars: d.chars,
+            newlines: d.newlines,
+            start_chars: d.start_chars,
+            end_chars: d.end_chars,
+            hash: d.hash,
+        })
+    }
+
+    /// Sub-range chunk — summaries computed from the given slice (the
+    /// caller resolves the page text; this never IOs on its own).
+    fn chunk_from_slice(
+        store: Arc<PageStore>,
+        page: u32,
+        off: u32,
+        text: &str,
+    ) -> Arc<Node> {
+        debug_assert!(
+            off as usize + text.len() <= store.page_desc(page).len as usize,
+            "chunk slice exceeds its page"
+        );
+        Arc::new(Node::Chunk {
+            store,
+            page,
+            off,
+            len: text.len() as u32,
+            chars: text.chars().count() as u32,
+            newlines: text.bytes().filter(|&b| b == b'\n').count() as u32,
+            start_chars: text.chars().take_while(|&c| c != '\n').count() as u32,
+            end_chars: text.chars().rev().take_while(|&c| c != '\n').count() as u32,
+            hash: poly_digest(text.as_bytes()),
+        })
+    }
+
     fn internal(left: Arc<Node>, right: Arc<Node>) -> Arc<Node> {
         let bytes = left.bytes() + right.bytes();
         let chars = left.chars() + right.chars();
@@ -174,6 +249,7 @@ impl Node {
     fn bytes(&self) -> usize {
         match self {
             Node::Leaf { text, .. } => text.len(),
+            Node::Chunk { len, .. } => *len as usize,
             Node::Internal { bytes, .. } => *bytes,
         }
     }
@@ -181,12 +257,14 @@ impl Node {
     fn chars(&self) -> usize {
         match self {
             Node::Leaf { chars, .. } | Node::Internal { chars, .. } => *chars,
+            Node::Chunk { chars, .. } => *chars as usize,
         }
     }
 
     fn newlines(&self) -> usize {
         match self {
             Node::Leaf { newlines, .. } | Node::Internal { newlines, .. } => *newlines,
+            Node::Chunk { newlines, .. } => *newlines as usize,
         }
     }
 
@@ -194,6 +272,7 @@ impl Node {
         match self {
             Node::Leaf { text, .. } => text.chars().take_while(|&c| c != '\n').count(),
             Node::Internal { start_chars, .. } => *start_chars,
+            Node::Chunk { start_chars, .. } => *start_chars as usize,
         }
     }
 
@@ -201,12 +280,13 @@ impl Node {
         match self {
             Node::Leaf { text, .. } => text.chars().rev().take_while(|&c| c != '\n').count(),
             Node::Internal { end_chars, .. } => *end_chars,
+            Node::Chunk { end_chars, .. } => *end_chars as usize,
         }
     }
 
     fn height(&self) -> u8 {
         match self {
-            Node::Leaf { .. } => 0,
+            Node::Leaf { .. } | Node::Chunk { .. } => 0,
             Node::Internal { height, .. } => *height,
         }
     }
@@ -215,6 +295,7 @@ impl Node {
     fn hash(&self) -> u64 {
         match self {
             Node::Leaf { hash, .. } | Node::Internal { hash, .. } => *hash,
+            Node::Chunk { hash, .. } => *hash,
         }
     }
 
@@ -230,6 +311,12 @@ impl Node {
         loop {
             match cur {
                 Node::Leaf { text, .. } => return text.as_bytes()[remaining] & 0xC0 != 0x80,
+                Node::Chunk { .. } => {
+                    let (store, page, off) = chunk_key(cur);
+                    let text = fault_page(store, page);
+                    let abs = off as usize + remaining;
+                    return text.as_bytes()[abs] & 0xC0 != 0x80;
+                }
                 Node::Internal { left, right, .. } => {
                     if remaining < left.bytes() {
                         cur = left;
@@ -245,15 +332,82 @@ impl Node {
     fn children(&self) -> (&Arc<Node>, &Arc<Node>) {
         match self {
             Node::Internal { left, right, .. } => (left, right),
-            Node::Leaf { .. } => unreachable!("children of a leaf"),
+            Node::Leaf { .. } | Node::Chunk { .. } => unreachable!("children of a leaf"),
         }
+    }
+}
+
+fn chunk_key(node: &Node) -> (&Arc<PageStore>, u32, u32) {
+    match node {
+        Node::Chunk { store, page, off, .. } => (store, *page, *off),
+        _ => unreachable!("chunk_key on a non-chunk node"),
+    }
+}
+
+/// Resolve a chunk's page text (sync fault-in through the LRU cache).
+/// IO/decode failure aborts the process with the cause — the base handle
+/// is held open, so a mid-session failure means storage vanished; a rope
+/// query cannot return a wrong answer silently.
+fn fault_page(store: &Arc<PageStore>, page: u32) -> Arc<str> {
+    match store.page_text(page) {
+        Ok(text) => text,
+        Err(e) => panic!("paged-rope: page {page} fault-in failed: {e}"),
+    }
+}
+
+/// Borrowed-or-owned leaf text view — the uniform face the comparison
+/// walks use over `Leaf` (borrowed, zero-copy) and `Chunk` (faulted page,
+/// owned Arc). `None` for internal nodes.
+enum LeafView<'a> {
+    Mem(&'a str),
+    Paged(Arc<str>),
+}
+
+impl LeafView<'_> {
+    fn slice(&self, a: usize, b: usize) -> &str {
+        match self {
+            LeafView::Mem(s) => &s[a..b],
+            LeafView::Paged(s) => &s[a..b],
+        }
+    }
+
+    /// Byte view — the comparison walks cut leaves at the OTHER side's
+    /// node edges, which are arbitrary byte positions in THIS side's
+    /// content once shapes diverge over multi-byte text (a latent 703
+    /// hazard that paged chunks surface deterministically). Comparisons
+    /// are byte-exact anyway, so the walks slice bytes, not str.
+    fn bytes(&self) -> &[u8] {
+        match self {
+            LeafView::Mem(s) => s.as_bytes(),
+            LeafView::Paged(s) => s.as_bytes(),
+        }
+    }
+}
+
+/// Page-internal byte offset of a chunk node (0 for mem leaves) —
+/// comparison walks carry NODE-relative offsets, page text is PAGE-relative.
+fn chunk_off(node: &Node) -> usize {
+    match node {
+        Node::Chunk { off, .. } => *off as usize,
+        _ => 0,
+    }
+}
+
+fn leaf_view(node: &Node) -> Option<LeafView<'_>> {
+    match node {
+        Node::Leaf { text, .. } => Some(LeafView::Mem(text)),
+        Node::Chunk { .. } => {
+            let (store, page, _) = chunk_key(node);
+            Some(LeafView::Paged(fault_page(store, page)))
+        }
+        Node::Internal { .. } => None,
     }
 }
 
 fn leaf_text(node: &Node) -> &str {
     match node {
         Node::Leaf { text, .. } => text,
-        Node::Internal { .. } => unreachable!("leaf_text on an internal node"),
+        Node::Internal { .. } | Node::Chunk { .. } => unreachable!("leaf_text on a non-mem leaf"),
     }
 }
 
@@ -314,7 +468,7 @@ fn concat(a: Arc<Node>, b: Arc<Node>) -> Arc<Node> {
 /// exceeds 1. Rotations rebuild only O(1) nodes; summaries recompute bottom
 /// up through `Node::internal`.
 fn rebalance(node: Arc<Node>) -> Arc<Node> {
-    if matches!(&*node, Node::Leaf { .. }) {
+    if matches!(&*node, Node::Leaf { .. } | Node::Chunk { .. }) {
         return node;
     }
     let (left, right) = node.children();
@@ -366,6 +520,18 @@ fn split(node: &Arc<Node>, byte: usize) -> (Arc<Node>, Arc<Node>) {
             let (l, r) = text.split_at(byte);
             (Node::leaf(l.to_string()), Node::leaf(r.to_string()))
         }
+        // PLAN-728: split a chunk by slicing its page text ONCE (fault-in
+        // of one page) and building two sub-range descriptors — the base
+        // stays untouched; both halves keep page-backed residency.
+        Node::Chunk { store, page, off, .. } => {
+            let text = fault_page(store, *page);
+            let abs = *off as usize;
+            let (l, r) = text[abs..abs + node.bytes()].split_at(byte);
+            (
+                Node::chunk_from_slice(store.clone(), *page, *off, l),
+                Node::chunk_from_slice(store.clone(), *page, *off + byte as u32, r),
+            )
+        }
         Node::Internal { left, right, .. } => {
             if byte < left.bytes() {
                 let (ll, lr) = split(left, byte);
@@ -398,6 +564,17 @@ fn q_byte_to_point(root: &Node, byte: usize) -> (usize, usize) {
                     head.chars().rev().take_while(|&c| c != '\n').count()
                 } else {
                     col + head.chars().count()
+                };
+                return (line, col);
+            }
+            Node::Chunk { off, .. } => {
+                let view = leaf_view(cur).expect("chunk leaf view");
+                let text = view.slice(*off as usize, *off as usize + remaining);
+                line += text.bytes().filter(|&b| b == b'\n').count();
+                col = if text.contains('\n') {
+                    text.chars().rev().take_while(|&c| c != '\n').count()
+                } else {
+                    col + text.chars().count()
                 };
                 return (line, col);
             }
@@ -471,6 +648,20 @@ fn q_line_start_byte(root: &Node, line: usize) -> usize {
                 }
                 unreachable!("line_start_byte: newline not found (bounds checked)");
             }
+            Node::Chunk { off, .. } => {
+                let view = leaf_view(cur).expect("chunk leaf view");
+                let text = view.slice(*off as usize, *off as usize + cur.bytes());
+                let mut remaining = target_nl - nls_before;
+                for (i, c) in text.char_indices() {
+                    if c == '\n' {
+                        if remaining == 0 {
+                            return node_start + i + 1;
+                        }
+                        remaining -= 1;
+                    }
+                }
+                unreachable!("line_start_byte: newline not found (bounds checked)");
+            }
             Node::Internal { left, right, .. } => {
                 if target_nl < nls_before + left.newlines() {
                     cur = left;
@@ -509,6 +700,15 @@ fn q_slice_bytes<'a>(root: &'a Node, start: usize, end: usize) -> Cow<'a, str> {
                 let b = end - node_start;
                 return Cow::Borrowed(&text[a..b]);
             }
+            Node::Chunk { off, .. } => {
+                // Same node-relative cut as the leaf arm, but the text is a
+                // faulted page — the borrow lives in the page cache's Arc,
+                // not in `&root`, so the span comes back owned.
+                let a = start - node_start + *off as usize;
+                let b = end - node_start + *off as usize;
+                let view = leaf_view(cur).expect("chunk leaf view");
+                return Cow::Owned(view.slice(a, b).to_string());
+            }
             Node::Internal { left, right, .. } => {
                 if end - node_start <= left.bytes() {
                     cur = left;
@@ -529,6 +729,10 @@ fn q_slice_bytes<'a>(root: &'a Node, start: usize, end: usize) -> Cow<'a, str> {
 fn gather(node: &Node, start: usize, end: usize, out: &mut String) {
     match node {
         Node::Leaf { text, .. } => out.push_str(&text[start..end]),
+        Node::Chunk { off, .. } => {
+            let view = leaf_view(node).expect("chunk leaf view");
+            out.push_str(view.slice(*off as usize + start, *off as usize + end));
+        }
         Node::Internal { left, right, .. } => {
             let lb = left.bytes();
             if start < lb {
@@ -567,6 +771,13 @@ fn collect_digest_pieces(node: &Node, node_start: usize, start: usize, end: usiz
             let a = start.max(node_start) - node_start;
             let b = end.min(node_end) - node_start;
             pieces.push((poly_digest(text[a..b].as_bytes()), b - a));
+        }
+        Node::Chunk { off, .. } => {
+            let a = start.max(node_start) - node_start;
+            let b = end.min(node_end) - node_start;
+            let view = leaf_view(node).expect("chunk leaf view");
+            let s = view.slice(*off as usize + a, *off as usize + b);
+            pieces.push((poly_digest(s.as_bytes()), b - a));
         }
         Node::Internal { left, right, .. } => {
             let mid = node_start + left.bytes();
@@ -627,47 +838,6 @@ fn range_content_equal(a: &Node, a_off: usize, b: &Node, b_off: usize, len: usiz
             continue; // content-determined Merkle verdict
         }
         match (a, b) {
-            (Node::Leaf { text: ta, .. }, Node::Leaf { text: tb, .. }) => {
-                if ta[a_off..a_off + len] != tb[b_off..b_off + len] {
-                    return false;
-                }
-            }
-            (Node::Leaf { .. }, _) | (_, Node::Leaf { .. }) => {
-                // One side has no internal boundary: split at the internal
-                // side's child boundary (it lies strictly inside the span).
-                let (leaf, l_off, inner, i_off, leaf_is_a) = match (a, b) {
-                    (Node::Leaf { .. }, i) => (a, a_off, i, b_off, false),
-                    (i, Node::Leaf { .. }) => (b, b_off, i, a_off, true),
-                    _ => unreachable!(),
-                };
-                let (il, ir) = inner.children();
-                let cut = if i_off >= il.bytes() { 0 } else { (il.bytes() - i_off).min(len) };
-                if cut == 0 {
-                    // Span starts at/past the internal side's boundary.
-                    if leaf_is_a {
-                        stack.push((leaf, l_off, ir, i_off - il.bytes(), len));
-                    } else {
-                        stack.push((ir, i_off - il.bytes(), leaf, l_off, len));
-                    }
-                    continue;
-                }
-                if cut == len {
-                    // Span ends inside the internal side's left child.
-                    if leaf_is_a {
-                        stack.push((leaf, l_off, il, i_off, len));
-                    } else {
-                        stack.push((il, i_off, leaf, l_off, len));
-                    }
-                    continue;
-                }
-                if leaf_is_a {
-                    stack.push((leaf, l_off, il, i_off, cut));
-                    stack.push((leaf, l_off + cut, ir, 0, len - cut));
-                } else {
-                    stack.push((il, i_off, leaf, l_off, cut));
-                    stack.push((ir, 0, leaf, l_off + cut, len - cut));
-                }
-            }
             (Node::Internal { .. }, Node::Internal { .. }) => {
                 let (al, ar) = a.children();
                 let (bl, br) = b.children();
@@ -699,6 +869,59 @@ fn range_content_equal(a: &Node, a_off: usize, b: &Node, b_off: usize, len: usiz
                     // c2 < len even when c1 == c2 (empty at c2 == len is
                     // skipped by the loop guard).
                     stack.push((ar, c2 - ca, br, c2 - cb, len - c2));
+                }
+            }
+            // At least one leaf-like side (mem Leaf or file-backed Chunk —
+            // both expose a contiguous text view via `leaf_view`; PLAN-728).
+            _ => {
+                let (va, vb) = (leaf_view(a), leaf_view(b));
+                match (va, vb) {
+                    (Some(ta), Some(tb)) => {
+                        let (oa, ob) = (chunk_off(a), chunk_off(b));
+                        if &ta.bytes()[oa + a_off..oa + a_off + len]
+                            != &tb.bytes()[ob + b_off..ob + b_off + len]
+                        {
+                            return false;
+                        }
+                    }
+                    _ => {
+                        // One side has no internal boundary: split at the
+                        // internal side's child boundary (it lies strictly
+                        // inside the span).
+                        let leaf_is_a = matches!(a, Node::Leaf { .. } | Node::Chunk { .. });
+                        let (leaf, l_off, inner, i_off) = if leaf_is_a {
+                            (a, a_off, b, b_off)
+                        } else {
+                            (b, b_off, a, a_off)
+                        };
+                        let (il, ir) = inner.children();
+                        let cut = if i_off >= il.bytes() { 0 } else { (il.bytes() - i_off).min(len) };
+                        if cut == 0 {
+                            // Span starts at/past the internal side's boundary.
+                            if leaf_is_a {
+                                stack.push((leaf, l_off, ir, i_off - il.bytes(), len));
+                            } else {
+                                stack.push((ir, i_off - il.bytes(), leaf, l_off, len));
+                            }
+                            continue;
+                        }
+                        if cut == len {
+                            // Span ends inside the internal side's left child.
+                            if leaf_is_a {
+                                stack.push((leaf, l_off, il, i_off, len));
+                            } else {
+                                stack.push((il, i_off, leaf, l_off, len));
+                            }
+                            continue;
+                        }
+                        if leaf_is_a {
+                            stack.push((leaf, l_off, il, i_off, cut));
+                            stack.push((leaf, l_off + cut, ir, 0, len - cut));
+                        } else {
+                            stack.push((il, i_off, leaf, l_off, cut));
+                            stack.push((ir, 0, leaf, l_off + cut, len - cut));
+                        }
+                    }
                 }
             }
         }
@@ -787,50 +1010,6 @@ fn collect_prune_spans(
             continue;
         }
         match (a, b) {
-            (Node::Leaf { text: ta, .. }, Node::Leaf { text: tb, .. }) => {
-                // Leaf-leaf pieces classify by content (the only place a
-                // mismatch can surface — everything above classifies via
-                // the shortcuts).
-                if ta[a_rel..a_rel + len] == tb[b_rel..b_rel + len] {
-                    out.shared.push((a_abs, a_abs + len, b_abs, b_abs + len));
-                } else {
-                    out.diverged.push((a_abs, a_abs + len, b_abs, b_abs + len));
-                }
-            }
-            (Node::Leaf { .. }, _) | (_, Node::Leaf { .. }) => {
-                let (leaf, l_rel, l_abs, inner, i_rel, i_abs, leaf_is_a) = match (a, b) {
-                    (Node::Leaf { .. }, i) => (a, a_rel, a_abs, i, b_rel, b_abs, false),
-                    (i, Node::Leaf { .. }) => (b, b_rel, b_abs, i, a_rel, a_abs, true),
-                    _ => unreachable!(),
-                };
-                let (il, ir) = inner.children();
-                let cut = if i_rel >= il.bytes() { 0 } else { (il.bytes() - i_rel).min(len) };
-                if cut == 0 {
-                    // Span starts at/past the internal side's boundary.
-                    if leaf_is_a {
-                        stack.push((leaf, l_rel, l_abs, ir, i_rel - il.bytes(), i_abs, len));
-                    } else {
-                        stack.push((ir, i_rel - il.bytes(), i_abs, leaf, l_rel, l_abs, len));
-                    }
-                    continue;
-                }
-                if cut == len {
-                    // Span ends inside the internal side's left child.
-                    if leaf_is_a {
-                        stack.push((leaf, l_rel, l_abs, il, i_rel, i_abs, len));
-                    } else {
-                        stack.push((il, i_rel, i_abs, leaf, l_rel, l_abs, len));
-                    }
-                    continue;
-                }
-                if leaf_is_a {
-                    stack.push((leaf, l_rel, l_abs, il, i_rel, i_abs, cut));
-                    stack.push((leaf, l_rel + cut, l_abs + cut, ir, 0, i_abs + cut, len - cut));
-                } else {
-                    stack.push((il, i_rel, i_abs, leaf, l_rel, l_abs, cut));
-                    stack.push((ir, 0, i_abs + cut, leaf, l_rel + cut, l_abs + cut, len - cut));
-                }
-            }
             (Node::Internal { .. }, Node::Internal { .. }) => {
                 let (al, ar) = a.children();
                 let (bl, br) = b.children();
@@ -860,6 +1039,61 @@ fn collect_prune_spans(
                     // c2 < len even when c1 == c2; empty at c2 == len is
                     // skipped by the loop guard.
                     stack.push((ar, c2 - ca, a_abs + c2, br, c2 - cb, b_abs + c2, len - c2));
+                }
+            }
+            // At least one leaf-like side (mem Leaf or file-backed Chunk —
+            // both expose a contiguous text view via `leaf_view`; PLAN-728).
+            _ => {
+                let (va, vb) = (leaf_view(a), leaf_view(b));
+                match (va, vb) {
+                    (Some(ta), Some(tb)) => {
+                        // Leaf-leaf pieces classify by content (the only
+                        // place a mismatch can surface — everything above
+                        // classifies via the shortcuts).
+                        let (oa, ob) = (chunk_off(a), chunk_off(b));
+                        if &ta.bytes()[oa + a_rel..oa + a_rel + len]
+                            == &tb.bytes()[ob + b_rel..ob + b_rel + len]
+                        {
+                            out.shared.push((a_abs, a_abs + len, b_abs, b_abs + len));
+                        } else {
+                            out.diverged.push((a_abs, a_abs + len, b_abs, b_abs + len));
+                        }
+                    }
+                    _ => {
+                        let leaf_is_a = matches!(a, Node::Leaf { .. } | Node::Chunk { .. });
+                        let (leaf, l_rel, l_abs, inner, i_rel, i_abs) = if leaf_is_a {
+                            (a, a_rel, a_abs, b, b_rel, b_abs)
+                        } else {
+                            (b, b_rel, b_abs, a, a_rel, a_abs)
+                        };
+                        let (il, ir) = inner.children();
+                        let cut = if i_rel >= il.bytes() { 0 } else { (il.bytes() - i_rel).min(len) };
+                        if cut == 0 {
+                            // Span starts at/past the internal side's boundary.
+                            if leaf_is_a {
+                                stack.push((leaf, l_rel, l_abs, ir, i_rel - il.bytes(), i_abs, len));
+                            } else {
+                                stack.push((ir, i_rel - il.bytes(), i_abs, leaf, l_rel, l_abs, len));
+                            }
+                            continue;
+                        }
+                        if cut == len {
+                            // Span ends inside the internal side's left child.
+                            if leaf_is_a {
+                                stack.push((leaf, l_rel, l_abs, il, i_rel, i_abs, len));
+                            } else {
+                                stack.push((il, i_rel, i_abs, leaf, l_rel, l_abs, len));
+                            }
+                            continue;
+                        }
+                        if leaf_is_a {
+                            stack.push((leaf, l_rel, l_abs, il, i_rel, i_abs, cut));
+                            stack.push((leaf, l_rel + cut, l_abs + cut, ir, 0, i_abs + cut, len - cut));
+                        } else {
+                            stack.push((il, i_rel, i_abs, leaf, l_rel, l_abs, cut));
+                            stack.push((ir, 0, i_abs + cut, leaf, l_rel + cut, l_abs + cut, len - cut));
+                        }
+                    }
                 }
             }
         }
@@ -981,6 +1215,190 @@ impl Rope {
         let (left, right) = split(&self.root, end);
         let (left, _) = split(&left, start);
         self.root = concat(concat(left, leaf_or_tree(text)), right);
+    }
+
+    // ── PLAN-728: file-backed paging (供⑮ 面①..⑦) ─────────────────────
+
+    /// Open `path` as a file-backed (paged) rope: prescan builds the page
+    /// table + per-page summaries (one sequential pass — `line_count` and
+    /// digests answer O(1)/O(log n) WITHOUT materializing; text fault-ins
+    /// per page through the store's LRU cache). Returns the store handle
+    /// (prefetch/baseline probes) alongside the rope. Errors mirror
+    /// `read_to_string` semantics (IO / invalid UTF-8).
+    pub(crate) fn open_file_backed(
+        path: &Path,
+        cfg: PageConfig,
+    ) -> io::Result<(Rope, Arc<PageStore>)> {
+        let store = PageStore::prescan(path, &cfg)?;
+        file_backing::spawn_prefetcher(&store);
+        let root = build_chunk_tree(&store);
+        Ok((Rope { root }, store))
+    }
+
+    /// Whether byte `offset` starts a char (or is EOF) — the validation
+    /// face for endpoint offsets (PLAN-728: paged cores validate up front).
+    pub fn is_char_boundary(&self, offset: usize) -> bool {
+        offset <= self.len_bytes() && self.root.is_char_boundary(offset)
+    }
+
+    /// Flat content digest of a plain `&str` — the comparison face for
+    /// `content_hash` fast paths (content-determined: equal bytes ⇒ equal
+    /// digests regardless of rope shape).
+    pub(crate) fn content_hash_of(text: &str) -> u64 {
+        poly_digest(text.as_bytes())
+    }
+
+    /// Streaming merge save (PLAN-728 面⑤): unchanged base spans copy
+    /// disk→disk from the base handle (bypassing the page cache), edited
+    /// spans write from memory; the output lands in a sibling temp file
+    /// then atomically renames over `dest` (crash-safe — an interrupted
+    /// save leaves the original intact). Byte-for-byte with the rope
+    /// content. Errors — including an externally-mutated base (len/mtime
+    /// baseline mismatch) — abort before any rename (报错不静默).
+    /// Returns the bytes written.
+    pub fn write_backed(&self, dest: &Path) -> io::Result<u64> {
+        use std::io::Write as _;
+        // 1. Verify every base store that IS the destination still matches
+        //    its prescan baseline (a mutated base would corrupt the copy).
+        let stores = collect_stores(&self.root);
+        for store in &stores {
+            // ANY mutated base invalidates its chunk offsets — refuse
+            // regardless of the destination path (报错不静默).
+            if !store.baseline_matches() {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!(
+                        "paged-rope save: base file {:?} changed on disk since open \
+                         (external modification) — refusing to save",
+                        store.path()
+                    ),
+                ));
+            }
+        }
+        // 2. Write the merged content to a sibling temp file.
+        let tmp = sibling_temp_path(dest);
+        {
+            let out = std::fs::File::create(&tmp)?;
+            let mut w = io::BufWriter::with_capacity(1024 * 1024, out);
+            let mut copy_buf = vec![0u8; 256 * 1024];
+            let mut written = 0u64;
+            write_node_for_save(&self.root, &mut w, &mut copy_buf, &mut written)?;
+            w.flush()?;
+            let file = w.into_inner().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            file.sync_all()?;
+        }
+        // 3. Atomic replace, then re-stamp the baselines we just changed.
+        std::fs::rename(&tmp, dest)?;
+        for store in &stores {
+            if store.path() == dest {
+                store.refresh_baseline();
+            }
+        }
+        Ok(self.len_bytes() as u64)
+    }
+
+    /// Structural residency estimate: every tree node counts as its own
+    /// allocation size (an upper bound on the real per-node overhead —
+    /// chunk descriptors and internal summaries included, text of memory
+    /// leaves excluded). With `PageStore::structural_resident_bytes` this
+    /// is the ≤12MB@1GB contract assertion face (AC-03).
+    pub fn structural_resident_estimate(&self) -> usize {
+        let mut nodes = 0usize;
+        count_nodes(&self.root, &mut nodes);
+        nodes * std::mem::size_of::<Node>()
+    }
+}
+
+/// Recursively count tree nodes (early-exit free — the whole tree counts;
+/// O(#nodes), used only by the residency estimate face).
+fn count_nodes(node: &Arc<Node>, out: &mut usize) {
+    *out += 1;
+    if let Node::Internal { left, right, .. } = &**node {
+        count_nodes(left, out);
+        count_nodes(right, out);
+    }
+}
+
+/// Collect the distinct page stores referenced by the tree (dedup by Arc
+/// identity). A single-open rope references exactly one; the walk stays
+/// general for composed/edited shapes.
+fn collect_stores(node: &Arc<Node>) -> Vec<Arc<PageStore>> {
+    fn walk(node: &Arc<Node>, out: &mut Vec<Arc<PageStore>>) {
+        match &**node {
+            Node::Chunk { store, .. } => {
+                if !out.iter().any(|s| Arc::ptr_eq(s, store)) {
+                    out.push(store.clone());
+                }
+            }
+            Node::Internal { left, right, .. } => {
+                walk(left, out);
+                walk(right, out);
+            }
+            Node::Leaf { .. } => {}
+        }
+    }
+    let mut out = Vec::new();
+    walk(node, &mut out);
+    out
+}
+
+/// `<dest>.<pid>.p728tmp` in the destination's own directory (same volume
+/// — rename stays atomic).
+fn sibling_temp_path(dest: &Path) -> PathBuf {
+    let mut name = dest.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    name.push_str(&format!(".{}.p728tmp", std::process::id()));
+    dest.with_file_name(name)
+}
+
+/// Merge-save walk: chunk spans stream from the base handle through the
+/// copy buffer (never through the page cache); leaf spans write their
+/// text; internal spans recurse left-to-right (document order).
+fn write_node_for_save(
+    node: &Arc<Node>,
+    out: &mut dyn io::Write,
+    copy_buf: &mut [u8],
+    written: &mut u64,
+) -> io::Result<()> {
+    match &**node {
+        Node::Leaf { text, .. } => {
+            out.write_all(text.as_bytes())?;
+            *written += text.len() as u64;
+        }
+        Node::Chunk { store, page, off, len, .. } => {
+            let mut offset = store.range_offset(*page, *off);
+            let mut remaining = *len as usize;
+            while remaining > 0 {
+                let want = remaining.min(copy_buf.len());
+                store.read_base_range(offset, &mut copy_buf[..want])?;
+                out.write_all(&copy_buf[..want])?;
+                *written += want as u64;
+                offset += want as u64;
+                remaining -= want;
+            }
+        }
+        Node::Internal { left, right, .. } => {
+            write_node_for_save(left, out, copy_buf, written)?;
+            write_node_for_save(right, out, copy_buf, written)?;
+        }
+    }
+    Ok(())
+}
+
+/// Balanced tree over the store's whole-page chunk nodes (midpoint build —
+/// height-balanced by construction; chunks never merge like small leaves,
+/// so no `concat` squeeze applies). An empty base becomes an empty memory
+/// leaf (empty documents are one empty line either way).
+fn build_chunk_tree(store: &Arc<PageStore>) -> Arc<Node> {
+    fn build(store: &Arc<PageStore>, lo: u32, hi: u32) -> Arc<Node> {
+        if lo + 1 == hi {
+            return Node::chunk_whole(store.clone(), lo);
+        }
+        let mid = lo + (hi - lo) / 2;
+        Node::internal(build(store, lo, mid), build(store, mid, hi))
+    }
+    match store.page_count() {
+        0 => Node::leaf(String::new()),
+        n => build(store, 0, n as u32),
     }
 }
 
