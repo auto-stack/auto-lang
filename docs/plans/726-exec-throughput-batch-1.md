@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-726
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: exec-throughput-batch-1
 author: [agent]
 created_at: 2026-10-02
@@ -9,7 +9,7 @@ updated_at: 2026-10-02
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals: []             # 空（测试基建+工作流工具，未触 docs/specs 模块契约；复审记录内有空值理由）
 
 affects: [auto-lang]   # T-02/T-03 测试基建 + T-04 脚本；T-01 经查已由 PLAN-724 清偿（本计划零 vm 代码改动）
 current_step: 5
@@ -295,6 +295,29 @@ T-02 收敛为两族（画廊围栏 + 1M churn）。
   stash 严格对照在档）| blockers=无 | next: review（裸 cargo t 已跑讫；
   tb 裸跑避让理由与 aavm 免触发理由见 T-05 回执；复审需定案两项预存发现
   登记去向）。worktree/分支保留待 review/merge。
+- 2026-10-02 /auto-plan:review（同会话复审——独立性限定在案：结论自工件
+  重建，五 AC 全部复审态重跑取证）：`stage: review` | PLAN-726 | plan_revision
+  =draft 修订后（2026-10-02 追加裁定：aavm 面移除）| `outcome: pass` |
+  reviewed_commit=`2feb50a6c`（worktree clean 核验）| base=17292c07e |
+  deps=auto-down 兄弟 detached@895f8d0（组内解析）| spec_inputs=vm/overview.md
+  无直驱臂文本（grep 空）→SD-01 无规范增量成立 | acceptance=**AC-01 pass**
+  （e4 PASS 0.412s 复跑；P707-R1 划销在档；4f123a50e 更正在 ea2fbf0df⑤；
+  修复归属 PLAN-724 T-02，本计划验证回执）；**AC-02 pass**（冲突态复跑
+  0.066s 确定性红含持锁者 PID 6648、P1 独占绿 19.96s；隔离/陈锁=work 真机
+  实录+单测 5/5 复跑 0.130s；日常档结构性零开销）；**AC-03 pass**（真实
+  书仓脏态 68/68 skip 0.546s 复跑；净/脏/还原/缺失四态=work 克隆实录；
+  wrong.rs 排除项设计修正有据）；**AC-04 pass**（全周期复跑：建组→组内
+  check 1m29s→guard clean→移除→rmdir）；**AC-05 pass**（计时回执在 §8
+  T-05：54.1s/55.2s 轻度竞争 vs 62s 基线；AGENTS.md 资源表刷新归 merge）|
+  findings=零阻断项；F-R1 门禁补强——work 期未跑 tb 全面的缺口经
+  `-E 'not test(generate_book_expected)'` 安全滤式补跑闭合（1522/1525，
+  3 红=已归属 master 的 musk p053 预存三红）；两项预存发现已登记
+  P726-R1（generate 破坏性+竞态）/P726-R2（stage3 FFI 双声明）| evidence=
+  以上命令/结果均 @2feb50a6c 重跑实录；红集归因链（stash 同名对照+master
+  复现+flake 族在案 4f123a50e）在 §8 T-05 | next: merge（SD-02/SD-04
+  AGENTS.md 沉淀+资源表刷新+归档+worktree 清理）。**frontmatter spec 字段
+  空值理由**：本计划为测试基建+工作流工具，未触任何 docs/specs 模块契约
+  （vm 行为零变化，SD-01 论证在档）；touched_goals 无对应 GOAL-NNN。
 
 ## 10. 待澄清事项
 
