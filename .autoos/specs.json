@@ -5067,14 +5067,14 @@
         {
           "id": "P728-1",
           "title": "文件后援分页 rope——后援形 rope 契约（PLAN-728 SD-01）",
-          "content": "PLAN-728 交付落账（供⑵ 承接实施件；canonical 唯源=docs/specs/auto-lang/ui/design/paged-rope.md）。后援形=Node::Chunk 叶变体（{store,page,range}+预扫摘要 chars/newlines/start_end/hash——行数/长度/摘要/剪枝 Merkle 零驻留应答）；PageStore 预扫（一次顺序读+std UTF-8 校验器定页切〔error_len==None 尾部残缺定位，EOF 不回退〕）+LRU 页缓存（6MB 预算，淘汰页退化指针）+异步预取线程（±16 页，PageState 可观测）；编辑=既有 replace_bytes 贯通（split Chunk 一次 fault-in 产子区间描述符，基底不可变 frozen）；write_backed 合并保存（基底句柄 pread 绕过 LRU 磁盘到磁盘照抄+temp 同目录+rename 原子改名+任意 store len/mtime 基线不符拒绝+写后刷新）；装载链 50MB 阈值分臂（code_editor_load_file 替换全量读，小文件臂逐字节原样 frozen；2MB 头窗口+rewindow 跳转/查找落点+提交漏斗窗口基址映射+edit_paged 直达臂零全量物化+set_text 摘要快道）；Rope/RopeSnapshot API 零破坏（签名钉探针）；顺手修 703 对齐行走字符中间切片隐患（leaf 比较改字节基，内存 rope 同受益）。基准谱（release）：1GB 装载 4.0s/打开即答 0.16ms/结构计量 3.03MB（契约 ≤12MB）/RSS 峰值 17MB(LT)/保存 657ms/逐键带 small 0.02ms vs paged-1G 0.17ms。下游消费件（auto-edit，供料档 §10 回执预告位 de6cb95）：512MB 门处置两案/open_1gb 断言化/适配件三件（code_editor_text 改快照读、S2 视口物化、fold 面）/1GB E2E 矩阵。债务：P728-D1 行查询页内换行重扫（find 全扫 30s@50MB debug）、P728-D2 703 修正回归面、P728-D3 窗口化边界三项。",
+          "content": "PLAN-728 交付落账（delivery=merge ff-only，reviewed@c19fec79f）（供⑵ 承接实施件；canonical 唯源=docs/specs/auto-lang/ui/design/paged-rope.md）。后援形=Node::Chunk 叶变体（{store,page,range}+预扫摘要 chars/newlines/start_end/hash——行数/长度/摘要/剪枝 Merkle 零驻留应答）；PageStore 预扫（一次顺序读+std UTF-8 校验器定页切〔error_len==None 尾部残缺定位，EOF 不回退〕）+LRU 页缓存（6MB 预算，淘汰页退化指针）+异步预取线程（±16 页，PageState 可观测）；编辑=既有 replace_bytes 贯通（split Chunk 一次 fault-in 产子区间描述符，基底不可变 frozen）；write_backed 合并保存（基底句柄 pread 绕过 LRU 磁盘到磁盘照抄+temp 同目录+rename 原子改名+任意 store len/mtime 基线不符拒绝+写后刷新）；装载链 50MB 阈值分臂（code_editor_load_file 替换全量读，小文件臂逐字节原样 frozen；2MB 头窗口+rewindow 跳转/查找落点+提交漏斗窗口基址映射+edit_paged 直达臂零全量物化+set_text 摘要快道）；Rope/RopeSnapshot API 零破坏（签名钉探针）；顺手修 703 对齐行走字符中间切片隐患（leaf 比较改字节基，内存 rope 同受益）。基准谱（release）：1GB 装载 4.0s/打开即答 0.16ms/结构计量 3.03MB（契约 ≤12MB）/RSS 峰值 17MB(LT)/保存 657ms/逐键带 small 0.02ms vs paged-1G 0.17ms。下游消费件（auto-edit，供料档 §10 回执预告位 de6cb95）：512MB 门处置两案/open_1gb 断言化/适配件三件（code_editor_text 改快照读、S2 视口物化、fold 面）/1GB E2E 矩阵。债务：P728-D1 行查询页内换行重扫（find 全扫 30s@50MB debug）、P728-D2 703 修正回归面、P728-D3 窗口化边界三项。",
           "tags": [
             "plan-728",
             "sd-01",
             "ui",
             "design",
             "paged-rope",
-            "docsha:pending-merge"
+            "docsha:afd7a6142ce6"
           ],
           "file": "docs/specs/auto-lang/ui/design/paged-rope.md"
         }
