@@ -34,7 +34,10 @@ lazy_static::lazy_static! {
 }
 
 /// 注册表条目：own 句柄（Drop 取消权归宿主）+ 非拥有观察句柄（watcher 用）。
+/// `transfer` 字段不被读取——它的职责是**保活**：持有 own 句柄使注册表内
+/// 的传输不被 Drop 取消，终态后由 take_transfer 移除触发（幂等 no-op）。
 pub(crate) struct TransferEntry {
+    #[allow(dead_code)] // 保活语义：Drop 取消权归宿主（见上注）
     pub transfer: FileTransfer,
     pub observer: TransferObserver,
 }
