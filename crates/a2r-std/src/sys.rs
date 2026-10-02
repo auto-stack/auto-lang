@@ -130,13 +130,21 @@ pub fn cpu_count() -> i32 {
 pub fn cpu_core_usage(core_idx: i32) -> f64 {
     let mut s = get_sampler().lock().unwrap();
     s.refresh_cpu_if_needed();
-    s.sys.cpus().get(core_idx as usize).map(|c| ((c.cpu_usage() as f64) * 10.0).round() / 10.0).unwrap_or(0.0)
+    s.sys
+        .cpus()
+        .get(core_idx as usize)
+        .map(|c| ((c.cpu_usage() as f64) * 10.0).round() / 10.0)
+        .unwrap_or(0.0)
 }
 
 /// CPU brand string (e.g. "AMD Ryzen ...")
 pub fn cpu_brand() -> String {
     let s = get_sampler().lock().unwrap();
-    s.sys.cpus().first().map(|c| c.brand().to_string()).unwrap_or_default()
+    s.sys
+        .cpus()
+        .first()
+        .map(|c| c.brand().to_string())
+        .unwrap_or_default()
 }
 
 /// Total system memory in MB
@@ -196,12 +204,16 @@ pub fn uptime_s() -> i32 {
 pub fn disks() -> List<DiskData> {
     let mut s = get_sampler().lock().unwrap();
     s.refresh_disks();
-    let vec: Vec<DiskData> = s.disks.iter().map(|d| DiskData {
-        name: d.name().to_string_lossy().into_owned(),
-        mount: d.mount_point().to_string_lossy().into_owned(),
-        total_mb: (d.total_space() / (1024 * 1024)) as i64,
-        avail_mb: (d.available_space() / (1024 * 1024)) as i64,
-    }).collect();
+    let vec: Vec<DiskData> = s
+        .disks
+        .iter()
+        .map(|d| DiskData {
+            name: d.name().to_string_lossy().into_owned(),
+            mount: d.mount_point().to_string_lossy().into_owned(),
+            total_mb: (d.total_space() / (1024 * 1024)) as i64,
+            avail_mb: (d.available_space() / (1024 * 1024)) as i64,
+        })
+        .collect();
     List::from(vec)
 }
 
@@ -209,9 +221,13 @@ pub fn disks() -> List<DiskData> {
 pub fn users() -> List<UserData> {
     let mut s = get_sampler().lock().unwrap();
     s.refresh_users();
-    let vec: Vec<UserData> = s.users.iter().map(|u| UserData {
-        name: u.name().to_string(),
-    }).collect();
+    let vec: Vec<UserData> = s
+        .users
+        .iter()
+        .map(|u| UserData {
+            name: u.name().to_string(),
+        })
+        .collect();
     List::from(vec)
 }
 
@@ -221,7 +237,8 @@ pub fn processes() -> List<ProcData> {
     let now = Instant::now();
     let elapsed = now.duration_since(s.last_proc_sample).as_secs_f64();
     let elapsed_sec = if elapsed < 0.05 { 0.05 } else { elapsed };
-    s.sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    s.sys
+        .refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     s.last_proc_sample = now;
 
     let cpu_cores = s.sys.cpus().len().max(1) as f64;
@@ -258,7 +275,11 @@ pub fn processes() -> List<ProcData> {
         });
     }
 
-    list.sort_by(|a, b| b.cpu.partial_cmp(&a.cpu).unwrap_or(std::cmp::Ordering::Equal));
+    list.sort_by(|a, b| {
+        b.cpu
+            .partial_cmp(&a.cpu)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     if list.len() > 512 {
         list.truncate(512);
     }
@@ -268,7 +289,10 @@ pub fn processes() -> List<ProcData> {
 /// Kill process by PID
 pub fn kill(pid: i32) -> bool {
     let mut s = get_sampler().lock().unwrap();
-    s.sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[Pid::from_u32(pid as u32)]), true);
+    s.sys.refresh_processes(
+        sysinfo::ProcessesToUpdate::Some(&[Pid::from_u32(pid as u32)]),
+        true,
+    );
     if let Some(proc_) = s.sys.process(Pid::from_u32(pid as u32)) {
         proc_.kill()
     } else {

@@ -90,11 +90,9 @@ enum SessionPhase {
         meta: UploadReceivedMeta,
         staging_path: PathBuf,
     },
-    /// 进入 commit gate（hard_link 在途；迟到取消不回滚——载荷随相携带）。
-    Committing {
-        meta: UploadReceivedMeta,
-        staging_path: PathBuf,
-    },
+    /// 进入 commit gate（hard_link 在途；迟到取消不回滚）。收据快照在
+    /// run_commit 局部——相内只携带发布路径（迟到取消的可观测面）。
+    Committing { staging_path: PathBuf },
     /// 终态：committed/rejected/expired_lease/cancelled/failed。
     Terminal(&'static str),
 }
@@ -269,8 +267,7 @@ enum MpState {
 }
 
 pub(crate) struct MultipartIncremental {
-    boundary: Vec<u8>,
-    /// 完整定界符 needle = CRLF + "--" + boundary。
+    /// 完整定界符 needle = CRLF + "--" + boundary（boundary 随 needle 携带）。
     delim: Vec<u8>,
     buf: Vec<u8>,
     state: MpState,
@@ -312,7 +309,6 @@ impl MultipartIncremental {
         let mut buf = Vec::with_capacity(64);
         buf.extend_from_slice(b"\r\n");
         Ok(MultipartIncremental {
-            boundary: boundary.as_bytes().to_vec(),
             delim,
             buf,
             state: MpState::Preamble,
@@ -779,7 +775,14 @@ pub fn cancel_session(session_id: u64) {
     let staged_path: Option<PathBuf> = {
         let mut phase = entry.phase.lock().unwrap();
         match &*phase {
-            SessionPhase::Committing { .. } => None, // 迟到取消（gate 后不回滚）
+            SessionPhase::Committing { staging_path, .. } => {
+                // 迟到取消（gate 后不回滚）——保留发布路径可观测。
+                eprintln!(
+                    "[upload730] session {session_id} late cancel during commit ({} stays published)",
+                    staging_path.display()
+                );
+                None
+            }
             SessionPhase::Staged { staging_path, .. } => {
                 let p = staging_path.clone();
                 *phase = SessionPhase::Terminal("cancelled");
@@ -835,7 +838,7 @@ async fn spawn_writer(path: PathBuf, session_id: u64) -> io::Result<WriterHandle
         .acquire_owned()
         .await
         .map_err(|e| io::Error::other(format!("fs ops pool: {e}")))?;
-    let mut file = tokio::fs::OpenOptions::new()
+    let file = tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&path)
@@ -1061,7 +1064,7 @@ async fn run_receive(
     let staging_path = entry
         .staging_root
         .join(format!(".upload730-{session_id}.part"));
-    let mut writer = match spawn_writer(staging_path.clone(), session_id).await {
+    let writer = match spawn_writer(staging_path.clone(), session_id).await {
         Ok(w) => w,
         Err(e) => {
             return fail_receive(
@@ -1080,7 +1083,7 @@ async fn run_receive(
     use futures::StreamExt;
     let (_m, _p, _h, mut body) = req.into_parts();
     let mut wire_total: u64 = 0;
-    let mut idle = tokio::time::sleep(idle_timeout);
+    let idle = tokio::time::sleep(idle_timeout);
     tokio::pin!(idle);
     let outcome: Result<(), (UploadErrorKind, String)> = loop {
         tokio::select! {
@@ -1282,7 +1285,6 @@ async fn run_commit(session_id: u64, relative_target: String) -> UploadReceipt {
         }
     };
     *entry.phase.lock().unwrap() = SessionPhase::Committing {
-        meta: meta.clone(),
         staging_path: staging_path.clone(),
     };
     let fail_commit = |terminal: &'static str, kind: UploadErrorKind, message: String| {

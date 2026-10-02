@@ -25,7 +25,9 @@ fn spawn_stub() -> (u16, std::sync::mpsc::Receiver<()>) {
     let (done_tx, done_rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         for _ in 0..64 {
-            let Ok((mut s, _)) = listener.accept() else { break };
+            let Ok((mut s, _)) = listener.accept() else {
+                break;
+            };
             let mut buf = [0u8; 16384];
             let Ok(n) = s.read(&mut buf) else { break };
             if n == 0 {
@@ -35,7 +37,12 @@ fn spawn_stub() -> (u16, std::sync::mpsc::Receiver<()>) {
             let is_post = req.starts_with("POST ");
             let is_drip = req.starts_with("GET /drip");
             if is_post {
-                let payload = req.split("\r\n\r\n").nth(1).unwrap_or("").trim().to_string();
+                let payload = req
+                    .split("\r\n\r\n")
+                    .nth(1)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
                 // 回显请求头里的认证面，供 wire 断言。
                 let auth = req
                     .lines()
@@ -59,7 +66,7 @@ fn spawn_stub() -> (u16, std::sync::mpsc::Receiver<()>) {
                     b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n",
                 );
                 let frames: &[&[u8]] = &[
-                    b"data: \xE4\xB8",      // 「中」前 2 字节（跨帧 carry）
+                    b"data: \xE4\xB8",       // 「中」前 2 字节（跨帧 carry）
                     b"\xAD\xE6\x96\x87\n\n", // 「中」尾字节 + 「文」 + 事件结束
                     b"data: [DONE]\n\n",
                 ];
@@ -104,7 +111,11 @@ fn plan724_native_auth_headers_wire_and_typed_response() {
 
     let resp = http::post_sync(&base, "payload-1", "sk-ant-test");
     assert_eq!(resp.0, 200, "x-api-key post status");
-    assert!(resp.1.contains("x-api-key: sk-ant-test"), "wire: {}", resp.1);
+    assert!(
+        resp.1.contains("x-api-key: sk-ant-test"),
+        "wire: {}",
+        resp.1
+    );
     assert!(resp.1.contains("payload-1"), "body echo: {}", resp.1);
     assert_eq!(http::last_status(), 200);
 
@@ -143,7 +154,11 @@ fn plan724_native_error_layering() {
     }
     // 非 2xx：内核 Result 仍是 Ok（应用层语义）。
     let resp = http::get("http://127.0.0.1:1/nope"); // 端口 1 → 连接拒绝也是 Transport
-    assert_eq!(resp.status_code(), 0, "传输失败以 status 0 呈现（facade 哨兵）");
+    assert_eq!(
+        resp.status_code(),
+        0,
+        "传输失败以 status 0 呈现（facade 哨兵）"
+    );
 }
 
 /// UTF-8 跨 chunk carry + SSE 子集：分帧切在码点中点不损码点；CRLF 行终结；
@@ -220,7 +235,11 @@ fn plan724_native_cancel_storm_returns_to_baseline() {
         }
         streams.push(s);
     }
-    assert!(queue_full > 0, "超额流应以 queue full 终结（共 {}）", queue_full);
+    assert!(
+        queue_full > 0,
+        "超额流应以 queue full 终结（共 {}）",
+        queue_full
+    );
     for s in &streams {
         s.close();
     }
@@ -342,7 +361,10 @@ fn plan724_native_kernel_stream_direct_api() {
     assert_eq!(s.status(), Some(200));
     assert_eq!(s.terminal_error(), Some(None));
     assert!(s.is_finished());
-    assert!(client::kernel_handle().block_on(s.next()).is_none(), "单次终结");
+    assert!(
+        client::kernel_handle().block_on(s.next()).is_none(),
+        "单次终结"
+    );
     drop(s); // Drop = close（幂等）
 
     // 非 2xx GET（raw 模式保留读体行为；这里 404 分支由 stub 的 POST 外路径

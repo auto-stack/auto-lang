@@ -144,9 +144,7 @@ impl UploadRequest {
     }
 
     /// 消费分解（宿主 executor 读取 headers/body 用）。
-    pub fn into_parts(
-        self,
-    ) -> (String, String, Vec<(String, String)>, UploadBodyStream) {
+    pub fn into_parts(self) -> (String, String, Vec<(String, String)>, UploadBodyStream) {
         (self.method, self.path, self.headers, self.body)
     }
 }
@@ -527,8 +525,10 @@ impl UploadServeLimits {
             fs_ops_max: env_usize("AUTO_HTTP_UPLOAD_FS_OPS", d.fs_ops_max),
             max_file_bytes: env_u64("AUTO_HTTP_UPLOAD_MAX_FILE_BYTES", d.max_file_bytes),
             max_wire_bytes: env_u64("AUTO_HTTP_UPLOAD_MAX_WIRE_BYTES", d.max_wire_bytes),
-            max_text_fields: env_usize("AUTO_HTTP_UPLOAD_MAX_TEXT_FIELDS", d.max_text_fields as usize)
-                as u32,
+            max_text_fields: env_usize(
+                "AUTO_HTTP_UPLOAD_MAX_TEXT_FIELDS",
+                d.max_text_fields as usize,
+            ) as u32,
             max_text_field_bytes: env_usize(
                 "AUTO_HTTP_UPLOAD_MAX_TEXT_FIELD_BYTES",
                 d.max_text_field_bytes,
@@ -566,12 +566,16 @@ pub fn parse_upload_receive_options(
     } else {
         options_json
     };
-    let raw: UploadOptionsRaw = serde_json::from_str(normalized)
-        .map_err(|e| format!("upload options: {e}"))?;
+    let raw: UploadOptionsRaw =
+        serde_json::from_str(normalized).map_err(|e| format!("upload options: {e}"))?;
     let mode = match raw.mode.as_str() {
         "multipart" => UploadReceiveMode::Multipart,
         "raw" => UploadReceiveMode::Raw,
-        other => return Err(format!("upload options: unknown mode {other:?} (multipart|raw)")),
+        other => {
+            return Err(format!(
+                "upload options: unknown mode {other:?} (multipart|raw)"
+            ))
+        }
     };
     if raw.max_file_bytes.unwrap_or(1) == 0
         || raw.max_wire_bytes.unwrap_or(1) == 0
@@ -582,7 +586,9 @@ pub fn parse_upload_receive_options(
         || raw.max_part_header_bytes.unwrap_or(1) == 0
         || raw.max_part_header_items.unwrap_or(1) == 0
     {
-        return Err("upload options: zero budgets are not a valid way to disable limits".to_string());
+        return Err(
+            "upload options: zero budgets are not a valid way to disable limits".to_string(),
+        );
     }
     let file_field = match (&raw.file_field, mode) {
         (Some(f), UploadReceiveMode::Multipart) => {
@@ -628,8 +634,14 @@ pub fn parse_upload_receive_options(
         file_field,
         text_fields: raw.text_fields.clone().unwrap_or_default(),
         raw_content_types: raw.raw_content_types.clone(),
-        max_file_bytes: raw.max_file_bytes.unwrap_or(u64::MAX).min(hard.max_file_bytes),
-        max_wire_bytes: raw.max_wire_bytes.unwrap_or(u64::MAX).min(hard.max_wire_bytes),
+        max_file_bytes: raw
+            .max_file_bytes
+            .unwrap_or(u64::MAX)
+            .min(hard.max_file_bytes),
+        max_wire_bytes: raw
+            .max_wire_bytes
+            .unwrap_or(u64::MAX)
+            .min(hard.max_wire_bytes),
         max_text_fields: raw
             .max_text_fields
             .unwrap_or(u32::MAX)
@@ -844,23 +856,23 @@ mod tests {
 
     #[test]
     fn plan730_options_unknown_key_rejected() {
-        let err = parse_upload_receive_options(r#"{"mode":"raw","root":"/x"}"#, &hard()).unwrap_err();
-        assert!(err.contains("unknown field") || err.contains("root"), "{err}");
+        let err =
+            parse_upload_receive_options(r#"{"mode":"raw","root":"/x"}"#, &hard()).unwrap_err();
+        assert!(
+            err.contains("unknown field") || err.contains("root"),
+            "{err}"
+        );
     }
 
     #[test]
     fn plan730_options_mode_specific_keys() {
         // file_field/text_fields 仅 multipart；raw_content_types 仅 raw。
-        assert!(parse_upload_receive_options(
-            r#"{"mode":"raw","file_field":"f"}"#,
-            &hard()
-        )
-        .is_err());
-        assert!(parse_upload_receive_options(
-            r#"{"mode":"raw","text_fields":["a"]}"#,
-            &hard()
-        )
-        .is_err());
+        assert!(
+            parse_upload_receive_options(r#"{"mode":"raw","file_field":"f"}"#, &hard()).is_err()
+        );
+        assert!(
+            parse_upload_receive_options(r#"{"mode":"raw","text_fields":["a"]}"#, &hard()).is_err()
+        );
         assert!(parse_upload_receive_options(
             r#"{"mode":"multipart","raw_content_types":["a/b"]}"#,
             &hard()
@@ -889,11 +901,8 @@ mod tests {
 
     #[test]
     fn plan730_options_zero_budget_rejected() {
-        let err = parse_upload_receive_options(
-            r#"{"mode":"raw","max_file_bytes":0}"#,
-            &hard(),
-        )
-        .unwrap_err();
+        let err = parse_upload_receive_options(r#"{"mode":"raw","max_file_bytes":0}"#, &hard())
+            .unwrap_err();
         assert!(err.contains("zero budgets"), "{err}");
     }
 
@@ -971,7 +980,12 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let session = rt.block_on(upload_receive(req, "C:/root", "C:/staging", r#"{"mode":"raw"}"#));
+        let session = rt.block_on(upload_receive(
+            req,
+            "C:/root",
+            "C:/staging",
+            r#"{"mode":"raw"}"#,
+        ));
         assert!(!session.is_received());
         assert!(upload_metadata_json(&session).contains("no_executor"));
     }

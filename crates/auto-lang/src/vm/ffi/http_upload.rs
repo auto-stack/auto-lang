@@ -107,14 +107,6 @@ lazy_static::lazy_static! {
         std::sync::Mutex::new(HashMap::new());
 }
 
-/// 就绪探测（owner loop parked_is_ready 的 HttpRequest 臂查询面）。
-pub(crate) fn upload_op_ready(op_id: u64) -> bool {
-    UPLOAD_OP_RESULTS
-        .lock()
-        .map(|m| m.contains_key(&op_id))
-        .unwrap_or(false)
-}
-
 /// 重入消费（结果存在即取走；同时清理 async result 槽）。
 fn take_upload_op(op_id: u64) -> Option<UploadOpResult> {
     let taken = UPLOAD_OP_RESULTS
