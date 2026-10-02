@@ -21,6 +21,13 @@ use std::path::PathBuf;
 const FCS_STORE: &str = r#"
 use fcs_helpers: sixCross, twoCross, sixStr
 
+// PLAN-733 裸名歧义格：与 fcs_helpers.at 同名（跨模块重名）——store
+// handler 域裸调用须按 own-module 语义绑定本文件版本（修复前：全局唯一
+// 性规则拒别名 → 裸 reloc → Undefined symbol 整链接失败）。
+fn dupName() str {
+    "local"
+}
+
 fn zeroLocal() list {
     var rows = []
     rows.push({ key: "z" })
@@ -71,6 +78,7 @@ store FcsStore {
         var f_twox list = []
         var f_err str = "unset"
         var f_has bool = false
+        var f_dup str = "unset"
         // 消费探针格：handler 域对 fn 结果的消费运算真值。
         var c_len_direct int = -1        // zeroLocal().length
         var c_len_local int = -1         // 局部绑定后 .length
@@ -156,6 +164,7 @@ store FcsStore {
                 .f_six = sixLocal(.msgs, "running", 5, "app", 2, "")
                 .f_sixx = sixCross(.msgs, "running", 5, "app", 2, "")
                 .f_twox = twoCross([10, 20], 3)
+                .f_dup = dupName()
                 .f_err = ""
                 .f_has = true
             } catch {
@@ -212,6 +221,10 @@ pub fn twoCross(lines list, hl int) list {
     rows
 }
 
+pub fn dupName() str {
+    "helper"
+}
+
 pub fn sixStr(messages list, cv_state str, cv_seq int, cv_app str, cv_gen int, cv_error str) str {
     var cnt int = 0
     for m in messages { cnt = cnt + 1 }
@@ -242,6 +255,9 @@ widget App {
             text f"three=${.store.f_three}"
             text f"err=${.store.f_err}"
             text f"cc=${.cc}"
+            for m in .store.cross_msgs {
+                text m.key
+            }
             text f"pc=${.plain}"
             text f"cc2=${.cc2}"
             text .cc
@@ -467,6 +483,13 @@ fn p733_store_handler_module_fn_call_matrix() {
         "timer-driven cross-run .length over list field"
     );
 
+    // 裸名歧义格：跨模块同名 fn，store handler 裸调用绑定同文件版本。
+    assert_eq!(
+        state_str(&comp, "f_dup"),
+        "local",
+        "same-file bare fn call in store handler must bind own-module definition (PLAN-733 link-failure face)"
+    );
+
     // 对照格（已证可用形态）。
     assert_eq!(list_len(&comp, "f_zero"), 1, "0-param same-file");
     assert_eq!(state_str(&comp, "f_one"), "x!", "1-param str same-file");
@@ -573,6 +596,13 @@ fn p733_computed_fn_call_face() {
         debug.contains("cc2=running:2:9:hostapp:4:"),
         "fn-call computed with state-ref args must render true value, got: {}",
         debug.chars().take(1100).collect::<String>()
+    );
+    // 视图 for-in 面：Init 链写入的列表字段（msg param → 状态字段——musk
+    // cp_prog_msgs/cp_prog_rows 同通道）在视图 for-in 迭代出真实行。
+    assert!(
+        debug.matches("\"a\"").count() >= 1 && debug.matches("\"b\"").count() >= 1,
+        "view for-in over handler-written list field must render rows, got: {}",
+        debug.chars().take(1200).collect::<String>()
     );
     // 直读面（plan632 F1 已证形态）。
     assert!(

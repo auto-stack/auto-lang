@@ -3833,6 +3833,13 @@ fn collect_module_imports(
             // widget) are compiled into the VM module. Without this, the store's
             // handlers are undefined at link time. Dedup by store name.
             crate::ast::Stmt::StoreDecl(sd) => {
+                // PLAN-733: 登记 store 源文件模块（file stem）——合成该
+                // store 的 handler 时作 own-module 裸名绑定域（同文件模块级
+                // fn 裸调用不再因跨模块同名歧义悬空）。
+                crate::ui::handler_codegen::register_store_source_module(
+                    &sd.name.to_string(),
+                    &module_name,
+                );
                 let key = format!("__storedecl:{}", sd.name);
                 if seen.insert(key) {
                     out.push(stmt.clone());

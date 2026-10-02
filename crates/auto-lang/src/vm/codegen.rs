@@ -302,6 +302,15 @@ pub struct Codegen {
     /// level). Unqualified fns compile with None; no behavior change elsewhere.
     pub current_fn_module: Option<String>,
 
+    /// PLAN-733: store 域合成期（handler/computed 隐藏 fn）的 own-module
+    /// 绑定域——store 源文件的模块名（collect_module_imports 登记）。合成
+    /// 的 handler fn 名（`handler_<Store>_<Event>`）无点前缀，
+    /// current_fn_module 按 name 推导得 None；本字段作为裸名 fn 的回退域，
+    /// 使 store handler 体内**同文件**模块级 fn 的裸调用按 own-module 语义
+    /// 绑定（resolve_call_symbol 步骤 2.5 同路径），不受跨模块同名裸名
+    /// 歧义规则影响。仅 handler_codegen 的 per-widget 合成循环设置。
+    pub store_scope_module: Option<String>,
+
     /// Plan 417-E3-P4: bounded type params per fn (callee name → params with
     /// their constraint lists), e.g. max_of → [(T, [Comparable])]. Populated
     /// at Stmt::Fn; consulted at call sites to reject arguments whose static
@@ -666,6 +675,7 @@ impl Codegen {
             current_fn_ret_type: Type::Void,
             current_fn_type_params: Vec::new(), // Plan 417-E3
             current_fn_module: None, // PLAN-019 T-06: own-module bare-call binding
+            store_scope_module: None, // PLAN-733: store 域合成 own-module 绑定
             fn_type_param_bounds: HashMap::new(), // Plan 417-E3-P4
             fn_scope_start: 0,         // Plan 087 Phase 3: Initialize to 0
             infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
@@ -978,6 +988,7 @@ impl Codegen {
             current_fn_ret_type: Type::Void,
             current_fn_type_params: Vec::new(), // Plan 417-E3
             current_fn_module: None, // PLAN-019 T-06: own-module bare-call binding
+            store_scope_module: None, // PLAN-733: store 域合成 own-module 绑定
             fn_type_param_bounds: HashMap::new(), // Plan 417-E3-P4
             fn_scope_start: 0,
             infer_ctx: InferenceContext::new(),
@@ -1493,7 +1504,11 @@ impl Codegen {
                     .name
                     .to_string()
                     .rsplit_once('.')
-                    .map(|(prefix, _)| prefix.to_string());
+                    .map(|(prefix, _)| prefix.to_string())
+                    // PLAN-733: 裸名合成 fn（store handler/computed 隐藏 fn）
+                    // 无点前缀——回退 store 域绑定（handler_codegen per-widget
+                    // 设置；非 store 域为 None，行为不变）。
+                    .or_else(|| self.store_scope_module.clone());
 
                 // Plan 417-E3: record this fn's type-parameter names so method
                 // calls on receivers typed as one of them dispatch dynamically

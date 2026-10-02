@@ -85,6 +85,32 @@ pub fn clear_current_widget() {
     CURRENT_HANDLER_NAMES.with(|s| s.borrow_mut().clear());
 }
 
+// PLAN-733: store 名 → 源文件模块名（file stem）。collect_module_imports
+// 侧登记（lib.rs StoreDecl 臂）；合成该 store 的 handler/computed 时设
+// codegen.store_scope_module，使**同文件**模块级 fn 的裸名调用按
+// own-module 语义绑定（resolve_call_symbol 步骤 2.5 同款路径），不再因
+// 跨模块同名裸名的全局唯一性别名规则（handler_codegen 裸名预登记）悬空
+// 成裸 reloc——"Undefined symbol: <bare>" 整链接失败（auto-musk
+// canvasProgressRows 内联实验 b2285ac 实测：canvas_store.at 与
+// canvas_helpers.at 同名时 handler 域裸调用链失败）。thread_local：
+// 采集与合成同线程，跨构建按采集覆写（同名 store 后写胜）。
+thread_local! {
+    static STORE_SOURCE_MODULES: std::cell::RefCell<std::collections::HashMap<String, String>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// PLAN-733: collect_module_imports 登记 store 源文件模块（file stem）。
+pub fn register_store_source_module(store: &str, module: &str) {
+    STORE_SOURCE_MODULES.with(|m| {
+        m.borrow_mut().insert(store.to_string(), module.to_string());
+    });
+}
+
+/// PLAN-733: 查 store 的源文件模块名（None = 未见登记/非 store widget）。
+pub fn store_source_module(store: &str) -> Option<String> {
+    STORE_SOURCE_MODULES.with(|m| m.borrow().get(store).cloned())
+}
+
 // Plan 576 (D2): 当前合成件的 computed 字段 → 隐藏函数名表。handler/
 // computed 体内引用本件 computed（裸 Ident 或 .name/self.name 形态）改写为
 // `__computed_<W>_<name>(__state)` 调用——此前改写只认 state_vars，computed
@@ -1605,6 +1631,9 @@ pub fn synthesize_widget_module(
         }
         set_current_widget(&w.name, w_msg_variants);
         set_current_widget_handlers(w_handler_names);
+        // PLAN-733: store 域合成 own-module 绑定（store 名命中登记表 = 该
+        // 件是 StoreDecl 转来的 child；普通 widget 查得 None 行为不变）。
+        codegen.store_scope_module = store_source_module(&w.name);
 
         // State type declaration.
         if let Err(e) = codegen.compile_stmt(&Stmt::TypeDecl(w_state_type.clone())) {
@@ -2334,6 +2363,8 @@ pub fn synthesize_from_decl(
         }
         set_current_widget(d.name.to_string().as_str(), d_msg_variants);
         set_current_widget_handlers(d_handler_names);
+        // PLAN-733: store 域合成 own-module 绑定（decl 路径同款）。
+        codegen.store_scope_module = store_source_module(d.name.to_string().as_str());
 
         let d_state_type = synthesize_state_type_from_decl(d, d_tick);
 

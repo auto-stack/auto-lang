@@ -12499,20 +12499,40 @@ let tabs_inner = View::Row {
             // the VM; this is the view-build fast path only.
             Expr::Call(call) => {
                 // PLAN-050 T9 (C7): t("k")/i18n.t("k") prop 位最小查表。
-                if let Some(key) = call_expr_t_key(call) {
-                    // PLAN-051 P2-②b: 第二实参记录字面量 → {k} 插值。
-                    let params = {
-                        let resolver = |e: &crate::ast::Expr| {
-                            Some(self.resolve_expr_to_string_with(e, bindings))
+                // PLAN-733: 键动态化——t(r.label_key)/t("prefix_" + r.state)
+                // 形此前非字面量键直接落空（键臂返回 None → 裸 Call 臂按未
+                // 知 fn 处理 → 整体 None → 行文本空被过滤）。动态解析首实参
+                // 为串后同表查表；查不到回显键串（与字面量臂缺键回显同语义）。
+                let t_dynamic_key = match call.name.as_ref() {
+                    Expr::Ident(name) if name.as_str() == "t" => Some(()),
+                    Expr::Dot(_, method) if method.as_str() == "t" => Some(()),
+                    _ => None,
+                };
+                if t_dynamic_key.is_some() {
+                    let key = call_expr_t_key(call).or_else(|| {
+                        call.args.args.first().and_then(|a| match a {
+                            crate::ast::Arg::Pos(e) => {
+                                let s = self.resolve_expr_to_string_with(e, bindings);
+                                if s.is_empty() { None } else { Some(s) }
+                            }
+                            _ => None,
+                        })
+                    });
+                    if let Some(key) = key {
+                        // PLAN-051 P2-②b: 第二实参记录字面量 → {k} 插值。
+                        let params = {
+                            let resolver = |e: &crate::ast::Expr| {
+                                Some(self.resolve_expr_to_string_with(e, bindings))
+                            };
+                            t_call_params(&resolver, call)
                         };
-                        t_call_params(&resolver, call)
-                    };
-                    let text =
-                        crate::ui::i18n_lookup::lookup(&key).unwrap_or_else(|| key);
-                    return Some(Value::Str(
-                        crate::ui::i18n_lookup::substitute_params(&text, &params)
-                            .into(),
-                    ));
+                        let text =
+                            crate::ui::i18n_lookup::lookup(&key).unwrap_or_else(|| key);
+                        return Some(Value::Str(
+                            crate::ui::i18n_lookup::substitute_params(&text, &params)
+                                .into(),
+                        ));
+                    }
                 }
                 // PLAN-051 C3: 裸 fn 名调用——computed 体内的 use.web helper
                 // 别名链（musk filteredMessages => chatSearchFilter(
