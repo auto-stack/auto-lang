@@ -220,3 +220,4 @@ Rust（`crates/auto-lang/src/ui/autodown_editor/**`、`view.rs`、`aura_view_bui
 ## spec-sync 回写记录（v1 惯例）
 
 - 2026-10-03 merge：SD-01 canonical 落 `docs/specs/auto-lang/ui/design/autodown-wikilink.md`（新，SHA256 8bf534bc…282ae）；SD-02 落 `ui/architecture.md` ADR-27；`ui/plans.md` +732 行；`ui/overview.md` +PLAN-732 注记；`.autoos/specs.json` upsert P732-1/2/3；spec-index 再生。
+- **cleaned**（2026-10-03 补记）：双 wt-guard clean（auto-lang+auto-down 兄弟）→ worktree 双移除+组目录 `D:/autostack/.wt/lang-732` 删除+分支 `plan-732-dev` 删除（was 12fa9fd10，已全量 landed）；`git worktree list` 零残留。**outcome: pass**。
