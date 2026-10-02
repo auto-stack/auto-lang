@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-730
-status: drafting
+status: execution_done
 feature_name: http-server-upload-ingress
 author: [agent]
 created_at: 2026-10-02
 updated_at: 2026-10-02
 plan_revision: 1
-current_step: 0
+current_step: 9
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -255,7 +255,7 @@ legacy 存储迁入有界宿主执行，不在 owner `std::fs::write`；正常�
 
 ## 8. 执行步骤
 
-### T-01：等待依赖落地、复现差距与有界原型
+### T-01：等待依赖落地、复现差距与有界原型 [✅ e88d06f45]
 
 - 前置：729独立review通过并merge；核对最终Spec/receipt与本合同，不在729工作树实施730。
 - `bash scripts/new-wt-group.sh lang-730 --branch plan-730-dev`，记录master基线和729落地hash，auto-down兄弟只读。
@@ -263,55 +263,80 @@ legacy 存储迁入有界宿主执行，不在 owner `std::fs::write`；正常�
 - 复现legacy404/拒绝写盘与FS假成功；冻结public ABI/options/error JSON、两facade executor hook、stage资源、deadline watch/100-continue、multer版本/实际header-carry上限、root私有staging与原子no-replace原语。Windows/Linux探针明确平台证据，报告 `730-upload-decision.md`。
 - 验证：最小双端raw/multipart commit/reject与鉴权gate；覆盖AC-01..07/SD-01..08的设计可实施。若需完整HTTP Request/语言ownership重构，提交needs_replan，不以全量缓冲/弱路径检查代替。
 
-### T-02：公共类型、async facade与路由能力分类
+### T-02：公共类型、async facade与路由能力分类 [✅ 90748a083]
 
 - 依赖T-01。新 `crates/a2r-std/src/http/server_upload.rs`；修改`http.rs`导出、`auto-lang/src/a2r_std.rs`、`stdlib/auto/{http,http.vm}.at`；共有严格options/有序metadata/receipt。
 - 修改`api/{types,mod}.rs`、`vm/codegen.rs`签名采集与上传policy发布：精确UploadRequest/异步receipt，参数冲突/method不支持诊断，不重用meta str猜测规则。
 - 验证：`cargo test -p a2r-std server_upload -- --test-threads=1`、`cargo t plan730`类型/options/路由分类金样；错误options未开始I/O；AC-01/02/07，SD-01/02/03/05/06。
 
-### T-03：共用增量parser与受限staging接收
+### T-03：共用增量parser与受限staging接收 [✅ 0df7d9886]
 
 - 依赖T-02。新`auto-lang/src/http_upload_service.rs`，修改`src/lib.rs`/必要Cargo依赖；复用729root工具，实施multipart/raw和各预算、准入、FS许可、文本有序字段、staged lease。
 - parser必须逐块写文件、完整HTTP EOF后Received；报错/第二file/超限清理已收内容；所有应用缓冲/retained块有计数或公式，staging不能被文件下载路由读取。
 - 验证：`cargo t plan730` parser/gate/metadata表驱动和feature checks；§6.1协议错误/大小边界，AC-02/03/04，SD-01/03/04。
 
-### T-04：业务校验、no-replace提交与取消仲裁
+### T-04：业务校验、no-replace提交与取消仲裁 [✅ 0df7d9886]
 
 - 依赖T-03。同新宿主模块及729共享安全工具：metadata/受限内容检查能力、commit/reject/Drop、sync与原子发布、目标冲突/取消gate；必要平台helper为新增路径，T-01登记。
 - create-only不用先exists再覆盖；failed session不能成功，commit重复明确拒绝，scope终结与FS实际退出分开；cleanup失败记录可追踪遗留，不提前腾FS槽。
 - 验证：`cargo t plan730` + OS发布/链接/权限/磁盘注入矩阵，报告`730-upload-storage.md`；AC-03/05，SD-01/04/05。
 
-### T-05：VM流式入口、native等待与scope生命周期
+### T-05：VM流式入口、native等待与scope生命周期 [✅ ae460c8c4]
 
 - 依赖T-02/03/04。修改`vm/ffi/{http_transport,http_server,async_http,stdlib}.rs`、`ffi/mod.rs`、`vm/{native,native_catalog}.rs`，必要新`ffi/http_upload.rs`；native/public名称以T-01冻结。
 - header-first仅用于上传policy route；body保留宿主、UploadRequest有类型注入、授权后receive；live-op重入/typed完成结果、上传资源组和stage deadline/idle/lease对齐。完整receipt作为真实HTTP状态/JSON回复，不由整数位模式猜类型。
 - 验证：`cargo check -p auto-lang`、`cargo t plan730`及VM真实HTTP scoped；中间件/handler早拒无open、半关闭成功、>30s传输、取消/迟到回收；AC-01/03/04/05/07，SD-02/03/04/06。
 
-### T-06：a2r/auto-man真实上传与HTTP客户端消费
+### T-06：a2r/auto-man真实上传与HTTP客户端消费 [✅ a30c29595/893c3cec5]
 
 - 依赖T-02/04/05。修改`trans/rust.rs`、`auto-man/src/api_gen.rs`（参数分类、生成extractor/handler/返回adapter）、`api/targets/{typescript,tauri,axum}.rs`及实际split/merged消费点；back_proxy仅本类型Unsupported守卫。
 - receive/commit/reject async await单源；自动注入不进JSON参数结构，body extractor最后且不预读/过早鉴权；精确receipt HTTP status，上传体转译失败定位api.at而不fallback。HTTP TS接FormData/raw body；非HTTP形态诊断，不传handle。只有独立UI消费点需要时加窄分支并记录tu触发。
 - 验证：`cargo test -p auto-man api_gen:: -- --test-threads=1`、a2r golden+实际generated build/run；auth/reject/成功/unsupported都有调用证据；AC-01/07，SD-03/05/06/07。
 
-### T-07：legacy落盘顺序与错误兼容修复
+### T-07：legacy落盘顺序与错误兼容修复 [✅ 8a2fc567e]
 
 - 依赖T-03/05。修改`http_server.rs::parse_multipart/multipart_to_handler_json/store_multipart_file`及实际调用点：route/middleware后有界宿主文件I/O、正常legacy形状、错误传播/provisional资源清理。活Builder调用传播错误；不扩大旧body额度/宣称流式。
 - 在既有B6与新plan730族加入404、401/403、write失败、bind/handler失败；报告协议legacy专节记录所有调用路径和成功形状，绑定scope而不手工任意路径删除。
 - 验证：`cargo t plan730`、串行实际B6 e2e及JSON/SSE/729 scoped回归；未授权/未匹配零文件，错误无假路径，owner不做阻塞write；AC-03/05/06，SD-02/08。
 
-### T-08：双端wire、资源负载及727/729闭环
+### T-08：双端wire、资源负载及727/729闭环 [✅ f11c83486]
 
 - 依赖T-05..07。新`crates/auto-lang/src/tests/plan730_http_upload_tests.rs`，修改`src/tests.rs`注册；auto-man api_gen tests真实fixture；新`examples/http_server/uploads/{README.md,pac.at,src/back/api.at}`，上传后下载路由复用729，fixture数据测试临时生成。
 - 全覆盖§6.1/6.2、FS注入/commit gate/100-continue与legacy；727真实upload→729路由→727download，比hash/receipt/资源，不用独立mock替代。
 - 验证：`cargo nextest run -p auto-lang --lib --features test-http-e2e --test-threads=1 http_e2e_plan730` +生成服务实际运行入口；报告`730-upload-{protocol,lifecycle,parity}.md`，逐格明确两端/平台/资源；所有AC/SD实证。
 
-### T-09：分级门禁、独立review与规范交接
+### T-09：分级门禁、独立review与规范交接 [✅ 12c508341/493081841——门禁+验证报告完成；独立review=/auto-plan:review 下一阶段]
 
 - 依赖T-01..08。按§6.3门禁，`730-upload-verification.md`绑定最终代码hash和全部AC/SD；预存红逐名对照、零新增确定性红，警告/格式/未批准延期检查。
 - work完成后 `/auto-plan:review` 独立复验；准备SD-01..08沉淀稿，merge再更新canonical/ledger/Design33与索引、archive。729落地新增Spec不得被旧基线稿覆盖。
 - 清理前`bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-730/auto-lang`和兄弟仓guard输出clean再移除；tf到期只主检出单实例；所有AC/SD闭合才可归档。
 
 ## 9. 复审记录
+
+### 工作交接（2026-10-02，/auto-plan:work）
+
+- stage: work
+- plan_id: PLAN-730
+- plan_revision: 1
+- outcome: pass
+- code_commit: 493081841（分支 plan-730-dev，master 基线 7d50989f7a；11 个提交
+  e88d06f45..493081841，worktree D:/autostack/.wt/lang-730/auto-lang 保留待审）
+- task_ids: T-01..T-09 全部完成
+- evidence: 决策/协议/存储/生命期/对等/验证六报告（docs/plans/reports/730-upload-*.md，
+  绑定最终代码 hash 12c508341/493081841）；门禁面——plan730 23/23、a2r-std 87+7+6、
+  auto-man plan730 5/5 + 全量 339/342（3 预存 master 同名）、裸 cargo t 1479/1482
+  （3 预存 musk p053 族）、tv 162/162、tt 1869/1872（同 3 预存）、th 92/93
+  （1 预存 back_proxy master 同名）、VM e2e 10/10（含 38s 慢上传跨 30s 期限）、
+  生成服务真实编译运行 e2e 1/1、back_proxy 501 1/1、727↔730↔729 互通闭环同字节。
+  AC-01..07 与 SD-01..08 对照见验证报告 §3/§4。
+- blockers: 无。已知债 P730-D1..D3 记录于验证报告 §5（均预存/边界如实注记，
+  不阻塞验收）。
+- next: /auto-plan:review PLAN-730（独立复验 → SD 沉淀稿定稿 → merge 阶段更新
+  canonical/ledger/Design33 与索引、archive、wt-guard 后移除组目录）。
+- 执行注记：multer 依计划"优先"项经 T-01 论证后拒绝（per-part-header/carry 预算
+  无法外部施加于其内部缓冲），自研增量状态机（合成 CRLF 统一首边界仲裁）+ 零新依赖；
+  facade 形参定为 impl AsRef<str>（字面量 .as_str() E0658 不稳定坑，报告在案）；
+  中间件空串短路与 Plan 352 文档分歧为预存语义（未改写，示例用 ?str nil 放行）。
 
 ### 起草交接（2026-10-02）
 
