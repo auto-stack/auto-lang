@@ -142,6 +142,13 @@ impl UploadRequest {
     pub fn headers(&self) -> &[(String, String)] {
         &self.headers
     }
+
+    /// 消费分解（宿主 executor 读取 headers/body 用）。
+    pub fn into_parts(
+        self,
+    ) -> (String, String, Vec<(String, String)>, UploadBodyStream) {
+        (self.method, self.path, self.headers, self.body)
+    }
 }
 
 /// 宿主 adapter 构造入口（VM 桥 / 生成 Rust extractor glue）。
@@ -214,6 +221,14 @@ impl UploadSession {
 fn next_upload_session_id() -> u64 {
     static COUNTER: AtomicU64 = AtomicU64::new(1);
     COUNTER.fetch_add(1, Ordering::SeqCst)
+}
+
+/// 成功会话构造（宿主 executor：接收完成交付）。
+pub fn received_session(id: u64, meta: UploadReceivedMeta) -> UploadSession {
+    UploadSession {
+        id,
+        state: UploadSessionState::Received(meta),
+    }
 }
 
 /// 失败会话构造（宿主 executor/facade 诊断路径共用）。
@@ -751,6 +766,19 @@ pub async fn upload_reject(session: UploadSession, status: i64, message: &str) -
         (UploadSessionState::Failed { kind, .. }, 0) => i64::from(kind.suggested_status()),
         (_, s) => s,
     };
+    // failed 接收会话：staging 已在失败收口清理——收据直接构造，不经
+    // executor（注册表无此 id；Failed 会话唯一合法后续即本形态）。
+    if let UploadSessionState::Failed { kind, .. } = &session.state {
+        return UploadReceipt {
+            status: kind.suggested_status(),
+            kind: kind.clone(),
+            json: format!(
+                "{{\"ok\":false,\"kind\":\"{}\",\"message\":\"{}\"}}",
+                kind.as_str(),
+                json_escape(message),
+            ),
+        };
+    }
     if !(400..=599).contains(&effective_status) {
         return UploadReceipt::failed(
             UploadErrorKind::InvalidOptions,
