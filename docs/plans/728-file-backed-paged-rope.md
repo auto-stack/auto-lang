@@ -4,9 +4,9 @@ status: executing
 feature_name: 文件后援分页 rope 实施件（auto-edit 供⑮ 承接——不可变基底页表+编辑覆盖层+LRU 内存上界+异步预取+保存合并+消费方 overlay 意识+512MB 拒绝位退役弹药）
 author: [agent]
 created_at: 2026-10-02T15:06:46+08:00
-updated_at: 2026-10-02T16:20:00+08:00
+updated_at: 2026-10-02T17:55:00+08:00
 plan_revision: 1
-current_step: 8
+current_step: 11
 total_steps: 11
 supersedes_spec_components: []
 new_spec_components:
@@ -346,9 +346,9 @@ P728-1（703/710 先例）+供料档 §10 回执节预告位。
 | 5 | T-05 保存合并 | T-02 | core/mod.rs 保存面 | 面⑤ | AC-05 | [x] 往返族绿（save_roundtrip_families 五族 byte-for-byte+temp 零残留+外部修改拒绝原文件未损+基线刷新二连保存+异目标免基线） |
 | 6 | T-06 快照/消费方 | T-02 | RopeSnapshot+四族 | 面⑥ | AC-06 | [x] 零回退+零 diff（rope 既有族 35/35 零回退+api_signature_pin 签名钉+paged_snapshots 冻结/Merkle/prune+探针 find/jump E2E；**顺手修**：703 对齐行走字符中间切片隐患——leaf 比较改字节基，内存 rope 同受益） |
 | 7 | T-07 装载链+big | T-01..05 | core/mod.rs:2160+native 面 | 面⑦ | AC-07 | [x] E2E+golden 绿（paged_load_edit_save_e2e：51MB 跨阈值档装载→行数即答→远端编辑→保存 byte-for-byte→外部修改拒绝；small_file_arm_golden 小文件臂逐字节+is_paged=false；natives/a2r 零改动=T-00 勘定成立；big 态=装载零语法耦合+缓冲区窗口物化护栏） |
-| 8 | T-08 基准谱 | T-07 | 生成式 fixture+报告 | 四线谱 | AC-08 | [ ] JSONL 在档 |
-| 9 | T-09 回归门 | T-01..07 | tf 全量+探针族 | 回归门 | AC-08 | [ ] 对账零新增 |
-| 10 | T-10 规范+账本 | 全 | SD-01+specs.json+回执位 | 落账 | AC-09 | [ ] P728-1 True |
+| 8 | T-08 基准谱 | T-07 | 生成式 fixture+报告 | 四线谱 | AC-08 | [x] JSONL 在档（docs/reports/p728-bench.jsonl 七行净谱：release 50m/512m/1g 四线+typing 双轨带+RSS 线——1GB 装载 4010ms〔预案 5s 界内〕/answer 0.157ms/结构计量 3033695B/保存 657ms；measure_test_mem 1g 峰值 17MB LT；#[ignore] 显式档不入日常池） |
+| 9 | T-09 回归门 | T-01..07 | tf 全量+探针族 | 回归门 | AC-08 | [x] 对账零新增（worktree 裸 cargo t 54.7s：4992 run/4981 绿/11 红——10 红逐项对上批量回执 known_reds〔musk_vm_track p053×4+p054×2/plan606/projector/desktop_bus/desktop_surface〕+ash_stream_leak_probe 基面（主检出零 728 diff）单测复证红=预存；**零新增红**；tf 按仓规归批量回归档〔fix-test-tiering 2026-09-30，T-00 已记修正〕；触面档零追加〔vm/native.rs 与 ui_gen 实际零 diff〕） |
+| 10 | T-10 规范+账本 | 全 | SD-01+specs.json+回执位 | 落账 | AC-09 | [x] P728-1 True（SD-01=docs/specs/auto-lang/ui/design/paged-rope.md 七面契约+双轨形态+不变式+帧域注记+基准口径+Q-3 回执两案；specs.json designs 段 P728-1 upsert+roundtrip True〔docsha 留 merge 定稿〕；供料档 §10 回执预告位=auto-edit de6cb95 四项下游消费件清单；KNOWN-DEBT P728-D1..D3 登记） |
 
 ## 9. 复审记录
 
@@ -363,6 +363,22 @@ P728-1（703/710 先例）+供料档 §10 回执节预告位。
   结构/装载链全量读锚/快照消费方四族]；授权=起草[用户指令原文在
   录]，执行待用户启动——auto-lang 会话，727 稿并行协调）。`next:
   work`。
+
+
+- 2026-10-02 work handoff：`stage: work`，PLAN-728，plan_revision 1。
+  `outcome: pass`（T-00..T-10 全执行完毕，AC-01..09 证据入任务表）。
+  `code_commit`: plan-728-dev@3bc929ca0（内核+集成+探针）+c19fec79f
+  （基准谱+SD-01）；基面 master@8bf65335d（含 plan 簿记 be92a13ac）。
+  `task_ids`: T-00..T-10。`evidence`: rope 内核单测 14/14+既有 rope 族
+  35/35 零回退+探针 5/5（E2E 51MB 跨阈值/golden 小文件臂/API 签名钉/
+  查找跳转 rewindow/结构计量）+裸 cargo t 54.7s 零新增红（11 红全预存
+  对账，ash_leak_probe 基面复证）+基准谱 JSONL 在档（release 四线+双轨
+  逐键带+RSS 17MB LT）+SD-01/P728-1 回读 True/回执预告位 auto-edit
+  de6cb95。顺手修复=703 对齐行走字符中间切片隐患（字节基化，内存 rope
+  同受益，P728-D2 登记）；T-00 勘定修正三处如实（affects 收敛 vm/native
+  与 ui_gen 与 Cargo 实际零 diff；tf 门改裸 cargo t 批量归档；量级
+  注记 1GB 装载 4.0s 在降级预案 5s 界内未触发）。`blockers`: 无。
+  `next: review`（独立复审→merge；worktree lang-728 组保留待复审）。
 
 ## 10. 待澄清事项
 
