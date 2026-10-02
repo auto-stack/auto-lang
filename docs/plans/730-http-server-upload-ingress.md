@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-730
-status: executing
+status: reviewed
 feature_name: http-server-upload-ingress
 author: [agent]
 created_at: 2026-10-02
 updated_at: 2026-10-02
 plan_revision: 1
-current_step: 7
+current_step: 9
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -281,7 +281,7 @@ legacy 存储迁入有界宿主执行，不在 owner `std::fs::write`；正常�
 - create-only不用先exists再覆盖；failed session不能成功，commit重复明确拒绝，scope终结与FS实际退出分开；cleanup失败记录可追踪遗留，不提前腾FS槽。
 - 验证：`cargo t plan730` + OS发布/链接/权限/磁盘注入矩阵，报告`730-upload-storage.md`；AC-03/05，SD-01/04/05。
 
-### T-05：VM流式入口、native等待与scope生命周期 [回工 R1：F-1 收据 scope 登记]
+### T-05：VM流式入口、native等待与scope生命周期 [✅ ae460c8c4 + R1 dcd151932]
 
 - 依赖T-02/03/04。修改`vm/ffi/{http_transport,http_server,async_http,stdlib}.rs`、`ffi/mod.rs`、`vm/{native,native_catalog}.rs`，必要新`ffi/http_upload.rs`；native/public名称以T-01冻结。
 - header-first仅用于上传policy route；body保留宿主、UploadRequest有类型注入、授权后receive；live-op重入/typed完成结果、上传资源组和stage deadline/idle/lease对齐。完整receipt作为真实HTTP状态/JSON回复，不由整数位模式猜类型。
@@ -299,7 +299,7 @@ legacy 存储迁入有界宿主执行，不在 owner `std::fs::write`；正常�
 - 在既有B6与新plan730族加入404、401/403、write失败、bind/handler失败；报告协议legacy专节记录所有调用路径和成功形状，绑定scope而不手工任意路径删除。
 - 验证：`cargo t plan730`、串行实际B6 e2e及JSON/SSE/729 scoped回归；未授权/未匹配零文件，错误无假路径，owner不做阻塞write；AC-03/05/06，SD-02/08。
 
-### T-08：双端wire、资源负载及727/729闭环 [回工 R1：F-2..F-5 测试矩阵补齐]
+### T-08：双端wire、资源负载及727/729闭环 [✅ f11c83486 + R1 dcd151932]
 
 - 依赖T-05..07。新`crates/auto-lang/src/tests/plan730_http_upload_tests.rs`，修改`src/tests.rs`注册；auto-man api_gen tests真实fixture；新`examples/http_server/uploads/{README.md,pac.at,src/back/api.at}`，上传后下载路由复用729，fixture数据测试临时生成。
 - 全覆盖§6.1/6.2、FS注入/commit gate/100-continue与legacy；727真实upload→729路由→727download，比hash/receipt/资源，不用独立mock替代。
@@ -312,6 +312,32 @@ legacy 存储迁入有界宿主执行，不在 owner `std::fs::write`；正常�
 - 清理前`bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-730/auto-lang`和兄弟仓guard输出clean再移除；tf到期只主检出单实例；所有AC/SD闭合才可归档。
 
 ## 9. 复审记录
+
+### 复审 R2（2026-10-03，/auto-plan:review）
+
+- stage: review
+- plan_id: PLAN-730
+- plan_revision: 1
+- outcome: pass
+- reviewed_commit: dcd151932（R1 回工提交；分支累计 11 提交 e88d06f45..dcd151932）
+- base_commit: 7d50989f7a
+- dependency_revisions: 同 R1
+- spec_inputs: 同 R1
+- acceptance_results: AC-01..07 全 pass（R1 的 F-2/F-4/F-5 证据缺口全部补齐）
+- findings: R1 五项全部修复并复验——F-1 收据登记（insert_upload_receipt:+register_scope_upload）；
+  F-2 0B 任意切块 + quoted boundary（单测 + wire 独立用例）；F-3 chunked 上传 wire；
+  F-4 配额 503（**暴露真缺陷**：active 等待臂误用 total 而非队列期限——已修，
+  31.8s 桥超时挂死 → 2.5s 全绿）+ 20×health<500ms；F-5 断连清理 + total 408 滴流。
+  回工期间两起测试数据事故（heredoc 转义损坏用例体/批量替换误伤 CL 值）均已
+  定位修正——不构成实现缺陷。规范增量 SD-01..08 目标路径/前后规则与实现一致，
+  沉淀稿在 merge 阶段落 canonical。
+- evidence: `cargo t plan730` 26/26；`http_e2e_plan730` 全族 14/14（R1 复跑）；
+  回归面 t/tv/tt/a2r-std/auto-man 零新增确定性红（预存逐名同 R1；a2r-std 首轮
+  1 传输 flake 复跑绿）；报告六份已补 R1 节（lifecycle §6 / verification §6）。
+- next: merge（/auto-plan:merge）——SD-01..08 canonical 沉淀 + ledger + Design33
+  索引 + archive + wt-guard 后清理组目录。master 已前移（731/732 会话簿记），
+  需真实 merge 非 ff。
+- 独立性：R2 与实施同会话——从工件重建（修复 diff 逐行核对 + 定向/回归复跑）。
 
 ### 复审 R1（2026-10-03，/auto-plan:review）
 
