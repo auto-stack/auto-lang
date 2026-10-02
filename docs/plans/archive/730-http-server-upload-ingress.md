@@ -333,7 +333,9 @@ legacy 存储迁入有界宿主执行，不在 owner `std::fs::write`；正常�
   git 提交——仓惯例）P730-1/2/7/8 回读在档；INDEX.md 再生（26 projects）。
 - **archived**：`docs/plans/archive/730-http-server-upload-ingress.md`
   （git mv；status archived；completion_kind: delivered）。
-- **cleaned**：见下一提交（wt-guard ×2 + worktree/branch/组目录移除后回填）。
+- **cleaned**：wt-guard ×2 clean（auto-lang/auto-down 无 reparse point）→
+  `git worktree remove` ×2 + `git branch -d plan-730-dev`（was f60cfeea2）→
+  组目录 `D:/autostack/.wt/lang-730` 移除（零残留）。
 - 部署观察：landing 非部署——本计划改动面（stdlib/VM/生成器）无在运行生产进程
   消费本仓发布二进制（auto 桌面壳未在本机常驻）；无 `auto build` 产物待重建。
 - 批量回归到期判定：**730 % 5 = 0 → 到期**（landing of plan id divisible by 5；
