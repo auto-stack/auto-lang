@@ -184,6 +184,68 @@ impl AxumGenerator {
             }
         }
 
+        // PLAN-729 T-05: FileResponse endpoint — method/headers extractors +
+        // shared host serve（版本无关 FileReply → 本地 axum Response；成功体
+        // 不经 Json）。文件端点仅 GET/HEAD——其他注解方法在签名处给 405 诊断
+        // handler（决策报告 §6）。
+        if endpoint.return_type.contains("FileResponse") {
+            let method = endpoint.method().to_lowercase();
+            let path = endpoint.path();
+            let path_params: Vec<&String> = endpoint
+                .params
+                .iter()
+                .map(|p| &p.name)
+                .filter(|n| path.contains(&format!(":{}", n)))
+                .collect();
+            let is_get_family = method == "get" || method == "head";
+            let head_route = method == "head";
+            lines.push(format!("async fn {}_handler(", endpoint.fn_name));
+            let mut sig: Vec<String> = vec![
+                "method: axum::http::Method".to_string(),
+                "headers: axum::http::HeaderMap".to_string(),
+            ];
+            if !path_params.is_empty() {
+                sig.push(format!(
+                    "Path({}): Path<String>",
+                    path_params[0]
+                ));
+            }
+            for (i, param) in sig.iter().enumerate() {
+                lines.push(format!("{}{}", self.indent, param));
+                if i < sig.len() - 1 {
+                    lines.push(format!("{},", self.indent));
+                }
+            }
+            lines.push(format!("{}) -> axum::response::Response {{", self.indent));
+            if !is_get_family {
+                lines.push(format!(
+                    "{}let _ = (method, headers);",
+                    self.indent
+                ));
+                lines.push(format!(
+                    "{}axum::response::Response::builder().status(axum::http::StatusCode::METHOD_NOT_ALLOWED).header(\"allow\", \"GET, HEAD\").body(axum::body::Body::empty()).unwrap()",
+                    self.indent
+                ));
+            } else {
+                let arg = path_params
+                    .first()
+                    .map(|n| n.as_str())
+                    .unwrap_or_default();
+                lines.push(format!(
+                    "{}let descriptor = api::{}({});",
+                    self.indent, endpoint.fn_name, arg
+                ));
+                lines.push(format!(
+                    "{}__plan729_file_reply(descriptor, &method, &headers).await",
+                    self.indent
+                ));
+                let _ = head_route;
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            return lines.join("\n");
+        }
+
         // Plan 328 env 5+6: Determine return type wrapper.
         // ~Iter<T> / ~Stream<T> → Sse<impl Stream> (SSE handler)
         // []T → Json<Vec<T>>
@@ -308,6 +370,15 @@ impl AxumGenerator {
         output.push("use futures::StreamExt;".to_string());
         output.push("".to_string());
 
+        // PLAN-729 T-05: 文件端点 glue（method/headers → 共享宿主 serve →
+        // 本地 axum Response）。
+        if module.endpoints.iter().any(|e| e.return_type.contains("FileResponse")) {
+            for line in PLAN729_FILE_GLUE.lines() {
+                output.push(line.to_string());
+            }
+            output.push("".to_string());
+        }
+
         // Handlers
         for endpoint in &module.endpoints {
             output.push(self.generate_handler(endpoint));
@@ -321,7 +392,17 @@ impl AxumGenerator {
             let handler_name = format!("{}_handler", endpoint.fn_name);
             let method = endpoint.attrs.method.as_deref().unwrap_or("get").to_lowercase();
             let path = endpoint.attrs.path.as_deref().unwrap_or("/");
+            // PLAN-729 T-05: GET 文件端点自动具备 HEAD。
+            let is_file_get = method == "get"
+                && endpoint.return_type.contains("FileResponse")
+                && !module.endpoints.iter().any(|other| {
+                    other.method().eq_ignore_ascii_case("HEAD") && other.path() == path
+                });
             let route = match method.as_str() {
+                "get" if is_file_get => format!(
+                    "        .route(\"{}\", get({}).head({}))",
+                    path, handler_name, handler_name
+                ),
                 "get" => format!("        .route(\"{}\", get({}))", path, handler_name),
                 "post" => format!("        .route(\"{}\", post({}))", path, handler_name),
                 "put" => format!("        .route(\"{}\", put({}))", path, handler_name),
@@ -364,6 +445,65 @@ impl TargetGenerator for AxumGenerator {
         "web"
     }
 }
+
+/// PLAN-729 T-05: 文件端点 glue（axum 生成器面；auto-man api_gen 的
+/// FILE_RESPONSE_GLUE 同形——单源语义，宿主执行同在
+/// auto_lang::http_file_service）。
+const PLAN729_FILE_GLUE: &str = r#"// PLAN-729: file response glue (shared host service)
+#[allow(dead_code)]
+fn __plan729_header_pairs(headers: &axum::http::HeaderMap) -> Vec<(String, String)> {
+    headers
+        .iter()
+        .filter_map(|(k, v)| {
+            v.to_str()
+                .ok()
+                .map(|val| (k.as_str().to_string(), val.to_string()))
+        })
+        .collect()
+}
+#[allow(dead_code)]
+async fn __plan729_file_reply(
+    descriptor: a2r_std::http::FileResponse,
+    method: &axum::http::Method,
+    headers: &axum::http::HeaderMap,
+) -> axum::response::Response {
+    let hdrs = __plan729_header_pairs(headers);
+    let deadline =
+        std::time::Instant::now() + auto_lang::http_file_service::file_serve_limits().prepare_timeout;
+    let reply = auto_lang::http_file_service::serve_file_response(
+        &descriptor,
+        auto_lang::http_file_service::ServeFileRequest {
+            method: method.as_str(),
+            request_headers: &hdrs,
+            prepare_deadline: deadline,
+            finish_hook: None,
+        },
+    )
+    .await;
+    let mut builder = axum::response::Response::builder().status(
+        axum::http::StatusCode::from_u16(reply.status)
+            .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+    );
+    for (k, v) in &reply.headers {
+        if let (Ok(name), Ok(value)) = (
+            axum::http::HeaderName::try_from(k.as_str()),
+            axum::http::HeaderValue::from_str(v),
+        ) {
+            builder = builder.header(name, value);
+        }
+    }
+    match reply.body {
+        auto_lang::http_file_service::FileReplyBody::None => {
+            builder.body(axum::body::Body::empty()).unwrap()
+        }
+        auto_lang::http_file_service::FileReplyBody::Inline(b) => {
+            builder.body(axum::body::Body::from(b)).unwrap()
+        }
+        auto_lang::http_file_service::FileReplyBody::Stream(s) => {
+            builder.body(axum::body::Body::from_stream(s)).unwrap()
+        }
+    }
+}"#;
 
 /// Trait to convert string to PascalCase
 trait ToPascalCase {

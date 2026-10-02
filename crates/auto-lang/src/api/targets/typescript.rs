@@ -31,6 +31,12 @@ impl TypeScriptGenerator {
     fn to_ts_type(&self, auto_type: &str) -> String {
         let trimmed = auto_type.trim();
 
+        // PLAN-729 T-05: 文件端点（FileResponse / Future<FileResponse>）→
+        // 原生 Response（fetch 返回原样交付，不 .json()）。
+        if trimmed.contains("FileResponse") {
+            return "Response".to_string();
+        }
+
         // Handle optional types (prefix ?T, e.g. ?Note, ?int)
         if let Some(inner) = trimmed.strip_prefix('?') {
             return format!("{} | null", self.to_ts_type(inner));
@@ -376,7 +382,11 @@ export type { IApi };
         lines.push(format!("{}}});", self.indent));
         lines.push(format!("{}if (!response.ok) throw new Error(`HTTP ${{response.status}}`);", self.indent));
 
-        if return_type != "Promise<void>" {
+        // PLAN-729 T-05: 文件端点返回原生 Response（状态/headers 保留，
+        // 不调 .json()；读盘交给调用方——决策报告 §6）。
+        if endpoint.return_type.contains("FileResponse") {
+            lines.push(format!("{}return response;", self.indent));
+        } else if return_type != "Promise<void>" {
             lines.push(format!("{}return response.json();", self.indent));
         }
         lines.push("}".to_string());

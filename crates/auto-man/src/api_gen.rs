@@ -1509,6 +1509,90 @@ fn rewrite_inline_runtime_names(source: &str) -> String {
     out
 }
 
+/// PLAN-729 T-05: 文件端点尾 return 包装——`return X;` → 宿主 serve await
+/// （非 return 行原样；JsonResponse 包装不适用文件面）。
+fn wrap_file_return(line: &str) -> String {
+    let trimmed = line.trim_start();
+    let Some(value) = trimmed.strip_prefix("return ") else {
+        return line.to_string();
+    };
+    let value = value.trim_end().strip_suffix(';').unwrap_or(value.trim_end());
+    if value.is_empty() {
+        return line.to_string();
+    }
+    let indent = &line[..line.len() - trimmed.len()];
+    format!(
+        "{}return __file_reply({}, &method, &headers).await;",
+        indent, value
+    )
+}
+
+/// PLAN-729 T-05: 文件端点 glue 块（FILE_RESPONSE_GLUE 尾部）。
+const FILE_RESPONSE_GLUE: &str = r#"// PLAN-729: file response glue (shared host service; version-agnostic FileReply)
+#[allow(dead_code)]
+fn __file_header_pairs(headers: &axum::http::HeaderMap) -> Vec<(String, String)> {
+    headers
+        .iter()
+        .filter_map(|(k, v)| {
+            v.to_str()
+                .ok()
+                .map(|val| (k.as_str().to_string(), val.to_string()))
+        })
+        .collect()
+}
+#[allow(dead_code)]
+async fn __file_reply(
+    descriptor: a2r_std::http::FileResponse,
+    method: &axum::http::Method,
+    headers: &axum::http::HeaderMap,
+) -> axum::response::Response {
+    let hdrs = __file_header_pairs(headers);
+    let deadline =
+        std::time::Instant::now() + auto_lang::http_file_service::file_serve_limits().prepare_timeout;
+    let reply = auto_lang::http_file_service::serve_file_response(
+        &descriptor,
+        auto_lang::http_file_service::ServeFileRequest {
+            method: method.as_str(),
+            request_headers: &hdrs,
+            prepare_deadline: deadline,
+            finish_hook: None,
+        },
+    )
+    .await;
+    let mut builder = axum::response::Response::builder().status(
+        axum::http::StatusCode::from_u16(reply.status)
+            .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+    );
+    for (k, v) in &reply.headers {
+        if let (Ok(name), Ok(value)) = (
+            axum::http::HeaderName::try_from(k.as_str()),
+            axum::http::HeaderValue::from_str(v),
+        ) {
+            builder = builder.header(name, value);
+        }
+    }
+    match reply.body {
+        auto_lang::http_file_service::FileReplyBody::None => {
+            builder.body(axum::body::Body::empty()).unwrap()
+        }
+        auto_lang::http_file_service::FileReplyBody::Inline(b) => {
+            builder.body(axum::body::Body::from(b)).unwrap()
+        }
+        auto_lang::http_file_service::FileReplyBody::Stream(s) => {
+            builder.body(axum::body::Body::from_stream(s)).unwrap()
+        }
+    }
+}
+#[allow(dead_code)]
+async fn file_response_reply_missing(message: &str) -> axum::response::Response {
+    let body = format!("{{\"error\":{}}}", message);
+    axum::response::Response::builder()
+        .status(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(body))
+        .unwrap()
+}"#;
+
 fn wrap_inline_return(line: &str) -> String {
     let trimmed = line.trim_start();
     let Some(value) = trimmed.strip_prefix("return ") else {
@@ -2178,6 +2262,70 @@ fn push_delegating_scalar_handlers(
             (String::new(), String::new())
         };
         let ret = endpoint.return_type.trim();
+        // PLAN-729 T-05：委派路径（route A/db 覆盖）的文件端点——同样生成
+        // 真实文件 adapter：method/headers 提取器 + 委派调用 + 宿主 serve。
+        if ret.contains("FileResponse") {
+            // 路径参数：委派路径此前只覆盖 query/body——文件端点的典型
+            // 形态是 `:name` 路径参数，这里补 Path 提取（首个路径参数，
+            // 主路径同约定）。
+            let path_params = endpoint_path_params(endpoint);
+            let (path_sig, path_args) = match path_params.first() {
+                Some(p) => {
+                    let rust_type = auto_type_to_rust(&p.ty);
+                    let call = if rust_type == "String" {
+                        format!("&{}", p.name)
+                    } else {
+                        p.name.clone()
+                    };
+                    (
+                        format!("Path({}): Path<{}>", p.name, rust_type),
+                        vec![call],
+                    )
+                }
+                None => (String::new(), Vec::new()),
+            };
+            let mut file_sig = "method: axum::http::Method, headers: axum::http::HeaderMap".to_string();
+            if !path_sig.is_empty() {
+                file_sig.push_str(", ");
+                file_sig.push_str(&path_sig);
+            }
+            if !sig.is_empty() {
+                file_sig.push_str(", ");
+                file_sig.push_str(&sig);
+            }
+            lines.push(format!(
+                "pub async fn {}({}) -> axum::response::Response {{",
+                endpoint.fn_name, file_sig
+            ));
+            if matches!(endpoint.method().as_str(), "GET" | "HEAD") {
+                let mut all_args = path_args;
+                if !call_args.is_empty() {
+                    all_args.push(call_args.clone());
+                }
+                lines.push(format!(
+                    "    let descriptor = crate::{}::{}({});",
+                    target,
+                    endpoint.fn_name,
+                    all_args.join(", ")
+                ));
+                lines.push(
+                    "    __file_reply(descriptor, &method, &headers).await".to_string(),
+                );
+            } else {
+                eprintln!(
+                    "  ⚠ PLAN-729 file endpoint `{} {}` ({}) uses {} — file endpoints support GET/HEAD only; emitting 405",
+                    endpoint.method(),
+                    endpoint.path(),
+                    endpoint.fn_name,
+                    endpoint.method()
+                );
+                lines.push(
+                    "    file_response_reply_missing(\"file endpoints support GET/HEAD only\").await".to_string(),
+                );
+            }
+            lines.push("}".to_string());
+            continue;
+        }
         let ret_clause = if ret == "void" || ret.is_empty() {
             " -> axum::http::StatusCode".to_string()
         } else if ret.contains("[]int") || ret.contains("List<int>") {
@@ -2221,6 +2369,14 @@ fn generate_api_rs(
         "use std::sync::{Arc, Mutex};".to_string(),
         "".to_string(),
     ];
+
+    // PLAN-729 T-05: 文件端点 glue——method/headers 提取 + 共享宿主 serve +
+    // 版本无关 FileReply → 本地 axum Response（生成 crate 的 axum 版本与
+    // auto-lang 不同也成立：FileReply 不含 axum 类型）。
+    if api_module.endpoints.iter().any(|e| e.return_type.contains("FileResponse")) {
+        lines.extend(FILE_RESPONSE_GLUE.lines().map(|l| l.to_string()));
+        lines.push("".to_string());
+    }
 
     // Determine primary type and generate Db type alias
     let primary_type = match primary_type_name_pub(api_module) {
@@ -2513,6 +2669,92 @@ fn generate_api_rs(
             } else {
                 params.push(header_extractor);
             }
+        }
+
+        // PLAN-729 T-05: 文件端点——返回 `FileResponse`/`Future<FileResponse>`
+        // 的 #[api] handler 生成真实文件 adapter（不经 JsonResponse，不落
+        // CRUD 模板；转译失败 = 诊断 500，保留位置信息）。
+        if endpoint.return_type.contains("FileResponse") {
+            // 文件端点仅 GET/HEAD：生成期诊断 + 405 handler（与 VM 腿同语义）。
+            if !matches!(method.as_str(), "GET" | "HEAD") {
+                eprintln!(
+                    "  ⚠ PLAN-729 file endpoint `{} {}` ({}) declares FileResponse but uses {} — file endpoints support GET/HEAD only; emitting 405",
+                    method, endpoint.path(), fn_name, method
+                );
+                lines.push(format!(
+                    "pub async fn {}(method: axum::http::Method, headers: axum::http::HeaderMap) -> axum::response::Response {{",
+                    fn_name
+                ));
+                lines.push("    axum::response::Response::builder()".to_string());
+                lines.push("        .status(axum::http::StatusCode::METHOD_NOT_ALLOWED)".to_string());
+                lines.push("        .header(\"allow\", \"GET, HEAD\")".to_string());
+                lines.push("        .header(\"content-type\", \"application/json\")".to_string());
+                lines.push("        .body(axum::body::Body::from(br#\"{\"error\":\"file endpoints support GET/HEAD only\"}\"#.to_vec()))".to_string());
+                lines.push("        .unwrap()".to_string());
+                lines.push("}".to_string());
+                lines.push("".to_string());
+                continue;
+            }
+            // method/headers 先于 body 提取器（FromRequestParts 序）。
+            let mh_extractors = [
+                "method: axum::http::Method".to_string(),
+                "headers: axum::http::HeaderMap".to_string(),
+            ];
+            if let Some(body_index) = params.iter().position(|param| param.starts_with("Json(")) {
+                for (offset, ext) in mh_extractors.iter().enumerate() {
+                    params.insert(body_index + offset, ext.clone());
+                }
+            } else {
+                params.extend(mh_extractors);
+            }
+            lines.push(format!(
+                "pub async fn {}({}) -> axum::response::Response {{",
+                fn_name,
+                params.join(", ")
+            ));
+            let body_src = endpoint.body.as_ref().and_then(|b| {
+                crate::api_gen::try_transpile_body(b, endpoint, api_module).ok()
+            });
+            match body_src {
+                Some(stmts) => {
+                    if has_meta {
+                        lines.push("    let meta: String = meta_json(&headers);".to_string());
+                    }
+                    append_inline_param_bindings(&mut lines, endpoint);
+                    for source_line in &stmts {
+                        let line = rewrite_inline_runtime_names(source_line);
+                        lines.push(wrap_file_return(&line));
+                    }
+                    // 体无尾 return（隐式返回）——按声明返回类型的契约缺口
+                    // 诊断（不静默 200）。
+                    if !stmts.iter().any(|l| l.trim_start().starts_with("return")) {
+                        lines.push(
+                            "    return file_response_reply_missing(\"file handler body has no return\").await;".to_string(),
+                        );
+                    }
+                }
+                None => {
+                    // 转译失败：诊断（不落模板）+ 500 handler。
+                    let detail = match endpoint.body.as_ref() {
+                        Some(b) => match crate::api_gen::try_transpile_body(b, endpoint, api_module) {
+                            Err(e) => e,
+                            Ok(_) => "empty body".to_string(),
+                        },
+                        None => "no body captured".to_string(),
+                    };
+                    eprintln!(
+                        "  ⚠ PLAN-729 file endpoint `{}` a2r body failed ({}); emitting diagnostic 500 (no template fallback)",
+                        fn_name, detail
+                    );
+                    lines.push(format!(
+                        "    return file_response_reply_missing({:?}).await;",
+                        format!("api.at handler `{}` body failed to transpile: {}", fn_name, detail)
+                    ));
+                }
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            continue;
         }
 
         // Determine return type
@@ -3169,7 +3411,22 @@ fn generate_main_rs(
         .map(|e| {
             let path = e.path();
             let method = e.method().to_lowercase();
-            format!("        .route(\"{}\", axum::routing::{}(api::{}))", path, method, e.fn_name)
+            // PLAN-729 T-05: GET 文件端点自动具备 HEAD（显式 HEAD 路由不存在
+            // 时；handler 从 Method 提取器区分）。
+            if e.return_type.contains("FileResponse")
+                && method == "get"
+                && !api_module.endpoints.iter().any(|other| {
+                    other.method().eq_ignore_ascii_case("HEAD")
+                        && other.path() == path
+                })
+            {
+                format!(
+                    "        .route(\"{}\", axum::routing::{}(api::{}).head(api::{}))",
+                    path, method, e.fn_name, e.fn_name
+                )
+            } else {
+                format!("        .route(\"{}\", axum::routing::{}(api::{}))", path, method, e.fn_name)
+            }
         })
         .collect();
 
@@ -3683,6 +3940,108 @@ pub fn listusers() []User {
 
     fn a2r_env_lock() -> std::sync::MutexGuard<'static, ()> {
         A2R_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// PLAN-729 T-05: 文件端点生成——Response 签名 + 宿主 serve 胶水 +
+    /// .head() 路由 + 转译体（file_response lowering 同源）。
+    #[test]
+    fn test_plan729_file_endpoint_generation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type FileMeta = { name: str, size: int }
+
+#[api(method = "GET", path = "/api/files/:name")]
+pub fn download(name str) FileResponse {
+    let root = env.get("FILES_ROOT")
+    return http.file_response(root, name, "{}")
+}
+
+#[api(method = "GET", path = "/api/report")]
+pub fn report() FileResponse {
+    return http.file_response("files", "report.pdf", "{}")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        assert!(
+            module.endpoints.iter().all(|e| e.return_type.contains("FileResponse")),
+            "return types: {:?}",
+            module.endpoints.iter().map(|e| e.return_type.clone()).collect::<Vec<_>>()
+        );
+        // 有 body 的端点走内联转译臂。
+        assert!(module.endpoints.iter().any(|e| e.body.is_some()), "body captured");
+        let api_rs = generate_api_rs(&module, None, false);
+        assert!(api_rs.contains("-> axum::response::Response"), "Response 签名: {api_rs}");
+        assert!(api_rs.contains("__file_reply("), "宿主 serve 胶水: {api_rs}");
+        assert!(
+            api_rs.contains("a2r_std::http::file_response("),
+            "描述符构造 lowering: {api_rs}"
+        );
+        assert!(
+            !api_rs.contains("JsonResponse<a2r_std::http::FileResponse>"),
+            "文件面不得包 JsonResponse"
+        );
+        let main = generate_main_rs(&module, None, false, &[], false);
+        assert!(
+            main.contains(".head(api::download))"),
+            "GET 文件路由自动 HEAD: {main}"
+        );
+        assert!(
+            main.contains(".head(api::report))"),
+            "无参文件路由自动 HEAD: {main}"
+        );
+    }
+
+    /// PLAN-729 T-05: 非 GET/HEAD 文件注解 → 405 诊断 handler（不落模板）。
+    #[test]
+    fn test_plan729_file_endpoint_non_get_405() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type FileMeta = { name: str }
+
+#[api(method = "POST", path = "/api/files")]
+pub fn upload_file(name str) FileResponse {
+    return http.file_response("files", name, "{}")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let api_rs = generate_api_rs(&module, None, false);
+        assert!(
+            api_rs.contains("METHOD_NOT_ALLOWED"),
+            "非 GET 文件端点 405: {api_rs}"
+        );
+        assert!(
+            api_rs.contains("file endpoints support GET/HEAD only"),
+            "405 诊断体: {api_rs}"
+        );
+    }
+
+    /// PLAN-729 T-05: 委派路径（route A）的文件端点——同样生成真实 adapter
+    /// （Path 提取 + 委托 + 宿主 serve，非 JsonResponse）。
+    #[test]
+    fn test_plan729_file_endpoint_delegating_path() {
+        let content = r#"
+#[api(method = "GET", path = "/api/files/:name")]
+pub fn download(name str) FileResponse { return http.file_response("files", name, "{}") }
+"#;
+        let module = extract_api_lenient(content).expect("extract");
+        assert!(module.types.is_empty(), "scalar 契约（无 primary 类型）");
+        // route A: api_impl_active → 委派 handler。
+        let mut lines: Vec<String> = vec![];
+        push_delegating_scalar_handlers(&mut lines, &module, &|_| true, "api_impl");
+        let joined = lines.join("
+");
+        assert!(
+            joined.contains("Path(name): Path<String>"),
+            "路径参数提取: {joined}"
+        );
+        assert!(
+            joined.contains("crate::api_impl::download(&name)"),
+            "委派调用: {joined}"
+        );
+        assert!(
+            joined.contains("__file_reply(descriptor, &method, &headers).await"),
+            "宿主 serve: {joined}"
+        );
     }
 
     /// Plan musk-022: SSE endpoint → Sse handler + events bus + cargo deps.

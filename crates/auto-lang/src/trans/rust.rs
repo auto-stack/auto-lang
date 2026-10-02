@@ -2021,6 +2021,13 @@ impl RustTrans {
             return "a2r_std::redis::RedisClient".to_string();
         }
 
+        // PLAN-729 T-05: 服务端文件响应描述符——同 StringBuilder/SqliteDb
+        // 先例，全限定映射到 a2r-std 公共类型（无 glob import 也解析）。
+        if name == "FileResponse" {
+            self.a2r_std_used.set(true);
+            return "a2r_std::http::FileResponse".to_string();
+        }
+
         // Merge mode: all types are in one file, skip crate:: prefix
         if self.merge_mode {
             if let Some(dot_pos) = name.rfind('.') {
@@ -2237,6 +2244,13 @@ impl RustTrans {
             // ~IntoResponse → impl IntoResponse (via Future unwrap in caller).
             Type::User(usr) => {
                 let name = usr.name.to_string();
+                // PLAN-729 T-05: 服务端文件响应描述符——返回位是具体 a2r-std
+                // 类型，不是 trait（PascalCase 启发式会误判成 impl，先例同
+                // SqliteDb/RedisClient）。
+                if name == "FileResponse" {
+                    self.a2r_std_used.set(true);
+                    return "a2r_std::http::FileResponse".to_string();
+                }
                 // Plan 417-E3: a generic type parameter of the current fn is
                 // never a trait — emit the bare param name (`-> T`), not
                 // `impl T` (illegal in Rust and wrong for bounds dispatch).
@@ -5847,6 +5861,23 @@ impl RustTrans {
                         } else {
                             write!(out, ")")?;
                         }
+                        return Ok(());
+                    }
+                    // PLAN-729 T-05: 服务端文件响应构造——零 I/O 描述符，
+                    // sync/async 同形（打开/发送在生成 handler 的宿主
+                    // serve 面）。严格 options 与路径词法校验在描述符内。
+                    ("http", "file_response") => {
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::http::file_response(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr_as_str(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
                         return Ok(());
                     }
                     // PLAN-727 T-06: transfer_next_progress/cancel/error——非阻塞

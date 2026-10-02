@@ -1479,7 +1479,22 @@ impl SessionRuntime {
         // PLAN-658 T-04: ~Stream 端点按签名特路（两个生成器同语义：函数体
         // 不在执行面——bus.subscribe 是宿主 seam）。订阅 session 事件总线，
         // listener 侧逐帧 SSE 转发。
+        // PLAN-729 T-05：文件端点不经进程内 back-proxy 透传——描述符不是
+        // 可序列化数据（决策报告 §6：Unsupported + 改走 HTTP URL 指引）。
         if let Some((_, ret)) = self.fn_meta.get(&route_match.fn_name) {
+            if ret.contains("FileResponse") {
+                eprintln!(
+                    "[back-proxy:{}] RSP 501 file endpoint (use HTTP URL)",
+                    self.app_id
+                );
+                return ProxyReply::json(
+                    501,
+                    error_json(&format!(
+                        "back-proxy:{}: file endpoint `{}` requires HTTP transport; call the HTTP URL directly instead of the in-process proxy",
+                        self.app_id, route_match.fn_name
+                    )),
+                );
+            }
             if ret.contains("Stream<") {
                 let rx = self.bus.subscribe();
                 log::info!(

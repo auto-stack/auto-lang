@@ -146,6 +146,29 @@ impl TauriGenerator {
         };
         lines.push(signature);
 
+        // PLAN-729 T-05: 文件端点不经 Tauri IPC——描述符不是可序列化数据
+        // （明确 Unsupported 诊断 + 改走 HTTP URL 指引，不 opaque 当成功数据）。
+        if endpoint.return_type.contains("FileResponse") {
+            lines.clear();
+            lines.push(format!(
+                "// PLAN-729: file endpoint `{}` — Tauri IPC is unsupported for file responses;",
+                endpoint.fn_name
+            ));
+            lines.push("// call the HTTP URL directly instead.".to_string());
+            lines.push("#[tauri::command]".to_string());
+            lines.push(format!(
+                "pub fn {}() -> Result<String, String> {{",
+                endpoint.fn_name
+            ));
+            lines.push(format!(
+                "{}Err(\"PLAN-729: file endpoint `{}` requires HTTP transport; call the HTTP URL directly instead of the Tauri IPC bridge\".to_string())",
+                self.indent, endpoint.fn_name
+            ));
+            lines.push("}".to_string());
+            return lines.join("
+");
+        }
+
         // Plan 329: SSE handler → for loop + channel.emit (streaming).
         // Non-SSE → call api::fn and return result.
         if is_sse {
