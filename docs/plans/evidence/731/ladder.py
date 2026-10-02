@@ -176,9 +176,10 @@ def pct(sorted_vals, q):
     return sorted_vals[idx]
 
 
-def summarize(frames, arms, phase, size_name, label):
+def summarize(frames, arms, phase, size_name, label, phase_seconds=None):
     """相位谱：typed（dirty=1 且 s2>0）/ scroll 帧与孤儿 fall-through 帧。
-    S5 三子段 + gpu 残差（配对帧）+ 臂聚合。"""
+    S5 三子段 + gpu 残差（配对帧）+ 臂聚合 + 泵率谱（T-04：distinct
+    present/秒 + fall-through 孤儿计数——泵配对竞争下的实际呈现节奏）。"""
     rows = []
     if phase == "type":
         members = [f for f in frames if f["dirty"] == 1 and f["s2_us"] > 0]
@@ -210,12 +211,20 @@ def summarize(frames, arms, phase, size_name, label):
         })
     tot = sorted(r["total_ms"] for r in rows if r["total_ms"] is not None)
     s5s = sorted(r["s5_ms"] for r in rows)
+    presents = sum(1 for f in frames if f["present"] > 0)
+    orphans = sum(1 for f in frames if f["present"] == -1
+                  and (f["s4_us"] > 0 or f["s5_draw_us"] > 0 or f["s3b_us"] > 0))
     summary = {
         "type": "summary", "phase": phase, "label": label, "size": size_name,
         "frames": len(members),
         "present_paired": sum(1 for r in rows if r["total_ms"] is not None),
         "total_p50_ms": pct(tot, 0.5), "total_p95_ms": pct(tot, 0.95),
         "s5_p50_ms": pct(s5s, 0.5), "s5_p95_ms": pct(s5s, 0.95),
+        # T-04 泵率谱：distinct present 行数 / 相位墙钟秒（None=相位时长
+        # 未记录——泵计数仍有效，率值缺省）。
+        "pump_events": presents,
+        "pump_per_sec": round(presents / phase_seconds, 2) if phase_seconds else None,
+        "orphan_fallthrough_frames": orphans,
         "arms": {k: {"us": v[0], "n": v[1]} for k, v in arms.items()},
     }
     if members:
@@ -267,7 +276,7 @@ def run_size(label, size_name, target_bytes, line_tpl, auto_bin, keys, out_path)
         def mark():
             with open(log_path, encoding="utf-8", errors="replace") as f:
                 return sum(1 for _ in f)
-        n0 = mark()
+        n0 = mark(); t0w = time.time()
         # ── 键入相位（60ms 节拍，下游协议） ──
         for _ in range(keys):
             try:
@@ -276,7 +285,7 @@ def run_size(label, size_name, target_bytes, line_tpl, auto_bin, keys, out_path)
                 print(f"[-] type 派发败: {e}")
             time.sleep(0.06)
         time.sleep(2.0)
-        n1 = mark()
+        n1 = mark(); t1w = time.time()
         # ── 滚动相位（scroll_to 递增步进） ──
         if scrollable:
             for i in range(1, SCROLL_STEPS + 1):
@@ -286,7 +295,7 @@ def run_size(label, size_name, target_bytes, line_tpl, auto_bin, keys, out_path)
                     print(f"[-] scroll 派发败: {e}")
                 time.sleep(SCROLL_INTERVAL)
             time.sleep(2.0)
-        n2 = mark()
+        n2 = mark(); t2w = time.time()
         # ── 换行连发相位（022/024 下游协议形——行数增长/gutter 位宽/全窗
         #    reshape 嫌疑面的复现臂） ──
         for _ in range(keys):
@@ -296,10 +305,11 @@ def run_size(label, size_name, target_bytes, line_tpl, auto_bin, keys, out_path)
                 print(f"[-] typenl 派发败: {e}")
             time.sleep(0.06)
         time.sleep(2.0)
-        n3 = mark()
+        n3 = mark(); t3w = time.time()
         with open(log_path, encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
         print(f"[*] {size_name}: log lines={len(lines)} type=[{n0}:{n1}] scroll=[{n1}:{n2}] typenl=[{n2}:{n3}]")
+        phase_seconds = {"type": t1w - t0w, "scroll": t2w - t1w, "typenl": t3w - t2w}
         phases = {"type": lines[n0:n1], "scroll": lines[n1:n2],
                   "typenl": lines[n2:n3]}
         for phase, plines in phases.items():
@@ -314,7 +324,8 @@ def run_size(label, size_name, target_bytes, line_tpl, auto_bin, keys, out_path)
                     for k, (us, n) in a.items():
                         prev = arms_acc.get(k, (0, 0))
                         arms_acc[k] = (prev[0] + us, prev[1] + n)
-            rows, summary = summarize(frames, arms_acc, phase, size_name, label)
+            rows, summary = summarize(frames, arms_acc, phase, size_name, label,
+                                      phase_seconds.get(phase))
             with open(out_path, "a", encoding="utf-8") as f:
                 for r in rows + [summary]:
                     f.write(json.dumps(r, ensure_ascii=False) + "\n")
