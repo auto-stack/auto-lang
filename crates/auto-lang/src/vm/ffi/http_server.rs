@@ -162,6 +162,15 @@ pub fn route_declares_upload(fn_name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// PLAN-730 T-05：bridge 侧上传路由预判（方法已由调用方限定 POST/PUT）。
+/// 与 owner 共用 match_route + 类型分类——同一请求两臂判定一致。
+pub fn upload_route_lookup(method: &str, path: &str) -> bool {
+    let routes = get_routes();
+    match_route(&routes, method, path)
+        .map(|rm| route_declares_upload(&rm.fn_name))
+        .unwrap_or(false)
+}
+
 /// PLAN-698 T-02/SD-02: POST 成功后的 SSE 广播臂——生成 Axum 侧
 /// void-POST+broadcast 路径（api_gen broadcast_event_name + events::broadcast）
 /// 的 VM 运行面对照实现。仅当工程声明 ~Stream 端点时发布（has_sse 门控同
@@ -1190,6 +1199,7 @@ mod plan326_tests {
                 None,
                 "POST",
                 "/api/notes",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 2);
@@ -1211,6 +1221,7 @@ mod plan326_tests {
                 None,
                 "GET",
                 "/api/search",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 1);
@@ -1230,6 +1241,7 @@ mod plan326_tests {
                 None,
                 "GET",
                 "/x",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 1);
@@ -1250,6 +1262,7 @@ mod plan326_tests {
                 None,
                 "GET",
                 "/x",
+                None,
             )
             .unwrap_err();
             match err {
@@ -1273,6 +1286,7 @@ mod plan326_tests {
                 None,
                 "GET",
                 "/x",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 1);
@@ -1297,7 +1311,8 @@ mod plan326_tests {
                 None,
                 "GET",
                 "/api/notes/42",
-            )
+                None,
+                        )
             .expect("bind");
             assert_eq!(n, 1);
             let nv = task.ram.pop_nv();
@@ -1320,6 +1335,7 @@ mod plan326_tests {
                 None,
                 "POST",
                 "/api/notes",
+                None,
             )
             .unwrap_err();
             match err {
@@ -1344,6 +1360,7 @@ mod plan326_tests {
                 Some(r#"{"cookies":{}}"#),
                 "POST",
                 "/x",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 2);
@@ -1364,6 +1381,7 @@ mod plan326_tests {
                 Some("{}"),
                 "GET",
                 "/x",
+                None,
             )
             .unwrap_err();
             assert!(matches!(err, ApiArgBindError::BadRequest(_)));
@@ -1382,6 +1400,7 @@ mod plan326_tests {
                 None,
                 "POST",
                 "/x",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 1);
@@ -1406,6 +1425,7 @@ mod plan326_tests {
                 None,
                 "POST",
                 "/x",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 1);
@@ -1429,6 +1449,7 @@ mod plan326_tests {
                 Some("{}"),
                 "POST",
                 "/x",
+                None,
             )
             .unwrap_err();
             match err {
@@ -1452,6 +1473,7 @@ mod plan326_tests {
                 None,
                 "GET",
                 "/x",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 0);
@@ -3832,6 +3854,9 @@ pub(crate) struct ApiRequest {
     pub headers: Vec<(String, String)>,
     /// Fully framed body bytes (bounded by the transport's body limit).
     pub body: Vec<u8>,
+    /// PLAN-730 T-05：上传路由的原始 body（bridge 不消费，授权后由
+    /// receive 增量读取；非上传路由恒 None——`body` 语义不变）。
+    pub raw_upload_body: Option<axum::body::Body>,
     pub peer: Option<std::net::SocketAddr>,
 }
 
@@ -3963,6 +3988,7 @@ pub(crate) fn test_api_request_get(path: &str) -> ApiRequest {
         path: path.to_string(),
         headers: Vec::new(),
         body: Vec::new(),
+        raw_upload_body: None,
         peer: None,
     }
 }
@@ -3990,6 +4016,9 @@ async fn serve_with(
     cfg: super::http_transport::TransportConfig,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
 ) {
+    // PLAN-730 T-05：安装上传宿主 executor（幂等；a2r facade 的 receive/
+    // commit/reject 经此执行——VM 桥与生成 Rust 服务共用单源）。
+    crate::http_upload_service::install_upload_executor_service();
     let routes = get_routes();
     let (req_tx, mut req_rx) = tokio::sync::mpsc::channel::<(
         ApiRequest,
@@ -4064,7 +4093,7 @@ async fn serve_with(
         let next_deadline = parked
             .iter()
             .filter_map(|p| lookup_scope(p.scope_id))
-            .map(|s| tokio::time::Instant::from_std(s.deadline))
+            .map(|s| tokio::time::Instant::from_std(*s.deadline.read().unwrap()))
             .min();
         // (1) 注册完成通知兴趣（Notified 首次 poll 才登记 waiter，enable()
         // 把登记提前到检查之前）。
@@ -4243,6 +4272,15 @@ pub(crate) struct DispatchCtx {
     pub handler_task_id: Option<u64>,
     /// 请求作用域 id（T-05：owner 派发/恢复前的失效检查）。
     pub scope_id: u64,
+    /// PLAN-730 T-05：上传路由的延迟 body 能力（原始流 + 请求头快照）；
+    /// start_handler 按 UploadRequest 参数注入消费（一次性）。
+    pub upload_pending: Option<PendingUpload>,
+}
+
+/// PLAN-730 T-05：bridge→handler 的上传 body 能力（未授权不解析/不落盘）。
+pub(crate) struct PendingUpload {
+    pub body: axum::body::Body,
+    pub headers: Vec<(String, String)>,
 }
 
 /// park 的延续点。
@@ -4284,7 +4322,7 @@ pub(crate) enum DispatchOutcome {
 pub(crate) fn dispatch_api_request_segment(
     vm: &std::rc::Rc<AutoVM>,
     routes: &[HttpRoute],
-    req: ApiRequest,
+    mut req: ApiRequest,
     reply_tx: tokio::sync::oneshot::Sender<ApiReply>,
     scope_id: u64,
 ) -> DispatchOutcome {
@@ -4348,8 +4386,67 @@ pub(crate) fn dispatch_api_request_segment(
 
     let body = String::from_utf8_lossy(&req.body).into_owned();
 
+    // PLAN-730 T-05/T-07：路由先行（404/方法不匹配零解析零写盘）；上传
+    // 路由按类型分类跳过 legacy multipart（body 为延迟能力，不在此解析）。
+    let route_match = match match_route(routes, &req_method, &req_path) {
+        Some(rm) => rm,
+        None => {
+            let mut headers = cors_header_pairs();
+            headers.push(("X-Request-Id".to_string(), request_id.clone()));
+            let _ = reply_tx.send(ApiReply::Full {
+                status: 404,
+                headers,
+                body: ApiBody::Text(Vec::new()),
+            });
+            return DispatchOutcome::Replied;
+        }
+    };
+    let is_upload_route = route_declares_upload(&route_match.fn_name);
+    let upload_headers = req.headers.clone();
+    let upload_pending = if is_upload_route {
+        if !matches!(req_method.as_str(), "POST" | "PUT") {
+            let mut headers = cors_header_pairs();
+            headers.push(("X-Request-Id".to_string(), request_id.clone()));
+            headers.push(("Allow".to_string(), "POST, PUT".to_string()));
+            let _ = reply_tx.send(ApiReply::Full {
+                status: 405,
+                headers,
+                body: ApiBody::Text(
+                    br#"{"error":"upload endpoints support POST/PUT only"}"#.to_vec(),
+                ),
+            });
+            return DispatchOutcome::Replied;
+        }
+        match req.raw_upload_body.take() {
+            Some(b) => Some(PendingUpload {
+                body: b,
+                headers: upload_headers,
+            }),
+            // bridge 与 owner 的分类不一致（非 transport 入口的派发）——契约
+            // 破坏，fail-closed 500，不执行业务函数。
+            None => {
+                eprintln!(
+                    "[HTTP] {} {} [{}] → 500 (upload route without body capability)",
+                    req_method, req_path, request_id
+                );
+                let mut headers = cors_json_headers(&request_id);
+                headers[0].1 = "application/json".to_string();
+                let _ = reply_tx.send(ApiReply::Full {
+                    status: 500,
+                    headers,
+                    body: ApiBody::Text(
+                        br#"{"error":"upload route missing deferred body"}"#.to_vec(),
+                    ),
+                });
+                return DispatchOutcome::Replied;
+            }
+        }
+    } else {
+        None
+    };
+
     let mut multipart_json: Option<String> = None;
-    if content_type.starts_with("multipart/form-data") {
+    if !is_upload_route && content_type.starts_with("multipart/form-data") {
         let boundary = content_type_raw
             .split(';')
             .find_map(|p| p.trim().strip_prefix("boundary="))
@@ -4371,20 +4468,6 @@ pub(crate) fn dispatch_api_request_segment(
             );
         }
     }
-
-    let route_match = match match_route(routes, &req_method, &req_path) {
-        Some(rm) => rm,
-        None => {
-            let mut headers = cors_header_pairs();
-            headers.push(("X-Request-Id".to_string(), request_id.clone()));
-            let _ = reply_tx.send(ApiReply::Full {
-                status: 404,
-                headers,
-                body: ApiBody::Text(Vec::new()),
-            });
-            return DispatchOutcome::Replied;
-        }
-    };
 
     // PLAN-729 T-04：文件端点仅 GET/HEAD（决策报告 §4）——非 GET/HEAD 的
     // 文件返回注解在路由命中处即 405（不执行 handler）。
@@ -4415,7 +4498,7 @@ pub(crate) fn dispatch_api_request_segment(
         req_method,
         req_path,
         content_type,
-        !body.is_empty(),
+        !body.is_empty() || upload_pending.is_some(),
         request_id
     );
     let middleware_names: Vec<String> = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
@@ -4440,6 +4523,7 @@ pub(crate) fn dispatch_api_request_segment(
         request_info,
         handler_task_id: None,
         scope_id,
+        upload_pending,
     };
     advance_dispatch(vm, ctx, 0, Some(reply_tx))
 }
@@ -4496,7 +4580,8 @@ enum MWStep {
     },
 }
 
-/// 运行 middleware_names[index]（spawn 任务 + 段驱动）。
+/// 运行 middleware_names[index]（spawn 任务 + 段驱动）。上传路由的执行
+/// 错误 fail-closed（500 短路、零落盘）——不沿用 legacy Err→Continue。
 fn run_middleware_at(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, index: usize) -> MWStep {
     let mw_fn = ctx.middleware_names[index].clone();
     let mw_task_id = vm.spawn_task(0, 65536);
@@ -4510,6 +4595,7 @@ fn run_middleware_at(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, index: usize) 
         Response(String),
         Parked(ParkedWait, ParkedSegment),
     }
+    let fail_closed = ctx.upload_pending.is_some();
     let end = {
         let Some(t_arc) = vm.tasks.get(&mw_task_id) else {
             vm.tasks.remove(&mw_task_id);
@@ -4533,8 +4619,20 @@ fn run_middleware_at(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, index: usize) 
                     }
                 }
             }
-            // legacy：middleware Err → None → 继续链（行为保持）。
-            SegmentOutcome::Completed(Err(_)) => MWEnd::Null,
+            // legacy：middleware Err → None → 继续链（行为保持）。上传路由
+            // fail-closed：Err → 500（决策 §4.4——Err 静默放行不可接受）。
+            SegmentOutcome::Completed(Err(_)) => {
+                if fail_closed {
+                    return MWStep::Reply(ApiReply::Full {
+                        status: 500,
+                        headers: cors_json_headers(&ctx.request_id),
+                        body: ApiBody::Text(
+                            br#"{"error":"middleware failed"}"#.to_vec(),
+                        ),
+                    });
+                }
+                MWEnd::Null
+            }
             SegmentOutcome::Parked { wait, seg } => MWEnd::Parked(wait, seg),
             // PLAN-711 T-11: Runnable 仅由 CpuSlice 驱动产生；HTTP server
             // 走 legacy 段契约（非 UI 轨），防御臂按 Err 同族继续链。
@@ -4612,6 +4710,32 @@ fn start_handler(
     };
     ctx.axum_route = axum_route.clone();
 
+    // PLAN-730 T-05：UploadRequest 注入——路由声明该参数类型时，把延迟
+    // body 能力建成宿主 UploadRequest（一次性；scope 组绑定）。分类与
+    // bridge 同源（方法+参数类型），不一致在 dispatch 段已 fail-closed。
+    let upload_handle: Option<i64> = match ctx.upload_pending.take() {
+        Some(pending) => {
+            let stream = {
+                use futures::StreamExt;
+                let data = pending.body.into_data_stream();
+                let mapped = data.map(|r| {
+                    r.map(|b| b.to_vec())
+                        .map_err(|e| std::io::Error::other(e.to_string()))
+                });
+                let boxed: a2r_std::http::UploadBodyStream = Box::pin(mapped);
+                boxed
+            };
+            let req = a2r_std::http::upload_request_from_parts(
+                &ctx.req_method,
+                &ctx.req_path,
+                pending.headers,
+                stream,
+            );
+            Some(super::http_upload::insert_upload_request(req) as i64)
+        }
+        None => None,
+    };
+
     let n_args = if let Some(ref axum_route) = axum_route {
         let query_json = if ctx.route.query_params.is_empty() {
             "{}".to_string()
@@ -4665,6 +4789,7 @@ fn start_handler(
             ctx.multipart_json.as_deref(),
             &ctx.req_method,
             &ctx.req_path,
+            upload_handle,
         ) {
             Ok(n) => n,
             Err(ApiArgBindError::BadRequest(msg)) => {
@@ -4862,6 +4987,50 @@ fn handler_declares_file_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> 
     }
 }
 
+/// ctx 声明上传收据返回（axum_route closure 反查同门）。
+fn handler_declares_upload_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> bool {
+    match ctx.axum_route {
+        Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
+            .map(|n| fn_is_api_upload_return(&n))
+            .unwrap_or(false),
+        None => fn_is_api_upload_return(&ctx.route.fn_name),
+    }
+}
+
+/// 收据 → 真实 HTTP 回复（receipt.status + 有界 JSON；CORS + 请求 id）。
+fn upload_receipt_reply(ctx: &DispatchCtx, receipt: a2r_std::http::UploadReceipt) -> ApiReply {
+    eprintln!(
+        "[HTTP] {} {} [{}] → {} ({}ms)",
+        ctx.req_method,
+        ctx.req_path,
+        ctx.request_id,
+        receipt.status,
+        ctx.started.elapsed().as_millis()
+    );
+    let mut headers = json_reply_headers(&ctx.request_id);
+    headers[0].1 = "application/json".to_string();
+    ApiReply::Full {
+        status: receipt.status,
+        headers,
+        body: ApiBody::Text(receipt.json.into_bytes()),
+    }
+}
+
+/// 声明上传收据返回但值不是登记收据 → 500 诊断（不 JSON 200）。
+fn upload_contract_mismatch_reply(ctx: &DispatchCtx, raw: u64) -> ApiReply {
+    eprintln!(
+        "[HTTP] {} {} [{}] → 500 (handler '{}' declares UploadReceipt but returned non-receipt value {})",
+        ctx.req_method, ctx.req_path, ctx.request_id, ctx.route.fn_name, raw
+    );
+    let mut headers = json_reply_headers(&ctx.request_id);
+    headers[0].1 = "application/json".to_string();
+    ApiReply::Full {
+        status: 500,
+        headers,
+        body: ApiBody::Text(br#"{"error":"handler did not return an UploadReceipt"}"#.to_vec()),
+    }
+}
+
 /// 声明文件返回但值不是登记描述符 → 500 诊断（不 JSON 200；决策报告 §6）。
 fn file_contract_mismatch_reply(ctx: &DispatchCtx, raw: u64) -> ApiReply {
     eprintln!(
@@ -4946,6 +5115,16 @@ fn marshal_handler_value(
                     return MarshalOutcome::Reply(final_value_reply(vm, ctx, value));
                 }
             }
+        }
+        // PLAN-730 T-05：上传收据门（声明返回类型 + i32 + 登记命中三重闸；
+        // 置于 iterator 检查之前——收据 id 与 iterator id 空间独立，普通
+        // int 撞号仍走 JSON 兜底）。
+        if handler_declares_upload_return(vm, ctx) {
+            let rid = bits as u32 as u64;
+            return MarshalOutcome::Reply(match super::http_upload::take_upload_receipt(rid) {
+                Some(receipt) => upload_receipt_reply(ctx, receipt),
+                None => upload_contract_mismatch_reply(ctx, rid),
+            });
         }
         let iter_id = bits as u32;
         if vm.iterators.contains_key(&iter_id) {
@@ -5091,6 +5270,18 @@ fn final_value_reply(
     let nv = value
         .and_then(|v| value_to_nv_via_task(vm, ctx, v))
         .unwrap_or_else(auto_val::encode_null);
+    // PLAN-730 T-05：`~UploadReceipt` 终值（Value::Int = 收据句柄）在
+    // JSON 兜底前按同一门识别（sync/异步同形）。
+    if handler_declares_upload_return(vm, ctx) {
+        if auto_val::is_i32(nv) {
+            let rid = auto_val::decode_i32(nv) as u32 as u64;
+            return match super::http_upload::take_upload_receipt(rid) {
+                Some(receipt) => upload_receipt_reply(ctx, receipt),
+                None => upload_contract_mismatch_reply(ctx, rid),
+            };
+        }
+        return upload_contract_mismatch_reply(ctx, u64::MAX);
+    }
     // PLAN-729 T-04：`~FileResponse` 终值（Value::Int = 描述符句柄）在
     // JSON 兜底前按同一门识别（sync/异步同形）。
     if handler_declares_file_return(vm, ctx) {
@@ -5169,7 +5360,9 @@ pub(crate) struct RequestScope {
     pub id: u64,
     pub conn_id: u64,
     pub state: std::sync::atomic::AtomicU8,
-    pub deadline: std::time::Instant,
+    /// PLAN-730 T-05：deadline 升级 RwLock——上传期限切换需透过 Arc 写
+    ///（extend_scope_deadline 只增不减；读方短暂陈旧方向安全）。
+    pub deadline: std::sync::RwLock<std::time::Instant>,
     /// 生命期许可（scope 终结时释放；SSE 流由桥侧 FrameStream Drop 代持）。
     pub permit: std::sync::Mutex<Option<tokio::sync::OwnedSemaphorePermit>>,
     /// 取消信号（桥 reply 等待 select 臂）。
@@ -5191,6 +5384,11 @@ pub(crate) struct RequestScope {
     /// PLAN-730 T-05：请求起点（bridge 入队时刻）——上传总期限
     /// （started_at + total_timeout）切换的锚点。
     pub started_at: std::time::Instant,
+    /// PLAN-730 T-05：deadline 变更通道（上传 receive 启动时延展 30s→总
+    /// 期限；桥 reply 等待循环 watch 重臂——修"select 保留旧捕获值"）。
+    /// 只延展（extend）不缩短；与 `deadline` 字段同步写（读方短暂陈旧
+    /// 方向安全：只会更早到期判定由 watch 修正）。
+    pub deadline_tx: tokio::sync::watch::Sender<std::time::Instant>,
 }
 
 impl RequestScope {
@@ -5243,6 +5441,8 @@ pub(crate) fn create_scope(
         return None;
     };
     let id = SCOPE_ID_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let (deadline_tx, _deadline_rx) = tokio::sync::watch::channel(deadline);
+    let deadline = std::sync::RwLock::new(deadline);
     let scope = std::sync::Arc::new(RequestScope {
         id,
         conn_id,
@@ -5255,6 +5455,7 @@ pub(crate) fn create_scope(
         file_response_resources: std::sync::Mutex::new(Vec::new()),
         upload_resources: std::sync::Mutex::new(Vec::new()),
         started_at: std::time::Instant::now(),
+        deadline_tx,
     });
     if let Ok(mut map) = REQUEST_SCOPES.lock() {
         map.insert(id, scope.clone());
@@ -5336,12 +5537,38 @@ pub(crate) fn scope_usable(scope: &RequestScope) -> bool {
     if scope.terminal() {
         return false;
     }
-    std::time::Instant::now() <= scope.deadline
+    std::time::Instant::now() <= *scope.deadline.read().unwrap()
 }
 
 /// 按 id 查 scope（owner 侧）。
 pub(crate) fn lookup_scope(id: u64) -> Option<std::sync::Arc<RequestScope>> {
     REQUEST_SCOPES.lock().ok().and_then(|m| m.get(&id).cloned())
+}
+
+/// PLAN-730 T-05：延展 scope deadline（只增不减；上传 receive 启动时从
+/// 30s 切换到上传总期限）。watch 唤醒桥 reply 等待循环重臂；完成通知唤醒
+/// owner parked 定时臂重算。
+pub(crate) fn extend_scope_deadline(scope_id: u64, new_deadline: std::time::Instant) {
+    if let Some(scope) = lookup_scope(scope_id) {
+        let extended = {
+            let mut d = scope.deadline.write().unwrap();
+            if new_deadline > *d {
+                *d = new_deadline;
+                true
+            } else {
+                false
+            }
+        };
+        if extended {
+            let _ = scope.deadline_tx.send(new_deadline);
+            crate::vm::ffi::async_http::COMPLETION_NOTIFY.notify_waiters();
+        }
+    }
+}
+
+/// PLAN-730 T-05：当前段执行的 scope id（无绑定为 None——非请求上下文）。
+pub(crate) fn current_scope_id() -> Option<u64> {
+    CURRENT_SCOPE_ID.with(|c| c.get())
 }
 
 /// 连接终结（net 侧 watcher）：取消该连接名下全部 scope（已确证销毁判据，
@@ -5706,6 +5933,7 @@ fn placeholder_ctx() -> DispatchCtx {
         request_info: String::new(),
         handler_task_id: None,
         scope_id: 0,
+        upload_pending: None,
     }
 }
 
@@ -6250,10 +6478,29 @@ pub(crate) fn bind_api_args_by_name(
     metadata_json: Option<&str>,
     method: &str,
     req_path: &str,
+    upload_handle: Option<i64>,
 ) -> Result<usize, ApiArgBindError> {
     let mut n_args = 0usize;
     let mut unbound: Vec<&ApiParamSig> = Vec::new();
     for sig in sigs {
+        // PLAN-730 T-05：UploadRequest 注入参数——类型识别置于 path/body/
+        // query/meta 全部规则**之前**（防 "req" meta 名约定与 whole-body
+        // 单参容忍吞掉注入参数；AC-01 反例防线）。
+        if sig.ty.contains("UploadRequest") {
+            match upload_handle {
+                Some(h) => {
+                    task.ram.push_i32(h as i32);
+                    n_args += 1;
+                    continue;
+                }
+                None => {
+                    return Err(ApiArgBindError::Internal(format!(
+                        "upload param `{}` has no injected request capability",
+                        sig.name
+                    )));
+                }
+            }
+        }
         if let Some((_, v)) = route_match.path_params.iter().find(|(n, _)| n == &sig.name) {
             push_typed_string_arg(vm, task, sig, v, method, req_path)?;
             n_args += 1;
@@ -6357,6 +6604,7 @@ pub(crate) fn bind_api_args_or_legacy(
             None,
             method,
             req_path,
+            None,
         )
     } else {
         let mut n_args = 0;
@@ -6434,6 +6682,7 @@ fn build_handler_args(
     multipart_json: Option<&str>,
     method: &str,
     req_path: &str,
+    upload_handle: Option<i64>,
 ) -> Result<usize, ApiArgBindError> {
     let mut n_args = 0;
     if let Some(_task_arc) = vm.tasks.get(&task_id) {
@@ -6467,6 +6716,7 @@ fn build_handler_args(
                     Some(&metadata),
                     method,
                     req_path,
+                    upload_handle,
                 );
             }
 

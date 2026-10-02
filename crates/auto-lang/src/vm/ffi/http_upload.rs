@@ -195,9 +195,25 @@ pub fn shim_http_upload_receive(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
         task.ram.push_i32(sid as i32);
         return Ok(());
     };
-    // executor 未安装时 facade 立即返回诊断 failed 会话——watcher 同路径。
+    // 直连宿主 receive_with_phase（phase hook 透传——scope 期限切换）；
+    // executor 未安装时立即返回诊断 failed 会话——watcher 同路径。
+    let phase: a2r_std::http::UploadPhaseHook = match super::http_server::current_scope_id() {
+        Some(scope_id) => std::sync::Arc::new(move |p| {
+            if let a2r_std::http::UploadPhase::ReceiveStarted { total_deadline } = p {
+                super::http_server::extend_scope_deadline(scope_id, total_deadline);
+            }
+        }),
+        None => std::sync::Arc::new(|_| {}),
+    };
     let op_id = spawn_upload_watcher(async move {
-        let session = a2r_std::http::upload_receive(req, &root, &staging_root, &options).await;
+        let session = crate::http_upload_service::receive_with_phase(
+            req,
+            &root,
+            &staging_root,
+            &options,
+            phase,
+        )
+        .await;
         UploadOpResult::Session(session)
     });
     task.waiting_http_request_id = Some(op_id);

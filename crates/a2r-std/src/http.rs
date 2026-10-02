@@ -32,8 +32,9 @@ pub use crate::http::server_upload::{
     cancel_upload_session, failed_session, install_upload_executor,
     parse_upload_receive_options, upload_commit, upload_error, upload_metadata_json,
     upload_receive, upload_reject, upload_request_from_parts, UploadBodyStream, UploadErrorKind,
-    UploadExecutor, UploadPhase, UploadReceiveMode, UploadReceiveOptions, UploadReceivedMeta,
-    UploadRequest, UploadReceipt, UploadServeLimits, UploadSession, UploadSessionState,
+    UploadExecutor, UploadPhase, UploadPhaseHook, UploadReceiveMode, UploadReceiveOptions,
+    UploadReceivedMeta, UploadRequest, UploadReceipt, UploadServeLimits, UploadSession,
+    UploadSessionState,
 };
 
 // 内核 typed 类型的一等再导出（原生 Rust 消费者面）。

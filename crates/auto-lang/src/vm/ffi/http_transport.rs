@@ -212,36 +212,60 @@ async fn bridge_handler(
     // Body: bounded incremental collection with a total deadline (AC-03).
     // Content-Length over the limit is rejected before reading (parity with
     // the legacy pre-check); chunked overflow surfaces as LengthLimitError.
-    if let Some(cl) = parts.headers.get("content-length") {
-        if let Ok(parsed) = cl.to_str().unwrap_or("").parse::<usize>() {
-            if parsed > cfg.body_limit {
-                eprintln!(
-                    "[HTTP] {} {} → 413 (body {} > {})",
-                    method, path, parsed, cfg.body_limit
-                );
-                return error_response(413, "body too large");
+    //
+    // PLAN-730 T-05：上传路由（方法+参数类型双条件，与 owner 同源分类）
+    // 的 body **不在桥侧消费**——CL 对上传 wire 预算（默认 65MiB）预检
+    // 后，原始流随 ApiRequest 延迟到授权后的 receive（未授权不解析、
+    // 不落盘、不 drain）。非上传路由维持 10MiB 全量上限不变。
+    let upload_route = (method == "POST" || method == "PUT")
+        && super::http_server::upload_route_lookup(&method, &path);
+    let (body_bytes, raw_upload_body) = if upload_route {
+        let wire_cap = a2r_std::http::UploadServeLimits::from_env().max_wire_bytes;
+        if let Some(cl) = parts.headers.get("content-length") {
+            if let Ok(parsed) = cl.to_str().unwrap_or("").parse::<usize>() {
+                if parsed as u64 > wire_cap {
+                    eprintln!(
+                        "[HTTP] {} {} → 413 (upload body {} > {})",
+                        method, path, parsed, wire_cap
+                    );
+                    return error_response(413, "body too large");
+                }
             }
         }
-    }
-    let body_bytes = match tokio::time::timeout(
-        cfg.body_timeout,
-        axum::body::to_bytes(body, cfg.body_limit),
-    )
-    .await
-    {
-        Err(_) => {
-            return error_response(408, "request body timed out");
-        }
-        Ok(Err(e)) => {
-            let over_limit = std::error::Error::source(&e)
-                .map(|s| s.is::<axum::extract::rejection::LengthLimitError>())
-                .unwrap_or(false);
-            if over_limit {
-                return error_response(413, "body too large");
+        (Vec::new(), Some(body))
+    } else {
+        if let Some(cl) = parts.headers.get("content-length") {
+            if let Ok(parsed) = cl.to_str().unwrap_or("").parse::<usize>() {
+                if parsed > cfg.body_limit {
+                    eprintln!(
+                        "[HTTP] {} {} → 413 (body {} > {})",
+                        method, path, parsed, cfg.body_limit
+                    );
+                    return error_response(413, "body too large");
+                }
             }
-            return error_response(400, "malformed request body");
         }
-        Ok(Ok(b)) => b.to_vec(),
+        let bytes = match tokio::time::timeout(
+            cfg.body_timeout,
+            axum::body::to_bytes(body, cfg.body_limit),
+        )
+        .await
+        {
+            Err(_) => {
+                return error_response(408, "request body timed out");
+            }
+            Ok(Err(e)) => {
+                let over_limit = std::error::Error::source(&e)
+                    .map(|s| s.is::<axum::extract::rejection::LengthLimitError>())
+                    .unwrap_or(false);
+                if over_limit {
+                    return error_response(413, "body too large");
+                }
+                return error_response(400, "malformed request body");
+            }
+            Ok(Ok(b)) => b.to_vec(),
+        };
+        (bytes, None)
     };
 
     let api_req = ApiRequest {
@@ -249,6 +273,7 @@ async fn bridge_handler(
         path,
         headers,
         body: body_bytes,
+        raw_upload_body,
         peer: Some(peer),
     };
 
@@ -281,15 +306,29 @@ async fn bridge_handler(
         return resp;
     }
 
-    // Reply wait：三臂 select（回复 / scope 取消——连接终结/关闭/owner 失效
-    // / deadline 到期）。取消臂（含 deadline）= scope 幂等终结：owner 侧
-    // parked 等待随后废弃、live-op 回收，已排队请求不再执行业务函数
-    //（AC-04；PLAN-699 语义从"只丢接收端"升级）。
-    let deadline_tokio = tokio::time::Instant::from_std(scope.deadline);
-    let reply = tokio::select! {
-        r = reply_rx => Some(r),
-        _ = scope.cancel_notify.notified() => None,
-        _ = tokio::time::sleep_until(deadline_tokio) => None,
+    // Reply wait：回复 / scope 取消 / deadline 三臂。PLAN-730 T-05：deadline
+    // 臂经 watch 重臂——上传 receive 启动时 scope deadline 从 30s 切换到
+    // 上传总期限（extend_scope_deadline 发 watch），桥不再保留旧捕获值；
+    // 取消臂（含真到期）= scope 幂等终结：owner 侧 parked 等待随后废弃、
+    // live-op 回收，已排队请求不再执行业务函数（AC-04）。
+    tokio::pin!(reply_rx);
+    let mut deadline_rx = scope.deadline_tx.subscribe();
+    let reply = loop {
+        let current = *deadline_rx.borrow_and_update();
+        tokio::select! {
+            r = &mut reply_rx => break Some(r),
+            _ = scope.cancel_notify.notified() => break None,
+            _ = tokio::time::sleep_until(tokio::time::Instant::from_std(current)) => {
+                deadline_rx.borrow_and_update();
+                if std::time::Instant::now() >= *deadline_rx.borrow() {
+                    break None; // 真到期（延展与到期的竞态由重读分辨）
+                }
+                // deadline 已延展——循环重臂。
+            }
+            _ = deadline_rx.changed() => {
+                // deadline 延展通知——循环重臂。
+            }
+        }
     };
     let reply = match reply {
         Some(Ok(reply)) => reply,
@@ -349,7 +388,7 @@ async fn serve_file_seed(
     let now = std::time::Instant::now();
     let cap = now + limits.prepare_timeout;
     let prepare_deadline = match &scope {
-        Some(s) if s.deadline < cap => s.deadline,
+        Some(s) if *s.deadline.read().unwrap() < cap => *s.deadline.read().unwrap(),
         _ => cap,
     };
     let hook_scope = scope.clone();
@@ -696,6 +735,7 @@ mod bridge_tests {
                     path: "/api/held".into(),
                     headers: Vec::new(),
                     body: Vec::new(),
+                    raw_upload_body: None,
                     peer: None,
                 },
                 _reply_tx,
