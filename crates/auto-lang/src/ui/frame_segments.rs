@@ -6,11 +6,13 @@
 // - **门控零开销**：`AUTO_FRAME_BENCH=1` 与 frame_bench 同门（复用其
 //   `enabled()` 读数）；未设=所有 note 系列零分支零写入。
 // - **帧生命周期（prev/cur 双槽配对）**：`frame_begin`（update 入口）把
-//   cur 收纳进 prev（prev 未发布且有数据 → 以 `present=-1` 孤儿行落账，
-//   fall-through 帧成本由此显形，T-00① 勘定面）；`frame_present`（__frame_
-//   pump 消费点）发布 prev 并清零。泵消费序=begin→present（同一 update
-//   内），故脏帧分段先被收纳进 prev、紧随的 present 行配对发布；无泵帧
-//   （如非脏 fall-through 自身）滞留 prev 至被覆写 → 孤儿行。
+//   cur 收纳进 prev；prev 滞留未发布分段在下次旋转时落账——`present` 列
+//   =**真实呈现完成时刻**（draw_end_ms，PLAN-735 配对修复：建帧 100% 拿
+//   行，行值=其 draw 括号结束墙钟）；真未呈现（建后零 draw）才落 -1。
+//   `frame_present`（__frame_pump 消费点）发布 prev——draw_end 优先，无
+//   draw 回退消费时刻（R-1 序障代理语义保持）。731 前的「present=-1
+//   孤儿=测量配对面」口径随本件升格（发布点错位伪影已修——根因报告
+//   evidence/735/T-01-T-02-separation-and-rootcause.md §3 轴③）。
 // - **残差=layout+draw**：S5 不插桩（iced 内部段无公开钩子）——分析侧以
 //   `total=present-begin` 减 S1..S4 得残差（含 iced 内务开销，归因上界口径）。
 //   **PLAN-731 T-00 起退役**：S5 升为分段口径（s5_layout/s5_shaping/s5_draw
@@ -80,9 +82,22 @@ fn with_current<R>(f: impl FnOnce(&mut Segments) -> R) -> Option<R> {
     })
 }
 
+/// PLAN-735 配对修复：发布时刻取**真实呈现完成时刻**（draw_end_ms——
+/// 根包装 draw 括号结束，iced_winit RedrawRequested 臂内同步先行于
+/// compositor present）；无 draw（帧建后未呈现）回退 fallback
+/// （旋转点=-1 真未呈现；泵消费点=消费时刻——R-1 序障语义保持）。
+fn truthful_present(s: &Segments, fallback: i64) -> i64 {
+    if s.draw_end_ms > 0 {
+        s.draw_end_ms
+    } else {
+        fallback
+    }
+}
+
 /// 帧开始（update 入口；与 frame_bench::note_frame_begin 同点调用）。
-/// cur 收纳进 prev；prev 若滞留未发布分段（无泵呈现帧），以 present=-1
-/// 孤儿行落账后被覆写。
+/// cur 收纳进 prev；prev 若滞留未发布分段，以 `present=` **其真实呈现
+/// 时刻**（draw_end_ms，PLAN-735 配对修复——已绘制帧 100% 拿到行）或
+/// -1（真未呈现）落账后被覆写。
 pub fn frame_begin() {
     if !enabled() {
         return;
@@ -94,7 +109,8 @@ pub fn frame_begin() {
         let incoming = cur.take();
         if let Some(stale) = prev.take() {
             if stale.has_data() {
-                emit(stale, -1);
+                let present = truthful_present(&stale, -1);
+                emit(stale, present);
             }
         }
         *prev = incoming;
@@ -117,7 +133,8 @@ pub fn frame_present() {
         let (prev, _) = &mut *slot;
         if let Some(done) = prev.take() {
             if done.has_data() {
-                emit(done, now);
+                let present = truthful_present(&done, now);
+                emit(done, present);
             }
         }
     });
@@ -235,9 +252,11 @@ pub fn note_s5_draw(elapsed: std::time::Duration) {
 
 /// PLAN-735 T-01：呈现真相时戳（根包装探针 draw 括号结束点调用——
 /// present 直接代理，见 Segments.draw_end_ms 字段注）。末值覆盖语义
-/// （单窗单 draw/重绘遍）。
+/// （单窗单 draw/重绘遍）；frame_bench 呈现真相原子同点写入（臂(b)
+/// 读侧单源）。
 pub fn note_draw_end_abs() {
     with_current(|s| s.draw_end_ms = elapsed_ms());
+    super::frame_bench::note_frame_draw_end();
 }
 
 /// 帧脏标记（view() 主路径取 view_dirty 时调用）。

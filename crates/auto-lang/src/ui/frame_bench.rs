@@ -43,6 +43,12 @@ pub fn process_elapsed_ms() -> i64 {
 
 static FRAME_BEGIN_MS: AtomicI64 = AtomicI64::new(0);
 static FRAME_PRESENT_MS: AtomicI64 = AtomicI64::new(0);
+/// PLAN-735 T-03 臂(b)：呈现真相时戳——根包装探针 draw() 括号结束点
+/// （iced_winit RedrawRequested 臂内，同步先行于 compositor present）。
+/// 与 `present_ms`（泵通知消费时刻——通知面）分离：本字段=呈现面真值，
+/// 逐帧更新（末值覆盖）。下游判定读数的呈现/通知分离语义见
+/// frame-observability SD-01（本件升格）。
+static FRAME_DRAW_END_MS: AtomicI64 = AtomicI64::new(0);
 
 /// 帧开始时间戳捕获（update 入口调用；门控关闭时零开销路径）。
 pub fn note_frame_begin() {
@@ -58,6 +64,14 @@ pub fn note_frame_present() {
     }
 }
 
+/// 呈现真相时间戳捕获（根包装探针 draw 括号结束点调用；门控同上——
+/// 经 [`crate::ui::frame_segments::note_draw_end_abs`] 单点接线）。
+pub fn note_frame_draw_end() {
+    if bench_enabled() {
+        FRAME_DRAW_END_MS.store(elapsed_ms(), Ordering::Relaxed);
+    }
+}
+
 /// 帧开始时间戳（毫秒，单调；未捕获/未发生=0）。
 pub fn frame_begin_ms() -> i64 {
     FRAME_BEGIN_MS.load(Ordering::Relaxed)
@@ -66,6 +80,13 @@ pub fn frame_begin_ms() -> i64 {
 /// 呈现完成时间戳（毫秒，单调；未捕获/未发生=0）。
 pub fn frame_present_ms() -> i64 {
     FRAME_PRESENT_MS.load(Ordering::Relaxed)
+}
+
+/// 呈现真相时间戳（毫秒，单调；未捕获/未发生=0）——PLAN-735 T-03 臂(b)
+/// 读侧。逐帧真值通道（9920 VM 内建/a2r 扩展=下游重判件建议项，本件
+/// 下游判定零触碰不接线）。
+pub fn frame_draw_end_ms() -> i64 {
+    FRAME_DRAW_END_MS.load(Ordering::Relaxed)
 }
 
 fn elapsed_ms() -> i64 {
@@ -85,8 +106,10 @@ mod tests {
         }
         note_frame_begin();
         note_frame_present();
+        note_frame_draw_end();
         assert_eq!(frame_begin_ms(), 0);
         assert_eq!(frame_present_ms(), 0);
+        assert_eq!(frame_draw_end_ms(), 0);
     }
 
     /// 到达序语义：present 捕获时刻 ≥ begin 捕获时刻（同帧先后序）。

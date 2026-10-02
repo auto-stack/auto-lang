@@ -36,8 +36,12 @@ FRAME_RE = re.compile(
     r"\[P725-FRAME\] begin=(-?\d+) present=(-?\d+) s1_payload_us=(\d+) "
     r"s2_vm_us=(\d+) s3a_mcp_us=(\d+) s3b_build_us=(\d+) s4_element_us=(\d+) "
     r"s5_layout_us=(\d+) s5_shaping_us=(\d+) s5_draw_us=(\d+) "
-    r"builds=(\d+) dirty=(-?\d+)"
+    r"builds=(\d+) dirty=(-?\d+)(?: draw_end_ms=(-?\d+))?"
 )
+# PLAN-735 T-02 轴①②：送达/消费/更新入口时戳行。
+SD_REDRAW_DELIVER_RE = re.compile(r"\[SCHED-DIAG\] redraw_deliver t=(\d+)ms")
+SD_UPDATE_RE = re.compile(
+    r"\[SCHED-DIAG\] update t=(\d+)ms app=\S+ widget=\S* event=(\S*)")
 ARMS_RE = re.compile(r"\[P725-ARMS\] (.+)$")
 # PLAN-735: SCHED-DIAG 到达面行（泵订阅在册窗口的帧消息 + 泵臂 + 计数器）。
 SD_ENQUEUE_RE = re.compile(r"\[SCHED-DIAG\] frame_msg enqueue t=(\d+)ms")
@@ -152,6 +156,7 @@ def parse_frame_line(line):
         "s5_layout_us": int(g[7]), "s5_shaping_us": int(g[8]),
         "s5_draw_us": int(g[9]),
         "builds": int(g[10]), "dirty": int(g[11]),
+        "draw_end_ms": int(g[12]) if g[12] is not None else -1,
     }
 
 
@@ -185,10 +190,19 @@ def parse_sched_diag(plines):
     """
     enqueues, arms_cnt, pump_enters = [], 0, []
     sub_frame_events, sub_parked_events = 0, 0
+    delivers, updates = [], []
     for line in plines:
         m = SD_ENQUEUE_RE.search(line)
         if m:
             enqueues.append(int(m.group(1)))
+            continue
+        m = SD_REDRAW_DELIVER_RE.search(line)
+        if m:
+            delivers.append(int(m.group(1)))
+            continue
+        m = SD_UPDATE_RE.search(line)
+        if m:
+            updates.append({"t": int(m.group(1)), "event": m.group(2)})
             continue
         m = SD_ARM_RE.search(line)
         if m:
@@ -209,6 +223,10 @@ def parse_sched_diag(plines):
     summary = {
         "type": "sched_diag",
         "enqueue_events": len(enqueues),
+        "redraw_deliver_events": len(delivers),
+        "update_events": len(updates),
+        "redraw_deliver_ts": delivers,
+        "update_ts_events": updates,
         "arm_frame_events": arms_cnt,
         "pump_enter_events": len(pump_enters),
         "sub_frame_assemblies": sub_frame_events,
@@ -230,7 +248,7 @@ def summarize(frames, arms, phase, size_name, label, phase_seconds=None):
         s5 = f["s5_layout_us"] + f["s5_shaping_us"] + f["s5_draw_us"]
         rows.append({
             "type": f"{phase}_frame", "label": label, "size": size_name,
-            "present": f["present"],
+            "present": f["present"], "draw_end_ms": f.get("draw_end_ms", -1),
             "total_ms": round(total / 1000.0, 2) if total is not None else None,
             "seg_sum_ms": round(seg / 1000.0, 2),
             "s5_ms": round(s5 / 1000.0, 2),
@@ -251,6 +269,11 @@ def summarize(frames, arms, phase, size_name, label, phase_seconds=None):
     presents = sum(1 for f in frames if f["present"] > 0)
     orphans = sum(1 for f in frames if f["present"] == -1
                   and (f["s4_us"] > 0 or f["s5_draw_us"] > 0 or f["s3b_us"] > 0))
+    # PLAN-735 T-01 分离谱：呈现真相（draw_end_ms 逐帧真值——distinct 计数
+    # 防 0µs 帧 coalesce）vs 通知（present>0 消费）双率对照。
+    draw_ends = sorted({f["draw_end_ms"] for f in frames
+                        if f.get("draw_end_ms", -1) > 0})
+    present_ts = sorted({f["present"] for f in frames if f["present"] > 0})
     summary = {
         "type": "summary", "phase": phase, "label": label, "size": size_name,
         "frames": len(members),
@@ -260,6 +283,12 @@ def summarize(frames, arms, phase, size_name, label, phase_seconds=None):
         "pump_events": presents,
         "pump_per_sec": round(presents / phase_seconds, 2) if phase_seconds else None,
         "orphan_fallthrough_frames": orphans,
+        "draw_end_frames": len(draw_ends),
+        "draw_end_per_sec": round(len(draw_ends) / phase_seconds, 2)
+                            if phase_seconds else None,
+        "notify_per_sec": round(len(present_ts) / phase_seconds, 2)
+                          if phase_seconds else None,
+        "draw_end_ts": draw_ends,
         "arms": {k: {"us": v[0], "n": v[1]} for k, v in arms.items()},
     }
     if members:
