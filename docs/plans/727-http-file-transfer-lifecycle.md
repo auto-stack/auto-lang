@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-727
-status: execution_done
+status: reviewed
 feature_name: http-file-transfer-lifecycle
 author: [agent]
 created_at: 2026-10-02
@@ -233,6 +233,21 @@ Rust FileTransfer 最后拥有者 Drop、显式 cancel、终结等待 Future Dro
 - 验证：AC/SD 实证全覆盖；兼容/FS 取消限制明确，所有代码在计划 worktree，主检出只簿记。覆盖全部 AC/SD。
 
 ## 9. 复审记录
+
+### review（2026-10-02）
+
+- stage: review
+- plan_id: PLAN-727
+- plan_revision: 1
+- outcome: pass
+- reviewed_commit: plan-727-dev @ 1fa1a49a4（worktree clean，无未提交实现）
+- base_commit: b34852532（master @ 起草；复审时 master 已被 726 合并推进至 a3bdc221a——本分支零 specs 提交，726 的 UI spec 删除与本触面无交叠，merge 时按分支合并处理）
+- dependency_revisions: auto-down 兄弟 worktree detached @ 895f8d0（只读路径解析）
+- spec_inputs: 复审时点 canonical Specs（a2r-std/project.md「文件 helper 仍走 ureq」、http-client-runtime.md:105 非目标、backend-assembly.md:20、http-stream-lifecycle.md:124 文件进度流线程形态、networking-stdlib.md:27 a2r 客户端未迁——六处 before 表述逐一核实为本计划后的过时表述；lowering spec 无文件面覆盖=缺口本身）；Spec delta 冻结于本 plan §5 规范增量表（a3bdc221a 版）
+- acceptance_results: AC-01..06 全 pass——HEAD 复现（a2r-std 61+7+6 绿、plan727 8/8、plan349 16/16、tv 162/162）；大宗门禁（t/tv/tt/th no-fail-fast）证据复用理由=8ba5199d2→1fa1a49a4 语义零差（仅 #[allow(dead_code)] 注解 + 报告文档），红逐名与 master 同命令对照零新增；AC-04 续传验证/AC-03 提交路径/AC-05 取消收口代码事实独立抽查一致
+- findings: P727-F1（预存，已登记 KNOWN-DEBT；book 仓旧 is 臂语法，基线全新 worktree 同红，非本计划引入，不阻塞）；plan707 client/stream 污染族（master 预存，非本计划因果，无新登记）
+- evidence: docs/plans/reports/727-transfer-{decision,parity,resources,verification}.md（分支内，merge 随链落 master）；复审复测命令与红对照明细在 verification §2
+- next: merge
 
 ### work 交接（2026-10-02）
 
