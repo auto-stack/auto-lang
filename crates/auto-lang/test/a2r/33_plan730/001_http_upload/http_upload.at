@@ -1,0 +1,16 @@
+// PLAN-730 T-06: server upload lowering matrix.
+// receive/commit/reject as await points (async ctx); metadata/error sync;
+// typed injection/session/receipt faces; str args coerced via .as_str().
+
+fn upload_async(req UploadRequest, root str, staging str) ~UploadReceipt {
+    let session = http.upload_receive(req, root, staging, "{\"mode\":\"multipart\",\"text_fields\":[\"note\"]}")
+    let meta = http.upload_metadata(session)
+    if meta.contains("\"state\":\"failed\"") {
+        return http.upload_reject(session, 0, "receive failed")
+    }
+    return http.upload_commit(session, "uploads/blob.bin")
+}
+
+fn early_reject(req UploadRequest) ~UploadReceipt {
+    return http.upload_error(401, "missing token")
+}

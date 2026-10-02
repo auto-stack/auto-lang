@@ -1482,6 +1482,21 @@ impl SessionRuntime {
         // PLAN-729 T-05：文件端点不经进程内 back-proxy 透传——描述符不是
         // 可序列化数据（决策报告 §6：Unsupported + 改走 HTTP URL 指引）。
         if let Some((_, ret)) = self.fn_meta.get(&route_match.fn_name) {
+            // PLAN-730 T-06：上传端点同规——UploadRequest 是宿主注入能力
+            //（非可序列化数据；501 + 改走 HTTP URL 指引）。
+            if ret.contains("UploadReceipt") || ret.contains("UploadRequest") {
+                log::info!(
+                    "[back-proxy:{}] RSP 501 upload endpoint (use HTTP URL)",
+                    self.app_id
+                );
+                return ProxyReply::json(
+                    501,
+                    error_json(&format!(
+                        "back-proxy:{}: upload endpoint `{}` requires HTTP transport; call the HTTP URL directly instead of the in-process proxy",
+                        self.app_id, route_match.fn_name
+                    )),
+                );
+            }
             if ret.contains("FileResponse") {
                 log::info!(
                     "[back-proxy:{}] RSP 501 file endpoint (use HTTP URL)",

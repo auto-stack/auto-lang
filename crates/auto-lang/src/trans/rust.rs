@@ -729,6 +729,12 @@ impl RustTrans {
 
     /// Plan 400 Phase 2: transpile only body statements (no signature).
     /// `params` pre-populates local_var_types. Returns indented lines.
+    /// PLAN-730 T-06: 独立体转译的 async 上下文置位（api_gen 的
+    /// try_transpile_body 对 `~T` 异步 handler 内联体调用——await 点合法）。
+    pub fn set_async_ctx(&self, on: bool) {
+        self.in_async_ctx.set(on);
+    }
+
     pub fn transpile_body_stmts(
         &mut self,
         body: &crate::ast::Body,
@@ -2028,6 +2034,13 @@ impl RustTrans {
             return "a2r_std::http::FileResponse".to_string();
         }
 
+        // PLAN-730 T-06: 服务端上传三类型（注入能力/会话快照/收据）——
+        // 同 FileResponse 先例全限定映射（opaque，无用户构造面）。
+        if matches!(name, "UploadRequest" | "UploadSession" | "UploadReceipt") {
+            self.a2r_std_used.set(true);
+            return format!("a2r_std::http::{name}");
+        }
+
         // Merge mode: all types are in one file, skip crate:: prefix
         if self.merge_mode {
             if let Some(dot_pos) = name.rfind('.') {
@@ -2250,6 +2263,12 @@ impl RustTrans {
                 if name == "FileResponse" {
                     self.a2r_std_used.set(true);
                     return "a2r_std::http::FileResponse".to_string();
+                }
+
+                // PLAN-730 T-06: 上传三类型返回位（含 ~UploadReceipt 解包后）。
+                if matches!(name.as_str(), "UploadRequest" | "UploadSession" | "UploadReceipt") {
+                    self.a2r_std_used.set(true);
+                    return format!("a2r_std::http::{name}");
                 }
                 // Plan 417-E3: a generic type parameter of the current fn is
                 // never a trait — emit the bare param name (`-> T`), not
@@ -5866,6 +5885,62 @@ impl RustTrans {
                     // PLAN-729 T-05: 服务端文件响应构造——零 I/O 描述符，
                     // sync/async 同形（打开/发送在生成 handler 的宿主
                     // serve 面）。严格 options 与路径词法校验在描述符内。
+                    // PLAN-730 T-06: 服务端上传自由函数族。receive/commit/
+                    // reject 是 await 点（同步上下文无合法执行面——指名诊断
+                    // 不发射伪同步调用）；metadata/error 纯同步。str 形参按
+                    // 位次收敛 `.as_str()`（字面量/String/&str 三形皆合法；
+                    // 首参句柄按值 move）。
+                    ("http", "upload_receive") | ("http", "upload_commit")
+                    | ("http", "upload_reject") => {
+                        self.a2r_std_used.set(true);
+                        if !self.in_async_ctx.get() {
+                            return Err(crate::error::AutoError::Msg(format!(
+                                "http.{method} requires an async context: declare the handler with a `~UploadReceipt` return (~ awaits receive/commit)"
+                            )));
+                        }
+                        // facade 形参为 impl AsRef<str>——字面量/String/&str
+                        // 直传，无需收敛发射。
+                        write!(out, "a2r_std::http::{}(", method)?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ").await")?;
+                        return Ok(());
+                    }
+                    ("http", "upload_metadata") => {
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::http::upload_metadata(&")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("http", "upload_error") => {
+                        self.a2r_std_used.set(true);
+                        // facade message 形参为 impl AsRef<str>——直传。
+                        write!(out, "a2r_std::http::upload_error(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                     ("http", "file_response") => {
                         self.a2r_std_used.set(true);
                         write!(out, "a2r_std::http::file_response(")?;

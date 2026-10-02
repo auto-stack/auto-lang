@@ -363,7 +363,8 @@ impl UploadReceipt {
 /// `http.upload_error(status, message)`：零 I/O 早拒构造（不等待、不打开
 /// 文件、不能伪造 201 成功）。status 域 400..=599；域外 → 500 + 可观察
 /// 诊断（不静默钳制）。
-pub fn upload_error(status: i64, message: &str) -> UploadReceipt {
+pub fn upload_error(status: i64, message: impl AsRef<str>) -> UploadReceipt {
+    let message = message.as_ref();
     if !(400..=599).contains(&status) {
         return UploadReceipt::failed(
             UploadErrorKind::InvalidOptions,
@@ -717,9 +718,9 @@ fn executor() -> Option<Arc<dyn UploadExecutor>> {
 /// executor 未安装 → 确定性诊断 failed 会话（零 I/O）。
 pub async fn upload_receive(
     req: UploadRequest,
-    root: &str,
-    staging_root: &str,
-    options_json: &str,
+    root: impl AsRef<str>,
+    staging_root: impl AsRef<str>,
+    options_json: impl AsRef<str>,
 ) -> UploadSession {
     let Some(exec) = executor() else {
         return failed_session(
@@ -728,26 +729,33 @@ pub async fn upload_receive(
         );
     };
     let hard = UploadServeLimits::from_env();
-    let options = match parse_upload_receive_options(options_json, &hard) {
+    let options = match parse_upload_receive_options(options_json.as_ref(), &hard) {
         Ok(o) => o,
         Err(message) => {
             return failed_session(UploadErrorKind::InvalidOptions, message);
         }
     };
-    exec.receive(req, root, staging_root, options, Arc::new(|_| {})).await
+    let root = root.as_ref().to_string();
+    let staging_root = staging_root.as_ref().to_string();
+    exec.receive(req, &root, &staging_root, options, Arc::new(|_| {}))
+        .await
 }
 
 /// `http.upload_commit(session, relative_target)`：受信 root 内原子
 /// create-only 发布（hard_link 原语；存在即 409，绝不先删/覆盖）。
 /// 目标词法校验在委托前完成（零 I/O 拒绝）。
-pub async fn upload_commit(session: UploadSession, relative_target: &str) -> UploadReceipt {
+pub async fn upload_commit(
+    session: UploadSession,
+    relative_target: impl AsRef<str>,
+) -> UploadReceipt {
     if !session.is_received() {
         return UploadReceipt::failed(
             UploadErrorKind::SessionConflict,
             "upload_commit: cannot commit a failed receive session",
         );
     }
-    if let Err(message) = validate_relative_path(relative_target) {
+    let target = relative_target.as_ref();
+    if let Err(message) = validate_relative_path(target) {
         return UploadReceipt::failed(UploadErrorKind::ForbiddenPath, message);
     }
     let Some(exec) = executor() else {
@@ -756,18 +764,23 @@ pub async fn upload_commit(session: UploadSession, relative_target: &str) -> Upl
             "upload executor not installed (requires the HTTP server host)",
         );
     };
-    exec.commit(session.id, relative_target).await
+    exec.commit(session.id, target).await
 }
 
 /// `http.upload_reject(session, status, message)`：清理 staging 并返回
 /// 收据。failed 会话 `status=0` → 采用失败种类建议状态（省应用样板）。
-pub async fn upload_reject(session: UploadSession, status: i64, message: &str) -> UploadReceipt {
+pub async fn upload_reject(
+    session: UploadSession,
+    status: i64,
+    message: impl AsRef<str>,
+) -> UploadReceipt {
     let effective_status = match (&session.state, status) {
         (UploadSessionState::Failed { kind, .. }, 0) => i64::from(kind.suggested_status()),
         (_, s) => s,
     };
     // failed 接收会话：staging 已在失败收口清理——收据直接构造，不经
     // executor（注册表无此 id；Failed 会话唯一合法后续即本形态）。
+    let message = message.as_ref();
     if let UploadSessionState::Failed { kind, .. } = &session.state {
         return UploadReceipt {
             status: kind.suggested_status(),
@@ -793,6 +806,12 @@ pub async fn upload_reject(session: UploadSession, status: i64, message: &str) -
     };
     exec.reject(session.id, effective_status, message.to_string())
         .await
+}
+
+/// `http.upload_metadata(session)`：接收快照 JSON（同步零 I/O；转译
+/// Rust 直调面——与 `upload_metadata_json` 同实现）。
+pub fn upload_metadata(session: &UploadSession) -> String {
+    upload_metadata_json(session)
 }
 
 /// 会话取消（VM scope 收口/断连级联；幂等）。非 facade 公共 API——宿主桥

@@ -652,3 +652,72 @@ fn plain_int() int {{
         );
     }
 }
+
+// ===========================================================================
+// T-06 golden：`test/a2r/33_plan730/001_http_upload` 冻结发射形态
+// ===========================================================================
+
+const UPLOAD_CASE_DIR: &str = "test/a2r/33_plan730/001_http_upload";
+
+#[test]
+fn plan730_golden_upload_lowering_matrix() {
+    let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let full = d.join(UPLOAD_CASE_DIR);
+    let name = "http_upload";
+    let src = std::fs::read_to_string(full.join(format!("{name}.at"))).expect("case .at");
+    let mut rcode =
+        crate::trans::rust::transpile_rust_with_source_dir(&full, name, &src).expect("transpile");
+    let rs = String::from_utf8(rcode.done().expect("finalize").clone()).expect("utf8");
+    let expected =
+        std::fs::read_to_string(full.join(format!("{name}.expected.rs"))).unwrap_or_default();
+    if rs != expected {
+        let wrong = full.join(format!("{name}.wrong.rs"));
+        std::fs::write(&wrong, &rs).expect("write wrong.rs");
+        panic!(
+            "golden mismatch for plan730 upload lowering; actual written to {}",
+            wrong.display()
+        );
+    }
+}
+
+/// T-06 探针：同步上下文调用 upload_receive → 指名诊断（不发射伪同步调用）。
+#[test]
+fn plan730_probe_sync_ctx_upload_receive_diagnosed() {
+    let src = r#"
+fn sync_caller(req UploadRequest) UploadReceipt {
+    let session = http.upload_receive(req, "C:/r", "C:/s", "{\"mode\":\"raw\"}")
+    return http.upload_error(500, "unreachable")
+}
+"#;
+    let err = match crate::trans::rust::transpile_rust("plan730_sync_probe", src) {
+        Err(e) => e,
+        Ok(_) => panic!("sync ctx upload_receive must be diagnosed, not emitted"),
+    };
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("requires an async context"),
+        "sync-ctx diagnostic: {msg}"
+    );
+}
+
+/// T-06 探针：类型映射三类型全限定（参数位/返回位/解包后）。
+#[test]
+fn plan730_probe_upload_type_mapping() {
+    let src = r#"
+fn upload_typed(req UploadRequest) ~UploadReceipt {
+    let session = http.upload_receive(req, "r", "s", "{\"mode\":\"raw\"}")
+    return http.upload_commit(session, "x.bin")
+}
+fn main() {
+    let _ = 1
+}
+"#;
+    let mut rcode =
+        crate::trans::rust::transpile_rust("plan730_type_probe", src).expect("transpile");
+    let rs = String::from_utf8(rcode.done().expect("finalize").clone()).expect("utf8");
+    assert!(rs.contains("-> a2r_std::http::UploadReceipt"), "{rs}");
+    assert!(rs.contains("req: a2r_std::http::UploadRequest"), "{rs}");
+    assert!(rs.contains(r#"a2r_std::http::upload_receive(req, "r", "s""#), "{rs}");
+    assert!(rs.contains(r#"a2r_std::http::upload_commit(session, "x.bin").await"#), "{rs}");
+    assert!(!rs.contains("impl Upload"), "类型不误判 trait: {rs}");
+}

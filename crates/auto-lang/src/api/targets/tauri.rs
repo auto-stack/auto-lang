@@ -146,6 +146,33 @@ impl TauriGenerator {
         };
         lines.push(signature);
 
+        // PLAN-730 T-06: 上传端点不经 Tauri IPC——UploadRequest 是宿主注入
+        // 能力（不可序列化句柄；明确 Unsupported 诊断 + HTTP URL 指引）。
+        let is_upload_endpoint = endpoint
+            .params
+            .iter()
+            .any(|p| p.ty.contains("UploadRequest"))
+            || endpoint.return_type.contains("UploadReceipt");
+        if is_upload_endpoint {
+            lines.clear();
+            lines.push(format!(
+                "// PLAN-730: upload endpoint `{}` — Tauri IPC is unsupported for uploads;",
+                endpoint.fn_name
+            ));
+            lines.push("// call the HTTP URL directly instead.".to_string());
+            lines.push("#[tauri::command]".to_string());
+            lines.push(format!(
+                "pub fn {}() -> Result<String, String> {{",
+                endpoint.fn_name
+            ));
+            lines.push(format!(
+                "{}Err(\"PLAN-730: upload endpoint `{}` requires HTTP transport; call the HTTP URL directly instead of the Tauri IPC bridge\".to_string())",
+                self.indent, endpoint.fn_name
+            ));
+            lines.push("}".to_string());
+            return lines.join("\n");
+        }
+
         // PLAN-729 T-05: 文件端点不经 Tauri IPC——描述符不是可序列化数据
         // （明确 Unsupported 诊断 + 改走 HTTP URL 指引，不 opaque 当成功数据）。
         if endpoint.return_type.contains("FileResponse") {

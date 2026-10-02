@@ -885,9 +885,12 @@ fn generate_cargo_toml(package_name: &str, has_sse: bool, has_db: bool) -> Strin
     } else {
         package_name.to_string()
     };
+    // PLAN-730 T-06: futures 无条件依赖——上传 glue（Request body 流投影）
+    // 与 SSE 共用；SSE 独占 async-stream。
     let sse_deps = if has_sse { "
-async-stream = \"0.3\"
-futures = \"0.3\"" } else { "" };
+async-stream = \"0.3\"" } else { "" };
+    let futures_deps = "
+futures = \"0.3\"";
     // Plan musk-022 CRUD 扩展: a2r 全局变量转译用 once_cell::Lazy.
     // Plan 405: db.at 字符串操作(+ 拼接/contains)会让 a2r 生成 `use a2r_std`
     // (StringBuilder 等), 而 a2r_std 在 auto-lang crate 里 → 必须加 auto-lang
@@ -910,9 +913,9 @@ tokio = {{ version = "1", features = ["full"] }}
 tokio-util = {{ version = "0.7", features = ["io"] }}
 serde.workspace = true
 serde_json.workspace = true
-tower-http.workspace = true{}{}{}
+tower-http.workspace = true{}{}{}{}
 "#,
-        safe_name, runtime_deps, db_deps, sse_deps
+        safe_name, runtime_deps, db_deps, futures_deps, sse_deps
     )
 }
 
@@ -1067,6 +1070,9 @@ fn endpoint_body_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
     let method = endpoint.method();
     endpoint.params.iter().filter(|p| {
         if is_meta_param(p) { return false; }
+        // PLAN-730 T-06: UploadRequest 是宿主注入参数（Request 提取器），
+        // 不进 JSON body 结构/绑定。
+        if p.ty.contains("UploadRequest") { return false; }
         let is_path = path.contains(&format!(":{}", p.name));
         let is_query = !is_path && matches!(method.as_str(), "GET" | "DELETE");
         !is_path && !is_query
@@ -1433,6 +1439,11 @@ fn try_transpile_body(
     use auto_lang::ast::Type;
 
     let mut trans = RustTrans::new(AutoStr::from("api_handler"));
+    // PLAN-730 T-06: `~T`（Future<T>）handler 的内联体在 async fn 内执行
+    // ——await 点（upload_receive/commit/reject）合法。
+    if endpoint.return_type.contains("Future<") {
+        trans.set_async_ctx(true);
+    }
     for api_type in &api_module.types {
         let fields: Vec<(&str, Type)> = api_type
             .fields
@@ -1511,6 +1522,66 @@ fn rewrite_inline_runtime_names(source: &str) -> String {
 
 /// PLAN-729 T-05: 文件端点尾 return 包装——`return X;` → 宿主 serve await
 /// （非 return 行原样；JsonResponse 包装不适用文件面）。
+/// PLAN-730 T-06: 上传体行包装——尾 `return X;` → `return __upload_reply(X);`
+/// （收据 → 真实 status + JSON；非 return 行原样）。裸返回注入参数本身 =
+/// 契约缺口诊断（未 receive 即返回）。
+/// PLAN-730 T-06: 上传端点 glue——Request → UploadRequest 投影（版本无关
+/// UploadBodyStream；不预读）+ 收据 → 真实 status + JSON（生成 crate 的
+/// axum 版本与 auto-lang 不同也成立：facade 类型不含 axum）。
+const UPLOAD_GLUE: &str = r#"// PLAN-730: upload ingress glue (a2r_std facade -> auto_lang host service)
+fn __upload_request(
+    method: &axum::http::Method,
+    headers: &axum::http::HeaderMap,
+    request: axum::extract::Request,
+) -> a2r_std::http::UploadRequest {
+    use futures::StreamExt;
+    let (parts, body) = request.into_parts();
+    let hdrs: Vec<(String, String)> = headers
+        .iter()
+        .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
+        .collect();
+    let stream = body.into_data_stream().map(|r| {
+        r.map(|b| b.to_vec())
+            .map_err(|e| std::io::Error::other(e.to_string()))
+    });
+    a2r_std::http::upload_request_from_parts(
+        method.as_str(),
+        parts.uri.to_string().as_str(),
+        hdrs,
+        Box::pin(stream),
+    )
+}
+
+fn __upload_reply(receipt: a2r_std::http::UploadReceipt) -> axum::response::Response {
+    axum::response::Response::builder()
+        .status(axum::http::StatusCode::from_u16(receipt.status).unwrap_or(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        ))
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(receipt.json))
+        .unwrap_or_else(|_| {
+            axum::response::Response::builder()
+                .status(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(axum::body::Body::empty())
+                .expect("fallback response")
+        })
+}
+"#;
+
+fn wrap_upload_return(line: &str, upload_param: &str) -> String {
+    let trimmed = line.trim_start();
+    if let Some(rest) = trimmed.strip_prefix("return ") {
+        if let Some(expr) = rest.strip_suffix(';') {
+            let expr = expr.trim();
+            if expr == upload_param {
+                return "    return __upload_reply(a2r_std::http::upload_error(500, \"upload handler returned the request without receiving\"));".to_string();
+            }
+            return format!("    return __upload_reply({expr});");
+        }
+    }
+    line.to_string()
+}
+
 fn wrap_file_return(line: &str) -> String {
     let trimmed = line.trim_start();
     let Some(value) = trimmed.strip_prefix("return ") else {
@@ -2379,6 +2450,16 @@ fn generate_api_rs(
         lines.push("".to_string());
     }
 
+    // PLAN-730 T-06: 上传端点 glue——Request → UploadRequest + 收据回复。
+    if api_module
+        .endpoints
+        .iter()
+        .any(|e| e.params.iter().any(|p| p.ty.contains("UploadRequest")))
+    {
+        lines.extend(UPLOAD_GLUE.lines().map(|l| l.to_string()));
+        lines.push("".to_string());
+    }
+
     // Determine primary type and generate Db type alias
     let primary_type = match primary_type_name_pub(api_module) {
         Some(t) => t,
@@ -2750,6 +2831,111 @@ fn generate_api_rs(
                     lines.push(format!(
                         "    return file_response_reply_missing({:?}).await;",
                         format!("api.at handler `{}` body failed to transpile: {}", fn_name, detail)
+                    ));
+                }
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            continue;
+        }
+
+        // PLAN-730 T-06: 上传端点——参数含 `UploadRequest` 的 #[api] handler
+        // 生成真实上传 adapter：body 提取器（Request）置最后、不预读；宿主
+        // executor 接收/提交单源（a2r_std facade → auto_lang 服务）；收据
+        // 映射真实 status + JSON。转译失败 = 诊断 500（不落 CRUD 模板）。
+        let upload_param = endpoint
+            .params
+            .iter()
+            .find(|p| p.ty.contains("UploadRequest"))
+            .cloned();
+        if let Some(up_param) = upload_param {
+            if !matches!(method.as_str(), "POST" | "PUT") {
+                eprintln!(
+                    "  ⚠ PLAN-730 upload endpoint `{} {}` ({}) declares UploadRequest but uses {} — uploads are POST/PUT only; emitting 405",
+                    method, endpoint.path(), fn_name, method
+                );
+                lines.push(format!(
+                    "pub async fn {}() -> axum::response::Response {{",
+                    fn_name
+                ));
+                lines.push("    axum::response::Response::builder()".to_string());
+                lines.push("        .status(axum::http::StatusCode::METHOD_NOT_ALLOWED)".to_string());
+                lines.push("        .header(\"allow\", \"POST, PUT\")".to_string());
+                lines.push("        .header(\"content-type\", \"application/json\")".to_string());
+                lines.push("        .body(axum::body::Body::from(br#\"{\\\"error\\\":\\\"upload endpoints support POST/PUT only\\\"}\"#.to_vec()))".to_string());
+                lines.push("        .unwrap()".to_string());
+                lines.push("}".to_string());
+                lines.push("".to_string());
+                continue;
+            }
+            // 提取器序：method/headers（FromRequestParts）→ path 参数 →
+            // Request（body 最后——axum 约定；不预读、不过早鉴权）。
+            let mut up_params: Vec<String> = vec![
+                "method: axum::http::Method".to_string(),
+                "headers: axum::http::HeaderMap".to_string(),
+            ];
+            for p in &endpoint.params {
+                if p.ty.contains("UploadRequest") || is_meta_param(p) {
+                    continue;
+                }
+                if endpoint.path().contains(&format!(":{}", p.name)) {
+                    let ty = match p.ty.trim() {
+                        "int" | "i64" => "i64",
+                        "str" | "String" => "String",
+                        other => other,
+                    };
+                    up_params.push(format!("{}: axum::extract::Path<{}>", p.name, ty));
+                }
+            }
+            up_params.push("request: axum::extract::Request".to_string());
+            lines.push(format!(
+                "pub async fn {}({}) -> axum::response::Response {{",
+                fn_name,
+                up_params.join(", ")
+            ));
+            lines.push(format!(
+                "    let {}: a2r_std::http::UploadRequest = __upload_request(&method, &headers, request);",
+                up_param.name
+            ));
+            let body_src = endpoint
+                .body
+                .as_ref()
+                .and_then(|b| crate::api_gen::try_transpile_body(b, endpoint, api_module).ok());
+            match body_src {
+                Some(stmts) => {
+                    if has_meta {
+                        lines.push("    let meta: String = meta_json(&headers);".to_string());
+                    }
+                    append_inline_param_bindings(&mut lines, endpoint);
+                    for source_line in &stmts {
+                        let line = rewrite_inline_runtime_names(source_line);
+                        lines.push(wrap_upload_return(&line, &up_param.name));
+                    }
+                    if !stmts.iter().any(|l| l.trim_start().starts_with("return")) {
+                        lines.push(
+                            "    return __upload_reply(a2r_std::http::upload_error(500, \"upload handler body has no return\"));".to_string(),
+                        );
+                    }
+                }
+                None => {
+                    let detail = match endpoint.body.as_ref() {
+                        Some(b) => match crate::api_gen::try_transpile_body(b, endpoint, api_module)
+                        {
+                            Err(e) => e,
+                            Ok(_) => "empty body".to_string(),
+                        },
+                        None => "no body captured".to_string(),
+                    };
+                    eprintln!(
+                        "  ⚠ PLAN-730 upload endpoint `{}` a2r body failed ({}); emitting diagnostic 500 (no template fallback)",
+                        fn_name, detail
+                    );
+                    lines.push(format!(
+                        "    return __upload_reply(a2r_std::http::upload_error(500, {:?}));",
+                        format!(
+                            "api.at handler `{}` body failed to transpile: {}",
+                            fn_name, detail
+                        )
                     ));
                 }
             }
@@ -3477,6 +3663,9 @@ fn generate_main_rs(
         s.push_str("use tower_http::cors::{CorsLayer, Any};\n\n");
         s.push_str("#[tokio::main]\n");
         s.push_str("async fn main() {\n");
+        // PLAN-730 T-06: 上传宿主 executor 安装（幂等——无上传端点时
+        // 轻量 no-op 面；a2r facade 的 receive/commit/reject 经此执行）。
+        s.push_str("    auto_lang::http_upload_service::install_upload_executor_service();\n");
         // Resolve the bind port from AUTO_HTTP_PORT (default 8080) so multiple
         // `auto run` instances — or other services sharing the host — can coexist.
         s.push_str("    let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")\n");
@@ -3516,6 +3705,9 @@ fn generate_main_rs(
         s.push_str("use tower_http::cors::{CorsLayer, Any};\n\n");
         s.push_str("#[tokio::main]\n");
         s.push_str("async fn main() {\n");
+        // PLAN-730 T-06: 上传宿主 executor 安装（幂等——无上传端点时
+        // 轻量 no-op 面；a2r facade 的 receive/commit/reject 经此执行）。
+        s.push_str("    auto_lang::http_upload_service::install_upload_executor_service();\n");
         s.push_str("    let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")\n");
         s.push_str("        .ok()\n");
         s.push_str("        .and_then(|v| v.trim().parse().ok())\n");
@@ -3949,6 +4141,145 @@ pub fn listusers() []User {
     // 真实生成产物（api.rs/main.rs/types.rs/Cargo.toml）→ 临时 crate →
     // cargo run（共享 worktree target 缓存）→ 真 TCP wire 断言。
     // =======================================================================
+// ===========================================================================
+// PLAN-730 T-06: 上传端点生成（字符串锁 + TS/Tauri 形态 + 真实编译运行 e2e）
+// ===========================================================================
+
+    /// 上传端点生成：Request 提取器置最后、宿主 receive/commit await 直发、
+    /// 收据真实 status；main 安装 executor。
+    #[test]
+    fn test_plan730_upload_endpoint_generation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type UploadMeta = { name: str }
+
+#[api(method = "POST", path = "/api/uploads")]
+pub fn upload(req UploadRequest) ~UploadReceipt {
+    let root = env.get("UPLOADS_ROOT")
+    let staging = env.get("UPLOADS_STAGING")
+    let session = http.upload_receive(req, root, staging, "{\"mode\":\"multipart\",\"text_fields\":[\"note\"]}")
+    let meta = http.upload_metadata(session)
+    if meta.contains("{\"state\":\"failed\"") {
+        return http.upload_reject(session, 0, "receive failed")
+    }
+    return http.upload_commit(session, "mp/blob.bin")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let api_rs = generate_api_rs(&module, None, false);
+        // 提取器：method/headers 先、Request 最后（不预读）——锁完整签名行
+        //（glue 块也含同名类型，不单独寻位）。
+        assert!(
+            api_rs.contains("pub async fn upload(method: axum::http::Method, headers: axum::http::HeaderMap, request: axum::extract::Request)"),
+            "Request extractor last: {api_rs}"
+        );
+        // 注入参数构造 + 收据回复 + 转译体 await 直发。
+        assert!(api_rs.contains("__upload_request(&method, &headers, request)"), "{api_rs}");
+        assert!(api_rs.contains("__upload_reply("), "{api_rs}");
+        assert!(api_rs.contains("a2r_std::http::upload_receive(req, root, staging"), "{api_rs}");
+        assert!(api_rs.contains(".as_str()).await;"), "await emission: {api_rs}");
+        assert!(api_rs.contains("a2r_std::http::upload_commit(session"), "{api_rs}");
+        // 不落 CRUD 模板。
+        assert!(!api_rs.contains("JsonResponse::"), "no CRUD template: {api_rs}");
+        let main = generate_main_rs(&module, None, false, &[], false);
+        assert!(
+            main.contains("install_upload_executor_service();"),
+            "main installs host executor: {main}"
+        );
+        assert!(main.contains("axum::routing::post(api::upload)"), "{main}");
+    }
+
+    /// 非 POST/PUT → 405 诊断 handler（与 VM 腿同语义）。
+    #[test]
+    fn test_plan730_upload_non_post_405() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type UploadMeta = { name: str }
+
+#[api(method = "GET", path = "/api/up")]
+pub fn up(req UploadRequest) ~UploadReceipt {
+    return http.upload_error(500, "x")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let api_rs = generate_api_rs(&module, None, false);
+        assert!(api_rs.contains("METHOD_NOT_ALLOWED"), "{api_rs}");
+        assert!(api_rs.contains("\"allow\", \"POST, PUT\""), "{api_rs}");
+    }
+
+    /// TS 上传方法：FormData 直传（无 JSON.stringify/无 Content-Type 头）、
+    /// 注入参数删除、收据 JSON 返回。
+    #[test]
+    fn test_plan730_upload_ts_formdata() {
+        use auto_lang::api::TypeScriptGenerator;
+        use auto_lang::api::ApiExtractor;
+        let api = r#"
+pub type UploadMeta = { name: str }
+
+#[api(method = "POST", path = "/api/uploads")]
+pub fn upload(req UploadRequest) ~UploadReceipt {
+    return http.upload_error(201, "x")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let gen = TypeScriptGenerator::new();
+        let ts = gen.generate_simple_client(&module);
+        assert!(ts.contains("body: FormData"), "FormData param: {ts}");
+        assert!(ts.contains("body,"), "fetch body passthrough: {ts}");
+        assert!(!ts.contains("JSON.stringify"), "no JSON body: {ts}");
+        assert!(
+            !ts.contains("'Content-Type': 'application/json'"),
+            "browser sets multipart boundary: {ts}"
+        );
+        assert!(!ts.contains("req:"), "injected param removed: {ts}");
+        assert!(ts.contains("return response.json();"), "receipt JSON: {ts}");
+    }
+
+    /// Tauri IPC：上传端点 Unsupported 诊断（生成串锁）。
+    #[test]
+    fn test_plan730_tauri_upload_unsupported() {
+        use auto_lang::api::TauriGenerator;
+        let api = r#"
+pub type UploadMeta = { name: str }
+
+#[api(method = "POST", path = "/api/uploads")]
+pub fn upload(req UploadRequest) ~UploadReceipt {
+    return http.upload_error(201, "x")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let gen = TauriGenerator::new();
+        use auto_lang::api::TargetGenerator as _;
+        let cmds = gen.generate(&module);
+        assert!(
+            cmds.contains("PLAN-730: upload endpoint `upload` requires HTTP transport"),
+            "unsupported diagnostic: {cmds}"
+        );
+        assert!(!cmds.contains("invoke_upload"), "{cmds}");
+    }
+
+    /// 转译失败 → 诊断 500（不落 CRUD 模板）。
+    #[test]
+    fn test_plan730_upload_transpile_failure_diagnostic() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type UploadMeta = { name: str }
+
+#[api(method = "POST", path = "/api/broken")]
+pub fn broken(req UploadRequest) UploadReceipt {
+    let session = http.upload_receive(req, "r", "s", "{\"mode\":\"raw\"}")
+    return http.upload_error(500, "x")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let api_rs = generate_api_rs(&module, None, false);
+        assert!(
+            api_rs.contains("upload_error(500, \"api.at handler `broken` body failed to transpile"),
+            "diagnostic 500: {api_rs}"
+        );
+        assert!(!api_rs.contains("JsonResponse::"), "{api_rs}");
+    }
+
     #[cfg(feature = "test-http-e2e")]
     mod plan729_e2e {
         use super::*;
@@ -4066,6 +4397,7 @@ edition = "2021"
 axum = "0.7"
 tokio = {{ version = "1", features = ["full"] }}
 tokio-util = {{ version = "0.7", features = ["io"] }}
+futures = "0.3"
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 tower-http = {{ version = "0.5", features = ["cors"] }}
@@ -4216,6 +4548,337 @@ pub fn download_async(name str) ~FileResponse {{
             }
         }
     }
+
+    // =======================================================================
+    // PLAN-730 T-06 e2e：生成 Rust 服务真实编译运行（上传 wire 矩阵）。
+    // 真实生成产物（api.rs/main.rs/types.rs/Cargo.toml）→ 临时 crate →
+    // cargo run（共享 worktree target 缓存）→ 真 TCP wire 断言。
+    // =======================================================================
+    #[cfg(feature = "test-http-e2e")]
+    mod plan730_e2e {
+        use super::*;
+        use std::io::{Read, Write};
+        use std::net::TcpStream;
+        use std::time::Duration;
+
+        const PORT: u16 = 18976;
+
+        fn temp_roots(tag: &str) -> std::path::PathBuf {
+            let dir =
+                std::env::temp_dir().join(format!("plan730-gen-{}-{}", tag, std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(dir.join("public/mp")).unwrap();
+            std::fs::create_dir_all(dir.join("public/raw")).unwrap();
+            std::fs::create_dir_all(dir.join("private-staging")).unwrap();
+            dir
+        }
+
+        fn upload_program(root: &str, staging: &str) -> String {
+            format!(
+                r#"
+pub type UploadMeta = {{ name: str }}
+
+#[api(method = "POST", path = "/api/uploads/mp")]
+pub fn upload_mp(req UploadRequest) ~UploadReceipt {{
+    let root = env.get("PLAN730_PUBLIC")
+    let staging = env.get("PLAN730_STAGING")
+    let session = http.upload_receive(req, root, staging, "{{\"mode\":\"multipart\",\"text_fields\":[\"note\"]}}")
+    let meta = http.upload_metadata(session)
+    if meta.contains("{{\"state\":\"failed\"") {{
+        return http.upload_reject(session, 0, "receive failed")
+    }}
+    if meta.contains("\"value\":\"deny\"") {{
+        return http.upload_reject(session, 422, "business check failed")
+    }}
+    return http.upload_commit(session, "mp/blob.bin")
+}}
+
+#[api(method = "POST", path = "/api/uploads/raw")]
+pub fn upload_raw(req UploadRequest) ~UploadReceipt {{
+    let root = env.get("PLAN730_PUBLIC")
+    let staging = env.get("PLAN730_STAGING")
+    let session = http.upload_receive(req, root, staging, "{{\"mode\":\"raw\"}}")
+    let meta = http.upload_metadata(session)
+    if meta.contains("{{\"state\":\"failed\"") {{
+        return http.upload_reject(session, 0, "receive failed")
+    }}
+    return http.upload_commit(session, "raw/data.bin")
+}}
+
+#[api(method = "GET", path = "/api/files/:name")]
+pub fn download(name str) FileResponse {{
+    let root = env.get("PLAN730_PUBLIC")
+    return http.file_response(root, "mp/" + name, "{{}}")
+}}
+"#,
+            )
+        }
+
+        fn multipart_body(boundary: &str, note: &str, file: &[u8]) -> Vec<u8> {
+            let mut b = Vec::new();
+            b.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+            b.extend_from_slice(b"Content-Disposition: form-data; name=\"note\"\r\n\r\n");
+            b.extend_from_slice(note.as_bytes());
+            b.extend_from_slice(b"\r\n");
+            b.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+            b.extend_from_slice(
+                b"Content-Disposition: form-data; name=\"file\"; filename=\"blob.bin\"\r\n\r\n",
+            );
+            b.extend_from_slice(file);
+            b.extend_from_slice(format!("\r\n--{}--\r\n", boundary).as_bytes());
+            b
+        }
+
+        fn raw_request_with_body(
+            port: u16,
+            method: &str,
+            path: &str,
+            headers: &[(&str, &str)],
+            body: &[u8],
+        ) -> (u16, Vec<(String, String)>, Vec<u8>) {
+            let mut stream = None;
+            for _ in 0..100 {
+                if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
+                    stream = Some(s);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let mut stream = stream.expect("connect");
+            stream.set_read_timeout(Some(Duration::from_secs(60))).ok();
+            let mut req =
+                format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n");
+            for (k, v) in headers {
+                req.push_str(&format!("{k}: {v}\r\n"));
+            }
+            req.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
+            stream.write_all(req.as_bytes()).unwrap();
+            stream.write_all(body).unwrap();
+            let _ = stream.flush();
+            // 读响应（与 raw_request 同形）。
+            let mut raw = Vec::new();
+            let mut buf = [0u8; 65536];
+            let header_end = loop {
+                let n = stream.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break None;
+                }
+                raw.extend_from_slice(&buf[..n]);
+                if let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break Some(pos + 4);
+                }
+            };
+            let header_end = header_end.expect("response headers");
+            let head = String::from_utf8_lossy(&raw[..header_end]).into_owned();
+            let mut lines = head.split("\r\n");
+            let status: u16 = lines
+                .next()
+                .unwrap_or_default()
+                .split_whitespace()
+                .nth(1)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let mut hdrs = Vec::new();
+            for line in lines {
+                if let Some((k, v)) = line.split_once(':') {
+                    hdrs.push((k.trim().to_ascii_lowercase(), v.trim().to_string()));
+                }
+            }
+            let cl: usize = hdrs
+                .iter()
+                .find(|(k, _)| k == "content-length")
+                .and_then(|(_, v)| v.parse().ok())
+                .unwrap_or(0);
+            let mut resp_body = raw[header_end..].to_vec();
+            while resp_body.len() < cl {
+                let n = stream.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                resp_body.extend_from_slice(&buf[..n]);
+            }
+            resp_body.truncate(cl);
+            (status, hdrs, resp_body)
+        }
+
+        /// 生成 + 起服（plan729 spawn 同形；crate 名区分以隔离产物；
+        /// `roots` = 预建 public/private-staging 目录——env 指向其）。
+        fn spawn_upload_server(api_at: &str, port: u16, roots: &std::path::Path) -> std::process::Child {
+            let module = try_full_parse(api_at).expect("full parse");
+            let api_rs = generate_api_rs(&module, None, false);
+            let main_rs = generate_main_rs(&module, None, false, &[], false);
+            let types_rs = generate_types_rs(&module);
+            let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let repo_root = manifest.ancestors().nth(2).unwrap().to_path_buf();
+            let dir = std::env::temp_dir().join(format!("plan730-crate-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            let src = dir.join("src");
+            std::fs::create_dir_all(&src).unwrap();
+            std::fs::write(
+                dir.join("Cargo.toml"),
+                format!(
+                    r#"[package]
+name = "plan730-gen-e2e"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+tokio = {{ version = "1", features = ["full"] }}
+tokio-util = {{ version = "0.7", features = ["io"] }}
+futures = "0.3"
+serde = {{ version = "1", features = ["derive"] }}
+serde_json = "1"
+tower-http = {{ version = "0.5", features = ["cors"] }}
+auto-lang = {{ path = {auto_lang:?}, features = ["ui", "image-pipeline"] }}
+a2r-std = {{ path = {a2r_std:?} }}
+
+[[bin]]
+name = "plan730-gen-e2e"
+path = "src/main.rs"
+
+[workspace]
+"#,
+                    auto_lang = repo_root.join("crates/auto-lang"),
+                    a2r_std = repo_root.join("crates/a2r-std"),
+                ),
+            )
+            .unwrap();
+            std::fs::write(src.join("api.rs"), &api_rs).unwrap();
+            std::fs::write(src.join("main.rs"), &main_rs).unwrap();
+            std::fs::write(src.join("types.rs"), &types_rs).unwrap();
+            let log_path = dir.join("server.log");
+            let log = std::fs::File::create(&log_path).unwrap();
+            let target = repo_root.join("target");
+            let mut child = std::process::Command::new("cargo")
+                .args(["run", "--bin", "plan730-gen-e2e"])
+                .env("AUTO_HTTP_PORT", port.to_string())
+                .env("CARGO_TARGET_DIR", &target)
+                .env("PLAN730_PUBLIC", roots.join("public"))
+                .env("PLAN730_STAGING", roots.join("private-staging"))
+                .current_dir(&dir)
+                .stdout(log.try_clone().expect("stdout log"))
+                .stderr(log)
+                .spawn()
+                .expect("cargo run spawn");
+            for _ in 0..450 {
+                if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                    return child;
+                }
+                if let Ok(Some(_)) = child.try_wait() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            let log_text = std::fs::read_to_string(&log_path).unwrap_or_default();
+            let _ = child.kill();
+            panic!(
+                "generated upload server did not listen on {port}; log tail:\n{}",
+                log_text.lines().rev().take(60).collect::<Vec<_>>().join("\n")
+            );
+        }
+
+        /// 生成腿上传 wire：multipart 201 + 字节一致 + 729 下载互通 + 冲突
+        /// 409 + 业务拒绝 422 + raw + 404 零落盘。
+        #[test]
+        fn http_e2e_plan730_generated_upload_matrix() {
+            let roots = temp_roots("wire");
+            let root = roots.join("public");
+            let staging = roots.join("private-staging");
+            let api = upload_program(
+                &root.to_string_lossy(),
+                &staging.to_string_lossy(),
+            );
+            let mut child = spawn_upload_server(&api, PORT, &roots);
+            let result = std::panic::catch_unwind(|| {
+                let payload: Vec<u8> = (0..2usize * 1024 * 1024).map(|i| (i % 251) as u8).collect();
+                let body = multipart_body("G730", "hello", &payload);
+                let (s, _h, b) = raw_request_with_body(
+                    PORT,
+                    "POST",
+                    "/api/uploads/mp",
+                    &[("Content-Type", "multipart/form-data; boundary=G730")],
+                    &body,
+                );
+                assert_eq!(s, 201, "{}", String::from_utf8_lossy(&b));
+                let text = String::from_utf8_lossy(&b).to_string();
+                assert!(text.contains("\"ok\":true"), "{text}");
+                assert!(text.contains("\"size\":\"2097152\""), "{text}");
+                assert!(text.contains("\"path\":\"mp/blob.bin\""), "{text}");
+                assert_eq!(std::fs::read(root.join("mp/blob.bin")).unwrap(), payload);
+                // staging 清零。
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                while std::fs::read_dir(&staging).unwrap().next().is_some()
+                    && std::time::Instant::now() < deadline
+                {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                assert!(std::fs::read_dir(&staging).unwrap().next().is_none());
+                // 729 下载路由互通（同字节）。
+                let (s2, _h2, dl) = raw_request_with_body(PORT, "GET", "/api/files/blob.bin", &[], b"");
+                assert_eq!(s2, 200);
+                assert_eq!(dl, payload, "generated download bytes identical");
+                // 同名冲突 409（原文件不变）。
+                let body2 = multipart_body("G730", "again", b"second");
+                let (s3, _h3, b3) = raw_request_with_body(
+                    PORT,
+                    "POST",
+                    "/api/uploads/mp",
+                    &[("Content-Type", "multipart/form-data; boundary=G730")],
+                    &body2,
+                );
+                assert_eq!(s3, 409, "{}", String::from_utf8_lossy(&b3));
+                assert_eq!(std::fs::read(root.join("mp/blob.bin")).unwrap(), payload);
+                // 业务拒绝（note=deny → 422，无公开文件、staging 清零）。
+                let deny = multipart_body("G730", "deny", b"NOPE");
+                let (s4, _h4, b4) = raw_request_with_body(
+                    PORT,
+                    "POST",
+                    "/api/uploads/mp",
+                    &[("Content-Type", "multipart/form-data; boundary=G730")],
+                    &deny,
+                );
+                assert_eq!(s4, 422, "{}", String::from_utf8_lossy(&b4));
+                // raw 上传。
+                let (s5, _h5, b5) = raw_request_with_body(
+                    PORT,
+                    "POST",
+                    "/api/uploads/raw",
+                    &[("Content-Type", "application/octet-stream")],
+                    b"GEN-RAW-PAYLOAD",
+                );
+                assert_eq!(s5, 201, "{}", String::from_utf8_lossy(&b5));
+                assert_eq!(
+                    std::fs::read(root.join("raw/data.bin")).unwrap(),
+                    b"GEN-RAW-PAYLOAD"
+                );
+                // 404 零落盘（staging 保持清零）。
+                let nf = multipart_body("G730", "x", b"SHOULD-NOT-LAND");
+                let (s6, _h6, _b6) = raw_request_with_body(
+                    PORT,
+                    "POST",
+                    "/api/nope",
+                    &[("Content-Type", "multipart/form-data; boundary=G730")],
+                    &nf,
+                );
+                assert_eq!(s6, 404);
+                assert!(
+                    std::fs::read_dir(&staging).unwrap().next().is_none(),
+                    "404 stages nothing"
+                );
+            });
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_dir_all(&roots);
+            let _ = std::fs::remove_dir_all(
+                std::env::temp_dir().join(format!("plan730-crate-{}", std::process::id())),
+            );
+            if let Err(panic) = result {
+                std::panic::resume_unwind(panic);
+            }
+        }
+    }
+
 
     /// PLAN-729 R1 [G-01]：异步 `~FileResponse`（Future<FileResponse>）端点——
     /// 同一文件分支（Response 签名 + 宿主 serve；类型门按 contains 命中）。

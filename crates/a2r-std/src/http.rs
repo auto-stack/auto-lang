@@ -30,7 +30,8 @@ pub use crate::http::server_file::{
 // `auto_lang::http_upload_service`，依赖方向不变）。
 pub use crate::http::server_upload::{
     cancel_upload_session, failed_session, install_upload_executor,
-    parse_upload_receive_options, upload_commit, upload_error, upload_metadata_json,
+    parse_upload_receive_options, upload_commit, upload_error, upload_metadata,
+    upload_metadata_json,
     upload_receive, upload_reject, upload_request_from_parts, UploadBodyStream, UploadErrorKind,
     UploadExecutor, UploadPhase, UploadPhaseHook, UploadReceiveMode, UploadReceiveOptions,
     UploadReceivedMeta, UploadRequest, UploadReceipt, UploadServeLimits, UploadSession,

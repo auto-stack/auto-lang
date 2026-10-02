@@ -237,6 +237,54 @@ pub fn download(name str) FileResponse {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// PLAN-730 T-06：上传端点不经进程内 back-proxy——注入能力非可序列化
+/// 数据（501 + HTTP URL 指引；与 729 文件端点同形）。
+#[test]
+fn http_e2e_back_proxy_upload_endpoint_rejected_501() {
+    let dir = std::env::temp_dir().join(format!(
+        "p730-back-proxy-upload-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("fixture dir");
+    std::fs::write(
+        dir.join("api.at"),
+        r#"
+pub type UploadMeta = { name: str }
+
+#[api(method = "POST", path = "/api/uploads")]
+pub fn upload(req UploadRequest) ~UploadReceipt {
+    return http.upload_error(500, "unreachable")
+}
+"#,
+    )
+    .expect("write api.at");
+    let config = BackProxyConfig {
+        lazy_sessions: false,
+        port: ephemeral_port(),
+        sessions: vec![SessionSpec {
+            app_id: "fixture".to_string(),
+            back_entry: dir.join("api.at"),
+        }],
+        #[cfg(feature = "ui")]
+        native_media: Vec::new(),
+        #[cfg(feature = "image-pipeline")]
+        native_photos: Vec::new(),
+    };
+    let proxy = start(config).expect("start back proxy");
+    let (status, body) = http_request(proxy.port, "POST", "/apps/fixture/api/uploads", None);
+    assert_eq!(status, 501, "上传端点 501，body: {body}");
+    assert!(
+        body.contains("requires HTTP transport"),
+        "HTTP URL 指引: {body}"
+    );
+    assert!(
+        body.contains("upload"),
+        "接口名在诊断中: {body}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// 404 面：未知 app / 未知路由 / 前缀缺失。
 #[test]
 fn http_e2e_back_proxy_not_found_faces() {

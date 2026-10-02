@@ -2,7 +2,7 @@
 //!
 //! Plan 102 Phase 5.3: Generate TypeScript types and API client from API definitions
 
-use crate::api::{ApiEndpoint, ApiModule, ApiType};
+use crate::api::{ApiEndpoint, ApiModule, ApiParam, ApiType};
 use super::TargetGenerator;
 
 /// TypeScript code generator
@@ -35,6 +35,15 @@ impl TypeScriptGenerator {
         // 原生 Response（fetch 返回原样交付，不 .json()）。
         if trimmed.contains("FileResponse") {
             return "Response".to_string();
+        }
+
+        // PLAN-730 T-06: 上传三类型 → 收据 JSON（动态形状；UploadRequest 是
+        // 注入参数——签名侧被 FormData 替换，此映射兜 interface/返回位）。
+        if trimmed.contains("UploadReceipt")
+            || trimmed.contains("UploadSession")
+            || trimmed.contains("UploadRequest")
+        {
+            return "any".to_string();
         }
 
         // Handle optional types (prefix ?T, e.g. ?Note, ?int)
@@ -295,9 +304,30 @@ export type { IApi };
         let method = endpoint.method().to_uppercase();
         let path = endpoint.path();
 
-        let params: Vec<String> = endpoint.params.iter()
-            .map(|p| format!("{}: {}", p.name, self.to_ts_type(&p.ty)))
+        // PLAN-730 T-06: 上传端点——注入参数（UploadRequest）从签名删除，
+        // 新增 `body: FormData` 形参（fetch 直传——浏览器生成 multipart
+        // boundary；绝不 JSON.stringify(FormData)）。返回收据 JSON。
+        let upload_param_removed: Vec<&ApiParam> = endpoint
+            .params
+            .iter()
+            .filter(|p| !p.ty.contains("UploadRequest"))
             .collect();
+        let is_upload_endpoint =
+            endpoint.params.len() != upload_param_removed.len();
+        let params: Vec<String> = if is_upload_endpoint {
+            let mut sig: Vec<String> = upload_param_removed
+                .iter()
+                .map(|p| format!("{}: {}", p.name, self.to_ts_type(&p.ty)))
+                .collect();
+            sig.push("body: FormData".to_string());
+            sig
+        } else {
+            endpoint
+                .params
+                .iter()
+                .map(|p| format!("{}: {}", p.name, self.to_ts_type(&p.ty)))
+                .collect()
+        };
         let param_list = params.join(", ");
 
         let return_type = self.to_ts_type(&endpoint.return_type);
@@ -363,9 +393,15 @@ export type { IApi };
 
         lines.push(format!("{}const response = await fetch({}, {{", self.indent, url));
         lines.push(format!("{}{}method: '{}',", self.indent, self.indent, method));
-        lines.push(format!("{}{}headers: {{ 'Content-Type': 'application/json' }},", self.indent, self.indent));
+        if !is_upload_endpoint {
+            lines.push(format!("{}{}headers: {{ 'Content-Type': 'application/json' }},", self.indent, self.indent));
+        }
 
-        if method != "GET" && method != "DELETE" && !endpoint.params.is_empty() {
+        // PLAN-730 T-06: 上传端点 body = FormData 直传（fetch 不设
+        // Content-Type——boundary 由浏览器注入）。
+        if is_upload_endpoint {
+            lines.push(format!("{}{}body,", self.indent, self.indent));
+        } else if method != "GET" && method != "DELETE" && !endpoint.params.is_empty() {
             // Only include non-path params in the JSON body
             let body_param_names: Vec<&str> = endpoint.params.iter()
                 .filter(|p| !path.contains(&format!(":{}", p.name)))
@@ -380,12 +416,19 @@ export type { IApi };
         }
 
         lines.push(format!("{}}});", self.indent));
-        lines.push(format!("{}if (!response.ok) throw new Error(`HTTP ${{response.status}}`);", self.indent));
+        if !is_upload_endpoint {
+            lines.push(format!("{}if (!response.ok) throw new Error(`HTTP ${{response.status}}`);", self.indent));
+        } else {
+            // 上传收据：非 2xx 也携带 receipt JSON（状态/错误种类在体内）。
+            lines.push(format!("{}// upload receipt: non-2xx replies still carry receipt JSON", self.indent));
+        }
 
         // PLAN-729 T-05: 文件端点返回原生 Response（状态/headers 保留，
         // 不调 .json()；读盘交给调用方——决策报告 §6）。
         if endpoint.return_type.contains("FileResponse") {
             lines.push(format!("{}return response;", self.indent));
+        } else if is_upload_endpoint {
+            lines.push(format!("{}return response.json();", self.indent));
         } else if return_type != "Promise<void>" {
             lines.push(format!("{}return response.json();", self.indent));
         }

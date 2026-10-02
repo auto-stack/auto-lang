@@ -246,6 +246,70 @@ impl AxumGenerator {
             return lines.join("\n");
         }
 
+        // PLAN-730 T-06: 上传端点——method/headers/Request（最后）提取器 +
+        // 宿主 executor 接收/提交（a2r facade 单源）；收据映射真实 status。
+        // 上传仅 POST/PUT——其他注解方法给 405 诊断 handler。
+        let upload_param = endpoint
+            .params
+            .iter()
+            .find(|p| p.ty.contains("UploadRequest"))
+            .cloned();
+        if let Some(up_param) = upload_param {
+            let method = endpoint.method().to_lowercase();
+            let path = endpoint.path();
+            let path_params: Vec<&String> = endpoint
+                .params
+                .iter()
+                .map(|p| &p.name)
+                .filter(|n| path.contains(&format!(":{}", n)))
+                .filter(|n| **n != up_param.name)
+                .collect();
+            let is_post_family = method == "post" || method == "put";
+            lines.push(format!("async fn {}_handler(", endpoint.fn_name));
+            let mut sig: Vec<String> = vec![
+                "method: axum::http::Method".to_string(),
+                "headers: axum::http::HeaderMap".to_string(),
+            ];
+            if let Some(first) = path_params.first() {
+                sig.push(format!("Path({}): Path<String>", first));
+            }
+            sig.push("request: axum::extract::Request".to_string());
+            for (i, param) in sig.iter().enumerate() {
+                lines.push(format!("{}{}", self.indent, param));
+                if i < sig.len() - 1 {
+                    lines.push(format!("{},", self.indent));
+                }
+            }
+            lines.push(format!("{}) -> axum::response::Response {{", self.indent));
+            if !is_post_family {
+                lines.push(format!("{}let _ = (method, headers, request);", self.indent));
+                lines.push(format!(
+                    "{}axum::response::Response::builder().status(axum::http::StatusCode::METHOD_NOT_ALLOWED).header(\"allow\", \"POST, PUT\").body(axum::body::Body::empty()).unwrap()",
+                    self.indent
+                ));
+            } else {
+                let arg = path_params
+                    .first()
+                    .map(|n| n.as_str())
+                    .unwrap_or_default();
+                lines.push(format!(
+                    "{}let {}: a2r_std::http::UploadRequest = __plan730_upload_request(&method, &headers, request);",
+                    self.indent, up_param.name
+                ));
+                lines.push(format!(
+                    "{}let receipt = api::{}({}, {}).await;",
+                    self.indent, endpoint.fn_name, arg, up_param.name
+                ));
+                lines.push(format!(
+                    "{}__plan730_upload_reply(receipt)",
+                    self.indent
+                ));
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            return lines.join("\n");
+        }
+
         // Plan 328 env 5+6: Determine return type wrapper.
         // ~Iter<T> / ~Stream<T> → Sse<impl Stream> (SSE handler)
         // []T → Json<Vec<T>>
@@ -348,6 +412,10 @@ impl AxumGenerator {
         let mut lines = Vec::new();
         lines.push("#[tokio::main]".to_string());
         lines.push("async fn main() {".to_string());
+        // PLAN-730 T-06: upload host executor install (idempotent).
+        lines.push(
+            "    auto_lang::http_upload_service::install_upload_executor_service();".to_string(),
+        );
         lines.push("    let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")".to_string());
         lines.push("        .ok().and_then(|s| s.parse().ok()).unwrap_or(8080);".to_string());
         lines.push("    let addr = format!(\"0.0.0.0:{}\", port);".to_string());
@@ -374,6 +442,19 @@ impl AxumGenerator {
         // 本地 axum Response）。
         if module.endpoints.iter().any(|e| e.return_type.contains("FileResponse")) {
             for line in PLAN729_FILE_GLUE.lines() {
+                output.push(line.to_string());
+            }
+            output.push("".to_string());
+        }
+
+        // PLAN-730 T-06: 上传端点 glue（Request → UploadRequest 投影 + 收据
+        // → 真实 status/JSON）。
+        if module
+            .endpoints
+            .iter()
+            .any(|e| e.params.iter().any(|p| p.ty.contains("UploadRequest")))
+        {
+            for line in PLAN730_UPLOAD_GLUE.lines() {
                 output.push(line.to_string());
             }
             output.push("".to_string());
@@ -505,6 +586,47 @@ async fn __plan729_file_reply(
         }
     }
 }"#;
+
+/// PLAN-730 T-06: 上传 glue（Request → UploadRequest 版本无关投影 + 收据 →
+/// 本地 axum Response；auto-man api_gen 的 UPLOAD_GLUE 同形——单源语义，
+/// 宿主执行同在 auto_lang::http_upload_service）。
+const PLAN730_UPLOAD_GLUE: &str = r#"fn __plan730_upload_request(
+    method: &axum::http::Method,
+    headers: &axum::http::HeaderMap,
+    request: axum::extract::Request,
+) -> a2r_std::http::UploadRequest {
+    use futures::StreamExt;
+    let (parts, body) = request.into_parts();
+    let hdrs: Vec<(String, String)> = headers
+        .iter()
+        .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
+        .collect();
+    let stream = body
+        .into_data_stream()
+        .map(|r| r.map(|b| b.to_vec()).map_err(|e| std::io::Error::other(e.to_string())));
+    a2r_std::http::upload_request_from_parts(
+        method.as_str(),
+        parts.uri.to_string().as_str(),
+        hdrs,
+        Box::pin(stream),
+    )
+}
+
+fn __plan730_upload_reply(receipt: a2r_std::http::UploadReceipt) -> axum::response::Response {
+    axum::response::Response::builder()
+        .status(axum::http::StatusCode::from_u16(receipt.status).unwrap_or(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        ))
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(receipt.json))
+        .unwrap_or_else(|_| {
+            axum::response::Response::builder()
+                .status(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(axum::body::Body::empty())
+                .expect("fallback response")
+        })
+}
+"#;
 
 /// Trait to convert string to PascalCase
 trait ToPascalCase {
