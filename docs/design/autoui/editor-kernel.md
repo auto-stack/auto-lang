@@ -206,3 +206,23 @@ rope（文档事实源：本仓自实现轻量 rope）
 4. cosmic-text `Cargo.toml:224-227` 注释的 `Weak<Buffer>` 理由已随 428 失效
    （该 handoff 已移除），注释应随本计划顺手更正。
 5. 若 (a) 窗口同步协议（光标双射/窗口平移）实证不可行，重启 (b) 评估。
+
+## 8. on_change 载荷契约（PLAN-725 T-02 静态消费判定）
+
+编辑器（code_editor / autodown_editor）`oninput/onchange` 消息的
+`input_value`（全文携带，PLAN-057 先例）自 PLAN-725 起**按静态消费判定
+发射**：
+
+- **判定**（`ui::dynamic::input_payload_consumed`）：`on_with_input_for`
+  对 input_value 的三个消费点——(a) payload 内 `$event` 前缀实参替换、
+  (b) input_state_map 双向绑定写、(c) 空 payload 首实参（`.Edit(str)`
+  契约）——全部可在消息构造期静态判定；均不命中 → `input_value: None`
+  （闭包跳过 `code_editor_text` O(doc) 整串物化，§7-2 债务的消费面收窄）。
+- **契约保真**：命中任一消费点 → 逐字面维持旧发射（全文 Some）。绑定表
+  缺席 = 保守携带（宁缺勿错：判定只允许把无人读的载荷变没，不允许让真
+  消费者读空）。`.at` 消费面零改动。
+- **input_state_map 注册面**：`scan_node_for_inputs` 只扫 input/textarea/
+  Input 标签——编辑器标签恒不注册 (b) 路径（两消费面正交）；未来若将
+  编辑器 content 纳入双向绑定扫描，判定自动跟随（表驱动非硬编码）。
+- **同族 scope 注记**：textarea/Input 臂的 input_value 来自 iced 事件回调
+  形参（无主动物化成本），零改动。

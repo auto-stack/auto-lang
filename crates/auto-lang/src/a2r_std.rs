@@ -1079,14 +1079,22 @@ pub mod re {
 
 /// AutoLang's frame module — 帧时间戳只读观测（单调毫秒；未捕获=0）。
 pub mod frame {
+    /// PLAN-725 T-06 供⑬：a2r 臂值域收窄 i64→i32（saturating——SD-B §3b
+    /// 口径：毫秒值域 <2^31≈24.8 天，进程起点起算单调时源在值域内）。
+    /// 此前 i64 直赋 .at `int`（i32）字段 → E0308 mismatched types（下游
+    /// a2r regen 实录）；VM 轨 9918/9919 lane 不受影响（i64 内部态）。
+    fn narrow_i32(ms: i64) -> i32 {
+        ms.clamp(i32::MIN as i64, i32::MAX as i64) as i32
+    }
+
     /// 帧开始时间戳（桌面 update 入口到达时刻）。
-    pub fn begin_ms() -> i64 {
-        crate::ui::frame_bench::frame_begin_ms()
+    pub fn begin_ms() -> i32 {
+        narrow_i32(crate::ui::frame_bench::frame_begin_ms())
     }
 
     /// 呈现完成时间戳（711 帧泵消费时刻，≥ present 返回）。
-    pub fn present_ms() -> i64 {
-        crate::ui::frame_bench::frame_present_ms()
+    pub fn present_ms() -> i32 {
+        narrow_i32(crate::ui::frame_bench::frame_present_ms())
     }
 }
 

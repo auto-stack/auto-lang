@@ -1,0 +1,123 @@
+{"type": "meta", "label": "baseline", "auto_bin": "D:\\autostack\\.wt\\lang-725\\auto-lang\\target\\debug\\auto.exe", "keys": 30, "app": "examples/ui/041-auto-edit"}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": 0.02, "seg_sum_ms": 13.53, "s5_residual_ms": 0.01, "s1_ms": 0.0, "s2_ms": 0.247, "s3a_ms": 5.333, "s3b_ms": 6.088, "s4_ms": 1.861, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": 0.1, "seg_sum_ms": 12.0, "s5_residual_ms": 0.08, "s1_ms": 0.0, "s2_ms": 0.444, "s3a_ms": 7.261, "s3b_ms": 2.481, "s4_ms": 1.813, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": null, "seg_sum_ms": 14.42, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.453, "s3a_ms": 7.956, "s3b_ms": 4.097, "s4_ms": 1.916, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": null, "seg_sum_ms": 6.94, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.227, "s3a_ms": 2.867, "s3b_ms": 2.096, "s4_ms": 1.752, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": null, "seg_sum_ms": 12.98, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.193, "s3a_ms": 8.329, "s3b_ms": 2.308, "s4_ms": 2.153, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": null, "seg_sum_ms": 14.33, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.062, "s3a_ms": 6.523, "s3b_ms": 4.546, "s4_ms": 3.201, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": null, "seg_sum_ms": 10.82, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.284, "s3a_ms": 5.272, "s3b_ms": 2.741, "s4_ms": 2.52, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": null, "seg_sum_ms": 7.81, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.063, "s3a_ms": 3.712, "s3b_ms": 2.17, "s4_ms": 1.869, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": null, "seg_sum_ms": 7.3, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.081, "s3a_ms": 3.187, "s3b_ms": 2.19, "s4_ms": 1.846, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": null, "seg_sum_ms": 12.19, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.152, "s3a_ms": 4.005, "s3b_ms": 4.967, "s4_ms": 3.069, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": null, "seg_sum_ms": 11.57, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.069, "s3a_ms": 4.832, "s3b_ms": 3.538, "s4_ms": 3.133, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": null, "seg_sum_ms": 7.01, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.014, "s3a_ms": 2.968, "s3b_ms": 2.149, "s4_ms": 1.877, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": null, "seg_sum_ms": 7.33, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.071, "s3a_ms": 2.937, "s3b_ms": 2.475, "s4_ms": 1.852, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": 0.11, "seg_sum_ms": 11.68, "s5_residual_ms": 0.1, "s1_ms": 0.0, "s2_ms": 0.25, "s3a_ms": 5.164, "s3b_ms": 3.514, "s4_ms": 2.749, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "5kb", "total_ms": null, "seg_sum_ms": 14.9, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.219, "s3a_ms": 7.558, "s3b_ms": 3.85, "s4_ms": 3.272, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 0.182, "s4_ms": 1.981, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 0.048, "s4_ms": 1.774, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 0.049, "s4_ms": 1.709, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 0.04, "s4_ms": 3.082, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 0.113, "s4_ms": 3.434, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 4.097, "s4_ms": 1.916, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 2.096, "s4_ms": 1.752, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 4.859, "s4_ms": 2.569, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 2.308, "s4_ms": 2.153, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 4.546, "s4_ms": 3.201, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 3.375, "s4_ms": 3.568, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 2.741, "s4_ms": 2.52, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 2.257, "s4_ms": 3.678, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 2.17, "s4_ms": 1.869, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 2.719, "s4_ms": 1.859, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 2.19, "s4_ms": 1.846, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 4.688, "s4_ms": 2.61, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 2.141, "s4_ms": 1.812, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 4.967, "s4_ms": 3.069, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 2.478, "s4_ms": 1.787, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 3.538, "s4_ms": 3.133, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 2.294, "s4_ms": 1.763, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 2.149, "s4_ms": 1.877, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 2.475, "s4_ms": 1.852, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 0.095, "s4_ms": 3.235, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 0.055, "s4_ms": 2.25, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 0.056, "s4_ms": 1.887, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 0.096, "s4_ms": 4.405, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 3.85, "s4_ms": 3.272, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 0.044, "s4_ms": 3.688, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "5kb", "total_ms": null, "s3b_ms": 0.206, "s4_ms": 7.39, "builds": 0}
+{"type": "summary", "label": "baseline", "size": "5kb", "typed_frames": 15, "keys_sent": 30, "present_paired": 3, "total_p50_ms": 0.1, "total_p95_ms": 0.11, "segsum_p50_ms": 11.68, "segsum_p95_ms": 14.9, "orphan_frames": 31, "orphan_s4_p50_ms": 2.25, "seg_mean_ms": {"s1_ms": 0.0, "s2_ms": 0.19, "s3a_ms": 5.19, "s3b_ms": 3.28, "s4_ms": 2.33}}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 22.2, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.148, "s3a_ms": 3.204, "s3b_ms": 2.309, "s4_ms": 16.539, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 22.28, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.133, "s3a_ms": 3.144, "s3b_ms": 2.213, "s4_ms": 16.788, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 22.77, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.135, "s3a_ms": 3.008, "s3b_ms": 2.133, "s4_ms": 17.49, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 22.78, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.185, "s3a_ms": 3.316, "s3b_ms": 2.624, "s4_ms": 16.652, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 23.78, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.12, "s3a_ms": 3.025, "s3b_ms": 2.813, "s4_ms": 17.825, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 27.8, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.171, "s3a_ms": 3.206, "s3b_ms": 2.677, "s4_ms": 21.743, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 23.54, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.136, "s3a_ms": 3.728, "s3b_ms": 2.575, "s4_ms": 17.101, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 21.87, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.146, "s3a_ms": 2.922, "s3b_ms": 2.256, "s4_ms": 16.549, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 22.9, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.196, "s3a_ms": 3.377, "s3b_ms": 2.28, "s4_ms": 17.044, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 25.84, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.038, "s3a_ms": 2.908, "s3b_ms": 3.495, "s4_ms": 19.397, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 28.39, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.086, "s3a_ms": 3.926, "s3b_ms": 2.917, "s4_ms": 21.462, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 22.94, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.133, "s3a_ms": 3.537, "s3b_ms": 3.297, "s4_ms": 15.975, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 29.86, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.155, "s3a_ms": 3.932, "s3b_ms": 2.431, "s4_ms": 23.337, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 36.85, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.097, "s3a_ms": 5.077, "s3b_ms": 4.773, "s4_ms": 26.899, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 31.41, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.096, "s3a_ms": 4.692, "s3b_ms": 5.871, "s4_ms": 20.749, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 24.04, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.163, "s3a_ms": 3.351, "s3b_ms": 2.083, "s4_ms": 18.439, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 37.72, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.281, "s3a_ms": 5.1, "s3b_ms": 2.123, "s4_ms": 30.219, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 28.33, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.115, "s3a_ms": 4.069, "s3b_ms": 2.789, "s4_ms": 21.353, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 28.96, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.293, "s3a_ms": 5.73, "s3b_ms": 2.462, "s4_ms": 20.48, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 30.99, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.082, "s3a_ms": 7.235, "s3b_ms": 3.188, "s4_ms": 20.489, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 22.72, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.137, "s3a_ms": 3.224, "s3b_ms": 2.293, "s4_ms": 17.069, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": 0.1, "seg_sum_ms": 26.45, "s5_residual_ms": 0.07, "s1_ms": 0.0, "s2_ms": 0.104, "s3a_ms": 3.575, "s3b_ms": 2.613, "s4_ms": 20.155, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "100kb", "total_ms": null, "seg_sum_ms": 23.76, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.12, "s3a_ms": 3.558, "s3b_ms": 2.169, "s4_ms": 17.915, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 0.059, "s4_ms": 19.453, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 0.076, "s4_ms": 16.834, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.309, "s4_ms": 16.539, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 0.068, "s4_ms": 17.191, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.213, "s4_ms": 16.788, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.133, "s4_ms": 17.49, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.624, "s4_ms": 16.652, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.813, "s4_ms": 17.825, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.677, "s4_ms": 21.743, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.575, "s4_ms": 17.101, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.256, "s4_ms": 16.549, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.28, "s4_ms": 17.044, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 3.495, "s4_ms": 19.397, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.917, "s4_ms": 21.462, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 3.297, "s4_ms": 15.975, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.431, "s4_ms": 23.337, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 4.773, "s4_ms": 26.899, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 3.382, "s4_ms": 20.595, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 5.871, "s4_ms": 20.749, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.083, "s4_ms": 18.439, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.123, "s4_ms": 30.219, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.789, "s4_ms": 21.353, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.462, "s4_ms": 20.48, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.325, "s4_ms": 18.8, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 3.188, "s4_ms": 20.489, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.293, "s4_ms": 17.069, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 0.062, "s4_ms": 17.921, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 0.066, "s4_ms": 16.311, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 0.175, "s4_ms": 21.385, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 0.089, "s4_ms": 17.622, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 2.169, "s4_ms": 17.915, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 0.056, "s4_ms": 16.26, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "100kb", "total_ms": null, "s3b_ms": 0.116, "s4_ms": 24.433, "builds": 0}
+{"type": "summary", "label": "baseline", "size": "100kb", "typed_frames": 23, "keys_sent": 30, "present_paired": 1, "total_p50_ms": 0.1, "total_p95_ms": 0.1, "segsum_p50_ms": 24.04, "segsum_p95_ms": 36.85, "orphan_frames": 33, "orphan_s4_p50_ms": 17.921, "seg_mean_ms": {"s1_ms": 0.0, "s2_ms": 0.14, "s3a_ms": 3.86, "s3b_ms": 2.8, "s4_ms": 19.64}}
+{"type": "typed_frame", "label": "baseline", "size": "1mb", "total_ms": null, "seg_sum_ms": 132.26, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.061, "s3a_ms": 8.607, "s3b_ms": 2.94, "s4_ms": 120.648, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "1mb", "total_ms": null, "seg_sum_ms": 135.66, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.052, "s3a_ms": 5.242, "s3b_ms": 2.888, "s4_ms": 127.475, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "1mb", "total_ms": null, "seg_sum_ms": 159.13, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.07, "s3a_ms": 6.292, "s3b_ms": 3.856, "s4_ms": 148.912, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "1mb", "total_ms": null, "seg_sum_ms": 114.4, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.054, "s3a_ms": 4.883, "s3b_ms": 2.6, "s4_ms": 106.864, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "1mb", "total_ms": null, "seg_sum_ms": 119.0, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.075, "s3a_ms": 5.641, "s3b_ms": 3.557, "s4_ms": 109.728, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "1mb", "total_ms": null, "seg_sum_ms": 125.18, "s5_residual_ms": null, "s1_ms": 0.0, "s2_ms": 0.078, "s3a_ms": 4.612, "s3b_ms": 2.661, "s4_ms": 117.833, "builds": 2}
+{"type": "typed_frame", "label": "baseline", "size": "1mb", "total_ms": 0.37, "seg_sum_ms": 126.76, "s5_residual_ms": 0.24, "s1_ms": 0.0, "s2_ms": 0.08, "s3a_ms": 7.79, "s3b_ms": 3.481, "s4_ms": 115.408, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "1mb", "total_ms": null, "s3b_ms": 0.271, "s4_ms": 122.951, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "1mb", "total_ms": null, "s3b_ms": 2.94, "s4_ms": 120.648, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "1mb", "total_ms": null, "s3b_ms": 2.759, "s4_ms": 127.553, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "1mb", "total_ms": null, "s3b_ms": 2.888, "s4_ms": 127.475, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "1mb", "total_ms": null, "s3b_ms": 3.856, "s4_ms": 148.912, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "1mb", "total_ms": null, "s3b_ms": 2.6, "s4_ms": 106.864, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "1mb", "total_ms": null, "s3b_ms": 3.557, "s4_ms": 109.728, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "1mb", "total_ms": null, "s3b_ms": 2.661, "s4_ms": 117.833, "builds": 2}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "1mb", "total_ms": null, "s3b_ms": 0.234, "s4_ms": 116.802, "builds": 0}
+{"type": "orphan_fallthrough", "label": "baseline", "size": "1mb", "total_ms": null, "s3b_ms": 0.241, "s4_ms": 128.563, "builds": 0}
+{"type": "summary", "label": "baseline", "size": "1mb", "typed_frames": 7, "keys_sent": 30, "present_paired": 1, "total_p50_ms": 0.37, "total_p95_ms": 0.37, "segsum_p50_ms": 126.76, "segsum_p95_ms": 159.13, "orphan_frames": 10, "orphan_s4_p50_ms": 122.951, "seg_mean_ms": {"s1_ms": 0.0, "s2_ms": 0.07, "s3a_ms": 6.15, "s3b_ms": 3.14, "s4_ms": 120.98}}

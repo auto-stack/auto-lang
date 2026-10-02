@@ -29,6 +29,29 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
   DesktopBus v0——单 OS 窗口内多 App 虚拟桌面。
 - **a2ui 协议** 与 **`#[api]` 前后端契约**（`src/api/`）。
 
+## 现状（2026-10-02）——编辑路径帧管线增量更新（PLAN-725）
+
+> auto-edit M4 帧两行 FAIL（type_latency/scroll_fps）清偿本体：编辑路径
+> 帧管线从每帧全量重建改脏域/增量更新。契约真源=
+> [design/frame-pipeline-incremental.md](design/frame-pipeline-incremental.md)（SD-01）；
+> 勘定+双态谱=docs/plans/evidence/725/。
+
+- **单帧单建**：脏帧 `view_with_debug_gated` 恰一次（builds=1 探针断言）——
+  MCP 同步块复用主重建产物（此前同帧两遍全量模板走查）。
+- **键入载荷静态消费判定**：编辑器 on_change 的 `input_value` 全文携带仅
+  在三静态消费点（`$event`/双向绑定/空 payload 首实参）命中时发射——
+  `.SrcChanged(i)` 形零携带（O(doc) 物化退役；`.Edit(str)` 契约逐字保真）。
+- **元素级 O(1) 高度上报**：hosted 编辑器 `content_height()` 无折叠快道
+  （rope 摘要）——根因链=iced `scrollable::new` 构造期 `size_hint()`→
+  逐行物化 `fresh_fold_map()`（1MB 实测 95ms/帧→O(1)）；尺寸缩放清零
+  （1MB/5KB 键入谱 P50 比 1.52）。
+- **Element 缓存 put-then-take 勘定**：死写移除（iced 所有权模型下快道
+  结构性不可能）；非脏帧=fallback 全树重建（孤儿帧行观测 ~1.3-2.4ms）。
+- **上游阶梯谱基准**：5KB/100KB/1MB × VM 轨（ladder.py+双态 JSONL 在档；
+  5KB 档 segsum P95 ≤16.7ms 定量门 PASS）。memo 域（045/046/047 机制在库）
+  编辑路径消费=下游 app 侧 opt-in。
+- a2r frame fn 值域收窄 i32（SD-B §3b saturating 口径——供⑬ E0308 清偿）。
+
 ## 现状（2026-09-22）——code_editor 内核 rope 化 + 统一 delta 流（PLAN-673）
 
 内建编辑器存储/事件底座换代（契约详档 `design/autoui/editor-kernel.md`）：

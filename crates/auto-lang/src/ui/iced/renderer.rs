@@ -133,6 +133,23 @@ lazy_static::lazy_static! {
         Mutex::new(std::collections::HashSet::new());
 }
 
+// PLAN-725 T-02：键入载荷静态消费判定的绑定表面。render_dynamic_view 无
+// state 访问，input_state_map（(b) 消费点）经此 thread_local 随帧下发
+// （dynamic_view_impl 装配期填充；render 结束即清——防跨帧陈旧读）。
+thread_local! {
+    static P725_INPUT_BINDINGS: std::cell::RefCell<Option<std::collections::HashMap<String, String>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// PLAN-725 T-02：编辑器 on_change 闭包的载荷消费判定（绑定表面随帧）。
+/// 绑定表缺席时保守返回 true（宁缺勿错——判缺席=携带全文，行为同旧）。
+fn editor_onchange_carries_text(event_name: &str) -> bool {
+    P725_INPUT_BINDINGS.with(|b| {
+        let guard = b.borrow();
+        crate::ui::dynamic::input_payload_consumed(event_name, guard.as_ref())
+    })
+}
+
 /// 与键位无关的行编辑功能抽象。表条目按模式声明,执行统一走 le_execute。
 #[derive(Debug, Clone)]
 enum LineEditOp {
@@ -17350,6 +17367,8 @@ fn compare_pngs(
         // AUTO_FRAME_BENCH——未设零开销（OnceLock 布尔读+分支），不染
         // 调度语义（712 r2 帧泵域边界）。
         crate::ui::frame_bench::note_frame_begin();
+        // PLAN-725 T-00：分段探针帧开始（同门同点——孤儿帧在此落账）。
+        crate::ui::frame_segments::frame_begin();
         // T4c：拆借视图承接旧 DynamicState 平铺命名（施工图 §2 路线甲）。
         // Plan 459：按消息归属 App 拆借（窗口级字段随该 App 的窗口条目）；
         // 缺 App/窗口仅在会话被外部破坏时发生，空转返回。
@@ -18009,6 +18028,8 @@ fn compare_pngs(
             // PLAN-716 组B（供②）: 呈现完成时间戳=帧泵消息消费时刻（711
             // D-1 序障：消费时本帧 present 已同步返回——合法代理）。
             crate::ui::frame_bench::note_frame_present();
+            // PLAN-725 T-00：分段探针帧发布（present 行；孤儿帧纪律见模块头）。
+            crate::ui::frame_segments::frame_present();
             state.component.poll_frame_pump();
             let dirty = state.component.is_dirty();
             if dirty {
@@ -19261,11 +19282,14 @@ fn compare_pngs(
         }
         // Plan 051 C7: timer 拍走 fire_timer（`when` 门控在派发前对根态
         // 求值，假丢弃本拍）；非 timer 事件走通用路径不变。
+        // PLAN-725 T-00：S2 VM 段打点（通用派发→handler 解释）。
+        let p725_t_s2 = std::time::Instant::now();
         if state.component.is_timer_entry(widget_name, &event_name) {
             state.component.fire_timer(widget_name, &event_name);
         } else {
             state.component.on_with_input_for(widget_name, &event_name, msg.input_value);
         }
+        crate::ui::frame_segments::note_s2_vm(p725_t_s2.elapsed());
 
         // Plan 055 D5(补实现,此前缺失):BlockItem.ToggleCollapse(id) 的 .at handler
         // 是空体,设计上由 renderer emit 给父级翻转 blocks[id].collapsed —— 该桥
@@ -23079,6 +23103,93 @@ fn dynamic_view_impl(
         }
     }
 
+    // Plan 370 D-GAP-2/D-GAP-5: sync dark mode + accent to iced_adapter thread_locals
+    // so semantic colors (bg-primary, text-foreground, etc.) resolve correctly.
+    // PLAN-050：值变化时标 view_dirty——fence 家族 chrome 等在 view 求值期
+    // 解析类串（family_of 按 dark_mode 选 static），Element 缓存若不随主题
+    // 翻转重建，预览臂会卡在首帧的暗色档（编辑臂 palette 在 draw 期取用
+    // 不受影响，两臂曾因此分叉）。
+    // PLAN-725 T-01：块上移至 MCP 同步块之前——view_dirty 写点必须先于
+    // 脏帧单建读点（原位置在同步块后，主重建读在其后自然接住；单建
+    // 提升后由本块先落位保序）。
+    {
+        static LAST_SYNCED_DARK: std::sync::atomic::AtomicBool =
+            std::sync::atomic::AtomicBool::new(true);
+        if let Ok(dark_val) = state.component.read_state("dark_mode") {
+            let is_dark = match dark_val {
+                auto_val::Value::Bool(b) => b,
+                _ => false,
+            };
+            if LAST_SYNCED_DARK.swap(is_dark, std::sync::atomic::Ordering::SeqCst) != is_dark {
+                *state.app.view_dirty.borrow_mut() = true;
+                // PLAN-051 T10（DEBTS 050 处置）：值变化臂顺带重着色既有
+                // fence buffer——编辑壳 hljs 主题在 buffer 构建期选定，不随
+                // 全局翻转自换（wontfix 前提「运行时切换器」由 settings 面
+                // 落地成立）。
+                // PLAN-551：调用随 autodown_editor 模块同门控 all(autodown,
+                // code-editor)——ui-iced 单开时跳过。
+                #[cfg(all(feature = "autodown", feature = "code-editor"))]
+                crate::ui::autodown_editor::retheme_all_fence_buffers();
+            }
+            crate::ui::style::iced_adapter::set_dark_mode(is_dark);
+        }
+    }
+    if let Ok(accent_val) = state.component.read_state("accent_color") {
+        let name = match accent_val {
+            auto_val::Value::Str(s) => s.as_str().to_string(),
+            _ => "indigo".to_string(),
+        };
+        crate::ui::style::iced_adapter::set_accent_name(&name);
+    }
+
+    // ── PLAN-725 T-01：脏帧单建（单帧单建本体）─────────────────────────
+    // view_with_debug_gated 此前每脏帧跑两遍（MCP 同步块第一遍 + 主重建
+    // 第二遍——T-00 实测 s3a/s3b 双计）。现将主重建的模板建**提升**到同步
+    // 块之前，产物（view/id_map/probe）存 frame_build；同步块与主重建段
+    // 共用（同步块消费克隆，主重建段消费原件）。非脏帧零成本（if dirty
+    // 直落）。capture_debug 一并提前（唯一计算点——快道/needs_bounds/
+    // live_probe 保留决策与建_probe 门一致）。
+    let dirty = *state.app.view_dirty.borrow();
+    // PLAN-725 T-00：帧脏标记入分段探针（present 行 dirty= 字段）。
+    crate::ui::frame_segments::note_dirty(dirty);
+    let mcp_active = !p530_nomcp && state.desktop.mcp_shared.is_some();
+    let mcp_wants_live = mcp_active
+        && (dirty
+            || state
+                .desktop
+                .mcp_shared
+                .as_ref()
+                .map(|m| m.lock().unwrap().mcp_active_recently(30))
+                .unwrap_or(false));
+    let capture_debug = state.app.devtools.debug_mode || mcp_wants_live;
+    let mut frame_build: Option<
+        (
+            crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+            crate::ui::debug_id_map::DebugIdMap,
+            crate::ui::debug::BuildProbe,
+        ),
+    > = None;
+    if dirty {
+        let p725_t_build = std::time::Instant::now();
+        // Plan 307 Task 18: gate the probe by debug_mode. When F12 is off the
+        // probe is disabled (all record_* no-ops → zero overhead), and
+        // live_probe is set to None so the inspector UI degrades to placeholders.
+        let (view, id_map, probe) = state.component.view_with_debug_gated(capture_debug);
+        if capture_debug {
+            *state.app.live_probe.borrow_mut() = Some(probe.clone());
+        } else {
+            *state.app.live_probe.borrow_mut() = None;
+        }
+        crate::ui::frame_segments::note_s3b_build(p725_t_build.elapsed());
+        frame_build = Some((view, id_map, probe));
+    }
+
+    // PLAN-725 T-02：编辑器 on_change 载荷静态消费判定的绑定表面随帧下发
+    //（render_dynamic_view 无 state；小 map 克隆 ≪ 一次 O(doc) 全文物化）。
+    P725_INPUT_BINDINGS.with(|b| {
+        *b.borrow_mut() = Some(state.component.input_state_map().clone());
+    });
+
     // Sync state to MCP shared handle for AI agent inspection (Plan 278)
     // Must run in view() — not update() — because iced may not fire any events
     // initially, meaning update() might never run before an MCP client connects.
@@ -23102,6 +23213,8 @@ fn dynamic_view_impl(
         if !gate_dirty && !gate_ws && mcp.has_view() {
             drop(mcp);
         } else {
+        // PLAN-725 T-00：S3a 打点起点（MCP 同步块第一遍全量建——块体）。
+        let p725_t_s3a = std::time::Instant::now();
         if !mcp.has_view() {
             eprintln!("AutoUI MCP: first state sync in view()");
         }
@@ -23123,7 +23236,28 @@ fn dynamic_view_impl(
         // 由 bounds 回路回填（ComputedNodeLite 全 Option，缺失即省略）。
         // 代价：本块原本就在重建视图，门 false → true 只是把既有构建的
         // 探针记录打开（record_* 为纯内存写入，无额外遍历）。
-        let (view, id_map, sync_probe) = state.component.view_with_debug_gated(true);
+        // PLAN-725 T-01：单帧单建——脏帧复用主重建产物（提升点已建，
+        // 此处零模板走查）；非脏同步帧（gate_ws/首同步）无提升产物，就地
+        // 自建维持原语义（probe=true）。复用形态：vtree 与 mcp.update 各
+        // 取一克隆，主重建段消费原件（AbstractView 克隆 O(widgets) ≪ 模板
+        // 重解释——T-00 实测 s3a 5.2ms vs 全建 3.3ms 的减量即此）。
+        let mut p725_sync_owned: Option<(
+            crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+            crate::ui::debug_id_map::DebugIdMap,
+            crate::ui::debug::BuildProbe,
+        )> = None;
+        let (view, id_map, sync_probe): (
+            &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+            &crate::ui::debug_id_map::DebugIdMap,
+            &crate::ui::debug::BuildProbe,
+        ) = match frame_build.as_ref() {
+            Some((v, im, p)) => (v, im, p),
+            None => {
+                p725_sync_owned = Some(state.component.view_with_debug_gated(true));
+                let (v, im, p) = p725_sync_owned.as_ref().expect("just set");
+                (v, im, p)
+            }
+        };
         let mut computed: HashMap<crate::ui::vnode::VNodeId, crate::ui::mcp_server::ComputedNodeLite> =
             HashMap::new();
         for (path_u16, entry) in sync_probe.snapshot() {
@@ -23180,7 +23314,8 @@ fn dynamic_view_impl(
             // AppState::mcp_sync_vtree 文档注释——禁止改用 live_vtree 源）。
             *state.app.mcp_sync_vtree.borrow_mut() = Some(vtree);
         }
-        mcp.update(view, id_map, state_vals, input_map, view_template, state.component.key_bindings().clone());
+        // PLAN-725 T-01：mcp.update 消费克隆（主重建段消费原件）。
+        mcp.update(view.clone(), id_map.clone(), state_vals, input_map, view_template, state.component.key_bindings().clone());
         // PLAN-646: 源码全文随帧发布——`autoui_select_rect` 信封切片用
         //（ensure 幂等：装载过零开销；未装载过此处读盘一次）。
         ensure_source_loaded(state);
@@ -23194,45 +23329,18 @@ fn dynamic_view_impl(
             mcp.set_window_size(width, height);
             *state.app.mcp_synced_ws.borrow_mut() = (width, height);
         }
+        // PLAN-725 T-00：S3a MCP 同步块计时发布（vtree 转换+read_all_state_
+        // materialized+mcp.update 整段；builds 仅在就地自建臂计——T-01 复用
+        // 臂的建已由 s3b 提升点计过）。
+        if p725_sync_owned.is_some() {
+            crate::ui::frame_segments::note_s3a_mcp(p725_t_s3a.elapsed());
+        } else {
+            crate::ui::frame_segments::note_s3a_mcp_nobuild(p725_t_s3a.elapsed());
+        }
         } // PLAN-062 T11 gate_dirty/gate_ws 门控结束
     }
     } // sync_mcp 门控（459：仅 primary App 视图执行 MCP 同步）
 
-    // Plan 370 D-GAP-2/D-GAP-5: sync dark mode + accent to iced_adapter thread_locals
-    // so semantic colors (bg-primary, text-foreground, etc.) resolve correctly.
-    // PLAN-050：值变化时标 view_dirty——fence 家族 chrome 等在 view 求值期
-    // 解析类串（family_of 按 dark_mode 选 static），Element 缓存若不随主题
-    // 翻转重建，预览臂会卡在首帧的暗色档（编辑臂 palette 在 draw 期取用
-    // 不受影响，两臂曾因此分叉）。
-    {
-        static LAST_SYNCED_DARK: std::sync::atomic::AtomicBool =
-            std::sync::atomic::AtomicBool::new(true);
-        if let Ok(dark_val) = state.component.read_state("dark_mode") {
-            let is_dark = match dark_val {
-                auto_val::Value::Bool(b) => b,
-                _ => false,
-            };
-            if LAST_SYNCED_DARK.swap(is_dark, std::sync::atomic::Ordering::SeqCst) != is_dark {
-                *state.app.view_dirty.borrow_mut() = true;
-                // PLAN-051 T10（DEBTS 050 处置）：值变化臂顺带重着色既有
-                // fence buffer——编辑壳 hljs 主题在 buffer 构建期选定，不随
-                // 全局翻转自换（wontfix 前提「运行时切换器」由 settings 面
-                // 落地成立）。
-                // PLAN-551：调用随 autodown_editor 模块同门控 all(autodown,
-                // code-editor)——ui-iced 单开时跳过。
-                #[cfg(all(feature = "autodown", feature = "code-editor"))]
-                crate::ui::autodown_editor::retheme_all_fence_buffers();
-            }
-            crate::ui::style::iced_adapter::set_dark_mode(is_dark);
-        }
-    }
-    if let Ok(accent_val) = state.component.read_state("accent_color") {
-        let name = match accent_val {
-            auto_val::Value::Str(s) => s.as_str().to_string(),
-            _ => "indigo".to_string(),
-        };
-        crate::ui::style::iced_adapter::set_accent_name(&name);
-    }
     // Plan 409 §10 续 11: 同步窗口宽度,供 VM builder 响应式布局(grid 列数)。
     crate::ui::style::iced_adapter::set_window_width(state.window_size.borrow().width);
     // PLAN-020 T-00b: 高度随帧同步(window_size = 逻辑 px;分屏矩形投影
@@ -23297,7 +23405,8 @@ fn dynamic_view_impl(
     // When view_dirty=false: if cache exists, take and return it directly (preserves button hover/press state).
     //                         if cache is empty (shouldn't happen normally), rebuild from cached AbstractView.
 
-    let dirty = *state.app.view_dirty.borrow();
+    // PLAN-725 T-01：dirty 读点已随单建提升（dark 同步后——主题翻转帧本帧
+    // 即脏）；frame_build 同源。
 
     // Fast path: return cached Element when nothing changed.
     if !dirty {
@@ -23335,16 +23444,8 @@ fn dynamic_view_impl(
     // PLAN-650 E-2/E-4：capture 以 F12 为主；MCP 仅在 **dirty 重建帧** 追加
     //（静止 fall-through 帧不再为 MCP 付 live_vtree/needs_bounds——快照走
     // 既有 gate_dirty/gate_ws 同步，视图未变时仍然准确）。
-    let mcp_active = !p530_nomcp && state.desktop.mcp_shared.is_some();
-    let mcp_wants_live = mcp_active
-        && (dirty
-            || state
-                .desktop
-                .mcp_shared
-                .as_ref()
-                .map(|m| m.lock().unwrap().mcp_active_recently(30))
-                .unwrap_or(false));
-    let capture_debug = state.app.devtools.debug_mode || mcp_wants_live;
+    // PLAN-725 T-01：dirty/mcp_active/mcp_wants_live/capture_debug 已随单建
+    // 提升点计算（快道前唯一计算点），此处直用。
 
     // Plan 314 Task 4: request a layout-bounds collection this frame whenever we
     // are capturing DevTools/MCP data. `update()` checks `needs_bounds` at its
@@ -23365,19 +23466,17 @@ fn dynamic_view_impl(
     // 逐重建帧吐出（P631_PROFILE=1 启用；Style::parse 计数见 ui::style::profile）。
     let p631_profile = crate::ui::style::profile::enabled();
     let p631_t_builder = p631_profile.then(std::time::Instant::now);
+    // PLAN-725 T-00：S3b 打点起点（脏帧主建 / 非脏 fall-through 克隆）。
+    let p725_t_s3b = std::time::Instant::now();
     let (converted, debug_id_map) = if dirty {
-        // Full rebuild: construct AbstractView from template, cache the result.
-        // Plan 307 Task 18: gate the probe by debug_mode. When F12 is off the
-        // probe is disabled (all record_* no-ops → zero overhead), and
-        // live_probe is set to None so the inspector UI degrades to placeholders.
-        let (mut view, debug_id_map, probe) =
-            state.component.view_with_debug_gated(capture_debug);
+        // PLAN-725 T-01：单帧单建——消费提升点的构建产物（view/id_map/
+        // probe；live_probe 保留决策已随提升点落位），此处只做注入/转换/
+        // 缓存写回。probe=true 形态的 MCP 快照消费已由同步块克隆完成。
+        let (mut view, debug_id_map, _probe) = frame_build
+            .take()
+            .expect("PLAN-725 T-01: dirty frame must carry the hoisted build");
         let debug_id_map = Some(debug_id_map);
-        if capture_debug {
-            *state.app.live_probe.borrow_mut() = Some(probe);
-        } else {
-            *state.app.live_probe.borrow_mut() = None;
-        }
+        let p725_t_tail = std::time::Instant::now();
         inject_todo_list(&mut view, &state.app.todos, state.component.widget_name());
         if !state.app.input_values.is_empty() {
             patch_input_values(&mut view, &state.app.input_values);
@@ -23393,16 +23492,24 @@ fn dynamic_view_impl(
         // PLAN-062 F2: 新缓存已写回——换代提交帧账本（释放上一脏帧经
         // retain_heap_result 拿下的宿主份额；旧缓存树同帧淘汰，无悬挂）。
         state.component.commit_dirty_frame();
+        // PLAN-725 T-00：S3b 尾段（注入/转换/缓存写回——建本体已在提升点
+        // 计入 note_s3b_build）。
+        crate::ui::frame_segments::note_s3b_clone(p725_t_tail.elapsed());
         (converted, debug_id_map)
     } else {
         // Cache miss on non-dirty frame: rebuild from cached AbstractView (cheaper than template rebuild)
         let cached = state.app.cached_converted_view.borrow();
         if let Some(ref converted) = *cached {
-            let debug_id_map = state.app.devtools.cached_debug_id_map.borrow().clone();
             // `live_probe` is intentionally NOT refreshed here: the probe is
             // template-derived and stable across cache hits, so the retained
             // probe from the last dirty rebuild remains valid.
-            (converted.clone(), debug_id_map)
+            let debug_id_map = state.app.devtools.cached_debug_id_map.borrow().clone();
+            // PLAN-725 T-00：S3b fall-through 克隆臂（深克隆 cached_converted_
+            // view——无 view_with_debug_gated 调用，不计 builds）。
+            let out = (converted.clone(), debug_id_map);
+            drop(cached);
+            crate::ui::frame_segments::note_s3b_clone(p725_t_s3b.elapsed());
+            out
         } else {
             drop(cached);
             // Plan 307 Task 18: gate the probe by debug_mode (same as the dirty
@@ -23424,6 +23531,8 @@ fn dynamic_view_impl(
             *state.app.devtools.cached_debug_id_map.borrow_mut() = debug_id_map.clone();
             // PLAN-062 F2: 首帧构建同契约换代提交（与 dirty 分支一致）。
             state.component.commit_dirty_frame();
+            // PLAN-725 T-00：S3b 首帧/缓存击穿重建臂（builds 计数）。
+            crate::ui::frame_segments::note_s3b_build(p725_t_s3b.elapsed());
             (converted, debug_id_map)
         }
     };
@@ -23497,7 +23606,12 @@ fn dynamic_view_impl(
 
     let mut path = Vec::new();
     let p631_t_render = p631_profile.then(std::time::Instant::now);
+    // PLAN-725 T-00：S4 Element 段打点（render_dynamic_view 全树新建）。
+    let p725_t_s4 = std::time::Instant::now();
     let rendered = render_dynamic_view(converted, debug_ctx.as_ref(), &mut path);
+    crate::ui::frame_segments::note_s4_element(p725_t_s4.elapsed());
+    // PLAN-725 T-00：臂累积表随 s4 发布（勘定钻取面）。
+    crate::ui::frame_segments::flush_arms();
     if p631_profile {
         let (calls, nanos) = crate::ui::style::profile::take();
         let builder_ms = p631_builder_us.unwrap_or(0) as f64 / 1000.0;
@@ -23690,10 +23804,13 @@ fn dynamic_view_impl(
     let result: iced::Element<'static, IcedMessage> =
         crate::ui::iced::right_press_area::PointerPressArea::new(result).into();
 
-    // Cache the Element for reuse on next non-dirty frame, then take and return.
-    // view_dirty was already cleared above.
-    *state.app.cached_rendered.borrow_mut() = Some(result);
-    state.app.cached_rendered.borrow_mut().take().unwrap()
+    // PLAN-725 T-04① 勘定：put-then-take 死写移除。iced view() 契约要求
+    // owned Element 返回——原「写缓存后立即 take 返回」使缓存入口态恒空，
+    // 上方快道从不命中（:18005 旧注释「Element 缓存 take 空后的
+    // fall-through 帧」早已承认）。非脏帧真实路径=cached_converted_view
+    // 克隆+全树 Element 重建（fall-through 臂，孤儿帧行可见其成本）。
+    // 快道保留为防御面（未来若引入真缓存写者即激活）；本帧产物直接返回。
+    result
 }
 
 /// Plan 504：App 窗口根容器。常态 Fill×Fill；`fit_pending`（pac.at
@@ -26824,6 +26941,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         }
 
         AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style, highlight, ghost, keydown, keymap } => {
+            // PLAN-725 T-00：臂累积探针（勘定钻取）。
+            let p725_arm_t = std::time::Instant::now();
+            let p725_arm_r = || crate::ui::frame_segments::arm_acc("textarea", p725_arm_t.elapsed());
             let key = on_change.as_ref()
                 .map(|m| format!("{}_{}", m.widget, m.event))
                 .or_else(|| on_submit.as_ref().map(|m| format!("{}_{}", m.widget, m.event)))
@@ -26947,7 +27067,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 el
             };
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "textarea", el, vec![], None) } else { el }
+            let el_out = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "textarea", el, vec![], None) } else { el };
+            p725_arm_r();
+            el_out
         }
 
         // Layout containers: recursively render children through render_dynamic_view
@@ -27256,6 +27378,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         // Plan 413: code editor (VM path) — on_change 发布携带全文的新消息
         // （input_value: Some，PLAN-057 textarea 先例同款）。
         AbstractView::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, readonly, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style } => {
+            // PLAN-725 T-00：臂累积探针（勘定钻取——整臂含 scrollable 包装）。
+            let p725_arm_t = std::time::Instant::now();
+            let p725_arm_r = || crate::ui::frame_segments::arm_acc("code_editor", p725_arm_t.elapsed());
             let dbg_props = debug_style_props(style.as_ref());
             use crate::ui::code_editor as ce;
 
@@ -27277,16 +27402,36 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 font_size,
             };
             let storage_key = ce::storage_key(&key);
+            // PLAN-725 T-00：臂内子分段（勘定钻取——[P725-ARM] 行）。
+            let p725_t_set = std::time::Instant::now();
             ce::code_editor_set_text(&storage_key, &value);
             apply_search(&storage_key, &search);
+            crate::ui::frame_segments::arm_probe("ce_set_text_search", p725_t_set.elapsed());
 
+            let p725_t_new = std::time::Instant::now();
             let mut widget = ce::iced::CodeEditor::<IcedMessage>::new(&storage_key, &config);
+            crate::ui::frame_segments::arm_probe("ce_widget_new", p725_t_new.elapsed());
             if let Some(msg) = on_change.clone() {
                 let sk = storage_key.clone();
                 // PLAN-057: DocEditor dynamic 臂同款同修——发布携带全文的新消息
                 // （input_value: Some），INPUT_TEXT 写入移除（零读者）。
+                // PLAN-725 T-02：载荷静态消费判定——三消费点（$event 实参/
+                // input_state_map 绑定/空 payload 首实参）均不命中时
+                // input_value=None，O(doc) 全文携带退役（`.Edit(str)` 与
+                // $event 契约由判定命中臂逐点保真）。
+                let carry_text = editor_onchange_carries_text(&msg.event);
                 widget = widget.on_change(move || {
+                    if !carry_text {
+                        return IcedMessage {
+                            widget: msg.widget.clone(),
+                            event: msg.event.clone(),
+                            input_value: None,
+                        };
+                    }
+                    // PLAN-725 T-00：S1 打点（全文 clone 形——O(doc) 载荷成本）。
+                    let p725_t_s1 = std::time::Instant::now();
                     let text = ce::code_editor_text(&sk).unwrap_or_default();
+                    crate::ui::frame_segments::note_s1_payload(p725_t_s1.elapsed());
                     IcedMessage {
                         widget: msg.widget.clone(),
                         event: msg.event.clone(),
@@ -27322,7 +27467,10 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             // 只做虚拟化渲染。契约 M 无关：draw 每帧偏移同步；光标跟随经
             // core 标记由 dispatch_app 尾部排水成 scroll_to 任务。
             if std::env::var("AUTO_EDITOR_NO_SCROLLER").as_deref() != Ok("1") {
+                let p725_t_tail = std::time::Instant::now();
                 widget = widget.hosted();
+                crate::ui::frame_segments::arm_probe("ce_hosted", p725_t_tail.elapsed());
+                let p725_t_sc = std::time::Instant::now();
                 let scroller = iced::widget::scrollable(widget)
                     .id(iced::widget::Id::from(format!("editor-scroll-{key}")))
                     .style(|_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
@@ -27330,11 +27478,18 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     })
                     .width(iced::Length::Fill)
                     .height(iced::Length::Fill);
+                crate::ui::frame_segments::arm_probe("ce_scrollable", p725_t_sc.elapsed());
+                let p725_t_wd = std::time::Instant::now();
                 let el: iced::Element<'static, IcedMessage> = scroller.into();
-                if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
+                let el_out = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el };
+                crate::ui::frame_segments::arm_probe("ce_wrap_debug", p725_t_wd.elapsed());
+                p725_arm_r();
+                el_out
             } else {
                 let el: iced::Element<'static, IcedMessage> = widget.into();
-                if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
+                let el_out = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el };
+                p725_arm_r();
+                el_out
             }
         }
 
@@ -27364,7 +27519,17 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     // Some），解释器 on_with_input_for 才能把文本作 handler 首实参
                     // （.Edit(str)），修复真实键盘回写 state.content 断链（048）。
                     // INPUT_TEXT 写入移除：解释器路径零读者（generic 臂保持原样）。
+                    // PLAN-725 T-02：载荷静态消费判定同 code_editor 臂（同族
+                    // O(doc) 携带退役——契约保真口径见 input_payload_consumed）。
+                    let carry_text = editor_onchange_carries_text(&msg.event);
                     widget = widget.on_change(move || {
+                        if !carry_text {
+                            return IcedMessage {
+                                widget: msg.widget.clone(),
+                                event: msg.event.clone(),
+                                input_value: None,
+                            };
+                        }
                         let text = ade::autodown_editor_text(&sk2).unwrap_or_default();
                         IcedMessage {
                             widget: msg.widget.clone(),

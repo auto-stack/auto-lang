@@ -1740,3 +1740,4 @@ pub fn sample_system() {
     assert!(rs_code.contains("cpu_count()"));
     assert!(rs_code.contains("mem_total_mb()"));
 }
+#[test] fn test_04_strings_010_print_concat() { test_a2r("04_strings/010_print_concat").unwrap(); }

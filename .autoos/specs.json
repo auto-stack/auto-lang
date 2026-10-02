@@ -4880,6 +4880,11 @@
             "docsha:07a644d95f92d73e"
           ],
           "file": "docs/specs/website/design/ui-presentation.md"
+        },
+        {
+          "id": "P725-1",
+          "title": "帧管线增量更新契约（PLAN-725 SD-01）",
+          "content": "auto-edit M4 帧两行 FAIL 清偿本体（canonical 唯源=docs/specs/auto-lang/ui/design/frame-pipeline-incremental.md；勘定+双态谱=docs/plans/evidence/725/）。契约：五段成本链分段口径（ui::frame_segments 探针——AUTO_FRAME_BENCH 同门，[P725-FRAME] 行 prev/cur 双槽配对+孤儿帧观测）；脏帧 view_with_debug_gated 恰一次（单帧单建——MCP 同步块复用主重建产物，dark 同步块上移保 PLAN-633 状态采集序）；编辑器 on_change 载荷静态消费判定（三消费点 $event/input_state_map/空 payload 首实参均不命中→input_value=None，O(doc) 携带退役；保守语义=绑定表缺席携带；.at 消费面零改动——editor-kernel §8 契约节）；hosted 编辑器 content_height 无折叠快道（rope 摘要 O(1)——根因链 iced scrollable::new 构造期 size_hint→fresh_fold_map 逐行物化，1MB 实测 95ms/帧清零）；Element 缓存 put-then-take 死写移除（勘定在案）。阶梯谱基准：5KB/100KB/1MB×VM 轨 ladder.py 双态可复跑，定量门 5KB segsum P95≤16.7ms PASS（改后 10.59ms；1MB/5KB P50 比 1.52 尺寸缩放清零）。SD-02=frame-observability §5 上游阶梯谱节；SD-03=ui overview 增量管线注记；a2r frame fn i32 收窄（SD-B §3b saturating 口径，供⑬ E0308 清偿）。下游帧档两行真判定=下游补跑件（重判指引随 evidence/725/downstream-handoff.md）。"
         }
       ,
         {

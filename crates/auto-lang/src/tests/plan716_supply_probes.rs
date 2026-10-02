@@ -243,14 +243,22 @@ widget App {{
         );
     }
 
-    /// a2r_std::frame 模块语义：读回 i64 非负（与 VM 轨同源同形）。
+    /// a2r_std::frame 模块语义：读回非负（与 VM 轨同源同形）。PLAN-725
+    /// T-06 供⑬：a2r 臂值域收窄 i32（SD-B §3b saturating 口径——i32 域内
+    /// 与源 i64 逐值等价）。
     #[test]
     fn frame_timestamps_a2r_std_parity() {
         let b = crate::a2r_std::frame::begin_ms();
         let p = crate::a2r_std::frame::present_ms();
         assert!(b >= 0 && p >= 0);
-        assert_eq!(b, crate::ui::frame_bench::frame_begin_ms(), "双轨同源");
-        assert_eq!(p, crate::ui::frame_bench::frame_present_ms(), "双轨同源");
+        assert_eq!(b as i64, crate::ui::frame_bench::frame_begin_ms(), "双轨同源");
+        assert_eq!(p as i64, crate::ui::frame_bench::frame_present_ms(), "双轨同源");
+        // PLAN-725 T-06 供⑬编译级证明：i32 直承接（widget 状态 `int` 字段
+        // 同车道）——E0308 形态清偿的类型面断言（编译即证）。
+        let fb_i32: i32 = crate::a2r_std::frame::begin_ms();
+        let fp_i32: i32 = crate::a2r_std::frame::present_ms();
+        assert_eq!(fb_i32, b);
+        assert_eq!(fp_i32, p);
     }
 
     // ── AC-B1: 门控语义 + 到达序（门开态）───────────────────────────────

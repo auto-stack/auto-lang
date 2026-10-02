@@ -1836,6 +1836,15 @@ impl CodeEditorCore {
     pub fn content_height(&self) -> f32 {
         // Plan 673 T-05: total from the rope summary — O(1), no editor lock.
         let total = self.doc.lock().unwrap().line_count().max(1);
+        // PLAN-725 T-00① 根因修复：无折叠快道。fresh_fold_map 为 O(n) 全文档
+        // 逐行物化（Vec<String>），而本函数经 hosted 模式 size() → iced
+        // scrollable 构造期 size_hint **每帧 Element 重建**都被调（1MB 档
+        // 实测 95ms/帧）。无折叠时 hidden 恒 0（fresh_fold_map 空折叠集的
+        // 退化形态），快道结果与慢路径逐值等价——宁缺勿错纪律下零行为差。
+        if self.folds.lock().unwrap().is_empty() {
+            let line_height = self.config.lock().unwrap().line_height();
+            return total as f32 * line_height;
+        }
         // Fresh fold map (not the last render's snapshot): folds toggle in
         // update — the height report must be current by the time the next
         // layout pass queries it, one frame earlier than a render would be.
@@ -2477,6 +2486,41 @@ only
 ", &mut fs);
         let list2 = render::render(&core2, &mut fs, 400.0, 200.0, None);
         assert!(list2.gutter.expect("gutter").folds.is_empty());
+    }
+
+    /// PLAN-725 T-00①: content_height 无折叠快道与慢路径逐值等价——
+    /// 无折叠时 hidden=0，快道 = total×line_height；有折叠时仍走
+    /// fresh_fold_map 慢路径（收缩高度）。回归锚：快道不得改变任一
+    /// 形态的高度报告。
+    #[test]
+    fn content_height_fold_fastpath_equivalence() {
+        let mut fs = FontSystem::new();
+        let config = CodeEditorConfig { lang: "auto".to_owned(), ..CodeEditorConfig::default() };
+        let core = CodeEditorCore::new("test-p725-height", config, &mut fs);
+        core.set_text(
+            "// header
+fn add(a int, b int) int {
+    return a + b
+}
+",
+            &mut fs,
+        );
+        let lh = core.config.lock().unwrap().line_height();
+        // 无折叠：快道 = 5 行（4 换行 + 1，rope 惯例）× 行高（fresh_fold_map
+        // 空折叠集退化形态）。
+        assert!((core.content_height() - 5.0 * lh).abs() < f32::EPSILON);
+        // 折叠 fn 体（行 2 opener）：高度 = 可见行数 × 行高（语义对拍
+        // fold_hidden_count——不硬编码折叠藏行数）。
+        assert!(core.fold_toggle(1), "fold opener at line 2 (0-based 1)");
+        let hidden = core.fold_hidden_count();
+        assert!(hidden > 0, "folding hides at least the body line");
+        assert!(
+            (core.content_height() - (5.0 - hidden as f32) * lh).abs() < f32::EPSILON,
+            "folded height = (5-{hidden})×lh"
+        );
+        // 再展开：回到 5 行（慢路径 → 快道值一致）。
+        assert!(!core.fold_toggle(1));
+        assert!((core.content_height() - 5.0 * lh).abs() < f32::EPSILON);
     }
 
     /// External-dirty handshake: natives mark, the widget consumes once.

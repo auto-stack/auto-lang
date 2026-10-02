@@ -30,6 +30,17 @@ fn bench_enabled() -> bool {
     *ENABLED.get_or_init(|| std::env::var("AUTO_FRAME_BENCH").ok().as_deref() == Some("1"))
 }
 
+/// PLAN-725 T-00：门控读数开放（frame_segments 分段探针同门复用——
+/// 单一 AUTO_FRAME_BENCH 门语义，不引第二门）。
+pub fn segments_gate() -> bool {
+    bench_enabled()
+}
+
+/// PLAN-725 T-00：进程起点起算毫秒（frame_segments 同坐标系读数）。
+pub fn process_elapsed_ms() -> i64 {
+    elapsed_ms()
+}
+
 static FRAME_BEGIN_MS: AtomicI64 = AtomicI64::new(0);
 static FRAME_PRESENT_MS: AtomicI64 = AtomicI64::new(0);
 

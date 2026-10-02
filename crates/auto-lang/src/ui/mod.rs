@@ -16,6 +16,10 @@ pub mod component;
 // VM 内建 9918/9919 + a2r 臂同源，SD-B 契约）。
 pub mod frame_bench;
 
+// PLAN-725 T-00: 键入帧五段成本链分段探针（S1..S4+孤儿帧——AUTO_FRAME_BENCH
+// 同门复用，[P725-FRAME] 行随帧吐出，阶梯谱脚本消费）。
+pub mod frame_segments;
+
 // PLAN-721 T-1: 桌面轨更新路径家族诊断通道（AUTO_SCHED_DIAG 门控——泵/
 // 恢复链路订阅装配/消息到达/泵臂消费/置脏传播的统一 trace 面）。
 pub mod sched_diag;

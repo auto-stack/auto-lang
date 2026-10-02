@@ -2851,6 +2851,38 @@ fn eval_stripped_arg(
     }
 }
 
+/// PLAN-725 T-02：on_change 载荷**静态消费判定**——`on_with_input_for` 对
+/// input_value 的三个消费点在消息构造期即静态可知：
+/// (a) `$event` 标记实参替换（payload 内 `$event` 前缀字符串）；
+/// (b) input_state_map 双向绑定写（事件名命中绑定表）；
+/// (c) 空 payload 首实参（`.Edit(str)` 契约——input_value 作 handler 第一实参）。
+/// 三点均不命中 ⇒ input_value 永不被读 ⇒ 消息可安全 `input_value: None`
+/// （code_editor/autodown_editor on_change 闭包的 O(doc) 全文携带退役）。
+/// 绑定表缺席（None/空）时 (b) 按「可能命中」保守处置——宁缺勿错：
+/// 判定只允许把白运的全文变没，不允许让真消费者读空。
+pub fn input_payload_consumed(
+    event_name: &str,
+    input_state_map: Option<&std::collections::HashMap<String, String>>,
+) -> bool {
+    let (clean_name, payload) = decode_payload(event_name);
+    // (c) 空 payload。
+    if payload.is_empty() {
+        return true;
+    }
+    // (a) $event 标记实参。
+    if payload
+        .iter()
+        .any(|v| matches!(v, auto_val::Value::Str(s) if s.as_str().starts_with("$event")))
+    {
+        return true;
+    }
+    // (b) 双向绑定（绑定表缺席=保守认为命中——调用方须在能取到表时传入）。
+    match input_state_map {
+        Some(map) => map.contains_key(&clean_name),
+        None => true,
+    }
+}
+
 pub(crate) fn decode_payload(event_name: &str) -> (String, Vec<auto_val::Value>) {
     const SEP: char = '\u{1F}';
     let Some(idx) = event_name.find(SEP) else {
@@ -3248,6 +3280,40 @@ mod tests {
     use crate::aura::{AuraNode, AuraStateDef, AuraEvent, AuraPropValue, AuraTextContent};
     use crate::ast::Type;
     use std::collections::HashMap;
+
+    /// PLAN-725 T-02：on_change 载荷静态消费判定——三消费点逐点断言 +
+    /// 保守语义（绑定表缺席=携带）。契约面：`.Edit(str)` 空 payload 首实参
+    /// /`$event` 标记实参/input_state_map 双向绑定；载荷实参形（如
+    /// `.SrcChanged(i)`）且无绑定 ⇒ None（O(doc) 携带退役臂）。
+    #[test]
+    fn input_payload_consumed_contract() {
+        let mut bound: HashMap<String, String> = HashMap::new();
+        bound.insert("OnDocInput".to_string(), "content".to_string());
+
+        // (c) 空 payload：`.Edit` 裸 handler 形——input_value 作首实参。
+        assert!(input_payload_consumed("Edit", Some(&bound)));
+        assert!(input_payload_consumed("Edit", None));
+        // (a) $event 标记实参（FStr 冻结形，编码串经 decode_payload 还原）。
+        assert!(input_payload_consumed(
+            &format!("Edit\u{1F}s\u{1F}$event.target.value"),
+            Some(&bound)
+        ));
+        // 载荷实参形且无绑定 ⇒ 不消费（auto-edit `.SrcChanged(i)` 形态）。
+        assert!(!input_payload_consumed(
+            &format!("SrcChanged\u{1F}i\u{1F}2"),
+            Some(&bound)
+        ));
+        // (b) 双向绑定命中（textarea value: 绑定 + oninput 注册）。
+        assert!(input_payload_consumed(
+            &format!("OnDocInput\u{1F}i\u{1F}7"),
+            Some(&bound)
+        ));
+        // 绑定表缺席：保守携带（宁缺勿错——判缺席永不退役载荷）。
+        assert!(input_payload_consumed(
+            &format!("SrcChanged\u{1F}i\u{1F}2"),
+            None
+        ));
+    }
 
     /// PLAN-051 C2 测试公共件：parse 多 widget 源 →
     /// (decl 列表, root 视图 widget, registry)。合成走 from_decl 路径

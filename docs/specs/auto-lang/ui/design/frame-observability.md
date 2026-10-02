@@ -89,3 +89,25 @@
   路由精化归 711 T-06余 观测面复核）。
 - 值语义：0=未捕获（门关/帧未发生），非 0 后单调递增；跨帧间隔
   直读可换算（ms）。
+
+## 5. 上游阶梯谱基准（PLAN-725 T-05——通道的上游消费面）
+
+> 下游 live-fire（bench 档两行判定）归下游件（§3 分工原文）；本节=
+> 上游对偶面——infra 效果度量（编辑路径键入→present 增量重建谱）。
+
+- **分段探针**：`ui::frame_segments`（与本文通道**同一 AUTO_FRAME_BENCH
+  门**——单一门语义不引第二门）：`[P725-FRAME]` 行随帧吐出五段
+  （S1 载荷/S2 VM/S3a MCP 同步/S3b 主重建/S4 Element）+builds+dirty；
+  prev/cur 双槽配对（泵序 begin→present）；`present=-1` 孤儿行=无泵
+  呈现帧（fall-through 成本面）。门关零分支零写入（§2 纪律同款）。
+- **谱面**：文档尺寸阶梯 5KB/100KB/1MB × VM 轨 × MCP autoui_type 驱动
+  （单字符 30 键 60ms 节拍——下游 stage_frame 协议同源）；判据
+  **segsum（S1..S4 和）P50/P95**（present 配对受 bounds 回路竞争不稳定
+  ——total 口径弱化注记；S5=残差）。
+- **脚本与双态谱**：`docs/plans/evidence/725/ladder.py` +
+  `ladder-{baseline,after}.jsonl`（同负载同脚本可复跑）。改后判据门：
+  5KB segsum P95 ≤16.7ms@60Hz；1MB/5KB P50 比 ≤1.6（尺寸缩放清零）。
+- **基准 app**：`examples/ui/041-auto-edit`（现役编辑器例复用——Q-5
+  默认形）；文件装载走 MCP fixture 通道（AUTOUI_TEST_FIXTURES=1 写
+  auto_open_path 状态+触发 App.Tick→ConsumeOpen——本例无 env 直读臂，
+  fixture 是零改例等价驱动）。

@@ -1,0 +1,9 @@
+fn main() {
+    // PLAN-725 T-06 供⑫：print 单实参字符串拼接形（下游帧探针首帧标记行
+    // "BENCH fprobe_first " + begin.str() 的同族）。
+    let n = 42
+    print("BENCH first " + n.str())
+    print("a" + "b" + "c")
+    let tag = "tag-"
+    print(tag + n.str())
+}
