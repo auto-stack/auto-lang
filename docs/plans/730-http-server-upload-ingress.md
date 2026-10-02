@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-730
-status: execution_done
+status: executing
 feature_name: http-server-upload-ingress
 author: [agent]
 created_at: 2026-10-02
 updated_at: 2026-10-02
 plan_revision: 1
-current_step: 9
+current_step: 7
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -281,7 +281,7 @@ legacy 存储迁入有界宿主执行，不在 owner `std::fs::write`；正常�
 - create-only不用先exists再覆盖；failed session不能成功，commit重复明确拒绝，scope终结与FS实际退出分开；cleanup失败记录可追踪遗留，不提前腾FS槽。
 - 验证：`cargo t plan730` + OS发布/链接/权限/磁盘注入矩阵，报告`730-upload-storage.md`；AC-03/05，SD-01/04/05。
 
-### T-05：VM流式入口、native等待与scope生命周期 [✅ ae460c8c4]
+### T-05：VM流式入口、native等待与scope生命周期 [回工 R1：F-1 收据 scope 登记]
 
 - 依赖T-02/03/04。修改`vm/ffi/{http_transport,http_server,async_http,stdlib}.rs`、`ffi/mod.rs`、`vm/{native,native_catalog}.rs`，必要新`ffi/http_upload.rs`；native/public名称以T-01冻结。
 - header-first仅用于上传policy route；body保留宿主、UploadRequest有类型注入、授权后receive；live-op重入/typed完成结果、上传资源组和stage deadline/idle/lease对齐。完整receipt作为真实HTTP状态/JSON回复，不由整数位模式猜类型。
@@ -299,7 +299,7 @@ legacy 存储迁入有界宿主执行，不在 owner `std::fs::write`；正常�
 - 在既有B6与新plan730族加入404、401/403、write失败、bind/handler失败；报告协议legacy专节记录所有调用路径和成功形状，绑定scope而不手工任意路径删除。
 - 验证：`cargo t plan730`、串行实际B6 e2e及JSON/SSE/729 scoped回归；未授权/未匹配零文件，错误无假路径，owner不做阻塞write；AC-03/05/06，SD-02/08。
 
-### T-08：双端wire、资源负载及727/729闭环 [✅ f11c83486]
+### T-08：双端wire、资源负载及727/729闭环 [回工 R1：F-2..F-5 测试矩阵补齐]
 
 - 依赖T-05..07。新`crates/auto-lang/src/tests/plan730_http_upload_tests.rs`，修改`src/tests.rs`注册；auto-man api_gen tests真实fixture；新`examples/http_server/uploads/{README.md,pac.at,src/back/api.at}`，上传后下载路由复用729，fixture数据测试临时生成。
 - 全覆盖§6.1/6.2、FS注入/commit gate/100-continue与legacy；727真实upload→729路由→727download，比hash/receipt/资源，不用独立mock替代。
@@ -312,6 +312,38 @@ legacy 存储迁入有界宿主执行，不在 owner `std::fs::write`；正常�
 - 清理前`bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-730/auto-lang`和兄弟仓guard输出clean再移除；tf到期只主检出单实例；所有AC/SD闭合才可归档。
 
 ## 9. 复审记录
+
+### 复审 R1（2026-10-03，/auto-plan:review）
+
+- stage: review
+- plan_id: PLAN-730
+- plan_revision: 1
+- outcome: needs_fix
+- reviewed_commit: 493081841（分支 plan-730-dev 全部 10 提交；worktree clean）
+- base_commit: 7d50989f7a（master；其后 master 另有 731/732 会话簿记推进——merge 阶段需真实 merge 非_ff）
+- dependency_revisions: PLAN-729 archived@7d50989f7（spec 050e2ee90）；a2r-std/auto-man 同 worktree
+- spec_inputs: docs/specs/stdlib/design/http-server-files.md（729 最终版）+ overview/stdlib project 等 §4.1 表
+- acceptance_results: AC-01 ✅/AC-02 partial（F-2/F-3 证据缺口）/AC-03 ✅/AC-04 partial（F-4/F-5 证据缺口）/
+  AC-05 ✅（并发同名以 hard_link 原子性+顺序 409 证，真并发不可确定性复现——注记）/AC-06 ✅/AC-07 ✅
+- findings:
+  - **F-1 [P2]** `vm/ffi/http_upload.rs insert_upload_receipt` 未调 `register_scope_upload`——
+    构造后未编组的收据（如 handler 早分支丢弃收据返回他值）在 `VM_UPLOAD_RECEIPTS` 无界滞留；
+    729 shim 对每个构造登记（http_server_file.rs:59 先例），本桥自身注释承诺"防注册表无界增长"。
+    影响 AC-04/05 资源回收面。修复=登记一行。
+  - **F-2 [P3]** §6.1 上传族"0B 文件"、解析族"quoted boundary"无显式测试（结构支持，证据缺）。
+  - **F-3 [P3]** §6.1 "chunked/无声明长度"未测——现有用例全部携带 Content-Length。
+  - **F-4 [P2]** §6.2/AC-04 "active4+queue16 满下一笔 503"与"慢传输期间 20 次 health<500ms"未测。
+  - **F-5 [P3]** §6.2 断连（中途关连接→staging 清理）与 total 期限到期无直接测试（idle 旋钮已测）。
+  - 观察（非缺陷）：examples standalone `auto run` 报 "Skipping back" 为预存（729 files 示例同形同报，
+    两者 api.at 内容均经 e2e fixture 编译运行验证）——候选 P730-D4。
+- evidence: 复现命令与结果——`cargo nextest run -p auto-lang --lib plan730` 23/23（R1 重跑）；
+  示例审查（upload_program 同形 harness 已运行 + files 示例同报对照）；dispatch 段门序核对
+  （match_route→upload→legacy parse→file gate→websocket，websocket/文件门未受重排影响）；
+  F-1 代码核对（insert_upload_receipt:84-90 无 register 调用 vs http_server_file.rs:59 先例）。
+  其余门禁面证据沿用 493081841 工作交接记录（代码/依赖/测试配置未变，R1 复跑定向面一致）。
+- next: 回工修复 F-1..F-5（T-05/T-08 重开，current_step=7）→ 复审 R2 → merge。
+- 独立性：与实施同会话复审——已按技能要求从工件重建结论（代码核对/复跑/逐项 diff 狩猎），
+  未采信实施自述；发现项均附可复验证据。
 
 ### 工作交接（2026-10-02，/auto-plan:work）
 
