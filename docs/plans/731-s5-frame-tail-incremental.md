@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-731
-status: execution_done
+status: reviewed
 feature_name: S5 帧尾段增量化件（帧两行清偿本体——layout/shaping/draw 段插桩归因+shaping 缓存与视口增量+layout 增量+组件重建消除+掉泵治理——下游 type_latency/scroll_fps 重判解锁）
 author: [agent]
 created_at: 2026-10-02T21:10:05+08:00
@@ -246,13 +246,13 @@ cargo tf 全量（预存对账零新增）+725 谱零回退（S1-S4 段和带）
 | # | 任务 | 依赖 | 落点（实勘锚） | 产出/意图 | AC | 验证（命令/预期） |
 |---|---|---|---|---|---|---|
 | 0 | T-00 插桩+归因 | — | frame_bench+iced 源勘+勘定报告 | 子段谱+四定形+golden 基线 | 全 | [x] 报告在档（evidence/731/T-00-survey.md：定谳 ce_fold_scan=S5 主导[1MB debug 6.3ms/帧=90%]、整形/layout 已受控、尾帧上游不复现[下游特有]、四定形+双态基线谱+golden 三形自洽 0.00%；commit 7454e4c13） |
-| 1 | T-01 shaping 缓存 | T-00 | iced 渲染层/cosmic-text 协同面 | 视口增量+缓存 | AC-02 | [x] 命中谱+单测绿（fold 域 revision 缓存[core::cached_fold_regions]：ce_fold_scan 6.29ms→~1µs；1MB s5 P50 debug 7.06→0.81ms/release 1.16→0.36ms；滚动尾帧 P95 38.66→1.49ms；单测 p731×3 绿+code_editor 129 绿+fold 31 绿+golden 三形 0.00%；commit 0664025e7） |
+| 1 | T-01 shaping 缓存 | T-00 | iced 渲染层/cosmic-text 协同面 | 视口增量+缓存 | AC-02 | [x] 命中谱+单测绿（fold 域 revision 缓存[core::cached_fold_regions]：ce_fold_scan 6.3-7.8ms→~1µs；1MB s5 P50 debug 6.60→0.81ms[-88%]/release 1.16→0.36ms[-69%]；滚动 P95 13.88→1.49ms[首轮 38.66 波动注记在档]；单测 p731×3 绿+code_editor 129 绿+fold 31 绿+golden 三形 0.00%；commit 0664025e7） |
 | 2 | T-02 layout 增量 | T-00 | iced layout 面 | 脏域/缓存形 | AC-03 | [x] 勘定记录+替代案成效（iced 0.14 无增界面+实测 s5_layout release 0.02-0.05ms/帧非瓶颈——Q-1 替代案路线；golden 三形 0.00%；T-05-comparison.md §3） |
 | 3 | T-03 组件缓存 | T-00 | code_editor 组件面 | 重建消除 | AC-04 | [x] 受控谱（ce_widget_new 实测 0.17ms/rebuild 非成本——024 因果勘定修正；memo 92/92 绿=046 正交零扰动；T-05-comparison.md §4） |
 | 4 | T-04 掉泵治理 | T-00 | 帧泵呈现面 | fall-through 消除 | AC-05 | [x] 泵率谱+归因注记（pump_per_sec/orphan 计数入 ladder+JSONL；present=-1=测量配对面定谳[墙钟对照实证非呈现丢失]；T-05-comparison.md §2） |
-| 5 | T-05 阶梯谱 | T-01..04 | 725 谱脚本复用 | 改前/改后双谱 | AC-06 | [x] 双谱在档（ladder-{baseline,after}[-release].jsonl 四谱：debug -88.5%/release -69%@1MB；S1-S4 segsum 零回退带±2%；T-05-comparison.md §1） |
+| 5 | T-05 阶梯谱 | T-01..04 | 725 谱脚本复用 | 改前/改后双谱 | AC-06 | [x] R1 修复复验（F-1：T-00 态二进制全档基线重跑归档——三档×三相位+泵率齐备；F-2：segsum 文件实算重写[1MB +3.8%/5KB -4.2% 同带+100KB -36% 改善向=s3a 波动，无系统性回退]；数字全部出自 JSONL 在档） |
 | 6 | T-06 回归门 | T-01..04 | tf 全量+golden+探针族 | 回归门 | AC-03/07 | [x] 对账零新增（裸 cargo t 全档 5034 run/5019 绿/15 红：13 精确对上批量回执 known_reds_seen[musk p053×4+p054×2/plan606_gallery/projector/desktop_bus/desktop_surface/schema×2+kitchen_sink]+2 环境负载红[lock_serializes 隔离绿=并行 flake；ash_leak_probe=autoterm_core.dll 跨仓工件缺席=新 worktree 环境红]——零 731 归因新红；frame_bench/frame_segments/code_editor 129/fold 31/memo 92 探针族绿；golden 0.00%×3；计划文本 tf 归批量档[fix-test-tiering 裁定，dep_parity_018 超时亦负载 flake——隔离 0.785s 绿]） |
-| 7 | T-07 回执+规范+账本 | T-05/06 | SD-01/02+P731-1+回执节 | 落账与回执 | AC-08 | [x] SD-01 §4b/§5b+SD-02 §5 扩档落 worktree（发布归 merge）；回执 evidence/731/downstream-handoff.md；P731-1=merge 件（auto-plan-merge 技能 ledger 面） |
+| 7 | T-07 回执+规范+账本 | T-05/06 | SD-01/02+P731-1+回执节 | 落账与回执 | AC-08 | [x] R1 修复复验（F-2 定量门措辞如实化+F-5 SD-02 face 面覆盖注记+F-3 arm_count_n 实计+F-4 占位符填实；回执数字同步在档版） |
 
 ## 9. 复审记录
 
@@ -278,11 +278,11 @@ cargo tf 全量（预存对账零新增）+725 谱零回退（S1-S4 段和带）
   替代案路线数据成立]；T-03 组件缓存=受控谱[ce_widget_new 0.17ms/
   rebuild 非成本——024「重建→重整形」因果勘定修正；memo 92/92 绿=
   046 正交]；T-04 泵率谱通道+配对面归因[present=-1=测量面非丢失，
-  墙钟对照实证]；T-05 四谱对照+S1-S4 零回退带±2%+golden 0.00%×3；
+  墙钟对照实证]；T-05 四谱对照+golden 0.00%×3（S1-S4 零回退主张 R1 F-2 修正——见 R1）；
   T-06 裸 cargo t 全档对账[5034 run/5019 绿/15 红=13 预存 known_reds_seen
   +2 环境负载红——lock 隔离绿/ash dll 缺席]——零 731 归因；T-07 SD-01 §4b/§5b+SD-02 §5 worktree 落档+下游回执
   downstream-handoff.md）。三 frozen 全程无违例。`code_commit`:
-  plan-731-dev 7454e4c13/0664025e7/<T-07 提交>（worktree
+  plan-731-dev 7454e4c13/0664025e7/fd5041658/fb071e2d1（worktree
   D:/autostack/.wt/lang-731/auto-lang，基面 master@7d50989f7，组内
   auto-down 兄弟 detached@895f8d0）。`task_ids`: T-00..T-07 全。
   `evidence`: docs/plans/evidence/731/{T-00-survey.md,
@@ -292,6 +292,66 @@ cargo tf 全量（预存对账零新增）+725 谱零回退（S1-S4 段和带）
   裁定）调整=裸 cargo t 复审门+tf 归批量档（/auto-plan:regress 主
   检出单实例）；P731-1 ledger/specs.json 发布归 merge 件
   （auto-plan-merge 技能面）。
+
+- 2026-10-02 R1 复审（同会话声明：与执行同 session——结论自工件重建：
+  diff 直读/探针族复跑/证据 JSONL 实算，不采信执行摘要）。`stage: review`，
+  PLAN-731，plan_revision 1。`outcome: needs_fix`。`reviewed_commit`:
+  fb071e2d1（plan-731-dev @ worktree lang-731）；`base_commit`: 7d50989f7；
+  `dependency`: auto-down detached@895f8d0f。`spec_inputs`: SD-01/SD-02
+  worktree 版（fb071e2d1）。`acceptance_results`: AC-01 pass（三子段
+  在档+门控单测绿+残差退役注记）/AC-02 pass（命中谱 6.29ms→~1µs+失效
+  窄化单测×3+等价单测——视口增量=命中谱断言形，计划 §5 T-01 原文口径）
+  /AC-03 pass（不可行面记录+替代案成效+golden 三形 0.00%）/AC-04 pass
+  （受控谱+memo 92/92）/AC-05 pass（受控+归因注记+泵率谱通道；达标带
+  校准归下游——计划未定义数值带，注记在案）/AC-07 pass（裸 cargo t
+  5034/5019 绿+15 红全对账[13 预存 known_reds_seen+2 环境/负载]，零 731
+  归因新红；tf 归批量档=fix-test-tiering 裁定）/AC-06 partial/AC-08
+  partial——受 F-1/F-2/F-3 拖累。`findings`:
+  **F-1**（AC-06/证据包；高）ladder-baseline.jsonl（debug）被 1mb-only
+  复跑覆写——5kb/100kb 基线行丢失；T-00-survey/T-05-comparison 引用
+  7.06/38.66 等出自首次运行控制台，与在档文件（6.24/7.51）不一致——
+  修复=基提交（7d50989f7）重建 debug 二进制全档重跑基线（终版脚本含
+  typenl/泵率）覆写归档+文档数字对齐在档文件；
+  **F-2**（AC-06/SD-01 §4b；高）「S1-S4 segsum 零回退 ±2%」无证据
+  支撑——在档实算 1MB 段和均值 base 7.71 vs after 8.88（跨跑波动
+  ~±8-15%）——修复=实算重写（S1-S4 打点/实现路径零改动=diff 事实
+  [frame_segments S1-S4 打点与 renderer 主路径仅加包装]+跨跑带如实
+  陈述），SD-01 §4b 定量门措辞同步；
+  **F-3**（AC-01 臂钻取语义；中）arm_count("ce_text_runs") 实计编辑器
+  draw 调用数非 fill_text 段数——修复=按 list.text_runs.len() 实计或
+  更名；
+  **F-4**（簿记；低）§9 work 记录占位符 `<T-07 提交>` 未填 fb071e2d1；
+  **F-5**（注记；低）dynamic_view_impl 的 view_named(face) 早退路径
+  （dashboard face 面）无 S5 探针覆盖——SD-02 边界注记补记（bench/
+  ladder 主路径不受影响）。`evidence`: 复跑探针族 p731×3/frame×51/
+  code_editor×129/fold×31/memo×92 全绿；diff 直读（renderer 两包装点+
+  中心编辑臂 bump+失效路径审计 set_text:724/edit:771/paged:833/
+  load:933/handle_input 1540-1807/undo 剪贴板 2245-2296 全 bump）；
+  定量核对 release 1mb type 1.16→0.36 ✓/scroll P95 2.35→0.94 ✓
+  /debug after 0.81/1.49 ✓（after 文件一致）——**debug baseline 文件
+  与文档引用不一致（F-1）**。`next`: work（R1 修复→R2 复审）。
+
+- 2026-10-02 R2 复审（同会话工件重建，承 R1）。`stage: review`，PLAN-731，
+  plan_revision 1。`outcome: pass`。`reviewed_commit`: 8e95ac426（R1 修复
+  后 plan-731-dev HEAD；R1 基线=fb071e2d1）。`findings_resolved`:
+  F-1 ✓（基线重建点勘定修正=**T-00 态 7454e4c13**（非裸基——s5 字段
+  依赖插桩），组内 worktree 二进制全档重跑归档——ladder-baseline.jsonl
+  3 档×3 相位 9 摘要+泵率齐备[1mb 6.60/8.67/6.62+滚动 P95 13.88]；首轮
+  7.06/38.66 降级为跨跑波动注记——survey/comparison/回执数字全面对齐
+  在档）；F-2 ✓（segsum 文件实算：5KB -4.2%/1MB +3.8% 同带、100KB
+  -36% 改善向=s3a MCP 同步块跨跑波动主源[s1/s2 恒定 0/0.15ms 分段分解
+  实证]——「无系统性回退」以 diff 零改动事实+跨跑带如实陈述，SD-01
+  §4b 定量门措辞同步）；F-3 ✓（arm_count_n 按 list.text_runs.len()
+  实计——基线侧旧口径[draw 计数]注记：ce_text_runs 未参与任何主张）；
+  F-4 ✓（占位符填实）；F-5 ✓（SD-02 face 面覆盖边界注记）。
+  `evidence`: R2 背书校验 5/5 PASS（9 摘要+pump 齐备断言+6.60/13.88/
+  0.81/1.49/0.36 文件直读全中）；修复后 code_editor 129+frame 51 绿；
+  R1 代码面=门控探针（arm_count_n）+文档——AUTO_FRAME_BENCH 未设零
+  行为差（golden/full-face 证据不受累）；worktree clean@8e95ac426。
+  `acceptance_results`: AC-01..AC-08 全 pass（AC-06/AC-08 自 partial
+  升格；AC-08 的 P731-1 回读 True 保持 merge 件域——review 纪律不动
+  live ledger）。`next`: merge（auto-plan-merge：SD-01/SD-02 发布+
+  P731-1+归档+worktree 组清理）。
 
 ## 10. 待澄清事项
 
