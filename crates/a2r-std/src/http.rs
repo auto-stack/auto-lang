@@ -12,10 +12,13 @@
 
 pub mod client;
 
-use crate::http::client::{
-    ClientError, HttpRequest, HttpResponse as KernelResponse, HttpClientStream, StreamMode,
-    StreamSpec, StreamItem,
-};
+// 内核 typed 类型的一等再导出（原生 Rust 消费者面）。
+pub use crate::http::client::{ClientError, HttpRequest, HttpResponse, StreamItem, StreamMode, StreamSpec};
+
+use crate::http::client::HttpClientStream;
+use crate::http::client::HttpResponse as KernelResponse;
+// （ClientError/HttpRequest/HttpResponse/StreamItem/StreamMode/StreamSpec
+//   已由上方 pub use 覆盖命名空间。）
 
 thread_local! {
     static LAST_STATUS: std::cell::Cell<u32> = std::cell::Cell::new(0);
@@ -453,6 +456,13 @@ impl HTTPStream {
     pub fn close(&self) {
         let guard = self.inner.lock().unwrap_or_else(|p| p.into_inner());
         guard.close();
+    }
+
+    /// 终结错误查询（707 同形）：None=未终结；Some(None)=EOF；
+    /// Some(Some(msg))=错误/取消（含 queue full 等提交期终结）。
+    pub fn terminal_error(&self) -> Option<Option<String>> {
+        let guard = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        guard.terminal_error()
     }
 }
 
