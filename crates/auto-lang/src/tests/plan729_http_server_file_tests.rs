@@ -162,7 +162,7 @@ mod http_e2e {
     const PORT_PATH: u16 = 18954;
     const PORT_METHOD: u16 = 18955;
 
-    fn temp_root(tag: &str) -> PathBuf {
+    pub(super) fn temp_root(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("plan729-e2e-{}-{}", tag, std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -188,7 +188,7 @@ mod http_e2e {
 
     /// 二进制安全的原始请求：返回 (状态码, 头部对(小写名), body 字节)。
     /// 按 Content-Length 精确读体（NUL/非 UTF-8 样本不经 lossy）。
-    fn raw_request(
+    pub(super) fn raw_request(
         port: u16,
         method: &str,
         path: &str,
@@ -254,7 +254,7 @@ mod http_e2e {
         (status, hdrs, body)
     }
 
-    fn header_of(hdrs: &[(String, String)], name: &str) -> String {
+    pub(super) fn header_of(hdrs: &[(String, String)], name: &str) -> String {
         hdrs
             .iter()
             .find(|(k, _)| k == name)
@@ -262,7 +262,7 @@ mod http_e2e {
             .unwrap_or_default()
     }
 
-    fn start_server(code: &str, port: u16) -> u16 {
+    pub(super) fn start_server(code: &str, port: u16) -> u16 {
         crate::vm::ffi::stdlib::clear_http_routes();
         std::env::set_var("AUTO_HTTP_PORT", port.to_string());
         let code = code.to_string();
@@ -281,7 +281,7 @@ mod http_e2e {
         port
     }
 
-    fn program(root: &str) -> String {
+    pub(super) fn program(root: &str) -> String {
         // etag 端点：bare 强验证器 `v1`（客户端 If-None-Match/If-Range 直配）。
         format!(
             r#"
@@ -599,6 +599,377 @@ fn plain_int() int {{
         let (s, _, b) = raw_request(port, "GET", "/plain", &[]);
         assert_eq!(s, 200);
         assert!(String::from_utf8_lossy(&b).contains("729729"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+// ===========================================================================
+// T-07：有界与生命周期矩阵（慢发送/取消/关闭/配额）+ 727 客户端互通。
+// ===========================================================================
+
+#[cfg(feature = "test-http-e2e")]
+mod lifecycle {
+    use super::http_e2e::*;
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    const PORT_SLOW: u16 = 18956;
+    const PORT_QUOTA: u16 = 18957;
+    const PORT_INTEROP: u16 = 18958;
+
+    /// 只读响应头、不读 body 的慢客户端（黑洞——body 不被 poll）。
+    struct Blackhole {
+        stream: Option<TcpStream>,
+        status: u16,
+        content_length: usize,
+    }
+
+    impl Blackhole {
+        /// 只发请求不读（排队持有者：headers 要等 active 释放才会来）。
+        fn fire(port: u16, path: &str) -> Self {
+            let mut stream = None;
+            for _ in 0..50 {
+                if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
+                    stream = Some(s);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let mut stream = stream.expect("connect");
+            stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
+            let _ = write!(
+                stream,
+                "GET {path} HTTP/1.1
+Host: 127.0.0.1
+Connection: close
+
+"
+            );
+            Self {
+                stream: Some(stream),
+                status: 0,
+                content_length: 0,
+            }
+        }
+
+        fn open(port: u16, path: &str) -> Self {
+            let mut stream = None;
+            for _ in 0..50 {
+                if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
+                    stream = Some(s);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let mut stream = stream.expect("connect");
+            stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
+            write!(
+                stream,
+                "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+            )
+            .unwrap();
+            let mut raw = Vec::new();
+            let mut buf = [0u8; 65536];
+            let header_end = loop {
+                let n = stream.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break None;
+                }
+                raw.extend_from_slice(&buf[..n]);
+                if let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break Some(pos + 4);
+                }
+            };
+            let header_end = header_end.expect("headers");
+            let head = String::from_utf8_lossy(&raw[..header_end]).into_owned();
+            let status = head
+                .split_whitespace()
+                .nth(1)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let content_length = head
+                .lines()
+                .find_map(|l| {
+                    l.split_once(':').and_then(|(k, v)| {
+                        if k.trim().eq_ignore_ascii_case("content-length") {
+                            v.trim().parse().ok()
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .unwrap_or(0);
+            Self {
+                stream: Some(stream),
+                status,
+                content_length,
+            }
+        }
+    }
+
+    /// 慢发送 + 断连回收：慢客户端（不读 body）持有 active；断连后
+    /// （pump 发送失败 → ClientGone）资源回基线（AC-05）。
+    #[test]
+    fn http_e2e_plan729_slow_client_disconnect_reclaims() {
+        let root = temp_root("slow");
+        std::fs::write(root.join("big.bin"), vec![5u8; 4 * 1024 * 1024]).unwrap();
+        let port = start_server(
+            &program(&root.to_str().unwrap().replace('\\', "/")),
+            PORT_SLOW,
+        );
+        let mut holes = Vec::new();
+        // 4 个黑洞客户端占满 active（默认 max_active=4）。
+        for _ in 0..4 {
+            let h = Blackhole::open(port, "/files/big.bin");
+            assert_eq!(h.status, 200);
+            assert_eq!(h.content_length, 4 * 1024 * 1024);
+            holes.push(h);
+        }
+        // 等待 active 占满（对账探针）。
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while crate::http_file_service::file_active_count() < 4
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(
+            crate::http_file_service::file_active_count(),
+            4,
+            "4 个慢客户端占满 active"
+        );
+        // 断开全部 → pump 发送失败 → 资源回基线。
+        for h in holes.iter_mut() {
+            h.stream.take();
+        }
+        drop(holes);
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        while crate::http_file_service::file_active_count() > 0
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_eq!(
+            crate::http_file_service::file_active_count(),
+            0,
+            "断连后文件资源回基线"
+        );
+        // 服务仍可服务新请求（连接/路由未受损）。
+        let (s, _, b) = raw_request(port, "GET", "/files/big.bin", &[]);
+        assert_eq!((s, b.len()), (200, 4 * 1024 * 1024));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 配额门：N(4) active + Q(16) 排队占满后下一笔确定 503；释放排队即
+    /// 恢复（AC-04；503 Retry-After 头在）。
+    #[test]
+    fn http_e2e_plan729_quota_saturation_503_then_recover() {
+        let root = temp_root("quota");
+        // 64MiB：OS/hyper 缓冲吞不完——pump 真正背压停住，active 真被持有。
+        std::fs::write(root.join("q.bin"), vec![3u8; 64 * 1024 * 1024]).unwrap();
+        let port = start_server(
+            &program(&root.to_str().unwrap().replace('\\', "/")),
+            PORT_QUOTA,
+        );
+        // 4 active（黑洞，读 headers 证实 200）+ 16 queued（黑洞，只发不读
+        // ——排队者 headers 要等 active 释放）= 20。
+        let mut holes = Vec::new();
+        for _ in 0..4 {
+            let h = Blackhole::open(port, "/files/q.bin");
+            assert_eq!(h.status, 200, "active 位 200");
+            holes.push(h);
+        }
+        // 16 个慢读者（排队持有者——线程持续 read，socket 非死态）。
+        let mut readers = Vec::new();
+        for _ in 0..16 {
+            let mut stream = None;
+            for _ in 0..50 {
+                if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
+                    stream = Some(s);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let mut stream = stream.expect("connect");
+            stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
+            use std::io::Write as _;
+            let _ = stream.write_all(
+                b"GET /files/q.bin HTTP/1.1
+Host: 127.0.0.1
+Connection: close
+
+",
+            );
+            readers.push(stream);
+        }
+        let reader_handles: Vec<_> = readers
+            .into_iter()
+            .map(|mut stream| {
+                std::thread::spawn(move || {
+                    // 读 ~8KiB 后退出（socket 关闭 → RST）：排队持有者保活
+                    // 足够久以饱和队列，随后释放让晋升后的 pump 可回收。
+                    let mut buf = [0u8; 512];
+                    let mut reads = 0usize;
+                    loop {
+                        match std::io::Read::read(&mut stream, &mut buf) {
+                            Ok(0) | Err(_) => break,
+                            Ok(_) => {
+                                reads += 1;
+                                if reads >= 16 {
+                                    break;
+                                }
+                                std::thread::sleep(Duration::from_millis(200));
+                            }
+                        }
+                    }
+                })
+            })
+            .collect();
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        while crate::http_file_service::file_queued_count() < 16
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(
+            crate::http_file_service::file_queued_count(),
+            16,
+            "16 笔在文件排队（队内无句柄无缓冲）"
+        );
+        // 第 21 笔：队满即时 503 + Retry-After（即时送达）。
+        let (s, h, _) = raw_request(port, "GET", "/files/q.bin", &[]);
+        assert_eq!(s, 503, "队满即时 503");
+        assert!(!header_of(&h, "retry-after").is_empty(), "Retry-After 在");
+        // 释放全部持有者：4 active 断连 + 16 排队在 30s 准备期限到期终结
+        // （排队期零句柄零缓冲——到期即出队）。等两项计数都回基线。
+        for h in holes.iter_mut() {
+            h.stream.take();
+        }
+        drop(holes);
+        let deadline = std::time::Instant::now() + Duration::from_secs(45);
+        while (crate::http_file_service::file_active_count() > 0
+            || crate::http_file_service::file_queued_count() > 0)
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert_eq!(
+            crate::http_file_service::file_active_count(),
+            0,
+            "active 回基线"
+        );
+        assert_eq!(
+            crate::http_file_service::file_queued_count(),
+            0,
+            "排队回基线（到期出队）"
+        );
+        // 全释放后新请求恢复 200。
+        let (s, _, _) = raw_request(port, "GET", "/files/q.bin", &[]);
+        assert_eq!(s, 200, "全释放后恢复");
+        for h in reader_handles {
+            let _ = h.join();
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 727 客户端互通：transfer_download 对 VM 文件路由——完整下载 hash、
+    /// 强 validator 206 续传、If-Range 失配 200 完整重下、416 保留目标、
+    /// 取消（AC-06）。单流两端绑定同次请求（同一 server fixture）。
+    #[test]
+    fn http_e2e_plan729_client729_server_interop() {
+        let root = temp_root("interop");
+        let data: Vec<u8> = (0usize..(1024 * 256)).map(|i| (i % 251) as u8).collect();
+        std::fs::write(root.join("d.bin"), &data).unwrap();
+        let port = start_server(
+            &program(&root.to_str().unwrap().replace('\\', "/")),
+            PORT_INTEROP,
+        );
+        let base = format!("http://127.0.0.1:{port}");
+        let dst = |name: &str| root.join(name);
+
+        // 1. 完整下载：hash 一致。
+        let t = a2r_std::http::transfer_download(
+            &format!("{base}/files/d.bin"),
+            dst("full.bin").to_str().unwrap(),
+            "{}",
+        );
+        let receipt = a2r_std::http::transfer_wait_typed(&t);
+        assert_eq!(receipt.kind.as_str(), "success", "{receipt:?}");
+        assert_eq!(std::fs::read(dst("full.bin")).unwrap(), data);
+
+        // 2. 强 validator 续传：本地半文件 + etag 匹配 → 206 追加。
+        let half = &data[..100_000];
+        std::fs::write(dst("resume.bin"), half).unwrap();
+        let t2 = a2r_std::http::transfer_download(
+            &format!("{base}/etag/d.bin"),
+            dst("resume.bin").to_str().unwrap(),
+            &format!(
+                "{{\"offset\":{},\"validator\":{{\"etag\":\"v1\"}}}}",
+                half.len()
+            ),
+        );
+        let receipt2 = a2r_std::http::transfer_wait_typed(&t2);
+        assert_eq!(receipt2.kind.as_str(), "success", "{receipt2:?}");
+        assert_eq!(
+            std::fs::read(dst("resume.bin")).unwrap(),
+            data,
+            "续传拼回完整内容"
+        );
+
+        // 3. If-Range 失配（错误 etag）→ 200 完整重下（不 append）。
+        std::fs::write(dst("mismatch.bin"), half).unwrap();
+        let t3 = a2r_std::http::transfer_download(
+            &format!("{base}/etag/d.bin"),
+            dst("mismatch.bin").to_str().unwrap(),
+            &format!(
+                "{{\"offset\":{},\"validator\":{{\"etag\":\"WRONG\"}}}}",
+                half.len()
+            ),
+        );
+        let receipt3 = a2r_std::http::transfer_wait_typed(&t3);
+        assert_eq!(receipt3.kind.as_str(), "success", "{receipt3:?}");
+        assert_eq!(
+            std::fs::read(dst("mismatch.bin")).unwrap(),
+            data,
+            "失配完整重下"
+        );
+
+        // 4. 416（起点=EOF 之外的越界 offset 有 validator 失配保护；这里用
+        // 无 validator 的大 offset 触发 416）→ 失败保留原目标。
+        std::fs::write(dst("keep.bin"), half).unwrap();
+        let t4 = a2r_std::http::transfer_download(
+            &format!("{base}/files/d.bin"),
+            dst("keep.bin").to_str().unwrap(),
+            "{\"offset\":999999999}",
+        );
+        let receipt4 = a2r_std::http::transfer_wait_typed(&t4);
+        assert_eq!(receipt4.kind.as_str(), "failed", "{receipt4:?}");
+        assert_eq!(
+            std::fs::read(dst("keep.bin")).unwrap(),
+            half,
+            "416/失败保留原目标"
+        );
+
+        // 5. 取消：提交后立即 cancel → 终态 cancelled；服务器资源回基线。
+        let t5 = a2r_std::http::transfer_download(
+            &format!("{base}/files/d.bin"),
+            dst("cancel.bin").to_str().unwrap(),
+            "{}",
+        );
+        a2r_std::http::transfer_cancel(&t5);
+        let receipt5 = a2r_std::http::transfer_wait_typed(&t5);
+        assert_eq!(receipt5.kind.as_str(), "cancelled", "{receipt5:?}");
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while crate::http_file_service::file_active_count() > 0
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_eq!(
+            crate::http_file_service::file_active_count(),
+            0,
+            "客户端取消后 server 文件资源退出"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 }

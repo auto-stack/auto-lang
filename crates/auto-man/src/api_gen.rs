@@ -1556,6 +1556,7 @@ async fn __file_reply(
             request_headers: &hdrs,
             prepare_deadline: deadline,
             finish_hook: None,
+            idle_timeout: None,
         },
     )
     .await;

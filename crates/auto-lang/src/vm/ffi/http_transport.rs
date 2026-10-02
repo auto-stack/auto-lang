@@ -367,6 +367,7 @@ async fn serve_file_seed(
             request_headers: &headers,
             prepare_deadline,
             finish_hook,
+            idle_timeout: None,
         },
     )
     .await;

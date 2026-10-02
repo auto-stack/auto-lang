@@ -443,6 +443,8 @@ pub struct ServeFileRequest<'a> {
     /// 恰一次收口钩子（VM 腿完成 scope；body 非 Stream 回复不触发——调用
     /// 方对无 body 回复自行处理）。
     pub finish_hook: Option<FileFinishHook>,
+    /// body idle 期限覆写（测试用；None = 全局限额默认。生产调用面恒 None）。
+    pub idle_timeout: Option<std::time::Duration>,
 }
 
 /// 服务一个文件响应描述符（async；网络/读盘均不在 VM owner——调用点在
@@ -571,8 +573,9 @@ pub async fn serve_file_response(
         pump_file_body(tokio_file, len, limits.app_block_bytes, tx, pump_shared).await;
     });
     let watch_shared = Arc::clone(&shared);
+    let idle = req.idle_timeout.unwrap_or(limits.body_idle_timeout);
     tokio::spawn(async move {
-        watchdog(watch_shared, limits.body_idle_timeout, limits.body_total_timeout).await;
+        watchdog(watch_shared, idle, limits.body_total_timeout).await;
     });
 
     FileReply {
@@ -795,6 +798,7 @@ mod tests {
                     request_headers: &hdrs,
                     prepare_deadline: Instant::now() + Duration::from_secs(10),
                     finish_hook: None,
+                    idle_timeout: None,
                 },
             )
             .await
@@ -1020,6 +1024,7 @@ mod tests {
                 request_headers: &hdrs,
                 prepare_deadline: Instant::now() + Duration::from_secs(10),
                 finish_hook: Some(hook),
+                idle_timeout: None,
             },
         )
         .await;
@@ -1050,6 +1055,7 @@ mod tests {
                 request_headers: &hdrs,
                 prepare_deadline: Instant::now() + Duration::from_secs(10),
                 finish_hook: None,
+                idle_timeout: None,
             },
         )
         .await;
@@ -1092,6 +1098,7 @@ mod tests {
                 request_headers: &hdrs,
                 prepare_deadline: Instant::now() + Duration::from_secs(10),
                 finish_hook: None,
+                idle_timeout: None,
             },
         )
         .await;
