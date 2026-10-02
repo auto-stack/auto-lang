@@ -280,7 +280,19 @@ pub struct RequestBuilder {
     headers: Vec<(String, String)>,
     body: Option<String>,
     timeout_ms: Option<u64>,
+    /// PLAN-727 T-06：multipart 描述（(field, path)，**路径描述直到发送**，
+    /// 不预读为 Vec）。
+    multipart_files: Vec<(String, String)>,
+    multipart_texts: Vec<(String, String)>,
+    /// 预算越界（builder 期记录；send 终结性失败，坏请求不发出）。
+    build_error: Option<String>,
 }
+
+/// PLAN-727 T-06：multipart 预算（与 VM 桥同值，见 727-transfer-decision §7）。
+const BUILDER_MAX_FILES: usize = 16;
+const BUILDER_MAX_TEXT_FIELDS: usize = 64;
+const BUILDER_MAX_TEXT_VALUE: usize = 64 * 1024;
+const BUILDER_MAX_TEXT_TOTAL: usize = 1024 * 1024;
 
 impl RequestBuilder {
     fn into_request(self) -> HttpRequest {
@@ -323,6 +335,9 @@ pub fn request(method: &str, url: &str) -> RequestBuilder {
         headers: Vec::new(),
         body: None,
         timeout_ms: None,
+        multipart_files: Vec::new(),
+        multipart_texts: Vec::new(),
+        build_error: None,
     }
 }
 
@@ -347,20 +362,211 @@ impl RequestBuilder {
         self
     }
 
+    /// Attach a file part（PLAN-727：路径描述到发送，不预读）。
+    /// 预算：文件 part ≤ 16；越界 = send 终结性失败。
+    pub fn multipart_file(mut self, field: &str, path: &str) -> RequestBuilder {
+        if self.multipart_files.len() >= BUILDER_MAX_FILES {
+            self.build_error =
+                Some(format!("multipart file parts exceed budget {BUILDER_MAX_FILES}"));
+            return self;
+        }
+        self.multipart_files
+            .push((field.to_string(), path.to_string()));
+        self
+    }
+
+    /// Attach a text field。预算：字段 ≤ 64、单值 ≤ 64KiB、总量 ≤ 1MiB。
+    pub fn multipart_text(mut self, field: &str, value: &str) -> RequestBuilder {
+        if self.multipart_texts.len() >= BUILDER_MAX_TEXT_FIELDS {
+            self.build_error = Some(format!(
+                "multipart text fields exceed budget {BUILDER_MAX_TEXT_FIELDS}"
+            ));
+        } else if value.len() > BUILDER_MAX_TEXT_VALUE {
+            self.build_error = Some(format!(
+                "multipart text value {} exceeds budget {BUILDER_MAX_TEXT_VALUE}",
+                value.len()
+            ));
+        } else {
+            let total: usize = self.multipart_texts.iter().map(|(_, v)| v.len()).sum();
+            if total + value.len() > BUILDER_MAX_TEXT_TOTAL {
+                self.build_error = Some(format!(
+                    "multipart text total {} exceeds budget {BUILDER_MAX_TEXT_TOTAL}",
+                    total + value.len()
+                ));
+            } else {
+                self.multipart_texts.push((field.to_string(), value.to_string()));
+            }
+        }
+        self
+    }
+
+    fn is_multipart(&self) -> bool {
+        !self.multipart_files.is_empty() || !self.multipart_texts.is_empty()
+    }
+
     /// Send the request. Mirrors `RequestBuilder.send(self) -> Response`.
     ///
     /// 同步桥接：走内核同步入口。仅供同步（非 async）上下文使用——async
     /// 上下文须用 [`RequestBuilder::send_async`]（内核 async 路径，不阻塞
-    /// 执行线程）。
+    /// 执行线程）。multipart 面（PLAN-727）：发送时开文件流式 part，
+    /// 缺失/读失败 = 终结性失败（status 0 Response，不跳过 part）。
     pub fn send(self) -> Response {
+        if self.is_multipart() {
+            return Self::from_kernel(client::kernel_handle().block_on(Self::execute_multipart(self)));
+        }
         Self::from_kernel(client::execute_blocking(self.into_request()))
     }
 
     /// Async send：内核 async 执行（排队/建立/读体全程让出执行线程）。
     /// async fn / tokio runtime 内的正确入口（Plan 024 语义、PLAN-724 实现）。
     pub async fn send_async(self) -> Response {
+        if self.is_multipart() {
+            return Self::from_kernel(Self::execute_multipart(self).await);
+        }
         Self::from_kernel(client::execute(self.into_request()).await)
     }
+
+    /// multipart 执行：共享内核 client + 流式文件 part + 有界响应体。
+    async fn execute_multipart(self) -> Result<KernelResponse, ClientError> {
+        use futures::StreamExt;
+        if let Some(err) = &self.build_error {
+            return Err(ClientError::Transport(format!("invalid request: {err}")));
+        }
+        let file_errors: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let method = reqwest::Method::from_bytes(self.method.to_ascii_uppercase().as_bytes())
+            .map_err(|e| ClientError::Transport(format!("invalid method: {e}")))?;
+        let mut builder = client::shared_http_client()
+            .request(method, &self.url)
+            .timeout(self.timeout_ms.map(std::time::Duration::from_millis).unwrap_or(
+                std::time::Duration::from_secs(600),
+            ));
+        for (k, v) in &self.headers {
+            builder = builder.header(k.as_str(), v.as_str());
+        }
+        let mut form = reqwest::multipart::Form::new();
+        for (name, value) in &self.multipart_texts {
+            form = form.text(name.clone(), value.clone());
+        }
+        for (name, path) in &self.multipart_files {
+            let part = stream_builder_file_part(path, &file_errors);
+            form = form.part(name.clone(), part);
+        }
+        builder = builder.multipart(form);
+        let resp = builder.send().await.map_err(|e| {
+            // 文件读错误（in-band body error）优先呈现为类型化消息。
+            let errs = file_errors.lock().unwrap().join("; ");
+            if errs.is_empty() {
+                if e.is_timeout() {
+                    ClientError::Timeout
+                } else {
+                    ClientError::Transport(format!("multipart send: {e}"))
+                }
+            } else {
+                ClientError::Transport(format!("multipart send: {e}; file errors: {errs}"))
+            }
+        })?;
+        let status = resp.status().as_u16();
+        let headers: Vec<(String, String)> = resp
+            .headers()
+            .iter()
+            .filter_map(|(k, v)| Some((k.to_string(), v.to_str().ok()?.to_string())))
+            .collect();
+        let mut body: Vec<u8> = Vec::new();
+        let mut upstream = resp.bytes_stream();
+        while let Some(chunk) = upstream.next().await {
+            let chunk = chunk.map_err(|e| ClientError::Transport(format!("body read: {e}")))?;
+            let cap = client::kernel_response_body_limit();
+            if body.len() + chunk.len() > cap {
+                return Err(ClientError::BodyTooLarge { limit: cap });
+            }
+            body.extend_from_slice(&chunk);
+        }
+        Ok(KernelResponse { status, headers, body })
+    }
+}
+
+/// 流式文件 part（发送时开文件；缺失/读失败 = 立即出错的流 + 消息登记，
+/// 绝不产生空 part 假成功）。
+fn stream_builder_file_part(
+    path: &str,
+    file_errors: &std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+) -> reqwest::multipart::Part {
+    struct PartStream {
+        rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    }
+    impl futures::Stream for PartStream {
+        type Item = Result<Vec<u8>, std::io::Error>;
+        fn poll_next(
+            mut self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Self::Item>> {
+            match self.rx.poll_recv(cx) {
+                std::task::Poll::Ready(Some(v)) => std::task::Poll::Ready(Some(Ok(v))),
+                std::task::Poll::Ready(None) => std::task::Poll::Ready(None),
+                std::task::Poll::Pending => std::task::Poll::Pending,
+            }
+        }
+    }
+    fn erroring_part(msg: String) -> reqwest::multipart::Part {
+        let stream = futures::stream::once(async move {
+            Err::<Vec<u8>, std::io::Error>(std::io::Error::other(msg))
+        });
+        reqwest::multipart::Part::stream(reqwest::Body::wrap_stream(stream))
+    }
+    let len = match std::fs::metadata(path) {
+        Ok(m) if m.is_file() => m.len(),
+        Ok(_) => {
+            let msg = format!("multipart file is not a regular file: {path}");
+            file_errors.lock().unwrap().push(msg.clone());
+            return erroring_part(msg);
+        }
+        Err(e) => {
+            let msg = format!("multipart file open failed: {path}: {e}");
+            file_errors.lock().unwrap().push(msg.clone());
+            return erroring_part(msg);
+        }
+    };
+    let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(2);
+    let errors = std::sync::Arc::clone(file_errors);
+    let path_owned = path.to_string();
+    client::kernel_handle().spawn(async move {
+        let _permit = client::fs_ops().acquire().await.ok();
+        let mut file = match tokio::fs::File::open(&path_owned).await {
+            Ok(f) => f,
+            Err(e) => {
+                errors
+                    .lock()
+                    .unwrap()
+                    .push(format!("multipart file open failed: {path_owned}: {e}"));
+                return;
+            }
+        };
+        use tokio::io::AsyncReadExt;
+        let mut buf = vec![0u8; 64 * 1024];
+        loop {
+            match file.read(&mut buf).await {
+                Ok(0) => break,
+                Ok(n) => {
+                    if tx.send(buf[..n].to_vec()).await.is_err() {
+                        return;
+                    }
+                }
+                Err(e) => {
+                    errors
+                        .lock()
+                        .unwrap()
+                        .push(format!("multipart file read failed: {path_owned}: {e}"));
+                    return;
+                }
+            }
+        }
+    });
+    let filename = std::path::Path::new(path)
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".to_string());
+    reqwest::multipart::Part::stream_with_length(reqwest::Body::wrap_stream(PartStream { rx }), len)
+        .file_name(filename)
 }
 
 /// An HTTP response. Mirrors Auto's `http.Response`.

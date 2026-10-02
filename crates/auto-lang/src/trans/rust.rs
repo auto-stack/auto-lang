@@ -5808,6 +5808,63 @@ impl RustTrans {
                         write!(out, ")")?;
                         return Ok(());
                     }
+                    // PLAN-727 T-06: 可取消文件传输公共面——transfer_download/
+                    // transfer_upload 非阻塞提交，sync/async 同形发射（句柄
+                    // 面无 async 变体；等待点在 transfer_wait 分叉）。
+                    ("http", "transfer_download") | ("http", "transfer_upload") => {
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::http::{}(", method)?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr_as_str(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    // PLAN-727 T-06: transfer_wait——同步桥接面 / async await 面
+                    // 分叉（唯一需要 async 变体的传输自由函数）。
+                    ("http", "transfer_wait") => {
+                        self.a2r_std_used.set(true);
+                        if self.in_async_ctx.get() {
+                            write!(out, "a2r_std::http::transfer_wait_async(&")?;
+                        } else {
+                            write!(out, "a2r_std::http::transfer_wait(&")?;
+                        }
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        if self.in_async_ctx.get() {
+                            write!(out, ").await")?;
+                        } else {
+                            write!(out, ")")?;
+                        }
+                        return Ok(());
+                    }
+                    // PLAN-727 T-06: transfer_next_progress/cancel/error——非阻塞
+                    // 观察面，sync/async 同形发射（&句柄 借用形）。
+                    ("http", "transfer_next_progress") | ("http", "transfer_cancel") | ("http", "transfer_error") => {
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::http::{}(&", method)?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                     // Plan 349: file download/upload — direct a2r_std mapping.
                     ("http", "download") | ("http", "upload") => {
                         self.a2r_std_used.set(true);
@@ -7698,6 +7755,31 @@ impl RustTrans {
                         return Ok(());
                     }
                     // 非 HTTP 流接收者：回落通用路径。
+                }
+                // PLAN-727 T-06：builder multipart 方法——typed facade 方法
+                // 直发（路径/文本以 str 形；预算与流式语义在 facade 内）。
+                "multipart_file" | "multipart_text" => {
+                    let is_builder = match object.as_ref() {
+                        Expr::Ident(name) => self.http_builder_vars.contains(name),
+                        other => expr_root_is_http_request(other)
+                            || expr_root_is_builder_var(self, other),
+                    };
+                    if is_builder {
+                        self.a2r_std_used.set(true);
+                        self.expr(object, out)?;
+                        write!(out, ".{}(", method_name)?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr_as_str(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    // 非 builder 接收者：回落通用路径。
                 }
                 // PLAN-724 T-06：builder .send 分派——链根是 http.request(...)
                 // 或变量绑定自其。async 上下文发射 send_async().await。

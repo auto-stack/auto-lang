@@ -383,6 +383,11 @@ pub(crate) fn shared_http_client() -> reqwest::Client {
     kernel().client.clone()
 }
 
+/// 非 streaming 响应体预算（builder multipart 面复用同一上限）。
+pub(crate) fn kernel_response_body_limit() -> usize {
+    kernel().limits.body_limit
+}
+
 // ============================================================================
 // owned 请求/响应/错误
 // ============================================================================

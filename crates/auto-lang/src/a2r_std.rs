@@ -821,6 +821,15 @@ pub fn sleep_ms(ms: u64) {
 pub mod http {
     use ::a2r_std::http::client::{self, ClientError, HttpRequest};
 
+    // PLAN-727 T-06：文件传输公共面——本 facade 是**转发壳**，执行全部走
+    // 独立 crate 的共享传输核心（a2r_std::http::transfer）；独立转译产物
+    // 直发 `a2r_std::http::transfer_*`（同词汇同形）。
+    pub use ::a2r_std::http::{
+        cancel_transfer_by_id, transfer_cancel, transfer_download, transfer_error,
+        transfer_next_progress, transfer_upload, transfer_wait, transfer_wait_async,
+        transfer_wait_typed, FileTransfer, TransferObserver,
+    };
+
     fn auth_request_json(url: &str, body: &str, api_key: &str, bearer: bool) -> HttpRequest {
         let mut req = HttpRequest::new("POST", url);
         req.headers.push(("content-type".into(), "application/json".into()));

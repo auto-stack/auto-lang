@@ -1,0 +1,28 @@
+// PLAN-727 T-06: async-context file-transfer lowering.
+// main 含 .await → async main；transfer_wait 取 async 面
+//（transfer_wait_async(...).await）；submit/progress/cancel 保持非阻塞同形。
+// 一个 ~ 返回 helper 提供 await 点（724 同形）。
+
+fn fetch_body(url str) ~str {
+    let res = http.post(url, "async-ping")
+    return str.from_bytes(res.body_bytes())
+}
+
+fn main() {
+    let base = env.get("PLAN727_URL")
+    let dst = env.get("PLAN727_DST")
+
+    let t = http.transfer_download(base, dst, "{}")
+    let receipt = http.transfer_wait(t)
+    print("receipt:", receipt)
+
+    let up = http.transfer_upload(base, dst, "{}")
+    let p = http.transfer_next_progress(up)
+    print("progress:", p)
+    http.transfer_cancel(up)
+    let up_receipt = http.transfer_wait(up)
+    print("cancelled:", up_receipt)
+
+    let body = fetch_body(base).await
+    print("body:", body)
+}

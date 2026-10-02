@@ -420,6 +420,8 @@ mod plan711_cpu_slice_tests;
 #[cfg(test)]
 mod plan712_http_error_semantics_tests;
 mod plan724_http_client_tests; // PLAN-724: a2r HTTP 客户端收敛（golden + 探针 + http_e2e_plan724 编译运行腿）
+// PLAN-727: HTTP 文件传输（31_plan727 golden + legacy 发射探针 + http_e2e_plan727 三方编译运行腿）
+mod plan727_http_transfer_tests;
 // PLAN-712 T-17 第二层：router.param 的 VM 取值链（push → sync → 页 Init）。
 #[cfg(test)]
 mod plan712_route_param_tests;
