@@ -5135,6 +5135,11 @@
           ],
           "status": "stable",
           "created": "2026-10-02T16:30:00Z"
+        },
+        {
+          "id": "P731-1",
+          "title": "S5 帧尾段契约：fold 域 revision 缓存+分段观测口径（PLAN-731 SD-01/SD-02）",
+          "content": "PLAN-731 交付落账（canonical 唯源=docs/specs/auto-lang/ui/design/frame-pipeline-incremental.md §4b/§5b + docs/specs/auto-lang/ui/design/frame-observability.md §5；双态谱+勘定=docs/plans/evidence/731/）。契约：S5 尾段升分段口径（[P725-FRAME] 行 s5_layout/s5_shaping/s5_draw 三时间戳——frame_probe 根包装括号+编辑器整形打点；残差口径退役，wgpu flush 以 gpu_residual 单列；门控 AUTO_FRAME_BENCH 同门零开销）；fold 域发现退 revision 缓存（CodeEditorCore::cached_fold_regions——键=revision[任何文本变更 bump]，命中=O(regions) 小 Vec 克隆，未编辑帧零重扫[725 脏域协同]；锁序 cache→editor/doc 无反向）；整形缓存主体=cosmic-text BufferLine 内建+视口推进只整形新暴露行+首帧行渐进（虚拟化窗口现状即渐进）；layout 增量=不可行面勘定（iced 0.14 无脏子树/memo 公开界面，Element 无 Clone；实测 0.02-0.05ms/帧非瓶颈）；组件实例缓存=registry 态+受控谱勘定（0.17ms/重建非成本）；泵治理=present=-1 测量配对面语义+泵率谱（pump_per_sec/orphan 计数）。定量门：1MB s5 P50 debug ≤1.0/release ≤0.5；滚动尾帧 P95 debug ≤2.0；golden 三形 0.00%。实测：1MB s5 P50 debug 6.60→0.81（-88%）/release 1.16→0.36（-69%），ce_fold_scan 6.3-7.8ms→~1µs/帧；S1-S4 零改动+跨跑带无系统性回退。022/024 尾帧上游不复现（下游特有——插桩随件下沉，下游重判件直接分段归因；回执=downstream-handoff.md）。"
         }
       ]
     },
