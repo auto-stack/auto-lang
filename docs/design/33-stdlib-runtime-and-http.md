@@ -1,16 +1,16 @@
 # 33 - Auto 标准库多后台与 Web 服务运行时
 
-> 状态：方案稿（2026-09-23 静态审计；2026-10-02 更新 D1a 实施中与 D1b 计划）；现状以 `docs/specs/` 与源码为准。
-> 实施入口：阶段 A [PLAN-696](../plans/archive/696-stdlib-http-server-runtime-hardening.md)、阶段 B [PLAN-699](../plans/archive/699-vm-http-transport-axum-bridge.md)、阶段 C1 [PLAN-705](../plans/archive/705-vm-http-handler-async-lifecycle.md)、阶段 C2a [PLAN-707](../plans/archive/707-vm-http-stream-async-relay.md)、阶段 C2b [PLAN-724](../plans/archive/724-a2r-http-client-async-convergence.md)、阶段 C2c [PLAN-727](../plans/archive/727-http-file-transfer-lifecycle.md) 已交付；阶段 D1a [PLAN-729](../plans/729-http-server-file-responses.md) 服务端文件响应实施中；阶段 D1b [PLAN-730](../plans/730-http-server-upload-ingress.md) 服务端上传已起草，待729复审合入后实施。
+> 状态：方案稿（2026-09-23 静态审计；2026-10-03 更新 D1a 交付与 D2a 计划）；现状以 `docs/specs/` 与源码为准。
+> 实施入口：阶段 A [PLAN-696](../plans/archive/696-stdlib-http-server-runtime-hardening.md)、阶段 B [PLAN-699](../plans/archive/699-vm-http-transport-axum-bridge.md)、阶段 C1 [PLAN-705](../plans/archive/705-vm-http-handler-async-lifecycle.md)、阶段 C2a [PLAN-707](../plans/archive/707-vm-http-stream-async-relay.md)、阶段 C2b [PLAN-724](../plans/archive/724-a2r-http-client-async-convergence.md)、阶段 C2c [PLAN-727](../plans/archive/727-http-file-transfer-lifecycle.md)、阶段 D1a [PLAN-729](../plans/archive/729-http-server-file-responses.md) 已交付；阶段 D1b [PLAN-730](../plans/730-http-server-upload-ingress.md) 服务端上传待实施；阶段 D2a [PLAN-734](../plans/734-api-contract-and-generation-integrity.md) API 契约与生成代码一致性已起草，待730复审合入后实施。
 > 历史输入：[Design 13](13-networking.md)、[多平台填充草案](raw/stdlib-organization.md)、[HTTP 草案](raw/http-server-stdlib.md)。
 
 ## 1. 结论与适用边界
 
-**阶段状态**：下文 §2 与 §5 的风险表保留 PLAN-696 实施前的审计基线，不能当成 2026-10-02 的现状。PLAN-696 已修复分段 body、慢 SSE 阻塞和 VM 指针跨线程转运；PLAN-698 已交付 VM publisher SSE；PLAN-699 已用 Axum/Hyper 替换 VM `#[api]` 手写 HTTP 默认入口，补齐协议/队列预算和优雅关闭。PLAN-705 已交付普通 handler 的段执行/完成通知、请求作用域、迟到结果不复活和有界非流式客户端。PLAN-707 已闭合 VM 外部流等待、背压与 managed 实际取消；724 已交付两 Rust facade 的共享 async 内核、流背压/取消、增量 decoder 单源和 a2r async lowering，并清偿 P707-R1。727 已交付客户端增量文件传输、可靠提交、续传校验、进度/取消与 legacy 迁移，并补齐 queued 取消/期限。通用服务端文件下载由 729 接续；服务端上传、CPU 纪律与其余阶段 D 能力继续独立规划。
+**阶段状态**：下文 §2 与 §5 的风险表保留 PLAN-696 实施前的审计基线，不能当成 2026-10-03 的现状。PLAN-696 已修复分段 body、慢 SSE 阻塞和 VM 指针跨线程转运；PLAN-698 已交付 VM publisher SSE；PLAN-699 已用 Axum/Hyper 替换 VM `#[api]` 手写 HTTP 默认入口，补齐协议/队列预算和优雅关闭。PLAN-705 已交付普通 handler 的段执行/完成通知、请求作用域、迟到结果不复活和有界非流式客户端。PLAN-707 已闭合 VM 外部流等待、背压与 managed 实际取消；724 已交付两 Rust facade 的共享 async 内核、流背压/取消、增量 decoder 单源和 a2r async lowering，并清偿 P707-R1。727 已交付客户端增量文件传输、可靠提交、续传校验、进度/取消与 legacy 迁移，并补齐 queued 取消/期限。729 已交付普通 API 服务端文件响应、下载协议与发送生命周期；730服务端上传和734普通API契约/生成正确性已起草，CPU纪律、部署支持等级与全标准库装配manifest继续独立规划。
 
 Auto 当前足以支撑示例级、本机开发用的 CRUD API，以及已经验证的部分 SSE/媒体路径；不能据此认定 VM HTTP 入口已经具备通用 Web 服务器的协议正确性、并发隔离和运维能力。`#[api]` 是跨后台的用户契约，实际服务能力分散在 AutoVM 原生 shim、`auto-man` 生成的 Axum 服务、VM 合并调用、Tauri IPC，以及 gallery back-proxy 中。不能把“使用同一份 `api.at`”等同于“使用同一 HTTP 实现”。
 
-保持 `api.at` 与 `auto.http` 的平台无关接口，以宿主实现传输层。Rust 生成轨继续用 Axum；VM 轨已由 PLAN-699 接入 Axum/Hyper、705 补请求作用域与普通等待通知、707 补外部流等待/背压/实际取消。724/727 已将 Rust 客户端与文件传输纳入 async 契约；下一步为普通 `api.at` 增加服务端文件响应、下载协议与发送生命周期。Auto `task`/`~T` 仍是语言语义，不直接暴露 Tokio 句柄。Auto 自实现 HTTP 解析器可作为教学或协议实验，不作为默认生产服务入口。
+保持 `api.at` 与 `auto.http` 的平台无关接口，以宿主实现传输层。Rust 生成轨继续用 Axum；VM 轨已由 PLAN-699 接入 Axum/Hyper、705 补请求作用域与普通等待通知、707 补外部流等待/背压/实际取消。724/727 已将 Rust 客户端与文件传输纳入 async 契约；729补服务端文件响应，730补上传，734接续普通API的真实实现、参数/返回分类与失败诊断。Auto `task`/`~T` 仍是语言语义，不直接暴露 Tokio 句柄。Auto 自实现 HTTP 解析器可作为教学或协议实验，不作为默认生产服务入口。
 
 ## 2. PLAN-696 前审计基线：从声明到服务的路径
 
@@ -86,12 +86,14 @@ HTTP/IPC/合并适配器
 | C2a：外部 HTTP/SSE 流（PLAN-707，已交付） | 共享固定 runtime 流 job、可等待 raw/Iter/SSE relay、增量解析、有界队列/事件/carry、资源组与实际取消；补齐 705 managed job 取消 | 慢流 health、queued/active/retry 取消与解析/生命周期已有证据；边界以 current http-stream-lifecycle Spec 为准。 |
 | C2b：Rust/a2r 客户端（PLAN-724，已交付） | 两 Rust facade 共用 async 内核；headers/metadata、bounded 流、close/Drop、typed 状态与 async lowering；P707-R1 清偿 | 同源与两 facade 编译运行已验证；边界见 current http-client-runtime/lowering Spec；文件 helper 的迁移由 727 补齐。 |
 | C2c：客户端文件传输（PLAN-727，已交付） | 共享增量下载/上传、staging 提交、Range 校验、进度/owned 结果、取消/FS 清理、multipart 与 legacy adapter；queued 取消/期限补齐 | 同源实编、binary wire、保旧文件/续传与资源矩阵已有证据；边界见 current http-file-transfer Spec，服务端文件路由未交付。 |
-| D1a：服务端文件下载（PLAN-729，实施中） | 普通 api.at FileResponse；VM/生成 Rust 共用文件执行代码；GET/HEAD、单 Range/条件请求、根目录打开、有界 body/取消 | 双端 wire 与真实生成实编；慢下载 health、FS/scope 回收；与 727 完整/续传/取消互通。 |
-| D1b：服务端文件上传（PLAN-730，待依赖） | multipart/raw 单文件+有界字段；header-first授权、私有staging/业务校验/create-only提交、取消/FS收口；legacy写盘顺序/错误修复 | 729复审合入后实施；VM/真实生成Rust两端上传→下载hash、协议/额度/资源矩阵，不以整body parser或客户端upload宣称支持。 |
+| D1a：服务端文件下载（PLAN-729，已交付） | 普通 api.at FileResponse；VM/生成 Rust 共用版本无关文件执行代码；GET/HEAD、单 Range/条件请求、根目录打开、有界 body/取消 | 双端 wire、真实生成实编、资源回收与727互通已有证据；精确边界见current http-server-files及file-response-lowering Specs。 |
+| D1b：服务端文件上传（PLAN-730，待实施） | multipart/raw 单文件+有界字段；header-first授权、私有staging/业务校验/create-only提交、取消/FS收口；legacy写盘顺序/错误修复 | 729前置已满足；VM/真实生成Rust两端上传→下载hash、协议/额度/资源矩阵，不以整body parser或客户端upload宣称支持。 |
 | C2 后续：CPU 纪律（待立项） | CPU 预算/阻塞纪律依独立裁定 | 独立负载与共享状态证据，不能从异步网络等待推定 CPU 能力已实现。 |
-| D：多后台收敛与部署 | Rust 生成/VM/IPC/合并/back-proxy 共用 API 契约和失败诊断；覆盖 manifest；安全配置与性能报告 | 指定示例矩阵跨后台同语义；p95、内存、最大连接与拒绝策略有可重复记录，明确支持等级。 |
+| D2a：API契约与生成代码一致性（PLAN-734，待730落地） | 参数/返回typed分类；真实body/委派与checked generation；完整产物/指纹与失败阻止旧启动；五调用形态普通JSON数据对拍 | 真VM/生成Rust/TS/merged/back-proxy/Tauri dispatcher，参数错不执行业务、无模板假成功/整数截断/资源误判；文件上传流保持专属协议。 |
+| D2b：部署配置与支持等级（待立项） | 监听、CORS/鉴权配置、代理/TLS边界、结构化日志、可重复负载与关闭报告 | 按支持等级冻结p95、内存、最大连接与拒绝/恢复阈值，不从协议功能齐全推定生产认证。 |
+| D3：全标准库目标装配manifest（待立项） | 公共符号/目标实现/版本与能力覆盖、缺实现/重定义/签名漂移诊断 | VM/Rust/C及运行环境分别核对，API契约记录不代替io等模块的覆盖表。 |
 
-阶段 C1/C2/D 各自按独立验收立 Plan；本轮仅起草 PLAN-730 和更新路线，不运行 Cargo 测试。729/730触及相同HTTP桥与安全根目录基础，730等729复审合入后实施。门禁以最新 AGENTS.md 为准：裸 cargo t 为 per-plan 基础门禁，按触面加 tv/tt/th 等；HTTP 真 TCP 明确串行，tf 已改为主检出单实例的到期批量回归，不是每计划门禁。
+阶段 C1/C2/D 各自按独立验收立 Plan；本轮仅起草 PLAN-734 和更新路线，不运行 Cargo 测试。729已落地；730/734同触API类型、生成器与VM编组，734等730复审合入后实施。门禁以最新 AGENTS.md 为准：裸 cargo t 为 per-plan 基础门禁，按触面加 tv/tt/th 等；HTTP 真 TCP 明确串行，tf 已改为主检出单实例的到期批量回归，不是每计划门禁。
 
 ### 6.1 阶段 C1 的设计收敛（2026-09-28 设计基线；705 已交付）
 
@@ -131,21 +133,31 @@ HTTP/IPC/合并适配器
 
 验收包括真 binary wire、同源 VM/a2r 实编、续传/文件故障/提交竞态、慢网络/磁盘期间 health 与许可/文件句柄/temp 回基线。本期仅客户端与必要 VM 生命周期桥接，服务端上传路由/文件 Range 响应和 API 多形态收敛另案。
 
-### 6.5 阶段 D1a：普通 API 服务端文件响应（PLAN-729，实施中）
+### 6.5 阶段 D1a：普通 API 服务端文件响应（PLAN-729，已交付）
 
-2026-10-02 静态核查：媒体专用路由已有文件流与部分 Range；但 VM `ApiBody` 仅 Text/SSE，普通 Response 是 Vec body，auto-man 普通 handler 仍一般包 JsonResponse，`Server.static` 还是占位。不能把媒体能力扩张为通用 api.at 文件服务，也不能从 727 客户端上传推定 server 能接收大文件。
+729前的静态审计基线：媒体专用路由已有文件流与部分Range，但普通API没有typed文件body，auto-man一般包JsonResponse，`Server.static`还是占位。729已修复普通API文件响应缺口；Builder/static仍不在其支持面，不能从727客户端上传推定server能接收大文件。
 
-729 拟提供 `FileResponse` owned 描述符，由 VM 默认 HTTP 与生成 Rust HTTP 调用共同宿主执行代码；打开/metadata/seek/读盘在 VM owner 外执行。GET/HEAD、单区间、条件顺序和 If-Range 形成明确子集；不用 len+mtime 伪造强 ETag。受限根目录打开和同句柄读验证路径逃逸/替换，响应体持续持有文件及 scope，准备与发送期限分开，背压和磁盘操作都有额度。真实生成产物与 VM 的协议/故障矩阵，以及 727 客户端两端互通是交付门。
+729已提供 `FileResponse` owned描述符，VM默认HTTP与生成Rust调用共同、无Axum类型依赖的宿主执行代码；两入口分别适配Axum0.8/0.7。打开/metadata/seek/读盘在VM owner外执行，GET/HEAD、单区间、条件顺序和If-Range有明确子集，不能用len+mtime伪造强ETag。受限根目录打开与同句柄读、scope持有、准备/发送期限和背压/磁盘额度已有真实生成实编、双端wire与727互通证据。路径保护仍有中间目录段TOCTOU边界，不能宣称完整OS沙箱；现状见[http-server-files](../specs/stdlib/design/http-server-files.md)及[file-response-lowering](../specs/auto-lang/trans/design/http-file-response-lowering.md)。
 
-文件结果具有 HTTP 专用表示；IPC、merged/back-proxy、未接入 Builder 等本期明确拒绝新文件面，不能 JSON 序列化 opaque id 冒充成功。普通 JSON/SSE 兼容保留；全面跨形态契约仍是阶段 D 后续。文件上传流式入口、目录服务、压缩和多区间响应不在 729，D1b server 文件上传已在730独立起草；不能在729尚未复审时宣称其能力已交付。
+文件结果具有HTTP专用表示；IPC、merged/back-proxy及未接入Builder明确拒绝新文件面，不能JSON序列化opaque id冒充成功。普通JSON/SSE兼容保留，729已经独立复审并归档；文件上传由730接续，普通API多形态契约由734接续。目录服务、压缩、多区间响应仍不在729支持面。
 
-### 6.6 阶段 D1b：服务端上传与业务提交（PLAN-730，待729落地）
+### 6.6 阶段 D1b：服务端上传与业务提交（PLAN-730，待实施；729前置已满足）
 
 2026-10-02 静态核查：VM默认入口先to_bytes收完整body，owner内multipart parser复制part；`store_multipart_file`忽略写错误，且落盘早于route/middleware。已有legacy小请求能上传文件，但不构成有界流式接收、授权先行和可靠提交。auto-man也未见typed body能力的普通handler分支。
 
 730拟由UploadRequest类型声明上传route能力，headers先进入有界owner鉴权，宿主一次性body能力延迟到receive才拉取/解析。共同增量parser支持单文件multipart/raw和有界文本字段，默认文件64MiB、wire65MiB，普通JSON保持10MiB。Received session存于同卷公开root之外的私有staging，应用可校验字段/内容，然后原子create-only commit或reject；既有目标不覆盖。会话/FS配额、长上传与校验lease、Drop/断连/关闭及commit竞态同时设计，不把逻辑取消当磁盘操作已退出。
 
-VM和真实生成Rust上传handler共用宿主执行代码；727上传后经729下载比hash，覆盖错误/超限/取消两端。旧小multipart成功形状保留，但route/拒绝先于写盘、写错误传播和provisional文件清理列为本期验收。新typed上传middleware异常必须拒绝，非HTTP形态明确Unsupported；多文件事务、断点分片、全局磁盘配额/崩溃恢复仍另案。两计划相同核心文件顺序实施，730不得提前覆盖729进行中接口或canonical增量。
+730拟让VM和真实生成Rust上传handler共用宿主执行代码；727上传后经729下载比hash，覆盖错误/超限/取消两端。旧小multipart成功形状保留，但route/拒绝先于写盘、写错误传播和provisional文件清理列为本期验收。新typed上传middleware异常必须拒绝，非HTTP形态明确Unsupported；多文件事务、断点分片、全局磁盘配额/崩溃恢复仍另案。730实施须消费729已落地接口/Spec，734再消费730最终交付，不并行覆盖同一核心文件。
+
+### 6.7 阶段 D2a：API契约与生成代码一致性（PLAN-734，提前起草）
+
+2026-10-03静态核查：`auto-man/api_gen.rs`普通handler的body转译失败仍可退回CRUD模板，API提取失败可能warn后Ok；vue/rust_ui/tauri部分运行调用点吞错后继续，甚至启动旧生成server。VM参数string路径parse_i64后cast_i32，body未按声明逐项校验；JSON载荷首字段error和资源表数值探测可能影响status/返回种类。它们需要实施期复现，不能把旧生成成功作为业务正确的证据。
+
+734拟建立版本化ApiContract：resolved类型身份、参数来源/范围、返回kind、transport能力、源位置及真实实现指纹，实际生成器/VM/back-proxy session分别消费。普通JSON数据包括sync/~T标量、optional、record/array及有界组合，禁止未知类型默认String、合法整数截断、业务error字段变500或普通数值误判资源。int宽度须核对类型语义与Rust既有i64映射，不能以VM当前窄化行为定义语言限制。IPC/merged保留原生函数数据和错误边界；HTTP status/header与文件/上传/流协议不扩张到所有形态。
+
+运行API必须有可验证业务body、已解析委派或明确目标provider；不能转译失败换模板、缺实现warn+null。脚手架只生成显式初始源码。checked generation准备完整不可变bundle，ready绑定当前源码/依赖/实现与transport；生成任一错误非零，不能启动旧产物冒充当前版本。所有实际run/build消费者传播错误；无API项目和明确手写provider保留各自正确路径。
+
+验收使用真实VM HTTP、生成Rust HTTP、back-proxy、merged和Tauri MockRuntime command dispatcher，生成TS实际HTTP调用；SDK dispatcher测试不证明webview/安装包。729/730与既有SSE纳入专属分类回归，不新增任意外部流handler生成或部署认证。734有8任务/7AC/7SD，**730复审并合入后**才执行；此处设计和计划不是canonical已实现能力。随后优先评估D2b部署支持等级与D3全标准库装配manifest，CPU纪律仍另案。
 
 ## 7. 待决策
 
