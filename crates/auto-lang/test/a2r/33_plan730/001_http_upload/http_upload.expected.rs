@@ -6,12 +6,12 @@ use a2r_std;
 use a2r_std::*;
 
 async fn upload_async(req: a2r_std::http::UploadRequest, root: &str, staging: &str) -> a2r_std::http::UploadReceipt {
-    let session = a2r_std::http::upload_receive(req, root.as_str(), staging.as_str(), "{\"mode\":\"multipart\",\"text_fields\":[\"note\"]}".as_str()).await;
+    let session = a2r_std::http::upload_receive(req, root, staging, "{\"mode\":\"multipart\",\"text_fields\":[\"note\"]}").await;
     let meta = a2r_std::http::upload_metadata(&session);
     if meta.contains("\"state\":\"failed\"") {
-        return a2r_std::http::upload_reject(session, 0, "receive failed".as_str()).await;
+        return a2r_std::http::upload_reject(session, 0, "receive failed").await;
     }
-    return a2r_std::http::upload_commit(session, "uploads/blob.bin".as_str()).await;
+    return a2r_std::http::upload_commit(session, "uploads/blob.bin").await;
 }
 
 async fn early_reject(req: a2r_std::http::UploadRequest) -> a2r_std::http::UploadReceipt {

@@ -4177,7 +4177,8 @@ pub fn upload(req UploadRequest) ~UploadReceipt {
         assert!(api_rs.contains("__upload_request(&method, &headers, request)"), "{api_rs}");
         assert!(api_rs.contains("__upload_reply("), "{api_rs}");
         assert!(api_rs.contains("a2r_std::http::upload_receive(req, root, staging"), "{api_rs}");
-        assert!(api_rs.contains(".as_str()).await;"), "await emission: {api_rs}");
+        assert!(api_rs.contains("upload_receive(req, root, staging"), "await emission: {api_rs}");
+        assert!(api_rs.contains(").await;"), "await emission: {api_rs}");
         assert!(api_rs.contains("a2r_std::http::upload_commit(session"), "{api_rs}");
         // 不落 CRUD 模板。
         assert!(!api_rs.contains("JsonResponse::"), "no CRUD template: {api_rs}");
