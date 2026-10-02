@@ -10365,7 +10365,13 @@ mod e4_default_http_tests {
     }
 
     /// E4 端到端:真实 TcpListener 服务断言 Http.get 收到默认头与默认 query。
-    /// 直接驱动 spawn_async_http_handle(plain handle 汇聚点),轮询 live-op 表。
+    /// 直接驱动 spawn_async_http_handle/spawn_async_http(两组 send 汇聚点,
+    /// 公开 native shim——plain handle 族与 get_json/post_json 族——登记后
+    /// 全部经此处落线,默认头/query/body 的 wire 覆盖即公开入口覆盖)。
+    /// PLAN-724 T-02(P707-R1 根因修复):managed 提交必须先 register_live_op
+    /// 再 submit(生产 shim 协议);未登记令牌会被 707 取消竞态守卫中止
+    /// (submit_client_job 的 still-live 闭合)——曾致本测试 30s 恒红。
+    /// 断言后按协议消费/取消配对清理,并在末尾钉住未登记反例。
     #[test]
     fn default_headers_reach_wire_on_plain_get() {
         reset_defaults();
@@ -10403,6 +10409,8 @@ Content-Length: 2
             s.write_all(resp.as_bytes()).unwrap();
             let _ = tx_req.send(req);
         });
+        // 生产协议:先登记 live 令牌再提交(否则被取消竞态守卫中止,见 707 T-02)。
+        crate::vm::ffi::async_http::register_live_op(999_001);
         spawn_async_http_handle("GET".into(), format!("http://127.0.0.1:{port}/api/probe"), None, 999_001);
         let req = rx_req
             .recv_timeout(std::time::Duration::from_secs(30))
@@ -10410,6 +10418,19 @@ Content-Length: 2
         assert!(req.contains("GET /api/probe?workspace=ws-9 "), "query missing: {req}");
         let req_lc = req.to_ascii_lowercase();
         assert!(req_lc.contains("authorization: bearer t-ok"), "header missing: {req}");
+        // 消费配对:managed job 完成必须以 Structured 200 落表(登记→完成→消费)。
+        let plain_result = e4_wait_live_op(999_001);
+        assert!(
+            matches!(&plain_result, Ok(AsyncResult::Structured { status: 200, .. })),
+            "e4 plain 臂 managed 完成形态不符(status={:?}, err={})",
+            match &plain_result {
+                Ok(AsyncResult::Structured { status, .. }) => Some(*status),
+                Ok(AsyncResult::Auth { status, .. }) => Some(*status as u16),
+                _ => None,
+            },
+            match &plain_result { Err(e) => e.clone(), _ => String::new() }
+        );
+        crate::vm::ffi::async_http::cancel_live_op(999_001); // 幂等清理
         reset_defaults();
 
         // PLAN-048 T2 (musk VM 数据桥): auto.http.get_json / post_json —— 即
@@ -10438,6 +10459,7 @@ Content-Length: 2
             s.write_all(resp.as_bytes()).unwrap();
             let _ = tx_json.send(req);
         });
+        crate::vm::ffi::async_http::register_live_op(999_101);
         spawn_async_http("GET".into(), format!("http://127.0.0.1:{port_json}/api/chats/sessions"), None, 999_101);
         let req_json = rx_json
             .recv_timeout(std::time::Duration::from_secs(30))
@@ -10447,6 +10469,7 @@ Content-Length: 2
             req_json.to_ascii_lowercase().contains("authorization: bearer t-json"),
             "get_json header missing: {req_json}"
         );
+        crate::vm::ffi::async_http::cancel_live_op(999_101);
         // POST 臂(auth_login 形态):默认头/查询同在 + body 完整落线。
         let listener_post = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port_post = listener_post.local_addr().unwrap().port();
@@ -10461,6 +10484,7 @@ Content-Length: 2
             s.write_all(resp.as_bytes()).unwrap();
             let _ = tx_post.send(req);
         });
+        crate::vm::ffi::async_http::register_live_op(999_102);
         spawn_async_http(
             "POST".into(),
             format!("http://127.0.0.1:{port_post}/api/auth/login"),
@@ -10476,7 +10500,51 @@ Content-Length: 2
             "post_json header missing: {req_post}"
         );
         assert!(req_post.contains(r#"{"username":"u","password":"p"}"#), "post_json body missing: {req_post}");
+        crate::vm::ffi::async_http::cancel_live_op(999_102);
         reset_defaults();
+
+        // 未登记反例(协议钉,PLAN-724 T-02):不经 register_live_op 直接提交
+        // managed job → 707 取消竞态守卫在 submit 返回前补 abort(句柄安装即
+        // 回收),迟到完成因令牌缺席被 presence 守卫丢弃、不复活不完成。
+        // 连接是否发出取决于 abort 与首 await 的竞态,不作 wire 断言(非确定);
+        // 确定面 = 句柄表回基线 + 无令牌永无可消费结果。
+        let before = crate::vm::ffi::async_http::job_abort_count();
+        let submitted = spawn_async_http(
+            "GET".into(),
+            format!("http://127.0.0.1:{port_post}/api/unregistered"),
+            None,
+            999_201,
+        );
+        assert!(submitted, "未登记臂:队列未满时提交必须被接受");
+        assert_eq!(
+            crate::vm::ffi::async_http::job_abort_count(),
+            before,
+            "未登记 id 的 abort 句柄必须在 submit 返回前被取消守卫回收"
+        );
+        let settle = std::time::Instant::now() + std::time::Duration::from_millis(300);
+        while std::time::Instant::now() < settle {
+            assert!(
+                crate::vm::ffi::async_http::take_live_op(999_201).is_none(),
+                "未登记令牌不得产出可消费结果(presence 守卫被绕过)"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        reset_defaults();
+    }
+
+    /// e4 专用:有界等待 managed job 完成并消费(登记→完成→消费协议的消费臂)。
+    fn e4_wait_live_op(req_id: u64) -> Result<AsyncResult, String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if let Some(r) = crate::vm::ffi::async_http::take_live_op(req_id) {
+                return r;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "e4 臂 5s 内 managed job 未完成(req_id={req_id})"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 }
 
