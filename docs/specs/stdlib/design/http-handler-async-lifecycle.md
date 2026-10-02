@@ -113,3 +113,19 @@ owner parked 表，**owner loop 立即空出**服务后续请求；完成端经�
 - 在途 FS 读不强制中断：取消 = 停止 issuance + 等收口；active 执行槽随 pump 退出
   归还（逻辑取消与 FS 实际退出分开计数）。契约详见
   [http-server-files §5](http-server-files.md)。
+
+## 服务端上传资源组与分阶段期限（PLAN-730）
+
+- **body capability / 上传资源组**：上传请求的原始 body 不在桥侧消费——
+  `UploadRequest`（注入句柄）/`UploadSession`（会话）/`UploadReceipt`（收据）三类
+  id 登记请求 scope 资源组，`finalize_scope` 幂等收口（取消在途接收、清理 staged、
+  释放未消费 body 能力、移除闲置收据）。收据构造即登记（未编组收据不滞留注册表）。
+- **分阶段期限**：普通请求期限（30s）覆盖 header/鉴权/队列；进入 receive 后经
+  scope deadline watch 切换到上传 total（10min，headers 入 scope 起，排队计入；
+  桥 reply 等待循环重臂，不保留旧捕获值）；接收 idle 60s 逐 chunk 强制；
+  staged lease 30s（业务判定窗口）。准入阶段（queue+active 等待）统一受队列
+  期限（默认 30s）——满额下一笔 503 于期限内，不吊到 total。
+- **仲裁**：commit gate=hard_link 原语本身——gate 前取消胜出（不发布+清理），
+  gate 后迟到取消等实际发布结果（成功保留）；scope 终结 ≠ 在途 FS 立即退出
+  （writer 收口后清柄/腾槽）。
+- 详细契约见 [http-server-uploads](http-server-uploads.md)。

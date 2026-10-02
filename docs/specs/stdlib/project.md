@@ -49,4 +49,7 @@ graph LR
 | result | option/result（C 后端） | experimental（.at.skip，未启用） |
 
 - 设计：[http-server-files](design/http-server-files.md)（PLAN-729 服务端文件响应：
+- [http-server-uploads](design/http-server-uploads.md)——服务端上传接收
+  （multipart/raw 流式 ingress、staging/create-only 提交、预算/期限/取消仲裁；
+  PLAN-730）。
   GET/HEAD/单区间/条件请求/受限根目录/配额收口——VM 与生成 Rust 单源执行）。

@@ -409,8 +409,14 @@ Auto 标准库 http.at / https.at (API 声明)
 ## §10 不做(范围控制)
 
 - **WebSocket**: 单独 Spec(双向通信,需要不同的连接模型)
-- **文件上传(multipart)**: 后续增强
 - **Session/Auth 中间件**: 后续增强
+- **typed 流式上传**（`UploadRequest`/receive-commit-reject 契约）已由
+  PLAN-730 交付，见 [http-server-uploads](http-server-uploads.md)；本节剩余的
+  是 **legacy 小体积 multipart**（`form str` 路径）的兼容状态：10MiB 上限与
+  `{"fields","files"}` 成功形状保留；PLAN-730 修复其顺序与错误合同——路由先行
+  （404/方法不匹配零解析零写盘）、解析与落盘分离（纯内存解析在前、落盘移至
+  middleware 之后经宿主 spawn_blocking）、写失败真实 500（不返回假路径）、
+  provisional 文件随绑定失败/handler 异常/取消清理（成功保留）。
 - **CORS**: 后续增强(或作为中间件)
 
 ---
@@ -573,7 +579,10 @@ auto-musk 后端 handler **同时是消费者和生产者**:
   **同一执行代码**提供文件下载：GET/HEAD、单区间 Range、前置条件与 If-Range、受限
   根目录打开、有界发送与生命期收口。完整契约见
   [http-server-files](http-server-files.md)。
-- 服务端接收文件上传（multipart/raw 流式 ingress）与通用静态目录挂载
-  （`Server.static`）**仍未交付**；多区间 `multipart/byteranges` 与压缩表示同非面。
+- 服务端接收文件上传已由 PLAN-730 交付：typed `UploadRequest`/`~UploadReceipt`
+  端点（multipart/raw 流式接收、staging/commit/reject/lease、两腿同源），契约见
+  [http-server-uploads](http-server-uploads.md)；默认 JSON whole-body 上限（10MiB）
+  不变，上传额度只对声明 `UploadRequest` 参数的路由生效。通用静态目录挂载
+  （`Server.static`）仍未交付；多区间 `multipart/byteranges` 与压缩表示同非面。
 - §8.1 的旧 ureq 客户端描述已过时：客户端文件传输/流/结果通道现以 727/724/707
   Spec 为准（[http-file-transfer](http-file-transfer.md) 等）。

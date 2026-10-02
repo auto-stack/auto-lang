@@ -50,3 +50,11 @@ VM HTTP/SSE 的请求绑定、所有权、取消和错误行为详见 [HTTP Serv
 - IPC（Tauri）/进程内 back-proxy 对文件端点明确拒绝（Unsupported/501 + 改走 HTTP
   URL 指引）；legacy stdnet 500 诊断。支持矩阵见
   [http-server-files §6](http-server-files.md)。
+
+## 服务端上传（PLAN-730）
+
+- `#[api]` POST/PUT 端点声明 `UploadRequest` 参数 + `UploadReceipt`/`~UploadReceipt`
+  返回时，VM 默认 HTTP 与生成 Rust/Axum 服务以**同一宿主执行**（a2r-std facade →
+  `auto_lang::http_upload_service` executor hook）提供流式接收/提交；Builder/stdnet
+  路径不获得该能力（无注入面，绑定诊断）；Tauri IPC/back-proxy 明确拒绝
+  （Unsupported/501 + HTTP URL 指引）。契约见 [http-server-uploads](http-server-uploads.md)。

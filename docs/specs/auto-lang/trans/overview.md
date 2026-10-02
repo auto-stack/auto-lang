@@ -179,3 +179,11 @@ auto test                                    # 跑 tests/a2*_tests.at 声明的�
   类型映射 `a2r_std::http::FileResponse`（返回位具体类型，非 trait）。发射契约见
   [http-file-response-lowering](design/http-file-response-lowering.md)，运行契约见
   stdlib [http-server-files](../../stdlib/design/http-server-files.md)。
+
+## 服务端上传 lowering（PLAN-730）
+
+- `http.upload_receive/commit/reject/metadata/error` 五自由函数与三 opaque 类型
+  （UploadRequest/Session/Receipt）的降级契约见
+  [design/http-upload-lowering.md](design/http-upload-lowering.md)：receive/
+  commit/reject 为 await 点（同步上下文指名诊断）；str 形参按 facade
+  `impl AsRef<str>` 直传；金样 `test/a2r/33_plan730`。

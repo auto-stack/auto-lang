@@ -17,3 +17,4 @@
 | 671 | vue-gen-gap-debt（auto-man 侧） | ✅（reviewed→archived） | archive/ | ensure_natives_layer 四站点接入（gen-only/build/run/scaffold 共享段；函数形态注册表∩裸用面+对象形态成员访问面；空集清退防陈旧 import 悬挂）+脚手架资产 button cva 扩 text:""（write-if-missing PLAN-457 契约内——存量树冷重生成取新）；详档见 archive/671 计划+auto-lang ui/plans.md 671 行 |
 | 675 | routes-in-embed（auto-man 侧） | ✅（reviewed→archived） | archive/ | routable 档四件套（gallery_demo_row 判定/fullstack 管线复用+per-demo pages·memory-router·入口发射/demos-registry load·routed·DemoModule/vue-router 注入）+改写闭包补裸 fetch 前缀化（020 媒体面）+会话准入 routable 臂（缺则路由 demo API 404 unknown app）；lazy 会话/路径参数绑定详档见 auto-lang vm/back-proxy.md，计划见 archive/675 |
 | 729 | http-server-file-responses | ✅（reviewed→archived） | archive/ | api_gen 文件分支（Response 签名+method/headers+__file_reply 胶水+委派 Path+诊断 500 不落模板+.head() 自动+405）；生成服务实编 e2e |
+- PLAN-730 [http-server-upload-ingress](../../../plans/730-http-server-upload-ingress.md)——上传端点生成（Request 最后提取器/收据真实 status/TS FormData）

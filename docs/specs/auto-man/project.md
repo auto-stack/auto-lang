@@ -181,3 +181,12 @@ routes 外无其余内嵌否决（vm-only/ext/locales/i18n；`vp` None → false
   不包 JsonResponse）；转译失败 = 位置诊断 500 handler，**不落 CRUD 模板**；GET 文件
   路由自动 `.head()`；非 GET/HEAD → 405。TS HTTP 文件方法返回原生 `Response`；Tauri
   IPC 明确 Unsupported。见 stdlib [http-server-files §6](../stdlib/design/http-server-files.md)。
+
+## 上传端点生成（PLAN-730）
+
+- 参数含 `UploadRequest` 的 `#[api]` 端点：Request 提取器置最后（不预读）、
+  转译体 await 直发（`try_transpile_body` 对 `Future<T>` 端点置位 async 上下文）、
+  收据映射真实 status + JSON（不落 CRUD 模板；非 POST/PUT 405）；main 安装宿主
+  executor；TS 客户端 FormData 直传。契约见
+  [auto-lang/trans/design/http-upload-lowering.md](../auto-lang/trans/design/http-upload-lowering.md)
+  与 [stdlib/design/http-server-uploads.md](../stdlib/design/http-server-uploads.md)。

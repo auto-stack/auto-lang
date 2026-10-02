@@ -86,3 +86,15 @@ a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代
   （描述符/严格 options/Range/前置条件/If-Range/HTTP 日期/响应头策略）；宿主执行
   （打开/发送/收口）在消费端 `auto_lang::http_file_service`——本 crate 不启动服务器。
   契约见 stdlib [http-server-files](../stdlib/design/http-server-files.md)。
+
+## 服务端上传 owned 类型与宿主 hook（PLAN-730）
+
+- `a2r_std::http::server_upload`：`UploadRequest`（宿主构造：`upload_request_from_parts`
+  + 版本无关 `UploadBodyStream`）、`UploadSession`/`UploadReceipt`（owned 快照，
+  拷贝不复制资源）、严格 options 与限额表（`AUTO_HTTP_UPLOAD_*`）、错误种类→status
+  纯映射、async facade（`upload_receive/commit/reject` + 同步 `upload_metadata/
+  upload_error`）。
+- 执行经 `install_upload_executor` 注入的宿主 hook（`auto_lang::http_upload_service`），
+  a2r-std 不反向依赖 auto-lang、不自行监听网络；executor 未安装 → facade 返回确定性
+  诊断失败（非 HTTP 形态滥用不假成功）。契约见
+  [stdlib/design/http-server-uploads.md](../stdlib/design/http-server-uploads.md)。
