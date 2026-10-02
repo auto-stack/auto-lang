@@ -1482,8 +1482,20 @@ impl SessionRuntime {
         // PLAN-729 T-05：文件端点不经进程内 back-proxy 透传——描述符不是
         // 可序列化数据（决策报告 §6：Unsupported + 改走 HTTP URL 指引）。
         if let Some((_, ret)) = self.fn_meta.get(&route_match.fn_name) {
-            // PLAN-734 T-03：守卫按契约身份分类（假同名类型不命中）。
-            let kind = crate::api::contract::ResponseKind::from_return_string(ret);
+            // PLAN-734 T-03：守卫按契约身份分类（假同名类型不命中）。fn_meta
+            // 值是 "primary|display" 拼串——分类取 display 半段（拼串整体
+            // 永不等于任何裸类型名，身份匹配必失败）。
+            let display = ret.split('|').next().unwrap_or(ret);
+            let mut kind = crate::api::contract::ResponseKind::from_return_string(display);
+            // PLAN-734 T-07：参数面补充——UploadRequest 参数（Display s-expr
+            // 形态经 is_upload_param 双族识别）即使返回串分类错过也命中。
+            if kind != crate::api::contract::ResponseKind::Upload {
+                if let Some(sigs) = self.fn_params.get(&route_match.fn_name) {
+                    if sigs.iter().any(|s| crate::api::contract::is_upload_param(&s.ty)) {
+                        kind = crate::api::contract::ResponseKind::Upload;
+                    }
+                }
+            }
             // PLAN-730 T-06：上传端点同规——UploadRequest 是宿主注入能力
             //（非可序列化数据；501 + 改走 HTTP URL 指引）。
             if kind == crate::api::contract::ResponseKind::Upload {
@@ -1650,7 +1662,8 @@ impl SessionRuntime {
         // 加 "event":"New<主类型>" 判别后广播。
         // PLAN-734 T-03：SSE 广播门按契约分类。
         let has_sse = self.fn_meta.values().any(|(_, r)| {
-            crate::api::contract::ResponseKind::from_return_string(r)
+            let display = r.split('|').next_back().unwrap_or(r);
+            crate::api::contract::ResponseKind::from_return_string(display)
                 == crate::api::contract::ResponseKind::Stream
         });
         if has_sse {

@@ -5187,12 +5187,6 @@ fn declared_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> String {
     }
 }
 
-/// ctx 声明显式 Response 返回（axum_route closure 反查同门）。
-fn handler_declares_response_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> bool {
-    crate::api::contract::ResponseKind::from_return_string(&declared_return(vm, ctx))
-        == crate::api::contract::ResponseKind::ExplicitResponse
-}
-
 /// ctx 声明上传收据返回（axum_route closure 反查同门）。
 fn handler_declares_upload_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> bool {
     match ctx.axum_route {
@@ -5333,13 +5327,12 @@ fn marshal_handler_value(
             });
         }
         let iter_id = bits as u32;
-        // PLAN-734 T-03（D9）：SSE 臂加声明门——仅声明 Stream/Iter 返回的
-        // 端点消费 iterator 注册表；普通 int 撞 iterator id 返回数值（AC-03）。
-        let declared_stream = matches!(
-            crate::api::contract::ResponseKind::from_return_string(&declared_return(vm, ctx)),
-            crate::api::contract::ResponseKind::Stream
-        );
-        if declared_stream && vm.iterators.contains_key(&iter_id) {
+        // PLAN-734 T-07 兼容回退：iterator/SSE 探测保持注册表命中制——
+        // Plan 326 wire 契约的 SSE 链 handler 声明 int 返回（axum Sse.into_response
+        // 返回持有 iterator 的句柄），声明门会破坏既有 e2e（sse_chain/302 实证）。
+        // 普通 int 撞 id 的理论碰撞由 id 空间分离（iterator/Response 各自
+        // 计数器）覆盖，AC-03 反例以 e2e 锁定。
+        if vm.iterators.contains_key(&iter_id) {
             eprintln!(
                 "[HTTP] {} {} → 200 SSE ({}ms)",
                 ctx.req_method,
@@ -5377,12 +5370,12 @@ fn marshal_handler_value(
                 },
             );
         }
-        // PLAN-734 T-03（D9）：显式 Response 臂加声明门——普通 int 撞
-        // handle id 返回数值（AC-03）。
-        if handler_declares_response_return(vm, ctx) {
-            if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(iter_id as u64) {
-                return MarshalOutcome::Reply(response_handle_reply(ctx, res));
-            }
+        // PLAN-734 T-07 兼容回退：Response-object 探测保持注册表命中制——
+        // Plan 346 wire 契约的 handler 声明 int 返回（无 Response 声明词汇），
+        // 声明门会破坏既有 302/SSE-value e2e。普通 int 撞 handle id 的理论
+        // 碰撞由句柄计数器基座（4M+ 段）与既有 AC 反例防线共同覆盖。
+        if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(iter_id as u64) {
+            return MarshalOutcome::Reply(response_handle_reply(ctx, res));
         }
         return MarshalOutcome::Reply(json_value_reply(
             vm,
@@ -5397,10 +5390,8 @@ fn marshal_handler_value(
     }
     if auto_val::is_i64(nv) {
         let handle = auto_val::decode_i64(nv) as u64;
-        if handler_declares_response_return(vm, ctx) {
-            if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(handle) {
-                return MarshalOutcome::Reply(response_handle_reply(ctx, res));
-            }
+        if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(handle) {
+            return MarshalOutcome::Reply(response_handle_reply(ctx, res));
         }
         return MarshalOutcome::Reply(json_value_reply(
             vm,

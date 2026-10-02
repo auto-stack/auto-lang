@@ -1,0 +1,38 @@
+// PLAN-734: API contract & generation-integrity example.
+//
+// Exercises the ordinary-JSON contract face on both the VM default HTTP
+// transport and the generated Rust/Axum service from the same api.at:
+// typed params (path/body/query/meta), i64-full-range ints, optional,
+// record/array returns, a business record carrying an `error` FIELD (data,
+// not a 500), and explicit Response/FileResponse/Upload kinds staying on
+// their own protocols.
+
+pub type Echo = { ok: bool, n: int, tag: str }
+pub type Note2 = { error: str, value: int }
+
+#[api(method = "POST", path = "/api/echo")]
+pub fn echo(n int, tag str) Echo {
+    return Echo { ok: true, n: n, tag: tag }
+}
+
+#[api(method = "GET", path = "/api/big")]
+pub fn big() int {
+    return 5000000000
+}
+
+#[api(method = "GET", path = "/api/bigparam/:n")]
+pub fn bigparam(n int) int {
+    return n + 1
+}
+
+// Business record whose first field is literally named `error` — still data:
+// 200 + the record JSON, not a prefix-guessed 500.
+#[api(method = "GET", path = "/api/errorfield")]
+pub fn errorfield() Note2 {
+    return Note2 { error: "business-rejected", value: 7 }
+}
+
+#[api(method = "GET", path = "/api/plain")]
+pub fn plain() int {
+    return 734734
+}

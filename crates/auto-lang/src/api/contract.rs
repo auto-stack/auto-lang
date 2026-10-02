@@ -169,8 +169,22 @@ pub fn is_meta_alias(name: &str) -> bool {
 }
 
 /// 730 上传注入参数的身份判定（精确，非 contains）。
+///
+/// 输入串有两族来源：API 元数据侧（`type_to_string`/`unique_name` → 裸名
+/// `UploadRequest`）与 VM 参数签名侧（ast `Type` 的 Display → User 类型
+/// 是 s-expr `(type-decl (name UploadRequest) ...)`——730 期 `contains`
+/// 恰好子串命中该形态）。身份判定对两族都按**名字等值**接受，仍拒绝
+/// `MyUploadRequest`/`UploadRequestCtx` 等假同名。
 pub fn is_upload_param(ty: &str) -> bool {
-    ty.trim() == "UploadRequest"
+    let ty = ty.trim();
+    if ty == "UploadRequest" {
+        return true;
+    }
+    // s-expr 包装：`(type-decl (name UploadRequest)` 后跟 `)` 或 ` `。
+    if let Some(rest) = ty.strip_prefix("(type-decl (name UploadRequest") {
+        return rest.starts_with(')') || rest.starts_with(' ');
+    }
+    false
 }
 
 // ============================================================================
