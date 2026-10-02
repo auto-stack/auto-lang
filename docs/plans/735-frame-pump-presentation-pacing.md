@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-735
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: 帧泵呈现交付节奏清偿件（auto-edit PLAN-026 下游回执消费——掉泵/交付节奏上游第二段：呈现事实定谳+交付节奏根因+修复或通道语义裁定——帧两行转绿解锁）
 author: [agent]
 created_at: 2026-10-03
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: []             # 无 goals.md 正式 GOAL-NNN 锚定本面（下游回执驱动面——731 先例注记式）
 
 affects: [crates/auto-lang/src/ui/iced/renderer.rs, crates/auto-lang/src/ui/frame_bench.rs, crates/auto-lang/src/ui/frame_segments.rs, crates/auto-lang/src/ui/sched_diag.rs, docs/plans/evidence/]
-current_step: 0
+current_step: 6
 total_steps: 6
 ---
 
@@ -251,12 +251,12 @@ downstream-handoff v2（呈现事实结论+交付节奏终态+通道语义建议
 
 | # | 任务 | 依赖 | 落点（实勘锚） | 产出/意图 | AC | 验证（命令/预期） |
 |---|---|---|---|---|---|---|
-| 0 | T-00 复现勘定+域协调 | — | 本件 §5 T-00 节 | 试验床+协调断言 | AC-01 | [ ] 复现谱在档 |
-| 1 | T-01 呈现事实定谳 | T-00 | 呈现测量通道（候选 A-D 择优） | 分离谱+定性 | AC-02 | [ ] 分离谱在档 |
-| 2 | T-02 交付节奏根因 | T-01 | renderer.rs:8349 泵域+订阅面 | 根因报告+方案选定 | AC-03 | [ ] 根因定谳 |
-| 3 | T-03 修复/通道实施 | T-02 | frame_bench/frame_segments/renderer.rs | 修复或通道+序障 | AC-04 | [ ] 双谱达标 |
-| 4 | T-04 谱对照+回归门 | T-03 | ladder+golden+分级门禁 | 零回退+生效 | AC-04 | [ ] 门禁全绿 |
-| 5 | T-05 回执+规范+账本 | T-01..04 | downstream-handoff v2+SD-01/02 | 第二段闭环 | AC-05 | [ ] 回执在档 |
+| 0 | T-00 复现勘定+域协调 | — | 本件 §5 T-00 节 | 试验床+协调断言 | AC-01 | [x] 复现谱在档 |
+| 1 | T-01 呈现事实定谳 | T-00 | 呈现测量通道（候选 A-D 择优） | 分离谱+定性 | AC-02 | [x] 分离谱在档 |
+| 2 | T-02 交付节奏根因 | T-01 | renderer.rs:8349 泵域+订阅面 | 根因报告+方案选定 | AC-03 | [x] 根因定谳 |
+| 3 | T-03 修复/通道实施 | T-02 | frame_bench/frame_segments/renderer.rs | 修复或通道+序障 | AC-04 | [x] 双谱达标 |
+| 4 | T-04 谱对照+回归门 | T-03 | ladder+golden+分级门禁 | 零回退+生效 | AC-04 | [x] 门禁全绿 |
+| 5 | T-05 回执+规范+账本 | T-01..04 | downstream-handoff v2+SD-01/02 | 第二段闭环 | AC-05 | [x] 回执在档 |
 
 ## 9. 复审记录
 
@@ -270,18 +270,57 @@ downstream-handoff v2（呈现事实结论+交付节奏终态+通道语义建议
   ——零下游依赖可独立推进；授权=起草〔用户本会话指令〕，执行待
   启动——Q-1..Q-3 见 §10）。`next: work`。
 
+- 2026-10-03 work handoff：`stage: work`，PLAN-735，plan_revision 1。
+  `outcome: pass`。`code_commit`：worktree plan-735-dev
+  5da3b4727（T-01/T-02 观测插桩）+7b9b2f8f5（T-03 配对修复+真相
+  通道）+67a91eaad（T-04/T-05 双谱证据+SD-01/02 落档）；基面
+  master@c989483ce；worktree=D:/autostack/.wt/lang-735/auto-lang
+  （组内 auto-down detached@895f8d0 零改动）；依赖修订=iced 0.14.0
+  （iced_winit **0.14.1** worktree 解析——谱系钉版注记入 T-00 报告，
+  下游同版）/winit 0.30.13/wgpu 27.0.1/patches iced_widget 在位。
+  `task_ids`：T-00..T-05 全完。`evidence`：
+  - **AC-01**：ladder-p735-base.jsonl 泵率谱 0.42-3.16 带内（731 带
+    0.41-2.47 对照）；711 四计数器采样全零在档；712 r2 零冲突
+    （五在途分支对泵域五文件零提交实勘）；钉版注记在档。
+  - **AC-02**：分离谱+定性=呈现随驱动更新 +6-10ms（呈现真快），
+    ~95-110ms 节拍=驱动器调用周期传递（62.5ms p50+长尾实测）；
+    731「呈现随键入」归因修正。T-01-T-02 报告 §2。
+  - **AC-03**：四轴根因=发布点错位伪影（ready 唤醒链通知+
+    __bounds_collected 旋转孤儿化，subF=0/enq=0 实证稳态订阅门关）；
+    修复方案选定=双臂（配对修复+真相通道），无 fork/无订阅门变更/
+    无 712 r2 域触碰。同报告 §3。
+  - **AC-04**：行配对 9-33%→**100%**（改后两跑 260/260）+pump/s 达
+    驱动节奏带（type/typenl ~10/s=驱动读数）+R-1 序 404 行 0 违例+
+    draw_end 真相通道（行列+frame_bench 读侧）+S5 带零回退+golden
+    三形 0.00%（基面源 baseline 对照）+cargo t 5022/5038（16 红全
+    预存零新红——14 批量回执登记+ash 预存未登记+plan502 负载
+    flake scoped 绿）+tv 162 绿+frame 51 绿+plan716 探针 19 绿。
+    T-03-T-04 双谱报告。
+  - **AC-05**：downstream-handoff-v2 在档（重判解锁预告+通道语义
+    建议+VM 9920 下游立项建议——本件未接线零触碰）；SD-01/02 落档
+    （worktree specs 提交——merge 期正式沉淀）；P735-1=merge 期项
+    （/auto-plan:merge 执行）；auto-edit 仓零改动（ porcelain 断言
+    ——本会话未触该仓）。范围断言：712 r2 域（dirty/epoch/
+    poll_frame_pump 泵臂）零触碰——diff 仅 frame_segments 发布点+
+    frame_bench 新原子+frame_probe draw 末点+renderer 观测订阅/trace
+    行（全门控）。
+  `blockers`：无。`next: review`（/auto-plan:review——独立复审门，
+  P735-1 specs.json upsert 归 merge 期）。
+
 ## 10. 待澄清事项
 
-- **Q-1 fork iced_winit 约束重估（条件活——T-00 勘定后）**：711
-  D-1 注记"无 post-present 回执，硬屏障需 fork iced_winit——计划
-  约束禁止"。本件 T-01 候选 A-C 均为绕行通道（不 fork）；若勘定
-  证明绕行面全部不可行且呈现真相是必要件，fork 约束的解除=用户
-  裁定件（本件不预设）。
-- **Q-2 修复深度（T-02 判定后示知）**：臂 (a) 交付节奏修复的
-  行为面改动（订阅语义/回环结构）若触及 iced 公开 API 之外
-  （winit 事件循环参数面等），成本与升级约束=T-02 报告内容，
-  执行启动前用户过目。
-- **Q-3 下游协议裁定联动（非本件域——注记）**：若 T-01 定谳为
-  "通知伪影"（呈现其实跟帧走），下游 022 frozen 口径的读回语义
-  适配=下游重判件事——本件回执给结论与通道，裁定权在下游件
+- **Q-1 fork iced_winit 约束重估（已决——T-00/T-01 勘定闭环）**：
+  711 D-1 注记"无 post-present 回执，硬屏障需 fork iced_winit"。
+  本件 T-01 候选 B（根包装 draw 末点绝对时戳）在**不 fork** 约束下
+  成立——iced_winit RedrawRequested 臂内 draw 同步先行于 compositor
+  present（0.14.0/0.14.1 双版源勘，lib.rs :924-940/:950-981），逐帧
+  呈现真值无需 post-present 回执；fork 解除议题**关闭**（无必要）。
+- **Q-2 修复深度（已决——T-02 判定闭环）**：根因=测量通道发布点
+  错位，非 iced/winit 行为面缺陷——修复零触及 iced 公开 API 之外
+  （frame_segments/frame_bench 纯应用层观测面）；winit 事件循环
+  参数面零改动。执行深度未超预案，无需用户过目项。
+- **Q-3 下游协议裁定联动（非本件域——注记维持）**：T-01 定谳=
+  「呈现事实+通道伪影」混合（呈现跟驱动节奏；伪影=配对错位已修），
+  下游 022 frozen 口径的读回语义适配=下游重判件事——本件回执给
+  结论与通道（downstream-handoff-v2 §3 建议），裁定权在下游件
   （跨仓协调注记，非阻塞）。
