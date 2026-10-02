@@ -334,7 +334,10 @@ T-02 收敛为两族（画廊围栏 + 1M churn）。
   **cleaned**=（见下）；**部署面核查**=N/A 有据——改动全部为 `#[cfg(test)]`
   测试基建+脚本，release 二进制/依赖仓 daemon/web bundle 零消费面；
   **批量回归到期判定**=due（回执 last_covered_plan_id=715 < 已落地的 725
-  且 725%5==0；亦超 48h）→ 移交 `/auto-plan:regress` 主检出单实例执行。
+  且 725%5==0；亦超 48h）→ 移交 `/auto-plan:regress` 主检出单实例执行；
+  **cleaned**=worktree clean 核验 + wt-guard 双仓 clean（lang+down）→
+  `git worktree remove` ×2 → `git branch -d plan-726-dev`（删于 529fb8099
+  =已落地 tip）→ 组目录 rmdir——全零残留。
 
 ## 10. 待澄清事项
 
