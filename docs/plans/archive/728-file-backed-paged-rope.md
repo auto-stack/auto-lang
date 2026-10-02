@@ -1,11 +1,12 @@
 ---
 plan_id: PLAN-728
-status: reviewed
+status: archived
 feature_name: 文件后援分页 rope 实施件（auto-edit 供⑮ 承接——不可变基底页表+编辑覆盖层+LRU 内存上界+异步预取+保存合并+消费方 overlay 意识+512MB 拒绝位退役弹药）
 author: [agent]
 created_at: 2026-10-02T15:06:46+08:00
-updated_at: 2026-10-02T18:30:00+08:00
+updated_at: 2026-10-02T19:10:00+08:00
 plan_revision: 1
+completion_kind: delivered
 current_step: 11
 total_steps: 11
 supersedes_spec_components: []
@@ -406,6 +407,31 @@ P728-1（703/710 先例）+供料档 §10 回执节预告位。
   SD-01=现行行为+持久决策（非执行日记）✓；supersedes 空=扩展非取代（703
   册仍有效，delta 表 before/after 已界）✓；touched_goals 空+书面解释（供料
   驱动面无 GOAL-NNN 锚，前注在案）✓。`next: merge`。
+
+
+- 2026-10-02 合并收据（PLAN-728:r1）：`stage: merge`，outcome **pass**。
+  `prepared`=reviewed 基线 c19fec79f（r1 pass，AC-01..09）+canonical 增量
+  （SD-01 册+ui/overview.md 现状节+ui/plans.md 索引行——worktree 内
+  56b998dfd/docs-only 后代）+账本目标 designs 段 P728-1。
+  `landed`=**ff-only**：rebase master 后 delivery=69059dfaa（range-diff
+  等价证明 `=`×2：3bc929ca0→eb6ae0ff9、c19fec79f→038f4b321+docs 后代
+  69059dfaa）；master 尖=delivery ✓；落地后主检出冒烟 file_backing+
+  plan728 19/19 绿。
+  `ledger_refreshed`=designs 段 P728-1（docsha:afd7a6142ce6〔SD-01 册
+  sha256[:12]〕+delivery 锚；深等守卫扰动仅限 P728-1 条目〔items[140]
+  tags[5]/content 两叶——守卫路径判式过严误报一次，终态逐字回读验真〕；
+  P024 先例的外科投影+roundtrip 模式）。
+  `archived`=docs/plans/archive/728-file-backed-paged-rope.md
+  （completion_kind: delivered）。
+  `cleaned`=待回填（worktree/branch 移除后追加）。
+  **部署观察**（PLAN-092 教训面）：auto-lang 无自体常驻部署产物——release
+  二进制与 gen/front/vue/dist 均按需构建（本会话零构建请求）；落地后
+  各消费面（auto-edit 桌面/下游 E2E）按需重建，stale 观察项=无（无运行
+  中进程消费本仓构建物）。
+  **批量回归到期判定**（fix-test-tiering）：.last-batch-regression.json=
+  last_covered_plan_id 726@2026-10-02T05:25Z；728%5≠0 且距收据 <48h、
+  窗口内无 L0 fix-* 合并 → **未到期**，不触发 /auto-plan:regress（下次
+  到期判定随 730 或 48h 窗口）。
 
 ## 10. 待澄清事项
 
