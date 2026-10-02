@@ -4342,8 +4342,10 @@ export default router
         // Plan 457: Materialize bundled shadcn-vue UI components (button, etc.)
         self.materialize_ui_components()?;
 
-        // Generate TypeScript API client if api.at exists
-        let _ = crate::api_gen::generate_api(&self.root_dir, "vue");
+        // Generate TypeScript API client if api.at exists.
+        // PLAN-734 T-06：Err 传播（不再静默丢弃——生成失败不能以旧产物/无产物
+        // 继续；AC-05）。
+        crate::api_gen::generate_api(&self.root_dir, "vue")?;
 
         // Write project files
         write_project_files(
@@ -5794,10 +5796,8 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
     // Step 2: Generate API client code (if api.at exists)
     println!();
     println!("▶ Generating API client...");
-    if let Err(e) = crate::api_gen::generate_api(root_dir, "vue") {
-        // API generation is optional - only warn on failure
-        println!("  ⚠ API generation skipped: {}", e);
-    }
+    // PLAN-734 T-06：Err 传播（无契约时 generate_api 返回 Ok——不受影响）。
+    crate::api_gen::generate_api(root_dir, "vue")?;
 
     // Refresh API function names after generating (for next run)
     let api_fns_path = root_dir.join("dist").join(".api_functions");
@@ -6597,10 +6597,8 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     current_step += 1;
     println!();
     println!("▶ Step {}/{}: Generating API client...", current_step, total_steps);
-    if let Err(e) = crate::api_gen::generate_api(root_dir, "vue") {
-        // API generation is optional - only warn on failure
-        println!("  ⚠ API generation skipped: {}", e);
-    }
+    // PLAN-734 T-06：Err 传播（错误不能只 warn 后继续启动旧产物）。
+    crate::api_gen::generate_api(root_dir, "vue")?;
 
     // Load API function names for Vue generator (dynamic detection)
     let api_fns_path = root_dir.join("dist").join(".api_functions");

@@ -4277,9 +4277,11 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
             // VM+Rust split: ensure the Rust axum server is generated, then
             // start it. generate_api("rust") writes Cargo.toml + main.rs +
             // api.rs + types.rs from #[api] annotations (idempotent).
-            if let Err(e) = crate::api_gen::generate_api(project_dir, "rust") {
-                eprintln!("  {} Failed to generate Rust backend: {}", "⚠".bright_yellow(), e);
-            }
+            // PLAN-734 T-06：Err 传播（split 生成失败不再 warn 后仍启动——
+            // start_api_server 内的二次生成同错误也会硬传，此处提前终结）。
+            crate::api_gen::generate_api(project_dir, "rust").map_err(|e| {
+                format!("Failed to generate Rust backend: {}", e)
+            })?;
             let child = match start_api_server(project_dir) {
                 Ok(child) => child,
                 // PLAN-026 T-05: ready 失败显式中止(不进组件构建/Init)。
