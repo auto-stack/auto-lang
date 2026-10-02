@@ -1,0 +1,59 @@
+// PLAN-730: server-side upload ingress example.
+//
+// Two trusted roots from env (never from request data):
+//   UPLOADS_PUBLIC_ROOT   — published files (served back via the 729 download route)
+//   UPLOADS_STAGING_ROOT  — private same-volume staging (outside the public root)
+//
+// Flow: route/middleware auth first -> http.upload_receive (staging, bounded)
+// -> business check on metadata -> http.upload_commit (atomic create-only 201)
+// or http.upload_reject (cleanup + receipt).
+
+pub type UploadMeta = { name: str }
+
+fn upload_guard(info str) ?str {
+    if info.contains("/guarded/") {
+        return "{\"error\":\"auth required\"}"
+    }
+    return nil
+}
+
+#[api(method = "POST", path = "/api/uploads")]
+pub fn upload(req UploadRequest) ~UploadReceipt {
+    let root = env.get("UPLOADS_PUBLIC_ROOT")
+    let staging = env.get("UPLOADS_STAGING_ROOT")
+    let session = http.upload_receive(req, root, staging, "{\"mode\":\"multipart\",\"text_fields\":[\"note\"]}")
+    let meta = http.upload_metadata(session)
+    if meta.contains("{\"state\":\"failed\"") {
+        return http.upload_reject(session, 0, "receive failed")
+    }
+    // Business check on the staged metadata (note field, filename, size...).
+    if meta.contains("\"value\":\"deny\"") {
+        return http.upload_reject(session, 422, "note=deny rejected by business rule")
+    }
+    return http.upload_commit(session, "blob.bin")
+}
+
+#[api(method = "PUT", path = "/api/uploads/raw")]
+pub fn upload_raw(req UploadRequest) ~UploadReceipt {
+    let root = env.get("UPLOADS_PUBLIC_ROOT")
+    let staging = env.get("UPLOADS_STAGING_ROOT")
+    let session = http.upload_receive(req, root, staging, "{\"mode\":\"raw\"}")
+    let meta = http.upload_metadata(session)
+    if meta.contains("{\"state\":\"failed\"") {
+        return http.upload_reject(session, 0, "receive failed")
+    }
+    return http.upload_commit(session, "raw.bin")
+}
+
+#[api(method = "POST", path = "/api/early")]
+pub fn upload_early(req UploadRequest) ~UploadReceipt {
+    // Auth gate BEFORE receive: zero file I/O, the client never has to send
+    // the body (works with Expect: 100-continue).
+    return http.upload_error(401, "missing token")
+}
+
+#[api(method = "GET", path = "/api/files/:name")]
+pub fn download(name str) FileResponse {
+    let root = env.get("UPLOADS_PUBLIC_ROOT")
+    return http.file_response(root, name, "{}")
+}

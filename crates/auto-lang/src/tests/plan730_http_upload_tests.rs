@@ -642,6 +642,85 @@ fn plain_int() int {{
         );
     }
 
+    /// T-08 互通闭环：727 客户端 transfer_upload（multipart/raw/字段）→
+    /// 730 服务端 201 → 729 路由下载比对 → 727 transfer_download 落盘比对
+    /// （同 hash 链，不是两组各自 mock）；拒绝/超限路径客户端收到非 2xx。
+    #[test]
+    fn http_e2e_plan730_client730_server_interop() {
+        let (root, staging) = temp_roots("interop");
+        let port = start_server(&upload_program(&root, &staging), 18980);
+        let base = format!("http://127.0.0.1:{port}");
+        let src_file = root.parent().unwrap().join("client-src.bin");
+        let data: Vec<u8> = (0usize..(2 * 1024 * 1024)).map(|i| (i % 249) as u8).collect();
+        std::fs::write(&src_file, &data).unwrap();
+
+        // 1. 727 multipart 上传 → 201（note 字段随行）。
+        let t = a2r_std::http::transfer_upload(
+            &format!("{base}/api/uploads/mp"),
+            src_file.to_str().unwrap(),
+            r#"{"field":"file","fields":{"note":"from727"}}"#,
+        );
+        let receipt = a2r_std::http::transfer_wait_typed(&t);
+        assert_eq!(receipt.kind.as_str(), "success", "{receipt:?}");
+        assert_eq!(receipt.status, Some(201), "201 committed: {receipt:?}");
+        // 服务端落盘字节一致。
+        assert_eq!(std::fs::read(root.join("mp/blob.bin")).unwrap(), data);
+
+        // 2. 729 下载路由（服务端同文件）：客户端 transfer_download 比对。
+        let dl_dst = root.parent().unwrap().join("client-dl.bin");
+        let t2 = a2r_std::http::transfer_download(
+            &format!("{base}/api/files/mp/blob.bin"),
+            dl_dst.to_str().unwrap(),
+            "{}",
+        );
+        let receipt2 = a2r_std::http::transfer_wait_typed(&t2);
+        assert_eq!(receipt2.kind.as_str(), "success", "{receipt2:?}");
+        assert_eq!(std::fs::read(&dl_dst).unwrap(), data, "上传后下载同字节");
+
+        // 3. raw 上传 → 201（无字段）。
+        let t3 = a2r_std::http::transfer_upload(
+            &format!("{base}/api/uploads/raw"),
+            src_file.to_str().unwrap(),
+            r#"{"mode":"raw"}"#,
+        );
+        let receipt3 = a2r_std::http::transfer_wait_typed(&t3);
+        assert_eq!(receipt3.kind.as_str(), "success", "{receipt3:?}");
+        assert_eq!(std::fs::read(root.join("raw/data.bin")).unwrap(), data);
+
+        // 4. 同名冲突（客户端视角）：非 2xx 失败（不重放 POST 覆盖）。
+        let t4 = a2r_std::http::transfer_upload(
+            &format!("{base}/api/uploads/mp"),
+            src_file.to_str().unwrap(),
+            r#"{"field":"file"}"#,
+        );
+        let receipt4 = a2r_std::http::transfer_wait_typed(&t4);
+        assert_eq!(receipt4.kind.as_str(), "failed", "conflict is a failure: {receipt4:?}");
+        assert_eq!(receipt4.status, Some(409), "{receipt4:?}");
+        assert_eq!(
+            std::fs::read(root.join("mp/blob.bin")).unwrap(),
+            data,
+            "冲突后原文件不变"
+        );
+
+        // 5. 业务拒绝（note=deny → 422）：客户端收到非 2xx。
+        let deny_src = root.parent().unwrap().join("client-deny.bin");
+        std::fs::write(&deny_src, b"DENY-ME").unwrap();
+        let t5 = a2r_std::http::transfer_upload(
+            &format!("{base}/api/uploads/mp"),
+            deny_src.to_str().unwrap(),
+            r#"{"field":"file","fields":{"note":"deny"}}"#,
+        );
+        let receipt5 = a2r_std::http::transfer_wait_typed(&t5);
+        assert_eq!(receipt5.kind.as_str(), "failed", "{receipt5:?}");
+        assert_eq!(receipt5.status, Some(422), "{receipt5:?}");
+        // staging 清零（拒绝清理收口）。
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while staging_is_empty(&staging) == false && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(staging_is_empty(&staging), "拒绝后 staging 清零");
+    }
+
     /// T-07 legacy 探针：中间件拒绝零写盘（落盘在 middleware 之后）。
     #[test]
     fn http_e2e_plan730_legacy_middleware_reject_no_write() {
