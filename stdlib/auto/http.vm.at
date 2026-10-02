@@ -217,3 +217,31 @@ fn http_post_bearer(url str, body str, api_key str) str
 /// Return the HTTP status code from the last http_post_sync or http_post_bearer call.
 #[vm]
 fn http_last_status() int
+
+// ═══════════════════════════════════════════════════════════
+// PLAN-727: File Transfer natives (shared transfer core bridge)
+// ═══════════════════════════════════════════════════════════
+
+/// Start a file download (non-blocking submit; native id 3114).
+#[vm]
+fn http_transfer_download(url str, path str, options str) FileTransfer
+
+/// Start a file upload (non-blocking submit; native id 3115).
+#[vm]
+fn http_transfer_upload(url str, path str, options str) FileTransfer
+
+/// Park until terminal; re-entry returns the receipt JSON (native id 3116).
+#[vm]
+fn http_transfer_wait(t FileTransfer) str
+
+/// Latest progress / one-shot terminal receipt (native id 3117).
+#[vm]
+fn http_transfer_next_progress(t FileTransfer) str
+
+/// Idempotent cancel (native id 3118).
+#[vm]
+fn http_transfer_cancel(t FileTransfer) void
+
+/// Terminal error message, "" = none (native id 3119).
+#[vm]
+fn http_transfer_error(t FileTransfer) str

@@ -4129,6 +4129,9 @@ struct HttpRequestBuilderData {
     retry_count: u32,
     gzip: bool,
     brotli: bool, // Plan 349 步骤 7/8 (W4)
+    // PLAN-727 T-05：multipart 预算越界（字段数/文本总量）在 builder 期
+    // 记录，send 时终结性失败（坏请求不发出）。
+    build_error: Option<String>,
 }
 
 /// HTTP Response data
@@ -5466,6 +5469,7 @@ pub fn shim_http_request(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
         retry_count: 0,
         gzip: false,
         brotli: false,
+        build_error: None,
     };
     let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
         "RequestBuilder",
@@ -5614,7 +5618,17 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     let retry_count = builder_data.retry_count; // Plan 349 步骤 8 (W3): now honored.
     let gzip = builder_data.gzip;
     let brotli = builder_data.brotli; // Plan 349 步骤 8 (W4)
+    let build_error = builder_data.build_error.clone(); // PLAN-727 T-05: 预算越界
     drop(builder_data);
+    if let Some(err) = build_error {
+        // 坏请求不发出：终结性错误经 live-op 交付（重入拿错误句柄）。
+        let req_id = alloc_async_id();
+        crate::vm::ffi::async_http::register_live_op(req_id);
+        crate::vm::ffi::async_http::complete_live_op(req_id, Err(err));
+        task.waiting_http_request_id = Some(req_id);
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
     drop(guard);
 
     // Submit to the fixed async client executor; result lands in the live-op
@@ -5624,6 +5638,12 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     let req_id = alloc_async_id();
     crate::vm::ffi::async_http::register_live_op(req_id);
     let job = async move {
+        // PLAN-727 T-05：multipart 文件 part 流式——不再全量预读为 Vec；
+        // 缺失/读失败终结性失败（不跳过 part、不假成功），错误经
+        // file_errors 在发送失败时并入消息。每次允许的重试重开文件。
+        let file_errors: std::sync::Arc<std::sync::Mutex<Vec<String>>> =
+            std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let job_file_errors = std::sync::Arc::clone(&file_errors);
         let result = (|| async move {
             let mut client_builder = reqwest::Client::builder();
             if skip_verify {
@@ -5648,16 +5668,6 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
             if gzip { client_builder = client_builder.gzip(true); }
             if brotli { client_builder = client_builder.brotli(true); }
             let client = client_builder.build().map_err(|e| e.to_string())?;
-            // Plan 349 步骤 8 (W3): retry loop rebuilds the request each attempt so
-            // consumed multipart forms can be reconstructed.
-            // PLAN-705 T-03: async Part::file 是 async——文件字节在 job 前段
-            // 预读，闭包内按尝试重建 Part::bytes（读失败跳过该 part，同旧臂）。
-            let mp_file_data: Vec<(String, Vec<u8>)> = mp_files
-                .iter()
-                .filter_map(|(name, path)| {
-                    std::fs::read(path).ok().map(|d| (name.clone(), d))
-                })
-                .collect();
             let url = append_default_queries(&url); // Plan 446 E4: 默认 query 注入
             let default_headers = snapshot_default_headers(); // Plan 446 E4
             send_with_retry_async(
@@ -5676,13 +5686,13 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
                     for (k, v) in &headers {
                         builder = builder.header(k.as_str(), v.as_str());
                     }
-                    if !mp_file_data.is_empty() || !mp_texts.is_empty() {
+                    if !mp_files.is_empty() || !mp_texts.is_empty() {
                         let mut form = reqwest::multipart::Form::new();
                         for (name, value) in &mp_texts {
                             form = form.text(name.clone(), value.clone());
                         }
-                        for (name, data) in &mp_file_data {
-                            let part = reqwest::multipart::Part::bytes(data.clone());
+                        for (name, path) in &mp_files {
+                            let part = stream_multipart_file_part(path, &file_errors);
                             form = form.part(name.clone(), part);
                         }
                         builder = builder.multipart(form);
@@ -5697,6 +5707,15 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
             .await
         })()
         .await;
+        // PLAN-727 T-05：multipart 文件读失败并入错误消息（不省略 part、
+        // 不假成功）；无文件错误时保持原错误文本。
+        let mut result = result;
+        if let Err(ref mut e) = result {
+            let errs = job_file_errors.lock().map(|g| g.join("; ")).unwrap_or_default();
+            if !errs.is_empty() {
+                *e = format!("{e}; multipart file errors: {errs}");
+            }
+        }
         result.map(|(status, headers, body)| AsyncResult::Structured { status, headers, body })
     };
     let _ = super::async_http::submit_client_job(req_id, job);
@@ -5857,6 +5876,97 @@ pub fn shim_request_builder_brotli(task: &mut AutoTask, vm: &AutoVM) -> Result<(
 
 /// `RequestBuilder.multipart_file(field_name: String, file_path: String) -> RequestBuilder`
 /// Attach a file to a multipart form upload.
+/// PLAN-727 T-05：multipart 文件 part 流式化——保持路径描述直到发送；
+/// 每次构建重开文件、有限块读取（64KiB、通道深 2 = 待处理块上界）。
+/// 缺失/打开失败 = 立即出错的流（in-band body error → 请求终结），配合
+/// `file_errors` 消息合并；绝不产生空 part 假成功。
+fn stream_multipart_file_part(
+    path: &str,
+    file_errors: &std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+) -> reqwest::multipart::Part {
+    const READ_BLOCK: usize = 64 * 1024;
+    struct PartStream {
+        rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    }
+    impl futures::Stream for PartStream {
+        type Item = Result<Vec<u8>, std::io::Error>;
+        fn poll_next(
+            mut self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Self::Item>> {
+            match self.rx.poll_recv(cx) {
+                std::task::Poll::Ready(Some(v)) => std::task::Poll::Ready(Some(Ok(v))),
+                std::task::Poll::Ready(None) => std::task::Poll::Ready(None),
+                std::task::Poll::Pending => std::task::Poll::Pending,
+            }
+        }
+    }
+    fn erroring_part(msg: String) -> reqwest::multipart::Part {
+        // 首项即 Err：reqwest 发送失败（body error），不产生截断假成功。
+        let stream = futures::stream::once(async move {
+            Err::<Vec<u8>, std::io::Error>(std::io::Error::other(msg))
+        });
+        reqwest::multipart::Part::stream(reqwest::Body::wrap_stream(stream))
+    }
+    let meta = match std::fs::metadata(path) {
+        Ok(m) if m.is_file() => m,
+        Ok(_) => {
+            let msg = format!("multipart file is not a regular file: {path}");
+            file_errors.lock().unwrap().push(msg.clone());
+            return erroring_part(msg);
+        }
+        Err(e) => {
+            let msg = format!("multipart file open failed: {path}: {e}");
+            file_errors.lock().unwrap().push(msg.clone());
+            return erroring_part(msg);
+        }
+    };
+    let len = meta.len();
+    let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(2);
+    let errors = std::sync::Arc::clone(file_errors);
+    let path_owned = path.to_string();
+    super::async_http::client_runtime().spawn(async move {
+        let mut file = match tokio::fs::File::open(&path_owned).await {
+            Ok(f) => f,
+            Err(e) => {
+                errors
+                    .lock()
+                    .unwrap()
+                    .push(format!("multipart file open failed: {path_owned}: {e}"));
+                return; // 流提前结束 → 长度失配 → 发送失败
+            }
+        };
+        use tokio::io::AsyncReadExt;
+        let mut buf = vec![0u8; READ_BLOCK];
+        loop {
+            match file.read(&mut buf).await {
+                Ok(0) => break,
+                Ok(n) => {
+                    if tx.send(buf[..n].to_vec()).await.is_err() {
+                        return; // 消费端消失（请求失败/取消）
+                    }
+                }
+                Err(e) => {
+                    errors
+                        .lock()
+                        .unwrap()
+                        .push(format!("multipart file read failed: {path_owned}: {e}"));
+                    return; // 不发尾：长度失配 → 发送失败
+                }
+            }
+        }
+    });
+    let body = reqwest::Body::wrap_stream(PartStream { rx });
+    reqwest::multipart::Part::stream_with_length(body, len)
+}
+
+/// PLAN-727 T-05：multipart 预算（决策报告冻结）：文件 part ≤16、文本字段
+/// ≤64、单值 ≤64KiB、文本总量 ≤1MiB；越界在 builder 期记录，send 终结。
+const MULTIPART_MAX_FILES: usize = 16;
+const MULTIPART_MAX_TEXT_FIELDS: usize = 64;
+const MULTIPART_MAX_TEXT_VALUE: usize = 64 * 1024;
+const MULTIPART_MAX_TEXT_TOTAL: usize = 1024 * 1024;
+
 pub fn shim_request_builder_multipart_file(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let file_path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
@@ -5869,7 +5979,15 @@ pub fn shim_request_builder_multipart_file(task: &mut AutoTask, vm: &AutoVM) -> 
         if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
                 if let Ok(mut data) = mutex.lock() {
-                    data.multipart_files.push((field_name, file_path));
+                    // PLAN-727 T-05：文件 part 数预算（越界记录，send 终结）。
+                    if data.multipart_files.len() >= MULTIPART_MAX_FILES {
+                        data.build_error = Some(format!(
+                            "multipart file parts exceed budget {}",
+                            MULTIPART_MAX_FILES
+                        ));
+                    } else {
+                        data.multipart_files.push((field_name, file_path));
+                    }
                 }
             }
         }
@@ -5892,7 +6010,31 @@ pub fn shim_request_builder_multipart_text(task: &mut AutoTask, vm: &AutoVM) -> 
         if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
                 if let Ok(mut data) = mutex.lock() {
-                    data.multipart_texts.push((field_name, value));
+                    // PLAN-727 T-05：文本字段预算（数量/单值/总量；越界记录，
+                    // send 终结——坏请求不发出）。
+                    if data.multipart_texts.len() >= MULTIPART_MAX_TEXT_FIELDS {
+                        data.build_error = Some(format!(
+                            "multipart text fields exceed budget {}",
+                            MULTIPART_MAX_TEXT_FIELDS
+                        ));
+                    } else if value.len() > MULTIPART_MAX_TEXT_VALUE {
+                        data.build_error = Some(format!(
+                            "multipart text value {} exceeds budget {}",
+                            value.len(),
+                            MULTIPART_MAX_TEXT_VALUE
+                        ));
+                    } else {
+                        let total: usize = data.multipart_texts.iter().map(|(_, v)| v.len()).sum();
+                        if total + value.len() > MULTIPART_MAX_TEXT_TOTAL {
+                            data.build_error = Some(format!(
+                                "multipart text total {} exceeds budget {}",
+                                total + value.len(),
+                                MULTIPART_MAX_TEXT_TOTAL
+                            ));
+                        } else {
+                            data.multipart_texts.push((field_name, value));
+                        }
+                    }
                 }
             }
         }
@@ -5904,39 +6046,22 @@ pub fn shim_request_builder_multipart_text(task: &mut AutoTask, vm: &AutoVM) -> 
 /// `http.upload(url: String, file_path: String) -> response_handle`
 /// Simple single-file upload using multipart/form-data.
 pub fn shim_http_upload(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // PLAN-727 T-05：legacy upload 迁移共享传输核心——流式 multipart
+    //（field=file），yield 模式（不再每调用一线程 + blocking client）；
+    // Response 形状保留：失败/无响应 = 内部错误句柄（旧伪 500 语义）。
+    if let Some(req_id) = task.waiting_http_request_id {
+        if let Some(result) = super::http_transfer::consume_legacy_upload(req_id) {
+            task.waiting_http_request_id = None;
+            return push_handle_result(task, result);
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
     let file_path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let result = std::thread::spawn(move || {
-        let client = reqwest::blocking::Client::new();
-        let form = reqwest::blocking::multipart::Form::new()
-            .file("file", &file_path)
-            .map_err(|e| e.to_string())?;
-        let response = client.post(&url).multipart(form).send().map_err(|e| e.to_string())?;
-        Ok::<(u16, Vec<(String, String)>, Vec<u8>), String>((
-            response.status().as_u16(),
-            response.headers().iter()
-                .filter_map(|(k, v)| Some((k.to_string(), v.to_str().ok()?.to_string())))
-                .collect(),
-            response.bytes().unwrap_or_default().to_vec(),
-        ))
-    }).join();
-
-    match result {
-        Ok(Ok((status, headers, body_bytes))) => {
-            let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-            HTTP_RESPONSES.with(|r| {
-                r.borrow_mut().insert(handle, HttpResponseData { status, headers, body: body_bytes });
-            });
-            task.ram.push_i32(handle as i32);
-        }
-        _ => {
-            task.ram.push_i32(shim_http_internal_error("upload failed".to_string()) as i32);
-        }
-    }
-    Ok(())
+    super::http_transfer::start_legacy_upload_and_park(task, &url, &file_path)
 }
 
 // ============================================================================
@@ -5946,55 +6071,47 @@ pub fn shim_http_upload(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// `http.download(url: String, file_path: String) -> bool`
 /// Download a file to disk (blocking, writes directly to file).
 pub fn shim_http_download(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // PLAN-727 T-05：legacy download 迁移共享传输核心——增量落盘 + staging
+    // 原子提交（失败保留原目标），yield 模式（不再每调用一线程 + 整文件
+    // 入内存）。bool 形状保留：success 收据 = true。
+    if let Some(req_id) = task.waiting_http_request_id {
+        if crate::vm::ffi::async_http::live_op_ready_or_gone(req_id) {
+            let ok = super::http_transfer::consume_legacy_download(task, req_id);
+            task.ram.push_nv(auto_val::encode_bool(ok));
+            return Ok(());
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
     let file_path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let success = std::thread::spawn(move || {
-        let client = reqwest::blocking::Client::new();
-        let response = client.get(&url).send();
-        let response = match response { Ok(r) => r, Err(_) => return false };
-        use std::io::Write;
-        let mut file = match std::fs::File::create(&file_path) { Ok(f) => f, Err(_) => return false };
-        let bytes = response.bytes();
-        match bytes {
-            Ok(b) => { file.write_all(&b).is_ok() }
-            Err(_) => false,
-        }
-    }).join().unwrap_or(false);
-
-    task.ram.push_nv(auto_val::encode_bool(success));
-    Ok(())
+    super::http_transfer::start_legacy_download_and_park(task, &url, &file_path, "{}")
 }
 
 /// `http.download_resume(url: String, file_path: String, offset: i64) -> bool`
 /// Resume download from a given byte offset (HTTP Range header).
 pub fn shim_http_download_resume(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // PLAN-727 T-05：legacy resume 迁移共享核心——严格续传（offset==本地
+    // 长度 + 206 Content-Range 对齐；200 = 完整重启，绝不盲目 append）。
+    // offset 自 i32 栈（既有 32 位 ABI 事实，负数 = 可观察 options 失败）。
+    if let Some(req_id) = task.waiting_http_request_id {
+        if crate::vm::ffi::async_http::live_op_ready_or_gone(req_id) {
+            let ok = super::http_transfer::consume_legacy_download(task, req_id);
+            task.ram.push_nv(auto_val::encode_bool(ok));
+            return Ok(());
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
     let offset: i64 = crate::vm::native::pop_arg_i32(task) as i64;
     let file_path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let success = std::thread::spawn(move || {
-        let client = reqwest::blocking::Client::new();
-        let range = format!("bytes={}-", offset);
-        let response = client.get(&url).header("Range", &range).send();
-        let response = match response { Ok(r) => r, Err(_) => return false };
-        use std::io::Write;
-        let mut file = match std::fs::OpenOptions::new().append(true).open(&file_path) {
-            Ok(f) => f, Err(_) => return false
-        };
-        let bytes = response.bytes();
-        match bytes {
-            Ok(b) => { file.write_all(&b).is_ok() }
-            Err(_) => false,
-        }
-    }).join().unwrap_or(false);
-
-    task.ram.push_nv(auto_val::encode_bool(success));
-    Ok(())
+    let options = format!("{{\"offset\":{}}}", offset);
+    super::http_transfer::start_legacy_download_and_park(task, &url, &file_path, &options)
 }
 
 /// `http.download_with_progress(url: String, file_path: String) -> iterator_id`
@@ -6030,82 +6147,21 @@ pub fn shim_http_download_with_progress(task: &mut AutoTask, vm: &AutoVM) -> Res
     Ok(())
 }
 
-/// Plan 349: Spawn a download with progress reporting on a dedicated thread.
-/// Pushes progress events + Done via mpsc channel (same pattern as SSE).
+/// Plan 349: Spawn a download with progress reporting (PLAN-727 T-05 起
+/// 经共享传输核心执行，观察句柄泵进度/终态进既有通道)。
 fn spawn_download_with_progress(url: String, file_path: String, _stream_id: u64) -> Arc<AsyncStreamHandle> {
+    // PLAN-727 T-05：进度生产者迁移共享传输核心——专用线程/独立
+    // current-thread runtime 退役；同步 write_all 退役（核心内增量落盘 +
+    // staging 提交）；进度经观察句柄在内核 runtime 上泵入既有通道
+    //（try_send 满则合并丢弃 = 慢消费者不反压落盘；终态不丢）。
     let (tx, rx) = tokio::sync::mpsc::channel::<AsyncStreamEvent>(64);
     let handle = Arc::new(AsyncStreamHandle {
         rx: std::sync::Mutex::new(rx),
         done: std::sync::atomic::AtomicBool::new(false),
     });
-    let handle_clone = handle.clone();
-    std::thread::Builder::new()
-        .name("auto-download".into())
-        .spawn(move || {
-            // Use an independent tokio runtime for async reqwest (bytes_stream).
-            let rt = match tokio::runtime::Builder::new_current_thread()
-                .enable_all().build()
-            {
-                Ok(rt) => rt,
-                Err(_) => {
-                    handle_clone.done.store(true, Ordering::SeqCst);
-                    return;
-                }
-            };
-            rt.block_on(async move {
-                let client = reqwest::Client::new();
-                let response = match client.get(&url).send().await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        let _ = tx.send(AsyncStreamEvent::Error(e.to_string())).await;
-                        let _ = tx.send(AsyncStreamEvent::Done).await;
-                        handle_clone.done.store(true, Ordering::SeqCst);
-                        return;
-                    }
-                };
-                let total = response.content_length().unwrap_or(0);
-                use std::io::Write;
-                let mut file = match std::fs::File::create(&file_path) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        let _ = tx.send(AsyncStreamEvent::Error(e.to_string())).await;
-                        let _ = tx.send(AsyncStreamEvent::Done).await;
-                        handle_clone.done.store(true, Ordering::SeqCst);
-                        return;
-                    }
-                };
-                let mut downloaded: u64 = 0;
-                use futures::StreamExt;
-                let mut stream = response.bytes_stream();
-                while let Some(chunk_result) = stream.next().await {
-                    match chunk_result {
-                        Ok(bytes) => {
-                            if file.write_all(&bytes).is_err() {
-                                let _ = tx.send(AsyncStreamEvent::Error("write failed".into())).await;
-                                break;
-                            }
-                            downloaded += bytes.len() as u64;
-                            let percent = if total > 0 { downloaded * 100 / total } else { 0 };
-                            let json = format!(
-                                r#"{{"downloaded":{},"total":{},"percent":{}}}"#,
-                                downloaded, total, percent
-                            );
-                            let _ = tx.send(AsyncStreamEvent::Data(json)).await;
-                        }
-                        Err(e) => {
-                            let _ = tx.send(AsyncStreamEvent::Error(e.to_string())).await;
-                            break;
-                        }
-                    }
-                }
-                let _ = tx.send(AsyncStreamEvent::Done).await;
-                handle_clone.done.store(true, Ordering::SeqCst);
-            });
-        })
-        .expect("spawn download thread");
+    super::http_transfer::spawn_core_download_with_progress(&url, &file_path, tx, handle.clone());
     handle
 }
-
 // ============================================================================
 // Plan 195: Enhanced Response access methods
 // ============================================================================
@@ -6944,7 +7000,7 @@ fn shared_async_http_client() -> &'static reqwest::Client {
 /// = 可捕获异常**（handler 的 catch 分支可呈现可诊断错误）；**非 2xx 仍返回
 /// 错误形状值**（含 `.status` 字段，语料可检视——与 fetch().json() 的
 /// 「HTTP 错误状态不 reject」语义同律）。
-fn check_async_http_result(request_id: u64) -> Option<Result<String, String>> {
+pub(crate) fn check_async_http_result(request_id: u64) -> Option<Result<String, String>> {
     crate::vm::ffi::async_http::take_live_op(request_id).map(|result| match result {
         Ok(AsyncResult::Body(s)) => Ok(s),
         Ok(_) => Err("http: unexpected async result variant".to_string()),
@@ -7043,7 +7099,7 @@ pub(crate) fn spawn_async_http(
 /// caller (re-entry branch) owns the data and inserts it into the calling
 /// thread's HTTP_RESPONSES thread_local. Plan 349 步骤 7.
 /// PLAN-705 T-02: take 只消费 Completed;Pending 保持 live。
-fn check_async_http_result_handle(
+pub(crate) fn check_async_http_result_handle(
     request_id: u64,
 ) -> Option<Result<(u16, Vec<(String, String)>, Vec<u8>), String>> {
     crate::vm::ffi::async_http::take_live_op(request_id).map(|r| r.and_then(|ar| match ar {
@@ -8698,6 +8754,20 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("http.download_resume", shim_http_download_resume);
     natives.register_shim_by_name("auto.http.download_with_progress", shim_http_download_with_progress);
     natives.register_shim_by_name("http.download_with_progress", shim_http_download_with_progress);
+    // PLAN-727 T-05: 可取消文件传输公共面（共享核心；契约见
+    // docs/plans/reports/727-transfer-decision.md）
+    natives.register_shim_by_name("auto.http.transfer_download", super::http_transfer::shim_http_transfer_download);
+    natives.register_shim_by_name("http.transfer_download", super::http_transfer::shim_http_transfer_download);
+    natives.register_shim_by_name("auto.http.transfer_upload", super::http_transfer::shim_http_transfer_upload);
+    natives.register_shim_by_name("http.transfer_upload", super::http_transfer::shim_http_transfer_upload);
+    natives.register_shim_by_name("auto.http.transfer_wait", super::http_transfer::shim_http_transfer_wait);
+    natives.register_shim_by_name("http.transfer_wait", super::http_transfer::shim_http_transfer_wait);
+    natives.register_shim_by_name("auto.http.transfer_next_progress", super::http_transfer::shim_http_transfer_next_progress);
+    natives.register_shim_by_name("http.transfer_next_progress", super::http_transfer::shim_http_transfer_next_progress);
+    natives.register_shim_by_name("auto.http.transfer_cancel", super::http_transfer::shim_http_transfer_cancel);
+    natives.register_shim_by_name("http.transfer_cancel", super::http_transfer::shim_http_transfer_cancel);
+    natives.register_shim_by_name("auto.http.transfer_error", super::http_transfer::shim_http_transfer_error);
+    natives.register_shim_by_name("http.transfer_error", super::http_transfer::shim_http_transfer_error);
 
     // Plan 350: WebSocket client
     crate::vm::ffi::websocket::register_ws_natives(natives);

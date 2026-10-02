@@ -21,10 +21,11 @@ pub use crate::http::client::{
 // PLAN-727：文件传输公共面再导出（VM/a2r/原生 Rust 同词汇自由函数）。
 pub use crate::http::transfer::{
     cancel_transfer_by_id, transfer_cancel, transfer_download, transfer_error,
-    transfer_next_progress, transfer_upload, transfer_wait, transfer_wait_async, DownloadOptions,
-    FileTransfer, OnExists, TransferError, TransferErrorKind, TransferHooks, TransferKind,
-    TransferLimits, TransferOutcome, TransferPhase, TransferProgress, TransferReceipt, UploadMode,
-    UploadOptions, Validator,
+    transfer_next_progress, transfer_upload, transfer_wait, transfer_wait_async,
+    transfer_wait_typed, DownloadOptions, FileTransfer, OnExists, TransferError,
+    TransferErrorKind, TransferHooks, TransferKind, TransferLimits, TransferObserver,
+    TransferOutcome, TransferPhase, TransferProgress, TransferReceipt, UploadMode, UploadOptions,
+    Validator,
 };
 
 use crate::http::client::HttpClientStream;

@@ -825,12 +825,117 @@ impl FileTransfer {
         self
     }
 
+    /// 非拥有观察句柄（宿主注册表用；宿主持 FileTransfer 防 Drop 取消）。
+    pub fn observer(&self) -> TransferObserver {
+        TransferObserver {
+            shared: Arc::clone(&self.shared),
+        }
+    }
+
     fn shared(&self) -> &Arc<TransferShared> {
         &self.shared
     }
 
     fn request_cancel(&self) {
         self.shared.request_cancel();
+    }
+}
+
+/// 非拥有观察句柄（VM 宿主桥接面）：**Drop 不取消传输**——取消权留在
+/// [`FileTransfer`]（宿主注册表持有）与显式 [`TransferObserver::cancel`]。
+/// Clone 轻量（Arc 共享）；终态单次交付是**共享计数**（一次终态收据全局
+/// 交付一次，与观察句柄数量无关）。
+#[derive(Clone)]
+pub struct TransferObserver {
+    shared: Arc<TransferShared>,
+}
+
+impl TransferObserver {
+    /// 传输 id。
+    pub fn id(&self) -> u64 {
+        self.shared.id
+    }
+
+    /// 是否已终结。
+    pub fn is_terminal(&self) -> bool {
+        self.shared.is_terminal()
+    }
+
+    /// async 等待终态收据 JSON（观察语义：丢弃等待不取消传输）。
+    pub async fn wait_json(&self) -> String {
+        wait_receipt(&self.shared).await
+    }
+
+    /// async 等待 typed 终态收据（上传桥接用：body 需字节保真）。
+    pub async fn wait_typed(&self) -> TransferReceipt {
+        let mut rx = self.shared.terminal_rx.clone();
+        loop {
+            if let Some(r) = rx.borrow().clone() {
+                return (*r).clone();
+            }
+            if rx.changed().await.is_err() {
+                return TransferReceipt::cancelled(None, Vec::new());
+            }
+        }
+    }
+
+    /// 最新进度 JSON（不含终态交付语义；终态用 [`Self::wait_typed`]）。
+    pub fn latest_progress_json(&self) -> String {
+        match self.shared.progress_rx.borrow().clone() {
+            Some(p) => p.json(),
+            None => String::new(),
+        }
+    }
+
+    /// 最新进度 JSON / 终态收据单次交付（与 [`transfer_next_progress`] 同词）。
+    pub fn next_progress_json(&self) -> String {
+        let shared = &self.shared;
+        if shared.is_terminal() {
+            if shared.terminal_delivered.swap(true, Ordering::SeqCst) {
+                return String::new();
+            }
+            if let Some(r) = shared.terminal_rx.borrow().clone() {
+                return r.json();
+            }
+            return String::new();
+        }
+        match shared.progress_rx.borrow().clone() {
+            Some(p) => p.json(),
+            None => String::new(),
+        }
+    }
+
+    /// 终结错误消息；"" = 无/未终结。
+    pub fn error_message(&self) -> String {
+        match self.shared.terminal_rx.borrow().clone() {
+            Some(r) => r.error.as_ref().map(|e| e.message.clone()).unwrap_or_default(),
+            None => String::new(),
+        }
+    }
+
+    /// 显式取消（宿主 scope/用户入口；幂等）。
+    pub fn cancel(&self) {
+        self.shared.request_cancel();
+    }
+
+    /// 等待下一次进度变更（relay 泵用；终态时返回）。
+    pub async fn progress_or_terminal(&self) {
+        let mut progress = self.shared.progress_rx.clone();
+        let mut terminal = self.shared.terminal_rx.clone();
+        loop {
+            tokio::select! {
+                _ = async {
+                    loop {
+                        if terminal.borrow().is_some() { return; }
+                        if terminal.changed().await.is_err() { return; }
+                    }
+                } => return,
+                _ = progress.changed() => {
+                    // 有进度更新或终态进度写入：返回给泵消费。
+                    return;
+                }
+            }
+        }
     }
 }
 

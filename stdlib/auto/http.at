@@ -274,3 +274,58 @@ pub fn sse_close(stream_id int) void;
 
 /// PLAN-707: Query terminal error — "" = not terminated / no error.
 pub fn sse_error(stream_id int) str;
+
+// ═══════════════════════════════════════════════════════════
+// PLAN-727: File Transfer (cancellable, incremental, atomic-commit)
+// ═══════════════════════════════════════════════════════════
+
+/// Cancellable file transfer handle (download or upload).
+/// Execution runs on the shared transfer core: incremental I/O with bounded
+/// blocks, temp-file staging with atomic commit, failure/cancel preserves
+/// the original target.
+type FileTransfer
+
+/// Start a file download (non-blocking submit).
+/// options is strict JSON: {"headers":{...},"offset":N,"validator":{"etag":"..."}|
+/// {"last_modified":"..."},"max_bytes":N,"timeout_ms":N,"idle_timeout_ms":N,
+/// "on_exists":"overwrite"|"fail"}. Bad options fail terminally without a request.
+/// Example: let t = http.transfer_download(url, path, "{}")
+pub fn transfer_download(url str, path str, options str) FileTransfer;
+
+/// Start a file upload (non-blocking submit). Default mode is multipart with
+/// field "file"; use {"mode":"raw"} for an octet-stream body, "fields" for
+/// extra multipart text fields, "filename" to override, "retries" to opt in
+/// to retry (source re-opened and re-verified each attempt).
+/// Example: let t = http.transfer_upload(url, path, "{\"fields\":{\"note\":\"x\"}}")
+pub fn transfer_upload(url str, path str, options str) FileTransfer;
+
+/// Wait until the transfer reaches a terminal state; returns the receipt JSON:
+/// {"kind":"success|failed|cancelled","status":N|null,"bytes":N,"total":N|null,
+///  "headers":{...},"error":null|{"kind":"...","message":"..."},"body":"..."}.
+/// Only a committed file is reported as success.
+/// Example: let receipt = http.transfer_wait(t)
+pub fn transfer_wait(t FileTransfer) str;
+
+/// Read the latest progress: {"kind":"progress","bytes":N,"total":N|null,
+/// "percent":P|null} ("" = nothing new); the terminal receipt is delivered
+/// exactly once, then "" forever.
+pub fn transfer_next_progress(t FileTransfer) str;
+
+/// Cancel the transfer (idempotent). In-flight file operations close out
+/// before the terminal state; the original target is preserved unless the
+/// commit already succeeded.
+pub fn transfer_cancel(t FileTransfer) void;
+
+/// Terminal error message ("" = none / not terminated).
+pub fn transfer_error(t FileTransfer) str;
+
+/// PLAN-727: Attach a file part to the multipart form (declared previously
+/// only at the native layer). Budgets: ≤16 file parts, ≤64 text fields,
+/// text value ≤64 KiB, text total ≤1 MiB — exceeding fails the send
+/// terminally. File contents are streamed at send time; a missing/unreadable
+/// file fails the request (parts are never silently skipped).
+pub fn RequestBuilder.multipart_file(self RequestBuilder, field str, path str) RequestBuilder;
+
+/// PLAN-727: Attach a text field to the multipart form (see multipart_file
+/// budgets).
+pub fn RequestBuilder.multipart_text(self RequestBuilder, field str, value str) RequestBuilder;

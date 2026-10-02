@@ -45,6 +45,9 @@ pub mod rust_stdlib;
 pub mod http_server;  // Plan 321/322: AutoHttpServer unified shim
 
 pub mod http_stream;  // PLAN-707: 外部 HTTP/SSE 流统一资源表与生产者
+// PLAN-727 T-05: 文件传输桥——共享传输核心（a2r_std::http::transfer）的宿主
+// 注册表/park/legacy 迁移面。
+pub mod http_transfer;
 // PLAN-699: Axum/Hyper HTTP/1.1 transport (network thread + owned bridge).
 pub mod http_transport;
 pub mod websocket;   // Plan 350: WebSocket client

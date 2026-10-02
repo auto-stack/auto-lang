@@ -4560,6 +4560,9 @@ pub(crate) struct RequestScope {
     /// finalize_scope（完成/取消/断连/关闭）逐一流收口（abort 生产者 +
     /// 释放队列），保证组内资源不越过请求生命期。
     pub resources: std::sync::Mutex<Vec<u64>>,
+    /// PLAN-727 T-05：有类型的传输资源组——与流 id 分开登记，finalize 时
+    /// 取消传输并出 VM 注册表（transfer id 不与 HTTPStream id 混淆清理）。
+    pub transfer_resources: std::sync::Mutex<Vec<u64>>,
 }
 
 impl RequestScope {
@@ -4618,6 +4621,7 @@ pub(crate) fn create_scope(
         permit: std::sync::Mutex::new(Some(permit)),
         cancel_notify: tokio::sync::Notify::new(),
         resources: std::sync::Mutex::new(Vec::new()),
+        transfer_resources: std::sync::Mutex::new(Vec::new()),
     });
     if let Ok(mut map) = REQUEST_SCOPES.lock() {
         map.insert(id, scope.clone());
@@ -4648,6 +4652,14 @@ fn finalize_scope(scope: &RequestScope, to: u8) {
     for stream_id in group {
         crate::vm::ffi::http_stream::stream_cancel(stream_id);
     }
+    // PLAN-727 T-05：传输组收口——取消 + 出 VM 注册表（scope deadline/
+    // 断连/shutdown 级联取消的传输臂）。
+    let transfers: Vec<u64> = scope
+        .transfer_resources
+        .lock()
+        .map(|mut r| std::mem::take(&mut *r))
+        .unwrap_or_default();
+    crate::vm::ffi::http_transfer::scope_finalize_transfers(&transfers);
     scope.permit.lock().unwrap().take(); // 释放生命期许可（幂等）
     if let Ok(mut map) = REQUEST_SCOPES.lock() {
         map.remove(&scope.id);
@@ -4731,6 +4743,19 @@ pub(crate) fn register_scope_stream(stream_id: u64) {
     if let Some(scope) = lookup_scope(scope_id) {
         if let Ok(mut r) = scope.resources.lock() {
             r.push(stream_id);
+        }
+    }
+}
+
+/// PLAN-727 T-05：transfer 提交 shim 调用——传输登记进当前请求的**有类型**
+/// 传输资源组（无 scope → no-op；CLI/UI 程序资源归显式 cancel/wait 管理）。
+pub(crate) fn register_scope_transfer(transfer_id: u64) {
+    let Some(scope_id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
+        return;
+    };
+    if let Some(scope) = lookup_scope(scope_id) {
+        if let Ok(mut r) = scope.transfer_resources.lock() {
+            r.push(transfer_id);
         }
     }
 }
