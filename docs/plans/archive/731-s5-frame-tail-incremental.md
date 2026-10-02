@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-731
-status: reviewed
+status: archived
 feature_name: S5 帧尾段增量化件（帧两行清偿本体——layout/shaping/draw 段插桩归因+shaping 缓存与视口增量+layout 增量+组件重建消除+掉泵治理——下游 type_latency/scroll_fps 重判解锁）
 author: [agent]
 created_at: 2026-10-02T21:10:05+08:00
@@ -366,3 +366,41 @@ cargo tf 全量（预存对账零新增）+725 谱零回退（S1-S4 段和带）
 - **Q-3 首帧 shaping 债策略（T-00③ 内定）**：warm（装载期预算
   整形）vs 渐进（前 N 帧分摊）——按装载墙钟带[728 谱 4.0s 内不
   显著劣化]与首帧行带权衡；默认渐进（不碰装载预算行）。
+
+## 11. 合并收据（PLAN-731:r1，2026-10-03）
+
+- `stage: merge` | PLAN-731 | plan_revision 1 | `outcome: pass`（分阶段见下）。
+- **prepared**：reviewed 基线=R2 pass@8e95ac426（reviewed_commit）；canonical
+  Spec 差=SD-01（frame-pipeline-incremental.md §4b/§5b）+SD-02
+  （frame-observability.md §5）——均在 dev 分支 fb071e2d1/8e95ac426 内；
+  deposit 提交=51ef8c562（docs/projection-only 后裔→delivery 候选）；
+  依赖=auto-down detached@895f8d0f（只读消费）。
+- **landed**：master 基面 7d50989f7 后零代码推进（仅 6 簿记提交——含并行
+  会话 PLAN-733 簿记）；worktree rebase master——range-diff 1-5 提交全等
+  （`=`），第 6 提交 `!`=specs.json 冲突调和（**事故与修复在案**：冲突
+  误取 --theirs 侧旧账本致 33 行 729/733 款项暂失——即时发现并按
+  upsert 语义重放[checkout master 版+P731-1 追加]amend 复原，对 master
+  diff 复核=仅 +P731-1 一项）；hash 映射：7454e4c13→7adb938be/
+  0664025e7→b9627d3cf/fd5041658→9c33cb3ee/fb071e2d1→5f349d603/
+  8e95ac426→fd64ecab0/51ef8c562→30bda6831；主检出 `git merge --ff-only
+  plan-731-dev` 成功——master tip=30bda6831=delivery commit，无合并
+  提交；FF-OK 断言过。
+- **ledger_refreshed**：workspace=D:/autostack/auto-lang（.autoos/specs.json
+  为**跟踪文件**——729 起入库，随合并落地）；款项=P731-1（designs 段，
+  canonical 唯源=SD-01/SD-02 两文件+evidence/731/）；回读核对：designs
+  145 项含 P731-1，master diff 仅 +P731-1（729/733 款项无损）；plans 索引
+  =docs/specs/auto-lang/ui/plans.md 731 行（✅ reviewed→archived，
+  archive/ 路径）；spec-index.py 再生=INDEX.md 无 diff（无新文件/状态
+  变更——预期）。
+- **archived**：docs/plans/archive/731-s5-frame-tail-incremental.md
+  （git mv+status: archived；completion_kind: delivered）。
+- **cleaned**：（待清理后回填——见下收据补记章）
+- **部署观察**：主检出 target/release/auto.exe 与 gen/front 产物**陈旧**
+  （predates 30bda6831——fold 缓存未入主检出 release 面）；消费面=下游
+  auto-edit bench（其组树自建二进制，不受主检出陈旧影响）+本机桌面实机
+  会话。陈旧项登记：release 二进制（构建日期 2026-10-02 前）、web bundle
+  gen/front/vue/dist（同）。批量回归到期判定：回执
+  docs/plans/.last-batch-regression.json=last_covered_plan_id 726@
+  2026-10-02T05:25Z；731%5=1≠0，且 727-731 中无可被 5 整除者已落地
+  （730 worktree 在途未落），回执龄 <48h——**未到期**；下次到期判定点=
+  PLAN-735 落地或 48h+任意合并。
