@@ -1,9 +1,12 @@
 # 帧管线增量更新（frame pipeline incremental）
 
 > SD-01（PLAN-725 落账真源——auto-edit M4 帧两行 FAIL〔type_latency/
-> scroll_fps〕清偿本体：编辑路径帧管线从每帧全量重建改脏域/增量更新）。
+> scroll_fps〕清偿本体：编辑路径帧管线从每帧全量重建改脏域/增量更新；
+> PLAN-731 补全尾段——S5〔layout/shaping/draw〕从残差口径升分段口径+
+> 尾段增量化）。
 > before=全量重建为隐性现状（无契约）；after=本文契约。基=auto-lang
-> plan-725-dev。勘定与双态谱：`docs/plans/evidence/725/`。
+> plan-725-dev；731 增量=plan-731-dev（勘定与双态谱：
+> `docs/plans/evidence/725/`、`docs/plans/evidence/731/`）。
 
 ## 1. 五段成本链模型（分段口径）
 
@@ -47,6 +50,39 @@ handler 解释）→ ③builder 段（模板→AbstractView）→ ④Element 段
   （`memo: true`/keyed-for 声明），本仓不扩面。失效纪律沿 PLAN-045
   论证（读槽值指纹覆盖一切写点；宁缺勿错）。
 
+## 4b. S5 尾段契约（PLAN-731——尾段增量化）
+
+- **fold 域 revision 缓存**（T-01 主力）：fold 区域发现
+  （`regions_from_texts` 全文档括号扫描）**每帧执行退役**——
+  `CodeEditorCore::cached_fold_regions` 键=`revision`（任何文本变更
+  bump：edit/undo/redo/load），命中=小 Vec 克隆（区域集=可折叠 opener
+  行，O(regions)≪O(lines)）；失效域=编辑行窄化载体（未编辑帧零重扫，
+  与 §4 脏域纪律协同）。重扫闭包在调用方锁内取行（render=buffer 行，
+  fresh_fold_map=rope 行；锁序 cache→editor/doc，无反向路径）。
+  **内存上界**：O(regions)；分页装载下缓存域=已装载行集（728 协同
+  注记）。
+- **整形缓存与视口增量**：行级整形缓存主体=cosmic-text `BufferLine`
+  内建（`shape_until_scroll` prune=false 保留已整形行——键=行内容+
+  字体/字号态）；视口推进只整形新暴露行（hosted `sync_external_scroll`
+  粗定位+窗口臂）；首帧行渐进=虚拟化窗口现状即渐进形态（不碰装载
+  预算行）。
+- **layout 增量形勘定（不可行面记录）**：iced 0.14 无脏子树/布局 memo
+  公开界面，Element 无 Clone、`view()` 契约=消息后全树重建（Tree 状态
+  经 cache 复用）。实测 s5_layout release 0.02-0.05ms/帧——非瓶颈；
+  替代案=尾段缓存主力（fold 缓存）+受控重建谱（fall-through 帧
+  s3b+s4 release ~0.7ms，泵消息驱动）。
+- **组件实例缓存勘定**：编辑器态本就 registry 跨帧（TEXTAREA_CONTENTS
+  模式——widget 每帧轻构 ~0.17ms debug 含 set_text diff）；「实例缓存」
+  在 iced 即时模式语义下无可实施面，重建计数受控谱在档（code_editor
+  臂）。046 memo 面正交（零触碰 memo_deps/ui_epoch）。
+- **泵治理语义**：`present=-1` 孤儿行=**测量配对面**（帧泵消息消费
+  滞后/合并——`__frame_pump` 异步回环），非呈现丢失；相位墙钟与
+  begin 行数对照为证。泵率谱（distinct present/秒+孤儿计数）入阶梯
+  谱脚本（§5b）；呈现节奏真值归下游 live-fire 档。
+- **改后阶梯谱（731 定量门）**：1MB 档 s5 P50 debug ≤1.0ms / release
+  ≤0.5ms；滚动尾帧（s5 P95）debug ≤2.0ms；S1-S4 segsum 零回退带
+  （±5%）；视觉 golden 三形（键入/滚动/resize）改前/改后 0.00% 全等。
+
 ## 5. 阶梯谱基准口径（上游对偶面）
 
 - **负载**：`examples/ui/041-auto-edit`（全 chrome 编辑器例）+ MCP fixture
@@ -55,7 +91,8 @@ handler 解释）→ ③builder 段（模板→AbstractView）→ ④Element 段
   60ms 节拍（下游 stage_frame 协议同源）。
 - **读回**：stderr `[P725-FRAME]` 分段行；判据 **segsum（S1..S4 之和）
   P50/P95**——present 配对（泵序障代理）受 bounds 回路竞争不稳定，
-  total 口径弱化注记在册；S5=残差口径（total−segsum，未插桩）。
+  total 口径弱化注记在册；S5 分段口径见 §5b（731 起三子段直读，
+  残差口径退役）。
 - **定量门**：5KB 档 segsum P95 ≤16.7ms（@60Hz）；大文件档键入成本谱
   不随文档尺寸线性放大（1MB/5KB P50 比 ≤1.6）。
 - **脚本**：`docs/plans/evidence/725/ladder.py`（幂等 fixture 再生成；
@@ -63,8 +100,29 @@ handler 解释）→ ③builder 段（模板→AbstractView）→ ④Element 段
   `ladder-after.jsonl`。
 - **门控**：`ui::frame_segments` 与 frame_bench 同门（AUTO_FRAME_BENCH
   单一门）；门关零分支零写入。prev/cur 双槽配对（泵序 begin→present）；
-  present=-1 孤儿行=无泵呈现帧成本面。`[P725-ARMS]`/`[P725-ARM]`=Element
-  臂钻取行（勘定遗留面，同门）。
+  present=-1 孤儿行=测量配对面（§4b 泵治理语义）。`[P725-ARMS]`/
+  `[P725-ARM]`=Element 臂钻取行（勘定遗留面，同门）。
+
+## 5b. S5 分段谱与三形口径（PLAN-731）
+
+- **分段行扩展**：`[P725-FRAME]` 行增 `s5_layout_us/s5_shaping_us/
+  s5_draw_us`（§4b 契约的观测面；SD-B §5 同步）。s5_layout=根包装探针
+  layout() 括号（全树 layout 含非编辑器文本件布局期整形；纯滚动帧无
+  view 重建=0）；s5_shaping=编辑器 cosmic-text 窗口整形括号（不含
+  sync 臂——ce_draw_block 臂钻取覆盖）；s5_draw=根包装探针 draw() 括号
+  （含编辑器 render/光栅与全树绘制入队）。present 侧 wgpu flush 以
+  gpu_residual（配对帧 total−segsum−s5sum）单列。
+- **相位**：type（60ms 节拍 30 键）/scroll（`__mcp_scroll` 绝对偏移
+  25 步×900px×200ms）/typenl（022/024 下游换行协议形——"z\n" 30 键）。
+- **臂钻取聚合**：`[P725-ARMS]` ce_draw_block/ce_gutter/ce_fold_scan/
+  ce_text_runs 按相位归账（滚动突发跨帧累积，flush 行归其突发末帧相位）。
+- **泵率谱**：pump_per_sec（distinct present/相位墙钟秒）+
+  orphan_fallthrough_frames（§4b 配对面语义）。
+- **脚本与双态谱**：`docs/plans/evidence/731/ladder.py` +
+  `ladder-{baseline,after}[-release].jsonl`（同负载同脚本可复跑；
+  `--auto-bin` 切 debug/release）。视觉 golden 三形：
+  `docs/plans/evidence/731/golden.py`（autoui_screenshot baseline/diff
+  通道+快照哈希收敛门——键入逐字符异步排干的截图抢跑修正）。
 
 ## 6. 边界注记
 

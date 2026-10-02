@@ -98,8 +98,16 @@
 - **分段探针**：`ui::frame_segments`（与本文通道**同一 AUTO_FRAME_BENCH
   门**——单一门语义不引第二门）：`[P725-FRAME]` 行随帧吐出五段
   （S1 载荷/S2 VM/S3a MCP 同步/S3b 主重建/S4 Element）+builds+dirty；
-  prev/cur 双槽配对（泵序 begin→present）；`present=-1` 孤儿行=无泵
-  呈现帧（fall-through 成本面）。门关零分支零写入（§2 纪律同款）。
+  prev/cur 双槽配对（泵序 begin→present）；`present=-1` 孤儿行=测量
+  配对面（帧泵消息消费滞后/合并——SD-01 §4b 泵治理语义）。门关零
+  分支零写入（§2 纪律同款）。
+- **S5 子段插桩扩展（PLAN-731）**：`[P725-FRAME]` 行增
+  `s5_layout_us/s5_shaping_us/s5_draw_us` 三时间戳——**残差口径
+  （total−segsum）退役**，S5 升分段口径（S5a layout=根包装探针
+  `ui::iced::frame_probe` layout() 括号；S5b shaping=编辑器核心
+  render 内 cosmic-text 整形括号；S5c draw=根包装探针 draw() 括号）；
+  present 侧 wgpu flush 以 gpu_residual 单列（配对帧）。门控纪律同款
+  （门关不取 Instant——`.then(Instant::now)` 形）。
 - **谱面**：文档尺寸阶梯 5KB/100KB/1MB × VM 轨 × MCP autoui_type 驱动
   （单字符 30 键 60ms 节拍——下游 stage_frame 协议同源）；判据
   **segsum（S1..S4 和）P50/P95**（present 配对受 bounds 回路竞争不稳定
