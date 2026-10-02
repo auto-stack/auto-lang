@@ -273,11 +273,15 @@ mod http_e2e {
         let staging_s = fwd(staging);
         let mut src = format!(
             r#"
-fn plan730_guard(info str) str {{
+fn plan730_guard(info str) ?str {{
     if info.contains("/guarded/") {{
         return "{{\"error\":\"auth required\"}}"
     }}
-    return ""
+    return nil
+}}
+
+fn plan730_block_all(info str) str {{
+    return "{{\"error\":\"blocked\"}}"
 }}
 
 #[api(method = "POST", path = "/api/uploads/mp")]
@@ -636,6 +640,127 @@ fn plain_int() int {{
             std::fs::read(root.join("mp/blob.bin")).unwrap().len(),
             payload.len()
         );
+    }
+
+    /// T-07 legacy 探针：中间件拒绝零写盘（落盘在 middleware 之后）。
+    #[test]
+    fn http_e2e_plan730_legacy_middleware_reject_no_write() {
+        let (root, staging) = temp_roots("legacy-mw");
+        let upload_dir = staging.join("legacy-uploads");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+        let mut program = upload_program(&root, &staging);
+        program.push_str(
+            "\n#[api(method = \"POST\", path = \"/legacy/form\")]\nfn legacy_form(form str) str {\n    return form\n}\n",
+        );
+        std::env::set_var("AUTO_UPLOAD_DIR", upload_dir.to_string_lossy().to_string());
+        let port = start_server(&program, 18977);
+        {
+            if let Ok(mut chain) = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock() {
+                chain.push("plan730_guard".to_string());
+            }
+        }
+        // middleware guard 只拦 /guarded/——用 guarded 路径打 legacy 形态：
+        // 程序里没有该路由 → 404；为测 middleware 短路，直接推入拦截型 guard。
+        // （upload_program 的 guard 拦 /guarded/——补一条 guarded legacy 路由。）
+        let body = multipart_body("L1", "x", b"LEGACY-DATA");
+        let (s, _h, _b) = raw_request_with_body(
+            port,
+            "POST",
+            "/legacy/form",
+            &[("Content-Type", "multipart/form-data; boundary=L1")],
+            &body,
+        );
+        // 无 guard 命中 → 正常执行（成功形状保持）——本探针先证明成功路径。
+        assert_eq!(s, 200);
+        // 中间件拦截（短路）后零写盘：推一个全拦 guard。
+        {
+            if let Ok(mut chain) = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock() {
+                chain.clear();
+                chain.push("plan730_block_all".to_string());
+            }
+        }
+        let body = multipart_body("L2", "y", b"LEGACY-DATA-2");
+        let (s2, _h2, b2) = raw_request_with_body(
+            port,
+            "POST",
+            "/legacy/form",
+            &[("Content-Type", "multipart/form-data; boundary=L2")],
+            &body,
+        );
+        assert_eq!(s2, 200, "短路体 legacy 形状");
+        assert!(String::from_utf8_lossy(&b2).contains("blocked"));
+        let entries: Vec<_> = std::fs::read_dir(&upload_dir).unwrap().collect();
+        assert_eq!(entries.len(), 1, "只有成功请求的 1 个文件；拦截请求零写盘");
+        {
+            if let Ok(mut chain) = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock() {
+                chain.clear();
+            }
+        }
+        std::env::remove_var("AUTO_UPLOAD_DIR");
+    }
+
+    /// T-07 legacy 探针：写失败 → 真实 500（不返回不存在的假路径）。
+    #[test]
+    fn http_e2e_plan730_legacy_write_failure_500() {
+        let (root, staging) = temp_roots("legacy-wf");
+        // AUTO_UPLOAD_DIR 指向一个已存在文件之下——create_dir_all 必败。
+        let blocker = staging.join("blocker.file");
+        std::fs::write(&blocker, b"not a dir").unwrap();
+        std::env::set_var(
+            "AUTO_UPLOAD_DIR",
+            blocker.join("uploads").to_string_lossy().to_string(),
+        );
+        let mut program = upload_program(&root, &staging);
+        program.push_str(
+            "\n#[api(method = \"POST\", path = \"/legacy/form\")]\nfn legacy_form(form str) str {\n    return form\n}\n",
+        );
+        let port = start_server(&program, 18978);
+        let body = multipart_body("W1", "x", b"FAIL-WRITE");
+        let (s, _h, b) = raw_request_with_body(
+            port,
+            "POST",
+            "/legacy/form",
+            &[("Content-Type", "multipart/form-data; boundary=W1")],
+            &body,
+        );
+        assert_eq!(s, 500, "写失败真实 500");
+        let text = String::from_utf8_lossy(&b).to_string();
+        assert!(
+            text.contains("upload dir create failed"),
+            "错误信息可见（非假路径）: {text}"
+        );
+        std::env::remove_var("AUTO_UPLOAD_DIR");
+    }
+
+    /// T-07 legacy 探针：绑定失败 → provisional 文件清理（无残留）。
+    #[test]
+    fn http_e2e_plan730_legacy_bind_failure_cleans() {
+        let (root, staging) = temp_roots("legacy-bind");
+        let upload_dir = staging.join("legacy-uploads");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+        std::env::set_var("AUTO_UPLOAD_DIR", upload_dir.to_string_lossy().to_string());
+        // handler 声明 sigs 缺参（note2 不存在）→ 绑定 400 → 本次文件删除。
+        let mut program = upload_program(&root, &staging);
+        program.push_str(
+            "\n#[api(method = \"POST\", path = \"/legacy/missing\")]\nfn legacy_missing(alpha str, beta str) str {\n    return alpha\n}\n",
+        );
+        let port = start_server(&program, 18979);
+        let body = multipart_body("B9", "x", b"TO-BE-CLEANED");
+        let (s, _h, _b) = raw_request_with_body(
+            port,
+            "POST",
+            "/legacy/missing",
+            &[("Content-Type", "multipart/form-data; boundary=B9")],
+            &body,
+        );
+        assert_eq!(s, 400, "缺参绑定 400");
+        let entries: Vec<_> = std::fs::read_dir(&upload_dir).unwrap().collect();
+        assert!(
+            entries.is_empty(),
+            "绑定失败后 provisional 文件被清理（{} 残留）",
+            entries.len()
+        );
+        std::env::remove_var("AUTO_UPLOAD_DIR");
     }
 
     /// 上传路由存在时普通端点不受影响（普通 int 反例不被上传收据门误判）。

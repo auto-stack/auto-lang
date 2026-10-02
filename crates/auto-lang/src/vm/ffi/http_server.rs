@@ -420,66 +420,95 @@ fn find_sub(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|w| w == needle)
 }
 
-/// Plan 346 5a: save a file part under the upload dir (env `AUTO_UPLOAD_DIR`,
-/// default `./uploads`) and return the stored path. The original filename is
-/// reduced to its basename and prefixed with a counter so concurrent uploads
-/// of the same name cannot clobber each other.
-fn store_multipart_file(filename: &str, data: &[u8]) -> String {
-    static FILE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-    let dir = std::env::var("AUTO_UPLOAD_DIR").unwrap_or_else(|_| "uploads".to_string());
-    let _ = std::fs::create_dir_all(&dir);
-    let base = filename
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or("upload")
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
-        .collect::<String>();
-    let base = if base.is_empty() {
-        "upload".to_string()
-    } else {
-        base
-    };
-    let n = FILE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let path = std::path::Path::new(&dir).join(format!("{}_{}", n, base));
-    let _ = std::fs::write(&path, data);
-    path.to_string_lossy().to_string()
+/// PLAN-730 T-07：legacy 落盘记录（files JSON 项 + provisional 清理路径）。
+pub(crate) struct LegacyStoredFile {
+    pub field: String,
+    pub filename: String,
+    pub path: String,
+    pub size: usize,
 }
 
-/// Plan 346 5a: build the handler-facing JSON for a multipart request:
-/// `{"fields":{"k":"v"},"files":[{"field","filename","path","size"}]}`.
-/// Text parts land in `fields`; file parts are persisted and described in
-/// `files` (handlers read metadata, not megabytes of bytes).
-pub fn multipart_to_handler_json(parts: Vec<MultipartPart>) -> String {
+/// Plan 346 5a / PLAN-730 T-07：save file parts under the upload dir (env
+/// `AUTO_UPLOAD_DIR`, default `./uploads`)。文件名归约同历史（basename +
+/// 计数前缀防同名互踩）。**错误必须传播**（目录创建/写失败 → Err——
+/// 不返回不存在的假路径）；在宿主 spawn_blocking 执行，不在 owner。
+pub(crate) fn legacy_store_files(
+    files: &[(String, String, Vec<u8>)],
+) -> Result<Vec<LegacyStoredFile>, String> {
+    static FILE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let dir = std::env::var("AUTO_UPLOAD_DIR").unwrap_or_else(|_| "uploads".to_string());
+    std::fs::create_dir_all(&dir).map_err(|e| format!("upload dir create failed: {e}"))?;
+    let mut stored = Vec::with_capacity(files.len());
+    for (field, filename, data) in files {
+        let base = filename
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or("upload")
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+            .collect::<String>();
+        let base = if base.is_empty() {
+            "upload".to_string()
+        } else {
+            base
+        };
+        let n = FILE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let path = std::path::Path::new(&dir).join(format!("{}_{}", n, base));
+        std::fs::write(&path, data).map_err(|e| {
+            format!(
+                "upload write failed for {}: {e}",
+                path.to_string_lossy()
+            )
+        })?;
+        stored.push(LegacyStoredFile {
+            field: field.clone(),
+            filename: filename.clone(),
+            path: path.to_string_lossy().to_string(),
+            size: data.len(),
+        });
+    }
+    Ok(stored)
+}
+
+/// Plan 346 5a / PLAN-730 T-07：handler-facing JSON for a multipart request:
+/// `{"fields":{"k":"v"},"files":[{"field","filename","path","size"}]}`。
+/// 文本字段即时折叠（纯内存，dispatch 段）；file 项由**中间件之后**的
+/// 宿主落盘结果合并（multipart_files_json）——解析与落盘分离。
+pub fn multipart_fields_json(parts: &[MultipartPart]) -> String {
     let mut fields: Vec<String> = Vec::new();
-    let mut files: Vec<String> = Vec::new();
     for part in parts {
-        match part.filename {
-            None => {
-                let text = String::from_utf8_lossy(&part.data).to_string();
-                fields.push(format!(
-                    "\"{}\":\"{}\"",
-                    part.name.replace('"', "\\\""),
-                    text.replace('\\', "\\\\").replace('"', "\\\"")
-                ));
-            }
-            Some(fname) => {
-                let path = store_multipart_file(&fname, &part.data);
-                files.push(format!(
-                    "{{\"field\":\"{}\",\"filename\":\"{}\",\"path\":\"{}\",\"size\":{}}}",
-                    part.name.replace('"', "\\\""),
-                    fname.replace('"', "\\\""),
-                    path.replace('\\', "/").replace('"', "\\\""),
-                    part.data.len()
-                ));
-            }
+        if part.filename.is_none() {
+            let text = String::from_utf8_lossy(&part.data).to_string();
+            fields.push(format!(
+                "\"{}\":\"{}\"",
+                part.name.replace('"', "\\\""),
+                text.replace('\\', "\\\\").replace('"', "\\\"")
+            ));
         }
     }
-    format!(
-        "{{\"fields\":{{{}}},\"files\":[{}]}}",
-        fields.join(","),
-        files.join(",")
-    )
+    fields.join(",")
+}
+
+/// PLAN-730 T-07：宿主落盘结果 → files JSON 项（历史形状逐字节保持）。
+pub(crate) fn multipart_files_json(stored: &[LegacyStoredFile]) -> String {
+    stored
+        .iter()
+        .map(|f| {
+            format!(
+                "{{\"field\":\"{}\",\"filename\":\"{}\",\"path\":\"{}\",\"size\":{}}}",
+                f.field.replace('"', "\\\""),
+                f.filename.replace('"', "\\\""),
+                f.path.replace('\\', "/").replace('"', "\\\""),
+                f.size
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// PLAN-730 T-07：fields + files 合并为 handler body（B6 历史成功形状）。
+pub(crate) fn multipart_handler_json(fields: &str, files: &str) -> String {
+    format!("{{\"fields\":{{{}}},\"files\":[{}]}}", fields, files)
 }
 
 /// Plan 346 5e (B6): enable per-IP fixed-window rate limiting.
@@ -4203,6 +4232,8 @@ pub(crate) fn dispatch_owner_request(
 /// live-op 回收（迟到的 worker 完成被 presence 守卫丢弃，无泄漏面）。
 fn cancel_all_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) {
     for mut p in parked.drain(..) {
+        // PLAN-730 T-07：关闭废弃的 provisional 文件同样删除。
+        cleanup_legacy_files(&p.ctx.legacy_stored);
         match &p.wait {
             ParkedWait::HttpRequest(req_id) => {
                 crate::vm::ffi::stdlib::drop_async_result(*req_id);
@@ -4275,6 +4306,14 @@ pub(crate) struct DispatchCtx {
     /// PLAN-730 T-05：上传路由的延迟 body 能力（原始流 + 请求头快照）；
     /// start_handler 按 UploadRequest 参数注入消费（一次性）。
     pub upload_pending: Option<PendingUpload>,
+    /// PLAN-730 T-07：legacy multipart 解析产物（纯内存，dispatch 段）；
+    /// 落盘在 middleware 链后经宿主执行（ParkStage::LegacyStore）。
+    pub legacy_parts: Option<Vec<MultipartPart>>,
+    /// PLAN-730 T-07：已折叠的文本字段 JSON（落盘完成后与 files 合并）。
+    pub legacy_fields_json: String,
+    /// PLAN-730 T-07：本次请求新建的 provisional 文件（绑定失败/handler
+    /// Err/取消 → 删除；成功回复按历史语义保留）。
+    pub legacy_stored: Vec<String>,
 }
 
 /// PLAN-730 T-05：bridge→handler 的上传 body 能力（未授权不解析/不落盘）。
@@ -4295,6 +4334,9 @@ pub(crate) enum ParkStage {
     /// `~{}` 内部 future 体在 handler RET 后由服务端驱动，中途挂在外层
     /// External await 上（wait=外层 future id；internal_fid=内部 future）。
     AsyncReturnBody { internal_fid: u32 },
+    /// PLAN-730 T-07：legacy multipart 落盘在宿主 spawn_blocking 执行中
+    ///（middleware 已过；live-op 完成后合并 files JSON 进 body 再进 handler）。
+    LegacyStore { op_id: u64 },
 }
 
 /// 一次跨 park 的请求延续（owner loop parked 表的条目）。
@@ -4445,6 +4487,10 @@ pub(crate) fn dispatch_api_request_segment(
         None
     };
 
+    // PLAN-730 T-07：解析（纯内存，路由命中后）与落盘（middleware 后宿主
+    // 执行）分离——404/method 不匹配/中间件拒绝零解析零写盘。
+    let mut legacy_parts: Option<Vec<MultipartPart>> = None;
+    let mut legacy_fields_json = String::new();
     let mut multipart_json: Option<String> = None;
     if !is_upload_route && content_type.starts_with("multipart/form-data") {
         let boundary = content_type_raw
@@ -4453,9 +4499,15 @@ pub(crate) fn dispatch_api_request_segment(
             .map(|b| b.trim_matches('"').to_string());
         if let Some(boundary) = boundary {
             let parts = parse_multipart(&req.body, &boundary);
-            multipart_json = Some(multipart_to_handler_json(parts));
+            legacy_fields_json = multipart_fields_json(&parts);
+            let has_files = parts.iter().any(|p| p.filename.is_some());
+            if has_files {
+                legacy_parts = Some(parts);
+            } else {
+                multipart_json = Some(multipart_handler_json(&legacy_fields_json, ""));
+            }
             eprintln!(
-                "[HTTP] {} {} [{}] multipart: {} bytes parsed",
+                "[HTTP] {} {} [{}] multipart: {} bytes parsed (store deferred)",
                 req_method,
                 req_path,
                 request_id,
@@ -4524,6 +4576,9 @@ pub(crate) fn dispatch_api_request_segment(
         handler_task_id: None,
         scope_id,
         upload_pending,
+        legacy_parts,
+        legacy_fields_json,
+        legacy_stored: Vec::new(),
     };
     advance_dispatch(vm, ctx, 0, Some(reply_tx))
 }
@@ -4567,7 +4622,103 @@ fn advance_dispatch(
             }
         }
     }
+    // PLAN-730 T-07：legacy multipart 落盘——middleware 全过后才执行（有界
+    // 宿主 spawn_blocking + live-op 唤醒；owner 不做阻塞 std::fs::write）。
+    if let Some(parts) = ctx.legacy_parts.take() {
+        let files: Vec<(String, String, Vec<u8>)> = parts
+            .iter()
+            .filter_map(|p| {
+                p.filename
+                    .as_ref()
+                    .map(|f| (p.name.clone(), f.clone(), p.data.clone()))
+            })
+            .collect();
+        let op_id = crate::vm::ffi::stdlib::alloc_async_id();
+        crate::vm::ffi::async_http::register_live_op(op_id);
+        LEGACY_STORE_RESULTS
+            .lock()
+            .unwrap()
+            .insert(op_id, None);
+        tokio::task::spawn_blocking(move || {
+            let result = legacy_store_files(&files).map(|stored| {
+                (
+                    stored
+                        .iter()
+                        .map(|f| f.path.clone())
+                        .collect::<Vec<String>>(),
+                    multipart_files_json(&stored),
+                )
+            });
+            if let Ok(mut m) = LEGACY_STORE_RESULTS.lock() {
+                m.insert(op_id, Some(result));
+            }
+            // 唤醒协议同 live-op：迟到（取消后）完成被 presence 守卫丢弃，
+            // 结果条目随 abort 清理（consumed=Some 由 resume/abort 取走）。
+            if !crate::vm::ffi::async_http::complete_live_op(
+                op_id,
+                Ok(crate::vm::ffi::stdlib::AsyncResult::Body(String::new())),
+            ) {
+                if let Ok(mut m) = LEGACY_STORE_RESULTS.lock() {
+                    let _ = m.remove(&op_id);
+                }
+            }
+        });
+        return DispatchOutcome::Parked(Box::new(ParkedRequest {
+            reply_tx,
+            task_id: 0, // 无 VM 任务在执行（存储在宿主）
+            scope_id: ctx.scope_id,
+            seg: ParkedSegment {
+                fn_name: ctx.route.fn_name.clone(),
+                saved_bp: 0,
+                saved_fn_n_args: 0,
+            },
+            wait: ParkedWait::HttpRequest(op_id),
+            stage: ParkStage::LegacyStore { op_id },
+            ctx,
+        }));
+    }
     start_handler(vm, ctx, reply_tx)
+}
+
+/// PLAN-730 T-07：落盘完成后的续跑（middleware 已在 park 前全过——从链尾
+/// 直达 handler）。
+fn advance_after_legacy_store(
+    vm: &std::rc::Rc<AutoVM>,
+    p: &mut ParkedRequest,
+) -> ParkedResume {
+    let ctx = std::mem::replace(&mut p.ctx, placeholder_ctx());
+    match start_handler(vm, ctx, p.reply_tx.take()) {
+        DispatchOutcome::Replied => ParkedResume::Consumed,
+        DispatchOutcome::Parked(boxed) => {
+            // handler 段 park：延续条目（provisional 路径随 ctx 转移）。
+            let mut b = *boxed;
+            p.task_id = b.task_id;
+            p.scope_id = b.scope_id;
+            p.seg = b.seg.clone();
+            p.wait = b.wait;
+            p.stage = b.stage;
+            p.ctx = b.ctx;
+            ParkedResume::StillParked
+        }
+    }
+}
+
+/// PLAN-730 T-07：legacy 落盘结果表（op_id → Option<Result>；None=Pending）。
+lazy_static::lazy_static! {
+    static ref LEGACY_STORE_RESULTS: std::sync::Mutex<
+        std::collections::HashMap<u64, Option<Result<(Vec<String>, String), String>>>,
+    > = std::sync::Mutex::new(std::collections::HashMap::new());
+}
+
+/// PLAN-730 T-07：provisional 文件清理（绑定失败/handler Err/取消路径）。
+fn cleanup_legacy_files(paths: &[String]) {
+    for path in paths {
+        if let Err(e) = std::fs::remove_file(path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                eprintln!("[HTTP] legacy provisional cleanup failed for {path}: {e}");
+            }
+        }
+    }
 }
 
 enum MWStep {
@@ -4795,6 +4946,8 @@ fn start_handler(
             Err(ApiArgBindError::BadRequest(msg)) => {
                 eprintln!("[HTTP] {} {} → 400 ({})", ctx.req_method, ctx.req_path, msg);
                 vm.tasks.remove(&handler_task_id);
+                // PLAN-730 T-07：绑定失败——本次新建 provisional 文件删除。
+                cleanup_legacy_files(&ctx.legacy_stored);
                 let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
                 let mut headers =
                     vec![("Content-Type".to_string(), "application/json".to_string())];
@@ -4812,6 +4965,7 @@ fn start_handler(
             Err(ApiArgBindError::Internal(msg)) => {
                 eprintln!("[HTTP] {} {} → 500 ({})", ctx.req_method, ctx.req_path, msg);
                 vm.tasks.remove(&handler_task_id);
+                cleanup_legacy_files(&ctx.legacy_stored);
                 let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
                 let mut headers =
                     vec![("Content-Type".to_string(), "application/json".to_string())];
@@ -4904,6 +5058,8 @@ fn start_handler(
         })),
         HandlerEnd::Err(e) => {
             vm.tasks.remove(&handler_task_id);
+            // PLAN-730 T-07：handler 异常——本次新建 provisional 文件删除。
+            cleanup_legacy_files(&ctx.legacy_stored);
             let reply = handler_error_reply(&ctx, &e);
             if let Some(tx) = reply_tx {
                 let _ = tx.send(reply);
@@ -5699,6 +5855,9 @@ pub(crate) enum ParkedResume {
     StillParked,
     /// 本条目作废，改挂交接条目（middleware 续链重新 park 的形态）。
     Handoff(Box<ParkedRequest>),
+    /// PLAN-730 T-07：回复已由下游自送（start_handler 内部消费 reply_tx；
+    /// 条目直接移除，caller 不得再送）。
+    Consumed,
 }
 
 pub(crate) fn resume_parked_request(
@@ -5785,6 +5944,42 @@ pub(crate) fn resume_parked_request(
                         DispatchOutcome::Parked(np) => ParkedResume::Handoff(np),
                     }
                 }
+            }
+        }
+        // PLAN-730 T-07：legacy 落盘完成——合并 files JSON 进 body 后进
+        // handler；写失败 = 真实 500（不返回不存在的假路径）。
+        ParkStage::LegacyStore { op_id } => {
+            let result = LEGACY_STORE_RESULTS
+                .lock()
+                .ok()
+                .and_then(|mut m| m.remove(&op_id))
+                .flatten();
+            // live-op marker 出表（complete 侧落 Body("")；take 走防泄漏）。
+            let _ = crate::vm::ffi::stdlib::check_async_http_result(op_id);
+            match result {
+                Some(Ok((paths, files_json))) => {
+                    p.ctx.legacy_stored = paths;
+                    p.ctx.body = multipart_handler_json(&p.ctx.legacy_fields_json, &files_json);
+                    p.ctx.multipart_json = Some(p.ctx.body.clone());
+                    advance_after_legacy_store(vm, p)
+                }
+                Some(Err(message)) => {
+                    eprintln!(
+                        "[HTTP] {} {} [{}] → 500 (legacy multipart store: {})",
+                        p.ctx.req_method, p.ctx.req_path, p.ctx.request_id, message
+                    );
+                    let mut headers = cors_json_headers(&p.ctx.request_id);
+                    headers[0].1 = "application/json".to_string();
+                    ParkedResume::Reply(ApiReply::Full {
+                        status: 500,
+                        headers,
+                        body: ApiBody::Text(
+                            format!("{{\"error\":{}}}", json_escape_string(&message))
+                                .into_bytes(),
+                        ),
+                    })
+                }
+                None => ParkedResume::StillParked,
             }
         }
         ParkStage::Handler => {
@@ -5934,6 +6129,9 @@ fn placeholder_ctx() -> DispatchCtx {
         handler_task_id: None,
         scope_id: 0,
         upload_pending: None,
+        legacy_parts: None,
+        legacy_fields_json: String::new(),
+        legacy_stored: Vec::new(),
     }
 }
 
@@ -5996,6 +6194,7 @@ pub(crate) fn drain_ready_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<Park
                     parked.insert(i, *np);
                     i += 1;
                 }
+                ParkedResume::Consumed => {} // 回复已自送——条目移除即可
             }
         } else {
             i += 1;
@@ -6009,6 +6208,9 @@ fn abort_parked_request(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedRequest) {
     if let ParkedWait::HttpRequest(req_id) = &p.wait {
         crate::vm::ffi::stdlib::drop_async_result(*req_id);
     }
+    // PLAN-730 T-07：废弃请求的 legacy provisional 文件删除（取消/超时）；
+    // LegacyStore 期的迟到落盘结果由 presence 守卫丢弃 + 结果表条目清除。
+    cleanup_legacy_files(&p.ctx.legacy_stored);
     // PLAN-707 T-06（D-7）：废弃请求的任务持有的流一并取消（首段 open
     // 后 park 的形态）。
     if let Some(t) = vm.tasks.get(&p.task_id) {
