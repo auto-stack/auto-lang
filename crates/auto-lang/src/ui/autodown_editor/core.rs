@@ -44,6 +44,28 @@ use crate::ui::code_editor::core::{
 use crate::ui::code_editor::draw::{CaretDraw, PreeditDraw, Pt, Rect};
 use crate::ui::code_editor::theme::Rgba;
 
+/// PLAN-737 诊断观测（AUTO_ADE_TRACE=1 启用；门关一次性检查零开销）。
+pub(crate) fn ade_trace(msg: &str) {
+    use std::sync::atomic::{AtomicU8, Ordering};
+    static ON: AtomicU8 = AtomicU8::new(0);
+    static T0: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    match ON.load(Ordering::Relaxed) {
+        0 => {
+            let on = std::env::var("AUTO_ADE_TRACE").is_ok();
+            ON.store(if on { 2 } else { 1 }, Ordering::Relaxed);
+            if on {
+                let t0 = T0.get_or_init(Instant::now);
+                eprintln!("[ade-trace] +{:.3}s {}", t0.elapsed().as_secs_f32(), msg);
+            }
+        }
+        2 => {
+            let t0 = T0.get_or_init(Instant::now);
+            eprintln!("[ade-trace] +{:.3}s {}", t0.elapsed().as_secs_f32(), msg);
+        }
+        _ => {}
+    }
+}
+
 /// 正文字号（逻辑 px）。PLAN-041 T3：字号表单源于块家族注册表
 /// （autodown_blocks）——两臂同源；fence 叶随之对齐家族 FENCE_SIZE（14，
 /// 与只读轨 text-sm 一致，编辑壳 16→14 的观感统一）。
@@ -1051,6 +1073,12 @@ impl AutodownEditorCore {
                                         && r.target == pl.target
                                         && r.rect.contains(Pt::new(x, y))
                                 });
+                            // PLAN-737：点击门观测面（AUTO_ADE_TRACE=1；合成
+                            // 通道 wikilink 断链家族的定位锚——门核对结果）
+                            ade_trace(&format!(
+                                "RELEASE gate ({x:.0},{y:.0}) pend=({},{},{},{:?}) same={same}",
+                                pl.block, pl.lo, pl.hi, pl.target,
+                            ));
                             if same {
                                 out.link_activated = Some(split_wikilink_target(&pl.target));
                             }
@@ -5131,7 +5159,9 @@ pub fn storage_key(widget: &str) -> String {
     format!("__autodown_editor_{widget}")
 }
 
-fn normalize_payload_key(key: &str) -> String {
+/// PLAN-737：编辑壳键幂等归一（裸键补 `__autodown_editor_` 前缀、已归一
+/// 透传）——合成通道派发表（renderer 层）与 core 注册表同键域的换算口。
+pub(crate) fn normalize_payload_key(key: &str) -> String {
     if key.starts_with("__autodown_editor_") {
         key.to_string()
     } else {

@@ -3196,6 +3196,133 @@ mod plan732_wikilink_payload_tests {
     }
 }
 
+#[cfg(all(test, feature = "autodown", feature = "code-editor"))]
+mod plan737_mcp_link_dispatch_tests {
+    use super::*;
+    use crate::ui::autodown_editor as ade;
+    use crate::ui::autodown_editor::DocInput;
+    use crate::ui::code_editor::core::{EditorButton, NullClipboard};
+
+    const WHITE: crate::ui::code_editor::theme::Rgba =
+        crate::ui::code_editor::theme::Rgba { r: 1., g: 1., b: 1., a: 1. };
+
+    fn run_fs<R>(f: impl FnOnce(&mut cosmic_text::FontSystem) -> R) -> R {
+        static FS: std::sync::OnceLock<std::sync::RwLock<cosmic_text::FontSystem>> =
+            std::sync::OnceLock::new();
+        crate::ui::code_editor::core::set_font_system_call(|with| {
+            let mut guard =
+                FS.get_or_init(|| std::sync::RwLock::new(cosmic_text::FontSystem::new()))
+                    .write()
+                    .unwrap();
+            with(&mut guard);
+        });
+        crate::ui::code_editor::core::with_font_system(f)
+    }
+
+    /// PLAN-737 根因回归（真实 merged 窗 T-02 解锁缺陷）：MCP 合成通道
+    /// `__mcp_drag_ade` 的完整点击（单点 press+release 直经 core 门）放行
+    /// `link_activated` 后，必须经装配期注册的 LinkCallback 构造 VM 消息
+    /// ——此前该输出在通道内被丢弃（门 same=true 恒成立、派发恒不发生，
+    /// 探针 N 臂 nav_seq 恒 0）。测试镜像生产节拍：首帧 sync 先于编辑壳
+    /// 注册（no-op）→ 注册 → 次帧 sync 重建 → render_frame 布局写回 →
+    /// 点击门闭合 → 按 **裸键**（MCP 载荷形态）派发。
+    #[test]
+    fn plan737_mcp_drag_single_point_full_click_dispatches_wiki_activation() {
+        // 测试字体系统引导（镜像 core.rs tests::run_fs：callback 先于首个
+        // sync_external 安装——生产由 DocEditor::new 装源，测试无 widget 期）。
+        run_fs(|_fs| {});
+        let key = "wiki/plan737-dispatch.ad";
+        let sk = ade::storage_key(key);
+        // 生产节拍第一腿：lowering 期 sync 先于 DocEditor::new 注册——首帧
+        // no-op（UNREGISTERED，返回 false）。
+        assert!(!ade::autodown_editor_sync(&sk, "见 [[目标页#锚点甲]] 文。", true));
+        // 编辑壳注册（第二腿此前）→ 次帧 sync 真重建。
+        let core = ade::autodown_editor(key);
+        assert!(ade::autodown_editor_sync(&sk, "见 [[目标页#锚点甲]] 文。", true));
+        run_fs(|fs| {
+            let _ = core.render_frame(fs, 600.0, WHITE, None);
+        });
+        let region = core.link_regions().first().cloned().expect("布局写回含链接命中区");
+        let (cx, cy) =
+            (region.rect.x + region.rect.w / 2.0, region.rect.y + region.rect.h / 2.0);
+
+        // 装配期注册（convert_view_messages AutodownEditor 臂同款闭包——
+        // 消息构造单源：Typed 双 Str → from_dynamic/encode_payload）。
+        let widget = key.to_string();
+        let cb = crate::ui::view::LinkCallback::new(move |m: crate::ui::view::WikiLinkMetrics| {
+            IcedMessage::from_dynamic(&DynamicMessage::Typed {
+                widget_name: widget.clone(),
+                event_name: "OpenWikiLink".into(),
+                args: vec![
+                    auto_val::Value::Str(m.target.into()),
+                    auto_val::Value::Str(m.anchor.into()),
+                ],
+            })
+        });
+        ade_link_dispatch_register(&sk, cb);
+
+        // 单点完整点击（__mcp_drag_ade 同构：press→release 逐段直调 core）。
+        let click = |x: f32, y: f32| -> crate::ui::autodown_editor::DocOutput {
+            run_fs(|fs| {
+                core.handle_input(
+                    fs,
+                    DocInput::MousePressed { button: EditorButton::Left, x, y },
+                    &mut NullClipboard,
+                )
+            });
+            run_fs(|fs| {
+                core.handle_input(
+                    fs,
+                    DocInput::MouseReleased { button: EditorButton::Left, x, y },
+                    &mut NullClipboard,
+                )
+            })
+        };
+        let out = click(cx, cy);
+        let act = out.link_activated.expect("完整点击门放行激活");
+        assert_eq!(act.target, "目标页");
+        assert_eq!(act.anchor, "锚点甲");
+
+        // 派发腿：**裸键**（MCP 载荷 sk 不带前缀）查表——键幂等归一后同域。
+        let msg = ade_link_dispatch_message(key, &act).expect("裸键派发命中");
+        assert_eq!(msg.widget, key);
+        let (clean, args) = crate::ui::dynamic::decode_payload(&msg.event);
+        assert_eq!(clean, "OpenWikiLink");
+        assert!(matches!(&args[0], auto_val::Value::Str(s) if s.as_str() == "目标页"), "{args:?}");
+        assert!(matches!(&args[1], auto_val::Value::Str(s) if s.as_str() == "锚点甲"), "{args:?}");
+
+        // 归一形键同样命中（装配键域直查）。
+        assert!(ade_link_dispatch_message(&sk, &act).is_some());
+        // 未知键零派发（未挂载/泛型轨语义）。
+        assert!(ade_link_dispatch_message("wiki/absent.ad", &act).is_none());
+    }
+
+    /// PLAN-737 通道阴性锚：press-only（`__mcp_click` ghost 语义，无抬起
+    /// 腿）门不闭合——零激活零派发（K-04 冻结负例不因派发表而弱化）。
+    #[test]
+    fn plan737_press_only_still_never_dispatches() {
+        run_fs(|_fs| {});
+        let key = "wiki/plan737-press-only.ad";
+        let sk = ade::storage_key(key);
+        let core = ade::autodown_editor(key);
+        assert!(ade::autodown_editor_sync(&sk, "[[Goals]] 页。", true));
+        run_fs(|fs| {
+            let _ = core.render_frame(fs, 600.0, WHITE, None);
+        });
+        let region = core.link_regions().first().cloned().expect("链接命中区在案");
+        let (cx, cy) =
+            (region.rect.x + region.rect.w / 2.0, region.rect.y + region.rect.h / 2.0);
+        let out = run_fs(|fs| {
+            core.handle_input(
+                fs,
+                DocInput::MousePressed { button: EditorButton::Left, x: cx, y: cy },
+                &mut NullClipboard,
+            )
+        });
+        assert!(out.link_activated.is_none(), "press-only 门不闭合零激活");
+    }
+}
+
 #[cfg(test)]
 mod plan095_focus_tests {
     use super::*;
@@ -7597,6 +7724,80 @@ impl IcedMessage {
 }
 
 // ============================================================================
+// PLAN-737：wikilink 激活合成通道派发表
+// ============================================================================
+
+/// PLAN-737：storage key → VM 轨 wikilink 激活回调（IcedMessage 产物）。
+///
+/// 为什么需要：PLAN-732 的激活出口在 widget `publish`（真实事件泵路径）；
+/// 而 MCP 合成通道 `__mcp_drag_ade` 直调 `core.handle_input`（057 keyed
+/// 寻址、不经 widget）——其抬起腿放行的 `DocOutput.link_activated` 此前
+/// 被整条丢弃，真实 merged 生产窗口经该通道的完整点击**永远零激活**
+/// （jade PLAN-037 T-02 解锁缺陷根因，本仓探针 + 插桩定谳：点击门
+/// same=true 恒成立、ACTIVATED publish 恒不发生）。
+///
+/// 装配：lower 期 `convert_view_messages` AutodownEditor 臂注册（同 key
+/// 覆写）——与 widget `on_link` 共用**同一 LinkCallback 闭包**（消息构造
+/// 单源，无第二套事件名/载荷拼装）。消费：`__mcp_drag_ade` 抬起腿经
+/// [`ade_link_dispatch_message`]。
+///
+/// 契约边界（不弱化 SD-01）：真实事件泵路径零变化——widget 仍经自身
+/// on_link 发布（C-04 结构性实例绑定不动摇）；本表是 MCP 合成通道的
+/// keyed 寻址补充（与 `__mcp_key`/`__mcp_drag_ade` 既有寻址模型同域），
+/// 生命周期与编辑壳 core 注册表同键同域（同 key 覆写、无 dispose 面
+/// ——core 注册表同样无过期，两表一致）。`__mcp_click`（press-only
+/// ghost 语义）不受影响——门不闭合零激活（K-04 冻结负例锚）。
+#[cfg(all(feature = "autodown", feature = "code-editor"))]
+static ADE_LINK_DISPATCH: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, crate::ui::view::LinkCallback<IcedMessage>>>,
+> = std::sync::OnceLock::new();
+
+/// PLAN-737：合成通道派发注册（lowering 装配期；同 key 覆写）。
+#[cfg(all(feature = "autodown", feature = "code-editor"))]
+pub(crate) fn ade_link_dispatch_register(
+    sk: &str,
+    cb: crate::ui::view::LinkCallback<IcedMessage>,
+) {
+    ADE_LINK_DISPATCH
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+        .lock()
+        .unwrap()
+        .insert(sk.to_string(), cb);
+}
+
+/// PLAN-737：合成通道激活消费——抬起腿放行的 link_activated → 注册回调
+/// 构造 IcedMessage（`IcedMessage::from_dynamic` 同款 Send 边界封装在
+/// 装配闭包内）。None = 该 key 无装配（未挂载/泛型轨/缺回调——与既有
+/// keyed 通道语义一致，零派发）。
+#[cfg(all(feature = "autodown", feature = "code-editor"))]
+pub(crate) fn ade_link_dispatch_message(
+    sk: &str,
+    act: &crate::ui::autodown_editor::LinkActivation,
+) -> Option<IcedMessage> {
+    // 键归一：MCP 载荷 sk 为裸键（`wiki/Src.ad`），装配注册键为 storage
+    // key 归一形——幂等归一后同键域（PLAN-737 探针 MISS 实录后定谳）。
+    let sk = crate::ui::autodown_editor::core::normalize_payload_key(sk);
+    let cb = {
+        let map = ADE_LINK_DISPATCH
+            .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+            .lock()
+            .unwrap();
+        let cb = map.get(&sk).cloned();
+        if cb.is_none() {
+            crate::ui::autodown_editor::core::ade_trace(&format!(
+                "link_dispatch MISS {sk} (table keys={:?})",
+                map.keys().cloned().collect::<Vec<_>>()
+            ));
+        }
+        cb
+    }?;
+    Some(cb.call(crate::ui::view::WikiLinkMetrics {
+        target: act.target.clone(),
+        anchor: act.anchor.clone(),
+    }))
+}
+
+// ============================================================================
 // Dynamic Todo List helpers
 // ============================================================================
 
@@ -7880,24 +8081,36 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             on_link,
             placeholder,
             style,
-        } => AbstractView::AutodownEditor {
-            key,
-            value,
-            is_final,
-            on_change: on_change.map(|m| IcedMessage::from_dynamic(&m)),
-            // Plan 044 T2: 块聚焦读出回调跨消息类型包装（FocusCallback newtype）。
-            on_focus: on_focus.map(|cb| {
-                crate::ui::view::FocusCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
-            }),
+        } => {
             // PLAN-732: wikilink 激活回调跨消息类型包装（LinkCallback
             // newtype；Typed args 双 Str 经 from_dynamic→encode_payload 过
             // Send 边界，decode 后直达 VM handler 形参——499 M2 同路）。
-            on_link: on_link.map(|cb| {
+            let on_link = on_link.map(|cb| {
                 crate::ui::view::LinkCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
-            }),
-            placeholder,
-            style,
-        },
+            });
+            // PLAN-737：装配期注册合成通道派发表（同 key 覆写）——
+            // __mcp_drag_ade 完整点击门放行的激活经同款回调构造消息
+            // （单源闭包；真实事件泵的 widget publish 路径零变化）。
+            #[cfg(all(feature = "autodown", feature = "code-editor"))]
+            if let Some(cb) = &on_link {
+                ade_link_dispatch_register(&crate::ui::autodown_editor::storage_key(&key), cb.clone());
+            }
+            #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+            let _ = &on_link;
+            AbstractView::AutodownEditor {
+                key,
+                value,
+                is_final,
+                on_change: on_change.map(|m| IcedMessage::from_dynamic(&m)),
+                // Plan 044 T2: 块聚焦读出回调跨消息类型包装（FocusCallback newtype）。
+                on_focus: on_focus.map(|cb| {
+                    crate::ui::view::FocusCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
+                }),
+                on_link,
+                placeholder,
+                style,
+            }
+        }
 
         AbstractView::Checkbox {
             is_checked,
@@ -8966,6 +9179,29 @@ fn media_wake_subscription(
         app,
         kind: AppTickKind::Poll(poll_media_wake, 50),
     })
+}
+
+/// PLAN-737：合成动作臂的 noop 回发（ack id 随行——noop 排在臂内 Task
+/// 队列尾，其消费即「动作已应用」的回执点；link 消息等 Task 先于 noop
+/// 同队列派发）。
+fn mcp_noop_with_ack(ack: Option<u64>) -> IcedMessage {
+    let event = match ack {
+        Some(id) => format!("__noop|ack={id}"),
+        None => "__noop".to_string(),
+    };
+    IcedMessage::from_dynamic(&DynamicMessage::String(event))
+}
+
+/// PLAN-737：合成动作 ack 回执（无 noop 臂的臂尾直执回执点；noop 臂由
+/// noop 消费臂回执——见 `__noop|ack=` 消费处）。复用 fixture 回执表
+///（同 id 空间、同容量纪律；Applied 空载荷 = 纯栅栏语义）。
+fn mcp_ack_apply(mcp_shared: &Option<crate::ui::mcp_server::SharedStateHandle>, ack: Option<u64>) {
+    if let (Some(id), Some(mcp)) = (ack, mcp_shared) {
+        mcp.lock().unwrap().finish_fixture(
+            id,
+            crate::ui::mcp_server::FixtureAck::Applied { changed: vec![], trigger: None },
+        );
+    }
 }
 
 fn poll_mcp_actions() -> Option<IcedMessage> {
@@ -17580,6 +17816,22 @@ fn compare_pngs(
         //（input_value = "t{表键}␟col␟width"；mcp_server 侧已从 Table
         // vnode props 解析表键）与 OnColResize 拦截同一 write_table_width_state
         // 落 table_widths state；__noop 回发走一轮 update→view 让新列宽进当帧。
+        // PLAN-737：合成动作 ack——工具侧在 `__mcp_*` event 尾附 `|ack=<id>`
+        // 发送；此处统一剥离还原（下方各臂匹配零改动），ack 随臂内回发
+        // noop（noop 排在臂内 Task 队列尾，其后处理即「动作已应用」）或
+        // 臂尾直执回执。MCP 工具线程限时轮询回执，把合成动作从「入队」
+        // 收紧为「已应用」——探针 press→立即读状态与 60fps 泵竞速、块带
+        // 映射系统性偏移（jade N 臂 mapBlocks 伪影）的根修。
+        let mut msg = msg;
+        let mut mcp_ack: Option<u64> = None;
+        if msg.event.starts_with("__mcp_") {
+            if let Some((base, id)) = msg.event.rsplit_once("|ack=") {
+                if let Ok(id) = id.parse::<u64>() {
+                    msg.event = base.to_string();
+                    mcp_ack = Some(id);
+                }
+            }
+        }
         if msg.event == "__mcp_resize_col" {
             let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
             if let (Some(k), Some(c), Some(w)) = (
@@ -17589,9 +17841,7 @@ fn compare_pngs(
             ) {
                 write_table_width_state(&mut state.component, k, c, w);
                 *state.app.view_dirty.borrow_mut() = true;
-                return iced::Task::done(IcedMessage::from_dynamic(
-                    &DynamicMessage::String("__noop".to_string()),
-                ));
+                return iced::Task::done(mcp_noop_with_ack(mcp_ack));
             }
             return iced::Task::none();
         }
@@ -17640,13 +17890,13 @@ fn compare_pngs(
                             // view_dirty 单独不驱动 iced 重绘（Task::none 无
                             // 重排）——回发 __noop 消息走一轮 update→view，
                             // 让 ghost 包装进当帧（Plan 482 no-op 通道）。
-                            return iced::Task::done(IcedMessage::from_dynamic(
-                                &DynamicMessage::String("__noop".to_string()),
-                            ));
+                            // PLAN-737：ack 随 noop 回执（core 焦点态已落）。
+                            return iced::Task::done(mcp_noop_with_ack(mcp_ack));
                         }
                     }
                     #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
                     let _ = (sk, x, y);
+                    mcp_ack_apply(&state.desktop.mcp_shared, mcp_ack);
                     return iced::Task::none();
                 }
             }
@@ -17709,14 +17959,13 @@ fn compare_pngs(
                                 input_value: Some(text),
                             }));
                         }
-                                                tasks.push(iced::Task::done(IcedMessage::from_dynamic(
-                            &DynamicMessage::String("__noop".to_string()),
-                        )));
+                                                tasks.push(iced::Task::done(mcp_noop_with_ack(mcp_ack)));
                         return iced::Task::batch(tasks);
                     }
                 }
                 #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
                 let _ = (sk, widget, event, keyspec);
+                mcp_ack_apply(&state.desktop.mcp_shared, mcp_ack);
                 return iced::Task::none();
             }
             return iced::Task::none();
@@ -17780,7 +18029,25 @@ fn compare_pngs(
                         });
                         focus_changed |= out.focus_changed;
                         text_changed |= out.text_changed;
+                        // PLAN-737：完整点击门放行的 wikilink 激活——合成通道
+                        // 派发腿。此前 link_activated 在本通道被丢弃（真实
+                        // merged 窗完整点击零激活的根因）；现经装配期注册的
+                        // 同款 LinkCallback 构造消息（与 widget publish 单源
+                        //），无注册（未挂载/泛型轨）零派发语义不变。
+                        let mut link_msg: Option<IcedMessage> = None;
+                        if let Some(act) = &out.link_activated {
+                            link_msg = ade_link_dispatch_message(sk, act);
+                            ade::core::ade_trace(&format!(
+                                "mcp_drag link_activated target={:?} anchor={:?} dispatched={}",
+                                act.target,
+                                act.anchor,
+                                link_msg.is_some()
+                            ));
+                        }
                         let mut tasks = Vec::new();
+                        if let Some(m) = link_msg {
+                            tasks.push(iced::Task::done(m));
+                        }
                         if focus_changed {
                             let block = core.focused_block();
                             let h = block
@@ -17801,9 +18068,9 @@ fn compare_pngs(
                                 input_value: Some(text),
                             }));
                         }
-                                                tasks.push(iced::Task::done(IcedMessage::from_dynamic(
-                            &DynamicMessage::String("__noop".to_string()),
-                        )));
+                                                // PLAN-737：ack 随 noop 回执——link 激活消息等 Task
+                                                // 先于 noop 同队列派发，noop 消费即门级联全落。
+                                                tasks.push(iced::Task::done(mcp_noop_with_ack(mcp_ack)));
                         return iced::Task::batch(tasks);
                     }
                 }
@@ -17839,6 +18106,7 @@ fn compare_pngs(
                 if std::env::var("P656_DEBUG").is_ok() {
                     eprintln!("[P656-EXEC] mcp_scroll id={id} x={x} y={y}");
                 }
+                mcp_ack_apply(&state.desktop.mcp_shared, mcp_ack);
                 return iced::Task::batch([iced::widget::operation::scroll_to(
                     id.to_string(),
                     iced::widget::scrollable::AbsoluteOffset { x, y },
@@ -17884,6 +18152,7 @@ fn compare_pngs(
                     *state.app.view_dirty.borrow_mut() = true;
                 }
             }
+            mcp_ack_apply(&state.desktop.mcp_shared, mcp_ack);
             return iced::Task::none();
         }
         // Plan 563 T5: MCP pen action——canvas 笔画序列合成(input_value =
@@ -17930,6 +18199,7 @@ fn compare_pngs(
                     *state.app.view_dirty.borrow_mut() = true;
                 }
             }
+            mcp_ack_apply(&state.desktop.mcp_shared, mcp_ack);
             return iced::Task::none();
         }
         // Plan 412 续(toast 修正 3/6):在 update 最前消费 handler 写入的
@@ -18032,7 +18302,16 @@ fn compare_pngs(
         }
 
         // Plan 482: inert nav-item click (no to:/onclick) — graceful no-op.
+        // PLAN-737：ack 随行 noop 的回执点——合成动作臂回发的 noop 消费即
+        // 该动作（含其 Task 级联：link 消息派发/VM handler）已全部应用。
         if msg.event.starts_with("__noop") {
+            if let Some(id) = msg
+                .event
+                .strip_prefix("__noop|ack=")
+                .and_then(|s| s.parse::<u64>().ok())
+            {
+                mcp_ack_apply(&state.desktop.mcp_shared, Some(id));
+            }
             return iced::Task::none();
         }
 
