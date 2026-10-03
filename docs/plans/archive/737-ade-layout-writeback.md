@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-737
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: ade-layout-writeback
 author: [zhaopuming]
 created_at: 2026-10-03
@@ -186,9 +186,18 @@ RELEASE gate same=true ×18 → ACTIVATED publish ×0（R-1 铁证）
 - T-05 门禁 [✅ 已完成] cargo check（autodown/ui-iced/默认三 feature
   集）零错；plan737+plan732 15/15；cargo t autodown 79/79；复审裸
   cargo t 见复审记录。
-- T-06 复审 → merge → master 重建 binary → 回执 → worktree 清理 [⬜]（复审 pass 在上节；merge/回执进行中）
+- T-06 复审 → merge → master 重建 binary → 回执 → worktree 清理 [✅ 已完成] merge 59ff4e66f；master binary v0.4.2-2702-g59ff4e66f SHA256 43355F6536FC36CCBA14D8155544CCA40F537C76280FC6D820F95A7CEE628F43（回执 docs/reports/p737-ade-layout-writeback-receipt.md §4，交付件自检 N0..N3 PASS）；wt-guard clean、worktree/分支/组目录全清。
 
 ## 复审记录
+
+### merge 收据（2026-10-03）
+
+- merge 59ff4e66f（分支 plan-737-dev 5d967320e..b88a2e3a2 基面 ccc3a2f05）。
+- master 重建 binary + 指纹 + 交付件 jade 探针 --phase native 自检 N0..N3
+  PASS（N4=消费方域，回执 §5）。
+- KNOWN-DEBT：P737-D1（MCP current-thread runtime 结构弱点/残余复位）/
+  P737-D2（键域双形态归一口）登记在案。
+- 本件归档 docs/plans/archive/（终态）。
 
 2026-10-03 独立复审（本会话，缺陷单授权的执行+复审+merge 全程）：**pass**。
 
