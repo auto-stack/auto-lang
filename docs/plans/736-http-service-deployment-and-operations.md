@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-736
-status: drafting
+status: executing
 feature_name: http-service-deployment-and-operations
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-03
 plan_revision: 1
-current_step: 0
+current_step: 1
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -231,11 +231,11 @@ fixture生成临时证书/凭据，只测试localhost；实际HTTPS→proxy→VM
 
 ### T-01：最终依赖、配置与服务运行原型
 
-- 前置734独立review pass+merge；读最终SD/receipt/批准边界，不接受仅work pass。发现未批准AC延期先交734review解决，不在736更改其合同。
-- `bash scripts/new-wt-group.sh lang-736 --branch plan-736-dev`，auto-down兄弟只读，禁止链接。
-- trace lib默认API、CLI Run/build、rust_ui VM/Rust、api_gen两main分支与734bundle消费者；复现bind默认、ready假成功、无连接cap、生成关闭差异。
-- 有界调查产出`736-http-decision.md`：CLI/config字段/来源/范围、0.7/0.8 adapter依赖、body终态许可与shutdown/文件在途FS、health/日志机制、支持矩阵；实际Nginx/OpenSSL可用版本和两轨最小独立serve原型。
-- 冻结测试机器及§6.2条件/合法流fixture；若依赖缺失或方案无法满足固定AC则blocked/needs_replan，不降低阈值。涉及全部AC/SD。
+- [x] 前置734独立review pass+merge；读最终SD/receipt/批准边界，不接受仅work pass。发现未批准AC延期先交734review解决，不在736更改其合同。 [✅ 已完成] R2 pass+归档752cb37f4/cleaned 5ccb3d6c5；接受债 D4/D5/D7 登记（reports/736-http-decision.md §1）
+- [x] `bash scripts/new-wt-group.sh lang-736 --branch plan-736-dev`，auto-down兄弟只读，禁止链接。 [✅ 已完成] 组建@de3a64353（auto-lang plan-736-dev + auto-down detached@895f8d0）
+- [x] trace lib默认API、CLI Run/build、rust_ui VM/Rust、api_gen两main分支与734bundle消费者；复现bind默认、ready假成功、无连接cap、生成关闭差异。 [✅ 已完成] E1..E12 逐点复现（decision §2）：lib.rs:1737 0.0.0.0、http_transport.rs:149 无conn cap、api_gen.rs:3781/3842 假ready+unwrap、rust_ui.rs:3893/3990 TCP假ready、util.rs:294 URL恒loopback
+- [x] 有界调查产出`736-http-decision.md`：CLI/config字段/来源/范围、0.7/0.8 adapter依赖、body终态许可与shutdown/文件在途FS、health/日志机制、支持矩阵；实际Nginx/OpenSSL可用版本和两轨最小独立serve原型。 [✅ 已完成] reports/736-http-decision.md（提交 a043bb4fc）；nginx 1.31.6（scoop本会话安装）+ OpenSSL 3.2.3 + Win11/20核/32GB 冻结
+- [x] 冻结测试机器及§6.2条件/合法流fixture；若依赖缺失或方案无法满足固定AC则blocked/needs_replan，不降低阈值。涉及全部AC/SD。 [✅ 已完成] 无blocked：依赖在位、原型可行（decision §3.7-3.9）
 
 ### T-02：公共配置和CLI server-only入口
 
