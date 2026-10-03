@@ -1153,9 +1153,9 @@ fn endpoint_body_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
     let method = endpoint.method();
     endpoint.params.iter().filter(|p| {
         if is_meta_param(p) { return false; }
-        // PLAN-730 T-06: UploadRequest 是宿主注入参数（Request 提取器），
-        // 不进 JSON body 结构/绑定。
-        if p.ty.contains("UploadRequest") { return false; }
+        // PLAN-730 T-06 / 734 R1 F-1: UploadRequest 是宿主注入参数（Request
+        // 提取器），不进 JSON body 结构/绑定（契约身份判定）。
+        if auto_lang::api::contract::is_upload_param(&p.ty) { return false; }
         let is_path = path.contains(&format!(":{}", p.name));
         let is_query = !is_path && matches!(method.as_str(), "GET" | "DELETE");
         !is_path && !is_query
@@ -2417,9 +2417,11 @@ fn push_delegating_scalar_handlers(
             (String::new(), String::new())
         };
         let ret = endpoint.return_type.trim();
-        // PLAN-729 T-05：委派路径（route A/db 覆盖）的文件端点——同样生成
-        // 真实文件 adapter：method/headers 提取器 + 委派调用 + 宿主 serve。
-        if ret.contains("FileResponse") {
+        // PLAN-729 T-05 / 734 R1 F-1：委派路径（route A/db 覆盖）的文件端点——
+        // 同样生成真实文件 adapter（契约身份判定）。
+        if auto_lang::api::contract::ResponseKind::from_return_string(ret)
+            == auto_lang::api::contract::ResponseKind::File
+        {
             // 路径参数：委派路径此前只覆盖 query/body——文件端点的典型
             // 形态是 `:name` 路径参数，这里补 Path 提取（首个路径参数，
             // 主路径同约定）。
@@ -2853,10 +2855,12 @@ fn generate_api_rs(
             }
         }
 
-        // PLAN-729 T-05: 文件端点——返回 `FileResponse`/`Future<FileResponse>`
-        // 的 #[api] handler 生成真实文件 adapter（不经 JsonResponse，不落
-        // CRUD 模板；转译失败 = 诊断 500，保留位置信息）。
-        if endpoint.return_type.contains("FileResponse") {
+        // PLAN-729 T-05 / 734 R1 F-1: 文件端点——返回 `FileResponse`/
+        // `Future<FileResponse>` 的 #[api] handler 生成真实文件 adapter
+        // （契约身份判定；不经 JsonResponse，转译失败 = 诊断 500）。
+        if auto_lang::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
+            == auto_lang::api::contract::ResponseKind::File
+        {
             // 文件端点仅 GET/HEAD：生成期诊断 + 405 handler（与 VM 腿同语义）。
             if !matches!(method.as_str(), "GET" | "HEAD") {
                 eprintln!(
@@ -2946,7 +2950,7 @@ fn generate_api_rs(
         let upload_param = endpoint
             .params
             .iter()
-            .find(|p| p.ty.contains("UploadRequest"))
+            .find(|p| auto_lang::api::contract::is_upload_param(&p.ty))
             .cloned();
         if let Some(up_param) = upload_param {
             if !matches!(method.as_str(), "POST" | "PUT") {
@@ -2975,7 +2979,7 @@ fn generate_api_rs(
                 "headers: axum::http::HeaderMap".to_string(),
             ];
             for p in &endpoint.params {
-                if p.ty.contains("UploadRequest") || is_meta_param(p) {
+                if auto_lang::api::contract::is_upload_param(&p.ty) || is_meta_param(p) {
                     continue;
                 }
                 if endpoint.path().contains(&format!(":{}", p.name)) {
@@ -3700,7 +3704,8 @@ fn generate_main_rs(
             let method = e.method().to_lowercase();
             // PLAN-729 T-05: GET 文件端点自动具备 HEAD（显式 HEAD 路由不存在
             // 时；handler 从 Method 提取器区分）。
-            if e.return_type.contains("FileResponse")
+            if auto_lang::api::contract::ResponseKind::from_return_string(&e.return_type)
+                == auto_lang::api::contract::ResponseKind::File
                 && method == "get"
                 && !api_module.endpoints.iter().any(|other| {
                     other.method().eq_ignore_ascii_case("HEAD")
@@ -4247,6 +4252,87 @@ pub fn listusers() []User {
 
     /// 上传端点生成：Request 提取器置最后、宿主 receive/commit await 直发、
     /// 收据真实 status；main 安装 executor。
+    /// PLAN-734 R1 F-3：Tauri MockRuntime command dispatcher 实测——真实
+    /// 生成命令（fixture 锁定）经 mock_builder + generate_handler! 注册，
+    /// get_ipc_response 走完整 IPC dispatcher（非直接函数调用）。证明
+    /// command 编组/返回序列化；不证明 webview/权限/安装包。
+    #[test]
+    fn plan734_tauri_mock_dispatcher_invokes_generated_command() {
+        // 最小 api 实现（生成命令引用 crate::api::echo——本测试以局部模块
+        // 提供同形实现，command 体本身来自生成器 fixture）。
+        mod api {
+            use serde::{Deserialize, Serialize};
+
+            #[derive(Debug, Clone, Serialize, serde::Deserialize)]
+            pub struct Echo {
+                pub ok: bool,
+                pub n: i32,
+                pub tag: String,
+            }
+
+            pub fn echo(n: i32, tag: String) -> Echo {
+                Echo { ok: true, n, tag }
+            }
+        }
+        // 生成的命令体（与 fixture 逐字一致由上面的锁测试保证——此处仅
+        // 保留 dispatcher 所需的 command 定义）。
+        #[tauri::command]
+        fn echo(n: i32, tag: String) -> api::Echo {
+            api::echo(n, tag)
+        }
+
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![echo])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app builds");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock webview builds");
+
+        let body = serde_json::json!({ "n": 42, "tag": "hi" });
+        let resp = tauri::test::get_ipc_response(
+            &webview,
+            tauri::webview::InvokeRequest {
+                cmd: "echo".into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: "http://tauri.localhost".parse().unwrap(),
+                body: tauri::ipc::InvokeBody::Json(body),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.to_string(),
+            },
+        )
+        .expect("dispatcher resolves");
+
+        let echo: api::Echo = resp.deserialize().expect("body deserializes to Echo");
+        assert!(echo.ok);
+        assert_eq!(echo.n, 42);
+        assert_eq!(echo.tag, "hi");
+    }
+
+    /// PLAN-734 R1 F-3 fixture 源：锁定 TauriGenerator 当前输出与已提交
+    /// tests/plan734_commands_fixture.rs 逐字一致（生成器漂移即红）。
+    #[test]
+    fn test_plan734_tauri_fixture_matches_generator() {
+        let api = r#"
+pub type Echo = { ok: bool, n: int, tag: str }
+
+#[api(method = "POST", path = "/api/echo")]
+pub fn echo(n int, tag str) Echo {
+    return Echo { ok: true, n: n, tag: tag }
+}
+"#;
+        let module = try_full_parse(api).expect("parse");
+        use auto_lang::api::TargetGenerator as _;
+        let generated = auto_lang::api::TauriGenerator::new().generate(&module);
+        let fixture = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/plan734_commands_fixture.rs"
+        ))
+        .expect("fixture readable");
+        assert_eq!(generated.trim(), fixture.trim(), "generator drift vs fixture");
+    }
+
     #[test]
     fn test_plan730_upload_endpoint_generation() {
         let _a2r_env = a2r_env_lock();

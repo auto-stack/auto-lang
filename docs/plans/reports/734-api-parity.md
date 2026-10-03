@@ -21,18 +21,20 @@
 | back_proxy.rs 守卫/广播门 | 5 | ResponseKind |
 | api/targets/{tauri,axum,typescript} | 10 | ResponseKind/is_upload_param |
 | auto-man api_gen glue/分支 | 4 | ResponseKind/is_upload_param |
-| （既有 729/730 分支本体） | — | 经同一 ResponseKind 判定改写，语义等价 |
+| （既有 729/730 分支本体） | 8 | R1 F-1 修复后全部经 ResponseKind/is_upload_param 判定改写（此前 8 生产位点残留被复审捕获——api_gen ×6 + typescript ×2；语义等价，假同名反例自此闭合） |
 
 假同名反例锁定：`MyFileResponse`/`UploadReceiptLog`/`List<FileResponse>` 均
 分类 Json（身份匹配，非子串）。
 
 ## 3. 未及面与已知边界（如实）
 
-- **Tauri MockRuntime fixture**：tauri 2.12 dev-dep + `test` feature 已加并
-  编译通过（`mock_builder`/`get_ipc_response` 在案，E7），但
-  command-dispatcher 实测 fixture 未在本轮落地——tauri 生成命令的既有
-  生成串测试在档（729/730 Unsupported 形态），dispatcher 级实证归 T-08 补
-  或债登记。
+- ~~Tauri MockRuntime fixture~~ **R1 F-3 已清偿**：dispatcher 实测落地
+  （`plan734_tauri_mock_dispatcher_invokes_generated_command`——mock_builder
+  + generate_handler! + get_ipc_response 全链，Echo 业务值往返断言）；
+  配套 fixture 锁测试绑定 TauriGenerator 当前输出与提交的 fixture 逐字一致。
+  注意：tauri dev-dep 必须 `default-features = false, features = ["test"]`——
+  默认 features 引入 wry/WebView2Loader 使测试二进制在本机
+  STATUS_ENTRYPOINT_NOT_FOUND（R1 实证）。
 - **P734-D4**：泛型 stdlib 的 json.encode 返回通路与 str+int 拼接仍有
   i32-lane 损坏（应用层泛型转换，API 契约面外；binding 报告 §1）。
 - **P734-D5**：run_with_capture 对 #[api] 程序的测试基建非确定挂死

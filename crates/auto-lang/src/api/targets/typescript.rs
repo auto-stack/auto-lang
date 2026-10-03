@@ -309,7 +309,7 @@ export type { IApi };
         let upload_param_removed: Vec<&ApiParam> = endpoint
             .params
             .iter()
-            .filter(|p| !p.ty.contains("UploadRequest"))
+            .filter(|p| !crate::api::contract::is_upload_param(&p.ty))
             .collect();
         let is_upload_endpoint =
             endpoint.params.len() != upload_param_removed.len();
@@ -424,7 +424,9 @@ export type { IApi };
 
         // PLAN-729 T-05: 文件端点返回原生 Response（状态/headers 保留，
         // 不调 .json()；读盘交给调用方——决策报告 §6）。
-        if endpoint.return_type.contains("FileResponse") {
+        if crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
+            == crate::api::contract::ResponseKind::File
+        {
             lines.push(format!("{}return response;", self.indent));
         } else if is_upload_endpoint {
             lines.push(format!("{}return response.json();", self.indent));
