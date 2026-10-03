@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-03
 plan_revision: 1
-current_step: 1
+current_step: 2
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -239,9 +239,9 @@ fixture生成临时证书/凭据，只测试localhost；实际HTTPS→proxy→VM
 
 ### T-02：公共配置和CLI server-only入口
 
-- 依赖T-01。新http_service_config.rs、auto-man/http_service.rs、auto/cmd_serve.rs，改lib.rs导出、auto/main.rs命令、auto-man/lib.rs及util配置消费。
-- profile/严格校验/来源、default loopback、显式监听/port0、旧无文件兼容；复用真实生成/VM装配，不启动UI。
-- scoped config/serve单测及实际CLI两轨启动、坏配置/端口冲突非零；AC-01/02，SD-01/02/04/05。
+- [x] 依赖T-01。新http_service_config.rs、auto-man/http_service.rs、auto/cmd_serve.rs，改lib.rs导出、auto/main.rs命令、auto-man/lib.rs及util配置消费。 [✅ 已完成] 提交2dbae4685；命令面调整：`auto serve` 与既有 Plan269 AutoVM daemon 撞名 → 服务入口改名 `auto service`（daemon 零改动，语义不变——decision §3.1 注记）；serve 面不 kill 占端口进程（legacy kill 语义保留）
+- [x] profile/严格校验/来源、default loopback、显式监听/port0、旧无文件兼容；复用真实生成/VM装配，不启动UI。 [✅ 已完成] 严格解析（deny_unknown_fields/重复/越界指名非零）；legacy `auto run` 链原样（lib.rs 仅显式 config seam 分支变更）；port=0 真实 bound 地址上报（serve_network ready 载荷）
+- [x] scoped config/serve单测及实际CLI两轨启动、坏配置/端口冲突非零；AC-01/02，SD-01/02/04/05。 [✅ 已完成] `cargo t plan736` 10/10 + auto-man http_service 5/5 + auto cli_service 2/2 + tv 162/162；实机：VM 轨 loopback wire（echo 400 诊断/plain/404）+ ready 标记含 config_hash、rust 轨生成→子进程→AUTO_SERVICE_READY；负向：端口冲突 0.3s 非零（os error 10048 指名）/坏配置 0.1s 非零/未知 server 非零/坏 port 非零。预存修：a2r_std upload 转发壳补漏（qualify 后 E0425，730 面漏 re-export）+ auto-man 空 main.rs 退役（E0601 阻塞 cargo check -p auto-man）
 
 ### T-03：两代服务adapter与预算/完成许可
 
