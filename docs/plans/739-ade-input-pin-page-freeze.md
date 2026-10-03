@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-739
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done       # drafting → executing → execution_done → reviewed → archived
 feature_name: ade-input-pin-page-freeze
 author: [agent]
 created_at: 2026-10-03
@@ -12,7 +12,7 @@ new_spec_components: ["auto-lang/ui/frame-pipeline-incremental§输入回写视�
 touched_goals: []
 
 affects: ["auto-lang/ui"]
-current_step: 0
+current_step: 5
 total_steps: 5
 ---
 
@@ -218,27 +218,38 @@ pub(crate) fn retain_input_values_after_handler(
 
 ## 8. 执行步骤
 
-- **T-01 worktree 建立**（AC 前置）：`bash scripts/new-wt-group.sh lang-739
-  --branch plan-739-dev`（或裸 `git worktree add
-  D:/autostack/.wt/lang-739/auto-lang -b plan-739-dev`）。验证：
-  `git -C D:/autostack/.wt/lang-739/auto-lang status` 干净、分支
-  `plan-739-dev`、基面 master@59ff4e66f 系。[✅ 已完成]
-- **T-02 根修实施**（AC-01/02/03）：worktree 内改 `renderer.rs`——
-  ①patch_input_values 摘 ADE 臂 + 注释论证；②`track_input_text`/
-  `retain_input_values_after_handler` 提取 + 两调用点原位替换。
-  验证：`cargo check -p auto-lang`（默认 + autodown + ui-iced feature
-  集）零错零新警告。[✅ 已完成]
-- **T-03 回归测试**（AC-01/02/03）：新增语料 `test/ui/plan739_input_pin/`
-  + T-A/T-B/T-C 三测试。验证：修前基线 T-A 复红留痕 → 修后
-  `cargo nextest run --lib --features autodown plan739` 全绿。[✅ 已完成]
-- **T-04 分级门禁**（AC-04）：`cargo nextest run --lib --features autodown
-  plan732`（13/13）+ `… plan737`（2/2）+ `cargo t autodown`（零新红）+
-  `cargo fmt --check`（我方文件零 diff）。[✅ 已完成]
-- **T-05 复审+merge+binary**（AC-04/05）：`/auto-plan:review`（裸
-  `cargo t` 逐名基线 diff）→ status: reviewed → merge（Conventional
-  Commit）→ wt-guard + worktree/分支清理 → master 重建 debug binary →
-  回执 `docs/reports/p739-ade-input-pin-receipt.md`（指纹 + 门禁矩阵 +
-  根因摘要 + N4/P2b/P5 明文分界）。[✅ 已完成]
+- **T-01 worktree 建立**（AC 前置）：`git worktree add
+  D:/autostack/.wt/lang-739/auto-lang -b plan-739-dev` + 组内 auto-down
+  兄弟 detached（895f8d0）。[✅ 已完成] worktree@9fcbdb5de 干净建组。
+- **T-02 根修实施**（AC-01/02/03）：renderer.rs 摘 ADE 臂（论证注释在位）
+  + `track_input_text`/`retain_input_values_after_handler` 提取 + 两调用点
+  原位替换（insert@19586/retain@19981）。[✅ 已完成] `cargo check` 默认/
+  autodown/ui-iced 三 feature 零错（392/397/392 警告=仓内既有基线）。
+- **T-03 回归测试**（AC-01/02/03）：语料 `test/ui/plan739_input_pin/` +
+  T-A/T-B/T-C 三测试。[✅ 已完成] 修后 3/3 绿；**修前复红留痕**：临时
+  恢复 ADE 臂跑 T-A → `left: "第一页正文。XYZ" right: "第二页正文。"`
+  （视面钉死旧页+键入文本，与缺陷现象逐字节同构）→ 撤临时臂复绿。
+  实施修订两处（契约零变化）：①T-A 视面核半边改两段降层节律断言
+  `autodown_editor_text`（sync 自由函数在槽位缺席时 no-op——
+  PLAN-732 回执⑤同口径，生产节律经 into_iced 两拍实证）；②T-C 载体
+  字面量去 wikilink 语法 + 渲染帧排布几何后点击建焦（emit 脱括号/
+  重建后焦点 None 裸按键被丢——plan057 同因）。
+- **T-04 分级门禁**（AC-04）：[✅ 已完成] plan732 13/13 ✅；plan737 2/2 ✅；
+  `cargo t autodown` 80/80 ✅；`cargo fmt --check` 我方文件零 diff
+  （仓内 28 处预存与 737 基线同数）。
+- **T-05 复审+merge+binary**（AC-04/05）：[✅ 已完成] 裸 `cargo t`
+  （--no-fail-fast 全景）：worktree 5057/5072，红集=14 预存红与 master
+  基线（master 同口径 32 行去重 16 红）**逐名全等**；差异项全为在案
+  flake：worktree 侧 plan730_commit_target_matrix 隔离复跑绿（737 回执
+  点名 flake），master 侧 plan484_024/plan502_m3 本轮抖红（732 回执在案
+  flake）——零新红。merge/binary/回执见 §9 复审记录与交付回执。
+
+### 附带勘定（非本计划改动，登记 KNOWN-DEBT）
+
+- `crates/auto-cache` 测试目标**仓内腐坏**（`cargo check -p auto-cache
+  --tests` E0063：`ShimMethod` 缺 `trait_name`——PLAN-596 T-03 加字段
+  未同步该测试构造）。日常档门禁只建 `-p auto-lang` 目标，auto-cache
+  自身测试从不参与编译，腐坏不可见。master@9fcbdb5de 实证同破。
 
 ## 9. 复审记录
 
