@@ -72,3 +72,17 @@
 
 各报告头部；全部 fixture 在 `crates/auto-lang/src/tests/plan734_api_contract_tests.rs`
 与 `examples/http_server/api_contract/`。
+
+## 7. R1 回工与 R2 复验补记
+
+- R1 findings 修复：F-1 八处生产 contains 位点契约化（api_gen :1158/:2422/:2859/:2949/:2978/:3703
+  + typescript :312/:427——grep 七文件全零）；F-3 Tauri MockRuntime dispatcher 实测落地
+  （fixture 锁 + mock_builder/generate_handler!/get_ipc_response 全链，43rd api_gen 测试）；
+  F-2 parity 报告修正。tauri dev-dep 必须 default-features=false（默认 features 引入
+  WebView2Loader → 本机测试二进制 STATUS_ENTRYPOINT_NOT_FOUND，R1 实证）。
+- R2 补修：`vm_value_to_json` 的 `Value::I64` 臂在 T-08 提交时因探针回退意外丢失
+  （提交信息提及但 diff 未含——`git log -S` 零命中证明）；缺臂时 i32→I64 统一后
+  stringify 形态漂移 → 664 值域 e2e 红。恢复后 tv 162/162。
+- R2 终局门禁：裸 t 1492/1495（3 预存 musk p053）、tv 162/162、tt 1877/1880（同 3 预存）、
+  th 串行 100/101（1 预存 corpora_data_face；plan707 flake 在案；sse_chain 隔离绿=并行端口
+  竞争非确定性）、plan734 7/7、plan730 e2e 14/14、api_gen 43+1。零新增确定性红。
