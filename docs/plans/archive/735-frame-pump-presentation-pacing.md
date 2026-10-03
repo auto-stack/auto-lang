@@ -357,8 +357,10 @@ downstream-handoff v2（呈现事实结论+交付节奏终态+通道语义建议
     投影提交=d2c6209fa。
   - `archived`：docs/plans/archive/735-frame-pump-presentation-
     pacing.md，status: archived（本提交）。
-  - `cleaned`：（清理后回填——wt-guard 双组树 clean+worktree/branch/
-    组目录注销）。
+  - `cleaned`：wt-guard 双组树 clean（auto-lang+auto-down 无 reparse
+    point）；worktree 双注销+branch plan-735-dev 删（was 4195f7af9——
+    master 祖先链 verified）+组目录 D:/autostack/.wt/lang-735 注销
+    零残留（ls 空）。
   部署观察：零常驻产物消费本仓构建（auto run 按需源构建；下游
   auto-edit bench 档自建 auto-lang）——零重建项，732 惯例维持。
   批量回归到期判定：735%5=0 且 735>732（receipt last_covered）→
