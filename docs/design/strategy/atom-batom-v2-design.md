@@ -3,7 +3,7 @@
 > 状态：Draft RFC，2026-10-04。用户需求已记录；本文技术选择是待讨论的建议，尚未冻结格式或实现。
 > 本次只建设新方向的设计。主电脑计划已到 739/740，本地不可见，暂不分配正式设计/Plan 编号。
 > 不改旧 auto-atom/auto-val/Shell Batom、parser、VM 或消费仓；后续实施仍按设计/Plan/worktree 流程。
-> 关联：[v0.6 提前开发](v0.6-offline-development-strategy.md)、[统一安装体系](unified-package-install-strategy.md)、[v0.6 roadmap](../../roadmap-v0.6.md)。
+> 关联：[v0.6 提前开发](v0.6-offline-development-strategy.md)、[统一安装体系](unified-package-install-strategy.md)、[v0.6 roadmap](../../roadmap-v0.6.md)、[Schema DSL / 组合 / secondary](atom-schema-dsl-design.md)。
 
 ## 1. 用户需求与本稿建议
 
@@ -82,7 +82,8 @@ Map 非字符串键若确有需求，作为独立 typed map 扩展设计，不�
 ### 3.2 Object / Node：共享字段基础，保留语义区别
 
 本节根据用户提出的 Obj/Node 冗余与 prime/args/body 歧义修订，取代初稿
-“括号命名参数与正文 Field 是两个独立字段区域”的建议。以下仍是待确认设计。
+“括号命名参数与正文 Field 是两个独立字段区域”的建议。用户已认可共享字段基础、
+保留语义区别和统一属性的方向；具体格式与 Schema 扩展仍是设计草案。
 
 Object 表达按 key 查值的字段集合；Node 表达具有种类、属性和有序内容的节点。
 二者都能组成树，但只有“能组成树”不足以证明它们是同一种值：
@@ -110,7 +111,7 @@ FieldSet = unique field name/FieldId -> Value
 Object { fields: FieldSet }
 Record { schema: TypeId, fields: FieldSet }
 Node {
-    kind: Symbol,
+    tag: Symbol,
     fields: FieldSet,
     args: ordered Array<Value>,
     content: ordered Array<ContentItem>
@@ -128,7 +129,8 @@ ContentItem 的 Text 为知识文档的文字/节点交错留出位置；文本 
 字段有唯一名字；内容有顺序，可重复种类。需要某字段多个值时用 Array。
 Child 的业务 ID 不充当内容容器唯一 key，避免相同 ID/空 ID 的子节点覆盖。
 字段 lookup 不依赖它原来在 prime、括号或正文哪个地方；提供共同的借用访问接口。
-取 Node 的 fields 是显式字段视图，不能称为 Node→Object 的无损转换并丢掉 kind/content。
+取 Node 的 fields 是显式字段视图，不能称为 Node→Object 的无损转换并丢掉 tag/content。
+节点头部改称 tag，避免与业务字段 `kind`/`type` 混淆；这不代表修改旧 Node 结构的字段名。
 
 #### 3.2.1 三处写法，一套属性语义
 
@@ -171,8 +173,11 @@ Schema 可声明 Button/Text 的 primary 为 text，Image 为 src，Project 为 
 但不能让所有 Node 的 `id()` 自动读取 primary，导致改按钮文案就改身份。
 裸标识符是符号值还是语言变量绑定由语言语法定义；Atom 数据核心不自动定义变量。
 
-Node Schema 至少描述 `primary_field: FieldId?`、可选的位置参数绑定表、identity 字段策略、
-字段类型/presence、内容类型/基数和顺序约束。primary/参数绑定属于 descriptor 契约，
+Node Schema 至少描述 `primary_field: FieldId?`、可选的 `secondary_field: FieldId?`、
+位置参数绑定表、identity 字段策略、字段类型/presence、内容类型/基数和顺序约束。
+secondary 是显式第二头部槽；用户例子 `info MyNode select {}` 映射到 id 字符串和 kind enum，
+不是把 select 当作整个节点的类型。规则见 [Schema 专题](atom-schema-dsl-design.md)。
+primary/secondary/参数绑定属于 descriptor 契约，
 需随 Schema 演进受控，不在解析器内维护独立的组件硬编码表。
 
 未知 Schema 时，基础数据格式使用显式字段名，保留真正的 args，不能猜 prime 是 id/name/text。
@@ -317,7 +322,7 @@ Schema/访问表。Bootstrap 需要少量固定元结构，不要求用尚不存
 - namespace、schema family、revision、精确内容 fingerprint；revision 本身不证明兼容。
 - 稳定 TypeId/FieldId/VariantId；名称为可读标识/alias，与内存槽位、生成字段顺序分离。
 - scalar/record/node/array/variant/ref/link，optional、nullable、required、default。
-- Node 的统一 fields、primary/位置参数绑定、identity、内容顺序与基数、重复 child 和引用目标规则。
+- Node 的统一 fields、primary/secondary/位置参数绑定、identity、内容顺序与基数、重复 child 和引用目标规则。
 - bounds、enum、长度/数量、引用闭合；约束语言先保持有限、声明式，不执行任意代码。
 - 废弃/保留编号、版本迁移声明、unknown 策略、编码选项与域扩展命名空间。
 
@@ -335,16 +340,26 @@ Schema/访问表。Bootstrap 需要少量固定元结构，不要求用尚不存
   是否携带 extras。重新编码能否保留未知字段取决于此，不能空口承诺。
 - Schema 获取由调用方提供或解析明确的本地/可信 registry；解析器不隐式联网。
 
-### 6.4 Schema 文本示意
+### 6.4 独立 Schema DSL、组合和标注入口
 
-下例仅表示元模型意图，字段名和元 Schema 语法尚未冻结：
+建议以独立 Atom 文档表达契约；标注是生成同一 descriptor 的便捷入口。
+每个类型明确 schema-first 或 code-first 的权威来源，不手工维护两份不同规范。
+组合先支持嵌套类型和显式 fragment 展开；完整继承/子类型另行设计。
+以下为用户的双头部槽例子，完整 enum、identity、组合与 bootstrap 规则见
+[Schema DSL 专题](atom-schema-dsl-design.md)。字段名/元 Schema 词法尚未冻结：
 
 ```atom
-schema(namespace: "auto.demo", family: "Person", revision: 1u32) {
-    record(name: "Person", type_id: 1u32) {
-        field(name: "name", field_id: 1u32, type: :Text, required: true) {}
-        field(name: "age", field_id: 2u32, type: :U32, required: true) {}
-        field(name: "nickname", field_id: 3u32, type: :Text, optional: true) {}
+schema(namespace: "auto.dsl", family: "info", revision: 1u32) {
+    enum(name: "InfoKind", type_id: 1u32) {
+        case(name: "select", variant_id: 1u32) {}
+        case(name: "input", variant_id: 2u32) {}
+    }
+    node(name: "info", type_id: 2u32) {
+        field(name: "id", field_id: 1u32,
+              type: :Text, presence: :required, lexical: :identifier) {}
+        field(name: "kind", field_id: 2u32,
+              type: :InfoKind, presence: :required) {}
+        syntax { primary: :id; secondary: :kind }
     }
 }
 ```
@@ -419,7 +434,7 @@ kind 和 length 使用有界 varint；Null/Unit/Bool 可有固定零/小载荷�
 - Symbol：文档字典索引或 inline；名称/字段名去重。普通字符串去重为可选优化。
 - Array：数量和有序值；TypedArray 只声明一次 element type/数量，检查载荷精确大小。
 - Object：有序 name/value 项；Record：type/schema identity 与有序 field ID/name/value。
-- Node：kind、统一 fields、真正的 args 和有序 content；不编码字段原来所在的语法区域。
+- Node：tag、统一 fields、真正的 args 和有序 content；不编码字段原来所在的语法区域。
 - Variant/Ref/Link：明确 tag/目标描述；未知 kind 以 Opaque 保存，不能默默改成 Null。
 
 无索引的 TLV 适合顺序扫描，但随机字段读取不自动 O(1)；reader 可按需建立 offset
@@ -574,6 +589,7 @@ auto-val adapter 未来消费上述能力，保持 runtime 语义
 - Node/Object/Record/Array/TypedArray/标量、位宽、浮点位模式、缺失/Null/Unit、引用与扩展。
 - Node→模型→Lisp→模型→Batom→模型；compare 定义覆盖顺序、presence 与类型。
 - 括号/正文/Schema primary 的同义写法归一相等；跨区域重复字段拒绝并报告两个位置。
+- secondary 明确绑定已有字段；id 文本/业务 enum/tag 不混淆；fragment 展平保持公开编号与冲突诊断。
 - 无 Schema 不猜 primary；改 text 不改 identity；多个同类/同 ID 子节点保持数量和内容顺序。
 - 普通 Object/Node 共享字段访问但保留 kind/content；空 Node 不降为 Object；JSON 重复 key 策略明确。
 - struct derive/adapter 的 owned/borrowed 读取、schema mismatch、未知字段保留与投影限制。

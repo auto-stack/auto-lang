@@ -154,6 +154,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [demo-app-independence-strategy](strategy/demo-app-independence-strategy.md) | 教学 Demo 与独立产品分流、来源同步、子模块组织与产品孵化 | 首轮建仓/接线完成；产品功能与全量验收待推进 |
 | [unified-package-install-strategy](strategy/unified-package-install-strategy.md) | auto-man 系统级包网络、安装核心与实体生命周期 | 目标已确认，技术设计草案（v0.6 必做） |
 | [atom-batom-v2-design](strategy/atom-batom-v2-design.md) | 新 Atom/Batom：独立于 auto-val 的模型/内存、Schema、struct codec、Node/Lisp 文本、自描述与紧凑二进制 profile | 📝 Draft RFC（2026-10-04；新方向，格式/计划未冻结） |
+| [atom-schema-dsl-design](strategy/atom-schema-dsl-design.md) | Atom Schema DSL、独立描述与标注、组合/fragment、primary/secondary、业务 enum 与身份 | 📝 Draft RFC（2026-10-04；语法与分期建议待确认） |
 | [auto-as-rust-script-strategy](strategy/auto-as-rust-script-strategy.md) | "Auto 作 Rust 脚本层"宣传与文档纲领 | ✅ Accepted（Plan 359） |
 | [rust-library-replication-roadmap](strategy/rust-library-replication-roadmap.md) | Rust 库复刻验证路线（parity 语料） | ✅ 现行（Plan 347/348/369） |
 | [python-parity-roadmap](strategy/python-parity-roadmap.md) | Python parity 第三维度（use.py + a2py） | ✅ 现行（Plan 369 首批落地） |
