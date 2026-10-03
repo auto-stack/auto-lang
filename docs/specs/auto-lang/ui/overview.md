@@ -1487,3 +1487,19 @@ a2r 编译面轨随缺省翻转计划另立。
   `on "open-wiki-link"` 完整 kebab，与 jade Vue 同名）→ 双 Str 载荷直达
   VM handler。新 design 文档：autodown-wikilink.md（契约八节+测试索引）；
   裁定沉淀 architecture.md ADR-27。
+
+## PLAN-735 注记（2026-10-03）
+
+- 帧观测通道升格为**呈现/通知分离**语义（frame-observability.md §1/§4/§5）：
+  `present_ms`=通知面（稳态走 ready 唤醒链，711 D-2 订阅门稳态关）；
+  新增 `draw_end_ms` 逐帧呈现真值（根包装 draw 括号结束——iced_winit
+  RedrawRequested 臂内同步先行于 present；Rust 读侧
+  `frame_draw_end_ms()`，VM 9920/a2r 为下游重判件建议项）。
+- 交付节奏契约（§4）：呈现节奏=驱动器节奏传递（每输入更新轮无条件
+  request_redraw→下一轮同步 draw+present）；~100ms 级恒定节拍=驱动器
+  调用周期+服务端锁长尾的传递读数，非渲染天花板——帧率类判定必须
+  连同驱动协议周期归因。
+- 泵配对契约（frame-pipeline-incremental.md §4b 升格）：发布点
+  truthful present（draw_end_ms 优先）——建帧 100% 拿行，
+  `present=-1` 仅真未呈现帧；731 的「-1=测量配对面」定性由
+  发布点错位机理细化并修复（evidence/735/）。

@@ -5198,6 +5198,17 @@
       "auto-man",
       "docsha:76e3b0ec11c2"
      ]
+    },
+    {
+     "id": "P735-1",
+     "title": "frame-observability/frame-pipeline-incremental — 帧观测呈现/通知分离与配对契约（PLAN-735 SD-01/SD-02）",
+     "content": "SD-01（frame-observability.md 升格）：§1 通道三时戳——begin_ms（update 入口）/present_ms（泵通知消费时刻——通知面语义定谳：稳态通知走 ready 唤醒链，711 D-2 订阅门稳态关）/draw_end_ms（根包装 draw 括号结束绝对墙钟——呈现面逐帧真值，iced_winit RedrawRequested 臂内同步先行于 compositor present；Rust 读侧 frame_draw_end_ms()，VM 9920/a2r=下游重判件建议项未接线）；§4 交付节奏契约（呈现节奏=驱动器节奏传递——每输入更新轮无条件 request_redraw 下一轮同步 draw+present；~100ms 级恒定节拍=驱动器调用周期+服务端锁长尾传递读数非渲染天花板——帧率判定须连同驱动周期归因）+呈现真相通道边界（单窗精确/多窗末值，face 早退路径不包装沿 731 注记）；§5 配对面口径升格（[P725-FRAME] 增 draw_end_ms 列；发布点 truthful present）。SD-02（frame-pipeline-incremental.md §4b 泵治理语义升格）：配对损耗根因=发布点错位（链式消费先于重建落 prev，__bounds_collected 旋转孤儿化建帧窃配对——87% 损耗 9-26% 行配对实测）；修复=发布点 truthful present（draw_end_ms 优先，双发布点同规则，建帧 100% 拿行，present=-1 仅真未呈现）；证据 evidence/735/。下游判定零触碰（auto-edit 022 frozen——读回语义适配=下游重判件）。",
+     "file": "docs/specs/auto-lang/ui/design/frame-observability.md",
+     "related": [
+      "PLAN-735"
+     ],
+     "status": "stable",
+     "created": "2026-10-03T03:20:00Z"
     }
    ]
   },
@@ -8316,6 +8327,17 @@
       "commit:dcd151932",
       "rebase:05645a444"
      ]
+    },
+    {
+     "id": "P735-2",
+     "title": "PLAN-735 复审 pass 收据（@67a91eaad→rebase a5b8902d8，基 c989483ce）",
+     "content": "同会话复审（独立性受限声明，结论自工件重建非执行摘要采信）。AC-01..05 全 pass：分离谱定谳（呈现随驱动更新 +6-10ms；~95-110ms 节拍=驱动器调用周期传递——60ms sleep+调用时延 p50 62.5ms+长尾 ~20ms@1/3 调用 probe_type_period.py 在档；滚动突发送达 2-3ms=循环能力数百 fps）；行配对 25%→100%（JSONL 复算 55/220→184/184+76/76=260/260；present=-1 仅真未呈现）；R-1 序障 404 行零违例复算；golden 三形 0.00%（735-*.png 基面源 baseline 对照）；cargo t 5022/5038 零新红（16 红全预存：14 批量回执登记+ash 主检出同红+plan502 负载 flake scoped 绿）+tv 162 绿+frame/plan716 55 绿（rebase 后复跑）。diff 复勘：4 文件 +127/-11，712 r2 域（dirty/epoch/poll_frame_pump）零触碰，双门门控零开销纪律保持。SD-01 SHA256 66f43aa8…/SD-02 b21fa6c9… frozen@67a91eaad。非阻塞 F-NB1 单跑 5kb/typenl 日志尾截断（复跑 43/43）/F-NB2 segsum type 跨跑负载漂移 +12-34%（逐段均匀+S5±10% 承载）/F-NB3 遗留 examples fmt 漂移。rebase 两次（master 前移 730/734/736 并行落）range-diff 全等（5da3b4727/7b9b2f8f5/67a91eaad→90a24a01a/e7faa3a1c/a5b8902d8→4ff3670c8/4195f7af9 逐对 =）。",
+     "file": "docs/plans/archive/735-frame-pump-presentation-pacing.md",
+     "related": [
+      "PLAN-735"
+     ],
+     "status": "stable",
+     "created": "2026-10-03T03:20:00Z"
     }
    ]
   }
