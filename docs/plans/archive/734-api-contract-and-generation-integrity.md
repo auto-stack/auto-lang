@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-734
-status: reviewed
+status: archived
 feature_name: api-contract-and-generation-integrity
 author: [agent]
 created_at: 2026-10-03
@@ -261,6 +261,30 @@ HTTP TS生成client须真正执行请求并验证path/body/错误，不仅检查
 - 清理前`bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-734/auto-lang`及兄弟仓guard clean；tf仅到期main单实例。全AC/SD闭合才可标reviewed/archived。
 
 ## 9. 复审记录
+
+### 合并收据 PLAN-734:r1（2026-10-03，/auto-plan:merge）
+
+- stage: merge | plan_id: PLAN-734 | plan_revision: 1 | outcome: pass
+- **prepared**：reviewed 基线 6ebc85f7a（R2 pass）→ rebase 到 master（前移：735 已并，
+  规范目标零冲突）→ 新链 12 提交（range-diff 逐对全等——安全改写证明；
+  a5284dd84→036312096/2b116e4cd→2a024d0ae/6ebc85f7a→04fea48b2）→ canonical 沉淀
+  SD-01..07（新 stdlib/design/api-transport-contract.md、auto-man/design/
+  api-generation-integrity.md；改 http-server.md §14、backend-assembly.md、stdlib
+  project.md、auto-man project.md、trans overview.md、vm/back-proxy.md）+ plans
+  索引两行 + ledger P734-1(designs)/P734-2(designs)/P734-7(reviews)/P734-8(reports)
+  （docsha 绑定）+ INDEX 再生 → 投影后裔 **delivery commit ec0eae41f**（实现/依赖与
+  reviewed 状态零改动）。
+- **landed**：主检出 `git merge --ff-only plan-734-dev` → tip=ec0eae41f（无 merge
+  提交）；冒烟 `cargo t plan734` 7/7 + `cargo tv` 162/162。
+- **ledger_refreshed**：`.autoos/specs.json`（tracked，worktree 内 upsert + git 提交）
+  P734-1/2/7/8 回读在档；INDEX 再生（26 projects）。
+- **archived**：`docs/plans/archive/734-api-contract-and-generation-integrity.md`
+  （git mv；status archived；completion_kind: delivered）。
+- **cleaned**：见下一提交（wt-guard + 工作树/branch/组目录移除后回填）。
+- 部署观察：landing 非部署——本计划无本机常驻生产进程消费（auto 桌面壳未运行）；
+  无 auto build 产物待重建。
+- 批量回归到期判定：734 % 5 = 4 ≠ 0；回执 last_covered_plan_id=732 且回执
+  时间戳 2026-10-03（<48h、其后仅 734/735 合并）——**未到期**。
 
 ### 复审 R2（2026-10-03，/auto-plan:review）
 
