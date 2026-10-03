@@ -1,12 +1,12 @@
 # 33 - Auto 标准库多后台与 Web 服务运行时
 
-> 状态：方案稿（2026-09-23 静态审计；2026-10-03 更新730交付、734工作交接与736计划）；现状以 `docs/specs/` 与源码为准。
-> 实施入口：阶段 A [PLAN-696](../plans/archive/696-stdlib-http-server-runtime-hardening.md)、阶段 B [PLAN-699](../plans/archive/699-vm-http-transport-axum-bridge.md)、阶段 C1 [PLAN-705](../plans/archive/705-vm-http-handler-async-lifecycle.md)、阶段 C2a [PLAN-707](../plans/archive/707-vm-http-stream-async-relay.md)、阶段 C2b [PLAN-724](../plans/archive/724-a2r-http-client-async-convergence.md)、阶段 C2c [PLAN-727](../plans/archive/727-http-file-transfer-lifecycle.md)、阶段 D1a [PLAN-729](../plans/archive/729-http-server-file-responses.md)、阶段 D1b [PLAN-730](../plans/archive/730-http-server-upload-ingress.md) 已交付；阶段 D2a [PLAN-734](../plans/734-api-contract-and-generation-integrity.md) 已有代码完成交接，待独立复审/合入；阶段 D2b [PLAN-736](../plans/736-http-service-deployment-and-operations.md) HTTP服务部署基线已起草，待734复审合入后实施。
+> 状态：方案稿（2026-09-23静态审计；2026-10-03更新734交付、736实施与738规划）；现状以 `docs/specs/` 与源码为准。
+> 实施入口：阶段 A [PLAN-696](../plans/archive/696-stdlib-http-server-runtime-hardening.md)、阶段 B [PLAN-699](../plans/archive/699-vm-http-transport-axum-bridge.md)、阶段 C1 [PLAN-705](../plans/archive/705-vm-http-handler-async-lifecycle.md)、阶段 C2a [PLAN-707](../plans/archive/707-vm-http-stream-async-relay.md)、阶段 C2b [PLAN-724](../plans/archive/724-a2r-http-client-async-convergence.md)、阶段 C2c [PLAN-727](../plans/archive/727-http-file-transfer-lifecycle.md)、阶段 D1a [PLAN-729](../plans/archive/729-http-server-file-responses.md)、阶段 D1b [PLAN-730](../plans/archive/730-http-server-upload-ingress.md)、阶段 D2a [PLAN-734](../plans/archive/734-api-contract-and-generation-integrity.md)已交付；D2b [PLAN-736](../plans/736-http-service-deployment-and-operations.md)部署基线实施中；D3a [PLAN-738](../plans/738-stdlib-assembly-manifest-and-core-validation.md)装配manifest与核心校验已起草，待736复审合入后实施。
 > 历史输入：[Design 13](13-networking.md)、[多平台填充草案](raw/stdlib-organization.md)、[HTTP 草案](raw/http-server-stdlib.md)。
 
 ## 1. 结论与适用边界
 
-**阶段状态**：下文 §2 与 §5 的风险表保留 PLAN-696 实施前的审计基线，不能当成 2026-10-03 的现状。PLAN-696 已修复分段 body、慢 SSE 阻塞和 VM 指针跨线程转运；PLAN-698 已交付 VM publisher SSE；PLAN-699 已用 Axum/Hyper 替换 VM `#[api]` 手写 HTTP 默认入口，补齐协议/队列预算和优雅关闭。PLAN-705 已交付普通 handler 的段执行/完成通知、请求作用域、迟到结果不复活和有界非流式客户端。PLAN-707 已闭合 VM 外部流等待、背压与 managed 实际取消；724 已交付两 Rust facade 的共享 async 内核、流背压/取消、增量 decoder 单源和 a2r async lowering，并清偿 P707-R1。727 已交付客户端增量文件传输、可靠提交、续传校验、进度/取消与 legacy 迁移，并补齐 queued 取消/期限。729已交付服务端文件响应，730已交付服务端上传；734普通API契约/生成正确性已有工作交接，独立复审尚未完成。736部署基线已起草，CPU纪律和全标准库装配manifest仍独立规划。
+**阶段状态**：下文 §2 与 §5 的风险表保留 PLAN-696 实施前的审计基线，不能当成 2026-10-03 的现状。PLAN-696 已修复分段 body、慢 SSE 阻塞和 VM 指针跨线程转运；PLAN-698 已交付 VM publisher SSE；PLAN-699 已用 Axum/Hyper 替换 VM `#[api]` 手写 HTTP 默认入口，补齐协议/队列预算和优雅关闭。PLAN-705 已交付普通 handler 的段执行/完成通知、请求作用域、迟到结果不复活和有界非流式客户端。PLAN-707 已闭合 VM 外部流等待、背压与 managed 实际取消；724 已交付两 Rust facade 的共享 async 内核、流背压/取消、增量 decoder 单源和 a2r async lowering，并清偿 P707-R1。727 已交付客户端增量文件传输、可靠提交、续传校验、进度/取消与 legacy 迁移，并补齐 queued 取消/期限。729/730服务端文件响应/上传与734 API契约/生成正确性已交付；736部署基线实施中，738装配manifest基础已规划，CPU纪律及非核心标准库的更深ABI/行为parity仍独立推进。
 
 Auto 当前足以支撑示例级、本机开发用的 CRUD API，以及已经验证的部分 SSE/媒体路径；不能据此认定 VM HTTP 入口已经具备通用 Web 服务器的协议正确性、并发隔离和运维能力。`#[api]` 是跨后台的用户契约，实际服务能力分散在 AutoVM 原生 shim、`auto-man` 生成的 Axum 服务、VM 合并调用、Tauri IPC，以及 gallery back-proxy 中。不能把“使用同一份 `api.at`”等同于“使用同一 HTTP 实现”。
 
@@ -89,11 +89,12 @@ HTTP/IPC/合并适配器
 | D1a：服务端文件下载（PLAN-729，已交付） | 普通 api.at FileResponse；VM/生成 Rust 共用版本无关文件执行代码；GET/HEAD、单 Range/条件请求、根目录打开、有界 body/取消 | 双端 wire、真实生成实编、资源回收与727互通已有证据；精确边界见current http-server-files及file-response-lowering Specs。 |
 | D1b：服务端文件上传（PLAN-730，已交付） | multipart/raw单文件+有界字段、授权先行、私有staging与create-only提交、取消/FS收口、legacy顺序/错误修复 | VM/真实生成Rust同源互通和两端矩阵已有证据；精确范围见current http-server-uploads。 |
 | C2 后续：CPU 纪律（待立项） | CPU 预算/阻塞纪律依独立裁定 | 独立负载与共享状态证据，不能从异步网络等待推定 CPU 能力已实现。 |
-| D2a：API契约与生成代码一致性（PLAN-734，R1需修复） | 参数/返回分类、真实实现checked generation、产物指纹与错误传播 | R1 needs_fix：8处类型分类残留、报告表述、Tauri真实dispatcher；D4/D5/D7已明确接受。待修复复审/合入，不能宣称五形态全闭合。 |
-| D2b：部署基线（PLAN-736，待734复审合入） | 两轨独立serve、严格config/profile、loopback迁移、连接/请求预算、CORS/Host/单代理边界、ready身份/有界日志/关闭 | 真实VM/生成Rust/HTTPS代理及固定负载/回收阈值，先验证单代理保护服务等级；不宣称直接公网或CPU/native隔离。 |
-| D3：全标准库目标装配manifest（待立项） | 公共符号/目标实现/版本与能力覆盖、缺实现/重定义/签名漂移诊断 | VM/Rust/C及运行环境分别核对，API契约记录不代替io等模块的覆盖表。 |
+| D2a：API契约与生成代码一致性（PLAN-734，已交付） | 参数/返回分类、真实实现checked generation、产物指纹与错误传播 | R2 pass与delivery ec0eae41f；以api-transport-contract/API integrity规范及归档限制为准，保留D4/D5/D7已批准边界。 |
+| D2b：部署基线（PLAN-736，实施中） | 两轨独立serve、严格config/profile、loopback迁移、连接/请求预算、CORS/Host/单代理边界、ready身份/有界日志/关闭 | T-01已冻结schema/环境；后续实际proxy/负载/关闭验收未完成，不宣称直接公网或CPU/native隔离。 |
+| D3a：装配manifest与核心校验（PLAN-738，待736合入） | 全库inventory、真实装配源/provider/目标/环境、核心io/net/async/http/json/sse签名/缺实现门与cache/源映射 | 实际VM/persistent/Rust/C选择、native真实绑定、JSON inspect与生成收据；全库清点不等于全符号行为parity。 |
+| D3b：装配覆盖与ABI/行为对拍深化（待立项） | 扩展非核心strict/provider门、资源/错误/取消与更深ABI、已需目标能力补齐 | 按D3a实际缺口逐模块立项，signature_checked不推定运行语义等价，不固定一轮补齐所有后台。 |
 
-阶段C1/C2/D各自独立验收；本轮仅起草736和更新路线，不运行Cargo或负载。730已归档，734仍在review队列；736同触API生成/启动/HTTP核心，须等734独立复审合入。门禁以最新AGENTS.md为准：裸cargo t为per-plan基础门禁，按触面加tv/tt/th等；真TCP串行、负载单实例；tf为main到期批量回归，不是每计划门禁。
+阶段C1/C2/D各自独立验收；本轮仅起草738和更新路线，不运行Cargo或负载。734已归档，736正在实施；738同触lib/auto-man/CLI装配与生成来源，等736复审合入后执行。门禁以最新AGENTS.md为准：裸cargo t为per-plan基础门禁，按触面加tv/tt/th等；真TCP串行、负载单实例；tf为main到期批量回归，不是每计划门禁。
 
 ### 6.1 阶段 C1 的设计收敛（2026-09-28 设计基线；705 已交付）
 
@@ -149,23 +150,33 @@ HTTP/IPC/合并适配器
 
 VM与真实生成Rust上传共用宿主执行代码，727上传→729下载hash及错误/超限/取消矩阵已验证。legacy小multipart保留成功形状、修正写盘顺序和错误/清理；typed上传middleware异常拒绝，非HTTP明确Unsupported。多文件事务、断点分片、全局磁盘配额/崩溃恢复仍另案。服务级关闭/真实代理早拒由736继续验证。
 
-### 6.7 阶段 D2a：API契约与生成代码一致性（PLAN-734，已有工作交接）
+### 6.7 阶段 D2a：API契约与生成代码一致性（PLAN-734，已交付）
 
-734起草审计基线：生成body失败可退模板、调用点吞错/启动旧产物；VM参数窄化、body未按声明校验、error字段和资源数值探测影响响应。现有worktree工作交接报告已记录strict generation、新鲜度/错误传播及普通API修复证据；main尚未合入，最终现状须独立review与canonical沉淀。
+734起草审计基线：生成body失败可退模板、调用点吞错/启动旧产物；VM参数窄化、body未按声明校验、error字段和资源数值探测影响响应。734已R2 pass并以ec0eae41f交付/归档；strict generation、新鲜度/错误传播及普通API证据见canonical [api-transport-contract](../specs/stdlib/design/api-transport-contract.md)与[API generation integrity](../specs/auto-man/design/api-generation-integrity.md)。
 
-734拟建立版本化ApiContract：resolved类型身份、参数来源/范围、返回kind、transport能力、源位置及真实实现指纹，实际生成器/VM/back-proxy session分别消费。普通JSON数据包括sync/~T标量、optional、record/array及有界组合，禁止未知类型默认String、合法整数截断、业务error字段变500或普通数值误判资源。int宽度须核对类型语义与Rust既有i64映射，不能以VM当前窄化行为定义语言限制。IPC/merged保留原生函数数据和错误边界；HTTP status/header与文件/上传/流协议不扩张到所有形态。
+734的类型身份、参数来源与返回kind分类由实际生成器/VM/back-proxy消费；参数与i64、错误和真实实现门按其当前Spec支持面执行。int宽度不能以VM旧窄化定义语言限制；IPC/merged保持原生函数数据，HTTP status/header和文件/上传/流不扩张到所有形态。既有iterator/Response注册表兼容及D4/D5/D7边界保留，不从类型分类推定所有VM通用ABI已统一。
 
 运行API必须有可验证业务body、已解析委派或明确目标provider；不能转译失败换模板、缺实现warn+null。脚手架只生成显式初始源码。checked generation准备完整不可变bundle，ready绑定当前源码/依赖/实现与transport；生成任一错误非零，不能启动旧产物冒充当前版本。所有实际run/build消费者传播错误；无API项目和明确手写provider保留各自正确路径。
 
-734合同要求五形态真实对拍；起草期间独立review R1已返回needs_fix，要求修复8处生产类型分类残留、修正报告并补真实Tauri dispatcher fixture。D4/D5与iterator/Response注册表兼容回退D7已被R1明确接受并记录，不能把加test依赖/生成串测试当dispatcher实测，也不扩张支持声明。729/730与SSE专属协议保持；736依赖734修复后复审pass+merge。
+734 R1发现的类型分类残留/报告/Tauri fixture经回工与R2复审闭合，最终证据与批准边界见归档收据；729/730/SSE保持专属协议。这里记录交付事实，不重开734历史合同。更广标准库provider/目标来源由738接续。
 
-### 6.8 阶段 D2b：HTTP服务部署基线（PLAN-736，提前规划）
+### 6.8 阶段 D2b：HTTP服务部署基线（PLAN-736，实施中）
 
 两服务轨仍有部署差距：VM默认0.0.0.0而生成Rust仅loopback，CORS分别静态*与allow_origin(Any)；VM已有请求额度不限制全部连接，生成main未接同等预算/关闭；ready仅TCP probe且消息可能早于bind。736拟用版本无关HttpServiceConfig/策略和有界观测、0.8/0.7分别装配，补独立`auto serve`，不启UI或dev前端。
 
 默认loopback迁移明确记录，显式service profile覆盖Host/CORS/单层trusted proxy、鉴权责任与middleware异常拒绝；内部扫描/简化WS在service profile默认off。普通连接/request/body预算、file/upload专属期限与body终态许可、identity ready、JSONL脱敏/有界sink、drain/真实子进程退出构成可验证的部署合同。
 
-736有8任务/9AC/6SD，等待734独立review合入后实施。真实Nginx HTTPS代理、SSE分帧和上传早拒、upload/download hash、短请求与慢IO混合负载、超载恢复和10min资源曲线必须实跑；仅先认证受单代理保护的参考服务。直接公网、CPU/native隔离、内置TLS/通用WebSocket与全标准库manifest继续按独立需求立项，不从部署profile存在推定全面生产能力。
+736有8任务/9AC/6SD，T-01已完成，schema/工具环境冻结；其后真实Nginx HTTPS代理、SSE分帧和上传早拒、upload/download hash、短请求与慢IO混合负载、超载恢复及10min资源曲线仍须验收。首期目标为受单代理保护的参考服务；直接公网、CPU/native隔离、内置TLS/通用WebSocket另案，不从profile存在推定全面生产能力。
+
+### 6.9 阶段 D3a：装配manifest与核心校验（PLAN-738，提前规划）
+
+738回到公共.at与目标层缝合的原始诉求。静态核查显示CompileSession后缀仍硬编码.vm.at、persistent另建路径；Rust有a2r_std映射，parser后缀helper未使用，cache单文件hash与实际合并源不同。目录有rs/c文件不代表生产入口用了它，native名字/ID存在也不证明callee真实绑定或签名匹配。
+
+本期建立actual AssemblyPlan/Manifest、独立全库inventory、六核心provider目录和验证等级。实际VM/persistent/Rust/C入口消费选定源/host provider；root在前、选层在后，目标层源位置与cache/dependency内容指纹保留。声明+一个合法实现是正常缝合；重复活实现、签名漂移、缺callee和环境不适用有构建/加载诊断。Rust宿主实现可合法没有rs文件，未消费的层只能报candidate。
+
+执行目标vm/rust/c、Native/Browser环境与API传输拓扑分开，Vue前端不改后端Native环境；use.web适配是独立链，不能凭空假定io.vue.at自动拼接。CLI inspect输出稳定JSON与check退出码，生成API/736ready消费assembly指纹；真实三目标witness、双session/sidecar改动/native空绑定与假同名反例证明接线。
+
+738有8任务/8AC/7SD，736复审合入后实施。全库清点必须含解析失败/未验证项与总分母；strict首期六核心，非核心更深ABI和行为parity由D3b分期。不能通过把原已支持能力改Unsupported清账，也不一轮新增所有缺失backend或宣称全部HTTP/标准库已完整。
 
 ## 7. 待决策
 
