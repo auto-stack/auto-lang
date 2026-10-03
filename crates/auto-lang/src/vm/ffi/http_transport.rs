@@ -59,6 +59,10 @@ pub(crate) struct TransportConfig {
     pub request_timeout: Duration,
     /// Graceful drain budget before force-closing connections.
     pub shutdown_drain: Duration,
+    /// PLAN-736 AC-03: connection admission cap（idle/读头/keep-alive/发送/
+    /// upgrade 全覆盖）。满载在开始解析前关闭（conn_rejected 计数），不承诺
+    /// 此时能回 503。
+    pub max_connections: usize,
 }
 
 impl TransportConfig {
@@ -84,6 +88,22 @@ impl TransportConfig {
                 "AUTO_HTTP_SHUTDOWN_DRAIN_MS",
                 10_000,
             ) as u64),
+            max_connections: env_usize("AUTO_HTTP_MAX_CONNECTIONS", 128),
+        }
+    }
+
+    /// PLAN-736 AC-03: 服务配置驱动的预算（显式面；env 不再参与——单一来源）。
+    pub(crate) fn from_service_config(cfg: &crate::http_service_config::HttpServiceConfig) -> Self {
+        let l = &cfg.limits;
+        Self {
+            max_header_buf: l.header_buf_bytes,
+            header_read_timeout: Duration::from_millis(l.header_read_timeout_ms),
+            body_limit: l.body_limit_bytes,
+            body_timeout: Duration::from_millis(l.body_timeout_ms),
+            queue_capacity: l.max_inflight_requests,
+            request_timeout: Duration::from_millis(l.request_timeout_ms),
+            shutdown_drain: Duration::from_millis(l.drain_timeout_ms),
+            max_connections: l.max_connections,
         }
     }
 }
@@ -124,6 +144,10 @@ pub(crate) async fn serve_network(
 
     let graceful = GracefulShutdown::new();
     let mut shutdown = shutdown;
+    // PLAN-736 AC-03: 连接准入许可——idle/正在读头/keep-alive/发送/upgrade
+    // 全生命期持有（task 结束即释放）；满载在开始解析前关闭并计
+    // conn_rejected（此时不承诺能回 503）。
+    let conn_permits = std::sync::Arc::new(tokio::sync::Semaphore::new(cfg.max_connections));
     static CONN_ID_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     loop {
         tokio::select! {
@@ -136,6 +160,31 @@ pub(crate) async fn serve_network(
                     }
                 };
                 let conn_id = CONN_ID_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let permit = match conn_permits.clone().try_acquire_owned() {
+                    Ok(p) => p,
+                    Err(_) => {
+                        // 满：解析前直接关闭（零业务工作）。
+                        crate::http_service_observability::counter_add(
+                            crate::http_service_observability::CounterName::ConnRejected,
+                            1,
+                        );
+                        crate::http_service_observability::emit_event(serde_json::json!({
+                            "event": "conn_rejected",
+                            "reason": "connection_cap",
+                            "cap": cfg.max_connections,
+                        }));
+                        drop(stream);
+                        continue;
+                    }
+                };
+                crate::http_service_observability::counter_add(
+                    crate::http_service_observability::CounterName::ConnAccepted,
+                    1,
+                );
+                crate::http_service_observability::counter_add(
+                    crate::http_service_observability::CounterName::ConnActive,
+                    1,
+                );
                 let req_tx = req_tx.clone();
                 let shutdown = shutdown.clone();
                 // Peer is captured per connection — the fallback handler
@@ -153,6 +202,8 @@ pub(crate) async fn serve_network(
                 };
                 let watcher = graceful.watcher();
                 tokio::spawn(async move {
+                    // permitRAII：连接任务结束（正常/断连/RST）即归还。
+                    let _permit = permit;
                     // http1_only: the transport contract is HTTP/1.1 — the
                     // auto builder would otherwise also serve h2c
                     // prior-knowledge connections, widening scope silently.
@@ -176,6 +227,10 @@ pub(crate) async fn serve_network(
                     // 请求 scope（决策报告 §5-3 断连判据）。
                     let _ = watcher.watch(conn).await;
                     super::http_server::cancel_scopes_for_conn(conn_id);
+                    crate::http_service_observability::counter_sub(
+                        crate::http_service_observability::CounterName::ConnActive,
+                        1,
+                    );
                 });
             }
             _ = shutdown.changed() => {

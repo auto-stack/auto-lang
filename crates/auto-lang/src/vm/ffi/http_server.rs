@@ -4101,6 +4101,44 @@ pub async fn serve_async(vm: std::rc::Rc<crate::vm::engine::AutoVM>, addr: &str)
     serve_with(vm, addr, cfg, shutdown_rx).await;
 }
 
+/// PLAN-736 AC-03: 显式预算注入面——`auto service` 的 VM 轨用服务配置驱动
+/// TransportConfig（env 不参与）；信号面与 `serve_async` 相同。
+pub async fn serve_async_with(
+    vm: std::rc::Rc<crate::vm::engine::AutoVM>,
+    addr: &str,
+    cfg: super::http_transport::TransportConfig,
+) {
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    #[cfg(test)]
+    {
+        let _ = TEST_SHUTDOWN_TX.set(shutdown_tx.clone());
+    }
+    #[cfg(not(test))]
+    let _ = &shutdown_tx;
+    tokio::task::spawn_local({
+        let shutdown_tx = shutdown_tx.clone();
+        async move {
+            let _ = tokio::signal::ctrl_c().await;
+            eprintln!("[HTTP] Ctrl+C — shutting down gracefully");
+            let _ = shutdown_tx.send(true);
+        }
+    });
+    #[cfg(unix)]
+    tokio::task::spawn_local({
+        let shutdown_tx = shutdown_tx.clone();
+        async move {
+            if let Ok(mut sig) =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            {
+                sig.recv().await;
+                eprintln!("[HTTP] SIGTERM — shutting down gracefully");
+                let _ = shutdown_tx.send(true);
+            }
+        }
+    });
+    serve_with(vm, addr, cfg, shutdown_rx).await;
+}
+
 /// PLAN-705 T-05（仅测试面）：构造最小 GET ApiRequest（失效队列单元用）。
 #[cfg(test)]
 pub(crate) fn test_api_request_get(path: &str) -> ApiRequest {

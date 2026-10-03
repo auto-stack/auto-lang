@@ -980,7 +980,10 @@ futures = \"0.3\"";
     // 依赖, 否则 `unresolved import a2r_std`。任何用字符串的后端都会触发。
     let runtime_deps = "
 auto-lang = { workspace = true, features = [\"ui\", \"image-pipeline\"] }
-a2r-std = { workspace = true }";
+a2r-std = { workspace = true }
+# PLAN-736 AC-03/06: 连接驱动同构（hyper-util auto Builder + 准入许可 + 排空）
+hyper = { version = \"1\", features = [\"http1\", \"server\"] }
+hyper-util = { version = \"0.1\", features = [\"tokio\", \"server-auto\", \"service\", \"http1\"] }";
     let db_deps = if has_db { "
 once_cell = \"1\"" } else { "" };
     format!(
@@ -1611,6 +1614,158 @@ fn rewrite_inline_runtime_names(source: &str) -> String {
 /// PLAN-730 T-06: 上传端点 glue——Request → UploadRequest 投影（版本无关
 /// UploadBodyStream；不预读）+ 收据 → 真实 status + JSON（生成 crate 的
 /// axum 版本与 auto-lang 不同也成立：facade 类型不含 axum）。
+/// PLAN-736 AC-03/06：生成轨服务模式连接驱动与许可机械层（文件顶层项；
+/// legacy 模式不触发的路径标 allow(dead_code)）。
+/// - 连接许可：accept 时 try_acquire，满=解析前关闭（conn_rejected）。
+/// - inflight 门：middleware try_acquire；满=503+Retry-After（零业务）。
+///   许可经 __CountedBody 持有至响应 body 终态（流式不提前释放）。
+/// - 头预算：hyper-util http1 builder（max_buf_size + header_read_timeout）。
+/// - body 上限：DefaultBodyLimit（413 由 axum 语义给出）。
+/// - 排空：ctrl_c(+unix SIGTERM) → 停 accept → drain 超时强收。
+const SERVICE_MAIN_MACHINERY: &str = r#"// PLAN-736 service-mode machinery (budgets/permits/drain)
+#[allow(dead_code)]
+static __INFLIGHT_SEM: std::sync::OnceLock<std::sync::Arc<tokio::sync::Semaphore>> =
+    std::sync::OnceLock::new();
+
+#[allow(dead_code)]
+async fn __inflight_gate(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let sem = match __INFLIGHT_SEM.get() {
+        Some(s) => s.clone(),
+        None => return next.run(req).await, // 未初始化=legacy 形态，直通
+    };
+    let permit = match sem.try_acquire_owned() {
+        Ok(p) => p,
+        Err(_) => {
+            auto_lang::http_service_observability::counter_add(
+                auto_lang::http_service_observability::CounterName::RequestsRejected503,
+                1,
+            );
+            return axum::response::Response::builder()
+                .status(axum::http::StatusCode::SERVICE_UNAVAILABLE)
+                .header("retry-after", "1")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from("{\"error\":\"server busy (inflight cap)\"}"))
+                .unwrap();
+        }
+    };
+    auto_lang::http_service_observability::counter_add(
+        auto_lang::http_service_observability::CounterName::RequestsTotal,
+        1,
+    );
+    let resp = next.run(req).await;
+    // body 终态释放：permit 存进 response extensions——hyper 持有响应直到
+    // body 发送完成/连接中止，Extensions 随之 drop = 终态释放（不 headers 即放）。
+    let (mut parts, body) = resp.into_parts();
+    // Arc：Extensions::insert 要求 Clone；permit 随 extensions 末引用 drop。
+    parts.extensions.insert(std::sync::Arc::new(permit));
+    axum::response::Response::from_parts(parts, body)
+}
+
+"#;
+
+/// PLAN-736 AC-03/06：服务模式主运行环（连接许可 accept loop + 排空）。
+/// `c` = 已解析 HttpServiceConfig；listener/bound 为 bind 成功后的真实值。
+const SERVICE_RUN_LOOP: &str = r#"
+    {
+        use std::sync::Arc;
+        use tokio::sync::Semaphore;
+        __INFLIGHT_SEM
+            .set(Arc::new(Semaphore::new(c.limits.max_inflight_requests)))
+            .ok();
+        let conn_sem = Arc::new(Semaphore::new(c.limits.max_connections));
+        let app = app
+            .layer(axum::extract::DefaultBodyLimit::max(c.limits.body_limit_bytes))
+            .layer(axum::middleware::from_fn(__inflight_gate));
+        let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let mut shutdown_rx = shutdown_rx;
+        {
+            let tx = shutdown_tx.clone();
+            tokio::spawn(async move {
+                let _ = tokio::signal::ctrl_c().await;
+                let _ = tx.send(true);
+            });
+        }
+        #[cfg(unix)]
+        {
+            let tx = shutdown_tx;
+            tokio::spawn(async move {
+                if let Ok(mut sig) =
+                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                {
+                    sig.recv().await;
+                    let _ = tx.send(true);
+                }
+            });
+        }
+        let header_buf = c.limits.header_buf_bytes;
+        let header_to = std::time::Duration::from_millis(c.limits.header_read_timeout_ms);
+        let drain = std::time::Duration::from_millis(c.limits.drain_timeout_ms);
+        loop {
+            tokio::select! {
+                accepted = listener.accept() => {
+                    let (stream, _peer) = match accepted {
+                        Ok(x) => x,
+                        Err(_) => continue,
+                    };
+                    let permit = match conn_sem.clone().try_acquire_owned() {
+                        Ok(p) => p,
+                        Err(_) => {
+                            auto_lang::http_service_observability::counter_add(
+                                auto_lang::http_service_observability::CounterName::ConnRejected,
+                                1,
+                            );
+                            drop(stream);
+                            continue;
+                        }
+                    };
+                    auto_lang::http_service_observability::counter_add(
+                        auto_lang::http_service_observability::CounterName::ConnAccepted,
+                        1,
+                    );
+                    auto_lang::http_service_observability::counter_add(
+                        auto_lang::http_service_observability::CounterName::ConnActive,
+                        1,
+                    );
+                    let svc = hyper_util::service::TowerToHyperService::new(app.clone());
+                    let watcher = graceful.watcher();
+                    tokio::spawn(async move {
+                        let _permit = permit;
+                        let mut builder =
+                            hyper_util::server::conn::auto::Builder::new(
+                                hyper_util::rt::TokioExecutor::new(),
+                            );
+                        builder
+                            .http1()
+                            .timer(hyper_util::rt::TokioTimer::new())
+                            .max_buf_size(header_buf)
+                            .header_read_timeout(header_to);
+                        let conn = builder.serve_connection_with_upgrades(
+                            hyper_util::rt::TokioIo::new(stream),
+                            svc,
+                        );
+                        let _ = watcher.watch(conn).await;
+                        auto_lang::http_service_observability::counter_sub(
+                            auto_lang::http_service_observability::CounterName::ConnActive,
+                            1,
+                        );
+                    });
+                }
+                _ = shutdown_rx.changed() => {
+                    let _ = tokio::time::timeout(drain, graceful.shutdown()).await;
+                    break;
+                }
+            }
+        }
+        println!(
+            "AUTO_SERVICE_STOPPED {{\"bound\":\"{}\"}}",
+            bound
+        );
+    }
+"#;
 const UPLOAD_GLUE: &str = r#"// PLAN-730: upload ingress glue (a2r_std facade -> auto_lang host service)
 fn __upload_request(
     method: &axum::http::Method,
@@ -3766,6 +3921,9 @@ fn generate_main_rs(
         s.push_str("use crate::types::*;\n");
         s.push_str("use std::sync::{Arc, Mutex};\n");
         s.push_str("use tower_http::cors::{CorsLayer, Any};\n\n");
+        // PLAN-736：服务模式机械层（文件顶层项，legacy 不触发）。
+        s.push_str(SERVICE_MAIN_MACHINERY);
+        s.push_str("\n");
         s.push_str("#[tokio::main]\n");
         s.push_str("async fn main() {\n");
         // PLAN-730 T-06: 上传宿主 executor 安装（幂等——无上传端点时
@@ -3844,6 +4002,9 @@ fn generate_main_rs(
         // — api.rs defines no Db, handlers are skeleton/db-delegated stubs
         // that never take State, so no seed to inject.
         s.push_str("use tower_http::cors::{CorsLayer, Any};\n\n");
+        // PLAN-736：服务模式机械层（文件顶层项，legacy 不触发）。
+        s.push_str(SERVICE_MAIN_MACHINERY);
+        s.push_str("\n");
         s.push_str("#[tokio::main]\n");
         s.push_str("async fn main() {\n");
         // PLAN-730 T-06: 上传宿主 executor 安装（幂等——无上传端点时
@@ -3953,8 +4114,13 @@ fn generate_main_rs(
 ");
     s.push_str("    }
 ");
-    s.push_str("    axum::serve(listener, app).await.unwrap();
-");
+    // PLAN-736 AC-03/06: 服务模式 = 预算运行环；legacy = 既有 axum::serve。
+    s.push_str("    match &service_cfg {\n");
+    s.push_str("        Some(c) => {\n");
+    s.push_str(SERVICE_RUN_LOOP);
+    s.push_str("        }\n");
+    s.push_str("        None => axum::serve(listener, app).await.unwrap(),\n");
+    s.push_str("    }\n");
     s.push_str("}\n");
     s
 }

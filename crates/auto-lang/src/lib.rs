@@ -110,6 +110,7 @@ pub mod back_prefix; // PLAN-037: launch 期作用域化模块源前缀化 overl
 pub mod http_file_service; // PLAN-729: 服务端文件响应宿主执行（VM/生成 Rust 共用；无 ui 依赖）
 pub mod http_upload_service; // PLAN-730: 服务端上传宿主 executor（VM/生成 Rust 共用；无 axum 类型）
 pub mod http_service_config; // PLAN-736: 服务部署配置与纯策略（版本中立；两轨共用）
+pub mod http_service_observability; // PLAN-736: 服务观测（计数器 + 有界 JSONL sink）
 pub mod compile;
 pub mod config;
 pub mod database;
@@ -1752,13 +1753,28 @@ async fn execute_autovm_with_path(
         // seam 由 serve 入口在 spawn VM 线程前 set、此处 take 一次。
         if let Some(svc) = crate::http_service_config::take_active_service_config() {
             let addr = format!("{}:{}", svc.listen_addr, svc.listen_port);
+            // PLAN-736 AC-03/05: 预算与观测由服务配置驱动（env 不参与该面）。
+            crate::http_service_observability::install_log_sink(
+                svc.observability.log_sink_capacity,
+            );
+            crate::http_service_observability::emit_event(serde_json::json!({
+                "event": "startup",
+                "profile": svc.profile.as_str(),
+                "addr": addr,
+                "config_hash": format!("{:016x}", svc.effective_config_hash()),
+            }));
             eprintln!(
                 "[HTTP] Auto-starting server with {} route(s) on {} (profile: {}, config_hash: {:016x})",
                 routes.len(), addr, svc.profile.as_str(), svc.effective_config_hash()
             );
-            crate::vm::ffi::http_server::serve_async(std::rc::Rc::new(vm), &addr).await;
+            let transport = crate::vm::ffi::http_transport::TransportConfig::from_service_config(&svc);
+            crate::vm::ffi::http_server::serve_async_with(std::rc::Rc::new(vm), &addr, transport).await;
             if let Some(fatal) = crate::vm::ffi::http_server::serve_fatal_snapshot() {
                 // peek 不消费：外层 serve 入口 join 后 take 收割同一条诊断。
+                crate::http_service_observability::emit_event(serde_json::json!({
+                    "event": "config_error",
+                    "reason": fatal,
+                }));
                 return Err(crate::error::AutoError::Msg(format!(
                     "http service failed to start: {fatal}"
                 )));

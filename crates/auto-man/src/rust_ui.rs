@@ -3684,6 +3684,9 @@ tokio = {{ version = "1", features = ["rt"] }}
 # Plan 413 §5.2:放宽到 "0.14" 让未来补丁版自动流入
 iced = {{ version = "0.14", features = ["tokio", "advanced"] }}
 axum = "0.7"
+# PLAN-736 AC-03/06: generated-backend connection driving (accept loop + drain).
+hyper = {{ version = "1", features = ["http1", "server"] }}
+hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
 serde = {{ version = "1", features = ["derive"] }}
 tower-http = {{ version = "0.5", features = ["cors"] }}
 "#
