@@ -863,10 +863,14 @@ impl RqDaemon {
 fn open_window_for(client: &mut RqClient, cascade: u64) -> iced::Task<RqMessage> {
     let (win_id, task) = iced::window::open(iced::window::Settings {
         size: iced::Size::new(client.width.max(160.0), client.height.max(120.0)),
-        position: iced::window::Position::Specific(iced::Point::new(
-            80.0 + 36.0 * (cascade % 10) as f32,
-            80.0 + 36.0 * (cascade % 10) as f32,
-        )),
+        // PLAN-097：AUTO_VM_POSITION=x,y 覆盖(同 Standalone 级联点)。
+        position: crate::ui::iced::renderer::startup_window_position()
+            .unwrap_or_else(|| {
+                iced::window::Position::Specific(iced::Point::new(
+                    80.0 + 36.0 * (cascade % 10) as f32,
+                    80.0 + 36.0 * (cascade % 10) as f32,
+                ))
+            }),
         ..Default::default()
     });
     client.window = Some(win_id);

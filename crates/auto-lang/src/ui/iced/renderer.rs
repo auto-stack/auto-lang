@@ -17660,10 +17660,14 @@ fn compare_pngs(
                     let app_id = session.allocate_app(comp);
                     let size = pixels_size.unwrap_or_else(startup_window_size);
                     // 级联偏移：第 n 窗 +48n px，避免多窗完全重叠遮挡。
-                    let position = iced::window::Position::Specific(iced::Point::new(
-                        80.0 + 48.0 * i as f32,
-                        80.0 + 48.0 * i as f32,
-                    ));
+                    // PLAN-097：AUTO_VM_POSITION=x,y 覆盖（canvas 会话确定性
+                    // 停靠宿主右侧——原生窗为帧渲染源，不遮宿主 Musk 窗）。
+                    let position = startup_window_position().unwrap_or_else(|| {
+                        iced::window::Position::Specific(iced::Point::new(
+                            80.0 + 48.0 * i as f32,
+                            80.0 + 48.0 * i as f32,
+                        ))
+                    });
                     let (win_id, open_task) = iced::window::open(iced::window::Settings {
                         size,
                         position,
