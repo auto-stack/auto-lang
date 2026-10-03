@@ -586,3 +586,15 @@ auto-musk 后端 handler **同时是消费者和生产者**:
   （`Server.static`）仍未交付；多区间 `multipart/byteranges` 与压缩表示同非面。
 - §8.1 的旧 ureq 客户端描述已过时：客户端文件传输/流/结果通道现以 727/724/707
   Spec 为准（[http-file-transfer](http-file-transfer.md) 等）。
+
+## §14 API 传输契约（PLAN-734）
+
+- 参数绑定/返回编组/错误收敛按共同契约分类执行（身份判定非 contains）——
+  完整契约见 [api-transport-contract](api-transport-contract.md)。要点：
+  body 值按声明类型校验（错形态 400）；int 语义 i64 全域（bind/序列化三修复）；
+  `{"error":` 前缀猜测 500 退役（业务 error 字段=200 数据）；序列化失败 500
+  （不再 200 空 body）；merged 缺实现可定位失败。
+- **wire 兼容裁定**：SSE 链/redirect handler 声明 `int` 返回持有资源句柄是
+  Plan 326/346 既有契约——iterator/response-handle 编组臂保持注册表命中制
+  （声明门破坏 6 个既有 e2e，二分证据在 734 verification §3.3）；strict
+  声明分派保留于 Upload/File 臂。

@@ -1262,6 +1262,17 @@
       "delivery",
       "commit:05645a444"
      ]
+    },
+    {
+     "id": "P734-8",
+     "title": "API 契约与生成完整性交付摘要（PLAN-734）",
+     "content": "PLAN-734 交付：普通 JSON API 共同契约与生成一致性——api/contract.rs 类型身份分类单源（ResponseKind/ParamKind/ParamSource+假同名反例），53+ contains 生产位点退役。i64 全域三修复（大整数 HTTP 回复从 null 变完整十进制；bind/编组/序列化）。错误收敛：{\"error\": 前缀猜测退役、序列化失败 500、merged noop 可定位失败、back-proxy meta 源补齐。auto-man strict：解析失败=Err、转译失败不落模板、SCAFFOLD 标注、generation.json 指纹+新鲜度门、8 入口错误传播。730 泄漏修复（facade 拒绝未终结会话——目标矩阵 30s→0.1s）。Tauri MockRuntime dispatcher 实测（R1）。门禁零新增确定性红（预存逐名基线核对）。零运行时新依赖（tauri 仅 dev-dep）。债 P734-D4..D7（stdlib i32-lane/测试基建挂死=D5/兼容回退裁定=D7）。报告 docs/plans/reports/734-api-{decision,binding,generation,parity,verification}.md。",
+     "file": "docs/plans/734-api-contract-and-generation-integrity.md",
+     "tags": [
+      "plan-734",
+      "delivery",
+      "commit:04fea48b2"
+     ]
     }
    ]
   },
@@ -5209,6 +5220,30 @@
      ],
      "status": "stable",
      "created": "2026-10-03T03:20:00Z"
+    },
+    {
+     "id": "P734-1",
+     "title": "API 传输契约：类型身份分类、参数来源、i64 全域与错误收敛（PLAN-734 SD-01）",
+     "content": "PLAN-734 交付落账（canonical 唯源=docs/specs/stdlib/design/api-transport-contract.md）。api/contract.rs 单源：ResponseKind（File/Upload/Stream/ExplicitResponse/Void/Json）与 ParamKind 按裸名/泛型解包精确匹配（MyFileResponse/List<FileResponse> 假同名不命中）；is_upload_param 双族（API 元数据裸名+VM 签名 s-expr type-decl 名字段等值）；META_PARAM_NAMES/whole-body 单参容忍为显式 ParamSource。53+ contains 生产位点退役（7 文件 grep 全零，R1 修复 8 残留）。参数绑定：body 值按声明类型校验（str-for-int 400、float 非有限 400、optional null）；int=i64 全域（bind encode_i64_with_heap+定点范围校验、json_to_vm_value 全域、nv_to_json i64/u64/bigint 臂、String 编组 i64/u64/bigint 臂+vm_value_to_json Value::I64 臂——缺失即 664 值域红 R2 实证）。返回：Upload/File declared 门+iterator/response-handle 注册表命中制（Plan 326 int 声明 wire 契约兼容裁定，二分证据）；{\"error\": 前缀猜测退役（error 字段=200 数据）；序列化失败 500；merged noop→可定位 VMError。back-proxy：primary 半段分类+参数面补充+headers meta 源。债 P734-D4（stdlib i32-lane json.encode 返回通路/str+int 拼接）。",
+     "file": "docs/specs/stdlib/design/api-transport-contract.md",
+     "tags": [
+      "plan-734",
+      "sd-01",
+      "stdlib",
+      "docsha:797a6db298b8"
+     ]
+    },
+    {
+     "id": "P734-2",
+     "title": "API 生成完整性：strict 实现、显式 scaffold、ready 记录与错误传播（PLAN-734 SD-04）",
+     "content": "PLAN-734 交付落账（canonical 唯源=docs/specs/auto-man/design/api-generation-integrity.md）。strict 解析门：full-parse 失败=Err（lenient 退役 AUTO_API_LENIENT=1 显式/scaffold）；零端点解析成功=合法 no-API。真实实现优先：a2r 转译失败=端点 Err（CRUD/Default fallback 链退役）；AUTO_A2R_BODY=0 重语义=SCAFFOLD 头标注（测试锁定）；db 委派保持合法实现；tauri 后端 HTTP 专属种类矩阵拒绝。ready 记录：generation.json（端点+FNV 源指纹+scaffold）随 bundle 最后写；AUTO_REUSE_BACKEND=1 复用经 backend_generation_is_fresh（缺 ready/指纹失配→拒绝复用回重生成）。错误传播 8 入口全 ?（vue let _=/warn×2、rust_ui split warn后仍start、tauri×2+backend）。R1 F-3：Tauri MockRuntime dispatcher 实测（fixture 锁+mock_builder 全链）；tauri dev-dep 须 default-features=false（wry/WebView2Loader 本机入口点缺失实证）。",
+     "file": "docs/specs/auto-man/design/api-generation-integrity.md",
+     "tags": [
+      "plan-734",
+      "sd-04",
+      "auto-man",
+      "docsha:b66721c99150"
+     ]
     }
    ]
   },
@@ -8338,6 +8373,18 @@
      ],
      "status": "stable",
      "created": "2026-10-03T03:20:00Z"
+    },
+    {
+     "id": "P734-7",
+     "title": "PLAN-734 复审两轮收据（R1 needs_fix 3 项→R2 pass@6ebc85f7a→rebase 04fea48b2 range-diff 全等）",
+     "content": "同会话工件重建裁决（独立性受限已声明）。R1 needs_fix：F-1 [P2] AC-01 声明 53+ contains 全退但 8 处生产位点残留（api_gen :1158/:2422/:2859/:2949/:2978/:3703+typescript :312/:427——元数据裸名面 MyFileResponse 假同名会命中）；F-2 parity 报告表述过强；F-3 Tauri MockRuntime 证据缺失。回工修复全三项；R2 补修一项：vm_value_to_json Value::I64 臂在 T-08 提交时意外丢失（提交信息与 diff 不符经 git log -S 揭示；i32→I64 统一后缺臂致 stringify 形态漂移/664 值域红）——恢复后 tv 162/162；该丢失验证声明-工件核对必要性。R2 pass：grep 七文件零 contains 生产位点；门禁 t 1492/1495（3 预存 musk）、tv 162/162、tt 1877/1880、th 100/101（1 预存 corpora_data_face；plan707 flake/sse_chain 并行端口竞争在案）、plan734 7/7、plan730 e2e 14/14、api_gen 43+1。",
+     "file": "docs/plans/734-api-contract-and-generation-integrity.md",
+     "tags": [
+      "plan-734",
+      "review",
+      "commit:6ebc85f7a",
+      "rebase:04fea48b2"
+     ]
     }
    ]
   }

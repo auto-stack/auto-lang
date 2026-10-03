@@ -190,3 +190,12 @@ routes 外无其余内嵌否决（vm-only/ext/locales/i18n；`vp` None → false
   executor；TS 客户端 FormData 直传。契约见
   [auto-lang/trans/design/http-upload-lowering.md](../auto-lang/trans/design/http-upload-lowering.md)
   与 [stdlib/design/http-server-uploads.md](../stdlib/design/http-server-uploads.md)。
+
+## checked generation 与错误传播（PLAN-734）
+
+- route A（endpoint body → a2r 内联转译）已是生产实现源（733 期文档"未建/
+  空桩"描述过时）。PLAN-734 起：strict 解析门（失败=Err，lenient 显式
+  opt-in）；真实实现优先（转译失败不落 CRUD 模板）；`AUTO_A2R_BODY=0` 重语义
+  = SCAFFOLD 标注；`generation.json` ready 记录 + `AUTO_REUSE_BACKEND=1`
+  复用新鲜度门；全部 8 个生成入口 Err 硬传播（vue/tauri/rust_ui 的 warn/
+  静默丢弃清零）。契约见 [design/api-generation-integrity.md](design/api-generation-integrity.md)。

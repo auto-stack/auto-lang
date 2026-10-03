@@ -53,3 +53,6 @@ graph LR
   （multipart/raw 流式 ingress、staging/create-only 提交、预算/期限/取消仲裁；
   PLAN-730）。
   GET/HEAD/单区间/条件请求/受限根目录/配额收口——VM 与生成 Rust 单源执行）。
+
+- [api-transport-contract](design/api-transport-contract.md)——API 传输契约
+  （类型身份分类、参数来源、i64 全域、错误收敛、wire 兼容裁定；PLAN-734）。

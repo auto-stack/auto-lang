@@ -58,3 +58,12 @@ VM HTTP/SSE 的请求绑定、所有权、取消和错误行为详见 [HTTP Serv
   `auto_lang::http_upload_service` executor hook）提供流式接收/提交；Builder/stdnet
   路径不获得该能力（无注入面，绑定诊断）；Tauri IPC/back-proxy 明确拒绝
   （Unsupported/501 + HTTP URL 指引）。契约见 [http-server-uploads](http-server-uploads.md)。
+
+## API 契约消费者（PLAN-734）
+
+- VM HTTP、生成 Rust/Axum、back-proxy、merged、Tauri IPC 五形态消费同一
+  `api/contract.rs` 类型身份分类（ResponseKind/ParamKind/ParamSource）——
+  不各用 contains 字符串猜类型。文件（729）/上传（730）/SSE 保持专属协议
+  边界：HTTP 专属种类在 Tauri 命令生成前被矩阵拒绝；merged 缺实现可定位
+  失败（不再 warn+null）。back-proxy fn_meta 拼串分类取 primary 半段 +
+  参数面补充。契约见 [api-transport-contract](api-transport-contract.md)。

@@ -187,3 +187,11 @@ auto test                                    # 跑 tests/a2*_tests.at 声明的�
   [design/http-upload-lowering.md](design/http-upload-lowering.md)：receive/
   commit/reject 为 await 点（同步上下文指名诊断）；str 形参按 facade
   `impl AsRef<str>` 直传；金样 `test/a2r/33_plan730`。
+
+## API 契约消费（PLAN-734）
+
+- api_gen 两套 TS/handler 生成与 targets 消费 `api/contract.rs` checked 分类
+  （身份判定）：文件/上传/显式 Response/SSE 分支按 ResponseKind；UploadRequest
+  参数剔除按 is_upload_param（s-expr 双族）。`try_transpile_body` 对 `Future<T>`
+  端点置位 async 上下文（set_async_ctx）——内联体 await 合法；转译失败 =
+  生成期 Err（诊断 500 handler 退役）。
