@@ -626,6 +626,10 @@ fn http_status_reason(code: u16) -> &'static str {
 /// the request is an OPTIONS method; returns false otherwise so the caller can
 /// continue normal routing. Used by both blocking and async servers.
 pub(crate) fn handle_cors_preflight(method: &str) -> Option<String> {
+    if crate::http_service_config::service_policy_active() {
+        // 服务面：preflight 由桥层按配置决策（含 Origin 校验），不经此直通 204。
+        return None;
+    }
     if method.eq_ignore_ascii_case("OPTIONS") {
         Some(format!("HTTP/1.1 204 No Content\r\n{}\r\n", cors_headers()))
     } else {
@@ -3984,6 +3988,11 @@ pub(crate) enum ApiReply {
 /// CORS response headers as typed pairs (the string block in `cors_headers`
 /// stays for the sync stdnet server's string writer).
 pub(crate) fn cors_header_pairs() -> Vec<(String, String)> {
+    // PLAN-736 T-04: 服务策略激活时 legacy `*` 头块停用——附件由桥层按
+    // 配置决策（精确 origin/Vary），避免双份/泄漏。
+    if crate::http_service_config::service_policy_active() {
+        return Vec::new();
+    }
     let origin = cors_origin();
     vec![
         ("Access-Control-Allow-Origin".to_string(), origin),
@@ -4529,10 +4538,19 @@ pub(crate) fn dispatch_api_request_segment(
         .map(|v| v.to_ascii_lowercase().contains("websocket"))
         .unwrap_or(false);
 
-    let request_id = if incoming_request_id.is_empty() {
-        gen_request_id()
-    } else {
+    // PLAN-736 T-04/AC-05: 入站 request-id 校验——1..64 可见 ASCII 安全子集
+    // （[0-9A-Za-z._:@-]）；不合者重生成（原样透传 = 日志注入面）。
+    fn request_id_ok(id: &str) -> bool {
+        !id.is_empty()
+            && id.len() <= 64
+            && id
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | ':' | '@' | '-'))
+    }
+    let request_id = if request_id_ok(&incoming_request_id) {
         incoming_request_id
+    } else {
+        gen_request_id()
     };
 
     let client_ip = req

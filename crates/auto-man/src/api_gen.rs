@@ -1628,6 +1628,110 @@ static __INFLIGHT_SEM: std::sync::OnceLock<std::sync::Arc<tokio::sync::Semaphore
     std::sync::OnceLock::new();
 
 #[allow(dead_code)]
+static __SERVICE_RT: std::sync::OnceLock<
+    std::sync::Arc<auto_lang::http_service_config::ServiceRuntime>,
+> = std::sync::OnceLock::new();
+
+/// PLAN-736 T-04：Host/可信代理身份/限速/CORS 纯策略 gate（peer 由连接层
+/// 注入 extensions）。全部在业务与 inflight 之前短路（零业务零 body）。
+#[allow(dead_code)]
+async fn __policy_gate(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let Some(rt) = __SERVICE_RT.get() else {
+        return next.run(req).await; // legacy 形态直通
+    };
+    let c = &rt.config;
+    let authority = req
+        .headers()
+        .get("host")
+        .and_then(|v| v.to_str().ok());
+    if !c.host_allowed(authority) {
+        auto_lang::http_service_observability::emit_event(serde_json::json!({
+            "event": "request_rejected", "reason": "host_not_allowed",
+        }));
+        return axum::response::Response::builder()
+            .status(axum::http::StatusCode::BAD_REQUEST)
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from("{\"error\":\"host not allowed\"}"))
+            .unwrap();
+    }
+    let peer = req.extensions().get::<std::net::SocketAddr>().copied();
+    let xff = req.headers().get("x-forwarded-for").and_then(|v| v.to_str().ok());
+    let xfp = req.headers().get("x-forwarded-proto").and_then(|v| v.to_str().ok());
+    let (identity, _proto) = c.effective_client_identity(
+        peer.map(|p| p.ip()).unwrap_or(std::net::IpAddr::from([0, 0, 0, 0])),
+        xff,
+        xfp,
+    );
+    if let Some(rl) = &rt.limiter {
+        if let auto_lang::http_service_config::RateDecision::Limited { retry_after_secs } =
+            rl.check(identity.client, auto_lang::http_service_config::ServiceRuntime::now_ms())
+        {
+            return axum::response::Response::builder()
+                .status(axum::http::StatusCode::TOO_MANY_REQUESTS)
+                .header("retry-after", retry_after_secs.to_string())
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from("{\"error\":\"rate limited\"}"))
+                .unwrap();
+        }
+    }
+    let origin_owned: Option<String> =
+        req.headers().get("origin").and_then(|v| v.to_str().ok()).map(str::to_string);
+    let origin = origin_owned.as_deref();
+    if req.method() == axum::http::Method::OPTIONS {
+        if let Some(origin) = origin {
+            let acrm = req
+                .headers()
+                .get("access-control-request-method")
+                .and_then(|v| v.to_str().ok());
+            let acrh: Vec<String> = req
+                .headers()
+                .get("access-control-request-headers")
+                .and_then(|v| v.to_str().ok())
+                .map(|h| h.split(',').map(|x| x.trim().to_string()).collect())
+                .unwrap_or_default();
+            let (status, acao, vary) = c.cors.preflight(Some(origin), acrm, &acrh);
+            let mut builder = axum::response::Response::builder().status(
+                axum::http::StatusCode::from_u16(status).unwrap_or(axum::http::StatusCode::FORBIDDEN),
+            );
+            if let Some(acao) = acao {
+                builder = builder
+                    .header("access-control-allow-origin", acao)
+                    .header("access-control-max-age", c.cors.max_age_seconds.to_string())
+                    .header(
+                        "access-control-allow-methods",
+                        c.cors.allowed_methods.join(", "),
+                    )
+                    .header(
+                        "access-control-allow-headers",
+                        c.cors.allowed_headers.join(", "),
+                    );
+                if vary {
+                    builder = builder.header("vary", "Origin");
+                }
+            }
+            return builder.body(axum::body::Body::empty()).unwrap();
+        }
+    }
+    let mut resp = next.run(req).await;
+    if let Some(origin) = origin {
+        if let auto_lang::http_service_config::CorsOutcome::Allowed { allow_origin, vary_origin } =
+            c.cors.actual_request(Some(origin))
+        {
+            if let Ok(v) = axum::http::HeaderValue::from_str(&allow_origin) {
+                resp.headers_mut().insert("Access-Control-Allow-Origin", v);
+            }
+            if vary_origin {
+                resp.headers_mut().insert("Vary", axum::http::HeaderValue::from_static("Origin"));
+            }
+        }
+    }
+    resp
+}
+
+#[allow(dead_code)]
 async fn __inflight_gate(
     req: axum::extract::Request,
     next: axum::middleware::Next,
@@ -1675,10 +1779,16 @@ const SERVICE_RUN_LOOP: &str = r#"
         __INFLIGHT_SEM
             .set(Arc::new(Semaphore::new(c.limits.max_inflight_requests)))
             .ok();
+        __SERVICE_RT.set(Arc::new(
+            auto_lang::http_service_config::ServiceRuntime::new(c.clone()),
+        ))
+        .ok();
         let conn_sem = Arc::new(Semaphore::new(c.limits.max_connections));
+        // 层序（外→内）：peer 注入 → policy（Host/代理/限速/CORS）→ inflight → body 上限 → 路由。
         let app = app
             .layer(axum::extract::DefaultBodyLimit::max(c.limits.body_limit_bytes))
-            .layer(axum::middleware::from_fn(__inflight_gate));
+            .layer(axum::middleware::from_fn(__inflight_gate))
+            .layer(axum::middleware::from_fn(__policy_gate));
         let graceful = hyper_util::server::graceful::GracefulShutdown::new();
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
         let mut shutdown_rx = shutdown_rx;
@@ -1730,7 +1840,20 @@ const SERVICE_RUN_LOOP: &str = r#"
                         auto_lang::http_service_observability::CounterName::ConnActive,
                         1,
                     );
-                    let svc = hyper_util::service::TowerToHyperService::new(app.clone());
+                    let peer_addr = stream.peer_addr().ok();
+                    let app = app.clone().layer(axum::middleware::from_fn(
+                        move |mut req: axum::extract::Request,
+                              next: axum::middleware::Next| {
+                            let peer = peer_addr;
+                            async move {
+                                if let Some(p) = peer {
+                                    req.extensions_mut().insert(p);
+                                }
+                                next.run(req).await
+                            }
+                        },
+                    ));
+                    let svc = hyper_util::service::TowerToHyperService::new(app);
                     let watcher = graceful.watcher();
                     tokio::spawn(async move {
                         let _permit = permit;
@@ -3983,19 +4106,25 @@ fn generate_main_rs(
         s.push_str("        .allow_headers(Any);\n\n");
         s.push_str("    let app = axum::Router::new()\n");
         s.push_str(&format!("{}\n", routes_str));
+        // PLAN-736 T-04: 媒体/照片 scan 路由按 profile 门控（service 默认 off，
+        // 显式 features.* 才可 opt-in；legacy 面（无配置）保持现状全开。
+        s.push_str("    ;\n");
+        s.push_str("    let media_on = service_cfg.as_ref().map(|c| c.features.media_scan).unwrap_or(true);\n");
+        s.push_str("    let photo_on = service_cfg.as_ref().map(|c| c.features.photo_scan).unwrap_or(true);\n");
+        s.push_str("    let mut app = app;\n");
+        s.push_str("    if media_on {\n");
+        s.push_str("        app = app\n");
         s.push_str("        .route(\"/api/__auto/media/{id}/{revision}\", axum::routing::get(auto_media).head(auto_media))\n");
-        s.push_str("        .route(\"/api/media/scan\", axum::routing::get(auto_media_scan))\n");
-        // NOTE: `:id`, not `{id}`. The generated backend crate resolves axum 0.7
-        // (its own workspace lock), where `{id}` is a LITERAL segment and silently
-        // 404s. The pre-existing `__auto/media/{id}/{revision}` route above has
-        // this bug too (Plan 617 T-05 finding).
-        s.push_str("        .route(\"/api/media/stream/:id\", axum::routing::get(auto_media_stream).head(auto_media_stream))\n");
-        // PLAN-043 Part 1: photo service routes (same `:id` axum 0.7 syntax).
+        s.push_str("        .route(\"/api/media/scan\", axum::routing::get(auto_media_scan));\n");
+        s.push_str("        app = app.route(\"/api/media/stream/:id\", axum::routing::get(auto_media_stream).head(auto_media_stream));\n");
+        s.push_str("    }\n");
+        s.push_str("    if photo_on {\n");
+        s.push_str("        app = app\n");
         s.push_str("        .route(\"/api/photos/scan\", axum::routing::get(auto_photos_scan))\n");
         s.push_str("        .route(\"/api/photos/thumb/:id\", axum::routing::get(auto_photos_thumb))\n");
-        s.push_str("        .route(\"/api/photos/full/:id\", axum::routing::get(auto_photos_full))\n");
-        s.push_str("        .with_state(data)\n");
-        s.push_str("        .layer(cors);\n\n");
+        s.push_str("        .route(\"/api/photos/full/:id\", axum::routing::get(auto_photos_full));\n");
+        s.push_str("    }\n");
+        s.push_str("    let app = app.with_state(data);\n\n");
     } else {
         // Stateless path. Plan 399: db.rs full coverage (seed lives in db.rs
         // Lazy globals). Plan 670 F-R1-A: also contracts with no primary type
@@ -4059,18 +4188,25 @@ fn generate_main_rs(
         s.push_str("        .allow_headers(Any);\n\n");
         s.push_str("    let app = axum::Router::new()\n");
         s.push_str(&format!("{}\n", routes_str));
+        // PLAN-736 T-04: 媒体/照片 scan 路由按 profile 门控（service 默认 off，
+        // 显式 features.* 才可 opt-in；legacy 面（无配置）保持现状全开。
+        s.push_str("    ;\n");
+        s.push_str("    let media_on = service_cfg.as_ref().map(|c| c.features.media_scan).unwrap_or(true);\n");
+        s.push_str("    let photo_on = service_cfg.as_ref().map(|c| c.features.photo_scan).unwrap_or(true);\n");
+        s.push_str("    let mut app = app;\n");
+        s.push_str("    if media_on {\n");
+        s.push_str("        app = app\n");
         s.push_str("        .route(\"/api/__auto/media/{id}/{revision}\", axum::routing::get(auto_media).head(auto_media))\n");
-        s.push_str("        .route(\"/api/media/scan\", axum::routing::get(auto_media_scan))\n");
-        // NOTE: `:id`, not `{id}`. The generated backend crate resolves axum 0.7
-        // (its own workspace lock), where `{id}` is a LITERAL segment and silently
-        // 404s. The pre-existing `__auto/media/{id}/{revision}` route above has
-        // this bug too (Plan 617 T-05 finding).
-        s.push_str("        .route(\"/api/media/stream/:id\", axum::routing::get(auto_media_stream).head(auto_media_stream))\n");
-        // PLAN-043 Part 1: photo service routes (same `:id` axum 0.7 syntax).
+        s.push_str("        .route(\"/api/media/scan\", axum::routing::get(auto_media_scan));\n");
+        s.push_str("        app = app.route(\"/api/media/stream/:id\", axum::routing::get(auto_media_stream).head(auto_media_stream));\n");
+        s.push_str("    }\n");
+        s.push_str("    if photo_on {\n");
+        s.push_str("        app = app\n");
         s.push_str("        .route(\"/api/photos/scan\", axum::routing::get(auto_photos_scan))\n");
         s.push_str("        .route(\"/api/photos/thumb/:id\", axum::routing::get(auto_photos_thumb))\n");
-        s.push_str("        .route(\"/api/photos/full/:id\", axum::routing::get(auto_photos_full))\n");
-        s.push_str("        .layer(cors);\n\n");
+        s.push_str("        .route(\"/api/photos/full/:id\", axum::routing::get(auto_photos_full));\n");
+        s.push_str("    }\n");
+        s.push_str("    let app = app;\n\n");
     }
     // PLAN-736 AC-01/02: bind 失败 = 指名诊断 + 非零退出（旧 unwrap panic 退役）；
     // ready 打印移到 bind 成功之后并报真实 local_addr（port=0 场景）。
@@ -4119,7 +4255,7 @@ fn generate_main_rs(
     s.push_str("        Some(c) => {\n");
     s.push_str(SERVICE_RUN_LOOP);
     s.push_str("        }\n");
-    s.push_str("        None => axum::serve(listener, app).await.unwrap(),\n");
+    s.push_str("        None => axum::serve(listener, app.layer(cors)).await.unwrap(),\n");
     s.push_str("    }\n");
     s.push_str("}\n");
     s

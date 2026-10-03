@@ -770,7 +770,12 @@ impl CorsPolicy {
             }
         }
         let vary = !self.allowed_origins.iter().any(|o| o == "*");
-        (204, Some(origin.to_string()), vary)
+        let acao = if vary {
+            origin.to_string()
+        } else {
+            "*".to_string() // wildcard 语义统一：ACAO=*（与 actual_request 一致）
+        };
+        (204, Some(acao), vary)
     }
 }
 
@@ -949,6 +954,57 @@ impl RateLimiter {
 }
 
 // ============================================================================
+// 服务运行面（配置 + 有界限速器实例）——网络层策略消费的单点
+// ============================================================================
+
+/// VM 轨网络层与生成轨 gate 层共同消费的运行时面：不可变配置 + 可变限速器。
+/// 放进 TransportConfig / 生成静态量时以 `Arc` 持有。
+pub struct ServiceRuntime {
+    pub config: Arc<HttpServiceConfig>,
+    pub limiter: Option<RateLimiter>,
+}
+
+impl std::fmt::Debug for ServiceRuntime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServiceRuntime")
+            .field("config_hash", &self.config.effective_config_hash())
+            .field("rate_limited", &self.limiter.is_some())
+            .finish()
+    }
+}
+
+impl ServiceRuntime {
+    pub fn new(config: Arc<HttpServiceConfig>) -> Self {
+        let limiter = config.rate_limit.map(RateLimiter::new);
+        Self { config, limiter }
+    }
+
+    pub fn now_ms() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    }
+}
+
+// ============================================================================
+// 服务策略激活旗标（dispatch legacy CORS 让位于桥层 per-origin 附件）
+// ============================================================================
+
+static SERVICE_POLICY_ACTIVE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// serve 入口在启动服务前置位：dispatch 既有 legacy CORS 头块（`*`）停用，
+/// CORS 附件由桥层按配置决策（T-04）。
+pub fn set_service_policy_active() {
+    SERVICE_POLICY_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub fn service_policy_active() -> bool {
+    SERVICE_POLICY_ACTIVE.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+// ============================================================================
 // 进程内活动配置 seam（VM 轨 serve 入口 → lib.rs 自动启动钩子）
 // ============================================================================
 
@@ -1111,7 +1167,7 @@ mod tests {
             star.actual_request(Some("http://any.com")),
             CorsOutcome::Allowed { allow_origin: "*".into(), vary_origin: false }
         );
-        assert_eq!(star.preflight(Some("http://any.com"), Some("GET"), &[]), (204, Some("http://any.com".into()), false));
+        assert_eq!(star.preflight(Some("http://any.com"), Some("GET"), &[]), (204, Some("*".into()), false));
         // service 空 origins：跨域一律 Absent。
         let svc = resolve_service_config(SVC_MINIMAL, None).unwrap().cors;
         assert_eq!(svc.actual_request(Some("http://a.com")), CorsOutcome::Absent);

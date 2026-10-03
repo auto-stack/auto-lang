@@ -1767,7 +1767,11 @@ async fn execute_autovm_with_path(
                 "[HTTP] Auto-starting server with {} route(s) on {} (profile: {}, config_hash: {:016x})",
                 routes.len(), addr, svc.profile.as_str(), svc.effective_config_hash()
             );
-            let transport = crate::vm::ffi::http_transport::TransportConfig::from_service_config(&svc);
+            crate::http_service_config::set_service_policy_active();
+            let runtime = std::sync::Arc::new(
+                crate::http_service_config::ServiceRuntime::new(svc),
+            );
+            let transport = crate::vm::ffi::http_transport::TransportConfig::from_service_runtime(runtime);
             crate::vm::ffi::http_server::serve_async_with(std::rc::Rc::new(vm), &addr, transport).await;
             if let Some(fatal) = crate::vm::ffi::http_server::serve_fatal_snapshot() {
                 // peek 不消费：外层 serve 入口 join 后 take 收割同一条诊断。

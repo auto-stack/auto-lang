@@ -63,6 +63,9 @@ pub(crate) struct TransportConfig {
     /// upgrade 全覆盖）。满载在开始解析前关闭（conn_rejected 计数），不承诺
     /// 此时能回 503。
     pub max_connections: usize,
+    /// PLAN-736 T-04: 服务策略面（Host/CORS/可信代理/限速）。None = legacy 面
+    /// （既有语义零变化）。
+    pub service: Option<std::sync::Arc<crate::http_service_config::ServiceRuntime>>,
 }
 
 impl TransportConfig {
@@ -89,7 +92,17 @@ impl TransportConfig {
                 10_000,
             ) as u64),
             max_connections: env_usize("AUTO_HTTP_MAX_CONNECTIONS", 128),
+            service: None,
         }
+    }
+
+    /// 服务配置驱动（T-04）：预算 + 策略面单源装配（env 不参与）。
+    pub(crate) fn from_service_runtime(
+        rt: std::sync::Arc<crate::http_service_config::ServiceRuntime>,
+    ) -> Self {
+        let mut cfg = Self::from_service_config(&rt.config);
+        cfg.service = Some(rt);
+        cfg
     }
 
     /// PLAN-736 AC-03: 服务配置驱动的预算（显式面；env 不再参与——单一来源）。
@@ -104,6 +117,7 @@ impl TransportConfig {
             request_timeout: Duration::from_millis(l.request_timeout_ms),
             shutdown_drain: Duration::from_millis(l.drain_timeout_ms),
             max_connections: l.max_connections,
+            service: None,
         }
     }
 }
@@ -270,6 +284,89 @@ async fn bridge_handler(
         .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
         .collect();
 
+    // PLAN-736 T-04: 服务策略链（仅显式服务面；legacy 面零变化）。全部在
+    // body 读取/上传预检之前短路——坏 Host/CORS 拒绝/限速 429 零业务
+    // 零 body 工作（AC-04：保护上传不预读/不落盘）。
+    let mut cors_attach: Option<(String, bool)> = None;
+    if let Some(svc) = &cfg.service {
+        let c = &svc.config;
+        // (a) Host 允许表（hostname 精确匹配；X-Forwarded-Host 不放宽）。
+        let authority = parts
+            .headers
+            .get("host")
+            .and_then(|v| v.to_str().ok())
+            .or_else(|| parts.uri.authority().map(|a| a.as_str()));
+        if !c.host_allowed(authority) {
+            crate::http_service_observability::emit_event(serde_json::json!({
+                "event": "request_rejected", "reason": "host_not_allowed",
+            }));
+            return error_response(400, "host not allowed");
+        }
+        // (b) 单层可信代理身份（peer 精确命中才消费单段 XFF/XFP）。
+        let xff = parts.headers.get("x-forwarded-for").and_then(|v| v.to_str().ok());
+        let xfp = parts.headers.get("x-forwarded-proto").and_then(|v| v.to_str().ok());
+        let (identity, _proto) = c.effective_client_identity(peer.ip(), xff, xfp);
+        let _ = identity.via_trusted_proxy;
+        // (c) 服务级限速（有界桶 + TTL；满表新身份保守 429）。
+        if let Some(rl) = &svc.limiter {
+            if let crate::http_service_config::RateDecision::Limited { retry_after_secs } =
+                rl.check(identity.client, crate::http_service_config::ServiceRuntime::now_ms())
+            {
+                let mut resp = error_response(429, "rate limited");
+                if let Ok(v) = axum::http::HeaderValue::from_str(&retry_after_secs.to_string()) {
+                    resp.headers_mut().insert("Retry-After", v);
+                }
+                return resp;
+            }
+        }
+        // (d) CORS：preflight（OPTIONS+Origin）短路；实际请求算好附件。
+        let origin = parts.headers.get("origin").and_then(|v| v.to_str().ok());
+        if method == "OPTIONS" {
+            if let Some(origin) = origin {
+                let acrm = parts
+                    .headers
+                    .get("access-control-request-method")
+                    .and_then(|v| v.to_str().ok());
+                let acrh: Vec<String> = parts
+                    .headers
+                    .get("access-control-request-headers")
+                    .and_then(|v| v.to_str().ok())
+                    .map(|h| h.split(',').map(|x| x.trim().to_string()).collect())
+                    .unwrap_or_default();
+                let (status, acao, vary) = c.cors.preflight(Some(origin), acrm, &acrh);
+                let mut resp = error_response(status, "");
+                if let Some(acao) = acao {
+                    if let Ok(v) = axum::http::HeaderValue::from_str(&acao) {
+                        resp.headers_mut().insert("Access-Control-Allow-Origin", v);
+                    }
+                    resp.headers_mut().insert(
+                        "Access-Control-Max-Age",
+                        axum::http::HeaderValue::from(c.cors.max_age_seconds),
+                    );
+                    if vary {
+                        resp.headers_mut().insert("Vary", axum::http::HeaderValue::from_static("Origin"));
+                    }
+                    let methods = c.cors.allowed_methods.join(", ");
+                    if let Ok(v) = axum::http::HeaderValue::from_str(&methods) {
+                        resp.headers_mut().insert("Access-Control-Allow-Methods", v);
+                    }
+                    let hdrs = c.cors.allowed_headers.join(", ");
+                    if let Ok(v) = axum::http::HeaderValue::from_str(&hdrs) {
+                        resp.headers_mut().insert("Access-Control-Allow-Headers", v);
+                    }
+                }
+                return resp;
+            }
+        }
+        if let Some(origin) = origin {
+            if let crate::http_service_config::CorsOutcome::Allowed { allow_origin, vary_origin } =
+                c.cors.actual_request(Some(origin))
+            {
+                cors_attach = Some((allow_origin, vary_origin));
+            }
+        }
+    }
+
     // Body: bounded incremental collection with a total deadline (AC-03).
     // Content-Length over the limit is rejected before reading (parity with
     // the legacy pre-check); chunked overflow surfaces as LengthLimitError.
@@ -415,7 +512,22 @@ async fn bridge_handler(
         ApiReply::Full { body: ApiBody::File(_), .. } => {}
         _ => super::http_server::complete_scope(&scope),
     }
-    api_reply_to_response(reply, parts, shutdown, Some(scope)).await
+    let response = api_reply_to_response(reply, parts, shutdown, Some(scope)).await;
+    // PLAN-736 T-04: 实际请求（携 Origin 且命中）的 CORS 附件（桥侧短路路径
+    // 不虚构 CORS 头——只有业务回复面附加）。
+    if let Some((acao, vary)) = cors_attach {
+        let (mut parts, body) = response.into_parts();
+        if let Ok(v) = axum::http::HeaderValue::from_str(&acao) {
+            parts.headers.insert("Access-Control-Allow-Origin", v);
+        }
+        if vary {
+            parts
+                .headers
+                .insert("Vary", axum::http::HeaderValue::from_static("Origin"));
+        }
+        return axum::response::Response::from_parts(parts, body);
+    }
+    response
 }
 
 /// PLAN-729 T-04：文件 seed 的宿主 serve 结果。`finalize_scope` = 无 body
