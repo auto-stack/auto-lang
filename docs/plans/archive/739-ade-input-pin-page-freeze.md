@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-739
-status: reviewed             # drafting → executing → execution_done → reviewed → archived
+status: archived             # drafting → executing → execution_done → reviewed → archived
 feature_name: ade-input-pin-page-freeze
 author: [agent]
 created_at: 2026-10-03
@@ -301,6 +301,29 @@ pub(crate) fn retain_input_values_after_handler(
   next: merge（auto-plan-merge）——merge 时执行 SD-01 规范沉淀
   （frame-pipeline-incremental.md 新 §5）+ specs.json upsert + 二进制
   重建回执 + 归档。
+
+- **merge 收据（PLAN-739:r1，2026-10-03）**：
+  - `prepared`：复审基线 4d1621a39+master 簿记 18d2a25c2；canonical
+    delta=frame-pipeline-incremental.md **§4c**（计划 §5.3 原记 §5，
+    §5/§5b 已被 731 占用——按该文件插入惯例顺延，语义零变化）；
+    delivery_commit=`ef8eac37a`（worktree rebase 后 tip；docs-only
+    后代）。
+  - `landed`：rebase master 后 range-diff `1: 4d1621a39 = 1: 2d950e975`
+    全等证明；`git merge --ff-only plan-739-dev` 线性落地 master
+    tip=ef8eac37a；主检出 smoke plan739+732+737 18/18 绿。
+  - `ledger_refreshed`：specs.json P739-1（designs→canonical §4c）/
+    P739-2（reviews pass）/P739-3（reports 回执），json load 验证通过
+    （767 items）；ui/plans.md 739 行；INDEX.md spec-index 再生；
+    KNOWN-DEBT P739-F1。commit=20fc86af8。
+  - `archived`：本件 git mv docs/plans/archive/ + status: archived。
+  - `cleaned`：见下（wt-guard + worktree/分支清理）。
+  - **binary 重建（AC-05）**：master ef8eac37a 全量链接
+    `auto 0.1.0+v0.4.2-2713-gef8eac37a`
+    SHA256 `8860F25BBBD2DD6AB4DEFDFF69DD2DD57DB12B9FE16E8C69883D37AADDEA6B96`
+    （旧 binary 进程持有 → rename `auto.exe.pre-739`，737 同款处理）。
+    回执：docs/reports/p739-ade-input-pin-receipt.md。
+  - **批量回归到期判定**：739 % 5 ≠ 0；.last-batch-regression.json
+    核验见 merge 后记录——不到期则零动作。
 
 ## 10. 待澄清事项
 
