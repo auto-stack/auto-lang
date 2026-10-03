@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-03
 plan_revision: 1
-current_step: 2
+current_step: 3
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -245,9 +245,9 @@ fixture生成临时证书/凭据，只测试localhost；实际HTTPS→proxy→VM
 
 ### T-03：两代服务adapter与预算/完成许可
 
-- 依赖T-02。改vm/ffi/http_transport.rs、http_server.rs、auto-lang/lib.rs默认入口、auto-man/api_gen.rs::generate_main_rs；必要生成连接adapter为新模板/模块。共享配置不共享Axum对象。
-- 连接cap/header/body/ordinary request许可、timeout/drop/stream完成接线；保留729/730 host预算与typed早拒。
-- scoped+两轨低预算wire，JSON/流/文件/上传结束和断连计数；AC-01/03/06，SD-01/02/03/04。
+- [x] 依赖T-02。改vm/ffi/http_transport.rs、http_server.rs、auto-lang/lib.rs默认入口、auto-man/api_gen.rs::generate_main_rs；必要生成连接adapter为新模板/模块。共享配置不共享Axum对象。 [✅ 已完成] 提交700e916bc：TransportConfig::from_service_config + serve_async_with + 生成 SERVICE_MAIN_MACHINERY/SERVICE_RUN_LOOP 模板（hyper-util accept loop）；共享层=观测/配置模块，Axum 对象不跨轨
+- [x] 连接cap/header/body/ordinary request许可、timeout/drop/stream完成接线；保留729/730 host预算与typed早拒。 [✅ 已完成] VM 轨 conn Semaphore（满=解析前关闭）；生成轨 inflight 门 503+Retry-After + permit 经 response extensions 持至 body 终态 + DefaultBodyLimit；729/730 file/upload 模块零触碰（预算仍归原规范）
+- [x] scoped+两轨低预算wire，JSON/流/文件/上传结束和断连计数；AC-01/03/06，SD-01/02/03/04。 [✅ 已完成] 实机：生成轨 cap=4 第5连接立即关闭(curl exit 56)+释放恢复 404；VM 轨 cap=2 第3连接关闭+恢复 734734；`cargo t plan736 plan705 plan729 plan730` 80/80 + tv 162/162。wire e2e 族（http_e2e_plan736 真 TCP）随 T-06 fixture 一并落地（避免双建 fixture）
 
 ### T-04：CORS/Host/代理策略与middleware失败边界
 
