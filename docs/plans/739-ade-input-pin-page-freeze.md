@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-739
-status: execution_done       # drafting → executing → execution_done → reviewed → archived
+status: reviewed             # drafting → executing → execution_done → reviewed → archived
 feature_name: ade-input-pin-page-freeze
 author: [agent]
 created_at: 2026-10-03
@@ -8,8 +8,8 @@ updated_at: 2026-10-03
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: ["auto-lang/ui/frame-pipeline-incremental§输入回写视面补丁边界"]
-touched_goals: []
+new_spec_components: ["auto-lang/ui/design/frame-pipeline-incremental.md§5 输入回写视面补丁边界"]
+touched_goals: ["GOAL-007"]
 
 affects: ["auto-lang/ui"]
 current_step: 5
@@ -264,6 +264,43 @@ pub(crate) fn retain_input_values_after_handler(
   （与 renderer.rs:19670 生产派发同口）；`.GoP2` 落 `.doc = .p2` 需
   `.p2` 常量字段承载第二页正文（字面量直赋 str 字段在语料内展开）。
   契约（目标/验收/SD）零变化。
+
+- stage: review | plan_id: PLAN-739 | plan_revision: 1 | outcome: **pass**
+  | reviewed_commit: `4d1621a39`（worktree plan-739-dev，clean）| base_commit:
+  `9fcbdb5de` | dependency_revisions: auto-down 兄弟 detached@`895f8d0`
+  | spec_inputs: docs/specs/auto-lang/ui/design/frame-pipeline-incremental.md
+  （master 现行版，SD-01 增量目标）。
+  **独立性声明**：复审在实施会话内完成——判定由工件重建（下述全部命令
+  现场复跑 + 提交 diff 独立复读），不依赖执行摘要。
+
+  验收结果（AC → 证据）：
+  - **AC-01 pass**：T-A `plan739_edit_then_page_switch_view_follows_store`
+    绿（复审复跑 29/29 面）；修前复红留痕：临时臂形态下同断言红
+    `left="第一页正文。XYZ" right="第二页正文。"`（与本仓最小复现构造同构；
+    复现方法=恢复 §5.1 摘除臂，测试自证）。
+  - **AC-02 pass**：粘滞机制消除实证三层——T-A 断言 `iv.contains_key("Edit")`
+    在案（条目永生为事实但零消费者）；T-B 断言 patch 对 ADE 零作用；
+    视面核两段降层后 `autodown_editor_text=="第二页正文。"`。
+  - **AC-03 pass**：T-B Input 反例锚绿（补丁面零回退）；T-C 字面 content
+    守卫围栏绿（`!sync_external(literal)` + 键入存活核）；plan057/plan063
+    回声族 + plan732 13/13 + plan737 2/2 复审复跑全绿（29/29 合并面）。
+  - **AC-04 pass**：裸 `cargo t`（--no-fail-fast，4d1621a39 同码复审期
+    现跑 56.6s）：worktree 5072 面 5057 绿，红集 15 = master 同口径基线
+    （16 红）**逐名全等 14 预存红** + 差异全为在案 flake（worktree 侧
+    plan730_commit_target_matrix 隔离复跑绿=737 回执点名 flake；master 侧
+    plan484_024/plan502_m3 抖红=732 回执在案 flake）——**零新红**。
+    `cargo t autodown` 80/80；fmt 我方文件零 diff（仓 28 处预存同基线）。
+  - **AC-05 merge-gate**：binary 重建+回执属 merge 收尾动作（本复审后
+    由 merge 执行并回注指纹），不阻塞 pass 判定。
+
+  findings（非阻塞）：F-1（信息）`crates/auto-cache` 测试目标仓内腐坏
+  （E0063 trait_name，PLAN-596 T-03 遗留；日常档不建该目标故不可见）——
+  已登记 §8 附带勘定，转 KNOWN-DEBT 批量债，不属本计划范围。
+  evidence：worktree `git show 4d1621a39`（diff 全文复读：两调用点语义
+  原样、摘臂仅一处、注释论证在位）；复审复跑命令与输出摘录本节。
+  next: merge（auto-plan-merge）——merge 时执行 SD-01 规范沉淀
+  （frame-pipeline-incremental.md 新 §5）+ specs.json upsert + 二进制
+  重建回执 + 归档。
 
 ## 10. 待澄清事项
 
