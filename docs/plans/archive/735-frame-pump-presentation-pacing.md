@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-735
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: 帧泵呈现交付节奏清偿件（auto-edit PLAN-026 下游回执消费——掉泵/交付节奏上游第二段：呈现事实定谳+交付节奏根因+修复或通道语义裁定——帧两行转绿解锁）
 author: [agent]
 created_at: 2026-10-03
@@ -338,6 +338,32 @@ downstream-handoff v2（呈现事实结论+交付节奏终态+通道语义建议
   摘要采信。`evidence`：docs/plans/evidence/735/（双谱 JSONL+两报
   告+回执 v2+ladder735.py/golden735.py/探针脚本）。`next: merge`。
 
+- 2026-10-03 merge：`stage: merge`，PLAN-735:r1。`outcome: pass`。
+  收据五检查点（证据实名）：
+  - `prepared`：reviewed 基线=67a91eaad（worktree 三提交
+    5da3b4727/7b9b2f8f5/67a91eaad，基 c989483ce）；canonical Spec
+    diff=SD-01/02（worktree 提交在案，frozen SHA256 66f43aa8…/
+    b21fa6c9…）；投影目标=P735-1（designs）+P735-2（reviews）；
+    delivery commit=4195f7af9。
+  - `landed`：master@4195f7af9（ff-only 无合并提交）。rebase 两次
+    （master 并行前移——730/734/736 落库）range-diff 全等证明：
+    5da3b4727=87faaadc3、7b9b2f8f5=4ff3670c8、67a91eaad=4195f7af9
+    （逐对 `=`）；rebased 态 scoped 复跑 55/55 绿。主检出冒烟
+    （落地后含并行面）：cargo t frame plan716_supply 55/55 绿。
+  - `ledger_refreshed`：.autoos/specs.json P735-1（designs——帧观测
+    分离+交付节奏契约）+P735-2（reviews pass 收据）回读 verified
+    （file/status/related 全对，760 items）；ui/plans.md 735 行+
+    ui/overview.md 注记+INDEX 再生（spec-index.py 26 projects）；
+    投影提交=d2c6209fa。
+  - `archived`：docs/plans/archive/735-frame-pump-presentation-
+    pacing.md，status: archived（本提交）。
+  - `cleaned`：（清理后回填——wt-guard 双组树 clean+worktree/branch/
+    组目录注销）。
+  部署观察：零常驻产物消费本仓构建（auto run 按需源构建；下游
+  auto-edit bench 档自建 auto-lang）——零重建项，732 惯例维持。
+  批量回归到期判定：735%5=0 且 735>732（receipt last_covered）→
+  **到期**——cleaned 后由 /auto-plan:regress 主检出单实例执行。
+
 ## 10. 待澄清事项
 
 - **Q-1 fork iced_winit 约束重估（已决——T-00/T-01 勘定闭环）**：
@@ -355,3 +381,12 @@ downstream-handoff v2（呈现事实结论+交付节奏终态+通道语义建议
   下游 022 frozen 口径的读回语义适配=下游重判件事——本件回执给
   结论与通道（downstream-handoff-v2 §3 建议），裁定权在下游件
   （跨仓协调注记，非阻塞）。
+
+## 11. spec-sync 回写记录
+
+- 2026-10-03 merge（d2c6209fa）：SD-01→docs/specs/auto-lang/ui/design/
+  frame-observability.md（§1 通道三时戳/§4 交付节奏契约+真相通道边界/
+  §5 配对面口径升格）；SD-02→docs/specs/auto-lang/ui/design/
+  frame-pipeline-incremental.md（§4b 泵治理语义升格=交付节奏契约）。
+  账本 P735-1（designs）/P735-2（reviews）；ui/plans.md 735 行；
+  ui/overview.md PLAN-735 注记；INDEX 再生。
