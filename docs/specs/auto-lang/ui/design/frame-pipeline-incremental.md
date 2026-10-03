@@ -97,6 +97,26 @@ handler 解释）→ ③builder 段（模板→AbstractView）→ ④Element 段
   ——波动带注记见 evidence/731/T-05-comparison.md §1）；视觉 golden
   三形（键入/滚动/resize）改前/改后 0.00% 全等。
 
+## 4c. 输入回写视面补丁边界（PLAN-739——F-037-R1 根因边界）
+
+- **权威序列**：autodown_editor 的可见文本权威序列恒为
+  `state（模板求值）→ autodown_editor_sync 三层守卫（`last_external`
+  差分快路 / `emit_document` 自回显快路 / `emitted_echo` PLAN-057
+  回声集）→ 编辑器核`。`patch_input_values` 视面补丁**不参与** ADE——
+  补丁只覆盖真单向 value 的 iced widget（Input/Textarea/CodeEditor，
+  其 value prop 无核内回声守卫兜底）。
+- **禁例（根因沉淀）**：ADE 的 `oninput` 事件不进 `input_state_map`
+  （`scan_node_for_inputs` 只扫 input/textarea/Input 标签元素）→
+  `input_values` 键入条目对该事件经 retain 永生。若任何消费口把该
+  条目回灌 ADE 视面（如曾有的 patch 臂），换页/换内容重建即被钉死在
+  旧页键入全文（jade PLAN-037 F-037-R1：键入后链接导航/树切换视面
+  粘滞冻结、store 权威态正确）。
+- **记账单源**：update 主链 `input_values` 记账（键入登记 + handler
+  后 retain 清理）单源 `track_input_text` /
+  `retain_input_values_after_handler`（renderer.rs）；真实节拍回归
+  测试（`plan739_edit_then_page_switch_view_follows_store`，
+  语料 `test/ui/plan739_input_pin/`）驱动同函数零漂移。
+
 ## 5. 阶梯谱基准口径（上游对偶面）
 
 - **负载**：`examples/ui/041-auto-edit`（全 chrome 编辑器例）+ MCP fixture
