@@ -656,7 +656,19 @@ async fn mcp_http_handler(
 ) -> axum::Json<serde_json::Value> {
     // 2026-08-22:记一次 agent 请求 —— 心跳 subscription 的活联门控依据。
     shared.lock().unwrap().note_activity();
-    let response = handle_request_static(&shared, request);
+    // PLAN-737：工具执行整体下沉 blocking pool——服务器是 current-thread
+    // runtime（run()），handler 内任何同步阻塞（快照大树序列化、截屏、
+    // 以及 737 栅栏的 ack 轮询）都会冻结 accept/IO 线程，探针连发下偶发
+    // 连接重置（ECONNRESET 家族实机复现后定谳）。SharedStateHandle/
+    // Value 均 Send，await join 后返回。
+    let response = tokio::task::spawn_blocking(move || handle_request_static(&shared, request))
+        .await
+        .unwrap_or_else(|e| {
+            json!({
+                "jsonrpc": "2.0", "id": null,
+                "error": {"code": -32603, "message": format!("tool exec join failed: {e}")}
+            })
+        });
     axum::Json(response)
 }
 
