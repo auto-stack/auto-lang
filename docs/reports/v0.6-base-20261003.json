@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "snapshotDate": "2026-10-03",
+  "purpose": "Local baseline before v0.6 development; missing v0.5 work on the main computer is not included.",
+  "tag": "v0.6-base-20261003",
+  "tagKind": "lightweight",
+  "branch": "v0.6-dev",
+  "pushed": false,
+  "workingTreesSwitched": true,
+  "activeWorktree": {
+    "repository": "auto-lang",
+    "path": "C:/Users/zhaop/.codex/worktrees/5fa2/auto-lang",
+    "branch": "v0.6-dev",
+    "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+    "discussionFilesPreserved": 5
+  },
+  "repositories": [
+    {
+      "name": "auto-lang",
+      "path": "D:/autostack/auto-lang",
+      "releaseBranch": "master",
+      "origin": "git@github.com:auto-stack/auto-lang.git",
+      "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e"
+    },
+    {
+      "name": "auto-os",
+      "path": "D:/autostack/auto-os",
+      "releaseBranch": "main",
+      "origin": "git@github.com:auto-stack/auto-os.git",
+      "commit": "93c3cb0259c8cfe1644e2b35baff71638be59ec5"
+    },
+    {
+      "name": "auto-musk",
+      "path": "D:/autostack/auto-musk",
+      "releaseBranch": "main",
+      "origin": "git@github.com:auto-stack/auto-musk.git",
+      "commit": "edde608709c5dd5b413fc9c534113d41f0bb8afe"
+    },
+    {
+      "name": "auto-shell",
+      "path": "D:/autostack/auto-shell",
+      "releaseBranch": "main",
+      "origin": "git@github.com:auto-stack/auto-shell.git",
+      "commit": "00c87755c6212cd90390e7c57a77c1477f0da6ba"
+    },
+    {
+      "name": "auto-ai",
+      "path": "D:/autostack/auto-ai",
+      "releaseBranch": "main",
+      "origin": "https://github.com/auto-stack/auto-ai.git",
+      "commit": "58bee8d9d0799d05d67c41fa188ff899252a8e3e"
+    },
+    {
+      "name": "auto-down",
+      "path": "D:/autostack/auto-down",
+      "releaseBranch": "master",
+      "origin": "git@github.com:auto-stack/auto-down.git",
+      "commit": "fba6563ed2148ce85e68208863159b4ccccac710"
+    }
+  ]
+}

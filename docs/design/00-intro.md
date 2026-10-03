@@ -150,6 +150,10 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 文档 | 主题 | 状态 |
 |------|------|------|
 | [ecosystem-portfolio-strategy](strategy/ecosystem-portfolio-strategy.md) | **生态版图伞形总战略**：动静结合第一优势（全生态设计原点）+ 三大市场（需求侧 3 + 供给侧 1）+ 寄生期合作层原则 + 优先级总表与不做清单（各分战略入口） | 📝 Draft（2026-09-06） |
+| [v0.6-offline-development-strategy](strategy/v0.6-offline-development-strategy.md) | v0.6 提前开发的历史基线、合并边界、近期任务与当前状态 | 规划基线 v1（2026-10-04；具体实现另行评审） |
+| [demo-app-independence-strategy](strategy/demo-app-independence-strategy.md) | 教学 Demo 与独立产品分流、来源同步、子模块组织与产品孵化 | 首轮建仓/接线完成；产品功能与全量验收待推进 |
+| [unified-package-install-strategy](strategy/unified-package-install-strategy.md) | auto-man 系统级包网络、安装核心与实体生命周期 | 目标已确认，技术设计草案（v0.6 必做） |
+| [atom-batom-v2-design](strategy/atom-batom-v2-design.md) | 新 Atom/Batom：独立于 auto-val 的模型/内存、Schema、struct codec、Node/Lisp 文本、自描述与紧凑二进制 profile | 📝 Draft RFC（2026-10-04；新方向，格式/计划未冻结） |
 | [auto-as-rust-script-strategy](strategy/auto-as-rust-script-strategy.md) | "Auto 作 Rust 脚本层"宣传与文档纲领 | ✅ Accepted（Plan 359） |
 | [rust-library-replication-roadmap](strategy/rust-library-replication-roadmap.md) | Rust 库复刻验证路线（parity 语料） | ✅ 现行（Plan 347/348/369） |
 | [python-parity-roadmap](strategy/python-parity-roadmap.md) | Python parity 第三维度（use.py + a2py） | ✅ 现行（Plan 369 首批落地） |
@@ -210,6 +214,6 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 - **贡献 AutoUI/桌面**：16（战略）→ 20（架构）→ [autoui/](autoui/README.md) 各专题
   （虚拟桌面线：virtual-desktop → desktop-shell-and-launcher → desktop-shell[25]）。
 - **查现状/关键代码入口**：去 [docs/specs/](../specs/overview.md)（本目录存意图，specs 存现状）。
-- **查某次改动的来龙去脉**：去 [docs/plans/](../plans/archive/plans-status-audit-2026-08-20.md)（最新全量审计；2026-09-01 起由 [Plan 513](../plans/513-repo-integration-cleanup.md) 接任）。
+- **查某次改动的来龙去脉**：去 [docs/plans/](../plans/archive/plans-status-audit-2026-08-20.md)（最新全量审计；2026-09-01 起由 [Plan 513](../plans/archive/513-repo-integration-cleanup.md) 接任）。
 - **新增设计文档**：按"归位规则"节先定性再落位，写完在本索引登记。
 
