@@ -361,6 +361,43 @@ impl SharedState {
         }
     }
 
+    /// PLAN-737：合成动作「已应用」栅栏发送。`__mcp_*` 合成事件在 event 尾
+    /// 附 `|ack=<id>`；应用侧处理完该动作的级联（noop 回执点/臂尾直执）
+    /// 后回执（复用 fixture 回执表），本侧限时轮询——把「入队」收紧为
+    /// 「已应用」。非合成事件（handler 名直派：press/type_text 等）保持
+    /// 既有异步语义零改动。超时不报错（动作仍在队列、最终应用——尽力
+    /// 同步，failure 路径由应用侧解析失败臂兜底）。轮询期间不持锁（回执
+    /// 与本句共用同一 mutex，持锁轮询自锁死）。
+    pub fn send_action_applied(
+        shared: &SharedStateHandle,
+        mut msg: ActionMessage,
+    ) -> Result<(), String> {
+        const ACTION_ACK_TIMEOUT_MS: u64 = 1_000;
+        let ack_id = match &mut msg.target {
+            ActionTarget::Event { event, .. } if event.starts_with("__mcp_") => {
+                let id = shared.lock().unwrap().next_fixture_id();
+                *event = format!("{}|ack={}", event, id);
+                Some(id)
+            }
+            _ => None,
+        };
+        {
+            let shared = shared.lock().unwrap();
+            shared.send_action(msg)?;
+        }
+        if let Some(id) = ack_id {
+            let deadline = std::time::Instant::now()
+                + std::time::Duration::from_millis(ACTION_ACK_TIMEOUT_MS);
+            while std::time::Instant::now() < deadline {
+                if shared.lock().unwrap().take_fixture_ack(id).is_some() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+        Ok(())
+    }
+
     pub fn set_backend_kind(&mut self, kind: BackendKind) {
         self.backend_kind = kind;
     }
@@ -619,7 +656,19 @@ async fn mcp_http_handler(
 ) -> axum::Json<serde_json::Value> {
     // 2026-08-22:记一次 agent 请求 —— 心跳 subscription 的活联门控依据。
     shared.lock().unwrap().note_activity();
-    let response = handle_request_static(&shared, request);
+    // PLAN-737：工具执行整体下沉 blocking pool——服务器是 current-thread
+    // runtime（run()），handler 内任何同步阻塞（快照大树序列化、截屏、
+    // 以及 737 栅栏的 ack 轮询）都会冻结 accept/IO 线程，探针连发下偶发
+    // 连接重置（ECONNRESET 家族实机复现后定谳）。SharedStateHandle/
+    // Value 均 Send，await join 后返回。
+    let response = tokio::task::spawn_blocking(move || handle_request_static(&shared, request))
+        .await
+        .unwrap_or_else(|e| {
+            json!({
+                "jsonrpc": "2.0", "id": null,
+                "error": {"code": -32603, "message": format!("tool exec join failed: {e}")}
+            })
+        });
     axum::Json(response)
 }
 
@@ -1632,11 +1681,8 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
             action: UiActionType::Scroll,
             value: Some(payload),
         };
-        {
-            let shared = shared_handle.lock().unwrap();
-            if let Err(e) = shared.send_action(msg) {
-                return error_result(e);
-            }
+        if let Err(e) = SharedState::send_action_applied(&shared_handle, msg) {
+            return error_result(e);
         }
         return text_result(format!(
             "Scrolled {} to y={} px (status: ok)",
@@ -1700,11 +1746,8 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
             action: UiActionType::ResizeCol,
             value: Some(payload),
         };
-        {
-            let shared = shared_handle.lock().unwrap();
-            if let Err(e) = shared.send_action(msg) {
-                return error_result(e);
-            }
+        if let Err(e) = SharedState::send_action_applied(&shared_handle, msg) {
+            return error_result(e);
         }
         return text_result(format!(
             "Resized {} (table {table_key}) col {col} to {width}px (status: ok)",
@@ -1799,11 +1842,8 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
             action: UiActionType::Drag,
             value: Some(spec),
         };
-        {
-            let shared = shared_handle.lock().unwrap();
-            if let Err(e) = shared.send_action(msg) {
-                return error_result(e);
-            }
+        if let Err(e) = SharedState::send_action_applied(&shared_handle, msg) {
+            return error_result(e);
         }
         return text_result(format!(
             "Dragged {} via {} (down={} move={} up={}) (status: ok)",
@@ -1842,11 +1882,8 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
             action: UiActionType::Drag,
             value: Some(spec.clone()),
         };
-        {
-            let shared = shared_handle.lock().unwrap();
-            if let Err(e) = shared.send_action(msg) {
-                return error_result(e);
-            }
+        if let Err(e) = SharedState::send_action_applied(&shared_handle, msg) {
+            return error_result(e);
         }
         return text_result(format!(
             "Pen stroke on {} via {} (start={} move={} end={}) (status: ok)",
@@ -1903,11 +1940,8 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
             action: UiActionType::Press,
             value: Some(payload),
         };
-        {
-            let shared = shared_handle.lock().unwrap();
-            if let Err(e) = shared.send_action(msg) {
-                return error_result(e);
-            }
+        if let Err(e) = SharedState::send_action_applied(&shared_handle, msg) {
+            return error_result(e);
         }
         return text_result(format!(
             "Clicked {} at {} (autodown editor block focus) (status: ok)",
@@ -1947,11 +1981,8 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
             action: UiActionType::KeyPress,
             value: Some(payload),
         };
-        {
-            let shared = shared_handle.lock().unwrap();
-            if let Err(e) = shared.send_action(msg) {
-                return error_result(e);
-            }
+        if let Err(e) = SharedState::send_action_applied(&shared_handle, msg) {
+            return error_result(e);
         }
         return text_result(format!(
             "Key press {} on {} (editor core.handle_input, focused block) (status: ok)",
@@ -1987,11 +2018,8 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
             action: UiActionType::EditorDrag,
             value: Some(payload),
         };
-        {
-            let shared = shared_handle.lock().unwrap();
-            if let Err(e) = shared.send_action(msg) {
-                return error_result(e);
-            }
+        if let Err(e) = SharedState::send_action_applied(&shared_handle, msg) {
+            return error_result(e);
         }
         return text_result(format!(
             "Editor drag [{}] on {} (core MousePressed/Dragged/Released) (status: ok)",
