@@ -295,6 +295,18 @@ fixture生成临时证书/凭据，只测试localhost；实际HTTPS→proxy→VM
 - blocked仅为实施依赖，无需用户为本次规划补信息；实施使用前需具体合同确认，不从“规划”推定自动部署授权。
 - 本轮仅计划/Design簿记，不创建736 worktree/不跑Cargo/不改canonical/不修改734进度。交接检查通过：11章节、8任务/9AC/6SD覆盖、现有Spec路径与新增标识、无新增失效链接、唯一ID及diff；Design索引既有513链接失效未纳入本期。
 
+### 工作交接（2026-10-03 09:10，/auto-plan:work 入口核查）
+
+- stage: work
+- plan_id: PLAN-736
+- plan_revision: 1
+- outcome: blocked
+- code_commit: 无（未创建 736 worktree/分支，未进入实施）
+- task_ids: 无（T-01 入口前置未满足；T-01..T-08 全部链式依赖 T-01，无不受影响任务可先行）
+- evidence: T-01 前置"734独立review pass+merge"实测未满足——master `docs/plans/734-*.md` 仍 `status: executing`（最新记录=复审 R1 needs_fix，master c16187f44）；`plan-734-dev`（tip a5284dd84，2026-10-03 08:47 +0800）已含 R1 回工提交但未合入 master；734 worktree 另有未提交 R2 阶段修复（`stdlib.rs` vm_value_to_json I64 臂回补，mtime 08:59:48，代码注释自标 "PLAN-734 R2"）。本会话 09:10 实测距该写入仅 11 分钟——**并发会话正活跃推进 734 修复**；按单写者纪律与起草授权（"本计划不修改其进度或执行复审"），736 不夺取 734 所有权、不代跑其 R2 复审/合并。
+- blockers: 唯一阻塞=PLAN-734 生命周期未闭合（R2 复审 pass + merge）；无用户决策项。
+- next: 734 会话完成 R2 复审 pass 并 merge → 主检出可读最终 SD/债/receipt/批准边界 → 重跑 `/auto-plan:work PLAN-736`（自 T-01 起：new-wt-group lang-736、736-http-decision.md、冻结测试机器与 §6.2 负载条件）。734 复审若再 needs_fix，仍先修 734，736 不承接未批准延期。
+
 ## 10. 待澄清事项
 
 - 734仍在review队列，Tauri fixture与资源声明兼容债以其最终review裁定为准；不挪到736当作获准延期，不宣称五形态parity已全部完成。
