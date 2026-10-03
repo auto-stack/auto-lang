@@ -1,28 +1,32 @@
 {
-  "last_covered_plan_id": 732,
-  "timestamp": "2026-10-03T00:00:00Z",
-  "covered_commit": "6988b1d7f75cd1e135ac2431c798def293b9d735",
-  "legs": [
-    "tf",
-    "tt",
-    "tb"
-  ],
-  "taa_skipped_reason": "window 4614bd9df..HEAD touched zero aavm trigger paths (git log --name-only verified: no auto/lib/*.at, test/vm/aavm2, parity, aavm2_*, aavm_runner_tests, lib.rs aavm sources)",
-  "new_reds": [],
-  "load_flakes_observed": [
-    "plan502_m3_layout_geometry_e2e / plan484_024_charts_streaming_recompute (tf 并行全池负载下红, 隔离复跑绿——图表/图解时序族)",
-    "plan730_commit_target_matrix (tf/日常并行红 x2, 隔离+全滤复跑绿——磁盘重测试 30s 级: 6 目标 x canonicalize+receive+commit; 候选后续拆分或降 IO, 非确定性红)"
-  ],
-  "known_reds_seen": [
-    "musk_vm_track_p053 x3-4 (widget_computed x2 / merged_api_warning / widget_content)",
-    "musk_vm_track_p054 x2 (icon_component x2)",
-    "schema_drift x2 + docs_gen kitchen_sink (REG-4 跨仓金样脱同步, 上批在案债)",
-    "ash_stream_leak_probe",
-    "projector_counter_layout_and_hits",
-    "desktop_bus_inbox_drains_through_real_arms + desktop_surface_merge_dedupe_and_injection",
-    "plan606_gallery test_029_photo_gallery_thumbnails",
-    "ui_gen::vue::test_a2vue_desktop_surface_asset (4f123a50e)"
-  ],
-  "leg_timings": "tf 65.9s no-fail-fast (6085 run, 6070 pass, 15 fail: 13 已知 + 2 图表负载 flake; 画廊围栏暖缓存过) / tt 85.9s (5435 run, 12 fail 全已知族) / tb 57.2s (5119 run, 11 fail 全已知族); 三腿红集隔离复跑核对完成",
-  "verdict": "known-reds-only; zero new deterministic reds in window 4614bd9df..HEAD (PLAN-726 后: 727/729/730 合并 + 731/732/735 会话窗口); PLAN-730 全部新增面 (plan730 26 测 + e2e 14 + 生成 e2e) 在批量档全绿"
+ "last_covered_plan_id": 735,
+ "timestamp": "2026-10-03T04:05:00Z",
+ "covered_commit": "68a6ce919",
+ "legs": [
+  "tf",
+  "tt",
+  "tb"
+ ],
+ "taa_skipped_reason": "window 6988b1d7f..HEAD 零 aavm 触发路径（git log --name-only verified: 无 auto/lib/*.at、test/vm/aavm2、parity、aavm2_*、aavm_runner、lib.rs aavm 源）",
+ "new_reds": [
+  "http_upload_service::tests::plan730_commit_target_matrix"
+ ],
+ "new_red_notes": "plan730_commit_target_matrix scoped 同红（30.1s 恒时长=内部 deadline watchdog 到期形态）——窗口代码面仅 735 帧通道四文件与 http_upload_service 零交集；同晨批量（covered 6988b1d7f 含 730 全码）零新增→环境/时序敏感测试翻红，归属 PLAN-730 域清偿（734 会话在途），登记 KNOWN-DEBT P735-R1。不 unmerge。",
+ "flakes_seen": [
+  "plan394_future_arch_tests::plan394::c1_future_all（tf-only，scoped 绿）",
+  "plan394_future_arch_tests::plan394::c2_future_race（tf-only，scoped 绿）",
+  "plan499_pointer_stream_tests::plan499_anim::plan499_tooltip_fade_interpolation（tf-only，scoped 绿）",
+  "plan502_diagram_tests::plan502_m3_layout_geometry_e2e（tf 并行负载 flake——P733-R1 已登记 load-flake 族，scoped 绿）"
+ ],
+ "known_reds_seen": [
+  "musk_vm_track_p053 x4 (widget_computed x2 / merged_api_warning / widget_content)",
+  "musk_vm_track_p054 x2 (icon_component x2)",
+  "plan606_gallery test_029_photo_gallery_thumbnails",
+  "projector_counter_layout_and_hits",
+  "desktop_bus_inbox_drains_through_real_arms",
+  "desktop_surface_merge_dedupe_and_injection",
+  "plan707_wait_generator_park_drive_count_static (负载敏感 flake 维持)",
+  "ui_gen::vue::test_a2vue_desktop_surface_asset (a2vue desktop golden, 4f123a50e)",
+  "schema_drift::schema_drift_fence + queue_coverage_drift_fence + docs_gen::kitchen_sink_page_in_sync (REG-4 跨仓金样脱同步)"
+ ]
 }
