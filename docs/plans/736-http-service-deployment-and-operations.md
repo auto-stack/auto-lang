@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-03
 plan_revision: 1
-current_step: 3
+current_step: 4
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -251,9 +251,9 @@ fixture生成临时证书/凭据，只测试localhost；实际HTTPS→proxy→VM
 
 ### T-04：CORS/Host/代理策略与middleware失败边界
 
-- 依赖T-03。纯策略归config模块，VM dispatch及network/gen adapter消费；生成main内部媒体/照片route安装按profile门控。
-- 精确origin/preflight/Vary与坏Host；单可信peer重写身份、字段校验、既有限速身份与有界bucket/TTL；service middleware错误拒绝，保护上传不预读/写盘。
-- 实际两轨policy与0FS负测；AC-04/07，SD-01/02/03/04。
+- [x] 依赖T-03。纯策略归config模块，VM dispatch及network/gen adapter消费；生成main内部媒体/照片route安装按profile门控。 [✅ 已完成] 提交1d65ff70e：桥层策略链（http_transport bridge_handler，先于 body/上传预检）+ 生成 __policy_gate/peer 注入层 + media/photo 路由 if 门控（service off/legacy on）；dispatch legacy `*` CORS 头块服务面停用（set_service_policy_active，附件归桥层）
+- [x] 精确origin/preflight/Vary与坏Host；单可信peer重写身份、字段校验、既有限速身份与有界bucket/TTL；service middleware错误拒绝，保护上传不预读/写盘。 [✅ 已完成] wildcard preflight ACAO=* 统一；request-id 1..64 可见 ASCII 子集校验（不合重生成）；限速走 ServiceRuntime.limiter（有界桶+TTL）；策略链全部短路与 body 读取之前=0FS 保护序
+- [x] 实际两轨policy与0FS负测；AC-04/07，SD-01/02/03/04。 [✅ 已完成] 实机 proxy_service 双轨矩阵：bad Host=400、media scan=404（off）、preflight 拒=403、ACAO 泄漏=0；dev 面附件正确（preflight 204 ACAO=*+actual 200 ACAO=*）；plan736 10/10 + plan734/705 26/26。middleware fail-closed 语义随 T-05 观测接线一并复验（应用 middleware 编组错误路径在 734 合同内已有 500 语义，T-08 复审复核）
 
 ### T-05：观测、ready与关闭/进程管理
 
