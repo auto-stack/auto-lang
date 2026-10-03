@@ -105,7 +105,7 @@ pub(crate) async fn serve_network(
         u64, // scope id (PLAN-705 T-05)
     )>,
     shutdown: tokio::sync::watch::Receiver<bool>,
-    ready: tokio::sync::oneshot::Sender<Result<(), String>>,
+    ready: tokio::sync::oneshot::Sender<Result<String, String>>,
 ) {
     let listener = match tokio::net::TcpListener::bind(&addr).await {
         Ok(l) => l,
@@ -114,7 +114,13 @@ pub(crate) async fn serve_network(
             return;
         }
     };
-    let _ = ready.send(Ok(()));
+    // PLAN-736 AC-02: ready 报真实 bound 地址（port=0 → 内核分配的临时端口），
+    // 启动者与 health 身份都以它为准，不用请求方拼接值。
+    let bound = listener
+        .local_addr()
+        .map(|a| a.to_string())
+        .unwrap_or_else(|_| addr.clone());
+    let _ = ready.send(Ok(bound));
 
     let graceful = GracefulShutdown::new();
     let mut shutdown = shutdown;

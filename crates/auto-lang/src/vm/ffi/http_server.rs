@@ -4021,6 +4021,46 @@ pub(crate) fn compute_ws_accept(key: &str) -> String {
 ///   - JSON handlers: call_fn_by_name (synchronous), write response, done.
 ///   - SSE handlers: a bounded local producer steps the VM in instruction
 ///     batches while the connection task writes frames.
+/// PLAN-736 AC-01/02: 最近一次 serve 的致命错误（bind 失败/net 线程死亡）。
+/// serve 入口（`auto serve`/run_file_with_service 消费者）据此以非零退出；
+/// legacy `auto run` 面不消费——保持既有"打印后继续"语义不变。
+static SERVE_FATAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+/// PLAN-736 AC-02: 最近一次 serve 成功 bind 的真实地址（port=0 解析值）。
+static SERVE_BOUND_ADDR: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+fn record_serve_fatal(msg: impl Into<String>) {
+    if let Ok(mut slot) = SERVE_FATAL.lock() {
+        *slot = Some(msg.into());
+    }
+}
+
+/// serve 入口在 serve 返回后取致命错误（Some = 非零退出依据）。
+pub fn take_serve_fatal_error() -> Option<String> {
+    SERVE_FATAL.lock().ok().and_then(|mut s| s.take())
+}
+
+/// 只读快照（不消费）——run_file 内的钩子用它把 fatal 转成 Err 返回；
+/// 外层 serve 入口随后 `take` 收割消息。take/snapshot 双面分离避免单次
+/// take 被钩子吞掉后外层拿不到诊断。
+pub fn serve_fatal_snapshot() -> Option<String> {
+    SERVE_FATAL.lock().ok().and_then(|s| s.clone())
+}
+
+/// serve 入口在 ready 判定后取真实 bound 地址（port=0 场景必须用它）。
+pub fn bound_addr_snapshot() -> Option<String> {
+    SERVE_BOUND_ADDR.lock().ok().and_then(|s| s.clone())
+}
+
+/// 测试/serve 入口复位（进程内多 serve 序列时防陈旧值串场）。
+pub fn reset_serve_state() {
+    if let Ok(mut f) = SERVE_FATAL.lock() {
+        *f = None;
+    }
+    if let Ok(mut b) = SERVE_BOUND_ADDR.lock() {
+        *b = None;
+    }
+}
+
 pub async fn serve_async(vm: std::rc::Rc<crate::vm::engine::AutoVM>, addr: &str) {
     // PLAN-699 T-03: Axum/Hyper HTTP/1.1 transport (Design 33 阶段 B). The VM
     // owner keeps this thread's `LocalSet` and consumes a bounded queue of
@@ -4107,7 +4147,7 @@ async fn serve_with(
         u64, // scope id (PLAN-705 T-05)
     )>(cfg.queue_capacity);
 
-    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
     let net_addr = addr.to_string();
     let net_cfg = cfg.clone();
     let net_shutdown = shutdown_rx.clone();
@@ -4135,16 +4175,25 @@ async fn serve_with(
         });
     if spawned.is_err() {
         eprintln!("[HTTP] failed to spawn the auto-http-net thread");
+        record_serve_fatal("failed to spawn the auto-http-net thread");
         return;
     }
     match ready_rx.await {
-        Ok(Ok(())) => {}
+        Ok(Ok(bound)) => {
+            // PLAN-736: 真实 bound 地址（port=0 时为内核分配值）供 serve 入口/
+            // health 身份消费。
+            if let Ok(mut slot) = SERVE_BOUND_ADDR.lock() {
+                *slot = Some(bound);
+            }
+        }
         Ok(Err(e)) => {
             eprintln!("[HTTP] Async server bind failed on {}: {}", addr, e);
+            record_serve_fatal(format!("bind failed on {addr}: {e}"));
             return;
         }
         Err(_) => {
             eprintln!("[HTTP] net thread died before binding");
+            record_serve_fatal("net thread died before binding");
             return;
         }
     }

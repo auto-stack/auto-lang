@@ -3773,13 +3773,49 @@ fn generate_main_rs(
         s.push_str("    auto_lang::http_upload_service::install_upload_executor_service();\n");
         // Resolve the bind port from AUTO_HTTP_PORT (default 8080) so multiple
         // `auto run` instances — or other services sharing the host — can coexist.
-        s.push_str("    let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")\n");
-        s.push_str("        .ok()\n");
-        s.push_str("        .and_then(|v| v.trim().parse().ok())\n");
-        s.push_str("        .unwrap_or(8080);\n");
-        s.push_str("    let addr = format!(\"127.0.0.1:{}\", port);\n");
-        s.push_str("    println!(\"Server running on http://{}\", addr);\n");
-        s.push_str("    println!(\"CORS enabled for all origins\");\n\n");
+        // PLAN-736 AC-01/02: 服务配置面（AUTO_HTTP_SERVICE_JSON，由 `auto
+        // service --server rust` 注入的解析后规范形）优先；legacy 面维持
+        // env/8080 链不变。坏配置 = 指名诊断 + 退出码 2（不假装 ready）。
+        s.push_str("    let service_cfg = match std::env::var(\"AUTO_HTTP_SERVICE_JSON\") {
+");
+        s.push_str("        Ok(json) => match auto_lang::http_service_config::resolve_service_config(&json, None) {
+");
+        s.push_str("            Ok(c) => Some(std::sync::Arc::new(c)),
+");
+        s.push_str("            Err(e) => {
+");
+        s.push_str("                eprintln!(\"http-service config error: {e}\");
+");
+        s.push_str("                std::process::exit(2);
+");
+        s.push_str("            }
+");
+        s.push_str("        },
+");
+        s.push_str("        Err(_) => None,
+");
+        s.push_str("    };
+");
+        s.push_str("    let addr: String = match &service_cfg {
+");
+        s.push_str("        Some(c) => format!(\"{}:{}\", c.listen_addr, c.listen_port),
+");
+        s.push_str("        None => {
+");
+        s.push_str("            let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")
+");
+        s.push_str("                .ok()
+");
+        s.push_str("                .and_then(|v| v.trim().parse().ok())
+");
+        s.push_str("                .unwrap_or(8080);
+");
+        s.push_str("            format!(\"127.0.0.1:{}\", port)
+");
+        s.push_str("        }
+");
+        s.push_str("    };
+");
         s.push_str("    // Initial data\n");
         s.push_str(&format!("    let data: Db = Arc::new(Mutex::new({}));\n\n", initial_data));
         s.push_str("    // Enable CORS for frontend development\n");
@@ -3813,13 +3849,49 @@ fn generate_main_rs(
         // PLAN-730 T-06: 上传宿主 executor 安装（幂等——无上传端点时
         // 轻量 no-op 面；a2r facade 的 receive/commit/reject 经此执行）。
         s.push_str("    auto_lang::http_upload_service::install_upload_executor_service();\n");
-        s.push_str("    let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")\n");
-        s.push_str("        .ok()\n");
-        s.push_str("        .and_then(|v| v.trim().parse().ok())\n");
-        s.push_str("        .unwrap_or(8080);\n");
-        s.push_str("    let addr = format!(\"127.0.0.1:{}\", port);\n");
-        s.push_str("    println!(\"Server running on http://{}\", addr);\n");
-        s.push_str("    println!(\"CORS enabled for all origins\");\n\n");
+        // PLAN-736 AC-01/02: 服务配置面（AUTO_HTTP_SERVICE_JSON，由 `auto
+        // service --server rust` 注入的解析后规范形）优先；legacy 面维持
+        // env/8080 链不变。坏配置 = 指名诊断 + 退出码 2（不假装 ready）。
+        s.push_str("    let service_cfg = match std::env::var(\"AUTO_HTTP_SERVICE_JSON\") {
+");
+        s.push_str("        Ok(json) => match auto_lang::http_service_config::resolve_service_config(&json, None) {
+");
+        s.push_str("            Ok(c) => Some(std::sync::Arc::new(c)),
+");
+        s.push_str("            Err(e) => {
+");
+        s.push_str("                eprintln!(\"http-service config error: {e}\");
+");
+        s.push_str("                std::process::exit(2);
+");
+        s.push_str("            }
+");
+        s.push_str("        },
+");
+        s.push_str("        Err(_) => None,
+");
+        s.push_str("    };
+");
+        s.push_str("    let addr: String = match &service_cfg {
+");
+        s.push_str("        Some(c) => format!(\"{}:{}\", c.listen_addr, c.listen_port),
+");
+        s.push_str("        None => {
+");
+        s.push_str("            let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")
+");
+        s.push_str("                .ok()
+");
+        s.push_str("                .and_then(|v| v.trim().parse().ok())
+");
+        s.push_str("                .unwrap_or(8080);
+");
+        s.push_str("            format!(\"127.0.0.1:{}\", port)
+");
+        s.push_str("        }
+");
+        s.push_str("    };
+");
         s.push_str("    let cors = CorsLayer::new()\n");
         s.push_str("        .allow_origin(Any)\n");
         s.push_str("        .allow_methods(Any)\n");
@@ -3839,8 +3911,50 @@ fn generate_main_rs(
         s.push_str("        .route(\"/api/photos/full/:id\", axum::routing::get(auto_photos_full))\n");
         s.push_str("        .layer(cors);\n\n");
     }
-    s.push_str("    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();\n");
-    s.push_str("    axum::serve(listener, app).await.unwrap();\n");
+    // PLAN-736 AC-01/02: bind 失败 = 指名诊断 + 非零退出（旧 unwrap panic 退役）；
+    // ready 打印移到 bind 成功之后并报真实 local_addr（port=0 场景）。
+    s.push_str("    let listener = match tokio::net::TcpListener::bind(&addr).await {
+");
+    s.push_str("        Ok(l) => l,
+");
+    s.push_str("        Err(e) => {
+");
+    s.push_str("            eprintln!(\"http-service bind failed on {}: {}\", addr, e);
+");
+    s.push_str("            std::process::exit(1);
+");
+    s.push_str("        }
+");
+    s.push_str("    };
+");
+    s.push_str("    let bound = listener
+");
+    s.push_str("        .local_addr()
+");
+    s.push_str("        .map(|a| a.to_string())
+");
+    s.push_str("        .unwrap_or_else(|_| addr.clone());
+");
+    s.push_str("    match &service_cfg {
+");
+    s.push_str("        Some(c) => println!(
+");
+    s.push_str("            \"AUTO_SERVICE_READY {{\\\"bound\\\":\\\"{}\\\",\\\"profile\\\":\\\"{}\\\",\\\"config_hash\\\":\\\"{:016x}\\\"}}\",
+");
+    s.push_str("            bound,
+");
+    s.push_str("            c.profile.as_str(),
+");
+    s.push_str("            c.effective_config_hash()
+");
+    s.push_str("        ),
+");
+    s.push_str("        None => println!(\"Server running on http://{} (CORS enabled for all origins)\", bound),
+");
+    s.push_str("    }
+");
+    s.push_str("    axum::serve(listener, app).await.unwrap();
+");
     s.push_str("}\n");
     s
 }

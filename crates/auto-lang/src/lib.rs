@@ -109,6 +109,7 @@ pub mod back_proxy; // PLAN-658: 单进程多后端宿主（画廊内嵌 demo �
 pub mod back_prefix; // PLAN-037: launch 期作用域化模块源前缀化 overlay（桌面后端供给——un-gated，模块读点在本文核心装载链）
 pub mod http_file_service; // PLAN-729: 服务端文件响应宿主执行（VM/生成 Rust 共用；无 ui 依赖）
 pub mod http_upload_service; // PLAN-730: 服务端上传宿主 executor（VM/生成 Rust 共用；无 axum 类型）
+pub mod http_service_config; // PLAN-736: 服务部署配置与纯策略（版本中立；两轨共用）
 pub mod compile;
 pub mod config;
 pub mod database;
@@ -1746,6 +1747,24 @@ async fn execute_autovm_with_path(
     // an Rc clone, so the !Send VM stays on this thread and outlives the task.
     let routes = crate::vm::ffi::stdlib::get_http_routes();
     if !routes.is_empty() {
+        // PLAN-736 AC-01: 显式服务配置面（`auto serve`/run_file 服务装配）——
+        // listen 取自解析后的 HttpServiceConfig（默认 loopback），不再读 env；
+        // seam 由 serve 入口在 spawn VM 线程前 set、此处 take 一次。
+        if let Some(svc) = crate::http_service_config::take_active_service_config() {
+            let addr = format!("{}:{}", svc.listen_addr, svc.listen_port);
+            eprintln!(
+                "[HTTP] Auto-starting server with {} route(s) on {} (profile: {}, config_hash: {:016x})",
+                routes.len(), addr, svc.profile.as_str(), svc.effective_config_hash()
+            );
+            crate::vm::ffi::http_server::serve_async(std::rc::Rc::new(vm), &addr).await;
+            if let Some(fatal) = crate::vm::ffi::http_server::serve_fatal_snapshot() {
+                // peek 不消费：外层 serve 入口 join 后 take 收割同一条诊断。
+                return Err(crate::error::AutoError::Msg(format!(
+                    "http service failed to start: {fatal}"
+                )));
+            }
+            return Ok((result, get_stdout(), bytecode_lines, bytecode_meta));
+        }
         let port = std::env::var("AUTO_HTTP_PORT").unwrap_or_else(|_| "8080".to_string());
         let addr = format!("0.0.0.0:{}", port);
         eprintln!("[HTTP] Auto-starting server with {} route(s) on {}", routes.len(), addr);

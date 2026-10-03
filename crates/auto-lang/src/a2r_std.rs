@@ -838,6 +838,18 @@ pub mod http {
         FileRequestConditions, FileResponse, FileResponseOptions, RepresentationValidators,
     };
 
+    // PLAN-736 T-02：服务端上传公共面——同形转发（730 上传 glue 生成后经
+    // api_gen qualify_a2r_std 落到 auto_lang::a2r_std::http；此前缺此转发
+    // 使生成上传后端 E0425——727 transfer/729 file 壳均有、upload 漏网）。
+    pub use ::a2r_std::http::{
+        cancel_upload_session, failed_session, install_upload_executor,
+        parse_upload_receive_options, upload_commit, upload_error, upload_metadata,
+        upload_metadata_json, upload_receive, upload_reject, upload_request_from_parts,
+        UploadBodyStream, UploadErrorKind, UploadExecutor, UploadPhase, UploadPhaseHook,
+        UploadReceipt, UploadReceiveMode, UploadReceiveOptions, UploadReceivedMeta,
+        UploadRequest, UploadServeLimits, UploadSession, UploadSessionState,
+    };
+
     fn auth_request_json(url: &str, body: &str, api_key: &str, bearer: bool) -> HttpRequest {
         let mut req = HttpRequest::new("POST", url);
         req.headers.push(("content-type".into(), "application/json".into()));

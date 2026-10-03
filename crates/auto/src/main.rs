@@ -7,6 +7,7 @@ use log::info;
 use std::path::PathBuf;
 
 mod cmd_a2c_stdlib;
+mod cmd_service;
 mod cmd_bp;
 mod cmd_autodesk;
 mod cmd_ui;
@@ -444,6 +445,21 @@ enum Commands {
         merged: bool,
         #[arg(allow_hyphen_values = true)]
         args: Vec<String>,
+    },
+    /// PLAN-736: HTTP 服务独立启动（server-only；不启 UI/Vite/桌面）。
+    /// 命名注记：`auto serve` 已被 Plan 269 AutoVM daemon 占用，故为 `auto service`。
+    #[command(about = "Start the project's HTTP service standalone (no UI): --server vm|rust [--http-config <json file>]")]
+    Service {
+        #[arg(short, long)]
+        dir: Option<String>,
+        #[arg(long, help = "Service track: vm (in-process AutoVM HTTP) or rust (generated axum backend)")]
+        server: String,
+        #[arg(long, help = "HTTP service config JSON file (profile/listen/limits/cors/proxy); omit = development defaults (127.0.0.1:8080)")]
+        http_config: Option<String>,
+        #[arg(long, help = "HTTP service config as inline JSON (mutually exclusive with --http-config)")]
+        http_config_inline: Option<String>,
+        #[arg(short = 'B', long = "back-port", help = "Explicit override for the configured listen port")]
+        back_port: Option<String>,
     },
     #[command(about = "Run all #[test] functions in the project", alias = "t")]
     Test {
@@ -962,6 +978,16 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("------------- end --------------");
             }
             return Ok(());
+        }
+        Some(Commands::Service { dir, server, http_config, http_config_inline, back_port }) => {
+            // PLAN-736: server-only 启动；错误经 main Err 面 = 非零退出。
+            return cmd_service::cmd_service(cmd_service::ServeArgs {
+                dir,
+                server,
+                http_config,
+                http_config_inline,
+                back_port,
+            });
         }
         Some(Commands::Run { dir, port, back_port, front_port, render, render_queue, server, no_merge, scene, theme, accent, desktop, gallery, apps, merged, mut args }) => {
             if !ai_mode {
@@ -2375,6 +2401,40 @@ fn to_pascal_case(s: &str) -> String {
 }
 
 #[cfg(test)]
+/// PLAN-736: `auto service` CLI 参数面（解析级；不启动任何服务）。
+#[cfg(test)]
+mod cli_service_tests {
+    use super::Cli;
+    use clap::Parser;
+    fn parse(args: &[&str]) -> Cli {
+        Cli::try_parse_from(std::iter::once("auto").chain(args.iter().copied()))
+            .expect("service args parse")
+    }
+    #[test]
+    fn service_command_shape() {
+        let cli = parse(&["service", "--server", "vm", "--http-config-inline", "{}"]);
+        match cli.command {
+            Some(super::Commands::Service { server, http_config_inline, .. }) => {
+                assert_eq!(server, "vm");
+                assert_eq!(http_config_inline.as_deref(), Some("{}"));
+            }
+            _ => panic!("expected Service"),
+        }
+    }
+
+    #[test]
+    fn service_config_and_inline_are_separate_fields() {
+        let cli = parse(&["service", "--server", "rust", "--http-config", "svc.json", "-B", "9100"]);
+        match cli.command {
+            Some(super::Commands::Service { http_config, back_port, .. }) => {
+                assert_eq!(http_config.as_deref(), Some("svc.json"));
+                assert_eq!(back_port.as_deref(), Some("9100"));
+            }
+            _ => panic!("expected Service"),
+        }
+    }
+}
+
 mod cli_passthrough_tests {
     use super::Cli;
     use clap::Parser;
