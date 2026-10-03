@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-735
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: 帧泵呈现交付节奏清偿件（auto-edit PLAN-026 下游回执消费——掉泵/交付节奏上游第二段：呈现事实定谳+交付节奏根因+修复或通道语义裁定——帧两行转绿解锁）
 author: [agent]
 created_at: 2026-10-03
@@ -306,6 +306,37 @@ downstream-handoff v2（呈现事实结论+交付节奏终态+通道语义建议
     行（全门控）。
   `blockers`：无。`next: review`（/auto-plan:review——独立复审门，
   P735-1 specs.json upsert 归 merge 期）。
+
+- 2026-10-03 review：`stage: review`，PLAN-735，plan_revision 1。
+  `outcome: pass`。`reviewed_commit`：67a91eaad（worktree
+  plan-735-dev tip；三提交 5da3b4727/7b9b2f8f5/67a91eaad 全在
+  base c989483ce 之上，树 clean）。`base_commit`：c989483ce。
+  `dependency_revisions`：iced 0.14.0/iced_winit 0.14.1（worktree
+  解析——下游 auto-edit 同版；731 带谱 0.14.0 差异已钉版注记）/
+  winit 0.30.13/wgpu 27.0.1/patches iced_widget。
+  `spec_inputs`：SD-01=frame-observability.md @SHA256
+  66f43aa84e120ba8…；SD-02=frame-pipeline-incremental.md @SHA256
+  b21fa6c94e10adb1…（frozen@67a91eaad——与 plan §5 规范增量表逐项
+  对读一致，零超新增需求）。
+  `acceptance_results`：AC-01..05 全 pass——AC-01 带内复现+协调
+  （在途五分支泵域零提交复审再勘）；AC-02 分离谱+定性（呈现随
+  驱动 +6-10ms/节拍=驱动周期传递）；AC-03 四轴根因+双臂选定；
+  AC-04 行配对 25%→100%（JSONL 复算 55/220→184/184+76/76=260/260）
+  +R-1 零违例复算+golden 三形 0.00%（735-{type,scroll,resize}.png
+  在档）+`cargo t` 5022/5038 零新红（16 红全预存——14 批量回执
+  登记+ash 主检出同红+plan502 scoped 绿）+`cargo tv` 162 绿；
+  AC-05 回执 v2+SD-01/02 在档+P735-1=merge 期+auto-edit porcelain
+  零改动+712 r2 域零触碰（renderer diff 三 hunk 复勘——无
+  dirty/epoch/poll_frame_pump 触碰）。复审复跑：`cargo t frame
+  plan716_supply` 55/55 绿（同码同配置复用 t/tv 全档证据——
+  码/deps/配置自运行未变，复用理由=diff 仅 docs）。`findings`：
+  F-NB1 单跑 5kb/typenl 日志尾截断切片（复跑 43/43=100% 非缺陷）；
+  F-NB2 segsum type 相位跨跑负载漂移 +12-34%（逐段均匀+S5±10%+
+  golden 0.00%+diff 事实承载零回退）；F-NB3 fmt 漂移=遗留 examples
+  （p023_probe 等五文件，base 同文——非本件引入）。独立性注记：
+  同会话复审——结论自工件重建（diff hunk/JSONL 复算/复跑）非执行
+  摘要采信。`evidence`：docs/plans/evidence/735/（双谱 JSONL+两报
+  告+回执 v2+ladder735.py/golden735.py/探针脚本）。`next: merge`。
 
 ## 10. 待澄清事项
 
