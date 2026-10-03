@@ -7540,6 +7540,30 @@ pub fn startup_window_fit() -> bool {
         .unwrap_or(false)
 }
 
+/// PLAN-097 解阻批次（auto-musk 演示 UX）:窗口 z-level 环境契约。canvas
+/// 会话 spawn 的 AutoVM 原生窗是帧截图的渲染源(面板镜像 = 内嵌呈现面)，
+/// 默认 Normal 会盖住宿主 Musk 窗——`AUTO_VM_WINDOW_LEVEL=bottom` 置
+/// AlwaysOnBottom(永不遮宿主;iced::window::screenshot 走窗口自有
+/// surface,遮挡不影响帧管线,仅最小化受制)。默认 Normal(独立运行形态
+/// 不变)。
+pub fn startup_window_level() -> iced::window::Level {
+    match std::env::var("AUTO_VM_WINDOW_LEVEL").as_deref() {
+        Ok("bottom") | Ok("Bottom") | Ok("BOTTOM") => iced::window::Level::AlwaysOnBottom,
+        _ => iced::window::Level::Normal,
+    }
+}
+
+/// PLAN-097 演示 UX:窗口初始位置环境契约。`AUTO_VM_POSITION=x,y`(逻辑
+/// 像素)→ `Position::Specific`——canvas 会话按宿主窗右侧确定性停靠,
+/// 不遮宿主(缺省 = OS 选择,独立运行形态不变)。
+pub fn startup_window_position() -> Option<iced::window::Position> {
+    let spec = std::env::var("AUTO_VM_POSITION").ok()?;
+    let (x, y) = spec.trim().split_once(',')?;
+    let x: f32 = x.trim().parse().ok()?;
+    let y: f32 = y.trim().parse().ok()?;
+    Some(iced::window::Position::Specific(iced::Point::new(x, y)))
+}
+
 /// VM window title. Sources, in priority order:
 /// 1. pac.at `title: "..."` — injected by `auto run` as AUTO_VM_TITLE
 /// 2. fallback — "Auto - {root widget name}"
@@ -28303,7 +28327,12 @@ where
         });
         iced::Subscription::batch(vec![tick, win])
     })
-    .window_size(seed)
+    .window(iced::window::Settings {
+        size: seed,
+        level: startup_window_level(),
+        position: startup_window_position().unwrap_or_default(),
+        ..Default::default()
+    })
         // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
         .font(INTER_FONT_REGULAR)
         .font(INTER_FONT_MEDIUM)
@@ -28337,7 +28366,12 @@ where
         });
         iced::Subscription::batch(vec![tick, win])
     })
-    .window_size(seed)
+    .window(iced::window::Settings {
+        size: seed,
+        level: startup_window_level(),
+        position: startup_window_position().unwrap_or_default(),
+        ..Default::default()
+    })
     .font(INTER_FONT_REGULAR)
     .font(INTER_FONT_MEDIUM)
     .font(INTER_FONT_SEMIBOLD)
@@ -29384,7 +29418,12 @@ where
         }
         iced::Subscription::batch(subs)
     })
-    .window_size(initial_fit_size.unwrap_or_else(startup_window_size))
+    .window(iced::window::Settings {
+        size: initial_fit_size.unwrap_or_else(startup_window_size),
+        level: startup_window_level(),
+        position: startup_window_position().unwrap_or_default(),
+        ..Default::default()
+    })
     // Plan 411: pac window/title envs(AUTO_VM_WINDOW/AUTO_VM_TITLE)对
     // rust 轨同语义生效(VM 轨同款读取面);DevTools 面板不受影响。
     .title(|_: &DevToolsWrapper<C>| window_title(String::from("Auto Lang - Iced")))
@@ -29775,7 +29814,12 @@ where
         }
         iced::Subscription::batch(subs)
     })
-    .window_size(startup_window_size())
+    .window(iced::window::Settings {
+        size: startup_window_size(),
+        level: startup_window_level(),
+        position: startup_window_position().unwrap_or_default(),
+        ..Default::default()
+    })
     // Plan 411: pac window/title envs 对 rust 轨同语义生效(上方
     // run_app_devtools 同款;原 with-task 变体硬编码 1600×900 且无标题)。
     .title(|_: &DevToolsWrapper<C>| window_title(String::from("Auto Lang - Iced")))
