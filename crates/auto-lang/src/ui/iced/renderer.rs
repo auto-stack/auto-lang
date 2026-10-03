@@ -19583,7 +19583,7 @@ fn compare_pngs(
 
         // If this message carries input text, track it and update state
         if let Some(text) = &msg.input_value {
-            state.app.input_values.insert(event_name.clone(), text.clone());
+            track_input_text(&mut state.app.input_values, &event_name, text);
         }
 
         // Plan 057 (ash-gui 输入焦点): an edit message that originates from a
@@ -19977,11 +19977,7 @@ fn compare_pngs(
         // CelsiusChanged handler writes fahrenheit — the fahrenheit input should
         // now show the computed value, not stale user-typed text.
         // Keep only the triggering event's entry (the user just typed it).
-        let input_map = state.component.input_state_map().clone();
-        state.app.input_values.retain(|ev_name, _| {
-            ev_name == &event_name
-                || !input_map.contains_key(ev_name)
-        });
+        retain_input_values_after_handler(&mut state.app.input_values, &state.component, &event_name);
 
         // ── Shell bridge:emit 模拟(ash-gui M1) ──────────────────────────
         // vm 模式 handler_codegen 剥离子组件的 callback prop 调用(handler_codegen.rs
@@ -28066,13 +28062,49 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
     }
 }
 
+/// PLAN-739：update 主链 `input_values` 记账单源（键入消息携带全文时登记）。
+/// 真实节拍回归测试（`plan739_edit_then_page_switch_view_follows_store`）
+/// 驱动同一函数——update 内联记账与测试零漂移。
+pub(crate) fn track_input_text(
+    input_values: &mut std::collections::HashMap<String, String>,
+    event_name: &str,
+    text: &str,
+) {
+    input_values.insert(event_name.to_string(), text.to_string());
+}
+
+/// PLAN-739：update 主链 `input_values` handler 后清理单源（语义原样：
+/// 保留触发事件条目 + 不在 `input_state_map` 的条目——后者含 ADE `oninput`
+/// 事件，其条目对视面零作用见 [`patch_input_values`] 注记）。
+pub(crate) fn retain_input_values_after_handler(
+    input_values: &mut std::collections::HashMap<String, String>,
+    component: &DynamicComponent,
+    event_name: &str,
+) {
+    let input_map = component.input_state_map().clone();
+    input_values.retain(|ev_name, _| {
+        ev_name == event_name
+            || !input_map.contains_key(ev_name)
+    });
+}
+
 /// Recursively patch input View values with tracked user-typed text.
-fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_values: &std::collections::HashMap<String, String>) {
+///
+/// PLAN-739（F-037-R1 根修）：`AutodownEditor` **不参与本补丁**。其单一
+/// 事实源是编辑器核；`value` prop 唯一消费口 `autodown_editor_sync` 已有
+/// 三层守卫（`last_external` 差分快路 / `emit_document` 自回显快路 /
+/// `emitted_echo` PLAN-057 回声集），覆盖本补丁的历史动机（PLAN-019 批次九
+/// 防"字面 content 应用逐帧重建清焦点"——早于回声守卫成熟的遗产保护）。
+/// 此前 ADE 入臂且其 `oninput` 事件不进 `input_state_map`（`scan_node_for_inputs`
+/// 只扫 input/textarea/Input 标签）→ `input_values` 键入条目经 retain 永生
+/// → 每帧重建把模板求值的新页内容覆写回旧页键入全文，编辑器视面被钉死
+/// （jade 键入后换页粘滞冻结实证）。ADE 事件条目对视面零作用由
+/// `plan739_patch_input_values_leaves_autodown_editor` 锚定。
+pub(crate) fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_values: &std::collections::HashMap<String, String>) {
     match view {
         AbstractView::Input { value, on_change, .. }
         | AbstractView::Textarea { value, on_change, .. }
-        | AbstractView::CodeEditor { value, on_change, .. }
-        | AbstractView::AutodownEditor { value, on_change, .. } => {
+        | AbstractView::CodeEditor { value, on_change, .. } => {
             if let Some(msg) = on_change {
                 let event_name = match msg {
                     DynamicMessage::Typed { event_name, .. } => event_name.clone(),

@@ -231,6 +231,10 @@ mod plan019_vm_own_module_link_tests;
 // PLAN-732: autodown 编辑壳 wikilink 激活供给六环贯通 corpus。
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan732_wikilink_tests;
+// PLAN-739: 编辑回声→换页视面跟随回归（F-037-R1——input_values 键入条目
+// 永生 × patch_input_values ADE 覆写钉死视面）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan739_input_pin_tests;
 mod plan051_ext_widget_tests;
 // Plan 051 C7: `timer { ... }` 声明块（widget/store 周期计时器 DSL）。
 mod plan051_timer_tests;
