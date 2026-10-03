@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-734
-status: executing
+status: reviewed
 feature_name: api-contract-and-generation-integrity
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-03
 plan_revision: 1
-current_step: 7
+current_step: 8
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -235,7 +235,7 @@ HTTP TS生成client须真正执行请求并验证path/body/错误，不仅检查
 - strict mode解析/实现/能力前置检查，真实body或明确delegate生成；错误返回Result而不warn/fallback，scaffold与TS provider显式。全部产物先进immutable bundle，ready+源/实现hash最后发布，失败不覆盖/冒用旧bundle。
 - 验证`cargo test -p auto-man api_gen:: -- --test-threads=1`与真实Rust build/run；非CRUD/分支/有状态/缺实现/解析和FS故障/source变动负测；AC-04/05，SD-04/05/06。
 
-### T-05：HTTP/IPC适配器与实际客户端 [回工 R1：F-1 contains 残留 8 位点]
+### T-05：HTTP/IPC适配器与实际客户端 [✅ 437683bee + R1 a5284dd84]
 
 - 依赖T-02/03/04。修改`api/targets/{typescript,tauri,axum}.rs`、`api_gen.rs`两套TS/client/handler生成；T-01确认实际UI消费者需改时才窄触`ui_gen/{vue,rust}.rs`。
 - 共用绑定来源和checked型，正确path编码/prefix/PATCH-body/meta，JSON和HTTP-only资源分离；Tauri command按真实backend执行sync/async、typed reject，保留原生函数数据语义。
@@ -248,7 +248,7 @@ HTTP TS生成client须真正执行请求并验证path/body/错误，不仅检查
 - 当前有API消费者时错误非零且spawn0；无API项目/明确外部provider正常。启动验证ready与当前source/transport，watch失败诚实保留旧运行版并报失败，不标成功reload。
 - 验证auto-man入口单测和最小project实际CLI/run失败退出码、spawn sentinel、原产物hash；AC-04/05，SD-04/05。
 
-### T-07：五形态对拍、资源分类与兼容矩阵 [回工 R1：F-1/F-2/F-3]
+### T-07：五形态对拍、资源分类与兼容矩阵 [✅ 438d22c47+2850e7d24+R1 a5284dd84+R2 2b116e4cd]
 
 - 依赖T-03..06。新`crates/auto-lang/src/tests/plan734_api_contract_tests.rs`，修改`src/tests.rs`；auto-man新/现有integration test生成fixture；新`examples/http_server/api_contract/{README.md,pac.at,src/back/api.at}`，按T-01格式。
 - 完成§6.1全部表，真实生成Rust/TS/Tauri test runner、merged和back-proxy session，不为测试手写替代业务；729/730HTTP正向与非HTTP拒绝回归；015/017/023/027代表契约只验证本期消费面，不做全UI画廊负载。
@@ -261,6 +261,30 @@ HTTP TS生成client须真正执行请求并验证path/body/错误，不仅检查
 - 清理前`bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-734/auto-lang`及兄弟仓guard clean；tf仅到期main单实例。全AC/SD闭合才可标reviewed/archived。
 
 ## 9. 复审记录
+
+### 复审 R2（2026-10-03，/auto-plan:review）
+
+- stage: review
+- plan_id: PLAN-734
+- plan_revision: 1
+- outcome: pass
+- reviewed_commit: 6ebc85f7a（R1 回工 a5284dd84 + R2 补修 2b116e4cd + 报告 6ebc85f7a；
+  分支累计 12 提交 e67e46bba..6ebc85f7a）
+- base_commit: 6dd609ed9
+- dependency_revisions: 同 R1
+- spec_inputs: 同 R1
+- acceptance_results: AC-01..07 全 pass（F-1 位点 grep 七文件全零；F-3 dispatcher 实测绿；
+  F-2 报告修正；AC-03/AC-06 既有在案裁定维持）
+- findings: R1 三项全修复复验；R2 补修一项——`vm_value_to_json` Value::I64 臂在 T-08
+  提交时意外丢失（提交信息与 diff 不符经 `git log -S` 揭示；664 值域 e2e 红的根因），
+  恢复后 tv 162/162。该丢失本身验证了"声明与工件核对"复审面的必要性。
+- evidence: 终局门禁——裸 t 1492/1495（3 预存 musk）、tv 162/162、tt 1877/1880（同 3 预存）、
+  th 串行 100/101（1 预存 corpora_data_face；plan707 flake/sse_chain 并行端口竞争在案）、
+  plan734 7/7、plan730 e2e 14/14、api_gen 43+1（含新 Tauri fixture 锁+dispatcher 两测）、
+  a2r-std 100 全。contains 生产位点：7 文件全零（2 测试断言位 tests mod 内可留）。
+  规范增量 SD-01..07 目标路径/前后规则与实现一致，沉淀稿 merge 阶段落 canonical。
+- next: merge（/auto-plan:merge）——SD 沉淀 + ledger + Design33 索引 + archive + wt-guard 清理。
+- 独立性：R2 与实施同会话——从工件重建（grep 计数/git -S 考古/门禁复跑）。
 
 ### 复审 R1（2026-10-03，/auto-plan:review）
 
