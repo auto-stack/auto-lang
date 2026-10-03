@@ -223,3 +223,9 @@
 |---|---|---|---|---|
 | P737-D1 | medium | MCP HTTP current-thread runtime 结构弱点 | MCP 服务器=`new_current_thread()` 单 tokio 线程；737 已把工具执行下沉 `spawn_blocking`（handler 同步阻塞曾冻结 accept/IO 线程=探针连发 ECONNRESET 放大器），但 `note_activity` 等仍在 runtime 线程持锁；残余偶发连接复位（jade 侧旧 binary 亦两见=非 737 引入；737 修复后全量探针 4 跑 1 见）。疑点=多 app 顺序 runs 的 keep-alive/端口生命周期；需服务器侧 stderr 捕获 + AUTO_SCHED_DIAG 定向排查（复位时 runtime 线程是否存活）。 | mcp_server.rs run()/mcp_http_handler；p737 回执 §5 |
 | P737-D2 | low | autodown 编辑壳键域双形态面 | storage key 归一形（`__autodown_editor_*`）与裸键在 MCP 载荷/装配注册两侧并存，靠 `normalize_payload_key` 幂等归一桥接（737 探针 MISS 实录后补）。后续新增 keyed 面应统一走该归一口，避免再分叉。 | autodown_editor/core.rs normalize_payload_key；renderer.rs ade_link_dispatch_message |
+
+## PLAN-739 执行登记（2026-10-03，work @lang-739，跨仓缺陷单 jade PLAN-037 F-037-R1）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P739-F1 | medium | auto-cache 测试目标仓内腐坏 | `cargo check -p auto-cache --tests` E0063：methods_pack.rs:697 测试构造 `ShimMethod` 缺 `trait_name` 字段（PLAN-596 T-03 给 shim-metadata/types.rs 加字段未同步该测试）。**日常档门禁只建 `-p auto-lang` 目标（cargo t 别名 --lib + 三 integration test），auto-cache 自身 lib 测试从不参与编译，腐坏不可见**——master@9fcbdb5de 实证同破，非 739 引入。清偿=补 `trait_name: None`（或 Default 展开）+ 评估是否需要把 workspace 兄弟 crate 的 lib-test 编译纳入某档抽样（防再腐坏）。 | crates/auto-cache/src/methods_pack.rs:697；crates/shim-metadata/src/types.rs:109 |

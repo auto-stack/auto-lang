@@ -1273,6 +1273,17 @@
       "delivery",
       "commit:04fea48b2"
      ]
+    },
+    {
+     "id": "P739-3",
+     "title": "F-037-R1 编辑回声×换页视面粘滞冻结交付摘要（PLAN-739）",
+     "content": "根因=input_values 键入条目永生（ADE oninput 不入 input_state_map）× patch_input_values ADE 臂每帧覆写视面为旧页键入全文；缺陷单 dirty/epoch 主假设推翻。修复=摘 ADE 臂（核为单一事实源，sync_external 三层守卫承担历史动机）+记账单源化+真实节拍回归三测试（修前复红留痕）。供给面零触碰（PLAN-732/737 全绿）。binary v0.4.2-2713-gef8eac37a/8860F25B…DEA6B96。新债 F-1=auto-cache 测试目标仓内腐坏（E0063 trait_name，日常档不建该目标故不可见）。jade 侧重跑 probe P2b/P5 转绿=缺陷闭合。",
+     "file": "docs/reports/p739-ade-input-pin-receipt.md",
+     "tags": [
+      "plan-739",
+      "delivery",
+      "commit:ef8eac37a"
+     ]
     }
    ]
   },
@@ -5244,6 +5255,17 @@
       "auto-man",
       "docsha:b66721c99150"
      ]
+    },
+    {
+     "id": "P739-1",
+     "title": "输入回写视面补丁边界——ADE 不参与视面补丁（PLAN-739 SD-01）",
+     "content": "autodown_editor 可见文本权威序列恒为 state（模板求值）→ autodown_editor_sync 三层守卫（last_external 差分快路/emit_document 自回显快路/emitted_echo PLAN-057 回声集）→ 编辑器核。patch_input_values 只覆盖真单向 value 的 iced widget（Input/Textarea/CodeEditor）。ADE oninput 事件不进 input_state_map（scan_node_for_inputs 只扫 input/textarea/Input）→ input_values 条目对该事件经 retain 永生，任何把该条目回灌 ADE 视面的消费口都会在换页/换内容重建时把视面钉死在旧页键入全文（jade PLAN-037 F-037-R1 实证）。update 主链 input_values 记账单源 track_input_text/retain_input_values_after_handler，真实节拍回归 plan739_edit_then_page_switch_view_follows_store（语料 test/ui/plan739_input_pin）同驱动面。",
+     "file": "docs/specs/auto-lang/ui/design/frame-pipeline-incremental.md",
+     "tags": [
+      "plan-739",
+      "designs",
+      "spec:docs/specs/auto-lang/ui/design/frame-pipeline-incremental.md"
+     ]
     }
    ]
   },
@@ -8384,6 +8406,17 @@
       "review",
       "commit:6ebc85f7a",
       "rebase:04fea48b2"
+     ]
+    },
+    {
+     "id": "P739-2",
+     "title": "PLAN-739 独立复审 pass（F-037-R1 根修+回归围栏）",
+     "content": "PLAN-739 rev1 复审 pass@2d950e975（rebase 等价=range-diff 1: 4d1621a39=1: 2d950e975）：AC-01..04 全 pass——T-A 修前复红留痕（视面钉死旧页+键入文本逐字节同构）/T-B 摘臂语义锚/T-C 字面守卫围栏；plan732 13/13+plan737 2/2+autodown 80/80+plan057/063 回声族全绿；裸 cargo t 14 预存红与 master 基线逐名全等零新红（flake 差异在案隔离复跑绿）；fmt 我方零 diff。AC-05=binary 重建回执。缺陷单 dirty/epoch 假设推翻定谳在计划 §4.2。报告 docs/reports/p739-ade-input-pin-receipt.md。",
+     "file": "docs/plans/739-ade-input-pin-page-freeze.md",
+     "tags": [
+      "plan-739",
+      "review-pass",
+      "commit:2d950e975"
      ]
     }
    ]
