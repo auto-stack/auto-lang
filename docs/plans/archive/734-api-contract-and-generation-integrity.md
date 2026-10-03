@@ -280,7 +280,9 @@ HTTP TS生成client须真正执行请求并验证path/body/错误，不仅检查
   P734-1/2/7/8 回读在档；INDEX 再生（26 projects）。
 - **archived**：`docs/plans/archive/734-api-contract-and-generation-integrity.md`
   （git mv；status archived；completion_kind: delivered）。
-- **cleaned**：见下一提交（wt-guard + 工作树/branch/组目录移除后回填）。
+- **cleaned**：wt-guard ×2 clean（auto-lang/auto-down 无 reparse point）→
+  `git worktree remove` ×2 + `git branch -d plan-734-dev`（was ec0eae41f）→
+  组目录 `D:/autostack/.wt/lang-734` 移除（零残留）。
 - 部署观察：landing 非部署——本计划无本机常驻生产进程消费（auto 桌面壳未运行）；
   无 auto build 产物待重建。
 - 批量回归到期判定：734 % 5 = 4 ≠ 0；回执 last_covered_plan_id=732 且回执
