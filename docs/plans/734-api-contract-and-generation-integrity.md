@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-734
-status: execution_done
+status: executing
 feature_name: api-contract-and-generation-integrity
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-03
 plan_revision: 1
-current_step: 8
+current_step: 7
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -235,7 +235,7 @@ HTTP TS生成client须真正执行请求并验证path/body/错误，不仅检查
 - strict mode解析/实现/能力前置检查，真实body或明确delegate生成；错误返回Result而不warn/fallback，scaffold与TS provider显式。全部产物先进immutable bundle，ready+源/实现hash最后发布，失败不覆盖/冒用旧bundle。
 - 验证`cargo test -p auto-man api_gen:: -- --test-threads=1`与真实Rust build/run；非CRUD/分支/有状态/缺实现/解析和FS故障/source变动负测；AC-04/05，SD-04/05/06。
 
-### T-05：HTTP/IPC适配器与实际客户端 [✅ 437683bee]
+### T-05：HTTP/IPC适配器与实际客户端 [回工 R1：F-1 contains 残留 8 位点]
 
 - 依赖T-02/03/04。修改`api/targets/{typescript,tauri,axum}.rs`、`api_gen.rs`两套TS/client/handler生成；T-01确认实际UI消费者需改时才窄触`ui_gen/{vue,rust}.rs`。
 - 共用绑定来源和checked型，正确path编码/prefix/PATCH-body/meta，JSON和HTTP-only资源分离；Tauri command按真实backend执行sync/async、typed reject，保留原生函数数据语义。
@@ -248,7 +248,7 @@ HTTP TS生成client须真正执行请求并验证path/body/错误，不仅检查
 - 当前有API消费者时错误非零且spawn0；无API项目/明确外部provider正常。启动验证ready与当前source/transport，watch失败诚实保留旧运行版并报失败，不标成功reload。
 - 验证auto-man入口单测和最小project实际CLI/run失败退出码、spawn sentinel、原产物hash；AC-04/05，SD-04/05。
 
-### T-07：五形态对拍、资源分类与兼容矩阵 [✅ 438d22c47+2850e7d24——Tauri MockRuntime fixture 债 P734-D6]
+### T-07：五形态对拍、资源分类与兼容矩阵 [回工 R1：F-1/F-2/F-3]
 
 - 依赖T-03..06。新`crates/auto-lang/src/tests/plan734_api_contract_tests.rs`，修改`src/tests.rs`；auto-man新/现有integration test生成fixture；新`examples/http_server/api_contract/{README.md,pac.at,src/back/api.at}`，按T-01格式。
 - 完成§6.1全部表，真实生成Rust/TS/Tauri test runner、merged和back-proxy session，不为测试手写替代业务；729/730HTTP正向与非HTTP拒绝回归；015/017/023/027代表契约只验证本期消费面，不做全UI画廊负载。
@@ -261,6 +261,42 @@ HTTP TS生成client须真正执行请求并验证path/body/错误，不仅检查
 - 清理前`bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-734/auto-lang`及兄弟仓guard clean；tf仅到期main单实例。全AC/SD闭合才可标reviewed/archived。
 
 ## 9. 复审记录
+
+### 复审 R1（2026-10-03，/auto-plan:review）
+
+- stage: review
+- plan_id: PLAN-734
+- plan_revision: 1
+- outcome: needs_fix
+- reviewed_commit: 2850e7d24（分支 9 提交 e67e46bba..2850e7d24；worktree clean）
+- base_commit: 6dd609ed9
+- dependency_revisions: 730 已 merged/archived（canonical 已落）
+- spec_inputs: http-server.md/http-server-files.md/http-server-uploads.md/backend-assembly.md/
+  a2r-std project.md/trans overview.md/back-proxy.md/auto-man project.md
+- acceptance_results: AC-01 **partial**（F-1）/AC-02 pass/AC-03 pass（D7 兼容回退在案）/AC-04 pass/
+  AC-05 pass/AC-06 **partial**（F-3）/AC-07 pass
+- findings:
+  - **F-1 [P2]** AC-01 声明"53+ contains 全部退役"，但 **8 处生产位点残留**：
+    `api_gen.rs` :1158（endpoint_body_params）/ :2422（db 委派文件臂）/ :2859（主文件臂）/
+    :2949/:2978（上传臂）/ :3703（main.rs HEAD 自动化）；`typescript.rs` :312（FormData 参数
+    剔除）/ :427（返回 response 直传）。两处（:5000/:5096）在 tests mod 内为断言——可留。
+    这些位点消费 api 元数据裸名串，`MyFileResponse` 假同名反例会错误命中——与契约身份
+    分类合同直接冲突。
+  - **F-2 [P3]** parity 报告"既有 729/730 分支本体经同一 ResponseKind 判定改写"表述过强
+    ——F-1 位点即未改写。F-1 修复后同步修正报告表述。
+  - **F-3 [P2]** AC-06 的 Tauri MockRuntime dispatcher 运行证据缺失（P734-D6）——
+    dev-dep 已加编译通过但 fixture 未落地。计划 §6.1 明确要求"用真实生成 command、
+    invoke 注册和官方 test MockRuntime 走 dispatcher"。
+  - 接受项（非阻塞，已如实记录）：D4/D5 债、D9 兼容回退（二分定位证据在 verification
+    §3.3）、AC-03 的 plain int 反例由 id 空间分离承载。
+- evidence: 门禁复现——`cargo t plan734` 7/7、`http_e2e_plan734` 串行 4/4、
+  `cargo t plan730` 26/26、api_gen 41+1、a2r-std 100 全（R1 重跑）；
+  contains 计数 grep 输出（7 文件中 5 清零、2 文件共 8 生产 + 2 测试断言）；
+  代码审计——validate_body_value 接线/错误前缀退役/序列化失败 500/
+  generation.json+新鲜度门/8 入口 `?` 传播全部在位。
+- next: 回工修复 F-1（机械化：8 位点改 ResponseKind/is_upload_param）+ F-2（报告修正）+
+  F-3（Tauri MockRuntime fixture）→ 复审 R2。
+- 独立性：与实施同会话——从工件重建（grep 计数/代码审计/门禁复跑），未采信实施自述。
 
 ### 工作交接（2026-10-03，/auto-plan:work）
 
