@@ -3269,6 +3269,10 @@ fn vm_value_to_json(
         Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
         Value::Int(i) => Ok(serde_json::json!(*i)),
         Value::Uint(u) => Ok(serde_json::json!(*u)),
+        // PLAN-734 R2（T-08 提交时意外丢失的臂——nv_to_vm_value 自 T-07 起
+        // 把 i32/i64 统一产 Value::I64；缺此臂时 42 走兜底路径 → stringify
+        // 形态漂移 → 664 值域 e2e 红（Json.type_of 比较两个不同字符串）。
+        Value::I64(i) => Ok(serde_json::json!(*i)),
         Value::Float(f) => serde_json::Number::from_f64(*f as f64)
             .map(serde_json::Value::Number)
             .ok_or_else(|| VMError::RuntimeError("json.from_value: NaN/Inf float".into())),
