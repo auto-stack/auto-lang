@@ -434,7 +434,7 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn large_output_does_not_deadlock() {
-        // ~3000 lines x ~42 bytes > 128KB, far beyond the pipe buffer: the
+        // ~3000 lines x ~42 bytes = ~126KB, far beyond the pipe buffer: the
         // r1 executor (wait-for-exit, then read) hit its 60s deadline here.
         let mut cmd = Command::new("cmd");
         cmd.args([
