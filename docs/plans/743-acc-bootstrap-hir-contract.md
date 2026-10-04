@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-743
-status: executing
+status: execution_done
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-04
 plan_revision: 1
-current_step: 4
+current_step: 6
 total_steps: 6
 supersedes_spec_components: []
 new_spec_components:
@@ -273,7 +273,7 @@ Python工具需有限但有意义的反例测试：缺文件、注册表/源码�
   [✅ 已完成] commit fd7fb366d（工具 18 测试含 T-06 加固后全绿）；真实仓 --write/--check
   exit0、字节确定性测试锁定；校准实证：File 命名空间/str 方法族补充（engine.at:808/819、
   a2r 头方法映射证据）、enum 载荷变体识别（engine.at:55）、跨行字符串能力（engine.at:314）。
-- [ ] T-03 审定主体/语言/运行时迁移表（依赖T-02；AC-01, AC-03）。
+- [x] T-03 审定主体/语言/运行时迁移表（依赖T-02；AC-01, AC-03）。
   人工复核auto/lib真实定义、use/方法/容器/运行时使用，
   形成报告inventory.md及manual-decisions.json（均新建），unknown有owner/后续探针。
   对照旧aavm Spec但不改它；--check绿且每个必需能力有源码位置或缺口证据。
@@ -281,6 +281,9 @@ Python工具需有限但有意义的反例测试：缺文件、注册表/源码�
   +21 能力+113 unknown 全消解）；--check 人工结论层 ok。
   [↩ 复审R1退回] F-03：use 边计数误写"15 条"，实际 18 条（manifest 为准）；
   修正 inventory.md §4.1 与 MD-413 注记。
+  [✅ 修复完成] commit d7013b290：两处改"18 条"并附七文件分布
+  （engine2/lexer1/typeinfo3/parser2/a2r5/codegen4/aavm1）；"15 条"全仓清零；
+  decisions 绑定新鲜、--check 绿。
 - [x] T-04 HIR与桥接架构合同（依赖T-03；AC-04, AC-05, AC-06）。
   新建docs/design/strategy/auto-acc-bootstrap-contract.md，在00-intro.md注册；
   形成阶段表/pass模板/反例/桥接候选矩阵，精确引用
@@ -298,6 +301,8 @@ Python工具需有限但有意义的反例测试：缺文件、注册表/源码�
   26–36 估算逐组核查零变化、SD-01..03 提案正文。
   [↩ 复审R1退回] F-01：acceptance-matrix.md 对契约文档的相对链接多一级目录
   （`../../../design/...` 应为 `../../design/...`），AC-08 文档 links 项不过。
+  [✅ 修复完成] commit d7013b290：链接改两级上级，程序化解析确认实达
+  docs/design/strategy/auto-acc-bootstrap-contract.md。
 - [ ] T-06 复核与独立交接（依赖T-05；AC-08）。
   在worktree再跑§5.1与git diff --check，检查工具/报告/合同diff；
   主检出仅维护本Plan进度，按/auto-plan:review独立检查并绑定revision1及实现HEAD。
@@ -307,8 +312,26 @@ Python工具需有限但有意义的反例测试：缺文件、注册表/源码�
   终验：三命令 exit0、18/18 测试绿、`git diff --check c1ac219e7..HEAD` clean、
   worktree clean；实现 HEAD=b96f7beab（plan-743-dev，基点 c1ac219e7）。
   [↩ 复审R1退回] 修复 F-01/F-03 后须重跑终验门并刷新交接记录，方可再入 review。
+  [✅ 修复完成] commit d7013b290 后终验重跑：三命令 exit0、18/18 测试绿、
+  `git diff --check` clean、worktree clean（0 dirty）；实现 HEAD=d7013b290。
 
 ## 9. 复审记录
+
+### 修复交接（2026-10-04，stage: work，R1 needs_fix 修复）
+
+- stage: work（needs_fix 修复循环 1/3）
+- plan_id: PLAN-743
+- plan_revision: 1
+- outcome: pass（F-01/F-03 已修复并重验；非独立复审结论，待 review 复核）
+- code_commit: d7013b290（worktree plan-743-dev；R1 reviewed 基线 b96f7beab 之上仅追加本修复）
+- worktree: D:/autostack/.wt/lang-743/auto-lang（保留）
+- task_ids: T-03/T-05/T-06 复位 [x]（修复证据见各任务行）；current_step 6/6
+- evidence: "15 条"全仓清零（grep 两文件 0 命中）；F-01 链接程序化解析实达契约文档；
+  三命令 exit0；18/18 测试；`git diff --check` clean；worktree clean。
+  修复 diff 仅 3 文件：acceptance-matrix.md（链接）、inventory.md（计数）、
+  manual-decisions.json MD-413 注记（绑定 hash 未动，--check 人工结论层绿）。
+- blockers: 无
+- next: /auto-plan:review 复核 F-01/F-03 修正（R1 记录预设：复核两项即可转 pass）。
 
 ### 独立复审 R1（2026-10-04，stage: review）
 
