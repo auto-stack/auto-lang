@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-741
-status: reviewed
+status: archived
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
@@ -405,6 +405,26 @@ T-01/04使用临时native探针验证能力，但最终验收必须来自实际C
   {toolchain.md, verification.md}（§4.1 基线对照）随本提交入库。
 - next: merge（/auto-plan:merge 沉淀 SD-01/02 与 ledger、合回 v0.6-dev、
   wt-guard 后清理 plan-741-dev 与 P741-R2 依赖 worktree）
+
+### 合并收据（2026-10-04，/auto-plan:merge）PLAN-741:r1
+
+- stage: merge | plan_id: PLAN-741 | plan_revision: 1 | outcome: pass
+- prepared: reviewed 基线 4dc4da636（clean）；canonical delta=SD-01/SD-02 →
+  docs/specs/{auto-hir,auto-ac}/project.md；依赖 auto-down fba6563e（detached）
+- landed: rebase 到 v0.6-dev（range-diff 全 `=`，旧→新映射
+  0f2b232d7→bc9d2a05f / 632e48a03→987e614d4 / b3bed7d72→f5fafd829 /
+  cf5aca9f8→22b5e1376 / 523fabfe1→65a32fc08 / 53775205c→8921edf75 /
+  4dc4da636→cbce56d22）；交付链 1e4a2533a（spec 沉淀）→ cf369e0d5（lockfile
+  补交：根 .gitignore 全局 `Cargo.lock` 曾静默排除两新 workspace 的 lock，
+  force-add 修复 --locked 可复现性）→ 304519113（ledger 投影）；全部
+  --ff-only 无 merge commit；主检出冒烟 ac-core 全族绿（含真实 PE 运行）
+- ledger_refreshed: .autoos/specs.json（git 跟踪，经 worktree 提交）
+  designs P741-1/P741-2 → docs/specs/{auto-hir,auto-ac}/project.md，
+  reviews P741-3 → 本归档路径；canonical 面 docs/specs/INDEX.md +2 行
+  （spec-index.py 生成）+ overview.md 外围与实验 +2 行
+- archived: docs/plans/archive/741-ac-hir-native-core.md, status: archived,
+  completion_kind: delivered
+- cleaned: 见下方 cleaned 补记（wt-guard 双 worktree + 分支删除）
 
 ## 10. 待澄清事项
 
