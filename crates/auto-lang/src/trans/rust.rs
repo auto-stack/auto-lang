@@ -729,6 +729,63 @@ impl RustTrans {
 
     /// Plan 400 Phase 2: transpile only body statements (no signature).
     /// `params` pre-populates local_var_types. Returns indented lines.
+    /// Plan 742: lower residual `List<T>.new(args)` constructor calls in
+    /// body-stmt output to their Rust vec form. The api.rs body path
+    /// (try_transpile_body) reaches the shared stmt emitter without the
+    /// module-path registration that normally lowers these in place, and the
+    /// verbatim `List<Note>.new(vec![])` shape is not valid Rust.
+    /// `List<T>.new(vec![])` → `vec![]`; `List<T>.new([a, b])` → `vec![a, b]`;
+    /// `List<T>.new(expr)` → `expr` (annotation carries the Vec<T> type).
+    fn lower_list_constructs(line: &str) -> String {
+        let needle = ".new(";
+        let mut out = String::with_capacity(line.len());
+        let bytes = line.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            // Find `List<` opening.
+            if line[i..].starts_with("List<") {
+                if let Some(gt) = line[i..].find('>') {
+                    let inner_end = i + gt;
+                    // Matching `.new(` right after the closing '>'.
+                    if line[inner_end + 1..].starts_with(needle) {
+                        let args_start = inner_end + 1 + needle.len();
+                        // Find the matching closing ')' of `.new(`.
+                        let mut depth = 1;
+                        let mut j = args_start;
+                        while j < bytes.len() {
+                            match bytes[j] {
+                                b'(' => depth += 1,
+                                b')' => {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        break;
+                                    }
+                                }
+                                _ => {}
+                            }
+                            j += 1;
+                        }
+                        if j < bytes.len() {
+                            let args = line[args_start..j].trim();
+                            let lowered_args = if args.starts_with('[') {
+                                format!("vec![{}]", &args[1..args.len().saturating_sub(1)])
+                            } else {
+                                args.to_string()
+                            };
+                            out.push_str(&lowered_args);
+                            i = j + 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+            let ch = line[i..].chars().next().unwrap_or(' ');
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+        out
+    }
+
     pub fn transpile_body_stmts(
         &mut self,
         body: &crate::ast::Body,
@@ -785,7 +842,8 @@ impl RustTrans {
             for line in raw.lines() {
                 let trimmed = line.trim_end();
                 if !trimmed.is_empty() {
-                    result.push(format!("    {}", trimmed));
+                    let lowered = Self::lower_list_constructs(trimmed);
+                    result.push(format!("    {}", lowered));
                 }
             }
         }
