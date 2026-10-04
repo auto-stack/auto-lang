@@ -1,0 +1,17 @@
+// fixture: mini parser module (while loop + mut param + imported call)
+use auto.lib.token: TokenKind
+
+fn parse_all(source str, mut depth int) int {
+    var i = 0
+    while i < depth {
+        i = i + 1
+    }
+    if depth == 0 {
+        return -1
+    }
+    return i
+}
+
+fn is_name_kind(k TokenKind) bool {
+    return k == TokenKind.Ident
+}

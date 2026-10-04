@@ -1,0 +1,13 @@
+// fixture: mini CLI entry (process/IO natives + imported calls)
+use auto.lib.engine: ev_run, ev_run_files
+
+fn main() {
+    var argv = process.args()
+    if argv.len() > 1 {
+        print(ev_run_files(argv.get(1)))
+        return
+    }
+    var head = IO.read_line()
+    var n = head.parse_int()
+    print(ev_run(head))
+}

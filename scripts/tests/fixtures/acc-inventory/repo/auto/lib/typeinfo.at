@@ -1,0 +1,24 @@
+// fixture: mini typeinfo module (record + comparison/logical operators)
+use auto.lib.lexer: tokenize
+use auto.lib.parser: parse_all
+
+type TFnSig {
+    name str
+    ret str
+}
+
+fn t_infer(a int, b int) bool {
+    return a == b || a != b
+}
+
+fn t_lookup(sigs List<TFnSig>, name str) str {
+    var i = 0
+    while i < sigs.len() {
+        var s = sigs.get(i)
+        if s.name == name {
+            return s.ret
+        }
+        i = i + 1
+    }
+    return "unknown"
+}
