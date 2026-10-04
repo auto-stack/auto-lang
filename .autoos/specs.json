@@ -4995,6 +4995,26 @@
           "status": "published",
           "created": "2026-10-04",
           "last_modified": "2026-10-04"
+        },
+        {
+          "id": "P743-1",
+          "title": "auto-acc 目标态合同：主体清单/能力四态/代际判据（SD-01）",
+          "content": "PLAN-743 沉淀 ACC 自举目标态：主体清单三分层（adapt=token/lexer/parser-core；reference=typeinfo/codegen/engine/a2r/aavm；新建=解析/typeck/源码→HIR adapter/lowering/驱动/桥客户端）；能力四态（required=str 最高优先+enum±payload+record+方法+List+int全序+is+use多模块+mut+全局+fstring+源码域诊断；implemented 仅 i32 trap70 与 HIR 域诊断；unknown=宽度/char/跨行串/宿主所有权/用户泛型，各带探针 owner；not-required=Option消费/管道/闭包task转型，附理由）；Gen1–3 代际判据（字节固定点仅约定后附加，A2R 中转不算 native）。canonical=docs/specs/auto-acc/project.md；证据=docs/reports/743-acc-hir-contract/（46 条 hash 绑定决定+可重跑 manifest）。",
+          "file": "docs/specs/auto-acc/project.md",
+          "related": [],
+          "status": "published",
+          "created": "2026-10-04",
+          "last_modified": "2026-10-04"
+        },
+        {
+          "id": "P743-2",
+          "title": "auto-hir 阶段契约：S0–S6/pass 模板/X1–X8（SD-02/SD-03）",
+          "content": "PLAN-743 沉淀公共 HIR 阶段契约：S0 源码工作态（未实现）→S1 Atom 文本→S2 bound Bundle→S3 verify→S4 Checked（均 core-i32 已实现）→S5 lowering+能力门→S6 发射/链接/运行（测试 profile 已实现，通用 pass 框架未实现）；R1–R6 阶段规则（阶段身份随行/来源映射随行/effect 只收窄/失败=显式诊断/显式 Dynamic 异态/多模块不改全或无）；pass 合同模板全字段+norm/eval 两文本示例；X1–X8 非法变换负面清单。canonical=docs/specs/auto-hir/stage-contract.md，auto-hir/project.md 增交叉链接；全文=docs/design/strategy/auto-acc-bootstrap-contract.md。",
+          "file": "docs/specs/auto-hir/stage-contract.md",
+          "related": [],
+          "status": "published",
+          "created": "2026-10-04",
+          "last_modified": "2026-10-04"
         }
       ]
     },
@@ -8069,6 +8089,16 @@
             "native-aot",
             "same-baseline"
           ]
+        },
+        {
+          "id": "P743-3",
+          "title": "PLAN-743 r1 复审裁定：R1 needs_fix→修复→R2 pass",
+          "content": "PLAN-743 revision 1 复审链：R1（reviewed 基线 b96f7beab）8 项 AC 六 pass+AC-08 partial，发现 F-01（acceptance-matrix 相对链接多一级）与 F-03（use 边计数 15→18，manifest 为准）双 P2；修复循环 1 次提交 d7013b290 闭环；R2 复核 pass（修复 diff 仅 4 文件 4 行，delta 冻结 b6b80711 未触）。交付落 v0.6-dev：specs 沉淀 05d0127a4 + SD-03 落地后四条 spec 引用决定重绑 bbfca37b8（rebase 映射：d7013b290→9abc87acc）。工具收据：三命令 exit0、18 测试、字节确定性、--check HEAD 免疫。",
+          "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+          "related": [],
+          "status": "published",
+          "created": "2026-10-04",
+          "last_modified": "2026-10-04"
         }
       ]
     }
