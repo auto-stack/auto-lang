@@ -1,0 +1,20 @@
+[package]
+name = "auto-ac-prototype"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-741 AC closed-loop prototype: Atom HIR text -> verified HIR -> Windows x64 native AOT"
+publish = false
+
+[workspace]
+
+[dependencies]
+# Cranelift backend stack (selected in T-01; see docs/reports/741-ac-hir-native/toolchain.md)
+cranelift-codegen = "0.126"
+cranelift-frontend = "0.126"
+cranelift-module = "0.126"
+cranelift-object = "0.126"
+target-lexicon = "0.13"
+anyhow = "1"
+
+[profile.release]
+debug = false
