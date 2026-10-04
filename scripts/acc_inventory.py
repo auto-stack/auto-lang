@@ -680,9 +680,21 @@ def main(argv=None) -> int:
         failures.append("ERROR[artifacts-absent] 先运行 --write 生成 %s/%s"
                         % (MANIFEST_NAME, SUMMARY_NAME))
     else:
-        if man_path.read_bytes() != manifest_bytes:
-            failures.append("ERROR[manifest-stale] %s 与当前输入重扫结果不一致（输入 hash 或扫描观察漂移）"
-                            % MANIFEST_NAME)
+        # 审计字段（head_commit）不参与漂移判定：提交报告本身会推进 HEAD，
+        # 属计划 §5.1 预期的非漂移变化；比较前双方都置空后再字节比对。
+        try:
+            on_disk = json.loads(man_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            on_disk = None
+        if on_disk is None:
+            failures.append("ERROR[manifest-stale] %s 不是可解析 manifest" % MANIFEST_NAME)
+        else:
+            on_disk.get("source_identity", {})["head_commit_audit_only"] = None
+            regen = json.loads(manifest_bytes.decode("utf-8"))
+            regen["source_identity"]["head_commit_audit_only"] = None
+            if dumps_stable(on_disk).encode("utf-8") != dumps_stable(regen).encode("utf-8"):
+                failures.append("ERROR[manifest-stale] %s 与当前输入重扫结果不一致"
+                                "（输入 hash 或扫描观察漂移）" % MANIFEST_NAME)
         if sum_path.read_bytes() != summary_bytes:
             failures.append("ERROR[summary-stale] %s 与当前输入重扫结果不一致" % SUMMARY_NAME)
         covered = {i["path"] for i in manifest["inputs"]}

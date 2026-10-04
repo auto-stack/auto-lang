@@ -155,6 +155,17 @@ class DriftAndFailurePaths(FixtureCase):
         code, out, err = run_tool(self.repo, self.out, "--check")
         self.assertEqual(code, 2)
 
+    def test_head_commit_audit_field_does_not_trigger_drift(self):
+        # 计划 §5.1：提交报告本身推进 HEAD 不得造成 --check 误报
+        run_tool(self.repo, self.out, "--write")
+        man = self.out / acc_inventory.MANIFEST_NAME
+        data = json.loads(man.read_text(encoding="utf-8"))
+        data["source_identity"]["head_commit_audit_only"] = "0" * 40  # 模拟 HEAD 前进
+        man.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                       encoding="utf-8")
+        code, out, err = run_tool(self.repo, self.out, "--check")
+        self.assertEqual(code, 0, err)
+
     def test_tampered_manifest_fails_check(self):
         run_tool(self.repo, self.out, "--write")
         man = self.out / acc_inventory.MANIFEST_NAME

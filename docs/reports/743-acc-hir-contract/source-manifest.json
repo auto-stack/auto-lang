@@ -21097,7 +21097,7 @@
     "unknown_policy": "unresolved receivers, bare calls and dynamic dispatch are recorded as unknown candidates, never dropped"
   },
   "source_identity": {
-    "head_commit_audit_only": "fd7fb366dd6eaa9109227054584a578abd98f1ee",
+    "head_commit_audit_only": "c0a0981f75627d17c38d565e91b43f5290823c55",
     "note": "head_commit is recorded for audit only; drift validation uses managed input hashes, never HEAD",
     "paths_are": "repo-relative, forward slashes",
     "root_kind": "auto-lang-repository"
