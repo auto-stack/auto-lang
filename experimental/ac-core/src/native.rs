@@ -302,6 +302,13 @@ pub fn lower_object(
             for (li, l) in body.locals.iter().enumerate() {
                 if l.role == hir::LocalRole::Param {
                     let idx = l.index.expect("verifier: param has index") as usize;
+                    let n_block_params = fb.block_params(entry_block).len();
+                    if idx >= n_block_params {
+                        return Err(vec![backend_diag(format!(
+                            "body `{}`: param index {} out of range for function `{}` with {} signature params",
+                            body.id_text, idx, d.id_text, n_block_params
+                        ))]);
+                    }
                     let var = vars[&(li as u32)];
                     let pv = fb.block_params(entry_block)[idx];
                     fb.def_var(var, pv);
@@ -566,7 +573,7 @@ impl<'c> FuncEmitter<'c> {
                     hir::BinOp::MulI32 => self.checked_mul(a, b),
                     hir::BinOp::LtI32 => {
                         use cranelift_codegen::ir::condcodes::IntCC;
-                        self.fb.ins().icmp(IntCC::SignedLessThan, a, b)
+                        self.icmp_bool(IntCC::SignedLessThan, a, b)
                     }
                 }
             }
@@ -602,6 +609,21 @@ impl<'c> FuncEmitter<'c> {
         }
     }
 
+    /// Signed compare producing the profile's bool representation (i32 0/1).
+    /// Cranelift `icmp` yields i8; every bool value that flows into a
+    /// variable, branch, call argument or return must be widened to i32
+    /// first (QA-01: an unwidened icmp result panicked the frontend on
+    /// `let` into an i32 bool local and failed the verifier on bool returns).
+    fn icmp_bool(
+        &mut self,
+        cc: cranelift_codegen::ir::condcodes::IntCC,
+        a: Value,
+        b: Value,
+    ) -> Value {
+        let c = self.fb.ins().icmp(cc, a, b);
+        self.fb.ins().uextend(types::I32, c)
+    }
+
     fn checked_add(&mut self, a: Value, b: Value) -> Value {
         use cranelift_codegen::ir::condcodes::IntCC;
         let sum = self.fb.ins().iadd(a, b);
@@ -610,12 +632,12 @@ impl<'c> FuncEmitter<'c> {
         let min = self.fb.ins().iconst(types::I32, i32::MIN as i64);
         // overflow iff (b >= 0 && a > max - b) || (b < 0 && a < min - b)
         let room_pos = self.fb.ins().isub(max, b);
-        let b_nonneg = self.fb.ins().icmp(IntCC::SignedGreaterThanOrEqual, b, zero);
-        let a_gt_room = self.fb.ins().icmp(IntCC::SignedGreaterThan, a, room_pos);
+        let b_nonneg = self.icmp_bool(IntCC::SignedGreaterThanOrEqual, b, zero);
+        let a_gt_room = self.icmp_bool(IntCC::SignedGreaterThan, a, room_pos);
         let ovf_pos = self.fb.ins().band(b_nonneg, a_gt_room);
         let room_neg = self.fb.ins().isub(min, b);
-        let b_neg = self.fb.ins().icmp(IntCC::SignedLessThan, b, zero);
-        let a_lt_room = self.fb.ins().icmp(IntCC::SignedLessThan, a, room_neg);
+        let b_neg = self.icmp_bool(IntCC::SignedLessThan, b, zero);
+        let a_lt_room = self.icmp_bool(IntCC::SignedLessThan, a, room_neg);
         let ovf_neg = self.fb.ins().band(b_neg, a_lt_room);
         let ovf = self.fb.ins().bor(ovf_pos, ovf_neg);
         self.branch_to_trap_on(ovf);
@@ -641,7 +663,7 @@ impl<'c> FuncEmitter<'c> {
         let r64 = self.fb.ins().imul(a64, b64);
         let r32 = self.fb.ins().ireduce(types::I32, r64);
         let back = self.fb.ins().sextend(types::I64, r32);
-        let ovf = self.fb.ins().icmp(IntCC::NotEqual, r64, back);
+        let ovf = self.icmp_bool(IntCC::NotEqual, r64, back);
         self.branch_to_trap_on(ovf);
         r32
     }

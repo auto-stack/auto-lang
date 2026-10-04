@@ -1,0 +1,48 @@
+// Draft, schema-bound Atom text. Not executable Auto source.
+// PLAN-741 Phase 2 (QA-03) rejection: stolen body. b_second claims
+// d_first as its owner, but d_first declares b_first — the body->owner
+// direction rejects b_second, and the function->owner direction rejects
+// d_second, whose declared body belongs to another function.
+hir(schema: "auto.hir.core.draft", revision: 1u32, profile: "core-i32-draft") {
+    module m_stolen_body {
+        path: "examples.stolen_body"
+
+        types {
+            type t_i32 i32 {}
+            type t_entry function { params: []; result: "t_i32" }
+        }
+
+        declarations {
+            function d_first t_entry { name: "first"; body: "b_first" }
+            function d_second t_entry { name: "second"; body: "b_second" }
+        }
+
+        bodies {
+            body b_first {
+                owner: "d_first"
+                entry: "k_first"
+
+                expressions {
+                    expr e_z constant { type: "t_i32"; value: 0i32 }
+                }
+
+                blocks {
+                    block k_first { return(value: "e_z") {} }
+                }
+            }
+
+            body b_second {
+                owner: "d_first"
+                entry: "k_second"
+
+                expressions {
+                    expr e_o constant { type: "t_i32"; value: 1i32 }
+                }
+
+                blocks {
+                    block k_second { return(value: "e_o") {} }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,63 @@
+// Draft, schema-bound Atom text. Not executable Auto source.
+// PLAN-741 Phase 2 (QA-02) rejection: two params bound from the same
+// eval_arg — arg 0 is consumed twice and arg 1 is never consumed, so the
+// mapping is not a bijection even though every type happens to match.
+hir(schema: "auto.hir.core.draft", revision: 1u32, profile: "core-i32-draft") {
+    module m_dup_arg {
+        path: "examples.dup_arg"
+
+        types {
+            type t_i32 i32 {}
+            type t_entry function { params: []; result: "t_i32" }
+            type t_pair function { params: ["t_i32", "t_i32"]; result: "t_i32" }
+        }
+
+        declarations {
+            function d_entry t_entry { name: "test_entry"; body: "b_entry" }
+            function d_pair t_pair { name: "pair"; body: "b_pair" }
+        }
+
+        bodies {
+            body b_entry {
+                owner: "d_entry"
+                entry: "k_entry"
+
+                expressions {
+                    expr e_1 constant { type: "t_i32"; value: 1i32 }
+                    expr e_2 constant { type: "t_i32"; value: 2i32 }
+                    expr e_call call {
+                        type: "t_i32"
+                        callee: "d_pair"
+                        eval_args: ["e_1", "e_2"]
+                        bindings: [
+                            { param: 0u32, arg: 0u32 },
+                            { param: 1u32, arg: 0u32 }
+                        ]
+                    }
+                }
+
+                blocks {
+                    block k_entry { return(value: "e_call") {} }
+                }
+            }
+
+            body b_pair {
+                owner: "d_pair"
+                entry: "k_pair"
+
+                locals {
+                    local l_a t_i32 { name: "a"; role: param; index: 0u32 }
+                    local l_b t_i32 { name: "b"; role: param; index: 1u32 }
+                }
+
+                expressions {
+                    expr e_a read_local { type: "t_i32"; local: "l_a" }
+                }
+
+                blocks {
+                    block k_pair { return(value: "e_a") {} }
+                }
+            }
+        }
+    }
+}

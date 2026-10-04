@@ -73,6 +73,14 @@ enum ValueType {
     Function,
 }
 
+fn vt_name(v: ValueType) -> &'static str {
+    match v {
+        ValueType::I32 => "i32",
+        ValueType::Bool => "bool",
+        ValueType::Function => "function",
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Flow {
     /// Execution continues to the next statement / block end.
@@ -161,6 +169,36 @@ impl Verifier {
                         d.span,
                     );
                 }
+            }
+        }
+
+        // function -> body direction: each function's body field must point
+        // at a body owned by exactly this function. This rejects shared
+        // bodies (including same-signature aliases) and functions whose
+        // declared body belongs to someone else (QA-03: r1 only walked the
+        // body -> owner direction, so a zero-param alias sharing a two-param
+        // body passed verify and panicked the backend).
+        for (di, d) in m.defs.iter().enumerate() {
+            let hir::DefKind::Function { body: def_body, .. } = &d.kind else {
+                continue;
+            };
+            let Some(b) = m.bodies.get(def_body.0 as usize) else {
+                continue; // binder rejects dangling body refs
+            };
+            if b.owner.0 as usize != di {
+                let owner = m
+                    .defs
+                    .get(b.owner.0 as usize)
+                    .map(|o| o.id_text.as_str())
+                    .unwrap_or("<unknown>");
+                self.error(
+                    "verify.owner-mismatch",
+                    format!(
+                        "function `{}` declares body `{}` but that body is owned by `{}`; every body must belong to exactly one function",
+                        d.id_text, b.id_text, owner
+                    ),
+                    d.span,
+                );
             }
         }
 
@@ -391,22 +429,17 @@ impl Verifier {
                         e.span,
                     );
                 }
-                for (i, arg) in eval_args.iter().enumerate() {
-                    let at = self.expr_type(*arg, body, type_map, sigs, tm);
-                    if let Some(pt) = params.get(i) {
-                        if at != *pt {
-                            self.error(
-                                "verify.type-mismatch",
-                                format!(
-                                    "expr `{}`: eval_args[{}] type does not match param {}",
-                                    e.id_text, i, i
-                                ),
-                                e.span,
-                            );
-                        }
-                    }
-                }
+                // Arguments are evaluated left to right (side-effect order
+                // contract); their types are checked against form params
+                // through the bindings map, not by position (QA-02: r1
+                // compared eval_args[i] with params[i], rejecting legal
+                // swapped mappings and passing illegal ones).
+                let arg_types: Vec<ValueType> = eval_args
+                    .iter()
+                    .map(|a| self.expr_type(*a, body, type_map, sigs, tm))
+                    .collect();
                 let mut seen_params: BTreeSet<u32> = BTreeSet::new();
+                let mut seen_args: BTreeSet<u32> = BTreeSet::new();
                 for b in bindings {
                     if !seen_params.insert(b.param) {
                         self.error(
@@ -439,6 +472,15 @@ impl Verifier {
                             ),
                             e.span,
                         );
+                    } else if !seen_args.insert(b.arg) {
+                        self.error(
+                            "verify.binding-invalid",
+                            format!(
+                                "expr `{}`: eval_args[{}] is consumed by more than one binding",
+                                e.id_text, b.arg
+                            ),
+                            e.span,
+                        );
                     }
                 }
                 if seen_params.len() < params.len() {
@@ -452,6 +494,38 @@ impl Verifier {
                         ),
                         e.span,
                     );
+                }
+                for i in 0..eval_args.len() as u32 {
+                    if !seen_args.contains(&i) {
+                        self.error(
+                            "verify.binding-invalid",
+                            format!(
+                                "expr `{}`: eval_args[{}] is evaluated but no binding consumes it",
+                                e.id_text, i
+                            ),
+                            e.span,
+                        );
+                    }
+                }
+                for b in bindings {
+                    if let (Some(pt), Some(at)) =
+                        (params.get(b.param as usize), arg_types.get(b.arg as usize))
+                    {
+                        if at != pt {
+                            self.error(
+                                "verify.type-mismatch",
+                                format!(
+                                    "expr `{}`: param {} ({}) does not match eval_args[{}] ({})",
+                                    e.id_text,
+                                    b.param,
+                                    vt_name(*pt),
+                                    b.arg,
+                                    vt_name(*at)
+                                ),
+                                e.span,
+                            );
+                        }
+                    }
                 }
                 if declared != *result {
                     self.error(

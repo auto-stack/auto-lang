@@ -44,6 +44,29 @@ fn count_neg2_returns_0() {
 }
 
 #[test]
+fn bool_condition_selects_native_branch() {
+    // QA-01: a bool comparison result stored into a bool local (let +
+    // assign), then branch on it. r1 panicked the Cranelift frontend here
+    // (icmp i8 into an i32 variable).
+    assert_eq!(build_and_run("bool-if.atom", "bool-if"), 3);
+}
+
+#[test]
+fn bool_abi_roundtrip_param_and_return() {
+    // QA-01: bool across the call ABI — bool return value, bool argument,
+    // bool param driving a branch. less(2,3)=true, less(7,2)=false, so
+    // pick(true,5) + pick(false,9) = 5.
+    assert_eq!(build_and_run("bool-abi.atom", "bool-abi"), 5);
+}
+
+#[test]
+fn swapped_bindings_call_native() {
+    // QA-02: swapped bindings with matching types must pass verify and run
+    // natively — param0 receives eval_args[1] (i32 9), param1 the bool.
+    assert_eq!(build_and_run("binding-swap.atom", "binding-swap"), 9);
+}
+
+#[test]
 fn add_overflow_traps_70() {
     // i32::MAX + 1 must take the explicit trap path, not wrap to a normal
     // result.

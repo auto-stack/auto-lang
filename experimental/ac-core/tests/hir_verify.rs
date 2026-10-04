@@ -99,6 +99,14 @@ fn if_exit_initialization_is_the_branch_intersection() {
     verify_ok(&fixture("valid", "if-both-init.atom"));
 }
 
+#[test]
+fn swapped_bindings_with_matching_types_verify() {
+    // QA-02: the bindings map, not eval_args position, decides which form
+    // param receives which argument. param0 <- eval_args[1] (i32),
+    // param1 <- eval_args[0] (bool) is legal.
+    verify_ok(&fixture("native", "binding-swap.atom"));
+}
+
 /// (fixture, stage, expected code)
 const REJECT_CASES: &[(&str, Stage, &str)] = &[
     // §9 matrix, single-field mutations
@@ -123,6 +131,32 @@ const REJECT_CASES: &[(&str, Stage, &str)] = &[
         Stage::Verify,
         "verify.binding-invalid",
     ),
+    // Phase 2 (QA-02): type compatibility is checked through the bindings
+    // map — swapped eval order with swapped bindings must not pass verify.
+    (
+        "binding-swap-type-mismatch.atom",
+        Stage::Verify,
+        "verify.type-mismatch",
+    ),
+    (
+        "binding-dup-arg.atom",
+        Stage::Verify,
+        "verify.binding-invalid",
+    ),
+    // Phase 2 (QA-03): function <-> body ownership is bidirectional —
+    // shared bodies (differing or identical signatures) and stolen bodies
+    // are rejected at verify, never reaching the backend.
+    (
+        "shared-body-owner.atom",
+        Stage::Verify,
+        "verify.owner-mismatch",
+    ),
+    (
+        "shared-body-same-sig.atom",
+        Stage::Verify,
+        "verify.owner-mismatch",
+    ),
+    ("stolen-body.atom", Stage::Verify, "verify.owner-mismatch"),
     // combined mutations
     ("cross-body-local.atom", Stage::Bind, "bind.dangling-ref"),
     ("shared-expr.atom", Stage::Verify, "verify.eval-position"),

@@ -1,0 +1,66 @@
+// Draft, schema-bound Atom text. Not executable Auto source.
+// PLAN-741 Phase 2 (QA-02): swapped call bindings are legal when types match
+// through the mapping — param0 <- eval_args[1] (i32 9), param1 <- eval_args[0]
+// (bool). mix returns its i32 param; entry exits 9.
+hir(schema: "auto.hir.core.draft", revision: 1u32, profile: "core-i32-draft") {
+    module m_swap {
+        path: "examples.swap"
+
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_entry function { params: []; result: "t_i32" }
+            type t_mix function { params: ["t_i32", "t_bool"]; result: "t_i32" }
+        }
+
+        declarations {
+            function d_entry t_entry { name: "test_entry"; body: "b_entry" }
+            function d_mix t_mix { name: "mix"; body: "b_mix" }
+        }
+
+        bodies {
+            body b_entry {
+                owner: "d_entry"
+                entry: "k_entry"
+
+                expressions {
+                    expr e_1 constant { type: "t_i32"; value: 1i32 }
+                    expr e_2 constant { type: "t_i32"; value: 2i32 }
+                    expr e_lt binary { type: "t_bool"; op: lt_i32; lhs: "e_1"; rhs: "e_2" }
+                    expr e_9 constant { type: "t_i32"; value: 9i32 }
+                    expr e_call call {
+                        type: "t_i32"
+                        callee: "d_mix"
+                        eval_args: ["e_lt", "e_9"]
+                        bindings: [
+                            { param: 0u32, arg: 1u32 },
+                            { param: 1u32, arg: 0u32 }
+                        ]
+                    }
+                }
+
+                blocks {
+                    block k_entry { return(value: "e_call") {} }
+                }
+            }
+
+            body b_mix {
+                owner: "d_mix"
+                entry: "k_mix"
+
+                locals {
+                    local l_i t_i32 { name: "i"; role: param; index: 0u32 }
+                    local l_b t_bool { name: "b"; role: param; index: 1u32 }
+                }
+
+                expressions {
+                    expr e_i read_local { type: "t_i32"; local: "l_i" }
+                }
+
+                blocks {
+                    block k_mix { return(value: "e_i") {} }
+                }
+            }
+        }
+    }
+}
