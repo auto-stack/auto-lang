@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-743
-status: execution_done
+status: executing
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-04
 plan_revision: 1
-current_step: 6
+current_step: 4
 total_steps: 6
 supersedes_spec_components: []
 new_spec_components:
@@ -273,12 +273,14 @@ Python工具需有限但有意义的反例测试：缺文件、注册表/源码�
   [✅ 已完成] commit fd7fb366d（工具 18 测试含 T-06 加固后全绿）；真实仓 --write/--check
   exit0、字节确定性测试锁定；校准实证：File 命名空间/str 方法族补充（engine.at:808/819、
   a2r 头方法映射证据）、enum 载荷变体识别（engine.at:55）、跨行字符串能力（engine.at:314）。
-- [x] T-03 审定主体/语言/运行时迁移表（依赖T-02；AC-01, AC-03）。
+- [ ] T-03 审定主体/语言/运行时迁移表（依赖T-02；AC-01, AC-03）。
   人工复核auto/lib真实定义、use/方法/容器/运行时使用，
   形成报告inventory.md及manual-decisions.json（均新建），unknown有owner/后续探针。
   对照旧aavm Spec但不改它；--check绿且每个必需能力有源码位置或缺口证据。
   [✅ 已完成] commit aeae23bb8。46 条 hash 绑定决定（MD-101..506：8 模块角色+6 新建主体
   +21 能力+113 unknown 全消解）；--check 人工结论层 ok。
+  [↩ 复审R1退回] F-03：use 边计数误写"15 条"，实际 18 条（manifest 为准）；
+  修正 inventory.md §4.1 与 MD-413 注记。
 - [x] T-04 HIR与桥接架构合同（依赖T-03；AC-04, AC-05, AC-06）。
   新建docs/design/strategy/auto-acc-bootstrap-contract.md，在00-intro.md注册；
   形成阶段表/pass模板/反例/桥接候选矩阵，精确引用
@@ -287,14 +289,16 @@ Python工具需有限但有意义的反例测试：缺文件、注册表/源码�
   [✅ 已完成] commit da4b8bce5。S0–S6 阶段表（实现状态逐列标注）、pass 模板+
   norm.canonical-form/eval.const-fold 两合同示例、X1–X8 反例、A/B 桥接矩阵与选择条件、
   Gen1–3 代际判据；00-intro.md 策略表已登记。
-- [x] T-05 验收与后续合同/Spec提案（依赖T-04；AC-06, AC-07）。
+- [ ] T-05 验收与后续合同/Spec提案（依赖T-04；AC-06, AC-07）。
   新建报告acceptance-matrix.md、next-work-packages.md、proposed-spec-delta.md；
   给语料/代际/依赖门及两张无编号候选，核查估算，提出SD-01..03正文增量。
   验证：8+锚点输入/oracle/结果齐全；每个未决项有探针和owner；AC/delta映射完整。
   [✅ 已完成] commit c0a0981f7。10 锚点（existing 3/gated 7，门槛逐项落 owner）、
   候选①（源码计算 adapter）/候选②（str+容器+int 运行时首批，选择证据=MD-405/406/409）、
   26–36 估算逐组核查零变化、SD-01..03 提案正文。
-- [x] T-06 复核与独立交接（依赖T-05；AC-08）。
+  [↩ 复审R1退回] F-01：acceptance-matrix.md 对契约文档的相对链接多一级目录
+  （`../../../design/...` 应为 `../../design/...`），AC-08 文档 links 项不过。
+- [ ] T-06 复核与独立交接（依赖T-05；AC-08）。
   在worktree再跑§5.1与git diff --check，检查工具/报告/合同diff；
   主检出仅维护本Plan进度，按/auto-plan:review独立检查并绑定revision1及实现HEAD。
   复审前将status置execution_done；通过后reviewed，不自行归档/合入。
@@ -302,8 +306,65 @@ Python工具需有限但有意义的反例测试：缺文件、注册表/源码�
   [✅ 已完成] commit b96f7beab（+check 门对 HEAD 审计字段免疫的加固与回归测试）。
   终验：三命令 exit0、18/18 测试绿、`git diff --check c1ac219e7..HEAD` clean、
   worktree clean；实现 HEAD=b96f7beab（plan-743-dev，基点 c1ac219e7）。
+  [↩ 复审R1退回] 修复 F-01/F-03 后须重跑终验门并刷新交接记录，方可再入 review。
 
 ## 9. 复审记录
+
+### 独立复审 R1（2026-10-04，stage: review）
+
+- stage: review
+- plan_id: PLAN-743
+- plan_revision: 1
+- outcome: **needs_fix**（2 项 P2 发现；其余全部核验通过）
+- reviewed_commit: b96f7beabb760bc22f386c414513c31de45018a4（worktree plan-743-dev，clean）
+- base_commit: c1ac219e73ee2ed1ef6ba8dfec49c131bfbf1a75（v0.6-dev）
+- dependency_revisions: 无外仓依赖；741 归档基线=归档时收据（本计划只读引用）
+- spec_inputs: 七份证据输入 + 9 受管输入 hash 经 --check 全绿复核（与 run-context.md §3 一致）
+- 独立性声明：复审在实现会话内进行（无独立会话可用）；结论全部由命令重放与制品
+  重建，不采信执行摘要。
+- diff 范围审计：21 文件全部位于 docs/reports/743-*/、scripts/acc_inventory.py、
+  scripts/tests/**、docs/design/{00-intro,strategy/auto-acc-bootstrap-contract}；
+  crates/、auto/lib、docs/specs/、experimental/、Cargo 零触碰（grep 探针无命中）。
+
+**逐项核验结果**：
+
+| AC | 结果 | 方法与证据 |
+|---|---|---|
+| AC-01 | pass | manifest 9 输入（8 模块+注册表）100%；18 条 use 边全部解析到 lib 模块且每个导入符号在目的地存在（程序化核验 NONE-missing）；113 unknown 全带去向；source-demand/support 维度字段在 manifest scan_semantics 显式分离 |
+| AC-02 | pass | 三命令重放 exit0；双临时目录 --write 字节一致且与仓内制品 cmp 一致；漂移负例（临时副本仓改 token.at）exit1 且诊断具体；--write 对 manual-decisions.json 字节不变（sha256 220d59df 前后一致）；篡改/缺文件/过期/注册表漂移由 18 用例覆盖 |
+| AC-03 | pass | 8 模块迁移表+6 新建主体+保留服务清单齐全；parser/typeinfo/codegen/engine/a2r 真实入口证据逐行命中（ar_emit_program@4479、type P@71、AUTO_LIB_FILES_V2@1893 等抽检 8/8 命中） |
+| AC-04 | pass | S0–S6 阶段表实现状态逐列标注，未把未实现阶段标成已实现；741 API 引用逐行核实（verify.rs:59、native.rs:43/111/189、link.rs:166/229、schema/core-i32.atom 身份）；Checked 门/Unknown 拒绝/profile/来源/公共-低层边界均有可审规则 |
+| AC-05 | pass | pass 模板全字段（effect/trap/顺序/释放/再校验/缓存失效）+ norm.canonical-form、eval.const-fold 两合同示例；X1–X8 反例（≥2 要求）；"合同非实现"声明显式 |
+| AC-06 | pass | 10 锚点（≥8）各带输入/oracle/运行形态/工具依赖/前置 capability/证据状态；Gen1–3 矩阵+依赖清单归档；双桥候选边界/选择条件/4 项待验证问题齐备，未混淆生产 ABI |
+| AC-07 | pass | 两候选含可现在做/须基线/须前置分类；26–36 估算逐组核查有据零变化；SD-01..03 逐条映射且提案正文与目标现状一致（目标文件确认尚不存在；SD-03 为纯插入）；canonical Spec/旧源码/741 profile/外仓零改动 |
+| AC-08 | partial | 本复审即该项执行；发现 F-01/F-03 退回（见下）；修复后重验转 pass |
+
+**发现（needs_fix 依据）**：
+
+- **F-01（P2，AC-08/AC-06 载体文档）**：`docs/reports/743-acc-hir-contract/acceptance-matrix.md`
+  顶部对契约文档的相对链接 `../../../design/strategy/auto-acc-bootstrap-contract.md` 多一级
+  目录（743-acc-hir-contract → docs 需两级上级），链接不可达。
+  修正：改为 `../../design/strategy/auto-acc-bootstrap-contract.md`。
+- **F-03（P2，AC-01/AC-03 证据注记准确性）**：inventory.md §4.1 与 manual-decisions.json
+  MD-413 注记写"显式 use 边 15 条"，manifest 实测 **18 条**（2+1+3+2+5+4+1）。
+  manifest 本身正确；人工叙事层须以 18 修正，防止审计数字失真。
+- （澄清，非发现）proposed-spec-delta.md 内 plans.md/stage-contract.md "断链"位于提案正文
+  代码围栏内，是对 delta 目标未来文件的引用，非本报告活动链接，不改。
+  独立副本篡改探针因本机 /tmp 路径翻译 inconclusive，该失败路径由套内
+  test_tampered_manifest_fails_check 覆盖（18 用例含）。
+
+**delta 冻结哈希（reviewed@b96f7beab）**：proposed-spec-delta.md b6b807110e5beac6…、
+manual-decisions.json 220d59df6e8d3e5e…、inventory.md b7c9bc44ef180e3d…、
+acceptance-matrix.md d8ea8e6253b508c4…。
+
+**处置**：状态回 executing（current_step 4）；T-03/T-05/T-06 重开（保留历史证据），
+修复 F-01/F-03 → 重跑 T-06 终验门 → 再入 review 复核两项修正即可转 pass。
+未发现未批准缩减、范围扩张或 workaround；main 检出上他 Session 的 741-quality WIP
+（vue.rs 等）不属本计划 diff，已在执行交接报告并向用户呈报，须由其所有者路由。
+
+- evidence: 本记录内命令/结果摘录 + worktree 提交链 b96f7beab（worktree 移除后经
+  merge 落 v0.6-dev 的同 hash 提交可溯）
+- next: work（修复 F-01/F-03，循环上限内 1 次）→ review 复核
 
 ### 执行交接（2026-10-04，stage: work）
 
