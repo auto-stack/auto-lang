@@ -159,6 +159,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [auto-hir-atom-text](strategy/auto-hir-atom-text.md) | HIR Atom 文本映射与完整样例：双槽简写、类型化引用、函数、控制流、参数求值顺序及反例矩阵 | 📝 Draft（2026-10-04；尚未经 parser/verifier 验收） |
 | [auto-ac-subset-and-target](strategy/auto-ac-subset-and-target.md) | AC 计算核心、文本/数据工具与 AAC 子集分期；Windows x64 原生目标文件、链接与执行闭环 | 📝 Draft（2026-10-04；Cranelift/自举分期已确认，具体子集待验收） |
 | [auto-native-backend-evolution](strategy/auto-native-backend-evolution.md) | v0.6 Cranelift AC/ACC 自举与 pass 基础；v0.7 自主低层 IR/SSA、优化/代码生成实验及切换门槛 | 路线已确认（2026-10-04；技术细节与实现按计划验证） |
+| [auto-acc-bootstrap-contract](strategy/auto-acc-bootstrap-contract.md) | ACC 自举主体与公共 HIR 阶段契约：S0–S6 阶段表、pass 合同模板与非法变换反例、后端桥候选矩阵、Gen1–3 代际判据（PLAN-743 T-04） | 📝 Draft（2026-10-04；契约未冻结，实施计划按节认领） |
 | [auto-native-abi-rfc](strategy/auto-native-abi-rfc.md) | AC/ACC 原生 ABI：独立版本域、Windows x86-64、静态/动态模块、linker 分工、跨界类型、常驻运行时与状态热重载 | 📝 Draft RFC（2026-10-04；需求已记录，技术建议待评审，未实施） |
 | [auto-as-rust-script-strategy](strategy/auto-as-rust-script-strategy.md) | "Auto 作 Rust 脚本层"宣传与文档纲领 | ✅ Accepted（Plan 359） |
 | [rust-library-replication-roadmap](strategy/rust-library-replication-roadmap.md) | Rust 库复刻验证路线（parity 语料） | ✅ 现行（Plan 347/348/369） |
