@@ -4222,6 +4222,8 @@ impl VueGenerator {
             };
             script.push_str(&format!(
                 "{fn_sig}\n\
+                 \x20 // IME composition (LAUNCHER-001 R-02 / 452 spike): Enter/Esc go to the IME first.\n\
+                 \x20 if (e.isComposing || e.keyCode === 229) return\n\
                  \x20 const hasModifier = e.ctrlKey || e.altKey || e.metaKey\n\
                  \x20 if (!hasModifier) {{\n\
                  \x20   {target_cast}\
@@ -4273,6 +4275,8 @@ impl VueGenerator {
             };
             script.push_str(&format!(
                 "{fn_sig}\n\
+                 \x20 // IME composition (LAUNCHER-001 R-02 / 452 spike): Enter/Esc go to the IME first.\n\
+                 \x20 if (e.isComposing || e.keyCode === 229) return\n\
                  \x20 const hasModifier = e.ctrlKey || e.altKey || e.metaKey\n\
                  \x20 let key = e.key\n\
                  \x20 if (!hasModifier) {{\n\
@@ -5337,6 +5341,7 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
             self.used_handlers
                 .insert(self.handler_to_function_call(&aura_event.handler));
+            let call = Self::ime_guard_enter_handler(&vue_event, call);
             attrs.push(format!("{}=\"{}\"", vue_event, call));
         }
         if spec.up_time.is_some() {
@@ -6064,6 +6069,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 }
             }
             self.used_handlers.insert(handler_name);
+            let handler_fn = Self::ime_guard_enter_handler(&vue_event, handler_fn);
             attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
         }
 
@@ -7636,6 +7642,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                             }
                         }
                         self.used_handlers.insert(handler_name);
+                        let handler_fn = Self::ime_guard_enter_handler(&vue_event, handler_fn);
                         attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
                     }
                     // Auto-wire child Delete event to parent handler
@@ -8205,6 +8212,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                             && aura_event.handler.trim_start_matches('.').starts_with("__bind_");
                         if !is_auto_sync_mint {
                             self.used_handlers.insert(handler_name);
+                            let handler_fn = Self::ime_guard_enter_handler(&vue_event, handler_fn);
                             attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
                         }
                     }
@@ -8663,6 +8671,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     // Track used handler (without params for matching)
                     let handler_name = self.handler_to_function_call(&aura_event.handler);
                     self.used_handlers.insert(handler_name);
+                    let handler_fn = Self::ime_guard_enter_handler(&vue_event, handler_fn);
                     attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
                 }
 
@@ -15859,6 +15868,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 }
             }
             self.used_handlers.insert(handler_name);
+            let handler_fn = Self::ime_guard_enter_handler(&vue_event, handler_fn);
             attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
         }
 
@@ -16128,6 +16138,24 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         }
         if let Some(ds) = dynamic_style {
             attrs.push(format!(":style=\"{}\"", ds));
+        }
+    }
+
+    /// IME guard for `@keyup.enter` handlers (LAUNCHER-001 R-02 / 452 spike).
+    /// Composition confirm Enter must not fire onenter actions.
+    fn ime_guard_enter_handler(vue_event: &str, handler_fn: String) -> String {
+        if vue_event.starts_with("@keyup.enter") {
+            // handler_fn is either `Name` (0-arity) or `Name(...)` (call form).
+            let invoke = if handler_fn.contains('(') {
+                handler_fn
+            } else {
+                format!("{handler_fn}()")
+            };
+            format!(
+                "($event) => {{ if (!($event.isComposing || $event.keyCode === 229)) {{ {invoke} }} }}"
+            )
+        } else {
+            handler_fn
         }
     }
 
@@ -19596,10 +19624,21 @@ widget LoginPage {
     }
 }
 "#);
+        // IME guard wraps the handler (LAUNCHER-001 R-02): both inputs still
+        // bind keyup.enter and invoke Submit when not composing.
         assert_eq!(
-            sfc.matches("@keyup.enter=\"Submit\"").count(),
+            sfc.matches("@keyup.enter=").count(),
             2,
             "both inputs must emit keyup.enter→Submit:\n{sfc}"
+        );
+        assert_eq!(
+            sfc.matches("{ Submit() }").count(),
+            2,
+            "both onenter guards must invoke Submit():\n{sfc}"
+        );
+        assert!(
+            sfc.contains("isComposing"),
+            "onenter must be IME-guarded:\n{sfc}"
         );
         assert!(
             !sfc.contains("variant=\"submit\""),
@@ -24437,10 +24476,37 @@ widget L {
             "bind keydown removed on unmount:\n{}",
             sfc
         );
-        // 输入框守卫只让位单字符/Backspace，命名键照常派发。
         assert!(
-            sfc.contains("key === 'Backspace'"),
-            "typing guard skips only char/backspace in inputs:\n{}",
+            sfc.contains("if (e.isComposing || e.keyCode === 229) return"),
+            "IME composition guard on bind keydown:\n{}",
+            sfc
+        );
+    }
+
+    /// LAUNCHER-001 R-02: input onenter must not fire while IME composing.
+    #[test]
+    fn test_onenter_ime_guard_wraps_handler() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget L {
+    msg Msg { Pick }
+    model { var q str = "" }
+    view { col { input { value: .q, onenter: .Pick } } }
+    on { .Pick -> { .q = "x" } }
+}
+"#);
+        assert!(
+            sfc.contains("isComposing"),
+            "onenter handler must be IME-guarded:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@keyup.enter="),
+            "onenter still maps to keyup.enter:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("Pick()"),
+            "guarded handler must invoke Pick():\n{}",
             sfc
         );
     }
