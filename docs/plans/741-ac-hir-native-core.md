@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-741
-status: drafting
+status: execution_done
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-04
 plan_revision: 1
-current_step: 0
+current_step: 7
 total_steps: 8
 supersedes_spec_components: []
 new_spec_components:
@@ -264,6 +264,23 @@ native脚本发现工具链、构建/运行、处理超时并保存收据；SDK�
 
 所有步骤尚未执行；完成记录commit、命令、结果与AC。
 
+### 执行进度（worktree plan-741-dev，基线 951b6c70f）
+
+- [x] **T-01** commit `0f2b232d7`：rustc 1.98.1/msvc host、SDK 10.0.26100.0（D盘，注册表 KitsRoot10）、MSVC 14.44 实测；Cranelift 0.126.2 选型（cargo tree 无旧产品依赖）；最小 COFF/link/call 探针 rust-lld 与 MSVC link.exe 双通过（exit 5）。收据 `docs/reports/741-ac-hir-native/toolchain.md`。AC-01, AC-05。
+- [x] **T-02** commit `632e48a03`：atom_text.rs（span 分词/解析）+ descriptor.rs（schema/core-i32.atom 版本化 descriptor、双槽/命名字段互换、重复字段、分支 require/forbid、类别失配/悬空引用诊断、canonical writer）+ hir.rs 类型化 ID。text_binding 11/11：四份设计文档绑定、作者/显式/canonical 往返语义相等、enum 简写、15 反例按码拒绝。AC-02, AC-04。
+- [x] **T-03** commit `b3bed7d72`：verify.rs（CheckedModule 私有构造；类型/初始化交集/循环零次保守/可变性/loop 作用域/块唯一入口角色/可达性/终结后尾语句/返回路径/求值位置唯一/表达式无环）。hir_verify 8/8 覆盖 §9 矩阵+组合反例。AC-03, AC-04。
+- [x] **T-04** commit `cf5aca9f8`：native.rs（capability gate、find_entry、结构化 lowering、可移植有符号溢出检测、trap=ExitProcess(70)、通用 ac_start）。native_execution 8/8：add(2,3)=5、add(-2,3)=1、count(3/0/-2)=3/0/0 真实 PE 退出码；溢出 trap 70×2；COFF 符号断言。AC-05, AC-06。
+- [x] **T-05** commit `523fabfe1`：link.rs（rust-lld+SDK 发现、子进程截止时间、原子制品替换、链接收据）+ main.rs（ac-probe check/build，退出码 0/1/2）。cli 9/9：错误路径全非零、SENTINEL 不覆盖、add.exe 运行 exit 5。AC-05, AC-07。
+- [x] **T-06** commit `53775205c`：test-support/ no_std 静态库（hir.test.mark_a/mark_b 经 kernel32 写 stderr）+ `--support-lib`。trace_execution：无能力拒建；有能力+支持库原生跑通，stderr b→a、exit 12。AC-06。
+- [x] **T-07** （本提交）README + scripts/verify-ac-741.ps1（§6 命令 + CLI 实机构建/运行 + 主仓门禁，全部子进程带截止时间）+ verification.md。原型门禁 11/11 PASS；主仓门禁结果见 verification.md §4。AC-01..AC-08 证据表。
+- [ ] **T-08** /auto-plan:review 独立核对（执行侧不预先勾选）
+
+组内依赖：auto-lang 的 autodown-core 可选路径依赖需组内兄弟检出，
+已按依赖 worktree 规则建 `D:/autostack/.wt/lang-741/auto-down`
+（detached @ fba6563e，只读，无 junction/symlink；fold 前随主 worktree 一并
+wt-guard 后移除）。
+
+
 | task | 依赖 | 文件/符号与动作 | 验证命令/预期 | AC |
 |---|---|---|---|---|
 | T-01 | 执行确认 | 从v0.6-dev建专用worktree；探测Rust/SDK/linker；新增Cargo.toml/lock；toolchain.md记录backend选择 | rustc -Vv、cargo tree --manifest-path experimental/ac-core/Cargo.toml、最小COFF/link/call探针；无旧依赖 | AC-01,05 |
@@ -294,6 +311,31 @@ T-01/04使用临时native探针验证能力，但最终验收必须来自实际C
 - spec_delta: SD-01, SD-02
 - checked: 范围/路径/Spec来源、编号唯一、AC/SD任务覆盖；未知工具链由有界T-01负责。
 - not_checked: 实现parser/verifier/native与Rust门禁；暂无实现，不以文档自检代替运行证据。
+
+### 工作交接（2026-10-04，/auto-plan:work 执行完毕）
+
+- stage: work
+- plan_id: PLAN-741
+- plan_revision: 1
+- outcome: pass（执行完成；日常档继承红与负载 flake 的裁定移交独立复审）
+- code_commit: plan-741-dev @ `4dc4da636`（T-01 `0f2b232d7` / T-02 `632e48a03` /
+  T-03 `b3bed7d72` / T-04 `cf5aca9f8` / T-05 `523fabfe1` / T-06 `53775205c` /
+  T-07 `4dc4da636`；基线 951b6c70f）
+- task_ids: T-01..T-07 完成（证据见 §8 执行进度与
+  docs/reports/741-ac-hir-native/{toolchain,verification}.md）；T-08=复审本身未执行
+- evidence:
+  - text_binding 11/11、hir_verify 8/8、native_execution 8/8、cli 9/9、
+    trace_execution 1/1（§6 全部命令经 scripts/verify-ac-741.ps1 一键复现，
+    原型门禁 11/11 PASS，收据 experimental/ac-core/target/ac-verify-receipts/）
+  - 真实原生闭环：add(2,3)=5、count 循环、i32 溢出 trap=70、调用顺序原生
+    b→a 且 pair=12（exit 12）、无 capability 拒建、失败构建不覆盖（SENTINEL）
+  - 主仓门禁：cargo check -p auto-lang PASS；cargo tv 162/162 PASS；
+    cargo t 4945/4971，26 红经同基线对照=14 继承红 + 12 负载 flake
+    （对照证据 verification.md §4.1；crates/** 零 diff，根 workspace/lock 零 diff）
+- blockers: 无阻塞执行的问题；待复审裁定项——(a) 26 个日常档红的继承认定与
+  挂账归类；(b) 组内 auto-down detached 依赖 worktree 的 fold 时机
+- next: review（/auto-plan:review 独立核对 AC-01..AC-08 与 SD-01/02 后 merge；
+  worktree D:/autostack/.wt/lang-741/auto-lang 保留待复审，fold/清理归 merge）
 
 ## 10. 待澄清事项
 
