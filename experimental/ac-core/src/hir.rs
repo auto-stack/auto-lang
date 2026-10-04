@@ -16,7 +16,7 @@ use std::fmt;
 macro_rules! typed_id {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
         pub struct $name(pub u32);
 
         impl fmt::Display for $name {

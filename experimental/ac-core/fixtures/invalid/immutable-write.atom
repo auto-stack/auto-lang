@@ -1,0 +1,72 @@
+// Semantic fixture: count from zero to n; negative n also returns zero.
+hir(schema: "auto.hir.core.draft", revision: 1u32, profile: "core-i32-draft") {
+    module m_control {
+        path: "examples.control"
+
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_count function { params: ["t_i32"]; result: "t_i32" }
+        }
+
+        declarations {
+            function d_count t_count { name: "count"; body: "b_count" }
+        }
+
+        bodies {
+            body b_count {
+                owner: "d_count"
+                entry: "k_entry"
+
+                locals {
+                    local l_n t_i32 { name: "n"; role: param; index: 0u32 }
+                    local l_i t_i32 { name: "i"; role: binding; mutable: false }
+                }
+
+                places {
+                    place p_i local { local: "l_i"; type: "t_i32"; access: mutable }
+                }
+
+                expressions {
+                    expr e_zero constant { type: "t_i32"; value: 0i32 }
+                    expr e_i_test read_local { type: "t_i32"; local: "l_i" }
+                    expr e_n_test read_local { type: "t_i32"; local: "l_n" }
+                    expr e_less binary {
+                        type: "t_bool"
+                        op: lt_i32
+                        lhs: "e_i_test"
+                        rhs: "e_n_test"
+                    }
+                    expr e_i_step read_local { type: "t_i32"; local: "l_i" }
+                    expr e_one constant { type: "t_i32"; value: 1i32 }
+                    expr e_next binary {
+                        type: "t_i32"
+                        op: add_i32
+                        overflow: trap
+                        lhs: "e_i_step"
+                        rhs: "e_one"
+                    }
+                    expr e_i_result read_local { type: "t_i32"; local: "l_i" }
+                }
+
+                blocks {
+                    block k_entry {
+                        let(local: "l_i", value: "e_zero") {}
+                        loop(id: "q_count", body: "k_test") {}
+                        return(value: "e_i_result") {}
+                    }
+                    block k_test {
+                        if(cond: "e_less", then: "k_step", else: "k_stop") {}
+                    }
+                    block k_step {
+                        assign(place: "p_i", value: "e_next") {}
+                        continue(target: "q_count") {}
+                    }
+                    block k_stop {
+                        break(target: "q_count") {}
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,52 @@
+// PLAN-741 fixture: both if branches initialize the same binding local; the
+// if-exit initialization set is the intersection of reachable branches, so
+// the read after the if is valid.
+hir(schema: "auto.hir.core.draft", revision: 1u32, profile: "core-i32-draft") {
+    module m_sign {
+        path: "examples.sign"
+
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_sign function { params: ["t_i32"]; result: "t_i32" }
+        }
+
+        declarations {
+            function d_sign t_sign { name: "sign"; body: "b_sign" }
+        }
+
+        bodies {
+            body b_sign {
+                owner: "d_sign"
+                entry: "k_entry"
+
+                locals {
+                    local l_n t_i32 { name: "n"; role: param; index: 0u32 }
+                    local l_x t_i32 { name: "x"; role: binding }
+                }
+
+                expressions {
+                    expr e_zero constant { type: "t_i32"; value: 0i32 }
+                    expr e_n read_local { type: "t_i32"; local: "l_n" }
+                    expr e_neg binary { type: "t_bool"; op: lt_i32; lhs: "e_n"; rhs: "e_zero" }
+                    expr e_one constant { type: "t_i32"; value: 1i32 }
+                    expr e_minus_one constant { type: "t_i32"; value: -1i32 }
+                    expr e_x read_local { type: "t_i32"; local: "l_x" }
+                }
+
+                blocks {
+                    block k_entry {
+                        if(cond: "e_neg", then: "k_t", else: "k_e") {}
+                        return(value: "e_x") {}
+                    }
+                    block k_t {
+                        let(local: "l_x", value: "e_minus_one") {}
+                    }
+                    block k_e {
+                        let(local: "l_x", value: "e_one") {}
+                    }
+                }
+            }
+        }
+    }
+}

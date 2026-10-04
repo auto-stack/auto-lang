@@ -10,6 +10,7 @@
 pub mod atom_text;
 pub mod descriptor;
 pub mod hir;
+pub mod verify;
 
 /// The versioned core descriptor this build accepts. Any document claiming a
 /// different schema/revision/profile identity is rejected at bind time.

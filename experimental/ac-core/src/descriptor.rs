@@ -398,8 +398,6 @@ struct ModuleTables {
     bodies: BTreeMap<String, u32>,
 }
 
-
-
 struct Binder<'d> {
     desc: &'d Descriptor,
     src: &'d str,
