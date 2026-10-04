@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-741
-status: executing
+status: reviewed
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-04
 plan_revision: 2
-current_step: 7
+current_step: 17
 total_steps: 17
 supersedes_spec_components: []
 new_spec_components:
@@ -369,9 +369,62 @@ Phase 2 执行进度（commit 哈希=plan-741-dev；基线 3a7967262）：
 - [x] **T-14** commit `db75c494f`：run_with_deadline 并发读管道+deadline 参数化；rustc/reg/lld/run 全部接入；lib 单测 2/2（1s 截止杀挂起 helper、>128KB 输出子进程完整跑通——旧实现该用例必撞 60s 死锁）。AC-14。
 - [x] **T-15** commit `6ad396379`：tests/common 未用 descriptor 导入清除；verify-ac-741.ps1 增加 all-targets 零 warning 步（`^warning:` 断言）与 --lib 步。AC-15。
 - [x] **T-16** （本提交）门禁复跑：text_binding 11/11、hir_verify 9/9、native_execution 11/11、cli 10/10、trace_execution 1/1、lib 2/2（计 44 项，r1 基线 37 项）；cargo fmt --check 过；cargo check --all-targets 零 warning；复审 reproduce.ps1 复跑六反例全部翻转（bool-local/bool-return build 由 101/1→0、binding-valid check 1→0、binding-invalid check 0→1、shared-body build 101→check 1、发布失败 exeChanged true→false 且旧 exe exit 5）；`git diff 3a7967262 -- crates/ Cargo.toml Cargo.lock test/` 为空。AC-09..AC-15 执行侧证据齐备。
-- [ ] **T-17** /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 沉淀 SD-03/04 并销账 KNOWN-DEBT P741-QA-01..07 行。
+- [x] **T-17** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 2 独立复审）；merge 沉淀 SD-03/04 并销账 KNOWN-DEBT P741-QA-01..07 行待 /auto-plan:merge。
 
 ## 9. 复审记录
+
+### Phase 2 独立复审（2026-10-04，/auto-plan:review，独立代理）
+
+- stage: review | plan_id: PLAN-741 | plan_revision: 2 | outcome: **pass**
+- reviewed_commit: `1d195fe6e`（worktree clean；实现提交 28c0bbfcd / db75c494f /
+  6ad396379；复审后仅追注 comment-only 提交 `fb38632f2` 修 P741P2-R1，无语义变化）
+- base_commit: `3a7967262`（Phase 2 合同激活提交）
+- 复审方式: 全新上下文独立代理执行（未参与实现、未读执行侧推理），全部结论来自
+  其自行运行的命令与源码审查；AC-01 面与 canonical Specs 零 diff 经其独立核实
+  （`git diff 3a7967262 -- Cargo.toml Cargo.lock crates/ test/ docs/specs/` 为空）
+- dependency_revisions: cranelift 栈 0.126.2（Cargo.lock 已提交）、rustc 1.98.1、
+  rust-lld/SDK 本机状态（与 r1 冻结收据一致）
+- spec_inputs: SD-03 → docs/specs/auto-hir/project.md（modify，merge 时沉淀）；
+  SD-04 → docs/specs/auto-ac/project.md（modify，merge 时沉淀）；复审确认增量
+  措辞与实现逐条吻合、无缩水（复验 r1 SD-01/02 原承诺）
+- acceptance_results（全 **pass**，均为复审代理自行取证）:
+  - AC-09 pass：icmp_bool 唯一出口 uextend 归一（native.rs，LtI32+checked_add×4+
+    checked_mul 共 6 调用点，无裸 icmp）；lower_object 越界优雅诊断；native
+    bool 正例 exit 3/5；reproduce bool-local/bool-return 由 101/1 → check0/build0
+  - AC-10 pass：类型按 params[b.param] vs eval_args[b.arg] 核对 + 映射双射独立校验
+    （param 重复/越界、arg 重复消费/未消费/越界各有诊断）；求值顺序保留；
+    binding-valid check0+原生 exit 9，binding-invalid check1 type-mismatch
+  - AC-11 pass：function→body 反向校验与既有 body→owner 合成唯一归属；
+    shared-body-owner / same-sig / stolen-body 全按 verify.owner-mismatch 拒绝；
+    reproduce shared-body 由 build 101 panic → check1
+  - AC-12 pass：暂存→备份（仅文件型 final）→发布→失败还原备份+清除未还原 placed；
+    companion 全名后缀防同 stem 备份碰撞；目录占位触发失败回滚；
+    reproduce atomic：exit1+link.receipt、exeChanged=false、objChanged=false、
+    旧 exe 原生 exit 5；cli 回滚测试字节级断言+残留扫描
+  - AC-13 pass：README 三条命令逐字复制运行（check exit0；add build 产三件套、
+    exit5；trace build 产三件套、exit12+stderr b,a）；归档链接与 descriptor
+    路径正确；bin 名与实际一致
+  - AC-14 pass：rustc/reg/lld/run 全走 run_with_deadline（并发 reader 线程）；
+    lib 单测证明 1s 截止杀 30s 挂起 helper、~126KB 输出子进程完整跑通
+    （旧实现该场景 60s 死锁）
+  - AC-15 pass：tests/common 无未用导入；all-targets 零 warning（复审自跑）；
+    verify 脚本含 all-targets 断言步与 --lib 步
+- findings:
+  - P741P2-R1（info，已处置）：大输出单测注释字节数 128KB→~126KB 修正
+    （comment-only `fb38632f2`）
+  - P741P2-R2（info，merge 时自愈）：README:8 归档链接在激活态暂态悬空；
+    **merge 必须确认 git mv 归档步骤执行**，链接即生效
+  - P741P2-R3（info，非缺陷）：reproduce.ps1 的 OS 错误文本 GBK 乱码为该脚本
+    .NET 流解码显示件，CLI 本体输出正常
+- 反向审查: 新测试均为真断言（dup-arg 刻意同类型参数仅映射校验可拒、same-sig
+  共享仅 owner 检查可拒、回滚测试字节级对比+旧 exe 实跑+残留扫描）；
+  无缩减 AC、无 workaround、无遗漏子项
+- evidence: 44/44 测试（text_binding 11 + hir_verify 9 + native_execution 11 +
+  cli 10 + trace_execution 1 + lib 2）、fmt --check clean、all-targets 零 warning、
+  一键 verify-ac-741.ps1 -SkipMainGates 13/13 PASS；六反例翻转可由
+  docs/reports/741-quality-review-20261004/reproduce.ps1 复现
+- next: merge（/auto-plan:merge 沉淀 SD-03/04、销账 KNOWN-DEBT P741-QA-01..07 行、
+  合回 v0.6-dev、wt-guard 后清理 plan-741-dev worktree 与组目录）
 
 ### Phase 2 工作交接（2026-10-04，/auto-plan:work 执行完毕）
 
