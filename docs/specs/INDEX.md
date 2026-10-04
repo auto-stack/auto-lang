@@ -402,6 +402,8 @@
 | Project | 状态 | 模块数 | 项目卡 |
 |---|---|---|---|
 | auto-cosmic | active（509 | 5 | [auto-cosmic/project.md](auto-cosmic/project.md) |
+| auto-hir | experimental | 0 | [auto-hir/project.md](auto-hir/project.md) |
+| auto-ac | experimental | 0 | [auto-ac/project.md](auto-ac/project.md) |
 
 <details><summary>auto-cosmic 模块明细</summary>
 
