@@ -1,0 +1,45 @@
+{
+  "format_version": 1,
+  "plan_id": "PLAN-743",
+  "generator": "scripts/acc_inventory.py",
+  "generator_status": "draft-t01-hand-authored; superseded by scripts/acc_inventory.py --write in T-02",
+  "source_identity": {
+    "root_kind": "auto-lang-repository",
+    "paths_are": "repo-relative, forward slashes",
+    "head_commit_audit_only": "c1ac219e73ee2ed1ef6ba8dfec49c131bfbf1a75",
+    "drafting_head_reference": "a6c0f9691dbb8e176b028291de758bbffa499fe3",
+    "note": "head_commit is recorded for audit only; drift validation uses managed input hashes, never HEAD"
+  },
+  "inputs": [
+    {"path": "auto/lib/token.at", "sha256": "963ccc1df73b86e510db95f13dda0e3ea17462f7c3f4b7652947e9f9f3381d74", "role": "source-module"},
+    {"path": "auto/lib/lexer.at", "sha256": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01", "role": "source-module"},
+    {"path": "auto/lib/parser.at", "sha256": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559", "role": "source-module"},
+    {"path": "auto/lib/typeinfo.at", "sha256": "9eed6f5f243225c17d4f79e5c53918d03a525e2e2bd99998b6ba6f95c3bb254a", "role": "source-module"},
+    {"path": "auto/lib/codegen.at", "sha256": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0", "role": "source-module"},
+    {"path": "auto/lib/engine.at", "sha256": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328", "role": "source-module"},
+    {"path": "auto/lib/a2r.at", "sha256": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae", "role": "source-module"},
+    {"path": "auto/aavm.at", "sha256": "0ff06f099253e1aa1c8d83ef2810771f10d5a01e5388729354dd9fa249d4ee9a", "role": "source-module-cli"},
+    {"path": "crates/auto-lang/src/lib.rs", "sha256": "4d6c4703c667f99cfe55e6f96471e89c7e82346c788a56b907447260786e8fbe", "role": "registry-host"}
+  ],
+  "registry": {
+    "symbol": "AUTO_LIB_FILES_V2",
+    "host": "crates/auto-lang/src/lib.rs",
+    "module_order": [
+      "token",
+      "lexer",
+      "parser",
+      "typeinfo",
+      "codegen",
+      "engine",
+      "a2r"
+    ],
+    "cli_entry": "auto/aavm.at",
+    "note": "module_order is the concatenation-consumer topo order (Plan 517 W2); registry drift is a --check failure"
+  },
+  "drafting_diff": {
+    "classification": "none",
+    "detail": "all seven evidence inputs byte-identical between drafting HEAD a6c0f9691 and execution base c1ac219e7; only plan bookkeeping added (docs/plans/743-*.md, .next-id 742->743)"
+  },
+  "observations": null,
+  "observations_note": "null = pending T-02; scripts/acc_inventory.py --write fills declarations, use_edges, capability_evidence, runtime_call_candidates with unknown markers, and manual-conclusion bindings"
+}
