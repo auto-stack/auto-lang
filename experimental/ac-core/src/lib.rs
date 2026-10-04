@@ -10,6 +10,7 @@
 pub mod atom_text;
 pub mod descriptor;
 pub mod hir;
+pub mod native;
 pub mod verify;
 
 /// The versioned core descriptor this build accepts. Any document claiming a
