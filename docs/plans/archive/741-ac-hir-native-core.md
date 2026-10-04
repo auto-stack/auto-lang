@@ -424,7 +424,13 @@ T-01/04使用临时native探针验证能力，但最终验收必须来自实际C
   （spec-index.py 生成）+ overview.md 外围与实验 +2 行
 - archived: docs/plans/archive/741-ac-hir-native-core.md, status: archived,
   completion_kind: delivered
-- cleaned: 见下方 cleaned 补记（wt-guard 双 worktree + 分支删除）
+- cleaned: **完成（2026-10-04）**——两 worktree tracked 零脏、分支 plan-741-dev
+  （已并 @ 304519113）删除；reparse-point 扫描双 worktree 均 clean 后移除
+  （D:/autostack/.wt/lang-741/{auto-lang,auto-down}）；组目录 rmdir 成功。
+  偏差记录：文档引用的 D:/autostack/wt-guard.sh 在本机不存在，按其文档语义
+  （reparse point 扫描，非空即拒）以 PowerShell 等价扫描替代，结果归档于本行。
+  注：auto-down worktree 注册在 auto-down 仓（创建即如此），以
+  `git -C auto-down worktree remove` 移除。
 
 ## 10. 待澄清事项
 
