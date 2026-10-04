@@ -10,6 +10,7 @@
 pub mod atom_text;
 pub mod descriptor;
 pub mod hir;
+pub mod link;
 pub mod native;
 pub mod verify;
 
