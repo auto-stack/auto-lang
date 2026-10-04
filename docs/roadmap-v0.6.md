@@ -9,7 +9,9 @@
 > 以及 Atom/BAtom → HIR → AC/AAC → A2X/AVM 的架构主线；
 > 完整知识管理流程在 v0.6 做原型设计与调研性开发，v0.7 成为主线。
 > 目标窗口：2026 年 12 月底（用户预期）；主打交付与调研范围见 §1.5。
-> 待细化：各主线具体功能/平台矩阵、后端选型、量化验收和阶段调度；不得据本文跳过设计/Plan 审批。
+> 编译器分期已确认：v0.6 AC/ACC（本文称 AAC）借助 Cranelift 完成约定原生自举；
+> v0.7 推进自主低层 IR/SSA、优化体系与自主后端实验，不强制完全替换 Cranelift。
+> 待细化：功能/平台矩阵、后端版本与探针、量化验收和阶段调度；不得跳过设计/Plan 审批。
 
 ## 1. 版本定位与十条方向
 
@@ -130,7 +132,7 @@ Career、娱乐、OpenBusiness/应用市场等方向的产品化版本另定。
 
 | 交付线 | 建议在实施前固定的验收边界 | 主要风险 |
 |---|---|---|
-| AC/AAC | 固定首个 target 与后端库；HIR 及 native 编译路径可用；编译器主体 Auto 实现并通过原生自编译/重复构建验证 | HIR 语义、库互操作、运行时/链接与自举能力彼此依赖 |
+| AC/AAC | Windows x64 首平台、Cranelift 主后端；HIR/native 路径与 pass 基础可用；约定编译器主体 Auto 实现并通过原生自编译/重复构建，保留后端桥接与依赖清单 | HIR 语义、库互操作、运行时/链接与自举能力彼此依赖；自举不等于全生态原生覆盖 |
 | Linux | 固定首个发行版、硬件/图形栈与设备矩阵；原生桌面会话、系统集成、四个主打 app/28-app 组合及安装更新路径验收 | 图形、输入法、外部窗口、系统服务与硬件行为需实际环境验证 |
 | Python | 固定高级支持矩阵，以真实 AI/科学计算工作流验证数据输入、模型/库调用、设备执行与结果管理 | 批量数据交换、回调/线程、设备/环境与错误诊断 |
 | ROS2 | 固定 ROS2 版本/环境；核定 node/topic/service/action/parameter、消息类型、QoS、执行/退出语义及工具兼容；用真实仿真或实机任务验收 | 语言绑定可能较快，但生态集成与运行语义不能由绑定数量代替 |
@@ -156,6 +158,8 @@ AI 可以加速实现、机械迁移、测试和问题定位；架构决策、�
 
 **建议推至 v0.7 的候选**：全部 A2X/AVM 后端正式迁移到 HIR、非必要的全仓深层重构、
 AC 多目标与进阶优化扩面、复杂独立 app 的完整鸿蒙适配，以及 AutoScape/Godot 的产品化。
+编译器 v0.7 方向另明确为自主低层 IR/SSA、优化体系与自主后端实验；
+可以继续输出至 Cranelift，不把完全替换它列为版本硬门槛，不改变知识管理成为主线的安排。
 HIR 接入各类后端的代表性探针保留，以防新架构只适合 native。
 这些候选的具体取舍需在基线核对/工作量拆解后确认，不表示相关已批准计划可自行丢项。
 
@@ -334,9 +338,25 @@ v0.6 保留代表性接入探针与设计验证。AVM 编译路径最终也迁�
 4. 第一代 AAC 编译自身，生成下一代；再重复一轮，验证结果与行为一致性。
 
 自举范围必须包括所声明的编译器主体，不能只迁移 CLI 或包装 Rust 前端就宣称完成。
-是否使用 LLVM/Cranelift 等外部库、哪些桥接/运行时依赖保留，仍需明确；
-自举与底层依赖全部用 Auto 重写分别验收。
+v0.6 的 Rust AC 与 Auto AAC/ACC 均沿 Cranelift 主路径：AC 直接调用，
+AAC 经明确后端桥接调用，保留库/运行时/接口来源和版本清单。
+薄 Rust C ABI 库为优先评估方案，独立后端进程也可作初期方案；具体接口按专项计划验证。
+自举与自主机器码后端是独立演进轴，底层依赖全部改写成 Auto 不构成本版自举门槛。
 a2r 可以辅助构建/验证迁移模块，但不能代替原生 AC/AAC 自编译闭环。
+
+### 3.3.1 Pass、SSA 与自主后端分期（用户确认）
+
+v0.6：Typed/Checked HIR → Auto 语义降级与基础优化 → Cranelift IR/SSA → native。
+先明确效果/所有权/求值顺序、pass 前后条件、校验、诊断、来源和优化前后对拍；
+不要求先自写整套 SSA 构造、通用优化器或机器码后端。
+
+v0.7：Typed HIR → 自主低层 CFG/SSA → 自主分析/优化 → Cranelift 适配或自主代码生成。
+具体 phi/block arguments、内存/effect 模型和进阶优化由实证设计决定。
+按 target/profile/构建模式逐步并存，只有能力/ABI/正确性/收益/维护门槛达成才切主后端。
+Cranelift 可保留参考/备用；公开 HIR 不强制变成 SSA，公开 ABI 不因后端变化自动改变。
+
+完整比较和接口见 [AC/ACC 后端演进](design/strategy/auto-native-backend-evolution.md)。
+Plan 741 继续只做首个有界 HIR/native 闭环；pass 框架、自举和自主后端分别制定后续计划。
 
 ### 3.4 HIR 稳定与迁移验收
 
@@ -411,7 +431,8 @@ CLI 核心闭环先行，Launcher/独立 app/知识包尽早接入，共享同�
   不把它们自动称为一个已经验证的完整系统基线。
 - v0.6 集成分支沿用用户提出的 `v0.6-dev`；六个核心仓库已创建同名本地分支与
   `v0.6-base-20261003` 基线 tag，准确提交见 [基线清单](reports/v0.6-base-20261003.json)。
-  当前聊天 worktree 使用 auto-lang 的 `v0.6-dev`；AutoOS 的 v0.6-dev 接线已提交并推送，
+  auto-lang 主检出 `D:/autostack/auto-lang` 使用 `v0.6-dev`，本聊天 worktree 保留同提交快照；
+  Plan 741 使用独立 `plan-741-dev` worktree。AutoOS 的 v0.6-dev 接线已提交并推送，
   其主检出于 2026-10-04 切至该分支。其他核心仓的基线 tag/分支是本地准备，
   不表示已经开工或推送；基线清单记录的是 10-03 建引用时的历史状态。
   每项实施仍使用专用
@@ -419,8 +440,8 @@ CLI 核心闭环先行，Launcher/独立 app/知识包尽早接入，共享同�
 - 用户已指定近期新工作在 v0.6-dev 开展：各专项从该分支起步，并将结果提交/合回 v0.6-dev，
   暂不合入 v0.5 发布线。其余设计、Plan、worktree、验证和复审规约继续遵守；
   本文不修改 AGENTS.md，也不据此批准尚未评审的具体实现。
-- 当前主电脑已分配到 739/740，不根据本地旧 `.next-id` 直接并行分配正式编号；
-  先使用无编号的 roadmap/RFC，能确认分配状态后再走 `new-plan.sh`。
+- 主电脑已分配到 739/740；用户已指定本地新计划从 741 开始，741 已建立，分支 `.next-id=742`。
+  727–740 留给主机器历史，恢复后核对；后续仍须独占取号，避免跨机器并行撞号。
 - v0.6 提交不提前合入 v0.5 发布线；代码工作和文档均记录用途与基线。
 - 完整 v0.5 恢复后，先备份/整理各仓在途工作，再发布；将发布后的 master 更新
   合入 v0.6 分支并处理冲突，重新验证相关路径。不要把旧快照覆盖到最新主线。
@@ -428,12 +449,12 @@ CLI 核心闭环先行，Launcher/独立 app/知识包尽早接入，共享同�
 
 ## 6. 关联输入与待决事项
 
-输入文档是历史/设计依据，尚未因本 roadmap 自动更新其状态或范围：
+下列资料包含历史输入和本轮已对齐的设计，状态与具体范围以各文档为准：
 
 - [旧 Roadmap](roadmap.md)：历史规划，不当作实际 v0.5 发布能力清单。
 - [AutoUI 拆仓](design/32-autoui-repo-extraction.md)、[拆仓前瘦身批](plans/archive/691-presplit-subtraction.md)。
-- [Native 战略](design/strategy/native-backend-strategy.md)：旧文将自举列为远期，
-  本次已明确 AAC 为 v0.6 目标；后续设计需对齐，其他旧提案不自动纳入本版本。
+- [AC/ACC 后端演进](design/strategy/auto-native-backend-evolution.md)：本轮确认 Cranelift、自举、pass 与 v0.7 SSA/自主后端分期。
+- [Native 战略](design/strategy/native-backend-strategy.md)：文首已对齐当前路线，保留旧论证；fork-rustc 等历史提案不是本版前置。
 - [生态总战略](design/strategy/ecosystem-portfolio-strategy.md)、Python/鸿蒙/ROS2 等分战略。
 - [统一 Package / Install 草案](design/strategy/unified-package-install-strategy.md)：新增 v0.6 必做方向，接口/范围待正式评审。
 - [AutoScape / AutoWeb](design/31-autoscape-autoweb.md)：M1 + M2-lite 已有施工图候选，
@@ -443,7 +464,7 @@ CLI 核心闭环先行，Launcher/独立 app/知识包尽早接入，共享同�
 下一轮需确定：
 
 1. 十条方向已记录；两项新增系统基础设施与原主打目标共同细化交付范围、容量与验收矩阵。
-2. AC 首个 target、后端库、运行时/互操作策略和 AAC 自举范围。
+2. AC 的 Windows x64/Cranelift 主路径已定；继续锁定版本与平台探针、运行时/桥接和 AAC 主体覆盖清单。
 3. Atom/BAtom 可复用面、HIR Schema 分层及方言扩展契约。
 4. 三仓拆分的共享设施归属与具体先后顺序。
 5. Linux/鸿蒙、ROS2/Godot、AutoScape 与知识系统各自的代表性工作流。

@@ -157,7 +157,8 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [atom-schema-dsl-design](strategy/atom-schema-dsl-design.md) | Atom Schema DSL、独立描述与标注、组合/fragment、primary/secondary、业务 enum 与身份 | 📝 Draft RFC（2026-10-04；语法与分期建议待确认） |
 | [auto-hir-design](strategy/auto-hir-design.md) | AutoHIR 语义优先：结构化类型表示、引用身份、求值顺序、校验与后端边界，再映射 Atom Schema | 📝 第一版语义 Draft（2026-10-04；未冻结/实现） |
 | [auto-hir-atom-text](strategy/auto-hir-atom-text.md) | HIR Atom 文本映射与完整样例：双槽简写、类型化引用、函数、控制流、参数求值顺序及反例矩阵 | 📝 Draft（2026-10-04；尚未经 parser/verifier 验收） |
-| [auto-ac-subset-and-target](strategy/auto-ac-subset-and-target.md) | AC 计算核心、文本/数据工具与 AAC 子集分期；Windows x64 原生目标文件、链接与执行闭环 | 📝 Draft（2026-10-04；范围/后端建议待评审） |
+| [auto-ac-subset-and-target](strategy/auto-ac-subset-and-target.md) | AC 计算核心、文本/数据工具与 AAC 子集分期；Windows x64 原生目标文件、链接与执行闭环 | 📝 Draft（2026-10-04；Cranelift/自举分期已确认，具体子集待验收） |
+| [auto-native-backend-evolution](strategy/auto-native-backend-evolution.md) | v0.6 Cranelift AC/ACC 自举与 pass 基础；v0.7 自主低层 IR/SSA、优化/代码生成实验及切换门槛 | 路线已确认（2026-10-04；技术细节与实现按计划验证） |
 | [auto-native-abi-rfc](strategy/auto-native-abi-rfc.md) | AC/ACC 原生 ABI：独立版本域、Windows x86-64、静态/动态模块、linker 分工、跨界类型、常驻运行时与状态热重载 | 📝 Draft RFC（2026-10-04；需求已记录，技术建议待评审，未实施） |
 | [auto-as-rust-script-strategy](strategy/auto-as-rust-script-strategy.md) | "Auto 作 Rust 脚本层"宣传与文档纲领 | ✅ Accepted（Plan 359） |
 | [rust-library-replication-roadmap](strategy/rust-library-replication-roadmap.md) | Rust 库复刻验证路线（parity 语料） | ✅ 现行（Plan 347/348/369） |
@@ -168,7 +169,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [harmonyos-ecosystem-strategy](strategy/harmonyos-ecosystem-strategy.md) | 鸿蒙：ArkTS 主线（仓颉/ABC/机器码不做）+ OpenHarmony OS 终态方向 | 📝 Draft 骨架（2026-09-06，待扩充；a2ark rebaseline 为该线首个 plan） |
 | [mobile-jetpack-strategy](strategy/mobile-jetpack-strategy.md) | 移动：Android+iOS 统一 Jetpack Compose（不做 SwiftUI），排鸿蒙后 | 📝 Draft 骨架（2026-09-06，待扩充） |
 | [ros2-ecosystem-strategy](strategy/ros2-ecosystem-strategy.md) | ROS2：C 消费面生态绑定包（rcl 纯 C + IDL 生成），C 轨重启触发条件之一 | 📝 Draft 骨架（2026-09-06，待扩充） |
-| [native-backend-strategy](strategy/native-backend-strategy.md) | Native 编译：终局必做的自主执行底座 + 近期开发形态逃逸（理由 e agent 集群放大/fork-rustc「Versioned ABI」Stage 0.5 分期 A/B/C——命名定案规避 Stable ABI/四段路线/cranelift 预裁注） | 📝 Draft→细化中（2026-09-06 立稿；2026-09-08 补开发形态分水岭+复核定分期，见 Design 28 关联） |
+| [native-backend-strategy](strategy/native-backend-strategy.md) | Native 战略：当前 AC/ACC/Cranelift 分期 + 历史自主生态/开发形态/fork-rustc 论证 | 2026-10-04 文首对齐新路线；旧阶段顺序保留为历史 |
 | [thirdgen-internet-strategy](strategy/thirdgen-internet-strategy.md) | 第三代互联网（AI+XR，曾用名"元宇宙/WEB3.0"）：三大市场之三，Godot/3D 引擎为入口（双形态优势 + 引擎侧静态缝合前提） | 📝 Draft 骨架（2026-09-06，待扩充） |
 | [script-mode-interop](strategy/script-mode-interop.md) | 脚本模式互操作（AutoScript .as 糖→py 桥 lowering/错误模型/null 体系） | 📝 Draft（裁决闭环，待立项） |
 

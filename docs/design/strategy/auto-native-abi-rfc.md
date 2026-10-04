@@ -50,7 +50,7 @@ supersedes: []
 
 ### 1.3 当前必须保留的待决项
 
-后端库选型、具体 SDK/sysroot 和 Linux 基线、公开类型/符号的 canonical 描述及指纹算法、
+后端具体版本/接口封装与目标 conformance、SDK/sysroot 和 Linux 基线、公开类型/符号的 canonical 描述及指纹算法、
 服务表实际字段、状态迁移 Schema 与首次支持范围、线程安全点/重载事务实现、
 对外发布 ABI v0.1 的冻结门槛。不得把本文示意结构作为已经冻结的头文件。
 
@@ -158,8 +158,10 @@ x86-32 会增加指针/usize 宽度、调用约定、布局、链接/装载和�
 
 推荐基础 CPU profile 不要求开发机特有的 AVX2/AVX-512；额外 ISA 要写入制品要求并检查。
 GPU 发射、CUDA 互操作、设备内存等不属于本文首批 CPU ABI。
-LLVM/Cranelift 等后端仍需独立探针选型；ABI 公开规则必须能在选用的后端实现，
-并能在后端改变时保持。支持平台 C 约定不意味着复杂 C 聚合类型分类自动完成。
+2026-10-04 用户确认 v0.6 AC/ACC 主路径使用 Cranelift；Windows/模块必需能力仍须探针，
+若不成立再有证据地评估 LLVM 备选。v0.7 自主后端可并存，不能仅更换后端就改变公开 ABI。
+完整路线见 [AC/ACC 后端演进](auto-native-backend-evolution.md)。
+支持平台 C 约定不意味着复杂 C 聚合类型分类自动完成。
 
 Windows 参数/栈/返回及展开元数据要求见
 [Microsoft x64 calling convention](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170)。
@@ -420,6 +422,11 @@ AC 用 Rust 实现也可以直接产出 Auto ABI 制品；ACC/AAC 用 Auto 实�
 
 后端选型时检查 COFF/ELF、平台调用约定、调试/展开、PIC/外部符号、入口表发射能力。
 外部编译器后端库通过它提供的受支持接口/桥接消费，不把其私有布局纳入 Auto ABI。
+Rust AC 直接调用 Cranelift；Auto ACC 自举后继续经明确桥接调用，
+优先评估薄 Rust 库的受限 C ABI，亦可先研究独立后端进程。
+编译器内部桥接协议与生产 Auto 模块 ABI 各自版本化，明确内存所有权、错误、能力与释放。
+优化器须保持 effect、trap/释放及 reload boundary；自主后端并存时共用 ABI conformance，
+后端版本进入构建缓存身份，不自动进入公开 ABI 兼容域。
 
 构建缓存身份需包括源码/IR、编译器/后端、目标及代码生成配置；这与 ABI 兼容域分开。
 两个实现不同的制品可以 ABI 兼容，两个内容相同但 target 不同的描述也不能互加载。
