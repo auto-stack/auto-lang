@@ -169,9 +169,10 @@ pub fn link_object(
     obj_path: &Path,
     exe_path: &Path,
     entry_symbol: &str,
+    extra_libs: &[PathBuf],
 ) -> Result<LinkReceipt, Diagnostic> {
     let tmp_exe = exe_path.with_extension("exe.tmp-ac741");
-    let args: Vec<String> = vec![
+    let mut args: Vec<String> = vec![
         "-flavor".into(),
         "link".into(),
         "/nologo".into(),
@@ -182,6 +183,9 @@ pub fn link_object(
         format!("/libpath:{}", sdk_um_dir.display()),
         "kernel32.lib".into(),
     ];
+    for lib in extra_libs {
+        args.push(lib.display().to_string());
+    }
     let (code, out) = run_with_deadline(Command::new(lld).args(&args))?;
     if code != Some(0) {
         let _ = std::fs::remove_file(&tmp_exe);

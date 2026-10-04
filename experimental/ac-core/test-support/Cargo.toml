@@ -1,0 +1,21 @@
+[package]
+name = "ac-trace-support"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-741 minimal native host support library: hir.test.trace.v1 mark intrinsics"
+publish = false
+
+# Standalone workspace on purpose: panic=abort can only be set at a workspace
+# root, and the main ac-core workspace must keep unwinding for libtest.
+[workspace]
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

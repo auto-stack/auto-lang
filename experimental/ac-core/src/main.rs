@@ -53,6 +53,7 @@ struct BuildArgs {
     entry: String,
     output: PathBuf,
     capabilities: Vec<String>,
+    support_libs: Vec<PathBuf>,
 }
 
 fn parse_build_args(args: &[String]) -> Result<BuildArgs, String> {
@@ -60,6 +61,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs, String> {
     let mut entry = None;
     let mut output = None;
     let mut capabilities = Vec::new();
+    let mut support_libs = Vec::new();
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -74,6 +76,12 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs, String> {
             "--capability" => {
                 i += 1;
                 capabilities.push(args.get(i).ok_or("--capability needs a value")?.clone());
+            }
+            "--support-lib" => {
+                i += 1;
+                support_libs.push(PathBuf::from(
+                    args.get(i).ok_or("--support-lib needs a value")?,
+                ));
             }
             other => {
                 if other.starts_with("--") {
@@ -92,6 +100,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs, String> {
         entry: entry.ok_or("missing --entry <DefId>")?,
         output: PathBuf::from(output.ok_or("missing --output <exe>")?),
         capabilities,
+        support_libs,
     })
 }
 
@@ -157,8 +166,14 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
             return Err((EXIT_PIPELINE, vec![d]));
         }
     };
-    let receipt = match link::link_object(&lld, &sdk, &tmp_obj, &args.output, native::START_SYMBOL)
-    {
+    let receipt = match link::link_object(
+        &lld,
+        &sdk,
+        &tmp_obj,
+        &args.output,
+        native::START_SYMBOL,
+        &args.support_libs,
+    ) {
         Ok(r) => r,
         Err(d) => {
             let _ = std::fs::remove_file(&tmp_obj);
