@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-741
-status: execution_done
+status: reviewed
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
@@ -336,6 +336,75 @@ T-01/04使用临时native探针验证能力，但最终验收必须来自实际C
   挂账归类；(b) 组内 auto-down detached 依赖 worktree 的 fold 时机
 - next: review（/auto-plan:review 独立核对 AC-01..AC-08 与 SD-01/02 后 merge；
   worktree D:/autostack/.wt/lang-741/auto-lang 保留待复审，fold/清理归 merge）
+
+### 独立复审（2026-10-04，/auto-plan:review）
+
+- stage: review
+- plan_id: PLAN-741
+- plan_revision: 1（语义合同自起草未变更；进度标记不改变 revision）
+- outcome: **pass**
+- reviewed_commit: `4dc4da6365868494023dca73d7ded583c90fb033`（worktree clean，
+  无未提交实现）
+- base_commit: `951b6c70ff596f79e464ba977139669f2d196821`（v0.6-dev 计划起草提交）
+- dependency_revisions: auto-down `fba6563ed2148ce85e68208863159b4ccccac710`
+  （组内 detached 依赖 worktree，值=auto-down master HEAD）；cranelift 栈
+  0.126.2（Cargo.lock 已提交）；rustc 1.98.1 / rust-lld / SDK 10.0.26100.0
+  （toolchain.md 冻结收据）
+- spec_inputs: SD-01 → `docs/specs/auto-hir/project.md`（add，merge 时沉淀）；
+  SD-02 → `docs/specs/auto-ac/project.md`（add，merge 时沉淀）。复审冻结快照=
+  计划 §5 规范增量表 + §5.1/5.2/5.3 行为契约（无 canonical 先行版本，无冲突
+  对象）；supersedes=[]、new=[auto-hir, auto-ac]、touched_goals=[]（空影响
+  说明见 §4.2——关联 v0.6 roadmap 主线，native 目标后续独立登记）。
+- acceptance_results（全部 **pass**，均为复审独立复跑取证，非采信执行摘要）:
+  - AC-01 pass：`git diff 951b6c70f..HEAD -- Cargo.toml Cargo.lock crates/ test/`
+    为空；改动面仅 docs/ experimental/ scripts/；`cargo tree --locked` 无
+    auto-val/auto-lang/auto-atom/auto-man 依赖（唯一 grep 命中为根包自身路径）。
+  - AC-02 pass：text_binding 11/11 复跑——四份设计文档真实绑定；
+    author/explicit/canonical 三形语义相等（手写 PartialEq 排除 span/出现位）；
+    enum 简写绑定为 Builtin；15 反例按预期码拒绝且 span 指向冒犯 token。
+  - AC-03 pass：hir_verify 8/8 复跑——§9 矩阵 11 例 + 组合反例 10 例按码命中
+    （跨 body local、共享表达式/块、表达式环、初始化交集、循环零次保守、
+    返回路径等）；CheckedModule 仅 verify() 可构造（测试断言 API 形状），
+    拒绝路径无产物。
+  - AC-04 pass：descriptor 身份三重匹配（schema/revision/profile mismatch
+    夹具拒）；未知 tag/case/字段/分支违约全拒（unknown-* 夹具绿）；单模块
+    类型化引用作用域；本仓无源码前端/VM 回退路径（零 crates 依赖）。
+  - AC-05 pass：native_execution 8/8 复跑——add(2,3)=5、add(-2,3)=1、
+    count(3/0/-2)=3/0/0 均为 Cranelift→COFF→rust-lld→PE 真实退出码；
+    cli 套件断言 .obj/.exe/.ac-link.txt 收据与 COFF 符号
+    （ac_start/test_entry/add/ExitProcess）。
+  - AC-06 pass：i32::MAX+1 与 MAX×2 trap=70（独立 ExitProcess(70) 路径，
+    非回绕）；03-call-order 原生执行 stderr 顺序 b→a、退出 12；无 capability
+    拒建（cli + trace 双重断言）。
+  - AC-07 pass：cli 9/9 复跑——entry.not-found/entry.signature/
+    capability.missing/link.failed/link.lld-not-found 全非零且可定位；
+    SENTINEL 夹具证明失败构建不覆盖；§6 命令经 verify-ac-741.ps1 一键复现
+    （原型门禁 11/11，子进程全带截止时间）。
+  - AC-08 pass：主仓门禁 cargo check -p auto-lang PASS、cargo tv 162/162、
+    cargo t 4945/4971（26 红裁定见 findings）；SD-01/02 delta 就绪且与实现
+    一致；边界宣称受计划 §1/README 约束（未宣称源码编译/生产 ABI/AAC）。
+- findings:
+  - **P741-R1**（info，已裁定归档）：cargo t 26 红 = 基线继承 + 负载 flake，
+    非本计划回归。证据：crates/** 零 diff；同基线 scoped 对照 14 例同红
+    （全部落入 KNOWN-DEBT THR-D3 既有清偿族：musk p053/p054、plan707、
+    plan502、plan498、plan484、ffi_dual/dep_parity、projector、plan606）+
+    12 例 scoped 串行绿（THR-D4 同模式负载 flake）+ 4 例 filter 未命中
+    （schema_drift/docs_gen/ash_leak 环境族）。已在
+    KNOWN-DEBT-AND-RISKS.md 归档（P741-R1 行），无新增挂账项。
+  - **P741-R2**（low，运维债，非验收缺口）：组内 auto-down detached 依赖
+    worktree（fba6563e）为 worktree 内构建 auto-lang 所需；merge 时随主
+    worktree wt-guard 后一并移除（无 junction/symlink，只读检出）。
+  - 遗漏/延期/workaround 扫描：无未授权延期、无 workaround 补丁、无缺失
+    子项；ac-core `cargo check` 0 warning、fmt --check 干净、无 debug 残留
+    （fixture 生成脚本已清理，probe 产物目录 gitignored）。
+- evidence（复审复跑，2026-10-04，均为入库可解析工件或可重现命令）:
+  `cargo test --locked` 37/37（text_binding 11 + hir_verify 8 +
+  native_execution 8 + cli 9 + trace_execution 1，含真实 PE 链接/运行）；
+  `cargo fmt -- --check` 过；零 diff 核对；`cargo check -p auto-lang` PASS；
+  `cargo tv` 162/162。work 期收据 docs/reports/741-ac-hir-native/
+  {toolchain.md, verification.md}（§4.1 基线对照）随本提交入库。
+- next: merge（/auto-plan:merge 沉淀 SD-01/02 与 ledger、合回 v0.6-dev、
+  wt-guard 后清理 plan-741-dev 与 P741-R2 依赖 worktree）
 
 ## 10. 待澄清事项
 
