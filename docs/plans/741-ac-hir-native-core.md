@@ -359,17 +359,45 @@ Phase 1 归档记录与 T-01..08 勾选保持原样不改。worktree 重建：
 
 | task | 依赖 | 文件/符号与动作 | 验证命令/预期 | AC |
 |---|---|---|---|---|
-| T-09 | worktree就绪 | native.rs：icmp 全点位 uextend 归一 i32（LtI32/checked_add/checked_mul）；lower_object 参数下标越界防御；新增 fixtures/native/bool-if.atom（exit 3）、bool-abi.atom（exit 5）；native_execution +2 | cargo test --test native_execution 含新 bool 正例退出码 | AC-09 |
-| T-10 | T-09 | verify.rs：call 检查改 bindings 映射制（映射独立校验+按映射类型核对）；fixtures valid/binding-swap.atom、invalid/binding-swap-type-mismatch.atom、invalid/binding-dup-arg.atom；hir_verify REJECT_CASES/接受用例扩展；native_execution +1（binding-swap exit 9） | check 接受/拒绝行为符合 AC-10 | AC-10 |
-| T-11 | T-10 | verify.rs：check_module 增加 function→body 反向 owner 校验；fixtures invalid/shared-body-owner.atom、invalid/shared-body-same-sig.atom、invalid/stolen-body.atom；hir_verify +3 | 共享/冒领 check 拒绝 verify.owner-mismatch | AC-11 |
-| T-12 | T-09 | link.rs：StagedLink/publish_artifacts（暂存收据+备份+发布+失败回滚，唯一 tmp 名带 pid）+ main.rs 接线（obj 暂存名加 pid）；cli.rs +1 发布失败回滚测试；既有 tmp 残留断言更新 | 发布失败保旧制品（AC-12 断言）；成功无残留 | AC-12 |
-| T-13 | T-12 | README.md：命令改真实 bin 调用、build 示例改 add-2-3 fixture、归档链接、descriptor 路径笔误 | 从 README 逐字复制命令运行成功 | AC-13 |
-| T-14 | T-12 | link.rs：run_with_deadline 并发读管道+deadline 参数化；find_rust_lld/find_sdk_um_dir 接入；内嵌 #[cfg(test)] 截止/大输出单测 | 截止终止可控 helper；大输出完整 | AC-14 |
-| T-15 | T-14 | tests/common/mod.rs 删除未用 descriptor 导入；verify-ac-741.ps1 +cargo check --all-targets | all-targets 零 warning | AC-15 |
-| T-16 | T-09..15 | 门禁：原型全族测试+fmt+all-targets check+reproduce.ps1 复跑（记录 reproduction.json）；crates 零 diff 核对 | 全绿/符合预期 | AC-09..AC-15 |
-| T-17 | T-16 | /auto-plan:review 独立复审；pass 后 merge 沉淀 SD-03/04 并销账 KNOWN-DEBT P741-QA-01..07 行 | 复审 pass | 全部 |
+Phase 2 执行进度（commit 哈希=plan-741-dev；基线 3a7967262）：
+
+- [x] **T-09** commit `28c0bbfcd`：native.rs icmp 全点位 uextend 归一 i32 + lower_object 参数下标越界诊断化；fixtures/native/{bool-if,bool-abi}.atom；native_execution 11/11（bool-if exit 3、bool-abi exit 5）。AC-09。
+- [x] **T-10** commit `28c0bbfcd`：verify.rs call 检查改 bindings 映射制（映射独立校验+按映射类型核对，arg 恰消费一次）；fixtures native/binding-swap.atom、invalid/{binding-swap-type-mismatch,binding-dup-arg}.atom；hir_verify 9/9；native swap exit 9。AC-10。
+- [x] **T-11** commit `28c0bbfcd`：verify.rs check_module 增加 function→body 反向 owner 校验；fixtures invalid/{shared-body-owner,shared-body-same-sig,stolen-body}.atom 全部 verify.owner-mismatch 拒绝。AC-11。
+- [x] **T-12** commit `db75c494f`：link.rs link_object_staged/publish_artifacts 暂存-备份-发布-回滚事务（companion 全名后缀防同名 stem 备份碰撞——开发中由回滚测试实抓并修复）+ main.rs 接线；cli 10/10 含发布失败回滚测试（exe/obj 字节不变、旧 exe exit 5、无 .bak/.tmp 残留）。AC-12。
+- [x] **T-13** commit `6ad396379`：README 命令改真实 bin 调用（auto-ac-prototype，与验证脚本一致）、build 示例改 add-2-3 fixture、归档链接、schema/schema 笔误；三条命令逐字复制 PowerShell 运行全过（check 0、add.exe exit 5、trace.exe exit 12 + stderr b,a）。AC-13。
+- [x] **T-14** commit `db75c494f`：run_with_deadline 并发读管道+deadline 参数化；rustc/reg/lld/run 全部接入；lib 单测 2/2（1s 截止杀挂起 helper、>128KB 输出子进程完整跑通——旧实现该用例必撞 60s 死锁）。AC-14。
+- [x] **T-15** commit `6ad396379`：tests/common 未用 descriptor 导入清除；verify-ac-741.ps1 增加 all-targets 零 warning 步（`^warning:` 断言）与 --lib 步。AC-15。
+- [x] **T-16** （本提交）门禁复跑：text_binding 11/11、hir_verify 9/9、native_execution 11/11、cli 10/10、trace_execution 1/1、lib 2/2（计 44 项，r1 基线 37 项）；cargo fmt --check 过；cargo check --all-targets 零 warning；复审 reproduce.ps1 复跑六反例全部翻转（bool-local/bool-return build 由 101/1→0、binding-valid check 1→0、binding-invalid check 0→1、shared-body build 101→check 1、发布失败 exeChanged true→false 且旧 exe exit 5）；`git diff 3a7967262 -- crates/ Cargo.toml Cargo.lock test/` 为空。AC-09..AC-15 执行侧证据齐备。
+- [ ] **T-17** /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 沉淀 SD-03/04 并销账 KNOWN-DEBT P741-QA-01..07 行。
 
 ## 9. 复审记录
+
+### Phase 2 工作交接（2026-10-04，/auto-plan:work 执行完毕）
+
+- stage: work
+- plan_id: PLAN-741
+- plan_revision: 2
+- outcome: pass（Phase 2 执行完成；AC-09..AC-15 勾选移交独立复审裁定）
+- code_commit: plan-741-dev @ T-16 提交（T-09..T-11 `28c0bbfcd` /
+  T-12+T-14 `db75c494f` / T-13+T-15 `6ad396379` / T-16=本提交；基线 3a7967262，
+  worktree D:/autostack/.wt/lang-741/auto-lang 分支 plan-741-dev 重建）
+- task_ids: T-09..T-16 完成（证据见 §8 Phase 2 执行进度）；T-17=复审本身未执行
+- evidence:
+  - 原型全族 44 项全绿（text_binding 11 + hir_verify 9 + native_execution 11 +
+    cli 10 + trace_execution 1 + lib 2，r1 基线 37 项；新增全为复审反例锁定）
+  - 复审 reproduce.ps1 复跑：六反例全部翻转为修复后预期（bool-local build
+    101→0、bool-return build 1→0、binding-valid check 1→0、binding-invalid
+    check 0→1、shared-body build 101→check 1 owner-mismatch、发布失败
+    exeChanged true→false 且旧 exe 原生 exit 5）
+  - README 逐字复制运行：check exit 0、add.exe exit 5、trace.exe exit 12+stderr b,a
+  - fmt --check 干净；cargo check --all-targets 零 warning（含测试目标）
+  - `git diff 3a7967262 -- Cargo.toml Cargo.lock crates/ test/` 为空（AC-01 面不变）
+  - 备注：复审报告 readme 探针（`ac-probe check ...` argv 形式）保留 exit 2 为
+    历史缺陷记录；README 本体已改用正确调用并实证可运行
+- blockers: 无
+- next: review（/auto-plan:review 独立核对 AC-09..AC-15 与 SD-03/04；worktree
+  保留待复审；merge 沉淀 SD-03/04 并销账 KNOWN-DEBT P741-QA-01..07）
 
 ### 起草交接（2026-10-04，非实现独立复审）
 
