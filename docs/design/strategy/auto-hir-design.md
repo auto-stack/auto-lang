@@ -175,7 +175,9 @@ Atom LocalRef 只是承载方式；HIR 仍要校验引用目标的类别和 owne
 5. 冻结验证过的核心 v1 与 Batom 约定域；完整 v0.5 恢复后再做旧前端 adapter 和生产迁移。
 
 本稿未裁定：完整所有权/借用语义、动态值运行时、泛型/接口的具体实现阶段、
-异常与清理模型、首个 native target/库/ABI，以及 AAC 主体所需完整语言子集。
+异常与清理模型、native 后端库/物理 ABI，以及 AAC 主体所需完整语言子集。
+首个平台已由 [Native ABI RFC](auto-native-abi-rfc.md) 明确为 Windows 11 x86-64；
+子集与目标代码的分期建议见 [AC 子集与目标代码](auto-ac-subset-and-target.md)。
 这些应在相应 profile 执行前解决，不能被“Atom 足够表达”掩盖。
 “先定 HIR”是先稳定这组语义边界，再由小闭环验证；不是一次性承诺全部细节永不修改。
 

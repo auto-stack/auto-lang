@@ -157,6 +157,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [atom-schema-dsl-design](strategy/atom-schema-dsl-design.md) | Atom Schema DSL、独立描述与标注、组合/fragment、primary/secondary、业务 enum 与身份 | 📝 Draft RFC（2026-10-04；语法与分期建议待确认） |
 | [auto-hir-design](strategy/auto-hir-design.md) | AutoHIR 语义优先：结构化类型表示、引用身份、求值顺序、校验与后端边界，再映射 Atom Schema | 📝 第一版语义 Draft（2026-10-04；未冻结/实现） |
 | [auto-hir-atom-text](strategy/auto-hir-atom-text.md) | HIR Atom 文本映射与完整样例：双槽简写、类型化引用、函数、控制流、参数求值顺序及反例矩阵 | 📝 Draft（2026-10-04；尚未经 parser/verifier 验收） |
+| [auto-ac-subset-and-target](strategy/auto-ac-subset-and-target.md) | AC 计算核心、文本/数据工具与 AAC 子集分期；Windows x64 原生目标文件、链接与执行闭环 | 📝 Draft（2026-10-04；范围/后端建议待评审） |
 | [auto-native-abi-rfc](strategy/auto-native-abi-rfc.md) | AC/ACC 原生 ABI：独立版本域、Windows x86-64、静态/动态模块、linker 分工、跨界类型、常驻运行时与状态热重载 | 📝 Draft RFC（2026-10-04；需求已记录，技术建议待评审，未实施） |
 | [auto-as-rust-script-strategy](strategy/auto-as-rust-script-strategy.md) | "Auto 作 Rust 脚本层"宣传与文档纲领 | ✅ Accepted（Plan 359） |
 | [rust-library-replication-roadmap](strategy/rust-library-replication-roadmap.md) | Rust 库复刻验证路线（parity 语料） | ✅ 现行（Plan 347/348/369） |

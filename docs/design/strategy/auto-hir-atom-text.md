@@ -63,6 +63,10 @@ descriptor；root 的 schema/revision 是要求校验的契约标识，不是自
 它们是本次导出的局部 ID，显示名称 add/sum 另存；不是跨版本永不变化的公共符号身份。
 前缀只方便人阅读，不是校验器的类型检查依据。
 
+e_ 是 expression，t_ 是 type，d_ 是 definition，b_ 是 body，l_ 是 local；
+这些是本稿为审阅添加的标签约定，不是 Auto/Atom 语法要求。expr add binary 也可作为 ID 简写，
+只要同步修改引用并保持同一表内唯一；节点 tag 和引用字段的 Schema 才决定引用类别。
+
 | 引用属性 | 查找范围 |
 |---|---|
 | function/intrinsic.type、local.type、expr.type、place.type、签名 params/result | 当前模块的语言类型表 |
@@ -236,3 +240,38 @@ schema/enum/ID/presence 的结构校验与 HIR 语义拒绝应分别报告，不
 01-add 的头部按声明映射展开后，与全命名样例去掉注释/空白的文本一致。
 本检查只针对这些样例的头部与分隔符，不是通用 Atom parser 或语义往返验收。
 本地文档链接、fence、空白及 Git diff 检查通过；未运行 cargo、HIR verifier 或后端程序。
+
+## 12. 字段名与基本类型简写的讨论补充
+
+用户提出把 type: "t_i32" 改为 kind: i32。这里涉及两个独立选择：
+结果类型是否使用基本类型 enum 简写，以及这个字段叫什么名字。
+
+当前 expr 的 secondary 已映射到 kind，因此 expr e_add binary 同时含 kind = binary。
+正文再写 kind: i32 会重复该字段；要采用这个名字，必须把表达式种类统一改叫 expr_kind/form 等，
+并修改对应 Schema 和样例，不能直接局部替换。
+
+用户已确认保留 kind = ExprKind、type = 结果类型，并采用下述基本类型简写：
+
+```atom
+expr add binary {
+    type: i32
+    op: add_i32
+    overflow: trap
+    lhs: "e_a"
+    rhs: "e_b"
+}
+```
+
+type 字段的作者语法可以区分 BuiltinType enum 与类型表引用：
+裸 i32/bool 绑定为受限的内建类型成员，字符串 "t_point" 等绑定为当前模块的 HirTypeRef。
+复杂 Record、泛型实例、函数签名仍需结构化定义/引用，不能靠一个宽泛的 kind enum 代替。
+两种输入归一到 HIR 的类型表示；内建 i32 的引用与内建 enum 可归一为同一类型，
+但值语义不同的 newtype/名义类型不能因为底层同为 i32 就折叠。具体 TypeUse 编码契约仍待细化；
+现有完整样例保留类型表引用，作为与基本类型 enum 简写并存的引用形式。
+
+首个 AC 子集与原生输出分期见 [AC 子集与目标代码](auto-ac-subset-and-target.md)。
+
+type 为 Auto 关键字不意味着它在所有数据位置都禁止。已核对本地 parser.rs::key()
+明确接受 TokenKind::Type 作对象键；这不是所有语言上下文已支持的证明。
+新版独立 Atom reader 应按数据位置处理字段名，不要求先全局改 Auto 的关键字制度。
+若希望 HIR 字段名避开关键字，可讨论统一采用 ty；这与 enum/类型引用简写是两件事。
