@@ -113,9 +113,76 @@ fn build_with_missing_entry_fails_without_touching_artifacts() {
     assert_ne!(r.code, 0);
     assert!(r.stderr.contains("entry.not-found"), "stderr: {}", r.stderr);
     assert_eq!(std::fs::read(&exe).unwrap(), b"SENTINEL");
-    // no stray temp artifacts
+    // no stray temp artifacts (names carry a per-process tag)
     assert!(!dir.join("keep.obj").exists());
-    assert!(!dir.join("keep.exe.tmp-ac741").exists());
+    assert!(!dir.read_dir().unwrap().any(|e| e
+        .unwrap()
+        .file_name()
+        .to_string_lossy()
+        .contains(".tmp-ac741")));
+}
+
+/// QA-04: a failure at the *publish* stage (receipt placement) must roll the
+/// whole transaction back — the previously successful exe/obj/receipt set
+/// stays byte-identical and runnable.
+#[test]
+fn publish_failure_rolls_back_and_keeps_previous_artifacts() {
+    let dir = std::env::temp_dir().join("ac741-cli").join("tx-rollback");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let exe = dir.join("tx.exe");
+    let obj = dir.join("tx.obj");
+    let receipt = dir.join("tx.ac-link.txt");
+
+    // 1. Baseline: successful build of add(2,3) → native exit 5.
+    let f = repo_file("experimental/ac-core/fixtures/native/add-2-3.atom");
+    let r = run_ac(&[
+        "build",
+        &f.display().to_string(),
+        "--entry",
+        "d_entry",
+        "--output",
+        &exe.display().to_string(),
+    ]);
+    assert_eq!(r.code, 0, "stderr: {}", r.stderr);
+    let before_exe = std::fs::read(&exe).unwrap();
+    let before_obj = std::fs::read(&obj).unwrap();
+    assert!(receipt.is_file(), "baseline receipt must exist");
+    let out = Command::new(&exe).output().unwrap();
+    assert_eq!(out.status.code(), Some(5));
+
+    // 2. Occupy the receipt path with a directory: staging succeeds, but the
+    //    final receipt rename cannot (and the directory is not "backed up").
+    std::fs::remove_file(&receipt).unwrap();
+    std::fs::create_dir(&receipt).unwrap();
+
+    // 3. Rebuild a *different* program onto the same target.
+    let f2 = repo_file("experimental/ac-core/fixtures/native/add-neg2-3.atom");
+    let r = run_ac(&[
+        "build",
+        &f2.display().to_string(),
+        "--entry",
+        "d_entry",
+        "--output",
+        &exe.display().to_string(),
+    ]);
+    assert_ne!(r.code, 0, "stdout: {}", r.stdout);
+    assert!(r.stderr.contains("link.receipt"), "stderr: {}", r.stderr);
+
+    // 4. Previous artifacts are untouched and the old exe still runs.
+    assert_eq!(std::fs::read(&exe).unwrap(), before_exe, "exe replaced");
+    assert_eq!(std::fs::read(&obj).unwrap(), before_obj, "obj replaced");
+    let out = Command::new(&exe).output().unwrap();
+    assert_eq!(out.status.code(), Some(5));
+
+    // 5. Rollback left no staging/backup files behind.
+    let strays: Vec<String> = dir
+        .read_dir()
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .filter(|n| n.contains(".tmp-ac741") || n.contains(".bak-ac741"))
+        .collect();
+    assert!(strays.is_empty(), "stray staging files: {strays:?}");
 }
 
 #[test]

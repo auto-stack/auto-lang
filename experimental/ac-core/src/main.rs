@@ -1,14 +1,17 @@
-//! ac-probe — PLAN-741 CLI over the AC prototype pipeline.
+//! auto-ac-prototype — PLAN-741 CLI over the AC prototype pipeline
+//! ("ac-probe" is this binary's historical documentation name; invoke it via
+//! `cargo run --manifest-path experimental/ac-core/Cargo.toml -- <command>`).
 //!
 //! Usage:
-//!   ac-probe check <file>
+//!   auto-ac-prototype check <file>
 //!       Bind + verify a Schema-bound HIR document; print structured
 //!       diagnostics. Exit 0 on success, non-zero otherwise.
 //!
-//!   ac-probe build <file> --entry <DefId> --output <exe> [--capability <name>]...
+//!   auto-ac-prototype build <file> --entry <DefId> --output <exe> [--capability <name>]...
 //!       check -> capability gate -> native lowering -> rust-lld link.
 //!       Leaves <exe>, the intermediate .obj and a link receipt on success.
-//!       A failed build never overwrites previously successful artifacts.
+//!       Artifacts are published as a transaction with rollback: a failed
+//!       build never overwrites previously successful artifacts.
 //!
 //! All diagnostics are printed as `file:line:col: error[stage/code]: message`
 //! with non-zero process exit codes (plan AC-07).
@@ -146,7 +149,7 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
         eprintln!("error: create {}: {}", out_dir.display(), e);
         return Err((EXIT_USAGE, vec![]));
     }
-    let tmp_obj = out_dir.join(format!("{}.obj.tmp-ac741", stem));
+    let tmp_obj = out_dir.join(format!("{}.obj.tmp-{}", stem, link::staging_tag()));
     if let Err(e) = std::fs::write(&tmp_obj, &obj_bytes) {
         eprintln!("error: write {}: {}", tmp_obj.display(), e);
         return Err((EXIT_PIPELINE, vec![]));
@@ -166,7 +169,7 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
             return Err((EXIT_PIPELINE, vec![d]));
         }
     };
-    let receipt = match link::link_object(
+    let staged = match link::link_object_staged(
         &lld,
         &sdk,
         &tmp_obj,
@@ -174,24 +177,28 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
         native::START_SYMBOL,
         &args.support_libs,
     ) {
+        Ok(s) => s,
+        Err(d) => {
+            let _ = std::fs::remove_file(&tmp_obj);
+            return Err((EXIT_PIPELINE, vec![d]));
+        }
+    };
+    // Publish exe + obj + receipt as one transaction; a failure at any step
+    // rolls back and leaves previously successful artifacts untouched.
+    let receipt = match link::publish_artifacts(&staged, &tmp_obj, &obj_path) {
         Ok(r) => r,
         Err(d) => {
             let _ = std::fs::remove_file(&tmp_obj);
             return Err((EXIT_PIPELINE, vec![d]));
         }
     };
-    // obj final placement after the exe replaced the target atomically.
-    if let Err(e) = std::fs::rename(&tmp_obj, &obj_path) {
-        eprintln!("error: placing {}: {}", obj_path.display(), e);
-        return Err((EXIT_PIPELINE, vec![]));
-    }
     Ok(format!(
         "BUILT {} (entry {})\n  obj: {}\n  exe: {}\n  receipt: {}\n  linker: {}",
         args.output.display(),
         sel.symbol,
-        obj_path.display(),
+        receipt.obj.display(),
         receipt.exe.display(),
-        receipt.exe.with_extension("ac-link.txt").display(),
+        receipt.receipt_path.display(),
         receipt.linker.display()
     ))
 }
@@ -199,13 +206,13 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(cmd) = args.first() else {
-        eprintln!("usage: ac-probe <check|build> ...");
+        eprintln!("usage: auto-ac-prototype <check|build> ...");
         return ExitCode::from(EXIT_USAGE);
     };
     let (file, result) = match cmd.as_str() {
         "check" => {
             let Some(file) = args.get(1) else {
-                eprintln!("usage: ac-probe check <file>");
+                eprintln!("usage: auto-ac-prototype check <file>");
                 return ExitCode::from(EXIT_USAGE);
             };
             (PathBuf::from(file), check(Path::new(file)))
@@ -215,7 +222,7 @@ fn main() -> ExitCode {
                 Ok(a) => a,
                 Err(e) => {
                     eprintln!(
-                        "usage: ac-probe build <file> --entry <DefId> --output <exe> [--capability <name>]..."
+                        "usage: auto-ac-prototype build <file> --entry <DefId> --output <exe> [--capability <name>]..."
                     );
                     eprintln!("error: {}", e);
                     return ExitCode::from(EXIT_USAGE);
