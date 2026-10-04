@@ -357,6 +357,10 @@ Cranelift 可保留参考/备用；公开 HIR 不强制变成 SSA，公开 ABI �
 
 完整比较和接口见 [AC/ACC 后端演进](design/strategy/auto-native-backend-evolution.md)。
 Plan 741 继续只做首个有界 HIR/native 闭环；pass 框架、自举和自主后端分别制定后续计划。
+AC/ACC主线初估26–36个计划（含741），主体按约30个、修复/集成预留35–45个容量；
+这是约定主体/Windows/模块热重载范围的估算，不代表全部Auto生态原生化或已批准合同。
+先细化最近2–3个候选，源码计算子集与ACC能力清单明确后重估；
+拆分、前置与已创建队列见 [后端演进 §7](design/strategy/auto-native-backend-evolution.md#7-与-plan-741-和后续计划的关系)。
 
 ### 3.4 HIR 稳定与迁移验收
 
