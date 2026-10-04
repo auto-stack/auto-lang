@@ -406,6 +406,24 @@ T-01/04使用临时native探针验证能力，但最终验收必须来自实际C
 - next: merge（/auto-plan:merge 沉淀 SD-01/02 与 ledger、合回 v0.6-dev、
   wt-guard 后清理 plan-741-dev 与 P741-R2 依赖 worktree）
 
+
+### 已交付实现的质量复审（2026-10-04，用户显式要求）
+
+- stage: review | plan_id: PLAN-741 | plan_revision: 1 | outcome: **needs_fix**
+- reviewed_commit: c1ac219e73ee2ed1ef6ba8dfec49c131bfbf1a75
+- base_commit: 951b6c70ff596f79e464ba977139669f2d196821；交付304519113已核实在祖先链。
+- dependency_revisions/spec_inputs/增量快照指纹与完整AC对账：
+  [质量复审报告](../../reports/741-quality-review-20261004/REVIEW.md)。
+- 本会话未实施741；自行读代码、在detached复审检出重跑37项原型测试/fmt，
+  原套件全过，额外反例重现bool宽度、bindings类型映射、body双向owner、
+  发布阶段失败覆盖四项核心缺陷（P741-QA-01..04）。
+- acceptance_results: AC-01/02/06=pass；AC-03/07=fail；AC-04/05/08=partial。
+  另记录README不可复现/发现子进程缺截止/测试warning（QA-05..07）。
+- findings/evidence: 报告及相邻fixtures/results/复现脚本；KNOWN-DEBT追加对应未解决项。
+- next: 为具体修复起草独立合同，修复后重跑并复审；本轮未改实现。
+- 已归档Plan保持archived，不重开/回滚旧记录、不改revision/历史任务勾选；
+  此为新基线的交付后质量结论，不沿用旧pass覆盖新增反例。
+
 ### 合并收据（2026-10-04，/auto-plan:merge）PLAN-741:r1
 
 - stage: merge | plan_id: PLAN-741 | plan_revision: 1 | outcome: pass

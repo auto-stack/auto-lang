@@ -1,0 +1,37 @@
+[
+  {
+    "case": "bool-local",
+    "checkOutput": "OK 1 module(s), capabilities required: []\r\n",
+    "checkExit": 0,
+    "buildOutput": "\r\nthread 'main' (31040) panicked at C:\\Users\\zhaop\\.cargo\\registry\\src\\rsproxy.cn-e3de039b2554c837\\cranelift-frontend-0.126.2\\src\\frontend.rs:509:21:\r\ndeclared type of variable var0 doesn't match type of value v2\r\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\r\n",
+    "buildExit": 101
+  },
+  {
+    "case": "bool-return",
+    "checkOutput": "OK 1 module(s), capabilities required: []\r\n",
+    "checkExit": 0,
+    "buildOutput": "D:\\autostack\\.wt\\review-741\\auto-lang\\scratch\\review-741-probes\\bool-return.atom:1:1: error[backend/backend.lowering]: define df: Compilation error: Verifier errors\r\n",
+    "buildExit": 1
+  },
+  {
+    "case": "binding-valid",
+    "checkOutput": "D:\\autostack\\.wt\\review-741\\auto-lang\\scratch\\review-741-probes\\binding-valid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: eval_args[0] type does not match param 0\r\nD:\\autostack\\.wt\\review-741\\auto-lang\\scratch\\review-741-probes\\binding-valid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: eval_args[1] type does not match param 1\r\nD:\\autostack\\.wt\\review-741\\auto-lang\\scratch\\review-741-probes\\binding-valid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: eval_args[0] type does not match param 0\r\nD:\\autostack\\.wt\\review-741\\auto-lang\\scratch\\review-741-probes\\binding-valid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: eval_args[1] type does not match param 1\r\n",
+    "checkExit": 1,
+    "buildOutput": "D:\\autostack\\.wt\\review-741\\auto-lang\\scratch\\review-741-probes\\binding-valid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: eval_args[0] type does not match param 0\r\nD:\\autostack\\.wt\\review-741\\auto-lang\\scratch\\review-741-probes\\binding-valid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: eval_args[1] type does not match param 1\r\nD:\\autostack\\.wt\\review-741\\auto-lang\\scratch\\review-741-probes\\binding-valid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: eval_args[0] type does not match param 0\r\nD:\\autostack\\.wt\\review-741\\auto-lang\\scratch\\review-741-probes\\binding-valid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: eval_args[1] type does not match param 1\r\n",
+    "buildExit": 1
+  },
+  {
+    "case": "binding-invalid",
+    "checkOutput": "OK 1 module(s), capabilities required: []\r\n",
+    "checkExit": 0,
+    "buildOutput": "D:\\autostack\\.wt\\review-741\\auto-lang\\scratch\\review-741-probes\\binding-invalid.atom:1:1: error[backend/backend.lowering]: define de: Compilation error: Verifier errors\r\n",
+    "buildExit": 1
+  },
+  {
+    "case": "shared-body",
+    "checkOutput": "OK 1 module(s), capabilities required: []\r\n",
+    "checkExit": 0,
+    "buildOutput": "\r\nthread 'main' (6804) panicked at src\\native.rs:306:30:\r\nindex out of bounds: the len is 0 but the index is 0\r\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\r\n",
+    "buildExit": 101
+  }
+]

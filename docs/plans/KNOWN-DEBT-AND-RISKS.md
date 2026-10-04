@@ -184,3 +184,18 @@
 | P718-D1 | low | website /playground hero | **Playground 页 hero 大标题 "Playground" 字形顶部被水平裁切**——1440 桌面 dark/light × EN/ZH 四变体一致复现；已核对 715 已入库截图（docs/reports/p715-website-ui/final-playground-en-1440-dark.png）同缺陷=既存，非 718 引入（718 未触 /playground 样式）。疑似 hero 标题 line-height/overflow 裁剪，一处 CSS 可修；不扩围，留独立修复 | docs/reports/p718-website-ui/VISUAL-REVIEW.md；docs/reports/p715-website-ui/final-playground-en-1440-dark.png 对照 |
 | P718-D2 | low | website playground i18n | **en 版 /playground 语料树/按钮等组件文本为中文**（搜索标题或标签…/书籍示例/在 IDE 中打开）——auto-playground-vue 包组件级 i18n 未覆盖既存缺口；包源码不在网站计划可编辑范围 | docs/reports/p718-website-ui/VISUAL-REVIEW.md 次要观察；packages/auto-playground-vue |
 | P718-D3 | low | website zh docs 侧栏翻译完备度 | **zh docs 侧栏残留英文条目**（Components/Script to ship/Tour/Generics 等）——ZH_TITLE_MAP 未覆盖的目录/文件名回退，内容翻译范畴非视觉缺陷 | docs/reports/p718-website-ui/VISUAL-REVIEW.md 观察项 3；website/scripts/prepare-content.js ZH_TITLE_MAP |
+
+## PLAN-741 交付后质量复审（2026-10-04）
+
+复审基线c1ac219e7，结论needs_fix；均未清偿。不是批准延期；
+741保持归档，修复需独立合同。证据：[复审报告](../reports/741-quality-review-20261004/REVIEW.md)。
+
+| id | 级别 | 问题与实际证据 | 修复方向 |
+|---|---|---|---|
+| P741-QA-01 | P1 | bool icmp结果i8与local/ABI i32冲突；check绿而build panic101或后端拒绝 | 统一bool表示并补绑定/参数/返回原生测试 |
+| P741-QA-02 | P1 | 按eval_args索引校验而非bindings映射；异类型合法调用被拒、非法调用获Checked | 按映射检查类型，保留求值顺序 |
+| P741-QA-03 | P1 | 两函数可共享异签名body且check绿；native参数索引panic101 | function/body双向owner及唯一归属检查 |
+| P741-QA-04 | P1 | receipt写失败exit1，exe已更新、obj仍旧 | 制品准备/发布事务与失败回滚，补发布失败测试 |
+| P741-QA-05 | P2 | README多传ac-probe且示例无d_entry；真实exit2/entry.not-found，归档链接陈旧 | 统一命令/命名、可运行fixture和链接，复制运行验证 |
+| P741-QA-06 | P2 | rustc/reg发现直接output无deadline；执行器先等退出再排pipe | 有截止的统一执行器与并发输出读取 |
+| P741-QA-07 | P3 | tests/common/mod.rs descriptor未使用warning | 清理并覆盖all-targets健康检查 |
