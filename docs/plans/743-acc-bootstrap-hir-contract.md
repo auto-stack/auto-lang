@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-743
-status: execution_done
+status: reviewed
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
@@ -316,6 +316,45 @@ Python工具需有限但有意义的反例测试：缺文件、注册表/源码�
   `git diff --check` clean、worktree clean（0 dirty）；实现 HEAD=d7013b290。
 
 ## 9. 复审记录
+
+### 独立复审 R2（2026-10-04，stage: review，R1 修复复核）
+
+- stage: review
+- plan_id: PLAN-743
+- plan_revision: 1
+- outcome: **pass**（R1 两项发现确认修复；全部 AC 转满足）
+- reviewed_commit: d7013b290f3e94ff91a5f0ee3b868d221c408ac6（worktree plan-743-dev，clean 0 dirty）
+- base_commit: c1ac219e73ee2ed1ef6ba8dfec49c131bfbf1a75（v0.6-dev）；R1 基线 b96f7beab
+- dependency_revisions: 无外仓依赖
+- spec_inputs: 9 受管输入 hash --check 全绿；七份证据输入与 run-context.md §3 一致
+- 独立性声明：复审在实现会话内进行（同 R1）；结论由命令重放与制品重建。
+
+**修复复核（R1 findings → R2 verdict）**：
+
+- F-01 → **fixed**：acceptance-matrix.md:6 链接改为两级上级，程序化解析实达
+  `docs/design/strategy/auto-acc-bootstrap-contract.md`。
+- F-03 → **fixed**："15 条"于全部 8 个报告制品 0 命中；inventory.md 与 MD-413 各恰一处
+  "18 条"；manifest 独立重数 use 边 = 18，逐文件分布与修正注记完全一致
+  （aavm1/a2r5/codegen4/engine2/lexer1/parser2/typeinfo3）。
+- 修复 diff 范围审计：b96f7beab..d7013b290 仅 4 文件 4 行（3 处修正 + manifest 审计
+  HEAD 字段刷新），无其它变更混入；proposed-spec-delta.md 冻结哈希不变
+  （b6b807110e5beac6，R1 冻结仍有效）。
+
+**门禁重放（reviewed_commit 上）**：--check exit0（46 决定绑定新鲜）；18/18 测试；
+`git diff --check b96f7beab..d7013b290` clean。
+
+**收据冻结哈希（reviewed@d7013b290）**：manual-decisions.json fdbc1a86ad8025e6、
+inventory.md d45c7316e0673247、acceptance-matrix.md 896d268d8ea1a75a、
+proposed-spec-delta.md b6b807110e5beac6。
+
+**AC 终态**：AC-01..07 pass（R1 已证，本轮未受修复影响——修复不触工具/清单/合同正文）；
+AC-08 pass（链接、格式、工具结果、revision-bound 收据 R1+R2、遗漏/延后经 F-01/F-03
+登记并修复闭环）。
+
+- findings: 无新增
+- evidence: 本记录命令/结果摘录；制品经 merge 落 v0.6-dev 后同 hash 可溯
+- next: merge（沉淀 SD-01..03、归档计划、清理 worktree——以用户授权为准；
+  归档/合入不在 review 职责内）
 
 ### 修复交接（2026-10-04，stage: work，R1 needs_fix 修复）
 
