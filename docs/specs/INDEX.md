@@ -404,6 +404,7 @@
 | auto-cosmic | active（509 | 5 | [auto-cosmic/project.md](auto-cosmic/project.md) |
 | auto-hir | experimental | 0 | [auto-hir/project.md](auto-hir/project.md) |
 | auto-ac | experimental | 0 | [auto-ac/project.md](auto-ac/project.md) |
+| auto-acc | planned（目标态合同；AC=首版原生编译器，ACC=Auto | 0 | [auto-acc/project.md](auto-acc/project.md) |
 
 <details><summary>auto-cosmic 模块明细</summary>
 

@@ -48,6 +48,11 @@ core-i32 profile 的类型化 HIR 契约与实现：Schema-bound Atom 文本 →
 - 文档样例源：`docs/design/strategy/hir-examples/*.atom`（01-add / 01-add.explicit / 02-control /
   03-call-order）+ `experimental/ac-core/fixtures/{valid,invalid}/`（拒绝矩阵物化）。
 
+## 阶段契约
+
+公共 HIR 的阶段边界、pass 合同模板与非法变换负面清单见
+[stage-contract.md](stage-contract.md)（planned；实现状态以本文件现状节为准）。
+
 ## 相关 plan
 
 见 [plans.md](plans.md)。
