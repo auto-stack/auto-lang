@@ -504,7 +504,7 @@
         "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae",
         "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328"
       },
-      "note": "显式 use 边 15 条（本 manifest 全量记录）；AC 单模块 → required（多模块 HIR bundle+跨模块 DefRef 是 ACC 主体前置）。"
+      "note": "显式 use 边 18 条（本 manifest 全量记录：engine2/lexer1/typeinfo3/parser2/a2r5/codegen4/aavm1）；AC 单模块 → required（多模块 HIR bundle+跨模块 DefRef 是 ACC 主体前置）。"
     },
     {
       "id": "MD-414",

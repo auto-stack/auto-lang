@@ -77,7 +77,7 @@
 | bool 逻辑运算 | &&/||/! lexer23/parser64/codegen179/a2r214（MD-410） | bool 类型有、运算无 | 短路求值顺序义务进 pass 契约 |
 | while/for/break/continue | while 59/153/136、for 16/4/6（MD-411） | 块/循环脚手架有 | 脱糖 lowering 规则（T-04） |
 | is 模式匹配 | token2/lexer5/parser14/typeinfo5/engine24/a2r13（MD-412） | 无 | 对 enum 展开 lowering |
-| use 多模块 | 显式 use 边 15 条全量入 manifest（MD-413） | 单模块 | HIR bundle + 跨模块 DefRef |
+| use 多模块 | 显式 use 边 18 条全量入 manifest（MD-413） | 单模块 | HIR bundle + 跨模块 DefRef |
 | mut 参数 | parser35/a2r55/codegen26/typeinfo8（MD-414） | place 级 mutable | probe-own-param（所有权边界） |
 | 全局变量 | c.is_global/gkey/var_gtor 链（MD-415） | 无 | 静态数据+初始化顺序 |
 | f-string | a2r.at:3887 f"Some(${e})"；FStr token 族（MD-416） | 无 | 或改写少数使用点为拼接 |

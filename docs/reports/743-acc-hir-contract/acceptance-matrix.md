@@ -3,7 +3,7 @@
 > 计划：PLAN-743 r1 · T-05。锚点=后续实施计划引用的最小验收单元；
 > 本计划**不执行**任何 native 编译——证据状态为 `existing`（已有收据可引用）、
 > `ready`（条件齐备，实施计划可直接认领）、`gated`（有前置缺口，标明门槛）。
-> 代际判据与阶段契约见 [auto-acc-bootstrap-contract.md](../../../design/strategy/auto-acc-bootstrap-contract.md)。
+> 代际判据与阶段契约见 [auto-acc-bootstrap-contract.md](../../design/strategy/auto-acc-bootstrap-contract.md)。
 
 ## 1. 代表锚点（10 项 ≥ 8 要求）
 
