@@ -135,7 +135,7 @@ pub fn link_and_run(case: &str, obj: &[u8]) -> Result<i32, String> {
 /// Full prototype pipeline for a fixture: bind -> verify -> entry -> lower.
 pub fn build_fixture(fixture_rel: &str, entry_id: &str) -> Result<Vec<u8>, String> {
     use auto_ac_prototype::bind_source;
-    use auto_ac_prototype::{descriptor, native, verify};
+    use auto_ac_prototype::{native, verify};
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let path = repo.join(fixture_rel);
     let src =

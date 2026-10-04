@@ -84,6 +84,15 @@ Invoke-Step 'cargo check (ac-core)' {
 Invoke-Step 'cargo fmt --check (ac-core)' {
     Invoke-Captured 'cargo' @('fmt', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--', '--check') $RepoRoot | Out-Null
 }
+Invoke-Step 'cargo check --all-targets, zero warnings (ac-core)' {
+    # Health check must cover test targets too (QA-07: an unused import in
+    # tests/common only shows under --all-targets).
+    $out = Invoke-Captured 'cargo' @('check', '--locked', '--all-targets', '--manifest-path', (Join-Path $AcCore 'Cargo.toml')) $RepoRoot
+    if ($out -match '(?m)^warning:') { throw "unhandled compiler warnings in ac-core all-targets build:`n$out" }
+}
+Invoke-Step 'cargo test --lib (ac-core: link executor deadline/pipe)' {
+    Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--lib') $RepoRoot -TimeoutSec 300 | Out-Null
+}
 Invoke-Step 'cargo test text_binding' {
     Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--test', 'text_binding') $RepoRoot | Out-Null
 }
