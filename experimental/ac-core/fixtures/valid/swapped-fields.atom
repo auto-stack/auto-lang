@@ -1,0 +1,52 @@
+// PLAN-741 fixture: same HIR as 01-add with fields moved between the header
+// paren list and the node body (region interchange). Container entry order is
+// preserved: table registration order defines IDs, so reordering entries is a
+// different document (normalized equality is a verifier-level concern).
+hir(schema: "auto.hir.core.draft", revision: 1u32, profile: "core-i32-draft") {
+    module(id: "m_add") {
+        path: "examples.add"
+
+        types {
+            type(id: "t_i32", kind: i32) {}
+            type(id: "t_add", kind: function) {
+                result: "t_i32"
+                params: ["t_i32", "t_i32"]
+            }
+        }
+
+        declarations {
+            function(id: "d_add", type: "t_add") { body: "b_add"; name: "add" }
+        }
+
+        bodies {
+            body(id: "b_add") {
+                entry: "k_entry"
+                owner: "d_add"
+
+                locals {
+                    local(id: "l_a", type: "t_i32") { name: "a"; index: 0u32; role: param }
+                    local(id: "l_b", type: "t_i32") { name: "b"; index: 1u32; role: param }
+                    local l_sum t_i32 { role: binding; mutable: false; name: "sum" }
+                }
+
+                expressions {
+                    expr(id: "e_a", kind: read_local, type: "t_i32") { local: "l_a" }
+                    expr e_b read_local { local: "l_b"; type: "t_i32" }
+                    expr(id: "e_add", kind: binary, type: "t_i32", op: add_i32) {
+                        overflow: trap
+                        rhs: "e_b"
+                        lhs: "e_a"
+                    }
+                    expr e_sum read_local { local: "l_sum"; type: "t_i32" }
+                }
+
+                blocks {
+                    block(id: "k_entry") {
+                        let(value: "e_add", local: "l_sum") {}
+                        return(value: "e_sum") {}
+                    }
+                }
+            }
+        }
+    }
+}

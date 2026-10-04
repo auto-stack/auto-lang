@@ -46,8 +46,8 @@ fn main() -> Result<()> {
         .expect("host isa")
         .finish(flags)
         .expect("isa finish");
-    let obj_builder = ObjectBuilder::new(isa, "ac_probe", default_libcall_names())
-        .expect("object builder");
+    let obj_builder =
+        ObjectBuilder::new(isa, "ac_probe", default_libcall_names()).expect("object builder");
     let mut module = ObjectModule::new(obj_builder);
 
     // import: void ExitProcess(i32)
@@ -79,7 +79,9 @@ fn main() -> Result<()> {
         fb.ins().return_(&[sum]);
         fb.finalize();
     }
-    module.define_function(add_id, &mut ctx).context("define probe_add")?;
+    module
+        .define_function(add_id, &mut ctx)
+        .context("define probe_add")?;
 
     // export: () ac_start() — calls probe_add(2, 3), then ExitProcess(result)
     let start_sig = Signature {
@@ -108,7 +110,9 @@ fn main() -> Result<()> {
         fb.ins().return_(&[]);
         fb.finalize();
     }
-    module.define_function(start_id, &mut ctx).context("define ac_start")?;
+    module
+        .define_function(start_id, &mut ctx)
+        .context("define ac_start")?;
 
     let product = module.finish().emit().context("emit COFF object")?;
     std::fs::write(&obj_path, &product).context("write probe_min.obj")?;
@@ -159,8 +163,8 @@ fn find_rust_lld() -> Result<PathBuf> {
             .stdout,
     )?;
     let trimmed = sysroot.trim();
-    let candidate = PathBuf::from(trimmed)
-        .join("lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe");
+    let candidate =
+        PathBuf::from(trimmed).join("lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe");
     if candidate.is_file() {
         return Ok(candidate);
     }

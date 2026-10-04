@@ -1,1 +1,3 @@
-fn main() { println!("ac-probe"); }
+fn main() {
+    println!("ac-probe");
+}
