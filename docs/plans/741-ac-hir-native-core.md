@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-741
-status: archived
+status: executing
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-04
-plan_revision: 1
+plan_revision: 2
 current_step: 7
-total_steps: 8
+total_steps: 17
 supersedes_spec_components: []
 new_spec_components:
   - docs/specs/auto-hir/project.md
@@ -208,12 +208,48 @@ check 成功0，拒绝非零并标注阶段与 span/ID；build 成功留下 .obj
 产物放 experimental/ac-core/target/，脚本对子进程设置显式超时。
 文件读取、诊断、简单驱动可作为宿主 Rust 工具能力，不反推 Auto 已支持文件库。
 
-### 规范增量
+### 5.5 Phase 2 设计（plan_revision 2）：P741-QA-01..07 修复
+
+2026-10-04 外部复审（docs/reports/741-quality-review-20261004/REVIEW.md，needs_fix）
+揭示四项 P1 缺陷与三项次要问题。方向：修复实现以兑现 r1 已沉淀的 SD-01/02 承诺，
+不缩减 Spec。以下逐项设计与复审 finding 对应：
+
+- **QA-01（bool 表示）**：`native.rs` 全部 `icmp` 结果（LtI32、checked_add 溢出链、
+  checked_mul 溢出判定）统一 `uextend i8→i32` 后再进入变量/分支/调用/返回，
+  内部 bool 值恒为 i32 0/1（SD-02 原文"bool 内部/传参均为 i32 0/1"）。
+  `lower_object` 对 body 参数下标访问补越界防御，超界返回 backend 诊断而非 panic。
+- **QA-02（bindings 映射）**：`verify.rs` 的 call 实参类型检查从"按 eval_args 下标对位"
+  改为按 bindings 映射：先独立校验映射本身（param 全覆盖唯一、arg 越界、arg 未被任何
+  binding 消费、arg 被多个 binding 重复消费均拒绝），再按 `params[b.param]` 与
+  `type(eval_args[b.arg])` 逐位核对；eval_args 仍按序求值（副作用顺序契约不变）。
+- **QA-03（owner 双向）**：`verify.rs` check_module 增加 function→body 反向遍历：
+  每个 Function def 的 body 字段必须指向 owner 恰为该 def 的 body，否则
+  `verify.owner-mismatch`（共享 body、同签名共享、冒领 body 全在此拒绝）；
+  既有 body→owner 方向检查保留。
+- **QA-04（发布事务）**：`link.rs`/`main.rs` 改为"全部制品先暂存、再发布、失败回滚"：
+  link 只产出唯一暂存名 exe（`.tmp-ac741-<pid>`）；新 `publish_artifacts` 先写暂存收据，
+  备份既有 exe/obj/收据为 `.bak-ac741-<pid>`，再依次改名发布 exe/obj/收据；任一步失败
+  则删除已就位新制品、还原备份、清理暂存并返回错误；成功后删除备份。obj 暂存名同步加 pid。
+- **QA-05（README）**：命令改为实际 bin 名 `auto-ac-prototype` 的正确 cargo 调用
+  （与 verify-ac-741.ps1 一致，去掉多余的 ac-probe argv）；build 示例改用带 d_entry 的
+  `fixtures/native/add-2-3.atom`；计划链接更新到 `docs/plans/archive/`；
+  descriptor 路径笔误 `schema/schema/core-i32.atom`→`schema/core-i32.atom`；
+  验收方式=从 README 逐字复制命令运行。
+- **QA-06（截止时间）**：`run_with_deadline` 重构为并发读管道（stdout/stderr 各起
+  reader 线程，避免先等退出再读导致的管道阻塞）+ deadline 参数化；`find_rust_lld`
+  （rustc --print sysroot）与 `find_sdk_um_dir`（reg query）统一接入该执行器。
+  单测用可控 helper（cmd/ping）证明超时终止与大输出不阻塞，不终止真实系统工具。
+- **QA-07（warning）**：`tests/common/mod.rs` 删除未使用的 descriptor 导入；
+  `verify-ac-741.ps1` 增加 `cargo check --all-targets` 覆盖测试目标的健康检查。
+
+### 规范增量（Phase 2 追加行）
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
 | SD-01 | add | docs/specs/auto-hir/project.md | 无实现规范→有限文本/TypeUse/校验/顺序契约及限制 | 沉淀实证能力，不宣称完整HIR | AC-01,AC-02,AC-03,AC-04 |
 | SD-02 | add | docs/specs/auto-ac/project.md | 无native实现规范→Checked HIR AOT/Windows工具链/入口/trap/测试能力 | 区分原型、生产ABI与源码编译 | AC-05,AC-06,AC-07,AC-08 |
+| SD-03 | modify | docs/specs/auto-hir/project.md | 语义契约两点明确化：call 实参类型按 bindings 映射逐位核对（arg 恰被一处 binding 消费）；函数↔body 双向归属唯一（共享/冒领 body 拒绝） | QA-02/03 复验 SD-01 原承诺，实现修正而非缩规约 | AC-10,AC-11 |
+| SD-04 | modify | docs/specs/auto-ac/project.md | bin 名澄清为 auto-ac-prototype（ac-probe 为历史文档名）；制品发布措辞=暂存+备份+发布+失败回滚；硬截止时间覆盖全部子进程（工具发现/链接/运行） | QA-01/04/05/06 复验 SD-02 原承诺 | AC-09,AC-12,AC-13,AC-14 |
 
 Spec 文件在 review/merge 根据实现沉淀，本 new 阶段不编辑 canonical Specs。
 overview/.autoos/specs.json/index 在 merge 按实际模块布局登记。
@@ -230,6 +266,10 @@ overview/.autoos/specs.json/index 在 merge 按实际模块布局登记。
 | native_execution边界 | i32最大值+1、乘法溢出 | 退出码70，不能回绕成正常结果 |
 | native_execution顺序 | 03-call-order，显式测试capability | 原生日志b,a与结果12；无能力build拒绝 |
 | CLI/process | 入口不存在/签名错误、linker缺失、运行超时 | 可定位非零错误，不静默skip、不覆盖成功制品 |
+| hir_verify Phase2 | bindings swap 合法映射接受；swap 类型不匹配/arg 重复消费/arg 未消费拒绝；共享 body（异签名/同签名）与冒领 body 拒绝 | verify.type-mismatch / verify.binding-invalid / verify.owner-mismatch 按码命中 |
+| native_execution Phase2 | bool 条件正例（local+if）、bool ABI 正例（形参/实参/返回）、bindings swap 正例 | 原生退出码 = fixture 设计值（3/5/9） |
+| cli Phase2 | 发布阶段失败（收据路径为目录占位）：重建同目标 | exit 1 + link.receipt；exe/obj 哈希不变；旧 exe 原生退出码不变；无 .bak/.tmp 残留 |
+| link 单测（内嵌） | 可控挂起 helper 超 1s 截止；大输出（>64KB 管道）子进程 | link.deadline 终止；输出完整不阻塞 |
 
 执行命令（路径/测试族由本计划新建）：
 
@@ -259,6 +299,16 @@ native脚本发现工具链、构建/运行、处理超时并保存收据；SDK�
 - [ ] **AC-06**：加/乘溢出trap；trace原生结果b,a和12；无能力build拒绝。
 - [ ] **AC-07**：CLI/脚本可复现；入口/工具链/超时错误非零；失败构建不覆盖成功制品。
 - [ ] **AC-08**：定向与最终门禁、独立复审和SD-01/02证据完整；未将A0宣称源码编译/生产ABI/AAC。
+
+Phase 2 追加（plan_revision 2，2026-10-04）：
+
+- [ ] **AC-09**（QA-01）：bool 合法程序原生闭环——bool local 赋值/读取/if 条件、bool 形参传递、bool 返回值程序 check=0、build=0、原生退出码为 fixture 设计值（3/5）；复审复现脚本 bool-local（原 panic 101）与 bool-return（原 build 1）变为构建成功且退出码正确。
+- [ ] **AC-10**（QA-02）：call 实参类型按 bindings 映射核对——binding-valid（swap 映射、类型匹配）check=0 且原生运行 exit 9；binding-invalid（swap 映射、类型不匹配）check 阶段拒绝 verify.type-mismatch（不再漏到后端）；arg 重复消费/未消费在 check 拒绝。
+- [ ] **AC-11**（QA-03）：function↔body 双向归属——shared-body（零参 alias 共享双参 body）、同签名共享、冒领 body 均 check 阶段拒绝 verify.owner-mismatch；native 不再出现 index-out-of-bounds panic。
+- [ ] **AC-12**（QA-04）：发布阶段失败不覆盖——以成功制品（原生 exit 5）为基线，收据路径目录占位后重建：CLI exit 1 + link.receipt 诊断，exe/obj 哈希不变，旧 exe 原生运行退出码仍为 5，无 .bak/.tmp 残留；成功构建后同样无残留。
+- [ ] **AC-13**（QA-05）：README 中命令逐字复制可运行（check exit 0、build 产出可运行 exe）；计划链接指向 docs/plans/archive/；descriptor 路径无 schema/schema 笔误。
+- [ ] **AC-14**（QA-06）：工具发现（rustc/reg）、链接、运行全部子进程经带硬截止时间的执行器；执行器并发读管道；单测证明：可控挂起 helper 在截止处被终止报 link.deadline，>64KB 输出子进程正常完成且输出完整。
+- [ ] **AC-15**（QA-07）：tests/common/mod.rs 无未使用导入；`cargo check --all-targets` 零 warning 并纳入 verify-ac-741.ps1 健康检查。
 
 ## 8. 执行步骤
 
@@ -296,6 +346,28 @@ wt-guard 后移除）。
 后续清理须wt-guard与merge收据；进度/合入目标v0.6-dev。
 主机器恢复后的master/v0.5整合另行处理，不顺手继续旧收尾。
 T-01/04使用临时native探针验证能力，但最终验收必须来自实际Checked HIR流水线。
+
+### Phase 2 执行进度（plan_revision 2，2026-10-04 起）
+
+依据：外部复审 needs_fix（docs/reports/741-quality-review-20261004/REVIEW.md，
+reviewed_commit c1ac219e7）。**2026-10-04 用户裁定：不另开新计划，激活本文件以
+plan_revision 2 追加 Phase 2**（优先于复审报告"另开独立合同"的建议）。
+Phase 1 归档记录与 T-01..08 勾选保持原样不改。worktree 重建：
+`D:/autostack/.wt/lang-741/auto-lang`，分支 `plan-741-dev`（旧分支已随 r1 fold 删除，
+从 v0.6-dev 含本 Phase 2 合同提交重建）。改动面=experimental/ac-core + scripts/verify-ac-741.ps1
++ README/spec（SD-03/04 在 merge 时沉淀），crates/** 零改动。
+
+| task | 依赖 | 文件/符号与动作 | 验证命令/预期 | AC |
+|---|---|---|---|---|
+| T-09 | worktree就绪 | native.rs：icmp 全点位 uextend 归一 i32（LtI32/checked_add/checked_mul）；lower_object 参数下标越界防御；新增 fixtures/native/bool-if.atom（exit 3）、bool-abi.atom（exit 5）；native_execution +2 | cargo test --test native_execution 含新 bool 正例退出码 | AC-09 |
+| T-10 | T-09 | verify.rs：call 检查改 bindings 映射制（映射独立校验+按映射类型核对）；fixtures valid/binding-swap.atom、invalid/binding-swap-type-mismatch.atom、invalid/binding-dup-arg.atom；hir_verify REJECT_CASES/接受用例扩展；native_execution +1（binding-swap exit 9） | check 接受/拒绝行为符合 AC-10 | AC-10 |
+| T-11 | T-10 | verify.rs：check_module 增加 function→body 反向 owner 校验；fixtures invalid/shared-body-owner.atom、invalid/shared-body-same-sig.atom、invalid/stolen-body.atom；hir_verify +3 | 共享/冒领 check 拒绝 verify.owner-mismatch | AC-11 |
+| T-12 | T-09 | link.rs：StagedLink/publish_artifacts（暂存收据+备份+发布+失败回滚，唯一 tmp 名带 pid）+ main.rs 接线（obj 暂存名加 pid）；cli.rs +1 发布失败回滚测试；既有 tmp 残留断言更新 | 发布失败保旧制品（AC-12 断言）；成功无残留 | AC-12 |
+| T-13 | T-12 | README.md：命令改真实 bin 调用、build 示例改 add-2-3 fixture、归档链接、descriptor 路径笔误 | 从 README 逐字复制命令运行成功 | AC-13 |
+| T-14 | T-12 | link.rs：run_with_deadline 并发读管道+deadline 参数化；find_rust_lld/find_sdk_um_dir 接入；内嵌 #[cfg(test)] 截止/大输出单测 | 截止终止可控 helper；大输出完整 | AC-14 |
+| T-15 | T-14 | tests/common/mod.rs 删除未用 descriptor 导入；verify-ac-741.ps1 +cargo check --all-targets | all-targets 零 warning | AC-15 |
+| T-16 | T-09..15 | 门禁：原型全族测试+fmt+all-targets check+reproduce.ps1 复跑（记录 reproduction.json）；crates 零 diff 核对 | 全绿/符合预期 | AC-09..AC-15 |
+| T-17 | T-16 | /auto-plan:review 独立复审；pass 后 merge 沉淀 SD-03/04 并销账 KNOWN-DEBT P741-QA-01..07 行 | 复审 pass | 全部 |
 
 ## 9. 复审记录
 
@@ -463,3 +535,14 @@ T-01/04使用临时native探针验证能力，但最终验收必须来自实际C
 
 无必须先由用户裁定的技术问题阻止起草完成。
 实施授权限于后续用户确认，不由outcome:pass推定。
+
+### Phase 2 授权与边界（2026-10-04）
+
+- 用户裁定：P741-QA 修复**不另开新计划**，激活本文件追加 Phase 2（plan_revision 2）；
+  此裁定优先于质量复审报告"另开独立合同/不重开归档"的建议。
+- 授权范围：experimental/ac-core 修复 + scripts/verify-ac-741.ps1 + README；
+  canonical Spec 增量（SD-03/04 modify）在复审 pass 后 merge 沉淀。
+  crates/** 与根 workspace 不触碰；不跑 tf/ta/t3 批量档。
+- 验收基线：复审报告的 5 个缺陷 fixture + extra-results（bool-local build 101、
+  bool-return build 1、binding-valid check 1、binding-invalid check 0、
+  shared-body build 101、发布失败 exe 哈希变化）全部翻转为 AC-09..12 所述预期。
