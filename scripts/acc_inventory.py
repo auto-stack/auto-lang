@@ -68,7 +68,7 @@ BARE_NATIVES = {"print"}
 TOP_DECL_RE = re.compile(r"^(pub\s+)?(fn|type|enum)\s+([A-Za-z_]\w*)")
 METHOD_DECL_RE = re.compile(r"^\s+(pub\s+)?(static\s+)?fn\s+([A-Za-z_]\w*)")
 FIELD_RE = re.compile(r"^\s+([A-Za-z_]\w*)\s+([A-Za-z_]\w*[<>]?(?:<[^{}]*>)?)\s*$")
-ENUM_CASE_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*$")
+ENUM_CASE_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*(\([^()]*\))?\s*$")
 USE_RE = re.compile(r"^use\s+([A-Za-z_][\w.]*)\s*:\s*(.+)$")
 QUALIFIED_CALL_RE = re.compile(r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\(")
 PIPE_METHOD_RE = re.compile(r"\|>\s*\.([A-Za-z_]\w*)\s*\(")
@@ -280,7 +280,8 @@ def scan_module(rel_path: str, text: str) -> ModuleScan:
             elif enum_body is not None and depth == body_depth + 1:
                 mc = ENUM_CASE_RE.match(code)
                 if mc:
-                    scan.enum_cases.append({"owner": enum_body, "name": mc.group(1), "line": idx})
+                    scan.enum_cases.append({"owner": enum_body, "name": mc.group(1),
+                                            "payload": bool(mc.group(2)), "line": idx})
             elif type_body is not None and depth == body_depth + 1:
                 mf = FIELD_RE.match(code)
                 if mf and mf.group(1) not in ("if", "for", "while", "return", "is"):
@@ -487,7 +488,8 @@ def build_manifest(root: Path, head_commit: str | None):
         "observations": {"modules": [scans[rel].to_json() for rel in SOURCE_MODULES]},
         "manual_layer": {
             "file": DECISIONS_NAME,
-            "binding": "each decision binds input hashes; stale bindings fail --check",
+            "binding": ("each decision binds the hashes of the files it cites "
+                        "(managed inputs and other repo files); stale bindings fail --check"),
         },
     }
     return {"manifest": manifest, "registry_drift": registry_drift,
@@ -548,8 +550,12 @@ def dumps_stable(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
 
 
-def validate_decisions(dec_path: Path, inputs):
-    """校验人工结论绑定。返回 (状态, 消息列表)；状态 ok|stale|error。"""
+def validate_decisions(dec_path: Path, inputs, root: Path):
+    """校验人工结论绑定。返回 (状态, 消息列表)；状态 ok|stale|error。
+
+    绑定宇宙不限于受管扫描输入：决定可绑定仓库内任意文件（如 Spec/战略文档），
+    工具现场计算其 hash；文件缺失或 hash 漂移即过期失败。
+    """
     if not dec_path.is_file():
         return "absent", ["WARN[decisions-absent] %s 不存在（T-03 之前为正常状态）；"
                           "人工结论未提供，--check 仅校验扫描制品" % DECISIONS_NAME]
@@ -566,15 +572,21 @@ def validate_decisions(dec_path: Path, inputs):
         bound = d.get("bound_input_hashes") or {}
         for p, h in sorted(bound.items()):
             if p not in current:
-                stale = True
-                msgs.append("ERROR[decision-stale] %s 绑定的输入已不存在: %s" % (did, p))
-            elif current[p] != h:
+                f = root / p
+                if not f.is_file():
+                    stale = True
+                    msgs.append("ERROR[decision-stale] %s 绑定的输入已不存在: %s" % (did, p))
+                    continue
+                cur = sha256_of(f)
+            else:
+                cur = current[p]
+            if cur != h:
                 stale = True
                 msgs.append("ERROR[decision-stale] %s 绑定的输入已变化: %s" % (did, p))
         for ev in d.get("evidence", []):
             ev_path = str(ev).split(":")[0]
-            if ev_path not in current:
-                msgs.append("WARN[decision-evidence-outside] %s 证据不在受管输入内: %s" % (did, ev))
+            if ev_path not in current and not (root / ev_path).is_file():
+                msgs.append("WARN[decision-evidence-outside] %s 证据文件不存在: %s" % (did, ev))
     if stale:
         return "stale", msgs
     msgs.insert(0, "OK[decisions] %d 条人工结论绑定全部新鲜" % len(data["decisions"]))
@@ -677,7 +689,7 @@ def main(argv=None) -> int:
         missing = [p for p in MANAGED_INPUTS if p not in covered]
         if missing:
             failures.append("ERROR[coverage] manifest 未覆盖受管输入: %s" % ", ".join(missing))
-    status, dmsgs = validate_decisions(out_dir / DECISIONS_NAME, built["inputs"])
+    status, dmsgs = validate_decisions(out_dir / DECISIONS_NAME, built["inputs"], root)
     if status in ("stale", "error"):
         failures.extend(dmsgs)
     else:

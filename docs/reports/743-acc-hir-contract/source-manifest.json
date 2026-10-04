@@ -49,7 +49,7 @@
     }
   ],
   "manual_layer": {
-    "binding": "each decision binds input hashes; stale bindings fail --check",
+    "binding": "each decision binds the hashes of the files it cites (managed inputs and other repo files); stale bindings fail --check",
     "file": "manual-decisions.json"
   },
   "observations": {
@@ -309,707 +309,848 @@
           {
             "line": 10,
             "name": "Int",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 11,
             "name": "Uint",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 12,
             "name": "U8",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 13,
             "name": "I8",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 14,
             "name": "Bool",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 15,
             "name": "Byte",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 16,
             "name": "Float",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 17,
             "name": "Double",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 18,
             "name": "Str",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 19,
             "name": "CStr",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 20,
             "name": "Char",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 21,
             "name": "Ident",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 22,
             "name": "LParen",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 23,
             "name": "RParen",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 24,
             "name": "LSquare",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 25,
             "name": "RSquare",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 26,
             "name": "LBrace",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 27,
             "name": "RBrace",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 28,
             "name": "Comma",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 29,
             "name": "Semi",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 30,
             "name": "Newline",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 31,
             "name": "Add",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 32,
             "name": "Sub",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 33,
             "name": "Star",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 34,
             "name": "Div",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 35,
             "name": "Mod",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 36,
             "name": "Not",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 37,
             "name": "Lt",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 38,
             "name": "Gt",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 39,
             "name": "Le",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 40,
             "name": "Ge",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 41,
             "name": "Asn",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 42,
             "name": "Eq",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 43,
             "name": "Neq",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 44,
             "name": "AddEq",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 45,
             "name": "SubEq",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 46,
             "name": "MulEq",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 47,
             "name": "DivEq",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 48,
             "name": "ModEq",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 49,
             "name": "Dot",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 50,
             "name": "Range",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 51,
             "name": "RangeEq",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 52,
             "name": "Colon",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 53,
             "name": "VBar",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 54,
             "name": "PipeGt",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 55,
             "name": "Amp",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 56,
             "name": "CommentLine",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 57,
             "name": "CommentContent",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 58,
             "name": "CommentStart",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 59,
             "name": "CommentEnd",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 60,
             "name": "DocComment",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 61,
             "name": "Arrow",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 62,
             "name": "DoubleArrow",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 63,
             "name": "Question",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 64,
             "name": "QuestionQuestion",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 65,
             "name": "DotQuestion",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 66,
             "name": "DotQuest",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 67,
             "name": "At",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 68,
             "name": "Hash",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 69,
             "name": "Tilde",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 70,
             "name": "HashIf",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 71,
             "name": "HashFor",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 72,
             "name": "HashIs",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 73,
             "name": "HashBrace",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 74,
             "name": "HashIdent",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 75,
             "name": "True",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 76,
             "name": "False",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 77,
             "name": "Nil",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 78,
             "name": "Null",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 79,
             "name": "If",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 80,
             "name": "Else",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 81,
             "name": "For",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 82,
             "name": "Loop",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 83,
             "name": "Break",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 84,
             "name": "Continue",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 85,
             "name": "Return",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 86,
             "name": "Yield",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 87,
             "name": "Try",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 88,
             "name": "Catch",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 89,
             "name": "While",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 90,
             "name": "Is",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 91,
             "name": "Var",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 92,
             "name": "In",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 93,
             "name": "Fn",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 94,
             "name": "Type",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 95,
             "name": "Union",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 96,
             "name": "Tag",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 97,
             "name": "Let",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 98,
             "name": "Mut",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 99,
             "name": "Move",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 100,
             "name": "Copy",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 101,
             "name": "Const",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 102,
             "name": "View",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 103,
             "name": "Take",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 104,
             "name": "Hold",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 105,
             "name": "Has",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 106,
             "name": "Spec",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 107,
             "name": "Use",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 108,
             "name": "Pac",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 109,
             "name": "Super",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 110,
             "name": "Super2",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 111,
             "name": "Super3",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 112,
             "name": "Super4",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 113,
             "name": "As",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 114,
             "name": "To",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 115,
             "name": "Enum",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 116,
             "name": "On",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 117,
             "name": "Alias",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 118,
             "name": "Node",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 119,
             "name": "Ext",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 120,
             "name": "Static",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 121,
             "name": "Shared",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 122,
             "name": "Impl",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 123,
             "name": "And",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 124,
             "name": "Or",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 125,
             "name": "Dep",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 126,
             "name": "Routes",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 127,
             "name": "Outlet",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 128,
             "name": "Link",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 129,
             "name": "Route",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 130,
             "name": "Nav",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 131,
             "name": "NoneKW",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 132,
             "name": "SomeKW",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 133,
             "name": "OkKW",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 134,
             "name": "ErrKW",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 135,
             "name": "Task",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 136,
             "name": "Spawn",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 137,
             "name": "Await",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 138,
             "name": "Reply",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 139,
             "name": "Go",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 140,
             "name": "DotView",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 141,
             "name": "DotMut",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 142,
             "name": "DotMove",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 143,
             "name": "DotTake",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 144,
             "name": "FStrStart",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 145,
             "name": "FStrPart",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 146,
             "name": "FStrEnd",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 147,
             "name": "FStrNote",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 148,
             "name": "Grid",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 149,
             "name": "EOF",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           },
           {
             "line": 150,
             "name": "Unknown",
-            "owner": "TokenKind"
+            "owner": "TokenKind",
+            "payload": false
           }
         ],
         "fields": [],
@@ -5347,142 +5488,170 @@
           {
             "line": 467,
             "name": "Add",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 468,
             "name": "Sub",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 469,
             "name": "Mul",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 470,
             "name": "Div",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 471,
             "name": "Mod",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 472,
             "name": "AddEq",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 473,
             "name": "SubEq",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 474,
             "name": "MulEq",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 475,
             "name": "DivEq",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 476,
             "name": "ModEq",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 477,
             "name": "Not",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 478,
             "name": "And",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 479,
             "name": "Or",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 480,
             "name": "LSquare",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 481,
             "name": "LParen",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 482,
             "name": "Asn",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 483,
             "name": "Eq",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 484,
             "name": "Neq",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 485,
             "name": "Lt",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 486,
             "name": "Gt",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 487,
             "name": "Le",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 488,
             "name": "Ge",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 489,
             "name": "Range",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 490,
             "name": "RangeEq",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 491,
             "name": "Dot",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 492,
             "name": "Colon",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 493,
             "name": "QuestionQuestion",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           },
           {
             "line": 494,
             "name": "NoOp",
-            "owner": "Op"
+            "owner": "Op",
+            "payload": false
           }
         ],
         "fields": [
@@ -12214,292 +12383,350 @@
           {
             "line": 881,
             "name": "Line",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 882,
             "name": "Add",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 883,
             "name": "Sub",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 884,
             "name": "Mul",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 885,
             "name": "Div",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 886,
             "name": "Mod",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 887,
             "name": "Eq",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 888,
             "name": "Ne",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 889,
             "name": "Lt",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 890,
             "name": "Gt",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 891,
             "name": "Le",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 892,
             "name": "Ge",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 893,
             "name": "And",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 894,
             "name": "Or",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 895,
             "name": "Not",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 896,
             "name": "Neg",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 897,
             "name": "StrCat",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 898,
             "name": "ConstI32",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 899,
             "name": "LoadStr",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 900,
             "name": "LoadLoc0",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 901,
             "name": "LoadLoc1",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 902,
             "name": "LoadLoc2",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 903,
             "name": "LoadLocal",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 904,
             "name": "StoreLoc0",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 905,
             "name": "StoreLoc1",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 906,
             "name": "StoreLocal",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 907,
             "name": "FnProlog",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 908,
             "name": "Reserve",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 909,
             "name": "Ret",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 910,
             "name": "Call",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 911,
             "name": "CallNat",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 914,
             "name": "MakeClo",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 915,
             "name": "CallClo",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 916,
             "name": "Jmp",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 917,
             "name": "JmpZ",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 918,
             "name": "JmpNz",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 919,
             "name": "PushBool",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 920,
             "name": "PushNil",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 921,
             "name": "Dup",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 922,
             "name": "Pop",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 923,
             "name": "ArrLen",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 924,
             "name": "CreateArr",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 925,
             "name": "GetElem",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 926,
             "name": "SetElem",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 927,
             "name": "IsVariant",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 928,
             "name": "NewInstance",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 929,
             "name": "ConstructInstance",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 930,
             "name": "GetGenericField",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 931,
             "name": "BuildFstr",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 932,
             "name": "Halt",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 933,
             "name": "Nop",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 934,
             "name": "Blank",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 935,
             "name": "GetField",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 936,
             "name": "SetField",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 937,
             "name": "SetGenericField",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 938,
             "name": "Const0",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 939,
             "name": "LoadGlobal",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           },
           {
             "line": 940,
             "name": "StoreGlobal",
-            "owner": "OpCode"
+            "owner": "OpCode",
+            "payload": false
           }
         ],
         "fields": [
@@ -13177,6 +13404,48 @@
         "call_candidates": [
           {
             "count": 1,
+            "first_line": 59,
+            "kind": "enum-variant-construction",
+            "name": "VArr",
+            "receiver": null
+          },
+          {
+            "count": 1,
+            "first_line": 58,
+            "kind": "enum-variant-construction",
+            "name": "VBool",
+            "receiver": null
+          },
+          {
+            "count": 1,
+            "first_line": 63,
+            "kind": "enum-variant-construction",
+            "name": "VClo",
+            "receiver": null
+          },
+          {
+            "count": 1,
+            "first_line": 60,
+            "kind": "enum-variant-construction",
+            "name": "VInst",
+            "receiver": null
+          },
+          {
+            "count": 1,
+            "first_line": 56,
+            "kind": "enum-variant-construction",
+            "name": "VInt",
+            "receiver": null
+          },
+          {
+            "count": 1,
+            "first_line": 57,
+            "kind": "enum-variant-construction",
+            "name": "VStr",
+            "receiver": null
+          },
+          {
+            "count": 1,
             "first_line": 280,
             "kind": "imported-symbol",
             "name": "cg_compile",
@@ -13818,48 +14087,6 @@
             "kind": "type-qualified",
             "name": "VStr",
             "receiver": "Val"
-          },
-          {
-            "count": 1,
-            "first_line": 59,
-            "kind": "unknown-bare-call",
-            "name": "VArr",
-            "receiver": null
-          },
-          {
-            "count": 1,
-            "first_line": 58,
-            "kind": "unknown-bare-call",
-            "name": "VBool",
-            "receiver": null
-          },
-          {
-            "count": 1,
-            "first_line": 63,
-            "kind": "unknown-bare-call",
-            "name": "VClo",
-            "receiver": null
-          },
-          {
-            "count": 1,
-            "first_line": 60,
-            "kind": "unknown-bare-call",
-            "name": "VInst",
-            "receiver": null
-          },
-          {
-            "count": 1,
-            "first_line": 56,
-            "kind": "unknown-bare-call",
-            "name": "VInt",
-            "receiver": null
-          },
-          {
-            "count": 1,
-            "first_line": 57,
-            "kind": "unknown-bare-call",
-            "name": "VStr",
-            "receiver": null
           },
           {
             "count": 2,
@@ -14515,7 +14742,44 @@
             "ret": "str"
           }
         ],
-        "enum_cases": [],
+        "enum_cases": [
+          {
+            "line": 56,
+            "name": "VInt",
+            "owner": "Val",
+            "payload": true
+          },
+          {
+            "line": 57,
+            "name": "VStr",
+            "owner": "Val",
+            "payload": true
+          },
+          {
+            "line": 58,
+            "name": "VBool",
+            "owner": "Val",
+            "payload": true
+          },
+          {
+            "line": 59,
+            "name": "VArr",
+            "owner": "Val",
+            "payload": true
+          },
+          {
+            "line": 60,
+            "name": "VInst",
+            "owner": "Val",
+            "payload": true
+          },
+          {
+            "line": 63,
+            "name": "VClo",
+            "owner": "Val",
+            "payload": true
+          }
+        ],
         "fields": [],
         "methods": [],
         "path": "auto/lib/engine.at",
@@ -20833,7 +21097,7 @@
     "unknown_policy": "unresolved receivers, bare calls and dynamic dispatch are recorded as unknown candidates, never dropped"
   },
   "source_identity": {
-    "head_commit_audit_only": "802e62aa6c2f32c56499c7d8b619bbf9de87dfbd",
+    "head_commit_audit_only": "fd7fb366dd6eaa9109227054584a578abd98f1ee",
     "note": "head_commit is recorded for audit only; drift validation uses managed input hashes, never HEAD",
     "paths_are": "repo-relative, forward slashes",
     "root_kind": "auto-lang-repository"

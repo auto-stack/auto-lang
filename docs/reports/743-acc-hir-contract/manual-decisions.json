@@ -1,0 +1,735 @@
+{
+  "format_version": 1,
+  "plan_id": "PLAN-743",
+  "note": "人工审定层：与工具扫描观察（source-manifest.json）分离。conclusion 词汇表：module-role=adapt|adapt-core-rewrite-output|reference|non-subject|retire-for-acc|new-subject；capability=implemented|required|unknown|not-required。每个决定绑定其引用输入的 hash，重跑 --check 校验新鲜度。",
+  "decisions": [
+    {
+      "id": "MD-101",
+      "subject": "auto/lib/token.at",
+      "kind": "module-role",
+      "conclusion": "adapt",
+      "evidence": [
+        "auto/lib/token.at:9",
+        "auto/lib/token.at:154",
+        "auto/lib/token.at:219"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/token.at": "963ccc1df73b86e510db95f13dda0e3ea17462f7c3f4b7652947e9f9f3381d74"
+      },
+      "note": "AAVM v2 词法模型（139+Unknown TokenKind、keyword/kind_name 纯表）。无运行时依赖、纯函数+枚举，是 ACC 前端词法层的直接复用候选；缺 Display/debug 格式化（文件头 Missing 行），适配点明确。"
+    },
+    {
+      "id": "MD-102",
+      "subject": "auto/lib/lexer.at",
+      "kind": "module-role",
+      "conclusion": "adapt",
+      "evidence": [
+        "auto/lib/lexer.at:25",
+        "auto/lib/lexer.at:30",
+        "auto/lib/lexer.at:672"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/lexer.at": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01",
+        "auto/lib/token.at": "963ccc1df73b86e510db95f13dda0e3ea17462f7c3f4b7652947e9f9f3381d74"
+      },
+      "note": "游标式扫描核心（D12 char_at 游标免 Vec）自包含，适配复用；依赖 token.at 判据面与 str 容器操作（slice/trim/push/char_at）。Missing：f-string/raw 字符串/LexerState 快照——ACC 词法层扩面清单。"
+    },
+    {
+      "id": "MD-103",
+      "subject": "auto/lib/parser.at",
+      "kind": "module-role",
+      "conclusion": "adapt-core-rewrite-output",
+      "evidence": [
+        "auto/lib/parser.at:63",
+        "auto/lib/parser.at:71",
+        "auto/lib/parser.at:245",
+        "auto/lib/parser.at:232"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
+        "auto/lib/lexer.at": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01",
+        "auto/lib/token.at": "963ccc1df73b86e510db95f13dda0e3ea17462f7c3f4b7652947e9f9f3381d74"
+      },
+      "note": "游标 P（15 方法）+ Pratt 表 + 语句/类型解析核心可适配复用；但产物是 parse_dump S-expr 直出（D20）非真实 AST。ACC 需要真实 AST/声明模型——输出层按新建主体重写，不入 ACC 主体直接搬迁。"
+    },
+    {
+      "id": "MD-104",
+      "subject": "auto/lib/typeinfo.at",
+      "kind": "module-role",
+      "conclusion": "reference",
+      "evidence": [
+        "auto/lib/typeinfo.at:35",
+        "auto/lib/typeinfo.at:39",
+        "auto/lib/typeinfo.at:47"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/typeinfo.at": "9eed6f5f243225c17d4f79e5c53918d03a525e2e2bd99998b6ba6f95c3bb254a",
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559"
+      },
+      "note": "Display 字符串载体的轻量型推断（D23/D27），自述非完整 typeck、unknown 直通输出。不能作为 Checked HIR 有效性凭证（计划 §4.2）；其推断逻辑形状（字面量/调用/二元传播）作为 ACC typeck 设计参考，代码不搬迁。"
+    },
+    {
+      "id": "MD-105",
+      "subject": "auto/lib/codegen.at",
+      "kind": "module-role",
+      "conclusion": "reference",
+      "evidence": [
+        "auto/lib/codegen.at:47",
+        "auto/lib/codegen.at:2",
+        "auto/lib/codegen.at:4289"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
+        "auto/lib/typeinfo.at": "9eed6f5f243225c17d4f79e5c53918d03a525e2e2bd99998b6ba6f95c3bb254a"
+      },
+      "note": "发 ABC 字节码（AAVM 载体），ACC 的 native 路径是 Checked HIR→桥→CLIF，与之不同管道。CG（34 方法）/符号表/字符串池/占位回填工程模式作为参考；cg_compile/cg_compile_files 可作 parity 测试依赖。不据此宣称 native 主体迁移完成。"
+    },
+    {
+      "id": "MD-106",
+      "subject": "auto/lib/engine.at",
+      "kind": "module-role",
+      "conclusion": "reference",
+      "evidence": [
+        "auto/lib/engine.at:51",
+        "auto/lib/engine.at:53",
+        "auto/lib/engine.at:55"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328",
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559"
+      },
+      "note": "ABC 栈机解释器（ev_run/ev_run_files），宿主 VM 行为对齐的语义 oracle；其 Val payload 枚举/arena 引用模型是运行时语义参考。ACC 自举的 oracle 依赖与测试基线，非主体。"
+    },
+    {
+      "id": "MD-107",
+      "subject": "auto/lib/a2r.at",
+      "kind": "module-role",
+      "conclusion": "non-subject",
+      "evidence": [
+        "auto/lib/a2r.at:47",
+        "auto/lib/a2r.at:4479",
+        "auto/lib/a2r.at:165"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae",
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
+        "auto/lib/typeinfo.at": "9eed6f5f243225c17d4f79e5c53918d03a525e2e2bd99998b6ba6f95c3bb254a",
+        "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328"
+      },
+      "note": "AA2R：Auto 写的 Rust 源码转译器（ar_emit_program 驱动，Ar 25 方法），其自举闭环（转译七文件 lib 自身）属旧 AAVM/AA2R 自举，不是 AC/ACC native 自举。对 ACC 仅提供游标/发射器写法参考与塔式自举方法论。"
+    },
+    {
+      "id": "MD-108",
+      "subject": "auto/aavm.at",
+      "kind": "module-role",
+      "conclusion": "non-subject",
+      "evidence": [
+        "auto/aavm.at:14",
+        "auto/aavm.at:19",
+        "auto/aavm.at:24"
+      ],
+      "bound_input_hashes": {
+        "auto/aavm.at": "0ff06f099253e1aa1c8d83ef2810771f10d5a01e5388729354dd9fa249d4ee9a",
+        "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328"
+      },
+      "note": "AAVM CLI 入口（process.args/IO.read_line/行数协议）。ACC 需要自己的驱动（源码→HIR→native 多阶段、诊断、--entry/--capability 语义），入口形态参考，代码不搬迁。"
+    },
+    {
+      "id": "MD-109",
+      "subject": "crates/auto-lang/src/lib.rs AUTO_LIB_FILES_V2",
+      "kind": "module-role",
+      "conclusion": "retire-for-acc",
+      "evidence": [
+        "crates/auto-lang/src/lib.rs:1893",
+        "crates/auto-lang/src/lib.rs:1905"
+      ],
+      "bound_input_hashes": {
+        "crates/auto-lang/src/lib.rs": "4d6c4703c667f99cfe55e6f96471e89c7e82346c788a56b907447260786e8fbe"
+      },
+      "note": "拼接消费面（剥 use 行后拼单文件）是 AAVM 运行形态的产物。ACC 按真模块系统编译（多编译单元+链接），拼接模式在 ACC 主线退役；注册表本身保留为 AAVM 事实源，本计划作为受管证据监控。"
+    },
+    {
+      "id": "MD-201",
+      "subject": "acc:name-resolution",
+      "kind": "module-role",
+      "conclusion": "new-subject",
+      "evidence": [
+        "auto/lib/parser.at:1802",
+        "auto/lib/parser.at:420"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559"
+      },
+      "note": "新建。现有 lib 无跨模块名字解析（decl_register/decl_lookup 是 P 内单游标作用域表）；741 仅单模块 DefRef。ACC 源码编译必须有模块级解析主体，不能从旧 lib 名册推导已存在。"
+    },
+    {
+      "id": "MD-202",
+      "subject": "acc:typecheck",
+      "kind": "module-role",
+      "conclusion": "new-subject",
+      "evidence": [
+        "auto/lib/typeinfo.at:39"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/typeinfo.at": "9eed6f5f243225c17d4f79e5c53918d03a525e2e2bd99998b6ba6f95c3bb254a"
+      },
+      "note": "新建。Display 串推断（MD-104）不构成类型主体；ACC typeck 须产出 741 语义（精确宽度/初始化/块结构/求值位置）可验证的类型凭证。"
+    },
+    {
+      "id": "MD-203",
+      "subject": "acc:source-to-hir-adapter",
+      "kind": "module-role",
+      "conclusion": "new-subject",
+      "evidence": [
+        "docs/specs/auto-hir/project.md:6",
+        "docs/specs/auto-ac/project.md:7"
+      ],
+      "bound_input_hashes": {
+        "docs/specs/auto-hir/project.md": "04e95f7ce4805b7e409bf89af49fe9c43be0632157043470099e76e1fe83bee6",
+        "docs/specs/auto-ac/project.md": "31f20c811950600a1afcdb5fb05a8199713188e7e3b54e1872dbd336f9870b17"
+      },
+      "note": "新建。741 只接 Schema-bound Atom 文本；Auto 源码→Checked HIR 的 adapter（含来源映射）不存在。NEXT-B 候选主体。"
+    },
+    {
+      "id": "MD-204",
+      "subject": "acc:semantic-lowering",
+      "kind": "module-role",
+      "conclusion": "new-subject",
+      "evidence": [
+        "docs/design/strategy/auto-native-backend-evolution.md:51"
+      ],
+      "bound_input_hashes": {
+        "docs/design/strategy/auto-native-backend-evolution.md": "becb2f45d66bffc81b98bea33c3c6c0bb40418be2f958cd1b9a58de283a5be27"
+      },
+      "note": "新建。while/for 脱糖、is-match 展开、命名参数落位等语义 lowering 与目标能力门；战略要求显式 pass 边界（T-04 契约承接）。"
+    },
+    {
+      "id": "MD-205",
+      "subject": "acc:driver-diagnostics",
+      "kind": "module-role",
+      "conclusion": "new-subject",
+      "evidence": [
+        "auto/aavm.at:16",
+        "docs/specs/auto-ac/project.md:49"
+      ],
+      "bound_input_hashes": {
+        "auto/aavm.at": "0ff06f099253e1aa1c8d83ef2810771f10d5a01e5388729354dd9fa249d4ee9a",
+        "docs/specs/auto-ac/project.md": "31f20c811950600a1afcdb5fb05a8199713188e7e3b54e1872dbd336f9870b17"
+      },
+      "note": "新建。多阶段驱动（读源→解析→verify→build）+ file:line:col 来源诊断编排；ac-probe check/build 的驱动骨架可外扩但不能冒充已接源码。"
+    },
+    {
+      "id": "MD-206",
+      "subject": "acc:backend-bridge-client",
+      "kind": "module-role",
+      "conclusion": "new-subject",
+      "evidence": [
+        "docs/design/strategy/auto-native-backend-evolution.md:70"
+      ],
+      "bound_input_hashes": {
+        "docs/design/strategy/auto-native-backend-evolution.md": "becb2f45d66bffc81b98bea33c3c6c0bb40418be2f958cd1b9a58de283a5be27"
+      },
+      "note": "新建。Auto 侧薄 C ABI 客户端或后端进程协议客户端；候选矩阵与选择条件见 auto-acc-bootstrap-contract.md §桥接。"
+    },
+    {
+      "id": "MD-301",
+      "subject": "service:cranelift-bridge",
+      "kind": "runtime-service",
+      "conclusion": "reference",
+      "evidence": [
+        "docs/specs/auto-ac/project.md:4",
+        "docs/design/strategy/auto-native-backend-evolution.md:25"
+      ],
+      "bound_input_hashes": {
+        "docs/specs/auto-ac/project.md": "31f20c811950600a1afcdb5fb05a8199713188e7e3b54e1872dbd336f9870b17",
+        "docs/design/strategy/auto-native-backend-evolution.md": "becb2f45d66bffc81b98bea33c3c6c0bb40418be2f958cd1b9a58de283a5be27"
+      },
+      "note": "保留（非主体）：Cranelift 0.126.2 Rust 库经薄桥消费；v0.6 主后端，ACC 不重写机器码生成。"
+    },
+    {
+      "id": "MD-302",
+      "subject": "service:system-linker",
+      "kind": "runtime-service",
+      "conclusion": "reference",
+      "evidence": [
+        "docs/specs/auto-ac/project.md:20"
+      ],
+      "bound_input_hashes": {
+        "docs/specs/auto-ac/project.md": "31f20c811950600a1afcdb5fb05a8199713188e7e3b54e1872dbd336f9870b17"
+      },
+      "note": "保留（非主体）：rust-lld COFF 模式首选、MSVC link.exe 备选；工具链发现逻辑（link.rs）维持 Rust 侧。"
+    },
+    {
+      "id": "MD-303",
+      "subject": "service:host-intrinsics",
+      "kind": "runtime-service",
+      "conclusion": "required",
+      "evidence": [
+        "auto/lib/engine.at:808",
+        "auto/lib/engine.at:819",
+        "auto/aavm.at:19",
+        "auto/aavm.at:24"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328",
+        "auto/aavm.at": "0ff06f099253e1aa1c8d83ef2810771f10d5a01e5388729354dd9fa249d4ee9a"
+      },
+      "note": "File.read_text(_range)/IO.read_line/process.args/print 为宿主内建（engine nat#1015/1016 等）。ACC 驱动读源码/写产物必需等价服务：短期经桥/宿主提供（算非主体），长期清单进运行时工作包；所有权/释放语义未定（探针 probe-rt-own）。"
+    },
+    {
+      "id": "MD-304",
+      "subject": "service:overflow-trap-70",
+      "kind": "runtime-service",
+      "conclusion": "implemented",
+      "evidence": [
+        "docs/specs/auto-ac/project.md:35"
+      ],
+      "bound_input_hashes": {
+        "docs/specs/auto-ac/project.md": "31f20c811950600a1afcdb5fb05a8199713188e7e3b54e1872dbd336f9870b17"
+      },
+      "note": "有界 i32 溢出 trap=ExitProcess(70) 已在 741 测试 profile 实现；与完整异常 ABI（trap 展开栈/资源清理）分开验收，后者 required 归 ABI 线。"
+    },
+    {
+      "id": "MD-401",
+      "subject": "cap:enum-plain",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/token.at:9",
+        "auto/lib/parser.at:0",
+        "auto/lib/codegen.at:0"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/token.at": "963ccc1df73b86e510db95f13dda0e3ea17462f7c3f4b7652947e9f9f3381d74",
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0"
+      },
+      "note": "无载荷 enum：lib 全员在用（TokenKind 140 臂、Op、OpCode）；AC core-i32 类型面无 enum → required（ACC 编译自身第一优先）。"
+    },
+    {
+      "id": "MD-402",
+      "subject": "cap:enum-payload",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/engine.at:55"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328"
+      },
+      "note": "带载荷 sum type（Val 六变体，VInst 双载荷）。ACC 运行时语义迁移（Val/oracle）与完整 Auto 支持都需要；归聚合类型工作包，先于泛型。"
+    },
+    {
+      "id": "MD-403",
+      "subject": "cap:record",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/lexer.at:30",
+        "auto/lib/codegen.at:0",
+        "auto/lib/parser.at:71"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/lexer.at": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01",
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559"
+      },
+      "note": "record/type 字段聚合：lexer Token/Tok、parser P/E、codegen I/CG 等 25+ 类型；唯一构造形态为位置式 Type(args)（命名字段构造扫描 0 例）。AC 无聚合 → required。"
+    },
+    {
+      "id": "MD-404",
+      "subject": "cap:method",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/parser.at:0",
+        "auto/lib/codegen.at:0",
+        "auto/lib/a2r.at:0"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+        "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae"
+      },
+      "note": "类型体方法（P15/CG34/Ar25）+ static new 构造器（codegen.at:168、a2r.at:165）+ 隐式接收者 .m() 形态（parser.at:151）。AC 无方法机制 → required。"
+    },
+    {
+      "id": "MD-405",
+      "subject": "cap:generic-list",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/parser.at:0",
+        "auto/lib/codegen.at:0",
+        "auto/lib/a2r.at:0"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+        "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae"
+      },
+      "note": "List<T> 注记（parser25/codegen72/a2r73 处）。内置泛型容器是 ACC 最低需求；用户自定义泛型另计（unknown，探针 probe-generics，归聚合工作包）。"
+    },
+    {
+      "id": "MD-406",
+      "subject": "cap:string",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/lexer.at:0",
+        "auto/lib/token.at:219",
+        "docs/specs/auto-hir/project.md:13"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/lexer.at": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01",
+        "auto/lib/token.at": "963ccc1df73b86e510db95f13dda0e3ea17462f7c3f4b7652947e9f9f3381d74",
+        "docs/specs/auto-hir/project.md": "04e95f7ce4805b7e409bf89af49fe9c43be0632157043470099e76e1fe83bee6"
+      },
+      "note": "str 类型/字面量/转义 + 拼接比较：lib 全员在用（annotation 计数 lexer12/parser76/codegen127/a2r141）；AC 完全无字符串 → required 最高优先（无字符串则诊断与符号表都无法成立）。"
+    },
+    {
+      "id": "MD-407",
+      "subject": "cap:multiline-string",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "source-demand",
+      "evidence": [
+        "auto/lib/engine.at:314",
+        "auto/lib/engine.at:333"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328"
+      },
+      "note": "跨行字符串字面量在 lib 源码真实存在（扫描器以保守异常上报并恢复，能力证据 multiline-string-literal×4）。ACC 的 str 语义须定义跨行字面量行为；探针 probe-str-ml。"
+    },
+    {
+      "id": "MD-408",
+      "subject": "cap:char",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/lexer.at:0"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/lexer.at": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01"
+      },
+      "note": "字符字面量与比较（lexer 81 例，含转义）。char↔int 关系（char_at 返回 int、'0'..'9' 比较）须精确化：int/char 映射 unknown 细则（probe-char-int，计划 §10.2）。"
+    },
+    {
+      "id": "MD-409",
+      "subject": "cap:int-ops",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/codegen.at:0",
+        "docs/specs/auto-hir/project.md:12"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+        "docs/specs/auto-hir/project.md": "04e95f7ce4805b7e409bf89af49fe9c43be0632157043470099e76e1fe83bee6"
+      },
+      "note": "int 全序运算（add/sub/mul/div/mod/eq/ne/lt/gt/le/ge）lib 重度使用；AC 仅 add/mul/lt → required（扩面清单明确：sub/div/mod/eq/ne/gt/le/ge）。宽度 int↔i32 映射 unknown（probe-int-width，计划 §10.2）。"
+    },
+    {
+      "id": "MD-410",
+      "subject": "cap:bool-logic",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/lexer.at:0",
+        "auto/lib/parser.at:0"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/lexer.at": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01",
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559"
+      },
+      "note": "bool + &&/||/! 短路语义：lexer 逻辑符 23 处、parser 64、codegen 179、a2r 214。AC bool 有类型无运算 → required（短路求值顺序义务进 pass 契约）。"
+    },
+    {
+      "id": "MD-411",
+      "subject": "cap:control-flow",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/parser.at:0",
+        "auto/lib/codegen.at:0",
+        "auto/lib/a2r.at:0"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+        "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae"
+      },
+      "note": "if/else-if/while/for-in/break/continue：while(parser59/codegen153/a2r136)、for(16/4/6)。741 HIR 有块/循环脚手架；while/for 以脱糖 lowering 进入（T-04 阶段契约），break/continue 词法栈规则已备。"
+    },
+    {
+      "id": "MD-412",
+      "subject": "cap:is-match",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/token.at:155",
+        "auto/lib/engine.at:0"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/token.at": "963ccc1df73b86e510db95f13dda0e3ea17462f7c3f4b7652947e9f9f3381d74",
+        "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328"
+      },
+      "note": "is 模式匹配语句：token2/lexer5/parser14/typeinfo5/engine24/a2r13 处，lib 全员核心控制形态。AC 无 → required（对 enum 的展开 lowering 属聚合工作包；447 已收编形态清单）。"
+    },
+    {
+      "id": "MD-413",
+      "subject": "cap:use-module",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/a2r.at:47",
+        "auto/lib/engine.at:51"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae",
+        "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328"
+      },
+      "note": "显式 use 边 15 条（本 manifest 全量记录）；AC 单模块 → required（多模块 HIR bundle+跨模块 DefRef 是 ACC 主体前置）。"
+    },
+    {
+      "id": "MD-414",
+      "subject": "cap:mut-param",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/parser.at:0",
+        "auto/lib/a2r.at:0"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
+        "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae"
+      },
+      "note": "mut 参数（parser35/a2r55/typeinfo8/codegen26 处）。741 place 级 mutable 已有；参数 mut 模式与视图/移动语义边界 unknown（probe-own-param，归所有权工作包）。"
+    },
+    {
+      "id": "MD-415",
+      "subject": "cap:globals",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/codegen.at:1761",
+        "auto/lib/codegen.at:0"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559"
+      },
+      "note": "全局变量（c.is_global/gkey/var_gtor 使用链，Plan 511 引入）。AC 无全局段 → required（静态数据/初始化顺序义务进 lowering 契约）。"
+    },
+    {
+      "id": "MD-416",
+      "subject": "cap:fstring",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "source-demand",
+      "evidence": [
+        "auto/lib/a2r.at:3887",
+        "auto/lib/lexer.at:0"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae",
+        "auto/lib/lexer.at": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01"
+      },
+      "note": "f-string 插值：a2r 源码真实使用（f\"Some(${e})\"），lexer 有 FStr token 族。required 或对少数使用点改写为拼接（改写候选记录于 inventory.md §决策）。"
+    },
+    {
+      "id": "MD-417",
+      "subject": "cap:pipe-op",
+      "kind": "capability",
+      "conclusion": "not-required",
+      "dimension": "source-demand",
+      "evidence": [
+        "auto/lib/a2r.at:0",
+        "auto/lib/lexer.at:0"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae",
+        "auto/lib/lexer.at": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01"
+      },
+      "note": "|> 管道算子仅 a2r×3/lexer×2（注释域为主）。ACC 主体无需求；如迁移触及，改写为方法调用形态。not-required（附改写路径）。"
+    },
+    {
+      "id": "MD-418",
+      "subject": "cap:error-adt",
+      "kind": "capability",
+      "conclusion": "not-required",
+      "dimension": "source-demand",
+      "evidence": [
+        "auto/lib/codegen.at:4303",
+        "auto/lib/a2r.at:3301",
+        "auto/lib/parser.at:449"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+        "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae",
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559"
+      },
+      "note": "lib 源码不消费 Option/Result（a2r 仅发射 Rust 文本 Some(/Option<）。编译器自身错误处理=字符串哨兵（PARSE-ERROR/TYPE-ERROR）+ 自定义 record（AutoResult2 mods+err）。ACC v1 沿用该形态；ADT 错误处理属完整语言面（另行 required）。"
+    },
+    {
+      "id": "MD-419",
+      "subject": "cap:float",
+      "kind": "capability",
+      "conclusion": "unknown",
+      "dimension": "split",
+      "evidence": [
+        "auto/lib/token.at:16",
+        "auto/lib/codegen.at:0",
+        "auto/lib/engine.at:0"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/token.at": "963ccc1df73b86e510db95f13dda0e3ea17462f7c3f4b7652947e9f9f3381d74",
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+        "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328"
+      },
+      "note": "词法识别 float/double 字面量（TokenKind.Float/Double、lexer 浮点后缀）＝source-demand 弱需求；codegen/engine 发射执行 0 例（Missing 自述）；AC 无浮点。ACC 主体自举不阻塞；完整语言面 required-later。探针 probe-float-need 由源码前端工作包裁决。"
+    },
+    {
+      "id": "MD-420",
+      "subject": "cap:closure-task-cast",
+      "kind": "capability",
+      "conclusion": "not-required",
+      "dimension": "source-demand",
+      "evidence": [
+        "auto/lib/engine.at:63",
+        "auto/lib/a2r.at:0"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328",
+        "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae"
+      },
+      "note": "闭包/as 转型/task/spawn：lib 源码 0 使用（engine VClo 是 VM 内部闭包载体，非源语法）。ACC v1 not-required；完整语言面另行。"
+    },
+    {
+      "id": "MD-421",
+      "subject": "cap:diagnostics-source-map",
+      "kind": "capability",
+      "conclusion": "required",
+      "dimension": "both",
+      "evidence": [
+        "auto/lib/parser.at:449",
+        "docs/specs/auto-hir/project.md:41"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
+        "docs/specs/auto-hir/project.md": "04e95f7ce4805b7e409bf89af49fe9c43be0632157043470099e76e1fe83bee6"
+      },
+      "note": "lib 用 p.fail 单槽字符串；AC 741 已有 file:line:col 阶段化诊断（Atom HIR 域）。源码 adapter 必须携带来源映射（span→HIR），required；实现状态=741 已实现（HIR 域）+ 源码域 required。"
+    },
+    {
+      "id": "MD-501",
+      "subject": "unknown:p-cursor-receivers",
+      "kind": "unknown-resolution",
+      "conclusion": "resolved",
+      "evidence": [
+        "auto/lib/parser.at:71",
+        "auto/lib/parser.at:376",
+        "auto/lib/typeinfo.at:51",
+        "auto/lib/codegen.at:1362",
+        "auto/lib/a2r.at:600"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
+        "auto/lib/typeinfo.at": "9eed6f5f243225c17d4f79e5c53918d03a525e2e2bd99998b6ba6f95c3bb254a",
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+        "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae"
+      },
+      "note": "113 项 unknown-receiver 中 p./pp./self. 接收者族（kind/next/peek/text/expect/fail/bind/lookup/decl_*/push_scope/pop_scope/skip_empty_lines/peek_text/line）与 parser.at P 类型方法集逐名吻合（P 声明 parser.at:71，方法清单见 manifest）。人工裁定：全部为 P 游标方法调用，跨文件使用经 use 导入 P 类型。扫描保留 unknown 是正确的保守行为。"
+    },
+    {
+      "id": "MD-502",
+      "subject": "unknown:cg-receivers",
+      "kind": "unknown-resolution",
+      "conclusion": "resolved",
+      "evidence": [
+        "auto/lib/codegen.at:168",
+        "auto/lib/codegen.at:1452",
+        "auto/lib/codegen.at:4759"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0"
+      },
+      "note": "c./self. 接收者族（emit/emit_load/emit_store/add_var/fail/lookup/pool_*/scope 族/serialize/tys_lookup/var_*/loop_*）与 CG 方法集逐名吻合（static new 构造，codegen.at:168）。"
+    },
+    {
+      "id": "MD-503",
+      "subject": "unknown:ar-receivers",
+      "kind": "unknown-resolution",
+      "conclusion": "resolved",
+      "evidence": [
+        "auto/lib/a2r.at:165",
+        "auto/lib/a2r.at:3141",
+        "auto/lib/a2r.at:4479"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae"
+      },
+      "note": "a./self. 接收者族（blank/emit/enum_find/fn_find/ty_find/line/result/vpush/vscope/vty 等）与 Ar 方法集逐名吻合（static new，a2r.at:165；驱动 ar_emit_program a2r.at:4479）。"
+    },
+    {
+      "id": "MD-504",
+      "subject": "unknown:engine-c-field-idx",
+      "kind": "unknown-resolution",
+      "conclusion": "resolved",
+      "evidence": [
+        "auto/lib/engine.at:584",
+        "auto/lib/engine.at:586"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328",
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0"
+      },
+      "note": "engine.at:586 c.field_idx/c.pool：c 为跨模块 CG 实例（engine use 导入 CG），方法属 CG 集。引擎在 GET-FIELD 指令实现中直接操作 CG 符号表——跨模块方法调用真实案例。"
+    },
+    {
+      "id": "MD-505",
+      "subject": "unknown:engine-variant-ctors",
+      "kind": "unknown-resolution",
+      "conclusion": "resolved",
+      "evidence": [
+        "auto/lib/engine.at:55",
+        "auto/lib/engine.at:56"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328"
+      },
+      "note": "V* 裸调用为 Val payload 变体构造（enum Val 六变体全部带载荷）。已升级为 enum-variant-construction 类别（工具 _post_classify）。"
+    },
+    {
+      "id": "MD-506",
+      "subject": "unknown:multiline-strings",
+      "kind": "unknown-resolution",
+      "conclusion": "resolved",
+      "evidence": [
+        "auto/lib/engine.at:314",
+        "auto/lib/engine.at:315"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328"
+      },
+      "note": "扫描异常 unterminated-string×4 实为跨行字符串字面量（out + \"\\n\" 源码跨行书写）。语义裁定：真实语言构造，工具按异常+恢复保守处理正确；能力登记 MD-407。"
+    }
+  ]
+}

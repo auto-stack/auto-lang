@@ -122,16 +122,10 @@
   - c.var_ty2(unknown-receiver) 首行 1223 ×1
 
 ### `auto/lib/engine.at`
-- 声明 21（方法 0）；use 边 2；调用候选 99（unknown 7）
+- 声明 21（方法 0）；use 边 2；调用候选 99（unknown 1）
 - 异常：[{'line': 314, 'kind': 'unterminated-string'}, {'line': 315, 'kind': 'unterminated-string'}, {'line': 333, 'kind': 'unterminated-string'}, {'line': 334, 'kind': 'unterminated-string'}]；括号余额 0
 - 能力证据：boolean-type-annotation×4, char-literal×2, comparison-operator×62, enum-declaration×1, free-function×20, generic-list-type×25, if-else×120, integer-type-annotation×16, is-match-statement×24, logical-operator×10, multiline-string-literal×4, mut-parameter×5, plain-list-value×15, return-statement×35, string-literal×33, string-type-annotation×14, use-module×2, while-loop×15
 - unknown 候选（交人工核对，逐条列出）：
-  - VArr(unknown-bare-call) 首行 59 ×1
-  - VBool(unknown-bare-call) 首行 58 ×1
-  - VClo(unknown-bare-call) 首行 63 ×1
-  - VInst(unknown-bare-call) 首行 60 ×1
-  - VInt(unknown-bare-call) 首行 56 ×1
-  - VStr(unknown-bare-call) 首行 57 ×1
   - c.field_idx(unknown-receiver) 首行 586 ×2
 
 ### `auto/lib/a2r.at`
