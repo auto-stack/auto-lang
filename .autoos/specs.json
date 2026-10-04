@@ -1220,15 +1220,19 @@
             "commit:6c5c5b714"
           ],
           "file": "docs/plans/archive/716-m4-upstream-batch.md"
-        }
-      ,
+        },
         {
           "id": "P724-9",
           "title": "Rust/a2r HTTP 客户端异步收敛交付摘要（PLAN-724）",
           "content": "T-01..T-08 全交付：两条 Rust HTTP facade（独立 a2r_std::http 与 auto_lang::a2r_std::http）网络执行单源化到共享 async 内核（crates/a2r-std/src/http/client.rs：reqwest async + 固定 runtime + 有界准入 + 总期限 + 增量体预算 + owned typed Response + 真取消；流=有界队列/背压/期限/UTF-8 carry/SSE 共享解码/单次终结/close 真取消）；P707-R1 红转绿（e4 直驱未 register_live_op 被 707 取消竞态守卫中止——测试走生产协议，守卫零改动，债务销号）；trans/rust.rs typed 上下文感知 lowering（元数分派/builder 分型/流分型/for-in 哨兵循环）。验证：内核 36+集成 7+golden 2+探针 3+编译运行 e2e 3 腿全绿；tt/t/th 红集与主检出基线逐名一致（全部在案预存族）；四报告（client-decision/parity/resource-lifecycle/verification）入库。delivery 8a7fa3cee；ff-only 落地（rebase 后 range-diff 7/7 全等）；Spec delta SD-01..06 沉淀（7 designs 投影 docsha 见 designs 段）。",
-          "tags": ["plan-724", "delivery", "commit:8a7fa3cee"],
+          "tags": [
+            "plan-724",
+            "delivery",
+            "commit:8a7fa3cee"
+          ],
           "file": "docs/plans/724-a2r-http-client-async-convergence.md"
-        }]
+        }
+      ]
     },
     {
       "id": "goals",
@@ -4880,57 +4884,119 @@
             "docsha:07a644d95f92d73e"
           ],
           "file": "docs/specs/website/design/ui-presentation.md"
-        }
-      ,
+        },
         {
           "id": "P724-1",
           "title": "共享 HTTP 客户端内核契约：单执行源与有界准入/真取消（PLAN-724 SD-01）",
           "content": "PLAN-724 交付落账（a2r-std 域现行态投影；canonical 唯源=docs/specs/a2r-std/design/http-client-runtime.md，delivery 8a7fa3cee）。契约：两条 Rust facade（独立 a2r_std::http 与 auto_lang::a2r_std::http 生成服务限定名面）全部网络执行单源到共享内核 http::client——reqwest async + 固定 multi-thread runtime（OnceLock 单例，AUTO_A2R_HTTP_WORKERS 默认 2）+ 复用连接 Client；async 面通知等待（丢 future 即取消），同步桥接为响亮边界（async 上下文 panic 不静默阻塞）；限额 active 8/queue 64/体 10MiB/总期限 30s、流 active 16/queue 32/队列 16×256KiB/raw 16KiB/建立 10s/idle 60s；流单次终结（Data/Eof/Failed），close/Drop=finalize+abort 生产者，EOF 先排空；headers JSON/行双适配器终结性报错；707 SSE decoder 原样提取 a2r_std::sse 单源共享（plan707_decode 零漂移守卫）；文件 helper 仍 ureq、sse_open int id 族不在 a2r 支持集。证据：724-client-decision/parity/resource-lifecycle 报告 + http_e2e_plan724 三腿 + a2r-std 43 测试。",
-          "tags": ["plan-724", "a2r-std", "sd-01", "commit:8a7fa3cee", "docsha:d059f123acac4347"],
+          "tags": [
+            "plan-724",
+            "a2r-std",
+            "sd-01",
+            "commit:8a7fa3cee",
+            "docsha:d059f123acac4347"
+          ],
           "file": "docs/specs/a2r-std/design/http-client-runtime.md"
         },
         {
           "id": "P724-2",
           "title": "a2r-std 模块卡 http 行：共享 async 内核与剩余差异登记（PLAN-724 SD-02）",
           "content": "PLAN-724 交付落账（canonical 唯源=docs/specs/a2r-std/project.md，delivery 8a7fa3cee）。模块表 http 行从 ureq 客户端改为共享 async 内核（reqwest async + 固定 runtime + 有界准入 + typed 结果 + 真取消），并登记剩余差异：文件 helper download/upload/download_resume 仍走 ureq（不为删除依赖扩展范围）；历史签名（认证 tuple、Response/HTTPStream 形状、last_status TLS）保留，HTTPStream.close 真取消（原占位退役）；VM sse_open int id 族不在 a2r 支持集。",
-          "tags": ["plan-724", "a2r-std", "sd-02", "commit:8a7fa3cee", "docsha:23a29f0f534c934b"],
+          "tags": [
+            "plan-724",
+            "a2r-std",
+            "sd-02",
+            "commit:8a7fa3cee",
+            "docsha:23a29f0f534c934b"
+          ],
           "file": "docs/specs/a2r-std/project.md"
         },
         {
           "id": "P724-3",
           "title": "a2r HTTP 客户端 typed 发射契约：上下文感知分派表（PLAN-724 SD-03 add）",
           "content": "PLAN-724 交付落账（trans 域现行态投影；canonical 唯源=docs/specs/auto-lang/trans/design/http-client-lowering.md，delivery 8a7fa3cee）。契约：http.* 客户端面发射按模块/接收者分型/元数/async 上下文分派——async 上下文（~T/Future fn、含 .await main、generator body、.go）选 *_async().await 内核面，同步上下文走同步桥接；两参普通 post 与三参认证按实参元数分流不冲突；builder 链与变量重绑定保持分型（send/send_async）；流生产者/方法/自由函数按 http_stream_async_vars 分型；for-in 流循环 = \"\" 哨兵 loop（break 不冒充关闭，作用域 Drop 回收）；非流接收者 next/close 与非 builder send 零打扰。编译运行支持面：30_plan724 金样 + http_e2e_plan724_{sync,async}（临时 cargo 工程实编实跑）。",
-          "tags": ["plan-724", "trans", "sd-03", "commit:8a7fa3cee", "docsha:72640ccca1d690d5"],
+          "tags": [
+            "plan-724",
+            "trans",
+            "sd-03",
+            "commit:8a7fa3cee",
+            "docsha:72640ccca1d690d5"
+          ],
           "file": "docs/specs/auto-lang/trans/design/http-client-lowering.md"
         },
         {
           "id": "P724-4",
           "title": "trans overview：a2r HTTP typed 发射能力入现状（PLAN-724 SD-03 modify）",
           "content": "PLAN-724 交付落账（canonical 唯源=docs/specs/auto-lang/trans/overview.md，delivery 8a7fa3cee）。现状清单增 a2r HTTP 客户端 typed 发射条目：分散特判收敛为上下文感知分派（async 面选择、元数分流、builder 分型、流分型 for-in），指向 http-client-lowering 设计契约与 http-client-runtime 运行时契约。",
-          "tags": ["plan-724", "trans", "sd-03", "commit:8a7fa3cee", "docsha:f27c3442a1798746"],
+          "tags": [
+            "plan-724",
+            "trans",
+            "sd-03",
+            "commit:8a7fa3cee",
+            "docsha:f27c3442a1798746"
+          ],
           "file": "docs/specs/auto-lang/trans/overview.md"
         },
         {
           "id": "P724-5",
           "title": "异步 HTTP 结果通道：登记协议钉与错误消费分层（PLAN-724 SD-04）",
           "content": "PLAN-724 交付落账（stdlib 域现行态投影；canonical 唯源=docs/specs/stdlib/design/async-http-result-lifecycle.md，delivery 8a7fa3cee）。规则 1 增登记协议钉：register_live_op 先于 submit 是提交方义务（生产 shim 与测试同责），未登记 managed 提交被 707 取消竞态守卫中止（e4 30s 恒红实证，修复走生产协议，守卫不得削弱）；规则 3 改写为槽终结与消费接口分离：Err 落表=通道终结（take 可取不复活），消费面按 712 错误分层——网络失败可 catch、非 2xx 是错误形状值不 throw，历史\"Err 统一折 status:0 JSON\"表述退休；规则 4 增 Rust 内核同构注记（a2r_std::http::client 独立实现）；规则 6 增 PLAN-724 登记协议回归钉（e4 配对+未登记反例）。",
-          "tags": ["plan-724", "stdlib", "sd-04", "commit:8a7fa3cee", "docsha:de34e79043b00234"],
+          "tags": [
+            "plan-724",
+            "stdlib",
+            "sd-04",
+            "commit:8a7fa3cee",
+            "docsha:de34e79043b00234"
+          ],
           "file": "docs/specs/stdlib/design/async-http-result-lifecycle.md"
         },
         {
           "id": "P724-6",
           "title": "标准库后台装配：客户端面收敛与剩余后台差异（PLAN-724 SD-05）",
           "content": "PLAN-724 交付落账（stdlib 域现行态投影；canonical 唯源=docs/specs/stdlib/design/backend-assembly.md，delivery 8a7fa3cee）。http 行 Rust/其他后端列更新：a2r-std/src/http.rs 与 auto_lang::a2r_std::http 客户端面收敛到共享 async 内核（PLAN-724，文件 helper 仍 ureq）；消费端列改写：客户端面已收敛（两 facade 单内核、auto_lang::a2r_std 限定名有真 TCP 腿），仍不同后台面=VM 流 park/resume 与 Rust await 协议独立、生成服务任意外部流 handler/文件传输 API/装配 manifest 未收敛（另案分期）。",
-          "tags": ["plan-724", "stdlib", "sd-05", "commit:8a7fa3cee", "docsha:d3b46a525eccf9da"],
+          "tags": [
+            "plan-724",
+            "stdlib",
+            "sd-05",
+            "commit:8a7fa3cee",
+            "docsha:d3b46a525eccf9da"
+          ],
           "file": "docs/specs/stdlib/design/backend-assembly.md"
         },
         {
           "id": "P724-7",
           "title": "外部流生命周期：Rust 客户端迁移落地与协议差异明示（PLAN-724 SD-06）",
           "content": "PLAN-724 交付落账（stdlib 域现行态投影；canonical 唯源=docs/specs/stdlib/design/http-stream-lifecycle.md，delivery 8a7fa3cee）。支持矩阵增\"Rust 客户端已迁移\"：a2r 两 facade 外部流消费收敛到共享 async 内核（有界队列/背压/期限/真取消/SSE 共享解码），707 状态机/预算/单次终结语义以 Rust 形态同构落地于 http-client-runtime；协议差异明示——VM 轨=park/resume 凭据+引擎泵恢复，Rust 轨=async await/通知等待，两者不共享资源表与许可；非目标项移除 a2r-std 迁移（已完成），保留 auto-man 生成服务任意外部流 handler（另案）。",
-          "tags": ["plan-724", "stdlib", "sd-06", "commit:8a7fa3cee", "docsha:9ea9a622fa76d69c"],
+          "tags": [
+            "plan-724",
+            "stdlib",
+            "sd-06",
+            "commit:8a7fa3cee",
+            "docsha:9ea9a622fa76d69c"
+          ],
           "file": "docs/specs/stdlib/design/http-stream-lifecycle.md"
-        }]
+        },
+        {
+          "id": "P741-1",
+          "title": "auto-hir core-i32 typed HIR contract（SD-01）",
+          "content": "PLAN-741 沉淀 current-state 契约：core-i32-draft descriptor 三重身份门（schema/revision/profile）；Atom 文本双槽/命名字段互换、同字段跨区重复拒绝；引用按类别+作用域绑定（模块表 vs 函数体表），category-mismatch 与 dangling-ref 分诊；TypeUse 内建简写与表引用在校验层归一、名义类型不折叠；verify 契约=let 初始化/assign 可变性双查/if 出口交集/循环零次保守/块唯一入口角色/求值位置唯一+表达式无环/入口全路径 return；CheckedModule 仅 verify() 可构造。canonical=docs/specs/auto-hir/project.md；证据=plan-741 text_binding 11/11 + hir_verify 8/8。",
+          "file": "docs/specs/auto-hir/project.md",
+          "related": [],
+          "status": "published",
+          "created": "2026-10-04",
+          "last_modified": "2026-10-04"
+        },
+        {
+          "id": "P741-2",
+          "title": "auto-ac native AOT closed loop（SD-02）",
+          "content": "PLAN-741 沉淀：Checked HIR → Cranelift 0.126.2 COFF → rust-lld（备选 MSVC link.exe 绝对路径）→ PE；入口=零参数 i32 DefRef，通用 ac_start 包装器 + ExitProcess，Auto 函数不做 OS 入口；溢出 trap=ExitProcess(70)（测试 profile 约定，非语言 ABI）；requires 能力显式门（hir.test.trace.v1 → test-support no_std 静态库 --support-lib）；ac-probe check/build 退出码 0/1/2、失败不覆盖制品、子进程硬截止；SDK 发现=AC741_* env → KitsRoot10 注册表 → 已知根。边界：HIR→exe ≠ 源码→exe，无生产 ABI/DLL/热重载宣称。canonical=docs/specs/auto-ac/project.md。",
+          "file": "docs/specs/auto-ac/project.md",
+          "related": [],
+          "status": "published",
+          "created": "2026-10-04",
+          "last_modified": "2026-10-04"
+        }
+      ]
     },
     {
       "id": "tests",
@@ -7979,15 +8045,32 @@
             "P716-D1"
           ],
           "file": "docs/plans/archive/716-m4-upstream-batch.md"
-        }
-      ,
+        },
         {
           "id": "P724-8",
           "title": "PLAN-724 复审 pass 收据（AC-01..06 pass，r1 @5cc8a936a）",
           "content": "复审 pass（reviewed_commit 5cc8a936a=6fc4a6023 rebase 等价映射，range-diff 7/7 全等；worktree 零脏文件；同会话复审局限已声明，裁定从工件重建）。代码级核查：async_http.rs 取消守卫对基线 diff=0 行；两 facade 零 blocking client/spawn_blocking/每请求线程（grep 实证仅文档注释）；e4 register→submit→consume/cancel 配对与未登记反例在码；内核 status 先行/raw min 切分/try_lock async 安全在码。复跑：a2r-std 43/43、plan724 5/5、http_e2e_plan724 3/3、e4 0.4s 绿、plan712 2/2、tv 162/162、tt 1832/1835（3 红=p053 族主检出基线同红复现，712 §10② 在案）；裸 t/th 红集与基线逐名一致（差异仅 e4 修复）；plan707_wait 序敏感 flake 两侧隔离均绿。SD-01..06 目标路径核对（2 add 缺席/5 modify 存在）、canonical specs 全 diff 零触碰、spec-lint 0 错误。账本：8080 不可达，循 711/713..720 先例手工外科插入（本条）。",
-          "tags": ["plan-724", "review-pass", "commit:8a7fa3cee", "same-session-review-disclosed"],
+          "tags": [
+            "plan-724",
+            "review-pass",
+            "commit:8a7fa3cee",
+            "same-session-review-disclosed"
+          ],
           "file": "docs/plans/724-a2r-http-client-async-convergence.md"
-        }]
+        },
+        {
+          "id": "P741-3",
+          "title": "PLAN-741 review pass（r1，同基线对照裁定）",
+          "content": "独立复审 pass @ 4dc4da636（基线 951b6c70f）：AC-01..08 全 pass（复审独立复跑 37/37、零 diff 核对、check PASS/tv 162/162）；P741-R1=日常档 26 红裁定非本回归（14 基线同红入 THR-D3 族 + 12 负载 flake 同 THR-D4 模式，对照收据 verification.md §4.1）；P741-R2=组内 auto-down detached 依赖 worktree 归 merge 清理。merge 交付链 1e4a2533a → lockfile 补交 cf369e0d5。",
+          "file": "docs/plans/archive/741-ac-hir-native-core.md",
+          "tags": [
+            "PLAN-741",
+            "review",
+            "native-aot",
+            "same-baseline"
+          ]
+        }
+      ]
     }
   ]
 }
