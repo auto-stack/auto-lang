@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-743
-status: drafting
+status: execution_done
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-04
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 6
 supersedes_spec_components: []
 new_spec_components:
@@ -259,35 +259,68 @@ Python工具需有限但有意义的反例测试：缺文件、注册表/源码�
 
 ## 8. 执行步骤
 
-- [ ] T-01 固定输入与差异清单（无任务前置；AC-01, AC-07）。
+- [x] T-01 固定输入与差异清单（无任务前置；AC-01, AC-07）。
   在专用worktree读§4来源和741归档；创建新目录
   docs/reports/743-acc-hir-contract/，记录执行HEAD/input hash/741 API身份/离线限制。
   核对auto/lib、auto/aavm.at和AUTO_LIB_FILES_V2，新增source-manifest.json初稿。
   验证：路径/hash逐项匹配；变化有分类，新旧快照不拼成未经说明的“最新”状态。
-- [ ] T-02 可重跑盘点工具（依赖T-01；AC-01, AC-02）。
+  [✅ 已完成] worktree commit 802e62aa6。七份证据输入执行期 hash 与起草表逐项一致
+  （差异分类=none）；run-context.md 记录执行基点 c1ac219e7、741 API 身份、离线限制。
+- [x] T-02 可重跑盘点工具（依赖T-01；AC-01, AC-02）。
   新建scripts/acc_inventory.py、scripts/tests/test_acc_inventory.py及fixtures；
   输出生成观察与独立人工结论，诊断缺失/漂移/未知，落实§5.1接口与失败测试。
   验证：§5.1三命令exit0；故障案例按§6非零；同输入两次输出字节一致。
-- [ ] T-03 审定主体/语言/运行时迁移表（依赖T-02；AC-01, AC-03）。
+  [✅ 已完成] commit fd7fb366d（工具 18 测试含 T-06 加固后全绿）；真实仓 --write/--check
+  exit0、字节确定性测试锁定；校准实证：File 命名空间/str 方法族补充（engine.at:808/819、
+  a2r 头方法映射证据）、enum 载荷变体识别（engine.at:55）、跨行字符串能力（engine.at:314）。
+- [x] T-03 审定主体/语言/运行时迁移表（依赖T-02；AC-01, AC-03）。
   人工复核auto/lib真实定义、use/方法/容器/运行时使用，
   形成报告inventory.md及manual-decisions.json（均新建），unknown有owner/后续探针。
   对照旧aavm Spec但不改它；--check绿且每个必需能力有源码位置或缺口证据。
-- [ ] T-04 HIR与桥接架构合同（依赖T-03；AC-04, AC-05, AC-06）。
+  [✅ 已完成] commit aeae23bb8。46 条 hash 绑定决定（MD-101..506：8 模块角色+6 新建主体
+  +21 能力+113 unknown 全消解）；--check 人工结论层 ok。
+- [x] T-04 HIR与桥接架构合同（依赖T-03；AC-04, AC-05, AC-06）。
   新建docs/design/strategy/auto-acc-bootstrap-contract.md，在00-intro.md注册；
   形成阶段表/pass模板/反例/桥接候选矩阵，精确引用
   experimental/ac-core/src/{hir,verify,native}.rs和schema/core-i32.atom，均只读。
   验证：契约逐字段审查、741路径映射不矛盾、链接可达，未把新阶段标成已实现。
-- [ ] T-05 验收与后续合同/Spec提案（依赖T-04；AC-06, AC-07）。
+  [✅ 已完成] commit da4b8bce5。S0–S6 阶段表（实现状态逐列标注）、pass 模板+
+  norm.canonical-form/eval.const-fold 两合同示例、X1–X8 反例、A/B 桥接矩阵与选择条件、
+  Gen1–3 代际判据；00-intro.md 策略表已登记。
+- [x] T-05 验收与后续合同/Spec提案（依赖T-04；AC-06, AC-07）。
   新建报告acceptance-matrix.md、next-work-packages.md、proposed-spec-delta.md；
   给语料/代际/依赖门及两张无编号候选，核查估算，提出SD-01..03正文增量。
   验证：8+锚点输入/oracle/结果齐全；每个未决项有探针和owner；AC/delta映射完整。
-- [ ] T-06 复核与独立交接（依赖T-05；AC-08）。
+  [✅ 已完成] commit c0a0981f7。10 锚点（existing 3/gated 7，门槛逐项落 owner）、
+  候选①（源码计算 adapter）/候选②（str+容器+int 运行时首批，选择证据=MD-405/406/409）、
+  26–36 估算逐组核查零变化、SD-01..03 提案正文。
+- [x] T-06 复核与独立交接（依赖T-05；AC-08）。
   在worktree再跑§5.1与git diff --check，检查工具/报告/合同diff；
   主检出仅维护本Plan进度，按/auto-plan:review独立检查并绑定revision1及实现HEAD。
   复审前将status置execution_done；通过后reviewed，不自行归档/合入。
   验证：收据覆盖全部AC，遗漏/债务登记；handoff交merge（以用户授权为准）。
+  [✅ 已完成] commit b96f7beab（+check 门对 HEAD 审计字段免疫的加固与回归测试）。
+  终验：三命令 exit0、18/18 测试绿、`git diff --check c1ac219e7..HEAD` clean、
+  worktree clean；实现 HEAD=b96f7beab（plan-743-dev，基点 c1ac219e7）。
 
 ## 9. 复审记录
+
+### 执行交接（2026-10-04，stage: work）
+
+- stage: work
+- plan_id: PLAN-743
+- plan_revision: 1
+- outcome: pass（任务/验收映射完成；非独立复审结论）
+- code_commit: b96f7beab（worktree plan-743-dev；基点=执行基 c1ac219e7，v0.6-dev）
+- worktree: D:/autostack/.wt/lang-743/auto-lang（保留待 review/merge）
+- task_ids: T-01..T-06 全部 [x]；current_step 6/6
+- evidence: §5.1 三命令 exit0（--write/--check/unittest 18 用例）；字节确定性测试锁定；
+  `git diff --check c1ac219e7..HEAD` clean；worktree clean；46 条人工决定 hash 绑定
+  全部新鲜；manifest 覆盖 9 受管输入、注册表一致。实现期校准三项有据：
+  File 命名空间、str 方法族、enum 载荷变体（engine.at:55/808/819）。
+- blockers: 无
+- next: /auto-plan:review（独立复审，绑定 revision 1 + 实现 HEAD b96f7beab；
+  通过后由 merge 沉淀 SD-01..03）。本记录不替代复审，不自行归档/合入。
 
 ### 起草交接（2026-10-04）
 
