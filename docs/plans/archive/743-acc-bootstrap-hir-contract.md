@@ -332,8 +332,8 @@ Python工具需有限但有意义的反例测试：缺文件、注册表/源码�
 | landed | rebase v0.6-dev（他 Session 并行推进两轮：3a7967262、c8d869878，均与本案零文件重叠）；range-diff 全等号（8/8 `=`，安全重写证明）。旧→新映射：802e62aa6→32ba22c5c、fd7fb366d→b773e4c5f、aeae23bb8→3a9b870d1、da4b8bce5→24c9a3aab、c0a0981f7→4b337c8fc、b96f7beab→0a416c84c、d7013b290→9abc87acc、4b54ba805→05d0127a4。`git merge --ff-only` 两次（05d0127a4、bbfca37b8），零 merge commit；delivery 终点=bbfca37b8 |
 | landed（SD-03 落地效应处置） | 主检出冒烟 --check 报 4 条 decision-stale（MD-203/406/409/421 绑定 docs/specs/auto-hir/project.md，SD-03 按设计改变其 hash）——staleness 门按预期工作；结论与被引证据行未变（交叉链接为纯追加），worktree 内机械重绑至落地 hash b050db47 并注明理由，commit c49bd4e2a→rebase→bbfca37b8，重绑后 --check 全绿。经验注记：人工决定绑定"本计划 delta 将修改的文件"时，落地必然触发重绑；后续计划可在起草时对 delta 目标文件预注 exempt |
 | ledger_refreshed | .autoos/specs.json upsert P743-1/P743-2（designs→两份 canonical spec）+ P743-3（reviews→R1/R2 裁定链），worktree 提交 274a9ded4 后 ff 落主检出，read-back 验证三 ID 在案；INDEX.md 由 spec-index.py 再生（+1 行 auto-acc） |
-| archived | 本文件 git mv 至 docs/plans/archive/，status: archived |
-| cleaned | 见文末补记（wt-guard clean 后移除 worktree/分支/组目录） |
+| archived | 本文件 git mv 至 docs/plans/archive/（commit bab649682），status: archived |
+| cleaned | worktree 0 dirty 且 HEAD 274a9ded4 已是 v0.6-dev 祖先；**wt-guard.sh 缺失**（AGENTS.md 所述 D:/autostack/wt-guard.sh 与全盘 maxdepth-3 搜索均无此脚本）——以等价 PowerShell ReparsePoint 全组扫描替代：`GUARD-EQUIVALENT-CLEAN: no reparse points in lang-743 group`；随后 `git worktree remove` + `git branch -d plan-743-dev`（was 274a9ded4）+ 组目录 rmdir，`git worktree list` 复核 0 登记。⚠️ 工具债：wt-guard.sh 需重建并回归 AGENTS.md 路径 |
 
 - 规范增量落地：SD-01→docs/specs/auto-acc/project.md（add）、SD-02→docs/specs/auto-hir/stage-contract.md（add）、SD-03→docs/specs/auto-hir/project.md（交叉链接节）。canonical 落地文本与冻结 delta 一致（R2 复核 b6b80711 未触）。
 - 主检出冒烟：--check exit0（46 决定绑定新鲜）、18/18 测试、v0.6-dev tip 干净。
