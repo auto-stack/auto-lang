@@ -187,10 +187,10 @@
         "docs/specs/auto-ac/project.md:7"
       ],
       "bound_input_hashes": {
-        "docs/specs/auto-hir/project.md": "04e95f7ce4805b7e409bf89af49fe9c43be0632157043470099e76e1fe83bee6",
+        "docs/specs/auto-hir/project.md": "b050db479d4bf4306f4a0954cf7128aa1dba8a6120c278f5fb2ca341db5ac0e7",
         "docs/specs/auto-ac/project.md": "31f20c811950600a1afcdb5fb05a8199713188e7e3b54e1872dbd336f9870b17"
       },
-      "note": "新建。741 只接 Schema-bound Atom 文本；Auto 源码→Checked HIR 的 adapter（含来源映射）不存在。NEXT-B 候选主体。"
+      "note": "新建。741 只接 Schema-bound Atom 文本；Auto 源码→Checked HIR 的 adapter（含来源映射）不存在。NEXT-B 候选主体。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕"
     },
     {
       "id": "MD-204",
@@ -391,9 +391,9 @@
       "bound_input_hashes": {
         "auto/lib/lexer.at": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01",
         "auto/lib/token.at": "963ccc1df73b86e510db95f13dda0e3ea17462f7c3f4b7652947e9f9f3381d74",
-        "docs/specs/auto-hir/project.md": "04e95f7ce4805b7e409bf89af49fe9c43be0632157043470099e76e1fe83bee6"
+        "docs/specs/auto-hir/project.md": "b050db479d4bf4306f4a0954cf7128aa1dba8a6120c278f5fb2ca341db5ac0e7"
       },
-      "note": "str 类型/字面量/转义 + 拼接比较：lib 全员在用（annotation 计数 lexer12/parser76/codegen127/a2r141）；AC 完全无字符串 → required 最高优先（无字符串则诊断与符号表都无法成立）。"
+      "note": "str 类型/字面量/转义 + 拼接比较：lib 全员在用（annotation 计数 lexer12/parser76/codegen127/a2r141）；AC 完全无字符串 → required 最高优先（无字符串则诊断与符号表都无法成立）。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕"
     },
     {
       "id": "MD-407",
@@ -436,9 +436,9 @@
       ],
       "bound_input_hashes": {
         "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
-        "docs/specs/auto-hir/project.md": "04e95f7ce4805b7e409bf89af49fe9c43be0632157043470099e76e1fe83bee6"
+        "docs/specs/auto-hir/project.md": "b050db479d4bf4306f4a0954cf7128aa1dba8a6120c278f5fb2ca341db5ac0e7"
       },
-      "note": "int 全序运算（add/sub/mul/div/mod/eq/ne/lt/gt/le/ge）lib 重度使用；AC 仅 add/mul/lt → required（扩面清单明确：sub/div/mod/eq/ne/gt/le/ge）。宽度 int↔i32 映射 unknown（probe-int-width，计划 §10.2）。"
+      "note": "int 全序运算（add/sub/mul/div/mod/eq/ne/lt/gt/le/ge）lib 重度使用；AC 仅 add/mul/lt → required（扩面清单明确：sub/div/mod/eq/ne/gt/le/ge）。宽度 int↔i32 映射 unknown（probe-int-width，计划 §10.2）。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕"
     },
     {
       "id": "MD-410",
@@ -634,9 +634,9 @@
       ],
       "bound_input_hashes": {
         "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
-        "docs/specs/auto-hir/project.md": "04e95f7ce4805b7e409bf89af49fe9c43be0632157043470099e76e1fe83bee6"
+        "docs/specs/auto-hir/project.md": "b050db479d4bf4306f4a0954cf7128aa1dba8a6120c278f5fb2ca341db5ac0e7"
       },
-      "note": "lib 用 p.fail 单槽字符串；AC 741 已有 file:line:col 阶段化诊断（Atom HIR 域）。源码 adapter 必须携带来源映射（span→HIR），required；实现状态=741 已实现（HIR 域）+ 源码域 required。"
+      "note": "lib 用 p.fail 单槽字符串；AC 741 已有 file:line:col 阶段化诊断（Atom HIR 域）。源码 adapter 必须携带来源映射（span→HIR），required；实现状态=741 已实现（HIR 域）+ 源码域 required。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕"
     },
     {
       "id": "MD-501",
