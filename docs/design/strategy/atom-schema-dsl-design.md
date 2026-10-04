@@ -4,6 +4,7 @@
 > 用户已澄清：`info MyNode select { ... }` 等价于 `info(id: "MyNode", kind: select) { ... }`，
 > 其中 select 是业务 enum 值，不是节点 tag，也不自动选择另一份 Schema。
 > 关联：[Atom/Batom v2](atom-batom-v2-design.md)。仅补充设计，不修改 v0.5 parser/运行时，不分配正式 Plan 编号。
+> 第一组消费者样例：[HIR Atom 文本](auto-hir-atom-text.md)；其中 ExprKind 需要下述受限分支约束。
 
 ## 1. 建议的职责与入口
 
@@ -201,6 +202,18 @@ Batom/S 可用 Schema 和稳定编号缩短；都不能把 enum 不加说明地�
 若引入分支 Schema，公共头部字段的类型、编号和语法绑定必须一致，先绑定判别字段，
 再选择明确的分支验证 body；未知分支按声明策略诊断或保留。此功能需独立验收，
 不因为 secondary 的例子而默认把通用 Schema 分派列为当前原型的必交付。
+
+### 3.4 HIR 消费者补充：受限分支字段契约
+
+[HIR 文本样例](auto-hir-atom-text.md) 使用 expr.kind 区分 constant/read_local/binary/call。
+每个 case 有不同的 required/allowed 字段，这是一项明确的新消费者需求：
+公共字段 id/type/kind 加上选中分支的字段契约，才构成该表达式的完整形状。
+
+建议最小能力限于已声明的 enum 判别字段及有限 case；选择分支不执行 Auto 代码。
+禁止分支重新定义公共字段，不用继承 override 解决冲突；整种类型的 FieldId 必须一致且可追踪。
+字段形状属于 Schema 校验，操作数类型/调用绑定等仍属于 HIR verifier。
+这个功能由 Schema 显式声明，不因出现 secondary 或字段名 kind 就自动启用。
+具体元语法待定；它应进入 HIR 第一阶段的 Schema 验收，复杂嵌套联合与完整 Schema 分派仍另行分期。
 
 ## 4. 组合：建议 v0.6 核心支持
 
