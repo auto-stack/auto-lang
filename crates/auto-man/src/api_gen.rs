@@ -807,9 +807,10 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
                 (t.starts_with(m.as_str()) && t[m.len()..].starts_with('.'))
                     || t.contains(&format!(" {}.", m))
             });
-        // Dot-call → path-call，全词替换（含嵌套参数表达式；use 行跳过）
+        // Dot-call → crate-qualified path-call（含嵌套参数；use 行跳过）。
+        // 借修 pass 的 marker 就是这个 crate:: 前缀形态，顺序依赖见下。
         let dot_call = format!("{}.", m);
-        let path_call = format!("{}::", m);
+        let path_call = format!("crate::{}::", m);
         api_rs = api_rs
             .lines()
             .map(|l| {
@@ -1577,16 +1578,49 @@ fn rewrite_inline_runtime_names(source: &str) -> String {
 }
 
 fn wrap_inline_return(line: &str) -> String {
+    wrap_inline_return_mode(line, false)
+}
+
+/// Plan 742 (D5): `option_result` mode — for `?T`-return endpoints WITH path
+/// params, the handler signature is `Result<Json<T>, StatusCode>` (needs_result
+/// 404 semantics). Body `return Some(x)` → `Ok(JsonResponse(x))` and
+/// `return None` → `Err(StatusCode::NOT_FOUND)`; plain `return x` →
+/// `Ok(JsonResponse(x))`.
+fn wrap_inline_return_mode(line: &str, option_result: bool) -> String {
     let trimmed = line.trim_start();
+    // Plan 742 (D5): the transpiler lowers `return None` to a bare `return;`
+    // before this pass — in option_result mode that means NOT_FOUND.
+    if option_result && trimmed == "return;" {
+        let indent = &line[..line.len() - trimmed.len()];
+        return format!("{}return Err(StatusCode::NOT_FOUND);", indent);
+    }
     let Some(value) = trimmed.strip_prefix("return ") else {
         return line.to_string();
     };
     let value = value.trim_end().strip_suffix(';').unwrap_or(value.trim_end());
-    if value.starts_with("JsonResponse(") || value.is_empty() {
+    if value.is_empty() {
         return line.to_string();
     }
+    if !option_result {
+        if value.starts_with("JsonResponse(") {
+            return line.to_string();
+        }
+        let indent = &line[..line.len() - trimmed.len()];
+        return format!("{}return JsonResponse({});", indent, value);
+    }
     let indent = &line[..line.len() - trimmed.len()];
-    format!("{}return JsonResponse({});", indent, value)
+    if value == "None" {
+        return format!("{}return Err(StatusCode::NOT_FOUND);", indent);
+    }
+    if let Some(inner) = value.strip_prefix("Some(") {
+        if let Some(stripped) = inner.strip_suffix(')') {
+            return format!("{}return Ok(JsonResponse({}));", indent, stripped);
+        }
+    }
+    if value.starts_with("JsonResponse(") {
+        return format!("{}return Ok({});", indent, value);
+    }
+    format!("{}return Ok(JsonResponse({}));", indent, value)
 }
 
 fn matching_paren(source: &str, open: usize) -> Option<usize> {
@@ -2735,6 +2769,14 @@ fn generate_api_rs(
                         // 不在内联面，见 a2r_body 覆盖注记）。
                         let ret_nonvoid = !endpoint.return_type.trim().is_empty()
                             && endpoint.return_type.trim() != "void";
+                        // Plan 742 (D5): `?T` returns on needs_result endpoints
+                        // (has_path ⇒ Result signature) — Some/None must map to
+                        // Ok(JsonResponse)/Err(NOT_FOUND) instead of
+                        // JsonResponse(Option).
+                        let ret_is_option = endpoint.return_type.trim().starts_with('?');
+                        let option_result = ret_nonvoid
+                            && ret_is_option
+                            && needs_result;
                         // Plan B1(b): bind the server-injected meta JSON before
                         // the transpiled body (it references `meta` like any param).
                         if has_meta {
@@ -2744,7 +2786,7 @@ fn generate_api_rs(
                         for source_line in &stmts {
                             let mut line = rewrite_inline_runtime_names(source_line);
                             if ret_nonvoid {
-                                line = wrap_inline_return(&line);
+                                line = wrap_inline_return_mode(&line, option_result);
                             }
                             lines.push(line);
                         }
@@ -3601,6 +3643,7 @@ mod tests {
         let _a2r_env = a2r_env_lock();
         let api = r#"
 pub type NoteDocument = { schema_version: int, note_id: str, title: str }
+pub type NoteView = { schema_version: int, note_id: str, title: str }
 
 #[api(method = "GET", path = "/api/notes")]
 pub fn list_notes() []NoteDocument {
@@ -3610,6 +3653,17 @@ pub fn list_notes() []NoteDocument {
         out.push(d)
     }
     return out
+}
+
+#[api(method = "GET", path = "/api/notes/:id")]
+pub fn get_note(id int) ?NoteView {
+    var docs []NoteDocument = repository.repo_list_active()
+    if docs.len() > 0 {
+        var d NoteDocument = docs[0]
+        var v NoteView = NoteView { schema_version: d.schema_version, note_id: d.note_id, title: d.title }
+        return Some(v)
+    }
+    return None
 }
 
 #[api(method = "PUT", path = "/api/notes/:id")]
@@ -3655,6 +3709,25 @@ pub fn repo_list_active() []NoteDocument {
     }
     let api_rs_path = api_rs_path.expect("generated api.rs with probe body");
     let api_rs = std::fs::read_to_string(&api_rs_path).expect("read api.rs");
+
+        // D5: `?NoteView` (non-primary ⇒ a2r body path) return on a :id path
+        // endpoint — signature becomes Result<Json<NoteView>, StatusCode> and
+        // Some/None map to Ok(JsonResponse(v)) / Err(NOT_FOUND).
+        // needs_result + ?T：签名剥 Option 为 Result<JsonResponse<T>, StatusCode>
+        assert!(
+            api_rs.contains("Result<JsonResponse<NoteView>, StatusCode>"),
+            "option+path signature:
+{}",
+            api_rs
+        );
+        assert!(api_rs.contains("return Ok(JsonResponse("), "Some→Ok:
+{}", api_rs);
+        assert!(
+            api_rs.contains("Err(StatusCode::NOT_FOUND)"),
+            "None→NOT_FOUND:
+{}",
+            api_rs
+        );
 
         // D2: body references `repository.` → the crate module must be imported.
         assert!(

@@ -729,6 +729,42 @@ impl RustTrans {
 
     /// Plan 400 Phase 2: transpile only body statements (no signature).
     /// `params` pre-populates local_var_types. Returns indented lines.
+    const NL: char = '\n';
+
+    /// Plan 742 (D6): split statement glue from block-close emission — the
+    /// if/for close brace occasionally lands on the same line as the NEXT
+    /// statement (`}    let x = ...`), which breaks the per-line return-wrap
+    /// pass (the line no longer starts with `return`). Only splits on
+    /// statement keywords to stay away from struct/map literals.
+    fn split_glued_statements(line: &str) -> String {
+        const KEYWORDS: [&str; 8] = [
+            "let ", "return", "if ", "for ", "while ", "match ", "push(", "ok =",
+        ];
+        let mut out = String::with_capacity(line.len());
+        let bytes = line.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'}' {
+                // 找 } 之后的空白段，若空白后是语句关键字则在此断行
+                let mut j = i + 1;
+                while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == 9) {
+                    j += 1;
+                }
+                let rest = &line[j..];
+                if KEYWORDS.iter().any(|k| rest.starts_with(k)) && j > i + 1 {
+                    out.push_str("}
+");
+                    i = j;
+                    continue;
+                }
+            }
+            let ch = line[i..].chars().next().unwrap_or(' ');
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+        out
+    }
+
     /// Plan 742: lower residual `List<T>.new(args)` constructor calls in
     /// body-stmt output to their Rust vec form. The api.rs body path
     /// (try_transpile_body) reaches the shared stmt emitter without the
@@ -842,8 +878,13 @@ impl RustTrans {
             for line in raw.lines() {
                 let trimmed = line.trim_end();
                 if !trimmed.is_empty() {
-                    let lowered = Self::lower_list_constructs(trimmed);
-                    result.push(format!("    {}", lowered));
+                    let deglued = Self::split_glued_statements(trimmed);
+                    for piece in deglued.split('\n') {
+                        let lowered = Self::lower_list_constructs(piece);
+                        if !lowered.is_empty() {
+                            result.push(format!("    {}", lowered));
+                        }
+                    }
                 }
             }
         }
