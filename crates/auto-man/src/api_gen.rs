@@ -411,11 +411,15 @@ fn qualify_a2r_std(mut code: String) -> String {
     // 迷你库（List/May/StringAsStr，无 sys 原生面），sys 调用须走独立
     // a2r-std crate dep（workspace/backend 模板已补）。
     code = code.replace("a2r_std::sys::", "__AUTO_A2R_STD_SYS__");
+    // Plan 742: `a2r_std::sqlite` 同理——sqlite 只在独立 a2r-std crate
+    // （rusqlite 封装），facade 无此模块；保护直连防被 qualify 到 facade。
+    code = code.replace("a2r_std::sqlite", "__AUTO_A2R_STD_SQLITE__");
     code = code.replace("auto_lang::a2r_std::", "__AUTO_A2R_STD_QUAL__");
     code = code.replace("a2r_std::", "auto_lang::a2r_std::");
     code = code.replace("use a2r_std;\n", "use auto_lang::a2r_std;\n");
     code = code.replace("use a2r_std::*;\n", "use auto_lang::a2r_std::*;\n");
     code = code.replace("__AUTO_A2R_STD_QUAL__", "auto_lang::a2r_std::");
+    code = code.replace("__AUTO_A2R_STD_SQLITE__", "::a2r_std::sqlite");
     code = code.replace("__AUTO_A2R_STD_SYS__", "a2r_std::sys::");
     code
 }
