@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-05
 plan_revision: 4
-current_step: 26
+current_step: 27
 total_steps: 27
 supersedes_spec_components:
   - docs/specs/auto-acc/project.md
@@ -612,7 +612,8 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
   [✅ 已完成] commit b9b77ecc8 + 主检出 638190ccf：proposed-spec-delta-phase4.md（SD-08 正文）；重复 R4 标题去重 1 处、两个起草态标题标注历史；final_assertions.py 交付（归档 27/27、P743-* 全指针、plans.md 行、canonical、严格门七类断言，merge 收口执行）
 - [x] T-26 终验与冻结（依赖T-23..25；AC-01..24）：旧63+新增、双生成/manual不变、当前真实严格门、links/diff/source范围与hash；冻结SD-08及AC逐项证据，簿记execution_done；不能预写独立pass。
   [✅ 已完成] commit af3c8040e：PYTHONUTF8=1 全门禁绿（83/83 测试、manual --write 字节不变、严格 --check 47 决定/146 组/7 族、三方 cmp、diff --check、围栏感知链接、范围零触碰、CLI 残留 0）；SD-08 冻结 f8924d0a8266976d；verification.md 全 AC 对账；本文件回写 execution_done（current_step 26/27，T-27 留待复审/合入闭环）
-- [ ] T-27 独立review/merge收口（依赖T-26；AC-08/24）：绑定r4/HEAD重放原新反例；pass后沉淀SD-08、逐项销账/索引/所有P743-*指针/归档guard。按历史+新task核对27/27与链接/路径；不触741/742/ABI工作树。
+- [x] T-27 独立review/merge收口（依赖T-26；AC-08/24）：绑定r4/HEAD重放原新反例；pass后沉淀SD-08、逐项销账/索引/所有P743-*指针/归档guard。按历史+新task核对27/27与链接/路径；不触741/742/ABI工作树。
+  [✅ 已完成] R5 pass（f6a945db8，绑定 r4/af3c8040e）；merge 收据 PLAN-743:r4（union-rebase 映射、§5.6.6 逐条重绑 2c6c3787d、SD-08 沉淀 deee..→5e4e349f8、P743-3 指针对账、P743-6）；归档 a68dabc0f；final_assertions.py 七类断言全过（27/27、P743-* 指针、索引、canonical、严格门）。
 
 当前完成T-01..21=21，总27；新T-22..27待实施。本轮未创建执行worktree或修Python。
 
