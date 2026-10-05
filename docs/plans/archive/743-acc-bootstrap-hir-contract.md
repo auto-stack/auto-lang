@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-743
-status: reviewed
+status: archived
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
@@ -552,6 +552,28 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 
 ## 9. 复审记录
 
+### 合并沉淀收据（2026-10-05，stage: merge，key: PLAN-743:r3）
+
+- stage: merge · plan_revision: 3 · outcome: pass
+- reviewed 基线：R4 pass @ 184749168（r3，delta 冻结 a4af013b759a1d35）
+- 落点分支：v0.6-dev（主线约定）
+
+**checkpoint 实证**：
+
+| checkpoint | 证据 |
+|---|---|
+| prepared | worktree 内按冻结提案逐字落 SD-06（auto-acc/project.md 严格门信任段+分类政策条目替换）与 SD-07（stage-contract.md 阶段摘要 R3 两分规则），diff +19/−9，无超出冻结范围内容；plans.md 两行归档态 + 账本 P743-1/2 原位刷新 + reviews P743-5；commit b28cc8ba5（reviewed_commit 的纯文档后代） |
+| landed | rebase v0.6-dev（6/6 range-diff 全等号）。旧→新映射：e0008648b→173bf3458、45fe4fb21→c0c6d71e3、a25a30722→b093471db、9f634cb52→b537e6273、184749168→a5b68196b、b28cc8ba5→deee10031。`git merge --ff-only`，零 merge commit；delivery=deee10031 |
+| landed（落地后条款） | SD-06/07 目标（auto-acc/project.md、stage-contract.md）无决定绑定→重绑条款条件性不触发；主检出严格冒烟：63/63 测试 + --check --require-decisions 全绿（47 决定/146 组/7 族）；canonical 三项核验（旧 R3 摘要消失、两分规则在案、SD-06 段落在案） |
+| ledger_refreshed | .autoos/specs.json P743-1/2 原位更新（r3 强化注记）+ reviews P743-5（外部 needs_fix→Phase 3→R4 pass 链），随 delivery 落主检出，read-back 验证 P743-1..5 在案 |
+| archived | 本文件 git mv 至 docs/plans/archive/，status: archived，completion_kind: delivered |
+| cleaned | 见下补记 |
+
+- 规范增量落地：SD-06→docs/specs/auto-acc/project.md、SD-07→docs/specs/auto-hir/stage-contract.md
+  （均 modify；canonical 落地文本与冻结提案逐字一致，R4 复核 a4af013b 未触）。
+- 主检出终态：v0.6-dev tip=deee10031（归档收据提交前），工作树 0 dirty，严格门绿。
+
+### 独立复审 R4（2026-10-05，stage: review，r3 P743-R2-QA-01..06 修复复核）
 ### 独立复审 R4（2026-10-05，stage: review，r3 P743-R2-QA-01..06 修复复核）
 
 - stage: review
