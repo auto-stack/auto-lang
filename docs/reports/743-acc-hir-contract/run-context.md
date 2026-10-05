@@ -75,8 +75,9 @@ PLAN-741 已归档（`docs/plans/archive/741-ac-hir-native-core.md`），其交�
 - 链接/运行：`link::{find_rust_lld, find_sdk_um_dir, link_object, run_exe, LinkReceipt}`；
   PE 以 `/entry:ac_start /subsystem:console kernel32.lib` 无 CRT 链接；溢出 trap = `ExitProcess(70)`
   （测试 profile 约定，不是完整异常 ABI）。
-- CLI：`ac-probe check <file>`（bind+verify，退出码 0/1/2）与
-  `ac-probe build <file> --entry <DefId> --output <exe> [--capability N]... [--support-lib L]...`；
+- CLI（r1 时记录为 `ac-probe`；741 r2 起更名 `auto-ac-prototype`）：
+  `auto-ac-prototype check <file>`（bind+verify，退出码 0/1/2）与
+  `auto-ac-prototype build <file> --entry <DefId> --output <exe> [--capability N]... [--support-lib L]...`；
   失败构建不覆盖既有成功制品。一键验证：`scripts/verify-ac-741.ps1`。
 - 已知边界（741 自述）：单模块、无源码 adapter、无跨模块/泛型/所有权/字符串聚合、
   不宣称 Auto 源码→native 或 ACC 自举。

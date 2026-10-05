@@ -46,7 +46,7 @@
 | 类型检查 typeck | MD-202 | 产出 741 语义（精确宽度/初始化/块结构/求值位置）可验证凭证 | typeinfo.at Display 串推断自述非 typeck |
 | 源码→HIR adapter | MD-203 | Auto 源码 → Checked HIR + 来源映射；741 只接 Atom 文本 | auto-hir spec:6；auto-ac spec:7 自述未完成 |
 | 语义 lowering + 能力门 | MD-204 | while/for 脱糖、is 展开、命名参数落位、目标能力拒绝 | 战略 §3 pass 边界要求 |
-| 驱动 + 来源诊断 | MD-205 | 读源→解析→verify→build 编排；file:line:col 源码域诊断 | aavm.at 单阶段形态；ac-probe 未接源码 |
+| 驱动 + 来源诊断 | MD-205 | 读源→解析→verify→build 编排；file:line:col 源码域诊断 | aavm.at 单阶段形态；auto-ac-prototype 未接源码（741 r2 更名） |
 | 后端桥客户端 | MD-206 | Auto 侧薄 C ABI/进程协议客户端（契约见 T-04 文档） | 战略 §4 桥接职责 |
 
 ## 3. 保留的非主体服务（不因此算自举完成）
