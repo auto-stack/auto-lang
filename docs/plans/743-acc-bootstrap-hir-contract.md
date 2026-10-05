@@ -515,7 +515,7 @@ Phase 4追加（r4；原AC-01..20不删除，受影响项重验）：
   `git diff --check` clean、worktree clean（0 dirty）；实现 HEAD=d7013b290。
 
 
-### Phase 2 执行步骤（T-07..T-14，新任务尚未执行）
+### Phase 2 执行步骤（T-07..T-14，新任务尚未执行）〔起草历史标题：r2 合同起草时的待办状态，现 T-07..14 均已完成，见各任务行与收据〕
 
 实施基于含本合同的 v0.6-dev 新提交，专用 D:/autostack/.wt/lang-743/auto-lang、plan-743-dev。
 本轮不创建实施 worktree，不修代码；r1 current_step 6 的历史进度保留，总步骤改为 14。
@@ -579,7 +579,7 @@ Phase 4追加（r4；原AC-01..20不删除，受影响项重验）：
 
 T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现或新 Spec 增量。
 
-### Phase 3 执行步骤（T-15..T-21，尚未实施）
+### Phase 3 执行步骤（T-15..T-21，尚未实施）〔起草历史标题：r3 合同起草时的待办状态，现 T-15..21 均已完成〕
 
 | ID | 前置 | 工作与路径 | 验证/结果 | AC |
 |---|---|---|---|---|
@@ -600,7 +600,7 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 
 当前 completed T-01..14=14；总 21，T-15..21 待执行。T-14 补勾只确认 r2 工作流确实落地，不否认本轮 needs_fix。
 
-### Phase 4 执行步骤（T-22..T-27，待实施）
+### Phase 4 执行步骤（T-22..T-27，待实施）〔起草历史标题：r4 合同起草时的待办状态，实施进度见任务行〕
 
 - [ ] T-22 基线与重放（AC-24）：从含r4合同的最新v0.6-dev重建 D:/autostack/.wt/lang-743/auto-lang / plan-743-dev，核对唯一ID/hash/WIP/并行边界；新建 docs/reports/743-phase4-consumer-fixes/ 留before证据，不新取号/不建links。
 - [ ] T-23 校验记录引用（依赖T-22；AC-02/10/17/18/21）：修改validate_decisions消费者/索引边界；新增被引用的各字段非法、缺失/重复ID与resolved/open组合负例。非零ERROR定位、无traceback，有效层绿。
@@ -654,7 +654,6 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
   （均 modify；canonical 落地文本与冻结提案逐字一致，R4 复核 a4af013b 未触）。
 - 主检出终态：v0.6-dev tip=deee10031（归档收据提交前），工作树 0 dirty，严格门绿。
 
-### 独立复审 R4（2026-10-05，stage: review，r3 P743-R2-QA-01..06 修复复核）
 ### 独立复审 R4（2026-10-05，stage: review，r3 P743-R2-QA-01..06 修复复核）
 
 - stage: review
