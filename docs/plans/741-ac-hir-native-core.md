@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-05
 plan_revision: 4
-current_step: 29
+current_step: 30
 total_steps: 30
 supersedes_spec_components:
   - docs/specs/auto-hir/project.md
@@ -661,14 +661,47 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
   当前库执行器真实回收在 0-20ms 内完成，非 r3 式逃逸）；r3/r2 旧复现无回归；
   生产面零 diff（git diff c865adf66 -- Cargo.toml Cargo.lock crates/ test/ 空）。
   关闭旧 T-23 验收。AC-24（执行侧证据）。
-- [ ] **T-30** /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 沉淀 SD-07/08、
+- [x] **T-30** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 4 独立复审）；R1/R2 顺手处置已 scoped 复验；merge 沉淀 SD-07/08、销账 R3-QA 行、归档并 guard 清理待 /auto-plan:merge。
   销账 R3-QA 行、归档并 guard 清理。
 
 
 
 ## 9. 复审记录
 
-### Phase 3 再激活 / 合同修订交接（2026-10-05）
+##### Phase 4 独立复审（2026-10-05，/auto-plan:review，独立代理）
+
+- stage: review | plan_id: PLAN-741 | plan_revision: 4 | outcome: **pass**
+- reviewed_commit: `fa4eb10b8`（worktree clean；实现 cc491052f + 报告 a0dd0a315 + 簿记，区间 3 提交）；
+  复审后追加 P741P4-R2 顺手修复（link.restore 并报 cleanup_failures）与 R1 表述更正
+  （d43bfcd33/37b78f19d，scoped 复验 lib 11/11 + fmt + all-targets 零 warning）
+- base_commit: `c865adf66`（v0.6-dev 含复审方 r4 再激活提交）
+- 复审方式: 全新上下文独立代理（未参与实现），全部证据自行运行/读源码；自构 death-watch
+  反例（复刻外层 UILIMIT_HANDLES Job + run_exe，5/5 零泄漏、孙进程返回后 0-20ms 内死亡）
+- dependency_revisions: windows-sys 0.59.0 增 Win32_System_Diagnostics_ToolHelp（受控恢复的
+  线程枚举）；其余同 r3
+- spec_inputs: SD-07 → docs/specs/auto-ac/project.md（modify，merge 沉淀）；SD-08 → 同（modify，
+  merge 沉淀）；复审确认与冻结文本/实现一致、无缩水；canonical specs 零 diff
+- acceptance_results（全 **pass**，复审代理自行取证）:
+  - AC-21 pass：受控启动（挂起→入 Job→ToolHelp 恢复）+ 约束失败受控拒绝 + 收集截止确定性；
+    death-watch 反例 5/5 零泄漏；public-60s 60.05s
+  - AC-22 pass：locked-cleanup 全要素（原失败+残留路径+os error 32+NOT committed+全保留标志）；
+    库内字节级断言同结论；COMMITTED 段单列状态
+  - AC-23 pass（工作侧）：active/executing/r4、指针一致、T-08 补勾与历史收据一致、
+    live ledger 留 merge
+  - AC-24 pass：全族+fmt+all-targets 零 warning+tv 162/162+一键原型段 13/13；reds 双侧
+    worktree 34 红 ⊂ 基线 36 红（comm 实证零独有），抽查基线独有 2 红主检出单跑 PASS
+    （THR-D4 flake 归因成立）；生产面零 diff；KNOWN-DEBT R3 三行未预销账
+- findings（3 条 P3，不阻塞；R1/R2 已处置）:
+  - P741P4-R1：执行侧报告称 process-0..2 为"冻结 r3 副本"系错误——reproduce.ps1 每次从当前
+    link.rs 现生成 helper，alive=true 是返回瞬间存活快照的测量伪象（death-watch 实证 0-20ms
+    真死）——报告与计划表述已更正（d43bfcd33/37b78f19d）
+  - P741P4-R2：link.restore 复合故障未并报 cleanup_failures——已修复（并报残留路径）
+  - P741P4-R3：current_step=29 为"最后完成步游标"口径，与 AC-23"完成 ID 数"口径在 merge 全勾
+    后收敛 30/30——merge 收据注明口径
+  - informational：link_object_staged 两处 let _ = remove_file 为 r3 既有、近不可达，留档
+- next: merge（/auto-plan:merge 沉淀 SD-07/08、销账 R3-QA-01..03 行、归档并 guard 清理）
+
+# Phase 3 再激活 / 合同修订交接（2026-10-05）
 
 - stage: new | plan_id: PLAN-741 | plan_revision: 3 | outcome: **pass（合同就绪，非实现/复审 pass）**
 - authorization: 用户明确再激活同一 741、追加问题与修复方案；本轮只修订合同与簿记，next=work。
