@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-743
-status: reviewed
+status: archived
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
@@ -618,6 +618,27 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 
 ## 9. 复审记录
 
+### 合并沉淀收据（2026-10-05，stage: merge，key: PLAN-743:r4）
+
+- stage: merge · plan_revision: 4 · outcome: pass
+- reviewed 基线：R5 pass @ af3c8040e（r4，delta 冻结 f8924d0a8266976d）
+- 落点分支：v0.6-dev（主线约定）
+
+**checkpoint 实证**：
+
+| checkpoint | 证据 |
+|---|---|
+| prepared | worktree 内按冻结提案逐字落 SD-08（auto-acc/project.md 分类政策条目替换+严格门附加保证段，diff +14/−7）；plans.md 两行归档态 + 账本 P743-1 原位刷新/P743-3 指针对账 archive/reviews P743-6；commit b28cc8ba5（reviewed_commit 的纯文档后代） |
+| landed | rebase 遇并行线 PLAN-741 P3 同批文件落地（.autoos/specs.json 与 auto-hir/plans.md UU）——union 解决（双方条目/行均保留：P741-1..5+P743-1..6 共存、741 行 delivered + 743 行 archived），range-diff 提交 1–4 补丁等号、提交 5 为合法 union（语义核验：SD-08 正文/P743 指针/741 条目/plans 行全对）。旧→新映射：0967bc844→63a882097、62329eadb→569b4c2f9、b9b77ecc8→7de5b83ed、af3c8040e→f9b86e4f6、b28cc8ba5→5e4e349f8。ff-only 落地；§5.6.6 条款触发：741 P3 改变 8 决定/9 绑定的两份 spec hash（块包含图 DFS 门/发布回滚/Job Object 截止）——逐条审定结论维持后 spec-only 重绑（commit 2c6c3787d；首次脚本误覆源码绑定即发现并 git 还原重做），主检出严格冒烟 83/83 测试+严格门绿；delivery 终点=2c6c3787d |
+| ledger_refreshed | .autoos/specs.json P743-1 原位刷新（r4 强化注记）+ P743-3 指针对账 archive + reviews P743-6（外部 needs_fix→Phase 4→R5 pass 链），随 delivery 落主检出，read-back 验证 P743-1..6 在案且 741 条目无损 |
+| archived | 本文件 git mv 至 docs/plans/archive/，status: archived，completion_kind: delivered |
+| cleaned | 见下补记 |
+
+- 规范增量落地：SD-08→docs/specs/auto-acc/project.md（modify；canonical 落地文本与
+  冻结提案逐字一致，R5 复核 f8924d0a 未触）。
+- final_assertions.py（T-25 交付）在本收据提交后执行，七类断言全过为归档有效条件。
+
+### 独立复审 R5（2026-10-05，stage: review，r4 P743-R3-QA-01..04 修复复核）
 ### 独立复审 R5（2026-10-05，stage: review，r4 P743-R3-QA-01..04 修复复核）
 
 - stage: review
