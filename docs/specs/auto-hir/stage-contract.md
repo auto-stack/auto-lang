@@ -21,9 +21,31 @@ verify 全或无语义。
 
 id/version、input/output stage、profiles、pre/postconditions、order、
 semantics_preserved（精确宽度/溢出、短路、调用顺序、place/rvalue、trap 不提升）、
-effects_traps（未知 effect=observable 保守）、call_order、drops、source_maps、
-analysis_invalidation、reverify（S4→S4 required）、diagnostics。
+effects_traps、call_order、drops、source_maps、analysis_invalidation、
+reverify（S4→S4 required）、diagnostics。
 合同示例：norm.canonical-form、eval.const-fold（文本合同，非实现）。
+
+### 运行期 trap 与编译期诊断界限（QA-04）
+
+普通运行期表达式（语言未规定必须编译期求值者）的常量溢出一律保持运行期 trap
+语义——无论位于必经路径还是条件分支，pass 不得将其提升为编译期拒绝或编译期
+诊断（反例 X9：`mark_a(); return MAX_I32+1` 的约定语义是先观察 a 再
+ExitProcess(70)）。仅当语言独立规定某语境必须编译期求值（显式 comptime/const
+声明域）时，该语境按自己的契约编译期诊断；其规则属该语境，不归语义保持 pass。
+不可达/未执行分支中的 trap 不得提升（X1）。
+
+### 保守 effect 方向（分析与语义两分）
+
+静态效果*分析*从保守侧出发：未知 effect 一律按 observable 处理，向 pure 的
+精化必须携带证明——这是分析精度，不是程序改写。效果*语义保持*对任何 pass
+双向禁止：不得引入原本不存在的可观察效果，也不得消除/重排已存在的可观察效果
+（含 trap 与其前驱 observable 的相对顺序）。不用"收窄/放宽"描述语义保持义务。
+
+### 实现状态边界
+
+阶段表"现状"列是实现状态的唯一权威；pass 模板与两合同示例为合同要求
+（目标态），当前不存在任何已实现 pass。声称实现任何 pass 的计划必须先按
+模板补全可执行 pre/post 断言并重验。
 
 ## 非法变换负面清单
 

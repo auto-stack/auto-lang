@@ -21,15 +21,32 @@ AAVM/AA2R 自举（已达成谱系）与 AC/ACC native 自举（未达成）两�
 
 ## 能力现状（compiler-source-demand × compiled-language-support）
 
+清单可信度以盘点工具严格门为准：`scripts/acc_inventory.py --check --require-decisions`
+要求人工层（决定 + unknown_families）结构合法、绑定新鲜、对全部受管输入与全部
+unknown 候选双向闭环；scan-only（无人工层）明示非完成态。
+
 - required（ACC 前置，AC 现缺）：enum(±payload)、record、方法/static new/隐式 self、
   List<T>、str（最高优先）、char、int 全序运算+bool 逻辑、while/for/break/continue、
   is-match、use 多模块、mut 参数、全局变量、f-string（或改写）、源码域来源诊断。
 - implemented（仅此两项，741 域）：i32 add/mul/lt + 溢出 trap(ExitProcess 70 测试约定)、
-  HIR 域 file:line:col 阶段化诊断。
-- unknown（探针 owner 待立项）：int↔i32/i64 宽度、char↔int、跨行字面量语义、
-  宿主容器所有权、用户自定义泛型。
+  HIR 域 file:line:col 阶段化诊断。741 r2/r3 的 verify 归属唯一、bindings 双射、
+  CLI 更名（auto-ac-prototype）与制品原子发布属 Checked/工具域强化，不改变本清单缺口。
+- unknown（必须带 owner/探针/所在工作包，open 族由严格门强制）：int↔i32/i64 宽度、
+  char↔int、跨行字面量语义（probe-str-ml；合法形态，engine.at:314/333 实证）、
+  宿主容器所有权（probe-rt-own）、用户自定义泛型（probe-generics）。
 - not-required（附理由）：Option/Result 消费（编译器自身用字符串哨兵+自定义 record）、
   |> 管道、闭包/task/as 转型（lib 源码 0 使用）。
+- 分类政策（r2 QA-02）：变量接收者的方法调用一律 unknown-receiver（本地类型可声明
+  同名方法，Meter.len/CG.new/Ar.new 实证），native 仅限可证明宿主命名空间
+  （List/IO/process/File）；变量接收者族的语义归属见决定 MD-507 与 unknown_families，
+  实现期由名字解析/类型检查主体（新建）精确化。
+
+## 锚点/候选 owner 一致性（QA-05）
+
+A8（str/List 微程序）owner=运行时首批候选（str/容器/int 扩面工作包）；
+A9（enum/is-match）owner=聚合能力线（后续未编号工作线，前置=enum±payload/record/is
+落地）。两候选依赖单向（运行时候选的源码验证依赖源码计算 adapter 落地），无环；
+不抢占新编号、不以此扩大本计划实施范围。
 
 ## 代际判据
 
