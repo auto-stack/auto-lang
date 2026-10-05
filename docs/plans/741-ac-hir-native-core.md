@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-05
 plan_revision: 4
-current_step: 19
+current_step: 29
 total_steps: 30
 supersedes_spec_components:
   - docs/specs/auto-hir/project.md
@@ -637,6 +637,32 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 - [ ] **T-28** 修正文档/索引/历史计数；关闭旧T-22验收。
 - [ ] **T-29** 全门禁/故障矩阵/报告；关闭旧T-23验收。
 - [ ] **T-30** 独立review→merge→archive→guard清理；关闭旧T-24验收。
+- [x] **T-25** worktree `D:/autostack/.wt/lang-741/auto-lang`（plan-741-dev @ c865adf66，clean）；
+  组内只读依赖 auto-down（detached @ fba6563e）；指纹/零WIP核对完成。
+- [x] **T-26** commit `cc491052f`：CREATE_SUSPENDED 受控启动 + 入 Job 后 ToolHelp 恢复主线程
+  （约束前窗口消除）；约束失败受控拒绝（ContainmentUnavailable→link.containment，挂起态安全
+  收口零泄漏）；删除静默降级/detach 分支（reap 无条件 join）；工厂注入确定性测试：
+  containment_failure_is_controlled_rejection（ping 未曾启动、tasklist 证实、<3s）；
+  collect-deadline 测试三连跑确定性通过；windows-sys 增 ToolHelp feature。关闭旧 T-20 验收。AC-21。
+- [x] **T-27** commit `cc491052f`：publish_artifacts 清理错误全量汇总（discard_staged 收集真实
+  OS 错误；目录=用户占位不删不计）+ link.cleanup 诊断（原失败+提交状态 NOT committed/COMMITTED+
+  残留自有路径）+ main.rs 暂存清理上屏；新增 cleanup_failure_reports_residual_staged_exe
+  （禁 DELETE 共享锁+收据目录占位：link.cleanup 含 os error 32、旧三件套不变、释放后可清理）；
+  复审 helper 实测 staged_exe_left=true + 全保留标志。关闭旧 T-21 验收。AC-22。
+- [x] **T-28** T-08 已据 r1 收据补勾（激活提交）；计数 19/30 口径核对；README/plans.md 导航
+  复审方已回写 active（本轮核对一致）；ledger 暂态留 merge 刷新。关闭旧 T-22 验收。AC-23（工作侧）。
+- [x] **T-29** commit `a0dd0a315`：docs/reports/741-phase4-resource-fixes/{verification.md,
+  r3-review-reproduce-rerun.json, prior-2026100{4,5}-reproduce.json, reds-*.txt, source-hashes.txt}。
+  门禁：原型 54 项+1 ignored（60.01s）、fmt 干净、all-targets 零 warning、一键原型段 13/13、
+  主仓 check PASS、tv 162/162、cargo t 双侧 no-fail-fast（基线 36 红/worktree 34 红——
+  worktree 红集为基线真子集，零新增归因，不伪写绿）；r4 reproduce -ProductionDeadline:
+  locked-cleanup=link.cleanup 全要素、public-60s=60.08s 拒绝且持管道孙进程 alive=false；
+  r3/r2 旧复现无回归；生产面零 diff（git diff c865adf66 -- Cargo.toml Cargo.lock crates/ test/ 空）。
+  关闭旧 T-23 验收。AC-24（执行侧证据）。
+- [ ] **T-30** /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 沉淀 SD-07/08、
+  销账 R3-QA 行、归档并 guard 清理。
+
+
 
 ## 9. 复审记录
 
