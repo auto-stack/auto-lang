@@ -50,10 +50,16 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
   （成功/流水线拒绝/用法错）。
 - `auto-ac-prototype build <file> --entry <DefId> --output <exe> [--capability N]... [--support-lib L]...`：
   产物 `.obj`/`.exe`/`.ac-link.txt` 收据落 `--output` 目录；**失败构建不覆盖既有成功制品**：
-  exe/obj/收据全部先以进程唯一暂存名构建，发布前备份既有制品，任一步失败整体回滚
-  （还原备份、清除已放置文件；SENTINEL 前置失败与发布阶段失败测试双锁定）。
+  exe/obj/收据全部先以进程唯一暂存名构建，发布前备份既有制品，**任一步失败（收据暂存/备份/
+  三次发布）整体回滚**——暂存文件（含已链接 exe）全出口回收、还原备份、清除已放置文件；
+  回滚自身受阻返回 `link.restore` 诊断并列出幸存备份路径（不吞错、不为无残留删唯一旧制品）；
+  用户占位目录永不备份/删除；SENTINEL 前置失败与准备/备份/发布各阶段失败测试锁定。
 - 全部子进程（工具发现 rustc/reg、链接 lld、运行 exe）走带硬截止时间的执行器；
-  stdout/stderr 并发读排空，防子进程填满管道阻塞。
+  **单一单调截止同时覆盖进程等待与输出收集**——子进程退出后后代继承管道不再绕过截止
+  （Windows Job Object KILL_ON_JOB_CLOSE 管控子树，任一出口关闭即终止自有后代并回收 reader，
+  不以 detach 永久阻塞线程换"返回快"）；stdout/stderr 并发排空防管道阻塞；输出以
+  read_to_end+lossy 转换，不返回截断的成功输出（read_to_string 全有全无 UTF-8 校验遇
+  本地化输出会丢弃合法前缀）。
 - 一键验证：`scripts/verify-ac-741.ps1`（§6 全命令 + CLI 实机构建运行 + 主仓门禁；PS 5.1 兼容，
   异步管道读防死锁；含 `cargo check --all-targets` 零 warning 健康检查）。
 

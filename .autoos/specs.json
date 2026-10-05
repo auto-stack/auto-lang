@@ -4979,7 +4979,7 @@
         {
           "id": "P741-1",
           "title": "auto-hir core-i32 typed HIR contract（SD-01）",
-          "content": "PLAN-741 沉淀 current-state 契约：core-i32-draft descriptor 三重身份门（schema/revision/profile）；Atom 文本双槽/命名字段互换、同字段跨区重复拒绝；引用按类别+作用域绑定（模块表 vs 函数体表），category-mismatch 与 dangling-ref 分诊；TypeUse 内建简写与表引用在校验层归一、名义类型不折叠；verify 契约=let 初始化/assign 可变性双查/if 出口交集/循环零次保守/块唯一入口角色/求值位置唯一+表达式无环/入口全路径 return；CheckedModule 仅 verify() 可构造。canonical=docs/specs/auto-hir/project.md；证据=plan-741 text_binding 11/11 + hir_verify 8/8。r2（SD-03）增补：`bindings` 必须为双射（param 全覆盖唯一、arg 越界/重复消费/未被消费拒绝），实参类型按映射逐位核对（params[b.param] ≡ eval_args[b.arg]）不按求值下标对位；新增归属唯一规则——每函数 body 字段必须指向 owner 恰为该函数的 body，共享/同签名共享/冒领 body 在 verify 报 verify.owner-mismatch。",
+          "content": "PLAN-741 沉淀 current-state 契约：core-i32-draft descriptor 三重身份门（schema/revision/profile）；Atom 文本双槽/命名字段互换、同字段跨区重复拒绝；引用按类别+作用域绑定（模块表 vs 函数体表），category-mismatch 与 dangling-ref 分诊；TypeUse 内建简写与表引用在校验层归一、名义类型不折叠；verify 契约=let 初始化/assign 可变性双查/if 出口交集/循环零次保守/块唯一入口角色/求值位置唯一+表达式无环/入口全路径 return；CheckedModule 仅 verify() 可构造。canonical=docs/specs/auto-hir/project.md；证据=plan-741 text_binding 11/11 + hir_verify 8/8。r2（SD-03）增补：`bindings` 必须为双射（param 全覆盖唯一、arg 越界/重复消费/未被消费拒绝），实参类型按映射逐位核对（params[b.param] ≡ eval_args[b.arg]）不按求值下标对位；新增归属唯一规则——每函数 body 字段必须指向 owner 恰为该函数的 body，共享/同签名共享/冒领 body 在 verify 报 verify.owner-mismatch。r3（SD-05）增补：块包含边仅来自 if 的 then/else 与 loop 的 body（运行时 loop 重入/break/continue 的 LoopId 目标/递归调用不是包含边）；全部块从入口可达且包含图无环——显式栈 DFS 结构检查先于数据流走查，结构失败不构造 CheckedModule（自环报入口角色唯一、断开环报不可达，带定位 span 不 panic）。",
           "file": "docs/specs/auto-hir/project.md",
           "related": [],
           "status": "published",
@@ -4989,7 +4989,7 @@
         {
           "id": "P741-2",
           "title": "auto-ac native AOT closed loop（SD-02）",
-          "content": "PLAN-741 沉淀：Checked HIR → Cranelift 0.126.2 COFF → rust-lld（备选 MSVC link.exe 绝对路径）→ PE；入口=零参数 i32 DefRef，通用 ac_start 包装器 + ExitProcess，Auto 函数不做 OS 入口；溢出 trap=ExitProcess(70)（测试 profile 约定，非语言 ABI）；requires 能力显式门（hir.test.trace.v1 → test-support no_std 静态库 --support-lib）；auto-ac-prototype check/build（ac-probe 历史名）退出码 0/1/2；制品发布=暂存+备份+发布事务、任一步失败整体回滚（发布阶段失败不覆盖既有成功制品）；全部子进程（发现 rustc/reg、链接、运行）硬截止+并发管道读；SDK 发现=AC741_* env → KitsRoot10 注册表 → 已知根。边界：HIR→exe ≠ 源码→exe，无生产 ABI/DLL/热重载宣称。canonical=docs/specs/auto-ac/project.md。r2（SD-04）澄清并以测试锁定。",
+          "content": "PLAN-741 沉淀：Checked HIR → Cranelift 0.126.2 COFF → rust-lld（备选 MSVC link.exe 绝对路径）→ PE；入口=零参数 i32 DefRef，通用 ac_start 包装器 + ExitProcess，Auto 函数不做 OS 入口；溢出 trap=ExitProcess(70)（测试 profile 约定，非语言 ABI）；requires 能力显式门（hir.test.trace.v1 → test-support no_std 静态库 --support-lib）；auto-ac-prototype check/build（ac-probe 历史名）退出码 0/1/2；制品发布=暂存+备份+发布事务、任一步失败整体回滚（发布阶段失败不覆盖既有成功制品）；全部子进程（发现 rustc/reg、链接、运行）硬截止+并发管道读；SDK 发现=AC741_* env → KitsRoot10 注册表 → 已知根。边界：HIR→exe ≠ 源码→exe，无生产 ABI/DLL/热重载宣称。canonical=docs/specs/auto-ac/project.md。r2（SD-04）澄清并以测试锁定。r3（SD-06）增补：单一单调截止同时覆盖进程等待与输出收集——Job Object（KILL_ON_JOB_CLOSE）管控子树，后代持管道不再绕过截止，任一出口回收 reader；输出 read_to_end+lossy 不返回截断成功；发布事务失败出口扩展到收据暂存/备份/三次发布全路径（回收暂存含已链接 exe），回滚受阻返回 link.restore 列幸存备份路径，用户占位目录永不删。",
           "file": "docs/specs/auto-ac/project.md",
           "related": [],
           "status": "published",
@@ -8082,7 +8082,7 @@
           "id": "P741-3",
           "title": "PLAN-741 review pass（r1，同基线对照裁定）",
           "content": "独立复审 pass @ 4dc4da636（基线 951b6c70f）：AC-01..08 全 pass（复审独立复跑 37/37、零 diff 核对、check PASS/tv 162/162）；P741-R1=日常档 26 红裁定非本回归（14 基线同红入 THR-D3 族 + 12 负载 flake 同 THR-D4 模式，对照收据 verification.md §4.1）；P741-R2=组内 auto-down detached 依赖 worktree 归 merge 清理。merge 交付链 1e4a2533a → lockfile 补交 cf369e0d5。",
-          "file": "docs/plans/741-ac-hir-native-core.md",
+          "file": "docs/plans/archive/741-ac-hir-native-core.md",
           "tags": [
             "PLAN-741",
             "review",
@@ -8103,7 +8103,7 @@
         {
           "id": "P741-4",
           "title": "PLAN-741 r2 Phase 2 复审 pass + 质量修复收据（P741-QA-01..07）",
-          "file": "docs/plans/741-ac-hir-native-core.md",
+          "file": "docs/plans/archive/741-ac-hir-native-core.md",
           "tags": [
             "PLAN-741",
             "review",
@@ -8131,6 +8131,21 @@
           "content": "r3 链条：r2 合入后独立复审（基线 5983f8aee）发现 P743-R2-QA-01..06（同名证据非 owner 证据、证据未绑定不失效、resolved 族无引用仍闭环、类型错误 traceback、canonical R3 摘要冲突、归档生命周期），needs_fix；同 ID 激活 r3（T-15..21/AC-15..20/SD-06..07）。Phase 3 修复实现 HEAD 184749168（rebase 前；6/5 提交链），R4 独立重放反例/严格门全绿 pass；交付落 v0.6-dev（SD-06/07 目标文件无决定绑定，落地后严格冒烟绿）。冻结：phase3 提案 a4af013b759a1d35。",
           "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
           "related": [],
+          "status": "published",
+          "created": "2026-10-05",
+          "last_modified": "2026-10-05"
+        },
+        {
+          "id": "P741-5",
+          "title": "PLAN-741 r3 Phase 3 复审 pass + 边界修复收据（P741-R2-QA-01..04）",
+          "file": "docs/plans/archive/741-ac-hir-native-core.md",
+          "tags": [
+            "PLAN-741",
+            "review",
+            "native-aot",
+            "boundary-fix"
+          ],
+          "content": "r2 合入后复审 needs_fix（docs/reports/741-quality-review-20261005）→ r3 修复：R2-QA-01 块包含图结构门（显式栈 DFS 全可达+入边不变量、结构失败阻止数据流走查，自环/断开 SCC 定位拒绝不 panic）、R2-QA-02 单一单调截止覆盖等待+输出收集（windows-sys 0.59 Job Object KILL_ON_JOB_CLOSE 管控子树、reader 全出口回收、read_to_end+lossy 防截断成功）、R2-QA-03 发布事务暂存所有权全失败出口回收+link.restore 恢复诊断+占位目录保护、R2-QA-04 状态/指针簿记。独立代理复审 pass：原型 52 项+60s 证据测试、watchdog 60.05s 准时拒绝（对比 r2 实测 114.96s 挂起）、cargo t 双侧同基线归因零新增、生产面零 diff。",
           "status": "published",
           "created": "2026-10-05",
           "last_modified": "2026-10-05"

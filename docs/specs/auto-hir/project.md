@@ -35,7 +35,10 @@ core-i32 profile 的类型化 HIR 契约与实现：Schema-bound Atom 文本 →
   冒领 body 均在 verify 阶段报 `verify.owner-mismatch` 拒绝）；body→owner 反向一致性同此。
 - 初始化：`let` 初始化；`assign` 目标须已初始化且 mutable（place 与 local 双查）；if 出口初始化 =
   可达分支交集；循环按可能零次迭代保守处理（体内初始化不外泄）。
-- 块结构：非入口块恰有一个入边（唯一入口角色，禁共享块）；入口块零入边；入口须在所有路径 return；
+- 块结构：块包含边仅来自 `if` 的 then/else 与 `loop` 的 body（运行时 loop 重入、break/continue 的
+  LoopId 目标、递归调用**不是**包含边）；入口块零入边、非入口块恰有一个入边（唯一入口角色，禁共享块）；
+  全部块从入口可达且包含图无环——结构检查（显式栈 DFS）先于数据流走查，结构失败不构造 `CheckedModule`
+  （自环/断开环分别报入口角色唯一与不可达定位诊断，不 panic）；入口须在所有路径 return；
   `return`/`break`/`continue` 之后不得有可执行尾语句；块自然收尾=交还宿主结构（if 汇合/循环重入）。
 - 求值位置：每个 ExprId 恰有一个 owning 引用（语句位或操作数位；禁共享、禁死表达式）且表达式图无环；
   递归走 DefRef 不复制 body。`eval_args` 左→右求值存临时，`bindings` 仅做形参映射且必须为双射：
