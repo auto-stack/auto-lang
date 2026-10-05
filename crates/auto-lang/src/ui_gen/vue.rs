@@ -3503,6 +3503,17 @@ impl VueGenerator {
                 "const store = reactive({}())\n\n",
                 store_composable_name(first)
             ));
+            // Plan 742 D8: index.html bootstrap 只播种 widget 本地 dark_mode
+            // ref——store 模型若也声明 dark_mode，两者会分叉（App ref=light 而
+            // store=true），Theme 快切只翻 store，watch 不触发，html.dark 永不变
+            // （015-notes smoke T11 实证）。store 侧同源播种，保持单一事实源。
+            if self.has_dark_mode {
+                script.push_str(
+                    "// Plan 458/742: seed store dark_mode from the same bootstrap.
+if ((window as any).__AUTO_UI_THEME__ === 'light' || (window as any).__AUTO_UI_THEME__ === 'dark') store.dark_mode = (window as any).__AUTO_UI_THEME__ === 'dark'
+",
+                );
+            }
             // PLAN-048 (auto-musk A 线): 跨 store 依赖(deps[1..])各发独立
             // facade(如 ForgeStore → forgeStore),配套 ts_adapter 的 Ident
             // 映射——此前第二个及以后的 store 调用裸发名字(TS2304)。
