@@ -1,0 +1,3 @@
+fn demo(IO Meter) int {
+ return IO.read_line()
+}

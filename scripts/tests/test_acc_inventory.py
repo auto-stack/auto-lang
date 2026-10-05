@@ -759,5 +759,129 @@ class HostAdmissionShadowing(FixtureCase):
         self.assertEqual(k[("process", "args")], "native-runtime")
 
 
+class HostAdmissionPhase5(FixtureCase):
+    """P743-R4-QA-01：mut/方法/裸参数遮蔽不升级宿主。"""
+
+    @classmethod
+    def setUpClass(cls):
+        _spec5 = importlib.util.spec_from_file_location("ai_qa_p5", _TOOL_PATH)
+        cls.ai = importlib.util.module_from_spec(_spec5)
+        _spec5.loader.exec_module(cls.ai)
+
+    def kinds(self, name):
+        path = _HERE / "fixtures" / "acc-inventory" / "review" / name
+        s = self.ai.scan_module(name, path.read_text(encoding="utf-8"))
+        return s, {(c.get("receiver"), c["name"]): c["kind"] for c in s.calls}
+
+    def test_mut_parameter_shadow(self):
+        s, k = self.kinds("mut_parameter.at")
+        self.assertEqual(k[("IO", "read_line")], "unknown-receiver")
+
+    def test_method_parameter_shadow(self):
+        s, k = self.kinds("method_parameter.at")
+        self.assertEqual(k[("IO", "read_line")], "unknown-receiver")
+
+    def test_bare_parameter_shadow(self):
+        s, k = self.kinds("bare_parameter.at")
+        self.assertEqual(k[(None, "print")], "unknown-bare-call")
+
+    def test_method_bare_parameter_shadow(self):
+        s, k = self.kinds("method_bare_parameter.at")
+        self.assertEqual(k[(None, "print")], "unknown-bare-call")
+
+    def test_usual_parameter_control(self):
+        s, k = self.kinds("usual_parameter.at")
+        self.assertEqual(k[("IO", "read_line")], "unknown-receiver")
+
+    def test_conflict_free_control(self):
+        s, k = self.kinds("conflict_free.at")
+        self.assertEqual(k[(None, "print")], "native-runtime")
+        self.assertEqual(k[("IO", "read_line")], "native-runtime")
+
+
+class TrustedIndexSemantics(StrictDecisionsGate):
+    """P743-R4-QA-03：非法语义/过期绑定/重复 ID 不被族消费者读取。"""
+
+    def test_illegal_conclusion_referenced_not_consumed(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        layer["decisions"][-1]["conclusion"] = "super-done"  # MD-S-900 被族引用
+        self.write_layer(layer)
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("ERROR[decision-malformed]", err)
+        self.assertIn("family-ref-missing", err)  # 消费者不再读取该记录
+        self.assertNotIn("Traceback", err)
+
+    def test_stale_binding_referenced_not_consumed(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        layer["decisions"][-1]["bound_input_hashes"]["auto/lib/token.at"] = "0" * 64
+        self.write_layer(layer)
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("decision-stale", err)
+        self.assertIn("family-ref-missing", err)
+
+    def test_duplicate_id_whole_group_invalidated(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        dup = dict(layer["decisions"][-1])  # 同 ID 再插一次（后者）
+        layer["decisions"].append(dup)
+        self.write_layer(layer)
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("decision-duplicate-id", err)
+        self.assertIn("family-ref-missing", err)  # 先插入者也被整组作废
+
+
+class ManifestShapeGate(FixtureCase):
+    """P743-R4-QA-02：manifest 合法 JSON 错误形状受控拒绝。"""
+
+    def mutate_manifest(self, mutate):
+        run_tool(self.repo, self.out, "--write")
+        man = self.out / acc_inventory.MANIFEST_NAME
+        data = json.loads(man.read_text(encoding="utf-8"))
+        mutate(data)
+        man.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    def assert_controlled(self, code, err):
+        self.assertEqual(code, 1)
+        self.assertIn("ERROR[manifest-malformed]", err)
+        self.assertNotIn("Traceback", err)
+
+    def test_manifest_top_level_list(self):
+        run_tool(self.repo, self.out, "--write")
+        man = self.out / acc_inventory.MANIFEST_NAME
+        man.write_text("[]", encoding="utf-8")
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assert_controlled(code, err)
+
+    def test_manifest_top_level_int(self):
+        man = self.out / acc_inventory.MANIFEST_NAME
+        self.mutate_manifest(lambda d: None)
+        man.write_text("1", encoding="utf-8")
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assert_controlled(code, err)
+
+    def test_source_identity_null(self):
+        self.mutate_manifest(lambda d: d.__setitem__("source_identity", None))
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assert_controlled(code, err)
+
+    def test_source_identity_list(self):
+        self.mutate_manifest(lambda d: d.__setitem__("source_identity", []))
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assert_controlled(code, err)
+
+    def test_inputs_and_manual_untouched(self):
+        self.mutate_manifest(lambda d: d.__setitem__("source_identity", None))
+        before = {f.name: f.read_bytes() for f in (self.repo / "auto/lib").iterdir()}
+        run_tool(self.repo, self.out, "--check", "--require-decisions")
+        after = {f.name: f.read_bytes() for f in (self.repo / "auto/lib").iterdir()}
+        self.assertEqual(before, after)
+        self.assertFalse((self.out / acc_inventory.DECISIONS_NAME).exists())
+
+
 if __name__ == "__main__":
     unittest.main()

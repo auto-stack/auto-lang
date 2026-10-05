@@ -365,10 +365,9 @@ def scan_module(rel_path: str, text: str) -> ModuleScan:
                 kind = "local-fn"
             elif name in imported_symbols:
                 kind = "imported-symbol"
-            elif name in BARE_NATIVES:
-                kind = "native-runtime"
             else:
-                # 本扫描层无法解析（动态导入/宿主注入等）→ 保留 unknown，不丢弃
+                # 其余（含 BARE_NATIVES 与参数遮蔽）推迟到 _post_classify：
+                # 参数/局部绑定集合那时才完整（R4-QA-01）
                 kind = "unknown-bare-call"
             scan.calls.append({"kind": kind, "receiver": None, "name": name,
                                "line": idx, "owner": None})
@@ -431,6 +430,10 @@ def _post_classify(scan: ModuleScan, local_types: set,
                 c["kind"] = "enum-variant-construction"
             elif n in local_types:
                 c["kind"] = "type-construction"
+            elif n in scan.known_bindings:
+                pass  # R4-QA-01：内建名被参数/局部绑定遮蔽 → 保持 unknown
+            elif n in BARE_NATIVES:
+                c["kind"] = "native-runtime"
     return sorted(scan.calls,
                   key=lambda c: (c["kind"], c["name"], str(c.get("receiver"))))
 
@@ -448,7 +451,37 @@ def _aggregate_calls(calls):
 
 
 def _extract_signature_types(scan: ModuleScan, lines):
-    """从每个 fn 声明行向后拼接至多 6 行，抽取参数类型与返回类型证据。"""
+    """从每个 fn 声明行向后拼接至多 6 行，抽取参数类型与返回类型证据。
+
+    R4-QA-01（PLAN-743 r5）：同时覆盖类型体方法（scan.methods，含 static）；
+    mut 参数名取 mut 后的 token（demo(mut IO Meter) → 名=IO 型=Meter），不再
+    产生空名。参数名入 known_bindings（内部宿主准入判定，不产出 manifest）。
+    """
+    sig_types = []
+
+    def harvest(name, line_no):
+        start = line_no - 1
+        blob = "\n".join(lines[start:start + 6])
+        m = re.search(r"fn\s+\w+\s*\(([^)]*)\)\s*([A-Za-z_][\w<>?, ]*)?\s*\{", blob, re.S)
+        if not m:
+            return
+        params_raw = m.group(1).strip()
+        if params_raw:
+            for p in params_raw.split(","):
+                toks = p.split()
+                if not toks:
+                    continue
+                if toks[0] == "mut" and len(toks) >= 2:
+                    scan.known_bindings.add(toks[1])
+                else:
+                    scan.known_bindings.add(toks[0])
+
+    for decl in scan.declarations:
+        if decl["kind"] == "fn":
+            harvest(decl["name"], decl["line"])
+    for mth in scan.methods:
+        harvest(mth["name"], mth["line"])
+
     sig_types = []
     for decl in scan.declarations:
         if decl["kind"] != "fn":
@@ -466,8 +499,6 @@ def _extract_signature_types(scan: ModuleScan, lines):
                 toks = p.split()
                 if toks:
                     ptypes.append(toks[-1])
-                    scan.known_bindings.add(toks[0].replace("mut", "").strip()
-                                             if toks[0] == "mut" else toks[0])
         sig_types.append({"fn": decl["name"], "param_types": ptypes, "ret": ret, "line": decl["line"]})
     scan.declarations = [
         {**d, "param_types": st["param_types"], "ret": st["ret"]}
@@ -707,14 +738,19 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
         if did in seen_ids:
             structural_error = True
             msgs.append("ERROR[decision-duplicate-id] %s" % did)
-            invalid_ids.add(did)  # 重复 ID 的后续记录不进消费者索引
+            # R4-QA-03：重复 ID 整组作废——先插入记录同样移出消费者索引
+            invalid_ids.add(did)
+            validated_by_id.pop(did, None)
         seen_ids.add(did)
+        record_bad = False
         kind = d.get("kind")
         if kind not in DECISION_KIND_CONCLUSIONS:
             structural_error = True
+            record_bad = True
             msgs.append("ERROR[decision-malformed] %s 非法 kind: %r" % (did, kind))
         elif d.get("conclusion") not in DECISION_KIND_CONCLUSIONS[kind]:
             structural_error = True
+            record_bad = True
             msgs.append("ERROR[decision-malformed] %s conclusion %r 不属于 kind=%s"
                         " 合法集 %s" % (did, d.get("conclusion"), kind,
                                         sorted(DECISION_KIND_CONCLUSIONS[kind])))
@@ -725,6 +761,7 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
             ev_files.append(ev_file)
             if not (root / ev_file).is_file():
                 structural_error = True
+                record_bad = True
                 msgs.append("ERROR[decision-evidence-missing] %s 证据文件不存在: %s"
                             % (did, ev))
             else:
@@ -732,6 +769,7 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
                 # ── R2-QA-02：同条证据必须被同条绑定覆盖，身份一致 ──
                 if ev_file not in bound:
                     structural_error = True
+                    record_bad = True
                     msgs.append("ERROR[decision-evidence-unbound] %s 证据文件无同条"
                                 "绑定: %s" % (did, ev_file))
         subject = d["subject"]
@@ -749,9 +787,10 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
                 cur = current[p]
             if cur != h:
                 stale = True
+                record_bad = True
                 msgs.append("ERROR[decision-stale] %s 绑定的输入已变化: %s" % (did, p))
-        # 类型+语义全部通过且非重复 ID 才进入消费者索引（R3-QA-01）
-        if did not in invalid_ids and did not in validated_by_id:
+        # R4-QA-03：类型/语义/绑定/新鲜度全部通过且非重复 ID 才进入消费者索引
+        if not record_bad and did not in invalid_ids:
             validated_by_id[did] = d
 
     if require:
@@ -982,8 +1021,13 @@ def main(argv=None) -> int:
             on_disk = json.loads(man_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             on_disk = None
-        if on_disk is None:
-            failures.append("ERROR[manifest-stale] %s 不是可解析 manifest" % MANIFEST_NAME)
+        # ── R4-QA-02：容器形状门——顶层/身份/输入形状非法 → 受控拒绝（零 traceback） ──
+        on_disk_ok = (isinstance(on_disk, dict)
+                      and isinstance(on_disk.get("source_identity"), dict)
+                      and isinstance(on_disk.get("inputs"), list))
+        if not on_disk_ok:
+            failures.append("ERROR[manifest-malformed] %s 形状非法（顶层须为对象且"
+                            "source_identity/inputs 容器存在）" % MANIFEST_NAME)
         else:
             on_disk.get("source_identity", {})["head_commit_audit_only"] = None
             regen = json.loads(manifest_bytes.decode("utf-8"))

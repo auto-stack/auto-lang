@@ -1,0 +1,6 @@
+type Meter {
+ fn read_line() int { return 1 }
+}
+fn demo(mut IO Meter) int {
+ return IO.read_line()
+}
