@@ -39,8 +39,18 @@ def main(root: str) -> int:
         check(m and n and m.group(1) == n.group(1) == "27",
               "计数非 27/27: current=%s total=%s" % (m and m.group(1), n and n.group(1)))
         body = PLAN_ARCHIVE.read_text(encoding="utf-8")
-        done = len(re.findall(r"^- \[x\] T-\d\d ", body, re.M))
-        check(done == 27, "任务勾选非 27: %d" % done)
+        # 双格式完成判定：复选框行（r1/r2/r4）与表格行+紧随完成证据（r3）
+        done_ids = set(re.findall(r"^- \[x\] (T-\d+) ", body, re.M))
+        lines_ = body.split("\n")
+        for i, line in enumerate(lines_):
+            m = re.match(r"^\| (T-\d+) \|", line)
+            if m and any("[✅" in lines_[j]
+                         for j in range(i + 1, min(i + 4, len(lines_)))):
+                done_ids.add(m.group(1))
+        expected = {"T-%02d" % n for n in range(1, 28)}
+        check(done_ids == expected,
+              "任务完成集不符: 缺 %s 多 %s" % (sorted(expected - done_ids),
+                                              sorted(done_ids - expected)))
         check("PLAN-743:r4" in body, "缺 r3→r4 合并收据（key PLAN-743:r4）")
 
     # 2) ledger P743-* 指针全部可解析
