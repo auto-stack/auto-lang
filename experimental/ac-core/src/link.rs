@@ -756,14 +756,21 @@ pub fn publish_artifacts(
             }
             cleanup_failures.extend(discard_staged());
             if !restore_failures.is_empty() {
-                return Err(link_diag(
-                    "link.restore",
-                    format!(
-                        "{}; rollback incomplete, previous artifacts kept at the listed backup paths: {}",
-                        d.render("", "").trim_end(),
-                        restore_failures.join("; ")
-                    ),
-                ));
+                // P741P4-R2: a compound failure (rollback AND staged cleanup
+                // both blocked) must report every residual own path, not
+                // just the restore problems.
+                let mut parts = vec![format!(
+                    "{}; rollback incomplete, previous artifacts kept at the listed backup paths: {}",
+                    d.render("", "").trim_end(),
+                    restore_failures.join("; ")
+                )];
+                if !cleanup_failures.is_empty() {
+                    parts.push(format!(
+                        "own staged files also remain (release the blocking handles, then remove): {}",
+                        cleanup_failures.join("; ")
+                    ));
+                }
+                return Err(link_diag("link.restore", parts.join("; ")));
             }
             Err(with_cleanup(d, cleanup_failures))
         }

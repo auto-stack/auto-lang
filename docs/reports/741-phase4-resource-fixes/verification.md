@@ -27,8 +27,14 @@ r4 基线:worktree `D:/autostack/.wt/lang-741/auto-lang` 分支 `plan-741-dev`,
     —— `locked-cleanup`:link.cleanup 携带原 link.receipt + 残留 exe 路径 +
     os error 32 + NOT committed,旧三件套不变、用户目录幸存(R3-QA-02 闭环);
     `public-60s`:真实 run_exe 60.08s 准时 link.deadline 且**持管道孙进程
-    alive=false**(R3-QA-01 闭环;r3 反例该后代存活);`process-0..2` 为复审
-    冻结的 r3 执行器**副本**(有意演示 r3 缺陷,非当前库;其输出不因本轮改变)。
+    alive=false**(R3-QA-01 闭环;r3 反例该后代存活)。
+  - 更正(2026-10-05 复审 P741P4-R1):`process-0..2` 并非"冻结的 r3 执行器
+    副本"——reproduce.ps1 每次运行都从**当前仓 link.rs** 现生成 exact-link.rs
+    编入 helper,它们跑的就是 r4 执行器;其 `child_alive_after_return=true`
+    是**测量伪象**:探针在执行器返回瞬间快照存活位,而 reap 的 join 要等管道
+    EOF(句柄表先销毁),内核对象 signaling 在其后几毫秒完成。复审 death-watch
+    (返回后不干预、轮询 5s)实测 5/5 全部在 0-20ms 内真死——非 r3 式逃逸。
+    本报告初稿的"冻结副本"表述有误,以本更正为准。
   - r3(20261005 无 ProductionDeadline):块图两例 exit 1、receipt-prepare
     `staged_exe_left=false`(r3 常规路径无回归)
     [prior-20261005-reproduce.json](prior-20261005-reproduce.json)。
@@ -51,5 +57,7 @@ r4 基线:worktree `D:/autostack/.wt/lang-741/auto-lang` 分支 `plan-741-dev`,
 
 - 60s 证据测试仍为 `#[ignore]`(默认门禁不跑),本轮显式跑 60.01s;
   复审 reproduce 的 -ProductionDeadline 路径(60.08s,孙进程回收)为第二证据。
-- process-0..2 的 r3 执行器副本属复审冻结资料,随当前库演进不再更新;
-  其 r3 行为演示与本轮无关。
+- P741P4-R2(复审建议,已落实):link.restore 分支的复合故障(回滚与暂存清理
+  同时受阻)现在并报 cleanup_failures,不再只报 restore 问题。
+- process-0..2 的 alive=true 为测量伪象(见上更正),death-watch 实证 0-20ms
+  内全部真死;后续以 death-watch 方法解读该探针输出。
