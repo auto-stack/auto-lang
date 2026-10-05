@@ -656,8 +656,10 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
   门禁：原型 54 项+1 ignored（60.01s）、fmt 干净、all-targets 零 warning、一键原型段 13/13、
   主仓 check PASS、tv 162/162、cargo t 双侧 no-fail-fast（基线 36 红/worktree 34 红——
   worktree 红集为基线真子集，零新增归因，不伪写绿）；r4 reproduce -ProductionDeadline:
-  locked-cleanup=link.cleanup 全要素、public-60s=60.08s 拒绝且持管道孙进程 alive=false；
-  r3/r2 旧复现无回归；生产面零 diff（git diff c865adf66 -- Cargo.toml Cargo.lock crates/ test/ 空）。
+  locked-cleanup=link.cleanup 全要素、public-60s=60.08s 拒绝且持管道孙进程 alive=false
+  （process-0..2 的 alive=true 经复审 death-watch 证实为返回瞬间存活快照的测量伪象——
+  当前库执行器真实回收在 0-20ms 内完成，非 r3 式逃逸）；r3/r2 旧复现无回归；
+  生产面零 diff（git diff c865adf66 -- Cargo.toml Cargo.lock crates/ test/ 空）。
   关闭旧 T-23 验收。AC-24（执行侧证据）。
 - [ ] **T-30** /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 沉淀 SD-07/08、
   销账 R3-QA 行、归档并 guard 清理。
