@@ -560,6 +560,34 @@ Phase 2 执行进度（commit 哈希=plan-741-dev；基线 3a7967262）：
   wt-guard 后清理 plan-741-dev 与 P741-R2 依赖 worktree）
 
 
+### 合并收据（2026-10-05，/auto-plan:merge）PLAN-741:r2
+
+- stage: merge | plan_id: PLAN-741 | plan_revision: 2 | outcome: pass
+- prepared: reviewed 基线 8a7a1b793（rebase 后；worktree clean）；canonical
+  delta=SD-03/SD-04 → docs/specs/{auto-hir,auto-ac}/project.md（modify，复验
+  r1 SD-01/02 承诺）；无依赖 worktree（ac-core 自包含，无需 auto-down 兄弟检出）
+- landed: rebase 到 v0.6-dev（range-diff 6 条全 `=`，旧→新映射
+  28c0bbfcd→c2dfe84ed / db75c494f→db7fccbd5 / 6ad396379→33e18aa61 /
+  1d195fe6e→ec24c0003 / fb38632f2→443386850 / 36c0fd4c7→8a7a1b793）；
+  delivery 链 8a7a1b793（reviewed）→ 52c67d3df（SD-03/04 沉淀 + ledger 投影
+  P741-4，纯文档/投影 descendants）；主检出 `git merge --ff-only` 无 merge
+  commit，tip=52c67d3df；主检出冒烟 ac-core cli 10/10 + native_execution
+  11/11 全绿（真实 PE）
+- ledger_refreshed: .autoos/specs.json（LF 净增量 +23/−4）designs P741-1/P741-2
+  增补 r2 契约事实、reviews 新增 P741-4（r2 复审+修复收据 → 本归档路径）；
+  docs/specs/INDEX.md 经 spec-index.py 重建=零 diff（无新模块面）
+- archived: docs/plans/archive/741-ac-hir-native-core.md（git mv），status:
+  archived，completion_kind: delivered；README:8 归档链接随之生效
+  （P741P2-R2 自愈）；KNOWN-DEBT P741-QA-01..07 行已销账（a04b979d7）
+- cleaned: **完成（2026-10-05）**——文档引用的 D:/autostack/wt-guard.sh 本机
+  不存在（与 r1 同一偏差），按其文档语义以 PowerShell ReparsePoint 递归扫描
+  替代（D:/autostack/.wt/lang-741 全树 clean）后：worktree
+  D:/autostack/.wt/lang-741/auto-lang 移除、分支 plan-741-dev 删除
+  （was 52c67d3df=已落地）、组目录 lang-741 rmdir 成功
+- 交付摘要: Phase 2 修复外部复审全部 7 项（P741-QA-01..07），原型测试族
+  37→44 项全绿、六反例翻转、一键门禁 13/13；主仓 crates/ 与根 workspace
+  全程零改动
+
 ### 已交付实现的质量复审（2026-10-04，用户显式要求）
 
 - stage: review | plan_id: PLAN-741 | plan_revision: 1 | outcome: **needs_fix**
