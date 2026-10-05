@@ -228,6 +228,7 @@ class ModuleScan:
         self.anomalies = []
         self.brace_balance = 0
         self.lexically_indeterminate = False
+        self.known_bindings = set()   # 参数/let/var 绑定名（内部判定用，不产出）
 
     def to_json(self) -> dict:
         return {
@@ -314,6 +315,11 @@ def scan_module(rel_path: str, text: str) -> ModuleScan:
                         "line": idx,
                     })
 
+        # ── 已知局部绑定名（var/let/const；R3-QA-03 宿主准入用，内部不产出） ──
+        mb_ = re.match(r"\s*(?:var|let|const)\s+([A-Za-z_]\w*)", code)
+        if mb_:
+            scan.known_bindings.add(mb_.group(1))
+
         # ── use 边 ──
         mu = USE_RE.match(code.strip()) if code.startswith("use") else None
         if mu:
@@ -373,7 +379,9 @@ def scan_module(rel_path: str, text: str) -> ModuleScan:
             type_body = None
             enum_body = None
 
-    scan.calls = _post_classify(scan, local_types)
+    # fn 参数/返回类型证据 + 参数名入 known_bindings（须先于 _post_classify）
+    _extract_signature_types(scan, lines)
+    scan.calls = _post_classify(scan, local_types, scan.known_bindings, imported_symbols)
     scan.calls = _aggregate_calls(scan.calls)
     # 跨行字符串字面量（QA-01）：合法形态，掩码器保持字面量态到真正闭合；
     # 能力证据=每个跨行字面量的起始行（engine.at:314/333 实证）。
@@ -382,12 +390,11 @@ def scan_module(rel_path: str, text: str) -> ModuleScan:
         scan.capabilities.setdefault("multiline-string-literal", [])
         if len(scan.capabilities["multiline-string-literal"]) < EVIDENCE_CAP:
             scan.capabilities["multiline-string-literal"].append(start_line)
-    # fn 参数/返回类型证据：从声明行向后拼接至首个 '{'，抽取 (...) 与返回段
-    _extract_signature_types(scan, lines)
     return scan
 
 
-def _post_classify(scan: ModuleScan, local_types: set):
+def _post_classify(scan: ModuleScan, local_types: set,
+                   known_bindings: set, imported_symbols: set):
     """主循环后的符号表升级：用本模块完整声明集重分类扫描期无法判定的候选。
 
     词法级名字匹配，仍属候选而非语义解析；跨模块同名歧义交人工审定层。
@@ -413,6 +420,9 @@ def _post_classify(scan: ModuleScan, local_types: set):
                 # 其它 owner 同名/无 owner → 保持 unknown（形态标记保留）
             elif recv in local_types:
                 c["kind"] = "type-qualified"
+            elif recv in known_bindings or recv in imported_symbols:
+                # R3-QA-03：参数/局部绑定/导入同名遮蔽宿主——身份不可证明，保持 unknown
+                pass
             elif recv in NATIVE_NAMESPACES:
                 c["kind"] = "native-runtime"
             # 变量/无法解析接收者 → 保持 unknown-receiver
@@ -456,6 +466,8 @@ def _extract_signature_types(scan: ModuleScan, lines):
                 toks = p.split()
                 if toks:
                     ptypes.append(toks[-1])
+                    scan.known_bindings.add(toks[0].replace("mut", "").strip()
+                                             if toks[0] == "mut" else toks[0])
         sig_types.append({"fn": decl["name"], "param_types": ptypes, "ret": ret, "line": decl["line"]})
     scan.declarations = [
         {**d, "param_types": st["param_types"], "ret": st["ret"]}
@@ -658,6 +670,8 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
         return isinstance(v, str)
 
     seen_ids = set()
+    invalid_ids = set()      # 类型校验淘汰/重复 ID 的决定（不进消费者索引，R3-QA-01）
+    validated_by_id = {}
     covered_paths = set()
     for pos, d in enumerate(decisions):
         if not isinstance(d, dict):
@@ -690,10 +704,10 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
         if type_bad:
             structural_error = True
             continue  # 类型不合法的记录不做后续语义校验（无 traceback）
-
         if did in seen_ids:
             structural_error = True
             msgs.append("ERROR[decision-duplicate-id] %s" % did)
+            invalid_ids.add(did)  # 重复 ID 的后续记录不进消费者索引
         seen_ids.add(did)
         kind = d.get("kind")
         if kind not in DECISION_KIND_CONCLUSIONS:
@@ -736,10 +750,14 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
             if cur != h:
                 stale = True
                 msgs.append("ERROR[decision-stale] %s 绑定的输入已变化: %s" % (did, p))
+        # 类型+语义全部通过且非重复 ID 才进入消费者索引（R3-QA-01）
+        if did not in invalid_ids and did not in validated_by_id:
+            validated_by_id[did] = d
 
     if require:
-        decisions_by_id = {d_["id"]: d_ for d_ in decisions
-                           if isinstance(d_, dict) and isinstance(d_.get("id"), str)}
+        # R3-QA-01：消费者索引只含通过类型/语义校验的决定；
+        # 被淘汰/重复记录的引用按"未通过校验"定位（不二次消费未校验数据）
+        decisions_by_id = validated_by_id
         # 完成态覆盖闭环 1：全部受管输入被 ≥1 决定引用（subject/evidence/绑定）
         for inp in inputs:
             if inp["path"] not in covered_paths:
@@ -810,15 +828,14 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
                     rd = decisions_by_id.get(ref)
                     if rd is None:
                         structural_error = True
-                        msgs.append("ERROR[family-ref-missing] resolved 族引用的决定"
-                                    "不存在: %r (%s/%s)" % (ref, fp, fk))
+                        reason = ("未通过校验" if ref in invalid_ids else "不存在")
+                        msgs.append("ERROR[family-ref-missing] resolved 族引用的决定%s:"
+                                    " %r (%s/%s)" % (reason, ref, fp, fk))
                     else:
-                        # 适用性：决定须为已消解的 unknown-resolution，
-                        # 且其证据/主体/绑定覆盖族所在路径
+                        # 适用性（R3-QA-02）：仅认同条 evidence 文件集合覆盖族路径；
+                        # hash 绑定证明新鲜、subject 命名对象，均不能替代审定证据
                         covers = any(_evidence_file(ev) == fp
-                                     for ev in rd.get("evidence", []))
-                        covers = covers or fp in rd.get("bound_input_hashes", {})
-                        covers = covers or rd.get("subject") == fp
+                                     for ev in rd["evidence"])
                         if rd.get("kind") != "unknown-resolution" or \
                                 rd.get("conclusion") != "resolved" or not covers:
                             structural_error = True
@@ -832,10 +849,11 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
                         structural_error = True
                         msgs.append("ERROR[family-open-incomplete] open 族缺 %s: %s/%s"
                                     % (req_key, fp, fk))
-                if f.get("decision") and f["decision"] not in seen_ids:
+                if f.get("decision") and (f["decision"] not in decisions_by_id):
                     structural_error = True
-                    msgs.append("ERROR[family-ref-missing] open 族引用的决定不存在: %r"
-                                % (f["decision"],))
+                    reason = ("未通过校验" if f["decision"] in invalid_ids else "不存在")
+                    msgs.append("ERROR[family-ref-missing] open 族引用的决定%s: %r"
+                                % (reason, f["decision"],))
             fam_index.append(f)
         if unknown_candidates:
             for (upath, ukind, uname) in unknown_candidates:

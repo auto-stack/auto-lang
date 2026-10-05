@@ -63,6 +63,11 @@ class FixtureCase(unittest.TestCase):
         (out / acc_inventory.DECISIONS_NAME).write_text(
             json.dumps(decisions, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
+    def write_layer(self, layer):
+        self.out.mkdir(parents=True, exist_ok=True)
+        (self.out / acc_inventory.DECISIONS_NAME).write_text(
+            json.dumps(layer, ensure_ascii=False), encoding="utf-8")
+
     def current_bindings(self) -> dict:
         return {
             rel: acc_inventory.sha256_of(self.repo / rel)
@@ -568,11 +573,6 @@ class StrictDecisionsGate(FixtureCase):
 class IntegrityHardening(StrictDecisionsGate):
     """P743-R2-QA-02/03/04：证据同条绑定、族引用适用性、字段类型受控拒绝。"""
 
-    def write_layer(self, layer):
-        self.out.mkdir(parents=True, exist_ok=True)
-        (self.out / acc_inventory.DECISIONS_NAME).write_text(
-            json.dumps(layer, ensure_ascii=False), encoding="utf-8")
-
     def test_evidence_without_binding_rejected_then_fixed_then_stale(self):
         run_tool(self.repo, self.out, "--write")
         layer = self.complete_layer()
@@ -661,6 +661,102 @@ class IntegrityHardening(StrictDecisionsGate):
                 self.assertEqual(code, 1, "case %s should fail" % label)
                 self.assertIn("ERROR[", err, "case %s needs located error" % label)
                 self.assertNotIn("Traceback", err, "case %s leaked traceback" % label)
+
+
+class ConsumerIntegrity(StrictDecisionsGate):
+    """P743-R3-QA-01/02：消费者索引边界与 evidence-only 适用性。"""
+
+    def test_referenced_invalid_decision_controlled(self):
+        # 组合路径：被全部 resolved 族引用的决定类型错误 → 受控拒绝非 traceback
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        layer["decisions"][-1]["evidence"] = 17  # MD-S-900（所有族的引用目标）
+        self.write_layer(layer)
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertNotIn("Traceback", err)
+        self.assertIn("ERROR[decision-malformed]", err)
+        self.assertIn("MD-S-900", err)
+
+    def test_hash_only_applicability_bypass_rejected(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        ref = layer["decisions"][-1]  # MD-S-900
+        ref["evidence"] = ["crates/auto-lang/src/lib.rs:1874"]  # 不含族路径
+        ref["bound_input_hashes"]["crates/auto-lang/src/lib.rs"] =             acc_inventory.sha256_of(self.repo / "crates/auto-lang/src/lib.rs")
+        for f in layer["unknown_families"]:  # 族路径仍被 bound 覆盖（旁路尝试）
+            ref["bound_input_hashes"][f["path"]] =                 acc_inventory.sha256_of(self.repo / f["path"])
+        self.write_layer(layer)
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("family-ref-inapplicable", err)
+
+    def test_subject_only_applicability_bypass_rejected(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        # 专用决定：evidence 不含族路径（仅 lib.rs），subject 命中族路径——不得替代
+        fam0 = layer["unknown_families"][0]
+        layer["decisions"].append({
+            "id": "MD-S-901", "subject": fam0["path"],
+            "kind": "unknown-resolution", "conclusion": "resolved",
+            "evidence": ["crates/auto-lang/src/lib.rs:1874"],
+            "note": "subject-only bypass probe",
+            "bound_input_hashes": {
+                "crates/auto-lang/src/lib.rs":
+                    acc_inventory.sha256_of(self.repo / "crates/auto-lang/src/lib.rs"),
+                fam0["path"]: acc_inventory.sha256_of(self.repo / fam0["path"])},
+        })
+        fam0["decision"] = "MD-S-901"
+        self.write_layer(layer)
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("family-ref-inapplicable", err)
+        self.assertIn("MD-S-901", err)
+
+
+class HostAdmissionShadowing(FixtureCase):
+    """P743-R3-QA-03：导入/参数/局部绑定遮蔽宿主命名空间。"""
+
+    @classmethod
+    def setUpClass(cls):
+        _spec4 = importlib.util.spec_from_file_location("ai_qa_r3", _TOOL_PATH)
+        cls.ai = importlib.util.module_from_spec(_spec4)
+        _spec4.loader.exec_module(cls.ai)
+
+    def kinds(self, text, path="inline.at"):
+        s = self.ai.scan_module(path, text)
+        return s, {(c.get("receiver"), c["name"]): c["kind"] for c in s.calls}
+
+    def test_review_fixture_import_shadow(self):
+        fixture = _HERE / "fixtures" / "acc-inventory" / "review" / "import_shadow.at"
+        s, k = self.kinds(fixture.read_text(encoding="utf-8"))
+        self.assertEqual(k[(None, "print")], "imported-symbol")
+        for recv in ("IO", "List", "File", "process"):
+            self.assertEqual(k[(recv, k and self._meth(recv))], "unknown-receiver", recv)
+
+    @staticmethod
+    def _meth(recv):
+        return {"IO": "read_line", "List": "new",
+                "File": "read_text", "process": "args"}[recv]
+
+    def test_review_fixture_parameter_shadow(self):
+        fixture = _HERE / "fixtures" / "acc-inventory" / "review" / "parameter_shadow.at"
+        s, k = self.kinds(fixture.read_text(encoding="utf-8"))
+        # IO 是 Meter 参数：身份不可证明，保持 unknown
+        self.assertEqual(k[("IO", "read_line")], "unknown-receiver")
+
+    def test_let_var_binding_shadow(self):
+        s, k = self.kinds('fn f() {\n var IO = List.new()\n IO.read_line()\n}\n')
+        self.assertEqual(k[("IO", "read_line")], "unknown-receiver")
+
+    def test_conflict_free_host_positive_unchanged(self):
+        s, k = self.kinds(
+            'fn f() {\n var a = List.new()\n var l = IO.read_line()\n'
+            ' var t = File.read_text()\n var v = process.args()\n}\n')
+        self.assertEqual(k[("List", "new")], "native-runtime")
+        self.assertEqual(k[("IO", "read_line")], "native-runtime")
+        self.assertEqual(k[("File", "read_text")], "native-runtime")
+        self.assertEqual(k[("process", "args")], "native-runtime")
 
 
 if __name__ == "__main__":
