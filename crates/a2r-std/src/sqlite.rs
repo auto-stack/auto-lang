@@ -8,7 +8,7 @@
 //! Hand-copied from `stdlib/auto/sqlite.at` + `sqlite.rs.at` — keep the
 //! signatures aligned (checked by the KNOWN-DEBT 396 signature-parity test).
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 static LAST_ERROR: Mutex<String> = Mutex::new(String::new());
 
@@ -17,24 +17,28 @@ fn record_error(err: &rusqlite::Error) {
 }
 
 /// Opaque handle to an open SQLite connection. Closed automatically on
-/// drop (RAII) — the Auto surface has no explicit `close`.
+/// drop (RAII — the last clone drops the connection) — the Auto surface has
+/// no explicit `close`. Cheap to clone: every handle shares one connection
+/// behind a mutex, so transaction state is visible to all handles.
+#[derive(Clone)]
 pub struct SqliteDb {
-    conn: rusqlite::Connection,
+    conn: Arc<Mutex<rusqlite::Connection>>,
 }
 
 /// Open (or create) a SQLite database file. On failure, falls back to an
 /// in-memory database and records the error for [`last_error`], so later
 /// calls remain usable instead of panicking.
-pub fn open(path: &str) -> SqliteDb {
-    match rusqlite::Connection::open(path) {
-        Ok(conn) => SqliteDb { conn },
+pub fn open(path: impl AsRef<str>) -> SqliteDb {
+    let path = path.as_ref();
+    let conn = match rusqlite::Connection::open(path) {
+        Ok(conn) => conn,
         Err(e) => {
             *LAST_ERROR.lock().unwrap() = format!("sqlite open '{path}' failed: {e}");
-            SqliteDb {
-                conn: rusqlite::Connection::open_in_memory()
-                    .expect("in-memory sqlite cannot fail"),
-            }
+            rusqlite::Connection::open_in_memory().expect("in-memory sqlite cannot fail")
         }
+    };
+    SqliteDb {
+        conn: Arc::new(Mutex::new(conn)),
     }
 }
 
@@ -58,22 +62,22 @@ impl SqliteDb {
     /// Execute a SQL statement (DDL or DML). Returns the number of rows
     /// affected, or -1 on failure. Multi-statement scripts are executed as
     /// a batch and report 0 on success.
-    pub fn exec(&self, sql: &str) -> i64 {
-        match self.conn.execute(sql, []) {
+    pub fn exec(&self, sql: impl AsRef<str>) -> i64 {
+        let sql = sql.as_ref();
+        let conn = self.conn.lock().unwrap();
+        match conn.execute(sql, []) {
             Ok(n) => n as i64,
             // Batch scripts, and row-returning statements run through exec
             // (e.g. `SELECT 1`), both go through execute_batch: no affected-
             // rows count is available, so success reports 0.
             Err(rusqlite::Error::MultipleStatement)
-            | Err(rusqlite::Error::ExecuteReturnedResults) => {
-                match self.conn.execute_batch(sql) {
-                    Ok(()) => 0,
-                    Err(e) => {
-                        record_error(&e);
-                        -1
-                    }
+            | Err(rusqlite::Error::ExecuteReturnedResults) => match conn.execute_batch(sql) {
+                Ok(()) => 0,
+                Err(e) => {
+                    record_error(&e);
+                    -1
                 }
-            }
+            },
             Err(e) => {
                 record_error(&e);
                 -1
@@ -83,8 +87,10 @@ impl SqliteDb {
 
     /// Run a SELECT query; every cell of every row is returned as a string
     /// (NULL → "", BLOB → "<N bytes>"). Returns an empty list on failure.
-    pub fn query(&self, sql: &str) -> Vec<Vec<String>> {
-        let mut stmt = match self.conn.prepare(sql) {
+    pub fn query(&self, sql: impl AsRef<str>) -> Vec<Vec<String>> {
+        let sql = sql.as_ref();
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = match conn.prepare(sql) {
             Ok(stmt) => stmt,
             Err(e) => {
                 record_error(&e);
@@ -126,7 +132,7 @@ impl SqliteDb {
     /// Rowid of the most recent successful INSERT on this connection
     /// (0 if none).
     pub fn last_insert_rowid(&self) -> i64 {
-        self.conn.last_insert_rowid()
+        self.conn.lock().unwrap().last_insert_rowid()
     }
 }
 
