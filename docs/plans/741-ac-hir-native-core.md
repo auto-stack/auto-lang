@@ -515,6 +515,37 @@ Phase 2 执行进度（commit 哈希=plan-741-dev；基线 3a7967262）：
 
 原步骤 T-01..T-17 为已交付历史；上文“所有步骤尚未执行”仅是 r1 起草时的记录。
 r3 current_step=17、total_steps=24；T-18..24 完成后逐步回写，不预勾成功。
+
+Phase 3 执行进度（commit 哈希=plan-741-dev，基线 ed2d00b90，2026-10-05）：
+
+- [x] **T-18** worktree `D:/autostack/.wt/lang-741/auto-lang`（分支 plan-741-dev 重建 @ ed2d00b90，
+  activity 741 唯一性/git status clean/指纹已核）；跨仓依赖按组内规则建只读兄弟检出
+  `D:/autostack/.wt/lang-741/auto-down`（detached @ fba6563e，同 r1，无链接）。
+- [x] **T-19** commit `585224bf1`：verify.rs check_block_graph（显式栈 DFS 可达性+入边不变量+结构门
+  阻止走查）+ walk_block 防御 visited；复审两输入物化为 invalid fixtures；hir_verify 拒绝矩阵 +2、
+  cli 块图反例测试（exit 1、定位 span、0.14s<5s、无制品）。AC-16。
+- [x] **T-20** commit `7e3a5713f`：run_with_deadline 单调截止覆盖等待+收集（通道 recv_timeout）；
+  windows-sys 0.59 Job Object（KILL_ON_JOB_CLOSE）管控子树，全出口 reader join 回收；
+  DeadlineCollect 变体；reader 改 read_to_end+lossy（修 read_to_string 截断问题）。
+  新测试：1s 收集截止（后代被回收 tasklist 证实）、后代即时退出正例、60s 生产证据
+  （`--ignored` 显式跑 60.01s vs 复审实测 114.96s 挂起）。AC-17。
+- [x] **T-21** commit `7e3a5713f`：publish_artifacts discard_staged 全失败出口回收
+  （收据暂存/备份/三次发布）+ link.restore 恢复诊断（列幸存备份路径）+ 用户占位目录保护 +
+  link_object_staged 执行器错误回收；单测失败矩阵 5 例全过。AC-18。
+- [x] **T-22** commit `bc9c6cc5c`：README 流水线/测试族表 + verify 脚本 --lib 串行化；
+  plans.md/ledger 指针复审方已同步 active 路径（本轮核对一致）。AC-19（执行侧部分；
+  最终归档留 merge）。
+- [x] **T-23** commit `bc9c6cc5c`：docs/reports/741-phase3-boundary-fixes/
+  {verification.md, r2-review-reproduce-rerun.json, reds-*.txt, source-hashes.txt}。
+  门禁：原型 52 项绿+1 ignored 证据项、fmt 干净、all-targets 零 warning、一键脚本原型段
+  13/13、主仓 check PASS（组内 auto-down 建立后）、cargo tv 162/162、cargo t 双侧
+  no-fail-fast 同基线归因（基线 33 红/worktree 35 红，对称差 8 例全为 THR-D3/D4
+  已知族在并行负载下的翻转，30 例共有，零新增归因）；生产面零 diff
+  （git diff ed2d00b90 -- Cargo.toml Cargo.lock crates/ test/ 为空）；
+  r3 复审 reproduce 复跑全验收点（staged_exe_left=false、watchdog 60.07s
+  stillRunning=false）、r2 reproduce 无回归。AC-20。
+- [ ] **T-24** /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 沉淀
+  SD-05/06、销账 R2-QA 行、归档并 guard 清理。
 T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按 merge 收据验收。
 
 ## 9. 复审记录
