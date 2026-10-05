@@ -674,6 +674,11 @@ pub mod fs {
         std::fs::create_dir_all(path.as_ref()).is_ok()
     }
 
+    /// 与独立 a2r-std crate 的 fs::mkdir_all 同名对齐（NOTES-001 r3 需要）。
+    pub fn mkdir_all(path: impl AsRef<str>) -> bool {
+        std::fs::create_dir_all(path.as_ref()).is_ok()
+    }
+
     pub fn write_text(path: impl AsRef<str>, content: impl AsRef<str>) -> bool {
         std::fs::write(path.as_ref(), content.as_ref()).is_ok()
     }
