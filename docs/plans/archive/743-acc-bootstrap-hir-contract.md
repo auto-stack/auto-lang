@@ -567,7 +567,7 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 | landed（落地后条款） | SD-06/07 目标（auto-acc/project.md、stage-contract.md）无决定绑定→重绑条款条件性不触发；主检出严格冒烟：63/63 测试 + --check --require-decisions 全绿（47 决定/146 组/7 族）；canonical 三项核验（旧 R3 摘要消失、两分规则在案、SD-06 段落在案） |
 | ledger_refreshed | .autoos/specs.json P743-1/2 原位更新（r3 强化注记）+ reviews P743-5（外部 needs_fix→Phase 3→R4 pass 链），随 delivery 落主检出，read-back 验证 P743-1..5 在案 |
 | archived | 本文件 git mv 至 docs/plans/archive/，status: archived，completion_kind: delivered |
-| cleaned | 见下补记 |
+| cleaned | worktree 0 dirty 且 HEAD deee10031 已是 v0.6-dev 祖先；wt-guard.sh 仍缺失（r1/r2 收据已挂工具债）——等价 PowerShell ReparsePoint 全组扫描：`GUARD-EQUIVALENT-CLEAN: no reparse points in lang-743 group`；git worktree remove 目录删除首次遇 Windows 瞬时句柄 Permission denied（注册已注销），重试 rm 后完成；`git branch -d plan-743-dev`（was deee10031）+ 组目录移除，登记/磁盘/分支三方复核 0 |
 
 - 规范增量落地：SD-06→docs/specs/auto-acc/project.md、SD-07→docs/specs/auto-hir/stage-contract.md
   （均 modify；canonical 落地文本与冻结提案逐字一致，R4 复核 a4af013b 未触）。
