@@ -32,6 +32,61 @@ fn run_ac(args: &[&str]) -> Run {
     }
 }
 
+/// R2-QA-01: malformed block graphs must be rejected by `check` with a
+/// located diagnostic — no stack overflow, no panic, a bounded wait (AC-16
+/// demands a return within 5s), and `build` must refuse before any artifact
+/// is created.
+#[test]
+fn block_graph_violations_rejected_within_deadline() {
+    for (name, marker) in [
+        ("block-self-cycle.atom", "referenced as a child block"),
+        (
+            "block-disconnected-cycle.atom",
+            "not reachable from the entry block",
+        ),
+    ] {
+        let started = std::time::Instant::now();
+        let f = repo_file(&format!("experimental/ac-core/fixtures/invalid/{name}"));
+
+        let r = run_ac(&["check", &f.display().to_string()]);
+        assert_eq!(r.code, 1, "{name}: stdout: {}", r.stdout);
+        assert!(
+            r.stderr.contains("verify.block-structure"),
+            "{name}: {}",
+            r.stderr
+        );
+        assert!(r.stderr.contains(marker), "{name}: {}", r.stderr);
+        assert!(r.stderr.contains(".atom:"), "{name}: no span: {}", r.stderr);
+
+        let dir = std::env::temp_dir()
+            .join("ac741-cli")
+            .join(format!("blockgraph-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("out.exe");
+        let r = run_ac(&[
+            "build",
+            &f.display().to_string(),
+            "--entry",
+            "de",
+            "--output",
+            &exe.display().to_string(),
+        ]);
+        assert_eq!(r.code, 1, "{name} build: stdout: {}", r.stdout);
+        assert!(!exe.exists(), "{name}: exe artifact produced");
+        assert!(
+            !dir.join("out.obj").exists(),
+            "{name}: obj artifact produced"
+        );
+
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "{name}: took {elapsed:?} (must return within 5s, no runaway recursion)"
+        );
+    }
+}
+
 #[test]
 fn check_valid_document_succeeds() {
     let f = repo_file("docs/design/strategy/hir-examples/01-add.atom");

@@ -157,6 +157,20 @@ const REJECT_CASES: &[(&str, Stage, &str)] = &[
         "verify.owner-mismatch",
     ),
     ("stolen-body.atom", Stage::Verify, "verify.owner-mismatch"),
+    // Phase 3 (R2-QA-01): block containment graph — a self-referencing entry
+    // must be rejected with a located diagnostic (r2 overflowed the stack
+    // here), and a disconnected block cycle (each node in-degree 1, reachable
+    // from nothing) must not slip into CheckedModule.
+    (
+        "block-self-cycle.atom",
+        Stage::Verify,
+        "verify.block-structure",
+    ),
+    (
+        "block-disconnected-cycle.atom",
+        Stage::Verify,
+        "verify.block-structure",
+    ),
     // combined mutations
     ("cross-body-local.atom", Stage::Bind, "bind.dangling-ref"),
     ("shared-expr.atom", Stage::Verify, "verify.eval-position"),

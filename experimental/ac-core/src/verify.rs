@@ -659,30 +659,93 @@ impl Verifier {
             self.expr_type(ExprId(i as u32), body, type_map, sigs, &mut tm);
         }
 
-        // Parent counting: unique entry role for every block.
-        let mut parents: BTreeMap<u32, usize> = BTreeMap::new();
-        for i in 0..body.blocks.len() {
-            parents.insert(i as u32, 0);
+        // Block containment graph first (QA-01): entry zero in-degree, every
+        // other block exactly one, and every block reachable from the entry
+        // via an iterative DFS. Structural failures gate the dataflow walk —
+        // r1/r2 counted in-degrees only, so a self-referencing entry block
+        // overflowed the stack inside walk_block and a disconnected block
+        // cycle (each node in-degree 1, reachable from nothing) passed into
+        // CheckedModule.
+        let structure_ok = self.check_block_graph(body);
+
+        // Dataflow + termination walk. Params start initialized.
+        if structure_ok {
+            let mut init: Init = BTreeSet::new();
+            for (i, l) in body.locals.iter().enumerate() {
+                if l.role == hir::LocalRole::Param {
+                    init.insert(LocalId(i as u32));
+                }
+            }
+            let mut tm = TypeMemo::default();
+            let mut walked: BTreeSet<u32> = BTreeSet::new();
+            let (flow, _exit_init) = self.walk_block(
+                body.entry,
+                body,
+                &[],
+                &init,
+                fn_result,
+                type_map,
+                sigs,
+                &mut tm,
+                &mut walked,
+            );
+            if flow != Flow::Returned {
+                self.error(
+                    "verify.no-return-path",
+                    format!(
+                        "body `{}` has no return path (entry block must return on all paths)",
+                        body.id_text
+                    ),
+                    body.span,
+                );
+            }
         }
-        let count_edge = |t: u32, parents: &mut BTreeMap<u32, usize>| {
-            *parents.entry(t).or_insert(0) += 1;
+    }
+
+    /// Validate the block containment graph (If then/else and Loop body
+    /// edges): ID-range sanity, entry zero in-degree, every other block at
+    /// most one parent, and full reachability from the entry via an explicit
+    /// stack. The visited set makes the walk terminate on any malformed
+    /// input, including cycles. With the in-degree invariants satisfied,
+    /// full reachability implies acyclicity: a reachable cycle would give
+    /// some cycle node a second parent, or put the entry itself on the
+    /// cycle; unreachable cycles (disconnected SCCs) are caught by the
+    /// reachability check. Runtime loop repeats, break/continue LoopId
+    /// targets and recursive calls are not containment edges and stay
+    /// accepted. Returns false when structural errors were recorded; the
+    /// caller must not run the dataflow walk.
+    fn check_block_graph(&mut self, body: &hir::Body) -> bool {
+        let mut out_edges: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
+        let mut in_deg: BTreeMap<u32, usize> = BTreeMap::new();
+        for i in 0..body.blocks.len() {
+            out_edges.insert(i as u32, Vec::new());
+            in_deg.insert(i as u32, 0);
+        }
+        let mut push_edge = |from: usize, to: u32| {
+            if let Some(v) = out_edges.get_mut(&(from as u32)) {
+                v.push(to);
+            }
+            *in_deg.entry(to).or_insert(0) += 1;
         };
-        for bl in body.blocks.iter() {
+        for (bi, bl) in body.blocks.iter().enumerate() {
             for s in &bl.stmts {
                 match s {
                     hir::Stmt::If { then, els, .. } => {
-                        count_edge(then.0, &mut parents);
+                        push_edge(bi, then.0);
                         if let Some(e) = els {
-                            count_edge(e.0, &mut parents);
+                            push_edge(bi, e.0);
                         }
                     }
-                    hir::Stmt::Loop { body: b, .. } => count_edge(b.0, &mut parents),
+                    hir::Stmt::Loop { body: b, .. } => push_edge(bi, b.0),
                     _ => {}
                 }
             }
         }
+
+        let n_blocks = body.blocks.len();
+        let mut ok = true;
         for (i, bl) in body.blocks.iter().enumerate() {
-            let n = parents.get(&(i as u32)).copied().unwrap_or(0);
+            let n = in_deg.get(&(i as u32)).copied().unwrap_or(0);
             if i as u32 == body.entry.0 {
                 if n != 0 {
                     self.error(
@@ -693,16 +756,8 @@ impl Verifier {
                         ),
                         bl.span,
                     );
+                    ok = false;
                 }
-            } else if n == 0 {
-                self.error(
-                    "verify.block-structure",
-                    format!(
-                        "block `{}` is not reachable from the entry block",
-                        bl.id_text
-                    ),
-                    bl.span,
-                );
             } else if n > 1 {
                 self.error(
                     "verify.block-structure",
@@ -712,37 +767,39 @@ impl Verifier {
                     ),
                     bl.span,
                 );
+                ok = false;
             }
         }
 
-        // Dataflow + termination walk. Params start initialized.
-        let mut init: Init = BTreeSet::new();
-        for (i, l) in body.locals.iter().enumerate() {
-            if l.role == hir::LocalRole::Param {
-                init.insert(LocalId(i as u32));
+        // Reachability: iterative DFS with an explicit stack and a visited
+        // set — in-degree counts alone cannot distinguish "referenced once"
+        // from "reachable", and disconnected cycles must not slip through.
+        let mut reachable: BTreeSet<u32> = BTreeSet::new();
+        if (body.entry.0 as usize) < n_blocks {
+            reachable.insert(body.entry.0);
+            let mut stack = vec![body.entry.0];
+            while let Some(t) = stack.pop() {
+                for c in out_edges.get(&t).cloned().unwrap_or_default() {
+                    if (c as usize) < n_blocks && reachable.insert(c) {
+                        stack.push(c);
+                    }
+                }
             }
         }
-        let mut tm = TypeMemo::default();
-        let (flow, _exit_init) = self.walk_block(
-            body.entry,
-            body,
-            &[],
-            &init,
-            fn_result,
-            type_map,
-            sigs,
-            &mut tm,
-        );
-        if flow != Flow::Returned {
-            self.error(
-                "verify.no-return-path",
-                format!(
-                    "body `{}` has no return path (entry block must return on all paths)",
-                    body.id_text
-                ),
-                body.span,
-            );
+        for (i, bl) in body.blocks.iter().enumerate() {
+            if !reachable.contains(&(i as u32)) {
+                self.error(
+                    "verify.block-structure",
+                    format!(
+                        "block `{}` is not reachable from the entry block (block graph must be connected and acyclic)",
+                        bl.id_text
+                    ),
+                    bl.span,
+                );
+                ok = false;
+            }
         }
+        ok
     }
 
     /// Walk a block: dataflow (initialization) + termination checks.
@@ -759,7 +816,15 @@ impl Verifier {
         type_map: &BTreeMap<u32, ValueType>,
         sigs: &SigTable,
         tm: &mut TypeMemo,
+        walked: &mut BTreeSet<u32>,
     ) -> (Flow, Init) {
+        // Defensive cycle guard (QA-01): check_block_graph gates the walk on
+        // a valid containment graph, so a block can never legitimately be
+        // walked twice; treat a repeat as unreachable and bail out instead
+        // of recursing forever if that invariant is ever broken.
+        if !walked.insert(bid.0) {
+            return (Flow::Continue, init.clone());
+        }
         let mut cur = init.clone();
         let mut flow = Flow::Continue;
         let bl = &body.blocks[bid.0 as usize];
@@ -805,12 +870,13 @@ impl Verifier {
                             bl.span,
                         );
                     }
-                    let (then_f, then_init) =
-                        self.walk_block(*then, body, loops, &cur, fn_result, type_map, sigs, tm);
+                    let (then_f, then_init) = self.walk_block(
+                        *then, body, loops, &cur, fn_result, type_map, sigs, tm, walked,
+                    );
                     let (else_f, else_init) = match els {
-                        Some(e) => {
-                            self.walk_block(*e, body, loops, &cur, fn_result, type_map, sigs, tm)
-                        }
+                        Some(e) => self.walk_block(
+                            *e, body, loops, &cur, fn_result, type_map, sigs, tm, walked,
+                        ),
                         None => (Flow::Continue, cur.clone()),
                     };
                     flow = match (then_f, else_f) {
@@ -851,6 +917,7 @@ impl Verifier {
                         type_map,
                         sigs,
                         tm,
+                        walked,
                     );
                     // A `return` inside the loop body leaves the loop; a body
                     // that completes or diverges via break/continue hands
