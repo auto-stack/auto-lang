@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-743
-status: execution_done
+status: reviewed
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
@@ -618,6 +618,57 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 
 ## 9. 复审记录
 
+### 独立复审 R5（2026-10-05，stage: review，r4 P743-R3-QA-01..04 修复复核）
+
+- stage: review
+- plan_id: PLAN-743 · plan_revision: 4 · outcome: **pass**（R3-QA-01..04 修复全部确认；
+  AC-01..23 在 r4 语义下重验通过；AC-24 的终态断言（27/27、全部 P743-* 指针）为
+  merge 收口条件，由 final_assertions.py 在落地/归档后执行，失败即 blocked）
+- reviewed_commit: af3c8040e5a9995938a5004c4739539d9be335a9（worktree plan-743-dev，
+  clean 0 dirty）；base_commit: 1d8fba15c7f8685e670f3bc8a398198895331c72（激活提交）
+- dependency_revisions: Python 3.14.2 标准库；无外仓；PYTHONUTF8=1
+- spec_inputs: 9 受管输入 hash 经严格 --check 全绿；r4 对 docs/specs/ 零改动
+  （SD-08 为提案态）
+- 独立性声明：复审在实现会话内进行（同 R1..R4 先例）；结论由命令重放、CLI 级
+  组合探针与源码核查重建。
+
+**R3-QA 修复逐项复核（独立重放）**：
+
+- R3-QA-01 → fixed：CLI 级组合探针（完整层 + 被引用决定 evidence=17）→ exit 1、
+  ERROR[decision-malformed] 定位 MD-S-900、无 Traceback；源码核查消费者索引=
+  validated_by_id（仅通过全部类型/语义校验的决定），重复/淘汰记录引用报
+  "未通过校验/不存在"。
+- R3-QA-02 → fixed：源码无 bound/subject OR 旁路（字符串级核查）；hash-only 与
+  subject-only 两个隔离负例（83 测试套内）均 family-ref-inapplicable；真实七族
+  evidence 均覆盖族路径，严格门绿。
+- R3-QA-03 → fixed：import_shadow（4 qualified→unknown、print=imported-symbol）、
+  parameter_shadow（IO 参数.read_line→unknown）独立重放；无冲突宿主正例不变；
+  真实仓观察零漂移（13 native/687 unknown）。
+- R3-QA-04 → fixed（提案+工具态）：重复 R4 标题去重（独立 grep 计数=1）、3 处
+  起草态标题标注历史、final_assertions.py 交付（七类断言：归档 27/27、任务勾选、
+  全部 P743-* 指针可解析且 P743-3 对账 archive、plans.md 行、canonical 无旧摘要、
+  严格门）；merge 收口执行，失败即 blocked。
+
+**门禁重放（reviewed_commit 上）**：83/83 测试；严格 --check --require-decisions
+exit0（47 决定/146 组/7 族）；三方 cmp BYTE-IDENTICAL；`git diff --check` clean；
+范围探针 crates/auto-lib/docs.specs/experimental/Cargo 零触碰。
+
+**AC 终态**：AC-01..23 pass；AC-24 的可预验部分（T-22..26 进度、证据、SD-08 冻结、
+final_assertions 交付）pass，终态断言为 merge 门（blocked 机制兜底）。
+**delta 复核**：SD-08 提案与冻结哈希一致（f8924d0a8266976d）；正文为持久规则
+（收紧不放宽、不声称 resolver）；元数据经 r4 合同 §Phase 4 规范增量表确认。
+
+**收据冻结哈希（reviewed@af3c8040e）**：phase4 提案 f8924d0a8266976d、
+manual-decisions.json 3674c687647f88dc、acc_inventory.py 074a32853df94b7f、
+test_acc_inventory.py 9f9b3681c2b5c029、final_assertions.py a8e629f87fa84b3d。
+
+- findings: 无新增
+- evidence: 本记录命令/结果摘录；verification.md/baseline.md（随交付落地）；
+  制品经 merge 落 v0.6-dev 后同 hash 可溯
+- next: merge（沉淀 SD-08；P743-3 指针对账 archive；执行 final_assertions.py 七类
+  断言；逐条销账、归档、guard 后清理）
+
+### Phase 4 执行交接（2026-10-05，stage: work，r4 P743-R3-QA-01..04 修复）
 ### Phase 4 执行交接（2026-10-05，stage: work，r4 P743-R3-QA-01..04 修复）
 
 - stage: work（r4；外部复核 needs_fix 后的消费者完整性修复实施）
