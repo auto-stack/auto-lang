@@ -150,7 +150,21 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
         return Err((EXIT_USAGE, vec![]));
     }
     let tmp_obj = out_dir.join(format!("{}.obj.tmp-{}", stem, link::staging_tag()));
+    // R3-QA-02: staging cleanup errors are never swallowed — if a blocked
+    // handle leaves a staged file behind, the operator sees the path and the
+    // real OS error. `publish_artifacts` reports its own cleanup.
+    let discard_staged_obj = |tmp_obj: &Path| match std::fs::remove_file(tmp_obj) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            eprintln!(
+                "error: cleanup of staged {} failed: {} (release the blocking handle, then remove)",
+                tmp_obj.display(),
+                e
+            );
+        }
+        _ => {}
+    };
     if let Err(e) = std::fs::write(&tmp_obj, &obj_bytes) {
+        discard_staged_obj(&tmp_obj);
         eprintln!("error: write {}: {}", tmp_obj.display(), e);
         return Err((EXIT_PIPELINE, vec![]));
     }
@@ -158,14 +172,14 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
     let lld = match link::find_rust_lld() {
         Ok(l) => l,
         Err(d) => {
-            let _ = std::fs::remove_file(&tmp_obj);
+            discard_staged_obj(&tmp_obj);
             return Err((EXIT_PIPELINE, vec![d]));
         }
     };
     let sdk = match link::find_sdk_um_dir() {
         Ok(s) => s,
         Err(d) => {
-            let _ = std::fs::remove_file(&tmp_obj);
+            discard_staged_obj(&tmp_obj);
             return Err((EXIT_PIPELINE, vec![d]));
         }
     };
@@ -179,18 +193,16 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
     ) {
         Ok(s) => s,
         Err(d) => {
-            let _ = std::fs::remove_file(&tmp_obj);
+            discard_staged_obj(&tmp_obj);
             return Err((EXIT_PIPELINE, vec![d]));
         }
     };
     // Publish exe + obj + receipt as one transaction; a failure at any step
-    // rolls back and leaves previously successful artifacts untouched.
+    // rolls back and leaves previously successful artifacts untouched. The
+    // transaction owns its staged files and reports blocked cleanups itself.
     let receipt = match link::publish_artifacts(&staged, &tmp_obj, &obj_path) {
         Ok(r) => r,
-        Err(d) => {
-            let _ = std::fs::remove_file(&tmp_obj);
-            return Err((EXIT_PIPELINE, vec![d]));
-        }
+        Err(d) => return Err((EXIT_PIPELINE, vec![d])),
     };
     Ok(format!(
         "BUILT {} (entry {})\n  obj: {}\n  exe: {}\n  receipt: {}\n  linker: {}",

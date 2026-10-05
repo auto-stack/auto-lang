@@ -64,6 +64,11 @@ pub fn staging_tag() -> String {
 #[derive(Debug)]
 enum SubprocError {
     Spawn(std::io::Error),
+    /// Containment (job creation/assignment or controlled resume) failed.
+    /// The child was terminated before running a single instruction — the
+    /// executor refuses to run a process it cannot bound (R3-QA-01: no
+    /// silent degrade into detached readers).
+    ContainmentUnavailable(&'static str),
     /// The direct child did not exit before the deadline.
     Deadline,
     /// The child exited but its output collection (readers blocked by a
@@ -76,6 +81,10 @@ enum SubprocError {
 fn map_subproc(err: SubprocError, spawn_code: &str, what: &str) -> Diagnostic {
     match err {
         SubprocError::Spawn(e) => link_diag(spawn_code, format!("spawn {what}: {e}")),
+        SubprocError::ContainmentUnavailable(reason) => link_diag(
+            "link.containment",
+            format!("subprocess {what} not started: {reason}"),
+        ),
         SubprocError::Deadline => link_diag(
             "link.deadline",
             format!("subprocess {what} exceeded {SUBPROC_DEADLINE:?}"),
@@ -90,28 +99,37 @@ fn map_subproc(err: SubprocError, spawn_code: &str, what: &str) -> Diagnostic {
     }
 }
 
-/// Windows Job Object containment (R2-QA-02): the direct child is assigned
-/// to a job with KILL_ON_JOB_CLOSE, so dropping the guard terminates every
-/// descendant that inherited our pipes — their write ends close, the reader
-/// threads reach EOF, and no thread outlives this call. Best effort: when
-/// creation or assignment fails (e.g. an unrelated outer job refuses
-/// nesting) the executor still bounds the collect phase via the deadline,
-/// but it cannot force-terminate descendants; `for_child` returning None
-/// selects that degraded mode.
+/// Windows Job Object containment (R2-QA-02, R3-QA-01): the direct child is
+/// spawned SUSPENDED, assigned to a job with KILL_ON_JOB_CLOSE *before* its
+/// first instruction runs, then resumed. The r3 spawn-then-assign window let
+/// a fast child create descendants that escaped the job and survived the
+/// guard drop; the suspended start closes that window entirely. Dropping the
+/// guard terminates the whole subtree — their write ends close, the reader
+/// threads reach EOF, and no thread outlives the call. Containment failure
+/// is never silently degraded: the executor rejects the spawn with
+/// [`SubprocError::ContainmentUnavailable`] after a safe teardown.
 #[cfg(windows)]
 mod job {
     use std::os::windows::io::AsRawHandle;
     use std::process::Child;
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+    };
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
         SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
+    use windows_sys::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
+
+    pub const CREATE_SUSPENDED: u32 = 0x0000_0004;
 
     pub struct JobGuard(HANDLE);
 
     impl JobGuard {
+        /// Child must be suspended: the job is in place before the process
+        /// can run (and therefore before it can spawn descendants).
         pub fn for_child(child: &Child) -> Option<JobGuard> {
             unsafe {
                 let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
@@ -146,33 +164,126 @@ mod job {
             }
         }
     }
+
+    /// Resume the suspended child. A freshly spawned suspended process has
+    /// exactly one thread; find it through the system thread snapshot and
+    /// resume it. Err on any snapshot/open failure — the caller then tears
+    /// the child down instead of leaving it frozen.
+    pub fn resume_suspended_process(child: &Child) -> Result<(), &'static str> {
+        unsafe {
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+            if snapshot == INVALID_HANDLE_VALUE {
+                return Err("thread snapshot failed while resuming contained child");
+            }
+            let mut entry: THREADENTRY32 = std::mem::zeroed();
+            entry.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
+            if Thread32First(snapshot, &mut entry) == 0 {
+                CloseHandle(snapshot);
+                return Err("thread enumeration failed while resuming contained child");
+            }
+            let mut resumed = false;
+            loop {
+                if entry.th32OwnerProcessID == child.id() {
+                    let thread = OpenThread(THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID);
+                    if thread.is_null() {
+                        CloseHandle(snapshot);
+                        return Err("failed to open the contained child's main thread");
+                    }
+                    if ResumeThread(thread) == u32::MAX {
+                        CloseHandle(thread);
+                        CloseHandle(snapshot);
+                        return Err("failed to resume the contained child's main thread");
+                    }
+                    CloseHandle(thread);
+                    resumed = true;
+                }
+                if Thread32Next(snapshot, &mut entry) == 0 {
+                    break;
+                }
+            }
+            CloseHandle(snapshot);
+            if resumed {
+                Ok(())
+            } else {
+                Err("contained child's main thread not found in snapshot")
+            }
+        }
+    }
+}
+
+/// Non-Windows stub: the prototype's link/run path is Windows-only; the
+/// executor requires containment, so every spawn is rejected with a
+/// controlled error instead of running unbounded.
+#[cfg(not(windows))]
+mod job {
+    use std::process::Child;
+
+    pub struct JobGuard;
+
+    impl JobGuard {
+        pub fn for_child(_child: &Child) -> Option<JobGuard> {
+            None
+        }
+    }
 }
 
 /// Run a subprocess with a hard deadline that covers the whole lifecycle:
 /// the wait for the exit status AND the drain of stdout/stderr (R2-QA-02: a
 /// child that exits while a descendant still holds the inherited pipes used
-/// to wedge the reader joins far past the deadline). Readers run on
-/// dedicated threads (QA-06: wait-then-read deadlocked on full pipes);
-/// results arrive over a channel so the collection phase is bounded by the
-/// same monotonic deadline. A truncated success is never returned — either
-/// both outputs arrive in full, or the call fails with a deadline error. On
-/// Windows the child's whole tree dies with the job guard, which releases
-/// the readers on every exit path.
+/// to wedge the reader joins far past the deadline). The child starts
+/// SUSPENDED and enters the job before its first instruction, so no
+/// descendant can be created outside containment (R3-QA-01: the r3
+/// spawn-then-assign window let fast descendants escape and survive the job
+/// close). Readers run on dedicated threads; results arrive over a channel
+/// so the collection phase is bounded by the same monotonic deadline. A
+/// truncated success is never returned; containment failure is a controlled
+/// rejection, never a silent degrade into detached readers.
 fn run_with_deadline(
     cmd: &mut Command,
     deadline: Duration,
 ) -> Result<(Option<i32>, String), SubprocError> {
+    run_with_deadline_inner(cmd, deadline, job::JobGuard::for_child)
+}
+
+/// Inner executor with an injectable containment factory so tests can
+/// deterministically drive the containment-failure branch (no product fault
+/// injection switch).
+fn run_with_deadline_inner(
+    cmd: &mut Command,
+    deadline: Duration,
+    job_factory: fn(&std::process::Child) -> Option<job::JobGuard>,
+) -> Result<(Option<i32>, String), SubprocError> {
+    // Controlled start (R3-QA-01): the suspended child cannot run, and
+    // therefore cannot spawn descendants, until it is inside the job.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(job::CREATE_SUSPENDED);
+    }
     let mut child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(SubprocError::Spawn)?;
     let started = Instant::now();
+    // Contain BEFORE the first instruction runs. Any containment failure is
+    // a controlled rejection with safe teardown: the child is killed before
+    // it ever ran, so nothing can leak — no silent degrade, no detached
+    // readers.
+    let Some(subtree) = job_factory(&child) else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(SubprocError::ContainmentUnavailable(
+            "job creation/assignment failed; child terminated before its first instruction",
+        ));
+    };
     #[cfg(windows)]
-    let mut subtree: Option<job::JobGuard> = job::JobGuard::for_child(&child);
-    #[cfg(not(windows))]
-    let mut subtree: Option<()> = None;
-    let contained = subtree.is_some();
+    if let Err(reason) = job::resume_suspended_process(&child) {
+        let _ = child.kill();
+        let _ = child.wait();
+        drop(subtree);
+        return Err(SubprocError::ContainmentUnavailable(reason));
+    }
 
     let mut stdout_pipe = child.stdout.take();
     let mut stderr_pipe = child.stderr.take();
@@ -210,18 +321,16 @@ fn run_with_deadline(
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Ok(String::new()),
         }
     };
-    // Reap both readers after the tree has been released: with containment
-    // dropping the guard kills the descendants, their write ends close and
-    // the joins return promptly; without containment we must not fake a
-    // bounded join and leave the threads detached instead.
-    let reap = |subtree: &mut Option<_>,
+    // Reap both readers on every exit path: dropping the job guard kills the
+    // whole contained tree, their write ends close, and the joins return
+    // promptly. Containment is a hard precondition here, so there is no
+    // degraded branch and no thread is ever left detached.
+    let reap = |subtree: job::JobGuard,
                 out: std::thread::JoinHandle<()>,
                 err: std::thread::JoinHandle<()>| {
-        drop(subtree.take());
-        if contained {
-            let _ = out.join();
-            let _ = err.join();
-        }
+        drop(subtree);
+        let _ = out.join();
+        let _ = err.join();
     };
 
     loop {
@@ -240,7 +349,7 @@ fn run_with_deadline(
                     _ => {
                         // The child exited but a descendant still holds the
                         // pipes: the deadline applies to collection too.
-                        reap(&mut subtree, out_reader, err_reader);
+                        reap(subtree, out_reader, err_reader);
                         return Err(SubprocError::DeadlineCollect);
                     }
                 }
@@ -249,13 +358,13 @@ fn run_with_deadline(
                 if started.elapsed() > deadline {
                     let _ = child.kill();
                     let _ = child.wait();
-                    reap(&mut subtree, out_reader, err_reader);
+                    reap(subtree, out_reader, err_reader);
                     return Err(SubprocError::Deadline);
                 }
                 std::thread::sleep(Duration::from_millis(10));
             }
             Err(e) => {
-                reap(&mut subtree, out_reader, err_reader);
+                reap(subtree, out_reader, err_reader);
                 return Err(SubprocError::Wait(e));
             }
         }
@@ -453,19 +562,53 @@ pub fn publish_artifacts(
         staged.entry_symbol,
     );
     // Staged-file ownership: these three paths are created by this call and
-    // must be reclaimed on every failure exit. remove_file never touches a
-    // directory, so user placeholders survive every path below.
-    let discard_staged = || {
-        let _ = std::fs::remove_file(&staged.tmp_exe);
-        let _ = std::fs::remove_file(tmp_obj);
-        let _ = std::fs::remove_file(&tmp_receipt);
+    // must be reclaimed on every failure exit. Cleanup errors are COLLECTED,
+    // never swallowed (R3-QA-02): a blocked remove (e.g. the staged exe held
+    // by a handle without FILE_SHARE_DELETE) is real state that the caller
+    // must see. NotFound means the file is already gone — that is success.
+    let discard_staged = || -> Vec<String> {
+        let mut failures = Vec::new();
+        for p in [&staged.tmp_exe, tmp_obj, &tmp_receipt] {
+            match std::fs::remove_file(p) {
+                Ok(()) => {}
+                // Already gone: reclaimed earlier on this path or by the
+                // caller — that is success.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                // A directory occupying the path is a USER placeholder, not
+                // our staged file; it is never ours to remove and never a
+                // cleanup failure.
+                Err(_) if p.is_dir() => {}
+                Err(e) => failures.push(format!("{}: {}", p.display(), e)),
+            }
+        }
+        failures
+    };
+    // A cleanup failure changes what the caller must be told: the original
+    // failure stands, the transaction's commit state is stated explicitly,
+    // and every residual own path plus its real OS error is listed.
+    let with_cleanup = |original: Diagnostic, cleanup_failures: Vec<String>| -> Diagnostic {
+        if cleanup_failures.is_empty() {
+            original
+        } else {
+            link_diag(
+                "link.cleanup",
+                format!(
+                    "{}; transaction NOT committed; own staged files remain (release the blocking handles, then remove): {}",
+                    original.render("", "").trim_end(),
+                    cleanup_failures.join("; ")
+                ),
+            )
+        }
     };
 
     if let Err(e) = std::fs::write(&tmp_receipt, receipt_body) {
-        discard_staged();
-        return Err(link_diag(
-            "link.receipt",
-            format!("stage receipt at {}: {}", tmp_receipt.display(), e),
+        let cleanup = discard_staged();
+        return Err(with_cleanup(
+            link_diag(
+                "link.receipt",
+                format!("stage receipt at {}: {}", tmp_receipt.display(), e),
+            ),
+            cleanup,
         ));
     }
 
@@ -480,7 +623,7 @@ pub fn publish_artifacts(
                     // Same restore-reporting contract as the placement path
                     // (P741P3-R1): a blocked rollback must surface the
                     // surviving backup paths instead of swallowing the error.
-                    discard_staged();
+                    let cleanup = discard_staged();
                     let mut restore_failures: Vec<String> = Vec::new();
                     for (bak, final_path) in backups.iter().rev() {
                         if let Err(re) = std::fs::rename(bak, final_path) {
@@ -492,21 +635,23 @@ pub fn publish_artifacts(
                             ));
                         }
                     }
-                    if restore_failures.is_empty() {
-                        return Err(link_diag(
+                    let base = if restore_failures.is_empty() {
+                        link_diag(
                             "link.replace",
                             format!("backing up {}: {}", final_path.display(), e),
-                        ));
-                    }
-                    return Err(link_diag(
-                        "link.restore",
-                        format!(
-                            "backing up {}: {}; rollback incomplete, previous artifacts kept at the listed backup paths: {}",
-                            final_path.display(),
-                            e,
-                            restore_failures.join("; ")
-                        ),
-                    ));
+                        )
+                    } else {
+                        link_diag(
+                            "link.restore",
+                            format!(
+                                "backing up {}: {}; rollback incomplete, previous artifacts kept at the listed backup paths: {}",
+                                final_path.display(),
+                                e,
+                                restore_failures.join("; ")
+                            ),
+                        )
+                    };
+                    return Err(with_cleanup(base, cleanup));
                 }
             }
         }
@@ -540,16 +685,34 @@ pub fn publish_artifacts(
 
     match result {
         Ok(()) => {
+            // Committed: exe/obj/receipt are the new build. Dropping the
+            // backups is post-commit cleanup — a blocked removal must not be
+            // reported as an ordinary success (R3-QA-02).
+            let mut cleanup_failures = Vec::new();
             for (bak, _) in &backups {
-                let _ = std::fs::remove_file(bak);
+                if let Err(e) = std::fs::remove_file(bak) {
+                    if e.kind() != std::io::ErrorKind::NotFound {
+                        cleanup_failures.push(format!("{}: {}", bak.display(), e));
+                    }
+                }
             }
-            Ok(LinkReceipt {
-                linker: staged.linker.clone(),
-                obj: obj_path.to_path_buf(),
-                exe: staged.exe.clone(),
-                receipt_path,
-                entry_symbol: staged.entry_symbol.clone(),
-            })
+            if cleanup_failures.is_empty() {
+                Ok(LinkReceipt {
+                    linker: staged.linker.clone(),
+                    obj: obj_path.to_path_buf(),
+                    exe: staged.exe.clone(),
+                    receipt_path,
+                    entry_symbol: staged.entry_symbol.clone(),
+                })
+            } else {
+                Err(link_diag(
+                    "link.cleanup",
+                    format!(
+                        "publish COMMITTED (exe/obj/receipt are the new build); backup cleanup incomplete (release the blocking handles, then remove): {}",
+                        cleanup_failures.join("; ")
+                    ),
+                ))
+            }
         }
         Err(d) => {
             // Restore backups first (a rename replaces the placed new file);
@@ -557,7 +720,8 @@ pub fn publish_artifacts(
             // restored final holds the old bytes again, a restore-failed
             // final keeps the new bytes while its backup preserves the old
             // ones (reported below), and everything else this call placed is
-            // a stray to delete.
+            // a stray to delete. Removal errors are collected, not swallowed
+            // (R3-QA-02).
             let mut restored_ok: std::collections::BTreeSet<PathBuf> =
                 std::collections::BTreeSet::new();
             let mut restore_failed: std::collections::BTreeSet<PathBuf> =
@@ -579,25 +743,29 @@ pub fn publish_artifacts(
                     }
                 }
             }
+            let mut cleanup_failures: Vec<String> = Vec::new();
             for p in &placed {
                 if restored_ok.contains(p) || restore_failed.contains(p) {
                     continue;
                 }
-                let _ = std::fs::remove_file(p);
+                if let Err(e) = std::fs::remove_file(p) {
+                    if e.kind() != std::io::ErrorKind::NotFound {
+                        cleanup_failures.push(format!("{}: {}", p.display(), e));
+                    }
+                }
             }
-            discard_staged();
-            if restore_failures.is_empty() {
-                Err(d)
-            } else {
-                Err(link_diag(
+            cleanup_failures.extend(discard_staged());
+            if !restore_failures.is_empty() {
+                return Err(link_diag(
                     "link.restore",
                     format!(
                         "{}; rollback incomplete, previous artifacts kept at the listed backup paths: {}",
                         d.render("", "").trim_end(),
                         restore_failures.join("; ")
                     ),
-                ))
+                ));
             }
+            Err(with_cleanup(d, cleanup_failures))
         }
     }
 }
@@ -952,6 +1120,95 @@ mod tests {
         );
         assert!(dir.join("tx.obj").is_dir(), "user placeholder must survive");
         assert!(strays(&dir).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// R3-QA-01: containment failure is a CONTROLLED rejection — the child
+    /// is killed before its first instruction, so a long-running command
+    /// never actually starts (no ping may leak), and the error names the
+    /// cause instead of degrading into detached readers.
+    #[test]
+    #[cfg(windows)]
+    fn containment_failure_is_controlled_rejection() {
+        use std::time::Instant;
+        let started = Instant::now();
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "ping", "-n", "30", "127.0.0.1"]);
+        let err = run_with_deadline_inner(&mut cmd, Duration::from_secs(10), |_| None).err();
+        let elapsed = started.elapsed();
+        assert!(
+            matches!(err, Some(SubprocError::ContainmentUnavailable(_))),
+            "expected containment rejection, got {err:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(3),
+            "rejection took {elapsed:?}"
+        );
+        // The suspended child was killed before running: ping must not exist.
+        let out = Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq ping.exe", "/NH"])
+            .output()
+            .expect("tasklist");
+        assert!(
+            !String::from_utf8_lossy(&out.stdout).contains("ping.exe"),
+            "child leaked past containment failure"
+        );
+    }
+
+    /// R3-QA-02: a cleanup blocked by a real sharing lock (staged exe opened
+    /// WITHOUT FILE_SHARE_DELETE, receipt staging path occupied by a
+    /// directory) must surface as `link.cleanup` carrying the original
+    /// failure, the residual own path and the real OS error, with the
+    /// commit state stated; the previous artifacts stay untouched and the
+    /// lock holder can clean up after releasing.
+    #[test]
+    #[cfg(windows)]
+    fn cleanup_failure_reports_residual_staged_exe() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = std::env::temp_dir()
+            .join("ac741-link-tx")
+            .join("cleanup-locked");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        make_finals(&dir);
+        let (staged, tmp_obj) = make_staged(&dir);
+        let tmp_receipt = companion(
+            &dir.join("tx.ac-link.txt"),
+            &format!(".tmp-{}", staging_tag()),
+        );
+        std::fs::create_dir(&tmp_receipt).unwrap();
+        // Hold the staged exe without FILE_SHARE_DELETE (share_mode READ only).
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(1)
+            .open(&staged.tmp_exe)
+            .expect("lock staged exe");
+
+        let err = publish_artifacts(&staged, &tmp_obj, &dir.join("tx.obj")).err();
+        let d = err.expect("must fail");
+        assert_eq!(d.code, "link.cleanup", "{}", d.render("f", ""));
+        let msg = d.render("f", "");
+        assert!(msg.contains("link.receipt"), "original stage lost: {msg}");
+        assert!(msg.contains("NOT committed"), "commit state unclear: {msg}");
+        assert!(
+            msg.contains(&staged.tmp_exe.display().to_string()),
+            "residual staged exe path missing: {msg}"
+        );
+        assert!(msg.contains("os error"), "real OS error missing: {msg}");
+
+        // Previous artifacts untouched.
+        assert_eq!(std::fs::read(dir.join("tx.exe")).unwrap(), OLD_EXE);
+        assert_eq!(std::fs::read(dir.join("tx.obj")).unwrap(), OLD_OBJ);
+        assert_eq!(
+            std::fs::read(dir.join("tx.ac-link.txt")).unwrap(),
+            OLD_RECEIPT
+        );
+        assert!(tmp_receipt.is_dir(), "user placeholder must survive");
+
+        // Release the lock: the residual staged exe becomes removable.
+        drop(lock);
+        std::fs::remove_file(&staged.tmp_exe).expect("cleanup after release");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
