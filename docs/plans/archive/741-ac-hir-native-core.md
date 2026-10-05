@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-741
-status: reviewed
+status: archived
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
@@ -594,18 +594,18 @@ Phase 3 执行进度（commit 哈希=plan-741-dev，基线 ed2d00b90，2026-10-0
 - [x] **T-19** commit `585224bf1`：verify.rs check_block_graph（显式栈 DFS 可达性+入边不变量+结构门
   阻止走查）+ walk_block 防御 visited；复审两输入物化为 invalid fixtures；hir_verify 拒绝矩阵 +2、
   cli 块图反例测试（exit 1、定位 span、0.14s<5s、无制品）。AC-16。
-- [ ] **T-20** commit `7e3a5713f`：run_with_deadline 单调截止覆盖等待+收集（通道 recv_timeout）；
+- [x] **T-20** commit `7e3a5713f`：run_with_deadline 单调截止覆盖等待+收集（通道 recv_timeout）；（重开验收由 r4 T-26 受控启动关闭）
   windows-sys 0.59 Job Object（KILL_ON_JOB_CLOSE）管控子树，全出口 reader join 回收；
   DeadlineCollect 变体；reader 改 read_to_end+lossy（修 read_to_string 截断问题）。
   新测试：1s 收集截止（后代被回收 tasklist 证实）、后代即时退出正例、60s 生产证据
   （`--ignored` 显式跑 60.01s vs 复审实测 114.96s 挂起）。AC-17。
-- [ ] **T-21** commit `7e3a5713f`：publish_artifacts discard_staged 全失败出口回收
+- [x] **T-21** commit `7e3a5713f`：publish_artifacts discard_staged 全失败出口回收（重开验收由 r4 T-27 清理汇总关闭）
   （收据暂存/备份/三次发布）+ link.restore 恢复诊断（列幸存备份路径）+ 用户占位目录保护 +
   link_object_staged 执行器错误回收；单测失败矩阵 5 例全过。AC-18。
-- [ ] **T-22** commit `bc9c6cc5c`：README 流水线/测试族表 + verify 脚本 --lib 串行化；
+- [x] **T-22** commit `bc9c6cc5c`：README 流水线/测试族表 + verify 脚本 --lib 串行化；（重开验收由 r4 T-28 簿记归一关闭）
   plans.md/ledger 指针复审方已同步 active 路径（本轮核对一致）。AC-19（执行侧部分；
   最终归档留 merge）。
-- [ ] **T-23** commit `bc9c6cc5c`：docs/reports/741-phase3-boundary-fixes/
+- [x] **T-23** commit `bc9c6cc5c`：docs/reports/741-phase3-boundary-fixes/（重开验收由 r4 T-29 门禁复验关闭）
   {verification.md, r2-review-reproduce-rerun.json, reds-*.txt, source-hashes.txt}。
   门禁：原型 52 项绿+1 ignored 证据项、fmt 干净、all-targets 零 warning、一键脚本原型段
   13/13、主仓 check PASS（组内 auto-down 建立后）、cargo tv 162/162、cargo t 双侧
@@ -614,7 +614,7 @@ Phase 3 执行进度（commit 哈希=plan-741-dev，基线 ed2d00b90，2026-10-0
   （git diff ed2d00b90 -- Cargo.toml Cargo.lock crates/ test/ 为空）；
   r3 复审 reproduce 复跑全验收点（staged_exe_left=false、watchdog 60.07s
   stillRunning=false）、r2 reproduce 无回归。AC-20。
-- [ ] **T-24** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 3
+- [x] **T-24** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 3（重开验收由 r4 T-30 独立复审 pass 关闭）
   独立复审）；R1 备份路径恢复诊断已按复审建议顺手统一（comment 后 scoped 复验
   lib 9/9 + fmt + all-targets 零 warning）；merge 沉淀 SD-05/06、销账 R2-QA 行、
   归档并 guard 清理待 /auto-plan:merge。
@@ -631,12 +631,12 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 | T-29 | T-26..28 | 新报告路径（建议741-phase4-resource-fixes，新增）记录hash/故障矩阵；完整§6+新反例/门禁，核对Rust生产零改 | 原型/脚本/check/t/tv、真实归因/无忽略负例；关闭T-23 | AC-01..24 |
 | T-30 | T-29 | 独立/auto-plan:review逐AC/SD核对；pass才merge沉淀SD/销账/归档，guard clean清理自有组 | 新revision绑定证据、全部任务完成、归档/ledger链接可达；关闭T-24 | AC-08,19,20,23,24；SD-07/08 |
 
-- [ ] **T-25** 建立r4实施基线/专用检出（复审detached检出不当实施分支）。
-- [ ] **T-26** 修复受控启动及进程/reader全部出口；关闭旧T-20验收。
-- [ ] **T-27** 汇总清理错误/残留及事务状态；关闭旧T-21验收。
-- [ ] **T-28** 修正文档/索引/历史计数；关闭旧T-22验收。
-- [ ] **T-29** 全门禁/故障矩阵/报告；关闭旧T-23验收。
-- [ ] **T-30** 独立review→merge→archive→guard清理；关闭旧T-24验收。
+- [x] **T-25** 建立r4实施基线/专用检出（复审detached检出不当实施分支）。
+- [x] **T-26** 修复受控启动及进程/reader全部出口；关闭旧T-20验收。
+- [x] **T-27** 汇总清理错误/残留及事务状态；关闭旧T-21验收。
+- [x] **T-28** 修正文档/索引/历史计数；关闭旧T-22验收。
+- [x] **T-29** 全门禁/故障矩阵/报告；关闭旧T-23验收。
+- [x] **T-30** 独立review→merge→archive→guard清理；关闭旧T-24验收。
 - [x] **T-25** worktree `D:/autostack/.wt/lang-741/auto-lang`（plan-741-dev @ c865adf66，clean）；
   组内只读依赖 auto-down（detached @ fba6563e）；指纹/零WIP核对完成。
 - [x] **T-26** commit `cc491052f`：CREATE_SUSPENDED 受控启动 + 入 Job 后 ToolHelp 恢复主线程
