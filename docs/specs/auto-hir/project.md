@@ -31,13 +31,16 @@ core-i32 profile 的类型化 HIR 契约与实现：Schema-bound Atom 文本 →
 - `CheckedModule` 只能由 `verify::verify` 构造；后端不得消费其它来源。
 - 类型：运算数/结果、调用实参/形参/结果、`return` 对函数签名、`if` 条件须 bool、param local 对签名
   逐位一致（index 界内唯一）。
+- 归属唯一：每个函数的 `body` 字段必须指向 owner 恰为该函数的 body（共享 body、同签名共享、
+  冒领 body 均在 verify 阶段报 `verify.owner-mismatch` 拒绝）；body→owner 反向一致性同此。
 - 初始化：`let` 初始化；`assign` 目标须已初始化且 mutable（place 与 local 双查）；if 出口初始化 =
   可达分支交集；循环按可能零次迭代保守处理（体内初始化不外泄）。
 - 块结构：非入口块恰有一个入边（唯一入口角色，禁共享块）；入口块零入边；入口须在所有路径 return；
   `return`/`break`/`continue` 之后不得有可执行尾语句；块自然收尾=交还宿主结构（if 汇合/循环重入）。
 - 求值位置：每个 ExprId 恰有一个 owning 引用（语句位或操作数位；禁共享、禁死表达式）且表达式图无环；
-  递归走 DefRef 不复制 body。`eval_args` 左→右求值存临时，`bindings` 仅做形参映射（param 全覆盖唯一，
-  arg 越界拒绝）。
+  递归走 DefRef 不复制 body。`eval_args` 左→右求值存临时，`bindings` 仅做形参映射且必须为双射：
+  param 全覆盖唯一、arg 越界/重复消费/未被任何 binding 消费均拒绝；实参类型按映射逐位核对
+  （`params[b.param]` ≡ `eval_args[b.arg]`），不按求值下标对位。
 - 诊断：阶段化（text/bind/verify/capability/backend/link/run），`file:line:col: error[stage/code]`
   渲染，span 指向冒犯 token。
 

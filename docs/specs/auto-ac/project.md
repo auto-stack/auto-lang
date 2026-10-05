@@ -1,7 +1,7 @@
 # auto-ac
 
 > **Status**: experimental
-> 路径：`experimental/ac-core`（独立 Cargo workspace，bin `ac-probe`） | 技术栈：Rust + Cranelift 0.126.2 + rust-lld
+> 路径：`experimental/ac-core`（独立 Cargo workspace，bin `auto-ac-prototype`，"ac-probe" 为历史文档名） | 技术栈：Rust + Cranelift 0.126.2 + rust-lld
 
 AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x64 COFF → PE 原生执行。
 **"HIR → 原生执行"已完成；"Auto 源码 → 原生执行"与 AAC 自举未完成**，由 A1/B/C 后续计划承接。
@@ -46,13 +46,16 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
 
 ## CLI 与制品
 
-- `ac-probe check <file>`：bind+verify，诊断 `file:line:col: error[stage/code]`；退出码 0/1/2
+- `auto-ac-prototype check <file>`：bind+verify，诊断 `file:line:col: error[stage/code]`；退出码 0/1/2
   （成功/流水线拒绝/用法错）。
-- `ac-probe build <file> --entry <DefId> --output <exe> [--capability N]... [--support-lib L]...`：
-  产物 `.obj`/`.exe`/`.ac-link.txt` 收据落 `--output` 目录；**失败构建不覆盖既有成功制品**
-  （临时名构建→成功后原子替换，SENTINEL 测试锁定）；链接器/运行子进程均带硬截止时间。
+- `auto-ac-prototype build <file> --entry <DefId> --output <exe> [--capability N]... [--support-lib L]...`：
+  产物 `.obj`/`.exe`/`.ac-link.txt` 收据落 `--output` 目录；**失败构建不覆盖既有成功制品**：
+  exe/obj/收据全部先以进程唯一暂存名构建，发布前备份既有制品，任一步失败整体回滚
+  （还原备份、清除已放置文件；SENTINEL 前置失败与发布阶段失败测试双锁定）。
+- 全部子进程（工具发现 rustc/reg、链接 lld、运行 exe）走带硬截止时间的执行器；
+  stdout/stderr 并发读排空，防子进程填满管道阻塞。
 - 一键验证：`scripts/verify-ac-741.ps1`（§6 全命令 + CLI 实机构建运行 + 主仓门禁；PS 5.1 兼容，
-  异步管道读防死锁）。
+  异步管道读防死锁；含 `cargo check --all-targets` 零 warning 健康检查）。
 
 ## 边界与已知限制
 
