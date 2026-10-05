@@ -8697,6 +8697,14 @@ impl RustTrans {
                         write!(out, ")")?;
                         return Ok(());
                     }
+                    // Plan 742: mkdir_all 缺模块面路由（仅 method 臂有），
+                    // repository.data_dir 的目录兜底需要它。
+                    ("fs", "mkdir_all") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::mkdir_all(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                     ("fs", "write_text") => {
                         self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_text(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
