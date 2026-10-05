@@ -206,16 +206,18 @@
 ## PLAN-741 r2 合入后复核（2026-10-05）
 
 基线965b368a2，needs_fix；旧四项P1常规反例已确认修复，44/44原型测试通过。
-以下为新增/扩展边界，未清偿，不替代既有已修复证据。
-原QA-06的执行器接线已修，但“硬截止覆盖全路径”尚不成立。
-证据：[r2复核报告](../reports/741-quality-review-20261005/REVIEW.md)。
+~~以下为新增/扩展边界，未清偿~~ **已全部清偿（2026-10-05，PLAN-741 r3 Phase 3）**：
+独立代理复审pass（AC-16..20全过、原型52项+60s证据测试、watchdog 60.05s准时拒绝、
+cargo t双侧同基线归因零新增），交付合入v0.6-dev@a0b3750c4。清偿证据：
+[741计划](741-ac-hir-native-core.md) §9 Phase 3记录（归档后随文件迁至archive/）；
+原报告：[r2复核报告](../reports/741-quality-review-20261005/REVIEW.md)。
 
 | id | 级别 | 观察 | 修复方向 |
 |---|---|---|---|
-| P741-R2-QA-01 | P1 | 入口块自环check栈溢出0xC00000FD；断开双块循环check0 | 先做完整块图无环/可达性验证，失败后阻止递归走查 |
-| P741-R2-QA-02 | P2 | 子进程退出后reader join不受截止约束；持pipe后代反例114.963s仍未返回 | 进程与输出收集共享deadline，补继承pipe反例 |
-| P741-R2-QA-03 | P2 | 收据暂存写失败遗留已链接.tmp exe；旧exe/obj保持不变 | stage所有权/统一清理覆盖准备/备份/发布失败 |
-| P741-R2-QA-04 | P3 | archive内frontmatter仍reviewed，与merge receipt的archived不一致 | 修正簿记，保留历史与revision |
+| P741-R2-QA-01 | P1 | 入口块自环check栈溢出0xC00000FD；断开双块循环check0 | 先做完整块图无环/可达性验证，失败后阻止递归走查 |；**已清偿**（r3 T-19 块包含图结构门（显式栈DFS全可达+入边不变量、结构失败阻止走查；复审代理自构3块环/else回边反例全拒、两报告输入定位拒绝））
+| P741-R2-QA-02 | P2 | 子进程退出后reader join不受截止约束；持pipe后代反例114.963s仍未返回 | 进程与输出收集共享deadline，补继承pipe反例 |；**已清偿**（r3 T-20 单一单调截止覆盖等待+输出收集（Job Object KILL_ON_JOB_CLOSE 管控子树、reader全出口回收；watchdog实测60.05s准时拒绝 vs r2实测114.96s挂起；read_to_end+lossy修截断成功））
+| P741-R2-QA-03 | P2 | 收据暂存写失败遗留已链接.tmp exe；旧exe/obj保持不变 | stage所有权/统一清理覆盖准备/备份/发布失败 |；**已清偿**（r3 T-21 publish暂存所有权全失败出口回收（含已链接exe）+link.restore恢复诊断+占位目录保护；复审helper实测staged_exe_left=false）
+| P741-R2-QA-04 | P3 | archive内frontmatter仍reviewed，与merge receipt的archived不一致 | 修正簿记，保留历史与revision |；**已清偿**（r3 T-22 状态/指针簿记（复审方激活+本轮核对一致；最终归档由本merge完成））
 
 2026-10-05 用户明确再激活：[PLAN-741 Phase 3](741-ac-hir-native-core.md)，revision 3、executing。
 上述 P741-R2-QA-01..04 由 T-19..T-24 / AC-16..20 跟踪；本次仅合同修订，
