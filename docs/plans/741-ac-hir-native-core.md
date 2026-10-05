@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-741
-status: executing
+status: execution_done
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-05
 plan_revision: 5
-current_step: 22
+current_step: 34
 total_steps: 35
 supersedes_spec_components:
   - docs/specs/auto-hir/project.md
@@ -640,13 +640,13 @@ Phase 3 执行进度（commit 哈希=plan-741-dev，基线 ed2d00b90，2026-10-0
   DeadlineCollect 变体；reader 改 read_to_end+lossy（修 read_to_string 截断问题）。
   新测试：1s 收集截止（后代被回收 tasklist 证实）、后代即时退出正例、60s 生产证据
   （`--ignored` 显式跑 60.01s vs 复审实测 114.96s 挂起）。AC-17。
-- [ ] **T-21** commit `7e3a5713f`：publish_artifacts discard_staged 全失败出口回收（重开验收由 r4 T-27 清理汇总关闭）
+- [x] **T-21** commit `7e3a5713f`：publish_artifacts discard_staged 全失败出口回收（重开验收由 r4 T-27 清理汇总关闭）
   （收据暂存/备份/三次发布）+ link.restore 恢复诊断（列幸存备份路径）+ 用户占位目录保护 +
   link_object_staged 执行器错误回收；单测失败矩阵 5 例全过。AC-18。
-- [ ] **T-22** commit `bc9c6cc5c`：README 流水线/测试族表 + verify 脚本 --lib 串行化；（重开验收由 r4 T-28 簿记归一关闭）
+- [x] **T-22** commit `bc9c6cc5c`：README 流水线/测试族表 + verify 脚本 --lib 串行化；（重开验收由 r4 T-28 簿记归一关闭）
   plans.md/ledger 指针复审方已同步 active 路径（本轮核对一致）。AC-19（执行侧部分；
   最终归档留 merge）。
-- [ ] **T-23** commit `bc9c6cc5c`：docs/reports/741-phase3-boundary-fixes/（重开验收由 r4 T-29 门禁复验关闭）
+- [x] **T-23** commit `bc9c6cc5c`：docs/reports/741-phase3-boundary-fixes/（重开验收由 r4 T-29 门禁复验关闭）
   {verification.md, r2-review-reproduce-rerun.json, reds-*.txt, source-hashes.txt}。
   门禁：原型 52 项绿+1 ignored 证据项、fmt 干净、all-targets 零 warning、一键脚本原型段
   13/13、主仓 check PASS（组内 auto-down 建立后）、cargo tv 162/162、cargo t 双侧
@@ -674,9 +674,9 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 - [x] **T-25** 建立r4实施基线/专用检出（复审detached检出不当实施分支）。
 - [x] **T-26** 修复受控启动及进程/reader全部出口；关闭旧T-20验收。
-- [ ] **T-27** 汇总清理错误/残留及事务状态；关闭旧T-21验收。
-- [ ] **T-28** 修正文档/索引/历史计数；关闭旧T-22验收。
-- [ ] **T-29** 全门禁/故障矩阵/报告；关闭旧T-23验收。
+- [x] **T-27** 汇总清理错误/残留及事务状态；关闭旧T-21验收。
+- [x] **T-28** 修正文档/索引/历史计数；关闭旧T-22验收。
+- [x] **T-29** 全门禁/故障矩阵/报告；关闭旧T-23验收。
 - [ ] **T-30** 独立review→merge→archive→guard清理；关闭旧T-24验收。
 - [x] **T-25** worktree `D:/autostack/.wt/lang-741/auto-lang`（plan-741-dev @ c865adf66，clean）；
   组内只读依赖 auto-down（detached @ fba6563e）；指纹/零WIP核对完成。
@@ -685,14 +685,14 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
   收口零泄漏）；删除静默降级/detach 分支（reap 无条件 join）；工厂注入确定性测试：
   containment_failure_is_controlled_rejection（ping 未曾启动、tasklist 证实、<3s）；
   collect-deadline 测试三连跑确定性通过；windows-sys 增 ToolHelp feature。关闭旧 T-20 验收。AC-21。
-- [ ] **T-27** commit `cc491052f`：publish_artifacts 清理错误全量汇总（discard_staged 收集真实
+- [x] **T-27** commit `cc491052f`：publish_artifacts 清理错误全量汇总（discard_staged 收集真实
   OS 错误；目录=用户占位不删不计）+ link.cleanup 诊断（原失败+提交状态 NOT committed/COMMITTED+
   残留自有路径）+ main.rs 暂存清理上屏；新增 cleanup_failure_reports_residual_staged_exe
   （禁 DELETE 共享锁+收据目录占位：link.cleanup 含 os error 32、旧三件套不变、释放后可清理）；
   复审 helper 实测 staged_exe_left=true + 全保留标志。关闭旧 T-21 验收。AC-22。
-- [ ] **T-28** T-08 已据 r1 收据补勾（激活提交）；计数 19/30 口径核对；README/plans.md 导航
+- [x] **T-28** T-08 已据 r1 收据补勾（激活提交）；计数 19/30 口径核对；README/plans.md 导航
   复审方已回写 active（本轮核对一致）；ledger 暂态留 merge 刷新。关闭旧 T-22 验收。AC-23（工作侧）。
-- [ ] **T-29** commit `a0dd0a315`：docs/reports/741-phase4-resource-fixes/{verification.md,
+- [x] **T-29** commit `a0dd0a315`：docs/reports/741-phase4-resource-fixes/{verification.md,
   r3-review-reproduce-rerun.json, prior-2026100{4,5}-reproduce.json, reds-*.txt, source-hashes.txt}。
   门禁：原型 54 项+1 ignored（60.01s）、fmt 干净、all-targets 零 warning、一键原型段 13/13、
   主仓 check PASS、tv 162/162、cargo t 双侧 no-fail-fast（基线 36 红/worktree 34 红——
@@ -709,11 +709,35 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 ### Phase 5 执行步骤（T31..35，未实施）
 
-- [ ] **T-31** 基线/专用实施树（AC25..27）：从含r5合同的最新v0.6-dev新建D:/autostack/.wt/lang-741/auto-lang / plan-741-dev；核对唯一ID/HEAD/依赖/并行范围，先build test-support。复审detached检出不当实施树。新增docs/reports/741-phase5-link-cleanup/留本轮两出口before及正常对照，不占号/不建links。
-- [ ] **T-32** 预发布链接清理（依赖31，AC25）：修改src/link.rs::link_object_staged两出口回收/错误汇总；按所有权校验路径，不吞错、不加产品故障开关；新增两出口可控正负矩阵，真实共享锁/旧PE基线/释放恢复并留公开60s证据。重验关闭T21/T27，保留其它r4修复。
-- [ ] **T-33** 归档生命周期检查（依赖31，AC26）：修复实际相对链接、新增phase5 final_assertions.py，active/模拟/真实archive链接、唯一35任务/重复checkbox一致及meta/README/plans/all ledger refs；导航仅簿记，canonical/ledger留merge。重验关闭T22/T28。
-- [ ] **T-34** 全门禁/冻结（依赖32/33，AC25..27）：原型全族/健康/一键/正式deadline/旧新反例/root门禁归因/范围/hash/diff/links，冻结SD09/AC证据，回写execution_done，不预写pass。重验关闭T23/T29。
+- [x] **T-31** 基线/专用实施树（AC25..27）：从含r5合同的最新v0.6-dev新建D:/autostack/.wt/lang-741/auto-lang / plan-741-dev；核对唯一ID/HEAD/依赖/并行范围，先build test-support。复审detached检出不当实施树。新增docs/reports/741-phase5-link-cleanup/留本轮两出口before及正常对照，不占号/不建links。
+- [x] **T-32** 预发布链接清理（依赖31，AC25）：修改src/link.rs::link_object_staged两出口回收/错误汇总；按所有权校验路径，不吞错、不加产品故障开关；新增两出口可控正负矩阵，真实共享锁/旧PE基线/释放恢复并留公开60s证据。重验关闭T21/T27，保留其它r4修复。
+- [x] **T-33** 归档生命周期检查（依赖31，AC26）：修复实际相对链接、新增phase5 final_assertions.py，active/模拟/真实archive链接、唯一35任务/重复checkbox一致及meta/README/plans/all ledger refs；导航仅簿记，canonical/ledger留merge。重验关闭T22/T28。
+- [x] **T-34** 全门禁/冻结（依赖32/33，AC25..27）：原型全族/健康/一键/正式deadline/旧新反例/root门禁归因/范围/hash/diff/links，冻结SD09/AC证据，回写execution_done，不预写pass。重验关闭T23/T29。
 - [ ] **T-35** 独立review与merge（依赖34，AC25..27）：绑定r5/修复HEAD逐AC/SD及遗漏复核；pass后SD09沉淀、债项逐条销账、所有P741指针/README/module/真实archive35/35链接门、guard clean清理收据；保护742/743/ABI。关闭T24/T30；否则保持executing。
+- [x] **T-31** worktree `D:/autostack/.wt/lang-741/auto-lang`（plan-741-dev @ 0501b0f27，clean）；
+- [x] **T-32** commit `fb50d048e`：link_object_staged 两错误出口（链接器非零/执行器错误）
+  经共享 discard_own_staged + with_staged_cleanup 汇总清理失败（原失败+残留自有完整路径+
+  实际 OS 错误+NOT committed+恢复办法；NotFound=已回收、目录=用户占位不删不计）；
+  publish 本地实现去重到共享 helper；lib 新增三测试（nonzero+禁 DELETE 共享锁→link.cleanup、
+  spawn 错误+锁→同契约、无锁正常失败零残留），r5 复审 reproduce 实测 nonzero/timeout 两出口
+  path_in_diagnostic=true、cleanup_in_diagnostic=true、os error 32、旧三件套不变、
+  released_cleanup_ok=true。关闭旧 T-21/T-27 验收。AC-25。
+- [x] **T-33** commit `a05d01570`：计划 7 处 `](../reports/` → `](../../reports/`（归档终态
+  可解析）；新增 final_assertions.py（围栏感知、三态：active 按模拟 archive 父目录判定链接=
+  终态契约/归档态按真实父目录；35 唯一任务 ID+同 ID 勾选一致；README/两模块导航/全部
+  P741-* ledger 指针断言，激活期 archive 指向标注为暂态由 merge 刷新）。active 模式全过。
+  关闭旧 T-22/T-28 验收。AC-26（工作侧；归档收口留 merge）。
+- [x] **T-34** commit `a05d01570`：docs/reports/741-phase5-link-cleanup/{verification.md,
+  r4-review-reproduce-rerun.json, reds-*.txt, source-hashes.txt, final_assertions.py}。
+  门禁：原型 54 项+1 ignored（60.01s）、fmt 干净、all-targets 零 warning、一键原型段 13/13、
+  主仓 check PASS、tv 162/162、cargo t 双侧 no-fail-fast（基线 32 红/worktree 32 红、29 共有，
+  worktree 独有 3 例主检出 scoped 单跑全 PASS=THR-D4 flake，零新增归因，不伪写绿）；
+  生产面零 diff（git diff 0501b0f27 -- Cargo.toml Cargo.lock crates/ test/ 空）。关闭旧 T-23/T-29
+  验收。AC-27（执行侧证据；r5 HEAD 绑定待 T-35 复审）。
+- [ ] **T-35** /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 沉淀 SD-09、
+  销账 R4-QA 行、归档并以 archive 模式复跑 final_assertions 收口、guard 清理。
+
+
 
 当前22/35，T21..24/T27..30验收重开，T31..35未实施；旧实现/收据依旧保存为历史。
 
