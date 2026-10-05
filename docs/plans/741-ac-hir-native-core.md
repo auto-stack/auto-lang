@@ -41,7 +41,7 @@ affects: [auto-hir, auto-ac]
 
 用户此前授权“仍有问题则激活741并把问题/修复方案作为新Phase”；本次继承该范围。
 r3交付后独立复审 **needs_fix**，基线 `f6a945db849f57789a9e151402e22b8aa57eb7f8`，报告
-[741-r3复审](../reports/741-r3-quality-review-20261005/REVIEW.md)。
+[741-r3复审](../../reports/741-r3-quality-review-20261005/REVIEW.md)。
 新缺口 P741-R3-QA-01/02 为原AC-17/18尚未兑现，另有QA-03历史步数问题。
 已有实现/旧pass/三轮收据保留；T-20..24重新打开的是当前验收有效性，其执行记录为历史证据。
 T-08根据r1收据据实补勾，完成任务数19；新增T-25..30六项，故current_step=19/total_steps=30。
@@ -49,7 +49,7 @@ T-08根据r1收据据实补勾，完成任务数19；新增T-25..30六项，故c
 
 ### Phase 5 再激活（2026-10-05，plan_revision5）
 
-r4合入后独立复审needs_fix，基线7b9c6948c1465e87a6f60404510c30c712e1c7bc，见[报告](../reports/741-r4-quality-review-20261005/REVIEW.md)。按用户此前明确授权激活同741追加修复Phase；本轮仅文档合同，不实现代码。
+r4合入后独立复审needs_fix，基线7b9c6948c1465e87a6f60404510c30c712e1c7bc，见[报告](../../reports/741-r4-quality-review-20261005/REVIEW.md)。按用户此前明确授权激活同741追加修复Phase；本轮仅文档合同，不实现代码。
 P741-R4-QA01/P2：link_object_staged非零/执行器错误两出口吞清理失败；P741-R4-QA02/P3：归档4个历史报告链接断。54测试/一键13步/公开60秒后代回收通过，旧计数30/30/ledger也真实修好，不重复报旧问题。
 当前完成22/35：T21..24及T27..30重新待验（所有同ID重复checkbox同步重开），其余22个唯一任务已完成；新增T31..35。保留r1..r4全部实施/pass/merge历史，旧“已完成/关闭”文字仅历史效力，不能替代r5验收。先前阶段起草数字不代表本轮进度。
 
@@ -172,7 +172,7 @@ touched_goals 暂为空，关联 v0.6 roadmap AC/HIR 主线；新的 native 目�
   当前授权是再激活与修订合同；本轮不调用 work 实施。已有修复范围保持在本仓原型及验证资料。
 - 激活前基线：v0.6-dev @ b85e2bb76b748f6a3f104096542837b44bdefbfc；r3 实施起点为包含本合同的激活提交，
   T-18 记录完整 hash。复审实测基线仍为 965b368a20db7c97fab7d1b0d51863b3ccca0f11，二者差异仅复审资料。
-- 证据：[r2 合入后复审](../reports/741-quality-review-20261005/REVIEW.md)，包含源文件/Spec SHA-256、
+- 证据：[r2 合入后复审](../../reports/741-quality-review-20261005/REVIEW.md)，包含源文件/Spec SHA-256、
   原始日志、两个块图输入、review-helper.rs 与可运行复现脚本。
   原四项 P1 已修，44 项原型测试通过；新自环导致 0xC00000FD，断开循环 check=0，
   退出后持管道反例在 114.963s 仍未返回，收据暂存失败遗留 staged exe。
@@ -419,7 +419,7 @@ T33新增docs/reports/741-phase5-link-cleanup/final_assertions.py（新路径）
 |---|---|---|---|---|---|
 | SD-09 | modify | docs/specs/auto-ac/project.md | SD08全出口清理保证→明确pre-publish link_object_staged非零/执行器错误出口也必须报告原失败+清理错误/路径/NOT committed | 兑现已有§5.7/T27，不扩展语言能力 | AC22/25/27 |
 
-冻结[SD09提案](../reports/741-r4-quality-review-20261005/proposed-spec-delta-phase5.md)。auto-hir无新行为变更，历史impact保留；new_spec_components/touched_goals维持[]。canonical/live ledger只在独立review pass后merge沉淀。
+冻结[SD09提案](../../reports/741-r4-quality-review-20261005/proposed-spec-delta-phase5.md)。auto-hir无新行为变更，历史impact保留；new_spec_components/touched_goals维持[]。canonical/live ledger只在独立review pass后merge沉淀。
 
 
 ## 6. 测试设计
@@ -810,7 +810,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 - reviewed_commit: 965b368a20db7c97fab7d1b0d51863b3ccca0f11
 - base_commit: 3a7967262；交付52c67d3df祖先关系已验证。
 - dependency_revisions/spec_inputs/frozen delta hashes/acceptance_results：
-  [r2复核报告](../reports/741-quality-review-20261005/REVIEW.md)。
+  [r2复核报告](../../reports/741-quality-review-20261005/REVIEW.md)。
 - 独立复跑：44/44原型测试、all-targets零warning、fmt、旧reproduce脚本、
   README三命令实机运行（add5、trace12/ba）。
 - 原四项P1均确认已修复；新增P741-R2-QA-01块图自环stack overflow/断开环被接受，
@@ -1074,7 +1074,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 - reviewed_commit: c1ac219e73ee2ed1ef6ba8dfec49c131bfbf1a75
 - base_commit: 951b6c70ff596f79e464ba977139669f2d196821；交付304519113已核实在祖先链。
 - dependency_revisions/spec_inputs/增量快照指纹与完整AC对账：
-  [质量复审报告](../reports/741-quality-review-20261004/REVIEW.md)。
+  [质量复审报告](../../reports/741-quality-review-20261004/REVIEW.md)。
 - 本会话未实施741；自行读代码、在detached复审检出重跑37项原型测试/fmt，
   原套件全过，额外反例重现bool宽度、bindings类型映射、body双向owner、
   发布阶段失败覆盖四项核心缺陷（P741-QA-01..04）。
@@ -1131,7 +1131,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 ### r4合入后独立复审 needs_fix（2026-10-05）
 
 stage: review | plan_id: PLAN-741 | plan_revision:4 | outcome:needs_fix | reviewed_commit:7b9c6948c1465e87a6f60404510c30c712e1c7bc | base_commit:c865adf66a75099df07113b053eb9d19e92986a3
-依赖windows-sys0.59/Cranelift0.126.2，源/Spec哈希、24项验收/SD07–08复核、新反例见[独立报告](../reports/741-r4-quality-review-20261005/REVIEW.md)。54原型/一键13步/公开60s后代回收绿；旧30/30与ledger真实绿。新QA01/P2两链接出口清理诊断不足；QA02/P3归档4个历史报告链接断。
+依赖windows-sys0.59/Cranelift0.126.2，源/Spec哈希、24项验收/SD07–08复核、新反例见[独立报告](../../reports/741-r4-quality-review-20261005/REVIEW.md)。54原型/一键13步/公开60s后代回收绿；旧30/30与ledger真实绿。新QA01/P2两链接出口清理诊断不足；QA02/P3归档4个历史报告链接断。
 继承用户授权same-ID追加r5：stage:new | plan_revision:5 | outcome:pass（仅修复合同就绪） | next:work。current22/total35；本轮不改Rust/canonical/ledger；SD09提案冻结，P741-3..6旧archive指针激活后暂缺由merge恢复，不假称已刷新。
 
 
