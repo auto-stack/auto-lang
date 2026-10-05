@@ -674,6 +674,21 @@ pub mod fs {
         std::fs::create_dir_all(path.as_ref()).is_ok()
     }
 
+    /// Plan 742 D9: 与独立 a2r-std crate 的 fs::list_dir 对齐（直接子文件名，
+    /// 非递归，跳过点文件，排序）。
+    pub fn list_dir(path: impl AsRef<str>) -> Vec<String> {
+        let mut names: Vec<String> = match std::fs::read_dir(path.as_ref()) {
+            Ok(rd) => rd
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .filter(|n| !n.starts_with('.'))
+                .collect(),
+            Err(_) => return Vec::new(),
+        };
+        names.sort();
+        names
+    }
+
     pub fn write_text(path: impl AsRef<str>, content: impl AsRef<str>) -> bool {
         std::fs::write(path.as_ref(), content.as_ref()).is_ok()
     }

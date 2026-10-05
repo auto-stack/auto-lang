@@ -8705,6 +8705,13 @@ impl RustTrans {
                         write!(out, ")")?;
                         return Ok(());
                     }
+                    // Plan 742 D9: list_dir（Phase-1 JSON→SQLite 升级的收据枚举）。
+                    ("fs", "list_dir") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::list_dir(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                     ("fs", "write_text") => {
                         self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_text(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
