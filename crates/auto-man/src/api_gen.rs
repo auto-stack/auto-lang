@@ -693,13 +693,57 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     std::fs::write(src_dir.join("types.rs"), &types_rs)
         .map_err(|e| format!("Failed to write types.rs: {}", e))?;
 
+    // Plan 742: companion modules must exist BEFORE api.rs generation —
+    // handler bodies may call `crate::<companion>::fn()` (NOTES-001 T-04:
+    // api.at bodies calling `repository.repo_list_active()`), and the import
+    // injection below only adds modules that actually transpiled. Moving the
+    // loop up also lets the api.rs emitter rely on companion modules without
+    // ordering surprises (previously written after api.rs).
+    let mut companion_mods: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(root_dir.join("src").join("back")) {
+        let mut stems: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|x| x == "at").unwrap_or(false))
+            .filter_map(|e| e.file_name().to_str().map(|s| s.trim_end_matches(".at").to_string()))
+            .filter(|stem| stem != "api" && stem != "db")
+            .collect();
+        stems.sort();
+        for stem in stems {
+            let Ok(content) = std::fs::read_to_string(root_dir.join("src").join("back").join(format!("{}.at", stem))) else {
+                continue;
+            };
+            match transpile_back_module_to_rs(&stem, &content) {
+                Ok(rs) => {
+                    let rs = post_process_companion_rs(rs);
+                    if let Err(e) = std::fs::write(src_dir.join(format!("{}.rs", stem)), &rs) {
+                        eprintln!("  ⚠ Failed to write {}.rs: {}", stem, e);
+                        continue;
+                    }
+                    companion_mods.push(stem);
+                }
+                Err(e) => {
+                    eprintln!("  ⚠ {}.rs transpile failed (module skipped): {}", stem, e);
+                }
+            }
+        }
+    }
+
     // Plan 399 第 4-5 步: collect db.rs's public fn names so handlers can call
     // them directly (status unified to db.rs lazy_static) instead of State<Db>.
     let db_fns: Option<std::collections::HashSet<String>> = if has_db {
         if let Some(ref content) = db_content {
             match transpile_db_to_rs(content) {
                 Ok(db_rs) => {
-                    let db_rs = post_process_db_rs(db_rs);
+                    let mut db_rs = post_process_db_rs(db_rs);
+                    // Plan 742: db.rs bodies calling companion modules
+                    // (`repository.nid_of(id)` dot-form) need the same borrow
+                    // fixup as api.rs — against the transpiled companion's
+                    // signatures. Runs here so the persisted db.rs AND the
+                    // api.rs fixup (which reads this file) both see it.
+                    if let Ok(repo_rs) = std::fs::read_to_string(src_dir.join("repository.rs")) {
+                        // a2r emits bare `repository::` paths in db.rs（无 crate 前缀）
+                        db_rs = borrow_string_module_call_args(&db_rs, &repo_rs, "repository::");
+                    }
                     // Also persist db.rs (idempotent with the write below).
                     if let Err(e) = std::fs::write(src_dir.join("db.rs"), &db_rs) {
                         eprintln!("  ⚠ Failed to write db.rs: {}", e);
@@ -750,40 +794,6 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         }
     }
 
-    // Plan 742: companion modules must exist BEFORE api.rs generation —
-    // handler bodies may call `crate::<companion>::fn()` (NOTES-001 T-04:
-    // api.at bodies calling `repository.repo_list_active()`), and the import
-    // injection below only adds modules that actually transpiled. Moving the
-    // loop up also lets the api.rs emitter rely on companion modules without
-    // ordering surprises (previously written after api.rs).
-    let mut companion_mods: Vec<String> = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(root_dir.join("src").join("back")) {
-        let mut stems: Vec<String> = entries
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map(|x| x == "at").unwrap_or(false))
-            .filter_map(|e| e.file_name().to_str().map(|s| s.trim_end_matches(".at").to_string()))
-            .filter(|stem| stem != "api" && stem != "db")
-            .collect();
-        stems.sort();
-        for stem in stems {
-            let Ok(content) = std::fs::read_to_string(root_dir.join("src").join("back").join(format!("{}.at", stem))) else {
-                continue;
-            };
-            match transpile_back_module_to_rs(&stem, &content) {
-                Ok(rs) => {
-                    let rs = post_process_companion_rs(rs);
-                    if let Err(e) = std::fs::write(src_dir.join(format!("{}.rs", stem)), &rs) {
-                        eprintln!("  ⚠ Failed to write {}.rs: {}", stem, e);
-                        continue;
-                    }
-                    companion_mods.push(stem);
-                }
-                Err(e) => {
-                    eprintln!("  ⚠ {}.rs transpile failed (module skipped): {}", stem, e);
-                }
-            }
-        }
-    }
 
     // Generate api.rs with route handlers. Inline API bodies retain their
     // source-level calls into db.rs; borrow String expressions where the
