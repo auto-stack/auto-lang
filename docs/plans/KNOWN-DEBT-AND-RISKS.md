@@ -187,15 +187,18 @@
 
 ## PLAN-741 交付后质量复审（2026-10-04）
 
-复审基线c1ac219e7，结论needs_fix；均未清偿。不是批准延期；
-741保持归档，修复需独立合同。证据：[复审报告](../reports/741-quality-review-20261004/REVIEW.md)。
+复审基线c1ac219e7，结论needs_fix。~~均未清偿~~ **已全部清偿（2026-10-05，PLAN-741 r2 Phase 2）**：
+用户裁定不另开合同，激活741以plan_revision 2追加Phase 2修复；独立代理复审pass
+（44/44测试、六反例全翻转），交付合入v0.6-dev@52c67d3df。清偿证据：
+[741归档](archive/741-ac-hir-native-core.md) §9 Phase 2记录；
+原始报告：[复审报告](../reports/741-quality-review-20261004/REVIEW.md)。
 
 | id | 级别 | 问题与实际证据 | 修复方向 |
 |---|---|---|---|
-| P741-QA-01 | P1 | bool icmp结果i8与local/ABI i32冲突；check绿而build panic101或后端拒绝 | 统一bool表示并补绑定/参数/返回原生测试 |
-| P741-QA-02 | P1 | 按eval_args索引校验而非bindings映射；异类型合法调用被拒、非法调用获Checked | 按映射检查类型，保留求值顺序 |
-| P741-QA-03 | P1 | 两函数可共享异签名body且check绿；native参数索引panic101 | function/body双向owner及唯一归属检查 |
-| P741-QA-04 | P1 | receipt写失败exit1，exe已更新、obj仍旧 | 制品准备/发布事务与失败回滚，补发布失败测试 |
-| P741-QA-05 | P2 | README多传ac-probe且示例无d_entry；真实exit2/entry.not-found，归档链接陈旧 | 统一命令/命名、可运行fixture和链接，复制运行验证 |
-| P741-QA-06 | P2 | rustc/reg发现直接output无deadline；执行器先等退出再排pipe | 有截止的统一执行器与并发输出读取 |
-| P741-QA-07 | P3 | tests/common/mod.rs descriptor未使用warning | 清理并覆盖all-targets健康检查 |
+| P741-QA-01 | P1 | bool icmp结果i8与local/ABI i32冲突；check绿而build panic101或后端拒绝 | 统一bool表示并补绑定/参数/返回原生测试 |；**已清偿**（r2 T-09 icmp_bool 唯一出口uextend归一+bool原生正例（bool-if exit3/bool-abi exit5））
+| P741-QA-02 | P1 | 按eval_args索引校验而非bindings映射；异类型合法调用被拒、非法调用获Checked | 按映射检查类型，保留求值顺序 |；**已清偿**（r2 T-10 bindings映射制类型核对+双射校验（binding-swap原生exit9/swap类型不配check拒绝））
+| P741-QA-03 | P1 | 两函数可共享异签名body且check绿；native参数索引panic101 | function/body双向owner及唯一归属检查 |；**已清偿**（r2 T-11 function↔body双向归属（shared-body-owner/same-sig/stolen全verify.owner-mismatch拒绝））
+| P741-QA-04 | P1 | receipt写失败exit1，exe已更新、obj仍旧 | 制品准备/发布事务与失败回滚，补发布失败测试 |；**已清偿**（r2 T-12 暂存-备份-发布-回滚事务（发布失败exe/obj哈希不变+旧exe实跑；回滚测试还实抓并修复同stem备份名碰撞））
+| P741-QA-05 | P2 | README多传ac-probe且示例无d_entry；真实exit2/entry.not-found，归档链接陈旧 | 统一命令/命名、可运行fixture和链接，复制运行验证 |；**已清偿**（r2 T-13 README真实bin名/带入口fixture/归档链接/schema笔误（三命令逐字复制运行全过））
+| P741-QA-06 | P2 | rustc/reg发现直接output无deadline；执行器先等退出再排pipe | 有截止的统一执行器与并发输出读取 |；**已清偿**（r2 T-14 全子进程硬截止+并发管道读（1s截止杀挂起helper、>126KB输出不阻塞单测））
+| P741-QA-07 | P3 | tests/common/mod.rs descriptor未使用warning | 清理并覆盖all-targets健康检查 |；**已清偿**（r2 T-15 未用导入清除+verify脚本all-targets零warning门）
