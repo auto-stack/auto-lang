@@ -4,4 +4,4 @@
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |---|---|---|---|---|
-| 743 | acc-bootstrap-hir-contract | ✅（r3 reviewed→archived；r1/r2 已交付） | archive/ | ACC 自举盘点：八源模块审定（token/lexer/parser-core=adapt；其余 reference/non-subject）+ 六新建主体；能力四态取证；可重跑盘点工具（r3 后含 owner 范围化分类/严格人工层门）；r1 盘点交付、r2 质量修复、r3 完整性修复三轮独立复审闭环 |
+| 743 | acc-bootstrap-hir-contract | 🚧（executing，r4；r1/r2/r3已交付） | —（docs/plans/） | r3盘点/规范修复已落地；合入后复审仍有consumer类型、证据适用、导入/参数遮蔽与生命周期缺口，Phase4 T-22..27 / AC-21..24跟踪；原63测试与真实清单严格门通过，不能覆盖新负例。 |

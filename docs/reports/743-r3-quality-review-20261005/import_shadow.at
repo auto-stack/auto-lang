@@ -1,0 +1,8 @@
+use other: IO, List, File, process, print
+fn demo() {
+ IO.read_line()
+ List.new()
+ File.read_text()
+ process.args()
+ print()
+}

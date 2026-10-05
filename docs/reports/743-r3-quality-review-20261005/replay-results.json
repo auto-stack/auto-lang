@@ -1,0 +1,187 @@
+{
+  "current_check": {
+    "exit": 0,
+    "stdout": "OK[decisions] 47 条人工结论绑定全部新鲜\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+    "stderr": ""
+  },
+  "multiline-string": {
+    "path": "multiline-string.at",
+    "declarations": [
+      {
+        "kind": "fn",
+        "name": "host",
+        "line": 1,
+        "param_types": [],
+        "ret": ""
+      }
+    ],
+    "methods": [],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [],
+    "capability_evidence": {
+      "free-function": [
+        1
+      ],
+      "string-literal": [
+        2,
+        4
+      ],
+      "return-statement": [
+        5
+      ],
+      "multiline-string-literal": [
+        2
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "same-name-method": {
+    "path": "same-name-method.at",
+    "declarations": [
+      {
+        "kind": "type",
+        "name": "Meter",
+        "line": 1
+      },
+      {
+        "kind": "fn",
+        "name": "demo",
+        "line": 5,
+        "param_types": [
+          "Meter"
+        ],
+        "ret": "int"
+      }
+    ],
+    "methods": [
+      {
+        "owner": "Meter",
+        "name": "len",
+        "line": 2,
+        "static": false
+      },
+      {
+        "owner": "Meter",
+        "name": "new",
+        "line": 3,
+        "static": true
+      }
+    ],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "type-construction",
+        "name": "Meter",
+        "receiver": null,
+        "first_line": 3,
+        "count": 1
+      },
+      {
+        "kind": "type-qualified",
+        "name": "new",
+        "receiver": "Meter",
+        "first_line": 6,
+        "count": 1
+      },
+      {
+        "kind": "unknown-receiver",
+        "name": "len",
+        "receiver": "x",
+        "first_line": 7,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "record-type-declaration": [
+        1
+      ],
+      "free-function": [
+        2,
+        5
+      ],
+      "type-body-method": [
+        2,
+        3
+      ],
+      "integer-type-annotation": [
+        2,
+        5
+      ],
+      "return-statement": [
+        2,
+        3,
+        7
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "real_write_a": {
+    "exit": 0,
+    "stdout": "NOTE[decisions-absent] 未生成 manual-decisions.json（人工结论由 T-03 审定产生，工具不代写）\nOK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "real_write_b": {
+    "exit": 0,
+    "stdout": "NOTE[decisions-absent] 未生成 manual-decisions.json（人工结论由 T-03 审定产生，工具不代写）\nOK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "determinism": {
+    "two_writes_identical": true,
+    "normalized_manifest_matches_committed": true,
+    "summary_matches_committed": true
+  },
+  "unbound-decision_write": {
+    "exit": 0,
+    "stdout": "NOTE[decisions-absent] 未生成 manual-decisions.json（人工结论由 T-03 审定产生，工具不代写）\nOK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "unbound-decision_check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ERROR[decision-malformed] MD-UNBOUND 缺必填字段: note\nERROR[decision-malformed] MD-UNBOUND bound_input_hashes 必须为非空 {路径:hash} 字符串映射: 'dict'\nCHECK-FAIL 2 项\n"
+  },
+  "missing-evidence_write": {
+    "exit": 0,
+    "stdout": "NOTE[decisions-absent] 未生成 manual-decisions.json（人工结论由 T-03 审定产生，工具不代写）\nOK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "missing-evidence_check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ERROR[decision-malformed] MD-MISSING 缺必填字段: note\nERROR[decision-malformed] MD-MISSING bound_input_hashes 必须为非空 {路径:hash} 字符串映射: 'dict'\nCHECK-FAIL 2 项\n"
+  },
+  "empty-decisions_write": {
+    "exit": 0,
+    "stdout": "NOTE[decisions-absent] 未生成 manual-decisions.json（人工结论由 T-03 审定产生，工具不代写）\nOK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "empty-decisions_check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ERROR[decisions-malformed] decisions 必须是非空数组\nCHECK-FAIL 1 项\n"
+  },
+  "tests": {
+    "exit": 0,
+    "summary": "t_decisions) ... ok\n\n----------------------------------------------------------------------\nRan 63 tests in 14.562s\n\nOK\n"
+  },
+  "hashes": {
+    "scripts/acc_inventory.py": "799c2bb643c5fd3cd51b576f5bd67c9314817213c69c8f66796b35b47a9f272c",
+    "scripts/tests/test_acc_inventory.py": "ae5f8ae26c66bca79d0247fb93ba62b4ec5cd3487e235e128ac40322d3e62c5b",
+    "docs/plans/archive/743-acc-bootstrap-hir-contract.md": "ee15366ce5ed229ae682baedaa0c198ba472136d2630bb5353a9d5df6865403f",
+    "docs/specs/auto-acc/project.md": "d239e5370ffcdc842a86987e436c70da451c98779cf9f64a7a4071b8da19b628",
+    "docs/specs/auto-hir/stage-contract.md": "85989f57c70dd48676932c6fd91415f7b06446faed077feee92a337b021db7b7",
+    "docs/specs/auto-hir/project.md": "ae1a898fe12d5cd9f1d883fb68564049355556b488bc995b894f0976babe9660",
+    "docs/specs/auto-ac/project.md": "9679401e686e5de6ed11bc678ea0866d630f26fdfc7890249332a5a44e997f03",
+    "docs/design/strategy/auto-acc-bootstrap-contract.md": "676521ab3b9f26ba39798a6c1f3eb78676a6040861055ede15dd0dbb088e5317",
+    "docs/reports/743-acc-hir-contract/proposed-spec-delta.md": "b6b807110e5beac655e660b00f2639152ca9a041e513843514487c075ed39daa",
+    "docs/reports/743-acc-hir-contract/manual-decisions.json": "3674c687647f88dc7324395038bb883d1ffca04f21d67a34dc54c4118e104a5d"
+  }
+}
