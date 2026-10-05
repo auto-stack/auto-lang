@@ -244,15 +244,20 @@ class ScanSemantics(FixtureCase):
                     for c in self.module(rel)["call_candidates"]}
 
         aavm = kinds("auto/aavm.at")
+        # 可证明宿主 namespace → native-runtime
         self.assertEqual(aavm[("process", "args")], "native-runtime")
         self.assertEqual(aavm[("IO", "read_line")], "native-runtime")
         self.assertEqual(aavm[(None, "print")], "native-runtime")
-        self.assertEqual(aavm[("head", "parse_int")], "native-runtime")
+        # QA-02：变量接收者不因方法名像内建就标 native（P743-QA-02）
+        self.assertEqual(aavm[("head", "parse_int")], "unknown-receiver")
+        self.assertEqual(aavm[("argv", "len")], "unknown-receiver")
         self.assertEqual(aavm[(None, "ev_run")], "imported-symbol")
         self.assertEqual(aavm[(None, "ev_run_files")], "imported-symbol")
         eng = kinds("auto/lib/engine.at")
         self.assertEqual(eng[(None, "ev_run")], "local-fn")
-        self.assertEqual(eng[("frames", "push")], "native-runtime")
+        # QA-02：frames 是变量，push 名不赋予 native 身份
+        self.assertEqual(eng[("frames", "push")], "unknown-receiver")
+        # 本地类型接收者 → type-qualified（不因 new 名误标 native）
         self.assertEqual(eng[("Frame", "greet")], "type-qualified")
 
     def test_capability_evidence_present(self):
@@ -268,6 +273,104 @@ class ScanSemantics(FixtureCase):
         self.assertIn("while-loop", par["capability_evidence"])
         self.assertIn("mut-parameter", par["capability_evidence"])
         self.assertIn("comparison-operator", par["capability_evidence"])
+
+
+class Qa01MultilineMasking(unittest.TestCase):
+    """P743-QA-01：跨行字面量内容零污染；未闭合 EOF 标记词法不确定。"""
+
+    @classmethod
+    def setUpClass(cls):
+        _spec2 = importlib.util.spec_from_file_location("ai_qa01", _TOOL_PATH)
+        cls.ai = importlib.util.module_from_spec(_spec2)
+        _spec2.loader.exec_module(cls.ai)
+
+    def scan(self, text):
+        return self.ai.scan_module("inline.at", text)
+
+    def test_multiline_string_pseudocode_not_scanned(self):
+        # 复审反例原文形态：pretend() 完全在跨行字符串内
+        s = self.scan('fn host() {\n var text = "\n  pretend()\n  fn fake(str q) int\n "\n return 0\n}\n')
+        names = [c["name"] for c in s.calls]
+        self.assertNotIn("pretend", names)
+        self.assertNotIn("fake", names)
+        self.assertFalse(s.lexically_indeterminate)
+        self.assertEqual(s.anomalies, [])
+        self.assertEqual(s.capabilities.get("multiline-string-literal"), [2])
+
+    def test_real_code_after_closing_quote_is_scanned(self):
+        s = self.scan('var t = "\n fake_in_string()\n"\nreal_call()\n')
+        names = [c["name"] for c in s.calls]
+        self.assertNotIn("fake_in_string", names)
+        self.assertIn("real_call", names)
+
+    def test_escaped_newline_stays_in_literal(self):
+        s = self.scan('var t = "a\\\n pretend_esc()\nb"\nreal_after()\n')
+        names = [c["name"] for c in s.calls]
+        self.assertNotIn("pretend_esc", names)
+        self.assertIn("real_after", names)
+        # 行号不因转义续行漂移：real_after 在物理第 4 行
+        rc = [c for c in s.calls if c["name"] == "real_after"][0]
+        self.assertEqual(rc["first_line"], 4)
+
+    def test_unterminated_string_marks_indeterminate(self):
+        s = self.scan('var t = "abc\ntail_call()\n')
+        self.assertTrue(s.lexically_indeterminate)
+        self.assertTrue(any(a["kind"] == "unterminated-string-at-eof" for a in s.anomalies))
+        # EOF 兜底：尾部真实形态代码也被屏蔽，不生成候选
+        self.assertNotIn("tail_call", [c["name"] for c in s.calls])
+
+    def test_block_comment_with_string_like_content_stays_masked(self):
+        s = self.scan('/* "unterminated note\n fn in_comment() */\nfn ok_fn() {}\n')
+        self.assertIn("ok_fn", [d["name"] for d in s.declarations])
+        self.assertNotIn("in_comment", [d["name"] for d in s.declarations])
+        self.assertFalse(s.lexically_indeterminate)
+
+
+class Qa02CallClassification(unittest.TestCase):
+    """P743-QA-02：调用分类只认可证明证据，不按方法名猜 native。"""
+
+    @classmethod
+    def setUpClass(cls):
+        _spec3 = importlib.util.spec_from_file_location("ai_qa02", _TOOL_PATH)
+        cls.ai = importlib.util.module_from_spec(_spec3)
+        _spec3.loader.exec_module(cls.ai)
+
+    def kinds(self, text, path="inline.at"):
+        s = self.ai.scan_module(path, text)
+        return s, {(c["receiver"], c["name"]): c["kind"] for c in s.calls}
+
+    def test_review_fixture_same_name_method(self):
+        fixture = _HERE / "fixtures" / "acc-inventory" / "review" / "same-name-method.at"
+        s, k = self.kinds(fixture.read_text(encoding="utf-8"))
+        self.assertEqual(k[("Meter", "new")], "type-qualified")   # 本地类型，非宿主
+        self.assertEqual(k[("x", "len")], "unknown-receiver")     # 变量接收者，不猜
+        self.assertEqual(k[(None, "Meter")], "type-construction")
+
+    def test_real_repo_cg_new_ar_new_not_native(self):
+        root = _HERE.resolve().parents[1]
+        for rel, ty in (("auto/lib/codegen.at", "CG"), ("auto/lib/a2r.at", "Ar")):
+            s = self.ai.scan_module(rel, (root / rel).read_text(encoding="utf-8"))
+            hits = [c for c in s.calls if c["name"] == "new" and c.get("receiver") == ty]
+            self.assertTrue(hits, "%s.%s missing" % (ty, "new"))
+            for c in hits:
+                self.assertEqual(c["kind"], "type-qualified", (rel, c))
+
+    def test_namespace_receivers_stay_native(self):
+        s, k = self.kinds("fn f() {\n var a = List.new()\n var l = IO.read_line()\n}\n")
+        self.assertEqual(k[("List", "new")], "native-runtime")
+        self.assertEqual(k[("IO", "read_line")], "native-runtime")
+
+    def test_implicit_self_dot_and_pipe_forms(self):
+        s, k = self.kinds(
+            "type P {\n fn next() int { return 1 }\n}\n"
+            "fn walk() int {\n .next()\n return 2 |> .next()\n}\n")
+        self.assertEqual(k[(None, "next")], "implicit-self-method")
+
+    def test_unknown_dot_and_pipe_stay_unknown(self):
+        s, k = self.kinds("fn walk() int {\n .mystery()\n return 1 |> .mystery()\n}\n")
+        # 未升级的 dot/pipe 形态保留形态标记（"."/"|>"），类别保持 unknown
+        self.assertEqual(k[(".", "mystery")], "unknown-receiver")
+        self.assertEqual(k[("|>", "mystery")], "unknown-receiver")
 
 
 if __name__ == "__main__":

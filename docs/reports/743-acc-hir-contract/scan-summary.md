@@ -24,54 +24,181 @@
 - 能力证据：enum-declaration×1, free-function×2, if-else×2, is-match-statement×2, string-literal×199, string-type-annotation×2
 
 ### `auto/lib/lexer.at`
-- 声明 15（方法 0）；use 边 1；调用候选 35（unknown 0）
+- 声明 15（方法 0）；use 边 1；调用候选 35（unknown 18）
 - 能力证据：boolean-type-annotation×4, char-literal×81, comparison-operator×60, free-function×13, generic-list-type×3, if-else×95, integer-type-annotation×15, is-match-statement×5, logical-operator×23, mut-parameter×1, plain-list-value×1, record-type-declaration×2, return-statement×14, string-literal×71, string-type-annotation×12, use-module×1, while-loop×10
+- unknown 候选（交人工核对，逐条列出）：
+  - source.char_at(unknown-receiver) 首行 48 ×8
+  - text3.char_at(unknown-receiver) 首行 384 ×1
+  - toks.get(unknown-receiver) 首行 671 ×1
+  - ctext.len(unknown-receiver) 首行 457 ×3
+  - digits.len(unknown-receiver) 首行 139 ×1
+  - source.len(unknown-receiver) 首行 45 ×6
+  - text.len(unknown-receiver) 首行 299 ×6
+  - text3.len(unknown-receiver) 首行 383 ×1
+  - toks.len(unknown-receiver) 首行 670 ×1
+  - toks.push(unknown-receiver) 首行 247 ×51
+  - s.replace(unknown-receiver) 首行 225 ×1
+  - t.replace(unknown-receiver) 首行 226 ×3
+  - source.slice(unknown-receiver) 首行 94 ×24
+  - text.slice(unknown-receiver) 首行 420 ×2
+  - at.str(unknown-receiver) 首行 672 ×1
+  - len.str(unknown-receiver) 首行 672 ×1
+  - line.str(unknown-receiver) 首行 672 ×1
+  - ..trim(unknown-receiver) 首行 421 ×1
 
 ### `auto/lib/parser.at`
-- 声明 64（方法 15）；use 边 2；调用候选 157（unknown 15）
+- 声明 64（方法 15）；use 边 2；调用候选 157（unknown 88）
 - 能力证据：boolean-type-annotation×6, char-literal×8, comparison-operator×298, enum-declaration×1, free-function×75, generic-list-type×25, if-else×364, integer-type-annotation×16, is-match-statement×14, logical-operator×64, mut-parameter×35, plain-list-value×16, record-type-declaration×3, return-statement×229, string-literal×400, string-type-annotation×76, type-body-method×15, use-module×2, while-loop×59
 - unknown 候选（交人工核对，逐条列出）：
   - p.bind(unknown-receiver) 首行 1402 ×8
+  - content.char_at(unknown-receiver) 首行 670 ×4
+  - frac.char_at(unknown-receiver) 首行 321 ×1
+  - s.char_at(unknown-receiver) 首行 2070 ×2
+  - sub.char_at(unknown-receiver) 首行 2467 ×1
+  - text.char_at(unknown-receiver) 首行 300 ×2
   - p.decl_lookup(unknown-receiver) 首行 420 ×4
   - p.decl_register(unknown-receiver) 首行 1802 ×4
   - p.expect(unknown-receiver) 首行 453 ×48
   - p.fail(unknown-receiver) 首行 449 ×63
+  - bind_list.get(unknown-receiver) 首行 2203 ×2
+  - binds.get(unknown-receiver) 首行 2272 ×3
+  - decls.get(unknown-receiver) 首行 215 ×2
+  - elems.get(unknown-receiver) 首行 899 ×1
+  - exts.get(unknown-receiver) 首行 2499 ×1
+  - fbnds.get(unknown-receiver) 首行 2255 ×1
+  - globals.get(unknown-receiver) 首行 203 ×2
+  - names.get(unknown-receiver) 首行 1090 ×2
+  - out.get(unknown-receiver) 首行 2513 ×1
+  - parts.get(unknown-receiver) 首行 1015 ×1
+  - scope.get(unknown-receiver) 首行 194 ×2
+  - scopes.get(unknown-receiver) 首行 180 ×2
+  - segs.get(unknown-receiver) 首行 2158 ×2
+  - stmts.get(unknown-receiver) 首行 2489 ×1
+  - toks.get(unknown-receiver) 首行 89 ×10
   - p.kind(unknown-receiver) 首行 376 ×161
+  - bind_list.len(unknown-receiver) 首行 2198 ×1
+  - binds.len(unknown-receiver) 首行 2271 ×2
+  - body.len(unknown-receiver) 首行 2508 ×1
+  - content.len(unknown-receiver) 首行 668 ×1
+  - decls.len(unknown-receiver) 首行 214 ×2
+  - elems.len(unknown-receiver) 首行 878 ×4
+  - ex.len(unknown-receiver) 首行 2502 ×1
+  - extra.len(unknown-receiver) 首行 2296 ×1
+  - exts.len(unknown-receiver) 首行 2498 ×1
+  - fbnds.len(unknown-receiver) 首行 2254 ×1
+  - frac.len(unknown-receiver) 首行 321 ×4
+  - globals.len(unknown-receiver) 首行 202 ×1
+  - line.len(unknown-receiver) 首行 2517 ×2
+  - names.len(unknown-receiver) 首行 1086 ×2
+  - one.len(unknown-receiver) 首行 2259 ×1
+  - out.len(unknown-receiver) 首行 2512 ×2
+  - parts.len(unknown-receiver) 首行 1011 ×1
+  - s.len(unknown-receiver) 首行 2069 ×3
+  - scope.len(unknown-receiver) 首行 192 ×1
+  - segs.len(unknown-receiver) 首行 2158 ×2
+  - stmts.len(unknown-receiver) 首行 2488 ×1
+  - sub.len(unknown-receiver) 首行 2458 ×1
+  - text.len(unknown-receiver) 首行 290 ×5
+  - toks.len(unknown-receiver) 首行 86 ×10
   - p.lookup(unknown-receiver) 首行 804 ×3
   - p.next(unknown-receiver) 首行 390 ×145
   - self.next(unknown-receiver) 首行 161 ×1
   - p.peek(unknown-receiver) 首行 1109 ×3
   - p.peek_text(unknown-receiver) 首行 1692 ×1
   - p.pop_scope(unknown-receiver) 首行 1521 ×6
+  - bind_list.push(unknown-receiver) 首行 2180 ×2
+  - decls.push(unknown-receiver) 首行 224 ×1
+  - dumps.push(unknown-receiver) 首行 1025 ×2
+  - elems.push(unknown-receiver) 首行 881 ×1
+  - extra.push(unknown-receiver) 首行 2240 ×1
+  - exts.push(unknown-receiver) 首行 2491 ×1
+  - globals.push(unknown-receiver) 首行 184 ×1
+  - itys.push(unknown-receiver) 首行 1026 ×2
+  - names.push(unknown-receiver) 首行 1063 ×1
+  - out.push(unknown-receiver) 首行 2071 ×3
+  - sc.push(unknown-receiver) 首行 181 ×1
+  - scopes.push(unknown-receiver) 首行 168 ×1
+  - segs.push(unknown-receiver) 首行 2146 ×2
+  - stmts.push(unknown-receiver) 首行 2417 ×5
   - p.push_scope(unknown-receiver) 首行 1493 ×7
+  - decls.set(unknown-receiver) 首行 1864 ×1
+  - out.set(unknown-receiver) 首行 2522 ×1
+  - scopes.set(unknown-receiver) 首行 182 ×1
   - p.skip_empty_lines(unknown-receiver) 首行 434 ×47
+  - body.slice(unknown-receiver) 首行 2507 ×2
+  - content.slice(unknown-receiver) 首行 693 ×3
+  - ex.slice(unknown-receiver) 首行 2502 ×1
+  - frac.slice(unknown-receiver) 首行 322 ×1
+  - line.slice(unknown-receiver) 首行 2517 ×2
+  - one.slice(unknown-receiver) 首行 2259 ×1
+  - s.slice(unknown-receiver) 首行 2071 ×2
+  - text.slice(unknown-receiver) 首行 290 ×4
+  - ..str(unknown-receiver) 首行 142 ×10
+  - i2.str(unknown-receiver) 首行 2283 ×1
+  - slot.str(unknown-receiver) 首行 1967 ×1
+  - slot2.str(unknown-receiver) 首行 1993 ×1
   - p.text(unknown-receiver) 首行 414 ×45
 
 ### `auto/lib/typeinfo.at`
-- 声明 18（方法 0）；use 边 3；调用候选 71（unknown 13）
+- 声明 18（方法 0）；use 边 3；调用候选 71（unknown 36）
 - 能力证据：boolean-type-annotation×1, char-literal×4, comparison-operator×89, free-function×17, generic-list-type×13, if-else×95, integer-type-annotation×2, is-match-statement×5, logical-operator×34, mut-parameter×8, plain-list-value×3, record-type-declaration×1, return-statement×36, string-literal×77, string-type-annotation×20, use-module×3, while-loop×20
 - unknown 候选（交人工核对，逐条列出）：
   - p.bind(unknown-receiver) 首行 87 ×3
+  - rest.char_at(unknown-receiver) 首行 351 ×2
   - p.decl_lookup(unknown-receiver) 首行 245 ×3
   - p.expect(unknown-receiver) 首行 62 ×16
   - p.fail(unknown-receiver) 首行 52 ×11
+  - binds.get(unknown-receiver) 首行 244 ×2
+  - fns.get(unknown-receiver) 首行 627 ×2
+  - out.get(unknown-receiver) 首行 664 ×1
+  - parts.get(unknown-receiver) 首行 618 ×1
   - p.kind(unknown-receiver) 首行 51 ×62
+  - binds.len(unknown-receiver) 首行 243 ×1
+  - dump.len(unknown-receiver) 首行 586 ×2
+  - fns.len(unknown-receiver) 首行 625 ×1
+  - head.len(unknown-receiver) 首行 346 ×3
+  - lhs.len(unknown-receiver) 首行 533 ×1
+  - out.len(unknown-receiver) 首行 660 ×1
+  - parts.len(unknown-receiver) 首行 419 ×2
+  - pat.len(unknown-receiver) 首行 586 ×3
+  - rest.len(unknown-receiver) 首行 350 ×2
+  - ty.len(unknown-receiver) 首行 346 ×2
   - p.lookup(unknown-receiver) 首行 471 ×1
   - p.next(unknown-receiver) 首行 50 ×41
   - p.peek(unknown-receiver) 首行 143 ×2
   - p.peek_text(unknown-receiver) 首行 147 ×1
   - p.pop_scope(unknown-receiver) 首行 110 ×3
+  - fns.push(unknown-receiver) 首行 107 ×1
+  - out.push(unknown-receiver) 首行 168 ×1
+  - parts.push(unknown-receiver) 首行 412 ×2
   - p.push_scope(unknown-receiver) 首行 61 ×2
   - p.skip_empty_lines(unknown-receiver) 首行 64 ×17
+  - dump.slice(unknown-receiver) 首行 587 ×2
+  - lhs.slice(unknown-receiver) 首行 533 ×1
+  - rest.slice(unknown-receiver) 首行 357 ×2
+  - ty.slice(unknown-receiver) 首行 346 ×2
+  - i.str(unknown-receiver) 首行 245 ×1
   - p.text(unknown-receiver) 首行 59 ×6
 
 ### `auto/lib/codegen.at`
-- 声明 61（方法 34）；use 边 4；调用候选 361（unknown 51）
+- 声明 61（方法 34）；use 边 4；调用候选 361（unknown 283）
 - 能力证据：boolean-type-annotation×6, char-literal×5, comparison-operator×400, enum-declaration×1, free-function×82, generic-list-type×72, if-else×400, integer-type-annotation×68, is-match-statement×8, logical-operator×179, mut-parameter×26, plain-list-value×50, record-type-declaration×11, return-statement×185, string-literal×400, string-type-annotation×127, type-body-method×34, use-module×4, while-loop×153
 - unknown 候选（交人工核对，逐条列出）：
   - c.add_var(unknown-receiver) 首行 1452 ×16
   - self.add_var(unknown-receiver) 首行 560 ×1
   - c.add_var_reuse(unknown-receiver) 首行 3117 ×1
+  - content.char_at(unknown-receiver) 首行 1149 ×4
+  - crate_name.char_at(unknown-receiver) 首行 4228 ×1
+  - fld3.char_at(unknown-receiver) 首行 2825 ×1
+  - items.char_at(unknown-receiver) 首行 842 ×1
+  - module.char_at(unknown-receiver) 首行 4203 ×1
+  - name.char_at(unknown-receiver) 首行 1041 ×2
+  - out.char_at(unknown-receiver) 首行 4020 ×2
+  - path.char_at(unknown-receiver) 首行 3993 ×1
+  - s.char_at(unknown-receiver) 首行 741 ×2
+  - symbol.char_at(unknown-receiver) 首行 329 ×1
+  - t.char_at(unknown-receiver) 首行 1575 ×1
+  - ty.char_at(unknown-receiver) 首行 3730 ×1
   - c.const_lookup(unknown-receiver) 首行 1590 ×3
   - c.ctor_lookup(unknown-receiver) 首行 1590 ×3
   - c.emit(unknown-receiver) 首行 1158 ×151
@@ -85,12 +212,123 @@
   - self.fail(unknown-receiver) 首行 379 ×2
   - c.field_idx(unknown-receiver) 首行 2158 ×2
   - c.field_ty(unknown-receiver) 首行 1267 ×4
+  - binds.get(unknown-receiver) 首行 2858 ×1
+  - binds2.get(unknown-receiver) 首行 2873 ×2
+  - bj.get(unknown-receiver) 首行 391 ×1
+  - brk_js.get(unknown-receiver) 首行 388 ×2
+  - captured.get(unknown-receiver) 首行 1413 ×4
+  - cgs.get(unknown-receiver) 首行 4424 ×1
+  - cj.get(unknown-receiver) 首行 385 ×1
+  - consts.get(unknown-receiver) 首行 294 ×7
+  - cont_js.get(unknown-receiver) 首行 382 ×2
+  - cont_tg.get(unknown-receiver) 首行 385 ×1
+  - ctors.get(unknown-receiver) 首行 305 ×3
+  - defers.get(unknown-receiver) 首行 4503 ×2
+  - done.get(unknown-receiver) 首行 4247 ×1
+  - end_jmps.get(unknown-receiver) 首行 2991 ×1
+  - extras.get(unknown-receiver) 首行 2950 ×1
+  - fields.get(unknown-receiver) 首行 2615 ×1
+  - fields3.get(unknown-receiver) 首行 3320 ×6
+  - fl.get(unknown-receiver) 首行 262 ×2
+  - fn_mods.get(unknown-receiver) 首行 325 ×1
+  - fn_rets.get(unknown-receiver) 首行 1251 ×5
+  - fns.get(unknown-receiver) 首行 317 ×13
+  - ft.get(unknown-receiver) 首行 282 ×1
+  - ftys.get(unknown-receiver) 首行 2616 ×1
+  - global_inits.get(unknown-receiver) 首行 3055 ×2
+  - global_vars.get(unknown-receiver) 首行 233 ×1
+  - ins.get(unknown-receiver) 首行 385 ×34
+  - jends.get(unknown-receiver) 首行 3548 ×1
+  - loading.get(unknown-receiver) 首行 4255 ×1
+  - mods.get(unknown-receiver) 首行 4549 ×1
+  - names.get(unknown-receiver) 首行 1405 ×2
+  - nz_jmps.get(unknown-receiver) 首行 2959 ×1
+  - out.get(unknown-receiver) 首行 1069 ×4
+  - pool.get(unknown-receiver) 首行 718 ×6
+  - remap.get(unknown-receiver) 首行 4459 ×1
+  - sc.get(unknown-receiver) 首行 500 ×17
+  - scopes.get(unknown-receiver) 首行 470 ×10
+  - seed.get(unknown-receiver) 首行 4561 ×2
+  - seed_consts.get(unknown-receiver) 首行 4580 ×3
+  - seed_ctors.get(unknown-receiver) 首行 4599 ×2
+  - slots.get(unknown-receiver) 首行 475 ×1
+  - subtoks.get(unknown-receiver) 首行 1192 ×5
+  - toks.get(unknown-receiver) 首行 1338 ×37
+  - tys.get(unknown-receiver) 首行 245 ×7
+  - uses.get(unknown-receiver) 首行 197 ×4
+  - words3.get(unknown-receiver) 首行 2823 ×2
   - c.gkey(unknown-receiver) 首行 1761 ×6
   - c.import_symbol(unknown-receiver) 首行 1702 ×1
   - c.is_global(unknown-receiver) 首行 1761 ×4
   - c.is_module(unknown-receiver) 首行 1659 ×1
   - p.kind(unknown-receiver) 首行 1362 ×162
   - pp.kind(unknown-receiver) 首行 4047 ×2
+  - ..len(unknown-receiver) 首行 1257 ×5
+  - ap.len(unknown-receiver) 首行 2776 ×1
+  - binds.len(unknown-receiver) 首行 2857 ×1
+  - binds2.len(unknown-receiver) 首行 2872 ×1
+  - bj.len(unknown-receiver) 首行 390 ×1
+  - brk_js.len(unknown-receiver) 首行 357 ×1
+  - captured.len(unknown-receiver) 首行 1412 ×4
+  - cgs.len(unknown-receiver) 首行 4423 ×2
+  - cj.len(unknown-receiver) 首行 384 ×1
+  - ck.len(unknown-receiver) 首行 1716 ×1
+  - consts.len(unknown-receiver) 首行 293 ×10
+  - cont_js.len(unknown-receiver) 首行 362 ×1
+  - cont_tg.len(unknown-receiver) 首行 367 ×1
+  - content.len(unknown-receiver) 首行 1147 ×1
+  - crate_name.len(unknown-receiver) 首行 4227 ×2
+  - ctors.len(unknown-receiver) 首行 304 ×2
+  - defers.len(unknown-receiver) 首行 4502 ×2
+  - done.len(unknown-receiver) 首行 4246 ×1
+  - end_jmps.len(unknown-receiver) 首行 2990 ×1
+  - extras.len(unknown-receiver) 首行 2924 ×2
+  - fields.len(unknown-receiver) 首行 2614 ×1
+  - fields3.len(unknown-receiver) 首行 3301 ×4
+  - fl.len(unknown-receiver) 首行 261 ×2
+  - fld3.len(unknown-receiver) 首行 2825 ×3
+  - fn_mods.len(unknown-receiver) 首行 324 ×1
+  - fn_rets.len(unknown-receiver) 首行 1250 ×3
+  - fns.len(unknown-receiver) 首行 316 ×15
+  - ft.len(unknown-receiver) 首行 281 ×1
+  - global_inits.len(unknown-receiver) 首行 3054 ×3
+  - global_vars.len(unknown-receiver) 首行 232 ×1
+  - ins.len(unknown-receiver) 首行 430 ×35
+  - items.len(unknown-receiver) 首行 837 ×1
+  - jends.len(unknown-receiver) 首行 3547 ×1
+  - key.len(unknown-receiver) 首行 1607 ×1
+  - loading.len(unknown-receiver) 首行 4254 ×1
+  - m.len(unknown-receiver) 首行 326 ×4
+  - mk2.len(unknown-receiver) 首行 2083 ×1
+  - mk7.len(unknown-receiver) 首行 1257 ×1
+  - mods.len(unknown-receiver) 首行 4548 ×1
+  - module.len(unknown-receiver) 首行 4202 ×2
+  - name.len(unknown-receiver) 首行 1041 ×6
+  - names.len(unknown-receiver) 首行 1404 ×2
+  - nz_jmps.len(unknown-receiver) 首行 2958 ×1
+  - out.len(unknown-receiver) 首行 1066 ×5
+  - path.len(unknown-receiver) 首行 3992 ×1
+  - pool.len(unknown-receiver) 首行 717 ×6
+  - recv_ty2.len(unknown-receiver) 首行 1937 ×2
+  - remap.len(unknown-receiver) 首行 4458 ×1
+  - s.len(unknown-receiver) 首行 740 ×2
+  - sc.len(unknown-receiver) 首行 499 ×10
+  - scope_saves.len(unknown-receiver) 首行 447 ×1
+  - scopes.len(unknown-receiver) 首行 456 ×1
+  - seed.len(unknown-receiver) 首行 4560 ×3
+  - seed_consts.len(unknown-receiver) 首行 4579 ×5
+  - seed_ctors.len(unknown-receiver) 首行 4598 ×3
+  - slots.len(unknown-receiver) 首行 473 ×1
+  - subtoks.len(unknown-receiver) 首行 1202 ×2
+  - symbol.len(unknown-receiver) 首行 326 ×2
+  - toks.len(unknown-receiver) 首行 1337 ×24
+  - ty.len(unknown-receiver) 首行 3729 ×1
+  - tys.len(unknown-receiver) 首行 244 ×5
+  - uses.len(unknown-receiver) 首行 196 ×4
+  - vk18.len(unknown-receiver) 首行 2886 ×1
+  - vlist18.len(unknown-receiver) 首行 2894 ×1
+  - words3.len(unknown-receiver) 首行 2822 ×2
+  - wrest.len(unknown-receiver) 首行 2813 ×1
   - c.line(unknown-receiver) 首行 2400 ×2
   - p.line(unknown-receiver) 首行 2400 ×2
   - m.link_symbol(unknown-receiver) 首行 4517 ×1
@@ -108,10 +346,119 @@
   - c.pool_add(unknown-receiver) 首行 1157 ×11
   - c.pool_push(unknown-receiver) 首行 2125 ×6
   - c.pop_scope(unknown-receiver) 首行 1466 ×11
+  - brk_js.push(unknown-receiver) 首行 360 ×1
+  - captured.push(unknown-receiver) 首行 1428 ×1
+  - cgs.push(unknown-receiver) 首行 4554 ×1
+  - consts.push(unknown-receiver) 首行 2362 ×3
+  - cont_js.push(unknown-receiver) 首行 365 ×1
+  - cont_tg.push(unknown-receiver) 首行 370 ×1
+  - ctors.push(unknown-receiver) 首行 2368 ×2
+  - defers.push(unknown-receiver) 首行 1668 ×4
+  - done.push(unknown-receiver) 首行 4281 ×1
+  - end_jmps.push(unknown-receiver) 首行 2748 ×7
+  - extras.push(unknown-receiver) 首行 2764 ×1
+  - fields.push(unknown-receiver) 首行 2651 ×1
+  - fields3.push(unknown-receiver) 首行 3286 ×1
+  - fields_snap.push(unknown-receiver) 首行 2615 ×1
+  - fn_mods.push(unknown-receiver) 首行 4492 ×1
+  - fn_rets.push(unknown-receiver) 首行 1444 ×5
+  - fns.push(unknown-receiver) 首行 1443 ×4
+  - fr.push(unknown-receiver) 首行 406 ×1
+  - fr2.push(unknown-receiver) 首行 410 ×1
+  - ftys.push(unknown-receiver) 首行 2654 ×1
+  - ftys_snap.push(unknown-receiver) 首行 2616 ×1
+  - global_inits.push(unknown-receiver) 首行 3061 ×1
+  - global_vars.push(unknown-receiver) 首行 3040 ×1
+  - ins.push(unknown-receiver) 首行 429 ×2
+  - jends.push(unknown-receiver) 首行 3531 ×1
+  - loading.push(unknown-receiver) 首行 4274 ×1
+  - mod_bases.push(unknown-receiver) 首行 4427 ×1
+  - mods.push(unknown-receiver) 首行 4280 ×2
+  - names.push(unknown-receiver) 首行 1357 ×2
+  - nz_jmps.push(unknown-receiver) 首行 2942 ×2
+  - offs.push(unknown-receiver) 首行 778 ×1
+  - out.push(unknown-receiver) 首行 1062 ×2
+  - pool.push(unknown-receiver) 首行 723 ×3
+  - remap.push(unknown-receiver) 首行 4446 ×1
+  - sc.push(unknown-receiver) 首行 555 ×2
+  - scope_saves.push(unknown-receiver) 首行 448 ×1
+  - scopes.push(unknown-receiver) 首行 458 ×1
+  - scs.push(unknown-receiver) 首行 171 ×1
+  - seed.push(unknown-receiver) 首行 4568 ×1
+  - seed_consts.push(unknown-receiver) 首行 4587 ×2
+  - seed_ctors.push(unknown-receiver) 首行 4606 ×1
+  - tys.push(unknown-receiver) 首行 2595 ×3
+  - uses.push(unknown-receiver) 首行 2439 ×2
+  - words3.push(unknown-receiver) 首行 2818 ×1
   - c.push_scope(unknown-receiver) 首行 1445 ×7
   - c.serialize(unknown-receiver) 首行 4759 ×2
+  - brk_js.set(unknown-receiver) 首行 358 ×2
+  - cont_js.set(unknown-receiver) 首行 363 ×2
+  - cont_tg.set(unknown-receiver) 首行 368 ×4
+  - fn_rets.set(unknown-receiver) 首行 3912 ×1
+  - fns.set(unknown-receiver) 首行 3808 ×1
+  - out.set(unknown-receiver) 首行 1071 ×2
+  - sc.set(unknown-receiver) 首行 549 ×2
+  - scope_saves.set(unknown-receiver) 首行 450 ×1
+  - scopes.set(unknown-receiver) 首行 461 ×3
+  - seed.set(unknown-receiver) 首行 4570 ×1
+  - seed_consts.set(unknown-receiver) 首行 4589 ×2
+  - seed_ctors.set(unknown-receiver) 首行 4608 ×1
+  - tys.set(unknown-receiver) 首行 2619 ×3
   - p.skip_empty_lines(unknown-receiver) 首行 1361 ×58
   - pp.skip_empty_lines(unknown-receiver) 首行 4044 ×1
+  - ap.slice(unknown-receiver) 首行 2776 ×1
+  - brest.slice(unknown-receiver) 首行 2779 ×1
+  - ck.slice(unknown-receiver) 首行 1716 ×1
+  - content.slice(unknown-receiver) 首行 1178 ×3
+  - crate_name.slice(unknown-receiver) 首行 4229 ×1
+  - digits.slice(unknown-receiver) 首行 3973 ×1
+  - fld3.slice(unknown-receiver) 首行 2826 ×1
+  - hexchars.slice(unknown-receiver) 首行 761 ×1
+  - items.slice(unknown-receiver) 首行 847 ×1
+  - mk2.slice(unknown-receiver) 首行 2083 ×1
+  - mk7.slice(unknown-receiver) 首行 1257 ×1
+  - module.slice(unknown-receiver) 首行 4204 ×2
+  - name.slice(unknown-receiver) 首行 1042 ×1
+  - out.slice(unknown-receiver) 首行 4023 ×3
+  - path.slice(unknown-receiver) 首行 4002 ×1
+  - recv_ty2.slice(unknown-receiver) 首行 1938 ×1
+  - s.slice(unknown-receiver) 首行 766 ×2
+  - symbol.slice(unknown-receiver) 首行 327 ×2
+  - tags.slice(unknown-receiver) 首行 1320 ×1
+  - ty.slice(unknown-receiver) 首行 3731 ×1
+  - vk18.slice(unknown-receiver) 首行 2886 ×1
+  - vlist18.slice(unknown-receiver) 首行 2893 ×2
+  - wrest.slice(unknown-receiver) 首行 2812 ×2
+  - ..str(unknown-receiver) 首行 679 ×5
+  - cp.str(unknown-receiver) 首行 1576 ×2
+  - cur_line.str(unknown-receiver) 首行 420 ×1
+  - dv.str(unknown-receiver) 首行 1614 ×2
+  - fc.str(unknown-receiver) 首行 1610 ×1
+  - fidx3.str(unknown-receiver) 首行 3326 ×1
+  - fidx4.str(unknown-receiver) 首行 2126 ×1
+  - fidx5.str(unknown-receiver) 首行 2175 ×2
+  - gf5.str(unknown-receiver) 首行 2163 ×1
+  - gg.str(unknown-receiver) 首行 3374 ×1
+  - gidx.str(unknown-receiver) 首行 1764 ×1
+  - gidx2.str(unknown-receiver) 首行 3065 ×1
+  - gidx3.str(unknown-receiver) 首行 3384 ×1
+  - ln.str(unknown-receiver) 首行 438 ×1
+  - mid3.str(unknown-receiver) 首行 3349 ×1
+  - mid4.str(unknown-receiver) 首行 3335 ×1
+  - n.str(unknown-receiver) 首行 1820 ×2
+  - n_args.str(unknown-receiver) 首行 3949 ×1
+  - n_locals.str(unknown-receiver) 首行 1473 ×3
+  - nid.str(unknown-receiver) 首行 1929 ×1
+  - nm.str(unknown-receiver) 首行 1608 ×2
+  - pn.str(unknown-receiver) 首行 1646 ×1
+  - pnm.str(unknown-receiver) 首行 1644 ×1
+  - rel.str(unknown-receiver) 首行 689 ×2
+  - rgidx.str(unknown-receiver) 首行 3925 ×1
+  - si.str(unknown-receiver) 首行 2875 ×1
+  - snid.str(unknown-receiver) 首行 2011 ×1
+  - tg.str(unknown-receiver) 首行 1272 ×1
+  - tg2.str(unknown-receiver) 首行 1298 ×1
   - p.text(unknown-receiver) 首行 1140 ×38
   - pp.text(unknown-receiver) 首行 4072 ×1
   - c.tys_lookup(unknown-receiver) 首行 1267 ×9
@@ -122,17 +469,88 @@
   - c.var_ty2(unknown-receiver) 首行 1223 ×1
 
 ### `auto/lib/engine.at`
-- 声明 21（方法 0）；use 边 2；调用候选 99（unknown 1）
-- 异常：[{'line': 314, 'kind': 'unterminated-string'}, {'line': 315, 'kind': 'unterminated-string'}, {'line': 333, 'kind': 'unterminated-string'}, {'line': 334, 'kind': 'unterminated-string'}]；括号余额 0
-- 能力证据：boolean-type-annotation×4, char-literal×2, comparison-operator×62, enum-declaration×1, free-function×20, generic-list-type×25, if-else×120, integer-type-annotation×16, is-match-statement×24, logical-operator×10, multiline-string-literal×4, mut-parameter×5, plain-list-value×15, return-statement×35, string-literal×33, string-type-annotation×14, use-module×2, while-loop×15
+- 声明 21（方法 0）；use 边 2；调用候选 99（unknown 63）
+- 能力证据：boolean-type-annotation×4, char-literal×2, comparison-operator×62, enum-declaration×1, free-function×20, generic-list-type×25, if-else×120, integer-type-annotation×16, is-match-statement×24, logical-operator×10, multiline-string-literal×2, mut-parameter×5, plain-list-value×15, return-statement×35, string-literal×33, string-type-annotation×14, use-module×2, while-loop×15
 - unknown 候选（交人工核对，逐条列出）：
+  - cs1502.char_at(unknown-receiver) 首行 835 ×1
+  - nm.char_at(unknown-receiver) 首行 473 ×1
+  - nm9.char_at(unknown-receiver) 首行 512 ×1
+  - sv7.char_at(unknown-receiver) 首行 1068 ×1
   - c.field_idx(unknown-receiver) 首行 586 ×2
+  - arena.get(unknown-receiver) 首行 239 ×12
+  - args4.get(unknown-receiver) 首行 420 ×1
+  - args_stack.get(unknown-receiver) 首行 792 ×1
+  - caps5.get(unknown-receiver) 首行 415 ×1
+  - fl10.get(unknown-receiver) 首行 540 ×1
+  - fl13.get(unknown-receiver) 首行 592 ×1
+  - fns.get(unknown-receiver) 首行 288 ×6
+  - glst106.get(unknown-receiver) 首行 890 ×1
+  - gnames.get(unknown-receiver) 首行 665 ×2
+  - gvals.get(unknown-receiver) 首行 666 ×1
+  - ins.get(unknown-receiver) 首行 358 ×1
+  - l7.get(unknown-receiver) 首行 1064 ×1
+  - mod_bases.get(unknown-receiver) 首行 311 ×1
+  - pool.get(unknown-receiver) 首行 585 ×4
+  - segs.get(unknown-receiver) 首行 644 ×1
+  - stack.get(unknown-receiver) 首行 378 ×73
+  - arena.len(unknown-receiver) 首行 383 ×4
+  - args4.len(unknown-receiver) 首行 419 ×2
+  - args_stack.len(unknown-receiver) 首行 765 ×1
+  - caps5.len(unknown-receiver) 首行 414 ×2
+  - fns.len(unknown-receiver) 首行 287 ×2
+  - glst106.len(unknown-receiver) 首行 889 ×1
+  - gnames.len(unknown-receiver) 首行 664 ×3
+  - l.len(unknown-receiver) 首行 262 ×1
+  - mod_bases.len(unknown-receiver) 首行 310 ×1
+  - nm.len(unknown-receiver) 首行 473 ×2
+  - nm9.len(unknown-receiver) 首行 512 ×2
+  - segs.len(unknown-receiver) 首行 642 ×1
+  - sl1500.len(unknown-receiver) 首行 829 ×1
+  - slst107.len(unknown-receiver) 首行 909 ×1
+  - stack.len(unknown-receiver) 首行 86 ×1
+  - t.len(unknown-receiver) 首行 265 ×1
+  - arena.push(unknown-receiver) 首行 382 ×4
+  - args4.push(unknown-receiver) 首行 408 ×1
+  - args_stack.push(unknown-receiver) 首行 424 ×2
+  - arr6.push(unknown-receiver) 首行 1041 ×1
+  - caps4.push(unknown-receiver) 首行 378 ×1
+  - fl9.push(unknown-receiver) 首行 496 ×1
+  - gnames.push(unknown-receiver) 首行 690 ×1
+  - gvals.push(unknown-receiver) 首行 691 ×1
+  - l101.push(unknown-receiver) 首行 871 ×1
+  - segs.push(unknown-receiver) 首行 637 ×1
+  - stack.push(unknown-receiver) 首行 87 ×1
+  - rs1510.replace(unknown-receiver) 首行 847 ×1
+  - arena.set(unknown-receiver) 首行 254 ×6
+  - args_stack.set(unknown-receiver) 首行 766 ×1
+  - fl12.set(unknown-receiver) 首行 562 ×1
+  - fl14.set(unknown-receiver) 首行 625 ×1
+  - gvals.set(unknown-receiver) 首行 688 ×1
+  - l2.set(unknown-receiver) 首行 253 ×1
+  - slst107.set(unknown-receiver) 首行 910 ×1
+  - stack.set(unknown-receiver) 首行 89 ×13
+  - nm.slice(unknown-receiver) 首行 474 ×1
+  - nm9.slice(unknown-receiver) 首行 513 ×1
+  - ss1524.slice(unknown-receiver) 首行 855 ×1
+  - ..str(unknown-receiver) 首行 119 ×1
+  - iv174.str(unknown-receiver) 首行 825 ×1
+  - ts1507.trim(unknown-receiver) 首行 839 ×1
 
 ### `auto/lib/a2r.at`
-- 声明 98（方法 25）；use 边 5；调用候选 306（unknown 33）
+- 声明 98（方法 25）；use 边 5；调用候选 306（unknown 193）
 - 能力证据：boolean-type-annotation×13, char-literal×14, comparison-operator×400, free-function×114, generic-list-type×73, if-else×400, integer-type-annotation×66, is-match-statement×13, logical-operator×214, mut-parameter×55, plain-list-value×46, record-type-declaration×8, return-statement×252, string-literal×400, string-type-annotation×141, type-body-method×25, use-module×5, while-loop×136
 - unknown 候选（交人工核对，逐条列出）：
   - a.blank(unknown-receiver) 首行 3141 ×10
+  - cb.char_at(unknown-receiver) 首行 862 ×2
+  - content.char_at(unknown-receiver) 首行 2218 ×5
+  - e.char_at(unknown-receiver) 首行 3859 ×2
+  - f.char_at(unknown-receiver) 首行 3331 ×1
+  - name.char_at(unknown-receiver) 首行 1543 ×2
+  - pay.char_at(unknown-receiver) 首行 2702 ×2
+  - ra19.char_at(unknown-receiver) 首行 2572 ×1
+  - s.char_at(unknown-receiver) 首行 4107 ×1
+  - t.char_at(unknown-receiver) 首行 543 ×8
+  - txt.char_at(unknown-receiver) 首行 1420 ×3
   - a.emit(unknown-receiver) 首行 4474 ×5
   - a.enum_find(unknown-receiver) 首行 2613 ×7
   - self.enum_find(unknown-receiver) 首行 309 ×1
@@ -143,21 +561,171 @@
   - a.field_ty(unknown-receiver) 首行 1772 ×3
   - a.fn_find(unknown-receiver) 首行 1503 ×6
   - self.fn_find(unknown-receiver) 首行 392 ×1
+  - args.get(unknown-receiver) 首行 2406 ×6
+  - binds.get(unknown-receiver) 首行 3482 ×2
+  - cargs.get(unknown-receiver) 首行 2786 ×1
+  - counts_c.get(unknown-receiver) 首行 3189 ×2
+  - counts_n.get(unknown-receiver) 首行 3180 ×2
+  - decls.get(unknown-receiver) 首行 4496 ×2
+  - docs.get(unknown-receiver) 首行 4526 ×1
+  - ens.get(unknown-receiver) 首行 284 ×11
+  - evis.get(unknown-receiver) 首行 2773 ×3
+  - fields.get(unknown-receiver) 首行 300 ×5
+  - fns.get(unknown-receiver) 首行 245 ×10
+  - global_tys.get(unknown-receiver) 首行 1865 ×1
+  - globals.get(unknown-receiver) 首行 195 ×1
+  - imports.get(unknown-receiver) 首行 329 ×1
+  - items.get(unknown-receiver) 首行 4431 ×3
+  - let_mutated.get(unknown-receiver) 首行 3697 ×1
+  - lu_idx.get(unknown-receiver) 首行 437 ×1
+  - lu_names.get(unknown-receiver) 首行 423 ×2
+  - mains.get(unknown-receiver) 首行 4574 ×1
+  - methods.get(unknown-receiver) 首行 1088 ×8
+  - mp.get(unknown-receiver) 首行 869 ×1
+  - ms.get(unknown-receiver) 首行 273 ×5
+  - multi_is.get(unknown-receiver) 首行 3211 ×1
+  - mut_params.get(unknown-receiver) 首行 411 ×4
+  - mutated.get(unknown-receiver) 首行 450 ×2
+  - names.get(unknown-receiver) 首行 1048 ×1
+  - nfields.get(unknown-receiver) 首行 1826 ×2
+  - out.get(unknown-receiver) 首行 234 ×4
+  - params.get(unknown-receiver) 首行 4020 ×4
+  - parts.get(unknown-receiver) 首行 2347 ×1
+  - pays.get(unknown-receiver) 首行 2778 ×9
+  - ps.get(unknown-receiver) 首行 400 ×9
+  - pubfs.get(unknown-receiver) 首行 4499 ×1
+  - sc.get(unknown-receiver) 首行 364 ×4
+  - scopes.get(unknown-receiver) 首行 340 ×3
+  - segs.get(unknown-receiver) 首行 4434 ×7
+  - toks.get(unknown-receiver) 首行 880 ×35
+  - tys.get(unknown-receiver) 首行 256 ×15
+  - vs.get(unknown-receiver) 首行 316 ×8
+  - words.get(unknown-receiver) 首行 3330 ×2
   - a.global_find(unknown-receiver) 首行 1861 ×2
   - a.imports_has(unknown-receiver) 首行 2000 ×1
   - self.indent_str(unknown-receiver) 首行 220 ×1
   - a.is_cur_mut_param(unknown-receiver) 首行 1886 ×1
   - p.kind(unknown-receiver) 首行 600 ×210
+  - args.len(unknown-receiver) 首行 2405 ×12
+  - binds.len(unknown-receiver) 首行 3481 ×1
+  - cargs.len(unknown-receiver) 首行 2785 ×1
+  - content.len(unknown-receiver) 首行 2216 ×1
+  - counts_n.len(unknown-receiver) 首行 3179 ×2
+  - cur_ret.len(unknown-receiver) 首行 3883 ×1
+  - decls.len(unknown-receiver) 首行 4495 ×2
+  - docs.len(unknown-receiver) 首行 4524 ×1
+  - e.len(unknown-receiver) 首行 3854 ×9
+  - ens.len(unknown-receiver) 首行 283 ×1
+  - evis.len(unknown-receiver) 首行 2772 ×3
+  - f.len(unknown-receiver) 首行 3331 ×3
+  - fields.len(unknown-receiver) 首行 299 ×4
+  - fns.len(unknown-receiver) 首行 244 ×1
+  - globals.len(unknown-receiver) 首行 194 ×2
+  - imports.len(unknown-receiver) 首行 328 ×2
+  - items.len(unknown-receiver) 首行 4430 ×3
+  - let_mutated.len(unknown-receiver) 首行 3696 ×1
+  - lu_names.len(unknown-receiver) 首行 422 ×2
+  - mains.len(unknown-receiver) 首行 4563 ×4
+  - methods.len(unknown-receiver) 首行 3935 ×2
+  - mp.len(unknown-receiver) 首行 868 ×1
+  - ms.len(unknown-receiver) 首行 272 ×3
+  - multi_is.len(unknown-receiver) 首行 3210 ×1
+  - mut_params.len(unknown-receiver) 首行 410 ×4
+  - mutated.len(unknown-receiver) 首行 449 ×2
+  - name.len(unknown-receiver) 首行 1542 ×1
+  - names.len(unknown-receiver) 首行 1011 ×2
+  - nfields.len(unknown-receiver) 首行 1825 ×1
+  - out.len(unknown-receiver) 首行 230 ×3
+  - params.len(unknown-receiver) 首行 4019 ×4
+  - parts.len(unknown-receiver) 首行 2330 ×2
+  - pay.len(unknown-receiver) 首行 2701 ×3
+  - pays.len(unknown-receiver) 首行 4136 ×1
+  - ps.len(unknown-receiver) 首行 399 ×7
+  - ra19.len(unknown-receiver) 首行 2572 ×1
+  - recv.len(unknown-receiver) 首行 2491 ×3
+  - rest.len(unknown-receiver) 首行 3319 ×1
+  - s.len(unknown-receiver) 首行 4106 ×1
+  - sb.len(unknown-receiver) 首行 3295 ×1
+  - sc.len(unknown-receiver) 首行 362 ×2
+  - segs.len(unknown-receiver) 首行 4436 ×4
+  - t.len(unknown-receiver) 首行 542 ×17
+  - toks.len(unknown-receiver) 首行 879 ×11
+  - txt.len(unknown-receiver) 首行 1418 ×1
+  - ty.len(unknown-receiver) 首行 3885 ×1
+  - tys.len(unknown-receiver) 首行 255 ×1
+  - vs.len(unknown-receiver) 首行 315 ×5
+  - words.len(unknown-receiver) 首行 3329 ×2
   - a.line(unknown-receiver) 首行 3388 ×75
   - a.lu_after(unknown-receiver) 首行 2149 ×3
   - a.lu_record(unknown-receiver) 首行 1435 ×3
   - a.method_find(unknown-receiver) 首行 1482 ×3
   - p.next(unknown-receiver) 首行 601 ×165
   - p.peek(unknown-receiver) 首行 724 ×8
+  - counts_c.push(unknown-receiver) 首行 3187 ×1
+  - counts_n.push(unknown-receiver) 首行 3186 ×1
+  - decls.push(unknown-receiver) 首行 4672 ×6
+  - docs.push(unknown-receiver) 首行 4511 ×1
+  - ens.push(unknown-receiver) 首行 1379 ×1
+  - fields.push(unknown-receiver) 首行 1256 ×1
+  - fns.push(unknown-receiver) 首行 909 ×1
+  - global_tys.push(unknown-receiver) 首行 4618 ×1
+  - globals.push(unknown-receiver) 首行 4617 ×1
+  - imports.push(unknown-receiver) 首行 4431 ×1
+  - items.push(unknown-receiver) 首行 4414 ×2
+  - let_mutated.push(unknown-receiver) 首行 1456 ×2
+  - lu_idx.push(unknown-receiver) 首行 430 ×1
+  - lu_names.push(unknown-receiver) 首行 429 ×1
+  - mains.push(unknown-receiver) 首行 4709 ×1
+  - methods.push(unknown-receiver) 首行 1237 ×2
+  - mp.push(unknown-receiver) 首行 846 ×1
+  - mutated.push(unknown-receiver) 首行 1451 ×3
+  - names.push(unknown-receiver) 首行 1073 ×1
+  - new_out.push(unknown-receiver) 首行 4731 ×8
+  - nps.push(unknown-receiver) 首行 1149 ×1
+  - out.push(unknown-receiver) 首行 206 ×5
+  - out2.push(unknown-receiver) 首行 3200 ×1
+  - parts.push(unknown-receiver) 首行 2334 ×1
+  - pays.push(unknown-receiver) 首行 1374 ×1
+  - ps.push(unknown-receiver) 首行 796 ×1
+  - pubfs.push(unknown-receiver) 首行 4673 ×6
+  - sc.push(unknown-receiver) 首行 341 ×1
+  - scopes.push(unknown-receiver) 首行 172 ×2
+  - segs.push(unknown-receiver) 首行 4387 ×2
+  - tys.push(unknown-receiver) 首行 1261 ×1
+  - vs.push(unknown-receiver) 首行 1373 ×1
+  - words.push(unknown-receiver) 首行 3324 ×1
+  - args.replace(unknown-receiver) 首行 3267 ×1
+  - s.replace(unknown-receiver) 首行 499 ×2
+  - t.replace(unknown-receiver) 首行 500 ×9
   - a.result(unknown-receiver) 首行 4745 ×1
+  - counts_c.set(unknown-receiver) 首行 3189 ×1
+  - lu_idx.set(unknown-receiver) 首行 424 ×1
+  - methods.set(unknown-receiver) 首行 1090 ×1
+  - ps.set(unknown-receiver) 首行 895 ×1
+  - scopes.set(unknown-receiver) 首行 342 ×2
+  - tys.set(unknown-receiver) 首行 1091 ×2
   - p.skip_empty_lines(unknown-receiver) 首行 616 ×67
+  - content.slice(unknown-receiver) 首行 2227 ×3
+  - cur_ret.slice(unknown-receiver) 首行 3883 ×1
+  - digits.slice(unknown-receiver) 首行 4098 ×1
+  - e.slice(unknown-receiver) 首行 3854 ×3
+  - f.slice(unknown-receiver) 首行 3333 ×1
+  - lower.slice(unknown-receiver) 首行 4092 ×1
+  - name.slice(unknown-receiver) 首行 1547 ×1
+  - pay.slice(unknown-receiver) 首行 2703 ×2
+  - recv.slice(unknown-receiver) 首行 2491 ×1
+  - rest.slice(unknown-receiver) 首行 3318 ×2
+  - sb.slice(unknown-receiver) 首行 3295 ×1
+  - srest.slice(unknown-receiver) 首行 3298 ×1
+  - t.slice(unknown-receiver) 首行 544 ×7
+  - txt.slice(unknown-receiver) 首行 1435 ×1
+  - ty.slice(unknown-receiver) 首行 3885 ×1
+  - upper.slice(unknown-receiver) 首行 1545 ×2
+  - ..str(unknown-receiver) 首行 1700 ×3
+  - i.str(unknown-receiver) 首行 4175 ×1
   - a.struct_derive(unknown-receiver) 首行 3917 ×1
   - p.text(unknown-receiver) 首行 608 ×41
+  - t.trim(unknown-receiver) 首行 2721 ×1
   - a.ty_find(unknown-receiver) 首行 1274 ×11
   - self.ty_find(unknown-receiver) 首行 266 ×2
   - a.vparam(unknown-receiver) 首行 1877 ×5
@@ -167,8 +735,15 @@
   - a.vunscope(unknown-receiver) 首行 833 ×7
 
 ### `auto/aavm.at`
-- 声明 1（方法 0）；use 边 1；调用候选 12（unknown 0）
+- 声明 1（方法 0）；use 边 1；调用候选 12（unknown 6）
 - 能力证据：comparison-operator×1, free-function×1, if-else×4, plain-list-value×1, return-statement×1, string-literal×3, use-module×1, while-loop×2
+- unknown 候选（交人工核对，逐条列出）：
+  - argv.get(unknown-receiver) 首行 21 ×1
+  - parts.get(unknown-receiver) 首行 38 ×1
+  - argv.len(unknown-receiver) 首行 20 ×1
+  - parts.len(unknown-receiver) 首行 34 ×1
+  - head.parse_int(unknown-receiver) 首行 25 ×1
+  - parts.push(unknown-receiver) 首行 29 ×1
 
 ## 人工结论层
 - `manual-decisions.json`：每次 --check 绑定输入 hash 校验；过期即失败。

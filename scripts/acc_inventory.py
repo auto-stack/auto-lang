@@ -52,17 +52,12 @@ REGISTRY_SYMBOL = "AUTO_LIB_FILES_V2"
 REGISTRY_RE = re.compile(REGISTRY_SYMBOL + r"\s*:\s*&\[&str\]\s*=\s*&\[(.*?)\]", re.S)
 REGISTRY_ENTRY_RE = re.compile(r'"([^"]+)"')
 
-# 运行时命名空间/方法族：来源=auto/lib 各文件头与 auto/aavm.at 的在用证据
-# （List 容器、IO 行读、process 参数、File 文件读；a2r.at 头列出的方法映射族
-# len/str/new/get/set/char_at/slice/replace/trim/push；engine.at nat#174 int.str、
-# nat#1015/1016 File.read_text[_range]）。
-# 不在此集合的调用一律进 unknown，不猜测。
+# 运行时命名空间：接收者为可证明宿主内建时才标 native-runtime
+# （List 容器、IO 行读、process 参数、File 文件读；engine.at nat#1015/1016
+# File.read_text[_range] 等宿主内建证据）。
+# QA-02（PLAN-743 r2）：不再按"方法名像内建"判定 native——本地类型可声明
+# 同名方法（Meter.len/CG.new/Ar.new 实证），变量接收者一律 unknown 交人工。
 NATIVE_NAMESPACES = {"List", "IO", "process", "File"}
-NATIVE_METHODS = {
-    "new", "len", "push", "pop", "get", "set", "str",
-    "parse_int", "read_line", "args",
-    "char_at", "slice", "replace", "trim", "contains", "join",
-}
 BARE_NATIVES = {"print"}
 
 TOP_DECL_RE = re.compile(r"^(pub\s+)?(fn|type|enum)\s+([A-Za-z_]\w*)")
@@ -112,11 +107,16 @@ def sha256_of(path: Path) -> str:
 def mask_comments_and_strings(text: str):
     """屏蔽注释与字符串/字符字面量内容，保留代码骨架与行结构。
 
-    字符串内容整体替换为空格（保留引号占位），注释同理；跨行 block comment
-    保留换行以维持行号。返回 (masked_text, anomalies)。
+    字符串内容整体替换为空格（保留引号占位），注释同理；换行始终保留以维持行号。
+    QA-01（PLAN-743 r2）：跨行字符串是合法形态，字面量状态保持到真正闭合；
+    转义换行（\\+换行）属字面量续行；EOF 仍未闭合的字符串/字符记异常，
+    其起始行之后的全部内容按词法不确定屏蔽，不得生成候选。
+    返回 (masked_text, anomalies, multiline_string_start_lines)。
     """
     out = []
     anomalies = []
+    multiline_string_starts = []
+    string_start_line = None
     state = "code"
     i, n = 0, len(text)
     line = 1
@@ -128,9 +128,13 @@ def mask_comments_and_strings(text: str):
             out.append("\n")
             if state == "line_comment":
                 state = "code"
-            elif state in ("string", "char"):
-                anomalies.append({"line": line - 1, "kind": "unterminated-%s" % state})
+            elif state == "char":
+                # 字符字面量不跨行：非法/不支持形态，本行内容已屏蔽，
+                # 记异常后在换行恢复，避免单个撇号吞掉后续真实代码
+                anomalies.append({"line": line - 1, "kind": "unterminated-char"})
                 state = "code"
+            # 字符串跨越换行：保持字面量状态（QA-01）。
+            # 内容保持屏蔽、行号照常推进；真未闭合由 EOF 兜底标记。
             i += 1
             continue
         if state == "code":
@@ -146,6 +150,7 @@ def mask_comments_and_strings(text: str):
                 continue
             if c == '"':
                 state = "string"
+                string_start_line = line
                 out.append('"')
                 i += 1
                 continue
@@ -169,11 +174,20 @@ def mask_comments_and_strings(text: str):
             i += 1
         elif state == "string":
             if c == "\\":
+                if nxt == "\n":
+                    # 转义换行：字面量续行，保留换行维持行号对齐
+                    out.append("\n")
+                    line += 1
+                    i += 2
+                    continue
                 out.append("  ")
                 i += 2
                 continue
             if c == '"':
                 state = "code"
+                if line > string_start_line:
+                    multiline_string_starts.append(string_start_line)
+                string_start_line = None
                 out.append('"')
                 i += 1
                 continue
@@ -192,8 +206,11 @@ def mask_comments_and_strings(text: str):
             out.append(" ")
             i += 1
     if state != "code":
-        anomalies.append({"line": line, "kind": "unterminated-%s-at-eof" % state})
-    return "".join(out), anomalies
+        # EOF 兜底：字符串未闭合=从起始行到 EOF 全部按字面量屏蔽
+        # （词法不确定形态，禁止尾部内容生成候选），记异常供人工核对
+        anomalies.append({"line": string_start_line or line,
+                          "kind": "unterminated-%s-at-eof" % state})
+    return "".join(out), anomalies, multiline_string_starts
 
 
 class ModuleScan:
@@ -210,6 +227,7 @@ class ModuleScan:
         self.capabilities = {}       # key -> [line,...]
         self.anomalies = []
         self.brace_balance = 0
+        self.lexically_indeterminate = False
 
     def to_json(self) -> dict:
         return {
@@ -223,13 +241,17 @@ class ModuleScan:
             "capability_evidence": self.capabilities,
             "anomalies": self.anomalies,
             "brace_balance": self.brace_balance,
+            "lexically_indeterminate": self.lexically_indeterminate,
         }
 
 
 def scan_module(rel_path: str, text: str) -> ModuleScan:
     scan = ModuleScan(rel_path)
-    masked, anomalies = mask_comments_and_strings(text)
+    masked, anomalies, ml_string_starts = mask_comments_and_strings(text)
     scan.anomalies = anomalies
+    if any(a["kind"].endswith("-at-eof") for a in anomalies):
+        # 词法不确定：EOF 兜底形态，观察只作部分证据，人工必须核对
+        scan.lexically_indeterminate = True
     lines = masked.split("\n")
 
     # 预收集 use 导入与本地 fn 名，供裸调用分类（词法级，非语义解析）
@@ -306,10 +328,13 @@ def scan_module(rel_path: str, text: str) -> ModuleScan:
                     scan.capabilities[key].append(idx)
 
         # ── 调用候选（masked 行；声明行的 fn 名剔除防自报） ──
+        # QA-02（PLAN-743 r2）：可证明的宿主 namespace/接收者优先；
+        # 变量接收者不因方法名像内建就标 native——本地类型可能声明同名方法，
+        # 无作用域证据一律 unknown-receiver，交人工核对。
         code_scan = re.sub(r"\bfn\s+[A-Za-z_]\w*", "fn", code)
         for mq in QUALIFIED_CALL_RE.finditer(code_scan):
             recv, meth = mq.group(1), mq.group(2)
-            if recv in NATIVE_NAMESPACES or meth in NATIVE_METHODS:
+            if recv in NATIVE_NAMESPACES:
                 kind = "native-runtime"
             elif recv in local_types:
                 kind = "type-qualified"
@@ -318,13 +343,22 @@ def scan_module(rel_path: str, text: str) -> ModuleScan:
             scan.calls.append({"kind": kind, "receiver": recv, "name": meth, "line": idx})
         for mp in PIPE_METHOD_RE.finditer(code_scan):
             meth = mp.group(1)
-            kind = "native-runtime" if meth in NATIVE_METHODS else "unknown-receiver"
-            scan.calls.append({"kind": kind, "receiver": "|>", "name": meth, "line": idx})
-        code_wo_qualified = QUALIFIED_CALL_RE.sub(" ", code_scan)
-        code_wo_qualified = PIPE_METHOD_RE.sub(" ", code_wo_qualified)
-        for mb in BARE_CALL_RE.finditer(code_wo_qualified):
+            # 管道形态的归属（本地方法/未知）推迟到 _post_classify，
+            # 那时本地方法集已完整；此处先按 unknown 保守记录
+            scan.calls.append({"kind": "unknown-receiver", "receiver": "|>", "name": meth, "line": idx})
+        occupied = ([m.span() for m in QUALIFIED_CALL_RE.finditer(code_scan)]
+                    + [m.span() for m in PIPE_METHOD_RE.finditer(code_scan)])
+        for mb in BARE_CALL_RE.finditer(code_scan):
+            if any(s <= mb.start() < e for s, e in occupied):
+                continue
             name = mb.group(1)
             if name in ("if", "while", "for", "is", "return", "fn", "use", "enum", "type"):
+                continue
+            # 前导点=.m() 隐式 self 形态：归属推迟到 _post_classify（本地方法集完整后）
+            dotted = mb.start() > 0 and code_scan[mb.start() - 1] == "."
+            if dotted:
+                scan.calls.append({"kind": "unknown-receiver", "receiver": ".",
+                                   "name": name, "line": idx})
                 continue
             if name in BARE_NATIVES:
                 kind = "native-runtime"
@@ -345,14 +379,13 @@ def scan_module(rel_path: str, text: str) -> ModuleScan:
 
     scan.calls = _aggregate_calls(scan.calls)
     _post_classify(scan, local_types)
-    # 跨行字符串字面量：掩码器按保守策略记异常并换行恢复；此处升格为
-    # 词法能力证据（.at 源码存在多行字符串构造，engine.at 实证），
-    # 异常列表仍保留原始事件供人工核对。
-    for a in scan.anomalies:
-        if a["kind"] == "unterminated-string":
-            scan.capabilities.setdefault("multiline-string-literal", [])
-            if len(scan.capabilities["multiline-string-literal"]) < EVIDENCE_CAP:
-                scan.capabilities["multiline-string-literal"].append(a["line"])
+    # 跨行字符串字面量（QA-01）：合法形态，掩码器保持字面量态到真正闭合；
+    # 能力证据=每个跨行字面量的起始行（engine.at:314/333 实证）。
+    # 未闭合-at-eof 才是异常（词法不确定），不再与合法跨行混记。
+    for start_line in ml_string_starts:
+        scan.capabilities.setdefault("multiline-string-literal", [])
+        if len(scan.capabilities["multiline-string-literal"]) < EVIDENCE_CAP:
+            scan.capabilities["multiline-string-literal"].append(start_line)
     # fn 参数/返回类型证据：从声明行向后拼接至首个 '{'，抽取 (...) 与返回段
     _extract_signature_types(scan, lines)
     return scan
@@ -362,22 +395,31 @@ def _post_classify(scan: ModuleScan, local_types: set):
     """主循环后的符号表升级：用本模块完整声明集重分类扫描期无法判定的候选。
 
     词法级名字匹配，仍属候选而非语义解析；跨模块同名歧义交人工审定层。
+    QA-02（PLAN-743 r2）：只有本地声明证据才升级（enum case/type/本地方法）；
+    内建方法名不再作为升级依据——变量接收者与无证据同名调用保持 unknown。
     """
     local_enum_cases = {c["name"] for c in scan.enum_cases}
     local_method_names = {m["name"] for m in scan.methods}
     for c in scan.calls:
         n = c["name"]
-        if c["kind"] == "unknown-bare-call":
+        recv = c.get("receiver")
+        if c["kind"] == "unknown-receiver" and recv == ".":
+            # .m() 隐式 self：仅当名字是本地类型声明的方法才升级
+            if n in local_method_names:
+                c["kind"] = "implicit-self-method"
+                c["receiver"] = None
+        elif c["kind"] == "unknown-bare-call":
             if n in local_enum_cases:
                 c["kind"] = "enum-variant-construction"
             elif n in local_types:
                 c["kind"] = "type-construction"
-            elif n in local_method_names:
-                c["kind"] = "implicit-self-method"
-            elif n in NATIVE_METHODS:
-                c["kind"] = "native-runtime"
-        elif c["kind"] == "unknown-receiver" and c["receiver"] in local_types:
-            c["kind"] = "type-qualified"
+        elif c["kind"] == "unknown-receiver":
+            if recv == "|>":
+                if n in local_method_names:
+                    c["kind"] = "implicit-self-method"
+                    c["receiver"] = None
+            elif recv in local_types:
+                c["kind"] = "type-qualified"
     scan.calls.sort(key=lambda c: (c["kind"], c["name"], str(c.get("receiver"))))
 
 
