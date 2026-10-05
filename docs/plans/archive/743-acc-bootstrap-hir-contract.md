@@ -492,7 +492,7 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 | landed（§5.6.6 重绑条款） | SD-04/05 目标（auto-acc/project.md、stage-contract.md）无任何决定绑定→重绑条件性不触发；主检出严格冒烟：41/41 测试 + --check --require-decisions 全绿（47 决定新鲜、146 组/7 族闭环），交付后再次验证一致 |
 | ledger_refreshed | .autoos/specs.json 按投影规则原位更新 P743-1/2（同 canonical 目标复用既有条目）+ 新增 reviews P743-4（外部 needs_fix→Phase 2→R3 pass 链），commit 4bec7575c 后 ff 落主检出，read-back 验证 P743-1..4 在案 |
 | archived | 本文件 git mv 至 docs/plans/archive/，status: archived，completion_kind: delivered |
-| cleaned | 见下补记 |
+| cleaned | worktree 0 dirty 且 HEAD 4bec7575c 已是 v0.6-dev 祖先；wt-guard.sh 仍缺失（r1 收据已挂工具债）——等价 PowerShell ReparsePoint 全组扫描：`GUARD-EQUIVALENT-CLEAN: no reparse points in lang-743 group`；随后 worktree remove + `git branch -d plan-743-dev`（was 4bec7575c）+ 组目录 rmdir，登记复核 0。补记：初次 rmdir 因组内 T-13 确定性检查 scratch（scratch-p2/a、b）静默残留失败，清除后组目录移除完成 |
 
 - 规范增量落地：SD-04→docs/specs/auto-acc/project.md、SD-05→docs/specs/auto-hir/stage-contract.md
   （均 modify；canonical 落地文本与冻结提案逐字一致）。
