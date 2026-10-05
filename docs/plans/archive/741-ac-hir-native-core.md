@@ -668,7 +668,41 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 ## 9. 复审记录
 
-##### Phase 4 独立复审（2026-10-05，/auto-plan:review，独立代理）
+##### 合并收据（2026-10-05，/auto-plan:merge）PLAN-741:r4
+
+- stage: merge | plan_id: PLAN-741 | plan_revision: 4 | outcome: pass
+- prepared: reviewed 基线 6fb7a9068（worktree clean；主线自基线未动，无需 rebase——
+  仅追加状态翻转提交 735af261b）；canonical delta=SD-07/SD-08 → docs/specs/auto-ac/project.md
+  （modify）；组内只读依赖 D:/autostack/.wt/lang-741/auto-down（detached @ fba6563e）
+- landed: delivery 链 6fb7a9068（reviewed）→ 735af261b（status reviewed）→ 8fdae8c11
+  （SD-07/08 沉淀 + ledger 投影 P741-6，纯文档/投影 descendants）；主检出
+  `git merge --ff-only` 无 merge commit，tip=8fdae8c11；主检出冒烟 ac-core cli 11/11 +
+  lib 11/11（含共享锁 link.cleanup 与受控拒绝测试）全绿
+- ledger_refreshed: .autoos/specs.json designs P741-2 增补 r4 契约事实（受控启动/link.cleanup）、
+  reviews 新增 P741-6（r4 复审+边界修复收据）、P741-3..5 指针随归档迁至 docs/plans/archive/；
+  docs/specs/INDEX.md 重建后归一 LF=零 diff；docs/specs/{auto-hir,auto-ac}/plans.md 行更新为
+  delivered + archive 链接
+- archived: docs/plans/archive/741-ac-hir-native-core.md（git mv），status: archived，
+  completion_kind: delivered；README:8 与 KNOWN-DEBT 741 链接随归档指回 archive/
+  （生命周期闭环）；KNOWN-DEBT P741-R3-QA-01..03 行销账（92ba51b54）
+- 任务计数（P741P4-R3 口径注明）: current_step=30/total_steps=30 —— 按激活文字与 AC-23
+  的"已完成任务 ID 数"口径：T-01..08（T-08 据 r1 收据补勾）+ T-09..17 + T-18/19 +
+  重开的 T-20..24（经 r4 T-26..30 关闭，勾选行带指向注记）+ T-25..30（r4 本轮）= 30 项全部完成；
+  "最后完成步游标"与"完成 ID 数"两口径在此收敛
+- cleaned: **完成（2026-10-05）**——文档引用的 D:/autostack/wt-guard.sh 本机不存在
+  （r1..r3 同一偏差记录），按其文档语义以 PowerShell ReparsePoint 递归扫描替代
+  （组目录 lang-741 全树 clean）后：worktree D:/autostack/.wt/lang-741/auto-lang 移除、
+  auto-down 兄弟检出经 auto-down 仓 `git worktree remove` 移除、分支 plan-741-dev 删除
+  （was 8fdae8c11=已落地）、组目录 lang-741 rmdir 成功
+- 交付摘要: r4 修复 r3 合入后复审全部缺口（R3-QA-01..03）：受控启动（CREATE_SUSPENDED→
+  入 Job→ToolHelp 恢复，约束前窗口消除）、约束失败受控拒绝（link.containment，删除静默
+  降级/detach）、清理错误全量汇总（link.cleanup：原失败+提交状态+残留路径+OS 错误）；
+  原型 54 项 + 60s 证据测试；独立代理复审 pass（AC-21..24）；windows-sys 增 ToolHelp feature
+- 备注: 三条 P3 随复审记录留档（R1 报告表述已更正、R2 link.restore 并报清理失败已修复、
+  R3 计数口径已注明）；本计划四次交付（r1 闭环、r2 质量修复、r3 边界修复、r4 资源边界
+  修复）全部完成
+
+### Phase 4 独立复审（2026-10-05，/auto-plan:review，独立代理）
 
 - stage: review | plan_id: PLAN-741 | plan_revision: 4 | outcome: **pass**
 - reviewed_commit: `fa4eb10b8`（worktree clean；实现 cc491052f + 报告 a0dd0a315 + 簿记，区间 3 提交）；
