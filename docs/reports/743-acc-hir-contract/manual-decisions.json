@@ -187,10 +187,10 @@
         "docs/specs/auto-ac/project.md:7"
       ],
       "bound_input_hashes": {
-        "docs/specs/auto-hir/project.md": "ae1a898fe12d5cd9f1d883fb68564049355556b488bc995b894f0976babe9660",
-        "docs/specs/auto-ac/project.md": "9679401e686e5de6ed11bc678ea0866d630f26fdfc7890249332a5a44e997f03"
+        "docs/specs/auto-hir/project.md": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab",
+        "docs/specs/auto-ac/project.md": "062c7b3ccfa2acf0d6546c0b1003da9ad2e5fcaac306c469f74cd8ce5fbe0411"
       },
-      "note": "新建。741 只接 Schema-bound Atom 文本；Auto 源码→Checked HIR 的 adapter（含来源映射）不存在。NEXT-B 候选主体。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 增补 verify 归属唯一（owner-mismatch）与 bindings 双射/按映射核类型——均属 Checked 域强化，\"源码→HIR adapter 不存在\"事实不变，结论维持。〕"
+      "note": "新建。741 只接 Schema-bound Atom 文本；Auto 源码→Checked HIR 的 adapter（含来源映射）不存在。NEXT-B 候选主体。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 增补 verify 归属唯一（owner-mismatch）与 bindings 双射/按映射核类型——均属 Checked 域强化，\"源码→HIR adapter 不存在\"事实不变，结论维持。〕〔重绑 r4-merge/QA：741 P3 增补块包含图可达无环 DFS 结构门与构建回滚收口——均属 Checked/构建域强化，\"源码→HIR adapter 不存在\"事实不变，结论维持。〕"
     },
     {
       "id": "MD-204",
@@ -216,9 +216,9 @@
       ],
       "bound_input_hashes": {
         "auto/aavm.at": "0ff06f099253e1aa1c8d83ef2810771f10d5a01e5388729354dd9fa249d4ee9a",
-        "docs/specs/auto-ac/project.md": "9679401e686e5de6ed11bc678ea0866d630f26fdfc7890249332a5a44e997f03"
+        "docs/specs/auto-ac/project.md": "062c7b3ccfa2acf0d6546c0b1003da9ad2e5fcaac306c469f74cd8ce5fbe0411"
       },
-      "note": "新建。多阶段驱动（读源→解析→verify→build）+ file:line:col 来源诊断编排；ac-probe check/build 的驱动骨架可外扩但不能冒充已接源码。〔校准 T-12/QA-06：741 r2 CLI 更名 auto-ac-prototype 并收口制品原子发布/截止时间执行器——驱动骨架可外扩、不得冒充已接源码的判定不变，结论维持。〕"
+      "note": "新建。多阶段驱动（读源→解析→verify→build）+ file:line:col 来源诊断编排；ac-probe check/build 的驱动骨架可外扩但不能冒充已接源码。〔校准 T-12/QA-06：741 r2 CLI 更名 auto-ac-prototype 并收口制品原子发布/截止时间执行器——驱动骨架可外扩、不得冒充已接源码的判定不变，结论维持。〕〔重绑 r4-merge/QA：741 P3 收口发布事务回滚（link.restore）与单一单调截止覆盖输出收集——驱动骨架可外扩、不得冒充已接源码的判定不变，结论维持。〕"
     },
     {
       "id": "MD-206",
@@ -243,10 +243,10 @@
         "docs/design/strategy/auto-native-backend-evolution.md:25"
       ],
       "bound_input_hashes": {
-        "docs/specs/auto-ac/project.md": "9679401e686e5de6ed11bc678ea0866d630f26fdfc7890249332a5a44e997f03",
+        "docs/specs/auto-ac/project.md": "062c7b3ccfa2acf0d6546c0b1003da9ad2e5fcaac306c469f74cd8ce5fbe0411",
         "docs/design/strategy/auto-native-backend-evolution.md": "becb2f45d66bffc81b98bea33c3c6c0bb40418be2f958cd1b9a58de283a5be27"
       },
-      "note": "保留（非主体）：Cranelift 0.126.2 Rust 库经薄桥消费；v0.6 主后端，ACC 不重写机器码生成。〔校准 T-12/QA-06：741 r2 仅更名 CLI 包名（ac-probe→auto-ac-prototype 历史名）并强化构建原子性/子进程截止时间；Cranelift 0.126 桥定位不变，结论维持。〕"
+      "note": "保留（非主体）：Cranelift 0.126.2 Rust 库经薄桥消费；v0.6 主后端，ACC 不重写机器码生成。〔校准 T-12/QA-06：741 r2 仅更名 CLI 包名（ac-probe→auto-ac-prototype 历史名）并强化构建原子性/子进程截止时间；Cranelift 0.126 桥定位不变，结论维持。〕〔重绑 r4-merge/QA：741 P3 未触工具链节（Cranelift 0.126 桥定位不变），结论维持。〕"
     },
     {
       "id": "MD-302",
@@ -257,9 +257,9 @@
         "docs/specs/auto-ac/project.md:20"
       ],
       "bound_input_hashes": {
-        "docs/specs/auto-ac/project.md": "9679401e686e5de6ed11bc678ea0866d630f26fdfc7890249332a5a44e997f03"
+        "docs/specs/auto-ac/project.md": "062c7b3ccfa2acf0d6546c0b1003da9ad2e5fcaac306c469f74cd8ce5fbe0411"
       },
-      "note": "保留（非主体）：rust-lld COFF 模式首选、MSVC link.exe 备选；工具链发现逻辑（link.rs）维持 Rust 侧。〔校准 T-12/QA-06：741 r2 工具链节（rust-lld 首选/link.exe 备选/link.rs 发现逻辑）未被改动，结论维持。〕"
+      "note": "保留（非主体）：rust-lld COFF 模式首选、MSVC link.exe 备选；工具链发现逻辑（link.rs）维持 Rust 侧。〔校准 T-12/QA-06：741 r2 工具链节（rust-lld 首选/link.exe 备选/link.rs 发现逻辑）未被改动，结论维持。〕〔重绑 r4-merge/QA：741 P3 未触链接器节（rust-lld/link.exe 分工不变），结论维持。〕"
     },
     {
       "id": "MD-303",
@@ -287,9 +287,9 @@
         "docs/specs/auto-ac/project.md:35"
       ],
       "bound_input_hashes": {
-        "docs/specs/auto-ac/project.md": "9679401e686e5de6ed11bc678ea0866d630f26fdfc7890249332a5a44e997f03"
+        "docs/specs/auto-ac/project.md": "062c7b3ccfa2acf0d6546c0b1003da9ad2e5fcaac306c469f74cd8ce5fbe0411"
       },
-      "note": "有界 i32 溢出 trap=ExitProcess(70) 已在 741 测试 profile 实现；与完整异常 ABI（trap 展开栈/资源清理）分开验收，后者 required 归 ABI 线。〔校准 T-12/QA-06：741 r2 溢出 trap=ExitProcess(70) 测试 profile 约定原文未变，结论维持。〕"
+      "note": "有界 i32 溢出 trap=ExitProcess(70) 已在 741 测试 profile 实现；与完整异常 ABI（trap 展开栈/资源清理）分开验收，后者 required 归 ABI 线。〔校准 T-12/QA-06：741 r2 溢出 trap=ExitProcess(70) 测试 profile 约定原文未变，结论维持。〕〔重绑 r4-merge/QA：741 P3 溢出 trap=ExitProcess(70) 约定原文未变，结论维持。〕"
     },
     {
       "id": "MD-401",
@@ -391,9 +391,9 @@
       "bound_input_hashes": {
         "auto/lib/lexer.at": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01",
         "auto/lib/token.at": "963ccc1df73b86e510db95f13dda0e3ea17462f7c3f4b7652947e9f9f3381d74",
-        "docs/specs/auto-hir/project.md": "ae1a898fe12d5cd9f1d883fb68564049355556b488bc995b894f0976babe9660"
+        "docs/specs/auto-hir/project.md": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab"
       },
-      "note": "str 类型/字面量/转义 + 拼接比较：lib 全员在用（annotation 计数 lexer12/parser76/codegen127/a2r141）；AC 完全无字符串 → required 最高优先（无字符串则诊断与符号表都无法成立）。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 未新增任何字符串能力（类型面仍精确 i32/bool），被引边界行（:13）内容与位置未变，结论维持。〕"
+      "note": "str 类型/字面量/转义 + 拼接比较：lib 全员在用（annotation 计数 lexer12/parser76/codegen127/a2r141）；AC 完全无字符串 → required 最高优先（无字符串则诊断与符号表都无法成立）。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 未新增任何字符串能力（类型面仍精确 i32/bool），被引边界行（:13）内容与位置未变，结论维持。〕〔重绑 r4-merge/QA：741 P3 未新增字符串能力（类型面仍精确 i32/bool），被引边界行内容未变，结论维持。〕"
     },
     {
       "id": "MD-407",
@@ -436,9 +436,9 @@
       ],
       "bound_input_hashes": {
         "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
-        "docs/specs/auto-hir/project.md": "ae1a898fe12d5cd9f1d883fb68564049355556b488bc995b894f0976babe9660"
+        "docs/specs/auto-hir/project.md": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab"
       },
-      "note": "int 全序运算（add/sub/mul/div/mod/eq/ne/lt/gt/le/ge）lib 重度使用；AC 仅 add/mul/lt → required（扩面清单明确：sub/div/mod/eq/ne/gt/le/ge）。宽度 int↔i32 映射 unknown（probe-int-width，计划 §10.2）。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 运算面仍为 add_i32/mul_i32/lt_i32（新增的归属唯一/双射属 verify 结构域），int 全序运算缺口不变，结论维持。〕"
+      "note": "int 全序运算（add/sub/mul/div/mod/eq/ne/lt/gt/le/ge）lib 重度使用；AC 仅 add/mul/lt → required（扩面清单明确：sub/div/mod/eq/ne/gt/le/ge）。宽度 int↔i32 映射 unknown（probe-int-width，计划 §10.2）。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 运算面仍为 add_i32/mul_i32/lt_i32（新增的归属唯一/双射属 verify 结构域），int 全序运算缺口不变，结论维持。〕〔重绑 r4-merge/QA：741 P3 运算面仍 add_i32/mul_i32/lt_i32（新增属块结构/回滚域），int 全序运算缺口不变，结论维持。〕"
     },
     {
       "id": "MD-410",
@@ -630,13 +630,13 @@
       "dimension": "both",
       "evidence": [
         "auto/lib/parser.at:449",
-        "docs/specs/auto-hir/project.md:41"
+        "docs/specs/auto-hir/project.md:47"
       ],
       "bound_input_hashes": {
         "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
-        "docs/specs/auto-hir/project.md": "ae1a898fe12d5cd9f1d883fb68564049355556b488bc995b894f0976babe9660"
+        "docs/specs/auto-hir/project.md": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab"
       },
-      "note": "lib 用 p.fail 单槽字符串；AC 741 已有 file:line:col 阶段化诊断（Atom HIR 域）。源码 adapter 必须携带来源映射（span→HIR），required；实现状态=741 已实现（HIR 域）+ 源码域 required。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 诊断节（阶段化 file:line:col）原文未变；HIR 域已实现/源码域待 adapter 的判定不变，结论维持。〕"
+      "note": "lib 用 p.fail 单槽字符串；AC 741 已有 file:line:col 阶段化诊断（Atom HIR 域）。源码 adapter 必须携带来源映射（span→HIR），required；实现状态=741 已实现（HIR 域）+ 源码域 required。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 诊断节（阶段化 file:line:col）原文未变；HIR 域已实现/源码域待 adapter 的判定不变，结论维持。〕〔重绑 r4-merge/QA：741 P3 诊断节内容未变（行号因块结构增补后移，证据行同步修正为 :47）；HIR 域已实现/源码域待 adapter 判定不变，结论维持。〕"
     },
     {
       "id": "MD-501",
