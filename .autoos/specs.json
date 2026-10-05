@@ -8094,7 +8094,7 @@
           "id": "P743-3",
           "title": "PLAN-743 r1 复审裁定：R1 needs_fix→修复→R2 pass",
           "content": "PLAN-743 revision 1 复审链：R1（reviewed 基线 b96f7beab）8 项 AC 六 pass+AC-08 partial，发现 F-01（acceptance-matrix 相对链接多一级）与 F-03（use 边计数 15→18，manifest 为准）双 P2；修复循环 1 次提交 d7013b290 闭环；R2 复核 pass（修复 diff 仅 4 文件 4 行，delta 冻结 b6b80711 未触）。交付落 v0.6-dev：specs 沉淀 05d0127a4 + SD-03 落地后四条 spec 引用决定重绑 bbfca37b8（rebase 映射：d7013b290→9abc87acc）。工具收据：三命令 exit0、18 测试、字节确定性、--check HEAD 免疫。",
-          "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+          "file": "docs/plans/743-acc-bootstrap-hir-contract.md",
           "related": [],
           "status": "published",
           "created": "2026-10-04",
