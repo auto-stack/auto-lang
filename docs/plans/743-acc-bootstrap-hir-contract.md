@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-743
-status: executing
+status: execution_done
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-05
 plan_revision: 3
-current_step: 14
+current_step: 20
 total_steps: 21
 supersedes_spec_components:
   - docs/specs/auto-acc/project.md
@@ -146,7 +146,7 @@ scripts/{aavm_lib_xref,aavm_shim_inventory}.py。执行时manifest须记录全�
 复核基线 fa3abe47677992d41b1aef948f36ad46c645f7f8（v0.6-dev，clean）；原实施基线 c1ac219e7。
 交付 9abc87acc/05d0127a4/bbfca37b8/274a9ded4/bab649682 的祖先关系已核实。
 取材 docs/specs/overview.md、auto-acc/project.md、auto-hir/stage-contract.md 与当前 auto-hir/auto-ac Specs；
-完整 SHA-256 与新反例见 [独立复核报告](../reports/743-quality-review-20261005/REVIEW.md)
+完整 SHA-256 与新反例见 [独立复核报告](../../reports/743-quality-review-20261005/REVIEW.md)
 及 results.json/audit.json。实施 T-07 重取实际激活提交 hash，不从旧 plan-743 tip 起步。
 
 本轮实跑 18/18 测试、双输出确定性、15 活动链接及三个决定/两份扫描反例；
@@ -162,7 +162,7 @@ fixtures、743 报告、auto-acc-bootstrap-contract 设计及计划簿记。
 本轮用户要求检查 743:r2；沿用此前“有问题激活计划，并把问题和解决方案作为新的 phase”的授权。
 范围仍本仓调研工具/文档，未授权在复审中实施修复；不改旧源码/741/native/ABI/外仓。
 5983f8aee 的 r2 已落地且 worktree 清理，完整 reviewed SHA/Spec/源码指纹及 AC 对账见
-[新独立报告](../reports/743-r2-quality-review-20261005/REVIEW.md)。主线并行 ed2d00b90 仅是 NOTES-001 sqlite 运行时依赖，不归 743。
+[新独立报告](../../reports/743-r2-quality-review-20261005/REVIEW.md)。主线并行 ed2d00b90 仅是 NOTES-001 sqlite 运行时依赖，不归 743。
 T-15 须取含本合同的最新 v0.6-dev，重核指纹/变动；不从已删除 r2 分支或旧报告审计 HEAD 开始。
 Python 3.14.2；本轮 41/41、两次扫描字节一致、真实严格门 47 条新鲜/9 输入/146 unknown 绿。
 绿只覆盖当前正例；独立负例在报告中：未绑定证据变化仍绿、resolved 不引用决定仍绿、类型错误 traceback、跨 owner 分类越权。
@@ -535,11 +535,17 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 | ID | 前置 | 工作与路径 | 验证/结果 | AC |
 |---|---|---|---|---|
 | T-15 | r3 合同提交 | 核对唯一 active 743/最新基线和新报告 hash；重建 D:/autostack/.wt/lang-743/auto-lang、plan-743-dev；新建 docs/reports/743-phase3-integrity-fixes/ 留 before/evidence | worktree/status 无 WIP/无 links；复现本报告反例，不占号/不动其它工作线 | AC-20 |
+  [✅ 已完成] commit e0008648b；基点=含 r3 合同的 a0f8ddd44（worktree 重建、主检出 0 WIP）；baseline.md 复现 R2-QA-01 三 fixture/类型 traceback/绑定与引用缺口 before 状态，并行范围核对（ed2d00b90 sqlite 不属 743、.next-id=744 未占） |
 | T-16 | T-15 | scripts/acc_inventory.py::scan_module/_post_classify 当前 owner/冲突规则；tests/fixtures 正反例 | native/owner 不凭全模块同名猜测；旧 41 正例与合法多行保护继续过 | AC-01/02/03/09/15 |
+  [✅ 已完成] commit 45fe4fb21：qualified/点/管道归属推迟至 _post_classify（最终本地集+宿主优先级+enclosing owner 证据）；本地 type IO/fn print 遮蔽宿主；隐式 self 仅当前 owner 方法集升级；4 fixture 测试+owner 正例修正（44 绿） |
 | T-17 | T-15 | validate_decisions 完整类型与同条 evidence-binding 校验；参数化错误数据/变化探针 | ERROR/code/ID 定位且无 traceback；绑定完整成功/内容改变 stale | AC-02/03/10/13/16/17 |
+  [✅ 已完成] commit a25a30722：字段/元素类型前置校验（9 参数化负例受控 ERROR 定位、零 traceback）；decision-evidence-unbound 同条绑定门（补绑定过/内容变化 stale） |
 | T-18 | T-16,T-17 | resolved/open 引用关系和适用规则；manual-decisions.json/inventory/新观察逐项核准，不机械 hash 更新 | 缺/空/不存在/不适用引用拒绝；所有真实 unknown 有去向，严格门绿；unknown 可 open | AC-03/10/13/18 |
+  [✅ 已完成] commit a25a30722：resolved 族须引用存在且适用决定（unknown-resolution/resolved+证据覆盖族路径，family-ref-missing/-inapplicable）；open 三要素保留；真实输入分类与 r2 零差异（点/管道均在合法 owner 内），人工层无需变更，严格门绿（47 决定/146 组/7 族） |
 | T-19 | T-18 | 设计/矩阵/候选命令与 R3 摘要提案；新建 phase3 delta，更新状态/路径检查（行为 canonical/ledger 留 merge） | SD-06/07 冻结、CLI 当前名称、历史 T-14 与新 pending 区分、链接模拟归档可解析 | AC-04/05/06/07/11/12/19/20 |
+  [✅ 已完成] commit 9f634cb52 + 主检出簿记：acceptance-matrix/inventory/run-context 全量更名 auto-ac-prototype（历史处注记）；proposed-spec-delta-phase3.md（SD-06/07 正文）；计划文件 4 处链接改归档可解析（../../reports/，模拟归档验证通过）；plans.md 743 行 r3 executing（激活提交已更）；T-14 补勾在案（激活提交） |
 | T-20 | T-16..19 | 旧 41+新增、双输出确定性、真实严格门、manual 不变、links/diff/scope，冻结报告与全 AC/SD 对账 | Category A 门禁全绿；旧源码/根 Cargo/741/外仓未改，任何红逐项归因 | AC-01..20 |
+  [✅ 已完成] commit 184749168：PYTHONUTF8=1 全门禁绿（63/63 测试、manual --write 字节不变、严格 --check 47 决定/146 组、三方 cmp、diff --check、围栏感知链接、范围零触碰、CLI 残留 0）；phase3 提案冻结 a4af013b759a1d35；verification.md 全 AC 对账 |
 | T-21 | T-20 | /auto-plan:review 独立重放并绑定 r3/HEAD；pass 后 /auto-plan:merge 落 SD-06/07/销账/索引ledger/归档guard | 不预写 pass；最终完成=21/21、归档 metadata/链接/指针一致，无自有 worktree 残留 | AC-08/19/20 |
 
 当前 completed T-01..14=14；总 21，T-15..21 待执行。T-14 补勾只确认 r2 工作流确实落地，不否认本轮 needs_fix。
@@ -553,7 +559,7 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 - dependency_revisions: Python 3.14.2 标准库，无外仓；本会话只修订过合同，未参与 r2 实现。Spec/source hashes 与冻结 delta 见新报告。
 - acceptance_results: 41/41、严格真实门 47 新鲜/9 输入/146 unknown、确定性绿；AC-06/07/12 合同域 pass，AC-01/02/03/04/05/09/11/13 partial，AC-08/10/14 fail。
 - findings: P743-R2-QA-01..06（owner/同名分类、evidence-binding、resolved 引用、字段类型、canonical R3 摘要、归档生命周期）。
-- evidence: [新报告](../reports/743-r2-quality-review-20261005/REVIEW.md)，counterexamples.json/audit.json/replay-results.json/tests.txt 与 frozen-phase2-spec-delta.md。
+- evidence: [新报告](../../reports/743-r2-quality-review-20261005/REVIEW.md)，counterexamples.json/audit.json/replay-results.json/tests.txt 与 frozen-phase2-spec-delta.md。
 - mainline_movement: ed2d00b90 仅 NOTES-001 sqlite 依赖，743 输入/实现/Spec 没有改变；未将其归属本计划。
 - next: 用户授权同 ID Phase 3，执行 T-15..21 再独立复审；本轮不修 Python/不写 canonical 行为/不改 live ledger。
 
@@ -668,7 +674,7 @@ acc_inventory.py 8be8c39952887304、test_acc_inventory.py 1f8bde2f77b0272f。
 - stage: review | plan_id: PLAN-743 | plan_revision: 1 | outcome: **needs_fix**
 - reviewed_commit: fa3abe47677992d41b1aef948f36ad46c645f7f8；base_commit: c1ac219e73ee2ed1ef6ba8dfec49c131bfbf1a75。
 - dependency_revisions: Python 3.14.2，无外仓；spec_inputs/冻结 delta 指纹见
-  [质量复核报告](../reports/743-quality-review-20261005/REVIEW.md) 与相邻 results.json/audit.json。
+  [质量复核报告](../../reports/743-quality-review-20261005/REVIEW.md) 与相邻 results.json/audit.json。
 - acceptance_results: AC-01/03/04/05/06/07 partial；AC-02/08 fail。
 - evidence: 18/18 测试、9 输入/8 模块/18 use、字节确定性、15 links 通过；
   多行伪调用/同名 native/无绑定决定三类新反例；8 决定9绑定过期；祖先交付核实。
