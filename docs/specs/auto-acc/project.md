@@ -22,8 +22,12 @@ AAVM/AA2R 自举（已达成谱系）与 AC/ACC native 自举（未达成）两�
 ## 能力现状（compiler-source-demand × compiled-language-support）
 
 清单可信度以盘点工具严格门为准：`scripts/acc_inventory.py --check --require-decisions`
-要求人工层（决定 + unknown_families）结构合法、绑定新鲜、对全部受管输入与全部
-unknown 候选双向闭环；scan-only（无人工层）明示非完成态。
+要求人工层（决定 + unknown_families）字段与元素类型合法（错误类型受控拒绝并定位
+记录，无 traceback）、每条决定的证据文件均有同条绑定（仓内非扫描输入证据同样受控，
+证据变化即 stale）、绑定新鲜，并对全部受管输入与全部 unknown 候选双向闭环；
+resolved 族必须引用存在且适用的决定（kind=unknown-resolution、conclusion=resolved、
+证据覆盖族所在路径），open 族必须带 owner/探针/所在工作包；scan-only（无人工层）
+明示非完成态。
 
 - required（ACC 前置，AC 现缺）：enum(±payload)、record、方法/static new/隐式 self、
   List<T>、str（最高优先）、char、int 全序运算+bool 逻辑、while/for/break/continue、
@@ -36,10 +40,13 @@ unknown 候选双向闭环；scan-only（无人工层）明示非完成态。
   宿主容器所有权（probe-rt-own）、用户自定义泛型（probe-generics）。
 - not-required（附理由）：Option/Result 消费（编译器自身用字符串哨兵+自定义 record）、
   |> 管道、闭包/task/as 转型（lib 源码 0 使用）。
-- 分类政策（r2 QA-02）：变量接收者的方法调用一律 unknown-receiver（本地类型可声明
-  同名方法，Meter.len/CG.new/Ar.new 实证），native 仅限可证明宿主命名空间
-  （List/IO/process/File）；变量接收者族的语义归属见决定 MD-507 与 unknown_families，
-  实现期由名字解析/类型检查主体（新建）精确化。
+- 分类政策（r2 QA-02 / r3 R2-QA-01）：变量接收者的方法调用一律 unknown-receiver
+  （本地类型可声明同名方法，Meter.len/CG.new/Ar.new 实证）；本地声明先于宿主——
+  本地 type IO/fn print 遮蔽宿主命名空间/内建推断；dot/管道隐式 self 仅当调用点
+  enclosing owner 声明了该方法才升级（其它 owner 同名或无 owner 保持 unknown）；
+  native 仅限无本地冲突时的可证明宿主命名空间（List/IO/process/File）。变量接收者族
+  的语义归属见决定 MD-507 与 unknown_families，实现期由名字解析/类型检查主体
+  （新建）精确化。
 
 ## 锚点/候选 owner 一致性（QA-05）
 
