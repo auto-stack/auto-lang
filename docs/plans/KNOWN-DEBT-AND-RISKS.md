@@ -274,13 +274,13 @@ r2/executing。18/18 既有测试通过、旧 F-01/F-03 已修，以下新问题
 本节新增发现不撤销前两轮已修的具体证据，也不沿用r3“全出口已回收”覆盖新反例。
 [报告](../reports/741-r3-quality-review-20261005/REVIEW.md)基线f6a945db8，needs_fix；
 依用户授权激活[741 Phase4](741-ac-hir-native-core.md)，r4/executing，T-25..30 / AC-21..24。
-本轮只复审/合同，不实施、不预销账；canonical/live ledger不改（ledger旧归档指针待merge）。
+~~本轮只复审/合同，不实施、不预销账~~ **已全部清偿（2026-10-05，PLAN-741 r4 Phase 4）**：独立代理复审pass（AC-21..24全过、death-watch反例5/5零泄漏、locked-cleanup全要素、60s生产路径准时拒绝、worktree红集⊂基线零新增），交付合入v0.6-dev@8fdae8c11；canonical SD-07/08已沉淀、live ledger P741-6已投影。清偿证据：[741计划](archive/741-ac-hir-native-core.md) §9 Phase 4记录；原报告：[r3复核报告](../reports/741-r3-quality-review-20261005/REVIEW.md)。
 
 | ID | 级别 | 观察 | 修复/跟踪 |
 |---|---|---|---|
-| P741-R3-QA-01 | P2 | 公开run_exe约60.106s返回link.deadline后自有后代仍活；时序相关，另次正确回收。先spawn再约束、约束失败静默None/detach有缺口 | 受控启动及失败安全收口/reader回收，T-26，AC-17/21 |
-| P741-R3-QA-02 | P2 | 真实共享锁使owned暂存exe不能remove；收据准备失败只报link.receipt，未列该残留/清理错误，旧三件套不变 | 清理错误/自有路径/准确事务状态汇总，T-27，AC-18/22 |
-| P741-R3-QA-03 | P3 | archived23/24、T-08漏勾与r1/r3收据矛盾 | 根据收据补T-08，重开T-20..24验收，新六任务；最终完成ID计数/链接断言，T-28，AC-23 |
+| P741-R3-QA-01 | P2 | 公开run_exe约60.106s返回link.deadline后自有后代仍活；时序相关，另次正确回收。先spawn再约束、约束失败静默None/detach有缺口 | 受控启动及失败安全收口/reader回收，T-26，AC-17/21 |；**已清偿**（r4 T-26 受控启动（CREATE_SUSPENDED→入 Job→ToolHelp 恢复，约束前窗口消除）+约束失败受控拒绝（安全收口零泄漏）+reader 全出口回收；death-watch 反例 5/5 零泄漏、public-60s 60.05s 准时拒绝且后代回收）
+| P741-R3-QA-02 | P2 | 真实共享锁使owned暂存exe不能remove；收据准备失败只报link.receipt，未列该残留/清理错误，旧三件套不变 | 清理错误/自有路径/准确事务状态汇总，T-27，AC-18/22 |；**已清偿**（r4 T-27 清理错误全量汇总（link.cleanup：原失败+提交状态+残留自有路径+实际 OS 错误；目录=用户占位不删不计）；复审 locked-cleanup 实测 staged_exe_left=true+全保留标志、库内共享锁测试锁定）
+| P741-R3-QA-03 | P3 | archived23/24、T-08漏勾与r1/r3收据矛盾 | 根据收据补T-08，重开T-20..24验收，新六任务；最终完成ID计数/链接断言，T-28，AC-23 |；**已清偿**（r4 T-28/merge T-08 据收据补勾、重开 T-20..24 依 r4 任务关闭、最终计数 30/30 与归档断言一致（本轮 merge 收口））
 
 root门禁观察（非新增AC原型缺陷）：daily4971全跑4935通过/35失败/1超时；
 超时ffi_dual_018单独2.532s通过。旧THR-D3/D4及阶段报告包含对应族，但本轮未逐个完成35红对照，
