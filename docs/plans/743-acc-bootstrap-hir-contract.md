@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-743
-status: execution_done
+status: reviewed
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
@@ -476,6 +476,60 @@ Phase 2 追加（plan_revision 2；原 AC-01..08 不移除）：
 T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现或新 Spec 增量。
 
 ## 9. 复审记录
+
+### 独立复审 R3（2026-10-05，stage: review，r2 P743-QA-01..07 修复复核）
+
+- stage: review
+- plan_id: PLAN-743 · plan_revision: 2 · outcome: **pass**（QA-01..07 修复全部确认；
+  AC-01..08 在 r2 语义下重验通过，AC-09..14 全部通过）
+- reviewed_commit: a63660137198d4cd5f5af1a4277f2e7901311ee3（worktree plan-743-dev，
+  clean 0 dirty）；base_commit: c6e4e568994941883b8c1b6b19dff703feb081cd（激活提交）
+- dependency_revisions: Python 3.14.2 标准库；无外仓；741 P3 独立线不在本计划范围
+- spec_inputs: 9 受管输入 + 7 证据输入 hash 经严格 --check 全绿（manifest@HEAD 重扫一致）
+- 独立性声明：复审在实现会话内进行（同 R1/R2 先例）；结论全部由命令重放、单元级
+  反例复现与制品核对重建，不采信执行摘要。
+
+**QA 修复逐项复核（独立重放）**：
+
+- QA-01 → fixed：multiline-string.at 单元重放 `pretend` 零泄漏；跨行能力=起始行 [2]；
+  合法跨行（engine.at:314/333）不再记异常、非词法不确定；EOF 未闭合才标记。
+- QA-02 → fixed：same-name-method.at 重放 Meter.new=type-qualified、x.len=unknown、
+  Meter()=type-construction；真实仓 codegen/a2r 的 `Ty.new` 全部 type-qualified；
+  源码核查 NATIVE_METHODS 已移除、分类只经 NATIVE_NAMESPACES/本地符号表。
+- QA-03 → fixed：validate_decisions 全 schema 校验 + --require-decisions 严格门
+  （输入覆盖 + unknown_families 双向闭环 + open 族 owner/probe/work_package）；
+  13 新负例逐一定位决定 ID；scan-only 文案明示非完成态。
+- QA-04 → fixed：R3 拆"效果分析（保守、证明才精化）/效果语义保持（双向禁止）"；
+  eval.const-fold v2 运行期语境溢出一律保持运行期 trap、comptime 域出外、无编译期
+  诊断；X9 反例入册（mark_a 反例原文在案）。
+- QA-05 → fixed：A2 拆 HIR existing/源码 gated；A8 owner=运行时首批候选、
+  A9 owner=聚合能力线（未编号）；候选①正向集剔 A8、②剔 A9；依赖 ①→② 单向无环。
+- QA-06 → fixed（实质审定，非盲换）：8 决定/9 绑定各附对 741 r2/r3 具体差异的
+  维持依据（CLI 更名 auto-ac-prototype、原子发布/截止时间、verify 归属唯一、
+  bindings 双射）；MD-407/506 记录 QA-01 政策取代；新增 MD-507；7 族闭环 146 组。
+- QA-07 → fixed：r2 合同激活时校正；本文件 13 [x]/1 [ ]（T-14 留待复审后）与
+  frontmatter execution_done 13/14 一致，历史记录全保。
+
+**门禁重放（reviewed_commit 上）**：41/41 测试；--write exit0；严格 --check
+--require-decisions exit0（47 决定新鲜、146 组/7 族闭环）；三方 cmp BYTE-IDENTICAL；
+`git diff --check` clean；范围探针 crates/auto-lib/docs.specs/experimental/Cargo
+零触碰；围栏感知链接扫描无断链。
+
+**AC 终态**：AC-01..08（r1 集合，按 r2 语义重验）pass；AC-09/10/11/12/13/14 pass。
+**delta 复核**：SD-04/05 提案与冻结哈希一致（a963adfbd6b24887，重放验证），正文为
+持久规则非执行日记；supersedes=[auto-acc/project.md, auto-hir/stage-contract.md]
+（r2 所改组件）、new_spec_components=[]、touched_goals=[]（r2 合同 §4.3 说明在案）。
+
+**收据冻结哈希（reviewed@a63660137）**：phase2 提案 a963adfbd6b24887、
+manual-decisions.json 3674c687647f88dc、source-manifest.json 87f11a8fa032c22d、
+acc_inventory.py 8be8c39952887304、test_acc_inventory.py 1f8bde2f77b0272f。
+
+- findings: 无新增；（非阻塞观察）无制品目录上严格检查同时报 artifacts-absent 与
+  decisions-required 两项，语义清晰，无需处置
+- evidence: 本记录命令/结果摘录；verification.md/baseline.md（随交付落地）；制品经
+  merge 落 v0.6-dev 后同 hash 可溯
+- next: merge（沉淀 SD-04/05；Spec 落地改变 hash 后按 §5.6.6 语义复核重绑并严格
+  冒烟；逐条销账、归档、guard 后清理）
 
 ### Phase 2 执行交接（2026-10-05，stage: work，r2 P743-QA-01..07 修复）
 
