@@ -587,6 +587,37 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
   不把旧pass或原型测试绿覆盖新增反例，不改历史状态/勾选。
 
 
+### Phase 3 独立复审（2026-10-05，/auto-plan:review，独立代理）
+
+- stage: review | plan_id: PLAN-741 | plan_revision: 3 | outcome: **pass**
+- reviewed_commit: `f60fa9a93`（worktree clean；实现 585224bf1/7e3a5713f/bc9c6cc5c + 簿记 f60fa9a93，区间恰 4 提交）；复审后仅追加 R1 顺手统一提交（备份失败路径 link.restore 对称化，scoped 复验 lib 9/9 + fmt + all-targets 零 warning）
+- base_commit: `ed2d00b90`（v0.6-dev 含本轮复审方 r3 再激活 fa3abe476）
+- 复审方式: 全新上下文独立代理（未参与实现），全部证据自行运行/读源码；含自构反例（3 块断开环、else 回边入口、合法嵌套 loop+if+break 不误拒）与 reproduce.ps1 实跑（watchdog observed 60.05s、stillRunningAfterDeadline=false；receipt-prepare staged_exe_left=false）
+- dependency_revisions: windows-sys 0.59.0（本轮新增，JobObjects/Foundation 面，合同允许的局部依赖）；其余同 r2（cranelift 0.126.2、rustc 1.98.1）
+- spec_inputs: SD-05 → docs/specs/auto-hir/project.md（modify，merge 沉淀）；SD-06 → docs/specs/auto-ac/project.md（modify，merge 沉淀）；复审确认与实现逐条吻合无缩水；canonical specs 零 diff（git diff ed2d00b90 -- docs/specs/ 空）
+- acceptance_results（全 **pass**，复审代理自行取证）:
+  - AC-16 pass：块包含图结构门 + 自构反例 + 复审 fixtures 经 hir_verify/cli 拒绝
+  - AC-17 pass：单 deadline 覆盖收集 + Job Object 全出口回收 + watchdog 60.05s
+  - AC-18 pass：discard_staged 全失败出口 + link.restore + 占位目录保护 + 矩阵 5/5
+  - AC-19 pass（带簿记注记）：active 唯一、executing/r3、指针一致、归档留 merge
+  - AC-20 pass：43+9 全绿、fmt、all-targets 零 warning、一键原型段 13/13、tv 162/162、cargo t 双侧清单对称差 8 例全 THR-D3/D4 族 + 抽查 3 例主检出单跑 PASS（并行负载 flake 证实）、生产面零 diff
+- findings（3 条 P3，不阻塞）:
+  - P741P3-R1：备份失败路径恢复报告与发布路径不对称——已按建议顺手统一为 link.restore（提交随本记录，scoped 复验通过）
+  - P741P3-R2（informational）：降级路径（job 不可用）失败出口不 join reader，代码注释已明示、deadline 仍约束——留档
+  - P741P3-R3（簿记）：①KNOWN-DEBT 相对链接 archive/ 在激活期暂态失效，merge 归档后自愈（同 r2 README 链接模式）；②frontmatter current_step 漏步进——本轮已修（17→23）
+- next: merge（/auto-plan:merge 沉淀 SD-05/06、销账 R2-QA-01..04 行、归档至 docs/plans/archive/ 并 guard 清理 worktree 与组内 auto-down 兄弟检出）
+
+### 合并收据（2026-10-05，/auto-plan:merge）PLAN-741:r3
+
+- stage: merge | plan_id: PLAN-741 | plan_revision: 3 | outcome: pass
+- prepared: reviewed 基线 383f90090（rebase 后；worktree clean）；canonical delta=SD-05/SD-06 → docs/specs/{auto-hir,auto-ac}/project.md（modify）；组内只读依赖 D:/autostack/.wt/lang-741/auto-down（detached @ fba6563e，同 r1）
+- landed: rebase 到 v0.6-dev（range-diff 6 条全 `=`，旧→新映射 585224bf1→dd89a0156 / 7e3a5713f→4857ddb83 / bc9c6cc5c→510979929 / f60fa9a93→9a2e356fd / c6ceb613f→fe2334f55 / c0a367496→383f90090）；delivery 链 383f90090（reviewed）→ a0b3750c4（SD-05/06 沉淀 + ledger 投影 P741-5，纯文档/投影 descendants）；主检出 `git merge --ff-only` 无 merge commit，tip=a0b3750c4；主检出冒烟 ac-core cli 11/11 + lib 9/9 全绿
+- ledger_refreshed: .autoos/specs.json（LF 净增量 +23/−4）designs P741-1/P741-2 增补 r3 契约事实、reviews 新增 P741-5（r3 复审+边界修复收据）、P741-3/P741-4 指针随归档迁至 docs/plans/archive/；docs/specs/INDEX.md 经 spec-index.py 重建后归一 LF=零 diff；docs/specs/{auto-hir,auto-ac}/plans.md 行更新为 delivered + archive 链接
+- archived: docs/plans/archive/741-ac-hir-native-core.md（git mv），status: archived，completion_kind: delivered；README:8 计划链接随归档指回 archive/（r3 生命周期闭环，P741P2-R2 同模式）；KNOWN-DEBT P741-R2-QA-01..04 行销账（97c7e8d0c）
+- cleaned: **完成（2026-10-05）**——文档引用的 D:/autostack/wt-guard.sh 本机不存在（r1/r2 同一偏差记录），按其文档语义以 PowerShell ReparsePoint 递归扫描替代（组目录 lang-741 全树 clean）后：worktree D:/autostack/.wt/lang-741/auto-lang 移除、auto-down 兄弟检出经 auto-down 仓 `git worktree remove` 移除、分支 plan-741-dev 删除（was a0b3750c4=已落地）、组目录 lang-741 rmdir 成功（T-23 对照日志临时件清理，正式副本已入库 docs/reports/741-phase3-boundary-fixes/）
+- 交付摘要: r3 修复 r2 合入后复审全部缺口（R2-QA-01..04）：块包含图结构门、执行器截止覆盖输出收集（Job Object 管控）、发布事务全出口回收+恢复诊断、状态/指针簿记；原型测试 44→52 项 + 60s 生产截止证据测试；独立代理复审 pass（AC-16..20）；windows-sys 0.59 为合同允许的局部依赖（JobObjects 面）
+- 备注: 三条 P3 注记随复审记录留档（R2 降级模式 informational、R3-① KNOWN-DEBT 相对链接已随归档自愈、R3-② current_step 步进已修）；本计划三次交付（r1 闭环、r2 质量修复、r3 边界修复）全部完成
+
 ### Phase 2 独立复审（2026-10-04，/auto-plan:review，独立代理）
 
 - stage: review | plan_id: PLAN-741 | plan_revision: 2 | outcome: **pass**
