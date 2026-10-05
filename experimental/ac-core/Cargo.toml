@@ -15,6 +15,18 @@ cranelift-module = "0.126"
 cranelift-object = "0.126"
 target-lexicon = "0.13"
 anyhow = "1"
+# Phase 3 (R2-QA-02): Job Object containment for the deadline executor —
+# descendants that inherit our stdout/stderr pipes must die with the direct
+# child, or the post-exit output collection can wait forever. Only the
+# JobObjects/Foundation surface is enabled.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }
 
 [dev-dependencies]
 # COFF symbol inspection for native_execution tests
