@@ -12,6 +12,8 @@
   （core-i32-draft：精确 i32/bool、add/mul/lt、Atom 文本单模块）。旧 AAVM/AA2R 语料绿
   **不**构成 AC implemented 证据；决定栏里凡涉 AC 一律按 741 边界表述。
 - 工具词法观察 ≠ 语义解析：所有"已消解"的 unknown 均给出人工核对路径（§5）。
+- r2 分类政策（QA-02）：变量接收者方法调用一律 unknown（不按方法名猜 native），
+  native 仅限可证明宿主命名空间（List/IO/process/File）；本地类型接收者=type-qualified。
 - 状态词汇：`implemented`（AC/741 已有实证）、`required`（ACC 需要且现缺）、
   `unknown`（需探针裁决，附 owner）、`not-required`（附理由/改写路径）。
 
@@ -104,19 +106,26 @@
 **禁则重申**：上表 AC 现状列全部按 741 归档边界填写；不存在"旧 VM 绿 ⇒ AC implemented"的推理。
 已知 implemented 项仅两个：i32 溢出 trap（测试 profile，MD-304）与 HIR 域阶段化诊断（MD-421 注）。
 
-## 5. unknown 处置汇总（113 项 → 全部有去向）
+## 5. unknown 处置汇总（r2 家族制：146 个 (模块,类别,方法名) 组 → 7 族全闭环）
 
-| 族 | 数量（首行样本） | 裁定 | 决定 ID |
-|---|---|---|---|
-| p./pp./self. → P 方法 | parser15 + typeinfo13 + codegen/a2r 中的 p 族 | 与 P 方法集逐名吻合（parser.at:71）；跨文件经 use 导入 | MD-501 |
-| c./self. → CG 方法 | codegen 51 | static new（codegen.at:168）构造，方法集吻合 | MD-502 |
-| a./self. → Ar 方法 | a2r 33 | static new（a2r.at:165），驱动 ar_emit_program | MD-503 |
-| engine c.field_idx/c.pool | 1 | 跨模块 CG 实例（engine.at:586） | MD-504 |
-| V* 裸构造 | 已升级类别 | Val payload 变体构造 | MD-505 |
-| 跨行字符串异常 ×4 | engine | 真实语言构造，保守异常+恢复正确 | MD-506 |
+r2 QA-02 政策生效后，变量接收者的方法调用不再按方法名猜 native（113→687 个候选，
+聚合为 146 组）；工具层保守保留 unknown，人工层按族裁定。覆盖账本=manual-decisions.json
+的 `unknown_families`（7 族，严格门双向闭环），本表是人工裁定摘要：
+
+| 族（模块 → 接收者类） | 裁定 | 决定 ID |
+|---|---|---|
+| parser.at → p./pp./self. 游标族 | 与 P 方法集逐名吻合（parser.at:71）；跨文件经 use 导入 | MD-501 |
+| typeinfo.at → p. 游标族（导入 P 类型） | 同上 | MD-501 |
+| codegen.at → c./self.→CG；p./pp.→P | CG static new（codegen.at:168）构造，方法集吻合 | MD-502（P 侧见 MD-501） |
+| a2r.at → a./self.→Ar；p.→P | Ar static new（a2r.at:165），驱动 ar_emit_program | MD-503（P 侧见 MD-501） |
+| engine.at → c.field_idx/c.pool → CG | 跨模块 CG 实例（engine.at:586）；其余变量接收者归宿主服务族 | MD-504/507 |
+| lexer/typeinfo/aavm/engine 变量接收者 | 宿主容器/IO/转换服务族（与 MD-303 宿主内建清单一致）；实现期由 MD-201/202 名字解析精确化 | MD-507 |
+| V* 裸构造 | Val payload 变体构造（enum-variant-construction 类别） | MD-505 |
+| 跨行字符串（engine.at:314/333） | 合法字面量形态；r1"恢复正确"判定被 r2 QA-01 修正取代 | MD-506（保留为政策变更审定记录）+ MD-407 |
 
 工具侧的保守原则保持：`p.kind()` 这类"局部变量接收者"扫描层永不被静默判定；上表是**人工**
-核对结论，输入 hash 变化即失效重审（--check 强制）。
+核对结论，输入 hash 变化即失效重审（--check 强制）；unknown_families 与扫描候选双向
+闭环由 `--require-decisions` 严格门强制。
 
 ## 6. 与旧 AAVM/AA2R 自举的关系（防混称声明）
 

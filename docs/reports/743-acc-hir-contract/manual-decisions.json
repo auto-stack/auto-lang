@@ -187,10 +187,10 @@
         "docs/specs/auto-ac/project.md:7"
       ],
       "bound_input_hashes": {
-        "docs/specs/auto-hir/project.md": "b050db479d4bf4306f4a0954cf7128aa1dba8a6120c278f5fb2ca341db5ac0e7",
-        "docs/specs/auto-ac/project.md": "31f20c811950600a1afcdb5fb05a8199713188e7e3b54e1872dbd336f9870b17"
+        "docs/specs/auto-hir/project.md": "ae1a898fe12d5cd9f1d883fb68564049355556b488bc995b894f0976babe9660",
+        "docs/specs/auto-ac/project.md": "9679401e686e5de6ed11bc678ea0866d630f26fdfc7890249332a5a44e997f03"
       },
-      "note": "新建。741 只接 Schema-bound Atom 文本；Auto 源码→Checked HIR 的 adapter（含来源映射）不存在。NEXT-B 候选主体。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕"
+      "note": "新建。741 只接 Schema-bound Atom 文本；Auto 源码→Checked HIR 的 adapter（含来源映射）不存在。NEXT-B 候选主体。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 增补 verify 归属唯一（owner-mismatch）与 bindings 双射/按映射核类型——均属 Checked 域强化，\"源码→HIR adapter 不存在\"事实不变，结论维持。〕"
     },
     {
       "id": "MD-204",
@@ -216,9 +216,9 @@
       ],
       "bound_input_hashes": {
         "auto/aavm.at": "0ff06f099253e1aa1c8d83ef2810771f10d5a01e5388729354dd9fa249d4ee9a",
-        "docs/specs/auto-ac/project.md": "31f20c811950600a1afcdb5fb05a8199713188e7e3b54e1872dbd336f9870b17"
+        "docs/specs/auto-ac/project.md": "9679401e686e5de6ed11bc678ea0866d630f26fdfc7890249332a5a44e997f03"
       },
-      "note": "新建。多阶段驱动（读源→解析→verify→build）+ file:line:col 来源诊断编排；ac-probe check/build 的驱动骨架可外扩但不能冒充已接源码。"
+      "note": "新建。多阶段驱动（读源→解析→verify→build）+ file:line:col 来源诊断编排；ac-probe check/build 的驱动骨架可外扩但不能冒充已接源码。〔校准 T-12/QA-06：741 r2 CLI 更名 auto-ac-prototype 并收口制品原子发布/截止时间执行器——驱动骨架可外扩、不得冒充已接源码的判定不变，结论维持。〕"
     },
     {
       "id": "MD-206",
@@ -243,10 +243,10 @@
         "docs/design/strategy/auto-native-backend-evolution.md:25"
       ],
       "bound_input_hashes": {
-        "docs/specs/auto-ac/project.md": "31f20c811950600a1afcdb5fb05a8199713188e7e3b54e1872dbd336f9870b17",
+        "docs/specs/auto-ac/project.md": "9679401e686e5de6ed11bc678ea0866d630f26fdfc7890249332a5a44e997f03",
         "docs/design/strategy/auto-native-backend-evolution.md": "becb2f45d66bffc81b98bea33c3c6c0bb40418be2f958cd1b9a58de283a5be27"
       },
-      "note": "保留（非主体）：Cranelift 0.126.2 Rust 库经薄桥消费；v0.6 主后端，ACC 不重写机器码生成。"
+      "note": "保留（非主体）：Cranelift 0.126.2 Rust 库经薄桥消费；v0.6 主后端，ACC 不重写机器码生成。〔校准 T-12/QA-06：741 r2 仅更名 CLI 包名（ac-probe→auto-ac-prototype 历史名）并强化构建原子性/子进程截止时间；Cranelift 0.126 桥定位不变，结论维持。〕"
     },
     {
       "id": "MD-302",
@@ -257,9 +257,9 @@
         "docs/specs/auto-ac/project.md:20"
       ],
       "bound_input_hashes": {
-        "docs/specs/auto-ac/project.md": "31f20c811950600a1afcdb5fb05a8199713188e7e3b54e1872dbd336f9870b17"
+        "docs/specs/auto-ac/project.md": "9679401e686e5de6ed11bc678ea0866d630f26fdfc7890249332a5a44e997f03"
       },
-      "note": "保留（非主体）：rust-lld COFF 模式首选、MSVC link.exe 备选；工具链发现逻辑（link.rs）维持 Rust 侧。"
+      "note": "保留（非主体）：rust-lld COFF 模式首选、MSVC link.exe 备选；工具链发现逻辑（link.rs）维持 Rust 侧。〔校准 T-12/QA-06：741 r2 工具链节（rust-lld 首选/link.exe 备选/link.rs 发现逻辑）未被改动，结论维持。〕"
     },
     {
       "id": "MD-303",
@@ -287,9 +287,9 @@
         "docs/specs/auto-ac/project.md:35"
       ],
       "bound_input_hashes": {
-        "docs/specs/auto-ac/project.md": "31f20c811950600a1afcdb5fb05a8199713188e7e3b54e1872dbd336f9870b17"
+        "docs/specs/auto-ac/project.md": "9679401e686e5de6ed11bc678ea0866d630f26fdfc7890249332a5a44e997f03"
       },
-      "note": "有界 i32 溢出 trap=ExitProcess(70) 已在 741 测试 profile 实现；与完整异常 ABI（trap 展开栈/资源清理）分开验收，后者 required 归 ABI 线。"
+      "note": "有界 i32 溢出 trap=ExitProcess(70) 已在 741 测试 profile 实现；与完整异常 ABI（trap 展开栈/资源清理）分开验收，后者 required 归 ABI 线。〔校准 T-12/QA-06：741 r2 溢出 trap=ExitProcess(70) 测试 profile 约定原文未变，结论维持。〕"
     },
     {
       "id": "MD-401",
@@ -391,9 +391,9 @@
       "bound_input_hashes": {
         "auto/lib/lexer.at": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01",
         "auto/lib/token.at": "963ccc1df73b86e510db95f13dda0e3ea17462f7c3f4b7652947e9f9f3381d74",
-        "docs/specs/auto-hir/project.md": "b050db479d4bf4306f4a0954cf7128aa1dba8a6120c278f5fb2ca341db5ac0e7"
+        "docs/specs/auto-hir/project.md": "ae1a898fe12d5cd9f1d883fb68564049355556b488bc995b894f0976babe9660"
       },
-      "note": "str 类型/字面量/转义 + 拼接比较：lib 全员在用（annotation 计数 lexer12/parser76/codegen127/a2r141）；AC 完全无字符串 → required 最高优先（无字符串则诊断与符号表都无法成立）。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕"
+      "note": "str 类型/字面量/转义 + 拼接比较：lib 全员在用（annotation 计数 lexer12/parser76/codegen127/a2r141）；AC 完全无字符串 → required 最高优先（无字符串则诊断与符号表都无法成立）。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 未新增任何字符串能力（类型面仍精确 i32/bool），被引边界行（:13）内容与位置未变，结论维持。〕"
     },
     {
       "id": "MD-407",
@@ -408,7 +408,7 @@
       "bound_input_hashes": {
         "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328"
       },
-      "note": "跨行字符串字面量在 lib 源码真实存在（扫描器以保守异常上报并恢复，能力证据 multiline-string-literal×4）。ACC 的 str 语义须定义跨行字面量行为；探针 probe-str-ml。"
+      "note": "跨行字符串字面量在 lib 源码真实存在（engine.at:314/333 两个跨行字面量）。〔r2 更新：QA-01 修正后掩码器保持字面量态到真正闭合，合法跨行不再记异常，能力证据=字面量起始行。ACC 的 str 语义仍须定义跨行字面量行为；探针 probe-str-ml。〕"
     },
     {
       "id": "MD-408",
@@ -436,9 +436,9 @@
       ],
       "bound_input_hashes": {
         "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
-        "docs/specs/auto-hir/project.md": "b050db479d4bf4306f4a0954cf7128aa1dba8a6120c278f5fb2ca341db5ac0e7"
+        "docs/specs/auto-hir/project.md": "ae1a898fe12d5cd9f1d883fb68564049355556b488bc995b894f0976babe9660"
       },
-      "note": "int 全序运算（add/sub/mul/div/mod/eq/ne/lt/gt/le/ge）lib 重度使用；AC 仅 add/mul/lt → required（扩面清单明确：sub/div/mod/eq/ne/gt/le/ge）。宽度 int↔i32 映射 unknown（probe-int-width，计划 §10.2）。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕"
+      "note": "int 全序运算（add/sub/mul/div/mod/eq/ne/lt/gt/le/ge）lib 重度使用；AC 仅 add/mul/lt → required（扩面清单明确：sub/div/mod/eq/ne/gt/le/ge）。宽度 int↔i32 映射 unknown（probe-int-width，计划 §10.2）。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 运算面仍为 add_i32/mul_i32/lt_i32（新增的归属唯一/双射属 verify 结构域），int 全序运算缺口不变，结论维持。〕"
     },
     {
       "id": "MD-410",
@@ -634,9 +634,9 @@
       ],
       "bound_input_hashes": {
         "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
-        "docs/specs/auto-hir/project.md": "b050db479d4bf4306f4a0954cf7128aa1dba8a6120c278f5fb2ca341db5ac0e7"
+        "docs/specs/auto-hir/project.md": "ae1a898fe12d5cd9f1d883fb68564049355556b488bc995b894f0976babe9660"
       },
-      "note": "lib 用 p.fail 单槽字符串；AC 741 已有 file:line:col 阶段化诊断（Atom HIR 域）。源码 adapter 必须携带来源映射（span→HIR），required；实现状态=741 已实现（HIR 域）+ 源码域 required。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕"
+      "note": "lib 用 p.fail 单槽字符串；AC 741 已有 file:line:col 阶段化诊断（Atom HIR 域）。源码 adapter 必须携带来源映射（span→HIR），required；实现状态=741 已实现（HIR 域）+ 源码域 required。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 诊断节（阶段化 file:line:col）原文未变；HIR 域已实现/源码域待 adapter 的判定不变，结论维持。〕"
     },
     {
       "id": "MD-501",
@@ -729,7 +729,239 @@
       "bound_input_hashes": {
         "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328"
       },
-      "note": "扫描异常 unterminated-string×4 实为跨行字符串字面量（out + \"\\n\" 源码跨行书写）。语义裁定：真实语言构造，工具按异常+恢复保守处理正确；能力登记 MD-407。"
+      "note": "r1 曾将换行恢复+异常记为\"保守正确\"；r2 QA-01 以 pretend() 反例证明该恢复会把字面量内伪调用泄入候选（baseline.md 复现）。现判定被取代：掩码器保持跨行字面量态到真正闭合，异常仅在 EOF 未闭合时记录（词法不确定标记），伪代码零泄漏。本决定保留为策略变更的审定记录。"
+    },
+    {
+      "id": "MD-507",
+      "subject": "unknown:variable-receiver-native-family",
+      "kind": "unknown-resolution",
+      "conclusion": "resolved",
+      "evidence": [
+        "auto/lib/lexer.at:672",
+        "auto/lib/engine.at:586",
+        "auto/aavm.at:19"
+      ],
+      "bound_input_hashes": {
+        "auto/lib/lexer.at": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01",
+        "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
+        "auto/lib/typeinfo.at": "9eed6f5f243225c17d4f79e5c53918d03a525e2e2bd99998b6ba6f95c3bb254a",
+        "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+        "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328",
+        "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae",
+        "auto/aavm.at": "0ff06f099253e1aa1c8d83ef2810771f10d5a01e5388729354dd9fa249d4ee9a"
+      },
+      "note": "r2 QA-02 分类政策：变量接收者的方法调用（out.push/argv.len/head.parse_int/text.slice 等）不再因方法名像内建而标 native——本地类型可声明同名方法（Meter.len/CG.new/Ar.new 实证）。语义归属人工裁定：绝大多数为宿主容器/IO/转换服务（与 MD-303 宿主内建清单一致），少数为本地类型方法；均按 unknown-receiver 保留于清单，族覆盖见 unknown_families，实现期由名字解析/类型检查（MD-201/202 新主体）精确化。"
+    }
+  ],
+  "unknown_families": [
+    {
+      "path": "auto/lib/lexer.at",
+      "kind": "unknown-receiver",
+      "names": [
+        "char_at",
+        "get",
+        "len",
+        "push",
+        "replace",
+        "slice",
+        "str",
+        "trim"
+      ],
+      "disposition": "resolved",
+      "decision": "MD-507",
+      "note": "变量接收者宿主容器/str 服务族"
+    },
+    {
+      "path": "auto/lib/parser.at",
+      "kind": "unknown-receiver",
+      "names": [
+        "bind",
+        "char_at",
+        "decl_lookup",
+        "decl_register",
+        "expect",
+        "fail",
+        "get",
+        "kind",
+        "len",
+        "lookup",
+        "next",
+        "peek",
+        "peek_text",
+        "pop_scope",
+        "push",
+        "push_scope",
+        "set",
+        "skip_empty_lines",
+        "slice",
+        "str",
+        "text"
+      ],
+      "disposition": "resolved",
+      "decision": "MD-501",
+      "note": "p./pp./self. 游标族（P 方法，跨文件经 use）"
+    },
+    {
+      "path": "auto/lib/typeinfo.at",
+      "kind": "unknown-receiver",
+      "names": [
+        "bind",
+        "char_at",
+        "decl_lookup",
+        "expect",
+        "fail",
+        "get",
+        "kind",
+        "len",
+        "lookup",
+        "next",
+        "peek",
+        "peek_text",
+        "pop_scope",
+        "push",
+        "push_scope",
+        "skip_empty_lines",
+        "slice",
+        "str",
+        "text"
+      ],
+      "disposition": "resolved",
+      "decision": "MD-501",
+      "note": "p. 游标族（导入 P 类型）"
+    },
+    {
+      "path": "auto/lib/codegen.at",
+      "kind": "unknown-receiver",
+      "names": [
+        "add_var",
+        "add_var_reuse",
+        "char_at",
+        "const_lookup",
+        "ctor_lookup",
+        "emit",
+        "emit_load",
+        "emit_store",
+        "esc_disasm",
+        "expect",
+        "fail",
+        "field_idx",
+        "field_ty",
+        "get",
+        "gkey",
+        "import_symbol",
+        "is_global",
+        "is_module",
+        "kind",
+        "len",
+        "line",
+        "link_symbol",
+        "lookup",
+        "loop_enter",
+        "loop_exit",
+        "loop_jump",
+        "max_alive_idx",
+        "next",
+        "peek",
+        "peek_text",
+        "pool_add",
+        "pool_push",
+        "pop_scope",
+        "push",
+        "push_scope",
+        "serialize",
+        "set",
+        "skip_empty_lines",
+        "slice",
+        "str",
+        "text",
+        "tys_lookup",
+        "var_arr",
+        "var_gtor",
+        "var_ty",
+        "var_ty2"
+      ],
+      "disposition": "resolved",
+      "decision": "MD-502",
+      "note": "c./self.→CG；p./pp.→P（见 MD-501）"
+    },
+    {
+      "path": "auto/lib/engine.at",
+      "kind": "unknown-receiver",
+      "names": [
+        "char_at",
+        "field_idx",
+        "get",
+        "len",
+        "push",
+        "replace",
+        "set",
+        "slice",
+        "str",
+        "trim"
+      ],
+      "disposition": "resolved",
+      "decision": "MD-504",
+      "note": "c.field_idx/c.pool→CG（MD-504）；其余变量接收者→MD-507"
+    },
+    {
+      "path": "auto/lib/a2r.at",
+      "kind": "unknown-receiver",
+      "names": [
+        "blank",
+        "char_at",
+        "emit",
+        "enum_find",
+        "enum_has_variant",
+        "expect",
+        "fail",
+        "field_ty",
+        "fn_find",
+        "get",
+        "global_find",
+        "imports_has",
+        "indent_str",
+        "is_cur_mut_param",
+        "kind",
+        "len",
+        "line",
+        "lu_after",
+        "lu_record",
+        "method_find",
+        "next",
+        "peek",
+        "push",
+        "replace",
+        "result",
+        "set",
+        "skip_empty_lines",
+        "slice",
+        "str",
+        "struct_derive",
+        "text",
+        "trim",
+        "ty_find",
+        "vparam",
+        "vpush",
+        "vscope",
+        "vty",
+        "vunscope"
+      ],
+      "disposition": "resolved",
+      "decision": "MD-503",
+      "note": "a./self.→Ar；p.→P（见 MD-501）"
+    },
+    {
+      "path": "auto/aavm.at",
+      "kind": "unknown-receiver",
+      "names": [
+        "get",
+        "len",
+        "parse_int",
+        "push"
+      ],
+      "disposition": "resolved",
+      "decision": "MD-507",
+      "note": "argv/head 变量接收者"
     }
   ]
 }

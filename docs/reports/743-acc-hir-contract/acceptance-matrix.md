@@ -10,14 +10,14 @@
 | # | 锚点 | 输入 | oracle / 预期 | 运行形态 | 工具依赖 | 前置 capability | 状态 |
 |---|---|---|---|---|---|---|---|
 | A1 | 算术+循环微程序 | 741 fixtures `experimental/ac-core/fixtures/valid/*`（01-add、02-control 族） | 退出码/输出与 741 收据一致；溢出 trap=ExitProcess(70) | `ac-probe build+run`（Rust AC） | ac-probe、rust-lld、SDK（link.rs 发现） | i32 加/乘/lt、溢出 trap（741 已备） | **existing**（PLAN-741 归档收据） |
-| A2 | 命名参数求值顺序 | `hir-examples/03-call-order.atom` 同语义源码版 | 求值顺序（左→右存临时）保持；重排=非法变换 X2 | 同 A1 | 同 A1 | eval_args 语义（741 已备） | **existing**（样例+拒绝矩阵已物化） |
+| A2 | 命名参数求值顺序 | HIR 形态：`hir-examples/03-call-order.atom`（在案）；源码形态：同语义 `.at` 微程序（**待建**，依赖 S0→S2 adapter） | 求值顺序（左→右存临时）保持；重排=非法变换 X2 | HIR 形态同 A1；源码形态见 A4 运行形态 | HIR 形态同 A1；源码形态同 A4 | eval_args 语义（741 已备）；源码域须 adapter | **existing（HIR 域，样例+拒绝矩阵已物化）** / **gated（源码域，待建语料+adapter）**——两形态分开追踪，不以 HIR 证据冒充源码证据 |
 | A3 | 错误诊断形态 | `fixtures/invalid/*` 拒绝矩阵 + 新增源码级反例 | `file:line:col: error[stage/code]` 渲染、span 指向冒犯 token | `ac-probe check`（退出 1/2） | ac-probe | 诊断基建（741 HIR 域已备） | **existing**（HIR 域）/ **gated**（源码域待 adapter） |
 | A4 | token/lexer 代表 | `corpus_m1`（c01–c05 等）+ token.at/lexer.at 真实入口 keyword_kind/tokenize | 词元序列 golden 与 AAVM 基线一致（ACC 编译产物行为对齐） | ACC 源码→native 编译执行 | ACC 管线（Gen1 形态） | enum(MD-401)、str(MD-406)、List\<Token\>(MD-405) | **gated**（需 S0→S2 adapter + str/容器） |
 | A5 | parser 代表入口 | `corpus_m2` 语料 + parser.at 游标/Pratt 核心 | AST 结构行为与基线一致（对齐口径=行为，非 S-expr 文本） | 同 A4 | 同 A4 | record/method/隐式 self（MD-403/404） | **gated**（同上 + AST 重写层） |
 | A6 | 类型检查代表 | `corpus_m3` 型推断语料 | 类型推断行为 oracle=宿主 VM `.type` 输出（对齐口径为行为） | 同 A4 | 同 A4 | int 全序运算/bool 逻辑（MD-409/410）、record | **gated**（ACC typeck 新主体） |
 | A7 | 文件/模块解析 | `corpus_use` + `shared_dep` 多文件用例 | 多编译单元链接后行为一致；use 边解析正确 | 同 A4（多模块形态） | 同 A4 | use-module/跨模块 DefRef（MD-413） | **gated**（Bundle 装配未实现） |
-| A8 | 字符串/容器微程序 | 待建：str 拼接/比较/切片 + List push/get/遍历的最小源码集 | native 执行输出与宿主 VM 一致 | 同 A4 | 同 A4 | str/list（最高优先缺口） | **gated**（语料待建；实施候选①首任务） |
-| A9 | is-match / enum 展开 | 待建：对 TokenKind 的 is 分支 + Val 式 payload 变体 | 分派行为一致；未知变体显式拒绝 | 同 A4 | 同 A4 | is-match lowering、enum(MD-401/402) | **gated** |
+| A8 | 字符串/容器微程序 | 待建：str 拼接/比较/切片 + List push/get/遍历的最小源码集 | native 执行输出与宿主 VM 一致 | 同 A4 | 同 A4 | str/list（最高优先缺口） | **gated**（语料待建；owner=候选②——str/List 能力提供方；源码验证依赖候选① adapter 落地） |
+| A9 | is-match / enum 展开 | 待建：对 TokenKind 的 is 分支 + Val 式 payload 变体 | 分派行为一致；未知变体显式拒绝 | 同 A4 | 同 A4 | enum 无/带载荷(MD-401/402)、is-match lowering | **gated**（语料待建；owner=聚合能力线——后续未编号工作线，前置=enum/record/is 能力落地；不在候选①②范围内） |
 | A10 | 代际自编译 | ACC 主体源码（本盘点清单域） | Gen1→Gen2→Gen3 语义/诊断/HIR 等价（contract §5） | ACC 编译 ACC | 全管线 + 桥 | §4.1 全部 required 能力 | **gated**（终点门禁） |
 
 **不作为门禁**：任意构建字节固定点（战略 §4/契约 §5——仅在可复现条件约定后为附加门）；
@@ -45,6 +45,4 @@ A2R 转译中转产物不作为任何锚点的 native 证据。
 
 ## 4. 锚点→验收标准映射
 
-A1–A3 → AC-06（含 741 基线复用）；A4–A9 → AC-06 + capability 表（inventory.md §4.1）；
-A10 → AC-06 代际；A8/A9 语料建设 → next-work-packages.md 候选①；桥待验证问题 → AC-06
-与契约 §4。每个 gated 锚点的解锁条件都能在 next-work-packages.md 的两候选或 ABI 线找到 owner。
+A1–A3 → AC-06（含 741 基线复用；A2 的 HIR/源码两形态分开追踪）；A4–A7 → AC-06 + capability 表（inventory.md §4.1）；A10 → AC-06 代际；A8 owner=候选②（能力提供方），A9 owner=聚合能力线（后续未编号，非本报告两候选）；桥待验证问题 → AC-06 与契约 §4。每个 gated 锚点的解锁条件均有具名 owner 与前置；候选依赖无环：②的源码验证依赖①落地，A9 依赖聚合能力线交付。

@@ -55,8 +55,14 @@ S6 后端发射/链接/运行（Cranelift adapter 消费）
   消费方不得跨阶段取用（例：S5 不得接受 Unchecked Bundle）。
 - R2 来源映射（SourceId/SpanId，auto-hir-design.md §9）自 S1 起随行；S0→S2 的 adapter
   **必须**为合成节点标注生成关系，否则 S4 的诊断义务不成立。
-- R3 语义/效果/资源义务在 S3 定案（Effect 枚举，hir.rs:139）；S5 只能**收窄**不得放宽
-  （pure → observable 允许，反向禁止）。
+- R3 语义/效果/资源义务在 S3 定案（Effect 枚举，hir.rs:139）。**效果分析**与**效果
+  语义保持**是两件事，不混用"收窄/放宽"方向词：
+  (a) 静态效果*分析*从保守侧出发（未知 effect 一律按 observable 处理），
+      向 pure 的精化必须携带证明——这是分析精度问题，不是程序改写；
+  (b) 效果*语义保持*对任何 pass 都是双向禁止：既不得为程序引入原本不存在的
+      可观察效果，也不得消除/重排已存在的可观察效果（含溢出 trap 与其前驱
+      observable 的相对顺序）。
+  S5 lowering 不得删除、合并或重排任何 S3 已定案的 observable 边界。
 - R4 失败路径与成功路径同相等保真：任何阶段的拒绝都必须是显式诊断，禁止以空输出/
   未实现分支静默通过（741 CLI 已按 0/1/2 区分，main.rs）。
 - R5 显式 `Dynamic` 若未来支持，必须有独立节点/类型身份与明确运行时操作语义；
@@ -124,31 +130,42 @@ pass:
 ~~~yaml
 pass:
   id: eval.const-fold
-  version: 1
+  version: 2                 # r2：运行期 trap 边界消歧（QA-04）
   input_stage: S4            # 只对已验证模块操作
   output_stage: S4
   profiles: [core-i32-draft]
-  preconditions: CheckedModule；const 语境可达集合已计算
-  postconditions: 仅替换可证纯（Effect=pure）且类型精确的表达式；
-    结果值满足源运算精确语义（i32 溢出语义见下）
+  preconditions: CheckedModule；折叠域仅限"普通运行期表达式"，即语言未规定
+    必须编译期求值的表达式（显式 comptime/const 语境不在本 pass 域内，
+    由该语境自己的独立契约治理）
+  postconditions: 仅替换可证纯（Effect=pure）且类型精确的表达式；折叠在
+    编译期算出的结果值本身不得触发溢出/trap——会溢出/出错的常量表达式
+    保持运行期 trap 语义（原样保留或降级为等价 trap 节点），一律不在
+    编译期拒绝、不产生编译期诊断、不改变错误阶段
   order: 在全部 S4→S4 变换之后、S5 之前
   semantics_preserved:
     - 求值位置唯一性不变（ExprId 单 owner，741 规则）
-    - add_i32/mul_i32 的 overflow: trap 分支**不折叠**：
-      常量溢出仅当该表达式位于必经路径才可报诊断，
-      条件分支内的常量溢出保持运行期 trap 语义
+    - add_i32/mul_i32 的 overflow: trap 保持运行期语义：
+      无论溢出常量表达式位于必经路径还是条件分支，本 pass 都不得将其
+      提升为编译期错误。语义反例（QA-04）：
+      mark_a(); return MAX_I32 + 1（overflow: trap）——约定语义是先观察
+      a 再 ExitProcess(70)；若以"必经路径"为由编译期拒绝，a 消失且错误
+      阶段改变，即违反 X9
+    - 不可达分支中的常量溢出不提升（X1）；折叠后控制流结构不变
     - lt_i32 结果折叠为 bool 常量，不改变后续分支谓词结构
-  effects_traps: observable/pure 之外（未知）一律不折叠
+  effects_traps: observable/pure 之外（未知）一律不折叠；trap 是可观察
+    行为的一部分，受 R3(b) 双向禁止约束
   call_order: 跨调用边界不折叠（函数无 purity 摘要前）
   drops: 不引入
   source_maps: 折叠结果 span 保留原表达式 span，另附合成标记
   analysis_invalidation: 失效常量表缓存与依赖它的可达性分析
   reverify: required（输出重走 S3 才能再入 S5）
-  diagnostics: fold.unsafe-context（必经路径常量溢出）等
+  diagnostics: 本 pass 不引入编译期诊断（运行期 trap 语境无"不安全常量"
+    概念）；显式 comptime 语境的编译期诊断属该语境契约，不归本 pass
 ~~~
 
 **不实施声明**：以上两例是合同文本，不是已实现 pass；实现计划须按模板补全
-pre/post 断言的可执行形态并重验。
+pre/post 断言的可执行形态并重验。模板字段与两例为**合同要求**（目标态），
+当前不存在任何已实现 pass——阶段表的"现状"列是实现状态的唯一权威。
 
 ## 3. 非法变换反例（复审用负面清单）
 
@@ -162,6 +179,7 @@ pre/post 断言的可执行形态并重验。
 | X6 | 公共 HIR 节点新增指向 CLIF 值/寄存器的字段"便于后端" | §0.3 公共/低层分界 |
 | X7 | 桥接层把 Auto 源码片段传给后端并让后端做名字解析/类型检查 | §4 后端职责边界 |
 | X8 | 校验关口读输入里的 pass-version 链即认定"已验证" | 凭证只能来自本进程 verify 的成功返回（§0.1） |
+| X9 | 必经路径上的常量溢出表达式被编译期拒绝（`mark_a(); return MAX_I32+1` 从"先观察 a 再 ExitProcess(70)"变成不带 a 的编译错误） | 运行期 trap 保持（§2.2；R3(b)——trap 与其前驱 observable 的顺序不可变） |
 
 ## 4. 后端桥候选矩阵（不实施，仅契约）
 

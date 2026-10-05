@@ -10,7 +10,8 @@
 - **范围**：Auto 源码子集（精确 int 域、bool、控制流、函数调用）→ Checked HIR → native，
   即 A1–A3 从"HIR 域"扩到"源码域"；产出 S0→S2 adapter 首版 + 来源映射诊断。
 - **输入/输出**：输入=单模块 .at 计算子集源码；输出=CheckedModule / PE 产物 / 阶段化诊断。
-- **正反语料**：正向=741 fixtures 的源码改写版 + A8 微程序首批；反向=未定义变量、
+- **正反语料**：正向=741 fixtures 的源码改写版（int/bool 精确域内；A8 str/List
+  **不在**本候选正向集——能力不归本候选交付）；反向=未定义变量、
   类型失配、悬空引用、checked 标记越权（拒绝矩阵延续）。
 - **既有 API 依赖**：`atom_text/descriptor/hir/verify`（只消费，不改语义）、
   `native::capabilities_check/find_entry/lower_object`、`link.rs` 工具链发现。
@@ -31,8 +32,11 @@
 - **范围**：str/char 语义（含跨行字面量 probe-str-ml）、内置 List\<T\>（所有权/释放语义
   probe-rt-own）、sub/div/mod/eq/ne/gt/le/ge 与 &&/||/! 扩面；HIR descriptor/profile
   升版（core-i32 → 继任 profile），741 兼容性由版本化身份保证。
-- **正反语料**：A8/A9 锚点语料；溢出/trap 语义在新运算上的延续（X1 反例回归）。
-- **与候选①关系**：可并行（不同剖面）；合并顺序=候选①先（adapter 立即受益于 int 扩面）。
+- **正反语料**：A8 锚点语料（str/List 微程序，本候选交付能力后立即可建）；
+  A9（enum/is-match）**不在**本候选范围——其 owner=聚合能力线（后续未编号工作线，
+  前置=enum±payload/record/is 能力落地）。溢出/trap 语义在新运算上的延续（X1/X9 反例回归）。
+- **与候选①关系**：能力开发可并行（不同剖面）；源码级验证依赖候选①的 S0→S2
+  adapter 落地（②驮在①的管线之上）。依赖方向单向：①→②，无环。
 - **基线恢复门**：无旧代码接线；纯 ac-core 域内扩展。
 - **可现在做 / 须基线 / 须前置**：profile 升版设计可现在做；实现须候选①的 S0→S2 落地
   才有源码级消费者（HIR 文本级测试可先行）。
