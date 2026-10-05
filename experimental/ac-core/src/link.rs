@@ -477,13 +477,35 @@ pub fn publish_artifacts(
             match std::fs::rename(final_path, &bak) {
                 Ok(()) => backups.push((bak, final_path.to_path_buf())),
                 Err(e) => {
+                    // Same restore-reporting contract as the placement path
+                    // (P741P3-R1): a blocked rollback must surface the
+                    // surviving backup paths instead of swallowing the error.
                     discard_staged();
+                    let mut restore_failures: Vec<String> = Vec::new();
                     for (bak, final_path) in backups.iter().rev() {
-                        let _ = std::fs::rename(bak, final_path);
+                        if let Err(re) = std::fs::rename(bak, final_path) {
+                            restore_failures.push(format!(
+                                "restore {} from backup {}: {}",
+                                final_path.display(),
+                                bak.display(),
+                                re
+                            ));
+                        }
+                    }
+                    if restore_failures.is_empty() {
+                        return Err(link_diag(
+                            "link.replace",
+                            format!("backing up {}: {}", final_path.display(), e),
+                        ));
                     }
                     return Err(link_diag(
-                        "link.replace",
-                        format!("backing up {}: {}", final_path.display(), e),
+                        "link.restore",
+                        format!(
+                            "backing up {}: {}; rollback incomplete, previous artifacts kept at the listed backup paths: {}",
+                            final_path.display(),
+                            e,
+                            restore_failures.join("; ")
+                        ),
                     ));
                 }
             }

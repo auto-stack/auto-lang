@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-05
 plan_revision: 3
-current_step: 17
+current_step: 23
 total_steps: 24
 supersedes_spec_components:
   - docs/specs/auto-hir/project.md
@@ -544,8 +544,10 @@ Phase 3 执行进度（commit 哈希=plan-741-dev，基线 ed2d00b90，2026-10-0
   （git diff ed2d00b90 -- Cargo.toml Cargo.lock crates/ test/ 为空）；
   r3 复审 reproduce 复跑全验收点（staged_exe_left=false、watchdog 60.07s
   stillRunning=false）、r2 reproduce 无回归。AC-20。
-- [ ] **T-24** /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 沉淀
-  SD-05/06、销账 R2-QA 行、归档并 guard 清理。
+- [x] **T-24** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 3
+  独立复审）；R1 备份路径恢复诊断已按复审建议顺手统一（comment 后 scoped 复验
+  lib 9/9 + fmt + all-targets 零 warning）；merge 沉淀 SD-05/06、销账 R2-QA 行、
+  归档并 guard 清理待 /auto-plan:merge。
 T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按 merge 收据验收。
 
 ## 9. 复审记录
