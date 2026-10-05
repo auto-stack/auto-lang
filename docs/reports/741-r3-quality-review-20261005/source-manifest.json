@@ -1,0 +1,20 @@
+{
+  "reviewed_commit": "f6a945db849f57789a9e151402e22b8aa57eb7f8",
+  "diff_base": "ed2d00b9076e68fdc41ca59dfa096c753cee5f9e",
+  "plan_revision": 3,
+  "activation_base": "a5f07086b6737959e09bd7d24266143a167131cd",
+  "sha256": {
+    "experimental/ac-core/src/link.rs": "4615af9df6b32411b2c2d582cfadee15eaa248df148d60880300acba64139121",
+    "experimental/ac-core/src/verify.rs": "72d8433ac9ad2fc7d967a42f2416fc56504c4412e0301fc1e872d83bf305a36b",
+    "experimental/ac-core/src/native.rs": "69ef4577b3d2089b73c2c4ee652d31111b8b4fb44a55cceec9ca2b24859eef88",
+    "experimental/ac-core/src/main.rs": "67e7667737d88c0c0458d5b4ae7ec8be76da713532b45bbc60aeceb1bbc1ceb0",
+    "experimental/ac-core/Cargo.toml": "464004d5bf731c9ad5eee7eede8c1c2d97e22be20c54d99c192066e6344d8a29",
+    "experimental/ac-core/Cargo.lock": "296429e6dd6db8e1affe9755f29c5ff94c902362361fa719b7bc1cd11ee7077e",
+    "scripts/verify-ac-741.ps1": "f16a302c0f57c187e5dbc29d2c28fb25b96acf4f1b616999c25d1ea48570adb7",
+    "docs/specs/auto-ac/project.md": "062c7b3ccfa2acf0d6546c0b1003da9ad2e5fcaac306c469f74cd8ce5fbe0411",
+    "docs/specs/auto-hir/project.md": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab",
+    "docs/plans/archive/741-ac-hir-native-core.md": "84f5a8368fc9619bd0c16a5479132c3dfe904771608a9bbbc0a6bef4d32541ec",
+    ".cargo/config.toml": "13cb02bef7ce0ad685135e36b667ccbe54ab1a04ba6d743de1a3c5f41d239003",
+    ".config/nextest.toml": "0fbea4b493e2437105d5cd68c616549b1a39aaad6ae4b2f85fd83adf4782d5a2"
+  }
+}

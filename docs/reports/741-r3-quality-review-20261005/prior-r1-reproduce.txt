@@ -1,0 +1,103 @@
+{
+  "atomic": {
+    "native": {
+      "stdout": "",
+      "exit": 5,
+      "stderr": ""
+    },
+    "objChanged": false,
+    "build": {
+      "stdout": "",
+      "exit": 1,
+      "stderr": "D:\\autostack\\.wt\\lang-741\\auto-lang\\experimental\\ac-core\\fixtures\\native\\add-neg2-3.atom:1:1: error[link/link.receipt]: placing C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\transaction.ac-link.txt: 拒绝访问。 (os error 5)\n"
+    },
+    "exeChanged": false
+  },
+  "cases": [
+    {
+      "build": {
+        "stdout": "BUILT C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\bool-local.exe (entry entry)\n  obj: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\bool-local.obj\n  exe: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\bool-local.exe\n  receipt: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\bool-local.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+        "exit": 0,
+        "stderr": ""
+      },
+      "case": "bool-local",
+      "check": {
+        "stdout": "OK 1 module(s), capabilities required: []\n",
+        "exit": 0,
+        "stderr": ""
+      }
+    },
+    {
+      "build": {
+        "stdout": "BUILT C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\bool-return.exe (entry entry)\n  obj: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\bool-return.obj\n  exe: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\bool-return.exe\n  receipt: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\bool-return.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+        "exit": 0,
+        "stderr": ""
+      },
+      "case": "bool-return",
+      "check": {
+        "stdout": "OK 1 module(s), capabilities required: []\n",
+        "exit": 0,
+        "stderr": ""
+      }
+    },
+    {
+      "build": {
+        "stdout": "BUILT C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\binding-valid.exe (entry entry)\n  obj: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\binding-valid.obj\n  exe: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\binding-valid.exe\n  receipt: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\binding-valid.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+        "exit": 0,
+        "stderr": ""
+      },
+      "case": "binding-valid",
+      "check": {
+        "stdout": "OK 1 module(s), capabilities required: []\n",
+        "exit": 0,
+        "stderr": ""
+      }
+    },
+    {
+      "build": {
+        "stdout": "",
+        "exit": 1,
+        "stderr": "D:\\autostack\\.wt\\lang-741\\auto-lang\\docs\\reports\\741-quality-review-20261004\\fixtures\\binding-invalid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: param 0 (i32) does not match eval_args[1] (bool)\nD:\\autostack\\.wt\\lang-741\\auto-lang\\docs\\reports\\741-quality-review-20261004\\fixtures\\binding-invalid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: param 1 (bool) does not match eval_args[0] (i32)\nD:\\autostack\\.wt\\lang-741\\auto-lang\\docs\\reports\\741-quality-review-20261004\\fixtures\\binding-invalid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: param 0 (i32) does not match eval_args[1] (bool)\nD:\\autostack\\.wt\\lang-741\\auto-lang\\docs\\reports\\741-quality-review-20261004\\fixtures\\binding-invalid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: param 1 (bool) does not match eval_args[0] (i32)\n"
+      },
+      "case": "binding-invalid",
+      "check": {
+        "stdout": "",
+        "exit": 1,
+        "stderr": "D:\\autostack\\.wt\\lang-741\\auto-lang\\docs\\reports\\741-quality-review-20261004\\fixtures\\binding-invalid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: param 0 (i32) does not match eval_args[1] (bool)\nD:\\autostack\\.wt\\lang-741\\auto-lang\\docs\\reports\\741-quality-review-20261004\\fixtures\\binding-invalid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: param 1 (bool) does not match eval_args[0] (i32)\nD:\\autostack\\.wt\\lang-741\\auto-lang\\docs\\reports\\741-quality-review-20261004\\fixtures\\binding-invalid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: param 0 (i32) does not match eval_args[1] (bool)\nD:\\autostack\\.wt\\lang-741\\auto-lang\\docs\\reports\\741-quality-review-20261004\\fixtures\\binding-invalid.atom:2:454: error[verify/verify.type-mismatch]: expr `call`: param 1 (bool) does not match eval_args[0] (i32)\n"
+      }
+    },
+    {
+      "build": {
+        "stdout": "",
+        "exit": 1,
+        "stderr": "D:\\autostack\\.wt\\lang-741\\auto-lang\\docs\\reports\\741-quality-review-20261004\\fixtures\\shared-body.atom:18:13: error[verify/verify.owner-mismatch]: function `d_alias` declares body `b_add` but that body is owned by `d_add`; every body must belong to exactly one function\n"
+      },
+      "case": "shared-body",
+      "check": {
+        "stdout": "",
+        "exit": 1,
+        "stderr": "D:\\autostack\\.wt\\lang-741\\auto-lang\\docs\\reports\\741-quality-review-20261004\\fixtures\\shared-body.atom:18:13: error[verify/verify.owner-mismatch]: function `d_alias` declares body `b_add` but that body is owned by `d_add`; every body must belong to exactly one function\n"
+      }
+    },
+    {
+      "build": {
+        "stdout": "BUILT C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\loop-return.exe (entry entry)\n  obj: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\loop-return.obj\n  exe: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\loop-return.exe\n  receipt: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d\\loop-return.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+        "exit": 0,
+        "stderr": ""
+      },
+      "case": "loop-return",
+      "check": {
+        "stdout": "OK 1 module(s), capabilities required: []\n",
+        "exit": 0,
+        "stderr": ""
+      }
+    }
+  ],
+  "readme": {
+    "stdout": "",
+    "exit": 2,
+    "stderr": "unknown command `ac-probe`; expected check|build\n"
+  },
+  "output": "C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-quality-fc832f70045a4801a6f02cda702ccf6d",
+  "repo": "D:\\autostack\\.wt\\lang-741\\auto-lang"
+}

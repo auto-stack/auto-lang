@@ -1,0 +1,10 @@
+259 | |             cb: u32,
+260 | |         ) -> i32;
+    | |_________________- `K32GetProcessMemoryInfo` previously declared here
+    |
+    = note: expected `unsafe extern "system" fn(*mut c_void, *mut ProcessMemoryCounters, u32) -> i32`
+               found `unsafe extern "system" fn(isize, *mut PROCESS_MEMORY_COUNTERS, u32) -> i32`
+    = note: `#[warn(clashing_extern_declarations)]` on by default
+
+warning: `auto-lang` (lib) generated 382 warnings (run `cargo fix --lib -p auto-lang` to apply 178 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2m 51s

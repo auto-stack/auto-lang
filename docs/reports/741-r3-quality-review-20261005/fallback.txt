@@ -1,0 +1,2 @@
+child_handle=0xc0;open_error=0;wait_status=258
+mode=fallback;deadline_ms=1000;elapsed_ms=1014;result=Err(DeadlineCollect);child_pid=25576;child_alive_after_return=true

@@ -190,7 +190,7 @@
 复审基线c1ac219e7，结论needs_fix。~~均未清偿~~ **已全部清偿（2026-10-05，PLAN-741 r2 Phase 2）**：
 用户裁定不另开合同，激活741以plan_revision 2追加Phase 2修复；独立代理复审pass
 （44/44测试、六反例全翻转），交付合入v0.6-dev@52c67d3df。清偿证据：
-[741归档](archive/741-ac-hir-native-core.md) §9 Phase 2记录；
+[741归档](741-ac-hir-native-core.md) §9 Phase 2记录；
 原始报告：[复审报告](../reports/741-quality-review-20261004/REVIEW.md)。
 
 | id | 级别 | 问题与实际证据 | 修复方向 |
@@ -209,7 +209,7 @@
 ~~以下为新增/扩展边界，未清偿~~ **已全部清偿（2026-10-05，PLAN-741 r3 Phase 3）**：
 独立代理复审pass（AC-16..20全过、原型52项+60s证据测试、watchdog 60.05s准时拒绝、
 cargo t双侧同基线归因零新增），交付合入v0.6-dev@a0b3750c4。清偿证据：
-[741计划](archive/741-ac-hir-native-core.md) §9 Phase 3记录；
+[741计划](741-ac-hir-native-core.md) §9 Phase 3记录；
 原报告：[r2复核报告](../reports/741-quality-review-20261005/REVIEW.md)。
 
 | id | 级别 | 观察 | 修复方向 |
@@ -268,3 +268,20 @@ r2/executing。18/18 既有测试通过、旧 F-01/F-03 已修，以下新问题
 | P743-R3-QA-02 | P2 | subject/hash覆盖可代替evidence覆盖，严格门假绿（真实七族证据完整） | evidence相关性独立且必需，移除OR旁路 |
 | P743-R3-QA-03 | P2 | 导入IO/List/File/process和Meter参数IO被标native | qualified宿主准入包含导入/局部绑定冲突，未知保守 |
 | P743-R3-QA-04 | P3 | archived20/21、T-21未标完成、P743-3活动指针失效 | 历史补据实完成，新Phase另列；final所有指针/计数统一验收 |
+
+## PLAN-741 r3合入后复审 / Phase4（2026-10-05）
+
+本节新增发现不撤销前两轮已修的具体证据，也不沿用r3“全出口已回收”覆盖新反例。
+[报告](../reports/741-r3-quality-review-20261005/REVIEW.md)基线f6a945db8，needs_fix；
+依用户授权激活[741 Phase4](741-ac-hir-native-core.md)，r4/executing，T-25..30 / AC-21..24。
+本轮只复审/合同，不实施、不预销账；canonical/live ledger不改（ledger旧归档指针待merge）。
+
+| ID | 级别 | 观察 | 修复/跟踪 |
+|---|---|---|---|
+| P741-R3-QA-01 | P2 | 公开run_exe约60.106s返回link.deadline后自有后代仍活；时序相关，另次正确回收。先spawn再约束、约束失败静默None/detach有缺口 | 受控启动及失败安全收口/reader回收，T-26，AC-17/21 |
+| P741-R3-QA-02 | P2 | 真实共享锁使owned暂存exe不能remove；收据准备失败只报link.receipt，未列该残留/清理错误，旧三件套不变 | 清理错误/自有路径/准确事务状态汇总，T-27，AC-18/22 |
+| P741-R3-QA-03 | P3 | archived23/24、T-08漏勾与r1/r3收据矛盾 | 根据收据补T-08，重开T-20..24验收，新六任务；最终完成ID计数/链接断言，T-28，AC-23 |
+
+root门禁观察（非新增AC原型缺陷）：daily4971全跑4935通过/35失败/1超时；
+超时ffi_dual_018单独2.532s通过。旧THR-D3/D4及阶段报告包含对应族，但本轮未逐个完成35红对照，
+不得写成required daily gate绿或“新基线零新增已证实”；正式失败清单已入报告，T-29负责修复后复验/归因。
