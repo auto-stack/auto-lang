@@ -4,7 +4,7 @@ status: reviewed
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
-updated_at: 2026-10-04
+updated_at: 2026-10-05
 plan_revision: 2
 current_step: 17
 total_steps: 17
@@ -372,6 +372,24 @@ Phase 2 执行进度（commit 哈希=plan-741-dev；基线 3a7967262）：
 - [x] **T-17** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 2 独立复审）；merge 沉淀 SD-03/04 并销账 KNOWN-DEBT P741-QA-01..07 行待 /auto-plan:merge。
 
 ## 9. 复审记录
+
+### r2 合入后的独立复核（2026-10-05，用户再次要求检查）
+
+- stage: review | plan_id: PLAN-741 | plan_revision: 2 | outcome: **needs_fix**
+- reviewed_commit: 965b368a20db7c97fab7d1b0d51863b3ccca0f11
+- base_commit: 3a7967262；交付52c67d3df祖先关系已验证。
+- dependency_revisions/spec_inputs/frozen delta hashes/acceptance_results：
+  [r2复核报告](../../reports/741-quality-review-20261005/REVIEW.md)。
+- 独立复跑：44/44原型测试、all-targets零warning、fmt、旧reproduce脚本、
+  README三命令实机运行（add5、trace12/ba）。
+- 原四项P1均确认已修复；新增P741-R2-QA-01块图自环stack overflow/断开环被接受，
+  QA-02 reader join超过60s截止、QA-03收据暂存失败exe残留；QA-04记录归档状态不一致。
+- acceptance_results: AC-09/10/11/13/15 pass；
+  AC-03/14 fail，AC-04/07/08/12 partial；完整旧AC映射见报告。
+- findings/evidence：报告相邻日志、fixtures与helper/复现脚本；未修改实施源码/Spec/ledger。
+- next: 补修新拒绝/截止/清理边界并独立复审；本轮不激活或实施计划，
+  不把旧pass或原型测试绿覆盖新增反例，不改历史状态/勾选。
+
 
 ### Phase 2 独立复审（2026-10-04，/auto-plan:review，独立代理）
 

@@ -1,0 +1,2 @@
+result=Err(Diagnostic { stage: Link, code: "link.receipt", message: "write receipt: 拒绝访问。 (os error 5)", span: Span { start: 0, end: 0 } })
+staged_exe_left=true;old_exe_unchanged=true;old_obj_unchanged=true
