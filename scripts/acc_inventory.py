@@ -328,24 +328,18 @@ def scan_module(rel_path: str, text: str) -> ModuleScan:
                     scan.capabilities[key].append(idx)
 
         # ── 调用候选（masked 行；声明行的 fn 名剔除防自报） ──
-        # QA-02（PLAN-743 r2）：可证明的宿主 namespace/接收者优先；
-        # 变量接收者不因方法名像内建就标 native——本地类型可能声明同名方法，
-        # 无作用域证据一律 unknown-receiver，交人工核对。
+        # R2-QA-01（PLAN-743 r3）：qualified/点/管道 归属全部推迟到
+        # _post_classify——那里才有最终本地类型集、宿主优先级与 enclosing
+        # owner 方法证据；本地同名（type IO/fn print）必须遮蔽宿主推断。
         code_scan = re.sub(r"\bfn\s+[A-Za-z_]\w*", "fn", code)
         for mq in QUALIFIED_CALL_RE.finditer(code_scan):
             recv, meth = mq.group(1), mq.group(2)
-            if recv in NATIVE_NAMESPACES:
-                kind = "native-runtime"
-            elif recv in local_types:
-                kind = "type-qualified"
-            else:
-                kind = "unknown-receiver"
-            scan.calls.append({"kind": kind, "receiver": recv, "name": meth, "line": idx})
+            scan.calls.append({"kind": "unknown-receiver", "receiver": recv,
+                               "name": meth, "line": idx, "owner": type_body})
         for mp in PIPE_METHOD_RE.finditer(code_scan):
             meth = mp.group(1)
-            # 管道形态的归属（本地方法/未知）推迟到 _post_classify，
-            # 那时本地方法集已完整；此处先按 unknown 保守记录
-            scan.calls.append({"kind": "unknown-receiver", "receiver": "|>", "name": meth, "line": idx})
+            scan.calls.append({"kind": "unknown-receiver", "receiver": "|>",
+                               "name": meth, "line": idx, "owner": type_body})
         occupied = ([m.span() for m in QUALIFIED_CALL_RE.finditer(code_scan)]
                     + [m.span() for m in PIPE_METHOD_RE.finditer(code_scan)])
         for mb in BARE_CALL_RE.finditer(code_scan):
@@ -354,22 +348,24 @@ def scan_module(rel_path: str, text: str) -> ModuleScan:
             name = mb.group(1)
             if name in ("if", "while", "for", "is", "return", "fn", "use", "enum", "type"):
                 continue
-            # 前导点=.m() 隐式 self 形态：归属推迟到 _post_classify（本地方法集完整后）
+            # 前导点=.m() 隐式 self 形态：携带当前 enclosing owner 供升级判定
             dotted = mb.start() > 0 and code_scan[mb.start() - 1] == "."
             if dotted:
                 scan.calls.append({"kind": "unknown-receiver", "receiver": ".",
-                                   "name": name, "line": idx})
+                                   "name": name, "line": idx, "owner": type_body})
                 continue
-            if name in BARE_NATIVES:
-                kind = "native-runtime"
-            elif name in local_fns:
+            # 本地/导入符号先于宿主内建判定：本地 fn print 遮蔽内建 print
+            if name in local_fns:
                 kind = "local-fn"
             elif name in imported_symbols:
                 kind = "imported-symbol"
+            elif name in BARE_NATIVES:
+                kind = "native-runtime"
             else:
                 # 本扫描层无法解析（动态导入/宿主注入等）→ 保留 unknown，不丢弃
                 kind = "unknown-bare-call"
-            scan.calls.append({"kind": kind, "receiver": None, "name": name, "line": idx})
+            scan.calls.append({"kind": kind, "receiver": None, "name": name,
+                               "line": idx, "owner": None})
 
         depth += code.count("{") - code.count("}")
         scan.brace_balance = depth
@@ -377,8 +373,8 @@ def scan_module(rel_path: str, text: str) -> ModuleScan:
             type_body = None
             enum_body = None
 
+    scan.calls = _post_classify(scan, local_types)
     scan.calls = _aggregate_calls(scan.calls)
-    _post_classify(scan, local_types)
     # 跨行字符串字面量（QA-01）：合法形态，掩码器保持字面量态到真正闭合；
     # 能力证据=每个跨行字面量的起始行（engine.at:314/333 实证）。
     # 未闭合-at-eof 才是异常（词法不确定），不再与合法跨行混记。
@@ -395,32 +391,38 @@ def _post_classify(scan: ModuleScan, local_types: set):
     """主循环后的符号表升级：用本模块完整声明集重分类扫描期无法判定的候选。
 
     词法级名字匹配，仍属候选而非语义解析；跨模块同名歧义交人工审定层。
-    QA-02（PLAN-743 r2）：只有本地声明证据才升级（enum case/type/本地方法）；
-    内建方法名不再作为升级依据——变量接收者与无证据同名调用保持 unknown。
+    R2-QA-01（PLAN-743 r3）：本地声明先于宿主（本地 type IO/fn print 遮蔽宿主
+    推断）；dot/pipe 隐式 self 仅当调用点 enclosing owner 声明了该方法才升级
+    （其它 owner 同名/无 owner 不猜）；变量接收者与无证据同名调用保持 unknown。
+    返回排序后的候选列表（owner 字段仅判定用，聚合时剥离）。
     """
     local_enum_cases = {c["name"] for c in scan.enum_cases}
-    local_method_names = {m["name"] for m in scan.methods}
+    methods_by_owner = {}
+    for m in scan.methods:
+        methods_by_owner.setdefault(m["owner"], set()).add(m["name"])
     for c in scan.calls:
         n = c["name"]
         recv = c.get("receiver")
-        if c["kind"] == "unknown-receiver" and recv == ".":
-            # .m() 隐式 self：仅当名字是本地类型声明的方法才升级
-            if n in local_method_names:
-                c["kind"] = "implicit-self-method"
-                c["receiver"] = None
+        owner = c.get("owner")
+        if c["kind"] == "unknown-receiver":
+            if recv in (".", "|>"):
+                # 隐式 self：仅当前 enclosing owner 声明该方法才升级
+                if owner is not None and n in methods_by_owner.get(owner, ()):
+                    c["kind"] = "implicit-self-method"
+                    c["receiver"] = None
+                # 其它 owner 同名/无 owner → 保持 unknown（形态标记保留）
+            elif recv in local_types:
+                c["kind"] = "type-qualified"
+            elif recv in NATIVE_NAMESPACES:
+                c["kind"] = "native-runtime"
+            # 变量/无法解析接收者 → 保持 unknown-receiver
         elif c["kind"] == "unknown-bare-call":
             if n in local_enum_cases:
                 c["kind"] = "enum-variant-construction"
             elif n in local_types:
                 c["kind"] = "type-construction"
-        elif c["kind"] == "unknown-receiver":
-            if recv == "|>":
-                if n in local_method_names:
-                    c["kind"] = "implicit-self-method"
-                    c["receiver"] = None
-            elif recv in local_types:
-                c["kind"] = "type-qualified"
-    scan.calls.sort(key=lambda c: (c["kind"], c["name"], str(c.get("receiver"))))
+    return sorted(scan.calls,
+                  key=lambda c: (c["kind"], c["name"], str(c.get("receiver"))))
 
 
 def _aggregate_calls(calls):

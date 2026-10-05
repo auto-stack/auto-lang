@@ -1,0 +1,8 @@
+type IO {
+ static fn read_line() int { return 1 }
+}
+fn print() int { return 2 }
+fn demo() int {
+ print()
+ return IO.read_line()
+}

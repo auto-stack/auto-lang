@@ -361,10 +361,30 @@ class Qa02CallClassification(unittest.TestCase):
         self.assertEqual(k[("IO", "read_line")], "native-runtime")
 
     def test_implicit_self_dot_and_pipe_forms(self):
+        # r3 R2-QA-01：正例必须在 enclosing owner（P）方法体内
         s, k = self.kinds(
-            "type P {\n fn next() int { return 1 }\n}\n"
-            "fn walk() int {\n .next()\n return 2 |> .next()\n}\n")
+            "type P {\n fn next() int {\n  .next()\n  return 2 |> .next()\n }\n}\n")
         self.assertEqual(k[(None, "next")], "implicit-self-method")
+
+    def test_review_fixture_shadowed_host(self):
+        fixture = _HERE / "fixtures" / "acc-inventory" / "review" / "shadowed_host.at"
+        s, k = self.kinds(fixture.read_text(encoding="utf-8"))
+        # 本地 fn print / 本地 type IO 遮蔽宿主内建（r3 R2-QA-01）
+        self.assertEqual(k[(None, "print")], "local-fn")
+        self.assertEqual(k[("IO", "read_line")], "type-qualified")
+
+    def test_review_fixture_different_owner(self):
+        fixture = _HERE / "fixtures" / "acc-inventory" / "review" / "different_owner.at"
+        s, k = self.kinds(fixture.read_text(encoding="utf-8"))
+        # .next() 在 Q 方法体内，next 声明于 P——非当前 owner 不升级
+        self.assertEqual(k[(".", "next")], "unknown-receiver")
+
+    def test_review_fixture_unrelated_dot_pipe(self):
+        fixture = _HERE / "fixtures" / "acc-inventory" / "review" / "unrelated_dot_pipe.at"
+        s, k = self.kinds(fixture.read_text(encoding="utf-8"))
+        # 自由函数内的点/管道形态无 enclosing owner → 保持 unknown
+        self.assertEqual(k[(".", "next")], "unknown-receiver")
+        self.assertEqual(k[("|>", "next")], "unknown-receiver")
 
     def test_unknown_dot_and_pipe_stay_unknown(self):
         s, k = self.kinds("fn walk() int {\n .mystery()\n return 1 |> .mystery()\n}\n")
