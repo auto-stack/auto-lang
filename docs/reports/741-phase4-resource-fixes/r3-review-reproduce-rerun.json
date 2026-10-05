@@ -1,0 +1,47 @@
+   Compiling object v0.37.3
+   Compiling cranelift-object v0.126.2
+   Compiling auto-ac-prototype v0.1.0 (D:\autostack\.wt\lang-741\auto-lang\experimental\ac-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.15s
+{
+  "name": "baseline",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "BUILT C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-cd5c0348915b4e22beb6ca5a13529d4a\\old.exe (entry test_entry)\n  obj: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-cd5c0348915b4e22beb6ca5a13529d4a\\old.obj\n  exe: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-cd5c0348915b4e22beb6ca5a13529d4a\\old.exe\n  receipt: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-cd5c0348915b4e22beb6ca5a13529d4a\\old.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+  "stderr": null
+}
+{
+  "name": "locked-cleanup",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "result=Err(Diagnostic { stage: Link, code: \"link.cleanup\", message: \":1:1: error[link/link.receipt]: stage receipt at C:\\\\Users\\\\zhaop\\\\AppData\\\\Local\\\\Temp\\\\p741-r3-review-cd5c0348915b4e22beb6ca5a13529d4a\\\\locked\\\\tx.ac-link.txt.tmp-ac741-18636: 拒绝访问。 (os error 5); transaction NOT committed; own staged files remain (release the blocking handles, then remove): C:\\\\Users\\\\zhaop\\\\AppData\\\\Local\\\\Temp\\\\p741-r3-review-cd5c0348915b4e22beb6ca5a13529d4a\\\\locked\\\\tx.exe.tmp-ac741-18636: 另一个程序正在使用此文件，进程无法访问。 (os error 32)\", span: Span { start: 0, end: 0 } })\nstaged_exe_left=true;staged_exe_path=C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-cd5c0348915b4e22beb6ca5a13529d4a\\locked\\tx.exe.tmp-ac741-18636;old_exe_unchanged=true;old_obj_unchanged=true;old_receipt_unchanged=true;user_directory_preserved=true\n",
+  "stderr": null
+}
+{
+  "name": "process-0",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "child_handle=0xd8;open_error=0;wait_status=258\nmode=fallback;deadline_ms=1000;elapsed_ms=1015;result=Err(DeadlineCollect);child_pid=24384;child_alive_after_return=true\n",
+  "stderr": null
+}
+{
+  "name": "process-1",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "child_handle=0xdc;open_error=0;wait_status=258\nmode=fallback;deadline_ms=1000;elapsed_ms=1013;result=Err(DeadlineCollect);child_pid=34992;child_alive_after_return=true\n",
+  "stderr": null
+}
+{
+  "name": "process-2",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "child_handle=0x0;open_error=87;wait_status=4294967295\nmode=fallback;deadline_ms=1000;elapsed_ms=1009;result=Err(DeadlineCollect);child_pid=27332;child_alive_after_return=false\n",
+  "stderr": null
+}
+{
+  "name": "public-60s",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "child_handle=0x0;open_error=87;wait_status=4294967295\nmode=public-fallback;deadline_ms=60000;elapsed_ms=60082;result=Err(Diagnostic { stage: Link, code: \"link.deadline\", message: \"subprocess C:\\\\Users\\\\zhaop\\\\AppData\\\\Local\\\\Temp\\\\p741-r3-review-cd5c0348915b4e22beb6ca5a13529d4a\\\\original-helper.exe exited but its output did not finish within 60s (a descendant may still hold the pipe)\", span: Span { start: 0, end: 0 } });child_pid=4792;child_alive_after_return=false\n",
+  "stderr": null
+}
+Evidence directory: C:\Users\zhaop\AppData\Local\Temp\p741-r3-review-cd5c0348915b4e22beb6ca5a13529d4a
