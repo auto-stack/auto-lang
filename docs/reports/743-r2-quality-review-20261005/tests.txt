@@ -1,0 +1,46 @@
+test_decisions_bound_to_removed_input_fail_check (test_acc_inventory.DriftAndFailurePaths.test_decisions_bound_to_removed_input_fail_check) ... ok
+test_head_commit_audit_field_does_not_trigger_drift (test_acc_inventory.DriftAndFailurePaths.test_head_commit_audit_field_does_not_trigger_drift) ... ok
+test_malformed_decisions_fail_check (test_acc_inventory.DriftAndFailurePaths.test_malformed_decisions_fail_check) ... ok
+test_missing_input_file_is_exit2_and_writes_nothing (test_acc_inventory.DriftAndFailurePaths.test_missing_input_file_is_exit2_and_writes_nothing) ... ok
+test_output_inside_source_dir_refused (test_acc_inventory.DriftAndFailurePaths.test_output_inside_source_dir_refused) ... ok
+test_registry_drift_blocks_write_and_check (test_acc_inventory.DriftAndFailurePaths.test_registry_drift_blocks_write_and_check) ... ok
+test_source_drift_fails_check (test_acc_inventory.DriftAndFailurePaths.test_source_drift_fails_check) ... ok
+test_stale_decisions_fail_check (test_acc_inventory.DriftAndFailurePaths.test_stale_decisions_fail_check) ... ok
+test_tampered_manifest_fails_check (test_acc_inventory.DriftAndFailurePaths.test_tampered_manifest_fails_check) ... ok
+test_block_comment_with_string_like_content_stays_masked (test_acc_inventory.Qa01MultilineMasking.test_block_comment_with_string_like_content_stays_masked) ... ok
+test_escaped_newline_stays_in_literal (test_acc_inventory.Qa01MultilineMasking.test_escaped_newline_stays_in_literal) ... ok
+test_multiline_string_pseudocode_not_scanned (test_acc_inventory.Qa01MultilineMasking.test_multiline_string_pseudocode_not_scanned) ... ok
+test_real_code_after_closing_quote_is_scanned (test_acc_inventory.Qa01MultilineMasking.test_real_code_after_closing_quote_is_scanned) ... ok
+test_unterminated_string_marks_indeterminate (test_acc_inventory.Qa01MultilineMasking.test_unterminated_string_marks_indeterminate) ... ok
+test_implicit_self_dot_and_pipe_forms (test_acc_inventory.Qa02CallClassification.test_implicit_self_dot_and_pipe_forms) ... ok
+test_namespace_receivers_stay_native (test_acc_inventory.Qa02CallClassification.test_namespace_receivers_stay_native) ... ok
+test_real_repo_cg_new_ar_new_not_native (test_acc_inventory.Qa02CallClassification.test_real_repo_cg_new_ar_new_not_native) ... ok
+test_review_fixture_same_name_method (test_acc_inventory.Qa02CallClassification.test_review_fixture_same_name_method) ... ok
+test_unknown_dot_and_pipe_stay_unknown (test_acc_inventory.Qa02CallClassification.test_unknown_dot_and_pipe_stay_unknown) ... ok
+test_capability_evidence_present (test_acc_inventory.ScanSemantics.test_capability_evidence_present) ... ok
+test_comment_and_string_pseudocode_not_scanned (test_acc_inventory.ScanSemantics.test_comment_and_string_pseudocode_not_scanned) ... ok
+test_native_imported_and_local_call_classification (test_acc_inventory.ScanSemantics.test_native_imported_and_local_call_classification) ... ok
+test_same_name_methods_recorded_per_owner (test_acc_inventory.ScanSemantics.test_same_name_methods_recorded_per_owner) ... ok
+test_unknown_receiver_kept_as_candidate (test_acc_inventory.ScanSemantics.test_unknown_receiver_kept_as_candidate) ... ok
+test_duplicate_ids_fail (test_acc_inventory.StrictDecisionsGate.test_duplicate_ids_fail) ... ok
+test_illegal_conclusion_fails (test_acc_inventory.StrictDecisionsGate.test_illegal_conclusion_fails) ... ok
+test_missing_evidence_file_fails_with_id (test_acc_inventory.StrictDecisionsGate.test_missing_evidence_file_fails_with_id) ... ok
+test_open_family_requires_owner_probe_workpackage (test_acc_inventory.StrictDecisionsGate.test_open_family_requires_owner_probe_workpackage) ... ok
+test_orphan_family_fails (test_acc_inventory.StrictDecisionsGate.test_orphan_family_fails) ... ok
+test_scan_only_mode_survives_without_flag_but_not_ok (test_acc_inventory.StrictDecisionsGate.test_scan_only_mode_survives_without_flag_but_not_ok) ... ok
+test_strict_flag_rejected_with_write (test_acc_inventory.StrictDecisionsGate.test_strict_flag_rejected_with_write) ... ok
+test_strict_gate_fails_on_empty_decisions (test_acc_inventory.StrictDecisionsGate.test_strict_gate_fails_on_empty_decisions) ... ok
+test_strict_gate_fails_when_layer_absent (test_acc_inventory.StrictDecisionsGate.test_strict_gate_fails_when_layer_absent) ... ok
+test_strict_gate_green_with_complete_layer (test_acc_inventory.StrictDecisionsGate.test_strict_gate_green_with_complete_layer) ... ok
+test_unbound_decision_fails_with_id (test_acc_inventory.StrictDecisionsGate.test_unbound_decision_fails_with_id) ... ok
+test_uncovered_managed_input_fails (test_acc_inventory.StrictDecisionsGate.test_uncovered_managed_input_fails) ... ok
+test_uncovered_unknown_candidate_fails (test_acc_inventory.StrictDecisionsGate.test_uncovered_unknown_candidate_fails) ... ok
+test_check_green_with_fresh_decisions (test_acc_inventory.WriteAndCheck.test_check_green_with_fresh_decisions) ... ok
+test_manifest_covers_all_managed_inputs (test_acc_inventory.WriteAndCheck.test_manifest_covers_all_managed_inputs) ... ok
+test_write_is_byte_deterministic (test_acc_inventory.WriteAndCheck.test_write_is_byte_deterministic) ... ok
+test_write_then_check_green_without_decisions (test_acc_inventory.WriteAndCheck.test_write_then_check_green_without_decisions) ... ok
+
+----------------------------------------------------------------------
+Ran 41 tests in 20.383s
+
+OK
