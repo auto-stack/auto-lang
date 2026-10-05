@@ -552,6 +552,28 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 
 ## 9. 复审记录
 
+### Phase 3 执行交接（2026-10-05，stage: work，r3 P743-R2-QA-01..06 修复）
+
+- stage: work（r3；外部复核 needs_fix 后的完整性修复实施）
+- plan_id: PLAN-743 · plan_revision: 3
+- outcome: pass（T-15..T-20 完成、验收映射成立；非独立复审结论）
+- code_commit: 184749168（worktree plan-743-dev；基点=激活提交 a0f8ddd44；
+  r3 提交链 e0008648b→45fe4fb21→a25a30722→9f634cb52→184749168，worktree clean 0 dirty）
+- worktree: D:/autostack/.wt/lang-743/auto-lang（保留待 review/merge）
+- task_ids: T-15..T-20 全部完成（证据见 §8 任务行与 verification.md）；
+  current_step 20/21；T-21（独立复审与合入交接）按定义留待 review/merge 阶段闭环
+- evidence: PYTHONUTF8=1 全门禁绿——63/63 测试（41 旧+22 新）、--write 不触人工层
+  （字节不变）、严格 --check --require-decisions（47 决定新鲜、146 组/7 族含新适用性
+  规则闭环）、三方确定性 cmp、git diff --check clean、围栏感知链接无断链、
+  范围探针 crates/auto-lib/docs.specs/experimental/Cargo 零触碰、CLI 残留 0；
+  R2-QA-01..06 反例 before→after 逐项复现并测试锁定（baseline.md/verification.md）；
+  phase3 提案冻结 a4af013b759a1d35（SD-06/07）；计划链接改归档可解析（4 处）
+- blockers: 无
+- next: /auto-plan:review（r3 独立复审：重放原/新反例与严格门，绑定 revision 3 +
+  实现 HEAD 184749168，逐 AC/SD 复核）；pass 后 merge 沉淀 SD-06/07（Spec 落地改变
+  hash 时按 §5.6.6/§5.7.6 语义复核重绑并严格冒烟）、plans.md 行归档态、ledger
+  P743-3/4 指针对账、逐条销账、归档、guard 后清理。本记录不替代复审；不自行归档/合入。
+
 ### 合入后独立复审 R4（2026-10-05，review r2）
 
 - stage: review | plan_id: PLAN-743 | plan_revision: 2 | outcome: **needs_fix**
