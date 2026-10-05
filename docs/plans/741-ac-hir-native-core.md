@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-741
-status: executing
+status: reviewed
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
