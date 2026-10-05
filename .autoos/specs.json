@@ -4999,7 +4999,7 @@
         {
           "id": "P743-1",
           "title": "auto-acc 目标态合同：主体清单/能力四态/代际判据（SD-01）",
-          "content": "PLAN-743 沉淀 ACC 自举目标态：主体清单三分层（adapt=token/lexer/parser-core；reference=typeinfo/codegen/engine/a2r/aavm；新建=解析/typeck/源码→HIR adapter/lowering/驱动/桥客户端）；能力四态（required=str 最高优先+enum±payload+record+方法+List+int全序+is+use多模块+mut+全局+fstring+源码域诊断；implemented 仅 i32 trap70 与 HIR 域诊断；unknown=宽度/char/跨行串/宿主所有权/用户泛型，各带探针 owner；not-required=Option消费/管道/闭包task转型，附理由）；Gen1–3 代际判据（字节固定点仅约定后附加，A2R 中转不算 native）。canonical=docs/specs/auto-acc/project.md；证据=docs/reports/743-acc-hir-contract/（46 条 hash 绑定决定+可重跑 manifest）。 r2（QA-01/02/03/05）修正：清单可信度以 acc_inventory --check --require-decisions 严格门为准（决定+unknown_families 双向闭环）；分类政策=变量接收者一律 unknown（Meter.len/CG.new/Ar.new 实证），native 仅限可证明宿主命名空间；A8 owner=运行时首批候选、A9 owner=聚合能力线，候选依赖 ①→② 单向无环。 r3（R2-QA-01..04）强化：严格门含字段类型受控拒绝（无 traceback）、同条证据绑定（非扫描输入证据同样受控）、resolved 族适用决定闭环；分类政策升级为当前 enclosing owner 判定（本地声明遮蔽宿主）。",
+          "content": "PLAN-743 沉淀 ACC 自举目标态：主体清单三分层（adapt=token/lexer/parser-core；reference=typeinfo/codegen/engine/a2r/aavm；新建=解析/typeck/源码→HIR adapter/lowering/驱动/桥客户端）；能力四态（required=str 最高优先+enum±payload+record+方法+List+int全序+is+use多模块+mut+全局+fstring+源码域诊断；implemented 仅 i32 trap70 与 HIR 域诊断；unknown=宽度/char/跨行串/宿主所有权/用户泛型，各带探针 owner；not-required=Option消费/管道/闭包task转型，附理由）；Gen1–3 代际判据（字节固定点仅约定后附加，A2R 中转不算 native）。canonical=docs/specs/auto-acc/project.md；证据=docs/reports/743-acc-hir-contract/（46 条 hash 绑定决定+可重跑 manifest）。 r2（QA-01/02/03/05）修正：清单可信度以 acc_inventory --check --require-decisions 严格门为准（决定+unknown_families 双向闭环）；分类政策=变量接收者一律 unknown（Meter.len/CG.new/Ar.new 实证），native 仅限可证明宿主命名空间；A8 owner=运行时首批候选、A9 owner=聚合能力线，候选依赖 ①→② 单向无环。 r3（R2-QA-01..04）强化：严格门含字段类型受控拒绝（无 traceback）、同条证据绑定（非扫描输入证据同样受控）、resolved 族适用决定闭环；分类政策升级为当前 enclosing owner 判定（本地声明遮蔽宿主）。 r4（R3-QA-01..03）再强化：resolved 族引用只读通过全部校验的决定（被淘汰/重复 ID 定位拒绝、零 traceback）；适用性仅认同条 evidence 覆盖族路径（hash/subject 旁路移除）；导入/参数/let-var 绑定同名遮蔽宿主准入。",
           "file": "docs/specs/auto-acc/project.md",
           "related": [],
           "status": "published",
@@ -8094,7 +8094,7 @@
           "id": "P743-3",
           "title": "PLAN-743 r1 复审裁定：R1 needs_fix→修复→R2 pass",
           "content": "PLAN-743 revision 1 复审链：R1（reviewed 基线 b96f7beab）8 项 AC 六 pass+AC-08 partial，发现 F-01（acceptance-matrix 相对链接多一级）与 F-03（use 边计数 15→18，manifest 为准）双 P2；修复循环 1 次提交 d7013b290 闭环；R2 复核 pass（修复 diff 仅 4 文件 4 行，delta 冻结 b6b80711 未触）。交付落 v0.6-dev：specs 沉淀 05d0127a4 + SD-03 落地后四条 spec 引用决定重绑 bbfca37b8（rebase 映射：d7013b290→9abc87acc）。工具收据：三命令 exit0、18 测试、字节确定性、--check HEAD 免疫。",
-          "file": "docs/plans/743-acc-bootstrap-hir-contract.md",
+          "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
           "related": [],
           "status": "published",
           "created": "2026-10-04",
@@ -8146,6 +8146,16 @@
             "boundary-fix"
           ],
           "content": "r2 合入后复审 needs_fix（docs/reports/741-quality-review-20261005）→ r3 修复：R2-QA-01 块包含图结构门（显式栈 DFS 全可达+入边不变量、结构失败阻止数据流走查，自环/断开 SCC 定位拒绝不 panic）、R2-QA-02 单一单调截止覆盖等待+输出收集（windows-sys 0.59 Job Object KILL_ON_JOB_CLOSE 管控子树、reader 全出口回收、read_to_end+lossy 防截断成功）、R2-QA-03 发布事务暂存所有权全失败出口回收+link.restore 恢复诊断+占位目录保护、R2-QA-04 状态/指针簿记。独立代理复审 pass：原型 52 项+60s 证据测试、watchdog 60.05s 准时拒绝（对比 r2 实测 114.96s 挂起）、cargo t 双侧同基线归因零新增、生产面零 diff。",
+          "status": "published",
+          "created": "2026-10-05",
+          "last_modified": "2026-10-05"
+        },
+        {
+          "id": "P743-6",
+          "title": "PLAN-743 r4 复审裁定：外部复核 needs_fix → Phase 4 修复 → R5 pass",
+          "content": "r4 链条：r3 合入后独立复审（基线 8e8f6f19b）发现 P743-R3-QA-01..04（被淘汰记录进消费者索引 traceback、hash/subject 证据旁路、导入/参数遮蔽 native 误判、归档生命周期收口），needs_fix；同 ID 激活 r4（T-22..27/AC-21..24/SD-08）。Phase 4 修复实现 HEAD af3c8040e（rebase 前），R5 独立重放组合探针/旁路负例/遮蔽 fixture 全绿 pass；交付落 v0.6-dev（SD-08 目标文件无决定绑定，落地后严格冒烟绿；final_assertions.py 七类断言归档收口执行）。冻结：phase4 提案 f8924d0a8266976d。",
+          "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+          "related": [],
           "status": "published",
           "created": "2026-10-05",
           "last_modified": "2026-10-05"
