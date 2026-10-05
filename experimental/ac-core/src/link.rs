@@ -58,6 +58,38 @@ pub fn staging_tag() -> String {
     format!("ac741-{}", std::process::id())
 }
 
+/// Remove an own staged file, reporting real cleanup errors (R3-QA-02,
+/// R4-QA-01). NotFound means the file was already reclaimed — that is
+/// success; a directory occupying the path is a USER placeholder and is
+/// never ours to remove or to count as a failure.
+fn discard_own_staged(path: &Path) -> Vec<String> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Vec::new(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(_) if path.is_dir() => Vec::new(),
+        Err(e) => vec![format!("{}: {}", path.display(), e)],
+    }
+}
+
+/// A cleanup failure changes what the caller must be told: the original
+/// failure stands, the transaction's commit state is stated explicitly
+/// (NOT committed for staging/rollback paths), and every residual own path
+/// plus its real OS error is listed with the recovery action.
+fn with_staged_cleanup(original: Diagnostic, cleanup_failures: Vec<String>) -> Diagnostic {
+    if cleanup_failures.is_empty() {
+        original
+    } else {
+        link_diag(
+            "link.cleanup",
+            format!(
+                "{}; transaction NOT committed; own staged files remain (release the blocking handles, then remove): {}",
+                original.render("", "").trim_end(),
+                cleanup_failures.join("; ")
+            ),
+        )
+    }
+}
+
 /// Failure modes of the deadline executor, kept distinct so call sites can
 /// map them to their own diagnostic codes (e.g. a missing `rustc` is
 /// `link.rustc-missing`, not a generic spawn error).
@@ -510,18 +542,25 @@ pub fn link_object_staged(
     let (code, out) = match run_with_deadline(Command::new(lld).args(&args), SUBPROC_DEADLINE) {
         Ok(r) => r,
         Err(e) => {
-            // R2-QA-03: this call owns the staged exe until the caller takes
-            // it — every error exit must reclaim it, not just the nonzero-
-            // exit path below.
-            let _ = std::fs::remove_file(&tmp_exe);
-            return Err(map_subproc(e, "link.spawn", "rust-lld"));
+            // R4-QA-01: this call owns the staged exe until the caller takes
+            // it — every error exit must reclaim it AND surface a blocked
+            // reclaim (real OS error + residual path + NOT committed), never
+            // swallow it.
+            let cleanup = discard_own_staged(&tmp_exe);
+            return Err(with_staged_cleanup(
+                map_subproc(e, "link.spawn", "rust-lld"),
+                cleanup,
+            ));
         }
     };
     if code != Some(0) {
-        let _ = std::fs::remove_file(&tmp_exe);
-        return Err(link_diag(
-            "link.failed",
-            format!("rust-lld exit {:?}: {}", code, out.trim()),
+        let cleanup = discard_own_staged(&tmp_exe);
+        return Err(with_staged_cleanup(
+            link_diag(
+                "link.failed",
+                format!("rust-lld exit {:?}: {}", code, out.trim()),
+            ),
+            cleanup,
         ));
     }
     Ok(StagedLink {
@@ -569,41 +608,14 @@ pub fn publish_artifacts(
     let discard_staged = || -> Vec<String> {
         let mut failures = Vec::new();
         for p in [&staged.tmp_exe, tmp_obj, &tmp_receipt] {
-            match std::fs::remove_file(p) {
-                Ok(()) => {}
-                // Already gone: reclaimed earlier on this path or by the
-                // caller — that is success.
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                // A directory occupying the path is a USER placeholder, not
-                // our staged file; it is never ours to remove and never a
-                // cleanup failure.
-                Err(_) if p.is_dir() => {}
-                Err(e) => failures.push(format!("{}: {}", p.display(), e)),
-            }
+            failures.extend(discard_own_staged(p));
         }
         failures
-    };
-    // A cleanup failure changes what the caller must be told: the original
-    // failure stands, the transaction's commit state is stated explicitly,
-    // and every residual own path plus its real OS error is listed.
-    let with_cleanup = |original: Diagnostic, cleanup_failures: Vec<String>| -> Diagnostic {
-        if cleanup_failures.is_empty() {
-            original
-        } else {
-            link_diag(
-                "link.cleanup",
-                format!(
-                    "{}; transaction NOT committed; own staged files remain (release the blocking handles, then remove): {}",
-                    original.render("", "").trim_end(),
-                    cleanup_failures.join("; ")
-                ),
-            )
-        }
     };
 
     if let Err(e) = std::fs::write(&tmp_receipt, receipt_body) {
         let cleanup = discard_staged();
-        return Err(with_cleanup(
+        return Err(with_staged_cleanup(
             link_diag(
                 "link.receipt",
                 format!("stage receipt at {}: {}", tmp_receipt.display(), e),
@@ -651,7 +663,7 @@ pub fn publish_artifacts(
                             ),
                         )
                     };
-                    return Err(with_cleanup(base, cleanup));
+                    return Err(with_staged_cleanup(base, cleanup));
                 }
             }
         }
@@ -772,7 +784,7 @@ pub fn publish_artifacts(
                 }
                 return Err(link_diag("link.restore", parts.join("; ")));
             }
-            Err(with_cleanup(d, cleanup_failures))
+            Err(with_staged_cleanup(d, cleanup_failures))
         }
     }
 }
@@ -1216,6 +1228,177 @@ mod tests {
         // Release the lock: the residual staged exe becomes removable.
         drop(lock);
         std::fs::remove_file(&staged.tmp_exe).expect("cleanup after release");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // -- link_object_staged failure matrix (R4-QA-01) -------------------------
+
+    /// R4-QA-01, nonzero-exit + real sharing lock: the linker fails (garbage
+    /// obj → nonzero), the staged exe is held without FILE_SHARE_DELETE, so
+    /// the reclaim fails and must surface as `link.cleanup` carrying the
+    /// original `link.failed`, the residual path, the real OS error and the
+    /// commit state. Previous artifacts stay untouched; releasing the lock
+    /// makes the staged exe removable again.
+    #[test]
+    #[cfg(windows)]
+    fn link_nonzero_failure_locked_staged_exe_reports_cleanup() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = std::env::temp_dir()
+            .join("ac741-link-tx")
+            .join("los-nonzero-lock");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        make_finals(&dir);
+        let (tmp_exe, tmp_obj) = staged_paths(&dir);
+        std::fs::write(&tmp_exe, STAGE_EXE).unwrap();
+        std::fs::write(&tmp_obj, STAGE_OBJ).unwrap();
+        // Garbage obj → the real rust-lld exits nonzero.
+        let garbage_obj = dir.join("garbage.obj");
+        std::fs::write(&garbage_obj, b"not a coff object").unwrap();
+        let lld = find_rust_lld().expect("rust-lld");
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(1)
+            .open(&tmp_exe)
+            .expect("lock staged exe");
+
+        let err = link_object_staged(
+            &lld,
+            Path::new("."),
+            &garbage_obj,
+            &dir.join("tx.exe"),
+            "ac_start",
+            &[],
+        )
+        .err();
+        let d = err.expect("must fail");
+        assert_eq!(d.code, "link.cleanup", "{}", d.render("f", ""));
+        let msg = d.render("f", "");
+        assert!(msg.contains("link.failed"), "original failure lost: {msg}");
+        assert!(
+            msg.contains(&tmp_exe.display().to_string()),
+            "residual staged exe path missing: {msg}"
+        );
+        assert!(msg.contains("os error"), "real OS error missing: {msg}");
+        assert!(msg.contains("NOT committed"), "commit state unclear: {msg}");
+
+        assert_eq!(std::fs::read(dir.join("tx.exe")).unwrap(), OLD_EXE);
+        assert_eq!(std::fs::read(dir.join("tx.obj")).unwrap(), OLD_OBJ);
+        assert_eq!(
+            std::fs::read(dir.join("tx.ac-link.txt")).unwrap(),
+            OLD_RECEIPT
+        );
+
+        // Release the lock: the residual staged exe becomes removable.
+        drop(lock);
+        std::fs::remove_file(&tmp_exe).expect("cleanup after release");
+        // tmp_obj is the CALLER's staging file (main.rs cleans it); this
+        // call's ownership scope is the staged exe only.
+        let _ = std::fs::remove_file(&tmp_obj);
+        assert!(strays(&dir).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// R4-QA-01, executor-error (spawn) + real sharing lock: the same
+    /// reporting contract for the deadline-executor error exit — a missing
+    /// linker binary deterministically drives the spawn arm without any
+    /// product fault-injection switch.
+    #[test]
+    #[cfg(windows)]
+    fn executor_error_locked_staged_exe_reports_cleanup() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = std::env::temp_dir()
+            .join("ac741-link-tx")
+            .join("los-spawn-lock");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        make_finals(&dir);
+        let (tmp_exe, tmp_obj) = staged_paths(&dir);
+        std::fs::write(&tmp_exe, STAGE_EXE).unwrap();
+        std::fs::write(&tmp_obj, STAGE_OBJ).unwrap();
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(1)
+            .open(&tmp_exe)
+            .expect("lock staged exe");
+
+        let err = link_object_staged(
+            Path::new(r"Z:\ac741-nonexistent\lld.exe"),
+            Path::new("."),
+            &tmp_obj,
+            &dir.join("tx.exe"),
+            "ac_start",
+            &[],
+        )
+        .err();
+        let d = err.expect("must fail");
+        assert_eq!(d.code, "link.cleanup", "{}", d.render("f", ""));
+        let msg = d.render("f", "");
+        assert!(
+            msg.contains("link.spawn") || msg.contains("rust-lld"),
+            "{msg}"
+        );
+        assert!(
+            msg.contains(&tmp_exe.display().to_string()),
+            "residual staged exe path missing: {msg}"
+        );
+        assert!(msg.contains("os error"), "real OS error missing: {msg}");
+        assert!(msg.contains("NOT committed"), "commit state unclear: {msg}");
+
+        assert_eq!(std::fs::read(dir.join("tx.exe")).unwrap(), OLD_EXE);
+        assert_eq!(std::fs::read(dir.join("tx.obj")).unwrap(), OLD_OBJ);
+        assert_eq!(
+            std::fs::read(dir.join("tx.ac-link.txt")).unwrap(),
+            OLD_RECEIPT
+        );
+
+        drop(lock);
+        std::fs::remove_file(&tmp_exe).expect("cleanup after release");
+        // tmp_obj is the CALLER's staging file (main.rs cleans it); this
+        // call's ownership scope is the staged exe only.
+        let _ = std::fs::remove_file(&tmp_obj);
+        assert!(strays(&dir).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Normal reclaimable failures (no lock) must stay clean: original error
+    /// code, zero own residue, previous artifacts untouched.
+    #[test]
+    #[cfg(windows)]
+    fn link_failure_without_lock_leaves_no_residue() {
+        let dir = std::env::temp_dir()
+            .join("ac741-link-tx")
+            .join("los-nonzero-clean");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        make_finals(&dir);
+        let (tmp_exe, tmp_obj) = staged_paths(&dir);
+        std::fs::write(&tmp_exe, STAGE_EXE).unwrap();
+        std::fs::write(&tmp_obj, STAGE_OBJ).unwrap();
+        let garbage_obj = dir.join("garbage.obj");
+        std::fs::write(&garbage_obj, b"not a coff object").unwrap();
+        let lld = find_rust_lld().expect("rust-lld");
+
+        let err = link_object_staged(
+            &lld,
+            Path::new("."),
+            &garbage_obj,
+            &dir.join("tx.exe"),
+            "ac_start",
+            &[],
+        )
+        .err();
+        let d = err.expect("must fail");
+        assert_eq!(d.code, "link.failed", "{}", d.render("f", ""));
+
+        assert_eq!(std::fs::read(dir.join("tx.exe")).unwrap(), OLD_EXE);
+        assert!(!tmp_exe.exists(), "staged exe left behind");
+        // tmp_obj is the CALLER's staging file (main.rs cleans it).
+        assert!(tmp_obj.exists(), "caller-owned obj must not be touched");
+        let _ = std::fs::remove_file(&tmp_obj);
+        assert!(strays(&dir).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
