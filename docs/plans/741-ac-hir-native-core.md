@@ -1,17 +1,17 @@
 ---
 plan_id: PLAN-741
-status: reviewed
+status: executing
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-05
-plan_revision: 2
+plan_revision: 3
 current_step: 17
-total_steps: 17
-supersedes_spec_components: []
-new_spec_components:
+total_steps: 24
+supersedes_spec_components:
   - docs/specs/auto-hir/project.md
   - docs/specs/auto-ac/project.md
+new_spec_components: []
 touched_goals: []
 affects: [auto-hir, auto-ac]
 ---
@@ -28,6 +28,14 @@ affects: [auto-hir, auto-ac]
 本计划不修改 v0.5 的 parser/VM/A2X/旧 Atom，不拆仓，不依赖其他仓未 push 的代码。
 这是计算核心 profile 的首条纵向实现；完整计算子集、AST adapter、B/C 子集和生产 ABI
 由后续计划完成。静态库、DLL、热重载仍是 v0.6 主线，不因 exe 里程碑而延后。
+
+
+### Phase 3 再激活（2026-10-05，plan_revision 3）
+
+用户明确要求重新激活 PLAN-741，将合入后复审的新发现及修复方案追加为新 Phase。
+本合同从 archive/ 移回 docs/plans/，status=executing；T-01..T-17、r1/r2 的交付、
+复审与 merge 收据保留为历史。当前待实施 T-18..T-24；本轮只更新合同与状态，不实施修复。
+修复 P741-R2-QA-01..04，不扩展语言子集、不更换后端，不宣称旧 pass 覆盖 r3。
 
 ## 1. 目标
 
@@ -139,6 +147,32 @@ touched_goals 暂为空，关联 v0.6 roadmap AC/HIR 主线；新的 native 目�
 目录存在不等于 native 闭环可执行，缺工具链不能用 mock 成功代替。
 相关主机器计划739/740不可见，本次隔离路径和旧入口，恢复后仍须做差异核查。
 
+
+### 4.4 Phase 3 授权、证据与当前基线
+
+- 用户原话（2026-10-05）：“请重新激活计划741，把刚才发现的问题及修复方案记录进去（可以作为新的phase）”。
+  此显式授权优先于归档终态/不重开建议；复用同一 ID，不消耗 .next-id，不另建计划。
+  当前授权是再激活与修订合同；本轮不调用 work 实施。已有修复范围保持在本仓原型及验证资料。
+- 激活前基线：v0.6-dev @ b85e2bb76b748f6a3f104096542837b44bdefbfc；r3 实施起点为包含本合同的激活提交，
+  T-18 记录完整 hash。复审实测基线仍为 965b368a20db7c97fab7d1b0d51863b3ccca0f11，二者差异仅复审资料。
+- 证据：[r2 合入后复审](../reports/741-quality-review-20261005/REVIEW.md)，包含源文件/Spec SHA-256、
+  原始日志、两个块图输入、review-helper.rs 与可运行复现脚本。
+  原四项 P1 已修，44 项原型测试通过；新自环导致 0xC00000FD，断开循环 check=0，
+  退出后持管道反例在 114.963s 仍未返回，收据暂存失败遗留 staged exe。
+- canonical 输入：docs/specs/overview.md、auto-hir/project.md（SHA-256
+  ae1a898fe12d5cd9f1d883fb68564049355556b488bc995b894f0976babe9660）、auto-ac/project.md（SHA-256
+  9679401e686e5de6ed11bc678ea0866d630f26fdfc7890249332a5a44e997f03）。
+  全局 overview 为历史总览；r3 具体接口以这两个模块 Spec 与当前原型代码为准。
+- 代码锚点：src/verify.rs::check_blocks/walk_block，src/link.rs::run_with_deadline/publish_artifacts，
+  src/main.rs 的发布失败清理；路径均相对于 experimental/ac-core。
+  src/verify.rs SHA-256=2091454643f54446ca04ff7f497a682a74cef27d98d519ea38470e7769ed5260；
+  src/link.rs SHA-256=6eb8c5ab0d3f3bfa41f9e252073db7fd7b9080ab3fae35c1633258ec848a7566。
+- 本轮仅计划/状态/引用簿记；实施允许 experimental/ac-core、scripts/verify-ac-741.ps1 与新增验证资料，
+  仅原型自己的 Cargo.toml/lock 可因必要的进程管理依赖调整。根 workspace/lock、crates/**、
+  v0.5 parser/VM/A2X 与其它仓不动；canonical 行为 Spec 在独立复审 pass 后 merge 沉淀 SD-05/06。
+- r1/r2 pass 仅为对应 revision 与 commit 的历史证据；受影响 AC-03/07/08/12/14 需在 r3 重新验证，
+  其余旧 AC 亦须回归确认。旧任务勾选不回滚，新任务/新 AC 不预先勾选。
+
 ## 5. 详细设计
 
 ### 5.1 有界 Atom 输入与 TypeUse
@@ -242,7 +276,59 @@ check 成功0，拒绝非零并标注阶段与 span/ID；build 成功留下 .obj
 - **QA-07（warning）**：`tests/common/mod.rs` 删除未使用的 descriptor 导入；
   `verify-ac-741.ps1` 增加 `cargo check --all-targets` 覆盖测试目标的健康检查。
 
-### 规范增量（Phase 2 追加行）
+
+### 5.6 Phase 3 设计（plan_revision 3）：P741-R2-QA-01..04
+
+**QA-01 / P1：先验证完整块包含图，再做数据流。**
+由 If 的 then/else 与 Loop 的 body 引用构造块包含边，检查 ID 边界、入口零入边、
+其余块唯一入边、从入口到所有块的可达性，以及全部块的无环性。
+使用三色 DFS（优先显式栈）或等价算法；不能以“入度=1”替代可达性，也不能只遍历入口漏掉断开 SCC。
+发现结构错误即返回 verify.block-structure 等定位诊断，不再进入 walk_block；
+后续递归走查加循环防护，不能在已记录结构错误后仍递归到栈溢出。
+这里禁止的是块包含环；合法运行时 loop 重入、break/continue 的 LoopId 目标、函数递归调用
+不是块包含边，必须继续被接受。此修改不冻结全语言深递归资源策略。
+
+将报告两份 Atom 输入物化为新 fixtures/invalid 块图反例，补入口自环、多块环、
+断开循环 SCC、共享块及合法嵌套 if/loop；真实 bind→verify 与 CLI check/build 均覆盖。
+CLI 负例用外层截止保护：不得正常接受，不得 panic/异常崩溃，不产出 native 制品。
+
+**QA-02 / P2：一个单调 deadline 覆盖运行与输出收集。**
+run_with_deadline 中父进程退出不等于 stdout/stderr 到 EOF；
+退出后的 reader join、错误分支的 wait/回收同样不得无限等。保持并发排空 stdout/stderr，
+在 deadline 前同时等待退出状态与两个输出完成；任何阶段超时均报 link.deadline，不能返回截断的成功输出。
+选择可截止的输出协调与受控进程树机制；Windows 优先 Job Object（关闭即终止自有子树）
+或经反例证明等价的方案，必要的原型局部依赖由实施记录。
+提前退出/超时/IO 错误必须关闭句柄并回收本次自有进程、reader；不能只 detach 永久阻塞线程来满足“返回快”。
+清理仅针对本次拥有的进程/句柄，禁止按进程名全局杀 rustc/lld 等工具。
+
+新增可控 helper：父进程 spawn 继承输出管道的后代后立即退出，后代保持管道至明显超过测试 deadline。
+用参数化 1s deadline（外层 5s watchdog）证明退出后的收集阶段也按时拒绝；
+测试必须 finally/RAII 清理自身 helper/后代，不能真实等待生产 60s 或留下后台进程。
+保留挂起父进程与 >64KB 双管道输出正例，并增加父进程/后代及时结束的成功正例。
+
+**QA-03 / P2：统一拥有暂存制品并覆盖每个失败出口。**
+由明确的 stage guard/事务所有权管理 obj/exe/receipt 暂存及备份；main.rs 与 publish_artifacts
+约定由谁清理，避免仅删除 tmp_obj。覆盖收据暂存准备、备份、exe/obj/receipt 发布失败及成功结束。
+任何正常可回收的失败出口均清除本次拥有的暂存文件、恢复旧制品；exe/obj/receipt 字节不变，旧 exe 仍 exit 5。
+已存在的占位目录或其它非本次创建资源不能被递归删除。
+若真实 IO 错误阻止回滚/清理，必须返回可定位的恢复诊断，保留唯一可恢复备份并列出路径，
+不能吞掉 rename/remove 错误后宣称回滚完整，也不能为“无残留”删除唯一旧制品。
+这不是放宽受控失败的无残留验收；失败注入的正常可恢复场景仍要求零自有 .tmp/.bak 残留。
+
+测试层以真实 PE/COFF 基线控制阶段故障，不给产品 CLI 新增故障注入参数：
+收据暂存路径目录占位、备份目标阻塞、分别在三次发布时失败，以及无既有制品与成功发布。
+区分用户占位目录与本次生成文件；验证哈希、收据内容、原生 exit 与残留清单。
+直接事务单测和真实 CLI 的既有收据最终路径失败用例都必须保留。
+
+**QA-04 / P3：状态、路径与收据一致。**
+本轮已获用户明确再激活授权；移动唯一 741 文件到 active 路径并设 executing/r3，
+同步当前 README/模块计划索引/ledger 文件引用，不改历史 pass 的时间或含义。
+前两轮 “archived” 收据描述当时交付，本次追加再激活收据解释实际 frontmatter 曾 reviewed 的偏差。
+r3 结束必须独立 review→merge→archive，最终 frontmatter=archived、位置=archive/、链接/收据一致；
+不得把归档目录本身当作状态变更。AC-13 的历史 archive 路径要求在 r3 按 active→archive 生命周期更新，
+README 命令可执行等其余要求保持不变。
+
+### 规范增量（SD-01..04 为历史交付；Phase 3 追加 SD-05/06）
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
@@ -250,6 +336,8 @@ check 成功0，拒绝非零并标注阶段与 span/ID；build 成功留下 .obj
 | SD-02 | add | docs/specs/auto-ac/project.md | 无native实现规范→Checked HIR AOT/Windows工具链/入口/trap/测试能力 | 区分原型、生产ABI与源码编译 | AC-05,AC-06,AC-07,AC-08 |
 | SD-03 | modify | docs/specs/auto-hir/project.md | 语义契约两点明确化：call 实参类型按 bindings 映射逐位核对（arg 恰被一处 binding 消费）；函数↔body 双向归属唯一（共享/冒领 body 拒绝） | QA-02/03 复验 SD-01 原承诺，实现修正而非缩规约 | AC-10,AC-11 |
 | SD-04 | modify | docs/specs/auto-ac/project.md | bin 名澄清为 auto-ac-prototype（ac-probe 为历史文档名）；制品发布措辞=暂存+备份+发布+失败回滚；硬截止时间覆盖全部子进程（工具发现/链接/运行） | QA-01/04/05/06 复验 SD-02 原承诺 | AC-09,AC-12,AC-13,AC-14 |
+| SD-05 | modify | docs/specs/auto-hir/project.md | 入边/入口角色契约→显式区分块包含边与运行时循环，全部块可达且包含图无环，结构失败阻止数据流/Checked 构造 | QA-01 兑现既有拒绝承诺，避免小环崩溃及断开 SCC 漏检 | AC-03,AC-04,AC-16 |
+| SD-06 | modify | docs/specs/auto-ac/project.md | 全部子进程硬截止→进程退出及输出收集共用 deadline、自有资源受控回收；失败回滚→准备/备份/发布的暂存所有权与清理、恢复失败显式诊断 | QA-02/03 补全执行器与事务全路径，不以缩规约规避失败 | AC-07,AC-12,AC-14,AC-17,AC-18 |
 
 Spec 文件在 review/merge 根据实现沉淀，本 new 阶段不编辑 canonical Specs。
 overview/.autoos/specs.json/index 在 merge 按实际模块布局登记。
@@ -280,7 +368,7 @@ overview/.autoos/specs.json/index 在 merge 按实际模块布局登记。
     cargo fmt --manifest-path experimental/ac-core/Cargo.toml -- --check
     powershell -NoProfile -File scripts/verify-ac-741.ps1
 
-CLI例：cargo run --manifest-path experimental/ac-core/Cargo.toml --locked --bin ac-probe -- check docs/design/strategy/hir-examples/01-add.atom。
+CLI例：cargo run --manifest-path experimental/ac-core/Cargo.toml --locked --bin auto-ac-prototype -- check docs/design/strategy/hir-examples/01-add.atom。
 native脚本发现工具链、构建/运行、处理超时并保存收据；SDK缺失为 blocker，
 不能 ignore native测试再宣称通过；其他平台的reader/verifier不能替代Windows原生门禁。
 
@@ -288,6 +376,34 @@ native脚本发现工具链、构建/运行、处理超时并保存收据；SDK�
 开发迭代仅跑原型定向测试。旧测试红需同基线对照、证据与复审裁定。
 不触 aavm/UI/trans/book 时不跑 taa/tu/tt/tb；本worktree不跑 tf/ta/t3。
 本轮起草为doc-only，不运行上述实现测试或docs_gen。
+
+
+### Phase 3 验证补充（AC-16..20）
+
+| 测试族/证据 | 操作 | 预期 |
+|---|---|---|
+| hir_verify + CLI | 自环、多块环、断开 SCC、共享块、合法嵌套/循环/表重排 | 非法 check/build 正常 exit 1 + verify.block-structure；合法原型行为不变；build 不触 linker/无产物 |
+| link 内嵌单测 / 新增 tests/process_deadline.rs（按实施选用） | 1s deadline：父先退、后代持 stdout/stderr；双管道大输出/及时关闭 | 持管道约 1s 报 link.deadline（3s 容差上界），外层 5s 保护；无自有进程/reader 遗留；完整输出正例成功 |
+| link 事务单测 + cli | 准备、备份、各发布出口受控失败；原生旧 exe=5；占位目录 | 哈希/收据不变，旧 exe=5；零自有 .tmp/.bak，用户目录保留；成功产三件套 |
+| 当前引用/计划状态 | active 唯一文件、revision/step、README/模块索引/ledger；最终归档 | 当前 executing/r3/active，交付后 archived/archive，一致；历史证据原样保留 |
+
+在 plan worktree 执行：
+
+    cargo test --manifest-path experimental/ac-core/Cargo.toml --locked --test hir_verify
+    cargo test --manifest-path experimental/ac-core/Cargo.toml --locked --lib -- --test-threads=1
+    cargo test --manifest-path experimental/ac-core/Cargo.toml --locked --test cli -- --test-threads=1
+    cargo test --manifest-path experimental/ac-core/Cargo.toml --locked -- --test-threads=1
+    cargo check --manifest-path experimental/ac-core/Cargo.toml --locked --all-targets
+    cargo fmt --manifest-path experimental/ac-core/Cargo.toml -- --check
+    powershell -NoProfile -File scripts/verify-ac-741.ps1
+
+脚本完整门禁包含主仓 check/t/tv，不能只跑 -SkipMainGates 声称通过全门禁。
+若另建 process_deadline.rs，接入上述 cargo test 全量原型步骤和验证脚本，不允许靠 ignore 通过。
+复审报告 reproduce.ps1 是观察工具，不以脚本自身 exit 0 判定修复：两份非法输入须正常 exit 1，
+watchdog 必须收到 deadline 拒绝且仍运行=false，receipt-prepare 的 staged_exe_left=false。
+快速 -SkipWatchdog 不能证明 AC-17；参数化 1s 永久回归与真实 run_exe 截止各留证据。
+44 项原型测试是 r2 基线，新增数量按实际记录；全仓历史红需同基线对照，零新增未解释红。
+本轮合同/簿记为 doc-only，不运行 cargo 测试或 docs_gen；实施/复审按 §6/AGENTS 分级门禁。
 
 ## 7. 验收标准
 
@@ -309,6 +425,15 @@ Phase 2 追加（plan_revision 2，2026-10-04）：
 - [ ] **AC-13**（QA-05）：README 中命令逐字复制可运行（check exit 0、build 产出可运行 exe）；计划链接指向 docs/plans/archive/；descriptor 路径无 schema/schema 笔误。
 - [ ] **AC-14**（QA-06）：工具发现（rustc/reg）、链接、运行全部子进程经带硬截止时间的执行器；执行器并发读管道；单测证明：可控挂起 helper 在截止处被终止报 link.deadline，>64KB 输出子进程正常完成且输出完整。
 - [ ] **AC-15**（QA-07）：tests/common/mod.rs 无未使用导入；`cargo check --all-targets` 零 warning 并纳入 verify-ac-741.ps1 健康检查。
+
+
+Phase 3 追加（plan_revision 3，2026-10-05；原 AC-01..15 不移除）：
+
+- [ ] **AC-16**（R2-QA-01）：全部块可达、包含图无环、入口角色唯一。报告两份输入及新增自环/多块环/断开 SCC 经真实绑定后在 verify 拒绝；CLI check/build 正常 exit 1、有错误阶段/code/span，外层 5s 内返回，不栈溢出/panic，不进入后端或创建制品；合法嵌套 if/loop、break/continue、循环计数及递归调用边界不被误判。
+- [ ] **AC-17**（R2-QA-02）：参数化 1s 截止覆盖父进程先退出、后代继承管道的收集阶段，3s 内返回 link.deadline、外层 5s 不触发；本次自有 helper/后代和 reader 已回收；及时关闭管道、大输出及普通挂起回归通过。实际 run_exe 固定 60s 路径亦有受外层保护的截止证据，不再复现 115s 卡住，不通过截断成功输出/泄漏线程规避。
+- [ ] **AC-18**（R2-QA-03）：收据准备、备份和三次发布的受控失败均保留旧 exe/obj/receipt 字节，旧 exe exit 5，零本次自有 .tmp/.bak 残留；用户占位目录不删；无旧制品时失败不留半成品，成功完整产三件套且无残留。恢复本身受阻时返回恢复诊断与备份路径、保留可恢复旧制品，禁止吞错或错误销账。
+- [ ] **AC-19**（R2-QA-04）：当前唯一 741 位于 docs/plans/，executing/r3，current_step/total_steps 与任务进度一致；README/模块计划索引/ledger 引用实际文件，r1/r2 pass 标明历史效力，r3 需新复审。最终 merge/归档实际写 archived，移回 archive/ 并同步指针，收据与 frontmatter 一致；不得重复分配 ID 或改变历史结论。
+- [ ] **AC-20**：原 44 项与新增测试全绿、fmt、all-targets 零 warning、一键门禁及主仓 check/t/tv 有 revision 3 的新证据；生产面相对 r3 起点无改动，旧报告与实现保留。独立复审逐项覆盖 AC-01..20/SD-05..06，发现闭环后才销账和 merge；未知结果不复用历史 pass 代替。
 
 ## 8. 执行步骤
 
@@ -371,7 +496,45 @@ Phase 2 执行进度（commit 哈希=plan-741-dev；基线 3a7967262）：
 - [x] **T-16** （本提交）门禁复跑：text_binding 11/11、hir_verify 9/9、native_execution 11/11、cli 10/10、trace_execution 1/1、lib 2/2（计 44 项，r1 基线 37 项）；cargo fmt --check 过；cargo check --all-targets 零 warning；复审 reproduce.ps1 复跑六反例全部翻转（bool-local/bool-return build 由 101/1→0、binding-valid check 1→0、binding-invalid check 0→1、shared-body build 101→check 1、发布失败 exeChanged true→false 且旧 exe exit 5）；`git diff 3a7967262 -- crates/ Cargo.toml Cargo.lock test/` 为空。AC-09..AC-15 执行侧证据齐备。
 - [x] **T-17** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 2 独立复审）；merge 沉淀 SD-03/04 并销账 KNOWN-DEBT P741-QA-01..07 行待 /auto-plan:merge。
 
+
+### Phase 3 执行计划（plan_revision 3，T-18..T-24 尚未执行）
+
+优先级：先 T-19（P1），再 T-20/21（P2）；簿记 T-22 和全门禁在独立复审前收口。
+本合同提交后由 /auto-plan:work 创建或确认 D:/autostack/.wt/lang-741/auto-lang、plan-741-dev，
+从含 r3 合同的 v0.6-dev 起步，不复用旧 r2 tip。本轮未创建实施 worktree、未执行代码修复。
+
+| task | 依赖 | 文件/符号与动作 | 验证命令/预期 | AC |
+|---|---|---|---|---|
+| T-18 | r3 合同已提交 | 核对活动 741 唯一性、HEAD/原型/报告指纹及其它在途计划；建立专用 worktree/分支，记录完整基线。不存在则新建，不覆盖其它 checkout，无链接 | git worktree list、git status、Get-FileHash；旧实现已合入、工作树 clean、工具链可用 | AC-01,19,20 |
+| T-19 | T-18 | src/verify.rs::check_blocks/walk_block：全图无环/入口可达结构门及走查防护；新增 fixtures/invalid 块图反例与 tests/hir_verify.rs、tests/cli.rs 回归 | hir_verify + cli，外层 5s；两报告负例及新组合正常拒绝，合法循环/嵌套通过 | AC-03,04,16；SD-05 |
+| T-20 | T-19 | src/link.rs::run_with_deadline：截止覆盖退出后收集/错误回收；受控进程树/reader 生命周期。新增测试 helper/可控 deadline 用例（tests/process_deadline.rs 为候选新路径）；必要局部依赖记录理由 | --lib/新增专项；1s/3s/5s 三层判据、无自有进程/reader 遗留，大输出完整；生产 60s 路径留证 | AC-07,14,17；SD-06 |
+| T-21 | T-20 | src/link.rs::publish_artifacts、src/main.rs：stage 所有权和统一清理/恢复诊断；事务单测与 tests/cli.rs 准备/备份/发布受控失败矩阵 | --lib + cli；旧三件套哈希/旧 exe=5、零自有残留、目录保留；成功和无旧制品回归 | AC-07,12,18；SD-06 |
+| T-22 | T-18,T-21 | 核对 active metadata 与当前指针；README 命令/文档链接、一键验证脚本纳入新增测试；记录再激活/归档状态偏差解决方式，最终归档留给 merge | markdown 路径/唯一 ID/frontmatter 检查、PS 语法解析；本阶段 active=executing/r3，历史保留 | AC-13,15,19 |
+| T-23 | T-19..T-22 | 新增 docs/reports/741-phase3-boundary-fixes/（验证/指纹/故障矩阵资料，新路径），跑 §6 全门禁，对账所有 AC 与旧/新反例；进度只回写主检出活动计划 | 原型全量+all-targets+fmt、一键脚本与主仓 check/t/tv；根 Cargo.toml/Cargo.lock/crates/test 相对 r3 基线零 diff；所有红逐项归因 | AC-01..20 |
+| T-24 | T-23 | /auto-plan:review 独立核实 r3/HEAD、AC/SD 和源码，扫描遗漏/规避/新债；pass 后交 /auto-plan:merge 沉淀 SD-05/06、销账 QA-01..04、正确归档并 guard 清理 | revision-bound 独立证据，pass 才 merge；归档前后状态/指针/收据一致，guard clean 才移除 | AC-08,19,20；SD-05/06 |
+
+原步骤 T-01..T-17 为已交付历史；上文“所有步骤尚未执行”仅是 r1 起草时的记录。
+r3 current_step=17、total_steps=24；T-18..24 完成后逐步回写，不预勾成功。
+T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按 merge 收据验收。
+
 ## 9. 复审记录
+
+### Phase 3 再激活 / 合同修订交接（2026-10-05）
+
+- stage: new | plan_id: PLAN-741 | plan_revision: 3 | outcome: **pass（合同就绪，非实现/复审 pass）**
+- authorization: 用户明确再激活同一 741、追加问题与修复方案；本轮只修订合同与簿记，next=work。
+- reactivation: archive/741-ac-hir-native-core.md → docs/plans/741-ac-hir-native-core.md；
+  status=executing，current_step=17，total_steps=24；.next-id 保持 744。
+- input: b85e2bb76（r2 复审证据提交）；r2 reviewed_commit=965b368a2；
+  findings=P741-R2-QA-01..04。旧 pass 保留为 r1/r2 历史，受影响验收在 r3 重新验证。
+- changed_contract: §4.4/5.6/6/7/8，T-18..24、AC-16..20、SD-05/06；
+  supersedes_spec_components=auto-hir/project.md、auto-ac/project.md（modify），不修改 canonical 行为内容。
+- metadata_note: r2 归档收据称 archived 但实际 frontmatter=reviewed 的偏差不删历史掩盖；
+  本次以用户授权的 active/executing 合同恢复一致，r3 merge 必须真实写 archived。
+- maintenance: 随文件移动修正两个报告相对链接；历史 CLI 示例的 bin 名纠正为实际 auto-ac-prototype。
+- checks: 唯一计划 ID、任务→AC→Spec 覆盖、现有/新建路径、引用与计数；doc-only 无 cargo 测试。
+- next: /auto-plan:work 执行 T-18 起；本轮不创建实施分支/worktree、不关闭尚未修复的债务。
+
 
 ### r2 合入后的独立复核（2026-10-05，用户再次要求检查）
 
@@ -379,7 +542,7 @@ Phase 2 执行进度（commit 哈希=plan-741-dev；基线 3a7967262）：
 - reviewed_commit: 965b368a20db7c97fab7d1b0d51863b3ccca0f11
 - base_commit: 3a7967262；交付52c67d3df祖先关系已验证。
 - dependency_revisions/spec_inputs/frozen delta hashes/acceptance_results：
-  [r2复核报告](../../reports/741-quality-review-20261005/REVIEW.md)。
+  [r2复核报告](../reports/741-quality-review-20261005/REVIEW.md)。
 - 独立复跑：44/44原型测试、all-targets零warning、fmt、旧reproduce脚本、
   README三命令实机运行（add5、trace12/ba）。
 - 原四项P1均确认已修复；新增P741-R2-QA-01块图自环stack overflow/断开环被接受，
@@ -612,7 +775,7 @@ Phase 2 执行进度（commit 哈希=plan-741-dev；基线 3a7967262）：
 - reviewed_commit: c1ac219e73ee2ed1ef6ba8dfec49c131bfbf1a75
 - base_commit: 951b6c70ff596f79e464ba977139669f2d196821；交付304519113已核实在祖先链。
 - dependency_revisions/spec_inputs/增量快照指纹与完整AC对账：
-  [质量复审报告](../../reports/741-quality-review-20261004/REVIEW.md)。
+  [质量复审报告](../reports/741-quality-review-20261004/REVIEW.md)。
 - 本会话未实施741；自行读代码、在detached复审检出重跑37项原型测试/fmt，
   原套件全过，额外反例重现bool宽度、bindings类型映射、body双向owner、
   发布阶段失败覆盖四项核心缺陷（P741-QA-01..04）。
@@ -673,3 +836,12 @@ Phase 2 执行进度（commit 哈希=plan-741-dev；基线 3a7967262）：
 - 验收基线：复审报告的 5 个缺陷 fixture + extra-results（bool-local build 101、
   bool-return build 1、binding-valid check 1、binding-invalid check 0、
   shared-body build 101、发布失败 exe 哈希变化）全部翻转为 AC-09..12 所述预期。
+
+### Phase 3 边界与交接
+
+无阻止合同交接的用户决策。T-20 负责验证 Windows 受控进程树/可截止 reader 的实现方案，
+T-21 负责明确 stage 清理所有权；两者在既有目标内选用等价实现并记录证据，不能默默延后。
+若本机 SDK/链接工具缺失，执行者记录 blocker 并保留证据，不能 ignore 原生门禁。
+wt-guard.sh 本机缺失已有 r1/r2 收据；清理时先检查并运行规定 guard，若仍缺失，
+按已有记录的等价 ReparsePoint 扫描验证精确组路径，非 clean 不删除，不创建任何 junction/symlink。
+原历史“是否执行 741”疑问现仅为起草历史；本轮任务是计划修订，实施由 work 阶段接手。

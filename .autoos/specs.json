@@ -8082,7 +8082,7 @@
           "id": "P741-3",
           "title": "PLAN-741 review pass（r1，同基线对照裁定）",
           "content": "独立复审 pass @ 4dc4da636（基线 951b6c70f）：AC-01..08 全 pass（复审独立复跑 37/37、零 diff 核对、check PASS/tv 162/162）；P741-R1=日常档 26 红裁定非本回归（14 基线同红入 THR-D3 族 + 12 负载 flake 同 THR-D4 模式，对照收据 verification.md §4.1）；P741-R2=组内 auto-down detached 依赖 worktree 归 merge 清理。merge 交付链 1e4a2533a → lockfile 补交 cf369e0d5。",
-          "file": "docs/plans/archive/741-ac-hir-native-core.md",
+          "file": "docs/plans/741-ac-hir-native-core.md",
           "tags": [
             "PLAN-741",
             "review",
@@ -8103,7 +8103,7 @@
         {
           "id": "P741-4",
           "title": "PLAN-741 r2 Phase 2 复审 pass + 质量修复收据（P741-QA-01..07）",
-          "file": "docs/plans/archive/741-ac-hir-native-core.md",
+          "file": "docs/plans/741-ac-hir-native-core.md",
           "tags": [
             "PLAN-741",
             "review",
