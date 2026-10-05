@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-743
-status: executing
+status: execution_done
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-05
 plan_revision: 4
-current_step: 21
+current_step: 26
 total_steps: 27
 supersedes_spec_components:
   - docs/specs/auto-acc/project.md
@@ -602,16 +602,43 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 
 ### Phase 4 执行步骤（T-22..T-27，待实施）〔起草历史标题：r4 合同起草时的待办状态，实施进度见任务行〕
 
-- [ ] T-22 基线与重放（AC-24）：从含r4合同的最新v0.6-dev重建 D:/autostack/.wt/lang-743/auto-lang / plan-743-dev，核对唯一ID/hash/WIP/并行边界；新建 docs/reports/743-phase4-consumer-fixes/ 留before证据，不新取号/不建links。
-- [ ] T-23 校验记录引用（依赖T-22；AC-02/10/17/18/21）：修改validate_decisions消费者/索引边界；新增被引用的各字段非法、缺失/重复ID与resolved/open组合负例。非零ERROR定位、无traceback，有效层绿。
-- [ ] T-24 证据与宿主判据（依赖T-23；AC-01/02/03/09/10/15/18/22/23）：移除evidence相关性subject/hash旁路；qualified判定纳入导入/参数/已知局部绑定。新增正反测试，核准变化unknown与人工决定；不实施完整resolver。
-- [ ] T-25 合同/生命周期（依赖T-24；AC-19/20/24）：新建phase4提案SD-08；历史标题/起草数字消歧，module导航/r4进度；实现final归档counter和所有ledger历史指针验证方法，行为Spec/ledger留merge。
-- [ ] T-26 终验与冻结（依赖T-23..25；AC-01..24）：旧63+新增、双生成/manual不变、当前真实严格门、links/diff/source范围与hash；冻结SD-08及AC逐项证据，簿记execution_done；不能预写独立pass。
+- [x] T-22 基线与重放（AC-24）：从含r4合同的最新v0.6-dev重建 D:/autostack/.wt/lang-743/auto-lang / plan-743-dev，核对唯一ID/hash/WIP/并行边界；新建 docs/reports/743-phase4-consumer-fixes/ 留before证据，不新取号/不建links。
+  [✅ 已完成] commit 0967bc844；基点=含 r4 合同的 1d8fba15c（worktree 重建、主检出 0 WIP）；baseline.md 复现 R3-QA-01 traceback（MD-REVIEW-900 组合路径）、R3-QA-02 hash 旁路（完整层 exit0 隔离证实）、R3-QA-03 两 fixture 误判、R3-QA-04 生命周期项；并行边界核对（741/742/ABI 独立、.next-id=744 未占）
+- [x] T-23 校验记录引用（依赖T-22；AC-02/10/17/18/21）：修改validate_decisions消费者/索引边界；新增被引用的各字段非法、缺失/重复ID与resolved/open组合负例。非零ERROR定位、无traceback，有效层绿。
+  [✅ 已完成] commit 62329eadb：validated-only 消费者索引（类型淘汰/重复 ID 不入索引），族引用被淘汰记录报"未通过校验"定位；MD-REVIEW-900 组合路径受控拒绝零 traceback（测试锁定）
+- [x] T-24 证据与宿主判据（依赖T-23；AC-01/02/03/09/10/15/18/22/23）：移除evidence相关性subject/hash旁路；qualified判定纳入导入/参数/已知局部绑定。新增正反测试，核准变化unknown与人工决定；不实施完整resolver。
+  [✅ 已完成] commit 62329eadb：适用性=evidence 文件集合（bound/subject OR 旁路移除），hash-only/subject-only 负例拒绝；qualified 判定纳入导入/参数/let-var 绑定遮蔽（import_shadow/parameter_shadow 负例 + 无冲突宿主正例）；真实仓观察零漂移（13 native/687 unknown 不变），人工层无需变更
+- [x] T-25 合同/生命周期（依赖T-24；AC-19/20/24）：新建phase4提案SD-08；历史标题/起草数字消歧，module导航/r4进度；实现final归档counter和所有ledger历史指针验证方法，行为Spec/ledger留merge。
+  [✅ 已完成] commit b9b77ecc8 + 主检出 638190ccf：proposed-spec-delta-phase4.md（SD-08 正文）；重复 R4 标题去重 1 处、两个起草态标题标注历史；final_assertions.py 交付（归档 27/27、P743-* 全指针、plans.md 行、canonical、严格门七类断言，merge 收口执行）
+- [x] T-26 终验与冻结（依赖T-23..25；AC-01..24）：旧63+新增、双生成/manual不变、当前真实严格门、links/diff/source范围与hash；冻结SD-08及AC逐项证据，簿记execution_done；不能预写独立pass。
+  [✅ 已完成] commit af3c8040e：PYTHONUTF8=1 全门禁绿（83/83 测试、manual --write 字节不变、严格 --check 47 决定/146 组/7 族、三方 cmp、diff --check、围栏感知链接、范围零触碰、CLI 残留 0）；SD-08 冻结 f8924d0a8266976d；verification.md 全 AC 对账；本文件回写 execution_done（current_step 26/27，T-27 留待复审/合入闭环）
 - [ ] T-27 独立review/merge收口（依赖T-26；AC-08/24）：绑定r4/HEAD重放原新反例；pass后沉淀SD-08、逐项销账/索引/所有P743-*指针/归档guard。按历史+新task核对27/27与链接/路径；不触741/742/ABI工作树。
 
 当前完成T-01..21=21，总27；新T-22..27待实施。本轮未创建执行worktree或修Python。
 
 ## 9. 复审记录
+
+### Phase 4 执行交接（2026-10-05，stage: work，r4 P743-R3-QA-01..04 修复）
+
+- stage: work（r4；外部复核 needs_fix 后的消费者完整性修复实施）
+- plan_id: PLAN-743 · plan_revision: 4
+- outcome: pass（T-22..T-26 完成、验收映射成立；非独立复审结论）
+- code_commit: af3c8040e（worktree plan-743-dev；基点=激活提交 1d8fba15c；
+  r4 提交链 0967bc844→62329eadb→b9b77ecc8→af3c8040e，worktree clean 0 dirty）
+- worktree: D:/autostack/.wt/lang-743/auto-lang（保留待 review/merge）
+- task_ids: T-22..T-26 全部完成（证据见 §8 任务行与 verification.md）；
+  current_step 26/27；T-27（独立复审与合入收口）按定义留待 review/merge 阶段闭环
+- evidence: PYTHONUTF8=1 全门禁绿——83/83 测试（63 旧+20 新）、--write 不触人工层
+  （字节不变）、严格 --check --require-decisions（47 决定新鲜、146 组/7 族含
+  evidence-only 适用性）、三方确定性 cmp、git diff --check clean、围栏感知链接
+  无断链、范围探针 crates/auto-lib/docs.specs/experimental/Cargo 零触碰、CLI 残留 0；
+  R3-QA-01..04 反例 before→after 逐项复现并测试锁定（baseline.md/verification.md）；
+  SD-08 冻结 f8924d0a8266976d；final_assertions.py 交付（merge 收口执行七类断言）
+- blockers: 无
+- next: /auto-plan:review（r4 独立复审：重放原/新反例与严格门，绑定 revision 4 +
+  实现 HEAD af3c8040e，逐 AC/SD 复核）；pass 后 merge 沉淀 SD-08、执行
+  final_assertions.py（27/27 与全部 P743-* 指针断言、P743-3 指针 archive 对账）、
+  逐条销账、归档、guard 后清理。本记录不替代复审；不自行归档/合入。
 
 ### 合入后独立复审 R5（2026-10-05，review r3）
 
