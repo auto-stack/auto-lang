@@ -1,0 +1,89 @@
+{
+  "checked_links": 8,
+  "broken_links": [
+    {
+      "file": "docs/plans/archive/741-ac-hir-native-core.md",
+      "line": 44,
+      "target": "../reports/741-r3-quality-review-20261005/REVIEW.md"
+    },
+    {
+      "file": "docs/plans/archive/741-ac-hir-native-core.md",
+      "line": 168,
+      "target": "../reports/741-quality-review-20261005/REVIEW.md"
+    },
+    {
+      "file": "docs/plans/archive/741-ac-hir-native-core.md",
+      "line": 761,
+      "target": "../reports/741-quality-review-20261005/REVIEW.md"
+    },
+    {
+      "file": "docs/plans/archive/741-ac-hir-native-core.md",
+      "line": 1025,
+      "target": "../reports/741-quality-review-20261004/REVIEW.md"
+    }
+  ],
+  "task_checkboxes": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30
+  ],
+  "ledger_pointers": [
+    {
+      "id": "P741-1",
+      "file": "docs/specs/auto-hir/project.md",
+      "exists": true
+    },
+    {
+      "id": "P741-2",
+      "file": "docs/specs/auto-ac/project.md",
+      "exists": true
+    },
+    {
+      "id": "P741-3",
+      "file": "docs/plans/archive/741-ac-hir-native-core.md",
+      "exists": true
+    },
+    {
+      "id": "P741-4",
+      "file": "docs/plans/archive/741-ac-hir-native-core.md",
+      "exists": true
+    },
+    {
+      "id": "P741-5",
+      "file": "docs/plans/archive/741-ac-hir-native-core.md",
+      "exists": true
+    },
+    {
+      "id": "P741-6",
+      "file": "docs/plans/archive/741-ac-hir-native-core.md",
+      "exists": true
+    }
+  ]
+}

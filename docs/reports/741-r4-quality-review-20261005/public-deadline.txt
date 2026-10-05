@@ -1,0 +1,4 @@
+public_result=Err(Diagnostic { stage: Link, code: "link.deadline", message: "subprocess C:/Users/zhaop/AppData/Local/Temp/741-r4-review-20261005/public-deadline\\tree-parent.exe exited but its output did not finish within 60s (a descendant may still hold the pipe)", span: Span { start: 0, end: 0 } })
+elapsed_ms=60078
+descendant_alive_after_poll=false
+death_watch_ms=35

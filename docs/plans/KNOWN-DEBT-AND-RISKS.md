@@ -274,7 +274,7 @@ r2/executing。18/18 既有测试通过、旧 F-01/F-03 已修，以下新问题
 本节新增发现不撤销前两轮已修的具体证据，也不沿用r3“全出口已回收”覆盖新反例。
 [报告](../reports/741-r3-quality-review-20261005/REVIEW.md)基线f6a945db8，needs_fix；
 依用户授权激活[741 Phase4](741-ac-hir-native-core.md)，r4/executing，T-25..30 / AC-21..24。
-~~本轮只复审/合同，不实施、不预销账~~ **已全部清偿（2026-10-05，PLAN-741 r4 Phase 4）**：独立代理复审pass（AC-21..24全过、death-watch反例5/5零泄漏、locked-cleanup全要素、60s生产路径准时拒绝、worktree红集⊂基线零新增），交付合入v0.6-dev@8fdae8c11；canonical SD-07/08已沉淀、live ledger P741-6已投影。清偿证据：[741计划](archive/741-ac-hir-native-core.md) §9 Phase 4记录；原报告：[r3复核报告](../reports/741-r3-quality-review-20261005/REVIEW.md)。
+~~本轮只复审/合同，不实施、不预销账~~ **已全部清偿（2026-10-05，PLAN-741 r4 Phase 4）**：独立代理复审pass（AC-21..24全过、death-watch反例5/5零泄漏、locked-cleanup全要素、60s生产路径准时拒绝、worktree红集⊂基线零新增），交付合入v0.6-dev@8fdae8c11；canonical SD-07/08已沉淀、live ledger P741-6已投影。清偿证据：[741计划](741-ac-hir-native-core.md) §9 Phase 4记录；原报告：[r3复核报告](../reports/741-r3-quality-review-20261005/REVIEW.md)。
 
 | ID | 级别 | 观察 | 修复/跟踪 |
 |---|---|---|---|
@@ -285,3 +285,13 @@ r2/executing。18/18 既有测试通过、旧 F-01/F-03 已修，以下新问题
 root门禁观察（非新增AC原型缺陷）：daily4971全跑4935通过/35失败/1超时；
 超时ffi_dual_018单独2.532s通过。旧THR-D3/D4及阶段报告包含对应族，但本轮未逐个完成35红对照，
 不得写成required daily gate绿或“新基线零新增已证实”；正式失败清单已入报告，T-29负责修复后复验/归因。
+
+
+## PLAN-741 r4合入后复审 / r5 Phase5（2026-10-05，未修复）
+
+绑定HEAD7b9c6948c；[独立报告](../reports/741-r4-quality-review-20261005/REVIEW.md)、[同ID修复合同](741-ac-hir-native-core.md)。r1..r4实施/原债项销账为历史，不删除；本轮54测试/一键13步/公开60s回收通过。
+
+- P741-R4-QA-01 / P2：link_object_staged非零及执行器错误出口吞暂存exe清理失败；真实共享锁OS error32、残留不入诊断，旧成功三件套不变。T32/AC25，SD09兑现SD08，不降为informational。
+- P741-R4-QA-02 / P3：archive内4个历史报告链接用active相对路径而失效；T33/AC26，必须最终真实归档门。
+
+尚未实施产品修复。r5 executing/22-of-35，只写证据/合同/导航；canonical/live ledger留pass后merge。P741-3..6旧archive指针激活后暂缺，最终必须全部恢复；不占新号、不碰其它计划工作树。

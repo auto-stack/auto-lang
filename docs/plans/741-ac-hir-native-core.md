@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-741
-status: archived
+status: executing
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-05
-plan_revision: 4
-current_step: 30
-total_steps: 30
+plan_revision: 5
+current_step: 22
+total_steps: 35
 supersedes_spec_components:
   - docs/specs/auto-hir/project.md
   - docs/specs/auto-ac/project.md
@@ -46,6 +46,13 @@ r3交付后独立复审 **needs_fix**，基线 `f6a945db849f57789a9e151402e22b8a
 已有实现/旧pass/三轮收据保留；T-20..24重新打开的是当前验收有效性，其执行记录为历史证据。
 T-08根据r1收据据实补勾，完成任务数19；新增T-25..30六项，故current_step=19/total_steps=30。
 本轮仅复审/合同，不改实现、不新建ID、不发布canonical或live ledger；r4不是重做741，也不扩大子集。
+
+### Phase 5 再激活（2026-10-05，plan_revision5）
+
+r4合入后独立复审needs_fix，基线7b9c6948c1465e87a6f60404510c30c712e1c7bc，见[报告](../reports/741-r4-quality-review-20261005/REVIEW.md)。按用户此前明确授权激活同741追加修复Phase；本轮仅文档合同，不实现代码。
+P741-R4-QA01/P2：link_object_staged非零/执行器错误两出口吞清理失败；P741-R4-QA02/P3：归档4个历史报告链接断。54测试/一键13步/公开60秒后代回收通过，旧计数30/30/ledger也真实修好，不重复报旧问题。
+当前完成22/35：T21..24及T27..30重新待验（所有同ID重复checkbox同步重开），其余22个唯一任务已完成；新增T31..35。保留r1..r4全部实施/pass/merge历史，旧“已完成/关闭”文字仅历史效力，不能替代r5验收。先前阶段起草数字不代表本轮进度。
+
 
 ## 1. 目标
 
@@ -195,6 +202,12 @@ touched_goals 暂为空，关联 v0.6 roadmap AC/HIR 主线；新的 native 目�
 - 使用专用plan-741-dev及D:/autostack/.wt/lang-741/auto-lang；auto-down路径依赖须只读兄弟检出，无链接。
   本次review detatched组将清理，work按worktree list重建；不碰742/ABI等其他在途工作。
 - live ledger不在review阶段修改；现指向旧archive路径，r4 merge统一刷新并校验，当前明确暂态。
+
+### Phase 5 背景、授权与范围
+
+在主检出v0.6-dev读取r4归档合同、auto-ac/project.md的SD08全出口清理规范，独立detached专用检出重测并自构公开API反例。本轮只更新same-ID合同/报告/债项和导航，不改Rust实现、canonical/ledger/.next-id，不动742/743/ABI工作树。
+固定基线7b9c6948c；link.rs519/525错误回收遗漏已有明确T27合同，不因r4旧review称“近不可达”免除。真实CLI生成旧PE/COFF；stand-in linker自己写临时输出，同步共享锁证明两分支可达，无产品故障注入。根门禁代码/配置未变，明确复用本日同源phase4 root证据而不假写daily绿；新原型代码/行为重新验证。
+
 
 ## 5. 详细设计
 
@@ -395,6 +408,20 @@ README生命周期链接和历史debt链接要有明确归档落点；live ledge
 冻结候选文本：docs/reports/741-r3-quality-review-20261005/proposed-spec-delta-phase4.md。
 本阶段auto-hir无新行为变化，保留整个计划的历史impact metadata；touched_goals仍[]，因无有效goal-ID可引用。
 
+### Phase 5 详细设计（QA01/02，未实施）
+
+T32在link_object_staged两个错误出口处理自有暂存exe回收：保留原link.failed或executor error，收集remove的实际错误/完整剩余路径/NOT committed/恢复办法，与publish诊断一致；NotFound视已回收，用户目录不删。正常失败继续零自有残留、旧成功三件套不变。不能把本轮IO分支作为“既有 informational”延期，不加产品fault switch，不放宽SD08。
+T33新增docs/reports/741-phase5-link-cleanup/final_assertions.py（新路径），从真实Plan父目录解析围栏外Markdown链接；活动态、模拟归档及实际archive均验。去重任务ID核对35/35、所有同IDcheckbox状态一致，核对metadata/README/模块导航/所有P741-*历史指针。不删除历史收据，激活临时恢复链接不作为归档通过。
+
+### 规范增量（Phase5）
+
+| delta_id | operation | target | before/after rule | rationale | AC |
+|---|---|---|---|---|---|
+| SD-09 | modify | docs/specs/auto-ac/project.md | SD08全出口清理保证→明确pre-publish link_object_staged非零/执行器错误出口也必须报告原失败+清理错误/路径/NOT committed | 兑现已有§5.7/T27，不扩展语言能力 | AC22/25/27 |
+
+冻结[SD09提案](../reports/741-r4-quality-review-20261005/proposed-spec-delta-phase5.md)。auto-hir无新行为变更，历史impact保留；new_spec_components/touched_goals维持[]。canonical/live ledger只在独立review pass后merge沉淀。
+
+
 ## 6. 测试设计
 
 | 测试族 | 输入/操作 | 预期 |
@@ -468,6 +495,13 @@ watchdog 必须收到 deadline 拒绝且仍运行=false，receipt-prepare 的 st
 原型all-targets/fmt/全族、一键13步、root check/t/tv按§6门禁一次；daily fail-fast时补no-fail-fast，
 有红保留完整失败清单/具体来源或scoped归因，不跑tf/taa/t3和生成器专项来替代上述失败。
 
+### Phase 5 验证设计
+
+重放本轮reproduce.ps1：真实旧制品基线+partial-output linker/共享锁，非零及正式60s deadline均受控非零，诊断含原失败/清理真实OS错误/精确残留路径/NOT committed；旧三件套字节不变、exe5、锁释放后可恢复。不靠预造外来tmp、随机竞态或篡改库作证。
+永久测试至少覆盖nonzero和executor error两个不同出口、可清理/锁受阻/NotFound/user-directory；可测试专用受控短截止但不降低公开60s行为；保留正常publish/restore/COMMITTED与受控启动全回归。
+原型完整全族（先build test-support）、fmt/all-targets零warning、一键13步、公开60s、旧反例；root check/t/tv按仓规/合同保留新证据或明确同源/同依赖/同配置复用理由，daily红逐项归因不写假绿。不跑tf/taa/t3/docs_gen替代失败。链接/35任务/指针检查必须实际归档收口。
+
+
 ## 7. 验收标准
 
 - [ ] **AC-01**：依赖树无旧产品依赖；根workspace/lock及旧生产代码diff为零。
@@ -504,6 +538,13 @@ Phase 3 追加（plan_revision 3，2026-10-05；原 AC-01..15 不移除）：
 - [ ] **AC-22**：真实PE/COFF基线+暂存exe禁止DELETE共享锁+收据准备目录占位：原失败与真实清理错误/残留exe路径明确，旧三件套不变/旧exe=5，用户目录保留，释放锁后可恢复；准备/备份/发布/回滚/成功备份清理等受阻均报告准确状态，不吞remove/rename，不删唯一备份；正常可回收矩阵仍零残留。
 - [ ] **AC-23**：唯一741为active/executing/r4；current_step等于完成任务ID数（本次19/30），旧执行/复审历史保留，重开验收与新任务无歧义；最终所有任务完成、archived/archive路径与README/模块导航/ledger/收据一致，旧资料链接可达；live ledger只在merge沉淀。
 - [ ] **AC-24**：r4原型完整测试/all-targets零warning/fmt、一键及root check/t/tv、旧反例和新负例有新证据，逐项对账AC-01..24及SD-07/08；daily红不能伪写绿，失败归因明确；未修改生产crates/根workspace和旧实现，不以规约放宽或延期替代修复，独立review pass后才merge销账/归档。
+
+### Phase 5 验收（新增AC25..27）
+
+- [ ] **AC-25**：link_object_staged两错误出口在真实共享锁下同时报告原失败、OS error、完整自有残留路径、NOT committed及恢复办法；无锁正常失败零残留，旧三件套字节/exit5保留，释放锁后恢复；NotFound/用户目录处理正确，原publish/rollback/COMMITTED与资源约束回归不退化。
+- [ ] **AC-26**：所有历史报告Markdown链接从实际文件父目录可解析，活动/模拟archive/最终真实archive均验证；35个唯一任务全完成/同ID勾选一致、metadata/README/模块导航/all P741-*历史指针一致。激活暂缺ledger指针不谎称同步；旧历史不删除。
+- [ ] **AC-27**：完整原型/健康/一键/正式截止/反例、主仓门禁及SD09冻结与hash都有可复现证据，独立review绑定r5与修复HEAD；pass后才沉淀/销账/归档/guard清理。本轮文档合同不是已实施。
+
 
 ## 8. 执行步骤
 
@@ -599,13 +640,13 @@ Phase 3 执行进度（commit 哈希=plan-741-dev，基线 ed2d00b90，2026-10-0
   DeadlineCollect 变体；reader 改 read_to_end+lossy（修 read_to_string 截断问题）。
   新测试：1s 收集截止（后代被回收 tasklist 证实）、后代即时退出正例、60s 生产证据
   （`--ignored` 显式跑 60.01s vs 复审实测 114.96s 挂起）。AC-17。
-- [x] **T-21** commit `7e3a5713f`：publish_artifacts discard_staged 全失败出口回收（重开验收由 r4 T-27 清理汇总关闭）
+- [ ] **T-21** commit `7e3a5713f`：publish_artifacts discard_staged 全失败出口回收（重开验收由 r4 T-27 清理汇总关闭）
   （收据暂存/备份/三次发布）+ link.restore 恢复诊断（列幸存备份路径）+ 用户占位目录保护 +
   link_object_staged 执行器错误回收；单测失败矩阵 5 例全过。AC-18。
-- [x] **T-22** commit `bc9c6cc5c`：README 流水线/测试族表 + verify 脚本 --lib 串行化；（重开验收由 r4 T-28 簿记归一关闭）
+- [ ] **T-22** commit `bc9c6cc5c`：README 流水线/测试族表 + verify 脚本 --lib 串行化；（重开验收由 r4 T-28 簿记归一关闭）
   plans.md/ledger 指针复审方已同步 active 路径（本轮核对一致）。AC-19（执行侧部分；
   最终归档留 merge）。
-- [x] **T-23** commit `bc9c6cc5c`：docs/reports/741-phase3-boundary-fixes/（重开验收由 r4 T-29 门禁复验关闭）
+- [ ] **T-23** commit `bc9c6cc5c`：docs/reports/741-phase3-boundary-fixes/（重开验收由 r4 T-29 门禁复验关闭）
   {verification.md, r2-review-reproduce-rerun.json, reds-*.txt, source-hashes.txt}。
   门禁：原型 52 项绿+1 ignored 证据项、fmt 干净、all-targets 零 warning、一键脚本原型段
   13/13、主仓 check PASS（组内 auto-down 建立后）、cargo tv 162/162、cargo t 双侧
@@ -614,7 +655,7 @@ Phase 3 执行进度（commit 哈希=plan-741-dev，基线 ed2d00b90，2026-10-0
   （git diff ed2d00b90 -- Cargo.toml Cargo.lock crates/ test/ 为空）；
   r3 复审 reproduce 复跑全验收点（staged_exe_left=false、watchdog 60.07s
   stillRunning=false）、r2 reproduce 无回归。AC-20。
-- [x] **T-24** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 3（重开验收由 r4 T-30 独立复审 pass 关闭）
+- [ ] **T-24** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 3（重开验收由 r4 T-30 独立复审 pass 关闭）
   独立复审）；R1 备份路径恢复诊断已按复审建议顺手统一（comment 后 scoped 复验
   lib 9/9 + fmt + all-targets 零 warning）；merge 沉淀 SD-05/06、销账 R2-QA 行、
   归档并 guard 清理待 /auto-plan:merge。
@@ -633,10 +674,10 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 - [x] **T-25** 建立r4实施基线/专用检出（复审detached检出不当实施分支）。
 - [x] **T-26** 修复受控启动及进程/reader全部出口；关闭旧T-20验收。
-- [x] **T-27** 汇总清理错误/残留及事务状态；关闭旧T-21验收。
-- [x] **T-28** 修正文档/索引/历史计数；关闭旧T-22验收。
-- [x] **T-29** 全门禁/故障矩阵/报告；关闭旧T-23验收。
-- [x] **T-30** 独立review→merge→archive→guard清理；关闭旧T-24验收。
+- [ ] **T-27** 汇总清理错误/残留及事务状态；关闭旧T-21验收。
+- [ ] **T-28** 修正文档/索引/历史计数；关闭旧T-22验收。
+- [ ] **T-29** 全门禁/故障矩阵/报告；关闭旧T-23验收。
+- [ ] **T-30** 独立review→merge→archive→guard清理；关闭旧T-24验收。
 - [x] **T-25** worktree `D:/autostack/.wt/lang-741/auto-lang`（plan-741-dev @ c865adf66，clean）；
   组内只读依赖 auto-down（detached @ fba6563e）；指纹/零WIP核对完成。
 - [x] **T-26** commit `cc491052f`：CREATE_SUSPENDED 受控启动 + 入 Job 后 ToolHelp 恢复主线程
@@ -644,14 +685,14 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
   收口零泄漏）；删除静默降级/detach 分支（reap 无条件 join）；工厂注入确定性测试：
   containment_failure_is_controlled_rejection（ping 未曾启动、tasklist 证实、<3s）；
   collect-deadline 测试三连跑确定性通过；windows-sys 增 ToolHelp feature。关闭旧 T-20 验收。AC-21。
-- [x] **T-27** commit `cc491052f`：publish_artifacts 清理错误全量汇总（discard_staged 收集真实
+- [ ] **T-27** commit `cc491052f`：publish_artifacts 清理错误全量汇总（discard_staged 收集真实
   OS 错误；目录=用户占位不删不计）+ link.cleanup 诊断（原失败+提交状态 NOT committed/COMMITTED+
   残留自有路径）+ main.rs 暂存清理上屏；新增 cleanup_failure_reports_residual_staged_exe
   （禁 DELETE 共享锁+收据目录占位：link.cleanup 含 os error 32、旧三件套不变、释放后可清理）；
   复审 helper 实测 staged_exe_left=true + 全保留标志。关闭旧 T-21 验收。AC-22。
-- [x] **T-28** T-08 已据 r1 收据补勾（激活提交）；计数 19/30 口径核对；README/plans.md 导航
+- [ ] **T-28** T-08 已据 r1 收据补勾（激活提交）；计数 19/30 口径核对；README/plans.md 导航
   复审方已回写 active（本轮核对一致）；ledger 暂态留 merge 刷新。关闭旧 T-22 验收。AC-23（工作侧）。
-- [x] **T-29** commit `a0dd0a315`：docs/reports/741-phase4-resource-fixes/{verification.md,
+- [ ] **T-29** commit `a0dd0a315`：docs/reports/741-phase4-resource-fixes/{verification.md,
   r3-review-reproduce-rerun.json, prior-2026100{4,5}-reproduce.json, reds-*.txt, source-hashes.txt}。
   门禁：原型 54 项+1 ignored（60.01s）、fmt 干净、all-targets 零 warning、一键原型段 13/13、
   主仓 check PASS、tv 162/162、cargo t 双侧 no-fail-fast（基线 36 红/worktree 34 红——
@@ -661,9 +702,20 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
   当前库执行器真实回收在 0-20ms 内完成，非 r3 式逃逸）；r3/r2 旧复现无回归；
   生产面零 diff（git diff c865adf66 -- Cargo.toml Cargo.lock crates/ test/ 空）。
   关闭旧 T-23 验收。AC-24（执行侧证据）。
-- [x] **T-30** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 4 独立复审）；R1/R2 顺手处置已 scoped 复验；merge 沉淀 SD-07/08、销账 R3-QA 行、归档并 guard 清理待 /auto-plan:merge。
+- [ ] **T-30** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 4 独立复审）；R1/R2 顺手处置已 scoped 复验；merge 沉淀 SD-07/08、销账 R3-QA 行、归档并 guard 清理待 /auto-plan:merge。
   销账 R3-QA 行、归档并 guard 清理。
 
+
+
+### Phase 5 执行步骤（T31..35，未实施）
+
+- [ ] **T-31** 基线/专用实施树（AC25..27）：从含r5合同的最新v0.6-dev新建D:/autostack/.wt/lang-741/auto-lang / plan-741-dev；核对唯一ID/HEAD/依赖/并行范围，先build test-support。复审detached检出不当实施树。新增docs/reports/741-phase5-link-cleanup/留本轮两出口before及正常对照，不占号/不建links。
+- [ ] **T-32** 预发布链接清理（依赖31，AC25）：修改src/link.rs::link_object_staged两出口回收/错误汇总；按所有权校验路径，不吞错、不加产品故障开关；新增两出口可控正负矩阵，真实共享锁/旧PE基线/释放恢复并留公开60s证据。重验关闭T21/T27，保留其它r4修复。
+- [ ] **T-33** 归档生命周期检查（依赖31，AC26）：修复实际相对链接、新增phase5 final_assertions.py，active/模拟/真实archive链接、唯一35任务/重复checkbox一致及meta/README/plans/all ledger refs；导航仅簿记，canonical/ledger留merge。重验关闭T22/T28。
+- [ ] **T-34** 全门禁/冻结（依赖32/33，AC25..27）：原型全族/健康/一键/正式deadline/旧新反例/root门禁归因/范围/hash/diff/links，冻结SD09/AC证据，回写execution_done，不预写pass。重验关闭T23/T29。
+- [ ] **T-35** 独立review与merge（依赖34，AC25..27）：绑定r5/修复HEAD逐AC/SD及遗漏复核；pass后SD09沉淀、债项逐条销账、所有P741指针/README/module/真实archive35/35链接门、guard clean清理收据；保护742/743/ABI。关闭T24/T30；否则保持executing。
+
+当前22/35，T21..24/T27..30验收重开，T31..35未实施；旧实现/收据依旧保存为历史。
 
 
 ## 9. 复审记录
@@ -1075,6 +1127,13 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 - changed_contract: T-20..24验收重开，T-08历史据实补勾，T-25..30、AC-21..24、SD-07/08新增；executing/r4/19-of-30。
 - next: /auto-plan:work，在专用plan-741-dev实施，不复用旧pass，不预销账。最终merge承担live ledger及归档指针刷新。
 - review_cleanup: 本次detached auto-lang及只读auto-down已在精确路径/等价ReparsePoint guard clean、双方git clean后移除；没有创建实施分支，下一work从本合同重建专用检出。
+
+### r4合入后独立复审 needs_fix（2026-10-05）
+
+stage: review | plan_id: PLAN-741 | plan_revision:4 | outcome:needs_fix | reviewed_commit:7b9c6948c1465e87a6f60404510c30c712e1c7bc | base_commit:c865adf66a75099df07113b053eb9d19e92986a3
+依赖windows-sys0.59/Cranelift0.126.2，源/Spec哈希、24项验收/SD07–08复核、新反例见[独立报告](../reports/741-r4-quality-review-20261005/REVIEW.md)。54原型/一键13步/公开60s后代回收绿；旧30/30与ledger真实绿。新QA01/P2两链接出口清理诊断不足；QA02/P3归档4个历史报告链接断。
+继承用户授权same-ID追加r5：stage:new | plan_revision:5 | outcome:pass（仅修复合同就绪） | next:work。current22/total35；本轮不改Rust/canonical/ledger；SD09提案冻结，P741-3..6旧archive指针激活后暂缺由merge恢复，不假称已刷新。
+
 
 ## 10. 待澄清事项
 

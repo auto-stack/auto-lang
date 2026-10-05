@@ -1,0 +1,7 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running tests\trace_execution.rs (C:/Users/zhaop/AppData/Local/Temp/ac741-r4-review-target\debug\deps\trace_execution-67821398d1c506fc.exe)
+
+running 1 test
+test call_order_executes_natively_b_then_a_result_12 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s

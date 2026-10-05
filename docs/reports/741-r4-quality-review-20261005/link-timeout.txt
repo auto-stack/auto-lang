@@ -1,0 +1,12 @@
+diagnostic=:1:1: error[link/link.deadline]: subprocess rust-lld exceeded 60s
+elapsed_ms=60009
+staged_exe_left=true
+staged_exe_path=C:/Users/zhaop/AppData/Local/Temp/741-r4-review-20261005/link-timeout\tx.exe.tmp-ac741-24000
+path_in_diagnostic=false
+cleanup_in_diagnostic=false
+actual_remove_os_error=Some(32)
+old_0_unchanged=true
+old_1_unchanged=true
+old_2_unchanged=true
+old_exe_exit=Some(5)
+released_cleanup_ok=true

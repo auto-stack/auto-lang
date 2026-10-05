@@ -1,0 +1,2 @@
+Root/source/config/scripts unchanged since r4 baseline: ''
+Reuse explicitly identified phase4 check/t/tv logs, failure lists and source-bound review today. Do not claim daily green.
