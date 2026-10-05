@@ -209,7 +209,7 @@
 ~~以下为新增/扩展边界，未清偿~~ **已全部清偿（2026-10-05，PLAN-741 r3 Phase 3）**：
 独立代理复审pass（AC-16..20全过、原型52项+60s证据测试、watchdog 60.05s准时拒绝、
 cargo t双侧同基线归因零新增），交付合入v0.6-dev@a0b3750c4。清偿证据：
-[741计划](741-ac-hir-native-core.md) §9 Phase 3记录（归档后随文件迁至archive/）；
+[741计划](archive/741-ac-hir-native-core.md) §9 Phase 3记录；
 原报告：[r2复核报告](../reports/741-quality-review-20261005/REVIEW.md)。
 
 | id | 级别 | 观察 | 修复方向 |

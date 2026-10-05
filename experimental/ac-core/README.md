@@ -5,8 +5,7 @@ Cranelift native lowering → Windows x64 COFF 对象 → rust-lld 链接 → �
 
 这是计算核心 profile(core-i32-draft)的首条纵向实现:**"HIR → 原生执行"**,
 不是 "Auto 源码 → 原生执行",也不是 AAC 自举完成。范围、非目标与验收见
-[docs/plans/741-ac-hir-native-core.md](../../docs/plans/741-ac-hir-native-core.md)
-(r1/r2 已交付归档;当前 r3 收尾后随归档迁回 docs/plans/archive/)。
+[docs/plans/archive/741-ac-hir-native-core.md](../../docs/plans/archive/741-ac-hir-native-core.md)。
 
 ## 流水线
 
