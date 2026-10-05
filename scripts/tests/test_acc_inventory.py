@@ -373,5 +373,168 @@ class Qa02CallClassification(unittest.TestCase):
         self.assertEqual(k[("|>", "mystery")], "unknown-receiver")
 
 
+class StrictDecisionsGate(FixtureCase):
+    """P743-QA-03：人工层完整性校验与 --require-decisions 严格完成态门。"""
+
+    def complete_layer(self, out: Path | None = None):
+        """按 fixture 当前扫描构造一份完整合法的人工层（含 unknown_families）。"""
+        out = out or self.out
+        out.mkdir(parents=True, exist_ok=True)
+        import importlib.util as _ilu
+        _s = _ilu.spec_from_file_location("ai_strict", _TOOL_PATH)
+        _ai = _ilu.module_from_spec(_s)
+        _s.loader.exec_module(_ai)
+        scans = {rel: _ai.scan_module(rel, (self.repo / rel).read_text(encoding="utf-8"))
+                 for rel in _ai.SOURCE_MODULES}
+        unknowns = _ai._unknown_candidates_from_scans(scans)
+        bindings = {rel: _ai.sha256_of(self.repo / rel)
+                    for rel in _ai.MANAGED_INPUTS}
+        by_module = {}
+        for (p, k, n) in unknowns:
+            by_module.setdefault(p, []).append(n)
+        decisions = [
+            {"id": "MD-S-%03d" % i, "subject": rel, "kind": "module-role",
+             "conclusion": "adapt", "evidence": ["%s:1" % rel], "note": "t",
+             "bound_input_hashes": {rel: bindings[rel]}}
+            for i, rel in enumerate(_ai.MANAGED_INPUTS)
+        ]
+        fams = [{"path": p, "kind": "unknown-receiver", "names": "*",
+                 "disposition": "resolved", "decision": "MD-S-000",
+                 "note": "fixture family"}
+                for p in sorted(by_module)]
+        layer = {"format_version": 1, "decisions": decisions,
+                 "unknown_families": fams}
+        (out / acc_inventory.DECISIONS_NAME).write_text(
+            json.dumps(layer, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return layer
+
+    def test_strict_gate_green_with_complete_layer(self):
+        run_tool(self.repo, self.out, "--write")
+        self.complete_layer()
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 0, err)
+        self.assertIn("严格门覆盖闭环通过", out)
+
+    def test_strict_gate_fails_when_layer_absent(self):
+        run_tool(self.repo, self.out, "--write")
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("decisions-required", err)
+
+    def test_strict_gate_fails_on_empty_decisions(self):
+        run_tool(self.repo, self.out, "--write")
+        self.out.mkdir(parents=True, exist_ok=True)
+        (self.out / acc_inventory.DECISIONS_NAME).write_text(
+            json.dumps({"format_version": 1, "decisions": []}), encoding="utf-8")
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("非空数组", err)
+
+    def test_unbound_decision_fails_with_id(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        layer["decisions"][0]["bound_input_hashes"] = {}
+        self.out.mkdir(parents=True, exist_ok=True)
+        (self.out / acc_inventory.DECISIONS_NAME).write_text(
+            json.dumps(layer, ensure_ascii=False), encoding="utf-8")
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("bound_input_hashes", err)
+        self.assertIn(layer["decisions"][0]["id"], err)
+
+    def test_missing_evidence_file_fails_with_id(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        layer["decisions"][0]["evidence"] = ["auto/lib/nope.at:1"]
+        self.out.mkdir(parents=True, exist_ok=True)
+        (self.out / acc_inventory.DECISIONS_NAME).write_text(
+            json.dumps(layer, ensure_ascii=False), encoding="utf-8")
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("decision-evidence-missing", err)
+        self.assertIn(layer["decisions"][0]["id"], err)
+
+    def test_duplicate_ids_fail(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        layer["decisions"][1]["id"] = layer["decisions"][0]["id"]
+        self.out.mkdir(parents=True, exist_ok=True)
+        (self.out / acc_inventory.DECISIONS_NAME).write_text(
+            json.dumps(layer, ensure_ascii=False), encoding="utf-8")
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("decision-duplicate-id", err)
+
+    def test_illegal_conclusion_fails(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        layer["decisions"][0]["conclusion"] = "super-done"
+        self.out.mkdir(parents=True, exist_ok=True)
+        (self.out / acc_inventory.DECISIONS_NAME).write_text(
+            json.dumps(layer, ensure_ascii=False), encoding="utf-8")
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("conclusion", err)
+
+    def test_uncovered_unknown_candidate_fails(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        layer["unknown_families"] = layer["unknown_families"][:-1]
+        self.out.mkdir(parents=True, exist_ok=True)
+        (self.out / acc_inventory.DECISIONS_NAME).write_text(
+            json.dumps(layer, ensure_ascii=False), encoding="utf-8")
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("coverage-missing-unknown", err)
+
+    def test_orphan_family_fails(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        layer["unknown_families"].append(
+            {"path": "auto/lib/token.at", "kind": "unknown-receiver", "names": "*",
+             "disposition": "resolved", "decision": "MD-S-000"})
+        self.out.mkdir(parents=True, exist_ok=True)
+        (self.out / acc_inventory.DECISIONS_NAME).write_text(
+            json.dumps(layer, ensure_ascii=False), encoding="utf-8")
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("family-orphan", err)
+
+    def test_open_family_requires_owner_probe_workpackage(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        layer["unknown_families"][0]["disposition"] = "open"
+        self.out.mkdir(parents=True, exist_ok=True)
+        (self.out / acc_inventory.DECISIONS_NAME).write_text(
+            json.dumps(layer, ensure_ascii=False), encoding="utf-8")
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("family-open-incomplete", err)
+
+    def test_uncovered_managed_input_fails(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        layer["decisions"] = [d for d in layer["decisions"]
+                              if d["subject"] != "auto/lib/token.at"]
+        self.out.mkdir(parents=True, exist_ok=True)
+        (self.out / acc_inventory.DECISIONS_NAME).write_text(
+            json.dumps(layer, ensure_ascii=False), encoding="utf-8")
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("coverage-missing-input", err)
+
+    def test_scan_only_mode_survives_without_flag_but_not_ok(self):
+        run_tool(self.repo, self.out, "--write")
+        code, out, err = run_tool(self.repo, self.out, "--check")
+        self.assertEqual(code, 0)
+        self.assertIn("scan-only", out)
+        self.assertNotIn("人工层 ok", out)
+
+    def test_strict_flag_rejected_with_write(self):
+        code, out, err = run_tool(self.repo, self.out, "--write", "--require-decisions")
+        self.assertEqual(code, 2)
+        self.assertIn("usage", err)
+
+
 if __name__ == "__main__":
     unittest.main()

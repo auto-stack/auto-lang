@@ -592,25 +592,104 @@ def dumps_stable(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
 
 
-def validate_decisions(dec_path: Path, inputs, root: Path):
-    """校验人工结论绑定。返回 (状态, 消息列表)；状态 ok|stale|error。
+DECISION_KIND_CONCLUSIONS = {
+    "module-role": {"adapt", "adapt-core-rewrite-output", "reference", "non-subject",
+                    "retire-for-acc", "new-subject", "keep"},
+    "runtime-service": {"implemented", "required", "reference", "keep", "retire"},
+    "capability": {"implemented", "required", "unknown", "not-required"},
+    "unknown-resolution": {"resolved", "open"},
+}
+DECISION_REQUIRED_KEYS = ("id", "subject", "kind", "conclusion", "evidence",
+                          "note", "bound_input_hashes")
 
-    绑定宇宙不限于受管扫描输入：决定可绑定仓库内任意文件（如 Spec/战略文档），
-    工具现场计算其 hash；文件缺失或 hash 漂移即过期失败。
+
+def _evidence_file(ev: str) -> str:
+    """'path.at:123' -> 'path.at'；无行号后缀则原样返回。"""
+    s = str(ev)
+    head, _, tail = s.rpartition(":")
+    return head if head and tail.isdigit() else s
+
+
+def _unknown_candidates_from_scans(scans):
+    """聚合当前扫描的全部 unknown 候选：[(path, kind, name)] 去重排序。"""
+    seen = set()
+    for rel, s in scans.items():
+        for c in s.calls:
+            if c["kind"].startswith("unknown"):
+                seen.add((rel, c["kind"], c["name"]))
+    return sorted(seen)
+
+
+def validate_decisions(dec_path: Path, inputs, root: Path,
+                       unknown_candidates=None, require: bool = False):
+    """校验人工结论层。返回 (状态, 消息列表)；状态 absent|error|stale|ok。
+
+    绑定宇宙不限于受管扫描输入：决定可绑定仓库内任意文件，工具现场计算 hash。
+    QA-03（PLAN-743 r2）：provided 层做完整结构校验（版本/必填字段/唯一 ID/
+    合法结论/非空绑定/证据文件存在）；--require-decisions 严格完成态门额外要求
+    人工层存在、非空，且覆盖全部受管输入与全部 unknown 候选（unknown_families
+    双向闭环，open 族必须带 owner/探针/工作包）。早期 scan-only（absent 且未
+    加严格门）保持可用，但消息明示"非完成态"，不显示为人工层 ok。
     """
     if not dec_path.is_file():
-        return "absent", ["WARN[decisions-absent] %s 不存在（T-03 之前为正常状态）；"
-                          "人工结论未提供，--check 仅校验扫描制品" % DECISIONS_NAME]
+        if require:
+            return "error", ["ERROR[decisions-required] 完成态要求 %s 存在"
+                             % DECISIONS_NAME]
+        return "absent", ["WARN[decisions-absent] %s 不存在：scan-only 模式"
+                          "（仅校验扫描制品，非完成态，人工层未提供）" % DECISIONS_NAME]
     try:
         data = json.loads(dec_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
         return "error", ["ERROR[decisions-malformed] %s: %s" % (DECISIONS_NAME, e)]
-    if not isinstance(data, dict) or not isinstance(data.get("decisions"), list):
-        return "error", ["ERROR[decisions-malformed] %s: 缺 decisions 数组" % DECISIONS_NAME]
+    if not isinstance(data, dict):
+        return "error", ["ERROR[decisions-malformed] %s: 顶层必须是对象" % DECISIONS_NAME]
+    if data.get("format_version") != 1:
+        return "error", ["ERROR[decisions-malformed] format_version 必须为 1，实际 %r"
+                         % (data.get("format_version"),)]
+    decisions = data.get("decisions")
+    if not isinstance(decisions, list) or not decisions:
+        return "error", ["ERROR[decisions-malformed] decisions 必须是非空数组"]
     current = {i["path"]: i["sha256"] for i in inputs}
-    msgs, stale = [], False
-    for d in data["decisions"]:
-        did = d.get("id", "?")
+    msgs, stale, structural_error = [], False, False
+
+    seen_ids = set()
+    covered_paths = set()
+    for d in decisions:
+        if not isinstance(d, dict):
+            return "error", ["ERROR[decision-malformed] decisions 含非对象记录"]
+        did = d.get("id")
+        for key in DECISION_REQUIRED_KEYS:
+            if key not in d or d[key] in (None, "", [], {}):
+                structural_error = True
+                msgs.append("ERROR[decision-malformed] %s 缺必填字段或为空: %s"
+                            % (did, key))
+        if not did:
+            continue
+        did = str(did)
+        if did in seen_ids:
+            structural_error = True
+            msgs.append("ERROR[decision-duplicate-id] %s" % did)
+        seen_ids.add(did)
+        kind = d.get("kind")
+        if kind not in DECISION_KIND_CONCLUSIONS:
+            structural_error = True
+            msgs.append("ERROR[decision-malformed] %s 非法 kind: %r" % (did, kind))
+        elif d.get("conclusion") not in DECISION_KIND_CONCLUSIONS[kind]:
+            structural_error = True
+            msgs.append("ERROR[decision-malformed] %s conclusion %r 不属于 kind=%s"
+                        " 合法集 %s" % (did, d.get("conclusion"), kind,
+                                        sorted(DECISION_KIND_CONCLUSIONS[kind])))
+        for ev in d.get("evidence", []):
+            ev_file = _evidence_file(ev)
+            if not (root / ev_file).is_file():
+                structural_error = True
+                msgs.append("ERROR[decision-evidence-missing] %s 证据文件不存在: %s"
+                            % (did, ev))
+            else:
+                covered_paths.add(ev_file)
+        subject = str(d.get("subject") or "")
+        if subject and (root / subject.split(":")[0]).is_file():
+            covered_paths.add(subject.split(":")[0])
         bound = d.get("bound_input_hashes") or {}
         for p, h in sorted(bound.items()):
             if p not in current:
@@ -625,13 +704,85 @@ def validate_decisions(dec_path: Path, inputs, root: Path):
             if cur != h:
                 stale = True
                 msgs.append("ERROR[decision-stale] %s 绑定的输入已变化: %s" % (did, p))
-        for ev in d.get("evidence", []):
-            ev_path = str(ev).split(":")[0]
-            if ev_path not in current and not (root / ev_path).is_file():
-                msgs.append("WARN[decision-evidence-outside] %s 证据文件不存在: %s" % (did, ev))
-    if stale:
-        return "stale", msgs
-    msgs.insert(0, "OK[decisions] %d 条人工结论绑定全部新鲜" % len(data["decisions"]))
+
+    if require:
+        # 完成态覆盖闭环 1：全部受管输入被 ≥1 决定引用（subject/evidence/绑定）
+        for inp in inputs:
+            if inp["path"] not in covered_paths:
+                structural_error = True
+                msgs.append("ERROR[coverage-missing-input] 无决定覆盖受管输入: %s"
+                            % inp["path"])
+        # 覆盖闭环 2：unknown 候选 ↔ unknown_families 双向匹配
+        families = data.get("unknown_families")
+        if not isinstance(families, list) or not families:
+            structural_error = True
+            msgs.append("ERROR[coverage-missing-unknowns] 完成态要求 unknown_families"
+                        " 覆盖声明（当前扫描 unknown 候选 %d 族未闭环）"
+                        % len(unknown_candidates or []))
+            families = []
+        fam_index = []
+        for f in families:
+            if not isinstance(f, dict):
+                structural_error = True
+                msgs.append("ERROR[family-malformed] unknown_families 含非对象记录")
+                continue
+            fp, fk = f.get("path"), f.get("kind")
+            if fp not in current:
+                structural_error = True
+                msgs.append("ERROR[family-malformed] family.path 不是受管输入: %r" % (fp,))
+                continue
+            if fk not in ("unknown-receiver", "unknown-bare-call"):
+                structural_error = True
+                msgs.append("ERROR[family-malformed] family.kind 非法: %r" % (fk,))
+                continue
+            names = f.get("names")
+            if names != "*" and not (isinstance(names, list) and names):
+                structural_error = True
+                msgs.append("ERROR[family-malformed] family.names 必须为 \"*\" 或非空"
+                            " 列表: %s/%s" % (fp, fk))
+                continue
+            disposition = f.get("disposition")
+            if disposition not in ("resolved", "open"):
+                structural_error = True
+                msgs.append("ERROR[family-malformed] family.disposition 非法: %r"
+                            % (disposition,))
+                continue
+            if disposition == "open":
+                for req_key in ("owner", "probe", "work_package"):
+                    if not f.get(req_key):
+                        structural_error = True
+                        msgs.append("ERROR[family-open-incomplete] open 族缺 %s: %s/%s"
+                                    % (req_key, fp, fk))
+            ref = f.get("decision") or f.get("owner")
+            if ref and str(ref) not in seen_ids:
+                structural_error = True
+                msgs.append("ERROR[family-malformed] family 引用的决定不存在: %r" % (ref,))
+            fam_index.append(f)
+        if unknown_candidates:
+            for (upath, ukind, uname) in unknown_candidates:
+                hit = any(f.get("path") == upath and f.get("kind") == ukind
+                          and (f.get("names") == "*" or uname in f.get("names", []))
+                          for f in fam_index)
+                if not hit:
+                    structural_error = True
+                    msgs.append("ERROR[coverage-missing-unknown] 未闭环 unknown 候选:"
+                                " %s %s %s" % (upath, ukind, uname))
+            for f in fam_index:
+                fp, fk, names = f.get("path"), f.get("kind"), f.get("names")
+                matched = any(p == fp and k == fk and (names == "*" or n in names)
+                              for (p, k, n) in unknown_candidates)
+                if not matched:
+                    structural_error = True
+                    msgs.append("ERROR[family-orphan] family 无对应候选: %s %s %s"
+                                % (fp, fk, names))
+
+    if stale or structural_error:
+        return ("stale" if stale and not structural_error else "error"), msgs
+    ok_msg = "OK[decisions] %d 条人工结论绑定全部新鲜" % len(decisions)
+    if require:
+        ok_msg += "；严格门覆盖闭环通过（输入 %d/unknown 候选 %d 族）" % (
+            len(inputs), len(unknown_candidates or []))
+    msgs.insert(0, ok_msg)
     return "ok", msgs
 
 
@@ -674,7 +825,13 @@ def main(argv=None) -> int:
     group = ap.add_mutually_exclusive_group(required=True)
     group.add_argument("--write", action="store_true")
     group.add_argument("--check", action="store_true")
+    ap.add_argument("--require-decisions", action="store_true",
+                    help="严格完成态门：要求人工结论层存在、合法且覆盖闭环"
+                         "（仅 --check；QA-03，PLAN-743 r2）")
     args = ap.parse_args(argv)
+    if args.require_decisions and args.write:
+        print("ERROR[usage] --require-decisions 仅与 --check 组合使用", file=sys.stderr)
+        return 2
 
     root = Path(args.root)
     if not root.is_dir():
@@ -743,7 +900,10 @@ def main(argv=None) -> int:
         missing = [p for p in MANAGED_INPUTS if p not in covered]
         if missing:
             failures.append("ERROR[coverage] manifest 未覆盖受管输入: %s" % ", ".join(missing))
-    status, dmsgs = validate_decisions(out_dir / DECISIONS_NAME, built["inputs"], root)
+    status, dmsgs = validate_decisions(
+        out_dir / DECISIONS_NAME, built["inputs"], root,
+        unknown_candidates=_unknown_candidates_from_scans(scans),
+        require=args.require_decisions)
     if status in ("stale", "error"):
         failures.extend(dmsgs)
     else:
