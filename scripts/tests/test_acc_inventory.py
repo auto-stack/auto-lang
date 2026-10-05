@@ -418,10 +418,19 @@ class StrictDecisionsGate(FixtureCase):
              "bound_input_hashes": {rel: bindings[rel]}}
             for i, rel in enumerate(_ai.MANAGED_INPUTS)
         ]
+        mod_paths = sorted(by_module)
+        # 族引用的 unknown-resolution 决定：证据覆盖各族路径（适用性规则，r3）
+        decisions.append({
+            "id": "MD-S-900", "subject": "fixture-unknown-families",
+            "kind": "unknown-resolution", "conclusion": "resolved",
+            "evidence": ["%s:1" % p for p in mod_paths],
+            "note": "fixture unknown disposition",
+            "bound_input_hashes": {p: bindings[p] for p in mod_paths},
+        })
         fams = [{"path": p, "kind": "unknown-receiver", "names": "*",
-                 "disposition": "resolved", "decision": "MD-S-000",
+                 "disposition": "resolved", "decision": "MD-S-900",
                  "note": "fixture family"}
-                for p in sorted(by_module)]
+                for p in mod_paths]
         layer = {"format_version": 1, "decisions": decisions,
                  "unknown_families": fams}
         (out / acc_inventory.DECISIONS_NAME).write_text(
@@ -554,6 +563,104 @@ class StrictDecisionsGate(FixtureCase):
         code, out, err = run_tool(self.repo, self.out, "--write", "--require-decisions")
         self.assertEqual(code, 2)
         self.assertIn("usage", err)
+
+
+class IntegrityHardening(StrictDecisionsGate):
+    """P743-R2-QA-02/03/04：证据同条绑定、族引用适用性、字段类型受控拒绝。"""
+
+    def write_layer(self, layer):
+        self.out.mkdir(parents=True, exist_ok=True)
+        (self.out / acc_inventory.DECISIONS_NAME).write_text(
+            json.dumps(layer, ensure_ascii=False), encoding="utf-8")
+
+    def test_evidence_without_binding_rejected_then_fixed_then_stale(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        # 追加仓内非扫描输入证据但不同条绑定（R2-QA-02 反例）
+        (self.repo / "review-evidence.txt").write_text("anchor\n", encoding="utf-8")
+        layer["decisions"][0]["evidence"].append("review-evidence.txt:1")
+        self.write_layer(layer)
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("decision-evidence-unbound", err)
+        self.assertIn(layer["decisions"][0]["id"], err)
+        # 补上同条绑定 → 通过
+        layer["decisions"][0]["bound_input_hashes"]["review-evidence.txt"] = \
+            acc_inventory.sha256_of(self.repo / "review-evidence.txt")
+        self.write_layer(layer)
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 0, err)
+        # 证据内容变化 → stale（绑定在先的证据同样受控）
+        (self.repo / "review-evidence.txt").write_text("changed\n", encoding="utf-8")
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("decision-stale", err)
+
+    def test_resolved_family_without_decision_ref_rejected(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        for f in layer["unknown_families"]:
+            f.pop("decision", None)
+        self.write_layer(layer)
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("family-ref-missing", err)
+
+    def test_resolved_family_wrong_kind_ref_rejected(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        layer["unknown_families"][0]["decision"] = layer["decisions"][0]["id"]  # module-role
+        self.write_layer(layer)
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("family-ref-inapplicable", err)
+
+    def test_resolved_family_nonexistent_ref_rejected(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        layer["unknown_families"][0]["decision"] = "MD-NOPE"
+        self.write_layer(layer)
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("family-ref-missing", err)
+
+    def test_valid_open_family_passes(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        f = layer["unknown_families"][0]
+        f["disposition"] = "open"
+        f.pop("decision", None)
+        f["owner"] = "fixture-owner"
+        f["probe"] = "fixture-probe"
+        f["work_package"] = "fixture-work-package"
+        self.write_layer(layer)
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 0, err)
+
+    def test_wrong_field_types_controlled_rejection(self):
+        run_tool(self.repo, self.out, "--write")
+        base = self.complete_layer()
+        cases = [
+            ("kind", lambda L: L["decisions"][0].__setitem__("kind", [])),
+            ("conclusion", lambda L: L["decisions"][0].__setitem__("conclusion", None)),
+            ("evidence", lambda L: L["decisions"][0].__setitem__("evidence", "not-a-list")),
+            ("bound", lambda L: L["decisions"][0].__setitem__("bound_input_hashes", ["oops"])),
+            ("note", lambda L: L["decisions"][0].__setitem__("note", {})),
+            ("family.path", lambda L: L["unknown_families"][0].__setitem__("path", 17)),
+            ("family.names", lambda L: L["unknown_families"][0].__setitem__("names", [])),
+            ("family.disposition", lambda L: L["unknown_families"][0].__setitem__("disposition", "yes")),
+            ("family.owner", lambda L: L["unknown_families"][0].__setitem__("owner", 42)),
+        ]
+        for i, (label, mut) in enumerate(cases):
+            with self.subTest(case=i, field=label):
+                layer = json.loads(json.dumps(base, ensure_ascii=False))
+                mut(layer)
+                self.write_layer(layer)
+                code, out, err = run_tool(self.repo, self.out,
+                                          "--check", "--require-decisions")
+                self.assertEqual(code, 1, "case %s should fail" % label)
+                self.assertIn("ERROR[", err, "case %s needs located error" % label)
+                self.assertNotIn("Traceback", err, "case %s leaked traceback" % label)
 
 
 if __name__ == "__main__":

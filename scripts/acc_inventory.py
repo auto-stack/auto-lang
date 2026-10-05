@@ -654,20 +654,43 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
     current = {i["path"]: i["sha256"] for i in inputs}
     msgs, stale, structural_error = [], False, False
 
+    def is_str(v):
+        return isinstance(v, str)
+
     seen_ids = set()
     covered_paths = set()
-    for d in decisions:
+    for pos, d in enumerate(decisions):
         if not isinstance(d, dict):
-            return "error", ["ERROR[decision-malformed] decisions 含非对象记录"]
-        did = d.get("id")
+            return "error", ["ERROR[decision-malformed] decisions[%d] 非对象记录" % pos]
+        # ── R2-QA-04：字段/元素类型前置校验（先于任何集合/迭代/hash 逻辑） ──
+        did_raw = d.get("id")
+        did = did_raw if isinstance(did_raw, str) and did_raw else "decisions[%d]" % pos
+        type_bad = False
         for key in DECISION_REQUIRED_KEYS:
-            if key not in d or d[key] in (None, "", [], {}):
-                structural_error = True
-                msgs.append("ERROR[decision-malformed] %s 缺必填字段或为空: %s"
-                            % (did, key))
-        if not did:
-            continue
-        did = str(did)
+            if key not in d:
+                type_bad = True
+                msgs.append("ERROR[decision-malformed] %s 缺必填字段: %s" % (did, key))
+                continue
+            v = d[key]
+            if key == "evidence":
+                if not (isinstance(v, list) and all(is_str(x) for x in v)) or not v:
+                    type_bad = True
+                    msgs.append("ERROR[decision-malformed] %s evidence 必须为非空"
+                                "字符串数组: %r" % (did, type(v).__name__))
+            elif key == "bound_input_hashes":
+                if not (isinstance(v, dict) and v
+                        and all(is_str(k) and is_str(x) for k, x in v.items())):
+                    type_bad = True
+                    msgs.append("ERROR[decision-malformed] %s bound_input_hashes 必须为"
+                                "非空 {路径:hash} 字符串映射: %r" % (did, type(v).__name__))
+            elif not is_str(v) or not v:
+                type_bad = True
+                msgs.append("ERROR[decision-malformed] %s %s 必须为非空字符串: %r"
+                            % (did, key, type(v).__name__))
+        if type_bad:
+            structural_error = True
+            continue  # 类型不合法的记录不做后续语义校验（无 traceback）
+
         if did in seen_ids:
             structural_error = True
             msgs.append("ERROR[decision-duplicate-id] %s" % did)
@@ -681,18 +704,25 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
             msgs.append("ERROR[decision-malformed] %s conclusion %r 不属于 kind=%s"
                         " 合法集 %s" % (did, d.get("conclusion"), kind,
                                         sorted(DECISION_KIND_CONCLUSIONS[kind])))
-        for ev in d.get("evidence", []):
+        bound = d["bound_input_hashes"]
+        ev_files = []
+        for ev in d["evidence"]:
             ev_file = _evidence_file(ev)
+            ev_files.append(ev_file)
             if not (root / ev_file).is_file():
                 structural_error = True
                 msgs.append("ERROR[decision-evidence-missing] %s 证据文件不存在: %s"
                             % (did, ev))
             else:
                 covered_paths.add(ev_file)
-        subject = str(d.get("subject") or "")
-        if subject and (root / subject.split(":")[0]).is_file():
+                # ── R2-QA-02：同条证据必须被同条绑定覆盖，身份一致 ──
+                if ev_file not in bound:
+                    structural_error = True
+                    msgs.append("ERROR[decision-evidence-unbound] %s 证据文件无同条"
+                                "绑定: %s" % (did, ev_file))
+        subject = d["subject"]
+        if (root / subject.split(":")[0]).is_file():
             covered_paths.add(subject.split(":")[0])
-        bound = d.get("bound_input_hashes") or {}
         for p, h in sorted(bound.items()):
             if p not in current:
                 f = root / p
@@ -708,6 +738,8 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
                 msgs.append("ERROR[decision-stale] %s 绑定的输入已变化: %s" % (did, p))
 
     if require:
+        decisions_by_id = {d_["id"]: d_ for d_ in decisions
+                           if isinstance(d_, dict) and isinstance(d_.get("id"), str)}
         # 完成态覆盖闭环 1：全部受管输入被 ≥1 决定引用（subject/evidence/绑定）
         for inp in inputs:
             if inp["path"] not in covered_paths:
@@ -723,42 +755,87 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
                         % len(unknown_candidates or []))
             families = []
         fam_index = []
-        for f in families:
+        for fpos, f in enumerate(families):
             if not isinstance(f, dict):
                 structural_error = True
-                msgs.append("ERROR[family-malformed] unknown_families 含非对象记录")
+                msgs.append("ERROR[family-malformed] unknown_families[%d] 非对象记录" % fpos)
                 continue
+            # ── R2-QA-04：family 字段/元素类型前置校验 ──
             fp, fk = f.get("path"), f.get("kind")
-            if fp not in current:
+            type_bad = False
+            if not is_str(fp) or not fp:
+                type_bad = True
+                msgs.append("ERROR[family-malformed] unknown_families[%d] path 必须为"
+                            "非空字符串: %r" % (fpos, type(fp).__name__))
+            elif fp not in current:
                 structural_error = True
                 msgs.append("ERROR[family-malformed] family.path 不是受管输入: %r" % (fp,))
-                continue
             if fk not in ("unknown-receiver", "unknown-bare-call"):
-                structural_error = True
-                msgs.append("ERROR[family-malformed] family.kind 非法: %r" % (fk,))
-                continue
+                type_bad = True
+                msgs.append("ERROR[family-malformed] unknown_families[%d] kind 非法: %r"
+                            % (fpos, fk))
             names = f.get("names")
-            if names != "*" and not (isinstance(names, list) and names):
-                structural_error = True
-                msgs.append("ERROR[family-malformed] family.names 必须为 \"*\" 或非空"
-                            " 列表: %s/%s" % (fp, fk))
-                continue
+            if names != "*" and not (isinstance(names, list)
+                                     and all(is_str(x) for x in names)):
+                type_bad = True
+                msgs.append("ERROR[family-malformed] unknown_families[%d] names 必须为"
+                            " \"*\" 或字符串数组: %r" % (fpos, type(names).__name__))
+            elif isinstance(names, list) and not names:
+                type_bad = True
+                msgs.append("ERROR[family-malformed] unknown_families[%d] names 为空列表"
+                            % fpos)
             disposition = f.get("disposition")
-            if disposition not in ("resolved", "open"):
+            if not is_str(disposition) or disposition not in ("resolved", "open"):
+                type_bad = True
+                msgs.append("ERROR[family-malformed] unknown_families[%d] disposition"
+                            " 非法: %r" % (fpos, disposition))
+            for opt_key in ("decision", "owner", "probe", "work_package", "note"):
+                v = f.get(opt_key)
+                if v is not None and not is_str(v):
+                    type_bad = True
+                    msgs.append("ERROR[family-malformed] unknown_families[%d] %s 必须为"
+                                "字符串: %r" % (fpos, opt_key, type(v).__name__))
+            if type_bad or fp not in current:
                 structural_error = True
-                msgs.append("ERROR[family-malformed] family.disposition 非法: %r"
-                            % (disposition,))
-                continue
-            if disposition == "open":
+                continue  # 类型不合法的族不参与闭环（无 traceback）
+            # ── R2-QA-03：引用关系与适用性 ──
+            ref = f.get("decision") or f.get("owner")
+            if disposition == "resolved":
+                if not is_str(f.get("decision")) or not f.get("decision"):
+                    structural_error = True
+                    msgs.append("ERROR[family-ref-missing] resolved 族缺决定引用:"
+                                " %s/%s" % (fp, fk))
+                else:
+                    ref = f["decision"]
+                    rd = decisions_by_id.get(ref)
+                    if rd is None:
+                        structural_error = True
+                        msgs.append("ERROR[family-ref-missing] resolved 族引用的决定"
+                                    "不存在: %r (%s/%s)" % (ref, fp, fk))
+                    else:
+                        # 适用性：决定须为已消解的 unknown-resolution，
+                        # 且其证据/主体/绑定覆盖族所在路径
+                        covers = any(_evidence_file(ev) == fp
+                                     for ev in rd.get("evidence", []))
+                        covers = covers or fp in rd.get("bound_input_hashes", {})
+                        covers = covers or rd.get("subject") == fp
+                        if rd.get("kind") != "unknown-resolution" or \
+                                rd.get("conclusion") != "resolved" or not covers:
+                            structural_error = True
+                            msgs.append("ERROR[family-ref-inapplicable] resolved 族引用"
+                                        "不适用（须 kind=unknown-resolution/conclusion="
+                                        "resolved 且证据覆盖族路径）: %s -> %s/%s"
+                                        % (ref, fp, fk))
+            else:  # open
                 for req_key in ("owner", "probe", "work_package"):
                     if not f.get(req_key):
                         structural_error = True
                         msgs.append("ERROR[family-open-incomplete] open 族缺 %s: %s/%s"
                                     % (req_key, fp, fk))
-            ref = f.get("decision") or f.get("owner")
-            if ref and str(ref) not in seen_ids:
-                structural_error = True
-                msgs.append("ERROR[family-malformed] family 引用的决定不存在: %r" % (ref,))
+                if f.get("decision") and f["decision"] not in seen_ids:
+                    structural_error = True
+                    msgs.append("ERROR[family-ref-missing] open 族引用的决定不存在: %r"
+                                % (f["decision"],))
             fam_index.append(f)
         if unknown_candidates:
             for (upath, ukind, uname) in unknown_candidates:
