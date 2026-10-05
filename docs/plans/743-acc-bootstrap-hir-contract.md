@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-743
-status: executing
+status: execution_done
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-05
 plan_revision: 2
-current_step: 6
+current_step: 13
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/auto-acc/project.md
@@ -416,29 +416,58 @@ Phase 2 追加（plan_revision 2；原 AC-01..08 不移除）：
 实施基于含本合同的 v0.6-dev 新提交，专用 D:/autostack/.wt/lang-743/auto-lang、plan-743-dev。
 本轮不创建实施 worktree，不修代码；r1 current_step 6 的历史进度保留，总步骤改为 14。
 
-- [ ] T-07 固定 r2 基线与工作树（无任务前置；AC-14）。
+- [x] T-07 固定 r2 基线与工作树（无任务前置；AC-14）。
   /auto-plan:work 核对唯一 ID、741/ABI 并行范围和全部指纹，记录完整激活提交，重建专用分支/检出。
   复跑报告反例，新增 docs/reports/743-phase2-quality-fixes/ 验证资料目录（新路径）；无外仓、无链接。
-- [ ] T-08 修词法屏蔽与调用分类（依赖 T-07；AC-01/02/03/09）。
+  [✅ 已完成] worktree commit 2ecccea12；激活/实施基点 c6e4e5689（worktree lang-743 重建，
+  branch plan-743-dev）；baseline.md 记录并行范围核对（741 P3 独立、.next-id=744 未占）
+  与 QA-01/02/03/06 反例 before 状态逐项复现（pretend 泄漏、x.len/Meter.new 误标、
+  真实仓 CG.new×5/Ar.new×1、CHECK-FAIL 9 项）。
+- [x] T-08 修词法屏蔽与调用分类（依赖 T-07；AC-01/02/03/09）。
   scripts/acc_inventory.py::mask_comments_and_strings/scan_module/_post_classify；
   scripts/tests/test_acc_inventory.py 与 fixtures/acc-inventory/ 新反例；验证 --write 观察及单测，
   多行伪代码零污染、自定义/未知调用不误标 native、旧扫描保护正例保持。
-- [ ] T-09 人工层严格完整性门（依赖 T-08；AC-02/03/10）。
+  [✅ 已完成] commit 212183813：mask 跨行保持字面量态（转义续行/EOF 兜底标记词法不确定/
+  char 换行恢复三态分立）；分类只认可证明证据（NATIVE_NAMESPACES 白名单，NATIVE_METHODS
+  兜底移除），Meter.new/CG.new/Ar.new=type-qualified、x.len=unknown、dot/pipe 隐式 self
+  仅经本地方法集升级；10 新测试 + 旧 18 全绿（28），分类政策更新断言按新合同修正。
+- [x] T-09 人工层严格完整性门（依赖 T-08；AC-02/03/10）。
   validate_decisions/main 新增 --require-decisions、schema/hash/evidence/coverage 校验与定位诊断；
   用决定空绑定/证据不存在/无人工层/重复 ID/非法记录/unknown 未分配去向等负例，
   验证早期 scan-only 兼容、严格 gate 拒绝不完整且 --write 不触人工文件。
-- [ ] T-10 pass/阶段合同消歧（依赖 T-07；AC-04/05/11，SD-05）。
+  [✅ 已完成] commit b62510bca：DECISION_KIND_CONCLUSIONS 四类合法结论集、七必填字段、
+  唯一 ID、非空绑定、证据文件存在（升级为 ERROR）；--require-decisions 严格门=人工层
+  存在非空 + 输入全覆盖 + unknown_families 双向闭环（open 族强制 owner/probe/work_package，
+  孤儿族拒绝）；scan-only 明示非完成态；13 新负例定位决定 ID（41 测试全绿）。
+- [x] T-10 pass/阶段合同消歧（依赖 T-07；AC-04/05/11，SD-05）。
   docs/design/strategy/auto-acc-bootstrap-contract.md 澄清 trap、effect 与事实/目标态边界；
   明确 mark_a→必经溢出和不可达 trap 的预期，不实现优化器。准备 phase2 proposed delta 对应正文。
-- [ ] T-11 锚点与候选前置对账（依赖 T-10；AC-06/07/12，SD-04）。
+  [✅ 已完成] commit ae63a88b8：R3 改为效果分析（保守出发、证明才精化）与效果语义保持
+  （双向禁止，含 trap 与前驱 observable 顺序）两分；eval.const-fold v2 运行期语境溢出
+  一律保持运行期 trap、comptime 域出外、无编译期诊断；X9 反例入册；实现状态边界
+  （模板/示例=目标态，阶段表现状列为唯一权威）。
+- [x] T-11 锚点与候选前置对账（依赖 T-10；AC-06/07/12，SD-04）。
   报告 acceptance-matrix.md/next-work-packages.md/inventory.md：路径与状态逐项核实，
   两候选最小范围/能力/语料一致，gated owner 具体，A8/A9 不预先称源码已实现；估算仅核查不伞形加任务。
-- [ ] T-12 当前证据与决定校准（依赖 T-08..T-11；AC-01/02/03/13，SD-04）。
+  [✅ 已完成] commit ae63a88b8：A2 拆 HIR existing/源码 gated 两态；A8 owner=运行时首批
+  候选（原误记候选①首任务）、A9 owner=聚合能力线（未编号，前置=enum/record/is）；
+  候选①正向集剔除 A8、②剔除 A9；依赖单向 ①→② 无环声明入册。
+- [x] T-12 当前证据与决定校准（依赖 T-08..T-11；AC-01/02/03/13，SD-04）。
   逐条复核 8 决定/9 stale 绑定及扫描分类变化，更新 manual-decisions.json/inventory.md，
   --write 新观察、严格 --check 绿；新增未知分类显式链接决定/owner，不机械替换 hash。
-- [ ] T-13 终验与 Spec 提案冻结（依赖 T-12；AC-01..14，SD-04/05）。
+  [✅ 已完成] commit ae63a88b8：8 决定/9 绑定逐条审定（对照 741 r2/r3 spec 差异：
+  CLI 更名 auto-ac-prototype、构建原子性/截止时间、verify 归属唯一、bindings 双射——
+  结论全部维持，各附具体依据后重绑）；MD-407/506 按 QA-01 修正更新（r1"恢复正确"
+  判定被取代，保留为政策变更记录）；新增 MD-507 变量接收者族裁定；unknown_families
+  7 族闭环 146 组；严格 --check 绿（47 决定全部新鲜）。
+- [x] T-13 终验与 Spec 提案冻结（依赖 T-12；AC-01..14，SD-04/05）。
   全 18+新增 Python 用例、生成确定性、真实严格三命令、links/diff/范围检查；
   新 proposed-spec-delta-phase2.md 冻结 SHA-256，对账所有 AC；簿记主检出回写 execution_done。
+  [✅ 已完成] commit a63660137：§6 四命令全绿（41 测试/--write/严格 --check/git diff
+  --check）+ 确定性三方 cmp + 围栏感知链接检查 + 范围探针零触碰；phase2 提案冻结
+  a963adfbd6b24887，制品冻结哈希与 AC-09..14 对账见
+  docs/reports/743-phase2-quality-fixes/verification.md；本文件回写 execution_done
+  （current_step 13/14，T-14 留待复审/合入阶段闭环）。
 - [ ] T-14 独立复审与合入交接（依赖 T-13；AC-08/14）。
   /auto-plan:review 重放原/新反例与严格门，绑定 r2/HEAD、逐 AC/SD/遗漏复核；
   pass 后交 merge 沉淀 SD-04/05、逐条销账、Spec 改 hash 后再审定绑定并严格冒烟，
@@ -447,6 +476,27 @@ Phase 2 追加（plan_revision 2；原 AC-01..08 不移除）：
 T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现或新 Spec 增量。
 
 ## 9. 复审记录
+
+### Phase 2 执行交接（2026-10-05，stage: work，r2 P743-QA-01..07 修复）
+
+- stage: work（r2；外部复核 needs_fix 后的修复实施）
+- plan_id: PLAN-743 · plan_revision: 2
+- outcome: pass（T-07..T-13 完成、验收映射成立；非独立复审结论）
+- code_commit: a63660137（worktree plan-743-dev；基点=激活提交 c6e4e5689；
+  r2 提交链 2ecccea12→212183813→b62510bca→ae63a88b8→a63660137，worktree clean 0 dirty）
+- worktree: D:/autostack/.wt/lang-743/auto-lang（保留待 review/merge）
+- task_ids: T-07..T-13 全部 [x]（证据见各任务行与 verification.md）；
+  current_step 13/14；T-14（独立复审与合入交接）按定义留待 review/merge 阶段闭环
+- evidence: §6 Phase 2 四命令全绿（41/41 测试、--write、严格 --check --require-decisions
+  47 决定新鲜+146 unknown 组/7 族双向闭环、git diff --check clean）；确定性三方 cmp
+  BYTE-IDENTICAL；围栏感知链接无断链；范围探针 crates/auto-lib/docs.specs/experimental/
+  Cargo 零触碰；复审反例 before→after 逐项复现并锁定（baseline.md/verification.md）；
+  phase2 提案冻结 a963adfbd6b24887（SD-04/05）
+- blockers: 无
+- next: /auto-plan:review（r2 独立复审：重放原/新反例与严格门，绑定 revision 2 +
+  实现 HEAD a63660137，逐 AC/SD 复核）；pass 后 merge 沉淀 SD-04/05（Spec 落地改变
+  hash 后按 §5.6.6 语义复核重绑并严格冒烟）、逐条销账、归档。
+  本记录不替代复审；不自行归档/合入。
 
 ### 合入后独立复核（2026-10-05，按用户要求再次检查）
 
