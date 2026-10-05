@@ -9,9 +9,9 @@
 
 | # | 锚点 | 输入 | oracle / 预期 | 运行形态 | 工具依赖 | 前置 capability | 状态 |
 |---|---|---|---|---|---|---|---|
-| A1 | 算术+循环微程序 | 741 fixtures `experimental/ac-core/fixtures/valid/*`（01-add、02-control 族） | 退出码/输出与 741 收据一致；溢出 trap=ExitProcess(70) | `ac-probe build+run`（Rust AC） | ac-probe、rust-lld、SDK（link.rs 发现） | i32 加/乘/lt、溢出 trap（741 已备） | **existing**（PLAN-741 归档收据） |
+| A1 | 算术+循环微程序 | 741 fixtures `experimental/ac-core/fixtures/valid/*`（01-add、02-control 族） | 退出码/输出与 741 收据一致；溢出 trap=ExitProcess(70) | `auto-ac-prototype build+run`（Rust AC） | auto-ac-prototype、rust-lld、SDK（link.rs 发现） | i32 加/乘/lt、溢出 trap（741 已备） | **existing**（PLAN-741 归档收据） |
 | A2 | 命名参数求值顺序 | HIR 形态：`hir-examples/03-call-order.atom`（在案）；源码形态：同语义 `.at` 微程序（**待建**，依赖 S0→S2 adapter） | 求值顺序（左→右存临时）保持；重排=非法变换 X2 | HIR 形态同 A1；源码形态见 A4 运行形态 | HIR 形态同 A1；源码形态同 A4 | eval_args 语义（741 已备）；源码域须 adapter | **existing（HIR 域，样例+拒绝矩阵已物化）** / **gated（源码域，待建语料+adapter）**——两形态分开追踪，不以 HIR 证据冒充源码证据 |
-| A3 | 错误诊断形态 | `fixtures/invalid/*` 拒绝矩阵 + 新增源码级反例 | `file:line:col: error[stage/code]` 渲染、span 指向冒犯 token | `ac-probe check`（退出 1/2） | ac-probe | 诊断基建（741 HIR 域已备） | **existing**（HIR 域）/ **gated**（源码域待 adapter） |
+| A3 | 错误诊断形态 | `fixtures/invalid/*` 拒绝矩阵 + 新增源码级反例 | `file:line:col: error[stage/code]` 渲染、span 指向冒犯 token | `auto-ac-prototype check`（退出 1/2） | auto-ac-prototype | 诊断基建（741 HIR 域已备） | **existing**（HIR 域）/ **gated**（源码域待 adapter） |
 | A4 | token/lexer 代表 | `corpus_m1`（c01–c05 等）+ token.at/lexer.at 真实入口 keyword_kind/tokenize | 词元序列 golden 与 AAVM 基线一致（ACC 编译产物行为对齐） | ACC 源码→native 编译执行 | ACC 管线（Gen1 形态） | enum(MD-401)、str(MD-406)、List\<Token\>(MD-405) | **gated**（需 S0→S2 adapter + str/容器） |
 | A5 | parser 代表入口 | `corpus_m2` 语料 + parser.at 游标/Pratt 核心 | AST 结构行为与基线一致（对齐口径=行为，非 S-expr 文本） | 同 A4 | 同 A4 | record/method/隐式 self（MD-403/404） | **gated**（同上 + AST 重写层） |
 | A6 | 类型检查代表 | `corpus_m3` 型推断语料 | 类型推断行为 oracle=宿主 VM `.type` 输出（对齐口径为行为） | 同 A4 | 同 A4 | int 全序运算/bool 逻辑（MD-409/410）、record | **gated**（ACC typeck 新主体） |
@@ -30,7 +30,7 @@ A2R 转译中转产物不作为任何锚点的 native 证据。
 
 1. A 形态单次调用延迟与批量分块开销实测（含句柄/缓冲释放路径）。
 2. B 形态进程启动成本、Atom/Batom 载体定型进度对协议握手的影响。
-3. 能力拒绝语义等价性：桥两侧的 `capability.missing` 行为与 ac-probe CLI 一致。
+3. 能力拒绝语义等价性：桥两侧的 `capability.missing` 行为与 auto-ac-prototype CLI 一致。
 4. 错误通道保真：后端阶段码无损传回诊断渲染层（不降级为字符串拼接）。
 
 ## 3. 代际矩阵（AC-06 / A10 展开）
