@@ -24,7 +24,7 @@ T-31 前置:trace 支持库 `test-support/target/debug/ac_trace_support.lib` 已
   `cargo tv` 162/162;`cargo t` 归因见下。
 - 生产面零 diff:`git diff 0501b0f27 -- Cargo.toml Cargo.lock crates/ test/` 为空。
 - r5 复现(20261005 目录,-ProductionDeadline,独立 scratch):
-  [r4-review-reproduce-rerun.json](r4-review-reproduce-rerun.json)
+  [r4-review-reproduce-rerun.txt](r4-review-reproduce-rerun.txt)（探针文本输出,.txt 命名——P741P5-R3）
   —— nonzero 与 60s timeout 两出口均 `link.cleanup` 全要素(原失败/残留路径/
   os error 32/NOT committed/恢复办法),旧三件套字节不变、old exe exit 5、
   released_cleanup_ok=true;public-deadline 60.08s 且后代 death-watch 317ms 内回收。

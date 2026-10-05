@@ -64,8 +64,15 @@ def main() -> None:
         fail("frontmatter status missing")
     if args.location == "archive" and status.group(1) != "archived":
         fail(f"archive mode requires status: archived, found {status.group(1)}")
-    if args.location == "active" and status.group(1) != "executing":
-        fail(f"active mode requires status: executing, found {status.group(1)}")
+    # P741P5-R1: the delivery-to-merge window legitimately passes through
+    # execution_done (per the r5 contract) and reviewed (after the pass) —
+    # accept all three; only the archived state belongs to archive mode.
+    if args.location == "active" and status.group(1) not in (
+        "executing",
+        "execution_done",
+        "reviewed",
+    ):
+        fail(f"active mode requires status executing/execution_done/reviewed, found {status.group(1)}")
     print(f"OK  location: {parent} (status {status.group(1)})")
 
     # --- markdown links ------------------------------------------------------

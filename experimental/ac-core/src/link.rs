@@ -1363,6 +1363,50 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// discard_own_staged branch discriminators (P741P5-R2): NotFound means
+    /// already reclaimed (no failure), a directory occupying the path is a
+    /// user placeholder (skipped, never counted), and only a real blocked
+    /// remove is reported.
+    #[test]
+    #[cfg(windows)]
+    fn discard_own_staged_branch_discriminators() {
+        let dir = std::env::temp_dir()
+            .join("ac741-link-tx")
+            .join("discard-branches");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // NotFound: already reclaimed.
+        assert!(discard_own_staged(&dir.join("missing.tmp")).is_empty());
+        // Directory placeholder: skipped, not a failure, and NOT removed.
+        let user_dir = dir.join("placeholder.tmp");
+        std::fs::create_dir(&user_dir).unwrap();
+        assert!(discard_own_staged(&user_dir).is_empty());
+        assert!(user_dir.is_dir(), "user placeholder must survive");
+        // Real blocked remove: file held without FILE_SHARE_DELETE.
+        let held = dir.join("held.tmp");
+        std::fs::write(&held, b"x").unwrap();
+        use std::os::windows::fs::OpenOptionsExt;
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(1)
+            .open(&held)
+            .unwrap();
+        let failures = discard_own_staged(&held);
+        assert_eq!(failures.len(), 1, "{failures:?}");
+        assert!(
+            failures[0].contains(&held.display().to_string()),
+            "{failures:?}"
+        );
+        assert!(failures[0].contains("os error"), "{failures:?}");
+        drop(lock);
+        assert!(
+            discard_own_staged(&held).is_empty(),
+            "recoverable after release"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Normal reclaimable failures (no lock) must stay clean: original error
     /// code, zero own residue, previous artifacts untouched.
     #[test]

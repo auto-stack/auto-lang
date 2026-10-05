@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-741
-status: execution_done
+status: reviewed
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
@@ -734,7 +734,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
   worktree 独有 3 例主检出 scoped 单跑全 PASS=THR-D4 flake，零新增归因，不伪写绿）；
   生产面零 diff（git diff 0501b0f27 -- Cargo.toml Cargo.lock crates/ test/ 空）。关闭旧 T-23/T-29
   验收。AC-27（执行侧证据；r5 HEAD 绑定待 T-35 复审）。
-- [ ] **T-35** /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 沉淀 SD-09、
+- [x] **T-35** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 5 独立复审）；三条 P3 已顺手处置；merge 沉淀 SD-09、销账 R4-QA 行、归档 + archive 模式复跑 final_assertions、guard 清理待 /auto-plan:merge。
   销账 R4-QA 行、归档并以 archive 模式复跑 final_assertions 收口、guard 清理。
 
 
@@ -744,7 +744,38 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 ## 9. 复审记录
 
-##### 合并收据（2026-10-05，/auto-plan:merge）PLAN-741:r4
+##### Phase 5 独立复审（2026-10-05，/auto-plan:review，独立代理）
+
+- stage: review | plan_id: PLAN-741 | plan_revision: 5 | outcome: **pass**
+- reviewed_commit: `26bd8562b`（worktree clean；实现 fb50d048e + 报告 a05d01570 + 簿记，区间 3
+  提交）；复审后追加三条 P3 处置提交（R1 脚本状态守卫放宽 / R2 discard_own_staged 分支判别
+  测试 / R3 复现输出改名 .txt，scoped 复验 lib 15/15 + final_assertions ALL-PASS + fmt）
+- base_commit: `0501b0f27`（v0.6-dev 含复审方 r5 再激活提交）
+- 复审方式: 全新上下文独立代理（未参与实现），全部证据自行运行/读源码；自构反例
+  （](../reports/nonexistent.md) 注入后脚本正确 FAIL）、reproduce.ps1 独立复跑（nonzero/
+  timeout 两出口 link.cleanup 全要素、public-deadline 60.067s 后代 223ms 回收）
+- dependency_revisions: 同 r4（windows-sys 0.59.0 含 ToolHelp；无新依赖）
+- spec_inputs: SD-09 → docs/specs/auto-ac/project.md（modify，merge 沉淀）；复审确认与冻结
+  文本/实现逐条吻合；canonical specs 与 live ledger 零 diff（git diff 0501b0f27 -- docs/specs/
+  .autoos/ 空）
+- acceptance_results（全 **pass**，复审代理自行取证）:
+  - AC-25 pass：两错误出口经共享 discard_own_staged + with_staged_cleanup（diff 证明系
+    publish 内联闭包逐字提取、去重等价）；三新测试 + reproduce nonzero/timeout 全要素
+  - AC-26 pass（工作侧；真实 archive 收口留 merge）：7 处链接全部 ../../reports 且复审
+    逐条验证 5 个唯一目标自 archive 父目录可解析（覆盖原报 4 断链为超集）；final_assertions
+    实质断言全过 + 自构反例正确 FAIL
+  - AC-27 pass：原型全族独立实跑全绿（含 trace 前置修正后）、60s 证据显式 60.02s、
+    all-targets 零 warning、fmt、tv 162/162、红清单自行差分 29 共有+双侧各 3 独有与声称一致、
+    抽查 worktree 独有 state_file lock 主检出单跑 PASS（flake 归因成立）
+- findings（3 条 P3，不阻塞；全部已处置）:
+  - P741P5-R1：final_assertions active 模式硬性要求 executing，在 execution_done/reviewed
+    的正当交付窗口自封——已放宽为三态接受
+  - P741P5-R2：discard_own_staged 的 NotFound/is_dir 分支无直接判别测试——已补分支判别测试
+  - P741P5-R3：复现输出 .json 实为文本——已改名 .txt 并更新报告引用
+- next: merge（/auto-plan:merge 沉淀 SD-09、销账 R4-QA-01..02 行、归档并以 archive 模式
+  复跑 final_assertions 35/35 全勾门、guard 清理）
+
+### 合并收据（2026-10-05，/auto-plan:merge）PLAN-741:r4
 
 - stage: merge | plan_id: PLAN-741 | plan_revision: 4 | outcome: pass
 - prepared: reviewed 基线 6fb7a9068（worktree clean；主线自基线未动，无需 rebase——
