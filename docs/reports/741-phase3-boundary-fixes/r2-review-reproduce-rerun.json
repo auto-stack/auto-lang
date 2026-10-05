@@ -1,0 +1,33 @@
+Evidence directory: C:\Users\zhaop\AppData\Local\Temp\p741-r2-3318e1f2a3d94b3f93c6fcae2ac40371
+[
+  {
+    "name": "block-self-cycle",
+    "exit": 1,
+    "stdout": null,
+    "stderr": "D:\\autostack\\.wt\\lang-741\\auto-lang\\docs\\reports\\741-quality-review-20261005\\fixtures\\block-self-cycle.atom:1:435: error[verify/verify.block-structure]: entry block `ke` is also referenced as a child block; entry role must be unique\n"
+  },
+  {
+    "name": "block-disconnected-cycle",
+    "exit": 1,
+    "stdout": null,
+    "stderr": "D:\\autostack\\.wt\\lang-741\\auto-lang\\docs\\reports\\741-quality-review-20261005\\fixtures\\block-disconnected-cycle.atom:1:335: error[verify/verify.block-structure]: block `ka` is not reachable from the entry block (block graph must be connected and acyclic)\nD:\\autostack\\.wt\\lang-741\\auto-lang\\docs\\reports\\741-quality-review-20261005\\fixtures\\block-disconnected-cycle.atom:1:373: error[verify/verify.block-structure]: block `kb` is not reachable from the entry block (block graph must be connected and acyclic)\n"
+  },
+  {
+    "name": "baseline",
+    "exit": 0,
+    "stdout": "BUILT C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r2-3318e1f2a3d94b3f93c6fcae2ac40371\\baseline.exe (entry test_entry)\n  obj: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r2-3318e1f2a3d94b3f93c6fcae2ac40371\\baseline.obj\n  exe: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r2-3318e1f2a3d94b3f93c6fcae2ac40371\\baseline.exe\n  receipt: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r2-3318e1f2a3d94b3f93c6fcae2ac40371\\baseline.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+    "stderr": null
+  },
+  {
+    "name": "receipt-prepare",
+    "exit": 0,
+    "stdout": "result=Err(Diagnostic { stage: Link, code: \"link.receipt\", message: \"stage receipt at C:\\\\Users\\\\zhaop\\\\AppData\\\\Local\\\\Temp\\\\p741-r2-3318e1f2a3d94b3f93c6fcae2ac40371\\\\receipt-prepare\\\\tx.ac-link.txt.tmp-ac741-28552: ¾Ü¾ø·ÃÎÊ¡£ (os error 5)\", span: Span { start: 0, end: 0 } })\nstaged_exe_left=false;old_exe_unchanged=true;old_obj_unchanged=true\n",
+    "stderr": null
+  },
+  {
+    "name": "watchdog",
+    "configuredDeadlineSeconds": 60,
+    "observedSeconds": 60.4357676,
+    "stillRunningAfterDeadline": false
+  }
+]

@@ -90,8 +90,8 @@ Invoke-Step 'cargo check --all-targets, zero warnings (ac-core)' {
     $out = Invoke-Captured 'cargo' @('check', '--locked', '--all-targets', '--manifest-path', (Join-Path $AcCore 'Cargo.toml')) $RepoRoot
     if ($out -match '(?m)^warning:') { throw "unhandled compiler warnings in ac-core all-targets build:`n$out" }
 }
-Invoke-Step 'cargo test --lib (ac-core: link executor deadline/pipe)' {
-    Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--lib') $RepoRoot -TimeoutSec 300 | Out-Null
+Invoke-Step 'cargo test --lib (ac-core: link executor deadline/pipe/publish matrix)' {
+    Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--lib', '--', '--test-threads=1') $RepoRoot -TimeoutSec 300 | Out-Null
 }
 Invoke-Step 'cargo test text_binding' {
     Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--test', 'text_binding') $RepoRoot | Out-Null

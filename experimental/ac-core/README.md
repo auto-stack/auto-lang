@@ -5,7 +5,8 @@ Cranelift native lowering → Windows x64 COFF 对象 → rust-lld 链接 → �
 
 这是计算核心 profile(core-i32-draft)的首条纵向实现:**"HIR → 原生执行"**,
 不是 "Auto 源码 → 原生执行",也不是 AAC 自举完成。范围、非目标与验收见
-[docs/plans/741-ac-hir-native-core.md](../../docs/plans/741-ac-hir-native-core.md)。
+[docs/plans/741-ac-hir-native-core.md](../../docs/plans/741-ac-hir-native-core.md)
+(r1/r2 已交付归档;当前 r3 收尾后随归档迁回 docs/plans/archive/)。
 
 ## 流水线
 
@@ -14,9 +15,11 @@ Cranelift native lowering → Windows x64 COFF 对象 → rust-lld 链接 → �
   → atom_text.rs        分词/解析,带字节 span 的语法树
   → descriptor.rs       core-i32-draft descriptor 绑定(schema/core-i32.atom)
   → hir.rs              类型化 ID + Unchecked HIR
-  → verify.rs           语义校验 → CheckedModule(唯一构造路径)
+  → verify.rs           语义校验 → CheckedModule(唯一构造路径;块包含图
+                        可达/无环结构门先于数据流走查)
   → native.rs           Cranelift lowering(溢出 trap = ExitProcess(70))
-  → link.rs             rust-lld COFF 链接(暂存+备份+发布,失败回滚 + 收据)
+  → link.rs             rust-lld COFF 链接(暂存+备份+发布,失败回滚 + 收据;
+                        全子进程硬截止覆盖等待与输出收集,Job Object 管控进程树)
   → Windows PE
 ```
 
@@ -63,10 +66,11 @@ cli / trace_execution)、CLI 实机构建运行、fmt 与 all-targets 零 warnin
 | 测试 | 内容 |
 |---|---|
 | text_binding | 四份设计样例绑定、作者/显式/canonical 往返语义等价、enum 简写、15 类拒绝 |
-| hir_verify | §9 拒绝矩阵 + 组合反例(共享表达式/块、环、跨 body、初始化交集、返回路径) |
+| hir_verify | §9 拒绝矩阵 + 组合反例(共享表达式/块、环、跨 body、初始化交集、返回路径、块图自环/断开环) |
 | native_execution | 真实 PE 运行:add(2,3)=5、count 循环、i32 溢出 trap=70、COFF 符号 |
-| cli | check/build CLI 退出码、入口/能力/链接错误路径、失败不覆盖 |
+| cli | check/build CLI 退出码、入口/能力/链接错误路径、失败不覆盖、块图反例 5s 内定位拒绝 |
 | trace_execution | 显式 capability + 支持库:原生调用顺序 b→a、pair 结果 12 |
+| lib(link 单测) | 执行器:1s 截止杀挂起 helper、收集阶段同截止(后代持管道)、大输出完整、发布事务失败矩阵(准备/备份/三次发布) |
 
 ## 边界(勿过度宣称)
 
