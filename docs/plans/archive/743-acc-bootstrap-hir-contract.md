@@ -633,7 +633,7 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 | landed | rebase 遇并行线 PLAN-741 P3 同批文件落地（.autoos/specs.json 与 auto-hir/plans.md UU）——union 解决（双方条目/行均保留：P741-1..5+P743-1..6 共存、741 行 delivered + 743 行 archived），range-diff 提交 1–4 补丁等号、提交 5 为合法 union（语义核验：SD-08 正文/P743 指针/741 条目/plans 行全对）。旧→新映射：0967bc844→63a882097、62329eadb→569b4c2f9、b9b77ecc8→7de5b83ed、af3c8040e→f9b86e4f6、b28cc8ba5→5e4e349f8。ff-only 落地；§5.6.6 条款触发：741 P3 改变 8 决定/9 绑定的两份 spec hash（块包含图 DFS 门/发布回滚/Job Object 截止）——逐条审定结论维持后 spec-only 重绑（commit 2c6c3787d；首次脚本误覆源码绑定即发现并 git 还原重做），主检出严格冒烟 83/83 测试+严格门绿；delivery 终点=2c6c3787d |
 | ledger_refreshed | .autoos/specs.json P743-1 原位刷新（r4 强化注记）+ P743-3 指针对账 archive + reviews P743-6（外部 needs_fix→Phase 4→R5 pass 链），随 delivery 落主检出，read-back 验证 P743-1..6 在案且 741 条目无损 |
 | archived | 本文件 git mv 至 docs/plans/archive/，status: archived，completion_kind: delivered |
-| cleaned | 见下补记 |
+| cleaned | worktree 0 dirty 且 HEAD 898530d57 已是 v0.6-dev 祖先；wt-guard.sh 仍缺失（r1..r3 收据已挂工具债）——等价 PowerShell ReparsePoint 全组扫描：`GUARD-EQUIVALENT-CLEAN: no reparse points in lang-743 group`；git worktree remove 目录删除首次遇 Windows 瞬时句柄 Permission denied（注册已注销，与 r3 同款），重试后目录/`git branch -d plan-743-dev`（was 898530d57）/组目录三方复核清零；final_assertions.py 七类断言在归档+T-27 收口后全过 |
 
 - 规范增量落地：SD-08→docs/specs/auto-acc/project.md（modify；canonical 落地文本与
   冻结提案逐字一致，R5 复核 f8924d0a 未触）。
