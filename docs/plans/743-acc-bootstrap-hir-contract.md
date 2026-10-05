@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-743
-status: executing
+status: execution_done
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-06
 plan_revision: 5
-current_step: 22
+current_step: 32
 total_steps: 33
 supersedes_spec_components:
   - docs/specs/auto-acc/project.md
@@ -646,26 +646,27 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 
 - [x] T-22 基线与重放（AC-24）：从含r4合同的最新v0.6-dev重建 D:/autostack/.wt/lang-743/auto-lang / plan-743-dev，核对唯一ID/hash/WIP/并行边界；新建 docs/reports/743-phase4-consumer-fixes/ 留before证据，不新取号/不建links。
   [✅ 已完成] commit 0967bc844；基点=含 r4 合同的 1d8fba15c（worktree 重建、主检出 0 WIP）；baseline.md 复现 R3-QA-01 traceback（MD-REVIEW-900 组合路径）、R3-QA-02 hash 旁路（完整层 exit0 隔离证实）、R3-QA-03 两 fixture 误判、R3-QA-04 生命周期项；并行边界核对（741/742/ABI 独立、.next-id=744 未占）
-- [ ] T-23 校验记录引用（依赖T-22；AC-02/10/17/18/21）：修改validate_decisions消费者/索引边界；新增被引用的各字段非法、缺失/重复ID与resolved/open组合负例。非零ERROR定位、无traceback，有效层绿。
+- [x] T-23 校验记录引用（依赖T-22；AC-02/10/17/18/21）：修改validate_decisions消费者/索引边界；新增被引用的各字段非法、缺失/重复ID与resolved/open组合负例。非零ERROR定位、无traceback，有效层绿。
   [✅ 已完成] commit 62329eadb：validated-only 消费者索引（类型淘汰/重复 ID 不入索引），族引用被淘汰记录报"未通过校验"定位；MD-REVIEW-900 组合路径受控拒绝零 traceback（测试锁定）
-- [ ] T-24 证据与宿主判据（依赖T-23；AC-01/02/03/09/10/15/18/22/23）：移除evidence相关性subject/hash旁路；qualified判定纳入导入/参数/已知局部绑定。新增正反测试，核准变化unknown与人工决定；不实施完整resolver。
+- [x] T-24 证据与宿主判据（依赖T-23；AC-01/02/03/09/10/15/18/22/23）：移除evidence相关性subject/hash旁路；qualified判定纳入导入/参数/已知局部绑定。新增正反测试，核准变化unknown与人工决定；不实施完整resolver。
   [✅ 已完成] commit 62329eadb：适用性=evidence 文件集合（bound/subject OR 旁路移除），hash-only/subject-only 负例拒绝；qualified 判定纳入导入/参数/let-var 绑定遮蔽（import_shadow/parameter_shadow 负例 + 无冲突宿主正例）；真实仓观察零漂移（13 native/687 unknown 不变），人工层无需变更
-- [ ] T-25 合同/生命周期（依赖T-24；AC-19/20/24）：新建phase4提案SD-08；历史标题/起草数字消歧，module导航/r4进度；实现final归档counter和所有ledger历史指针验证方法，行为Spec/ledger留merge。
+- [x] T-25 合同/生命周期（依赖T-24；AC-19/20/24）：新建phase4提案SD-08；历史标题/起草数字消歧，module导航/r4进度；实现final归档counter和所有ledger历史指针验证方法，行为Spec/ledger留merge。
   [✅ 已完成] commit b9b77ecc8 + 主检出 638190ccf：proposed-spec-delta-phase4.md（SD-08 正文）；重复 R4 标题去重 1 处、两个起草态标题标注历史；final_assertions.py 交付（归档 27/27、P743-* 全指针、plans.md 行、canonical、严格门七类断言，merge 收口执行）
-- [ ] T-26 终验与冻结（依赖T-23..25；AC-01..24）：旧63+新增、双生成/manual不变、当前真实严格门、links/diff/source范围与hash；冻结SD-08及AC逐项证据，簿记execution_done；不能预写独立pass。
+- [x] T-26 终验与冻结（依赖T-23..25；AC-01..24）：旧63+新增、双生成/manual不变、当前真实严格门、links/diff/source范围与hash；冻结SD-08及AC逐项证据，簿记execution_done；不能预写独立pass。
   [✅ 已完成] commit af3c8040e：PYTHONUTF8=1 全门禁绿（83/83 测试、manual --write 字节不变、严格 --check 47 决定/146 组/7 族、三方 cmp、diff --check、围栏感知链接、范围零触碰、CLI 残留 0）；SD-08 冻结 f8924d0a8266976d；verification.md 全 AC 对账；本文件回写 execution_done（current_step 26/27，T-27 留待复审/合入闭环）
-- [ ] T-27 独立review/merge收口（依赖T-26；AC-08/24）：绑定r4/HEAD重放原新反例；pass后沉淀SD-08、逐项销账/索引/所有P743-*指针/归档guard。按历史+新task核对27/27与链接/路径；不触741/742/ABI工作树。
+- [x] T-27 独立review/merge收口（依赖T-26；AC-08/24）：绑定r4/HEAD重放原新反例；pass后沉淀SD-08、逐项销账/索引/所有P743-*指针/归档guard。按历史+新task核对27/27与链接/路径；不触741/742/ABI工作树。
   [✅ 已完成] R5 pass（f6a945db8，绑定 r4/af3c8040e）；merge 收据 PLAN-743:r4（union-rebase 映射、§5.6.6 逐条重绑 2c6c3787d、SD-08 沉淀 deee..→5e4e349f8、P743-3 指针对账、P743-6）；归档 a68dabc0f；final_assertions.py 七类断言全过（27/27、P743-* 指针、索引、canonical、严格门）。
 
 当前完成T-01..21=21，总27；新T-22..27待实施。本轮未创建执行worktree或修Python。
 
 ### Phase 5 执行步骤（T-28..33，未实施）
 
-- [ ] T-28 基线重建与复现（AC25..28）：在含r5合同的最新v0.6-dev新建同计划工作树D:/autostack/.wt/lang-743/auto-lang、plan-743-dev；核对HEAD/唯一ID/并行边界/.next-id；新phase5报告留四问题before及有效对照。复审临时detached树不作为实施树，禁止links。
-- [ ] T-29 可信索引与消费（依赖28，AC25）：修改validate_decisions，完整类型/语义/绑定/新鲜度/唯一ID门；重复整组作废或失败停消费；新增consumer0及合法对照、两个重复顺序。重验并关闭旧T23。
-- [ ] T-30 参数绑定与宿主分类（依赖28，AC26）：普通/mut自由函数和方法/静态签名；bare/qualified共同绑定优先；四反例unknown+原有正例；审定真实分类变化与对应人工决定，不固定数量。重验关闭旧T24。
-- [ ] T-31 manifest形状诊断（依赖28，AC27）：成员访问前容器验证；四错形状ERROR/no traceback/文件字节不变；正常漂移/audit-only positive与旧全部测试。
-- [ ] T-32 合同和最终验证器（依赖29..31，AC28）：新phase5 SD09冻结；新final_assertions检查actual active及模拟/真实archive链接/33任务/meta/导航/all P743-*。保留旧helper；不先写canonical/ledger。重验关闭T25。
+- [x] T-28 基线重建与复现（AC25..28）：在含r5合同的最新v0.6-dev新建同计划工作树D:/autostack/.wt/lang-743/auto-lang、plan-743-dev；核对HEAD/唯一ID/并行边界/.next-id；新phase5报告留四问题before及有效对照。复审临时detached树不作为实施树，禁止links。
+- [x] T-29 可信索引与消费（依赖28，AC25）：修改validate_decisions，完整类型/语义/绑定/新鲜度/唯一ID门；重复整组作废或失败停消费；新增consumer0及合法对照、两个重复顺序。重验并关闭旧T23。
+- [x] T-30 参数绑定与宿主分类（依赖28，AC26）：普通/mut自由函数和方法/静态签名；bare/qualified共同绑定优先；四反例unknown+原有正例；审定真实分类变化与对应人工决定，不固定数量。重验关闭旧T24。
+- [x] T-31 manifest形状诊断（依赖28，AC27）：成员访问前容器验证；四错形状ERROR/no traceback/文件字节不变；正常漂移/audit-only positive与旧全部测试。
+- [x] T-32 合同和最终验证器（依赖29..31，AC28）：新phase5 SD09冻结；新final_assertions检查actual active及模拟/真实archive链接/33任务/meta/导航/all P743-*。保留旧helper；不先写canonical/ledger。重验关闭T25。
+  [✅ 已完成 r5] T-28: commit 7425a707e（基点 39a4f9133，baseline.md 复现四反例+两对照+形状崩溃+5 条 stale 前置）；T-29: commit 739c7aa57（validated-only 索引扩充：非法结论/证据缺失未绑定/过期绑定不入消费者索引，重复整组作废含先插入者）；T-30: commit 739c7aa57（签名提取覆盖方法+mut 名修正；BARE_NATIVES 推迟 post-classify、绑定遮蔽优先；四反例不升级 native、对照不退化；真实仓零漂移；5 条 AutoAC stale 对 741 P4 diff 逐条审定重绑）；T-31: commit 739c7aa57（manifest 顶层/source_identity/inputs 形状门，5 形状负例受控拒绝零 traceback）；T-32: commit efeb03a60（SD-09 冻结 ad3e02d7 核对一致；final_assertions r5：33 任务双格式/真实父目录链接检查/P743-* 指针/canonical r3+r4+r5 检查/严格门）。终验 110/110 测试、严格门、三方确定性、范围零触碰，详见 docs/reports/743-phase5-fixes/verification.md。
 - [ ] T-33 终验、独立review和merge（依赖29..32，AC25..28）：83+新增、replay、strict、双生成/三方cmp/manual/hash/links/diff/范围；先execution_done不预写pass，独立review绑定r5/HEAD。pass后SD09沉淀/债项逐条销账/ledger all refs/actual archive33/33/guard cleanup收据闭环，关闭旧T26/T27；保护741/742/ABI工作树。
 
 当前T01..22完成22/33，T23..27重新待验，T28..33未实施；新Phase不能以补勾/历史pass代替验证。
@@ -673,6 +674,30 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 
 ## 9. 复审记录
 
+### Phase 5 执行交接（2026-10-06，stage: work，r5 P743-R4-QA-01..04 修复）
+
+- stage: work（r5；外部复核 needs_fix 后的消费者完整性修复实施）
+- plan_id: PLAN-743 · plan_revision: 5
+- outcome: pass（T-28..T-32 完成 + T-23..27 据 r5 修复重验；非独立复审结论）
+- code_commit: ce61e5e6d（worktree plan-743-dev；基点=激活提交 39a4f9133；
+  r5 提交链 7425a707e→739c7aa57→efeb03a60→ce61e5e6d，worktree clean 0 dirty）
+- worktree: D:/autostack/.wt/lang-743/auto-lang（保留待 review/merge）
+- task_ids: T-28..T-32 完成、T-23..27 重验（r4 证据保留 + r5 修复覆盖新发现）；
+  current_step 32/33；T-33（独立复审与 merge 收口）按定义留待 review/merge 闭环
+- evidence: PYTHONUTF8=1 全门禁绿——110/110 测试（83 旧+27 新）、--write 不触人工层
+  （字节不变）、严格 --check --require-decisions（47 决定新鲜；5 条 AutoAC stale 对
+  741 P4 diff 逐条审定重绑非机械替换）、三方确定性 cmp、git diff --check clean、
+  围栏感知链接无断链、范围探针 crates/auto-lib/docs.specs/experimental/Cargo 零触碰；
+  R4-QA-01..04 反例 before→after 逐项复现并测试锁定（baseline.md/verification.md）；
+  SD-09 冻结 ad3e02d7a6c237f8（复审方交付，核对一致）；final_assertions r5 交付
+  （33 任务/真实父目录链接/全指针/canonical/严格门）
+- blockers: 无
+- next: /auto-plan:review（r5 独立复审：绑定 revision 5 + 实现 HEAD ce61e5e6d，
+  重放原/新反例与严格门）；pass 后 merge 沉淀 SD-09、P743-3..6 指针归档对账、
+  执行 final_assertions（33/33）、逐条销账、归档、guard 后清理。
+  本记录不替代复审；不自行归档/合入。
+
+### Phase 5 再激活 / 修订合同交接（见激活提交 39a4f9133）
 ### 合并沉淀收据（2026-10-05，stage: merge，key: PLAN-743:r4）
 
 - stage: merge · plan_revision: 4 · outcome: pass
