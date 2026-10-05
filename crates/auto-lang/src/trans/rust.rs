@@ -8705,9 +8705,10 @@ impl RustTrans {
                         write!(out, ")")?;
                         return Ok(());
                     }
-                    // Plan 742 D9: list_dir（Phase-1 JSON→SQLite 升级的收据枚举）。
-                    ("fs", "list_dir") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::list_dir(")?;
+                    // Plan 742 D9: dir_names（Phase-1 JSON→SQLite 升级的收据枚举；
+                    // list_dir 名被 Plan-626 VM-walk 面占用，故避让）。
+                    ("fs", "dir_names") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::dir_names(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
