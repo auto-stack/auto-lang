@@ -4989,7 +4989,7 @@
         {
           "id": "P741-2",
           "title": "auto-ac native AOT closed loop（SD-02）",
-          "content": "PLAN-741 沉淀：Checked HIR → Cranelift 0.126.2 COFF → rust-lld（备选 MSVC link.exe 绝对路径）→ PE；入口=零参数 i32 DefRef，通用 ac_start 包装器 + ExitProcess，Auto 函数不做 OS 入口；溢出 trap=ExitProcess(70)（测试 profile 约定，非语言 ABI）；requires 能力显式门（hir.test.trace.v1 → test-support no_std 静态库 --support-lib）；auto-ac-prototype check/build（ac-probe 历史名）退出码 0/1/2；制品发布=暂存+备份+发布事务、任一步失败整体回滚（发布阶段失败不覆盖既有成功制品）；全部子进程（发现 rustc/reg、链接、运行）硬截止+并发管道读；SDK 发现=AC741_* env → KitsRoot10 注册表 → 已知根。边界：HIR→exe ≠ 源码→exe，无生产 ABI/DLL/热重载宣称。canonical=docs/specs/auto-ac/project.md。r2（SD-04）澄清并以测试锁定。r3（SD-06）增补：单一单调截止同时覆盖进程等待与输出收集——Job Object（KILL_ON_JOB_CLOSE）管控子树，后代持管道不再绕过截止，任一出口回收 reader；输出 read_to_end+lossy 不返回截断成功；发布事务失败出口扩展到收据暂存/备份/三次发布全路径（回收暂存含已链接 exe），回滚受阻返回 link.restore 列幸存备份路径，用户占位目录永不删。",
+          "content": "PLAN-741 沉淀：Checked HIR → Cranelift 0.126.2 COFF → rust-lld（备选 MSVC link.exe 绝对路径）→ PE；入口=零参数 i32 DefRef，通用 ac_start 包装器 + ExitProcess，Auto 函数不做 OS 入口；溢出 trap=ExitProcess(70)（测试 profile 约定，非语言 ABI）；requires 能力显式门（hir.test.trace.v1 → test-support no_std 静态库 --support-lib）；auto-ac-prototype check/build（ac-probe 历史名）退出码 0/1/2；制品发布=暂存+备份+发布事务、任一步失败整体回滚（发布阶段失败不覆盖既有成功制品）；全部子进程（发现 rustc/reg、链接、运行）硬截止+并发管道读；SDK 发现=AC741_* env → KitsRoot10 注册表 → 已知根。边界：HIR→exe ≠ 源码→exe，无生产 ABI/DLL/热重载宣称。canonical=docs/specs/auto-ac/project.md。r2（SD-04）澄清并以测试锁定。r3（SD-06）增补：单一单调截止同时覆盖进程等待与输出收集——Job Object（KILL_ON_JOB_CLOSE）管控子树，后代持管道不再绕过截止，任一出口回收 reader；输出 read_to_end+lossy 不返回截断成功；发布事务失败出口扩展到收据暂存/备份/三次发布全路径（回收暂存含已链接 exe），回滚受阻返回 link.restore 列幸存备份路径，用户占位目录永不删。r4（SD-07/08）增补：受控启动——子进程 CREATE_SUSPENDED 起跑、入 Job（KILL_ON_JOB_CLOSE）后方恢复（ToolHelp 恢复主线程），首个指令前必被管控、后代无法在约束外创建；约束失败=受控拒绝（link.containment，挂起态安全收口），不静默降级 detach，任一出口回收 reader；发布事务清理失败不吞——link.cleanup 携带原失败+提交状态（NOT committed/COMMITTED）+残留自有路径+实际 OS 错误（NotFound=已回收、目录=用户占位不删不计），成功段备份回收受阻单列 COMMITTED 状态。",
           "file": "docs/specs/auto-ac/project.md",
           "related": [],
           "status": "published",
@@ -8156,6 +8156,21 @@
           "content": "r4 链条：r3 合入后独立复审（基线 8e8f6f19b）发现 P743-R3-QA-01..04（被淘汰记录进消费者索引 traceback、hash/subject 证据旁路、导入/参数遮蔽 native 误判、归档生命周期收口），needs_fix；同 ID 激活 r4（T-22..27/AC-21..24/SD-08）。Phase 4 修复实现 HEAD af3c8040e（rebase 前），R5 独立重放组合探针/旁路负例/遮蔽 fixture 全绿 pass；交付落 v0.6-dev（SD-08 目标文件无决定绑定，落地后严格冒烟绿；final_assertions.py 七类断言归档收口执行）。冻结：phase4 提案 f8924d0a8266976d。",
           "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
           "related": [],
+          "status": "published",
+          "created": "2026-10-05",
+          "last_modified": "2026-10-05"
+        },
+        {
+          "id": "P741-6",
+          "title": "PLAN-741 r4 Phase 4 复审 pass + 资源边界修复收据（P741-R3-QA-01..03）",
+          "file": "docs/plans/archive/741-ac-hir-native-core.md",
+          "tags": [
+            "PLAN-741",
+            "review",
+            "native-aot",
+            "resource-boundary"
+          ],
+          "content": "r3 合入后复审 needs_fix（docs/reports/741-r3-quality-review-20261005）→ r4 修复：R3-QA-01 受控启动（CREATE_SUSPENDED→入 Job→ToolHelp 恢复主线程，约束前窗口消除；约束失败受控拒绝 link.containment，删除静默降级/detach）、R3-QA-02 清理错误全量汇总（link.cleanup：原失败+提交状态+残留自有路径+实际 OS 错误；目录=用户占位不删不计；成功段备份回收受阻单列 COMMITTED）、R3-QA-03 簿记归一（T-08 补勾、计数口径注明）。独立代理复审 pass（AC-21..24）：death-watch 反例 5/5 零泄漏（孙进程 0-20ms 内回收）、locked-cleanup 全要素、60s 生产路径准时拒绝、cargo t 双侧 worktree 34 红⊂基线 36 红零新增；windows-sys 增 ToolHelp feature。",
           "status": "published",
           "created": "2026-10-05",
           "last_modified": "2026-10-05"

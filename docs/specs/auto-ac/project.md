@@ -53,13 +53,19 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
   exe/obj/收据全部先以进程唯一暂存名构建，发布前备份既有制品，**任一步失败（收据暂存/备份/
   三次发布）整体回滚**——暂存文件（含已链接 exe）全出口回收、还原备份、清除已放置文件；
   回滚自身受阻返回 `link.restore` 诊断并列出幸存备份路径（不吞错、不为无残留删唯一旧制品）；
+  **清理（remove/rename）失败同样不吞**：`link.cleanup` 诊断携带原失败、事务提交状态
+  （NOT committed / COMMITTED）、每个自有残留路径与实际 OS 错误（NotFound=已回收；
+  目录=用户占位，不删不计）；发布已提交但备份回收受阻单列 COMMITTED 状态、不伪称普通成功；
   用户占位目录永不备份/删除；SENTINEL 前置失败与准备/备份/发布各阶段失败测试锁定。
 - 全部子进程（工具发现 rustc/reg、链接 lld、运行 exe）走带硬截止时间的执行器；
-  **单一单调截止同时覆盖进程等待与输出收集**——子进程退出后后代继承管道不再绕过截止
-  （Windows Job Object KILL_ON_JOB_CLOSE 管控子树，任一出口关闭即终止自有后代并回收 reader，
-  不以 detach 永久阻塞线程换"返回快"）；stdout/stderr 并发排空防管道阻塞；输出以
-  read_to_end+lossy 转换，不返回截断的成功输出（read_to_string 全有全无 UTF-8 校验遇
-  本地化输出会丢弃合法前缀）。
+  **单一单调截止同时覆盖进程等待与输出收集**；**受控启动**——子进程以 CREATE_SUSPENDED
+  起跑、入 Job（KILL_ON_JOB_CLOSE）后方恢复执行（ToolHelp32 快照恢复主线程），
+  首个指令前必被管控、后代无法在约束外创建（r3 的 spawn→分配窗口与后代逃逸已消除）；
+  **约束失败=受控拒绝**：安全收口（挂起态终止+wait）+ `link.containment` 诊断，
+  不先放行子进程再无声降级为 detach；任一出口关闭 Job 即终止自有子树并 join 回收
+  reader（无 detach 分支）；子进程退出后后代继承管道不再绕过截止；stdout/stderr 并发
+  排空防管道阻塞；输出以 read_to_end+lossy 转换，不返回截断的成功输出（read_to_string
+  全有全无 UTF-8 校验遇本地化输出会丢弃合法前缀）。
 - 一键验证：`scripts/verify-ac-741.ps1`（§6 全命令 + CLI 实机构建运行 + 主仓门禁；PS 5.1 兼容，
   异步管道读防死锁；含 `cargo check --all-targets` 零 warning 健康检查）。
 
