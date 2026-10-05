@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-743
-status: execution_done
+status: reviewed
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
@@ -552,6 +552,60 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 
 ## 9. 复审记录
 
+### 独立复审 R4（2026-10-05，stage: review，r3 P743-R2-QA-01..06 修复复核）
+
+- stage: review
+- plan_id: PLAN-743 · plan_revision: 3 · outcome: **pass**（R2-QA-01..06 修复全部确认；
+  AC-01..14 在 r3 语义下重验通过，AC-15..20 全部通过）
+- reviewed_commit: 1847491685c907d1ce97ef37a316a969089c22cb（worktree plan-743-dev，
+  clean 0 dirty）；base_commit: a0f8ddd443418fb32a67d308cbd4a0fd00f74835（激活提交）
+- dependency_revisions: Python 3.14.2 标准库；无外仓；PYTHONUTF8=1 消除编码歧义
+- spec_inputs: 9 受管输入 hash 经严格 --check 全绿；r3 对 docs/specs/ 零改动
+  （git diff 基线探针 0 行，SD-06/07 为提案态）
+- 独立性声明：复审在实现会话内进行（同 R1..R3 先例）；结论由命令重放、单元级反例
+  复现与源码核查重建。
+
+**R2-QA 修复逐项复核（独立重放）**：
+
+- R2-QA-01 → fixed：shadowed_host（print=local-fn、IO.read_line=type-qualified——
+  本地遮蔽宿主）、different_owner（Q 体 .next=unknown）、unrelated_dot_pipe（自由
+  函数点/管道=unknown）三 fixture 独立重放正确；真实仓 CG.new/Ar.new 仍 type-qualified；
+  源码核查：qualified/点/管道归属推迟至 _post_classify（最终本地集+宿主优先级+
+  owner 证据），无全模块方法名猜测。
+- R2-QA-02 → fixed：decision-evidence-unbound 定位 ID/path（测试三段式：拒绝→补绑定
+  通过→内容变化 stale）；真实层 47 决定证据全绑定，严格门绿。
+- R2-QA-03 → fixed：resolved 族须存在+适用引用（kind=unknown-resolution/conclusion=
+  resolved/证据覆盖族路径；family-ref-missing/-inapplicable）；open 三要素保留；
+  真实 7 族全部通过适用性规则。
+- R2-QA-04 → fixed：9 个参数化类型负例受控 ERROR[decision-malformed] 定位、无
+  Traceback（独立进程重放验证 exit 1 + stderr 无 traceback）。
+- R2-QA-05 → fixed（提案态）：SD-07 冻结提案（a4af013b759a1d35）同步阶段摘要 R3；
+  canonical 旧行在案属待沉淀状态（r3 按合同未直接改 canonical，merge 落地）；
+  acceptance-matrix/inventory/run-context CLI 全量 auto-ac-prototype，残留 0。
+- R2-QA-06 → fixed：计划 4 处链接改归档可解析（独立程序化验证 ALL OK）；plans.md
+  行 r3 executing（激活提交）；T-14 补勾有 r2 收据依据；P743-3 指针可解析、
+  P743-4 留 merge 对账（合同既定）。
+
+**门禁重放（reviewed_commit 上）**：63/63 测试；严格 --check --require-decisions
+exit0（47 决定/146 组/7 族闭环）；三方 cmp BYTE-IDENTICAL；`git diff --check` clean；
+范围探针 crates/auto-lib/docs.specs/experimental/Cargo 零触碰。
+
+**AC 终态**：AC-01..14（前轮集合，按 r3 语义重验）pass；AC-15/16/17/18/19/20 pass。
+**delta 复核**：SD-06/07 提案与冻结哈希一致；正文为持久规则非执行日记；
+supersedes/new_spec_components 元数据经 r3 合同 §Phase 3 规范增量表确认
+（均为 modify，不替换组件、不降低原约束）。
+
+**收据冻结哈希（reviewed@184749168）**：phase3 提案 a4af013b759a1d35、
+manual-decisions.json 3674c687647f88dc、acc_inventory.py 799c2bb643c5fd3c、
+test_acc_inventory.py ae5f8ae26c66bca7。
+
+- findings: 无新增
+- evidence: 本记录命令/结果摘录；verification.md/baseline.md（随交付落地）；
+  制品经 merge 落 v0.6-dev 后同 hash 可溯
+- next: merge（沉淀 SD-06/07；落地后按 §5.6.6 语义复核重绑+严格冒烟；plans.md 行
+  归档态、ledger P743-3/4 指针对账；逐条销账、归档、guard 后清理）
+
+### Phase 3 执行交接（2026-10-05，stage: work，r3 P743-R2-QA-01..06 修复）
 ### Phase 3 执行交接（2026-10-05，stage: work，r3 P743-R2-QA-01..06 修复）
 
 - stage: work（r3；外部复核 needs_fix 后的完整性修复实施）
