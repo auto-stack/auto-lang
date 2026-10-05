@@ -1,0 +1,14 @@
+{
+  "reviewed_head": "c865adf66a75099df07113b053eb9d19e92986a3",
+  "landing_comparison_head": "7b9c6948c1465e87a6f60404510c30c712e1c7bc",
+  "main_status": "archived/r4; unchanged by this review",
+  "draft": "r5 executing 22/33",
+  "tasks": 33,
+  "links_checked": 9,
+  "draft_overlay_links_resolve": true,
+  "743_reviewed_sources_unchanged": true,
+  "concurrent_change": "741 r4 changes ledger + AutoAC Spec; 5 decisions stale normally",
+  "cleanup_pending": "Own detached D:/autostack/.wt/lang-743/auto-lang only; protected 741/742/ABI worktrees",
+  "patch_apply_check": "pass (read-only)",
+  "links_scope": "Draft active Plan links only, source report audit covers all 10 files"
+}

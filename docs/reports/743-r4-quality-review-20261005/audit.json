@@ -1,0 +1,127 @@
+{
+  "links_checked": 23,
+  "broken_links": [
+    {
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "line": 156,
+      "target": "../reports/743-quality-review-20261005/REVIEW.md"
+    },
+    {
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "line": 172,
+      "target": "../reports/743-r2-quality-review-20261005/REVIEW.md"
+    },
+    {
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "line": 183,
+      "target": "../reports/743-r3-quality-review-20261005/REVIEW.md"
+    },
+    {
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "line": 723,
+      "target": "../reports/743-r3-quality-review-20261005/REVIEW.md"
+    },
+    {
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "line": 840,
+      "target": "../reports/743-r2-quality-review-20261005/REVIEW.md"
+    },
+    {
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "line": 955,
+      "target": "../reports/743-quality-review-20261005/REVIEW.md"
+    }
+  ],
+  "canonical_matches_phase3_delta": [
+    true,
+    false,
+    true
+  ],
+  "current_resolved_applicability": [
+    {
+      "path": "auto/lib/lexer.at",
+      "decision": "MD-507",
+      "evidence_covers": true
+    },
+    {
+      "path": "auto/lib/parser.at",
+      "decision": "MD-501",
+      "evidence_covers": true
+    },
+    {
+      "path": "auto/lib/typeinfo.at",
+      "decision": "MD-501",
+      "evidence_covers": true
+    },
+    {
+      "path": "auto/lib/codegen.at",
+      "decision": "MD-502",
+      "evidence_covers": true
+    },
+    {
+      "path": "auto/lib/engine.at",
+      "decision": "MD-504",
+      "evidence_covers": true
+    },
+    {
+      "path": "auto/lib/a2r.at",
+      "decision": "MD-503",
+      "evidence_covers": true
+    },
+    {
+      "path": "auto/aavm.at",
+      "decision": "MD-507",
+      "evidence_covers": true
+    }
+  ],
+  "plan_metadata": {
+    "status": "archived",
+    "plan_revision": "4",
+    "current_step": "27",
+    "total_steps": "27"
+  },
+  "ledger_pointers": [
+    {
+      "id": "P743-1",
+      "file": "docs/specs/auto-acc/project.md",
+      "exists": true
+    },
+    {
+      "id": "P743-2",
+      "file": "docs/specs/auto-hir/stage-contract.md",
+      "exists": true
+    },
+    {
+      "id": "P743-3",
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "exists": true
+    },
+    {
+      "id": "P743-4",
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "exists": true
+    },
+    {
+      "id": "P743-5",
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "exists": true
+    },
+    {
+      "id": "P743-6",
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "exists": true
+    }
+  ],
+  "hashes": {
+    "docs/plans/archive/743-acc-bootstrap-hir-contract.md": "8b536f8550b35d4db63d05d836be99956429749baa96dbd43cfb3c56a296f6db",
+    "docs/design/strategy/auto-acc-bootstrap-contract.md": "676521ab3b9f26ba39798a6c1f3eb78676a6040861055ede15dd0dbb088e5317",
+    "docs/reports/743-acc-hir-contract/acceptance-matrix.md": "6f6fd92c75554907a31d1dcff07ff2c97665ee3ef1e2c3162a860877340df572",
+    "docs/reports/743-acc-hir-contract/inventory.md": "d4adb8e35d6f5e1f32fa7fddb2277b4e273552e9ea19afe60535cde5ff87fb4c",
+    "docs/reports/743-acc-hir-contract/next-work-packages.md": "da6806c312d5600753d8aa61c754e4444999007e138796fdf3cd6d5b44243af6",
+    "docs/reports/743-acc-hir-contract/run-context.md": "fe5890bfd11b3b44d4b0a5dafd49efce6ab33ba1f671542baa4d0d9b5d87e5a1",
+    "docs/specs/auto-acc/project.md": "f7307bdcdf9f488c4349c78ec8137c595d80da2232f6b8dfc72af1002c59e56d",
+    "docs/specs/auto-hir/stage-contract.md": "85989f57c70dd48676932c6fd91415f7b06446faed077feee92a337b021db7b7",
+    "docs/specs/auto-acc/plans.md": "8a28ce6eb12a5fc652e8f79b74745a3d255f089145ad68b0b85fa5aa26f17989",
+    "docs/specs/auto-hir/plans.md": "e235c106e6dc433947ec25eeea71db0101e902a82ec98584fc4fdfd707b1a7c2"
+  }
+}

@@ -1,0 +1,7 @@
+exit=1
+ERROR[decision-stale] MD-203 绑定的输入已变化: docs/specs/auto-ac/project.md
+ERROR[decision-stale] MD-205 绑定的输入已变化: docs/specs/auto-ac/project.md
+ERROR[decision-stale] MD-301 绑定的输入已变化: docs/specs/auto-ac/project.md
+ERROR[decision-stale] MD-302 绑定的输入已变化: docs/specs/auto-ac/project.md
+ERROR[decision-stale] MD-304 绑定的输入已变化: docs/specs/auto-ac/project.md
+CHECK-FAIL 5 项

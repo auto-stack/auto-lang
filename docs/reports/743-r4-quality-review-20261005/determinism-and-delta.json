@@ -1,0 +1,24 @@
+{
+  "generated-a": {
+    "exit": 0,
+    "stdout": "OK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": "",
+    "manual_same": true
+  },
+  "generated-b": {
+    "exit": 0,
+    "stdout": "OK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": "",
+    "manual_same": true
+  },
+  "checks": {
+    "writes_identical": true,
+    "committed_manifest_matches": true,
+    "summary_matches": true,
+    "main_manual_unchanged": true
+  },
+  "sd08_blocks_match": [
+    true,
+    true
+  ]
+}

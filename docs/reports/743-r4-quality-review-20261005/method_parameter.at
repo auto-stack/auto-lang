@@ -1,0 +1,5 @@
+type Meter {
+ fn demo(IO Other) int {
+  return IO.read_line()
+ }
+}

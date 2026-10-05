@@ -1,0 +1,115 @@
+{
+  "links_checked": 23,
+  "broken_links": [
+    {
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "line": 156,
+      "target": "../reports/743-quality-review-20261005/REVIEW.md"
+    },
+    {
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "line": 172,
+      "target": "../reports/743-r2-quality-review-20261005/REVIEW.md"
+    },
+    {
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "line": 183,
+      "target": "../reports/743-r3-quality-review-20261005/REVIEW.md"
+    },
+    {
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "line": 723,
+      "target": "../reports/743-r3-quality-review-20261005/REVIEW.md"
+    },
+    {
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "line": 840,
+      "target": "../reports/743-r2-quality-review-20261005/REVIEW.md"
+    },
+    {
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "line": 955,
+      "target": "../reports/743-quality-review-20261005/REVIEW.md"
+    }
+  ],
+  "canonical_matches_phase3_delta": [
+    true,
+    false,
+    true
+  ],
+  "current_resolved_applicability": [
+    {
+      "path": "auto/lib/lexer.at",
+      "decision": "MD-507",
+      "evidence_covers": true
+    },
+    {
+      "path": "auto/lib/parser.at",
+      "decision": "MD-501",
+      "evidence_covers": true
+    },
+    {
+      "path": "auto/lib/typeinfo.at",
+      "decision": "MD-501",
+      "evidence_covers": true
+    },
+    {
+      "path": "auto/lib/codegen.at",
+      "decision": "MD-502",
+      "evidence_covers": true
+    },
+    {
+      "path": "auto/lib/engine.at",
+      "decision": "MD-504",
+      "evidence_covers": true
+    },
+    {
+      "path": "auto/lib/a2r.at",
+      "decision": "MD-503",
+      "evidence_covers": true
+    },
+    {
+      "path": "auto/aavm.at",
+      "decision": "MD-507",
+      "evidence_covers": true
+    }
+  ],
+  "plan_metadata": {
+    "status": "archived",
+    "plan_revision": "4",
+    "current_step": "27",
+    "total_steps": "27"
+  },
+  "ledger_pointers": [
+    {
+      "id": "P743-1",
+      "file": "docs/specs/auto-acc/project.md",
+      "exists": true
+    },
+    {
+      "id": "P743-2",
+      "file": "docs/specs/auto-hir/stage-contract.md",
+      "exists": true
+    },
+    {
+      "id": "P743-3",
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "exists": true
+    },
+    {
+      "id": "P743-4",
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "exists": true
+    },
+    {
+      "id": "P743-5",
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "exists": true
+    },
+    {
+      "id": "P743-6",
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "exists": true
+    }
+  ]
+}
