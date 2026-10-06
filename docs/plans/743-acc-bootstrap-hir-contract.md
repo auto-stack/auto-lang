@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-743
-status: executing
+status: execution_done
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-06
 plan_revision: 6
-current_step: 26
+current_step: 37
 total_steps: 38
 supersedes_spec_components:
   - docs/specs/auto-acc/project.md
@@ -703,14 +703,42 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 ### Phase 6 执行步骤（T34..38，未实施）
 
 重开的旧行仅当前验收待修，紧随[✅]执行记录属于r4/r5历史，不代表r6完成；未受影响T25/31/32继续完成。
-- [ ] T-34 基线与可重现反例（AC29..31）：从含r6合同的最新v0.6-dev创建同计划专用D:/autostack/.wt/lang-743/auto-lang / plan-743-dev；确认旧tree/branch已由r5收尾，保护741/742/ABI，记录完整HEAD/依赖Spec/hash/清单与三项反例和合法对照。新报告目录建议docs/reports/743-phase6-boundary-fixes/，不占号/不建links。
-- [ ] T-35 全记录可信索引（依赖34，AC29，QA01/02）：修复validate_decisions缺失绑定和全局ID类型淘汰旁路；覆盖删除/恢复、hash变化、错类型/缺字段duplicate前后顺序、合法duplicate、非法ID与完整层。相关消费者0/族覆盖0，不只测CLI1，永久回归控制有效层；关闭重开T23/T29。
-- [ ] T-36 绑定与类型准入（依赖34，AC30，QA03）：修复_post_classify在bare/qualified类型和宿主升级前的可观察绑定优先；普通/mut/free/method与本地type同名反例，保留无冲突本地type/宿主/owner及旧保护。重扫如有变化逐项审定manual，不固定数量；关闭重开T24/T30。
-- [ ] T-37 全门禁与冻结（依赖35/36，AC29..31）：旧110+新增、旧新反例/strict/双write/manual/三方cmp/hash/diff/scope；新版本final归档门覆盖38任务和实际链接，保留r5旧helper/报告。冻结SD10、逐AC证据、回写execution_done不预写pass，关闭重开T26。仅Category A，不跑Cargo/native。
+- [x] T-34 基线与可重现反例（AC29..31）
+  [✅ 已完成] commit 70f4136d1；基点=含 r6 合同的 bf899da0b（worktree 重建、主检出 0 WIP）；baseline.md 复现 R5-QA-01/02 消费者层缺口（CLI 三段式正确但 validated 索引仍含记录）、R5-QA-03 分类 before、前置 5 条 stale：从含r6合同的最新v0.6-dev创建同计划专用D:/autostack/.wt/lang-743/auto-lang / plan-743-dev；确认旧tree/branch已由r5收尾，保护741/742/ABI，记录完整HEAD/依赖Spec/hash/清单与三项反例和合法对照。新报告目录建议docs/reports/743-phase6-boundary-fixes/，不占号/不建links。
+- [x] T-35 全记录可信索引（依赖34，AC29，QA01/02）
+  [✅ 已完成] commit bf629ee43：全局 ID 注册移到类型门前（错类型/缺字段同 ID 整组作废含先插入者）；绑定文件缺失补 record_bad 退出消费者索引；bad-first/bad-last 双序消费 0 + 三段式永久测试（128 绿）：修复validate_decisions缺失绑定和全局ID类型淘汰旁路；覆盖删除/恢复、hash变化、错类型/缺字段duplicate前后顺序、合法duplicate、非法ID与完整层。相关消费者0/族覆盖0，不只测CLI1，永久回归控制有效层；关闭重开T23/T29。
+- [x] T-36 绑定与类型准入（依赖34，AC30，QA03）
+  [✅ 已完成] commit 9d5bbc85d：_post_classify qualified/bare 均可观察绑定先于本地类型/构造/宿主升级；参数名遮蔽同名本地类型全 unknown、无绑定对照合法保留；真实仓零漂移（8/25/13/687 不变）：修复_post_classify在bare/qualified类型和宿主升级前的可观察绑定优先；普通/mut/free/method与本地type同名反例，保留无冲突本地type/宿主/owner及旧保护。重扫如有变化逐项审定manual，不固定数量；关闭重开T24/T30。
+- [x] T-37 全门禁与冻结（依赖35/36，AC29..31）
+  [✅ 已完成] commit 8c98305ec+e6dad7ce9：PYTHONUTF8=1 全门禁绿（128/128 测试、manual --write 字节不变、严格门 47 决定/146 组/7 族、三方 cmp、diff --check、链接、范围零触碰）；SD-10 冻结 825b4ae907ac2c26（复审方交付核对一致）；final_assertions r6（38 任务/SD-10 canonical 检查）；verification.md 全 AC 对账；本文件回写 execution_done（current_step 37/38，T-38 留待复审/merge 闭环）：旧110+新增、旧新反例/strict/双write/manual/三方cmp/hash/diff/scope；新版本final归档门覆盖38任务和实际链接，保留r5旧helper/报告。冻结SD10、逐AC证据、回写execution_done不预写pass，关闭重开T26。仅Category A，不跑Cargo/native。
 - [ ] T-38 独立review与merge（依赖37，AC29..31）：绑定r6和修复HEAD核实AC/SD、consumer0及正例；pass后沉淀SD10/逐项销账/恢复all P743指针/actual archive38/38/导航/实际链接与metadata收口，guard clean才清理自有tree，保护并行工作；关闭T27/T33，否则仍executing。
 
 ## 9. 复审记录
 
+### Phase 6 执行交接（2026-10-06，stage: work，r6 P743-R5-QA-01..03 修复）
+
+- stage: work（r6；外部复核 needs_fix 后的边界兑现修复实施）
+- plan_id: PLAN-743 · plan_revision: 6
+- outcome: pass（T-34..T-37 完成 + T-23..27/T-29..30 重验链延续；非独立复审结论）
+- code_commit: e6dad7ce9（worktree plan-743-dev；基点=激活提交 bf899da0b；
+  r6 提交链 70f4136d1→bf629ee43→9d5bbc85d→8c98305ec→e6dad7ce9，worktree clean 0 dirty）
+- worktree: D:/autostack/.wt/lang-743/auto-lang（保留待 review/merge）
+- task_ids: T-34..T-37 完成；current_step 37/38；T-38（独立复审与 merge 收口）
+  按定义留待 review/merge 阶段闭环
+- evidence: PYTHONUTF8=1 全门禁绿——128/128 测试（110 旧+18 新）、--write 不触人工层
+  （字节不变）、严格 --check --require-decisions（47 决定新鲜、146 组/7 族）、
+  三方确定性 cmp、git diff --check clean、围栏感知链接无断链、范围探针
+  crates/auto-lib/docs.specs/experimental/Cargo 零触碰；R5-QA-01..03 反例
+  before→after 逐项复现并测试锁定（baseline.md/verification.md）；SD-10 冻结
+  825b4ae907ac2c26（复审方交付核对一致）；真实仓分类观察零漂移
+  （8 type-qualified/25 type-construction/13 native/687 unknown 不变）
+- blockers: 无
+- next: /auto-plan:review（r6 独立复审：绑定 revision 6 + 实现 HEAD e6dad7ce9，
+  重放原/新反例与严格门，consumer_reads=0 断言）；pass 后 merge 沉淀 SD-10、
+  P743-* 指针归档对账、执行 final_assertions r6（38/38）、逐条销账、归档、
+  guard 后清理。本记录不替代复审；不自行归档/合入。
+
+### Phase 6 再激活（2026-10-06，plan_revision6）
 ### 合并沉淀收据（2026-10-06，stage: merge，key: PLAN-743:r5）
 
 - stage: merge · plan_revision: 5 · outcome: pass
