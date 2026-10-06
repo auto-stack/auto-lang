@@ -1,0 +1,41 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.35s
+
+[32;1mAlgorithm : [0mSHA256
+[32;1mHash      : [0mC2B3F5E8A0274041541783DA7E46973511F0DE98F5564207E836E57A968831E3
+[32;1mPath      : [0mD:\autostack\.wt\lang-741\auto-lang\experimental\ac-core\target\debug\libauto_ac_prototype.rlib
+
+Cargo-reported reviewed library: D:\autostack\.wt\lang-741\auto-lang\experimental\ac-core\target\debug\libauto_ac_prototype.rlib
+BUILT D:\autostack\.wt\lang-741\r5-exact-scratch\baseline\old.exe (entry test_entry)
+  obj: D:\autostack\.wt\lang-741\r5-exact-scratch\baseline\old.obj
+  exe: D:\autostack\.wt\lang-741\r5-exact-scratch\baseline\old.exe
+  receipt: D:\autostack\.wt\lang-741\r5-exact-scratch\baseline\old.ac-link.txt
+  linker: C:\Users\zhaop\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe
+diagnostic=:1:1: error[link/link.cleanup]: :1:1: error[link/link.failed]: rust-lld exit Some(42):; transaction NOT committed; own staged files remain (release the blocking handles, then remove): D:\autostack\.wt\lang-741\r5-exact-scratch\nonzero\tx.exe.tmp-ac741-24784: 另一个程序正在使用此文件，进程无法访问�?(os error 32)
+elapsed_ms=80
+staged_exe_left=true
+staged_exe_path=D:\autostack\.wt\lang-741\r5-exact-scratch\nonzero\tx.exe.tmp-ac741-24784
+path_in_diagnostic=true
+cleanup_in_diagnostic=true
+actual_remove_os_error=Some(32)
+old_0_unchanged=true
+old_1_unchanged=true
+old_2_unchanged=true
+old_exe_exit=Some(5)
+released_cleanup_ok=true
+diagnostic=:1:1: error[link/link.cleanup]: :1:1: error[link/link.deadline]: subprocess rust-lld exceeded 60s; transaction NOT committed; own staged files remain (release the blocking handles, then remove): D:\autostack\.wt\lang-741\r5-exact-scratch\timeout\tx.exe.tmp-ac741-21220: 另一个程序正在使用此文件，进程无法访问�?(os error 32)
+elapsed_ms=60013
+staged_exe_left=true
+staged_exe_path=D:\autostack\.wt\lang-741\r5-exact-scratch\timeout\tx.exe.tmp-ac741-21220
+path_in_diagnostic=true
+cleanup_in_diagnostic=true
+actual_remove_os_error=Some(32)
+old_0_unchanged=true
+old_1_unchanged=true
+old_2_unchanged=true
+old_exe_exit=Some(5)
+released_cleanup_ok=true
+public_result=Err(Diagnostic { stage: Link, code: "link.deadline", message: "subprocess D:\\autostack\\.wt\\lang-741\\r5-exact-scratch\\public-deadline\\tree-parent.exe exited but its output did not finish within 60s (a descendant may still hold the pipe)", span: Span { start: 0, end: 0 } })
+elapsed_ms=60063
+descendant_alive_after_poll=false
+death_watch_ms=232
+Evidence directory: D:\autostack\.wt\lang-741\r5-exact-scratch

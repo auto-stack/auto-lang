@@ -17,7 +17,10 @@ T-31 前置:trace 支持库 `test-support/target/debug/ac_trace_support.lib` 已
 
 ## 门禁证据(全部 worktree 实跑,2026-10-05)
 
-- 原型全族:**54 项绿 + 1 ignored 60s 证据项**(text_binding 11 + hir_verify 9 +
+- 原型全族:**54 项绿 + 1 ignored 60s 证据项**(2026-10-06 更正 per R5-QA-03:此计数过期——
+  实际为 **58 项通过 + 1 ignored**,lib 15 + 其余 43;54 系 lib 14 的旧口径,日志派生见
+  [r5 复审 prototype-tests.txt](../741-r5-quality-review-20261006/prototype-tests.txt);
+  历史文字保留不改)(text_binding 11 + hir_verify 9 +
   native_execution 11 + cli 11 + trace_execution 1 + lib 14;r4 基线 54 → lib +3 为
   r5 正负矩阵,active 计数不变);fmt 干净;all-targets 零 warning。
 - 一键 verify-ac-741.ps1:原型段 13/13 PASS;`cargo check -p auto-lang` PASS;
