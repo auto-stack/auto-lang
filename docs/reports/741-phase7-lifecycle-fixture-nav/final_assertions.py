@@ -42,6 +42,7 @@ TASK = re.compile(r"^- \[([ x])\] \*\*(T-\d+)\*\*", re.M)
 ACTIVE_REPORT = "../reports/"
 ARCHIVE_REPORT = "../../reports/"
 
+PLAN_NAME = "741-ac-hir-native-core.md"
 failures: list[str] = []
 
 
@@ -187,27 +188,40 @@ def main() -> None:
             print(f"OK  links: {len(links)} resolve from the real archive parent")
 
     # --- 4. navigation: prototype README + module 741 rows (R6-QA-02) --------
+    # R7-QA-02: every 741 reference must resolve to EXACTLY the canonical
+    # PLAN-741 lifecycle file; a missing reference or a reference to any
+    # other target is a failure with file/line named.
+    canonical = repo / "docs" / "plans" / ("archive" if args.location == "archive" else "") / PLAN_NAME
+    canonical_archive = repo / "docs" / "plans" / "archive" / PLAN_NAME
+    if args.location == "archive" and not canonical.exists():
+        fail(f"canonical archived plan missing: {canonical}")
     readme = repo / "experimental/ac-core/README.md"
     if readme.is_file():
         rtext = readme.read_text(encoding="utf8")
+        refs = []
         for lineno, line in enumerate(rtext.splitlines(), 1):
             if "741-ac-hir-native-core.md" in line and "](" in line:
                 m = LINK.search(line)
                 if not m:
                     continue
-                target = (readme.parent / m.group(1)).resolve()
-                at_archive = "archive" in target.parts
-                if args.location == "active" and at_archive:
-                    fail(f"README.md:{lineno}: plan link points at archive/ while active "
-                         f"(lifecycle mismatch): {m.group(1)}")
-                if args.location == "archive" and not at_archive:
-                    fail(f"README.md:{lineno}: plan link not archive-form after archival: "
-                         f"{m.group(1)}")
-                if not target.exists():
-                    fail(f"README.md:{lineno}: link unresolvable: {m.group(1)}")
-                else:
-                    print(f"OK  README.md:{lineno} plan link -> {target}")
-                break
+                refs.append((lineno, m, (readme.parent / m.group(1)).resolve()))
+        if not refs:
+            fail("prototype README missing required 741 plan reference (R7-QA-02)")
+        for lineno, m, target in refs:
+            at_archive = "archive" in target.parts
+            if args.location == "active" and at_archive:
+                fail(f"README.md:{lineno}: plan link points at archive/ while active "
+                     f"(lifecycle mismatch): {m.group(1)}")
+            if args.location == "archive" and not at_archive:
+                fail(f"README.md:{lineno}: plan link not archive-form after archival: "
+                     f"{m.group(1)}")
+            if target != canonical:
+                fail(f"README.md:{lineno}: 741 reference does not match the canonical plan "
+                     f"target (expected {canonical}, got {target})")
+            if not target.exists():
+                fail(f"README.md:{lineno}: link unresolvable: {m.group(1)}")
+            else:
+                print(f"OK  README.md:{lineno} plan link -> {target}")
     else:
         fail(f"prototype README missing: {readme}")
 
@@ -233,6 +247,10 @@ def main() -> None:
         target = (nav.parent / m.group(1)).resolve()
         at_archive = "archive" in target.parts
         says_delivered = "delivered" in line
+        # R7-QA-02: the nav row must resolve to EXACTLY the canonical plan.
+        if target != canonical:
+            fail(f"{mod}/plans.md:{lineno}: nav target does not match the canonical plan "
+                 f"(expected {canonical}, got {target})")
         if args.location == "archive":
             if not at_archive:
                 fail(f"{mod}/plans.md:{lineno}: nav link not archive-form after archival: "
@@ -275,6 +293,15 @@ def main() -> None:
             for it in review_items:
                 target = (repo / it["file"]).resolve()
                 at_archive = "archive" in target.parts
+                # R7-QA-02: every review pointer must resolve to EXACTLY the
+                # canonical plan target (entry ID named on mismatch).
+                if target != canonical:
+                    if args.location == "active" and target == canonical_archive:
+                        transitional.append(f"{it['id']} -> {it['file']}")
+                        continue
+                    broken.append(f"{it['id']} does not match the canonical plan target "
+                                  f"(expected {canonical}, got {it['file']})")
+                    continue
                 if target.exists():
                     if args.location == "archive" and not at_archive:
                         broken.append(f"{it['id']} not archive-pointing: {it['file']}")
