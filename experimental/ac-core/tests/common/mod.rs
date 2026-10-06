@@ -1,8 +1,12 @@
-//! Shared test support for PLAN-741 native tests: link a COFF object into a
-//! PE with rust-lld and run it with a deadline. Windows only — the native
+//! Shared test support for PLAN-741/745 native tests: link a COFF object
+//! into a PE with rust-lld and run it with a deadline, plus the deadline
+//! executor shared by the source test families. Windows only — the native
 //! gate must run on the real platform (plan §6).
 
+// Each test binary includes this module wholesale but uses a different
+// subset of helpers; unused-in-this-binary is expected, not drift.
 #![cfg(windows)]
+#![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
