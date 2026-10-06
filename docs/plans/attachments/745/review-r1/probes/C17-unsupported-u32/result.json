@@ -1,0 +1,12 @@
+{
+  "id": "C17-unsupported-u32",
+  "source": "fn main() u32 { return 0 }",
+  "want": "source.unsupported",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C17-unsupported-u32\\input.at:1:11: error[text/source.unsupported]: type `u32` is not part of this source profile\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "build": null,
+  "run": null
+}

@@ -1,0 +1,12 @@
+{
+  "id": "C19-parenthesized-unary-minus",
+  "source": "fn main() int { return -(1) }",
+  "want": "source.unsupported",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C19-parenthesized-unary-minus\\input.at:1:24: error[text/source.unsupported]: unary minus is only supported directly before an integer literal in this source profile\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "build": null,
+  "run": null
+}

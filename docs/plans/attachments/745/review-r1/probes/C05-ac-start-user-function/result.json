@@ -1,0 +1,16 @@
+{
+  "id": "C05-ac-start-user-function",
+  "source": "fn ac_start() int { return 3 } fn main() int { return ac_start() }",
+  "want": "native3",
+  "check": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=fcc8da72b2acaa5e, module(s)=1, capabilities required: []\n",
+    "exit": 0
+  },
+  "build": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C05-ac-start-user-function\\input.at:1:1: error[backend/backend.lowering]: declare ac_start: Function ac_start signature Signature { params: [], returns: [], call_conv: WindowsFastcall } is incompatible with previous declaration Signature { params: [], returns: [AbiParam { value_type: types::I32, purpose: Normal, extension: None }], call_conv: WindowsFastcall }\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "run": null
+}

@@ -1,0 +1,1 @@
+fn main() int { var i = 0; var n = 0; while i < 2 { i = i + 1; var j = 0; while j < 2 { j = j + 1; n = n + 1; continue }; n = n + 2 }; return n }

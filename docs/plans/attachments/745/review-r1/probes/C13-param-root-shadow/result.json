@@ -1,0 +1,12 @@
+{
+  "id": "C13-param-root-shadow",
+  "source": "fn f(x int) int { let x = 3; return x } fn main() int { return f(1) }",
+  "want": "inspect-scope",
+  "check": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=ed2b42c4b7c9caab, module(s)=1, capabilities required: []\n",
+    "exit": 0
+  },
+  "build": null,
+  "run": null
+}

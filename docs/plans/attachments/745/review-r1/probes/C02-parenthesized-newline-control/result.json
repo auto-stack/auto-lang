@@ -1,0 +1,12 @@
+{
+  "id": "C02-parenthesized-newline-control",
+  "source": "fn main() int {\n return (1 +\n 2)\n}",
+  "want": "accept",
+  "check": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=30a7e8b2fbf7254f, module(s)=1, capabilities required: []\n",
+    "exit": 0
+  },
+  "build": null,
+  "run": null
+}

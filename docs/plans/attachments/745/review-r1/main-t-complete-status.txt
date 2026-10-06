@@ -1,0 +1,1 @@
+cargo t --no-fail-fast exit=100

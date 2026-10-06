@@ -1,0 +1,12 @@
+{
+  "id": "C20-extra-positional-arg",
+  "source": "fn f(x int) int { return x } fn main() int { return f(1,2) }",
+  "want": "source.argument",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C20-extra-positional-arg\\input.at:1:53: error[bind/source.argument]: `f` expects 1 argument(s), found 2\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "build": null,
+  "run": null
+}

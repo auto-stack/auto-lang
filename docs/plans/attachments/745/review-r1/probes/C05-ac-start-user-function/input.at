@@ -1,0 +1,1 @@
+fn ac_start() int { return 3 } fn main() int { return ac_start() }

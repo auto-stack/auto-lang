@@ -1,0 +1,6 @@
+     Summary [   4.196s] 162 tests run: 158 passed, 4 failed, 6330 skipped
+        FAIL [   0.258s] (104/162) auto-lang tests::cookbook_vm_tests::cb_versioning_semver_parse
+        FAIL [   0.277s] (105/162) auto-lang tests::cookbook_vm_tests::cb_versioning_semver_latest
+        FAIL [   0.652s] (110/162) auto-lang tests::cookbook_vm_tests::cb_versioning_semver_increment
+        FAIL [   0.675s] (111/162) auto-lang tests::cookbook_vm_tests::cb_versioning_semver_prerelease
+error: test run failed

@@ -1,0 +1,12 @@
+{
+  "id": "C21-bare-return-next-line",
+  "source": "fn main() int {\nreturn\n2\n}",
+  "want": "inspect-newline",
+  "check": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=6925469a85edc65e, module(s)=1, capabilities required: []\n",
+    "exit": 0
+  },
+  "build": null,
+  "run": null
+}

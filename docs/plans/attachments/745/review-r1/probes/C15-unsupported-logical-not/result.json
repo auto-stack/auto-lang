@@ -1,0 +1,12 @@
+{
+  "id": "C15-unsupported-logical-not",
+  "source": "fn main() int { if !true { return 0 } else { return 1 } }",
+  "want": "source.unsupported",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C15-unsupported-logical-not\\input.at:1:20: error[text/source.syntax]: expected expression, found `!`\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "build": null,
+  "run": null
+}

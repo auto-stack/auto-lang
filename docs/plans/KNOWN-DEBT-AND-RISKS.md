@@ -370,3 +370,20 @@ reviewed_commit=8b17e4de8851cdf37ccdce76a82f78422cf8bb15，outcome=pass；[独�
 | P741-R7-QA-02 | P3 | 必需README Plan引用缺失、README/模块/P741 review指向其它存在的归档Plan均仍ALL-PASS | T43/AC34，必需引用存在及规范唯一741目标严格比较，active暂态限定规范archive/741 |
 
 同741激活r8 current38/total44，只重开T39..41，新增T42..44；未实施/未销账，不改Rust/行为Spec/live ledger，P741-3..9归档暂态由最终merge恢复。742/743/ABI及历史收据保留。；**已清偿**（r8 T-42 两矩阵导航控制以 add_external 进入统一 cases 真实执行（各带沙盒 repo root）+ 总数从执行记录派生（固定 +2 删除）；控制性确认 forgotten-nav-update 期望改 0 → fixture 整体非零（失败传播）；--source auto 实测 25 用例全 PASS）；**已清偿**（r8 T-43 final_assertions canonical 目标身份检查（README 必须存在 741 计划引用；README/两模块导航/全部 P741-* review 指针解析后必须恰等于 docs/plans[/archive]/741-ac-hir-native-core.md，错目标失败含 expected/got 与 entry ID；激活期 canonical_archive 尚不存在=显式列暂态）；4 个 identity 沙盒负例 + 反向验证旧版门假通过全部实证）
+
+## PLAN-745 r1 最终独立复审（2026-10-06，待修）
+
+reviewed_commit=b3cd8171966281a42f96187780342ce0ff51c5fb；needs_fix；[最终报告](attachments/745/review-r1/REVIEW.md)、[计划](745-ac-source-checked-hir-native.md)。同一实现树保留，执行中1/9；本轮仅复审/证据/簿记，没有修复、合入或规范沉淀。原92绿/74例/两脚本通过为真实局部证据，不能覆盖本轮反例。
+
+| ID | 级别 | 合同内缺口 | 修复/验收 |
+|---|---|---|---|
+| P745-R1-QA-01 | P2 | 非括号RHS/callee跨行仍check0 | T02/05、AC02；换行边界正反控制 |
+| P745-R1-QA-02 | P2 | 用户ac_start/ExitProcess过Checked却native符号冲突 | T03/04/05、AC02/05/06；隔离native内部/用户名字空间，不静默保留源码名 |
+| P745-R1-QA-03 | P2 | 作用域逃逸指return，双分支终结后语句指前面的if | T03/05、AC04；精准出错token/span，纠正N09宽oracle |
+| P745-R1-QA-04 | P2 | Auto关键字当名字；!与转义str误分类 | T02/05、AC02/04；保留关键词和识别但排除的诊断 |
+| P745-R1-QA-05 | P2 | source测试无截止output/先wait后read堵管道；合法20K trace控制93ms，错误顺序2s仍阻塞 | T05/07、AC05/06/08；有限截止、并发采集、后代/全部出口回收 |
+| P745-R1-QA-06 | P2 | HIR trap结构断言、实际Bundle删let/错type/越域变异、source SENTINEL永久门缺失 | T03/05/07、AC01/03/05/06；真实变异/不变量oracle/失败传播；独立source三件保留已通过，不报告产品破坏 |
+| P745-R1-QA-07 | P3 | inventory --output误作文件，误称manifest未跟踪而推merge重扫 | T06/07、AC07；正确strict47已过，纠正证据/策略，不自动重hash |
+| P745-R1-QA-08 | P3 | source/HIR各复制Checked后构建管线，未兑现共用合同 | T04/05、AC06；同一构建入口，两模式回归 |
+
+这些项未清偿；登记不等于批准延后。SD01/03及盘点策略待修后重新冻结，完整宽度/char保持open；canonical/live ledger保持当前状态。root门禁完整daily29红/tv4红另有原始清单，生产源/config零745 diff且均在历史红集并集；未称门禁绿色或严格同源逐项归因完成。

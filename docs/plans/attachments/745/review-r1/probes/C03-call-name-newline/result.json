@@ -1,0 +1,12 @@
+{
+  "id": "C03-call-name-newline",
+  "source": "fn f(x int) int { return x }\nfn main() int { return f\n(3) }",
+  "want": "reject",
+  "check": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=02f1637fe6788bdf, module(s)=1, capabilities required: []\n",
+    "exit": 0
+  },
+  "build": null,
+  "run": null
+}
