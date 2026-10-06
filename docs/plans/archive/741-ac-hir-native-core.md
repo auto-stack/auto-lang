@@ -869,6 +869,16 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 ## 9. 复审记录
 
+### r8合入后独立复审（2026-10-06）
+
+- stage:review | plan_id:PLAN-741 | plan_revision:8 | outcome:**pass** | reviewed_commit:646ab16f5b76f9f32e55da491b33e76885a78d68 | base_commit:d59298e95d4f3a8d88dab4d4b2c167139fae7e85。
+- source/Spec/hash/空规范冻结及反例见[独立报告](../../reports/741-r8-quality-review-20261006/REVIEW.md)；未参与r8实施，无代理；Category A未跑Cargo/native/docs_gen，核心同源58+1/13项/正式60秒证据按关键指纹复用。
+- acceptance_results:AC01..34全部pass（复用边界见报告）；实际archive13/13及准确计数、三种active源各12/12、两状态12个存在/缺引用/错目标控制、fixture故意控制失败整体exit1、真实archive44/44/17链接/README+两导航/8review指针通过。
+- findings:none（P741-R7-QA01/02已修，无新阻塞）；supersedes/new/touched=[]，没有新Spec增量，不重复沉淀或改ledger。
+- next:保持archived/r8/44-of-44，不再激活。仅追加审查证据；原实施tree已清理，本轮没有新建tree/branch，742/ABI及其它计划不动。
+
+
+
 ### 合并收据（2026-10-06，/auto-plan:merge）PLAN-741:r8
 
 - stage: merge | plan_id: PLAN-741 | plan_revision: 8 | outcome: pass

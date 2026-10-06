@@ -1,0 +1,15 @@
+=== source: archive (real archived file) ===
+PASS  valid-archive-complete: exit 0 (expected 0)
+PASS  valid-synthesized-active-from-archive: exit 0 (expected 0)
+PASS  negative-conflicting-duplicate: exit 1 (expected 1), diagnostic matched: 'conflicting checkbox state'
+PASS  negative-current-step-off-by-one: exit 1 (expected 1), diagnostic matched: '!= completed unique tasks'
+PASS  negative-executing-status-in-archive-location: exit 1 (expected 1), diagnostic matched: 'archive mode requires status'
+PASS  negative-stale-active-form-link-in-archive: exit 1 (expected 1), diagnostic matched: 'stale active-form link'
+PASS  negative-broken-link-injection: exit 1 (expected 1), diagnostic matched: 'from the REAL archive parent'
+PASS  nav-controls-all-correct: exit 0 (expected 0)
+PASS  nav-controls-forgotten-nav-update: exit 1 (expected 1), diagnostic matched: 'auto-ac/plans.md:'
+PASS  identity-nav-wrong-target: exit 1 (expected 1), diagnostic matched: 'does not match the canonical plan'
+PASS  identity-readme-missing-reference: exit 1 (expected 1), diagnostic matched: 'missing required 741 plan reference'
+PASS  identity-readme-wrong-target: exit 1 (expected 1), diagnostic matched: 'does not match the canonical plan target'
+PASS  identity-ledger-wrong-target: exit 1 (expected 1), diagnostic matched: 'P741-8 does not match the canonical plan target'
+FIXTURES-ALL-PASS (13 case(s) executed)
