@@ -4999,12 +4999,12 @@
         {
           "id": "P743-1",
           "title": "auto-acc 目标态合同：主体清单/能力四态/代际判据（SD-01）",
-          "content": "PLAN-743 沉淀 ACC 自举目标态：主体清单三分层（adapt=token/lexer/parser-core；reference=typeinfo/codegen/engine/a2r/aavm；新建=解析/typeck/源码→HIR adapter/lowering/驱动/桥客户端）；能力四态（required=str 最高优先+enum±payload+record+方法+List+int全序+is+use多模块+mut+全局+fstring+源码域诊断；implemented 仅 i32 trap70 与 HIR 域诊断；unknown=宽度/char/跨行串/宿主所有权/用户泛型，各带探针 owner；not-required=Option消费/管道/闭包task转型，附理由）；Gen1–3 代际判据（字节固定点仅约定后附加，A2R 中转不算 native）。canonical=docs/specs/auto-acc/project.md；证据=docs/reports/743-acc-hir-contract/（46 条 hash 绑定决定+可重跑 manifest）。 r2（QA-01/02/03/05）修正：清单可信度以 acc_inventory --check --require-decisions 严格门为准（决定+unknown_families 双向闭环）；分类政策=变量接收者一律 unknown（Meter.len/CG.new/Ar.new 实证），native 仅限可证明宿主命名空间；A8 owner=运行时首批候选、A9 owner=聚合能力线，候选依赖 ①→② 单向无环。 r3（R2-QA-01..04）强化：严格门含字段类型受控拒绝（无 traceback）、同条证据绑定（非扫描输入证据同样受控）、resolved 族适用决定闭环；分类政策升级为当前 enclosing owner 判定（本地声明遮蔽宿主）。 r4（R3-QA-01..03）再强化：resolved 族引用只读通过全部校验的决定（被淘汰/重复 ID 定位拒绝、零 traceback）；适用性仅认同条 evidence 覆盖族路径（hash/subject 旁路移除）；导入/参数/let-var 绑定同名遮蔽宿主准入。",
+          "content": "PLAN-743 沉淀 ACC 自举目标态：主体清单三分层（adapt=token/lexer/parser-core；reference=typeinfo/codegen/engine/a2r/aavm；新建=解析/typeck/源码→HIR adapter/lowering/驱动/桥客户端）；能力四态（required=str 最高优先+enum±payload+record+方法+List+int全序+is+use多模块+mut+全局+fstring+源码域诊断；implemented 仅 i32 trap70 与 HIR 域诊断；unknown=宽度/char/跨行串/宿主所有权/用户泛型，各带探针 owner；not-required=Option消费/管道/闭包task转型，附理由）；Gen1–3 代际判据（字节固定点仅约定后附加，A2R 中转不算 native）。canonical=docs/specs/auto-acc/project.md；证据=docs/reports/743-acc-hir-contract/（46 条 hash 绑定决定+可重跑 manifest）。 r2（QA-01/02/03/05）修正：清单可信度以 acc_inventory --check --require-decisions 严格门为准（决定+unknown_families 双向闭环）；分类政策=变量接收者一律 unknown（Meter.len/CG.new/Ar.new 实证），native 仅限可证明宿主命名空间；A8 owner=运行时首批候选、A9 owner=聚合能力线，候选依赖 ①→② 单向无环。 r3（R2-QA-01..04）强化：严格门含字段类型受控拒绝（无 traceback）、同条证据绑定（非扫描输入证据同样受控）、resolved 族适用决定闭环；分类政策升级为当前 enclosing owner 判定（本地声明遮蔽宿主）。 r4（R3-QA-01..03）再强化：resolved 族引用只读通过全部校验的决定（被淘汰/重复 ID 定位拒绝、零 traceback）；适用性仅认同条 evidence 覆盖族路径（hash/subject 旁路移除）；导入/参数/let-var 绑定同名遮蔽宿主准入。 r5（R4-QA-01..04）收口：参数遮蔽覆盖 mut/方法（含静态）且 bare/qualified 共享绑定优先；消费者索引要求全序列校验且重复整组作废；manifest 形状门受控拒绝；最终断言含真实父目录链接检查。",
           "file": "docs/specs/auto-acc/project.md",
           "related": [],
           "status": "published",
           "created": "2026-10-04",
-          "last_modified": "2026-10-05"
+          "last_modified": "2026-10-06"
         },
         {
           "id": "P743-2",
@@ -8189,6 +8189,16 @@
           "status": "published",
           "created": "2026-10-05",
           "last_modified": "2026-10-05"
+        },
+        {
+          "id": "P743-7",
+          "title": "PLAN-743 r5 复审裁定：外部复核 needs_fix → Phase 5 修复 → R6 pass",
+          "content": "r5 链条：r4 合入后独立复审（基线 8e8f6f19b）发现 P743-R4-QA-01..04（mut/方法/裸参数遮蔽不完整、manifest 形状崩溃、消费者索引未达完整语义校验、归档六断链），needs_fix；同 ID 激活 r5（T-28..33/AC-25..28/SD-09）。Phase 5 修复实现 HEAD ce61e5e6d（rebase 前），R6 独立重放六 fixture/四形状探针/组合负例全绿 pass；交付落 v0.6-dev（SD-09 目标文件无决定绑定，落地后严格冒烟绿；final_assertions r5 33/33 收口执行）。冻结：phase5 提案 ad3e02d7a6c237f8（复审方交付）。",
+          "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+          "related": [],
+          "status": "published",
+          "created": "2026-10-06",
+          "last_modified": "2026-10-06"
         }
       ]
     }
