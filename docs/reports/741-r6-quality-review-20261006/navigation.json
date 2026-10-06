@@ -1,0 +1,17 @@
+[
+  {
+    "file": "experimental/ac-core/README.md",
+    "target": "../../docs/plans/archive/741-ac-hir-native-core.md",
+    "exists": true
+  },
+  {
+    "file": "docs/specs/auto-ac/plans.md",
+    "target": "../../plans/741-ac-hir-native-core.md",
+    "exists": false
+  },
+  {
+    "file": "docs/specs/auto-hir/plans.md",
+    "target": "../../plans/741-ac-hir-native-core.md",
+    "exists": false
+  }
+]

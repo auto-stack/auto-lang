@@ -1,0 +1,9 @@
+PASS  valid-active: exit 0 (expected 0)
+PASS  negative-current-step-zero: exit 1 (expected 1)
+PASS  negative-total-steps-999: exit 1 (expected 1)
+PASS  negative-missing-current-step: exit 1 (expected 1)
+PASS  negative-nonnumeric-revision: exit 1 (expected 1)
+PASS  negative-archived-status-in-active-location: exit 1 (expected 1)
+FAIL  negative-conflicting-duplicate-checkbox: exit 0 (expected 1)
+PASS  negative-active-with-archive-form-links: exit 1 (expected 1)
+FIXTURES-FAILED

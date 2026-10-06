@@ -1,0 +1,25 @@
+{
+  "reviewed_head": "d1adc03be39d2897f5dfd7090e0909095cf24465",
+  "base_commit": "ad1fe269c21bc9021220645b52a32301e680f321",
+  "revision": 6,
+  "hashes": {
+    "docs/plans/archive/741-ac-hir-native-core.md": "a62a3cde2d648d295e0885ff5e316cd74f0d7092c4bde140b9d0dbb6290cb042",
+    "docs/reports/741-phase6-lifecycle-gate/final_assertions.py": "a06f447ee00eb861b1a8329db06be9b1488bb0d37a06e21645b0901d0310d1ca",
+    "docs/reports/741-phase6-lifecycle-gate/fixture_tests.py": "d738eb83e5bb0a46180f6c80a49e76e02436b99723ba96caae993238d6cfb3dc",
+    "experimental/ac-core/Cargo.toml": "6e9cbe7dcd2e3371789597d6835cf679419f4bd50dee38d6e4938c91d15b58ba",
+    "experimental/ac-core/Cargo.lock": "296429e6dd6db8e1affe9755f29c5ff94c902362361fa719b7bc1cd11ee7077e",
+    "docs/specs/auto-ac/project.md": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208",
+    "docs/specs/auto-hir/project.md": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab",
+    "experimental/ac-core/src/atom_text.rs": "0d468f329a293078945c12a61cee12177997583f83b9f374d56c6bded56c3edb",
+    "experimental/ac-core/src/descriptor.rs": "3c66bee8c58f21bdf45d761c485d0b865e208849d98b340e99f565eac08741ad",
+    "experimental/ac-core/src/hir.rs": "251d973f75a991675c7331bbc9dd683e61b7e830a9615120cd5cd6d5c6f29e63",
+    "experimental/ac-core/src/lib.rs": "7039e3c296c6e4a8e275e32c874b0f98ac91c23ba24d099761f9693d3280eaa7",
+    "experimental/ac-core/src/link.rs": "2afd2a4fa85508a26f3f76fc1fff45abfa4248f3e9808fba2be2572a73adf8bd",
+    "experimental/ac-core/src/main.rs": "b43d00ba820e052f4afc06a79d9c600ac60b9fb37d4076dc16f33ae294f18a98",
+    "experimental/ac-core/src/native.rs": "69ef4577b3d2089b73c2c4ee652d31111b8b4fb44a55cceec9ca2b24859eef88",
+    "experimental/ac-core/src/verify.rs": "72d8433ac9ad2fc7d967a42f2416fc56504c4412e0301fc1e872d83bf305a36b"
+  },
+  "recording_head": "9cfe7f65ca677418b39c010920f98280be960f54",
+  "frozen_delta_sha256": "a68253c37fe46b25c3344becccb9c530e52d3d4360fba6959fe8544466cd6016",
+  "unrelated_changes": "Concurrent Plan 743 r6 bookkeeping and a2r-std fs.rs commits; audited 741 paths unchanged."
+}

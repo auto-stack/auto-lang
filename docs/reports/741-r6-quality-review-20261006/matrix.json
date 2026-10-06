@@ -1,0 +1,104 @@
+[
+  {
+    "name": "real-archive",
+    "actual": 0,
+    "expected": 0,
+    "pass": true
+  },
+  {
+    "name": "active-complete",
+    "actual": 0,
+    "expected": 0,
+    "pass": true
+  },
+  {
+    "name": "active-partial",
+    "actual": 0,
+    "expected": 0,
+    "pass": true
+  },
+  {
+    "name": "execution-done-complete",
+    "actual": 0,
+    "expected": 0,
+    "pass": true
+  },
+  {
+    "name": "reviewed-complete",
+    "actual": 0,
+    "expected": 0,
+    "pass": true
+  },
+  {
+    "name": "current-zero",
+    "actual": 1,
+    "expected": 1,
+    "pass": true
+  },
+  {
+    "name": "total999",
+    "actual": 1,
+    "expected": 1,
+    "pass": true
+  },
+  {
+    "name": "missing-current",
+    "actual": 1,
+    "expected": 1,
+    "pass": true
+  },
+  {
+    "name": "nonnumeric-total",
+    "actual": 1,
+    "expected": 1,
+    "pass": true
+  },
+  {
+    "name": "missing-revision",
+    "actual": 1,
+    "expected": 1,
+    "pass": true
+  },
+  {
+    "name": "conflicting-row",
+    "actual": 1,
+    "expected": 1,
+    "pass": true
+  },
+  {
+    "name": "incomplete-archive",
+    "actual": 1,
+    "expected": 1,
+    "pass": true
+  },
+  {
+    "name": "archived-in-active",
+    "actual": 1,
+    "expected": 1,
+    "pass": true
+  },
+  {
+    "name": "active-in-archive",
+    "actual": 1,
+    "expected": 1,
+    "pass": true
+  },
+  {
+    "name": "broken-active",
+    "actual": 1,
+    "expected": 1,
+    "pass": true
+  },
+  {
+    "name": "broken-archive",
+    "actual": 1,
+    "expected": 1,
+    "pass": true
+  },
+  {
+    "name": "archive-links-in-active",
+    "actual": 1,
+    "expected": 1,
+    "pass": true
+  }
+]

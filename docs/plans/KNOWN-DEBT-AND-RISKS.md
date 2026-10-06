@@ -327,3 +327,15 @@ root门禁观察（非新增AC原型缺陷）：daily4971全跑4935通过/35失�
 - P743-R5-QA-02/P2：字段类型错误continue绕过去重，同ID坏记录前后两种顺序均保留合法同ID记录供族消费21；字段合法duplicate对照为0。T35/AC29。
 - P743-R5-QA-03/P2：已观察普通参数与local type同名，bare仍type-construction、qualified仍type-qualified，违反SD09绑定在类型升级前优先。T36/AC30。
 前两CLI受控非零/no traceback，不误报假CHECK-OK；当前真实人工层未因合成反例被宣称失效。全部复现/修复/SD10见../reports/743-r5-quality-review-20261006/REVIEW.md。同ID激活r6 current26/total38，未实施/未销账/未改canonical或live ledger；P743-3..7 archive暂态留最终merge恢复。741/742/ABI及所有历史pass/merge保留。b'\r\n'  - **已清偿**（r6 T-36 final_assertions v2（frontmatter 必需字段/数值解析、current_step==完成唯一数、total_steps==唯一总数合同派生无硬编码、archived=全完成+archive 位置、同 ID 冲突失败）；上线即抓到执行侧 current_step=35≠34 计数错；受控 fixture 8/8 真实退出码）b'\r\n'  - **已清偿**（r6 T-36 active 模式双链接验证（真实父目录 active 形 + 显式转换模拟归档副本，两行输出、任一失败即 exit 1，模拟不冒充实际 active）；复审确认 fixture 复刻缺陷形态正确非零；本轮归档后 archive 模式复跑收口）b'\r\n'  - **已清偿**（r6 T-37 采纳复审 exact-artifact 脚本（Cargo JSON 按 package/target/profile 唯一绑定库+CLI，无 rlib glob，Cargo 输出与哈希落盘）+ 全量重放；计数更正 54→58（lib15+43）带 provenance 入 r5 verification.md 与归档计划）
+
+
+## PLAN-741 r6合入后复审 → r7 Phase7（2026-10-06，未修复）
+
+基线d1adc03be39d2897f5dfd7090e0909095cf24465；[报告](../reports/741-r6-quality-review-20261006/REVIEW.md)、[同ID合同](741-ac-hir-native-core.md)。核心同源无新故障，17/17独立validator控制通过，不重新打开原型/Rust任务。
+
+| ID | 级别 | 真实缺口 | 修复与验收 |
+|---|---|---|---|
+| P741-R6-QA-01 | P3 | fixture固定active文件，最终归档后FileNotFoundError；只修输入后T35冲突mutation为零次替换，反例exit0 | T39/AC31，active/archive来源、动态实际翻转、预期诊断与mutation核对 |
+| P741-R6-QA-02 | P3 | 两模块741导航仍executing且指向缺失active文件；final_assertions只验Plan/ledger而遗漏README/导航，仍ALL-PASS | T40/41、AC32，最终门明确覆盖README/两模块/全部指针，实际归档后遗漏导航更新负控制非零 |
+
+同741激活r7，current36/total41；未实施/未销账。只重开T36/T38，保留历史pass/merge；不改canonical行为/live ledger，P741-3..8暂态留最终归档恢复。
