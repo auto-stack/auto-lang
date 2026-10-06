@@ -81,6 +81,9 @@ def main() -> None:
     # it is the real parent. This is exactly the r5 contract - ../reports
     # links are correct only while active and were the archived-state defect.
     body = FENCE.sub("", text)
+    # Inline code spans quote link syntax without being links (e.g. the
+    # review record quoting an injected counterexample).
+    body = re.sub(r"`[^`]*`", "", body)
     link_base = parent if args.location == "archive" else parent / "archive"
     broken = []
     checked = 0

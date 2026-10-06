@@ -655,7 +655,7 @@ Phase 3 执行进度（commit 哈希=plan-741-dev，基线 ed2d00b90，2026-10-0
   （git diff ed2d00b90 -- Cargo.toml Cargo.lock crates/ test/ 为空）；
   r3 复审 reproduce 复跑全验收点（staged_exe_left=false、watchdog 60.07s
   stillRunning=false）、r2 reproduce 无回归。AC-20。
-- [ ] **T-24** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 3（重开验收由 r4 T-30 独立复审 pass 关闭）
+- [x] **T-24** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 3（重开验收由 r4 T-30 独立复审 pass 关闭）（重开验收由 r4 交付与复审 pass 历史关闭，本次 r5 归档收口）
   独立复审）；R1 备份路径恢复诊断已按复审建议顺手统一（comment 后 scoped 复验
   lib 9/9 + fmt + all-targets 零 warning）；merge 沉淀 SD-05/06、销账 R2-QA 行、
   归档并 guard 清理待 /auto-plan:merge。
@@ -677,7 +677,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 - [x] **T-27** 汇总清理错误/残留及事务状态；关闭旧T-21验收。
 - [x] **T-28** 修正文档/索引/历史计数；关闭旧T-22验收。
 - [x] **T-29** 全门禁/故障矩阵/报告；关闭旧T-23验收。
-- [ ] **T-30** 独立review→merge→archive→guard清理；关闭旧T-24验收。
+- [x] **T-30** 独立review→merge→archive→guard清理；关闭旧T-24验收。（重开验收由 r4 合入与 r5 独立复审 pass 关闭，本次 r5 归档收口）
 - [x] **T-25** worktree `D:/autostack/.wt/lang-741/auto-lang`（plan-741-dev @ c865adf66，clean）；
   组内只读依赖 auto-down（detached @ fba6563e）；指纹/零WIP核对完成。
 - [x] **T-26** commit `cc491052f`：CREATE_SUSPENDED 受控启动 + 入 Job 后 ToolHelp 恢复主线程
@@ -702,7 +702,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
   当前库执行器真实回收在 0-20ms 内完成，非 r3 式逃逸）；r3/r2 旧复现无回归；
   生产面零 diff（git diff c865adf66 -- Cargo.toml Cargo.lock crates/ test/ 空）。
   关闭旧 T-23 验收。AC-24（执行侧证据）。
-- [ ] **T-30** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 4 独立复审）；R1/R2 顺手处置已 scoped 复验；merge 沉淀 SD-07/08、销账 R3-QA 行、归档并 guard 清理待 /auto-plan:merge。
+- [x] **T-30** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 4 独立复审）；R1/R2 顺手处置已 scoped 复验；merge 沉淀 SD-07/08、销账 R3-QA 行、归档并 guard 清理待 /auto-plan:merge。
   销账 R3-QA 行、归档并 guard 清理。
 
 
@@ -713,7 +713,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 - [x] **T-32** 预发布链接清理（依赖31，AC25）：修改src/link.rs::link_object_staged两出口回收/错误汇总；按所有权校验路径，不吞错、不加产品故障开关；新增两出口可控正负矩阵，真实共享锁/旧PE基线/释放恢复并留公开60s证据。重验关闭T21/T27，保留其它r4修复。
 - [x] **T-33** 归档生命周期检查（依赖31，AC26）：修复实际相对链接、新增phase5 final_assertions.py，active/模拟/真实archive链接、唯一35任务/重复checkbox一致及meta/README/plans/all ledger refs；导航仅簿记，canonical/ledger留merge。重验关闭T22/T28。
 - [x] **T-34** 全门禁/冻结（依赖32/33，AC25..27）：原型全族/健康/一键/正式deadline/旧新反例/root门禁归因/范围/hash/diff/links，冻结SD09/AC证据，回写execution_done，不预写pass。重验关闭T23/T29。
-- [ ] **T-35** 独立review与merge（依赖34，AC25..27）：绑定r5/修复HEAD逐AC/SD及遗漏复核；pass后SD09沉淀、债项逐条销账、所有P741指针/README/module/真实archive35/35链接门、guard clean清理收据；保护742/743/ABI。关闭T24/T30；否则保持executing。
+- [x] **T-35** 独立review与merge（依赖34，AC25..27）：绑定r5/修复HEAD逐AC/SD及遗漏复核；pass后SD09沉淀、债项逐条销账、所有P741指针/README/module/真实archive35/35链接门、guard clean清理收据；保护742/743/ABI。关闭T24/T30；否则保持executing。
 - [x] **T-31** worktree `D:/autostack/.wt/lang-741/auto-lang`（plan-741-dev @ 0501b0f27，clean）；
 - [x] **T-32** commit `fb50d048e`：link_object_staged 两错误出口（链接器非零/执行器错误）
   经共享 discard_own_staged + with_staged_cleanup 汇总清理失败（原失败+残留自有完整路径+
@@ -752,7 +752,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
   测试 / R3 复现输出改名 .txt，scoped 复验 lib 15/15 + final_assertions ALL-PASS + fmt）
 - base_commit: `0501b0f27`（v0.6-dev 含复审方 r5 再激活提交）
 - 复审方式: 全新上下文独立代理（未参与实现），全部证据自行运行/读源码；自构反例
-  （](../reports/nonexistent.md) 注入后脚本正确 FAIL）、reproduce.ps1 独立复跑（nonzero/
+  （`](../reports/nonexistent.md)` 注入后脚本正确 FAIL）、reproduce.ps1 独立复跑（nonzero/
   timeout 两出口 link.cleanup 全要素、public-deadline 60.067s 后代 223ms 回收）
 - dependency_revisions: 同 r4（windows-sys 0.59.0 含 ToolHelp；无新依赖）
 - spec_inputs: SD-09 → docs/specs/auto-ac/project.md（modify，merge 沉淀）；复审确认与冻结
