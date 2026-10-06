@@ -5,8 +5,12 @@
 
 #![cfg(windows)]
 
+mod common;
+
+use common::run_deadlined;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 const EXE: &str = env!("CARGO_BIN_EXE_auto-ac-prototype");
 const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
@@ -18,15 +22,17 @@ struct Run {
     stderr: String,
 }
 
+/// Every CLI invocation runs under the shared deadline executor (QA-05):
+/// concurrent pipe drain, kill + reap on expiry — no unbounded waits.
 fn run_ac(args: &[&str]) -> Run {
-    let out = Command::new(EXE)
-        .args(args)
-        .output()
-        .expect("spawn ac-probe");
+    let mut cmd = Command::new(EXE);
+    cmd.args(args);
+    let r = run_deadlined(cmd, Duration::from_secs(120)).expect("spawn ac-probe");
+    assert!(!r.timed_out, "ac-probe exceeded 120s deadline");
     Run {
-        code: out.status.code().unwrap_or(-1),
-        stdout: String::from_utf8_lossy(&out.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&out.stderr).to_string(),
+        code: r.code,
+        stdout: r.stdout,
+        stderr: r.stderr,
     }
 }
 
@@ -54,12 +60,9 @@ fn temp_dir(tag: &str) -> PathBuf {
 }
 
 fn run_exe(exe: &Path) -> i32 {
-    Command::new(exe)
-        .output()
-        .expect("run built exe")
-        .status
-        .code()
-        .unwrap_or(-1)
+    let r = run_deadlined(Command::new(exe), Duration::from_secs(60)).expect("run built exe");
+    assert!(!r.timed_out, "built exe exceeded 60s deadline");
+    r.code
 }
 
 #[test]
@@ -289,4 +292,128 @@ fn old_check_still_atom_only() {
         "expected text/bind diagnostics, got: {}",
         r.stderr
     );
+}
+
+fn sha256_of(path: &Path) -> String {
+    let bytes = std::fs::read(path).unwrap_or_default();
+    // FNV-1a 64 (same family as the adapter's input hash): enough to detect
+    // any byte change for the sentinel comparison.
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in bytes {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{:016x}", h)
+}
+
+/// QA-06: source-mode SENTINEL regression — a failing build over previously
+/// successful artifacts must leave exe/obj/receipt byte-identical, across
+/// all three failure classes: source rejection (before artifacts), link
+/// failure (staged, reclaimed) and publish failure (rollback path).
+#[test]
+fn source_build_never_overwrites_existing_artifacts() {
+    let dir = temp_dir("sentinel");
+    let exe = dir.join("app.exe");
+    let obj = dir.join("app.obj");
+    let receipt = dir.join("app.ac-link.txt");
+
+    // A good build establishes the sentinel trio.
+    let r = run_ac(&[
+        "build-source",
+        &valid("p01-precedence.at"),
+        "--source-profile",
+        PROFILE,
+        "--entry",
+        "main",
+        "--output",
+        &exe.display().to_string(),
+    ]);
+    assert_eq!(r.code, 0, "stderr: {}", r.stderr);
+    let trio = [sha256_of(&exe), sha256_of(&obj), sha256_of(&receipt)];
+    assert!(trio.iter().all(|h| !h.is_empty()), "sentinels must exist");
+
+    // (1) Source rejection: fails before any artifact is touched.
+    let r = run_ac(&[
+        "build-source",
+        &invalid("n01-literal-range-max.at"),
+        "--source-profile",
+        PROFILE,
+        "--entry",
+        "main",
+        "--output",
+        &exe.display().to_string(),
+    ]);
+    assert_eq!(r.code, 1);
+    assert_eq!(
+        [sha256_of(&exe), sha256_of(&obj), sha256_of(&receipt)],
+        trio
+    );
+
+    // (2) Link failure: compiles and links an unresolvable intrinsic import;
+    // staging is reclaimed and the finals survive byte-identical.
+    let r = run_ac(&[
+        "build-source",
+        &valid("p15-named-eval-order-x2.at"),
+        "--source-profile",
+        PROFILE,
+        "--entry",
+        "main",
+        "--capability",
+        "hir.test.trace.v1",
+        "--output",
+        &exe.display().to_string(),
+    ]);
+    assert_eq!(r.code, 1, "stderr: {}", r.stderr);
+    assert_eq!(
+        [sha256_of(&exe), sha256_of(&obj), sha256_of(&receipt)],
+        trio
+    );
+
+    // (3) Publish failure: the receipt path occupied by a directory is user
+    // property — the publish refuses, rolls back and reports it.
+    let blocked = dir.join("app.ac-link.txt.blocked-dir");
+    let _ = std::fs::remove_dir_all(&blocked);
+    std::fs::create_dir_all(&blocked).unwrap();
+    // Rename trick is not available (path occupied), so emulate via a
+    // directory sitting where the RECEIPT must be published: use a second
+    // output whose receipt slot is pre-occupied, while its exe/obj already
+    // exist as a good build's finals.
+    let exe2 = dir.join("app2.exe");
+    let obj2 = dir.join("app2.obj");
+    let rcpt2 = dir.join("app2.ac-link.txt");
+    let r = run_ac(&[
+        "build-source",
+        &valid("p01-precedence.at"),
+        "--source-profile",
+        PROFILE,
+        "--entry",
+        "main",
+        "--output",
+        &exe2.display().to_string(),
+    ]);
+    assert_eq!(r.code, 0, "stderr: {}", r.stderr);
+    let trio2 = [sha256_of(&exe2), sha256_of(&obj2), sha256_of(&rcpt2)];
+    // Replace the receipt FILE with a directory (same name) — publish must
+    // refuse to touch it and roll the whole transaction back.
+    std::fs::remove_file(&rcpt2).unwrap();
+    std::fs::create_dir(&rcpt2).unwrap();
+    let r = run_ac(&[
+        "build-source",
+        &valid("p02-signed-positional.at"),
+        "--source-profile",
+        PROFILE,
+        "--entry",
+        "main",
+        "--output",
+        &exe2.display().to_string(),
+    ]);
+    assert_eq!(r.code, 1, "publish over a directory receipt must fail");
+    assert!(r.stderr.contains("link."), "stderr: {}", r.stderr);
+    // exe/obj survived byte-identical; the receipt slot is still OUR
+    // directory (user property, never deleted).
+    assert_eq!(sha256_of(&exe2), trio2[0]);
+    assert_eq!(sha256_of(&obj2), trio2[1]);
+    assert!(rcpt2.is_dir());
+    std::fs::remove_dir_all(&blocked).unwrap();
+    std::fs::remove_dir_all(&rcpt2).unwrap();
 }

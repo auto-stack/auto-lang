@@ -1,14 +1,18 @@
 //! PLAN-745 T-05 source native execution tests: every positive corpus case
 //! is built from `.at` source through the real pipeline (compile → verify →
 //! lower → link) and executed as a Windows PE, asserting the corpus exit
-//! code and stderr oracle. Every run carries a hard 60s deadline. Windows
-//! only (native gate).
+//! code and stderr oracle. Every subprocess — cargo, the CLI, the built PE —
+//! runs under the shared deadline executor (concurrent pipe drain, kill +
+//! reap on expiry; review QA-05). Windows only (native gate).
 
 #![cfg(windows)]
 
+mod common;
+
+use common::run_deadlined;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const EXE: &str = env!("CARGO_BIN_EXE_auto-ac-prototype");
 const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
@@ -38,6 +42,10 @@ const POSITIVE: &[(&str, i32, &str, bool, bool)] = &[
     ("p19-user-function-not-intrinsic.at", 6, "", true, false),
     ("p20-utf8-crlf-negative-min.at", 0, "", false, false),
     ("p21-mutual-recursion.at", 4, "", false, false),
+    // review r1 QA-02: native-internal names are legal source names, as
+    // called functions AND as entries (C05/C06)
+    ("c05-ac-start-name.at", 3, "", false, false),
+    ("c06-exitprocess-name.at", 4, "", false, false),
 ];
 
 fn valid(name: &str) -> String {
@@ -51,48 +59,22 @@ fn valid(name: &str) -> String {
 fn build_support_lib() -> PathBuf {
     // Standalone no_std crate; separate target dir to avoid cargo lock
     // contention with the outer test run (same policy as trace_execution).
-    let out = Command::new("cargo")
-        .args(["build", "--locked"])
-        .current_dir(Path::new(REPO).join("experimental/ac-core/test-support"))
-        .output()
-        .expect("spawn cargo for test-support");
+    // Bounded wait like every other subprocess (QA-05).
+    let mut cmd = Command::new("cargo");
+    cmd.args(["build", "--locked"])
+        .current_dir(Path::new(REPO).join("experimental/ac-core/test-support"));
+    let r = run_deadlined(cmd, Duration::from_secs(300)).expect("spawn cargo for test-support");
+    assert!(!r.timed_out, "test-support build exceeded 300s deadline");
     assert!(
-        out.status.success(),
-        "test-support build failed:\n{}",
-        String::from_utf8_lossy(&out.stderr)
+        r.code == 0,
+        "test-support build failed (exit {}):\n{}",
+        r.code,
+        r.stderr
     );
     let lib =
         Path::new(REPO).join("experimental/ac-core/test-support/target/debug/ac_trace_support.lib");
     assert!(lib.is_file(), "support lib missing at {}", lib.display());
     lib
-}
-
-/// Run a process with a hard deadline; returns (exit, stdout, stderr).
-fn run_deadlined(mut cmd: Command, deadline: Duration) -> (i32, String, String) {
-    let start = Instant::now();
-    let mut child = cmd
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("spawn");
-    // Poll try_wait so a wedged child is killed at the deadline instead of
-    // hanging the suite (pipes are drained by the OS until read below).
-    loop {
-        match child.try_wait().expect("try_wait") {
-            Some(_) => break,
-            None if start.elapsed() >= deadline => {
-                let _ = child.kill();
-                panic!("process exceeded {:?} deadline", deadline);
-            }
-            None => std::thread::sleep(Duration::from_millis(20)),
-        }
-    }
-    let out = child.wait_with_output().expect("collect output");
-    (
-        out.status.code().unwrap_or(-1),
-        String::from_utf8_lossy(&out.stdout).to_string(),
-        String::from_utf8_lossy(&out.stderr).to_string(),
-    )
 }
 
 #[test]
@@ -121,25 +103,31 @@ fn positive_corpus_executes_natively() {
         if *need_lib {
             cmd.arg("--support-lib").arg(&support);
         }
-        let (code, out, err) = run_deadlined(cmd, Duration::from_secs(120));
+        let r = run_deadlined(cmd, Duration::from_secs(120)).expect("spawn build");
+        assert!(!r.timed_out, "{}: build exceeded 120s deadline", name);
         assert_eq!(
-            code, 0,
+            r.code, 0,
             "{}: build failed\nstdout: {}\nstderr: {}",
-            name, out, err
+            name, r.stdout, r.stderr
         );
 
-        let run = Command::new(&exe);
-        let (code, _out, stderr) = run_deadlined(run, Duration::from_secs(60));
+        let run = run_deadlined(Command::new(&exe), Duration::from_secs(60)).expect("run exe");
+        assert!(!run.timed_out, "{}: exe exceeded 60s deadline", name);
         assert_eq!(
-            code, *want_exit,
+            run.code, *want_exit,
             "{}: exit {} expected {} (stderr: {})",
-            name, code, want_exit, stderr
+            name, run.code, want_exit, run.stderr
         );
         // Trace oracle: stderr contains exactly the marks, in order.
         if !want_stderr.is_empty() {
-            assert_eq!(stderr, *want_stderr, "{}: stderr oracle", name);
+            assert_eq!(run.stderr, *want_stderr, "{}: stderr oracle", name);
         } else {
-            assert!(stderr.is_empty(), "{}: unexpected stderr: {}", name, stderr);
+            assert!(
+                run.stderr.is_empty(),
+                "{}: unexpected stderr: {}",
+                name,
+                run.stderr
+            );
         }
         // The publish transaction left all three artifacts.
         assert!(dir.join("app.obj").is_file(), "{}: obj missing", name);
@@ -151,20 +139,57 @@ fn positive_corpus_executes_natively() {
     }
 }
 
+/// QA-02: `ac_start` used directly as the ENTRY (not just as a callee).
 #[test]
-fn trace_case_without_support_lib_fails_at_link() {
-    // Compilation and capability gating succeed; only the unresolved
-    // intrinsic import fails the link — exit 1, no artifacts.
-    let dir = std::env::temp_dir().join("ac745-source-native-nolib");
+fn ac_start_as_entry_runs() {
+    let dir = std::env::temp_dir().join("ac745-source-native-acstart");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let exe = dir.join("p15.exe");
-    let (code, _out, err) = run_deadlined(
+    let exe = dir.join("app.exe");
+    let r = run_deadlined(
         {
             let mut c = Command::new(EXE);
             c.args([
                 "build-source",
-                &valid("p15-named-eval-order-x2.at"),
+                &valid("c05-ac-start-name.at"),
+                "--source-profile",
+                PROFILE,
+                "--entry",
+                "ac_start",
+                "--output",
+            ])
+            .arg(&exe);
+            c
+        },
+        Duration::from_secs(120),
+    )
+    .expect("spawn build");
+    assert_eq!(r.code, 0, "stderr: {}", r.stderr);
+    let run = run_deadlined(Command::new(&exe), Duration::from_secs(60)).expect("run");
+    assert!(!run.timed_out);
+    assert_eq!(run.code, 3);
+}
+
+/// QA-05 control: a child that floods stderr far past the OS pipe buffer
+/// must complete under the deadline with the FULL output drained — the
+/// poll-before-drain ordering used to wedge at 4096 chars.
+#[test]
+fn big_stderr_output_is_fully_drained() {
+    let support = build_support_lib();
+    let dir = std::env::temp_dir().join("ac745-source-native-bigout");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // 20_000 mark_a calls → 20_000 'a' chars on stderr, exit 20_000.
+    let src = "fn main() int { var i = 0; var n = 0; while i < 20000 { let a = mark_a(); n = n + a; i = i + 1 }; return n }\n";
+    let src_path = dir.join("big.at");
+    std::fs::write(&src_path, src).unwrap();
+    let exe = dir.join("big.exe");
+    let build = run_deadlined(
+        {
+            let mut c = Command::new(EXE);
+            c.args([
+                "build-source",
+                &src_path.display().to_string(),
                 "--source-profile",
                 PROFILE,
                 "--entry",
@@ -173,11 +198,93 @@ fn trace_case_without_support_lib_fails_at_link() {
                 TRACE,
                 "--output",
             ])
+            .arg(&exe)
+            .arg("--support-lib")
+            .arg(&support);
+            c
+        },
+        Duration::from_secs(120),
+    )
+    .expect("spawn build");
+    assert_eq!(build.code, 0, "stderr: {}", build.stderr);
+    let run = run_deadlined(Command::new(&exe), Duration::from_secs(60)).expect("run");
+    assert!(!run.timed_out, "the drain must never wedge the wait");
+    assert_eq!(run.code, 20_000, "unexpected exit: {}", run.code);
+    assert_eq!(run.stderr.len(), 20_000, "stderr must be fully drained");
+    assert!(run.stderr.chars().all(|c| c == 'a'));
+}
+
+/// QA-05 control: a non-terminating PE (an infinite `loop { ...; continue }`
+/// is representable; verify only requires a conservative return path) must
+/// be killed at a short deadline — never hang the suite.
+#[test]
+fn hanging_exe_is_killed_at_deadline() {
+    let dir = std::env::temp_dir().join("ac745-source-native-hang");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // A state-free infinite loop (an incrementing counter would reach the
+    // add_i32 trap in ~2^31 iterations and exit 70 BEFORE the deadline —
+    // observed; `loop { continue }` has no arithmetic to trap on).
+    let src = "fn main() int { loop { continue }; return 0 }\n";
+    let src_path = dir.join("hang.at");
+    std::fs::write(&src_path, src).unwrap();
+    let exe = dir.join("hang.exe");
+    let build = run_deadlined(
+        {
+            let mut c = Command::new(EXE);
+            c.args([
+                "build-source",
+                &src_path.display().to_string(),
+                "--source-profile",
+                PROFILE,
+                "--entry",
+                "main",
+                "--output",
+            ])
             .arg(&exe);
             c
         },
         Duration::from_secs(120),
+    )
+    .expect("spawn build");
+    assert_eq!(build.code, 0, "stderr: {}", build.stderr);
+    let started = std::time::Instant::now();
+    let run = run_deadlined(Command::new(&exe), Duration::from_secs(3)).expect("run");
+    assert!(
+        run.timed_out,
+        "the infinite loop must hit the deadline (code={} out={} err={})",
+        run.code,
+        run.stdout.len(),
+        run.stderr.len()
     );
+    assert!(started.elapsed() < Duration::from_secs(20));
+}
+
+#[test]
+fn trace_case_without_support_lib_fails_at_link() {
+    // Compilation and capability gating succeed; only the unresolved
+    // intrinsic import fails the link — exit 1, no artifacts.
+    let dir = std::env::temp_dir().join("ac745-source-native-nolib");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let exe = dir.join("p15.exe");
+    let (code, _out, err) = {
+        let mut c = Command::new(EXE);
+        c.args([
+            "build-source",
+            &valid("p15-named-eval-order-x2.at"),
+            "--source-profile",
+            PROFILE,
+            "--entry",
+            "main",
+            "--capability",
+            TRACE,
+            "--output",
+        ])
+        .arg(&exe);
+        let r = run_deadlined(c, Duration::from_secs(120)).expect("spawn build");
+        (r.code, r.stdout, r.stderr)
+    };
     assert_eq!(code, 1, "stderr: {}", err);
     assert!(!exe.exists());
 }

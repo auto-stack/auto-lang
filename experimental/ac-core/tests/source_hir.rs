@@ -217,6 +217,22 @@ const NEGATIVE: &[(&str, &str, &str, &str, bool)] = &[
         "false",
         false,
     ),
+    // review r1 QA-03: dead statements after a both-arms-returning if are
+    // anchored AT the illegal statement
+    (
+        "c09-both-return-trailing.at",
+        "verify",
+        "verify.block-structure",
+        "let x = 2",
+        false,
+    ),
+    (
+        "c10-scope-escape-token.at",
+        "bind",
+        "source.undefined",
+        "x",
+        false,
+    ),
 ];
 
 #[test]
@@ -462,14 +478,14 @@ fn tampered_atom_is_rejected() {
     let mutated = atom.replacen("let(local: l0, value: e0) {}", "", 1);
     assert_bind_verify_rejects(&mutated, "dead expr");
 
-    // 2. changing a constant's declared type corrupts the type table
+    // 2. changing a constant's declared type corrupts the type table —
+    // the mutation MUST actually happen (QA-06: no conditional skip)
     let mutated = atom.replace(
         "expr e0 constant { type: t_i32;",
         "expr e0 constant { type: t_bool;",
     );
-    if mutated != *atom {
-        assert_bind_verify_rejects(&mutated, "const type");
-    }
+    assert_ne!(&mutated, atom, "type mutation did not change the input");
+    assert_bind_verify_rejects(&mutated, "const type");
 
     // 3. a dangling expression reference
     let mutated = atom.replacen("value: e0", "value: e999", 1);
@@ -497,4 +513,134 @@ fn render_all(name: &str, src: &str, ds: &[auto_ac_prototype::atom_text::Diagnos
         .map(|d| d.render(name, src))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// QA-06: real HIR structure oracle for the runtime-trap cases — the
+/// add/mul expressions must carry `overflow: trap` (no compile-time
+/// folding: operands stay separate constant exprs).
+#[test]
+fn overflow_trap_structure_in_hir() {
+    for (name, want_op) in [
+        ("p13-add-overflow-trap.at", "add_i32"),
+        ("p14-mul-overflow-trap.at", "mul_i32"),
+    ] {
+        let src = fixture("valid", name);
+        let c = compile(&src, NO_CAPS).unwrap();
+        let b = &c.checked.bundle().modules[0].bodies[0];
+        let mut traps = 0;
+        for e in &b.exprs {
+            if let auto_ac_prototype::hir::ExprKind::Binary { op, overflow, .. } = &e.kind {
+                assert_eq!(op.as_str(), want_op, "{}: op", name);
+                assert_eq!(
+                    format!("{:?}", overflow),
+                    "Trap",
+                    "{}: overflow policy must be trap",
+                    name
+                );
+                traps += 1;
+            }
+        }
+        assert!(traps > 0, "{}: no binary expr found", name);
+    }
+}
+
+/// QA-06: the §6 Bundle mutation matrix — tamper the PROJECTED bundle (not
+/// the Atom text), re-run the real verifier, and require rejection matched
+/// to the invariant; every mutation is asserted to actually change input.
+#[test]
+fn tampered_bundle_is_rejected_by_real_verify() {
+    use auto_ac_prototype::hir::{BuiltinType, ExprKind, Stmt, TypeUse};
+    use auto_ac_prototype::source::compile_parts;
+
+    let src = fixture("valid", "p04-while-retest.at");
+    let caps: Vec<String> = Vec::new();
+    let parts = compile_parts(&src, "test.at", &caps).unwrap();
+    // baseline: the untouched projected bundle verifies OK
+    assert!(auto_ac_prototype::verify::verify(parts.bundle.clone()).is_ok());
+
+    // (1) delete the `let` statement → its value expr loses its only owning
+    // position → verify.eval-position
+    let mut b1 = parts.bundle.clone();
+    let stmts = &mut b1.modules[0].bodies[0].blocks[0].stmts;
+    assert!(
+        matches!(stmts[0], Stmt::Let { .. }),
+        "first entry statement must be the let being deleted"
+    );
+    stmts.remove(0);
+    let ds = auto_ac_prototype::verify::verify(b1).unwrap_err();
+    assert!(
+        ds.iter().any(|d| d.code == "verify.eval-position"),
+        "delete-let: expected eval-position, got: {:?}",
+        ds.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+    );
+
+    // (2) wrong declared type on a read_local expr (i32 local declared as
+    // builtin bool) → verify.type-mismatch
+    let mut b2 = parts.bundle.clone();
+    let exprs = &mut b2.modules[0].bodies[0].exprs;
+    let read = exprs
+        .iter_mut()
+        .find(|e| matches!(e.kind, ExprKind::ReadLocal { .. }))
+        .expect("a read_local expr");
+    let before = read.ty;
+    read.ty = TypeUse::Builtin(BuiltinType::Bool);
+    assert_ne!(read.ty, before, "type mutation must change the input");
+    let ds = auto_ac_prototype::verify::verify(b2).unwrap_err();
+    assert!(
+        ds.iter().any(|d| d.code == "verify.type-mismatch"),
+        "wrong-expr-type: expected type-mismatch, got: {:?}",
+        ds.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+    );
+
+    // (3) redirect a read to the WRONG local (swap a read of the int
+    // param for the bool param) → the read/type consistency check fires.
+    // p17's `choose(n int, flag bool)` has both types in one body.
+    let src17 = fixture("valid", "p17-heterogeneous-binding-map.at");
+    let parts17 = compile_parts(&src17, "test.at", &caps).unwrap();
+    let mut b3 = parts17.bundle.clone();
+    // locate an i32 and a bool local through the module's type table
+    // (the adapter emits TypeUse::Ref ids)
+    let (i32_local, bool_local) = {
+        let m = &b3.modules[0];
+        let mut i32l = None;
+        let mut booll = None;
+        for (i, l) in m.bodies[0].locals.iter().enumerate() {
+            let vt = match l.ty {
+                auto_ac_prototype::hir::TypeUse::Builtin(
+                    auto_ac_prototype::hir::BuiltinType::I32,
+                ) => "i32",
+                auto_ac_prototype::hir::TypeUse::Builtin(
+                    auto_ac_prototype::hir::BuiltinType::Bool,
+                ) => "bool",
+                auto_ac_prototype::hir::TypeUse::Ref(t) => match &m.types[t.0 as usize].kind {
+                    auto_ac_prototype::hir::TypeKind::I32 => "i32",
+                    auto_ac_prototype::hir::TypeKind::Bool => "bool",
+                    _ => "fn",
+                },
+            };
+            if vt == "i32" && i32l.is_none() {
+                i32l = Some(i);
+            }
+            if vt == "bool" && booll.is_none() {
+                booll = Some(i);
+            }
+        }
+        (i32l.expect("i32 local"), booll.expect("bool local"))
+    };
+    let body = &mut b3.modules[0].bodies[0];
+    let read = body
+        .exprs
+        .iter_mut()
+        .find(|e| matches!(e.kind, ExprKind::ReadLocal { local } if local.0 as usize == i32_local))
+        .expect("read of the i32 local");
+    let ExprKind::ReadLocal { local } = &mut read.kind else {
+        unreachable!()
+    };
+    *local = auto_ac_prototype::hir::LocalId(bool_local as u32);
+    let ds = auto_ac_prototype::verify::verify(b3).unwrap_err();
+    assert!(
+        ds.iter().any(|d| d.code == "verify.type-mismatch"),
+        "wrong-local-ref: expected type-mismatch, got: {:?}",
+        ds.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+    );
 }

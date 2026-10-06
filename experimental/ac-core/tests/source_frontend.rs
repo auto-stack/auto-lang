@@ -41,6 +41,11 @@ const VALID: &[&str] = &[
     "p19-user-function-not-intrinsic.at",
     "p20-utf8-crlf-negative-min.at",
     "p21-mutual-recursion.at",
+    // review r1 controls: bracketed newline stays legal; native-internal
+    // names are legal source names (QA-02)
+    "c02-paren-newline.at",
+    "c05-ac-start-name.at",
+    "c06-exitprocess-name.at",
 ];
 
 /// Negative cases the frontend must accept (rejection happens at bind or
@@ -69,6 +74,9 @@ const LATER_STAGE: &[&str] = &[
     "n33-duplicate-param.at",
     "n50-undefined-callee.at",
     "n51-type-mismatch-lt-bool.at",
+    "c09-both-return-trailing.at",
+    "c09-trailing-utf8-crlf.at",
+    "c10-scope-escape-token.at",
 ];
 
 /// (fixture, code, token) — token `<EOF>` asserts the span sits at end of
@@ -116,6 +124,20 @@ const TEXT_ERRORS: &[(&str, &str, &str)] = &[
     ("n49-unicode-ident.at", "source.unsupported", "数"),
     ("n52-tailing-garbage.at", "source.syntax", "unexpected"),
     ("n53-empty-file.at", "source.syntax", "<EOF>"),
+    // review r1 QA-01: unbracketed expressions are line-bound (LF/CRLF and
+    // trailing-comment variants all reject at the crossing token)
+    ("c01-rhs-newline.at", "source.syntax", "2"),
+    ("c01-rhs-newline-crlf.at", "source.syntax", "2"),
+    ("c01-rhs-newline-comment.at", "source.syntax", "2"),
+    ("c03-call-newline.at", "source.syntax", "("),
+    // review r1 QA-04: escaped literals lex as ONE excluded token; `!` is
+    // an excluded operator; full-language keywords are never names
+    ("c04-escaped-string.at", "source.unsupported", "\"a\\\"b\""),
+    ("c15-logical-not.at", "source.unsupported", "!"),
+    ("c12-keyword-name.at", "source.unsupported", "type"),
+    ("c23-keyword-param-name.at", "source.unsupported", "mut"),
+    ("c24-keyword-local-name.at", "source.unsupported", "enum"),
+    ("c25-escaped-char.at", "source.unsupported", "'\\''"),
 ];
 
 #[test]
@@ -433,4 +455,28 @@ fn n31_lex_error_renders_position() {
     assert_eq!(err.code, "source.lex");
     assert_eq!(err.span.slice(&src), "@");
     assert_eq!(line_col(&src, err.span.start), (1, 24));
+}
+
+#[test]
+fn review_counterexample_coordinates() {
+    // QA-03: with a UTF-8 comment prefix and CRLF endings, spans still
+    // resolve to byte-accurate line/column through the shared renderer.
+    // c10 (bind-stage) parses at text level; its token position is pinned
+    // by source_hir. Here the dead `let` of the CRLF variant is located.
+    let src = fixture("invalid", "c10-scope-escape-token.at");
+    let p = parse_program(&src).unwrap();
+    let Stmt::Return { value, .. } = &p.items[0].body.stmts[1] else {
+        panic!("second statement must be the return");
+    };
+    assert_eq!(value.span.slice(&src), "x");
+    assert_eq!(line_col(&src, value.span.start), (3, 9));
+
+    let src = fixture("invalid", "c09-trailing-utf8-crlf.at");
+    let p = parse_program(&src).unwrap();
+    // the dead `let x = 2` sits on line 4 (after comment/fn/if lines)
+    let Stmt::Let { span, .. } = &p.items[0].body.stmts[1] else {
+        panic!("second statement must be the let");
+    };
+    assert_eq!(span.slice(&src), "let x = 2");
+    assert_eq!(line_col(&src, span.start), (4, 2));
 }

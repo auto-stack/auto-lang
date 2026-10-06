@@ -287,9 +287,12 @@ impl PlanCtx<'_> {
                 // the same block so the dataflow walk still runs and owns
                 // the loop-target-scope rejection.
                 cur = plan.blocks.len();
+                // The dead block's span stays pinned to its FIRST dead
+                // statement: the sharpest anchor for the verifier's
+                // unreachable-block rejection.
                 plan.blocks.push(BNode {
                     stmts: Vec::new(),
-                    span_override: None,
+                    span_override: Some(stmt_span(s)),
                     span_cut: None,
                     fallback: stmt_span(s),
                     span: stmt_span(s),

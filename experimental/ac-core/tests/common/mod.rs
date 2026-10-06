@@ -171,3 +171,63 @@ pub fn build_fixture(fixture_rel: &str, entry_id: &str) -> Result<Vec<u8>, Strin
             .join("\n")
     })
 }
+
+/// Outcome of a deadline-guarded process run (QA-05): `timed_out` runs carry
+/// the partial output drained until the kill, not a fake success.
+pub struct DeadlinedRun {
+    pub code: i32,
+    pub stdout: String,
+    pub stderr: String,
+    pub timed_out: bool,
+}
+
+/// Run a command with piped stdio under a hard deadline, DRAINING BOTH PIPES
+/// CONCURRENTLY while waiting — a full pipe can never wedge the wait (the
+/// poll-before-drain ordering deadlocked at a 4096-char stderr in review
+/// QA-05's control). On expiry the child is killed and reaped; every exit
+/// path waits for the process, so nothing is left running. This mirrors the
+/// link.rs executor discipline (bounded waits, drained output, reaped
+/// children) for the source test families.
+pub fn run_deadlined(
+    mut cmd: std::process::Command,
+    deadline: std::time::Duration,
+) -> std::io::Result<DeadlinedRun> {
+    use std::io::Read;
+    use std::process::Stdio;
+    let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    let mut out_pipe = child.stdout.take().expect("piped stdout");
+    let mut err_pipe = child.stderr.take().expect("piped stderr");
+    let out_t = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = out_pipe.read_to_string(&mut s);
+        s
+    });
+    let err_t = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = err_pipe.read_to_string(&mut s);
+        s
+    });
+    let start = std::time::Instant::now();
+    loop {
+        if let Some(status) = child.try_wait()? {
+            let code = status.code().unwrap_or(-1);
+            return Ok(DeadlinedRun {
+                code,
+                stdout: out_t.join().unwrap_or_default(),
+                stderr: err_t.join().unwrap_or_default(),
+                timed_out: false,
+            });
+        }
+        if start.elapsed() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait(); // reap; closes the pipes for the drain threads
+            return Ok(DeadlinedRun {
+                code: -1,
+                stdout: out_t.join().unwrap_or_default(),
+                stderr: err_t.join().unwrap_or_default(),
+                timed_out: true,
+            });
+        }
+        std::thread::sleep(std::time::Duration::from_millis(15));
+    }
+}
