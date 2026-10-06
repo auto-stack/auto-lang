@@ -50,6 +50,8 @@ pub fn parse_program(src: &str) -> Result<Program, Diagnostic> {
         toks,
         pos: 0,
         last_line: 1,
+        unbracketed_entry: false,
+        depth: 0,
     };
     p.items()
 }
@@ -60,7 +62,19 @@ struct Parser<'s> {
     pos: usize,
     /// Line of the most recently consumed token.
     last_line: usize,
+    /// True until the current unbracketed expression consumes its first
+    /// token (see [`Parser::expr`]).
+    unbracketed_entry: bool,
+    /// Recursion depth across the recursive-descent sinks (expressions and
+    /// blocks); bounded by [`NEST_LIMIT`] so deeply malformed input gets a
+    /// controlled diagnostic instead of a stack overflow (R2-QA-05).
+    depth: usize,
 }
+
+/// Nesting limit for the recursive-descent sinks. Far above anything the
+/// corpus or realistic profile programs use (observed max ~4); a resource
+/// guard, not a support-set reduction.
+const NEST_LIMIT: usize = 200;
 
 impl<'s> Parser<'s> {
     // -- plumbing -----------------------------------------------------------
@@ -192,6 +206,19 @@ impl<'s> Parser<'s> {
             }
             _ => Err(self.syntax(format!("expected {}, found {}", what, self.describe_cur()))),
         }
+    }
+
+    /// Enter one nesting level; input that would drive the sinks past
+    /// [`NEST_LIMIT`] gets a controlled diagnostic (never a stack overflow).
+    fn enter(&mut self) -> Result<(), Diagnostic> {
+        self.depth += 1;
+        if self.depth > NEST_LIMIT {
+            return Err(self.err_at(
+                "source.syntax",
+                format!("nesting deeper than {} levels is not accepted", NEST_LIMIT),
+            ));
+        }
+        Ok(())
     }
 
     fn skip_semis(&mut self) {
@@ -395,6 +422,7 @@ impl<'s> Parser<'s> {
     // -- statements ---------------------------------------------------------
 
     fn block(&mut self) -> Result<Block, Diagnostic> {
+        self.enter()?;
         let lb = self.expect_punct(P::LBrace, "`{`")?;
         let mut stmts = Vec::new();
         loop {
@@ -406,6 +434,7 @@ impl<'s> Parser<'s> {
                     ..
                 }) => {
                     let rb = self.bump();
+                    self.depth -= 1;
                     return Ok(Block {
                         stmts,
                         span: lb.join(rb.span),
@@ -566,18 +595,24 @@ impl<'s> Parser<'s> {
     // -- expressions --------------------------------------------------------
 
     /// Parse an expression. `bracketed` disables the same-line rule (inside
-    /// parentheses/argument lists, newlines are whitespace). Unbracketed
-    /// expressions are line-bound: the first token's line anchors the whole
-    /// expression, and any token that would continue it on another line is
-    /// a syntax error (QA-01: operators' right-hand sides and call parens
-    /// included).
+    /// parentheses/argument lists, newlines are whitespace).
+    ///
+    /// Line discipline (R1-QA-01 / R2-QA-01): an unbracketed expression may
+    /// START on the current or a later line, but every token AFTER the
+    /// first must sit on the same line as the previously consumed token.
+    /// The anchor moves forward legitimately when a bracketed
+    /// subexpression (parenthesized group or call arguments) closes on a
+    /// later line, so `f(\n 2\n) + 3` continues on the `)`'s line, while
+    /// `1 +\n 2` and `f\n(3)` still reject. Implemented through
+    /// [`Parser::unbracketed_entry`] and the running `last_line`.
     fn expr(&mut self, bracketed: bool) -> Result<Expr, Diagnostic> {
-        let expr_line = if bracketed {
-            None
-        } else {
-            Some(self.peek().map(|t| t.line).unwrap_or(self.last_line))
-        };
-        self.binary(1, bracketed, expr_line)
+        if !bracketed {
+            self.unbracketed_entry = true;
+        }
+        self.enter()?;
+        let r = self.binary(1, bracketed);
+        self.depth -= 1;
+        r
     }
 
     /// Operators that exist in the wider language but are outside the
@@ -601,13 +636,8 @@ impl<'s> Parser<'s> {
         )
     }
 
-    fn binary(
-        &mut self,
-        min_prec: u8,
-        bracketed: bool,
-        expr_line: Option<usize>,
-    ) -> Result<Expr, Diagnostic> {
-        let mut lhs = self.unary(bracketed, expr_line)?;
+    fn binary(&mut self, min_prec: u8, bracketed: bool) -> Result<Expr, Diagnostic> {
+        let mut lhs = self.unary(bracketed)?;
         loop {
             let Some(tok) = self.peek().cloned() else {
                 break;
@@ -641,7 +671,7 @@ impl<'s> Parser<'s> {
             }
             self.pos += 1;
             self.last_line = tok.line;
-            let rhs = self.binary(prec + 1, bracketed, expr_line)?;
+            let rhs = self.binary(prec + 1, bracketed)?;
             lhs = Expr {
                 span: lhs.span.join(rhs.span),
                 kind: ExprKind::Binary {
@@ -654,14 +684,19 @@ impl<'s> Parser<'s> {
         Ok(lhs)
     }
 
-    fn unary(&mut self, bracketed: bool, expr_line: Option<usize>) -> Result<Expr, Diagnostic> {
-        // Line boundary of an unbracketed expression: every token the
-        // expression consumes must sit on the expression's own line. The
-        // entry token defines that line, so this only fires for tokens
-        // reached after an operator (C01) — bracketed contexts are exempt.
-        if let Some(line) = expr_line {
+    fn unary(&mut self, bracketed: bool) -> Result<Expr, Diagnostic> {
+        // Line boundary of an unbracketed expression: the ENTRY token may
+        // start on any line (a statement may carry its value on the next
+        // line); every subsequent token must share the line of the token
+        // consumed just before it. `last_line` advances when a bracketed
+        // subexpression closes, so continuation after `)` keys to the
+        // CLOSING line (R2-QA-01: D01..D05 legal) while `1 +\n 2`, `f\n(3)`
+        // and `-\n 2` still reject.
+        let entry = self.unbracketed_entry;
+        self.unbracketed_entry = false;
+        if !bracketed && !entry {
             if let Some(t) = self.peek() {
-                if t.line != line {
+                if t.line != self.last_line {
                     return Err(self.err(
                         "source.syntax",
                         "unbracketed expression cannot continue across a newline",
@@ -670,13 +705,22 @@ impl<'s> Parser<'s> {
                 }
             }
         }
+        self.enter()?;
+        let r = self.unary_inner(bracketed);
+        self.depth -= 1;
+        r
+    }
+
+    fn unary_inner(&mut self, bracketed: bool) -> Result<Expr, Diagnostic> {
         match self.peek().map(|t| (t.tok.clone(), t.span)) {
             Some((Tok::Punct(P::Minus), mspan)) => {
                 match self.peek2().map(|t| t.tok.clone()) {
                     Some(Tok::Int(_)) => {
-                        if let Some(line) = expr_line {
-                            if let Some(t2) = self.peek2() {
-                                if t2.line != line {
+                        self.pos += 1; // minus
+                        self.last_line = self.toks[self.pos - 1].line;
+                        if !bracketed {
+                            if let Some(t2) = self.peek() {
+                                if t2.line != self.last_line {
                                     return Err(self.err(
                                         "source.syntax",
                                         "unbracketed expression cannot continue across a newline",
@@ -685,7 +729,6 @@ impl<'s> Parser<'s> {
                                 }
                             }
                         }
-                        self.pos += 1; // minus
                         let t = self.bump();
                         let Tok::Int(digits) = t.tok else {
                             unreachable!()
@@ -767,13 +810,12 @@ impl<'s> Parser<'s> {
                 // A call's `(` must sit on the callee's line unless the
                 // whole expression is bracketed (C03: a parenthesized
                 // argument list on the NEXT line is a new statement, not a
-                // call of the previous identifier).
-                let paren_same_line = match self.peek2() {
-                    Some(t) if t.tok == Tok::Punct(P::LParen) => {
-                        bracketed
-                            || expr_line.map_or(true, |l| {
-                                t.line == self.peek().map(|i| i.line).unwrap_or(l)
-                            })
+                // call of the previous identifier). The callee may itself
+                // be the expression's entry token, so anchor to IT, not to
+                // the line of whatever came before.
+                let paren_same_line = match (self.peek(), self.peek2()) {
+                    (Some(idt), Some(t)) if t.tok == Tok::Punct(P::LParen) => {
+                        bracketed || t.line == idt.line
                     }
                     _ => false,
                 };

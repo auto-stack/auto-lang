@@ -606,14 +606,26 @@ fn stmt_term(s: &RStmt) -> Term {
         RStmt::If { then, els, .. } => match els {
             // (Returned, Returned) -> Returned; (Diverged, Diverged) ->
             // Diverged; anything mixed (or no else) continues conservatively,
-            // exactly like verify's flow lattice.
-            Some(e) => match (block_flow(then), block_flow(e)) {
-                (Some(Term::Ret), Some(Term::Ret)) => Term::Ret,
-                (Some(Term::Div) | Some(Term::Stray), Some(Term::Div) | Some(Term::Stray)) => {
-                    Term::Div
+            // exactly like verify's flow lattice. A Stray arm NEVER counts
+            // as a valid terminator for the combination (R2-QA-03): folding
+            // (Stray, Stray) into Diverged split trailing statements into
+            // disconnected dead blocks, verify's structure gate failed
+            // first and skipped the dataflow walk — hiding the real
+            // loop-target-scope errors (D10). Stray arms keep trailing
+            // statements in the same block so the walk runs and owns the
+            // rejection; the pure (Div, Div) case (D08) still splits.
+            Some(e) => {
+                let (a, b) = (block_flow(then), block_flow(e));
+                if a == Some(Term::Stray) || b == Some(Term::Stray) {
+                    Term::Stray
+                } else {
+                    match (a, b) {
+                        (Some(Term::Ret), Some(Term::Ret)) => Term::Ret,
+                        (Some(Term::Div), Some(Term::Div)) => Term::Div,
+                        _ => Term::No,
+                    }
                 }
-                _ => Term::No,
-            },
+            }
             None => Term::No,
         },
         RStmt::Loop { body, .. } => {

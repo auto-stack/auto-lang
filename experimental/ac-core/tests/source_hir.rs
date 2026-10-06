@@ -233,6 +233,38 @@ const NEGATIVE: &[(&str, &str, &str, &str, bool)] = &[
         "x",
         false,
     ),
+    // r2 QA-03: valid break/continue arms keep their dead-statement
+    // anchoring (D08/D14)...
+    (
+        "d08-both-diverge-trailing.at",
+        "verify",
+        "verify.block-structure",
+        "let x = 2",
+        false,
+    ),
+    (
+        "d14-dead-after-valid-break.at",
+        "verify",
+        "verify.block-structure",
+        "let x = 2",
+        false,
+    ),
+    // ...while STRAY arms never promote: the real loop-target errors stay
+    // reachable (D10/D13 anchor at the offending break/continue keywords)
+    (
+        "d10-stray-both-branches.at",
+        "verify",
+        "verify.loop-target-scope",
+        "break",
+        false,
+    ),
+    (
+        "d13-stray-branches-no-tail.at",
+        "verify",
+        "verify.loop-target-scope",
+        "continue",
+        false,
+    ),
 ];
 
 #[test]
@@ -251,6 +283,27 @@ fn valid_corpus_compiles_to_checked() {
     for name in VALID_TRACE {
         let src = fixture("valid", name);
         match compile(&src, TRACE) {
+            Ok(_) => {}
+            Err(ds) => panic!(
+                "{}: unexpected rejection:\n{}",
+                name,
+                render_all(name, &src, &ds)
+            ),
+        }
+    }
+    // r2 QA-01 legal controls compile to Checked (multi-line bracketed
+    // continuation, prefix-colliding names, 16-level nesting)
+    for name in [
+        "d01-call-multiline-then-add.at",
+        "d02-paren-multiline-then-add.at",
+        "d03-negative-multiline-arg.at",
+        "d04-nested-paren-multiline.at",
+        "d05-call-multiline-no-tail.at",
+        "d07-colliding-prefix-names.at",
+        "e01-paren-nesting-16.at",
+    ] {
+        let src = fixture("valid", name);
+        match compile(&src, NO_CAPS) {
             Ok(_) => {}
             Err(ds) => panic!(
                 "{}: unexpected rejection:\n{}",
@@ -641,6 +694,50 @@ fn tampered_bundle_is_rejected_by_real_verify() {
     assert!(
         ds.iter().any(|d| d.code == "verify.type-mismatch"),
         "wrong-local-ref: expected type-mismatch, got: {:?}",
+        ds.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+    );
+
+    // (4) R2-QA-04: SAME-TYPE out-of-scope ref. Build a legal
+    // outer-I32/if-inner-I32 program, then repoint the final return's
+    // read from the OUTER local to the INNER one — the types match, so
+    // only the availability/initialization invariant can reject it:
+    // verify.uninitialized-read (block-scoped inits do not escape).
+    let src4 =
+        "fn main() int { let outer = 1; if true { let inner = 2; return inner }; return outer }\n";
+    let parts4 = compile_parts(src4, "test.at", &caps).unwrap();
+    assert!(auto_ac_prototype::verify::verify(parts4.bundle.clone()).is_ok());
+    let mut b4 = parts4.bundle.clone();
+    let outer_l = b4.modules[0].bodies[0]
+        .locals
+        .iter()
+        .position(|l| l.name == "outer")
+        .expect("outer local");
+    let inner_l = b4.modules[0].bodies[0]
+        .locals
+        .iter()
+        .position(|l| l.name == "inner")
+        .expect("inner local");
+    assert_ne!(outer_l, inner_l, "distinct flattened locals required");
+    let body4 = &mut b4.modules[0].bodies[0];
+    // the trailing `return outer` lives at the end of the ENTRY block
+    // (block 0); the then-arm's `return inner` is in its own child block.
+    let ret_stmt = body4.blocks[0]
+        .stmts
+        .last_mut()
+        .expect("final return statement");
+    let auto_ac_prototype::hir::Stmt::Return { value } = ret_stmt else {
+        panic!("final statement is the return");
+    };
+    let read = &mut body4.exprs[value.0 as usize];
+    let ExprKind::ReadLocal { local } = &mut read.kind else {
+        panic!("return reads a local");
+    };
+    assert_eq!(local.0 as usize, outer_l, "precondition: reads outer");
+    *local = auto_ac_prototype::hir::LocalId(inner_l as u32);
+    let ds = auto_ac_prototype::verify::verify(b4).unwrap_err();
+    assert!(
+        ds.iter().any(|d| d.code == "verify.uninitialized-read"),
+        "same-type out-of-scope ref: expected uninitialized-read, got: {:?}",
         ds.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
     );
 }

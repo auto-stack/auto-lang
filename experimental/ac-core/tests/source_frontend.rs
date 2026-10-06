@@ -46,6 +46,15 @@ const VALID: &[&str] = &[
     "c02-paren-newline.at",
     "c05-ac-start-name.at",
     "c06-exitprocess-name.at",
+    // r2 QA-01 legal controls: continuation after a bracketed subexpression
+    // keys to the closing line; prefix-colliding names coexist
+    "d01-call-multiline-then-add.at",
+    "d02-paren-multiline-then-add.at",
+    "d03-negative-multiline-arg.at",
+    "d04-nested-paren-multiline.at",
+    "d05-call-multiline-no-tail.at",
+    "d07-colliding-prefix-names.at",
+    "e01-paren-nesting-16.at",
 ];
 
 /// Negative cases the frontend must accept (rejection happens at bind or
@@ -77,6 +86,11 @@ const LATER_STAGE: &[&str] = &[
     "c09-both-return-trailing.at",
     "c09-trailing-utf8-crlf.at",
     "c10-scope-escape-token.at",
+    // r2 QA-03: later-stage rejections (verify-level)
+    "d08-both-diverge-trailing.at",
+    "d10-stray-both-branches.at",
+    "d13-stray-branches-no-tail.at",
+    "d14-dead-after-valid-break.at",
 ];
 
 /// (fixture, code, token) — token `<EOF>` asserts the span sits at end of
@@ -138,6 +152,10 @@ const TEXT_ERRORS: &[(&str, &str, &str)] = &[
     ("c23-keyword-param-name.at", "source.unsupported", "mut"),
     ("c24-keyword-local-name.at", "source.unsupported", "enum"),
     ("c25-escaped-char.at", "source.unsupported", "'\\''"),
+    // r2 QA-01/QA-04 rejects
+    ("d06-unbracketed-negative-newline.at", "source.syntax", "2"),
+    ("d12-keyword-named-arg.at", "source.unsupported", "type"),
+    ("d11-escaped-char.at", "source.unsupported", "'\\''"),
 ];
 
 #[test]
@@ -479,4 +497,25 @@ fn review_counterexample_coordinates() {
     };
     assert_eq!(span.slice(&src), "let x = 2");
     assert_eq!(line_col(&src, span.start), (4, 2));
+}
+
+#[test]
+fn deep_unclosed_nesting_is_rejected_without_overflow() {
+    // R2-QA-05: ~4KB of unclosed parentheses must yield a controlled
+    // diagnostic (bounded nesting), never a stack overflow.
+    let src = format!("fn main() int {{ return {}1", "(".repeat(4096));
+    let err = match parse_program(&src) {
+        Ok(_) => panic!("deep unclosed input must be rejected"),
+        Err(d) => d,
+    };
+    assert_eq!(err.code, "source.syntax");
+    assert!(err.message.contains("nesting"), "{}", err.message);
+
+    // and deeply unclosed BLOCKS too
+    let src = format!("fn main() int {{{}return 0", "{".repeat(5000));
+    let err = match parse_program(&src) {
+        Ok(_) => panic!("deep unclosed blocks must be rejected"),
+        Err(d) => d,
+    };
+    assert_eq!(err.code, "source.syntax");
 }

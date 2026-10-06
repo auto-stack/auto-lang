@@ -417,3 +417,97 @@ fn source_build_never_overwrites_existing_artifacts() {
     std::fs::remove_dir_all(&blocked).unwrap();
     std::fs::remove_dir_all(&rcpt2).unwrap();
 }
+
+/// R2-QA-04: the source-mode publish-failure sentinel over THREE REAL
+/// previous artifacts. A good build establishes exe/obj/receipt; a second
+/// build then fails AT THE PUBLISH STAGE — the receipt file is held open
+/// with FileShare.None, so the transaction's backup rename cannot move it
+/// — and the rollback must restore all three byte-identically. (The older
+/// directory-occupies-receipt path above stays as the user-property
+/// placeholder control; this one protects the real trio.)
+#[test]
+fn source_publish_failure_rolls_back_three_real_files() {
+    let dir = temp_dir("sentinel-publish");
+    let exe = dir.join("app.exe");
+    let obj = dir.join("app.obj");
+    let rcpt = dir.join("app.ac-link.txt");
+
+    let r = run_ac(&[
+        "build-source",
+        &valid("p01-precedence.at"),
+        "--source-profile",
+        PROFILE,
+        "--entry",
+        "main",
+        "--output",
+        &exe.display().to_string(),
+    ]);
+    assert_eq!(r.code, 0, "stderr: {}", r.stderr);
+    let trio = [sha256_of(&exe), sha256_of(&obj), sha256_of(&rcpt)];
+    assert!(trio.iter().all(|h| !h.is_empty()));
+
+    // Hold the receipt open with NO sharing: the publish transaction's
+    // backup rename of the receipt fails (sharing violation) after the
+    // exe/obj backups — the rollback must restore everything.
+    let hold_ps = format!(
+        "$f=[System.IO.File]::Open('{}','Open','Read','None'); Start-Sleep -Seconds 20",
+        rcpt.display()
+    );
+    let mut holder = Command::new("powershell")
+        .args(["-NoProfile", "-Command", &hold_ps])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn receipt holder");
+    // give the holder a moment to acquire the handle
+    std::thread::sleep(std::time::Duration::from_millis(700));
+
+    let r = run_ac(&[
+        "build-source",
+        &valid("p02-signed-positional.at"),
+        "--source-profile",
+        PROFILE,
+        "--entry",
+        "main",
+        "--output",
+        &exe.display().to_string(),
+    ]);
+    let _ = holder.kill();
+    let _ = holder.wait();
+    assert_eq!(r.code, 1, "publish must fail while the receipt is held");
+    assert!(
+        r.stderr.contains("link."),
+        "expected a link/publish diagnostic: {}",
+        r.stderr
+    );
+    assert_eq!(
+        [sha256_of(&exe), sha256_of(&obj), sha256_of(&rcpt)],
+        trio,
+        "all three real artifacts must survive the rollback byte-identically"
+    );
+}
+
+/// R2-QA-05 end-to-end: ~4KB of unclosed parentheses through the real CLI
+/// must exit 1 with a source-stage diagnostic — no stack-overflow crash.
+#[test]
+fn deep_unclosed_input_via_cli_is_controlled() {
+    let dir = temp_dir("deep-unclosed");
+    let src_path = dir.join("deep.at");
+    std::fs::write(
+        &src_path,
+        format!("fn main() int {{ return {}1", "(".repeat(4096)),
+    )
+    .unwrap();
+    let r = run_ac(&[
+        "check-source",
+        &src_path.display().to_string(),
+        "--source-profile",
+        PROFILE,
+    ]);
+    assert_eq!(r.code, 1, "stdout: {} stderr: {}", r.stdout, r.stderr);
+    assert!(
+        r.stderr.contains("source.syntax") && r.stderr.contains("nesting"),
+        "controlled diagnostic expected: {}",
+        r.stderr
+    );
+}

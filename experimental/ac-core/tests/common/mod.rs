@@ -176,62 +176,128 @@ pub fn build_fixture(fixture_rel: &str, entry_id: &str) -> Result<Vec<u8>, Strin
     })
 }
 
-/// Outcome of a deadline-guarded process run (QA-05): `timed_out` runs carry
-/// the partial output drained until the kill, not a fake success.
+/// Outcome of a deadline-guarded process run. `timed_out` runs carry the
+/// partial output drained until the kill and the child's exit code if it
+/// had already exited — never a fake success (R2-QA-02).
 pub struct DeadlinedRun {
     pub code: i32,
     pub stdout: String,
     pub stderr: String,
     pub timed_out: bool,
+    /// A pipe reader reported an IO error; the partial bytes drained until
+    /// then are still in stdout/stderr (never silently empty).
+    pub drain_error: bool,
 }
 
-/// Run a command with piped stdio under a hard deadline, DRAINING BOTH PIPES
-/// CONCURRENTLY while waiting — a full pipe can never wedge the wait (the
-/// poll-before-drain ordering deadlocked at a 4096-char stderr in review
-/// QA-05's control). On expiry the child is killed and reaped; every exit
-/// path waits for the process, so nothing is left running. This mirrors the
-/// link.rs executor discipline (bounded waits, drained output, reaped
-/// children) for the source test families.
+/// Run a command with piped stdio under ONE hard deadline that covers both
+/// process exit and output collection (R1-QA-05 + R2-QA-02):
+///
+/// - both pipes are drained BY BYTE from dedicated reader threads that
+///   report through channels — invalid UTF-8 survives as replacement
+///   characters instead of swallowing the whole stream, and no join is
+///   ever bounded by the readers (a descendant holding the pipe cannot
+///   extend the wait past the deadline);
+/// - on expiry the child is killed and reaped, whatever arrived by then is
+///   returned with `timed_out = true`;
+/// - every exit path waits for the process, so nothing is left running by
+///   this call. Reader threads whose pipes never close exit on their own
+///   once the senders are dropped.
 pub fn run_deadlined(
     mut cmd: std::process::Command,
     deadline: std::time::Duration,
 ) -> std::io::Result<DeadlinedRun> {
     use std::io::Read;
     use std::process::Stdio;
+    use std::sync::mpsc;
+
     let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
-    let mut out_pipe = child.stdout.take().expect("piped stdout");
-    let mut err_pipe = child.stderr.take().expect("piped stderr");
-    let out_t = std::thread::spawn(move || {
-        let mut s = String::new();
-        let _ = out_pipe.read_to_string(&mut s);
-        s
-    });
-    let err_t = std::thread::spawn(move || {
-        let mut s = String::new();
-        let _ = err_pipe.read_to_string(&mut s);
-        s
-    });
+    let out_pipe = child.stdout.take().expect("piped stdout");
+    let err_pipe = child.stderr.take().expect("piped stderr");
+    // One (bytes, ok) message per pipe, ever; channels make the wait loop
+    // free of joins entirely.
+    let (out_tx, out_rx) = mpsc::channel::<(Vec<u8>, bool)>();
+    let (err_tx, err_rx) = mpsc::channel::<(Vec<u8>, bool)>();
+    let reader = |mut pipe: Box<dyn Read + Send>, tx: mpsc::Sender<(Vec<u8>, bool)>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            // read_to_end keeps whatever arrived even on error.
+            let ok = pipe.read_to_end(&mut buf).is_ok();
+            let _ = tx.send((buf, ok));
+        })
+    };
+    let _out_reader = reader(Box::new(out_pipe), out_tx);
+    let _err_reader = reader(Box::new(err_pipe), err_tx);
+
     let start = std::time::Instant::now();
+    let mut out_buf: Vec<u8> = Vec::new();
+    let mut err_buf: Vec<u8> = Vec::new();
+    let mut drain_error = false;
+    let mut out_done = false;
+    let mut err_done = false;
+    let mut exit_code: Option<i32> = None;
     loop {
-        if let Some(status) = child.try_wait()? {
-            let code = status.code().unwrap_or(-1);
+        if !out_done {
+            if let Ok((bytes, ok)) = out_rx.try_recv() {
+                if !ok {
+                    drain_error = true;
+                }
+                out_buf = bytes;
+                out_done = true;
+            }
+        }
+        if !err_done {
+            if let Ok((bytes, ok)) = err_rx.try_recv() {
+                if !ok {
+                    drain_error = true;
+                }
+                err_buf = bytes;
+                err_done = true;
+            }
+        }
+        if exit_code.is_some() && out_done && err_done {
             return Ok(DeadlinedRun {
-                code,
-                stdout: out_t.join().unwrap_or_default(),
-                stderr: err_t.join().unwrap_or_default(),
+                code: exit_code.unwrap_or(-1),
+                stdout: String::from_utf8_lossy(&out_buf).into_owned(),
+                stderr: String::from_utf8_lossy(&err_buf).into_owned(),
                 timed_out: false,
+                drain_error,
             });
         }
         if start.elapsed() >= deadline {
+            // Deadline governs execution AND collection (R2-QA-02): kill
+            // and reap the child, sweep whatever arrived, and report the
+            // timeout honestly — never wait on the readers.
             let _ = child.kill();
-            let _ = child.wait(); // reap; closes the pipes for the drain threads
+            let code = child.wait().ok().and_then(|st| st.code()).unwrap_or(-1);
+            if !out_done {
+                if let Ok((bytes, ok)) = out_rx.try_recv() {
+                    if !ok {
+                        drain_error = true;
+                    }
+                    out_buf = bytes;
+                }
+            }
+            if !err_done {
+                if let Ok((bytes, ok)) = err_rx.try_recv() {
+                    if !ok {
+                        drain_error = true;
+                    }
+                    err_buf = bytes;
+                }
+            }
             return Ok(DeadlinedRun {
-                code: -1,
-                stdout: out_t.join().unwrap_or_default(),
-                stderr: err_t.join().unwrap_or_default(),
+                code,
+                stdout: String::from_utf8_lossy(&out_buf).into_owned(),
+                stderr: String::from_utf8_lossy(&err_buf).into_owned(),
                 timed_out: true,
+                drain_error,
             });
         }
-        std::thread::sleep(std::time::Duration::from_millis(15));
+        if exit_code.is_none() {
+            if let Some(status) = child.try_wait()? {
+                exit_code = Some(status.code().unwrap_or(-1));
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
     }
 }

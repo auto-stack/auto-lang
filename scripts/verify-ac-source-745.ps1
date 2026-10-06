@@ -30,8 +30,16 @@ function Invoke-Step {
 }
 
 function Invoke-Captured {
-    # Run an external command with a hard deadline; returns stdout+stderr
-    # and the exit code without throwing.
+    # Run an external command under ONE hard deadline that covers both the
+    # process and its output collection (R2-QA-02 discipline, mirroring the
+    # 741 executor's bounded-wait contract):
+    # - output/error are collected INCREMENTALLY through event handlers, so
+    #   no pipe can ever block the wait and a descendant holding the pipe
+    #   cannot extend the runtime past the deadline;
+    # - on expiry the whole PROCESS TREE is killed (taskkill /T /F) and the
+    #   child reaped; the result carries TimedOut=$true with the partial
+    #   output — never a fake success;
+    # - every exit path waits for the process.
     param([string]$Exe, [string[]]$ArgList, [string]$WorkDir, [int]$TimeoutSec = 600)
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $Exe
@@ -40,16 +48,60 @@ function Invoke-Captured {
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
-    $p = [System.Diagnostics.Process]::Start($psi)
-    $outTask = $p.StandardOutput.ReadToEndAsync()
-    $errTask = $p.StandardError.ReadToEndAsync()
-    if (-not $p.WaitForExit($TimeoutSec * 1000)) {
-        $p.Kill()
-        throw "subprocess '$Exe $($ArgList -join ' ')' exceeded ${TimeoutSec}s deadline"
+    $p = New-Object System.Diagnostics.Process
+    $p.StartInfo = $psi
+    $outBuf = New-Object System.Text.StringBuilder
+    $errBuf = New-Object System.Text.StringBuilder
+    # Event actions run in their own runspace: the builders travel by
+    # reference through -MessageData ($Event.MessageData), never by scope.
+    $outSub = Register-ObjectEvent -InputObject $p -EventName OutputDataReceived -MessageData $outBuf -Action {
+        if ($null -ne $EventArgs.Data) { [void]$Event.MessageData.AppendLine($EventArgs.Data) }
     }
-    $out = $outTask.GetAwaiter().GetResult()
-    $err = $errTask.GetAwaiter().GetResult()
-    return [pscustomobject]@{ Code = $p.ExitCode; Stdout = $out; Stderr = $err }
+    $errSub = Register-ObjectEvent -InputObject $p -EventName ErrorDataReceived -MessageData $errBuf -Action {
+        if ($null -ne $EventArgs.Data) { [void]$Event.MessageData.AppendLine($EventArgs.Data) }
+    }
+    try {
+        if (-not $p.Start()) { throw "failed to start '$Exe'" }
+        $p.BeginOutputReadLine()
+        $p.BeginErrorReadLine()
+        $budget = [System.Diagnostics.Stopwatch]::StartNew()
+        $timedOut = -not $p.WaitForExit($TimeoutSec * 1000)
+        if ($timedOut) {
+            # Tree kill: descendants inheriting our pipes die with the
+            # child, so nothing can extend the wait past the deadline.
+            & taskkill /T /F /PID $p.Id | Out-Null
+            $p.WaitForExit() | Out-Null   # reap; pipes are closing now
+        } else {
+            # The process exited; async readers have no EOF event in PS 5.1,
+            # so drain with a bounded quiet-window: complete when both
+            # buffers went quiet for 250ms, otherwise run to the budget and
+            # report TimedOut with whatever arrived (never past deadline,
+            # never a fake success; a silently holding descendant that
+            # writes nothing resolves as complete-with-full-output).
+            $lastOut = $outBuf.Length; $lastErr = $errBuf.Length
+            $quiet = [System.Diagnostics.Stopwatch]::StartNew()
+            while (($quiet.ElapsedMilliseconds -lt 250) -and ($budget.ElapsedMilliseconds -lt ($TimeoutSec * 1000))) {
+                Start-Sleep -Milliseconds 50
+                if ($outBuf.Length -ne $lastOut -or $errBuf.Length -ne $lastErr) {
+                    $lastOut = $outBuf.Length; $lastErr = $errBuf.Length
+                    $quiet.Restart()
+                }
+            }
+            if ($budget.ElapsedMilliseconds -ge ($TimeoutSec * 1000)) { $timedOut = $true }
+        }
+        $code = $p.ExitCode
+        return [pscustomobject]@{
+            Code = $code
+            Stdout = $outBuf.ToString()
+            Stderr = $errBuf.ToString()
+            TimedOut = $timedOut
+        }
+    } finally {
+        Unregister-Event -SourceIdentifier $outSub.Name -ErrorAction SilentlyContinue
+        Unregister-Event -SourceIdentifier $errSub.Name -ErrorAction SilentlyContinue
+        if (-not $p.HasExited) { try { & taskkill /T /F /PID $p.Id | Out-Null; $p.WaitForExit() | Out-Null } catch {} }
+        $p.Dispose()
+    }
 }
 
 function Get-Sha256 {

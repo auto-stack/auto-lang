@@ -46,6 +46,14 @@ const POSITIVE: &[(&str, i32, &str, bool, bool)] = &[
     // called functions AND as entries (C05/C06)
     ("c05-ac-start-name.at", 3, "", false, false),
     ("c06-exitprocess-name.at", 4, "", false, false),
+    // review r2 QA-01: multi-line bracketed subexpressions continue on the
+    // closing line (D01..D05); prefix-colliding names coexist (D07)
+    ("d01-call-multiline-then-add.at", 5, "", false, false),
+    ("d02-paren-multiline-then-add.at", 6, "", false, false),
+    ("d03-negative-multiline-arg.at", 1, "", false, false),
+    ("d04-nested-paren-multiline.at", 6, "", false, false),
+    ("d05-call-multiline-no-tail.at", 2, "", false, false),
+    ("d07-colliding-prefix-names.at", 7, "", false, false),
 ];
 
 fn valid(name: &str) -> String {
@@ -287,4 +295,49 @@ fn trace_case_without_support_lib_fails_at_link() {
     };
     assert_eq!(code, 1, "stderr: {}", err);
     assert!(!exe.exists());
+}
+
+/// R2-QA-02 control: the parent exits instantly but a DESCENDANT inherits
+/// the pipes and holds them far past the deadline - the helper must return
+/// bounded by the deadline (timeout semantics), never wait for the holder.
+#[test]
+fn descendant_holding_pipes_cannot_extend_the_deadline() {
+    let started = std::time::Instant::now();
+    let mut cmd = Command::new("cmd.exe");
+    cmd.args(["/c", "start /b ping -n 6 127.0.0.1"]);
+    cmd.current_dir(std::env::temp_dir());
+    let r = run_deadlined(cmd, Duration::from_millis(800)).expect("spawn");
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "helper waited {}ms for a pipe-holding descendant",
+        started.elapsed().as_millis()
+    );
+    assert!(r.timed_out, "collection incomplete within deadline");
+    assert_eq!(r.code, 0, "the parent itself exited cleanly");
+}
+
+/// R2-QA-02 control: invalid UTF-8 bytes on the pipe must survive as
+/// replacement characters around the valid data - never an empty stream.
+#[test]
+fn invalid_utf8_output_is_preserved_lossily() {
+    let mut cmd = Command::new("powershell");
+    cmd.args([
+        "-NoProfile",
+        "-Command",
+        "$s=[Console]::OpenStandardOutput(); $b=[Text.Encoding]::ASCII.GetBytes('PREFIX '); \n         $s.Write($b,0,$b.Length); $s.WriteByte(255); \n         $b=[Text.Encoding]::ASCII.GetBytes(' SUFFIX'); $s.Write($b,0,$b.Length); $s.Flush()",
+    ]);
+    let r = run_deadlined(cmd, Duration::from_secs(30)).expect("spawn");
+    assert!(!r.timed_out);
+    assert_eq!(r.code, 0, "stderr: {}", r.stderr);
+    assert!(
+        r.stdout.contains("PREFIX") && r.stdout.contains("SUFFIX"),
+        "output swallowed: {:?}",
+        r.stdout
+    );
+    assert!(
+        r.stdout.contains('\u{FFFD}'),
+        "lossy marker expected: {:?}",
+        r.stdout
+    );
+    assert!(!r.drain_error, "no reader error on a clean pipe");
 }
