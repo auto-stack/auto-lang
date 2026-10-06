@@ -182,7 +182,6 @@ def build_identity_repo(sandbox_root: Path, name: str, archived_text: str,
     (root / "docs/plans/archive" / PLAN_NAME).write_text(archived_text, encoding="utf8")
     materialize_reports(root, archived_text)
     (root / "experimental/ac-core/README.md").write_text(readme_text, encoding="utf8")
-    print(f"DBG build_identity_repo[{name}] readme={readme_text!r} ledger={ledger_file!r}", flush=True)
     ledger = {
         "sections": [
             {"id": "reviews", "items": [

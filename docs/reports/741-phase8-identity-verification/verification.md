@@ -14,10 +14,10 @@ fixture_tests.py / final_assertions.py 两个 Python 验证脚本修复,**零 Ru
 
 ## 门禁证据(全部 worktree 实跑,2026-10-06;Category A 零 Cargo/docs_gen)
 
-- fixture 矩阵:`--source auto` **25 用例执行全 PASS**——active 源 13 用例
-  (2 正例 + 8 负例 + 2 导航控制 + identity-nav-wrong-target)、archive 源(git 历史重放
-  r6 归档态)12 用例(2 正例 + 6 负例 + 2 导航控制 + identity-ledger-wrong-target、
-  identity-readme-wrong-target);
+- fixture 矩阵(2026-10-06 复审订正 per P741P8-R2:active 12 用例(2 正例 + 8 负例 +
+  2 导航控制,无 identity——identity 负例全部在 archive 源)、archive 源 13 用例
+  (2 正例 + 5 负例 + 2 导航控制 + 4 个 identity 负例:nav 错目标/readme 缺引用/
+  readme 错目录/ledger 错指);
 - final_assertions v4 active 模式:ALL-ASSERTIONS-PASS(README/导航行/ledger 身份全过);
 - 生产面零 diff:`git diff d59298e95 -- Cargo.toml Cargo.lock crates/ test/
   experimental/ac-core/src` 为空;
