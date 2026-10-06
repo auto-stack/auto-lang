@@ -1,0 +1,14 @@
+{
+  "build": null,
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r3\\corpus\\N51\\input.at:1:24: error[verify/source.type-mismatch]: expected i32, found bool\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r3\\corpus\\N51\\input.at:1:24: error[verify/source.type-mismatch]: expected i32, found bool\n"
+  },
+  "kind": "reject",
+  "input_sha256": "975f0287f967d4cba27b209ebb02c07e74c3b945be3a33e3205afdb59ceee23c",
+  "run": null,
+  "id": "N51",
+  "ok": true,
+  "artifact_hashes": []
+}

@@ -1,0 +1,2 @@
+enum E { A }
+fn main() int { return 0 }

@@ -1,0 +1,14 @@
+{
+  "build": null,
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r3\\corpus\\N35\\input.at:1:37: error[text/source.unsupported]: operator `==` is not part of this source profile\n"
+  },
+  "kind": "reject",
+  "input_sha256": "74e1864196e224f19f1627666ecc159cd179a5bc7ef692e560249ddcd17f0224",
+  "run": null,
+  "id": "N35",
+  "ok": true,
+  "artifact_hashes": []
+}

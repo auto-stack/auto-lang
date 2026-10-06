@@ -1,0 +1,14 @@
+{
+  "build": null,
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r3\\corpus\\N02\\input.at:1:24: error[text/source.literal-range]: integer literal `-2147483649` is outside the signed 32-bit range of this source profile\n"
+  },
+  "kind": "reject",
+  "input_sha256": "33f1f729e0f95b8e48e9a6a4e88fac2f84e033f220f1cfbf8a0b14cbf2e42dfb",
+  "run": null,
+  "id": "N02",
+  "ok": true,
+  "artifact_hashes": []
+}
