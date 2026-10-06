@@ -271,6 +271,22 @@ pub fn create_dir(path: &str) -> i32 {
     }
 }
 
+/// List direct child file names (non-recursive; dotfiles skipped; sorted).
+/// Plan 742 D9 (NOTES-001 r4 T-12): receipt/journal enumeration for the
+/// Phase-1 JSON -> SQLite upgrade import — the smallest read-only API.
+pub fn dir_names(path: &str) -> Vec<String> {
+    let mut names: Vec<String> = match std::fs::read_dir(path) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| !n.starts_with('.'))
+            .collect(),
+        Err(_) => return Vec::new(),
+    };
+    names.sort();
+    names
+}
+
 pub fn is_dir(path: &str) -> bool {
     Path::new(path).is_dir()
 }
