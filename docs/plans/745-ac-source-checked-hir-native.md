@@ -275,8 +275,14 @@ src/tests新路径均相对experimental/ac-core；reports新路径相对docs/rep
   报告 numeric-boundary.md/verification.md/proposed-spec-delta.md 齐
 - `blockers`: 无阻塞 review 项。注记：①日常/语料档预存红 33+4 处已同源归因
   （KNOWN-DEBT 396、dep 017 drop_count、musk/chart/gallery 族、cookbook semver 族），
-  T-08 可复核归因并考虑登记 KNOWN-DEBT-AND-RISKS；②D: 盘曾 100% 满（os112），
-  已恢复 ~30G，C:/tmp/ac745-main-gates 已删除，ffi_dual 污染 marker 已清除
+  T-08 可复核归因并考虑登记 KNOWN-DEBT-AND-RISKS；归因时间线注记：主检出对照
+  运行（17:1x+）晚于 plan-742 合并（a6e108f60 @16:43，改 trans/vue/auto-man），
+  即对照双方 crates 相差 742 变更——27 处共现核心红在 pre/post-742 两种 crates
+  状态下逐名一致（既非 742 修复面也非其引入面），且 745 diff 与全部失败域
+  零交集；若 T-08 需严格同源对照，可在 eea7a8061 基线另建临时树复跑；
+  ②D: 盘曾 100% 满（os112），已恢复 ~30G，C:/tmp/ac745-main-gates 已删除，
+  ffi_dual 污染 marker 已清除；③工作树落后主检出（742 合并+簿记），实现分支
+  保持 plan-745-dev @ b3cd81719，review 按该 HEAD 执行，merge 时再整合
 - `next_responsible_role`: review（T-08 /auto-plan:review 独立上下文，同树执行，
   实现写入暂停；入口核对 path/branch/revision/HEAD=b3cd81719 稳定）
 
