@@ -112,9 +112,11 @@ def main(root: str) -> int:
           and "参数名与本地类型名相同不能当作类型身份" in aa_compact
           and "mut参数" in aa_compact,
           "auto-acc 缺 r5 SD-09 + r6 SD-10 裸/qualified 绑定优先规则（含本地类型升级服从）")
-    check("本地类型/enum构造或type-qualified升级之前检查冲突" in aa_compact
-          and "参数名与本地类型名相同不能当作类型身份" in aa_compact,
-          "auto-acc 缺 r6 SD-10 绑定先于本地类型升级规则")
+    check("本地类型/enum构造或type-qualified升级之前均检查可观察绑定" in aa_compact
+          and "参数名与本地类型名相同不能当作类型身份" in aa_compact
+          and "绑定文件不存在与hash不匹配同样视为该记录校验失败" in aa_compact
+          and "包括先前合法记录" in aa_compact,
+          "auto-acc 缺 r6 SD-10 绑定先于本地类型升级与整组作废规则")
 
     # 5) 严格门（真实报告）
     r = subprocess.run(
