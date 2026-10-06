@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-06
 plan_revision: 5
-current_step: 32
+current_step: 33
 total_steps: 33
 supersedes_spec_components:
   - docs/specs/auto-acc/project.md
@@ -55,7 +55,7 @@ T-01..21 的交付/复审/merge/clean 均作历史保留；T-21 按真实收据�
 ### Phase 5 再激活（2026-10-06补齐落地，plan_revision5）
 
 合入r4后独立复审 **needs_fix**，绑定HEAD c865adf66a75099df07113b053eb9d19e92986a3。
-按用户此前明确授权激活同ID，详见[本轮报告](../reports/743-r4-quality-review-20261005/REVIEW.md)。
+按用户此前明确授权激活同ID，详见[本轮报告](../../reports/743-r4-quality-review-20261005/REVIEW.md)。
 原复审基线83/83、47新鲜决定、SD-08/canonical及27/27/ledger通过，但P743-R4-QA-01..04有反例；后续741 Spec变更使5条决定stale，当前strict不宣称全绿。
 本轮仅合同/证据/簿记，不修Python、不改canonical/ledger、不占新号。r1..r4实施/复审/merge收据保留为历史；不能替代r5验收。
 当前任务完成T01..22=22/33；T23..27重新待验（紧随其后的旧完成证据仅描述r4，旧[✅]不覆盖当前[ ]），新增T28..33。
@@ -162,7 +162,7 @@ scripts/{aavm_lib_xref,aavm_shim_inventory}.py。执行时manifest须记录全�
 复核基线 fa3abe47677992d41b1aef948f36ad46c645f7f8（v0.6-dev，clean）；原实施基线 c1ac219e7。
 交付 9abc87acc/05d0127a4/bbfca37b8/274a9ded4/bab649682 的祖先关系已核实。
 取材 docs/specs/overview.md、auto-acc/project.md、auto-hir/stage-contract.md 与当前 auto-hir/auto-ac Specs；
-完整 SHA-256 与新反例见 [独立复核报告](../reports/743-quality-review-20261005/REVIEW.md)
+完整 SHA-256 与新反例见 [独立复核报告](../../reports/743-quality-review-20261005/REVIEW.md)
 及 results.json/audit.json。实施 T-07 重取实际激活提交 hash，不从旧 plan-743 tip 起步。
 
 本轮实跑 18/18 测试、双输出确定性、15 活动链接及三个决定/两份扫描反例；
@@ -178,7 +178,7 @@ fixtures、743 报告、auto-acc-bootstrap-contract 设计及计划簿记。
 本轮用户要求检查 743:r2；沿用此前“有问题激活计划，并把问题和解决方案作为新的 phase”的授权。
 范围仍本仓调研工具/文档，未授权在复审中实施修复；不改旧源码/741/native/ABI/外仓。
 5983f8aee 的 r2 已落地且 worktree 清理，完整 reviewed SHA/Spec/源码指纹及 AC 对账见
-[新独立报告](../reports/743-r2-quality-review-20261005/REVIEW.md)。主线并行 ed2d00b90 仅是 NOTES-001 sqlite 运行时依赖，不归 743。
+[新独立报告](../../reports/743-r2-quality-review-20261005/REVIEW.md)。主线并行 ed2d00b90 仅是 NOTES-001 sqlite 运行时依赖，不归 743。
 T-15 须取含本合同的最新 v0.6-dev，重核指纹/变动；不从已删除 r2 分支或旧报告审计 HEAD 开始。
 Python 3.14.2；本轮 41/41、两次扫描字节一致、真实严格门 47 条新鲜/9 输入/146 unknown 绿。
 绿只覆盖当前正例；独立负例在报告中：未绑定证据变化仍绿、resolved 不引用决定仍绿、类型错误 traceback、跨 owner 分类越权。
@@ -189,7 +189,7 @@ Python 3.14.2；本轮 41/41、两次扫描字节一致、真实严格门 47 条
 
 用户本轮要求“743又一次修复并合并，继续检查”，沿用此前明确的发现问题激活同计划追加 Phase 授权。
 当前 reviewed_commit=8e8f6f19b96516fdbc9d4c893297fa1757a7aad4；r3 基点=a0f8ddd443418fb32a67d308cbd4a0fd00f74835。
-[新独立报告](../reports/743-r3-quality-review-20261005/REVIEW.md) 保存源码/Spec/提案 SHA-256、组合反例及全 AC 对账。
+[新独立报告](../../reports/743-r3-quality-review-20261005/REVIEW.md) 保存源码/Spec/提案 SHA-256、组合反例及全 AC 对账。
 本轮63/63、双输出确定性、真实严格门47决定/9输入/146unknown绿；20活动链接和SD-06/07三段匹配。
 新增失败仅被引用非法记录、evidence覆盖 OR 旁路、导入/参数遮蔽、归档生命周期；不是当前真实人工层已陈旧。
 T-22 从含本合同的最新v0.6-dev取基线，保持741/742/ABI检出独立；不覆盖其 WIP/分支。.next-id=744不变。
@@ -386,7 +386,7 @@ r4不改auto-hir阶段/R3/pass规则；SD-07已确认落地，旧映射在历史
 2. QA-01：普通/mut自由函数及已观察方法（含静态）的参数名收集正确；bare和qualified均在宿主/类型升级前检查绑定冲突，保留unknown。回归导入/局部类型/正常宿主正例；不要求完整resolver，不把探索for/单行绑定列入必做。
 3. QA-02：manifest顶层与source_identity容器形状在访问/audit-only归一前验证，受控ERROR、非零、无traceback；不写输入/人工层。正常source/summary漂移仍由完整重生成比较检出，audit-only兼容保持。
 4. QA-04：归档时修正文档相对路径。新增docs/reports/743-phase5-validation-fixes/final_assertions.py，检查实际active/archive父目录的Markdown链接（忽略代码围栏）、全部33任务/meta/索引/P743-*指针。r4 helper/报告是历史证据，保留。
-5. SD-09 modify auto-acc/project.md，new_spec_components为空；冻结[提案](../reports/743-r4-quality-review-20261005/proposed-spec-delta-phase5.md)。auto-hir无新增阶段/pass；canonical与ledger由review pass后的merge沉淀。激活导致旧archive指针暂缺需记录，最终全部修回。
+5. SD-09 modify auto-acc/project.md，new_spec_components为空；冻结[提案](../../reports/743-r4-quality-review-20261005/proposed-spec-delta-phase5.md)。auto-hir无新增阶段/pass；canonical与ledger由review pass后的merge沉淀。激活导致旧archive指针暂缺需记录，最终全部修回。
 
 
 ## 6. 测试设计
@@ -667,7 +667,8 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 - [x] T-31 manifest形状诊断（依赖28，AC27）：成员访问前容器验证；四错形状ERROR/no traceback/文件字节不变；正常漂移/audit-only positive与旧全部测试。
 - [x] T-32 合同和最终验证器（依赖29..31，AC28）：新phase5 SD09冻结；新final_assertions检查actual active及模拟/真实archive链接/33任务/meta/导航/all P743-*。保留旧helper；不先写canonical/ledger。重验关闭T25。
   [✅ 已完成 r5] T-28: commit 7425a707e（基点 39a4f9133，baseline.md 复现四反例+两对照+形状崩溃+5 条 stale 前置）；T-29: commit 739c7aa57（validated-only 索引扩充：非法结论/证据缺失未绑定/过期绑定不入消费者索引，重复整组作废含先插入者）；T-30: commit 739c7aa57（签名提取覆盖方法+mut 名修正；BARE_NATIVES 推迟 post-classify、绑定遮蔽优先；四反例不升级 native、对照不退化；真实仓零漂移；5 条 AutoAC stale 对 741 P4 diff 逐条审定重绑）；T-31: commit 739c7aa57（manifest 顶层/source_identity/inputs 形状门，5 形状负例受控拒绝零 traceback）；T-32: commit efeb03a60（SD-09 冻结 ad3e02d7 核对一致；final_assertions r5：33 任务双格式/真实父目录链接检查/P743-* 指针/canonical r3+r4+r5 检查/严格门）。终验 110/110 测试、严格门、三方确定性、范围零触碰，详见 docs/reports/743-phase5-fixes/verification.md。
-- [ ] T-33 终验、独立review和merge（依赖29..32，AC25..28）：83+新增、replay、strict、双生成/三方cmp/manual/hash/links/diff/范围；先execution_done不预写pass，独立review绑定r5/HEAD。pass后SD09沉淀/债项逐条销账/ledger all refs/actual archive33/33/guard cleanup收据闭环，关闭旧T26/T27；保护741/742/ABI工作树。
+- [x] T-33 终验、独立review和merge（依赖29..32，AC25..28）：83+新增、replay、strict、双生成/三方cmp/manual/hash/links/diff/范围；先execution_done不预写pass，独立review绑定r5/HEAD。pass后SD09沉淀/债项逐条销账/ledger all refs/actual archive33/33/guard cleanup收据闭环，关闭旧T26/T27；保护741/742/ABI工作树。
+  [✅ 已完成] R6 pass（f755232f2，绑定 r5/ce61e5e6d）；merge 收据 PLAN-743:r5（两轮 union-rebase vs 741-P5/741-P6/742 并行、§5.6.6 逐条重绑 741-P5 drift 8f2a021d6、SD-09 沉淀 454825ac5）；归档 3073edfda；final_assertions r5 七类断言全过（33/33、P743-* 指针、索引、canonical、链接、严格门）。
 
 当前T01..22完成22/33，T23..27重新待验，T28..33未实施；新Phase不能以补勾/历史pass代替验证。
 
@@ -873,7 +874,7 @@ test_acc_inventory.py 9f9b3681c2b5c029、final_assertions.py a8e629f87fa84b3d。
 - dependency_revisions: Python3.14.2/标准库/PYTHONUTF8=1；本会话只参与r3合同修订，未参与其实现。Spec/source/delta完整指纹见新报告。
 - acceptance_results: 63/63、真实47决定严格门、双输出确定性绿；20链接/SD-06/07三段匹配，AC-04/05/06/07/11/12/13/16/19通过对应合同/清单范围；AC-01/02/03/09/15partial，AC-08/10/14/17/18/20fail。
 - findings: P743-R3-QA-01..04：无效引用记录consumer崩溃、hash/subject代证据、导入/参数同名native、final20/21/P743-3旧指针。
-- evidence: [新报告](../reports/743-r3-quality-review-20261005/REVIEW.md)，counterexamples/audit/replay-results/tests/frozen-phase3-spec-delta；旧反例有效修复明确保留。
+- evidence: [新报告](../../reports/743-r3-quality-review-20261005/REVIEW.md)，counterexamples/audit/replay-results/tests/frozen-phase3-spec-delta；旧反例有效修复明确保留。
 - next: 用户授权Phase4，执行T-22..27再review；本轮不改实现/canonical/liveledger。
 
 ### Phase 4 合同交接（2026-10-05，new r4）
@@ -990,7 +991,7 @@ test_acc_inventory.py ae5f8ae26c66bca7。
 - dependency_revisions: Python 3.14.2 标准库，无外仓；本会话只修订过合同，未参与 r2 实现。Spec/source hashes 与冻结 delta 见新报告。
 - acceptance_results: 41/41、严格真实门 47 新鲜/9 输入/146 unknown、确定性绿；AC-06/07/12 合同域 pass，AC-01/02/03/04/05/09/11/13 partial，AC-08/10/14 fail。
 - findings: P743-R2-QA-01..06（owner/同名分类、evidence-binding、resolved 引用、字段类型、canonical R3 摘要、归档生命周期）。
-- evidence: [新报告](../reports/743-r2-quality-review-20261005/REVIEW.md)，counterexamples.json/audit.json/replay-results.json/tests.txt 与 frozen-phase2-spec-delta.md。
+- evidence: [新报告](../../reports/743-r2-quality-review-20261005/REVIEW.md)，counterexamples.json/audit.json/replay-results.json/tests.txt 与 frozen-phase2-spec-delta.md。
 - mainline_movement: ed2d00b90 仅 NOTES-001 sqlite 依赖，743 输入/实现/Spec 没有改变；未将其归属本计划。
 - next: 用户授权同 ID Phase 3，执行 T-15..21 再独立复审；本轮不修 Python/不写 canonical 行为/不改 live ledger。
 
@@ -1105,7 +1106,7 @@ acc_inventory.py 8be8c39952887304、test_acc_inventory.py 1f8bde2f77b0272f。
 - stage: review | plan_id: PLAN-743 | plan_revision: 1 | outcome: **needs_fix**
 - reviewed_commit: fa3abe47677992d41b1aef948f36ad46c645f7f8；base_commit: c1ac219e73ee2ed1ef6ba8dfec49c131bfbf1a75。
 - dependency_revisions: Python 3.14.2，无外仓；spec_inputs/冻结 delta 指纹见
-  [质量复核报告](../reports/743-quality-review-20261005/REVIEW.md) 与相邻 results.json/audit.json。
+  [质量复核报告](../../reports/743-quality-review-20261005/REVIEW.md) 与相邻 results.json/audit.json。
 - acceptance_results: AC-01/03/04/05/06/07 partial；AC-02/08 fail。
 - evidence: 18/18 测试、9 输入/8 模块/18 use、字节确定性、15 links 通过；
   多行伪调用/同名 native/无绑定决定三类新反例；8 决定9绑定过期；祖先交付核实。
@@ -1288,7 +1289,7 @@ acceptance-matrix.md d8ea8e6253b508c4…。
 
 ### 合入后复审：r4 / c865adf66 / needs_fix（2026-10-05）
 
-完整证据与24条AC对账见[独立报告](../reports/743-r4-quality-review-20261005/REVIEW.md)，本轮冻结SD08核对与SD09提案在同目录。
+完整证据与24条AC对账见[独立报告](../../reports/743-r4-quality-review-20261005/REVIEW.md)，本轮冻结SD08核对与SD09提案在同目录。
 QA01/P2 参数漏判；QA02/P2 manifest形状崩溃；QA03/P2 无效记录仍消费（最终CLI正确拒绝，无假绿）；QA04/P3 六历史归档链接失效。83/83、47fresh、27/27和ledger真的通过；旧解决问题不再重复报错。
 T23..27取消当前验收勾选但保留r4历史实现证据；r5 executing，22/33。本轮不修产品。Module导航只改active，canonical/ledger留merge；P743-3..6历史archive暂缺显式待收口，不宣称全局索引已刷新。
 
