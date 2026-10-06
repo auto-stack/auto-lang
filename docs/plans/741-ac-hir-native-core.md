@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-741
-status: execution_done
+status: reviewed
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-06
 plan_revision: 8
-current_step: 43
+current_step: 44
 total_steps: 44
 supersedes_spec_components: []
 new_spec_components: []
@@ -868,6 +868,35 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 
 ## 9. 复审记录
+
+### Phase 8 独立复审（2026-10-06，/auto-plan:review，独立代理）
+
+- stage: review | plan_id: PLAN-741 | plan_revision: 8 | outcome: **pass**
+- reviewed_commit: `11993d94c`（worktree clean；区间 2 提交 f2244cc61/11993d94c）；
+  复审后 P3 卫生项处置提交 970eb09ba（删除遗留 DBG 打印、订正 verification.md 矩阵分布）
+- base_commit: `d59298e95`（v0.6-dev 含复审方 r8 再激活提交）
+- 复审方式: 全新上下文独立代理（未参与实现），全部证据自行运行/读源码；自建沙盒
+  正负控制（含 743 占位错目标与缺失引用）+ 反向验证旧版门（d59298e95）对这些反例
+  全部 ALL-ASSERTIONS-PASS——新负例非同义反复，恰复现 r7 复审 independent-results.json
+- dependency_revisions: 无新依赖（windows-sys 0.59.0 同 r4..r7）
+- spec_inputs: **空影响**——Phase 8 无新持久行为（supersedes/new/touched 均 []，无 SD-10）；
+  canonical specs 与 live ledger 零 diff（git diff d59298e95 -- docs/specs/ .autoos/ 空）
+- acceptance_results（全 **pass**，复审代理自行取证）:
+  - AC-33 pass：两矩阵导航控制以 add_external 进入统一 cases 经 run_assert 真实执行；
+    --source auto 实测 25 用例全 PASS exit 0；固定 +2 已删、总数从执行记录派生；
+    控制性确认：forgotten-nav-update 期望改 0 → fixture 非零失败（控制真实执行且失败传播）
+  - AC-34 pass：canonical 目标身份检查——沙盒正例 PASS；负例 (a) README 缺 741 链接、
+    (b) auto-ac href→743、(c) README href→743、(d) ledger P741-8 file→743 全部 exit 1 且
+    诊断含 missing required 741 plan reference / does not match the canonical plan
+    (expected/got) / P741-8 entry ID；反向验证旧版门对这些反例全部假通过
+- findings（4 条 P4，不阻塞；已随 merge 前处置/转录）:
+  - P741P8-R1(P4 卫生)：遗留 DBG 打印——已删（970eb09ba）
+  - P741P8-R2(P4 记录)：verification.md 矩阵分布误述——已订正（970eb09ba）
+  - P741P8-R3(P4 硬性建议)：①OK 打印守卫只排 unresolvable（负例先 OK 后 FAIL 观感矛盾）；
+    ②导航只查首个 | 741 | 行——留 known-debt 候选（不影响本轮判定）
+  - 观察项：旧 phase7 报告的过期计数由 Phase 8 报告与计划转录为权威更正
+- next: merge（归档 44/44、链接转换、全部 P741 指针恢复、销账 R7-QA-01..02、
+  guard 清理）
 
 ### r7合入后独立复审与Phase8合同（2026-10-06）
 
