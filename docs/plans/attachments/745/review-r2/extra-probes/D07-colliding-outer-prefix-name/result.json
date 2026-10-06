@@ -1,0 +1,20 @@
+{
+  "id": "D07-colliding-outer-prefix-name",
+  "source": "fn ac_start() int { return 3 } fn sf_ac_start() int { return 4 } fn main() int { return ac_start() + sf_ac_start() }",
+  "want": "accept native7",
+  "check": {
+    "stderr": "",
+    "exit": 0,
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=6984d6aaa2c780f6, module(s)=1, capabilities required: []\n"
+  },
+  "build": {
+    "stderr": "",
+    "exit": 0,
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r2\\extra-probes\\D07-colliding-outer-prefix-name\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r2\\extra-probes\\D07-colliding-outer-prefix-name\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r2\\extra-probes\\D07-colliding-outer-prefix-name\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r2\\extra-probes\\D07-colliding-outer-prefix-name\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 6984d6aaa2c780f6\n"
+  },
+  "run": {
+    "stderr": "",
+    "exit": 7,
+    "stdout": ""
+  }
+}

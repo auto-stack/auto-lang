@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-745
-status: execution_done
+status: executing
 feature_name: Auto 源码计算子集 → Checked HIR → Windows native
 author: [Codex]
 created_at: 2026-10-06
 updated_at: 2026-10-06
 plan_revision: 1
-current_step: 7
+current_step: 1
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-hir/stage-contract.md
@@ -242,17 +242,17 @@ AC01..07先内部检查，再最终独立复审全部重新审定；AC09不承�
 
 ## 8. 执行步骤
 
-唯一任务表。2026-10-06 最终复审 needs_fix：T-01 保留完成，T-02..07 重开，T-08/09 待完成，current1/total9；下列 work 收据保留为历史，不能覆盖最终发现。
+唯一任务表。2026-10-06 第二轮最终复审 needs_fix：T-01 保留完成，T-02..07及相关验证/SD证据重开，T-08/09待完成，current1/total9；下列初版及修复轮work收据保留为历史，不能覆盖最新最终发现。
 
 | ID | 状态 | owner_stage | 依赖 | 文件/符号与可验证产出 | AC / 验证 |
 |---|---|---|---|---|---|
 | T-01 | [x] | work | r1确认 | 新docs/reports/745-source-core-i32/numeric-boundary.md；核对可见值/parser/trans/char路径，完成两probe与MD408/409提案；若事实推翻profile可行性先修合同 | AC01,07；数值cases+决策来源，先于T02/03类型实施。〔2026-10-06 work：报告落地（worktree commit c535b8fd6）；23项输入hash零漂移；E1–E12证据链（VM栈i32/值存储i32\|i64/旧AST幅值三态/trans i64/char三宿主表示）；probe-int-width=profile内精确有符号32位、probe-char-int=profile拒绝char，MD408/409提案文本入报告§8；无事实推翻r1可行性，§7数值cases待T-05运行回填〕 |
-| T-02 | [x] | work | T01 | 新src/source/{mod,lexer,ast,parser}.rs、lib.rs导出、fixtures/source/、tests/source_frontend.rs；grammar/span/full-consumption可运行 | AC02,04；ac-core check；cargo test --manifest-path experimental/ac-core/Cargo.toml --test source_frontend（新目标）。〔2026-10-06 work：worktree commit 6965c0a04；21正/53反fixture精确物化；12前端测试全绿（30 text级code+token断言、23 bind/verify级前端须通过断言、P01/P02/P04/P07/P11/P15/P20结构span、N03行列2:24、N31 1:24）；ac-core全量测试通过、fmt clean〕 〔r1-fix 2026-10-06：QA-01 换行边界（expr_line 贯穿、callee同行括号）、QA-04 全量关键词集（Reserved 词法类+名字位 unsupported、转义 str/char 单 literal、! 归 unsupported）、QA-03a N09/C10 越域指 ident；新 C 系 fixtures 13 反例+3 控制；frontend 12 测全绿；commit 3e3c1631f〕 |
-| T-03 | [x] | work | T02 | 新src/source/{resolve,typecheck,adapter}.rs，签名/词法栈/精确类型、生成Atom+map→bind_source→全部span投影→verify；tests/source_hir.rs | AC01..04；新source_hir测试、owning/bindings与负变异。〔2026-10-06 work：worktree commit 3fb6c96b6；resolve（签名预登记/块作用域/参数映射/trace intrinsic优先级）+typecheck（source.type-mismatch@verify）+adapter（while→loop/if降低、bool=0<1/0<0合成、return后死代码独立块、stray break/continue phantom loop、条目序span再锚+token碎片回退）；10测试全绿（23负例stage/code/token精确、P03/04/11/15/19结构、4变异拒收）；全ac-core 80测通过零警告零fmt问题〕 〔r1-fix 2026-10-06：QA-02 源码函数符号 sf_ 前缀（identity 走 d_ id，不新增保留名，ac_start/ExitProcess 可用可入口）；QA-03b 死代码分块扩至 return/有效break-continue/双分支终结/returning-body loop（Stray 保持同块），死块 span 钉首个死语句；N15/16/18/N07 锚定回归不变；hir 13 测全绿（含 overflow 结构断言、Bundle 三变异重verify）〕 |
-| T-04 | [x] | work | T03 | src/main.rs新命令/共用Checked构建；source/mod.rs显式profile/trace表；必要link.rs收据追加保持事务；tests/source_cli.rs | AC03,04,06；新source_cli+旧cli/native/trace tests。〔2026-10-06 work：worktree commit c5af427d9；check-source/build-source（漏/未知profile=2、0/1/2分级、entry按函数名查def id）、link.rs新增publish_artifacts_with_receipt（源码profile/hash同事务入.ac-link.txt，旧函数零语义变化委托）；10 CLI测试全绿（真实PE构建运行P01=14/P13=70、失败零制品、entry.not-found/signature、trace无support-lib链接失败、旧check仍仅Atom）；全ac-core 90测通过零警告〕 〔r1-fix 2026-10-06：QA-08 抽取 finish_build 唯一 Checked→staged→事务发布尾部，两模式共用，入口按 d_ id；cli 11 测全绿（含 source SENTINEL 三路：源拒绝/链接失败/publish 回滚三件 byte-identical）〕 |
-| T-05 | [x] | work | T04 | 新tests/source_native.rs、scripts/verify-ac-source-745.ps1，物化执行JSON全部case和§6补充；docs/reports/745-source-core-i32/verification.md及原始收据 | AC01..06；ac-core全test+新一键脚本，60s/code/trace/token/hash/制品。〔2026-10-06 work：worktree commit addcf4d5a；脚本实测 **all 12 steps PASS (74 cases)**（21正例真实构建+运行退出码/stderr oracle全中含P15=12/stderr ba、P13/P14/P16=70、60s硬截止、三制品+sha256收据；53负例exit 1+stage/code标记全中）；source_native 2测试串行7.5s；§6补充矩阵九行证据映射入verification.md §5；主仓门禁留T-07回填〕 〔r1-fix 2026-10-06：QA-05 tests/common run_deadlined（双管道并发排空+截止 kill+wait 回收）接入 cargo/CLI/PE 全路径；大输出控制（20000×a stderr 全排空 exit 20000）与挂起控制（无状态 loop{continue} 3s 被杀；自增循环会在 2^31 触发 trap 提前退出的现象在案）；native 5 测串行全绿含 C05=3/C06=4/入口 ac_start=3〕 |
-| T-06 | [x] | work | T05 | ac-core/README.md，proposed-spec-delta.md及MD408/409更新提案/新鲜绑定策略，不直接改canonical | AC07；python scripts/acc_inventory.py --check --require-decisions，提案说明待merge绑定，不自动重hash掩漂移。〔2026-10-06 work：worktree commit 8b4526bd7；README 双管线/新测试族/边界更新；proposed-spec-delta.md SD01..04+MD408/409追加note+盘点检查实测（2项失败均为743扫描器工作区态非内容漂移，归merge重扫）+新鲜度绑定策略（r1+提交链+收据指纹，merge重跑替换）〕 〔r1-fix 2026-10-06：QA-07 盘点错误调用与『未入库』误述撤回留档，正确命令实测 CHECK-OK（47 决策新鲜），merge 不预排 --write、MD note 追加后独立复跑+检验消费者；README 边界节补符号隔离/关键词集/换行规则〕 |
-| T-07 | [x] | work | T06 | 同树内部检查所有cases/SD/健康，§6全部门禁，提交HEAD与执行收据；work7/7→execution_done（总7/9） | AC01..07；内部pass仅交接review。〔2026-10-06 work：§6全块实测——ac-core check/fmt/all-targets零警告/全test 92绿；verify-ac-741.ps1 -SkipMainGates **13步全过**；verify-ac-source-745.ps1 **12步全过(74例)**；主仓 check -p auto-lang PASS(2m50s)；cargo t 全量 4939/4972=33失败 与主检出同源对照**完全同数**（27共现预存红+6+6对称差flake，745新增失败=0，归因收据 target/ac-verify-receipts/source-745/main-gates/）；cargo tv 158/162=4预存cookbook红两环境逐项一致；环境事件：D:满盘(os112)一次中断+C:重试曾污染ffi_dual oracle marker(已清除全部原生重跑)；组内补建只读依赖树auto-down@fba6563ed。工作树HEAD b3cd81719 clean〕 〔r1-fix 2026-10-06：全门禁重跑——ac-core 99测+零警告零fmt问题；741 13步/745 12步74例全过；正确 inventory strict CHECK-OK；主仓 check PASS、cargo t 4939/4972=33失败（28与前轮共现预存红逐名一致+5名隔离复跑5/5全过=并行flake）、tv 158/162=4预存cookbook红逐名一致，745新增失败=0；修复轮提交链 3e3c1631f→d9f5499b7→36664d9a5→507025957→91b37560c，树 clean @91b37560c〕 |
+| T-02 | [ ] | work | T01 | 新src/source/{mod,lexer,ast,parser}.rs、lib.rs导出、fixtures/source/、tests/source_frontend.rs；grammar/span/full-consumption可运行 | AC02,04；ac-core check；cargo test --manifest-path experimental/ac-core/Cargo.toml --test source_frontend（新目标）。〔2026-10-06 work：worktree commit 6965c0a04；21正/53反fixture精确物化；12前端测试全绿（30 text级code+token断言、23 bind/verify级前端须通过断言、P01/P02/P04/P07/P11/P15/P20结构span、N03行列2:24、N31 1:24）；ac-core全量测试通过、fmt clean〕 〔r1-fix 2026-10-06：QA-01 换行边界（expr_line 贯穿、callee同行括号）、QA-04 全量关键词集（Reserved 词法类+名字位 unsupported、转义 str/char 单 literal、! 归 unsupported）、QA-03a N09/C10 越域指 ident；新 C 系 fixtures 13 反例+3 控制；frontend 12 测全绿；commit 3e3c1631f〕 |
+| T-03 | [ ] | work | T02 | 新src/source/{resolve,typecheck,adapter}.rs，签名/词法栈/精确类型、生成Atom+map→bind_source→全部span投影→verify；tests/source_hir.rs | AC01..04；新source_hir测试、owning/bindings与负变异。〔2026-10-06 work：worktree commit 3fb6c96b6；resolve（签名预登记/块作用域/参数映射/trace intrinsic优先级）+typecheck（source.type-mismatch@verify）+adapter（while→loop/if降低、bool=0<1/0<0合成、return后死代码独立块、stray break/continue phantom loop、条目序span再锚+token碎片回退）；10测试全绿（23负例stage/code/token精确、P03/04/11/15/19结构、4变异拒收）；全ac-core 80测通过零警告零fmt问题〕 〔r1-fix 2026-10-06：QA-02 源码函数符号 sf_ 前缀（identity 走 d_ id，不新增保留名，ac_start/ExitProcess 可用可入口）；QA-03b 死代码分块扩至 return/有效break-continue/双分支终结/returning-body loop（Stray 保持同块），死块 span 钉首个死语句；N15/16/18/N07 锚定回归不变；hir 13 测全绿（含 overflow 结构断言、Bundle 三变异重verify）〕 |
+| T-04 | [ ] | work | T03 | src/main.rs新命令/共用Checked构建；source/mod.rs显式profile/trace表；必要link.rs收据追加保持事务；tests/source_cli.rs | AC03,04,06；新source_cli+旧cli/native/trace tests。〔2026-10-06 work：worktree commit c5af427d9；check-source/build-source（漏/未知profile=2、0/1/2分级、entry按函数名查def id）、link.rs新增publish_artifacts_with_receipt（源码profile/hash同事务入.ac-link.txt，旧函数零语义变化委托）；10 CLI测试全绿（真实PE构建运行P01=14/P13=70、失败零制品、entry.not-found/signature、trace无support-lib链接失败、旧check仍仅Atom）；全ac-core 90测通过零警告〕 〔r1-fix 2026-10-06：QA-08 抽取 finish_build 唯一 Checked→staged→事务发布尾部，两模式共用，入口按 d_ id；cli 11 测全绿（含 source SENTINEL 三路：源拒绝/链接失败/publish 回滚三件 byte-identical）〕 |
+| T-05 | [ ] | work | T04 | 新tests/source_native.rs、scripts/verify-ac-source-745.ps1，物化执行JSON全部case和§6补充；docs/reports/745-source-core-i32/verification.md及原始收据 | AC01..06；ac-core全test+新一键脚本，60s/code/trace/token/hash/制品。〔2026-10-06 work：worktree commit addcf4d5a；脚本实测 **all 12 steps PASS (74 cases)**（21正例真实构建+运行退出码/stderr oracle全中含P15=12/stderr ba、P13/P14/P16=70、60s硬截止、三制品+sha256收据；53负例exit 1+stage/code标记全中）；source_native 2测试串行7.5s；§6补充矩阵九行证据映射入verification.md §5；主仓门禁留T-07回填〕 〔r1-fix 2026-10-06：QA-05 tests/common run_deadlined（双管道并发排空+截止 kill+wait 回收）接入 cargo/CLI/PE 全路径；大输出控制（20000×a stderr 全排空 exit 20000）与挂起控制（无状态 loop{continue} 3s 被杀；自增循环会在 2^31 触发 trap 提前退出的现象在案）；native 5 测串行全绿含 C05=3/C06=4/入口 ac_start=3〕 |
+| T-06 | [ ] | work | T05 | ac-core/README.md，proposed-spec-delta.md及MD408/409更新提案/新鲜绑定策略，不直接改canonical | AC07；python scripts/acc_inventory.py --check --require-decisions，提案说明待merge绑定，不自动重hash掩漂移。〔2026-10-06 work：worktree commit 8b4526bd7；README 双管线/新测试族/边界更新；proposed-spec-delta.md SD01..04+MD408/409追加note+盘点检查实测（2项失败均为743扫描器工作区态非内容漂移，归merge重扫）+新鲜度绑定策略（r1+提交链+收据指纹，merge重跑替换）〕 〔r1-fix 2026-10-06：QA-07 盘点错误调用与『未入库』误述撤回留档，正确命令实测 CHECK-OK（47 决策新鲜），merge 不预排 --write、MD note 追加后独立复跑+检验消费者；README 边界节补符号隔离/关键词集/换行规则〕 |
+| T-07 | [ ] | work | T06 | 同树内部检查所有cases/SD/健康，§6全部门禁，提交HEAD与执行收据；work7/7→execution_done（总7/9） | AC01..07；内部pass仅交接review。〔2026-10-06 work：§6全块实测——ac-core check/fmt/all-targets零警告/全test 92绿；verify-ac-741.ps1 -SkipMainGates **13步全过**；verify-ac-source-745.ps1 **12步全过(74例)**；主仓 check -p auto-lang PASS(2m50s)；cargo t 全量 4939/4972=33失败 与主检出同源对照**完全同数**（27共现预存红+6+6对称差flake，745新增失败=0，归因收据 target/ac-verify-receipts/source-745/main-gates/）；cargo tv 158/162=4预存cookbook红两环境逐项一致；环境事件：D:满盘(os112)一次中断+C:重试曾污染ffi_dual oracle marker(已清除全部原生重跑)；组内补建只读依赖树auto-down@fba6563ed。工作树HEAD b3cd81719 clean〕 〔r1-fix 2026-10-06：全门禁重跑——ac-core 99测+零警告零fmt问题；741 13步/745 12步74例全过；正确 inventory strict CHECK-OK；主仓 check PASS、cargo t 4939/4972=33失败（28与前轮共现预存红逐名一致+5名隔离复跑5/5全过=并行flake）、tv 158/162=4预存cookbook红逐名一致，745新增失败=0；修复轮提交链 3e3c1631f→d9f5499b7→36664d9a5→507025957→91b37560c，树 clean @91b37560c〕 |
 | T-08 | [ ] | review | T07 | /auto-plan:review独立上下文同树，写入暂停，revision/HEAD稳定，逐AC实际证据/反例/债务/proposed delta；最终报告 | AC08并独立重验AC01..07；pass→reviewed（8/9） |
 | T-09 | [ ] | merge | T08+合入授权 | /auto-plan:merge到v0.6-dev；SD/人工盘点/ledger/导航/index/归档；批回归到期判断；wt-guard clean才清理 | AC09；实际链接/终态/9/9/清理收据，不预勾 |
 
@@ -320,6 +320,18 @@ stage=new / outcome=pass（规划交接完成）/ next=work T-01（待用户确�
 本树不属于Codex应用托管树，登记以Git+本计划为准，不创建第二树；wt-guard.sh缺失由T09恢复，删除前须正式guard clean。
 技能源=C:/Users/zhaop/.agents/skills/auto-plan-new/SKILL.md及references/verification-contract.md。
 
+2026-10-06 stage=review，PLAN-745 r1 第二轮最终独立复审：**needs_fix**。
+
+- `review_scope`: final；`review_round`: 2；`reviewer_identity`: 原规划/第一轮复审Codex上下文，独立于GLM实现与修复上下文；本轮只审查/证据/簿记。
+- `worktree_path`: D:/autostack/.wt/lang-745/auto-lang；`branch`: plan-745-dev；`reviewed_commit`: 91b37560cffda75cf07cef8620cf524f5d6a3c7c。
+- `base_commit`: eea7a80618d4d5e75749d666b7609a9a87925bbd；`repair_diff_base`: b3cd8171966281a42f96187780342ce0ff51c5fb；`dependency_revisions`: auto-down @ fba6563ed2148ce85e68208863159b4ccccac710（未变，只读）。
+- `spec_inputs`: 四项canonical Spec、Plan、配置及冻结SD哈希见 [baseline.json](attachments/745/review-r2/baseline.json)；二进制/工具链见toolchain.txt，当前库探针由Cargo JSON唯一绑定。
+- `acceptance_results`: AC01 pass、AC02 fail、AC03 partial、AC04 fail、AC05 partial、AC06 partial、AC07 partial、AC08 fail、AC09 pending。
+- `findings`: **P745-R2-QA-01..05**，详见 [第二轮最终报告](attachments/745/review-r2/REVIEW.md)：括号内合法换行后续算误拒；新助手/PS采集截止及输出仍有缺口；Stray组合制造死块遮住真实错误；越域和三件publish补充oracle仍不足；4122字节未闭合输入栈溢出退出。
+- `prior_disposition`: R1-QA02/04/07/08清偿；R1-QA01/03具体旧反例已修，本轮发现回归；R1-QA05/06部分修复，剩余项按R2追踪。保留具体通过证据，不假称原八项均未修，也不将内部“全部处置”当最终pass。
+- `evidence`: ac-core check/fmt零warning、99 passed/1 ignored；741 13步/745 12步74例通过；正确inventory strict47通过。完整日常档4939/4972通过、33失败；tv158/162通过、4失败，均exit100。新hover红隔离1/1通过；未称根门禁绿色/严格同源逐项零新增。原C反例、D组合/E深输入、原样助手/脚本、真实Bundle同type越域控制及三件保留结果已持久化。
+- `pending_closeout_gates`: T09主线整合、SD/人工层/ledger/index/导航、到期批回归、真实archive断言、guard与原树清理；本轮未执行、未发布canonical/live ledger。
+- `next`: work在原树修复并提交新完整HEAD，再申请最终复审。T02..07及其依赖证据重开，T01保留，status=executing/current_step=1/total_steps=9；T08/T09未完成。r1语义合同保持，历史收据保留。
 ## 10. 待澄清事项
 
 r1等待用户按AGENTS L1确认数值profile/支持集后实施；本轮范围没有其它未定义的验收结果。

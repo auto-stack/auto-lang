@@ -1,0 +1,52 @@
+{
+  "plan": "PLAN-745",
+  "plan_revision": 1,
+  "review_scope": "final",
+  "review_round": 2,
+  "reviewer": "Original planning and prior review Codex context; implementation from independent GLM context",
+  "main_head": "bd7aa30ba153908b6ccf73b383b5437b3cf33406",
+  "head": "91b37560cffda75cf07cef8620cf524f5d6a3c7c",
+  "base": "eea7a80618d4d5e75749d666b7609a9a87925bbd",
+  "previous_reviewed_commit": "b3cd8171966281a42f96187780342ce0ff51c5fb",
+  "worktree": "D:/autostack/.wt/lang-745/auto-lang",
+  "branch": "plan-745-dev",
+  "dependency_revision": "fba6563ed2148ce85e68208863159b4ccccac710",
+  "plan_sha256": "9ad9e7c374f4820eb77773be10f10e9835e8e17bfd2437f6bd85fea7f5fe5f5e",
+  "spec_inputs": [
+    {
+      "path": "docs/specs/auto-hir/project.md",
+      "sha256": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab"
+    },
+    {
+      "path": "docs/specs/auto-hir/stage-contract.md",
+      "sha256": "85989f57c70dd48676932c6fd91415f7b06446faed077feee92a337b021db7b7"
+    },
+    {
+      "path": "docs/specs/auto-ac/project.md",
+      "sha256": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208"
+    },
+    {
+      "path": "docs/specs/auto-acc/project.md",
+      "sha256": "5e7103d73b499b3fdd04a37a6f66baff5db395ceb1183925be4af0351f406a10"
+    }
+  ],
+  "verification_configs": [
+    {
+      "path": "experimental/ac-core/Cargo.toml",
+      "sha256": "6e9cbe7dcd2e3371789597d6835cf679419f4bd50dee38d6e4938c91d15b58ba"
+    },
+    {
+      "path": "experimental/ac-core/Cargo.lock",
+      "sha256": "296429e6dd6db8e1affe9755f29c5ff94c902362361fa719b7bc1cd11ee7077e"
+    },
+    {
+      "path": ".cargo/config.toml",
+      "sha256": "13cb02bef7ce0ad685135e36b667ccbe54ab1a04ba6d743de1a3c5f41d239003"
+    },
+    {
+      "path": ".config/nextest.toml",
+      "sha256": "0fbea4b493e2437105d5cd68c616549b1a39aaad6ae4b2f85fd83adf4782d5a2"
+    }
+  ],
+  "proposed_spec_delta_sha256": "da129e1dcaa2e0bbc6dbba9202813046c8bda45316375b94e1bd729587378b82"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "D10-stray-in-both-branches",
+  "source": "fn main() int { if true { break } else { continue }; return 0 }",
+  "want": "reject loop-target-scope",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r2\\extra-probes\\D10-stray-in-both-branches\\input.at:1:54: error[verify/verify.block-structure]: block `k5` is not reachable from the entry block (block graph must be connected and acyclic)\n",
+    "exit": 1,
+    "stdout": ""
+  },
+  "build": null,
+  "run": null
+}

@@ -1,0 +1,23 @@
+function Invoke-Captured {
+    # Run an external command with a hard deadline; returns stdout+stderr
+    # and the exit code without throwing.
+    param([string]$Exe, [string[]]$ArgList, [string]$WorkDir, [int]$TimeoutSec = 600)
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $Exe
+    $psi.Arguments = ($ArgList | ForEach-Object { '"' + ($_ -replace '"', '\\"') + '"' }) -join ' '
+    $psi.WorkingDirectory = $WorkDir
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $outTask = $p.StandardOutput.ReadToEndAsync()
+    $errTask = $p.StandardError.ReadToEndAsync()
+    if (-not $p.WaitForExit($TimeoutSec * 1000)) {
+        $p.Kill()
+        throw "subprocess '$Exe $($ArgList -join ' ')' exceeded ${TimeoutSec}s deadline"
+    }
+    $out = $outTask.GetAwaiter().GetResult()
+    $err = $errTask.GetAwaiter().GetResult()
+    return [pscustomobject]@{ Code = $p.ExitCode; Stdout = $out; Stderr = $err }
+}
+

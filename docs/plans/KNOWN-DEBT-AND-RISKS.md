@@ -387,3 +387,18 @@ reviewed_commit=b3cd8171966281a42f96187780342ce0ff51c5fb；needs_fix；[最终�
 | P745-R1-QA-08 | P3 | source/HIR各复制Checked后构建管线，未兑现共用合同 | T04/05、AC06；同一构建入口，两模式回归 |
 
 这些项未清偿；登记不等于批准延后。SD01/03及盘点策略待修后重新冻结，完整宽度/char保持open；canonical/live ledger保持当前状态。root门禁完整daily29红/tv4红另有原始清单，生产源/config零745 diff且均在历史红集并集；未称门禁绿色或严格同源逐项归因完成。
+## PLAN-745 r1 第二轮最终独立复审（2026-10-06，待修）
+
+reviewed_commit=91b37560cffda75cf07cef8620cf524f5d6a3c7c；[第二轮报告](attachments/745/review-r2/REVIEW.md)、[同ID计划](745-ac-source-checked-hir-native.md)。needs_fix/executing/1-of-9；同树保留，未实施本轮修复、合入或规范沉淀。
+
+R1-QA02（native符号）、QA04（关键词/排除）、QA07（盘点误归因）、QA08（共用构建）**已清偿**；QA01/03的具体原反例已修，但新增回归见下；QA05的大输出/普通父进程截止、QA06的trap结构/删let/错type/部分SENTINEL已修，剩余合同项按本轮ID追踪。旧历史段落保留，不撤销具体pass，也不以旧待修文字误称产品毫无修复。
+
+| ID | 级别 | 当前缺口 | 修复/验收 |
+|---|---|---|---|
+| P745-R2-QA-01 | P2 | 合法多行call/括号闭合后的同行+表达式误拒 | T02/05、AC02/05；括号上下文和真实语句换行边界成对控制，保留C01/C03拒绝 |
+| P745-R2-QA-02 | P2 | Rust助手500ms截止实际5016ms仍成功；PS1s实际5044ms；无效UTF8输出被吞 | T05/07、AC05/06/08；执行/采集同deadline，受控子树及全出口回收，字节排空/真实错误传播，两助手均修 |
+| P745-R2-QA-03 | P2 | 两Stray分支被提升有效Div，后续死块遮住break/continue目标错误 | T03/05、AC02/04；组合保留Stray诊断可达性，固定实际冒犯token |
+| P745-R2-QA-04 | P2 | Bundle第三变异只验异type；publish控制先删旧receipt后仅比较两文件 | T03/05/07、AC03/06；同type越域真实变异、保留三件旧文件的实际publish失败/恢复控制；独立verify.uninitialized-read已证实，不报告产品verifier失效 |
+| P745-R2-QA-05 | P2 | 4122字节/4096未闭合括号使编译器栈溢出exit -1073741571 | T02/03/05、AC02/04；深畸形输入受控diagnostic/exit1/无panic，浅合法控制；不偷缩profile或只扩大栈 |
+
+本轮99测试/两脚本/strict47均通过，但不覆盖这些反例；root日常33红/tv4红实录保留、hover隔离1/1通过，未声称严格同源逐项零新增或根门禁绿色。五项未清偿，登记不等于批准延后；SD01/03完整叙述待修后重新冻结，canonical/live ledger保持当前状态。

@@ -1,0 +1,12 @@
+{
+  "id": "C01-unbracketed-rhs-newline",
+  "source": "fn main() int {\n return 1 +\n 2\n}",
+  "want": "reject",
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r2\\probes\\C01-unbracketed-rhs-newline\\input.at:3:2: error[text/source.syntax]: unbracketed expression cannot continue across a newline\n"
+  },
+  "build": null,
+  "run": null
+}
