@@ -158,8 +158,20 @@ master HEAD，与 lang-742 组同基线），745 未修改 auto-down 任何文�
 | QA-07 盘点归因错误 | proposed-spec-delta.md §盘点：错误调用与"未入库"说法撤回留档；正确命令实测 CHECK-OK（47 决策新鲜） | 本轮实测输出见该节；merge 不预排 --write 重扫，MD note 追加后独立复跑+检验消费者 |
 | QA-08 Checked 后流程未共用 | main.rs 抽 `finish_build`（lower→staged obj→工具链→staged link→事务发布+staged 清理合同）唯一实现，build/build_source 前端只构造 Checked/入口/收据元信息 | 双模式回归：cli.rs 11 测 + source_cli 11 测全绿（含各自事务/入口/能力路径）；§2 一键脚本重跑见 §8 |
 
-## 8. 修复轮门禁（同树串行重跑）
+## 8. 修复轮门禁（同树串行重跑，2026-10-06，HEAD 507025957）
 
-（T-07 修复轮收口时回填：ac-core check/fmt/all-targets 零警告、全 test、
-verify-ac-741.ps1 -SkipMainGates、verify-ac-source-745.ps1、主仓 check/t/tv
-与预存红归因更新。）
+| 门禁 | 结果 |
+|---|---|
+| ac-core `cargo check --locked --all-targets` | PASS，零 warning |
+| ac-core `cargo fmt -- --check` | PASS |
+| ac-core `cargo test --locked` | **99 passed / 1 ignored / 0 failed** |
+| `verify-ac-741.ps1 -SkipMainGates` | **all 13 steps PASS** |
+| `verify-ac-source-745.ps1` | **all 12 steps PASS (74 cases)** |
+| 复审反例回放 | C01/C03/C04/C05/C06/C09/C10/C12/C15 逐条按预期（拒绝码/token/坐标 或 native 3/4/入口 3），已固化为 fixtures+永久测试 |
+| `acc_inventory.py --check --require-decisions`（正确调用） | **CHECK-OK**（47 决策新鲜；QA-07 更正入 proposed-spec-delta.md） |
+| `cargo check -p auto-lang` | PASS（增量 1.5s；382 生产既有 warning 不变） |
+| `cargo t`（全量 --no-fail-fast） | 4939/4972 通过、33 失败：28 处与前轮双方共现预存红逐名一致；其余 5 名（state_file lock / plan437 / plan498_area / plan499_crosshair / plan643_t01）**隔离复跑 5/5 PASS** = 并行负载 flake 轮换（7.8s）；745 新增失败 = 0 |
+| `cargo tv`（全量） | 158/162 通过、4 失败 = 预存 cookbook semver 族（与前轮逐名一致） |
+
+预存红口径沿用前轮（同源对照 + 名称集合），不修不相关旧功能；已知 27–29
+核心红名单在历史收据与复审 daily-results.txt 中，供 KNOWN-DEBT 登记参考。
