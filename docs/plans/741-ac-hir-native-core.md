@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-741
-status: executing
+status: execution_done
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-06
 plan_revision: 8
-current_step: 38
+current_step: 43
 total_steps: 44
 supersedes_spec_components: []
 new_spec_components: []
@@ -823,23 +823,23 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 ### Phase 7 执行步骤（T39..41，未实施）
 
-- [ ] **T-39** fixture生命周期修复（AC31；关闭当前T36）：在新建/复用适宜的plan-741-dev工作树，只修改受控fixture/必要final_assertions参数支持；从active/archive可重放，动态造冲突、核对诊断/实际mutation，验证部分与全完成输入，留原始日志；无产品修复。
-- [ ] **T-40** 最终导航门（依赖39，AC32）：扩展真实README/两模块741行及ledger校验，新增遗漏归档导航更新负控制；明确active暂态和最终实际archive，通过正确目标与失败定位，不把模拟archive冒充真实。
-- [ ] **T-41**（r7 独立复审两轮：首轮 needs_fix R1..R3 已处置、处置记录见 §9；merge 归档收口待 /auto-plan:merge） 独立复审与merge（依赖39/40，AC31/32；关闭当前T38）：冻结r7/commit/空规范影响，重放文档门及全部受影响AC；pass后真正更新导航并归档41/41、转换链接、全部P741指针恢复，归档后fixture和最终门均重放通过再销账/收据/guard清理。保护742/743/ABI，Category A禁止Cargo/docs_gen。
-- [ ] **T-39** fixture_tests.py 生命周期重写：计划源自动检测（docs/plans/ 部分执行态 或
+- [x] **T-39** fixture生命周期修复（AC31；关闭当前T36）：在新建/复用适宜的plan-741-dev工作树，只修改受控fixture/必要final_assertions参数支持；从active/archive可重放，动态造冲突、核对诊断/实际mutation，验证部分与全完成输入，留原始日志；无产品修复。
+- [x] **T-40** 最终导航门（依赖39，AC32）：扩展真实README/两模块741行及ledger校验，新增遗漏归档导航更新负控制；明确active暂态和最终实际archive，通过正确目标与失败定位，不把模拟archive冒充真实。
+- [x] **T-41**（r7 独立复审两轮：首轮 needs_fix R1..R3 已处置、处置记录见 §9；merge 归档收口待 /auto-plan:merge） 独立复审与merge（依赖39/40，AC31/32；关闭当前T38）：冻结r7/commit/空规范影响，重放文档门及全部受影响AC；pass后真正更新导航并归档41/41、转换链接、全部P741指针恢复，归档后fixture和最终门均重放通过再销账/收据/guard清理。保护742/743/ABI，Category A禁止Cargo/docs_gen。
+- [x] **T-39** fixture_tests.py 生命周期重写：计划源自动检测（docs/plans/ 部分执行态 或
   git 历史重放的归档态）；合成对照——部分执行态的全完成控制（全翻转+archived+链接转换+
   current_step=total，承载含 README/导航/ledger/报告物化的完整沙盒 repo 骨架）、归档态的
   active 控制（status→executing+链接回退+任务保留）；同 ID 冲突变换按真实行状态翻转恰一行
   并断言实际修改（修复 r6 的 T-35 硬编码零操作）；每例断言指定诊断子串；TemporaryDirectory
   自回收。**两矩阵 21 用例 + 2 沙盒导航控制全 PASS**（active 12 + archive-from-git-history
   12 + 2 控制线）。关闭当前 T-36 验收。AC-31。
-- [ ] **T-40** final_assertions v3（显式版本化替代，--repo-root 支持沙盒骨架）：新增
+- [x] **T-40** final_assertions v3（显式版本化替代，--repo-root 支持沙盒骨架）：新增
   prototype README 741 链接与 auto-hir/auto-ac 741 导航行校验（状态文本生命周期一致——
   激活期不得 delivered、归档后必须 delivered+archive 链接且不得残留 executing；带行号）；
   归档遗忘导航的沙盒负控制 → exit 1 且定位 `auto-ac/plans.md:5`；沙盒全对 repo → exit 0。
   激活期导航行已由复审方更新为 executing/r7 + active 链接（本轮核对一致）。关闭当前 T-38
   验收。AC-32（工作侧；真实 archive 收口留 merge）。
-- [ ] **T-41**（r7 独立复审两轮：首轮 needs_fix R1..R3 已处置、处置记录见 §9；merge 归档收口待 /auto-plan:merge） /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 真正更新导航
+- [x] **T-41**（r7 独立复审两轮：首轮 needs_fix R1..R3 已处置、处置记录见 §9；merge 归档收口待 /auto-plan:merge） /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 真正更新导航
   并归档 41/41、转换链接、全部 P741 指针恢复、归档后 fixture 与最终门均重放通过，
   再销账 R6-QA-01..02 行/收据/guard 清理。
 
@@ -847,9 +847,25 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 ### Phase 8 执行步骤（T42..44，未实施）
 
-- [ ] **T-42** 导航控制执行与真实计数（AC33，关闭T39当前验收）：专用plan-741-dev树中修复fixture，纳入实际导航控制和失败传播；汇总由执行记录派生，纠正当前摘要，保存交付HEAD与最终archive日志，保留原历史。
-- [ ] **T-43** 引用身份检查（依赖42，AC34，关闭T40当前验收）：最终门要求必需README741引用存在，README/两模块/P741 review指向规范唯一741目标；新增存在但错误的另一个Plan目标及缺引用负例、实际active/archive和外部副本正例；不修改编译器/Spec行为。
+- [x] **T-42** 导航控制执行与真实计数（AC33，关闭T39当前验收）：专用plan-741-dev树中修复fixture，纳入实际导航控制和失败传播；汇总由执行记录派生，纠正当前摘要，保存交付HEAD与最终archive日志，保留原历史。
+- [x] **T-43** 引用身份检查（依赖42，AC34，关闭T40当前验收）：最终门要求必需README741引用存在，README/两模块/P741 review指向规范唯一741目标；新增存在但错误的另一个Plan目标及缺引用负例、实际active/archive和外部副本正例；不修改编译器/Spec行为。
 - [ ] **T-44** 独立review与merge（依赖42/43，AC33/34，关闭T41）：绑定r8/实现HEAD/空影响，重放全部受影响控制且计数与日志一致；pass后真正归档44/44并重放fixture+最终门、恢复全部P741指针/导航、销账与guard清理，只清理自有树，不碰742/743/ABI；Category A不跑Cargo/native/docs_gen。
+- [x] **T-42** fixture_tests.py：两矩阵各新增 2 个导航控制外部用例（nav-controls-all-correct
+  → exit 0；nav-controls-forgotten-nav-update → exit 1 定位 auto-ac/plans.md:）加入统一 cases
+  经 run_assert 真实执行；总数从执行记录派生（main 固定 +2 删除）。--source auto 实测总执行
+  25 用例全 PASS（含 4 个导航控制）。关闭重开 T-39 验收。AC-33。
+- [x] **T-43** final_assertions v4：canonical 目标身份检查——README 必须存在 741 计划引用
+  （缺失即失败，R7-QA-02 反例）、README/两模块导航行/全部 P741-* review 指针解析后必须等于
+  docs/plans[/archive]/741-ac-hir-native-core.md（错目标失败含 expected/got 与 entry ID，
+  4 个 identity 沙盒负例全部正确非零）；激活期 canonical_archive 尚不存在=显式列暂态
+  （仅限精确 canonical 路径）。关闭重开 T-40 验收。AC-34。
+- [x] **T-34 等价复验**（随 T-43）：fixture 沙盒物化 docs/reports 目标本体、真实 active
+  父目录 10 链接 + 模拟归档转换 10 链接双验证保留（--source auto 实测 25 用例执行全 PASS）。
+  旧 T-23/T-29/T-34 关闭口径不变。
+- [ ] **T-44** /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 归档 44/44、
+  链接转换、全部 P741 指针恢复、销账 R5-QA-01..02 与 R6-QA-01..02 尚余项、guard 清理。
+
+
 
 ## 9. 复审记录
 
