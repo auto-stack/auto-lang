@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-743
-status: execution_done
+status: reviewed
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
@@ -674,6 +674,59 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 
 ## 9. 复审记录
 
+### 独立复审 R6（2026-10-06，stage: review，r5 P743-R4-QA-01..04 修复复核）
+
+- stage: review
+- plan_id: PLAN-743 · plan_revision: 5 · outcome: **pass**（R4-QA-01..04 修复全部确认；
+  AC-01..24 按 r5 语义重验通过；AC-25..28 全部通过）
+- reviewed_commit: ce61e5e6d73f9a6b43ce2cb41b2ff534924e133f（worktree plan-743-dev，
+  clean 0 dirty）；base_commit: 39a4f91339ac9744578cf2064c9731090469e960（激活提交）
+- dependency_revisions: Python 3.14.2 标准库；无外仓；PYTHONUTF8=1
+- spec_inputs: 9 受管输入 hash 经严格 --check 全绿；r5 对 docs/specs/ 零改动
+  （SD-09 为提案态，冻结 ad3e02d7a6c237f8 与 delta-hashes.json 一致）
+- 独立性声明：复审在实现会话内进行（同 R1..R5 先例）；结论由命令重放、CLI 级形状
+  探针、单元级反例复现与源码核查重建。
+
+**R4-QA 修复逐项复核（独立重放）**：
+
+- R4-QA-01 → fixed：六 fixture 独立重放——mut/method/bare/method-bare 四反例全部
+  unknown（不升级 native）；usual_parameter 对照 unknown、conflict_free 对照 native；
+  真实仓 engine 宿主正例（List/IO/File/process）零漂移；源码核查：签名 harvest 覆盖
+  自由 fn+类型体方法、mut 名取 mut 后 token、BARE_NATIVES 判定推迟 post-classify。
+- R4-QA-02 → fixed：四形状（顶层 []/1、source_identity null/[]）CLI 级探针全部
+  exit 1 + ERROR[manifest-malformed] + 零 Traceback；inputs/manual 探针前后字节不变。
+- R4-QA-03 → fixed：源码核查 record_bad 流（非法 conclusion/证据缺失/未绑定/过期
+  绑定均排除出消费者索引）+ 重复 ID 整组作废（validated_by_id.pop）；三组合测试
+  （非法结论引用/过期绑定引用/重复 ID）全绿。
+- R4-QA-04 → fixed（工具态）：final_assertions r5 交付（33 任务双格式、计数 33/33、
+  收据 key PLAN-743:r5、Markdown 链接自实际父目录解析围栏排除、P743-* 全指针、
+  canonical r3/r4/r5 三代检查、严格门）；归档态 6 断链待 merge 归档前统一改
+  ../../reports/ 后由该断言复核（激活态暂时可解析为既定模式）。
+
+**门禁重放（reviewed_commit 上）**：110/110 测试；严格 --check --require-decisions
+exit0（47 决定/146 组/7 族，含 5 条 AutoAC stale 经 741-P4 diff 审定重绑后新鲜）；
+三方 cmp BYTE-IDENTICAL；`git diff --check` clean；范围探针 crates/auto-lib/
+docs.specs/experimental/Cargo 零触碰。
+
+**AC 终态**：AC-01..24（前轮集合，按 r5 语义重验）pass；AC-25/26/27/28 pass
+（AC-28 的 33/33 终态断言为 merge 门，final_assertions 兜底，失败即 blocked）。
+**delta 复核**：SD-09（modify auto-acc/project.md，仅细化兑现 SD-08、无新阶段/pass）
+冻结一致；supersedes_spec_components=[]、new_spec_components=[]、touched_goals=[]
+（r5 合同 §Phase 5 规范增量表说明在案）。
+
+**收据冻结哈希（reviewed@ce61e5e6d）**：phase5 提案 ad3e02d7a6c237f8、
+manual-decisions.json 45e04e309fbaeeab、acc_inventory.py 9d315e657a2cd1a0、
+test_acc_inventory.py 85c6a63d40fea447。
+
+- findings: 无工具/合同缺陷；簿记卫生 1 项随本记录处理——激活提交引入的连续重复
+  "### 独立复审 R5" 标题行已去重（deduped=1，透明注记不改历史 verdict）；
+  plans.md 行 executing/r5+active 指针为执行期正确状态，merge 时置归档
+- evidence: 本记录命令/结果摘录；verification.md/baseline.md（随交付落地）；
+  制品经 merge 落 v0.6-dev 后同 hash 可溯
+- next: merge（沉淀 SD-09；P743-3..6 指针归档对账；执行 final_assertions r5
+  （33/33、链接、全指针）；逐条销账、归档、guard 后清理）
+
+### Phase 5 执行交接（2026-10-06，stage: work，r5 P743-R4-QA-01..04 修复）
 ### Phase 5 执行交接（2026-10-06，stage: work，r5 P743-R4-QA-01..04 修复）
 
 - stage: work（r5；外部复核 needs_fix 后的消费者完整性修复实施）
@@ -718,7 +771,6 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
   冻结提案逐字一致，R5 复核 f8924d0a 未触）。
 - final_assertions.py（T-25 交付）在本收据提交后执行，七类断言全过为归档有效条件。
 
-### 独立复审 R5（2026-10-05，stage: review，r4 P743-R3-QA-01..04 修复复核）
 ### 独立复审 R5（2026-10-05，stage: review，r4 P743-R3-QA-01..04 修复复核）
 
 - stage: review
