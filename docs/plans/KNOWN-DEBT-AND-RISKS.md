@@ -320,7 +320,7 @@ root门禁观察（非新增AC原型缺陷）：daily4971全跑4935通过/35失�
 详见 ../reports/741-r5-quality-review-20261006/REVIEW.md。同741激活r6 current26/total38，未实施修复/未销账；仅最终断言/文档证据范围。canonical/live ledger保持原状态，P741-3..7暂态archive指针留最终归档恢复。
 
 
-## PLAN-743 r5合入后独立复审 → r6 Phase6（2026-10-06，未修复）
+## PLAN-743 r5合入后独立复审 → r6 Phase6（2026-10-06，激活时未修复；现已清偿，见后续复审）
 
 基线9111c21e53ccd9a81554bfd4764c540fdfdcad21；needs_fix，旧110测试/旧四类反例/47fresh/确定性/归档33门实际通过。
 - P743-R5-QA-01/P2：额外绑定文件删除后全局stale但记录仍入可信索引；存在/删除/恢复三段式CLI0/1/0，中间族消费者仍21。T35/AC29。
@@ -339,3 +339,16 @@ root门禁观察（非新增AC原型缺陷）：daily4971全跑4935通过/35失�
 | P741-R6-QA-02 | P3 | 两模块741导航仍executing且指向缺失active文件；final_assertions只验Plan/ledger而遗漏README/导航，仍ALL-PASS | T40/41、AC32，最终门明确覆盖README/两模块/全部指针，实际归档后遗漏导航更新负控制非零 |
 
 同741激活r7，current36/total41；未实施/未销账。只重开T36/T38，保留历史pass/merge；不改canonical行为/live ledger，P741-3..8暂态留最终归档恢复。
+
+
+## PLAN-743 r6合入后独立复审清偿记录（2026-10-06）
+
+reviewed_commit=8b17e4de8851cdf37ccdce76a82f78422cf8bb15，outcome=pass；[独立报告](../reports/743-r6-quality-review-20261006/REVIEW.md)、[归档计划](archive/743-acc-bootstrap-hir-contract.md)。原r5反例/激活时待修文字为历史，本段为三个743债项的当前终态；不修改741或其它计划债项。
+
+| ID | 当前状态 | 独立验证 |
+|---|---|---|
+| P743-R5-QA-01 | 已清偿（r6 T35） | 绑定文件存在/删除/恢复CLI0/1/0，consumer21/0/21，缺失文件不再入可信消费者 |
+| P743-R5-QA-02 | 已清偿（r6 T35） | 错类型/合法duplicate双顺序及缺字段双顺序整组consumer0；错误ID容器类型受控拒绝无traceback |
+| P743-R5-QA-03 | 已清偿（r6 T36） | 原参数/local type同名bare/qualified保持unknown；7组普通/mut方法、let/var/use控制通过，无冲突正例维持 |
+
+128/128、真实strict47/146/7、确定性/manual原字节/三方一致及actual archive38/38/all P743指针通过。保持743 archived/r6，不新增修复phase；审查treeguard clean后已清理，Category A未跑Cargo/native/docs_gen。

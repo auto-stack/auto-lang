@@ -1,0 +1,39 @@
+{
+  "reviewed_commit": "8b17e4de8851cdf37ccdce76a82f78422cf8bb15",
+  "diff_base": "bf899da0b2805b61e5e815a265438ea45c2e9e6d",
+  "plan_revision": 6,
+  "review_worktree": "D:\\autostack\\.wt\\lang-743\\auto-lang",
+  "category": "A: Python tools/documentation only; no Cargo/native/docs_gen",
+  "python": "Python 3.14.2",
+  "hashes": {
+    "scripts/acc_inventory.py": "c0ff3796ca7bbb79ca2b25929248cb09705cc0424f342ee00900e58191514b4f",
+    "scripts/tests/test_acc_inventory.py": "d8b554dec07d0791f5c3d90c3374af4ef3fd5c4cd4a1890ebdcdf02767b6d83a",
+    "docs/reports/743-phase4-consumer-fixes/final_assertions.py": "808152d98a6abba8b6d5547b7690ec4870ebaf21f850c9d2199c3a8db3e2ac2c",
+    "docs/plans/archive/743-acc-bootstrap-hir-contract.md": "c425c10eb2a0ed1456d31b1141b00a69812b3a285e4b918edc0d406b1ea6da8f",
+    "docs/specs/auto-acc/project.md": "5e7103d73b499b3fdd04a37a6f66baff5db395ceb1183925be4af0351f406a10",
+    "docs/specs/auto-hir/stage-contract.md": "85989f57c70dd48676932c6fd91415f7b06446faed077feee92a337b021db7b7",
+    "docs/specs/auto-acc/plans.md": "f61947988e5ca18198a47e470ad1a672d8dbd5c2bf23e63f4c8395bea19adf01",
+    "docs/specs/auto-hir/plans.md": "e6fc601aff1ca6397a4c01d84cdba8c216e5c03dbf84151d7007e46de8a8ae4c",
+    "docs/reports/743-acc-hir-contract/manual-decisions.json": "39e86a2eef67f612812c8ae1b58efdf92fc12aae8f9b44df198701e05c8b0b54",
+    "docs/reports/743-acc-hir-contract/source-manifest.json": "70b8bffc9a887785f61cfdaec3df3ef779c4bbefa3437f2860194ab590f6d5c4",
+    "docs/reports/743-acc-hir-contract/scan-summary.md": "1468b6fa41c2d7a8508b9d107e2cd11d12efbfbe6eb5287e5d2b77174440c18e",
+    "docs/reports/743-r5-quality-review-20261006/proposed-spec-delta-phase6.md": "825b4ae907ac2c264d80a14b69247cea986cb66641e51a7b59515736a1708953",
+    ".autoos/specs.json": "161a4a6a3a7b4516a8c2e916d956a9c8deefed372029967a4cf6279ecbf10e9b",
+    "auto/lib/token.at": "963ccc1df73b86e510db95f13dda0e3ea17462f7c3f4b7652947e9f9f3381d74",
+    "auto/lib/lexer.at": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01",
+    "auto/lib/parser.at": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
+    "auto/lib/typeinfo.at": "9eed6f5f243225c17d4f79e5c53918d03a525e2e2bd99998b6ba6f95c3bb254a",
+    "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+    "auto/lib/engine.at": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328",
+    "auto/lib/a2r.at": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae",
+    "auto/aavm.at": "0ff06f099253e1aa1c8d83ef2810771f10d5a01e5388729354dd9fa249d4ee9a",
+    "crates/auto-lang/src/lib.rs": "4d6c4703c667f99cfe55e6f96471e89c7e82346c788a56b907447260786e8fbe"
+  },
+  "frozen_delta_sha256": "825b4ae907ac2c264d80a14b69247cea986cb66641e51a7b59515736a1708953",
+  "old_implementation_findings": [
+    "P743-R5-QA-01",
+    "P743-R5-QA-02",
+    "P743-R5-QA-03"
+  ],
+  "cleanup": "Temporary detached review worktree only; no branch created, canonical group guarded without following reparse points; receipt in cleanup.txt."
+}

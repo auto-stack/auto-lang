@@ -1,0 +1,773 @@
+{
+  "fixture_write": {
+    "exit": 0,
+    "stdout": "NOTE[decisions-absent] 未生成 manual-decisions.json（人工结论由 T-03 审定产生，工具不代写）\nOK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "valid_control": {
+    "exit": 0,
+    "stdout": "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+    "stderr": ""
+  },
+  "mut_parameter": {
+    "path": "mut_parameter.at",
+    "declarations": [
+      {
+        "kind": "type",
+        "name": "Meter",
+        "line": 1
+      },
+      {
+        "kind": "fn",
+        "name": "demo",
+        "line": 4,
+        "param_types": [
+          "Meter"
+        ],
+        "ret": "int"
+      }
+    ],
+    "methods": [
+      {
+        "owner": "Meter",
+        "name": "read_line",
+        "line": 2,
+        "static": false
+      }
+    ],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "unknown-receiver",
+        "name": "read_line",
+        "receiver": "IO",
+        "first_line": 5,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "record-type-declaration": [
+        1
+      ],
+      "free-function": [
+        2,
+        4
+      ],
+      "type-body-method": [
+        2
+      ],
+      "integer-type-annotation": [
+        2,
+        4
+      ],
+      "return-statement": [
+        2,
+        5
+      ],
+      "mut-parameter": [
+        4
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "method_parameter": {
+    "path": "method_parameter.at",
+    "declarations": [
+      {
+        "kind": "type",
+        "name": "Meter",
+        "line": 1
+      }
+    ],
+    "methods": [
+      {
+        "owner": "Meter",
+        "name": "demo",
+        "line": 2,
+        "static": false
+      }
+    ],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "unknown-receiver",
+        "name": "read_line",
+        "receiver": "IO",
+        "first_line": 3,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "record-type-declaration": [
+        1
+      ],
+      "free-function": [
+        2
+      ],
+      "type-body-method": [
+        2
+      ],
+      "integer-type-annotation": [
+        2
+      ],
+      "return-statement": [
+        3
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "bare_parameter": {
+    "path": "bare_parameter.at",
+    "declarations": [
+      {
+        "kind": "fn",
+        "name": "demo",
+        "line": 1,
+        "param_types": [
+          "Other"
+        ],
+        "ret": "int"
+      }
+    ],
+    "methods": [],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "unknown-bare-call",
+        "name": "print",
+        "receiver": null,
+        "first_line": 2,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "free-function": [
+        1
+      ],
+      "integer-type-annotation": [
+        1
+      ],
+      "return-statement": [
+        2
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "method_bare_parameter": {
+    "path": "method_bare_parameter.at",
+    "declarations": [
+      {
+        "kind": "type",
+        "name": "Meter",
+        "line": 1
+      }
+    ],
+    "methods": [
+      {
+        "owner": "Meter",
+        "name": "demo",
+        "line": 2,
+        "static": false
+      }
+    ],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "unknown-bare-call",
+        "name": "print",
+        "receiver": null,
+        "first_line": 3,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "record-type-declaration": [
+        1
+      ],
+      "free-function": [
+        2
+      ],
+      "type-body-method": [
+        2
+      ],
+      "integer-type-annotation": [
+        2
+      ],
+      "return-statement": [
+        3
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "usual_parameter": {
+    "path": "usual_parameter.at",
+    "declarations": [
+      {
+        "kind": "fn",
+        "name": "demo",
+        "line": 1,
+        "param_types": [
+          "Meter"
+        ],
+        "ret": "int"
+      }
+    ],
+    "methods": [],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "unknown-receiver",
+        "name": "read_line",
+        "receiver": "IO",
+        "first_line": 2,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "free-function": [
+        1
+      ],
+      "integer-type-annotation": [
+        1
+      ],
+      "return-statement": [
+        2
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "conflict_free": {
+    "path": "conflict_free.at",
+    "declarations": [
+      {
+        "kind": "fn",
+        "name": "demo",
+        "line": 1,
+        "param_types": [],
+        "ret": ""
+      }
+    ],
+    "methods": [],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "native-runtime",
+        "name": "print",
+        "receiver": null,
+        "first_line": 3,
+        "count": 1
+      },
+      {
+        "kind": "native-runtime",
+        "name": "read_line",
+        "receiver": "IO",
+        "first_line": 2,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "free-function": [
+        1
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "manifest_list": {
+    "exit": 1,
+    "stdout": "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\n",
+    "stderr": "ERROR[manifest-malformed] source-manifest.json 形状非法（顶层须为对象且source_identity/inputs 容器存在）\nCHECK-FAIL 1 项\n"
+  },
+  "manifest_integer": {
+    "exit": 1,
+    "stdout": "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\n",
+    "stderr": "ERROR[manifest-malformed] source-manifest.json 形状非法（顶层须为对象且source_identity/inputs 容器存在）\nCHECK-FAIL 1 项\n"
+  },
+  "manifest_source_identity_list": {
+    "exit": 1,
+    "stdout": "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\n",
+    "stderr": "ERROR[manifest-malformed] source-manifest.json 形状非法（顶层须为对象且source_identity/inputs 容器存在）\nCHECK-FAIL 1 项\n"
+  },
+  "manifest_source_identity_null": {
+    "exit": 1,
+    "stdout": "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\n",
+    "stderr": "ERROR[manifest-malformed] source-manifest.json 形状非法（顶层须为对象且source_identity/inputs 容器存在）\nCHECK-FAIL 1 项\n"
+  },
+  "consumer_valid": {
+    "status": "ok",
+    "messages": [
+      "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）"
+    ],
+    "cli": {
+      "exit": 0,
+      "stdout": "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+      "stderr": ""
+    },
+    "evidence_reads": [
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/codegen.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/engine.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/lexer.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/codegen.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/codegen.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/engine.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/codegen.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/engine.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/lexer.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/codegen.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/engine.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/lexer.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      }
+    ],
+    "consumer_reads": [
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/codegen.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/codegen.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/engine.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/codegen.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/engine.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/lexer.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/codegen.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/engine.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/lexer.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:910",
+        "caller_function": "<genexpr>",
+        "caller_line": 884
+      }
+    ]
+  },
+  "consumer_invalid_conclusion": {
+    "status": "error",
+    "messages": [
+      "ERROR[decision-malformed] MD-S-900 conclusion 'invalid' 不属于 kind=unknown-resolution 合法集 ['open', 'resolved']",
+      "ERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/aavm.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/a2r.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/codegen.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/engine.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/lexer.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/typeinfo.at/unknown-receiver)"
+    ],
+    "cli": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "ERROR[decision-malformed] MD-S-900 conclusion 'invalid' 不属于 kind=unknown-resolution 合法集 ['open', 'resolved']\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/aavm.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/a2r.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/codegen.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/engine.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/lexer.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/typeinfo.at/unknown-receiver)\nCHECK-FAIL 7 项\n"
+    },
+    "evidence_reads": [
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/codegen.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/engine.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/lexer.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      }
+    ],
+    "consumer_reads": []
+  },
+  "consumer_stale_binding": {
+    "status": "error",
+    "messages": [
+      "ERROR[decision-stale] MD-S-900 绑定的输入已变化: auto/aavm.at",
+      "ERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/aavm.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/a2r.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/codegen.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/engine.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/lexer.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/typeinfo.at/unknown-receiver)"
+    ],
+    "cli": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "ERROR[decision-stale] MD-S-900 绑定的输入已变化: auto/aavm.at\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/aavm.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/a2r.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/codegen.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/engine.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/lexer.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-S-900' (auto/lib/typeinfo.at/unknown-receiver)\nCHECK-FAIL 7 项\n"
+    },
+    "evidence_reads": [
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/codegen.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/engine.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/lexer.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      }
+    ],
+    "consumer_reads": []
+  },
+  "consumer_duplicate": {
+    "status": "error",
+    "messages": [
+      "ERROR[decision-duplicate-id] MD-S-900",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/aavm.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/a2r.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/codegen.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/engine.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/lexer.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/typeinfo.at/unknown-receiver)"
+    ],
+    "cli": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "ERROR[decision-duplicate-id] MD-S-900\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/aavm.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/a2r.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/codegen.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/engine.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/lexer.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/typeinfo.at/unknown-receiver)\nCHECK-FAIL 7 项\n"
+    },
+    "evidence_reads": [
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/codegen.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/engine.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/lexer.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/aavm.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/a2r.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/codegen.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/engine.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/lexer.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:910",
+        "caller_function": "validate_decisions",
+        "caller_line": 767
+      }
+    ],
+    "consumer_reads": []
+  },
+  "consumer_invalid_type": {
+    "status": "error",
+    "messages": [
+      "ERROR[decision-malformed] MD-S-900 evidence 必须为非空字符串数组: 'int'",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/aavm.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/a2r.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/codegen.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/engine.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/lexer.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/typeinfo.at/unknown-receiver)"
+    ],
+    "cli": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "ERROR[decision-malformed] MD-S-900 evidence 必须为非空字符串数组: 'int'\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/aavm.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/a2r.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/codegen.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/engine.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/lexer.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/typeinfo.at/unknown-receiver)\nCHECK-FAIL 7 项\n"
+    },
+    "evidence_reads": [],
+    "consumer_reads": []
+  }
+}

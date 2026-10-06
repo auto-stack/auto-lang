@@ -716,6 +716,16 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 
 ## 9. 复审记录
 
+### r6合入后独立复审（2026-10-06）
+
+- stage:review | plan_id:PLAN-743 | plan_revision:6 | outcome:**pass** | reviewed_commit:8b17e4de8851cdf37ccdce76a82f78422cf8bb15 | base_commit:bf899da0b2805b61e5e815a265438ea45c2e9e6d。
+- dependency_revisions:标准库Python，无新第三方依赖；spec_inputs/source/hash/冻结SD10见[独立报告](../../reports/743-r6-quality-review-20261006/REVIEW.md)。本会话未参与r6实施，独立固定HEAD重测。
+- acceptance_results:AC01..31全部pass；128/128、原QA01/02受控反例consumer0及存在/恢复consumer21、QA03裸/qualified unknown且正例保留、新7组绑定/类型控制、真实strict47/146/7、双生成/manual原字节/三方一致、actual archive38/38/all P743指针/canonical/实际链接均通过。
+- findings:none（原P743-R5-QA01..03已兑现，未发现新阻塞）；SD10正文与冻结提案/实现一致，无新规范增量；Category A未运行Cargo/native/docs_gen。
+- next:保持archived/r6/38-of-38，不再激活。审查专用detached树按等价ReparsePoint guard清理；报告cleanup.txt记录，不碰741/742/ABI；仅追加审查证据，canonical/live ledger未修改。
+
+
+
 ### 合并沉淀收据（2026-10-06，stage: merge，key: PLAN-743:r6）
 
 - stage: merge · plan_revision: 6 · outcome: pass
