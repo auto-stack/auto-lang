@@ -849,7 +849,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 - [x] **T-42** 导航控制执行与真实计数（AC33，关闭T39当前验收）：专用plan-741-dev树中修复fixture，纳入实际导航控制和失败传播；汇总由执行记录派生，纠正当前摘要，保存交付HEAD与最终archive日志，保留原历史。
 - [x] **T-43** 引用身份检查（依赖42，AC34，关闭T40当前验收）：最终门要求必需README741引用存在，README/两模块/P741 review指向规范唯一741目标；新增存在但错误的另一个Plan目标及缺引用负例、实际active/archive和外部副本正例；不修改编译器/Spec行为。
-- [ ] **T-44** 独立review与merge（依赖42/43，AC33/34，关闭T41）：绑定r8/实现HEAD/空影响，重放全部受影响控制且计数与日志一致；pass后真正归档44/44并重放fixture+最终门、恢复全部P741指针/导航、销账与guard清理，只清理自有树，不碰742/743/ABI；Category A不跑Cargo/native/docs_gen。
+- [x] **T-44**（r8 独立复审 pass 已落 §9；归档 44/44 与指针恢复由本轮 merge 执行） 独立review与merge（依赖42/43，AC33/34，关闭T41）：绑定r8/实现HEAD/空影响，重放全部受影响控制且计数与日志一致；pass后真正归档44/44并重放fixture+最终门、恢复全部P741指针/导航、销账与guard清理，只清理自有树，不碰742/743/ABI；Category A不跑Cargo/native/docs_gen。
 - [x] **T-42** fixture_tests.py：两矩阵各新增 2 个导航控制外部用例（nav-controls-all-correct
   → exit 0；nav-controls-forgotten-nav-update → exit 1 定位 auto-ac/plans.md:）加入统一 cases
   经 run_assert 真实执行；总数从执行记录派生（main 固定 +2 删除）。--source auto 实测总执行
@@ -862,7 +862,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 - [x] **T-34 等价复验**（随 T-43）：fixture 沙盒物化 docs/reports 目标本体、真实 active
   父目录 10 链接 + 模拟归档转换 10 链接双验证保留（--source auto 实测 25 用例执行全 PASS）。
   旧 T-23/T-29/T-34 关闭口径不变。
-- [ ] **T-44** /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 归档 44/44、
+- [x] **T-44**（r8 独立复审 pass 已落 §9；归档 44/44 与指针恢复由本轮 merge 执行） /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 归档 44/44、
   链接转换、全部 P741 指针恢复、销账 R5-QA-01..02 与 R6-QA-01..02 尚余项、guard 清理。
 
 
