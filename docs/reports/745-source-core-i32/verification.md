@@ -199,7 +199,20 @@ D 系反例额外确认：D11 转义 char、D12 关键字命名实参分类正�
 为 fixtures）；D09（return/break 混合臂）按 verify 保守规则接受为调查控制，
 不新增验收要求。
 
-## 10. r2 修复轮门禁（同树串行，T-07 收口回填）
+## 10. r2 修复轮门禁（同树串行重跑，2026-10-06）
 
-（收口时回填：ac-core 全量、两套脚本、正确 inventory、主仓 check/t/tv 与
-预存红口径对照。）
+| 门禁 | 结果 |
+|---|---|
+| ac-core `cargo check --locked --all-targets` | PASS，零 warning |
+| ac-core `cargo fmt -- --check` | PASS |
+| ac-core `cargo test --locked` | **104 passed / 1 ignored / 0 failed**（含 r2 新增 5 项：深度护栏×2、执行器控制×2、同类型越域、三件回滚等） |
+| `verify-ac-741.ps1 -SkipMainGates` | **all 13 steps PASS** |
+| `verify-ac-source-745.ps1`（重写后 Invoke-Captured） | **all 12 steps PASS (74 cases)**（P15 stderr 精确 oracle "ba" 保持） |
+| `acc_inventory.py --check --require-decisions`（正确调用） | **CHECK-OK** |
+| `cargo check -p auto-lang` | PASS（增量 1.4s；382 生产既有 warning 不变） |
+| `cargo t`（全量 --no-fail-fast） | 4936/4972 通过、36 失败：29 处与 r1 双方共现预存红逐名一致；其余 7 名（plan437/498_area/499_crosshair·donut/707_sse/716_supply/rqhost daemon）**隔离复跑 7/7 PASS** = 并行负载 flake 轮换（同族名单跨轮轮转，r1 轮即有先例）；745 新增失败 = 0（口径见 §6 历史限度注记） |
+| `cargo tv`（全量） | 158/162 通过、4 失败 = 预存 cookbook semver 族（逐名一致） |
+
+r2 修复轮提交链：ad226453b（QA-01/02/03/05 + oracle 缺口实现与测试）→
+本提交（报告）。修复差异对 `crates/`、生产 Cargo/lock、`.cargo/.config` 保持
+为零。
