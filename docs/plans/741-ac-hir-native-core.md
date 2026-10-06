@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-741
-status: execution_done
+status: reviewed
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
@@ -743,7 +743,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
   spawn 错误+锁→同契约、无锁正常失败零残留），r5 复审 reproduce 实测 nonzero/timeout 两出口
   path_in_diagnostic=true、cleanup_in_diagnostic=true、os error 32、旧三件套不变、
   released_cleanup_ok=true。关闭旧 T-21/T-27 验收。AC-25。
-- [x] **T-33** commit `a05d01570`：计划 7 处 `](../reports/` → `](../reports/`（归档终态
+- [x] **T-33** commit `a05d01570`：计划 7 处 `](../reports/` → `](../../reports/`（归档终态
   可解析）；新增 final_assertions.py（围栏感知、三态：active 按模拟 archive 父目录判定链接=
   终态契约/归档态按真实父目录；35 唯一任务 ID+同 ID 勾选一致；README/两模块导航/全部
   P741-* ledger 指针断言，激活期 archive 指向标注为暂态由 merge 刷新）。active 模式全过。
@@ -768,7 +768,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 历史行的checkbox重开表示当前验收待修；历史commit/执行文字保留原记录。原核心T21/27/32和T20/26不重开。
 - [x] **T-36** 最终断言与生命周期（AC28/29；关闭T22/28/33）：专用plan-741-dev实施树内修复phase5 final_assertions或显式版本化r6替代，检查metadata/唯一任务/状态与active真父目录，模拟明确路径转换，最终archive指针。新增受控正负fixture；不修改canonical/live ledger，不以hardcode35免检38项。
 - [x] **T-37** 证据版本与摘要（依赖36，AC30；关闭T23/29/34）：修复复现入口的任意rlib glob，绑定Cargo JSON/HEAD/hash；保留旧脚本/日志历史，补混缓存版本选择控制。更新当前58项明细与文档元数据；冻结本阶段空spec影响并按源指纹复用本轮原型/60s/root证据，不把旧库假象当回归。
-- [ ] **T-38** 独立复审与归档（依赖37，AC28..30；关闭T24/30/35）：逐AC/反例/Spec影响绑定r6与修复HEAD，新pass后merge实际归档并按archive父目录改链接，current38/total38、导航及全部P741引用一致，债项分别销账。先guard clean才移除自有worktree，保护742/743/ABI；不能在待修状态提前勾选。
+- [x] **T-38** /auto-plan:review 独立复审完成：outcome **pass**（记录见 §9 Phase 6 独立复审）；两条 P3 已顺手处置；merge 实际归档（链接转换 + current 38/38）、销账 R5-QA 行、guard 清理待 /auto-plan:merge。
 - [x] **T-36** worktree plan-741-dev @ ad1fe269c + commit `5788db922`：final_assertions v2
   （docs/reports/741-phase6-lifecycle-gate/）：frontmatter 必需字段/数值解析，current_step==
   完成唯一数、total_steps==唯一总数（合同派生，无硬编码）；archived=全完成+archive 位置；
@@ -788,6 +788,36 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 
 ## 9. 复审记录
+
+### Phase 6 独立复审（2026-10-06，/auto-plan:review，独立代理）
+
+- stage: review | plan_id: PLAN-741 | plan_revision: 6 | outcome: **pass**
+- reviewed_commit: `3a57fa256`（worktree clean；实现/文档 5788db922 + 簿记，区间 2 提交）；
+  复审后追加两条 P3 处置提交（R1 恢复 T-33 历史行箭头文本、R2 位置失配硬失败化，
+  scoped 复验 final_assertions ALL-PASS + fixtures 8/8）
+- base_commit: `ad1fe269c`（v0.6-dev 含复审方 r6 再激活提交）
+- 复审方式: 全新上下文独立代理（未参与实现），全部证据自行运行/读源码；自构 4 例负面探针
+  （current_step=999/删任务族留 37 项/reviewed 冒 archive/T-38 重复行冲突）全部非零且原因
+  精确；假仓 archive 正向控制 38/38 ALL-PASS
+- dependency_revisions: 无新依赖（windows-sys 0.59.0 同 r4/r5）
+- spec_inputs: **空影响**——Phase 6 无新持久行为（supersedes/new/touched 均 []，无 SD-10）；
+  canonical specs 与 live ledger 零 diff（git diff ad1fe269c -- docs/specs/ .autoos/ 空）
+- acceptance_results（全 **pass**，复审代理自行取证）:
+  - AC-28 pass：v2 frontmatter 解析/计数交叉核对（34 完成唯一数、38 唯一总数自数核实）；
+    4 例负面探针 + fixture 8/8 + 无硬编码 grep 证实
+  - AC-29 pass（工作侧；真实 archive 收口留 merge）：active 双链接验证（真实父目录+模拟
+    归档转换各一行、任一失败即 exit 1）；fixture 复刻 QA-02 缺陷形态正确非零；ledger 动态
+    全 P741-* 无 ID 窗口；假仓控制验证 archive 模式门路径
+  - AC-30 pass：exact-artifact 独立全量重放（库哈希与执行侧一致；nonzero 63ms/timeout
+    60011ms 全要素/public 60069ms 后代 211ms 回收）；54→58 更正有 provenance；
+    指纹复用论证成立（src/ 相对 r5 复审提交零 diff + lib 15 复跑）；root 37 红如实注明
+    不归因（r6 零 Rust）
+- findings（2 条 P3，不阻塞；全部已处置）:
+  - P741P6-R1：计划 T-33 历史行箭头文本被激活回退误伤（两侧同文）——已恢复
+    （](../reports/ → ](../../reports/）
+  - P741P6-R2：v2 对真实仓路径与 --location 失配仅 NOTE——已硬失败化（沙盒副本维持跳过）
+- next: merge（merge 实际归档时按 archive 父目录转换链接、current 38/38、销账 R5-QA-01..03、
+  复跑 archive 模式断言、guard 清理）
 
 ##### 合并收据（2026-10-05，/auto-plan:merge）PLAN-741:r5
 

@@ -99,7 +99,14 @@ def main() -> None:
     # copies in temp dirs skip it (their parent is the fixture sandbox) but
     # still go through every other assertion.
     expected_parent = REPO / "docs" / "plans" / ("archive" if args.location == "archive" else "")
+    real_repo_homes = (REPO / "docs" / "plans", REPO / "docs" / "plans" / "archive")
     is_repo_plan = parent == expected_parent
+    if parent in real_repo_homes and not is_repo_plan:
+        # P741P6-R2: a REAL repo location that disagrees with --location is a
+        # lifecycle contradiction (e.g. an archived-status file left in
+        # docs/plans/), never a sandbox copy - hard failure.
+        fail(f"status/location mismatch: {status} plan lives in {parent} "
+             f"(--location {args.location} expects {expected_parent})")
     if is_repo_plan:
         print(f"OK  frontmatter: plan_id={fm.get('plan_id')} status={status} "
               f"revision={fm.get('plan_revision')} step={fm.get('current_step')}/"
