@@ -8224,6 +8224,21 @@
           "status": "published",
           "created": "2026-10-06",
           "last_modified": "2026-10-06"
+        },
+        {
+          "id": "P741-9",
+          "title": "PLAN-741 r7 Phase 7 复审 pass + fixture 生命周期/导航门收据（P741-R6-QA-01..02）",
+          "file": "docs/plans/archive/741-ac-hir-native-core.md",
+          "tags": [
+            "PLAN-741",
+            "review",
+            "native-aot",
+            "lifecycle-fixture"
+          ],
+          "content": "r6 合入后复审 needs_fix（docs/reports/741-r6-quality-review-20261006，仅两个 P3 生命周期问题）→ r7 修复（零 Rust 改动）：R6-QA-01 fixture 生命周期化（计划源自动检测 active/归档态 git 历史重放；全完成合成控制承载沙盒 repo 骨架；同 ID 冲突变换按真实行状态翻转恰一行+断言实际修改；状态变换通配 set_fm；全部变异经 assert_modified）、R6-QA-02 最终门扩到 prototype README 741 链接与 auto-hir/auto-ac 741 导航行（状态生命周期一致+行号定位+--repo-root 沙盒负控制）。独立代理复审两轮：首轮 needs_fix 抓到执行侧状态翻转后未复跑（R1 status 硬编码零操作/PASS 计数不可复现/R3 list==set 死代码）→ 处置后交付 HEAD 实测两矩阵 21 用例+全 PASS。归档由本轮 merge 收口（链接转换+41/41+导航 delivered+archive）。",
+          "status": "published",
+          "created": "2026-10-06",
+          "last_modified": "2026-10-06"
         }
       ]
     }
