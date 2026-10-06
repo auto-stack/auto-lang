@@ -20,8 +20,8 @@ from pathlib import Path
 
 PLAN_ARCHIVE = Path("docs/plans/archive/743-acc-bootstrap-hir-contract.md")
 PLAN_ACTIVE = Path("docs/plans/743-acc-bootstrap-hir-contract.md")
-TOTAL_TASKS = 33
-RECEIPT_KEY = "PLAN-743:r5"
+TOTAL_TASKS = 38
+RECEIPT_KEY = "PLAN-743:r6"
 
 
 def _link_check(plan_path: Path, body: str, fails: list):
@@ -110,6 +110,9 @@ def main(root: str) -> int:
     check("裸调用与qualified调用在宿主/类型升级前均检查可观察绑定" in aa_compact
           and "mut参数" in aa_compact,
           "auto-acc 缺 r5 SD-09 裸/qualified 绑定优先规则")
+    check("本地类型/enum构造或type-qualified升级之前检查冲突" in aa_compact
+          and "参数名与本地类型名相同不能当作类型身份" in aa_compact,
+          "auto-acc 缺 r6 SD-10 绑定先于本地类型升级规则")
 
     # 5) 严格门（真实报告）
     r = subprocess.run(
