@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-745
-status: drafting
+status: executing
 feature_name: Auto 源码计算子集 → Checked HIR → Windows native
 author: [Codex]
 created_at: 2026-10-06
 updated_at: 2026-10-06
 plan_revision: 1
-current_step: 0
+current_step: 1
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-hir/stage-contract.md
@@ -246,7 +246,7 @@ AC01..07先内部检查，再最终独立复审全部重新审定；AC09不承�
 
 | ID | 状态 | owner_stage | 依赖 | 文件/符号与可验证产出 | AC / 验证 |
 |---|---|---|---|---|---|
-| T-01 | [ ] | work | r1确认 | 新docs/reports/745-source-core-i32/numeric-boundary.md；核对可见值/parser/trans/char路径，完成两probe与MD408/409提案；若事实推翻profile可行性先修合同 | AC01,07；数值cases+决策来源，先于T02/03类型实施 |
+| T-01 | [x] | work | r1确认 | 新docs/reports/745-source-core-i32/numeric-boundary.md；核对可见值/parser/trans/char路径，完成两probe与MD408/409提案；若事实推翻profile可行性先修合同 | AC01,07；数值cases+决策来源，先于T02/03类型实施。〔2026-10-06 work：报告落地（worktree commit c535b8fd6）；23项输入hash零漂移；E1–E12证据链（VM栈i32/值存储i32\|i64/旧AST幅值三态/trans i64/char三宿主表示）；probe-int-width=profile内精确有符号32位、probe-char-int=profile拒绝char，MD408/409提案文本入报告§8；无事实推翻r1可行性，§7数值cases待T-05运行回填〕 |
 | T-02 | [ ] | work | T01 | 新src/source/{mod,lexer,ast,parser}.rs、lib.rs导出、fixtures/source/、tests/source_frontend.rs；grammar/span/full-consumption可运行 | AC02,04；ac-core check；cargo test --manifest-path experimental/ac-core/Cargo.toml --test source_frontend（新目标） |
 | T-03 | [ ] | work | T02 | 新src/source/{resolve,typecheck,adapter}.rs，签名/词法栈/精确类型、生成Atom+map→bind_source→全部span投影→verify；tests/source_hir.rs | AC01..04；新source_hir测试、owning/bindings与负变异 |
 | T-04 | [ ] | work | T03 | src/main.rs新命令/共用Checked构建；source/mod.rs显式profile/trace表；必要link.rs收据追加保持事务；tests/source_cli.rs | AC03,04,06；新source_cli+旧cli/native/trace tests |
