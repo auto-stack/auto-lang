@@ -139,3 +139,27 @@ KNOWN-DEBT 登记参考。
 组布局在 `.wt/lang-745/` 补建只读依赖树 auto-down @ fba6563ed（detached，=
 master HEAD，与 lang-742 组同基线），745 未修改 auto-down 任何文件；登记见
 [worktree.md](../../plans/attachments/745/worktree.md)。
+
+## 7. r1 needs_fix 修复轮执行记录（2026-10-06，reviewer 报告 QA-01..08 逐项）
+
+复审报告：[review-r1/REVIEW.md](../../plans/attachments/745/review-r1/REVIEW.md)。
+修复提交链（本轮）：3e3c1631f（QA-01/02/03/04/08 实现）→ d9f5499b7（QA-05/06
+测试）→ 36664d9a5（共享 helper 警告清理）→ 本提交（报告修订）。全部反例在
+修复轮逐条回放通过（命令与原始输出见下），并已固化为永久 fixtures/tests。
+
+| 发现 | 修复 | 执行证据 |
+|---|---|---|
+| QA-01 未括起表达式跨行 | parser 以表达式首行贯穿 binary/unary：越行 operand 报 `source.syntax`@越行 token；callee 与 `(` 必须同行；括号/实参内不限制 | C01（LF）/CRLF/行尾注释三变体拒绝 @"2"（3:2）；C03 拒绝 @"("（3:1）；C02 括号控制合法；tests/source_frontend `text_stage_rejections` 三变体+c03 固化 |
+| QA-02 合法函数名撞 native 符号 | adapter 将源码函数符号定为 `sf_<name>`（identity 仍在 `d_<name>` def id）；不新增源码保留名 | C05 `fn ac_start` 作被调=3、作 entry=3；C06 `fn ExitProcess`=4；source_native POSITIVE 表 + `ac_start_as_entry_runs` |
+| QA-03 诊断未指到 token | 越域 local → ident span（N09 oracle 更正为 `x`，语料草案 oracle 被 §5.3/AC-04 精确性取代）；死代码块 span 钉在首个死语句；终结判定扩至 return/有效 break-continue/双分支终结/returning-body loop（Stray break 保持同块以保 loop-target-scope） | C09 锚 1:57 `let x = 2`（"let x = 2" 切片）；C10 锚 3:9 `x`；N15/N16 仍锚 "break"、N18 仍锚 "return 1"（回归确认）；UTF8+CRLF 坐标控制 `review_counterexample_coordinates`（4:2） |
+| QA-04 关键词/分类缺口 | lexer 镜像生产 `all_keywords()`+`with` 为 `Reserved`（我的 15 个子集词之外），名字位一律 `source.unsupported`；`!` → unsupported@op；str/char 转义对并入同一排除 literal；真正未闭合仍 source.lex | C12 `fn type()` 拒 @"type"（1:4）；C15 `!true` 拒 @"!"（1:20）；C04 `"a\"b"` 拒 @完整 literal（1:25）；C23/C24（param/局部名关键词）、C25（`'\''`）入 text 表；N40/N46 等既有分类不回归 |
+| QA-05 执行器无截止/管道堵塞 | tests/common 落 `run_deadlined`：piped+双管道并发排空+try_wait 轮询+到期 kill+wait 回收；source_cli/source_native 全路径（cargo/CLI/PE）接入；新增大输出与挂起控制 | `big_stderr_output_is_fully_drained`：20,000×'a' stderr 全量排空 exit 20000（对照复审：poll-before-drain 在 4096 字符卡死）；`hanging_exe_is_killed_at_deadline`：无状态 `loop{continue}` PE 3s 截止被杀（注：自增循环会在 2^31 触发 add_i32 trap=70 提前退出，故用无算术循环） |
+| QA-06 验收 oracle 缺口 | `overflow_trap_structure_in_hir`：P13/P14 真实 Checked bundle 断言 add/mul_i32 + `overflow: Trap`（无折叠）；`tampered_bundle_is_rejected_by_real_verify`：投影后 **Bundle** 三变异（删 let→verify.eval-position / 错 expr type→verify.type-mismatch / 错 local ref→verify.type-mismatch）逐个断言输入确实改变；`source_build_never_overwrites_existing_artifacts`：source 三路 SENTINEL（源拒绝/链接失败/收据位被目录占用的 publish 回滚）三件 byte-identical | 全部为永久 gate（ac-core 99 测）；本表即 QA-06 要求的执行记录 |
+| QA-07 盘点归因错误 | proposed-spec-delta.md §盘点：错误调用与"未入库"说法撤回留档；正确命令实测 CHECK-OK（47 决策新鲜） | 本轮实测输出见该节；merge 不预排 --write 重扫，MD note 追加后独立复跑+检验消费者 |
+| QA-08 Checked 后流程未共用 | main.rs 抽 `finish_build`（lower→staged obj→工具链→staged link→事务发布+staged 清理合同）唯一实现，build/build_source 前端只构造 Checked/入口/收据元信息 | 双模式回归：cli.rs 11 测 + source_cli 11 测全绿（含各自事务/入口/能力路径）；§2 一键脚本重跑见 §8 |
+
+## 8. 修复轮门禁（同树串行重跑）
+
+（T-07 修复轮收口时回填：ac-core check/fmt/all-targets 零警告、全 test、
+verify-ac-741.ps1 -SkipMainGates、verify-ac-source-745.ps1、主仓 check/t/tv
+与预存红归因更新。）

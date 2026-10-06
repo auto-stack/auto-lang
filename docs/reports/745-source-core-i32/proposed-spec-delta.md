@@ -66,27 +66,35 @@ int 有精确 32 位证据；完整宽度与 char↔int 映射仍 open”。提�
 两处均不改 conclusion/证据绑定（required 维持；bound hash 未过期——
 auto/lib/lexer.at 复核一致）。
 
-## 盘点工具检查（T-06 实测）
+## 盘点工具检查（T-06 实测；r1 复审 QA-07 更正）
+
+**此前记录作废**：初版把 `--output` 传成了 `.../inventory.md`（文件路径），
+工具因而不存在的子目录里找 manifest/decisions 而失败；当时的两条 ERROR 是
+误调用的产物，"source-manifest.json 本不入库"的说法也与事实不符
+（`git ls-files` 证明 source-manifest.json 与 manual-decisions.json 均已跟踪）。
+该错误归因撤回，仅留此段作为误用记录。
+
+正确调用（`--output` 指向 743 收据**目录**），2026-10-06 修复轮实测：
 
 ```
-$ python scripts/acc_inventory.py --root . --output docs/reports/743-acc-hir-contract/inventory.md --check --require-decisions
-ERROR[artifacts-absent] 先运行 --write 生成 source-manifest.json/scan-summary.md
-ERROR[decisions-required] 完成态要求 manual-decisions.json 存在
-CHECK-FAIL 2 项
+$ python scripts/acc_inventory.py --root . --output docs/reports/743-acc-hir-contract --check --require-decisions
+OK[decisions] 47 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 146 族）
+CHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok      (exit 0)
 ```
 
-解读与策略（不自动重 hash 掩漂移）：两项失败均为 743 扫描器的工作区态——
-source-manifest.json 本就不入库（743 收据 scan-summary.md 已入库）、
-`--require-decisions` 完成态门在无 manifest 时先行失败；**非 745 改动引入的
-内容漂移**。盘点刷新（--write 重扫 + MD note 绑定刷新）是 merge 阶段动作，
-由 ACC 线 owner 在 T-09 沉淀时执行；本提案不代跑、不改写 743 产物。
+结论：当前基线的盘点与人工结论层**一致且新鲜**，不存在需要"merge 自动重扫"
+来消除的失败项；因此 merge 不预排 `--write` 重扫。MD-408/409 note 追加属
+语义变更：落地时按追加后的实际语义**独立检验**两条 MD 的新鲜度与消费者
+（cap:char/cap:int-ops 的引用方），确认仅注释变化、conclusion/绑定不受影响，
+不以重 hash 掩盖任何真实漂移。完整宽度与 char 保持 open。
 
 ## 新鲜度绑定策略
 
-- 本提案绑定：r1 合同（plan_revision 1）+ worktree 提交链（c535b8fd6 →
-  addcf4d5a，见 verification.md §1）+ 74 例实测收据（脚本 context.txt 的
+- 本提案绑定：r1 合同（plan_revision 1）+ worktree 提交链（修复轮完整链见
+  verification.md §1）+ 74 例实测收据与复审反例回放（脚本 context.txt 的
   HEAD/binary sha256）。
 - review（T-08）按同树同 HEAD 复核；若 HEAD 移动或证据过期，受影响条目
   重验后才能定稿。
 - merge（T-09）落 canonical 时重跑 `verify-ac-source-745.ps1` 并以当日收据
-  替换指纹；MD-408/409 note 追加按落地时 hash 重绑（741/743 先例格式）。
+  替换指纹；MD-408/409 note 追加后独立复跑上表盘点命令确认 CHECK-OK，
+  并按追加后语义检验消费者（741/743 先例格式，不重 hash 掩漂移）。

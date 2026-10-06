@@ -125,6 +125,15 @@ native_execution / cli / trace_execution)、CLI 实机构建运行、fmt 与 all
   [docs/reports/745-source-core-i32/numeric-boundary.md](../../docs/reports/745-source-core-i32/numeric-boundary.md))。
 - 源码子集不含 char/str/聚合/泛型/方法/模块引用;char 一律
   source.unsupported(char↔int 映射在宿主表面间不一致,保持 open)。
+- 关键字不可作名字:profile 自身的 15 个关键字与生产词法器的完整 Auto
+  关键字集合(含 type/enum/use/mut/nil 等)都按 `source.unsupported` 拒绝于
+  名字位;识别但排除(关键字/排除 literal/排除运算)与坏 token(source.lex)、
+  坏语法(source.syntax)三类诊断分开。
+- 源码函数的 native 符号带 `sf_` 前缀(声明 `name` 字段),与后端固定的
+  `ac_start`/`ExitProcess` 内部符号隔离——源码可以合法声明并调用/入口这两个
+  名字,不新增源码保留名;HIR 身份与调用绑定走 def id,不受前缀影响。
+- 未括起的表达式不跨语句换行(运算符右值、callee 到 `(` 都以表达式首行为
+  界);括号与实参表内换行是空白。
 - 单模块内解析引用;跨模块引用、字符串/聚合/所有权/泛型、生产 ABI、
   DLL/热重载均不在本原型范围。
 - trace intrinsic 是测试能力(`hir.test.trace.v1`),不是生产 I/O;用户
