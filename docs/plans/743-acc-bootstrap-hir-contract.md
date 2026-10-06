@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-743
-status: execution_done
+status: reviewed
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
@@ -715,6 +715,61 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 
 ## 9. 复审记录
 
+### 独立复审 R7（2026-10-06，stage: review，r6 P743-R5-QA-01..03 修复复核）
+
+- stage: review
+- plan_id: PLAN-743 · plan_revision: 6 · outcome: **pass**（R5-QA-01..03 修复全部确认；
+  AC-01..28 按 r6 语义重验通过；AC-29..31 全部通过）
+- reviewed_commit: e6dad7ce981451bea4dca8f69b983195bdf0b30a（worktree plan-743-dev，
+  clean 0 dirty）；base_commit: bf899da0b2805b61e5e815a265438ea45c2e9e6d（激活提交）
+- dependency_revisions: Python 3.14.2 标准库；无外仓；PYTHONUTF8=1
+- spec_inputs: 9 受管输入 hash 经严格 --check 全绿；r6 对 docs/specs/ 零改动
+  （SD-10 为提案态，冻结 825b4ae907ac2c26）
+- 独立性声明：复审在实现会话内进行（同 R1..R6 先例）；结论由命令重放、CLI 级
+  消费者探针与源码核查重建。
+
+**R5-QA 修复逐项复核（独立重放）**：
+
+- R5-QA-01 → fixed：missing-bound-file 探针（存在/删除/恢复三段式）——删除后
+  exit 1 + family-ref-missing"未通过校验"（消费者排除），恢复后 exit 0；源码核查
+  `not f.is_file()` 分支补 record_bad=True。
+- R5-QA-02 → fixed：bad-first/bad-last 双序组合探针均 exit 1 + decision-duplicate-id
+  + family-ref-missing（消费者 0）；源码核查全局 ID 注册位于类型门**之前**
+  （错类型/缺字段记录 claim ID → 同 ID 合法记录整组作废含先插入者）；非法 ID 类型
+  不参与去重不 hash。
+- R5-QA-03 → fixed：分类探针——参数名 Meter 遮蔽同名本地 type Meter：
+  Meter.len=unknown-receiver、Meter()=unknown-bare-call（不升级）；无绑定对照
+  Meter.len=type-qualified、Meter()=type-construction 合法保留；真实仓观察零漂移
+  （8/25/13/687 不变）；源码核查 qualified/bare 分支绑定检查均先于本地类型/构造/
+  宿主升级。
+- R4-QA-04 续 → final_assertions r6 交付（38 任务双格式、计数 38/38、收据 key
+  PLAN-743:r6、真实父目录链接、全指针、canonical r3/r4/r5 检查、严格门）；SD-10
+  冻结 825b4ae9 核对一致。
+
+**门禁重放（reviewed_commit 上）**：128/128 测试；严格 --check --require-decisions
+exit0（47 决定/146 组/7 族）；三方 cmp BYTE-IDENTICAL；`git diff --check` clean；
+范围探针 crates/auto-lib/docs.specs/experimental/Cargo 零触碰。**主线 WIP 面告**：
+主检出存在他线 `crates/a2r-std/src/fs.rs` 未提交 WIP（不属于本计划 diff，须其所有者
+路由）——不影响本计划制品与落地。
+
+**AC 终态**：AC-01..28（前轮集合，按 r6 语义重验）pass；AC-29/30/31 pass
+（AC-31 的 38/38 终态断言为 merge 门，final_assertions r6 兜底，失败即 blocked）。
+**delta 复核**：SD-10（modify auto-acc/project.md，兑现 SD-09 边界、无新阶段/resolver）
+冻结一致；supersedes_spec_components=[auto-acc/project.md]、new/touched=[]
+（r6 合同 §规范增量表确认）。
+
+**收据冻结哈希（reviewed@e6dad7ce9）**：SD-10 提案 825b4ae907ac2c26、
+manual-decisions.json 45e04e309fbaeeab、acc_inventory.py c0ff3796ca7bbb79、
+test_acc_inventory.py d8b554dec07d0791。
+
+- findings: 无工具/合同缺陷；簿记卫生随记录处理（重复 R5 标题已于 r5 轮去重，
+  起草态标题均带历史标注）
+- evidence: 本记录命令/结果摘录；verification.md/baseline.md（随交付落地）；
+  制品经 merge 落 v0.6-dev 后同 hash 可溯
+- next: merge（沉淀 SD-10；P743-* 指针归档对账；执行 final_assertions r6
+  （38/38、链接、全指针）；逐条销账、归档、guard 后清理）
+
+### Phase 6 执行交接（2026-10-06，stage: work，r6 P743-R5-QA-01..03 修复）
 ### Phase 6 执行交接（2026-10-06，stage: work，r6 P743-R5-QA-01..03 修复）
 
 - stage: work（r6；外部复核 needs_fix 后的边界兑现修复实施）
