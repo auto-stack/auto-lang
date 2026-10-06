@@ -1,0 +1,25 @@
+{
+  "reviewed_commit": "9111c21e53ccd9a81554bfd4764c540fdfdcad21",
+  "plan_revision": 5,
+  "diff_base": "ad1fe269c21bc9021220645b52a32301e680f321",
+  "tests_executed_snapshot": "437a6b2f9243e35e5e23ab9ce6f005712aa89f7e",
+  "implementation_files_identical_to_test_snapshot": {
+    "scripts/acc_inventory.py": true,
+    "scripts/tests/test_acc_inventory.py": true
+  },
+  "hashes": {
+    "scripts/acc_inventory.py": "9d315e657a2cd1a0659dc5a13cff3de440b7ab7509aebce618435969d846faea",
+    "scripts/tests/test_acc_inventory.py": "85c6a63d40fea4479da85a8cbdec8ddbb94122d5c07542dff0c109d2c02745c5",
+    "docs/plans/archive/743-acc-bootstrap-hir-contract.md": "2784f829b4aa986d29db8720999589b79970b44d31ee372ca17fadf09446a438",
+    "docs/specs/auto-acc/project.md": "0b4f413b87a152c5b9161bdd69eed934f027461bb7700183fb46a509220c288e",
+    "docs/specs/auto-hir/stage-contract.md": "85989f57c70dd48676932c6fd91415f7b06446faed077feee92a337b021db7b7",
+    "docs/specs/auto-ac/project.md": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208",
+    "docs/reports/743-acc-hir-contract/manual-decisions.json": "39e86a2eef67f612812c8ae1b58efdf92fc12aae8f9b44df198701e05c8b0b54",
+    "docs/reports/743-acc-hir-contract/source-manifest.json": "ad8653bb09b0d2ce05b4d80dabb7bf186c442037e6d6b776c16e07c36d053618",
+    "docs/reports/743-acc-hir-contract/proposed-spec-delta-phase4.md": "f8924d0a8266976d1e30ad5e51cd7fc371a91fd6f8de26d4d7c04dcd24f9eac3",
+    "docs/reports/743-r4-quality-review-20261005/proposed-spec-delta-phase5.md": "ad3e02d7a6c237f88d3dacd6625356cf5b63b66f3cacc137852c8408cd8b6581",
+    "docs/reports/743-phase4-consumer-fixes/final_assertions.py": "1f8aef9a84de6411272e4309242971ee89c7fba86fa2c5af64cdafde99ca1bf9"
+  },
+  "category": "A: Python research tools/docs only; no Cargo/native/docgen runs",
+  "code_inputs_changed_during_review": false
+}

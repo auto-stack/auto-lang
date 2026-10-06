@@ -318,3 +318,12 @@ root门禁观察（非新增AC原型缺陷）：daily4971全跑4935通过/35失�
 - P741-R5-QA-02/P3：active只检查模拟archive，实际父目录7断链仍通过；当前真实archive链接已正确。T36/AC29。
 - P741-R5-QA-03/P3：旧反例任意取第一个缓存rlib可选旧库；r5当前摘要54/lib14过期（实际58/lib15）。T37/AC30。明确当前Cargo artifact重放已证实产品修好，旧库结果不得冒充回归。
 详见 ../reports/741-r5-quality-review-20261006/REVIEW.md。同741激活r6 current26/total38，未实施修复/未销账；仅最终断言/文档证据范围。canonical/live ledger保持原状态，P741-3..7暂态archive指针留最终归档恢复。
+
+
+## PLAN-743 r5合入后独立复审 → r6 Phase6（2026-10-06，未修复）
+
+基线9111c21e53ccd9a81554bfd4764c540fdfdcad21；needs_fix，旧110测试/旧四类反例/47fresh/确定性/归档33门实际通过。
+- P743-R5-QA-01/P2：额外绑定文件删除后全局stale但记录仍入可信索引；存在/删除/恢复三段式CLI0/1/0，中间族消费者仍21。T35/AC29。
+- P743-R5-QA-02/P2：字段类型错误continue绕过去重，同ID坏记录前后两种顺序均保留合法同ID记录供族消费21；字段合法duplicate对照为0。T35/AC29。
+- P743-R5-QA-03/P2：已观察普通参数与local type同名，bare仍type-construction、qualified仍type-qualified，违反SD09绑定在类型升级前优先。T36/AC30。
+前两CLI受控非零/no traceback，不误报假CHECK-OK；当前真实人工层未因合成反例被宣称失效。全部复现/修复/SD10见../reports/743-r5-quality-review-20261006/REVIEW.md。同ID激活r6 current26/total38，未实施/未销账/未改canonical或live ledger；P743-3..7 archive暂态留最终merge恢复。741/742/ABI及所有历史pass/merge保留。
