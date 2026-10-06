@@ -1,0 +1,8 @@
+OK  location: D:\autostack\.wt\lang-741\auto-lang\docs\plans\archive (status archived)
+OK  links: 7 relative links resolve from D:\autostack\.wt\lang-741\auto-lang\docs\plans\archive
+OK  tasks: 35/35 unique IDs, duplicates consistent, unchecked=0
+OK  README plan link -> D:\autostack\.wt\lang-741\auto-lang\docs\plans\archive\741-ac-hir-native-core.md
+OK  auto-hir/plans.md 741 row -> D:\autostack\.wt\lang-741\auto-lang\docs\plans\archive\741-ac-hir-native-core.md
+OK  auto-ac/plans.md 741 row -> D:\autostack\.wt\lang-741\auto-lang\docs\plans\archive\741-ac-hir-native-core.md
+OK  ledger: 7 P741-* items resolve (review items at archive/)
+ALL-ASSERTIONS-PASS

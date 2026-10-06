@@ -1,0 +1,29 @@
+﻿{
+    "reviewed_commit":  "6baed9bba84016dd8610221a9a0358195444385e",
+    "guards":  [
+                   {
+                       "reparse_points":  0,
+                       "path":  "D:\\autostack\\.wt\\lang-741\\auto-lang",
+                       "scanned_entries":  14145,
+                       "head":  "6baed9bba84016dd8610221a9a0358195444385e",
+                       "git_clean":  true
+                   },
+                   {
+                       "reparse_points":  0,
+                       "path":  "D:\\autostack\\.wt\\lang-741\\auto-down",
+                       "scanned_entries":  1174,
+                       "head":  "fba6563ed2148ce85e68208863159b4ccccac710",
+                       "git_clean":  true
+                   }
+               ],
+    "group_removed":  true,
+    "lang_tree_removed":  true,
+    "unrelated_worktrees_preserved":  true,
+    "dependency_tree_removed":  true,
+    "branches_deleted":  [
+
+                         ],
+    "bash_guard_failure":  "WSL VHDX D:/wsl/ext4.vhdx missing; ERROR_PATH_NOT_FOUND",
+    "guard_script_missing":  true,
+    "authorized_equivalent":  "prior r1-r5 receipt and current Plan 搂10 precise path/ReparsePoint fallback"
+}

@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "status": "archived",
+    "plan_revision": "5",
+    "current_step": "34",
+    "total_steps": "35"
+  },
+  "unique_tasks": 35,
+  "completed_tasks": 35,
+  "inconsistent_tasks": [],
+  "native_tests_passed": 58,
+  "ignored": 1,
+  "per_binary_counts": [
+    [
+      "15",
+      "0",
+      "1"
+    ],
+    [
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "11",
+      "0",
+      "0"
+    ],
+    [
+      "9",
+      "0",
+      "0"
+    ],
+    [
+      "11",
+      "0",
+      "0"
+    ],
+    [
+      "11",
+      "0",
+      "0"
+    ],
+    [
+      "1",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0"
+    ]
+  ]
+}

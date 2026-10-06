@@ -1,0 +1,39 @@
+{
+  "valid_35_35_control": {
+    "exit": 0,
+    "stdout": "OK  location: C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive (status archived)\nOK  links: 7 relative links resolve from C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\nOK  tasks: 35/35 unique IDs, duplicates consistent, unchecked=0\nOK  README plan link -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-hir/plans.md 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-ac/plans.md 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  ledger: 7 P741-* items resolve (review items at archive/)\nALL-ASSERTIONS-PASS\n"
+  },
+  "actual_34_35": {
+    "exit": 0,
+    "stdout": "OK  location: C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive (status archived)\nOK  links: 7 relative links resolve from C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\nOK  tasks: 35/35 unique IDs, duplicates consistent, unchecked=0\nOK  README plan link -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-hir/plans.md 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-ac/plans.md 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  ledger: 7 P741-* items resolve (review items at archive/)\nALL-ASSERTIONS-PASS\n"
+  },
+  "current_zero": {
+    "exit": 0,
+    "stdout": "OK  location: C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive (status archived)\nOK  links: 7 relative links resolve from C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\nOK  tasks: 35/35 unique IDs, duplicates consistent, unchecked=0\nOK  README plan link -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-hir/plans.md 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-ac/plans.md 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  ledger: 7 P741-* items resolve (review items at archive/)\nALL-ASSERTIONS-PASS\n"
+  },
+  "total_999": {
+    "exit": 0,
+    "stdout": "OK  location: C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive (status archived)\nOK  links: 7 relative links resolve from C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\nOK  tasks: 35/35 unique IDs, duplicates consistent, unchecked=0\nOK  README plan link -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-hir/plans.md 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-ac/plans.md 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  ledger: 7 P741-* items resolve (review items at archive/)\nALL-ASSERTIONS-PASS\n"
+  },
+  "missing_current": {
+    "exit": 0,
+    "stdout": "OK  location: C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive (status archived)\nOK  links: 7 relative links resolve from C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\nOK  tasks: 35/35 unique IDs, duplicates consistent, unchecked=0\nOK  README plan link -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-hir/plans.md 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-ac/plans.md 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  ledger: 7 P741-* items resolve (review items at archive/)\nALL-ASSERTIONS-PASS\n"
+  },
+  "broken_link_control": {
+    "exit": 1,
+    "stdout": "OK  location: C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive (status archived)\nFAIL: 1 unresolved markdown link(s) from C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive:\n  ../../reports/review-fixture-missing.md -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\reports\\review-fixture-missing.md\n"
+  },
+  "active": {
+    "exit": 0,
+    "stdout": "OK  location: C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans (status executing)\nOK  links: 7 relative links resolve from C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\archive\nOK  tasks: 35/35 unique IDs, duplicates consistent, unchecked=0\nOK  README plan link -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\741-ac-hir-native-core.md\nOK  auto-hir/plans.md 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\741-ac-hir-native-core.md\nOK  auto-ac/plans.md 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\741-r5-review-20261006\\validator-probe\\repo\\docs\\plans\\741-ac-hir-native-core.md\nOK  ledger: 7 P741-* items resolve (4 transitional archive-pointing review items, refreshed at merge)\nALL-ASSERTIONS-PASS\n",
+    "actual_parent_broken_links": [
+      "../../reports/741-r3-quality-review-20261005/REVIEW.md",
+      "../../reports/741-r4-quality-review-20261005/REVIEW.md",
+      "../../reports/741-quality-review-20261005/REVIEW.md",
+      "../../reports/741-r4-quality-review-20261005/proposed-spec-delta-phase5.md",
+      "../../reports/741-quality-review-20261005/REVIEW.md",
+      "../../reports/741-quality-review-20261004/REVIEW.md",
+      "../../reports/741-r4-quality-review-20261005/REVIEW.md"
+    ]
+  }
+}
