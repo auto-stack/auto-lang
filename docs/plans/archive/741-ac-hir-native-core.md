@@ -789,6 +789,41 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 ## 9. 复审记录
 
+### 合并收据（2026-10-06，/auto-plan:merge）PLAN-741:r6
+
+- stage: merge | plan_id: PLAN-741 | plan_revision: 6 | outcome: pass
+- prepared: reviewed 基线 001c8771d→61c3f9d73（rebase 后；worktree clean）；**空规范影响**——
+  本 Phase 无 SD 沉淀（canonical specs 零改动，无 SD-10）；组内只读依赖 auto-down
+  （detached @ fba6563e，同 r1..r5）
+- landed: 两次 rebase（主线并行推进 744 工作两次，每次后 range-diff 3 条全 `=`；最终映射
+  5788db922→91a76351e / 3a57fa256→81cb4104b / 4a4bbe7f8→61c3f9d73）；delivery 链
+  61c3f9d73（reviewed）→ 361805b05（ledger 投影 P741-8，纯投影 descendants）；
+  首次 ff 尝试被主检出脏文件（执行侧误写的同内容 54→58 更正，已核实与分支提交等价后
+  丢弃）阻止，清理后二次 ff 成功，tip=361805b05；主检出冒烟 ac-core cli 11/11 + lib 15/15
+- ledger_refreshed: .autoos/specs.json reviews 新增 P741-8（r6 复审+生命周期门收据）、
+  P741-3..7 归档指针在本轮归档后全部可解析；docs/specs/INDEX.md 重建归一 LF=零 diff；
+  docs/specs/{auto-hir,auto-ac}/plans.md 行更新为 delivered（r6）+ archive 链接
+- archived: docs/plans/archive/741-ac-hir-native-core.md（git mv），status: archived，
+  completion_kind: delivered；**归档时链接转换**（13 处 ../reports → ../../reports，
+  r5 生命周期设计）；README:8、KNOWN-DEBT 741 Phase4 链接随归档指回 archive/；
+  KNOWN-DEBT P741-R5-QA-01..03 行销账（6e3d85323）
+- **archive 模式 final_assertions v2 收口（r6 特有门，AC-28）**: ALL-ASSERTIONS-PASS——
+  frontmatter 38/38 与实际交叉核对一致、35→38 唯一任务全勾且同 ID 一致
+  （T-24/T-30/T-35 重开行带归档收口注记）、10 链接自真实 archive 父目录解析、
+  6 项 P741-* review 指针全部 archive/ 可解析
+- cleaned: **完成（2026-10-06）**——文档引用的 D:/autostack/wt-guard.sh 本机不存在
+  （r1..r5 同一偏差记录），按其文档语义以 PowerShell ReparsePoint 递归扫描替代
+  （组目录 lang-741 全树 clean）后：worktree D:/autostack/.wt/lang-741/auto-lang 移除、
+  auto-down 兄弟检出经 auto-down 仓 `git worktree remove` 移除、分支 plan-741-dev 删除
+  （was 361805b05=已落地）、组目录 lang-741 rmdir 成功
+- 交付摘要: r6 修复 r5 合入后复审全部缺口（R5-QA-01..03，零 Rust 改动）：
+  final_assertions v2（frontmatter 计数交叉核对+双链接验证+动态 ledger 覆盖，
+  上线即抓到执行侧计数错误）、exact-artifact 证据绑定、54→58 计数更正；
+  独立代理复审 pass（AC-28..30）
+- 备注: 两条 P3 随复审记录留档并已处置（R1 T-33 历史行箭头恢复、R2 位置失配硬失败化）；
+  本计划六次交付（r1 闭环、r2..r5 四轮质量/边界修复、r6 生命周期门硬化）全部完成；
+  归档态由 final_assertions v2 脚本守护，后续任何激活-归档循环的链接/计数/指针断言自动化
+
 ### Phase 6 独立复审（2026-10-06，/auto-plan:review，独立代理）
 
 - stage: review | plan_id: PLAN-741 | plan_revision: 6 | outcome: **pass**
