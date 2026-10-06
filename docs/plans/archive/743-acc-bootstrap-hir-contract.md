@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-743
-status: reviewed
+status: archived
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
@@ -715,6 +715,27 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 
 ## 9. 复审记录
 
+### 合并沉淀收据（2026-10-06，stage: merge，key: PLAN-743:r6）
+
+- stage: merge · plan_revision: 6 · outcome: pass
+- reviewed 基线：R7 pass @ e6dad7ce9（r6，SD-10 冻结 825b4ae907ac2c26）
+- 落点分支：v0.6-dev（主线约定）
+
+**checkpoint 实证**：
+
+| checkpoint | 证据 |
+|---|---|
+| prepared | worktree 内按冻结提案落 SD-10（auto-acc/project.md：绑定先于本地类型升级规则 + 族消费者缺失绑定淘汰 + 错类型同 ID 整组作废，diff +8/−6）；plans.md 两行归档态 + 账本 P743-1 原位刷新/reviews P743-8；commit 9b0093e5f（reviewed_commit 的纯文档后代） |
+| landed | rebase 遇并行线（PLAN-741 P5/P6、742 sqlite 同批文件）——union 解决（P741-1..7+P743-1..8 共存、741 行 delivered+743 行 archived）。旧→新映射：70f4136d1→25c3eb5b3、bf629ee43→d822de2cc、9d5bbc85d→f8fc6b98a、8c98305ec→3fe9b99c1、e6dad7ce9→5e9e3d94b、9b0093e5f→8a912cf89。ff-only 落地；SD-10 目标文件无决定绑定→§5.6.6 重绑条款条件性不触发；主检出严格冒烟 128/128 测试+严格门绿；delivery=8a912cf89 |
+| ledger_refreshed | .autoos/specs.json P743-1 原位刷新（r6 边界兑现注记）+ reviews P743-8（外部 needs_fix→Phase 6→R7 pass 链），随 delivery 落主检出，read-back 验证 P743-1..8 与 P741-1..7 共存在案 |
+| archived | 本文件 git mv 至 docs/plans/archive/，status: archived，completion_kind: delivered |
+| cleaned | 见下补记 |
+
+- 规范增量落地：SD-10→docs/specs/auto-acc/project.md（modify；落地文本与冻结提案
+  规则逐条一致，R7 复核 825b4ae9 未触）。
+- final_assertions r6（38/38 七类断言）在本收据提交后执行为归档有效条件。
+
+### 独立复审 R7（2026-10-06，stage: review，r6 P743-R5-QA-01..03 修复复核）
 ### 独立复审 R7（2026-10-06，stage: review，r6 P743-R5-QA-01..03 修复复核）
 
 - stage: review
