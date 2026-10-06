@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-06
 updated_at: 2026-10-06
 plan_revision: 1
-current_step: 3
+current_step: 4
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-hir/stage-contract.md
@@ -249,7 +249,7 @@ AC01..07先内部检查，再最终独立复审全部重新审定；AC09不承�
 | T-01 | [x] | work | r1确认 | 新docs/reports/745-source-core-i32/numeric-boundary.md；核对可见值/parser/trans/char路径，完成两probe与MD408/409提案；若事实推翻profile可行性先修合同 | AC01,07；数值cases+决策来源，先于T02/03类型实施。〔2026-10-06 work：报告落地（worktree commit c535b8fd6）；23项输入hash零漂移；E1–E12证据链（VM栈i32/值存储i32\|i64/旧AST幅值三态/trans i64/char三宿主表示）；probe-int-width=profile内精确有符号32位、probe-char-int=profile拒绝char，MD408/409提案文本入报告§8；无事实推翻r1可行性，§7数值cases待T-05运行回填〕 |
 | T-02 | [x] | work | T01 | 新src/source/{mod,lexer,ast,parser}.rs、lib.rs导出、fixtures/source/、tests/source_frontend.rs；grammar/span/full-consumption可运行 | AC02,04；ac-core check；cargo test --manifest-path experimental/ac-core/Cargo.toml --test source_frontend（新目标）。〔2026-10-06 work：worktree commit 6965c0a04；21正/53反fixture精确物化；12前端测试全绿（30 text级code+token断言、23 bind/verify级前端须通过断言、P01/P02/P04/P07/P11/P15/P20结构span、N03行列2:24、N31 1:24）；ac-core全量测试通过、fmt clean〕 |
 | T-03 | [x] | work | T02 | 新src/source/{resolve,typecheck,adapter}.rs，签名/词法栈/精确类型、生成Atom+map→bind_source→全部span投影→verify；tests/source_hir.rs | AC01..04；新source_hir测试、owning/bindings与负变异。〔2026-10-06 work：worktree commit 3fb6c96b6；resolve（签名预登记/块作用域/参数映射/trace intrinsic优先级）+typecheck（source.type-mismatch@verify）+adapter（while→loop/if降低、bool=0<1/0<0合成、return后死代码独立块、stray break/continue phantom loop、条目序span再锚+token碎片回退）；10测试全绿（23负例stage/code/token精确、P03/04/11/15/19结构、4变异拒收）；全ac-core 80测通过零警告零fmt问题〕 |
-| T-04 | [ ] | work | T03 | src/main.rs新命令/共用Checked构建；source/mod.rs显式profile/trace表；必要link.rs收据追加保持事务；tests/source_cli.rs | AC03,04,06；新source_cli+旧cli/native/trace tests |
+| T-04 | [x] | work | T03 | src/main.rs新命令/共用Checked构建；source/mod.rs显式profile/trace表；必要link.rs收据追加保持事务；tests/source_cli.rs | AC03,04,06；新source_cli+旧cli/native/trace tests。〔2026-10-06 work：worktree commit c5af427d9；check-source/build-source（漏/未知profile=2、0/1/2分级、entry按函数名查def id）、link.rs新增publish_artifacts_with_receipt（源码profile/hash同事务入.ac-link.txt，旧函数零语义变化委托）；10 CLI测试全绿（真实PE构建运行P01=14/P13=70、失败零制品、entry.not-found/signature、trace无support-lib链接失败、旧check仍仅Atom）；全ac-core 90测通过零警告〕 |
 | T-05 | [ ] | work | T04 | 新tests/source_native.rs、scripts/verify-ac-source-745.ps1，物化执行JSON全部case和§6补充；docs/reports/745-source-core-i32/verification.md及原始收据 | AC01..06；ac-core全test+新一键脚本，60s/code/trace/token/hash/制品 |
 | T-06 | [ ] | work | T05 | ac-core/README.md，proposed-spec-delta.md及MD408/409更新提案/新鲜绑定策略，不直接改canonical | AC07；python scripts/acc_inventory.py --check --require-decisions，提案说明待merge绑定，不自动重hash掩漂移 |
 | T-07 | [ ] | work | T06 | 同树内部检查所有cases/SD/健康，§6全部门禁，提交HEAD与执行收据；work7/7→execution_done（总7/9） | AC01..07；内部pass仅交接review |
