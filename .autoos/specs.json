@@ -8199,6 +8199,21 @@
           "status": "published",
           "created": "2026-10-06",
           "last_modified": "2026-10-06"
+        },
+        {
+          "id": "P741-8",
+          "title": "PLAN-741 r6 Phase 6 复审 pass + 生命周期断言收据（P741-R5-QA-01..03）",
+          "file": "docs/plans/archive/741-ac-hir-native-core.md",
+          "tags": [
+            "PLAN-741",
+            "review",
+            "native-aot",
+            "lifecycle-gate"
+          ],
+          "content": "r5 合入后复审 needs_fix（docs/reports/741-r5-quality-review-20261006，仅 P3 验收与证据问题，r5 核心链接清理通过）→ r6 修复（零 Rust 改动）：R5-QA-01 final_assertions v2（frontmatter 必需字段解析、current_step==完成唯一数、total_steps==唯一总数合同派生无硬编码、archived=全完成+archive 位置、同 ID 冲突失败；上线即抓到执行侧 current_step=35≠34 计数错）、R5-QA-02 active 模式双链接验证（真实父目录 active 形 + 显式转换模拟归档，模拟不冒充实际 active）、R5-QA-03 exact-artifact 重放（Cargo JSON 绑定无 rlib glob；54→58 计数更正带 provenance）。独立代理复审 pass（AC-28..30）：4 例负面探针、fixture 8/8、库哈希一致全量重放。本 Phase 空规范影响（无 SD-10）。",
+          "status": "published",
+          "created": "2026-10-06",
+          "last_modified": "2026-10-06"
         }
       ]
     }
