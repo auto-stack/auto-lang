@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-06
 updated_at: 2026-10-06
 plan_revision: 1
-current_step: 5
+current_step: 6
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-hir/stage-contract.md
@@ -251,7 +251,7 @@ AC01..07先内部检查，再最终独立复审全部重新审定；AC09不承�
 | T-03 | [x] | work | T02 | 新src/source/{resolve,typecheck,adapter}.rs，签名/词法栈/精确类型、生成Atom+map→bind_source→全部span投影→verify；tests/source_hir.rs | AC01..04；新source_hir测试、owning/bindings与负变异。〔2026-10-06 work：worktree commit 3fb6c96b6；resolve（签名预登记/块作用域/参数映射/trace intrinsic优先级）+typecheck（source.type-mismatch@verify）+adapter（while→loop/if降低、bool=0<1/0<0合成、return后死代码独立块、stray break/continue phantom loop、条目序span再锚+token碎片回退）；10测试全绿（23负例stage/code/token精确、P03/04/11/15/19结构、4变异拒收）；全ac-core 80测通过零警告零fmt问题〕 |
 | T-04 | [x] | work | T03 | src/main.rs新命令/共用Checked构建；source/mod.rs显式profile/trace表；必要link.rs收据追加保持事务；tests/source_cli.rs | AC03,04,06；新source_cli+旧cli/native/trace tests。〔2026-10-06 work：worktree commit c5af427d9；check-source/build-source（漏/未知profile=2、0/1/2分级、entry按函数名查def id）、link.rs新增publish_artifacts_with_receipt（源码profile/hash同事务入.ac-link.txt，旧函数零语义变化委托）；10 CLI测试全绿（真实PE构建运行P01=14/P13=70、失败零制品、entry.not-found/signature、trace无support-lib链接失败、旧check仍仅Atom）；全ac-core 90测通过零警告〕 |
 | T-05 | [x] | work | T04 | 新tests/source_native.rs、scripts/verify-ac-source-745.ps1，物化执行JSON全部case和§6补充；docs/reports/745-source-core-i32/verification.md及原始收据 | AC01..06；ac-core全test+新一键脚本，60s/code/trace/token/hash/制品。〔2026-10-06 work：worktree commit addcf4d5a；脚本实测 **all 12 steps PASS (74 cases)**（21正例真实构建+运行退出码/stderr oracle全中含P15=12/stderr ba、P13/P14/P16=70、60s硬截止、三制品+sha256收据；53负例exit 1+stage/code标记全中）；source_native 2测试串行7.5s；§6补充矩阵九行证据映射入verification.md §5；主仓门禁留T-07回填〕 |
-| T-06 | [ ] | work | T05 | ac-core/README.md，proposed-spec-delta.md及MD408/409更新提案/新鲜绑定策略，不直接改canonical | AC07；python scripts/acc_inventory.py --check --require-decisions，提案说明待merge绑定，不自动重hash掩漂移 |
+| T-06 | [x] | work | T05 | ac-core/README.md，proposed-spec-delta.md及MD408/409更新提案/新鲜绑定策略，不直接改canonical | AC07；python scripts/acc_inventory.py --check --require-decisions，提案说明待merge绑定，不自动重hash掩漂移。〔2026-10-06 work：worktree commit 8b4526bd7；README 双管线/新测试族/边界更新；proposed-spec-delta.md SD01..04+MD408/409追加note+盘点检查实测（2项失败均为743扫描器工作区态非内容漂移，归merge重扫）+新鲜度绑定策略（r1+提交链+收据指纹，merge重跑替换）〕 |
 | T-07 | [ ] | work | T06 | 同树内部检查所有cases/SD/健康，§6全部门禁，提交HEAD与执行收据；work7/7→execution_done（总7/9） | AC01..07；内部pass仅交接review |
 | T-08 | [ ] | review | T07 | /auto-plan:review独立上下文同树，写入暂停，revision/HEAD稳定，逐AC实际证据/反例/债务/proposed delta；最终报告 | AC08并独立重验AC01..07；pass→reviewed（8/9） |
 | T-09 | [ ] | merge | T08+合入授权 | /auto-plan:merge到v0.6-dev；SD/人工盘点/ledger/导航/index/归档；批回归到期判断；wt-guard clean才清理 | AC09；实际链接/终态/9/9/清理收据，不预勾 |
