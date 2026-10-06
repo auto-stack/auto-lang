@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-743
-status: reviewed
+status: archived
 feature_name: ACC 自举能力盘点与 HIR 阶段契约
 author: [Codex]
 created_at: 2026-10-04
@@ -674,6 +674,28 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 
 ## 9. 复审记录
 
+### 合并沉淀收据（2026-10-06，stage: merge，key: PLAN-743:r5）
+
+- stage: merge · plan_revision: 5 · outcome: pass
+- reviewed 基线：R6 pass @ ce61e5e6d（r5，SD-09 冻结 ad3e02d7a6c237f8）
+- 落点分支：v0.6-dev（主线约定）
+
+**checkpoint 实证**：
+
+| checkpoint | 证据 |
+|---|---|
+| prepared | worktree 内按冻结提案逐字落 SD-09（auto-acc/project.md 分类政策条目扩展+严格门附加保证扩展为 r4/r5，diff +22/−12）；plans.md 两行归档态 + 账本 P743-1 原位刷新/reviews P743-7；commit 77329ba53（reviewed_commit 的纯文档后代） |
+| landed | 两轮 rebase 均遇并行线（741 P5 SD-09 沉淀 a34ad963a、741 P6 激活 ad1fe269c、742 sqlite cb7a59ede）——union 解决（双方条目/行全保留：P741-1..7+P743-1..7、741 行 delivered+743 行 archived）。旧→新映射：7425a707e→70f13ac07→(二轮)最终链 63a882097 系；af3c8040e 系→f9b86e4f6；77329ba53→437a6b2f9→454825ac5。ff-only 落地；§5.6.6 条款触发（741 P5 改 auto-ac spec）→ 5 决定逐条审定（741-P5 仅扩展 pre-publish 清理约束，结论全维持）spec-only 重绑（commit 8f2a021d6）；delivery 终点=8f2a021d6，主检出严格冒烟 110/110 测试+严格门绿 |
+| ledger_refreshed | .autoos/specs.json P743-1 原位刷新（r5 收口注记）+ reviews P743-7（外部 needs_fix→Phase 5→R6 pass 链），union 后 read-back 验证 P743-1..7 与 P741-1..7 共存在案 |
+| archived | 本文件 git mv 至 docs/plans/archive/，status: archived，completion_kind: delivered |
+| cleaned | 见下补记 |
+
+- 规范增量落地：SD-09→docs/specs/auto-acc/project.md（modify；落地文本与冻结提案
+  规则逐条一致——mut/方法/静态覆盖、bare/qualified 绑定优先、全序列消费者校验、
+  重复整组作废、形状门、真实父目录链接收口）。
+- 主检出终态：v0.6-dev tip=bf9b2072b（归档收据提交前），工作树 0 dirty，严格门绿。
+
+### 独立复审 R6（2026-10-06，stage: review，r5 P743-R4-QA-01..04 修复复核）
 ### 独立复审 R6（2026-10-06，stage: review，r5 P743-R4-QA-01..04 修复复核）
 
 - stage: review
