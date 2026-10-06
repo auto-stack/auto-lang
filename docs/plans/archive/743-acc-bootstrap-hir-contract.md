@@ -730,7 +730,7 @@ T-07..14 不以合同就绪代替实施完成；旧 r1 pass 不覆盖新实现�
 | landed | rebase 遇并行线（PLAN-741 P5/P6、742 sqlite 同批文件）——union 解决（P741-1..7+P743-1..8 共存、741 行 delivered+743 行 archived）。旧→新映射：70f4136d1→25c3eb5b3、bf629ee43→d822de2cc、9d5bbc85d→f8fc6b98a、8c98305ec→3fe9b99c1、e6dad7ce9→5e9e3d94b、9b0093e5f→8a912cf89。ff-only 落地；SD-10 目标文件无决定绑定→§5.6.6 重绑条款条件性不触发；主检出严格冒烟 128/128 测试+严格门绿；delivery=8a912cf89 |
 | ledger_refreshed | .autoos/specs.json P743-1 原位刷新（r6 边界兑现注记）+ reviews P743-8（外部 needs_fix→Phase 6→R7 pass 链），随 delivery 落主检出，read-back 验证 P743-1..8 与 P741-1..7 共存在案 |
 | archived | 本文件 git mv 至 docs/plans/archive/，status: archived，completion_kind: delivered |
-| cleaned | 见下补记 |
+| cleaned | worktree 0 dirty 且 HEAD bc339edd5 已是 v0.6-dev 祖先；wt-guard.sh 仍缺失（r1..r5 收据已挂工具债）——等价 PowerShell ReparsePoint 全组扫描：`GUARD-EQUIVALENT-CLEAN: no reparse points in lang-743 group`；git worktree remove 目录删除首次遇 Windows 瞬时句柄 Permission denied（注册已注销，r3/r4/r5 同款），重试后目录/`git branch -d plan-743-dev`（was bc339edd5）/组目录三方复核清零；final_assertions r6 八项断言在归档+T-38 收口后全过（38/38） |
 
 - 规范增量落地：SD-10→docs/specs/auto-acc/project.md（modify；落地文本与冻结提案
   规则逐条一致，R7 复核 825b4ae9 未触）。
