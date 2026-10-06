@@ -47,17 +47,19 @@ resolved 族必须引用存在且适用的决定（kind=unknown-resolution、con
   宿主猜测（import_shadow/parameter_shadow/mut_parameter 反例实证）；参数遮蔽
   规则覆盖自由函数及已观察到的方法（包括静态方法）；dot/管道隐式 self 仅当调用点
   enclosing owner 声明了该方法才升级（其它 owner 同名或无 owner 保持 unknown）；
-  裸调用与 qualified 调用在宿主/类型升级前均检查可观察绑定；native 仅限无上述冲突
+  裸调用与 qualified 调用在宿主/**本地类型/enum 构造或 type-qualified 升级**之前均检查可观察绑定（参数名与本地类型名相同不能当作类型身份）；native 仅限无上述冲突
   时的可证明宿主命名空间（List/IO/process/File）。命名冲突或不能证明归属者保留
   unknown，不凭同名升级 native-runtime。变量接收者族的语义归属见决定 MD-507 与
   unknown_families，实现期由名字解析/类型检查主体（新建）精确化；有限词法层遇到
   不能确定的作用域一律保持 unknown，不声称完整 resolver。
 
-严格门附加保证（r4/r5）：unknown_families 的 resolved 引用只读"通过全部类型/语义
-校验"的决定记录——记录须依次通过字段类型、结论合法性、证据存在、同条证据绑定、
-新鲜度与全局唯一 ID 检查方入消费者索引；重复 ID 整组无效（包括先插入记录），任何
-检查失败即该记录退出索引；invalid/stale 不贡献族覆盖，不能以最终 CLI 非零替代
-消费者可信边界。resolved 适用性仅由同条 evidence 文件集合覆盖族路径证明——hash
+严格门附加保证（r4/r5/r6）：unknown_families 的 resolved 引用只读"通过全部类型/
+语义校验"的决定记录——记录须依次通过字段类型、结论合法性、证据存在、同条证据
+绑定、新鲜度与全局唯一 ID 检查方入消费者索引；**绑定文件不存在与 hash 不匹配同样
+视为该记录校验失败**；**全局唯一性覆盖所有可辨识非空字符串 ID 的记录——即使同 ID
+的某条记录另有类型/缺字段错误，整组仍无效（包括先前合法记录）**；invalid/stale 不
+贡献族覆盖，不能以最终 CLI 非零替代消费者可信边界（可采用人工层验证失败后完全
+停止族消费的等价实现）。resolved 适用性仅由同条 evidence 文件集合覆盖族路径证明——hash
 绑定证明文件新鲜、subject 命名盘点对象，均不能替代审定的证据引用。`--check` 在
 访问 JSON 成员、规范化 audit-only HEAD 前检查顶层和 source_identity 对象形状；
 合法 JSON 但形状非法必须受控非零 ERROR，不出现 traceback，不修改 manifest/manual；
