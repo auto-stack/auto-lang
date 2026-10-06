@@ -91,7 +91,51 @@ stage+code+token 切片、N03 2:24）承担；脚本层断言 exit 1 + `error[st
 | Checked 唯一 | source_hir `tampered_atom_is_rejected`（删 let 死表达式/错类型/悬空引用/伪 checked 标记 4 变异均被真实 bind/verify 拒绝）+ 既有 hir_verify 拒绝矩阵保留通过 |
 | CLI/事务 | source_cli 10 例（0/1/2 分级、漏/未知 profile=2、entry 错误、失败零制品、trace 无库链接失败、旧 check 仍仅 Atom）+ 741 SENTINEL 事务合同未动（link.rs 仅追加委托函数） |
 
-## 6. 主仓最终门禁
+## 6. 主仓最终门禁（T-07 内部检查，2026-10-06 实测回填）
 
-按 plan §6 最终门禁串行块（cargo check -p auto-lang / cargo t / cargo tv +
-verify-ac-741.ps1 -SkipMainGates）在 T-07 内部检查统一执行并回填本节。
+按 plan §6 最终门禁串行块执行。执行环境注记：D: 盘在门禁期间 100% 满
+（os error 112 中断过一次测试构建；工作树 root target 曾用
+`CARGO_TARGET_DIR=C:/tmp` 重试——该次重试把 ffi_dual oracle 构建产物写到 C:
+却留下 `.parity_cache_ok` marker，后续原生运行被 marker 骗过跳过构建；已删除
+4 个污染 marker 并删除 C: target，全部原生重跑）。释放工作树 root target 后
+D: 恢复 ~30G。最终数字均为**原生同树执行**（无 env 覆盖）。
+
+| 门禁 | 命令 | 结果 |
+|---|---|---|
+| check | `cargo check -p auto-lang` | **PASS**（2m50s；382 warning 为生产 crate 既有，非 745 引入——745 零改 crates/**） |
+| 日常档 | `cargo t`（nextest 全量 --no-fail-fast） | 4939/4972 通过、33 失败，与主检出对照**完全同数同源**（27 处双方共现预存红 + 6+6 对称差 flake，见下归因） |
+| 语料档 | `cargo tv`（--no-fail-fast） | 158/162 通过、4 失败 = 预存红（cookbook_vm_tests::cb_versioning_semver_{parse,latest,increment,prerelease}，两环境失败集合逐项一致） |
+| 741 回归 | `verify-ac-741.ps1 -SkipMainGates` | **all 13 steps PASS**（§2） |
+| 745 全量 | `verify-ac-source-745.ps1` | **all 12 steps PASS (74 cases)**（§2） |
+
+### 日常档预存红归因（同源对照法）
+
+745 的 diff 完全不含 `crates/**`（git diff 逐文件核对：仅 experimental/ac-core、
+scripts、docs）。为满足"预存红按同源码/环境 scoped 对照归因"，在**主检出**
+（crates/ 同源、热缓存、无 env 覆盖）跑同一全量命令并做失败集合 diff：
+
+- **双方共现 27 处**（预存红核心，与 745 无关）：a2r_std_signature_parity
+  （KNOWN-DEBT 396 签名漂移，v0.6-dev ↔ auto-down master）、ffi_dep_parity/
+  ffi_dual 的 017_dep_lifecycle（VM 腿 `Unknown Rust stdlib call: .drop_count`）、
+  musk_vm_track p053/p054 七例、plan484/492/498/499/502/503/606/707_wait、
+  desktop_protocol client_runtime、ash_leak_probe、docs_gen kitchen_sink、
+  schema_drift 双 fence。
+- **对称差 6+6 处**（plan437/498 area/499 crosshair·sector/707_spike/daemon vs
+  plan484 smoke/492 fstr/498 legend·line/499 single-pointer/spike699）：图表
+  交互/指针时序/守护进程/http 类**并行负载偶发 flake**（AGENTS 在案类：
+  plan707 flake=4f123a50e、th 环境相关红归因），两环境各自随机出现，
+  非确定性、非 745 触发。
+- 结论：**745 引入的新增失败 = 0**（工作树 33 失败 = 27 预存核心 + 6 flake；
+  主检出同为 33 失败 = 27 预存核心 + 6 flake；失败总数与预存核心完全一致，
+  仅 flake 名单两环境互换）。
+
+不修不相关旧功能来伪造全绿（plan §6）；预存红清单移交 T-08 复盘与
+KNOWN-DEBT 登记参考。
+
+### 依赖树注记
+
+主仓构建经 `crates/auto-lang` 的 optional path 依赖
+`../../../auto-down/autodown/...`（workspace 装载需 manifest 可读）。按 Plan 529
+组布局在 `.wt/lang-745/` 补建只读依赖树 auto-down @ fba6563ed（detached，=
+master HEAD，与 lang-742 组同基线），745 未修改 auto-down 任何文件；登记见
+[worktree.md](../../plans/attachments/745/worktree.md)。
