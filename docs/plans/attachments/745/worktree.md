@@ -2,6 +2,29 @@
 
 日期：2026-10-06（Asia/Shanghai）；合同：PLAN-745 r1。
 
+## 2026-10-06 work 追加：组内依赖树（T-07 门禁需要）
+
+主仓 cargo 门禁（check/t/tv）经 `crates/auto-lang` 的相对路径依赖
+`../../../auto-down/autodown/packages/engine/rust`（autodown-core，optional path dep，
+workspace 装载仍需 manifest 可读）。按 Plan 529 组布局与 lang-742 先例，在**同组**
+补建只读依赖树（不修改 auto-down）：
+
+| 字段 | 值 |
+|---|---|
+| 依赖树 | D:/autostack/.wt/lang-745/auto-down（git worktree，detached） |
+| 基线提交 | fba6563ed2148ce85e68208863159b4ccccac710（= auto-down master HEAD，与 lang-742 组一致） |
+| 创建命令 | git -C D:/autostack/auto-down worktree add --detach D:/autostack/.wt/lang-745/auto-down fba6563ed |
+| 用途 | 仅满足依赖解析与门禁构建；PLAN-745 不改 auto-down 任何文件 |
+| 清理 | T-09/merge 收口时与 auto-lang 树一起 wt-guard + 移除（依赖树无本地提交） |
+
+另：D: 盘在 T-07 期间 100% 满（os error 112）；主仓门禁改用
+`CARGO_TARGET_DIR=C:/tmp/ac745-main-gates`（C: 盘独立目录，单实例，无共享竞争）。
+工作树内 D: 上已有 `cargo check -p auto-lang` 通过的 1.6G 增量产物（保留待 review 复用）。
+
+---
+
+日期：2026-10-06（Asia/Shanghai）；合同：PLAN-745 r1。
+
 | 字段 | 实际值 |
 |---|---|
 | 主检出 / 主线落点 | D:/autostack/auto-lang / v0.6-dev |
