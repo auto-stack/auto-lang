@@ -106,9 +106,9 @@ def main(root: str) -> int:
     aa_text = aa.read_text(encoding="utf-8") if aa.is_file() else ""
     check("enclosing owner" in aa_text, "auto-acc 缺 r3/r4 分类政策正文")
     check("不能替代审定的证据引用" in aa_text, "auto-acc 缺 r4 证据覆盖约束")
-    check("bare 调用与 qualified 调用在宿主/类型升级前均检查可观察绑定" in aa_text
-          or "bare调用与qualified调用" in aa_text.replace(" ", "")
-          or "裸调用与qualified调用在宿主/类型升级前均检查可观察绑定" in aa_text,
+    aa_compact = aa_text.replace(" ", "")
+    check("裸调用与qualified调用在宿主/类型升级前均检查可观察绑定" in aa_compact
+          and "mut参数" in aa_compact,
           "auto-acc 缺 r5 SD-09 裸/qualified 绑定优先规则")
 
     # 5) 严格门（真实报告）
