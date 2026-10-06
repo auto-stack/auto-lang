@@ -8525,6 +8525,123 @@ pub fn shim_ctx_reply(value: i64) -> Result<(), String> {
 // ============================================================================
 
 // ============================================================================
+// SQLite VM Shims (Plan 744 / D-VM-SQLITE)
+// ============================================================================
+// The connection lives in a process-level registry; the VM stack carries an
+// opaque i64 handle (image-module opaque-ticket precedent). SQL execution is
+// delegated to a2r_std::sqlite so the VM and a2r tracks share one engine and
+// the same sentinel-error conventions (never panic; last_error queryable).
+
+use a2r_std::sqlite::SqliteDb;
+
+static SQLITE_HANDLES: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<i64, SqliteDb>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+static SQLITE_HANDLE_COUNTER: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);
+
+pub const SQLITE_NATIVE_NAMES: &[&str] = &[
+    "auto.sqlite.open",
+    "auto.sqlite.exec",
+    "auto.sqlite.query",
+    "auto.sqlite.last_insert_rowid",
+    "auto.sqlite.last_error",
+    // Type.method form (List.push -> auto.list.push canonicalization rule)
+    "auto.sqlitedb.exec",
+    "auto.sqlitedb.query",
+    "auto.sqlitedb.last_insert_rowid",
+];
+
+fn sqlite_from_handle(handle: i64) -> Option<SqliteDb> {
+    SQLITE_HANDLES.lock().ok()?.get(&handle).cloned()
+}
+
+fn shim_sqlite_open_impl(path: String) -> i64 {
+    let db = a2r_std::sqlite::open(path);
+    let id = SQLITE_HANDLE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    SQLITE_HANDLES.lock().expect("sqlite handle lock poisoned").insert(id, db);
+    id
+}
+
+fn shim_sqlite_exec_impl(handle: i64, sql: String) -> i64 {
+    match sqlite_from_handle(handle) {
+        Some(db) => db.exec(sql),
+        None => -1,
+    }
+}
+
+fn shim_sqlite_query_impl(handle: i64, sql: String) -> Vec<Vec<String>> {
+    match sqlite_from_handle(handle) {
+        Some(db) => db.query(sql),
+        None => Vec::new(),
+    }
+}
+
+fn shim_sqlite_last_insert_rowid_impl(handle: i64) -> i64 {
+    match sqlite_from_handle(handle) {
+        Some(db) => db.last_insert_rowid(),
+        None => 0,
+    }
+}
+
+/// Pop the query rows off the FFI return and build the nested heap list the
+/// .at surface expects (`List<List<str>>`): outer ListData<Value> whose
+/// elements are VmRefs into inner ListData<i32> negative-sentinel string rows
+/// (same layout the array-literal materialize path produces).
+pub fn shim_sqlite_query(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sql: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let handle: i64 = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let rows = shim_sqlite_query_impl(handle, sql);
+    use crate::vm::types::ListData;
+    let mut outer: ListData<auto_val::Value> = ListData::new();
+    for row in rows {
+        let mut inner: ListData<i32> = ListData::new();
+        for cell in row {
+            let len = vm.add_string(cell.as_bytes().to_vec());
+            vm.pool_retain(len);
+            inner.push(-(len as i32) - 1);
+        }
+        let inner_id = vm.insert_heap_object(inner);
+        outer.push(auto_val::Value::VmRef(auto_val::VmRef { id: inner_id as usize }));
+    }
+    let outer_id = vm.insert_heap_object(outer);
+    vm.rc_push_id(task, outer_id as u64);
+    Ok(())
+}
+
+pub fn shim_sqlite_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let id = shim_sqlite_open_impl(path);
+    task.ram.push_i64(id);
+    Ok(())
+}
+
+pub fn shim_sqlite_exec(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sql: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let handle: i64 = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let n = shim_sqlite_exec_impl(handle, sql);
+    task.ram.push_i64(n);
+    Ok(())
+}
+
+pub fn shim_sqlite_last_insert_rowid(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle: i64 = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let n = shim_sqlite_last_insert_rowid_impl(handle);
+    task.ram.push_i64(n);
+    Ok(())
+}
+
+pub fn shim_sqlite_last_error(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg: String = a2r_std::sqlite::last_error();
+    VMConvertible::push_to_stack(&msg, task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+// ============================================================================
 // Registration Function
 // ============================================================================
 
@@ -8580,6 +8697,25 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http.server_delete", shim_http_server_delete);
     natives.register_shim_by_name("auto.http.server_static", shim_http_server_static);
     natives.register_shim_by_name("auto.http.server_listen", shim_http_server_listen);
+    // Plan 744 / D-VM-SQLITE: sqlite module on the VM track. Names are seeded
+    // explicitly (same cwd caveat as image.vm.at below) and bound under both
+    // the module form (auto.sqlite.*) and the Type.method form
+    // (auto.sqlitedb.*) — the bytecode emits either depending on the call site.
+    {
+        let mut registry = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
+        for name in SQLITE_NATIVE_NAMES {
+            registry.register(name);
+        }
+    }
+    natives.register_shim_by_name("auto.sqlite.open", shim_sqlite_open);
+    natives.register_shim_by_name("auto.sqlite.exec", shim_sqlite_exec);
+    natives.register_shim_by_name("auto.sqlite.query", shim_sqlite_query);
+    natives.register_shim_by_name("auto.sqlite.last_insert_rowid", shim_sqlite_last_insert_rowid);
+    natives.register_shim_by_name("auto.sqlite.last_error", shim_sqlite_last_error);
+    natives.register_shim_by_name("auto.sqlitedb.exec", shim_sqlite_exec);
+    natives.register_shim_by_name("auto.sqlitedb.query", shim_sqlite_query);
+    natives.register_shim_by_name("auto.sqlitedb.last_insert_rowid", shim_sqlite_last_insert_rowid);
+
     #[cfg(feature = "ui-iced")]
     {
         // Package unit tests and embedded callers run with the crate directory
@@ -10560,6 +10696,39 @@ pub(crate) fn lock_storage_for_test() -> std::sync::MutexGuard<'static, ()> {
     match STORAGE_TEST_SERIALIZER.lock() {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+#[cfg(test)]
+mod sqlite_vm_tests {
+    use super::*;
+
+    #[test]
+    fn sqlite_vm_open_exec_query_roundtrip() {
+        let dir = std::env::temp_dir().join(format!("auto-vm-sqlite-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("t.db");
+        let db_path = db_path.to_str().unwrap().to_string();
+
+        let h = shim_sqlite_open_impl(db_path.clone());
+        assert!(h > 0);
+        assert_eq!(shim_sqlite_exec_impl(h, "CREATE TABLE cats (id INTEGER PRIMARY KEY, name TEXT)".into()), 0);
+        assert_eq!(shim_sqlite_exec_impl(h, "INSERT INTO cats (name) VALUES ('Michi')".into()), 1);
+        assert_eq!(shim_sqlite_last_insert_rowid_impl(h), 1);
+        let rows = shim_sqlite_query_impl(h, "SELECT id, name FROM cats ORDER BY id".into());
+        assert_eq!(rows, vec![vec!["1".to_string(), "Michi".to_string()]]);
+
+        // 语法错误：-1 + last_error 非空（哨兵约定）
+        assert_eq!(shim_sqlite_exec_impl(h, "NOT SQL".into()), -1);
+        assert!(a2r_std::sqlite::last_error() != "");
+
+        // 未知句柄：哨兵值（-1/0/空），不 panic
+        assert_eq!(shim_sqlite_exec_impl(999999, "SELECT 1".into()), -1);
+        assert!(shim_sqlite_query_impl(999999, "SELECT 1".into()).is_empty());
+        assert_eq!(shim_sqlite_last_insert_rowid_impl(999999), 0);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
