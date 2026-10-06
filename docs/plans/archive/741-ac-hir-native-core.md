@@ -744,7 +744,41 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 ## 9. 复审记录
 
-##### Phase 5 独立复审（2026-10-05，/auto-plan:review，独立代理）
+##### 合并收据（2026-10-05，/auto-plan:merge）PLAN-741:r5
+
+- stage: merge | plan_id: PLAN-741 | plan_revision: 5 | outcome: pass
+- prepared: reviewed 基线 001c8771d（rebase 后；worktree clean）；canonical delta=SD-09 →
+  docs/specs/auto-ac/project.md（modify）；组内只读依赖 D:/autostack/.wt/lang-741/auto-down
+  （detached @ fba6563e，同 r1..r4）
+- landed: 两次 rebase（主线并行推进 743 r5 收尾，每次后 range-diff 全 `=`；最终映射
+  fb50d048e→48652d1e4 / a05d01570→c9d1129c8 / 26bd8562b→2c52fc595 / 8a49e4a94→da9992575 /
+  delivery 2b68675c8→a34ad963a）；主检出 `git merge --ff-only` 无 merge commit，
+  tip=a34ad963a；主检出冒烟 ac-core cli 11/11 + lib 15/15（含共享锁/分支判别测试）全绿
+- ledger_refreshed: .autoos/specs.json designs P741-2 增补 r5 契约事实（SD-09）、reviews 新增
+  P741-7（r5 复审+链接清理收据）、P741-3..6 归档指针在本轮归档后全部可解析；
+  docs/specs/INDEX.md 重建后归一 LF=零 diff；docs/specs/{auto-hir,auto-ac}/plans.md 行更新为
+  delivered + archive 链接
+- archived: docs/plans/archive/741-ac-hir-native-core.md（git mv），status: archived，
+  completion_kind: delivered；README:8、KNOWN-DEBT 741 Phase4 链接随归档指回 archive/；
+  KNOWN-DEBT P741-R4-QA-01..02 行销账（b9323a1ca）
+- **archive 模式 final_assertions 收口（r5 特有门，AC-26）**: ALL-ASSERTIONS-PASS——
+  7 相对链接自真实 archive 父目录全部可解析、35/35 唯一任务全勾且同 ID 勾选一致
+  （T-24/T-30 重开行带归档收口注记；T-35 合同行闭合；复审记录中引用的反例链接改行内代码、
+  脚本同步剥离 inline code）、README/两模块导航/7 项 ledger 指针全部指向 archive/ 且可解析
+- cleaned: **完成（2026-10-05）**——文档引用的 D:/autostack/wt-guard.sh 本机不存在
+  （r1..r4 同一偏差记录），按其文档语义以 PowerShell ReparsePoint 递归扫描替代
+  （组目录 lang-741 全树 clean）后：worktree D:/autostack/.wt/lang-741/auto-lang 移除、
+  auto-down 兄弟检出经 auto-down 仓 `git worktree remove` 移除、分支 plan-741-dev 删除
+  （was a34ad963a=已落地）、组目录 lang-741 rmdir 成功（T-34 对照日志临时件清理，
+  正式副本已入库 docs/reports/741-phase5-link-cleanup/）
+- 交付摘要: r5 修复 r4 合入后复审全部缺口（R4-QA-01..02）：link_object_staged 两错误出口
+  清理错误全量汇总（与 publish 共享 helper 逐字等价）、归档终态链接修复 + 三态断言脚本；
+  原型 54 项 + 60s 证据测试；独立代理复审 pass（AC-25..27）
+- 备注: 三条 P3 随复审记录留档并已处置（R1 脚本状态守卫放宽、R2 分支判别测试、
+  R3 复现输出 .txt 命名）；本计划五次交付（r1 闭环、r2 质量修复、r3 边界修复、
+  r4 资源边界修复、r5 链接清理修复）全部完成
+
+### Phase 5 独立复审（2026-10-05，/auto-plan:review，独立代理）
 
 - stage: review | plan_id: PLAN-741 | plan_revision: 5 | outcome: **pass**
 - reviewed_commit: `26bd8562b`（worktree clean；实现 fb50d048e + 报告 a05d01570 + 簿记，区间 3
