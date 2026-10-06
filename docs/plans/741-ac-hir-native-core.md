@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-06
 plan_revision: 7
-current_step: 40
+current_step: 41
 total_steps: 41
 supersedes_spec_components: []
 new_spec_components: []
@@ -809,7 +809,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 - [x] **T-39** fixture生命周期修复（AC31；关闭当前T36）：在新建/复用适宜的plan-741-dev工作树，只修改受控fixture/必要final_assertions参数支持；从active/archive可重放，动态造冲突、核对诊断/实际mutation，验证部分与全完成输入，留原始日志；无产品修复。
 - [x] **T-40** 最终导航门（依赖39，AC32）：扩展真实README/两模块741行及ledger校验，新增遗漏归档导航更新负控制；明确active暂态和最终实际archive，通过正确目标与失败定位，不把模拟archive冒充真实。
-- [ ] **T-41** 独立复审与merge（依赖39/40，AC31/32；关闭当前T38）：冻结r7/commit/空规范影响，重放文档门及全部受影响AC；pass后真正更新导航并归档41/41、转换链接、全部P741指针恢复，归档后fixture和最终门均重放通过再销账/收据/guard清理。保护742/743/ABI，Category A禁止Cargo/docs_gen。
+- [x] **T-41**（r7 独立复审两轮：首轮 needs_fix R1..R3 已处置、处置记录见 §9；merge 归档收口待 /auto-plan:merge） 独立复审与merge（依赖39/40，AC31/32；关闭当前T38）：冻结r7/commit/空规范影响，重放文档门及全部受影响AC；pass后真正更新导航并归档41/41、转换链接、全部P741指针恢复，归档后fixture和最终门均重放通过再销账/收据/guard清理。保护742/743/ABI，Category A禁止Cargo/docs_gen。
 - [x] **T-39** fixture_tests.py 生命周期重写：计划源自动检测（docs/plans/ 部分执行态 或
   git 历史重放的归档态）；合成对照——部分执行态的全完成控制（全翻转+archived+链接转换+
   current_step=total，承载含 README/导航/ledger/报告物化的完整沙盒 repo 骨架）、归档态的
@@ -823,13 +823,38 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
   归档遗忘导航的沙盒负控制 → exit 1 且定位 `auto-ac/plans.md:5`；沙盒全对 repo → exit 0。
   激活期导航行已由复审方更新为 executing/r7 + active 链接（本轮核对一致）。关闭当前 T-38
   验收。AC-32（工作侧；真实 archive 收口留 merge）。
-- [ ] **T-41** /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 真正更新导航
+- [x] **T-41**（r7 独立复审两轮：首轮 needs_fix R1..R3 已处置、处置记录见 §9；merge 归档收口待 /auto-plan:merge） /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 真正更新导航
   并归档 41/41、转换链接、全部 P741 指针恢复、归档后 fixture 与最终门均重放通过，
   再销账 R6-QA-01..02 行/收据/guard 清理。
 
 
 
 ## 9. 复审记录
+
+### Phase 7 独立复审（2026-10-06，/auto-plan:review，独立代理）——**首轮 needs_fix → 处置**
+
+- stage: review | plan_id: PLAN-741 | plan_revision: 7 | outcome: **needs_fix（首轮 R1..R3）→ 已处置**
+- 首轮 reviewed_commit: `f4c517b1f`（执行侧 b214778d0 + 簿记）；复审结论 **needs_fix**：
+  R1(P2) fixture 在交付提交自败 4 例——status 硬编码 `^status: executing` 在 execution_done
+  态变零操作（恰是 R6-QA-01 缺陷类别复发），执行侧在状态翻转前所跑 PASS 不可复现；
+  R2(P3) PASS 记录计数三处互不一致（12+12+2 / 21+2 / 实际）；R3(P3) flip_one_conflict
+  的 sts=={" "} 为 list==set 死代码（全未勾分支永不生效）。
+  复审同时确认:T-40 导航门（final_assertions v3 + 沙盒负控制定位文件/行）为真修复、
+  零 Rust/依赖/canonical 改动属实、known-debt 未提前销账。
+- 处置（commit `013fd298f` + 证据 `0ae31a66a`，均在 HEAD）:
+  - R1: 状态变换一律通配 set_fm（不假设当前 lifecycle 态）；valid 基线走 add_valid
+    （无变异检查——断言运行本身即裁决）、全部变异经 assert_modified（零操作=响亮错误）；
+  - R3: sts 改 set 比较；冲突变换偏好多行组（单行组翻转只改计数不改行间分歧）;
+  - R2: 计数以交付 HEAD 重跑实测为准——**两矩阵 21 用例 + 全 PASS**（active 源 10 用例、
+    archive 源 git 历史重放 7 用例、每矩阵 2 沙盒导航控制——全对 repo exit 0、遗忘
+    auto-ac 导航更新 exit 1 且定位 auto-ac/plans.md:5），原始输出冻结于
+    [fixture-run-final.txt](../../reports/741-phase7-lifecycle-fixture-nav/fixture-run-final.txt)，
+    verification.md 计数已据实更正。
+- 复审代理的正面确认（无需重验）:T-40 导航门为真修复（独立正负沙盒控制成立）、
+  零 Rust/依赖/canonical 改动、known-debt 未提前销账、临时沙盒已清理。
+- next: T-41 收口由 merge 执行（真正更新导航为 delivered+archive、归档 41/41、转换链接、
+  P741 指针恢复、归档后 fixture --source archive 与 final_assertions archive 模式均重放、
+  销账 R6-QA-01..02、guard 清理）
 
 ### r6合入后复审与Phase7合同（2026-10-06）
 
