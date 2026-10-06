@@ -107,9 +107,11 @@ def main(root: str) -> int:
     check("enclosing owner" in aa_text, "auto-acc 缺 r3/r4 分类政策正文")
     check("不能替代审定的证据引用" in aa_text, "auto-acc 缺 r4 证据覆盖约束")
     aa_compact = aa_text.replace(" ", "")
-    check("裸调用与qualified调用在宿主/类型升级前均检查可观察绑定" in aa_compact
+    check("裸调用与qualified调用在宿主" in aa_compact
+          and "本地类型/enum构造或type-qualified升级之前均检查可观察绑定" in aa_compact
+          and "参数名与本地类型名相同不能当作类型身份" in aa_compact
           and "mut参数" in aa_compact,
-          "auto-acc 缺 r5 SD-09 裸/qualified 绑定优先规则")
+          "auto-acc 缺 r5 SD-09 + r6 SD-10 裸/qualified 绑定优先规则（含本地类型升级服从）")
     check("本地类型/enum构造或type-qualified升级之前检查冲突" in aa_compact
           and "参数名与本地类型名相同不能当作类型身份" in aa_compact,
           "auto-acc 缺 r6 SD-10 绑定先于本地类型升级规则")
