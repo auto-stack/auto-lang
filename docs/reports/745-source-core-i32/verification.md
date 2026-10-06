@@ -108,11 +108,15 @@ D: 恢复 ~30G。最终数字均为**原生同树执行**（无 env 覆盖）。
 | 741 回归 | `verify-ac-741.ps1 -SkipMainGates` | **all 13 steps PASS**（§2） |
 | 745 全量 | `verify-ac-source-745.ps1` | **all 12 steps PASS (74 cases)**（§2） |
 
-### 日常档预存红归因（同源对照法）
+### 日常档预存红归因（同源对照法；历史证据限度注记）
 
 745 的 diff 完全不含 `crates/**`（git diff 逐文件核对：仅 experimental/ac-core、
 scripts、docs）。为满足"预存红按同源码/环境 scoped 对照归因"，在**主检出**
-（crates/ 同源、热缓存、无 env 覆盖）跑同一全量命令并做失败集合 diff：
+跑同一全量命令并做失败集合 diff。**历史限度（r2 复审更正）**：该对照运行时主检出
+已合入 plan-742（crates 相差 742 变更），并非严格同源码对照；27 处共现核心红在
+pre/post-742 两种 crates 状态下逐名一致、745 diff 与全部失败域零交集支持归因，
+但"严格同源逐项零新增已证明"的表述不成立——正确表述为：**在两种相近基线上
+失败集合一致，且无任何失败落在 745 触面上**。后续轮次的对照同此口径。
 
 - **双方共现 27 处**（预存红核心，与 745 无关）：a2r_std_signature_parity
   （KNOWN-DEBT 396 签名漂移，v0.6-dev ↔ auto-down master）、ffi_dep_parity/
@@ -175,3 +179,27 @@ master HEAD，与 lang-742 组同基线），745 未修改 auto-down 任何文�
 
 预存红口径沿用前轮（同源对照 + 名称集合），不修不相关旧功能；已知 27–29
 核心红名单在历史收据与复审 daily-results.txt 中，供 KNOWN-DEBT 登记参考。
+
+
+## 9. r2 needs_fix 修复轮执行记录（2026-10-06，reviewer 报告 R2-QA-01..05 逐项）
+
+复审报告：[review-r2/REVIEW.md](../../plans/attachments/745/review-r2/REVIEW.md)。
+修复提交：ad226453b（实现+测试）→ 本提交（报告）。全部 D01..D14/E01..E02 反例
+回放通过并固化为永久 fixtures/tests；上轮 QA-02/04/07/08 经复审确认清偿。
+
+| 发现 | 修复 | 执行证据 |
+|---|---|---|
+| R2-QA-01 括号内换行后续算误拒 | 行纪律改为动态锚：非括号表达式的 ENTRY token 可起于任意行，其后每个 token 须与**前一已消费 token** 同行；括号/实参子式闭括号后 `last_line` 合法前移 | D01=5/D02=6/D03=1/D04=6/D05=2 native；C01/C03/D06 仍拒；D07=7（ac_start+sf_ac_start 并存） |
+| R2-QA-02 助手超时返回成功+吞输出 | Rust `run_deadlined` 重写：字节级排空（无效 UTF8 → lossy 保留而非清空）+通道化收件（无任何无界 join）+单一截止覆盖执行与采集+kill 后 wait 回收；PS `Invoke-Captured` 同步重写：事件化增量采集（MessageData 传引用）+到期 taskkill /T /F 树杀+正常路径有界静止窗口排空（预算内封顶） | 控制实测：后代持管道 5s/截止 800ms → 有界返回 timed_out=true（<3s）；无效 UTF8 → PREFIX/SUFFIX 保留+FFFD 替换；PS 探针：后代持管 449ms 有界、失控进程 1240ms 树杀 TimedOut |
+| R2-QA-03 两 Stray 分支被当有效终结 | `stmt_term` 组合规则修正：任一 arm 含 Stray → 整体按 Stray 处理（不分裂尾块），结构门不再先败、数据流走查恢复；纯 (Div,Div) 仍分裂 | D10 双 Stray → loop-target-scope@1:27(break)+1:42(continue)；D13 同；D08/D14 有效 break/continue 的死语句锚定保留（let x = 2） |
+| R2-QA-04 两项 oracle 缺口 | ① 同类型越域 Bundle 变异入永久测试：outer/inner 同为 i32，仅改 return 的 ReadLocal 指向 inner → 真实 verify 报 `verify.uninitialized-read`（逐变异断言输入改变）；② 三件**真文件** publish 回滚：FileShare.None 持有 receipt → 备份 rename 失败 → 回滚后 exe/obj/receipt 三件 byte-identical；旧"目录占位"路径保留并明确标注为用户占位保护控制，两者分列 | tampered_bundle 第4变异；`source_publish_failure_rolls_back_three_real_files`；报告本节分列 |
+| R2-QA-05 深层不闭合栈溢出 | parser 递归下降汇点（表达式 unary/expr 与 block）加 `NEST_LIMIT=200` 深度护栏：越限 → `source.syntax` "nesting deeper than 200 levels"；资源护栏而非支持集收缩（语料实测最深 ~4） | E01（16 层合法）通过；E02（4096 层不闭合，4122B）经 CLI 实测 exit 1 + source.syntax（原 -1073741571 溢栈）；深层不闭合 BLOCKS 同护栏（in-process 测试） |
+
+D 系反例额外确认：D11 转义 char、D12 关键字命名实参分类正确（r1 轮已修，固化
+为 fixtures）；D09（return/break 混合臂）按 verify 保守规则接受为调查控制，
+不新增验收要求。
+
+## 10. r2 修复轮门禁（同树串行，T-07 收口回填）
+
+（收口时回填：ac-core 全量、两套脚本、正确 inventory、主仓 check/t/tv 与
+预存红口径对照。）
