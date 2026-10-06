@@ -59,6 +59,26 @@ pub fn compile_source(
     module_path: &str,
     capabilities: &[String],
 ) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let parts = compile_parts(src, module_path, capabilities)?;
+    let checked = crate::verify::verify(parts.bundle)?;
+    Ok(CompiledSource {
+        profile: SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
+
+/// Successful compilation up to (but not including) verification: the
+/// span-projected bundle plus the adapter receipt data. This is the seam
+/// the §6 mutation matrix exercises — a tampered bundle must go back
+/// through the real verifier and can never reuse Checked credentials.
+/// Production callers use [`compile_source`], which always verifies.
+pub fn compile_parts(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<SourceParts, Vec<Diagnostic>> {
     let program = super::parse_program(src).map_err(|d| vec![d])?;
     let resolved = super::resolve::resolve(&program, capabilities)?;
     typecheck::typecheck(&resolved)?;
@@ -83,13 +103,23 @@ pub fn compile_source(
         }
     };
     em.reanchor_spans(&mut bundle, src).map_err(|d| vec![d])?;
-    let checked = crate::verify::verify(bundle)?;
-    Ok(CompiledSource {
+    Ok(SourceParts {
         profile: SOURCE_PROFILE,
         input_hash: fnv1a_hex(src.as_bytes()),
         atom_text,
-        checked,
+        bundle,
     })
+}
+
+/// Unverified compilation output (see [`compile_parts`]).
+pub struct SourceParts {
+    pub profile: &'static str,
+    /// FNV-1a 64-bit content hash of the input bytes.
+    pub input_hash: String,
+    /// The generated Atom text (deterministic internal encoding).
+    pub atom_text: String,
+    /// The bound, span-projected bundle; verify it before any use.
+    pub bundle: crate::hir::Bundle,
 }
 
 fn fnv1a_hex(bytes: &[u8]) -> String {
@@ -244,15 +274,18 @@ impl PlanCtx<'_> {
             span: rb.span,
         });
         let mut cur = bid;
-        let mut after_return = false;
+        let mut split_after = false;
         for s in &rb.stmts {
-            if after_return {
-                // Dead code after `return`: its own unreferenced block —
-                // faithful to its unreachability; the verifier rejects it
-                // with `verify.block-structure` at the dead statement.
-                // After break/continue, trailing statements stay in the
-                // same block so the dataflow walk (loop-target-scope and
-                // after-terminator checks) still runs on them.
+            let term = stmt_term(s);
+            if split_after {
+                // Dead code after a terminator (return, a valid
+                // break/continue, or an if/loop whose every path left):
+                // its own unreferenced block — faithful to its
+                // unreachability, and the verifier rejects it with
+                // `verify.block-structure` anchored AT the dead statement.
+                // After a STRAY break/continue trailing statements stay in
+                // the same block so the dataflow walk still runs and owns
+                // the loop-target-scope rejection.
                 cur = plan.blocks.len();
                 plan.blocks.push(BNode {
                     stmts: Vec::new(),
@@ -261,17 +294,15 @@ impl PlanCtx<'_> {
                     fallback: stmt_span(s),
                     span: stmt_span(s),
                 });
-                after_return = false;
+                split_after = false;
             }
-            let terminated = self.plan_stmt(plan, f, cur, s);
-            if terminated {
-                if let RStmt::Return { .. } = s {
-                    after_return = true;
-                }
+            self.plan_stmt(plan, f, cur, s);
+            if term != Term::No {
                 if plan.blocks[cur].span_cut.is_none() {
                     let n = plan.blocks[cur].stmts.len();
                     plan.blocks[cur].span_cut = Some(n - 1);
                 }
+                split_after = matches!(term, Term::Ret | Term::Div);
             }
         }
         bid
@@ -543,6 +574,61 @@ impl PlanCtx<'_> {
     }
 }
 
+/// How a statement's execution leaves its block, mirroring the verifier's
+/// conservative Flow semantics (used only to decide where dead code starts
+/// so the verifier can anchor its rejection at the illegal trailing
+/// statement; the verifier itself stays the authority).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Term {
+    /// Control falls through to the next statement.
+    No,
+    /// All paths leave via `return`.
+    Ret,
+    /// All paths leave via a valid `break`/`continue` (or a stray one —
+    /// still Diverged for the verifier's flow lattice).
+    Div,
+    /// A stray `break`/`continue` with no enclosing loop: a terminator for
+    /// the walk, but trailing statements must stay in the SAME block so the
+    /// dataflow walk still runs and owns the loop-target-scope rejection.
+    Stray,
+}
+
+fn stmt_term(s: &RStmt) -> Term {
+    match s {
+        RStmt::Return { .. } => Term::Ret,
+        RStmt::Break { target, .. } | RStmt::Continue { target, .. } => match target {
+            Some(_) => Term::Div,
+            None => Term::Stray,
+        },
+        RStmt::If { then, els, .. } => match els {
+            // (Returned, Returned) -> Returned; (Diverged, Diverged) ->
+            // Diverged; anything mixed (or no else) continues conservatively,
+            // exactly like verify's flow lattice.
+            Some(e) => match (block_flow(then), block_flow(e)) {
+                (Some(Term::Ret), Some(Term::Ret)) => Term::Ret,
+                (Some(Term::Div) | Some(Term::Stray), Some(Term::Div) | Some(Term::Stray)) => {
+                    Term::Div
+                }
+                _ => Term::No,
+            },
+            None => Term::No,
+        },
+        RStmt::Loop { body, .. } => {
+            if block_flow(body) == Some(Term::Ret) {
+                Term::Ret
+            } else {
+                Term::No
+            }
+        }
+        RStmt::While { .. } | RStmt::Let { .. } | RStmt::Assign { .. } => Term::No,
+    }
+}
+
+/// First terminator of a block, if any (None = falls through).
+fn block_flow(b: &RBlock) -> Option<Term> {
+    b.stmts.iter().map(stmt_term).find(|t| *t != Term::No)
+}
+
 fn ensure_loop(plan: &mut FnPlan, id: usize, span: Span) {
     while plan.loops.len() <= id {
         plan.loops.push(span);
@@ -748,9 +834,16 @@ impl<'p> Emitter<'p> {
         frag!("{", program_span);
         nl!(12);
         for f in &self.program.fns {
+            // The declared `name` is the object-file symbol. Source
+            // functions carry an `sf_` prefix so the native namespace stays
+            // isolated from the backend's fixed imports/exports
+            // (`ExitProcess`, `ac_start`): a source function may legally
+            // carry either name (QA-02) without a symbol-table collision.
+            // Identity stays in the def id (`d_<name>`), so resolution,
+            // recursion and the CLI's entry-by-name lookup are unaffected.
             frag!(
                 &format!(
-                    "function d_{} t_f_{} {{ name: \"{}\"; body: \"b_{}\" }}",
+                    "function d_{} t_f_{} {{ name: \"sf_{}\"; body: \"b_{}\" }}",
                     f.name,
                     f.name,
                     Self::esc(&f.name),

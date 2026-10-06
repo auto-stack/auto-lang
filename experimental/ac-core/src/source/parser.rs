@@ -111,6 +111,7 @@ impl<'s> Parser<'s> {
             Some(t) => match &t.tok {
                 Tok::Ident(s) => format!("`{}`", s),
                 Tok::Kw(k) => format!("`{}`", k.as_str()),
+                Tok::Reserved(w) => format!("`{}`", w),
                 Tok::Punct(p) => format!("`{}`", p.as_str()),
                 Tok::Int(_) => "integer literal".to_string(),
                 Tok::Raw { kind, .. } => kind.describe().to_string(),
@@ -167,7 +168,9 @@ impl<'s> Parser<'s> {
                 Ok(Ident { name, span })
             }
             // An excluded-surface token where a name is expected is an
-            // unsupported surface, not a structural error (N49).
+            // unsupported surface, not a structural error (N49). Keywords
+            // — the profile's own or reserved full-language ones — can
+            // never be names (C12).
             Some(Token {
                 tok: Tok::Raw { kind, .. },
                 span,
@@ -179,6 +182,14 @@ impl<'s> Parser<'s> {
                 ),
                 span,
             )),
+            Some(Token { tok, span, .. }) if matches!(tok, Tok::Kw(_) | Tok::Reserved(_)) => {
+                let word = match tok {
+                    Tok::Kw(k) => k.as_str().to_string(),
+                    Tok::Reserved(w) => w.clone(),
+                    _ => unreachable!(),
+                };
+                Err(self.unsupported(format!("keyword `{}` cannot be used as a name", word), span))
+            }
             _ => Err(self.syntax(format!("expected {}, found {}", what, self.describe_cur()))),
         }
     }
@@ -231,6 +242,13 @@ impl<'s> Parser<'s> {
                 let span = self.peek().unwrap().span;
                 Err(self.unsupported(
                     format!("`{}` is not part of this source profile", k.as_str()),
+                    span,
+                ))
+            }
+            Some(Tok::Reserved(word)) => {
+                let span = self.peek().unwrap().span;
+                Err(self.unsupported(
+                    format!("`{}` is not part of this source profile", word),
                     span,
                 ))
             }
@@ -291,7 +309,7 @@ impl<'s> Parser<'s> {
                     name.span.join(rparen),
                 ));
             }
-            Some(Tok::Ident(_)) => {
+            Some(Tok::Ident(_)) | Some(Tok::Reserved(_)) => {
                 let t = self.peek().unwrap();
                 return Err(self.unsupported(
                     format!(
@@ -339,7 +357,7 @@ impl<'s> Parser<'s> {
     fn param_type(&mut self, pname: &Ident) -> Result<TypeAnn, Diagnostic> {
         match self.peek().map(|t| t.tok.clone()) {
             Some(t) if Self::is_type_word(&t) => Ok(self.type_word()),
-            Some(Tok::Ident(_)) => {
+            Some(Tok::Ident(_)) | Some(Tok::Reserved(_)) => {
                 let t = self.peek().unwrap();
                 Err(self.unsupported(
                     format!(
@@ -360,7 +378,7 @@ impl<'s> Parser<'s> {
     fn decl_ann(&mut self) -> Result<Option<TypeAnn>, Diagnostic> {
         match self.peek().map(|t| t.tok.clone()) {
             Some(t) if Self::is_type_word(&t) => Ok(Some(self.type_word())),
-            Some(Tok::Ident(_)) => {
+            Some(Tok::Ident(_)) | Some(Tok::Reserved(_)) => {
                 let t = self.peek().unwrap();
                 Err(self.unsupported(
                     format!(
@@ -488,13 +506,23 @@ impl<'s> Parser<'s> {
                     value,
                 })
             }
-            Some(Tok::Ident(_)) => {
+            Some(Tok::Ident(_))
+            | Some(Tok::Kw(Kw::True))
+            | Some(Tok::Kw(Kw::False))
+            | Some(Tok::Int(_)) => {
                 // N41: an expression statement (e.g. a bare call) — calls are
                 // only allowed where a value is consumed.
                 let e = self.expr(false)?;
                 Err(self.unsupported(
                     "expression statements are not part of this source profile; calls are only allowed in initializers, assignments, returns and conditions",
                     e.span,
+                ))
+            }
+            Some(Tok::Reserved(word)) => {
+                let span = self.peek().unwrap().span;
+                Err(self.unsupported(
+                    format!("`{}` is not part of this source profile", word),
+                    span,
                 ))
             }
             _ => Err(self.syntax(format!("expected statement, found {}", self.describe_cur()))),
@@ -538,9 +566,18 @@ impl<'s> Parser<'s> {
     // -- expressions --------------------------------------------------------
 
     /// Parse an expression. `bracketed` disables the same-line rule (inside
-    /// parentheses/argument lists, newlines are whitespace).
+    /// parentheses/argument lists, newlines are whitespace). Unbracketed
+    /// expressions are line-bound: the first token's line anchors the whole
+    /// expression, and any token that would continue it on another line is
+    /// a syntax error (QA-01: operators' right-hand sides and call parens
+    /// included).
     fn expr(&mut self, bracketed: bool) -> Result<Expr, Diagnostic> {
-        self.binary(1, bracketed)
+        let expr_line = if bracketed {
+            None
+        } else {
+            Some(self.peek().map(|t| t.line).unwrap_or(self.last_line))
+        };
+        self.binary(1, bracketed, expr_line)
     }
 
     /// Operators that exist in the wider language but are outside the
@@ -564,8 +601,13 @@ impl<'s> Parser<'s> {
         )
     }
 
-    fn binary(&mut self, min_prec: u8, bracketed: bool) -> Result<Expr, Diagnostic> {
-        let mut lhs = self.unary()?;
+    fn binary(
+        &mut self,
+        min_prec: u8,
+        bracketed: bool,
+        expr_line: Option<usize>,
+    ) -> Result<Expr, Diagnostic> {
+        let mut lhs = self.unary(bracketed, expr_line)?;
         loop {
             let Some(tok) = self.peek().cloned() else {
                 break;
@@ -599,7 +641,7 @@ impl<'s> Parser<'s> {
             }
             self.pos += 1;
             self.last_line = tok.line;
-            let rhs = self.binary(prec + 1, bracketed)?;
+            let rhs = self.binary(prec + 1, bracketed, expr_line)?;
             lhs = Expr {
                 span: lhs.span.join(rhs.span),
                 kind: ExprKind::Binary {
@@ -612,11 +654,37 @@ impl<'s> Parser<'s> {
         Ok(lhs)
     }
 
-    fn unary(&mut self) -> Result<Expr, Diagnostic> {
+    fn unary(&mut self, bracketed: bool, expr_line: Option<usize>) -> Result<Expr, Diagnostic> {
+        // Line boundary of an unbracketed expression: every token the
+        // expression consumes must sit on the expression's own line. The
+        // entry token defines that line, so this only fires for tokens
+        // reached after an operator (C01) — bracketed contexts are exempt.
+        if let Some(line) = expr_line {
+            if let Some(t) = self.peek() {
+                if t.line != line {
+                    return Err(self.err(
+                        "source.syntax",
+                        "unbracketed expression cannot continue across a newline",
+                        t.span,
+                    ));
+                }
+            }
+        }
         match self.peek().map(|t| (t.tok.clone(), t.span)) {
             Some((Tok::Punct(P::Minus), mspan)) => {
                 match self.peek2().map(|t| t.tok.clone()) {
                     Some(Tok::Int(_)) => {
+                        if let Some(line) = expr_line {
+                            if let Some(t2) = self.peek2() {
+                                if t2.line != line {
+                                    return Err(self.err(
+                                        "source.syntax",
+                                        "unbracketed expression cannot continue across a newline",
+                                        t2.span,
+                                    ));
+                                }
+                            }
+                        }
                         self.pos += 1; // minus
                         let t = self.bump();
                         let Tok::Int(digits) = t.tok else {
@@ -696,7 +764,20 @@ impl<'s> Parser<'s> {
                 })
             }
             Some((Tok::Ident(_), _)) => {
-                if matches!(self.peek2().map(|t| &t.tok), Some(Tok::Punct(P::LParen))) {
+                // A call's `(` must sit on the callee's line unless the
+                // whole expression is bracketed (C03: a parenthesized
+                // argument list on the NEXT line is a new statement, not a
+                // call of the previous identifier).
+                let paren_same_line = match self.peek2() {
+                    Some(t) if t.tok == Tok::Punct(P::LParen) => {
+                        bracketed
+                            || expr_line.map_or(true, |l| {
+                                t.line == self.peek().map(|i| i.line).unwrap_or(l)
+                            })
+                    }
+                    _ => false,
+                };
+                if paren_same_line {
                     let callee = self.expect_ident("callee")?;
                     self.expect_punct(P::LParen, "`(`")?;
                     let mut args = Vec::new();
@@ -753,6 +834,13 @@ impl<'s> Parser<'s> {
                     })
                 }
             }
+            Some((Tok::Punct(P::Bang), bspan)) => {
+                Err(self.unsupported("unary `!` is not part of this source profile", bspan))
+            }
+            Some((Tok::Reserved(word), span)) => Err(self.unsupported(
+                format!("keyword `{}` is not part of this source profile", word),
+                span,
+            )),
             Some((Tok::Punct(P::LParen), _)) => {
                 self.pos += 1;
                 self.last_line = self.toks[self.pos - 1].line;

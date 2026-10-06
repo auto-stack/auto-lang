@@ -147,10 +147,31 @@ impl RawKind {
     }
 }
 
+/// Full-language keywords that this profile does not use (mirrors the
+/// production lexer's `Token::all_keywords()` set plus `with`; the subset
+/// the profile actually consumes stays in [`Kw`]). They lex as their own
+/// token kind so "recognized but excluded" (source.unsupported) stays
+/// distinguishable from genuinely bad tokens (source.lex) and bad grammar
+/// (source.syntax). A keyword can never be used as a name.
+pub const RESERVED_KEYWORDS: &[&str] = &[
+    "alias", "as", "await", "catch", "const", "copy", "dep", "enum", "ext", "for", "go", "has",
+    "hold", "impl", "in", "is", "link", "mod", "move", "mut", "nil", "null", "outlet", "pac",
+    "reply", "routes", "shared", "spawn", "spec", "static", "super", "super2", "super3", "super4",
+    "tag", "take", "task", "to", "try", "type", "union", "use", "view", "with", "yield",
+];
+
+pub fn is_reserved_keyword(name: &str) -> bool {
+    RESERVED_KEYWORDS.contains(&name)
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Tok {
     Ident(String),
     Kw(Kw),
+    /// Full-language keyword outside this profile: recognized, but rejected
+    /// with `source.unsupported` wherever it appears (never usable as a
+    /// name).
+    Reserved(String),
     Punct(P),
     /// Unsigned decimal digits; a leading `-` is a separate [`P::Minus`]
     /// token folded into a signed literal by the parser.
@@ -318,6 +339,14 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, Diagnostic> {
                             text.push('"');
                             break;
                         }
+                        // An escape pair belongs to the literal: it must not
+                        // end it, so `"a\"b"` lexes as ONE excluded token.
+                        Some(b'\\') if matches!(lx.b.get(lx.pos + 1), Some(&e) if e != b'\n') => {
+                            let esc = lx.src[lx.pos..].chars().nth(1).unwrap();
+                            text.push('\\');
+                            text.push(esc);
+                            lx.pos += 1 + esc.len_utf8();
+                        }
                         Some(&byte) if byte < 0x80 => {
                             text.push(byte as char);
                             lx.pos += 1;
@@ -359,6 +388,14 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, Diagnostic> {
                             lx.pos += 1;
                             text.push('\'');
                             break;
+                        }
+                        // Escape pair inside a char literal (`'\''`) stays in
+                        // the literal.
+                        Some(b'\\') if matches!(lx.b.get(lx.pos + 1), Some(&e) if e != b'\n') => {
+                            let esc = lx.src[lx.pos..].chars().nth(1).unwrap();
+                            text.push('\\');
+                            text.push(esc);
+                            lx.pos += 1 + esc.len_utf8();
                         }
                         Some(&byte) if byte < 0x80 => {
                             text.push(byte as char);
@@ -423,6 +460,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, Diagnostic> {
                 let name = &lx.src[start..lx.pos];
                 let tok = match keyword_of(name) {
                     Some(k) => Tok::Kw(k),
+                    None if is_reserved_keyword(name) => Tok::Reserved(name.to_string()),
                     None => Tok::Ident(name.to_string()),
                 };
                 out.push(Token {

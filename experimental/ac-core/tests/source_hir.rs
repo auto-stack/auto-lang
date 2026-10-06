@@ -105,7 +105,10 @@ const NEGATIVE: &[(&str, &str, &str, &str, bool)] = &[
         "n09-undefined-scope-escape.at",
         "bind",
         "source.undefined",
-        "return x",
+        // r1 review QA-03: the diagnostic anchors the NAME, not the
+        // enclosing statement (precision per §5.3/AC-04; supersedes the
+        // corpus draft's "return x" oracle).
+        "x",
         false,
     ),
     (
@@ -426,7 +429,9 @@ fn p19_user_mark_wins_over_intrinsic() {
         .defs
         .iter()
         .all(|d| !matches!(d.kind, auto_ac_prototype::hir::DefKind::Intrinsic { .. })));
-    assert!(m.defs.iter().any(|d| d.name_for_diagnostic() == "mark_a"
+    // the user function wins; its native symbol carries the sf_ prefix
+    // (QA-02 namespace isolation)
+    assert!(m.defs.iter().any(|d| d.name_for_diagnostic() == "sf_mark_a"
         && matches!(d.kind, auto_ac_prototype::hir::DefKind::Function { .. })));
 }
 

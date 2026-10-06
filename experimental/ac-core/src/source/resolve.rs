@@ -362,7 +362,7 @@ impl<'a> FnResolver<'a> {
                 ..
             } => {
                 // RHS resolves in the pre-declaration environment.
-                let value = self.expr(value, *span);
+                let value = self.expr(value);
                 let vt = match ann {
                     Some(a) => vt_of_word(a.word),
                     None => value.vt,
@@ -399,7 +399,7 @@ impl<'a> FnResolver<'a> {
                 }
             }
             Stmt::Assign { name, value, span } => {
-                let value = self.expr(value, *span);
+                let value = self.expr(value);
                 // Immutability itself is re-checked by the semantic verifier
                 // on the emitted place/local pair (verify.immutable-write);
                 // here only resolution failures are reported.
@@ -435,7 +435,7 @@ impl<'a> FnResolver<'a> {
                 }
             }
             Stmt::Return { value, span } => {
-                let value = self.expr(value, *span);
+                let value = self.expr(value);
                 RStmt::Return { value, span: *span }
             }
             Stmt::If {
@@ -444,7 +444,7 @@ impl<'a> FnResolver<'a> {
                 els,
                 span,
             } => {
-                let cond = self.expr(cond, *span);
+                let cond = self.expr(cond);
                 let then = self.block(then);
                 let els = els.as_ref().map(|e| self.block(e));
                 RStmt::If {
@@ -457,7 +457,7 @@ impl<'a> FnResolver<'a> {
             Stmt::While {
                 cond, body, span, ..
             } => {
-                let cond = self.expr(cond, *span);
+                let cond = self.expr(cond);
                 let target = LoopRef(self.loop_count);
                 self.loop_count += 1;
                 self.loop_stack.push(target);
@@ -493,7 +493,7 @@ impl<'a> FnResolver<'a> {
         }
     }
 
-    fn expr(&mut self, e: &Expr, stmt_span: Span) -> ResolvedExpr {
+    fn expr(&mut self, e: &Expr) -> ResolvedExpr {
         match &e.kind {
             ExprKind::IntLit(v) => ResolvedExpr {
                 span: e.span,
@@ -523,11 +523,13 @@ impl<'a> FnResolver<'a> {
                         );
                     } else if self.declared_names.contains(&id.name) {
                         // Declared in a scope that ended before this use
-                        // (N09): the statement is where the name leaked.
+                        // (N09/C10): point at the name itself — the token
+                        // that failed to resolve, per the §5.3 precision
+                        // rule.
                         self.bind_err(
                             "source.undefined",
                             format!("local `{}` does not escape its declaring block", id.name),
-                            stmt_span,
+                            id.span,
                         );
                     } else {
                         self.bind_err(
@@ -545,8 +547,8 @@ impl<'a> FnResolver<'a> {
             },
             ExprKind::Call { callee, args } => self.call(callee, args, e.span),
             ExprKind::Binary { op, lhs, rhs } => {
-                let lhs = self.expr(lhs, stmt_span);
-                let rhs = self.expr(rhs, stmt_span);
+                let lhs = self.expr(lhs);
+                let rhs = self.expr(rhs);
                 let vt = match op {
                     BinOp::Add | BinOp::Mul => VT::I32,
                     BinOp::Lt => VT::Bool,
@@ -569,12 +571,12 @@ impl<'a> FnResolver<'a> {
         for a in args {
             match a {
                 Arg::Pos(e) => rargs.push(ResolvedArg {
-                    value: self.expr(e, call_span),
+                    value: self.expr(e),
                     name: None,
                     span: e.span,
                 }),
                 Arg::Named { name, value, span } => rargs.push(ResolvedArg {
-                    value: self.expr(value, call_span),
+                    value: self.expr(value),
                     name: Some(ast::Ident {
                         name: name.name.clone(),
                         span: name.span,

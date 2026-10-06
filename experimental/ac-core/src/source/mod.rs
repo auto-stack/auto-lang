@@ -19,7 +19,7 @@ pub mod parser;
 pub mod resolve;
 pub mod typecheck;
 
-pub use adapter::{compile_source, CompiledSource};
+pub use adapter::{compile_parts, compile_source, CompiledSource, SourceParts};
 pub use parser::parse_program;
 
 /// The only source profile this frontend accepts. Callers must select it

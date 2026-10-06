@@ -208,134 +208,53 @@ fn build_source(
     if let Err(diags) = native::capabilities_check(&checked, &args.capabilities) {
         return fail(diags);
     }
-    // The source entry is a function NAME; locate its def id in the bound
-    // module, then let the backend's entry checks own the signature rules.
+    // The source entry is a function NAME. The adapter's def ids are
+    // `d_<name>` (identity), while the declared `name` field is the native
+    // symbol (`sf_<name>`, QA-02) — so the lookup goes through the def id,
+    // and the backend's entry checks own the signature rules.
     let entry_name = args.entry.clone().unwrap_or_default();
+    let entry_def_id = format!("d_{}", entry_name);
     let bundle = checked.bundle();
-    let mut found = Vec::new();
-    for (mi, m) in bundle.modules.iter().enumerate() {
-        for (di, d) in m.defs.iter().enumerate() {
-            if let auto_ac_prototype::hir::DefKind::Function { name, .. } = &d.kind {
-                if *name == entry_name {
-                    found.push((mi, di, d.id_text.clone()));
-                }
-            }
-        }
+    let exists = bundle
+        .modules
+        .iter()
+        .any(|m| m.defs.iter().any(|d| d.id_text == entry_def_id));
+    if !exists {
+        return fail(vec![auto_ac_prototype::atom_text::Diagnostic::new(
+            auto_ac_prototype::atom_text::Stage::Backend,
+            "entry.not-found",
+            format!("no function named `{}` in this source module", entry_name),
+            auto_ac_prototype::atom_text::Span { start: 0, end: 0 },
+        )]);
     }
-    let entry_def_id = match found.len() {
-        0 => {
-            return fail(vec![auto_ac_prototype::atom_text::Diagnostic::new(
-                auto_ac_prototype::atom_text::Stage::Backend,
-                "entry.not-found",
-                format!("no function named `{}` in this source module", entry_name),
-                auto_ac_prototype::atom_text::Span { start: 0, end: 0 },
-            )]);
-        }
-        1 => found[0].2.clone(),
-        _ => {
-            return fail(vec![auto_ac_prototype::atom_text::Diagnostic::new(
-                auto_ac_prototype::atom_text::Stage::Backend,
-                "entry.ambiguous",
-                format!(
-                    "function name `{}` occurs in {} modules; names are module-local",
-                    entry_name,
-                    found.len()
-                ),
-                auto_ac_prototype::atom_text::Span { start: 0, end: 0 },
-            )]);
-        }
-    };
     let sel = match native::find_entry(&checked, &entry_def_id) {
         Ok(s) => s,
         Err(diags) => return fail(diags),
     };
-    let obj_bytes = match native::lower_object(&checked, &sel) {
-        Ok(b) => b,
-        Err(diags) => return fail(diags),
-    };
 
-    // Artifacts live next to the requested exe; the object is written to a
-    // temporary path first so a failed link never leaves a stale .obj pair.
+    // Source metadata travels with the receipt inside the same publish
+    // transaction (no side-channel receipt writes), and the shared
+    // post-Checked build tail does the rest.
     let output = args
         .output
         .clone()
         .unwrap_or_else(|| PathBuf::from("a.exe"));
-    let out_dir = output.parent().unwrap_or(Path::new("."));
-    let stem = output
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "ac".to_string());
-    if let Err(e) = std::fs::create_dir_all(out_dir) {
-        eprintln!("error: create {}: {}", out_dir.display(), e);
-        return Err((EXIT_USAGE, vec![]));
-    }
-    let tmp_obj = out_dir.join(format!("{}.obj.tmp-{}", stem, link::staging_tag()));
-    let discard_staged_obj = |tmp_obj: &Path| match std::fs::remove_file(tmp_obj) {
-        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "error: cleanup of staged {} failed: {} (release the blocking handle, then remove)",
-                tmp_obj.display(),
-                e
-            );
-        }
-        _ => {}
-    };
-    if let Err(e) = std::fs::write(&tmp_obj, &obj_bytes) {
-        discard_staged_obj(&tmp_obj);
-        eprintln!("error: write {}: {}", tmp_obj.display(), e);
-        return Err((EXIT_PIPELINE, vec![]));
-    }
-    let obj_path = out_dir.join(format!("{}.obj", stem));
-    let lld = match link::find_rust_lld() {
-        Ok(l) => l,
-        Err(d) => {
-            discard_staged_obj(&tmp_obj);
-            return Err((EXIT_PIPELINE, vec![d]));
-        }
-    };
-    let sdk = match link::find_sdk_um_dir() {
-        Ok(s) => s,
-        Err(d) => {
-            discard_staged_obj(&tmp_obj);
-            return Err((EXIT_PIPELINE, vec![d]));
-        }
-    };
-    let staged = match link::link_object_staged(
-        &lld,
-        &sdk,
-        &tmp_obj,
-        &output,
-        native::START_SYMBOL,
-        &args.support_libs,
-    ) {
-        Ok(s) => s,
-        Err(d) => {
-            discard_staged_obj(&tmp_obj);
-            return Err((EXIT_PIPELINE, vec![d]));
-        }
-    };
-    // Source metadata joins the receipt inside the same publish
-    // transaction (no side-channel receipt writes).
     let receipt_extra = format!(
         "source-profile: {}\nsource-input-hash: {}\n",
         compiled.profile, compiled.input_hash
     );
-    let receipt =
-        match link::publish_artifacts_with_receipt(&staged, &tmp_obj, &obj_path, &receipt_extra) {
-            Ok(r) => r,
-            Err(d) => return Err((EXIT_PIPELINE, vec![d])),
-        };
-    Ok(format!(
-        "BUILT {} (entry {})\n  obj: {}\n  exe: {}\n  receipt: {}\n  linker: {}\n  source-profile: {}\n  source-input-hash: {}",
-        output.display(),
-        sel.symbol,
-        receipt.obj.display(),
-        receipt.exe.display(),
-        receipt.receipt_path.display(),
-        receipt.linker.display(),
-        compiled.profile,
-        compiled.input_hash
-    ))
+    let success_extra = format!(
+        "source-profile: {}\n  source-input-hash: {}",
+        compiled.profile, compiled.input_hash
+    );
+    finish_build(
+        &checked,
+        &sel,
+        &output,
+        &args.support_libs,
+        &receipt_extra,
+        &success_extra,
+    )
 }
 
 fn parse_build_args(args: &[String]) -> Result<BuildArgs, String> {
@@ -411,16 +330,33 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
         Ok(s) => s,
         Err(diags) => return fail(diags),
     };
-    let obj_bytes = match native::lower_object(&checked, &sel) {
+    finish_build(&checked, &sel, &args.output, &args.support_libs, "", "")
+}
+
+/// The one post-Checked build tail shared by BOTH modes (plan §2/§5.4,
+/// QA-08): lowering → staged object → toolchain discovery → staged link →
+/// transactional publish. Mode front-ends construct this process' Checked
+/// module, resolve the entry, and provide any extra receipt metadata; the
+/// staged-object cleanup contract (R3-QA-02) and the publish transaction
+/// live only here.
+fn finish_build(
+    checked: &verify::CheckedModule,
+    sel: &native::EntrySelection,
+    output: &Path,
+    support_libs: &[PathBuf],
+    receipt_extra: &str,
+    success_extra: &str,
+) -> Result<String, (u8, Vec<auto_ac_prototype::atom_text::Diagnostic>)> {
+    let fail = |diags: Vec<auto_ac_prototype::atom_text::Diagnostic>| Err((EXIT_PIPELINE, diags));
+    let obj_bytes = match native::lower_object(checked, sel) {
         Ok(b) => b,
         Err(diags) => return fail(diags),
     };
 
     // Artifacts live next to the requested exe; the object is written to a
     // temporary path first so a failed link never leaves a stale .obj pair.
-    let out_dir = args.output.parent().unwrap_or(Path::new("."));
-    let stem = args
-        .output
+    let out_dir = output.parent().unwrap_or(Path::new("."));
+    let stem = output
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "ac".to_string());
@@ -466,9 +402,9 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
         &lld,
         &sdk,
         &tmp_obj,
-        &args.output,
+        output,
         native::START_SYMBOL,
-        &args.support_libs,
+        support_libs,
     ) {
         Ok(s) => s,
         Err(d) => {
@@ -479,18 +415,27 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
     // Publish exe + obj + receipt as one transaction; a failure at any step
     // rolls back and leaves previously successful artifacts untouched. The
     // transaction owns its staged files and reports blocked cleanups itself.
-    let receipt = match link::publish_artifacts(&staged, &tmp_obj, &obj_path) {
-        Ok(r) => r,
-        Err(d) => return Err((EXIT_PIPELINE, vec![d])),
-    };
+    // `receipt_extra` joins the receipt inside the same transaction (no
+    // side-channel writes); `success_extra` echoes the same metadata on the
+    // success line (empty for the HIR mode).
+    let receipt =
+        match link::publish_artifacts_with_receipt(&staged, &tmp_obj, &obj_path, receipt_extra) {
+            Ok(r) => r,
+            Err(d) => return Err((EXIT_PIPELINE, vec![d])),
+        };
     Ok(format!(
-        "BUILT {} (entry {})\n  obj: {}\n  exe: {}\n  receipt: {}\n  linker: {}",
-        args.output.display(),
+        "BUILT {} (entry {})\n  obj: {}\n  exe: {}\n  receipt: {}\n  linker: {}{}",
+        output.display(),
         sel.symbol,
         receipt.obj.display(),
         receipt.exe.display(),
         receipt.receipt_path.display(),
-        receipt.linker.display()
+        receipt.linker.display(),
+        if success_extra.is_empty() {
+            String::new()
+        } else {
+            format!("\n  {}", success_extra)
+        },
     ))
 }
 
