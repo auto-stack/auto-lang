@@ -363,4 +363,4 @@ reviewed_commit=8b17e4de8851cdf37ccdce76a82f78422cf8bb15，outcome=pass；[独�
 | P741-R7-QA-01 | P3 | 两个导航控制未实际运行，总数固定+2；归档7报9、双源17报21且记录称已验证 | T42/AC33，纳入实际控制列表、失败传播、按执行记录计数，旧日志保留注明过期 |
 | P741-R7-QA-02 | P3 | 必需README Plan引用缺失、README/模块/P741 review指向其它存在的归档Plan均仍ALL-PASS | T43/AC34，必需引用存在及规范唯一741目标严格比较，active暂态限定规范archive/741 |
 
-同741激活r8 current38/total44，只重开T39..41，新增T42..44；未实施/未销账，不改Rust/行为Spec/live ledger，P741-3..9归档暂态由最终merge恢复。742/743/ABI及历史收据保留。
+同741激活r8 current38/total44，只重开T39..41，新增T42..44；未实施/未销账，不改Rust/行为Spec/live ledger，P741-3..9归档暂态由最终merge恢复。742/743/ABI及历史收据保留。；**已清偿**（r8 T-42 两矩阵导航控制以 add_external 进入统一 cases 真实执行（各带沙盒 repo root）+ 总数从执行记录派生（固定 +2 删除）；控制性确认 forgotten-nav-update 期望改 0 → fixture 整体非零（失败传播）；--source auto 实测 25 用例全 PASS）；**已清偿**（r8 T-43 final_assertions canonical 目标身份检查（README 必须存在 741 计划引用；README/两模块导航/全部 P741-* review 指针解析后必须恰等于 docs/plans[/archive]/741-ac-hir-native-core.md，错目标失败含 expected/got 与 entry ID；激活期 canonical_archive 尚不存在=显式列暂态）；4 个 identity 沙盒负例 + 反向验证旧版门假通过全部实证）
