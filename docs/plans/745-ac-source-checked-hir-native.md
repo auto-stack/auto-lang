@@ -263,6 +263,9 @@ src/tests新路径均相对experimental/ac-core；reports新路径相对docs/rep
 
 2026-10-06 stage=new，PLAN-745 r1：完成合同预检，目标/类型/支持/反例/SD/角色/任务覆盖一致。
 未运行Rust/PE，T01..09均未执行，不是最终review pass。建树登记完成后的交接收据见worktree.md。
+实际Git工作树已建并登记（创建提交c5e3875b67174d50193f8945fdfb1e3ec9eb1741，reparse点0，状态clean）。
+stage=new / outcome=pass（规划交接完成）/ next=work T-01（待用户确认r1）；status=drafting，0/9。
+本树不属于Codex应用托管树，登记以Git+本计划为准，不创建第二树；wt-guard.sh缺失由T09恢复，删除前须正式guard clean。
 技能源=C:/Users/zhaop/.agents/skills/auto-plan-new/SKILL.md及references/verification-contract.md。
 
 ## 10. 待澄清事项
