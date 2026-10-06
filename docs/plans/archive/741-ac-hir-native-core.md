@@ -869,6 +869,44 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 ## 9. 复审记录
 
+### 合并收据（2026-10-06，/auto-plan:merge）PLAN-741:r8
+
+- stage: merge | plan_id: PLAN-741 | plan_revision: 8 | outcome: pass
+- prepared: reviewed 基线 c5a771acc（无 rebase——分支已基于最新主线；worktree clean）；
+  **空规范影响**——本 Phase 无 SD 沉淀（canonical specs 零改动，无 SD-10）；
+  组内只读依赖 auto-down（detached @ fba6563e，同 r1..r7）
+- landed: 主检出 `git merge --ff-only` 无 merge commit，tip 先至 c5a771acc；
+  ledger P741-10 纯投影后置提交 cd0d3db5b；主检出冒烟：final_assertions active
+  ALL-ASSERTIONS-PASS + fixture --source auto 25 用例全 PASS（Category A 零 Cargo）
+- ledger_refreshed: .autoos/specs.json reviews 新增 P741-10（r8 复审+identity 门收据）；
+  P741-3..9 归档指针在本轮归档后全部可解析；docs/specs/INDEX.md 重建归一 LF=零 diff；
+  docs/specs/{auto-hir,auto-ac}/plans.md 行更新为 delivered（r8）+ archive 链接
+  （**P741P8-R2 订正**:首轮精确匹配替换静默未命中——行文本已变，改 regex 更新并核对）
+- archived: docs/plans/archive/741-ac-hir-native-core.md（git mv），status: archived，
+  completion_kind: delivered；**归档时链接转换 17 处**（../reports → ../../reports）；
+  README:8、KNOWN-DEBT 741 Phase4 链接随归档指回 archive/；
+  KNOWN-DEBT P741-R7-QA-01..02 行销账（0d941e096）
+- **archive 模式双门重放（r8 特有收口，AC-33/34）**:
+  - final_assertions v4 --location archive: ALL-ASSERTIONS-PASS——frontmatter 44/44 与
+    实际交叉核对一致、17 转换链接自真实 archive 父目录解析、README+两模块导航行
+    delivered+archive 形、8 项 P741-* review 指针全部 archive/ 可解析;
+  - fixture_tests --source archive: 13/13 PASS——含 4 个 identity 负例（nav 错目标、
+    README 缺引用、README 错目录、ledger 错指 743 占位）与 2 个导航控制正负例;
+  - **导航更新真实对应修改的收口证据（续 P741P7-R2 教训）**: 两模块 plans.md 行由
+    executing/r8+active 链接实际变更为 delivered/r8+archive 链接（47edf5e21 diff 在案），
+    且归档模式断言逐行验证后通过。
+- cleaned: **完成（2026-10-06）**——文档引用的 D:/autostack/wt-guard.sh 本机不存在
+  （r1..r7 同一偏差记录），按其文档语义以 PowerShell ReparsePoint 递归扫描替代
+  （组目录 lang-741 全树 clean）后：worktree D:/autostack/.wt/lang-741/auto-lang 移除、
+  auto-down 兄弟检出经 auto-down 仓 `git worktree remove` 移除、分支 plan-741-dev 删除
+  （was c5a771acc=已落地祖先）、组目录 lang-741 rmdir 成功
+- 交付摘要: r8 修复 r7 合入后复审全部缺口（R7-QA-01..02，零 Rust 改动）：导航控制
+  真实执行化（总数从执行记录派生）、引用存在性与 canonical 目标身份检查（缺失/错目标
+  失败含 entry ID）；独立代理复审 pass（AC-33..34）+ 旧版门假通过反向验证
+- 备注: 三条 P4 随复审记录留档并已处置/转录（R1 DBG 已删、R2 分布已订正、R3 硬化
+  建议留档）；本计划八次交付（r1 闭环、r2..r7 五轮修复、r8 验收器身份硬化）全部完成；
+  归档态由 final_assertions v4 + fixture 生命周期/身份矩阵双脚本守护
+
 ### Phase 8 独立复审（2026-10-06，/auto-plan:review，独立代理）
 
 - stage: review | plan_id: PLAN-741 | plan_revision: 8 | outcome: **pass**
