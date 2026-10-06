@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-745
-status: executing
+status: execution_done
 feature_name: Auto 源码计算子集 → Checked HIR → Windows native
 author: [Codex]
 created_at: 2026-10-06
 updated_at: 2026-10-06
 plan_revision: 1
-current_step: 6
+current_step: 7
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-hir/stage-contract.md
@@ -252,7 +252,7 @@ AC01..07先内部检查，再最终独立复审全部重新审定；AC09不承�
 | T-04 | [x] | work | T03 | src/main.rs新命令/共用Checked构建；source/mod.rs显式profile/trace表；必要link.rs收据追加保持事务；tests/source_cli.rs | AC03,04,06；新source_cli+旧cli/native/trace tests。〔2026-10-06 work：worktree commit c5af427d9；check-source/build-source（漏/未知profile=2、0/1/2分级、entry按函数名查def id）、link.rs新增publish_artifacts_with_receipt（源码profile/hash同事务入.ac-link.txt，旧函数零语义变化委托）；10 CLI测试全绿（真实PE构建运行P01=14/P13=70、失败零制品、entry.not-found/signature、trace无support-lib链接失败、旧check仍仅Atom）；全ac-core 90测通过零警告〕 |
 | T-05 | [x] | work | T04 | 新tests/source_native.rs、scripts/verify-ac-source-745.ps1，物化执行JSON全部case和§6补充；docs/reports/745-source-core-i32/verification.md及原始收据 | AC01..06；ac-core全test+新一键脚本，60s/code/trace/token/hash/制品。〔2026-10-06 work：worktree commit addcf4d5a；脚本实测 **all 12 steps PASS (74 cases)**（21正例真实构建+运行退出码/stderr oracle全中含P15=12/stderr ba、P13/P14/P16=70、60s硬截止、三制品+sha256收据；53负例exit 1+stage/code标记全中）；source_native 2测试串行7.5s；§6补充矩阵九行证据映射入verification.md §5；主仓门禁留T-07回填〕 |
 | T-06 | [x] | work | T05 | ac-core/README.md，proposed-spec-delta.md及MD408/409更新提案/新鲜绑定策略，不直接改canonical | AC07；python scripts/acc_inventory.py --check --require-decisions，提案说明待merge绑定，不自动重hash掩漂移。〔2026-10-06 work：worktree commit 8b4526bd7；README 双管线/新测试族/边界更新；proposed-spec-delta.md SD01..04+MD408/409追加note+盘点检查实测（2项失败均为743扫描器工作区态非内容漂移，归merge重扫）+新鲜度绑定策略（r1+提交链+收据指纹，merge重跑替换）〕 |
-| T-07 | [ ] | work | T06 | 同树内部检查所有cases/SD/健康，§6全部门禁，提交HEAD与执行收据；work7/7→execution_done（总7/9） | AC01..07；内部pass仅交接review |
+| T-07 | [x] | work | T06 | 同树内部检查所有cases/SD/健康，§6全部门禁，提交HEAD与执行收据；work7/7→execution_done（总7/9） | AC01..07；内部pass仅交接review。〔2026-10-06 work：§6全块实测——ac-core check/fmt/all-targets零警告/全test 92绿；verify-ac-741.ps1 -SkipMainGates **13步全过**；verify-ac-source-745.ps1 **12步全过(74例)**；主仓 check -p auto-lang PASS(2m50s)；cargo t 全量 4939/4972=33失败 与主检出同源对照**完全同数**（27共现预存红+6+6对称差flake，745新增失败=0，归因收据 target/ac-verify-receipts/source-745/main-gates/）；cargo tv 158/162=4预存cookbook红两环境逐项一致；环境事件：D:满盘(os112)一次中断+C:重试曾污染ffi_dual oracle marker(已清除全部原生重跑)；组内补建只读依赖树auto-down@fba6563ed。工作树HEAD b3cd81719 clean〕 |
 | T-08 | [ ] | review | T07 | /auto-plan:review独立上下文同树，写入暂停，revision/HEAD稳定，逐AC实际证据/反例/债务/proposed delta；最终报告 | AC08并独立重验AC01..07；pass→reviewed（8/9） |
 | T-09 | [ ] | merge | T08+合入授权 | /auto-plan:merge到v0.6-dev；SD/人工盘点/ledger/导航/index/归档；批回归到期判断；wt-guard clean才清理 | AC09；实际链接/终态/9/9/清理收据，不预勾 |
 
@@ -260,6 +260,25 @@ src/tests新路径均相对experimental/ac-core；reports新路径相对docs/rep
 未来实现/最终review不得以计划表的勾选代替证据。
 
 ## 9. 复审记录
+
+2026-10-06 stage=work，PLAN-745 r1 交接记录（work 7/7 完成，execution_done）：
+
+- `stage`: work | `plan_id`: PLAN-745 | `plan_revision`: 1 | `outcome`: **pass**（内部检查，非最终复审）
+- `worktree_path`: D:/autostack/.wt/lang-745/auto-lang | `branch`: plan-745-dev
+- `base_commit`: eea7a80618d4d5e75749d666b7609a9a87925bbd | `code_commit`: b3cd81719（树 clean）
+- `dependency_revisions`: auto-down @ fba6563ed2148ce85e68208863159b4ccccac710（组内只读依赖树，detached，零修改）
+- `task_ids`: T-01..T-07 全勾（7/9；T-08/T-09 属 review/merge）
+- `evidence`: 提交链 c535b8fd6→6965c0a04→3fb6c96b6→c5af427d9→addcf4d5a→8b4526bd7→b3cd81719；
+  verify-ac-source-745.ps1 12步全过(74例)；verify-ac-741.ps1 -SkipMainGates 13步全过；
+  ac-core 92测全绿零警告零fmt问题；主仓 check/t/tv 带同源归因（745新增失败=0，
+  归因收据 experimental/ac-core/target/ac-verify-receipts/source-745/main-gates/）；
+  报告 numeric-boundary.md/verification.md/proposed-spec-delta.md 齐
+- `blockers`: 无阻塞 review 项。注记：①日常/语料档预存红 33+4 处已同源归因
+  （KNOWN-DEBT 396、dep 017 drop_count、musk/chart/gallery 族、cookbook semver 族），
+  T-08 可复核归因并考虑登记 KNOWN-DEBT-AND-RISKS；②D: 盘曾 100% 满（os112），
+  已恢复 ~30G，C:/tmp/ac745-main-gates 已删除，ffi_dual 污染 marker 已清除
+- `next_responsible_role`: review（T-08 /auto-plan:review 独立上下文，同树执行，
+  实现写入暂停；入口核对 path/branch/revision/HEAD=b3cd81719 稳定）
 
 2026-10-06 stage=new，PLAN-745 r1：完成合同预检，目标/类型/支持/反例/SD/角色/任务覆盖一致。
 未运行Rust/PE，T01..09均未执行，不是最终review pass。建树登记完成后的交接收据见worktree.md。
