@@ -590,15 +590,28 @@ pub fn publish_artifacts(
     tmp_obj: &Path,
     obj_path: &Path,
 ) -> Result<LinkReceipt, Diagnostic> {
+    publish_artifacts_with_receipt(staged, tmp_obj, obj_path, "")
+}
+
+/// [`publish_artifacts`] with extra metadata lines appended to the receipt
+/// inside the same transaction (PLAN-745 T-04: source profile and input
+/// hash travel with the receipt; no side-channel writes).
+pub fn publish_artifacts_with_receipt(
+    staged: &StagedLink,
+    tmp_obj: &Path,
+    obj_path: &Path,
+    receipt_extra: &str,
+) -> Result<LinkReceipt, Diagnostic> {
     let tag = staging_tag();
     let receipt_path = sibling(&staged.exe, ".ac-link.txt");
     let tmp_receipt = companion(&receipt_path, &format!(".tmp-{tag}"));
     let receipt_body = format!(
-        "PLAN-741 link receipt\nlinker: {}\nobj: {}\nexe: {}\nentry: {}\n",
+        "PLAN-741 link receipt\nlinker: {}\nobj: {}\nexe: {}\nentry: {}\n{}",
         staged.linker.display(),
         obj_path.display(),
         staged.exe.display(),
         staged.entry_symbol,
+        receipt_extra,
     );
     // Staged-file ownership: these three paths are created by this call and
     // must be reclaimed on every failure exit. Cleanup errors are COLLECTED,
