@@ -106,7 +106,7 @@ def main(root: str) -> int:
     aa_text = aa.read_text(encoding="utf-8") if aa.is_file() else ""
     check("enclosing owner" in aa_text, "auto-acc 缺 r3/r4 分类政策正文")
     check("不能替代审定的证据引用" in aa_text, "auto-acc 缺 r4 证据覆盖约束")
-    aa_compact = aa_text.replace(" ", "")
+    aa_compact = aa_text.replace(" ", "").replace("*", "")
     check("裸调用与qualified调用在宿主" in aa_compact
           and "本地类型/enum构造或type-qualified升级之前均检查可观察绑定" in aa_compact
           and "参数名与本地类型名相同不能当作类型身份" in aa_compact
