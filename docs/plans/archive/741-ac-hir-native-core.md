@@ -831,6 +831,46 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 ## 9. 复审记录
 
+### 合并收据（2026-10-06，/auto-plan:merge）PLAN-741:r7
+
+- stage: merge | plan_id: PLAN-741 | plan_revision: 7 | outcome: pass
+- prepared: reviewed 基线 7882540f1（两次 rebase 后；worktree clean）；**空规范影响**——
+  本 Phase 无 SD 沉淀（canonical specs 零改动，无 SD-10）；组内只读依赖 auto-down
+  （detached @ fba6563e，同 r1..r6）
+- landed: 两次 rebase（主线并行推进 743 r6、744 工作系列，每次后逐提交映射核实；最终映射
+  b214778d0→9b25e6556 / f4c517b1f→43dc3714e / 013fd298f→dbec8dbe9 / 0ae31a66a→4e6ca68bf /
+  8aad49cea→74aa6c3c3 / f8130e229→5ac3cdf7e / 状态翻转 7882540f1）；主检出
+  `git merge --ff-only` 无 merge commit；ledger P741-9 纯投影后置提交 992547c00；
+  主检出冒烟：final_assertions active ALL-ASSERTIONS-PASS + fixture --source auto 21 用例
+  全 PASS（Category A 零 Cargo）
+- ledger_refreshed: .autoos/specs.json reviews 新增 P741-9（r7 两轮复审+fixture/导航门收据）；
+  P741-3..8 归档指针在本轮归档后全部可解析；docs/specs/INDEX.md 重建归一 LF=零 diff；
+  docs/specs/{auto-hir,auto-ac}/plans.md 行更新为 delivered（r7）+ archive 链接
+- archived: docs/plans/archive/741-ac-hir-native-core.md（git mv），status: archived，
+  completion_kind: delivered；**归档时链接转换 14 处**（../reports → ../../reports，
+  r5 生命周期设计）；README:8、KNOWN-DEBT 741 Phase4 链接随归档指回 archive/；
+  KNOWN-DEBT P741-R6-QA-01..02 行销账（f4fb6dca2）
+- **archive 模式双门重放（r7 特有收口，AC-31/32）**:
+  - final_assertions v3 --location archive: ALL-ASSERTIONS-PASS——frontmatter 41/41 与
+    实际交叉核对一致、14 转换链接自真实 archive 父目录解析、README+两模块导航行
+    delivered+archive 形、7 项 P741-* review 指针全部 archive/ 可解析;
+  - fixture_tests --source archive（真实归档文件）: 9/9 PASS——含冲突/stale 链接/坏链
+    注入负例与全完成合成 active 控制正例;
+  - **导航更新真实对应修改的收口证据（R6-QA-02/P741P7-R2 教训）**: 两模块 plans.md 行由
+    executing/r7+active 链接实际变更为 delivered/r7+archive 链接（本归档提交 diff 在案），
+    且归档模式断言逐行验证后通过。
+- cleaned: **完成（2026-10-06）**——文档引用的 D:/autostack/wt-guard.sh 本机不存在
+  （r1..r6 同一偏差记录），按其文档语义以 PowerShell ReparsePoint 递归扫描替代
+  （组目录 lang-741 全树 clean）后：worktree D:/autostack/.wt/lang-741/auto-lang 移除、
+  auto-down 兄弟检出经 auto-down 仓 `git worktree remove` 移除、分支 plan-741-dev 删除
+  （was 7882540f1=已落地祖先）、组目录 lang-741 rmdir 成功
+- 交付摘要: r7 修复 r6 合入后复审全部缺口（R6-QA-01..02，零 Rust 改动）：
+  fixture_tests.py 生命周期化（两态矩阵 21 用例+同 ID 冲突真实翻转+通配状态变换+
+  全变异 assert_modified）、最终门扩到 README/两模块导航（行号定位+--repo-root 沙盒负控制）、
+  独立代理复审两轮（首轮 needs_fix 抓到执行侧状态翻转后未复跑的零操作缺陷——门的工作）
+- 备注: 本计划七次交付（r1 闭环、r2..r6 五轮修复、r7 生命周期门修复）全部完成；
+  归档态由 final_assertions v3 + fixture 生命周期矩阵脚本化守护
+
 ### Phase 7 独立复审（2026-10-06，/auto-plan:review，独立代理）——**首轮 needs_fix → 处置**
 
 - stage: review | plan_id: PLAN-741 | plan_revision: 7 | outcome: **needs_fix（首轮 R1..R3）→ 已处置**
