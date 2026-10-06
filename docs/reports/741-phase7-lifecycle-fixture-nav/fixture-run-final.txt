@@ -1,0 +1,20 @@
+=== source: active (partial executing) ===
+=== source: archive (replayed from git history) ===
+PASS  valid-active-partial: exit 0 (expected 0)
+PASS  valid-synthesized-fully-complete: exit 0 (expected 0)
+PASS  negative-current-step-zero: exit 1 (expected 1), diagnostic matched: 'current_step=0'
+PASS  negative-total-steps-mismatch: exit 1 (expected 1), diagnostic matched: 'total_steps'
+PASS  negative-missing-status: exit 1 (expected 1), diagnostic matched: 'frontmatter missing required field: status'
+PASS  negative-nonnumeric-revision: exit 1 (expected 1), diagnostic matched: 'is not numeric'
+PASS  negative-archived-status-while-partial: exit 1 (expected 1), diagnostic matched: 'active mode requires status'
+PASS  negative-conflicting-duplicate: exit 1 (expected 1), diagnostic matched: 'conflicting checkbox state'
+PASS  negative-active-with-archive-links: exit 1 (expected 1), diagnostic matched: 'broken from the REAL active parent'
+PASS  negative-broken-link-injection: exit 1 (expected 1), diagnostic matched: 'broken from the REAL active parent'
+PASS  valid-archive-complete: exit 0 (expected 0)
+PASS  valid-synthesized-active-from-archive: exit 0 (expected 0)
+PASS  negative-conflicting-duplicate: exit 1 (expected 1), diagnostic matched: 'conflicting checkbox state'
+PASS  negative-current-step-off-by-one: exit 1 (expected 1), diagnostic matched: '!= completed unique tasks'
+PASS  negative-executing-status-in-archive-location: exit 1 (expected 1), diagnostic matched: 'archive mode requires status'
+PASS  negative-stale-active-form-link-in-archive: exit 1 (expected 1), diagnostic matched: 'stale active-form link'
+PASS  negative-broken-link-injection: exit 1 (expected 1), diagnostic matched: 'from the REAL archive parent'
+FIXTURES-ALL-PASS (21 case(s))
