@@ -56,7 +56,11 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
   **清理（remove/rename）失败同样不吞**：`link.cleanup` 诊断携带原失败、事务提交状态
   （NOT committed / COMMITTED）、每个自有残留路径与实际 OS 错误（NotFound=已回收；
   目录=用户占位，不删不计）；发布已提交但备份回收受阻单列 COMMITTED 状态、不伪称普通成功；
-  用户占位目录永不备份/删除；SENTINEL 前置失败与准备/备份/发布各阶段失败测试锁定。
+  **pre-publish 的 `link_object_staged` 两错误出口（链接器非零退出、执行器错误
+  spawn/deadline/containment/wait）同受此约束**：自有暂存 exe 回收受阻时同样以 `link.cleanup`
+  报告原失败+残留完整路径+实际 OS 错误+NOT committed+恢复办法，不得仅返回
+  `link.failed`/`link.deadline` 而吞掉删除错误；用户占位目录永不备份/删除；
+  SENTINEL 前置失败与准备/备份/发布各阶段失败测试锁定。
 - 全部子进程（工具发现 rustc/reg、链接 lld、运行 exe）走带硬截止时间的执行器；
   **单一单调截止同时覆盖进程等待与输出收集**；**受控启动**——子进程以 CREATE_SUSPENDED
   起跑、入 Job（KILL_ON_JOB_CLOSE）后方恢复执行（ToolHelp32 快照恢复主线程），

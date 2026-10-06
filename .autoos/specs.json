@@ -4989,7 +4989,7 @@
         {
           "id": "P741-2",
           "title": "auto-ac native AOT closed loop（SD-02）",
-          "content": "PLAN-741 沉淀：Checked HIR → Cranelift 0.126.2 COFF → rust-lld（备选 MSVC link.exe 绝对路径）→ PE；入口=零参数 i32 DefRef，通用 ac_start 包装器 + ExitProcess，Auto 函数不做 OS 入口；溢出 trap=ExitProcess(70)（测试 profile 约定，非语言 ABI）；requires 能力显式门（hir.test.trace.v1 → test-support no_std 静态库 --support-lib）；auto-ac-prototype check/build（ac-probe 历史名）退出码 0/1/2；制品发布=暂存+备份+发布事务、任一步失败整体回滚（发布阶段失败不覆盖既有成功制品）；全部子进程（发现 rustc/reg、链接、运行）硬截止+并发管道读；SDK 发现=AC741_* env → KitsRoot10 注册表 → 已知根。边界：HIR→exe ≠ 源码→exe，无生产 ABI/DLL/热重载宣称。canonical=docs/specs/auto-ac/project.md。r2（SD-04）澄清并以测试锁定。r3（SD-06）增补：单一单调截止同时覆盖进程等待与输出收集——Job Object（KILL_ON_JOB_CLOSE）管控子树，后代持管道不再绕过截止，任一出口回收 reader；输出 read_to_end+lossy 不返回截断成功；发布事务失败出口扩展到收据暂存/备份/三次发布全路径（回收暂存含已链接 exe），回滚受阻返回 link.restore 列幸存备份路径，用户占位目录永不删。r4（SD-07/08）增补：受控启动——子进程 CREATE_SUSPENDED 起跑、入 Job（KILL_ON_JOB_CLOSE）后方恢复（ToolHelp 恢复主线程），首个指令前必被管控、后代无法在约束外创建；约束失败=受控拒绝（link.containment，挂起态安全收口），不静默降级 detach，任一出口回收 reader；发布事务清理失败不吞——link.cleanup 携带原失败+提交状态（NOT committed/COMMITTED）+残留自有路径+实际 OS 错误（NotFound=已回收、目录=用户占位不删不计），成功段备份回收受阻单列 COMMITTED 状态。",
+          "content": "PLAN-741 沉淀：Checked HIR → Cranelift 0.126.2 COFF → rust-lld（备选 MSVC link.exe 绝对路径）→ PE；入口=零参数 i32 DefRef，通用 ac_start 包装器 + ExitProcess，Auto 函数不做 OS 入口；溢出 trap=ExitProcess(70)（测试 profile 约定，非语言 ABI）；requires 能力显式门（hir.test.trace.v1 → test-support no_std 静态库 --support-lib）；auto-ac-prototype check/build（ac-probe 历史名）退出码 0/1/2；制品发布=暂存+备份+发布事务、任一步失败整体回滚（发布阶段失败不覆盖既有成功制品）；全部子进程（发现 rustc/reg、链接、运行）硬截止+并发管道读；SDK 发现=AC741_* env → KitsRoot10 注册表 → 已知根。边界：HIR→exe ≠ 源码→exe，无生产 ABI/DLL/热重载宣称。canonical=docs/specs/auto-ac/project.md。r2（SD-04）澄清并以测试锁定。r3（SD-06）增补：单一单调截止同时覆盖进程等待与输出收集——Job Object（KILL_ON_JOB_CLOSE）管控子树，后代持管道不再绕过截止，任一出口回收 reader；输出 read_to_end+lossy 不返回截断成功；发布事务失败出口扩展到收据暂存/备份/三次发布全路径（回收暂存含已链接 exe），回滚受阻返回 link.restore 列幸存备份路径，用户占位目录永不删。r4（SD-07/08）增补：受控启动——子进程 CREATE_SUSPENDED 起跑、入 Job（KILL_ON_JOB_CLOSE）后方恢复（ToolHelp 恢复主线程），首个指令前必被管控、后代无法在约束外创建；约束失败=受控拒绝（link.containment，挂起态安全收口），不静默降级 detach，任一出口回收 reader；发布事务清理失败不吞——link.cleanup 携带原失败+提交状态（NOT committed/COMMITTED）+残留自有路径+实际 OS 错误（NotFound=已回收、目录=用户占位不删不计），成功段备份回收受阻单列 COMMITTED 状态。r5（SD-09）增补：pre-publish 的 link_object_staged 两错误出口（链接器非零退出、执行器错误 spawn/deadline/containment/wait）同受 SD-08 约束——自有暂存 exe 回收受阻时以 link.cleanup 报告原失败+残留完整路径+实际 OS 错误+NOT committed+恢复办法，不得仅返回 link.failed/link.deadline 吞掉删除错误。",
           "file": "docs/specs/auto-ac/project.md",
           "related": [],
           "status": "published",
@@ -8171,6 +8171,21 @@
             "resource-boundary"
           ],
           "content": "r3 合入后复审 needs_fix（docs/reports/741-r3-quality-review-20261005）→ r4 修复：R3-QA-01 受控启动（CREATE_SUSPENDED→入 Job→ToolHelp 恢复主线程，约束前窗口消除；约束失败受控拒绝 link.containment，删除静默降级/detach）、R3-QA-02 清理错误全量汇总（link.cleanup：原失败+提交状态+残留自有路径+实际 OS 错误；目录=用户占位不删不计；成功段备份回收受阻单列 COMMITTED）、R3-QA-03 簿记归一（T-08 补勾、计数口径注明）。独立代理复审 pass（AC-21..24）：death-watch 反例 5/5 零泄漏（孙进程 0-20ms 内回收）、locked-cleanup 全要素、60s 生产路径准时拒绝、cargo t 双侧 worktree 34 红⊂基线 36 红零新增；windows-sys 增 ToolHelp feature。",
+          "status": "published",
+          "created": "2026-10-05",
+          "last_modified": "2026-10-05"
+        },
+        {
+          "id": "P741-7",
+          "title": "PLAN-741 r5 Phase 5 复审 pass + 链接清理收据（P741-R4-QA-01..02）",
+          "file": "docs/plans/archive/741-ac-hir-native-core.md",
+          "tags": [
+            "PLAN-741",
+            "review",
+            "native-aot",
+            "link-cleanup"
+          ],
+          "content": "r4 合入后复审 needs_fix（docs/reports/741-r4-quality-review-20261005）→ r5 修复：R4-QA-01 link_object_staged 两错误出口（链接器非零/执行器错误）经共享 discard_own_staged + with_staged_cleanup 汇总清理失败（link.cleanup：原失败+残留完整路径+OS 错误+NOT committed+恢复办法，与 publish 逐字等价去重）；R4-QA-02 归档计划 7 处 ../reports 链接改 ../../reports（归档终态可解析）+ final_assertions.py 三态链接/35 任务/指针断言。独立代理复审 pass（AC-25..27）：reproduce nonzero/timeout 两出口全要素、death-watch、红清单差分 29 共有+双侧各 3 独有（主检出 scoped 单跑 PASS=THR-D4 flake）。",
           "status": "published",
           "created": "2026-10-05",
           "last_modified": "2026-10-05"
