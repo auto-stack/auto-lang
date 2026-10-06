@@ -1,0 +1,9 @@
+=== source: archive (real archived file) ===
+PASS  valid-archive-complete: exit 0 (expected 0)
+PASS  valid-synthesized-active-from-archive: exit 0 (expected 0)
+PASS  negative-conflicting-duplicate: exit 1 (expected 1), diagnostic matched: 'conflicting checkbox state'
+PASS  negative-current-step-off-by-one: exit 1 (expected 1), diagnostic matched: '!= completed unique tasks'
+PASS  negative-executing-status-in-archive-location: exit 1 (expected 1), diagnostic matched: 'archive mode requires status'
+PASS  negative-stale-active-form-link-in-archive: exit 1 (expected 1), diagnostic matched: 'stale active-form link'
+PASS  negative-broken-link-injection: exit 1 (expected 1), diagnostic matched: 'from the REAL archive parent'
+FIXTURES-ALL-PASS (9 case(s))

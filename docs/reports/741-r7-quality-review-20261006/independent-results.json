@@ -1,0 +1,71 @@
+{
+  "valid-archive": {
+    "exit": 0,
+    "output": "OK  frontmatter: plan_id=PLAN-741 status=archived revision=7 step=41/41\nOK  location: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\valid-archive\\repo-ok\\docs\\plans\\archive (repo plan, status archived)\nOK  tasks: 41/41 complete (matches frontmatter), duplicates consistent, unchecked=0\nOK  links: 14 resolve from the real archive parent\nOK  README.md:1 plan link -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\valid-archive\\repo-ok\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-hir/plans.md:5 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\valid-archive\\repo-ok\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-ac/plans.md:5 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\valid-archive\\repo-ok\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  ledger: 1 P741-* review items checked (all at archive/)\nALL-ASSERTIONS-PASS\n"
+  },
+  "stale-module-nav": {
+    "exit": 1,
+    "output": "OK  frontmatter: plan_id=PLAN-741 status=archived revision=7 step=41/41\nOK  location: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\stale-module-nav\\repo-stale\\docs\\plans\\archive (repo plan, status archived)\nOK  tasks: 41/41 complete (matches frontmatter), duplicates consistent, unchecked=0\nOK  links: 14 resolve from the real archive parent\nOK  README.md:1 plan link -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\stale-module-nav\\repo-stale\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-hir/plans.md:5 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\stale-module-nav\\repo-stale\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  ledger: 1 P741-* review items checked (all at archive/)\nFAIL: auto-ac/plans.md:5: nav link not archive-form after archival: ../../plans/741-ac-hir-native-core.md\nFAIL: auto-ac/plans.md:5: nav status must say delivered after archival: | 741 | ac-hir-native-core | executing（r6 Phase6） | [741-ac-hir-native-core.md](../../plans/741-ac-hir-native-core.md) |\nFAIL: auto-ac/plans.md:5: nav still says executing after archival\nFAIL: auto-ac/plans.md:5: nav link unresolvable: ../../plans/741-ac-hir-native-core.md\n"
+  },
+  "missing-readme-link": {
+    "exit": 0,
+    "output": "OK  frontmatter: plan_id=PLAN-741 status=archived revision=7 step=41/41\nOK  location: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\missing-readme-link\\repo-ok\\docs\\plans\\archive (repo plan, status archived)\nOK  tasks: 41/41 complete (matches frontmatter), duplicates consistent, unchecked=0\nOK  links: 14 resolve from the real archive parent\nOK  auto-hir/plans.md:5 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\missing-readme-link\\repo-ok\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-ac/plans.md:5 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\missing-readme-link\\repo-ok\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  ledger: 1 P741-* review items checked (all at archive/)\nALL-ASSERTIONS-PASS\n"
+  },
+  "wrong-module-target": {
+    "exit": 0,
+    "output": "OK  frontmatter: plan_id=PLAN-741 status=archived revision=7 step=41/41\nOK  location: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\wrong-module-target\\repo-ok\\docs\\plans\\archive (repo plan, status archived)\nOK  tasks: 41/41 complete (matches frontmatter), duplicates consistent, unchecked=0\nOK  links: 14 resolve from the real archive parent\nOK  README.md:1 plan link -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\wrong-module-target\\repo-ok\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-hir/plans.md:5 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\wrong-module-target\\repo-ok\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-ac/plans.md:5 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\wrong-module-target\\repo-ok\\docs\\plans\\archive\\743-acc-bootstrap-hir-contract.md\nOK  ledger: 1 P741-* review items checked (all at archive/)\nALL-ASSERTIONS-PASS\n"
+  },
+  "wrong-readme-target": {
+    "exit": 0,
+    "output": "OK  frontmatter: plan_id=PLAN-741 status=archived revision=7 step=41/41\nOK  location: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\wrong-readme-target\\repo-ok\\docs\\plans\\archive (repo plan, status archived)\nOK  tasks: 41/41 complete (matches frontmatter), duplicates consistent, unchecked=0\nOK  links: 14 resolve from the real archive parent\nOK  README.md:1 plan link -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\wrong-readme-target\\repo-ok\\docs\\plans\\archive\\743-acc-bootstrap-hir-contract.md\nOK  auto-hir/plans.md:5 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\wrong-readme-target\\repo-ok\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-ac/plans.md:5 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\wrong-readme-target\\repo-ok\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  ledger: 1 P741-* review items checked (all at archive/)\nALL-ASSERTIONS-PASS\n"
+  },
+  "wrong-ledger-target": {
+    "exit": 0,
+    "output": "OK  frontmatter: plan_id=PLAN-741 status=archived revision=7 step=41/41\nOK  location: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\wrong-ledger-target\\repo-ok\\docs\\plans\\archive (repo plan, status archived)\nOK  tasks: 41/41 complete (matches frontmatter), duplicates consistent, unchecked=0\nOK  links: 14 resolve from the real archive parent\nOK  README.md:1 plan link -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\wrong-ledger-target\\repo-ok\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-hir/plans.md:5 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\wrong-ledger-target\\repo-ok\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  auto-ac/plans.md:5 741 row -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741r7-independent-g_m_s_eb\\wrong-ledger-target\\repo-ok\\docs\\plans\\archive\\741-ac-hir-native-core.md\nOK  ledger: 1 P741-* review items checked (all at archive/)\nALL-ASSERTIONS-PASS\n"
+  },
+  "executing-partial": {
+    "executed": 10,
+    "lines": [
+      "PASS  valid-active-partial: exit 0 (expected 0)",
+      "PASS  valid-synthesized-fully-complete: exit 0 (expected 0)",
+      "PASS  negative-current-step-zero: exit 1 (expected 1), diagnostic matched: 'current_step=0'",
+      "PASS  negative-total-steps-mismatch: exit 1 (expected 1), diagnostic matched: 'total_steps'",
+      "PASS  negative-missing-status: exit 1 (expected 1), diagnostic matched: 'frontmatter missing required field: status'",
+      "PASS  negative-nonnumeric-revision: exit 1 (expected 1), diagnostic matched: 'is not numeric'",
+      "PASS  negative-archived-status-while-partial: exit 1 (expected 1), diagnostic matched: 'active mode requires status'",
+      "PASS  negative-conflicting-duplicate: exit 1 (expected 1), diagnostic matched: 'conflicting checkbox state'",
+      "PASS  negative-active-with-archive-links: exit 1 (expected 1), diagnostic matched: 'broken from the REAL active parent'",
+      "PASS  negative-broken-link-injection: exit 1 (expected 1), diagnostic matched: 'broken from the REAL active parent'"
+    ]
+  },
+  "execution_done-complete": {
+    "executed": 10,
+    "lines": [
+      "PASS  valid-active-partial: exit 0 (expected 0)",
+      "PASS  valid-synthesized-fully-complete: exit 0 (expected 0)",
+      "PASS  negative-current-step-zero: exit 1 (expected 1), diagnostic matched: 'current_step=0'",
+      "PASS  negative-total-steps-mismatch: exit 1 (expected 1), diagnostic matched: 'total_steps'",
+      "PASS  negative-missing-status: exit 1 (expected 1), diagnostic matched: 'frontmatter missing required field: status'",
+      "PASS  negative-nonnumeric-revision: exit 1 (expected 1), diagnostic matched: 'is not numeric'",
+      "PASS  negative-archived-status-while-partial: exit 1 (expected 1), diagnostic matched: 'active mode requires status'",
+      "PASS  negative-conflicting-duplicate: exit 1 (expected 1), diagnostic matched: 'conflicting checkbox state'",
+      "PASS  negative-active-with-archive-links: exit 1 (expected 1), diagnostic matched: 'broken from the REAL active parent'",
+      "PASS  negative-broken-link-injection: exit 1 (expected 1), diagnostic matched: 'broken from the REAL active parent'"
+    ]
+  },
+  "reviewed-complete": {
+    "executed": 10,
+    "lines": [
+      "PASS  valid-active-partial: exit 0 (expected 0)",
+      "PASS  valid-synthesized-fully-complete: exit 0 (expected 0)",
+      "PASS  negative-current-step-zero: exit 1 (expected 1), diagnostic matched: 'current_step=0'",
+      "PASS  negative-total-steps-mismatch: exit 1 (expected 1), diagnostic matched: 'total_steps'",
+      "PASS  negative-missing-status: exit 1 (expected 1), diagnostic matched: 'frontmatter missing required field: status'",
+      "PASS  negative-nonnumeric-revision: exit 1 (expected 1), diagnostic matched: 'is not numeric'",
+      "PASS  negative-archived-status-while-partial: exit 1 (expected 1), diagnostic matched: 'active mode requires status'",
+      "PASS  negative-conflicting-duplicate: exit 1 (expected 1), diagnostic matched: 'conflicting checkbox state'",
+      "PASS  negative-active-with-archive-links: exit 1 (expected 1), diagnostic matched: 'broken from the REAL active parent'",
+      "PASS  negative-broken-link-injection: exit 1 (expected 1), diagnostic matched: 'broken from the REAL active parent'"
+    ]
+  }
+}

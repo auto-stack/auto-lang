@@ -352,3 +352,15 @@ reviewed_commit=8b17e4de8851cdf37ccdce76a82f78422cf8bb15，outcome=pass；[独�
 | P743-R5-QA-03 | 已清偿（r6 T36） | 原参数/local type同名bare/qualified保持unknown；7组普通/mut方法、let/var/use控制通过，无冲突正例维持 |
 
 128/128、真实strict47/146/7、确定性/manual原字节/三方一致及actual archive38/38/all P743指针通过。保持743 archived/r6，不新增修复phase；审查treeguard clean后已清理，Category A未跑Cargo/native/docs_gen。；**已清偿**（r7 T-39 fixture_tests.py 生命周期重写（计划源自动检测 active/git 历史重放归档态；冲突变换按真实行状态翻转恰一行+断言实际修改；状态变换通配 set_fm；全部变异经 assert_modified）；两矩阵 21 用例 + 全 PASS（含 archive 态 git 历史重放与全完成合成控制））；**已清偿**（r7 T-40 final_assertions v3 扩到 prototype README 741 链接与 auto-hir/auto-ac 741 导航行（状态生命周期一致+行号定位+--repo-root 沙盒负控制）；本轮归档后 archive 模式复跑收口）
+
+
+## PLAN-741 r7合入后复审 → r8 Phase8（2026-10-06，未修复）
+
+基线18beff64b4ceefa1e7f4176296f5e37f77dd6da1；[报告](../reports/741-r7-quality-review-20261006/REVIEW.md)、[同ID合同](741-ac-hir-native-core.md)。实际归档41/41与导航正确，核心同源；原缺文件/零操作已修，不重新挂旧缺陷。
+
+| ID | 级别 | 当前缺口 | 修复与验收 |
+|---|---|---|---|
+| P741-R7-QA-01 | P3 | 两个导航控制未实际运行，总数固定+2；归档7报9、双源17报21且记录称已验证 | T42/AC33，纳入实际控制列表、失败传播、按执行记录计数，旧日志保留注明过期 |
+| P741-R7-QA-02 | P3 | 必需README Plan引用缺失、README/模块/P741 review指向其它存在的归档Plan均仍ALL-PASS | T43/AC34，必需引用存在及规范唯一741目标严格比较，active暂态限定规范archive/741 |
+
+同741激活r8 current38/total44，只重开T39..41，新增T42..44；未实施/未销账，不改Rust/行为Spec/live ledger，P741-3..9归档暂态由最终merge恢复。742/743/ABI及历史收据保留。

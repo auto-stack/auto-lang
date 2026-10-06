@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-741
-status: archived
+status: executing
 feature_name: AC 首个闭环：独立 Atom HIR、语义校验与 Windows 原生 AOT
 author: [Codex]
 created_at: 2026-10-04
 updated_at: 2026-10-06
-plan_revision: 7
-current_step: 41
-total_steps: 41
+plan_revision: 8
+current_step: 38
+total_steps: 44
 supersedes_spec_components: []
 new_spec_components: []
 touched_goals: []
@@ -39,7 +39,7 @@ affects: [auto-hir, auto-ac]
 
 用户此前授权“仍有问题则激活741并把问题/修复方案作为新Phase”；本次继承该范围。
 r3交付后独立复审 **needs_fix**，基线 `f6a945db849f57789a9e151402e22b8aa57eb7f8`，报告
-[741-r3复审](../../reports/741-r3-quality-review-20261005/REVIEW.md)。
+[741-r3复审](../reports/741-r3-quality-review-20261005/REVIEW.md)。
 新缺口 P741-R3-QA-01/02 为原AC-17/18尚未兑现，另有QA-03历史步数问题。
 已有实现/旧pass/三轮收据保留；T-20..24重新打开的是当前验收有效性，其执行记录为历史证据。
 T-08根据r1收据据实补勾，完成任务数19；新增T-25..30六项，故current_step=19/total_steps=30。
@@ -47,21 +47,26 @@ T-08根据r1收据据实补勾，完成任务数19；新增T-25..30六项，故c
 
 ### Phase 5 再激活（2026-10-05，plan_revision5）
 
-r4合入后独立复审needs_fix，基线7b9c6948c1465e87a6f60404510c30c712e1c7bc，见[报告](../../reports/741-r4-quality-review-20261005/REVIEW.md)。按用户此前明确授权激活同741追加修复Phase；本轮仅文档合同，不实现代码。
+r4合入后独立复审needs_fix，基线7b9c6948c1465e87a6f60404510c30c712e1c7bc，见[报告](../reports/741-r4-quality-review-20261005/REVIEW.md)。按用户此前明确授权激活同741追加修复Phase；本轮仅文档合同，不实现代码。
 P741-R4-QA01/P2：link_object_staged非零/执行器错误两出口吞清理失败；P741-R4-QA02/P3：归档4个历史报告链接断。54测试/一键13步/公开60秒后代回收通过，旧计数30/30/ledger也真实修好，不重复报旧问题。
 当前完成22/35：T21..24及T27..30重新待验（所有同ID重复checkbox同步重开），其余22个唯一任务已完成；新增T31..35。保留r1..r4全部实施/pass/merge历史，旧“已完成/关闭”文字仅历史效力，不能替代r5验收。先前阶段起草数字不代表本轮进度。
 
 
 ### Phase 6 再激活（2026-10-06，plan_revision6）
 
-r5合入后复审 **needs_fix，仅P3验收/证据问题**，基线6baed9bba84016dd8610221a9a0358195444385e，见[报告](../../reports/741-r5-quality-review-20261006/REVIEW.md)。继承用户同ID追加phase授权；核心清理修复已通过58测试、一键13项、当前明确库nonzero/60s共享锁与公开60s回收。没有新P2产品缺陷，不重做已过核心任务。
+r5合入后复审 **needs_fix，仅P3验收/证据问题**，基线6baed9bba84016dd8610221a9a0358195444385e，见[报告](../reports/741-r5-quality-review-20261006/REVIEW.md)。继承用户同ID追加phase授权；核心清理修复已通过58测试、一键13项、当前明确库nonzero/60s共享锁与公开60s回收。没有新P2产品缺陷，不重做已过核心任务。
 QA01计数34/35且断言漏检；QA02active真实父目录断链被模拟检查掩盖；QA03脚本可误选旧缓存库/测试数字过期。重开T22..24/T28..30/T33..35所有同ID行，新增T36..38，当前26/38；T21/27/32保持完成。旧实施与pass/merge均为历史，不能替代本次待验任务。
 本阶段仅最终断言、证据脚本及簿记，不改Rust/HIR/native/ABI/canonical/live ledger；frontmatter当前spec impact全部[]，历史SD01..09保留，SD09已在r5沉淀。移回active时报告链接按实际父目录修正；最终搬移必须转换并验证实际archive。原helper现在不适配38任务，不可绕过待修缺口声称通过。
 
 ### Phase 7 再激活（2026-10-06，plan_revision7）
 
-r6合入后独立复审needs_fix，基线d1adc03be39d2897f5dfd7090e0909095cf24465，见[报告](../../reports/741-r6-quality-review-20261006/REVIEW.md)。只有两个P3生命周期问题：fixture归档后入口失效且冲突反例依赖旧勾选状态；两个模块导航漏归档更新，最终门仍误报全收口。核心零改动，最终validator独立17/17控制通过，原型/60秒证据按指纹复用。
+r6合入后独立复审needs_fix，基线d1adc03be39d2897f5dfd7090e0909095cf24465，见[报告](../reports/741-r6-quality-review-20261006/REVIEW.md)。只有两个P3生命周期问题：fixture归档后入口失效且冲突反例依赖旧勾选状态；两个模块导航漏归档更新，最终门仍误报全收口。核心零改动，最终validator独立17/17控制通过，原型/60秒证据按指纹复用。
 继承用户失败则同ID追加phase授权；仅重开T36/T38所有同ID行，新增T39..41，current36/total41。历史T01..35/T37及r1..r6交付/pass/merge不删除，相关历史“全部完成/已关闭”不替代本轮验收。范围仅Python验证脚本/计划导航/README/报告；不改Rust/HIR/ABI/依赖/canonical行为Spec/live ledger，无SD10。P741-3..8旧archive指针当前暂态由最终merge恢复。
+
+### Phase 8 再激活（2026-10-06，plan_revision8）
+
+r7合入后独立复审needs_fix，基线18beff64b4ceefa1e7f4176296f5e37f77dd6da1，见[报告](../reports/741-r7-quality-review-20261006/REVIEW.md)。原归档fixture/动态冲突/实际导航已修，核心未变化；新增两个P3：两个导航控制没有实际运行却计入总数（归档7报9、双源17报21）；必需README引用缺失及错指向其它存在的归档Plan仍通过。
+继承用户同ID失败追加phase授权；只重开T39..41所有同ID行，新增T42..44，current38/total44。保留T01..38及r1..r7全部历史交付/pass/merge，旧“全部完成/已处置”不代表本轮新反例已修。范围仅Python验证/报告/导航/Plan，Category A不跑Cargo/native/docs_gen，不改Rust/HIR/ABI/依赖/canonical行为/live ledger，无SD10。P741-3..9归档指针暂态留最终merge恢复。
 
 ## 1. 目标
 
@@ -181,7 +186,7 @@ touched_goals 暂为空，关联 v0.6 roadmap AC/HIR 主线；新的 native 目�
   当前授权是再激活与修订合同；本轮不调用 work 实施。已有修复范围保持在本仓原型及验证资料。
 - 激活前基线：v0.6-dev @ b85e2bb76b748f6a3f104096542837b44bdefbfc；r3 实施起点为包含本合同的激活提交，
   T-18 记录完整 hash。复审实测基线仍为 965b368a20db7c97fab7d1b0d51863b3ccca0f11，二者差异仅复审资料。
-- 证据：[r2 合入后复审](../../reports/741-quality-review-20261005/REVIEW.md)，包含源文件/Spec SHA-256、
+- 证据：[r2 合入后复审](../reports/741-quality-review-20261005/REVIEW.md)，包含源文件/Spec SHA-256、
   原始日志、两个块图输入、review-helper.rs 与可运行复现脚本。
   原四项 P1 已修，44 项原型测试通过；新自环导致 0xC00000FD，断开循环 check=0，
   退出后持管道反例在 114.963s 仍未返回，收据暂存失败遗留 staged exe。
@@ -428,7 +433,7 @@ T33新增docs/reports/741-phase5-link-cleanup/final_assertions.py（新路径）
 |---|---|---|---|---|---|
 | SD-09 | modify | docs/specs/auto-ac/project.md | SD08全出口清理保证→明确pre-publish link_object_staged非零/执行器错误出口也必须报告原失败+清理错误/路径/NOT committed | 兑现已有§5.7/T27，不扩展语言能力 | AC22/25/27 |
 
-冻结[SD09提案](../../reports/741-r4-quality-review-20261005/proposed-spec-delta-phase5.md)。auto-hir无新行为变更，历史impact保留；new_spec_components/touched_goals维持[]。canonical/live ledger只在独立review pass后merge沉淀。
+冻结[SD09提案](../reports/741-r4-quality-review-20261005/proposed-spec-delta-phase5.md)。auto-hir无新行为变更，历史impact保留；new_spec_components/touched_goals维持[]。canonical/live ledger只在独立review pass后merge沉淀。
 
 
 ### Phase 6 详细设计与规范影响（QA01..03）
@@ -440,7 +445,7 @@ T33新增docs/reports/741-phase5-link-cleanup/final_assertions.py（新路径）
 
 ### 规范增量（Phase6：空影响）
 
-supersedes_spec_components/new_spec_components/touched_goals均[]：没有新的持久编译器行为，r5 SD09已验证与代码相符。本Phase修复生命周期和证据约束；既有SD01..09历史不删，不创建SD10。冻结[当前提案](../../reports/741-r5-quality-review-20261006/proposed-spec-delta-phase6.md)。canonical/live ledger只在后续独立pass的merge阶段按既有事实处理。
+supersedes_spec_components/new_spec_components/touched_goals均[]：没有新的持久编译器行为，r5 SD09已验证与代码相符。本Phase修复生命周期和证据约束；既有SD01..09历史不删，不创建SD10。冻结[当前提案](../reports/741-r5-quality-review-20261006/proposed-spec-delta-phase6.md)。canonical/live ledger只在后续独立pass的merge阶段按既有事实处理。
 
 ### Phase 7 详细设计与规范影响（r6 QA01/02）
 
@@ -448,7 +453,13 @@ supersedes_spec_components/new_spec_components/touched_goals均[]：没有新的
 2. 最终门检查实际含741引用的prototype README、auto-ac/auto-hir的741计划行、Plan本体和全部P741 review ledger。active/最终archive分别验证真实状态/正确唯一目标；模拟转换和实际归档分开，遗漏任一导航更新必须非零。
 3. 修复不触核心。Category A不运行cargo/docs_gen；保留同源58+1ignored/13项/正式60秒及root红原始事实；review与最终archive各重放文档门，真实链接/状态不符不得销账或写完成收据。
 
-规范增量为空（supersedes/new/touched=[]），冻结[提案](../../reports/741-r6-quality-review-20261006/proposed-spec-delta-phase7.md)。历史SD01..09保留，canonical行为和live ledger不在review修改。
+规范增量为空（supersedes/new/touched=[]），冻结[提案](../reports/741-r6-quality-review-20261006/proposed-spec-delta-phase7.md)。历史SD01..09保留，canonical行为和live ledger不在review修改。
+
+### Phase 8 详细设计与规范影响（r7 QA01/02）
+
+1. 两个导航控制实际进入case列表并与其它控制相同执行、检查指定诊断/文件行、记录结果；总数由已执行结果派生，不固定+2。控制失败必须令整个fixture失败；历史数字明确更正而不改写原始日志。
+2. 必需prototype README中的741引用缺失失败；README741引用、两模块741导航及全部P741 review file解析后须等于repo下当前规范741 Plan生命周期路径，不能只验archive/存在。TEMP Plan副本校验对repo规范目标，不强制指向副本；active ledger仅允许指向规范archive/741的已记录待恢复暂态。
+3. 保持已有active/archive/计数/冲突/mutation/诊断/临时回收能力；Category A只重放受影响文档门，按源指纹复用已有核心/native/root证据。空规范增量冻结[提案](../reports/741-r7-quality-review-20261006/proposed-spec-delta-phase8.md)，supersedes/new/touched=[]，SD01..09历史保留。
 
 ## 6. 测试设计
 
@@ -534,6 +545,11 @@ watchdog 必须收到 deadline 拒绝且仍运行=false，receipt-prepare 的 st
 
 - [ ] **AC-31**：交付fixture从实际active部分完成、全部完成以及最终真实archive三种状态均能运行；有效控制通过，错误计数/缺字段/非数字/同ID冲突/错误状态/断链控制非零并匹配指定诊断；每个mutation有实际修改验证，无硬编码未完成T35、无遗漏输入而崩溃/无关非零代替控制。临时目录由自身回收。
 - [ ] **AC-32**：最终门覆盖prototype README（若其它README真有741链接也覆盖）、auto-ac与auto-hir的741导航行、Plan本体和全部P741 review指针；actual active及最终actual archive状态/位置/存在性一致。故意遗漏一个模块导航归档更新会明确非零定位，全部正确控制通过；merge收据写已完成必须有真实对应修改/门证据，不以激活后暂时有效销账。
+
+### Phase 8 验收（AC33..34，兑现AC31/32）
+
+- [ ] **AC-33**：全正确导航和遗漏归档更新控制在active/archive每个矩阵中实际执行、逐项输出且匹配指定诊断；总数等于实际case结果数，不固定+2。使任一控制失败时fixture整体非零。完整/部分/归档输入可重放；交付HEAD和最终archive日志、摘要按真实执行结果，旧17报21/7报9标明过期而不伪造补PASS。
+- [ ] **AC-34**：必需README741引用不存在、README/模块/ledger错指向另一个存在的active或archive Plan均明确非零并定位；正常741目标均通过。比较解析后的repo规范741生命周期目标，支持外部TEMP Plan副本；active ledger暂态仅允许规范archive/741，最终archive全部严格同目标。新增负控制真实执行，无关错误不能代替期望错误。
 
 ## 7. 验收标准
 
@@ -807,29 +823,45 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 
 ### Phase 7 执行步骤（T39..41，未实施）
 
-- [x] **T-39** fixture生命周期修复（AC31；关闭当前T36）：在新建/复用适宜的plan-741-dev工作树，只修改受控fixture/必要final_assertions参数支持；从active/archive可重放，动态造冲突、核对诊断/实际mutation，验证部分与全完成输入，留原始日志；无产品修复。
-- [x] **T-40** 最终导航门（依赖39，AC32）：扩展真实README/两模块741行及ledger校验，新增遗漏归档导航更新负控制；明确active暂态和最终实际archive，通过正确目标与失败定位，不把模拟archive冒充真实。
-- [x] **T-41**（r7 独立复审两轮：首轮 needs_fix R1..R3 已处置、处置记录见 §9；merge 归档收口待 /auto-plan:merge） 独立复审与merge（依赖39/40，AC31/32；关闭当前T38）：冻结r7/commit/空规范影响，重放文档门及全部受影响AC；pass后真正更新导航并归档41/41、转换链接、全部P741指针恢复，归档后fixture和最终门均重放通过再销账/收据/guard清理。保护742/743/ABI，Category A禁止Cargo/docs_gen。
-- [x] **T-39** fixture_tests.py 生命周期重写：计划源自动检测（docs/plans/ 部分执行态 或
+- [ ] **T-39** fixture生命周期修复（AC31；关闭当前T36）：在新建/复用适宜的plan-741-dev工作树，只修改受控fixture/必要final_assertions参数支持；从active/archive可重放，动态造冲突、核对诊断/实际mutation，验证部分与全完成输入，留原始日志；无产品修复。
+- [ ] **T-40** 最终导航门（依赖39，AC32）：扩展真实README/两模块741行及ledger校验，新增遗漏归档导航更新负控制；明确active暂态和最终实际archive，通过正确目标与失败定位，不把模拟archive冒充真实。
+- [ ] **T-41**（r7 独立复审两轮：首轮 needs_fix R1..R3 已处置、处置记录见 §9；merge 归档收口待 /auto-plan:merge） 独立复审与merge（依赖39/40，AC31/32；关闭当前T38）：冻结r7/commit/空规范影响，重放文档门及全部受影响AC；pass后真正更新导航并归档41/41、转换链接、全部P741指针恢复，归档后fixture和最终门均重放通过再销账/收据/guard清理。保护742/743/ABI，Category A禁止Cargo/docs_gen。
+- [ ] **T-39** fixture_tests.py 生命周期重写：计划源自动检测（docs/plans/ 部分执行态 或
   git 历史重放的归档态）；合成对照——部分执行态的全完成控制（全翻转+archived+链接转换+
   current_step=total，承载含 README/导航/ledger/报告物化的完整沙盒 repo 骨架）、归档态的
   active 控制（status→executing+链接回退+任务保留）；同 ID 冲突变换按真实行状态翻转恰一行
   并断言实际修改（修复 r6 的 T-35 硬编码零操作）；每例断言指定诊断子串；TemporaryDirectory
   自回收。**两矩阵 21 用例 + 2 沙盒导航控制全 PASS**（active 12 + archive-from-git-history
   12 + 2 控制线）。关闭当前 T-36 验收。AC-31。
-- [x] **T-40** final_assertions v3（显式版本化替代，--repo-root 支持沙盒骨架）：新增
+- [ ] **T-40** final_assertions v3（显式版本化替代，--repo-root 支持沙盒骨架）：新增
   prototype README 741 链接与 auto-hir/auto-ac 741 导航行校验（状态文本生命周期一致——
   激活期不得 delivered、归档后必须 delivered+archive 链接且不得残留 executing；带行号）；
   归档遗忘导航的沙盒负控制 → exit 1 且定位 `auto-ac/plans.md:5`；沙盒全对 repo → exit 0。
   激活期导航行已由复审方更新为 executing/r7 + active 链接（本轮核对一致）。关闭当前 T-38
   验收。AC-32（工作侧；真实 archive 收口留 merge）。
-- [x] **T-41**（r7 独立复审两轮：首轮 needs_fix R1..R3 已处置、处置记录见 §9；merge 归档收口待 /auto-plan:merge） /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 真正更新导航
+- [ ] **T-41**（r7 独立复审两轮：首轮 needs_fix R1..R3 已处置、处置记录见 §9；merge 归档收口待 /auto-plan:merge） /auto-plan:review 独立复审（执行侧不预先勾选）；pass 后 merge 真正更新导航
   并归档 41/41、转换链接、全部 P741 指针恢复、归档后 fixture 与最终门均重放通过，
   再销账 R6-QA-01..02 行/收据/guard 清理。
 
 
 
+### Phase 8 执行步骤（T42..44，未实施）
+
+- [ ] **T-42** 导航控制执行与真实计数（AC33，关闭T39当前验收）：专用plan-741-dev树中修复fixture，纳入实际导航控制和失败传播；汇总由执行记录派生，纠正当前摘要，保存交付HEAD与最终archive日志，保留原历史。
+- [ ] **T-43** 引用身份检查（依赖42，AC34，关闭T40当前验收）：最终门要求必需README741引用存在，README/两模块/P741 review指向规范唯一741目标；新增存在但错误的另一个Plan目标及缺引用负例、实际active/archive和外部副本正例；不修改编译器/Spec行为。
+- [ ] **T-44** 独立review与merge（依赖42/43，AC33/34，关闭T41）：绑定r8/实现HEAD/空影响，重放全部受影响控制且计数与日志一致；pass后真正归档44/44并重放fixture+最终门、恢复全部P741指针/导航、销账与guard清理，只清理自有树，不碰742/743/ABI；Category A不跑Cargo/native/docs_gen。
+
 ## 9. 复审记录
+
+### r7合入后独立复审与Phase8合同（2026-10-06）
+
+- stage:review | plan_id:PLAN-741 | plan_revision:7 | outcome:**needs_fix** | reviewed_commit:18beff64b4ceefa1e7f4176296f5e37f77dd6da1 | base_commit:8296ff305b8a15909903c61bb2ae15aeefd7373b。
+- spec_inputs/source/hash/空规范冻结及全部控制见[报告](../reports/741-r7-quality-review-20261006/REVIEW.md)；src/tests/依赖/验收脚本及auto-ac/auto-hir行为Spec同源，复用58+1ignored/13项/正式60秒及root原始红，不跑Cargo。
+- acceptance_results:AC01..25同源pass；AC26..30现有控制pass（限定见报告）；AC31 partial、AC32 fail；实际41/41/14链接/两模块导航/7review指针通过，三种active源各10/10和archive7/7通过；遗漏导航独立负例正确拒绝，但缺README引用/错指向其它Plan三种形式均假PASS。
+- findings:P741-R7-QA-01/P3未运行控制且计数虚增；QA-02/P3未校验必需引用和规范唯一目标。没有新native/HIR产品故障。
+- stage:new | plan_revision:8 | outcome:pass（仅修复合同就绪） | next:work；同ID授权，current38/total44，只重开T39..41，新增T42..44/AC33..34。旧交付与收据保留，不修改产品/canonical/live ledger，P741-3..9暂态指针留最终merge恢复。
+
+
 
 ### 合并收据（2026-10-06，/auto-plan:merge）PLAN-741:r7
 
@@ -888,7 +920,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
   - R2: 计数以交付 HEAD 重跑实测为准——**两矩阵 21 用例 + 全 PASS**（active 源 10 用例、
     archive 源 git 历史重放 7 用例、每矩阵 2 沙盒导航控制——全对 repo exit 0、遗忘
     auto-ac 导航更新 exit 1 且定位 auto-ac/plans.md:5），原始输出冻结于
-    [fixture-run-final.txt](../../reports/741-phase7-lifecycle-fixture-nav/fixture-run-final.txt)，
+    [fixture-run-final.txt](../reports/741-phase7-lifecycle-fixture-nav/fixture-run-final.txt)，
     verification.md 计数已据实更正。
 - 复审代理的正面确认（无需重验）:T-40 导航门为真修复（独立正负沙盒控制成立）、
   零 Rust/依赖/canonical 改动、known-debt 未提前销账、临时沙盒已清理。
@@ -901,7 +933,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 - stage: review | plan_id: PLAN-741 | plan_revision:6 | outcome: **needs_fix** | reviewed_commit:d1adc03be39d2897f5dfd7090e0909095cf24465 | base_commit:ad1fe269c21bc9021220645b52a32301e680f321。
 - dependency_revisions:Cranelift0.126.2/windows-sys0.59.0/auto-down=fba6563ed2148ce85e68208863159b4ccccac710；src/tests/lock/Spec指纹与r5一致，复用核心58+1ignored/13项/正式60秒/root原始红，不跑Cargo。
 - acceptance_results:AC01..25按同源证据pass；AC26..27 partial；AC28 partial（validator17/17但fixture不可归档重放）；AC29 fail（两导航断链）；AC30 pass（混旧/新库JSON绑定控制通过）。
-- findings:P741-R6-QA-01/P3与QA-02/P3；源/hash/空Spec冻结/日志/复现见[报告](../../reports/741-r6-quality-review-20261006/REVIEW.md)。没有新的核心产品缺陷。
+- findings:P741-R6-QA-01/P3与QA-02/P3；源/hash/空Spec冻结/日志/复现见[报告](../reports/741-r6-quality-review-20261006/REVIEW.md)。没有新的核心产品缺陷。
 - stage:new | plan_revision:7 | outcome:pass（仅修复合同就绪） | next:work；继承用户同ID激活授权，current36/total41，只重开T36/T38，新增T39..41/AC31..32；不改实现/canonical行为/live ledger，P741-3..8暂态归档指针留merge恢复。
 
 
@@ -1126,7 +1158,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 - reviewed_commit: 965b368a20db7c97fab7d1b0d51863b3ccca0f11
 - base_commit: 3a7967262；交付52c67d3df祖先关系已验证。
 - dependency_revisions/spec_inputs/frozen delta hashes/acceptance_results：
-  [r2复核报告](../../reports/741-quality-review-20261005/REVIEW.md)。
+  [r2复核报告](../reports/741-quality-review-20261005/REVIEW.md)。
 - 独立复跑：44/44原型测试、all-targets零warning、fmt、旧reproduce脚本、
   README三命令实机运行（add5、trace12/ba）。
 - 原四项P1均确认已修复；新增P741-R2-QA-01块图自环stack overflow/断开环被接受，
@@ -1390,7 +1422,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 - reviewed_commit: c1ac219e73ee2ed1ef6ba8dfec49c131bfbf1a75
 - base_commit: 951b6c70ff596f79e464ba977139669f2d196821；交付304519113已核实在祖先链。
 - dependency_revisions/spec_inputs/增量快照指纹与完整AC对账：
-  [质量复审报告](../../reports/741-quality-review-20261004/REVIEW.md)。
+  [质量复审报告](../reports/741-quality-review-20261004/REVIEW.md)。
 - 本会话未实施741；自行读代码、在detached复审检出重跑37项原型测试/fmt，
   原套件全过，额外反例重现bool宽度、bindings类型映射、body双向owner、
   发布阶段失败覆盖四项核心缺陷（P741-QA-01..04）。
@@ -1447,14 +1479,14 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
 ### r4合入后独立复审 needs_fix（2026-10-05）
 
 stage: review | plan_id: PLAN-741 | plan_revision:4 | outcome:needs_fix | reviewed_commit:7b9c6948c1465e87a6f60404510c30c712e1c7bc | base_commit:c865adf66a75099df07113b053eb9d19e92986a3
-依赖windows-sys0.59/Cranelift0.126.2，源/Spec哈希、24项验收/SD07–08复核、新反例见[独立报告](../../reports/741-r4-quality-review-20261005/REVIEW.md)。54原型/一键13步/公开60s后代回收绿；旧30/30与ledger真实绿。新QA01/P2两链接出口清理诊断不足；QA02/P3归档4个历史报告链接断。
+依赖windows-sys0.59/Cranelift0.126.2，源/Spec哈希、24项验收/SD07–08复核、新反例见[独立报告](../reports/741-r4-quality-review-20261005/REVIEW.md)。54原型/一键13步/公开60s后代回收绿；旧30/30与ledger真实绿。新QA01/P2两链接出口清理诊断不足；QA02/P3归档4个历史报告链接断。
 继承用户授权same-ID追加r5：stage:new | plan_revision:5 | outcome:pass（仅修复合同就绪） | next:work。current22/total35；本轮不改Rust/canonical/ledger；SD09提案冻结，P741-3..6旧archive指针激活后暂缺由merge恢复，不假称已刷新。
 
 
 ### r5合入后独立复审与Phase6合同（2026-10-06）
 
 - stage: review | plan_id: PLAN-741 | plan_revision:5 | outcome: **needs_fix** | reviewed_commit:6baed9bba84016dd8610221a9a0358195444385e | base_commit:39a4f9133 | dependency_revisions:auto-down=fba6563ed2148ce85e68208863159b4ccccac710
-- spec_inputs与冻结SD09/hash、全部AC1..27映射、原型58+1ignored/一键13/当前库nonzero与正式60s/root门禁原始结果见[报告](../../reports/741-r5-quality-review-20261006/REVIEW.md)。AC25/pass，AC26/fail，AC27/partial；旧核心P2已修复，本轮QA01..03均P3生命周期/证据，不归因新的Rust缺陷。
+- spec_inputs与冻结SD09/hash、全部AC1..27映射、原型58+1ignored/一键13/当前库nonzero与正式60s/root门禁原始结果见[报告](../reports/741-r5-quality-review-20261006/REVIEW.md)。AC25/pass，AC26/fail，AC27/partial；旧核心P2已修复，本轮QA01..03均P3生命周期/证据，不归因新的Rust缺陷。
 - stage: new | plan_revision:6 | outcome: pass（仅小型修复合同就绪，非实施通过） | next: work。用户此前明确同ID追加phase授权；current26/total38。空spec影响冻结，canonical/live ledger本轮未改；激活暂缺P741-3..7 archive指针由T38最终归档恢复，不假称已同步。
 
 ## 10. 待澄清事项
