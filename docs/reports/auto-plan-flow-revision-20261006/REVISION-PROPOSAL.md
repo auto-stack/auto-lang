@@ -1,5 +1,7 @@
 # auto-plan 流程与技能修订稿（2026-10-06）
 
+> 后续安装更新：用户批准后已实施并安装到共享软链接，实际提交、校验与范围见 [INSTALLATION-RECEIPT.md](INSTALLATION-RECEIPT.md)。下文及原 manifest 保留安装前修订稿的历史状态。
+
 建议先落地三个改变：ChatGPT 最终复审在合并前完成；高风险计划提供能区分错误实现的验收输入；修复必须检查同一规则的其他适用路径。四个技能的具体补丁见 [auto-plan-skills.patch](auto-plan-skills.patch)，条件性模板见 [verification-contract.md](verification-contract.md)。
 
 本次交付为可应用的修订稿，尚未安装到共享技能。基线为 auto-musk 的 `edde608709c5dd5b413fc9c534113d41f0bb8afe`；用户级四个技能路径均通过符号链接指向该仓库 `.agents/skills/`。补丁应在 auto-musk 的独立 worktree 应用、核查并按其流程合入；后续使用这些共享技能的计划会读取新版。原有计划、后端状态机和编号脚本本轮不改。
