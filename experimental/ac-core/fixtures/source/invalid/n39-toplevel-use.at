@@ -1,0 +1,2 @@
+use foo
+fn main() int { return 0 }

@@ -12,6 +12,7 @@ pub mod descriptor;
 pub mod hir;
 pub mod link;
 pub mod native;
+pub mod source;
 pub mod verify;
 
 /// The versioned core descriptor this build accepts. Any document claiming a
