@@ -1,3 +1,9 @@
+## PLAN-745 new 取号核查（2026-10-06）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P745-D1 | high | 中央取号 | scripts/new-plan.sh 的 `ls active-glob archive-glob \| grep -q .` 在 `set -o pipefail` 下，某目录无匹配导致 ls 非零，即使另一目录已有同号也漏检；本次 .next-id=744 与既有 744-vm-sqlite-module.md 冲突时误建了同号骨架。已撤回本次未跟踪骨架，再由中央脚本取得745，未覆盖旧744，计数现746。脚本还缺跨写者排他锁；修复应在独立worktree建立统一排他取号与active/archive重复控制，不在主检出顺手改代码。 | scripts/new-plan.sh:33；docs/plans/745-ac-source-checked-hir-native.md §4.3；owner=后续取号机制修复工作，未编号 |
+
 ## PLAN-741 复审批（2026-10-04，plan-741-dev @ 4dc4da636 同基线对照裁定——零新增债务，仅归档对照证据）
 
 | id | 级别 | 领域 | 内容 | 锚点 |
