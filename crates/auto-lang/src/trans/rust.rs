@@ -729,6 +729,99 @@ impl RustTrans {
 
     /// Plan 400 Phase 2: transpile only body statements (no signature).
     /// `params` pre-populates local_var_types. Returns indented lines.
+    const NL: char = '\n';
+
+    /// Plan 742 (D6): split statement glue from block-close emission — the
+    /// if/for close brace occasionally lands on the same line as the NEXT
+    /// statement (`}    let x = ...`), which breaks the per-line return-wrap
+    /// pass (the line no longer starts with `return`). Only splits on
+    /// statement keywords to stay away from struct/map literals.
+    fn split_glued_statements(line: &str) -> String {
+        const KEYWORDS: [&str; 8] = [
+            "let ", "return", "if ", "for ", "while ", "match ", "push(", "ok =",
+        ];
+        let mut out = String::with_capacity(line.len());
+        let bytes = line.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'}' {
+                // 找 } 之后的空白段，若空白后是语句关键字则在此断行
+                let mut j = i + 1;
+                while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == 9) {
+                    j += 1;
+                }
+                let rest = &line[j..];
+                if KEYWORDS.iter().any(|k| rest.starts_with(k)) && j > i + 1 {
+                    out.push_str("}
+");
+                    i = j;
+                    continue;
+                }
+            }
+            let ch = line[i..].chars().next().unwrap_or(' ');
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+        out
+    }
+
+    /// Plan 742: lower residual `List<T>.new(args)` constructor calls in
+    /// body-stmt output to their Rust vec form. The api.rs body path
+    /// (try_transpile_body) reaches the shared stmt emitter without the
+    /// module-path registration that normally lowers these in place, and the
+    /// verbatim `List<Note>.new(vec![])` shape is not valid Rust.
+    /// `List<T>.new(vec![])` → `vec![]`; `List<T>.new([a, b])` → `vec![a, b]`;
+    /// `List<T>.new(expr)` → `expr` (annotation carries the Vec<T> type).
+    fn lower_list_constructs(line: &str) -> String {
+        let needle = ".new(";
+        let mut out = String::with_capacity(line.len());
+        let bytes = line.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            // Find `List<` opening.
+            if line[i..].starts_with("List<") {
+                if let Some(gt) = line[i..].find('>') {
+                    let inner_end = i + gt;
+                    // Matching `.new(` right after the closing '>'.
+                    if line[inner_end + 1..].starts_with(needle) {
+                        let args_start = inner_end + 1 + needle.len();
+                        // Find the matching closing ')' of `.new(`.
+                        let mut depth = 1;
+                        let mut j = args_start;
+                        while j < bytes.len() {
+                            match bytes[j] {
+                                b'(' => depth += 1,
+                                b')' => {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        break;
+                                    }
+                                }
+                                _ => {}
+                            }
+                            j += 1;
+                        }
+                        if j < bytes.len() {
+                            let args = line[args_start..j].trim();
+                            let lowered_args = if args.starts_with('[') {
+                                format!("vec![{}]", &args[1..args.len().saturating_sub(1)])
+                            } else {
+                                args.to_string()
+                            };
+                            out.push_str(&lowered_args);
+                            i = j + 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+            let ch = line[i..].chars().next().unwrap_or(' ');
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+        out
+    }
+
     pub fn transpile_body_stmts(
         &mut self,
         body: &crate::ast::Body,
@@ -785,7 +878,13 @@ impl RustTrans {
             for line in raw.lines() {
                 let trimmed = line.trim_end();
                 if !trimmed.is_empty() {
-                    result.push(format!("    {}", trimmed));
+                    let deglued = Self::split_glued_statements(trimmed);
+                    for piece in deglued.split('\n') {
+                        let lowered = Self::lower_list_constructs(piece);
+                        if !lowered.is_empty() {
+                            result.push(format!("    {}", lowered));
+                        }
+                    }
                 }
             }
         }
@@ -8594,6 +8693,22 @@ impl RustTrans {
                     }
                     ("fs", "create_dir") => {
                         self.a2r_std_used.set(true); write!(out, "a2r_std::fs::create_dir(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    // Plan 742: mkdir_all 缺模块面路由（仅 method 臂有），
+                    // repository.data_dir 的目录兜底需要它。
+                    ("fs", "mkdir_all") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::mkdir_all(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    // Plan 742 D9: dir_names（Phase-1 JSON→SQLite 升级的收据枚举；
+                    // list_dir 名被 Plan-626 VM-walk 面占用，故避让）。
+                    ("fs", "dir_names") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::dir_names(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());

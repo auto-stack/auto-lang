@@ -411,11 +411,15 @@ fn qualify_a2r_std(mut code: String) -> String {
     // 迷你库（List/May/StringAsStr，无 sys 原生面），sys 调用须走独立
     // a2r-std crate dep（workspace/backend 模板已补）。
     code = code.replace("a2r_std::sys::", "__AUTO_A2R_STD_SYS__");
+    // Plan 742: `a2r_std::sqlite` 同理——sqlite 只在独立 a2r-std crate
+    // （rusqlite 封装），facade 无此模块；保护直连防被 qualify 到 facade。
+    code = code.replace("a2r_std::sqlite", "__AUTO_A2R_STD_SQLITE__");
     code = code.replace("auto_lang::a2r_std::", "__AUTO_A2R_STD_QUAL__");
     code = code.replace("a2r_std::", "auto_lang::a2r_std::");
     code = code.replace("use a2r_std;\n", "use auto_lang::a2r_std;\n");
     code = code.replace("use a2r_std::*;\n", "use auto_lang::a2r_std::*;\n");
     code = code.replace("__AUTO_A2R_STD_QUAL__", "auto_lang::a2r_std::");
+    code = code.replace("__AUTO_A2R_STD_SQLITE__", "::a2r_std::sqlite");
     code = code.replace("__AUTO_A2R_STD_SYS__", "a2r_std::sys::");
     code
 }
@@ -693,13 +697,57 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     std::fs::write(src_dir.join("types.rs"), &types_rs)
         .map_err(|e| format!("Failed to write types.rs: {}", e))?;
 
+    // Plan 742: companion modules must exist BEFORE api.rs generation —
+    // handler bodies may call `crate::<companion>::fn()` (NOTES-001 T-04:
+    // api.at bodies calling `repository.repo_list_active()`), and the import
+    // injection below only adds modules that actually transpiled. Moving the
+    // loop up also lets the api.rs emitter rely on companion modules without
+    // ordering surprises (previously written after api.rs).
+    let mut companion_mods: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(root_dir.join("src").join("back")) {
+        let mut stems: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|x| x == "at").unwrap_or(false))
+            .filter_map(|e| e.file_name().to_str().map(|s| s.trim_end_matches(".at").to_string()))
+            .filter(|stem| stem != "api" && stem != "db")
+            .collect();
+        stems.sort();
+        for stem in stems {
+            let Ok(content) = std::fs::read_to_string(root_dir.join("src").join("back").join(format!("{}.at", stem))) else {
+                continue;
+            };
+            match transpile_back_module_to_rs(&stem, &content) {
+                Ok(rs) => {
+                    let rs = post_process_companion_rs(rs);
+                    if let Err(e) = std::fs::write(src_dir.join(format!("{}.rs", stem)), &rs) {
+                        eprintln!("  ⚠ Failed to write {}.rs: {}", stem, e);
+                        continue;
+                    }
+                    companion_mods.push(stem);
+                }
+                Err(e) => {
+                    eprintln!("  ⚠ {}.rs transpile failed (module skipped): {}", stem, e);
+                }
+            }
+        }
+    }
+
     // Plan 399 第 4-5 步: collect db.rs's public fn names so handlers can call
     // them directly (status unified to db.rs lazy_static) instead of State<Db>.
     let db_fns: Option<std::collections::HashSet<String>> = if has_db {
         if let Some(ref content) = db_content {
             match transpile_db_to_rs(content) {
                 Ok(db_rs) => {
-                    let db_rs = post_process_db_rs(db_rs);
+                    let mut db_rs = post_process_db_rs(db_rs);
+                    // Plan 742: db.rs bodies calling companion modules
+                    // (`repository.nid_of(id)` dot-form) need the same borrow
+                    // fixup as api.rs — against the transpiled companion's
+                    // signatures. Runs here so the persisted db.rs AND the
+                    // api.rs fixup (which reads this file) both see it.
+                    if let Ok(repo_rs) = std::fs::read_to_string(src_dir.join("repository.rs")) {
+                        // a2r emits bare `repository::` paths in db.rs（无 crate 前缀）
+                        db_rs = borrow_string_module_call_args(&db_rs, &repo_rs, "repository::");
+                    }
                     // Also persist db.rs (idempotent with the write below).
                     if let Err(e) = std::fs::write(src_dir.join("db.rs"), &db_rs) {
                         eprintln!("  ⚠ Failed to write db.rs: {}", e);
@@ -750,14 +798,76 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         }
     }
 
+
     // Generate api.rs with route handlers. Inline API bodies retain their
     // source-level calls into db.rs; borrow String expressions where the
     // transpiled db signature expects `&str`, just as route-B handlers do.
     let mut api_rs = generate_api_rs(api_module, db_fns.as_ref(), api_impl_active);
+    let api_rs = qualify_a2r_std(api_rs);
+    // Plan 742: handler bodies calling companion modules (`repository.xxx()`)
+    // need (a) the module in scope and (b) dot-calls lowered to module-path
+    // form (`repository::xxx()` — modules are not values, E0423). `db` is
+    // always present (route B). Detection: `<mod>.<fn>(` call-shaped lines.
+    let mut crate_modules: Vec<String> = vec!["db".to_string()];
+    for m in &companion_mods {
+        crate_modules.push(m.clone());
+    }
+    let mut api_rs = api_rs;
+    for m in &crate_modules {
+        let referenced = api_rs
+            .lines()
+            .any(|l| {
+                let t = l.trim_start();
+                (t.starts_with(m.as_str()) && t[m.len()..].starts_with('.'))
+                    || t.contains(&format!(" {}.", m))
+            });
+        // Dot-call → crate-qualified path-call（含嵌套参数；use 行跳过）。
+        // 借修 pass 的 marker 就是这个 crate:: 前缀形态，顺序依赖见下。
+        let dot_call = format!("{}.", m);
+        let path_call = format!("crate::{}::", m);
+        api_rs = api_rs
+            .lines()
+            .map(|l| {
+                if l.trim_start().starts_with("use crate::") {
+                    return l.to_string();
+                }
+                let mut out = String::with_capacity(l.len());
+                let bytes = l.as_bytes();
+                let mut i = 0;
+                while i < bytes.len() {
+                    if l[i..].starts_with(&dot_call)
+                        && (i == 0 || !bytes[i - 1].is_ascii_alphanumeric() && bytes[i - 1] != b'_')
+                    {
+                        out.push_str(&path_call);
+                        i += dot_call.len();
+                    } else {
+                        let ch = l[i..].chars().next().unwrap_or(' ');
+                        out.push(ch);
+                        i += ch.len_utf8();
+                    }
+                }
+                out
+            })
+            .collect::<Vec<_>>()
+            .join("
+");
+        if referenced {
+            api_rs = format!("use crate::{};
+{}", m, api_rs);
+        }
+    }
+    // Plan 742: borrow fixup AFTER the dot→path rewrite — the passes match
+    // `crate::db::` / `crate::<companion>::` markers, which only exist once
+    // module dot-calls are lowered to path form.
     if let Ok(db_source) = std::fs::read_to_string(src_dir.join("db.rs")) {
         api_rs = borrow_string_db_call_args(&api_rs, &db_source);
     }
-    let api_rs = qualify_a2r_std(api_rs);
+    for m in &companion_mods {
+        if let Ok(m_source) = std::fs::read_to_string(src_dir.join(format!("{}.rs", m))) {
+            let marker = format!("crate::{}::", m);
+            api_rs = borrow_string_module_call_args(&api_rs, &m_source, &marker);
+        }
+    }
     std::fs::write(src_dir.join("api.rs"), &api_rs)
         .map_err(|e| format!("Failed to write api.rs: {}", e))?;
 
@@ -769,34 +879,6 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     // client) reach them as `crate::<stem>::...`. A transpile failure is
     // non-fatal — the module is skipped with a warning, matching the db.rs
     // fallback discipline above.
-    let mut companion_mods: Vec<String> = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(root_dir.join("src").join("back")) {
-        let mut stems: Vec<String> = entries
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map(|x| x == "at").unwrap_or(false))
-            .filter_map(|e| e.file_name().to_str().map(|s| s.trim_end_matches(".at").to_string()))
-            .filter(|stem| stem != "api" && stem != "db")
-            .collect();
-        stems.sort();
-        for stem in stems {
-            let Ok(content) = std::fs::read_to_string(root_dir.join("src").join("back").join(format!("{}.at", stem))) else {
-                continue;
-            };
-            match transpile_back_module_to_rs(&stem, &content) {
-                Ok(rs) => {
-                    let rs = post_process_companion_rs(rs);
-                    if let Err(e) = std::fs::write(src_dir.join(format!("{}.rs", stem)), &rs) {
-                        eprintln!("  ⚠ Failed to write {}.rs: {}", stem, e);
-                        continue;
-                    }
-                    companion_mods.push(stem);
-                }
-                Err(e) => {
-                    eprintln!("  ⚠ {}.rs transpile failed (module skipped): {}", stem, e);
-                }
-            }
-        }
-    }
 
     // Plan musk-022: events broadcast-bus module for SSE backends.
     if has_sse {
@@ -1510,16 +1592,49 @@ fn rewrite_inline_runtime_names(source: &str) -> String {
 }
 
 fn wrap_inline_return(line: &str) -> String {
+    wrap_inline_return_mode(line, false)
+}
+
+/// Plan 742 (D5): `option_result` mode — for `?T`-return endpoints WITH path
+/// params, the handler signature is `Result<Json<T>, StatusCode>` (needs_result
+/// 404 semantics). Body `return Some(x)` → `Ok(JsonResponse(x))` and
+/// `return None` → `Err(StatusCode::NOT_FOUND)`; plain `return x` →
+/// `Ok(JsonResponse(x))`.
+fn wrap_inline_return_mode(line: &str, option_result: bool) -> String {
     let trimmed = line.trim_start();
+    // Plan 742 (D5): the transpiler lowers `return None` to a bare `return;`
+    // before this pass — in option_result mode that means NOT_FOUND.
+    if option_result && trimmed == "return;" {
+        let indent = &line[..line.len() - trimmed.len()];
+        return format!("{}return Err(StatusCode::NOT_FOUND);", indent);
+    }
     let Some(value) = trimmed.strip_prefix("return ") else {
         return line.to_string();
     };
     let value = value.trim_end().strip_suffix(';').unwrap_or(value.trim_end());
-    if value.starts_with("JsonResponse(") || value.is_empty() {
+    if value.is_empty() {
         return line.to_string();
     }
+    if !option_result {
+        if value.starts_with("JsonResponse(") {
+            return line.to_string();
+        }
+        let indent = &line[..line.len() - trimmed.len()];
+        return format!("{}return JsonResponse({});", indent, value);
+    }
     let indent = &line[..line.len() - trimmed.len()];
-    format!("{}return JsonResponse({});", indent, value)
+    if value == "None" {
+        return format!("{}return Err(StatusCode::NOT_FOUND);", indent);
+    }
+    if let Some(inner) = value.strip_prefix("Some(") {
+        if let Some(stripped) = inner.strip_suffix(')') {
+            return format!("{}return Ok(JsonResponse({}));", indent, stripped);
+        }
+    }
+    if value.starts_with("JsonResponse(") {
+        return format!("{}return Ok({});", indent, value);
+    }
+    format!("{}return Ok(JsonResponse({}));", indent, value)
 }
 
 fn matching_paren(source: &str, open: usize) -> Option<usize> {
@@ -1617,6 +1732,66 @@ fn db_string_param_signatures(db_source: &str) -> std::collections::HashMap<Stri
 }
 
 fn borrow_string_db_call_args(api_source: &str, db_source: &str) -> String {
+    borrow_string_module_call_args(api_source, db_source, "crate::db::")
+}
+
+/// Plan 742: marker-generalized form of [[borrow_string_db_call_args]] —
+/// companion modules (repository) have the same `&str`-param shape as db.rs,
+/// and handler bodies that call them directly need the same borrow fixup.
+fn borrow_string_module_call_args(api_source: &str, module_source: &str, marker: &str) -> String {
+    let signatures = db_string_param_signatures(module_source);
+    if signatures.is_empty() {
+        return api_source.to_string();
+    }
+    let mut out = String::with_capacity(api_source.len());
+    let mut cursor = 0usize;
+    while let Some(rel) = api_source[cursor..].find(marker) {
+        let start = cursor + rel;
+        let name_start = start + marker.len();
+        let name_end = name_start
+            + api_source[name_start..]
+                .bytes()
+                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+                .count();
+        let name = &api_source[name_start..name_end];
+        let Some(expected) = signatures.get(name) else {
+            out.push_str(&api_source[cursor..name_end]);
+            cursor = name_end;
+            continue;
+        };
+        let open = api_source[name_end..]
+            .find('(')
+            .map(|i| name_end + i)
+            .filter(|i| api_source[name_end..*i].trim().is_empty());
+        let Some(open) = open else {
+            out.push_str(&api_source[cursor..name_end]);
+            cursor = name_end;
+            continue;
+        };
+        let Some(close) = matching_paren(api_source, open) else {
+            out.push_str(&api_source[cursor..open + 1]);
+            cursor = open + 1;
+            continue;
+        };
+        let args = split_top_level_args(&api_source[open + 1..close]);
+        out.push_str(&api_source[cursor..open + 1]);
+        for (index, arg) in args.iter().enumerate() {
+            if index > 0 {
+                out.push_str(", ");
+            }
+            if expected.get(index).copied().unwrap_or(false) && !arg.starts_with('&') {
+                out.push('&');
+            }
+            out.push_str(arg);
+        }
+        out.push(')');
+        cursor = close + 1;
+    }
+    out.push_str(&api_source[cursor..]);
+    out
+}
+
+fn borrow_string_db_call_args_old(api_source: &str, db_source: &str) -> String {
     let signatures = db_string_param_signatures(db_source);
     if signatures.is_empty() {
         return api_source.to_string();
@@ -2608,6 +2783,14 @@ fn generate_api_rs(
                         // 不在内联面，见 a2r_body 覆盖注记）。
                         let ret_nonvoid = !endpoint.return_type.trim().is_empty()
                             && endpoint.return_type.trim() != "void";
+                        // Plan 742 (D5): `?T` returns on needs_result endpoints
+                        // (has_path ⇒ Result signature) — Some/None must map to
+                        // Ok(JsonResponse)/Err(NOT_FOUND) instead of
+                        // JsonResponse(Option).
+                        let ret_is_option = endpoint.return_type.trim().starts_with('?');
+                        let option_result = ret_nonvoid
+                            && ret_is_option
+                            && needs_result;
                         // Plan B1(b): bind the server-injected meta JSON before
                         // the transpiled body (it references `meta` like any param).
                         if has_meta {
@@ -2617,7 +2800,7 @@ fn generate_api_rs(
                         for source_line in &stmts {
                             let mut line = rewrite_inline_runtime_names(source_line);
                             if ret_nonvoid {
-                                line = wrap_inline_return(&line);
+                                line = wrap_inline_return_mode(&line, option_result);
                             }
                             lines.push(line);
                         }
@@ -3461,6 +3644,126 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&empty);
+    }
+
+    /// Plan 742 (NOTES-001 T-04 cross-repo): api.rs handler bodies that call
+    /// sibling crate modules and build List locals must transpile to
+    /// compilable Rust — module import collected, List construct lowered to
+    /// Vec, no chained comparison. Reproduces the 015-notes T-04 compile
+    /// failures (E0425 missing crate::repository, verbatim List<Note>.new,
+    /// E0062-ish chained ==).
+    #[test]
+    fn test_handler_body_module_calls_and_list_construct() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type NoteDocument = { schema_version: int, note_id: str, title: str }
+pub type NoteView = { schema_version: int, note_id: str, title: str }
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []NoteDocument {
+    var docs []NoteDocument = repository.repo_list_active()
+    var out List<NoteDocument> = List<NoteDocument>.new([])
+    for d in docs {
+        out.push(d)
+    }
+    return out
+}
+
+#[api(method = "GET", path = "/api/notes/:id")]
+pub fn get_note(id int) ?NoteView {
+    var docs []NoteDocument = repository.repo_list_active()
+    if docs.len() > 0 {
+        var d NoteDocument = docs[0]
+        var v NoteView = NoteView { schema_version: d.schema_version, note_id: d.note_id, title: d.title }
+        return Some(v)
+    }
+    return None
+}
+
+#[api(method = "PUT", path = "/api/notes/:id")]
+pub fn update_note(id int, title str) []NoteDocument {
+    var docs []NoteDocument = repository.repo_list_active()
+    var ok bool = docs.len() > 0
+    if ok {
+        ok = docs[0].title == title
+    }
+    return docs
+}
+"#;
+    let dir = std::env::temp_dir().join("p742_body_parity_probe");
+    let _ = std::fs::remove_dir_all(&dir);
+    let back_dir = dir.join("src").join("back");
+    std::fs::create_dir_all(&back_dir).expect("create back dir");
+    std::fs::write(back_dir.join("api.at"), api).expect("write api.at");
+    // Minimal transpilable companion module the bodies call into.
+    let repo_at = r#"
+pub fn repo_list_active() []NoteDocument {
+    var out List<NoteDocument> = List<NoteDocument>.new([])
+    return out
+}
+"#;
+    std::fs::write(back_dir.join("repository.at"), repo_at).expect("write repository.at");
+
+    generate_api(&dir, "rust").expect("generate api");
+
+    // The generated server lands in <project>/rust-workspace/<name>-back;
+    // locate the api.rs containing this probe's body marker.
+    let mut api_rs_path = None;
+    let ws = dir.join("rust-workspace");
+    if let Ok(entries) = std::fs::read_dir(&ws) {
+        for e in entries.flatten() {
+            let candidate = e.path().join("src").join("api.rs");
+            if let Ok(content) = std::fs::read_to_string(&candidate) {
+                if content.contains("repo_list_active") {
+                    api_rs_path = Some(candidate);
+                    break;
+                }
+            }
+        }
+    }
+    let api_rs_path = api_rs_path.expect("generated api.rs with probe body");
+    let api_rs = std::fs::read_to_string(&api_rs_path).expect("read api.rs");
+
+        // D5: `?NoteView` (non-primary ⇒ a2r body path) return on a :id path
+        // endpoint — signature becomes Result<Json<NoteView>, StatusCode> and
+        // Some/None map to Ok(JsonResponse(v)) / Err(NOT_FOUND).
+        // needs_result + ?T：签名剥 Option 为 Result<JsonResponse<T>, StatusCode>
+        assert!(
+            api_rs.contains("Result<JsonResponse<NoteView>, StatusCode>"),
+            "option+path signature:
+{}",
+            api_rs
+        );
+        assert!(api_rs.contains("return Ok(JsonResponse("), "Some→Ok:
+{}", api_rs);
+        assert!(
+            api_rs.contains("Err(StatusCode::NOT_FOUND)"),
+            "None→NOT_FOUND:
+{}",
+            api_rs
+        );
+
+        // D2: body references `repository.` → the crate module must be imported.
+        assert!(
+            api_rs.contains("use crate::repository;"),
+            "module import missing:
+{}",
+            api_rs
+        );
+        // D1: List construct must lower to Vec, not stay verbatim.
+        assert!(
+            !api_rs.contains("List<"),
+            "List construct must lower to Vec::new/collect:
+{}",
+            api_rs
+        );
+        // D3: no chained comparison emission.
+        assert!(
+            !api_rs.contains("== =="),
+            "chained comparison:
+{}",
+            api_rs
+        );
     }
 
     #[test]
