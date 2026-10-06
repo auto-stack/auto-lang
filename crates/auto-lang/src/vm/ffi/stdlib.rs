@@ -8583,6 +8583,17 @@ fn shim_sqlite_last_insert_rowid_impl(handle: i64) -> i64 {
     }
 }
 
+/// Plan 744 D9 runtime surface: flat child file names (receipts enumeration
+/// for the NOTES-001 Phase-1 JSON -> SQLite upgrade). Delegates to
+/// a2r_std::fs::dir_names (same fn the a2r track routes to).
+pub fn shim_fs_dir_names(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let names: Vec<String> = a2r_std::fs::dir_names(path.as_str());
+    VMConvertible::push_to_stack(&names, task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
 /// Pop the query rows off the FFI return and build the nested heap list the
 /// .at surface expects (`List<List<str>>`): outer ListData<Value> whose
 /// elements are VmRefs into inner ListData<i32> negative-sentinel string rows
@@ -8706,6 +8717,8 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
         for name in SQLITE_NATIVE_NAMES {
             registry.register(name);
         }
+        // Plan 744 D9 runtime face: fs.dir_names (receipts enumeration).
+        registry.register("auto.fs.dir_names");
     }
     natives.register_shim_by_name("auto.sqlite.open", shim_sqlite_open);
     natives.register_shim_by_name("auto.sqlite.exec", shim_sqlite_exec);
@@ -8715,6 +8728,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.sqlitedb.exec", shim_sqlite_exec);
     natives.register_shim_by_name("auto.sqlitedb.query", shim_sqlite_query);
     natives.register_shim_by_name("auto.sqlitedb.last_insert_rowid", shim_sqlite_last_insert_rowid);
+    natives.register_shim_by_name("auto.fs.dir_names", shim_fs_dir_names);
 
     #[cfg(feature = "ui-iced")]
     {
