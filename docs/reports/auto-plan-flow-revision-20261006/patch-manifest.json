@@ -1,0 +1,102 @@
+{
+  "target_repository": "D:/autostack/auto-musk",
+  "base_commit": "edde608709c5dd5b413fc9c534113d41f0bb8afe",
+  "installed": false,
+  "skills": [
+    {
+      "path": ".agents/skills/auto-plan-new/SKILL.md",
+      "base_sha256": "23543fc7a5470082dfb3b0fd6da0277e3e4c615bb324ebc76c5d6711b0175028",
+      "candidate_sha256": "a46a554d9a38ef46eeb6665fcb86518a038cc1a9a25c997950d3536f0e7faf7f",
+      "candidate_lines": 174
+    },
+    {
+      "path": ".agents/skills/auto-plan-work/SKILL.md",
+      "base_sha256": "8ee8014044b6a4c0f44ca0372df462010fbb6d61ab9e515d1ddeaaf837da20c5",
+      "candidate_sha256": "c65520b287ba1367938174285aa0ce848b1ce92f75263195def0b0ec02ad2de0",
+      "candidate_lines": 199
+    },
+    {
+      "path": ".agents/skills/auto-plan-review/SKILL.md",
+      "base_sha256": "13e5806b9484524515a881c58d94762452e40a449dcd55059eb85afe7db46598",
+      "candidate_sha256": "f5306e8a12487201938fa0796086d77e76b1d9c241667e57dbab2e1eff47dd23",
+      "candidate_lines": 171
+    },
+    {
+      "path": ".agents/skills/auto-plan-merge/SKILL.md",
+      "base_sha256": "dfe7c1878ff0d9bcc2ffa982ebbd22827ac08f87adb24d888240f2f85071c62b",
+      "candidate_sha256": "6c88dea8d2ad2baef5c3128edee3f3fab1092250ea6f7e06492d6ae2d79ca5f4",
+      "candidate_lines": 227
+    }
+  ],
+  "new_reference": {
+    "path": ".agents/skills/auto-plan-new/references/verification-contract.md",
+    "sha256": "9121196d595d9b78819ddc8b480f90e2d88bc7e43dfc1e8fef95cde7c19ec0fe"
+  },
+  "patch_sha256": "bf19d448b0fa4ca0300160f005b56397cdf20e5f8affc47e06939478ea5c8133",
+  "driver_sources": [
+    {
+      "path": "backend/crates/musk/src/relay/plan_flow.rs",
+      "sha256": "6c90625f0cdbd4be48f4955e13ffbbebc17d4de910a412d8d36f46f00a869789"
+    },
+    {
+      "path": "backend/crates/musk/src/relay/flows.rs",
+      "sha256": "1ab44b050277f25ff54e27b7dff85bbf46c71f7a25c06cc65ac10739e9d5acdf"
+    }
+  ],
+  "validation": {
+    "skill_frontmatter": {
+      "validator": "C:/Users/zhaop/.codex/skills/.system/skill-creator/scripts/quick_validate.py",
+      "passed": 4,
+      "failed": 0
+    },
+    "patch_apply_check": {
+      "command": "git apply --check --whitespace=error-all",
+      "repository": "D:/autostack/auto-musk",
+      "base_commit": "edde608709c5dd5b413fc9c534113d41f0bb8afe",
+      "exit_code": 0
+    },
+    "links": {
+      "checked": 15,
+      "missing": 0
+    },
+    "independent_model_behavior_test": "not performed",
+    "paper_walkthrough": [
+      {
+        "case": "split internal pass",
+        "expected": "execution_done; final reviewer next; no merge"
+      },
+      {
+        "case": "final needs_fix",
+        "expected": "executing; retain worktree; repair invariant and sibling paths"
+      },
+      {
+        "case": "two failed final reviews across revisions",
+        "expected": "diagnose coverage/design then continue authorized work"
+      },
+      {
+        "case": "archive checkpoint before cleanup",
+        "expected": "cleanup pending; accurate partial count; no overall merge pass"
+      },
+      {
+        "case": "cleanup actually verified",
+        "expected": "complete cleanup tasks; accurate final count; check references before pass"
+      },
+      {
+        "case": "wrong but existing navigation target",
+        "expected": "target identity check rejects"
+      },
+      {
+        "case": "semantic code added after review",
+        "expected": "affected acceptance re-review on resulting commit"
+      },
+      {
+        "case": "ordinary doc change",
+        "expected": "scoped checks; no mandatory risk matrix or new validator"
+      },
+      {
+        "case": "no split roles",
+        "expected": "normal independent review is final; legacy five statuses preserved"
+      }
+    ]
+  }
+}
