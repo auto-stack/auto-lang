@@ -417,21 +417,22 @@ def _post_classify(scan: ModuleScan, local_types: set,
                     c["kind"] = "implicit-self-method"
                     c["receiver"] = None
                 # 其它 owner 同名/无 owner → 保持 unknown（形态标记保留）
+            elif recv in known_bindings or recv in imported_symbols:
+                # R5-QA-03：可观察绑定先于本地类型升级——参数/局部绑定/导入同名
+                # 时身份不可证明（recv 亦可能是本地类型名），保持 unknown
+                pass
             elif recv in local_types:
                 c["kind"] = "type-qualified"
-            elif recv in known_bindings or recv in imported_symbols:
-                # R3-QA-03：参数/局部绑定/导入同名遮蔽宿主——身份不可证明，保持 unknown
-                pass
             elif recv in NATIVE_NAMESPACES:
                 c["kind"] = "native-runtime"
             # 变量/无法解析接收者 → 保持 unknown-receiver
         elif c["kind"] == "unknown-bare-call":
-            if n in local_enum_cases:
+            if n in scan.known_bindings:
+                pass  # R5-QA-03：可观察绑定先于本地类型/构造/宿主升级 → 保持 unknown
+            elif n in local_enum_cases:
                 c["kind"] = "enum-variant-construction"
             elif n in local_types:
                 c["kind"] = "type-construction"
-            elif n in scan.known_bindings:
-                pass  # R4-QA-01：内建名被参数/局部绑定遮蔽 → 保持 unknown
             elif n in BARE_NATIVES:
                 c["kind"] = "native-runtime"
     return sorted(scan.calls,

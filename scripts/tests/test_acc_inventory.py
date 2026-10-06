@@ -941,5 +941,41 @@ class TrustedIndexPhase6(StrictDecisionsGate):
         self.assertNotIn("Traceback", err)
 
 
+class BindingBeforeTypePromotion(FixtureCase):
+    """P743-R5-QA-03：可观察绑定先于本地类型/构造/宿主升级。"""
+
+    @classmethod
+    def setUpClass(cls):
+        _spec6 = importlib.util.spec_from_file_location("ai_qa_p6", _TOOL_PATH)
+        cls.ai = importlib.util.module_from_spec(_spec6)
+        _spec6.loader.exec_module(cls.ai)
+
+    def kinds(self, text, path="inline.at"):
+        s = self.ai.scan_module(path, text)
+        return s, {(c.get("receiver"), c["name"]): c["kind"] for c in s.calls}
+
+    def test_param_shadowing_same_named_local_type(self):
+        s, k = self.kinds(
+            "type Meter {\n fn len() int { return 1 }\n}\n"
+            "type Other {\n fn go() int { return 2 }\n}\n"
+            "fn demo(Meter Other) int {\n return Meter.len() + Other.go()\n}\n"
+            "fn ctor(Meter Other) int {\n return Meter() + Other()\n}\n")
+        # Meter 是参数绑定：即使同名本地类型存在也不升级
+        self.assertEqual(k[("Meter", "len")], "unknown-receiver")
+        self.assertEqual(k[(None, "Meter")], "unknown-bare-call")
+        # Other 是本地类型：合法升级保留
+        self.assertEqual(k[("Other", "go")], "type-qualified")
+        self.assertEqual(k[(None, "Other")], "type-construction")
+
+    def test_no_binding_control_upgrades(self):
+        s, k = self.kinds(
+            "type Meter {\n fn len() int { return 1 }\n}\n"
+            "fn demo2() int {\n return Meter.len()\n}\n"
+            "fn ctor2() Meter {\n return Meter()\n}\n")
+        self.assertEqual(k[("Meter", "len")], "type-qualified")
+        self.assertEqual(k[(None, "Meter")], "type-construction")
+
+
+
 if __name__ == "__main__":
     unittest.main()
