@@ -883,5 +883,63 @@ class ManifestShapeGate(FixtureCase):
         self.assertFalse((self.out / acc_inventory.DECISIONS_NAME).exists())
 
 
+class TrustedIndexPhase6(StrictDecisionsGate):
+    """P743-R5-QA-01/02：缺失绑定退出消费者、全局唯一 ID 覆盖错类型同 ID 组。"""
+
+    def test_missing_bound_file_three_stage(self):
+        run_tool(self.repo, self.out, "--write")
+        layer = self.complete_layer()
+        ref = self.repo / "docs/review-bound-reference.txt"
+        ref.parent.mkdir(exist_ok=True)
+        ref.write_bytes(b"ref\n")
+        d9 = layer["decisions"][-1]
+        d9["evidence"].append("docs/review-bound-reference.txt:1")
+        d9["bound_input_hashes"]["docs/review-bound-reference.txt"] = \
+            acc_inventory.sha256_of(ref)
+        self.write_layer(layer)
+        # 存在：可消费
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 0, err)
+        # 删除：stale + 消费者不再读取该记录（family-ref-missing）
+        ref.unlink()
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("decision-stale", err)
+        self.assertIn("family-ref-missing", err)
+        # 恢复：重新可消费
+        ref.write_bytes(b"ref\n")
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 0, err)
+        shutil.rmtree(self.repo / "docs")
+
+    def _dup_layer(self, bad_first: bool):
+        layer = self.complete_layer()
+        bad = dict(layer["decisions"][-1])
+        bad["evidence"] = 17  # 类型错误
+        if bad_first:
+            layer["decisions"].insert(-1, bad)
+        else:
+            layer["decisions"].append(bad)
+        self.write_layer(layer)
+
+    def test_type_invalid_twin_bad_first_consumers_zero(self):
+        run_tool(self.repo, self.out, "--write")
+        self._dup_layer(bad_first=True)
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("decision-duplicate-id", err)
+        self.assertIn("family-ref-missing", err)  # 合法同 ID 记录整组作废，消费者 0
+        self.assertNotIn("Traceback", err)
+
+    def test_type_invalid_twin_bad_last_consumers_zero(self):
+        run_tool(self.repo, self.out, "--write")
+        self._dup_layer(bad_first=False)
+        code, out, err = run_tool(self.repo, self.out, "--check", "--require-decisions")
+        self.assertEqual(code, 1)
+        self.assertIn("decision-duplicate-id", err)
+        self.assertIn("family-ref-missing", err)
+        self.assertNotIn("Traceback", err)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -709,7 +709,17 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
             return "error", ["ERROR[decision-malformed] decisions[%d] 非对象记录" % pos]
         # ── R2-QA-04：字段/元素类型前置校验（先于任何集合/迭代/hash 逻辑） ──
         did_raw = d.get("id")
-        did = did_raw if isinstance(did_raw, str) and did_raw else "decisions[%d]" % pos
+        recognizable = isinstance(did_raw, str) and bool(did_raw)
+        # ── R5-QA-02：全局唯一 ID 注册先于类型校验——可辨识的非空字符串 ID
+        # 全覆盖，错类型/缺字段的同 ID 记录同样触发整组作废（含先插入者） ──
+        did = did_raw if recognizable else "decisions[%d]" % pos
+        if recognizable and did in seen_ids:
+            structural_error = True
+            msgs.append("ERROR[decision-duplicate-id] %s" % did)
+            invalid_ids.add(did)
+            validated_by_id.pop(did, None)  # 重复整组作废（含先插入记录）
+        if recognizable:
+            seen_ids.add(did)
         type_bad = False
         for key in DECISION_REQUIRED_KEYS:
             if key not in d:
@@ -734,14 +744,10 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
                             % (did, key, type(v).__name__))
         if type_bad:
             structural_error = True
+            if recognizable:
+                invalid_ids.add(did)
+                validated_by_id.pop(did, None)  # 同 ID 先插入合法记录一并退出（整组作废）
             continue  # 类型不合法的记录不做后续语义校验（无 traceback）
-        if did in seen_ids:
-            structural_error = True
-            msgs.append("ERROR[decision-duplicate-id] %s" % did)
-            # R4-QA-03：重复 ID 整组作废——先插入记录同样移出消费者索引
-            invalid_ids.add(did)
-            validated_by_id.pop(did, None)
-        seen_ids.add(did)
         record_bad = False
         kind = d.get("kind")
         if kind not in DECISION_KIND_CONCLUSIONS:
@@ -780,6 +786,7 @@ def validate_decisions(dec_path: Path, inputs, root: Path,
                 f = root / p
                 if not f.is_file():
                     stale = True
+                    record_bad = True  # R5-QA-01：绑定文件缺失同样退出可信索引
                     msgs.append("ERROR[decision-stale] %s 绑定的输入已不存在: %s" % (did, p))
                     continue
                 cur = sha256_of(f)
