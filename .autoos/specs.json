@@ -8239,6 +8239,21 @@
           "status": "published",
           "created": "2026-10-06",
           "last_modified": "2026-10-06"
+        },
+        {
+          "id": "P741-10",
+          "title": "PLAN-741 r8 Phase 8 复审 pass + 验收器身份检查收据（P741-R7-QA-01..02）",
+          "file": "docs/plans/archive/741-ac-hir-native-core.md",
+          "tags": [
+            "PLAN-741",
+            "review",
+            "native-aot",
+            "identity-gate"
+          ],
+          "content": "r7 合入后复审 needs_fix（docs/reports/741-r7-quality-review-20261006，两个 P3 验收器问题）→ r8 修复（零 Rust 改动）：R7-QA-01 两矩阵导航控制（all-correct/forgotten-nav-update）以 add_external 进入统一 cases 真实执行（各带沙盒 repo root），总数从执行记录派生（固定 +2 删除）；控制性确认：forgotten-nav-update 期望改 0 → fixture 整体非零（控制真实执行且失败传播）。R7-QA-02 final_assertions canonical 目标身份检查：推导 docs/plans[/archive]/741-ac-hir-native-core.md 为唯一规范目标；README 必须存在 741 计划引用（缺失即失败）；README/两模块导航行/全部 P741-* review 指针解析后必须恰等于 canonical（错目标失败含 expected/got 与 entry ID）；激活期 canonical_archive 尚不存在=显式列暂态（仅限精确 canonical 路径）。独立代理复审 pass（AC-33..34）：自建沙盒正负矩阵（含 743 占位错目标/缺引用）+ 反向验证旧版门对这些反例全部假通过（新负例非同义反复）。",
+          "status": "published",
+          "created": "2026-10-06",
+          "last_modified": "2026-10-06"
         }
       ]
     }
