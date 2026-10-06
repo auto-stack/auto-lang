@@ -50,15 +50,24 @@ function Invoke-Captured {
     $psi.RedirectStandardError = $true
     $p = New-Object System.Diagnostics.Process
     $p.StartInfo = $psi
-    $outBuf = New-Object System.Text.StringBuilder
-    $errBuf = New-Object System.Text.StringBuilder
-    # Event actions run in their own runspace: the builders travel by
-    # reference through -MessageData ($Event.MessageData), never by scope.
-    $outSub = Register-ObjectEvent -InputObject $p -EventName OutputDataReceived -MessageData $outBuf -Action {
-        if ($null -ne $EventArgs.Data) { [void]$Event.MessageData.AppendLine($EventArgs.Data) }
+    # State objects (builder + first-line flag) travel by reference through
+    # -MessageData. Lines are joined with "`n" BETWEEN events only — no
+    # trailing newline — so exact-oracle stderr like "ba" stays exact.
+    $outState = [pscustomobject]@{ Buf = New-Object System.Text.StringBuilder; First = $true }
+    $errState = [pscustomobject]@{ Buf = New-Object System.Text.StringBuilder; First = $true }
+    $outSub = Register-ObjectEvent -InputObject $p -EventName OutputDataReceived -MessageData $outState -Action {
+        if ($null -ne $EventArgs.Data) {
+            if ($Event.MessageData.First) { $Event.MessageData.First = $false }
+            else { [void]$Event.MessageData.Buf.Append("`n") }
+            [void]$Event.MessageData.Buf.Append($EventArgs.Data)
+        }
     }
-    $errSub = Register-ObjectEvent -InputObject $p -EventName ErrorDataReceived -MessageData $errBuf -Action {
-        if ($null -ne $EventArgs.Data) { [void]$Event.MessageData.AppendLine($EventArgs.Data) }
+    $errSub = Register-ObjectEvent -InputObject $p -EventName ErrorDataReceived -MessageData $errState -Action {
+        if ($null -ne $EventArgs.Data) {
+            if ($Event.MessageData.First) { $Event.MessageData.First = $false }
+            else { [void]$Event.MessageData.Buf.Append("`n") }
+            [void]$Event.MessageData.Buf.Append($EventArgs.Data)
+        }
     }
     try {
         if (-not $p.Start()) { throw "failed to start '$Exe'" }
@@ -78,12 +87,12 @@ function Invoke-Captured {
             # report TimedOut with whatever arrived (never past deadline,
             # never a fake success; a silently holding descendant that
             # writes nothing resolves as complete-with-full-output).
-            $lastOut = $outBuf.Length; $lastErr = $errBuf.Length
+            $lastOut = $outState.Buf.Length; $lastErr = $errState.Buf.Length
             $quiet = [System.Diagnostics.Stopwatch]::StartNew()
             while (($quiet.ElapsedMilliseconds -lt 250) -and ($budget.ElapsedMilliseconds -lt ($TimeoutSec * 1000))) {
                 Start-Sleep -Milliseconds 50
-                if ($outBuf.Length -ne $lastOut -or $errBuf.Length -ne $lastErr) {
-                    $lastOut = $outBuf.Length; $lastErr = $errBuf.Length
+                if ($outState.Buf.Length -ne $lastOut -or $errState.Buf.Length -ne $lastErr) {
+                    $lastOut = $outState.Buf.Length; $lastErr = $errState.Buf.Length
                     $quiet.Restart()
                 }
             }
@@ -92,8 +101,8 @@ function Invoke-Captured {
         $code = $p.ExitCode
         return [pscustomobject]@{
             Code = $code
-            Stdout = $outBuf.ToString()
-            Stderr = $errBuf.ToString()
+            Stdout = $outState.Buf.ToString()
+            Stderr = $errState.Buf.ToString()
             TimedOut = $timedOut
         }
     } finally {
