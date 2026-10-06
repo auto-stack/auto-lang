@@ -848,7 +848,7 @@ T-24 实施侧未核实的独立复审不得提前标记；最终归档部分按
   - R2: 计数以交付 HEAD 重跑实测为准——**两矩阵 21 用例 + 全 PASS**（active 源 10 用例、
     archive 源 git 历史重放 7 用例、每矩阵 2 沙盒导航控制——全对 repo exit 0、遗忘
     auto-ac 导航更新 exit 1 且定位 auto-ac/plans.md:5），原始输出冻结于
-    [fixture-run-final.txt](../../reports/741-phase7-lifecycle-fixture-nav/fixture-run-final.txt)，
+    [fixture-run-final.txt](../reports/741-phase7-lifecycle-fixture-nav/fixture-run-final.txt)，
     verification.md 计数已据实更正。
 - 复审代理的正面确认（无需重验）:T-40 导航门为真修复（独立正负沙盒控制成立）、
   零 Rust/依赖/canonical 改动、known-debt 未提前销账、临时沙盒已清理。
