@@ -1,0 +1,78 @@
+[
+  {
+    "run": {
+      "stdout": "",
+      "exit": 23,
+      "stderr": "ba"
+    },
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=0c011a8ed5206679, module(s)=1, capabilities required: [\"hir.test.trace.v1\"]\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "want_native": 23,
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M17-wrapped-trace-args\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M17-wrapped-trace-args\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M17-wrapped-trace-args\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M17-wrapped-trace-args\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 0c011a8ed5206679\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "want": 0,
+    "id": "M17-wrapped-trace-args",
+    "bytes": 97
+  },
+  {
+    "run": null,
+    "check": {
+      "stdout": "",
+      "exit": 1,
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M18-binary-trace-args\\input.at:1:78: error[text/source.syntax]: expected operator, found `,`\n"
+    },
+    "want_native": 23,
+    "build": null,
+    "want": 0,
+    "id": "M18-binary-trace-args",
+    "bytes": 93
+  },
+  {
+    "run": {
+      "stdout": "",
+      "exit": 5,
+      "stderr": ""
+    },
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=797d0795fc37caa0, module(s)=1, capabilities required: []\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "want_native": 5,
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M19-unclosed-if-condition\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M19-unclosed-if-condition\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M19-unclosed-if-condition\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M19-unclosed-if-condition\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 797d0795fc37caa0\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "want": 1,
+    "id": "M19-unclosed-if-condition",
+    "bytes": 56
+  },
+  {
+    "run": {
+      "stdout": "",
+      "exit": 3,
+      "stderr": ""
+    },
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=6d466f1fa649077b, module(s)=1, capabilities required: []\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "want_native": 3,
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M20-unclosed-while-condition\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M20-unclosed-while-condition\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M20-unclosed-while-condition\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M20-unclosed-while-condition\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 6d466f1fa649077b\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "want": 1,
+    "id": "M20-unclosed-while-condition",
+    "bytes": 57
+  }
+]

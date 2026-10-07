@@ -1,0 +1,410 @@
+[
+  {
+    "artifact_hashes": [],
+    "check": {
+      "stdout": "",
+      "exit": 1,
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M01-positional-binary-args\\input.at:1:69: error[text/source.syntax]: expected operator, found `,`\n"
+    },
+    "want_native": 42,
+    "want": 0,
+    "build": null,
+    "input_sha256": "444ab61d9b470d852e4a00f06a428d1652e9b177024a9d9d79e5d2c4a56f9170",
+    "bytes": 75,
+    "id": "M01-positional-binary-args",
+    "run": null
+  },
+  {
+    "artifact_hashes": [],
+    "check": {
+      "stdout": "",
+      "exit": 1,
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M02-named-binary-args\\input.at:1:71: error[text/source.syntax]: expected operator, found `,`\n"
+    },
+    "want_native": 42,
+    "want": 0,
+    "build": null,
+    "input_sha256": "34642ced9dca15974f50cd6081e24ceaaad0019791277b3039dd4eae3f3d67b5",
+    "bytes": 79,
+    "id": "M02-named-binary-args",
+    "run": null
+  },
+  {
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "cb820f4f11cca7ca4e2f323c3117cbcb6527c67ddde4686842882ea07f402367"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "2e708afb43d81add8f320807002ad7e2022b7023f44776657abc38e5a7b06c76"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "95e32bc94ac192e5627916d6b9831417e86b886aaa71d6ff7722e53f29158a78"
+      }
+    ],
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=7766a9eff0f682d6, module(s)=1, capabilities required: []\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "want_native": 3,
+    "want": 1,
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M03-unclosed-paren-binary\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M03-unclosed-paren-binary\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M03-unclosed-paren-binary\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M03-unclosed-paren-binary\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 7766a9eff0f682d6\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "input_sha256": "843226ffa0adc7ff964682d9fe3516644ffa2802f0b6956e6152b1ce8f9dfe62",
+    "bytes": 29,
+    "id": "M03-unclosed-paren-binary",
+    "run": {
+      "stdout": "",
+      "exit": 3,
+      "stderr": ""
+    }
+  },
+  {
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "9db3c99478ad607c811da83660e29bb3d8841f7c34cc6a106d295bb3b6ed5488"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "4792dbff05f54a74a303d4dfde45116c86b93acccc44346a5ac7adb9ef48d0cd"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "15177f52b27b2ec34f9f3cb7a37e012d61ec3e019f68cec93575bc9e86dd60e4"
+      }
+    ],
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=d022c9dfe8c484fe, module(s)=1, capabilities required: []\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "want_native": 30,
+    "want": 1,
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M04-unclosed-call-binary\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M04-unclosed-call-binary\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M04-unclosed-call-binary\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M04-unclosed-call-binary\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: d022c9dfe8c484fe\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "input_sha256": "07c120e960694834344679c2fb0067a18adca3976842b13ba7dd3a353f4b4349",
+    "bytes": 62,
+    "id": "M04-unclosed-call-binary",
+    "run": {
+      "stdout": "",
+      "exit": 3,
+      "stderr": ""
+    }
+  },
+  {
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "06db0329c461661de06f5b5283c0be0ba97eb560500fe47604b5fa0bfdd4f921"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "2e708afb43d81add8f320807002ad7e2022b7023f44776657abc38e5a7b06c76"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "39202efd49e611447d39ecec3c9cd3347364e00893c0ae3607d5b0117898065d"
+      }
+    ],
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=1b242c6e7f2132bc, module(s)=1, capabilities required: []\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "want_native": 3,
+    "want": 1,
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M05-unclosed-undefined-call-binary\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M05-unclosed-undefined-call-binary\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M05-unclosed-undefined-call-binary\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M05-unclosed-undefined-call-binary\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 1b242c6e7f2132bc\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "input_sha256": "f891fdbb1e82dda2a812b0086096c6184d2a699f3e084a986099db81bb109323",
+    "bytes": 36,
+    "id": "M05-unclosed-undefined-call-binary",
+    "run": {
+      "stdout": "",
+      "exit": 3,
+      "stderr": ""
+    }
+  },
+  {
+    "artifact_hashes": [],
+    "check": {
+      "stdout": "",
+      "exit": 1,
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M06-nested-call-args\\input.at:1:74: error[text/source.syntax]: expected operator, found `,`\n"
+    },
+    "want_native": 192,
+    "want": 0,
+    "build": null,
+    "input_sha256": "fc7e57a9fef6ddf8f587b8f92daf1a04f43fa5bf29eb808444ee04f23dcd58a1",
+    "bytes": 85,
+    "id": "M06-nested-call-args",
+    "run": null
+  },
+  {
+    "artifact_hashes": [],
+    "check": {
+      "stdout": "",
+      "exit": 1,
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M07-comparison-call-arg\\input.at:1:94: error[text/source.syntax]: expected operator, found `,`\n"
+    },
+    "want_native": 5,
+    "want": 0,
+    "build": null,
+    "input_sha256": "77fcf369a1c67702301b6abbca26210fe0baddb3a7e8640c31e8a5836715451b",
+    "bytes": 98,
+    "id": "M07-comparison-call-arg",
+    "run": null
+  },
+  {
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "06db0329c461661de06f5b5283c0be0ba97eb560500fe47604b5fa0bfdd4f921"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "2e708afb43d81add8f320807002ad7e2022b7023f44776657abc38e5a7b06c76"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "c768dca3bcf0fa8785418f5f5a7a4296133cd6f7fcd041d53bac6eac12d81221"
+      }
+    ],
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=0d9f74d9f2522155, module(s)=1, capabilities required: []\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "want_native": 3,
+    "want": 1,
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M08-missing-group-before-semicolon\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M08-missing-group-before-semicolon\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M08-missing-group-before-semicolon\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M08-missing-group-before-semicolon\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 0d9f74d9f2522155\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "input_sha256": "0959f08841e36e0a4ab311a54b0f8cd3c0745f6c2767c4fbc633faacd27062fb",
+    "bytes": 40,
+    "id": "M08-missing-group-before-semicolon",
+    "run": {
+      "stdout": "",
+      "exit": 3,
+      "stderr": ""
+    }
+  },
+  {
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "eabccd545f0bc69d72349b2db6fed0491e042794cdea9682b151bedbd57a2a46"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "4792dbff05f54a74a303d4dfde45116c86b93acccc44346a5ac7adb9ef48d0cd"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "de17eaf155610120718928827688e592e710d0779820202e4dd9adc8152943fa"
+      }
+    ],
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=12f2bd944a4c07ad, module(s)=1, capabilities required: []\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "want_native": 30,
+    "want": 1,
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M09-missing-call-before-semicolon\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M09-missing-call-before-semicolon\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M09-missing-call-before-semicolon\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M09-missing-call-before-semicolon\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 12f2bd944a4c07ad\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "input_sha256": "92321489c59a9ba9b4aad292bf8842f3875ef98a46409dd91104b54199b4bdaf",
+    "bytes": 73,
+    "id": "M09-missing-call-before-semicolon",
+    "run": {
+      "stdout": "",
+      "exit": 3,
+      "stderr": ""
+    }
+  },
+  {
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "333331ccb6c25485279a22db66daec0a2b932e7d2b525425d43893f9b8b26f38"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "c542e22f7d669e2eb1b950c4f711524624a678b748e47ed50706153c3a9bf213"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "2d554e0074464eae2221811a923ef3d23ff904d88accae060d531a33a4da0fde"
+      }
+    ],
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=c64e13ea51982a96, module(s)=1, capabilities required: []\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "want_native": 42,
+    "want": 0,
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M10-parenthesized-comma-control\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M10-parenthesized-comma-control\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M10-parenthesized-comma-control\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M10-parenthesized-comma-control\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: c64e13ea51982a96\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "input_sha256": "4aca6770f085626022a0731805df15163fa344721d55f60c1d32efc0940575ab",
+    "bytes": 79,
+    "id": "M10-parenthesized-comma-control",
+    "run": {
+      "stdout": "",
+      "exit": 42,
+      "stderr": ""
+    }
+  },
+  {
+    "artifact_hashes": [],
+    "check": {
+      "stdout": "",
+      "exit": 1,
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M11-unclosed-paren-literal-control\\input.at:1:27: error[text/source.syntax]: expected `)`\n"
+    },
+    "want_native": null,
+    "want": 1,
+    "build": null,
+    "input_sha256": "93a90774c5290fabe716b54398458f239f378b1c36f0a765a6a8539164be9741",
+    "bytes": 27,
+    "id": "M11-unclosed-paren-literal-control",
+    "run": null
+  },
+  {
+    "artifact_hashes": [],
+    "check": {
+      "stdout": "",
+      "exit": 1,
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M12-unclosed-call-literal-control\\input.at:1:60: error[text/source.syntax]: expected `,` or `)`\n"
+    },
+    "want_native": null,
+    "want": 1,
+    "build": null,
+    "input_sha256": "f973a43739a9427ce7795a3a682da422038d15a41de7420085cf2d1e1e5ed1f1",
+    "bytes": 60,
+    "id": "M12-unclosed-call-literal-control",
+    "run": null
+  },
+  {
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "62ec4d55a67e3b456ac224b5bb9f675753daac9fd2a2019bce8c5ec9c085236d"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "f50c8a518684b311a9f7162d4a5e3bd30d7af0ee7bd1d6e48ab41f90f41d0be8"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "63266bbb08ab1dde00a4674f4d309d1630d482ae4d3d497296c3caba99c513c7"
+      }
+    ],
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=81188876bad9f53f, module(s)=1, capabilities required: []\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "want_native": 5,
+    "want": 1,
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M13-nested-unclosed-empty-call\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M13-nested-unclosed-empty-call\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M13-nested-unclosed-empty-call\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M13-nested-unclosed-empty-call\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 81188876bad9f53f\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "input_sha256": "0baeda29a3fc7aeecb1ce225b83b69131aacd7de2894eb1b44a29380bee3cff5",
+    "bytes": 55,
+    "id": "M13-nested-unclosed-empty-call",
+    "run": {
+      "stdout": "",
+      "exit": 5,
+      "stderr": ""
+    }
+  },
+  {
+    "artifact_hashes": [],
+    "check": {
+      "stdout": "",
+      "exit": 1,
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M14-stray-comma-control\\input.at:1:28: error[text/source.syntax]: expected operator, found `,`\n"
+    },
+    "want_native": null,
+    "want": 1,
+    "build": null,
+    "input_sha256": "1f8306c609376ddfe128df7c5373a1262cc3c668bdb42923c9d47da9a8f45321",
+    "bytes": 32,
+    "id": "M14-stray-comma-control",
+    "run": null
+  },
+  {
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "d2f6b103858367a5d12f9468f40d277f5efc9f943ceba5864805cc883c753ccb"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "b5edc9ec62e6b70a41da597791a0f78c707db6c5f2653a488a7f0f33b8511a30"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "b2aaa512353c76b4d75f0aabcec489209c6352b8bb5e7c9608df560f989cdb71"
+      }
+    ],
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=464ed81c970d6dda, module(s)=1, capabilities required: []\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "want_native": 15,
+    "want": 0,
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M15-binary-arg-last-control\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M15-binary-arg-last-control\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M15-binary-arg-last-control\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M15-binary-arg-last-control\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 464ed81c970d6dda\n",
+      "exit": 0,
+      "stderr": ""
+    },
+    "input_sha256": "5962db8850044acbca9241b33edf1deb9c9eef3b068d952f271356234d658b8e",
+    "bytes": 73,
+    "id": "M15-binary-arg-last-control",
+    "run": {
+      "stdout": "",
+      "exit": 15,
+      "stderr": ""
+    }
+  },
+  {
+    "artifact_hashes": [],
+    "check": {
+      "stdout": "",
+      "exit": 1,
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M16-unsupported-op-next-line\\input.at:2:1: error[text/source.unsupported]: operator `-` is not part of this source profile\n"
+    },
+    "want_native": null,
+    "want": 1,
+    "build": null,
+    "input_sha256": "7fef0430c167af9a920ea6342d7265fca86d61eacbaa9a08902e9f3b207ae555",
+    "bytes": 40,
+    "id": "M16-unsupported-op-next-line",
+    "run": null
+  }
+]

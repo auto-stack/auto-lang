@@ -1,0 +1,48 @@
+{
+  "sentinel_preserved": false,
+  "check": {
+    "exit": 0,
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=d022c9dfe8c484fe, module(s)=1, capabilities required: []\n",
+    "stderr": ""
+  },
+  "input_sha256": "07c120e960694834344679c2fb0067a18adca3976842b13ba7dd3a353f4b4349",
+  "run": {
+    "exit": 3,
+    "stdout": "",
+    "stderr": ""
+  },
+  "id": "M21-unclosed-source-sentinel",
+  "before": [
+    {
+      "sha256": "34a5952a1b8eeb68f8cddbc38cbb68a71f39bb5c9230c897f06ec88eb364ba22",
+      "name": "app.exe"
+    },
+    {
+      "sha256": "6a7919bbc38e5196ad6884c1fbac4e9dc06734ebe7512e1d950679136916443f",
+      "name": "app.obj"
+    },
+    {
+      "sha256": "ffff46a737c0b06857174d31bf3673871f4037c1c022c0fb2aa3c384fb276dcc",
+      "name": "app.ac-link.txt"
+    }
+  ],
+  "build": {
+    "exit": 0,
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M21-unclosed-source-sentinel\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M21-unclosed-source-sentinel\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M21-unclosed-source-sentinel\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M21-unclosed-source-sentinel\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: d022c9dfe8c484fe\n",
+    "stderr": ""
+  },
+  "after": [
+    {
+      "sha256": "e2f68341e8a823623952cf7e795dbed02256bcc9b5cd0d1ceaac741625a80588",
+      "name": "app.exe"
+    },
+    {
+      "sha256": "4792dbff05f54a74a303d4dfde45116c86b93acccc44346a5ac7adb9ef48d0cd",
+      "name": "app.obj"
+    },
+    {
+      "sha256": "b0d994c9a81abf94ee3c945a301acdd66a1866a29c9b84a51bc0ac021fae0d12",
+      "name": "app.ac-link.txt"
+    }
+  ]
+}

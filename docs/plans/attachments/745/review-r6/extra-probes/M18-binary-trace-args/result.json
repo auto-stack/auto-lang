@@ -1,0 +1,13 @@
+{
+  "run": null,
+  "check": {
+    "stdout": "",
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M18-binary-trace-args\\input.at:1:78: error[text/source.syntax]: expected operator, found `,`\n"
+  },
+  "want_native": 23,
+  "build": null,
+  "want": 0,
+  "id": "M18-binary-trace-args",
+  "bytes": 93
+}

@@ -1,0 +1,1 @@
+fn main() int { let x = -2147483648; let y i32 = 2147483647; if x < y { return 0 } else { return 1 } }

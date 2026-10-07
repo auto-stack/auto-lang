@@ -1,0 +1,15 @@
+{
+  "artifact_hashes": [],
+  "check": {
+    "stdout": "",
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M01-positional-binary-args\\input.at:1:69: error[text/source.syntax]: expected operator, found `,`\n"
+  },
+  "want_native": 42,
+  "want": 0,
+  "build": null,
+  "input_sha256": "444ab61d9b470d852e4a00f06a428d1652e9b177024a9d9d79e5d2c4a56f9170",
+  "bytes": 75,
+  "id": "M01-positional-binary-args",
+  "run": null
+}

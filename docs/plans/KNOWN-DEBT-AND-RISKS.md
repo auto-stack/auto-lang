@@ -438,3 +438,16 @@ reviewed_commit=15fd9263f6f4c400a6ba1d8ec5cb2cae44354d41；needs_fix；[第五�
 R4-QA01未入Job挂起子泄漏、ReadFile错误6假成功与wrapper传播已清偿（实际native失败控制无幸存）；R4-QA02原200层连续括号误拒已清偿，连续100000层通过，剩余边界转R5-QA02。历轮其它清偿保持；新发现不覆盖掉已经通过的控制。
 
 本轮113 passed/1 ignored、741与745均13步、独立74/74、strict47通过；native300、24/baab、trap70空stderr、混合括号111/5、999call/if通过。root日常33失败/tv4失败未称绿色；唯一新增plan707_cancel隔离1/1通过。完整反例/原始stderr/边界两侧与冻结delta在第五轮报告附件，登记不代表批准延后。
+## PLAN-745 r1 第六轮最终独立复审（2026-10-07，待修）
+
+reviewed_commit=522b98a4c27d2064049e188d386f6958721b3a90；needs_fix；[第六轮报告](attachments/745/review-r6/REVIEW.md)、[计划](745-ac-source-checked-hir-native.md)。原同树保留，executing3/9；没有产品修复、合入或canonical/live ledger沉淀。
+
+| ID | 级别 | 当前合同内缺口 | 修复/验收 |
+|---|---|---|---|
+| P745-R6-QA-01 | P2 | 迭代表达式解析器逗号分支未先归约Bin：f(1+2,3*4)、named/异构bool/嵌套/trace均syntax误拒；同源H09由native111退化为拒绝 | T02/05/07，AC02/05/08；按Call/Paren边界归约当前实参，保留mark/命名映射/求值顺序，补正反永久回归 |
+| P745-R6-QA-02 | P2 | 终止分支仅归约前检查顶帧，Bin遮住未闭合Call/Paren，非法源码check/build0；f(1+2缺右括号被丢调用而native3，真SENTINEL三件被覆盖 | T02/05/07，AC02/04/06/08；所有出口归约后检查未闭合帧，准确诊断，无Checked/发布，保留三件 |
+| P745-R5-QA-02（块项） | P2 | 调用子项已清偿；块护栏1000仍未批准入r1/SD，999可native/1000完整if已拒，实施侧明确未完成 | T02/05/06/07，AC02/07/08；继续满足原合同，或显式new修订计数/入口/资源诊断/正反验收后获批 |
+
+R5-QA01原4096层非连续括号崩溃清偿；R5-QA02调用边界清偿（20000调用check0、4096混合native4097、未闭合受控），剩余块子项沿用原ID。历轮执行器/来源/Bundle/旧事务清偿保持；额外实参括号只是定位正控制，不能视为批准workaround。
+
+本轮113 passed/1 ignored、741与745均13步、独立74/74、strict47通过；Rust正常与PS9/9真实失败出口无幸存。root日常37失败全部历史共现、tv4失败未称绿色。完整输入/实际PE输出/SENTINEL前后指纹/冻结delta见第六轮附件，登记不代表批准延后。

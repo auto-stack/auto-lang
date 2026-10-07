@@ -1,0 +1,21 @@
+{
+  "check": {
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=49bc80b1bc294202, module(s)=1, capabilities required: []\n",
+    "exit": 0,
+    "stderr": ""
+  },
+  "want": 0,
+  "build": {
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\L02-mixed-call-binary-4096-native\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\L02-mixed-call-binary-4096-native\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\L02-mixed-call-binary-4096-native\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\L02-mixed-call-binary-4096-native\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 49bc80b1bc294202\n",
+    "exit": 0,
+    "stderr": ""
+  },
+  "bytes": 20535,
+  "run": {
+    "stdout": "",
+    "exit": 4097,
+    "stderr": ""
+  },
+  "id": "L02-mixed-call-binary-4096-native",
+  "want_native": 4097
+}

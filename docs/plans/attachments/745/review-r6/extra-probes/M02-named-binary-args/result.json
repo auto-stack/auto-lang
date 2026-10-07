@@ -1,0 +1,15 @@
+{
+  "artifact_hashes": [],
+  "check": {
+    "stdout": "",
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M02-named-binary-args\\input.at:1:71: error[text/source.syntax]: expected operator, found `,`\n"
+  },
+  "want_native": 42,
+  "want": 0,
+  "build": null,
+  "input_sha256": "34642ced9dca15974f50cd6081e24ceaaad0019791277b3039dd4eae3f3d67b5",
+  "bytes": 79,
+  "id": "M02-named-binary-args",
+  "run": null
+}

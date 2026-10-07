@@ -1,0 +1,13 @@
+{
+  "run": null,
+  "build": null,
+  "want_stderr": null,
+  "id": "G01-valid-parens-199",
+  "check": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=f226f50ebd5f753e, module(s)=1, capabilities required: []\n",
+    "exit": 0
+  },
+  "want": null,
+  "bytes": 424
+}
