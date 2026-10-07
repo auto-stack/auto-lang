@@ -506,7 +506,15 @@ fn deep_unclosed_input_via_cli_is_controlled() {
     ]);
     assert_eq!(r.code, 1, "stdout: {} stderr: {}", r.stdout, r.stderr);
     assert!(
-        r.stderr.contains("source.syntax") && r.stderr.contains("nesting"),
+        r.stderr.contains("source.syntax"),
+        "controlled diagnostic expected: {}",
+        r.stderr
+    );
+    // unclosed parens now fail depth-independently at the missing
+    // (the collapse loop); the nesting guard wording belongs to the
+    // call/block structures
+    assert!(
+        r.stderr.contains("expected") && !r.stderr.contains("overflowed"),
         "controlled diagnostic expected: {}",
         r.stderr
     );

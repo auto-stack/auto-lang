@@ -117,6 +117,9 @@ public static class AcContainedRunner
     static extern uint ResumeThread(IntPtr hThread);
 
     [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool TerminateProcess(IntPtr hProcess, uint uExitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
     static extern int WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
 
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -151,10 +154,17 @@ public static class AcContainedRunner
 
     class Reader
     {
+        const int ERROR_BROKEN_PIPE = 109;
+        const int ERROR_HANDLE_EOF = 38;
         readonly IntPtr _handle;
         public readonly MemoryStream Buf = new MemoryStream();
         public readonly Thread Thr;
         public bool Done;
+        // R4-QA-01: a failed ReadFile is NOT an EOF. Broken-pipe/handle-EOF
+        // are the pipe's normal end; anything else is a real read error
+        // (recorded, surfaced through RunResult.Error — never a silent
+        // truncated success).
+        public int ReadError;
         public Reader(IntPtr handle)
         {
             _handle = handle;
@@ -166,7 +176,13 @@ public static class AcContainedRunner
             while (true)
             {
                 uint n;
-                if (!ReadFile(_handle, b, (uint)b.Length, out n, IntPtr.Zero) || n == 0) break;
+                if (!ReadFile(_handle, b, (uint)b.Length, out n, IntPtr.Zero))
+                {
+                    int e = Marshal.GetLastWin32Error();
+                    if (e != ERROR_BROKEN_PIPE && e != ERROR_HANDLE_EOF) ReadError = e;
+                    break;
+                }
+                if (n == 0) break;
                 Buf.Write(b, 0, (int)n);
             }
             lock (this) { Done = true; Monitor.Pulse(this); }
@@ -188,9 +204,31 @@ public static class AcContainedRunner
         public string Stderr;
         public bool TimedOut;
         public string Error;
+        public int Pid;
+        public int StdoutReadError;
+        public int StderrReadError;
     }
 
     public static RunResult Run(string exe, string[] args, string workDir, int timeoutMs)
+    {
+        return RunCore(exe, args, workDir, timeoutMs, false, false);
+    }
+
+    // R4-QA-01 failure-exit controls (741-style injectable determinism, no
+    // product fault switch): simulateAssignFailure forces the REAL
+    // AssignProcessToJobObject call to fail (job=zero handle), simulateRead
+    // Failure forces the REAL ReadFile call to fail (handle=zero). Both
+    // native calls still execute and return genuine Win32 errors.
+    public static RunResult RunControl(
+        string exe, string[] args, string workDir, int timeoutMs,
+        bool simulateAssignFailure, bool simulateReadFailure)
+    {
+        return RunCore(exe, args, workDir, timeoutMs, simulateAssignFailure, simulateReadFailure);
+    }
+
+    static RunResult RunCore(
+        string exe, string[] args, string workDir, int timeoutMs,
+        bool breakAssign, bool breakRead)
     {
         var res = new RunResult();
         var sa = new SECURITY_ATTRIBUTES { nLength = Marshal.SizeOf(typeof(SECURITY_ATTRIBUTES)), bInheritHandle = true };
@@ -227,25 +265,38 @@ public static class AcContainedRunner
                 return res;
             }
             hProc = pi.hProcess; hThread = pi.hThread;
+            res.Pid = pi.dwProcessId;
+
             job = CreateJobObject(IntPtr.Zero, null);
-            if (job == IntPtr.Zero || !AssignProcessToJobObject(job, hProc))
+            IntPtr jobToAssign = (breakAssign && job != IntPtr.Zero) ? IntPtr.Zero : job;
+            if (job == IntPtr.Zero || !AssignProcessToJobObject(jobToAssign, hProc))
             {
-                // refuse to run what cannot be bounded: kill before the
-                // first instruction (the child is still suspended)
-                TerminateJobObject(job, 1);
+                // R4-QA-01: the suspended child is NOT in the job here — a
+                // job terminate cannot reach it. Terminate the process
+                // directly and WAIT for it before releasing any handle, so
+                // a containment failure never leaks a suspended process.
+                TerminateProcess(hProc, 1);
+                WaitForSingleObject(hProc, 2000);
+                CloseHandle(hThread); hThread = IntPtr.Zero;
+                CloseHandle(hProc); hProc = IntPtr.Zero;
                 res.Error = "containment unavailable";
                 return res;
             }
             if (ResumeThread(hThread) == uint.MaxValue)
             {
                 TerminateJobObject(job, 1);
+                TerminateProcess(hProc, 1);
+                WaitForSingleObject(hProc, 2000);
+                CloseHandle(hThread); hThread = IntPtr.Zero;
+                CloseHandle(hProc); hProc = IntPtr.Zero;
                 res.Error = "resume failed";
                 return res;
             }
+            res.Pid = pi.dwProcessId;
             // parent-side write ends close so EOF reflects the CHILD tree
             CloseHandle(outW); outW = IntPtr.Zero;
             CloseHandle(errW); errW = IntPtr.Zero;
-            outReader = new Reader(outR); outReader.Thr.Start();
+            outReader = new Reader(breakRead ? IntPtr.Zero : outR); outReader.Thr.Start();
             errReader = new Reader(errR); errReader.Thr.Start();
 
             var sw = Stopwatch.StartNew();
@@ -263,6 +314,16 @@ public static class AcContainedRunner
                     bool okErr = errReader.WaitDone(okOut ? remaining() : 0);
                     if (okOut && okErr && remaining() >= 0)
                     {
+                        // R4-QA-01: a reader error is a FAILURE, not an
+                        // EOF-flavored success with truncated output.
+                        if (outReader.ReadError != 0 || errReader.ReadError != 0)
+                        {
+                            res.StdoutReadError = outReader.ReadError;
+                            res.StderrReadError = errReader.ReadError;
+                            res.Error = "output read failed (stdout err " + outReader.ReadError
+                                + ", stderr err " + errReader.ReadError + ")";
+                            return res;
+                        }
                         uint code;
                         GetExitCodeProcess(hProc, out code);
                         res.Code = (int)code;
@@ -538,6 +599,24 @@ Invoke-Step 'negative cases: check-source rejects (53)' {
         if ($r.Stderr -notmatch [regex]::Escape($marker)) { throw "$($c.Id): marker '$marker' missing in: $($r.Stderr)" }
         $caseSummary.Add([pscustomobject]@{ Case = $c.Id; Exit = $r.Code; Stderr = ''; Ok = $true })
     }
+}
+
+# ---- 3b. executor failure-exit controls (R4-QA-01, permanent) ----
+Invoke-Step 'executor failure-exit controls (valid / containment / read)' {
+    # valid: full text collected
+    $v = [AcContainedRunner]::Run('cmd.exe', @('/c', 'echo READ_CONTROL'), $RepoRoot, 5000)
+    if ($v.Error -or $v.Code -ne 0 -or $v.Stdout -notmatch 'READ_CONTROL') {
+        throw "valid control failed: code=$($v.Code) err=$($v.Error) out=$($v.Stdout)"
+    }
+    # containment failure: the suspended child must be terminated + reaped
+    $c = [AcContainedRunner]::RunControl('cmd.exe', @('/c', 'ping -n 5 127.0.0.1'), $RepoRoot, 5000, $true, $false)
+    if ($c.Error -notmatch 'containment unavailable') { throw "expected containment error, got: $($c.Error)" }
+    if ($c.Pid -ne 0 -and $null -ne (Get-Process -Id $c.Pid -ErrorAction SilentlyContinue)) {
+        throw "containment failure leaked suspended pid $($c.Pid)"
+    }
+    # read failure: surfaced as an error, never a code-0 truncated success
+    $r = [AcContainedRunner]::RunControl('cmd.exe', @('/c', 'echo READ_CONTROL'), $RepoRoot, 5000, $false, $true)
+    if (-not $r.Error) { throw "read failure was swallowed (code=$($r.Code) out=$($r.Stdout))" }
 }
 
 # ---- 4. summary ----

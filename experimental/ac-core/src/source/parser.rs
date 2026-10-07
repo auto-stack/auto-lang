@@ -65,21 +65,20 @@ struct Parser<'s> {
     /// True until the current unbracketed expression consumes its first
     /// token (see [`Parser::expr`]).
     unbracketed_entry: bool,
-    /// SYNTACTIC nesting depth (parenthesized groups, call argument lists,
-    /// blocks); bounded by [`NEST_LIMIT`] so deeply malformed input gets a
-    /// controlled diagnostic instead of a stack overflow (R2-QA-05). The
-    /// counter is deliberately NOT per implementation frame: 99 levels of
-    /// legal parentheses must pass (R3-QA-02), and operator chains — which
-    /// parse iteratively — are not nesting and carry no limit.
+    /// Syntactic nesting depth of the RECURSIVE structures only — call
+    /// argument lists and blocks (paren groups collapse iteratively and
+    /// carry no count; R4-QA-02). Bounded by [`NEST_LIMIT`] so deeply
+    /// malformed input gets a controlled diagnostic instead of a stack
+    /// overflow.
     depth: usize,
 }
 
-/// Syntactic nesting limit (paren groups / argument lists / blocks). Far
-/// above anything the corpus or realistic profile programs use (observed
-/// max ~4) while small enough that every downstream per-level recursion
-/// (verify, native lowering) stays comfortably inside the default stack.
-/// A resource guard tied to actual structure, not a support-set reduction.
-const NEST_LIMIT: usize = 200;
+/// Call/argument-list and block nesting limit — a resource guard tied to
+/// the actual per-level recursion (parser + resolve + emit + verify walk
+/// each level). 1000 is ~4x below the measured overflow depth of the
+/// smallest-stack stage on this toolchain, and orders of magnitude above
+/// the corpus (max ~4) and the review boundary probes (199..300 levels).
+const NEST_LIMIT: usize = 1000;
 
 impl<'s> Parser<'s> {
     // -- plumbing -----------------------------------------------------------
@@ -639,7 +638,18 @@ impl<'s> Parser<'s> {
     }
 
     fn binary(&mut self, min_prec: u8, bracketed: bool) -> Result<Expr, Diagnostic> {
-        let mut lhs = self.unary(bracketed)?;
+        let lhs = self.unary(bracketed)?;
+        self.binary_continue(min_prec, bracketed, lhs)
+    }
+
+    /// Continue the operator loop from an already-parsed left operand
+    /// (used by the paren collapse below; precedence/line rules unchanged).
+    fn binary_continue(
+        &mut self,
+        min_prec: u8,
+        bracketed: bool,
+        mut lhs: Expr,
+    ) -> Result<Expr, Diagnostic> {
         loop {
             let Some(tok) = self.peek().cloned() else {
                 break;
@@ -842,16 +852,59 @@ impl<'s> Parser<'s> {
                 span,
             )),
             Some((Tok::Punct(P::LParen), _)) => {
-                // one SYNTACTIC nesting level (parenthesized group)
-                self.enter()?;
-                self.pos += 1;
-                self.last_line = self.toks[self.pos - 1].line;
-                let inner = self.expr(true);
-                self.depth -= 1;
-                let inner = inner?;
-                self.expect_punct(P::RParen, "`)`")?;
-                // Parentheses are transparent: the inner expression node is
-                // returned as-is (its span already covers the content).
+                // Consecutive parenthesized groups parse ITERATIVELY
+                // (R4-QA-02): every `(` is consumed on a flat loop, the
+                // core expression parses once (inside parens newlines are
+                // whitespace), and each `)` closes one pending group. When
+                // a `)` arrives before all groups are closed, the
+                // expression CONTINUES at top precedence with the current
+                // left operand (`((1+2)*3)` resumes after the inner
+                // close), so mixed nesting stays correct while homogeneous
+                // `(((expr)))` costs zero recursion. Pure grouping adds no
+                // AST node, so legal paren nesting carries no limit;
+                // unclosed inputs fail at EOF depth-independently.
+                let mut opens = 0usize;
+                while matches!(
+                    self.peek(),
+                    Some(Token {
+                        tok: Tok::Punct(P::LParen),
+                        ..
+                    })
+                ) {
+                    self.pos += 1;
+                    self.last_line = self.toks[self.pos - 1].line;
+                    opens += 1;
+                }
+                let mut inner = self.expr(true)?;
+                let mut closed = 0usize;
+                while closed < opens {
+                    while closed < opens
+                        && matches!(
+                            self.peek(),
+                            Some(Token {
+                                tok: Tok::Punct(P::RParen),
+                                ..
+                            })
+                        )
+                    {
+                        self.pos += 1;
+                        self.last_line = self.toks[self.pos - 1].line;
+                        closed += 1;
+                    }
+                    if closed == opens {
+                        break;
+                    }
+                    let before = self.pos;
+                    inner = self.binary_continue(1, true, inner)?;
+                    if self.pos == before {
+                        // neither a `)` nor a continuation operator:
+                        // unterminated or malformed group
+                        return Err(self.syntax(format!(
+                            "expected `)` or operator, found {}",
+                            self.describe_cur()
+                        )));
+                    }
+                }
                 Ok(inner)
             }
             Some((Tok::Raw { kind, text }, span)) => Err(self.unsupported(
