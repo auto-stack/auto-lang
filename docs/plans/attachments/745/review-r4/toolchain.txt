@@ -1,0 +1,10 @@
+HEAD dc5e95be757dba647ef758aa283e7e2788015747 CLI sha256 885780241a8e40ab7368ab51d6e9b05d75cf9688aead5aa4a1f3120f86992b35 support-lib sha256 dac1a42b4ff1f98d4aa2fcd6278614bda32319505397cd704aa0963ebe5c377e
+rustc 1.98.1 (48a229cea 2026-09-01)
+binary: rustc
+commit-hash: 48a229ceaefd4985c50990b14116b6d856af0985
+commit-date: 2026-09-01
+host: x86_64-pc-windows-msvc
+release: 1.98.1
+LLVM version: 22.1.8
+cargo 1.98.1 (797e8a9bc 2026-08-05)
+Python 3.14.2

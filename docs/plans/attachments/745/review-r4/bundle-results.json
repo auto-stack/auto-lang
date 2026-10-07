@@ -1,0 +1,8 @@
+{
+  "exact_rlib": "D:\\autostack\\.wt\\lang-745\\auto-lang\\experimental\\ac-core\\target\\debug\\libauto_ac_prototype.rlib",
+  "rlib_sha256": "fced3a7602560fd9c4879b6eff72790f781137be7f52ba46b4b7d466fef8fb9e",
+  "binary_sha256": "c6cf412dfc29e35aef06ac4bc7ba907bd91e8889bc44d92062779d6a8411894f",
+  "exit": 0,
+  "stdout": "VALID_CONTROL=true ACTUAL_SAME_TYPE_SCOPE_MUTATION=true CODES=[\"verify.uninitialized-read\"]\n",
+  "stderr": ""
+}

@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": [],
+  "build": null,
+  "kind": "reject",
+  "ok": true,
+  "run": null,
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r4\\corpus\\N10\\input.at:2:24: error[bind/source.argument]: `f` expects 1 argument(s), found 0\n",
+    "stdout": ""
+  },
+  "input_sha256": "bc8c844b0dd459a5fab1f000b600a74d8ccf32feeef3a92dac44e94c3b478706",
+  "id": "N10"
+}

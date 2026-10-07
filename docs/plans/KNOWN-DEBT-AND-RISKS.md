@@ -414,3 +414,15 @@ reviewed_commit=7437eb137a789259f01446da7a170e74031ff7f2；needs_fix；[第三�
 R2-QA01 换行、QA03 Stray 组合、QA04 Bundle同类型越域/三真文件publish oracle已清偿。R2-QA02 字节读取/有界返回局部修复保留，整体转R3-QA01；R2-QA05原不闭合E02已受控，新健壮性/边界问题转R3-QA02。R1其它清偿保持。
 
 本轮104 passed/1 ignored、741 13步/745 12步74例、独立74/74与strict47通过；根日常27失败+1超时，tv4失败未称绿色，新增dep018超时隔离1/1通过。初始PS5.1哈希失败是复审.NET驱动继承PS7模块路径的环境注入，已通过单变量正反控制定位并按计划原命令重跑成功，不记为实施缺陷。
+## PLAN-745 r1 第四轮最终独立复审（2026-10-07，待修）
+
+reviewed_commit=dc5e95be757dba647ef758aa283e7e2788015747；needs_fix；[第四轮报告](attachments/745/review-r4/REVIEW.md)、[计划](745-ac-source-checked-hir-native.md)。同树保留，executing 3/9；本轮没有实施修复、合入或canonical/live ledger沉淀。
+
+| ID | 级别 | 当前合同内缺口 | 修复/验收 |
+|---|---|---|---|
+| P745-R4-QA-01 | P2 | 新PS C#执行器约束失败只杀空Job，挂起子进程仍存活；真实ReadFile错误6被当EOF返回Code0/空输出 | T05/07、AC05/06/08；未入Job进程直接终止+wait，读取/等待等错误传播，有效及真实失败控制、无幸存/无截断成功 |
+| P745-R4-QA-02 | P2 | NEST_LIMIT改语法计数仍未批准支持边界；200层完整合法括号426字节被syntax拒绝 | T02/05/06/07、AC02/07/08；保留r1支持或显式new修订边界/诊断/提案/正反验收，不以扩阈值替代合同义务 |
+
+R3-QA01的Rust生命周期与PS静默窗口原反例已清偿；R3-QA02的合法16384链崩溃、99/100层括号误拒已清偿；未完成的边界子项和新PS错误出口按上表追踪。原C/D诊断、符号、换行、Stray和既有oracle没有退化。
+
+本轮112 passed/1 ignored、741 13步/745 12步74例、独立74/74、strict47通过；新增native复杂求值24/baab、trap70空stderr、长链退出300通过。根日常35失败/tv4失败未称绿色；唯一新红名plan643隔离1/1通过。真实Win32失败控制保留原cleanup/result路径，不用全绿banner替代失败传播检查。

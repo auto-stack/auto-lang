@@ -1,0 +1,35 @@
+{
+  "artifact_hashes": [
+    {
+      "name": "app.exe",
+      "sha256": "0f2b6890877ea00101dce87607ede7869c3fa64c9f46425c28142a7624770797"
+    },
+    {
+      "name": "app.obj",
+      "sha256": "1fc4ee787b5ad68cafd7679ca73ea7368369da07fdc726b4720aa6a72a8824eb"
+    },
+    {
+      "name": "app.ac-link.txt",
+      "sha256": "6c909bf33f9b622224b7c8b441affcd35bfe1bb8eda34ce99227cd35f914853a"
+    }
+  ],
+  "build": {
+    "exit": 0,
+    "stderr": "",
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r4\\corpus\\P02\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r4\\corpus\\P02\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r4\\corpus\\P02\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r4\\corpus\\P02\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 825765e6f7e32f28\n"
+  },
+  "kind": "native",
+  "ok": true,
+  "run": {
+    "exit": 1,
+    "stderr": "",
+    "stdout": ""
+  },
+  "check": {
+    "exit": 0,
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=825765e6f7e32f28, module(s)=1, capabilities required: []\n"
+  },
+  "input_sha256": "b6606ec99ca3b038da755a09fdd4cdb3ce8a8ac4002f5b8d6b2f5cabe1b463a4",
+  "id": "P02"
+}
