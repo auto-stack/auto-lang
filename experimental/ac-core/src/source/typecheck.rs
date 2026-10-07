@@ -44,60 +44,83 @@ fn mismatch(diags: &mut Vec<Diagnostic>, expected: VT, found: VT, span: Span) {
     ));
 }
 
-fn check_block(b: &RBlock, program: &ResolvedProgram, f: &ResolvedFn, diags: &mut Vec<Diagnostic>) {
-    for s in &b.stmts {
-        check_stmt(s, program, f, diags);
+fn check_block(
+    root: &RBlock,
+    program: &ResolvedProgram,
+    f: &ResolvedFn,
+    diags: &mut Vec<Diagnostic>,
+) {
+    // Iterative walk (R6: block nesting is unlimited, so no recursion).
+    // Frames advance one statement at a time; an if pushes its else-arm
+    // frame before its then-arm frame (LIFO), so conditions, arms and
+    // following statements are checked in exactly the previous recursive
+    // order.
+    struct TCFrame<'a> {
+        src: &'a RBlock,
+        idx: usize,
     }
-}
-
-fn check_stmt(s: &RStmt, program: &ResolvedProgram, f: &ResolvedFn, diags: &mut Vec<Diagnostic>) {
-    match s {
-        RStmt::Let { local, value, .. } => {
-            check_expr(value, program, f, diags);
-            // With an annotation the resolver pinned the local's type to
-            // it; without one the local took the value's type, so this
-            // compares annotation vs initializer exactly.
-            let want = f.locals[local.0].vt;
-            if value.vt != want {
-                mismatch(diags, want, value.vt, value.span);
+    let mut frames: Vec<TCFrame> = vec![TCFrame { src: root, idx: 0 }];
+    while let Some(frame) = frames.last_mut() {
+        let next = {
+            let src: &RBlock = frame.src;
+            let n = src.stmts.get(frame.idx);
+            if n.is_some() {
+                frame.idx += 1;
             }
-        }
-        RStmt::Assign { local, value, .. } => {
-            check_expr(value, program, f, diags);
-            if local.0 != usize::MAX {
+            n
+        };
+        let Some(s) = next else {
+            frames.pop();
+            continue;
+        };
+        match s {
+            RStmt::Let { local, value, .. } => {
+                check_expr(value, program, f, diags);
+                // With an annotation the resolver pinned the local's type to
+                // it; without one the local took the value's type, so this
+                // compares annotation vs initializer exactly.
                 let want = f.locals[local.0].vt;
                 if value.vt != want {
                     mismatch(diags, want, value.vt, value.span);
                 }
             }
-        }
-        RStmt::Return { value, .. } => {
-            check_expr(value, program, f, diags);
-            if value.vt != f.result {
-                mismatch(diags, f.result, value.vt, value.span);
+            RStmt::Assign { local, value, .. } => {
+                check_expr(value, program, f, diags);
+                if local.0 != usize::MAX {
+                    let want = f.locals[local.0].vt;
+                    if value.vt != want {
+                        mismatch(diags, want, value.vt, value.span);
+                    }
+                }
             }
-        }
-        RStmt::If {
-            cond, then, els, ..
-        } => {
-            check_expr(cond, program, f, diags);
-            if cond.vt != VT::Bool {
-                mismatch(diags, VT::Bool, cond.vt, cond.span);
+            RStmt::Return { value, .. } => {
+                check_expr(value, program, f, diags);
+                if value.vt != f.result {
+                    mismatch(diags, f.result, value.vt, value.span);
+                }
             }
-            check_block(then, program, f, diags);
-            if let Some(e) = els {
-                check_block(e, program, f, diags);
+            RStmt::If {
+                cond, then, els, ..
+            } => {
+                check_expr(cond, program, f, diags);
+                if cond.vt != VT::Bool {
+                    mismatch(diags, VT::Bool, cond.vt, cond.span);
+                }
+                if let Some(e) = els {
+                    frames.push(TCFrame { src: e, idx: 0 });
+                }
+                frames.push(TCFrame { src: then, idx: 0 });
             }
-        }
-        RStmt::While { cond, body, .. } => {
-            check_expr(cond, program, f, diags);
-            if cond.vt != VT::Bool {
-                mismatch(diags, VT::Bool, cond.vt, cond.span);
+            RStmt::While { cond, body, .. } => {
+                check_expr(cond, program, f, diags);
+                if cond.vt != VT::Bool {
+                    mismatch(diags, VT::Bool, cond.vt, cond.span);
+                }
+                frames.push(TCFrame { src: body, idx: 0 });
             }
-            check_block(body, program, f, diags);
+            RStmt::Loop { body, .. } => frames.push(TCFrame { src: body, idx: 0 }),
+            RStmt::Break { .. } | RStmt::Continue { .. } => {}
         }
-        RStmt::Loop { body, .. } => check_block(body, program, f, diags),
-        RStmt::Break { .. } | RStmt::Continue { .. } => {}
     }
 }
 

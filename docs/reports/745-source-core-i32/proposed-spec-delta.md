@@ -39,6 +39,14 @@
 5. **trace intrinsics**：mark_a/mark_b 仅由 `hir.test.trace.v1` 激活封闭
    nullary→int 表；未提供能力时 mark 调用是 source.undefined；用户函数/局部
    同名优先，不能名字劫持；无值调用语句（N41）在 text 层拒绝。
+6. **嵌套与未闭合输入**（r6 修复轮定稿面）：表达式、调用与语句块嵌套
+   **无上限**——解析/解析树 Drop/resolve/typecheck/adapter（终止分类 memo）/
+   verify 数据流走查/native 发射全部显式栈迭代，无每层递归、无嵌套计数
+   护栏（NEST_LIMIT 已删除）；逗号前的二元实参先归约当前实参算符再查
+   调用帧（`f(1+2,3*4)` 合法，纯括号内逗号仍拒）；任意深度的未闭合括号/
+   调用/块在 text 阶段受控拒绝（缺 `)`/缺 `}` 精确指当前 token 或 EOF，
+   不产生 Checked、不发布制品）。证据：verification.md §17/§18（2 万层
+   块链全阶段、1001 层 if 真实 PE、M 系 18 例矩阵）。
 
 ## SD-02（modify）docs/specs/auto-hir/stage-contract.md
 
@@ -51,7 +59,9 @@ source 构造与 Checked/pass 分界保持（verify 仍是 Checked 唯一构造�
 
 在“HIR→native→PE”证据之上追加“A1–A3 源码形态”证据：Auto 源码子集经
 显式 profile → Checked HIR → Windows PE 原生执行（21 例退出码/stderr oracle、
-含算术/循环/递归/异构命名/求值序/trap/分支语义），收据见 verification.md。
+含算术/循环/递归/异构命名/求值序/trap/分支语义），且表达式/调用/块嵌套
+端到端无上限（r6：2 万层块链全阶段、1001 层 if 真实 PE），收据见
+verification.md §17/§18。
 
 ## SD-04（modify）docs/specs/auto-acc/project.md
 

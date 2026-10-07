@@ -780,7 +780,6 @@ impl Verifier {
             let (flow, _exit_init) = self.walk_block(
                 body.entry,
                 body,
-                &[],
                 &init,
                 fn_result,
                 type_map,
@@ -901,15 +900,18 @@ impl Verifier {
         ok
     }
 
-    /// Walk a block: dataflow (initialization) + termination checks.
-    /// Returns the block's exit flow and the initialization set at the exit
-    /// point (meaningful only when the flow is `Continue`).
+    /// Walk the block tree: dataflow (initialization) + termination checks.
+    /// Fully ITERATIVE (R6: block nesting is unlimited): an explicit frame
+    /// stack replaces the recursion at if/loop statements; child results
+    /// land in slots and the frame resumes to merge Flow/Init exactly like
+    /// the recursive form. LIFO guarantees a resumed frame's awaited slots
+    /// are filled (children complete above their parent). Returns the entry
+    /// block's exit flow and exit initialization set.
     #[allow(clippy::too_many_arguments)]
     fn walk_block(
         &mut self,
-        bid: crate::hir::BlockId,
+        entry: crate::hir::BlockId,
         body: &hir::Body,
-        loops: &[LoopId],
         init: &Init,
         fn_result: ValueType,
         type_map: &BTreeMap<u32, ValueType>,
@@ -917,177 +919,320 @@ impl Verifier {
         tm: &mut TypeMemo,
         walked: &mut BTreeSet<u32>,
     ) -> (Flow, Init) {
+        struct WFrame {
+            bid: u32,
+            /// Length of the shared loop stack when this frame opened (the
+            /// frame's own loop id — for a block containing a loop stmt —
+            /// lives above this mark only while the body walks).
+            loops_len: usize,
+            idx: usize,
+            cur: Init,
+            flow: Flow,
+            ret_slot: usize,
+            state: WState,
+        }
+        enum WState {
+            Run,
+            AwaitIf {
+                then_slot: usize,
+                /// `usize::MAX` when the if has no else arm.
+                else_slot: usize,
+            },
+            AwaitLoop {
+                body_slot: usize,
+            },
+        }
+        enum Action {
+            /// Run this statement (the frame cursor already advanced).
+            Stmt { bid: u32, stmt: hir::Stmt },
+            /// A terminator precedes remaining statements: structure error.
+            AfterTerm,
+            /// The frame ran out of statements.
+            Complete,
+            /// Children finished; merge their results.
+            Resume(WState),
+        }
+        let mut loops: Vec<LoopId> = Vec::new();
+        let mut results: Vec<Option<(Flow, Init)>> = vec![None];
+        let mut frames: Vec<WFrame> = Vec::new();
         // Defensive cycle guard (QA-01): check_block_graph gates the walk on
         // a valid containment graph, so a block can never legitimately be
         // walked twice; treat a repeat as unreachable and bail out instead
-        // of recursing forever if that invariant is ever broken.
-        if !walked.insert(bid.0) {
+        // of looping forever if that invariant is ever broken.
+        if !walked.insert(entry.0) {
             return (Flow::Continue, init.clone());
         }
-        let mut cur = init.clone();
-        let mut flow = Flow::Continue;
-        let bl = &body.blocks[bid.0 as usize];
-        for s in &bl.stmts {
-            if flow != Flow::Continue {
-                self.error(
-                    "verify.block-structure",
-                    format!(
-                        "block `{}` has executable statements after a terminating statement",
-                        bl.id_text
-                    ),
-                    bl.span,
-                );
-                return (flow, cur);
+        frames.push(WFrame {
+            bid: entry.0,
+            loops_len: 0,
+            idx: 0,
+            cur: init.clone(),
+            flow: Flow::Continue,
+            ret_slot: 0,
+            state: WState::Run,
+        });
+        while !frames.is_empty() {
+            let action = {
+                let frame = frames.last_mut().expect("walk frame");
+                if let WState::Run = frame.state {
+                    let bid = frame.bid;
+                    if frame.idx >= body.blocks[bid as usize].stmts.len() {
+                        Action::Complete
+                    } else if frame.flow != Flow::Continue {
+                        Action::AfterTerm
+                    } else {
+                        let stmt = body.blocks[bid as usize].stmts[frame.idx].clone();
+                        frame.idx += 1;
+                        Action::Stmt { bid, stmt }
+                    }
+                } else {
+                    Action::Resume(std::mem::replace(&mut frame.state, WState::Run))
+                }
+            };
+            // Push a child block frame (with its incoming init); a repeat
+            // visit feeds the slot the defensive Continue result instead.
+            fn push_child(
+                frames: &mut Vec<WFrame>,
+                results: &mut Vec<Option<(Flow, Init)>>,
+                walked: &mut BTreeSet<u32>,
+                bid: crate::hir::BlockId,
+                loops_len: usize,
+                init_in: Init,
+            ) -> usize {
+                let slot = results.len();
+                results.push(None);
+                if walked.insert(bid.0) {
+                    frames.push(WFrame {
+                        bid: bid.0,
+                        loops_len,
+                        idx: 0,
+                        cur: init_in,
+                        flow: Flow::Continue,
+                        ret_slot: slot,
+                        state: WState::Run,
+                    });
+                } else {
+                    results[slot] = Some((Flow::Continue, init_in));
+                }
+                slot
             }
-            match s {
-                hir::Stmt::Let { local, value } => {
-                    self.walk_value(*value, body, &cur);
-                    cur.insert(*local);
-                }
-                hir::Stmt::Return { value } => {
-                    self.walk_value(*value, body, &cur);
-                    let vt = self.expr_type(*value, body, type_map, sigs, tm);
-                    if vt != fn_result {
-                        self.error(
-                            "verify.type-mismatch",
-                            format!(
-                                "return value type does not match function result in body `{}`",
-                                bl.id_text
-                            ),
-                            body.exprs[value.0 as usize].span,
-                        );
-                    }
-                    flow = Flow::Returned;
-                }
-                hir::Stmt::If { cond, then, els } => {
-                    self.walk_value(*cond, body, &cur);
-                    let cond_ty = self.expr_type(*cond, body, type_map, sigs, tm);
-                    if cond_ty != ValueType::Bool {
-                        self.error(
-                            "verify.type-mismatch",
-                            "if condition must be bool".to_string(),
-                            bl.span,
-                        );
-                    }
-                    let (then_f, then_init) = self.walk_block(
-                        *then, body, loops, &cur, fn_result, type_map, sigs, tm, walked,
-                    );
-                    let (else_f, else_init) = match els {
-                        Some(e) => self.walk_block(
-                            *e, body, loops, &cur, fn_result, type_map, sigs, tm, walked,
-                        ),
-                        None => (Flow::Continue, cur.clone()),
-                    };
-                    flow = match (then_f, else_f) {
-                        (Flow::Returned, Flow::Returned) => Flow::Returned,
-                        (Flow::Diverged, Flow::Diverged) => Flow::Diverged,
-                        _ => Flow::Continue,
-                    };
-                    // Exit initialization = intersection over reachable
-                    // (continuing) branch exits. A branch that returned or
-                    // diverged contributes nothing.
-                    if flow == Flow::Continue {
-                        let mut merged: Init = BTreeSet::new();
-                        if then_f == Flow::Continue && else_f == Flow::Continue {
-                            for id in &then_init {
-                                if else_init.contains(id) {
-                                    merged.insert(*id);
+            match action {
+                Action::Stmt { bid, stmt } => {
+                    let frame = frames.last_mut().expect("walk frame");
+                    match stmt {
+                        hir::Stmt::Let { local, value } => {
+                            self.walk_value(value, body, &frame.cur);
+                            frame.cur.insert(local);
+                        }
+                        hir::Stmt::Return { value } => {
+                            self.walk_value(value, body, &frame.cur);
+                            let vt = self.expr_type(value, body, type_map, sigs, tm);
+                            if vt != fn_result {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "return value type does not match function result in body `{}`",
+                                        body.blocks[bid as usize].id_text
+                                    ),
+                                    body.exprs[value.0 as usize].span,
+                                );
+                            }
+                            frame.flow = Flow::Returned;
+                        }
+                        hir::Stmt::If { cond, then, els } => {
+                            self.walk_value(cond, body, &frame.cur);
+                            let cond_ty = self.expr_type(cond, body, type_map, sigs, tm);
+                            if cond_ty != ValueType::Bool {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    "if condition must be bool".to_string(),
+                                    body.blocks[bid as usize].span,
+                                );
+                            }
+                            let cur_in = frame.cur.clone();
+                            let loops_len = frame.loops_len;
+                            let parent_idx = frames.len() - 1;
+                            // then-arm walks fully before the else-arm: push
+                            // the else child first so it pops second.
+                            let else_slot = match els {
+                                Some(e) => push_child(
+                                    &mut frames,
+                                    &mut results,
+                                    walked,
+                                    e,
+                                    loops_len,
+                                    cur_in.clone(),
+                                ),
+                                None => usize::MAX,
+                            };
+                            let then_slot = push_child(
+                                &mut frames,
+                                &mut results,
+                                walked,
+                                then,
+                                loops_len,
+                                cur_in,
+                            );
+                            frames[parent_idx].state = WState::AwaitIf {
+                                then_slot,
+                                else_slot,
+                            };
+                        }
+                        hir::Stmt::Loop { id, body: b } => {
+                            let cur_in = frame.cur.clone();
+                            let parent_idx = frames.len() - 1;
+                            loops.push(id);
+                            let body_slot = push_child(
+                                &mut frames,
+                                &mut results,
+                                walked,
+                                b,
+                                loops.len(),
+                                cur_in,
+                            );
+                            frames[parent_idx].state = WState::AwaitLoop { body_slot };
+                        }
+                        hir::Stmt::Assign { place, value } => {
+                            self.walk_value(value, body, &frame.cur);
+                            if let Some(p) = body.places.get(place.0 as usize) {
+                                if p.access != hir::Access::Mutable {
+                                    self.error(
+                                        "verify.immutable-write",
+                                        format!("place `{}` is not writable", p.id_text),
+                                        p.span,
+                                    );
+                                }
+                                let target = &body.locals[p.local.0 as usize];
+                                if !target.mutable {
+                                    self.error(
+                                        "verify.immutable-write",
+                                        format!(
+                                            "local `{}` is immutable and cannot be assigned",
+                                            target.id_text
+                                        ),
+                                        p.span,
+                                    );
+                                }
+                                if !frame.cur.contains(&p.local) {
+                                    self.error(
+                                        "verify.uninitialized-read",
+                                        format!(
+                                            "assignment to local `{}` before initialization",
+                                            target.id_text
+                                        ),
+                                        p.span,
+                                    );
                                 }
                             }
-                        } else if then_f == Flow::Continue {
-                            merged = then_init;
-                        } else if else_f == Flow::Continue {
-                            merged = else_init;
-                        } else {
-                            merged = cur.clone();
                         }
-                        cur = merged;
-                    }
-                }
-                hir::Stmt::Loop { id, body: b } => {
-                    let mut inner_loops: Vec<LoopId> = loops.to_vec();
-                    inner_loops.push(*id);
-                    let (body_f, _body_init) = self.walk_block(
-                        *b,
-                        body,
-                        &inner_loops,
-                        &cur,
-                        fn_result,
-                        type_map,
-                        sigs,
-                        tm,
-                        walked,
-                    );
-                    // A `return` inside the loop body leaves the loop; a body
-                    // that completes or diverges via break/continue hands
-                    // control back to the loop / after-loop code.
-                    flow = if body_f == Flow::Returned {
-                        Flow::Returned
-                    } else {
-                        Flow::Continue
-                    };
-                    // Loops may run zero times: initializations inside the
-                    // body do not escape; `cur` stays as-is.
-                }
-                hir::Stmt::Assign { place, value } => {
-                    self.walk_value(*value, body, &cur);
-                    if let Some(p) = body.places.get(place.0 as usize) {
-                        if p.access != hir::Access::Mutable {
-                            self.error(
-                                "verify.immutable-write",
-                                format!("place `{}` is not writable", p.id_text),
-                                p.span,
-                            );
+                        hir::Stmt::Break { target } => {
+                            if !loops.contains(&target) {
+                                self.error(
+                                    "verify.loop-target-scope",
+                                    "break target is not a loop enclosing this block".to_string(),
+                                    body.blocks[bid as usize].span,
+                                );
+                            }
+                            frame.flow = Flow::Diverged;
                         }
-                        let target = &body.locals[p.local.0 as usize];
-                        if !target.mutable {
-                            self.error(
-                                "verify.immutable-write",
-                                format!(
-                                    "local `{}` is immutable and cannot be assigned",
-                                    target.id_text
-                                ),
-                                p.span,
-                            );
-                        }
-                        if !cur.contains(&p.local) {
-                            self.error(
-                                "verify.uninitialized-read",
-                                format!(
-                                    "assignment to local `{}` before initialization",
-                                    target.id_text
-                                ),
-                                p.span,
-                            );
+                        hir::Stmt::Continue { target } => {
+                            if !loops.contains(&target) {
+                                self.error(
+                                    "verify.loop-target-scope",
+                                    "continue target is not a loop enclosing this block"
+                                        .to_string(),
+                                    body.blocks[bid as usize].span,
+                                );
+                            }
+                            frame.flow = Flow::Diverged;
                         }
                     }
                 }
-                hir::Stmt::Break { target } => {
-                    if !loops.contains(target) {
+                Action::AfterTerm | Action::Complete => {
+                    let frame = frames.pop().expect("walk frame");
+                    if matches!(action, Action::AfterTerm) {
+                        let bl = &body.blocks[frame.bid as usize];
                         self.error(
-                            "verify.loop-target-scope",
-                            "break target is not a loop enclosing this block".to_string(),
+                            "verify.block-structure",
+                            format!(
+                                "block `{}` has executable statements after a terminating statement",
+                                bl.id_text
+                            ),
                             bl.span,
                         );
                     }
-                    flow = Flow::Diverged;
+                    results[frame.ret_slot] = Some((frame.flow, frame.cur));
+                    loops.truncate(frame.loops_len);
                 }
-                hir::Stmt::Continue { target } => {
-                    if !loops.contains(target) {
-                        self.error(
-                            "verify.loop-target-scope",
-                            "continue target is not a loop enclosing this block".to_string(),
-                            bl.span,
-                        );
+                Action::Resume(state) => {
+                    let frame = frames.last_mut().expect("walk frame");
+                    match state {
+                        WState::AwaitIf {
+                            then_slot,
+                            else_slot,
+                        } => {
+                            let (then_f, then_init) =
+                                results[then_slot].clone().expect("then result");
+                            let (else_f, else_init) = if else_slot == usize::MAX {
+                                (Flow::Continue, frame.cur.clone())
+                            } else {
+                                results[else_slot].clone().expect("else result")
+                            };
+                            frame.flow = match (then_f, else_f) {
+                                (Flow::Returned, Flow::Returned) => Flow::Returned,
+                                (Flow::Diverged, Flow::Diverged) => Flow::Diverged,
+                                _ => Flow::Continue,
+                            };
+                            // Exit initialization = intersection over reachable
+                            // (continuing) branch exits. A branch that returned
+                            // or diverged contributes nothing.
+                            if frame.flow == Flow::Continue {
+                                let mut merged: Init = BTreeSet::new();
+                                if then_f == Flow::Continue && else_f == Flow::Continue {
+                                    for id in &then_init {
+                                        if else_init.contains(id) {
+                                            merged.insert(*id);
+                                        }
+                                    }
+                                } else if then_f == Flow::Continue {
+                                    merged = then_init;
+                                } else if else_f == Flow::Continue {
+                                    merged = else_init;
+                                } else {
+                                    merged = frame.cur.clone();
+                                }
+                                frame.cur = merged;
+                            }
+                        }
+                        WState::AwaitLoop { body_slot } => {
+                            let (body_f, _body_init) =
+                                results[body_slot].clone().expect("loop body result");
+                            // A `return` inside the loop body leaves the loop;
+                            // a body that completes or diverges via
+                            // break/continue hands control back to the loop /
+                            // after-loop code.
+                            frame.flow = if body_f == Flow::Returned {
+                                Flow::Returned
+                            } else {
+                                Flow::Continue
+                            };
+                            // The loop id's scope was the body walk alone:
+                            // statements after the loop must not target it.
+                            loops.truncate(frame.loops_len);
+                            // Loops may run zero times: initializations inside
+                            // the body do not escape; `cur` stays as-is.
+                        }
+                        WState::Run => unreachable!("Run is not resumed"),
                     }
-                    flow = Flow::Diverged;
                 }
             }
         }
         // A block that completes without a terminator simply hands control
         // to its enclosing structure (after-if join, loop repeat, or — at
         // the entry — a missing return path, reported by the caller).
-        (flow, cur)
+        results[0]
+            .clone()
+            .unwrap_or_else(|| (Flow::Continue, init.clone()))
     }
 
     fn walk_value(&mut self, eid: ExprId, body: &hir::Body, init: &Init) {

@@ -58,6 +58,16 @@ const POSITIVE: &[(&str, i32, &str, bool, bool)] = &[
     // the exact i32 sum as the exit code (300; shell conventions would
     // show 300 & 0xFF, the test reads the real code).
     ("f11-deep-add-chain.at", 300, "", false, false),
+    // r6 QA-01: binary operators inside call arguments — positional,
+    // named-reversed, nested calls, bool args, bracketed controls, trace
+    // order — the comma branch reduces the open argument first
+    ("m01-comma-binop-args.at", 42, "", false, false),
+    ("m02-named-binop-args.at", 42, "", false, false),
+    ("m06-nested-call-binop-args.at", 192, "", false, false),
+    ("m07-bool-binop-arg.at", 5, "", false, false),
+    ("m10-parenthesized-binop-args.at", 42, "", false, false),
+    ("m18-trace-named-binop-args.at", 23, "ba", true, true),
+    ("m22-named-args-newline.at", 33, "", false, false),
 ];
 
 fn valid(name: &str) -> String {
@@ -149,6 +159,50 @@ fn positive_corpus_executes_natively() {
             name
         );
     }
+}
+
+/// R5-QA-02 (block item): statement-block nesting is unlimited — a
+/// 1001-deep if chain (the reviewer's K04/H08 boundary; the old NEST_LIMIT
+/// counted the function body as a level and rejected 1000-deep ifs) builds
+/// and runs natively with the correct exit.
+#[test]
+fn deep_block_nesting_builds_and_runs() {
+    let dir = std::env::temp_dir().join("ac745-source-native-deepblocks");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let depth = 1001usize;
+    let src = format!(
+        "fn main() int {{ {}return 1{}\nreturn 0 }}",
+        "if true { ".repeat(depth),
+        " }".repeat(depth)
+    );
+    let src_path = dir.join("deep.at");
+    std::fs::write(&src_path, src).unwrap();
+    let exe = dir.join("deep.exe");
+    let build = run_deadlined(
+        {
+            let mut c = Command::new(EXE);
+            c.args([
+                "build-source",
+                &src_path.display().to_string(),
+                "--source-profile",
+                PROFILE,
+                "--entry",
+                "main",
+                "--output",
+            ])
+            .arg(&exe);
+            c
+        },
+        Duration::from_secs(300),
+    )
+    .expect("spawn build");
+    assert!(!build.timed_out, "deep block build exceeded 300s");
+    assert_eq!(build.code, 0, "stderr: {}", build.stderr);
+    let run = run_deadlined(Command::new(&exe), Duration::from_secs(60)).expect("run exe");
+    assert!(!run.timed_out, "deep block exe exceeded 60s");
+    assert_eq!(run.code, 1, "1001 nested ifs must reach the return 1");
+    assert!(run.stderr.is_empty());
 }
 
 /// QA-02: `ac_start` used directly as the ENTRY (not just as a callee).

@@ -349,6 +349,31 @@ fn source_build_never_overwrites_existing_artifacts() {
         trio
     );
 
+    // (1b) R6-QA-02 regression: an unclosed call frame (`return f(1+2 }`)
+    // must be rejected at the text stage — the M21 shape, where the frame
+    // used to be silently dropped and a wrong PE was published over the
+    // existing trio.
+    let r = run_ac(&[
+        "build-source",
+        &invalid("m04-call-unclosed-drop.at"),
+        "--source-profile",
+        PROFILE,
+        "--entry",
+        "main",
+        "--output",
+        &exe.display().to_string(),
+    ]);
+    assert_eq!(r.code, 1, "stderr: {}", r.stderr);
+    assert!(
+        r.stderr.contains("error[text/source.syntax]"),
+        "{}",
+        r.stderr
+    );
+    assert_eq!(
+        [sha256_of(&exe), sha256_of(&obj), sha256_of(&receipt)],
+        trio
+    );
+
     // (2) Link failure: compiles and links an unresolvable intrinsic import;
     // staging is reclaimed and the finals survive byte-identical.
     let r = run_ac(&[

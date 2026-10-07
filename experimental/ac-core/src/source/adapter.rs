@@ -240,7 +240,13 @@ impl PlanCtx<'_> {
             places: Vec::new(),
             loops: Vec::new(),
         };
-        let entry = self.plan_block(&mut plan, f, &f.body);
+        // Termination classification for every block, computed bottom-up
+        // with an explicit stack (R6: block nesting is unlimited; the
+        // previous recursive stmt_term/block_flow walked per level and
+        // revisited shared spines, which was both a depth and an O(n²)
+        // hazard).
+        let terms = block_terms(&f.body);
+        let entry = self.plan_block_machine(&mut plan, f, &f.body, &terms);
         debug_assert_eq!(entry, 0);
         // Finalize block spans: override, else the join of the source spans
         // of the statements lowered into the block (cut at the first
@@ -264,20 +270,248 @@ impl PlanCtx<'_> {
         plan
     }
 
-    fn plan_block(&mut self, plan: &mut FnPlan, f: &ResolvedFn, rb: &RBlock) -> usize {
-        let bid = plan.blocks.len();
+    /// Plan one function body with an explicit block-frame stack (R6: no
+    /// recursion, unlimited nesting). Each frame owns the plan-side block
+    /// it is filling (`cur`, switching to a dead block after a terminator);
+    /// closing a frame assembles the if/while/loop statement into its
+    /// parent's home block. Block-id allocation order matches the previous
+    /// recursive walk exactly (then before else, body before the while
+    /// test/stop blocks).
+    fn plan_block_machine(
+        &mut self,
+        plan: &mut FnPlan,
+        f: &ResolvedFn,
+        root: &RBlock,
+        terms: &BTreeMap<usize, Option<Term>>,
+    ) -> usize {
+        struct PFrame<'a> {
+            src: &'a RBlock,
+            idx: usize,
+            /// Plan-side block allocated for this source block — the arm a
+            /// closing continuation assembles.
+            bid: usize,
+            /// Current fill target; switches to a dead block after a
+            /// terminator.
+            cur: usize,
+            split_after: bool,
+            /// Termination of the block-opening statement currently being
+            /// planned (if/while/loop): its SNode lands only when the child
+            /// frame closes, so the span_cut/split_after bookkeeping waits
+            /// for that close (the recursive form got this for free — the
+            /// recursion completed before the caller's term check ran).
+            pending_term: Option<Term>,
+            cont: PCont<'a>,
+        }
+        enum PCont<'a> {
+            FnBody,
+            /// The then-arm closed; `els` is the pending else source block.
+            ThenArm {
+                cond: usize,
+                els: Option<&'a RBlock>,
+                home: usize,
+                span: Span,
+            },
+            ElseArm {
+                cond: usize,
+                then: usize,
+                home: usize,
+                span: Span,
+            },
+            WhileArm {
+                cond: usize,
+                home: usize,
+                /// The while condition's span (k_stop/k_test anchors).
+                cond_span: Span,
+                /// The whole while statement's span (the loop SNode anchor).
+                stmt_span: Span,
+                target: usize,
+            },
+            LoopArm {
+                home: usize,
+                span: Span,
+                target: usize,
+            },
+        }
+        let entry = plan.blocks.len();
         plan.blocks.push(BNode {
             stmts: Vec::new(),
             span_override: None,
             span_cut: None,
-            fallback: rb.span,
-            span: rb.span,
+            fallback: root.span,
+            span: root.span,
         });
-        let mut cur = bid;
-        let mut split_after = false;
-        for s in &rb.stmts {
-            let term = stmt_term(s);
-            if split_after {
+        let mut stack: Vec<PFrame> = vec![PFrame {
+            src: root,
+            idx: 0,
+            bid: entry,
+            cur: entry,
+            split_after: false,
+            pending_term: None,
+            cont: PCont::FnBody,
+        }];
+        loop {
+            let action = {
+                let frame = stack.last_mut().expect("plan frame");
+                let src: &RBlock = frame.src;
+                let next = src.stmts.get(frame.idx);
+                if next.is_some() {
+                    frame.idx += 1;
+                }
+                next
+            };
+            let Some(s) = action else {
+                let frame = stack.pop().expect("plan frame");
+                let bid = frame.bid;
+                // Whether this close lands the pending if/while/loop SNode
+                // in its parent (the else-arm push defers it one more
+                // frame).
+                let mut landed = true;
+                match frame.cont {
+                    PCont::FnBody => {}
+                    PCont::ThenArm {
+                        cond,
+                        els,
+                        home,
+                        span,
+                    } => match els {
+                        Some(eb) => {
+                            let k_else = plan.blocks.len();
+                            plan.blocks.push(BNode {
+                                stmts: Vec::new(),
+                                span_override: None,
+                                span_cut: None,
+                                fallback: eb.span,
+                                span: eb.span,
+                            });
+                            stack.push(PFrame {
+                                src: eb,
+                                idx: 0,
+                                bid: k_else,
+                                cur: k_else,
+                                split_after: false,
+                                pending_term: None,
+                                cont: PCont::ElseArm {
+                                    cond,
+                                    then: bid,
+                                    home,
+                                    span,
+                                },
+                            });
+                            landed = false;
+                        }
+                        None => {
+                            plan.blocks[home].stmts.push(SNode {
+                                kind: SKind::If {
+                                    cond,
+                                    then: bid,
+                                    els: None,
+                                },
+                                span,
+                            });
+                        }
+                    },
+                    PCont::ElseArm {
+                        cond,
+                        then,
+                        home,
+                        span,
+                    } => {
+                        plan.blocks[home].stmts.push(SNode {
+                            kind: SKind::If {
+                                cond,
+                                then,
+                                els: Some(bid),
+                            },
+                            span,
+                        });
+                    }
+                    PCont::WhileArm {
+                        cond,
+                        home,
+                        cond_span,
+                        stmt_span,
+                        target,
+                    } => {
+                        let k_body = bid;
+                        let k_stop = plan.blocks.len();
+                        plan.blocks.push(BNode {
+                            stmts: vec![SNode {
+                                kind: SKind::Break { target },
+                                span: cond_span,
+                            }],
+                            span_override: Some(cond_span),
+                            span_cut: None,
+                            fallback: cond_span,
+                            span: cond_span,
+                        });
+                        let k_test = plan.blocks.len();
+                        plan.blocks.push(BNode {
+                            stmts: vec![SNode {
+                                kind: SKind::If {
+                                    cond,
+                                    then: k_body,
+                                    els: Some(k_stop),
+                                },
+                                span: cond_span,
+                            }],
+                            span_override: Some(cond_span),
+                            span_cut: None,
+                            fallback: cond_span,
+                            span: cond_span,
+                        });
+                        plan.blocks[home].stmts.push(SNode {
+                            kind: SKind::Loop {
+                                target,
+                                body: k_test,
+                            },
+                            span: stmt_span,
+                        });
+                    }
+                    PCont::LoopArm { home, span, target } => {
+                        plan.blocks[home].stmts.push(SNode {
+                            kind: SKind::Loop { target, body: bid },
+                            span,
+                        });
+                    }
+                }
+                // Only the FnBody frame closes with no parent: the whole
+                // function body is planned.
+                if stack.is_empty() {
+                    return entry;
+                }
+                // The pending if/while/loop statement's SNode just landed
+                // in the parent's home block: apply its termination
+                // bookkeeping now (span_cut counts the SNode, exactly like
+                // the recursive form did after plan_stmt returned).
+                if landed {
+                    let parent = stack.last_mut().expect("plan frame");
+                    let home = parent.cur;
+                    if let Some(term) = parent.pending_term.take() {
+                        if term != Term::No {
+                            if plan.blocks[home].span_cut.is_none() {
+                                let n = plan.blocks[home].stmts.len();
+                                plan.blocks[home].span_cut = Some(n - 1);
+                            }
+                            parent.split_after = matches!(term, Term::Ret | Term::Div);
+                        }
+                    }
+                }
+                continue;
+            };
+            // Termination bookkeeping. Simple statements land their SNode
+            // synchronously; block-opening statements (if/while/loop) land
+            // it when the child frame closes, so their bookkeeping is
+            // deferred (pending_term) to that close.
+            let term = stmt_term_memo(s, terms);
+            let opens_block = matches!(
+                s,
+                RStmt::If { .. } | RStmt::While { .. } | RStmt::Loop { .. }
+            );
+            // captured BEFORE the match: block statements push child frames
+            // on top of this one
+            let parent_idx = stack.len() - 1;
+            let frame = stack.last_mut().expect("plan frame");
+            if frame.split_after {
                 // Dead code after a terminator (return, a valid
                 // break/continue, or an if/loop whose every path left):
                 // its own unreferenced block — faithful to its
@@ -286,7 +520,7 @@ impl PlanCtx<'_> {
                 // After a STRAY break/continue trailing statements stay in
                 // the same block so the dataflow walk still runs and owns
                 // the loop-target-scope rejection.
-                cur = plan.blocks.len();
+                frame.cur = plan.blocks.len();
                 // The dead block's span stays pinned to its FIRST dead
                 // statement: the sharpest anchor for the verifier's
                 // unreachable-block rejection.
@@ -297,150 +531,156 @@ impl PlanCtx<'_> {
                     fallback: stmt_span(s),
                     span: stmt_span(s),
                 });
-                split_after = false;
+                frame.split_after = false;
             }
-            self.plan_stmt(plan, f, cur, s);
-            if term != Term::No {
-                if plan.blocks[cur].span_cut.is_none() {
-                    let n = plan.blocks[cur].stmts.len();
-                    plan.blocks[cur].span_cut = Some(n - 1);
-                }
-                split_after = matches!(term, Term::Ret | Term::Div);
-            }
-        }
-        bid
-    }
-
-    /// Returns whether the statement terminates the block.
-    fn plan_stmt(&mut self, plan: &mut FnPlan, f: &ResolvedFn, cur: usize, s: &RStmt) -> bool {
-        match s {
-            RStmt::Let { local, value, span } => {
-                let v = self.plan_expr(plan, f, value);
-                plan.blocks[cur].stmts.push(SNode {
-                    kind: SKind::Let {
-                        local: local.0,
-                        value: v,
-                    },
-                    span: *span,
-                });
-                false
-            }
-            RStmt::Assign { local, value, span } => {
-                let v = self.plan_expr(plan, f, value);
-                let vt = f.locals[local.0].vt;
-                let place = plan.places.len();
-                plan.places.push(PNode {
-                    local: local.0,
-                    vt,
-                    span: *span,
-                });
-                plan.blocks[cur].stmts.push(SNode {
-                    kind: SKind::Assign { place, value: v },
-                    span: *span,
-                });
-                false
-            }
-            RStmt::Return { value, span } => {
-                let v = self.plan_expr(plan, f, value);
-                plan.blocks[cur].stmts.push(SNode {
-                    kind: SKind::Return { value: v },
-                    span: *span,
-                });
-                true
-            }
-            RStmt::If {
-                cond,
-                then,
-                els,
-                span,
-            } => {
-                let c = self.plan_expr(plan, f, cond);
-                let t = self.plan_block(plan, f, then);
-                let e = els.as_ref().map(|b| self.plan_block(plan, f, b));
-                plan.blocks[cur].stmts.push(SNode {
-                    kind: SKind::If {
-                        cond: c,
-                        then: t,
-                        els: e,
-                    },
-                    span: *span,
-                });
-                false
-            }
-            RStmt::While {
-                cond,
-                body,
-                span,
-                target,
-            } => {
-                // loop { if cond { body } else { break } }: the condition is
-                // owned by the if inside the loop, so it re-runs every
-                // iteration and after every continue.
-                ensure_loop(plan, target.0, cond.span);
-                let c = self.plan_expr(plan, f, cond);
-                let k_body = self.plan_block(plan, f, body);
-                let k_stop = plan.blocks.len();
-                plan.blocks.push(BNode {
-                    stmts: vec![SNode {
-                        kind: SKind::Break { target: target.0 },
-                        span: cond.span,
-                    }],
-                    span_override: Some(cond.span),
-                    span_cut: None,
-                    fallback: cond.span,
-                    span: cond.span,
-                });
-                let k_test = plan.blocks.len();
-                plan.blocks.push(BNode {
-                    stmts: vec![SNode {
-                        kind: SKind::If {
-                            cond: c,
-                            then: k_body,
-                            els: Some(k_stop),
+            let home = frame.cur;
+            match s {
+                RStmt::Let { local, value, span } => {
+                    let v = self.plan_expr(plan, f, value);
+                    plan.blocks[home].stmts.push(SNode {
+                        kind: SKind::Let {
+                            local: local.0,
+                            value: v,
                         },
-                        span: cond.span,
-                    }],
-                    span_override: Some(cond.span),
-                    span_cut: None,
-                    fallback: cond.span,
-                    span: cond.span,
-                });
-                plan.blocks[cur].stmts.push(SNode {
-                    kind: SKind::Loop {
-                        target: target.0,
-                        body: k_test,
-                    },
-                    span: *span,
-                });
-                false
+                        span: *span,
+                    });
+                }
+                RStmt::Assign { local, value, span } => {
+                    let v = self.plan_expr(plan, f, value);
+                    let vt = f.locals[local.0].vt;
+                    let place = plan.places.len();
+                    plan.places.push(PNode {
+                        local: local.0,
+                        vt,
+                        span: *span,
+                    });
+                    plan.blocks[home].stmts.push(SNode {
+                        kind: SKind::Assign { place, value: v },
+                        span: *span,
+                    });
+                }
+                RStmt::Return { value, span } => {
+                    let v = self.plan_expr(plan, f, value);
+                    plan.blocks[home].stmts.push(SNode {
+                        kind: SKind::Return { value: v },
+                        span: *span,
+                    });
+                }
+                RStmt::If {
+                    cond,
+                    then,
+                    els,
+                    span,
+                } => {
+                    let c = self.plan_expr(plan, f, cond);
+                    let k_then = plan.blocks.len();
+                    plan.blocks.push(BNode {
+                        stmts: Vec::new(),
+                        span_override: None,
+                        span_cut: None,
+                        fallback: then.span,
+                        span: then.span,
+                    });
+                    stack.push(PFrame {
+                        src: then,
+                        idx: 0,
+                        bid: k_then,
+                        cur: k_then,
+                        split_after: false,
+                        pending_term: None,
+                        cont: PCont::ThenArm {
+                            cond: c,
+                            els: els.as_ref(),
+                            home,
+                            span: *span,
+                        },
+                    });
+                }
+                RStmt::While {
+                    cond,
+                    body,
+                    span,
+                    target,
+                } => {
+                    // loop { if cond { body } else { break } }: the condition is
+                    // owned by the if inside the loop, so it re-runs every
+                    // iteration and after every continue.
+                    ensure_loop(plan, target.0, cond.span);
+                    let c = self.plan_expr(plan, f, cond);
+                    let k_body = plan.blocks.len();
+                    plan.blocks.push(BNode {
+                        stmts: Vec::new(),
+                        span_override: None,
+                        span_cut: None,
+                        fallback: body.span,
+                        span: body.span,
+                    });
+                    stack.push(PFrame {
+                        src: body,
+                        idx: 0,
+                        bid: k_body,
+                        cur: k_body,
+                        split_after: false,
+                        pending_term: None,
+                        cont: PCont::WhileArm {
+                            cond: c,
+                            home,
+                            cond_span: cond.span,
+                            stmt_span: *span,
+                            target: target.0,
+                        },
+                    });
+                }
+                RStmt::Loop { body, span, target } => {
+                    ensure_loop(plan, target.0, *span);
+                    let k_body = plan.blocks.len();
+                    plan.blocks.push(BNode {
+                        stmts: Vec::new(),
+                        span_override: None,
+                        span_cut: None,
+                        fallback: body.span,
+                        span: body.span,
+                    });
+                    stack.push(PFrame {
+                        src: body,
+                        idx: 0,
+                        bid: k_body,
+                        cur: k_body,
+                        split_after: false,
+                        pending_term: None,
+                        cont: PCont::LoopArm {
+                            home,
+                            span: *span,
+                            target: target.0,
+                        },
+                    });
+                }
+                RStmt::Break { target, span } => {
+                    let t = self.phantom_target(plan, home, *target, *span);
+                    plan.blocks[home].stmts.push(SNode {
+                        kind: SKind::Break { target: t },
+                        span: *span,
+                    });
+                }
+                RStmt::Continue { target, span } => {
+                    let t = self.phantom_target(plan, home, *target, *span);
+                    plan.blocks[home].stmts.push(SNode {
+                        kind: SKind::Continue { target: t },
+                        span: *span,
+                    });
+                }
             }
-            RStmt::Loop { body, span, target } => {
-                ensure_loop(plan, target.0, *span);
-                let k_body = self.plan_block(plan, f, body);
-                plan.blocks[cur].stmts.push(SNode {
-                    kind: SKind::Loop {
-                        target: target.0,
-                        body: k_body,
-                    },
-                    span: *span,
-                });
-                false
-            }
-            RStmt::Break { target, span } => {
-                let t = self.phantom_target(plan, cur, *target, *span);
-                plan.blocks[cur].stmts.push(SNode {
-                    kind: SKind::Break { target: t },
-                    span: *span,
-                });
-                true
-            }
-            RStmt::Continue { target, span } => {
-                let t = self.phantom_target(plan, cur, *target, *span);
-                plan.blocks[cur].stmts.push(SNode {
-                    kind: SKind::Continue { target: t },
-                    span: *span,
-                });
-                true
+            if term != Term::No {
+                let frame = &mut stack[parent_idx];
+                if opens_block {
+                    frame.pending_term = Some(term);
+                } else {
+                    if plan.blocks[home].span_cut.is_none() {
+                        let n = plan.blocks[home].stmts.len();
+                        plan.blocks[home].span_cut = Some(n - 1);
+                    }
+                    frame.split_after = matches!(term, Term::Ret | Term::Div);
+                }
             }
         }
     }
@@ -720,7 +960,13 @@ enum Term {
     Stray,
 }
 
-fn stmt_term(s: &RStmt) -> Term {
+fn stmt_term_memo(s: &RStmt, terms: &BTreeMap<usize, Option<Term>>) -> Term {
+    let flow_of = |b: &RBlock| -> Option<Term> {
+        terms
+            .get(&(b as *const RBlock as usize))
+            .copied()
+            .unwrap_or(None)
+    };
     match s {
         RStmt::Return { .. } => Term::Ret,
         RStmt::Break { target, .. } | RStmt::Continue { target, .. } => match target {
@@ -739,7 +985,7 @@ fn stmt_term(s: &RStmt) -> Term {
             // statements in the same block so the walk runs and owns the
             // rejection; the pure (Div, Div) case (D08) still splits.
             Some(e) => {
-                let (a, b) = (block_flow(then), block_flow(e));
+                let (a, b) = (flow_of(then), flow_of(e));
                 if a == Some(Term::Stray) || b == Some(Term::Stray) {
                     Term::Stray
                 } else {
@@ -753,7 +999,7 @@ fn stmt_term(s: &RStmt) -> Term {
             None => Term::No,
         },
         RStmt::Loop { body, .. } => {
-            if block_flow(body) == Some(Term::Ret) {
+            if flow_of(body) == Some(Term::Ret) {
                 Term::Ret
             } else {
                 Term::No
@@ -763,9 +1009,51 @@ fn stmt_term(s: &RStmt) -> Term {
     }
 }
 
-/// First terminator of a block, if any (None = falls through).
-fn block_flow(b: &RBlock) -> Option<Term> {
-    b.stmts.iter().map(stmt_term).find(|t| *t != Term::No)
+/// First-terminator classification of every block in the tree, keyed by
+/// block address, computed bottom-up with an explicit stack (R6: unlimited
+/// block nesting — the recursive per-level restatement was both a depth
+/// hazard and quadratic on deep chains).
+fn block_terms(root: &RBlock) -> BTreeMap<usize, Option<Term>> {
+    enum Task<'a> {
+        Enter(&'a RBlock),
+        Exit(&'a RBlock),
+    }
+    let key = |b: &RBlock| b as *const RBlock as usize;
+    let mut memo: BTreeMap<usize, Option<Term>> = BTreeMap::new();
+    let mut stack: Vec<Task> = vec![Task::Enter(root)];
+    while let Some(task) = stack.pop() {
+        match task {
+            Task::Enter(b) => {
+                if memo.contains_key(&key(b)) {
+                    continue;
+                }
+                stack.push(Task::Exit(b));
+                for s in &b.stmts {
+                    match s {
+                        RStmt::If { then, els, .. } => {
+                            stack.push(Task::Enter(then));
+                            if let Some(e) = els {
+                                stack.push(Task::Enter(e));
+                            }
+                        }
+                        RStmt::While { body, .. } | RStmt::Loop { body, .. } => {
+                            stack.push(Task::Enter(body));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Task::Exit(b) => {
+                let flow = b
+                    .stmts
+                    .iter()
+                    .map(|s| stmt_term_memo(s, &memo))
+                    .find(|t| *t != Term::No);
+                memo.insert(key(b), flow);
+            }
+        }
+    }
+    memo
 }
 
 fn ensure_loop(plan: &mut FnPlan, id: usize, span: Span) {

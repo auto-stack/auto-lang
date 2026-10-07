@@ -323,7 +323,6 @@ pub fn lower_object(
                 exit_ref,
                 trap_block: None,
                 loops: Vec::new(),
-                terminated: false,
             };
             fx.emit_block(body.entry);
             // Termination: the entry block ended in `return` (verifier).
@@ -430,9 +429,6 @@ struct FuncEmitter<'c> {
         cranelift_codegen::ir::Block,
         cranelift_codegen::ir::Block,
     )>,
-    /// Whether the current Cranelift block already has a terminator
-    /// (return / jump from break/continue).
-    terminated: bool,
 }
 
 impl<'c> FuncEmitter<'c> {
@@ -442,11 +438,116 @@ impl<'c> FuncEmitter<'c> {
             .get_or_insert_with(|| self.fb.create_block())
     }
 
-    fn emit_block(&mut self, bid: hir::BlockId) {
-        let stmts = self.body.blocks[bid.0 as usize].stmts.clone();
-        self.terminated = false;
-        for s in stmts {
-            match s {
+    /// Emit one block with an explicit frame stack (R6: block nesting is
+    /// unlimited, so no recursion). `terminated` is per-frame; a child
+    /// frame's role (then-arm / else-arm / loop-body) is carried on the
+    /// frame itself and applied when it completes, so the parent resumes
+    /// with the right block switched to and the right `terminated` — the
+    /// same creation/seal/switch order as the previous recursive form.
+    fn emit_block(&mut self, entry: hir::BlockId) {
+        struct EFrame {
+            stmts: Vec<hir::Stmt>,
+            idx: usize,
+            terminated: bool,
+            role: ERole,
+        }
+        enum ERole {
+            /// The function's entry block.
+            Entry,
+            /// Then-arm of an if that has an else.
+            ThenWithElse {
+                else_id: hir::BlockId,
+                else_b: cranelift_codegen::ir::Block,
+                end_b: cranelift_codegen::ir::Block,
+            },
+            /// Then-arm of an if without else.
+            ThenNoElse { end_b: cranelift_codegen::ir::Block },
+            /// The else-arm of an if.
+            ElseArm {
+                end_b: cranelift_codegen::ir::Block,
+                then_terminated: bool,
+            },
+            /// The body of a loop.
+            LoopBody {
+                body_b: cranelift_codegen::ir::Block,
+                after: cranelift_codegen::ir::Block,
+            },
+        }
+        let mut frames: Vec<EFrame> = vec![EFrame {
+            stmts: self.body.blocks[entry.0 as usize].stmts.clone(),
+            idx: 0,
+            terminated: false,
+            role: ERole::Entry,
+        }];
+        while let Some(frame) = frames.last_mut() {
+            let Some(stmt) = frame.stmts.get(frame.idx).cloned() else {
+                let frame = frames.pop().expect("emit frame");
+                match frame.role {
+                    ERole::Entry => {}
+                    ERole::ThenWithElse {
+                        else_id,
+                        else_b,
+                        end_b,
+                    } => {
+                        let then_terminated = frame.terminated;
+                        if !then_terminated {
+                            self.fb.ins().jump(end_b, &[]);
+                        }
+                        self.fb.switch_to_block(else_b);
+                        frames.push(EFrame {
+                            stmts: self.body.blocks[else_id.0 as usize].stmts.clone(),
+                            idx: 0,
+                            terminated: false,
+                            role: ERole::ElseArm {
+                                end_b,
+                                then_terminated,
+                            },
+                        });
+                    }
+                    ERole::ThenNoElse { end_b } => {
+                        let t = frame.terminated;
+                        if !t {
+                            self.fb.ins().jump(end_b, &[]);
+                        }
+                        self.fb.seal_block(end_b);
+                        self.fb.switch_to_block(end_b);
+                        frames.last_mut().expect("emit frame").terminated = false;
+                    }
+                    ERole::ElseArm {
+                        end_b,
+                        then_terminated,
+                    } => {
+                        let else_terminated = frame.terminated;
+                        if !else_terminated {
+                            self.fb.ins().jump(end_b, &[]);
+                        }
+                        self.fb.seal_block(end_b);
+                        if then_terminated && else_terminated {
+                            // both branches transferred; the verifier
+                            // guarantees no executable statements follow
+                            frames.last_mut().expect("emit frame").terminated = true;
+                        } else {
+                            self.fb.switch_to_block(end_b);
+                            frames.last_mut().expect("emit frame").terminated = false;
+                        }
+                    }
+                    ERole::LoopBody { body_b, after } => {
+                        // Fall-through of the loop body repeats the loop.
+                        let t = frame.terminated;
+                        if !t {
+                            self.fb.ins().jump(body_b, &[]);
+                        }
+                        self.fb.seal_block(body_b);
+                        self.fb.switch_to_block(after);
+                        self.fb.seal_block(after);
+                        self.loops.pop();
+                        frames.last_mut().expect("emit frame").terminated = false;
+                    }
+                }
+                continue;
+            };
+            frame.idx += 1;
+            match stmt {
                 hir::Stmt::Let { local, value } => {
                     let v = self.eval_expr(value);
                     let var = self.vars[&local.0];
@@ -455,7 +556,7 @@ impl<'c> FuncEmitter<'c> {
                 hir::Stmt::Return { value } => {
                     let v = self.eval_expr(value);
                     self.fb.ins().return_(&[v]);
-                    self.terminated = true;
+                    frame.terminated = true;
                 }
                 hir::Stmt::If { cond, then, els } => {
                     let c = self.eval_expr(cond);
@@ -471,26 +572,16 @@ impl<'c> FuncEmitter<'c> {
                             self.fb.seal_block(then_b);
                             self.fb.seal_block(else_b);
                             self.fb.switch_to_block(then_b);
-                            self.emit_block(then);
-                            let then_terminated = self.terminated;
-                            if !then_terminated {
-                                self.fb.ins().jump(end_b, &[]);
-                            }
-                            self.fb.switch_to_block(else_b);
-                            self.emit_block(e);
-                            let else_terminated = self.terminated;
-                            if !else_terminated {
-                                self.fb.ins().jump(end_b, &[]);
-                            }
-                            self.fb.seal_block(end_b);
-                            if then_terminated && else_terminated {
-                                // both branches transferred; the verifier
-                                // guarantees no executable statements follow
-                                self.terminated = true;
-                            } else {
-                                self.fb.switch_to_block(end_b);
-                                self.terminated = false;
-                            }
+                            frames.push(EFrame {
+                                stmts: self.body.blocks[then.0 as usize].stmts.clone(),
+                                idx: 0,
+                                terminated: false,
+                                role: ERole::ThenWithElse {
+                                    else_id: e,
+                                    else_b,
+                                    end_b,
+                                },
+                            });
                         }
                         None => {
                             // Without else, the false edge of the branch IS
@@ -499,13 +590,12 @@ impl<'c> FuncEmitter<'c> {
                             self.fb.ins().brif(c, then_b, &[], end_b, &[]);
                             self.fb.seal_block(then_b);
                             self.fb.switch_to_block(then_b);
-                            self.emit_block(then);
-                            if !self.terminated {
-                                self.fb.ins().jump(end_b, &[]);
-                            }
-                            self.fb.seal_block(end_b);
-                            self.fb.switch_to_block(end_b);
-                            self.terminated = false;
+                            frames.push(EFrame {
+                                stmts: self.body.blocks[then.0 as usize].stmts.clone(),
+                                idx: 0,
+                                terminated: false,
+                                role: ERole::ThenNoElse { end_b },
+                            });
                         }
                     }
                 }
@@ -518,16 +608,12 @@ impl<'c> FuncEmitter<'c> {
                     self.fb.ins().jump(body_b, &[]);
                     self.loops.push((id, body_b, after));
                     self.fb.switch_to_block(body_b);
-                    self.emit_block(body);
-                    // Fall-through of the loop body repeats the loop.
-                    if !self.terminated {
-                        self.fb.ins().jump(body_b, &[]);
-                    }
-                    self.fb.seal_block(body_b);
-                    self.fb.switch_to_block(after);
-                    self.fb.seal_block(after);
-                    self.loops.pop();
-                    self.terminated = false;
+                    frames.push(EFrame {
+                        stmts: self.body.blocks[body.0 as usize].stmts.clone(),
+                        idx: 0,
+                        terminated: false,
+                        role: ERole::LoopBody { body_b, after },
+                    });
                 }
                 hir::Stmt::Assign { place, value } => {
                     let v = self.eval_expr(value);
@@ -542,7 +628,7 @@ impl<'c> FuncEmitter<'c> {
                         .find(|(lid, _, _)| *lid == target)
                         .expect("verifier: loop target in scope");
                     self.fb.ins().jump(after, &[]);
-                    self.terminated = true;
+                    frame.terminated = true;
                 }
                 hir::Stmt::Continue { target } => {
                     let (_, header, _) = *self
@@ -551,7 +637,7 @@ impl<'c> FuncEmitter<'c> {
                         .find(|(lid, _, _)| *lid == target)
                         .expect("verifier: loop target in scope");
                     self.fb.ins().jump(header, &[]);
-                    self.terminated = true;
+                    frame.terminated = true;
                 }
             }
         }

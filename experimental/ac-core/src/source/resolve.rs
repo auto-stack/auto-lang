@@ -174,6 +174,41 @@ pub struct RBlock {
     pub span: Span,
 }
 
+/// Resolved block trees nest arbitrarily deep (R6: unlimited block
+/// nesting), so the derived recursive drop would overflow — drop with an
+/// explicit work stack (same pattern as `ResolvedExpr`/`ast::Block`).
+impl Drop for RBlock {
+    fn drop(&mut self) {
+        fn dummy() -> RBlock {
+            RBlock {
+                stmts: Vec::new(),
+                span: Span { start: 0, end: 0 },
+            }
+        }
+        let detach = |b: &mut RBlock, stack: &mut Vec<RBlock>| {
+            for s in b.stmts.iter_mut() {
+                match s {
+                    RStmt::If { then, els, .. } => {
+                        stack.push(std::mem::replace(then, dummy()));
+                        if let Some(e) = els {
+                            stack.push(std::mem::replace(e, dummy()));
+                        }
+                    }
+                    RStmt::While { body, .. } | RStmt::Loop { body, .. } => {
+                        stack.push(std::mem::replace(body, dummy()));
+                    }
+                    _ => {}
+                }
+            }
+        };
+        let mut stack: Vec<RBlock> = Vec::new();
+        detach(self, &mut stack);
+        while let Some(mut b) = stack.pop() {
+            detach(&mut b, &mut stack);
+        }
+    }
+}
+
 pub struct ResolvedFn {
     pub name: String,
     pub name_span: Span,
@@ -333,7 +368,7 @@ fn resolve_fn(
         r.scopes[0].names.insert(p.name.name.clone(), lref);
         r.declared_names.insert(p.name.name.clone());
     }
-    let body = r.block(&f.body);
+    let body = r.resolve_body(&f.body);
     let sig = &sigs[&f.name.name];
     ResolvedFn {
         name: f.name.name.clone(),
@@ -364,160 +399,317 @@ impl<'a> FnResolver<'a> {
         None
     }
 
-    fn block(&mut self, b: &ast::Block) -> RBlock {
+    /// Resolve one function body with an explicit block-frame stack (R6:
+    /// block nesting is unlimited, so no recursion). Each frame owns a
+    /// lexical scope (pushed on open, popped on close); while/loop frames
+    /// additionally hold their loop target on the shared loop stack for the
+    /// duration of the body. Statement order — and therefore diagnostic
+    /// order, loop-id registration order and shadowing — is identical to
+    /// the previous recursive walk.
+    fn resolve_body(&mut self, root: &ast::Block) -> RBlock {
+        struct RFrame<'a> {
+            src: &'a ast::Block,
+            idx: usize,
+            stmts: Vec<RStmt>,
+            cont: RCont<'a>,
+        }
+        enum RCont<'a> {
+            FnBody,
+            /// The then-arm closed; `els` is the pending else source block.
+            ThenArm {
+                cond: ResolvedExpr,
+                els: Option<&'a ast::Block>,
+                span: Span,
+            },
+            ElseArm {
+                cond: ResolvedExpr,
+                then: RBlock,
+                span: Span,
+            },
+            WhileArm {
+                cond: ResolvedExpr,
+                span: Span,
+                target: LoopRef,
+            },
+            LoopArm {
+                span: Span,
+                target: LoopRef,
+            },
+        }
         self.scopes.push(Scope {
             names: BTreeMap::new(),
         });
-        let mut stmts = Vec::new();
-        for s in &b.stmts {
-            stmts.push(self.stmt(s));
-        }
-        self.scopes.pop();
-        RBlock {
-            stmts,
-            span: b.span,
-        }
-    }
-
-    fn stmt(&mut self, s: &Stmt) -> RStmt {
-        match s {
-            Stmt::Let {
-                name,
-                ann,
-                mutable,
-                value,
-                span,
-                ..
-            } => {
-                // RHS resolves in the pre-declaration environment.
-                let value = self.expr_iterative(value);
-                let vt = match ann {
-                    Some(a) => vt_of_word(a.word),
-                    None => value.vt,
+        let mut stack: Vec<RFrame> = vec![RFrame {
+            src: root,
+            idx: 0,
+            stmts: Vec::new(),
+            cont: RCont::FnBody,
+        }];
+        loop {
+            let action = {
+                let frame = stack.last_mut().expect("resolve frame");
+                let src: &ast::Block = frame.src;
+                let next = src.stmts.get(frame.idx);
+                if next.is_some() {
+                    frame.idx += 1;
+                }
+                next
+            };
+            let Some(s) = action else {
+                let frame = stack.pop().expect("resolve frame");
+                self.scopes.pop();
+                let block = RBlock {
+                    stmts: frame.stmts,
+                    span: frame.src.span,
                 };
-                if self.scopes.last().unwrap().names.contains_key(&name.name) {
-                    self.bind_err(
-                        "source.duplicate",
-                        format!(
-                            "local `{}` is declared more than once in this block",
-                            name.name
-                        ),
-                        name.span.join(value.span),
-                    );
-                }
-                let lref = LocalRef(self.locals.len());
-                self.locals.push(LocalDecl {
-                    name: name.name.clone(),
-                    vt,
-                    mutable: *mutable,
-                    is_param: false,
-                    param_index: None,
-                    span: name.span.join(value.span),
-                });
-                self.scopes
-                    .last_mut()
-                    .unwrap()
-                    .names
-                    .insert(name.name.clone(), lref);
-                self.declared_names.insert(name.name.clone());
-                RStmt::Let {
-                    local: lref,
-                    value,
-                    span: *span,
-                }
-            }
-            Stmt::Assign { name, value, span } => {
-                let value = self.expr_iterative(value);
-                // Immutability itself is re-checked by the semantic verifier
-                // on the emitted place/local pair (verify.immutable-write);
-                // here only resolution failures are reported.
-                match self.lookup(&name.name) {
-                    Some(l) => RStmt::Assign {
-                        local: l,
-                        value,
-                        span: *span,
+                match frame.cont {
+                    RCont::FnBody => return block,
+                    RCont::ThenArm { cond, els, span } => match els {
+                        Some(eb) => {
+                            self.scopes.push(Scope {
+                                names: BTreeMap::new(),
+                            });
+                            stack.push(RFrame {
+                                src: eb,
+                                idx: 0,
+                                stmts: Vec::new(),
+                                cont: RCont::ElseArm {
+                                    cond,
+                                    then: block,
+                                    span,
+                                },
+                            });
+                        }
+                        None => {
+                            stack
+                                .last_mut()
+                                .expect("parent frame")
+                                .stmts
+                                .push(RStmt::If {
+                                    cond,
+                                    then: block,
+                                    els: None,
+                                    span,
+                                });
+                        }
                     },
-                    None => {
-                        if self.sigs.contains_key(&name.name) {
-                            self.bind_err(
-                                "source.undefined",
-                                format!(
-                                    "cannot assign to `{}`: functions are not assignable locals",
-                                    name.name
-                                ),
-                                name.span,
-                            );
-                        } else {
-                            self.bind_err(
-                                "source.undefined",
-                                format!("no local named `{}` in scope", name.name),
-                                name.span,
-                            );
-                        }
-                        RStmt::Assign {
-                            local: LocalRef(usize::MAX),
-                            value,
-                            span: *span,
-                        }
+                    RCont::ElseArm { cond, then, span } => {
+                        stack
+                            .last_mut()
+                            .expect("parent frame")
+                            .stmts
+                            .push(RStmt::If {
+                                cond,
+                                then,
+                                els: Some(block),
+                                span,
+                            });
+                    }
+                    RCont::WhileArm { cond, span, target } => {
+                        self.loop_stack.pop();
+                        stack
+                            .last_mut()
+                            .expect("parent frame")
+                            .stmts
+                            .push(RStmt::While {
+                                cond,
+                                body: block,
+                                span,
+                                target,
+                            });
+                    }
+                    RCont::LoopArm { span, target } => {
+                        self.loop_stack.pop();
+                        stack
+                            .last_mut()
+                            .expect("parent frame")
+                            .stmts
+                            .push(RStmt::Loop {
+                                body: block,
+                                span,
+                                target,
+                            });
                     }
                 }
-            }
-            Stmt::Return { value, span } => {
-                let value = self.expr_iterative(value);
-                RStmt::Return { value, span: *span }
-            }
-            Stmt::If {
-                cond,
-                then,
-                els,
-                span,
-            } => {
-                let cond = self.expr_iterative(cond);
-                let then = self.block(then);
-                let els = els.as_ref().map(|e| self.block(e));
-                RStmt::If {
+                continue;
+            };
+            match s {
+                Stmt::Let {
+                    name,
+                    ann,
+                    mutable,
+                    value,
+                    span,
+                    ..
+                } => {
+                    // RHS resolves in the pre-declaration environment.
+                    let value = self.expr_iterative(value);
+                    let vt = match ann {
+                        Some(a) => vt_of_word(a.word),
+                        None => value.vt,
+                    };
+                    if self.scopes.last().unwrap().names.contains_key(&name.name) {
+                        self.bind_err(
+                            "source.duplicate",
+                            format!(
+                                "local `{}` is declared more than once in this block",
+                                name.name
+                            ),
+                            name.span.join(value.span),
+                        );
+                    }
+                    let lref = LocalRef(self.locals.len());
+                    self.locals.push(LocalDecl {
+                        name: name.name.clone(),
+                        vt,
+                        mutable: *mutable,
+                        is_param: false,
+                        param_index: None,
+                        span: name.span.join(value.span),
+                    });
+                    self.scopes
+                        .last_mut()
+                        .unwrap()
+                        .names
+                        .insert(name.name.clone(), lref);
+                    self.declared_names.insert(name.name.clone());
+                    stack
+                        .last_mut()
+                        .expect("resolve frame")
+                        .stmts
+                        .push(RStmt::Let {
+                            local: lref,
+                            value,
+                            span: *span,
+                        });
+                }
+                Stmt::Assign { name, value, span } => {
+                    let value = self.expr_iterative(value);
+                    // Immutability itself is re-checked by the semantic verifier
+                    // on the emitted place/local pair (verify.immutable-write);
+                    // here only resolution failures are reported.
+                    let rstmt = match self.lookup(&name.name) {
+                        Some(l) => RStmt::Assign {
+                            local: l,
+                            value,
+                            span: *span,
+                        },
+                        None => {
+                            if self.sigs.contains_key(&name.name) {
+                                self.bind_err(
+                                    "source.undefined",
+                                    format!(
+                                        "cannot assign to `{}`: functions are not assignable locals",
+                                        name.name
+                                    ),
+                                    name.span,
+                                );
+                            } else {
+                                self.bind_err(
+                                    "source.undefined",
+                                    format!("no local named `{}` in scope", name.name),
+                                    name.span,
+                                );
+                            }
+                            RStmt::Assign {
+                                local: LocalRef(usize::MAX),
+                                value,
+                                span: *span,
+                            }
+                        }
+                    };
+                    stack.last_mut().expect("resolve frame").stmts.push(rstmt);
+                }
+                Stmt::Return { value, span } => {
+                    let value = self.expr_iterative(value);
+                    stack
+                        .last_mut()
+                        .expect("resolve frame")
+                        .stmts
+                        .push(RStmt::Return { value, span: *span });
+                }
+                Stmt::If {
                     cond,
                     then,
                     els,
-                    span: *span,
+                    span,
+                } => {
+                    let cond = self.expr_iterative(cond);
+                    self.scopes.push(Scope {
+                        names: BTreeMap::new(),
+                    });
+                    stack.push(RFrame {
+                        src: then,
+                        idx: 0,
+                        stmts: Vec::new(),
+                        cont: RCont::ThenArm {
+                            cond,
+                            els: els.as_ref(),
+                            span: *span,
+                        },
+                    });
+                }
+                Stmt::While {
+                    cond, body, span, ..
+                } => {
+                    let cond = self.expr_iterative(cond);
+                    let target = LoopRef(self.loop_count);
+                    self.loop_count += 1;
+                    self.loop_stack.push(target);
+                    self.scopes.push(Scope {
+                        names: BTreeMap::new(),
+                    });
+                    stack.push(RFrame {
+                        src: body,
+                        idx: 0,
+                        stmts: Vec::new(),
+                        cont: RCont::WhileArm {
+                            cond,
+                            span: *span,
+                            target,
+                        },
+                    });
+                }
+                Stmt::Loop { body, span } => {
+                    let target = LoopRef(self.loop_count);
+                    self.loop_count += 1;
+                    self.loop_stack.push(target);
+                    self.scopes.push(Scope {
+                        names: BTreeMap::new(),
+                    });
+                    stack.push(RFrame {
+                        src: body,
+                        idx: 0,
+                        stmts: Vec::new(),
+                        cont: RCont::LoopArm {
+                            span: *span,
+                            target,
+                        },
+                    });
+                }
+                Stmt::Break { span } => {
+                    let target = self.loop_stack.last().copied();
+                    stack
+                        .last_mut()
+                        .expect("resolve frame")
+                        .stmts
+                        .push(RStmt::Break {
+                            target,
+                            span: *span,
+                        });
+                }
+                Stmt::Continue { span } => {
+                    let target = self.loop_stack.last().copied();
+                    stack
+                        .last_mut()
+                        .expect("resolve frame")
+                        .stmts
+                        .push(RStmt::Continue {
+                            target,
+                            span: *span,
+                        });
                 }
             }
-            Stmt::While {
-                cond, body, span, ..
-            } => {
-                let cond = self.expr_iterative(cond);
-                let target = LoopRef(self.loop_count);
-                self.loop_count += 1;
-                self.loop_stack.push(target);
-                let body = self.block(body);
-                self.loop_stack.pop();
-                RStmt::While {
-                    cond,
-                    body,
-                    span: *span,
-                    target,
-                }
-            }
-            Stmt::Loop { body, span } => {
-                let target = LoopRef(self.loop_count);
-                self.loop_count += 1;
-                self.loop_stack.push(target);
-                let body = self.block(body);
-                self.loop_stack.pop();
-                RStmt::Loop {
-                    body,
-                    span: *span,
-                    target,
-                }
-            }
-            Stmt::Break { span } => RStmt::Break {
-                target: self.loop_stack.last().copied(),
-                span: *span,
-            },
-            Stmt::Continue { span } => RStmt::Continue {
-                target: self.loop_stack.last().copied(),
-                span: *span,
-            },
         }
     }
 

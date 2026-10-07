@@ -24,6 +24,11 @@
 //! (whitespace allowed) is one signed literal, range-checked against the
 //! exact i32 domain.
 //!
+//! Both walks are ITERATIVE on explicit stacks (R5/R6): expressions via the
+//! precedence-climbing frame machine, statement blocks via an open-block
+//! stack — nesting of any shape or depth parses without recursion and
+//! without a nesting limit.
+//!
 //! Diagnostic codes (stage `text`): `source.lex` (lexer), `source.syntax`
 //! (structural), `source.literal-range` (i32 domain), `source.unsupported`
 //! (excluded-surface constructs, pointed at the offending token).
@@ -50,7 +55,6 @@ pub fn parse_program(src: &str) -> Result<Program, Diagnostic> {
         toks,
         pos: 0,
         last_line: 1,
-        depth: 0,
     };
     p.items()
 }
@@ -74,26 +78,50 @@ enum Frame {
     Call(Box<CallFrame>),
 }
 
+// Statement-block machine types (R6: block nesting is unlimited — the
+// open-block stack replaces the recursive block()/stmt() pair).
+struct OpenBlock {
+    /// Span of the opening `{`.
+    lb: Span,
+    stmts: Vec<Stmt>,
+    cont: BlockCont,
+}
+
+enum BlockCont {
+    /// The function body block; closing it finishes the item.
+    FnBody {
+        fn_kw: Span,
+        name: Ident,
+        params: Vec<Param>,
+        ret: TypeAnn,
+    },
+    /// `if cond { … }` closed; `else` may still follow.
+    IfThen {
+        kw: Span,
+        cond: Expr,
+    },
+    /// The `else { … }` block of a pending if.
+    IfElse {
+        kw: Span,
+        cond: Expr,
+        then: Block,
+    },
+    WhileBody {
+        kw: Span,
+        cond: Expr,
+    },
+    LoopBody {
+        kw: Span,
+    },
+}
+
 struct Parser<'s> {
     src: &'s str,
     toks: Vec<Token>,
     pos: usize,
     /// Line of the most recently consumed token.
     last_line: usize,
-    /// Syntactic nesting depth of the RECURSIVE structures only — call
-    /// argument lists and blocks (paren groups collapse iteratively and
-    /// carry no count; R4-QA-02). Bounded by [`NEST_LIMIT`] so deeply
-    /// malformed input gets a controlled diagnostic instead of a stack
-    /// overflow.
-    depth: usize,
 }
-
-/// Call/argument-list and block nesting limit — a resource guard tied to
-/// the actual per-level recursion (parser + resolve + emit + verify walk
-/// each level). 1000 is ~4x below the measured overflow depth of the
-/// smallest-stack stage on this toolchain, and orders of magnitude above
-/// the corpus (max ~4) and the review boundary probes (199..300 levels).
-const NEST_LIMIT: usize = 1000;
 
 impl<'s> Parser<'s> {
     // -- plumbing -----------------------------------------------------------
@@ -225,19 +253,6 @@ impl<'s> Parser<'s> {
             }
             _ => Err(self.syntax(format!("expected {}, found {}", what, self.describe_cur()))),
         }
-    }
-
-    /// Enter one nesting level; input that would drive the sinks past
-    /// [`NEST_LIMIT`] gets a controlled diagnostic (never a stack overflow).
-    fn enter(&mut self) -> Result<(), Diagnostic> {
-        self.depth += 1;
-        if self.depth > NEST_LIMIT {
-            return Err(self.err_at(
-                "source.syntax",
-                format!("nesting deeper than {} levels is not accepted", NEST_LIMIT),
-            ));
-        }
-        Ok(())
     }
 
     fn skip_semis(&mut self) {
@@ -372,15 +387,246 @@ impl<'s> Parser<'s> {
                 )))
             }
         };
-        let body = self.block()?;
-        let last = self.toks[self.pos - 1].span;
-        Ok(FnItem {
-            span: fn_kw.join(last),
-            name,
-            params,
-            ret,
-            body,
-        })
+        let item = self.body_machine(fn_kw, name, params, ret)?;
+        Ok(item)
+    }
+
+    /// Parse one function body with an explicit open-block stack (R6:
+    /// statement nesting of any depth parses without recursion). Blocks
+    /// open with `if`/`while`/`loop` heads; closing a `}` applies the
+    /// frame's continuation (finish the item, arm of an if, loop body).
+    fn body_machine(
+        &mut self,
+        fn_kw: Span,
+        name: Ident,
+        params: Vec<Param>,
+        ret: TypeAnn,
+    ) -> Result<FnItem, Diagnostic> {
+        let lb = self.expect_punct(P::LBrace, "`{`")?;
+        let mut stack: Vec<OpenBlock> = vec![OpenBlock {
+            lb,
+            stmts: Vec::new(),
+            cont: BlockCont::FnBody {
+                fn_kw,
+                name,
+                params,
+                ret,
+            },
+        }];
+        loop {
+            self.skip_semis();
+            match self.peek() {
+                None => return Err(self.syntax("expected statement or `}`, found end of file")),
+                Some(Token {
+                    tok: Tok::Punct(P::RBrace),
+                    ..
+                }) => {
+                    let rb = self.bump();
+                    let frame = stack.pop().expect("open block");
+                    let block = Block {
+                        stmts: frame.stmts,
+                        span: frame.lb.join(rb.span),
+                    };
+                    match frame.cont {
+                        BlockCont::FnBody {
+                            fn_kw,
+                            name,
+                            params,
+                            ret,
+                        } => {
+                            debug_assert!(stack.is_empty());
+                            let last = self.toks[self.pos - 1].span;
+                            return Ok(FnItem {
+                                span: fn_kw.join(last),
+                                name,
+                                params,
+                                ret,
+                                body: block,
+                            });
+                        }
+                        BlockCont::IfThen { kw, cond } => {
+                            if matches!(
+                                self.peek(),
+                                Some(Token {
+                                    tok: Tok::Kw(Kw::Else),
+                                    ..
+                                })
+                            ) {
+                                self.pos += 1;
+                                self.last_line = self.toks[self.pos - 1].line;
+                                let lb = self.expect_punct(P::LBrace, "`{`")?;
+                                stack.push(OpenBlock {
+                                    lb,
+                                    stmts: Vec::new(),
+                                    cont: BlockCont::IfElse {
+                                        kw,
+                                        cond,
+                                        then: block,
+                                    },
+                                });
+                                continue;
+                            }
+                            let span = kw.join(block.span);
+                            self.push_stmt(
+                                &mut stack,
+                                Stmt::If {
+                                    cond,
+                                    then: block,
+                                    els: None,
+                                    span,
+                                },
+                            )?;
+                        }
+                        BlockCont::IfElse { kw, cond, then } => {
+                            let span = kw.join(then.span).join(block.span);
+                            self.push_stmt(
+                                &mut stack,
+                                Stmt::If {
+                                    cond,
+                                    then,
+                                    els: Some(block),
+                                    span,
+                                },
+                            )?;
+                        }
+                        BlockCont::WhileBody { kw, cond } => {
+                            let span = kw.join(block.span);
+                            self.push_stmt(
+                                &mut stack,
+                                Stmt::While {
+                                    cond,
+                                    body: block,
+                                    span,
+                                },
+                            )?;
+                        }
+                        BlockCont::LoopBody { kw } => {
+                            let span = kw.join(block.span);
+                            self.push_stmt(&mut stack, Stmt::Loop { body: block, span })?;
+                        }
+                    }
+                }
+                Some(_) => self.parse_stmt_head(&mut stack)?,
+            }
+        }
+    }
+
+    /// Parse one statement. Block-opening heads (`if`/`while`/`loop`) push
+    /// an open-block frame and return; everything else completes and lands
+    /// in the current block via [`Self::push_stmt`].
+    fn parse_stmt_head(&mut self, stack: &mut Vec<OpenBlock>) -> Result<(), Diagnostic> {
+        match self.peek().map(|t| t.tok.clone()) {
+            Some(Tok::Kw(Kw::Let)) | Some(Tok::Kw(Kw::Var)) => {
+                let s = self.decl_stmt()?;
+                self.push_stmt(stack, s)
+            }
+            Some(Tok::Kw(Kw::Return)) => {
+                let kw = self.bump();
+                let value = self.expr(false)?;
+                let span = kw.span.join(value.span);
+                self.push_stmt(stack, Stmt::Return { value, span })
+            }
+            Some(Tok::Kw(Kw::If)) => {
+                let kw = self.bump();
+                let cond = self.expr(false)?;
+                let lb = self.expect_punct(P::LBrace, "`{`")?;
+                stack.push(OpenBlock {
+                    lb,
+                    stmts: Vec::new(),
+                    cont: BlockCont::IfThen { kw: kw.span, cond },
+                });
+                Ok(())
+            }
+            Some(Tok::Kw(Kw::While)) => {
+                let kw = self.bump();
+                let cond = self.expr(false)?;
+                let lb = self.expect_punct(P::LBrace, "`{`")?;
+                stack.push(OpenBlock {
+                    lb,
+                    stmts: Vec::new(),
+                    cont: BlockCont::WhileBody { kw: kw.span, cond },
+                });
+                Ok(())
+            }
+            Some(Tok::Kw(Kw::Loop)) => {
+                let kw = self.bump();
+                let lb = self.expect_punct(P::LBrace, "`{`")?;
+                stack.push(OpenBlock {
+                    lb,
+                    stmts: Vec::new(),
+                    cont: BlockCont::LoopBody { kw: kw.span },
+                });
+                Ok(())
+            }
+            Some(Tok::Kw(Kw::Break)) => {
+                let t = self.bump();
+                self.push_stmt(stack, Stmt::Break { span: t.span })
+            }
+            Some(Tok::Kw(Kw::Continue)) => {
+                let t = self.bump();
+                self.push_stmt(stack, Stmt::Continue { span: t.span })
+            }
+            Some(Tok::Ident(_))
+                if matches!(self.peek2().map(|t| &t.tok), Some(Tok::Punct(P::Assign))) =>
+            {
+                let name = self.expect_ident("local name")?;
+                self.expect_punct(P::Assign, "`=`")?;
+                let value = self.expr(false)?;
+                self.push_stmt(
+                    stack,
+                    Stmt::Assign {
+                        span: name.span.join(value.span),
+                        name,
+                        value,
+                    },
+                )
+            }
+            Some(Tok::Ident(_))
+            | Some(Tok::Kw(Kw::True))
+            | Some(Tok::Kw(Kw::False))
+            | Some(Tok::Int(_)) => {
+                // N41: an expression statement (e.g. a bare call) — calls are
+                // only allowed where a value is consumed.
+                let e = self.expr(false)?;
+                Err(self.unsupported(
+                    "expression statements are not part of this source profile; calls are only allowed in initializers, assignments, returns and conditions",
+                    e.span,
+                ))
+            }
+            Some(Tok::Reserved(word)) => {
+                let span = self.peek().unwrap().span;
+                Err(self.unsupported(
+                    format!("`{}` is not part of this source profile", word),
+                    span,
+                ))
+            }
+            _ => Err(self.syntax(format!("expected statement, found {}", self.describe_cur()))),
+        }
+    }
+
+    /// Append a completed statement to the innermost open block and enforce
+    /// the statement separator rule (`;`, `}` or a newline).
+    fn push_stmt(&mut self, stack: &mut Vec<OpenBlock>, s: Stmt) -> Result<(), Diagnostic> {
+        stack.last_mut().expect("open block").stmts.push(s);
+        match self.peek() {
+            None => {}
+            Some(Token {
+                tok: Tok::Punct(P::Semi),
+                ..
+            })
+            | Some(Token {
+                tok: Tok::Punct(P::RBrace),
+                ..
+            }) => {}
+            Some(t) if t.line > self.last_line => {}
+            Some(_) => {
+                return Err(self.syntax(format!(
+                    "expected `;`, newline or `}}`, found {}",
+                    self.describe_cur()
+                )))
+            }
+        }
+        Ok(())
     }
 
     fn type_word(&mut self) -> TypeAnn {
@@ -439,143 +685,6 @@ impl<'s> Parser<'s> {
     }
 
     // -- statements ---------------------------------------------------------
-
-    fn block(&mut self) -> Result<Block, Diagnostic> {
-        self.enter()?;
-        let lb = self.expect_punct(P::LBrace, "`{`")?;
-        let mut stmts = Vec::new();
-        loop {
-            self.skip_semis();
-            match self.peek() {
-                None => return Err(self.syntax("expected statement or `}`, found end of file")),
-                Some(Token {
-                    tok: Tok::Punct(P::RBrace),
-                    ..
-                }) => {
-                    let rb = self.bump();
-                    self.depth -= 1;
-                    return Ok(Block {
-                        stmts,
-                        span: lb.join(rb.span),
-                    });
-                }
-                Some(_) => {
-                    stmts.push(self.stmt()?);
-                    // Statement separator: `;`, `}` or a newline; anything
-                    // else on the same line is a structural error.
-                    match self.peek() {
-                        None => {}
-                        Some(Token {
-                            tok: Tok::Punct(P::Semi),
-                            ..
-                        })
-                        | Some(Token {
-                            tok: Tok::Punct(P::RBrace),
-                            ..
-                        }) => {}
-                        Some(t) if t.line > self.last_line => {}
-                        Some(_) => {
-                            return Err(self.syntax(format!(
-                                "expected `;`, newline or `}}`, found {}",
-                                self.describe_cur()
-                            )))
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    fn stmt(&mut self) -> Result<Stmt, Diagnostic> {
-        match self.peek().map(|t| t.tok.clone()) {
-            Some(Tok::Kw(Kw::Let)) | Some(Tok::Kw(Kw::Var)) => self.decl_stmt(),
-            Some(Tok::Kw(Kw::Return)) => {
-                let kw = self.bump();
-                let value = self.expr(false)?;
-                let span = kw.span.join(value.span);
-                Ok(Stmt::Return { value, span })
-            }
-            Some(Tok::Kw(Kw::If)) => {
-                let kw = self.bump();
-                let cond = self.expr(false)?;
-                let then = self.block()?;
-                let mut end = self.toks[self.pos - 1].span;
-                let els = match self.peek() {
-                    Some(Token {
-                        tok: Tok::Kw(Kw::Else),
-                        ..
-                    }) => {
-                        self.pos += 1;
-                        self.last_line = self.toks[self.pos - 1].line;
-                        Some(self.block()?)
-                    }
-                    _ => None,
-                };
-                if let Some(b) = &els {
-                    end = end.join(b.span);
-                }
-                Ok(Stmt::If {
-                    cond,
-                    then,
-                    els,
-                    span: kw.span.join(end),
-                })
-            }
-            Some(Tok::Kw(Kw::While)) => {
-                let kw = self.bump();
-                let cond = self.expr(false)?;
-                let body = self.block()?;
-                let span = kw.span.join(body.span);
-                Ok(Stmt::While { cond, body, span })
-            }
-            Some(Tok::Kw(Kw::Loop)) => {
-                let kw = self.bump();
-                let body = self.block()?;
-                let span = kw.span.join(body.span);
-                Ok(Stmt::Loop { body, span })
-            }
-            Some(Tok::Kw(Kw::Break)) => {
-                let t = self.bump();
-                Ok(Stmt::Break { span: t.span })
-            }
-            Some(Tok::Kw(Kw::Continue)) => {
-                let t = self.bump();
-                Ok(Stmt::Continue { span: t.span })
-            }
-            Some(Tok::Ident(_))
-                if matches!(self.peek2().map(|t| &t.tok), Some(Tok::Punct(P::Assign))) =>
-            {
-                let name = self.expect_ident("local name")?;
-                self.expect_punct(P::Assign, "`=`")?;
-                let value = self.expr(false)?;
-                Ok(Stmt::Assign {
-                    span: name.span.join(value.span),
-                    name,
-                    value,
-                })
-            }
-            Some(Tok::Ident(_))
-            | Some(Tok::Kw(Kw::True))
-            | Some(Tok::Kw(Kw::False))
-            | Some(Tok::Int(_)) => {
-                // N41: an expression statement (e.g. a bare call) — calls are
-                // only allowed where a value is consumed.
-                let e = self.expr(false)?;
-                Err(self.unsupported(
-                    "expression statements are not part of this source profile; calls are only allowed in initializers, assignments, returns and conditions",
-                    e.span,
-                ))
-            }
-            Some(Tok::Reserved(word)) => {
-                let span = self.peek().unwrap().span;
-                Err(self.unsupported(
-                    format!("`{}` is not part of this source profile", word),
-                    span,
-                ))
-            }
-            _ => Err(self.syntax(format!("expected statement, found {}", self.describe_cur()))),
-        }
-    }
 
     fn decl_stmt(&mut self) -> Result<Stmt, Diagnostic> {
         let kw_tok = self.bump();
@@ -972,17 +1081,25 @@ impl<'s> Parser<'s> {
             // ---- operator / close loop ----
             loop {
                 let Some(tok) = self.peek().cloned() else {
-                    // EOF: unwind — unclosed frames are errors
-                    if let Some(Frame::Call(_)) = frames.last() {
-                        if vals.len() > 0 {
-                            Self::finish_arg(&mut frames, &mut vals, self.src)?;
-                        }
-                        return Err(self.syntax("expected `,` or `)`"));
-                    }
-                    if let Some(Frame::Op(OpFrame::Paren)) = frames.last() {
-                        return Err(self.syntax("expected `)`"));
-                    }
+                    // EOF: reduce the current argument's operators first —
+                    // with a Bin on top the pre-reduce checks used to skip
+                    // the unclosed Call/Paren below it and silently drop the
+                    // frame (R6-QA-02). After the reduction, any frame left
+                    // is unclosed and is a controlled error.
                     Self::reduce_ops(&mut frames, &mut vals);
+                    match frames.last() {
+                        Some(Frame::Call(_)) => {
+                            if !vals.is_empty() {
+                                Self::finish_arg(&mut frames, &mut vals, self.src)?;
+                            }
+                            return Err(self.syntax("expected `,` or `)`"));
+                        }
+                        Some(Frame::Op(OpFrame::Paren)) => {
+                            return Err(self.syntax("expected `)`"));
+                        }
+                        Some(_) => unreachable!("reduce_ops stops only at bracket frames"),
+                        None => {}
+                    }
                     break 'outer;
                 };
                 match tok.tok {
@@ -1064,6 +1181,14 @@ impl<'s> Parser<'s> {
                         }
                     }
                     Tok::Punct(P::Comma) => {
+                        // Reduce the CURRENT argument's pending operators
+                        // before looking for the call frame: with an open
+                        // argument like `1+2` the stack top is Bin, not Call
+                        // (R6-QA-01). reduce_ops stops at the nearest
+                        // Call/Paren frame, so the reduction is scoped to
+                        // the argument and a comma inside plain parens
+                        // (`f((1,2))`) still has no Call on top and rejects.
+                        Self::reduce_ops(&mut frames, &mut vals);
                         if let Some(Frame::Call(_)) = frames.last() {
                             Self::finish_arg(&mut frames, &mut vals, self.src)?;
                             self.pos += 1;
@@ -1083,15 +1208,21 @@ impl<'s> Parser<'s> {
                         ));
                     }
                     _ => {
-                        // not an operator: expression ends (statement layer
-                        // handles separators)
-                        if let Some(Frame::Call(_)) = frames.last() {
-                            return Err(self.syntax("expected `,` or `)`"));
-                        }
-                        if let Some(Frame::Op(OpFrame::Paren)) = frames.last() {
-                            return Err(self.syntax("expected `)`"));
-                        }
+                        // not an operator: the expression ends (the statement
+                        // layer handles separators). Reduce first; any frame
+                        // left after the reduction is an unclosed call or
+                        // paren group — a missing `)` must reject here, never
+                        // return a value with the frame silently dropped
+                        // (R6-QA-02: `f(1+2 }` used to build+publish).
                         Self::reduce_ops(&mut frames, &mut vals);
+                        match frames.last() {
+                            Some(Frame::Call(_)) => return Err(self.syntax("expected `,` or `)`")),
+                            Some(Frame::Op(OpFrame::Paren)) => {
+                                return Err(self.syntax("expected `)`"))
+                            }
+                            Some(_) => unreachable!("reduce_ops stops only at bracket frames"),
+                            None => {}
+                        }
                         break 'outer;
                     }
                 }

@@ -57,6 +57,16 @@ const VALID: &[&str] = &[
     "e01-paren-nesting-16.at",
     "f04-parens-99.at",
     "g02-parens-200.at",
+    // r6 QA-01 legal controls: binary operators inside call arguments
+    // (positional/named/bool/nested-call/trace shapes); the comma branch
+    // reduces the open argument before looking for the call frame
+    "m01-comma-binop-args.at",
+    "m02-named-binop-args.at",
+    "m06-nested-call-binop-args.at",
+    "m07-bool-binop-arg.at",
+    "m10-parenthesized-binop-args.at",
+    "m18-trace-named-binop-args.at",
+    "m22-named-args-newline.at",
 ];
 
 /// Negative cases the frontend must accept (rejection happens at bind or
@@ -158,6 +168,23 @@ const TEXT_ERRORS: &[(&str, &str, &str)] = &[
     ("d06-unbracketed-negative-newline.at", "source.syntax", "2"),
     ("d12-keyword-named-arg.at", "source.unsupported", "type"),
     ("d11-escaped-char.at", "source.unsupported", "'\\''"),
+    // r6 QA-02 rejects: a missing `)` is a controlled syntax error on
+    // EVERY expression exit path (EOF, `;`, `}`, statement heads) — the
+    // value must never escape with the call/paren frame silently dropped
+    ("m03-return-paren-unclosed.at", "source.syntax", "}"),
+    ("m04-call-unclosed-drop.at", "source.syntax", "}"),
+    ("m05-undefined-callee-unclosed.at", "source.syntax", "}"),
+    ("m08-let-init-unclosed.at", "source.syntax", ";"),
+    ("m09-var-init-call-unclosed.at", "source.syntax", ";"),
+    ("m11-literal-paren-unclosed.at", "source.syntax", "}"),
+    ("m13-paren-call-unclosed.at", "source.syntax", "}"),
+    ("m19-if-cond-unclosed.at", "source.syntax", "{"),
+    ("m20-while-cond-unclosed.at", "source.syntax", "{"),
+    ("m23-named-arg-unclosed-newline.at", "source.syntax", "}"),
+    ("m24-assign-unclosed.at", "source.syntax", ";"),
+    // r6 QA-01 negative control: a comma inside plain parens is still not
+    // a call argument separator
+    ("m14-comma-in-parens.at", "source.syntax", ","),
 ];
 
 #[test]

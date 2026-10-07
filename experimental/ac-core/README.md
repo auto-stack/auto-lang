@@ -108,10 +108,11 @@ native_execution / cli / trace_execution)、CLI 实机构建运行、fmt 与 all
 | cli | check/build CLI 退出码、入口/能力/链接错误路径、失败不覆盖、块图反例 5s 内定位拒绝 |
 | trace_execution | 显式 capability + 支持库:原生调用顺序 b→a、pair 结果 12 |
 | lib(link 单测) | 执行器:1s 截止杀挂起 helper、收集阶段同截止(后代持管道)、大输出完整、发布事务失败矩阵(准备/备份/三次发布) |
-| source_frontend | 745:21 正例解析、23 后段负例必须通过前端、30 text 级 code+token 精确拒绝、结构/span/行列抽查 |
+| source_frontend | 745:21+9 正例解析、23 后段负例必须通过前端、30+11 text 级 code+token 精确拒绝、结构/span/行列抽查 |
 | source_hir | 745:全管线到 CheckedModule、23 bind/verify 级 stage/code/token 拒绝、while/bool 编码结构、4 类 Atom 变异拒收 |
-| source_native | 745:21 正例真实 PE 构建+运行(退出码/stderr oracle、60s 硬截止、三制品断言) |
-| source_cli | 745:0/1/2 分级、profile 必填、entry 按名、失败零制品、trace 无库链接失败、旧 check 仍仅 HIR |
+| source_native | 745:21+7 正例真实 PE 构建+运行(退出码/stderr oracle、60s 硬截止、三制品断言)+1001 层深块 native |
+| source_cli | 745:0/1/2 分级、profile 必填、entry 按名、失败零制品、未闭合调用输入不入制品(SENTINEL)、trace 无库链接失败、旧 check 仍仅 HIR |
+| deep_regression | 745:任意深度合法链/括号/调用/块(2 万层)全阶段无递归通过;未闭合任意深度受控拒绝 |
 
 ## 边界(勿过度宣称)
 
@@ -134,6 +135,10 @@ native_execution / cli / trace_execution)、CLI 实机构建运行、fmt 与 all
   名字,不新增源码保留名;HIR 身份与调用绑定走 def id,不受前缀影响。
 - 未括起的表达式不跨语句换行(运算符右值、callee 到 `(` 都以表达式首行为
   界);括号与实参表内换行是空白。
+- 表达式、调用与**语句块**嵌套均无上限:解析/解析树 Drop/resolve/typecheck/
+  adapter(含终止分类 memo)/verify 数据流/native 发射全部显式栈迭代,
+  无每层递归,无嵌套计数护栏;任意深度的未闭合输入受控拒绝于 text 阶段
+  (缺 `)`/缺 `}` 精确指向当前 token 或 EOF),合法深输入全阶段可运行。
 - 单模块内解析引用;跨模块引用、字符串/聚合/所有权/泛型、生产 ABI、
   DLL/热重载均不在本原型范围。
 - trace intrinsic 是测试能力(`hir.test.trace.v1`),不是生产 I/O;用户

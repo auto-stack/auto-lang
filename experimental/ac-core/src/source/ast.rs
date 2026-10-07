@@ -189,3 +189,40 @@ impl Drop for Expr {
         }
     }
 }
+
+/// Statement blocks nest arbitrarily deep (R6: unlimited block nesting), so
+/// the derived recursive drop of a nested block tree would overflow — drop
+/// with an explicit work stack (same pattern as `Expr`): every nested block
+/// is moved out onto the stack (a cheap empty dummy stays behind), so each
+/// actual drop is shallow.
+impl Drop for Block {
+    fn drop(&mut self) {
+        fn dummy() -> Block {
+            Block {
+                stmts: Vec::new(),
+                span: Span { start: 0, end: 0 },
+            }
+        }
+        let detach = |b: &mut Block, stack: &mut Vec<Block>| {
+            for s in b.stmts.iter_mut() {
+                match s {
+                    Stmt::If { then, els, .. } => {
+                        stack.push(std::mem::replace(then, dummy()));
+                        if let Some(e) = els {
+                            stack.push(std::mem::replace(e, dummy()));
+                        }
+                    }
+                    Stmt::While { body, .. } | Stmt::Loop { body, .. } => {
+                        stack.push(std::mem::replace(body, dummy()));
+                    }
+                    _ => {}
+                }
+            }
+        };
+        let mut stack: Vec<Block> = Vec::new();
+        detach(self, &mut stack);
+        while let Some(mut b) = stack.pop() {
+            detach(&mut b, &mut stack);
+        }
+    }
+}

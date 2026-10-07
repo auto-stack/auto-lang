@@ -293,3 +293,33 @@ r2 修复轮提交链：ad226453b（QA-01/02/03/05 + oracle 缺口实现与测�
 | `cargo tv`（全量） | 158/162、4 预存 cookbook semver |
 
 r5 提交链：d1943418b（迭代解析器+调用迭代化）→ 本提交（报告）。
+
+## 17. r6 needs_fix 修复轮执行记录（2026-10-07，R6-QA-01/02 + R5-QA-02 块项）
+
+复审报告：[review-r6/REVIEW.md](../../plans/attachments/745/review-r6/REVIEW.md)。
+
+| 发现 | 修复 | 执行证据 |
+|---|---|---|
+| R6-QA-01 逗号前二元实参误拒 | 逗号分支**先 `reduce_ops` 归约当前实参的算符**（归约天然停在最近的 Call/Paren 帧——mark 不变式保持），再检查栈顶为 Call：`f(1+2,3*4)` 形态的 positional/named/bool/嵌套调用/trace 实参全部恢复；纯括号内逗号（`f((1,2))`）仍拒 | m01=42、m02（命名反序）=42、m06（嵌套调用实参）=192、m07（bool 实参 `1+2<4`）=5、m18（trace 命名+算符，eval 序 ba）=23 真实 PE；m10/m22 括号/换行控制过；m14 括号内逗号受控拒（text/source.syntax@`,`） |
+| R6-QA-02 未闭合帧被当表达式结束 | EOF 分支与"非算符终止"分支改为**先归约再检查**：归约后任何残留 Call/Paren 帧都是未闭合 → 受控 `expected , or )` / `expected )`（指向当前 token），值不再带帧逃逸；缺 `)` 的 return/let/var 赋值/if 条件/while 条件/命名实参+换行组合全拒 | m03（`return (1+2 }`）、m04（`f(1+2 }` 丢调用即 M21 形态）、m05（未定义 callee 不再绕过前端）、m08/m09（`;` 前缺 `)`）、m11/m13、m19/m20（`if (`/`while (` 条件缺 `)`）、m23（命名实参换行缺 `)`）全部 text 级拒绝 + 精确 token 断言；CLI SENTINEL 测试加 m04 输入：三件 byte-identical 保持（1b 路） |
+| R5-QA-02 块项（保留原 ID） | **块嵌套零上限**：删除 NEST_LIMIT/depth/enter；parser 块/语句改为显式开块栈（OpenBlock/BlockCont 续延机）；`ast::Block`/`RBlock` 加迭代 Drop（嵌套块树泄流）；resolve 块/语句帧栈化（作用域/loop 栈/loop id 登记序/遮蔽/诊断序保持）；typecheck 块遍历帧栈化（then 先于 else）；adapter plan 帧栈化（块 id 分配序=原递归序）+ `stmt_term`/`block_flow` 改为后序迭代 **memo**（同时消除深度递归与 O(n²) 重访）；verify `walk_block` 帧栈化（Flow/Init 合并改 AwaitIf 恢复步、loop id 作用域=体走查、loop 栈每帧 truncate 恢复）；native `emit_block` 帧栈化（terminated 每帧、子帧完成时按角色续作，seal/switch 序保持） | 999/1000/1001/5000/20000 层 if 链全阶段编译（K02/K04/H08 边界两侧均合法）；5000 层 if-else 链（memo 路）与 5000 层 while 链编译；1001 层 if 真实 PE build+run=1（新增 native 测试）；未闭合 2 万层开块栈 + 部分树迭代 Drop 受控拒；`{` 裸垃圾仍即时拒 |
+
+修复中引入并被测试当场捕获的三个机器缺陷（留档）：verify/adapter 在 push 子帧后经 `last_mut()` 误写子帧状态（改父帧索引捕获）；adapter FnBody 关闭后未退出主循环（补空栈 break/return）；块语句 SNode 延迟落地使 `span_cut=n-1` 提前下溢（term 簿记延迟到落地时，与递归形语义一致）。
+
+M 系 fixtures：valid m01/m02/m06/m07/m10/m18/m22；invalid m03/m04/m05/m08/m09/m11/m13/m14/m19/m20/m23；deep_regression 块段按新合同重写（旧 1200 层拒绝断言删除）。
+
+## 18. r6 修复轮门禁（同树串行，2026-10-07）
+
+| 门禁 | 结果 |
+|---|---|
+| ac-core check（all-targets，locked） | PASS，零 warning |
+| ac-core fmt --check | PASS |
+| ac-core `cargo test --locked` | **114 passed / 1 ignored / 0 failed**（113 + 新增深块 native 1） |
+| `verify-ac-741.ps1 -SkipMainGates` | **all 13 steps PASS** |
+| `verify-ac-source-745.ps1` | **all 13 steps PASS (74 cases)** |
+| `acc_inventory.py --check --require-decisions` | **CHECK-OK**（47 决策新鲜） |
+| `cargo check -p auto-lang` | PASS（生产既有 382 warning） |
+| `cargo t`（--no-fail-fast 全量） | 4941/4972、31 失败：29 名 r6 复审历史共现 + 2 名（state_file lock / plan716 diff_window_census）隔离复跑 **2/2 PASS**（并行负载 flake）；745 新增失败 = 0 |
+| `cargo tv`（--no-fail-fast 全量） | 158/162、4 预存 cookbook semver |
+
+r6 提交链：本提交（三项修复 + M 系 + 报告，一次完整 HEAD）。

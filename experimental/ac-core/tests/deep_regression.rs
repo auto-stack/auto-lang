@@ -66,7 +66,10 @@ fn call_and_block_nesting_boundary_both_sides() {
     // R5: expression nesting of ANY shape is unlimited — the iterative
     // precedence parser carries calls and parens on explicit stacks, and
     // resolve/typecheck/adapter/verify/native walk them iteratively.
-    // Blocks (statement nesting) are the remaining guarded structure.
+    // R6: statement BLOCK nesting is unlimited too — parser/resolve/
+    // typecheck/adapter/verify/native all walk blocks on explicit stacks
+    // (with iterative tree drops), and the old NEST_LIMIT (which counted
+    // the function body as a level and rejected 1000-deep ifs) is gone.
     let caps: Vec<String> = Vec::new();
     for depth in [1001usize, 5000, 20000] {
         let calls = format!(
@@ -104,22 +107,44 @@ fn main() int {{ return {}f(1)",
     let err = parse_program(&unclosed_interleaved).unwrap_err();
     assert_eq!(err.code, "source.syntax");
 
-    // statement/block nesting keeps the resource guard (both sides)
-    let ifs999 = format!(
+    // statement/block nesting: BOTH boundary sides of the old limit are
+    // now legal (999/1000/1001 were the reviewer's K02/K04/H08 probes)
+    for depth in [999usize, 1000, 1001, 5000, 20000] {
+        let ifs = format!(
+            "fn main() int {{ {}return 1{}
+return 0 }}",
+            "if true { ".repeat(depth),
+            " }".repeat(depth)
+        );
+        auto_ac_prototype::source::compile_source(&ifs, "t.at", &caps)
+            .unwrap_or_else(|e| panic!("{} block levels must compile: {:?}", depth, e));
+    }
+    // if-else chains: the termination memo path (bottom-up Term
+    // computation over unbounded block trees)
+    let if_else = format!(
+        "fn main() int {{ {}return 1{} }}",
+        "if true { ".repeat(5000),
+        " } else { return 0 }".repeat(5000)
+    );
+    auto_ac_prototype::source::compile_source(&if_else, "t.at", &caps)
+        .expect("5000-deep if-else chain must compile");
+    // deeply nested while bodies (loop-stack discipline end to end)
+    let whiles = format!(
         "fn main() int {{ {}return 1{}
 return 0 }}",
-        "if true { ".repeat(999),
-        " }".repeat(999)
+        "while false { ".repeat(5000),
+        " }".repeat(5000)
     );
-    auto_ac_prototype::source::compile_source(&ifs999, "t.at", &caps)
-        .expect("999 block levels must compile");
-    let ifs1200 = format!(
-        "fn main() int {{ {}return 1{}
-return 0 }}",
-        "if true { ".repeat(1200),
-        " }".repeat(1200)
-    );
-    let err = parse_program(&ifs1200).unwrap_err();
+    auto_ac_prototype::source::compile_source(&whiles, "t.at", &caps)
+        .expect("5000-deep while chain must compile");
+
+    // unclosed blocks: controlled rejection without overflow (deep
+    // open-block stack + iterative drop of the partial tree), and raw
+    // brace spam still fails at the first inner `{`
+    let unclosed_blocks = format!("fn main() int {{ {}", "if true { ".repeat(20000));
+    let err = parse_program(&unclosed_blocks).unwrap_err();
     assert_eq!(err.code, "source.syntax");
-    assert!(err.message.contains("nesting"), "{}", err.message);
+    let brace_spam = format!("fn main() int {{{}return 0", "{".repeat(5000));
+    let err = parse_program(&brace_spam).unwrap_err();
+    assert_eq!(err.code, "source.syntax");
 }
