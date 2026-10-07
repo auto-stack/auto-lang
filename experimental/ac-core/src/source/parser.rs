@@ -50,10 +50,28 @@ pub fn parse_program(src: &str) -> Result<Program, Diagnostic> {
         toks,
         pos: 0,
         last_line: 1,
-        unbracketed_entry: false,
         depth: 0,
     };
     p.items()
+}
+
+// Expression-parser frame types (module scope; PLAN-745 R5-QA-01).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum OpFrame {
+    Bin(u8),
+    Paren,
+}
+
+struct CallFrame {
+    callee: Ident,
+    args: Vec<Arg>,
+    mark: usize,
+    pending_name: Option<Ident>,
+}
+
+enum Frame {
+    Op(OpFrame),
+    Call(Box<CallFrame>),
 }
 
 struct Parser<'s> {
@@ -62,9 +80,6 @@ struct Parser<'s> {
     pos: usize,
     /// Line of the most recently consumed token.
     last_line: usize,
-    /// True until the current unbracketed expression consumes its first
-    /// token (see [`Parser::expr`]).
-    unbracketed_entry: bool,
     /// Syntactic nesting depth of the RECURSIVE structures only — call
     /// argument lists and blocks (paren groups collapse iteratively and
     /// carry no count; R4-QA-02). Bounded by [`NEST_LIMIT`] so deeply
@@ -597,28 +612,26 @@ impl<'s> Parser<'s> {
     }
 
     // -- expressions --------------------------------------------------------
-
-    /// Parse an expression. `bracketed` disables the same-line rule (inside
-    /// parentheses/argument lists, newlines are whitespace).
-    ///
-    /// Line discipline (R1-QA-01 / R2-QA-01): an unbracketed expression may
-    /// START on the current or a later line, but every token AFTER the
-    /// first must sit on the same line as the previously consumed token.
-    /// The anchor moves forward legitimately when a bracketed
-    /// subexpression (parenthesized group or call arguments) closes on a
-    /// later line, so `f(\n 2\n) + 3` continues on the `)`'s line, while
-    /// `1 +\n 2` and `f\n(3)` still reject. Implemented through
-    /// [`Parser::unbracketed_entry`] and the running `last_line`.
-    fn expr(&mut self, bracketed: bool) -> Result<Expr, Diagnostic> {
-        if !bracketed {
-            self.unbracketed_entry = true;
-        }
-        self.binary(1, bracketed)
-    }
+    //
+    // Fully ITERATIVE precedence-climbing parser (R5-QA-01): every nesting
+    // form — binary operators, parenthesized groups, call argument lists —
+    // runs on explicit value/operator stacks, so expression nesting of ANY
+    // shape or depth (consecutive or interleaved, complete or unclosed)
+    // parses without recursion and without a nesting limit.
+    //
+    // Frames:
+    //   Bin(prec)        pending binary operator (left-associative)
+    //   Paren            opened by `(`
+    //   Call{callee,..}  opened by `ident (`
+    // Line discipline (R1/R2-QA-01): outside ALL frames (the unbracketed
+    // top level) an operator must share the line of the previously
+    // consumed token, and a primary following an operator must share the
+    // operator's line; inside any frame newlines are whitespace. This keeps
+    // `1 +\n 2`, `f\n(3)`, `-\n 2` rejected while `f(\n 2\n) + 3`,
+    // `(1 +\n 2) + 3` and `((1+\n2)*3)` pass (D01..D05, G02, H01).
 
     /// Operators that exist in the wider language but are outside the
-    /// profile; encountering one in operator position is `source.unsupported`
-    /// at the operator token.
+    /// profile; in operator position they are `source.unsupported`.
     fn unsupported_op(p: P) -> bool {
         matches!(
             p,
@@ -637,36 +650,430 @@ impl<'s> Parser<'s> {
         )
     }
 
-    fn binary(&mut self, min_prec: u8, bracketed: bool) -> Result<Expr, Diagnostic> {
-        let lhs = self.unary(bracketed)?;
-        self.binary_continue(min_prec, bracketed, lhs)
+    fn prec_of(p: P) -> Option<u8> {
+        match p {
+            P::Plus => Some(2),
+            P::Star => Some(3),
+            P::Lt => Some(1),
+            _ => None,
+        }
     }
 
-    /// Continue the operator loop from an already-parsed left operand
-    /// (used by the paren collapse below; precedence/line rules unchanged).
-    fn binary_continue(
-        &mut self,
-        min_prec: u8,
-        bracketed: bool,
-        mut lhs: Expr,
-    ) -> Result<Expr, Diagnostic> {
-        loop {
-            let Some(tok) = self.peek().cloned() else {
-                break;
+    /// True when the top of `frames` is a bracket context (parens/call) —
+    /// i.e. newlines are whitespace and line checks are off.
+    fn in_bracket(frames: &[Frame]) -> bool {
+        frames
+            .iter()
+            .any(|f| !matches!(f, Frame::Op(OpFrame::Bin(_))))
+    }
+
+    /// Pop and apply pending binary operators with precedence >= `min`.
+    fn reduce_ops(frames: &mut Vec<Frame>, vals: &mut Vec<Expr>) {
+        while let Some(Frame::Op(OpFrame::Bin(_))) = frames.last() {
+            let Frame::Op(OpFrame::Bin(prec)) = frames.pop().unwrap() else {
+                unreachable!()
             };
-            let Tok::Punct(p) = tok.tok else { break };
-            if !bracketed && tok.line > self.last_line {
-                // An unbracketed expression does not continue across a
-                // newline: the operator starts a new line, so the expression
-                // ends here and the caller decides what the token means.
-                break;
+            let rhs = vals.pop().expect("bin rhs");
+            let lhs = vals.pop().expect("bin lhs");
+            let op = match prec {
+                1 => BinOp::Lt,
+                2 => BinOp::Add,
+                _ => BinOp::Mul,
+            };
+            vals.push(Expr {
+                span: lhs.span.join(rhs.span),
+                kind: ExprKind::Binary {
+                    op,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                },
+            });
+        }
+    }
+
+    /// Reduce the current argument (values above the call frame's mark)
+    /// into the frame's arg list.
+    fn finish_arg(
+        frames: &mut Vec<Frame>,
+        vals: &mut Vec<Expr>,
+        src: &str,
+    ) -> Result<(), Diagnostic> {
+        // apply pending operators above the call frame's mark
+        while frames
+            .last()
+            .is_some_and(|f| matches!(f, Frame::Op(OpFrame::Bin(_))))
+        {
+            Self::reduce_ops(frames, vals);
+        }
+        let Some(Frame::Call(cf)) = frames.last_mut() else {
+            unreachable!("finish_arg with call frame on top");
+        };
+        if vals.len() <= cf.mark {
+            // no value above the frame's mark: either a bare `name:` or an
+            // empty argument slot
+            let sp = cf
+                .pending_name
+                .as_ref()
+                .map(|n| n.span)
+                .unwrap_or(cf.callee.span);
+            return Err(Diagnostic::new(
+                Stage::Text,
+                "source.syntax",
+                "expected expression after named argument",
+                sp,
+            ));
+        }
+        let value = vals.pop().expect("arg value");
+        let arg = match cf.pending_name.take() {
+            Some(name) => Arg::Named {
+                span: name.span.join(value.span),
+                name,
+                value,
+            },
+            None => Arg::Pos(value),
+        };
+        cf.args.push(arg);
+        cf.mark = vals.len();
+        let _ = src;
+        Ok(())
+    }
+
+    fn expr(&mut self, _bracketed: bool) -> Result<Expr, Diagnostic> {
+        let mut frames: Vec<Frame> = Vec::new();
+        let mut vals: Vec<Expr> = Vec::new();
+        // line anchor for the NEXT primary at the unbracketed top level:
+        // the line of the previously consumed token (operator), if any
+        'outer: loop {
+            // ---- primary ----
+            let anchored = !Self::in_bracket(&frames)
+                && frames
+                    .last()
+                    .is_some_and(|f| matches!(f, Frame::Op(OpFrame::Bin(_))));
+            if anchored {
+                if let Some(t) = self.peek() {
+                    if t.line != self.last_line {
+                        return Err(self.err(
+                            "source.syntax",
+                            "unbracketed expression cannot continue across a newline",
+                            t.span,
+                        ));
+                    }
+                }
             }
-            let (op, prec) = match p {
-                P::Plus => (BinOp::Add, 2),
-                P::Star => (BinOp::Mul, 3),
-                P::Lt => (BinOp::Lt, 1),
-                other => {
-                    if Self::unsupported_op(other) {
+            match self.peek().cloned() {
+                None => {
+                    if let Some(Frame::Call(_)) = frames.last() {
+                        return Err(self.syntax("expected argument expression"));
+                    }
+                    if let Some(Frame::Op(OpFrame::Paren)) = frames.last() {
+                        return Err(self.syntax("expected `)`"));
+                    }
+                    if !frames.is_empty() {
+                        return Err(self.syntax("unterminated expression"));
+                    }
+                    if vals.is_empty() {
+                        return Err(self.syntax(format!(
+                            "expected expression, found {}",
+                            self.describe_cur()
+                        )));
+                    }
+                    break 'outer;
+                }
+                Some(Token { tok, span, line }) => match tok {
+                    Tok::Int(digits) => {
+                        self.pos += 1;
+                        self.last_line = line;
+                        let mag: u128 = match digits.parse() {
+                            Ok(v) => v,
+                            Err(_) => u128::MAX,
+                        };
+                        if mag > I32_MAX {
+                            return Err(self.err(
+                                "source.literal-range",
+                                format!(
+                                    "integer literal `{}` is outside the signed 32-bit range of this source profile",
+                                    digits
+                                ),
+                                span,
+                            ));
+                        }
+                        vals.push(Expr {
+                            span,
+                            kind: ExprKind::IntLit(mag as i32),
+                        });
+                    }
+                    Tok::Punct(P::Minus) => {
+                        // signed literal: `-` directly before digits
+                        match self.peek2().cloned() {
+                            Some(Token {
+                                tok: Tok::Int(digits),
+                                span: dspan,
+                                line: dline,
+                            }) => {
+                                if !Self::in_bracket(&frames) && dline != line {
+                                    return Err(self.err(
+                                        "source.syntax",
+                                        "unbracketed expression cannot continue across a newline",
+                                        dspan,
+                                    ));
+                                }
+                                self.pos += 2;
+                                self.last_line = dline;
+                                let mag: u128 = match digits.parse() {
+                                    Ok(v) => v,
+                                    Err(_) => u128::MAX,
+                                };
+                                let joined = span.join(dspan);
+                                if mag > I32_MIN_MAG {
+                                    return Err(self.err(
+                                        "source.literal-range",
+                                        format!(
+                                            "integer literal `-{}` is outside the signed 32-bit range of this source profile",
+                                            digits
+                                        ),
+                                        joined,
+                                    ));
+                                }
+                                vals.push(Expr {
+                                    span: joined,
+                                    kind: ExprKind::IntLit((mag as i128 * -1) as i32),
+                                });
+                            }
+                            Some(Token {
+                                tok:
+                                    Tok::Ident(_)
+                                    | Tok::Kw(Kw::True)
+                                    | Tok::Kw(Kw::False)
+                                    | Tok::Punct(P::LParen),
+                                span: end,
+                                ..
+                            }) => {
+                                return Err(self.unsupported(
+                                    "unary minus is only supported directly before an integer literal in this source profile",
+                                    span.join(end),
+                                ));
+                            }
+                            _ => return Err(self.syntax("expected expression after `-`")),
+                        }
+                    }
+                    Tok::Kw(Kw::True) => {
+                        self.pos += 1;
+                        self.last_line = line;
+                        vals.push(Expr {
+                            span,
+                            kind: ExprKind::BoolLit(true),
+                        });
+                    }
+                    Tok::Kw(Kw::False) => {
+                        self.pos += 1;
+                        self.last_line = line;
+                        vals.push(Expr {
+                            span,
+                            kind: ExprKind::BoolLit(false),
+                        });
+                    }
+                    Tok::Punct(P::Bang) => {
+                        return Err(
+                            self.unsupported("unary `!` is not part of this source profile", span)
+                        );
+                    }
+                    Tok::Reserved(word) => {
+                        return Err(self.unsupported(
+                            format!("keyword `{}` is not part of this source profile", word),
+                            span,
+                        ));
+                    }
+                    Tok::Raw { kind, text } => {
+                        return Err(self.unsupported(
+                            format!(
+                                "{} `{}` is not part of this source profile",
+                                kind.describe(),
+                                text
+                            ),
+                            span,
+                        ));
+                    }
+                    Tok::Punct(P::LParen) => {
+                        self.pos += 1;
+                        self.last_line = line;
+                        frames.push(Frame::Op(OpFrame::Paren));
+                        continue 'outer;
+                    }
+                    Tok::Ident(name) => {
+                        // call when `(` sits on the callee's line; inside
+                        // brackets a next-line `(` is still a call (parens
+                        // make newlines whitespace)
+                        let mut skip_var = false;
+                        let is_call = matches!(
+                            self.peek2(),
+                            Some(t2) if t2.tok == Tok::Punct(P::LParen)
+                                && (Self::in_bracket(&frames) || t2.line == line)
+                        );
+                        if is_call {
+                            let callee = Ident {
+                                name: name.clone(),
+                                span,
+                            };
+                            self.pos += 2;
+                            self.last_line = self.toks[self.pos - 1].line;
+                            // empty arg list?
+                            if matches!(
+                                self.peek(),
+                                Some(Token {
+                                    tok: Tok::Punct(P::RParen),
+                                    ..
+                                })
+                            ) {
+                                let close = self.bump();
+                                vals.push(Expr {
+                                    span: callee.span.join(close.span),
+                                    kind: ExprKind::Call {
+                                        callee,
+                                        args: Vec::new(),
+                                    },
+                                });
+                                // value complete (the Var push below must
+                                // be skipped — this token was the call)
+                                skip_var = true;
+                            } else {
+                                frames.push(Frame::Call(Box::new(CallFrame {
+                                    callee,
+                                    args: Vec::new(),
+                                    mark: vals.len(),
+                                    pending_name: None,
+                                })));
+                                // named-arg label?
+                                self.take_named_label(&mut frames)?;
+                                continue 'outer;
+                            }
+                        }
+                        if !skip_var {
+                            self.pos += 1;
+                            self.last_line = line;
+                            vals.push(Expr {
+                                span,
+                                kind: ExprKind::Var(Ident { name, span }),
+                            });
+                        }
+                    }
+                    other => {
+                        return Err(self.syntax(format!(
+                            "expected expression, found {}",
+                            match &other {
+                                Tok::Punct(p) => format!("`{}`", p.as_str()),
+                                Tok::Kw(k) => format!("`{}`", k.as_str()),
+                                _ => "token".to_string(),
+                            }
+                        )));
+                    }
+                },
+            }
+
+            // ---- operator / close loop ----
+            loop {
+                let Some(tok) = self.peek().cloned() else {
+                    // EOF: unwind — unclosed frames are errors
+                    if let Some(Frame::Call(_)) = frames.last() {
+                        if vals.len() > 0 {
+                            Self::finish_arg(&mut frames, &mut vals, self.src)?;
+                        }
+                        return Err(self.syntax("expected `,` or `)`"));
+                    }
+                    if let Some(Frame::Op(OpFrame::Paren)) = frames.last() {
+                        return Err(self.syntax("expected `)`"));
+                    }
+                    Self::reduce_ops(&mut frames, &mut vals);
+                    break 'outer;
+                };
+                match tok.tok {
+                    Tok::Punct(p) if Self::prec_of(p).is_some() => {
+                        let in_br = Self::in_bracket(&frames);
+                        if !in_br && tok.line != self.last_line {
+                            // operator starts a new line: the expression
+                            // ends; the statement layer decides
+                            Self::reduce_ops(&mut frames, &mut vals);
+                            break 'outer;
+                        }
+                        let my = Self::prec_of(p).unwrap();
+                        while let Some(Frame::Op(OpFrame::Bin(top))) = frames.last() {
+                            if *top >= my {
+                                Self::reduce_once(&mut frames, &mut vals);
+                            } else {
+                                break;
+                            }
+                        }
+                        self.pos += 1;
+                        self.last_line = tok.line;
+                        frames.push(Frame::Op(OpFrame::Bin(my)));
+                        continue 'outer; // parse RHS primary
+                    }
+                    Tok::Punct(P::LParen) => {
+                        // `(` in operator position after a complete value
+                        return Err(self
+                            .syntax(format!("expected operator, found {}", self.describe_cur())));
+                    }
+                    Tok::Punct(P::RParen) => {
+                        // pending binary operators bind tighter than the
+                        // closing bracket — apply them first
+                        while let Some(Frame::Op(OpFrame::Bin(_))) = frames.last() {
+                            Self::reduce_once(&mut frames, &mut vals);
+                        }
+                        match frames.last() {
+                            Some(Frame::Op(OpFrame::Paren)) => {
+                                Self::reduce_ops(&mut frames, &mut vals);
+                                frames.pop();
+                                self.pos += 1;
+                                self.last_line = tok.line;
+                                // continue: another `)` or an operator may follow
+                            }
+                            Some(Frame::Call(_)) => {
+                                if vals.len() > 0 || matches!(frames.last(), Some(Frame::Call(_))) {
+                                    let has_val = match frames.last() {
+                                        Some(Frame::Call(cf)) => vals.len() > cf.mark,
+                                        _ => false,
+                                    };
+                                    if has_val {
+                                        Self::finish_arg(&mut frames, &mut vals, self.src)?;
+                                    } else if let Some(Frame::Call(cf)) = frames.last() {
+                                        if cf.pending_name.is_some() {
+                                            return Err(self.syntax(
+                                                "expected expression after named argument",
+                                            ));
+                                        }
+                                    }
+                                }
+                                let Some(Frame::Call(cf)) = frames.pop() else {
+                                    unreachable!()
+                                };
+                                self.pos += 1;
+                                self.last_line = tok.line;
+                                vals.push(Expr {
+                                    span: cf.callee.span.join(tok.span),
+                                    kind: ExprKind::Call {
+                                        callee: cf.callee,
+                                        args: cf.args,
+                                    },
+                                });
+                                // continue: operator or another `)` may follow
+                            }
+                            _ => {
+                                // no frame: expression ends at `)`
+                                Self::reduce_ops(&mut frames, &mut vals);
+                                break 'outer;
+                            }
+                        }
+                    }
+                    Tok::Punct(P::Comma) => {
+                        if let Some(Frame::Call(_)) = frames.last() {
+                            Self::finish_arg(&mut frames, &mut vals, self.src)?;
+                            self.pos += 1;
+                            self.last_line = tok.line;
+                            self.take_named_label(&mut frames)?;
+                            continue 'outer; // next argument primary
+                        }
+                        return Err(self.syntax("expected operator, found `,`"));
+                    }
+                    Tok::Punct(other) if Self::unsupported_op(other) => {
                         return Err(self.unsupported(
                             format!(
                                 "operator `{}` is not part of this source profile",
@@ -675,298 +1082,69 @@ impl<'s> Parser<'s> {
                             tok.span,
                         ));
                     }
-                    break;
-                }
-            };
-            if prec < min_prec {
-                break;
-            }
-            self.pos += 1;
-            self.last_line = tok.line;
-            let rhs = self.binary(prec + 1, bracketed)?;
-            lhs = Expr {
-                span: lhs.span.join(rhs.span),
-                kind: ExprKind::Binary {
-                    op,
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
-                },
-            };
-        }
-        Ok(lhs)
-    }
-
-    fn unary(&mut self, bracketed: bool) -> Result<Expr, Diagnostic> {
-        // Line boundary of an unbracketed expression: the ENTRY token may
-        // start on any line (a statement may carry its value on the next
-        // line); every subsequent token must share the line of the token
-        // consumed just before it. `last_line` advances when a bracketed
-        // subexpression closes, so continuation after `)` keys to the
-        // CLOSING line (R2-QA-01: D01..D05 legal) while `1 +\n 2`, `f\n(3)`
-        // and `-\n 2` still reject.
-        let entry = self.unbracketed_entry;
-        self.unbracketed_entry = false;
-        if !bracketed && !entry {
-            if let Some(t) = self.peek() {
-                if t.line != self.last_line {
-                    return Err(self.err(
-                        "source.syntax",
-                        "unbracketed expression cannot continue across a newline",
-                        t.span,
-                    ));
-                }
-            }
-        }
-        self.unary_inner(bracketed)
-    }
-
-    fn unary_inner(&mut self, bracketed: bool) -> Result<Expr, Diagnostic> {
-        match self.peek().map(|t| (t.tok.clone(), t.span)) {
-            Some((Tok::Punct(P::Minus), mspan)) => {
-                match self.peek2().map(|t| t.tok.clone()) {
-                    Some(Tok::Int(_)) => {
-                        self.pos += 1; // minus
-                        self.last_line = self.toks[self.pos - 1].line;
-                        if !bracketed {
-                            if let Some(t2) = self.peek() {
-                                if t2.line != self.last_line {
-                                    return Err(self.err(
-                                        "source.syntax",
-                                        "unbracketed expression cannot continue across a newline",
-                                        t2.span,
-                                    ));
-                                }
-                            }
-                        }
-                        let t = self.bump();
-                        let Tok::Int(digits) = t.tok else {
-                            unreachable!()
-                        };
-                        let span = mspan.join(t.span);
-                        let mag: u128 = match digits.parse() {
-                            Ok(v) => v,
-                            Err(_) => u128::MAX, // absurd magnitude: out of range
-                        };
-                        if mag > I32_MIN_MAG {
-                            return Err(self.err(
-                                "source.literal-range",
-                                format!(
-                                    "integer literal `-{}` is outside the signed 32-bit range of this source profile",
-                                    digits
-                                ),
-                                span,
-                            ));
-                        }
-                        Ok(Expr {
-                            span,
-                            kind: ExprKind::IntLit((mag as i128 * -1) as i32),
-                        })
-                    }
-                    Some(Tok::Ident(_))
-                    | Some(Tok::Kw(Kw::True))
-                    | Some(Tok::Kw(Kw::False))
-                    | Some(Tok::Punct(P::LParen)) => {
-                        // N36: unary minus on anything but a literal is
-                        // outside the profile; span covers `-x`.
-                        let end = self.peek2().unwrap().span;
-                        return Err(self.unsupported(
-                            "unary minus is only supported directly before an integer literal in this source profile",
-                            mspan.join(end),
-                        ));
-                    }
-                    _ => Err(self.syntax("expected expression after `-`")),
-                }
-            }
-            Some((Tok::Int(_), _)) => {
-                let t = self.bump();
-                let Tok::Int(digits) = t.tok else {
-                    unreachable!()
-                };
-                let mag: u128 = match digits.parse() {
-                    Ok(v) => v,
-                    Err(_) => u128::MAX,
-                };
-                if mag > I32_MAX {
-                    return Err(self.err(
-                        "source.literal-range",
-                        format!(
-                            "integer literal `{}` is outside the signed 32-bit range of this source profile",
-                            digits
-                        ),
-                        t.span,
-                    ));
-                }
-                Ok(Expr {
-                    span: t.span,
-                    kind: ExprKind::IntLit(mag as i32),
-                })
-            }
-            Some((Tok::Kw(Kw::True), _)) => {
-                let t = self.bump();
-                Ok(Expr {
-                    span: t.span,
-                    kind: ExprKind::BoolLit(true),
-                })
-            }
-            Some((Tok::Kw(Kw::False), _)) => {
-                let t = self.bump();
-                Ok(Expr {
-                    span: t.span,
-                    kind: ExprKind::BoolLit(false),
-                })
-            }
-            Some((Tok::Ident(_), _)) => {
-                // A call's `(` must sit on the callee's line unless the
-                // whole expression is bracketed (C03: a parenthesized
-                // argument list on the NEXT line is a new statement, not a
-                // call of the previous identifier). The callee may itself
-                // be the expression's entry token, so anchor to IT, not to
-                // the line of whatever came before.
-                let paren_same_line = match (self.peek(), self.peek2()) {
-                    (Some(idt), Some(t)) if t.tok == Tok::Punct(P::LParen) => {
-                        bracketed || t.line == idt.line
-                    }
-                    _ => false,
-                };
-                if paren_same_line {
-                    let callee = self.expect_ident("callee")?;
-                    // one SYNTACTIC nesting level (call argument list)
-                    self.enter()?;
-                    self.expect_punct(P::LParen, "`(`")?;
-                    let r = self.call_args(callee);
-                    self.depth -= 1;
-                    r
-                } else {
-                    let id = self.expect_ident("name")?;
-                    Ok(Expr {
-                        span: id.span,
-                        kind: ExprKind::Var(id),
-                    })
-                }
-            }
-            Some((Tok::Punct(P::Bang), bspan)) => {
-                Err(self.unsupported("unary `!` is not part of this source profile", bspan))
-            }
-            Some((Tok::Reserved(word), span)) => Err(self.unsupported(
-                format!("keyword `{}` is not part of this source profile", word),
-                span,
-            )),
-            Some((Tok::Punct(P::LParen), _)) => {
-                // Consecutive parenthesized groups parse ITERATIVELY
-                // (R4-QA-02): every `(` is consumed on a flat loop, the
-                // core expression parses once (inside parens newlines are
-                // whitespace), and each `)` closes one pending group. When
-                // a `)` arrives before all groups are closed, the
-                // expression CONTINUES at top precedence with the current
-                // left operand (`((1+2)*3)` resumes after the inner
-                // close), so mixed nesting stays correct while homogeneous
-                // `(((expr)))` costs zero recursion. Pure grouping adds no
-                // AST node, so legal paren nesting carries no limit;
-                // unclosed inputs fail at EOF depth-independently.
-                let mut opens = 0usize;
-                while matches!(
-                    self.peek(),
-                    Some(Token {
-                        tok: Tok::Punct(P::LParen),
-                        ..
-                    })
-                ) {
-                    self.pos += 1;
-                    self.last_line = self.toks[self.pos - 1].line;
-                    opens += 1;
-                }
-                let mut inner = self.expr(true)?;
-                let mut closed = 0usize;
-                while closed < opens {
-                    while closed < opens
-                        && matches!(
-                            self.peek(),
-                            Some(Token {
-                                tok: Tok::Punct(P::RParen),
-                                ..
-                            })
-                        )
-                    {
-                        self.pos += 1;
-                        self.last_line = self.toks[self.pos - 1].line;
-                        closed += 1;
-                    }
-                    if closed == opens {
-                        break;
-                    }
-                    let before = self.pos;
-                    inner = self.binary_continue(1, true, inner)?;
-                    if self.pos == before {
-                        // neither a `)` nor a continuation operator:
-                        // unterminated or malformed group
-                        return Err(self.syntax(format!(
-                            "expected `)` or operator, found {}",
-                            self.describe_cur()
-                        )));
-                    }
-                }
-                Ok(inner)
-            }
-            Some((Tok::Raw { kind, text }, span)) => Err(self.unsupported(
-                format!(
-                    "{} `{}` is not part of this source profile",
-                    kind.describe(),
-                    text
-                ),
-                span,
-            )),
-            _ => Err(self.syntax(format!(
-                "expected expression, found {}",
-                self.describe_cur()
-            ))),
-        }
-    }
-
-    /// Parse a call's argument list after the opening `(` was consumed.
-    /// The nesting level is accounted by the caller.
-    fn call_args(&mut self, callee: Ident) -> Result<Expr, Diagnostic> {
-        let mut args = Vec::new();
-        if !matches!(
-            self.peek(),
-            Some(Token {
-                tok: Tok::Punct(P::RParen),
-                ..
-            })
-        ) {
-            loop {
-                // Named argument: Ident `:` expr.
-                if matches!(self.peek().map(|t| &t.tok), Some(Tok::Ident(_)))
-                    && matches!(self.peek2().map(|t| &t.tok), Some(Tok::Punct(P::Colon)))
-                {
-                    let name = self.expect_ident("argument name")?;
-                    self.expect_punct(P::Colon, "`:`")?;
-                    let value = self.expr(true)?;
-                    args.push(Arg::Named {
-                        span: name.span.join(value.span),
-                        name,
-                        value,
-                    });
-                } else {
-                    args.push(Arg::Pos(self.expr(true)?));
-                }
-                match self.peek().map(|t| t.tok.clone()) {
-                    Some(Tok::Punct(P::Comma)) => {
-                        self.pos += 1;
-                    }
-                    Some(Tok::Punct(P::RParen)) => break,
                     _ => {
-                        return Err(self.syntax(format!(
-                            "expected `,` or `)`, found {}",
-                            self.describe_cur()
-                        )))
+                        // not an operator: expression ends (statement layer
+                        // handles separators)
+                        if let Some(Frame::Call(_)) = frames.last() {
+                            return Err(self.syntax("expected `,` or `)`"));
+                        }
+                        if let Some(Frame::Op(OpFrame::Paren)) = frames.last() {
+                            return Err(self.syntax("expected `)`"));
+                        }
+                        Self::reduce_ops(&mut frames, &mut vals);
+                        break 'outer;
                     }
                 }
             }
         }
-        let rparen = self.expect_punct(P::RParen, "`)`")?;
-        Ok(Expr {
-            span: callee.span.join(rparen),
-            kind: ExprKind::Call { callee, args },
-        })
+        Ok(vals.pop().expect("expression value"))
+    }
+
+    /// At an argument start inside a call frame: consume `name :` as a
+    /// named-argument label if present.
+    fn take_named_label(&mut self, frames: &mut [Frame]) -> Result<(), Diagnostic> {
+        let (
+            Some(Token {
+                tok: Tok::Ident(name),
+                span,
+                ..
+            }),
+            Some(Token {
+                tok: Tok::Punct(P::Colon),
+                ..
+            }),
+        ) = (self.peek(), self.peek2())
+        else {
+            return Ok(());
+        };
+        let name = name.clone();
+        let span = *span;
+        self.pos += 2;
+        if let Some(Frame::Call(cf)) = frames.last_mut() {
+            cf.pending_name = Some(Ident { name, span });
+        }
+        Ok(())
+    }
+
+    /// Pop one pending binary operator and apply it (left-associative).
+    fn reduce_once(frames: &mut Vec<Frame>, vals: &mut Vec<Expr>) {
+        let Some(Frame::Op(OpFrame::Bin(prec))) = frames.pop() else {
+            return;
+        };
+        let rhs = vals.pop().expect("bin rhs");
+        let lhs = vals.pop().expect("bin lhs");
+        let op = match prec {
+            1 => BinOp::Lt,
+            2 => BinOp::Add,
+            _ => BinOp::Mul,
+        };
+        vals.push(Expr {
+            span: lhs.span.join(rhs.span),
+            kind: ExprKind::Binary {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            },
+        });
     }
 }

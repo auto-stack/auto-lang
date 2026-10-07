@@ -160,11 +160,25 @@ impl Drop for Expr {
             }
         }
         let detach = |node: &mut Expr, stack: &mut Vec<Expr>| {
-            if let ExprKind::Binary { lhs, rhs, .. } = &mut node.kind {
-                let l = std::mem::replace(lhs.as_mut(), dummy());
-                let r = std::mem::replace(rhs.as_mut(), dummy());
-                stack.push(l);
-                stack.push(r);
+            match &mut node.kind {
+                ExprKind::Binary { lhs, rhs, .. } => {
+                    let l = std::mem::replace(lhs.as_mut(), dummy());
+                    let r = std::mem::replace(rhs.as_mut(), dummy());
+                    stack.push(l);
+                    stack.push(r);
+                }
+                // nested calls carry inline argument expressions; drain
+                // them so no level drops recursively
+                ExprKind::Call { args, .. } => {
+                    for a in args.iter_mut() {
+                        let e = match a {
+                            Arg::Pos(e) => std::mem::replace(e, dummy()),
+                            Arg::Named { value, .. } => std::mem::replace(value, dummy()),
+                        };
+                        stack.push(e);
+                    }
+                }
+                _ => {}
             }
         };
         let mut stack: Vec<Expr> = Vec::new();

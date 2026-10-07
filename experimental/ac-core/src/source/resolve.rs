@@ -597,6 +597,16 @@ impl<'a> FnResolver<'a> {
         enum Task<'a> {
             /// Resolve this node into `slot`.
             Visit { node: &'a Expr, slot: usize },
+            /// All argument slots are filled; resolve callee/bindings into
+            /// `dest` (R5: nested calls must not recurse through call()).
+            CallOut {
+                callee: &'a ast::Ident,
+                dest: usize,
+                arg_slots: Vec<usize>,
+                names: Vec<Option<ast::Ident>>,
+                spans: Vec<Span>,
+                node_span: Span,
+            },
             /// Both operand slots are filled; combine into `dest`.
             Combine {
                 op: BinOp,
@@ -614,6 +624,52 @@ impl<'a> FnResolver<'a> {
         while let Some(task) = stack.pop() {
             match task {
                 Task::Visit { node, slot } => {
+                    if let ExprKind::Call { callee, args } = &node.kind {
+                        if args.is_empty() {
+                            out[slot] = self.call(callee, &[], node.span);
+                            continue;
+                        }
+                        let mut arg_slots = Vec::with_capacity(args.len());
+                        let mut names = Vec::with_capacity(args.len());
+                        let mut spans = Vec::with_capacity(args.len());
+                        let mut subtasks = Vec::with_capacity(args.len() * 2 + 1);
+                        for a in args {
+                            let s = out.len();
+                            out.push(dummy_resolved());
+                            arg_slots.push(s);
+                            match a {
+                                Arg::Pos(e) => {
+                                    names.push(None);
+                                    spans.push(e.span);
+                                    subtasks.push(Task::Visit { node: e, slot: s });
+                                }
+                                Arg::Named { name, value, span } => {
+                                    names.push(Some(ast::Ident {
+                                        name: name.name.clone(),
+                                        span: name.span,
+                                    }));
+                                    spans.push(*span);
+                                    subtasks.push(Task::Visit {
+                                        node: value,
+                                        slot: s,
+                                    });
+                                }
+                            }
+                        }
+                        subtasks.push(Task::CallOut {
+                            callee,
+                            dest: slot,
+                            arg_slots,
+                            names,
+                            spans,
+                            node_span: node.span,
+                        });
+                        // LIFO: push in reverse so args resolve in source order
+                        for t in subtasks.into_iter().rev() {
+                            stack.push(t);
+                        }
+                        continue;
+                    }
                     if let ExprKind::Binary { op, lhs, rhs } = &node.kind {
                         let lslot = out.len();
                         out.push(dummy_resolved());
@@ -638,6 +694,26 @@ impl<'a> FnResolver<'a> {
                     } else {
                         out[slot] = self.expr(node);
                     }
+                }
+                Task::CallOut {
+                    callee,
+                    dest,
+                    arg_slots,
+                    names,
+                    spans,
+                    node_span,
+                } => {
+                    let mut rargs = Vec::with_capacity(arg_slots.len());
+                    for (i, s) in arg_slots.iter().enumerate() {
+                        let value = std::mem::replace(&mut out[*s], dummy_resolved());
+                        rargs.push(ResolvedArg {
+                            span: spans[i],
+                            name: names[i].clone(),
+                            value,
+                        });
+                    }
+                    // the node's own span already covers callee..
+                    out[dest] = self.resolve_call(callee, rargs, node_span);
                 }
                 Task::Combine {
                     op,
@@ -686,6 +762,19 @@ impl<'a> FnResolver<'a> {
                 }),
             }
         }
+        self.resolve_call(callee, rargs, call_span)
+    }
+
+    /// Callee resolution + argument mapping over already-resolved args
+    /// (the iterative walk reaches this directly for nested calls).
+    fn resolve_call(
+        &mut self,
+        callee: &ast::Ident,
+        rargs: Vec<ResolvedArg>,
+        call_span: Span,
+    ) -> ResolvedExpr {
+        let args = &rargs[..];
+        let _ = &args;
 
         // Locals shadow functions and intrinsics in callee position.
         if self.lookup(&callee.name).is_some() {

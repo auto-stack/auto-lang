@@ -491,6 +491,13 @@ impl PlanCtx<'_> {
                 node: &'a ResolvedExpr,
                 slot: usize,
             },
+            /// nested-call assembly: all argument slots planned, build the
+            /// call node (R5: calls must not recurse through plan_leaf)
+            CallOut {
+                node: &'a ResolvedExpr,
+                dest: usize,
+                arg_slots: Vec<usize>,
+            },
             Combine {
                 op: BinOp,
                 span: Span,
@@ -505,6 +512,30 @@ impl PlanCtx<'_> {
         while let Some(task) = stack.pop() {
             match task {
                 Task::Plan { node, slot } => {
+                    if let RExprKind::CallFn { args, .. } = &node.kind {
+                        if !args.is_empty() {
+                            let mut arg_slots = Vec::with_capacity(args.len());
+                            let mut subtasks: Vec<Task> = Vec::with_capacity(args.len() + 1);
+                            for a in args {
+                                let s = slot_idx.len();
+                                slot_idx.push(usize::MAX);
+                                arg_slots.push(s);
+                                subtasks.push(Task::Plan {
+                                    node: &a.value,
+                                    slot: s,
+                                });
+                            }
+                            subtasks.push(Task::CallOut {
+                                node,
+                                dest: slot,
+                                arg_slots,
+                            });
+                            for t in subtasks.into_iter().rev() {
+                                stack.push(t);
+                            }
+                            continue;
+                        }
+                    }
                     if let RExprKind::Binary { op, lhs, rhs } = &node.kind {
                         let lslot = slot_idx.len();
                         slot_idx.push(usize::MAX);
@@ -528,6 +559,38 @@ impl PlanCtx<'_> {
                     } else {
                         slot_idx[slot] = self.plan_leaf(plan, f, node);
                     }
+                }
+                Task::CallOut {
+                    node,
+                    dest,
+                    arg_slots,
+                } => {
+                    let RExprKind::CallFn { fn_index, args } = &node.kind else {
+                        unreachable!("CallOut on non-call node")
+                    };
+                    let mut eval = Vec::with_capacity(arg_slots.len());
+                    for s in &arg_slots {
+                        eval.push(slot_idx[*s]);
+                    }
+                    let mut bindings = Vec::new();
+                    if let Some(callee) = self.program.fns.get(*fn_index) {
+                        for (idx, a) in args.iter().enumerate() {
+                            if let Some(pos) = param_position(idx, a, callee) {
+                                bindings.push((pos as u32, idx as u32));
+                            }
+                        }
+                    }
+                    plan.exprs.push(ENode {
+                        kind: EKind::Call {
+                            callee_fn: Some(*fn_index),
+                            callee_intrinsic: None,
+                            eval,
+                            bindings,
+                        },
+                        vt: node.vt,
+                        span: node.span,
+                    });
+                    slot_idx[dest] = plan.exprs.len() - 1;
                 }
                 Task::Combine {
                     op,
