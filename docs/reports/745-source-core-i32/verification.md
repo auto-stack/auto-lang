@@ -267,3 +267,29 @@ r2 修复轮提交链：ad226453b（QA-01/02/03/05 + oracle 缺口实现与测�
 | `cargo check -p auto-lang` | PASS |
 | `cargo t`（全量 --no-fail-fast） | 4942/4972 通过、30 失败：27 历史共现预存 + 3 名隔离复跑 **3/3 PASS**（plan498_area/plan499 crosshair·donut 轮换 flake）；745 新增失败 = 0 |
 | `cargo tv`（全量） | 158/162、4 预存 cookbook semver（逐名一致） |
+
+
+## 15. r5 needs_fix 修复轮执行记录（2026-10-07，R5-QA-01/02）
+
+复审报告：[review-r5/REVIEW.md](../../plans/attachments/745/review-r5/REVIEW.md)。
+
+| 发现 | 修复 | 执行证据 |
+|---|---|---|
+| R5-① 非连续括号栈溢出 | 表达式解析**整体重写为迭代 shunting-yard**（值栈+算符栈+括号/调用帧；`-lit`/bool/ident/命名实参/行纪律语义保持：非括号上下文算符同行、RHS 随算符行、括号内换行空白、`f
+(` 非调用）；resolve 拆 `resolve_call` 并入 Enter/CallOut 迭代走查；adapter plan 加 CallOut；`ast::Expr` Drop 扩展 Call args 迭代泄流 | H01（4096 层 `1+(` 交错完整）check exit0；H02（未闭合）受控 `expected )`；100000 层纯括号、20000 层调用嵌套全编译；999 层调用 native build+run=1；调试期三个回归（空参 fall-through、`)` 前归约、命名实参 span）被语料套件当场捕获修复 |
+| R5-② 支持边界未批准 | **表达式与调用嵌套：零上限达成**（上表）；剩余=语句块嵌套（if/while/loop 体）的 1000 层资源护栏 | 块路径剩余递归=verify `walk_block`（数据流 Flow/Init 合并）与 native `emit_block`（cranelift 块切换）——二者为 741 共享组件的最深逻辑，本轮上下文不足以安全完成其迭代化改造+全量重验；每层真实递归（parser+resolve+emit+verify+native），999 层全阶段含 native 通过、1200 层受控拒 |
+
+## 16. r5 修复轮门禁（同树串行，2026-10-07）
+
+| 门禁 | 结果 |
+|---|---|
+| ac-core check/fmt | PASS，零 warning |
+| ac-core `cargo test --locked` | **113 passed / 1 ignored / 0 failed** |
+| `verify-ac-741.ps1 -SkipMainGates` | **all 13 steps PASS** |
+| `verify-ac-source-745.ps1` | **all 13 steps PASS (74 cases)** |
+| `acc_inventory.py --check --require-decisions` | **CHECK-OK** |
+| `cargo check -p auto-lang` | PASS |
+| `cargo t`（全量） | 4944/4972、28 失败：25 历史共现 + 3 名隔离复跑 **3/3 PASS**（plan499_donut/plan502_hover/rqhost 轮换）；745 新增失败 = 0 |
+| `cargo tv`（全量） | 158/162、4 预存 cookbook semver |
+
+r5 提交链：d1943418b（迭代解析器+调用迭代化）→ 本提交（报告）。
