@@ -54,6 +54,10 @@ const POSITIVE: &[(&str, i32, &str, bool, bool)] = &[
     ("d04-nested-paren-multiline.at", 6, "", false, false),
     ("d05-call-multiline-no-tail.at", 2, "", false, false),
     ("d07-colliding-prefix-names.at", 7, "", false, false),
+    // R3-QA-02: a deep LEGAL operator chain builds and runs natively with
+    // the exact i32 sum as the exit code (300; shell conventions would
+    // show 300 & 0xFF, the test reads the real code).
+    ("f11-deep-add-chain.at", 300, "", false, false),
 ];
 
 fn valid(name: &str) -> String {
@@ -297,11 +301,13 @@ fn trace_case_without_support_lib_fails_at_link() {
     assert!(!exe.exists());
 }
 
-/// R2-QA-02 control: the parent exits instantly but a DESCENDANT inherits
-/// the pipes and holds them far past the deadline - the helper must return
-/// bounded by the deadline (timeout semantics), never wait for the holder.
+/// R3-QA-01 control: the parent exits instantly but a DESCENDANT inherits
+/// the pipes and holds them past the deadline — the shared contained
+/// executor must return bounded (timeout semantics, never a truncated
+/// success) and the Job-terminated tree must leave no survivor behind.
 #[test]
 fn descendant_holding_pipes_cannot_extend_the_deadline() {
+    let before = ping_count();
     let started = std::time::Instant::now();
     let mut cmd = Command::new("cmd.exe");
     cmd.args(["/c", "start /b ping -n 6 127.0.0.1"]);
@@ -313,7 +319,56 @@ fn descendant_holding_pipes_cannot_extend_the_deadline() {
         started.elapsed().as_millis()
     );
     assert!(r.timed_out, "collection incomplete within deadline");
-    assert_eq!(r.code, 0, "the parent itself exited cleanly");
+    assert_eq!(r.code, -1, "a timed-out run never reports a success code");
+    // the contained tree (including the surviving descendant) is dead
+    assert_eq!(ping_count(), before, "no ping survivor may remain");
+}
+
+/// R3-QA-01 control: a descendant that writes LATER (after its parent
+/// exited). With a deadline large enough, EOF-driven collection must
+/// deliver the late output as a real success — not a premature quiet
+/// window.
+#[test]
+fn late_writing_descendant_output_is_fully_collected() {
+    let mut cmd = Command::new("cmd.exe");
+    cmd.args(["/c", "start /b cmd /c ping -n 2 127.0.0.1 >nul & echo LATE"]);
+    cmd.current_dir(std::env::temp_dir());
+    let r = run_deadlined(cmd, Duration::from_secs(10)).expect("spawn");
+    assert!(!r.timed_out, "deadline must cover the late writer");
+    assert!(
+        r.stdout.contains("LATE"),
+        "late descendant output must be collected: {:?}",
+        r.stdout
+    );
+}
+
+/// R3-QA-01 control: parent itself runs past the deadline with a
+/// descendant — the whole tree is terminated and reaped, bounded by the
+/// deadline.
+#[test]
+fn runaway_parent_with_descendant_is_tree_killed() {
+    let before = ping_count();
+    let started = std::time::Instant::now();
+    let mut cmd = Command::new("cmd.exe");
+    cmd.args(["/c", "start /b ping -n 30 127.0.0.1 & ping -n 30 127.0.0.1"]);
+    cmd.current_dir(std::env::temp_dir());
+    let r = run_deadlined(cmd, Duration::from_millis(800)).expect("spawn");
+    assert!(r.timed_out);
+    assert!(started.elapsed() < Duration::from_secs(3));
+    assert_eq!(ping_count(), before, "the whole tree must be terminated");
+}
+
+fn ping_count() -> usize {
+    let out = std::process::Command::new("tasklist")
+        .args(["/FI", "IMAGENAME eq PING.EXE", "/FO", "CSV", "/NH"])
+        .output();
+    match out {
+        Ok(o) => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .filter(|l| l.to_ascii_uppercase().contains("PING.EXE"))
+            .count(),
+        Err(_) => 0,
+    }
 }
 
 /// R2-QA-02 control: invalid UTF-8 bytes on the pipe must survive as

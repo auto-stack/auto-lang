@@ -321,228 +321,301 @@ impl Verifier {
         sigs: &SigTable,
         tm: &mut TypeMemo,
     ) -> ValueType {
-        if let Some(v) = tm.memo.get(&eid.0) {
-            return *v;
+        // Iterative post-order walk (PLAN-745 R3-QA-02): operator chains
+        // within one statement are unbounded, so the operand walk must not
+        // recurse. Semantics are unchanged: memo/gray discipline, the same
+        // per-node checks, and the same left-to-right error order (the
+        // explicit stack visits lhs fully, then rhs, then the node's own
+        // checks — exactly the previous recursion order).
+        enum Visit {
+            Enter(ExprId),
+            Exit(ExprId),
         }
-        if !tm.gray.insert(eid.0) {
-            // cyclic operand graph; already reported by check_expr_graph
-            return self.value_of(&body.exprs[eid.0 as usize].ty, type_map);
-        }
-        let e = &body.exprs[eid.0 as usize];
-        let declared = self.value_of(&e.ty, type_map);
-        let computed = match &e.kind {
-            hir::ExprKind::ReadLocal { local } => {
-                let l = &body.locals[local.0 as usize];
-                let lt = self.value_of(&l.ty, type_map);
-                if lt != declared {
-                    self.error(
-                        "verify.type-mismatch",
-                        format!(
-                            "expr `{}` type does not match local `{}` type",
-                            e.id_text, l.id_text
-                        ),
-                        e.span,
-                    );
-                }
-                lt
-            }
-            hir::ExprKind::Constant { .. } => {
-                if declared != ValueType::I32 {
-                    self.error(
-                        "verify.type-mismatch",
-                        format!(
-                            "constant `{}` must have type i32 in this profile",
-                            e.id_text
-                        ),
-                        e.span,
-                    );
-                }
-                ValueType::I32
-            }
-            hir::ExprKind::Binary { op, lhs, rhs, .. } => {
-                let lt = self.expr_type(*lhs, body, type_map, sigs, tm);
-                let rt = self.expr_type(*rhs, body, type_map, sigs, tm);
-                for (role, vt) in [("lhs", lt), ("rhs", rt)] {
-                    if vt != ValueType::I32 {
-                        self.error(
-                            "verify.type-mismatch",
-                            format!(
-                                "expr `{}`: {} operand of {} must be i32",
-                                e.id_text,
-                                role,
-                                op.as_str()
-                            ),
-                            e.span,
-                        );
-                    }
-                }
-                match op {
-                    hir::BinOp::AddI32 | hir::BinOp::MulI32 => {
-                        if declared != ValueType::I32 {
-                            self.error(
-                                "verify.type-mismatch",
-                                format!("expr `{}`: {} must produce i32", e.id_text, op.as_str()),
-                                e.span,
-                            );
-                        }
-                        ValueType::I32
-                    }
-                    hir::BinOp::LtI32 => {
-                        if declared != ValueType::Bool {
-                            self.error(
-                                "verify.type-mismatch",
-                                format!("expr `{}`: lt_i32 must produce bool", e.id_text),
-                                e.span,
-                            );
-                        }
-                        ValueType::Bool
-                    }
-                }
-            }
-            hir::ExprKind::Call {
-                callee,
-                eval_args,
-                bindings,
-            } => {
-                let Some((params, result)) = sigs.get(&callee.0) else {
-                    self.error(
-                        "verify.callee-type",
-                        format!(
-                            "expr `{}`: callee `{}` has no usable signature",
-                            e.id_text,
-                            // safe: binder guarantees the def exists
-                            callee.0
-                        ),
-                        e.span,
-                    );
-                    return declared;
-                };
-                if eval_args.len() != params.len() {
-                    self.error(
-                        "verify.eval-args-arity",
-                        format!(
-                            "expr `{}`: {} eval_args for signature with {} params",
-                            e.id_text,
-                            eval_args.len(),
-                            params.len()
-                        ),
-                        e.span,
-                    );
-                }
-                // Arguments are evaluated left to right (side-effect order
-                // contract); their types are checked against form params
-                // through the bindings map, not by position (QA-02: r1
-                // compared eval_args[i] with params[i], rejecting legal
-                // swapped mappings and passing illegal ones).
-                let arg_types: Vec<ValueType> = eval_args
-                    .iter()
-                    .map(|a| self.expr_type(*a, body, type_map, sigs, tm))
-                    .collect();
-                let mut seen_params: BTreeSet<u32> = BTreeSet::new();
-                let mut seen_args: BTreeSet<u32> = BTreeSet::new();
-                for b in bindings {
-                    if !seen_params.insert(b.param) {
-                        self.error(
-                            "verify.binding-invalid",
-                            format!(
-                                "expr `{}`: form param {} is bound more than once",
-                                e.id_text, b.param
-                            ),
-                            e.span,
-                        );
-                    }
-                    if b.param as usize >= params.len() {
-                        self.error(
-                            "verify.binding-invalid",
-                            format!(
-                                "expr `{}`: binding param {} is out of range",
-                                e.id_text, b.param
-                            ),
-                            e.span,
-                        );
-                    }
-                    if b.arg as usize >= eval_args.len() {
-                        self.error(
-                            "verify.binding-invalid",
-                            format!(
-                                "expr `{}`: binding arg {} indexes past {} eval_args",
-                                e.id_text,
-                                b.arg,
-                                eval_args.len()
-                            ),
-                            e.span,
-                        );
-                    } else if !seen_args.insert(b.arg) {
-                        self.error(
-                            "verify.binding-invalid",
-                            format!(
-                                "expr `{}`: eval_args[{}] is consumed by more than one binding",
-                                e.id_text, b.arg
-                            ),
-                            e.span,
-                        );
-                    }
-                }
-                if seen_params.len() < params.len() {
-                    self.error(
-                        "verify.binding-invalid",
-                        format!(
-                            "expr `{}`: {} of {} form params are bound",
-                            e.id_text,
-                            seen_params.len(),
-                            params.len()
-                        ),
-                        e.span,
-                    );
-                }
-                for i in 0..eval_args.len() as u32 {
-                    if !seen_args.contains(&i) {
-                        self.error(
-                            "verify.binding-invalid",
-                            format!(
-                                "expr `{}`: eval_args[{}] is evaluated but no binding consumes it",
-                                e.id_text, i
-                            ),
-                            e.span,
-                        );
-                    }
-                }
-                for b in bindings {
-                    if let (Some(pt), Some(at)) =
-                        (params.get(b.param as usize), arg_types.get(b.arg as usize))
-                    {
-                        if at != pt {
-                            self.error(
-                                "verify.type-mismatch",
-                                format!(
-                                    "expr `{}`: param {} ({}) does not match eval_args[{}] ({})",
-                                    e.id_text,
-                                    b.param,
-                                    vt_name(*pt),
-                                    b.arg,
-                                    vt_name(*at)
-                                ),
-                                e.span,
-                            );
-                        }
-                    }
-                }
-                if declared != *result {
-                    self.error(
-                        "verify.type-mismatch",
-                        format!(
-                            "expr `{}`: call type does not match callee result",
-                            e.id_text
-                        ),
-                        e.span,
-                    );
-                }
-                *result
+        // local, self-free projection so error emission (&mut self) can
+        // interleave freely
+        let declared_of = |e: &hir::Expr| -> ValueType {
+            match &e.ty {
+                hir::TypeUse::Builtin(hir::BuiltinType::I32) => ValueType::I32,
+                hir::TypeUse::Builtin(hir::BuiltinType::Bool) => ValueType::Bool,
+                hir::TypeUse::Ref(tid) => type_map.get(&tid.0).copied().unwrap_or(ValueType::I32),
             }
         };
-        tm.gray.remove(&eid.0);
-        tm.memo.insert(eid.0, computed);
-        computed
+        let operand_type = |tm: &TypeMemo, id: ExprId, declared: ValueType| -> ValueType {
+            tm.memo.get(&id.0).copied().unwrap_or(declared)
+        };
+        let mut stack: Vec<Visit> = vec![Visit::Enter(eid)];
+        while let Some(visit) = stack.pop() {
+            match visit {
+                Visit::Enter(id) => {
+                    if tm.memo.contains_key(&id.0) {
+                        continue;
+                    }
+                    if !tm.gray.insert(id.0) {
+                        // cyclic operand graph; already reported by
+                        // check_expr_graph — behave like the recursive form
+                        // (contribute the declared type, no memo entry).
+                        continue;
+                    }
+                    let e = &body.exprs[id.0 as usize];
+                    let declared = declared_of(e);
+                    match &e.kind {
+                        hir::ExprKind::ReadLocal { local } => {
+                            let l = &body.locals[local.0 as usize];
+                            let lt = self.value_of(&l.ty, type_map);
+                            if lt != declared {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}` type does not match local `{}` type",
+                                        e.id_text, l.id_text
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            tm.gray.remove(&id.0);
+                            tm.memo.insert(id.0, lt);
+                        }
+                        hir::ExprKind::Constant { .. } => {
+                            if declared != ValueType::I32 {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "constant `{}` must have type i32 in this profile",
+                                        e.id_text
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            tm.gray.remove(&id.0);
+                            tm.memo.insert(id.0, ValueType::I32);
+                        }
+                        hir::ExprKind::Binary { lhs, rhs, .. } => {
+                            // LIFO: lhs pops first, then rhs, then this
+                            // node's own checks — the previous recursion
+                            // order.
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*rhs));
+                            stack.push(Visit::Enter(*lhs));
+                        }
+                        hir::ExprKind::Call { eval_args, .. } => {
+                            stack.push(Visit::Exit(id));
+                            for a in eval_args.iter().rev() {
+                                stack.push(Visit::Enter(*a));
+                            }
+                        }
+                    }
+                }
+                Visit::Exit(id) => {
+                    let e = &body.exprs[id.0 as usize];
+                    let declared = declared_of(e);
+                    let computed = match &e.kind {
+                        hir::ExprKind::Binary { op, lhs, rhs, .. } => {
+                            let lt =
+                                operand_type(tm, *lhs, declared_of(&body.exprs[lhs.0 as usize]));
+                            let rt =
+                                operand_type(tm, *rhs, declared_of(&body.exprs[rhs.0 as usize]));
+                            for (role, vt) in [("lhs", lt), ("rhs", rt)] {
+                                if vt != ValueType::I32 {
+                                    self.error(
+                                        "verify.type-mismatch",
+                                        format!(
+                                            "expr `{}`: {} operand of {} must be i32",
+                                            e.id_text,
+                                            role,
+                                            op.as_str()
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                            }
+                            match op {
+                                hir::BinOp::AddI32 | hir::BinOp::MulI32 => {
+                                    if declared != ValueType::I32 {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: {} must produce i32",
+                                                e.id_text,
+                                                op.as_str()
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                    ValueType::I32
+                                }
+                                hir::BinOp::LtI32 => {
+                                    if declared != ValueType::Bool {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: lt_i32 must produce bool",
+                                                e.id_text
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                    ValueType::Bool
+                                }
+                            }
+                        }
+                        hir::ExprKind::Call {
+                            callee,
+                            eval_args,
+                            bindings,
+                        } => {
+                            let Some((params, result)) = sigs.get(&callee.0) else {
+                                self.error(
+                                    "verify.callee-type",
+                                    format!(
+                                        "expr `{}`: callee `{}` has no usable signature",
+                                        e.id_text,
+                                        // safe: binder guarantees the def exists
+                                        callee.0
+                                    ),
+                                    e.span,
+                                );
+                                tm.gray.remove(&id.0);
+                                tm.memo.insert(id.0, declared);
+                                continue;
+                            };
+                            if eval_args.len() != params.len() {
+                                self.error(
+                                    "verify.eval-args-arity",
+                                    format!(
+                                        "expr `{}`: {} eval_args for signature with {} params",
+                                        e.id_text,
+                                        eval_args.len(),
+                                        params.len()
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            // Arguments are evaluated left to right (side-effect order
+                            // contract); their types are checked against form params
+                            // through the bindings map, not by position (QA-02: r1
+                            // compared eval_args[i] with params[i], rejecting legal
+                            // swapped mappings and passing illegal ones).
+                            let arg_types: Vec<ValueType> = eval_args
+                                .iter()
+                                .map(|a| {
+                                    operand_type(tm, *a, declared_of(&body.exprs[a.0 as usize]))
+                                })
+                                .collect();
+                            let mut seen_params: BTreeSet<u32> = BTreeSet::new();
+                            let mut seen_args: BTreeSet<u32> = BTreeSet::new();
+                            for b in bindings {
+                                if !seen_params.insert(b.param) {
+                                    self.error(
+                                        "verify.binding-invalid",
+                                        format!(
+                                            "expr `{}`: form param {} is bound more than once",
+                                            e.id_text, b.param
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                                if b.param as usize >= params.len() {
+                                    self.error(
+                                        "verify.binding-invalid",
+                                        format!(
+                                            "expr `{}`: binding param {} is out of range",
+                                            e.id_text, b.param
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                                if b.arg as usize >= eval_args.len() {
+                                    self.error(
+                                        "verify.binding-invalid",
+                                        format!(
+                                            "expr `{}`: binding arg {} indexes past {} eval_args",
+                                            e.id_text,
+                                            b.arg,
+                                            eval_args.len()
+                                        ),
+                                        e.span,
+                                    );
+                                } else if !seen_args.insert(b.arg) {
+                                    self.error(
+                                        "verify.binding-invalid",
+                                        format!(
+                                            "expr `{}`: eval_args[{}] is consumed by more than one binding",
+                                            e.id_text, b.arg
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                            }
+                            if seen_params.len() < params.len() {
+                                self.error(
+                                    "verify.binding-invalid",
+                                    format!(
+                                        "expr `{}`: {} of {} form params are bound",
+                                        e.id_text,
+                                        seen_params.len(),
+                                        params.len()
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            for i in 0..eval_args.len() as u32 {
+                                if !seen_args.contains(&i) {
+                                    self.error(
+                                        "verify.binding-invalid",
+                                        format!(
+                                            "expr `{}`: eval_args[{}] is evaluated but no binding consumes it",
+                                            e.id_text, i
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                            }
+                            for b in bindings {
+                                if let (Some(pt), Some(at)) =
+                                    (params.get(b.param as usize), arg_types.get(b.arg as usize))
+                                {
+                                    if at != pt {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: param {} ({}) does not match eval_args[{}] ({})",
+                                                e.id_text,
+                                                b.param,
+                                                vt_name(*pt),
+                                                b.arg,
+                                                vt_name(*at)
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                }
+                            }
+                            if declared != *result {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: call type does not match callee result",
+                                        e.id_text
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            *result
+                        }
+                        // leaves were fully handled at Enter
+                        hir::ExprKind::ReadLocal { .. } | hir::ExprKind::Constant { .. } => {
+                            tm.memo.get(&id.0).copied().unwrap_or(declared)
+                        }
+                    };
+                    tm.gray.remove(&id.0);
+                    tm.memo.insert(id.0, computed);
+                }
+            }
+        }
+        tm.memo
+            .get(&eid.0)
+            .copied()
+            .unwrap_or_else(|| declared_of(&body.exprs[eid.0 as usize]))
     }
 
     /// Check in-degree == 1 for every expression and reject operand cycles.
@@ -619,29 +692,55 @@ impl Verifier {
 
     fn dfs_cycles(
         &mut self,
-        node: u32,
+        root: u32,
         edges: &BTreeMap<u32, Vec<u32>>,
         color: &mut BTreeMap<u32, u8>,
         body: &hir::Body,
     ) {
-        match color.get(&node).copied() {
-            Some(1) => {
-                let e = &body.exprs[node as usize];
-                self.error(
-                    "verify.expr-cycle",
-                    format!("expression graph contains a cycle through `{}`", e.id_text),
-                    e.span,
-                );
-                return;
+        // Iterative DFS (PLAN-745 R3-QA-02): operand chains can be as deep
+        // as the input is long. Same gray/black discipline and the same
+        // first-detection reporting as the recursive form.
+        enum Step {
+            Enter(u32),
+            Leave(u32),
+        }
+        let mut stack = vec![Step::Enter(root)];
+        while let Some(step) = stack.pop() {
+            match step {
+                Step::Enter(node) => {
+                    match color.get(&node).copied() {
+                        Some(1) => {
+                            let e = &body.exprs[node as usize];
+                            self.error(
+                                "verify.expr-cycle",
+                                format!(
+                                    "expression graph contains a cycle through `{}`",
+                                    e.id_text
+                                ),
+                                e.span,
+                            );
+                            continue;
+                        }
+                        Some(_) => continue,
+                        None => {}
+                    }
+                    color.insert(node, 1);
+                    stack.push(Step::Leave(node));
+                    for t in edges
+                        .get(&node)
+                        .cloned()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .rev()
+                    {
+                        stack.push(Step::Enter(t));
+                    }
+                }
+                Step::Leave(node) => {
+                    color.insert(node, 2);
+                }
             }
-            Some(_) => return,
-            None => {}
         }
-        color.insert(node, 1);
-        for t in edges.get(&node).cloned().unwrap_or_default() {
-            self.dfs_cycles(t, edges, color, body);
-        }
-        color.insert(node, 2);
     }
 
     // -- blocks: structure + dataflow ----------------------------------------
@@ -1003,35 +1102,41 @@ impl Verifier {
         init: &Init,
         visited: &mut BTreeSet<u32>,
     ) {
-        if !visited.insert(eid.0) {
-            return; // cyclic graph; already reported by check_expr_graph
-        }
-        let e = &body.exprs[eid.0 as usize];
-        match &e.kind {
-            hir::ExprKind::ReadLocal { local } => {
-                if !init.contains(local) {
-                    let name = body
-                        .locals
-                        .get(local.0 as usize)
-                        .map(|l| l.id_text.as_str())
-                        .unwrap_or("<unknown>");
-                    self.error(
-                        "verify.uninitialized-read",
-                        format!("read of uninitialized local `{}`", name),
-                        e.span,
-                    );
+        // Iterative traversal (PLAN-745 R3-QA-02): operator chains are
+        // unbounded; operands are visited left-to-right exactly like the
+        // recursive form (LIFO with reversed pushes).
+        let mut stack: Vec<ExprId> = vec![eid];
+        while let Some(id) = stack.pop() {
+            if !visited.insert(id.0) {
+                continue; // cyclic graph; already reported by check_expr_graph
+            }
+            let e = &body.exprs[id.0 as usize];
+            match &e.kind {
+                hir::ExprKind::ReadLocal { local } => {
+                    if !init.contains(local) {
+                        let name = body
+                            .locals
+                            .get(local.0 as usize)
+                            .map(|l| l.id_text.as_str())
+                            .unwrap_or("<unknown>");
+                        self.error(
+                            "verify.uninitialized-read",
+                            format!("read of uninitialized local `{}`", name),
+                            e.span,
+                        );
+                    }
                 }
-            }
-            hir::ExprKind::Binary { lhs, rhs, .. } => {
-                self.walk_value_in(*lhs, body, init, visited);
-                self.walk_value_in(*rhs, body, init, visited);
-            }
-            hir::ExprKind::Call { eval_args, .. } => {
-                for a in eval_args {
-                    self.walk_value_in(*a, body, init, visited);
+                hir::ExprKind::Binary { lhs, rhs, .. } => {
+                    stack.push(*rhs);
+                    stack.push(*lhs);
                 }
+                hir::ExprKind::Call { eval_args, .. } => {
+                    for a in eval_args.iter().rev() {
+                        stack.push(*a);
+                    }
+                }
+                hir::ExprKind::Constant { .. } => {}
             }
-            hir::ExprKind::Constant { .. } => {}
         }
     }
 }

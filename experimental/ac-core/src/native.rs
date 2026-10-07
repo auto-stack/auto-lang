@@ -558,54 +558,120 @@ impl<'c> FuncEmitter<'c> {
     }
 
     fn eval_expr(&mut self, eid: ExprId) -> Value {
-        let e = &self.body.exprs[eid.0 as usize];
-        match &e.kind {
-            hir::ExprKind::Constant { value } => self.fb.ins().iconst(types::I32, *value as i64),
-            hir::ExprKind::ReadLocal { local } => {
-                let var = self.vars[&local.0];
-                self.fb.use_var(var)
-            }
-            hir::ExprKind::Binary { op, lhs, rhs, .. } => {
-                let a = self.eval_expr(*lhs);
-                let b = self.eval_expr(*rhs);
-                match op {
-                    hir::BinOp::AddI32 => self.checked_add(a, b),
-                    hir::BinOp::MulI32 => self.checked_mul(a, b),
-                    hir::BinOp::LtI32 => {
-                        use cranelift_codegen::ir::condcodes::IntCC;
-                        self.icmp_bool(IntCC::SignedLessThan, a, b)
+        // Iterative post-order emission (PLAN-745 R3-QA-02): operator
+        // chains within one statement are unbounded, so the emitter must
+        // not recurse. Ordering is exactly the recursive form's: lhs fully
+        // emitted, then rhs, then the node's own instruction (the explicit
+        // stack yields operands left-to-right before the Exit step).
+        enum Step {
+            Enter(ExprId),
+            Binary {
+                dest: ExprId,
+                op: hir::BinOp,
+                lhs: ExprId,
+                rhs: ExprId,
+            },
+            Call(ExprId),
+        }
+        enum Val {
+            V(Value),
+        }
+        // value slots per expr id (an expr is emitted exactly once — the
+        // verifier guarantees single ownership)
+        let mut slots: std::collections::BTreeMap<u32, Val> = std::collections::BTreeMap::new();
+        let mut stack: Vec<Step> = vec![Step::Enter(eid)];
+        while let Some(step) = stack.pop() {
+            match step {
+                Step::Enter(id) => {
+                    let e = &self.body.exprs[id.0 as usize];
+                    match &e.kind {
+                        hir::ExprKind::Constant { value } => {
+                            let v = self.fb.ins().iconst(types::I32, *value as i64);
+                            slots.insert(id.0, Val::V(v));
+                        }
+                        hir::ExprKind::ReadLocal { local } => {
+                            let var = self.vars[&local.0];
+                            let v = self.fb.use_var(var);
+                            slots.insert(id.0, Val::V(v));
+                        }
+                        hir::ExprKind::Binary { op, lhs, rhs, .. } => {
+                            stack.push(Step::Binary {
+                                dest: id,
+                                op: *op,
+                                lhs: *lhs,
+                                rhs: *rhs,
+                            });
+                            stack.push(Step::Enter(*rhs));
+                            stack.push(Step::Enter(*lhs));
+                        }
+                        hir::ExprKind::Call { eval_args, .. } => {
+                            stack.push(Step::Call(id));
+                            for a in eval_args.iter().rev() {
+                                stack.push(Step::Enter(*a));
+                            }
+                        }
                     }
                 }
+                Step::Binary { dest, op, lhs, rhs } => {
+                    let a = match slots.remove(&lhs.0) {
+                        Some(Val::V(v)) => v,
+                        _ => unreachable!("lhs slot filled"),
+                    };
+                    let b = match slots.remove(&rhs.0) {
+                        Some(Val::V(v)) => v,
+                        _ => unreachable!("rhs slot filled"),
+                    };
+                    let v = match op {
+                        hir::BinOp::AddI32 => self.checked_add(a, b),
+                        hir::BinOp::MulI32 => self.checked_mul(a, b),
+                        hir::BinOp::LtI32 => {
+                            use cranelift_codegen::ir::condcodes::IntCC;
+                            self.icmp_bool(IntCC::SignedLessThan, a, b)
+                        }
+                    };
+                    slots.insert(dest.0, Val::V(v));
+                }
+                Step::Call(id) => {
+                    let e = &self.body.exprs[id.0 as usize];
+                    let hir::ExprKind::Call {
+                        callee,
+                        eval_args,
+                        bindings,
+                    } = &e.kind
+                    else {
+                        unreachable!("call step on call expr")
+                    };
+                    let mut vals = Vec::with_capacity(eval_args.len());
+                    for a in eval_args {
+                        match slots.remove(&a.0) {
+                            Some(Val::V(v)) => vals.push(v),
+                            _ => unreachable!("arg slot filled"),
+                        }
+                    }
+                    let mut args = Vec::with_capacity(vals.len());
+                    for i in 0..vals.len() {
+                        let b = bindings
+                            .iter()
+                            .find(|b| b.param == i as u32)
+                            .expect("verifier: full param binding");
+                        args.push(vals[b.arg as usize]);
+                    }
+                    let fnref = self.fnrefs[&callee.0];
+                    let call = self.fb.ins().call(fnref, &args);
+                    let n_results = self.fb.inst_results(call).len();
+                    let v = if n_results == 0 {
+                        // this profile's calls all return i32; defensive only
+                        self.fb.ins().iconst(types::I32, 0)
+                    } else {
+                        self.fb.inst_results(call)[0]
+                    };
+                    slots.insert(id.0, Val::V(v));
+                }
             }
-            hir::ExprKind::Call {
-                callee,
-                eval_args,
-                bindings,
-            } => {
-                // eval_args left to right, then bindings map results to
-                // form params (no re-evaluation).
-                let mut vals = Vec::with_capacity(eval_args.len());
-                for a in eval_args {
-                    vals.push(self.eval_expr(*a));
-                }
-                let mut args = Vec::with_capacity(vals.len());
-                for i in 0..vals.len() {
-                    let b = bindings
-                        .iter()
-                        .find(|b| b.param == i as u32)
-                        .expect("verifier: full param binding");
-                    args.push(vals[b.arg as usize]);
-                }
-                let fnref = self.fnrefs[&callee.0];
-                let call = self.fb.ins().call(fnref, &args);
-                let n_results = self.fb.inst_results(call).len();
-                if n_results == 0 {
-                    // this profile's calls all return i32; defensive only
-                    self.fb.ins().iconst(types::I32, 0)
-                } else {
-                    self.fb.inst_results(call)[0]
-                }
-            }
+        }
+        match slots.remove(&eid.0) {
+            Some(Val::V(v)) => v,
+            _ => unreachable!("root slot filled"),
         }
     }
 

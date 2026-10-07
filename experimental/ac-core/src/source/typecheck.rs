@@ -102,36 +102,43 @@ fn check_stmt(s: &RStmt, program: &ResolvedProgram, f: &ResolvedFn, diags: &mut 
 }
 
 fn check_expr(
-    e: &ResolvedExpr,
+    root: &ResolvedExpr,
     program: &ResolvedProgram,
-    f: &ResolvedFn,
+    _f: &ResolvedFn,
     diags: &mut Vec<Diagnostic>,
 ) {
-    match &e.kind {
-        RExprKind::IntLit(_) | RExprKind::BoolLit(_) | RExprKind::ReadLocal(_) => {}
-        RExprKind::CallIntrinsic { .. } => {}
-        RExprKind::CallFn { fn_index, args } => {
-            let callee = program.fns.get(*fn_index);
-            for (idx, a) in args.iter().enumerate() {
-                check_expr(&a.value, program, f, diags);
-                if let Some(c) = callee {
-                    if let Some(pos) = param_position(idx, a, c) {
-                        let want = c.params[pos];
-                        if a.value.vt != want {
-                            mismatch(diags, want, a.value.vt, a.value.span);
+    // Iterative walk (R3-QA-02): legal operator chains are unbounded in
+    // depth, so no recursion. Visitation order (operands left-to-right
+    // before the node's own checks) matches the previous recursive form.
+    let mut stack: Vec<&ResolvedExpr> = vec![root];
+    while let Some(e) = stack.pop() {
+        match &e.kind {
+            RExprKind::IntLit(_) | RExprKind::BoolLit(_) | RExprKind::ReadLocal(_) => {}
+            RExprKind::CallIntrinsic { .. } => {}
+            RExprKind::CallFn { fn_index, args } => {
+                let callee = program.fns.get(*fn_index);
+                for (idx, a) in args.iter().enumerate() {
+                    stack.push(&a.value);
+                    if let Some(c) = callee {
+                        if let Some(pos) = param_position(idx, a, c) {
+                            let want = c.params[pos];
+                            if a.value.vt != want {
+                                mismatch(diags, want, a.value.vt, a.value.span);
+                            }
                         }
                     }
                 }
             }
-        }
-        RExprKind::Binary { lhs, rhs, .. } => {
-            check_expr(lhs, program, f, diags);
-            check_expr(rhs, program, f, diags);
-            if lhs.vt != VT::I32 {
-                mismatch(diags, VT::I32, lhs.vt, lhs.span);
-            }
-            if rhs.vt != VT::I32 {
-                mismatch(diags, VT::I32, rhs.vt, rhs.span);
+            RExprKind::Binary { lhs, rhs, .. } => {
+                // push rhs first so lhs is checked first (LIFO)
+                stack.push(rhs.as_ref());
+                stack.push(lhs.as_ref());
+                if lhs.vt != VT::I32 {
+                    mismatch(diags, VT::I32, lhs.vt, lhs.span);
+                }
+                if rhs.vt != VT::I32 {
+                    mismatch(diags, VT::I32, rhs.vt, rhs.span);
+                }
             }
         }
     }

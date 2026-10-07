@@ -145,3 +145,33 @@ pub struct Block {
     /// Opening brace through closing brace.
     pub span: Span,
 }
+
+/// Operator chains parse iteratively, so a legal program may hold an
+/// arbitrarily deep `Binary` spine; the derived recursive drop would
+/// overflow on it (R3-QA-02). Drop the tree with an explicit work stack:
+/// children are moved out of their boxes onto the stack (a cheap dummy
+/// stays behind), so every actual drop is shallow.
+impl Drop for Expr {
+    fn drop(&mut self) {
+        fn dummy() -> Expr {
+            Expr {
+                kind: ExprKind::IntLit(0),
+                span: Span { start: 0, end: 0 },
+            }
+        }
+        let detach = |node: &mut Expr, stack: &mut Vec<Expr>| {
+            if let ExprKind::Binary { lhs, rhs, .. } = &mut node.kind {
+                let l = std::mem::replace(lhs.as_mut(), dummy());
+                let r = std::mem::replace(rhs.as_mut(), dummy());
+                stack.push(l);
+                stack.push(r);
+            }
+        };
+        let mut stack: Vec<Expr> = Vec::new();
+        detach(self, &mut stack);
+        while let Some(mut node) = stack.pop() {
+            detach(&mut node, &mut stack);
+            // node's boxes hold dummies now; its drop is shallow
+        }
+    }
+}

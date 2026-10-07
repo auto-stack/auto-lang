@@ -65,15 +65,20 @@ struct Parser<'s> {
     /// True until the current unbracketed expression consumes its first
     /// token (see [`Parser::expr`]).
     unbracketed_entry: bool,
-    /// Recursion depth across the recursive-descent sinks (expressions and
+    /// SYNTACTIC nesting depth (parenthesized groups, call argument lists,
     /// blocks); bounded by [`NEST_LIMIT`] so deeply malformed input gets a
-    /// controlled diagnostic instead of a stack overflow (R2-QA-05).
+    /// controlled diagnostic instead of a stack overflow (R2-QA-05). The
+    /// counter is deliberately NOT per implementation frame: 99 levels of
+    /// legal parentheses must pass (R3-QA-02), and operator chains — which
+    /// parse iteratively — are not nesting and carry no limit.
     depth: usize,
 }
 
-/// Nesting limit for the recursive-descent sinks. Far above anything the
-/// corpus or realistic profile programs use (observed max ~4); a resource
-/// guard, not a support-set reduction.
+/// Syntactic nesting limit (paren groups / argument lists / blocks). Far
+/// above anything the corpus or realistic profile programs use (observed
+/// max ~4) while small enough that every downstream per-level recursion
+/// (verify, native lowering) stays comfortably inside the default stack.
+/// A resource guard tied to actual structure, not a support-set reduction.
 const NEST_LIMIT: usize = 200;
 
 impl<'s> Parser<'s> {
@@ -609,10 +614,7 @@ impl<'s> Parser<'s> {
         if !bracketed {
             self.unbracketed_entry = true;
         }
-        self.enter()?;
-        let r = self.binary(1, bracketed);
-        self.depth -= 1;
-        r
+        self.binary(1, bracketed)
     }
 
     /// Operators that exist in the wider language but are outside the
@@ -705,10 +707,7 @@ impl<'s> Parser<'s> {
                 }
             }
         }
-        self.enter()?;
-        let r = self.unary_inner(bracketed);
-        self.depth -= 1;
-        r
+        self.unary_inner(bracketed)
     }
 
     fn unary_inner(&mut self, bracketed: bool) -> Result<Expr, Diagnostic> {
@@ -821,53 +820,12 @@ impl<'s> Parser<'s> {
                 };
                 if paren_same_line {
                     let callee = self.expect_ident("callee")?;
+                    // one SYNTACTIC nesting level (call argument list)
+                    self.enter()?;
                     self.expect_punct(P::LParen, "`(`")?;
-                    let mut args = Vec::new();
-                    if !matches!(
-                        self.peek(),
-                        Some(Token {
-                            tok: Tok::Punct(P::RParen),
-                            ..
-                        })
-                    ) {
-                        loop {
-                            // Named argument: Ident `:` expr.
-                            if matches!(self.peek().map(|t| &t.tok), Some(Tok::Ident(_)))
-                                && matches!(
-                                    self.peek2().map(|t| &t.tok),
-                                    Some(Tok::Punct(P::Colon))
-                                )
-                            {
-                                let name = self.expect_ident("argument name")?;
-                                self.expect_punct(P::Colon, "`:`")?;
-                                let value = self.expr(true)?;
-                                args.push(Arg::Named {
-                                    span: name.span.join(value.span),
-                                    name,
-                                    value,
-                                });
-                            } else {
-                                args.push(Arg::Pos(self.expr(true)?));
-                            }
-                            match self.peek().map(|t| t.tok.clone()) {
-                                Some(Tok::Punct(P::Comma)) => {
-                                    self.pos += 1;
-                                }
-                                Some(Tok::Punct(P::RParen)) => break,
-                                _ => {
-                                    return Err(self.syntax(format!(
-                                        "expected `,` or `)`, found {}",
-                                        self.describe_cur()
-                                    )))
-                                }
-                            }
-                        }
-                    }
-                    let rparen = self.expect_punct(P::RParen, "`)`")?;
-                    Ok(Expr {
-                        span: callee.span.join(rparen),
-                        kind: ExprKind::Call { callee, args },
-                    })
+                    let r = self.call_args(callee);
+                    self.depth -= 1;
+                    r
                 } else {
                     let id = self.expect_ident("name")?;
                     Ok(Expr {
@@ -884,14 +842,17 @@ impl<'s> Parser<'s> {
                 span,
             )),
             Some((Tok::Punct(P::LParen), _)) => {
+                // one SYNTACTIC nesting level (parenthesized group)
+                self.enter()?;
                 self.pos += 1;
                 self.last_line = self.toks[self.pos - 1].line;
-                let inner = self.expr(true)?;
+                let inner = self.expr(true);
+                self.depth -= 1;
+                let inner = inner?;
                 self.expect_punct(P::RParen, "`)`")?;
-                Ok(Expr {
-                    span: inner.span,
-                    kind: inner.kind,
-                })
+                // Parentheses are transparent: the inner expression node is
+                // returned as-is (its span already covers the content).
+                Ok(inner)
             }
             Some((Tok::Raw { kind, text }, span)) => Err(self.unsupported(
                 format!(
@@ -906,5 +867,53 @@ impl<'s> Parser<'s> {
                 self.describe_cur()
             ))),
         }
+    }
+
+    /// Parse a call's argument list after the opening `(` was consumed.
+    /// The nesting level is accounted by the caller.
+    fn call_args(&mut self, callee: Ident) -> Result<Expr, Diagnostic> {
+        let mut args = Vec::new();
+        if !matches!(
+            self.peek(),
+            Some(Token {
+                tok: Tok::Punct(P::RParen),
+                ..
+            })
+        ) {
+            loop {
+                // Named argument: Ident `:` expr.
+                if matches!(self.peek().map(|t| &t.tok), Some(Tok::Ident(_)))
+                    && matches!(self.peek2().map(|t| &t.tok), Some(Tok::Punct(P::Colon)))
+                {
+                    let name = self.expect_ident("argument name")?;
+                    self.expect_punct(P::Colon, "`:`")?;
+                    let value = self.expr(true)?;
+                    args.push(Arg::Named {
+                        span: name.span.join(value.span),
+                        name,
+                        value,
+                    });
+                } else {
+                    args.push(Arg::Pos(self.expr(true)?));
+                }
+                match self.peek().map(|t| t.tok.clone()) {
+                    Some(Tok::Punct(P::Comma)) => {
+                        self.pos += 1;
+                    }
+                    Some(Tok::Punct(P::RParen)) => break,
+                    _ => {
+                        return Err(self.syntax(format!(
+                            "expected `,` or `)`, found {}",
+                            self.describe_cur()
+                        )))
+                    }
+                }
+            }
+        }
+        let rparen = self.expect_punct(P::RParen, "`)`")?;
+        Ok(Expr {
+            span: callee.span.join(rparen),
+            kind: ExprKind::Call { callee, args },
+        })
     }
 }

@@ -511,3 +511,40 @@ fn deep_unclosed_input_via_cli_is_controlled() {
         r.stderr
     );
 }
+
+/// R3-QA-02 end-to-end: the reviewer's 32794-byte legal add chain (16384
+/// terms) through the real CLI must check successfully — no crash, no
+/// unapproved limit — and a 4096-term MALFORMED tail stays a controlled
+/// syntax rejection.
+#[test]
+fn deep_legal_and_malformed_chains_via_cli() {
+    let dir = temp_dir("deep-chain");
+    let ok = dir.join("ok.at");
+    std::fs::write(
+        &ok,
+        format!("fn main() int {{ return {}0 }}", "1+".repeat(16384)),
+    )
+    .unwrap();
+    let r = run_ac(&[
+        "check-source",
+        &ok.display().to_string(),
+        "--source-profile",
+        PROFILE,
+    ]);
+    assert_eq!(r.code, 0, "stderr: {}", r.stderr);
+
+    let bad = dir.join("bad.at");
+    std::fs::write(
+        &bad,
+        format!("fn main() int {{ return {}1", "+ 1".repeat(16384)),
+    )
+    .unwrap();
+    let r = run_ac(&[
+        "check-source",
+        &bad.display().to_string(),
+        "--source-profile",
+        PROFILE,
+    ]);
+    assert_eq!(r.code, 1, "stderr: {}", r.stderr);
+    assert!(r.stderr.contains("source.syntax"), "{}", r.stderr);
+}

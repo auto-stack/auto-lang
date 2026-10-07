@@ -94,7 +94,7 @@ fn with_staged_cleanup(original: Diagnostic, cleanup_failures: Vec<String>) -> D
 /// map them to their own diagnostic codes (e.g. a missing `rustc` is
 /// `link.rustc-missing`, not a generic spawn error).
 #[derive(Debug)]
-enum SubprocError {
+pub enum SubprocError {
     Spawn(std::io::Error),
     /// Containment (job creation/assignment or controlled resume) failed.
     /// The child was terminated before running a single instruction — the
@@ -274,6 +274,17 @@ fn run_with_deadline(
     cmd: &mut Command,
     deadline: Duration,
 ) -> Result<(Option<i32>, String), SubprocError> {
+    run_deadlined_split(cmd, deadline).map(|(code, out, err)| (code, format!("{out}{err}")))
+}
+
+/// [' + "'" + 'run_with_deadline' + "'" + '] with stdout/stderr kept SEPARATE (PLAN-745
+/// R3-QA-01): the shared test executor consumes the SAME contained-start /
+/// subtree / single-deadline / full-collection contract as the linker runs
+/// — one implementation, no parallel test-only lifecycle.
+pub fn run_deadlined_split(
+    cmd: &mut Command,
+    deadline: Duration,
+) -> Result<(Option<i32>, String, String), SubprocError> {
     run_with_deadline_inner(cmd, deadline, job::JobGuard::for_child)
 }
 
@@ -284,7 +295,7 @@ fn run_with_deadline_inner(
     cmd: &mut Command,
     deadline: Duration,
     job_factory: fn(&std::process::Child) -> Option<job::JobGuard>,
-) -> Result<(Option<i32>, String), SubprocError> {
+) -> Result<(Option<i32>, String, String), SubprocError> {
     // Controlled start (R3-QA-01): the suspended child cannot run, and
     // therefore cannot spawn descendants, until it is inside the job.
     #[cfg(windows)]
@@ -376,7 +387,7 @@ fn run_with_deadline_inner(
                         let _ = out_reader.join();
                         let _ = err_reader.join();
                         drop(subtree);
-                        return Ok((status.code(), format!("{out}{err}")));
+                        return Ok((status.code(), out, err));
                     }
                     _ => {
                         // The child exited but a descendant still holds the

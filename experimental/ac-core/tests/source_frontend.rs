@@ -55,6 +55,7 @@ const VALID: &[&str] = &[
     "d05-call-multiline-no-tail.at",
     "d07-colliding-prefix-names.at",
     "e01-paren-nesting-16.at",
+    "f04-parens-99.at",
 ];
 
 /// Negative cases the frontend must accept (rejection happens at bind or

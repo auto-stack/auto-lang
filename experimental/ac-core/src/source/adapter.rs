@@ -481,7 +481,83 @@ impl PlanCtx<'_> {
     }
 
     fn plan_expr(&mut self, plan: &mut FnPlan, f: &ResolvedFn, e: &ResolvedExpr) -> usize {
+        // Iterative planning (R3-QA-02): legal operator chains are
+        // unbounded in depth, so no recursion. Leaves plan through
+        // `plan_leaf`; binary nodes combine pre-allocated expr indices
+        // after both operands are planned (lhs first — same ordering as
+        // the previous recursive form).
+        enum Task<'a> {
+            Plan {
+                node: &'a ResolvedExpr,
+                slot: usize,
+            },
+            Combine {
+                op: BinOp,
+                span: Span,
+                lslot: usize,
+                rslot: usize,
+                dest: usize,
+            },
+        }
+        // slot -> planned expr table index
+        let mut slot_idx: Vec<usize> = vec![usize::MAX];
+        let mut stack: Vec<Task> = vec![Task::Plan { node: e, slot: 0 }];
+        while let Some(task) = stack.pop() {
+            match task {
+                Task::Plan { node, slot } => {
+                    if let RExprKind::Binary { op, lhs, rhs } = &node.kind {
+                        let lslot = slot_idx.len();
+                        slot_idx.push(usize::MAX);
+                        let rslot = slot_idx.len();
+                        slot_idx.push(usize::MAX);
+                        stack.push(Task::Combine {
+                            op: *op,
+                            span: node.span,
+                            lslot,
+                            rslot,
+                            dest: slot,
+                        });
+                        stack.push(Task::Plan {
+                            node: rhs,
+                            slot: rslot,
+                        });
+                        stack.push(Task::Plan {
+                            node: lhs,
+                            slot: lslot,
+                        });
+                    } else {
+                        slot_idx[slot] = self.plan_leaf(plan, f, node);
+                    }
+                }
+                Task::Combine {
+                    op,
+                    span,
+                    lslot,
+                    rslot,
+                    dest,
+                } => {
+                    let l = slot_idx[lslot];
+                    let r = slot_idx[rslot];
+                    let vt = match op {
+                        BinOp::Add | BinOp::Mul => VT::I32,
+                        BinOp::Lt => VT::Bool,
+                    };
+                    plan.exprs.push(ENode {
+                        kind: EKind::Bin(op, l, r),
+                        vt,
+                        span,
+                    });
+                    slot_idx[dest] = plan.exprs.len() - 1;
+                }
+            }
+        }
+        slot_idx[0]
+    }
+
+    /// Plan a non-binary leaf (called only from the iterative walk).
+    fn plan_leaf(&mut self, plan: &mut FnPlan, f: &ResolvedFn, e: &ResolvedExpr) -> usize {
         match &e.kind {
+            RExprKind::Binary { .. } => unreachable!("binary handled by plan_expr walk"),
             RExprKind::IntLit(v) => {
                 plan.exprs.push(ENode {
                     kind: EKind::Const(*v),
@@ -516,20 +592,6 @@ impl PlanCtx<'_> {
                 plan.exprs.push(ENode {
                     kind: EKind::Read(l.0),
                     vt: f.locals[l.0].vt,
-                    span: e.span,
-                });
-                plan.exprs.len() - 1
-            }
-            RExprKind::Binary { op, lhs, rhs } => {
-                let l = self.plan_expr(plan, f, lhs);
-                let r = self.plan_expr(plan, f, rhs);
-                let vt = match op {
-                    BinOp::Add | BinOp::Mul => VT::I32,
-                    BinOp::Lt => VT::Bool,
-                };
-                plan.exprs.push(ENode {
-                    kind: EKind::Bin(*op, l, r),
-                    vt,
                     span: e.span,
                 });
                 plan.exprs.len() - 1
@@ -576,7 +638,6 @@ impl PlanCtx<'_> {
         }
     }
 }
-
 /// How a statement's execution leaves its block, mirroring the verifier's
 /// conservative Flow semantics (used only to decide where dead code starts
 /// so the verifier can anchor its rejection at the illegal trailing

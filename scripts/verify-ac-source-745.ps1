@@ -29,87 +29,312 @@ function Invoke-Step {
     }
 }
 
-function Invoke-Captured {
-    # Run an external command under ONE hard deadline that covers both the
-    # process and its output collection (R2-QA-02 discipline, mirroring the
-    # 741 executor's bounded-wait contract):
-    # - output/error are collected INCREMENTALLY through event handlers, so
-    #   no pipe can ever block the wait and a descendant holding the pipe
-    #   cannot extend the runtime past the deadline;
-    # - on expiry the whole PROCESS TREE is killed (taskkill /T /F) and the
-    #   child reaped; the result carries TimedOut=$true with the partial
-    #   output — never a fake success;
-    # - every exit path waits for the process.
-    param([string]$Exe, [string[]]$ArgList, [string]$WorkDir, [int]$TimeoutSec = 600)
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $Exe
-    $psi.Arguments = ($ArgList | ForEach-Object { '"' + ($_ -replace '"', '\\"') + '"' }) -join ' '
-    $psi.WorkingDirectory = $WorkDir
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $p = New-Object System.Diagnostics.Process
-    $p.StartInfo = $psi
-    # State objects (builder + first-line flag) travel by reference through
-    # -MessageData. Lines are joined with "`n" BETWEEN events only — no
-    # trailing newline — so exact-oracle stderr like "ba" stays exact.
-    $outState = [pscustomobject]@{ Buf = New-Object System.Text.StringBuilder; First = $true }
-    $errState = [pscustomobject]@{ Buf = New-Object System.Text.StringBuilder; First = $true }
-    $outSub = Register-ObjectEvent -InputObject $p -EventName OutputDataReceived -MessageData $outState -Action {
-        if ($null -ne $EventArgs.Data) {
-            if ($Event.MessageData.First) { $Event.MessageData.First = $false }
-            else { [void]$Event.MessageData.Buf.Append("`n") }
-            [void]$Event.MessageData.Buf.Append($EventArgs.Data)
+$script:AcRunnerCs = @'
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+
+// PLAN-745 R3-QA-01: a PS-hostable contained executor with the SAME
+// lifecycle contract as the 741 Rust executor (link.rs): suspended start,
+// Job-Object subtree containment before the first instruction, one
+// deadline covering process exit AND pipe-EOF collection, byte draining
+// with lossy UTF-8 conversion, and full tree + reader reclamation on every
+// exit path. No quiet-window heuristics, no detached readers.
+public static class AcContainedRunner
+{
+    [StructLayout(LayoutKind.Sequential)]
+    struct SECURITY_ATTRIBUTES
+    {
+        public int nLength;
+        public IntPtr lpSecurityDescriptor;
+        public bool bInheritHandle;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct STARTUPINFO
+    {
+        public int cb;
+        public IntPtr lpReserved;
+        public IntPtr lpDesktop;
+        public IntPtr lpTitle;
+        public int dwX;
+        public int dwY;
+        public int dwXSize;
+        public int dwYSize;
+        public int dwXCountChars;
+        public int dwYCountChars;
+        public int dwFillAttribute;
+        public int dwFlags;
+        public short wShowWindow;
+        public short cbReserved2;
+        public IntPtr lpReserved2;
+        public IntPtr hStdInput;
+        public IntPtr hStdOutput;
+        public IntPtr hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct PROCESS_INFORMATION
+    {
+        public IntPtr hProcess;
+        public IntPtr hThread;
+        public int dwProcessId;
+        public int dwThreadId;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern bool CreateProcess(
+        string lpApplicationName,
+        string lpCommandLine,
+        IntPtr lpProcessAttributes,
+        IntPtr lpThreadAttributes,
+        bool bInheritHandles,
+        uint dwCreationFlags,
+        IntPtr lpEnvironment,
+        string lpCurrentDirectory,
+        ref STARTUPINFO lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool CreatePipe(out IntPtr hReadPipe, out IntPtr hWritePipe, ref SECURITY_ATTRIBUTES lpPipeAttributes, uint nSize);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr CreateJobObject(IntPtr lpJobAttributes, string lpName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool AssignProcessToJobObject(IntPtr hJob, IntPtr hProcess);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool TerminateJobObject(IntPtr hJob, uint uExitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern uint ResumeThread(IntPtr hThread);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern int WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetExitCodeProcess(IntPtr hProcess, out uint lpExitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool ReadFile(IntPtr hFile, byte[] lpBuffer, uint nNumberOfBytesToRead, out uint lpNumberOfBytesRead, IntPtr lpOverlapped);
+
+    const uint CREATE_SUSPENDED = 0x4;
+    const uint STARTF_USESTDHANDLES = 0x100;
+    const int STILL_ACTIVE = 259;
+    const int WAIT_TIMEOUT = 258;
+    const int WAIT_OBJECT_0 = 0;
+
+    static string Escape(string arg)
+    {
+        if (arg == null) return "\"\"";
+        if (arg.Length > 0 && arg.IndexOfAny(new[] { ' ', '\t', '"' }) < 0) return arg;
+        var sb = new StringBuilder();
+        sb.Append('"');
+        int bs = 0;
+        foreach (char c in arg)
+        {
+            if (c == '\\') { bs++; continue; }
+            if (c == '"') { sb.Append('\\', bs + 1); sb.Append('"'); bs = 0; continue; }
+            sb.Append('\\', bs); bs = 0; sb.Append(c);
+        }
+        sb.Append('\\', bs);
+        sb.Append('"');
+        return sb.ToString();
+    }
+
+    class Reader
+    {
+        readonly IntPtr _handle;
+        public readonly MemoryStream Buf = new MemoryStream();
+        public readonly Thread Thr;
+        public bool Done;
+        public Reader(IntPtr handle)
+        {
+            _handle = handle;
+            Thr = new Thread(Drain) { IsBackground = true };
+        }
+        void Drain()
+        {
+            var b = new byte[65536];
+            while (true)
+            {
+                uint n;
+                if (!ReadFile(_handle, b, (uint)b.Length, out n, IntPtr.Zero) || n == 0) break;
+                Buf.Write(b, 0, (int)n);
+            }
+            lock (this) { Done = true; Monitor.Pulse(this); }
+        }
+        public bool WaitDone(int ms)
+        {
+            lock (this)
+            {
+                if (Done) return true;
+                return Monitor.Wait(this, ms) && Done;
+            }
         }
     }
-    $errSub = Register-ObjectEvent -InputObject $p -EventName ErrorDataReceived -MessageData $errState -Action {
-        if ($null -ne $EventArgs.Data) {
-            if ($Event.MessageData.First) { $Event.MessageData.First = $false }
-            else { [void]$Event.MessageData.Buf.Append("`n") }
-            [void]$Event.MessageData.Buf.Append($EventArgs.Data)
-        }
+
+    public sealed class RunResult
+    {
+        public int Code;
+        public string Stdout;
+        public string Stderr;
+        public bool TimedOut;
+        public string Error;
     }
-    try {
-        if (-not $p.Start()) { throw "failed to start '$Exe'" }
-        $p.BeginOutputReadLine()
-        $p.BeginErrorReadLine()
-        $budget = [System.Diagnostics.Stopwatch]::StartNew()
-        $timedOut = -not $p.WaitForExit($TimeoutSec * 1000)
-        if ($timedOut) {
-            # Tree kill: descendants inheriting our pipes die with the
-            # child, so nothing can extend the wait past the deadline.
-            & taskkill /T /F /PID $p.Id | Out-Null
-            $p.WaitForExit() | Out-Null   # reap; pipes are closing now
-        } else {
-            # The process exited; async readers have no EOF event in PS 5.1,
-            # so drain with a bounded quiet-window: complete when both
-            # buffers went quiet for 250ms, otherwise run to the budget and
-            # report TimedOut with whatever arrived (never past deadline,
-            # never a fake success; a silently holding descendant that
-            # writes nothing resolves as complete-with-full-output).
-            $lastOut = $outState.Buf.Length; $lastErr = $errState.Buf.Length
-            $quiet = [System.Diagnostics.Stopwatch]::StartNew()
-            while (($quiet.ElapsedMilliseconds -lt 250) -and ($budget.ElapsedMilliseconds -lt ($TimeoutSec * 1000))) {
-                Start-Sleep -Milliseconds 50
-                if ($outState.Buf.Length -ne $lastOut -or $errState.Buf.Length -ne $lastErr) {
-                    $lastOut = $outState.Buf.Length; $lastErr = $errState.Buf.Length
-                    $quiet.Restart()
+
+    public static RunResult Run(string exe, string[] args, string workDir, int timeoutMs)
+    {
+        var res = new RunResult();
+        var sa = new SECURITY_ATTRIBUTES { nLength = Marshal.SizeOf(typeof(SECURITY_ATTRIBUTES)), bInheritHandle = true };
+        IntPtr inR = IntPtr.Zero, inW = IntPtr.Zero, outR = IntPtr.Zero, outW = IntPtr.Zero, errR = IntPtr.Zero, errW = IntPtr.Zero;
+        IntPtr job = IntPtr.Zero;
+        IntPtr hProc = IntPtr.Zero, hThread = IntPtr.Zero;
+        Reader outReader = null, errReader = null;
+        try
+        {
+            if (!CreatePipe(out inR, out inW, ref sa, 0) ||
+                !CreatePipe(out outR, out outW, ref sa, 0) ||
+                !CreatePipe(out errR, out errW, ref sa, 0))
+            {
+                res.Error = "pipe creation failed";
+                return res;
+            }
+            // stdin write end stays ours; the child sees a quiet stdin.
+            var si = new STARTUPINFO
+            {
+                cb = Marshal.SizeOf(typeof(STARTUPINFO)),
+                dwFlags = (int)STARTF_USESTDHANDLES,
+                hStdInput = inR,
+                hStdOutput = outW,
+                hStdError = errW,
+            };
+            var cmd = new StringBuilder();
+            cmd.Append(Escape(exe));
+            foreach (var a in args) { cmd.Append(' '); cmd.Append(Escape(a)); }
+            PROCESS_INFORMATION pi;
+            if (!CreateProcess(null, cmd.ToString(), IntPtr.Zero, IntPtr.Zero, true, CREATE_SUSPENDED,
+                IntPtr.Zero, workDir, ref si, out pi))
+            {
+                res.Error = "CreateProcess failed: " + Marshal.GetLastWin32Error();
+                return res;
+            }
+            hProc = pi.hProcess; hThread = pi.hThread;
+            job = CreateJobObject(IntPtr.Zero, null);
+            if (job == IntPtr.Zero || !AssignProcessToJobObject(job, hProc))
+            {
+                // refuse to run what cannot be bounded: kill before the
+                // first instruction (the child is still suspended)
+                TerminateJobObject(job, 1);
+                res.Error = "containment unavailable";
+                return res;
+            }
+            if (ResumeThread(hThread) == uint.MaxValue)
+            {
+                TerminateJobObject(job, 1);
+                res.Error = "resume failed";
+                return res;
+            }
+            // parent-side write ends close so EOF reflects the CHILD tree
+            CloseHandle(outW); outW = IntPtr.Zero;
+            CloseHandle(errW); errW = IntPtr.Zero;
+            outReader = new Reader(outR); outReader.Thr.Start();
+            errReader = new Reader(errR); errReader.Thr.Start();
+
+            var sw = Stopwatch.StartNew();
+            // C#5 (PS 5.1 compiler): no local functions — use a lambda
+            Func<int> remaining = () => (int)Math.Max(0, timeoutMs - sw.ElapsedMilliseconds);
+
+            while (true)
+            {
+                int w = WaitForSingleObject(hProc, (uint)Math.Max(1, Math.Min(remaining(), 50)));
+                if (w == WAIT_OBJECT_0)
+                {
+                    // process exited; collection bound by the REMAINING budget
+                    int rem = remaining();
+                    bool okOut = outReader.WaitDone(rem);
+                    bool okErr = errReader.WaitDone(okOut ? remaining() : 0);
+                    if (okOut && okErr && remaining() >= 0)
+                    {
+                        uint code;
+                        GetExitCodeProcess(hProc, out code);
+                        res.Code = (int)code;
+                        res.Stdout = Encoding.UTF8.GetString(outReader.Buf.ToArray(), 0, (int)outReader.Buf.Length);
+                        res.Stderr = Encoding.UTF8.GetString(errReader.Buf.ToArray(), 0, (int)errReader.Buf.Length);
+                        return res;
+                    }
+                    // a descendant still holds the pipes past the deadline:
+                    // terminate the tree; this is a timeout, never a
+                    // truncated success
+                    TerminateJobObject(job, 1);
+                    outReader.WaitDone(2000);
+                    errReader.WaitDone(2000);
+                    res.TimedOut = true;
+                    res.Stdout = Encoding.UTF8.GetString(outReader.Buf.ToArray(), 0, (int)outReader.Buf.Length);
+                    res.Stderr = Encoding.UTF8.GetString(errReader.Buf.ToArray(), 0, (int)errReader.Buf.Length);
+                    return res;
+                }
+                if (remaining() <= 0)
+                {
+                    TerminateJobObject(job, 1);
+                    WaitForSingleObject(hProc, 2000);
+                    outReader.WaitDone(2000);
+                    errReader.WaitDone(2000);
+                    res.TimedOut = true;
+                    res.Stdout = Encoding.UTF8.GetString(outReader.Buf.ToArray(), 0, (int)outReader.Buf.Length);
+                    res.Stderr = Encoding.UTF8.GetString(errReader.Buf.ToArray(), 0, (int)errReader.Buf.Length);
+                    return res;
                 }
             }
-            if ($budget.ElapsedMilliseconds -ge ($TimeoutSec * 1000)) { $timedOut = $true }
         }
-        $code = $p.ExitCode
-        return [pscustomobject]@{
-            Code = $code
-            Stdout = $outState.Buf.ToString()
-            Stderr = $errState.Buf.ToString()
-            TimedOut = $timedOut
+        finally
+        {
+            // full reclamation on EVERY path: terminate the tree (idempotent
+            // for an exited job), wait the readers out (pipes are closed by
+            // then), release handles.
+            if (job != IntPtr.Zero) { TerminateJobObject(job, 1); CloseHandle(job); }
+            if (outReader != null) outReader.WaitDone(3000);
+            if (errReader != null) errReader.WaitDone(3000);
+            if (hThread != IntPtr.Zero) CloseHandle(hThread);
+            if (hProc != IntPtr.Zero) CloseHandle(hProc);
+            foreach (var h in new[] { inR, inW, outR, outW, errR, errW })
+                if (h != IntPtr.Zero) CloseHandle(h);
         }
-    } finally {
-        Unregister-Event -SourceIdentifier $outSub.Name -ErrorAction SilentlyContinue
-        Unregister-Event -SourceIdentifier $errSub.Name -ErrorAction SilentlyContinue
-        if (-not $p.HasExited) { try { & taskkill /T /F /PID $p.Id | Out-Null; $p.WaitForExit() | Out-Null } catch {} }
-        $p.Dispose()
+    }
+}
+'@
+$script:AcRunnerLoaded = $false
+
+function Invoke-Captured {
+    # Run an external command through the contained C# executor below
+    # (R3-QA-01): suspended start, Job-Object subtree containment before the
+    # first instruction, ONE deadline covering process exit AND pipe-EOF
+    # collection (no quiet-window heuristics), byte draining with lossy
+    # UTF-8, and full tree + reader reclamation on every exit path. A
+    # descendant holding the pipes past the deadline is a TimedOut result —
+    # never a truncated success.
+    param([string]$Exe, [string[]]$ArgList, [string]$WorkDir, [int]$TimeoutSec = 600)
+    if (-not $script:AcRunnerLoaded) {
+        Add-Type -TypeDefinition $script:AcRunnerCs -Language CSharp
+        $script:AcRunnerLoaded = $true
+    }
+    $r = [AcContainedRunner]::Run($Exe, $ArgList, $WorkDir, ($TimeoutSec * 1000))
+    if ($r.Error) { throw "contained executor refused '$Exe': $($r.Error)" }
+    if ($r.TimedOut) {
+        throw "subprocess '$Exe $($ArgList -join ' ')' exceeded ${TimeoutSec}s deadline (process or output collection)"
+    }
+    return [pscustomobject]@{
+        Code = $r.Code
+        Stdout = $r.Stdout
+        Stderr = $r.Stderr
+        TimedOut = $r.TimedOut
     }
 }
 

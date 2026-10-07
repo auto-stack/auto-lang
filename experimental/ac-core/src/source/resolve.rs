@@ -97,6 +97,34 @@ pub struct ResolvedExpr {
     pub vt: VT,
 }
 
+/// Operator chains are unbounded (they resolve iteratively), so the
+/// derived recursive drop would overflow on deep spines — drop with an
+/// explicit work stack (R3-QA-02; same pattern as `ast::Expr`).
+impl Drop for ResolvedExpr {
+    fn drop(&mut self) {
+        fn dummy() -> ResolvedExpr {
+            ResolvedExpr {
+                span: Span { start: 0, end: 0 },
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            }
+        }
+        let detach = |node: &mut ResolvedExpr, stack: &mut Vec<ResolvedExpr>| {
+            if let RExprKind::Binary { lhs, rhs, .. } = &mut node.kind {
+                let l = std::mem::replace(lhs.as_mut(), dummy());
+                let r = std::mem::replace(rhs.as_mut(), dummy());
+                stack.push(l);
+                stack.push(r);
+            }
+        };
+        let mut stack: Vec<ResolvedExpr> = Vec::new();
+        detach(self, &mut stack);
+        while let Some(mut node) = stack.pop() {
+            detach(&mut node, &mut stack);
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum RStmt {
     Let {
@@ -362,7 +390,7 @@ impl<'a> FnResolver<'a> {
                 ..
             } => {
                 // RHS resolves in the pre-declaration environment.
-                let value = self.expr(value);
+                let value = self.expr_iterative(value);
                 let vt = match ann {
                     Some(a) => vt_of_word(a.word),
                     None => value.vt,
@@ -399,7 +427,7 @@ impl<'a> FnResolver<'a> {
                 }
             }
             Stmt::Assign { name, value, span } => {
-                let value = self.expr(value);
+                let value = self.expr_iterative(value);
                 // Immutability itself is re-checked by the semantic verifier
                 // on the emitted place/local pair (verify.immutable-write);
                 // here only resolution failures are reported.
@@ -435,7 +463,7 @@ impl<'a> FnResolver<'a> {
                 }
             }
             Stmt::Return { value, span } => {
-                let value = self.expr(value);
+                let value = self.expr_iterative(value);
                 RStmt::Return { value, span: *span }
             }
             Stmt::If {
@@ -444,7 +472,7 @@ impl<'a> FnResolver<'a> {
                 els,
                 span,
             } => {
-                let cond = self.expr(cond);
+                let cond = self.expr_iterative(cond);
                 let then = self.block(then);
                 let els = els.as_ref().map(|e| self.block(e));
                 RStmt::If {
@@ -457,7 +485,7 @@ impl<'a> FnResolver<'a> {
             Stmt::While {
                 cond, body, span, ..
             } => {
-                let cond = self.expr(cond);
+                let cond = self.expr_iterative(cond);
                 let target = LoopRef(self.loop_count);
                 self.loop_count += 1;
                 self.loop_stack.push(target);
@@ -546,24 +574,97 @@ impl<'a> FnResolver<'a> {
                 }
             },
             ExprKind::Call { callee, args } => self.call(callee, args, e.span),
-            ExprKind::Binary { op, lhs, rhs } => {
-                let lhs = self.expr(lhs);
-                let rhs = self.expr(rhs);
-                let vt = match op {
-                    BinOp::Add | BinOp::Mul => VT::I32,
-                    BinOp::Lt => VT::Bool,
-                };
-                ResolvedExpr {
-                    span: e.span,
-                    vt,
-                    kind: RExprKind::Binary {
-                        op: *op,
-                        lhs: Box::new(lhs),
-                        rhs: Box::new(rhs),
-                    },
+            // Binary nodes are resolved by the ITERATIVE walk below —
+            // operator chains are unbounded in length and must not recurse
+            // (R3-QA-02).
+            ExprKind::Binary { .. } => unreachable!("handled by expr_iterative"),
+        }
+    }
+
+    /// Resolve an expression tree with an explicit work stack (R3-QA-02):
+    /// legal operator chains are arbitrarily deep, so no recursion. Leaves
+    /// resolve through [`Self::expr`]; binary nodes are combined from
+    /// pre-allocated result slots after both children complete (children
+    /// first: lhs slot allocated before rhs, combining after both).
+    fn expr_iterative(&mut self, root: &Expr) -> ResolvedExpr {
+        fn dummy_resolved() -> ResolvedExpr {
+            ResolvedExpr {
+                span: Span { start: 0, end: 0 },
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            }
+        }
+        enum Task<'a> {
+            /// Resolve this node into `slot`.
+            Visit { node: &'a Expr, slot: usize },
+            /// Both operand slots are filled; combine into `dest`.
+            Combine {
+                op: BinOp,
+                span: Span,
+                lslot: usize,
+                rslot: usize,
+                dest: usize,
+            },
+        }
+        let mut out: Vec<ResolvedExpr> = vec![dummy_resolved()];
+        let mut stack: Vec<Task> = vec![Task::Visit {
+            node: root,
+            slot: 0,
+        }];
+        while let Some(task) = stack.pop() {
+            match task {
+                Task::Visit { node, slot } => {
+                    if let ExprKind::Binary { op, lhs, rhs } = &node.kind {
+                        let lslot = out.len();
+                        out.push(dummy_resolved());
+                        let rslot = out.len();
+                        out.push(dummy_resolved());
+                        // LIFO: lhs resolves first, then rhs, then combine.
+                        stack.push(Task::Combine {
+                            op: *op,
+                            span: node.span,
+                            lslot,
+                            rslot,
+                            dest: slot,
+                        });
+                        stack.push(Task::Visit {
+                            node: rhs,
+                            slot: rslot,
+                        });
+                        stack.push(Task::Visit {
+                            node: lhs,
+                            slot: lslot,
+                        });
+                    } else {
+                        out[slot] = self.expr(node);
+                    }
+                }
+                Task::Combine {
+                    op,
+                    span,
+                    lslot,
+                    rslot,
+                    dest,
+                } => {
+                    let l = std::mem::replace(&mut out[lslot], dummy_resolved());
+                    let r = std::mem::replace(&mut out[rslot], dummy_resolved());
+                    let vt = match op {
+                        BinOp::Add | BinOp::Mul => VT::I32,
+                        BinOp::Lt => VT::Bool,
+                    };
+                    out[dest] = ResolvedExpr {
+                        span,
+                        vt,
+                        kind: RExprKind::Binary {
+                            op,
+                            lhs: Box::new(l),
+                            rhs: Box::new(r),
+                        },
+                    };
                 }
             }
         }
+        std::mem::replace(&mut out[0], dummy_resolved())
     }
 
     fn call(&mut self, callee: &ast::Ident, args: &[Arg], call_span: Span) -> ResolvedExpr {
@@ -571,12 +672,12 @@ impl<'a> FnResolver<'a> {
         for a in args {
             match a {
                 Arg::Pos(e) => rargs.push(ResolvedArg {
-                    value: self.expr(e),
+                    value: self.expr_iterative(e),
                     name: None,
                     span: e.span,
                 }),
                 Arg::Named { name, value, span } => rargs.push(ResolvedArg {
-                    value: self.expr(value),
+                    value: self.expr_iterative(value),
                     name: Some(ast::Ident {
                         name: name.name.clone(),
                         span: name.span,
