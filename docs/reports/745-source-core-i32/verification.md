@@ -244,3 +244,26 @@ r2 修复轮提交链：ad226453b（QA-01/02/03/05 + oracle 缺口实现与测�
 | `cargo check -p auto-lang` | PASS |
 | `cargo t`（全量 --no-fail-fast） | 4939/4972 通过、33 失败：28 与历史共现预存红逐名一致；其余 5 名隔离复跑 **5/5 PASS**（并行 flake 轮换）；745 新增失败 = 0 |
 | `cargo tv`（全量） | 158/162、4 预存 cookbook semver（逐名一致） |
+
+
+## 13. r4 needs_fix 修复轮执行记录（2026-10-07，R4-QA-01/02 逐项）
+
+复审报告：[review-r4/REVIEW.md](../../plans/attachments/745/review-r4/REVIEW.md)。
+
+| 发现 | 修复 | 执行证据 |
+|---|---|---|
+| R4-QA-01 PS 执行器错误出口 | ① 约束失败（Job 创建/分配失败）：挂起子进程**未入 Job**——新增 TerminateProcess+WaitForSingleObject 直接终止回收（resume 失败同样兜底）；② ReadFile false 不再一律当 EOF：broken-pipe/handle-EOF=正常结束，其余记 ReadError 并在成功出口传播为 Error（不伪造截断成功）；③ RunResult 增 Pid/读错误字段；RunControl 注入口（741 可注入工厂先例）驱动真实 Win32 失败 | 探针五连：valid=READ_CONTROL 全文；assignFail（真 AssignProcessToJobObject 失败）→ Error + **pid 存活=False**（无泄漏）；readFail（真 ReadFile 失败，Win32 错误码 6）→ Error 非 code0 成功；holder/late 回归不退化；脚本新增永久步骤 "executor failure-exit controls" |
+| R4-QA-02 200 层合法括号被拒 | 括号**零上限**：连续 `(` 塌缩循环消费 + 核表达式单次解析 + 部分 `)` 闭合后以既有 lhs **续算**（`((1+2)*3)` 混合嵌套正确）——纯分组零 AST 节点零递归，不闭合输入深度无关地在缺 `)` 处受控失败；调用/实参表与块保持资源护栏但**按实测重设为 1000**（每层真实递归：parser+resolve+emit+verify+native；999 层全阶段含 native 通过，1001/1200 层与不闭合调用链受控拒） | G01=199/G02=200 过；5000/50000/**100000** 层括号 check 全过；mix1..4 混合嵌套 check+native 全对（9/6）；call 300/999 过、1001 拒；if 300/999 过、1200 拒；999 层调用/if **build+run native 正确**；deep_regression 永久化两侧 + g02-parens-200 fixture |
+
+## 14. r4 修复轮门禁（同树串行，2026-10-07）
+
+| 门禁 | 结果 |
+|---|---|
+| ac-core check --all-targets / fmt | PASS，零 warning |
+| ac-core `cargo test --locked` | **113 passed / 1 ignored / 0 failed** |
+| `verify-ac-741.ps1 -SkipMainGates` | **all 13 steps PASS** |
+| `verify-ac-source-745.ps1`（+失败出口步骤） | **all 13 steps PASS (74 cases)** |
+| `acc_inventory.py --check --require-decisions` | **CHECK-OK** |
+| `cargo check -p auto-lang` | PASS |
+| `cargo t`（全量 --no-fail-fast） | 4942/4972 通过、30 失败：27 历史共现预存 + 3 名隔离复跑 **3/3 PASS**（plan498_area/plan499 crosshair·donut 轮换 flake）；745 新增失败 = 0 |
+| `cargo tv`（全量） | 158/162、4 预存 cookbook semver（逐名一致） |
