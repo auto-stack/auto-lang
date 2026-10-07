@@ -216,3 +216,31 @@ D 系反例额外确认：D11 转义 char、D12 关键字命名实参分类正�
 r2 修复轮提交链：ad226453b（QA-01/02/03/05 + oracle 缺口实现与测试）→
 本提交（报告）。修复差异对 `crates/`、生产 Cargo/lock、`.cargo/.config` 保持
 为零。
+
+
+## 11. r3 needs_fix 修复轮执行记录（2026-10-07，R3-QA-01/02 逐项）
+
+复审报告：[review-r3/REVIEW.md](../../plans/attachments/745/review-r3/REVIEW.md)。
+修复提交：072f345f9（执行器复用+迭代化+语法级护栏）→ 879..（收敛断言）→ 本提交（报告）。
+
+| 发现 | 修复 | 执行证据 |
+|---|---|---|
+| R3-QA-01 执行器生命周期 | Rust：删除 tests/common 自制助手，**直接委托 link.rs 741 执行器**（新公开 `run_deadlined_split`，旧 `run_with_deadline` 委托合并语义零变化）——受控挂起启动、Job 子树约束先于首指令、单截止覆盖执行+EOF 采集、全出口回收树与读线程；PS：脚本内嵌 C# `AcContainedRunner`（同合同：CreateProcess+CREATE_SUSPENDED→Job→Resume、字节排空 lossy、超时 TerminateJobObject 树杀、finally 全回收），`Invoke-Captured` 成薄封装 | Rust 控制全过：后代持管道 800ms 有界 timed_out 且 **0 幸存**；迟到写后代（预算内）全量输出含 LATE；失控父+后代树杀 0 幸存；无效 UTF8 前后缀保留；PS 探针 A/B/C/D 全过（B=913ms timedOut/0 幸存、C=含 LATE、D=树杀）；745 脚本 74 例全过（P15 stderr 字节精确）；幸存断言改有界收敛以容并行同族 |
+| R3-QA-02 深输入护栏两缺陷 | ① 16384 合法加法链崩溃：根因=resolve/typecheck/adapter 的 Binary 脊柱递归 + AST/ResolvedExpr 递归 Drop；全部改**显式栈迭代**（resolve/typecheck/plan_expr）+ 迭代 Drop；verify 的 `expr_type`/`walk_value_in`/`dfs_cycles` 与 native 的 `eval_expr` 同改迭代（语义/错误顺序/求值顺序保持）；② 护栏误拒 99 层合法括号：计数改**语法级**（括号组/实参表/块各 1 层，实现帧不再计入），200 层护栏=语法层 | F01/F03/F04/F06/F08 check 全 exit 0（含 32794B/16384 项链与 99/100 层括号）；F02/F07 缺 RHS=受控 syntax；F09=bool 链 type-mismatch；F05/F10 深块=nesting 受控；**native**：300 项链 build+run 退出码=精确和 300（shell 256 截断现象在案）；65536 项链 check 全阶段通过（tests/deep_regression.rs 永久化，含边界两侧：99 合法过/4096 不闭合拒） |
+
+注：F08 系列此前"4096 通过/16384 崩溃"的对比在 slot-bug 修正后重测：前端各阶段真迭代后
+16384 与 65536 均过；`verify`/native 的迭代化使崩溃类在合同内输入上关闭。
+
+## 12. r3 修复轮门禁（同树串行，2026-10-07）
+
+| 门禁 | 结果 |
+|---|---|
+| ac-core `cargo check --locked --all-targets` | PASS，零 warning |
+| ac-core `cargo fmt -- --check` | PASS |
+| ac-core `cargo test --locked` | **112 passed / 1 ignored / 0 failed**（新增 deep_regression 5、执行器控制 3、CLI 深链 1、f04/f11 语料） |
+| `verify-ac-741.ps1 -SkipMainGates` | **all 13 steps PASS** |
+| `verify-ac-source-745.ps1`（C# 受控执行器版） | **all 12 steps PASS (74 cases)** |
+| `acc_inventory.py --check --require-decisions` | **CHECK-OK** |
+| `cargo check -p auto-lang` | PASS |
+| `cargo t`（全量 --no-fail-fast） | 4939/4972 通过、33 失败：28 与历史共现预存红逐名一致；其余 5 名隔离复跑 **5/5 PASS**（并行 flake 轮换）；745 新增失败 = 0 |
+| `cargo tv`（全量） | 158/162、4 预存 cookbook semver（逐名一致） |
