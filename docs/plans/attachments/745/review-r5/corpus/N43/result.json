@@ -1,0 +1,14 @@
+{
+  "kind": "reject",
+  "artifact_hashes": [],
+  "ok": true,
+  "input_sha256": "1d7df007cefb7ad65823088680b689b995d7ea9124e872d7ee58f8b7c9135ede",
+  "build": null,
+  "id": "N43",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N43\\input.at:1:23: error[text/source.unsupported]: type `List` is not part of this source profile\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "run": null
+}

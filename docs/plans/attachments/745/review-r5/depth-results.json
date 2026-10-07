@@ -1,0 +1,24 @@
+[
+  {
+    "id": "E01-shallow-parenthesis-control",
+    "depth": 16,
+    "source_bytes": 58,
+    "want": "accept",
+    "result": {
+      "stderr": "",
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=c4b496c8fcafca5e, module(s)=1, capabilities required: []\n"
+    }
+  },
+  {
+    "id": "E02-deep-unclosed-parenthesis",
+    "depth": 4096,
+    "source_bytes": 4122,
+    "want": "controlled source.syntax exit1",
+    "result": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\E02-deep-unclosed-parenthesis\\input.at:1:4122: error[text/source.syntax]: expected `)` or operator, found `}`\n",
+      "exit": 1,
+      "stdout": ""
+    }
+  }
+]

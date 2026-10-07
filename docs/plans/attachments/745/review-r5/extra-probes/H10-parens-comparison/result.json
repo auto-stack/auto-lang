@@ -1,0 +1,21 @@
+{
+  "build": {
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H10-parens-comparison\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H10-parens-comparison\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H10-parens-comparison\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H10-parens-comparison\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 4d161d2ba01af874\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "id": "H10-parens-comparison",
+  "check": {
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=4d161d2ba01af874, module(s)=1, capabilities required: []\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "want_native": 5,
+  "want": 0,
+  "bytes": 75,
+  "run": {
+    "stdout": "",
+    "stderr": "",
+    "exit": 5
+  }
+}

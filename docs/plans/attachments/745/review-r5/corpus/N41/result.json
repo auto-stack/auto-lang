@@ -1,0 +1,14 @@
+{
+  "kind": "reject",
+  "artifact_hashes": [],
+  "ok": true,
+  "input_sha256": "469c9bac6ddae909ecf99fd5bf0a7ba0015cf4292e9f4e201cc227474e5e665b",
+  "build": null,
+  "id": "N41",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N41\\input.at:1:17: error[text/source.unsupported]: expression statements are not part of this source profile; calls are only allowed in initializers, assignments, returns and conditions\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "run": null
+}

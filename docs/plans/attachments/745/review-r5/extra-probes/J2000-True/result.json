@@ -1,0 +1,11 @@
+{
+  "seconds": 0.1786634,
+  "id": "J2000-True",
+  "result": {
+    "stderr": "",
+    "exit": 0,
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=9258411a57d1143e, module(s)=1, capabilities required: []\n"
+  },
+  "balanced": true,
+  "bytes": 8026
+}

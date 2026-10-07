@@ -426,3 +426,15 @@ reviewed_commit=dc5e95be757dba647ef758aa283e7e2788015747；needs_fix；[第四�
 R3-QA01的Rust生命周期与PS静默窗口原反例已清偿；R3-QA02的合法16384链崩溃、99/100层括号误拒已清偿；未完成的边界子项和新PS错误出口按上表追踪。原C/D诊断、符号、换行、Stray和既有oracle没有退化。
 
 本轮112 passed/1 ignored、741 13步/745 12步74例、独立74/74、strict47通过；新增native复杂求值24/baab、trap70空stderr、长链退出300通过。根日常35失败/tv4失败未称绿色；唯一新红名plan643隔离1/1通过。真实Win32失败控制保留原cleanup/result路径，不用全绿banner替代失败传播检查。
+## PLAN-745 r1 第五轮最终独立复审（2026-10-07，待修）
+
+reviewed_commit=15fd9263f6f4c400a6ba1d8ec5cb2cae44354d41；needs_fix；[第五轮报告](attachments/745/review-r5/REVIEW.md)、[计划](745-ac-source-checked-hir-native.md)。原同树保留，executing3/9；没有实施修复、合入或canonical/live ledger沉淀。
+
+| ID | 级别 | 当前合同内缺口 | 修复/验收 |
+|---|---|---|---|
+| P745-R5-QA-01 | P2 | 连续括号塌缩未覆盖1+(1+(…))；4096层完整16410字节与未闭合12314字节均stack overflow，5s仍未返回 | T02/05/07，AC02/04/08；实际非连续及组合路径受控，合法source→Checked通过、畸形诊断无panic，保留优先级/效果/span |
+| P745-R5-QA-02 | P2 | 调用/块护栏1000仍未批准入r1/SD；函数体占一层，999可native/1000完整语法已syntax拒绝 | T02/05/06/07，AC02/07/08；保留支持或显式new修订计数/各入口/资源诊断/边界及正反验收，不仅扩大阈值 |
+
+R4-QA01未入Job挂起子泄漏、ReadFile错误6假成功与wrapper传播已清偿（实际native失败控制无幸存）；R4-QA02原200层连续括号误拒已清偿，连续100000层通过，剩余边界转R5-QA02。历轮其它清偿保持；新发现不覆盖掉已经通过的控制。
+
+本轮113 passed/1 ignored、741与745均13步、独立74/74、strict47通过；native300、24/baab、trap70空stderr、混合括号111/5、999call/if通过。root日常33失败/tv4失败未称绿色；唯一新增plan707_cancel隔离1/1通过。完整反例/原始stderr/边界两侧与冻结delta在第五轮报告附件，登记不代表批准延后。

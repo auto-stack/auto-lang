@@ -1,0 +1,2 @@
+fn f(x int) int { return x }
+fn main() int { let f = 3; return f(1) }

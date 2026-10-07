@@ -1,0 +1,11 @@
+{
+  "seconds": 0.1896187,
+  "id": "J3000-True",
+  "result": {
+    "stderr": "",
+    "exit": 0,
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=51688482a6078176, module(s)=1, capabilities required: []\n"
+  },
+  "balanced": true,
+  "bytes": 12026
+}

@@ -1,0 +1,148 @@
+[
+  {
+    "build": null,
+    "id": "H01-rhs-parens-16",
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=643c1b79adfdf67e, module(s)=1, capabilities required: []\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "want_native": null,
+    "want": 0,
+    "bytes": 90,
+    "run": null
+  },
+  {
+    "build": null,
+    "id": "H02-rhs-parens-200",
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=bcc45c93c665c106, module(s)=1, capabilities required: []\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "want_native": null,
+    "want": 0,
+    "bytes": 826,
+    "run": null
+  },
+  {
+    "build": null,
+    "id": "H03-rhs-parens-1000",
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=bd8f8376f8831526, module(s)=1, capabilities required: []\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "want_native": null,
+    "want": 0,
+    "bytes": 4026,
+    "run": null
+  },
+  {
+    "build": null,
+    "id": "H04-rhs-parens-4096",
+    "check": {
+      "stdout": "",
+      "stderr": "review hard deadline",
+      "exit": "TIMEOUT"
+    },
+    "want_native": null,
+    "want": 0,
+    "bytes": 16410,
+    "run": null
+  },
+  {
+    "build": null,
+    "id": "H05-unclosed-rhs-parens-4096",
+    "check": {
+      "stdout": "",
+      "stderr": "review hard deadline",
+      "exit": "TIMEOUT"
+    },
+    "want_native": null,
+    "want": 1,
+    "bytes": 12314,
+    "run": null
+  },
+  {
+    "build": null,
+    "id": "H06-pure-parens-100000",
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=fa081b01ee856179, module(s)=1, capabilities required: []\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "want_native": null,
+    "want": 0,
+    "bytes": 200026,
+    "run": null
+  },
+  {
+    "build": null,
+    "id": "H07-calls-1001",
+    "check": {
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H07-calls-1001\\input.at:1:2052: error[text/source.syntax]: nesting deeper than 1000 levels is not accepted\n",
+      "exit": 1
+    },
+    "want_native": null,
+    "want": 0,
+    "bytes": 3058,
+    "run": null
+  },
+  {
+    "build": null,
+    "id": "H08-if-blocks-1001",
+    "check": {
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H08-if-blocks-1001\\input.at:1:9016: error[text/source.syntax]: nesting deeper than 1000 levels is not accepted\n",
+      "exit": 1
+    },
+    "want_native": null,
+    "want": 0,
+    "bytes": 10046,
+    "run": null
+  },
+  {
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H09-parens-precedence\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H09-parens-precedence\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H09-parens-precedence\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H09-parens-precedence\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 4ef491eb80158648\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "id": "H09-parens-precedence",
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=4ef491eb80158648, module(s)=1, capabilities required: []\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "want_native": 111,
+    "want": 0,
+    "bytes": 108,
+    "run": {
+      "stdout": "",
+      "stderr": "",
+      "exit": 111
+    }
+  },
+  {
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H10-parens-comparison\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H10-parens-comparison\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H10-parens-comparison\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H10-parens-comparison\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 4d161d2ba01af874\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "id": "H10-parens-comparison",
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=4d161d2ba01af874, module(s)=1, capabilities required: []\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "want_native": 5,
+    "want": 0,
+    "bytes": 75,
+    "run": {
+      "stdout": "",
+      "stderr": "",
+      "exit": 5
+    }
+  }
+]
