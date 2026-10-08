@@ -50,9 +50,10 @@ SD_REDRAW_DELIVER_RE = re.compile(r"\[SCHED-DIAG\] redraw_deliver t=(\d+)ms")
 SD_UPDATE_RE = re.compile(
     r"\[SCHED-DIAG\] update t=(\d+)ms app=\S+ widget=\S* event=(\S*)")
 SD_UPDATE_END_RE = re.compile(r"\[SCHED-DIAG\] update_end t=(\d+)ms")
-# PLAN-740 新轴：16ms tick 真实触发节奏 + 消费标记。
+# PLAN-740 消费轴：poll 轨（16ms tick——改前）与 recv 轨（push 通道——
+# 改后）双形态；recv 无 gap 段。
 SD_MCP_POLL_RE = re.compile(
-    r"\[SCHED-DIAG\] mcp_poll t=(\d+)ms gap=(-?\d+)ms got=(\d)")
+    r"\[SCHED-DIAG\] mcp_(?:poll|recv) t=(\d+)ms(?: gap=(-?\d+)ms)? got=(\d)")
 ARMS_RE = re.compile(r"\[P725-ARMS\] (.+)$")
 SD_ENQUEUE_RE = re.compile(r"\[SCHED-DIAG\] frame_msg enqueue t=(\d+)ms")
 SD_ARM_RE = re.compile(r"\[SCHED-DIAG\] arm_frame t=(\d+)ms")
@@ -246,7 +247,8 @@ def parse_sched_diag(plines):
             continue
         m = SD_MCP_POLL_RE.search(line)
         if m:
-            gap, got = int(m.group(2)), int(m.group(3))
+            got = int(m.group(3))
+            gap = int(m.group(2)) if m.group(2) is not None else -1
             polls.append(gap)
             got_pairs.append((gap, got))
             if got:
