@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-740
-status: execution_done         # drafting → executing → execution_done → reviewed → archived（2026-10-08 work pass——待 /auto-plan:review）
+status: reviewed              # drafting → executing → execution_done → reviewed → archived（2026-10-08 review pass——待 merge）
 feature_name: 泵回环交付节奏清偿件（auto-edit PLAN-027 回执余题②消费——scroll 54fps 解锁前置：交付节奏定责+最小面修复+下游复判解锁）
 author: [agent]
 created_at: 2026-10-03
@@ -11,7 +11,7 @@ supersedes_spec_components: []
 new_spec_components:
   - "docs/specs/auto-lang/ui/design/frame-pipeline-incremental.md（SD-01：add §4d——交付节奏契约：驱动跟随性+唤醒节奏修复语义）"
   - "docs/specs/auto-lang/ui/design/frame-observability.md（SD-02：modify §1/§4——交付节奏三轴观测通道：action 消费节奏/request_redraw 发出/RedrawRequested 到达打点位）"
-touched_goals: []             # 无 goals.md 正式 GOAL-NNN 锚定本面（下游回执驱动面——731/735 先例注记式）
+touched_goals: []             # 无 goals.md 正式 GOAL-NNN 锚定本面（下游回执驱动面——731/735 先例注记式；复审核验：SD-01/02 为行为契约+观测通道沉淀，无目标增删）
 
 affects: [crates/auto-lang/src/ui/iced/renderer.rs, crates/auto-lang/src/ui/dynamic.rs, crates/auto-lang/src/ui/sched_diag.rs, docs/plans/evidence/]
 current_step: 5
@@ -293,6 +293,35 @@ downstream-handoff-v3（evidence/740/——**复判解锁预告**：auto-edit
   fold 期 merge 自然合流；④100kb s5 带外（2.48-5.57 vs 735 记带
   0.16-0.36）为跨计划漂移（1mb 带内 0.35 直证非本件面），T-03 双谱
   同带判零回退。`next: review`。
+
+- 2026-10-08 review：`stage: review`，PLAN-740，plan_revision 1，
+  `outcome: pass`。reviewed_commit=ad7b9654c（worktree lang-740
+  worktree tip；实现=a1814462c + 复审证据 ad7b9654c），
+  base_commit=c3ccd32c3，dependency_revisions=iced_winit 0.14.1/
+  iced 0.14.0（Cargo.lock 基面），spec_inputs=frame-pipeline-
+  incremental.md@SD-01（§4d add）/frame-observability.md@SD-02
+  （§1/§4 modify）——worktree specs 提交（a1814462c）复审通过
+  （描述现行为+持久决策+验收锚；与 735 §4 交付节奏契约行无冲突；
+  touched_goals=[] 复核=无 goals 锚定，731/735 注记式先例）。
+  **独立性声明**：复审在实现会话内进行——门禁全部在复审提交
+  ad7b9654c 上**重新执行**（非复用执行期证据）。acceptance_results：
+  - **AC-01 pass**：定责报告+双谱 JSONL 在档（evidence/740/×9）；
+    候选五项判定+责任链+附勘（735 scroll 相位无效驱动修正）复核。
+  - **AC-02 pass（复现）**：复审提交重建 release 后重跑 54Hz 判别
+    档——scroll follow=**1.02**（±10% 带内）、got=162/162、de_gap
+    max 20ms（ladder-p740-review-rung54.jsonl，ad7b9654c）。
+  - **AC-03 pass（重跑）**：`cargo t --no-fail-fast` 全量 5080——
+    16 预存红逐一对照 + plan502/plan484_024 两例全档负载 flake
+    （均 scoped 单复跑绿，735 在案同类）=**零新红**；`cargo tv`
+    162/162；golden 三形 0.00%（master 基线 vs 复审二进制）。
+  - **AC-04 pass**：handoff-v3 在档；范围断言复审重验（auto-edit
+    porcelain clean + 712 r2 域 diff=0 行 + 不 fork + 代码 diff 仅
+    renderer.rs 一文件）；P740-1=merge 期。
+  findings：**F-R1（nonblocking）**：McpPushRecipe stream 的
+  receiver-miss 兜底含一处非门控 eprintln（cold path，VM 轨理论
+  边缘——不进判定、零热路径开销，随债台账 P740-D2 环境域一并
+  观察即可，不阻断）。base_commit 后 master 前移（PLAN-097 画布域
+  3 code commit）域无交联——fold 期 merge 合流。`next: merge`。
 
 ## 10. 待澄清事项
 
