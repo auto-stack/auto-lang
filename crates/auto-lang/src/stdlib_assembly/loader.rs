@@ -38,6 +38,46 @@ pub fn repo_stdlib_root() -> AutoResult<std::path::PathBuf> {
     ))
 }
 
+/// PLAN-738 T-06（AC-07，SD-01/05）：stdlib 装配内容指纹——生成 API 收据
+/// （734 generation.json）与复用新鲜度门（736）消费的 stdlib 来源身份。
+///
+/// 链式 FNV-1a 64 吸收：inventory schema 版本 + provider 目录 schema 版本
+/// + 装配目标 + 全部层（模块名, 层内容指纹）按扫描序。内容级身份——改任一
+/// 层或目录声明（bump schema）即变；parse 失败层同样按内容入链（分母不删）。
+/// 目标入链：target 变化即身份变化（§5.4：target/features 改变指纹；
+/// profile/运行配置不在此——那是 736 的 config_hash）。
+pub fn stdlib_assembly_fingerprint(
+    root: &Path,
+    target: super::model::AssemblyTarget,
+) -> AutoResult<u64> {
+    if !root.is_dir() {
+        return Err(crate::error::AutoError::Msg(format!(
+            "stdlib root not found: {}",
+            root.display()
+        )));
+    }
+    let inv = scan_inventory(root);
+    let mut acc: u64 = 0xcbf29ce484222325;
+    let mut mix = |v: u64| {
+        acc ^= v;
+        acc = acc.wrapping_mul(0x100000001b3);
+    };
+    mix(INVENTORY_SCHEMA_VERSION as u64);
+    mix(super::providers::catalog_schema_version() as u64);
+    mix(match target {
+        super::model::AssemblyTarget::Vm => 1,
+        super::model::AssemblyTarget::Rust => 2,
+        super::model::AssemblyTarget::C => 3,
+    });
+    for m in &inv.modules {
+        for l in &m.layers {
+            mix(fnv1a64(&m.module));
+            mix(l.content_hash);
+        }
+    }
+    Ok(acc)
+}
+
 /// 扫描并清点 stdlib 全部 `.at` 层。
 pub fn scan_inventory(root: &Path) -> StdlibInventory {
     let mut at_files: Vec<PathBuf> = walkdir::WalkDir::new(root)
@@ -129,7 +169,12 @@ pub fn scan_inventory(root: &Path) -> StdlibInventory {
 }
 
 fn diag_sort(d: &AssemblyDiagnostic) -> String {
-    format!("{}|{}|{}", d.code, d.module, d.file.as_deref().unwrap_or(""))
+    format!(
+        "{}|{}|{}",
+        d.code,
+        d.module,
+        d.file.as_deref().unwrap_or("")
+    )
 }
 
 fn portable_file(rel: &str) -> String {
@@ -161,7 +206,9 @@ fn parse_layer(content: &str, kind: LayerKind, file: String) -> LayerInventory {
                 kind,
                 file,
                 content_hash,
-                parse: ParseStatus::Failed { error: format!("{e:?}") },
+                parse: ParseStatus::Failed {
+                    error: format!("{e:?}"),
+                },
                 symbols: Vec::new(),
             };
         }

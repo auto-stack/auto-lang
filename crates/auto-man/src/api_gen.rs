@@ -21,7 +21,7 @@ use std::path::Path;
 
 use crate::AutoResult;
 
-use auto_lang::api::{ApiModule, ApiType, ApiField, ApiEndpoint, ApiParam, ApiAttrs};
+use auto_lang::api::{ApiAttrs, ApiEndpoint, ApiField, ApiModule, ApiParam, ApiType};
 
 /// Generate API code for the project
 ///
@@ -157,7 +157,12 @@ pub fn install_project_api_glue(root_dir: &Path) -> bool {
     if !glue.exists() {
         return false;
     }
-    let lib_dir = root_dir.join("gen").join("front").join("vue").join("src").join("lib");
+    let lib_dir = root_dir
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("lib");
     let dist_lib_dir = root_dir.join("dist").join("src").join("lib");
     let mut installed = false;
     for dir in [&lib_dir, &dist_lib_dir] {
@@ -260,10 +265,14 @@ fn generate_tauri_ts_client(api_module: &auto_lang::api::ApiModule) -> String {
 
     // IPC functions
     for endpoint in &api_module.endpoints {
-        let params_ts: Vec<String> = endpoint.params.iter().map(|p| {
-            let ts_type = auto_type_to_ts(&p.ty);
-            format!("{}: {}", p.name, ts_type)
-        }).collect();
+        let params_ts: Vec<String> = endpoint
+            .params
+            .iter()
+            .map(|p| {
+                let ts_type = auto_type_to_ts(&p.ty);
+                format!("{}: {}", p.name, ts_type)
+            })
+            .collect();
 
         let return_ts = auto_type_to_ts(&endpoint.return_type);
         let args_str = if params_ts.is_empty() {
@@ -277,10 +286,7 @@ fn generate_tauri_ts_client(api_module: &auto_lang::api::ApiModule) -> String {
                 "export async function {}(): Promise<{}> {{",
                 endpoint.fn_name, return_ts
             ));
-            lines.push(format!(
-                "    return invoke('{}');",
-                endpoint.fn_name
-            ));
+            lines.push(format!("    return invoke('{}');", endpoint.fn_name));
         } else {
             lines.push(format!(
                 "export async function {}({}): Promise<{}> {{",
@@ -289,7 +295,12 @@ fn generate_tauri_ts_client(api_module: &auto_lang::api::ApiModule) -> String {
             lines.push(format!(
                 "    return invoke('{}', {{ {} }});",
                 endpoint.fn_name,
-                endpoint.params.iter().map(|p| format!("{}", p.name)).collect::<Vec<_>>().join(", ")
+                endpoint
+                    .params
+                    .iter()
+                    .map(|p| format!("{}", p.name))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ));
         }
         lines.push("}".to_string());
@@ -308,7 +319,7 @@ fn auto_type_to_ts(auto_type: &str) -> String {
     }
     // Handle suffix T? (alternative Option syntax)
     if auto_type.ends_with('?') {
-        let inner = &auto_type[..auto_type.len()-1];
+        let inner = &auto_type[..auto_type.len() - 1];
         return format!("{} | null", auto_type_to_ts(inner));
     }
     if auto_type.starts_with("[]") || auto_type.starts_with("List<") {
@@ -349,7 +360,12 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
         .map_err(|e| format!("Failed to write api.ts: {}", e))?;
 
     // Also write to vue/src/lib/ for Vue project imports
-    let vue_lib_dir = root_dir.join("gen").join("front").join("vue").join("src").join("lib");
+    let vue_lib_dir = root_dir
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("lib");
     if vue_lib_dir.exists() || root_dir.join("gen").join("front").join("vue").exists() {
         std::fs::create_dir_all(&vue_lib_dir)
             .map_err(|e| format!("Failed to create vue lib directory: {}", e))?;
@@ -358,7 +374,9 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
     }
 
     // Write API function names to a manifest file for code generator consumption
-    let fn_names: Vec<String> = api_module.endpoints.iter()
+    let fn_names: Vec<String> = api_module
+        .endpoints
+        .iter()
         .map(|ep| ep.fn_name.to_lowercase())
         .collect();
     std::fs::write(dist_dir.join(".api_functions"), fn_names.join("\n"))
@@ -373,7 +391,9 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
     // app 每次 `auto run --server vm` 都会污染框架仓。rust/tauri 路径不受影响。
     let backend_impl = std::env::var("AUTO_BACKEND_IMPL").unwrap_or_default();
     if backend_impl == "vm" {
-        println!("  ℹ VM server mode: skipping Rust server generation (AutoVM HTTP serves the API)");
+        println!(
+            "  ℹ VM server mode: skipping Rust server generation (AutoVM HTTP serves the API)"
+        );
         return Ok(());
     }
     let back_dir = if root_dir.join("src").join("back").exists() {
@@ -493,7 +513,9 @@ pub(crate) fn post_process_db_rs(mut code: String) -> String {
     // P11.6 a2r根治(改 Expr::Ident)回归面广,保留这个后处理正则作为完整覆盖.
     {
         use regex::Regex;
-        if let Ok(re) = Regex::new(r"\*(\w+)\.lock\(\)\.unwrap\(\)\.(push|insert|extend|pop|remove|retain|clear|sort_by|sort|swap|truncate|drain|splice|resize)\(") {
+        if let Ok(re) = Regex::new(
+            r"\*(\w+)\.lock\(\)\.unwrap\(\)\.(push|insert|extend|pop|remove|retain|clear|sort_by|sort|swap|truncate|drain|splice|resize)\(",
+        ) {
             code = re.replace_all(&code, "$1.lock().unwrap().$2(").to_string();
         }
     }
@@ -503,7 +525,10 @@ pub(crate) fn post_process_db_rs(mut code: String) -> String {
     code = append_tostring_for_str_fields(&code);
     // id field type widening: backend types.rs uses i64 for int, but a2r emits i32
     // guards. `id: *NEXTID.lock().unwrap()` -> add `as i64` for the id field.
-    code = code.replace("id: *NEXTID.lock().unwrap()", "id: *NEXTID.lock().unwrap() as i64");
+    code = code.replace(
+        "id: *NEXTID.lock().unwrap()",
+        "id: *NEXTID.lock().unwrap() as i64",
+    );
     // Plan 399 Phase 11.1: a2r now emits i64 for `int` (rust_type_name Type::Int
     // => i64 + as i64 casts). The blunt code.replace("i32","i64") is no longer
     // needed — comment out to confirm 015/017 still compile.
@@ -539,7 +564,9 @@ fn append_clone_for_borrowed_fields(code: &str) -> String {
         Ok(r) => r,
         Err(_) => return out,
     };
-    out = re.replace_all(&out, "${1}${2}.${3}.clone()${4}").to_string();
+    out = re
+        .replace_all(&out, "${1}${2}.${3}.clone()${4}")
+        .to_string();
     // `return Some(name)` → `return Some(name.clone())` when name is a bare ident
     // (covers `for note in &*G.lock() { ... return Some(note) }`).
     let re2 = match Regex::new(r"return Some\((\w+)\)") {
@@ -573,12 +600,17 @@ fn append_tostring_for_str_fields(code: &str) -> String {
     let mut slice_params: HashSet<String> = HashSet::new();
     for line in code.lines() {
         let l = line.trim_start();
-        if !(l.starts_with("pub fn ") || l.starts_with("fn ")) { continue; }
+        if !(l.starts_with("pub fn ") || l.starts_with("fn ")) {
+            continue;
+        }
         if let Some(open) = l.find('(') {
             if let Some(close) = l[open..].find(')') {
                 for p in l[open + 1..open + close].split(',') {
-                    let tok: Vec<&str> = p.trim().split(|c: char| c == ':' || c.is_whitespace())
-                        .filter(|t| !t.is_empty()).collect();
+                    let tok: Vec<&str> = p
+                        .trim()
+                        .split(|c: char| c == ':' || c.is_whitespace())
+                        .filter(|t| !t.is_empty())
+                        .collect();
                     if tok.len() >= 2 && (tok[1] == "str" || tok[1] == "&str") {
                         str_params.insert(tok[0].to_string());
                     }
@@ -590,12 +622,26 @@ fn append_tostring_for_str_fields(code: &str) -> String {
             }
         }
     }
-    let skip: HashSet<&str> = ["id", "mine", "done", "pinned", "time", "count", "unread", "active_id"].iter().copied().collect();
+    let skip: HashSet<&str> = [
+        "id",
+        "mine",
+        "done",
+        "pinned",
+        "time",
+        "count",
+        "unread",
+        "active_id",
+    ]
+    .iter()
+    .copied()
+    .collect();
     // Scan the whole code; for each word w that is a str param, replace `w: w,` -> `w: w.to_string(),`.
     // Process by iterating over str_params (small set) and doing targeted replace.
     let mut out = code.to_string();
     for name in &str_params {
-        if skip.contains(name.as_str()) { continue; }
+        if skip.contains(name.as_str()) {
+            continue;
+        }
         // Plan 399 §3: a2r emits `field: field` for str params; add .to_string().
         // Match both `,` (mid-struct) and ` }` (last field, no trailing comma).
         for sep in [",", " }"] {
@@ -632,10 +678,13 @@ fn strip_collection_new(code: &str) -> String {
             let lt_at = if is_array { i + 5 } else { i + 4 };
             if let Some(gt_rel) = code[lt_at..].find('>') {
                 let gt_at = lt_at + gt_rel;
-                if code.get(gt_at+1..).map_or(false, |s| s.starts_with(".new(")) {
+                if code
+                    .get(gt_at + 1..)
+                    .map_or(false, |s| s.starts_with(".new("))
+                {
                     let paren_open = gt_at + 5;
                     if let Some(paren_close) = balance_paren(code, paren_open) {
-                        out.push_str(&code[paren_open+1..paren_close]);
+                        out.push_str(&code[paren_open + 1..paren_close]);
                         i = paren_close + 1;
                         continue;
                     }
@@ -652,11 +701,19 @@ fn strip_collection_new(code: &str) -> String {
 
 /// Byte length of the UTF-8 char whose lead byte is `b`. Plan 399 §7.
 fn utf8_len(b: u8) -> usize {
-    if b < 0x80 { 1 }
-    else if b < 0xC0 { 1 } // continuation byte (shouldn't be a lead, stay safe)
-    else if b < 0xE0 { 2 }
-    else if b < 0xF0 { 3 }
-    else { 4 }
+    if b < 0x80 {
+        1
+    } else if b < 0xC0 {
+        1
+    }
+    // continuation byte (shouldn't be a lead, stay safe)
+    else if b < 0xE0 {
+        2
+    } else if b < 0xF0 {
+        3
+    } else {
+        4
+    }
 }
 
 /// Find the matching ')' for the '(' at `open`, balancing () [] {} and "".
@@ -667,11 +724,22 @@ fn balance_paren(code: &str, open: usize) -> Option<usize> {
     let mut j = open + 1;
     while j < bytes.len() {
         let c = bytes[j] as char;
-        if in_str { if c == '"' { in_str = false; } j += 1; continue; }
+        if in_str {
+            if c == '"' {
+                in_str = false;
+            }
+            j += 1;
+            continue;
+        }
         match c {
             '"' => in_str = true,
             '(' | '[' | '{' => depth += 1,
-            ')' | ']' | '}' => { depth -= 1; if depth == 0 { return Some(j); } }
+            ')' | ']' | '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(j);
+                }
+            }
             _ => {}
         }
         j += 1;
@@ -689,8 +757,13 @@ fn fix_borrowed_slice_returns(code: &str) -> String {
         if let Some(end) = out[idx..].find("]") {
             let abs_end = idx + end;
             // Replace "-> &[T]" (5 chars "-> &[") with "-> Vec<[T]"
-            out.replace_range(idx..=abs_end, &format!("-> Vec<{}>", &out[idx+5..abs_end]));
-        } else { break; }
+            out.replace_range(
+                idx..=abs_end,
+                &format!("-> Vec<{}>", &out[idx + 5..abs_end]),
+            );
+        } else {
+            break;
+        }
     }
     // Body: `return *G.lock().unwrap();` -> `return G.lock().unwrap().clone();`
     // Plan 399 §3: generalize the hardcoded MESSAGES/NOTES to any global (e.g.
@@ -698,7 +771,9 @@ fn fix_borrowed_slice_returns(code: &str) -> String {
     {
         use regex::Regex;
         if let Ok(re) = Regex::new(r"return \*(\w+)\.lock\(\)\.unwrap\(\);") {
-            out = re.replace_all(&out, "return $1.lock().unwrap().clone();").to_string();
+            out = re
+                .replace_all(&out, "return $1.lock().unwrap().clone();")
+                .to_string();
         }
     }
     out
@@ -710,11 +785,13 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     let back_name = crate::rust_ui::back_member_name(root_dir);
     let rust_dir = ws_dir.join(&back_name);
     let src_dir = rust_dir.join("src");
-    std::fs::create_dir_all(&src_dir)
-        .map_err(|e| format!("Failed to create rust/src: {}", e))?;
+    std::fs::create_dir_all(&src_dir).map_err(|e| format!("Failed to create rust/src: {}", e))?;
 
     // Plan musk-022: detect streaming endpoints — they need events.rs + cargo deps.
-    let has_sse = api_module.endpoints.iter().any(|e| e.return_type.contains("Stream<"));
+    let has_sse = api_module
+        .endpoints
+        .iter()
+        .any(|e| e.return_type.contains("Stream<"));
 
     // Plan musk-022 CRUD 扩展: read db.at early so has_db gates cargo deps + db.rs.
     let db_file = root_dir.join("src").join("back").join("db.at");
@@ -723,7 +800,10 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     } else {
         None
     };
-    let has_db = db_content.as_deref().map(|c| c.contains("pub fn")).unwrap_or(false);
+    let has_db = db_content
+        .as_deref()
+        .map(|c| c.contains("pub fn"))
+        .unwrap_or(false);
 
     // Generate Cargo.toml (workspace member version — no [workspace])
     let cargo_toml = generate_cargo_toml(&back_name, has_sse, has_db);
@@ -816,12 +896,21 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         let mut stems: Vec<String> = entries
             .filter_map(|e| e.ok())
             .filter(|e| e.path().extension().map(|x| x == "at").unwrap_or(false))
-            .filter_map(|e| e.file_name().to_str().map(|s| s.trim_end_matches(".at").to_string()))
+            .filter_map(|e| {
+                e.file_name()
+                    .to_str()
+                    .map(|s| s.trim_end_matches(".at").to_string())
+            })
             .filter(|stem| stem != "api" && stem != "db")
             .collect();
         stems.sort();
         for stem in stems {
-            let Ok(content) = std::fs::read_to_string(root_dir.join("src").join("back").join(format!("{}.at", stem))) else {
+            let Ok(content) = std::fs::read_to_string(
+                root_dir
+                    .join("src")
+                    .join("back")
+                    .join(format!("{}.at", stem)),
+            ) else {
                 continue;
             };
             match transpile_back_module_to_rs(&stem, &content) {
@@ -867,7 +956,9 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         let allow_partial = std::env::var("AUTO_ALLOW_PARTIAL_DB")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
-        let uncovered: Vec<&str> = api_module.endpoints.iter()
+        let uncovered: Vec<&str> = api_module
+            .endpoints
+            .iter()
             .filter(|e| !e.return_type.contains("Stream<"))
             .filter(|e| match db_fns.as_ref() {
                 Some(fns) => resolve_db_call(*e, fns).is_none(),
@@ -888,12 +979,19 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
                  silently diverge. Either (a) add db.rs functions for these endpoints, or \
                  (b) set AUTO_ALLOW_PARTIAL_DB=1 to accept the mixed state during migration.",
                 uncovered
-            ).into());
+            )
+            .into());
         }
     }
 
     // Generate main.rs
-    let main_rs = generate_main_rs(api_module, seed_data.as_deref(), db_full_cover, &companion_mods, api_impl_active);
+    let main_rs = generate_main_rs(
+        api_module,
+        seed_data.as_deref(),
+        db_full_cover,
+        &companion_mods,
+        api_impl_active,
+    );
     std::fs::write(src_dir.join("main.rs"), &main_rs)
         .map_err(|e| format!("Failed to write main.rs: {}", e))?;
 
@@ -917,17 +1015,11 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         let mut sources: Vec<(String, String)> = Vec::new();
         if let Some(api_file) = auto_lang::config::resolve_back_api(root_dir) {
             if let Ok(api_text) = std::fs::read_to_string(&api_file) {
-                sources.push((
-                    "api.at".into(),
-                    format!("{:x}", fnv1a(api_text.as_bytes())),
-                ));
+                sources.push(("api.at".into(), format!("{:x}", fnv1a(api_text.as_bytes()))));
             }
             if let Some(db_path) = api_file.parent().map(|d| d.join("db.at")) {
                 if let Ok(db_text) = std::fs::read_to_string(&db_path) {
-                    sources.push((
-                        "db.at".into(),
-                        format!("{:x}", fnv1a(db_text.as_bytes())),
-                    ));
+                    sources.push(("db.at".into(), format!("{:x}", fnv1a(db_text.as_bytes()))));
                 }
             }
         }
@@ -939,6 +1031,28 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         let scaffold = std::env::var("AUTO_A2R_BODY")
             .map(|v| v == "0")
             .unwrap_or(false);
+        // PLAN-738 T-06（AC-07，SD-05）：装配指纹进收据——stdlib 来源身份
+        // （inventory/provider 目录 schema + 全部层内容）与业务源指纹
+        // （source_hashes）各自记录；复用新鲜度门据此识别「改 stdlib 但
+        // api.at 不变」。stdlib 不可定位（安装环境）→ null：新鲜度门两侧
+        // null 视为一致（旧环境行为不变），单侧缺失=陈旧（再生收敛）。
+        let assembly = auto_lang::stdlib_assembly::loader::repo_stdlib_root()
+            .ok()
+            .and_then(|root| {
+                auto_lang::stdlib_assembly::loader::stdlib_assembly_fingerprint(
+                    &root,
+                    auto_lang::stdlib_assembly::model::AssemblyTarget::Rust,
+                )
+                .ok()
+            })
+            .map(|fp| {
+                serde_json::json!({
+                    "schema_version":
+                        auto_lang::stdlib_assembly::providers::catalog_schema_version(),
+                    "target": "rust",
+                    "fingerprint": format!("{fp:016x}"),
+                })
+            });
         let record = serde_json::json!({
             "schema_version": 1,
             "generated_at": std::time::SystemTime::now()
@@ -947,6 +1061,7 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
                 .unwrap_or(0),
             "endpoints": endpoints,
             "source_hashes": sources,
+            "assembly": assembly,
             "scaffold": scaffold,
         });
         let _ = std::fs::write(rust_dir.join("generation.json"), record.to_string());
@@ -963,15 +1078,24 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
 /// `back_member_name` (e.g. "015-notes-back"), not a fixed "api-server".
 fn generate_cargo_toml(package_name: &str, has_sse: bool, has_db: bool) -> String {
     // Plan 328: Cargo rejects names starting with a digit.
-    let safe_name = if package_name.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+    let safe_name = if package_name
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_digit())
+        .unwrap_or(false)
+    {
         format!("app-{}", package_name)
     } else {
         package_name.to_string()
     };
     // PLAN-730 T-06: futures 无条件依赖——上传 glue（Request body 流投影）
     // 与 SSE 共用；SSE 独占 async-stream。
-    let sse_deps = if has_sse { "
-async-stream = \"0.3\"" } else { "" };
+    let sse_deps = if has_sse {
+        "
+async-stream = \"0.3\""
+    } else {
+        ""
+    };
     let futures_deps = "
 futures = \"0.3\"";
     // Plan musk-022 CRUD 扩展: a2r 全局变量转译用 once_cell::Lazy.
@@ -984,8 +1108,12 @@ a2r-std = { workspace = true }
 # PLAN-736 AC-03/06: 连接驱动同构（hyper-util auto Builder + 准入许可 + 排空）
 hyper = { version = \"1\", features = [\"http1\", \"server\"] }
 hyper-util = { version = \"0.1\", features = [\"tokio\", \"server-auto\", \"service\", \"http1\"] }";
-    let db_deps = if has_db { "
-once_cell = \"1\"" } else { "" };
+    let db_deps = if has_db {
+        "
+once_cell = \"1\""
+    } else {
+        ""
+    };
     format!(
         r#"[package]
 name = "{}"
@@ -1018,7 +1146,8 @@ fn bus() -> Bus {
 }
 pub fn subscribe() -> broadcast::Receiver<String> { bus().subscribe() }
 pub fn broadcast(json: String) { let _ = bus().send(json); }
-"#.to_string()
+"#
+    .to_string()
 }
 
 /// Rust 关键字撞名的字段用 raw identifier（`r#type`）保名——serde derive
@@ -1028,9 +1157,9 @@ fn rust_field_ident(name: &str) -> String {
     const KEYWORDS: &[&str] = &[
         "as", "box", "break", "const", "continue", "crate", "else", "enum", "extern", "false",
         "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
-        "ref", "return", "self", "static", "struct", "super", "trait", "true", "type",
-        "unsafe", "use", "where", "while", "async", "await", "dyn", "abstract", "become",
-        "final", "macro", "override", "priv", "typeof", "unsized", "virtual", "yield",
+        "ref", "return", "self", "static", "struct", "super", "trait", "true", "type", "unsafe",
+        "use", "where", "while", "async", "await", "dyn", "abstract", "become", "final", "macro",
+        "override", "priv", "typeof", "unsized", "virtual", "yield",
     ];
     if KEYWORDS.contains(&name) {
         format!("r#{}", name)
@@ -1041,15 +1170,24 @@ fn rust_field_ident(name: &str) -> String {
 
 /// Generate types.rs with serde structs
 fn generate_types_rs(api_module: &auto_lang::api::ApiModule) -> String {
-    let mut lines = vec!["use serde::{Serialize, Deserialize};".to_string(), "".to_string()];
+    let mut lines = vec![
+        "use serde::{Serialize, Deserialize};".to_string(),
+        "".to_string(),
+    ];
 
     for api_type in &api_module.types {
         // Include Default derive for simple placeholder generation
-        lines.push(format!("#[derive(Clone, Debug, Default, Serialize, Deserialize)]"));
+        lines.push(format!(
+            "#[derive(Clone, Debug, Default, Serialize, Deserialize)]"
+        ));
         lines.push(format!("pub struct {} {{", api_type.name));
         for field in &api_type.fields {
             let rust_type = auto_type_to_rust(&field.ty);
-            lines.push(format!("    pub {}: {},", rust_field_ident(&field.name), rust_type));
+            lines.push(format!(
+                "    pub {}: {},",
+                rust_field_ident(&field.name),
+                rust_type
+            ));
         }
         lines.push("}".to_string());
         lines.push("".to_string());
@@ -1079,7 +1217,7 @@ fn auto_type_to_rust(auto_type: &str) -> String {
         return format!("Option<{}>", auto_type_to_rust(inner));
     }
     if auto_type.ends_with('?') {
-        let inner = &auto_type[..auto_type.len()-1];
+        let inner = &auto_type[..auto_type.len() - 1];
         return format!("Option<{}>", auto_type_to_rust(inner));
     }
 
@@ -1130,8 +1268,6 @@ fn has_path_param(path: &str) -> bool {
     path.split('/').any(|s| s.starts_with(':'))
 }
 
-
-
 /// Determine the primary type from an ApiModule (first defined type)
 pub fn primary_type_name_pub(api_module: &auto_lang::api::ApiModule) -> Option<String> {
     api_module.types.first().map(|t| t.name.clone())
@@ -1154,34 +1290,50 @@ fn is_meta_param(p: &ApiParam) -> bool {
 fn endpoint_body_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
     let path = endpoint.path();
     let method = endpoint.method();
-    endpoint.params.iter().filter(|p| {
-        if is_meta_param(p) { return false; }
-        // PLAN-730 T-06 / 734 R1 F-1: UploadRequest 是宿主注入参数（Request
-        // 提取器），不进 JSON body 结构/绑定（契约身份判定）。
-        if auto_lang::api::contract::is_upload_param(&p.ty) { return false; }
-        let is_path = path.contains(&format!(":{}", p.name));
-        let is_query = !is_path && matches!(method.as_str(), "GET" | "DELETE");
-        !is_path && !is_query
-    }).collect()
+    endpoint
+        .params
+        .iter()
+        .filter(|p| {
+            if is_meta_param(p) {
+                return false;
+            }
+            // PLAN-730 T-06 / 734 R1 F-1: UploadRequest 是宿主注入参数（Request
+            // 提取器），不进 JSON body 结构/绑定（契约身份判定）。
+            if auto_lang::api::contract::is_upload_param(&p.ty) {
+                return false;
+            }
+            let is_path = path.contains(&format!(":{}", p.name));
+            let is_query = !is_path && matches!(method.as_str(), "GET" | "DELETE");
+            !is_path && !is_query
+        })
+        .collect()
 }
 
 /// Get query params (non-path params on GET/DELETE endpoints)
 fn endpoint_query_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
     let path = endpoint.path();
     let method = endpoint.method();
-    endpoint.params.iter().filter(|p| {
-        if is_meta_param(p) { return false; }
-        let is_path = path.contains(&format!(":{}", p.name));
-        !is_path && matches!(method.as_str(), "GET" | "DELETE")
-    }).collect()
+    endpoint
+        .params
+        .iter()
+        .filter(|p| {
+            if is_meta_param(p) {
+                return false;
+            }
+            let is_path = path.contains(&format!(":{}", p.name));
+            !is_path && matches!(method.as_str(), "GET" | "DELETE")
+        })
+        .collect()
 }
 
 /// Get path params (params that appear in the URL path)
 fn endpoint_path_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
     let path = endpoint.path();
-    endpoint.params.iter().filter(|p| {
-        path.contains(&format!(":{}", p.name))
-    }).collect()
+    endpoint
+        .params
+        .iter()
+        .filter(|p| path.contains(&format!(":{}", p.name)))
+        .collect()
 }
 
 /// Check if endpoint has a JSON body to extract.
@@ -1208,8 +1360,7 @@ pub(crate) fn extract_db_fn_names(db_rs: &str) -> std::collections::HashSet<Stri
     use regex::Regex;
     let mut set = std::collections::HashSet::new();
     // Match `pub fn name(` at the start of a line (a2r emits this form).
-    let re = Regex::new(r"(?m)^\s*pub\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
-        .expect("valid regex");
+    let re = Regex::new(r"(?m)^\s*pub\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(").expect("valid regex");
     for cap in re.captures_iter(db_rs) {
         if let Some(m) = cap.get(1) {
             set.insert(m.as_str().to_string());
@@ -1261,23 +1412,16 @@ fn db_fn_candidates(endpoint: &ApiEndpoint) -> Vec<String> {
             // the `all_{rest}s` candidate to avoid double-plural when rest is already plural.
             let mut cands_for_verb = match verb {
                 "list" => vec![
-                    format!("all_{}", rest),       // all_notes / all_messages  ✓
+                    format!("all_{}", rest), // all_notes / all_messages  ✓
                     format!("get_{}", rest),
                     format!("list_{}", rest),
                 ],
-                "get" | "find" => vec![
-                    format!("find_{}", rest),
-                    format!("get_{}", rest),
-                ],
-                "send" | "create" | "add" => vec![
-                    format!("create_{}", rest),
-                    format!("add_{}", rest),
-                ],
+                "get" | "find" => vec![format!("find_{}", rest), format!("get_{}", rest)],
+                "send" | "create" | "add" => {
+                    vec![format!("create_{}", rest), format!("add_{}", rest)]
+                }
                 "update" | "edit" | "move" => vec![format!("update_{}", rest)],
-                "delete" | "remove" => vec![
-                    format!("delete_{}", rest),
-                    format!("remove_{}", rest),
-                ],
+                "delete" | "remove" => vec![format!("delete_{}", rest), format!("remove_{}", rest)],
                 "toggle" => vec![format!("toggle_{}", rest)],
                 "search" => vec![format!("search_{}", rest)],
                 _ => vec![],
@@ -1375,12 +1519,11 @@ fn resolve_db_call(
 ) -> Option<DbDelegation> {
     // Plan 399 §8: prefer the body's explicit `db.FN(...)` call over the
     // name-heuristic (handles synonyms/plurals/aliases that the heuristic misses).
-    let db_fn = extract_db_fn_from_body(endpoint, db_fns)
-        .or_else(|| {
-            db_fn_candidates(endpoint)
-                .into_iter()
-                .find(|c| db_fns.contains(c))
-        })?;
+    let db_fn = extract_db_fn_from_body(endpoint, db_fns).or_else(|| {
+        db_fn_candidates(endpoint)
+            .into_iter()
+            .find(|c| db_fns.contains(c))
+    })?;
     let path = endpoint.path();
     let method = endpoint.method();
     let is_str = |ty: &str| {
@@ -1393,24 +1536,40 @@ fn resolve_db_call(
         let t = ty.trim();
         t == "[]str" || t == "[]String" || t == "&[String]"
     };
-    let args: Vec<String> = endpoint.params.iter().map(|p| {
-        if is_meta_param(p) {
-            // Plan B1(b): server-injected metadata — bound from headers in the
-            // handler prologue (see meta_json), never a query/body field.
-            return "&meta".to_string();
-        }
-        let is_path = path.contains(&format!(":{}", p.name));
-        let is_query = !is_path && matches!(method.as_str(), "GET" | "DELETE");
-        let borrow = is_str(&p.ty) || is_slice_str(&p.ty);
-        if is_path {
-            // Path str params are rare; borrow them too (Path<String> → &str).
-            if borrow { format!("&{}", p.name) } else { p.name.clone() }
-        } else if is_query {
-            if borrow { format!("&query.{}", p.name) } else { format!("query.{}", p.name) }
-        } else {
-            if borrow { format!("&input.{}", p.name) } else { format!("input.{}", p.name) }
-        }
-    }).collect();
+    let args: Vec<String> = endpoint
+        .params
+        .iter()
+        .map(|p| {
+            if is_meta_param(p) {
+                // Plan B1(b): server-injected metadata — bound from headers in the
+                // handler prologue (see meta_json), never a query/body field.
+                return "&meta".to_string();
+            }
+            let is_path = path.contains(&format!(":{}", p.name));
+            let is_query = !is_path && matches!(method.as_str(), "GET" | "DELETE");
+            let borrow = is_str(&p.ty) || is_slice_str(&p.ty);
+            if is_path {
+                // Path str params are rare; borrow them too (Path<String> → &str).
+                if borrow {
+                    format!("&{}", p.name)
+                } else {
+                    p.name.clone()
+                }
+            } else if is_query {
+                if borrow {
+                    format!("&query.{}", p.name)
+                } else {
+                    format!("query.{}", p.name)
+                }
+            } else {
+                if borrow {
+                    format!("&input.{}", p.name)
+                } else {
+                    format!("input.{}", p.name)
+                }
+            }
+        })
+        .collect();
     Some(DbDelegation { db_fn, args })
 }
 
@@ -1500,7 +1659,10 @@ fn stmt_has_nested_call_argument(stmt: &auto_lang::ast::Stmt) -> bool {
         _ => return false,
     };
     let Expr::Call(call) = expr else { return false };
-    call.args.args.iter().any(|arg| matches!(arg.get_expr(), Expr::Call(_)))
+    call.args
+        .args
+        .iter()
+        .any(|arg| matches!(arg.get_expr(), Expr::Call(_)))
 }
 
 /// A statement that makes a handler body "non-thin": control flow whose
@@ -1520,9 +1682,9 @@ fn try_transpile_body(
     endpoint: &ApiEndpoint,
     api_module: &auto_lang::api::ApiModule,
 ) -> Result<Vec<String>, String> {
+    use auto_lang::ast::Type;
     use auto_lang::trans::rust::RustTrans;
     use auto_val::AutoStr;
-    use auto_lang::ast::Type;
 
     let mut trans = RustTrans::new(AutoStr::from("api_handler"));
     // PLAN-730 T-06: `~T`（Future<T>）handler 的内联体在 async fn 内执行
@@ -1551,15 +1713,23 @@ fn try_transpile_body(
             (AutoStr::from(p.name.as_str()), ty)
         })
         .collect();
-    trans.transpile_body_stmts(body, &params).map_err(|e| e.to_string())
+    trans
+        .transpile_body_stmts(body, &params)
+        .map_err(|e| e.to_string())
 }
 
 fn append_inline_param_bindings(lines: &mut Vec<String>, endpoint: &ApiEndpoint) {
     for param in endpoint_body_params(endpoint) {
-        lines.push(format!("    let {} = input.{}.clone();", param.name, param.name));
+        lines.push(format!(
+            "    let {} = input.{}.clone();",
+            param.name, param.name
+        ));
     }
     for param in endpoint_query_params(endpoint) {
-        lines.push(format!("    let {} = query.{}.clone();", param.name, param.name));
+        lines.push(format!(
+            "    let {} = query.{}.clone();",
+            param.name, param.name
+        ));
     }
 }
 
@@ -2033,7 +2203,10 @@ fn wrap_file_return(line: &str) -> String {
     let Some(value) = trimmed.strip_prefix("return ") else {
         return line.to_string();
     };
-    let value = value.trim_end().strip_suffix(';').unwrap_or(value.trim_end());
+    let value = value
+        .trim_end()
+        .strip_suffix(';')
+        .unwrap_or(value.trim_end());
     if value.is_empty() {
         return line.to_string();
     }
@@ -2116,7 +2289,10 @@ fn wrap_inline_return(line: &str) -> String {
     let Some(value) = trimmed.strip_prefix("return ") else {
         return line.to_string();
     };
-    let value = value.trim_end().strip_suffix(';').unwrap_or(value.trim_end());
+    let value = value
+        .trim_end()
+        .strip_suffix(';')
+        .unwrap_or(value.trim_end());
     if value.starts_with("JsonResponse(") || value.is_empty() {
         return line.to_string();
     }
@@ -2199,10 +2375,21 @@ fn split_top_level_args(source: &str) -> Vec<&str> {
 fn db_string_param_signatures(db_source: &str) -> std::collections::HashMap<String, Vec<bool>> {
     let mut signatures = std::collections::HashMap::new();
     for line in db_source.lines() {
-        let Some(decl) = line.trim().strip_prefix("pub fn ") else { continue };
-        let Some(open_rel) = decl.find('(') else { continue };
-        let Some(close_rel) = matching_paren(decl, open_rel) else { continue };
-        let name = decl[..open_rel].trim().split('<').next().unwrap_or("").trim();
+        let Some(decl) = line.trim().strip_prefix("pub fn ") else {
+            continue;
+        };
+        let Some(open_rel) = decl.find('(') else {
+            continue;
+        };
+        let Some(close_rel) = matching_paren(decl, open_rel) else {
+            continue;
+        };
+        let name = decl[..open_rel]
+            .trim()
+            .split('<')
+            .next()
+            .unwrap_or("")
+            .trim();
         let params = split_top_level_args(&decl[open_rel + 1..close_rel]);
         let string_params = params
             .iter()
@@ -2797,14 +2984,12 @@ fn push_delegating_scalar_handlers(
                     } else {
                         p.name.clone()
                     };
-                    (
-                        format!("Path({}): Path<{}>", p.name, rust_type),
-                        vec![call],
-                    )
+                    (format!("Path({}): Path<{}>", p.name, rust_type), vec![call])
                 }
                 None => (String::new(), Vec::new()),
             };
-            let mut file_sig = "method: axum::http::Method, headers: axum::http::HeaderMap".to_string();
+            let mut file_sig =
+                "method: axum::http::Method, headers: axum::http::HeaderMap".to_string();
             if !path_sig.is_empty() {
                 file_sig.push_str(", ");
                 file_sig.push_str(&path_sig);
@@ -2828,9 +3013,7 @@ fn push_delegating_scalar_handlers(
                     endpoint.fn_name,
                     all_args.join(", ")
                 ));
-                lines.push(
-                    "    __file_reply(descriptor, &method, &headers).await".to_string(),
-                );
+                lines.push("    __file_reply(descriptor, &method, &headers).await".to_string());
             } else {
                 eprintln!(
                     "  ⚠ PLAN-729 file endpoint `{} {}` ({}) uses {} — file endpoints support GET/HEAD only; emitting 405",
@@ -2862,12 +3045,21 @@ fn push_delegating_scalar_handlers(
         } else {
             " -> JsonResponse<i64>".to_string()
         };
-        lines.push(format!("pub async fn {}({}){} {{", endpoint.fn_name, sig, ret_clause));
+        lines.push(format!(
+            "pub async fn {}({}){} {{",
+            endpoint.fn_name, sig, ret_clause
+        ));
         if ret == "void" || ret.is_empty() {
-            lines.push(format!("    crate::{}::{}({});", target, endpoint.fn_name, call_args));
+            lines.push(format!(
+                "    crate::{}::{}({});",
+                target, endpoint.fn_name, call_args
+            ));
             lines.push("    StatusCode::OK".to_string());
         } else {
-            lines.push(format!("    JsonResponse(crate::{}::{}({}))", target, endpoint.fn_name, call_args));
+            lines.push(format!(
+                "    JsonResponse(crate::{}::{}({}))",
+                target, endpoint.fn_name, call_args
+            ));
         }
         lines.push("}".to_string());
     }
@@ -2917,7 +3109,10 @@ fn generate_api_rs(
 
     // PLAN-734 T-04（SD-04）：AUTO_A2R_BODY=0 = 显式 scaffold 模式——模板桩
     // 而非真实业务体；头部标注防冒充同源。
-    if std::env::var("AUTO_A2R_BODY").map(|v| v == "0").unwrap_or(false) {
+    if std::env::var("AUTO_A2R_BODY")
+        .map(|v| v == "0")
+        .unwrap_or(false)
+    {
         lines.insert(
             0,
             "// PLAN-734: SCAFFOLD MODE (AUTO_A2R_BODY=0) — handlers below are template stubs, NOT the api.at business bodies."
@@ -2934,9 +3129,16 @@ fn generate_api_rs(
             if db_active {
                 let fns = db_fns.unwrap();
                 lines.push("// db-covered scalar service endpoints (PLAN-013 T2)".to_string());
-                push_delegating_scalar_handlers(&mut lines, api_module, &|name| fns.contains(name), "db");
-                return lines.join("
-");
+                push_delegating_scalar_handlers(
+                    &mut lines,
+                    api_module,
+                    &|name| fns.contains(name),
+                    "db",
+                );
+                return lines.join(
+                    "
+",
+                );
             }
             // PLAN-681 T-02 (route A): scalar contract without db coverage —
             // if api_impl.rs transpiled, every endpoint delegates to its real
@@ -2966,7 +3168,11 @@ fn generate_api_rs(
     // Plan B1(b): meta_json helper — parity with the VM server's trailing
     // `meta` arg ({"cookies":{…},"auth":"…"}). Emitted only when some
     // endpoint declares the `meta str` server-injected param.
-    if api_module.endpoints.iter().any(|e| e.params.iter().any(|p| is_meta_param(p))) {
+    if api_module
+        .endpoints
+        .iter()
+        .any(|e| e.params.iter().any(|p| is_meta_param(p)))
+    {
         lines.push(META_JSON_HELPER.to_string());
         lines.push(META_BEARER_TOKEN_HELPER.to_string());
         lines.push("".to_string());
@@ -2983,9 +3189,11 @@ fn generate_api_rs(
         if endpoint.method() == "POST" {
             let body_params = endpoint_body_params(endpoint);
             if !body_params.is_empty() {
-                let param_sig: String = body_params.iter()
+                let param_sig: String = body_params
+                    .iter()
                     .map(|p| format!("{}:{}", p.name, p.ty))
-                    .collect::<Vec<_>>().join(",");
+                    .collect::<Vec<_>>()
+                    .join(",");
                 if seen_create_sets.contains(&param_sig) {
                     continue;
                 }
@@ -2994,13 +3202,16 @@ fn generate_api_rs(
                 let struct_name = if seen_create_sets.len() == 1 {
                     format!("Create{}Input", primary_type)
                 } else {
-                    let suffix: String = ep_fn_name.split('_').map(|s| {
-                        let mut c = s.chars();
-                        match c.next() {
-                            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-                            None => String::new(),
-                        }
-                    }).collect::<String>();
+                    let suffix: String = ep_fn_name
+                        .split('_')
+                        .map(|s| {
+                            let mut c = s.chars();
+                            match c.next() {
+                                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                                None => String::new(),
+                            }
+                        })
+                        .collect::<String>();
                     format!("Create{}{}Input", primary_type, suffix)
                 };
                 create_struct_for_sig.push((param_sig, struct_name.clone()));
@@ -3026,9 +3237,11 @@ fn generate_api_rs(
             let body_params = endpoint_body_params(endpoint);
             if !body_params.is_empty() {
                 // Create a signature for this param set
-                let param_sig: String = body_params.iter()
+                let param_sig: String = body_params
+                    .iter()
                     .map(|p| format!("{}:{}", p.name, p.ty))
-                    .collect::<Vec<_>>().join(",");
+                    .collect::<Vec<_>>()
+                    .join(",");
                 if seen_param_sets.contains(&param_sig) {
                     continue; // Skip duplicate
                 }
@@ -3039,13 +3252,16 @@ fn generate_api_rs(
                     format!("Update{}Input", primary_type)
                 } else {
                     // PascalCase the fn_name suffix
-                    let suffix: String = ep_fn_name.split('_').map(|s| {
-                        let mut c = s.chars();
-                        match c.next() {
-                            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-                            None => String::new(),
-                        }
-                    }).collect::<String>();
+                    let suffix: String = ep_fn_name
+                        .split('_')
+                        .map(|s| {
+                            let mut c = s.chars();
+                            match c.next() {
+                                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                                None => String::new(),
+                            }
+                        })
+                        .collect::<String>();
                     format!("Update{}{}Input", primary_type, suffix)
                 };
 
@@ -3079,7 +3295,9 @@ fn generate_api_rs(
     }
 
     // Get type field names for time detection
-    let type_fields: Vec<&str> = api_module.types.iter()
+    let type_fields: Vec<&str> = api_module
+        .types
+        .iter()
         .find(|t| t.name == primary_type)
         .map(|t| t.fields.iter().map(|f| f.name.as_str()).collect())
         .unwrap_or_default();
@@ -3088,7 +3306,10 @@ fn generate_api_rs(
     let id_field = type_fields.first().copied().unwrap_or("id");
 
     // Plan musk-022: detect SSE for POST broadcast.
-    let has_sse = api_module.endpoints.iter().any(|e| e.return_type.contains("Stream<"));
+    let has_sse = api_module
+        .endpoints
+        .iter()
+        .any(|e| e.return_type.contains("Stream<"));
 
     // Generate handler for each endpoint
     for endpoint in &api_module.endpoints {
@@ -3109,7 +3330,10 @@ fn generate_api_rs(
             lines.push("    let stream = async_stream::stream! {".to_string());
             lines.push("        let mut rx = rx;".to_string());
             lines.push("        while let Ok(json) = rx.recv().await {".to_string());
-            lines.push("            yield Ok(axum::response::sse::Event::default().data(json));".to_string());
+            lines.push(
+                "            yield Ok(axum::response::sse::Event::default().data(json));"
+                    .to_string(),
+            );
             lines.push("        }".to_string());
             lines.push("    };".to_string());
             lines.push("    axum::response::Sse::new(stream)".to_string());
@@ -3162,10 +3386,13 @@ fn generate_api_rs(
                 if !body_params.is_empty() {
                     // Plan 399 Phase 12: pick the CreateInput struct matching this
                     // endpoint's body-param signature (was: always Create{Type}Input).
-                    let param_sig: String = body_params.iter()
+                    let param_sig: String = body_params
+                        .iter()
                         .map(|p| format!("{}:{}", p.name, p.ty))
-                        .collect::<Vec<_>>().join(",");
-                    let struct_name = create_struct_for_sig.iter()
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    let struct_name = create_struct_for_sig
+                        .iter()
                         .find(|(sig, _)| sig == &param_sig)
                         .map(|(_, name)| name.clone())
                         .unwrap_or_else(|| format!("Create{}Input", primary_type));
@@ -3178,19 +3405,28 @@ fn generate_api_rs(
                 let body_params = endpoint_body_params(endpoint);
                 if !body_params.is_empty() {
                     // Find the matching struct name for this endpoint's params
-                    let param_sig: String = body_params.iter()
+                    let param_sig: String = body_params
+                        .iter()
                         .map(|p| format!("{}:{}", p.name, p.ty))
-                        .collect::<Vec<_>>().join(",");
-                    let struct_name = if seen_param_sets.first().map(|s| s == &param_sig).unwrap_or(false) {
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    let struct_name = if seen_param_sets
+                        .first()
+                        .map(|s| s == &param_sig)
+                        .unwrap_or(false)
+                    {
                         format!("Update{}Input", primary_type)
                     } else {
-                        let suffix: String = fn_name.split('_').map(|s| {
-                            let mut c = s.chars();
-                            match c.next() {
-                                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-                                None => String::new(),
-                            }
-                        }).collect::<String>();
+                        let suffix: String = fn_name
+                            .split('_')
+                            .map(|s| {
+                                let mut c = s.chars();
+                                match c.next() {
+                                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                                    None => String::new(),
+                                }
+                            })
+                            .collect::<String>();
                         format!("Update{}{}Input", primary_type, suffix)
                     };
                     params.push(format!("Json(input): Json<{}>", struct_name));
@@ -3205,7 +3441,9 @@ fn generate_api_rs(
         // an eligible a2r body. The CRUD template ignores it, so no extractor
         // there (unused fn params would only add noise).
         let has_meta = endpoint.params.iter().any(|p| is_meta_param(p));
-        let a2r_body_enabled = std::env::var("AUTO_A2R_BODY").map(|v| v != "0").unwrap_or(true);
+        let a2r_body_enabled = std::env::var("AUTO_A2R_BODY")
+            .map(|v| v != "0")
+            .unwrap_or(true);
         let meta_binding_needed = has_meta
             && (db_delegation.is_some()
                 || (a2r_body_enabled && !is_thin_delegation(endpoint) && endpoint.body.is_some()));
@@ -3235,7 +3473,9 @@ fn generate_api_rs(
                     fn_name
                 ));
                 lines.push("    axum::response::Response::builder()".to_string());
-                lines.push("        .status(axum::http::StatusCode::METHOD_NOT_ALLOWED)".to_string());
+                lines.push(
+                    "        .status(axum::http::StatusCode::METHOD_NOT_ALLOWED)".to_string(),
+                );
                 lines.push("        .header(\"allow\", \"GET, HEAD\")".to_string());
                 lines.push("        .header(\"content-type\", \"application/json\")".to_string());
                 lines.push("        .body(axum::body::Body::from(br#\"{\"error\":\"file endpoints support GET/HEAD only\"}\"#.to_vec()))".to_string());
@@ -3261,9 +3501,10 @@ fn generate_api_rs(
                 fn_name,
                 params.join(", ")
             ));
-            let body_src = endpoint.body.as_ref().and_then(|b| {
-                crate::api_gen::try_transpile_body(b, endpoint, api_module).ok()
-            });
+            let body_src = endpoint
+                .body
+                .as_ref()
+                .and_then(|b| crate::api_gen::try_transpile_body(b, endpoint, api_module).ok());
             match body_src {
                 Some(stmts) => {
                     if has_meta {
@@ -3285,10 +3526,12 @@ fn generate_api_rs(
                 None => {
                     // 转译失败：诊断（不落模板）+ 500 handler。
                     let detail = match endpoint.body.as_ref() {
-                        Some(b) => match crate::api_gen::try_transpile_body(b, endpoint, api_module) {
-                            Err(e) => e,
-                            Ok(_) => "empty body".to_string(),
-                        },
+                        Some(b) => {
+                            match crate::api_gen::try_transpile_body(b, endpoint, api_module) {
+                                Err(e) => e,
+                                Ok(_) => "empty body".to_string(),
+                            }
+                        }
                         None => "no body captured".to_string(),
                     };
                     eprintln!(
@@ -3297,7 +3540,10 @@ fn generate_api_rs(
                     );
                     lines.push(format!(
                         "    return file_response_reply_missing({:?}).await;",
-                        format!("api.at handler `{}` body failed to transpile: {}", fn_name, detail)
+                        format!(
+                            "api.at handler `{}` body failed to transpile: {}",
+                            fn_name, detail
+                        )
                     ));
                 }
             }
@@ -3326,7 +3572,9 @@ fn generate_api_rs(
                     fn_name
                 ));
                 lines.push("    axum::response::Response::builder()".to_string());
-                lines.push("        .status(axum::http::StatusCode::METHOD_NOT_ALLOWED)".to_string());
+                lines.push(
+                    "        .status(axum::http::StatusCode::METHOD_NOT_ALLOWED)".to_string(),
+                );
                 lines.push("        .header(\"allow\", \"POST, PUT\")".to_string());
                 lines.push("        .header(\"content-type\", \"application/json\")".to_string());
                 lines.push("        .body(axum::body::Body::from(br#\"{\\\"error\\\":\\\"upload endpoints support POST/PUT only\\\"}\"#.to_vec()))".to_string());
@@ -3373,10 +3621,7 @@ fn generate_api_rs(
                     continue;
                 }
                 if endpoint.path().contains(&format!(":{}", p.name)) {
-                    lines.push(format!(
-                        "    let {n} = {n}.as_str();",
-                        n = p.name
-                    ));
+                    lines.push(format!("    let {n} = {n}.as_str();", n = p.name));
                 }
             }
             let body_src = endpoint
@@ -3401,11 +3646,12 @@ fn generate_api_rs(
                 }
                 None => {
                     let detail = match endpoint.body.as_ref() {
-                        Some(b) => match crate::api_gen::try_transpile_body(b, endpoint, api_module)
-                        {
-                            Err(e) => e,
-                            Ok(_) => "empty body".to_string(),
-                        },
+                        Some(b) => {
+                            match crate::api_gen::try_transpile_body(b, endpoint, api_module) {
+                                Err(e) => e,
+                                Ok(_) => "empty body".to_string(),
+                            }
+                        }
                         None => "no body captured".to_string(),
                     };
                     eprintln!(
@@ -3434,7 +3680,8 @@ fn generate_api_rs(
         let needs_result = has_path || matches!(method.as_str(), "DELETE" | "PUT");
         // For Result-returning endpoints, strip Option<> since 404 is handled via Err
         let json_inner = if needs_result {
-            raw_ret.strip_prefix("Option<")
+            raw_ret
+                .strip_prefix("Option<")
                 .and_then(|s| s.strip_suffix('>'))
                 .unwrap_or(&raw_ret)
                 .to_string()
@@ -3571,7 +3818,9 @@ fn generate_api_rs(
                     // The typing endpoint conventionally takes a single `sender`
                     // str param naming who is typing.
                     let name_field = endpoint_body_params(endpoint)
-                        .first().map(|p| p.name.as_str()).unwrap_or("sender");
+                        .first()
+                        .map(|p| p.name.as_str())
+                        .unwrap_or("sender");
                     lines.push(format!(
                         "    let evt = serde_json::json!({{ \"event\": \"Typing\", \"name\": input.{} }});",
                         name_field
@@ -3595,16 +3844,16 @@ fn generate_api_rs(
                         call, json_inner
                     ));
                 } else {
-                    lines.push(format!(
-                        "    Ok(JsonResponse::<{}>({}))",
-                        json_inner, call
-                    ));
+                    lines.push(format!("    Ok(JsonResponse::<{}>({}))", json_inner, call));
                 }
             } else if has_sse && method == "POST" {
                 // Capture the created item, broadcast, then return it.
                 // Plan 399 §6: event name is New{Type} (was hardcoded "NewMessage").
                 lines.push(format!("    let item = {};", call));
-                lines.push("    let mut evt = serde_json::to_value(&item).unwrap_or_default();".to_string());
+                lines.push(
+                    "    let mut evt = serde_json::to_value(&item).unwrap_or_default();"
+                        .to_string(),
+                );
                 lines.push(format!(
                     "    if let Some(obj) = evt.as_object_mut() {{ obj.insert(\"event\".to_string(), serde_json::Value::String(\"{}\".to_string())); }}",
                     bcast_evt.as_deref().unwrap_or("NewMessage")
@@ -3641,9 +3890,15 @@ fn generate_api_rs(
                     lines.push("    StatusCode::OK".to_string());
                 }
             } else if needs_result {
-                lines.push(format!("    Ok(JsonResponse::<{}>(Default::default()))", json_inner));
+                lines.push(format!(
+                    "    Ok(JsonResponse::<{}>(Default::default()))",
+                    json_inner
+                ));
             } else {
-                lines.push(format!("    JsonResponse::<{}>(Default::default())", json_inner));
+                lines.push(format!(
+                    "    JsonResponse::<{}>(Default::default())",
+                    json_inner
+                ));
             }
             lines.push("}".to_string());
             lines.push("".to_string());
@@ -3659,13 +3914,19 @@ fn generate_api_rs(
                 lines.push("    let filtered: Vec<_> = items.iter().filter(|n| {".to_string());
                 for (i, param) in query_params.iter().enumerate() {
                     let connector = if i == 0 { "" } else { " && " };
-                    let field = param.name.trim_start_matches("query_").trim_start_matches("search_");
+                    let field = param
+                        .name
+                        .trim_start_matches("query_")
+                        .trim_start_matches("search_");
                     // Heuristic: "query" param → search title+body; named field → match that field
                     if field == "query" || field == "q" || field == "search" {
                         lines.push(format!("        {}n.title.to_lowercase().contains(&query.{}.to_lowercase()) || n.body.to_lowercase().contains(&query.{}.to_lowercase())",
                             connector, param.name, param.name));
                     } else {
-                        lines.push(format!("        {}n.{} == query.{}", connector, field, param.name));
+                        lines.push(format!(
+                            "        {}n.{} == query.{}",
+                            connector, field, param.name
+                        ));
                     }
                 }
                 lines.push("    }).cloned().collect();".to_string());
@@ -3676,7 +3937,10 @@ fn generate_api_rs(
                 // items.clone() 是 Vec<T> 而签名是 JsonResponse<T>（E0308）。
                 // 集合声明（[]T）json_inner 为 Vec<primary>，走 list-all 原路。
                 if json_inner == primary_type {
-                    lines.push(format!("    JsonResponse::<{}>(Default::default())", json_inner));
+                    lines.push(format!(
+                        "    JsonResponse::<{}>(Default::default())",
+                        json_inner
+                    ));
                 } else {
                     lines.push("    let items = db.lock().unwrap();".to_string());
                     lines.push("    JsonResponse(items.clone())".to_string());
@@ -3685,7 +3949,10 @@ fn generate_api_rs(
             "GET" if has_path => {
                 // Get by ID
                 let path_params = endpoint_path_params(endpoint);
-                let id_name = path_params.first().map(|p| p.name.as_str()).unwrap_or(id_field);
+                let id_name = path_params
+                    .first()
+                    .map(|p| p.name.as_str())
+                    .unwrap_or(id_field);
                 lines.push("    let items = db.lock().unwrap();".to_string());
                 lines.push("    items.iter()".to_string());
                 lines.push(format!("        .find(|n| n.{} == {})", id_name, id_name));
@@ -3720,7 +3987,10 @@ fn generate_api_rs(
                 }
                 lines.push("    items.push(item.clone());".to_string());
                 if has_sse {
-                    lines.push("    let mut evt = serde_json::to_value(&item).unwrap_or_default();".to_string());
+                    lines.push(
+                        "    let mut evt = serde_json::to_value(&item).unwrap_or_default();"
+                            .to_string(),
+                    );
                     lines.push(format!(
                         "    if let Some(obj) = evt.as_object_mut() {{ obj.insert(\"event\".to_string(), serde_json::Value::String(\"{}\".to_string())); }}",
                         bcast_evt.as_deref().unwrap_or("NewMessage")
@@ -3732,7 +4002,10 @@ fn generate_api_rs(
             "PUT" => {
                 // Update
                 let path_params = endpoint_path_params(endpoint);
-                let id_name = path_params.first().map(|p| p.name.as_str()).unwrap_or(id_field);
+                let id_name = path_params
+                    .first()
+                    .map(|p| p.name.as_str())
+                    .unwrap_or(id_field);
                 lines.push("    let mut items = db.lock().unwrap();".to_string());
                 lines.push(format!(
                     "    if let Some(item) = items.iter_mut().find(|n| n.{} == {}) {{",
@@ -3741,13 +4014,17 @@ fn generate_api_rs(
                 let body_params = endpoint_body_params(endpoint);
                 if !body_params.is_empty() {
                     for param in &body_params {
-                        lines.push(format!("        item.{} = input.{}.clone();", param.name, param.name));
+                        lines.push(format!(
+                            "        item.{} = input.{}.clone();",
+                            param.name, param.name
+                        ));
                     }
                 } else {
                     // Update from full type - copy all fields except id
                     for field in &type_fields {
                         if *field != id_name {
-                            lines.push(format!("        item.{} = input.{}.clone();", field, field));
+                            lines
+                                .push(format!("        item.{} = input.{}.clone();", field, field));
                         }
                     }
                 }
@@ -3762,10 +4039,16 @@ fn generate_api_rs(
             "DELETE" => {
                 // Delete
                 let path_params = endpoint_path_params(endpoint);
-                let id_name = path_params.first().map(|p| p.name.as_str()).unwrap_or(id_field);
+                let id_name = path_params
+                    .first()
+                    .map(|p| p.name.as_str())
+                    .unwrap_or(id_field);
                 lines.push("    let mut items = db.lock().unwrap();".to_string());
                 lines.push("    let len_before = items.len();".to_string());
-                lines.push(format!("    items.retain(|n| n.{} != {});", id_name, id_name));
+                lines.push(format!(
+                    "    items.retain(|n| n.{} != {});",
+                    id_name, id_name
+                ));
                 lines.push("    if items.len() < len_before {".to_string());
                 if raw_ret == "bool" {
                     lines.push("        Ok(JsonResponse(true))".to_string());
@@ -3779,7 +4062,10 @@ fn generate_api_rs(
             "PATCH" => {
                 // PATCH: toggle/update specific fields (e.g. toggle_pin)
                 let path_params = endpoint_path_params(endpoint);
-                let id_name = path_params.first().map(|p| p.name.as_str()).unwrap_or(id_field);
+                let id_name = path_params
+                    .first()
+                    .map(|p| p.name.as_str())
+                    .unwrap_or(id_field);
                 let body_params = endpoint_body_params(endpoint);
                 lines.push("    let mut items = db.lock().unwrap();".to_string());
                 lines.push(format!(
@@ -3789,9 +4075,15 @@ fn generate_api_rs(
                 // Toggle boolean fields; set others from input
                 for param in &body_params {
                     if param.ty.contains("bool") {
-                        lines.push(format!("        item.{} = !item.{};", param.name, param.name));
+                        lines.push(format!(
+                            "        item.{} = !item.{};",
+                            param.name, param.name
+                        ));
                     } else {
-                        lines.push(format!("        item.{} = input.{}.clone();", param.name, param.name));
+                        lines.push(format!(
+                            "        item.{} = input.{}.clone();",
+                            param.name, param.name
+                        ));
                     }
                 }
                 // If no body params, infer toggle from fn name (e.g. toggle_pin → toggle pinned)
@@ -3835,7 +4127,10 @@ fn generate_api_rs(
 /// If db_at_content is provided, try to extract seed data from
 /// `var notes List<Note>.new([...])` declarations. Fall back to
 /// generating 3 default sample items.
-pub fn generate_initial_data_pub(api_module: &auto_lang::api::ApiModule, db_at_content: Option<&str>) -> String {
+pub fn generate_initial_data_pub(
+    api_module: &auto_lang::api::ApiModule,
+    db_at_content: Option<&str>,
+) -> String {
     // Try to extract seed data from db.at first
     if let Some(content) = db_at_content {
         if let Some(seed) = extract_seed_data(content, api_module) {
@@ -3975,10 +4270,13 @@ fn convert_at_fields_to_rust(fields_str: &str, api_type: &auto_lang::api::ApiTyp
             let rust_value = if value.starts_with('[') {
                 // Array: ["a", "b"] → vec!["a".into(), "b".into()]
                 let inner = value.trim_start_matches('[').trim_end_matches(']');
-                let items: Vec<&str> = inner.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
-                let rust_items: Vec<String> = items.iter()
-                    .map(|s| format!("{}.into()", s))
+                let items: Vec<&str> = inner
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
                     .collect();
+                let rust_items: Vec<String> =
+                    items.iter().map(|s| format!("{}.into()", s)).collect();
                 format!("vec![{}]", rust_items.join(", "))
             } else if value.starts_with('"') {
                 // String literal: ensure .into()
@@ -4010,40 +4308,44 @@ fn generate_default_seed_data(api_module: &auto_lang::api::ApiModule) -> String 
     // Generate 3 sample items based on type fields
     let mut items = vec![];
     for i in 0..3 {
-        let fields: Vec<String> = api_type.fields.iter().map(|f| {
-            let val = match f.ty.as_str() {
-                "int" | "i64" => format!("{}", i),
-                "str" | "String" => {
-                    let sample = match f.name.as_str() {
-                        "title" | "name" => match i {
-                            0 => "Welcome",
-                            1 => "Shopping List",
-                            _ => "Meeting Notes",
-                        },
-                        "body" | "description" | "content" => match i {
-                            0 => "This is your notes app. Click on any note to view it.",
-                            1 => "Milk, Eggs, Bread, Cheese",
-                            _ => "Q3 roadmap discussion with the team",
-                        },
-                        "email" => match i {
-                            0 => "alice@example.com",
-                            1 => "bob@example.com",
-                            _ => "charlie@example.com",
-                        },
-                        "time" | "date" | "created_at" => match i {
-                            0 => "Just now",
-                            1 => "2 hours ago",
-                            _ => "Yesterday",
-                        },
-                        _ => "Sample",
-                    };
-                    format!("\"{}\".into()", sample)
-                }
-                "bool" => "false".to_string(),
-                _ => "Default::default()".to_string(),
-            };
-            format!("{}: {}", f.name, val)
-        }).collect();
+        let fields: Vec<String> = api_type
+            .fields
+            .iter()
+            .map(|f| {
+                let val = match f.ty.as_str() {
+                    "int" | "i64" => format!("{}", i),
+                    "str" | "String" => {
+                        let sample = match f.name.as_str() {
+                            "title" | "name" => match i {
+                                0 => "Welcome",
+                                1 => "Shopping List",
+                                _ => "Meeting Notes",
+                            },
+                            "body" | "description" | "content" => match i {
+                                0 => "This is your notes app. Click on any note to view it.",
+                                1 => "Milk, Eggs, Bread, Cheese",
+                                _ => "Q3 roadmap discussion with the team",
+                            },
+                            "email" => match i {
+                                0 => "alice@example.com",
+                                1 => "bob@example.com",
+                                _ => "charlie@example.com",
+                            },
+                            "time" | "date" | "created_at" => match i {
+                                0 => "Just now",
+                                1 => "2 hours ago",
+                                _ => "Yesterday",
+                            },
+                            _ => "Sample",
+                        };
+                        format!("\"{}\".into()", sample)
+                    }
+                    "bool" => "false".to_string(),
+                    _ => "Default::default()".to_string(),
+                };
+                format!("{}: {}", f.name, val)
+            })
+            .collect();
         let field_str = fields.join(",\n            ");
         items.push(format!(
             "        {} {{\n            {}\n        }}",
@@ -4076,7 +4378,9 @@ fn generate_main_rs(
     companion_mods: &[String],
     api_impl_active: bool,
 ) -> String {
-    let routes: Vec<String> = api_module.endpoints.iter()
+    let routes: Vec<String> = api_module
+        .endpoints
+        .iter()
         .map(|e| {
             let path = e.path();
             let method = e.method().to_lowercase();
@@ -4086,8 +4390,7 @@ fn generate_main_rs(
                 == auto_lang::api::contract::ResponseKind::File
                 && method == "get"
                 && !api_module.endpoints.iter().any(|other| {
-                    other.method().eq_ignore_ascii_case("HEAD")
-                        && other.path() == path
+                    other.method().eq_ignore_ascii_case("HEAD") && other.path() == path
                 })
             {
                 format!(
@@ -4095,7 +4398,10 @@ fn generate_main_rs(
                     path, method, e.fn_name, e.fn_name
                 )
             } else {
-                format!("        .route(\"{}\", axum::routing::{}(api::{}))", path, method, e.fn_name)
+                format!(
+                    "        .route(\"{}\", axum::routing::{}(api::{}))",
+                    path, method, e.fn_name
+                )
             }
         })
         .collect();
@@ -4103,7 +4409,10 @@ fn generate_main_rs(
     let routes_str = routes.join("\n");
 
     // Plan musk-022: declare events module when SSE endpoints exist.
-    let has_sse = api_module.endpoints.iter().any(|e| e.return_type.contains("Stream<"));
+    let has_sse = api_module
+        .endpoints
+        .iter()
+        .any(|e| e.return_type.contains("Stream<"));
     // Plan musk-022 CRUD 智能扩展 第3步: declare db module when db.at has functions.
     let has_db = db_at_content.map(|c| c.contains("pub fn")).unwrap_or(false);
 
@@ -4157,48 +4466,89 @@ fn generate_main_rs(
         // PLAN-736 AC-01/02: 服务配置面（AUTO_HTTP_SERVICE_JSON，由 `auto
         // service --server rust` 注入的解析后规范形）优先；legacy 面维持
         // env/8080 链不变。坏配置 = 指名诊断 + 退出码 2（不假装 ready）。
-        s.push_str("    let service_cfg = match std::env::var(\"AUTO_HTTP_SERVICE_JSON\") {
-");
+        s.push_str(
+            "    let service_cfg = match std::env::var(\"AUTO_HTTP_SERVICE_JSON\") {
+",
+        );
         s.push_str("        Ok(json) => match auto_lang::http_service_config::resolve_service_config(&json, None) {
 ");
-        s.push_str("            Ok(c) => Some(std::sync::Arc::new(c)),
-");
-        s.push_str("            Err(e) => {
-");
-        s.push_str("                eprintln!(\"http-service config error: {e}\");
-");
-        s.push_str("                std::process::exit(2);
-");
-        s.push_str("            }
-");
-        s.push_str("        },
-");
-        s.push_str("        Err(_) => None,
-");
-        s.push_str("    };
-");
-        s.push_str("    let addr: String = match &service_cfg {
-");
-        s.push_str("        Some(c) => format!(\"{}:{}\", c.listen_addr, c.listen_port),
-");
-        s.push_str("        None => {
-");
-        s.push_str("            let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")
-");
-        s.push_str("                .ok()
-");
-        s.push_str("                .and_then(|v| v.trim().parse().ok())
-");
-        s.push_str("                .unwrap_or(8080);
-");
-        s.push_str("            format!(\"127.0.0.1:{}\", port)
-");
-        s.push_str("        }
-");
-        s.push_str("    };
-");
+        s.push_str(
+            "            Ok(c) => Some(std::sync::Arc::new(c)),
+",
+        );
+        s.push_str(
+            "            Err(e) => {
+",
+        );
+        s.push_str(
+            "                eprintln!(\"http-service config error: {e}\");
+",
+        );
+        s.push_str(
+            "                std::process::exit(2);
+",
+        );
+        s.push_str(
+            "            }
+",
+        );
+        s.push_str(
+            "        },
+",
+        );
+        s.push_str(
+            "        Err(_) => None,
+",
+        );
+        s.push_str(
+            "    };
+",
+        );
+        s.push_str(
+            "    let addr: String = match &service_cfg {
+",
+        );
+        s.push_str(
+            "        Some(c) => format!(\"{}:{}\", c.listen_addr, c.listen_port),
+",
+        );
+        s.push_str(
+            "        None => {
+",
+        );
+        s.push_str(
+            "            let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")
+",
+        );
+        s.push_str(
+            "                .ok()
+",
+        );
+        s.push_str(
+            "                .and_then(|v| v.trim().parse().ok())
+",
+        );
+        s.push_str(
+            "                .unwrap_or(8080);
+",
+        );
+        s.push_str(
+            "            format!(\"127.0.0.1:{}\", port)
+",
+        );
+        s.push_str(
+            "        }
+",
+        );
+        s.push_str(
+            "    };
+",
+        );
         s.push_str("    // Initial data\n");
-        s.push_str(&format!("    let data: Db = Arc::new(Mutex::new({}));\n\n", initial_data));
+        s.push_str(&format!(
+            "    let data: Db = Arc::new(Mutex::new({}));\n\n",
+            initial_data
+        ));
         s.push_str("    // Enable CORS for frontend development\n");
         s.push_str("    let cors = CorsLayer::new()\n");
         s.push_str("        .allow_origin(Any)\n");
@@ -4221,8 +4571,12 @@ fn generate_main_rs(
         s.push_str("    if photo_on {\n");
         s.push_str("        app = app\n");
         s.push_str("        .route(\"/api/photos/scan\", axum::routing::get(auto_photos_scan))\n");
-        s.push_str("        .route(\"/api/photos/thumb/:id\", axum::routing::get(auto_photos_thumb))\n");
-        s.push_str("        .route(\"/api/photos/full/:id\", axum::routing::get(auto_photos_full));\n");
+        s.push_str(
+            "        .route(\"/api/photos/thumb/:id\", axum::routing::get(auto_photos_thumb))\n",
+        );
+        s.push_str(
+            "        .route(\"/api/photos/full/:id\", axum::routing::get(auto_photos_full));\n",
+        );
         s.push_str("    }\n");
         s.push_str("    let app = app.with_state(data);\n\n");
     } else {
@@ -4242,46 +4596,84 @@ fn generate_main_rs(
         // PLAN-736 AC-01/02: 服务配置面（AUTO_HTTP_SERVICE_JSON，由 `auto
         // service --server rust` 注入的解析后规范形）优先；legacy 面维持
         // env/8080 链不变。坏配置 = 指名诊断 + 退出码 2（不假装 ready）。
-        s.push_str("    let service_cfg = match std::env::var(\"AUTO_HTTP_SERVICE_JSON\") {
-");
+        s.push_str(
+            "    let service_cfg = match std::env::var(\"AUTO_HTTP_SERVICE_JSON\") {
+",
+        );
         s.push_str("        Ok(json) => match auto_lang::http_service_config::resolve_service_config(&json, None) {
 ");
-        s.push_str("            Ok(c) => Some(std::sync::Arc::new(c)),
-");
-        s.push_str("            Err(e) => {
-");
-        s.push_str("                eprintln!(\"http-service config error: {e}\");
-");
-        s.push_str("                std::process::exit(2);
-");
-        s.push_str("            }
-");
-        s.push_str("        },
-");
-        s.push_str("        Err(_) => None,
-");
-        s.push_str("    };
-");
-        s.push_str("    let addr: String = match &service_cfg {
-");
-        s.push_str("        Some(c) => format!(\"{}:{}\", c.listen_addr, c.listen_port),
-");
-        s.push_str("        None => {
-");
-        s.push_str("            let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")
-");
-        s.push_str("                .ok()
-");
-        s.push_str("                .and_then(|v| v.trim().parse().ok())
-");
-        s.push_str("                .unwrap_or(8080);
-");
-        s.push_str("            format!(\"127.0.0.1:{}\", port)
-");
-        s.push_str("        }
-");
-        s.push_str("    };
-");
+        s.push_str(
+            "            Ok(c) => Some(std::sync::Arc::new(c)),
+",
+        );
+        s.push_str(
+            "            Err(e) => {
+",
+        );
+        s.push_str(
+            "                eprintln!(\"http-service config error: {e}\");
+",
+        );
+        s.push_str(
+            "                std::process::exit(2);
+",
+        );
+        s.push_str(
+            "            }
+",
+        );
+        s.push_str(
+            "        },
+",
+        );
+        s.push_str(
+            "        Err(_) => None,
+",
+        );
+        s.push_str(
+            "    };
+",
+        );
+        s.push_str(
+            "    let addr: String = match &service_cfg {
+",
+        );
+        s.push_str(
+            "        Some(c) => format!(\"{}:{}\", c.listen_addr, c.listen_port),
+",
+        );
+        s.push_str(
+            "        None => {
+",
+        );
+        s.push_str(
+            "            let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")
+",
+        );
+        s.push_str(
+            "                .ok()
+",
+        );
+        s.push_str(
+            "                .and_then(|v| v.trim().parse().ok())
+",
+        );
+        s.push_str(
+            "                .unwrap_or(8080);
+",
+        );
+        s.push_str(
+            "            format!(\"127.0.0.1:{}\", port)
+",
+        );
+        s.push_str(
+            "        }
+",
+        );
+        s.push_str(
+            "    };
+",
+        );
         s.push_str("    let cors = CorsLayer::new()\n");
         s.push_str("        .allow_origin(Any)\n");
         s.push_str("        .allow_methods(Any)\n");
@@ -4303,35 +4695,61 @@ fn generate_main_rs(
         s.push_str("    if photo_on {\n");
         s.push_str("        app = app\n");
         s.push_str("        .route(\"/api/photos/scan\", axum::routing::get(auto_photos_scan))\n");
-        s.push_str("        .route(\"/api/photos/thumb/:id\", axum::routing::get(auto_photos_thumb))\n");
-        s.push_str("        .route(\"/api/photos/full/:id\", axum::routing::get(auto_photos_full));\n");
+        s.push_str(
+            "        .route(\"/api/photos/thumb/:id\", axum::routing::get(auto_photos_thumb))\n",
+        );
+        s.push_str(
+            "        .route(\"/api/photos/full/:id\", axum::routing::get(auto_photos_full));\n",
+        );
         s.push_str("    }\n");
         s.push_str("    let app = app;\n\n");
     }
     // PLAN-736 AC-01/02: bind 失败 = 指名诊断 + 非零退出（旧 unwrap panic 退役）；
     // ready 打印移到 bind 成功之后并报真实 local_addr（port=0 场景）。
-    s.push_str("    let listener = match tokio::net::TcpListener::bind(&addr).await {
-");
-    s.push_str("        Ok(l) => l,
-");
-    s.push_str("        Err(e) => {
-");
-    s.push_str("            eprintln!(\"http-service bind failed on {}: {}\", addr, e);
-");
-    s.push_str("            std::process::exit(1);
-");
-    s.push_str("        }
-");
-    s.push_str("    };
-");
-    s.push_str("    let bound = listener
-");
-    s.push_str("        .local_addr()
-");
-    s.push_str("        .map(|a| a.to_string())
-");
-    s.push_str("        .unwrap_or_else(|_| addr.clone());
-");
+    s.push_str(
+        "    let listener = match tokio::net::TcpListener::bind(&addr).await {
+",
+    );
+    s.push_str(
+        "        Ok(l) => l,
+",
+    );
+    s.push_str(
+        "        Err(e) => {
+",
+    );
+    s.push_str(
+        "            eprintln!(\"http-service bind failed on {}: {}\", addr, e);
+",
+    );
+    s.push_str(
+        "            std::process::exit(1);
+",
+    );
+    s.push_str(
+        "        }
+",
+    );
+    s.push_str(
+        "    };
+",
+    );
+    s.push_str(
+        "    let bound = listener
+",
+    );
+    s.push_str(
+        "        .local_addr()
+",
+    );
+    s.push_str(
+        "        .map(|a| a.to_string())
+",
+    );
+    s.push_str(
+        "        .unwrap_or_else(|_| addr.clone());
+",
+    );
     // PLAN-736 AC-03/06: 服务模式 = 预算运行环；legacy = 既有 axum::serve。
     s.push_str("    match &service_cfg {\n");
     s.push_str("        Some(c) => {\n");
@@ -4345,7 +4763,6 @@ fn generate_main_rs(
     s.push_str("}\n");
     s
 }
-
 
 // ============================================================================
 // Lenient API Extraction (Plan 132)
@@ -4380,9 +4797,8 @@ pub fn extract_api_lenient(api_content: &str) -> Option<ApiModule> {
     // Extract #[api] function definitions
     // Pattern: #[api(...)] pub fn name(params) return_type {
     // Note: return_type may be followed by { or whitespace
-    let fn_pattern = Regex::new(
-        r#"#\[api\(([^]]*)\]\s*pub\s+fn\s+(\w+)\s*\(([^)]*)\)\s*(\S+)?"#
-    ).ok()?;
+    let fn_pattern =
+        Regex::new(r#"#\[api\(([^]]*)\]\s*pub\s+fn\s+(\w+)\s*\(([^)]*)\)\s*(\S+)?"#).ok()?;
 
     for cap in fn_pattern.captures_iter(api_content) {
         let annotation_str = cap.get(1).map(|m| m.as_str()).unwrap_or("");
@@ -4391,18 +4807,24 @@ pub fn extract_api_lenient(api_content: &str) -> Option<ApiModule> {
         // Return type may have trailing { which we need to strip
         let return_type_raw = cap.get(4).map(|m| m.as_str()).unwrap_or("void");
         let return_type = return_type_raw.trim_end_matches('{').trim().to_string();
-        let return_type = if return_type.is_empty() { "void".to_string() } else { return_type };
+        let return_type = if return_type.is_empty() {
+            "void".to_string()
+        } else {
+            return_type
+        };
 
         // Extract method from annotation (e.g., method = "GET")
         let method_pattern = Regex::new(r#"method\s*=\s*"(\w+)""#).ok()?;
-        let method = method_pattern.captures(annotation_str)
+        let method = method_pattern
+            .captures(annotation_str)
             .and_then(|cap| cap.get(1))
             .map(|m| m.as_str().to_string())
             .unwrap_or_else(|| "GET".to_string());
 
         // Extract path from annotation (e.g., path = "/api/users")
         let path_pattern = Regex::new(r#"path\s*=\s*"([^"]+)""#).ok()?;
-        let path = path_pattern.captures(annotation_str)
+        let path = path_pattern
+            .captures(annotation_str)
             .and_then(|cap| cap.get(1))
             .map(|m| m.as_str().to_string())
             .unwrap_or_else(|| format!("/api/{}", fn_name));
@@ -4431,7 +4853,9 @@ fn parse_fields(fields_str: &str) -> Vec<ApiField> {
         .lines()
         .filter_map(|line| {
             let line = line.trim();
-            if line.is_empty() { return None; }
+            if line.is_empty() {
+                return None;
+            }
 
             // Split on ':' to get name and type (canonical form)
             let parts: Vec<&str> = line.splitn(2, ':').collect();
@@ -4502,7 +4926,12 @@ mod tests {
         std::fs::write(back_dir.join("api.ts"), marker).expect("write glue");
 
         assert!(install_project_api_glue(&dir), "glue present → installed");
-        let gen_lib = dir.join("gen").join("front").join("vue").join("src").join("lib");
+        let gen_lib = dir
+            .join("gen")
+            .join("front")
+            .join("vue")
+            .join("src")
+            .join("lib");
         let installed = std::fs::read_to_string(gen_lib.join("api.ts")).expect("gen api.ts");
         assert_eq!(installed, marker, "gen tree receives the glue verbatim");
         let dist = std::fs::read_to_string(dir.join("dist").join("src").join("lib").join("api.ts"))
@@ -4577,7 +5006,10 @@ pub type BootSnapshot = {
         let snap = &module.types[1];
         assert_eq!(snap.name, "BootSnapshot");
         let snap_names: Vec<&str> = snap.fields.iter().map(|f| f.name.as_str()).collect();
-        assert_eq!(snap_names, vec!["cwd", "home", "commands", "smart_commands"]);
+        assert_eq!(
+            snap_names,
+            vec!["cwd", "home", "commands", "smart_commands"]
+        );
         assert_eq!(snap.fields[2].ty, "[]ToolEntry");
     }
 
@@ -4606,14 +5038,20 @@ pub fn listusers() []User {
         assert_eq!(module.endpoints[0].return_type, "User?");
         // Verify method and path extraction
         assert_eq!(module.endpoints[0].attrs.method, Some("GET".to_string()));
-        assert_eq!(module.endpoints[0].attrs.path, Some("/api/users/:id".to_string()));
+        assert_eq!(
+            module.endpoints[0].attrs.path,
+            Some("/api/users/:id".to_string())
+        );
 
         assert_eq!(module.endpoints[1].fn_name, "listusers");
         assert_eq!(module.endpoints[1].params.len(), 0);
         assert_eq!(module.endpoints[1].return_type, "[]User");
         // Verify method and path extraction
         assert_eq!(module.endpoints[1].attrs.method, Some("GET".to_string()));
-        assert_eq!(module.endpoints[1].attrs.path, Some("/api/users".to_string()));
+        assert_eq!(
+            module.endpoints[1].attrs.path,
+            Some("/api/users".to_string())
+        );
     }
 
     #[test]
@@ -4636,7 +5074,10 @@ pub fn createuser(req CreateUserRequest) User {
         assert_eq!(module.endpoints[0].return_type, "User");
         // Verify method and path extraction
         assert_eq!(module.endpoints[0].attrs.method, Some("POST".to_string()));
-        assert_eq!(module.endpoints[0].attrs.path, Some("/api/users".to_string()));
+        assert_eq!(
+            module.endpoints[0].attrs.path,
+            Some("/api/users".to_string())
+        );
     }
 
     #[test]
@@ -4723,13 +5164,19 @@ pub fn listusers() []User {
         assert_eq!(module.endpoints[0].fn_name, "getuser");
         assert_eq!(module.endpoints[0].return_type, "User?");
         assert_eq!(module.endpoints[0].attrs.method, Some("GET".to_string()));
-        assert_eq!(module.endpoints[0].attrs.path, Some("/api/users/:id".to_string()));
+        assert_eq!(
+            module.endpoints[0].attrs.path,
+            Some("/api/users/:id".to_string())
+        );
 
         // Check listusers endpoint
         assert_eq!(module.endpoints[1].fn_name, "listusers");
         assert_eq!(module.endpoints[1].return_type, "[]User");
         assert_eq!(module.endpoints[1].attrs.method, Some("GET".to_string()));
-        assert_eq!(module.endpoints[1].attrs.path, Some("/api/users".to_string()));
+        assert_eq!(
+            module.endpoints[1].attrs.path,
+            Some("/api/users".to_string())
+        );
     }
 
     /// AUTO_A2R_BODY is process-global and read inside `generate_api_rs`;
@@ -4741,15 +5188,14 @@ pub fn listusers() []User {
         A2R_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-
     // =======================================================================
     // PLAN-729 T-06: 生成文件 handler 实编 wire e2e（test-http-e2e 串行档）。
     // 真实生成产物（api.rs/main.rs/types.rs/Cargo.toml）→ 临时 crate →
     // cargo run（共享 worktree target 缓存）→ 真 TCP wire 断言。
     // =======================================================================
-// ===========================================================================
-// PLAN-730 T-06: 上传端点生成（字符串锁 + TS/Tauri 形态 + 真实编译运行 e2e）
-// ===========================================================================
+    // ===========================================================================
+    // PLAN-730 T-06: 上传端点生成（字符串锁 + TS/Tauri 形态 + 真实编译运行 e2e）
+    // ===========================================================================
 
     /// 上传端点生成：Request 提取器置最后、宿主 receive/commit await 直发、
     /// 收据真实 status；main 安装 executor。
@@ -4831,7 +5277,11 @@ pub fn echo(n int, tag str) Echo {
             "/tests/plan734_commands_fixture.rs"
         ))
         .expect("fixture readable");
-        assert_eq!(generated.trim(), fixture.trim(), "generator drift vs fixture");
+        assert_eq!(
+            generated.trim(),
+            fixture.trim(),
+            "generator drift vs fixture"
+        );
     }
 
     #[test]
@@ -4861,14 +5311,29 @@ pub fn upload(req UploadRequest) ~UploadReceipt {
             "Request extractor last: {api_rs}"
         );
         // 注入参数构造 + 收据回复 + 转译体 await 直发。
-        assert!(api_rs.contains("__upload_request(&method, &headers, request)"), "{api_rs}");
+        assert!(
+            api_rs.contains("__upload_request(&method, &headers, request)"),
+            "{api_rs}"
+        );
         assert!(api_rs.contains("__upload_reply("), "{api_rs}");
-        assert!(api_rs.contains("a2r_std::http::upload_receive(req, root, staging"), "{api_rs}");
-        assert!(api_rs.contains("upload_receive(req, root, staging"), "await emission: {api_rs}");
+        assert!(
+            api_rs.contains("a2r_std::http::upload_receive(req, root, staging"),
+            "{api_rs}"
+        );
+        assert!(
+            api_rs.contains("upload_receive(req, root, staging"),
+            "await emission: {api_rs}"
+        );
         assert!(api_rs.contains(").await;"), "await emission: {api_rs}");
-        assert!(api_rs.contains("a2r_std::http::upload_commit(session"), "{api_rs}");
+        assert!(
+            api_rs.contains("a2r_std::http::upload_commit(session"),
+            "{api_rs}"
+        );
         // 不落 CRUD 模板。
-        assert!(!api_rs.contains("JsonResponse::"), "no CRUD template: {api_rs}");
+        assert!(
+            !api_rs.contains("JsonResponse::"),
+            "no CRUD template: {api_rs}"
+        );
         let main = generate_main_rs(&module, None, false, &[], false);
         assert!(
             main.contains("install_upload_executor_service();"),
@@ -4899,8 +5364,8 @@ pub fn up(req UploadRequest) ~UploadReceipt {
     /// 注入参数删除、收据 JSON 返回。
     #[test]
     fn test_plan730_upload_ts_formdata() {
-        use auto_lang::api::TypeScriptGenerator;
         use auto_lang::api::ApiExtractor;
+        use auto_lang::api::TypeScriptGenerator;
         let api = r#"
 pub type UploadMeta = { name: str }
 
@@ -4978,7 +5443,8 @@ pub fn broken(req UploadRequest) UploadReceipt {
         const PORT: u16 = 18960;
 
         fn temp_root(tag: &str) -> std::path::PathBuf {
-            let dir = std::env::temp_dir().join(format!("plan729-gen-{}-{}", tag, std::process::id()));
+            let dir =
+                std::env::temp_dir().join(format!("plan729-gen-{}-{}", tag, std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
             dir
@@ -5052,8 +5518,7 @@ pub fn broken(req UploadRequest) UploadReceipt {
         }
 
         fn header_of(hdrs: &[(String, String)], name: &str) -> String {
-            hdrs
-                .iter()
+            hdrs.iter()
                 .find(|(k, _)| k == name)
                 .map(|(_, v)| v.clone())
                 .unwrap_or_default()
@@ -5131,8 +5596,10 @@ path = "src/main.rs"
             panic!(
                 "generated server did not listen on {port}; log tail:
 {}",
-                log.lines().rev().take(40).collect::<Vec<_>>().join("
-")
+                log.lines().rev().take(40).collect::<Vec<_>>().join(
+                    "
+"
+                )
             );
         }
 
@@ -5195,8 +5662,12 @@ pub fn download_async(name str) ~FileResponse {{
                 assert_eq!(s, 200);
                 assert_eq!(header_of(&h, "content-length"), "0");
                 assert!(b.is_empty());
-                let (s, h, b) = raw_request(PORT, "GET", "/files/r.bin", &[("range", "bytes=10-19")]);
-                assert_eq!((s, header_of(&h, "content-range").as_str()), (206, "bytes 10-19/200"));
+                let (s, h, b) =
+                    raw_request(PORT, "GET", "/files/r.bin", &[("range", "bytes=10-19")]);
+                assert_eq!(
+                    (s, header_of(&h, "content-range").as_str()),
+                    (206, "bytes 10-19/200")
+                );
                 assert_eq!(b, (10u8..=19).collect::<Vec<u8>>());
                 let (s, _, _) = raw_request(PORT, "GET", "/files/r.bin", &[("range", "bytes=-0")]);
                 assert_eq!(s, 416);
@@ -5216,14 +5687,21 @@ pub fn download_async(name str) ~FileResponse {{
                 let (s, _, _) = raw_request(PORT, "GET", "/files/..%2Fetc%2Fpasswd", &[]);
                 assert_eq!(s, 403);
                 // [G-01] 异步端点 wire：同一文件表示。
-                let (s, h, b) = raw_request(PORT, "GET", "/api/async/r.bin", &[("range", "bytes=10-19")]);
-                assert_eq!((s, header_of(&h, "content-range").as_str()), (206, "bytes 10-19/200"));
+                let (s, h, b) =
+                    raw_request(PORT, "GET", "/api/async/r.bin", &[("range", "bytes=10-19")]);
+                assert_eq!(
+                    (s, header_of(&h, "content-range").as_str()),
+                    (206, "bytes 10-19/200")
+                );
                 assert_eq!(b, (10u8..=19).collect::<Vec<u8>>());
                 let (s, h, _) = raw_request(PORT, "HEAD", "/api/async/hello.txt", &[]);
                 assert_eq!((s, header_of(&h, "content-length").as_str()), (200, "15"));
                 // [G-05] 12MiB 同源 hash（生成腿全量流式读）。
                 let (s, h, b) = raw_request(PORT, "GET", "/files/big.bin", &[]);
-                assert_eq!((s, header_of(&h, "content-length").as_str()), (200, "12582912"));
+                assert_eq!(
+                    (s, header_of(&h, "content-length").as_str()),
+                    (200, "12582912")
+                );
                 assert_eq!(b.len(), 12 * 1024 * 1024);
                 assert_eq!(blake3::hash(&b), expect_big, "生成腿 12MiB hash 一致");
             });
@@ -5391,7 +5869,11 @@ pub fn download(name str) FileResponse {{
 
         /// 生成 + 起服（plan729 spawn 同形；crate 名区分以隔离产物；
         /// `roots` = 预建 public/private-staging 目录——env 指向其）。
-        fn spawn_upload_server(api_at: &str, port: u16, roots: &std::path::Path) -> std::process::Child {
+        fn spawn_upload_server(
+            api_at: &str,
+            port: u16,
+            roots: &std::path::Path,
+        ) -> std::process::Child {
             let module = try_full_parse(api_at).expect("full parse");
             let api_rs = generate_api_rs(&module, None, false);
             let main_rs = generate_main_rs(&module, None, false, &[], false);
@@ -5462,7 +5944,12 @@ path = "src/main.rs"
             let _ = child.kill();
             panic!(
                 "generated upload server did not listen on {port}; log tail:\n{}",
-                log_text.lines().rev().take(60).collect::<Vec<_>>().join("\n")
+                log_text
+                    .lines()
+                    .rev()
+                    .take(60)
+                    .collect::<Vec<_>>()
+                    .join("\n")
             );
         }
 
@@ -5473,10 +5960,7 @@ path = "src/main.rs"
             let roots = temp_roots("wire");
             let root = roots.join("public");
             let staging = roots.join("private-staging");
-            let api = upload_program(
-                &root.to_string_lossy(),
-                &staging.to_string_lossy(),
-            );
+            let api = upload_program(&root.to_string_lossy(), &staging.to_string_lossy());
             let mut child = spawn_upload_server(&api, PORT, &roots);
             let result = std::panic::catch_unwind(|| {
                 let payload: Vec<u8> = (0..2usize * 1024 * 1024).map(|i| (i % 251) as u8).collect();
@@ -5503,7 +5987,8 @@ path = "src/main.rs"
                 }
                 assert!(std::fs::read_dir(&staging).unwrap().next().is_none());
                 // 729 下载路由互通（同字节）。
-                let (s2, _h2, dl) = raw_request_with_body(PORT, "GET", "/api/files/blob.bin", &[], b"");
+                let (s2, _h2, dl) =
+                    raw_request_with_body(PORT, "GET", "/api/files/blob.bin", &[], b"");
                 assert_eq!(s2, 200);
                 assert_eq!(dl, payload, "generated download bytes identical");
                 // 同名冲突 409（原文件不变）。
@@ -5566,7 +6051,6 @@ path = "src/main.rs"
             }
         }
     }
-
 
     /// PLAN-729 R1 [G-01]：异步 `~FileResponse`（Future<FileResponse>）端点——
     /// 同一文件分支（Response 签名 + 宿主 serve；类型门按 contains 命中）。
@@ -5680,15 +6164,31 @@ pub fn report() FileResponse {
 "#;
         let module = try_full_parse(api).expect("full parse");
         assert!(
-            module.endpoints.iter().all(|e| e.return_type.contains("FileResponse")),
+            module
+                .endpoints
+                .iter()
+                .all(|e| e.return_type.contains("FileResponse")),
             "return types: {:?}",
-            module.endpoints.iter().map(|e| e.return_type.clone()).collect::<Vec<_>>()
+            module
+                .endpoints
+                .iter()
+                .map(|e| e.return_type.clone())
+                .collect::<Vec<_>>()
         );
         // 有 body 的端点走内联转译臂。
-        assert!(module.endpoints.iter().any(|e| e.body.is_some()), "body captured");
+        assert!(
+            module.endpoints.iter().any(|e| e.body.is_some()),
+            "body captured"
+        );
         let api_rs = generate_api_rs(&module, None, false);
-        assert!(api_rs.contains("-> axum::response::Response"), "Response 签名: {api_rs}");
-        assert!(api_rs.contains("__file_reply("), "宿主 serve 胶水: {api_rs}");
+        assert!(
+            api_rs.contains("-> axum::response::Response"),
+            "Response 签名: {api_rs}"
+        );
+        assert!(
+            api_rs.contains("__file_reply("),
+            "宿主 serve 胶水: {api_rs}"
+        );
         assert!(
             api_rs.contains("a2r_std::http::file_response("),
             "描述符构造 lowering: {api_rs}"
@@ -5745,8 +6245,10 @@ pub fn download(name str) FileResponse { return http.file_response("files", name
         // route A: api_impl_active → 委派 handler。
         let mut lines: Vec<String> = vec![];
         push_delegating_scalar_handlers(&mut lines, &module, &|_| true, "api_impl");
-        let joined = lines.join("
-");
+        let joined = lines.join(
+            "
+",
+        );
         assert!(
             joined.contains("Path(name): Path<String>"),
             "路径参数提取: {joined}"
@@ -5778,9 +6280,16 @@ pub fn send_message(text str) Message { return db.create_message(text) }
 pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
 "#;
         let module = extract_api_lenient(content).expect("Should extract");
-        assert!(module.endpoints.iter().any(|e| e.return_type.contains("Stream<")));
+        assert!(module
+            .endpoints
+            .iter()
+            .any(|e| e.return_type.contains("Stream<")));
         let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false);
-        assert!(api_rs.contains("axum::response::Sse<"), "SSE return: {}", api_rs);
+        assert!(
+            api_rs.contains("axum::response::Sse<"),
+            "SSE return: {}",
+            api_rs
+        );
         assert!(api_rs.contains("crate::events::subscribe()"), "subscribe");
         assert!(api_rs.contains("async_stream::stream!"), "stream macro");
         assert!(api_rs.contains("crate::events::broadcast("), "broadcast");
@@ -5810,22 +6319,36 @@ pub fn current_user(meta str) Article { return db.current_user(meta) }
 pub fn create_article(slug str, title str, meta str) Article { return db.create_article(slug, title, meta) }
 "#;
         let module = extract_api_lenient(api).expect("extract api");
-        let db_fns: std::collections::HashSet<String> = [
-            "current_user".to_string(), "create_article".to_string(),
-        ].into_iter().collect();
+        let db_fns: std::collections::HashSet<String> =
+            ["current_user".to_string(), "create_article".to_string()]
+                .into_iter()
+                .collect();
 
         let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
 
         // helper emitted once
         assert!(
             api_rs.contains("fn meta_json(headers: &axum::http::HeaderMap) -> String"),
-            "helper: {}", api_rs
+            "helper: {}",
+            api_rs
         );
         // GET: meta is NOT a query struct field
-        assert!(!api_rs.contains("CurrentUserQuery"), "meta not query: {}", api_rs);
+        assert!(
+            !api_rs.contains("CurrentUserQuery"),
+            "meta not query: {}",
+            api_rs
+        );
         // extractor + binding present
-        assert!(api_rs.contains("headers: axum::http::HeaderMap"), "extractor: {}", api_rs);
-        assert!(api_rs.contains("let meta: String = meta_json(&headers);"), "binding: {}", api_rs);
+        assert!(
+            api_rs.contains("headers: axum::http::HeaderMap"),
+            "extractor: {}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("let meta: String = meta_json(&headers);"),
+            "binding: {}",
+            api_rs
+        );
         let post_signature = api_rs
             .lines()
             .find(|line| line.contains("pub async fn create_article"))
@@ -5835,13 +6358,22 @@ pub fn create_article(slug str, title str, meta str) Article { return db.create_
             "HeaderMap extractor precedes body-consuming Json: {post_signature}"
         );
         // delegation args use the binding
-        assert!(api_rs.contains("crate::db::current_user(&meta)"), "get deleg: {}", api_rs);
+        assert!(
+            api_rs.contains("crate::db::current_user(&meta)"),
+            "get deleg: {}",
+            api_rs
+        );
         assert!(
             api_rs.contains("crate::db::create_article(&input.slug, &input.title, &meta)"),
-            "post deleg: {}", api_rs
+            "post deleg: {}",
+            api_rs
         );
         // POST: meta excluded from the CreateInput body struct
-        assert!(!api_rs.contains("pub meta: String"), "meta not body field: {}", api_rs);
+        assert!(
+            !api_rs.contains("pub meta: String"),
+            "meta not body field: {}",
+            api_rs
+        );
         // helper JSON format parity spot-check (VM push_meta format)
         assert!(api_rs.contains("cookies"), "cookies key: {}", api_rs);
         assert!(api_rs.contains("auth"), "auth key: {}", api_rs);
@@ -5868,12 +6400,10 @@ pub fn create_article(slug str, title str, meta str) Article {
 }
 "#;
         let module = try_full_parse(api).expect("extract API");
-        let db_fns: std::collections::HashSet<String> = [
-            "current_user".to_string(),
-            "create_article".to_string(),
-        ]
-        .into_iter()
-        .collect();
+        let db_fns: std::collections::HashSet<String> =
+            ["current_user".to_string(), "create_article".to_string()]
+                .into_iter()
+                .collect();
         let api_rs = generate_api_rs(&module, Some(&db_fns), false);
         let db_source = r#"
 pub fn current_user(token: &str) -> User {
@@ -5885,11 +6415,26 @@ pub fn create_article(slug: &str, title: &str, author: &str) -> Article {
 "#;
         let api_rs = borrow_string_db_call_args(&api_rs, db_source);
 
-        assert!(api_rs.contains("fn auto_bearer_token(meta: &str) -> String"), "token helper: {api_rs}");
-        assert!(api_rs.contains("crate::db::current_user(&auto_bearer_token(meta.as_str()))"), "nested metadata call: {api_rs}");
-        assert!(api_rs.contains("let slug = input.slug.clone();"), "body field binding: {api_rs}");
-        assert!(api_rs.contains("return JsonResponse(Article"), "early return wrapper: {api_rs}");
-        assert!(api_rs.contains("crate::db::create_article(&slug, &title, &user.username)"), "db qualification and bound params: {api_rs}");
+        assert!(
+            api_rs.contains("fn auto_bearer_token(meta: &str) -> String"),
+            "token helper: {api_rs}"
+        );
+        assert!(
+            api_rs.contains("crate::db::current_user(&auto_bearer_token(meta.as_str()))"),
+            "nested metadata call: {api_rs}"
+        );
+        assert!(
+            api_rs.contains("let slug = input.slug.clone();"),
+            "body field binding: {api_rs}"
+        );
+        assert!(
+            api_rs.contains("return JsonResponse(Article"),
+            "early return wrapper: {api_rs}"
+        );
+        assert!(
+            api_rs.contains("crate::db::create_article(&slug, &title, &user.username)"),
+            "db qualification and bound params: {api_rs}"
+        );
     }
 
     /// Plan B1(b): module without any meta param must NOT emit the helper.
@@ -5903,10 +6448,19 @@ pub type Note = { id: int, text: str }
 pub fn list_notes() []Note { return db.all_notes() }
 "#;
         let module = extract_api_lenient(api).expect("extract api");
-        let db_fns: std::collections::HashSet<String> = ["all_notes".to_string()].into_iter().collect();
+        let db_fns: std::collections::HashSet<String> =
+            ["all_notes".to_string()].into_iter().collect();
         let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
-        assert!(!api_rs.contains("meta_json"), "no helper without meta: {}", api_rs);
-        assert!(!api_rs.contains("HeaderMap"), "no extractor without meta: {}", api_rs);
+        assert!(
+            !api_rs.contains("meta_json"),
+            "no helper without meta: {}",
+            api_rs
+        );
+        assert!(
+            !api_rs.contains("HeaderMap"),
+            "no extractor without meta: {}",
+            api_rs
+        );
     }
 
     /// Plan 399 第 4-5 步: 017-chat — handlers delegate to db.rs (no State<Db>),
@@ -5928,29 +6482,44 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
 "#;
         let module = extract_api_lenient(api).expect("extract api");
         // db.rs exposes all_messages + create_message.
-        let db_fns: std::collections::HashSet<String> = [
-            "all_messages".to_string(), "create_message".to_string(),
-        ].into_iter().collect();
+        let db_fns: std::collections::HashSet<String> =
+            ["all_messages".to_string(), "create_message".to_string()]
+                .into_iter()
+                .collect();
 
         let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
 
         // GET list delegates to crate::db::all_messages(), no State<Db>.
-        assert!(api_rs.contains("crate::db::all_messages()"), "list delegates: {}", api_rs);
+        assert!(
+            api_rs.contains("crate::db::all_messages()"),
+            "list delegates: {}",
+            api_rs
+        );
         assert!(
             api_rs.contains("JsonResponse::<Vec<Message>>(crate::db::all_messages())"),
-            "list wrap: {}", api_rs
+            "list wrap: {}",
+            api_rs
         );
         // POST delegates to crate::db::create_message(&input.sender, &input.text)
         // (str params borrowed: a2r emits &str, extractors hold String).
         assert!(
             api_rs.contains("crate::db::create_message(&input.sender, &input.text)"),
-            "create delegates: {}", api_rs
+            "create delegates: {}",
+            api_rs
         );
         // POST still broadcasts the SSE event after create.
-        assert!(api_rs.contains("crate::events::broadcast("), "broadcast: {}", api_rs);
+        assert!(
+            api_rs.contains("crate::events::broadcast("),
+            "broadcast: {}",
+            api_rs
+        );
         // No handler should lock State<Db> now.
         assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
-        assert!(!api_rs.contains("..Default::default()"), "no default fill: {}", api_rs);
+        assert!(
+            !api_rs.contains("..Default::default()"),
+            "no default fill: {}",
+            api_rs
+        );
     }
 
     /// Plan 399 第 4-5 步: 015-notes regression — all 9 endpoints delegate to
@@ -5989,30 +6558,56 @@ pub fn search_notes(query str) []Note { return db.search_notes(query) }
 "#;
         let module = extract_api_lenient(api).expect("extract api");
         let db_fns: std::collections::HashSet<String> = [
-            "all_notes".to_string(), "find_note".to_string(), "create_note".to_string(),
-            "update_note".to_string(), "delete_note".to_string(), "toggle_pin".to_string(),
-            "update_tags".to_string(), "search_notes".to_string(),
-        ].into_iter().collect();
+            "all_notes".to_string(),
+            "find_note".to_string(),
+            "create_note".to_string(),
+            "update_note".to_string(),
+            "delete_note".to_string(),
+            "toggle_pin".to_string(),
+            "update_tags".to_string(),
+            "search_notes".to_string(),
+        ]
+        .into_iter()
+        .collect();
 
         let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
 
         // Every endpoint resolves to its db.rs counterpart.
         for db_fn in &[
-            "crate::db::all_notes", "crate::db::find_note", "crate::db::create_note", "crate::db::update_note",
-            "crate::db::delete_note", "crate::db::toggle_pin", "crate::db::update_tags", "crate::db::search_notes",
+            "crate::db::all_notes",
+            "crate::db::find_note",
+            "crate::db::create_note",
+            "crate::db::update_note",
+            "crate::db::delete_note",
+            "crate::db::toggle_pin",
+            "crate::db::update_tags",
+            "crate::db::search_notes",
         ] {
             assert!(api_rs.contains(db_fn), "missing {}: {}", db_fn, api_rs);
         }
         // Path params bind directly, body params via input., query via query.
         // str params are borrowed (&input.x / &query.x).
-        assert!(api_rs.contains("crate::db::find_note(id)"), "path arg: {}", api_rs);
+        assert!(
+            api_rs.contains("crate::db::find_note(id)"),
+            "path arg: {}",
+            api_rs
+        );
         assert!(
             api_rs.contains("crate::db::create_note(&input.title, &input.body, &input.folder)"),
-            "body args: {}", api_rs
+            "body args: {}",
+            api_rs
         );
-        assert!(api_rs.contains("crate::db::search_notes(&query.query)"), "query arg: {}", api_rs);
+        assert!(
+            api_rs.contains("crate::db::search_notes(&query.query)"),
+            "query arg: {}",
+            api_rs
+        );
         // Option-returning path endpoints map to ok_or(NOT_FOUND).
-        assert!(api_rs.contains(".ok_or(StatusCode::NOT_FOUND)"), "404 mapping: {}", api_rs);
+        assert!(
+            api_rs.contains(".ok_or(StatusCode::NOT_FOUND)"),
+            "404 mapping: {}",
+            api_rs
+        );
         // No State<Db> at all.
         assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
     }
@@ -6035,11 +6630,19 @@ pub fn list_notes() []Note { return db.all_notes() }
         assert!(main.contains("mod db;"), "declare db module: {}", main);
         assert!(!main.contains("with_state"), "no with_state: {}", main);
         assert!(!main.contains("use api::Db;"), "no Db import: {}", main);
-        assert!(main.contains("axum::Router::new()"), "router still built: {}", main);
+        assert!(
+            main.contains("axum::Router::new()"),
+            "router still built: {}",
+            main
+        );
 
         // And the legacy path is preserved when db_full_cover is false.
         let main_legacy = generate_main_rs(&module, None, false, &[], false);
-        assert!(main_legacy.contains("with_state"), "legacy keeps state: {}", main_legacy);
+        assert!(
+            main_legacy.contains("with_state"),
+            "legacy keeps state: {}",
+            main_legacy
+        );
     }
 
     /// Plan 670 F-R1-A: a contract with NO type block (scalar endpoints only,
@@ -6059,28 +6662,49 @@ pub fn exists(path str) bool { return fsys.path_exists(path) }
 "#;
         let module = extract_api_lenient(api).expect("extract api");
         assert!(module.types.is_empty(), "contract has no type block");
-        assert!(
-            primary_type_name_pub(&module).is_none(),
-            "no primary type"
-        );
+        assert!(primary_type_name_pub(&module).is_none(), "no primary type");
 
         // No db.at at all → db_full_cover=false; no Db type → stateless.
         let main = generate_main_rs(&module, None, false, &[], false);
         assert!(!main.contains("use api::Db;"), "no Db import: {}", main);
         assert!(!main.contains("with_state"), "no state injection: {}", main);
         assert!(!main.contains("State<Db>"), "no State<Db>: {}", main);
-        assert!(main.contains("axum::Router::new()"), "router still built: {}", main);
+        assert!(
+            main.contains("axum::Router::new()"),
+            "router still built: {}",
+            main
+        );
         // Routes for the scalar endpoints are still wired.
-        assert!(main.contains("axum::routing::get(api::ws_root)"), "route ws_root: {}", main);
-        assert!(main.contains("axum::routing::get(api::exists)"), "route exists: {}", main);
+        assert!(
+            main.contains("axum::routing::get(api::ws_root)"),
+            "route ws_root: {}",
+            main
+        );
+        assert!(
+            main.contains("axum::routing::get(api::exists)"),
+            "route exists: {}",
+            main
+        );
 
         // Same shape with a db.at that only partially covers (allow-partial
         // migration): handlers are db-delegated/TODO stubs, still no State.
         let db_at = "pub fn other() str { return \"x\" }\n";
         let main_partial = generate_main_rs(&module, Some(db_at), false, &[], false);
-        assert!(!main_partial.contains("use api::Db;"), "partial: no Db import: {}", main_partial);
-        assert!(!main_partial.contains("with_state"), "partial: no state: {}", main_partial);
-        assert!(main_partial.contains("mod db;"), "partial: db module declared: {}", main_partial);
+        assert!(
+            !main_partial.contains("use api::Db;"),
+            "partial: no Db import: {}",
+            main_partial
+        );
+        assert!(
+            !main_partial.contains("with_state"),
+            "partial: no state: {}",
+            main_partial
+        );
+        assert!(
+            main_partial.contains("mod db;"),
+            "partial: db module declared: {}",
+            main_partial
+        );
     }
 
     /// Plan 399 第 4-5 步: end-to-end on the real 017-chat db.at. Confirms the
@@ -6091,8 +6715,14 @@ pub fn exists(path str) bool { return fsys.path_exists(path) }
     fn test_017_chat_db_rs_has_real_logic_and_fn_names() {
         let _a2r_env = a2r_env_lock();
         let db_at = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..").join("..").join("examples")
-            .join("ui").join("017-chat").join("src").join("back").join("db.at");
+            .join("..")
+            .join("..")
+            .join("examples")
+            .join("ui")
+            .join("017-chat")
+            .join("src")
+            .join("back")
+            .join("db.at");
         if !db_at.exists() {
             eprintln!("skipping: 017-chat db.at not found at {:?}", db_at);
             return;
@@ -6104,32 +6734,55 @@ pub fn exists(path str) bool { return fsys.path_exists(path) }
 
         // The create_message body must set mine: true (the whole point of the
         // CRUD extension: handler delegation makes this run server-side).
-        assert!(db_rs.contains("mine: true"), "real mine:true logic: {}", db_rs);
+        assert!(
+            db_rs.contains("mine: true"),
+            "real mine:true logic: {}",
+            db_rs
+        );
 
         // extract_db_fn_names recovers the two functions handlers delegate to.
         let fns = extract_db_fn_names(&db_rs);
-        assert!(fns.contains("all_messages"), "all_messages found: {:?}", fns);
-        assert!(fns.contains("create_message"), "create_message found: {:?}", fns);
+        assert!(
+            fns.contains("all_messages"),
+            "all_messages found: {:?}",
+            fns
+        );
+        assert!(
+            fns.contains("create_message"),
+            "create_message found: {:?}",
+            fns
+        );
 
         // And the api.at side wires both endpoints to those db functions.
-        let api_at = std::fs::read_to_string(
-            db_at.with_file_name("api.at")
-        ).unwrap();
+        let api_at = std::fs::read_to_string(db_at.with_file_name("api.at")).unwrap();
         let module = extract_api_lenient(&api_at).expect("api extracts");
         let api_rs = generate_api_rs(&module, Some(&fns), /* api_impl_active */ false);
-        assert!(api_rs.contains("crate::db::all_messages()"), "list delegates: {}", api_rs);
+        assert!(
+            api_rs.contains("crate::db::all_messages()"),
+            "list delegates: {}",
+            api_rs
+        );
         assert!(
             api_rs.contains("crate::db::create_message(&input.sender, &input.text)"),
-            "create delegates: {}", api_rs
+            "create delegates: {}",
+            api_rs
         );
         assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
 
         // Full coverage → main.rs must drop State<Db> (state unified to db.rs).
         let db_at_content = std::fs::read_to_string(&db_at).unwrap();
         let main_rs = generate_main_rs(&module, Some(&db_at_content), true, &[], false);
-        assert!(!main_rs.contains("with_state"), "main drops state: {}", main_rs);
+        assert!(
+            !main_rs.contains("with_state"),
+            "main drops state: {}",
+            main_rs
+        );
         assert!(main_rs.contains("mod db;"), "main declares db: {}", main_rs);
-        assert!(main_rs.contains("mod events;"), "main declares events (SSE): {}", main_rs);
+        assert!(
+            main_rs.contains("mod events;"),
+            "main declares events (SSE): {}",
+            main_rs
+        );
     }
 
     /// Plan 399 §9: PATCH endpoint WITH body params must get a Json(input)
@@ -6148,28 +6801,40 @@ pub fn set_done(id int, done bool) ?Task { return db.set_done(id, done) }
 pub fn toggle_pin(id int) ?Task { return db.toggle_pin(id) }
 "#;
         let module = extract_api_lenient(api).expect("extract");
-        let db_fns: std::collections::HashSet<String> = [
-            "set_done".to_string(), "toggle_pin".to_string(),
-        ].into_iter().collect();
+        let db_fns: std::collections::HashSet<String> =
+            ["set_done".to_string(), "toggle_pin".to_string()]
+                .into_iter()
+                .collect();
         let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
 
         // PATCH+body (set_done): must have Json extractor AND delegate &input.done.
         assert!(
             api_rs.contains("Json(input): Json<") && api_rs.contains("set_done"),
-            "PATCH+body has Json extractor: {}", api_rs
+            "PATCH+body has Json extractor: {}",
+            api_rs
         );
         assert!(
             api_rs.contains("crate::db::set_done(id, input.done)"),
-            "PATCH+body delegates bool param (no borrow): {}", api_rs
+            "PATCH+body delegates bool param (no borrow): {}",
+            api_rs
         );
 
         // PATCH no body (toggle_pin): must NOT have a Json extractor (only Path).
         // Match "Json(input)" specifically — the return type JsonResponse also contains "Json".
-        let toggle_sig = api_rs.lines()
+        let toggle_sig = api_rs
+            .lines()
             .find(|l| l.contains("pub async fn toggle_pin"))
             .unwrap_or_else(|| panic!("toggle_pin handler missing: {}", api_rs));
-        assert!(!toggle_sig.contains("Json(input)"), "PATCH no-body has no Json extractor: {}", toggle_sig);
-        assert!(toggle_sig.contains("Path(id)"), "PATCH no-body has Path: {}", toggle_sig);
+        assert!(
+            !toggle_sig.contains("Json(input)"),
+            "PATCH no-body has no Json extractor: {}",
+            toggle_sig
+        );
+        assert!(
+            toggle_sig.contains("Path(id)"),
+            "PATCH no-body has Path: {}",
+            toggle_sig
+        );
     }
 
     /// Plan 399 §6: SSE broadcast event name is no longer hardcoded. A create
@@ -6194,19 +6859,29 @@ pub fn set_typing(sender str) { return db.set_typing(sender) }
 pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
 "#;
         let module = extract_api_lenient(api).expect("extract");
-        let db_fns: std::collections::HashSet<String> = [
-            "create_message".to_string(), "set_typing".to_string(),
-        ].into_iter().collect();
+        let db_fns: std::collections::HashSet<String> =
+            ["create_message".to_string(), "set_typing".to_string()]
+                .into_iter()
+                .collect();
         let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
 
         // create POST broadcasts "NewMessage" (was hardcoded before §6).
-        assert!(api_rs.contains("\"NewMessage\""), "create broadcasts NewMessage: {}", api_rs);
+        assert!(
+            api_rs.contains("\"NewMessage\""),
+            "create broadcasts NewMessage: {}",
+            api_rs
+        );
         // typing POST (void) broadcasts "Typing" with the name field (Phase 12
         // protocol: single-value variant uses a fixed "name" field, not &input).
-        assert!(api_rs.contains("\"Typing\""), "typing broadcasts Typing: {}", api_rs);
+        assert!(
+            api_rs.contains("\"Typing\""),
+            "typing broadcasts Typing: {}",
+            api_rs
+        );
         assert!(
             api_rs.contains("serde_json::json!") && api_rs.contains("\"name\": input.sender"),
-            "typing broadcasts json! with name field: {}", api_rs
+            "typing broadcasts json! with name field: {}",
+            api_rs
         );
     }
 
@@ -6228,11 +6903,13 @@ pub fn lookup(id int) ?User { return db.find_user(id) }
         // db.rs has find_user. The endpoint fn name "lookup" is NOT in the
         // heuristic verb whitelist, so db_fn_candidates would fail — but the
         // body-based resolver finds find_user directly.
-        let db_fns: std::collections::HashSet<String> = ["find_user".to_string()].into_iter().collect();
+        let db_fns: std::collections::HashSet<String> =
+            ["find_user".to_string()].into_iter().collect();
         let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
         assert!(
             api_rs.contains("crate::db::find_user(id)"),
-            "synonym endpoint delegates via body: {}", api_rs
+            "synonym endpoint delegates via body: {}",
+            api_rs
         );
         assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
     }
@@ -6258,19 +6935,29 @@ pub fn duplicate(id int) Note { return db.clone_note(id) }
 "#;
         let module = try_full_parse(api).expect("full_parse");
         // db.rs has all_notes + create_note but NOT clone_note (duplicate's body).
-        let db_fns: std::collections::HashSet<String> = [
-            "all_notes".to_string(), "create_note".to_string(),
-        ].into_iter().collect();
+        let db_fns: std::collections::HashSet<String> =
+            ["all_notes".to_string(), "create_note".to_string()]
+                .into_iter()
+                .collect();
         // Not full cover — duplicate is uncovered.
-        assert!(!all_endpoints_covered(&module, Some(&db_fns)),
-            "duplicate endpoint should make coverage partial");
+        assert!(
+            !all_endpoints_covered(&module, Some(&db_fns)),
+            "duplicate endpoint should make coverage partial"
+        );
         // Collect uncovered (same logic as generate_rust_server's hard check).
-        let uncovered: Vec<&str> = module.endpoints.iter()
+        let uncovered: Vec<&str> = module
+            .endpoints
+            .iter()
             .filter(|e| !e.return_type.contains("Stream<"))
             .filter(|e| resolve_db_call(e, &db_fns).is_none())
             .map(|e| e.fn_name.as_str())
             .collect();
-        assert_eq!(uncovered, vec!["duplicate"], "only duplicate is uncovered: {:?}", uncovered);
+        assert_eq!(
+            uncovered,
+            vec!["duplicate"],
+            "only duplicate is uncovered: {:?}",
+            uncovered
+        );
     }
 
     /// Plan 399 §7: regenerate the REAL 015-notes backend (default stack) and
@@ -6283,7 +6970,11 @@ pub fn duplicate(id int) Note { return db.clone_note(id) }
     #[ignore]
     fn regen_real_015_backend_db_delegation() {
         let project = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..").join("..").join("examples").join("ui").join("015-notes");
+            .join("..")
+            .join("..")
+            .join("examples")
+            .join("ui")
+            .join("015-notes");
         if !project.exists() {
             eprintln!("skip: 015-notes not found");
             return;
@@ -6294,7 +6985,11 @@ pub fn duplicate(id int) Note { return db.clone_note(id) }
         let module = try_full_parse(&api_content)
             .or_else(|| extract_api_lenient(&api_content))
             .expect("api extracts");
-        assert!(module.endpoints.len() >= 8, "8 endpoints: {}", module.endpoints.len());
+        assert!(
+            module.endpoints.len() >= 8,
+            "8 endpoints: {}",
+            module.endpoints.len()
+        );
 
         // stage B: full generate (transpile_db_to_rs has its own 16MB stack).
         generate_api(&project, "rust").expect("generate_api 015 ok");
@@ -6307,15 +7002,28 @@ pub fn duplicate(id int) Note { return db.clone_note(id) }
             .expect("main.rs exists");
         // Full db-delegation (no State<Db>).
         assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
-        assert!(api_rs.contains("crate::db::all_notes"), "list delegates: {}", api_rs);
-        assert!(api_rs.contains("crate::db::create_note"), "create delegates: {}", api_rs);
+        assert!(
+            api_rs.contains("crate::db::all_notes"),
+            "list delegates: {}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("crate::db::create_note"),
+            "create delegates: {}",
+            api_rs
+        );
         // []str param (update_tags) — borrowed (&input.tags): a2r emits &[String]
         // params, extractors hold Vec<String>, &Vec derefs to &[String].
         assert!(
             api_rs.contains("crate::db::update_tags(id, &input.tags)"),
-            "[]str param borrowed: {}", api_rs
+            "[]str param borrowed: {}",
+            api_rs
         );
-        assert!(!main_rs.contains("with_state"), "main no with_state: {}", main_rs);
+        assert!(
+            !main_rs.contains("with_state"),
+            "main no with_state: {}",
+            main_rs
+        );
         assert!(main_rs.contains("mod db;"), "main declares db: {}", main_rs);
     }
 
@@ -6339,7 +7047,10 @@ pub fn get_item(id int) Item {
         let module = try_full_parse(api).expect("full_parse");
         assert_eq!(module.endpoints.len(), 1);
         // The body has an if-statement → NOT a thin delegation.
-        assert!(!is_thin_delegation(&module.endpoints[0]), "if-body is non-thin");
+        assert!(
+            !is_thin_delegation(&module.endpoints[0]),
+            "if-body is non-thin"
+        );
         // No db.rs → no delegation possible.
         let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false);
         // The a2r path should have transpiled the if-statement into the handler.
@@ -6493,18 +7204,46 @@ pub fn list_items() []str { return [] }
 "#;
         let module = extract_api_lenient(api).expect("extract api");
         let stateful = generate_main_rs(&module, None, false, &[], false);
-        let full_cover = generate_main_rs(&module, Some("pub fn list_items() []str { return [] }"), true, &[], false);
+        let full_cover = generate_main_rs(
+            &module,
+            Some("pub fn list_items() []str { return [] }"),
+            true,
+            &[],
+            false,
+        );
         for generated in [&stateful, &full_cover] {
-            assert!(generated.contains("/api/__auto/media/{id}/{revision}"), "route missing: {generated}");
-            assert!(generated.contains("get(auto_media).head(auto_media)"), "GET/HEAD missing: {generated}");
-            assert!(generated.contains("global_media_registry"), "runtime bridge missing: {generated}");
+            assert!(
+                generated.contains("/api/__auto/media/{id}/{revision}"),
+                "route missing: {generated}"
+            );
+            assert!(
+                generated.contains("get(auto_media).head(auto_media)"),
+                "GET/HEAD missing: {generated}"
+            );
+            assert!(
+                generated.contains("global_media_registry"),
+                "runtime bridge missing: {generated}"
+            );
             // PLAN-043 Part 1: photo service routes ride the same emission point.
-            assert!(generated.contains("/api/photos/scan"), "photo scan route missing: {generated}");
-            assert!(generated.contains("get(auto_photos_thumb)"), "photo thumb route missing: {generated}");
-            assert!(generated.contains("get(auto_photos_full)"), "photo full route missing: {generated}");
-            assert!(generated.contains("auto_lang::ui::photo_service"), "photo runtime missing: {generated}");
+            assert!(
+                generated.contains("/api/photos/scan"),
+                "photo scan route missing: {generated}"
+            );
+            assert!(
+                generated.contains("get(auto_photos_thumb)"),
+                "photo thumb route missing: {generated}"
+            );
+            assert!(
+                generated.contains("get(auto_photos_full)"),
+                "photo full route missing: {generated}"
+            );
+            assert!(
+                generated.contains("auto_lang::ui::photo_service"),
+                "photo runtime missing: {generated}"
+            );
         }
-        assert!(generate_cargo_toml("media-back", false, false).contains("auto-lang = { workspace = true"));
+        assert!(generate_cargo_toml("media-back", false, false)
+            .contains("auto-lang = { workspace = true"));
     }
 
     #[test]

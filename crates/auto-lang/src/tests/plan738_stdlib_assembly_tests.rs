@@ -1126,7 +1126,10 @@ mod t07_witness_and_matrix {
                     let status = sym["status"].as_str().unwrap();
                     if status != "supported" {
                         assert!(
-                            sym["reason"].as_str().map(|r| !r.is_empty()).unwrap_or(false),
+                            sym["reason"]
+                                .as_str()
+                                .map(|r| !r.is_empty())
+                                .unwrap_or(false),
                             "{name}/{env}/{}: 非 Supported 必有原因",
                             sym["symbol"]
                         );
@@ -1138,7 +1141,10 @@ mod t07_witness_and_matrix {
                 let claim = &cell[tgt]["claim"];
                 if claim["status"].as_str() != Some("supported") {
                     assert!(
-                        claim["reason"].as_str().map(|r| !r.is_empty()).unwrap_or(false),
+                        claim["reason"]
+                            .as_str()
+                            .map(|r| !r.is_empty())
+                            .unwrap_or(false),
                         "{name}/{tgt}: 非 supported claim 必有原因: {claim}"
                     );
                 }
@@ -1172,10 +1178,13 @@ mod t07_witness_and_matrix {
         let report_dir = repo_root.join("docs").join("plans").join("reports");
         fs::create_dir_all(&report_dir).unwrap();
         let json_path = report_dir.join("738-stdlib-matrix.json");
-        fs::write(&json_path, serde_json::to_string_pretty(&matrix).unwrap() + "\n").unwrap();
-        let mut md = String::from(
-            "# PLAN-738 六核心 target×environment 能力矩阵（机器生成，勿手编）\n\n",
-        );
+        fs::write(
+            &json_path,
+            serde_json::to_string_pretty(&matrix).unwrap() + "\n",
+        )
+        .unwrap();
+        let mut md =
+            String::from("# PLAN-738 六核心 target×environment 能力矩阵（机器生成，勿手编）\n\n");
         md.push_str("| module | vm.native | vm.browser | rust | c | 公共符号数 |\n|---|---|---|---|---|---|\n");
         for (name, cell) in modules {
             let count = |arr: &serde_json::Value, st: &str| {
@@ -1203,5 +1212,90 @@ mod t07_witness_and_matrix {
         }
         fs::write(report_dir.join("738-stdlib-matrix.md"), md).unwrap();
         assert!(json_path.exists(), "矩阵 JSON 报告应落盘");
+    }
+}
+
+// ============================================================================
+// T-06 gated 半解锁：装配指纹（734 receipt / 736 复用新鲜度门消费面）
+// ============================================================================
+
+#[cfg(test)]
+mod t06_assembly_receipt {
+    use crate::stdlib_assembly::loader::{repo_stdlib_root, stdlib_assembly_fingerprint};
+    use crate::stdlib_assembly::model::AssemblyTarget;
+    use std::fs;
+    use std::path::Path;
+
+    fn fingerprint_at(root: &Path, target: AssemblyTarget) -> u64 {
+        stdlib_assembly_fingerprint(root, target).expect("指纹计算")
+    }
+
+    /// 决定论 + 内容敏感性：同内容同目标恒等；任一层内容变更/层新增/
+    /// 目标切换都变指纹（AC-06「改 stdlib 但 api.at 不变」的失效基底）。
+    #[test]
+    fn fingerprint_deterministic_and_content_sensitive() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(
+            tmp.path().join("m.at"),
+            "pub fn f() int {
+    return 1
+}
+",
+        )
+        .unwrap();
+        fs::write(
+            tmp.path().join("m.vm.at"),
+            "#[vm]
+pub fn g() int;
+",
+        )
+        .unwrap();
+
+        let a = fingerprint_at(tmp.path(), AssemblyTarget::Vm);
+        let b = fingerprint_at(tmp.path(), AssemblyTarget::Vm);
+        assert_eq!(a, b, "同内容同目标必须恒等（决定论）");
+
+        // 改目标层内容
+        fs::write(
+            tmp.path().join("m.vm.at"),
+            "#[vm]
+pub fn g() int {
+    return 2
+}
+",
+        )
+        .unwrap();
+        assert_ne!(
+            fingerprint_at(tmp.path(), AssemblyTarget::Vm),
+            a,
+            "层内容变更必须变指纹"
+        );
+
+        // 增层
+        let after_add = fingerprint_at(tmp.path(), AssemblyTarget::Vm);
+        fs::write(
+            tmp.path().join("m.rs.at"),
+            "pub fn h() int {
+    return 3
+}
+",
+        )
+        .unwrap();
+        assert_ne!(
+            fingerprint_at(tmp.path(), AssemblyTarget::Vm),
+            after_add,
+            "层新增必须变指纹"
+        );
+
+        // 目标切换（同内容）
+        let full_vm = fingerprint_at(tmp.path(), AssemblyTarget::Vm);
+        assert_ne!(
+            fingerprint_at(tmp.path(), AssemblyTarget::Rust),
+            full_vm,
+            "target 入链：目标切换变指纹（§5.4）"
+        );
+
+        // 真实 stdlib 根可用性（repo 根环境）——与 receipt 生成同源
+        assert!(repo_stdlib_root().is_ok(), "仓内环境 stdlib 根可定位");
     }
 }

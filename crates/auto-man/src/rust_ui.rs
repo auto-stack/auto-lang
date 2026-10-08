@@ -14,12 +14,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use auto_lang::api::types::{ApiModule, ApiEndpoint};
+use auto_lang::api::types::{ApiEndpoint, ApiModule};
 
+use auto_lang::session::CompilerSession;
 use auto_lang::ui_gen::rust::RustGenerator;
 use auto_lang::ui_gen::BackendGenerator;
 use auto_lang::Parser;
-use auto_lang::session::CompilerSession;
 use colored::Colorize;
 
 use crate::AutoResult;
@@ -101,16 +101,28 @@ fn view_decl_has_pascal_child(node: &auto_lang::ast::ui::ViewNode) -> bool {
     use auto_lang::ast::ui::ViewNode;
     match node {
         ViewNode::Element { tag, children, .. } => {
-            if tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+            if tag
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false)
+            {
                 return true;
             }
             children.iter().any(view_decl_has_pascal_child)
         }
         ViewNode::Component { .. } => true,
         ViewNode::ForLoop { body, .. } => body.iter().any(view_decl_has_pascal_child),
-        ViewNode::Conditional { then_body, else_body, .. } => {
+        ViewNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             then_body.iter().any(view_decl_has_pascal_child)
-                || else_body.as_ref().map(|e| e.iter().any(view_decl_has_pascal_child)).unwrap_or(false)
+                || else_body
+                    .as_ref()
+                    .map(|e| e.iter().any(view_decl_has_pascal_child))
+                    .unwrap_or(false)
         }
         _ => false,
     }
@@ -170,7 +182,9 @@ fn collect_component_prop_orders(at_files: &[std::path::PathBuf]) {
                         // 无 msg 块**且 view 无 PascalCase 子件引用** → "()"；
                         // 有子件引用 → {}Msg（生成期 child gate 同口径——
                         // CardFace 无 msg 但有 CardSuit/CourtBadge 子件）。
-                        let has_child_ref = widget_decl.view.as_ref()
+                        let has_child_ref = widget_decl
+                            .view
+                            .as_ref()
                             .map(|v| view_decl_has_pascal_child(&v.root))
                             .unwrap_or(false);
                         let msg_ty = if widget_decl.messages.is_empty() && !has_child_ref {
@@ -324,7 +338,11 @@ pub fn collect_component_semantics(
                         // Scan handler bodies for `self.<prop>.<field> = ...` assignments.
                         if let Some(on_block) = &widget_decl.on {
                             for handler in &on_block.handlers {
-                                scan_written_props(&handler.body, &prop_names, &mut semantics.written_props);
+                                scan_written_props(
+                                    &handler.body,
+                                    &prop_names,
+                                    &mut semantics.written_props,
+                                );
                             }
                         }
                         // Dedup while preserving order.
@@ -358,9 +376,7 @@ fn scan_written_props(
                         if let Expr::Ident(name) = obj.as_ref() {
                             if name.as_str() == "self" || name.as_str() == "." {
                                 let prop_str = prop.as_str().to_string();
-                                if prop_names.contains(&prop_str)
-                                    && !out.contains(&prop_str)
-                                {
+                                if prop_names.contains(&prop_str) && !out.contains(&prop_str) {
                                     out.push(prop_str);
                                 }
                             }
@@ -417,7 +433,11 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     // `StoreMsg`" errors on incremental regen of store-composable apps.
     let all_stores = collect_store_decls(&at_files);
     if !all_stores.is_empty() {
-        println!("  {} {} store composable(s) found", "Found".bright_green(), all_stores.len());
+        println!(
+            "  {} {} store composable(s) found",
+            "Found".bright_green(),
+            all_stores.len()
+        );
     }
     // PLAN-039 T-13（E-D5-A 配套）：api 桩 typed 返回集注册（scan 门）。
     register_api_typed_fns_for(project_dir);
@@ -431,7 +451,12 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     let mut all_components = String::new();
     let mut all_api_imports: Vec<String> = Vec::new();
     for at_path in &at_files {
-        match compile_at_file(at_path, &all_stores, &component_fields, &component_semantics) {
+        match compile_at_file(
+            at_path,
+            &all_stores,
+            &component_fields,
+            &component_semantics,
+        ) {
             Ok((code, api_imports)) => {
                 all_components.push_str(&code);
                 all_components.push('\n');
@@ -439,7 +464,12 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
             }
             Err(e) => {
                 let file_name = at_path.file_name().unwrap_or_default().to_string_lossy();
-                println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), file_name, e);
+                println!(
+                    "{} Failed to compile {}: {}",
+                    "Warning:".bright_yellow(),
+                    file_name,
+                    e
+                );
             }
         }
     }
@@ -471,8 +501,13 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     // 踩中)。Cargo.toml 也按 pac 现值重写(exe_name 等 014 配置 regen
     // 即生效),随后 apply_sidecar_to_crate 重注依赖 + mod 声明。
     let cargo_toml = generate_cargo_toml(&project_name, project_dir);
-    fs::write(rust_dir.join("Cargo.toml"), &cargo_toml)
-        .map_err(|e| format!("Failed to write {}: {}", rust_dir.join("Cargo.toml").display(), e))?;
+    fs::write(rust_dir.join("Cargo.toml"), &cargo_toml).map_err(|e| {
+        format!(
+            "Failed to write {}: {}",
+            rust_dir.join("Cargo.toml").display(),
+            e
+        )
+    })?;
 
     let sidecar = crate::sidecar::load_sidecar(project_dir);
     if !sidecar.is_empty() {
@@ -495,11 +530,7 @@ pub fn generate_rust_ui(
     let front_dir = find_front_dir(project_dir);
 
     if !front_dir.exists() {
-        return Err(format!(
-            "Front directory not found: {}",
-            front_dir.display()
-        )
-        .into());
+        return Err(format!("Front directory not found: {}", front_dir.display()).into());
     }
 
     // Collect .at files
@@ -512,7 +543,10 @@ pub fn generate_rust_ui(
     let mut at_files = collect_at_files(&front_dir)?;
     at_files.extend(bps_widget_files);
     if at_files.is_empty() {
-        println!("{}", "  No .at files found in front directory".bright_yellow());
+        println!(
+            "{}",
+            "  No .at files found in front directory".bright_yellow()
+        );
         return Ok(());
     }
 
@@ -530,8 +564,7 @@ pub fn generate_rust_ui(
         .map(|p| p.to_path_buf())
         .unwrap_or(default_output);
 
-    fs::create_dir_all(&output)
-        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    fs::create_dir_all(&output).map_err(|e| format!("Failed to create output directory: {}", e))?;
 
     // Get project name from pac.at
     let pac_path = project_dir.join("pac.at");
@@ -544,7 +577,11 @@ pub fn generate_rust_ui(
     // Plan 374 Task 2-3: Pre-scan all .at files to collect StoreDecls.
     let all_stores = collect_store_decls(&at_files);
     if !all_stores.is_empty() {
-        println!("  {} {} store composable(s) found", "Found".bright_green(), all_stores.len());
+        println!(
+            "  {} {} store composable(s) found",
+            "Found".bright_green(),
+            all_stores.len()
+        );
     }
 
     // PLAN-039 T-13（E-D5-A 配套）：api 桩 typed 返回集注册（scan 门）。
@@ -561,13 +598,15 @@ pub fn generate_rust_ui(
     let mut all_components = String::new();
     let mut all_api_imports: Vec<String> = Vec::new();
     for at_path in &at_files {
-        let file_name = at_path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
+        let file_name = at_path.file_name().unwrap_or_default().to_string_lossy();
         println!("  {} {}", "Parsing".bright_cyan(), file_name);
 
-        match compile_at_file(at_path, &all_stores, &component_fields, &component_semantics) {
+        match compile_at_file(
+            at_path,
+            &all_stores,
+            &component_fields,
+            &component_semantics,
+        ) {
             Ok((code, api_imports)) => {
                 all_components.push_str(&code);
                 all_components.push('\n');
@@ -610,8 +649,7 @@ pub fn generate_rust_ui(
 
     // Write output as a Cargo project
     let src_dir = output.join("src");
-    fs::create_dir_all(&src_dir)
-        .map_err(|e| format!("Failed to create src directory: {}", e))?;
+    fs::create_dir_all(&src_dir).map_err(|e| format!("Failed to create src directory: {}", e))?;
 
     let main_rs = src_dir.join("main.rs");
     fs::write(&main_rs, &full_code)
@@ -629,8 +667,7 @@ pub fn generate_rust_ui(
         crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, &output)?;
         println!(
             "{}",
-            "  rust_sidecar applied (modules + deps)"
-                .bright_green()
+            "  rust_sidecar applied (modules + deps)".bright_green()
         );
     }
 
@@ -650,8 +687,9 @@ pub fn generate_rust_ui(
                                     &format!("__InitLoaded({rust_ty})"),
                                 );
                                 if rewritten != main_content {
-                                    fs::write(&main_rs, &rewritten)
-                                        .map_err(|e| format!("Failed to rewrite {}: {}", main_rs.display(), e))?;
+                                    fs::write(&main_rs, &rewritten).map_err(|e| {
+                                        format!("Failed to rewrite {}: {}", main_rs.display(), e)
+                                    })?;
                                 }
                             }
                         }
@@ -668,20 +706,14 @@ pub fn generate_rust_ui(
     let _ = ensure_shared_workspace(project_dir);
 
     println!();
-    println!(
-        "{} {}",
-        "  Generated".bright_green(),
-        output.display()
-    );
-    println!(
-        "{} {} (main widget)",
-        "  Entry".bright_green(),
-        main_widget
-    );
+    println!("{} {}", "  Generated".bright_green(), output.display());
+    println!("{} {} (main widget)", "  Entry".bright_green(), main_widget);
     println!();
     println!(
         "{}",
-        "  Rust UI project generated successfully!".bright_green().bold()
+        "  Rust UI project generated successfully!"
+            .bright_green()
+            .bold()
     );
 
     Ok(())
@@ -691,10 +723,7 @@ pub fn generate_rust_ui(
 /// PLAN-627: 模块形态 `use back.api`（无符号清单）自 api.at 契约枚举
 /// （`auto_lang::config::api_contract_fn_names_for_front`，与 ui_gen/api.rs
 /// 双写同源语义）。
-fn extract_api_imports_from_ast(
-    ast: &auto_lang::ast::Code,
-    at_path: &Path,
-) -> Vec<String> {
+fn extract_api_imports_from_ast(ast: &auto_lang::ast::Code, at_path: &Path) -> Vec<String> {
     let mut imports = Vec::new();
     let mut module_form = false;
     for stmt in &ast.stmts {
@@ -784,40 +813,45 @@ fn compile_at_file(
         generator.register_store("store", store.name.as_str());
     }
     // Check if THIS file contains any StoreDecl — only generate from here.
-    let file_has_store = ast.stmts.iter().any(|s| matches!(s, auto_lang::ast::Stmt::StoreDecl(_)));
+    let file_has_store = ast
+        .stmts
+        .iter()
+        .any(|s| matches!(s, auto_lang::ast::Stmt::StoreDecl(_)));
     if file_has_store {
-    for store in stores {
-        let fake_decl = auto_lang::ast::ui::WidgetDecl {
-            name: store.name.clone(),
-            messages: store.messages.clone(),
-            model: store.model.clone(),
-            computed: store.computed.clone(),
-            view: None,
-            named_views: Vec::new(),
-            on: store.on.clone(),
-            bind: None,
-            props: Vec::new(),
-            routes: None,
-            lifecycle: Vec::new(),
-            style: None,
-            ext_imports: Vec::new(),
-            watch: Vec::new(),
-            expose: Vec::new(),
-            setup: None,
-            actions: None,
-            timer: None,
-        };
-        match auto_lang::aura::extract_widget_from_decl(&fake_decl) {
-            Ok(aura_widget) => {
-                let rust_code = generator.generate(&aura_widget).map_err(|e| e.to_string())?;
-                output.push_str(&rust_code);
-                output.push('\n');
-            }
-            Err(e) => {
-                eprintln!("  Warning: store '{}' extraction failed: {}", store.name, e);
+        for store in stores {
+            let fake_decl = auto_lang::ast::ui::WidgetDecl {
+                name: store.name.clone(),
+                messages: store.messages.clone(),
+                model: store.model.clone(),
+                computed: store.computed.clone(),
+                view: None,
+                named_views: Vec::new(),
+                on: store.on.clone(),
+                bind: None,
+                props: Vec::new(),
+                routes: None,
+                lifecycle: Vec::new(),
+                style: None,
+                ext_imports: Vec::new(),
+                watch: Vec::new(),
+                expose: Vec::new(),
+                setup: None,
+                actions: None,
+                timer: None,
+            };
+            match auto_lang::aura::extract_widget_from_decl(&fake_decl) {
+                Ok(aura_widget) => {
+                    let rust_code = generator
+                        .generate(&aura_widget)
+                        .map_err(|e| e.to_string())?;
+                    output.push_str(&rust_code);
+                    output.push('\n');
+                }
+                Err(e) => {
+                    eprintln!("  Warning: store '{}' extraction failed: {}", store.name, e);
+                }
             }
         }
-    }
     }
 
     // Plan 371 Task 22c: register every component's own scalar state fields.
@@ -896,7 +930,10 @@ struct MergedRouteAImpl {
     companions: Vec<(String, String)>, // (mod name, rust source)
 }
 
-fn merged_route_a_impl(project_dir: &Path, module: &auto_lang::api::ApiModule) -> Option<MergedRouteAImpl> {
+fn merged_route_a_impl(
+    project_dir: &Path,
+    module: &auto_lang::api::ApiModule,
+) -> Option<MergedRouteAImpl> {
     if crate::api_gen::primary_type_name_pub(module).is_some() {
         return None;
     }
@@ -909,7 +946,11 @@ fn merged_route_a_impl(project_dir: &Path, module: &auto_lang::api::ApiModule) -
         let mut stems: Vec<String> = entries
             .filter_map(|e| e.ok())
             .filter(|e| e.path().extension().map(|x| x == "at").unwrap_or(false))
-            .filter_map(|e| e.file_name().to_str().map(|s| s.trim_end_matches(".at").to_string()))
+            .filter_map(|e| {
+                e.file_name()
+                    .to_str()
+                    .map(|s| s.trim_end_matches(".at").to_string())
+            })
             .filter(|stem| stem != "api" && stem != "db")
             .collect();
         stems.sort();
@@ -927,7 +968,10 @@ fn merged_route_a_impl(project_dir: &Path, module: &auto_lang::api::ApiModule) -
         .join("\n");
     let api_impl = crate::api_gen::transpile_back_module_to_rs("api_impl", &stripped).ok()?;
     let api_impl = crate::api_gen::post_process_companion_rs(api_impl);
-    Some(MergedRouteAImpl { api_impl, companions })
+    Some(MergedRouteAImpl {
+        api_impl,
+        companions,
+    })
 }
 
 /// 载入并转译 src/back/db.at;含「引用工程外类型面」(crate::types /
@@ -1046,7 +1090,11 @@ fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
 
     if merged_mode {
         if let Some(module) = &api_module {
-            return format!("{}{}", api_type_structs, generate_merged_api_client(module, project_dir));
+            return format!(
+                "{}{}",
+                api_type_structs,
+                generate_merged_api_client(module, project_dir)
+            );
         }
         // Fallback to stubs if no api.at found
         return generate_api_stubs(api_imports);
@@ -1061,7 +1109,11 @@ fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
     // 优先走 merged 直调;吸收不可用才回落 split-HTTP。
     if let Some(module) = &api_module {
         if merged_db_impl(project_dir, module).is_some() {
-            return format!("{}{}", api_type_structs, generate_merged_api_client(module, project_dir));
+            return format!(
+                "{}{}",
+                api_type_structs,
+                generate_merged_api_client(module, project_dir)
+            );
         }
     }
     if let Some(module) = &api_module {
@@ -1180,9 +1232,9 @@ fn _http_client() -> reqwest::blocking::Client {
     .clone()
 }
 
-"#.to_string()
+"#
+    .to_string()
 }
-
 
 fn generate_endpoint_fn(endpoint: &ApiEndpoint, base_url: &str) -> String {
     let fn_name = &endpoint.fn_name;
@@ -1192,10 +1244,14 @@ fn generate_endpoint_fn(endpoint: &ApiEndpoint, base_url: &str) -> String {
 
     // Separate path params from body params
     let full_path = format!("/{}", path); // keep for :param matching
-    let path_params: Vec<_> = endpoint.params.iter()
+    let path_params: Vec<_> = endpoint
+        .params
+        .iter()
         .filter(|p| full_path.contains(&format!(":{}", p.name)))
         .collect();
-    let body_params: Vec<_> = endpoint.params.iter()
+    let body_params: Vec<_> = endpoint
+        .params
+        .iter()
         .filter(|p| !full_path.contains(&format!(":{}", p.name)))
         .collect();
 
@@ -1208,13 +1264,20 @@ fn generate_endpoint_fn(endpoint: &ApiEndpoint, base_url: &str) -> String {
             url_fmt = url_fmt.replace(&format!(":{}", p.name), "{}");
             format_args.push(p.name.clone());
         }
-        format!("&format!(\"{}/{}\", {})", base_url, url_fmt, format_args.join(", "))
+        format!(
+            "&format!(\"{}/{}\", {})",
+            base_url,
+            url_fmt,
+            format_args.join(", ")
+        )
     } else {
         format!("\"{}/{}\"", base_url, path)
     };
 
     // Function parameters
-    let params: Vec<String> = endpoint.params.iter()
+    let params: Vec<String> = endpoint
+        .params
+        .iter()
         .map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty)))
         .collect();
     let param_list = params.join(", ");
@@ -1260,14 +1323,25 @@ fn generate_endpoint_fn(endpoint: &ApiEndpoint, base_url: &str) -> String {
     if is_fire_and_forget {
         format!("fn {}({}) {{\n{}}}\n", fn_name, param_list, body)
     } else {
-        format!("fn {}({}) -> {} {{\n{}}}\n", fn_name, param_list, rust_return_type, body)
+        format!(
+            "fn {}({}) -> {} {{\n{}}}\n",
+            fn_name, param_list, rust_return_type, body
+        )
     }
 }
 
 /// Generate body for GET requests (reqwest::blocking, Plan 388 W1)
-fn generate_get_fn_body(method: String, url_expr: String, is_void: bool, return_type: &str) -> String {
+fn generate_get_fn_body(
+    method: String,
+    url_expr: String,
+    is_void: bool,
+    return_type: &str,
+) -> String {
     if is_void {
-        format!("    let _ = _http_client().{}({}).send();\n", method, url_expr)
+        format!(
+            "    let _ = _http_client().{}({}).send();\n",
+            method, url_expr
+        )
     } else if return_type.starts_with("Vec<") {
         format!(
             "    _http_client().{}({})\n        .send().ok()\n        .and_then(|r| r.json::<{}>().ok())\n        .unwrap_or_default()\n",
@@ -1292,11 +1366,17 @@ fn generate_get_fn_body(method: String, url_expr: String, is_void: bool, return_
 /// Generate body for DELETE requests (non-blocking via background thread)
 fn generate_delete_fn_body(url_expr: String) -> String {
     let url_owned = if url_expr.starts_with('&') || url_expr.starts_with("format!") {
-        format!("    let url = {}.to_string();\n", url_expr.trim_start_matches('&'))
+        format!(
+            "    let url = {}.to_string();\n",
+            url_expr.trim_start_matches('&')
+        )
     } else {
         format!("    let url = {}.to_string();\n", url_expr)
     };
-    format!("{}    std::thread::spawn(move || {{ let _ = _http_client().delete(&url).send(); }});\n", url_owned)
+    format!(
+        "{}    std::thread::spawn(move || {{ let _ = _http_client().delete(&url).send(); }});\n",
+        url_owned
+    )
 }
 
 /// Generate body for POST/PUT requests (with JSON body)
@@ -1305,8 +1385,15 @@ fn generate_delete_fn_body(url_expr: String) -> String {
 /// For value return types (e.g., create_note): returns a local JSON placeholder and
 /// spawns a background thread for the actual HTTP call. The returned placeholder
 /// contains the params so the UI can display immediately.
-fn generate_write_fn_body(method: String, url_expr: String, body_params: &[&auto_lang::api::types::ApiParam], is_void: bool, return_type: &str) -> String {
-    let json_fields: Vec<String> = body_params.iter()
+fn generate_write_fn_body(
+    method: String,
+    url_expr: String,
+    body_params: &[&auto_lang::api::types::ApiParam],
+    is_void: bool,
+    return_type: &str,
+) -> String {
+    let json_fields: Vec<String> = body_params
+        .iter()
         .map(|p| format!("\"{}\": {}", p.name, p.name))
         .collect();
     let json_body = format!("serde_json::json!({{{}}})", json_fields.join(", "));
@@ -1314,7 +1401,10 @@ fn generate_write_fn_body(method: String, url_expr: String, body_params: &[&auto
     if is_void {
         // Non-blocking: spawn background thread for fire-and-forget
         let url_owned = if url_expr.starts_with('&') || url_expr.starts_with("format!") {
-            format!("    let url = {}.to_string();\n", url_expr.trim_start_matches('&'))
+            format!(
+                "    let url = {}.to_string();\n",
+                url_expr.trim_start_matches('&')
+            )
         } else {
             format!("    let url = {}.to_string();\n", url_expr)
         };
@@ -1331,7 +1421,10 @@ fn generate_write_fn_body(method: String, url_expr: String, body_params: &[&auto
     } else if return_type.starts_with("Option<") {
         // Option return (e.g., update_note) — non-blocking: fire-and-forget in background thread
         let url_owned = if url_expr.starts_with('&') || url_expr.starts_with("format!") {
-            format!("    let url = {}.to_string();\n", url_expr.trim_start_matches('&'))
+            format!(
+                "    let url = {}.to_string();\n",
+                url_expr.trim_start_matches('&')
+            )
         } else {
             format!("    let url = {}.to_string();\n", url_expr)
         };
@@ -1346,7 +1439,10 @@ fn generate_write_fn_body(method: String, url_expr: String, body_params: &[&auto
             "    _http_client().{}({})\n        .json(&{})\n        .send().ok()\n        .and_then(|r| r.json::<bool>().ok())\n        .unwrap_or_default()\n",
             method, url_expr, json_body
         )
-    } else if matches!(return_type.trim(), "int" | "i32" | "i64" | "str" | "String" | "float" | "f32" | "double" | "f64") {
+    } else if matches!(
+        return_type.trim(),
+        "int" | "i32" | "i64" | "str" | "String" | "float" | "f32" | "double" | "f64"
+    ) {
         // PLAN-021 T-09:声明标量返回(int/str 等)→ 阻塞反序列化为该
         // 类型——.at 调用方按声明消费返回值(term_pump_input 的泵送计数
         // 等),占位 Value 会破坏类型契约。语义 = 与 GET 同款同步读。
@@ -1358,12 +1454,16 @@ fn generate_write_fn_body(method: String, url_expr: String, body_params: &[&auto
         // Value/未知自定义类型返回(如 create_note → Value/Note)
         // Non-blocking: return a local placeholder with the params, POST in background.
         // The actual server-generated ID won't be available, but the UI works immediately.
-        let local_fields: Vec<String> = body_params.iter()
+        let local_fields: Vec<String> = body_params
+            .iter()
             .map(|p| format!("\"{}\": {}", p.name, p.name))
             .collect();
         let local_json = format!("serde_json::json!({{{}}})", local_fields.join(", "));
         let url_owned = if url_expr.starts_with('&') || url_expr.starts_with("format!") {
-            format!("    let url = {}.to_string();\n", url_expr.trim_start_matches('&'))
+            format!(
+                "    let url = {}.to_string();\n",
+                url_expr.trim_start_matches('&')
+            )
         } else {
             format!("    let url = {}.to_string();\n", url_expr)
         };
@@ -1416,7 +1516,8 @@ fn generate_api_stubs(api_imports: &[String]) -> String {
         let lower = fn_name.to_lowercase();
         if lower.starts_with("list_") || lower.starts_with("list") {
             code.push_str(&format!(
-                "fn {}() -> Vec<serde_json::Value> {{ vec![] }}\n\n", fn_name
+                "fn {}() -> Vec<serde_json::Value> {{ vec![] }}\n\n",
+                fn_name
             ));
         } else if lower.starts_with("create_") {
             code.push_str(&format!(
@@ -1425,20 +1526,18 @@ fn generate_api_stubs(api_imports: &[String]) -> String {
             ));
         } else if lower.starts_with("update_") {
             code.push_str(&format!(
-                "fn {}(_id: i32, _title: String, _body: String) {{ }}\n\n", fn_name
+                "fn {}(_id: i32, _title: String, _body: String) {{ }}\n\n",
+                fn_name
             ));
         } else if lower.starts_with("delete_") {
-            code.push_str(&format!(
-                "fn {}(_id: i32) {{ }}\n\n", fn_name
-            ));
+            code.push_str(&format!("fn {}(_id: i32) {{ }}\n\n", fn_name));
         } else if lower.starts_with("get_") {
             code.push_str(&format!(
-                "fn {}(_id: i32) -> Option<serde_json::Value> {{ None }}\n\n", fn_name
+                "fn {}(_id: i32) -> Option<serde_json::Value> {{ None }}\n\n",
+                fn_name
             ));
         } else {
-            code.push_str(&format!(
-                "fn {}() {{ }}\n\n", fn_name
-            ));
+            code.push_str(&format!("fn {}() {{ }}\n\n", fn_name));
         }
     }
     code
@@ -1460,40 +1559,64 @@ fn generate_json_initial_data(module: &auto_lang::api::ApiModule) -> String {
 
     let mut items = vec![];
     for i in 0..3i64 {
-        let fields: Vec<String> = api_type.fields.iter().map(|f| {
-            let val = match f.ty.as_str() {
-                "int" | "i64" => format!("{}", i),
-                "bool" => match f.name.as_str() {
-                    // pinned: first note pinned so the "Pinned" tab isn't empty.
-                    "pinned" => if i == 0 { "true" } else { "false" }.to_string(),
-                    _ => "false".to_string(),
-                },
-                s if s.starts_with("[]") => {
-                    // Array field (e.g. tags) — emit a non-empty JSON array so
-                    // tag filters and renders have data to show.
-                    let sample = match f.name.as_str() {
-                        "tags" => match i { 0 => "intro", 1 => "home", _ => "work" },
-                        _ => "item",
-                    };
-                    format!("[\"{}\"]", sample)
-                }
-                _ => {
-                    let sample = match f.name.as_str() {
-                        "title" | "name" => match i { 0 => "Welcome", 1 => "Shopping List", _ => "Meeting Notes" },
-                        "body" | "description" | "content" => match i { 0 => "This is your notes app. Click on any note to view it.", 1 => "Milk, Eggs, Bread, Cheese", _ => "Q3 roadmap discussion with the team" },
-                        "time" | "date" | "created_at" => match i { 0 => "Just now", 1 => "2 hours ago", _ => "Yesterday" },
-                        // folder: spread the 3 seed notes across the categories
-                        // ("" / "personal" / "work") so each folder tab shows at
-                        // least one note. Without this all notes get a generic
-                        // value and folder-filtered lists render empty.
-                        "folder" | "category" => match i { 0 => "", 1 => "personal", _ => "work" },
-                        _ => "Sample",
-                    };
-                    format!("\"{}\"", sample)
-                }
-            };
-            format!("\"{}\": {}", f.name, val)
-        }).collect();
+        let fields: Vec<String> = api_type
+            .fields
+            .iter()
+            .map(|f| {
+                let val = match f.ty.as_str() {
+                    "int" | "i64" => format!("{}", i),
+                    "bool" => match f.name.as_str() {
+                        // pinned: first note pinned so the "Pinned" tab isn't empty.
+                        "pinned" => if i == 0 { "true" } else { "false" }.to_string(),
+                        _ => "false".to_string(),
+                    },
+                    s if s.starts_with("[]") => {
+                        // Array field (e.g. tags) — emit a non-empty JSON array so
+                        // tag filters and renders have data to show.
+                        let sample = match f.name.as_str() {
+                            "tags" => match i {
+                                0 => "intro",
+                                1 => "home",
+                                _ => "work",
+                            },
+                            _ => "item",
+                        };
+                        format!("[\"{}\"]", sample)
+                    }
+                    _ => {
+                        let sample = match f.name.as_str() {
+                            "title" | "name" => match i {
+                                0 => "Welcome",
+                                1 => "Shopping List",
+                                _ => "Meeting Notes",
+                            },
+                            "body" | "description" | "content" => match i {
+                                0 => "This is your notes app. Click on any note to view it.",
+                                1 => "Milk, Eggs, Bread, Cheese",
+                                _ => "Q3 roadmap discussion with the team",
+                            },
+                            "time" | "date" | "created_at" => match i {
+                                0 => "Just now",
+                                1 => "2 hours ago",
+                                _ => "Yesterday",
+                            },
+                            // folder: spread the 3 seed notes across the categories
+                            // ("" / "personal" / "work") so each folder tab shows at
+                            // least one note. Without this all notes get a generic
+                            // value and folder-filtered lists render empty.
+                            "folder" | "category" => match i {
+                                0 => "",
+                                1 => "personal",
+                                _ => "work",
+                            },
+                            _ => "Sample",
+                        };
+                        format!("\"{}\"", sample)
+                    }
+                };
+                format!("\"{}\": {}", f.name, val)
+            })
+            .collect();
         items.push(format!("serde_json::json!({{{}}})", fields.join(", ")));
     }
     format!("[{}]", items.join(", "))
@@ -1534,9 +1657,14 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
     // 模块（同为 main.rs 顶层 item）。
     let route_a = merged_route_a_impl(project_dir, module);
     if let Some(ra) = &route_a {
-        code.push_str("\n// PLAN-681 route A: companion + endpoint-body modules (in-process merged)\n");
+        code.push_str(
+            "\n// PLAN-681 route A: companion + endpoint-body modules (in-process merged)\n",
+        );
         for (name, src) in &ra.companions {
-            code.push_str(&format!("pub mod {} {{\n#![allow(unused)]\n{}\n}}\n\n", name, src));
+            code.push_str(&format!(
+                "pub mod {} {{\n#![allow(unused)]\n{}\n}}\n\n",
+                name, src
+            ));
         }
         code.push_str("pub mod api_impl {\n#![allow(unused)]\n");
         code.push_str(&ra.api_impl);
@@ -1551,21 +1679,30 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
         "static API_DATA: LazyLock<Mutex<Vec<Value>>> = LazyLock::new(|| {{\n    Mutex::new(vec!{})\n}});\n",
         initial_items
     ));
-    code.push_str("static API_NEXT_ID: LazyLock<Mutex<i64>> = LazyLock::new(|| Mutex::new(100));\n\n");
+    code.push_str(
+        "static API_NEXT_ID: LazyLock<Mutex<i64>> = LazyLock::new(|| Mutex::new(100));\n\n",
+    );
 
     for endpoint in &module.endpoints {
         let fn_name = &endpoint.fn_name;
         let method = endpoint.method().to_uppercase();
         let params: Vec<&str> = endpoint.params.iter().map(|p| p.name.as_str()).collect();
-        let path_params: Vec<_> = endpoint.params.iter()
+        let path_params: Vec<_> = endpoint
+            .params
+            .iter()
             .filter(|p| endpoint.path().contains(&format!(":{}", p.name)))
             .collect();
-        let body_params: Vec<_> = endpoint.params.iter()
+        let body_params: Vec<_> = endpoint
+            .params
+            .iter()
             .filter(|p| !endpoint.path().contains(&format!(":{}", p.name)))
             .collect();
 
         // PLAN-013 T2: db 吸收臂——同名 db 实现存在且标量面覆盖 → 委托。
-        if let Some(emit) = db_impl.as_ref().and_then(|db| merged_db_delegate(db, endpoint)) {
+        if let Some(emit) = db_impl
+            .as_ref()
+            .and_then(|db| merged_db_delegate(db, endpoint))
+        {
             code.push_str(&emit);
             continue;
         }
@@ -1574,7 +1711,10 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
         // 面（str→String 以 &x 委派、int→i64），体委派内嵌 api_impl（端点
         // 体转译=fsys 委派链单源）。非标量参数/返回的端点落后续臂。
         if route_a.is_some()
-            && endpoint.params.iter().all(|p| merged_scalar_rust_ty(&p.ty).is_some())
+            && endpoint
+                .params
+                .iter()
+                .all(|p| merged_scalar_rust_ty(&p.ty).is_some())
             && merged_scalar_rust_ty(endpoint.return_type.trim()).is_some()
         {
             let sig = endpoint
@@ -1615,10 +1755,7 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
                 module.types.iter().map(|t| t.name.as_str()).collect();
             let ret = endpoint.return_type.trim();
             let base = ret.trim_start_matches("[]").trim_end_matches(']');
-            if !ret.is_empty()
-                && ret != "void"
-                && known_types.contains(base)
-            {
+            if !ret.is_empty() && ret != "void" && known_types.contains(base) {
                 let sig = endpoint
                     .params
                     .iter()
@@ -1637,7 +1774,12 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
                 } else {
                     format!(
                         "    let _ = ({});\n",
-                        endpoint.params.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
+                        endpoint
+                            .params
+                            .iter()
+                            .map(|p| p.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     )
                 };
                 code.push_str(&format!(
@@ -1653,7 +1795,8 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
         // records. Keep the generated signatures strongly typed so the Rust
         // UI can use session ids, URI strings, and name vectors directly.
         if endpoint.path().starts_with("/api/viewer/") {
-            let sig = body_params.iter()
+            let sig = body_params
+                .iter()
                 .map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty)))
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -1765,7 +1908,8 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
                         "Value".to_string()
                     }
                 };
-                let body_fields: Vec<String> = body_params.iter()
+                let body_fields: Vec<String> = body_params
+                    .iter()
                     .map(|p| format!("\"{}\": {}", p.name, merged_param_to_value(&p.ty, &p.name)))
                     .collect();
                 if post_ret == "bool" {
@@ -1774,7 +1918,11 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
                     } else {
                         format!(
                             "    let _ = ({});\n",
-                            body_params.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
+                            body_params
+                                .iter()
+                                .map(|p| p.name.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
                         )
                     };
                     code.push_str(&format!(
@@ -1810,7 +1958,8 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
                 // (e.g. []str → Vec<String>), and array params are stored as
                 // JSON arrays rather than a single Value::from(String).
                 let id_param = path_params.first().map(|p| p.name.as_str()).unwrap_or("id");
-                let body_fields: Vec<String> = body_params.iter()
+                let body_fields: Vec<String> = body_params
+                    .iter()
                     .map(|p| {
                         let rhs = merged_param_to_value(&p.ty, &p.name);
                         format!("item[\"{}\"] = {}", p.name, rhs)
@@ -1827,17 +1976,24 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
             "PATCH" => {
                 // PATCH: partial update — same structure as PUT (id + body fields).
                 let id_param = path_params.first().map(|p| p.name.as_str()).unwrap_or("id");
-                let body_fields: Vec<String> = body_params.iter()
+                let body_fields: Vec<String> = body_params
+                    .iter()
                     .map(|p| {
                         let rhs = merged_param_to_value(&p.ty, &p.name);
                         format!("item[\"{}\"] = {}", p.name, rhs)
                     })
                     .collect();
-                let all_params: Vec<String> = path_params.iter()
+                let all_params: Vec<String> = path_params
+                    .iter()
                     .map(|p| format!("{}: i32", p.name))
-                    .chain(body_params.iter().map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty))))
+                    .chain(
+                        body_params
+                            .iter()
+                            .map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty))),
+                    )
                     .collect();
-                let path_filter: Vec<String> = path_params.iter()
+                let path_filter: Vec<String> = path_params
+                    .iter()
                     .map(|p| format!("n[\"{}\"].as_i64() == Some({} as i64)", p.name, p.name))
                     .collect();
                 code.push_str(&format!(
@@ -1860,10 +2016,18 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
                         ));
                     } else {
                         // Retain items NOT matching the body filter (e.g. done != true).
-                        let retain_cond: Vec<String> = body_params.iter()
-                            .map(|p| format!("n[\"{}\"] != {}", p.name, merged_param_to_value(&p.ty, &p.name)))
+                        let retain_cond: Vec<String> = body_params
+                            .iter()
+                            .map(|p| {
+                                format!(
+                                    "n[\"{}\"] != {}",
+                                    p.name,
+                                    merged_param_to_value(&p.ty, &p.name)
+                                )
+                            })
                             .collect();
-                        let params_sig: Vec<String> = body_params.iter()
+                        let params_sig: Vec<String> = body_params
+                            .iter()
                             .map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty)))
                             .collect();
                         code.push_str(&format!(
@@ -1886,9 +2050,7 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
                         .collect();
                     let first_path = path_params.first();
                     let id_param = first_path.map(|p| p.name.as_str()).unwrap_or("id");
-                    let id_is_str = first_path
-                        .map(|p| p.ty.trim() == "str")
-                        .unwrap_or(false);
+                    let id_is_str = first_path.map(|p| p.ty.trim() == "str").unwrap_or(false);
                     let retain = if id_is_str {
                         format!("n[\"id\"].as_str() != Some({}.as_str())", id_param)
                     } else {
@@ -2641,7 +2803,9 @@ fn collect_dep_fn_imports(
     let mut by_module: std::collections::BTreeMap<Vec<String>, Vec<String>> =
         std::collections::BTreeMap::new();
     for at_path in at_files {
-        let Ok(code) = fs::read_to_string(at_path) else { continue };
+        let Ok(code) = fs::read_to_string(at_path) else {
+            continue;
+        };
         let session = CompilerSession::ui().with_backend("rust");
         let mut parser = Parser::from(code.as_str()).with_session(session);
         let Ok(ast) = parser.parse() else { continue };
@@ -2676,10 +2840,7 @@ fn collect_dep_fn_imports(
 /// 补进编译集（vue 契约须显式 use、VM 轨宽松——rust 轨按 dep 声明 + 名
 /// 字面命中补源；机制通用，零消费方标识符硬编码）。
 /// 返回 (widget 补集文件, fn 模块内嵌代码)。
-fn resolve_bps_dependencies(
-    project_dir: &Path,
-    at_files: &[PathBuf],
-) -> (Vec<PathBuf>, String) {
+fn resolve_bps_dependencies(project_dir: &Path, at_files: &[PathBuf]) -> (Vec<PathBuf>, String) {
     let pac_path = project_dir.join("pac.at");
     let deps = parse_pac_dep_roots(&pac_path, project_dir);
     if deps.is_empty() {
@@ -2692,7 +2853,9 @@ fn resolve_bps_dependencies(
         std::collections::HashSet::new();
     let mut front_texts: Vec<String> = Vec::new();
     for at_path in at_files {
-        let Ok(code) = fs::read_to_string(at_path) else { continue };
+        let Ok(code) = fs::read_to_string(at_path) else {
+            continue;
+        };
         front_texts.push(code.clone());
         let session = CompilerSession::ui().with_backend("rust");
         let mut parser = Parser::from(code.as_str()).with_session(session);
@@ -2710,11 +2873,17 @@ fn resolve_bps_dependencies(
     for (_dep_name, root) in &deps {
         let mut stack = vec![root.clone()];
         while let Some(dir) = stack.pop() {
-            let Ok(entries) = fs::read_dir(&dir) else { continue };
+            let Ok(entries) = fs::read_dir(&dir) else {
+                continue;
+            };
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
-                    let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    let name = path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
                     // reference/ = 文档参考工程（demo 壳），不进编译集。
                     if name != "reference" {
                         stack.push(path);
@@ -2722,7 +2891,9 @@ fn resolve_bps_dependencies(
                 } else if path.extension().map(|e| e == "at").unwrap_or(false)
                     && path.file_name().map(|f| f != "pac.at").unwrap_or(true)
                 {
-                    let Ok(code) = fs::read_to_string(&path) else { continue };
+                    let Ok(code) = fs::read_to_string(&path) else {
+                        continue;
+                    };
                     let session = CompilerSession::ui().with_backend("rust");
                     let mut parser = Parser::from(code.as_str()).with_session(session);
                     let Ok(ast) = parser.parse() else { continue };
@@ -2758,15 +2929,14 @@ fn resolve_bps_dependencies(
             let candidate = root.join(&rel).with_extension("at");
             if candidate.exists() {
                 if let Ok(content) = fs::read_to_string(&candidate) {
-                    module_src = Some((
-                        format!("__bps_{}_{}", dep_name, segs.join("_")),
-                        content,
-                    ));
+                    module_src = Some((format!("__bps_{}_{}", dep_name, segs.join("_")), content));
                     break;
                 }
             }
         }
-        let Some((mod_name, content)) = module_src else { continue };
+        let Some((mod_name, content)) = module_src else {
+            continue;
+        };
         // PLAN-681 T-05（N3）：依赖模块源先过 BARE_FN_SIGS 注册（返回型/
         // 形参 kind/bare List 元素形状）——ui_gen 的 computed 返回型推断、
         // 调用实参收口、view 迭代 Value 判定按表消费（先注册后转译,顺序
@@ -2782,10 +2952,17 @@ fn resolve_bps_dependencies(
                     "// PLAN-681 T-05 (F2a): bps use-fn 依赖内联 {}\n",
                     segs.join(".")
                 ));
-                fn_code.push_str(&format!("mod {} {{\n#![allow(unused)]\n{}\n}}\nuse {}::*;\n", mod_name, rs, mod_name));
+                fn_code.push_str(&format!(
+                    "mod {} {{\n#![allow(unused)]\n{}\n}}\nuse {}::*;\n",
+                    mod_name, rs, mod_name
+                ));
             }
             Err(e) => {
-                eprintln!("  ⚠ bps 模块 {} 转译失败（内联跳过）: {}", segs.join("."), e);
+                eprintln!(
+                    "  ⚠ bps 模块 {} 转译失败（内联跳过）: {}",
+                    segs.join("."),
+                    e
+                );
             }
         }
     }
@@ -2856,7 +3033,9 @@ fn parse_pac_exe_name(pac_path: &Path) -> Option<String> {
                 let value = value.trim_end_matches(',');
                 let value = value.trim_matches('"').trim_matches('\'');
                 let valid = !value.is_empty()
-                    && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+                    && value
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
                 if valid {
                     return Some(value.to_string());
                 }
@@ -2895,14 +3074,22 @@ fn parse_pac_title(pac_path: &Path) -> Option<String> {
         let line = line.trim();
         if line.starts_with("title_zh:") {
             if let Some(colon_pos) = line.find(':') {
-                let value = line[colon_pos + 1..].trim().trim_end_matches(',').trim_matches('"').trim_matches('\'');
+                let value = line[colon_pos + 1..]
+                    .trim()
+                    .trim_end_matches(',')
+                    .trim_matches('"')
+                    .trim_matches('\'');
                 if !value.is_empty() {
                     title_zh = Some(value.to_string());
                 }
             }
         } else if line.starts_with("title:") {
             if let Some(colon_pos) = line.find(':') {
-                let value = line[colon_pos + 1..].trim().trim_end_matches(',').trim_matches('"').trim_matches('\'');
+                let value = line[colon_pos + 1..]
+                    .trim()
+                    .trim_end_matches(',')
+                    .trim_matches('"')
+                    .trim_matches('\'');
                 if !value.is_empty() {
                     title = Some(value.to_string());
                 }
@@ -2974,7 +3161,8 @@ iced.workspace = true
 /// widget computed 同捕）。
 fn prepare_generated_components(components: &str) -> String {
     // Strip duplicate imports — RustGenerator already emits them
-    let mut cleaned = components.trim()
+    let mut cleaned = components
+        .trim()
         .replace("use auto_lang::ui::{Component, View};\n", "")
         .replace("use auto_lang::ui::{Component, View};", "");
 
@@ -2994,7 +3182,8 @@ fn prepare_generated_components(components: &str) -> String {
                     .and_then(|s| s.split('(').next())
                 {
                     // Skip obvious non-computed methods (view, on, new, state_snapshot, etc.)
-                    if !["view", "on", "new", "state_snapshot", "default", "clone"].contains(&name) {
+                    if !["view", "on", "new", "state_snapshot", "default", "clone"].contains(&name)
+                    {
                         names.push(name.to_string());
                     }
                 }
@@ -3034,7 +3223,11 @@ const SHELL_LIB_FACES: [(&str, &str, &str); 5] = [
     ("shell", "Desktop", "shell.at"),
     ("desktop", "DesktopSurface", "desktop.at"),
     ("switcher", "Switcher", "switcher.at"),
-    ("notification_center", "NotificationCenter", "notification_center.at"),
+    (
+        "notification_center",
+        "NotificationCenter",
+        "notification_center.at",
+    ),
     ("dashboard", "DashboardPanel", "dashboard.at"),
 ];
 
@@ -3094,8 +3287,7 @@ fn shell_state_rust_type(state: &auto_lang::aura::AuraStateDef) -> Option<String
         Type::Bool => Some("bool".into()),
         // 未定形元素集合（List/Array/Slice 的 Unknown 内型）→ 生成器实际
         // 产出 Vec<serde_json::Value>（auto_type_to_rust 递归 Unknown 臂）。
-        Type::List(inner)
-        | Type::Array(auto_lang::ast::ArrayType { elem: inner, .. }) => {
+        Type::List(inner) | Type::Array(auto_lang::ast::ArrayType { elem: inner, .. }) => {
             match inner.as_ref() {
                 Type::Unknown => Some("Vec<serde_json::Value>".into()),
                 _ => None,
@@ -3141,17 +3333,20 @@ fn collect_shell_face_infos(pack_dir: &Path) -> AutoResult<Vec<ShellFaceInfo>> {
             .flat_map(|m| m.variants.iter().map(|v| v.name.clone()))
             .filter(|v| SHELL_LIB_EVENTS.contains(&v.as_str()))
             .collect();
-        infos.push(ShellFaceInfo { id, widget, file, states, events });
+        infos.push(ShellFaceInfo {
+            id,
+            widget,
+            file,
+            states,
+            events,
+        });
     }
     Ok(infos)
 }
 
 /// 生成 `ShellStateAccess for {Widget}`（D8 编译臂写态 lowering）。
 fn gen_shell_state_access(info: &ShellFaceInfo) -> String {
-    let mut code = format!(
-        "\nimpl ShellStateAccess for {} {{\n",
-        info.widget
-    );
+    let mut code = format!("\nimpl ShellStateAccess for {} {{\n", info.widget);
     // shell_write：标量键 → 类型化字段赋值（auto_val → 字段类型反序列化）。
     code.push_str("    fn shell_write(&mut self, key: &str, value: auto_lang::ui::auto_val::Value) -> bool {\n");
     code.push_str("        match key {\n");
@@ -3193,7 +3388,9 @@ fn gen_shell_state_access(info: &ShellFaceInfo) -> String {
     }
     code.push_str("            _ => {}\n        }\n    }\n");
     // shell_read_str：String 字段读（__desktop_cmd 读走面）。
-    code.push_str("    fn shell_read_str(&self, key: &str) -> Option<String> {\n        match key {\n");
+    code.push_str(
+        "    fn shell_read_str(&self, key: &str) -> Option<String> {\n        match key {\n",
+    );
     for (field, ty) in &info.states {
         if ty == "String" {
             code.push_str(&format!(
@@ -3209,9 +3406,7 @@ fn gen_shell_state_access(info: &ShellFaceInfo) -> String {
 
 /// 生成 lib crate 源（lib.rs + Cargo.toml；freshness 门与 regen 共用——
 /// 纯函数无 FS 副作用）。
-pub fn generate_shell_pack_lib_sources(
-    pack_dir: &Path,
-) -> AutoResult<(String, String)> {
+pub fn generate_shell_pack_lib_sources(pack_dir: &Path) -> AutoResult<(String, String)> {
     let at_files: Vec<PathBuf> = SHELL_LIB_FACES
         .iter()
         .map(|(_, _, f)| pack_dir.join(f))
@@ -3224,7 +3419,12 @@ pub fn generate_shell_pack_lib_sources(
     for at_path in &at_files {
         let file_name = at_path.file_name().unwrap_or_default().to_string_lossy();
         println!("  {} {}", "Parsing".bright_cyan(), file_name);
-        let (code, _) = compile_at_file(at_path, &all_stores, &component_fields, &component_semantics)?;
+        let (code, _) = compile_at_file(
+            at_path,
+            &all_stores,
+            &component_fields,
+            &component_semantics,
+        )?;
         all_components.push_str(&code);
         all_components.push('\n');
     }
@@ -3240,14 +3440,18 @@ pub fn generate_shell_pack_lib_sources(
     lib.push_str("// Auto-generated from Auto language by a2rust-ui（shell pack 无窗组件库）\n");
     lib.push_str("// DO NOT EDIT - changes will be overwritten\n");
     lib.push_str("// PLAN-036 T-02（D7 定案）：源 = auto-os/shell 五件（入库产物——freshness\n");
-    lib.push_str("// 门 `test_shell_pack_lib_freshness` 对拍钉住；pack 改动后跑 regen_shell_pack\n");
+    lib.push_str(
+        "// 门 `test_shell_pack_lib_freshness` 对拍钉住；pack 改动后跑 regen_shell_pack\n",
+    );
     lib.push_str("//（#[ignore] 测试）重生成 + 提交）。\n");
     lib.push_str("#![allow(dead_code, non_snake_case, non_camel_case_types, unused_imports, unused_variables, unused_mut, clippy::all)]\n\n");
     lib.push_str("use auto_lang::ui::{Component, View};\n");
     lib.push_str("use auto_lang::ui::desktop_protocol::shell_client::{FaceProjector, ShellStateAccess, ShellSurface};\n\n");
     lib.push_str(&cleaned);
     lib.push_str("\n// —— SHELL_MANIFEST（shell_projection 同形装配清单——D5）——\n");
-    lib.push_str("pub use auto_lang::ui::shell_projection::{ShellFace, ShellManifest, ShellMount};\n\n");
+    lib.push_str(
+        "pub use auto_lang::ui::shell_projection::{ShellFace, ShellManifest, ShellMount};\n\n",
+    );
     lib.push_str("pub const SHELL_MANIFEST: ShellManifest = ShellManifest {\n    crate_name: \"shell-pack\",\n    faces: &[\n");
     for info in &infos {
         let mount = if matches!(info.id, "shell" | "desktop") {
@@ -3301,7 +3505,10 @@ once_cell = "1"
 /// 生成 shell-pack lib crate（权威源 = auto-os/shell；解析序与词汇门同
 /// [resolve_os_top_dir]——AUTO_OS_ROOT > 兄弟/主检出）。
 pub fn generate_shell_pack_lib(output_dir: &Path) -> AutoResult<()> {
-    println!("{}", "Generating shell-pack lib crate (a2r windowless target)".bright_cyan());
+    println!(
+        "{}",
+        "Generating shell-pack lib crate (a2r windowless target)".bright_cyan()
+    );
     let pack_dir = auto_lang::os_paths::resolve_os_top_dir(
         &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."),
         "shell",
@@ -3312,8 +3519,7 @@ pub fn generate_shell_pack_lib(output_dir: &Path) -> AutoResult<()> {
     fs::create_dir_all(&src_dir)
         .map_err(|e| format!("Failed to create {}: {e}", src_dir.display()))?;
     let lib_rs = src_dir.join("lib.rs");
-    fs::write(&lib_rs, &lib)
-        .map_err(|e| format!("Failed to write {}: {e}", lib_rs.display()))?;
+    fs::write(&lib_rs, &lib).map_err(|e| format!("Failed to write {}: {e}", lib_rs.display()))?;
     let cargo_path = output_dir.join("Cargo.toml");
     fs::write(&cargo_path, &cargo)
         .map_err(|e| format!("Failed to write {}: {e}", cargo_path.display()))?;
@@ -3363,9 +3569,7 @@ fn find_workspace_target_path(cargo_dir: &Path) -> String {
         ups += 1;
     }
     // Fallback: absolute path to auto-lang/target
-    let abs = std::env::current_dir()
-        .unwrap_or_default()
-        .join("target");
+    let abs = std::env::current_dir().unwrap_or_default().join("target");
     abs.to_string_lossy().to_string().replace('\\', "/")
 }
 
@@ -3421,8 +3625,7 @@ pub fn resolve_rust_workspace_dir(project_dir: &Path) -> PathBuf {
     }
     let fw_ws = get_rust_workspace_dir();
     if let Some(fw_root) = fw_ws.parent().and_then(|examples| examples.parent()) {
-        if fw_root.join("crates").join("auto-lang").exists()
-            && path_contains(fw_root, project_dir)
+        if fw_root.join("crates").join("auto-lang").exists() && path_contains(fw_root, project_dir)
         {
             return fw_ws;
         }
@@ -3498,16 +3701,16 @@ fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
 /// Compute relative path from `from` to `to` using only `..` and directory names.
 fn compute_relative_path(from: &Path, to: &Path) -> String {
     // Canonicalize both paths for reliable comparison
-    let from_abs = std::fs::canonicalize(from)
-        .unwrap_or_else(|_| from.to_path_buf());
-    let to_abs = std::fs::canonicalize(to)
-        .unwrap_or_else(|_| to.to_path_buf());
+    let from_abs = std::fs::canonicalize(from).unwrap_or_else(|_| from.to_path_buf());
+    let to_abs = std::fs::canonicalize(to).unwrap_or_else(|_| to.to_path_buf());
 
     let from_parts: Vec<&std::ffi::OsStr> = from_abs.iter().collect();
     let to_parts: Vec<&std::ffi::OsStr> = to_abs.iter().collect();
 
     // Find common prefix length
-    let common = from_parts.iter().zip(to_parts.iter())
+    let common = from_parts
+        .iter()
+        .zip(to_parts.iter())
         .take_while(|(a, b)| a == b)
         .count();
 
@@ -3661,13 +3864,14 @@ pub fn ensure_shared_workspace(project_dir: &Path) -> PathBuf {
     let a2r_std_rel = auto_lang_rel.replace("crates/auto-lang", "crates/a2r-std");
     let target_rel = compute_target_rel_path(project_dir, &ws_dir);
 
-    let members_toml = members.iter()
+    let members_toml = members
+        .iter()
         .map(|m| format!("    \"{}\"", m))
         .collect::<Vec<_>>()
         .join(",\n");
 
     let content = format!(
-r#"[workspace]
+        r#"[workspace]
 members = [
 {members_toml}
 ]
@@ -3701,8 +3905,13 @@ tower-http = {{ version = "0.5", features = ["cors"] }}
     // （minesweeper 浅视图无此面）；栈是上限非预留，浅 app 无扰。
     let config_dir = ws_dir.join(".cargo");
     fs::create_dir_all(&config_dir).ok();
-    let mut config = format!("[build]\ntarget-dir = \"{}\"\n", target_rel.replace('\\', "/"));
-    config.push_str("\n[target.x86_64-pc-windows-msvc]\nrustflags = [\"-C\", \"link-arg=/STACK:268435456\"]\n");
+    let mut config = format!(
+        "[build]\ntarget-dir = \"{}\"\n",
+        target_rel.replace('\\', "/")
+    );
+    config.push_str(
+        "\n[target.x86_64-pc-windows-msvc]\nrustflags = [\"-C\", \"link-arg=/STACK:268435456\"]\n",
+    );
     let _ = fs::write(config_dir.join("config.toml"), config);
 
     ws_dir
@@ -3710,7 +3919,8 @@ tower-http = {{ version = "0.5", features = ["cors"] }}
 
 /// Get the member directory name for a frontend project in the shared workspace.
 fn front_member_name(project_dir: &Path) -> String {
-    project_dir.file_name()
+    project_dir
+        .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("myapp")
         .to_string()
@@ -3718,7 +3928,8 @@ fn front_member_name(project_dir: &Path) -> String {
 
 /// Get the member directory name for a backend project in the shared workspace.
 pub fn back_member_name(project_dir: &Path) -> String {
-    let base = project_dir.file_name()
+    let base = project_dir
+        .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("myapp");
     format!("{}-back", base)
@@ -3763,7 +3974,10 @@ fn backend_generation_is_fresh(project_dir: &Path) -> bool {
         };
         let source_path = match name {
             "api.at" => api_file.clone(),
-            "db.at" => api_file.parent().map(|d| d.join("db.at")).unwrap_or_default(),
+            "db.at" => api_file
+                .parent()
+                .map(|d| d.join("db.at"))
+                .unwrap_or_default(),
             _ => continue,
         };
         let Ok(text) = std::fs::read_to_string(&source_path) else {
@@ -3773,7 +3987,37 @@ fn backend_generation_is_fresh(project_dir: &Path) -> bool {
             return false;
         }
     }
-    true
+    // PLAN-738 T-06（AC-06/07，SD-05）：装配新鲜度——收据的 assembly 指纹
+    // 与当前 stdlib 装配身份必须一致（「改 stdlib 但 api.at 不变」在此失效
+    // 复用 → 走再生臂）。
+    let recorded_assembly = record
+        .get("assembly")
+        .and_then(|a| a.get("fingerprint"))
+        .and_then(|f| f.as_str());
+    let current_assembly = auto_lang::stdlib_assembly::loader::repo_stdlib_root()
+        .ok()
+        .and_then(|root| {
+            auto_lang::stdlib_assembly::loader::stdlib_assembly_fingerprint(
+                &root,
+                auto_lang::stdlib_assembly::model::AssemblyTarget::Rust,
+            )
+            .ok()
+        })
+        .map(|fp| format!("{fp:016x}"));
+    assembly_freshness(recorded_assembly, current_assembly.as_deref())
+}
+
+/// 装配新鲜度判定（PLAN-738 T-06；纯函数便于单测）。
+/// - 双 None（旧环境无 stdlib 可定位）：一致（维持旧行为，再生后收敛）；
+/// - 单侧缺失：陈旧——旧产物无该字段而当前可算=门升级后首查（再生一次
+///   写入新字段收敛）；收据有而当前不可算=无法核验，保守再生；
+/// - 双方在：十六进制指纹串相等才新鲜。
+fn assembly_freshness(recorded: Option<&str>, current: Option<&str>) -> bool {
+    match (recorded, current) {
+        (None, None) => true,
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
 }
 
 /// PLAN-734 T-04：新鲜度失配时绕过复用臂的再生入口（等价默认路径）。
@@ -3787,8 +4031,13 @@ fn backend_generation_is_fresh(project_dir: &Path) -> bool {
 fn probe_service_ready(port: u16) -> std::option::Option<bool> {
     use std::io::{Read, Write};
     let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().ok()?;
-    let mut stream = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(800)).ok()?;
-    stream.write_all(b"GET /__auto/health/ready HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").ok()?;
+    let mut stream =
+        std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(800)).ok()?;
+    stream
+        .write_all(
+            b"GET /__auto/health/ready HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+        )
+        .ok()?;
     let mut buf = Vec::new();
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(800)));
     let _ = stream.take(4096).read_to_end(&mut buf);
@@ -3804,9 +4053,7 @@ fn probe_service_ready(port: u16) -> std::option::Option<bool> {
     Some(status == 200 || status == 404)
 }
 
-fn start_api_server_fresh(
-    project_dir: &Path,
-) -> Result<Option<std::process::Child>, String> {
+fn start_api_server_fresh(project_dir: &Path) -> Result<Option<std::process::Child>, String> {
     // 递归调用自身但复用臂已被调用方语义绕开——直接内联默认路径太长；
     // 以临时屏蔽 AUTO_REUSE_BACKEND 的方式走完整默认流程。
     let prev = std::env::var("AUTO_REUSE_BACKEND").ok();
@@ -3826,7 +4073,9 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
     if std::env::var("AUTO_REUSE_BACKEND").as_deref() == Ok("1") {
         let port = crate::util::http_port();
         let probe_addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
-        if std::net::TcpStream::connect_timeout(&probe_addr, std::time::Duration::from_secs(1)).is_ok() {
+        if std::net::TcpStream::connect_timeout(&probe_addr, std::time::Duration::from_secs(1))
+            .is_ok()
+        {
             // PLAN-734 T-04：ready 新鲜度校验——在跑后端的 generation.json 源
             // 指纹与当前 api.at/db.at 不一致时拒绝复用（旧产物不冒充当前契约），
             // 回落到默认 kill+重生成+spawn 路径。
@@ -3834,7 +4083,8 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
                 println!();
                 println!(
                     "  {} Backend port {} already serving — reusing it (AUTO_REUSE_BACKEND=1)",
-                    "✓".bright_green(), port
+                    "✓".bright_green(),
+                    port
                 );
             } else {
                 println!(
@@ -3860,11 +4110,17 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
         return Err(format!("Failed to generate Rust backend: {}", e));
     }
     if !api_backend_dir.join("Cargo.toml").exists() {
-        return Err(format!("backend Cargo.toml missing under {}", api_backend_dir.display()));
+        return Err(format!(
+            "backend Cargo.toml missing under {}",
+            api_backend_dir.display()
+        ));
     }
 
     println!();
-    println!("{}", "▶ Starting API backend server (Rust axum)...".bright_cyan());
+    println!(
+        "{}",
+        "▶ Starting API backend server (Rust axum)...".bright_cyan()
+    );
 
     // Plan 354: Kill any process occupying the backend port before starting.
     let port = crate::util::http_port();
@@ -3879,13 +4135,23 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
         for line in content.lines() {
             if let Some(rest) = line.strip_prefix("name = \"") {
                 if let Some(name) = rest.strip_suffix("\"") {
-                    if name.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                    if name
+                        .chars()
+                        .next()
+                        .map(|c| c.is_ascii_digit())
+                        .unwrap_or(false)
+                    {
                         let fixed = content.replace(
                             &format!("name = \"{}\"", name),
                             &format!("name = \"app-{}\"", name),
                         );
                         let _ = std::fs::write(&cargo_toml, fixed);
-                        println!("  {} Fixed package name: {} → app-{}", "⚠".bright_yellow(), name, name);
+                        println!(
+                            "  {} Fixed package name: {} → app-{}",
+                            "⚠".bright_yellow(),
+                            name,
+                            name
+                        );
                     }
                     break;
                 }
@@ -3902,7 +4168,11 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
 
     match api_server {
         Ok(mut child) => {
-            println!("  {} API server starting (PID: {})...", "✓".bright_green(), child.id());
+            println!(
+                "  {} API server starting (PID: {})...",
+                "✓".bright_green(),
+                child.id()
+            );
 
             // Wait for the server to become ready by polling the port.
             // PLAN-026 T-05: 60s 一次性等待 + "continuing anyway" 吞错 →
@@ -3946,7 +4216,11 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
             }
 
             if ready {
-                println!("  {} API server is ready on http://127.0.0.1:{}", "✓".bright_green(), port);
+                println!(
+                    "  {} API server is ready on http://127.0.0.1:{}",
+                    "✓".bright_green(),
+                    port
+                );
                 Ok(Some(child))
             } else {
                 let _ = child.kill();
@@ -3978,7 +4252,10 @@ pub fn stop_api_server(child: &mut Option<std::process::Child>) {
 pub fn start_vm_server(project_dir: &Path) -> bool {
     let api_path = project_dir.join("src").join("back").join("api.at");
     if !api_path.exists() {
-        eprintln!("  {} VM split mode requires src/back/api.at (not found)", "⚠".bright_yellow());
+        eprintln!(
+            "  {} VM split mode requires src/back/api.at (not found)",
+            "⚠".bright_yellow()
+        );
         return false;
     }
 
@@ -3986,7 +4263,8 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
     println!();
     println!(
         "  {} Starting AutoVM HTTP server (VM backend, port {})...",
-        "▶".bright_cyan(), port
+        "▶".bright_cyan(),
+        port
     );
     println!("    api.at: {}", api_path.display());
 
@@ -4001,12 +4279,17 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
         extra_dirs = Vec::new();
     }
     if !extra_dirs.is_empty() {
-        let joined = extra_dirs.iter()
+        let joined = extra_dirs
+            .iter()
             .map(|d| d.to_string_lossy().to_string())
             .collect::<Vec<_>>()
             .join(";");
         let existing = std::env::var("AUTO_SOURCE_DIRS").unwrap_or_default();
-        let combined = if existing.is_empty() { joined } else { format!("{};{}", existing, joined) };
+        let combined = if existing.is_empty() {
+            joined
+        } else {
+            format!("{};{}", existing, joined)
+        };
         std::env::set_var("AUTO_SOURCE_DIRS", &combined);
         println!("    module search dirs: {}", combined);
     }
@@ -4037,7 +4320,8 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
                 if is_ready {
                     println!(
                         "  {} AutoVM server ready on http://127.0.0.1:{}",
-                        "✓".bright_green(), port
+                        "✓".bright_green(),
+                        port
                     );
                     return true;
                 }
@@ -4045,10 +4329,13 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
             }
             None => {}
         }
-        if std::net::TcpStream::connect_timeout(&probe_addr, std::time::Duration::from_secs(1)).is_ok() {
+        if std::net::TcpStream::connect_timeout(&probe_addr, std::time::Duration::from_secs(1))
+            .is_ok()
+        {
             println!(
                 "  {} AutoVM server ready on http://127.0.0.1:{}",
-                "✓".bright_green(), port
+                "✓".bright_green(),
+                port
             );
             return true;
         }
@@ -4076,7 +4363,10 @@ pub fn build_rust_ui(project_dir: &Path) -> AutoResult<()> {
         println!("{}", "Generating Rust UI project...".bright_cyan());
         generate_rust_ui(project_dir, None, false)?;
     } else if code {
-        println!("{}", "Regenerating Rust UI code (source changed)...".bright_cyan());
+        println!(
+            "{}",
+            "Regenerating Rust UI code (source changed)...".bright_cyan()
+        );
         regenerate_code_only(project_dir, &rust_dir)?;
     }
 
@@ -4086,7 +4376,10 @@ pub fn build_rust_ui(project_dir: &Path) -> AutoResult<()> {
     // 陈旧空体桩照常编译绿（消费方 back 停 9-21 桩版实证）。该入口自注
     // idempotent；无契约纯前工程经 resolve_back_api 门控跳过。
     if auto_lang::config::resolve_back_api(project_dir).is_some() {
-        println!("{}", "Refreshing Rust backend crate (idempotent)...".bright_cyan());
+        println!(
+            "{}",
+            "Refreshing Rust backend crate (idempotent)...".bright_cyan()
+        );
         crate::api_gen::generate_api(project_dir, "rust")
             .map_err(|e| format!("Failed to generate Rust backend: {}", e))?;
     }
@@ -4096,12 +4389,24 @@ pub fn build_rust_ui(project_dir: &Path) -> AutoResult<()> {
     // .cargo/config.toml from the CWD (NOT the manifest dir), so without the
     // env a build launched from the project dir would fall back to a cold
     // workspace-local target and recompile the whole tree (onig_sys included).
-    let cargo_toml = std::fs::canonicalize(rust_dir.join("Cargo.toml"))
-        .map_err(|e| format!("generated Cargo.toml missing under {}: {}", rust_dir.display(), e))?;
+    let cargo_toml = std::fs::canonicalize(rust_dir.join("Cargo.toml")).map_err(|e| {
+        format!(
+            "generated Cargo.toml missing under {}: {}",
+            rust_dir.display(),
+            e
+        )
+    })?;
 
-    println!("{}", "Building Rust UI project (backend: rust-ui)".bright_cyan());
+    println!(
+        "{}",
+        "Building Rust UI project (backend: rust-ui)".bright_cyan()
+    );
     let status = std::process::Command::new("cargo")
-        .args(["build", "--manifest-path", cargo_toml.to_str().unwrap_or(".")])
+        .args([
+            "build",
+            "--manifest-path",
+            cargo_toml.to_str().unwrap_or("."),
+        ])
         .env("CARGO_TARGET_DIR", shared_cargo_target_dir(project_dir))
         .status()?;
 
@@ -4122,7 +4427,10 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         println!("{}", "Generating Rust UI project...".bright_cyan());
         generate_rust_ui(project_dir, None, false)?;
     } else if code {
-        println!("{}", "Regenerating Rust UI code (source changed)...".bright_cyan());
+        println!(
+            "{}",
+            "Regenerating Rust UI code (source changed)...".bright_cyan()
+        );
         regenerate_code_only(project_dir, &rust_dir)?;
     }
 
@@ -4192,10 +4500,7 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // runtime asset resolution, so the workspace's .cargo/config.toml is
     // NOT discovered from here and a cold local target would recompile the
     // whole tree (onig_sys included).
-    cmd.env(
-        "CARGO_TARGET_DIR",
-        shared_cargo_target_dir(project_dir),
-    );
+    cmd.env("CARGO_TARGET_DIR", shared_cargo_target_dir(project_dir));
 
     let status = cmd.status()?;
 
@@ -4235,11 +4540,7 @@ fn external_backend_of(project_dir: &Path) -> AutoResult<Option<auto_val::AutoSt
 struct VmHostRegistry;
 
 impl auto_lang::vm::backend_abi::BackendRegistry for VmHostRegistry {
-    fn host_call(
-        &self,
-        name: &str,
-        f: auto_lang::vm::backend_abi::BackendHostCallFn,
-    ) {
+    fn host_call(&self, name: &str, f: auto_lang::vm::backend_abi::BackendHostCallFn) {
         auto_lang::vm::host_bridge::register_host_call(name, f);
     }
     fn inject_event(&self, tag: &str, json: &str) -> bool {
@@ -4290,10 +4591,7 @@ fn load_external_backend(
             backend_dir.display()
         ));
     };
-    auto_lang::vm::backend_abi::load_backend_cdylib(
-        lib_path,
-        std::sync::Arc::new(VmHostRegistry),
-    )
+    auto_lang::vm::backend_abi::load_backend_cdylib(lib_path, std::sync::Arc::new(VmHostRegistry))
 }
 
 /// Run the UI via the AutoLang interpreter (--render=vm mode).
@@ -4337,16 +4635,18 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
             // api.rs + types.rs from #[api] annotations (idempotent).
             // PLAN-734 T-06：Err 传播（split 生成失败不再 warn 后仍启动——
             // start_api_server 内的二次生成同错误也会硬传，此处提前终结）。
-            crate::api_gen::generate_api(project_dir, "rust").map_err(|e| {
-                format!("Failed to generate Rust backend: {}", e)
-            })?;
+            crate::api_gen::generate_api(project_dir, "rust")
+                .map_err(|e| format!("Failed to generate Rust backend: {}", e))?;
             let child = match start_api_server(project_dir) {
                 Ok(child) => child,
                 // PLAN-026 T-05: ready 失败显式中止(不进组件构建/Init)。
                 Err(e) => return Err(e.into()),
             };
             if child.is_some() && std::env::var_os("AUTO_HTTP_BASE").is_none() {
-                std::env::set_var("AUTO_HTTP_BASE", format!("http://127.0.0.1:{}", crate::util::http_port()));
+                std::env::set_var(
+                    "AUTO_HTTP_BASE",
+                    format!("http://127.0.0.1:{}", crate::util::http_port()),
+                );
             }
             child
         } else {
@@ -4356,7 +4656,10 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
                 return Err("AutoVM backend not ready; aborting before UI init".into());
             }
             if std::env::var_os("AUTO_HTTP_BASE").is_none() {
-                std::env::set_var("AUTO_HTTP_BASE", format!("http://127.0.0.1:{}", crate::util::http_port()));
+                std::env::set_var(
+                    "AUTO_HTTP_BASE",
+                    format!("http://127.0.0.1:{}", crate::util::http_port()),
+                );
             }
             None
         }
@@ -4378,7 +4681,8 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     if !split_mode {
         match external_backend_of(project_dir) {
             Ok(Some(backend_rel)) => {
-                let backend_dir = project_dir.join(backend_rel.as_str())
+                let backend_dir = project_dir
+                    .join(backend_rel.as_str())
                     .canonicalize()
                     .unwrap_or_else(|_| project_dir.join(backend_rel.as_str()));
                 // ① 链接式契约引用:`back.*` 模块解析映射到后端项目根
@@ -4446,7 +4750,11 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     println!(
         "{}",
         if split_mode {
-            format!("Running VM interpreter UI (backend: {}, split over HTTP)", backend_impl).bright_cyan()
+            format!(
+                "Running VM interpreter UI (backend: {}, split over HTTP)",
+                backend_impl
+            )
+            .bright_cyan()
         } else {
             "Running VM interpreter UI (backend: vm, merged)".bright_cyan()
         }
@@ -4492,13 +4800,22 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     // 返回值显式标记——死亡在循环内/外由此二分。
     {
         std::panic::set_hook(Box::new(|info| {
-            eprintln!("[X9-PANIC] {info}
+            eprintln!(
+                "[X9-PANIC] {info}
 backtrace:
-{}", std::backtrace::Backtrace::force_capture());
+{}",
+                std::backtrace::Backtrace::force_capture()
+            );
         }));
         std::thread::spawn(|| loop {
             std::thread::sleep(std::time::Duration::from_secs(30));
-            eprintln!("[X9-ALIVE] {}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0));
+            eprintln!(
+                "[X9-ALIVE] {}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0)
+            );
         });
     }
     eprintln!("[X9] entering vm interpreter");
@@ -4526,11 +4843,10 @@ backtrace:
 /// env 种子之后）。返回激活的合成主题名（测试断言面）。
 fn apply_pac_theme_decl(project_dir: &Path) -> Option<String> {
     let pac_path = project_dir.join("pac.at");
-    let config =
-        match auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()) {
-            Ok(c) => c,
-            Err(_) => return None,
-        };
+    let config = match auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()) {
+        Ok(c) => c,
+        Err(_) => return None,
+    };
     let mut pac = crate::pac::Pac::new(config);
     let _ = pac.resolve();
     let decl = pac.theme_decl?;
@@ -4651,7 +4967,11 @@ fn type_to_rust_str(ty: &auto_lang::ast::Type) -> String {
         Type::RuntimeArray(arr) => format!("Vec<{}>", type_to_rust_str(&arr.elem)),
         Type::List(inner) => format!("Vec<{}>", type_to_rust_str(inner)),
         Type::Slice(sl) => format!("Vec<{}>", type_to_rust_str(&sl.elem)),
-        Type::Map(k, v) => format!("std::collections::HashMap<{}, {}>", type_to_rust_str(k), type_to_rust_str(v)),
+        Type::Map(k, v) => format!(
+            "std::collections::HashMap<{}, {}>",
+            type_to_rust_str(k),
+            type_to_rust_str(v)
+        ),
         Type::User(td) => td.name.to_string(),
         Type::Unknown => "serde_json::Value".to_string(),
         _ => "serde_json::Value".to_string(),
@@ -4661,6 +4981,32 @@ fn type_to_rust_str(ty: &auto_lang::ast::Type) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-738 T-06（AC-06/07）：装配新鲜度真值表——双 None 一致、指纹相等
+    /// 一致、其余（漂移/单侧缺失）一律陈旧（保守再生，再生写入后收敛）。
+    #[test]
+    fn assembly_freshness_truth_table() {
+        assert!(
+            assembly_freshness(None, None),
+            "双 None（无 stdlib 环境）=新鲜"
+        );
+        assert!(
+            assembly_freshness(Some("aaaa00000000bbbb"), Some("aaaa00000000bbbb")),
+            "指纹相等=新鲜"
+        );
+        assert!(
+            !assembly_freshness(Some("aaaa000000000000"), Some("bbbb000000000000")),
+            "指纹漂移（改 stdlib 但 api.at 不变）=陈旧"
+        );
+        assert!(
+            !assembly_freshness(None, Some("aaaa000000000000")),
+            "旧产物无 assembly 字段而当前可算=陈旧（门升级首查再生收敛）"
+        );
+        assert!(
+            !assembly_freshness(Some("aaaa000000000000"), None),
+            "收据有而当前不可算=无法核验，保守陈旧"
+        );
+    }
 
     /// PLAN-031 T-06：生成 main 的 rqhost 臂在场——`--autodesk-rqhost`
     /// 标记解析 + `ClientTarget::Rqhost`（rendezvous 采纳 + exit-on-EOF
@@ -4677,10 +5023,7 @@ mod tests {
         .unwrap();
         let components = "use auto_lang::ui::{Component, View};\npub struct P031Counter { pub count: i64 }\nimpl Component for P031Counter { type Msg = i64; fn view(&self) -> View<Self::Msg> { View::new() } }\n";
         let main_rs = wrap_example("p031-app", components, &project);
-        assert!(
-            main_rs.contains(r##"--autodesk-rqhost""##),
-            "标记解析在场"
-        );
+        assert!(main_rs.contains(r##"--autodesk-rqhost""##), "标记解析在场");
         assert!(
             main_rs.contains("ClientTarget::Rqhost"),
             "Rqhost 目标臂在场"
@@ -4709,17 +5052,30 @@ mod tests {
         let components = "use auto_lang::ui::{Component, View};\npub struct P693App { pub count: i64 }\nimpl Component for P693App { type Msg = i64; fn view(&self) -> View<Self::Msg> { View::new() } }\n";
         let main_rs = wrap_example("p693-app", components, &project);
         // 三模式 CLI 解析 + 优先级链单源调用（CLI > env > pac > 独立轨）。
-        assert!(main_rs.contains("render_cli::parse_render_cli"), "解析单源在场");
-        assert!(main_rs.contains("render_cli::resolve_render_base"), "优先级链单源在场");
+        assert!(
+            main_rs.contains("render_cli::parse_render_cli"),
+            "解析单源在场"
+        );
+        assert!(
+            main_rs.contains("render_cli::resolve_render_base"),
+            "优先级链单源在场"
+        );
         // rq 臂：exe 侧孵化保活 + Rqhost 采纳。
-        assert!(main_rs.contains("rqhost::ensure_rqhost_ready"), "exe 侧孵化在场");
+        assert!(
+            main_rs.contains("rqhost::ensure_rqhost_ready"),
+            "exe 侧孵化在场"
+        );
         assert!(main_rs.contains("ClientTarget::Rqhost"));
         // desktop 臂：不孵化直连 + 端点缺席报错（AC-03 生成面）。
         assert!(main_rs.contains("ClientTarget::Desktop"));
         assert!(main_rs.contains("--desktop-endpoint"));
         assert!(main_rs.contains("请先启动虚拟桌面"));
         // remote 字段归位（E0063 根修 pin）：rq/desktop 两臂 true + 旧臂 false。
-        assert_eq!(main_rs.matches("remote: true").count(), 2, "rq/desktop 臂 remote 帧宿主");
+        assert_eq!(
+            main_rs.matches("remote: true").count(),
+            2,
+            "rq/desktop 臂 remote 帧宿主"
+        );
         assert!(main_rs.contains("remote: false"), "旧孵化臂 E0063 归位");
         // PLAN-694 T-01 认领对称性 pin：rq/desktop 两臂消费 `--app386=`
         // 覆盖 Hello app_name（宿主 spawn 认领按目录名匹配同源——旧臂
@@ -4759,15 +5115,14 @@ mod tests {
             "brand-x",
             "theme_name 返回合成主题名"
         );
-        let composed = auto_lang::ui::style::theme::active_composed()
-            .expect("合成主题在 ACTIVE_THEME 槽");
-        let expected_primary = auto_lang::design_tokens::decl::normalize_value("#8b5cf6")
-            .expect("声明值合法");
+        let composed =
+            auto_lang::ui::style::theme::active_composed().expect("合成主题在 ACTIVE_THEME 槽");
+        let expected_primary =
+            auto_lang::design_tokens::decl::normalize_value("#8b5cf6").expect("声明值合法");
         assert!(
-            composed.light.iter().any(
-                |(t, v)| *t == auto_lang::ui::style::theme::registry::TokenName::Primary
-                    && v == &expected_primary
-            ),
+            composed.light.iter().any(|(t, v)| *t
+                == auto_lang::ui::style::theme::registry::TokenName::Primary
+                && v == &expected_primary),
             "合成体 primary = 声明色规范化值（normalize hex→HSL 串）"
         );
         assert_eq!(
@@ -4802,11 +5157,7 @@ mod tests {
         std::fs::write(project.join("pac.at"), "name: \"p609-plain\"\n").unwrap();
 
         let before = auto_lang::ui::style::theme::theme_name();
-        assert_eq!(
-            apply_pac_theme_decl(&project),
-            None,
-            "无声明 → 无激活"
-        );
+        assert_eq!(apply_pac_theme_decl(&project), None, "无声明 → 无激活");
         assert_eq!(
             auto_lang::ui::style::theme::theme_name(),
             before,
@@ -4888,12 +5239,15 @@ mod tests {
 
         let ws = ensure_shared_workspace(&project);
         assert_eq!(ws, project.join("rust-workspace"), "落点 project-local");
-        let manifest = std::fs::read_to_string(ws.join("Cargo.toml"))
-            .expect("workspace Cargo.toml written");
+        let manifest =
+            std::fs::read_to_string(ws.join("Cargo.toml")).expect("workspace Cargo.toml written");
         assert!(manifest.contains("[workspace]"), "虚拟 manifest 在案");
         // rel 锚点：从 temp 落点指向 auto-lang（temp 布局无兄弟 auto-lang，
         // 走 fallback 字面量——断言其存在即可；真实布局由 586/583 实证覆盖）。
-        assert!(manifest.contains("auto-lang = { path = "), "path 依赖注入在案");
+        assert!(
+            manifest.contains("auto-lang = { path = "),
+            "path 依赖注入在案"
+        );
         assert!(
             std::fs::read_to_string(ws.join(".cargo").join("config.toml"))
                 .map(|c| c.contains("target-dir"))
@@ -4985,9 +5339,12 @@ pub struct Timer {
     #[test]
     fn test_gen_015_notes_rust() {
         // Quick generation test for 015-notes Rust UI code
-        let project_dir = std::path::PathBuf::from(
-            env!("CARGO_MANIFEST_DIR")
-        ).join("..").join("..").join("examples").join("ui").join("015-notes");
+        let project_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples")
+            .join("ui")
+            .join("015-notes");
         if !project_dir.exists() {
             eprintln!("Skipping: project dir not found at {:?}", project_dir);
             return;
@@ -5110,8 +5467,7 @@ pub fn create_item(name str) str {
         }
         let fw_ws_cargo = get_rust_workspace_dir().join("Cargo.toml");
 
-        generate_rust_ui(&project, None, false)
-            .expect("out-of-repo generation succeeds");
+        generate_rust_ui(&project, None, false).expect("out-of-repo generation succeeds");
         // member 落 project-local。
         let member = project.join("rust-workspace").join("helloworld-out");
         assert!(
@@ -5161,11 +5517,23 @@ pub fn create_item(name str) str {
         // AUTO_TLS_SKIP_VERIFY / AUTO_TLS_CA_CERT (OnceLock-cached), so endpoint
         // functions can configure TLS (ureq could not).
         let helper = generate_http_client_helper();
-        assert!(helper.contains("fn _http_client() -> reqwest::blocking::Client"), "missing _http_client");
-        assert!(helper.contains("AUTO_TLS_SKIP_VERIFY"), "missing skip-verify env");
+        assert!(
+            helper.contains("fn _http_client() -> reqwest::blocking::Client"),
+            "missing _http_client"
+        );
+        assert!(
+            helper.contains("AUTO_TLS_SKIP_VERIFY"),
+            "missing skip-verify env"
+        );
         assert!(helper.contains("AUTO_TLS_CA_CERT"), "missing CA env");
-        assert!(helper.contains("danger_accept_invalid_certs"), "missing skip-verify wiring");
-        assert!(helper.contains("add_root_certificate"), "missing custom CA wiring");
+        assert!(
+            helper.contains("danger_accept_invalid_certs"),
+            "missing skip-verify wiring"
+        );
+        assert!(
+            helper.contains("add_root_certificate"),
+            "missing custom CA wiring"
+        );
         assert!(helper.contains("OnceLock"), "client should be built once");
     }
 
@@ -5177,15 +5545,29 @@ pub fn create_item(name str) str {
         // (此前硬编码 Value 使返回面与声明错位)。
         for (ret, expected) in [
             ("serde_json::Value", "_http_client().get("),
-            ("Vec<serde_json::Value>", "r.json::<Vec<serde_json::Value>>().ok()"),
+            (
+                "Vec<serde_json::Value>",
+                "r.json::<Vec<serde_json::Value>>().ok()",
+            ),
             (
                 "Option<serde_json::Value>",
                 "r.json::<Option<serde_json::Value>>().ok()",
             ),
         ] {
-            let body = generate_get_fn_body("get".into(), "&format!(\"http://x/{}\", id)".into(), false, ret);
-            assert!(body.contains(expected), "GET({ret}) missing {expected}: {body}");
-            assert!(!body.contains("ureq"), "GET({ret}) still emits ureq: {body}");
+            let body = generate_get_fn_body(
+                "get".into(),
+                "&format!(\"http://x/{}\", id)".into(),
+                false,
+                ret,
+            );
+            assert!(
+                body.contains(expected),
+                "GET({ret}) missing {expected}: {body}"
+            );
+            assert!(
+                !body.contains("ureq"),
+                "GET({ret}) still emits ureq: {body}"
+            );
         }
         let option = generate_get_fn_body(
             "get".into(),
@@ -5193,9 +5575,15 @@ pub fn create_item(name str) str {
             false,
             "Option<serde_json::Value>",
         );
-        assert!(option.contains(".flatten()"), "GET(Option) must flatten: {option}");
+        assert!(
+            option.contains(".flatten()"),
+            "GET(Option) must flatten: {option}"
+        );
         let void = generate_get_fn_body("get".into(), "\"http://x\"".into(), true, "");
-        assert!(void.contains("_http_client().get(\"http://x\").send()"), "void GET: {void}");
+        assert!(
+            void.contains("_http_client().get(\"http://x\").send()"),
+            "void GET: {void}"
+        );
         assert!(!void.contains("ureq"), "void GET still emits ureq: {void}");
     }
 
@@ -5205,7 +5593,10 @@ pub fn create_item(name str) str {
         // _http_client() and reqwest .json(&body)/.send().
         let params: Vec<&auto_lang::api::types::ApiParam> = vec![];
         let void = generate_write_fn_body("post".into(), "\"http://x\"".into(), &params, true, "");
-        assert!(void.contains("_http_client().post(&url).json(&body).send()"), "void POST: {void}");
+        assert!(
+            void.contains("_http_client().post(&url).json(&body).send()"),
+            "void POST: {void}"
+        );
         assert!(!void.contains("ureq"), "void POST still emits ureq: {void}");
 
         let blocking = generate_write_fn_body(
@@ -5216,38 +5607,55 @@ pub fn create_item(name str) str {
             "serde_json::Value",
         );
         // Value-returning POST is non-blocking: placeholder + background thread.
-        assert!(blocking.contains("_http_client().post(&url).json(&body).send()"), "blocking POST: {blocking}");
-        assert!(blocking.contains("local_result"), "blocking POST must return placeholder: {blocking}");
-        assert!(!blocking.contains("ureq"), "blocking POST still emits ureq: {blocking}");
+        assert!(
+            blocking.contains("_http_client().post(&url).json(&body).send()"),
+            "blocking POST: {blocking}"
+        );
+        assert!(
+            blocking.contains("local_result"),
+            "blocking POST must return placeholder: {blocking}"
+        );
+        assert!(
+            !blocking.contains("ureq"),
+            "blocking POST still emits ureq: {blocking}"
+        );
 
         // PLAN-021 T-09:声明标量返回(int)的 POST 改阻塞反序列化——
         // 调用方按声明消费返回值,占位 Value 破坏类型契约。
-        let scalar_blocking = generate_write_fn_body(
-            "post".into(),
-            "\"http://x\"".into(),
-            &params,
-            false,
-            "i32",
+        let scalar_blocking =
+            generate_write_fn_body("post".into(), "\"http://x\"".into(), &params, false, "i32");
+        assert!(
+            scalar_blocking.contains("r.json::<i32>().ok()"),
+            "scalar POST must block+deserialize: {scalar_blocking}"
         );
-        assert!(scalar_blocking.contains("r.json::<i32>().ok()"), "scalar POST must block+deserialize: {scalar_blocking}");
-        assert!(!scalar_blocking.contains("local_result"), "scalar POST must not return placeholder: {scalar_blocking}");
+        assert!(
+            !scalar_blocking.contains("local_result"),
+            "scalar POST must not return placeholder: {scalar_blocking}"
+        );
 
-        let bool_result = generate_write_fn_body(
-            "post".into(),
-            "\"http://x\"".into(),
-            &params,
-            false,
-            "bool",
-        );
+        let bool_result =
+            generate_write_fn_body("post".into(), "\"http://x\"".into(), &params, false, "bool");
         // Boolean results are control-flow values (for example, save
         // acknowledgements), so the generated client must parse the server
         // response instead of returning a placeholder from a background task.
-        assert!(bool_result.contains("r.json::<bool>().ok()"), "bool POST must parse response: {bool_result}");
-        assert!(!bool_result.contains("local_result"), "bool POST must not return placeholder: {bool_result}");
-        assert!(!bool_result.contains("std::thread::spawn"), "bool POST must wait for result: {bool_result}");
+        assert!(
+            bool_result.contains("r.json::<bool>().ok()"),
+            "bool POST must parse response: {bool_result}"
+        );
+        assert!(
+            !bool_result.contains("local_result"),
+            "bool POST must not return placeholder: {bool_result}"
+        );
+        assert!(
+            !bool_result.contains("std::thread::spawn"),
+            "bool POST must wait for result: {bool_result}"
+        );
 
         let del = generate_delete_fn_body("\"http://x/1\"".into());
-        assert!(del.contains("_http_client().delete(&url).send()"), "DELETE: {del}");
+        assert!(
+            del.contains("_http_client().delete(&url).send()"),
+            "DELETE: {del}"
+        );
         assert!(!del.contains("ureq"), "DELETE still emits ureq: {del}");
     }
 
@@ -5257,20 +5665,50 @@ pub fn create_item(name str) str {
     fn test_w2_multipart_chainable_builder() {
         let utils = generate_http_utility_functions();
         // Chainable builder mirroring VM RequestBuilder.multipart_file/multipart_text
-        assert!(utils.contains("fn multipart_form() -> MultiPart"), "missing multipart_form");
-        assert!(utils.contains("struct MultiPart"), "missing MultiPart struct");
-        assert!(utils.contains("fn text(mut self, field: &str, value: &str) -> Self"), "missing .text()");
-        assert!(utils.contains("fn file(mut self, field: &str, path: &str) -> Self"), "missing .file()");
-        assert!(utils.contains("fn send(self, url: &str) -> serde_json::Value"), "missing .send()");
-        assert!(utils.contains(".multipart(form)"), "send must attach multipart form");
+        assert!(
+            utils.contains("fn multipart_form() -> MultiPart"),
+            "missing multipart_form"
+        );
+        assert!(
+            utils.contains("struct MultiPart"),
+            "missing MultiPart struct"
+        );
+        assert!(
+            utils.contains("fn text(mut self, field: &str, value: &str) -> Self"),
+            "missing .text()"
+        );
+        assert!(
+            utils.contains("fn file(mut self, field: &str, path: &str) -> Self"),
+            "missing .file()"
+        );
+        assert!(
+            utils.contains("fn send(self, url: &str) -> serde_json::Value"),
+            "missing .send()"
+        );
+        assert!(
+            utils.contains(".multipart(form)"),
+            "send must attach multipart form"
+        );
         // Existing generic uploads kept
         assert!(utils.contains("fn upload_file("), "upload_file must remain");
-        assert!(utils.contains("fn upload_file_with_fields("), "upload_file_with_fields must remain");
+        assert!(
+            utils.contains("fn upload_file_with_fields("),
+            "upload_file_with_fields must remain"
+        );
         // Plan 388 review: all HTTP clients must be TLS-aware (_http_client),
         // not raw reqwest builders that ignore AUTO_TLS_*.
-        assert!(!utils.contains("reqwest::blocking::Client::new"), "utils must not build raw clients");
-        assert!(!utils.contains("reqwest::blocking::get"), "utils must not use blocking::get");
-        assert!(utils.contains("_http_client()"), "utils must use TLS-aware _http_client");
+        assert!(
+            !utils.contains("reqwest::blocking::Client::new"),
+            "utils must not build raw clients"
+        );
+        assert!(
+            !utils.contains("reqwest::blocking::get"),
+            "utils must not use blocking::get"
+        );
+        assert!(
+            utils.contains("_http_client()"),
+            "utils must use TLS-aware _http_client"
+        );
     }
 
     #[test]
@@ -5278,12 +5716,27 @@ pub fn create_item(name str) str {
         let utils = generate_http_utility_functions();
         assert!(utils.contains("fn download_with_progress(url: &str, file_path: &str) -> std::sync::mpsc::Receiver<serde_json::Value>"),
             "missing download_with_progress");
-        assert!(utils.contains("fn download_file(url: &str, file_path: &str) -> bool"), "download_file must remain");
-        assert!(utils.contains("fn download_file_resume("), "download_file_resume must remain");
-        assert!(utils.contains("copy_to"), "progress must stream via copy_to (not buffer-all)");
-        assert!(utils.contains("content_length()"), "progress must report total");
+        assert!(
+            utils.contains("fn download_file(url: &str, file_path: &str) -> bool"),
+            "download_file must remain"
+        );
+        assert!(
+            utils.contains("fn download_file_resume("),
+            "download_file_resume must remain"
+        );
+        assert!(
+            utils.contains("copy_to"),
+            "progress must stream via copy_to (not buffer-all)"
+        );
+        assert!(
+            utils.contains("content_length()"),
+            "progress must report total"
+        );
         // Plan 388 review: downloads must go through the TLS-aware client too.
-        assert!(utils.contains("_http_client().get"), "download must use TLS-aware _http_client");
+        assert!(
+            utils.contains("_http_client().get"),
+            "download must use TLS-aware _http_client"
+        );
     }
 
     // --- Plan 388 W4: WebSocket client ---
@@ -5295,25 +5748,48 @@ pub fn create_item(name str) str {
             assert!(ws.contains(&format!("fn {}(", f)), "missing {f}");
         }
         // Reader thread must forward frames to a per-conn queue consumed by ws_on_message
-        assert!(ws.contains("msg_tx.send"), "reader must deliver frames to a queue");
-        assert!(ws.contains("receiver: std::sync::mpsc::Receiver<String>"), "WsConn must hold the incoming queue");
-        assert!(ws.contains("fn ws_on_message(handle: i32) -> Vec<String>"), "ws_on_message must drain to Vec<String>");
+        assert!(
+            ws.contains("msg_tx.send"),
+            "reader must deliver frames to a queue"
+        );
+        assert!(
+            ws.contains("receiver: std::sync::mpsc::Receiver<String>"),
+            "WsConn must hold the incoming queue"
+        );
+        assert!(
+            ws.contains("fn ws_on_message(handle: i32) -> Vec<String>"),
+            "ws_on_message must drain to Vec<String>"
+        );
         // No unused Arc import
-        assert!(!ws.contains("use std::sync::{Arc, Mutex}"), "Arc import must be gone");
+        assert!(
+            !ws.contains("use std::sync::{Arc, Mutex}"),
+            "Arc import must be gone"
+        );
         // Plan 388 review: read timeout must cover the MaybeTlsStream variants
         // that exist in generated projects (plain ws:// + native-TLS wss://,
         // matching the `native-tls` tungstenite feature in the Cargo template) —
         // otherwise the outgoing-channel deadlock persists for TLS connections.
         // The `_` arm satisfies #[non_exhaustive] (and rustls-enabled builds).
-        assert!(ws.contains("MaybeTlsStream::Plain(tcp) => { let _ = tcp.set_read_timeout(timeout); }"),
-            "plain ws:// must get a read timeout");
+        assert!(
+            ws.contains("MaybeTlsStream::Plain(tcp) => { let _ = tcp.set_read_timeout(timeout); }"),
+            "plain ws:// must get a read timeout"
+        );
         assert!(ws.contains("MaybeTlsStream::NativeTls(tls) => { let _ = tls.get_ref().set_read_timeout(timeout); }"),
             "native-TLS wss:// must get a read timeout");
-        assert!(ws.contains("_ => {}"), "match must be exhaustive (non_exhaustive enum)");
+        assert!(
+            ws.contains("_ => {}"),
+            "match must be exhaustive (non_exhaustive enum)"
+        );
         // Plan 388 review: ws_close must actually terminate the reader thread
         // (close flag → socket dropped), not just sever the send path.
-        assert!(ws.contains("close_reader.load"), "reader must check the close flag");
-        assert!(ws.contains("conn.close.store(true"), "ws_close must set the close flag");
+        assert!(
+            ws.contains("close_reader.load"),
+            "reader must check the close flag"
+        );
+        assert!(
+            ws.contains("conn.close.store(true"),
+            "ws_close must set the close flag"
+        );
     }
 
     #[test]
@@ -5323,8 +5799,14 @@ pub fn create_item(name str) str {
         // RequestBuilder.cookie_store/gzip/brotli flags. Defaults stay off so
         // existing behavior is unchanged.
         let helper = generate_http_client_helper();
-        assert!(helper.contains("AUTO_COOKIE_STORE"), "missing cookie env flag");
-        assert!(helper.contains("cookie_store(true)"), "cookie_store not wired");
+        assert!(
+            helper.contains("AUTO_COOKIE_STORE"),
+            "missing cookie env flag"
+        );
+        assert!(
+            helper.contains("cookie_store(true)"),
+            "cookie_store not wired"
+        );
         assert!(helper.contains("AUTO_GZIP"), "missing gzip env flag");
         assert!(helper.contains(".gzip(true)"), "gzip not wired");
         assert!(helper.contains("AUTO_BROTLI"), "missing brotli env flag");
@@ -5337,9 +5819,21 @@ pub fn create_item(name str) str {
         // the helper relies on (cookies + gzip + brotli), alongside the
         // pre-existing blocking/json/multipart.
         let toml = generate_cargo_toml("test_proj", std::path::Path::new("/tmp/test"));
-        assert!(toml.contains("\"cookies\""), "missing cookies feature: [{}]", toml);
-        assert!(toml.contains("\"gzip\""), "missing gzip feature: [{}]", toml);
-        assert!(toml.contains("\"brotli\""), "missing brotli feature: [{}]", toml);
+        assert!(
+            toml.contains("\"cookies\""),
+            "missing cookies feature: [{}]",
+            toml
+        );
+        assert!(
+            toml.contains("\"gzip\""),
+            "missing gzip feature: [{}]",
+            toml
+        );
+        assert!(
+            toml.contains("\"brotli\""),
+            "missing brotli feature: [{}]",
+            toml
+        );
     }
 
     #[test]
@@ -5356,7 +5850,11 @@ pub fn create_item(name str) str {
         )
         .unwrap();
         let toml = generate_cargo_toml("calc", &tmp);
-        assert!(!toml.contains("[[bin]]"), "title_zh 不得触发 [[bin]]: [{}]", toml);
+        assert!(
+            !toml.contains("[[bin]]"),
+            "title_zh 不得触发 [[bin]]: [{}]",
+            toml
+        );
         std::fs::write(
             tmp.join("pac.at"),
             "name: \"calc\"\ntitle_zh: \"计算器\"\nexe_name: \"auto-term\"\n",
@@ -5384,8 +5882,8 @@ pub fn create_item(name str) str {
             eprintln!("test_shell_pack_lib_freshness: SKIPPED — auto-os/shell 未解析(solo 检出)");
             return;
         };
-        let lib_rs = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../crates/shell-pack/src/lib.rs");
+        let lib_rs =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crates/shell-pack/src/lib.rs");
         let Ok(committed) = std::fs::read_to_string(&lib_rs) else {
             panic!(
                 "crates/shell-pack/src/lib.rs 缺席——先跑 regen_shell_pack（#[ignore] 测试）生成入库物"
