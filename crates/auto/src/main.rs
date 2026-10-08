@@ -1,17 +1,17 @@
 use auto_lang::error::AutoError;
 use clap::{Parser, Subcommand, ValueEnum};
-use miette::{Diagnostic, MietteHandlerOpts, Result};
-use serde_json::{json, Value};
 use colored::Colorize;
 use log::info;
+use miette::{Diagnostic, MietteHandlerOpts, Result};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 
 mod cmd_a2c_stdlib;
-mod cmd_service;
-mod cmd_bp;
 mod cmd_autodesk;
-mod cmd_ui;
+mod cmd_bp;
 mod cmd_docs;
+mod cmd_service;
+mod cmd_ui;
 mod cmd_watch;
 
 // Helper to convert AutoError to miette Report - this preserves all diagnostic info
@@ -84,7 +84,8 @@ fn format_success_json<T: serde::Serialize>(result: T) -> String {
     json!({
         "status": "success",
         "result": result
-    }).to_string()
+    })
+    .to_string()
 }
 
 /// Output success result in appropriate format based on AI mode
@@ -147,7 +148,12 @@ struct Cli {
     /// name can be forced through with `--` (e.g. `auto probe.at -- run`).
     /// Note: known global flags placed AFTER the file are consumed by the flag,
     /// not passed through — put such values after `--`.
-    #[arg(index = 2, trailing_var_arg = true, allow_hyphen_values = true, value_name = "ARGS")]
+    #[arg(
+        index = 2,
+        trailing_var_arg = true,
+        allow_hyphen_values = true,
+        value_name = "ARGS"
+    )]
     script_args: Vec<String>,
 
     #[command(subcommand)]
@@ -172,23 +178,18 @@ fn println_logo() {
 }
 
 fn init_logger() {
-    simplelog::CombinedLogger::init(vec![
-        simplelog::TermLogger::new(
-            simplelog::LevelFilter::Info,
-            simplelog::Config::default(),
-            simplelog::TerminalMode::Mixed,
-            simplelog::ColorChoice::Auto,
-        ),
-    ])
+    simplelog::CombinedLogger::init(vec![simplelog::TermLogger::new(
+        simplelog::LevelFilter::Info,
+        simplelog::Config::default(),
+        simplelog::TerminalMode::Mixed,
+        simplelog::ColorChoice::Auto,
+    )])
     .unwrap();
 }
-
 
 fn load_am_config() -> Option<auto_man::AmConfig> {
     auto_man::load_am_config()
 }
-
-
 
 #[derive(Subcommand, Debug)]
 enum CacheCommands {
@@ -235,38 +236,74 @@ enum EnvAction {
 #[derive(Subcommand, Debug)]
 enum TransTarget {
     Ts {
-        #[arg(short, long, help = "Output file path (default: same name with .ts extension)")]
+        #[arg(
+            short,
+            long,
+            help = "Output file path (default: same name with .ts extension)"
+        )]
         output: Option<String>,
     },
     C {
-        #[arg(short, long, help = "Output file path (default: same name with .c extension)")]
+        #[arg(
+            short,
+            long,
+            help = "Output file path (default: same name with .c extension)"
+        )]
         output: Option<String>,
     },
     Rust {
-        #[arg(short, long, help = "Output file path (default: same name with .rs extension)")]
+        #[arg(
+            short,
+            long,
+            help = "Output file path (default: same name with .rs extension)"
+        )]
         output: Option<String>,
-        #[arg(short, long, help = "Merge all discovered modules into a single .rs file")]
+        #[arg(
+            short,
+            long,
+            help = "Merge all discovered modules into a single .rs file"
+        )]
         merge: bool,
     },
     Python {
-        #[arg(short, long, help = "Output file path (default: same name with .py extension)")]
+        #[arg(
+            short,
+            long,
+            help = "Output file path (default: same name with .py extension)"
+        )]
         output: Option<String>,
     },
     Js {
-        #[arg(short, long, help = "Output file path (default: same name with .js extension)")]
+        #[arg(
+            short,
+            long,
+            help = "Output file path (default: same name with .js extension)"
+        )]
         output: Option<String>,
     },
     Gd {
-        #[arg(short, long, help = "Output file path (default: same name with .gd extension)")]
+        #[arg(
+            short,
+            long,
+            help = "Output file path (default: same name with .gd extension)"
+        )]
         output: Option<String>,
     },
     Tscn {
-        #[arg(short, long, help = "Output file path (default: same name with .tscn extension)")]
+        #[arg(
+            short,
+            long,
+            help = "Output file path (default: same name with .tscn extension)"
+        )]
         output: Option<String>,
     },
     /// Emit both .tscn (from any `scene`) and .gd (from functions) for one .at file.
     Godot {
-        #[arg(short, long, help = "Output base name (default: source name; writes <base>.tscn + <base>.gd)")]
+        #[arg(
+            short,
+            long,
+            help = "Output base name (default: source name; writes <base>.tscn + <base>.gd)"
+        )]
         output: Option<String>,
     },
     /// Plan 555 T07: Auto → Auto（脚本糖 → 正常模式桥，s2s 改写器；
@@ -283,9 +320,17 @@ enum UiAction {
     Build {
         #[arg(long, help = "Target framework (default: vue)", default_value = "vue")]
         target: String,
-        #[arg(long, help = "Output directory (default: packages/widgets/registry)", default_value = "packages/widgets/registry")]
+        #[arg(
+            long,
+            help = "Output directory (default: packages/widgets/registry)",
+            default_value = "packages/widgets/registry"
+        )]
         out: String,
-        #[arg(long, value_delimiter = ',', help = "Comma-separated widget names (default: all registered)")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            help = "Comma-separated widget names (default: all registered)"
+        )]
         widgets: Vec<String>,
     },
     /// List registered library widgets
@@ -382,32 +427,64 @@ enum Commands {
     },
 
     // ========== Build & Run ==========
-    #[command(about = "Compile the project based on pac.at render target", alias = "b")]
+    #[command(
+        about = "Compile the project based on pac.at render target",
+        alias = "b"
+    )]
     Build {
         #[arg(short, long)]
         dir: Option<String>,
         #[arg(short, long)]
         port: Option<String>,
-        #[arg(short = 'B', long = "back-port", help = "Backend HTTP API server port (default 8080)")]
+        #[arg(
+            short = 'B',
+            long = "back-port",
+            help = "Backend HTTP API server port (default 8080)"
+        )]
         back_port: Option<String>,
-        #[arg(short = 'F', long = "front-port", help = "Frontend dev server port (default 3000)")]
+        #[arg(
+            short = 'F',
+            long = "front-port",
+            help = "Frontend dev server port (default 3000)"
+        )]
         front_port: Option<String>,
-        #[arg(short, long, help = "Render target to use (vue, rust, vm, jet, arkts, tauri)")]
+        #[arg(
+            short,
+            long,
+            help = "Render target to use (vue, rust, vm, jet, arkts, tauri)"
+        )]
         render: Option<String>,
-        #[arg(long, help = "Parser scenario: core, ui, or shell (overrides pac.at scene)")]
+        #[arg(
+            long,
+            help = "Parser scenario: core, ui, or shell (overrides pac.at scene)"
+        )]
         scene: Option<String>,
-        #[arg(long, help = "Stop after code generation; skip npm/gradle install and build (vue backend)")]
+        #[arg(
+            long,
+            help = "Stop after code generation; skip npm/gradle install and build (vue backend)"
+        )]
         gen_only: bool,
-        #[arg(long, help = "Escalate codegen validation warnings (vue backend) to build failure (default since plan 015 P0#1; kept for compatibility)")]
+        #[arg(
+            long,
+            help = "Escalate codegen validation warnings (vue backend) to build failure (default since plan 015 P0#1; kept for compatibility)"
+        )]
         strict: bool,
-        #[arg(long, help = "Keep building despite codegen validation warnings (vue backend); restores the pre-015 default")]
+        #[arg(
+            long,
+            help = "Keep building despite codegen validation warnings (vue backend); restores the pre-015 default"
+        )]
         lenient: bool,
     },
     /// PLAN-031：rqhost 共享合成器 daemon——`auto run -q` 客户端的宿主 OS
     /// 原生窗承载（多 app 共享单实例；末窗自退）。
-    #[command(about = "PLAN-031: rqhost shared compositor daemon (native OS windows for `run -q` clients)")]
+    #[command(
+        about = "PLAN-031: rqhost shared compositor daemon (native OS windows for `run -q` clients)"
+    )]
     Rqhost {
-        #[arg(long, help = "Well-known pipe override (default: autodesk-rqhost; $AUTO_RQHOST_WELLKNOWN also honored)")]
+        #[arg(
+            long,
+            help = "Well-known pipe override (default: autodesk-rqhost; $AUTO_RQHOST_WELLKNOWN also honored)"
+        )]
         pipe: Option<String>,
     },
     #[command(about = "Build and run the executable/dev-server", alias = "r")]
@@ -416,30 +493,66 @@ enum Commands {
         dir: Option<String>,
         #[arg(short, long)]
         port: Option<String>,
-        #[arg(short = 'B', long = "back-port", help = "Backend HTTP API server port (default 8080)")]
+        #[arg(
+            short = 'B',
+            long = "back-port",
+            help = "Backend HTTP API server port (default 8080)"
+        )]
         back_port: Option<String>,
-        #[arg(short = 'F', long = "front-port", help = "Frontend dev server port (default 3000)")]
+        #[arg(
+            short = 'F',
+            long = "front-port",
+            help = "Frontend dev server port (default 3000)"
+        )]
         front_port: Option<String>,
-        #[arg(short, long, help = "Render target to use (vue, rust, vm, jet, arkts, tauri)")]
+        #[arg(
+            short,
+            long,
+            help = "Render target to use (vue, rust, vm, jet, arkts, tauri)"
+        )]
         render: Option<String>,
         #[arg(short = 'q', long = "render-queue", action = clap::ArgAction::SetTrue, help = "PLAN-031: render via shared rqhost compositor (native OS window; vm/rust tracks)")]
         render_queue: bool,
-        #[arg(long, help = "Backend server mode: vm (AutoVM HTTP) or rust (a2r, default)")]
+        #[arg(
+            long,
+            help = "Backend server mode: vm (AutoVM HTTP) or rust (a2r, default)"
+        )]
         server: Option<String>,
-        #[arg(long, help = "Plan 340: merge frontend+backend VM in-process (default true). --no-merge uses HTTP between VMs")]
+        #[arg(
+            long,
+            help = "Plan 340: merge frontend+backend VM in-process (default true). --no-merge uses HTTP between VMs"
+        )]
         #[arg(long = "no-merge", action = clap::ArgAction::SetTrue, help = "Plan 340: use HTTP between VMs (split mode)")]
         no_merge: bool,
-        #[arg(long, help = "Parser scenario: core, ui, or shell (overrides pac.at scene)")]
+        #[arg(
+            long,
+            help = "Parser scenario: core, ui, or shell (overrides pac.at scene)"
+        )]
         scene: Option<String>,
-        #[arg(long, help = "Plan 458: UI theme preset (dark, light). Overrides pac.at `theme:`; default dark")]
+        #[arg(
+            long,
+            help = "Plan 458: UI theme preset (dark, light). Overrides pac.at `theme:`; default dark"
+        )]
         theme: Option<String>,
-        #[arg(long, help = "Plan 458: UI accent preset (indigo, coral, ocean, sage, amber). Overrides pac.at `accent:`; default indigo")]
+        #[arg(
+            long,
+            help = "Plan 458: UI accent preset (indigo, coral, ocean, sage, amber). Overrides pac.at `accent:`; default indigo"
+        )]
         accent: Option<String>,
-        #[arg(long, help = "Plan 465: desktop host mode — vue scaffold becomes the virtual-desktop shell consuming an apps registry")]
+        #[arg(
+            long,
+            help = "Plan 465: desktop host mode — vue scaffold becomes the virtual-desktop shell consuming an apps registry"
+        )]
         desktop: bool,
-        #[arg(long, help = "Plan 549: UI gallery host mode — harvest examples/ui into demos-registry.ts")]
+        #[arg(
+            long,
+            help = "Plan 549: UI gallery host mode — harvest examples/ui into demos-registry.ts"
+        )]
         gallery: bool,
-        #[arg(long, help = "Plan 465: apps directory for the desktop registry (default <workspace>/examples/ui)")]
+        #[arg(
+            long,
+            help = "Plan 465: apps directory for the desktop registry (default <workspace>/examples/ui)"
+        )]
         apps: Option<String>,
         #[arg(long, action = clap::ArgAction::SetTrue, help = "Plan 547: explicitly select Rust merged in-process mode (already the default for --render=rust)")]
         merged: bool,
@@ -448,17 +561,32 @@ enum Commands {
     },
     /// PLAN-736: HTTP 服务独立启动（server-only；不启 UI/Vite/桌面）。
     /// 命名注记：`auto serve` 已被 Plan 269 AutoVM daemon 占用，故为 `auto service`。
-    #[command(about = "Start the project's HTTP service standalone (no UI): --server vm|rust [--http-config <json file>]")]
+    #[command(
+        about = "Start the project's HTTP service standalone (no UI): --server vm|rust [--http-config <json file>]"
+    )]
     Service {
         #[arg(short, long)]
         dir: Option<String>,
-        #[arg(long, help = "Service track: vm (in-process AutoVM HTTP) or rust (generated axum backend)")]
+        #[arg(
+            long,
+            help = "Service track: vm (in-process AutoVM HTTP) or rust (generated axum backend)"
+        )]
         server: String,
-        #[arg(long, help = "HTTP service config JSON file (profile/listen/limits/cors/proxy); omit = development defaults (127.0.0.1:8080)")]
+        #[arg(
+            long,
+            help = "HTTP service config JSON file (profile/listen/limits/cors/proxy); omit = development defaults (127.0.0.1:8080)"
+        )]
         http_config: Option<String>,
-        #[arg(long, help = "HTTP service config as inline JSON (mutually exclusive with --http-config)")]
+        #[arg(
+            long,
+            help = "HTTP service config as inline JSON (mutually exclusive with --http-config)"
+        )]
         http_config_inline: Option<String>,
-        #[arg(short = 'B', long = "back-port", help = "Explicit override for the configured listen port")]
+        #[arg(
+            short = 'B',
+            long = "back-port",
+            help = "Explicit override for the configured listen port"
+        )]
         back_port: Option<String>,
     },
     #[command(about = "Run all #[test] functions in the project", alias = "t")]
@@ -475,13 +603,28 @@ enum Commands {
         about = "Run Playwright UI tests in <dir>/tests (start the app first: auto run <dir>)"
     )]
     TestUi {
-        #[arg(short, long, help = "Project directory containing tests/ (default: current dir)")]
+        #[arg(
+            short,
+            long,
+            help = "Project directory containing tests/ (default: current dir)"
+        )]
         dir: Option<String>,
-        #[arg(short = 'H', long, help = "Run Playwright with a visible browser window")]
+        #[arg(
+            short = 'H',
+            long,
+            help = "Run Playwright with a visible browser window"
+        )]
         headed: bool,
-        #[arg(short, long, help = "Only run tests whose title contains this substring")]
+        #[arg(
+            short,
+            long,
+            help = "Only run tests whose title contains this substring"
+        )]
         filter: Option<String>,
-        #[arg(long, help = "Open the HTML report from the last run instead of testing")]
+        #[arg(
+            long,
+            help = "Open the HTML report from the last run instead of testing"
+        )]
         report: bool,
     },
     #[command(about = "Remove the .auto/build directory and artifacts")]
@@ -493,9 +636,17 @@ enum Commands {
     Watch {
         #[arg(short, long)]
         dir: Option<String>,
-        #[arg(short = 'B', long = "back-port", help = "Backend HTTP API server port (default 8080)")]
+        #[arg(
+            short = 'B',
+            long = "back-port",
+            help = "Backend HTTP API server port (default 8080)"
+        )]
         back_port: Option<String>,
-        #[arg(short = 'F', long = "front-port", help = "Frontend dev server port (default 3000)")]
+        #[arg(
+            short = 'F',
+            long = "front-port",
+            help = "Frontend dev server port (default 3000)"
+        )]
         front_port: Option<String>,
     },
     #[command(about = "Scaffold a new project or widget from templates (Plan 363)")]
@@ -525,7 +676,11 @@ enum Commands {
         // NOTE: named `fmt` (not `format`) to avoid clashing with the global
         // `--format <OutputFormat>` error-diagnostic flag, which caused a clap
         // downcast panic whenever `export --format ...` was used.
-        #[arg(short = 'f', long = "fmt", help = "Format to export to (cmake, iar, ghs)")]
+        #[arg(
+            short = 'f',
+            long = "fmt",
+            help = "Format to export to (cmake, iar, ghs)"
+        )]
         fmt: String,
     },
 
@@ -550,11 +705,18 @@ enum Commands {
     // ========== Code Generation ==========
     #[command(about = "Generate code from .at files (kotlin for jet backend)")]
     Gen {
-        #[arg(short, long, help = "Output directory (default: dist for vue, current dir for jet)")]
+        #[arg(
+            short,
+            long,
+            help = "Output directory (default: dist for vue, current dir for jet)"
+        )]
         output: Option<String>,
         #[arg(short, long, help = "Generate full project structure")]
         project: bool,
-        #[arg(long, help = "Parser scenario: core, ui, or shell (overrides pac.at scene)")]
+        #[arg(
+            long,
+            help = "Parser scenario: core, ui, or shell (overrides pac.at scene)"
+        )]
         scene: Option<String>,
     },
 
@@ -579,7 +741,10 @@ enum Commands {
     },
 
     // ========== Legacy / Dev Tools ==========
-    #[command(about = "AutoLang REPL (deprecated - uses TreeWalker Interpreter)", hide = true)]
+    #[command(
+        about = "AutoLang REPL (deprecated - uses TreeWalker Interpreter)",
+        hide = true
+    )]
     OldRepl,
     #[command(about = "Parse Auto to JSON", hide = true)]
     Parse { code: String },
@@ -620,7 +785,10 @@ enum Commands {
     A2cStdlib,
 
     // ========== Debug (Plan 199) ==========
-    #[command(about = "Debug an Auto program with interactive debugger", alias = "dbg")]
+    #[command(
+        about = "Debug an Auto program with interactive debugger",
+        alias = "dbg"
+    )]
     Debug {
         /// Path to the .at file to debug
         file: String,
@@ -848,7 +1016,10 @@ fn real_main(cli: Cli) -> Result<()> {
                 })?;
             }
             if ai_mode {
-                println!("{}", format_success_json(json!({"message": "Project created", "path": name})));
+                println!(
+                    "{}",
+                    format_success_json(json!({"message": "Project created", "path": name}))
+                );
             }
         }
         Some(Commands::Init { template }) => {
@@ -875,12 +1046,25 @@ fn real_main(cli: Cli) -> Result<()> {
                 })?;
             }
             if ai_mode {
-                println!("{}", format_success_json(json!({"message": "Project initialized"})));
+                println!(
+                    "{}",
+                    format_success_json(json!({"message": "Project initialized"}))
+                );
             }
         }
 
         // ========== Build & Run ==========
-        Some(Commands::Build { dir, port, back_port, front_port, render, scene, gen_only, strict, lenient }) => {
+        Some(Commands::Build {
+            dir,
+            port,
+            back_port,
+            front_port,
+            render,
+            scene,
+            gen_only,
+            strict,
+            lenient,
+        }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -920,21 +1104,27 @@ fn real_main(cli: Cli) -> Result<()> {
             // `run` does, for symmetry (so `build` then manual run matches).
             // CLI flags win; otherwise fall back to pac.at back_port/front_port.
             let (pac_front, pac_back) = am.pac_dev_ports();
-            let effective_back = back_port.clone().or_else(|| pac_back.map(|p| p.to_string()));
+            let effective_back = back_port
+                .clone()
+                .or_else(|| pac_back.map(|p| p.to_string()));
             if let Some(p) = &effective_back {
                 if p.trim().parse::<u16>().is_err() {
                     return Err(miette::miette!(
-                        "Invalid backend port '{}': must be a number 0-65535", p
+                        "Invalid backend port '{}': must be a number 0-65535",
+                        p
                     ));
                 }
                 std::env::set_var("AUTO_HTTP_PORT", p.trim());
                 println!("  Backend API server port: {}", p.trim());
             }
-            let effective_front = front_port.clone().or_else(|| pac_front.map(|p| p.to_string()));
+            let effective_front = front_port
+                .clone()
+                .or_else(|| pac_front.map(|p| p.to_string()));
             if let Some(p) = &effective_front {
                 if p.trim().parse::<u16>().is_err() {
                     return Err(miette::miette!(
-                        "Invalid frontend port '{}': must be a number 0-65535", p
+                        "Invalid frontend port '{}': must be a number 0-65535",
+                        p
                     ));
                 }
                 std::env::set_var("AUTO_FRONT_PORT", p.trim());
@@ -955,14 +1145,17 @@ fn real_main(cli: Cli) -> Result<()> {
                 miette::miette!("{}", e)
             })?;
             if ai_mode {
-                println!("{}", format_success_json(json!({"message": "Build completed"})));
+                println!(
+                    "{}",
+                    format_success_json(json!({"message": "Build completed"}))
+                );
             }
         }
         // PLAN-031：rqhost daemon——阻塞直至末窗退出（锁管道被占 =
         // 第二实例干净退出码 0）。
         Some(Commands::Rqhost { pipe }) => {
-            let wellknown = pipe
-                .unwrap_or_else(|| auto_lang::ui::desktop_protocol::rqhost::wellknown_pipe());
+            let wellknown =
+                pipe.unwrap_or_else(|| auto_lang::ui::desktop_protocol::rqhost::wellknown_pipe());
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -979,7 +1172,13 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             return Ok(());
         }
-        Some(Commands::Service { dir, server, http_config, http_config_inline, back_port }) => {
+        Some(Commands::Service {
+            dir,
+            server,
+            http_config,
+            http_config_inline,
+            back_port,
+        }) => {
             // PLAN-736: server-only 启动；错误经 main Err 面 = 非零退出。
             return cmd_service::cmd_service(cmd_service::ServeArgs {
                 dir,
@@ -989,7 +1188,24 @@ fn real_main(cli: Cli) -> Result<()> {
                 back_port,
             });
         }
-        Some(Commands::Run { dir, port, back_port, front_port, render, render_queue, server, no_merge, scene, theme, accent, desktop, gallery, apps, merged, mut args }) => {
+        Some(Commands::Run {
+            dir,
+            port,
+            back_port,
+            front_port,
+            render,
+            render_queue,
+            server,
+            no_merge,
+            scene,
+            theme,
+            accent,
+            desktop,
+            gallery,
+            apps,
+            merged,
+            mut args,
+        }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -1070,9 +1286,16 @@ fn real_main(cli: Cli) -> Result<()> {
                 std::env::set_var("AUTO_VM_MERGE", "1");
             }
             if !merge_mode {
-                let backend = server.as_deref().unwrap_or(if is_rust_api { "rust" } else { "vm" });
+                let backend = server
+                    .as_deref()
+                    .unwrap_or(if is_rust_api { "rust" } else { "vm" });
                 let frontend = render.as_deref().unwrap_or("vm");
-                println!("  {} split mode: frontend {} ↔ backend {} over HTTP", "→".bright_cyan(), frontend, backend);
+                println!(
+                    "  {} split mode: frontend {} ↔ backend {} over HTTP",
+                    "→".bright_cyan(),
+                    frontend,
+                    backend
+                );
             }
             // Plan 330/401: resolve dev-server ports. CLI flags (-B/-F) win;
             // otherwise fall back to pac.at `back_port`/`front_port`; otherwise
@@ -1083,32 +1306,58 @@ fn real_main(cli: Cli) -> Result<()> {
             // rust-ui client (both read crate::util::http_port() at generation
             // time, inside am.run below).
             let (pac_front, pac_back) = am.pac_dev_ports();
-            let back_src = if back_port.is_some() { "cli" } else if pac_back.is_some() { "pac.at" } else { "" };
+            let back_src = if back_port.is_some() {
+                "cli"
+            } else if pac_back.is_some() {
+                "pac.at"
+            } else {
+                ""
+            };
             // CLI flag wins; else pac.at default. Both as owned Option<String>.
-            let effective_back = back_port.clone().or_else(|| pac_back.map(|p| p.to_string()));
+            let effective_back = back_port
+                .clone()
+                .or_else(|| pac_back.map(|p| p.to_string()));
             if let Some(p) = &effective_back {
                 if p.trim().parse::<u16>().is_err() {
                     return Err(miette::miette!(
-                        "Invalid backend port '{}': must be a number 0-65535", p
+                        "Invalid backend port '{}': must be a number 0-65535",
+                        p
                     ));
                 }
                 std::env::set_var("AUTO_HTTP_PORT", p.trim());
                 if std::env::var_os("AUTO_HTTP_BASE").is_none() {
                     std::env::set_var("AUTO_HTTP_BASE", format!("http://127.0.0.1:{}", p.trim()));
                 }
-                let via = if back_src.is_empty() { String::new() } else { format!(" (from {})", back_src) };
+                let via = if back_src.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (from {})", back_src)
+                };
                 println!("  Backend API server port: {}{}", p.trim(), via);
             }
-            let front_src = if front_port.is_some() { "cli" } else if pac_front.is_some() { "pac.at" } else { "" };
-            let effective_front = front_port.clone().or_else(|| pac_front.map(|p| p.to_string()));
+            let front_src = if front_port.is_some() {
+                "cli"
+            } else if pac_front.is_some() {
+                "pac.at"
+            } else {
+                ""
+            };
+            let effective_front = front_port
+                .clone()
+                .or_else(|| pac_front.map(|p| p.to_string()));
             if let Some(p) = &effective_front {
                 if p.trim().parse::<u16>().is_err() {
                     return Err(miette::miette!(
-                        "Invalid frontend port '{}': must be a number 0-65535", p
+                        "Invalid frontend port '{}': must be a number 0-65535",
+                        p
                     ));
                 }
                 std::env::set_var("AUTO_FRONT_PORT", p.trim());
-                let via = if front_src.is_empty() { String::new() } else { format!(" (from {})", front_src) };
+                let via = if front_src.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (from {})", front_src)
+                };
                 println!("  Frontend dev server port: {}{}", p.trim(), via);
             }
             // Plan 411: VM native window startup size from pac.at `window: "WxH"`.
@@ -1181,7 +1430,10 @@ fn real_main(cli: Cli) -> Result<()> {
                     println!("  UI theme: {}{}", t, via);
                 }
                 Some(t) => {
-                    println!("  UI theme: {} unknown (want dark|light) — using default dark", t);
+                    println!(
+                        "  UI theme: {} unknown (want dark|light) — using default dark",
+                        t
+                    );
                 }
                 None => {}
             }
@@ -1240,7 +1492,10 @@ fn real_main(cli: Cli) -> Result<()> {
                     std::env::set_var("AUTO_VM_ACTION_CONFIG", abs.to_string_lossy().to_string());
                     println!("  VM action config: {} (from pac.at)", cfg);
                 } else {
-                    println!("  VM action config: {} not found (from pac.at) — skipped", cfg);
+                    println!(
+                        "  VM action config: {} not found (from pac.at) — skipped",
+                        cfg
+                    );
                 }
             }
             // Plan 451: app identity for the OS user keymap layer — pac.at
@@ -1301,7 +1556,11 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("------------- end --------------");
             }
         }
-        Some(Commands::Test { dir, filter, verbose }) => {
+        Some(Commands::Test {
+            dir,
+            filter,
+            verbose,
+        }) => {
             let target = dir.unwrap_or_else(|| ".".to_string());
 
             // Collect .at files to test
@@ -1353,7 +1612,9 @@ fn real_main(cli: Cli) -> Result<()> {
                         let mut file_failed = 0;
                         if multi_file {
                             let file_name = std::path::Path::new(file)
-                                .file_name().unwrap_or_default().to_string_lossy();
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy();
                             println!("\nRunning {} ({} tests):", file_name, result.reports.len());
                         }
                         for report in &result.reports {
@@ -1388,10 +1649,16 @@ fn real_main(cli: Cli) -> Result<()> {
             }
 
             let elapsed = start.elapsed().as_millis();
-            print!("{}", auto_lang::test_runner::format_test_report(&all_results, elapsed));
+            print!(
+                "{}",
+                auto_lang::test_runner::format_test_report(&all_results, elapsed)
+            );
 
             if multi_file {
-                println!("{} test file(s), {} file(s) had failures", test_files, failed_files);
+                println!(
+                    "{} test file(s), {} file(s) had failures",
+                    test_files, failed_files
+                );
             }
 
             // File-based tests (VM, A2R, A2C, A2TS) now discovered via tests/*.at files
@@ -1406,7 +1673,12 @@ fn real_main(cli: Cli) -> Result<()> {
         // + acceptance.atd, the 017-chat convention) — the app itself must be
         // running in another terminal (`auto run <dir>`), exactly like the
         // documented per-example flow this command replaces.
-        Some(Commands::TestUi { dir, headed, filter, report }) => {
+        Some(Commands::TestUi {
+            dir,
+            headed,
+            filter,
+            report,
+        }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -1423,14 +1695,21 @@ fn real_main(cli: Cli) -> Result<()> {
 
             let pkg = pkg_cmd();
             if !command_exists(pkg) {
-                eprintln!("error: '{}' not found in PATH (required to run Playwright)", pkg);
+                eprintln!(
+                    "error: '{}' not found in PATH (required to run Playwright)",
+                    pkg
+                );
                 std::process::exit(1);
             }
 
             // First run: install @playwright/test and friends into tests/.
             let package_json = tests_dir.join("package.json");
             if package_json.is_file() && !tests_dir.join("node_modules").is_dir() {
-                println!("[test:ui] first run in {}: {} install ...", tests_dir.display(), pkg);
+                println!(
+                    "[test:ui] first run in {}: {} install ...",
+                    tests_dir.display(),
+                    pkg
+                );
                 if let Err(e) = run_command_live(pkg, &["install"], &tests_dir) {
                     eprintln!("error: {}", e);
                     std::process::exit(1);
@@ -1476,7 +1755,12 @@ fn real_main(cli: Cli) -> Result<()> {
                     vec!["exec".into(), "playwright".into(), "test".into()];
                 direct.extend(extra);
                 let direct_refs: Vec<&str> = direct.iter().map(|s| s.as_str()).collect();
-                println!("[test:ui] {} {} (in {})", pkg, direct.join(" "), tests_dir.display());
+                println!(
+                    "[test:ui] {} {} (in {})",
+                    pkg,
+                    direct.join(" "),
+                    tests_dir.display()
+                );
                 if let Err(e) = run_command_live(pkg, &direct_refs, &tests_dir) {
                     eprintln!("error: {}", e);
                     std::process::exit(1);
@@ -1517,23 +1801,26 @@ fn real_main(cli: Cli) -> Result<()> {
                 miette::miette!("{}", e)
             })?;
             if ai_mode {
-                println!("{}", format_success_json(json!({"message": "Clean completed"})));
+                println!(
+                    "{}",
+                    format_success_json(json!({"message": "Clean completed"}))
+                );
             }
         }
         Some(Commands::Watch { dir, .. }) => {
             init_logger();
             println_logo();
             let dir = dir.unwrap_or_else(|| ".".to_string());
-            let project_dir = PathBuf::from(&dir).canonicalize()
+            let project_dir = PathBuf::from(&dir)
+                .canonicalize()
                 .map_err(|e| miette::miette!("Invalid project directory: {}", e))?;
-            cmd_watch::run_watch(&project_dir)
-                .map_err(|e| {
-                    if ai_mode {
-                        eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
-                        std::process::exit(1);
-                    }
-                    miette::miette!("{}", e)
-                })?;
+            cmd_watch::run_watch(&project_dir).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
         }
         Some(Commands::Wizard { action }) => {
             run_wizard(action)?;
@@ -1548,7 +1835,12 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             // TODO: Implement Automan::add_dependency
             if ai_mode {
-                eprintln!("{}", format_error_json(&AutoError::Msg("'add' command is not yet implemented".to_string())));
+                eprintln!(
+                    "{}",
+                    format_error_json(&AutoError::Msg(
+                        "'add' command is not yet implemented".to_string()
+                    ))
+                );
                 std::process::exit(1);
             }
             miette::bail!("'add' command is not yet implemented in the library");
@@ -1582,7 +1874,10 @@ fn real_main(cli: Cli) -> Result<()> {
                 miette::miette!("{}", e)
             })?;
             if ai_mode {
-                println!("{}", format_success_json(json!({"message": "Dependencies fetched"})));
+                println!(
+                    "{}",
+                    format_success_json(json!({"message": "Dependencies fetched"}))
+                );
             }
         }
         Some(Commands::Deps) => {
@@ -1636,7 +1931,10 @@ fn real_main(cli: Cli) -> Result<()> {
                         info!("Port updated successfully");
                     }
                     if ai_mode {
-                        println!("{}", format_success_json(json!({"message": "Port selected", "port": port})));
+                        println!(
+                            "{}",
+                            format_success_json(json!({"message": "Port selected", "port": port}))
+                        );
                     }
                 }
             }
@@ -1662,7 +1960,12 @@ fn real_main(cli: Cli) -> Result<()> {
                 miette::miette!("{}", e)
             })?;
             if ai_mode {
-                println!("{}", format_success_json(json!({"message": "Export completed", "port": port, "format": fmt})));
+                println!(
+                    "{}",
+                    format_success_json(
+                        json!({"message": "Export completed", "port": port, "format": fmt})
+                    )
+                );
             }
         }
 
@@ -1758,7 +2061,12 @@ fn real_main(cli: Cli) -> Result<()> {
                         miette::miette!("{}", e)
                     })?;
                     if ai_mode {
-                        println!("{}", format_success_json(json!({"message": "Config installed", "file": file})));
+                        println!(
+                            "{}",
+                            format_success_json(
+                                json!({"message": "Config installed", "file": file})
+                            )
+                        );
                     }
                 }
                 EnvAction::Cache { command } => {
@@ -1774,7 +2082,10 @@ fn real_main(cli: Cli) -> Result<()> {
                         CacheCommands::Stats => {
                             am.cache_stats().map_err(|e| {
                                 if ai_mode {
-                                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                                    eprintln!(
+                                        "{}",
+                                        format_error_json(&AutoError::Msg(e.to_string()))
+                                    );
                                     std::process::exit(1);
                                 }
                                 miette::miette!("{}", e)
@@ -1783,7 +2094,10 @@ fn real_main(cli: Cli) -> Result<()> {
                         CacheCommands::List { type_, limit } => {
                             am.cache_list(type_, limit).map_err(|e| {
                                 if ai_mode {
-                                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                                    eprintln!(
+                                        "{}",
+                                        format_error_json(&AutoError::Msg(e.to_string()))
+                                    );
                                     std::process::exit(1);
                                 }
                                 miette::miette!("{}", e)
@@ -1792,31 +2106,46 @@ fn real_main(cli: Cli) -> Result<()> {
                         CacheCommands::Prune => {
                             am.cache_prune().map_err(|e| {
                                 if ai_mode {
-                                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                                    eprintln!(
+                                        "{}",
+                                        format_error_json(&AutoError::Msg(e.to_string()))
+                                    );
                                     std::process::exit(1);
                                 }
                                 miette::miette!("{}", e)
                             })?;
                             if ai_mode {
-                                println!("{}", format_success_json(json!({"message": "Cache pruned"})));
+                                println!(
+                                    "{}",
+                                    format_success_json(json!({"message": "Cache pruned"}))
+                                );
                             }
                         }
                         CacheCommands::Clear => {
                             am.cache_clear().map_err(|e| {
                                 if ai_mode {
-                                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                                    eprintln!(
+                                        "{}",
+                                        format_error_json(&AutoError::Msg(e.to_string()))
+                                    );
                                     std::process::exit(1);
                                 }
                                 miette::miette!("{}", e)
                             })?;
                             if ai_mode {
-                                println!("{}", format_success_json(json!({"message": "Cache cleared"})));
+                                println!(
+                                    "{}",
+                                    format_success_json(json!({"message": "Cache cleared"}))
+                                );
                             }
                         }
                         CacheCommands::Inspect { name } => {
                             am.cache_inspect(&name).map_err(|e| {
                                 if ai_mode {
-                                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                                    eprintln!(
+                                        "{}",
+                                        format_error_json(&AutoError::Msg(e.to_string()))
+                                    );
                                     std::process::exit(1);
                                 }
                                 miette::miette!("{}", e)
@@ -1825,13 +2154,19 @@ fn real_main(cli: Cli) -> Result<()> {
                         CacheCommands::Verify => {
                             am.cache_verify().map_err(|e| {
                                 if ai_mode {
-                                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                                    eprintln!(
+                                        "{}",
+                                        format_error_json(&AutoError::Msg(e.to_string()))
+                                    );
                                     std::process::exit(1);
                                 }
                                 miette::miette!("{}", e)
                             })?;
                             if ai_mode {
-                                println!("{}", format_success_json(json!({"message": "Cache verified"})));
+                                println!(
+                                    "{}",
+                                    format_success_json(json!({"message": "Cache verified"}))
+                                );
                             }
                         }
                     }
@@ -1840,7 +2175,11 @@ fn real_main(cli: Cli) -> Result<()> {
         }
 
         // ========== Code Generation ==========
-        Some(Commands::Gen { output, project, scene }) => {
+        Some(Commands::Gen {
+            output,
+            project,
+            scene,
+        }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -1864,7 +2203,10 @@ fn real_main(cli: Cli) -> Result<()> {
                 miette::miette!("{}", e)
             })?;
             if ai_mode {
-                println!("{}", format_success_json(json!({"message": "Code generated"})));
+                println!(
+                    "{}",
+                    format_success_json(json!({"message": "Code generated"}))
+                );
             }
         }
 
@@ -1915,14 +2257,16 @@ fn real_main(cli: Cli) -> Result<()> {
             auto_lang::autovm_repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
         }
         Some(Commands::Config { path }) => {
-            let code = std::fs::read_to_string(path.as_str())
-                .map_err(|e| {
-                    if ai_mode {
-                        eprintln!("{}", format_error_json(&AutoError::Io(format!("Failed to read file: {}", e))));
-                        std::process::exit(1);
-                    }
-                    miette::miette!("Failed to read file: {}", e)
-                })?;
+            let code = std::fs::read_to_string(path.as_str()).map_err(|e| {
+                if ai_mode {
+                    eprintln!(
+                        "{}",
+                        format_error_json(&AutoError::Io(format!("Failed to read file: {}", e)))
+                    );
+                    std::process::exit(1);
+                }
+                miette::miette!("Failed to read file: {}", e)
+            })?;
             let args = auto_val::Obj::new();
             let c = auto_lang::eval_config_with_vm(code.as_str(), &args).map_err(|e| {
                 if ai_mode {
@@ -2000,18 +2344,25 @@ fn real_main(cli: Cli) -> Result<()> {
                         .into_owned()
                 });
                 let msg = auto_lang::trans_typescript_to(&path, &out_path).map_err(|e| {
-                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&e));
+                        std::process::exit(1);
+                    }
                     to_miette_err(e)
                 })?;
                 println!("{}", msg);
             }
             TransTarget::C { output } => {
                 let c = auto_lang::trans_c(path.as_str()).map_err(|e| {
-                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&e));
+                        std::process::exit(1);
+                    }
                     to_miette_err(e)
                 })?;
                 if let Some(out) = output {
-                    std::fs::write(&out, &c).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                    std::fs::write(&out, &c)
+                        .map_err(|e| miette::miette!("Failed to write: {}", e))?;
                     println!("[trans] {} -> {}", path, out);
                 } else {
                     output_success(ai_mode, &c);
@@ -2020,19 +2371,26 @@ fn real_main(cli: Cli) -> Result<()> {
             TransTarget::Rust { output, merge } => {
                 if merge {
                     let merged = auto_lang::trans_rust_merged(path.as_str()).map_err(|e| {
-                        if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                        if ai_mode {
+                            eprintln!("{}", format_error_json(&e));
+                            std::process::exit(1);
+                        }
                         to_miette_err(e)
                     })?;
                     let content = String::from_utf8_lossy(&merged);
                     if let Some(out) = output {
-                        std::fs::write(&out, &*merged).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                        std::fs::write(&out, &*merged)
+                            .map_err(|e| miette::miette!("Failed to write: {}", e))?;
                         println!("[trans] {} -> {} (merged)", path, out);
                     } else {
                         output_success(ai_mode, &content);
                     }
                 } else {
                     let r = auto_lang::trans_rust(path.as_str()).map_err(|e| {
-                        if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                        if ai_mode {
+                            eprintln!("{}", format_error_json(&e));
+                            std::process::exit(1);
+                        }
                         to_miette_err(e)
                     })?;
                     if let Some(_out) = output {
@@ -2044,11 +2402,15 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             TransTarget::Python { output } => {
                 let py = auto_lang::trans_python(path.as_str()).map_err(|e| {
-                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&e));
+                        std::process::exit(1);
+                    }
                     to_miette_err(e)
                 })?;
                 if let Some(out) = output {
-                    std::fs::write(&out, &py).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                    std::fs::write(&out, &py)
+                        .map_err(|e| miette::miette!("Failed to write: {}", e))?;
                     println!("[trans] {} -> {}", path, out);
                 } else {
                     output_success(ai_mode, &py);
@@ -2056,11 +2418,15 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             TransTarget::Js { output } => {
                 let js = auto_lang::trans_javascript(path.as_str()).map_err(|e| {
-                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&e));
+                        std::process::exit(1);
+                    }
                     to_miette_err(e)
                 })?;
                 if let Some(out) = output {
-                    std::fs::write(&out, &js).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                    std::fs::write(&out, &js)
+                        .map_err(|e| miette::miette!("Failed to write: {}", e))?;
                     println!("[trans] {} -> {}", path, out);
                 } else {
                     output_success(ai_mode, &js);
@@ -2068,11 +2434,15 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             TransTarget::Gd { output } => {
                 let gd = auto_lang::trans_gdscript(path.as_str()).map_err(|e| {
-                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&e));
+                        std::process::exit(1);
+                    }
                     to_miette_err(e)
                 })?;
                 if let Some(out) = output {
-                    std::fs::write(&out, &gd).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                    std::fs::write(&out, &gd)
+                        .map_err(|e| miette::miette!("Failed to write: {}", e))?;
                     println!("[trans] {} -> {}", path, out);
                 } else {
                     output_success(ai_mode, &gd);
@@ -2080,11 +2450,15 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             TransTarget::Tscn { output } => {
                 let tscn = auto_lang::trans_tscn(path.as_str()).map_err(|e| {
-                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&e));
+                        std::process::exit(1);
+                    }
                     to_miette_err(e)
                 })?;
                 if let Some(out) = output {
-                    std::fs::write(&out, &tscn).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                    std::fs::write(&out, &tscn)
+                        .map_err(|e| miette::miette!("Failed to write: {}", e))?;
                     println!("[trans] {} -> {}", path, out);
                 } else {
                     output_success(ai_mode, &tscn);
@@ -2093,7 +2467,10 @@ fn real_main(cli: Cli) -> Result<()> {
             TransTarget::Godot { output: _ } => {
                 // trans_godot writes <base>.tscn and <base>.gd next to the source.
                 let msg = auto_lang::trans_godot(path.as_str()).map_err(|e| {
-                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&e));
+                        std::process::exit(1);
+                    }
                     to_miette_err(e)
                 })?;
                 output_success(ai_mode, &msg);
@@ -2101,20 +2478,27 @@ fn real_main(cli: Cli) -> Result<()> {
             // Plan 555 T07: Auto → Auto（s2s 改写器；W1 identity passthrough）
             TransTarget::Auto { output } => {
                 let lowered = auto_lang::trans_auto_s2s(path.as_str()).map_err(|e| {
-                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&e));
+                        std::process::exit(1);
+                    }
                     to_miette_err(e)
                 })?;
                 if let Some(out) = output {
-                    std::fs::write(&out, &lowered).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                    std::fs::write(&out, &lowered)
+                        .map_err(|e| miette::miette!("Failed to write: {}", e))?;
                     println!("[s2s] {} -> {}", path, out);
                 } else {
                     output_success(ai_mode, &lowered);
                 }
             }
-        }
+        },
         Some(Commands::R2a { path, output }) => {
             let r = auto_lang::transpile_r2a_file(path.as_str()).map_err(|e| {
-                if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&e));
+                    std::process::exit(1);
+                }
                 to_miette_err(e)
             })?;
             if let Some(out) = output {
@@ -2140,11 +2524,13 @@ fn real_main(cli: Cli) -> Result<()> {
                         println!();
                         for func in &manifest.functions {
                             let variadic = if func.variadic { " (variadic)" } else { "" };
-                            println!("  {}{} — {:?}({})",
+                            println!(
+                                "  {}{} — {:?}({})",
                                 func.name,
                                 variadic,
                                 func.return_type,
-                                func.params.iter()
+                                func.params
+                                    .iter()
                                     .map(|p| format!("{:?} {}", p.ty, p.name))
                                     .collect::<Vec<_>>()
                                     .join(", ")
@@ -2180,15 +2566,23 @@ fn real_main(cli: Cli) -> Result<()> {
         }
 
         // ========== AutoVM Daemon (Plan 269) ==========
-        Some(Commands::Serve { foreground, stdio, pipe_name, max_sessions, timeout }) => {
-            let mut daemon = auto_lang::autovm_daemon::AutovmDaemon::new_with_config(max_sessions, timeout);
+        Some(Commands::Serve {
+            foreground,
+            stdio,
+            pipe_name,
+            max_sessions,
+            timeout,
+        }) => {
+            let mut daemon =
+                auto_lang::autovm_daemon::AutovmDaemon::new_with_config(max_sessions, timeout);
             if stdio {
                 daemon.run_stdio();
             } else if foreground {
                 daemon.run_pipe(&pipe_name);
             } else {
                 // Background mode: spawn self with --foreground to listen on named pipe
-                let exe = std::env::current_exe().map_err(|e| miette::miette!("Cannot find auto executable: {}", e))?;
+                let exe = std::env::current_exe()
+                    .map_err(|e| miette::miette!("Cannot find auto executable: {}", e))?;
                 #[cfg(target_family = "windows")]
                 {
                     use std::os::windows::process::CommandExt;
@@ -2208,10 +2602,22 @@ fn real_main(cli: Cli) -> Result<()> {
         }
 
         // ========== AutoVM Client (Plan 269) ==========
-        Some(Commands::Req { session, pipe_name, new_session, inspect, reset, delete, snapshot, list, json, code }) => {
+        Some(Commands::Req {
+            session,
+            pipe_name,
+            new_session,
+            inspect,
+            reset,
+            delete,
+            snapshot,
+            list,
+            json,
+            code,
+        }) => {
             use auto_lang::autovm_client::AutovmClient;
 
-            let mut client = AutovmClient::connect(&pipe_name).map_err(|e| miette::miette!("{}", e))?;
+            let mut client =
+                AutovmClient::connect(&pipe_name).map_err(|e| miette::miette!("{}", e))?;
 
             if list {
                 let resp = client.list().map_err(|e| miette::miette!("{}", e))?;
@@ -2242,7 +2648,11 @@ fn real_main(cli: Cli) -> Result<()> {
                             let status = if ok { "ok" } else { "error" };
                             println!("{}", serde_json::json!({"status": status, "value": value}));
                         } else {
-                            if ok { println!("{}", value); } else { eprintln!("{}", value); }
+                            if ok {
+                                println!("{}", value);
+                            } else {
+                                eprintln!("{}", value);
+                            }
                         }
                         return Ok(());
                     }
@@ -2252,7 +2662,9 @@ fn real_main(cli: Cli) -> Result<()> {
             };
 
             if inspect {
-                let resp = client.inspect(&ses_id).map_err(|e| miette::miette!("{}", e))?;
+                let resp = client
+                    .inspect(&ses_id)
+                    .map_err(|e| miette::miette!("{}", e))?;
                 if json {
                     println!("{}", serde_json::to_string(&resp).unwrap());
                 } else {
@@ -2265,15 +2677,27 @@ fn real_main(cli: Cli) -> Result<()> {
                     }
                 }
             } else if reset {
-                let resp = client.reset(&ses_id).map_err(|e| miette::miette!("{}", e))?;
-                if json { println!("{}", serde_json::to_string(&resp).unwrap()); }
-                else { println!("Session {} reset", ses_id); }
+                let resp = client
+                    .reset(&ses_id)
+                    .map_err(|e| miette::miette!("{}", e))?;
+                if json {
+                    println!("{}", serde_json::to_string(&resp).unwrap());
+                } else {
+                    println!("Session {} reset", ses_id);
+                }
             } else if delete {
-                let resp = client.delete(&ses_id).map_err(|e| miette::miette!("{}", e))?;
-                if json { println!("{}", serde_json::to_string(&resp).unwrap()); }
-                else { println!("Session {} deleted", ses_id); }
+                let resp = client
+                    .delete(&ses_id)
+                    .map_err(|e| miette::miette!("{}", e))?;
+                if json {
+                    println!("{}", serde_json::to_string(&resp).unwrap());
+                } else {
+                    println!("Session {} deleted", ses_id);
+                }
             } else if snapshot {
-                let resp = client.snapshot(&ses_id).map_err(|e| miette::miette!("{}", e))?;
+                let resp = client
+                    .snapshot(&ses_id)
+                    .map_err(|e| miette::miette!("{}", e))?;
                 if json {
                     println!("{}", serde_json::to_string(&resp).unwrap());
                 } else {
@@ -2283,7 +2707,9 @@ fn real_main(cli: Cli) -> Result<()> {
                     }
                 }
             } else if let Some(code) = &code {
-                let resp = client.eval(&ses_id, code).map_err(|e| miette::miette!("{}", e))?;
+                let resp = client
+                    .eval(&ses_id, code)
+                    .map_err(|e| miette::miette!("{}", e))?;
                 if json {
                     println!("{}", serde_json::to_string(&resp).unwrap());
                 } else {
@@ -2319,55 +2745,68 @@ fn real_main(cli: Cli) -> Result<()> {
         }
     }
 
-/// Scaffold a new project or widget from templates (Plan 363 Phase 5).
-fn run_wizard(action: WizardAction) -> miette::Result<()> {
-    fn io_err(e: std::io::Error) -> miette::Report {
-        miette::miette!("{}", e)
-    }
-
-    match action {
-        WizardAction::New { name } => {
-            let project_dir = std::env::current_dir()
-                .map_err(io_err)?
-                .join(&name);
-            if project_dir.exists() {
-                return Err(miette::miette!("Directory '{}' already exists", name));
-            }
-
-            let store_name = format!("{}Store", to_pascal_case(&name));
-            let templates = [
-                ("pac.at", include_str!("../../../crates/autoui-skill/templates/new-project/pac.at.tmpl")),
-                ("src/front/app.at", include_str!("../../../crates/autoui-skill/templates/new-project/app.at.tmpl")),
-                ("src/front/store.at", include_str!("../../../crates/autoui-skill/templates/new-project/store.at.tmpl")),
-            ];
-
-            for (rel_path, tmpl) in &templates {
-                let content = tmpl
-                    .replace("{{PROJECT_NAME}}", &name)
-                    .replace("{{STORE_NAME}}", &store_name);
-                let out_path = project_dir.join(rel_path);
-                if let Some(parent) = out_path.parent() {
-                    std::fs::create_dir_all(parent).map_err(io_err)?;
-                }
-                std::fs::write(&out_path, content).map_err(io_err)?;
-                println!("{} {}", "✓".bright_green(), rel_path);
-            }
-
-            println!("\n{} Project '{}' created.", "✓".bright_green(), name);
-            println!("  cd {}", name);
-            println!("  auto watch  # start dev server");
-            Ok(())
+    /// Scaffold a new project or widget from templates (Plan 363 Phase 5).
+    fn run_wizard(action: WizardAction) -> miette::Result<()> {
+        fn io_err(e: std::io::Error) -> miette::Report {
+            miette::miette!("{}", e)
         }
-        WizardAction::Add { name } => {
-            let widget_name = to_pascal_case(&name);
-            let file_name = format!("{}.at", name.to_lowercase().replace(' ', "_"));
 
-            if std::path::Path::new(&file_name).exists() {
-                return Err(miette::miette!("File '{}' already exists", file_name));
+        match action {
+            WizardAction::New { name } => {
+                let project_dir = std::env::current_dir().map_err(io_err)?.join(&name);
+                if project_dir.exists() {
+                    return Err(miette::miette!("Directory '{}' already exists", name));
+                }
+
+                let store_name = format!("{}Store", to_pascal_case(&name));
+                let templates = [
+                    (
+                        "pac.at",
+                        include_str!(
+                            "../../../crates/autoui-skill/templates/new-project/pac.at.tmpl"
+                        ),
+                    ),
+                    (
+                        "src/front/app.at",
+                        include_str!(
+                            "../../../crates/autoui-skill/templates/new-project/app.at.tmpl"
+                        ),
+                    ),
+                    (
+                        "src/front/store.at",
+                        include_str!(
+                            "../../../crates/autoui-skill/templates/new-project/store.at.tmpl"
+                        ),
+                    ),
+                ];
+
+                for (rel_path, tmpl) in &templates {
+                    let content = tmpl
+                        .replace("{{PROJECT_NAME}}", &name)
+                        .replace("{{STORE_NAME}}", &store_name);
+                    let out_path = project_dir.join(rel_path);
+                    if let Some(parent) = out_path.parent() {
+                        std::fs::create_dir_all(parent).map_err(io_err)?;
+                    }
+                    std::fs::write(&out_path, content).map_err(io_err)?;
+                    println!("{} {}", "✓".bright_green(), rel_path);
+                }
+
+                println!("\n{} Project '{}' created.", "✓".bright_green(), name);
+                println!("  cd {}", name);
+                println!("  auto watch  # start dev server");
+                Ok(())
             }
+            WizardAction::Add { name } => {
+                let widget_name = to_pascal_case(&name);
+                let file_name = format!("{}.at", name.to_lowercase().replace(' ', "_"));
 
-            let content = format!(
-                r#"widget {widget_name} {{
+                if std::path::Path::new(&file_name).exists() {
+                    return Err(miette::miette!("File '{}' already exists", file_name));
+                }
+
+                let content = format!(
+                    r#"widget {widget_name} {{
     view {{
         col {{
             text "{widget_name}"
@@ -2375,27 +2814,27 @@ fn run_wizard(action: WizardAction) -> miette::Result<()> {
     }}
 }}
 "#
-            );
-            std::fs::write(&file_name, content).map_err(io_err)?;
-            println!("{} Created {}", "✓".bright_green(), file_name);
-            println!("  Don't forget to add `use {name}: {widget_name}` to app.at");
-            Ok(())
+                );
+                std::fs::write(&file_name, content).map_err(io_err)?;
+                println!("{} Created {}", "✓".bright_green(), file_name);
+                println!("  Don't forget to add `use {name}: {widget_name}` to app.at");
+                Ok(())
+            }
         }
     }
-}
 
-fn to_pascal_case(s: &str) -> String {
-    s.split(|c: char| !c.is_alphanumeric())
-        .filter(|p| !p.is_empty())
-        .map(|p| {
-            let mut chars = p.chars();
-            match chars.next() {
-                Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
-                None => String::new(),
-            }
-        })
-        .collect()
-}
+    fn to_pascal_case(s: &str) -> String {
+        s.split(|c: char| !c.is_alphanumeric())
+            .filter(|p| !p.is_empty())
+            .map(|p| {
+                let mut chars = p.chars();
+                match chars.next() {
+                    Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+                    None => String::new(),
+                }
+            })
+            .collect()
+    }
 
     Ok(())
 }
@@ -2414,7 +2853,11 @@ mod cli_service_tests {
     fn service_command_shape() {
         let cli = parse(&["service", "--server", "vm", "--http-config-inline", "{}"]);
         match cli.command {
-            Some(super::Commands::Service { server, http_config_inline, .. }) => {
+            Some(super::Commands::Service {
+                server,
+                http_config_inline,
+                ..
+            }) => {
                 assert_eq!(server, "vm");
                 assert_eq!(http_config_inline.as_deref(), Some("{}"));
             }
@@ -2424,9 +2867,21 @@ mod cli_service_tests {
 
     #[test]
     fn service_config_and_inline_are_separate_fields() {
-        let cli = parse(&["service", "--server", "rust", "--http-config", "svc.json", "-B", "9100"]);
+        let cli = parse(&[
+            "service",
+            "--server",
+            "rust",
+            "--http-config",
+            "svc.json",
+            "-B",
+            "9100",
+        ]);
         match cli.command {
-            Some(super::Commands::Service { http_config, back_port, .. }) => {
+            Some(super::Commands::Service {
+                http_config,
+                back_port,
+                ..
+            }) => {
                 assert_eq!(http_config.as_deref(), Some("svc.json"));
                 assert_eq!(back_port.as_deref(), Some("9100"));
             }

@@ -22,10 +22,15 @@ pub struct ServeArgs {
 pub fn cmd_service(args: ServeArgs) -> Result<()> {
     let project_dir = match &args.dir {
         Some(d) => PathBuf::from(d),
-        None => std::env::current_dir().map_err(|e| miette::miette!("failed to resolve cwd: {e}"))?,
+        None => {
+            std::env::current_dir().map_err(|e| miette::miette!("failed to resolve cwd: {e}"))?
+        }
     };
     if !project_dir.exists() {
-        return Err(miette::miette!("project directory not found: {}", project_dir.display()));
+        return Err(miette::miette!(
+            "project directory not found: {}",
+            project_dir.display()
+        ));
     }
     // 规范化为绝对路径（剥 Windows 扩展长度前缀）：workspace 锚点/模块解析/
     // 子进程 cwd 都按绝对目录计算——相对 `.` 会让 walk-up 锚点算法落 fallback
@@ -58,8 +63,7 @@ pub fn cmd_service(args: ServeArgs) -> Result<()> {
         None => None,
     };
 
-    let config = resolve_config(source.as_ref(), cli_port)
-        .map_err(|e| miette::miette!("{e}"))?;
+    let config = resolve_config(source.as_ref(), cli_port).map_err(|e| miette::miette!("{e}"))?;
 
     println!(
         "auto serve: project {} · server {} · profile {} · listen {}:{}",
@@ -70,7 +74,8 @@ pub fn cmd_service(args: ServeArgs) -> Result<()> {
         config.listen_port
     );
 
-    let code = serve_project(&project_dir, &args.server, config).map_err(|e| miette::miette!("{e}"))?;
+    let code =
+        serve_project(&project_dir, &args.server, config).map_err(|e| miette::miette!("{e}"))?;
     if code != 0 {
         return Err(miette::miette!("http service exited with code {code}"));
     }
