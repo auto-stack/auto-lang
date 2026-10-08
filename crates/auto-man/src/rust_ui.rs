@@ -3777,6 +3777,33 @@ fn backend_generation_is_fresh(project_dir: &Path) -> bool {
 }
 
 /// PLAN-734 T-04：新鲜度失配时绕过复用臂的再生入口（等价默认路径）。
+/// PLAN-736 T-05/AC-02：health 优先就绪探针。
+/// - Some(true)  = 服务模式 ready（/__/health 200，身份可读）
+/// - Some(false) = 端口有 HTTP 应答但未 ready（503=服务模式启动中；
+///   404=legacy 产物无控制面——按既有 TCP 语义视为可继续）
+/// - None        = 端口无 HTTP 应答（连接失败/超时——继续等待）
+/// 相比纯 TCP connect：503（bind 成功但初始化未完/旧实例 draining）不再
+/// 被误判为 ready；返回体含身份（instance/bound/config_hash）供上层核对。
+fn probe_service_ready(port: u16) -> std::option::Option<bool> {
+    use std::io::{Read, Write};
+    let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().ok()?;
+    let mut stream = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(800)).ok()?;
+    stream.write_all(b"GET /__auto/health/ready HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").ok()?;
+    let mut buf = Vec::new();
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(800)));
+    let _ = stream.take(4096).read_to_end(&mut buf);
+    let head = String::from_utf8_lossy(&buf);
+    let status: u16 = head
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    if status == 0 {
+        return None; // 非 HTTP 应答（可能他者占口）——按未就绪继续等
+    }
+    Some(status == 200 || status == 404)
+}
+
 fn start_api_server_fresh(
     project_dir: &Path,
 ) -> Result<Option<std::process::Child>, String> {
@@ -3893,6 +3920,19 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
 
             while start.elapsed() < max_wait {
                 std::thread::sleep(std::time::Duration::from_millis(500));
+                // PLAN-736 T-05：health 优先（200=service ready；404=legacy
+                // 产物可继续；503=bind 成功但未 ready——不再假 ready），
+                // TCP connect 兜底（health 通道异常时不阻塞 legacy 面）。
+                match probe_service_ready(port) {
+                    Some(is_ready) => {
+                        ready = is_ready;
+                        if ready {
+                            break;
+                        }
+                        continue;
+                    }
+                    None => {}
+                }
                 match std::net::TcpStream::connect_timeout(
                     &probe_addr,
                     std::time::Duration::from_secs(1),
@@ -3990,6 +4030,21 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
     let probe_addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
     while start.elapsed() < max_wait {
         std::thread::sleep(std::time::Duration::from_millis(500));
+        // PLAN-736 T-05：health 优先（VM serve 面有控制面；legacy auto run
+        // 的 VM 轨无 /__auto 路由 → 404 视为可继续），TCP connect 兜底。
+        match probe_service_ready(port) {
+            Some(is_ready) => {
+                if is_ready {
+                    println!(
+                        "  {} AutoVM server ready on http://127.0.0.1:{}",
+                        "✓".bright_green(), port
+                    );
+                    return true;
+                }
+                continue;
+            }
+            None => {}
+        }
         if std::net::TcpStream::connect_timeout(&probe_addr, std::time::Duration::from_secs(1)).is_ok() {
             println!(
                 "  {} AutoVM server ready on http://127.0.0.1:{}",

@@ -1768,6 +1768,71 @@ async fn __inflight_gate(
     axum::response::Response::from_parts(parts, body)
 }
 
+#[allow(dead_code)]
+static __SHUTDOWN_TX: std::sync::OnceLock<tokio::sync::watch::Sender<bool>> =
+    std::sync::OnceLock::new();
+
+#[allow(dead_code)]
+fn __json_resp(status: u16, body: serde_json::Value) -> axum::response::Response {
+    axum::response::Response::builder()
+        .status(axum::http::StatusCode::from_u16(status)
+            .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR))
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(body.to_string()))
+        .unwrap()
+}
+
+// PLAN-736 T-05/AC-02/05：服务控制面（/__auto/*）。live/ready 开放；snapshot/
+// shutdown 仅 loopback peer（不对外暴露操作面）。
+#[allow(dead_code)]
+async fn __health_live() -> axum::response::Response {
+    __json_resp(
+        200,
+        serde_json::json!({ "state": auto_lang::http_service_observability::service_state().as_str() }),
+    )
+}
+
+#[allow(dead_code)]
+async fn __health_ready() -> axum::response::Response {
+    use auto_lang::http_service_observability as obs;
+    if obs::is_ready() {
+        __json_resp(200, obs::service_identity().unwrap_or_else(|| serde_json::json!({})))
+    } else {
+        __json_resp(503, serde_json::json!({ "state": obs::service_state().as_str() }))
+    }
+}
+
+#[allow(dead_code)]
+async fn __health_snapshot(req: axum::extract::Request) -> axum::response::Response {
+    use auto_lang::http_service_observability as obs;
+    let peer = req.extensions().get::<std::net::SocketAddr>().copied();
+    if !peer.map(|p| p.ip().is_loopback()).unwrap_or(false) {
+        return __json_resp(403, serde_json::json!({ "error": "loopback only" }));
+    }
+    __json_resp(
+        200,
+        serde_json::json!({
+            "state": obs::service_state().as_str(),
+            "identity": obs::service_identity(),
+            "counters": obs::service_counters().snapshot(),
+        }),
+    )
+}
+
+#[allow(dead_code)]
+async fn __shutdown(req: axum::extract::Request) -> axum::response::Response {
+    use auto_lang::http_service_observability as obs;
+    let peer = req.extensions().get::<std::net::SocketAddr>().copied();
+    if !peer.map(|p| p.ip().is_loopback()).unwrap_or(false) {
+        return __json_resp(403, serde_json::json!({ "error": "loopback only" }));
+    }
+    let sent = __SHUTDOWN_TX.get().map(|tx| tx.send(true).is_ok()).unwrap_or(false);
+    obs::emit_event(serde_json::json!({
+        "event": "drain", "trigger": "shutdown_endpoint", "delivered": sent,
+    }));
+    __json_resp(202, serde_json::json!({ "draining": sent }))
+}
+
 "#;
 
 /// PLAN-736 AC-03/06：服务模式主运行环（连接许可 accept loop + 排空）。
@@ -1783,6 +1848,22 @@ const SERVICE_RUN_LOOP: &str = r#"
             auto_lang::http_service_config::ServiceRuntime::new(c.clone()),
         ))
         .ok();
+        use auto_lang::http_service_observability as obs;
+        obs::init_instance_id();
+        obs::set_service_identity(&bound, c.profile.as_str(), c.effective_config_hash());
+        obs::set_service_state(obs::ServiceState::Ready);
+        println!(
+            "AUTO_SERVICE_READY {{\"bound\":\"{}\",\"instance_id\":\"{}\",\"profile\":\"{}\",\"config_hash\":\"{:016x}\"}}",
+            bound,
+            obs::instance_id(),
+            c.profile.as_str(),
+            c.effective_config_hash()
+        );
+        let app = app
+            .route("/__auto/health/live", axum::routing::get(__health_live))
+            .route("/__auto/health/ready", axum::routing::get(__health_ready))
+            .route("/__auto/health/snapshot", axum::routing::get(__health_snapshot))
+            .route("/__auto/shutdown", axum::routing::post(__shutdown));
         let conn_sem = Arc::new(Semaphore::new(c.limits.max_connections));
         // 层序（外→内）：peer 注入 → policy（Host/代理/限速/CORS）→ inflight → body 上限 → 路由。
         let app = app
@@ -1792,6 +1873,7 @@ const SERVICE_RUN_LOOP: &str = r#"
         let graceful = hyper_util::server::graceful::GracefulShutdown::new();
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
         let mut shutdown_rx = shutdown_rx;
+        let _ = __SHUTDOWN_TX.set(shutdown_tx.clone());
         {
             let tx = shutdown_tx.clone();
             tokio::spawn(async move {
@@ -1886,6 +1968,9 @@ const SERVICE_RUN_LOOP: &str = r#"
         println!(
             "AUTO_SERVICE_STOPPED {{\"bound\":\"{}\"}}",
             bound
+        );
+        auto_lang::http_service_observability::set_service_state(
+            auto_lang::http_service_observability::ServiceState::Stopped,
         );
     }
 "#;
@@ -4232,30 +4317,15 @@ fn generate_main_rs(
 ");
     s.push_str("        .unwrap_or_else(|_| addr.clone());
 ");
-    s.push_str("    match &service_cfg {
-");
-    s.push_str("        Some(c) => println!(
-");
-    s.push_str("            \"AUTO_SERVICE_READY {{\\\"bound\\\":\\\"{}\\\",\\\"profile\\\":\\\"{}\\\",\\\"config_hash\\\":\\\"{:016x}\\\"}}\",
-");
-    s.push_str("            bound,
-");
-    s.push_str("            c.profile.as_str(),
-");
-    s.push_str("            c.effective_config_hash()
-");
-    s.push_str("        ),
-");
-    s.push_str("        None => println!(\"Server running on http://{} (CORS enabled for all origins)\", bound),
-");
-    s.push_str("    }
-");
     // PLAN-736 AC-03/06: 服务模式 = 预算运行环；legacy = 既有 axum::serve。
     s.push_str("    match &service_cfg {\n");
     s.push_str("        Some(c) => {\n");
     s.push_str(SERVICE_RUN_LOOP);
     s.push_str("        }\n");
-    s.push_str("        None => axum::serve(listener, app.layer(cors)).await.unwrap(),\n");
+    s.push_str("        None => {\n");
+    s.push_str("            println!(\"Server running on http://{} (CORS enabled for all origins)\", bound);\n");
+    s.push_str("            axum::serve(listener, app.layer(cors)).await.unwrap();\n");
+    s.push_str("        }\n");
     s.push_str("    }\n");
     s.push_str("}\n");
     s

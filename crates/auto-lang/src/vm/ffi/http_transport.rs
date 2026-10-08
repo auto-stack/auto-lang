@@ -263,6 +263,23 @@ pub(crate) async fn serve_network(
 // Bridge handler: HTTP protocol objects → owned ApiRequest → ApiReply
 // ============================================================================
 
+fn reply_status(reply: &ApiReply) -> u16 {
+    match reply {
+        ApiReply::Full { status, .. } => *status,
+        ApiReply::WebSocket { .. } => 101,
+    }
+}
+
+fn reply_bytes_hint(reply: &ApiReply) -> u64 {
+    match reply {
+        ApiReply::Full { body, .. } => match body {
+            ApiBody::Text(t) => t.len() as u64,
+            _ => 0, // SSE/文件以 scope 终态收口，头部阶段不计
+        },
+        ApiReply::WebSocket { .. } => 0,
+    }
+}
+
 async fn bridge_handler(
     request: axum::extract::Request,
     peer: SocketAddr,
@@ -283,6 +300,20 @@ async fn bridge_handler(
         .iter()
         .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
         .collect();
+
+    // PLAN-736 T-05: 服务控制面（/__auto/*）——不经业务 VM/auth（AC-02/05）；
+    // snapshot/shutdown 仅 loopback。早于策略链与 body 读取。
+    if path.starts_with("/__auto/") {
+        if let Some(resp) =
+            super::http_server::handle_service_control_path(&method, &path, peer)
+        {
+            crate::http_service_observability::counter_add(
+                crate::http_service_observability::CounterName::RequestsTotal,
+                1,
+            );
+            return resp;
+        }
+    }
 
     // PLAN-736 T-04: 服务策略链（仅显式服务面；legacy 面零变化）。全部在
     // body 读取/上传预检之前短路——坏 Host/CORS 拒绝/限速 429 零业务
@@ -449,6 +480,23 @@ async fn bridge_handler(
         }
         return resp;
     };
+    // PLAN-736 T-05/AC-05：请求事件挂 scope（finalize_scope 单点恰一次发射；
+    // route v1 = 去 query 路径，T-08 复核参数化模板化）。
+    {
+        let route_no_query = api_req.path.split('?').next().unwrap_or("").to_string();
+        crate::http_service_observability::counter_add(
+            crate::http_service_observability::CounterName::RequestsTotal,
+            1,
+        );
+        let mut ev = crate::http_service_observability::PendingRequestEvent::new(
+            &api_req.method,
+            &route_no_query,
+        );
+        ev.status = None;
+        if let Ok(mut slot) = scope.event.lock() {
+            *slot = Some(ev);
+        }
+    }
 
     // Bounded queue: a full queue is a fast, testable 503 (AC-03) — never an
     // unbounded wait or silent allocation growth. 队满 = scope 终结（许可
@@ -489,7 +537,17 @@ async fn bridge_handler(
         }
     };
     let reply = match reply {
-        Some(Ok(reply)) => reply,
+        Some(Ok(reply)) => {
+            // 回复已定：状态与字节进事件（终态仍由 scope finalize 发射——
+            // 流/文件以 body 收口为终态，不 headers 即记）。
+            if let Ok(mut slot) = scope.event.lock() {
+                if let Some(ev) = slot.as_mut() {
+                    ev.status = Some(reply_status(&reply));
+                    ev.bytes_sent = reply_bytes_hint(&reply);
+                }
+            }
+            reply
+        }
         Some(Err(_)) => {
             super::http_server::cancel_scope(&scope);
             return error_response(503, "server shutting down");

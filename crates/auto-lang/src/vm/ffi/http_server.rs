@@ -4030,6 +4030,87 @@ pub(crate) fn compute_ws_accept(key: &str) -> String {
 ///   - JSON handlers: call_fn_by_name (synchronous), write response, done.
 ///   - SSE handlers: a bounded local producer steps the VM in instruction
 ///     batches while the connection task writes frames.
+/// PLAN-736 T-05：进程内服务关停发送端（`POST /__auto/shutdown` 触发同一
+/// 关闭入口；headless 测试的确定性注入路径——真实 Ctrl+C 证据范围见 SD-01）。
+static SERVICE_SHUTDOWN_TX: std::sync::Mutex<
+    Option<tokio::sync::watch::Sender<bool>>,
+> = std::sync::Mutex::new(None);
+
+fn register_service_shutdown_tx(tx: tokio::sync::watch::Sender<bool>) {
+    if let Ok(mut slot) = SERVICE_SHUTDOWN_TX.lock() {
+        *slot = Some(tx);
+    }
+}
+
+fn peer_is_loopback(peer: std::net::SocketAddr) -> bool {
+    peer.ip().is_loopback()
+}
+
+/// PLAN-736 T-05/AC-02/05：服务控制面（`/__auto/*`，装配期与业务同名路由
+/// 冲突=启动诊断）。live/ready 开放（身份最小体）；snapshot/shutdown 仅
+/// loopback peer（不对代理/外部暴露操作面）。
+pub(crate) fn handle_service_control_path(
+    method: &str,
+    path: &str,
+    peer: std::net::SocketAddr,
+) -> Option<axum::response::Response> {
+    use crate::http_service_observability as obs;
+    if !path.starts_with("/__auto/") {
+        return None;
+    }
+    let json_resp = |status: u16, body: serde_json::Value| -> axum::response::Response {
+        axum::response::Response::builder()
+            .status(axum::http::StatusCode::from_u16(status).unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR))
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap()
+    };
+    match (method, path) {
+        ("GET", "/__auto/health/live") => Some(json_resp(
+            200,
+            serde_json::json!({ "state": obs::service_state().as_str() }),
+        )),
+        ("GET", "/__auto/health/ready") => {
+            if obs::is_ready() {
+                Some(json_resp(200, obs::service_identity().unwrap_or_else(|| serde_json::json!({}))))
+            } else {
+                Some(json_resp(
+                    503,
+                    serde_json::json!({ "state": obs::service_state().as_str() }),
+                ))
+            }
+        }
+        ("GET", "/__auto/health/snapshot") => {
+            if !peer_is_loopback(peer) {
+                return Some(json_resp(403, serde_json::json!({ "error": "loopback only" })));
+            }
+            Some(json_resp(
+                200,
+                serde_json::json!({
+                    "state": obs::service_state().as_str(),
+                    "identity": obs::service_identity(),
+                    "counters": obs::service_counters().snapshot(),
+                }),
+            ))
+        }
+        ("POST", "/__auto/shutdown") => {
+            if !peer_is_loopback(peer) {
+                return Some(json_resp(403, serde_json::json!({ "error": "loopback only" })));
+            }
+            let sent = SERVICE_SHUTDOWN_TX
+                .lock()
+                .ok()
+                .and_then(|slot| slot.as_ref().map(|tx| tx.send(true).is_ok()))
+                .unwrap_or(false);
+            obs::emit_event(serde_json::json!({
+                "event": "drain", "trigger": "shutdown_endpoint", "delivered": sent,
+            }));
+            Some(json_resp(202, serde_json::json!({ "draining": sent })))
+        }
+        _ => Some(json_resp(404, serde_json::json!({ "error": "not found" }))),
+    }
+}
+
 /// PLAN-736 AC-01/02: 最近一次 serve 的致命错误（bind 失败/net 线程死亡）。
 /// serve 入口（`auto serve`/run_file_with_service 消费者）据此以非零退出；
 /// legacy `auto run` 面不消费——保持既有"打印后继续"语义不变。
@@ -4086,6 +4167,8 @@ pub async fn serve_async(vm: std::rc::Rc<crate::vm::engine::AutoVM>, addr: &str)
     }
     #[cfg(not(test))]
     let _ = &shutdown_tx;
+    // PLAN-736 T-05：/__auto/shutdown 控制面与信号汇入同一 watch。
+    register_service_shutdown_tx(shutdown_tx.clone());
     tokio::task::spawn_local({
         let shutdown_tx = shutdown_tx.clone();
         async move {
@@ -4124,6 +4207,7 @@ pub async fn serve_async_with(
     }
     #[cfg(not(test))]
     let _ = &shutdown_tx;
+    register_service_shutdown_tx(shutdown_tx.clone());
     tokio::task::spawn_local({
         let shutdown_tx = shutdown_tx.clone();
         async move {
@@ -4230,7 +4314,20 @@ async fn serve_with(
             // PLAN-736: 真实 bound 地址（port=0 时为内核分配值）供 serve 入口/
             // health 身份消费。
             if let Ok(mut slot) = SERVE_BOUND_ADDR.lock() {
-                *slot = Some(bound);
+                *slot = Some(bound.clone());
+            }
+            // PLAN-736 T-05/AC-02：bind+初始化完成 → Ready（身份四元组）。
+            // 业务路由/VM 初始化在此之前已发生（run_file 编译先于 serve hook）。
+            if let Some(svc) = &cfg.service {
+                let c = &svc.config;
+                crate::http_service_observability::set_service_identity(
+                    &bound,
+                    c.profile.as_str(),
+                    c.effective_config_hash(),
+                );
+                crate::http_service_observability::set_service_state(
+                    crate::http_service_observability::ServiceState::Ready,
+                );
             }
         }
         Ok(Err(e)) => {
@@ -4329,9 +4426,19 @@ async fn serve_with(
                     // 排水窗开启：net 侧同步停收（watch 广播同源），已排队
                     // 请求继续应答；parked 请求等待完成或排水截止。
                     draining = true;
+                    if cfg.service.is_some() {
+                        crate::http_service_observability::set_service_state(
+                            crate::http_service_observability::ServiceState::Draining,
+                        );
+                    }
                 }
             }
         }
+    }
+    if cfg.service.is_some() {
+        crate::http_service_observability::set_service_state(
+            crate::http_service_observability::ServiceState::Stopped,
+        );
     }
     eprintln!("[HTTP] VM owner loop exited (port released)");
 }
@@ -5719,6 +5826,8 @@ pub(crate) struct RequestScope {
     /// PLAN-730 T-05：请求起点（bridge 入队时刻）——上传总期限
     /// （started_at + total_timeout）切换的锚点。
     pub started_at: std::time::Instant,
+    /// PLAN-736 T-05/AC-05：请求观测事件（恰一次终态；finalize_scope 发射）。
+    pub event: std::sync::Mutex<Option<crate::http_service_observability::PendingRequestEvent>>,
     /// PLAN-730 T-05：deadline 变更通道（上传 receive 启动时延展 30s→总
     /// 期限；桥 reply 等待循环 watch 重臂——修"select 保留旧捕获值"）。
     /// 只延展（extend）不缩短；与 `deadline` 字段同步写（读方短暂陈旧
@@ -5790,6 +5899,7 @@ pub(crate) fn create_scope(
         file_response_resources: std::sync::Mutex::new(Vec::new()),
         upload_resources: std::sync::Mutex::new(Vec::new()),
         started_at: std::time::Instant::now(),
+        event: std::sync::Mutex::new(None),
         deadline_tx,
     });
     if let Ok(mut map) = REQUEST_SCOPES.lock() {
@@ -5850,6 +5960,17 @@ fn finalize_scope(scope: &RequestScope, to: u8) {
     }
     scope.cancel_notify.notify_waiters();
     crate::vm::ffi::async_http::COMPLETION_NOTIFY.notify_waiters();
+    // PLAN-736 T-05/AC-05：请求终态事件恰一次（完成/取消单点收敛；
+    // 重复 cancel/drop 双路径由事件自身的原子闸防双计）。
+    if let Ok(mut slot) = scope.event.lock() {
+        if let Some(ev) = slot.take() {
+            if to == SCOPE_CANCELLED {
+                ev.cancel();
+            } else {
+                ev.complete();
+            }
+        }
+    }
 }
 
 /// 正常完成（回复送达非 SSE / SSE 流结束）。

@@ -1752,6 +1752,19 @@ async fn execute_autovm_with_path(
         // listen 取自解析后的 HttpServiceConfig（默认 loopback），不再读 env；
         // seam 由 serve 入口在 spawn VM 线程前 set、此处 take 一次。
         if let Some(svc) = crate::http_service_config::take_active_service_config() {
+            // PLAN-736 T-05/AC-02：业务路由占用 /__auto/* 控制面 = 装配诊断
+            // （非零退出；不静默遮蔽控制面）。
+            let control_conflicts: Vec<&str> = routes
+                .iter()
+                .map(|r| r.1.as_str())
+                .filter(|p| p.starts_with("/__auto/"))
+                .collect();
+            if !control_conflicts.is_empty() {
+                return Err(crate::error::AutoError::Msg(format!(
+                    "http service: business routes conflict with the reserved control plane: {:?}",
+                    control_conflicts
+                )));
+            }
             let addr = format!("{}:{}", svc.listen_addr, svc.listen_port);
             // PLAN-736 AC-03/05: 预算与观测由服务配置驱动（env 不参与该面）。
             crate::http_service_observability::install_log_sink(

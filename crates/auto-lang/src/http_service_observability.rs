@@ -102,6 +102,159 @@ pub enum CounterName {
 }
 
 // ============================================================================
+// 服务状态机 + 身份（AC-02：ready 语义可证；drain/stop 事件）
+// ============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServiceState {
+    Starting,
+    Ready,
+    Draining,
+    Stopped,
+}
+
+impl ServiceState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ServiceState::Starting => "starting",
+            ServiceState::Ready => "ready",
+            ServiceState::Draining => "draining",
+            ServiceState::Stopped => "stopped",
+        }
+    }
+}
+
+static STATE: AtomicU64 = AtomicU64::new(0); // ServiceState as u64（0=Starting）
+static INSTANCE_ID: OnceLock<String> = OnceLock::new();
+static SERVICE_IDENTITY: Mutex<Option<serde_json::Value>> = Mutex::new(None);
+
+fn state_from_u64(v: u64) -> ServiceState {
+    match v {
+        1 => ServiceState::Ready,
+        2 => ServiceState::Draining,
+        3 => ServiceState::Stopped,
+        _ => ServiceState::Starting,
+    }
+}
+
+fn state_to_u64(s: ServiceState) -> u64 {
+    match s {
+        ServiceState::Starting => 0,
+        ServiceState::Ready => 1,
+        ServiceState::Draining => 2,
+        ServiceState::Stopped => 3,
+    }
+}
+
+/// 进程级实例身份：serve 入口调用一次（pid + 启动纳秒 + 随机尾）。
+pub fn init_instance_id() -> String {
+    instance_id()
+}
+
+pub fn instance_id() -> String {
+    // 注意：闭包内不得再调 init_instance_id()——同一 OnceLock 同线程重入
+    // get_or_init = 死锁（T-05 实测：VM ready 臂挂死于身份设置）。
+    INSTANCE_ID
+        .get_or_init(|| {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.subsec_nanos() as u64 + d.as_secs().wrapping_mul(1_000_000_000))
+                .unwrap_or(0);
+            format!("svc-{}-{:x}", std::process::id(), nanos)
+        })
+        .clone()
+}
+
+/// 身份四元组（bound/profile/config_hash + instance_id）——ready 行、health
+/// body、父进程核对共用同一事实源。
+pub fn set_service_identity(bound: &str, profile: &str, config_hash: u64) {
+    if let Ok(mut slot) = SERVICE_IDENTITY.lock() {
+        *slot = Some(serde_json::json!({
+            "instance_id": instance_id(),
+            "bound": bound,
+            "profile": profile,
+            "config_hash": format!("{:016x}", config_hash),
+        }));
+    }
+}
+
+pub fn service_identity() -> Option<serde_json::Value> {
+    SERVICE_IDENTITY.lock().ok().and_then(|s| s.clone())
+}
+
+pub fn set_service_state(s: ServiceState) {
+    STATE.store(state_to_u64(s), Ordering::SeqCst);
+    emit_event(serde_json::json!({ "event": "state", "state": s.as_str() }));
+}
+
+pub fn service_state() -> ServiceState {
+    state_from_u64(STATE.load(Ordering::SeqCst))
+}
+
+/// ready 判定（AC-02）：Ready 且未 drain——health/ready 与父进程轮询共用。
+pub fn is_ready() -> bool {
+    service_state() == ServiceState::Ready
+}
+
+// ============================================================================
+// 请求事件上下文（恰一次终态：scope finalize/complete/cancel 三路收敛）
+// ============================================================================
+
+/// 桥层在请求入队时挂到 scope 上；scope 终结点（幂等）发出恰一次终态事件。
+/// bytes 在回复已知时填充；流/文件以 scope 终结为终态（不 headers 即记）。
+#[derive(Debug)]
+pub struct PendingRequestEvent {
+    pub method: String,
+    /// route 模板（去 query；参数化路由为具体路径——v1 边界，T-08 复核）。
+    pub route: String,
+    pub status: Option<u16>,
+    pub bytes_sent: u64,
+    /// 已发终态（幂等闸）。
+    sent: std::sync::atomic::AtomicBool,
+}
+
+impl PendingRequestEvent {
+    pub fn new(method: &str, route: &str) -> Self {
+        Self {
+            method: method.to_string(),
+            route: route.chars().take(128).collect(),
+            status: None,
+            bytes_sent: 0,
+            sent: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    fn emit_once(&self, outcome: &str) {
+        if self
+            .sent
+            .swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            return; // cancel/drop 双路径只发一次
+        }
+        // 计数与事件同点收敛（snapshot 面与 JSONL 面一致）。
+        counter_add(CounterName::BytesSent, self.bytes_sent);
+        emit_event(serde_json::json!({
+            "event": "request",
+            "method": self.method,
+            "route": self.route,
+            "status": self.status,
+            "bytes_sent": self.bytes_sent,
+            "outcome": outcome,
+        }));
+    }
+
+    pub fn complete(&self) {
+        counter_add(CounterName::RequestsCompleted, 1);
+        self.emit_once("completed");
+    }
+
+    pub fn cancel(&self) {
+        counter_add(CounterName::RequestsCanceled, 1);
+        self.emit_once("canceled");
+    }
+}
+
+// ============================================================================
 // 有界 JSONL sink（stderr；队满丢弃 + 计数；写线程后台化）
 // ============================================================================
 
