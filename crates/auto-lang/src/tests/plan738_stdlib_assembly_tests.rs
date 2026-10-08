@@ -1298,4 +1298,101 @@ pub fn g() int {
         // 真实 stdlib 根可用性（repo 根环境）——与 receipt 生成同源
         assert!(repo_stdlib_root().is_ok(), "仓内环境 stdlib 根可定位");
     }
+
+    /// AC-02/AC-07（Rust 腿真编译实跑见证，Plan 610 ⑤腿范式）：witness.at
+    /// （use auto.json + Json.parse）→ trans_rust（宿主 provider 路由
+    /// a2r_std::json::parse）→ cargo 对真实 a2r-std crate 实编 → 实跑输出
+    /// 解析产物。不手写业务替代；#[ignore] 按需跑：
+    /// `cargo test -p auto-lang --lib plan738 -- --ignored`。
+    #[test]
+    #[ignore = "shells out to cargo; on-demand rust host-provider real-compile gate (Plan 610 paradigm)"]
+    fn rust_host_provider_real_compile_witness() {
+        use std::process::Command;
+
+        let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let repo_root = std::path::Path::new(&manifest)
+            .join("../../")
+            .canonicalize()
+            .unwrap();
+        let a2r_std_src = repo_root.join("crates").join("a2r-std");
+        assert!(a2r_std_src.join("Cargo.toml").exists(), "a2r-std crate 在位");
+        let stage = repo_root.join("target").join("plan738").join("witness");
+        fs::create_dir_all(stage.join("src")).unwrap();
+
+        // ① 源：use auto.json 的最小程序（同 examples/stdlib/assembly 同源）
+        let witness_at = stage.join("witness.at");
+        fs::write(
+            &witness_at,
+            "use auto.json: *
+
+fn main() {
+    let doc = Json.parse(\"{\\\"k\\\": 42, \\\"s\\\": \\\"ok\\\"}\")
+    print(doc)
+}
+",
+        )
+        .unwrap();
+
+        // ② 真实 trans_rust 入口（大栈线程——trans 递归深）
+        let at_path = witness_at.clone();
+        let out_path = stage.join("witness.a2r.rs");
+        let h = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(move || {
+                let mut session = crate::compile::CompileSession::new();
+                session
+                    .set_assembly_target(crate::stdlib_assembly::model::AssemblyTarget::Rust)
+                    .unwrap();
+                // 返回值是日志行；产物由入口自写 <stem>.a2r.rs
+                crate::trans_rust_with_session(&mut session, at_path.to_str().unwrap())
+            })
+            .unwrap();
+        h.join().unwrap().expect("trans_rust 入口成功");
+        let emitted = fs::read_to_string(&out_path).unwrap();
+        assert!(
+            emitted.contains("a2r_std::json::parse"),
+            "宿主 provider 路由必须在发射面: {emitted}"
+        );
+
+        // ③ 组装 cargo 项目（crate 形态 a2r-std 依赖——发射头注释 "from
+        // crate" 即此形态；裸 `use a2r_std;` 在 dep 形态下去除，生成模板同款）
+        let qualified = emitted.replace("use a2r_std;
+", "");
+        fs::write(stage.join("src").join("main.rs"), &qualified).unwrap();
+        fs::write(
+            stage.join("Cargo.toml"),
+            format!(
+                "[package]
+name = \"plan738_witness\"
+version = \"0.1.0\"
+edition = \"2021\"
+
+[dependencies]
+a2r-std = {{ path = {:?} }}
+
+[workspace]
+",
+                a2r_std_src
+            ),
+        )
+        .unwrap();
+
+        // ④ cargo 实编 + 实跑——真实工具链产物，断言解析输出
+        let out = Command::new("cargo")
+            .args(["run", "--quiet"])
+            .current_dir(&stage)
+            .output()
+            .expect("spawn cargo");
+        assert!(
+            out.status.success(),
+            "witness 实编失败:
+{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("\"k\":42") && stdout.contains("\"s\":\"ok\""),
+            "宿主 provider 实跑输出应含解析产物: {stdout:?}"
+        );
+    }
 }
