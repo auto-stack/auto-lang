@@ -1,0 +1,6 @@
+// 公共层：契约与共享 pure body。val 无 body——实现由选定目标层提供。
+pub fn val() int;
+
+pub fn aux() int {
+    return 7
+}

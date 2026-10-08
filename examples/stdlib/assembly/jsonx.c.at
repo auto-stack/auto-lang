@@ -1,0 +1,4 @@
+// C 层：同理为 candidate（C 发射走预生成 .c/.h 产物）。
+pub fn val() int {
+    return 3000
+}
