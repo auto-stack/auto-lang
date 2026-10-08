@@ -1,0 +1,543 @@
+{
+  "schema_source": "D:/autostack/auto-musk/backend/crates/musk/src/specs.rs",
+  "adapter": "existing local lowercase/date compatibility format; no whole-ledger migration",
+  "native_owned_view": {
+    "project": "auto-lang",
+    "version": 7,
+    "sections": [
+      {
+        "id": "reports",
+        "section_type": "Reports",
+        "title": "Reports",
+        "items": [
+          {
+            "id": "P745-4",
+            "title": "PLAN-745 源码计算子集交付",
+            "content": "有限Auto源码→Checked HIR→Windows PE已落v0.6-dev；Specs与派生投影沉淀。归档/清理实际状态见Plan的PLAN-745:r1 merge收据；完整语言/ACC自举未完成。",
+            "status": "Published",
+            "depends_on": [
+              "P745-2",
+              "P745-3"
+            ],
+            "related": [],
+            "priority": null,
+            "assignee": null,
+            "test_file": null,
+            "file": "docs/plans/745-ac-source-checked-hir-native.md",
+            "milestone": null,
+            "module": "auto-ac",
+            "tags": [
+              "plan-745",
+              "derived-reference"
+            ],
+            "created_at": 1791417600,
+            "modified_at": 1791452507,
+            "completed_at": 1791452507
+          }
+        ],
+        "status": "Published",
+        "content": "",
+        "depends_on": [],
+        "last_modified": 1791452507,
+        "last_verified": 1791452507
+      },
+      {
+        "id": "goals",
+        "section_type": "Goals",
+        "title": "Goals",
+        "items": [],
+        "status": "Empty",
+        "content": "",
+        "depends_on": [],
+        "last_modified": 1791452507,
+        "last_verified": null
+      },
+      {
+        "id": "architecture",
+        "section_type": "Architecture",
+        "title": "Architecture",
+        "items": [],
+        "status": "Empty",
+        "content": "",
+        "depends_on": [],
+        "last_modified": 1791452507,
+        "last_verified": null
+      },
+      {
+        "id": "designs",
+        "section_type": "Designs",
+        "title": "Designs",
+        "items": [
+          {
+            "id": "P741-2",
+            "title": "AC 原生AOT：HIR及有限源码profile",
+            "content": "当前 Checked→native/事务/工具链见canonical；PLAN-745新增显式core-i32源码→Checked→Windows PE闭环。完整语言、生产ABI与ACC native自举仍open。",
+            "status": "Published",
+            "depends_on": [],
+            "related": [
+              "P745-2",
+              "P745-3"
+            ],
+            "priority": null,
+            "assignee": null,
+            "test_file": null,
+            "file": "docs/specs/auto-ac/project.md",
+            "milestone": null,
+            "module": null,
+            "tags": [
+              "plan-745",
+              "derived-reference"
+            ],
+            "created_at": 1791072000,
+            "modified_at": 1791452507,
+            "completed_at": 1791452507
+          },
+          {
+            "id": "P743-1",
+            "title": "ACC 主体与能力边界",
+            "content": "ACC主体/Gen1–3判据与四态现状见canonical；PLAN-745仅补有限Rust source profile数值证据。MD408/409 required与完整int/char open维持，不把原型当Auto主体/自举。",
+            "status": "Published",
+            "depends_on": [],
+            "related": [
+              "P745-3"
+            ],
+            "priority": null,
+            "assignee": null,
+            "test_file": null,
+            "file": "docs/specs/auto-acc/project.md",
+            "milestone": null,
+            "module": null,
+            "tags": [
+              "plan-745",
+              "derived-reference"
+            ],
+            "created_at": 1791072000,
+            "modified_at": 1791452507,
+            "completed_at": 1791452507
+          },
+          {
+            "id": "P743-2",
+            "title": "公共HIR阶段与Checked/pass边界",
+            "content": "S0仅auto.source.core-i32.draft接入；生成Atom/来源表→bind→全Bundle来源投影→verify→Checked。HIR三重身份/Schema/运算面/pass状态不扩面；阶段与效果/trap合同见canonical。",
+            "status": "Published",
+            "depends_on": [],
+            "related": [
+              "P745-3"
+            ],
+            "priority": null,
+            "assignee": null,
+            "test_file": null,
+            "file": "docs/specs/auto-hir/stage-contract.md",
+            "milestone": null,
+            "module": null,
+            "tags": [
+              "plan-745",
+              "derived-reference"
+            ],
+            "created_at": 1791072000,
+            "modified_at": 1791452507,
+            "completed_at": 1791452507
+          },
+          {
+            "id": "P745-1",
+            "title": "Auto source core-i32 profile",
+            "content": "PLAN-745 r1已审有限源码profile的数值/支持/拒绝/CLI/来源/嵌套与运行期语义；当前规则仅引用canonical，不复制Plan过程。",
+            "status": "Published",
+            "depends_on": [],
+            "related": [
+              "P745-2",
+              "P745-3"
+            ],
+            "priority": null,
+            "assignee": null,
+            "test_file": null,
+            "file": "docs/specs/auto-ac/source-core-i32.md",
+            "milestone": null,
+            "module": "auto-ac",
+            "tags": [
+              "plan-745",
+              "derived-reference"
+            ],
+            "created_at": 1791417600,
+            "modified_at": 1791452507,
+            "completed_at": 1791452507
+          }
+        ],
+        "status": "Published",
+        "content": "",
+        "depends_on": [],
+        "last_modified": 1791452507,
+        "last_verified": 1791452507
+      },
+      {
+        "id": "tests",
+        "section_type": "Tests",
+        "title": "Tests",
+        "items": [
+          {
+            "id": "P745-2",
+            "title": "源码→Checked→native 验收",
+            "content": "源码74例（21PE/53拒绝）、114测试与独立M/N块流/未闭合/深输入、Bundle/事务/执行器控制；可执行入口与边界见canonical验收节，最终证据见PLAN-745第七轮报告。",
+            "status": "Published",
+            "depends_on": [
+              "P745-1",
+              "P741-2"
+            ],
+            "related": [
+              "P745-4"
+            ],
+            "priority": null,
+            "assignee": null,
+            "test_file": null,
+            "file": "docs/specs/auto-ac/source-core-i32.md",
+            "milestone": null,
+            "module": "auto-ac",
+            "tags": [
+              "plan-745",
+              "derived-reference"
+            ],
+            "created_at": 1791417600,
+            "modified_at": 1791452507,
+            "completed_at": 1791452507
+          }
+        ],
+        "status": "Published",
+        "content": "",
+        "depends_on": [],
+        "last_modified": 1791452507,
+        "last_verified": 1791452507
+      },
+      {
+        "id": "reviews",
+        "section_type": "Reviews",
+        "title": "Reviews",
+        "items": [
+          {
+            "id": "P745-3",
+            "title": "PLAN-745 r1 第七轮最终复审 pass",
+            "content": "最终独立复审绑定bb8cb4b4330d505059ea20e7bfe561a93c1051f3；AC01..08 pass。24提交rebase补丁全等价，交付2653e0088be1307119bb106ab0f82a4f4dc004f2。原三项发现清偿，根历史红公开，详细证据见review-r7/REVIEW.md与Plan收据。",
+            "status": "Published",
+            "depends_on": [
+              "P745-1",
+              "P741-2",
+              "P743-1",
+              "P743-2"
+            ],
+            "related": [
+              "P745-4"
+            ],
+            "priority": null,
+            "assignee": null,
+            "test_file": null,
+            "file": "docs/plans/745-ac-source-checked-hir-native.md",
+            "milestone": null,
+            "module": "auto-ac",
+            "tags": [
+              "plan-745",
+              "derived-reference"
+            ],
+            "created_at": 1791417600,
+            "modified_at": 1791452507,
+            "completed_at": 1791452507
+          }
+        ],
+        "status": "Published",
+        "content": "",
+        "depends_on": [],
+        "last_modified": 1791452507,
+        "last_verified": 1791452507
+      }
+    ]
+  },
+  "owned_items": [
+    {
+      "section": "designs",
+      "item": {
+        "id": "P741-2",
+        "title": "AC 原生AOT：HIR及有限源码profile",
+        "content": "当前 Checked→native/事务/工具链见canonical；PLAN-745新增显式core-i32源码→Checked→Windows PE闭环。完整语言、生产ABI与ACC native自举仍open。",
+        "file": "docs/specs/auto-ac/project.md",
+        "related": [
+          "P745-2",
+          "P745-3"
+        ],
+        "status": "published",
+        "created": "2026-10-04",
+        "last_modified": "2026-10-08",
+        "depends_on": [],
+        "priority": null,
+        "assignee": null,
+        "test_file": null,
+        "milestone": null,
+        "module": null,
+        "tags": [
+          "plan-745",
+          "derived-reference"
+        ],
+        "created_at": 1791072000,
+        "modified_at": 1791452507,
+        "completed_at": 1791452507,
+        "canonical_section": "current-state",
+        "provenance": {
+          "plan": "PLAN-745",
+          "revision": 1,
+          "reviewed_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+          "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+          "frozen_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+          "review_report": "docs/plans/attachments/745/review-r7/REVIEW.md",
+          "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
+          "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
+        },
+        "source_sha256": "f613edc58338da61582c775eea5978426fda3aa94a650cfd300dde74272f5dcc"
+      }
+    },
+    {
+      "section": "designs",
+      "item": {
+        "id": "P743-1",
+        "title": "ACC 主体与能力边界",
+        "content": "ACC主体/Gen1–3判据与四态现状见canonical；PLAN-745仅补有限Rust source profile数值证据。MD408/409 required与完整int/char open维持，不把原型当Auto主体/自举。",
+        "file": "docs/specs/auto-acc/project.md",
+        "related": [
+          "P745-3"
+        ],
+        "status": "published",
+        "created": "2026-10-04",
+        "last_modified": "2026-10-08",
+        "depends_on": [],
+        "priority": null,
+        "assignee": null,
+        "test_file": null,
+        "milestone": null,
+        "module": null,
+        "tags": [
+          "plan-745",
+          "derived-reference"
+        ],
+        "created_at": 1791072000,
+        "modified_at": 1791452507,
+        "completed_at": 1791452507,
+        "canonical_section": "current-state",
+        "provenance": {
+          "plan": "PLAN-745",
+          "revision": 1,
+          "reviewed_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+          "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+          "frozen_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+          "review_report": "docs/plans/attachments/745/review-r7/REVIEW.md",
+          "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
+          "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
+        },
+        "source_sha256": "3aea50b0f5a24c7d4133d1e2d889c491f2b0f4e095d7c5496e671c492a1a4fa9"
+      }
+    },
+    {
+      "section": "designs",
+      "item": {
+        "id": "P743-2",
+        "title": "公共HIR阶段与Checked/pass边界",
+        "content": "S0仅auto.source.core-i32.draft接入；生成Atom/来源表→bind→全Bundle来源投影→verify→Checked。HIR三重身份/Schema/运算面/pass状态不扩面；阶段与效果/trap合同见canonical。",
+        "file": "docs/specs/auto-hir/stage-contract.md",
+        "related": [
+          "P745-3"
+        ],
+        "status": "published",
+        "created": "2026-10-04",
+        "last_modified": "2026-10-08",
+        "depends_on": [],
+        "priority": null,
+        "assignee": null,
+        "test_file": null,
+        "milestone": null,
+        "module": null,
+        "tags": [
+          "plan-745",
+          "derived-reference"
+        ],
+        "created_at": 1791072000,
+        "modified_at": 1791452507,
+        "completed_at": 1791452507,
+        "canonical_section": "current-state",
+        "provenance": {
+          "plan": "PLAN-745",
+          "revision": 1,
+          "reviewed_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+          "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+          "frozen_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+          "review_report": "docs/plans/attachments/745/review-r7/REVIEW.md",
+          "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
+          "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
+        },
+        "source_sha256": "992a3bb7536bcdcd01e8fb6c62871f37cac603970dd84c9a49be9807bcd7358b"
+      }
+    },
+    {
+      "section": "designs",
+      "item": {
+        "id": "P745-1",
+        "created": "2026-10-08",
+        "title": "Auto source core-i32 profile",
+        "content": "PLAN-745 r1已审有限源码profile的数值/支持/拒绝/CLI/来源/嵌套与运行期语义；当前规则仅引用canonical，不复制Plan过程。",
+        "status": "published",
+        "depends_on": [],
+        "related": [
+          "P745-2",
+          "P745-3"
+        ],
+        "priority": null,
+        "assignee": null,
+        "test_file": null,
+        "file": "docs/specs/auto-ac/source-core-i32.md",
+        "milestone": null,
+        "module": "auto-ac",
+        "tags": [
+          "plan-745",
+          "derived-reference"
+        ],
+        "created_at": 1791417600,
+        "modified_at": 1791452507,
+        "completed_at": 1791452507,
+        "last_modified": "2026-10-08",
+        "canonical_section": "profile",
+        "provenance": {
+          "plan": "PLAN-745",
+          "revision": 1,
+          "reviewed_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+          "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+          "frozen_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+          "review_report": "docs/plans/attachments/745/review-r7/REVIEW.md",
+          "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
+          "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
+        },
+        "source_sha256": "6ef8894c9c66320341ba32fdecbf8950f4a08db1977a5cc64623f8b3a06a4c92"
+      }
+    },
+    {
+      "section": "tests",
+      "item": {
+        "id": "P745-2",
+        "created": "2026-10-08",
+        "title": "源码→Checked→native 验收",
+        "content": "源码74例（21PE/53拒绝）、114测试与独立M/N块流/未闭合/深输入、Bundle/事务/执行器控制；可执行入口与边界见canonical验收节，最终证据见PLAN-745第七轮报告。",
+        "status": "published",
+        "depends_on": [
+          "P745-1",
+          "P741-2"
+        ],
+        "related": [
+          "P745-4"
+        ],
+        "priority": null,
+        "assignee": null,
+        "test_file": null,
+        "file": "docs/specs/auto-ac/source-core-i32.md",
+        "milestone": null,
+        "module": "auto-ac",
+        "tags": [
+          "plan-745",
+          "derived-reference"
+        ],
+        "created_at": 1791417600,
+        "modified_at": 1791452507,
+        "completed_at": 1791452507,
+        "last_modified": "2026-10-08",
+        "canonical_section": "验收与范围来源",
+        "provenance": {
+          "plan": "PLAN-745",
+          "revision": 1,
+          "reviewed_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+          "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+          "frozen_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+          "review_report": "docs/plans/attachments/745/review-r7/REVIEW.md",
+          "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
+          "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
+        },
+        "source_sha256": "6ef8894c9c66320341ba32fdecbf8950f4a08db1977a5cc64623f8b3a06a4c92"
+      }
+    },
+    {
+      "section": "reviews",
+      "item": {
+        "id": "P745-3",
+        "created": "2026-10-08",
+        "title": "PLAN-745 r1 第七轮最终复审 pass",
+        "content": "最终独立复审绑定bb8cb4b4330d505059ea20e7bfe561a93c1051f3；AC01..08 pass。24提交rebase补丁全等价，交付2653e0088be1307119bb106ab0f82a4f4dc004f2。原三项发现清偿，根历史红公开，详细证据见review-r7/REVIEW.md与Plan收据。",
+        "status": "published",
+        "depends_on": [
+          "P745-1",
+          "P741-2",
+          "P743-1",
+          "P743-2"
+        ],
+        "related": [
+          "P745-4"
+        ],
+        "priority": null,
+        "assignee": null,
+        "test_file": null,
+        "file": "docs/plans/745-ac-source-checked-hir-native.md",
+        "milestone": null,
+        "module": "auto-ac",
+        "tags": [
+          "plan-745",
+          "derived-reference"
+        ],
+        "created_at": 1791417600,
+        "modified_at": 1791452507,
+        "completed_at": 1791452507,
+        "last_modified": "2026-10-08",
+        "canonical_section": "review-r7",
+        "provenance": {
+          "plan": "PLAN-745",
+          "revision": 1,
+          "reviewed_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+          "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+          "frozen_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+          "review_report": "docs/plans/attachments/745/review-r7/REVIEW.md",
+          "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
+          "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
+        }
+      }
+    },
+    {
+      "section": "reports",
+      "item": {
+        "id": "P745-4",
+        "created": "2026-10-08",
+        "title": "PLAN-745 源码计算子集交付",
+        "content": "有限Auto源码→Checked HIR→Windows PE已落v0.6-dev；Specs与派生投影沉淀。归档/清理实际状态见Plan的PLAN-745:r1 merge收据；完整语言/ACC自举未完成。",
+        "status": "published",
+        "depends_on": [
+          "P745-2",
+          "P745-3"
+        ],
+        "related": [],
+        "priority": null,
+        "assignee": null,
+        "test_file": null,
+        "file": "docs/plans/745-ac-source-checked-hir-native.md",
+        "milestone": null,
+        "module": "auto-ac",
+        "tags": [
+          "plan-745",
+          "derived-reference"
+        ],
+        "created_at": 1791417600,
+        "modified_at": 1791452507,
+        "completed_at": 1791452507,
+        "last_modified": "2026-10-08",
+        "canonical_section": "delivery",
+        "provenance": {
+          "plan": "PLAN-745",
+          "revision": 1,
+          "reviewed_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+          "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+          "frozen_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+          "review_report": "docs/plans/attachments/745/review-r7/REVIEW.md",
+          "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
+          "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
+        }
+      }
+    }
+  ]
+}

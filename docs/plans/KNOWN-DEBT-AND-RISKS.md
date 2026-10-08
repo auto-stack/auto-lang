@@ -462,3 +462,14 @@ reviewed_commit=bb8cb4b4330d505059ea20e7bfe561a93c1051f3；**pass**；[第七轮
 | P745-R5-QA-02（剩余块项） | 已清偿，原finding整体关闭 | 无固定嵌套计数护栏；1000if/1500if-else/2048while真实PE、20000if到Checked、深未闭合受控；新增N01..24块流/作用域/循环/trace矩阵全过 |
 
 历轮其它清偿保持；本轮无未清偿合同内finding。114 passed/1 ignored、741/745各13步、独立74/74、strict47新鲜；真实Bundle及执行器失败控制保持。root日常30失败全部历史共现、tv4历史semver失败，不称全绿或严格同源码main对照；生产路径无745 diff。冻结delta与终审HEAD/依赖/Specs/配置无漂移，证据见第七轮附件。T09真实closeout与批回归到期判断仍待执行，既有P745-D1中央取号脚本债务不在本计划修复范围。
+
+## PLAN-745 合入批量回归观察（2026-10-08）
+
+745 的独立源码 profile 合同已通过；以下属于根测试/外部输入的观察，未静默缩减验收或把失败报成全绿。完整原始日志与逐名归因见[合入报告](attachments/745/merge/MERGE.md)。根生产源、配置及依赖清单在落地前后无745变更。
+
+| ID | 观察 | 后续处理边界 |
+|---|---|---|
+| P745-MERGE-ENV-01 | temp_plan009_t8_transpile_at_app 硬编码外仓 auto-term 输入路径不存在，tt失败 | 后续独立计划修测试环境合同；本次不创建或写外仓路径 |
+| P745-MERGE-VERIFY-01 | tb 的55个book金样差异，且未ignore的generate_book_expected在同批成功写外仓金样；并发验证oracle会变化 | 后续独立计划隔离生成与只读验证；无外仓运行前快照，保留现存修改，不重生成/回滚来制造绿色，不等同旧七个parse失败 |
+
+stage3_memory_baseline_n1_3_5 与 plan707_client_sse_poll_close_error_surface 批量失败后，单实例、单job各1/1通过；按负载时序观察记录。tf/tt/tb分别31/34/76失败均保留原始证据，新增未匹配名没有自动归为历史红。
