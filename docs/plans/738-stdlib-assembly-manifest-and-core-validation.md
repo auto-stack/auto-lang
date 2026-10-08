@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-08
 plan_revision: 1
-current_step: 3
+current_step: 3  # T-04 进行中（校验层 1/2；两发现待裁决见 §9 最新交接）
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -294,6 +294,18 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - 清理前lang-738两兄弟各wt-guard clean；tf仅merge到期主检出单实例。全AC闭合才reviewed/archived。
 
 ## 9. 复审记录
+
+### work 交接（2026-10-08，T-04 进行中——校验层落地，2 真实发现待裁决）
+
+- stage: work
+- plan_id: PLAN-738
+- plan_revision: 1
+- outcome: needs_replan（局部——仅 T-04 剩余面的名字形状裁决；T-05 可并行开工）
+- code_commit: worktree plan-738-dev `ac41c2d1e`→`d70d4c8a9`→`340de9ccd`→T-04 校验层（2 files, 409+）
+- task_ids: T-04（1/2——validate 层+Browser 分类+冲突检测落地；2/2 停牌待裁决）
+- evidence: plan738 17/17+2 parked（#[ignore] 带精确原因）；sse parse_sse=DeclaredStub、Browser 三族 Unsupported、json 面经 build_from_inventory 实证 Supported
+- blockers: ①扫描名面（auto.http.http_get，.vm.at 扫描动态 id，无绑定）与 dispatch 名面（auto.http.get，stdlib.rs 手工 shim+canonical Http.get→auto.http.get）不接合——同一函数两套名字，校验的 canonical 构造须改为"公共层符号→registry to_canonical 面"，并裁决扫描死别名名的处置；②生产注册面多名共 id 的 file/fs 别名族（id 1000+，别名形非末段且 fs.read/fs.read_text 语义异）——别名白名单形状需用户/复审裁决
+- next: T-04 剩余=上述两裁决落地（公共符号名→dispatch 面校验+别名族白名单）→ T-05 缓存一致性可先开工（依赖 T-03 装配接线，不依赖 T-04 裁决）
 
 ### work 交接（2026-10-08，T-01..T-03 完成）
 
