@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-08
 plan_revision: 1
-current_step: 5  # T-01..T-05 完成；T-06 CLI 半落地（736 耦合半 gated，见 §9 最新交接）
+current_step: 6  # T-01..T-05 完成；T-06 CLI 半+T-07 slice1 落地（736 耦合半 gated，见 §9 最新交接）
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -293,7 +293,9 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 ### T-07：同源样例、核心完整矩阵与实际执行证明
 
 - 依赖T-03..06。新plan738_stdlib_assembly_tests.rs/tests.rs接线、examples/stdlib/assembly/及target witness；依现有C/Rust构建工具生成真实产物，不手写业务替代。
+  进度（2026-10-08，worktree `75c7a1049`）：①VM 腿真执行见证落地（`vm_executes_selected_layer_witness`——run_autovm 全管线：公共 body-less 声明+选定 .vm.at 层真实 body 执行 42/公共 pure body 共享 7/foreign .rs.at 符号不进装配上下文）；②六核心 `core_target_env_matrix` 矩阵生成器+完整性测试+报告落盘 `docs/plans/reports/738-stdlib-matrix.{json,md}`（io 0/9=第四绑定面冻结、net 14/14、http 34/68、json 4/19、sse 0/1=stub、async 10/10——全诚实态；rust/c 格=provider 目录 claim 粒度如实标注）。剩余：rustc/C 实编 witness（Plan 610 ⑤腿 `#[ignore]` 范式，a2r_std 经 `auto_lang::a2r_std` 资格化）、examples/stdlib/assembly/、§6.1 冲突/来源与 native 绑定族余项、旧 root 未消费侧层报告语义。
 - 完成§6.1全部反例/真入口、六模块全符号target/env矩阵和全库inventory；HTTP串行兼容734/736与729/730，报告selection/exec等级/真实方法，旧root未消费侧层不能报已合并。
+  进度：矩阵+inventory 完整（上条）；缓存族=T-05 八测、VM 两入口/545 语义=use_semantics 回归、Browser 三族/Binder=t04、CLI=8 测。
 - AC-01..08，SD-01..07；无法执行目标/witness明确阻塞，不只生成串金样。
 
 ### T-08：门禁、独立review与规范交接
@@ -303,6 +305,18 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - 清理前lang-738两兄弟各wt-guard clean；tf仅merge到期主检出单实例。全AC闭合才reviewed/archived。
 
 ## 9. 复审记录
+
+### work 交接（2026-10-08，T-07 第一片：VM 真执行见证 + 六核心矩阵）
+
+- stage: work
+- plan_id: PLAN-738
+- plan_revision: 1
+- outcome: pass（T-07 slice 1 完成；整体 executing 继续）
+- code_commit: worktree plan-738-dev `75c7a1049`；基面 master c3ccd32c3
+- task_ids: T-07（①VM 真执行见证 ②六核心 target×env 矩阵+报告落盘）
+- evidence: plan738 31/31；`docs/plans/reports/738-stdlib-matrix.{json,md}`（六模块四格全在册，非 Supported 必有原因；io 0/9=第四绑定面冻结、net 14/14、http 34/68、json 4/19、sse 0/1=stub、async 10/10）；rust claim 实证 json=supported/io=unsupported
+- blockers: T-06 api_gen/736 半（736 未合入，同前）；T-07 余项=rustc/C 实编 witness（Plan 610 ⑤腿 `#[ignore]` 范式+`auto_lang::a2r_std` 资格化）、examples/stdlib/assembly/、§6.1 冲突/native 绑定族余项——不阻塞，下轮继续
+- next: T-07 slice 2（rustc 实编见证——见 §8 进度注记的路径设计）
 
 ### work 交接（2026-10-08，T-04 遗留分诊 + T-05 完成 + T-06 CLI 半）
 
