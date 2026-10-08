@@ -266,10 +266,11 @@ impl NativeInterface {
     /// Called during VM init after BIGVM_NATIVES is populated.
     pub fn build_from_inventory(&mut self) {
         use crate::vm::ffi::StaticFFIRegistration;
-        let mut entries: Vec<_> = inventory::iter::<StaticFFIRegistration>.into_iter().collect();
-        entries.sort_by_key(|e| e.name);
         let mut producers = HashMap::<u16, (&str, usize)>::new();
-        for entry in entries {
+        // Preserve legacy registration order until the production conflict
+        // gate is wired. Metadata describes the final selected callee; a
+        // diagnostic must not silently choose a different first producer.
+        for entry in inventory::iter::<StaticFFIRegistration> {
             use crate::vm::native_registry::BIGVM_NATIVES;
             let mut natives = BIGVM_NATIVES.lock().unwrap();
             let id = natives
@@ -279,7 +280,6 @@ impl NativeInterface {
             if let Some((previous, pointer)) = producers.insert(id, (entry.producer, entry.shim as usize)) {
                 if pointer != entry.shim as usize {
                     self.binding_conflicts.push((id, previous.into(), entry.producer.into()));
-                    continue;
                 }
             }
             self.static_shims[id as usize] = Some(Arc::new(entry.shim));
