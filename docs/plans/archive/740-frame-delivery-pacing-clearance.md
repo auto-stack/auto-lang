@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-740
-status: reviewed              # drafting → executing → execution_done → reviewed → archived（2026-10-08 review pass——待 merge）
+status: archived              # drafting → executing → execution_done → reviewed → archived（终态；2026-10-08 merge delivered@ab7a650bd）
 feature_name: 泵回环交付节奏清偿件（auto-edit PLAN-027 回执余题②消费——scroll 54fps 解锁前置：交付节奏定责+最小面修复+下游复判解锁）
 author: [agent]
 created_at: 2026-10-03
@@ -322,6 +322,35 @@ downstream-handoff-v3（evidence/740/——**复判解锁预告**：auto-edit
   边缘——不进判定、零热路径开销，随债台账 P740-D2 环境域一并
   观察即可，不阻断）。base_commit 后 master 前移（PLAN-097 画布域
   3 code commit）域无交联——fold 期 merge 合流。`next: merge`。
+
+- 2026-10-08 merge：`stage: merge`，PLAN-740:r1，`outcome: pass`
+  （P740-1 检查点）。**prepared**：reviewed 基线=ad7b9654c（实现
+  a1814462c+复审证据），frozen delta=SD-01（frame-pipeline-incremental
+  §4d add）/SD-02（frame-observability §1/§4 modify）已随分支在档；
+  投影目标=specs.json designs P740-1/reviews P740-2+ui plans.md 740 行
+  +overview 注记+INDEX。**landed**：rebase master（PLAN-097 画布域
+  3 code commit+736/738/740 docs）零冲突直通，range-diff 7 提交逐对
+  全等（86f41d299/ff69d725b/1d978d44f/3e1d8bb57/f3bf7f6b3/a1814462c/
+  ad7b9654c→57303f03d/7f00b866e/02fc2143e/b2e6d0e2e/e5bc17f27/
+  46282d5e2/ab7a650bd）；`git merge --ff-only` master tip=**ab7a650bd**
+  （交付提交，无合并提交）；合并树验证刷新=check+tv 162+54Hz follow
+  1.03 带内；主检出冒烟 tv 162+plan716 19+mcp_server 21 绿；主检出
+  release 二进制重建（部署面新鲜度，2026-10-08）。**ledger_refreshed**：
+  61f722d29——specs.json P740-1（designs，file=frame-pipeline-
+  incremental.md）/P740-2（reviews，file=archive 路径预写）回读校验
+  （json.load 断言 designs/reviews 尾项）+plans.md 740 行+overview
+  PLAN-740 注记+INDEX 再生（26 projects）。**archived**：本文件
+  `git mv docs/plans/archive/`+status: archived（随后提交）。
+  批量回归到期判定：740%5=0 → **due** → regress 技能主检出单实例
+  执行（cleanup 后）。**cleaned**：wt-guard 双树 clean（auto-lang/
+  auto-down 零 reparse point）→ worktree×2 移除+branch 删除
+  （was ab7a650bd，全落 master 祖先链）+组目录 rmdir——零残留
+  （worktree list grep=0、.wt grep=0）。残留处置=worktree 内唯一
+  未跟踪文件为复审 rebase 校验临时谱（.tmp-rebase-check.jsonl，
+  数据已录本收据）删除后移除。**部署面**：主检出 release 二进制
+  已重建（2026-10-08，cargo build --release -p auto 干净）；
+  gen/front/vue/dist 与 daemon 未触及本件面（VM 轨宿主=auto.exe
+  即重建项）——零 stale 残留。
 
 ## 10. 待澄清事项
 
