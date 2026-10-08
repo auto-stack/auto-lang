@@ -24,7 +24,10 @@ widget Controls {
 
     view {
         row {
-            style: "w-full h-20 items-center justify-between px-6 border-t border-border bg-card/95 backdrop-blur-md shrink-0 select-none z-20"
+            // VM 布局约束：根行禁用 justify-between（distributed 行会把 flex-1
+            // 子件降级为内容宽，中间播控区塌缩）；三段式改 flex-1 + 对侧 shrink-0
+            // 承担（027 文件管理器顶栏同款口径），内层行再用 max-w-xl + 居中收拢。
+            style: "w-full h-20 items-center px-6 gap-2 border-t border-border bg-card/95 backdrop-blur-md shrink-0 select-none z-20"
 
             // ── 左侧：当前曲目卡片 ──
             row {
@@ -62,13 +65,13 @@ widget Controls {
                 }
             }
 
-            // ── 中间：播放控制 + 进度条 ──
+            // ── 中间：播放控制 + 进度条（flex-1 全宽，内层 max-w-xl 居中）──
             col {
-                style: "flex-1 max-w-xl items-center gap-1 px-4"
+                style: "flex-1 items-center gap-1 px-4"
 
                 // 播控按钮组
                 row {
-                    style: "items-center gap-3"
+                    style: "w-full max-w-xl items-center justify-center gap-3"
 
                     // 播放模式切换 (顺序播放 / 随机播放 / 单曲循环)
                     button {
@@ -100,9 +103,11 @@ widget Controls {
                     }
 
                     // 播放 / 暂停大按钮
+                    // VM：scale/shadow 变换类在 iced 臂不支持且会触发视觉包裹
+                    // 路径破坏定形，双端统一撤收（hover 反馈仅保留 bg 系）。
                     button {
                         onclick: .PlayPause
-                        style: "w-10 h-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md hover:scale-105 active:scale-95 transition-transform cursor-pointer"
+                        style: "w-10 h-10 items-center justify-center rounded-full bg-primary text-primary-foreground cursor-pointer"
                         if .store.is_playing {
                             icon (name: "pause", size: 18)
                         } else {
@@ -131,16 +136,19 @@ widget Controls {
 
                 // 进度条与时钟显示
                 row {
-                    style: "w-full items-center gap-2.5"
+                    style: "w-full max-w-xl items-center gap-2.5"
+                    // VM：font-mono 文本会被当代码语法高亮（数字 token 染琥珀色，
+                    // Plan 409 约定），时间标签改用 tabular-nums（mini 视图同款），
+                    // 保持数字等宽且双端灰色一致。
                     text .store.current_time_str {
-                        style: "text-[11px] font-mono text-muted-foreground w-10 text-right"
+                        style: "text-[11px] tabular-nums text-muted-foreground w-10 text-right"
                     }
 
                     progress (value: .store.progress_pct, max: 100.0, class: "h-1.5 w-full cursor-pointer",
                               onseek: .SeekFraction())
 
                     text .store.duration_str {
-                        style: "text-[11px] font-mono text-muted-foreground w-10"
+                        style: "text-[11px] tabular-nums text-muted-foreground w-10"
                     }
                 }
             }
@@ -186,7 +194,9 @@ widget Controls {
                         icon (name: "minus", size: 12)
                     }
                     text .store.volume_label {
-                        style: "text-xs font-mono text-muted-foreground w-9 text-center"
+                        // 同时间标签：font-mono 触发代码高亮（"85" 染琥珀），
+                        // 改 tabular-nums 保持双端灰色一致。
+                        style: "text-xs tabular-nums text-muted-foreground w-9 text-center"
                     }
                     button {
                         onclick: .VolUp
@@ -205,7 +215,9 @@ widget Controls {
                     }
                     icon (name: "list-music", size: 15)
                     text .store.item_count.to_string() {
-                        style: "font-mono text-[11px]"
+                        // 数字计数同走高亮陷阱（font-mono + 纯数字 → 琥珀），
+                        // tabular-nums 对齐且免高亮。
+                        style: "tabular-nums text-[11px]"
                     }
                 }
             }
