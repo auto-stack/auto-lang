@@ -1,0 +1,61 @@
+// PLAN-736: 部署基线示例契约（HTTP 服务部署与运维验证的固定 fixture）。
+//
+// 能力面（两轨同源，均为 734/729/730 已支持形态）：
+// - 短 JSON（无参/路径参）
+// - 上传（730 receive/commit/reject 契约）
+// - 文件下载（729 FileResponse + Range）
+// - SSE（~Stream<str> 分帧）
+//
+// 责任边界：TLS/Host/访问策略/鉴权在反向代理（edge，见
+// deploy/http-service/README.md）；guard 受保护上传语义由
+// examples/http_server/uploads + plan730 契约测试承载，本示例不重复。
+
+pub type Ping = { ok: bool, service: str }
+
+#[api(method = "GET", path = "/api/ping")]
+pub fn ping() Ping {
+    return { ok: true, service: "plan736-deployment" }
+}
+
+#[api(method = "GET", path = "/api/greet/:name")]
+pub fn greet(name str) str {
+    return "hello " + name
+}
+
+// ---- 上传（730 契约；代理模板关闭请求缓冲、授权早拒经真实代理验证）----
+#[api(method = "POST", path = "/api/uploads")]
+pub fn upload(req UploadRequest) ~UploadReceipt {
+    let root = env.get("DEPLOY_PUBLIC_ROOT")
+    let staging = env.get("DEPLOY_STAGING_ROOT")
+    let session = http.upload_receive(req, root, staging, "{\"mode\":\"multipart\",\"text_fields\":[\"note\"]}")
+    // commit 目标 = 受信 root 内的相对路径（730 create-only 发布）。
+    return http.upload_commit(session, "fixture.bin")
+}
+
+// ---- 文件下载（729 契约，支持 Range）----
+#[api(method = "GET", path = "/api/files/:name")]
+pub fn download(name str) FileResponse {
+    let root = env.get("DEPLOY_PUBLIC_ROOT")
+    return http.file_response(root, name, "{}")
+}
+
+// ---- SSE 事件总线（两轨既有 publisher 形态：017 同款——VM=事件总线
+// subscribe/publish；生成=events.rs broadcast 单源同形）----
+// id 首字段：生成轨 CRUD 发布约定以首字段为 id（int 语义）；VM 轨广播
+// 注入 NewTick 同型。
+pub type Tick = { id: int, msg: str }
+
+#[api(method = "POST", path = "/api/ticks/publish")]
+pub fn publish_tick(msg str) Tick {
+    let tick = { id: 0, msg: msg }
+    return tick
+}
+
+#[api(method = "GET", path = "/api/ticks")]
+pub fn ticks() ~Stream<Tick> {
+    return bus.subscribe()
+}
+
+pub fn main() {
+    print("plan736 deployment fixture")
+}

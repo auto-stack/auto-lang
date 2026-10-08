@@ -1,0 +1,100 @@
+# PLAN-736: Auto HTTP 服务单层反向代理模板（TLS 终止 + 责任边界）。
+#
+# 责任矩阵（edge 模式——service.json `auth.responsibility: "edge"`）：
+#   本代理承担：TLS 终止、Host 白名单、访问策略、可信 X-Forwarded-For 重写
+#   后端承担：业务鉴权（app 自带 middleware）、CORS 决策、资源预算、观测
+#
+# 版本基线：nginx 1.31.6（T-01 冻结，2026-10-03 scoop 安装实测）；指令均为
+# 官方 stable/mainline 支持面。**核对锁版本行为**，不得以官方 latest 文档代替。
+#
+# 用法：替换 <DEPLOY_DIR> 后 `nginx -t -c 本文件` → `nginx -c 本文件`。
+# 测试证书由 fixture runner 生成（deploy/http-service/run_proxy_fixture.py），
+# 仅签 localhost/plan736.test SAN，**不入库**。
+
+worker_processes  1;
+pid               <DEPLOY_DIR>/nginx.pid;
+error_log         <DEPLOY_DIR>/logs/error.log warn;
+
+events {
+    worker_connections  1024;
+}
+
+http {
+    access_log  <DEPLOY_DIR>/logs/access.log;
+
+    # ---- 上游：Auto 服务（loopback，双轨任一：VM / 生成 Rust）----
+    upstream plan736_backend {
+        server 127.0.0.1:18500;
+        keepalive 16;
+    }
+
+    # ---- TLS 终止（测试 CA 签发的 localhost/plan736.test 证书）----
+    server {
+        listen       18443 ssl;
+        server_name  plan736.test localhost;
+
+        ssl_certificate      <DEPLOY_DIR>/tls/plan736.crt;
+        ssl_certificate_key  <DEPLOY_DIR>/tls/plan736.key;
+        ssl_protocols        TLSv1.2 TLSv1.3;
+
+        # 操作面对外关闭：健康/快照/关停仅后端 loopback 自用。
+        location /__auto/ {
+            return 403;
+        }
+
+        # ---- 普通短请求（JSON）----
+        location /api/ {
+            proxy_pass http://plan736_backend;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            # 单层可信代理：**覆盖**语义（不追加客户端伪造链）。
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Forwarded-Proto https;
+            # Host 原样透传（后端 allowed_hosts 按 hostname 匹配）。
+            proxy_set_header Host $host;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout    65s;
+        }
+
+        # ---- SSE（/api/ticks 等 ~Stream 端点）：关闭响应缓冲，首帧直出 ----
+        location /api/ticks {
+            proxy_pass http://plan736_backend;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header Host $host;
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 3600s;
+        }
+
+        # ---- 上传（730 契约）：关闭请求缓冲；授权早拒 100-continue 直通 ----
+        location /api/uploads {
+            proxy_pass http://plan736_backend;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header Host $host;
+            proxy_request_buffering off;
+            proxy_read_timeout 3600s;
+            # 读取间隔超时不等于上传总期限；100-continue 的早拒必须经真实
+            # 代理观察（客户端 Expect: 100-continue → 后端 4xx 时 nginx
+            # 不应已缓冲完整 body）。
+            proxy_pass_request_headers on;
+        }
+
+        # ---- 下载（729 FileResponse/Range）----
+        location /api/files/ {
+            proxy_pass http://plan736_backend;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header Host $host;
+            proxy_buffering off;
+            proxy_read_timeout 600s;
+        }
+    }
+}
