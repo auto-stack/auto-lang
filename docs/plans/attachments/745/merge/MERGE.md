@@ -1,6 +1,6 @@
 # PLAN-745:r1 合入与沉淀收据
 
-stage: merge；completion_kind: delivered。原规划/复审 Codex 上下文执行；用户显式调用 auto-musk 的 auto-plan-merge 技能，落点按用户约定为 auto-lang `v0.6-dev`。本报告随实际检查点补齐，未完成项不预报 pass。
+stage: merge；outcome: pass；completion_kind: delivered。原规划/复审 Codex 上下文执行；用户显式调用 auto-musk 的 auto-plan-merge 技能，落点按用户约定为 auto-lang `v0.6-dev`。以下检查点均按实际执行记录。
 
 ## 交付与规范
 
@@ -39,3 +39,7 @@ tb 的55个 book 失败均为金样 mismatch，并非上一批七个 parse 失�
 仅在已落地、账本准确读回后归档。真实归档位置、相对链接、三导航745身份、九任务计数及 ledger canonical/history 身份通过实际状态检查后才清树。恢复外部缺失 wt-guard，以逐层 no-follow 扫描拒绝所有 reparse point；drive-root 与真实 junction 负控均拒绝。源脚本/原始 guard 输出入包，外部入口恢复供此次清理使用。
 
 清理须原树及只读 auto-down 独立新鲜 guard clean、路径归属及 Git clean/已落地核验；只删除普通空组目录。最终 outcome、归档任务9/9与三项负控以 assertions-final.json 和 Plan 最后 merge 记录为准。
+
+实际归档门禁已通过，七项身份与canonical来源SHA正确；归档history投影在原树提交并ff-only发布 `9060743e501258ebf68a261f9c985cd3a2a351c5`，主检出读回version9、SHA256 `09c1bcfbab0b3fca3cef49abe6481baa456b8f6fbb85b0aa39227bc8a2f1369d`。原树与只读依赖树随后分别fresh guard clean，核验各自Git归属、clean及全部已落地/依赖版本不变后移除；已合并plan-745-dev分支与普通空组目录均删除，Git登记及磁盘无残留，见[cleanup](cleanup.json)。恢复review ref与主检出原始ledger ignored备份有意保留。
+
+[归档计划](../../../archive/745-ac-source-checked-hir-native.md) 已完成唯一九任务/frontmatter9/9。最终真实状态与三项错误身份/计数负控、packet逐叶SHA读回检查见 assertions-final.json / artifact-manifest.json。外部book修改保留；没有修复或提交外仓、没有重生成金样来把根回归宣称绿色。

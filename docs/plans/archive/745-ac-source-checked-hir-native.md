@@ -1,12 +1,13 @@
 ---
 plan_id: PLAN-745
 status: archived
+completion_kind: delivered
 feature_name: Auto 源码计算子集 → Checked HIR → Windows native
 author: [Codex]
 created_at: 2026-10-06
 updated_at: 2026-10-08
 plan_revision: 1
-current_step: 8
+current_step: 9
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-hir/stage-contract.md
@@ -24,7 +25,7 @@ affects: [auto-hir, auto-ac, auto-acc]
 
 承接 741 r8、743 r6 已归档基线，认领 743 next-work-packages 候选①及 A1–A3 源码形态。
 在独立 experimental/ac-core 新建源码子集前端，经既有 Schema binder 与 verify，复用 native/link 产 PE。
-本轮只起草、中央取号、提交计划簿记、建树登记；不实施编译器。
+起草阶段仅中央取号、提交计划簿记、建树登记；后续实施、复审与真实合入收尾见§9。当前已交付并归档9/9。
 
 提案 source profile=`auto.source.core-i32.draft` revision 1，CLI 必须显式选择。
 子集内 int/i32 精确映射有符号32位；不宣称全语言 int/native 映射冻结。
@@ -242,7 +243,7 @@ AC01..07先内部检查，再最终独立复审全部重新审定；AC09不承�
 
 ## 8. 执行步骤
 
-唯一任务表。2026-10-08 第七轮最终独立复审 pass（bb8cb4b4330d505059ea20e7bfe561a93c1051f3）：T-02/T-05/T-06/T-07 按本轮实际证据恢复完成，T-08 完成；T-01/T-03/T-04 保留完成，T-09 待合入授权与实际执行，reviewed 8/9。入口收据/frontmatter 称7/9而四个修复项仍空勾，本轮统一计数；历轮work/review记录保留。
+唯一任务表。2026-10-08 合入及真实清理完成，当前 archived 9/9。第七轮最终独立复审 pass（bb8cb4b4330d505059ea20e7bfe561a93c1051f3）时恢复 T-02/T-05/T-06/T-07 并完成 T-08，原 T-01/T-03/T-04 保留；T-09 按实际合入、账本、归档门禁及 guard/清理结果完成。入口旧收据的7/9与空勾不一致已按实际证据统一；历轮work/review记录保留。
 
 | ID | 状态 | owner_stage | 依赖 | 文件/符号与可验证产出 | AC / 验证 |
 |---|---|---|---|---|---|
@@ -254,7 +255,7 @@ AC01..07先内部检查，再最终独立复审全部重新审定；AC09不承�
 | T-06 | [x] | work | T05 | ac-core/README.md，proposed-spec-delta.md及MD408/409更新提案/新鲜绑定策略，不直接改canonical | AC07；python scripts/acc_inventory.py --check --require-decisions，提案说明待merge绑定，不自动重hash掩漂移。〔2026-10-06 work：worktree commit 8b4526bd7；README 双管线/新测试族/边界更新；proposed-spec-delta.md SD01..04+MD408/409追加note+盘点检查实测（2项失败均为743扫描器工作区态非内容漂移，归merge重扫）+新鲜度绑定策略（r1+提交链+收据指纹，merge重跑替换）〕 〔r1-fix 2026-10-06：QA-07 盘点错误调用与『未入库』误述撤回留档，正确命令实测 CHECK-OK（47 决策新鲜），merge 不预排 --write、MD note 追加后独立复跑+检验消费者；README 边界节补符号隔离/关键词集/换行规则〕 〔r2-fix：报告 §6 历史限度措辞修订（crates 同源表述更正）、§9/§10 r2 执行记录与 oracle 分列〕 〔r3-fix：报告 §11/§12 记录两项处置与边界两侧永久回归；shell 256 退出码截断现象入案〕 〔r4-fix：报告 §13/§14 记录两项处置；括号零上限与调用/块护栏 1000 的资源边界说明〕 〔r5-fix：报告 §15/§16 记录两项处置与块路径剩余裁定请求〕 〔r6-fix：报告 §17/§18 记录三项处置；proposed SD-01 加第 6 条"嵌套与未闭合输入"定稿面（块零上限+逗号归约+未闭合受控拒，NEST_LIMIT 删除）、SD-03 补嵌套无上限证据；README 测试族/边界节同步（块零上限、深块 native、M 系、SENTINEL）；inventory strict CHECK-OK（47 决策新鲜）复跑；commit bb8cb4b43〕 |
 | T-07 | [x] | work | T06 | 同树内部检查所有cases/SD/健康，§6全部门禁，提交HEAD与执行收据；work7/7→execution_done（总7/9） | AC01..07；内部pass仅交接review。〔2026-10-06 work：§6全块实测——ac-core check/fmt/all-targets零警告/全test 92绿；verify-ac-741.ps1 -SkipMainGates **13步全过**；verify-ac-source-745.ps1 **12步全过(74例)**；主仓 check -p auto-lang PASS(2m50s)；cargo t 全量 4939/4972=33失败 与主检出同源对照**完全同数**（27共现预存红+6+6对称差flake，745新增失败=0，归因收据 target/ac-verify-receipts/source-745/main-gates/）；cargo tv 158/162=4预存cookbook红两环境逐项一致；环境事件：D:满盘(os112)一次中断+C:重试曾污染ffi_dual oracle marker(已清除全部原生重跑)；组内补建只读依赖树auto-down@fba6563ed。工作树HEAD b3cd81719 clean〕 〔r1-fix 2026-10-06：全门禁重跑——ac-core 99测+零警告零fmt问题；741 13步/745 12步74例全过；正确 inventory strict CHECK-OK；主仓 check PASS、cargo t 4939/4972=33失败（28与前轮共现预存红逐名一致+5名隔离复跑5/5全过=并行flake）、tv 158/162=4预存cookbook红逐名一致，745新增失败=0；修复轮提交链 3e3c1631f→d9f5499b7→36664d9a5→507025957→91b37560c，树 clean @91b37560c〕 〔r2-fix：全门禁重跑——ac-core 104 测/零警告零fmt；741 13步/745 12步74例全过；inventory CHECK-OK；主仓 check PASS、t 4936/4972=36失败（29共现预存+7隔离复跑7/7全过flake轮换）、tv 158/162=4预存cookbook；745新增失败=0；r2 提交链 ad226453b→cd9492f20→a830dac4b→7437eb137，树 clean @7437eb137〕 〔r3-fix：全门禁——ac-core 112 测零警告零 fmt；741 13步/745 12步74例/Inventory CHECK-OK/主仓 check PASS；t 4939/4972=28共现预存+5隔离复跑5/5全过；tv 158/162=4预存cookbook；745新增失败0；r3 提交链 072f345f9→ee4ccbb74→dc5e95be7，树 clean @dc5e95be7〕 〔r4-fix：全门禁——ac-core 113 测零警告；741 13步/745 13步74例/inventory/主仓 check 全过；t 4942/4972=27共现预存+3隔离复跑3/3全过；tv 158/162；745新增失败0；提交链 c36adec97→15fd9263f，树 clean @15fd9263f〕 〔r5-fix：全门禁——ac-core 113 测零警告；741 13步/745 13步74例/inventory/主仓 check 全过；t 4944/4972=25共现+3隔离复跑3/3全过；tv 158/162；745新增失败0；提交链 d1943418b→522b98a4c，树 clean @522b98a4c〕 〔r6-fix：全门禁——ac-core all-targets 零警告零 fmt、114 测+1 ignored；741 13步、745 13步74例、inventory CHECK-OK 全过；主仓 check PASS（382 预存警告）；t --no-fail-fast 4941/4972=31失败（29 名 r6 历史共现 + 2 名 state_file/plan716 隔离复跑 2/2 PASS flake）——745 新增失败 0；tv 158/162=4 预存 semver；3 个 cookbook oracle 泄漏叶文件清理不入库；提交 bb8cb4b43，树 clean；工作树 HEAD bb8cb4b4330d505059ea20e7bfe561a93c1051f3〕 |
 | T-08 | [x] | review | T07 | /auto-plan:review独立上下文同树，写入暂停，revision/HEAD稳定，逐AC实际证据/反例/债务/proposed delta；最终报告 | AC08并独立重验AC01..07；pass→reviewed（8/9） |
-| T-09 | [ ] | merge | T08+合入授权 | /auto-plan:merge到v0.6-dev；SD/人工盘点/ledger/导航/index/归档；批回归到期判断；wt-guard clean才清理 | AC09；实际链接/终态/9/9/清理收据，不预勾 |
+| T-09 | [x] | merge | T08+合入授权 | /auto-plan:merge到v0.6-dev；SD/人工盘点/ledger/导航/index/归档；批回归到期判断；wt-guard clean才清理 | AC09；实际链接/终态/9/9/清理收据，不预勾 |
 
 src/tests新路径均相对experimental/ac-core；reports新路径相对docs/reports/745-source-core-i32。
 未来实现/最终review不得以计划表的勾选代替证据。
@@ -486,8 +487,16 @@ stage=new / outcome=pass（规划交接完成）/ next=work T-01（待用户确�
 - `ledger_refreshed`: 原树准备并提交归档history引用，仅P745-3/4改变，ff-only落地9060743e501258ebf68a261f9c985cd3a2a351c5；准确读回主检出version9、SHA256 09c1bcfbab0b3fca3cef49abe6481baa456b8f6fbb85b0aa39227bc8a2f1369d，canonical引用保持。
 - `cleaned`: pending；已提交真实归档门禁证据，接着分别检查原树/只读依赖树归属、clean及fresh guard后清理。
 
+2026-10-08 stage=merge，PLAN-745:r1：**pass**，completion_kind: delivered，AC09已完成。
+
+- `archived`: 实际归档身份、相对链接、三模块导航、canonical来源SHA、ledger七项身份及8/9待清理计数已通过assertions-archived.json；无假archive路径或错误Plan替代。
+- `ledger_refreshed`: 原树归档history引用更新，仅P745-3/4改变，ff-only发布 9060743e501258ebf68a261f9c985cd3a2a351c5；主检出准确读回version9、SHA256 09c1bcfbab0b3fca3cef49abe6481baa456b8f6fbb85b0aa39227bc8a2f1369d，canonical项仍指Specs，其余记录保持。
+- `cleaned`: 原树auto-lang与组内只读auto-down分别fresh wt-guard clean、无reparse、Git clean、HEAD落地/依赖fba保持后移除；plan-745-dev已用merged branch删除，组内空后普通目录删除，Git登记与磁盘均确认无残留。恢复ref refs/auto-plan/745/reviewed与主检出ignored原始ledger备份有意保留。详见[清理收据](../attachments/745/merge/cleanup.json)。
+- `acceptance_results`: AC01..08沿用第七轮独立pass并经当日整合验证，AC09真实closeout pass；T01..09全[x]、9/9。最终实际门禁再查归档/链接/ledger/清理，另含错误ledger Plan、错误745导航与错误终态计数三负控；结果保存assertions-final.json，合入packet SHA清单保存artifact-manifest.json。
+- `limits`: 根批量档未全绿；环境/可变外部book金样观察已公开，外仓修改保留，未把重新生成金样当oracle。后续完整语言、ABI及ACC主体未交付；无未经批准延期或workaround。
+
 ## 10. 待澄清事项
 
-r1等待用户按AGENTS L1确认数值profile/支持集后实施；本轮范围没有其它未定义的验收结果。
+本计划范围内没有待澄清验收或未完成项。用户批准的r1合同已实施、独立复审并通过授权合入；所有历史未完成声明按§9的对应日期保留，当前终态见最后merge记录。
 T01为有界事实核查，不得用unknown扩大语言面；事实冲突须说明并修合同，禁止隐式fallback。
 候选②/str/List/完整运算/聚合/ABI/ACC迁移保持后续未编号工作，不在本计划承诺交付。
