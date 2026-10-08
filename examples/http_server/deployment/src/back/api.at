@@ -23,13 +23,14 @@ pub fn greet(name str) str {
 }
 
 // ---- 上传（730 契约；代理模板关闭请求缓冲、授权早拒经真实代理验证）----
-#[api(method = "POST", path = "/api/uploads")]
-pub fn upload(req UploadRequest) ~UploadReceipt {
+#[api(method = "POST", path = "/api/uploads/:target")]
+pub fn upload(req UploadRequest, target str) ~UploadReceipt {
     let root = env.get("DEPLOY_PUBLIC_ROOT")
     let staging = env.get("DEPLOY_STAGING_ROOT")
     let session = http.upload_receive(req, root, staging, "{\"mode\":\"multipart\",\"text_fields\":[\"note\"]}")
-    // commit 目标 = 受信 root 内的相对路径（730 create-only 发布）。
-    return http.upload_commit(session, "fixture.bin")
+    // commit 目标 = query 注入的受信 root 内相对路径（730 create-only 发布；
+    // 词法校验由 validate_relative_path 承担——越界/绝对路径 403）。
+    return http.upload_commit(session, target)
 }
 
 // ---- 文件下载（729 契约，支持 Range）----

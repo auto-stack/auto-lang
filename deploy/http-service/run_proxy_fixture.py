@@ -272,7 +272,7 @@ def main():
               'Content-Type: application/octet-stream' + CRLF + CRLF).encode() + UPLOAD_BODY + \
              (CRLF + '--' + boundary + '--' + CRLF).encode()
         up_status, _, up_body = https_req(
-            f"{base}/api/uploads", ca_pem, method="POST", data=mp,
+            f"{base}/api/uploads/fixture.bin", ca_pem, method="POST", data=mp,
             headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
             timeout=30)
         print(f"[wire] upload: {up_status} {up_body[:120]}")

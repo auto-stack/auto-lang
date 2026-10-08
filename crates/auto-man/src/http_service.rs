@@ -231,7 +231,7 @@ fn serve_rust(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, Stri
     // cwd = workspace 落点：cargo 从 CWD（非 manifest 目录）发现
     // .cargo/config.toml（shared target-dir + MSVC 栈 rustflags）——从项目
     // 目录 spawn 会拿不到配置 → 不同指纹 → 全量冷编（onig_sys C1083 链）。
-    cmd.args(["run", "--manifest-path", cargo_toml.to_str().unwrap_or(".")])
+    cmd.args(["run", "--release", "--manifest-path", cargo_toml.to_str().unwrap_or(".")])
         .env("AUTO_HTTP_SERVICE_JSON", &service_json)
         .current_dir(&ws_dir)
         .stdout(std::process::Stdio::inherit())

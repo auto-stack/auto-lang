@@ -3364,6 +3364,21 @@ fn generate_api_rs(
                 "    let {}: a2r_std::http::UploadRequest = __upload_request(&method, &headers, request);",
                 up_param.name
             ));
+            // PLAN-736 T-07：伴随 UploadRequest 的 path 参数以 Path<T> 提取器
+            // 形态入签；转译体裸引用参数名——在此解包（Path<String> → String，
+            // 与 729 文件臂 name.as_str() 同义），否则 upload_commit 等消费点
+            // E0277（deployment fixture 实测）。
+            for p in &endpoint.params {
+                if auto_lang::api::contract::is_upload_param(&p.ty) || is_meta_param(p) {
+                    continue;
+                }
+                if endpoint.path().contains(&format!(":{}", p.name)) {
+                    lines.push(format!(
+                        "    let {n} = {n}.as_str();",
+                        n = p.name
+                    ));
+                }
+            }
             let body_src = endpoint
                 .body
                 .as_ref()
