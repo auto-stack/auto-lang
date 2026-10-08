@@ -199,3 +199,20 @@ routes 外无其余内嵌否决（vm-only/ext/locales/i18n；`vp` None → false
   = SCAFFOLD 标注；`generation.json` ready 记录 + `AUTO_REUSE_BACKEND=1`
   复用新鲜度门；全部 8 个生成入口 Err 硬传播（vue/tauri/rust_ui 的 warn/
   静默丢弃清零）。契约见 [design/api-generation-integrity.md](design/api-generation-integrity.md)。
+
+## 服务进程托管与 ready 身份（PLAN-736）
+
+- `crates/auto-man/src/http_service.rs` 是 `auto service` 的进程托管面：VM 轨 =
+  进程内大栈 VM 线程（32MB，同 start_vm_server）+ `bound_addr_snapshot()` 等待真实
+  bind（port=0 解析内核分配地址）；rust 轨 = 734 strict 门重新生成 → `cargo run
+  --release` 子进程 + service JSON 经 `AUTO_HTTP_SERVICE_JSON` env 注入 re-resolve。
+- **ready 探针**：legacy 的纯 TCP-connect 判 ready 已废弃——`probe_service_ready`
+  走 `GET /__auto/health/ready`：503=未 ready（不再误判），404=legacy 无控制面按
+  可继续处理；`start_api_server`/`start_vm_server`（UI split 消费方）共用该探针。
+- 占口/生成失败/初始化失败不得 ready：rust 轨子进程 bind/配置失败 exit(1)/exit(2)
+  → parent 非零；VM 轨 serve fatal → Err 非零。父进程当前以退出码 + 状态码探针承载
+  rust 轨判定，不消费 health 身份体做核对（P736-R1 增强候选）；734 新鲜度门
+  （`AUTO_REUSE_BACKEND=1` 复用臂）维持不动。
+- 关闭：shutdown 端点与 Ctrl+C/SIGTERM 同 watch（VM 网络线程 join / rust 子进程
+  有界排空后 parent 退出），端口与子进程零残留。部署/配置/策略合同见
+  [stdlib/design/http-service-deployment.md](../stdlib/design/http-service-deployment.md)。

@@ -114,7 +114,7 @@
 
 | Project | 状态 | 模块数 | 项目卡 |
 |---|---|---|---|
-| auto-cli | active | 5 | [auto-cli/project.md](auto-cli/project.md) |
+| auto-cli | active | 6 | [auto-cli/project.md](auto-cli/project.md) |
 | auto-man | active | 16 | [auto-man/project.md](auto-man/project.md) |
 | auto-gen | active | 6 | [auto-gen/project.md](auto-gen/project.md) |
 | auto-lsp | active | 9 | [auto-lsp/project.md](auto-lsp/project.md) |
@@ -132,6 +132,7 @@
 | cmd_ui | `auto ui` 系列（list/select/install 等 UI 工程命令） | active |
 | cmd_bp | `auto bp list/show/add/check`：blueprints 目录浏览、参考实现拷贝、`--bind` L1 绑定工件、校验（`auto block` 为弃用别名） | active |
 | cmd_a2c_stdlib | `auto a2c-stdlib`：生成 a2c 标准库 | active |
+| cmd_service | `auto service`：server-only 服务入口（配置解析 + auto-man 进程托管；PLAN-736） | active |
 | cmd_vue / cmd_tauri | Vue/Tauri 工程脚手架源码 | orphan（文件存在但未被 main.rs 挂接） |
 
 </details>

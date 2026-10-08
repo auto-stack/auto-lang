@@ -53,6 +53,9 @@ graph LR
   （multipart/raw 流式 ingress、staging/create-only 提交、预算/期限/取消仲裁；
   PLAN-730）。
   GET/HEAD/单区间/条件请求/受限根目录/配额收口——VM 与生成 Rust 单源执行）。
+- [http-service-deployment](design/http-service-deployment.md)——HTTP 服务部署基线
+  （`auto service` 独立入口、profile/严格配置、连接/请求预算、CORS/Host/单层代理
+  信任、健康/观测/受控关闭、代理模板与支持等级；两服务轨共用合同；PLAN-736）。
 
 - [api-transport-contract](design/api-transport-contract.md)——API 传输契约
   （类型身份分类、参数来源、i64 全域、错误收敛、wire 兼容裁定；PLAN-734）。

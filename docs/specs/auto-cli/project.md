@@ -14,6 +14,16 @@
   子命令名以 `--` 消歧；已知全局旗标后置于 file 会被旗标吞，此类值放 `--`
   之后）。单测 `cli_passthrough_tests`（`cargo test -p auto --bin auto`）。
 - 工程命令（new/init/build/run/test/clean/add/fetch/deps/export）主要委托 auto-man 完成。
+- **独立服务入口（PLAN-736）**：`auto service <project> --server vm|rust
+  [--http-config|--http-config-inline <json>] [-B <port>]`——只启动服务端（无
+  Vue/Vite/桌面），配置严格解析（坏配置/端口冲突/未知 server 指名非零退出，
+  无假 ready、无静默回退）；`port=0` 仅独立 serve/test，ready 上报真实 bound 地址。
+  命名注记：`auto serve` 为 Plan 269 AutoVM daemon，`auto service` 不杀占端口进程
+  （legacy kill 语义留在 run 链）。配置来源优先级：显式 http-config 定义完整
+  listen（CLI 显式 `-B` 可覆盖其 port，未显式的 pac.at 端口不再覆盖）；无配置时
+  legacy 链原样（CLI `-B` > pac.at back_port > `AUTO_HTTP_PORT` > 8080）。
+  正常关闭退出码 0；bind/config/generation 错误非零。合同见
+  [stdlib/design/http-service-deployment.md](../stdlib/design/http-service-deployment.md)。
 - 转译子命令（ts/c/rust/python/js/gd/tscn/godot）委托 auto-lang 的 transpiler。
 - 支持 `--format json` 的机器可读输出（面向 AI 消费）。
 - 不做：不实现编译/求值逻辑本身（在 auto-lang）；不实现构建/包管理逻辑本身（在 auto-man）。
@@ -41,6 +51,7 @@ graph LR
 | cmd_ui | `auto ui` 系列（list/select/install 等 UI 工程命令） | active |
 | cmd_bp | `auto bp list/show/add/check`：blueprints 目录浏览、参考实现拷贝、`--bind` L1 绑定工件、校验（`auto block` 为弃用别名） | active |
 | cmd_a2c_stdlib | `auto a2c-stdlib`：生成 a2c 标准库 | active |
+| cmd_service | `auto service`：server-only 服务入口（配置解析 + auto-man 进程托管；PLAN-736） | active |
 | cmd_vue / cmd_tauri | Vue/Tauri 工程脚手架源码 | orphan（文件存在但未被 main.rs 挂接） |
 
 ## 版本消费规则补强（PLAN-095，2026-10-01）

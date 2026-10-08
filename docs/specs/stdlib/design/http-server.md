@@ -389,6 +389,25 @@ Auto 标准库 http.at / https.at (API 声明)
 
 图中统一协议层是后续目标，不是当前架构。VM 的 `AutoVM` 为 `!Send`；若以后接入共享 server，必须通过同线程 typed owner 或消息桥承载，禁止把 VM 引用编码为 `usize` 并跨线程恢复。生成 Axum 服务目前独立运行。
 
+### 8.3 服务部署基线（PLAN-736）
+
+VM 轨与生成 Rust 轨作为**可部署服务**的装配、预算、策略、观测与关闭统一归
+[http-service-deployment](http-service-deployment.md)（canonical 部署合同）。本篇
+相关差异与迁移：
+
+- **默认监听面**：legacy VM 默认入口仍拼 `0.0.0.0:{AUTO_HTTP_PORT|8080}` 宽监听；
+  服务路径（`auto service` / service JSON）缺省 **127.0.0.1 loopback**，非 loopback
+  须显式配置——这是对旧默认的显式安全调整，迁移方式=写显式 `listen`。
+- **生成轨历史 permissive 面**（loopback + `allow_origin(Any)`、bind/ready 时序松散）
+  仅保留在 legacy 无配置生成路径；service profile 下由共享纯策略接管（CORS 无跨域
+  授权缺省、媒体/照片扫描路由默认 off）。
+- **shutdown**：VM `#[api]` server 的注入式优雅关闭（§7.3）在服务面扩展为
+  Starting→Ready→Draining→Stopped 状态机 + ready 503 翻转 + 双轨同 watch（端点与
+  信号同入口）；在途 FS/流/上传的许可归还语义见
+  [http-handler-async-lifecycle](http-handler-async-lifecycle.md) 服务面节。
+- 两轨 Axum 0.7/0.8 对象不跨轨共享；连接/请求预算同值同语义（连接满解析前关闭 /
+  请求满 503+Retry-After），细节归部署合同 §3。
+
 ---
 
 ## §9 实现优先级

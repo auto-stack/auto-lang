@@ -92,6 +92,23 @@ owner parked 表，**owner loop 立即空出**服务后续请求；完成端经�
   `shim_http_server_listen` 串行同步形态；`*_sync` 客户端显式同步 API
   （不入 request scope）。
 
+## 服务面终态许可、middleware 失败与关闭边界（PLAN-736）
+
+- **终态许可**：普通请求许可（queued+running+parked 总上限）在**服务面**延伸到
+  响应 body 终态——不以 headers 送达为释放点。VM 轨：Text 回复立即 complete 的
+  旧分支不外推到服务面，文件/SSE 的 scope 代持（`FileBodyAdapter`/`FrameStream`
+  Drop 恰一次幂等终结）即为终态语义，上传资源组经 `finalize_scope` 单点收口；
+  生成轨：permit 经 response extensions 由 hyper 在 body 完成/断连后释放。
+  取消/断连/关闭统一走 scope 幂等终结，恰一次计数（`emit_once` slot take + swap）。
+- **middleware 失败 profile**：service profile（`proxy_service`）下应用 middleware
+  编组/执行错误 **fail-closed 500**（734 合同语义在服务面保留）；旧开发语义的
+  middleware Err 续链语义仅限 legacy 无配置面，不自动延伸到服务面。
+- **shutdown 边界**：drain 窗语义（§请求作用域 `AUTO_HTTP_SHUTDOWN_DRAIN_MS`）
+  在服务面叠加 ready 503 翻转与新业务拒绝；超期强制终结连接/task 并取消原
+  scope/stream/upload；在途 FS 读不强制中断（停止 issuance、等实际退出后归还
+  执行槽）。VM 无限 CPU 段/不可中断 native 不在有限关闭保证内。部署/观测契约见
+  [http-service-deployment](http-service-deployment.md)。
+
 ## 关联
 
 - PLAN-705（reports：705-async-decision / 705-parity / 705-resource-lifecycle / 705-verification）
