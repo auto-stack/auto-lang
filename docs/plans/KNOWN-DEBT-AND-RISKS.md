@@ -236,3 +236,20 @@
 |---|---|---|---|---|
 | P740-D1 | medium | VM app 启动健壮性 | `.am/state.at`（app 侧持久化旁路文件，gitignored）被杀进程写半截时残留 NUL 填充 → 下次 boot lexer panic（parser.rs:404 `lexer should produce first token`）**进程起不来**（2026-10-08 实录，删文件即恢复）。容错面（解析失败→忽略重建）属 app 健壮性域，非 740 范围 | 041 例 `.am/state.at` 23×NUL 实录 + handoff-v3 §3；复现=ladder/复判跑中途 kill 后再 boot |
 | P740-D2 | low | 执行环境 | 本机 2026-10-08 实测 app 进程偶发静默退出（无 panic 痕迹，rc=0/1 混合，改前改后二进制均现，手工短复现不复现；同机他方会话重负载嫌疑）——谱采集协议已按「失败档重跑」消化；复判件需同款重试纪律 | handoff-v3 §3；740 执行实录 3/12 跑触发 |
+
+## PLAN-736 复审登记（2026-10-08，review pass @6156c3de3）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P736-R1 | low | auto-man 服务进程托管 | `serve_rust` 父进程不 health 轮询子进程、不消费 ready 身份体做核对（代码注释自标"T-05 接管"未落地；T-05 执行记录"父进程核对同源"为过述）。AC-02 安全结论由 734 strict 门 + 占口 bind 失败非零 + 503-not-ready 探针承载，不受影响；父侧身份体核对列为可选增强（防子进程打印与监听者错位类的纵深防御） | crates/auto-man/src/http_service.rs:245-257；复审记录 R1 |
+| P736-R2 | low | http_transport stderr 日志 | 736 新增 eprintln 臂（413/超时等，http_transport.rs:416-432/476/506/556-559）打原始 method+path（可含 query 串）到 stderr——在 JSONL sink 不脱敏合同之外，但与 plan736 §5.4 精神不一致；后续统一脱敏或改道 sink | crates/auto-lang/src/vm/ffi/http_transport.rs 上述行 |
+| P736-R3 | low | 生成轨观测/响应头一致性 | 生成轨无显式 "startup" JSONL 事件（仅 state:ready，VM 轨有显式 startup）；生成轨 429 用 lowercase `retry-after`（合法但两轨风格不一）；main.rs:2842 重复 `#[cfg(test)]` 属性（无害） | api_gen.rs SERVICE_RUN_LOOP 模板；crates/auto/src/main.rs:2842 |
+| P736-R4 | medium | auto-man 测试目标腐坏（预存，非 736 引入） | `cargo test -p auto-man` 全 targets 编译失败：bin auto-man E0601（空 main）+ tests/plan734_commands_fixture.rs E0255/E0425/E0433（未生成 api 夹具）——master bef73f52f **逐项同破**；日常档门禁不建这些目标故不可见（同 P739-F1 模式）。清偿=退役/修复 bin main + 夹具改可编译桩或移出默认 targets | crates/auto-man/tests/plan734_commands_fixture.rs；master 对照同错（复审实测） |
+| P736-R5 | low | 执行环境 | 698 域 SSE 订阅会话首播后 ~1-2s 自然收口（帧竞速观察项，连续流不受影响）；VM resources RSS 单调缓升（59.6MiB，远低于 512 阈值，6/10 样本）——批量回归档复核 | reports/736-http-load.md 观察节；736-http-proxy.md 支持面边界③ |
+
+## PLAN-738 执行登记（2026-10-08，work @lang-738，T-04 裁决遗留 + T-05/T-06 实勘）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P738-D1 | medium | 生产 native 注册面 ID 相撞真冲突（T-04 遗留 b 分诊裁决） | 扫描面动态 id 相撞 13 组（id1607 char×conv、id9930-9933 http×transfer 等）冻结基线（t04 `id_alias_conflict_detection`）。T-06 分诊裁决：`auto stdlib inspect --check` 按模块前缀把冲突组归入受影响模块**如实上报非零**（check_http_reports_frozen_id_conflicts 冻结），不静默、不弱化；重编号=ABI 变更，归 D3b/后续计划 | validate.rs id_alias_conflict_groups；crates/auto/src/cmd_stdlib.rs check_core；plan738 27/27 基线 |
+| P738-D2 | medium | 核心模块 id 面分裂（T-04 遗留 c 同族扩展） | json 实勘（T-06 探针）：生产绑定面=catalog canonical 名（`auto.json.get`@1906，register_std_shims 实绑，生产 json 可用）；校验器问的公共扫描名面（`auto.json.json_get`@99xx）无 shim 可调——诚实判 Unverified（check_json_scan_face_unverified_nonzero 冻结）。与 http 扫描前缀名（裁决①）、io 第四绑定面（VmModule 方法表，遗留 a）同族：**公共符号 canonical 面全量重写**为统一清偿路径（下轮） | vm/native_catalog.rs 19xx 段；validate.rs canonical_native_name；cmd_stdlib.rs 实勘注记 |

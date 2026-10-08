@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-08
 plan_revision: 1
-current_step: 3  # T-04 进行中（校验层 1/2；两发现待裁决见 §9 最新交接）
+current_step: 5  # T-01..T-05 完成；T-06 CLI 半落地（736 耦合半 gated，见 §9 最新交接）
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -19,7 +19,7 @@ supersedes_spec_components:
 new_spec_components:
   - docs/specs/stdlib/design/assembly-manifest.md
 touched_goals: [GOAL-003]
-affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persistent.rs, crates/auto-lang/src/module_cache.rs, crates/auto-lang/src/lib.rs, crates/auto-lang/src/parser.rs, crates/auto-lang/src/trans/rust.rs, crates/auto-lang/src/trans/c.rs, crates/auto-lang/src/vm/codegen.rs, crates/auto-lang/src/vm/native_registry.rs, crates/auto-lang/src/vm/native.rs, crates/auto-lang/src/vm/native_catalog.rs, crates/auto-lang/src/vm/ffi/stdlib.rs, crates/auto-man/src/api_gen.rs, crates/auto/src/main.rs, stdlib]
+affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persistent.rs, crates/auto-lang/src/module_cache.rs, crates/auto-lang/src/lib.rs, crates/auto-lang/src/parser.rs, crates/auto-lang/src/trans/rust.rs, crates/auto-lang/src/trans/c.rs, crates/auto-lang/src/vm/codegen.rs, crates/auto-lang/src/vm/native_registry.rs, crates/auto-lang/src/vm/native.rs, crates/auto-lang/src/vm/native_catalog.rs, crates/auto-lang/src/vm/ffi/stdlib.rs, crates/auto-man/src/api_gen.rs, crates/auto/src/main.rs, crates/auto/src/cmd_stdlib.rs, stdlib]
 ---
 
 # [PLAN-738] 标准库后台装配契约与 manifest：真实来源、核心符号校验和缓存一致性
@@ -265,21 +265,30 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 
 ### T-04：核心符号/native校验与环境能力
 
-- 依赖T-02/03。修改vm/{native_registry,native,native_catalog}.rs与ffi/stdlib.rs必要provider描述/实际绑定检查、codegen所需引用闭包消费；Rust核心provider分派使用真实identity。
-- 六模块全部decl状态，独立逻辑signature/alias/feature/stub与实际shim绑定；避免name存在即绿，缺实现/冲突/不适用在业务前错误。目标物理字段身份记录，不重做资源ABI。
-- native欠绑定/ID冲突/签名漂移/假同名/Browser拒绝与现存核心支持正测；AC-03/05/08，SD-01/02/04/07。
+- [x] 依赖T-02/03。修改vm/{native_registry,native,native_catalog}.rs与ffi/stdlib.rs必要provider描述/实际绑定检查、codegen所需引用闭包消费；Rust核心provider分派使用真实identity。
+  [✅ 已完成] worktree `855a143b6`+`9cd807027`：validate_core_vm_bindings（resolved+bound 双面成立才 Supported，返回类别未知=Bound 不冒称 SignatureChecked）+Browser 三族 Unsupported 分类+ID 别名冲突检测（声明组/末段别名两合法形）+core_status_diagnostics 诊断视图。
+- [x] 六模块全部decl状态，独立逻辑signature/alias/feature/stub与实际shim绑定；避免name存在即绿，缺实现/冲突/不适用在业务前错误。目标物理字段身份记录，不重做资源ABI。
+  [✅ 已完成] sse parse_sse=DeclaredStub、http 扫描名 vs 公共名两套面裁决①（权威名=公共 canonical 面）、file/fs 族 id 共享别名裁决②（read_text 收敛单名+声明组放行）；io 方法第四绑定面（VmModule 方法表）冻结文档化 Unverified（§9/P738-D2）；plan738 19/19。
+- [x] native欠绑定/ID冲突/签名漂移/假同名/Browser拒绝与现存核心支持正测；AC-03/05/08，SD-01/02/04/07。
+  [✅ 已完成] 13 处生产扫描面 id 相撞真冲突冻结基线（分诊裁决=T-06 CLI 如实上报非零，重编号归 D3b——P738-D1）；plan738 19/19+scoped 117/117。
 
 ### T-05：缓存依赖与编译epoch一致性
 
-- 依赖T-03/04。修改module_cache.rs与compile.rs早退/dirty链、persistent manifest状态；缓存包含全部selected source/provider/target/env/deps/存在性。
-- 只改target层或host feature新编译不能旧返回；活VM禁止无契约ABI热换，明确target/root改变需新session。缓存错误不降级旧module。
-- 同mtime/增删层/双root/session/target/依赖变更真实结果与diagnostic；AC-04/06，SD-01/03。
+- [x] 依赖T-03/04。修改module_cache.rs与compile.rs早退/dirty链、persistent manifest状态；缓存包含全部selected source/provider/target/env/deps/存在性。
+  [✅ 已完成] worktree `f88449944`：ModuleCache 段级指纹条目（公共+选定层各自 FNV-1a+选定层 absent 台账+provider schema 版本+依赖闭包指纹）+AutoCache 装配感知查找 `get_valid`（跨 target 条目共存，身份/schema/段指纹/依赖指纹任一漂移即未命中）。
+- [x] 只改target层或host feature新编译不能旧返回；活VM禁止无契约ABI热换，明确target/root改变需新session。缓存错误不降级旧module。
+  [✅ 已完成] ①E2 死缓存反转为契约（P2 探针翻转：双层模块可命中且核对全部选定源段；同 mtime 改内容仍失效——内容指纹非 mtime）；②缓存命中早退一致性：命中补全本 epoch bytecode+manifest 记录（半截模块禁止，clone 会话实测）；③`set_assembly_target` 守卫（已装载换目标=session_target_mismatch 须重建，同目标重声明放行）；④stdlib root 身份守卫；⑤persistent 活 VM 指纹台账（同内容幂等放行/内容或根漂移拒绝）；⑥验证失败一律未命中重编译，不降级旧模块。
+- [x] 同mtime/增删层/双root/session/target/依赖变更真实结果与diagnostic；AC-04/06，SD-01/03。
+  [✅ 已完成] t05_cache_consistency 7 测：命中重建 bytecode/manifest、同 mtime 改层（行为断言新符号可见）、增层（absent 台账）/删层真实失效、retarget 拒绝+合法路径、stdlib root 变化拒绝、跨装配缓存不串 VM 层、依赖变更失效依赖方；plan738 27/27+module_cache 16/16+use_semantics 7/7+native_registry 13/13+autovm_persistent 20/20+plan727/729/730 59/59+`cargo tv` 162/162。
 
 ### T-06：检查CLI和API generation/serve收据
 
 - 依赖T-02..05。新auto/cmd_stdlib.rs，main.rs挂接；改auto-man/api_gen.rs及736最终真实生成/启动消费者（T-01锁路径），assembly fingerprint进入734receipt并由736ready引用。
+  进度（2026-10-08）：CLI 半落地（worktree `206a846e7`——`auto stdlib inspect` inventory/actual/check 三模式+稳定 JSON+退出码 0/1/2/3+main.rs 挂接+真实二进制冒烟）；**api_gen receipt 与 736 ready 消费维持 gated**——736 尚 executing@T-07 未合入且其分支直接重叠改 api_gen.rs/main.rs（并行改写必冲突，§4.1 统一顺序约束），736 合入后按 T-01 报告 §8 复核清单接线。
 - inspect只读取装配所需源码/元数据，不执行业务网络/文件操作；稳定JSON与非零check，inventory/actual mode区分；runtime serviceconfig不是assembly内容指纹，provider变化必须新鲜度失效。
+  进度：inspect dry 装配（resolve_uses 不执行 main/业务 IO）+inventory/actual mode 区分+稳定 JSON+check 非零语义已落地（CLI 8/8 冻结）；新鲜度失效半=api_gen receipt 耦合，同上 gated。
 - CLI JSON/负测及真实生成Rust→serve，改stdlib但api.at不变；AC-01/06/07，SD-01/05/06。
+  进度：CLI JSON/负测 8/8（partial 分母/模块过滤/actual 两层 fixture/check sse stub、browser io、http id 冲突、json id 面分裂、用法错误）；真实生成Rust→serve 半 gated（736）。
 
 ### T-07：同源样例、核心完整矩阵与实际执行证明
 
@@ -294,6 +303,36 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - 清理前lang-738两兄弟各wt-guard clean；tf仅merge到期主检出单实例。全AC闭合才reviewed/archived。
 
 ## 9. 复审记录
+
+### work 交接（2026-10-08，T-04 遗留分诊 + T-05 完成 + T-06 CLI 半）
+
+- stage: work
+- plan_id: PLAN-738
+- plan_revision: 1
+- outcome: pass（T-05 全部完成；T-06 CLI 半落地、736 耦合半 gated；整体 executing 继续）
+- code_commit: worktree plan-738-dev `f88449944`（T-05）→ `206a846e7`（T-06 CLI）；基面 master c3ccd32c3
+- task_ids: T-04 遗留(b) 分诊、T-05（全部三 bullet）、T-06（CLI 半）
+- evidence: plan738 27/27、module_cache 16/16、use_semantics 7/7、native_registry 13/13、autovm_persistent 20/20、plan727/729/730 59/59、`cargo tv` 162/162、CLI 8/8（--test-threads=1）、真实 `auto.exe stdlib inspect` 三模式冒烟（text/JSON/check 退出码 3/0/1 实测）；`cargo check -p auto-lang/-p auto/-p auto-man --lib` 零错误
+- blockers: T-06 api_gen receipt + 736 ready 消费半——736 executing@T-07 未合入，其分支直接重叠 api_gen.rs/main.rs（并行改写必冲突）；736 合入后按 T-01 报告 §8 复核清单接线。不阻塞 T-07。
+- next: T-07（同源样例、核心完整矩阵与实际执行证明——依赖 T-03..06 CLI 面已就绪）；T-06 gated 半随 736 合入解锁
+- debt: P738-D1（13 处 id 相撞分诊裁决=check 如实上报非零，重编号 D3b）、P738-D2（json id 面分裂：catalog canonical 1906 实绑 vs 扫描名 99xx 无 shim——诚实 Unverified；公共面全量重写下轮，同 http 扫描名/io 第四面族）已登记 KNOWN-DEBT
+
+T-05 实施要点（复审注意）：
+①E2 死缓存反转为契约（P2 探针翻转，P5 先例）——`with_file` 的"合并源 hash vs
+公共文件重读"错位由段级指纹条目修复；②缓存命中早退一致性为行为变更：命中
+路径现补全本 epoch bytecode+manifest（clone 会话=compiled_* 重置+cache 继承
+的真实早退场景，`cache_hit_rebuilds_bytecode_and_manifest` 冻结）；③
+`set_assembly_target` 签名变 `AutoResult<()>`（已装载换目标=SessionTargetMismatch，
+bench 同目标重声明不受累）；④absent 台账只记**选定目标**后缀层——foreign 层
+是 candidate（manifest 面），其增减不改变装配选择、不入缓存身份。
+
+T-06 CLI 实施要点（复审注意）：生产装配面=engine init 三件套
+（register_std_shims+register_stdlib_ffi+build_from_inventory）；json 实勘
+（探针 2026-10-08）：catalog canonical `auto.json.get`@1906 实绑（生产 json
+可用面）vs 扫描名 `auto.json.json_get`@99xx 无 shim——校验器按扫描名问询故
+json 诚实 Unverified 非零（`check_json_scan_face_unverified_nonzero` 冻结），
+**不冒称 Supported 也不降级 Unsupported**；全局 `--format`（OutputFormat）
+与子命令参数撞名已收敛（复用全局 format，JSON 为默认契约面）。
 
 ### work 交接（2026-10-08，T-04 两裁决落地）
 
