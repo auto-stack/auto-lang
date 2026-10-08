@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-03
 plan_revision: 1
-current_step: 6
+current_step: 8
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -270,16 +270,16 @@ fixture生成临时证书/凭据，只测试localhost；实际HTTPS→proxy→VM
 
 ### T-07：受控负载、资源曲线与支持分级
 
-- 依赖T-03..06。新scripts/http-service-probe.py和plan736_http_service_tests.rs，注册tests.rs；可用测量依赖T-01冻结，所有参数/输出显式，禁止无限并发。
-- 完成§6.1及§6.2全部两轨3轮/资源10min，generated和CLI hash/机器/原始数据到报告；CPU/native不具强抢占保证，Tauri/merged/back-proxy不当server认证。
-- 资源回收counter/FS/temp与RSS分开，负载单实例，不把内部health快速返回当VM业务可响应；AC-03/05/06/08/09，SD-01/02/03/06。
+- [x] 依赖T-03..06。新scripts/http-service-probe.py和plan736_http_service_tests.rs，注册tests.rs；可用测量依赖T-01冻结，所有参数/输出显式，禁止无限并发。 [✅ 已完成] 提交6156c3de3：probe 四门全参数化（有界并发+总 deadline+零无限形态）；drain e2e 见 T-06
+- [x] 完成§6.1及§6.2全部两轨3轮/资源10min，generated和CLI hash/机器/原始数据到报告；CPU/native不具强抢占保证，Tauri/merged/back-proxy不当server认证。 [✅ 已完成] release fixture 双轨（serve_rust 补 --release）；**双轨四门全 PASS**：VM json 3/3（p95 3.9-12.8ms，~6000 RPS）/overload 3/3（128占位下 64/64 cap 关闭+恢复 0.02s）/mixed（8134 json p95 24.4ms+379 上传+566 下载零错）/resources（漂移 14.3MiB≤64、峰值 59.6MiB≤512，6/10 有效样本如实注记）；rust json 3/3/overload 3/3/mixed（8351+380+573+sse_holds 2 零错）/resources（10 周期全采漂移 2.7 峰值 15.2）——raw 全录 [736-http-load.md](reports/736-http-load.md)
+- [x] 资源回收counter/FS/temp与RSS分开，负载单实例，不把内部health快速返回当VM业务可响应；AC-03/05/06/08/09，SD-01/02/03/06。 [✅ 已完成] health 独立额度表采样独立于业务 p95；探针修正四条（cap-close WinError 族/唯一名 409 语义/sse_hold 分类/release spawn）如实入报告
 
 ### T-08：门禁、独立复审和规范交接
 
-- 依赖T-01..07；§6.3门禁、fmt/warnings/debug及遗漏/延期扫描，债有归属；零新增确定性红，报告绑定最终revision和全部AC/SD。
-- /auto-plan:review独立按真实CLI/generated/proxy/资源证据验证，不信勾选；准备SD沉淀稿，merge才更新canonical/ledger/Design33并归档。
-- 清理前lang-736两兄弟worktree各跑wt-guard clean；tf只merge到期main单实例，不在多个worktree并行。
-- 全AC/SD闭合才交reviewed/archived；不能以跳过proxy/load或声明“仅开发”缩小本计划的service等级。
+- [x] 依赖T-01..07；§6.3门禁、fmt/warnings/debug及遗漏/延期扫描，债有归属；零新增确定性红，报告绑定最终revision和全部AC/SD。 [✅ 已完成] 裸 `cargo t --no-fail-fast` 失败集与 master 基线**逐项一致**（16 预存族，零新增）；`th` 2 FAIL=master 同（corpora_data_face/native_ns 预存）；tv 162/162；fmt 仅 736 触面文件（预存未格式化 examples 已回退原状）；无 debug 残留
+- [ ] /auto-plan:review独立按真实CLI/generated/proxy/资源证据验证，不信勾选；准备SD沉淀稿，merge才更新canonical/ledger/Design33并归档。 [→ 交接] execution_done→review
+- [x] 清理前lang-736两兄弟worktree各跑wt-guard clean；tf只merge到期main单实例，不在多个worktree并行。 [→ merge 前置] 本轮未跑 tf（736%5≠0 非到期窗）；清理归 merge
+- [x] 全AC/SD闭合才交reviewed/archived；不能以跳过proxy/load或声明“仅开发”缩小本计划的service等级。 [✅ 已完成] 全 AC 证据索引=[736-http-verification.md](reports/736-http-verification.md)；未验证面/边界披露面在案（route-A 桩体域/698 SSE 竞速/VM resources 6 样本注记/跨OS未测）；proxy/load 未跳过（双轨实测）
 
 ## 9. 复审记录
 
@@ -295,6 +295,20 @@ fixture生成临时证书/凭据，只测试localhost；实际HTTPS→proxy→VM
 - changed_acceptance: AC-01..AC-09（新）
 - blocked仅为实施依赖，无需用户为本次规划补信息；实施使用前需具体合同确认，不从“规划”推定自动部署授权。
 - 本轮仅计划/Design簿记，不创建736 worktree/不跑Cargo/不改canonical/不修改734进度。交接检查通过：11章节、8任务/9AC/6SD覆盖、现有Spec路径与新增标识、无新增失效链接、唯一ID及diff；Design索引既有513链接失效未纳入本期。
+
+### 工作交接（2026-10-08，/auto-plan:work execution_done）
+
+- stage: work
+- plan_id: PLAN-736
+- plan_revision: 1
+- outcome: pass
+- code_commit: 分支 plan-736-dev a043bb4fc..6156c3de3（7 提交：T-01 决策 a043bb4fc → T-02 2dbae4685 → T-03 700e916bc → T-04 1d65ff70e → T-05 0ff2b95a1 → T-06 04992cc25 → T-07 6156c3de3）；worktree D:/autostack/.wt/lang-736/auto-lang 保留待审
+- task_ids: T-01..T-08（T-08 review 项移交 /auto-plan:review；wt-guard 清理归 merge）
+- evidence: 门禁——plan736 11/11、plan734/705/730 46/46、tv 162/162、裸 t 失败集=master 基线逐项一致（16 预存族，**零新增确定性红**）、th 2 预存=master 同；实机——双轨 `auto service` 全链、双轨真实 nginx 1.31.6 代理（SSE 帧经 TLS 代理 vm 轨达成）、P729-D1 drain wire e2e、双轨四门负载全 PASS（raw 全录 reports/736-http-load.md）
+- 预存顺手修复（非 736 回归，均在案）：a2r_std upload 转发壳补漏（qualify 后 E0425）、auto-man 空 main.rs 退役（E0601）、OnceLock 同线程重入死锁（instance_id）、生成 upload glue Path 解包（E0277）
+- 观察项（非债，登记供后续批量回归复核）：698 域 SSE 订阅会话首播后 ~1-2s 自然收口（帧竞速）；VM resources RSS 单调缓升（59.6MiB，远低于 512 阈值）
+- blockers: 无
+- next: /auto-plan:review PLAN-736
 
 ### 工作交接（2026-10-03 09:10，/auto-plan:work 入口核查）
 
