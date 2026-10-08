@@ -1,0 +1,9 @@
+{
+  "id": "F09-flat-add-16384-wrong-type",
+  "bytes": 32797,
+  "result": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\F09-flat-add-16384-wrong-type\\input.at:1:32792: error[verify/source.type-mismatch]: expected i32, found bool\n",
+    "stdout": ""
+  }
+}

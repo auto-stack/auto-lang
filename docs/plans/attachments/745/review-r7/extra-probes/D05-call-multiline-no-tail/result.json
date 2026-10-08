@@ -1,0 +1,20 @@
+{
+  "id": "D05-call-multiline-no-tail",
+  "source": "fn f(x int) int { return x }\nfn main() int { return f(\n 2\n) }",
+  "want": "accept native2",
+  "check": {
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=e4cfed73840b4a74, module(s)=1, capabilities required: []\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "build": {
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\D05-call-multiline-no-tail\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\D05-call-multiline-no-tail\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\D05-call-multiline-no-tail\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\D05-call-multiline-no-tail\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: e4cfed73840b4a74\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "run": {
+    "stdout": "",
+    "stderr": "",
+    "exit": 2
+  }
+}

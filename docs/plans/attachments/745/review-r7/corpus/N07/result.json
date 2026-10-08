@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": [],
+  "kind": "reject",
+  "build": null,
+  "id": "N07",
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\corpus\\N07\\input.at:1:28: error[verify/verify.immutable-write]: local `l0` is immutable and cannot be assigned\n",
+    "stdout": ""
+  },
+  "input_sha256": "9e3103f223e3279ff112257cfcad24760d8c872ee497c1ba8a6a60c497d8544e",
+  "run": null,
+  "ok": true
+}

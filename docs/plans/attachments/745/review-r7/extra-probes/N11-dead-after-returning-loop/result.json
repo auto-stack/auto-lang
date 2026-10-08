@@ -1,0 +1,16 @@
+{
+  "want_code": "verify.block-structure",
+  "bytes": 54,
+  "artifact_hashes": [],
+  "build": null,
+  "ok": true,
+  "input_sha256": "29f0bea74e4a6f0e7c86c319f63d3e1045f7864554c4c7f531fa3a7aeea7b8ea",
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\N11-dead-after-returning-loop\\input.at:1:36: error[verify/verify.block-structure]: block `k2` is not reachable from the entry block (block graph must be connected and acyclic)\n",
+    "stdout": ""
+  },
+  "want_native": null,
+  "run": null,
+  "id": "N11-dead-after-returning-loop"
+}

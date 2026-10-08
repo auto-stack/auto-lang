@@ -1,0 +1,13 @@
+{
+  "want_native": 3,
+  "bytes": 57,
+  "run": null,
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\M20-unclosed-while-condition\\input.at:1:37: error[text/source.syntax]: expected `)`\n"
+  },
+  "want": 1,
+  "id": "M20-unclosed-while-condition",
+  "build": null
+}

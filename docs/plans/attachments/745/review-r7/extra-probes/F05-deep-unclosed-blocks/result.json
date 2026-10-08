@@ -1,0 +1,9 @@
+{
+  "id": "F05-deep-unclosed-blocks",
+  "bytes": 36880,
+  "result": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\F05-deep-unclosed-blocks\\input.at:1:36881: error[text/source.syntax]: expected statement or `}`, found end of file\n",
+    "stdout": ""
+  }
+}

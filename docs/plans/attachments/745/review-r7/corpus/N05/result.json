@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": [],
+  "kind": "reject",
+  "build": null,
+  "id": "N05",
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\corpus\\N05\\input.at:1:20: error[verify/source.type-mismatch]: expected bool, found i32\n",
+    "stdout": ""
+  },
+  "input_sha256": "9aa8749b76bec6ebcc90557a97bbc599e1e8eb1fc9a90675614a26cb87f635a3",
+  "run": null,
+  "ok": true
+}

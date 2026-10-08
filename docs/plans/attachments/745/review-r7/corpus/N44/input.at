@@ -1,0 +1,2 @@
+type X { x int }
+fn main() int { return 0 }

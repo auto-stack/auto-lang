@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": [],
+  "kind": "reject",
+  "build": null,
+  "id": "N20",
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\corpus\\N20\\input.at:1:24: error[text/source.unsupported]: char literal `'a'` is not part of this source profile\n",
+    "stdout": ""
+  },
+  "input_sha256": "f6830e4f2fc9e8993448fc17110c19d6e3ac8d2bff4ca34718fa74f70557971b",
+  "run": null,
+  "ok": true
+}

@@ -1,0 +1,37 @@
+{
+  "want_code": null,
+  "bytes": 121,
+  "artifact_hashes": [
+    {
+      "sha256": "4396ac9f4f6c50bf62723a52974ad11e0228f6d23473046107505ff09cb2982f",
+      "name": "app.exe"
+    },
+    {
+      "sha256": "f91812cf44c254a78c2daceeca3a67d491e749551ccdbd2dd7c3b39fdafdab83",
+      "name": "app.obj"
+    },
+    {
+      "sha256": "20b74f68c08ba568e0a0c00470f3f933df8cabd8999e48d0c61c0ef950d15d91",
+      "name": "app.ac-link.txt"
+    }
+  ],
+  "build": {
+    "exit": 0,
+    "stderr": "",
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\N06-scope-shadow-rhs\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\N06-scope-shadow-rhs\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\N06-scope-shadow-rhs\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\N06-scope-shadow-rhs\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: bab84afc61bfcbe2\n"
+  },
+  "ok": true,
+  "input_sha256": "23e957b67543feb8c7f281b22ada11fa3b01613f52e76f80e3e540425c0086e5",
+  "check": {
+    "exit": 0,
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=bab84afc61bfcbe2, module(s)=1, capabilities required: []\n"
+  },
+  "want_native": 6,
+  "run": {
+    "exit": 6,
+    "stderr": "",
+    "stdout": ""
+  },
+  "id": "N06-scope-shadow-rhs"
+}

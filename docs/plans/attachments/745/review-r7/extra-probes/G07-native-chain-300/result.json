@@ -1,0 +1,21 @@
+{
+  "bytes": 626,
+  "want": 300,
+  "build": {
+    "exit": 0,
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\G07-native-chain-300\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\G07-native-chain-300\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\G07-native-chain-300\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\G07-native-chain-300\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 2d4b702b2031051e\n",
+    "stderr": ""
+  },
+  "check": {
+    "exit": 0,
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=2d4b702b2031051e, module(s)=1, capabilities required: []\n",
+    "stderr": ""
+  },
+  "run": {
+    "exit": 300,
+    "stdout": "",
+    "stderr": ""
+  },
+  "id": "G07-native-chain-300",
+  "want_stderr": null
+}

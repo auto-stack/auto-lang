@@ -1,0 +1,1 @@
+fn main() int { return mark_b() * 10 + mark_a() }
