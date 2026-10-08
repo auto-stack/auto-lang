@@ -139,7 +139,24 @@ pub fn validate_core_vm_bindings(
                 let native_name = canonical_native_name(module, sym);
                 let id = registry.get_id(&native_name);
                 let resolved = id.is_some();
-                let bound = id.map(|i| shims.get(i).is_some()).unwrap_or(false);
+                // 绑定三面（裁决②：方法与独立函数分属不同 dispatch 面）：
+                // ①NativeInterface 静态/动态 shim（自由函数）；②opaque
+                // dispatch 表（Type.method——如 io ext File 方法走 VmModule
+                // 方法表登记的 opaque 面）。任一面可调用即 bound。
+                let opaque_bound = match sym.kind {
+                    SymbolKind::Method => {
+                        let (owner, fname) =
+                            sym.name.split_once('.').unwrap_or(("", &sym.name));
+                        crate::vm::native_catalog::lookup_opaque_dispatch(
+                            owner,
+                            fname,
+                        )
+                        .is_some()
+                    }
+                    _ => false,
+                };
+                let bound =
+                    id.map(|i| shims.get(i).is_some()).unwrap_or(false) || opaque_bound;
 
                 if environment == Environment::Browser {
                     if let Some(reason) = browser_unsupported_reason(module, &native_name) {
@@ -198,13 +215,23 @@ pub fn validate_core_vm_bindings(
     out
 }
 
-/// ID 别名冲突检测（AC-03：ID 复用只限明确别名——短名 = canonical 末段；
-/// 同 ID 的两个名字若互不为对方末段，即两 callee 争 ID，报 conflict 而非
-/// last-writer-wins）。
+/// ID 别名冲突检测（AC-03：ID 复用只限明确别名）。合法别名两形：
+/// ① NATIVE_ID_ENTRIES 声明组——catalog (name,id) 表是手工维护的声明面，
+///    同 id 全部名字都在该 id 的声明组内（如 file/fs 族裁决②保留的别名）；
+/// ② 短别名——某名字恰为另一名字的末段。
+/// 两形皆非的共 id = 两 callee 争 ID，报 conflict 而非 last-writer-wins。
 pub fn id_alias_conflicts(
     registry: &crate::vm::native_registry::AutoVMNativeRegistry,
 ) -> Vec<AssemblyDiagnostic> {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
+    use crate::vm::native_catalog::NATIVE_ID_ENTRIES;
+
+    // 声明组：id → NATIVE_ID_ENTRIES 中该 id 的名字集
+    let mut declared: HashMap<u16, HashSet<&str>> = HashMap::new();
+    for (name, id) in NATIVE_ID_ENTRIES {
+        declared.entry(*id).or_default().insert(name);
+    }
+
     let mut by_id: HashMap<u16, Vec<String>> = HashMap::new();
     for name in registry.get_function_names() {
         if let Some(id) = registry.get_id(&name) {
@@ -220,13 +247,18 @@ pub fn id_alias_conflicts(
         if names.len() < 2 {
             continue;
         }
-        let aliased = names.windows(2).all(|w| {
+        // 合法形①：全部名字都在声明组内
+        let all_declared = names
+            .iter()
+            .all(|n| declared.get(&id).map(|s| s.contains(n.as_str())).unwrap_or(false));
+        // 合法形②：排序后相邻名字互为末段别名
+        let short_aliased = names.windows(2).all(|w| {
             let (a, b) = (w[0].as_str(), w[1].as_str());
             a.rsplit('.').next() == Some(b)
                 || b.rsplit('.').next() == Some(a)
                 || a == b
         });
-        if !aliased {
+        if !all_declared && !short_aliased {
             out.push(AssemblyDiagnostic {
                 code: code::NATIVE_ID_CONFLICT.to_string(),
                 module: format!("id:{id}"),

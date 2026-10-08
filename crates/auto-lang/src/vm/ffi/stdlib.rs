@@ -334,7 +334,12 @@ pub const NATIVE_RUST_STDLIB_DISPATCH: u16 = 3000;
 // ============================================================================
 
 /// Read text content from a file
-#[auto_macros::rust_fn("File.read_text", "auto.file.read_text", "auto.fs.read_text", "auto.fs.read")]
+/// PLAN-738 裁决②（2026-10-08）：单一权威名 `auto.fs.read_text`——原多名
+/// （File.read_text/auto.file.read_text/auto.fs.read）系标准库多轮搭建期
+/// 混淆；File 的 read_text **方法**（self，无 path 参）语义不同，不得与本
+/// 独立函数共名。`File.read_text(p)` 等历史调用点经 canonical
+/// File.*→auto.file.* + NATIVE_ID_ENTRIES 固定 id 别名解析到同一 shim 槽。
+#[auto_macros::rust_fn("auto.fs.read_text")]
 pub fn shim_file_read_text(path: String) -> String {
     fs::read_to_string(&path).unwrap_or_default()
 }

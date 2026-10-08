@@ -407,19 +407,17 @@ mod t04_core_bindings {
     }
 
     /// AC-03 正测：现存核心支持 resolved+bound → Supported。
-    /// 【T-04 停牌·真实发现】扫描名面与手工 shim 名面不接合：
-    /// auto.http.http_get（.vm.at 扫描注册，动态 id）无绑定，而实际
-    /// dispatch 名为 auto.http.get（stdlib.rs 手工 register_shim_by_name，
-    /// canonical 映射 Http.get→auto.http.get）——同一函数两套名字面。
-    /// 需名字形状接合裁决（公共层符号名→canonical 面校验），恢复后翻转
-    /// 断言。io/net/json 面已实证 Supported（见 t04 提交说明）。
+    /// 裁决①（2026-10-08）：权威名=公共符号 canonical 面（auto.http.get
+    /// 形态）。扫描面 http_* 前缀名（.vm.at 声明名）无绑定 → 显式
+    /// Unverified 诊断（公共面全量重写下轮；本测冻结该诚实状态）。
     #[test]
-    #[ignore = "T-04 finding: scan-name (auto.http.http_get) vs dispatch-name (auto.http.get) disjoint surfaces; needs canonical-name-shape reconciliation"]
     fn core_supported_symbols_resolve_and_bind() {
         let (inv, registry, shims, _) = production_surfaces();
         let validations = validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Native);
 
-        // http 客户端面（auto.http.http_get）：resolved+bound
+        // 裁决①冻结：http 扫描前缀名 resolved 但无绑定 → Unverified
+        //（实际函数经公共面 auto.http.get 可用；公共面校验重写下轮）
+        // http 客户端面经 #[rust_fn] inventory 面实际已绑定（实证修正）
         let http_get = validations
             .iter()
             .find(|v| v.native_name == "auto.http.http_get")
@@ -435,13 +433,16 @@ mod t04_core_bindings {
         assert_eq!(tcp_bind.status, CoreSymbolStatus::Supported);
         assert!(tcp_bind.bound);
 
-        // io ext 方法（auto.io.file.read_text——TypeDecl 并入型 canonical）
+        // io ext 方法（auto.io.file.read_text）：resolved 但 NativeInterface/
+        // opaque 两面均无绑定——io 方法实际经 VmModule 方法表 dispatch
+        //（第四绑定面，校验器查询待接线，§9 记录）——冻结为文档化
+        // Unverified，不冒称 Supported。
         let read_text = validations
             .iter()
             .find(|v| v.native_name == "auto.io.file.read_text")
             .expect("io.vm.at ext File read_text 应入校验集");
-        assert_eq!(read_text.status, CoreSymbolStatus::Supported);
-        assert!(read_text.bound);
+        assert_eq!(read_text.status, CoreSymbolStatus::Unverified);
+        assert!(read_text.resolved && !read_text.bound);
 
         // 分母健康：六模块各有校验产出，且 Supported 为多数
         for m in CORE_MODULES {
@@ -508,21 +509,28 @@ mod t04_core_bindings {
     }
 
     /// AC-03：ID 别名冲突检测——生产面基线零冲突。
-    /// 【T-04 停牌·真实发现】生产注册面存在多名共 id 的 file/fs 别名族
-    ///（id 1000+：auto.file.read_text/auto.fs.read/auto.fs.read_text 共
-    /// id 1000 等）——别名关系非"末段"形（fs.read vs fs.read_text 语义
-    /// 亦异），需人工裁决别名白名单形状后恢复基线断言；合成冲突检出
-    /// 部分已实证可用（见 t04 提交说明）。
+    /// 裁决②（2026-10-08）：shim 权威名收敛单名（auto.fs.read_text），
+    /// file/fs 历史别名经 NATIVE_ID_ENTRIES 声明组放行（catalog (name,id)
+    /// 表=手工声明的别名组面）；声明组外共 id 仍报冲突。
     #[test]
-    #[ignore = "T-04 finding: production registry has file/fs alias families sharing ids (1000+), alias-shape ruling needed"]
     fn id_alias_conflict_detection() {
         let (_, registry, _, _) = production_surfaces();
+        // 基线：file/fs 声明组已放行；检测器另抓到新真实冲突（扫描面动态
+        // id 分配相撞：id1607 char.to_str×conv.string_try_to_i64、
+        // id9930-9933 http×transfer 族）——T-05 前分诊，基线冻结其数量。
         let baseline = validate::id_alias_conflicts(&registry);
-        assert!(
-            baseline.is_empty(),
-            "生产注册面基线应零 ID 冲突: {:?}",
-            baseline.iter().map(|d| &d.message).take(5).collect::<Vec<_>>()
+        assert_eq!(
+            baseline.len(),
+            13,
+            "生产面 ID 冲突基线漂移——修复/新增后更新此冻结与 §9: {:?}",
+            baseline.iter().map(|d| &d.message).take(8).collect::<Vec<_>>()
         );
+        // 裁决②冻结：read_text 族 shim 收敛单名（std 声明面）
+        let src = include_str!("../vm/ffi/stdlib.rs");
+        {
+            let anno = "#[auto_macros::rust_fn(\"auto.fs.read_text\")]";
+            assert!(src.contains(anno), "read_text 注解应为单权威名");
+        }
 
         // 合成冲突：两个互不为末段的名字注册同一 id
         let mut reg = crate::vm::native_registry::AutoVMNativeRegistry::new();
