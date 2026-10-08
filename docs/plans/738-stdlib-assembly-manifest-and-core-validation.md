@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-738
-status: executing
+status: execution_done
 feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-08
 plan_revision: 1
-current_step: 6  # T-01..T-06 完成（T-06 gated 半已解锁落地）；T-07 slice1 落地推进中
+current_step: 7  # T-01..T-07 完成；T-08 门禁+验证报告完成（e4425b673）→ /auto-plan:review
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -292,19 +292,37 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 
 ### T-07：同源样例、核心完整矩阵与实际执行证明
 
-- 依赖T-03..06。新plan738_stdlib_assembly_tests.rs/tests.rs接线、examples/stdlib/assembly/及target witness；依现有C/Rust构建工具生成真实产物，不手写业务替代。
-  进度（2026-10-08，worktree `75c7a1049`）：①VM 腿真执行见证落地（`vm_executes_selected_layer_witness`——run_autovm 全管线：公共 body-less 声明+选定 .vm.at 层真实 body 执行 42/公共 pure body 共享 7/foreign .rs.at 符号不进装配上下文）；②六核心 `core_target_env_matrix` 矩阵生成器+完整性测试+报告落盘 `docs/plans/reports/738-stdlib-matrix.{json,md}`（io 0/9=第四绑定面冻结、net 14/14、http 34/68、json 4/19、sse 0/1=stub、async 10/10——全诚实态；rust/c 格=provider 目录 claim 粒度如实标注）。剩余：rustc/C 实编 witness（Plan 610 ⑤腿 `#[ignore]` 范式，a2r_std 经 `auto_lang::a2r_std` 资格化）、examples/stdlib/assembly/、§6.1 冲突/来源与 native 绑定族余项、旧 root 未消费侧层报告语义。
+- [x] 依赖T-03..06。新plan738_stdlib_assembly_tests.rs/tests.rs接线、examples/stdlib/assembly/及target witness；依现有C/Rust构建工具生成真实产物，不手写业务替代。
+  [✅ 已完成] 三片提交：①`75c7a1049` VM 真执行见证+六核心矩阵（报告落盘 738-stdlib-matrix.{json,md}）；②`0a73d0759` rustc 实编实跑 witness（⑤腿 #[ignore] 按需门：witness.at→trans_rust→a2r-std crate 实编→实跑断言输出；实勘 as_int 下沉类型缺口+内嵌 a2r_std/crate 漂移两发现）；③`8964155ec` examples/stdlib/assembly 同源样例（真实 CLI inspect --actual 闭环验证）。
+- [x] 完成§6.1全部反例/真入口、六模块全符号target/env矩阵和全库inventory；HTTP串行兼容734/736与729/730，报告selection/exec等级/真实方法，旧root未消费侧层不能报已合并。
+  [✅ 已完成] `a4afb3b65` 余项反例（用户同名核心模块干净遮蔽/双活跃 body 冲突不静默择一）；矩阵+inventory 完整（AC-01/05）；selection/exec 等级=LayerSelection+矩阵 verification 列；candidate 语义=「未消费层只能报 candidate」在 t03+CLI actual manifest 冻结。C 实编 witness 明示阻塞（无 C HTTP provider=Unsupported，不造 server——§6.1 允许）。
+- [x] AC-01..08，SD-01..07；无法执行目标/witness明确阻塞，不只生成串金样。
+  [✅ 已完成] 全 AC 证据绑定见 `docs/plans/reports/738-stdlib-verification.md`（T-08 报告，绑定 e4425b673/最终 revision=1）。
 - 完成§6.1全部反例/真入口、六模块全符号target/env矩阵和全库inventory；HTTP串行兼容734/736与729/730，报告selection/exec等级/真实方法，旧root未消费侧层不能报已合并。
   进度：矩阵+inventory 完整（上条）；缓存族=T-05 八测、VM 两入口/545 语义=use_semantics 回归、Browser 三族/Binder=t04、CLI=8 测。
 - AC-01..08，SD-01..07；无法执行目标/witness明确阻塞，不只生成串金样。
 
 ### T-08：门禁、独立review与规范交接
 
-- 依赖T-01..07。§6.3分级门、warnings/fmt/debug/未批准延期扫描，验证报告绑定最终revision/每AC/SD；新红基线对照，未覆盖核心不能标“全库通过”。
-- /auto-plan:review独立验证真实callee和target调用点、分母/验证等级/缓存反例；准备SD沉淀稿，merge再canonical/ledger/Design33/索引和归档。
-- 清理前lang-738两兄弟各wt-guard clean；tf仅merge到期主检出单实例。全AC闭合才reviewed/archived。
+- [x] 依赖T-01..07。§6.3分级门、warnings/fmt/debug/未批准延期扫描，验证报告绑定最终revision/每AC/SD；新红基线对照，未覆盖核心不能标“全库通过”。
+  [✅ 已完成] 门禁实测（worktree，基线 master@4262f761c 逐名分诊）：裸 `cargo t` 3 红全为 musk p053 预存族（红名集 6=6 diff 空）+`cargo tv` 162/162+`cargo tt` 12⊂13（plan707 flake master 独有未复现）+`cargo th` 1⊂2+plan738 32/32+⑤腿 witness 按需 1/1+CLI 8/8+auto-man scoped 45/45；三 crate check 零错误；改动文件 rustfmt 干净、零 debug 残留。验证报告 `docs/plans/reports/738-stdlib-verification.md`（`e4425b673`，绑定最终 revision=1）。
+- [ ] /auto-plan:review独立验证真实callee和target调用点、分母/验证等级/缓存反例；准备SD沉淀稿，merge再canonical/ledger/Design33/索引和归档。
+  入口就绪：status=execution_done，worktree `e4425b673` clean，复审证据齐备（§9 交接+验证报告）。SD 沉淀稿=起草时 SD-01..07 提案维持（merge 阶段执行）。
+- [ ] 清理前lang-738两兄弟各wt-guard clean；tf仅merge到期主检出单实例。全AC闭合才reviewed/archived。
 
 ## 9. 复审记录
+
+### work 交接（2026-10-08，T-07/T-08 完成 → execution_done）
+
+- stage: work
+- plan_id: PLAN-738
+- plan_revision: 1
+- outcome: pass（T-01..T-07 全部完成；T-08 门禁+验证报告完成——execution_done，next=review）
+- code_commit: worktree plan-738-dev `a4afb3b65`（T-07 slice3）→ `e4425b673`（T-08 报告）；链=75c7a1049→8964155ec→0a73d0759→a4afb3b65→e4425b673，基面 master@4262f761c+re-sync 0424673e2
+- task_ids: T-07（三片）+T-08（门禁/报告）
+- evidence: `docs/plans/reports/738-stdlib-verification.md`（门禁表+AC-01..08 逐条绑定+红分诊）；门禁=裸 t/tv/tt/th 全对 master 基线逐名分诊零新增红；⑤腿 rustc 实编实跑 witness 按需绿；CLI 真实二进制三模式冒烟
+- blockers: 无阻塞。review 后遗留面：①C 实编 witness（无 C HTTP provider=Unsupported 明示阻塞，D3b）②真实「生成→serve」实跑（fixture 成员发现流程预存行为在案）③P738-D1/D2+as_int 下沉缺口+内嵌 a2r_std 漂移（D3b/公共面重写）
+- next: /auto-plan:review（独立验证真实 callee 和 target 调用点、分母/验证等级/缓存反例）→ merge（canonical/ledger/Design33/索引/归档）
 
 ### work 交接（2026-10-08，阻塞解除：T-06 全部完成）
 
