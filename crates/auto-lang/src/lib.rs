@@ -102,6 +102,7 @@ pub mod atom_error;
 pub mod module_cache;
 pub mod host; // Plan 011 (MS3-B): ShellHost bridge for system()/exit()/export()
 pub mod autovm_persistent; // Plan 068 Phase 9.6: Persistent AutoVM REPL
+pub mod stdlib_assembly; // PLAN-738: stdlib 装配契约（inventory/manifest/provider 目录纯模型层）
 pub mod mcp; // Plan 265: MCP server for AI agent interaction
 pub mod autovm_daemon; // Plan 269: AutoVM daemon (serve/req)
 pub mod autovm_client; // Plan 269: AutoVM client for req command

@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "comment": "PLAN-738 provider 声明目录：谁承担哪个模块哪个目标的实现。这不是第二份『声称已实现』的独立表——每个 supported 声明必须能被真实注册面（VM native 名 surface）/ 发射面（a2r-std pub mod / 预生成 C 产物）机器对照；unverified/unsupported 必须给原因。六核心（io/net/async/http/json/sse）逐目标声明；其余按发射名称表涉及的模块登记。",
+  "providers": [
+    { "module": "io", "target": "vm", "kind": "native-shim", "status": "supported", "locator": "auto.io.*", "notes": "io.vm.at ext File 8 方法，native 名 = auto.io.<fn>（磁盘扫描注册）" },
+    { "module": "io", "target": "rust", "kind": "none", "status": "unsupported", "reason": "无 io.rs.at 且 a2r_std::io 不存在；发射名称表误路由 auto.io → a2r_std::io 的漂移在案（738-stdlib-decision §1/E1③、§3）" },
+    { "module": "io", "target": "c", "kind": "c-generated", "status": "supported", "locator": "stdlib/auto/io.c.at", "notes": "cmd_a2c_stdlib 逐文件生成 io.c/io.h/io.c.c/io.c.h；物理 ext 字段属 C 层" },
+
+    { "module": "net", "target": "vm", "kind": "native-shim", "status": "supported", "locator": "auto.net.*", "notes": "net.vm.at 14 #[vm]；ffi/stdlib.rs 手工 tcp shim 族（名称=VM 层自由函数名）" },
+    { "module": "net", "target": "rust", "kind": "none", "status": "unsupported", "reason": "无 net.rs.at 且 a2r_std::net 不存在；名称表仍路由（P4 实证）——strict 下被引用必须非零诊断" },
+    { "module": "net", "target": "c", "kind": "none", "status": "unsupported", "reason": "无 net.c.at 与 C 网络层" },
+
+    { "module": "async", "target": "vm", "kind": "native-shim", "status": "supported", "locator": "auto.async.*", "notes": "async.vm.at 10 #[vm]（chan/spawn/sleep/task 族）；公共 async.at parse 破损在案（type Sender[T] 语法），装配面如实报 partial" },
+    { "module": "async", "target": "rust", "kind": "a2r-std", "status": "unverified", "locator": "a2r_std::task", "reason": "task actor 词汇与 VM chan/spawn 非同一调度 provider；映射未验证不标 supported（计划 §5.2）" },
+    { "module": "async", "target": "c", "kind": "none", "status": "unsupported", "reason": "无 async.c.at" },
+
+    { "module": "http", "target": "vm", "kind": "native-shim", "status": "supported", "locator": "auto.http.*", "notes": "http.vm.at 68 #[vm]（server/client/stream/transfer/upload）；729/730/734 交付面" },
+    { "module": "http", "target": "rust", "kind": "a2r-std", "status": "unverified", "locator": "a2r_std::http", "reason": "a2r-std http.rs 为客户端实现，非 VM server 的 Rust 后端（networking-stdlib 规约）；server 面无 Rust provider——生成 Axum 服务属 auto-man 独立装配（SD-04 边界）" },
+    { "module": "http", "target": "c", "kind": "none", "status": "unsupported", "reason": "无 C HTTP provider——Unsupported 而非手写 server（计划 §6.1）" },
+
+    { "module": "json", "target": "vm", "kind": "native-shim", "status": "supported", "locator": "auto.json.*", "notes": "json.vm.at 19 #[vm]" },
+    { "module": "json", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::json", "notes": "json.rs.at 镜像 parse 破损在案（P6），parity harness 文本级对拍为唯一消费" },
+    { "module": "json", "target": "c", "kind": "none", "status": "unsupported", "reason": "无 json.c.at（backend-assembly 缺口表在案）" },
+
+    { "module": "sse", "target": "vm", "kind": "none", "status": "unsupported", "reason": "sse.at 顶层 #[vm] parse_sse 无任何 native 注册/绑定（注册扫描只读 .vm.* 层，stdlib.rs 手工面亦无 auto.sse.*）——声明存在但 callee 缺失；Response 上的 sse_* 流方法在 http.vm.at 另有绑定" },
+    { "module": "sse", "target": "rust", "kind": "a2r-std", "status": "unverified", "locator": "a2r_std::sse", "reason": "a2r-std sse 仅解析无网络 IO；映射未验证" },
+    { "module": "sse", "target": "c", "kind": "none", "status": "unsupported", "reason": "无 sse 目标层" },
+
+    { "module": "env", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::env", "notes": "env.rs.at 镜像 + parity 在案" },
+    { "module": "file", "target": "rust", "kind": "none", "status": "unsupported", "reason": "名称表路由 a2r_std::file 但模块不存在（文件面由 fs.rs 承担）——发射漂移在案" },
+    { "module": "fs", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::fs" },
+    { "module": "hashmap", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::hashmap" },
+    { "module": "list", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::list" },
+    { "module": "math", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::math" },
+    { "module": "process", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::process" },
+    { "module": "redis", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::redis" },
+    { "module": "sqlite", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::sqlite" },
+    { "module": "str", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::str" },
+    { "module": "time", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::time" },
+
+    { "module": "path", "target": "rust", "kind": "none", "status": "unsupported", "reason": "名称表路由 a2r_std::path 但模块不存在（发射漂移在案）" },
+    { "module": "char", "target": "rust", "kind": "none", "status": "unsupported", "reason": "名称表路由但 a2r_std::char 不存在" },
+    { "module": "conv", "target": "rust", "kind": "none", "status": "unsupported", "reason": "名称表路由但 a2r_std::conv 不存在" },
+    { "module": "log", "target": "rust", "kind": "none", "status": "unsupported", "reason": "名称表路由但 a2r_std::log 不存在" },
+    { "module": "may", "target": "rust", "kind": "none", "status": "unsupported", "reason": "may 为 .at.skip experimental；名称表路由但 a2r_std::may 不存在" },
+    { "module": "hashset", "target": "rust", "kind": "none", "status": "unsupported", "reason": "名称表路由但 a2r_std::hashset 不存在" },
+    { "module": "btreemap", "target": "rust", "kind": "none", "status": "unsupported", "reason": "名称表路由但 a2r_std::btreemap 不存在" },
+    { "module": "vecdeque", "target": "rust", "kind": "none", "status": "unsupported", "reason": "名称表路由但 a2r_std::vecdeque 不存在" }
+  ]
+}
