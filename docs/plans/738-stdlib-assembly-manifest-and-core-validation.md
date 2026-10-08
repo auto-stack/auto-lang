@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-08
 plan_revision: 1
-current_step: 1
+current_step: 2
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -245,11 +245,14 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - [x] 最小公共+三目标/host mapped真入口原型；无法闭合真实target接线/全核心分类则needs_replan，不将AC换成inventory-only。涵盖全AC/SD。
   [✅ 已完成] 探针族 `crates/auto-lang/src/tests/plan738_assembly_probe_tests.rs` @worktree `ac41c2d1e`：P1-P6 六测全绿（真实 CompileSession 管线/trans 双入口/persistent/六核心 parser 清点）；target 接线可闭合评估=不触发 needs_replan（报告 §4.2）。
 
-### T-02：共同模型、provider目录与全库inventory
+### T-02：共同模型、provider目录与全库inventory ✅
 
-- 依赖T-01。新增stdlib_assembly模块和stdlib/assembly-providers.json，lib.rs导出；复用AST/类型身份，inventory全文件/符号与明确验证等级。
-- provider目录与真实注册/emit表有机器对照，文件hash/源段/候选与选择不混淆；非核心解析错误完整记录。
-- `cargo t plan738`/模型单测与inventory JSON完整性；AC-01/03/05，SD-01/02/07。
+- [x] 依赖T-01。新增stdlib_assembly模块和stdlib/assembly-providers.json，lib.rs导出；复用AST/类型身份，inventory全文件/符号与明确验证等级。
+  [✅ 已完成] worktree `d70d4c8a9`：`stdlib_assembly/{mod,model,loader,providers,validate}.rs` + lib.rs 导出；全库扫描 115 `.at`（74公共+23vm+13rs+5c）分母恰清点、FNV-1a 内容指纹、验证等级 Declared 起步、符号归一身份（parent/ext owner → `Owner.name`，遍历 TypeDecl.methods）；provider 目录六核心逐目标声明 + 发射名称表 11 名 unsupported。
+- [x] provider目录与真实注册/emit表有机器对照，文件hash/源段/候选与选择不混淆；非核心解析错误完整记录。
+  [✅ 已完成] `cross_check_real_surfaces`：vm 声明对照 BIGVM_NATIVES 名 surface（CWD 钉仓根后扫描）、rust a2r-std 对照 `pub mod`、c 对照磁盘 locator；unsupported 必填 reason；发射表漂移差集与目录 unsupported 集合哨兵断言。实勘修正：sse parse_sse 无任何 callee（落册 unsupported）；发射表缺 `file`→`a2r_std::file` 共 11 名漂移。全库 isolated-parse 基线 39/115 三类构成（决策报告 §2b）。
+- [x] `cargo t plan738`/模型单测与inventory JSON完整性；AC-01/03/05，SD-01/02/07。
+  [✅ 已完成] `cargo t plan738` 11/11 绿（6 探针 + 5 正式族）；稳定 JSON（双序列化逐字节一致 + 排序自检 + 无绝对路径泄漏）；scoped：module_cache 10/10、native_registry 13/13；`cargo check -p auto-lang` 新文件零警告。
 
 ### T-03：VM/目标转译/persistent装配接线与源映射
 
@@ -288,6 +291,24 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - 清理前lang-738两兄弟各wt-guard clean；tf仅merge到期主检出单实例。全AC闭合才reviewed/archived。
 
 ## 9. 复审记录
+
+### work 交接（2026-10-08，T-01+T-02 完成）
+
+- stage: work
+- plan_id: PLAN-738
+- plan_revision: 1
+- outcome: pass（T-01/T-02 完成；整体 executing 继续）
+- code_commit: worktree plan-738-dev `ac41c2d1e`（T-01 探针）→ `d70d4c8a9`（T-02 模块族）；基面 master c3ccd32c3
+- task_ids: T-01、T-02（current_step 2/8）
+- evidence: `docs/plans/reports/738-stdlib-decision.md`（§1-E1..E5 + §2b/2c/2d T-02 增补）；`cargo t plan738` 11/11；module_cache 10/10；native_registry 13/13；新文件零警告
+- blockers: T-06 消费 736 最终生成/ready 合同——736 尚 executing 3/8 未合入，保持 gated（报告 §5/§8）；不阻塞 T-03..T-05/T-07 主体
+- next: T-03（VM/persistent/trans 装配接线与源映射——依赖 T-02 模型；AssemblyContext 驱动层选择替换 context_ext 硬编码，persistent context 路径修复，ModuleCache 死缓存修正在 T-05）
+
+T-02 增补实勘（详见报告 §2b/2c/2d）：全库 isolated-parse 39/115（三类：语法破损
+str.at/list.at/iter 族、跨模块依赖假阳性候选、.rs.at 镜像漂移；`use auto.str`
+stdlib 导入面破损系在案已知——stdlib_tests.rs #[ignore] 佐证）；sse parse_sse
+声明无 callee；native 名 surface 扫描 CWD 依赖。三者均落册为 inventory 诊断/
+目录 unsupported/报告证据，不阻塞、不弱化 AC。
 
 ### work 交接（2026-10-08，T-01 完成）
 

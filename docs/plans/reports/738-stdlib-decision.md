@@ -81,7 +81,45 @@ stdlib 身份。manifest 必须记录实际 stdlib 来源身份（本计划 §5.
 | sse | sse.at | 1 | 1 | 1 | 0 | 0 |
 
 注：type 块内联方法（如 io.at File 的 7 方法）不计入本轮顶层分母；T-02 正式
-inventory 须遍历 `TypeDecl.methods`，分母只增不减。
+inventory 须遍历 `TypeDecl.methods`，分母只增不减。（T-02 已落实：loader 遍历
+TypeDecl.methods 与 ext methods，归一身份 `Owner.name`。）
+
+### §2b 全库 isolated-parse 基线（T-02 实勘，2026-10-08）
+
+T-02 全库扫描（115 个 `.at` 层：74 公共 + 23 vm + 13 rs + 5 c）用**单文件独立
+parse**（fresh TypeStore，生产同款构造）实勘：**39/115 解析失败**。三类构成：
+
+1. **语法破损（真不可解析，生产同败）**：`str.at`（`fn replace(from str, with str)`
+   —— `with` 被当关键字，参数名非法）；`list.at`/`async.at`（`type X[T]` 泛型声明
+   无 parser 支持）；`iter/*` 10 件（spec 上下文语法）；`may.at` 等。
+   **佐证**：`stdlib_tests.rs` 的 `use auto.str` 族测试全部
+   `#[ignore = "requires stdlib import support (use auto.str)"]`——stdlib 导入面
+   破损是在案已知事实。
+2. **跨模块类型依赖（isolated-parse 假阳性候选）**：`app.at`（`Parent type 'Widget'
+   not found`）等——生产路径经 resolve_uses 递归装载依赖后可解析。T-03 真实装配
+   inventory 接线后按实际装配结果重分类。
+3. **镜像语法漂移**：`json.rs.at`/`file.rs.at`/`image.rs.at`/`storage.rs.at`/
+   `inline.rs.at`/`redis.rs.at`/`sqlite.rs.at`/`str.rs.at` 等 .rs.at 族——与
+   parity-harness 文本消费的定位一致（不用语言 parser）。
+
+**结构性结论（强化计划核心命题）**：VM 生态实际工作的 stdlib 面 = native 注册面
+（`.vm.at` 磁盘扫描 + 目录固定 ID + stdlib.rs 手工 shim），**不是公共 `.at` 声明**；
+公共声明层大面积不可装载而生态照常工作，正说明「声明与实现缝合」当前不存在门。
+
+### §2c sse 修正（T-02 实勘）
+
+§3 原「sse vm=supported（parse_sse）」**修正为 unsupported**：`parse_sse` 虽有
+`#[vm]` 声明，但**无任何 native 注册/绑定**——注册扫描只读 `.vm.*` 层（sse 无
+该层），stdlib.rs 手工面亦无 `auto.sse.*`（grep 零命中）。Response 上的 sse_* 流
+方法在 http.vm.at 另有绑定。这是「声明存在但 callee 缺失」的实册首例。
+
+### §2d native 名 surface 的 CWD 依赖（T-02 实勘补充 E3）
+
+`register_vm_declarations` 扫描 **CWD 相对 `stdlib/auto`**；测试/工具进程 CWD 非
+仓根时注册面为空（探针 P5 的注册名实际来自 VM 模块 init 与 NATIVE_ID_MAP 懒注册
+面，非磁盘扫描）。生产 `auto` 二进制从非仓根 CWD 启动时 native 名 surface 的实际
+构成（扫描空 → 手工 shim 按名查 ID 的 panic 面）**须在 T-04 冻结**；manifest 的
+stdlib 来源身份字段必须覆盖 CWD 维度。
 
 **parse 破损冻结（E5）**：
 - `async.at`：`type Sender[T]` / `type Receiver[T]`（offset 692/797）——当前 parser
@@ -101,7 +139,7 @@ inventory 须遍历 `TypeDecl.methods`，分母只增不减。
 | async | async.vm.at 10 #[vm]（公共层 parse 破损） | a2r-std `task.rs`（TaskRef actor 词汇，与 VM chan natives 非同一 provider，计划 §5.2：不强行视为同一调度者） | 无 |
 | http | http.vm.at 68 #[vm]（server/client/stream/transfer/upload 族） | a2r-std `http.rs`=**客户端**（networking-stdlib.md 明示非 VM server 后端）；生成 Axum 服务=auto-man 独立装配 | 无（C 无 HTTP provider——Unsupported 而非手写） |
 | json | json.vm.at 19 #[vm] | a2r-std `json.rs`（json.rs.at 镜像 parse 破损） | 无 json.c.at（gap 在案） |
-| sse | sse.at 顶层 #[vm] parse_sse（唯一符号） | a2r-std `sse.rs`（仅解析无网络 IO） | 无 |
+| sse | **unsupported**（§2c：parse_sse 声明无 callee） | a2r-std `sse.rs`（仅解析无网络 IO） | 无 |
 
 ## 4. 关键设计裁决建议（供 T-02/T-03 实施，不改变计划验收面）
 
