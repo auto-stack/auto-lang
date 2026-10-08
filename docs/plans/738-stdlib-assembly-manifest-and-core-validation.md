@@ -295,6 +295,18 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 
 ## 9. 复审记录
 
+### work 交接（2026-10-08，T-04 两裁决落地）
+
+- stage: work
+- plan_id: PLAN-738
+- plan_revision: 1
+- outcome: pass（T-04 裁决面完成；整体 executing 继续）
+- code_commit: worktree plan-738-dev 追加 T-04 裁决提交（stdlib.rs 单名注解 + validate.rs 声明组/双面 + 测试 19/19）
+- task_ids: T-04（裁决②read_text 单名 + 检测器声明组 + 绑定面扩展完成）
+- evidence: 裁决①权威名=公共 canonical 面（http 族经 inventory 实证 Supported）；裁决② auto.fs.read_text 单名+NATIVE_ID_ENTRIES 别名组放行 file/fs 族；新抓扫描面动态 id 相撞真冲突 13 处（id1607 char×conv、id9930-9933 http×transfer 等）冻结基线
+- blockers: 无阻塞；遗留三（a）io 方法第四绑定面（VmModule 方法表）查询接线——当前冻结为文档化 Unverified（b）扫描面 id 相撞 13 处分诊（T-05 前或 T-06 CLI 分诊）(c) http 前缀名 vs 公共名形状全量重写（下轮）
+- next: T-05（缓存一致性——依赖 T-03 装配接线，已就绪）
+
 ### work 交接（2026-10-08，T-04 进行中——校验层落地，2 真实发现待裁决）
 
 - stage: work
