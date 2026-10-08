@@ -1,22 +1,23 @@
 {
- "last_covered_plan_id": 735,
- "timestamp": "2026-10-03T04:05:00Z",
- "covered_commit": "68a6ce919",
+ "last_covered_plan_id": 740,
+ "timestamp": "2026-10-08T11:20:00Z",
+ "covered_commit": "3c2f3c347",
  "legs": [
   "tf",
   "tt",
   "tb"
  ],
- "taa_skipped_reason": "window 6988b1d7f..HEAD 零 aavm 触发路径（git log --name-only verified: 无 auto/lib/*.at、test/vm/aavm2、parity、aavm2_*、aavm_runner、lib.rs aavm 源）",
- "new_reds": [
-  "http_upload_service::tests::plan730_commit_target_matrix"
- ],
- "new_red_notes": "plan730_commit_target_matrix scoped 同红（30.1s 恒时长=内部 deadline watchdog 到期形态）——窗口代码面仅 735 帧通道四文件与 http_upload_service 零交集；同晨批量（covered 6988b1d7f 含 730 全码）零新增→环境/时序敏感测试翻红，归属 PLAN-730 域清偿（734 会话在途），登记 KNOWN-DEBT P735-R1。不 unmerge。",
+ "leg_timings": {
+  "tf": "70.3s (6101 run/17 failed)",
+  "tt": "89.2s (5451 run/13 failed)",
+  "tb": "59.0s (5135 run/15 failed)"
+ },
+ "taa_skipped_reason": "窗口 68a6ce919..HEAD 零 aavm 触发面（git log --name-only 实测：唯一模式命中=crates/auto-lang/src/lib.rs，其窗口 diff aavm2_lib_source/AUTO_LIB_FILES 符号 0 行——PLAN-093 G-16/G-7 装载器域）",
+ "new_reds": [],
+ "new_red_notes": "零新增。负载 flake 类（scoped 双复跑绿，非新红）：tt/tb 的 plan502_m3_layout_geometry_e2e（P733-R1 在案 load-flake 族）、tt 的 clipboard_files_and_image_via_vm_shims（剪贴板竞争，scoped 双绿）、复审期 cargo t 的 plan484_024_charts_streaming_recompute（scoped 双绿）",
  "flakes_seen": [
-  "plan394_future_arch_tests::plan394::c1_future_all（tf-only，scoped 绿）",
-  "plan394_future_arch_tests::plan394::c2_future_race（tf-only，scoped 绿）",
-  "plan499_pointer_stream_tests::plan499_anim::plan499_tooltip_fade_interpolation（tf-only，scoped 绿）",
-  "plan502_diagram_tests::plan502_m3_layout_geometry_e2e（tf 并行负载 flake——P733-R1 已登记 load-flake 族，scoped 绿）"
+  "plan502_diagram_tests::plan502_m3_layout_geometry_e2e (tt/tb，P733-R1 load-flake 族，scoped 绿)",
+  "vm::tests_clipboard_natives::clipboard_files_and_image_via_vm_shims (tt，scoped 双绿)"
  ],
  "known_reds_seen": [
   "musk_vm_track_p053 x4 (widget_computed x2 / merged_api_warning / widget_content)",
@@ -25,8 +26,10 @@
   "projector_counter_layout_and_hits",
   "desktop_bus_inbox_drains_through_real_arms",
   "desktop_surface_merge_dedupe_and_injection",
-  "plan707_wait_generator_park_drive_count_static (负载敏感 flake 维持)",
+  "plan707 client_sse_poll_close + spike_sse_utf8_split",
   "ui_gen::vue::test_a2vue_desktop_surface_asset (a2vue desktop golden, 4f123a50e)",
+  "vm::ffi::term_engine::ash_stream_leak_probe (735 回执登记未注册预存)",
   "schema_drift::schema_drift_fence + queue_coverage_drift_fence + docs_gen::kitchen_sink_page_in_sync (REG-4 跨仓金样脱同步)"
- ]
+ ],
+ "window_note": "覆盖 736/738/740 三计划（68a6ce919..3c2f3c347）；执行注记：同机他方会话日常档并发运行——等待 90s 清零窗口后发车，全程无 tf×tf 重档并发"
 }
