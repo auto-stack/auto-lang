@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-03
 plan_revision: 1
-current_step: 4
+current_step: 5
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -257,9 +257,10 @@ fixture生成临时证书/凭据，只测试localhost；实际HTTPS→proxy→VM
 
 ### T-05：观测、ready与关闭/进程管理
 
-- 依赖T-03/04。新http_service_observability.rs；改HTTP response/body收口、file/upload宿主必要终态hook、auto-man/http_service.rs、rust_ui.rs及实际vue等启动消费者（T-01定位后窄改）。
-- 状态/health/identity ready、JSONL bounded sink、真实body完成/bytes/计数、734generationgate；替代纯TCP探测并管理真实VM线程/Rust child。
-- deadline drain/force结束、signal→shutdown同入口、自然完成/长流/文件/receive/staged/commit gate回收；补P729-D1。真实CLI退出/重绑与日志sink负测；AC-02/05/06，SD-01..05。
+- [x] 依赖T-03/04。新http_service_observability.rs；改HTTP response/body收口、file/upload宿主必要终态hook、auto-man/http_service.rs、rust_ui.rs及实际vue等启动消费者（T-01定位后窄改）。 [✅ 已完成] 提交0ff2b95a1：观测模块补全（状态机/身份/PendingRequestEvent）+ scope finalize 单点终态收口（file/upload/stream 经既有 scope 幂等终结路径，无新 hook 面）+ rust_ui health 优先探针（503 不再假 ready；legacy 404=可继续语义保留）；vue 启动消费方零触碰（split 模式经 start_api_server/start_vm_server 复用同一探针）
+- [x] 状态/health/identity ready、JSONL bounded sink、真实body完成/bytes/计数、734generationgate；替代纯TCP探测并管理真实VM线程/Rust child。 [✅ 已完成] /__auto 控制面双轨（live/ready 开放；snapshot/shutdown 仅 loopback）；身份四元组全链（READY 行=health 体=父进程核对同源）；计数与事件同点（total/completed/bytes 实测 3/2/6）；734 generation gate 维持（复用新鲜度门不动）
+- [x] deadline drain/force结束、signal→shutdown同入口、自然完成/长流/文件/receive/staged/commit gate回收；补P729-D1。真实CLI退出/重绑与日志sink负测；AC-02/05/06，SD-01..05。 [✅ 已完成] shutdown 端点→drain（drain_timeout 既有）→端口释放→STOPPED 双轨实证（VM: ready→draining→stopped JSONL+重绑；生成: draining:true+AUTO_SERVICE_STOPPED）；P729-D1 长流/文件 drain 窗 wire 与 sink 负测→T-06 e2e 族（http_e2e_plan736）落地
+- 预存修（本任务发现并修复）：http_service_observability instance_id 的 OnceLock 同线程重入 get_or_init 死锁（VM ready 臂挂死根因——closure 嵌套自调）；实机证据 /tmp 探针序列与修复后双轨全绿
 
 ### T-06：同源部署示例与真正代理测试
 
