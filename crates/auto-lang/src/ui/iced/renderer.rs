@@ -9237,25 +9237,51 @@ fn poll_mcp_actions() -> Option<IcedMessage> {
         // addressing, which maps onto IcedMessage. Path mode is a no-op
         // here (rust mode uses devtools_subscription/devtools_update).
         match rx.try_recv() {
-            Ok(action) => match action.target {
-                crate::ui::mcp_server::ActionTarget::Event { widget, event } => {
-                    Some(IcedMessage { widget, event, input_value: action.value })
+            Ok(action) => {
+                sched_diag_mcp_poll(1);
+                match action.target {
+                    crate::ui::mcp_server::ActionTarget::Event { widget, event } => {
+                        Some(IcedMessage { widget, event, input_value: action.value })
+                    }
+                    crate::ui::mcp_server::ActionTarget::Path { .. } => None,
+                    crate::ui::mcp_server::ActionTarget::Fixture { request_id } => {
+                        let payload = action.value.unwrap_or_default();
+                        Some(IcedMessage {
+                            widget: String::new(),
+                            event: format!("__mcp_fixture|{}|{}", request_id, payload),
+                            input_value: None,
+                        })
+                    }
                 }
-                crate::ui::mcp_server::ActionTarget::Path { .. } => None,
-                crate::ui::mcp_server::ActionTarget::Fixture { request_id } => {
-                    let payload = action.value.unwrap_or_default();
-                    Some(IcedMessage {
-                        widget: String::new(),
-                        event: format!("__mcp_fixture|{}|{}", request_id, payload),
-                        input_value: None,
-                    })
-                }
-            },
-            Err(std::sync::mpsc::TryRecvError::Empty) => None,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                sched_diag_mcp_poll(0);
+                None
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                sched_diag_mcp_poll(0);
+                None
+            }
         }
     } else {
         None
+    }
+}
+
+/// PLAN-740 T-00（交付节奏三轴之一——action 消费/tick 触发节奏轴）：
+/// `mcp_action_subscription` 的 16ms tokio tick 每次实际触发输出一行
+/// ——`gap`=距上次触发的毫秒间隔（tick **真实**触发节奏的直接证据，
+/// 名义 16ms；90ms 聚簇=候选 (a) runtime×winit 唤醒面）、`got`=本拍
+/// 是否取到动作（消费节奏）。AUTO_SCHED_DIAG 门控零开销（未设=单
+/// OnceLock 布尔读+分支，零写入零分配）。
+fn sched_diag_mcp_poll(got: u8) {
+    if crate::ui::sched_diag::enabled() {
+        static LAST_POLL_MS: std::sync::atomic::AtomicI64 =
+            std::sync::atomic::AtomicI64::new(0);
+        let now = crate::ui::dynamic::sched_diag_t0().elapsed().as_millis() as i64;
+        let last = LAST_POLL_MS.swap(now, std::sync::atomic::Ordering::Relaxed);
+        let gap = if last > 0 { now - last } else { -1 };
+        eprintln!("[SCHED-DIAG] mcp_poll t={}ms gap={}ms got={}", now, gap, got);
     }
 }
 
@@ -20727,6 +20753,20 @@ fn compare_pngs(
                 update_inner(state, app_id, m)
             })) {
                 Ok(task) => {
+                    // PLAN-740 T-00（交付节奏三轴之二——request_redraw 发出
+                    // 代理轴）：update_inner 返回时刻。iced_winit AboutToWait
+                    // 轮内逐消息 update 后对全窗无条件 request_redraw（735
+                    // 轴②实勘）——本点即每消息 update 轮完成/发出节拍，
+                    // 与 redraw_deliver（到达轴）对读定责 emit→deliver 时延。
+                    // AUTO_SCHED_DIAG 门控零开销。
+                    if crate::ui::sched_diag::enabled() {
+                        let t0 = crate::ui::dynamic::sched_diag_t0();
+                        eprintln!(
+                            "[SCHED-DIAG] update_end t={}ms app={:?}",
+                            t0.elapsed().as_millis(),
+                            app_id
+                        );
+                    }
                     // Plan 512：fit 动态重测——app view 重建（update 置位
                     // view_dirty）落到其 fit 窗条目打标；ServiceTick 节拍
                     // 消费发起测量，测量时对最新布局树取末值（帧合并）。
