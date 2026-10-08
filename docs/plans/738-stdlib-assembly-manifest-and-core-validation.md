@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-09
 plan_revision: 1
-current_step: 1  # R1 needs_fix；T-01 调查保留完成，T-02..T-08 受影响验收重新打开（见 §9 / P738-R1..R9）
+current_step: 1  # R1 修复基础已提交；work 交接 needs_replan，T-02..T-08 验收继续打开（见 §9 / P738-R1..R9）
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -315,6 +315,23 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 
 ## 9. 复审记录
 
+### R1 修复交接（2026-10-09，needs_replan；基础修复已提交）
+
+- stage: work
+- plan_id: PLAN-738
+- plan_revision: 1（原 AC/SD 不变，当前仅实施修复和设计差异交接）
+- outcome: needs_replan
+- code_commit: `4fbcfe9685bdf8b82266f0b95a5b0b44037be891` → `4089b84183c6044ee68f1b6962752d4cb54da821`（保留冲突记录、恢复 callee 原覆盖次序），base=`e4425b673eec46fabc25b4534084c19f2738a38f`，branch=`plan-738-dev`，worktree=`D:/autostack/.wt/lang-738/auto-lang`
+- dependency_revisions: auto-down=`895f8d0f9355c9f5ec3ce8fca268bdb768395846`；未修改依赖仓
+- task_ids: T-02..T-08（均部分推进，不能勾全；current_step 保持 1/8）
+- evidence: [修复明细与有界修订提案](reports/738-repair-round1.md)；版本/日志/最终门禁收据=`reports/738-repair-round1.json`。新增反例包括双 body 必拒、同会话换源拒绝、clone 异 root 重解析、深依赖失效、层改名变指纹、UTF-8 失败不丢层、真实 source label、独立 arity/被替换 callee 撤销证明；CLI target/未知模块/actual 非核心闭包均有负测。
+- implemented: 基础缓存身份/指纹与 fail-closed、共同源 AssemblyPlan/错误映射、保留 native ID 分配、基础 producer 元数据与 json/io 公共映射、CLI target/模块闭包/便携源 ID、async 公共源现有语法修复；详细已落地/未闭合逐 R1..R9 对账见修复报告。
+- blockers: “三件套 init 即实际 callee”的设计假设被 AutoVM 后续 JSON override 证伪；TCP read 的公开缓冲参数/单返回与实际 buf_size/双栈输出不能由现有逻辑签名等价证明。需明确共同最终绑定 snapshot 与 target adapter 合同，不能为接 strict 门擅改公开 ABI 或把未知标成 Supported。
+- gates: 初始 foundation plan738=41/41，registry=13/13，tv=162/162，CLI=10/10，freshness=1/1；日常完整 t=5139/5155（14 既有红+2 旧编号断言，后二者已 scoped 修正验证）；tt=5515/5526（11 既有红）；th=100/102（back-proxy 同断言，plan707 时序失败定向复跑仍红，未确定归因）。callee 次序修正后最终 scoped=54/54 + 三 crate check pass；完整档未在该最后微调后全部再跑，版本/日志 hash 见收据。未新建 baseline worktree 双树证明，未执行 tf/taa/tu/docs_gen 专项。
+- omissions: 生产引用符号 strict 门、Rust/C 实际 provider lowering、完整不可变 manifest/host 闭包指纹、六格完整公共分母、双源签名诊断、C/generated-service 真入口、最终 SD 正文与独立 review 仍未完成；没有债务化或批准延期。
+- state: executing，基础代码提交保留原 worktree；未合入、未归档、未发布 canonical/ledger；旧 reviewed 证据继续无效。
+- next: `/auto-plan:new PLAN-738` 仅修订 T-01/T-03/T-04 producer/实际引用闭包与 adapter 设计，保留本期所有 AC，再继续 work 补完依赖任务并独立 review 新提交。
+
 ### 独立复审 R1（2026-10-09，needs_fix）
 
 - stage: review
@@ -492,6 +509,7 @@ stdlib 导入面破损系在案已知——stdlib_tests.rs #[ignore] 佐证）�
 
 ## 10. 待澄清事项
 
+- R1 修复实证的 producer/adapter 冲突与有界修订提案见 [738-repair-round1.md](reports/738-repair-round1.md)；当前交接 `needs_replan`，不是整项修复通过。JSON 可空声明不自动规定失败返 null；TCP read 的参数/返回差异则已有实际 producer 证据。修订不得削弱 AC 或把剩余必修项归 D3b 清账。
 - T-01负责六模块producer签名与当前parser/source-map/target实际入口原型；事实与canonical冲突提出具体修订，不以“代码如此”擅改公开API/语义。
 - 全库inventory不等于全库strict/语义parity；D3b扩展非核心provider门和资源/错误/取消ABI对拍，不能因D3a有manifest称所有符号能用于所有环境。
 - .vue等环境文件目前非统一stdlib后缀机制；有适配路径才登记，不能假造Io浏览器实现或因Vue前端误禁Native后端。
