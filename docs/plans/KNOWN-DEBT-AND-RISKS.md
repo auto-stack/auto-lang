@@ -373,7 +373,7 @@ reviewed_commit=8b17e4de8851cdf37ccdce76a82f78422cf8bb15，outcome=pass；[独�
 
 ## PLAN-745 r1 最终独立复审（2026-10-06，待修）
 
-reviewed_commit=b3cd8171966281a42f96187780342ce0ff51c5fb；needs_fix；[最终报告](attachments/745/review-r1/REVIEW.md)、[计划](745-ac-source-checked-hir-native.md)。同一实现树保留，执行中1/9；本轮仅复审/证据/簿记，没有修复、合入或规范沉淀。原92绿/74例/两脚本通过为真实局部证据，不能覆盖本轮反例。
+reviewed_commit=b3cd8171966281a42f96187780342ce0ff51c5fb；needs_fix；[最终报告](attachments/745/review-r1/REVIEW.md)、[计划](archive/745-ac-source-checked-hir-native.md)。同一实现树保留，执行中1/9；本轮仅复审/证据/簿记，没有修复、合入或规范沉淀。原92绿/74例/两脚本通过为真实局部证据，不能覆盖本轮反例。
 
 | ID | 级别 | 合同内缺口 | 修复/验收 |
 |---|---|---|---|
@@ -389,7 +389,7 @@ reviewed_commit=b3cd8171966281a42f96187780342ce0ff51c5fb；needs_fix；[最终�
 这些项未清偿；登记不等于批准延后。SD01/03及盘点策略待修后重新冻结，完整宽度/char保持open；canonical/live ledger保持当前状态。root门禁完整daily29红/tv4红另有原始清单，生产源/config零745 diff且均在历史红集并集；未称门禁绿色或严格同源逐项归因完成。
 ## PLAN-745 r1 第二轮最终独立复审（2026-10-06，待修）
 
-reviewed_commit=91b37560cffda75cf07cef8620cf524f5d6a3c7c；[第二轮报告](attachments/745/review-r2/REVIEW.md)、[同ID计划](745-ac-source-checked-hir-native.md)。needs_fix/executing/1-of-9；同树保留，未实施本轮修复、合入或规范沉淀。
+reviewed_commit=91b37560cffda75cf07cef8620cf524f5d6a3c7c；[第二轮报告](attachments/745/review-r2/REVIEW.md)、[同ID计划](archive/745-ac-source-checked-hir-native.md)。needs_fix/executing/1-of-9；同树保留，未实施本轮修复、合入或规范沉淀。
 
 R1-QA02（native符号）、QA04（关键词/排除）、QA07（盘点误归因）、QA08（共用构建）**已清偿**；QA01/03的具体原反例已修，但新增回归见下；QA05的大输出/普通父进程截止、QA06的trap结构/删let/错type/部分SENTINEL已修，剩余合同项按本轮ID追踪。旧历史段落保留，不撤销具体pass，也不以旧待修文字误称产品毫无修复。
 
@@ -404,7 +404,7 @@ R1-QA02（native符号）、QA04（关键词/排除）、QA07（盘点误归因�
 本轮99测试/两脚本/strict47均通过，但不覆盖这些反例；root日常33红/tv4红实录保留、hover隔离1/1通过，未声称严格同源逐项零新增或根门禁绿色。五项未清偿，登记不等于批准延后；SD01/03完整叙述待修后重新冻结，canonical/live ledger保持当前状态。
 ## PLAN-745 r1 第三轮最终独立复审（2026-10-06，待修）
 
-reviewed_commit=7437eb137a789259f01446da7a170e74031ff7f2；needs_fix；[第三轮报告](attachments/745/review-r3/REVIEW.md)、[计划](745-ac-source-checked-hir-native.md)。原树保留，executing 2/9；没有实施修复/合入/规范沉淀。
+reviewed_commit=7437eb137a789259f01446da7a170e74031ff7f2；needs_fix；[第三轮报告](attachments/745/review-r3/REVIEW.md)、[计划](archive/745-ac-source-checked-hir-native.md)。原树保留，executing 2/9；没有实施修复/合入/规范沉淀。
 
 | ID | 级别 | 当前合同内缺口 | 修复/验收 |
 |---|---|---|---|
@@ -416,7 +416,7 @@ R2-QA01 换行、QA03 Stray 组合、QA04 Bundle同类型越域/三真文件publ
 本轮104 passed/1 ignored、741 13步/745 12步74例、独立74/74与strict47通过；根日常27失败+1超时，tv4失败未称绿色，新增dep018超时隔离1/1通过。初始PS5.1哈希失败是复审.NET驱动继承PS7模块路径的环境注入，已通过单变量正反控制定位并按计划原命令重跑成功，不记为实施缺陷。
 ## PLAN-745 r1 第四轮最终独立复审（2026-10-07，待修）
 
-reviewed_commit=dc5e95be757dba647ef758aa283e7e2788015747；needs_fix；[第四轮报告](attachments/745/review-r4/REVIEW.md)、[计划](745-ac-source-checked-hir-native.md)。同树保留，executing 3/9；本轮没有实施修复、合入或canonical/live ledger沉淀。
+reviewed_commit=dc5e95be757dba647ef758aa283e7e2788015747；needs_fix；[第四轮报告](attachments/745/review-r4/REVIEW.md)、[计划](archive/745-ac-source-checked-hir-native.md)。同树保留，executing 3/9；本轮没有实施修复、合入或canonical/live ledger沉淀。
 
 | ID | 级别 | 当前合同内缺口 | 修复/验收 |
 |---|---|---|---|
@@ -428,7 +428,7 @@ R3-QA01的Rust生命周期与PS静默窗口原反例已清偿；R3-QA02的合法
 本轮112 passed/1 ignored、741 13步/745 12步74例、独立74/74、strict47通过；新增native复杂求值24/baab、trap70空stderr、长链退出300通过。根日常35失败/tv4失败未称绿色；唯一新红名plan643隔离1/1通过。真实Win32失败控制保留原cleanup/result路径，不用全绿banner替代失败传播检查。
 ## PLAN-745 r1 第五轮最终独立复审（2026-10-07，待修）
 
-reviewed_commit=15fd9263f6f4c400a6ba1d8ec5cb2cae44354d41；needs_fix；[第五轮报告](attachments/745/review-r5/REVIEW.md)、[计划](745-ac-source-checked-hir-native.md)。原同树保留，executing3/9；没有实施修复、合入或canonical/live ledger沉淀。
+reviewed_commit=15fd9263f6f4c400a6ba1d8ec5cb2cae44354d41；needs_fix；[第五轮报告](attachments/745/review-r5/REVIEW.md)、[计划](archive/745-ac-source-checked-hir-native.md)。原同树保留，executing3/9；没有实施修复、合入或canonical/live ledger沉淀。
 
 | ID | 级别 | 当前合同内缺口 | 修复/验收 |
 |---|---|---|---|
@@ -440,7 +440,7 @@ R4-QA01未入Job挂起子泄漏、ReadFile错误6假成功与wrapper传播已清
 本轮113 passed/1 ignored、741与745均13步、独立74/74、strict47通过；native300、24/baab、trap70空stderr、混合括号111/5、999call/if通过。root日常33失败/tv4失败未称绿色；唯一新增plan707_cancel隔离1/1通过。完整反例/原始stderr/边界两侧与冻结delta在第五轮报告附件，登记不代表批准延后。
 ## PLAN-745 r1 第六轮最终独立复审（2026-10-07，待修）
 
-reviewed_commit=522b98a4c27d2064049e188d386f6958721b3a90；needs_fix；[第六轮报告](attachments/745/review-r6/REVIEW.md)、[计划](745-ac-source-checked-hir-native.md)。原同树保留，executing3/9；没有产品修复、合入或canonical/live ledger沉淀。
+reviewed_commit=522b98a4c27d2064049e188d386f6958721b3a90；needs_fix；[第六轮报告](attachments/745/review-r6/REVIEW.md)、[计划](archive/745-ac-source-checked-hir-native.md)。原同树保留，executing3/9；没有产品修复、合入或canonical/live ledger沉淀。
 
 | ID | 级别 | 当前合同内缺口 | 修复/验收 |
 |---|---|---|---|
@@ -453,7 +453,7 @@ R5-QA01原4096层非连续括号崩溃清偿；R5-QA02调用边界清偿（20000
 本轮113 passed/1 ignored、741与745均13步、独立74/74、strict47通过；Rust正常与PS9/9真实失败出口无幸存。root日常37失败全部历史共现、tv4失败未称绿色。完整输入/实际PE输出/SENTINEL前后指纹/冻结delta见第六轮附件，登记不代表批准延后。
 ## PLAN-745 r1 第七轮最终独立复审（2026-10-08，清偿）
 
-reviewed_commit=bb8cb4b4330d505059ea20e7bfe561a93c1051f3；**pass**；[第七轮报告](attachments/745/review-r7/REVIEW.md)、[计划](745-ac-source-checked-hir-native.md)。原同树保留，reviewed 8/9；没有合入、归档或canonical/live ledger沉淀。
+reviewed_commit=bb8cb4b4330d505059ea20e7bfe561a93c1051f3；**pass**；[第七轮报告](attachments/745/review-r7/REVIEW.md)、[计划](archive/745-ac-source-checked-hir-native.md)。原同树保留，reviewed 8/9；没有合入、归档或canonical/live ledger沉淀。
 
 | 原ID | 处置 | 独立证据 |
 |---|---|---|
