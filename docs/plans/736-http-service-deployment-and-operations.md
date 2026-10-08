@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-736
-status: executing
+status: reviewed
 feature_name: http-service-deployment-and-operations
 author: [agent]
 created_at: 2026-10-03
-updated_at: 2026-10-03
+updated_at: 2026-10-08
 plan_revision: 1
 current_step: 8
 total_steps: 8
@@ -282,6 +282,49 @@ fixture生成临时证书/凭据，只测试localhost；实际HTTPS→proxy→VM
 - [x] 全AC/SD闭合才交reviewed/archived；不能以跳过proxy/load或声明“仅开发”缩小本计划的service等级。 [✅ 已完成] 全 AC 证据索引=[736-http-verification.md](reports/736-http-verification.md)；未验证面/边界披露面在案（route-A 桩体域/698 SSE 竞速/VM resources 6 样本注记/跨OS未测）；proxy/load 未跳过（双轨实测）
 
 ## 9. 复审记录
+
+### 合并收据（2026-10-08，/auto-plan:merge PLAN-736:r1——ledger 受阻挂起）
+
+- stage: merge
+- plan_id: PLAN-736 · plan_revision: 1 · outcome: **blocked（publication-only；landed 完成，ledger 无写端点）**
+- prepared ✅：复审基线 pass@6156c3de3；canonical diff=SD-01 新件 + SD-02..06 五处 modify（worktree 提交 3df8330bc→rebase 后 a80f35984）；R2 脏面已收尾提交（纯 fmt 覆盖层 byte-identical 实证 + verification 报告入库）
+- landed ✅：两次 rebase（master 885efdefe→a0e50b614 并发移动）后 `git merge --ff-only`，**master tip = a80f35984**；代码 tip 864dccf41 与复审绑定 6156c3de3 `git range-diff` 全 `=`（7/7 patch 等价，安全重写证明）；两次重写 old→new：6156c3de3→240cf7b6e→864dccf41；主检出冒烟：cargo check -p auto 0 error + plan736 11/11
+- ledger_refreshed ❌ **blocked**：本会话无可达 store-mediated 写端点（spec tools 未注册；本机 5993/5995=Kimi Code 自身、8221/8080=app 后端均无 /api/specs——实测 404；直接写 .autoos/specs.json 被技能规约禁止，UAT-K6 先例）。**剩余动作**：在挂接 spec tools（write_spec/update_spec）的会话或起 store 服务后，按 SD-01..06 沉积 designs/reviews 条目（源=a80f35984 的 docs/specs/stdlib/design/http-service-deployment.md 等 6 路径）
+- archived ⏸ / cleaned ⏸：挂起（依赖 ledger 先落）；worktree `D:/autostack/.wt/lang-736/auto-lang` 保留，分支 plan-736-dev 保留
+- 簿记修正（复审 R1）：T-05 记录"身份四元组全链（READY 行=health 体=父进程核对同源）"为过述——父进程不做身份体核对（P736-R1 在案），身份一致性由同 JSON 注入构造保证 + 代理实测核对承载
+- 批量回归到期判定： receipts .last-batch-regression.json（2026-10-08T11:20Z，covered=740 ≥ 736 且 <48h）→ 本轮不到期，无需 regress
+
+### 独立复审（2026-10-08，/auto-plan:review pass）
+
+- stage: review
+- plan_id: PLAN-736
+- plan_revision: 1
+- outcome: **pass**
+- reviewed_commit: `6156c3de3`（plan-736-dev tip；基线 master `bef73f52f` / 起草基线 `de3a64353`；734 前置已归档 752cb37f4）
+- dependency_revisions: 734 strict 门复用（rust_ui freshness probe）、729/730 文件/上传模块零触碰（`git log de3a64353..HEAD -- http_file_service.rs http_upload_service.rs` 空输出，实测）
+- spec_inputs: SD-01 目标 `docs/specs/stdlib/design/http-service-deployment.md`（新件，merge 时创建）；SD-02..06 目标路径全部存在（http-server.md / http-handler-async-lifecycle.md / auto-man/project.md / auto-cli/project.md / stdlib/project.md）；frontmatter supersedes(5)/new(1)/touched_goals(GOAL-003) 已核定
+- acceptance_results:
+  - AC-01 ✅（代码审计：Service 子命令无 UI 启动、loopback 缺省/显式非 loopback/hostname 拒、占口与坏配置非零、legacy `auto run` 端口链零改动——cmd_service.rs/main.rs/http_service_config.rs/http_service.rs 逐点 file:line 实证 + 计划族测试）
+  - AC-02 ✅（ready 门=bind+init+734 generation；port=0 真实地址双轨；占口旧实例=子进程 exit(1)/VM fatal Err 不可假 ready；**附 R1 记录性偏差**——父进程未消费 health 身份体做核对，见 findings）
+  - AC-03 ✅（VM 连接 Semaphore try_acquire 先于解析；生成轨 inflight 503+Retry-After、permit 经 response extensions 持至 body 终态；无 0=无限语义）
+  - AC-04 ✅（策略链全部先于 body/上传预检=0FS；可信 peer 单段 XFF/XFP、X-Real-IP/Forwarded/X-Forwarded-Host 零消费实测 grep；限速桶 4096+TTL 满表保守 429；媒体/照片路由 service profile 默认 off）
+  - AC-05 ✅（事件字段有界、敏感面（Authorization/Cookie/query/body/filename）不入 JSONL；request-id 1..64 校验重生；sink 有界 try_send+log_dropped；finalize_scope 单点恰一次）
+  - AC-06 ✅（shutdown 端点与信号同 watch 双轨；drain→强制→端口释放→Stopped；P729-D1 真 TCP e2e 11/11 族内通过）
+  - AC-07 ✅（证据审计：双轨 nginx 1.31.6 实测矩阵、测试 CA 无 --insecure、SSE 帧经 TLS 代理 vm 轨达成；轨差如实披露；fixture runner 已入库可复现。机器独占负载按 §6.3 属执行档门禁，复审不重跑）
+  - AC-08 ✅（证据审计：双轨四门 3/3 PASS、阈值未放宽、漂移/峰值余量充足、原始数据全录 load 报告、VM 6/10 样本如实注记）
+  - AC-09 ✅（SD-01..06 目标/前后规则/验收映射核定；未验证面披露在案；734 债未冒称清偿）
+- 门禁复现（worktree，2026-10-08 复审实测）：
+  - 裸 `cargo t --no-fail-fast`：5099 跑 17 红 vs master 基线（bef73f52f）5099 跑 17 红逐项同族；两处名单差（plan707_wait / clipboard_files_and_image）单跑秒绿且在案并行抖动族（708 台账/4f123a50e plan707 flake）——**零新增确定性红**
+  - `cargo tv` 162/162 ✅；`cargo th --test-threads=1 --no-fail-fast` 102 跑 2 红=native_ns+corpora_data_face（AGENTS 在案预存，零新增）✅
+  - `cargo t plan736` 11/11（含 P729-D1 真 TCP drain e2e）；`cargo t plan734 plan705 plan730` 52/52；`cargo test -p auto --bin auto` 14/14；736 触面文件零 warning
+  - `cargo test -p auto-man` 全 targets 编译失败（E0601 bin + plan734_commands_fixture）与 master **逐项相同**=预存腐坏（登记 P736-R4），非 736 门禁面
+- findings（均 nonblocking；明细已登记 KNOWN-DEBT-AND-RISKS.md P736-R1..R5）：
+  - R1（low，记录准确性）：T-05 记录"身份四元组…父进程核对同源"为过述——`serve_rust` 父进程仅 child.wait() 消费退出码（http_service.rs:245 注释自标"health 轮询在 T-05 接管"未落地）；身份一致性实际由构造保证（同 JSON 注入）+代理实测核对承载。AC-02 安全结论不受影响；merge 簿记修正措辞，父侧身份体核对列为可选后续债
+  - R2（merge 前置，进程类）：worktree 脏面=`cmd_service.rs`/`main.rs` 纯 rustfmt 覆盖层（经 rustfmt(HEAD) 重放 **byte-identical** 实证语义中性）+ 未跟踪 `736-http-verification.md`；复审全部门禁在该工作树（=6156c3de3+已证中性 fmt）上运行。merge 前必须提交或回退该覆盖层并入库验证报告
+  - R3（low）：新 http_transport.rs eprintln 413/超时臂打原始 method+path（可含 query）到 stderr——在 JSONL sink 合同外但与 §5.4 精神不一致，后续脱敏
+  - R4（low cosmetic）：生成轨无显式 startup JSONL 事件（仅 state:ready）；生成轨 429 用 lowercase retry-after；main.rs:2842 重复 `#[cfg(test)]` 属性
+- evidence: 7 份 736-http-{decision,config,policy,lifecycle,proxy,load,verification}.md（worktree docs/plans/reports/）；本记录；门禁原始输出（复审会话后台任务日志）；SD 增量=plan §5"规范增量"表（merge 时按 /auto-plan:merge 沉淀）
+- next: /auto-plan:merge PLAN-736（前置：处理 R2 脏面提交/回退 + 簿记修正 R1 措辞）；tf 批量档按收据到期规则由 /auto-plan:regress 主检出执行（736%5≠0 本轮不到期）
 
 ### 起草交接（2026-10-03）
 
