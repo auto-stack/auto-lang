@@ -687,11 +687,15 @@ def run_size(label, size_name, target_bytes, line_tpl, auto_bin, keys, out_path,
                       f"means=({s5_means})")
         return True
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        else:
+            # 进程提前退出（崩溃/被杀）——退出码+日志路径显式留痕。
+            print(f"[!] app exited early rc={proc.returncode} log={log_path}")
         log_f.close()
 
 

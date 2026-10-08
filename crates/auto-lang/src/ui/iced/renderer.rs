@@ -9228,60 +9228,101 @@ fn mcp_ack_apply(mcp_shared: &Option<crate::ui::mcp_server::SharedStateHandle>, 
     }
 }
 
-fn poll_mcp_actions() -> Option<IcedMessage> {
-    let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
-
-    let mut lock = guard.lock().unwrap();
-    if let Some(rx) = lock.as_mut() {
-        // Drain all pending actions (non-blocking). VM mode uses Event
-        // addressing, which maps onto IcedMessage. Path mode is a no-op
-        // here (rust mode uses devtools_subscription/devtools_update).
-        match rx.try_recv() {
-            Ok(action) => {
-                sched_diag_mcp_poll(1);
-                match action.target {
-                    crate::ui::mcp_server::ActionTarget::Event { widget, event } => {
-                        Some(IcedMessage { widget, event, input_value: action.value })
-                    }
-                    crate::ui::mcp_server::ActionTarget::Path { .. } => None,
-                    crate::ui::mcp_server::ActionTarget::Fixture { request_id } => {
-                        let payload = action.value.unwrap_or_default();
-                        Some(IcedMessage {
-                            widget: String::new(),
-                            event: format!("__mcp_fixture|{}|{}", request_id, payload),
-                            input_value: None,
-                        })
-                    }
-                }
-            }
-            Err(std::sync::mpsc::TryRecvError::Empty) => {
-                sched_diag_mcp_poll(0);
-                None
-            }
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                sched_diag_mcp_poll(0);
-                None
-            }
+/// PLAN-740 T-02：MCP action 消息映射（原 `poll_mcp_actions` 的
+/// target→IcedMessage 臂原样保留）。VM mode uses Event addressing,
+/// which maps onto IcedMessage. Path mode is a no-op here (rust mode
+/// uses devtools_subscription/devtools_update).
+fn map_mcp_action(action: crate::ui::mcp_server::ActionMessage) -> Option<IcedMessage> {
+    match action.target {
+        crate::ui::mcp_server::ActionTarget::Event { widget, event } => {
+            Some(IcedMessage { widget, event, input_value: action.value })
         }
-    } else {
-        None
+        crate::ui::mcp_server::ActionTarget::Path { .. } => None,
+        crate::ui::mcp_server::ActionTarget::Fixture { request_id } => {
+            let payload = action.value.unwrap_or_default();
+            Some(IcedMessage {
+                widget: String::new(),
+                event: format!("__mcp_fixture|{}|{}", request_id, payload),
+                input_value: None,
+            })
+        }
     }
 }
 
-/// PLAN-740 T-00（交付节奏三轴之一——action 消费/tick 触发节奏轴）：
-/// `mcp_action_subscription` 的 16ms tokio tick 每次实际触发输出一行
-/// ——`gap`=距上次触发的毫秒间隔（tick **真实**触发节奏的直接证据，
-/// 名义 16ms；90ms 聚簇=候选 (a) runtime×winit 唤醒面）、`got`=本拍
-/// 是否取到动作（消费节奏）。AUTO_SCHED_DIAG 门控零开销（未设=单
-/// OnceLock 布尔读+分支，零写入零分配）。
-fn sched_diag_mcp_poll(got: u8) {
-    if crate::ui::sched_diag::enabled() {
-        static LAST_POLL_MS: std::sync::atomic::AtomicI64 =
-            std::sync::atomic::AtomicI64::new(0);
-        let now = crate::ui::dynamic::sched_diag_t0().elapsed().as_millis() as i64;
-        let last = LAST_POLL_MS.swap(now, std::sync::atomic::Ordering::Relaxed);
-        let gap = if last > 0 { now - last } else { -1 };
-        eprintln!("[SCHED-DIAG] mcp_poll t={}ms gap={}ms got={}", now, gap, got);
+/// PLAN-740 T-02（交付节奏修复——T-01 定谳的消息间隔结构杠杆）：
+/// MCP action **push 通道订阅**——替代 16ms AppTick 轮询。
+///
+/// T-00/T-01 定责链：54Hz 驱动的原生动作间隔（18.5ms）被 16ms tick
+/// 消费网格重排出亚 16ms 消息对（got 间隔 8ms bin×49/127 直证），
+/// 配对落入 16.7ms 呈现槽被 iced_winit AboutToWait 批处理合并为单帧
+/// ——交付 0.79×驱动（<AC-02 ±10% 带）。本订阅经转发线程
+/// `recv()` 阻塞等待（**到达即投递**，间隔恢复原生 ±转发抖动 >
+/// 槽宽 → 无配对），唤醒后 `try_recv` 循环取空（**drain-to-empty
+/// 语义内含**——突发吸收；Disconnected 断流终止，Path 畸形臂原样）。
+/// 不 fork iced_winit（纯 app 侧订阅重排）；712 r2 泵域零触碰；
+/// 16ms 轮询的 tick 轴随之退役（mcp_poll 行由 mcp_recv 行接替——
+/// 转发线程逐动作打点，AUTO_SCHED_DIAG 门控零开销）。
+#[derive(Debug, Clone, Hash)]
+struct McpPushRecipe {
+    app: crate::ui::session::AppId,
+}
+
+impl iced_futures::subscription::Recipe for McpPushRecipe {
+    type Output = crate::ui::session::DesktopMessage;
+
+    fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+        use std::hash::Hash;
+        "plan740_mcp_push".hash(state);
+        self.app.hash(state);
+    }
+
+    fn stream(
+        self: Box<Self>,
+        _input: iced_futures::subscription::EventStream,
+    ) -> iced_futures::BoxStream<Self::Output> {
+        use crate::ui::session::DesktopMessage as DM;
+        use iced_futures::futures::StreamExt;
+
+        let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
+        let rx = guard.lock().unwrap().take();
+        let app = self.app;
+        let Some(rx) = rx else {
+            // 接收器不在位（rust 轨/重复装配）——空流兜底（订阅表
+            // 身份含本字符串，与 poll 轨互不去重冲突）。
+            eprintln!("[PLAN740] mcp push stream: receiver not present");
+            return iced_futures::futures::stream::empty().boxed();
+        };
+        let (tx, rx_msg) = iced_futures::futures::channel::mpsc::unbounded::<IcedMessage>();
+        let _ = std::thread::Builder::new()
+            .name("mcp-action-push".to_string())
+            .spawn(move || {
+                loop {
+                    let Ok(action) = rx.recv() else { break };
+                    // drain-to-empty：唤醒后循环取空再逐条投递（突发
+                    // 吸收；顺序保持 recv 序）。
+                    let mut batch = vec![action];
+                    while let Ok(more) = rx.try_recv() {
+                        batch.push(more);
+                    }
+                    for a in batch {
+                        if crate::ui::sched_diag::enabled() {
+                            let t0 = crate::ui::dynamic::sched_diag_t0();
+                            eprintln!(
+                                "[SCHED-DIAG] mcp_recv t={}ms got=1",
+                                t0.elapsed().as_millis()
+                            );
+                        }
+                        if let Some(msg) = map_mcp_action(a) {
+                            if tx.unbounded_send(msg).is_err() {
+                                return; // 订阅端已断（进程退出路径）
+                            }
+                        }
+                    }
+                }
+            });
+        rx_msg
+            .map(move |msg| DM::App(app, msg))
+            .boxed()
     }
 }
 
@@ -9551,14 +9592,13 @@ fn apply_mcp_fixture(
 /// Subscription that polls the MCP action channel and injects messages into
 /// the event loop. This allows MCP actions to truly simulate user operations
 /// (with animations, state updates, and full UI refresh). 459：打标归 primary
-/// App（T8 单 App 语义）。Poll at 60fps to minimize latency.
+/// App（T8 单 App 语义）。
+/// PLAN-740 T-02：16ms 轮询 → push 通道（McpPushRecipe——到达即投递 +
+/// drain-to-empty；poll 轨退役理由与定责链见该类型文档）。
 fn mcp_action_subscription(
     app: crate::ui::session::AppId,
 ) -> iced::Subscription<crate::ui::session::DesktopMessage> {
-    iced_futures::subscription::from_recipe(AppTickRecipe {
-        app,
-        kind: AppTickKind::Poll(poll_mcp_actions, 16),
-    })
+    iced_futures::subscription::from_recipe(McpPushRecipe { app })
 }
 
 /// Plan 314: MCP heartbeat. iced only calls `update()` in response to a
