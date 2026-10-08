@@ -4,7 +4,9 @@
 > 路径：`experimental/ac-core`（独立 Cargo workspace，bin `auto-ac-prototype`，"ac-probe" 为历史文档名） | 技术栈：Rust + Cranelift 0.126.2 + rust-lld
 
 AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x64 COFF → PE 原生执行。
-**"HIR → 原生执行"已完成；"Auto 源码 → 原生执行"与 AAC 自举未完成**，由 A1/B/C 后续计划承接。
+**HIR → 原生执行与有限源码 profile → 原生执行均已完成**；PLAN-745 的
+[source-core-i32.md](source-core-i32.md) 提供 A1–A3 源码闭环。完整语言面、AAC/ACC
+native 自举与其它能力仍由后续计划承接。
 
 ## 目标与范围
 
@@ -28,7 +30,9 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
   跨模块 id 歧义拒绝）。
 - 生成的 `ac_start` 包装器通用（不按 fixture 硬编码）：调用 entry → `ExitProcess(结果)`；Auto 函数
   不直接作为 OS 加载入口；PE 以 `/entry:ac_start /subsystem:console kernel32.lib` 无 CRT 链接。
-- 模块内函数名即 COFF 符号：重名在 backend 阶段拒绝；intrinsic 按声明 symbol 文本作 import。
+- HIR 模式模块内函数名即 COFF 符号：重名在 backend 阶段拒绝；intrinsic 按声明 symbol 文本作 import。
+- 源码模式入口按源码函数名查 DefId；源码 native 符号加 sf_ 前缀，用户可合法声明
+  ac_start/ExitProcess；不改变 HIR 身份/绑定与 OS 入口包装。
 
 ## 溢出 trap（测试 profile 约定）
 
@@ -45,6 +49,12 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
   **不实现任何 Auto 函数、不解释 HIR**，非生产字符串/I/O/插件 ABI。
 
 ## CLI 与制品
+
+- 源码模式 check-source/build-source 必须显式 source profile；源码 → Atom/span表
+  → 真正 bind/verify → Checked → 与 HIR 模式共用 finish_build/native/link/发布尾部。
+  支持/拒绝、0/1/2、trace、来源映射与无固定嵌套排除见 [源码规范](source-core-i32.md)。
+  一键 scripts/verify-ac-source-745.ps1，21原生/53拒绝及独立深块/帧控制已验；
+  源码 profile/输入hash与三制品在同一事务写入收据。
 
 - `auto-ac-prototype check <file>`：bind+verify，诊断 `file:line:col: error[stage/code]`；退出码 0/1/2
   （成功/流水线拒绝/用法错）。
@@ -75,7 +85,7 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
 
 ## 边界与已知限制
 
-- 不宣称：Auto 源码编译（旧 AST adapter 未接）、生产 ABI 冻结、DLL/热重载、Linux 发布验收、
+- 不宣称：完整 Auto 源码编译（仅独立 source profile，旧 AST 未接）、生产 ABI 冻结、DLL/热重载、Linux 发布验收、
   AAC 自举、性能承诺。
 - 单模块 lowering；跨模块调用/动态分派不在本层。
 - 工具链发现依赖本机状态（注册表/env），CI 化需先固化 SDK 路径策略。

@@ -1,0 +1,8 @@
+{
+  "id": "verify745-prepared",
+  "worktree": "D:/autostack/.wt/lang-745/auto-lang",
+  "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ac-source-745.ps1",
+  "exit": 0,
+  "timed_out": false,
+  "seconds": 46.4629045
+}

@@ -8,10 +8,15 @@ core-i32 实现状态的事实来源。
 
 ## 阶段表（S0–S6）
 
-S0 源码工作态（未实现）→ S1 Schema-bound Atom 文本（已实现）→ S2 bound Bundle
+S0 源码工作态（仅 PLAN-745 的 auto.source.core-i32.draft 已实现；源码 →
+span token/AST → 词法/类型解析）→ S1 Schema-bound Atom 文本（已实现；
+该源码 profile 生成文本及来源表）→ S2 bound Bundle
 （已实现，单模块）→ S3 semantic verify（已实现）→ S4 Checked 公共 HIR
 （已实现，core-i32 域）→ S5 lowering+能力门（已实现，测试 profile；通用 pass 框架
 未实现）→ S6 发射/链接/运行（已实现，测试 profile）。
+
+源码入口与全 Bundle 来源投影见 [source-core-i32.md](../auto-ac/source-core-i32.md)。
+verify 仍为 Checked 唯一构造路径；HIR 三重身份、Schema/运算面与 pass 未实现状态不变。
 
 规则：R1 阶段身份随行、禁止跨阶段取用；R2 来源映射自 S1 起随行；
 R3 效果分析与效果语义两分——分析自保守侧出发（未知 effect 按 observable 处理，

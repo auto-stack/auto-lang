@@ -67,6 +67,16 @@ resolved 族必须引用存在且适用的决定（kind=unknown-resolution、con
 Markdown 相对链接（忽略围栏代码），核对全部任务、frontmatter、模块导航和全部
 P743-* 指针；活动态可做模拟归档，但必须以真实归档检查收口。
 
+## 有限源码 profile 取证（PLAN-745）
+
+Rust AC 原型已有 [source-core-i32](../auto-ac/source-core-i32.md) 的源码 →
+Checked → native 闭环；它不等于 Auto 实现的 ACC 主体迁移、Gen1/2/3或完整 required 能力。
+MD-409 仅收敛该 profile 的 int/i32=有符号32位、add/mul/lt与runtime trap；
+全语言 int 宽度与全序运算仍 open/required。MD-408 的 char 字面量/注解/转换
+在 profile 内受控拒绝；三种可见宿主表示不能证明统一 char↔int 映射。
+两决定追加取证 note，required conclusion及原绑定保持；unknown族 owner/探针不变。
+数值证据见 [numeric-boundary.md](../../reports/745-source-core-i32/numeric-boundary.md)。
+
 ## 锚点/候选 owner 一致性（QA-05）
 
 A8（str/List 微程序）owner=运行时首批候选（str/容器/int 扩面工作包）；

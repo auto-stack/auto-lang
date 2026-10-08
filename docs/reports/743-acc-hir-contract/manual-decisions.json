@@ -184,13 +184,13 @@
       "conclusion": "new-subject",
       "evidence": [
         "docs/specs/auto-hir/project.md:6",
-        "docs/specs/auto-ac/project.md:7"
+        "docs/specs/auto-ac/project.md:8"
       ],
       "bound_input_hashes": {
         "docs/specs/auto-hir/project.md": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab",
-        "docs/specs/auto-ac/project.md": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208"
+        "docs/specs/auto-ac/project.md": "f613edc58338da61582c775eea5978426fda3aa94a650cfd300dde74272f5dcc"
       },
-      "note": "新建。741 只接 Schema-bound Atom 文本；Auto 源码→Checked HIR 的 adapter（含来源映射）不存在。NEXT-B 候选主体。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 增补 verify 归属唯一（owner-mismatch）与 bindings 双射/按映射核类型——均属 Checked 域强化，\"源码→HIR adapter 不存在\"事实不变，结论维持。〕〔重绑 r4-merge/QA：741 P3 增补块包含图可达无环 DFS 结构门与构建回滚收口——均属 Checked/构建域强化，\"源码→HIR adapter 不存在\"事实不变，结论维持。〕〔重绑 r5-merge/QA：741 P4 增补发布事务清理诊断（link.cleanup/COMMITTED 状态）与受控启动包含（CREATE_SUSPENDED+Job）——均属构建/子进程域强化，\"源码→HIR adapter 不存在\"事实不变，结论维持。〕〔重绑 r5-merge/QA：741 P5 扩展 pre-publish link_object_staged 两错误出口的 link.cleanup 约束——构建/链接器域强化，\"源码→HIR adapter 不存在\"事实不变，结论维持。〕"
+      "note": "新建。741 只接 Schema-bound Atom 文本；Auto 源码→Checked HIR 的 adapter（含来源映射）不存在。NEXT-B 候选主体。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 增补 verify 归属唯一（owner-mismatch）与 bindings 双射/按映射核类型——均属 Checked 域强化，\"源码→HIR adapter 不存在\"事实不变，结论维持。〕〔重绑 r4-merge/QA：741 P3 增补块包含图可达无环 DFS 结构门与构建回滚收口——均属 Checked/构建域强化，\"源码→HIR adapter 不存在\"事实不变，结论维持。〕〔重绑 r5-merge/QA：741 P4 增补发布事务清理诊断（link.cleanup/COMMITTED 状态）与受控启动包含（CREATE_SUSPENDED+Job）——均属构建/子进程域强化，\"源码→HIR adapter 不存在\"事实不变，结论维持。〕〔重绑 r5-merge/QA：741 P5 扩展 pre-publish link_object_staged 两错误出口的 link.cleanup 约束——构建/链接器域强化，\"源码→HIR adapter 不存在\"事实不变，结论维持。〕〔745 merge 独立语义校准：745 现有 Rust 有限 source profile 的 adapter/来源映射已真实到 Checked；本决定 subject=acc:source-to-hir-adapter 指 Auto 编写的 ACC 主体，仍须新建。旧“源码 adapter 不存在”仅为741历史，不能覆盖745现状；不把 Rust 原型升级为 ACC 主体或 Gen1。当前证据锚8行，验证后绑定本次落地card。〕"
     },
     {
       "id": "MD-204",
@@ -212,13 +212,13 @@
       "conclusion": "new-subject",
       "evidence": [
         "auto/aavm.at:16",
-        "docs/specs/auto-ac/project.md:49"
+        "docs/specs/auto-ac/project.md:53"
       ],
       "bound_input_hashes": {
         "auto/aavm.at": "0ff06f099253e1aa1c8d83ef2810771f10d5a01e5388729354dd9fa249d4ee9a",
-        "docs/specs/auto-ac/project.md": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208"
+        "docs/specs/auto-ac/project.md": "f613edc58338da61582c775eea5978426fda3aa94a650cfd300dde74272f5dcc"
       },
-      "note": "新建。多阶段驱动（读源→解析→verify→build）+ file:line:col 来源诊断编排；ac-probe check/build 的驱动骨架可外扩但不能冒充已接源码。〔校准 T-12/QA-06：741 r2 CLI 更名 auto-ac-prototype 并收口制品原子发布/截止时间执行器——驱动骨架可外扩、不得冒充已接源码的判定不变，结论维持。〕〔重绑 r4-merge/QA：741 P3 收口发布事务回滚（link.restore）与单一单调截止覆盖输出收集——驱动骨架可外扩、不得冒充已接源码的判定不变，结论维持。〕〔重绑 r5-merge/QA：741 P4 收口清理失败不吞与受控启动包含——驱动骨架可外扩、不得冒充已接源码的判定不变，结论维持。〕〔重绑 r5-merge/QA：741 P5 收口 pre-publish 错误出口的清理报告（不吞删除错误）——驱动骨架可外扩、不得冒充已接源码的判定不变，结论维持。〕"
+      "note": "新建。多阶段驱动（读源→解析→verify→build）+ file:line:col 来源诊断编排；ac-probe check/build 的驱动骨架可外扩但不能冒充已接源码。〔校准 T-12/QA-06：741 r2 CLI 更名 auto-ac-prototype 并收口制品原子发布/截止时间执行器——驱动骨架可外扩、不得冒充已接源码的判定不变，结论维持。〕〔重绑 r4-merge/QA：741 P3 收口发布事务回滚（link.restore）与单一单调截止覆盖输出收集——驱动骨架可外扩、不得冒充已接源码的判定不变，结论维持。〕〔重绑 r5-merge/QA：741 P4 收口清理失败不吞与受控启动包含——驱动骨架可外扩、不得冒充已接源码的判定不变，结论维持。〕〔重绑 r5-merge/QA：741 P5 收口 pre-publish 错误出口的清理报告（不吞删除错误）——驱动骨架可外扩、不得冒充已接源码的判定不变，结论维持。〕〔745 merge 独立语义校准：745 Rust 原型已有显式profile源码驱动/来源诊断，共用 finish_build；Auto 实现的 ACC 多阶段驱动、完整语言域诊断与桥客户端仍须新建。旧“不得冒充已接源码”属741历史；只认已审有限profile证据，不声称完整ACC。当前证据锚53行，验证后绑定本次落地card。〕"
     },
     {
       "id": "MD-206",
@@ -243,10 +243,10 @@
         "docs/design/strategy/auto-native-backend-evolution.md:25"
       ],
       "bound_input_hashes": {
-        "docs/specs/auto-ac/project.md": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208",
+        "docs/specs/auto-ac/project.md": "f613edc58338da61582c775eea5978426fda3aa94a650cfd300dde74272f5dcc",
         "docs/design/strategy/auto-native-backend-evolution.md": "becb2f45d66bffc81b98bea33c3c6c0bb40418be2f958cd1b9a58de283a5be27"
       },
-      "note": "保留（非主体）：Cranelift 0.126.2 Rust 库经薄桥消费；v0.6 主后端，ACC 不重写机器码生成。〔校准 T-12/QA-06：741 r2 仅更名 CLI 包名（ac-probe→auto-ac-prototype 历史名）并强化构建原子性/子进程截止时间；Cranelift 0.126 桥定位不变，结论维持。〕〔重绑 r4-merge/QA：741 P3 未触工具链节（Cranelift 0.126 桥定位不变），结论维持。〕〔重绑 r5-merge/QA：741 P4 未触工具链节（Cranelift 0.126 桥定位不变），结论维持。〕〔重绑 r5-merge/QA：741 P5 未触工具链节（Cranelift 0.126 桥定位不变），结论维持。〕"
+      "note": "保留（非主体）：Cranelift 0.126.2 Rust 库经薄桥消费；v0.6 主后端，ACC 不重写机器码生成。〔校准 T-12/QA-06：741 r2 仅更名 CLI 包名（ac-probe→auto-ac-prototype 历史名）并强化构建原子性/子进程截止时间；Cranelift 0.126 桥定位不变，结论维持。〕〔重绑 r4-merge/QA：741 P3 未触工具链节（Cranelift 0.126 桥定位不变），结论维持。〕〔重绑 r5-merge/QA：741 P4 未触工具链节（Cranelift 0.126 桥定位不变），结论维持。〕〔重绑 r5-merge/QA：741 P5 未触工具链节（Cranelift 0.126 桥定位不变），结论维持。〕〔745 merge 独立语义校准：核对 Cranelift 0.126.2 栈仍在Rust消费侧、ACC不重写机器码；745仅新增前端且共享后端，非主体薄桥定位保持。当前证据锚4行，验证后绑定本次落地card。〕"
     },
     {
       "id": "MD-302",
@@ -254,12 +254,12 @@
       "kind": "runtime-service",
       "conclusion": "reference",
       "evidence": [
-        "docs/specs/auto-ac/project.md:20"
+        "docs/specs/auto-ac/project.md:21"
       ],
       "bound_input_hashes": {
-        "docs/specs/auto-ac/project.md": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208"
+        "docs/specs/auto-ac/project.md": "f613edc58338da61582c775eea5978426fda3aa94a650cfd300dde74272f5dcc"
       },
-      "note": "保留（非主体）：rust-lld COFF 模式首选、MSVC link.exe 备选；工具链发现逻辑（link.rs）维持 Rust 侧。〔校准 T-12/QA-06：741 r2 工具链节（rust-lld 首选/link.exe 备选/link.rs 发现逻辑）未被改动，结论维持。〕〔重绑 r4-merge/QA：741 P3 未触链接器节（rust-lld/link.exe 分工不变），结论维持。〕〔重绑 r5-merge/QA：741 P4 未触链接器节（rust-lld/link.exe 分工不变），结论维持。〕〔重绑 r5-merge/QA：741 P5 未触链接器分工节，结论维持。〕"
+      "note": "保留（非主体）：rust-lld COFF 模式首选、MSVC link.exe 备选；工具链发现逻辑（link.rs）维持 Rust 侧。〔校准 T-12/QA-06：741 r2 工具链节（rust-lld 首选/link.exe 备选/link.rs 发现逻辑）未被改动，结论维持。〕〔重绑 r4-merge/QA：741 P3 未触链接器节（rust-lld/link.exe 分工不变），结论维持。〕〔重绑 r5-merge/QA：741 P4 未触链接器节（rust-lld/link.exe 分工不变），结论维持。〕〔重绑 r5-merge/QA：741 P5 未触链接器分工节，结论维持。〕〔745 merge 独立语义校准：核对 rust-lld首选/MSVC备选、Rust link.rs发现逻辑未变；source与HIR共享构建尾部，系统链接器非ACC主体定位保持。当前证据锚21行，验证后绑定本次落地card。〕"
     },
     {
       "id": "MD-303",
@@ -284,12 +284,12 @@
       "kind": "runtime-service",
       "conclusion": "implemented",
       "evidence": [
-        "docs/specs/auto-ac/project.md:35"
+        "docs/specs/auto-ac/project.md:39"
       ],
       "bound_input_hashes": {
-        "docs/specs/auto-ac/project.md": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208"
+        "docs/specs/auto-ac/project.md": "f613edc58338da61582c775eea5978426fda3aa94a650cfd300dde74272f5dcc"
       },
-      "note": "有界 i32 溢出 trap=ExitProcess(70) 已在 741 测试 profile 实现；与完整异常 ABI（trap 展开栈/资源清理）分开验收，后者 required 归 ABI 线。〔校准 T-12/QA-06：741 r2 溢出 trap=ExitProcess(70) 测试 profile 约定原文未变，结论维持。〕〔重绑 r4-merge/QA：741 P3 溢出 trap=ExitProcess(70) 约定原文未变，结论维持。〕〔重绑 r5-merge/QA：741 P4 溢出 trap=ExitProcess(70) 约定原文未变，结论维持。〕〔重绑 r5-merge/QA：741 P5 溢出 trap=ExitProcess(70) 约定原文未变，结论维持。〕"
+      "note": "有界 i32 溢出 trap=ExitProcess(70) 已在 741 测试 profile 实现；与完整异常 ABI（trap 展开栈/资源清理）分开验收，后者 required 归 ABI 线。〔校准 T-12/QA-06：741 r2 溢出 trap=ExitProcess(70) 测试 profile 约定原文未变，结论维持。〕〔重绑 r4-merge/QA：741 P3 溢出 trap=ExitProcess(70) 约定原文未变，结论维持。〕〔重绑 r5-merge/QA：741 P4 溢出 trap=ExitProcess(70) 约定原文未变，结论维持。〕〔重绑 r5-merge/QA：741 P5 溢出 trap=ExitProcess(70) 约定原文未变，结论维持。〕〔745 merge 独立语义校准：核对加乘 signed 溢出仍 ExitProcess(70) 测试约定；745 source profile复用该路径且保持runtime trap/前驱效果，不扩成完整异常ABI。当前证据锚39行，验证后绑定本次落地card。〕"
     },
     {
       "id": "MD-401",
@@ -422,7 +422,7 @@
       "bound_input_hashes": {
         "auto/lib/lexer.at": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01"
       },
-      "note": "字符字面量与比较（lexer 81 例，含转义）。char↔int 关系（char_at 返回 int、'0'..'9' 比较）须精确化：int/char 映射 unknown 细则（probe-char-int，计划 §10.2）。"
+      "note": "字符字面量与比较（lexer 81 例，含转义）。char↔int 关系（char_at 返回 int、'0'..'9' 比较）须精确化：int/char 映射 unknown 细则（probe-char-int，计划 §10.2）。〔745 T-01/probe-char-int：source profile auto.source.core-i32.draft 拒绝 char（字面量/注解/转换均 source.unsupported，N20）；三宿主表示并存取证（VM builtin 单字符 str：string.rs:863-891；auto-lib char_at→int 码点：lexer.at:44-52；Value Char(char)：value.rs:82-97），char↔int unknown 维持，完整 char 语义保留 open。证据：docs/reports/745-source-core-i32/numeric-boundary.md §5/§6.2。〕"
     },
     {
       "id": "MD-409",
@@ -438,7 +438,7 @@
         "auto/lib/codegen.at": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
         "docs/specs/auto-hir/project.md": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab"
       },
-      "note": "int 全序运算（add/sub/mul/div/mod/eq/ne/lt/gt/le/ge）lib 重度使用；AC 仅 add/mul/lt → required（扩面清单明确：sub/div/mod/eq/ne/gt/le/ge）。宽度 int↔i32 映射 unknown（probe-int-width，计划 §10.2）。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 运算面仍为 add_i32/mul_i32/lt_i32（新增的归属唯一/双射属 verify 结构域），int 全序运算缺口不变，结论维持。〕〔重绑 r4-merge/QA：741 P3 运算面仍 add_i32/mul_i32/lt_i32（新增属块结构/回滚域），int 全序运算缺口不变，结论维持。〕"
+      "note": "int 全序运算（add/sub/mul/div/mod/eq/ne/lt/gt/le/ge）lib 重度使用；AC 仅 add/mul/lt → required（扩面清单明确：sub/div/mod/eq/ne/gt/le/ge）。宽度 int↔i32 映射 unknown（probe-int-width，计划 §10.2）。〔重绑 R-merge：SD-03 交叉链接落地（R2 已审纯追加，被引证据行未变），绑定刷新至落地 hash。〕〔校准 T-12/QA-06：741 r2 运算面仍为 add_i32/mul_i32/lt_i32（新增的归属唯一/双射属 verify 结构域），int 全序运算缺口不变，结论维持。〕〔重绑 r4-merge/QA：741 P3 运算面仍 add_i32/mul_i32/lt_i32（新增属块结构/回滚域），int 全序运算缺口不变，结论维持。〕〔745 T-01/probe-int-width：source profile 内 int/i32=精确有符号 32 位（[-2147483648,2147483647]，越界 source.literal-range；运行期溢出 trap=70；负号仅直接后随数字）。全语言宽度仍 unknown：VM 栈 i32、值存储 i32|i64、旧 AST 按幅值 i32|i64|u64、trans 目标 i64 并存。本 profile 仅 add/mul/lt（候选②未变）。证据：docs/reports/745-source-core-i32/numeric-boundary.md §2-§4/§6.1。〕"
     },
     {
       "id": "MD-410",
