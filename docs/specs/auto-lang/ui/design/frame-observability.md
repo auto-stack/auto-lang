@@ -30,6 +30,20 @@
   present 差；scroll_fps=相邻 present 差倒数。**735 注记**：帧率/时延
   类判定的呈现面读数应取 `draw_end_ms` 族（§5 分离谱——`present_ms`
   为通知面，受配对/驱动节奏双层伪影，见 §4 交付节奏契约行）。
+- **交付节奏三轴（PLAN-740 扩轴——AUTO_SCHED_DIAG 门控 stderr 行，
+  与上列时间戳同一 `sched_diag_t0` 基准）**：
+  - **消费/到达轴** `mcp_recv t=<ms> got=1`：MCP action push 通道
+    （PLAN-740 T-02 起，转发线程）逐动作打点=逐动作消费时刻。
+    改前形态 `mcp_poll t=<ms> gap=<ms> got=<0|1>`（16ms tick 真实
+    触发节奏+本拍消费标记——740 T-00 勘定轴；push 重排后退役，
+    谱解析双形态兼容，gap=-1 语义=无节拍轴）。
+  - **发出代理轴** `update_end t=<ms> app=<id>`：`update_inner`
+    返回时刻——iced_winit AboutToWait 轮内逐消息 update 后对全窗
+    无条件 request_redraw（735 轴②实勘），本点即每消息的发出节拍。
+  - **到达轴** `redraw_deliver t=<ms> app=<id>`（735 既有）：旁路
+    观测订阅（恒 None 零消息面，仅门开时装配）。
+  四轴 + `[P725-FRAME] draw_end_ms`（呈现真值）同 t0 对读=交付
+  节奏归因链（消费间隔结构 → 发出节拍 → 到达 → 呈现交付）。
 
 ## 2. 门控零开销纪律
 
@@ -114,6 +128,13 @@
 - 多窗 runner 第二泵臂（renderer.rs:19871 __frame_pump 推送点）未
   插桩——多窗会话帧观测为待办注记（单窗主路径已覆盖；per-window
   路由精化归 711 T-06余 观测面复核）。
+- **交付节奏观测边界（PLAN-740）**：三轴均为 stderr 门控行（门关
+  =零输出零写入零订阅装配）；`mcp_recv` 在转发线程（非主线程）
+  打点，与 update_end/主线程轴对读容许亚毫秒级跨线程钟差；push
+  重排后消费无固定节拍——间隔语义由 `mcp_recv` 逐动作时刻差承接
+  （**间隔结构**才是定责杠杆，740 T-01：got 间隔亚槽宽聚簇=呈现
+  槽合并的配对燃料）。三轴不进任何判定阈值语义（frozen——下游
+  54fps 判定面零触碰），仅归因对读。
 - 值语义：0=未捕获（门关/帧未发生），非 0 后单调递增；跨帧间隔
   直读可换算（ms）。
 
