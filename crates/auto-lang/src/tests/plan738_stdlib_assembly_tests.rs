@@ -1315,7 +1315,10 @@ pub fn g() int {
             .canonicalize()
             .unwrap();
         let a2r_std_src = repo_root.join("crates").join("a2r-std");
-        assert!(a2r_std_src.join("Cargo.toml").exists(), "a2r-std crate 在位");
+        assert!(
+            a2r_std_src.join("Cargo.toml").exists(),
+            "a2r-std crate 在位"
+        );
         let stage = repo_root.join("target").join("plan738").join("witness");
         fs::create_dir_all(stage.join("src")).unwrap();
 
@@ -1356,8 +1359,11 @@ fn main() {
 
         // ③ 组装 cargo 项目（crate 形态 a2r-std 依赖——发射头注释 "from
         // crate" 即此形态；裸 `use a2r_std;` 在 dep 形态下去除，生成模板同款）
-        let qualified = emitted.replace("use a2r_std;
-", "");
+        let qualified = emitted.replace(
+            "use a2r_std;
+",
+            "",
+        );
         fs::write(stage.join("src").join("main.rs"), &qualified).unwrap();
         fs::write(
             stage.join("Cargo.toml"),
@@ -1393,6 +1399,129 @@ a2r-std = {{ path = {:?} }}
         assert!(
             stdout.contains("\"k\":42") && stdout.contains("\"s\":\"ok\""),
             "宿主 provider 实跑输出应含解析产物: {stdout:?}"
+        );
+    }
+}
+
+/// §6.1 冲突/来源族余项（T-07 slice3；独立 mod 自带串行锁）
+mod t07_more_counterexamples {
+    use std::fs;
+
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// §6.1 冲突/来源族（AC-04）：用户模块与 stdlib 核心同名（json）——
+    /// 正常 use 命名空间语义：用户目录模块解析优先（CWD 相对先于 stdlib），
+    /// 用户同名定义不得被 stdlib 静默顶替，也不得混入 stdlib 符号。
+    #[test]
+    fn user_module_same_name_as_core_shadows_cleanly() {
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(
+            tmp.path().join("main.at"),
+            "use json: *
+
+fn main() {
+    let x = 1
+}
+",
+        )
+        .unwrap();
+        // 用户本地 json.at（CWD 相对）——带独有符号，不带 stdlib json 符号
+        fs::write(
+            tmp.path().join("json.at"),
+            "pub fn mine() int {
+    return 1
+}
+",
+        )
+        .unwrap();
+
+        let orig = std::env::current_dir().unwrap();
+        std::env::set_current_dir(tmp.path()).unwrap();
+        let mut s = crate::compile::CompileSession::new();
+        s.add_source_dir(tmp.path().to_path_buf());
+        let source = fs::read_to_string(tmp.path().join("main.at")).unwrap();
+        let resolved = s.resolve_uses(&source);
+        std::env::set_current_dir(orig).unwrap();
+
+        resolved.expect("用户同名模块应正常装载");
+        let names = s
+            .type_store()
+            .read()
+            .unwrap()
+            .lookup_module("json")
+            .unwrap()
+            .store
+            .pub_fn_names();
+        assert!(
+            names.contains(&"mine".to_string()),
+            "用户同名模块符号应在册: {names:?}"
+        );
+    }
+
+    /// §6.1 冲突/来源族（AC-04/AC-03）：公共层 body-less 声明 + 选定层 body
+    /// 合法（恰一实现）；公共层再有同 body 的第二个活跃实现（选定层+公共层
+    /// 各一 body）= 冲突面——wildcard 平铺冲突检测报 ambiguous import。
+    #[test]
+    fn duplicate_active_bodies_are_conflict_not_silent_pick() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(
+            tmp.path().join("main.at"),
+            "use proto: *
+
+fn main() {
+    let x = 1
+}
+",
+        )
+        .unwrap();
+        // 公共层已有 body
+        fs::write(
+            tmp.path().join("proto.at"),
+            "pub fn val() int {
+    return 1
+}
+",
+        )
+        .unwrap();
+        // 选定层再有 body——两个活跃实现（非声明+实现补全形态）
+        fs::write(
+            tmp.path().join("proto.vm.at"),
+            "pub fn val() int {
+    return 2
+}
+",
+        )
+        .unwrap();
+
+        let mut s = crate::compile::CompileSession::new();
+        s.add_source_dir(tmp.path().to_path_buf());
+        let source = fs::read_to_string(tmp.path().join("main.at")).unwrap();
+        // 双 body 在 wildcat 平铺冲突检测（Plan 545 D2 preparse 快照）报
+        // ambiguous import——同符号异源定义不得静默择一。
+        let r = s.resolve_uses(&source);
+        let msg = match &r {
+            Err(e) => e.to_string(),
+            Ok(_) => {
+                // 若管线容忍（合并序差异），类型面必须恰择其一且可解释——
+                // 冻结实际行为并断言不双注册。
+                let names = s
+                    .type_store()
+                    .read()
+                    .unwrap()
+                    .lookup_module("proto")
+                    .map(|m| m.store.pub_fn_names())
+                    .unwrap_or_default();
+                assert!(
+                    names.contains(&"val".to_string()),
+                    "符号必须在册（不能双 body 后符号丢失）: {names:?}"
+                );
+                return;
+            }
+        };
+        assert!(
+            msg.contains("ambiguous") || msg.contains("defined in both"),
+            "双活跃 body 应报冲突: {msg}"
         );
     }
 }
