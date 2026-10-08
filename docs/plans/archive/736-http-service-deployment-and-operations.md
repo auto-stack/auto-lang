@@ -290,7 +290,9 @@ fixture生成临时证书/凭据，只测试localhost；实际HTTPS→proxy→VM
 - prepared ✅：复审基线 pass@6156c3de3；canonical diff=SD-01 新件 + SD-02..06 五处 modify（worktree 提交 3df8330bc→rebase 后 a80f35984）；R2 脏面已收尾提交（纯 fmt 覆盖层 byte-identical 实证 + verification 报告入库）
 - landed ✅：两次 rebase（master 885efdefe→a0e50b614 并发移动）后 `git merge --ff-only`，**master tip = a80f35984**；代码 tip 864dccf41 与复审绑定 6156c3de3 `git range-diff` 全 `=`（7/7 patch 等价，安全重写证明）；两次重写 old→new：6156c3de3→240cf7b6e→864dccf41；主检出冒烟：cargo check -p auto 0 error + plan736 11/11
 - ledger_refreshed ✅（2026-10-08 补全）：前会话判 blocked 过保守——仓内存在**已验证离线投影先例** `scripts/p685_ledger.py`（PLAN-685 建、735 同法回读 verified）。本轮按同模式执行 `scripts/p736_ledger.py`（幂等断言+schema 镜像+indent-1 序列化零扰动）：.autoos/specs.json +P736-1（designs——部署契约摘要）/+P736-2（reviews——R1→R2 收据），769→771 items 回读 verified（section/status/file 全对；git diff 22 增行 0 删行=既有字节零扰动）
-- archived ✅ / cleaned ✅：plan → docs/plans/archive/（status: archived）；wt-guard 双组树 clean 后移除 worktree×2+分支+组目录（本提交后续步骤，cleaned 回执见下）
+- archived ✅ / cleaned ✅：plan → docs/plans/archive/（status: archived，提交 727a3d02f+状态行修正）；wt-guard 双组树 clean（auto-lang+auto-down 无 reparse point）→ worktree×2 移除、分支 plan-736-dev 删除（was a80f35984=落地 tip）、组目录 D:/autostack/.wt/lang-736 移除；worktree list 零 lang-736 残留
+- 工件观察（landing≠deployment）：736 交付面=新命令 `auto service` + 库 crate——无长驻生产进程消费本仓二进制；主检出共享 auto 二进制在首次消费 736 面前需 `cargo build`（2026-10-08 记录）；生成轨 fixture 二进制为计划作用域（worktree 已随清理移除，重现为 `auto service --server rust` 现场构建）
+- 批量回归：**未到期**——.last-batch-regression.json=2026-10-08T11:20:00Z（今日，覆盖 736/738/740，last_covered=740；736%5≠0 且收据<48h）；下轮到期判定随 745 或 48h 规则
 - 簿记修正（复审 R1）：T-05 记录"身份四元组全链（READY 行=health 体=父进程核对同源）"为过述——父进程不做身份体核对（P736-R1 在案），身份一致性由同 JSON 注入构造保证 + 代理实测核对承载
 - 批量回归到期判定： receipts .last-batch-regression.json（2026-10-08T11:20Z，covered=740 ≥ 736 且 <48h）→ 本轮不到期，无需 regress
 
