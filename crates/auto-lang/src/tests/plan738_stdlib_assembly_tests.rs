@@ -368,3 +368,174 @@ mod t02_providers {
         );
     }
 }
+
+// ============================================================================
+// T-04 ①：核心符号/native 绑定校验 + ID 冲突 + Browser 环境分类（AC-03/05）
+// ============================================================================
+
+#[cfg(test)]
+mod t04_core_bindings {
+    use crate::stdlib_assembly::model::Environment;
+    use crate::stdlib_assembly::validate::{
+        self, CoreSymbolStatus, CORE_MODULES,
+    };
+
+    /// 生产同款构造：CWD 钉仓根 → 磁盘扫描注册 + NativeInterface 手工面
+    ///（register_std_shims + register_stdlib_ffi）+ 全库 inventory。
+    fn production_surfaces()
+        -> (crate::stdlib_assembly::model::StdlibInventory,
+            std::sync::MutexGuard<'static, crate::vm::native_registry::AutoVMNativeRegistry>,
+            crate::vm::native::NativeInterface,
+            std::path::PathBuf)
+    {
+        let stdlib_root = crate::stdlib_assembly::loader::repo_stdlib_root().unwrap();
+        let repo_root = stdlib_root.parent().and_then(|p| p.parent()).unwrap().to_path_buf();
+        let orig = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&repo_root).unwrap();
+        crate::vm::native_registry::register_builtin_natives();
+        std::env::set_current_dir(orig).unwrap();
+
+        let mut shims = crate::vm::native::NativeInterface::new();
+        shims.register_std_shims();
+        crate::vm::ffi::stdlib::register_stdlib_ffi(&mut shims);
+        // VM init 同款：#[rust_fn] inventory 面（json 族 shim 在此绑定——
+        // 仅手工面会漏，resolved-but-unbound 恰是本门禁要抓的形态）
+        shims.build_from_inventory();
+
+        let inv = crate::stdlib_assembly::loader::scan_inventory(&stdlib_root);
+        (inv, crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap(), shims, repo_root)
+    }
+
+    /// AC-03 正测：现存核心支持 resolved+bound → Supported。
+    /// 【T-04 停牌·真实发现】扫描名面与手工 shim 名面不接合：
+    /// auto.http.http_get（.vm.at 扫描注册，动态 id）无绑定，而实际
+    /// dispatch 名为 auto.http.get（stdlib.rs 手工 register_shim_by_name，
+    /// canonical 映射 Http.get→auto.http.get）——同一函数两套名字面。
+    /// 需名字形状接合裁决（公共层符号名→canonical 面校验），恢复后翻转
+    /// 断言。io/net/json 面已实证 Supported（见 t04 提交说明）。
+    #[test]
+    #[ignore = "T-04 finding: scan-name (auto.http.http_get) vs dispatch-name (auto.http.get) disjoint surfaces; needs canonical-name-shape reconciliation"]
+    fn core_supported_symbols_resolve_and_bind() {
+        let (inv, registry, shims, _) = production_surfaces();
+        let validations = validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Native);
+
+        // http 客户端面（auto.http.http_get）：resolved+bound
+        let http_get = validations
+            .iter()
+            .find(|v| v.native_name == "auto.http.http_get")
+            .expect("http.vm.at #[vm] http_get 应入校验集");
+        assert_eq!(http_get.status, CoreSymbolStatus::Supported, "{:?}", http_get.reason);
+        assert!(http_get.resolved && http_get.bound);
+
+        // net 顶层（auto.net.tcp_bind）
+        let tcp_bind = validations
+            .iter()
+            .find(|v| v.native_name == "auto.net.tcp_bind")
+            .expect("net.vm.at #[vm] tcp_bind 应入校验集");
+        assert_eq!(tcp_bind.status, CoreSymbolStatus::Supported);
+        assert!(tcp_bind.bound);
+
+        // io ext 方法（auto.io.file.read_text——TypeDecl 并入型 canonical）
+        let read_text = validations
+            .iter()
+            .find(|v| v.native_name == "auto.io.file.read_text")
+            .expect("io.vm.at ext File read_text 应入校验集");
+        assert_eq!(read_text.status, CoreSymbolStatus::Supported);
+        assert!(read_text.bound);
+
+        // 分母健康：六模块各有校验产出，且 Supported 为多数
+        for m in CORE_MODULES {
+            let n = validations.iter().filter(|v| v.module == *m).count();
+            assert!(n > 0, "{m} 应有 #[vm] 校验产出");
+        }
+        let supported = validations.iter().filter(|v| v.status == CoreSymbolStatus::Supported).count();
+        assert!(supported > validations.len() / 2, "现存核心支持应为多数（supported={supported}/{}）", validations.len());
+    }
+
+    /// AC-03 负测：sse.at 顶层 #[vm] parse_sse 无任何 native 注册——
+    /// DeclaredStub（诚实占位，不冒称支持）。
+    #[test]
+    fn sse_parse_sse_is_declared_stub() {
+        let (inv, registry, shims, _) = production_surfaces();
+        let validations = validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Native);
+        let sse = validations
+            .iter()
+            .find(|v| v.module == "sse")
+            .expect("sse 应有 #[vm] 校验产出（parse_sse）");
+        assert_eq!(sse.status, CoreSymbolStatus::DeclaredStub);
+        assert!(!sse.resolved && !sse.bound);
+        assert_eq!(sse.verification, crate::stdlib_assembly::model::VerificationLevel::Declared);
+    }
+
+    /// AC-05：Browser 环境三族（本地 FS/native socket/服务监听）显式
+    /// Unsupported；解析面（json/async/sse）与 http 客户端面不受累。
+    #[test]
+    fn browser_environment_unsupported_families() {
+        let (inv, registry, shims, _) = production_surfaces();
+        let v_native = validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Native);
+        let v_browser = validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Browser);
+
+        // io/net 全族 Browser 下 Unsupported
+        let io_unsup = v_browser.iter().filter(|v| v.module == "io" && v.status == CoreSymbolStatus::Unsupported).count();
+        let net_unsup = v_browser.iter().filter(|v| v.module == "net" && v.status == CoreSymbolStatus::Unsupported).count();
+        let io_all = v_browser.iter().filter(|v| v.module == "io").count();
+        let net_all = v_browser.iter().filter(|v| v.module == "net").count();
+        assert!(io_all > 0 && io_unsup == io_all, "io 全族应 Unsupported（{io_unsup}/{io_all}）");
+        assert!(net_all > 0 && net_unsup == net_all, "net 全族应 Unsupported（{net_unsup}/{net_all}）");
+
+        // http server 监听族 Unsupported；客户端面保持原状态
+        let server_listen = v_browser
+            .iter()
+            .find(|v| v.native_name == "auto.http.server_listen")
+            .expect("http server_listen 应入校验集");
+        assert_eq!(server_listen.status, CoreSymbolStatus::Unsupported);
+        let http_get_b = v_browser.iter().find(|v| v.native_name == "auto.http.http_get").unwrap();
+        assert_ne!(http_get_b.status, CoreSymbolStatus::Unsupported, "http 客户端面不属于 Browser 三族");
+
+        // json 解析面不受累
+        let json_ok = v_browser.iter().filter(|v| v.module == "json" && v.status == CoreSymbolStatus::Supported).count();
+        assert!(json_ok > 0, "json 面 Browser 下仍为 Supported");
+
+        // Native 下无 Unsupported（对照组）
+        assert!(
+            v_native.iter().all(|v| v.status != CoreSymbolStatus::Unsupported),
+            "Native 环境不应产生 Unsupported 分类"
+        );
+
+        // 诊断视图：Browser 下 io/net/http server 族出 PROVIDER_UNSUPPORTED
+        let diags = validate::core_status_diagnostics(&v_browser, None);
+        assert!(diags.iter().any(|d| d.code == validate::code::PROVIDER_UNSUPPORTED));
+    }
+
+    /// AC-03：ID 别名冲突检测——生产面基线零冲突。
+    /// 【T-04 停牌·真实发现】生产注册面存在多名共 id 的 file/fs 别名族
+    ///（id 1000+：auto.file.read_text/auto.fs.read/auto.fs.read_text 共
+    /// id 1000 等）——别名关系非"末段"形（fs.read vs fs.read_text 语义
+    /// 亦异），需人工裁决别名白名单形状后恢复基线断言；合成冲突检出
+    /// 部分已实证可用（见 t04 提交说明）。
+    #[test]
+    #[ignore = "T-04 finding: production registry has file/fs alias families sharing ids (1000+), alias-shape ruling needed"]
+    fn id_alias_conflict_detection() {
+        let (_, registry, _, _) = production_surfaces();
+        let baseline = validate::id_alias_conflicts(&registry);
+        assert!(
+            baseline.is_empty(),
+            "生产注册面基线应零 ID 冲突: {:?}",
+            baseline.iter().map(|d| &d.message).take(5).collect::<Vec<_>>()
+        );
+
+        // 合成冲突：两个互不为末段的名字注册同一 id
+        let mut reg = crate::vm::native_registry::AutoVMNativeRegistry::new();
+        reg.register_with_id("auto.http.http_get", 7777);
+        reg.register_with_id("auto.net.tcp_bind", 7777);
+        let conflicts = validate::id_alias_conflicts(&reg);
+        assert_eq!(conflicts.len(), 1, "无关名字同 id 必报冲突");
+        assert_eq!(conflicts[0].code, validate::code::NATIVE_ID_CONFLICT);
+
+        // 对照：短别名关系（末段）合法
+        let mut reg2 = crate::vm::native_registry::AutoVMNativeRegistry::new();
+        reg2.register_with_id("auto.str.split", 8888);
+        reg2.register_with_id("split", 8888);
+        assert!(validate::id_alias_conflicts(&reg2).is_empty(), "短别名同 id 合法");
+    }
+}
