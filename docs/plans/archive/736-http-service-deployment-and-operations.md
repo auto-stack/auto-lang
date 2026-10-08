@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-736
-status: reviewed
+status: archived
 feature_name: http-service-deployment-and-operations
 author: [agent]
 created_at: 2026-10-03
