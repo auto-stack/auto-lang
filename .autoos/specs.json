@@ -1246,7 +1246,7 @@
           "priority": null,
           "assignee": null,
           "test_file": null,
-          "file": "docs/plans/745-ac-source-checked-hir-native.md",
+          "file": "docs/plans/archive/745-ac-source-checked-hir-native.md",
           "milestone": null,
           "module": "auto-ac",
           "tags": [
@@ -1254,8 +1254,8 @@
             "derived-reference"
           ],
           "created_at": 1791417600,
-          "modified_at": 1791452507,
-          "completed_at": 1791452507,
+          "modified_at": 1791459054,
+          "completed_at": 1791459054,
           "last_modified": "2026-10-08",
           "canonical_section": "delivery",
           "provenance": {
@@ -8470,7 +8470,7 @@
           "priority": null,
           "assignee": null,
           "test_file": null,
-          "file": "docs/plans/745-ac-source-checked-hir-native.md",
+          "file": "docs/plans/archive/745-ac-source-checked-hir-native.md",
           "milestone": null,
           "module": "auto-ac",
           "tags": [
@@ -8478,8 +8478,8 @@
             "derived-reference"
           ],
           "created_at": 1791417600,
-          "modified_at": 1791452507,
-          "completed_at": 1791452507,
+          "modified_at": 1791459054,
+          "completed_at": 1791459054,
           "last_modified": "2026-10-08",
           "canonical_section": "review-r7",
           "provenance": {
@@ -8497,5 +8497,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 7
+  "version": 9
 }
