@@ -9,7 +9,7 @@
 //!
 //! 对照失败产出 `validate::code::PROVIDER_CLAIM_NO_CALLEE` 诊断，不静默。
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::model::AssemblyDiagnostic;
 use super::validate::code;
@@ -23,7 +23,7 @@ pub struct ProviderCatalog {
     pub providers: Vec<ProviderClaim>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProviderClaim {
     pub module: String,
     /// "vm" | "rust" | "c"

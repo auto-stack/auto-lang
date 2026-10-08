@@ -11,6 +11,7 @@ mod cmd_autodesk;
 mod cmd_bp;
 mod cmd_docs;
 mod cmd_service;
+mod cmd_stdlib;
 mod cmd_ui;
 mod cmd_watch;
 
@@ -867,6 +868,13 @@ enum Commands {
     Docs {
         #[command(subcommand)]
         action: cmd_docs::DocsAction,
+    },
+
+    // ========== Stdlib Assembly (PLAN-738) ==========
+    #[command(about = "Stdlib assembly inventory / manifest / core gate (inspect)")]
+    Stdlib {
+        #[command(subcommand)]
+        action: cmd_stdlib::StdlibAction,
     },
 }
 
@@ -2227,6 +2235,11 @@ fn real_main(cli: Cli) -> Result<()> {
         // ========== Schema Docs (Plan 435 P8-1) ==========
         Some(Commands::Docs { action }) => {
             cmd_docs::run(action)?;
+        }
+
+        // ========== Stdlib Assembly (PLAN-738) ==========
+        Some(Commands::Stdlib { action }) => {
+            cmd_stdlib::run(action, cli.format)?;
         }
 
         // ========== Legacy / Dev Tools ==========

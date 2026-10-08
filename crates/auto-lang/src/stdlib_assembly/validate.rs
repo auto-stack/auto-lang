@@ -32,10 +32,7 @@ pub fn coverage_checks(modules: &[ModuleInventory]) -> Vec<AssemblyDiagnostic> {
                 code: code::NO_PUBLIC_LAYER.to_string(),
                 module: m.module.clone(),
                 file: None,
-                message: format!(
-                    "target layer(s) without a public .at: {}",
-                    files.join(", ")
-                ),
+                message: format!("target layer(s) without a public .at: {}", files.join(", ")),
             });
         }
     }
@@ -126,7 +123,9 @@ pub fn validate_core_vm_bindings(
 ) -> Vec<CoreSymbolValidation> {
     let mut out = Vec::new();
     for module in CORE_MODULES {
-        let Some(m) = inventory.module(module) else { continue };
+        let Some(m) = inventory.module(module) else {
+            continue;
+        };
         for layer in &m.layers {
             // VM provider 面 = #[vm] 声明（.vm.at 层全量 + 公共层 legacy 属性）
             if !matches!(layer.kind, LayerKind::Public | LayerKind::Vm) {
@@ -145,18 +144,12 @@ pub fn validate_core_vm_bindings(
                 // 方法表登记的 opaque 面）。任一面可调用即 bound。
                 let opaque_bound = match sym.kind {
                     SymbolKind::Method => {
-                        let (owner, fname) =
-                            sym.name.split_once('.').unwrap_or(("", &sym.name));
-                        crate::vm::native_catalog::lookup_opaque_dispatch(
-                            owner,
-                            fname,
-                        )
-                        .is_some()
+                        let (owner, fname) = sym.name.split_once('.').unwrap_or(("", &sym.name));
+                        crate::vm::native_catalog::lookup_opaque_dispatch(owner, fname).is_some()
                     }
                     _ => false,
                 };
-                let bound =
-                    id.map(|i| shims.get(i).is_some()).unwrap_or(false) || opaque_bound;
+                let bound = id.map(|i| shims.get(i).is_some()).unwrap_or(false) || opaque_bound;
 
                 if environment == Environment::Browser {
                     if let Some(reason) = browser_unsupported_reason(module, &native_name) {
@@ -220,11 +213,20 @@ pub fn validate_core_vm_bindings(
 ///    同 id 全部名字都在该 id 的声明组内（如 file/fs 族裁决②保留的别名）；
 /// ② 短别名——某名字恰为另一名字的末段。
 /// 两形皆非的共 id = 两 callee 争 ID，报 conflict 而非 last-writer-wins。
-pub fn id_alias_conflicts(
+///
+/// PLAN-738 T-06：结构化组（`IdConflictGroup`）供 CLI 按模块前缀分诊；
+/// `id_alias_conflicts` 保持诊断视图。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct IdConflictGroup {
+    pub id: u16,
+    pub names: Vec<String>,
+}
+
+pub fn id_alias_conflict_groups(
     registry: &crate::vm::native_registry::AutoVMNativeRegistry,
-) -> Vec<AssemblyDiagnostic> {
-    use std::collections::{HashMap, HashSet};
+) -> Vec<IdConflictGroup> {
     use crate::vm::native_catalog::NATIVE_ID_ENTRIES;
+    use std::collections::{HashMap, HashSet};
 
     // 声明组：id → NATIVE_ID_ENTRIES 中该 id 的名字集
     let mut declared: HashMap<u16, HashSet<&str>> = HashMap::new();
@@ -248,26 +250,39 @@ pub fn id_alias_conflicts(
             continue;
         }
         // 合法形①：全部名字都在声明组内
-        let all_declared = names
-            .iter()
-            .all(|n| declared.get(&id).map(|s| s.contains(n.as_str())).unwrap_or(false));
+        let all_declared = names.iter().all(|n| {
+            declared
+                .get(&id)
+                .map(|s| s.contains(n.as_str()))
+                .unwrap_or(false)
+        });
         // 合法形②：排序后相邻名字互为末段别名
         let short_aliased = names.windows(2).all(|w| {
             let (a, b) = (w[0].as_str(), w[1].as_str());
-            a.rsplit('.').next() == Some(b)
-                || b.rsplit('.').next() == Some(a)
-                || a == b
+            a.rsplit('.').next() == Some(b) || b.rsplit('.').next() == Some(a) || a == b
         });
         if !all_declared && !short_aliased {
-            out.push(AssemblyDiagnostic {
-                code: code::NATIVE_ID_CONFLICT.to_string(),
-                module: format!("id:{id}"),
-                file: None,
-                message: format!("multiple unrelated names share native id {id}: {names:?}"),
-            });
+            out.push(IdConflictGroup { id, names });
         }
     }
     out
+}
+
+pub fn id_alias_conflicts(
+    registry: &crate::vm::native_registry::AutoVMNativeRegistry,
+) -> Vec<AssemblyDiagnostic> {
+    id_alias_conflict_groups(registry)
+        .into_iter()
+        .map(|g| AssemblyDiagnostic {
+            code: code::NATIVE_ID_CONFLICT.to_string(),
+            module: format!("id:{}", g.id),
+            file: None,
+            message: format!(
+                "multiple unrelated names share native id {}: {:?}",
+                g.id, g.names
+            ),
+        })
+        .collect()
 }
 
 /// 六核心符号状态 → 诊断视图（供 CLI --check / manifest 消费；Supported
