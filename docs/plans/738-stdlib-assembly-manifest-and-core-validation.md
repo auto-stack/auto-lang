@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-08
 plan_revision: 1
-current_step: 6  # T-01..T-05 完成；T-06 CLI 半+T-07 slice1 落地（736 耦合半 gated，见 §9 最新交接）
+current_step: 6  # T-01..T-06 完成（T-06 gated 半已解锁落地）；T-07 slice1 落地推进中
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -283,12 +283,12 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 
 ### T-06：检查CLI和API generation/serve收据
 
-- 依赖T-02..05。新auto/cmd_stdlib.rs，main.rs挂接；改auto-man/api_gen.rs及736最终真实生成/启动消费者（T-01锁路径），assembly fingerprint进入734receipt并由736ready引用。
-  进度（2026-10-08）：CLI 半落地（worktree `206a846e7`——`auto stdlib inspect` inventory/actual/check 三模式+稳定 JSON+退出码 0/1/2/3+main.rs 挂接+真实二进制冒烟）；**api_gen receipt 与 736 ready 消费维持 gated**——736 尚 executing@T-07 未合入且其分支直接重叠改 api_gen.rs/main.rs（并行改写必冲突，§4.1 统一顺序约束），736 合入后按 T-01 报告 §8 复核清单接线。
-- inspect只读取装配所需源码/元数据，不执行业务网络/文件操作；稳定JSON与非零check，inventory/actual mode区分；runtime serviceconfig不是assembly内容指纹，provider变化必须新鲜度失效。
-  进度：inspect dry 装配（resolve_uses 不执行 main/业务 IO）+inventory/actual mode 区分+稳定 JSON+check 非零语义已落地（CLI 8/8 冻结）；新鲜度失效半=api_gen receipt 耦合，同上 gated。
-- CLI JSON/负测及真实生成Rust→serve，改stdlib但api.at不变；AC-01/06/07，SD-01/05/06。
-  进度：CLI JSON/负测 8/8（partial 分母/模块过滤/actual 两层 fixture/check sse stub、browser io、http id 冲突、json id 面分裂、用法错误）；真实生成Rust→serve 半 gated（736）。
+- [x] 依赖T-02..05。新auto/cmd_stdlib.rs，main.rs挂接；改auto-man/api_gen.rs及736最终真实生成/启动消费者（T-01锁路径），assembly fingerprint进入734receipt并由736ready引用。
+  [✅ 已完成] CLI 半（worktree `206a846e7`——`auto stdlib inspect` 三模式+稳定 JSON+退出码 0/1/2/3+真实二进制冒烟）+ gated 半解锁落地（worktree `d71e823c8`）：勘验 736 代码已全量在 master（`master..plan-736-dev`=0，另一会话 fold 节奏合入）→ worktree re-sync（`0424673e2`）→ `stdlib_assembly_fingerprint`（内容级身份）进 generation.json 收据 assembly 块（与业务 source_hashes 各自记录）；736 ready 引用落地为**复用新鲜度门**——`backend_generation_is_fresh` 纳入 assembly 比对，陈旧 bundle 拒绝复用走再生臂（§5.4：runtime serviceconfig 不是 assembly 指纹，config_hash 不混入；「旧 ready 不被消费」由门在启动前保证）。
+- [x] inspect只读取装配所需源码/元数据，不执行业务网络/文件操作；稳定JSON与非零check，inventory/actual mode区分；runtime serviceconfig不是assembly内容指纹，provider变化必须新鲜度失效。
+  [✅ 已完成] inspect dry 装配+inventory/actual 区分+check 非零（CLI 8/8）；provider 变化（目录 bump schema）→ `stdlib_assembly_fingerprint` 变 → 复用门判陈旧 → 再生（`fingerprint_deterministic_and_content_sensitive` 冻结内容/目标敏感性；`assembly_freshness_truth_table` 冻结门语义）。
+- [x] CLI JSON/负测及真实生成Rust→serve，改stdlib但api.at不变；AC-01/06/07，SD-01/05/06。
+  [✅ 已完成（serve 实跑 witness 归 T-07）] CLI JSON/负测 8/8；「改 stdlib 但 api.at 不变」语义由指纹敏感性单测+新鲜度真值表双面冻结；真实生成Rust→serve 实跑 witness 归 T-07（其 rustc 实编切片本就驱动真实生成链；fixture e2e 尝试因成员 pac.at 发现流程预存行为未走通，已记 §9）。
 
 ### T-07：同源样例、核心完整矩阵与实际执行证明
 
@@ -305,6 +305,18 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - 清理前lang-738两兄弟各wt-guard clean；tf仅merge到期主检出单实例。全AC闭合才reviewed/archived。
 
 ## 9. 复审记录
+
+### work 交接（2026-10-08，阻塞解除：T-06 全部完成）
+
+- stage: work
+- plan_id: PLAN-738
+- plan_revision: 1
+- outcome: pass（T-06 全部三 bullet 完成，gated 解除；整体 executing 继续）
+- code_commit: worktree plan-738-dev `0424673e2`（re-sync merge）→ `d71e823c8`（T-06(2/2)）；基面=master@4262f761c
+- task_ids: T-06（gated 半①指纹函数 ②receipt ③新鲜度门）
+- evidence: 勘验 736 代码全量在 master（`master..plan-736-dev`=0）；`stdlib_assembly_fingerprint` 内容/目标敏感性单测（t06_assembly_receipt）；`assembly_freshness` 真值表单测（auto-man）；api_gen scoped 44/44；plan738 30/30；三 crate check 零错误（rust_ui `merged_api_client_crud_fallback` 系 734 在案预存红非回归）
+- blockers: 无阻塞任务。遗留：①真实生成Rust→serve 实跑 witness 归 T-07（fixture 成员 pac.at 发现流程预存行为待循——`auto run` 对 api_contract 夹具报 Skipping back，非 738 引入）②T-07 余项（rustc/C 实编 witness、examples/、§6.1 冲突/native 绑定族余项）
+- next: T-07 slice 2（rustc 实编 witness——顺带打通真实生成链 e2e）
 
 ### work 交接（2026-10-08，T-07 第一片：VM 真执行见证 + 六核心矩阵）
 
