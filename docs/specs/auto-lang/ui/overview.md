@@ -1503,3 +1503,19 @@ a2r 编译面轨随缺省翻转计划另立。
   truthful present（draw_end_ms 优先）——建帧 100% 拿行，
   `present=-1` 仅真未呈现帧；731 的「-1=测量配对面」定性由
   发布点错位机理细化并修复（evidence/735/）。
+
+## PLAN-740 注记（2026-10-08）
+
+- 交付节奏持续率契约（frame-pipeline-incremental.md §4d）：交付数/驱动数
+  ∈[0.9,1.1] 至 ≥54Hz 档——消费侧**间隔结构**是权威杠杆：MCP action 消费
+  16ms 轮询→push 通道（到达即投递+drain-to-empty），tick 网格重排消息对
+  →呈现槽合并的坍缩面升格为禁例（54Hz 档 0.79→1.06 实测双谱，
+  evidence/740/）。
+- 交付节奏三轴（frame-observability.md §1/§4）：`mcp_recv`（push 逐动作
+  消费时刻；`mcp_poll` tick 节奏轴退役双形态兼容）+`update_end`（发出节拍
+  代理）+`redraw_deliver`（既有）——与 `draw_end_ms` 同 t0 归因链；观测
+  边界=门控行+不进判定阈值语义（frozen）。
+- 下游复判解锁（auto-edit 027 协议零工具改动）：上游交付能力谱在档
+  （evidence/740/downstream-handoff-v3.md——54Hz 探针档带内；HTTP 驱动
+  scroll 时延地板 ~36.5Hz 如实注记）；027 ~93ms 恒定 pacing 上游不复现，
+  下游定责归下游域复判件消费。

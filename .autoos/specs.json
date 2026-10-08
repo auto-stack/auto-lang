@@ -5266,6 +5266,17 @@
       "designs",
       "spec:docs/specs/auto-lang/ui/design/frame-pipeline-incremental.md"
      ]
+    },
+    {
+     "id": "P740-1",
+     "title": "frame-pipeline-incremental §4d 交付节奏持续率契约 + frame-observability 交付节奏三轴（PLAN-740 SD-01/SD-02）",
+     "content": "SD-01（frame-pipeline-incremental.md §4d）：交付节奏契约=对齐窗内交付数/驱动数 ∈[0.9,1.1] 至 ≥54Hz 档+交付间隔随驱动节拍收缩；责任链=消费侧间隔结构是权威杠杆——push 通道订阅 McpPushRecipe（转发线程 recv() 阻塞到达即投递+唤醒拍 try_recv 取空 drain-to-empty），消息间隔=原生到达间隔±转发抖动>呈现槽宽(~16.7ms)→iced_winit AboutToWait 批处理不合并→逐动作交付（54Hz 实测 1.04-1.06）；禁例=定时轮询消费（16ms AppTick poll 轨 740 起退役——tick 网格把原生 18.5ms 间隔重排出亚槽宽消息对（got 间隔 8ms bin 聚簇直证）→呈现槽合并单帧 0.79×驱动）；突发=drain 批次可见合并不违契约（稳态跟随为准），Path/Disconnected 臂与 poll 轨逐臂等价。SD-02（frame-observability.md §1/§4）：交付节奏三轴——mcp_recv（push 转发线程逐动作打点=消费时刻；改前 mcp_poll gap=16ms tick 真实触发节奏轴随重排退役，谱解析双形态兼容 gap=-1）+update_end（update_inner 返回=每消息发出节拍代理——AboutToWait 轮内无条件 request_redraw）+redraw_deliver（735 既有到达旁路）；与 draw_end_ms 同 t0 对读=归因链；观测边界=门控行（未设零输出零装配）/转发线程钟差容许/间隔结构为定责杠杆（亚槽宽聚簇=配对燃料）/三轴不进判定阈值语义（frozen 下游 54fps 判定面零触碰）。证据 evidence/740/（探针 34/54Hz 双谱：1mb follow 1.02→1.08/0.79→1.06、5kb 0.77→1.06/0.73→1.04；735proto 全档 100% 配对零回退；golden 0.00%）。",
+     "file": "docs/specs/auto-lang/ui/design/frame-pipeline-incremental.md",
+     "related": [
+      "PLAN-740"
+     ],
+     "status": "stable",
+     "created": "2026-10-08T09:30:00Z"
     }
    ]
   },
@@ -8418,6 +8429,17 @@
       "review-pass",
       "commit:2d950e975"
      ]
+    },
+    {
+     "id": "P740-2",
+     "title": "PLAN-740 复审 pass 收据（@a1814462c→rebase ab7a650bd，基 c3ccd32c3）",
+     "content": "同会话复审（独立性受限声明——门禁在复审提交上重新执行，非复用执行期证据）。AC-01..04 全 pass：AC-02 复现=复审提交重建 release 后 54Hz 判别档 scroll follow 1.02（got 162/162、de_gap max 20ms——ladder-p740-review-rung54.jsonl@ad7b9654c）；cargo t 5080 全量 no-fail-fast=16 预存红逐一对照零新红（plan502/plan484_024 两例全档负载 flake，scoped 单复跑双绿——735 在案同类）；cargo tv 162/162；golden 三形 0.00%（master 基线 vs 复审二进制）；712 r2 域 diff=0 行；代码 diff 仅 renderer.rs 一文件；auto-edit porcelain clean。SD 文本复审=描述现行为+持久决策+验收锚，与 735 §4 契约行无冲突。F-R1 nonblocking（receiver-miss 兜底 cold-path eprintln，不阻断）。rebase（master 前移 PLAN-097 画布域 3 code commit）range-diff 7 提交逐对全等（86f41d299/ff69d725b/1d978d44f/3e1d8bb57/f3bf7f6b3/a1814462c/ad7b9654c→57303f03d/7f00b866e/02fc2143e/b2e6d0e2e/e5bc17f27/46282d5e2/ab7a650bd）；合并树验证刷新=check+tv 162+54Hz follow 1.03；主检出冒烟 tv 162+plan716 19+mcp_server 21 绿。",
+     "file": "docs/plans/archive/740-frame-delivery-pacing-clearance.md",
+     "related": [
+      "PLAN-740"
+     ],
+     "status": "stable",
+     "created": "2026-10-08T09:30:00Z"
     }
    ]
   }
