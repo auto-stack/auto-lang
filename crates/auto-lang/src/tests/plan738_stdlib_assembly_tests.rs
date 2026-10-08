@@ -31,8 +31,16 @@ mod t02_inventory {
             .filter(|d| d.code == validate::code::PARSE_FAIL)
             .map(|d| d.file.as_deref().unwrap_or(""))
             .collect();
-        for d in inv.diagnostics.iter().filter(|d| d.code == validate::code::PARSE_FAIL) {
-            println!("INV738DIAG\t{}\t{}", d.file.as_deref().unwrap_or(""), d.message);
+        for d in inv
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == validate::code::PARSE_FAIL)
+        {
+            println!(
+                "INV738DIAG\t{}\t{}",
+                d.file.as_deref().unwrap_or(""),
+                d.message
+            );
         }
         // 全库 isolated-parse 基线（T-01 探针只扫六核心；全库实勘 39/115）：
         // 三类构成见 738-stdlib-decision §2——语法破损（str.at `with` 参数名、
@@ -46,7 +54,8 @@ mod t02_inventory {
             "全库 isolated-parse 失败数漂移——逐名核对后更新本基线与决策报告 §2"
         );
         assert!(
-            failed.contains(&"stdlib/auto/async.at") && failed.contains(&"stdlib/auto/json.rs.at")
+            failed.contains(&"stdlib/auto/async.at")
+                && failed.contains(&"stdlib/auto/json.rs.at")
                 && failed.contains(&"stdlib/auto/str.at")
                 && failed.contains(&"stdlib/auto/list.at"),
             "已知破损代表须在列: {failed:?}"
@@ -151,18 +160,30 @@ mod t03_assembly_wiring {
         vm_session
             .compile_source(&source, main_path.to_str().unwrap())
             .unwrap();
-        assert_eq!(vm_session.layer_selections.len(), 1, "一次模块装载恰一条记录");
+        assert_eq!(
+            vm_session.layer_selections.len(),
+            1,
+            "一次模块装载恰一条记录"
+        );
         let sel = &vm_session.layer_selections[0];
         assert_eq!(sel.module, "proto");
         assert_eq!(sel.target, AssemblyTarget::Vm);
         assert!(
-            sel.context_file.as_deref().unwrap().ends_with("proto.vm.at"),
+            sel.context_file
+                .as_deref()
+                .unwrap()
+                .ends_with("proto.vm.at"),
             "VM 目标应合并 .vm.at: {:?}",
             sel.context_file
         );
         assert!(
-            sel.candidate_files.iter().any(|c| c.ends_with("proto.rs.at"))
-                && sel.candidate_files.iter().any(|c| c.ends_with("proto.c.at")),
+            sel.candidate_files
+                .iter()
+                .any(|c| c.ends_with("proto.rs.at"))
+                && sel
+                    .candidate_files
+                    .iter()
+                    .any(|c| c.ends_with("proto.c.at")),
             "未消费层记 candidate: {:?}",
             sel.candidate_files
         );
@@ -172,7 +193,9 @@ mod t03_assembly_wiring {
         // candidate 不解析（发射走名称表——决策报告 E1③）。
         let mut rs_session = crate::compile::CompileSession::new();
         rs_session.add_source_dir(tmp.path().to_path_buf());
-        rs_session.set_assembly_target(AssemblyTarget::Rust);
+        rs_session
+            .set_assembly_target(AssemblyTarget::Rust)
+            .unwrap();
         rs_session.resolve_uses(&source).unwrap();
         rs_session
             .compile_source(&source, main_path.to_str().unwrap())
@@ -192,12 +215,15 @@ mod t03_assembly_wiring {
         let sel = &rs_session.layer_selections[0];
         assert_eq!(sel.target, AssemblyTarget::Rust);
         assert!(sel.context_file.is_none(), "Rust 目标零装载面：无合并层");
-        assert!(sel.candidate_files.iter().any(|c| c.ends_with("proto.rs.at")));
+        assert!(sel
+            .candidate_files
+            .iter()
+            .any(|c| c.ends_with("proto.rs.at")));
 
         // C 目标：同构（c 层 candidate，vm 层不串入）。
         let mut c_session = crate::compile::CompileSession::new();
         c_session.add_source_dir(tmp.path().to_path_buf());
-        c_session.set_assembly_target(AssemblyTarget::C);
+        c_session.set_assembly_target(AssemblyTarget::C).unwrap();
         c_session.resolve_uses(&source).unwrap();
         {
             let store = c_session.type_store();
@@ -261,7 +287,11 @@ mod t03_assembly_wiring {
         // （非静态白名单/手工 shim），而扫描是 CWD 相对 stdlib/auto（决策
         // 报告 §2d）——测试钉仓根后显式跑生产 init 同款注册。
         let stdlib_root = crate::stdlib_assembly::loader::repo_stdlib_root().unwrap();
-        let repo_root = stdlib_root.parent().and_then(|p| p.parent()).unwrap().to_path_buf();
+        let repo_root = stdlib_root
+            .parent()
+            .and_then(|p| p.parent())
+            .unwrap()
+            .to_path_buf();
         let orig_cwd = std::env::current_dir().unwrap();
         std::env::set_current_dir(&repo_root).unwrap();
         crate::vm::native_registry::register_builtin_natives();
@@ -319,13 +349,19 @@ mod t02_providers {
         // native 名 surface 依赖进程 CWD，见决策报告 §1/E3）——测试钉到
         // 仓根再恢复；nextest 每测独立进程，裸 cargo test 共进程下此窗口
         // 极短且只读注册表。
-        let repo_root = root.parent().and_then(|p| p.parent()).unwrap().to_path_buf();
+        let repo_root = root
+            .parent()
+            .and_then(|p| p.parent())
+            .unwrap()
+            .to_path_buf();
         let orig_cwd = std::env::current_dir().unwrap();
         std::env::set_current_dir(&repo_root).unwrap();
         crate::vm::native_registry::register_builtin_natives();
         std::env::set_current_dir(orig_cwd).unwrap();
-        let vm_names =
-            crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap().get_function_names();
+        let vm_names = crate::vm::native_registry::BIGVM_NATIVES
+            .lock()
+            .unwrap()
+            .get_function_names();
         let a2r_lib = include_str!("../../../a2r-std/src/lib.rs");
         let drift = providers::cross_check_real_surfaces(&catalog, &vm_names, a2r_lib, &root);
         assert!(
@@ -340,10 +376,9 @@ mod t02_providers {
     fn emission_table_drift_matches_catalog_unsupported() {
         // trans/rust.rs use_stmt 三处名单的规范集（任一处漂移以其为准更新）
         const EMISSION_ROUTED: &[&str] = &[
-            "math", "str", "time", "env", "json", "file", "fs", "http", "list",
-            "hashmap", "hashset", "btreemap", "vecdeque", "char", "conv", "io",
-            "log", "path", "net", "process", "sys", "sse", "may", "sqlite",
-            "redis",
+            "math", "str", "time", "env", "json", "file", "fs", "http", "list", "hashmap",
+            "hashset", "btreemap", "vecdeque", "char", "conv", "io", "log", "path", "net",
+            "process", "sys", "sse", "may", "sqlite", "redis",
         ];
         let a2r_lib = include_str!("../../../a2r-std/src/lib.rs");
         let missing: Vec<&str> = EMISSION_ROUTED
@@ -376,20 +411,22 @@ mod t02_providers {
 #[cfg(test)]
 mod t04_core_bindings {
     use crate::stdlib_assembly::model::Environment;
-    use crate::stdlib_assembly::validate::{
-        self, CoreSymbolStatus, CORE_MODULES,
-    };
+    use crate::stdlib_assembly::validate::{self, CoreSymbolStatus, CORE_MODULES};
 
     /// 生产同款构造：CWD 钉仓根 → 磁盘扫描注册 + NativeInterface 手工面
     ///（register_std_shims + register_stdlib_ffi）+ 全库 inventory。
-    fn production_surfaces()
-        -> (crate::stdlib_assembly::model::StdlibInventory,
-            std::sync::MutexGuard<'static, crate::vm::native_registry::AutoVMNativeRegistry>,
-            crate::vm::native::NativeInterface,
-            std::path::PathBuf)
-    {
+    fn production_surfaces() -> (
+        crate::stdlib_assembly::model::StdlibInventory,
+        std::sync::MutexGuard<'static, crate::vm::native_registry::AutoVMNativeRegistry>,
+        crate::vm::native::NativeInterface,
+        std::path::PathBuf,
+    ) {
         let stdlib_root = crate::stdlib_assembly::loader::repo_stdlib_root().unwrap();
-        let repo_root = stdlib_root.parent().and_then(|p| p.parent()).unwrap().to_path_buf();
+        let repo_root = stdlib_root
+            .parent()
+            .and_then(|p| p.parent())
+            .unwrap()
+            .to_path_buf();
         let orig = std::env::current_dir().unwrap();
         std::env::set_current_dir(&repo_root).unwrap();
         crate::vm::native_registry::register_builtin_natives();
@@ -403,7 +440,12 @@ mod t04_core_bindings {
         shims.build_from_inventory();
 
         let inv = crate::stdlib_assembly::loader::scan_inventory(&stdlib_root);
-        (inv, crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap(), shims, repo_root)
+        (
+            inv,
+            crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap(),
+            shims,
+            repo_root,
+        )
     }
 
     /// AC-03 正测：现存核心支持 resolved+bound → Supported。
@@ -413,7 +455,8 @@ mod t04_core_bindings {
     #[test]
     fn core_supported_symbols_resolve_and_bind() {
         let (inv, registry, shims, _) = production_surfaces();
-        let validations = validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Native);
+        let validations =
+            validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Native);
 
         // 裁决①冻结：http 扫描前缀名 resolved 但无绑定 → Unverified
         //（实际函数经公共面 auto.http.get 可用；公共面校验重写下轮）
@@ -422,7 +465,12 @@ mod t04_core_bindings {
             .iter()
             .find(|v| v.native_name == "auto.http.http_get")
             .expect("http.vm.at #[vm] http_get 应入校验集");
-        assert_eq!(http_get.status, CoreSymbolStatus::Supported, "{:?}", http_get.reason);
+        assert_eq!(
+            http_get.status,
+            CoreSymbolStatus::Supported,
+            "{:?}",
+            http_get.reason
+        );
         assert!(http_get.resolved && http_get.bound);
 
         // net 顶层（auto.net.tcp_bind）
@@ -449,8 +497,15 @@ mod t04_core_bindings {
             let n = validations.iter().filter(|v| v.module == *m).count();
             assert!(n > 0, "{m} 应有 #[vm] 校验产出");
         }
-        let supported = validations.iter().filter(|v| v.status == CoreSymbolStatus::Supported).count();
-        assert!(supported > validations.len() / 2, "现存核心支持应为多数（supported={supported}/{}）", validations.len());
+        let supported = validations
+            .iter()
+            .filter(|v| v.status == CoreSymbolStatus::Supported)
+            .count();
+        assert!(
+            supported > validations.len() / 2,
+            "现存核心支持应为多数（supported={supported}/{}）",
+            validations.len()
+        );
     }
 
     /// AC-03 负测：sse.at 顶层 #[vm] parse_sse 无任何 native 注册——
@@ -458,14 +513,18 @@ mod t04_core_bindings {
     #[test]
     fn sse_parse_sse_is_declared_stub() {
         let (inv, registry, shims, _) = production_surfaces();
-        let validations = validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Native);
+        let validations =
+            validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Native);
         let sse = validations
             .iter()
             .find(|v| v.module == "sse")
             .expect("sse 应有 #[vm] 校验产出（parse_sse）");
         assert_eq!(sse.status, CoreSymbolStatus::DeclaredStub);
         assert!(!sse.resolved && !sse.bound);
-        assert_eq!(sse.verification, crate::stdlib_assembly::model::VerificationLevel::Declared);
+        assert_eq!(
+            sse.verification,
+            crate::stdlib_assembly::model::VerificationLevel::Declared
+        );
     }
 
     /// AC-05：Browser 环境三族（本地 FS/native socket/服务监听）显式
@@ -473,16 +532,30 @@ mod t04_core_bindings {
     #[test]
     fn browser_environment_unsupported_families() {
         let (inv, registry, shims, _) = production_surfaces();
-        let v_native = validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Native);
-        let v_browser = validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Browser);
+        let v_native =
+            validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Native);
+        let v_browser =
+            validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Browser);
 
         // io/net 全族 Browser 下 Unsupported
-        let io_unsup = v_browser.iter().filter(|v| v.module == "io" && v.status == CoreSymbolStatus::Unsupported).count();
-        let net_unsup = v_browser.iter().filter(|v| v.module == "net" && v.status == CoreSymbolStatus::Unsupported).count();
+        let io_unsup = v_browser
+            .iter()
+            .filter(|v| v.module == "io" && v.status == CoreSymbolStatus::Unsupported)
+            .count();
+        let net_unsup = v_browser
+            .iter()
+            .filter(|v| v.module == "net" && v.status == CoreSymbolStatus::Unsupported)
+            .count();
         let io_all = v_browser.iter().filter(|v| v.module == "io").count();
         let net_all = v_browser.iter().filter(|v| v.module == "net").count();
-        assert!(io_all > 0 && io_unsup == io_all, "io 全族应 Unsupported（{io_unsup}/{io_all}）");
-        assert!(net_all > 0 && net_unsup == net_all, "net 全族应 Unsupported（{net_unsup}/{net_all}）");
+        assert!(
+            io_all > 0 && io_unsup == io_all,
+            "io 全族应 Unsupported（{io_unsup}/{io_all}）"
+        );
+        assert!(
+            net_all > 0 && net_unsup == net_all,
+            "net 全族应 Unsupported（{net_unsup}/{net_all}）"
+        );
 
         // http server 监听族 Unsupported；客户端面保持原状态
         let server_listen = v_browser
@@ -490,22 +563,36 @@ mod t04_core_bindings {
             .find(|v| v.native_name == "auto.http.server_listen")
             .expect("http server_listen 应入校验集");
         assert_eq!(server_listen.status, CoreSymbolStatus::Unsupported);
-        let http_get_b = v_browser.iter().find(|v| v.native_name == "auto.http.http_get").unwrap();
-        assert_ne!(http_get_b.status, CoreSymbolStatus::Unsupported, "http 客户端面不属于 Browser 三族");
+        let http_get_b = v_browser
+            .iter()
+            .find(|v| v.native_name == "auto.http.http_get")
+            .unwrap();
+        assert_ne!(
+            http_get_b.status,
+            CoreSymbolStatus::Unsupported,
+            "http 客户端面不属于 Browser 三族"
+        );
 
         // json 解析面不受累
-        let json_ok = v_browser.iter().filter(|v| v.module == "json" && v.status == CoreSymbolStatus::Supported).count();
+        let json_ok = v_browser
+            .iter()
+            .filter(|v| v.module == "json" && v.status == CoreSymbolStatus::Supported)
+            .count();
         assert!(json_ok > 0, "json 面 Browser 下仍为 Supported");
 
         // Native 下无 Unsupported（对照组）
         assert!(
-            v_native.iter().all(|v| v.status != CoreSymbolStatus::Unsupported),
+            v_native
+                .iter()
+                .all(|v| v.status != CoreSymbolStatus::Unsupported),
             "Native 环境不应产生 Unsupported 分类"
         );
 
         // 诊断视图：Browser 下 io/net/http server 族出 PROVIDER_UNSUPPORTED
         let diags = validate::core_status_diagnostics(&v_browser, None);
-        assert!(diags.iter().any(|d| d.code == validate::code::PROVIDER_UNSUPPORTED));
+        assert!(diags
+            .iter()
+            .any(|d| d.code == validate::code::PROVIDER_UNSUPPORTED));
     }
 
     /// AC-03：ID 别名冲突检测——生产面基线零冲突。
@@ -523,7 +610,11 @@ mod t04_core_bindings {
             baseline.len(),
             13,
             "生产面 ID 冲突基线漂移——修复/新增后更新此冻结与 §9: {:?}",
-            baseline.iter().map(|d| &d.message).take(8).collect::<Vec<_>>()
+            baseline
+                .iter()
+                .map(|d| &d.message)
+                .take(8)
+                .collect::<Vec<_>>()
         );
         // 裁决②冻结：read_text 族 shim 收敛单名（std 声明面）
         let src = include_str!("../vm/ffi/stdlib.rs");
@@ -544,6 +635,368 @@ mod t04_core_bindings {
         let mut reg2 = crate::vm::native_registry::AutoVMNativeRegistry::new();
         reg2.register_with_id("auto.str.split", 8888);
         reg2.register_with_id("split", 8888);
-        assert!(validate::id_alias_conflicts(&reg2).is_empty(), "短别名同 id 合法");
+        assert!(
+            validate::id_alias_conflicts(&reg2).is_empty(),
+            "短别名同 id 合法"
+        );
+    }
+}
+
+// ============================================================================
+// T-05 缓存依赖与编译 epoch 一致性（AC-04/06，SD-01/03）
+// ============================================================================
+
+#[cfg(test)]
+mod t05_cache_consistency {
+    use crate::compile::CompileSession;
+    use crate::stdlib_assembly::model::AssemblyTarget;
+    use std::fs;
+    use std::path::Path;
+
+    /// 双层模块 fixture：公共层带真实函数体（bytecode exports 非空），
+    /// vm 层带 #[vm] 声明（VM 装配合并面）。
+    fn write_two_layer_fixture(dir: &Path) -> String {
+        fs::write(
+            dir.join("main.at"),
+            "use proto: *\n\nfn main() {\n    let x = 1\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("proto.at"),
+            "pub fn answer() int {\n    return 42\n}\n",
+        )
+        .unwrap();
+        fs::write(dir.join("proto.vm.at"), "#[vm]\npub fn vm_only() int;\n").unwrap();
+        fs::read_to_string(dir.join("main.at")).unwrap()
+    }
+
+    fn vm_session(dir: &Path) -> CompileSession {
+        let mut s = CompileSession::new();
+        s.add_source_dir(dir.to_path_buf());
+        s
+    }
+
+    fn module_fn_names(s: &CompileSession, module: &str) -> Vec<String> {
+        s.type_store()
+            .read()
+            .unwrap()
+            .lookup_module(module)
+            .unwrap()
+            .store
+            .pub_fn_names()
+    }
+
+    /// 写文件并保留原 mtime——证明失效判据是内容指纹而非时间戳。
+    fn write_preserving_mtime(path: &Path, content: &str) {
+        let mtime = fs::metadata(path).unwrap().modified().unwrap();
+        fs::write(path, content).unwrap();
+        let f = fs::OpenOptions::new().write(true).open(path).unwrap();
+        f.set_times(std::fs::FileTimes::new().set_modified(mtime))
+            .unwrap();
+        drop(f);
+        assert_eq!(fs::metadata(path).unwrap().modified().unwrap(), mtime);
+    }
+
+    /// §5.5 早退一致性：缓存命中只替换 parse 步——本 epoch 的 bytecode 与
+    /// manifest 记录必须与 fresh 路径同构（clone 会话 = compiled_* 已重置、
+    /// auto_cache 继承的真实早退场景）。
+    #[test]
+    fn cache_hit_rebuilds_bytecode_and_manifest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = write_two_layer_fixture(tmp.path());
+
+        let mut s1 = vm_session(tmp.path());
+        s1.resolve_uses(&source).unwrap();
+        assert_eq!(s1.layer_selections.len(), 1, "fresh 装载留 manifest");
+
+        let mut s2 = s1.clone();
+        assert!(s2.compiled_modules.is_empty(), "clone 重置装载产物");
+        s2.resolve_uses(&source).unwrap();
+
+        // ① 命中路径补全本 epoch bytecode（旧早退只合并 type_store）
+        let proto = s2
+            .compiled_modules
+            .iter()
+            .find(|m| m.name == "proto")
+            .expect("命中路径必须重建本 epoch bytecode（半截模块禁止）");
+        assert!(
+            proto.exports.keys().any(|k| k.contains("answer")),
+            "bytecode exports 应含公共层函数: {:?}",
+            proto.exports.keys().collect::<Vec<_>>()
+        );
+        // ② 命中路径留下 manifest 记录（T-03 面在命中路径同构）
+        assert_eq!(s2.layer_selections.len(), 1, "命中路径须记录层选择");
+        assert!(
+            s2.layer_selections[0]
+                .context_file
+                .as_deref()
+                .unwrap()
+                .ends_with("proto.vm.at"),
+            "命中路径 manifest 须含选定层: {:?}",
+            s2.layer_selections[0]
+        );
+        // ③ 类型面与 fresh 一致
+        let names = module_fn_names(&s2, "proto");
+        assert!(
+            names.contains(&"answer".to_string()) && names.contains(&"vm_only".to_string()),
+            "命中路径类型面完整: {names:?}"
+        );
+    }
+
+    /// AC-06：只改目标层内容（同 mtime）→ 真实重编译，新符号可见；
+    /// 旧缓存返回被禁止（行为断言，非仅指纹断言）。
+    #[test]
+    fn target_layer_content_change_invalidates_same_mtime() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = write_two_layer_fixture(tmp.path());
+
+        let mut s1 = vm_session(tmp.path());
+        s1.resolve_uses(&source).unwrap();
+
+        write_preserving_mtime(
+            &tmp.path().join("proto.vm.at"),
+            "#[vm]\npub fn vm_only() int;\n#[vm]\npub fn vm_extra() int;\n",
+        );
+
+        let mut s2 = s1.clone();
+        s2.resolve_uses(&source).unwrap();
+        let names = module_fn_names(&s2, "proto");
+        assert!(
+            names.contains(&"vm_extra".to_string()),
+            "同 mtime 改层必须重编译（新符号可见）: {names:?}"
+        );
+    }
+
+    /// AC-06：选定层新增（absent 台账）与删除都真实失效。
+    #[test]
+    fn selected_layer_add_and_remove_invalidate() {
+        // —— 增层：存储时无 .vm.at，后来出现 → 重编译可见层符号
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(
+            tmp.path().join("main.at"),
+            "use proto: *\n\nfn main() {\n    let x = 1\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            tmp.path().join("proto.at"),
+            "pub fn answer() int {\n    return 42\n}\n",
+        )
+        .unwrap();
+        let source = fs::read_to_string(tmp.path().join("main.at")).unwrap();
+
+        let mut s1 = vm_session(tmp.path());
+        s1.resolve_uses(&source).unwrap();
+        assert!(
+            !module_fn_names(&s1, "proto").contains(&"vm_added".to_string()),
+            "装载时无层则无层符号"
+        );
+
+        fs::write(
+            tmp.path().join("proto.vm.at"),
+            "#[vm]\npub fn vm_added() int;\n",
+        )
+        .unwrap();
+        let mut s2 = s1.clone();
+        s2.resolve_uses(&source).unwrap();
+        assert!(
+            module_fn_names(&s2, "proto").contains(&"vm_added".to_string()),
+            "选定层新增必须失效缓存并重编译"
+        );
+
+        // —— 删层：存储时有 .vm.at，删除后重编译回公共单层（合法装配），
+        //     且层符号消失（不得残留旧实现）
+        let tmp2 = tempfile::tempdir().unwrap();
+        let source2 = write_two_layer_fixture(tmp2.path());
+        let mut s3 = vm_session(tmp2.path());
+        s3.resolve_uses(&source2).unwrap();
+        fs::remove_file(tmp2.path().join("proto.vm.at")).unwrap();
+        let mut s4 = s3.clone();
+        s4.resolve_uses(&source2).unwrap();
+        let names = module_fn_names(&s4, "proto");
+        assert!(
+            !names.contains(&"vm_only".to_string()),
+            "选定层删除后不得残留旧层符号: {names:?}"
+        );
+        assert!(
+            names.contains(&"answer".to_string()),
+            "公共层继续可用（无选定层是合法装配）"
+        );
+    }
+
+    /// §5.5：活 session 换目标 = 无契约 ABI 热换 → SessionTargetMismatch；
+    /// 同目标重声明、未装载/clone 重置 session 的换目标放行。
+    #[test]
+    fn retarget_after_load_rejected_and_legal_paths_ok() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = write_two_layer_fixture(tmp.path());
+
+        let mut s = vm_session(tmp.path());
+        s.resolve_uses(&source).unwrap(); // Vm 默认目标下装载
+
+        let err = s
+            .set_assembly_target(AssemblyTarget::Rust)
+            .expect_err("已装载 session 换目标必须拒绝");
+        assert!(
+            err.to_string().contains("session_target_mismatch"),
+            "诊断须含稳定码: {err}"
+        );
+        assert_eq!(s.assembly.target, AssemblyTarget::Vm, "拒绝后目标不变");
+
+        s.set_assembly_target(AssemblyTarget::Vm)
+            .expect("同目标重声明放行");
+
+        // clone 重置装载产物 → 换目标放行（跨装配缓存共存入口）
+        let mut s2 = s.clone();
+        s2.set_assembly_target(AssemblyTarget::C).unwrap();
+        assert_eq!(s2.assembly.target, AssemblyTarget::C);
+
+        let mut s3 = CompileSession::new();
+        s3.set_assembly_target(AssemblyTarget::Rust).unwrap();
+    }
+
+    /// §5.5：stdlib root 身份——活 session 解析根变化 → SessionTargetMismatch
+    /// （真实 stdlib 装载接线；root 注入经 pub(crate) 字段避免 env 竞态）。
+    #[test]
+    fn stdlib_root_change_rejected() {
+        let mut s = CompileSession::new();
+        s.resolve_uses("use auto.io: *")
+            .expect("真实 stdlib io 装载");
+        assert!(s.stdlib_root.is_some(), "首个 stdlib 装载应记录 root 身份");
+
+        s.stdlib_root = Some("Z:/definitely-other-stdlib-root".to_string());
+        let err = s
+            .resolve_uses("use auto.net: *")
+            .expect_err("stdlib root 变化必须拒绝");
+        assert!(
+            err.to_string().contains("session_target_mismatch"),
+            "诊断须含稳定码: {err}"
+        );
+    }
+
+    /// §5.5：跨装配缓存共存——VM 装载的条目不得供 Rust 装配命中；
+    /// clone+retarget 后 Rust 装配未命中（VM 层不串入）。
+    #[test]
+    fn cross_target_cache_does_not_leak_vm_layer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = write_two_layer_fixture(tmp.path());
+
+        let mut s1 = vm_session(tmp.path());
+        s1.resolve_uses(&source).unwrap(); // Vm 条目入缓存
+
+        let mut s2 = s1.clone(); // 缓存继承、装载产物重置
+        s2.set_assembly_target(AssemblyTarget::Rust).unwrap();
+        s2.resolve_uses(&source).unwrap();
+
+        let names = module_fn_names(&s2, "proto");
+        assert!(
+            !names.contains(&"vm_only".to_string()),
+            "Rust 装配不得命中 VM 条目（vm 层符号不得串入）: {names:?}"
+        );
+        assert!(
+            names.contains(&"answer".to_string()),
+            "公共层照常可见: {names:?}"
+        );
+        assert_eq!(
+            s2.layer_selections[0].target,
+            AssemblyTarget::Rust,
+            "Rust 装配留自己的 manifest 记录"
+        );
+        assert!(s2.layer_selections[0].context_file.is_none());
+    }
+
+    /// §5.5：依赖闭包指纹——依赖模块内容变更 → 依赖方条目未命中，
+    /// 本 epoch 重编译后新依赖符号可见。
+    #[test]
+    fn dependency_change_invalidates_dependent() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(
+            tmp.path().join("main.at"),
+            "use mid: *\n\nfn main() {\n    let x = 1\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            tmp.path().join("mid.at"),
+            "use leaf: *\n\npub fn mid_fn() int {\n    return 1\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            tmp.path().join("leaf.at"),
+            "pub fn leaf_fn() int {\n    return 10\n}\n",
+        )
+        .unwrap();
+        let source = fs::read_to_string(tmp.path().join("main.at")).unwrap();
+
+        let mut s1 = vm_session(tmp.path());
+        s1.resolve_uses(&source).unwrap();
+
+        fs::write(
+            tmp.path().join("leaf.at"),
+            "pub fn leaf_fn() int {\n    return 10\n}\n\npub fn leaf_extra() int {\n    return 20\n}\n",
+        )
+        .unwrap();
+
+        let mut s2 = s1.clone();
+        s2.resolve_uses(&source).unwrap();
+        let leaf_names = module_fn_names(&s2, "leaf");
+        assert!(
+            leaf_names.contains(&"leaf_extra".to_string()),
+            "依赖变更须真实重编译 leaf: {leaf_names:?}"
+        );
+        assert!(
+            module_fn_names(&s2, "mid").contains(&"mid_fn".to_string()),
+            "依赖方本 epoch 类型面完整"
+        );
+    }
+
+    /// §5.5：persistent 活 VM 的 stdlib 热换守卫——同内容重载幂等放行，
+    /// 指纹/根漂移 → SessionTargetMismatch。
+    #[test]
+    fn persistent_hot_swap_guard() {
+        // 注册面 CWD 依赖（同 t04 vm_two_entry 先例）：钉仓根后跑生产 init。
+        let stdlib_root = crate::stdlib_assembly::loader::repo_stdlib_root().unwrap();
+        let repo_root = stdlib_root
+            .parent()
+            .and_then(|p| p.parent())
+            .unwrap()
+            .to_path_buf();
+        let orig_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&repo_root).unwrap();
+        crate::vm::native_registry::register_builtin_natives();
+
+        let mut sess = crate::autovm_persistent::AutovmReplSession::new();
+        let r1 = sess.run("use auto.io: *");
+        assert!(r1.is_ok(), "首次装载应成功: {:?}", r1.err());
+        assert_eq!(sess.module_fingerprints.len(), 1, "台账记录装载");
+        let (orig_fp, orig_root) = {
+            let (_, fp, root) = &sess.module_fingerprints[0];
+            (*fp, root.clone())
+        };
+
+        // 同内容重载（REPL 重复 use）：幂等放行，不重复记台账
+        sess.run("use auto.io: *").expect("同内容重载必须幂等放行");
+        assert_eq!(sess.module_fingerprints.len(), 1);
+
+        // 内容漂移 → 拒绝
+        sess.module_fingerprints[0].1 ^= 0xDEAD_BEEF;
+        let err = sess
+            .run("use auto.io: *")
+            .expect_err("活 VM 下 stdlib 内容热换必须拒绝");
+        assert!(
+            err.to_string().contains("session_target_mismatch"),
+            "诊断须含稳定码: {err}"
+        );
+
+        // 根漂移 → 拒绝
+        sess.module_fingerprints[0].1 = orig_fp;
+        sess.module_fingerprints[0].2 = "Z:/other-root".to_string();
+        let err = sess
+            .run("use auto.io: *")
+            .expect_err("活 VM 下 stdlib root 热换必须拒绝");
+        assert!(
+            err.to_string().contains("session_target_mismatch"),
+            "诊断须含稳定码: {err}"
+        );
+        sess.module_fingerprints[0].2 = orig_root;
+        std::env::set_current_dir(orig_cwd).unwrap();
     }
 }

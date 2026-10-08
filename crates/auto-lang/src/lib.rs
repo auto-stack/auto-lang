@@ -6004,7 +6004,7 @@ pub fn trans_c_with_session(session: &mut CompileSession, path: &str) -> AutoRes
     // report E1④); the explicit target guarantees any future resolve_uses
     // consumer on this session selects the C layer — never the VM layer — as
     // its type context.
-    session.set_assembly_target(crate::stdlib_assembly::model::AssemblyTarget::C);
+    session.set_assembly_target(crate::stdlib_assembly::model::AssemblyTarget::C)?;
     let code = std::fs::read_to_string(path)?;
 
     // Compile source with incremental support
@@ -6082,7 +6082,7 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     // CompileDest::TransRust — the session target must agree with it, and any
     // VM-layer bytecode preprocessing must never bind as the Rust target's
     // implementation.
-    session.set_assembly_target(crate::stdlib_assembly::model::AssemblyTarget::Rust);
+    session.set_assembly_target(crate::stdlib_assembly::model::AssemblyTarget::Rust)?;
     let code = std::fs::read_to_string(path)?;
 
     // Compile source with incremental support (for dirty-tracking / caching)

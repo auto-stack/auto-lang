@@ -15,8 +15,9 @@
 //!      a2r-std 模块；.rs.at 生产不消费（仅 parity 测试镜像）；
 //!   ④ C trans：`use auto.X` → `#include "X.h"`（依赖 cmd_a2c_stdlib 逐文件
 //!      预生成）；.c.at 仅被该生成器消费。
-//! - ModuleCache 仅参与①：按模块名键控，content_hash=合并源 vs is_valid
-//!   重读公共文件 → 含 .vm.at 层的模块缓存永不命中。
+//! - ModuleCache 仅参与①：按模块名键控。T-01 冻结的死缓存缺陷
+//!   （content_hash=合并源 vs is_valid 重读公共文件 → 双层模块永不命中）
+//!   已由 T-05 段级指纹条目修复并反转为契约（P2，见 t05 正式族）。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -95,35 +96,73 @@ fn p1_vm_pipeline_selects_vm_layer_only() {
 }
 
 // ---------------------------------------------------------------------------
-// P2: ModuleCache 双层模块死缓存机制
+// P2: ModuleCache 双层模块缓存（T-05 反转：死缓存 E2 → 段级指纹契约）
 // ---------------------------------------------------------------------------
 
+/// T-05 反转探针（原 P2 冻结的死缓存证据已被修复翻转为契约，P5 先例）：
+/// compile.rs 现以 `with_assembly` 存段级指纹条目——双层模块未改动应
+/// valid（死缓存消除）；只改 .vm.at 层内容（mtime 保留）应失效；公共
+/// 文件单独重算不再能冒称 valid；删除选定层同样失效。单层模块行为不变。
 #[test]
-fn p2_module_cache_never_valid_for_two_layer_modules() {
+fn p2_module_cache_two_layer_segments_all_validated() {
+    use crate::module_cache::SourceSegment;
+    use crate::stdlib_assembly::model::AssemblyContext;
+
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("proto.at");
+    let layer = tmp.path().join("proto.vm.at");
     let public_only = "pub fn pub_fn() int;\n";
+    let layer_src = "#[vm]\npub fn vm_only() int;\n";
     fs::write(&root, public_only).unwrap();
+    fs::write(&layer, layer_src).unwrap();
 
-    // compile.rs 实际形态：with_file 收到的是合并源（公共 + "\n" + context）
-    let merged = format!("{public_only}\n#[vm]\npub fn vm_only() int;\n");
+    // compile.rs T-05 实际形态：with_assembly 段级条目（公共+层各自指纹）
     let store = crate::types::TypeStore::new();
-    let cache = crate::module_cache::ModuleCache::with_file(
-        "proto",
-        store.clone(),
-        root.to_string_lossy(),
-        &merged,
-    );
+    let assembly = AssemblyContext::default();
+    let make_entry = || {
+        crate::module_cache::ModuleCache::with_assembly(
+            "proto",
+            store.clone(),
+            assembly,
+            vec![
+                SourceSegment::present(root.to_string_lossy(), public_only),
+                SourceSegment::present(layer.to_string_lossy(), layer_src),
+            ],
+            vec![],
+            crate::stdlib_assembly::providers::catalog_schema_version(),
+            vec![],
+        )
+    };
 
-    // is_valid() 重读 file_path（公共文件，内容=public_only）重算 hash 与
-    // content_hash（合并源的 hash）比较 → 恒不等 → 未做任何修改也判失效。
-    assert!(
-        !cache.is_valid(),
-        "双层模块缓存未改动也应判 valid==false（死缓存证据）；file={}",
-        root.display()
-    );
+    // ① 两层都未改 → valid（死缓存 E2 消除）
+    assert!(make_entry().is_valid(), "双层模块未改动应 valid");
 
-    // 对照组：无 context 层的模块（单层），缓存机制正常。
+    // ② 只改 .vm.at 内容且保留 mtime → invalid（内容指纹，非 mtime）
+    let mtime = fs::metadata(&layer).unwrap().modified().unwrap();
+    fs::write(&layer, format!("{layer_src}// changed\n")).unwrap();
+    let f = fs::OpenOptions::new().write(true).open(&layer).unwrap();
+    f.set_times(std::fs::FileTimes::new().set_modified(mtime))
+        .unwrap();
+    drop(f);
+    assert_eq!(
+        fs::metadata(&layer).unwrap().modified().unwrap(),
+        mtime,
+        "mtime 应保留（证明失效判据是内容指纹）"
+    );
+    assert!(!make_entry().is_valid(), "同 mtime 改层内容应失效");
+
+    // ③ 公共文件单独重算不能冒称 valid：把公共内容改回与公共段一致、
+    //    层保持变更态 → 仍 invalid（旧机制只核对公共文件会误判绿）
+    fs::write(&root, public_only).unwrap();
+    assert!(!make_entry().is_valid(), "层段漂移不得因公共段匹配而误绿");
+
+    // ④ 删除选定层 → invalid
+    fs::write(&layer, layer_src).unwrap(); // 恢复层，②③ 清偿
+    assert!(make_entry().is_valid(), "恢复后应重新 valid");
+    fs::remove_file(&layer).unwrap();
+    assert!(!make_entry().is_valid(), "选定层删除应失效");
+
+    // ⑤ 对照组：单层模块（with_file legacy 形态）行为不变
     let cache_single = crate::module_cache::ModuleCache::with_file(
         "single",
         store,
@@ -131,6 +170,20 @@ fn p2_module_cache_never_valid_for_two_layer_modules() {
         public_only,
     );
     assert!(cache_single.is_valid(), "单层模块未改动应 valid");
+
+    // ⑥ absent 台账：存储时无 .vm.at、后来新增 → invalid（增层失效）。
+    // ④ 已删除层文件——此处重建以模拟"出现"。
+    fs::write(&layer, layer_src).unwrap();
+    let absent_entry = crate::module_cache::ModuleCache::with_assembly(
+        "bare",
+        crate::types::TypeStore::new(),
+        assembly,
+        vec![SourceSegment::present(root.to_string_lossy(), public_only)],
+        vec![layer.to_string_lossy().to_string()],
+        crate::stdlib_assembly::providers::catalog_schema_version(),
+        vec![],
+    );
+    assert!(!absent_entry.is_valid(), "absent 台账层已出现应失效");
 }
 
 // ---------------------------------------------------------------------------
@@ -160,10 +213,16 @@ fn p3_trans_entries_never_assemble_modules() {
     // include 的具体落盘位置随 incremental/全量模式变化，这里只记录产物
     // 供报告引用；断言核心=模块未进 session（上方）。
     if let Ok(c_out) = fs::read_to_string(tmp.path().join("main.c")) {
-        println!("P3EVIDENCE main.c contains proto.h = {}", c_out.contains("proto.h"));
+        println!(
+            "P3EVIDENCE main.c contains proto.h = {}",
+            c_out.contains("proto.h")
+        );
     }
     if let Ok(c_header) = fs::read_to_string(tmp.path().join("main.h")) {
-        println!("P3EVIDENCE main.h contains proto.h = {}", c_header.contains("proto.h"));
+        println!(
+            "P3EVIDENCE main.h contains proto.h = {}",
+            c_header.contains("proto.h")
+        );
     }
 
     // Rust 入口：同样不装载；合成模块名不在名称表 → 落 crate::proto。
@@ -208,8 +267,7 @@ fn p4_rust_emission_routes_net_to_missing_a2r_module() {
     let main2 = tmp.path().join("json_main.at");
     fs::write(&main2, "use auto.json\n\nfn main() {\n    let x = 1\n}\n").unwrap();
     let mut session2 = crate::compile::CompileSession::new();
-    crate::trans_rust_with_session(&mut session2, main2.to_str().unwrap())
-        .expect("trans json");
+    crate::trans_rust_with_session(&mut session2, main2.to_str().unwrap()).expect("trans json");
     let emitted2 = fs::read_to_string(tmp.path().join("json_main.a2r.rs")).unwrap();
     assert!(
         emitted2.contains("a2r_std::json") && a2r_lib.contains("pub mod json"),
@@ -283,13 +341,9 @@ fn p6_parser_inventory_six_core_modules() {
             // `use auto.async` 在 VM 装配面 today 即失败。738 不改语言语法，
             // 该文件按 §5.1 记录为 diagnostic（不从分母删除），预期失败集
             // 冻结在下方断言；修复后更新此冻结。
-            let shared: std::sync::Arc<
-                std::sync::RwLock<crate::types::TypeStore>,
-            > = std::sync::Arc::new(std::sync::RwLock::new(
-                crate::types::TypeStore::new(),
-            ));
-            let mut parser =
-                crate::parser::Parser::new_with_type_store(content.as_str(), shared);
+            let shared: std::sync::Arc<std::sync::RwLock<crate::types::TypeStore>> =
+                std::sync::Arc::new(std::sync::RwLock::new(crate::types::TypeStore::new()));
+            let mut parser = crate::parser::Parser::new_with_type_store(content.as_str(), shared);
             let ast = match parser.parse() {
                 Ok(ast) => ast,
                 Err(e) => {
@@ -357,13 +411,23 @@ fn p6_parser_inventory_six_core_modules() {
             println!("INV738NAMES\t{module}\t{layer}\t{}", names.join(","));
         }
     }
-    println!("INV738\tTOTAL\tparsed={total_files}\tfailed={}", parse_failures.len());
+    println!(
+        "INV738\tTOTAL\tparsed={total_files}\tfailed={}",
+        parse_failures.len()
+    );
     // 分母冻结：12 层全部计入；parse 失败集冻结为 async.at（`type Sender[T]`
     // 两处）+ json.rs.at（镜像文件语法漂移）——不静默略过，也不因既存破损
     // 让门禁常红。
-    assert_eq!(total_files + parse_failures.len(), 13, "六核心模块现有层数（增删层须更新分母）");
     assert_eq!(
-        parse_failures.iter().map(|(f, _)| f.as_str()).collect::<Vec<_>>(),
+        total_files + parse_failures.len(),
+        13,
+        "六核心模块现有层数（增删层须更新分母）"
+    );
+    assert_eq!(
+        parse_failures
+            .iter()
+            .map(|(f, _)| f.as_str())
+            .collect::<Vec<_>>(),
         vec!["async.at", "json.rs.at"],
         "parse 失败层冻结（修复后更新此冻结与分母）: {parse_failures:?}"
     );

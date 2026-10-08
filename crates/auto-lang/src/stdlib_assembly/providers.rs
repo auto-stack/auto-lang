@@ -45,6 +45,14 @@ pub fn load_catalog() -> Result<ProviderCatalog, String> {
     Ok(catalog)
 }
 
+/// PLAN-738 T-05：provider 目录 schema 版本（进程内缓存一次——目录经
+/// include_str! 编译期内嵌，运行时不变）。缓存条目身份含此版本：目录
+/// 声明变更（bump schema_version）→ 既有缓存条目全量失效。
+pub fn catalog_schema_version() -> u32 {
+    static SCHEMA: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    *SCHEMA.get_or_init(|| load_catalog().map(|c| c.schema_version).unwrap_or(0))
+}
+
 impl ProviderClaim {
     pub fn is_supported(&self) -> bool {
         self.status == "supported"
@@ -67,16 +75,16 @@ pub fn shape_checks(catalog: &ProviderCatalog) -> Vec<AssemblyDiagnostic> {
         if !matches!(c.target.as_str(), "vm" | "rust" | "c") {
             out.push(bad(format!("unknown target '{}'", c.target)));
         }
-        if !matches!(c.status.as_str(), "supported" | "unsupported" | "unverified") {
+        if !matches!(
+            c.status.as_str(),
+            "supported" | "unsupported" | "unverified"
+        ) {
             out.push(bad(format!("unknown status '{}'", c.status)));
         }
         if matches!(c.status.as_str(), "unsupported" | "unverified")
             && c.reason.as_deref().map(str::is_empty).unwrap_or(true)
         {
-            out.push(bad(format!(
-                "{} claim requires non-empty reason",
-                c.status
-            )));
+            out.push(bad(format!("{} claim requires non-empty reason", c.status)));
         }
         if c.is_supported() && c.locator.is_none() {
             out.push(bad("supported claim requires locator".to_string()));

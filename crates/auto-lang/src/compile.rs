@@ -18,8 +18,6 @@
 
 // Phase 3: Add fine-grained incremental (fragment hashing, patches)
 
-
-
 use crate::module_cache::{AutoCache, ModuleCache};
 
 use crate::database::Database;
@@ -44,31 +42,53 @@ use crate::util::find_std_lib;
 
 use std::collections::HashMap;
 
-use auto_cache::{Sandbox, CrateMetadata, CrateSource};
+use auto_cache::{CrateMetadata, CrateSource, Sandbox};
 
 /// Plan 212 Phase 2.2 起的内建不透明 crate 清单(免 dep 声明)。
 /// Plan 430 F2 语义演进目标:此清单从"手写 native shim 的白名单"逐步变为
 /// "预生成方法 shim 包的默认配置清单"(迁一个删一个,见 plan-430 F1/F2)。
 pub const BUILTIN_OPAQUE_CRATES: &[&str] = &[
-    "regex", "url", "semver", "log", "env_logger", "tracing",
-    "rand", "rand_distr", "chrono", "csv", "walkdir", "toml",
-    "serde_json", "percent_encoding", "urlencoding", "base64", "hex",
-    "sha2", "mime_guess", "same_file", "heapless", "clap",
-    "ansi_term", "simplelog", "tar", "flate2", "crossbeam",
-    "anyhow", "serde", "tokio", "num", "ndarray",
+    "regex",
+    "url",
+    "semver",
+    "log",
+    "env_logger",
+    "tracing",
+    "rand",
+    "rand_distr",
+    "chrono",
+    "csv",
+    "walkdir",
+    "toml",
+    "serde_json",
+    "percent_encoding",
+    "urlencoding",
+    "base64",
+    "hex",
+    "sha2",
+    "mime_guess",
+    "same_file",
+    "heapless",
+    "clap",
+    "ansi_term",
+    "simplelog",
+    "tar",
+    "flate2",
+    "crossbeam",
+    "anyhow",
+    "serde",
+    "tokio",
+    "num",
+    "ndarray",
 ];
 
 /// Plan 430: shim 包 manifest 的自由函数签名 → D2 元数据注册。
 fn register_manifest_function_sigs(crate_name: &str, manifest_json: &str) {
-    if let Ok(man) =
-        serde_json::from_str::<shim_metadata::emit_cdylib::ShimManifest>(manifest_json)
+    if let Ok(man) = serde_json::from_str::<shim_metadata::emit_cdylib::ShimManifest>(manifest_json)
     {
         for f in &man.functions {
             crate::vm::ffi::dep_methods::register_function_sig(
-                crate_name,
-                &f.name,
-                &f.params,
-                &f.ret,
+                crate_name, &f.name, &f.params, &f.ret,
             );
         }
     }
@@ -88,9 +108,7 @@ fn derive_mono_instances(code: &str) -> shim_metadata::classify::MonoInstances {
     while let Some(pos) = code[i..].find('(') {
         let abs = i + pos;
         let mut start = abs;
-        while start > 0
-            && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_')
-        {
+        while start > 0 && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_') {
             start -= 1;
         }
         if start < abs {
@@ -184,7 +202,6 @@ use std::sync::Arc;
 
 use std::sync::RwLock;
 
-
 /// Source info for a declared dep (git/path/version)
 #[derive(Clone)]
 struct DepSourceInfo {
@@ -193,8 +210,6 @@ struct DepSourceInfo {
     git_ref: Option<String>,
     path: Option<String>,
 }
-
-
 
 /// Compilation session using the new AIE architecture
 
@@ -207,10 +222,7 @@ struct DepSourceInfo {
 ///
 
 /// Phase 4.5: Database is now wrapped in Arc<RwLock<>> for sharing with Evaler
-
 use std::collections::HashSet;
-
-
 
 /// Phase 3 (Plan 065): QueryEngine integration complete (now accepts Arc<RwLock<Database>>)
 
@@ -221,25 +233,20 @@ use std::collections::HashSet;
 /// Plan 092: Added sandbox for Rust FFI
 
 pub struct CompileSession {
-
     db: Arc<RwLock<Database>>,
 
     query_engine: Option<crate::query::QueryEngine>,
 
     /// Plan 085: Unified type store for all loaded modules
-
     type_store: Arc<RwLock<TypeStore>>,
 
     /// Plan 085 Phase 5: Module cache for incremental compilation
-
     auto_cache: AutoCache,
 
     /// Plan 092: Sandbox for Rust FFI
-
     sandbox: Option<Sandbox>,
 
     /// Plan 092: Declared crate names (from dep statements)
-
     declared_crates: HashSet<String>,
 
     /// Features for declared crates (crate_name → feature list)
@@ -249,12 +256,13 @@ pub struct CompileSession {
     dep_sources: HashMap<String, DepSourceInfo>,
 
     /// Plan 167: Tracks modules currently being loaded (for circular dependency detection)
-
     loading_stack: Vec<String>,
 
     /// Cross-module function calls: compiled dependency modules
 
-    compiled_modules: Vec<crate::vm::loader::Module>,
+    /// 跨模块函数调用:已编译的依赖模块（pub(crate)：PLAN-738 T-05 早退
+    /// 一致性测试消费——命中路径须证明本 epoch bytecode 已补全）
+    pub(crate) compiled_modules: Vec<crate::vm::loader::Module>,
 
     /// PLAN-013 T1: `#[vm]` (body-less) fn names declared by compiled dep
     /// modules (e.g. term.vm.at engine shims). Seeded into the root codegen
@@ -282,13 +290,11 @@ pub struct CompileSession {
     /// Plan 212b Task 2: Rust imports collected from use.rust statements
 
     /// Maps crate_name 鈫?list of imported function names
-
     rust_imports: std::collections::HashMap<String, Vec<String>>,
 
     /// Plan 214: Python imports collected from use.py statements
 
     /// Maps module_name 鈫?list of imported function names
-
     py_imports: std::collections::HashMap<String, Vec<String>>,
 
     /// Plan 550 T10: `#[script]` 文件级 pragma 登记（parser.script_pragma
@@ -310,16 +316,15 @@ pub struct CompileSession {
     /// 记录属于"本次装载"而非可继承状态）。
     pub layer_selections: Vec<crate::stdlib_assembly::model::LayerSelection>,
 
+    /// PLAN-738 T-05（§5.5）：本 session 解析到的 stdlib root 身份。首个
+    /// stdlib 模块装载时记录；后续装载发现根变化 → SessionTargetMismatch
+    /// （活 session 下热换 stdlib 来源须明确重建，不静默混跑两个 root）。
+    pub(crate) stdlib_root: Option<String>,
 }
 
-
-
 impl Clone for CompileSession {
-
     fn clone(&self) -> Self {
-
         Self {
-
             db: self.db.clone(),
 
             query_engine: None, // QueryEngine is recreated on-demand after clone
@@ -340,7 +345,9 @@ impl Clone for CompileSession {
 
             compiled_modules: Vec::new(),
             vm_fn_names: std::collections::HashSet::new(),
-            dep_generic_registry: std::cell::RefCell::new(crate::vm::generic_registry::GenericRegistry::new()),
+            dep_generic_registry: std::cell::RefCell::new(
+                crate::vm::generic_registry::GenericRegistry::new(),
+            ),
             dep_object_keys: std::cell::RefCell::new(Vec::new()),
             dep_object_types: std::cell::RefCell::new(Vec::new()),
 
@@ -352,31 +359,24 @@ impl Clone for CompileSession {
 
             py_imports: self.py_imports.clone(),
 
-            script_marked: self.script_marked, // Plan 550 T10
-            script_mode: self.script_mode, // Plan 555 T02
-            assembly: self.assembly, // PLAN-738：装配目标随 clone 传递
-            layer_selections: Vec::new(), // 记录属于本次装载，重置
-
+            script_marked: self.script_marked,     // Plan 550 T10
+            script_mode: self.script_mode,         // Plan 555 T02
+            assembly: self.assembly,               // PLAN-738：装配目标随 clone 传递
+            layer_selections: Vec::new(),          // 记录属于本次装载，重置
+            stdlib_root: self.stdlib_root.clone(), // PLAN-738 T-05：root 身份随 clone 继承
         }
-
     }
-
 }
 
-
-
 impl CompileSession {
-
     /// Create a new compilation session
 
     pub fn new() -> Self {
-
         let db = Arc::new(RwLock::new(Database::new()));
 
         let type_store = Arc::new(RwLock::new(TypeStore::new()));
 
         Self {
-
             db,
 
             query_engine: None,
@@ -397,7 +397,9 @@ impl CompileSession {
 
             compiled_modules: Vec::new(),
             vm_fn_names: std::collections::HashSet::new(),
-            dep_generic_registry: std::cell::RefCell::new(crate::vm::generic_registry::GenericRegistry::new()),
+            dep_generic_registry: std::cell::RefCell::new(
+                crate::vm::generic_registry::GenericRegistry::new(),
+            ),
             dep_object_keys: std::cell::RefCell::new(Vec::new()),
             dep_object_types: std::cell::RefCell::new(Vec::new()),
 
@@ -409,19 +411,86 @@ impl CompileSession {
 
             py_imports: std::collections::HashMap::new(),
 
-            script_marked: false, // Plan 550 T10
+            script_marked: false,                         // Plan 550 T10
             script_mode: crate::mode::ScriptMode::Normal, // Plan 555 T02
-            assembly: Default::default(), // PLAN-738：默认 Vm×Native
+            assembly: Default::default(),                 // PLAN-738：默认 Vm×Native
             layer_selections: Vec::new(),
-
+            stdlib_root: None, // PLAN-738 T-05：首个 stdlib 装载时记录
         }
-
     }
 
     /// PLAN-738 T-03：显式声明装配目标（trans 入口在类型装载/发射前调用；
     /// 层选择随之切换——AC-02 target 先于装载确定）。
-    pub fn set_assembly_target(&mut self, target: crate::stdlib_assembly::model::AssemblyTarget) {
+    ///
+    /// PLAN-738 T-05（§5.5）：已装载模块的 session 换目标 = 无契约 ABI 热换
+    /// → SessionTargetMismatch 明确错误（须重建 session）；同目标重声明与
+    /// 未装载 session 的任意声明放行。
+    pub fn set_assembly_target(
+        &mut self,
+        target: crate::stdlib_assembly::model::AssemblyTarget,
+    ) -> AutoResult<()> {
+        if self.assembly.target != target && self.has_loaded_modules() {
+            return Err(AutoError::Msg(format!(
+                "session_target_mismatch: session already loaded {} module(s) under target {:?}; \
+                 retargeting to {:?} would hot-swap stdlib ABI — create a new CompileSession",
+                self.loaded_module_count(),
+                self.assembly.target,
+                target
+            )));
+        }
         self.assembly.target = target;
+        Ok(())
+    }
+
+    /// PLAN-738 T-05：本 session 是否已有装载产物（任一装载面非空）。
+    fn has_loaded_modules(&self) -> bool {
+        !self.compiled_modules.is_empty()
+            || !self.compiled_module_paths.is_empty()
+            || !self.layer_selections.is_empty()
+    }
+
+    fn loaded_module_count(&self) -> usize {
+        self.layer_selections
+            .len()
+            .max(self.compiled_module_paths.len())
+            .max(self.compiled_modules.len())
+    }
+
+    /// PLAN-738 T-03/T-05：层选择记录（AssemblyManifest v0 seam，T-06
+    /// CLI/生成收据消费）。fresh 与缓存命中两路共用——命中路径同样必须
+    /// 留下本 epoch 的 manifest 记录（§5.5 早退一致性）。候选=同目录存在
+    /// 但未选的目标层；`merged_context` = (选定层路径, 合并源字节边界)。
+    fn record_layer_selection(
+        &mut self,
+        use_stmt: &UseStatement,
+        root_path: &std::path::Path,
+        merged_context: Option<(&std::path::Path, usize)>,
+    ) {
+        let mut candidates: Vec<String> = Vec::new();
+        for ext in [".vm.at", ".rs.at", ".c.at"] {
+            let cand = root_path.with_file_name({
+                let name = root_path.file_name().unwrap().to_str().unwrap();
+                format!("{}{}", name.strip_suffix(".at").unwrap_or(name), ext)
+            });
+            if cand.exists() {
+                let selected = merged_context
+                    .as_ref()
+                    .map(|(p, _)| *p == cand)
+                    .unwrap_or(false);
+                if !selected {
+                    candidates.push(cand.to_string_lossy().to_string());
+                }
+            }
+        }
+        self.layer_selections
+            .push(crate::stdlib_assembly::model::LayerSelection {
+                module: use_stmt.module.clone(),
+                target: self.assembly.target,
+                public_file: root_path.to_string_lossy().to_string(),
+                context_file: merged_context.map(|(p, _)| p.to_string_lossy().to_string()),
+                candidate_files: candidates,
+                context_byte_boundary: merged_context.map(|(_, b)| b),
+            });
     }
 
     /// Plan 550 T10: 登记 `#[script]` 文件级 pragma（parser 解析后回填）。
@@ -446,77 +515,47 @@ impl CompileSession {
         }
     }
 
-
-
     /// Get reference to the type store (Plan 085)
 
     pub fn type_store(&self) -> Arc<RwLock<TypeStore>> {
-
         self.type_store.clone()
-
     }
-
-
 
     /// Get cache statistics (Plan 085 Phase 5)
 
     pub fn cache_stats(&self) -> crate::module_cache::CacheStats {
-
         self.auto_cache.stats()
-
     }
-
-
 
     /// Get number of cached modules (Plan 085 Phase 5)
 
     /// Take all compiled dependency modules (for cross-module linking)
 
     pub fn take_compiled_modules(&mut self) -> Vec<crate::vm::loader::Module> {
-
         std::mem::take(&mut self.compiled_modules)
-
     }
-
-
 
     pub fn cached_module_count(&self) -> usize {
-
         self.auto_cache.len()
-
     }
-
-
 
     /// Get reference to the database (for sharing with Evaler)
 
     pub fn db(&self) -> Arc<RwLock<Database>> {
-
         self.db.clone()
-
     }
-
-
 
     /// Get the underlying database (for advanced usage)
 
     pub fn database(&self) -> std::sync::LockResult<std::sync::RwLockReadGuard<'_, Database>> {
-
         self.db.read()
-
     }
-
-
 
     /// Get mutable access to the database (for advanced usage)
 
     pub fn database_mut(&self) -> std::sync::LockResult<std::sync::RwLockWriteGuard<'_, Database>> {
-
         self.db.write()
-
     }
-
-
 
     /// Get or create the QueryEngine for this session
 
@@ -525,18 +564,12 @@ impl CompileSession {
     /// **Plan 065 Phase 3**: QueryEngine is created on-demand and reused across calls
 
     pub fn query_engine(&mut self) -> &mut crate::query::QueryEngine {
-
         if self.query_engine.is_none() {
-
             self.query_engine = Some(crate::query::QueryEngine::new(self.db.clone()));
-
         }
 
         self.query_engine.as_mut().unwrap()
-
     }
-
-
 
     /// Get the QueryEngine if it exists
 
@@ -545,12 +578,8 @@ impl CompileSession {
     /// **Plan 065 Phase 3**: Returns None if QueryEngine hasn't been created yet
 
     pub fn get_query_engine(&self) -> Option<&crate::query::QueryEngine> {
-
         self.query_engine.as_ref()
-
     }
-
-
 
     /// Plan 085: 棰勫鐞?use 璇彞
 
@@ -597,180 +626,119 @@ impl CompileSession {
     /// ```
 
     pub fn resolve_uses(&mut self, source: &str) -> AutoResult<usize> {
-
         let use_statements = scan_use_statements(source);
 
         let mut loaded_count = 0;
 
-
-
         for use_stmt in &use_statements {
-
             // Skip C imports - they don't have AutoLang types
 
             if use_stmt.is_c_import {
-
                 continue;
-
             }
-
-
 
             // Plan 092/190: Handle Rust imports
 
             if use_stmt.is_rust_import {
-
                 // Extract crate name from module path (first segment)
 
-                let crate_name = use_stmt.module.split("::").next().unwrap_or(&use_stmt.module).to_string();
+                let crate_name = use_stmt
+                    .module
+                    .split("::")
+                    .next()
+                    .unwrap_or(&use_stmt.module)
+                    .to_string();
 
                 // Plan 212 Phase 2.2: Built-in opaque types don't need dep declaration
                 let is_builtin = BUILTIN_OPAQUE_CRATES.contains(&crate_name.as_str());
 
                 if !is_builtin && !self.is_dep_declared(&crate_name) {
-
                     return Err(AutoError::Msg(format!(
-
                         "Crate '{}' not declared. Add `dep {}` before `use.rs`.",
-
                         crate_name, crate_name
-
                     )));
-
                 }
-
-
 
                 // Plan 212b Task 2: Collect imported function names for compilation
 
                 if !use_stmt.items.is_empty() {
-
                     self.rust_imports
-
                         .entry(crate_name.clone())
-
                         .or_default()
-
                         .extend(use_stmt.items.iter().cloned());
-
                 }
-
-
 
                 // Plan 190: Register imported Rust types in TypeStore
 
                 if let Ok(mut store) = self.type_store.write() {
-
                     if use_stmt.is_wildcard {
-
                         log::info!("Rust wildcard import: {}", use_stmt.module);
-
                     } else if !use_stmt.items.is_empty() {
-
                         for item in &use_stmt.items {
-
                             let full_path = format!("{}::{}", use_stmt.module, item);
 
                             store.register_rust_type(item.as_str(), full_path);
 
                             // Plan 192: Register methods in VM native registry for runtime dispatch
 
-                            if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
-
+                            if let Ok(mut registry) =
+                                crate::vm::native_registry::BIGVM_NATIVES.lock()
+                            {
                                 registry.register_rust_type_methods(item.as_str());
-
                             }
-
                         }
-
                     } else {
-
                         if let Some(short_name) = use_stmt.module.rsplit("::").next() {
-
                             store.register_rust_type(short_name, use_stmt.module.as_str());
 
-                            if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
-
+                            if let Ok(mut registry) =
+                                crate::vm::native_registry::BIGVM_NATIVES.lock()
+                            {
                                 registry.register_rust_type_methods(short_name);
-
                             }
-
                         }
-
                     }
-
                 }
-
-
 
                 loaded_count += 1;
 
                 continue;
-
             }
-
-
 
             // Plan 214: Handle Python imports
 
             if use_stmt.is_python_import {
-
                 #[cfg(feature = "python")]
-
                 {
-
                     // Plan 300 Task 2.2: 支持无 items 的模块导入（use.py module）
                     self.py_imports
-
                         .entry(use_stmt.module.clone())
-
                         .or_default()
-
                         .extend(use_stmt.items.iter().cloned());
-
                 }
 
                 #[cfg(not(feature = "python"))]
-
                 {
-
                     return Err(AutoError::Msg(format!(
-
                         "Python FFI not enabled. Rebuild with `--features python` to use `use.py`."
-
                     )));
-
                 }
 
                 #[cfg(feature = "python")]
-
                 {
-
                     loaded_count += 1;
 
                     continue;
-
                 }
-
             }
-
-
 
             self.load_module(use_stmt)?;
 
-
-
             loaded_count += 1;
-
         }
 
-
-
         Ok(loaded_count)
-
     }
-
-
 
     /// Plan 092: Resolve `dep` statements and register with sandbox/registry
 
@@ -801,7 +769,6 @@ impl CompileSession {
     /// ```
 
     pub fn resolve_deps(&mut self, source: &str) -> AutoResult<usize> {
-
         let dep_statements = scan_dep_statements(source);
         if dep_statements.is_empty() {
             // Plan 430 F2 前置:builtin crate 无 dep 声明时,接入**已缓存**的方法
@@ -815,38 +782,25 @@ impl CompileSession {
         // Ensure sandbox is initialized
 
         if self.sandbox.is_none() {
-
             match Sandbox::new() {
-
                 Ok(s) => self.sandbox = Some(s),
 
                 Err(e) => {
-
                     log::warn!("Failed to initialize sandbox: {}", e);
 
                     // Continue without sandbox - deps won't be usable
 
                     return Ok(0);
-
                 }
-
             }
-
         }
 
-
-
         for dep in &dep_statements {
-
             // Skip non-Rust deps (for future extensibility)
 
             if !dep.is_rust {
-
                 continue;
-
             }
-
-
 
             // Register crate name
 
@@ -873,33 +827,26 @@ impl CompileSession {
                 },
             );
 
-
-
             // Log the dependency
 
             log::info!(
-
                 "Registered dep: {} (version: {:?}, features: {:?})",
-
                 dep.name,
-
                 dep.version,
-
                 dep.features
-
             );
-
-
 
             // Register with sandbox registry (Plan 092 Phase 6)
 
             if let Some(ref mut sandbox) = self.sandbox {
-
                 let metadata = CrateMetadata {
-
                     name: dep.name.to_string(),
 
-                    version: dep.version.as_ref().map(|v| v.to_string()).unwrap_or_default(),
+                    version: dep
+                        .version
+                        .as_ref()
+                        .map(|v| v.to_string())
+                        .unwrap_or_default(),
 
                     rustc_version: sandbox.rustc_version().to_string(),
 
@@ -912,34 +859,28 @@ impl CompileSession {
                     library_path: std::path::PathBuf::new(),
 
                     compiled_at: std::time::SystemTime::now()
-
                         .duration_since(std::time::UNIX_EPOCH)
-
                         .unwrap_or_default()
-
                         .as_secs(),
 
-                    source: if dep.is_local() { CrateSource::Local } else { CrateSource::CratesIo },
-
+                    source: if dep.is_local() {
+                        CrateSource::Local
+                    } else {
+                        CrateSource::CratesIo
+                    },
                 };
 
-
-
                 if let Err(e) = sandbox.registry().register(&metadata) {
-
-                    log::warn!("Failed to register crate {} in sandbox registry: {}", dep.name, e);
-
+                    log::warn!(
+                        "Failed to register crate {} in sandbox registry: {}",
+                        dep.name,
+                        e
+                    );
                 }
-
             }
 
-
-
             registered_count += 1;
-
         }
-
-
 
         // Plan 212b Task 2: Compile deps that have rust imports
         // Phase 2.1: Convert function names to FunctionShim descriptors with signatures
@@ -981,9 +922,7 @@ impl CompileSession {
                     // 走方法 shim 包,不进自由函数 wrapper(避免生成无法编译的 auto_Type 包装)。
                     let free_fns: Vec<&String> = functions
                         .iter()
-                        .filter(|f| {
-                            !f.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
-                        })
+                        .filter(|f| !f.chars().next().map(|c| c.is_uppercase()).unwrap_or(false))
                         .collect();
                     // PLAN-596 T4:有**实例条目**的自由函数不建 string_to_string 兜底 shim
                     // (泛型原名无 D2 签名,兜底 shim 必编译失败,徒增剔环轮次)。
@@ -994,34 +933,38 @@ impl CompileSession {
                         .filter(|f| {
                             !mono.get(f.as_str()).is_some_and(|labels| {
                                 labels.iter().any(|l| {
-                                    resolve_signature(
-                                        crate_name,
-                                        &format!("{f}__{l}"),
-                                    )
-                                    .is_some()
+                                    resolve_signature(crate_name, &format!("{f}__{l}")).is_some()
                                 })
                             })
                         })
                         .copied()
                         .collect();
-                    let shims: Vec<FunctionShim> = base_fns.iter().map(|func| {
-                        match resolve_signature(crate_name, func) {
+                    let shims: Vec<FunctionShim> = base_fns
+                        .iter()
+                        .map(|func| match resolve_signature(crate_name, func) {
                             Some(sig) => {
-                                let param_types: Vec<ShimType> = sig.params.iter().map(|t| match t {
-                                    crate::ffi::RustType::Void => ShimType::Void,
-                                    crate::ffi::RustType::Bool => ShimType::Bool,
-                                    crate::ffi::RustType::Int => ShimType::I32,
-                                    crate::ffi::RustType::Long => ShimType::I64,
-                                    crate::ffi::RustType::Float | crate::ffi::RustType::Double => ShimType::F64,
-                                    crate::ffi::RustType::String => ShimType::CString,
-                                    _ => ShimType::CString,
-                                }).collect();
+                                let param_types: Vec<ShimType> = sig
+                                    .params
+                                    .iter()
+                                    .map(|t| match t {
+                                        crate::ffi::RustType::Void => ShimType::Void,
+                                        crate::ffi::RustType::Bool => ShimType::Bool,
+                                        crate::ffi::RustType::Int => ShimType::I32,
+                                        crate::ffi::RustType::Long => ShimType::I64,
+                                        crate::ffi::RustType::Float
+                                        | crate::ffi::RustType::Double => ShimType::F64,
+                                        crate::ffi::RustType::String => ShimType::CString,
+                                        _ => ShimType::CString,
+                                    })
+                                    .collect();
                                 let return_type = match sig.returns {
                                     crate::ffi::RustType::Void => ShimType::Void,
                                     crate::ffi::RustType::Bool => ShimType::Bool,
                                     crate::ffi::RustType::Int => ShimType::I32,
                                     crate::ffi::RustType::Long => ShimType::I64,
-                                    crate::ffi::RustType::Float | crate::ffi::RustType::Double => ShimType::F64,
+                                    crate::ffi::RustType::Float | crate::ffi::RustType::Double => {
+                                        ShimType::F64
+                                    }
                                     crate::ffi::RustType::String => ShimType::CString,
                                     _ => ShimType::CString,
                                 };
@@ -1035,8 +978,8 @@ impl CompileSession {
                                 }
                             }
                             None => FunctionShim::string_to_string(func),
-                        }
-                    }).collect();
+                        })
+                        .collect();
                     // PLAN-596 T4:mono 实例 shim——D2 已注册实例签名(方法包
                     // manifest 的实例 FunctionEntry),按实例名建 shim、call_name
                     // 指回泛型原名(212 侧发射 crate::{原名}(args),rustc 推断单态化)
@@ -1046,21 +989,27 @@ impl CompileSession {
                             for label in labels {
                                 let inst_name = format!("{func}__{label}");
                                 if let Some(sig) = resolve_signature(crate_name, &inst_name) {
-                                    let param_types: Vec<ShimType> = sig.params.iter().map(|t| match t {
-                                        crate::ffi::RustType::Void => ShimType::Void,
-                                        crate::ffi::RustType::Bool => ShimType::Bool,
-                                        crate::ffi::RustType::Int => ShimType::I32,
-                                        crate::ffi::RustType::Long => ShimType::I64,
-                                        crate::ffi::RustType::Float | crate::ffi::RustType::Double => ShimType::F64,
-                                        crate::ffi::RustType::String => ShimType::CStringOwned,
-                                        _ => ShimType::CString,
-                                    }).collect();
+                                    let param_types: Vec<ShimType> = sig
+                                        .params
+                                        .iter()
+                                        .map(|t| match t {
+                                            crate::ffi::RustType::Void => ShimType::Void,
+                                            crate::ffi::RustType::Bool => ShimType::Bool,
+                                            crate::ffi::RustType::Int => ShimType::I32,
+                                            crate::ffi::RustType::Long => ShimType::I64,
+                                            crate::ffi::RustType::Float
+                                            | crate::ffi::RustType::Double => ShimType::F64,
+                                            crate::ffi::RustType::String => ShimType::CStringOwned,
+                                            _ => ShimType::CString,
+                                        })
+                                        .collect();
                                     let return_type = match sig.returns {
                                         crate::ffi::RustType::Void => ShimType::Void,
                                         crate::ffi::RustType::Bool => ShimType::Bool,
                                         crate::ffi::RustType::Int => ShimType::I32,
                                         crate::ffi::RustType::Long => ShimType::I64,
-                                        crate::ffi::RustType::Float | crate::ffi::RustType::Double => ShimType::F64,
+                                        crate::ffi::RustType::Float
+                                        | crate::ffi::RustType::Double => ShimType::F64,
                                         crate::ffi::RustType::String => ShimType::CString,
                                         _ => ShimType::CString,
                                     };
@@ -1089,13 +1038,9 @@ impl CompileSession {
                     }
                 }
             }
-
         }
 
-
-
         Ok(registered_count)
-
     }
 
     /// Plan 430 F2 前置:builtin crate 无 dep 声明时,接入已缓存的方法 shim 包。
@@ -1130,7 +1075,6 @@ impl CompileSession {
         }
     }
 
-
     /// Plan 092: Check if a crate has been declared as a dependency
 
     ///
@@ -1138,7 +1082,10 @@ impl CompileSession {
     /// Returns true if the crate was declared in a `dep` statement.
 
     /// Build a DepSource for compile_dep from stored dep info.
-    fn build_dep_source(&self, crate_name: &str) -> auto_cache::sandbox::DepSource {        let features = self.dep_features.get(crate_name)
+    fn build_dep_source(&self, crate_name: &str) -> auto_cache::sandbox::DepSource {
+        let features = self
+            .dep_features
+            .get(crate_name)
             .map(|f| f.clone())
             .unwrap_or_default();
         let src = self.dep_sources.get(crate_name);
@@ -1152,20 +1099,14 @@ impl CompileSession {
     }
 
     pub fn is_dep_declared(&self, crate_name: &str) -> bool {
-
         if self.declared_crates.contains(crate_name) {
-
             return true;
-
         }
 
         // Plan 190: Rust built-in crates are always available
 
         matches!(crate_name, "std" | "core" | "alloc" | "proc_macro")
-
     }
-
-
 
     /// Plan 212b Task 2: Collect Rust imports from source code
 
@@ -1178,34 +1119,28 @@ impl CompileSession {
     /// the crates have been declared.
 
     pub fn collect_rust_imports(&mut self, source: &str) -> AutoResult<()> {
-
         let use_statements = scan_use_statements(source);
 
         for use_stmt in &use_statements {
-
             if !use_stmt.is_rust_import || use_stmt.items.is_empty() {
-
                 continue;
-
             }
 
-            let crate_name = use_stmt.module.split("::").next().unwrap_or(&use_stmt.module).to_string();
+            let crate_name = use_stmt
+                .module
+                .split("::")
+                .next()
+                .unwrap_or(&use_stmt.module)
+                .to_string();
 
             self.rust_imports
-
                 .entry(crate_name)
-
                 .or_default()
-
                 .extend(use_stmt.items.iter().cloned());
-
         }
 
         Ok(())
-
     }
-
-
 
     /// Plan 212b Task 2: Get collected Rust imports
 
@@ -1214,12 +1149,8 @@ impl CompileSession {
     /// Returns a map of crate_name 鈫?list of function names imported via use.rust.
 
     pub fn rust_imports(&self) -> &std::collections::HashMap<String, Vec<String>> {
-
         &self.rust_imports
-
     }
-
-
 
     /// Plan 214: Collect Python imports from source code
 
@@ -1230,52 +1161,33 @@ impl CompileSession {
     /// per Python module.
 
     pub fn collect_py_imports(&mut self, source: &str) -> AutoResult<()> {
-
         let use_statements = scan_use_statements(source);
 
         for use_stmt in &use_statements {
-
             if !use_stmt.is_python_import {
-
                 continue;
-
             }
 
             self.py_imports
-
                 .entry(use_stmt.module.clone())
-
                 .or_default()
-
                 .extend(use_stmt.items.iter().cloned());
-
         }
 
         Ok(())
-
     }
-
-
 
     /// Plan 214: Get collected Python imports
 
     pub fn py_imports(&self) -> &std::collections::HashMap<String, Vec<String>> {
-
         &self.py_imports
-
     }
-
-
 
     /// Plan 092: Get the sandbox (for FFI bridge integration)
 
     pub fn sandbox(&self) -> Option<&Sandbox> {
-
         self.sandbox.as_ref()
-
     }
-
-
 
     /// Plan 092 Phase 6: Create a RustFfiBridge for loading Rust crates
 
@@ -1306,14 +1218,9 @@ impl CompileSession {
     /// ```
 
     pub fn create_rust_ffi_bridge(&self) -> Result<crate::ffi::RustFfiBridge, AutoError> {
-
         crate::ffi::RustFfiBridge::new()
-
             .map_err(|e| AutoError::Msg(format!("Failed to create Rust FFI bridge: {:?}", e)))
-
     }
-
-
 
     /// Plan 092 Phase 6: Get list of declared crates
 
@@ -1322,12 +1229,8 @@ impl CompileSession {
     /// Returns the names of all crates declared via `dep` statements.
 
     pub fn get_declared_crates(&self) -> &HashSet<String> {
-
         &self.declared_crates
-
     }
-
-
 
     /// Plan 085: 鍔犺浇妯″潡鍒?type_store
 
@@ -1344,7 +1247,11 @@ impl CompileSession {
         // a different entry into a circular dependency), skip — don't recompile.
         // This allows legitimate circular deps (db use api: Note + api use db)
         // where types and functions cross-reference.
-        if self.compiled_modules.iter().any(|m| m.name == use_stmt.module) {
+        if self
+            .compiled_modules
+            .iter()
+            .any(|m| m.name == use_stmt.module)
+        {
             return Ok(());
         }
 
@@ -1360,94 +1267,136 @@ impl CompileSession {
         let result = self.load_module_inner(use_stmt);
         self.loading_stack.pop();
         result
-
     }
-
-
 
     /// Inner implementation of load_module (called after cycle check)
 
     fn load_module_inner(&mut self, use_stmt: &UseStatement) -> AutoResult<()> {
+        // Phase 5 / PLAN-738 T-05: AutoCache 装配感知命中
+        //
+        // §5.5 早退一致性：命中只替换 parse 步（类型抽取），本 epoch 的
+        // 依赖装载、bytecode、manifest 记录与 fresh 路径同构——缓存不再
+        // 产生"类型有而字节码/manifest 缺"的半截模块；旧缓存语义（陈旧
+        // 段指纹/异装配/schema 漂移/依赖漂移）一律未命中重编译，不降级。
 
-        // Phase 5: 妫€鏌?AutoCache
+        let cache_hit = self
+            .auto_cache
+            .get_valid(
+                &use_stmt.module,
+                &self.assembly,
+                crate::stdlib_assembly::providers::catalog_schema_version(),
+            )
+            .map(|c| (c.type_store.clone(), c.segments.clone()));
 
-        if self.auto_cache.is_cached_and_valid(&use_stmt.module) {
+        if let Some((cached_store, segments)) = cache_hit {
+            let module_root = std::path::PathBuf::from(&segments[0].file);
 
-            // 浣跨敤缂撳瓨鐨?type_store
+            // 重建合并源（有效性核对已证明与存储时逐字节一致）
+            let mut module_source = std::fs::read_to_string(&module_root).map_err(|e| {
+                AutoError::Io(format!(
+                    "Failed to read module {}: {}",
+                    module_root.display(),
+                    e
+                ))
+            })?;
 
-            if let Some(cached) = self.auto_cache.get(&use_stmt.module) {
+            let public_len = module_source.len();
 
-                let mut store = self.type_store.write().unwrap();
+            for seg in segments.iter().skip(1) {
+                let seg_src = std::fs::read_to_string(&seg.file).map_err(|e| {
+                    AutoError::Io(format!("Failed to read layer {}: {}", seg.file, e))
+                })?;
 
-                if use_stmt.is_wildcard {
+                module_source.push('\n');
 
-                    // Plan 545 D2: wildcard 冲突检测（与 fresh 分支同款）
-
-                    let conflicts = store.merge_with_conflicts(
-
-                        &cached.type_store,
-
-                        &use_stmt.module,
-
-                    );
-
-                    if !conflicts.is_empty() {
-
-                        let detail = conflicts.iter()
-
-                            .map(|c| format!(
-
-                                "`{}` is defined in both `{}` and `{}`",
-
-                                c.symbol, c.existing_origin, c.incoming_origin
-
-                            ))
-
-                            .collect::<Vec<_>>()
-
-                            .join("; ");
-
-                        return Err(AutoError::Msg(format!(
-
-                            "ambiguous import from `{}`: {} — disambiguate with `use {}: <name>`",
-
-                            use_stmt.module, detail, use_stmt.module
-
-                        )));
-
-                    }
-
-                } else if !use_stmt.items.is_empty() {
-
-                    store.import_items(&cached.type_store, &use_stmt.items);
-
-                } else {
-
-                    // Plan 545: bare = namespace-only，不 merge（同 fresh 分支）
-
-                }
-
-                // Plan 545: 模块登记（缓存命中路径）
-
-                let module_name = use_stmt.module.rsplit('.').next()
-
-                    .unwrap_or(use_stmt.module.as_str())
-
-                    .to_string();
-
-                let export_fns = cached.type_store.pub_fn_names();
-
-                store.register_module(&module_name, cached.type_store.clone(), export_fns);
-
-                return Ok(());
-
+                module_source.push_str(&seg_src);
             }
 
+            // 依赖闭包在本 epoch 重新装载（fresh 路径同序：先于 parse/合并）
+
+            self.resolve_uses(&module_source)?;
+
+            let mut store = self.type_store.write().unwrap();
+
+            if use_stmt.is_wildcard {
+                // Plan 545 D2: wildcard 冲突检测（与 fresh 分支同款；命中路径
+
+                // 无 parse 副作用，live store 即检测基线）
+
+                let conflicts = store.merge_with_conflicts(&cached_store, &use_stmt.module);
+
+                if !conflicts.is_empty() {
+                    let detail = conflicts
+                        .iter()
+                        .map(|c| {
+                            format!(
+                                "`{}` is defined in both `{}` and `{}`",
+                                c.symbol, c.existing_origin, c.incoming_origin
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("; ");
+
+                    return Err(AutoError::Msg(format!(
+                        "ambiguous import from `{}`: {} — disambiguate with `use {}: <name>`",
+                        use_stmt.module, detail, use_stmt.module
+                    )));
+                }
+            } else if !use_stmt.items.is_empty() {
+                store.import_items(&cached_store, &use_stmt.items);
+            } else {
+
+                // Plan 545: bare = namespace-only，不 merge（同 fresh 分支）
+            }
+
+            // Plan 545: 模块登记（缓存命中路径）
+
+            let module_name = use_stmt
+                .module
+                .rsplit('.')
+                .next()
+                .unwrap_or(use_stmt.module.as_str())
+                .to_string();
+
+            let export_fns = cached_store.pub_fn_names();
+
+            store.register_module(&module_name, cached_store.clone(), export_fns);
+
+            drop(store);
+
+            // bytecode 补全（同 fresh 守卫：本 epoch 未编译过才编译）
+
+            let path_key = module_root
+                .canonicalize()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| module_root.to_string_lossy().to_string());
+
+            if !self.compiled_module_paths.contains(&path_key) {
+                let module_code =
+                    self.compile_module_to_bytecode(&module_source, &segments[0].file)?;
+
+                if !module_code.exports.is_empty() || module_code.has_globals {
+                    self.compiled_modules.push(module_code);
+                }
+
+                self.compiled_module_paths.insert(path_key);
+            }
+
+            // manifest 记录（本 epoch 与 fresh 路径同构；字节边界 = 公共段
+            // 长度 + 分隔换行，与存储时合并源形状一致）
+            let context = segments
+                .get(1)
+                .map(|s| (std::path::PathBuf::from(&s.file), public_len + 1));
+            self.record_layer_selection(
+                use_stmt,
+                &module_root,
+                context.as_ref().map(|(p, b)| (p.as_path(), *b)),
+            );
+
+            return Ok(());
         }
 
-
-
-        // 灏嗘ā鍧楄矾寰勮浆鎹负鏂囦欢璺緞
+        // 灏嗘ā鍧楄矾寰勮浆鎹负鏂囦欢璺緞
 
         let raw_module_path = use_stmt.module.replace(".", "/");
 
@@ -1466,7 +1415,9 @@ impl CompileSession {
                 (0, path)
             };
             if super_count > 0 {
-                let parents: Vec<std::path::PathBuf> = self.source_dirs.iter()
+                let parents: Vec<std::path::PathBuf> = self
+                    .source_dirs
+                    .iter()
                     .filter_map(|d| {
                         let mut p = d.to_path_buf();
                         for _ in 0..super_count {
@@ -1481,36 +1432,41 @@ impl CompileSession {
             }
         };
 
-
-
         let extensions = [".at", ".au", ".auto"];
 
         let mut found_path: Option<std::path::PathBuf> = None;
 
-
-
         // Resolve stdlib root via find_std_lib (searches CARGO_MANIFEST_DIR, ~/.auto/libs/, system paths)
 
         let stdlib_base = find_std_lib()
-
             .map(|s| std::path::PathBuf::from(s.as_str()))
-
             .unwrap_or_else(|_| std::path::PathBuf::from("stdlib/auto"));
 
-
+        // PLAN-738 T-05（§5.5）：stdlib root 身份守卫——首个 stdlib 装载
+        // 记录解析根；后续装载发现根变化 = 活 session 下热换 stdlib 来源
+        // → SessionTargetMismatch（明确重建，不静默混跑两个 root）。
+        if module_path.starts_with("auto/") {
+            let root_key = stdlib_base.to_string_lossy().to_string();
+            if self.stdlib_root.is_none() {
+                self.stdlib_root = Some(root_key);
+            } else if self.stdlib_root.as_deref() != Some(root_key.as_str()) {
+                return Err(AutoError::Msg(format!(
+                    "session_target_mismatch: stdlib root changed from `{}` to `{}` under an active session — rebuild the CompileSession",
+                    self.stdlib_root.as_deref().unwrap_or(""),
+                    root_key
+                )));
+            }
+        }
 
         for ext in &extensions {
-
             // 1. Try relative to current working directory (local modules)
 
             let path = std::path::Path::new(&module_path).with_extension(&ext[1..]);
 
             if path.exists() {
-
                 found_path = Some(path);
 
                 break;
-
             }
 
             // 2. Try stdlib path
@@ -1520,28 +1476,19 @@ impl CompileSession {
             // Strip the "auto/" prefix when building stdlib path
 
             let stdlib_relative = if module_path.starts_with("auto/") {
-
                 &module_path[5..] // strip "auto/"
-
             } else {
-
                 &module_path
-
             };
 
             let stdlib_path = stdlib_base.join(stdlib_relative).with_extension(&ext[1..]);
 
             if stdlib_path.exists() {
-
                 found_path = Some(stdlib_path);
 
                 break;
-
             }
-
         }
-
-
 
         // 3. Try directory module pattern: tools/ → tools/mod.at
         if found_path.is_none() {
@@ -1557,7 +1504,9 @@ impl CompileSession {
                 } else {
                     &module_path
                 };
-                let stdlib_dir_mod = stdlib_base.join(stdlib_relative).join(format!("mod{}", ext));
+                let stdlib_dir_mod = stdlib_base
+                    .join(stdlib_relative)
+                    .join(format!("mod{}", ext));
                 if stdlib_dir_mod.exists() {
                     found_path = Some(stdlib_dir_mod);
                     break;
@@ -1565,14 +1514,12 @@ impl CompileSession {
             }
         }
 
-
-
         // 4. Try searching in all known source directories (handles cross-dir imports
         // like agent.at's `use registry` resolving to tools/registry.at)
         // Also search parent dirs for `super.xxx` resolution
         if found_path.is_none() {
-            let mut all_search_dirs: Vec<&std::path::Path> = self.source_dirs.iter()
-                .map(|d| d.as_path()).collect();
+            let mut all_search_dirs: Vec<&std::path::Path> =
+                self.source_dirs.iter().map(|d| d.as_path()).collect();
             for pd in &_parent_dirs {
                 if !all_search_dirs.iter().any(|d| *d == pd) {
                     all_search_dirs.push(pd);
@@ -1592,16 +1539,17 @@ impl CompileSession {
                         break;
                     }
                 }
-                if found_path.is_some() { break; }
+                if found_path.is_some() {
+                    break;
+                }
             }
         }
 
-
-
         let root_path = found_path.ok_or_else(|| {
-
-            AutoError::Msg(format!("Module not found: {} (module_path={}, parent_dirs={:?})", use_stmt.module, module_path, _parent_dirs))
-
+            AutoError::Msg(format!(
+                "Module not found: {} (module_path={}, parent_dirs={:?})",
+                use_stmt.module, module_path, _parent_dirs
+            ))
         })?;
 
         // Record the directory of this module for future lookups
@@ -1617,15 +1565,15 @@ impl CompileSession {
             }
         }
 
-
-
         // 璇诲彇妯″潡鏍规枃浠?
 
-        let mut module_source = std::fs::read_to_string(&root_path)
-
-            .map_err(|e| AutoError::Io(format!("Failed to read module {}: {}", root_path.display(), e)))?;
-
-
+        let mut module_source = std::fs::read_to_string(&root_path).map_err(|e| {
+            AutoError::Io(format!(
+                "Failed to read module {}: {}",
+                root_path.display(),
+                e
+            ))
+        })?;
 
         // Plan 094: 灏濊瘯鍔犺浇涓婁笅鏂囨枃浠?(.vm.at)
 
@@ -1634,40 +1582,30 @@ impl CompileSession {
         let context_ext = self.assembly.target.context_extension(); // PLAN-738 T-03: was hardcoded ".vm.at"
 
         let context_path = root_path.with_file_name({
-
             let name = root_path.file_name().unwrap().to_str().unwrap();
 
-            format!("{}{}", name.strip_suffix(".at").unwrap_or(name), context_ext)
-
+            format!(
+                "{}{}",
+                name.strip_suffix(".at").unwrap_or(name),
+                context_ext
+            )
         });
-
-
 
         // 妫€鏌ヤ笂涓嬫枃鏂囦欢鏄惁瀛樺湪
 
         let full_context_path = if context_path.exists() {
-
             Some(context_path.clone())
-
         } else {
-
             // 涔熷皾璇?stdlib/auto 璺緞
 
             let stdlib_context = std::path::Path::new("stdlib/auto").join(&context_path);
 
             if stdlib_context.exists() {
-
                 Some(stdlib_context)
-
             } else {
-
                 None
-
             }
-
         };
-
-
 
         // 濡傛灉涓婁笅鏂囨枃浠跺瓨鍦紝璇诲彇骞跺悎骞?
 
@@ -1681,12 +1619,13 @@ impl CompileSession {
             // in the layer-selection record below, never merged.
             self.assembly.target == crate::stdlib_assembly::model::AssemblyTarget::Vm
         }) {
-
-            let context_source = std::fs::read_to_string(&ctx_path)
-
-                .map_err(|e| AutoError::Io(format!("Failed to read context file {}: {}", ctx_path.display(), e)))?;
-
-
+            let context_source = std::fs::read_to_string(&ctx_path).map_err(|e| {
+                AutoError::Io(format!(
+                    "Failed to read context file {}: {}",
+                    ctx_path.display(),
+                    e
+                ))
+            })?;
 
             // 鍚堝苟涓や釜鏂囦欢鐨勫唴瀹癸紙鐢ㄦ崲琛屽垎闅旓級
 
@@ -1695,10 +1634,7 @@ impl CompileSession {
             merged_context = Some((ctx_path.clone(), module_source.len()));
 
             module_source.push_str(&context_source);
-
         }
-
-
 
         // DEBUG: Print module source being parsed
 
@@ -1713,75 +1649,52 @@ impl CompileSession {
         let preparse_store_snapshot = self.type_store.read().unwrap().clone();
 
         // 瑙ｆ瀽鍚堝苟鍚庣殑妯″潡鑾峰彇 type_store
-        let module_type_store = match self
-            .parse_module_to_type_store(&module_source, &root_path.to_string_lossy())
-        {
-            Ok(store) => store,
-            Err(e) => {
-                // PLAN-738 T-03 (AC-04) 源段归因：合并源以 root_path（公共文件）
-                // 名义 attach source——目标层段的错误会被误归公共文件。失败路径
-                // 有界归因：若公共段单独 parse 成功，则失败位于目标层，错误指向
-                // 真实目标层文件。（错误路径才有额外 parse；成功路径零开销。）
-                if let Some((ctx_path, boundary)) = &merged_context {
-                    let public_only = &module_source[..boundary.saturating_sub(1)];
-                    if self
-                        .parse_module_to_type_store(public_only, &root_path.to_string_lossy())
-                        .is_ok()
-                    {
-                        return Err(AutoError::Msg(format!(
-                            "syntax error in target layer `{}` (module `{}`): {}",
-                            ctx_path.display(),
-                            use_stmt.module,
-                            e
-                        )));
+        let module_type_store =
+            match self.parse_module_to_type_store(&module_source, &root_path.to_string_lossy()) {
+                Ok(store) => store,
+                Err(e) => {
+                    // PLAN-738 T-03 (AC-04) 源段归因：合并源以 root_path（公共文件）
+                    // 名义 attach source——目标层段的错误会被误归公共文件。失败路径
+                    // 有界归因：若公共段单独 parse 成功，则失败位于目标层，错误指向
+                    // 真实目标层文件。（错误路径才有额外 parse；成功路径零开销。）
+                    if let Some((ctx_path, boundary)) = &merged_context {
+                        let public_only = &module_source[..boundary.saturating_sub(1)];
+                        if self
+                            .parse_module_to_type_store(public_only, &root_path.to_string_lossy())
+                            .is_ok()
+                        {
+                            return Err(AutoError::Msg(format!(
+                                "syntax error in target layer `{}` (module `{}`): {}",
+                                ctx_path.display(),
+                                use_stmt.module,
+                                e
+                            )));
+                        }
                     }
+                    return Err(e);
                 }
-                return Err(e);
-            }
-        };
+            };
 
         // PLAN-738 T-03: layer-selection record (AssemblyManifest v0 seam;
         // T-06 CLI/生成收据消费)。候选=同目录存在但未选的目标层。
-        {
-            let mut candidates: Vec<String> = Vec::new();
-            for ext in [".vm.at", ".rs.at", ".c.at"] {
-                let cand = root_path.with_file_name({
-                    let name = root_path.file_name().unwrap().to_str().unwrap();
-                    format!("{}{}", name.strip_suffix(".at").unwrap_or(name), ext)
-                });
-                if cand.exists() {
-                    let selected = merged_context
-                        .as_ref()
-                        .map(|(p, _)| p == &cand)
-                        .unwrap_or(false);
-                    if !selected {
-                        candidates.push(cand.to_string_lossy().to_string());
-                    }
-                }
-            }
-            self.layer_selections
-                .push(crate::stdlib_assembly::model::LayerSelection {
-                    module: use_stmt.module.clone(),
-                    target: self.assembly.target,
-                    public_file: root_path.to_string_lossy().to_string(),
-                    context_file: merged_context
-                        .as_ref()
-                        .map(|(p, _)| p.to_string_lossy().to_string()),
-                    candidate_files: candidates,
-                    context_byte_boundary: merged_context.as_ref().map(|(_, b)| *b),
-                });
-        }
+        self.record_layer_selection(
+            use_stmt,
+            &root_path,
+            merged_context.as_ref().map(|(p, b)| (p.as_path(), *b)),
+        );
 
         // Cross-module function calls: compile module to bytecode
         // Skip if already compiled (avoid duplicate symbols)
-        let path_key = root_path.canonicalize()
+        let path_key = root_path
+            .canonicalize()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| root_path.to_string_lossy().to_string());
         // Plan 545: 该模块的导出函数名（bytecode exports 键），供
         // TypeStore.modules 登记（wildcard 平铺映射/限定查找消费）。
         let module_export_fns: Vec<String>;
         if !self.compiled_module_paths.contains(&path_key) {
-            let module_code = self.compile_module_to_bytecode(&module_source, &root_path.to_string_lossy())?;
+            let module_code =
+                self.compile_module_to_bytecode(&module_source, &root_path.to_string_lossy())?;
             module_export_fns = module_code.exports.keys().cloned().collect();
             // Plan 348 E1: retain a module if it exports functions OR declares
             // top-level globals (var/const). Previously a const/var-only module
@@ -1795,80 +1708,118 @@ impl CompileSession {
             module_export_fns = Vec::new();
         }
 
-
-
-        // Phase 5: 瀛樺叆 AutoCache
-
-        let cache_entry = ModuleCache::with_file(
-
-            &use_stmt.module,
-
-            module_type_store.clone(),
-
+        // Phase 5 / PLAN-738 T-05（AC-06）: 存入 AutoCache——段级指纹条目：
+        // 公共段+选定层段各自 FNV 指纹、选定层存在性台账、provider schema、
+        // 依赖闭包指纹。公共文件单独重算不再能冒称 valid（E2 死缓存反转）；
+        // 任一选定层增/删/改（含同 mtime 不同内容）都真实失效。
+        let public_src: &str = match &merged_context {
+            Some((_, b)) => &module_source[..b.saturating_sub(1)],
+            None => &module_source,
+        };
+        let mut segments = vec![crate::module_cache::SourceSegment::present(
             root_path.to_string_lossy(),
+            public_src,
+        )];
+        if let Some((ctx_path, b)) = &merged_context {
+            segments.push(crate::module_cache::SourceSegment::present(
+                ctx_path.to_string_lossy(),
+                &module_source[*b..],
+            ));
+        }
 
-            &module_source,
+        // 选定目标后缀层存在性台账：存储时缺失的选定层记 absent（出现即
+        // 失效）。未消费的 foreign 层是 candidate（manifest 面），不入缓存
+        // 身份——其增减不改变本次装配选择。
+        let selected_ext = self.assembly.target.context_extension();
+        let mut absent_layers: Vec<String> = Vec::new();
+        {
+            let layer_file = root_path.with_file_name({
+                let name = root_path.file_name().unwrap().to_str().unwrap();
+                format!(
+                    "{}{}",
+                    name.strip_suffix(".at").unwrap_or(name),
+                    selected_ext
+                )
+            });
+            if !segments
+                .iter()
+                .any(|s| s.file == layer_file.to_string_lossy())
+                && !layer_file.exists()
+            {
+                absent_layers.push(layer_file.to_string_lossy().to_string());
+            }
+        }
 
+        // 依赖闭包指纹（§5.5）：本模块（含选定层）use 引用的模块，按其
+        // 当前条目合成指纹记录；查找时漂移即未命中。
+        let current_assembly = self.assembly;
+        let provider_schema = crate::stdlib_assembly::providers::catalog_schema_version();
+        let mut dep_names: Vec<String> = Vec::new();
+        for u in scan_use_statements(&module_source) {
+            if u.is_c_import || u.is_python_import {
+                continue;
+            }
+            if !dep_names.contains(&u.module) {
+                dep_names.push(u.module);
+            }
+        }
+        let dep_fingerprints: Vec<(String, u64)> = dep_names
+            .into_iter()
+            .filter_map(|dep| {
+                self.auto_cache
+                    .get_valid(&dep, &current_assembly, provider_schema)
+                    .map(|entry| (dep, entry.combined_fingerprint()))
+            })
+            .collect();
+
+        let cache_entry = ModuleCache::with_assembly(
+            &use_stmt.module,
+            module_type_store.clone(),
+            self.assembly,
+            segments,
+            absent_layers,
+            provider_schema,
+            dep_fingerprints,
         );
 
-        self.auto_cache.store(&use_stmt.module, cache_entry);
-
-
+        self.auto_cache.store_assembled(cache_entry);
 
         // 鍚堝苟鍒颁富 type_store
 
         {
-
             let mut store = self.type_store.write().unwrap();
 
             if use_stmt.is_wildcard {
-
                 // Plan 545 D2: wildcard 平铺带冲突检测——同名异源异定义 → 编译错误
 
                 // （检测读 pre-parse 快照；写入走 merge_with_conflicts 维护 origin）
 
-                let conflicts = preparse_store_snapshot.detect_conflicts(
-
-                    &module_type_store,
-
-                    &use_stmt.module,
-
-                );
+                let conflicts =
+                    preparse_store_snapshot.detect_conflicts(&module_type_store, &use_stmt.module);
 
                 if !conflicts.is_empty() {
-
-                    let detail = conflicts.iter()
-
-                        .map(|c| format!(
-
-                            "`{}` is defined in both `{}` and `{}`",
-
-                            c.symbol, c.existing_origin, c.incoming_origin
-
-                        ))
-
+                    let detail = conflicts
+                        .iter()
+                        .map(|c| {
+                            format!(
+                                "`{}` is defined in both `{}` and `{}`",
+                                c.symbol, c.existing_origin, c.incoming_origin
+                            )
+                        })
                         .collect::<Vec<_>>()
-
                         .join("; ");
 
                     return Err(AutoError::Msg(format!(
-
                         "ambiguous import from `{}`: {} — disambiguate with `use {}: <name>`",
-
                         use_stmt.module, detail, use_stmt.module
-
                     )));
-
                 }
 
                 // 写入（origin 登记）；检测已由快照完成，返回值忽略
 
                 let _ = store.merge_with_conflicts(&module_type_store, &use_stmt.module);
-
             } else if !use_stmt.items.is_empty() {
-
                 store.import_items(&module_type_store, &use_stmt.items);
-
             } else {
 
                 // Plan 545: bare `use db` = namespace-only（Rust 2018 风格）。
@@ -1876,42 +1827,32 @@ impl CompileSession {
                 // 不平铺 merge——限定访问 `db.X` 走 codegen 限定 reloc +
 
                 // Linker `db#X`，类型层经 modules 注册表限定查找。
-
             }
 
             // Plan 545: 模块登记（所有形态——bare/wildcard/named 都需限定可见）
 
-            let module_name = use_stmt.module.rsplit('.').next()
-
+            let module_name = use_stmt
+                .module
+                .rsplit('.')
+                .next()
                 .unwrap_or(use_stmt.module.as_str())
-
                 .to_string();
 
             let export_fns = if module_export_fns.is_empty() {
-
                 // 重复加载（compiled_module_paths 命中）或无导出：从模块符号表
 
                 // 的 pub fn 面近似（wildcard 映射的超集无碍）
 
                 module_type_store.pub_fn_names()
-
             } else {
-
                 module_export_fns.clone()
-
             };
 
             store.register_module(&module_name, module_type_store.clone(), export_fns);
-
         }
 
-
-
         Ok(())
-
     }
-
-
 
     /// Plan 085: 瑙ｆ瀽妯″潡骞舵彁鍙?type_store
 
@@ -1920,104 +1861,74 @@ impl CompileSession {
     /// 瑙ｆ瀽妯″潡婧愮爜锛屾彁鍙栨墍鏈夌被鍨嬨€佸嚱鏁般€乻pec 澹版槑鍒?TypeStore銆?
 
     fn parse_module_to_type_store(&self, source: &str, path: &str) -> AutoResult<TypeStore> {
-
         let mut type_store = TypeStore::new();
-
-
 
         // 浣跨敤 Parser 瑙ｆ瀽婧愮爜锛屼紶鍏ュ叏灞?type_store 浠ヤ究瑙ｆ瀽 use 瀵煎叆
         let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
         let mut parser = Parser::new_with_type_store(source, self.type_store.clone());
 
-        let ast = parser.parse()
-
+        let ast = parser
+            .parse()
             .map_err(|e| crate::error::attach_source(e, path.to_string(), source.to_string()))?;
-
-
 
         // 浠?AST 鎻愬彇澹版槑
 
         for stmt in &ast.stmts {
-
             match stmt {
-
                 crate::ast::Stmt::Fn(fn_decl) => {
-
                     type_store.register_fn_decl(fn_decl);
-
                 }
 
                 crate::ast::Stmt::TypeDecl(type_decl) => {
-
                     type_store.register_type_decl(type_decl);
-
                 }
 
                 crate::ast::Stmt::SpecDecl(spec_decl) => {
-
                     type_store.register_spec_decl(spec_decl);
-
                 }
 
                 crate::ast::Stmt::Ext(ext) => {
-
                     type_store.register_ext_methods(ext);
-
                 }
 
                 crate::ast::Stmt::EnumDecl(enum_decl) => {
-
                     type_store.register_enum_decl(enum_decl.clone());
-
                 }
 
                 _ => {}
-
             }
-
         }
 
-
-
         Ok(type_store)
-
     }
-
-
 
     /// Compile a module's source code to bytecode (for cross-module function calls)
 
     fn compile_module_to_bytecode(
-
         &mut self,
 
         source: &str,
 
         path: &str,
-
     ) -> AutoResult<crate::vm::loader::Module> {
-
         use crate::vm::codegen::Codegen;
 
         use crate::vm::opcode::OpCode;
 
-
-
         let mut parser = Parser::new_with_type_store(source, self.type_store.clone());
 
-        let ast = parser.parse()
-
+        let ast = parser
+            .parse()
             .map_err(|e| crate::error::attach_source(e, path.to_string(), source.to_string()))?;
 
         // Plan 345: compute module name early (needed for global qualification).
-        let module_name = path.replace('\\', "/")
-
-            .rsplit('/').next().unwrap_or("unknown")
-
+        let module_name = path
+            .replace('\\', "/")
+            .rsplit('/')
+            .next()
+            .unwrap_or("unknown")
             .trim_end_matches(".at")
-
             .trim_end_matches(".auto")
-
             .to_string();
 
         let mut codegen = Codegen::new_with_type_store(self.type_store.clone());
@@ -2059,16 +1970,13 @@ impl CompileSession {
                     store.kind,
                     crate::ast::StoreKind::Var | crate::ast::StoreKind::Const
                 ) {
-                    codegen
-                        .global_vars
-                        .insert(store.name.as_str().to_string());
+                    codegen.global_vars.insert(store.name.as_str().to_string());
                 }
             }
         }
         for stmt in &ast.stmts {
             match stmt {
-                crate::ast::Stmt::TypeDecl(_)
-                | crate::ast::Stmt::EnumDecl(_) => {
+                crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::EnumDecl(_) => {
                     codegen.compile_stmt(stmt)?;
                 }
                 _ => {}
@@ -2094,15 +2002,19 @@ impl CompileSession {
             }
         }
 
-
-
         codegen.code.push(OpCode::HALT as u8);
 
         // Plan 346: Merge this module's generic_registry + object pools into
         // the session so they can be combined with the main module's at link time.
-        self.dep_generic_registry.borrow_mut().merge(&codegen.generic_registry);
-        self.dep_object_keys.borrow_mut().extend(codegen.object_keys.iter().cloned());
-        self.dep_object_types.borrow_mut().extend(codegen.object_types.iter().cloned());
+        self.dep_generic_registry
+            .borrow_mut()
+            .merge(&codegen.generic_registry);
+        self.dep_object_keys
+            .borrow_mut()
+            .extend(codegen.object_keys.iter().cloned());
+        self.dep_object_types
+            .borrow_mut()
+            .extend(codegen.object_types.iter().cloned());
 
         // PLAN-013 T1: surface this module's `#[vm]` (body-less) fn names so
         // the root codegen can prefer the declared native over the stub when
@@ -2112,10 +2024,7 @@ impl CompileSession {
         }
 
         Ok(codegen.finish(module_name))
-
     }
-
-
 
     /// Compile source code and index it into the database
 
@@ -2184,20 +2093,19 @@ impl CompileSession {
     /// ```
 
     pub fn compile_source(
-
         &mut self,
 
         source: &str,
 
         path: &str,
-
     ) -> AutoResult<Vec<crate::database::FragId>> {
-
         // Insert source into database
 
-        let file_id = self.db.write().unwrap().insert_source(path, AutoStr::from(source));
-
-
+        let file_id = self
+            .db
+            .write()
+            .unwrap()
+            .insert_source(path, AutoStr::from(source));
 
         // Parse source code to AST
 
@@ -2207,11 +2115,9 @@ impl CompileSession {
 
         let mut parser = Parser::from(source);
 
-        let ast = parser.parse()
-
+        let ast = parser
+            .parse()
             .map_err(|e| crate::error::attach_source(e, path.to_string(), source.to_string()))?;
-
-
 
         // Index AST into database
 
@@ -2219,17 +2125,12 @@ impl CompileSession {
 
         let mut indexer = Indexer::new(&mut db);
 
-        let frag_ids = indexer.index_ast(&ast, file_id)
-
+        let frag_ids = indexer
+            .index_ast(&ast, file_id)
             .map_err(|e| AutoError::Msg(format!("Index error: {}", e)))?;
 
-
-
         Ok(frag_ids)
-
     }
-
-
 
     /// Compile a file and index it into the database
 
@@ -2249,27 +2150,14 @@ impl CompileSession {
 
     /// A list of fragment IDs that were created.
 
-    pub fn compile_file(
-
-        &mut self,
-
-        path: &str,
-
-    ) -> AutoResult<Vec<crate::database::FragId>> {
-
+    pub fn compile_file(&mut self, path: &str) -> AutoResult<Vec<crate::database::FragId>> {
         // Read file
 
         let source = std::fs::read_to_string(path)
-
             .map_err(|e| AutoError::Io(format!("Failed to read file: {}", e)))?;
 
-
-
         self.compile_source(&source, path)
-
     }
-
-
 
     /// Get a fragment by name
 
@@ -2293,41 +2181,23 @@ impl CompileSession {
 
     /// The fragment AST if found.
 
-    pub fn get_fragment_by_name(
-
-        &self,
-
-        name: &str,
-
-    ) -> Option<Arc<crate::ast::Fn>> {
-
+    pub fn get_fragment_by_name(&self, name: &str) -> Option<Arc<crate::ast::Fn>> {
         // Search all fragments for one with matching name
 
         let db = self.db.read().unwrap();
 
         for file_id in db.get_files() {
-
             for frag_id in db.get_fragments_in_file(file_id) {
-
                 if let Some(meta) = db.get_fragment_meta(&frag_id) {
-
                     if meta.name.as_ref() == name {
-
                         return db.get_fragment(&frag_id);
-
                     }
-
                 }
-
             }
-
         }
 
         None
-
     }
-
-
 
     /// Get symbol location for a function (for LSP support)
 
@@ -2348,14 +2218,14 @@ impl CompileSession {
     /// The symbol location if found.
 
     pub fn get_symbol_location(&self, name: &str) -> Option<SymbolLocation> {
-
         let symbol_id = Sid::kid_of(&SID_PATH_GLOBAL, name);
 
-        self.db.read().unwrap().get_symbol_location(&symbol_id).cloned()
-
+        self.db
+            .read()
+            .unwrap()
+            .get_symbol_location(&symbol_id)
+            .cloned()
     }
-
-
 
     /// List all functions in the database
 
@@ -2368,42 +2238,26 @@ impl CompileSession {
     /// A list of function names.
 
     pub fn list_functions(&self) -> Vec<String> {
-
         let mut functions = Vec::new();
-
-
 
         let db = self.db.read().unwrap();
 
         for file_id in db.get_files() {
-
             for frag_id in db.get_fragments_in_file(file_id) {
-
                 if let Some(meta) = db.get_fragment_meta(&frag_id) {
-
                     if matches!(meta.kind, crate::database::FragKind::Function) {
-
                         functions.push(meta.name.to_string());
-
                     }
-
                 }
-
             }
-
         }
-
-
 
         functions.sort();
 
         functions.dedup();
 
         functions
-
     }
-
-
 
     /// Clear all data from the database
 
@@ -2412,7 +2266,6 @@ impl CompileSession {
     /// **Plan 065 Phase 3**: Also resets QueryEngine to clear cache
 
     pub fn clear(&mut self) {
-
         self.db = Arc::new(RwLock::new(Database::new()));
 
         self.query_engine = None; // Reset QueryEngine to clear cache
@@ -2420,57 +2273,38 @@ impl CompileSession {
         self.type_store = Arc::new(RwLock::new(TypeStore::new())); // Plan 085
 
         self.auto_cache.clear(); // Plan 085 Phase 5
-
     }
-
-
 
     /// Get statistics about the database
 
     pub fn stats(&self) -> CompileStats {
-
         let mut total_frags = 0;
 
         let mut total_functions = 0;
 
         let mut total_specs = 0;
 
-
-
         let db = self.db.read().unwrap();
 
         for file_id in db.get_files() {
-
             let frags = db.get_fragments_in_file(file_id);
 
             total_frags += frags.len();
 
-
-
             for frag_id in &frags {
-
                 if let Some(meta) = db.get_fragment_meta(frag_id) {
-
                     match meta.kind {
-
                         crate::database::FragKind::Function => total_functions += 1,
 
                         crate::database::FragKind::Spec => total_specs += 1,
 
                         _ => {}
-
                     }
-
                 }
-
             }
-
         }
 
-
-
         CompileStats {
-
             total_files: db.get_files().len(),
 
             total_frags,
@@ -2478,12 +2312,8 @@ impl CompileSession {
             total_functions,
 
             total_specs,
-
         }
-
     }
-
-
 
     /// Re-index a file with new source content (incremental compilation)
 
@@ -2546,28 +2376,27 @@ impl CompileSession {
     /// ```
 
     pub fn reindex_source(
-
         &mut self,
 
         path: &str,
 
         source: &str,
-
     ) -> AutoResult<Vec<crate::database::FragId>> {
-
         // Update source content (insert_source updates if file exists)
 
-        self.db.write().unwrap().insert_source(path, AutoStr::from(source));
-
-
+        self.db
+            .write()
+            .unwrap()
+            .insert_source(path, AutoStr::from(source));
 
         // Get file ID
 
-        let file_id = self.db.read().unwrap().get_file_id_by_path(path)
-
+        let file_id = self
+            .db
+            .read()
+            .unwrap()
+            .get_file_id_by_path(path)
             .ok_or_else(|| AutoError::Msg(format!("File not found: {}", path)))?;
-
-
 
         // Re-index using indexer
 
@@ -2575,38 +2404,25 @@ impl CompileSession {
 
         let mut indexer = Indexer::new(&mut db);
 
-        let frag_ids = indexer.reindex_file(file_id, source)
-
+        let frag_ids = indexer
+            .reindex_file(file_id, source)
             .map_err(|e| AutoError::Msg(format!("Reindex error: {}", e)))?;
 
-
-
         Ok(frag_ids)
-
     }
-
 }
-
-
 
 impl Default for CompileSession {
-
     fn default() -> Self {
-
         Self::new()
-
     }
-
 }
-
-
 
 /// Statistics about a compilation session
 
 #[derive(Debug, Clone)]
 
 pub struct CompileStats {
-
     pub total_files: usize,
 
     pub total_frags: usize,
@@ -2614,18 +2430,13 @@ pub struct CompileStats {
     pub total_functions: usize,
 
     pub total_specs: usize,
-
 }
-
-
 
 // =============================================================================
 
 // Convenience Functions
 
 // =============================================================================
-
-
 
 /// Compile source code in a single call (convenience function)
 
@@ -2656,30 +2467,22 @@ pub struct CompileStats {
 /// ```
 
 pub fn compile_once(source: &str, path: &str) -> AutoResult<CompileSession> {
-
     let mut session = CompileSession::new();
 
     session.compile_source(source, path)?;
 
     Ok(session)
-
 }
-
-
 
 /// Compile a file in a single call (convenience function)
 
 pub fn compile_file_once(path: &str) -> AutoResult<CompileSession> {
-
     let mut session = CompileSession::new();
 
     session.compile_file(path)?;
 
     Ok(session)
-
 }
-
-
 
 // =============================================================================
 
@@ -2687,75 +2490,52 @@ pub fn compile_file_once(path: &str) -> AutoResult<CompileSession> {
 
 // =============================================================================
 
-
-
 #[cfg(test)]
 
 mod tests {
 
     use super::*;
 
-
-
     #[test]
 
     fn test_compile_session_new() {
-
         let session = CompileSession::new();
 
         assert_eq!(session.stats().total_files, 0);
 
         assert_eq!(session.stats().total_frags, 0);
-
     }
-
-
 
     #[test]
 
     fn test_compile_source_simple() {
-
         let mut session = CompileSession::new();
 
         let source = "fn main() int { 42 }";
-
-
 
         let result = session.compile_source(source, "test.at");
 
         assert!(result.is_ok());
 
-
-
         let frag_ids = result.unwrap();
 
         assert_eq!(frag_ids.len(), 1);
-
-
 
         let stats = session.stats();
 
         assert_eq!(stats.total_files, 1);
 
         assert_eq!(stats.total_functions, 1);
-
     }
-
-
 
     #[test]
 
     fn test_get_fragment_by_name() {
-
         let mut session = CompileSession::new();
 
         let source = "fn add(a int, b int) int { a + b }\nfn main() int { add(10, 20) }";
 
-
-
         session.compile_source(source, "test.at").unwrap();
-
-
 
         // Should find main function
 
@@ -2765,8 +2545,6 @@ mod tests {
 
         assert_eq!(main_fn.unwrap().name.as_ref(), "main");
 
-
-
         // Should find add function
 
         let add_fn = session.get_fragment_by_name("add");
@@ -2775,29 +2553,21 @@ mod tests {
 
         assert_eq!(add_fn.unwrap().name.as_ref(), "add");
 
-
-
         // Should not find non-existent function
 
         let missing_fn = session.get_fragment_by_name("missing");
 
         assert!(missing_fn.is_none());
-
     }
-
-
 
     #[test]
 
     fn test_list_functions() {
-
         let mut session = CompileSession::new();
 
         // Functions must be on separate lines for the parser
 
         let source = "fn foo() int { 1 }\nfn bar() int { 2 }\nfn baz() int { 3 }";
-
-
 
         let frag_ids = session.compile_source(source, "test.at").unwrap();
 
@@ -2805,13 +2575,9 @@ mod tests {
 
         println!("Stats: {:?}", session.stats());
 
-
-
         let functions = session.list_functions();
 
         println!("Functions found: {:?}", functions);
-
-
 
         assert_eq!(functions.len(), 3);
 
@@ -2820,18 +2586,12 @@ mod tests {
         assert!(functions.contains(&"bar".to_string()));
 
         assert!(functions.contains(&"baz".to_string()));
-
     }
-
-
 
     #[test]
 
     fn test_compile_multiple_files() {
-
         let mut session = CompileSession::new();
-
-
 
         // Compile first file
 
@@ -2839,15 +2599,11 @@ mod tests {
 
         session.compile_source(source1, "file1.at").unwrap();
 
-
-
         // Compile second file
 
         let source2 = "fn bar() int { 2 }";
 
         session.compile_source(source2, "file2.at").unwrap();
-
-
 
         let stats = session.stats();
 
@@ -2855,55 +2611,39 @@ mod tests {
 
         assert_eq!(stats.total_functions, 2);
 
-
-
         // Both functions should be accessible
 
         assert!(session.get_fragment_by_name("foo").is_some());
 
         assert!(session.get_fragment_by_name("bar").is_some());
-
     }
-
-
 
     #[test]
 
     fn test_clear() {
-
         let mut session = CompileSession::new();
 
-        session.compile_source("fn test() int { 1 }", "test.at").unwrap();
-
-
+        session
+            .compile_source("fn test() int { 1 }", "test.at")
+            .unwrap();
 
         assert_eq!(session.stats().total_functions, 1);
 
-
-
         session.clear();
-
-
 
         assert_eq!(session.stats().total_files, 0);
 
         assert_eq!(session.stats().total_functions, 0);
 
         assert!(session.get_fragment_by_name("test").is_none());
-
     }
-
-
 
     #[test]
 
     fn test_compile_once_convenience() {
-
         let source = "fn main() int { 42 }";
 
         let result = compile_once(source, "test.at");
-
-
 
         assert!(result.is_ok());
 
@@ -2912,64 +2652,45 @@ mod tests {
         assert_eq!(session.stats().total_functions, 1);
 
         assert!(session.get_fragment_by_name("main").is_some());
-
     }
-
-
 
     #[test]
 
     fn test_empty_source() {
-
         let mut session = CompileSession::new();
 
         let source = "";
 
-
-
         let result = session.compile_source(source, "test.at");
 
         assert!(result.is_ok());
-
-
 
         let frag_ids = result.unwrap();
 
         assert_eq!(frag_ids.len(), 0);
 
         assert_eq!(session.stats().total_frags, 0);
-
     }
-
-
 
     #[test]
 
     fn test_stats() {
-
         let mut session = CompileSession::new();
 
         let source = "fn foo() int { 1 }\nspec MySpec { fn test() void }";
 
-
-
         session.compile_source(source, "test.at").unwrap();
-
-
 
         let stats = session.stats();
 
         assert_eq!(stats.total_files, 1);
 
-        assert_eq!(stats.total_frags, 2);  // 1 function + 1 spec
+        assert_eq!(stats.total_frags, 2); // 1 function + 1 spec
 
         assert_eq!(stats.total_functions, 1);
 
         assert_eq!(stats.total_specs, 1);
-
     }
-
-
 
     // =============================================================================
 
@@ -2977,19 +2698,14 @@ mod tests {
 
     // =============================================================================
 
-
-
     #[test]
 
     fn test_file_no_change() {
-
         // Test: No recompilation if file unchanged
 
         let mut session = CompileSession::new();
 
         let source = "fn main() int { 42 }";
-
-
 
         // First compilation
 
@@ -2997,27 +2713,23 @@ mod tests {
 
         assert_eq!(frag_ids1.len(), 1);
 
-
-
         // Get file ID and initial hash
 
-        let file_id = session.database().unwrap().get_file_id_by_path("test.at").unwrap();
+        let file_id = session
+            .database()
+            .unwrap()
+            .get_file_id_by_path("test.at")
+            .unwrap();
 
         let hash1 = session.database_mut().unwrap().hash_file(file_id).unwrap();
-
-
 
         // Re-index same content (should skip)
 
         let frags = session.reindex_source("test.at", source).unwrap();
 
-
-
         // Should not recompile (no fragments returned)
 
         assert!(frags.is_empty());
-
-
 
         // Hash should be unchanged
 
@@ -3025,27 +2737,19 @@ mod tests {
 
         assert_eq!(hash1, hash2);
 
-
-
         // File should not be dirty
 
         assert!(!session.database().unwrap().is_file_dirty(file_id));
-
     }
-
-
 
     #[test]
 
     fn test_file_changed() {
-
         // Test: Only changed file recompiled
 
         let mut session = CompileSession::new();
 
         let source1 = "fn main() int { 42 }";
-
-
 
         // First compilation
 
@@ -3053,15 +2757,15 @@ mod tests {
 
         assert_eq!(frag_ids1.len(), 1);
 
-
-
         // Get file ID and initial hash
 
-        let file_id = session.database().unwrap().get_file_id_by_path("test.at").unwrap();
+        let file_id = session
+            .database()
+            .unwrap()
+            .get_file_id_by_path("test.at")
+            .unwrap();
 
         let hash1 = session.database_mut().unwrap().hash_file(file_id).unwrap();
-
-
 
         // Change source and re-index
 
@@ -3069,13 +2773,9 @@ mod tests {
 
         let frags = session.reindex_source("test.at", source2).unwrap();
 
-
-
         // Should return new fragments (recompiled)
 
         assert_eq!(frags.len(), 1);
-
-
 
         // Hash should be changed
 
@@ -3083,25 +2783,17 @@ mod tests {
 
         assert_ne!(hash1, hash2);
 
-
-
         // File should not be dirty after re-indexing
 
         assert!(!session.database().unwrap().is_file_dirty(file_id));
-
     }
-
-
 
     #[test]
 
     fn test_import_chain() {
-
         // Test: A imports B, B changes 鈫?A recompiled
 
         let mut session = CompileSession::new();
-
-
 
         // Compile B first (dependency)
 
@@ -3109,20 +2801,15 @@ mod tests {
 
         session.compile_source(source_b, "std/b.at").unwrap();
 
-
-
         // Compile A
 
         let source_a = "fn main() int { 42 }";
 
         session.compile_source(source_a, "test.a.at").unwrap();
 
-
-
         // Get file IDs
 
         let (file_b, file_a) = {
-
             let db = session.database().unwrap();
 
             let fb = db.get_file_id_by_path("std/b.at").unwrap();
@@ -3130,21 +2817,19 @@ mod tests {
             let fa = db.get_file_id_by_path("test.a.at").unwrap();
 
             (fb, fa)
-
         };
-
-
 
         // Manually add dependency: A imports B
 
-        session.database_mut().unwrap().dep_graph_mut().add_file_import(file_a, vec![file_b]);
-
-
+        session
+            .database_mut()
+            .unwrap()
+            .dep_graph_mut()
+            .add_file_import(file_a, vec![file_b]);
 
         // Check dependency: A imports B
 
         {
-
             let db = session.database().unwrap();
 
             let deps_a = db.dep_graph().get_file_imports(file_a);
@@ -3152,10 +2837,7 @@ mod tests {
             assert_eq!(deps_a.len(), 1);
 
             assert!(deps_a.contains(&file_b));
-
         }
-
-
 
         // Modify B
 
@@ -3163,39 +2845,30 @@ mod tests {
 
         session.reindex_source("std/b.at", source_b_new).unwrap();
 
-
-
         // Mark B dirty and propagate
 
         session.database_mut().unwrap().mark_file_dirty(file_b);
 
-        session.database_mut().unwrap().propagate_dirty_recursive(file_b);
-
-
+        session
+            .database_mut()
+            .unwrap()
+            .propagate_dirty_recursive(file_b);
 
         // A should be dirty (depends on B)
 
         {
-
             let db = session.database().unwrap();
 
             assert!(db.is_file_dirty(file_a));
-
         }
-
     }
-
-
 
     #[test]
 
     fn test_import_diamond() {
-
         // Test: A,B import C, C changes 鈫?A,B recompiled
 
         let mut session = CompileSession::new();
-
-
 
         // Compile C (shared dependency)
 
@@ -3203,15 +2876,11 @@ mod tests {
 
         session.compile_source(source_c, "std/c.at").unwrap();
 
-
-
         // Compile A
 
         let source_a = "fn func_a() int { 42 }";
 
         session.compile_source(source_a, "test/a.at").unwrap();
-
-
 
         // Compile B
 
@@ -3219,12 +2888,9 @@ mod tests {
 
         session.compile_source(source_b, "test/b.at").unwrap();
 
-
-
         // Get file IDs
 
         let (file_c, file_a, file_b) = {
-
             let db = session.database().unwrap();
 
             let fc = db.get_file_id_by_path("std/c.at").unwrap();
@@ -3234,23 +2900,25 @@ mod tests {
             let fb = db.get_file_id_by_path("test/b.at").unwrap();
 
             (fc, fa, fb)
-
         };
-
-
 
         // Manually add dependencies: A imports C, B imports C
 
-        session.database_mut().unwrap().dep_graph_mut().add_file_import(file_a, vec![file_c]);
+        session
+            .database_mut()
+            .unwrap()
+            .dep_graph_mut()
+            .add_file_import(file_a, vec![file_c]);
 
-        session.database_mut().unwrap().dep_graph_mut().add_file_import(file_b, vec![file_c]);
-
-
+        session
+            .database_mut()
+            .unwrap()
+            .dep_graph_mut()
+            .add_file_import(file_b, vec![file_c]);
 
         // Verify diamond dependencies
 
         {
-
             let db = session.database().unwrap();
 
             let deps_a = db.dep_graph().get_file_imports(file_a);
@@ -3260,10 +2928,7 @@ mod tests {
             assert!(deps_a.contains(&file_c));
 
             assert!(deps_b.contains(&file_c));
-
         }
-
-
 
         // Modify C (this will mark C as dirty, propagate to A and B, then clear C's dirty flag)
 
@@ -3271,35 +2936,24 @@ mod tests {
 
         session.reindex_source("std/c.at", source_c_new).unwrap();
 
-
-
         // Both A and B should be dirty (dependents of C)
 
         {
-
             let db = session.database().unwrap();
 
             assert!(db.is_file_dirty(file_a));
 
             assert!(db.is_file_dirty(file_b));
-
         }
-
-
 
         // C should not be dirty (cleared after re-index)
 
         {
-
             let db = session.database().unwrap();
 
             assert!(!db.is_file_dirty(file_c));
-
         }
-
     }
-
-
 
     // =============================================================================
 
@@ -3307,107 +2961,104 @@ mod tests {
 
     // =============================================================================
 
-
-
     #[test]
 
     fn test_fragment_iface_hash_storage() {
-
         // Test: Fragment interface hashes are computed and stored
 
         let mut session = CompileSession::new();
 
         let source = "fn add(a int, b int) int { a + b }";
 
-
-
         session.compile_source(source, "test.at").unwrap();
-
-
 
         // Get the fragment
 
-        let frag_id = session.database().unwrap().get_fragments_in_file(
-
-            session.database().unwrap().get_file_id_by_path("test.at").unwrap()
-
-        ).into_iter().next().unwrap();
-
-
+        let frag_id = session
+            .database()
+            .unwrap()
+            .get_fragments_in_file(
+                session
+                    .database()
+                    .unwrap()
+                    .get_file_id_by_path("test.at")
+                    .unwrap(),
+            )
+            .into_iter()
+            .next()
+            .unwrap();
 
         // Verify interface hash was computed and stored
 
-        let hash = session.database().unwrap().get_fragment_iface_hash(&frag_id);
+        let hash = session
+            .database()
+            .unwrap()
+            .get_fragment_iface_hash(&frag_id);
 
         assert!(hash.is_some(), "Interface hash should be stored");
 
         assert_ne!(hash.unwrap(), 0, "Interface hash should not be zero");
-
     }
-
-
 
     #[test]
 
     fn test_interface_hash_unchanged_body_change() {
-
         // Test鐔旀柇: Function body change doesn't change interface hash
 
         let mut session = CompileSession::new();
 
-
-
         // Initial version
 
         let source_v1 = "fn add(a int, b int) int { a + b }";
 
         session.compile_source(source_v1, "test.at").unwrap();
 
-
-
         // Get initial interface hash
 
-        let file_id = session.database().unwrap().get_file_id_by_path("test.at").unwrap();
+        let file_id = session
+            .database()
+            .unwrap()
+            .get_file_id_by_path("test.at")
+            .unwrap();
 
         let frag_id_v1 = session.database().unwrap().get_fragments_in_file(file_id)[0].clone();
 
-        let hash_v1 = session.database().unwrap().get_fragment_iface_hash(&frag_id_v1).unwrap();
-
-
+        let hash_v1 = session
+            .database()
+            .unwrap()
+            .get_fragment_iface_hash(&frag_id_v1)
+            .unwrap();
 
         // Re-index with changed body but same signature
 
-        let source_v2 = "fn add(a int, b int) int { a + b + 0 }";  // Body changed
+        let source_v2 = "fn add(a int, b int) int { a + b + 0 }"; // Body changed
 
         session.reindex_source("test.at", source_v2).unwrap();
-
-
 
         // Get new interface hash
 
         let frag_id_v2 = session.database().unwrap().get_fragments_in_file(file_id)[0].clone();
 
-        let hash_v2 = session.database().unwrap().get_fragment_iface_hash(&frag_id_v2).unwrap();
-
-
+        let hash_v2 = session
+            .database()
+            .unwrap()
+            .get_fragment_iface_hash(&frag_id_v2)
+            .unwrap();
 
         // Interface hash should be UNCHANGED (鐔旀柇!)
 
-        assert_eq!(hash_v1, hash_v2, "Interface hash should be unchanged when only body changes");
-
+        assert_eq!(
+            hash_v1, hash_v2,
+            "Interface hash should be unchanged when only body changes"
+        );
     }
-
-
 
     #[test]
 
     fn test_interface_hash_changed_signature_change() {
-
         // Test: Signature change DOES change interface hash
 
         let mut session = CompileSession::new();
-
-
 
         // Initial version
 
@@ -3415,41 +3066,45 @@ mod tests {
 
         session.compile_source(source_v1, "test.at").unwrap();
 
-
-
         // Get initial interface hash
 
-        let file_id = session.database().unwrap().get_file_id_by_path("test.at").unwrap();
+        let file_id = session
+            .database()
+            .unwrap()
+            .get_file_id_by_path("test.at")
+            .unwrap();
 
         let frag_id_v1 = session.database().unwrap().get_fragments_in_file(file_id)[0].clone();
 
-        let hash_v1 = session.database().unwrap().get_fragment_iface_hash(&frag_id_v1).unwrap();
-
-
+        let hash_v1 = session
+            .database()
+            .unwrap()
+            .get_fragment_iface_hash(&frag_id_v1)
+            .unwrap();
 
         // Re-index with changed signature
 
-        let source_v2 = "fn add(a int, b int, c int) int { a + b + c }";  // Signature changed!
+        let source_v2 = "fn add(a int, b int, c int) int { a + b + c }"; // Signature changed!
 
         session.reindex_source("test.at", source_v2).unwrap();
-
-
 
         // Get new interface hash
 
         let frag_id_v2 = session.database().unwrap().get_fragments_in_file(file_id)[0].clone();
 
-        let hash_v2 = session.database().unwrap().get_fragment_iface_hash(&frag_id_v2).unwrap();
-
-
+        let hash_v2 = session
+            .database()
+            .unwrap()
+            .get_fragment_iface_hash(&frag_id_v2)
+            .unwrap();
 
         // Interface hash should be CHANGED
 
-        assert_ne!(hash_v1, hash_v2, "Interface hash should change when signature changes");
-
+        assert_ne!(
+            hash_v1, hash_v2,
+            "Interface hash should change when signature changes"
+        );
     }
-
-
 
     // =============================================================================
 
@@ -3457,12 +3112,9 @@ mod tests {
 
     // =============================================================================
 
-
-
     #[test]
 
     fn test_circular_dependency_detected() {
-
         // Test that loading_stack detects cycles when load_module is called
 
         // with the same module name while it's already being loaded.
@@ -3471,38 +3123,31 @@ mod tests {
 
         let mut session = CompileSession::new();
 
-
-
         // Simulate a cycle: push "a" onto the loading stack, then try to load "a"
 
         session.loading_stack.push("b".to_string());
 
         session.loading_stack.push("a".to_string());
 
-
-
         let use_a = UseStatement::new("a".to_string());
 
         let result = session.load_module(&use_a);
-
-
 
         // Plan 317: circular deps are now allowed (skip, not error) —
         // legitimate cross-references (db use api: Note + api use db) need
         // this. The module being loaded ("a") is already in loading_stack,
         // so load_module returns Ok(()) without re-loading.
-        assert!(result.is_ok(), "Circular dependency should be skipped (Ok), not error. Got: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Circular dependency should be skipped (Ok), not error. Got: {:?}",
+            result
+        );
     }
-
-
 
     #[test]
 
     fn test_no_circular_dependency() {
-
         let tmp = tempfile::TempDir::new().unwrap();
-
-
 
         // Create module c.at that uses d (no cycle)
 
@@ -3510,19 +3155,13 @@ mod tests {
 
         std::fs::write(&c_path, "fn c_func() int { 1 }").unwrap();
 
-
-
         let d_path = tmp.path().join("d.at");
 
         std::fs::write(&d_path, "fn d_func() int { 2 }").unwrap();
 
-
-
         let original_dir = std::env::current_dir().unwrap();
 
         std::env::set_current_dir(tmp.path()).unwrap();
-
-
 
         let mut session = CompileSession::new();
 
@@ -3530,17 +3169,14 @@ mod tests {
 
         let result = session.load_module(&use_c);
 
-
-
         std::env::set_current_dir(&original_dir).unwrap();
-
-
 
         // Should succeed 鈥?no cycle
 
-        assert!(result.is_ok(), "Expected success, got error: {:?}", result.err());
-
+        assert!(
+            result.is_ok(),
+            "Expected success, got error: {:?}",
+            result.err()
+        );
     }
-
 }
-

@@ -73,6 +73,12 @@ pub struct AutovmReplSession {
     /// Lazily created on first `use.py`, persists across inputs.
     #[cfg(feature = "python")]
     py_bridge: Option<crate::py_ffi::PyFfiBridge>,
+
+    /// PLAN-738 T-05（§5.5）：已装载 stdlib 模块指纹台账
+    /// (module, 合并源 FNV 指纹, stdlib root)。同内容重载幂等放行；
+    /// 内容或根变化 = 活 VM 下热换 stdlib ABI → SessionTargetMismatch
+    /// 明确错误要求重建（不让旧堆资源混跑新实现）。pub(crate) 供测试注入。
+    pub(crate) module_fingerprints: Vec<(String, u64, String)>,
 }
 
 impl AutovmReplSession {
@@ -115,10 +121,11 @@ impl AutovmReplSession {
             bytecode,
             object_keys: Vec::new(),
             object_types: Vec::new(),
-            last_result: None, // Plan 080: Initialize last_result
+            last_result: None,    // Plan 080: Initialize last_result
             last_result_64: None, // Plan 378: 2-slot result value
             #[cfg(feature = "python")]
             py_bridge: None, // Plan 300 Phase 2: Lazy init on first use.py
+            module_fingerprints: Vec::new(), // PLAN-738 T-05: stdlib 热换守卫台账
         }
     }
 
@@ -140,8 +147,10 @@ impl AutovmReplSession {
                 continue;
             }
 
-            vm_debug!("DEBUG: Processing use statement: module={}, items={:?}",
-                use_stmt.module, use_stmt.items
+            vm_debug!(
+                "DEBUG: Processing use statement: module={}, items={:?}",
+                use_stmt.module,
+                use_stmt.items
             );
 
             // Load module and register functions
@@ -158,15 +167,17 @@ impl AutovmReplSession {
     #[cfg(feature = "python")]
     fn resolve_py_imports(&mut self, code: &str) -> AutoResult<()> {
         let use_stmts = scan_use_statements(code);
-        let py_stmts: Vec<_> = use_stmts.iter()
-            .filter(|u| u.is_python_import)
-            .collect();
-        if py_stmts.is_empty() { return Ok(()); }
+        let py_stmts: Vec<_> = use_stmts.iter().filter(|u| u.is_python_import).collect();
+        if py_stmts.is_empty() {
+            return Ok(());
+        }
 
         // Lazy init: create bridge on first use.py
         if self.py_bridge.is_none() {
-            self.py_bridge = Some(crate::py_ffi::PyFfiBridge::new()
-                .map_err(|e| AutoError::Msg(format!("PyFfiBridge init failed: {:?}", e)))?);
+            self.py_bridge = Some(
+                crate::py_ffi::PyFfiBridge::new()
+                    .map_err(|e| AutoError::Msg(format!("PyFfiBridge init failed: {:?}", e)))?,
+            );
         }
         let bridge = self.py_bridge.as_mut().unwrap();
 
@@ -307,6 +318,32 @@ impl AutovmReplSession {
             vm_debug!("DEBUG: Loaded context file: {}", context_file.display());
         }
 
+        // PLAN-738 T-05（§5.5）：persistent 活 VM 的 stdlib ABI 热换守卫。
+        // 已装载模块的内容/根指纹台账：同内容重载幂等放行（REPL 重复 use
+        // 合法）；内容或 stdlib root 变化 → SessionTargetMismatch 明确错误
+        // 要求重建 session，不让旧堆资源混跑新实现。
+        {
+            let fingerprint = crate::stdlib_assembly::model::fnv1a64(&module_source);
+            let root_key = stdlib_path.to_string_lossy().to_string();
+            match self
+                .module_fingerprints
+                .iter()
+                .find(|(m, _, _)| m == &use_stmt.module)
+            {
+                Some((_, fp, root)) if *fp != fingerprint || *root != root_key => {
+                    return Err(AutoError::Msg(format!(
+                        "session_target_mismatch: stdlib module `{}` changed under an active persistent VM — rebuild the session (hot-swapping stdlib ABI is not allowed)",
+                        use_stmt.module
+                    )));
+                }
+                Some(_) => {} // 同内容同根重载：幂等
+                None => {
+                    self.module_fingerprints
+                        .push((use_stmt.module.clone(), fingerprint, root_key))
+                }
+            }
+        }
+
         // Parse the combined module source
         let mut parser = Parser::from(&module_source);
         let ast = parser.parse().map_err(|e| {
@@ -316,7 +353,8 @@ impl AutovmReplSession {
             ))
         })?;
 
-        vm_debug!("DEBUG: Parsed module {} with {} statements",
+        vm_debug!(
+            "DEBUG: Parsed module {} with {} statements",
             use_stmt.module,
             ast.stmts.len()
         );
@@ -340,12 +378,21 @@ impl AutovmReplSession {
                     // PLAN-738 T-03: canonical=auto.<module_stem>.<target>.<fn>
                     //（扫描侧 module 名是文件基名 "io"，而 use_stmt.module 是
                     // "auto.io"——须剥前缀，否则拼出 auto.auto.io.*）。
-                    let module_stem =
-                        use_stmt.module.rsplit('.').next().unwrap_or(&use_stmt.module);
+                    let module_stem = use_stmt
+                        .module
+                        .rsplit('.')
+                        .next()
+                        .unwrap_or(&use_stmt.module);
                     let target_lower = ext.target.to_string().to_lowercase();
-                    ext.methods.iter()
+                    ext.methods
+                        .iter()
                         .filter(|m| matches!(m.kind, crate::ast::FnKind::VmFunction))
-                        .map(|m| (m, format!("auto.{}.{}.{}", module_stem, target_lower, m.name)))
+                        .map(|m| {
+                            (
+                                m,
+                                format!("auto.{}.{}.{}", module_stem, target_lower, m.name),
+                            )
+                        })
                         .collect()
                 }
                 crate::ast::Stmt::TypeDecl(t) => {
@@ -354,12 +401,21 @@ impl AutovmReplSession {
                     // 合一——实勘 io.at+io.vm.at：ext_vm=0、TYPEDECL File
                     // vm_methods=8）。ext 臂只接住"无前置 type 声明"的 ext 块；
                     // 并入型走这里，canonical 同形状。
-                    let module_stem =
-                        use_stmt.module.rsplit('.').next().unwrap_or(&use_stmt.module);
+                    let module_stem = use_stmt
+                        .module
+                        .rsplit('.')
+                        .next()
+                        .unwrap_or(&use_stmt.module);
                     let target_lower = t.name.to_string().to_lowercase();
-                    t.methods.iter()
+                    t.methods
+                        .iter()
                         .filter(|m| matches!(m.kind, crate::ast::FnKind::VmFunction))
-                        .map(|m| (m, format!("auto.{}.{}.{}", module_stem, target_lower, m.name)))
+                        .map(|m| {
+                            (
+                                m,
+                                format!("auto.{}.{}.{}", module_stem, target_lower, m.name),
+                            )
+                        })
                         .collect()
                 }
                 _ => vec![],
@@ -395,12 +451,17 @@ impl AutovmReplSession {
                             .lock()
                             .unwrap()
                             .register_with_id(fn_name, native_id);
-                        vm_debug!("DEBUG: Registered '{}' -> {} (ID: {})",
-                            fn_name, full_path, native_id
+                        vm_debug!(
+                            "DEBUG: Registered '{}' -> {} (ID: {})",
+                            fn_name,
+                            full_path,
+                            native_id
                         );
                     } else {
-                        vm_debug!("DEBUG: Warning: '{}' not found in native registry (path: {})",
-                            fn_name, full_path
+                        vm_debug!(
+                            "DEBUG: Warning: '{}' not found in native registry (path: {})",
+                            fn_name,
+                            full_path
                         );
                     }
                 }
@@ -426,7 +487,7 @@ impl AutovmReplSession {
         // cycle on a fresh thread with guaranteed 8MB stack.
         let code_owned = code.to_string();
         let self_ptr: usize = self as *mut Self as usize;
-        
+
         let handle = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
             .spawn(move || {
@@ -462,7 +523,6 @@ impl AutovmReplSession {
         // Variables will be checked at runtime by the VM
         parser = parser.skip_check();
 
-
         let ast = parser.parse()?;
 
         // Debug: Print AST
@@ -489,7 +549,8 @@ impl AutovmReplSession {
             codegen.exports.keys().cloned().collect();
 
         // Debug: Print scope_stack before compilation
-        vm_debug!("DEBUG: Before compilation, scope_stack = {:?}",
+        vm_debug!(
+            "DEBUG: Before compilation, scope_stack = {:?}",
             codegen.scope_stack
         );
 
@@ -531,8 +592,8 @@ impl AutovmReplSession {
         // Build prologue bytes
         let mut prologue = vec![
             OpCode::FN_PROLOG as u8,
-            0,                  // n_args
-            actual_n_locals,    // n_locals
+            0,               // n_args
+            actual_n_locals, // n_locals
         ];
         if actual_n_locals > 0 {
             prologue.push(OpCode::RESERVE_STACK as u8);
@@ -574,7 +635,8 @@ impl AutovmReplSession {
             while i < codegen.code.len() {
                 // If we're in NEW_INSTANCE data bytes, just print them as data
                 if new_instance_data_bytes_remaining > 0 {
-                    eprintln!("DEBUG:   [{:04x}] {:02x} <NEW_INSTANCE data: '{}'>",
+                    eprintln!(
+                        "DEBUG:   [{:04x}] {:02x} <NEW_INSTANCE data: '{}'>",
                         i, codegen.code[i], codegen.code[i] as char
                     );
                     new_instance_data_bytes_remaining -= 1;
@@ -587,7 +649,8 @@ impl AutovmReplSession {
                 let opcode = match opcode {
                     Ok(op) => op,
                     Err(_) => {
-                        eprintln!("DEBUG:   [{:04x}] {:02x} <invalid opcode>",
+                        eprintln!(
+                            "DEBUG:   [{:04x}] {:02x} <invalid opcode>",
                             i, codegen.code[i]
                         );
                         i += 1;
@@ -626,7 +689,8 @@ impl AutovmReplSession {
                         // Print each name byte as data
                         for j in 0..name_len {
                             if i + 2 + j < codegen.code.len() {
-                                eprintln!("DEBUG:   [{:04x}] {:02x} <name_byte: '{}'>",
+                                eprintln!(
+                                    "DEBUG:   [{:04x}] {:02x} <name_byte: '{}'>",
                                     i + 2 + j,
                                     codegen.code[i + 2 + j],
                                     codegen.code[i + 2 + j] as char
@@ -781,13 +845,15 @@ impl AutovmReplSession {
         }
 
         // 7. Update bytecode
-        vm_debug!("DEBUG: Before bytecode update - bytecode.len()={}",
+        vm_debug!(
+            "DEBUG: Before bytecode update - bytecode.len()={}",
             self.bytecode.len()
         );
         self.bytecode.pop();
         // Note: new_code_start was already calculated above before adjusting exports
         self.bytecode.extend_from_slice(&new_code);
-        vm_debug!("DEBUG: After bytecode update - bytecode.len()={}, new_code_start={}",
+        vm_debug!(
+            "DEBUG: After bytecode update - bytecode.len()={}, new_code_start={}",
             self.bytecode.len(),
             new_code_start
         );
@@ -839,16 +905,13 @@ impl AutovmReplSession {
         // When `let a` shadows a previous `let a`, the scope map has 1 entry but
         // the new variable might be at slot 1, not slot 0. max_locals tracks the
         // actual highest slot used.
-        let num_locals = self
-            .codegen
-            .as_ref()
-            .map(|c| c.max_locals)
-            .unwrap_or(0);
+        let num_locals = self.codegen.as_ref().map(|c| c.max_locals).unwrap_or(0);
         task.num_locals = num_locals; // Store on task for native shims to access
         task.ram.sp = task.bp + 1 + num_locals;
 
         // Debug: Print state BEFORE execution
-        vm_debug!("DEBUG: BEFORE execution - bp={}, sp={}, ip={}, num_locals={}, raw[0..5]={:?}",
+        vm_debug!(
+            "DEBUG: BEFORE execution - bp={}, sp={}, ip={}, num_locals={}, raw[0..5]={:?}",
             task.bp,
             task.ram.sp,
             task.ip,
@@ -877,7 +940,8 @@ impl AutovmReplSession {
         let mut task = task_arc.blocking_lock();
 
         // Debug: Print stack state AFTER execution
-        vm_debug!("DEBUG: AFTER execution - bp={}, sp={}, ip={}, raw[0..5]={:?}",
+        vm_debug!(
+            "DEBUG: AFTER execution - bp={}, sp={}, ip={}, raw[0..5]={:?}",
             task.bp,
             task.ram.sp,
             task.ip,
@@ -888,11 +952,7 @@ impl AutovmReplSession {
         // IMPORTANT: Use max_locals (high-water mark of variable slots), not scope.len().
         // When `let a` shadows a previous `let a`, the scope map has 1 entry but
         // the new variable is at a higher slot. max_locals tracks the actual highest slot.
-        let num_locals = self
-            .codegen
-            .as_ref()
-            .map(|c| c.max_locals)
-            .unwrap_or(0);
+        let num_locals = self.codegen.as_ref().map(|c| c.max_locals).unwrap_or(0);
 
         // Calculate target stack pointer (bp + 1 + num_locals)
         // Stack frame layout: [unused, local0, local1, ..., localN, temps...]
@@ -901,8 +961,12 @@ impl AutovmReplSession {
         // Stack temps start at bp + 1 + num_locals (NOT bp + num_locals!)
         let target_sp = task.bp + 1 + num_locals;
 
-        vm_debug!("DEBUG: num_locals={}, bp={}, target_sp={}, current_sp={}",
-            num_locals, task.bp, target_sp, task.ram.sp
+        vm_debug!(
+            "DEBUG: num_locals={}, bp={}, target_sp={}, current_sp={}",
+            num_locals,
+            task.bp,
+            target_sp,
+            task.ram.sp
         );
 
         // Check if there's a temporary result on stack (sp > target_sp)
@@ -923,7 +987,11 @@ impl AutovmReplSession {
             };
             self.last_result = Some(result);
             self.last_result_64 = full_64;
-            vm_debug!("DEBUG: Saved result to last_result: {} (full_64={:?})", result, full_64);
+            vm_debug!(
+                "DEBUG: Saved result to last_result: {} (full_64={:?})",
+                result,
+                full_64
+            );
         } else {
             // No result produced (e.g., let statement without expression)
             // Clear last_result to avoid printing stale value
@@ -934,7 +1002,8 @@ impl AutovmReplSession {
         // Reset stack pointer to target_sp (clear all temporary values)
         task.ram.sp = target_sp;
 
-        vm_debug!("DEBUG: After stack cleanup - sp={}, raw[0..5]={:?}",
+        vm_debug!(
+            "DEBUG: After stack cleanup - sp={}, raw[0..5]={:?}",
             task.ram.sp,
             &task.ram.raw[0..5]
         );
@@ -957,8 +1026,14 @@ impl AutovmReplSession {
             heap_objects: self.vm.heap_objects.len(),
             // Plan 390 §15 H3b: array literals are ListData<Value> in
             // heap_objects now (legacy arrays registry is gone).
-            arrays: self.vm.heap_objects.iter()
-                .filter(|e| e.value().read().unwrap().type_tag() == crate::vm::heap_object::TypeTag::ListValue)
+            arrays: self
+                .vm
+                .heap_objects
+                .iter()
+                .filter(|e| {
+                    e.value().read().unwrap().type_tag()
+                        == crate::vm::heap_object::TypeTag::ListValue
+                })
                 .count(),
         }
     }
@@ -1003,7 +1078,8 @@ impl AutovmReplSession {
         self.codegen
             .as_ref()
             .map(|c| {
-                c.scope_stack.iter()
+                c.scope_stack
+                    .iter()
                     .flat_map(|scope| scope.keys().cloned())
                     .collect()
             })
@@ -1063,8 +1139,12 @@ impl AutovmReplSession {
 
     /// Get all local variable names and their string values.
     pub fn get_all_vars(&self) -> HashMap<String, String> {
-        let Some(codegen) = &self.codegen else { return HashMap::new(); };
-        let Some(task_arc) = self.vm.tasks.get(&self.main_task_id) else { return HashMap::new(); };
+        let Some(codegen) = &self.codegen else {
+            return HashMap::new();
+        };
+        let Some(task_arc) = self.vm.tasks.get(&self.main_task_id) else {
+            return HashMap::new();
+        };
         let task = task_arc.blocking_lock();
 
         let bp = task.bp;
@@ -1111,8 +1191,13 @@ impl AutovmReplSession {
                 let id = i as u64;
                 if let Some(arc) = self.vm.heap_objects.get(&id) {
                     let guard = arc.read().unwrap();
-                    if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
-                        let elems: Vec<String> = list.elems.iter()
+                    if let Some(list) = guard
+                        .as_any()
+                        .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                    {
+                        let elems: Vec<String> = list
+                            .elems
+                            .iter()
                             .map(|v| match v {
                                 auto_val::Value::Int(n) => n.to_string(),
                                 auto_val::Value::Str(s) => s.as_str().to_string(),
@@ -1247,11 +1332,17 @@ mod tests {
                 String::new()
             }
         }
-        fn system_status(&self) -> i32 { 0 }
+        fn system_status(&self) -> i32 {
+            0
+        }
         fn export(&self, _key: &str, _val: &str) {}
         fn exit(&self, _code: i32) {}
-        fn exit_requested(&self) -> bool { false }
-        fn requested_exit_code(&self) -> i32 { 0 }
+        fn exit_requested(&self) -> bool {
+            false
+        }
+        fn requested_exit_code(&self) -> i32 {
+            0
+        }
     }
 
     /// T1 会话级 repro(下游 examples_parity 同形):循环内 system() + 拼接链 +
@@ -1320,10 +1411,7 @@ found
             );
         }
         let health = session.vm.pool_health();
-        assert_eq!(
-            health.underflow_events, 0,
-            "池记账必须自持(无多扣款下溢)"
-        );
+        assert_eq!(health.underflow_events, 0, "池记账必须自持(无多扣款下溢)");
     }
 
     #[test]
@@ -1377,16 +1465,30 @@ found
         let mut session = AutovmReplSession::new();
         let result = session.run("\"42\".to_int()");
         eprintln!("[DEBUG to_int test] result = {:?}", result);
-        eprintln!("[DEBUG to_int test] last_result = {:?}", session.get_last_result());
-        assert_eq!(session.get_last_result(), Some(42), "to_int should return 42");
+        eprintln!(
+            "[DEBUG to_int test] last_result = {:?}",
+            session.get_last_result()
+        );
+        assert_eq!(
+            session.get_last_result(),
+            Some(42),
+            "to_int should return 42"
+        );
     }
 
     #[test]
     fn test_debug_to_uint_native_id() {
         let mut session = AutovmReplSession::new();
         let _ = session.run("\"42\".to_uint()");
-        eprintln!("[DEBUG to_uint test] last_result = {:?}", session.get_last_result());
-        assert_eq!(session.get_last_result(), Some(42), "to_uint should return 42");
+        eprintln!(
+            "[DEBUG to_uint test] last_result = {:?}",
+            session.get_last_result()
+        );
+        assert_eq!(
+            session.get_last_result(),
+            Some(42),
+            "to_uint should return 42"
+        );
     }
 
     #[test]
@@ -1408,12 +1510,15 @@ found
         );
     }
 
-
     #[test]
     fn test_to_int_arithmetic() {
         let mut session = AutovmReplSession::new();
         let _ = session.run("\"42\".to_int() + 8");
-        assert_eq!(session.get_last_result(), Some(50), "to_int()+8 should be 50");
+        assert_eq!(
+            session.get_last_result(),
+            Some(50),
+            "to_int()+8 should be 50"
+        );
     }
 
     #[test]
@@ -1426,17 +1531,29 @@ found
         let _ = session.run("m.insert_str(\"a\", \"1\")");
         let _ = session.run("m.get_str(\"missing\")");
         let nv = session.get_last_result_nv();
-        eprintln!("[DEBUG get_str missing] last_result_nv = {:?}, is_string={}", nv, nv.map(|v| auto_val::is_string(v)).unwrap_or(false));
+        eprintln!(
+            "[DEBUG get_str missing] last_result_nv = {:?}, is_string={}",
+            nv,
+            nv.map(|v| auto_val::is_string(v)).unwrap_or(false)
+        );
         // After fix: get_str returns empty string (TAG_STRING nanbox), not null.
         assert!(nv.is_some(), "get_str should return a value");
         let nv = nv.unwrap();
-        assert!(auto_val::is_string(nv), "get_str should return string type, got tag={}", auto_val::tag_of(nv));
+        assert!(
+            auto_val::is_string(nv),
+            "get_str should return string type, got tag={}",
+            auto_val::tag_of(nv)
+        );
         // Empty string: decode_string gives the string pool index (0 or higher)
         let _idx = auto_val::decode_string(nv);
         // Verify formatting produces empty string
         let formatted = session.format_last_result();
         eprintln!("[DEBUG get_str missing] formatted = {:?}", formatted);
-        assert_eq!(formatted, Some("".to_string()), "get_str on missing key should format as empty string");
+        assert_eq!(
+            formatted,
+            Some("".to_string()),
+            "get_str on missing key should format as empty string"
+        );
     }
 
     #[test]
@@ -1585,7 +1702,10 @@ found
         // Verify a is 1
         let r1a = session.run("a");
         assert!(r1a.is_ok(), "a should succeed: {:?}", r1a);
-        println!("DEBUG: after 'a', last_result={:?}", session.get_last_result());
+        println!(
+            "DEBUG: after 'a', last_result={:?}",
+            session.get_last_result()
+        );
 
         let r2 = session.run("let a = 3");
         assert!(r2.is_ok(), "let a = 3 should succeed: {:?}", r2);
@@ -1593,8 +1713,13 @@ found
         // After rebinding, a should be 3
         let r3 = session.run("a");
         assert!(r3.is_ok(), "a should succeed after rebinding: {:?}", r3);
-        println!("DEBUG: after second 'a', last_result={:?}", session.get_last_result());
-        let val = session.get_last_result().expect("a should produce a result");
+        println!(
+            "DEBUG: after second 'a', last_result={:?}",
+            session.get_last_result()
+        );
+        let val = session
+            .get_last_result()
+            .expect("a should produce a result");
         assert_eq!(val, 3, "a should be 3 after let rebinding");
     }
 
@@ -1632,7 +1757,15 @@ found
         let _ = session.run("var g = \"x\"");
         let _ = session.run("let l = 7");
         let all = session.get_all_vars();
-        assert_eq!(all.get("g").map(String::as_str), Some("x"), "globals var in get_all_vars");
-        assert_eq!(all.get("l").map(String::as_str), Some("7"), "local let in get_all_vars");
+        assert_eq!(
+            all.get("g").map(String::as_str),
+            Some("x"),
+            "globals var in get_all_vars"
+        );
+        assert_eq!(
+            all.get("l").map(String::as_str),
+            Some("7"),
+            "local let in get_all_vars"
+        );
     }
 }
