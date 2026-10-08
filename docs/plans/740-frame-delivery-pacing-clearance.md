@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-740
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived（2026-10-08 work pass——待 /auto-plan:review）
 feature_name: 泵回环交付节奏清偿件（auto-edit PLAN-027 回执余题②消费——scroll 54fps 解锁前置：交付节奏定责+最小面修复+下游复判解锁）
 author: [agent]
 created_at: 2026-10-03
-updated_at: 2026-10-03
+updated_at: 2026-10-08
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: []             # 无 goals.md 正式 GOAL-NNN 锚定本面（下游回执驱动面——731/735 先例注记式）
 
 affects: [crates/auto-lang/src/ui/iced/renderer.rs, crates/auto-lang/src/ui/dynamic.rs, crates/auto-lang/src/ui/sched_diag.rs, docs/plans/evidence/]
-current_step: 0
+current_step: 5
 total_steps: 5
 ---
 
@@ -249,11 +249,11 @@ downstream-handoff-v3（evidence/740/——**复判解锁预告**：auto-edit
 
 | # | 任务 | 依赖 | 落点（实勘锚） | 产出/意图 | AC | 验证（命令/预期） |
 |---|---|---|---|---|---|---|
-| 0 | T-00 三轴打点+阶梯勘定 | — | sched_diag.rs 扩轴+evidence/740/ladder740.py | 定责材料 | AC-01 | [ ] 打点谱+改前阶梯谱在档 |
-| 1 | T-01 定责+方案选定 | T-00 | evidence/740/T-00-T-01-report.md | 责任轴定谳 | AC-01 | [ ] 报告在档（候选逐项判定） |
-| 2 | T-02 最小面修复 | T-01 | renderer.rs:9207 drain-to-empty+定责面 | 交付节奏解锁 | AC-02 | [ ] 门关零开销自证+fast 面绿 |
-| 3 | T-03 双谱+零回退门 | T-02 | evidence/740/ 双谱 | 契约兑现 | AC-02/03 | [ ] 跟随性断言+零回退带 |
-| 4 | T-04 回执+规范+账本 | T-01..03 | handoff-v3+SD-01/02+P740-1（merge 期） | 下游解锁预告 | AC-04 | [ ] 范围断言绿 |
+| 0 | T-00 三轴打点+阶梯勘定 | — | sched_diag.rs 扩轴+evidence/740/ladder740.py | 定责材料 | AC-01 | [x] 打点谱+改前阶梯谱在档 [✅ mcp_poll/update_end 扩轴（86f41d299）；改前谱 HTTP 四档+探针 34/54Hz×5kb/1mb 判别（ladder-p740-pre-*.jsonl×4）——tick gap p50=16ms 全档、got==驱动数全档、027 ~93ms 形态不复现；batch-drive 内部通道探针（AUTOUI_DRIVE_PROBE）勘定落位（HTTP scroll 时延地板封顶 ~36.5Hz）] |
+| 1 | T-01 定责+方案选定 | T-00 | evidence/740/T-00-T-01-report.md | 责任轴定谳 | AC-01 | [x] 报告在档（候选逐项判定） [✅ 候选 (a) 证伪/(b) 细化（间隔结构杠杆）/(c) 证实（合并落点）/(d) 证伪/(e) 证实（16.7ms 槽量子）；责任链=16ms tick 网格重排消息对→呈现槽合并（54Hz 0.79×驱动）；方案 P=push 通道（计划 (c) 分支预授权 Poll 面最小绕行）] |
+| 2 | T-02 最小面修复 | T-01 | renderer.rs:9207 drain-to-empty+定责面 | 交付节奏解锁 | AC-02 | [x] 门关零开销自证+fast 面绿 [✅ McpPushRecipe push 通道（到达即投递+drain-to-empty 内含，3e1d8bb57）；门关零开销=golden 三形 0.00%（master 基线对照）+无新门；改后探针阶梯全档带内（1mb 34/54Hz=1.08/1.06、5kb=1.06/1.04——改前 0.77-1.02/0.73-0.79）；ui::mcp_server scoped 21 绿] |
+| 3 | T-03 双谱+零回退门 | T-02 | evidence/740/ 双谱 | 契约兑现 | AC-02/03 | [x] 跟随性断言+零回退带 [✅ 735proto 改前/改后全档 100% 配对+s5 同带（5kb 0.11-0.19/1mb 0.34-0.37；100kb 带外注记=跨计划漂移非本件）；golden 三形 0.00%；cargo t 5080 全量 16 红全预存（735 基线逐一对照）+tv 162/162+716 探针 19/19] |
+| 4 | T-04 回执+规范+账本 | T-01..03 | handoff-v3+SD-01/02+P740-1（merge 期） | 下游解锁预告 | AC-04 | [x] 范围断言绿 [✅ handoff-v3 在档（复判解锁预告+驱动余量 ≤3.5ms 预告+环境注记）；SD-01/02 落 worktree specs（a1814462c，merge 期正式沉淀）；范围断言=auto-edit porcelain clean+712 r2 域零 diff+不 fork+零 .at；P740-1=merge 期] |
 
 ## 9. 复审记录
 
@@ -269,6 +269,30 @@ downstream-handoff-v3（evidence/740/——**复判解锁预告**：auto-edit
   auto-lang@de3a64353 实勘锚定〔renderer.rs:9207/9407/8544-8597/
   23027/8619/8660+dynamic.rs:1554〕；授权=起草〔用户指令〕，执行
   待用户启动）。`next: work`。
+
+- 2026-10-08 work handoff：`stage: work`，PLAN-740，plan_revision 1，
+  `outcome: pass`，code_commit=a1814462c（worktree lang-740 /
+  plan-740-dev；基面 c3ccd32c3），task_ids=T-00..T-04 全数。
+  **证据**：T-00 三轴打点+改前谱（86f41d299/ff69d725b——tick gap
+  p50=16ms 全档健康、消费 got==驱动数全档、027 ~93ms 恒定形态在上游
+  041 不复现、54Hz 探针档跟随 0.73-0.79）；T-01 定责（tick 网格重排
+  消息对→16.7ms 呈现槽合并——候选五项逐项判定，报告在档）+附勘
+  （731/735 ladder scroll 相位自始无效驱动=祖先链 id 误取——735
+  scroll 带谱=空闲节奏读数修正）；T-02 push 通道重排（3e1d8bb57——
+  McpPushRecipe 到达即投递+drain-to-empty 内含；不 fork、712 r2 零
+  触碰、无新门）；T-03 双谱+门禁（f3bf7f6b3——探针 54Hz 跟随
+  0.79→**1.06**/5kb 0.73→**1.04** 全带内〔AC-02 ±10% 兑现〕；735
+  proto 全档 100% 配对+s5 同带；golden 三形 0.00%；cargo t 5080 全量
+  16 红全预存+tv 162 绿+716 探针 19 绿）；T-04 handoff-v3+SD-01/02
+  （a1814462c——范围断言 auto-edit porcelain clean+712 r2 零 diff）。
+  **如实注记**：①Q-1 未触发（定责唯一路径落 app 侧订阅重排，无
+  fork 需求）；②本机执行期偶发 app 静默退出（改前改后二进制均现、
+  无 panic 痕迹、手工短复现不复现——环境负载嫌疑，失败档重跑采集，
+  handoff-v3 §3 注记）+state.at 半截写损坏砖启动（债候选登记）；
+  ③master 执行期前移（PLAN-097 画布域 3 code commit）——域无交联，
+  fold 期 merge 自然合流；④100kb s5 带外（2.48-5.57 vs 735 记带
+  0.16-0.36）为跨计划漂移（1mb 带内 0.35 直证非本件面），T-03 双谱
+  同带判零回退。`next: review`。
 
 ## 10. 待澄清事项
 
