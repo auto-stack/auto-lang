@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-08
 plan_revision: 1
-current_step: 2
+current_step: 3
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -254,11 +254,14 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - [x] `cargo t plan738`/模型单测与inventory JSON完整性；AC-01/03/05，SD-01/02/07。
   [✅ 已完成] `cargo t plan738` 11/11 绿（6 探针 + 5 正式族）；稳定 JSON（双序列化逐字节一致 + 排序自检 + 无绝对路径泄漏）；scoped：module_cache 10/10、native_registry 13/13；`cargo check -p auto-lang` 新文件零警告。
 
-### T-03：VM/目标转译/persistent装配接线与源映射
+### T-03：VM/目标转译/persistent装配接线与源映射 ✅
 
-- 依赖T-02。修改compile.rs::load_module_inner、autovm_persistent.rs::load_and_register_module、lib.rs trans_*入口、parser必要诊断/source映射、trans/{rust,c}.rs实际provider消费。
-- resolved public路径+显式context选源，root在前/选层后；public/native host映射与pure body均可追踪，不把Rust解析预处理当VM执行实现。保持545/635路径/可见性/循环语义。
-- 三目标同源真正执行/emit与VM两入口对拍、源层错误位置；AC-02/04/05，SD-01/03/04。
+- [x] 依赖T-02。修改compile.rs::load_module_inner、autovm_persistent.rs::load_and_register_module、lib.rs trans_*入口、parser必要诊断/source映射、trans/{rust,c}.rs实际provider消费。
+  [✅ 已完成] worktree `340de9ccd`：①load_module_inner 层选择由 `AssemblyTarget::context_extension()` 驱动（硬编码 ".vm.at" 收编；Rust/C 目标零装载面——层记 candidate 不合并，发射面如实走名称表/头包含）；②`LayerSelection` 记录进 session（manifest v0 seam，T-06 消费）；③persistent context 路径修复（原 `with_extension` 吃掉 `.vm` + 未剥 `auto/` 前缀双 bug 使 `.vm.at` 恒不可见）+ ext canonical 对齐（`auto.<stem>.<target>.<fn>`，TypeDecl 并入型与 ext 型双臂）+ edition2021 `if let` MutexGuard 双锁死锁修复（context 修复使查找首次可达后暴露）；④trans_c/trans_rust 入口先声明装配目标；⑤Rust sibling 扫描排除 .vm.at/.c.at foreign 层（VM/C 层不再串入 Rust 发射类型上下文，.rs.at 为 Rust 选定层保留）。
+- [x] resolved public路径+显式context选源，root在前/选层后；public/native host映射与pure body均可追踪，不把Rust解析预处理当VM执行实现。保持545/635路径/可见性/循环语义。
+  [✅ 已完成] 源段边界记录（context_byte_boundary）+失败路径有界归因：公共段单独可解析 ⇒ 错误归因目标层真实文件（`target_layer_syntax_error_attributed` 实证）；545/635 语义由 use_semantics 族回归守护（117/117 含 use_semantics/module_cache/native_registry/repl/plan727/729/730）。
+- [x] 三目标同源真正执行/emit与VM两入口对拍、源层错误位置；AC-02/04/05，SD-01/03/04。
+  [✅ 已完成] `target_driven_layer_selection_and_record`（VM 合并 vm 层、Rust/C 上下文无 foreign 层符号、candidate 齐、记录全字段）；`vm_two_entry_same_layer_visibility`（session 与 persistent 对 io ext 方法/net 顶层 fn 同可见——P5 探针由破损证据翻转为修复后契约）；`trans_entries_declare_assembly_target`。门禁：plan738 15/15、scoped 117/117（plan730_staged_lease_expiry 首跑并行负载 flake，复跑单测 0.44s 绿——上传服务非本触面）、`cargo tv` 162/162。
 
 ### T-04：核心符号/native校验与环境能力
 
@@ -291,6 +294,25 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - 清理前lang-738两兄弟各wt-guard clean；tf仅merge到期主检出单实例。全AC闭合才reviewed/archived。
 
 ## 9. 复审记录
+
+### work 交接（2026-10-08，T-01..T-03 完成）
+
+- stage: work
+- plan_id: PLAN-738
+- plan_revision: 1
+- outcome: pass（T-01/T-02/T-03 完成；整体 executing 继续）
+- code_commit: worktree plan-738-dev `ac41c2d1e`（T-01）→ `d70d4c8a9`（T-02）→ `340de9ccd`（T-03）；基面 master c3ccd32c3
+- task_ids: T-01、T-02、T-03（current_step 3/8）
+- evidence: 决策报告 §1-E1..E5 + §2b/2c/2d；plan738 15/15、use_semantics/module_cache/native_registry/repl/plan727/729/730 117/117、`cargo tv` 162/162、新改文件零警告
+- blockers: T-06 消费 736 最终生成/ready 合同——保持 gated（736 已推进至 T-05 完成，合入后按报告 §8 复核）；不阻塞 T-04/T-05/T-07
+- next: T-04（核心符号/native 校验与环境能力——六模块全 decl 状态、独立逻辑签名/alias/feature/stub 与实际 shim 绑定；CWD 依赖名 surface 的生产构成冻结[报告 §2d]）
+
+T-03 实施要点（复审注意）：③persistent 修复为**行为变更**——`.vm.at` 层对
+persistent/REPL 由不可见变可见，短别名注册面扩大（P5 探针由 is_none 破损证据
+翻转为 is_some 修复契约，见探针头注）；edition2021 `if let` 持锁双锁死锁系
+context 修复使查找首次可达后暴露的潜伏 bug（查找临时量须提升出 scrutinee）。
+sibling 扫描排除 .vm.at/.c.at 为 AC-02 行为变更（VM/C 层不再进入 Rust 发射
+类型上下文），plan727/729/730 金样绿。
 
 ### work 交接（2026-10-08，T-01+T-02 完成）
 
