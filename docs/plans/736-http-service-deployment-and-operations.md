@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-03
 plan_revision: 1
-current_step: 5
+current_step: 6
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -264,9 +264,9 @@ fixture生成临时证书/凭据，只测试localhost；实际HTTPS→proxy→VM
 
 ### T-06：同源部署示例与真正代理测试
 
-- 依赖T-04/05。新examples/http_server/deployment/{README.md,pac.at,src/back/api.at,service.json}、deploy/http-service/{README.md,nginx.conf.example}及fixture runner，test临时CA/凭据不入库。
-- 示例有短JSON、受保护上传与下载、两轨已有支持的SSE；不手写替代编译业务。现有playground文件不改；明确edge/app责任和模板版本/期限。
-- nginx -t +真实HTTPS VM/Rust早拒/帧/hash/Range/身份；scoped测试注册test-http-e2e；AC-04/07/09，SD-01/02/06。
+- [x] 依赖T-04/05。新examples/http_server/deployment/{README.md,pac.at,src/back/api.at,service.json}、deploy/http-service/{README.md,nginx.conf.example}及fixture runner，test临时CA/凭据不入库。 [✅ 已完成] 提交04992cc25：deployment fixture + service.json（proxy_service 全门面）+ nginx.conf.example（1.31.6 基线）+ run_proxy_fixture.py（测试 CA 现场 openssl 生成于 temp、不入库；urllib 证书验证，无 --insecure）
+- [x] 示例有短JSON、受保护上传与下载、两轨已有支持的SSE；不手写替代编译业务。现有playground文件不改；明确edge/app责任和模板版本/期限。 [✅ 已完成] 同源契约六端点；guard 早拒语义由 730 契约测试+uploads 示例承载（fixture 走无 guard 公开上传，README 如实分责）；playground 零触碰；edge/app 矩阵+版本/期限在模板头
+- [x] nginx -t +真实HTTPS VM/Rust早拒/帧/hash/Range/身份；scoped测试注册test-http-e2e；AC-04/07/09，SD-01/02/06。 [✅ 已完成] **双轨真实 nginx 1.31.6 实测 PASS**：vm=ping 200/evil-host 400/SSE 帧经 TLS 代理（burst 抢 698 收口竞速）/upload 201→download hash 一致/Range 206+身份四元组核对；rust=wire 级 JSON+upload/download/Range 真实体+策略门，SSE/ping 桩体按 734 支持面如实记录（route-A 门=P670-D1 域）。P729-D1 专项=新 `http_e2e_plan736_file_body_drain_window_and_rebind`（真 TCP：在途文件体跨 drain 窗完整送达+drain 期 ready 不再 200+端口重绑；4MiB 强制收口脸在案）——plan736 族 11 测。轨差与 SSE 竞速（698 域）全部写入双 README/报告，不缩小 AC-07：SSE 帧经真实代理在 vm 轨达成
 
 ### T-07：受控负载、资源曲线与支持分级
 
