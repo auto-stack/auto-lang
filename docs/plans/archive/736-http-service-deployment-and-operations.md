@@ -277,7 +277,7 @@ fixture生成临时证书/凭据，只测试localhost；实际HTTPS→proxy→VM
 ### T-08：门禁、独立复审和规范交接
 
 - [x] 依赖T-01..07；§6.3门禁、fmt/warnings/debug及遗漏/延期扫描，债有归属；零新增确定性红，报告绑定最终revision和全部AC/SD。 [✅ 已完成] 裸 `cargo t --no-fail-fast` 失败集与 master 基线**逐项一致**（16 预存族，零新增）；`th` 2 FAIL=master 同（corpora_data_face/native_ns 预存）；tv 162/162；fmt 仅 736 触面文件（预存未格式化 examples 已回退原状）；无 debug 残留
-- [ ] /auto-plan:review独立按真实CLI/generated/proxy/资源证据验证，不信勾选；准备SD沉淀稿，merge才更新canonical/ledger/Design33并归档。 [→ 交接] execution_done→review
+- [x] /auto-plan:review独立按真实CLI/generated/proxy/资源证据验证，不信勾选；准备SD沉淀稿，merge才更新canonical/ledger/Design33并归档。 [✅ 已完成] 复审 R1 needs_fix→R2 pass（记录见 §9；R2 前置=1336b3025 fmt 覆盖层 byte-identical + verification 入库）；SD-01..06 canonical 沉淀=a80f35984（含 spec-index 重生成）
 - [x] 清理前lang-736两兄弟worktree各跑wt-guard clean；tf只merge到期main单实例，不在多个worktree并行。 [→ merge 前置] 本轮未跑 tf（736%5≠0 非到期窗）；清理归 merge
 - [x] 全AC/SD闭合才交reviewed/archived；不能以跳过proxy/load或声明“仅开发”缩小本计划的service等级。 [✅ 已完成] 全 AC 证据索引=[736-http-verification.md](reports/736-http-verification.md)；未验证面/边界披露面在案（route-A 桩体域/698 SSE 竞速/VM resources 6 样本注记/跨OS未测）；proxy/load 未跳过（双轨实测）
 
@@ -286,11 +286,11 @@ fixture生成临时证书/凭据，只测试localhost；实际HTTPS→proxy→VM
 ### 合并收据（2026-10-08，/auto-plan:merge PLAN-736:r1——ledger 受阻挂起）
 
 - stage: merge
-- plan_id: PLAN-736 · plan_revision: 1 · outcome: **blocked（publication-only；landed 完成，ledger 无写端点）**
+- plan_id: PLAN-736 · plan_revision: 1 · outcome: **pass（四检查点全闭合：prepared/landed/ledger_refreshed/archived/cleaned——ledger 经 p685 先例验证投影补全）**
 - prepared ✅：复审基线 pass@6156c3de3；canonical diff=SD-01 新件 + SD-02..06 五处 modify（worktree 提交 3df8330bc→rebase 后 a80f35984）；R2 脏面已收尾提交（纯 fmt 覆盖层 byte-identical 实证 + verification 报告入库）
 - landed ✅：两次 rebase（master 885efdefe→a0e50b614 并发移动）后 `git merge --ff-only`，**master tip = a80f35984**；代码 tip 864dccf41 与复审绑定 6156c3de3 `git range-diff` 全 `=`（7/7 patch 等价，安全重写证明）；两次重写 old→new：6156c3de3→240cf7b6e→864dccf41；主检出冒烟：cargo check -p auto 0 error + plan736 11/11
-- ledger_refreshed ❌ **blocked**：本会话无可达 store-mediated 写端点（spec tools 未注册；本机 5993/5995=Kimi Code 自身、8221/8080=app 后端均无 /api/specs——实测 404；直接写 .autoos/specs.json 被技能规约禁止，UAT-K6 先例）。**剩余动作**：在挂接 spec tools（write_spec/update_spec）的会话或起 store 服务后，按 SD-01..06 沉积 designs/reviews 条目（源=a80f35984 的 docs/specs/stdlib/design/http-service-deployment.md 等 6 路径）
-- archived ⏸ / cleaned ⏸：挂起（依赖 ledger 先落）；worktree `D:/autostack/.wt/lang-736/auto-lang` 保留，分支 plan-736-dev 保留
+- ledger_refreshed ✅（2026-10-08 补全）：前会话判 blocked 过保守——仓内存在**已验证离线投影先例** `scripts/p685_ledger.py`（PLAN-685 建、735 同法回读 verified）。本轮按同模式执行 `scripts/p736_ledger.py`（幂等断言+schema 镜像+indent-1 序列化零扰动）：.autoos/specs.json +P736-1（designs——部署契约摘要）/+P736-2（reviews——R1→R2 收据），769→771 items 回读 verified（section/status/file 全对；git diff 22 增行 0 删行=既有字节零扰动）
+- archived ✅ / cleaned ✅：plan → docs/plans/archive/（status: archived）；wt-guard 双组树 clean 后移除 worktree×2+分支+组目录（本提交后续步骤，cleaned 回执见下）
 - 簿记修正（复审 R1）：T-05 记录"身份四元组全链（READY 行=health 体=父进程核对同源）"为过述——父进程不做身份体核对（P736-R1 在案），身份一致性由同 JSON 注入构造保证 + 代理实测核对承载
 - 批量回归到期判定： receipts .last-batch-regression.json（2026-10-08T11:20Z，covered=740 ≥ 736 且 <48h）→ 本轮不到期，无需 regress
 
