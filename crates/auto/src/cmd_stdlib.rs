@@ -14,9 +14,8 @@
 //! 退出码：0 = 通过；1 = check 违规；2 = 用法/IO/解析错误；3 = inventory
 //! partial（parse 失败存在）。
 //!
-//! 已知债务（分诊冻结，T-04 遗留 b）：生产注册面 13 处 ID 相撞真冲突
-//! （如 id1607 char×conv、id9930-9933 http×transfer）——本期如实上报并
-//! 使受影响模块 --check 非零；重编号属 ABI 变更，归 D3b（KNOWN-DEBT）。
+//! Dynamic IDs avoid the reserved production catalog; unrelated aliases and
+//! missing producer signatures remain explicit check diagnostics.
 
 use clap::Subcommand;
 use serde_json::{json, Value};
@@ -106,8 +105,7 @@ fn normalize_module(m: &str) -> String {
     m.strip_prefix("auto.").unwrap_or(m).to_string()
 }
 
-/// 生产同款构造（与 auto-lang t04 production_surfaces 同形）：CWD 钉仓根
-/// → 磁盘扫描注册 + NativeInterface 手工面 + #[rust_fn] inventory 面。
+/// Production registration and inventory share the explicit stdlib root.
 fn production_surfaces() -> Result<
     (
         auto_lang::stdlib_assembly::model::StdlibInventory,
@@ -117,15 +115,7 @@ fn production_surfaces() -> Result<
     String,
 > {
     let stdlib_root = loader::repo_stdlib_root().map_err(|e| e.to_string())?;
-    let repo_root = stdlib_root
-        .parent()
-        .and_then(|p| p.parent())
-        .ok_or_else(|| "stdlib root has no repo parent".to_string())?
-        .to_path_buf();
-    let orig = std::env::current_dir().map_err(|e| e.to_string())?;
-    std::env::set_current_dir(&repo_root).map_err(|e| e.to_string())?;
     auto_lang::vm::native_registry::register_builtin_natives();
-    std::env::set_current_dir(orig).map_err(|e| e.to_string())?;
 
     let mut shims = auto_lang::vm::native::NativeInterface::new();
     shims.register_std_shims();
@@ -193,7 +183,8 @@ pub fn inspect(
         "diagnostics": inv.diagnostics,
     });
     if check {
-        let (code, mut value) = check_core(module, environment, &inv, &registry, &shims);
+        let (code, mut value) =
+            check_core(module, target, environment, None, &inv, &registry, &shims);
         // check 输出保留 inventory 分母信息（完整分母不漏项）
         value["files_total"] = json!(inv.files_total);
         value["inventory_diagnostics"] = json!(inv.diagnostics);
@@ -236,7 +227,7 @@ fn inspect_actual(
         .iter()
         .filter(|sel| {
             module
-                .map(|f| sel.module == normalize_module(f))
+                .map(|f| normalize_module(&sel.module) == normalize_module(f))
                 .unwrap_or(true)
         })
         .map(|sel| {
@@ -251,11 +242,11 @@ fn inspect_actual(
             json!({
                 "module": sel.module,
                 "target": sel.target,
-                "public_file": sel.public_file,
+                "public_file": portable_source_id(&sel.public_file, path),
                 "public_fnv1a64": public_hash,
-                "context_file": sel.context_file,
+                "context_file": sel.context_file.as_ref().map(|f| portable_source_id(f, path)),
                 "context_fnv1a64": context_hash,
-                "candidate_files": sel.candidate_files,
+                "candidate_files": sel.candidate_files.iter().map(|f| portable_source_id(f, path)).collect::<Vec<_>>(),
                 "context_byte_boundary": sel.context_byte_boundary,
             })
         })
@@ -274,6 +265,10 @@ fn inspect_actual(
                         AssemblyTarget::C => "c",
                     };
                     p.target == t
+                        && session
+                            .layer_selections
+                            .iter()
+                            .any(|sel| normalize_module(&sel.module) == p.module)
                         && module
                             .map(|f| p.module == normalize_module(f))
                             .unwrap_or(true)
@@ -295,11 +290,70 @@ fn inspect_actual(
     });
 
     if check {
-        let (inv, registry, shims) = match production_surfaces() {
+        let (_, registry, shims) = match production_surfaces() {
             Ok(x) => x,
             Err(e) => return error_value(EXIT_ERROR, &e),
         };
-        let (code, mut check_value) = check_core(module, environment, &inv, &registry, &shims);
+        let mut inv = auto_lang::stdlib_assembly::model::StdlibInventory {
+            schema_version: auto_lang::stdlib_assembly::model::INVENTORY_SCHEMA_VERSION,
+            root: loader::PORTABLE_ROOT.into(),
+            files_total: 0,
+            modules: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+        let snapshot = std::sync::Arc::new(std::sync::RwLock::new(
+            session.type_store().read().unwrap().clone(),
+        ));
+        for selection in &session.layer_selections {
+            let mut layers = Vec::new();
+            for (file, kind) in std::iter::once((
+                &selection.public_file,
+                auto_lang::stdlib_assembly::model::LayerKind::Public,
+            ))
+            .chain(
+                selection
+                    .context_file
+                    .iter()
+                    .map(|f| (f, auto_lang::stdlib_assembly::model::LayerKind::Vm)),
+            ) {
+                let source = match std::fs::read_to_string(file) {
+                    Ok(source) => source,
+                    Err(e) => {
+                        return error_value(
+                            EXIT_ERROR,
+                            &format!("cannot read selected source: {e}"),
+                        )
+                    }
+                };
+                layers.push(loader::parse_layer_with_store(
+                    &source,
+                    kind,
+                    portable_source_id(file, path),
+                    snapshot.clone(),
+                ));
+            }
+            inv.files_total += layers.len();
+            inv.modules
+                .push(auto_lang::stdlib_assembly::model::ModuleInventory {
+                    module: normalize_module(&selection.module),
+                    layers,
+                });
+        }
+        let closure: Vec<String> = session
+            .layer_selections
+            .iter()
+            .map(|s| normalize_module(&s.module))
+            .collect();
+        let closure_refs: Vec<&str> = closure.iter().map(String::as_str).collect();
+        let (code, mut check_value) = check_core(
+            module,
+            target,
+            environment,
+            Some(&closure_refs),
+            &inv,
+            &registry,
+            &shims,
+        );
         check_value["mode"] = json!("actual+check");
         check_value["target"] = json!(target);
         check_value["environment"] = json!(environment);
@@ -313,23 +367,31 @@ fn inspect_actual(
 /// 核心门：被请求核心闭包的 status 违规 + 按模块前缀分诊的 ID 冲突组。
 fn check_core(
     module: Option<&str>,
+    target: AssemblyTarget,
     environment: Environment,
+    requested: Option<&[&str]>,
     inv: &auto_lang::stdlib_assembly::model::StdlibInventory,
     registry: &auto_lang::vm::native_registry::AutoVMNativeRegistry,
     shims: &auto_lang::vm::native::NativeInterface,
 ) -> (i32, Value) {
-    let module_filter: Option<Vec<String>> = module.map(|m| vec![normalize_module(m)]);
+    let module_filter: Option<Vec<String>> = module
+        .map(|m| vec![normalize_module(m)])
+        .or_else(|| requested.map(|mods| mods.iter().map(|m| normalize_module(m)).collect()));
     let mods: Option<Vec<&str>> = module_filter
         .as_ref()
         .map(|v| v.iter().map(|s| s.as_str()).collect());
 
     let validations = validate::validate_core_vm_bindings(inv, registry, shims, environment);
-    let mut violations = validate::core_status_diagnostics(&validations, mods.as_deref());
+    let requested_modules = mods.as_deref().unwrap_or(validate::CORE_MODULES);
+    let mut violations =
+        validate::requested_diagnostics(inv, target, environment, requested_modules, &validations);
 
     // ID 相撞分诊（T-04 遗留 b）：冲突组按 `auto.<module>.` 前缀归入受影响
-    // 模块；无 --module 时全量上报（全局注册面事实）。已知 13 组生产冲突
-    // 冻结为债务——如实非零，不静默。
-    for g in validate::id_alias_conflict_groups(registry) {
+    // 模块；无 --module 时全量上报（全局注册面事实）。
+    for g in validate::id_alias_conflict_groups(registry)
+        .into_iter()
+        .filter(|_| target == AssemblyTarget::Vm)
+    {
         let relevant = match &module_filter {
             None => true,
             Some(list) => g
@@ -358,11 +420,12 @@ fn check_core(
     let checked_modules: Vec<&str> = mods.unwrap_or_else(|| validate::CORE_MODULES.to_vec());
     let value = json!({
         "mode": "check",
+        "target": target,
         "environment": environment,
         "checked_modules": checked_modules,
         "status": status,
         "violations": violations,
-        "debt_note": "production native-id collisions are frozen debt (PLAN-738 T-04/T-06); renumbering is D3b scope",
+
     });
     let code = if violations.is_empty() {
         EXIT_OK
@@ -518,6 +581,48 @@ mod tests {
     }
 
     #[test]
+    fn rust_net_and_unknown_module_cannot_pass_vm_checks() {
+        with_lock(|| {
+            let (code, value) = inspect(Some("auto.net"), "rust", "native", None, true);
+            assert_eq!(code, EXIT_CHECK_FAILED);
+            assert_eq!(value["target"], "rust");
+            assert!(value["violations"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v["code"] == validate::code::PROVIDER_UNSUPPORTED));
+            let (code, value) = inspect(Some("not_a_module"), "vm", "native", None, true);
+            assert_eq!(code, EXIT_CHECK_FAILED);
+            assert!(value["violations"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v["code"] == validate::code::NO_PUBLIC_LAYER));
+        });
+    }
+
+    #[test]
+    fn actual_non_core_closure_excludes_unrelated_core_failures() {
+        with_lock(|| {
+            let tmp = tempfile::tempdir().unwrap();
+            let main = tmp.path().join("main.at");
+            std::fs::write(&main, "use jsonx: *\nfn main() { let x = answer() }\n").unwrap();
+            std::fs::write(
+                tmp.path().join("jsonx.at"),
+                "pub fn answer() int { return 42 }\n",
+            )
+            .unwrap();
+            let (code, value) = inspect(None, "vm", "native", Some(main.to_str().unwrap()), true);
+            assert_eq!(code, EXIT_OK, "{value}");
+            assert_eq!(value["checked_modules"], json!(["jsonx"]));
+            let source = value["manifest"]["modules"][0]["public_file"]
+                .as_str()
+                .unwrap();
+            assert!(!source.contains(tmp.path().to_str().unwrap()));
+        });
+    }
+
+    #[test]
     fn check_browser_io_unsupported_nonzero() {
         with_lock(|| {
             let (code, value) = inspect(Some("io"), "vm", "browser", None, true);
@@ -533,33 +638,32 @@ mod tests {
     }
 
     #[test]
-    fn check_http_reports_frozen_id_conflicts() {
+    fn check_http_reports_unverified_producers_without_id_collisions() {
         with_lock(|| {
             let (code, value) = inspect(Some("http"), "vm", "native", None, true);
-            // T-04 遗留(b) 分诊冻结：http×transfer id9930-9933 真冲突如实上报
-            assert_eq!(code, EXIT_CHECK_FAILED, "已知生产 id 冲突必须非零");
+            assert_eq!(code, EXIT_CHECK_FAILED, "未验证的生产者必须非零");
             let violations = value["violations"].as_array().unwrap();
             assert!(
                 violations
                     .iter()
-                    .any(|v| v["code"] == validate::code::NATIVE_ID_CONFLICT),
-                "http 模块应有 id 冲突违规: {violations:?}"
+                    .any(|v| v["code"] == validate::code::SIGNATURE_DRIFT),
+                "http 必须报告缺独立签名: {violations:?}"
             );
+            assert!(!violations
+                .iter()
+                .any(|v| v["code"] == validate::code::NATIVE_ID_CONFLICT));
         });
     }
 
     #[test]
-    fn check_json_scan_face_unverified_nonzero() {
+    fn check_json_missing_signature_evidence_is_nonzero() {
         with_lock(|| {
-            // 实勘冻结（T-06 探针）：json 生产绑定面 = catalog canonical 名
-            // （auto.json.get@1906，register_std_shims 实绑）；校验器问的公共
-            // 扫描名面（auto.json.json_get@99xx）无 shim 可调——id 面分裂，
-            // 与 io 第四绑定面/http 扫描前缀名同族（T-04 裁决①公共面全量
-            // 重写下轮）。诚实 Unverified 非零，不冒称 Supported。
+            // Canonical names now resolve; missing independent producer
+            // signatures must still fail instead of becoming supported.
             let (code, value) = inspect(Some("json"), "vm", "native", None, true);
             assert_eq!(
                 code, EXIT_CHECK_FAILED,
-                "json 扫描名面无绑定必须诚实非零: {}",
+                "json 未验证的签名必须诚实非零: {}",
                 value
             );
             let violations = value["violations"].as_array().unwrap();
@@ -578,4 +682,26 @@ mod tests {
         assert_eq!(code, EXIT_ERROR);
         assert_eq!(value["mode"], "error");
     }
+}
+
+fn portable_source_id(file: &str, entry: &str) -> String {
+    let path = std::path::Path::new(file)
+        .canonicalize()
+        .unwrap_or_else(|_| file.into());
+    if let Ok(root) = loader::repo_stdlib_root() {
+        if let Ok(relative) = path.strip_prefix(root) {
+            return format!(
+                "stdlib/auto/{}",
+                relative.to_string_lossy().replace('\\', "/")
+            );
+        }
+    }
+    let entry = std::path::Path::new(entry)
+        .canonicalize()
+        .unwrap_or_else(|_| entry.into());
+    let relative = entry
+        .parent()
+        .and_then(|root| path.strip_prefix(root).ok())
+        .unwrap_or_else(|| std::path::Path::new(path.file_name().unwrap_or_default()));
+    format!("source/{}", relative.to_string_lossy().replace('\\', "/"))
 }

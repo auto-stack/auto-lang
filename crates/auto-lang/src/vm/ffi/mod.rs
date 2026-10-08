@@ -77,6 +77,9 @@ pub use c_ffi::CFfiRuntime;
 pub struct StaticFFIRegistration {
     pub name: &'static str,
     pub shim: fn(&mut crate::vm::task::AutoTask, &crate::vm::engine::AutoVM) -> Result<(), crate::vm::engine::VMError>,
+    pub parameters: &'static [&'static str],
+    pub returns: &'static str,
+    pub producer: &'static str,
 }
 inventory::collect!(StaticFFIRegistration);
 

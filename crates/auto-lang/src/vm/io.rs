@@ -5,6 +5,25 @@ use std::{
     io::{BufRead, Read},
 };
 
+/// Producer-owned logical contracts for VmModule dispatch. Receiver is carried
+/// separately by VmMethod; parameters here are the actual `args` payload.
+pub fn method_contract(method: &str) -> Option<crate::vm::native::NativeContract> {
+    let (parameters, returns): (&[&str], &str) = match method {
+        "read_text" | "read_line" => (&[], "str"),
+        "read_char" => (&[], "int"),
+        // read_buf_method is a stub; it cannot supply a supported contract.
+        "read_buf" => return None,
+        "write_line" => (&["str"], "void"),
+        "flush" | "close" => (&[], "void"),
+        "open" => (&["str"], "File"),
+        _ => return None,
+    };
+    Some(crate::vm::native::NativeContract {
+        parameters: parameters.iter().map(|p| p.to_string()).collect(),
+        returns: returns.into(), producer: format!("vm::io::{method}"),
+    })
+}
+
 
 pub fn open(ctx: &mut VmContext, path: Value) -> Value {
     match path {

@@ -52,6 +52,13 @@ pub const DYNAMIC_ID_START: u16 = 10000;
 
 pub type ShimFunc = Arc<dyn Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync>;
 
+#[derive(Debug, Clone)]
+pub struct NativeContract {
+    pub parameters: Vec<String>,
+    pub returns: String,
+    pub producer: String,
+}
+
 /// Plan 094: NativeInterface with hybrid lookup support
 ///
 /// Supports two types of native functions:
@@ -67,6 +74,8 @@ pub struct NativeInterface {
     next_dynamic_id: u16,
     /// Plan 200 Task 3.3: name -> ID mapping for CALL_SPEC fallback
     name_to_id: HashMap<String, u16>,
+    contracts: HashMap<u16, NativeContract>,
+    pub binding_conflicts: Vec<(u16, String, String)>,
 }
 
 impl NativeInterface {
@@ -76,6 +85,8 @@ impl NativeInterface {
             dynamic_shims: HashMap::new(),
             next_dynamic_id: DYNAMIC_ID_START,
             name_to_id: HashMap::new(),
+            contracts: HashMap::new(),
+            binding_conflicts: Vec::new(),
         }
     }
 
@@ -88,6 +99,7 @@ impl NativeInterface {
         F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
     {
         assert!(id < STATIC_ID_MAX, "Static ID must be < {}", STATIC_ID_MAX);
+        self.contracts.remove(&id);
         self.static_shims[id as usize] = Some(Arc::new(func));
     }
 
@@ -130,6 +142,25 @@ impl NativeInterface {
         }
     }
 
+    pub fn contract(&self, id: u16) -> Option<&NativeContract> {
+        self.contracts.get(&id)
+    }
+
+    /// Logical contract belongs to the manually implemented producer, not to
+    /// the .at scanner. Keep it next to the shim registration.
+    pub fn register_typed_shim_by_name(
+        &mut self, name: &str,
+        func: fn(&mut AutoTask, &AutoVM) -> Result<(), VMError>,
+        parameters: &[&str], returns: &str,
+    ) -> u16 {
+        let id = self.register_shim_by_name(name, func);
+        self.contracts.insert(id, NativeContract {
+            parameters: parameters.iter().map(|p| p.to_string()).collect(),
+            returns: returns.into(), producer: name.into(),
+        });
+        id
+    }
+
     /// Check if an ID is static or dynamic
     pub fn is_static(&self, id: u16) -> bool {
         id < STATIC_ID_MAX
@@ -169,7 +200,7 @@ impl NativeInterface {
     }
 
     /// Convert a short native name to its canonical "auto.X.Y" form.
-    fn to_canonical(name: &str) -> Option<String> {
+    pub(crate) fn to_canonical(name: &str) -> Option<String> {
         let (prefix, rest) = name.split_once('.')?;
         use crate::vm::native_registry::TYPE_CANONICAL_MAP;
         for &(short, canonical_prefix) in TYPE_CANONICAL_MAP {
@@ -191,6 +222,8 @@ impl NativeInterface {
     /// Used to merge Rust FFI bridge native shims into the main VM's
     /// NativeInterface after the bridge has loaded and registered functions.
     pub fn merge(&mut self, other: &NativeInterface) {
+        self.contracts.extend(other.contracts.clone());
+        self.binding_conflicts.extend(other.binding_conflicts.clone());
         // Merge static shims
         for (id, shim) in other.static_shims.iter().enumerate() {
             if let Some(shim) = shim {
@@ -233,14 +266,27 @@ impl NativeInterface {
     /// Called during VM init after BIGVM_NATIVES is populated.
     pub fn build_from_inventory(&mut self) {
         use crate::vm::ffi::StaticFFIRegistration;
-        for entry in inventory::iter::<StaticFFIRegistration> {
+        let mut entries: Vec<_> = inventory::iter::<StaticFFIRegistration>.into_iter().collect();
+        entries.sort_by_key(|e| e.name);
+        let mut producers = HashMap::<u16, (&str, usize)>::new();
+        for entry in entries {
             use crate::vm::native_registry::BIGVM_NATIVES;
             let mut natives = BIGVM_NATIVES.lock().unwrap();
             let id = natives
                 .resolve_qualified(entry.name)
                 .unwrap_or_else(|| panic!("build_from_inventory: '{}' not found in BIGVM_NATIVES", entry.name));
             assert!(id < STATIC_ID_MAX, "Inventory shim '{}' resolved to dynamic ID {}", entry.name, id);
+            if let Some((previous, pointer)) = producers.insert(id, (entry.producer, entry.shim as usize)) {
+                if pointer != entry.shim as usize {
+                    self.binding_conflicts.push((id, previous.into(), entry.producer.into()));
+                    continue;
+                }
+            }
             self.static_shims[id as usize] = Some(Arc::new(entry.shim));
+            self.contracts.insert(id, NativeContract {
+                parameters: entry.parameters.iter().map(|p| p.to_string()).collect(),
+                returns: entry.returns.into(), producer: entry.producer.into(),
+            });
             // Register names for CALL_SPEC resolve
             // Register the inventory name itself (e.g., "Str.char_at")
             self.name_to_id.entry(entry.name.to_string()).or_insert(id);

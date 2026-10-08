@@ -9,11 +9,11 @@
 
 /// Sender - Channel sender endpoint
 /// Use to send values to a Receiver
-type Sender[T]
+type Sender<T> {}
 
 /// Receiver - Channel receiver endpoint
 /// Use to receive values from a Sender
-type Receiver[T]
+type Receiver<T> {}
 
 // ═══════════════════════════════════════════════════════════
 // Task Management
@@ -50,23 +50,23 @@ pub fn sleep(ms int) void;
 ///   let (tx, rx) = channel[int]()
 ///   spawn(fn() { tx.send(42) })
 ///   let value = rx.recv()
-pub fn channel[T]() (Sender[T], Receiver[T]);
+pub fn channel<T>() (Sender<T>, Receiver<T>);
 
 /// Send a value through the channel
 /// Blocks until the value is received.
-pub fn Sender.send[T](self Sender[T], value T) void;
+pub fn Sender.send<T>(self Sender<T>, value T) void;
 
 /// Receive a value from the channel
 /// Blocks until a value is available.
-pub fn Receiver.recv[T](self Receiver[T]) T;
+pub fn Receiver.recv<T>(self Receiver<T>) T;
 
 /// Try to receive a value without blocking
 /// Returns the value if available, or 0/default if not.
-pub fn Receiver.try_recv[T](self Receiver[T]) T;
+pub fn Receiver.try_recv<T>(self Receiver<T>) T;
 
 /// Check if the channel has pending data
 /// Returns 1 if data is available, 0 otherwise.
-pub fn Receiver.has_data[T](self Receiver[T]) int;
+pub fn Receiver.has_data<T>(self Receiver<T>) int;
 
 // ═══════════════════════════════════════════════════════════
 // Utility Functions
@@ -74,7 +74,7 @@ pub fn Receiver.has_data[T](self Receiver[T]) int;
 
 /// Run a function with a timeout
 /// Returns 1 if completed, 0 if timed out.
-pub fn with_timeout[T](ms int, f fn()) int;
+pub fn with_timeout<T>(ms int, f fn()) int;
 
 /// Wait for all tasks to complete
 /// Blocks until the task count reaches expected.

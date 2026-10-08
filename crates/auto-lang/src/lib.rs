@@ -6006,6 +6006,10 @@ pub fn trans_c_with_session(session: &mut CompileSession, path: &str) -> AutoRes
     // its type context.
     session.set_assembly_target(crate::stdlib_assembly::model::AssemblyTarget::C)?;
     let code = std::fs::read_to_string(path)?;
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        session.add_source_dir(parent.to_path_buf());
+    }
+    session.resolve_uses(&code)?;
 
     // Compile source with incremental support
     let frag_ids = session.compile_source(&code, path)?;
@@ -6084,6 +6088,10 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     // implementation.
     session.set_assembly_target(crate::stdlib_assembly::model::AssemblyTarget::Rust)?;
     let code = std::fs::read_to_string(path)?;
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        session.add_source_dir(parent.to_path_buf());
+    }
+    session.resolve_uses(&code)?;
 
     // Compile source with incremental support (for dirty-tracking / caching)
     let frag_ids = session.compile_source(&code, path)?;

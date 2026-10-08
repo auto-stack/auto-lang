@@ -38,7 +38,6 @@ use crate::symbols::SymbolLocation;
 
 use crate::use_scanner::{scan_use_statements, UseStatement};
 
-use crate::util::find_std_lib;
 
 use std::collections::HashMap;
 
@@ -320,6 +319,7 @@ pub struct CompileSession {
     /// stdlib 模块装载时记录；后续装载发现根变化 → SessionTargetMismatch
     /// （活 session 下热换 stdlib 来源须明确重建，不静默混跑两个 root）。
     pub(crate) stdlib_root: Option<String>,
+    loaded_assemblies: HashMap<String, ModuleCache>,
 }
 
 impl Clone for CompileSession {
@@ -363,7 +363,8 @@ impl Clone for CompileSession {
             script_mode: self.script_mode,         // Plan 555 T02
             assembly: self.assembly,               // PLAN-738：装配目标随 clone 传递
             layer_selections: Vec::new(),          // 记录属于本次装载，重置
-            stdlib_root: self.stdlib_root.clone(), // PLAN-738 T-05：root 身份随 clone 继承
+            stdlib_root: None, // A cloned compiler starts a new assembly epoch.
+            loaded_assemblies: HashMap::new(),
         }
     }
 }
@@ -416,6 +417,7 @@ impl CompileSession {
             assembly: Default::default(),                 // PLAN-738：默认 Vm×Native
             layer_selections: Vec::new(),
             stdlib_root: None, // PLAN-738 T-05：首个 stdlib 装载时记录
+            loaded_assemblies: HashMap::new(),
         }
     }
 
@@ -1243,18 +1245,6 @@ impl CompileSession {
     /// Plan 094: 鍚屾椂鍔犺浇 .at (root) 鍜?.vm.at (context) 鏂囦欢锛屽悎骞跺鐞嗐€?
 
     fn load_module(&mut self, use_stmt: &UseStatement) -> AutoResult<()> {
-        // Plan 317: If the module is already compiled (from a previous load or
-        // a different entry into a circular dependency), skip — don't recompile.
-        // This allows legitimate circular deps (db use api: Note + api use db)
-        // where types and functions cross-reference.
-        if self
-            .compiled_modules
-            .iter()
-            .any(|m| m.name == use_stmt.module)
-        {
-            return Ok(());
-        }
-
         // Plan 167: Circular dependency detection — only error if the module
         // is currently being loaded (true cycle, not already-resolved).
         if self.loading_stack.contains(&use_stmt.module) {
@@ -1272,131 +1262,26 @@ impl CompileSession {
     /// Inner implementation of load_module (called after cycle check)
 
     fn load_module_inner(&mut self, use_stmt: &UseStatement) -> AutoResult<()> {
+        if self.assembly.target != crate::stdlib_assembly::model::AssemblyTarget::Vm {
+            if let Some(module) = use_stmt.module.strip_prefix("auto.") {
+                let target = match self.assembly.target {
+                    crate::stdlib_assembly::model::AssemblyTarget::Rust => "rust",
+                    crate::stdlib_assembly::model::AssemblyTarget::C => "c",
+                    _ => unreachable!(),
+                };
+                let catalog = crate::stdlib_assembly::providers::load_catalog().map_err(AutoError::Msg)?;
+                if let Some(claim) = catalog.providers.iter().find(|p| p.module == module && p.target == target && p.status == "unsupported") {
+                    return Err(AutoError::Msg(format!("STDASSEMBLY.PROVIDER_UNSUPPORTED: {module}/{target}: {}",
+                        claim.reason.as_deref().unwrap_or("no provider"))));
+                }
+            }
+        }
         // Phase 5 / PLAN-738 T-05: AutoCache 装配感知命中
         //
         // §5.5 早退一致性：命中只替换 parse 步（类型抽取），本 epoch 的
         // 依赖装载、bytecode、manifest 记录与 fresh 路径同构——缓存不再
         // 产生"类型有而字节码/manifest 缺"的半截模块；旧缓存语义（陈旧
         // 段指纹/异装配/schema 漂移/依赖漂移）一律未命中重编译，不降级。
-
-        let cache_hit = self
-            .auto_cache
-            .get_valid(
-                &use_stmt.module,
-                &self.assembly,
-                crate::stdlib_assembly::providers::catalog_schema_version(),
-            )
-            .map(|c| (c.type_store.clone(), c.segments.clone()));
-
-        if let Some((cached_store, segments)) = cache_hit {
-            let module_root = std::path::PathBuf::from(&segments[0].file);
-
-            // 重建合并源（有效性核对已证明与存储时逐字节一致）
-            let mut module_source = std::fs::read_to_string(&module_root).map_err(|e| {
-                AutoError::Io(format!(
-                    "Failed to read module {}: {}",
-                    module_root.display(),
-                    e
-                ))
-            })?;
-
-            let public_len = module_source.len();
-
-            for seg in segments.iter().skip(1) {
-                let seg_src = std::fs::read_to_string(&seg.file).map_err(|e| {
-                    AutoError::Io(format!("Failed to read layer {}: {}", seg.file, e))
-                })?;
-
-                module_source.push('\n');
-
-                module_source.push_str(&seg_src);
-            }
-
-            // 依赖闭包在本 epoch 重新装载（fresh 路径同序：先于 parse/合并）
-
-            self.resolve_uses(&module_source)?;
-
-            let mut store = self.type_store.write().unwrap();
-
-            if use_stmt.is_wildcard {
-                // Plan 545 D2: wildcard 冲突检测（与 fresh 分支同款；命中路径
-
-                // 无 parse 副作用，live store 即检测基线）
-
-                let conflicts = store.merge_with_conflicts(&cached_store, &use_stmt.module);
-
-                if !conflicts.is_empty() {
-                    let detail = conflicts
-                        .iter()
-                        .map(|c| {
-                            format!(
-                                "`{}` is defined in both `{}` and `{}`",
-                                c.symbol, c.existing_origin, c.incoming_origin
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join("; ");
-
-                    return Err(AutoError::Msg(format!(
-                        "ambiguous import from `{}`: {} — disambiguate with `use {}: <name>`",
-                        use_stmt.module, detail, use_stmt.module
-                    )));
-                }
-            } else if !use_stmt.items.is_empty() {
-                store.import_items(&cached_store, &use_stmt.items);
-            } else {
-
-                // Plan 545: bare = namespace-only，不 merge（同 fresh 分支）
-            }
-
-            // Plan 545: 模块登记（缓存命中路径）
-
-            let module_name = use_stmt
-                .module
-                .rsplit('.')
-                .next()
-                .unwrap_or(use_stmt.module.as_str())
-                .to_string();
-
-            let export_fns = cached_store.pub_fn_names();
-
-            store.register_module(&module_name, cached_store.clone(), export_fns);
-
-            drop(store);
-
-            // bytecode 补全（同 fresh 守卫：本 epoch 未编译过才编译）
-
-            let path_key = module_root
-                .canonicalize()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|_| module_root.to_string_lossy().to_string());
-
-            if !self.compiled_module_paths.contains(&path_key) {
-                let module_code =
-                    self.compile_module_to_bytecode(&module_source, &segments[0].file)?;
-
-                if !module_code.exports.is_empty() || module_code.has_globals {
-                    self.compiled_modules.push(module_code);
-                }
-
-                self.compiled_module_paths.insert(path_key);
-            }
-
-            // manifest 记录（本 epoch 与 fresh 路径同构；字节边界 = 公共段
-            // 长度 + 分隔换行，与存储时合并源形状一致）
-            let context = segments
-                .get(1)
-                .map(|s| (std::path::PathBuf::from(&s.file), public_len + 1));
-            self.record_layer_selection(
-                use_stmt,
-                &module_root,
-                context.as_ref().map(|(p, b)| (p.as_path(), *b)),
-            );
-
-            return Ok(());
-        }
-
-        // 灏嗘ā鍧楄矾寰勮浆鎹负鏂囦欢璺緞
 
         let raw_module_path = use_stmt.module.replace(".", "/");
 
@@ -1438,9 +1323,7 @@ impl CompileSession {
 
         // Resolve stdlib root via find_std_lib (searches CARGO_MANIFEST_DIR, ~/.auto/libs/, system paths)
 
-        let stdlib_base = find_std_lib()
-            .map(|s| std::path::PathBuf::from(s.as_str()))
-            .unwrap_or_else(|_| std::path::PathBuf::from("stdlib/auto"));
+        let stdlib_base = crate::stdlib_assembly::loader::repo_stdlib_root()?;
 
         // PLAN-738 T-05（§5.5）：stdlib root 身份守卫——首个 stdlib 装载
         // 记录解析根；后续装载发现根变化 = 活 session 下热换 stdlib 来源
@@ -1552,6 +1435,142 @@ impl CompileSession {
             ))
         })?;
 
+        let cache_hit = self
+            .auto_cache
+            .get_valid(
+                &use_stmt.module,
+                &self.assembly,
+                crate::stdlib_assembly::providers::catalog_schema_version(),
+            )
+            .filter(|c| std::path::Path::new(&c.file_path).canonicalize().ok() == root_path.canonicalize().ok())
+            .map(|c| (c.type_store.clone(), c.segments.clone(), c.clone()));
+        let resolved_key = root_path.canonicalize()?.to_string_lossy().to_string();
+        if let Some(previous) = self.layer_selections.iter().find(|s| s.module == use_stmt.module) {
+            let previous_key = std::path::Path::new(&previous.public_file).canonicalize()
+                .map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+            let active_valid = self.loaded_assemblies.values().all(|entry| entry.is_valid())
+                && self.loaded_assemblies.get(&use_stmt.module).is_some_and(|entry|
+                    entry.assembly == self.assembly);
+            if previous_key != resolved_key || !active_valid {
+                return Err(AutoError::Msg(format!(
+                    "session_target_mismatch: sources or dependencies of `{}` changed; rebuild the CompileSession",
+                    use_stmt.module)));
+            }
+            return Ok(());
+        }
+
+        if let Some((cached_store, segments, cached_entry)) = cache_hit {
+            let module_root = std::path::PathBuf::from(&segments[0].file);
+
+            // 重建合并源（有效性核对已证明与存储时逐字节一致）
+            let mut module_source = std::fs::read_to_string(&module_root).map_err(|e| {
+                AutoError::Io(format!(
+                    "Failed to read module {}: {}",
+                    module_root.display(),
+                    e
+                ))
+            })?;
+
+            let public_len = module_source.len();
+
+            for seg in segments.iter().skip(1) {
+                let seg_src = std::fs::read_to_string(&seg.file).map_err(|e| {
+                    AutoError::Io(format!("Failed to read layer {}: {}", seg.file, e))
+                })?;
+
+                module_source.push('\n');
+
+                module_source.push_str(&seg_src);
+            }
+
+            // 依赖闭包在本 epoch 重新装载（fresh 路径同序：先于 parse/合并）
+
+            self.resolve_uses(&module_source)?;
+
+            let mut store = self.type_store.write().unwrap();
+
+            if use_stmt.is_wildcard {
+                // Plan 545 D2: wildcard 冲突检测（与 fresh 分支同款；命中路径
+
+                // 无 parse 副作用，live store 即检测基线）
+
+                let conflicts = store.merge_with_conflicts(&cached_store, &use_stmt.module);
+
+                if !conflicts.is_empty() {
+                    let detail = conflicts
+                        .iter()
+                        .map(|c| {
+                            format!(
+                                "`{}` is defined in both `{}` and `{}`",
+                                c.symbol, c.existing_origin, c.incoming_origin
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("; ");
+
+                    return Err(AutoError::Msg(format!(
+                        "ambiguous import from `{}`: {} — disambiguate with `use {}: <name>`",
+                        use_stmt.module, detail, use_stmt.module
+                    )));
+                }
+            } else if !use_stmt.items.is_empty() {
+                store.import_items(&cached_store, &use_stmt.items);
+            } else {
+
+                // Plan 545: bare = namespace-only，不 merge（同 fresh 分支）
+            }
+
+            // Plan 545: 模块登记（缓存命中路径）
+
+            let module_name = use_stmt
+                .module
+                .rsplit('.')
+                .next()
+                .unwrap_or(use_stmt.module.as_str())
+                .to_string();
+
+            let export_fns = cached_store.pub_fn_names();
+
+            store.register_module(&module_name, cached_store.clone(), export_fns);
+
+            drop(store);
+
+            // bytecode 补全（同 fresh 守卫：本 epoch 未编译过才编译）
+
+            let path_key = module_root
+                .canonicalize()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| module_root.to_string_lossy().to_string());
+
+            if !self.compiled_module_paths.contains(&path_key)
+                && self.assembly.target == crate::stdlib_assembly::model::AssemblyTarget::Vm {
+                let module_code =
+                    self.compile_module_to_bytecode(&module_source, &segments[0].file)?;
+
+                if !module_code.exports.is_empty() || module_code.has_globals {
+                    self.compiled_modules.push(module_code);
+                }
+
+                self.compiled_module_paths.insert(path_key);
+            }
+
+            // manifest 记录（本 epoch 与 fresh 路径同构；字节边界 = 公共段
+            // 长度 + 分隔换行，与存储时合并源形状一致）
+            let context = segments
+                .get(1)
+                .map(|s| (std::path::PathBuf::from(&s.file), public_len + 1));
+            self.record_layer_selection(
+                use_stmt,
+                &module_root,
+                context.as_ref().map(|(p, b)| (p.as_path(), *b)),
+            );
+
+            self.loaded_assemblies.insert(use_stmt.module.clone(), cached_entry);
+            return Ok(());
+        }
+
+        // 灏嗘ā鍧楄矾寰勮浆鎹负鏂囦欢璺緞
+
         // Record the directory of this module for future lookups
         // Use canonical (absolute) path so that parent() calculations work correctly
         if let Some(parent) = root_path.parent() {
@@ -1565,76 +1584,11 @@ impl CompileSession {
             }
         }
 
-        // 璇诲彇妯″潡鏍规枃浠?
-
-        let mut module_source = std::fs::read_to_string(&root_path).map_err(|e| {
-            AutoError::Io(format!(
-                "Failed to read module {}: {}",
-                root_path.display(),
-                e
-            ))
-        })?;
-
-        // Plan 094: 灏濊瘯鍔犺浇涓婁笅鏂囨枃浠?(.vm.at)
-
-        // 鏍规嵁缂栬瘧寮曟搸绫诲瀷閫夋嫨涓婁笅鏂囨枃浠跺悗缂€
-
-        let context_ext = self.assembly.target.context_extension(); // PLAN-738 T-03: was hardcoded ".vm.at"
-
-        let context_path = root_path.with_file_name({
-            let name = root_path.file_name().unwrap().to_str().unwrap();
-
-            format!(
-                "{}{}",
-                name.strip_suffix(".at").unwrap_or(name),
-                context_ext
-            )
-        });
-
-        // 妫€鏌ヤ笂涓嬫枃鏂囦欢鏄惁瀛樺湪
-
-        let full_context_path = if context_path.exists() {
-            Some(context_path.clone())
-        } else {
-            // 涔熷皾璇?stdlib/auto 璺緞
-
-            let stdlib_context = std::path::Path::new("stdlib/auto").join(&context_path);
-
-            if stdlib_context.exists() {
-                Some(stdlib_context)
-            } else {
-                None
-            }
-        };
-
-        // 濡傛灉涓婁笅鏂囨枃浠跺瓨鍦紝璇诲彇骞跺悎骞?
-
-        let mut merged_context: Option<(std::path::PathBuf, usize)> = None;
-
-        if let Some(ctx_path) = full_context_path.filter(|_| {
-            // PLAN-738 T-03: only the VM target merges its selected layer into
-            // the parse source. Rust/C targets have a zero-module-load assembly
-            // surface (emission via name tables / header includes — decision
-            // report E1③④); their on-disk layers are recorded as candidates
-            // in the layer-selection record below, never merged.
-            self.assembly.target == crate::stdlib_assembly::model::AssemblyTarget::Vm
-        }) {
-            let context_source = std::fs::read_to_string(&ctx_path).map_err(|e| {
-                AutoError::Io(format!(
-                    "Failed to read context file {}: {}",
-                    ctx_path.display(),
-                    e
-                ))
-            })?;
-
-            // 鍚堝苟涓や釜鏂囦欢鐨勫唴瀹癸紙鐢ㄦ崲琛屽垎闅旓級
-
-            module_source.push('\n');
-
-            merged_context = Some((ctx_path.clone(), module_source.len()));
-
-            module_source.push_str(&context_source);
-        }
+        let assembly_plan = crate::stdlib_assembly::plan::AssemblyPlan::from_resolved(
+            &use_stmt.module, &root_path, self.assembly)?;
+        let module_source = assembly_plan.source.clone();
+        let merged_context = assembly_plan.target_path.as_ref().zip(assembly_plan.boundary)
+            .map(|(p, b)| (p.clone(), b));
 
         // DEBUG: Print module source being parsed
 
@@ -1653,25 +1607,7 @@ impl CompileSession {
             match self.parse_module_to_type_store(&module_source, &root_path.to_string_lossy()) {
                 Ok(store) => store,
                 Err(e) => {
-                    // PLAN-738 T-03 (AC-04) 源段归因：合并源以 root_path（公共文件）
-                    // 名义 attach source——目标层段的错误会被误归公共文件。失败路径
-                    // 有界归因：若公共段单独 parse 成功，则失败位于目标层，错误指向
-                    // 真实目标层文件。（错误路径才有额外 parse；成功路径零开销。）
-                    if let Some((ctx_path, boundary)) = &merged_context {
-                        let public_only = &module_source[..boundary.saturating_sub(1)];
-                        if self
-                            .parse_module_to_type_store(public_only, &root_path.to_string_lossy())
-                            .is_ok()
-                        {
-                            return Err(AutoError::Msg(format!(
-                                "syntax error in target layer `{}` (module `{}`): {}",
-                                ctx_path.display(),
-                                use_stmt.module,
-                                e
-                            )));
-                        }
-                    }
-                    return Err(e);
+                    return Err(assembly_plan.map_error(e));
                 }
             };
 
@@ -1692,7 +1628,8 @@ impl CompileSession {
         // Plan 545: 该模块的导出函数名（bytecode exports 键），供
         // TypeStore.modules 登记（wildcard 平铺映射/限定查找消费）。
         let module_export_fns: Vec<String>;
-        if !self.compiled_module_paths.contains(&path_key) {
+        if !self.compiled_module_paths.contains(&path_key)
+            && self.assembly.target == crate::stdlib_assembly::model::AssemblyTarget::Vm {
             let module_code =
                 self.compile_module_to_bytecode(&module_source, &root_path.to_string_lossy())?;
             module_export_fns = module_code.exports.keys().cloned().collect();
@@ -1782,6 +1719,7 @@ impl CompileSession {
             dep_fingerprints,
         );
 
+        self.loaded_assemblies.insert(use_stmt.module.clone(), cache_entry.clone());
         self.auto_cache.store_assembled(cache_entry);
 
         // 鍚堝苟鍒颁富 type_store

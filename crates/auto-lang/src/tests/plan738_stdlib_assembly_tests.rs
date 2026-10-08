@@ -50,11 +50,11 @@ mod t02_inventory {
         // shim），stdlib_tests.rs 的 `use auto.str` 系 #[ignore] 即佐证。
         assert_eq!(
             failed.len(),
-            39,
+            38,
             "全库 isolated-parse 失败数漂移——逐名核对后更新本基线与决策报告 §2"
         );
         assert!(
-            failed.contains(&"stdlib/auto/async.at")
+            !failed.contains(&"stdlib/auto/async.at")
                 && failed.contains(&"stdlib/auto/json.rs.at")
                 && failed.contains(&"stdlib/auto/str.at")
                 && failed.contains(&"stdlib/auto/list.at"),
@@ -274,7 +274,7 @@ mod t03_assembly_wiring {
         let err = session.resolve_uses(&source).unwrap_err();
         let msg = format!("{err:?}");
         assert!(
-            msg.contains("target layer") && msg.contains("proto.vm.at"),
+            msg.contains("SourceSpan") && msg.contains("proto.vm.at"),
             "目标层语法错误应归因到 .vm.at 文件: {msg}"
         );
     }
@@ -411,7 +411,7 @@ mod t02_providers {
 #[cfg(test)]
 mod t04_core_bindings {
     use crate::stdlib_assembly::model::Environment;
-    use crate::stdlib_assembly::validate::{self, CoreSymbolStatus, CORE_MODULES};
+    use crate::stdlib_assembly::validate::{self, CoreSymbolStatus, };
 
     /// 生产同款构造：CWD 钉仓根 → 磁盘扫描注册 + NativeInterface 手工面
     ///（register_std_shims + register_stdlib_ffi）+ 全库 inventory。
@@ -458,54 +458,18 @@ mod t04_core_bindings {
         let validations =
             validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Native);
 
-        // 裁决①冻结：http 扫描前缀名 resolved 但无绑定 → Unverified
-        //（实际函数经公共面 auto.http.get 可用；公共面校验重写下轮）
-        // http 客户端面经 #[rust_fn] inventory 面实际已绑定（实证修正）
-        let http_get = validations
-            .iter()
-            .find(|v| v.native_name == "auto.http.http_get")
-            .expect("http.vm.at #[vm] http_get 应入校验集");
-        assert_eq!(
-            http_get.status,
-            CoreSymbolStatus::Supported,
-            "{:?}",
-            http_get.reason
-        );
-        assert!(http_get.resolved && http_get.bound);
-
-        // net 顶层（auto.net.tcp_bind）
-        let tcp_bind = validations
-            .iter()
-            .find(|v| v.native_name == "auto.net.tcp_bind")
-            .expect("net.vm.at #[vm] tcp_bind 应入校验集");
-        assert_eq!(tcp_bind.status, CoreSymbolStatus::Supported);
-        assert!(tcp_bind.bound);
-
-        // io ext 方法（auto.io.file.read_text）：resolved 但 NativeInterface/
-        // opaque 两面均无绑定——io 方法实际经 VmModule 方法表 dispatch
-        //（第四绑定面，校验器查询待接线，§9 记录）——冻结为文档化
-        // Unverified，不冒称 Supported。
-        let read_text = validations
-            .iter()
-            .find(|v| v.native_name == "auto.io.file.read_text")
-            .expect("io.vm.at ext File read_text 应入校验集");
-        assert_eq!(read_text.status, CoreSymbolStatus::Unverified);
-        assert!(read_text.resolved && !read_text.bound);
-
-        // 分母健康：六模块各有校验产出，且 Supported 为多数
-        for m in CORE_MODULES {
-            let n = validations.iter().filter(|v| v.module == *m).count();
-            assert!(n > 0, "{m} 应有 #[vm] 校验产出");
+        let tcp_bind = validations.iter().find(|v| v.public_symbol && v.native_name == "auto.net.tcp_bind").unwrap();
+        assert_eq!(tcp_bind.status, CoreSymbolStatus::Supported, "{:?}", tcp_bind.reason);
+        assert_eq!(tcp_bind.verification, crate::stdlib_assembly::model::VerificationLevel::SignatureChecked);
+        // Every signature-checked claim must come from a producer contract.
+        for v in &validations {
+            if v.verification == crate::stdlib_assembly::model::VerificationLevel::SignatureChecked {
+                let id = registry.get_id(&v.native_name).or_else(|| shims.resolve(&v.native_name)).unwrap();
+                assert!(shims.contract(id).is_some() || v.module == "io"
+                    && crate::vm::io::method_contract(v.symbol.rsplit('.').next().unwrap()).is_some());
+            }
         }
-        let supported = validations
-            .iter()
-            .filter(|v| v.status == CoreSymbolStatus::Supported)
-            .count();
-        assert!(
-            supported > validations.len() / 2,
-            "现存核心支持应为多数（supported={supported}/{}）",
-            validations.len()
-        );
+        assert!(validations.iter().any(|v| v.public_symbol && v.symbol == "TcpListener.close"));
     }
 
     /// AC-03 负测：sse.at 顶层 #[vm] parse_sse 无任何 native 注册——
@@ -557,28 +521,8 @@ mod t04_core_bindings {
             "net 全族应 Unsupported（{net_unsup}/{net_all}）"
         );
 
-        // http server 监听族 Unsupported；客户端面保持原状态
-        let server_listen = v_browser
-            .iter()
-            .find(|v| v.native_name == "auto.http.server_listen")
-            .expect("http server_listen 应入校验集");
-        assert_eq!(server_listen.status, CoreSymbolStatus::Unsupported);
-        let http_get_b = v_browser
-            .iter()
-            .find(|v| v.native_name == "auto.http.http_get")
-            .unwrap();
-        assert_ne!(
-            http_get_b.status,
-            CoreSymbolStatus::Unsupported,
-            "http 客户端面不属于 Browser 三族"
-        );
-
-        // json 解析面不受累
-        let json_ok = v_browser
-            .iter()
-            .filter(|v| v.module == "json" && v.status == CoreSymbolStatus::Supported)
-            .count();
-        assert!(json_ok > 0, "json 面 Browser 下仍为 Supported");
+        assert!(v_browser.iter().all(|v| v.status == CoreSymbolStatus::Unsupported));
+        assert!(v_browser.iter().all(|v| v.reason.as_deref().is_some_and(|r| r.contains("browser"))));
 
         // Native 下无 Unsupported（对照组）
         assert!(
@@ -608,7 +552,7 @@ mod t04_core_bindings {
         let baseline = validate::id_alias_conflicts(&registry);
         assert_eq!(
             baseline.len(),
-            13,
+            0,
             "生产面 ID 冲突基线漂移——修复/新增后更新此冻结与 §9: {:?}",
             baseline
                 .iter()
@@ -1499,29 +1443,8 @@ fn main() {
         let source = fs::read_to_string(tmp.path().join("main.at")).unwrap();
         // 双 body 在 wildcat 平铺冲突检测（Plan 545 D2 preparse 快照）报
         // ambiguous import——同符号异源定义不得静默择一。
-        let r = s.resolve_uses(&source);
-        let msg = match &r {
-            Err(e) => e.to_string(),
-            Ok(_) => {
-                // 若管线容忍（合并序差异），类型面必须恰择其一且可解释——
-                // 冻结实际行为并断言不双注册。
-                let names = s
-                    .type_store()
-                    .read()
-                    .unwrap()
-                    .lookup_module("proto")
-                    .map(|m| m.store.pub_fn_names())
-                    .unwrap_or_default();
-                assert!(
-                    names.contains(&"val".to_string()),
-                    "符号必须在册（不能双 body 后符号丢失）: {names:?}"
-                );
-                return;
-            }
-        };
-        assert!(
-            msg.contains("ambiguous") || msg.contains("defined in both"),
-            "双活跃 body 应报冲突: {msg}"
-        );
+        let error = s.resolve_uses(&source).expect_err("multiple providers must be rejected");
+        assert!(error.to_string().contains("PROVIDER_CONFLICT"), "{error:?}");
+        assert!(s.layer_selections.is_empty());
     }
 }

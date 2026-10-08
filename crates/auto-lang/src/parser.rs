@@ -8964,6 +8964,7 @@ impl<'a> Parser<'a> {
 
     // Function Declaration
     pub fn fn_decl_stmt(&mut self, parent_name: &str) -> AutoResult<Stmt> {
+        let declaration_start = self.cur.pos.pos;
         // Check for annotations: #[c], #[vm], #[rs], #[c,vm] BEFORE fn keyword
         let mut ann = if self.is_kind(TokenKind::Hash) {
             self.parse_fn_annotations()?
@@ -9174,6 +9175,9 @@ impl<'a> Parser<'a> {
             Fn::new(kind, name.clone(), parent, params, body, ret_type)
         };
 
+        fn_expr.span = Some((declaration_start,
+            (self.prev.pos.pos + self.prev.pos.len).saturating_sub(declaration_start)));
+
         // Plan 417-E3: surface `<T>`/`[T]` generic params (with `has` bounds)
         // on the AST node, mirroring fn_decl_stmt_with_annotations (which
         // assigns type_params after the same merge). Without this the params
@@ -9241,6 +9245,7 @@ impl<'a> Parser<'a> {
         with_params: Vec<crate::ast::TypeParam>,
         has_test: bool,
     ) -> AutoResult<Stmt> {
+        let declaration_start = self.cur.pos.pos;
         self.next(); // skip keyword `fn`
 
         let is_c = has_c;
@@ -9422,6 +9427,9 @@ impl<'a> Parser<'a> {
         } else {
             Fn::new(kind, name.clone(), parent, params, body, ret_type)
         };
+
+        fn_expr.span = Some((declaration_start,
+            (self.prev.pos.pos + self.prev.pos.len).saturating_sub(declaration_start)));
 
         // Plan 061: Set type_params from #[with(...)] and <T>
         fn_expr.type_params = type_params;

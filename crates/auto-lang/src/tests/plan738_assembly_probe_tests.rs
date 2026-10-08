@@ -191,7 +191,7 @@ fn p2_module_cache_two_layer_segments_all_validated() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn p3_trans_entries_never_assemble_modules() {
+fn p3_trans_entries_record_target_assembly() {
     let tmp = tempfile::tempdir().unwrap();
     let main_path = write_proto_fixture(tmp.path());
 
@@ -205,7 +205,7 @@ fn p3_trans_entries_never_assemble_modules() {
         let store = session.type_store();
         let store = store.read().unwrap();
         assert!(
-            store.lookup_module("proto").is_none(),
+            store.lookup_module("proto").is_some(),
             "C 转译入口不应装载模块（当前无共同装配计划的证据）"
         );
     }
@@ -242,20 +242,16 @@ fn p3_trans_entries_never_assemble_modules() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn p4_rust_emission_routes_net_to_missing_a2r_module() {
+fn p4_rust_emission_rejects_missing_net_provider() {
     let tmp = tempfile::tempdir().unwrap();
     let main = tmp.path().join("net_main.at");
     fs::write(&main, "use auto.net\n\nfn main() {\n    let x = 1\n}\n").unwrap();
 
     let mut session = crate::compile::CompileSession::new();
-    crate::trans_rust_with_session(&mut session, main.to_str().unwrap())
-        .expect("trans_rust_with_session");
-
-    let emitted = fs::read_to_string(tmp.path().join("net_main.a2r.rs")).unwrap();
-    assert!(
-        emitted.contains("a2r_std::net"),
-        "发射应把 use auto.net 路由到 a2r_std::net（名称表证据）"
-    );
+    let error = crate::trans_rust_with_session(&mut session, main.to_str().unwrap())
+        .expect_err("missing host provider must fail before emission");
+    assert!(error.to_string().contains("STDASSEMBLY.PROVIDER_UNSUPPORTED"));
+    assert!(!tmp.path().join("net_main.a2r.rs").exists());
 
     // provider 真实面：a2r-std 无 net 模块 —— 表中名称 ≠ 真实模块存在。
     let a2r_lib = include_str!("../../../a2r-std/src/lib.rs");
@@ -428,7 +424,7 @@ fn p6_parser_inventory_six_core_modules() {
             .iter()
             .map(|(f, _)| f.as_str())
             .collect::<Vec<_>>(),
-        vec!["async.at", "json.rs.at"],
+        vec!["json.rs.at"],
         "parse 失败层冻结（修复后更新此冻结与分母）: {parse_failures:?}"
     );
 }

@@ -66,6 +66,8 @@ pub enum CoreSymbolStatus {
 #[derive(Debug, Clone, Serialize)]
 pub struct CoreSymbolValidation {
     pub module: String,
+    pub source_file: String,
+    pub public_symbol: bool,
     /// 归一符号身份（Type.name / fn）
     pub symbol: String,
     /// canonical native 名（auto.<stem>[.<target>].<fn>，与注册扫描同形状）
@@ -93,23 +95,6 @@ pub fn canonical_native_name(module: &str, sym: &SymbolEntry) -> String {
     }
 }
 
-/// Browser 环境下无适配、必须显式 Unsupported 的三族（§5.3：监听/本地
-/// FS/native sockets；json/async/sse 解析面与 http 客户端面不在此列）。
-fn browser_unsupported_reason(module: &str, native_name: &str) -> Option<String> {
-    match module {
-        "io" => Some("Browser 无本地文件系统适配（io 全族 Unsupported）".to_string()),
-        "net" => Some("Browser 无 native socket（net 全族 Unsupported）".to_string()),
-        "http" => {
-            if native_name.contains("server") || native_name.contains("listen") {
-                Some("Browser 不可监听服务端口（http server 族 Unsupported）".to_string())
-            } else {
-                None
-            }
-        }
-        _ => None,
-    }
-}
-
 /// 六核心 #[vm] 声明 × 实际注册/绑定面校验（AC-03：name→ID resolution 与
 /// NativeInterface 真实 shim 绑定同时成立才 Supported；避免 name 存在即绿）。
 ///
@@ -127,72 +112,100 @@ pub fn validate_core_vm_bindings(
             continue;
         };
         for layer in &m.layers {
-            // VM provider 面 = #[vm] 声明（.vm.at 层全量 + 公共层 legacy 属性）
             if !matches!(layer.kind, LayerKind::Public | LayerKind::Vm) {
                 continue;
             }
             for sym in &layer.symbols {
-                if !sym.is_vm_decl {
+                if !matches!(sym.kind, SymbolKind::Fn | SymbolKind::Method)
+                    || !(sym.is_vm_decl || (layer.kind == LayerKind::Public && sym.is_pub))
+                {
                     continue;
                 }
-                let native_name = canonical_native_name(module, sym);
-                let id = registry.get_id(&native_name);
+                let native_name = public_native_name(module, sym);
+                let id = registry
+                    .get_id(&native_name)
+                    .or_else(|| shims.resolve(&native_name));
                 let resolved = id.is_some();
-                // 绑定三面（裁决②：方法与独立函数分属不同 dispatch 面）：
-                // ①NativeInterface 静态/动态 shim（自由函数）；②opaque
-                // dispatch 表（Type.method——如 io ext File 方法走 VmModule
-                // 方法表登记的 opaque 面）。任一面可调用即 bound。
-                let opaque_bound = match sym.kind {
-                    SymbolKind::Method => {
-                        let (owner, fname) = sym.name.split_once('.').unwrap_or(("", &sym.name));
-                        crate::vm::native_catalog::lookup_opaque_dispatch(owner, fname).is_some()
-                    }
-                    _ => false,
-                };
-                let bound = id.map(|i| shims.get(i).is_some()).unwrap_or(false) || opaque_bound;
-
-                if environment == Environment::Browser {
-                    if let Some(reason) = browser_unsupported_reason(module, &native_name) {
-                        out.push(CoreSymbolValidation {
-                            module: (*module).to_string(),
-                            symbol: sym.name.clone(),
-                            native_name,
-                            resolved,
-                            bound,
-                            arity: sym.arity,
-                            verification: VerificationLevel::Declared,
-                            status: CoreSymbolStatus::Unsupported,
-                            reason: Some(reason),
-                        });
-                        continue;
-                    }
-                }
-
-                let (verification, status, reason) = if resolved && bound {
-                    // 签名等级：返回类别已知才算 SignatureChecked（§5.3 诚实
-                    // 等级；深 ABI 槽宽/生命周期属 D3b，不在此自称）
-                    let ret_known = registry.get_return_type(&native_name).is_some();
-                    let v = if ret_known {
-                        VerificationLevel::SignatureChecked
+                let bound = id.is_some_and(|i| shims.get(i).is_some());
+                let io_contract = if *module == "io" && sym.kind == SymbolKind::Method {
+                    crate::vm::init_io_module();
+                    let method = sym.name.strip_prefix("File.").unwrap_or("");
+                    let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+                    let callable = if method == "open" {
+                        registry.get_function("auto.io", "File.open").is_some()
                     } else {
-                        VerificationLevel::Bound
+                        registry.get_method("File", method).is_some()
                     };
-                    (v, CoreSymbolStatus::Supported, None)
+                    callable
+                        .then(|| crate::vm::io::method_contract(method))
+                        .flatten()
+                } else {
+                    None
+                };
+                let bound = bound || io_contract.is_some();
+                let resolved = resolved || io_contract.is_some();
+                let mut verification = if bound {
+                    VerificationLevel::Bound
+                } else if resolved {
+                    VerificationLevel::Resolved
+                } else {
+                    VerificationLevel::Declared
+                };
+                let (status, reason) = if environment == Environment::Browser {
+                    (
+                        CoreSymbolStatus::Unsupported,
+                        Some("no browser provider/adapter is registered for this symbol".into()),
+                    )
+                } else if *module == "io" && sym.name == "File.read_buf" {
+                    (
+                        CoreSymbolStatus::DeclaredStub,
+                        Some(
+                            "VmModule read_buf_method is an explicit immutable-buffer stub".into(),
+                        ),
+                    )
+                } else if sym.has_body && !sym.is_vm_decl {
+                    (
+                        CoreSymbolStatus::Supported,
+                        Some("Auto body selected; host signature not claimed".into()),
+                    )
+                } else if let Some(contract) = io_contract
+                    .as_ref()
+                    .or_else(|| id.and_then(|i| shims.contract(i)))
+                {
+                    match signature_matches(module, sym, contract, layer.kind) {
+                        Ok(()) if bound => {
+                            verification = VerificationLevel::SignatureChecked;
+                            (CoreSymbolStatus::Supported, None)
+                        }
+                        Ok(()) => (
+                            CoreSymbolStatus::Unverified,
+                            Some("producer contract has no callable binding".into()),
+                        ),
+                        Err(reason) => (CoreSymbolStatus::Unverified, Some(reason)),
+                    }
+                } else if bound {
+                    (
+                        CoreSymbolStatus::Unverified,
+                        Some(
+                            "callee bound; independent logical producer signature unavailable"
+                                .into(),
+                        ),
+                    )
                 } else if resolved {
                     (
-                        VerificationLevel::Resolved,
                         CoreSymbolStatus::Unverified,
-                        Some("native name registered but no bound shim callable".to_string()),
+                        Some("native name registered but no bound callee".into()),
                     )
                 } else {
                     (
-                        VerificationLevel::Declared,
                         CoreSymbolStatus::DeclaredStub,
-                        Some("declared #[vm] but no native registration exists".to_string()),
+                        Some("declaration has no selected callee".into()),
                     )
                 };
                 out.push(CoreSymbolValidation {
-                    module: (*module).to_string(),
+                    module: (*module).into(),
+                    source_file: layer.file.clone(),
+                    public_symbol: layer.kind == LayerKind::Public,
                     symbol: sym.name.clone(),
                     native_name,
                     resolved,
@@ -205,7 +218,238 @@ pub fn validate_core_vm_bindings(
             }
         }
     }
+    out.sort_by(|a, b| (&a.module, &a.symbol).cmp(&(&b.module, &b.symbol)));
     out
+}
+
+/// CLI and production consumers use the same target/environment/closure gate.
+/// Parse failures in requested modules must not disappear behind an empty
+/// symbol list. Unsupported host providers never pass through the VM checker.
+pub fn requested_diagnostics(
+    inventory: &StdlibInventory,
+    target: super::model::AssemblyTarget,
+    environment: Environment,
+    modules: &[&str],
+    validations: &[CoreSymbolValidation],
+) -> Vec<AssemblyDiagnostic> {
+    use super::model::AssemblyTarget;
+    let mut out = Vec::new();
+    let catalog = super::providers::load_catalog().ok();
+    for module in modules {
+        let Some(mi) = inventory.module(module) else {
+            out.push(AssemblyDiagnostic {
+                code: code::NO_PUBLIC_LAYER.into(),
+                module: (*module).into(),
+                file: None,
+                message: "requested module is absent from the inventory".into(),
+            });
+            continue;
+        };
+        let selected_kind = match target {
+            AssemblyTarget::Vm => LayerKind::Vm,
+            AssemblyTarget::Rust => LayerKind::Rust,
+            AssemblyTarget::C => LayerKind::C,
+        };
+        for layer in mi
+            .layers
+            .iter()
+            .filter(|l| l.kind == LayerKind::Public || l.kind == selected_kind)
+        {
+            if let super::model::ParseStatus::Failed { error } = &layer.parse {
+                out.push(AssemblyDiagnostic {
+                    code: code::PARSE_FAIL.into(),
+                    module: (*module).into(),
+                    file: Some(layer.file.clone()),
+                    message: error.clone(),
+                });
+            }
+        }
+        if !CORE_MODULES.contains(module) {
+            continue;
+        }
+        if target == AssemblyTarget::Vm {
+            out.extend(core_status_diagnostics(validations, Some(&[*module])));
+        } else {
+            let target_name = match target {
+                AssemblyTarget::Rust => "rust",
+                AssemblyTarget::C => "c",
+                _ => unreachable!(),
+            };
+            let claim = catalog.as_ref().and_then(|c| {
+                c.providers
+                    .iter()
+                    .find(|p| p.module == *module && p.target == target_name)
+            });
+            let (code, reason) = if environment == Environment::Browser {
+                (
+                    code::PROVIDER_UNSUPPORTED,
+                    "no browser host adapter is registered".to_string(),
+                )
+            } else if let Some(claim) = claim {
+                (
+                    if claim.status == "unsupported" {
+                        code::PROVIDER_UNSUPPORTED
+                    } else {
+                        code::PROVIDER_CLAIM_NO_CALLEE
+                    },
+                    claim.reason.clone().unwrap_or_else(|| {
+                        "host claim lacks independent per-symbol producer verification".into()
+                    }),
+                )
+            } else {
+                (
+                    code::PROVIDER_CLAIM_NO_CALLEE,
+                    "no provider for requested target".into(),
+                )
+            };
+            out.push(AssemblyDiagnostic {
+                code: code.into(),
+                module: (*module).into(),
+                file: None,
+                message: reason,
+            });
+        }
+    }
+    out
+}
+
+/// The name table is the same public dispatch identity used by VM codegen.
+/// Layer helper spelling must not create a second, unbound public API.
+pub fn public_native_name(module: &str, sym: &SymbolEntry) -> String {
+    if module == "io" && sym.kind == SymbolKind::Method {
+        return canonical_native_name(module, sym);
+    }
+    if module == "net" && sym.kind == SymbolKind::Method {
+        let (owner, method) = sym.name.split_once('.').unwrap_or(("", &sym.name));
+        let owner = match owner {
+            "TcpListener" => "tcp_listener",
+            "TcpStream" => "tcp_stream",
+            _ => owner,
+        };
+        return format!("auto.net.{owner}_{method}");
+    }
+    if module == "json" {
+        let name = sym.name.strip_prefix("JsonValue.").unwrap_or(&sym.name);
+        let name = match name {
+            "json_get" => "get",
+            "json_get_at" => "get_at",
+            "json_has_key" => "has_key",
+            "json_len" => "len",
+            "json_keys" => "keys",
+            "json_as_int" => "as_int",
+            "json_as_bool" => "as_bool",
+            "json_as_string" => "as_string",
+            "json_as_number" => "as_number",
+            "json_as_array" => "as_array",
+            "json_is_null" => "is_null",
+            "json_value_type" | "type" => "type",
+            _ => name,
+        };
+        return format!("auto.json.{name}");
+    }
+    if sym.kind == SymbolKind::Method {
+        if let Some((owner, method)) = sym.name.split_once('.') {
+            if let Some((_, prefix)) = crate::vm::native_registry::TYPE_CANONICAL_MAP
+                .iter()
+                .find(|(short, _)| *short == owner)
+            {
+                return format!("{prefix}.{method}");
+            }
+        }
+    }
+    canonical_native_name(module, sym)
+}
+
+fn normalize_host_type(ty: &str) -> String {
+    let ty = ty.replace(' ', "");
+    match ty.as_str() {
+        "String" | "&str" | "str" | "Str" => "str".into(),
+        "()" | "void" => "void".into(),
+        "i32" | "i64" | "u32" | "u64" | "usize" | "int" => "int".into(),
+        "f32" | "f64" | "float" => "float".into(),
+        _ => {
+            if let Some(inner) = ty.strip_prefix("Option<").and_then(|x| x.strip_suffix('>')) {
+                return format!("?{}", normalize_host_type(inner));
+            }
+            if let Some(inner) = ty.strip_prefix("Vec<").and_then(|x| x.strip_suffix('>')) {
+                return format!("[]{}", normalize_host_type(inner));
+            }
+            if let Some(inner) = ty.strip_suffix('?') {
+                return format!("?{inner}");
+            }
+            ty
+        }
+    }
+}
+
+fn signature_matches(
+    module: &str,
+    sym: &SymbolEntry,
+    contract: &crate::vm::native::NativeContract,
+    kind: LayerKind,
+) -> Result<(), String> {
+    let signature = sym
+        .signature
+        .as_ref()
+        .ok_or("source logical signature missing")?;
+    if !signature.generics.is_empty()
+        || signature.parameter_modes.iter().any(|mode| mode != "View")
+        || signature.attributes.iter().any(|attr| attr != "vm")
+    {
+        return Err(
+            "producer metadata does not prove generic, ownership or attribute constraints".into(),
+        );
+    }
+    if sym.kind == SymbolKind::Method {
+        let known_receiver = contract.producer.starts_with("vm::io::")
+            || (module == "net" && contract.producer.starts_with("auto.net.tcp_"));
+        if !known_receiver || (signature.is_static && contract.producer != "vm::io::open") {
+            return Err("independent receiver/static contract unavailable".into());
+        }
+    }
+    if sym.arity != contract.parameters.len() {
+        return Err(format!(
+            "arity drift: declaration {} / producer {} ({})",
+            sym.arity,
+            contract.parameters.len(),
+            contract.producer
+        ));
+    }
+    for (index, (source, host)) in signature
+        .parameters
+        .iter()
+        .zip(&contract.parameters)
+        .enumerate()
+    {
+        let source = normalize_host_type(source);
+        let host = normalize_host_type(host);
+        // Net opaque handles cross the host stack as i32. This explicit
+        // adapter is independently documented by the TCP shim producer.
+        let opaque_adapter = module == "net"
+            && index == 0
+            && host == "int"
+            && matches!(source.as_str(), "TcpListener" | "TcpStream");
+        if source != host && !opaque_adapter {
+            return Err(format!(
+                "parameter {index} drift: {source} / {host} ({})",
+                contract.producer
+            ));
+        }
+    }
+    let source_ret = normalize_host_type(&signature.returns);
+    let host_ret = normalize_host_type(&contract.returns);
+    // Legacy VM helpers expose the nullable handle's raw payload. Public
+    // declarations retain the option; do not erase option from public checks.
+    let layer_adapter = kind == LayerKind::Vm
+        && module == "net"
+        && host_ret.strip_prefix('?') == Some(source_ret.as_str());
+    if source_ret != host_ret && !layer_adapter {
+        return Err(format!(
+            "return drift: {source_ret} / {host_ret} ({})",
+            contract.producer
+        ));
+    }
+    Ok(())
 }
 
 /// ID 别名冲突检测（AC-03：ID 复用只限明确别名）。合法别名两形：
@@ -261,7 +505,21 @@ pub fn id_alias_conflict_groups(
             let (a, b) = (w[0].as_str(), w[1].as_str());
             a.rsplit('.').next() == Some(b) || b.rsplit('.').next() == Some(a) || a == b
         });
-        if !all_declared && !short_aliased {
+        let canonical_alias = names
+            .iter()
+            .map(|name| {
+                if !name.starts_with("auto.") {
+                    if let Some(canonical) = crate::vm::native::NativeInterface::to_canonical(name)
+                    {
+                        return canonical;
+                    }
+                }
+                name.clone()
+            })
+            .collect::<HashSet<_>>()
+            .len()
+            == 1;
+        if !all_declared && !short_aliased && !canonical_alias {
             out.push(IdConflictGroup { id, names });
         }
     }
@@ -351,12 +609,12 @@ pub fn core_target_env_matrix(
         .map(|m| {
             let native_cell: Vec<_> = v_native
                 .iter()
-                .filter(|v| v.module == *m)
+                .filter(|v| v.module == *m && v.public_symbol)
                 .map(symbol_json)
                 .collect();
             let browser_cell: Vec<_> = v_browser
                 .iter()
-                .filter(|v| v.module == *m)
+                .filter(|v| v.module == *m && v.public_symbol)
                 .map(symbol_json)
                 .collect();
             let public_symbols: Vec<String> = inventory
@@ -397,8 +655,12 @@ pub fn core_target_env_matrix(
                 m.to_string(),
                 serde_json::json!({
                     "vm": { "native": native_cell, "browser": browser_cell },
-                    "rust": { "claim": claim("rust"), "public_symbols": public_symbols },
-                    "c": { "claim": claim("c"), "public_symbols": public_symbols },
+                    "rust": { "claim": claim("rust"), "public_symbols": public_symbols,
+                        "native": host_cell(inventory, m, "rust", Environment::Native),
+                        "browser": host_cell(inventory, m, "rust", Environment::Browser) },
+                    "c": { "claim": claim("c"), "public_symbols": public_symbols,
+                        "native": host_cell(inventory, m, "c", Environment::Native),
+                        "browser": host_cell(inventory, m, "c", Environment::Browser) },
                 }),
             )
         })
@@ -409,4 +671,30 @@ pub fn core_target_env_matrix(
         "core_modules": CORE_MODULES,
         "modules": modules,
     })
+}
+
+fn host_cell(
+    inventory: &StdlibInventory,
+    module: &str,
+    target: &str,
+    environment: Environment,
+) -> Vec<serde_json::Value> {
+    let catalog = super::providers::load_catalog().ok();
+    let claim = catalog.as_ref().and_then(|c| {
+        c.providers
+            .iter()
+            .find(|p| p.module == module && p.target == target)
+    });
+    inventory.module(module).into_iter().flat_map(|m| &m.layers)
+        .filter(|l| l.kind == LayerKind::Public).flat_map(|l| &l.symbols)
+        .filter(|s| s.is_pub).map(|symbol| {
+            let unsupported = environment == Environment::Browser || claim.is_some_and(|c| c.status == "unsupported");
+            serde_json::json!({
+                "symbol": symbol.name, "source_file": format!("stdlib/auto/{module}.at"),
+                "status": if unsupported { "unsupported" } else { "unverified" },
+                "verification": "declared",
+                "reason": if environment == Environment::Browser { "no browser host adapter is registered" }
+                    else { claim.and_then(|c| c.reason.as_deref()).unwrap_or("independent host producer signature and routing require verification") },
+            })
+        }).collect()
 }

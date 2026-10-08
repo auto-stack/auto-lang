@@ -4008,13 +4008,13 @@ fn backend_generation_is_fresh(project_dir: &Path) -> bool {
 }
 
 /// 装配新鲜度判定（PLAN-738 T-06；纯函数便于单测）。
-/// - 双 None（旧环境无 stdlib 可定位）：一致（维持旧行为，再生后收敛）；
+/// - 双 None：不能核验装配身份，必须重新生成；
 /// - 单侧缺失：陈旧——旧产物无该字段而当前可算=门升级后首查（再生一次
 ///   写入新字段收敛）；收据有而当前不可算=无法核验，保守再生；
 /// - 双方在：十六进制指纹串相等才新鲜。
 fn assembly_freshness(recorded: Option<&str>, current: Option<&str>) -> bool {
     match (recorded, current) {
-        (None, None) => true,
+        (None, None) => false,
         (Some(a), Some(b)) => a == b,
         _ => false,
     }
@@ -4982,13 +4982,12 @@ fn type_to_rust_str(ty: &auto_lang::ast::Type) -> String {
 mod tests {
     use super::*;
 
-    /// PLAN-738 T-06（AC-06/07）：装配新鲜度真值表——双 None 一致、指纹相等
-    /// 一致、其余（漂移/单侧缺失）一律陈旧（保守再生，再生写入后收敛）。
+    /// Only two known equal fingerprints prove assembly freshness.
     #[test]
     fn assembly_freshness_truth_table() {
         assert!(
-            assembly_freshness(None, None),
-            "双 None（无 stdlib 环境）=新鲜"
+            !assembly_freshness(None, None),
+            "缺少两侧身份不能证明新鲜"
         );
         assert!(
             assembly_freshness(Some("aaaa00000000bbbb"), Some("aaaa00000000bbbb")),

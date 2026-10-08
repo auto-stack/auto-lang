@@ -192,12 +192,20 @@ impl ModuleCache {
             acc = acc.wrapping_mul(0x100000001b3);
         };
         for seg in &self.segments {
+            mix(fnv1a64(&seg.file));
+            mix(u64::from(seg.existed));
             mix(seg.content_hash);
         }
         for absent in &self.absent_layers {
             mix(fnv1a64(absent));
         }
         mix(self.provider_schema as u64);
+        mix(self.assembly.target as u64);
+        mix(self.assembly.environment as u64);
+        for (name, fingerprint) in &self.dep_fingerprints {
+            mix(fnv1a64(name));
+            mix(*fingerprint);
+        }
         acc
     }
 
@@ -351,29 +359,25 @@ impl AutoCache {
         assembly: &AssemblyContext,
         provider_schema: u32,
     ) -> Option<&ModuleCache> {
-        if !self.enabled {
-            return None;
-        }
+        self.get_valid_recursive(module_path, assembly, provider_schema, &mut std::collections::HashSet::new())
+    }
+
+    fn get_valid_recursive<'a>(
+        &'a self, module_path: &str, assembly: &AssemblyContext,
+        provider_schema: u32, visiting: &mut std::collections::HashSet<String>,
+    ) -> Option<&'a ModuleCache> {
+        if !self.enabled { return None; }
         let entry = self.modules.get(module_path)?.iter().find(|c| {
             c.assembly == *assembly && c.provider_schema == provider_schema && c.is_valid()
         })?;
+        // Cycles have already checked this node's own sources; traverse each
+        // edge once without recursion overflow.
+        if !visiting.insert(module_path.to_string()) { return Some(entry); }
         for (dep, fp) in &entry.dep_fingerprints {
-            let dep_ok = self
-                .modules
-                .get(dep)
-                .and_then(|entries| {
-                    entries.iter().find(|d| {
-                        d.assembly == *assembly
-                            && d.provider_schema == provider_schema
-                            && d.is_valid()
-                    })
-                })
-                .map(|d| d.combined_fingerprint() == *fp)
-                .unwrap_or(false);
-            if !dep_ok {
-                return None;
-            }
+            let child = self.get_valid_recursive(dep, assembly, provider_schema, visiting)?;
+            if child.combined_fingerprint() != *fp { return None; }
         }
+        visiting.remove(module_path);
         Some(entry)
     }
 

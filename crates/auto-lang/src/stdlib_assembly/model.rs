@@ -4,7 +4,7 @@
 
 use serde::Serialize;
 
-pub const INVENTORY_SCHEMA_VERSION: u32 = 1;
+pub const INVENTORY_SCHEMA_VERSION: u32 = 2;
 
 /// 装配执行/发射目标（计划 §5.2：目标与环境分别记录；Vue 前端不改变后端目标）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, Serialize)]
@@ -106,12 +106,8 @@ impl LayerKind {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum ParseStatus {
-    Parsed {
-        symbol_count: usize,
-    },
-    Failed {
-        error: String,
-    },
+    Parsed { symbol_count: usize },
+    Failed { error: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize)]
@@ -120,6 +116,20 @@ pub enum SymbolKind {
     Fn,
     Method,
     Type,
+    Field,
+}
+
+/// Logical source contract. Host producers supply their own signature; an
+/// inventory declaration alone can never establish SignatureChecked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LogicalSignature {
+    pub parameters: Vec<String>,
+    pub parameter_modes: Vec<String>,
+    pub returns: String,
+    pub is_static: bool,
+    pub has_self: bool,
+    pub generics: Vec<String>,
+    pub attributes: Vec<String>,
 }
 
 /// 单符号登记。`name` 为归一身份：方法/类型限定形式 `Type.name`
@@ -133,6 +143,9 @@ pub struct SymbolEntry {
     /// 公共层出现属 legacy 事实（io.at read_line / sse.at parse_sse）。
     pub is_vm_decl: bool,
     pub arity: usize,
+    pub signature: Option<LogicalSignature>,
+    pub has_body: bool,
+    pub source_span: Option<(usize, usize)>,
     pub verification: VerificationLevel,
 }
 
@@ -196,12 +209,20 @@ impl StdlibInventory {
                 );
             }
         }
-        assert!(self.diagnostics.windows(2).all(|w| diag_key(&w[0]) <= diag_key(&w[1])));
+        assert!(self
+            .diagnostics
+            .windows(2)
+            .all(|w| diag_key(&w[0]) <= diag_key(&w[1])));
     }
 }
 
 fn diag_key(d: &AssemblyDiagnostic) -> String {
-    format!("{}|{}|{}", d.code, d.module, d.file.as_deref().unwrap_or(""))
+    format!(
+        "{}|{}|{}",
+        d.code,
+        d.module,
+        d.file.as_deref().unwrap_or("")
+    )
 }
 
 /// FNV-1a 64（与 crates/auto-man api_gen 指纹同族，跨面可对照）。

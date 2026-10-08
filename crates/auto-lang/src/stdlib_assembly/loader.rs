@@ -23,6 +23,22 @@ pub const PORTABLE_ROOT: &str = "stdlib/auto";
 /// `<root>/stdlib/stdlib/auto` 恒不命中，cargo 构建下会静默解析到
 /// `~/.auto/libs/stdlib/auto`（见 738-stdlib-decision §1/E3 来源身份裂缝）。
 pub fn repo_stdlib_root() -> AutoResult<std::path::PathBuf> {
+    if let Ok(root) = std::env::var("AUTO_STDLIB_ROOT") {
+        let root = PathBuf::from(root);
+        return root
+            .canonicalize()
+            .and_then(|p| {
+                if p.is_dir() {
+                    Ok(p)
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::NotADirectory,
+                        "not a directory",
+                    ))
+                }
+            })
+            .map_err(|e| crate::error::AutoError::Msg(format!("invalid AUTO_STDLIB_ROOT: {e}")));
+    }
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
         let root = PathBuf::from(manifest_dir).join("../../stdlib/auto");
         if root.is_dir() {
@@ -32,6 +48,22 @@ pub fn repo_stdlib_root() -> AutoResult<std::path::PathBuf> {
     let cwd_rel = PathBuf::from("stdlib/auto");
     if cwd_rel.is_dir() {
         return Ok(cwd_rel.canonicalize().unwrap_or(cwd_rel));
+    }
+    let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../stdlib/auto");
+    if bundled.is_dir() {
+        return Ok(bundled.canonicalize().unwrap_or(bundled));
+    }
+    let installed = dirs::home_dir()
+        .into_iter()
+        .map(|home| home.join(".auto/libs/stdlib/auto"))
+        .chain([
+            PathBuf::from("/usr/local/lib/auto/stdlib/auto"),
+            PathBuf::from("/usr/lib/auto/stdlib/auto"),
+        ]);
+    for root in installed {
+        if root.is_dir() {
+            return Ok(root.canonicalize()?);
+        }
     }
     Err(crate::error::AutoError::Msg(
         "stdlib/auto not found (CARGO_MANIFEST_DIR or CWD)".to_string(),
@@ -57,6 +89,15 @@ pub fn stdlib_assembly_fingerprint(
         )));
     }
     let inv = scan_inventory(root);
+    if inv
+        .diagnostics
+        .iter()
+        .any(|d| d.code == super::validate::code::READ_FAIL)
+    {
+        return Err(crate::error::AutoError::Msg(
+            "stdlib inventory incomplete; refusing assembly fingerprint".into(),
+        ));
+    }
     let mut acc: u64 = 0xcbf29ce484222325;
     let mut mix = |v: u64| {
         acc ^= v;
@@ -64,6 +105,26 @@ pub fn stdlib_assembly_fingerprint(
     };
     mix(INVENTORY_SCHEMA_VERSION as u64);
     mix(super::providers::catalog_schema_version() as u64);
+    mix(fnv1a64(include_str!(
+        "../../../../stdlib/assembly-providers.json"
+    )));
+    if let Some(catalog) = root
+        .parent()
+        .map(|p| p.join("assembly-providers.json"))
+        .filter(|p| p.exists())
+    {
+        mix(fnv1a64(&std::fs::read_to_string(catalog)?));
+    }
+    mix(fnv1a64(&format!(
+        "ui-iced={};streaming-http={};python={}",
+        cfg!(feature = "ui-iced"),
+        cfg!(feature = "streaming-http"),
+        cfg!(feature = "python")
+    )));
+    // Host implementations are build inputs, independently of the .at API.
+    mix(fnv1a64(include_str!("../a2r_std.rs")));
+    mix(fnv1a64(include_str!("../vm/ffi/stdlib.rs")));
+    mix(fnv1a64(include_str!("../vm/native_catalog.rs")));
     mix(match target {
         super::model::AssemblyTarget::Vm => 1,
         super::model::AssemblyTarget::Rust => 2,
@@ -72,6 +133,8 @@ pub fn stdlib_assembly_fingerprint(
     for m in &inv.modules {
         for l in &m.layers {
             mix(fnv1a64(&m.module));
+            mix(fnv1a64(&l.file));
+            mix(l.kind as u64);
             mix(l.content_hash);
         }
     }
@@ -80,23 +143,37 @@ pub fn stdlib_assembly_fingerprint(
 
 /// 扫描并清点 stdlib 全部 `.at` 层。
 pub fn scan_inventory(root: &Path) -> StdlibInventory {
-    let mut at_files: Vec<PathBuf> = walkdir::WalkDir::new(root)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .map(|e| e.path().to_path_buf())
-        .filter(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .map(|n| n.ends_with(".at"))
-                .unwrap_or(false)
-        })
-        .collect();
+    let mut at_files: Vec<PathBuf> = Vec::new();
+    let mut diagnostics: Vec<AssemblyDiagnostic> = Vec::new();
+    for entry in walkdir::WalkDir::new(root) {
+        match entry {
+            Ok(e)
+                if e.file_type().is_file()
+                    && e.path().extension().and_then(|x| x.to_str()) == Some("at") =>
+            {
+                at_files.push(e.into_path())
+            }
+            Ok(_) => {}
+            Err(e) => diagnostics.push(AssemblyDiagnostic {
+                code: super::validate::code::READ_FAIL.into(),
+                module: String::new(),
+                file: e
+                    .path()
+                    .and_then(|p| p.strip_prefix(root).ok())
+                    .map(|p| portable_file(&p.to_string_lossy().replace('\\', "/"))),
+                message: format!(
+                    "inventory traversal incomplete: {}",
+                    e.io_error()
+                        .map(|e| e.to_string())
+                        .unwrap_or_else(|| "directory cycle".into())
+                ),
+            }),
+        }
+    }
     at_files.sort();
 
     let files_total = at_files.len();
     let mut modules: Vec<ModuleInventory> = Vec::new();
-    let mut diagnostics: Vec<AssemblyDiagnostic> = Vec::new();
 
     for path in &at_files {
         let rel = path
@@ -133,6 +210,22 @@ pub fn scan_inventory(root: &Path) -> StdlibInventory {
                     file: Some(portable_file(&rel)),
                     message: format!("read failed: {e}"),
                 });
+                let bytes = std::fs::read(path).unwrap_or_default();
+                push_layer(
+                    &mut modules,
+                    module_path,
+                    LayerInventory {
+                        kind,
+                        file: portable_file(&rel),
+                        content_hash: bytes.iter().fold(0xcbf29ce484222325u64, |h, b| {
+                            (h ^ u64::from(*b)).wrapping_mul(0x100000001b3)
+                        }),
+                        parse: ParseStatus::Failed {
+                            error: format!("read failed: {e}"),
+                        },
+                        symbols: Vec::new(),
+                    },
+                );
                 continue;
             }
         };
@@ -194,10 +287,19 @@ fn push_layer(modules: &mut Vec<ModuleInventory>, module_path: String, layer: La
 }
 
 /// 解析单层并提取公开符号（生产装载同款构造）。
-fn parse_layer(content: &str, kind: LayerKind, file: String) -> LayerInventory {
-    let content_hash = fnv1a64(content);
+pub fn parse_layer(content: &str, kind: LayerKind, file: String) -> LayerInventory {
     let shared: std::sync::Arc<std::sync::RwLock<crate::types::TypeStore>> =
         std::sync::Arc::new(std::sync::RwLock::new(crate::types::TypeStore::new()));
+    parse_layer_with_store(content, kind, file, shared)
+}
+
+pub fn parse_layer_with_store(
+    content: &str,
+    kind: LayerKind,
+    file: String,
+    shared: std::sync::Arc<std::sync::RwLock<crate::types::TypeStore>>,
+) -> LayerInventory {
+    let content_hash = fnv1a64(content);
     let mut parser = crate::parser::Parser::new_with_type_store(content, shared);
     let ast = match parser.parse() {
         Ok(ast) => ast,
@@ -217,23 +319,47 @@ fn parse_layer(content: &str, kind: LayerKind, file: String) -> LayerInventory {
     let mut symbols: Vec<SymbolEntry> = Vec::new();
     for stmt in &ast.stmts {
         match stmt {
-            crate::ast::Stmt::Fn(f) => push_fn(&mut symbols, f, None),
+            crate::ast::Stmt::Fn(f) => push_fn(&mut symbols, f, None, content),
             crate::ast::Stmt::TypeDecl(t) => {
                 symbols.push(SymbolEntry {
                     name: t.name.to_string(),
                     kind: SymbolKind::Type,
-                    is_pub: true, // stdlib 面即公开面；非 pub 类型不予登记位（T-04 细化）
+                    is_pub: t.is_pub,
                     is_vm_decl: false,
                     arity: 0,
+                    signature: None,
+                    has_body: false,
+                    source_span: None,
                     verification: VerificationLevel::Declared,
                 });
+                for member in &t.members {
+                    symbols.push(SymbolEntry {
+                        name: format!("{}.{}", t.name, member.name),
+                        kind: SymbolKind::Field,
+                        is_pub: t.is_pub,
+                        is_vm_decl: false,
+                        arity: 0,
+                        signature: Some(super::model::LogicalSignature {
+                            parameters: Vec::new(),
+                            parameter_modes: Vec::new(),
+                            returns: member.ty.unique_name().to_string(),
+                            is_static: false,
+                            has_self: false,
+                            generics: Vec::new(),
+                            attributes: member.attrs.iter().map(ToString::to_string).collect(),
+                        }),
+                        has_body: member.value.is_some(),
+                        source_span: None,
+                        verification: VerificationLevel::Declared,
+                    });
+                }
                 for m in &t.methods {
-                    push_fn(&mut symbols, m, Some(t.name.as_str()));
+                    push_fn(&mut symbols, m, Some(t.name.as_str()), content);
                 }
             }
             crate::ast::Stmt::Ext(e) => {
                 for m in &e.methods {
-                    push_fn(&mut symbols, m, Some(e.target.as_str()));
+                    push_fn(&mut symbols, m, Some(e.target.as_str()), content);
                 }
             }
             _ => {}
@@ -250,7 +376,7 @@ fn parse_layer(content: &str, kind: LayerKind, file: String) -> LayerInventory {
     }
 }
 
-fn push_fn(symbols: &mut Vec<SymbolEntry>, f: &crate::ast::Fn, owner: Option<&str>) {
+fn push_fn(symbols: &mut Vec<SymbolEntry>, f: &crate::ast::Fn, owner: Option<&str>, content: &str) {
     // 归一身份：限定方法 `Owner.name`（parser 的 parent 或 ext/type owner）；
     // 顶层裸名 fn 保持裸名（net.at 的 `pub fn TcpListener.accept` 由 parent
     // 归一为 `TcpListener.accept`）。
@@ -269,6 +395,50 @@ fn push_fn(symbols: &mut Vec<SymbolEntry>, f: &crate::ast::Fn, owner: Option<&st
         is_pub: f.is_pub,
         is_vm_decl: matches!(f.kind, crate::ast::FnKind::VmFunction),
         arity: f.params.len(),
+        signature: Some(super::model::LogicalSignature {
+            parameters: f
+                .params
+                .iter()
+                .map(|p| p.ty.unique_name().to_string())
+                .collect(),
+            parameter_modes: f.params.iter().map(|p| format!("{:?}", p.mode)).collect(),
+            returns: if matches!(f.ret, crate::ast::Type::Unknown) {
+                f.ret_name
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| f.ret.unique_name().to_string())
+            } else {
+                f.ret.unique_name().to_string()
+            },
+            is_static: f.is_static,
+            has_self: (owner.is_some() || f.parent.is_some()) && !f.is_static,
+            generics: f.type_params.iter().map(|p| p.name.to_string()).collect(),
+            attributes: f.attrs.iter().map(ToString::to_string).collect(),
+        }),
+        has_body: !f.body.stmts.is_empty() || source_has_body(content, f.span),
+        source_span: f.span,
         verification: VerificationLevel::Declared,
     });
+}
+
+fn source_has_body(content: &str, span: Option<(usize, usize)>) -> bool {
+    let Some((offset, length)) = span else {
+        return false;
+    };
+    let Some(source) = content.get(offset..offset.saturating_add(length)) else {
+        return false;
+    };
+    let mut lexer = crate::lexer::Lexer::new(source);
+    let mut parentheses = 0usize;
+    while let Ok(token) = lexer.next() {
+        use crate::token::TokenKind;
+        match token.kind {
+            TokenKind::LParen => parentheses += 1,
+            TokenKind::RParen => parentheses = parentheses.saturating_sub(1),
+            TokenKind::LBrace if parentheses == 0 => return true,
+            TokenKind::EOF => break,
+            _ => {}
+        }
+    }
+    false
 }

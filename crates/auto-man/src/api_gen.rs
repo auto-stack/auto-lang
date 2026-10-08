@@ -1031,28 +1031,18 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         let scaffold = std::env::var("AUTO_A2R_BODY")
             .map(|v| v == "0")
             .unwrap_or(false);
-        // PLAN-738 T-06（AC-07，SD-05）：装配指纹进收据——stdlib 来源身份
-        // （inventory/provider 目录 schema + 全部层内容）与业务源指纹
-        // （source_hashes）各自记录；复用新鲜度门据此识别「改 stdlib 但
-        // api.at 不变」。stdlib 不可定位（安装环境）→ null：新鲜度门两侧
-        // null 视为一致（旧环境行为不变），单侧缺失=陈旧（再生收敛）。
-        let assembly = auto_lang::stdlib_assembly::loader::repo_stdlib_root()
-            .ok()
-            .and_then(|root| {
-                auto_lang::stdlib_assembly::loader::stdlib_assembly_fingerprint(
-                    &root,
-                    auto_lang::stdlib_assembly::model::AssemblyTarget::Rust,
-                )
-                .ok()
-            })
-            .map(|fp| {
-                serde_json::json!({
-                    "schema_version":
-                        auto_lang::stdlib_assembly::providers::catalog_schema_version(),
-                    "target": "rust",
-                    "fingerprint": format!("{fp:016x}"),
-                })
-            });
+        // A receipt must identify the assembly it actually used. Failure to
+        // locate/hash stdlib is an error, never a reusable null identity.
+        let assembly_root = auto_lang::stdlib_assembly::loader::repo_stdlib_root()
+            .map_err(|e| format!("cannot record stdlib assembly: {e}"))?;
+        let fp = auto_lang::stdlib_assembly::loader::stdlib_assembly_fingerprint(
+            &assembly_root, auto_lang::stdlib_assembly::model::AssemblyTarget::Rust)
+            .map_err(|e| format!("cannot fingerprint stdlib assembly: {e}"))?;
+        let assembly = serde_json::json!({
+            "schema_version": auto_lang::stdlib_assembly::model::INVENTORY_SCHEMA_VERSION,
+            "target": "rust", "environment": "native",
+            "fingerprint": format!("{fp:016x}"),
+        });
         let record = serde_json::json!({
             "schema_version": 1,
             "generated_at": std::time::SystemTime::now()

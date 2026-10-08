@@ -98,14 +98,22 @@ impl AutoVMNativeRegistry {
         let id = if let Some(&fixed_id) = NATIVE_ID_MAP.get(name) {
             fixed_id
         } else {
-            let id = self.next_id;
-            self.next_id += 1;
-            id
+            self.allocate_id()
         };
         if id >= self.next_id {
             self.next_id = id + 1;
         }
         self.registry.insert(name.to_string(), id);
+        id
+    }
+
+    fn allocate_id(&mut self) -> u16 {
+        while NATIVE_ID_ENTRIES.iter().any(|(_, id)| *id == self.next_id)
+            || self.registry.values().any(|id| *id == self.next_id) {
+            self.next_id = self.next_id.checked_add(1).expect("native ID space exhausted");
+        }
+        let id = self.next_id;
+        self.next_id = self.next_id.checked_add(1).expect("native ID space exhausted");
         id
     }
 
@@ -375,10 +383,7 @@ impl AutoVMNativeRegistry {
         use crate::ast::{FnKind, Stmt};
         use crate::parser::Parser;
 
-        let stdlib_dir = std::path::Path::new("stdlib/auto");
-        if !stdlib_dir.exists() {
-            return;
-        }
+        let Ok(stdlib_dir) = crate::stdlib_assembly::loader::repo_stdlib_root() else { return; };
 
         let vm_files: Vec<std::path::PathBuf> = std::fs::read_dir(stdlib_dir)
             .ok()
@@ -433,9 +438,7 @@ impl AutoVMNativeRegistry {
                             let id = if let Some(&fixed_id) = NATIVE_ID_MAP.get(canonical.as_str()) {
                                 fixed_id
                             } else {
-                                let id = self.next_id;
-                                self.next_id += 1;
-                                id
+                                self.allocate_id()
                             };
                             self.registry.insert(canonical.clone(), id);
                             if id >= self.next_id {
@@ -460,9 +463,7 @@ impl AutoVMNativeRegistry {
                                     let id = if let Some(&fixed_id) = NATIVE_ID_MAP.get(canonical.as_str()) {
                                         fixed_id
                                     } else {
-                                        let id = self.next_id;
-                                        self.next_id += 1;
-                                        id
+                                        self.allocate_id()
                                     };
                                     self.registry.insert(canonical.clone(), id);
                                     if id >= self.next_id {
@@ -565,13 +566,15 @@ mod tests {
         let mut registry = AutoVMNativeRegistry::new();
 
         let id1 = registry.register("List.new");
-        assert_eq!(id1, 100);
 
         let id2 = registry.register("List.push");
-        assert_eq!(id2, 101);
 
         let id3 = registry.register("List.len");
-        assert_eq!(id3, 102);
+        assert!(id1 < id2 && id2 < id3);
+        for id in [id1, id2, id3] {
+            assert!(!crate::vm::native_catalog::NATIVE_ID_ENTRIES.iter().any(|(_, reserved)| *reserved == id),
+                "dynamic allocation must not overwrite a production native id");
+        }
     }
 
     #[test]
@@ -589,8 +592,8 @@ mod tests {
     fn test_get_id() {
         let mut registry = AutoVMNativeRegistry::new();
 
-        registry.register("List.new");
-        assert_eq!(registry.get_id("List.new"), Some(100));
+        let id = registry.register("List.new");
+        assert_eq!(registry.get_id("List.new"), Some(id));
         assert_eq!(registry.get_id("List.push"), None);
     }
 

@@ -275,11 +275,7 @@ impl AutovmReplSession {
 
         // Find the module root file (.at)
         // Use CARGO_MANIFEST_DIR to find project root for stdlib lookup
-        let stdlib_path = if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-            std::path::PathBuf::from(manifest_dir).join("../../stdlib/auto")
-        } else {
-            std::path::PathBuf::from("stdlib/auto")
-        };
+        let stdlib_path = crate::stdlib_assembly::loader::repo_stdlib_root()?;
         let root_file = stdlib_path.join(stdlib_relative).with_extension("at");
 
         if !root_file.exists() {
@@ -290,40 +286,16 @@ impl AutovmReplSession {
             )));
         }
 
-        // Read root file
-        let mut module_source = std::fs::read_to_string(&root_file).map_err(|e| {
-            AutoError::Msg(format!(
-                "Failed to read module {}: {}",
-                root_file.display(),
-                e
-            ))
-        })?;
-
-        // PLAN-738 T-03: context path fix — build from the same stripped
-        // stdlib_relative base as root_file. The old form joined the UNSTRIPPED
-        // module_path ("auto/io" → stdlib/auto/auto/io.at after with_extension
-        // ate the ".vm"), so the context layer never existed for persistent
-        // loads and .vm.at layers were invisible here (decision report E1②).
-        let context_file = stdlib_path.join(format!("{}.vm.at", stdlib_relative));
-        if context_file.exists() {
-            let context_source = std::fs::read_to_string(&context_file).map_err(|e| {
-                AutoError::Msg(format!(
-                    "Failed to read context file {}: {}",
-                    context_file.display(),
-                    e
-                ))
-            })?;
-            module_source.push('\n');
-            module_source.push_str(&context_source);
-            vm_debug!("DEBUG: Loaded context file: {}", context_file.display());
-        }
+        let assembly_plan = crate::stdlib_assembly::plan::AssemblyPlan::from_resolved(
+            &use_stmt.module, &root_file, Default::default())?;
+        let module_source = assembly_plan.source.clone();
 
         // PLAN-738 T-05（§5.5）：persistent 活 VM 的 stdlib ABI 热换守卫。
         // 已装载模块的内容/根指纹台账：同内容重载幂等放行（REPL 重复 use
         // 合法）；内容或 stdlib root 变化 → SessionTargetMismatch 明确错误
         // 要求重建 session，不让旧堆资源混跑新实现。
         {
-            let fingerprint = crate::stdlib_assembly::model::fnv1a64(&module_source);
+            let fingerprint = assembly_plan.fingerprint;
             let root_key = stdlib_path.to_string_lossy().to_string();
             match self
                 .module_fingerprints
@@ -337,21 +309,17 @@ impl AutovmReplSession {
                     )));
                 }
                 Some(_) => {} // 同内容同根重载：幂等
-                None => {
-                    self.module_fingerprints
-                        .push((use_stmt.module.clone(), fingerprint, root_key))
-                }
+                None => {}
             }
         }
 
         // Parse the combined module source
         let mut parser = Parser::from(&module_source);
-        let ast = parser.parse().map_err(|e| {
-            AutoError::Msg(format!(
-                "Failed to parse module {}: {:?}",
-                use_stmt.module, e
-            ))
-        })?;
+        let ast = parser.parse().map_err(|e| assembly_plan.map_error(e))?;
+        if !self.module_fingerprints.iter().any(|(module, _, _)| module == &use_stmt.module) {
+            self.module_fingerprints.push((use_stmt.module.clone(), assembly_plan.fingerprint,
+                stdlib_path.to_string_lossy().to_string()));
+        }
 
         vm_debug!(
             "DEBUG: Parsed module {} with {} statements",

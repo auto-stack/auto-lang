@@ -149,3 +149,6 @@ pub fn cross_check_real_surfaces(
     }
     out
 }
+pub fn catalog_content_fingerprint() -> u64 {
+    super::model::fnv1a64(include_str!("../../../../stdlib/assembly-providers.json"))
+}
