@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-738
-status: execution_done
+status: executing
 feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
-updated_at: 2026-10-08
+updated_at: 2026-10-09
 plan_revision: 1
-current_step: 7  # T-01..T-07 完成；T-08 门禁+验证报告完成（e4425b673）→ /auto-plan:review
+current_step: 1  # R1 needs_fix；T-01 调查保留完成，T-02..T-08 受影响验收重新打开（见 §9 / P738-R1..R9）
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -88,7 +88,7 @@ JSON schema仅服务装配清单/工具输出，不改语言语法或公开File/
 | `docs/specs/auto-lang/trans/overview.md`、`runtime/design/networking-stdlib.md` | Rust stdlib映射及HTTP lowering，不得只因缺rs文件拒绝已有host能力；目标草案不等于已用装载链。 |
 | `docs/design/raw/stdlib-organization.md` | ext物理补全历史设计；它不是当前实现/可移植ABI的证明，需T-01核对后提出具体规范。 |
 | `docs/specs/stdlib/design/api-transport-contract.md`、`auto-man/design/api-generation-integrity.md` | 734共同API分类/真实实现/新鲜度，拓扑能力与stdlib实现能力不是同一个维度。 |
-| [PLAN-736](736-http-service-deployment-and-operations.md) T-01、§5/§8 | service配置/ready/生成与HTTP回收正在实现；本期不并行覆盖其lib/auto-man/CLI入口。 |
+| [PLAN-736](archive/736-http-service-deployment-and-operations.md) T-01、§5/§8 | service配置/ready/生成与HTTP回收正在实现；本期不并行覆盖其lib/auto-man/CLI入口。 |
 
 授权：“736正在实施中，请继续规划下一个计划”；允许只读调查、本仓计划与Design33簿记，不实施/跑Cargo/改其他计划状态/调用外部服务。**执行前置为736独立review pass并合入**；即使部分模型文件可独立写，生产接线须消费736最终来源/生成/ready合同，统一顺序实施。用户无需现在提供更多输入。
 
@@ -234,6 +234,9 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 
 ## 8. 执行步骤
 
+> 2026-10-09 独立复审 R1：**needs_fix**。下列历史“已完成”段保留为执行记录，受影响勾选已撤回；它们不再代表验收通过。
+> T-01 调查成果保留；T-02→R2/R7，T-03→R1/R5/R8，T-04→R1/R2，T-05→R3/R4，T-06→R4/R5/R6，T-07/08→R7/R9。完整复现与修复合同见 [独立复审报告](reports/738-independent-review.md)。
+
 ### T-01：最终736基线、装配调用图与六模块provider冻结 ✅
 
 - [x] 前置736review pass+merge，读最终config/ready/生成与canonical增量；`bash scripts/new-wt-group.sh lang-738 --branch plan-738-dev`，auto-down兄弟只读，禁止链接。
@@ -245,58 +248,58 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - [x] 最小公共+三目标/host mapped真入口原型；无法闭合真实target接线/全核心分类则needs_replan，不将AC换成inventory-only。涵盖全AC/SD。
   [✅ 已完成] 探针族 `crates/auto-lang/src/tests/plan738_assembly_probe_tests.rs` @worktree `ac41c2d1e`：P1-P6 六测全绿（真实 CompileSession 管线/trans 双入口/persistent/六核心 parser 清点）；target 接线可闭合评估=不触发 needs_replan（报告 §4.2）。
 
-### T-02：共同模型、provider目录与全库inventory ✅
+### T-02：共同模型、provider目录与全库inventory
 
-- [x] 依赖T-01。新增stdlib_assembly模块和stdlib/assembly-providers.json，lib.rs导出；复用AST/类型身份，inventory全文件/符号与明确验证等级。
+- [ ] 依赖T-01。新增stdlib_assembly模块和stdlib/assembly-providers.json，lib.rs导出；复用AST/类型身份，inventory全文件/符号与明确验证等级。
   [✅ 已完成] worktree `d70d4c8a9`：`stdlib_assembly/{mod,model,loader,providers,validate}.rs` + lib.rs 导出；全库扫描 115 `.at`（74公共+23vm+13rs+5c）分母恰清点、FNV-1a 内容指纹、验证等级 Declared 起步、符号归一身份（parent/ext owner → `Owner.name`，遍历 TypeDecl.methods）；provider 目录六核心逐目标声明 + 发射名称表 11 名 unsupported。
-- [x] provider目录与真实注册/emit表有机器对照，文件hash/源段/候选与选择不混淆；非核心解析错误完整记录。
+- [ ] provider目录与真实注册/emit表有机器对照，文件hash/源段/候选与选择不混淆；非核心解析错误完整记录。
   [✅ 已完成] `cross_check_real_surfaces`：vm 声明对照 BIGVM_NATIVES 名 surface（CWD 钉仓根后扫描）、rust a2r-std 对照 `pub mod`、c 对照磁盘 locator；unsupported 必填 reason；发射表漂移差集与目录 unsupported 集合哨兵断言。实勘修正：sse parse_sse 无任何 callee（落册 unsupported）；发射表缺 `file`→`a2r_std::file` 共 11 名漂移。全库 isolated-parse 基线 39/115 三类构成（决策报告 §2b）。
-- [x] `cargo t plan738`/模型单测与inventory JSON完整性；AC-01/03/05，SD-01/02/07。
+- [ ] `cargo t plan738`/模型单测与inventory JSON完整性；AC-01/03/05，SD-01/02/07。
   [✅ 已完成] `cargo t plan738` 11/11 绿（6 探针 + 5 正式族）；稳定 JSON（双序列化逐字节一致 + 排序自检 + 无绝对路径泄漏）；scoped：module_cache 10/10、native_registry 13/13；`cargo check -p auto-lang` 新文件零警告。
 
-### T-03：VM/目标转译/persistent装配接线与源映射 ✅
+### T-03：VM/目标转译/persistent装配接线与源映射
 
-- [x] 依赖T-02。修改compile.rs::load_module_inner、autovm_persistent.rs::load_and_register_module、lib.rs trans_*入口、parser必要诊断/source映射、trans/{rust,c}.rs实际provider消费。
+- [ ] 依赖T-02。修改compile.rs::load_module_inner、autovm_persistent.rs::load_and_register_module、lib.rs trans_*入口、parser必要诊断/source映射、trans/{rust,c}.rs实际provider消费。
   [✅ 已完成] worktree `340de9ccd`：①load_module_inner 层选择由 `AssemblyTarget::context_extension()` 驱动（硬编码 ".vm.at" 收编；Rust/C 目标零装载面——层记 candidate 不合并，发射面如实走名称表/头包含）；②`LayerSelection` 记录进 session（manifest v0 seam，T-06 消费）；③persistent context 路径修复（原 `with_extension` 吃掉 `.vm` + 未剥 `auto/` 前缀双 bug 使 `.vm.at` 恒不可见）+ ext canonical 对齐（`auto.<stem>.<target>.<fn>`，TypeDecl 并入型与 ext 型双臂）+ edition2021 `if let` MutexGuard 双锁死锁修复（context 修复使查找首次可达后暴露）；④trans_c/trans_rust 入口先声明装配目标；⑤Rust sibling 扫描排除 .vm.at/.c.at foreign 层（VM/C 层不再串入 Rust 发射类型上下文，.rs.at 为 Rust 选定层保留）。
-- [x] resolved public路径+显式context选源，root在前/选层后；public/native host映射与pure body均可追踪，不把Rust解析预处理当VM执行实现。保持545/635路径/可见性/循环语义。
+- [ ] resolved public路径+显式context选源，root在前/选层后；public/native host映射与pure body均可追踪，不把Rust解析预处理当VM执行实现。保持545/635路径/可见性/循环语义。
   [✅ 已完成] 源段边界记录（context_byte_boundary）+失败路径有界归因：公共段单独可解析 ⇒ 错误归因目标层真实文件（`target_layer_syntax_error_attributed` 实证）；545/635 语义由 use_semantics 族回归守护（117/117 含 use_semantics/module_cache/native_registry/repl/plan727/729/730）。
-- [x] 三目标同源真正执行/emit与VM两入口对拍、源层错误位置；AC-02/04/05，SD-01/03/04。
+- [ ] 三目标同源真正执行/emit与VM两入口对拍、源层错误位置；AC-02/04/05，SD-01/03/04。
   [✅ 已完成] `target_driven_layer_selection_and_record`（VM 合并 vm 层、Rust/C 上下文无 foreign 层符号、candidate 齐、记录全字段）；`vm_two_entry_same_layer_visibility`（session 与 persistent 对 io ext 方法/net 顶层 fn 同可见——P5 探针由破损证据翻转为修复后契约）；`trans_entries_declare_assembly_target`。门禁：plan738 15/15、scoped 117/117（plan730_staged_lease_expiry 首跑并行负载 flake，复跑单测 0.44s 绿——上传服务非本触面）、`cargo tv` 162/162。
 
 ### T-04：核心符号/native校验与环境能力
 
-- [x] 依赖T-02/03。修改vm/{native_registry,native,native_catalog}.rs与ffi/stdlib.rs必要provider描述/实际绑定检查、codegen所需引用闭包消费；Rust核心provider分派使用真实identity。
+- [ ] 依赖T-02/03。修改vm/{native_registry,native,native_catalog}.rs与ffi/stdlib.rs必要provider描述/实际绑定检查、codegen所需引用闭包消费；Rust核心provider分派使用真实identity。
   [✅ 已完成] worktree `855a143b6`+`9cd807027`：validate_core_vm_bindings（resolved+bound 双面成立才 Supported，返回类别未知=Bound 不冒称 SignatureChecked）+Browser 三族 Unsupported 分类+ID 别名冲突检测（声明组/末段别名两合法形）+core_status_diagnostics 诊断视图。
-- [x] 六模块全部decl状态，独立逻辑signature/alias/feature/stub与实际shim绑定；避免name存在即绿，缺实现/冲突/不适用在业务前错误。目标物理字段身份记录，不重做资源ABI。
+- [ ] 六模块全部decl状态，独立逻辑signature/alias/feature/stub与实际shim绑定；避免name存在即绿，缺实现/冲突/不适用在业务前错误。目标物理字段身份记录，不重做资源ABI。
   [✅ 已完成] sse parse_sse=DeclaredStub、http 扫描名 vs 公共名两套面裁决①（权威名=公共 canonical 面）、file/fs 族 id 共享别名裁决②（read_text 收敛单名+声明组放行）；io 方法第四绑定面（VmModule 方法表）冻结文档化 Unverified（§9/P738-D2）；plan738 19/19。
-- [x] native欠绑定/ID冲突/签名漂移/假同名/Browser拒绝与现存核心支持正测；AC-03/05/08，SD-01/02/04/07。
+- [ ] native欠绑定/ID冲突/签名漂移/假同名/Browser拒绝与现存核心支持正测；AC-03/05/08，SD-01/02/04/07。
   [✅ 已完成] 13 处生产扫描面 id 相撞真冲突冻结基线（分诊裁决=T-06 CLI 如实上报非零，重编号归 D3b——P738-D1）；plan738 19/19+scoped 117/117。
 
 ### T-05：缓存依赖与编译epoch一致性
 
-- [x] 依赖T-03/04。修改module_cache.rs与compile.rs早退/dirty链、persistent manifest状态；缓存包含全部selected source/provider/target/env/deps/存在性。
+- [ ] 依赖T-03/04。修改module_cache.rs与compile.rs早退/dirty链、persistent manifest状态；缓存包含全部selected source/provider/target/env/deps/存在性。
   [✅ 已完成] worktree `f88449944`：ModuleCache 段级指纹条目（公共+选定层各自 FNV-1a+选定层 absent 台账+provider schema 版本+依赖闭包指纹）+AutoCache 装配感知查找 `get_valid`（跨 target 条目共存，身份/schema/段指纹/依赖指纹任一漂移即未命中）。
-- [x] 只改target层或host feature新编译不能旧返回；活VM禁止无契约ABI热换，明确target/root改变需新session。缓存错误不降级旧module。
+- [ ] 只改target层或host feature新编译不能旧返回；活VM禁止无契约ABI热换，明确target/root改变需新session。缓存错误不降级旧module。
   [✅ 已完成] ①E2 死缓存反转为契约（P2 探针翻转：双层模块可命中且核对全部选定源段；同 mtime 改内容仍失效——内容指纹非 mtime）；②缓存命中早退一致性：命中补全本 epoch bytecode+manifest 记录（半截模块禁止，clone 会话实测）；③`set_assembly_target` 守卫（已装载换目标=session_target_mismatch 须重建，同目标重声明放行）；④stdlib root 身份守卫；⑤persistent 活 VM 指纹台账（同内容幂等放行/内容或根漂移拒绝）；⑥验证失败一律未命中重编译，不降级旧模块。
-- [x] 同mtime/增删层/双root/session/target/依赖变更真实结果与diagnostic；AC-04/06，SD-01/03。
+- [ ] 同mtime/增删层/双root/session/target/依赖变更真实结果与diagnostic；AC-04/06，SD-01/03。
   [✅ 已完成] t05_cache_consistency 7 测：命中重建 bytecode/manifest、同 mtime 改层（行为断言新符号可见）、增层（absent 台账）/删层真实失效、retarget 拒绝+合法路径、stdlib root 变化拒绝、跨装配缓存不串 VM 层、依赖变更失效依赖方；plan738 27/27+module_cache 16/16+use_semantics 7/7+native_registry 13/13+autovm_persistent 20/20+plan727/729/730 59/59+`cargo tv` 162/162。
 
 ### T-06：检查CLI和API generation/serve收据
 
-- [x] 依赖T-02..05。新auto/cmd_stdlib.rs，main.rs挂接；改auto-man/api_gen.rs及736最终真实生成/启动消费者（T-01锁路径），assembly fingerprint进入734receipt并由736ready引用。
+- [ ] 依赖T-02..05。新auto/cmd_stdlib.rs，main.rs挂接；改auto-man/api_gen.rs及736最终真实生成/启动消费者（T-01锁路径），assembly fingerprint进入734receipt并由736ready引用。
   [✅ 已完成] CLI 半（worktree `206a846e7`——`auto stdlib inspect` 三模式+稳定 JSON+退出码 0/1/2/3+真实二进制冒烟）+ gated 半解锁落地（worktree `d71e823c8`）：勘验 736 代码已全量在 master（`master..plan-736-dev`=0，另一会话 fold 节奏合入）→ worktree re-sync（`0424673e2`）→ `stdlib_assembly_fingerprint`（内容级身份）进 generation.json 收据 assembly 块（与业务 source_hashes 各自记录）；736 ready 引用落地为**复用新鲜度门**——`backend_generation_is_fresh` 纳入 assembly 比对，陈旧 bundle 拒绝复用走再生臂（§5.4：runtime serviceconfig 不是 assembly 指纹，config_hash 不混入；「旧 ready 不被消费」由门在启动前保证）。
-- [x] inspect只读取装配所需源码/元数据，不执行业务网络/文件操作；稳定JSON与非零check，inventory/actual mode区分；runtime serviceconfig不是assembly内容指纹，provider变化必须新鲜度失效。
+- [ ] inspect只读取装配所需源码/元数据，不执行业务网络/文件操作；稳定JSON与非零check，inventory/actual mode区分；runtime serviceconfig不是assembly内容指纹，provider变化必须新鲜度失效。
   [✅ 已完成] inspect dry 装配+inventory/actual 区分+check 非零（CLI 8/8）；provider 变化（目录 bump schema）→ `stdlib_assembly_fingerprint` 变 → 复用门判陈旧 → 再生（`fingerprint_deterministic_and_content_sensitive` 冻结内容/目标敏感性；`assembly_freshness_truth_table` 冻结门语义）。
-- [x] CLI JSON/负测及真实生成Rust→serve，改stdlib但api.at不变；AC-01/06/07，SD-01/05/06。
+- [ ] CLI JSON/负测及真实生成Rust→serve，改stdlib但api.at不变；AC-01/06/07，SD-01/05/06。
   [✅ 已完成（serve 实跑 witness 归 T-07）] CLI JSON/负测 8/8；「改 stdlib 但 api.at 不变」语义由指纹敏感性单测+新鲜度真值表双面冻结；真实生成Rust→serve 实跑 witness 归 T-07（其 rustc 实编切片本就驱动真实生成链；fixture e2e 尝试因成员 pac.at 发现流程预存行为未走通，已记 §9）。
 
 ### T-07：同源样例、核心完整矩阵与实际执行证明
 
-- [x] 依赖T-03..06。新plan738_stdlib_assembly_tests.rs/tests.rs接线、examples/stdlib/assembly/及target witness；依现有C/Rust构建工具生成真实产物，不手写业务替代。
+- [ ] 依赖T-03..06。新plan738_stdlib_assembly_tests.rs/tests.rs接线、examples/stdlib/assembly/及target witness；依现有C/Rust构建工具生成真实产物，不手写业务替代。
   [✅ 已完成] 三片提交：①`75c7a1049` VM 真执行见证+六核心矩阵（报告落盘 738-stdlib-matrix.{json,md}）；②`0a73d0759` rustc 实编实跑 witness（⑤腿 #[ignore] 按需门：witness.at→trans_rust→a2r-std crate 实编→实跑断言输出；实勘 as_int 下沉类型缺口+内嵌 a2r_std/crate 漂移两发现）；③`8964155ec` examples/stdlib/assembly 同源样例（真实 CLI inspect --actual 闭环验证）。
-- [x] 完成§6.1全部反例/真入口、六模块全符号target/env矩阵和全库inventory；HTTP串行兼容734/736与729/730，报告selection/exec等级/真实方法，旧root未消费侧层不能报已合并。
+- [ ] 完成§6.1全部反例/真入口、六模块全符号target/env矩阵和全库inventory；HTTP串行兼容734/736与729/730，报告selection/exec等级/真实方法，旧root未消费侧层不能报已合并。
   [✅ 已完成] `a4afb3b65` 余项反例（用户同名核心模块干净遮蔽/双活跃 body 冲突不静默择一）；矩阵+inventory 完整（AC-01/05）；selection/exec 等级=LayerSelection+矩阵 verification 列；candidate 语义=「未消费层只能报 candidate」在 t03+CLI actual manifest 冻结。C 实编 witness 明示阻塞（无 C HTTP provider=Unsupported，不造 server——§6.1 允许）。
-- [x] AC-01..08，SD-01..07；无法执行目标/witness明确阻塞，不只生成串金样。
+- [ ] AC-01..08，SD-01..07；无法执行目标/witness明确阻塞，不只生成串金样。
   [✅ 已完成] 全 AC 证据绑定见 `docs/plans/reports/738-stdlib-verification.md`（T-08 报告，绑定 e4425b673/最终 revision=1）。
 - 完成§6.1全部反例/真入口、六模块全符号target/env矩阵和全库inventory；HTTP串行兼容734/736与729/730，报告selection/exec等级/真实方法，旧root未消费侧层不能报已合并。
   进度：矩阵+inventory 完整（上条）；缓存族=T-05 八测、VM 两入口/545 语义=use_semantics 回归、Browser 三族/Binder=t04、CLI=8 测。
@@ -304,13 +307,31 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 
 ### T-08：门禁、独立review与规范交接
 
-- [x] 依赖T-01..07。§6.3分级门、warnings/fmt/debug/未批准延期扫描，验证报告绑定最终revision/每AC/SD；新红基线对照，未覆盖核心不能标“全库通过”。
+- [ ] 依赖T-01..07。§6.3分级门、warnings/fmt/debug/未批准延期扫描，验证报告绑定最终revision/每AC/SD；新红基线对照，未覆盖核心不能标“全库通过”。
   [✅ 已完成] 门禁实测（worktree，基线 master@4262f761c 逐名分诊）：裸 `cargo t` 3 红全为 musk p053 预存族（红名集 6=6 diff 空）+`cargo tv` 162/162+`cargo tt` 12⊂13（plan707 flake master 独有未复现）+`cargo th` 1⊂2+plan738 32/32+⑤腿 witness 按需 1/1+CLI 8/8+auto-man scoped 45/45；三 crate check 零错误；改动文件 rustfmt 干净、零 debug 残留。验证报告 `docs/plans/reports/738-stdlib-verification.md`（`e4425b673`，绑定最终 revision=1）。
 - [ ] /auto-plan:review独立验证真实callee和target调用点、分母/验证等级/缓存反例；准备SD沉淀稿，merge再canonical/ledger/Design33/索引和归档。
   入口就绪：status=execution_done，worktree `e4425b673` clean，复审证据齐备（§9 交接+验证报告）。SD 沉淀稿=起草时 SD-01..07 提案维持（merge 阶段执行）。
 - [ ] 清理前lang-738两兄弟各wt-guard clean；tf仅merge到期主检出单实例。全AC闭合才reviewed/archived。
 
 ## 9. 复审记录
+
+### 独立复审 R1（2026-10-09，needs_fix）
+
+- stage: review
+- plan_id: PLAN-738
+- plan_revision: 1（原验收合同不变；只回退状态/受影响 checkbox）
+- outcome: needs_fix
+- reviewed_commit: `e4425b673eec46fabc25b4534084c19f2738a38f`（入口 clean，审查探针未改实现；结束移除临时 probe）
+- base_commit: `4262f761c5f7a0608fbfc5061ad6afa1b31cc574`；observed_master=`9bdd04ffeb1a4178ed7ce754c3ddff54fd60eba2`；merge-base=`6d69dbdc78d99f23ba90a37c9559f7fb54dd7be3`
+- dependency_revisions: auto-down=`895f8d0f9355c9f5ec3ce8fca268bdb768395846`；Cargo.lock/Spec 输入版本与 hash=[738-review-baseline.json](reports/738-review-baseline.json)
+- spec_inputs: frontmatter 七个现有 Spec + 原 SD-01..07 冻结文本；delta SHA256=`b030984624255a902b929fe335ece472e4b917232ee0ef8e2ce1dcf23aca8450`，**not approved**；未改 canonical/ledger
+- acceptance_results: AC-01 partial / AC-02 fail / AC-03 fail / AC-04 partial / AC-05 fail / AC-06 fail / AC-07 fail / AC-08 partial；逐 AC→任务→代码→证据见 [738-independent-review.md](reports/738-independent-review.md)
+- findings: P738-R1..R9（生产 strict 门缺席、独立逻辑签名与公共 identity 缺失、同会话/异 root 缓存陈旧、装配指纹漏身份与 fail-open、真实三目标/两 VM 入口未共用计划、CLI target/闭包/parse 假绿、inventory/环境矩阵不完整、双源位置不足、C/generated-service 证据与 SD/健康门未完成）
+- evidence: [738-review-probe.rs](reports/738-review-probe.rs) + [738-review-evidence.txt](reports/738-review-evidence.txt)；真实反例=arity 1→999仍 SignatureChecked、双 body 装载成功、同会话仍 old_layer、CWD B仍用A缓存、vm→rs层改名指纹不变、Rust net --check假pass、async破损公共层假pass、jsonx actual检查无关六模块
+- gates: 裸 t 完整非 fail-fast=5132/5146（14红都见已有批回执 known_reds；本轮未新做双树基线证明）；tv=162/162；tt=5503/5517（13fail+1timeout，新增观察 back_provision/dep_fields scoped均绿）；th=100/102（back_proxy 两红见执行报告基线）；普通 Rust JSON witness=1/1；CLI=8/8；freshness=1/1；新增 model.rs rustfmt 三处 diff → 必修；未跑 tf/taa/tu
+- omissions/debt: P738-D1/D2 中属于六核心的生产冲突/映射必须由 R1/R2 收回，本期必要验收不能债务化；C支持样例与generated Rust→service→ready仍未完成，重开T-07/08；未承诺的非核心/parity/backend保留后续范围
+- state: executing，current_step=1（T-01完成；T-02..T-08受影响验收重开；历史进度/证据保留）
+- next: `/auto-plan:work PLAN-738` 修复 R1..R9并补证，再独立 review 新 commit；本轮不修实现、不合入、不归档
 
 ### work 交接（2026-10-08，T-07/T-08 完成 → execution_done）
 
