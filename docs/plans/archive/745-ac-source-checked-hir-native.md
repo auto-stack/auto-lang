@@ -480,6 +480,12 @@ stage=new / outcome=pass（规划交接完成）/ next=work T-01（待用户确�
 - `cleaned`: pending，原树/只读依赖树保留至真实归档门禁通过；须fresh guard clean、Git clean/全部落地及目标归属后移除树/合并分支/普通空组。
 - `evidence`: [合入报告](../attachments/745/merge/MERGE.md)、merge/landed.json、ledger-published.json、binding-audit.json、批量原始日志及外仓审计；原第七轮证据仍绑定原review SHA。
 
+2026-10-08 stage=merge，PLAN-745:r1：实际归档门禁通过，清理待执行。
+
+- `archived`: docs/plans/archive/745-ac-source-checked-hir-native.md 实际存在、active不存在、status archived、唯一九任务/当前8完成一致；相对链接、三模块745导航身份及七项ledger引用全部通过，见 merge/assertions-archived.json。尚不预勾T09。
+- `ledger_refreshed`: 原树准备并提交归档history引用，仅P745-3/4改变，ff-only落地9060743e501258ebf68a261f9c985cd3a2a351c5；准确读回主检出version9、SHA256 09c1bcfbab0b3fca3cef49abe6481baa456b8f6fbb85b0aa39227bc8a2f1369d，canonical引用保持。
+- `cleaned`: pending；已提交真实归档门禁证据，接着分别检查原树/只读依赖树归属、clean及fresh guard后清理。
+
 ## 10. 待澄清事项
 
 r1等待用户按AGENTS L1确认数值profile/支持集后实施；本轮范围没有其它未定义的验收结果。
