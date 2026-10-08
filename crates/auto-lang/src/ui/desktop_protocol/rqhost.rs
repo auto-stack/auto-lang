@@ -863,14 +863,19 @@ impl RqDaemon {
 fn open_window_for(client: &mut RqClient, cascade: u64) -> iced::Task<RqMessage> {
     let (win_id, task) = iced::window::open(iced::window::Settings {
         size: iced::Size::new(client.width.max(160.0), client.height.max(120.0)),
-        // PLAN-097：AUTO_VM_POSITION=x,y 覆盖(同 Standalone 级联点)。
-        position: crate::ui::iced::renderer::startup_window_position()
-            .unwrap_or_else(|| {
+        // PLAN-097：窗口停靠映射——`MUSK_CANVAS_WINDOW_POS=name=x,y;…`
+        // 按 Hello app_name 精确匹配(canvas 会话确定性停靠宿主右侧,原生
+        // 窗为帧渲染源不遮宿主;守护进程环境 = 首个客户端孵化时继承,
+        // per-window 位置以映射而非全局 env 表达)。未命中 →
+        // AUTO_VM_POSITION 全局覆盖 → 级联缺省。
+        position: dock_position_for(&client.app_name).unwrap_or_else(|| {
+            crate::ui::iced::renderer::startup_window_position().unwrap_or_else(|| {
                 iced::window::Position::Specific(iced::Point::new(
                     80.0 + 36.0 * (cascade % 10) as f32,
                     80.0 + 36.0 * (cascade % 10) as f32,
                 ))
-            }),
+            })
+        }),
         ..Default::default()
     });
     client.window = Some(win_id);
@@ -2898,4 +2903,24 @@ mod tests {
         }
         let _ = app.join();
     }
+}
+
+/// PLAN-097：`MUSK_CANVAS_WINDOW_POS=name=x,y;…` 解析——app_name 精确
+/// 匹配 → 窗口停靠位。解析失败的条目跳过(不响亮:窗口布局策略是装饰面)。
+fn dock_position_for(app_name: &str) -> Option<iced::window::Position> {
+    let raw = std::env::var("MUSK_CANVAS_WINDOW_POS").ok()?;
+    for entry in raw.split(';') {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let (name, xy) = entry.split_once('=')?;
+        if name.trim() == app_name {
+            let (x, y) = xy.split_once(',')?;
+            let x: f32 = x.trim().parse().ok()?;
+            let y: f32 = y.trim().parse().ok()?;
+            return Some(iced::window::Position::Specific(iced::Point::new(x, y)));
+        }
+    }
+    None
 }
