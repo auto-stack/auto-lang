@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-738
-status: drafting
+status: executing
 feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
-updated_at: 2026-10-03
+updated_at: 2026-10-08
 plan_revision: 1
-current_step: 0
+current_step: 1
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -234,12 +234,16 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 
 ## 8. 执行步骤
 
-### T-01：最终736基线、装配调用图与六模块provider冻结
+### T-01：最终736基线、装配调用图与六模块provider冻结 ✅
 
-- 前置736review pass+merge，读最终config/ready/生成与canonical增量；`bash scripts/new-wt-group.sh lang-738 --branch plan-738-dev`，auto-down兄弟只读，禁止链接。
-- trace CompileSession/persistent、Rust/C实际CLI及生成API、native实际注册和a2r分派，复现后缀目标/缓存/源位置缺口。确认实际active consumer，不把未调用方法当验证面。
-- bounded调查产出738-stdlib-decision：六模块完整符号/producer签名来源、provider目录schema、active native别名/ID、混合public属性兼容、target/environment来源、源段与cache key、初始全库分母/parse失败。
-- 最小公共+三目标/host mapped真入口原型；无法闭合真实target接线/全核心分类则needs_replan，不将AC换成inventory-only。涵盖全AC/SD。
+- [x] 前置736review pass+merge，读最终config/ready/生成与canonical增量；`bash scripts/new-wt-group.sh lang-738 --branch plan-738-dev`，auto-down兄弟只读，禁止链接。
+  [✅ 已完成] 2026-10-08 用户指令「实施它」进入 executing（原 736 前置的替代满足与 736 现状勘验见 `docs/plans/reports/738-stdlib-decision.md` §5/§7）；worktree 组 `D:/autostack/.wt/lang-738/{auto-lang,auto-down}` 已建（基面 master@c3ccd32c3，auto-down detached 895f8d0 只读，无链接）。T-06 消费 736 最终合同保持 gated（§8 复核清单在报告中）。
+- [x] trace CompileSession/persistent、Rust/C实际CLI及生成API、native实际注册和a2r分派，复现后缀目标/缓存/源位置缺口。确认实际active consumer，不把未调用方法当验证面。
+  [✅ 已完成] 四装配面实勘冻结（报告 §1/E1-E4）：①VM 管线 resolve_uses→load_module 硬编码 .vm.at；②persistent 双 auto/ context 恒缺失+stdlib-only 查找；③Rust trans 零模块装载+三处重复 26 名名称表（~10 名无真实 a2r-std 模块）；④C trans 头包含路由+cmd_a2c_stdlib 逐文件生成。ModuleCache 双层恒 miss（E2）；native 名 surface=磁盘扫描 CWD stdlib/auto + 目录固定 ID + ~54 手工 shim 三机制（E3）；find_std_lib 项目根分支恒不命中的来源身份裂缝（E3）。
+- [x] bounded调查产出738-stdlib-decision：六模块完整符号/producer签名来源、provider目录schema、active native别名/ID、混合public属性兼容、target/environment来源、源段与cache key、初始全库分母/parse失败。
+  [✅ 已完成] `docs/plans/reports/738-stdlib-decision.md`（§2 六核心 13 层 parser 精确分母：11 parse-OK + async.at/json.rs.at parse 破损冻结；§3 provider 目录要点与名称漂移矩阵；§4 设计裁决建议）。
+- [x] 最小公共+三目标/host mapped真入口原型；无法闭合真实target接线/全核心分类则needs_replan，不将AC换成inventory-only。涵盖全AC/SD。
+  [✅ 已完成] 探针族 `crates/auto-lang/src/tests/plan738_assembly_probe_tests.rs` @worktree `ac41c2d1e`：P1-P6 六测全绿（真实 CompileSession 管线/trans 双入口/persistent/六核心 parser 清点）；target 接线可闭合评估=不触发 needs_replan（报告 §4.2）。
 
 ### T-02：共同模型、provider目录与全库inventory
 
@@ -284,6 +288,23 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - 清理前lang-738两兄弟各wt-guard clean；tf仅merge到期主检出单实例。全AC闭合才reviewed/archived。
 
 ## 9. 复审记录
+
+### work 交接（2026-10-08，T-01 完成）
+
+- stage: work
+- plan_id: PLAN-738
+- plan_revision: 1
+- outcome: pass（T-01 单任务完成；整体 executing 继续）
+- code_commit: worktree plan-738-dev `ac41c2d1e`（探针族 6/6 绿；基面 master c3ccd32c3）
+- task_ids: T-01（current_step 1/8）
+- evidence: `docs/plans/reports/738-stdlib-decision.md`（E1-E5 全锚定）；`cargo check -p auto-lang` 绿；`cargo t plan738` 6/6
+- blockers: T-06 消费 736 最终生成/ready 合同——736 尚 executing 3/8 未合入，保持 gated（报告 §5/§8 复核清单）；不阻塞 T-02..T-05/T-07 主体
+- next: T-02（stdlib_assembly 模块 + provider 目录 + 全库 inventory，依赖本报告冻结的分母与四装配面边界）
+
+入场说明：计划 §4.1 原执行前置为「736 独立 review pass 并合入」；2026-10-08 用户
+明确指令「计划738 实施它」，据此从 drafting 进入 executing。该前置的替代满足方式
+（736 worktree 只读勘验 + T-06 gated + 其余任务生产耦合分离论证）记录于决策报告
+§7。736 合入后按报告 §8 四项复核，如与 §5 描述漂移按最终代码重锚（不改 AC）。
 
 ### 起草交接（2026-10-03）
 
