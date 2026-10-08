@@ -446,6 +446,9 @@ mod plan729_http_server_file_tests;
 mod plan734_api_contract_tests;
 // PLAN-736: HTTP 服务部署基线（配置/策略/身份 scoped + http_e2e_plan736 wire）
 mod plan736_http_service_tests;
+// PLAN-738 T-01：装配原型探针（真实入口层选择/死缓存/persistent 可见性/
+// a2r 名称表漂移/六核心 parser 分母；T-02 起由正式 stdlib_assembly 族收编）
+mod plan738_assembly_probe_tests;
 // PLAN-730: 服务端上传（平台探针 + parser/预算/存储矩阵 + http_e2e_plan730 双端）
 mod plan730_http_upload_tests;
 // PLAN-712 T-17 第二层：router.param 的 VM 取值链（push → sync → 页 Init）。
