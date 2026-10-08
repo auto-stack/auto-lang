@@ -9285,6 +9285,109 @@ fn sched_diag_mcp_poll(got: u8) {
     }
 }
 
+/// PLAN-740 T-00：batch-drive 探针线程体（test-only，AUTOUI_DRIVE_PROBE
+/// 门——spawn 点注释为完整协议）。调度=绝对截止时轴（防 Windows sleep
+/// 过冲累积漂移，末 2ms 自旋兜精度）；动作经 `SharedState::send_action`
+/// 异步直推（与 MCP 工具同一 action 通道；**无 applied 栅栏**——栅栏会
+/// 把驱动闭成「应用率」回路，破坏吞吐勘定语义）。
+fn spawn_drive_probe(
+    mcp_shared: crate::ui::mcp_server::SharedStateHandle,
+    trigger_file: String,
+) {
+    std::thread::spawn(move || {
+        let mut consumed_offset: u64 = 0;
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            let Ok(meta) = std::fs::metadata(&trigger_file) else {
+                continue;
+            };
+            let len = meta.len();
+            if len <= consumed_offset {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(&trigger_file) else {
+                continue;
+            };
+            // 只消费到末个换行为止（半行留待下一轮——防读到部分写入）。
+            let consume_to = match content.rfind('\n') {
+                Some(pos) => pos + 1,
+                None => continue,
+            };
+            let new_text = &content[consumed_offset as usize..consume_to];
+            consumed_offset = consume_to as u64;
+            for line in new_text.lines() {
+                // 行格式：scroll <hz> <count> <element_id> <ystep>
+                // element_id 接受 `vnode_N` 全串或裸 N（统一归一）。
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() != 5 || parts[0] != "scroll" {
+                    continue;
+                }
+                let (Ok(hz), Ok(count)) =
+                    (parts[1].parse::<f64>(), parts[2].parse::<usize>())
+                else {
+                    continue;
+                };
+                let (Ok(eid_num), Ok(ystep)) = (
+                    parts[3].trim_start_matches("vnode_").parse::<u64>(),
+                    parts[4].parse::<f32>(),
+                ) else {
+                    continue;
+                };
+                if hz <= 0.0 || count == 0 {
+                    continue;
+                }
+                let period = std::time::Duration::from_secs_f64(1.0 / hz);
+                let start = std::time::Instant::now();
+                for i in 0..count {
+                    let deadline = start + period.mul_f64(i as f64);
+                    // 绝对截止时轴（防 sleep 过冲累积漂移）；末 2ms 自旋。
+                    // checked_duration_since——截止已过返回 None，不做
+                    // Duration 减法（朴素 `deadline - now - 2ms` 在检查与
+                    // 减法之间时钟推进时会下溢 panic——本件 T-00 实录）。
+                    loop {
+                        match deadline.checked_duration_since(std::time::Instant::now()) {
+                            None => break,
+                            Some(remaining)
+                                if remaining
+                                    <= std::time::Duration::from_millis(2) =>
+                            {
+                                std::hint::spin_loop();
+                            }
+                            Some(remaining) => {
+                                std::thread::sleep(
+                                    remaining - std::time::Duration::from_millis(2),
+                                );
+                            }
+                        }
+                    }
+                    let msg = crate::ui::mcp_server::ActionMessage {
+                        target: crate::ui::mcp_server::ActionTarget::Event {
+                            widget: String::new(),
+                            event: "__mcp_scroll".to_string(),
+                        },
+                        action: crate::ui::mcp_types::UiActionType::Scroll,
+                        value: Some(format!(
+                            "vnode_{eid_num}{}{}",
+                            PAYLOAD_SEP,
+                            i as f32 * ystep
+                        )),
+                    };
+                    if let Err(e) = mcp_shared.lock().unwrap().send_action(msg) {
+                        eprintln!("[DRIVE-PROBE] send failed: {e}");
+                        break;
+                    }
+                }
+                if crate::ui::sched_diag::enabled() {
+                    eprintln!(
+                        "[SCHED-DIAG] drive_probe done hz={hz} count={count} elapsed={}ms",
+                        start.elapsed().as_millis()
+                    );
+                }
+            }
+        }
+    });
+}
+
 /// Apply one test-only state fixture on the VM/iced thread. The MCP server
 /// performs the cheap schema checks before enqueueing; this second check keeps
 /// the renderer safe if a queued payload is malformed or stale.
@@ -17257,6 +17360,19 @@ fn compare_pngs(
         let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
         let mut lock = guard.lock().unwrap();
         *lock = Some(mcp_action_rx);
+    }
+
+    // PLAN-740 T-00（batch-drive 勘定通道——test-only）：AUTOUI_DRIVE_PROBE
+    // =触发文件路径时 spawn 常驻探针线程；触发文件每追加一行
+    // `scroll <hz> <count> <element_id> <ystep>` 即以该速率向 action 通道
+    // 直推 <count> 条裸 `__mcp_scroll` 合成动作（异步 send_action，无
+    // applied 栅栏；y=三角形波 i*ystep 防钳制）。用途=绕开 MCP HTTP 单发
+    // 时延地板（p50 ~15-37ms）的精确速率驱动，供 740 阶梯 ≥54Hz 档勘定
+    // ——下游 auto-edit 027 基准的 in-process 驱动形态同构。非该环境零
+    // 开销（未设=不 spawn）；语义=test-only 注入，与 MCP 工具同一动作
+    // 通道（消费/交付管线全真）。
+    if let Ok(probe_file) = std::env::var("AUTOUI_DRIVE_PROBE") {
+        spawn_drive_probe(mcp_shared.clone(), probe_file);
     }
 
     // Plan 414 §5.4: seed the in-app console so the panel has content the

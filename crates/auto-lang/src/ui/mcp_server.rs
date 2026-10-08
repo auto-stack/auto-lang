@@ -1662,15 +1662,31 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         };
         let ok = {
             let shared = shared_handle.lock().unwrap();
-            match element_id {
-                ElementId::Vnode(vnode_id) => shared
-                    .styled_vtree
-                    .as_ref()
-                    .and_then(|s| s.vtree.get(vnode_id))
-                    .map(|n| format!("{}", n.kind) == "Scrollable")
-                    .unwrap_or(false),
+            // PLAN-740 T-00 临时诊断（阶梯勘定后移除）：scroll 校验三态
+            // 拆解——快照存在性/get 命中/kind 匹配。
+            let diag = crate::ui::sched_diag::enabled();
+            let r = match element_id {
+                ElementId::Vnode(vnode_id) => {
+                    let hit = shared.styled_vtree.as_ref()
+                        .and_then(|s| s.vtree.get(vnode_id));
+                    if diag {
+                        let (has_snap, total) = match shared.styled_vtree.as_ref() {
+                            Some(s) => (true, s.vtree.nodes.len()),
+                            None => (false, 0),
+                        };
+                        eprintln!(
+                            "[SCROLL-DIAG] id={} has_snap={} nodes={} hit={} kind={:?}",
+                            vnode_id.as_u64(), has_snap, total,
+                            hit.is_some(),
+                            hit.map(|n| format!("{}", n.kind)),
+                        );
+                    }
+                    hit.map(|n| format!("{}", n.kind) == "Scrollable")
+                        .unwrap_or(false)
+                }
                 ElementId::Aura(_) => false,
-            }
+            };
+            r
         };
         if !ok {
             return error_result("Action 'scroll' requires a Scrollable element (vnode_N)");

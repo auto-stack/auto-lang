@@ -111,28 +111,50 @@ class Mcp:
         return r.get("content", [{}])[0].get("text", "")
 
     def type_text(self, eid: str, text: str):
-        return self.call("autoui_type", {"element_id": eid.lstrip("#"),
-                                         "text": text, "clear_first": False})
+        r, ts, lat = self.call("autoui_type", {"element_id": eid.lstrip("#"),
+                                               "text": text, "clear_first": False})
+        txt = r.get("content", [{}])[0].get("text", "")
+        if txt.startswith("Error"):
+            raise RuntimeError(f"type 败: {txt[:120]}")
+        return r, ts, lat
 
     def find_scrollable(self, textarea_eid: str) -> str | None:
+        """定位真实 Scrollable vnode（PLAN-740 修正）。
+
+        find 响应含祖先链——祖先（col/row）的 vnode id 会一并出现；
+        正则抓全量候选后逐个试滚，以 MCP 校验通过（"Scrolled ... ok"）
+        为准锁定真 Scrollable（735 旧版取祖先 id → 校验恒拒 → scroll
+        相位零派发——T-00 勘定，735 scroll 带谱=空闲节奏读数）。
+        """
         r, _, _ = self.call("autoui_find", {"kind": "scrollable", "limit": 10})
         txt = r.get("content", [{}])[0].get("text", "")
-        cands = re.findall(r"vnode_\w+", txt)
+        cands = list(dict.fromkeys(re.findall(r"vnode_\w+", txt)))
         if not cands:
             return None
-        lines = txt.splitlines()
-        chosen = None
-        for i, line in enumerate(lines):
-            if textarea_eid.lstrip("#") in line and "vnode_" in line:
-                m = re.search(r"vnode_\w+", line)
-                if m:
-                    chosen = m.group(0)
-                    break
-        return chosen or cands[0]
+        # 先试与 textarea 同行的 id（最可能），再试其余（深链=匹配节点在后）。
+        ordered = []
+        for line in txt.splitlines():
+            if textarea_eid.lstrip("#") in line:
+                ordered += re.findall(r"vnode_\w+", line)
+        ordered += [c for c in reversed(cands) if c not in ordered]
+        for cid in dict.fromkeys(ordered):
+            try:
+                r2, _, _ = self.call("autoui_action", {
+                    "element_id": cid, "action": "scroll", "value": 1.0})
+                t = r2.get("content", [{}])[0].get("text", "")
+                if t.startswith("Scrolled"):
+                    return cid
+            except Exception:
+                continue
+        return None
 
     def scroll_to(self, eid: str, y: float):
-        return self.call("autoui_action", {"element_id": eid, "action": "scroll",
-                                           "value": y})
+        r, ts, lat = self.call("autoui_action", {"element_id": eid,
+                                                 "action": "scroll", "value": y})
+        txt = r.get("content", [{}])[0].get("text", "")
+        if txt.startswith("Error"):
+            raise RuntimeError(f"scroll 败: {txt[:120]}")
+        return r, ts, lat
 
     def fixture_open(self, path: str) -> None:
         r, _, _ = self.call("autoui_fixture", {
@@ -342,9 +364,10 @@ def write_rows(out_path, rows):
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
-def launch_app(auto_bin, size_name, fixture_path):
+def launch_app(auto_bin, size_name, fixture_path, probe_trigger=None):
     """启动 041 例 VM 轨（AUTO_SCHED_DIAG 三轴全开），等待 textarea 就绪。
 
+    probe_trigger=路径时设 AUTOUI_DRIVE_PROBE（内部通道 batch-drive 探针）。
     返回 (proc, mcp, eid, scrollable, log_path, log_f, ad)。
     """
     port = pick_free_port()
@@ -357,6 +380,8 @@ def launch_app(auto_bin, size_name, fixture_path):
                AUTOUI_HOT_RELOAD="0",
                APPDATA=ad,
                AUTO_PROJECT_DIR=APP_DIR)
+    if probe_trigger:
+        env["AUTOUI_DRIVE_PROBE"] = probe_trigger
     log_path = os.path.join(ad, "app.log")
     print(f"[*] {size_name}: fixture={os.path.getsize(fixture_path)}B "
           f"port={port} log={log_path}")
@@ -434,14 +459,25 @@ def drive_phase(mcp, eid, scrollable, phase, hz_period, steps):
     return calls, t0w, t1w
 
 
-def rung_summary_row(label, size_name, hz, phase, calls, plines, frames):
-    """阶梯 rung 相位跟随性谱行（脚本钟→对数钟映射对齐）。"""
-    lats = sorted(c[1] * 1000 for c in calls)
-    if len(calls) >= 2:
+def rung_summary_row(label, size_name, hz, phase, calls, plines, frames,
+                     probe=None):
+    """阶梯 rung 相位跟随性谱行。
+
+    probe=(count, eid, ystep) 时为内部通道驱动（速率=程序化 hz，精确）；
+    否则 HTTP 驱动（calls=[(t_start, lat_s)]，速率=实测）。
+    """
+    lats = sorted(c[1] * 1000 for c in calls) if calls else []
+    if calls and len(calls) >= 2:
         drive_span_s = calls[-1][0] - calls[0][0]
+        drive_calls = len(calls)
+        drive_hz = (len(calls) - 1) / drive_span_s if drive_span_s > 0 else None
+    elif probe:
+        count, _eid, _ystep = probe
+        drive_calls = count
+        drive_span_s = count / hz
+        drive_hz = hz
     else:
-        drive_span_s = 0.0
-    drive_hz = (len(calls) - 1) / drive_span_s if drive_span_s > 0 else None
+        drive_span_s, drive_calls, drive_hz = 0.0, 0, None
     # 对数钟映射锚：映射精度依赖 mark 时刻的末行 t 值——由调用方传
     # t0_log/t0w；此处仅组装帧侧数据。
     draw_ends = sorted({f["draw_end_ms"] for f in frames
@@ -450,8 +486,8 @@ def rung_summary_row(label, size_name, hz, phase, calls, plines, frames):
                        (SD_REDRAW_DELIVER_RE.search(l) for l in plines) if m})
     return {
         "type": "rung_phase", "label": label, "size": size_name,
-        "rung_hz": hz, "phase": phase,
-        "drive_calls": len(calls),
+        "rung_hz": hz, "phase": phase, "drive_via": "probe" if probe else "http",
+        "drive_calls": drive_calls,
         "drive_lat_p50_ms": pct(lats, 0.5), "drive_lat_p95_ms": pct(lats, 0.95),
         "drive_span_s": round(drive_span_s, 3),
         "drive_hz_effective": round(drive_hz, 2) if drive_hz else None,
@@ -462,20 +498,26 @@ def rung_summary_row(label, size_name, hz, phase, calls, plines, frames):
     }
 
 
-def finalize_rung_follow(out_path, row, t0_log, calls):
-    """补算跟随性：驱动窗映射到对数钟后数交付事件（+grace 宽限）。
+def finalize_rung_follow(out_path, row, t0_log, calls, got_ts):
+    """补算跟随性：交付窗对数钟对齐（+grace 宽限）。
 
-    线性映射：log_t(call) = t0_log + (call_start_perf - first_call_perf)×1000
-    （perf_counter 差即真实墙钟差；t0_log 锚=首调用前一刻日志末行 t 值）。
-    主判据=follow_ratio_counts（交付数/驱动数，±10% 判据材料），
-    Hz 比为参考（受 grace 稀释）。
+    窗口锚定：HTTP 驱动用调用时戳线性映射（log_t = t0_log +
+    (call_perf - first_perf)×1000）；探针驱动用消费包络（got=1 首末时刻
+    ——消费不可能先于驱动，包络即驱动窗的保守投影）。主判据=
+    follow_ratio_counts（交付数/驱动数，±10% 判据材料）。
     """
-    if t0_log is None or not calls or row["drive_hz_effective"] is None:
+    if row["drive_hz_effective"] is None:
         return
     span_s = row["drive_span_s"]
-    first_perf = calls[0][0]
-    t_first_log = t0_log
-    t_last_log = t0_log + (calls[-1][0] - first_perf) * 1000
+    if calls and len(calls) >= 2 and t0_log is not None:
+        first_perf = calls[0][0]
+        t_first_log = t0_log
+        t_last_log = t0_log + (calls[-1][0] - first_perf) * 1000
+    elif got_ts:
+        t_first_log = min(got_ts)
+        t_last_log = max(got_ts)
+    else:
+        return
     grace_ms = RUNG_GRACE_S * 1000
     de = [t for t in row["draw_end_ts"]
           if t_first_log - 30 <= t <= t_last_log + grace_ms]
@@ -498,13 +540,19 @@ def finalize_rung_follow(out_path, row, t0_log, calls):
     gaps = [b - a for a, b in zip(de, de[1:])]
     row["draw_end_gap_p50_ms"] = pct(sorted(gaps), 0.5)
     row["draw_end_gap_p95_ms"] = pct(sorted(gaps), 0.95)
+    row["draw_end_gap_max_ms"] = gaps[-1] if gaps else None
     write_rows(out_path, [row])
 
 
 def run_size(label, size_name, target_bytes, line_tpl, auto_bin, keys, out_path,
-             rungs=None):
+             rungs=None, probe=False):
     fx = make_fixture(size_name, target_bytes, line_tpl)
-    launched = launch_app(auto_bin, size_name, fx)
+    probe_trigger = None
+    if probe:
+        probe_trigger = os.path.join(tempfile.mkdtemp(prefix="p740-trigger-"),
+                                     "drive.txt")
+        open(probe_trigger, "w").close()
+    launched = launch_app(auto_bin, size_name, fx, probe_trigger=probe_trigger)
     if not launched:
         print(f"[-] {size_name}: textarea 未定位")
         return None
@@ -517,9 +565,22 @@ def run_size(label, size_name, target_bytes, line_tpl, auto_bin, keys, out_path,
                 for phase in ("type", "scroll"):
                     n0 = mark(log_path)
                     t0_log = last_log_t(log_path)
-                    calls, _, _ = drive_phase(mcp, eid, scrollable, phase,
-                                              period, steps)
-                    time.sleep(RUNG_SETTLE_S)
+                    probe_spec = None
+                    calls = None
+                    if probe and phase == "scroll":
+                        # 内部通道：触发行 scroll <hz> <count> <eid> <ystep>
+                        with open(probe_trigger, "a") as tf:
+                            tf.write(f"scroll {hz:g} {steps} "
+                                     f"{scrollable.lstrip('#')} 900\n")
+                        probe_spec = (steps, scrollable, 900.0)
+                    else:
+                        calls, _, _ = drive_phase(mcp, eid, scrollable, phase,
+                                                  period, steps)
+                    if probe_spec:
+                        # 探针异步爆发：等待至爆发完成再 settle。
+                        time.sleep(max(RUNG_SETTLE_S, steps / hz + 0.3))
+                    else:
+                        time.sleep(RUNG_SETTLE_S)
                     n1 = mark(log_path)
                     plines = read_log(log_path, n0, n1)
                     frames = [f for f in (parse_frame_line(l) for l in plines)
@@ -533,16 +594,23 @@ def run_size(label, size_name, target_bytes, line_tpl, auto_bin, keys, out_path,
                     sd["label"] = label
                     sd["size"] = size_name
                     row = rung_summary_row(label, size_name, hz, phase,
-                                           calls, plines, frames)
-                    finalize_rung_follow(out_path, row, t0_log, calls)
+                                           None if probe_spec else calls,
+                                           plines, frames, probe=probe_spec)
+                    finalize_rung_follow(out_path, row, t0_log
+                                         if not probe_spec else None,
+                                         None if probe_spec else calls,
+                                         sd["mcp_poll_got_ts"])
                     write_rows(out_path, rows_for_phase(frames, summary, sd))
                     print(f"[+] {size_name}/{phase}@{hz:g}: "
-                          f"drive={row['drive_hz_effective']}Hz "
+                          f"drive={row['drive_hz_effective']}Hz"
+                          f"{'(probe)' if probe_spec else ''} "
                           f"(lat p50={row['drive_lat_p50_ms']}ms) "
                           f"deliver_aligned={row.get('deliver_aligned_count')}"
                           f"/{row['drive_calls']} "
                           f"follow={row.get('follow_ratio_counts')} "
-                          f"de_gap_p50={row.get('draw_end_gap_p50_ms')}ms "
+                          f"de_gap_p50={row.get('draw_end_gap_p50_ms')}"
+                          f"/p95={row.get('draw_end_gap_p95_ms')}"
+                          f"/max={row.get('draw_end_gap_max_ms')}ms "
                           f"poll_gap_p50={sd['mcp_poll_gap_p50_ms']}/"
                           f"p95={sd['mcp_poll_gap_p95_ms']}ms "
                           f"got={len(sd['mcp_poll_got_ts'])}")
@@ -650,6 +718,8 @@ def main():
                     help='阶梯跟随性谱，如 "10,16,34,54"')
     ap.add_argument("--rung-size", default="5kb",
                     help="阶梯跟随性谱所用 fixture 档（默认 5kb）")
+    ap.add_argument("--probe", action="store_true",
+                    help="scroll 相位走内部通道探针（AUTOUI_DRIVE_PROBE）")
     args = ap.parse_args()
 
     with open(args.out, "w", encoding="utf-8") as f:
@@ -660,6 +730,7 @@ def main():
                             "scroll_step_px": SCROLL_STEP_PX,
                             "rungs": args.rungs,
                             "rung_size": args.rung_size,
+                            "probe": args.probe,
                             "sched_diag": True,
                             "axes": ["mcp_poll", "update_end",
                                      "redraw_deliver", "draw_end_ms"],
@@ -668,7 +739,8 @@ def main():
         rungs = [float(h) for h in args.rungs.split(",")]
         tb, tpl = SIZES[args.rung_size.strip().lower()]
         run_size(args.label, args.rung_size.strip().lower(), tb, tpl,
-                 args.auto_bin, args.keys, args.out, rungs=rungs)
+                 args.auto_bin, args.keys, args.out, rungs=rungs,
+                 probe=args.probe)
     else:
         for size in args.sizes.split(","):
             size = size.strip().lower()
