@@ -1000,3 +1000,208 @@ mod t05_cache_consistency {
         std::env::set_current_dir(orig_cwd).unwrap();
     }
 }
+
+// ============================================================================
+// T-07 同源样例、核心完整矩阵与实际执行证明（AC-01/02/05，SD-01/02/07）
+// ============================================================================
+
+#[cfg(test)]
+mod t07_witness_and_matrix {
+    use crate::stdlib_assembly::validate::{self, CoreSymbolStatus};
+    use std::fs;
+
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// t04 的生产装配面构造（复用：CWD 钉仓根 + 注册三件套 + inventory）。
+    fn production_surfaces() -> (
+        crate::stdlib_assembly::model::StdlibInventory,
+        std::sync::MutexGuard<'static, crate::vm::native_registry::AutoVMNativeRegistry>,
+        crate::vm::native::NativeInterface,
+        std::path::PathBuf,
+    ) {
+        let stdlib_root = crate::stdlib_assembly::loader::repo_stdlib_root().unwrap();
+        let repo_root = stdlib_root
+            .parent()
+            .and_then(|p| p.parent())
+            .unwrap()
+            .to_path_buf();
+        let orig = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&repo_root).unwrap();
+        crate::vm::native_registry::register_builtin_natives();
+        std::env::set_current_dir(orig).unwrap();
+
+        let mut shims = crate::vm::native::NativeInterface::new();
+        shims.register_std_shims();
+        crate::vm::ffi::stdlib::register_stdlib_ffi(&mut shims);
+        shims.build_from_inventory();
+
+        let inv = crate::stdlib_assembly::loader::scan_inventory(&stdlib_root);
+        (
+            inv,
+            crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap(),
+            shims,
+            repo_root,
+        )
+    }
+
+    /// AC-02（VM 腿真执行见证）：同一模块名下——公共层 body-less 声明 +
+    /// 选定 .vm.at 层真实 body，VM 管线（run_autovm 全管线）执行选定层
+    /// 实现（val→42）；公共 pure body 共享可见（aux→7）；foreign 层
+    /// （.rs.at）符号不在 VM 装配上下文（rs_only 调用失败）。
+    #[test]
+    fn vm_executes_selected_layer_witness() {
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        // 公共层：body-less 声明（实现由选定层提供）+ pure body（共享）
+        fs::write(
+            tmp.path().join("proto.at"),
+            "pub fn val() int;\n\npub fn aux() int {\n    return 7\n}\n",
+        )
+        .unwrap();
+        // 选定 VM 层：真实 body 返回 42
+        fs::write(
+            tmp.path().join("proto.vm.at"),
+            "pub fn val() int {\n    return 42\n}\n",
+        )
+        .unwrap();
+        // foreign 层：同名不同值 + 独有符号——VM 装配不得选择/执行
+        fs::write(
+            tmp.path().join("proto.rs.at"),
+            "pub fn val() int {\n    return 3\n}\n\npub fn rs_only() int {\n    return 9\n}\n",
+        )
+        .unwrap();
+
+        let run = |code: &str| {
+            let orig_cwd = std::env::current_dir().unwrap();
+            std::env::set_current_dir(tmp.path()).unwrap();
+            let r = crate::run_autovm(code);
+            std::env::set_current_dir(orig_cwd).unwrap();
+            r
+        };
+
+        // 选定层 body 真执行：val→42（非公共缺省、非 foreign 3）
+        let v = run("use proto: *\n\nfn main() {\n    return proto.val()\n}")
+            .expect("VM 管线真执行应成功");
+        assert!(
+            v.contains("42") && !v.contains('3'),
+            "选定 vm 层 body 应被执行（val→42，非 foreign 3）: {v}"
+        );
+        // 公共 pure body 共享：aux→7
+        let a = run("use proto: *\n\nfn main() {\n    return proto.aux()\n}")
+            .expect("公共层 pure body 应可执行");
+        assert!(a.contains("7"), "公共 pure body 应共享可见（aux→7）: {a}");
+        // foreign 层独有符号不得串入 VM 装配上下文
+        let foreign = run("use proto: *\n\nfn main() {\n    return proto.rs_only()\n}");
+        assert!(
+            foreign.is_err(),
+            "foreign .rs.at 层符号不得进入 VM 装配（rs_only 应不可见）: {foreign:?}"
+        );
+    }
+
+    /// AC-05/AC-01：六模块「公开符号 × target × environment」矩阵完整性——
+    /// 四格全在册、非 Supported 必有原因、Browser io/net 全族 Unsupported、
+    /// rust claim 面与目录一致（json supported / io unsupported 有原因）。
+    /// 矩阵落盘 docs/plans/reports/738-stdlib-matrix.{json,md}（T-07 报告面）。
+    #[test]
+    fn core_matrix_complete_and_report_written() {
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let (inv, registry, shims, repo_root) = production_surfaces();
+        let matrix = validate::core_target_env_matrix(&inv, &registry, &shims);
+        let modules = matrix["modules"].as_object().unwrap();
+
+        assert_eq!(modules.len(), 6, "六核心全在册");
+        for (name, cell) in modules {
+            // 四格全在册
+            assert!(
+                cell["vm"]["native"].is_array() && cell["vm"]["browser"].is_array(),
+                "{name}: vm 两环境格必须在册"
+            );
+            assert!(
+                cell["rust"]["claim"].is_object() && cell["c"]["claim"].is_object(),
+                "{name}: rust/c claim 格必须在册"
+            );
+            // 非 Supported 的 vm 符号必有原因
+            for env in ["native", "browser"] {
+                for sym in cell["vm"][env].as_array().unwrap() {
+                    let status = sym["status"].as_str().unwrap();
+                    if status != "supported" {
+                        assert!(
+                            sym["reason"].as_str().map(|r| !r.is_empty()).unwrap_or(false),
+                            "{name}/{env}/{}: 非 Supported 必有原因",
+                            sym["symbol"]
+                        );
+                    }
+                }
+            }
+            // rust/c claim 非 supported 必有原因
+            for tgt in ["rust", "c"] {
+                let claim = &cell[tgt]["claim"];
+                if claim["status"].as_str() != Some("supported") {
+                    assert!(
+                        claim["reason"].as_str().map(|r| !r.is_empty()).unwrap_or(false),
+                        "{name}/{tgt}: 非 supported claim 必有原因: {claim}"
+                    );
+                }
+            }
+        }
+
+        // Browser 能力门（AC-05）：io/net 全族 Unsupported
+        for m in ["io", "net"] {
+            let browser = modules[m]["vm"]["browser"].as_array().unwrap();
+            assert!(
+                !browser.is_empty()
+                    && browser
+                        .iter()
+                        .all(|s| s["status"].as_str() == Some("unsupported")),
+                "{m} Browser 全族应 Unsupported: {browser:?}"
+            );
+        }
+        // rust claim 面：json supported（a2r-std 有真实 pub mod）、io unsupported 有原因
+        assert_eq!(
+            modules["json"]["rust"]["claim"]["status"].as_str(),
+            Some("supported"),
+            "json rust claim 应 supported"
+        );
+        assert_eq!(
+            modules["io"]["rust"]["claim"]["status"].as_str(),
+            Some("unsupported"),
+            "io rust claim 应 unsupported（无 a2r-std 模块——决策报告 E1③）"
+        );
+
+        // 报告落盘（JSON 机器面 + md 摘要）
+        let report_dir = repo_root.join("docs").join("plans").join("reports");
+        fs::create_dir_all(&report_dir).unwrap();
+        let json_path = report_dir.join("738-stdlib-matrix.json");
+        fs::write(&json_path, serde_json::to_string_pretty(&matrix).unwrap() + "\n").unwrap();
+        let mut md = String::from(
+            "# PLAN-738 六核心 target×environment 能力矩阵（机器生成，勿手编）\n\n",
+        );
+        md.push_str("| module | vm.native | vm.browser | rust | c | 公共符号数 |\n|---|---|---|---|---|---|\n");
+        for (name, cell) in modules {
+            let count = |arr: &serde_json::Value, st: &str| {
+                arr.as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|s| s["status"].as_str() == Some(st))
+                    .count()
+            };
+            let total = |arr: &serde_json::Value| arr.as_array().unwrap().len();
+            let (ns, nb) = (
+                count(&cell["vm"]["native"], "supported"),
+                total(&cell["vm"]["native"]),
+            );
+            let (bs, bb) = (
+                count(&cell["vm"]["browser"], "supported"),
+                total(&cell["vm"]["browser"]),
+            );
+            md.push_str(&format!(
+                "| {name} | {ns}/{nb} supported | {bs}/{bb} supported | {} | {} | {} |\n",
+                cell["rust"]["claim"]["status"].as_str().unwrap(),
+                cell["c"]["claim"]["status"].as_str().unwrap(),
+                cell["rust"]["public_symbols"].as_array().unwrap().len(),
+            ));
+        }
+        fs::write(report_dir.join("738-stdlib-matrix.md"), md).unwrap();
+        assert!(json_path.exists(), "矩阵 JSON 报告应落盘");
+    }
+}

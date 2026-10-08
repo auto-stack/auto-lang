@@ -1,0 +1,2149 @@
+{
+  "schema_version": 1,
+  "core_modules": [
+    "io",
+    "net",
+    "async",
+    "http",
+    "json",
+    "sse"
+  ],
+  "modules": {
+    "io": {
+      "vm": {
+        "native": [
+          {
+            "symbol": "read_line",
+            "native_name": "auto.io.read_line",
+            "status": "declared_stub",
+            "verification": "declared",
+            "reason": "declared #[vm] but no native registration exists"
+          },
+          {
+            "symbol": "File.close",
+            "native_name": "auto.io.file.close",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "File.flush",
+            "native_name": "auto.io.file.flush",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "File.open",
+            "native_name": "auto.io.file.open",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "File.read_buf",
+            "native_name": "auto.io.file.read_buf",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "File.read_char",
+            "native_name": "auto.io.file.read_char",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "File.read_line",
+            "native_name": "auto.io.file.read_line",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "File.read_text",
+            "native_name": "auto.io.file.read_text",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "File.write_line",
+            "native_name": "auto.io.file.write_line",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          }
+        ],
+        "browser": [
+          {
+            "symbol": "read_line",
+            "native_name": "auto.io.read_line",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无本地文件系统适配（io 全族 Unsupported）"
+          },
+          {
+            "symbol": "File.close",
+            "native_name": "auto.io.file.close",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无本地文件系统适配（io 全族 Unsupported）"
+          },
+          {
+            "symbol": "File.flush",
+            "native_name": "auto.io.file.flush",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无本地文件系统适配（io 全族 Unsupported）"
+          },
+          {
+            "symbol": "File.open",
+            "native_name": "auto.io.file.open",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无本地文件系统适配（io 全族 Unsupported）"
+          },
+          {
+            "symbol": "File.read_buf",
+            "native_name": "auto.io.file.read_buf",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无本地文件系统适配（io 全族 Unsupported）"
+          },
+          {
+            "symbol": "File.read_char",
+            "native_name": "auto.io.file.read_char",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无本地文件系统适配（io 全族 Unsupported）"
+          },
+          {
+            "symbol": "File.read_line",
+            "native_name": "auto.io.file.read_line",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无本地文件系统适配（io 全族 Unsupported）"
+          },
+          {
+            "symbol": "File.read_text",
+            "native_name": "auto.io.file.read_text",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无本地文件系统适配（io 全族 Unsupported）"
+          },
+          {
+            "symbol": "File.write_line",
+            "native_name": "auto.io.file.write_line",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无本地文件系统适配（io 全族 Unsupported）"
+          }
+        ]
+      },
+      "rust": {
+        "claim": {
+          "status": "unsupported",
+          "kind": "none",
+          "locator": null,
+          "reason": "无 io.rs.at 且 a2r_std::io 不存在；发射名称表误路由 auto.io → a2r_std::io 的漂移在案（738-stdlib-decision §1/E1③、§3）"
+        },
+        "public_symbols": [
+          "File",
+          "File.close",
+          "File.flush",
+          "File.open",
+          "File.read_buf",
+          "File.read_char",
+          "File.read_line",
+          "File.read_text",
+          "File.write_line",
+          "read_line",
+          "say"
+        ]
+      },
+      "c": {
+        "claim": {
+          "status": "supported",
+          "kind": "c-generated",
+          "locator": "stdlib/auto/io.c.at",
+          "reason": null
+        },
+        "public_symbols": [
+          "File",
+          "File.close",
+          "File.flush",
+          "File.open",
+          "File.read_buf",
+          "File.read_char",
+          "File.read_line",
+          "File.read_text",
+          "File.write_line",
+          "read_line",
+          "say"
+        ]
+      }
+    },
+    "net": {
+      "vm": {
+        "native": [
+          {
+            "symbol": "tcp_bind",
+            "native_name": "auto.net.tcp_bind",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "tcp_connect",
+            "native_name": "auto.net.tcp_connect",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "tcp_listener_accept",
+            "native_name": "auto.net.tcp_listener_accept",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "tcp_listener_close",
+            "native_name": "auto.net.tcp_listener_close",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "tcp_listener_local_addr",
+            "native_name": "auto.net.tcp_listener_local_addr",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "tcp_stream_close",
+            "native_name": "auto.net.tcp_stream_close",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "tcp_stream_peer_addr",
+            "native_name": "auto.net.tcp_stream_peer_addr",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "tcp_stream_read",
+            "native_name": "auto.net.tcp_stream_read",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "tcp_stream_read_all",
+            "native_name": "auto.net.tcp_stream_read_all",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "tcp_stream_read_line",
+            "native_name": "auto.net.tcp_stream_read_line",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "tcp_stream_set_read_timeout",
+            "native_name": "auto.net.tcp_stream_set_read_timeout",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "tcp_stream_set_write_timeout",
+            "native_name": "auto.net.tcp_stream_set_write_timeout",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "tcp_stream_write",
+            "native_name": "auto.net.tcp_stream_write",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "tcp_stream_write_str",
+            "native_name": "auto.net.tcp_stream_write_str",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          }
+        ],
+        "browser": [
+          {
+            "symbol": "tcp_bind",
+            "native_name": "auto.net.tcp_bind",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无 native socket（net 全族 Unsupported）"
+          },
+          {
+            "symbol": "tcp_connect",
+            "native_name": "auto.net.tcp_connect",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无 native socket（net 全族 Unsupported）"
+          },
+          {
+            "symbol": "tcp_listener_accept",
+            "native_name": "auto.net.tcp_listener_accept",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无 native socket（net 全族 Unsupported）"
+          },
+          {
+            "symbol": "tcp_listener_close",
+            "native_name": "auto.net.tcp_listener_close",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无 native socket（net 全族 Unsupported）"
+          },
+          {
+            "symbol": "tcp_listener_local_addr",
+            "native_name": "auto.net.tcp_listener_local_addr",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无 native socket（net 全族 Unsupported）"
+          },
+          {
+            "symbol": "tcp_stream_close",
+            "native_name": "auto.net.tcp_stream_close",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无 native socket（net 全族 Unsupported）"
+          },
+          {
+            "symbol": "tcp_stream_peer_addr",
+            "native_name": "auto.net.tcp_stream_peer_addr",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无 native socket（net 全族 Unsupported）"
+          },
+          {
+            "symbol": "tcp_stream_read",
+            "native_name": "auto.net.tcp_stream_read",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无 native socket（net 全族 Unsupported）"
+          },
+          {
+            "symbol": "tcp_stream_read_all",
+            "native_name": "auto.net.tcp_stream_read_all",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无 native socket（net 全族 Unsupported）"
+          },
+          {
+            "symbol": "tcp_stream_read_line",
+            "native_name": "auto.net.tcp_stream_read_line",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无 native socket（net 全族 Unsupported）"
+          },
+          {
+            "symbol": "tcp_stream_set_read_timeout",
+            "native_name": "auto.net.tcp_stream_set_read_timeout",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无 native socket（net 全族 Unsupported）"
+          },
+          {
+            "symbol": "tcp_stream_set_write_timeout",
+            "native_name": "auto.net.tcp_stream_set_write_timeout",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无 native socket（net 全族 Unsupported）"
+          },
+          {
+            "symbol": "tcp_stream_write",
+            "native_name": "auto.net.tcp_stream_write",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无 native socket（net 全族 Unsupported）"
+          },
+          {
+            "symbol": "tcp_stream_write_str",
+            "native_name": "auto.net.tcp_stream_write_str",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 无 native socket（net 全族 Unsupported）"
+          }
+        ]
+      },
+      "rust": {
+        "claim": {
+          "status": "unsupported",
+          "kind": "none",
+          "locator": null,
+          "reason": "无 net.rs.at 且 a2r_std::net 不存在；名称表仍路由（P4 实证）——strict 下被引用必须非零诊断"
+        },
+        "public_symbols": [
+          "TcpListener",
+          "TcpListener.accept",
+          "TcpListener.close",
+          "TcpListener.local_addr",
+          "TcpStream",
+          "TcpStream.close",
+          "TcpStream.peer_addr",
+          "TcpStream.read",
+          "TcpStream.read_all",
+          "TcpStream.read_line",
+          "TcpStream.set_read_timeout",
+          "TcpStream.set_write_timeout",
+          "TcpStream.write",
+          "TcpStream.write_str",
+          "tcp_bind",
+          "tcp_connect"
+        ]
+      },
+      "c": {
+        "claim": {
+          "status": "unsupported",
+          "kind": "none",
+          "locator": null,
+          "reason": "无 net.c.at 与 C 网络层"
+        },
+        "public_symbols": [
+          "TcpListener",
+          "TcpListener.accept",
+          "TcpListener.close",
+          "TcpListener.local_addr",
+          "TcpStream",
+          "TcpStream.close",
+          "TcpStream.peer_addr",
+          "TcpStream.read",
+          "TcpStream.read_all",
+          "TcpStream.read_line",
+          "TcpStream.set_read_timeout",
+          "TcpStream.set_write_timeout",
+          "TcpStream.write",
+          "TcpStream.write_str",
+          "tcp_bind",
+          "tcp_connect"
+        ]
+      }
+    },
+    "async": {
+      "vm": {
+        "native": [
+          {
+            "symbol": "chan_has_data",
+            "native_name": "auto.async.chan_has_data",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "chan_new",
+            "native_name": "auto.async.chan_new",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "chan_recv",
+            "native_name": "auto.async.chan_recv",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "chan_send",
+            "native_name": "auto.async.chan_send",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "chan_try_recv",
+            "native_name": "auto.async.chan_try_recv",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "sleep",
+            "native_name": "auto.async.sleep",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "spawn",
+            "native_name": "auto.async.spawn",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "task_count",
+            "native_name": "auto.async.task_count",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "task_id",
+            "native_name": "auto.async.task_id",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "yield_now",
+            "native_name": "auto.async.yield_now",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          }
+        ],
+        "browser": [
+          {
+            "symbol": "chan_has_data",
+            "native_name": "auto.async.chan_has_data",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "chan_new",
+            "native_name": "auto.async.chan_new",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "chan_recv",
+            "native_name": "auto.async.chan_recv",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "chan_send",
+            "native_name": "auto.async.chan_send",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "chan_try_recv",
+            "native_name": "auto.async.chan_try_recv",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "sleep",
+            "native_name": "auto.async.sleep",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "spawn",
+            "native_name": "auto.async.spawn",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "task_count",
+            "native_name": "auto.async.task_count",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "task_id",
+            "native_name": "auto.async.task_id",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "yield_now",
+            "native_name": "auto.async.yield_now",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          }
+        ]
+      },
+      "rust": {
+        "claim": {
+          "status": "unverified",
+          "kind": "a2r-std",
+          "locator": "a2r_std::task",
+          "reason": "task actor 词汇与 VM chan/spawn 非同一调度 provider；映射未验证不标 supported（计划 §5.2）"
+        },
+        "public_symbols": []
+      },
+      "c": {
+        "claim": {
+          "status": "unsupported",
+          "kind": "none",
+          "locator": null,
+          "reason": "无 async.c.at"
+        },
+        "public_symbols": []
+      }
+    },
+    "http": {
+      "vm": {
+        "native": [
+          {
+            "symbol": "http_bad_request",
+            "native_name": "auto.http.http_bad_request",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_created",
+            "native_name": "auto.http.http_created",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_delete",
+            "native_name": "auto.http.http_delete",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_file_response",
+            "native_name": "auto.http.http_file_response",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_get",
+            "native_name": "auto.http.http_get",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_get_stream",
+            "native_name": "auto.http.http_get_stream",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_internal_error",
+            "native_name": "auto.http.http_internal_error",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_last_status",
+            "native_name": "auto.http.http_last_status",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_not_found",
+            "native_name": "auto.http.http_not_found",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_ok",
+            "native_name": "auto.http.http_ok",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_post",
+            "native_name": "auto.http.http_post",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_post_bearer",
+            "native_name": "auto.http.http_post_bearer",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_post_stream",
+            "native_name": "auto.http.http_post_stream",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_post_stream_with_headers",
+            "native_name": "auto.http.http_post_stream_with_headers",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_post_sync",
+            "native_name": "auto.http.http_post_sync",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_put",
+            "native_name": "auto.http.http_put",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_request",
+            "native_name": "auto.http.http_request",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_response",
+            "native_name": "auto.http.http_response",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_server",
+            "native_name": "auto.http.http_server",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_stream_close",
+            "native_name": "auto.http.http_stream_close",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_stream_is_done",
+            "native_name": "auto.http.http_stream_is_done",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_stream_iter",
+            "native_name": "auto.http.http_stream_iter",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_stream_next",
+            "native_name": "auto.http.http_stream_next",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_transfer_cancel",
+            "native_name": "auto.http.http_transfer_cancel",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_transfer_download",
+            "native_name": "auto.http.http_transfer_download",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_transfer_error",
+            "native_name": "auto.http.http_transfer_error",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_transfer_next_progress",
+            "native_name": "auto.http.http_transfer_next_progress",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_transfer_upload",
+            "native_name": "auto.http.http_transfer_upload",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_transfer_wait",
+            "native_name": "auto.http.http_transfer_wait",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_upload_commit",
+            "native_name": "auto.http.http_upload_commit",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_upload_error",
+            "native_name": "auto.http.http_upload_error",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_upload_metadata",
+            "native_name": "auto.http.http_upload_metadata",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_upload_receive",
+            "native_name": "auto.http.http_upload_receive",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_upload_reject",
+            "native_name": "auto.http.http_upload_reject",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_body",
+            "native_name": "auto.http.request_body",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_builder_body",
+            "native_name": "auto.http.request_builder_body",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "request_builder_header",
+            "native_name": "auto.http.request_builder_header",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "request_builder_send",
+            "native_name": "auto.http.request_builder_send",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "request_builder_timeout",
+            "native_name": "auto.http.request_builder_timeout",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "request_content_length",
+            "native_name": "auto.http.request_content_length",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "request_content_type",
+            "native_name": "auto.http.request_content_type",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "request_header",
+            "native_name": "auto.http.request_header",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_method",
+            "native_name": "auto.http.request_method",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "request_param",
+            "native_name": "auto.http.request_param",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_path",
+            "native_name": "auto.http.request_path",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_query",
+            "native_name": "auto.http.request_query",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_query_string",
+            "native_name": "auto.http.request_query_string",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_text",
+            "native_name": "auto.http.request_text",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_version",
+            "native_name": "auto.http.request_version",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "response_body",
+            "native_name": "auto.http.response_body",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "response_bytes",
+            "native_name": "auto.http.response_bytes",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "response_header",
+            "native_name": "auto.http.response_header",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "response_header_get",
+            "native_name": "auto.http.response_header_get",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "response_html",
+            "native_name": "auto.http.response_html",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "response_redirect",
+            "native_name": "auto.http.response_redirect",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "response_status",
+            "native_name": "auto.http.response_status",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "response_status_code",
+            "native_name": "auto.http.response_status_code",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "response_text",
+            "native_name": "auto.http.response_text",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "server_delete",
+            "native_name": "auto.http.server_delete",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "server_get",
+            "native_name": "auto.http.server_get",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "server_listen",
+            "native_name": "auto.http.server_listen",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "server_post",
+            "native_name": "auto.http.server_post",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "server_put",
+            "native_name": "auto.http.server_put",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "server_static",
+            "native_name": "auto.http.server_static",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "sse_close",
+            "native_name": "auto.http.sse_close",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "sse_error",
+            "native_name": "auto.http.sse_error",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "sse_open",
+            "native_name": "auto.http.sse_open",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "sse_poll",
+            "native_name": "auto.http.sse_poll",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          }
+        ],
+        "browser": [
+          {
+            "symbol": "http_bad_request",
+            "native_name": "auto.http.http_bad_request",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_created",
+            "native_name": "auto.http.http_created",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_delete",
+            "native_name": "auto.http.http_delete",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_file_response",
+            "native_name": "auto.http.http_file_response",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_get",
+            "native_name": "auto.http.http_get",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_get_stream",
+            "native_name": "auto.http.http_get_stream",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_internal_error",
+            "native_name": "auto.http.http_internal_error",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_last_status",
+            "native_name": "auto.http.http_last_status",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_not_found",
+            "native_name": "auto.http.http_not_found",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_ok",
+            "native_name": "auto.http.http_ok",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_post",
+            "native_name": "auto.http.http_post",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_post_bearer",
+            "native_name": "auto.http.http_post_bearer",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_post_stream",
+            "native_name": "auto.http.http_post_stream",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_post_stream_with_headers",
+            "native_name": "auto.http.http_post_stream_with_headers",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_post_sync",
+            "native_name": "auto.http.http_post_sync",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_put",
+            "native_name": "auto.http.http_put",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_request",
+            "native_name": "auto.http.http_request",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_response",
+            "native_name": "auto.http.http_response",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "http_server",
+            "native_name": "auto.http.http_server",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 不可监听服务端口（http server 族 Unsupported）"
+          },
+          {
+            "symbol": "http_stream_close",
+            "native_name": "auto.http.http_stream_close",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_stream_is_done",
+            "native_name": "auto.http.http_stream_is_done",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_stream_iter",
+            "native_name": "auto.http.http_stream_iter",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_stream_next",
+            "native_name": "auto.http.http_stream_next",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_transfer_cancel",
+            "native_name": "auto.http.http_transfer_cancel",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_transfer_download",
+            "native_name": "auto.http.http_transfer_download",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_transfer_error",
+            "native_name": "auto.http.http_transfer_error",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_transfer_next_progress",
+            "native_name": "auto.http.http_transfer_next_progress",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_transfer_upload",
+            "native_name": "auto.http.http_transfer_upload",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_transfer_wait",
+            "native_name": "auto.http.http_transfer_wait",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_upload_commit",
+            "native_name": "auto.http.http_upload_commit",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_upload_error",
+            "native_name": "auto.http.http_upload_error",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_upload_metadata",
+            "native_name": "auto.http.http_upload_metadata",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_upload_receive",
+            "native_name": "auto.http.http_upload_receive",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "http_upload_reject",
+            "native_name": "auto.http.http_upload_reject",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_body",
+            "native_name": "auto.http.request_body",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_builder_body",
+            "native_name": "auto.http.request_builder_body",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "request_builder_header",
+            "native_name": "auto.http.request_builder_header",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "request_builder_send",
+            "native_name": "auto.http.request_builder_send",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "request_builder_timeout",
+            "native_name": "auto.http.request_builder_timeout",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "request_content_length",
+            "native_name": "auto.http.request_content_length",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "request_content_type",
+            "native_name": "auto.http.request_content_type",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "request_header",
+            "native_name": "auto.http.request_header",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_method",
+            "native_name": "auto.http.request_method",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "request_param",
+            "native_name": "auto.http.request_param",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_path",
+            "native_name": "auto.http.request_path",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_query",
+            "native_name": "auto.http.request_query",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_query_string",
+            "native_name": "auto.http.request_query_string",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_text",
+            "native_name": "auto.http.request_text",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "request_version",
+            "native_name": "auto.http.request_version",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "response_body",
+            "native_name": "auto.http.response_body",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "response_bytes",
+            "native_name": "auto.http.response_bytes",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "response_header",
+            "native_name": "auto.http.response_header",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "response_header_get",
+            "native_name": "auto.http.response_header_get",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "response_html",
+            "native_name": "auto.http.response_html",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "response_redirect",
+            "native_name": "auto.http.response_redirect",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "response_status",
+            "native_name": "auto.http.response_status",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "response_status_code",
+            "native_name": "auto.http.response_status_code",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "response_text",
+            "native_name": "auto.http.response_text",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "server_delete",
+            "native_name": "auto.http.server_delete",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 不可监听服务端口（http server 族 Unsupported）"
+          },
+          {
+            "symbol": "server_get",
+            "native_name": "auto.http.server_get",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 不可监听服务端口（http server 族 Unsupported）"
+          },
+          {
+            "symbol": "server_listen",
+            "native_name": "auto.http.server_listen",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 不可监听服务端口（http server 族 Unsupported）"
+          },
+          {
+            "symbol": "server_post",
+            "native_name": "auto.http.server_post",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 不可监听服务端口（http server 族 Unsupported）"
+          },
+          {
+            "symbol": "server_put",
+            "native_name": "auto.http.server_put",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 不可监听服务端口（http server 族 Unsupported）"
+          },
+          {
+            "symbol": "server_static",
+            "native_name": "auto.http.server_static",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "Browser 不可监听服务端口（http server 族 Unsupported）"
+          },
+          {
+            "symbol": "sse_close",
+            "native_name": "auto.http.sse_close",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "sse_error",
+            "native_name": "auto.http.sse_error",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "sse_open",
+            "native_name": "auto.http.sse_open",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "sse_poll",
+            "native_name": "auto.http.sse_poll",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          }
+        ]
+      },
+      "rust": {
+        "claim": {
+          "status": "unverified",
+          "kind": "a2r-std",
+          "locator": "a2r_std::http",
+          "reason": "a2r-std http.rs 为客户端实现，非 VM server 的 Rust 后端（networking-stdlib 规约）；server 面无 Rust provider——生成 Axum 服务属 auto-man 独立装配（SD-04 边界）"
+        },
+        "public_symbols": [
+          "FileResponse",
+          "FileTransfer",
+          "HTTPStream",
+          "HTTPStream.close",
+          "HTTPStream.is_done",
+          "HTTPStream.iter",
+          "HTTPStream.next",
+          "Request",
+          "Request.body",
+          "Request.content_length",
+          "Request.content_type",
+          "Request.header",
+          "Request.json",
+          "Request.method",
+          "Request.param",
+          "Request.path",
+          "Request.query",
+          "Request.query_string",
+          "Request.text",
+          "Request.version",
+          "RequestBuilder",
+          "RequestBuilder.body",
+          "RequestBuilder.header",
+          "RequestBuilder.json",
+          "RequestBuilder.multipart_file",
+          "RequestBuilder.multipart_text",
+          "RequestBuilder.send",
+          "RequestBuilder.timeout",
+          "Response",
+          "Response.body_bytes",
+          "Response.bytes",
+          "Response.header",
+          "Response.header_get",
+          "Response.html",
+          "Response.json",
+          "Response.status",
+          "Response.status_code",
+          "Response.text",
+          "Server",
+          "Server.delete",
+          "Server.get",
+          "Server.listen",
+          "Server.post",
+          "Server.put",
+          "Server.static",
+          "UploadReceipt",
+          "UploadRequest",
+          "UploadSession",
+          "bad_request",
+          "created",
+          "delete",
+          "file_response",
+          "get",
+          "get_stream",
+          "internal_error",
+          "json_response",
+          "last_status",
+          "listen",
+          "not_found",
+          "ok",
+          "post",
+          "post_bearer",
+          "post_stream",
+          "post_stream_with_headers",
+          "post_sync",
+          "put",
+          "request",
+          "response",
+          "response_redirect",
+          "server",
+          "sse_close",
+          "sse_error",
+          "sse_open",
+          "sse_poll",
+          "stream_close",
+          "stream_is_done",
+          "stream_iter",
+          "stream_next",
+          "transfer_cancel",
+          "transfer_download",
+          "transfer_error",
+          "transfer_next_progress",
+          "transfer_upload",
+          "transfer_wait",
+          "upload_commit",
+          "upload_error",
+          "upload_metadata",
+          "upload_receive",
+          "upload_reject"
+        ]
+      },
+      "c": {
+        "claim": {
+          "status": "unsupported",
+          "kind": "none",
+          "locator": null,
+          "reason": "无 C HTTP provider——Unsupported 而非手写 server（计划 §6.1）"
+        },
+        "public_symbols": [
+          "FileResponse",
+          "FileTransfer",
+          "HTTPStream",
+          "HTTPStream.close",
+          "HTTPStream.is_done",
+          "HTTPStream.iter",
+          "HTTPStream.next",
+          "Request",
+          "Request.body",
+          "Request.content_length",
+          "Request.content_type",
+          "Request.header",
+          "Request.json",
+          "Request.method",
+          "Request.param",
+          "Request.path",
+          "Request.query",
+          "Request.query_string",
+          "Request.text",
+          "Request.version",
+          "RequestBuilder",
+          "RequestBuilder.body",
+          "RequestBuilder.header",
+          "RequestBuilder.json",
+          "RequestBuilder.multipart_file",
+          "RequestBuilder.multipart_text",
+          "RequestBuilder.send",
+          "RequestBuilder.timeout",
+          "Response",
+          "Response.body_bytes",
+          "Response.bytes",
+          "Response.header",
+          "Response.header_get",
+          "Response.html",
+          "Response.json",
+          "Response.status",
+          "Response.status_code",
+          "Response.text",
+          "Server",
+          "Server.delete",
+          "Server.get",
+          "Server.listen",
+          "Server.post",
+          "Server.put",
+          "Server.static",
+          "UploadReceipt",
+          "UploadRequest",
+          "UploadSession",
+          "bad_request",
+          "created",
+          "delete",
+          "file_response",
+          "get",
+          "get_stream",
+          "internal_error",
+          "json_response",
+          "last_status",
+          "listen",
+          "not_found",
+          "ok",
+          "post",
+          "post_bearer",
+          "post_stream",
+          "post_stream_with_headers",
+          "post_sync",
+          "put",
+          "request",
+          "response",
+          "response_redirect",
+          "server",
+          "sse_close",
+          "sse_error",
+          "sse_open",
+          "sse_poll",
+          "stream_close",
+          "stream_is_done",
+          "stream_iter",
+          "stream_next",
+          "transfer_cancel",
+          "transfer_download",
+          "transfer_error",
+          "transfer_next_progress",
+          "transfer_upload",
+          "transfer_wait",
+          "upload_commit",
+          "upload_error",
+          "upload_metadata",
+          "upload_receive",
+          "upload_reject"
+        ]
+      }
+    },
+    "json": {
+      "vm": {
+        "native": [
+          {
+            "symbol": "encode",
+            "native_name": "auto.json.encode",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "encode_pretty",
+            "native_name": "auto.json.encode_pretty",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "is_valid",
+            "native_name": "auto.json.is_valid",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "json_as_array",
+            "native_name": "auto.json.json_as_array",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_as_bool",
+            "native_name": "auto.json.json_as_bool",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_as_int",
+            "native_name": "auto.json.json_as_int",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_as_number",
+            "native_name": "auto.json.json_as_number",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_as_string",
+            "native_name": "auto.json.json_as_string",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_get",
+            "native_name": "auto.json.json_get",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_get_at",
+            "native_name": "auto.json.json_get_at",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_has_key",
+            "native_name": "auto.json.json_has_key",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_is_null",
+            "native_name": "auto.json.json_is_null",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_keys",
+            "native_name": "auto.json.json_keys",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_len",
+            "native_name": "auto.json.json_len",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_value_type",
+            "native_name": "auto.json.json_value_type",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "minify",
+            "native_name": "auto.json.minify",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "parse",
+            "native_name": "auto.json.parse",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "prettify",
+            "native_name": "auto.json.prettify",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "try_decode",
+            "native_name": "auto.json.try_decode",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          }
+        ],
+        "browser": [
+          {
+            "symbol": "encode",
+            "native_name": "auto.json.encode",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "encode_pretty",
+            "native_name": "auto.json.encode_pretty",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "is_valid",
+            "native_name": "auto.json.is_valid",
+            "status": "supported",
+            "verification": "signature_checked",
+            "reason": null
+          },
+          {
+            "symbol": "json_as_array",
+            "native_name": "auto.json.json_as_array",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_as_bool",
+            "native_name": "auto.json.json_as_bool",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_as_int",
+            "native_name": "auto.json.json_as_int",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_as_number",
+            "native_name": "auto.json.json_as_number",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_as_string",
+            "native_name": "auto.json.json_as_string",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_get",
+            "native_name": "auto.json.json_get",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_get_at",
+            "native_name": "auto.json.json_get_at",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_has_key",
+            "native_name": "auto.json.json_has_key",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_is_null",
+            "native_name": "auto.json.json_is_null",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_keys",
+            "native_name": "auto.json.json_keys",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_len",
+            "native_name": "auto.json.json_len",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "json_value_type",
+            "native_name": "auto.json.json_value_type",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "minify",
+            "native_name": "auto.json.minify",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          },
+          {
+            "symbol": "parse",
+            "native_name": "auto.json.parse",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "prettify",
+            "native_name": "auto.json.prettify",
+            "status": "supported",
+            "verification": "bound",
+            "reason": null
+          },
+          {
+            "symbol": "try_decode",
+            "native_name": "auto.json.try_decode",
+            "status": "unverified",
+            "verification": "resolved",
+            "reason": "native name registered but no bound shim callable"
+          }
+        ]
+      },
+      "rust": {
+        "claim": {
+          "status": "supported",
+          "kind": "a2r-std",
+          "locator": "a2r_std::json",
+          "reason": null
+        },
+        "public_symbols": [
+          "JsonValue",
+          "JsonValue.as_array",
+          "JsonValue.as_bool",
+          "JsonValue.as_int",
+          "JsonValue.as_number",
+          "JsonValue.as_string",
+          "JsonValue.get",
+          "JsonValue.get_at",
+          "JsonValue.has_key",
+          "JsonValue.is_null",
+          "JsonValue.keys",
+          "JsonValue.len",
+          "JsonValue.type",
+          "decode",
+          "encode",
+          "encode_pretty",
+          "is_valid",
+          "minify",
+          "parse",
+          "prettify",
+          "try_decode"
+        ]
+      },
+      "c": {
+        "claim": {
+          "status": "unsupported",
+          "kind": "none",
+          "locator": null,
+          "reason": "无 json.c.at（backend-assembly 缺口表在案）"
+        },
+        "public_symbols": [
+          "JsonValue",
+          "JsonValue.as_array",
+          "JsonValue.as_bool",
+          "JsonValue.as_int",
+          "JsonValue.as_number",
+          "JsonValue.as_string",
+          "JsonValue.get",
+          "JsonValue.get_at",
+          "JsonValue.has_key",
+          "JsonValue.is_null",
+          "JsonValue.keys",
+          "JsonValue.len",
+          "JsonValue.type",
+          "decode",
+          "encode",
+          "encode_pretty",
+          "is_valid",
+          "minify",
+          "parse",
+          "prettify",
+          "try_decode"
+        ]
+      }
+    },
+    "sse": {
+      "vm": {
+        "native": [
+          {
+            "symbol": "parse_sse",
+            "native_name": "auto.sse.parse_sse",
+            "status": "declared_stub",
+            "verification": "declared",
+            "reason": "declared #[vm] but no native registration exists"
+          }
+        ],
+        "browser": [
+          {
+            "symbol": "parse_sse",
+            "native_name": "auto.sse.parse_sse",
+            "status": "declared_stub",
+            "verification": "declared",
+            "reason": "declared #[vm] but no native registration exists"
+          }
+        ]
+      },
+      "rust": {
+        "claim": {
+          "status": "unverified",
+          "kind": "a2r-std",
+          "locator": "a2r_std::sse",
+          "reason": "a2r-std sse 仅解析无网络 IO；映射未验证"
+        },
+        "public_symbols": [
+          "parse_sse"
+        ]
+      },
+      "c": {
+        "claim": {
+          "status": "unsupported",
+          "kind": "none",
+          "locator": null,
+          "reason": "无 sse 目标层"
+        },
+        "public_symbols": [
+          "parse_sse"
+        ]
+      }
+    }
+  }
+}

@@ -318,3 +318,95 @@ pub fn core_status_diagnostics(
     }
     out
 }
+
+/// PLAN-738 T-07（AC-05/AC-01）：六核心「公开符号 × target × environment」
+/// 能力矩阵（§5.6 最终报告的机器面）。
+///
+/// - vm 腿：`validate_core_vm_bindings` 符号级分类（native/browser 两环境）；
+/// - rust / c 腿：provider 目录逐模块 claim（当前目录粒度=模块级；符号级
+///   provider 元数据属公共面重写/D3b）+ 该模块公共层公开符号名册。
+/// 矩阵完整性契约：六模块 × 四格（vm.native/vm.browser/rust/c）全部在册；
+/// 非 Supported 格必有原因（reason/claim.reason 非空）。
+pub fn core_target_env_matrix(
+    inventory: &StdlibInventory,
+    registry: &crate::vm::native_registry::AutoVMNativeRegistry,
+    shims: &crate::vm::native::NativeInterface,
+) -> serde_json::Value {
+    let v_native = validate_core_vm_bindings(inventory, registry, shims, Environment::Native);
+    let v_browser = validate_core_vm_bindings(inventory, registry, shims, Environment::Browser);
+    let catalog = super::providers::load_catalog().ok();
+
+    let symbol_json = |v: &CoreSymbolValidation| {
+        serde_json::json!({
+            "symbol": v.symbol,
+            "native_name": v.native_name,
+            "status": v.status,
+            "verification": v.verification,
+            "reason": v.reason,
+        })
+    };
+
+    let modules: serde_json::Map<String, serde_json::Value> = CORE_MODULES
+        .iter()
+        .map(|m| {
+            let native_cell: Vec<_> = v_native
+                .iter()
+                .filter(|v| v.module == *m)
+                .map(symbol_json)
+                .collect();
+            let browser_cell: Vec<_> = v_browser
+                .iter()
+                .filter(|v| v.module == *m)
+                .map(symbol_json)
+                .collect();
+            let public_symbols: Vec<String> = inventory
+                .module(m)
+                .map(|mi| {
+                    mi.layers
+                        .iter()
+                        .filter(|l| l.kind == LayerKind::Public)
+                        .flat_map(|l| l.symbols.iter().filter(|s| s.is_pub))
+                        .map(|s| s.name.clone())
+                        .collect()
+                })
+                .unwrap_or_default();
+            let claim = |target: &str| {
+                catalog
+                    .as_ref()
+                    .and_then(|c| {
+                        c.providers
+                            .iter()
+                            .find(|p| p.module == *m && p.target == target)
+                    })
+                    .map(|p| {
+                        serde_json::json!({
+                            "status": p.status,
+                            "kind": p.kind,
+                            "locator": p.locator,
+                            "reason": p.reason,
+                        })
+                    })
+                    .unwrap_or(serde_json::json!({
+                        "status": "unverified",
+                        "kind": "none",
+                        "locator": null,
+                        "reason": "no catalog claim for this target",
+                    }))
+            };
+            (
+                m.to_string(),
+                serde_json::json!({
+                    "vm": { "native": native_cell, "browser": browser_cell },
+                    "rust": { "claim": claim("rust"), "public_symbols": public_symbols },
+                    "c": { "claim": claim("c"), "public_symbols": public_symbols },
+                }),
+            )
+        })
+        .collect();
+
+    serde_json::json!({
+        "schema_version": 1,
+        "core_modules": CORE_MODULES,
+        "modules": modules,
+    })
+}
