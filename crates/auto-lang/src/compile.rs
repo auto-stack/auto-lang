@@ -300,6 +300,16 @@ pub struct CompileSession {
     /// W2 lowering 批消费。script_marked 保持派生兼容（=ScriptMode::Script）。
     pub script_mode: crate::mode::ScriptMode,
 
+    /// PLAN-738 T-03：装配上下文——显式执行/发射目标与环境（默认
+    /// Vm×Native=现行为）。模块装载的层选择由此驱动（原 context_ext
+    /// 硬编码 ".vm.at" 收编进 AssemblyTarget::context_extension）。
+    pub assembly: crate::stdlib_assembly::model::AssemblyContext,
+
+    /// PLAN-738 T-03：本 session 的模块层选择记录（AssemblyManifest v0
+    /// seam，T-06 CLI/生成收据消费）。Clone 时重置（同 compiled_modules——
+    /// 记录属于"本次装载"而非可继承状态）。
+    pub layer_selections: Vec<crate::stdlib_assembly::model::LayerSelection>,
+
 }
 
 
@@ -344,6 +354,8 @@ impl Clone for CompileSession {
 
             script_marked: self.script_marked, // Plan 550 T10
             script_mode: self.script_mode, // Plan 555 T02
+            assembly: self.assembly, // PLAN-738：装配目标随 clone 传递
+            layer_selections: Vec::new(), // 记录属于本次装载，重置
 
         }
 
@@ -399,9 +411,17 @@ impl CompileSession {
 
             script_marked: false, // Plan 550 T10
             script_mode: crate::mode::ScriptMode::Normal, // Plan 555 T02
+            assembly: Default::default(), // PLAN-738：默认 Vm×Native
+            layer_selections: Vec::new(),
 
         }
 
+    }
+
+    /// PLAN-738 T-03：显式声明装配目标（trans 入口在类型装载/发射前调用；
+    /// 层选择随之切换——AC-02 target 先于装载确定）。
+    pub fn set_assembly_target(&mut self, target: crate::stdlib_assembly::model::AssemblyTarget) {
+        self.assembly.target = target;
     }
 
     /// Plan 550 T10: 登记 `#[script]` 文件级 pragma（parser 解析后回填）。
@@ -1611,7 +1631,7 @@ impl CompileSession {
 
         // 鏍规嵁缂栬瘧寮曟搸绫诲瀷閫夋嫨涓婁笅鏂囨枃浠跺悗缂€
 
-        let context_ext = ".vm.at"; // AutoVM 浣跨敤 .vm.at
+        let context_ext = self.assembly.target.context_extension(); // PLAN-738 T-03: was hardcoded ".vm.at"
 
         let context_path = root_path.with_file_name({
 
@@ -1651,7 +1671,16 @@ impl CompileSession {
 
         // 濡傛灉涓婁笅鏂囨枃浠跺瓨鍦紝璇诲彇骞跺悎骞?
 
-        if let Some(ctx_path) = full_context_path {
+        let mut merged_context: Option<(std::path::PathBuf, usize)> = None;
+
+        if let Some(ctx_path) = full_context_path.filter(|_| {
+            // PLAN-738 T-03: only the VM target merges its selected layer into
+            // the parse source. Rust/C targets have a zero-module-load assembly
+            // surface (emission via name tables / header includes — decision
+            // report E1③④); their on-disk layers are recorded as candidates
+            // in the layer-selection record below, never merged.
+            self.assembly.target == crate::stdlib_assembly::model::AssemblyTarget::Vm
+        }) {
 
             let context_source = std::fs::read_to_string(&ctx_path)
 
@@ -1662,6 +1691,8 @@ impl CompileSession {
             // 鍚堝苟涓や釜鏂囦欢鐨勫唴瀹癸紙鐢ㄦ崲琛屽垎闅旓級
 
             module_source.push('\n');
+
+            merged_context = Some((ctx_path.clone(), module_source.len()));
 
             module_source.push_str(&context_source);
 
@@ -1682,7 +1713,64 @@ impl CompileSession {
         let preparse_store_snapshot = self.type_store.read().unwrap().clone();
 
         // 瑙ｆ瀽鍚堝苟鍚庣殑妯″潡鑾峰彇 type_store
-        let module_type_store = self.parse_module_to_type_store(&module_source, &root_path.to_string_lossy())?;
+        let module_type_store = match self
+            .parse_module_to_type_store(&module_source, &root_path.to_string_lossy())
+        {
+            Ok(store) => store,
+            Err(e) => {
+                // PLAN-738 T-03 (AC-04) 源段归因：合并源以 root_path（公共文件）
+                // 名义 attach source——目标层段的错误会被误归公共文件。失败路径
+                // 有界归因：若公共段单独 parse 成功，则失败位于目标层，错误指向
+                // 真实目标层文件。（错误路径才有额外 parse；成功路径零开销。）
+                if let Some((ctx_path, boundary)) = &merged_context {
+                    let public_only = &module_source[..boundary.saturating_sub(1)];
+                    if self
+                        .parse_module_to_type_store(public_only, &root_path.to_string_lossy())
+                        .is_ok()
+                    {
+                        return Err(AutoError::Msg(format!(
+                            "syntax error in target layer `{}` (module `{}`): {}",
+                            ctx_path.display(),
+                            use_stmt.module,
+                            e
+                        )));
+                    }
+                }
+                return Err(e);
+            }
+        };
+
+        // PLAN-738 T-03: layer-selection record (AssemblyManifest v0 seam;
+        // T-06 CLI/生成收据消费)。候选=同目录存在但未选的目标层。
+        {
+            let mut candidates: Vec<String> = Vec::new();
+            for ext in [".vm.at", ".rs.at", ".c.at"] {
+                let cand = root_path.with_file_name({
+                    let name = root_path.file_name().unwrap().to_str().unwrap();
+                    format!("{}{}", name.strip_suffix(".at").unwrap_or(name), ext)
+                });
+                if cand.exists() {
+                    let selected = merged_context
+                        .as_ref()
+                        .map(|(p, _)| p == &cand)
+                        .unwrap_or(false);
+                    if !selected {
+                        candidates.push(cand.to_string_lossy().to_string());
+                    }
+                }
+            }
+            self.layer_selections
+                .push(crate::stdlib_assembly::model::LayerSelection {
+                    module: use_stmt.module.clone(),
+                    target: self.assembly.target,
+                    public_file: root_path.to_string_lossy().to_string(),
+                    context_file: merged_context
+                        .as_ref()
+                        .map(|(p, _)| p.to_string_lossy().to_string()),
+                    candidate_files: candidates,
+                    context_byte_boundary: merged_context.as_ref().map(|(_, b)| *b),
+                });
+        }
 
         // Cross-module function calls: compile module to bytecode
         // Skip if already compiled (avoid duplicate symbols)

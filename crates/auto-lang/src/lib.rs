@@ -5999,6 +5999,12 @@ pub fn trans_rust_legacy(path: &str) -> AutoResult<String> {
 /// println!("{}", result);
 /// ```
 pub fn trans_c_with_session(session: &mut CompileSession, path: &str) -> AutoResult<String> {
+    // PLAN-738 T-03 (AC-02): declare the assembly target BEFORE any loading or
+    // emission. This entry has a zero-module-load surface today (decision
+    // report E1④); the explicit target guarantees any future resolve_uses
+    // consumer on this session selects the C layer — never the VM layer — as
+    // its type context.
+    session.set_assembly_target(crate::stdlib_assembly::model::AssemblyTarget::C);
     let code = std::fs::read_to_string(path)?;
 
     // Compile source with incremental support
@@ -6071,6 +6077,12 @@ pub fn trans_c_with_session(session: &mut CompileSession, path: &str) -> AutoRes
 /// println!("{}", result);
 /// ```
 pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> AutoResult<String> {
+    // PLAN-738 T-03 (AC-02): declare the assembly target BEFORE any loading or
+    // emission (see trans_c_with_session). The standalone re-parse below uses
+    // CompileDest::TransRust — the session target must agree with it, and any
+    // VM-layer bytecode preprocessing must never bind as the Rust target's
+    // implementation.
+    session.set_assembly_target(crate::stdlib_assembly::model::AssemblyTarget::Rust);
     let code = std::fs::read_to_string(path)?;
 
     // Compile source with incremental support (for dirty-tracking / caching)
@@ -6158,6 +6170,16 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                             scan_at_files(&entry_path, store, depth + 1, budget);
                         }
                     } else if entry_path.extension().map(|e| e == "at").unwrap_or(false) {
+                        // PLAN-738 T-03 (AC-02): VM/C target layers must not
+                        // leak into the Rust emission type context — .vm.at /
+                        // .c.at are foreign layers here. .rs.at is the Rust
+                        // target's selected (mirror-signature) layer — kept,
+                        // alongside the public .at files.
+                        let scan_fname =
+                            entry_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                        if scan_fname.ends_with(".vm.at") || scan_fname.ends_with(".c.at") {
+                            continue;
+                        }
                         *budget -= 1;
                         if let Ok(code) = std::fs::read_to_string(&entry_path) {
                             let mut p = crate::parser::Parser::from(code.as_str());

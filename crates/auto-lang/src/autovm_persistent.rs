@@ -288,8 +288,12 @@ impl AutovmReplSession {
             ))
         })?;
 
-        // Try to load context file (.vm.at)
-        let context_file = stdlib_path.join(&format!("{}.vm", module_path)).with_extension("at");
+        // PLAN-738 T-03: context path fix — build from the same stripped
+        // stdlib_relative base as root_file. The old form joined the UNSTRIPPED
+        // module_path ("auto/io" → stdlib/auto/auto/io.at after with_extension
+        // ate the ".vm"), so the context layer never existed for persistent
+        // loads and .vm.at layers were invisible here (decision report E1②).
+        let context_file = stdlib_path.join(format!("{}.vm.at", stdlib_relative));
         if context_file.exists() {
             let context_source = std::fs::read_to_string(&context_file).map_err(|e| {
                 AutoError::Msg(format!(
@@ -319,28 +323,50 @@ impl AutovmReplSession {
 
         // Extract #[vm] function declarations and register them
         for stmt in &ast.stmts {
-            let vm_fns: Vec<&crate::ast::Fn> = match stmt {
+            // PLAN-738 T-03: (fn, canonical full_path)——full_path 形状与
+            // register_vm_declarations 对齐（顶层=auto.<module>.<fn>；
+            // ext 方法=auto.<module>.<target>.<fn>，原实现缺 target 段，
+            // 查 ID 恒 miss，短别名永不注册）。
+            let vm_fns: Vec<(&crate::ast::Fn, String)> = match stmt {
                 crate::ast::Stmt::Fn(fn_decl) => {
                     if matches!(fn_decl.kind, crate::ast::FnKind::VmFunction) {
-                        vec![fn_decl]
+                        vec![(fn_decl, format!("{}.{}", use_stmt.module, fn_decl.name))]
                     } else {
                         vec![]
                     }
                 }
                 crate::ast::Stmt::Ext(ext) => {
                     // Extract #[vm] methods from ext blocks (e.g., ext str { #[vm] fn split ... })
+                    // PLAN-738 T-03: canonical=auto.<module_stem>.<target>.<fn>
+                    //（扫描侧 module 名是文件基名 "io"，而 use_stmt.module 是
+                    // "auto.io"——须剥前缀，否则拼出 auto.auto.io.*）。
+                    let module_stem =
+                        use_stmt.module.rsplit('.').next().unwrap_or(&use_stmt.module);
+                    let target_lower = ext.target.to_string().to_lowercase();
                     ext.methods.iter()
                         .filter(|m| matches!(m.kind, crate::ast::FnKind::VmFunction))
+                        .map(|m| (m, format!("auto.{}.{}.{}", module_stem, target_lower, m.name)))
+                        .collect()
+                }
+                crate::ast::Stmt::TypeDecl(t) => {
+                    // PLAN-738 T-03: 合并源里公共 type 在前、目标层 ext 在后时，
+                    // parser 把 ext 方法并入 TypeDecl.methods（契约+补全两阶段
+                    // 合一——实勘 io.at+io.vm.at：ext_vm=0、TYPEDECL File
+                    // vm_methods=8）。ext 臂只接住"无前置 type 声明"的 ext 块；
+                    // 并入型走这里，canonical 同形状。
+                    let module_stem =
+                        use_stmt.module.rsplit('.').next().unwrap_or(&use_stmt.module);
+                    let target_lower = t.name.to_string().to_lowercase();
+                    t.methods.iter()
+                        .filter(|m| matches!(m.kind, crate::ast::FnKind::VmFunction))
+                        .map(|m| (m, format!("auto.{}.{}.{}", module_stem, target_lower, m.name)))
                         .collect()
                 }
                 _ => vec![],
             };
 
-            for fn_decl in vm_fns {
+            for (fn_decl, full_path) in vm_fns {
                 let fn_name: &str = fn_decl.name.as_str();
-
-                // Build the full path (e.g., "auto.str.split")
-                let full_path = format!("{}.{}", use_stmt.module, fn_name);
 
                 // Check if this function is in the import list (if selective import)
                 // Plan 545: bare `use auto.str` = namespace-only — short-name
@@ -356,10 +382,14 @@ impl AutovmReplSession {
                 };
 
                 if should_import {
-                    // Look up the full path in BIGVM_NATIVES to get the native ID
-                    if let Some(native_id) =
-                        BIGVM_NATIVES.lock().unwrap().get_id(&full_path)
-                    {
+                    // PLAN-738 T-03: hoist the ID lookup out of the if-let
+                    // scrutinee — edition 2021 keeps the MutexGuard alive for
+                    // the whole if-let body, and the register_with_id re-lock
+                    // below DEADLOCKS now that the context fix makes lookups
+                    // actually succeed (latent since the original two-lock
+                    // form; unreachable before because lookups always missed).
+                    let native_id = BIGVM_NATIVES.lock().unwrap().get_id(&full_path);
+                    if let Some(native_id) = native_id {
                         // Register with short name for easy access
                         BIGVM_NATIVES
                             .lock()

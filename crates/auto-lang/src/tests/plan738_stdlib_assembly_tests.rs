@@ -101,6 +101,192 @@ mod t02_inventory {
 }
 
 // ============================================================================
+// T-03 ①：目标驱动层选择 + 层选择记录 + 源段归因 + trans 入口契约
+// ============================================================================
+
+#[cfg(test)]
+mod t03_assembly_wiring {
+    use crate::stdlib_assembly::model::AssemblyTarget;
+    use std::fs;
+    use std::path::Path;
+
+    /// 四层合成模块（探针 P1 同款 fixture）。
+    fn write_proto_fixture(dir: &Path) -> std::path::PathBuf {
+        fs::write(
+            dir.join("main.at"),
+            "use proto: *\n\nfn main() {\n    let x = 1\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("proto.at"),
+            "type Widget {\n    pub id int\n}\n\npub fn pub_fn() int;\n",
+        )
+        .unwrap();
+        fs::write(dir.join("proto.vm.at"), "#[vm]\npub fn vm_only() int;\n").unwrap();
+        fs::write(
+            dir.join("proto.rs.at"),
+            "pub fn rs_only() int {\n    return 1\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("proto.c.at"),
+            "pub fn c_only() int {\n    return 2\n}\n",
+        )
+        .unwrap();
+        dir.join("main.at")
+    }
+
+    /// AC-02：装配目标驱动层选择——VM 目标合并选定层并记录；Rust/C 目标
+    /// 零装载面（目标层只记 candidate，不进类型上下文——foreign 层不串入）。
+    #[test]
+    fn target_driven_layer_selection_and_record() {
+        let tmp = tempfile::tempdir().unwrap();
+        let main_path = write_proto_fixture(tmp.path());
+        let source = fs::read_to_string(&main_path).unwrap();
+
+        // VM（默认目标）：公共+vm 层合并；层选择记录齐备。
+        let mut vm_session = crate::compile::CompileSession::new();
+        vm_session.add_source_dir(tmp.path().to_path_buf());
+        vm_session.resolve_uses(&source).unwrap();
+        vm_session
+            .compile_source(&source, main_path.to_str().unwrap())
+            .unwrap();
+        assert_eq!(vm_session.layer_selections.len(), 1, "一次模块装载恰一条记录");
+        let sel = &vm_session.layer_selections[0];
+        assert_eq!(sel.module, "proto");
+        assert_eq!(sel.target, AssemblyTarget::Vm);
+        assert!(
+            sel.context_file.as_deref().unwrap().ends_with("proto.vm.at"),
+            "VM 目标应合并 .vm.at: {:?}",
+            sel.context_file
+        );
+        assert!(
+            sel.candidate_files.iter().any(|c| c.ends_with("proto.rs.at"))
+                && sel.candidate_files.iter().any(|c| c.ends_with("proto.c.at")),
+            "未消费层记 candidate: {:?}",
+            sel.candidate_files
+        );
+        assert!(sel.context_byte_boundary.is_some());
+
+        // Rust 目标：.vm.at 不合并（vm_only 不进类型上下文）；.rs.at 记
+        // candidate 不解析（发射走名称表——决策报告 E1③）。
+        let mut rs_session = crate::compile::CompileSession::new();
+        rs_session.add_source_dir(tmp.path().to_path_buf());
+        rs_session.set_assembly_target(AssemblyTarget::Rust);
+        rs_session.resolve_uses(&source).unwrap();
+        rs_session
+            .compile_source(&source, main_path.to_str().unwrap())
+            .unwrap();
+        {
+            let store = rs_session.type_store();
+            let store = store.read().unwrap();
+            let module = store.lookup_module("proto").unwrap();
+            let names = module.store.pub_fn_names();
+            assert!(
+                names.contains(&"pub_fn".to_string())
+                    && !names.contains(&"vm_only".to_string())
+                    && !names.contains(&"c_only".to_string()),
+                "Rust 装配上下文不得含 VM/C 层符号: {names:?}"
+            );
+        }
+        let sel = &rs_session.layer_selections[0];
+        assert_eq!(sel.target, AssemblyTarget::Rust);
+        assert!(sel.context_file.is_none(), "Rust 目标零装载面：无合并层");
+        assert!(sel.candidate_files.iter().any(|c| c.ends_with("proto.rs.at")));
+
+        // C 目标：同构（c 层 candidate，vm 层不串入）。
+        let mut c_session = crate::compile::CompileSession::new();
+        c_session.add_source_dir(tmp.path().to_path_buf());
+        c_session.set_assembly_target(AssemblyTarget::C);
+        c_session.resolve_uses(&source).unwrap();
+        {
+            let store = c_session.type_store();
+            let store = store.read().unwrap();
+            let names = store.lookup_module("proto").unwrap().store.pub_fn_names();
+            assert!(
+                names.contains(&"pub_fn".to_string())
+                    && !names.contains(&"vm_only".to_string())
+                    && !names.contains(&"rs_only".to_string()),
+                "C 装配上下文不得含 VM/Rust 层符号: {names:?}"
+            );
+        }
+        assert_eq!(c_session.layer_selections[0].target, AssemblyTarget::C);
+    }
+
+    /// AC-02：trans 入口在装载/发射前声明装配目标（入口契约）。
+    #[test]
+    fn trans_entries_declare_assembly_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let main = tmp.path().join("t.at");
+        fs::write(&main, "fn main() {\n    let x = 1\n}\n").unwrap();
+
+        let mut s1 = crate::compile::CompileSession::new();
+        crate::trans_c_with_session(&mut s1, main.to_str().unwrap()).unwrap();
+        assert_eq!(s1.assembly.target, AssemblyTarget::C);
+
+        let mut s2 = crate::compile::CompileSession::new();
+        crate::trans_rust_with_session(&mut s2, main.to_str().unwrap()).unwrap();
+        assert_eq!(s2.assembly.target, AssemblyTarget::Rust);
+    }
+
+    /// AC-04：目标层语法错误经源段归因指向真实目标层文件（合并源原以公共
+    /// 文件名 attach source——失败路径有界归因后指向 .vm.at）。
+    #[test]
+    fn target_layer_syntax_error_attributed() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(
+            tmp.path().join("main.at"),
+            "use proto: *\n\nfn main() {\n    let x = 1\n}\n",
+        )
+        .unwrap();
+        fs::write(tmp.path().join("proto.at"), "pub fn pub_fn() int;\n").unwrap();
+        fs::write(tmp.path().join("proto.vm.at"), "pub fn broken( [[[;\n").unwrap();
+
+        let mut session = crate::compile::CompileSession::new();
+        session.add_source_dir(tmp.path().to_path_buf());
+        let source = fs::read_to_string(tmp.path().join("main.at")).unwrap();
+        let err = session.resolve_uses(&source).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("target layer") && msg.contains("proto.vm.at"),
+            "目标层语法错误应归因到 .vm.at 文件: {msg}"
+        );
+    }
+
+    /// AC-02：VM 两入口同模块对拍——persistent 修复后与 session 同样可见
+    /// .vm.at 层（io 的 ext File 方法以短别名注册；T-03 前恒 miss）。
+    #[test]
+    fn vm_two_entry_same_layer_visibility() {
+        // io ext 方法的 canonical 名（auto.io.file.*）只在磁盘扫描面注册
+        // （非静态白名单/手工 shim），而扫描是 CWD 相对 stdlib/auto（决策
+        // 报告 §2d）——测试钉仓根后显式跑生产 init 同款注册。
+        let stdlib_root = crate::stdlib_assembly::loader::repo_stdlib_root().unwrap();
+        let repo_root = stdlib_root.parent().and_then(|p| p.parent()).unwrap().to_path_buf();
+        let orig_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&repo_root).unwrap();
+        crate::vm::native_registry::register_builtin_natives();
+        std::env::set_current_dir(orig_cwd).unwrap();
+
+        let mut sess = crate::autovm_persistent::AutovmReplSession::new();
+        sess.run("use auto.io: *").ok();
+        sess.run("use auto.net: *").ok();
+
+        let reg = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
+        // io.vm.at 的 #[vm] ext File 方法：persistent 经
+        // auto.io.file.<method> canonical 查 ID 后注册短别名。
+        assert!(
+            reg.get_id("read_text").is_some(),
+            "persistent 应可见 .vm.at 层 ext 方法（T-03 context 路径修复+canonical 对齐）"
+        );
+        // net（顶层 #[vm] fn）同样可见——与探针 P5 修复后断言互证。
+        assert!(
+            reg.get_id("tcp_listener_accept").is_some(),
+            "net.vm.at 顶层 #[vm] fn 短别名应注册"
+        );
+    }
+}
+
+// ============================================================================
 // T-02 ② provider 目录机器对照
 // ============================================================================
 

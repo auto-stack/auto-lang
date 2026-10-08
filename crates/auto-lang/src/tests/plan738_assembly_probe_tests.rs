@@ -222,10 +222,13 @@ fn p4_rust_emission_routes_net_to_missing_a2r_module() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn p5_persistent_skips_vm_layer_short_alias() {
+fn p5_persistent_loads_vm_layer_short_alias() {
+    // T-03 修复后契约：context 路径与 root 同基名（<stdlib>/io.vm.at 形态），
+    // .vm.at 层对 persistent 可见 → wildcard 导入注册 #[vm] 短别名，与 VM
+    // session 装配对齐。（T-01 实勘的破损形态——双 auto/ 前缀 + with_extension
+    // 吃掉 .vm 使 context 恒不存在、别名永不注册——见决策报告 E1②/E3，
+    // 由 T-03 修复；本断言由 is_none 翻转为 is_some。）
     let mut sess = crate::autovm_persistent::AutovmReplSession::new();
-    // wildcard 导入：若 .vm.at 可见，net.vm.at 的 14 个 #[vm] fn 会注册短别名；
-    // 实际 context 路径为 <stdlib>/auto/auto/net.vm.at（双 auto/），不存在。
     let _ = sess.run("use auto.net: *");
 
     let reg = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
@@ -234,10 +237,10 @@ fn p5_persistent_skips_vm_layer_short_alias() {
         reg.get_id("auto.net.tcp_listener_accept").is_some(),
         "auto.net.tcp_listener_accept 应在全局注册表（stdlib.rs 手工 shim 面）"
     );
-    // 短别名只能由 persistent 解析 #[vm] 声明注册；.vm.at 不可见 → 不注册。
+    // T-03 修复核心断言：顶层 #[vm] fn 短别名现在应注册。
     assert!(
-        reg.get_id("tcp_listener_accept").is_none(),
-        "tcp_listener_accept 短别名不应注册（.vm.at 层对 persistent 不可见的证据）"
+        reg.get_id("tcp_listener_accept").is_some(),
+        "persistent 应注册 .vm.at 层 #[vm] fn 短别名（T-03 context 路径修复）"
     );
 }
 

@@ -6,6 +6,60 @@ use serde::Serialize;
 
 pub const INVENTORY_SCHEMA_VERSION: u32 = 1;
 
+/// 装配执行/发射目标（计划 §5.2：目标与环境分别记录；Vue 前端不改变后端目标）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssemblyTarget {
+    #[default]
+    Vm,
+    Rust,
+    C,
+}
+
+impl AssemblyTarget {
+    /// 目标层后缀（parser.rs::get_file_extensions 的 dest→后缀映射由此收编——
+    /// 原 dead_code helper 不再是装载事实源，见 backend-assembly.md 装配规则）。
+    pub fn context_extension(self) -> &'static str {
+        match self {
+            AssemblyTarget::Vm => ".vm.at",
+            AssemblyTarget::Rust => ".rs.at",
+            AssemblyTarget::C => ".c.at",
+        }
+    }
+}
+
+/// 运行环境（与目标正交；Browser 能力门在 T-04 核心 symbol 校验消费）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Environment {
+    #[default]
+    Native,
+    Browser,
+}
+
+/// 装配上下文：显式目标 + 环境。默认 Vm×Native（现行为零漂移）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AssemblyContext {
+    pub target: AssemblyTarget,
+    pub environment: Environment,
+}
+
+/// 单模块层选择记录（AssemblyManifest v0 seam；T-06 CLI/生成收据消费）。
+/// `public_file`/`context_file`/`candidate_files` 为解析期实际路径（local
+/// 诊断面）；便携清单由消费方另行映射 stdlib 相对 ID。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LayerSelection {
+    pub module: String,
+    pub target: AssemblyTarget,
+    pub public_file: String,
+    /// 实际合并的目标层（仅 VM 目标；Rust/C 目标为零装载面——决策报告 E1③④）
+    pub context_file: Option<String>,
+    /// 同目录存在但未选的目标层（candidate——未消费层只能报 candidate）
+    pub candidate_files: Vec<String>,
+    /// 合并源中目标层段的起始字节（源段错误归因；None=未合并）
+    pub context_byte_boundary: Option<usize>,
+}
+
 /// 验证等级（计划 §5.1，从弱到强）。
 ///
 /// 文件存在/名称登记最多到 `Resolved`/`Bound`，不得升为 `Executed`；
