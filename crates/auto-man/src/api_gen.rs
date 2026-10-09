@@ -414,14 +414,26 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
 /// Plan musk-022 CRUD 智能扩展: transpile db.at to a db.rs module via a2r.
 /// Reuses the Tauri-backend precedent (tauri_backend::transpile_at_to_rust).
 pub(crate) fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
-    transpile_back_module_to_rs("db", content)
+    transpile_back_module_to_rs_with_proofs("db", content).map(|(code, _)| code)
 }
 
 /// PLAN-681 T-01: transpile a `src/back/*.at` module to Rust (companion
 /// modules like fsys.at share db.at's 16MB-stack transpile pipeline; the
 /// module name feeds the transpiler's module-id slot and error strings).
 pub(crate) fn transpile_back_module_to_rs(module_name: &str, content: &str) -> AutoResult<String> {
-    use auto_lang::trans::rust::transpile_rust;
+    transpile_back_module_to_rs_with_proofs(module_name, content).map(|(code, _)| code)
+}
+
+/// PLAN-738 T-11：back 模块转译携带引用闭包证明。生成服务的 back 产物经
+/// `qualify_a2r_std` 链接 `auto_lang::` 内嵌镜像——核心 producer 引用按
+/// Embedded 运行形态收集（原实现用 Standalone 默认并丢弃证明）。
+pub(crate) fn transpile_back_module_to_rs_with_proofs(
+    module_name: &str,
+    content: &str,
+) -> AutoResult<(
+    String,
+    Vec<auto_lang::stdlib_assembly::reference::ReferenceProof>,
+)> {
     use auto_val::AutoStr;
     // Plan 399 §7: parse + transpile on a 16MB stack. db.at with deep nesting
     // (for + if/else + multi-field struct literals) overflows Windows's 1MB
@@ -433,12 +445,20 @@ pub(crate) fn transpile_back_module_to_rs(module_name: &str, content: &str) -> A
     let module = module_name.to_string();
     let handle = std::thread::Builder::new()
         .stack_size(16 * 1024 * 1024)
-        .spawn(move || -> Result<String, String> {
-            let mut sink = transpile_rust(AutoStr::from(module.as_str()), &content)
-                .map_err(|e| format!("Failed to transpile {}.at: {}", module, e))?;
+        .spawn(move || -> Result<(String, Vec<auto_lang::stdlib_assembly::reference::ReferenceProof>), String> {
+            let (mut sink, references) = auto_lang::trans::rust::transpile_rust_full_with_options(
+                AutoStr::from(module.as_str()),
+                &content,
+                None,
+                None,
+                Some(auto_lang::stdlib_assembly::host::RustRuntime::Embedded),
+                true,
+            )
+            .map_err(|e| format!("Failed to transpile {}.at: {}", module, e))?;
             let rust_code = String::from_utf8(sink.done().map_err(|e| e.to_string())?.to_vec())
                 .map_err(|e| format!("Invalid UTF-8 in {}.rs output: {}", module, e))?;
-            Ok(rust_code)
+            // AutoError is !Send; proofs cross the thread boundary as plain data.
+            Ok((rust_code, references))
         })
         .map_err(|e| format!("Failed to spawn {}.rs transpile thread: {}", module_name, e))?;
     handle
@@ -1003,7 +1023,10 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     );
     let main_rs = main_rs.replace(
         "fn __assembly_fingerprint() -> Option<&'static str> { None }",
-        &format!("fn __assembly_fingerprint() -> Option<&'static str> {{ Some(\"{}\") }}", assembly.fingerprint()),
+        &format!(
+            "fn __assembly_fingerprint() -> Option<&'static str> {{ Some(\"{}\") }}",
+            assembly.fingerprint()
+        ),
     );
     std::fs::write(src_dir.join("main.rs"), &main_rs)
         .map_err(|e| format!("Failed to write main.rs: {}", e))?;
@@ -1026,11 +1049,14 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     // scaffold 标志，随 bundle 最后写入；复用路径据此校验新鲜度。
     {
         if generation_source_snapshot(root_dir)? != frozen_sources
-            || current_generated_api_assembly(root_dir)?.fingerprint() != assembly.fingerprint() {
+            || current_generated_api_assembly(root_dir)?.fingerprint() != assembly.fingerprint()
+        {
             return Err("assembly inputs changed during generation; receipt withheld".into());
         }
-        let sources: Vec<(String, String)> = frozen_sources.iter().map(|(name, text)|
-            (name.clone(), format!("{:x}", fnv1a(text.as_bytes())))).collect();
+        let sources: Vec<(String, String)> = frozen_sources
+            .iter()
+            .map(|(name, text)| (name.clone(), format!("{:x}", fnv1a(text.as_bytes()))))
+            .collect();
         let endpoints: Vec<String> = api_module
             .endpoints
             .iter()
@@ -1678,7 +1704,13 @@ fn try_transpile_body_with_proofs(
     body: &auto_lang::ast::Body,
     endpoint: &ApiEndpoint,
     api_module: &auto_lang::api::ApiModule,
-) -> Result<(Vec<String>, Vec<auto_lang::stdlib_assembly::reference::ReferenceProof>), String> {
+) -> Result<
+    (
+        Vec<String>,
+        Vec<auto_lang::stdlib_assembly::reference::ReferenceProof>,
+    ),
+    String,
+> {
     use auto_lang::ast::Type;
     use auto_lang::trans::rust::RustTrans;
     use auto_val::AutoStr;
@@ -1711,12 +1743,16 @@ fn try_transpile_body_with_proofs(
             (AutoStr::from(p.name.as_str()), ty)
         })
         .collect();
-    let lines = trans.transpile_body_stmts(body, &params).map_err(|e| e.to_string())?;
+    let lines = trans
+        .transpile_body_stmts(body, &params)
+        .map_err(|e| e.to_string())?;
     Ok((lines, trans.assembly_references))
 }
 
 /// The startup freshness gate rebuilds the same dry assembly contract as generation.
-pub(crate) fn current_generated_api_assembly(root: &Path) -> AutoResult<auto_lang::stdlib_assembly::manifest::AssemblyManifest> {
+pub(crate) fn current_generated_api_assembly(
+    root: &Path,
+) -> AutoResult<auto_lang::stdlib_assembly::manifest::AssemblyManifest> {
     let api_file = auto_lang::config::resolve_back_api(root).ok_or("API contract unavailable")?;
     let source = std::fs::read_to_string(api_file)?;
     let module = try_full_parse(&source).ok_or("API contract parse failed")?;
@@ -1724,13 +1760,16 @@ pub(crate) fn current_generated_api_assembly(root: &Path) -> AutoResult<auto_lan
 }
 
 fn generated_api_assembly(
-    root: &Path, module: &auto_lang::api::ApiModule,
+    root: &Path,
+    module: &auto_lang::api::ApiModule,
 ) -> AutoResult<auto_lang::stdlib_assembly::manifest::AssemblyManifest> {
     let api_file = auto_lang::config::resolve_back_api(root).ok_or("API contract unavailable")?;
     let source = std::fs::read_to_string(&api_file)?;
     let mut session = auto_lang::compile::CompileSession::new();
     session.set_assembly_target(auto_lang::stdlib_assembly::model::AssemblyTarget::Rust)?;
-    if let Some(parent) = api_file.parent() { session.add_source_dir(parent.to_path_buf()); }
+    if let Some(parent) = api_file.parent() {
+        session.add_source_dir(parent.to_path_buf());
+    }
     session.resolve_uses(&source)?;
     let mut references = Vec::new();
     if std::env::var("AUTO_A2R_BODY").as_deref() != Ok("0") {
@@ -1742,25 +1781,75 @@ fn generated_api_assembly(
             }
         }
     }
+    // PLAN-738 T-11：db/伴生 back 模块是生成产物的真实组成——其核心
+    // producer 引用按 Embedded 运行形态收集进 manifest（生成器输入与
+    // 生成产物运行时输入一致，不把 endpoint 面冒称全部装配）。
+    let back_dir = api_file.parent().unwrap().to_path_buf();
+    let mut back_modules: Vec<(String, String)> = Vec::new();
+    if let Ok(db_text) = std::fs::read_to_string(back_dir.join("db.at")) {
+        back_modules.push(("db".to_string(), db_text));
+    }
+    if let Ok(entries) = std::fs::read_dir(&back_dir) {
+        let mut stems: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|x| x == "at").unwrap_or(false))
+            .filter_map(|e| {
+                e.file_name()
+                    .to_str()
+                    .map(|s| s.trim_end_matches(".at").to_string())
+            })
+            .filter(|stem| stem != "api" && stem != "db")
+            .collect();
+        stems.sort();
+        for stem in stems {
+            if let Ok(text) = std::fs::read_to_string(back_dir.join(format!("{stem}.at"))) {
+                back_modules.push((stem, text));
+            }
+        }
+    }
+    for (name, text) in &back_modules {
+        let (_, proofs) = transpile_back_module_to_rs_with_proofs(name, text)
+            .map_err(|e| format!("API assembly rejected back module {name}: {e}"))?;
+        references.extend(proofs);
+    }
     let stdlib = auto_lang::stdlib_assembly::loader::repo_stdlib_root()?;
     let mut manifest = auto_lang::stdlib_assembly::manifest::AssemblyManifest::freeze(
-        session.assembly, "api-generation", root, &stdlib, &session.layer_selections, references,
-    ).with_consumer_input("configuration/AUTO_A2R_BODY", if std::env::var("AUTO_A2R_BODY").as_deref() == Ok("0") { "scaffold" } else { "translated" });
+        session.assembly,
+        "api-generation",
+        root,
+        &stdlib,
+        &session.layer_selections,
+        references,
+    )
+    .with_consumer_input(
+        "configuration/AUTO_A2R_BODY",
+        if std::env::var("AUTO_A2R_BODY").as_deref() == Ok("0") {
+            "scaffold"
+        } else {
+            "translated"
+        },
+    );
     for (name, text) in generation_source_snapshot(root)? {
         manifest = manifest.with_consumer_input(&format!("project/back/{name}"), &text);
     }
     let db = api_file.parent().unwrap().join("db.at");
-    manifest = manifest.with_consumer_input("selection/back/db.at", if db.is_file() { "present" } else { "absent" });
+    manifest = manifest.with_consumer_input(
+        "selection/back/db.at",
+        if db.is_file() { "present" } else { "absent" },
+    );
     Ok(manifest)
 }
 
 fn generation_source_snapshot(root: &Path) -> AutoResult<Vec<(String, String)>> {
     let api = auto_lang::config::resolve_back_api(root).ok_or("API contract unavailable")?;
     let mut sources = vec![("api.at".into(), std::fs::read_to_string(&api)?)];
-    let db = api.parent().ok_or("API source directory unavailable")?.join("db.at");
+    let db = api
+        .parent()
+        .ok_or("API source directory unavailable")?
+        .join("db.at");
     match std::fs::read_to_string(db) {
         Ok(text) => sources.push(("db.at".into(), text)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.into()),
     }
     Ok(sources)
@@ -7319,14 +7408,22 @@ mod plan738_generated_service {
 
     struct Server(std::process::Child);
     impl Drop for Server {
-        fn drop(&mut self) { let _ = self.0.kill(); let _ = self.0.wait(); }
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
     }
 
     fn get(port: u16, path: &str) -> Option<(u16, serde_json::Value)> {
         let addr: std::net::SocketAddr = format!("127.0.0.1:{port}").parse().ok()?;
-        let mut stream = std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(200)).ok()?;
+        let mut stream =
+            std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(200)).ok()?;
         stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
-        write!(stream, "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").ok()?;
+        write!(
+            stream,
+            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+        )
+        .ok()?;
         let mut response = String::new();
         stream.read_to_string(&mut response).ok()?;
         let (head, body) = response.split_once("\r\n\r\n")?;
@@ -7339,17 +7436,30 @@ mod plan738_generated_service {
     fn http_e2e_plan738_production_generation_receipt_ready_and_regeneration() {
         let root = std::env::temp_dir().join(format!("plan738-service-{}", std::process::id()));
         std::fs::create_dir_all(root.join("src/back")).unwrap();
-        std::fs::write(root.join("pac.at"), "{ name: \"plan738-service\", scene: \"workspace\" }").unwrap();
+        std::fs::write(
+            root.join("pac.at"),
+            "{ name: \"plan738-service\", scene: \"workspace\" }",
+        )
+        .unwrap();
         let api = "#[api(method = \"GET\", path = \"/api/answer\")]\npub fn answer() int { let d = json.parse(\"{}\")\n return 42 }\n";
         std::fs::write(root.join("src/back/api.at"), api).unwrap();
         let original_stdlib = auto_lang::stdlib_assembly::loader::repo_stdlib_root().unwrap();
         let local_stdlib = root.join("stdlib");
         std::fs::create_dir_all(&local_stdlib).unwrap();
-        std::fs::copy(original_stdlib.join("json.at"), local_stdlib.join("json.at")).unwrap();
+        std::fs::copy(
+            original_stdlib.join("json.at"),
+            local_stdlib.join("json.at"),
+        )
+        .unwrap();
         let previous = std::env::var_os("AUTO_STDLIB_ROOT");
         struct Restore(Option<std::ffi::OsString>);
         impl Drop for Restore {
-            fn drop(&mut self) { match &self.0 { Some(value) => std::env::set_var("AUTO_STDLIB_ROOT", value), None => std::env::remove_var("AUTO_STDLIB_ROOT") } }
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(value) => std::env::set_var("AUTO_STDLIB_ROOT", value),
+                    None => std::env::remove_var("AUTO_STDLIB_ROOT"),
+                }
+            }
         }
         let _restore = Restore(previous);
         std::env::set_var("AUTO_STDLIB_ROOT", &local_stdlib);
@@ -7357,53 +7467,102 @@ mod plan738_generated_service {
         let workspace = crate::rust_ui::ensure_shared_workspace(&root);
         let name = crate::rust_ui::back_member_name(&root);
         let member = workspace.join(&name);
-        let read_receipt = || serde_json::from_str::<serde_json::Value>(
-            &std::fs::read_to_string(member.join("generation.json")).unwrap()).unwrap();
+        let read_receipt = || {
+            serde_json::from_str::<serde_json::Value>(
+                &std::fs::read_to_string(member.join("generation.json")).unwrap(),
+            )
+            .unwrap()
+        };
         let receipt = read_receipt();
         assert_eq!(receipt["assembly"]["schema_version"], 3);
-        assert!(receipt["assembly"]["references"].as_array().unwrap().iter().any(|proof| proof["symbol"] == "parse"));
+        assert!(receipt["assembly"]["references"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|proof| proof["symbol"] == "parse"));
         assert!(crate::rust_ui::backend_generation_is_fresh(&root));
-        let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target").canonicalize().unwrap();
-        let target = std::path::PathBuf::from(target.to_string_lossy().strip_prefix(r"\\?\")
-            .unwrap_or(&target.to_string_lossy()).to_string());
+        let target = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target")
+            .canonicalize()
+            .unwrap();
+        let target = std::path::PathBuf::from(
+            target
+                .to_string_lossy()
+                .strip_prefix(r"\\?\")
+                .unwrap_or(&target.to_string_lossy())
+                .to_string(),
+        );
         let build = || {
-            let result = std::process::Command::new("cargo").args(["build", "-p", &name])
-                .env("CARGO_TARGET_DIR", &target).current_dir(&workspace).output().unwrap();
-            assert!(result.status.success(), "generated crate build failed: {}", String::from_utf8_lossy(&result.stderr));
+            let result = std::process::Command::new("cargo")
+                .args(["build", "-p", &name])
+                .env("CARGO_TARGET_DIR", &target)
+                .current_dir(&workspace)
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "generated crate build failed: {}",
+                String::from_utf8_lossy(&result.stderr)
+            );
         };
         build();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port(); drop(listener);
-        let config = format!("{{\"profile\":\"development\",\"listen\":{{\"addr\":\"127.0.0.1\",\"port\":{port}}}}}");
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let config = format!(
+            "{{\"profile\":\"development\",\"listen\":{{\"addr\":\"127.0.0.1\",\"port\":{port}}}}}"
+        );
         let start = |fingerprint: &serde_json::Value| {
             let log = std::fs::File::create(root.join("server.log")).unwrap();
-            let mut server = Server(std::process::Command::new(target.join("debug").join(format!("{name}.exe")))
-                .env("AUTO_HTTP_SERVICE_JSON", &config).current_dir(&root)
-                .stdout(log.try_clone().unwrap()).stderr(log).spawn().unwrap());
+            let mut server = Server(
+                std::process::Command::new(target.join("debug").join(format!("{name}.exe")))
+                    .env("AUTO_HTTP_SERVICE_JSON", &config)
+                    .current_dir(&root)
+                    .stdout(log.try_clone().unwrap())
+                    .stderr(log)
+                    .spawn()
+                    .unwrap(),
+            );
             let deadline = Instant::now() + Duration::from_secs(15);
             loop {
                 if let Some((200, ready)) = get(port, "/__auto/health/ready") {
                     assert_eq!(&ready["assembly_fingerprint"], fingerprint);
                     let (status, answer) = get(port, "/api/answer").unwrap();
                     assert_eq!(status, 200);
-                    assert!(answer.to_string().contains("42"), "business result: {answer}");
+                    assert!(
+                        answer.to_string().contains("42"),
+                        "business result: {answer}"
+                    );
                     return server;
                 }
-                assert!(Instant::now() < deadline && server.0.try_wait().unwrap().is_none(),
-                    "service not ready: {}", std::fs::read_to_string(root.join("server.log")).unwrap());
+                assert!(
+                    Instant::now() < deadline && server.0.try_wait().unwrap().is_none(),
+                    "service not ready: {}",
+                    std::fs::read_to_string(root.join("server.log")).unwrap()
+                );
                 std::thread::sleep(Duration::from_millis(25));
             }
         };
         let server = start(&receipt["assembly"]["fingerprint"]);
         drop(server);
         let public = local_stdlib.join("json.at");
-        let mut text = std::fs::read_to_string(&public).unwrap(); text.push_str("\n// changed assembly input\n");
+        let mut text = std::fs::read_to_string(&public).unwrap();
+        text.push_str("\n// changed assembly input\n");
         std::fs::write(public, text).unwrap();
-        assert_eq!(std::fs::read_to_string(root.join("src/back/api.at")).unwrap(), api);
-        assert!(!crate::rust_ui::backend_generation_is_fresh(&root), "unchanged API must not reuse changed assembly");
+        assert_eq!(
+            std::fs::read_to_string(root.join("src/back/api.at")).unwrap(),
+            api
+        );
+        assert!(
+            !crate::rust_ui::backend_generation_is_fresh(&root),
+            "unchanged API must not reuse changed assembly"
+        );
         generate_api(&root, "rust").unwrap();
         let regenerated = read_receipt();
-        assert_ne!(receipt["assembly"]["fingerprint"], regenerated["assembly"]["fingerprint"]);
+        assert_ne!(
+            receipt["assembly"]["fingerprint"],
+            regenerated["assembly"]["fingerprint"]
+        );
         assert!(crate::rust_ui::backend_generation_is_fresh(&root));
         build();
         let server = start(&regenerated["assembly"]["fingerprint"]);

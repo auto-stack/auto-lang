@@ -279,6 +279,12 @@ pub struct RustTrans {
 
     // Plan 167: Multi-file mode — local module names for mod declarations
     local_modules: HashSet<String>,
+    /// PLAN-738 T-11：具名 stdlib 核心导入台账（裸名 → 核心模块）——
+    /// `use auto.http: post_sync` 形态的裸名调用闭包依据。
+    stdlib_named_imports: HashMap<String, String>,
+    /// PLAN-738 T-11：wildcard 导入的核心模块集合——裸名调用按公共面
+    /// 唯一归属闭包；§5.3 wildcard 导入本身不拒绝未引用 unsupported 声明。
+    stdlib_wildcard_modules: HashSet<String>,
     // Multi-file mode: set of sibling module names (same directory)
     // Used to generate `use super::X;` instead of `use crate::X;`
     sibling_modules: HashSet<String>,
@@ -536,6 +542,8 @@ impl RustTrans {
             in_fn_body: false,
             function_names: HashSet::new(),
             local_modules: HashSet::new(),
+            stdlib_named_imports: HashMap::new(),
+            stdlib_wildcard_modules: HashSet::new(),
             sibling_modules: HashSet::new(),
             dir_children: HashSet::new(),
             is_dir_module: false,
@@ -644,6 +652,8 @@ impl RustTrans {
             in_fn_body: false,
             function_names: HashSet::new(),
             local_modules: HashSet::new(),
+            stdlib_named_imports: HashMap::new(),
+            stdlib_wildcard_modules: HashSet::new(),
             sibling_modules: HashSet::new(),
             dir_children: HashSet::new(),
             is_dir_module: false,
@@ -5536,6 +5546,20 @@ impl RustTrans {
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         let mut emitted = Vec::new();
         self.call_inner(call, &mut emitted)?;
+        let text = std::str::from_utf8(&emitted)
+            .map_err(|e| e.to_string())?
+            .to_string();
+        self.collect_core_reference(call, &text)?;
+        out.write_all(&emitted)?;
+        Ok(())
+    }
+
+    /// PLAN-738 T-11 引用闭包收集器：六核心 producer 的每条真实发射路径
+    /// 都在此收敛——限定 Dot 形状（含 Json 别名）、裸名导入/wildcard 拼写
+    /// （重建限定文本验证）、裸名专用臂（发射文本自带 a2r_std::<core>::
+    /// 限定）。无公共面的私有 producer 不获得公共声明证明（与 P1 同义）。
+    fn collect_core_reference(&mut self, call: &Call, text: &str) -> AutoResult<()> {
+        let core = crate::stdlib_assembly::validate::CORE_MODULES;
         if let Expr::Dot(object, symbol) = call.name.as_ref() {
             if let Expr::Ident(module) = object.as_ref() {
                 if !self.local_var_types.contains_key(module)
@@ -5547,19 +5571,148 @@ impl RustTrans {
                     } else {
                         module.as_str()
                     };
-                    let text = std::str::from_utf8(&emitted).map_err(|e| e.to_string())?;
-                    if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
-                        module,
-                        symbol.as_str(),
-                        text,
-                        self.assembly_runtime,
-                    )? {
-                        self.assembly_references.push(proof);
+                    if core.contains(&module) {
+                        if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
+                            module,
+                            symbol.as_str(),
+                            text,
+                            self.assembly_runtime,
+                        )? {
+                            self.assembly_references.push(proof);
+                        }
+                        return Ok(());
+                    }
+                }
+                return Ok(());
+            }
+        }
+        // 三段限定形状 `auto.<core>.<method>()`（Expr::Bina 链）：核心模块
+        // 面同样走 strict 门——io/net 等无 Rust producer 的模块在此诚实
+        // 拒绝，不再发射幻影 `a2r_std::io::...`。
+        if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
+            if matches!(op, Op::Dot) {
+                if let (Expr::Bina(inner_lhs, Op::Dot, inner_rhs), Expr::Ident(method)) =
+                    (lhs.as_ref(), rhs.as_ref())
+                {
+                    if let (Expr::Ident(auto_name), Expr::Ident(module)) =
+                        (inner_lhs.as_ref(), inner_rhs.as_ref())
+                    {
+                        if auto_name == "auto"
+                            && crate::stdlib_assembly::validate::CORE_MODULES
+                                .contains(&module.as_str())
+                        {
+                            if let Some(proof) =
+                                crate::stdlib_assembly::host::verify_rust_reference(
+                                    module,
+                                    method,
+                                    text,
+                                    self.assembly_runtime,
+                                )?
+                            {
+                                self.assembly_references.push(proof);
+                            }
+                        }
                     }
                 }
             }
+            return Ok(());
         }
-        out.write_all(&emitted)?;
+        // 裸名拼写：本地函数遮蔽优先（用户同名符号不是 stdlib 引用）。
+        let Expr::Ident(name) = call.name.as_ref() else {
+            return Ok(());
+        };
+        if self.fn_ret_types.contains_key(name) || self.fn_param_types.contains_key(name) {
+            return Ok(());
+        }
+        if let Some(module) = self.stdlib_named_imports.get(name.as_str()).cloned() {
+            // 具名导入：裸名调用重建限定文本携带真实实参面验证（元数/
+            // async 证据）；专用臂已限定的文本原样验证，不重复前缀。
+            let already_qualified =
+                text.contains(&format!("a2r_std::{module}::{}(", name.as_str()));
+            let qualified = if already_qualified {
+                text.to_string()
+            } else {
+                text.replacen(
+                    &format!("{}(", name.as_str()),
+                    &format!("a2r_std::{module}::{}(", name.as_str()),
+                    1,
+                )
+            };
+            if qualified != text {
+                if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
+                    &module,
+                    name,
+                    &qualified,
+                    self.assembly_runtime,
+                )? {
+                    self.assembly_references.push(proof);
+                }
+            }
+            return Ok(());
+        }
+        if text.contains("a2r_std::") {
+            // 裸名专用臂（如流生产者）：发射文本自带限定——按 FQN 归属验证。
+            let mut found = None;
+            for module in core {
+                if text.contains(&format!("a2r_std::{module}::")) {
+                    found = Some((*module).to_string());
+                    break;
+                }
+            }
+            if let Some(module) = found {
+                if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
+                    &module,
+                    name,
+                    text,
+                    self.assembly_runtime,
+                )? {
+                    self.assembly_references.push(proof);
+                }
+            }
+            return Ok(());
+        }
+        if !self.stdlib_wildcard_modules.is_empty() {
+            // wildcard 裸名：公共面唯一归属才可证明；多模块同名=歧义拒绝。
+            let owners: Vec<&str> = self
+                .stdlib_wildcard_modules
+                .iter()
+                .filter(|module| crate::stdlib_assembly::host::public_symbol_exists(module, name))
+                .map(String::as_str)
+                .collect();
+            match owners.as_slice() {
+                [module] => {
+                    let qualified = text.replacen(
+                        &format!("{}(", name.as_str()),
+                        &format!("a2r_std::{module}::{}(", name.as_str()),
+                        1,
+                    );
+                    if qualified != text {
+                        if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
+                            module,
+                            name,
+                            &qualified,
+                            self.assembly_runtime,
+                        )? {
+                            self.assembly_references.push(proof);
+                        }
+                    } else {
+                        return Err(format!(
+                            "STDASSEMBLY.SIGNATURE_UNVERIFIED: {module}.{}: bare wildcard call has no reconstructable argument face",
+                            name.as_str()
+                        )
+                        .into());
+                    }
+                }
+                [] => {}
+                many => {
+                    return Err(format!(
+                        "STDASSEMBLY.SIGNATURE_UNVERIFIED: {}: bare name is ambiguous across wildcard modules {many:?}",
+                        name.as_str()
+                    )
+                    .into());
+                }
+            }
+        }
         Ok(())
     }
 
@@ -18458,18 +18611,37 @@ pub use auto_cabi_kit::*;"#
                     )?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
+                    // PLAN-738 T-11：for-in 流反糖的 stream_next 发射是核心
+                    // producer 的真实引用——按 stream_next 契约验证（async 面
+                    // 契约 stream_next_async/同步面走同一 strict 门）。
                     if stream_is_async {
                         write!(
                             sink.body,
                             "let {var} = a2r_std::http::stream_next_async(&{recv_expr}).await;
 "
                         )?;
+                        if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
+                            "http",
+                            "stream_next",
+                            &format!("a2r_std::http::stream_next_async(&{recv_expr}).await"),
+                            self.assembly_runtime,
+                        )? {
+                            self.assembly_references.push(proof);
+                        }
                     } else {
                         write!(
                             sink.body,
                             "let {var} = a2r_std::http::stream_next(&{recv_expr});
 "
                         )?;
+                        if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
+                            "http",
+                            "stream_next",
+                            &format!("a2r_std::http::stream_next(&{recv_expr})"),
+                            self.assembly_runtime,
+                        )? {
+                            self.assembly_references.push(proof);
+                        }
                     }
                     self.print_indent(&mut sink.body)?;
                     write!(
@@ -20282,6 +20454,37 @@ pub use auto_cabi_kit::*;"#
                             full_path.replace("auto::", "crate::")
                         }
                     };
+                    // PLAN-738 T-11：核心模块导入闭包——导入语句发射
+                    // `use a2r_std::<core>::{...}` 即真实引用：具名项逐个
+                    // 验证绑定+公共签名（适配面符号拒绝并指明限定拼写）；
+                    // wildcard 只记台账（§5.3 不因未引用 unsupported 拒绝），
+                    // 其裸名调用在 call 收集器按公共面唯一归属闭包。
+                    if let Some(core) = rust_path
+                        .strip_prefix("a2r_std::")
+                        .filter(|rest| !rest.contains("::"))
+                        .filter(|core| {
+                            crate::stdlib_assembly::validate::CORE_MODULES.contains(core)
+                        })
+                    {
+                        let core = core.to_string();
+                        if use_stmt.is_wildcard {
+                            self.stdlib_wildcard_modules.insert(core.clone());
+                        } else {
+                            for item in &use_stmt.items {
+                                if let Some(proof) =
+                                    crate::stdlib_assembly::host::verify_rust_import(
+                                        &core,
+                                        item,
+                                        self.assembly_runtime,
+                                    )?
+                                {
+                                    self.assembly_references.push(proof);
+                                }
+                                self.stdlib_named_imports
+                                    .insert(item.as_str().to_string(), core.clone());
+                            }
+                        }
+                    }
                     if use_stmt.is_wildcard {
                         write!(out, "{}use {}::*;", pub_kw, rust_path)?;
                     } else if !use_stmt.items.is_empty() {
@@ -27989,6 +28192,21 @@ pub fn transpile_rust_full(
     sibling_store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
     source_dir: Option<std::path::PathBuf>,
 ) -> AutoResult<Sink> {
+    transpile_rust_full_with_options(name, code, sibling_store, source_dir, None, false)
+        .map(|(sink, _)| sink)
+}
+
+/// PLAN-738 T-11：全文件转译 + 引用闭包证明与运行形态选择。生成服务的
+/// back 模块（db.at/伴生 *.at）经 `qualify_a2r_std` 链接内嵌镜像——其核心
+/// producer 引用按 Embedded 运行形态收集进 manifest，不再丢弃。
+pub fn transpile_rust_full_with_options(
+    name: impl Into<AutoStr>,
+    code: &str,
+    sibling_store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
+    source_dir: Option<std::path::PathBuf>,
+    assembly_runtime: Option<crate::stdlib_assembly::host::RustRuntime>,
+    take_references: bool,
+) -> AutoResult<(Sink, Vec<crate::stdlib_assembly::reference::ReferenceProof>)> {
     let name = name.into();
     let _scope = shared(crate::scope_manager::ScopeManager::new());
     let mut parser = Parser::from(code);
@@ -28037,6 +28255,9 @@ pub fn transpile_rust_full(
     }
     // Plan 376D: Share sibling TypeStore for cross-module type inference.
     transpiler.shared_type_store = sibling_store;
+    if let Some(runtime) = assembly_runtime {
+        transpiler.assembly_runtime = runtime;
+    }
     // Plan 013 (B1/BUG3): local-type pre-scan lives in trans() so all entry
     // points (single-file, project, CLI) benefit uniformly.
     transpiler.trans(ast, &mut out)?;
@@ -28044,7 +28265,12 @@ pub fn transpile_rust_full(
     // Apply post-processing fixes (replaces fix_transpiled.py)
     RustTrans::post_process_with(&mut out.body, &transpiler.ord_restricted_names);
 
-    Ok(out)
+    let references = if take_references {
+        std::mem::take(&mut transpiler.assembly_references)
+    } else {
+        Vec::new()
+    };
+    Ok((out, references))
 }
 
 /// Plan 310 Phase 1: Run escape analysis on source and return a summary

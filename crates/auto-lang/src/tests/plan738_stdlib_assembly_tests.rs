@@ -1502,3 +1502,121 @@ fn main() {
         assert!(s.layer_selections.is_empty());
     }
 }
+
+#[cfg(test)]
+mod t11_reference_closure {
+    use super::*;
+
+    fn transpile(name: &str, src: &str) -> Result<String, String> {
+        let mut sink = crate::trans::rust::transpile_rust(name, src).map_err(|e| e.to_string())?;
+        let code = String::from_utf8(sink.done().map_err(|e| e.to_string())?.to_vec())
+            .map_err(|e| e.to_string())?;
+        Ok(code)
+    }
+
+    /// 具名导入的 Plain 面符号：导入证明 + 裸名调用限定重建验证，同源
+    /// identity 与限定拼写一致。
+    #[test]
+    fn named_import_plain_symbols_collect_same_identity() {
+        let code = transpile(
+            "t11_named",
+            "use auto.http: get_stream
+use auto.json: parse
+fn main() {
+    let s = get_stream(\"http://x\")
+    let v = parse(\"{}\")
+    print(v)
+}",
+        )
+        .expect("plain-face named imports must transpile");
+        assert!(code.contains("use a2r_std::http::{get_stream};"), "{code}");
+        assert!(code.contains("a2r_std::http::get_stream("), "{code}");
+    }
+
+    /// 纯适配面符号的具名导入：裸名拼写不能复现适配壳——导入即拒绝并
+    /// 指明限定拼写（旧路径：导入成功+裸调用发射破损产物，静默漂移）。
+    #[test]
+    fn named_import_of_adapter_face_is_rejected_with_guidance() {
+        let error = transpile(
+            "t11_adapter_import",
+            "use auto.http: post_sync
+fn main() {
+    let b = post_sync(\"http://x\", \"y\", \"\")
+    print(b)
+}",
+        )
+        .expect_err("adapter-face named import must be rejected");
+        assert!(
+            error.contains("STDASSEMBLY.SIGNATURE_UNVERIFIED"),
+            "{error}"
+        );
+        assert!(
+            error.contains("adapter face has no bare-name spelling"),
+            "{error}"
+        );
+        assert!(error.contains("http.post_sync("), "{error}");
+    }
+
+    /// wildcard 导入 + 限定调用：公共面唯一归属收集；未引用的 unsupported
+    /// wildcard（io 模块级 unsupported）不拒绝导入本身。
+    #[test]
+    fn wildcard_and_namespace_spellings_collect_and_do_not_overreach() {
+        let code = transpile(
+            "t11_wild",
+            "use auto.http
+use auto.json: *
+fn main() {
+    let v = json.parse(\"{}\")
+    print(v)
+}",
+        )
+        .expect("wildcard/namespace qualified spellings must transpile");
+        assert!(code.contains("a2r_std::json::parse("), "{code}");
+        // 模块级 unsupported（io）的 wildcard 导入不因未引用声明被拒。
+        let unsupported = transpile(
+            "t11_unsupported_wild",
+            "use auto.io: *
+fn main() {
+    let x = 1
+    print(x)
+}",
+        )
+        .expect("unreferenced unsupported wildcard import must not reject");
+        assert!(!unsupported.contains("a2r_std::io"), "{unsupported}");
+    }
+
+    /// 同名用户函数遮蔽：裸名调用走用户符号，不误当 stdlib 引用。
+    #[test]
+    fn user_same_name_function_shadows_stdlib_reference() {
+        let code = transpile(
+            "t11_shadow",
+            "use auto.json: parse
+fn parse(s str) str {
+    return s
+}
+fn main() {
+    let v = parse(\"x\")
+    print(v)
+}",
+        )
+        .expect("user-defined same-name fn must shadow the import");
+        assert!(code.contains("fn parse(s: &str)"), "{code}");
+    }
+
+    /// 被引用的漂移面（json.is_valid 公共 int vs Rust producer bool）在
+    /// 合法拼写下如实拒绝——跨拼写一致，不以拼写切换放行。
+    #[test]
+    fn drifted_face_rejects_across_spellings() {
+        let error = transpile(
+            "t11_drift",
+            "use auto.json
+fn main() {
+    let ok = json.is_valid(\"{}\")
+    print(ok)
+}",
+        )
+        .expect_err("drifted face must be rejected under strict gate");
+        assert!(error.contains("SIGNATURE_DRIFT"), "{error}");
+        assert!(error.contains("int / bool"), "{error}");
+    }
+}

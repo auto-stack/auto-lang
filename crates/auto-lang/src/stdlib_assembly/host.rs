@@ -82,6 +82,10 @@ struct AdapterRule {
     /// 契约冻结的历史扩展参数位（PLAN-724 三参 post 的 api_key——公共
     /// 声明无此位，适配层单独声明，不复制公共签名充作证据）。
     extension_params: &'static [&'static str],
+    /// producer 参数面的 facade 视图（类型名 → 逻辑面），如 async 流
+    /// 句柄 `&AsyncHTTPStream` 是公共 `HTTPStream` 资源面的 async 侧
+    /// 持有形态——契约声明，不以类型名猜测。
+    param_facades: &'static [(&'static str, &'static str)],
     public_return: &'static str,
 }
 
@@ -97,6 +101,7 @@ const ADAPTER_RULES: &[AdapterRule] = &[
         awaited: false,
         producer_async: false,
         producer_return: ProducerReturn::StatusBodyTuple,
+        param_facades: &[],
         public_params: &["str", "str", "str"],
         extension_params: &[],
         public_return: "str",
@@ -111,6 +116,7 @@ const ADAPTER_RULES: &[AdapterRule] = &[
         awaited: true,
         producer_async: true,
         producer_return: ProducerReturn::StatusBodyTuple,
+        param_facades: &[],
         public_params: &["str", "str", "str"],
         extension_params: &[],
         public_return: "str",
@@ -125,6 +131,7 @@ const ADAPTER_RULES: &[AdapterRule] = &[
         awaited: false,
         producer_async: false,
         producer_return: ProducerReturn::StatusBodyTuple,
+        param_facades: &[],
         public_params: &["str"],
         extension_params: &[],
         public_return: "str",
@@ -139,6 +146,7 @@ const ADAPTER_RULES: &[AdapterRule] = &[
         awaited: true,
         producer_async: true,
         producer_return: ProducerReturn::StatusBodyTuple,
+        param_facades: &[],
         public_params: &["str"],
         extension_params: &[],
         public_return: "str",
@@ -155,6 +163,7 @@ const ADAPTER_RULES: &[AdapterRule] = &[
         awaited: true,
         producer_async: true,
         producer_return: ProducerReturn::StatusBodyTuple,
+        param_facades: &[],
         public_params: &["str", "str", "str"],
         extension_params: &[],
         public_return: "str",
@@ -169,6 +178,7 @@ const ADAPTER_RULES: &[AdapterRule] = &[
         awaited: false,
         producer_async: false,
         producer_return: ProducerReturn::StatusBodyTuple,
+        param_facades: &[],
         public_params: &["str", "str", "str"],
         extension_params: &[],
         public_return: "str",
@@ -183,6 +193,7 @@ const ADAPTER_RULES: &[AdapterRule] = &[
         awaited: true,
         producer_async: true,
         producer_return: ProducerReturn::StatusBodyTuple,
+        param_facades: &[],
         public_params: &["str", "str", "str"],
         extension_params: &[],
         public_return: "str",
@@ -198,6 +209,7 @@ const ADAPTER_RULES: &[AdapterRule] = &[
         awaited: false,
         producer_async: false,
         producer_return: ProducerReturn::Scalar("int"),
+        param_facades: &[],
         public_params: &[],
         extension_params: &[],
         public_return: "int",
@@ -215,6 +227,7 @@ const ADAPTER_RULES: &[AdapterRule] = &[
         awaited: true,
         producer_async: true,
         producer_return: ProducerReturn::AuthTuple4,
+        param_facades: &[],
         public_params: &["str", "str"],
         extension_params: &["str"],
         public_return: "Response",
@@ -234,6 +247,7 @@ const ADAPTER_RULES: &[AdapterRule] = &[
         producer_return: ProducerReturn::Facade {
             producer: "AsyncHTTPStream",
         },
+        param_facades: &[],
         public_params: &["str"],
         extension_params: &[],
         public_return: "HTTPStream",
@@ -250,6 +264,7 @@ const ADAPTER_RULES: &[AdapterRule] = &[
         producer_return: ProducerReturn::Facade {
             producer: "AsyncHTTPStream",
         },
+        param_facades: &[],
         public_params: &["str", "str"],
         extension_params: &[],
         public_return: "HTTPStream",
@@ -266,9 +281,57 @@ const ADAPTER_RULES: &[AdapterRule] = &[
         producer_return: ProducerReturn::Facade {
             producer: "AsyncHTTPStream",
         },
+        param_facades: &[],
         public_params: &["str", "str", "str"],
         extension_params: &[],
         public_return: "HTTPStream",
+    },
+    // —— 流消费自由函数的 async 面：句柄经 AsyncHTTPStream 视图持有，
+    // next 的 await 消费后同一逻辑流面（公共 stream_* 三件套）。——
+    AdapterRule {
+        shape: AdapterShape::Plain,
+        module: "http",
+        symbol: "stream_next",
+        runtime: RuntimeSpec::Both,
+        callee: "stream_next_async",
+        arity: 1,
+        awaited: true,
+        producer_async: true,
+        producer_return: ProducerReturn::Scalar("str"),
+        param_facades: &[("AsyncHTTPStream", "HTTPStream")],
+        public_params: &["HTTPStream"],
+        extension_params: &[],
+        public_return: "str",
+    },
+    AdapterRule {
+        shape: AdapterShape::Plain,
+        module: "http",
+        symbol: "stream_is_done",
+        runtime: RuntimeSpec::Both,
+        callee: "stream_is_done_async",
+        arity: 1,
+        awaited: false,
+        producer_async: false,
+        producer_return: ProducerReturn::Scalar("int"),
+        param_facades: &[("AsyncHTTPStream", "HTTPStream")],
+        public_params: &["HTTPStream"],
+        extension_params: &[],
+        public_return: "int",
+    },
+    AdapterRule {
+        shape: AdapterShape::Plain,
+        module: "http",
+        symbol: "stream_close",
+        runtime: RuntimeSpec::Both,
+        callee: "stream_close_async",
+        arity: 1,
+        awaited: false,
+        producer_async: false,
+        producer_return: ProducerReturn::Scalar("void"),
+        param_facades: &[("AsyncHTTPStream", "HTTPStream")],
+        public_params: &["HTTPStream"],
+        extension_params: &[],
+        public_return: "void",
     },
 ];
 
@@ -656,7 +719,24 @@ fn verify_adapted_reference(
             // §5.3：兼容 lowering 的参数适配变体单独记录，不冒称同形。
             adapters.push("impl AsRef<str> view adapter");
         }
-        parameters.push(logical_type(&parameter.ty).ok_or_else(|| {
+        let logical = logical_type(&parameter.ty).or_else(|| {
+            // 契约声明的参数 facade 视图（async 流句柄等）。
+            let syn::Type::Reference(reference) = parameter.ty.as_ref() else {
+                return None;
+            };
+            let syn::Type::Path(path) = reference.elem.as_ref() else {
+                return None;
+            };
+            let segment = path.path.segments.last()?.ident.to_string();
+            rule.param_facades
+                .iter()
+                .find(|(producer, _)| *producer == segment)
+                .map(|(_, face)| {
+                    adapters.push("async facade handle view adapter");
+                    face.to_string()
+                })
+        });
+        parameters.push(logical.ok_or_else(|| {
             unproved(
                 module,
                 symbol,
@@ -962,6 +1042,89 @@ fn verify_plain_reference(
         public_signature: public.signature.clone().unwrap(),
         selected_adapter: contract,
     }))
+}
+
+/// PLAN-738 T-11：具名导入闭包——`use auto.<core>: name` / `use <core>: name`
+/// 发射 `use a2r_std::<core>::<name>`，导入语句本身即对该符号的真实引用。
+/// 绑定（producer 存在）与公共签名必须成立；纯适配面符号（无裸名可用
+/// 形状，如 post_sync 侧信道族）在此拒绝并指明限定拼写——裸名拼写不能
+/// 复现适配壳。调用点的元数/async 证据由 call 收集器的裸名闭包补齐。
+pub fn verify_rust_import(
+    module: &str,
+    symbol: &str,
+    runtime: RustRuntime,
+) -> crate::AutoResult<Option<ReferenceProof>> {
+    if !super::validate::CORE_MODULES.contains(&module) {
+        return Ok(None);
+    }
+    let root = super::loader::repo_stdlib_root()?;
+    let declaration = format!("stdlib/auto/{module}.at");
+    let text = std::fs::read_to_string(root.join(format!("{module}.at")))?;
+    let layer = super::loader::parse_layer(&text, LayerKind::Public, declaration.clone());
+    if let ParseStatus::Failed { error } = &layer.parse {
+        return Err(format!("STDINV.PARSE_FAIL: {declaration}: {error}").into());
+    }
+    let Some(public) = layer
+        .symbols
+        .iter()
+        .find(|entry| entry.is_pub && entry.name == symbol)
+    else {
+        return Ok(None); // No public claim for this name (private/unknown).
+    };
+    let plain = verify_plain_reference(
+        module,
+        symbol,
+        &Emission {
+            shape: AdapterShape::Plain,
+            callee: symbol.to_string(),
+            arity: public.arity,
+            awaited: false,
+            cast_to_int: false,
+        },
+        runtime,
+        declaration,
+        &layer,
+        public,
+    );
+    match plain {
+        Ok(proof) => Ok(proof),
+        Err(error) => {
+            // 纯适配面符号：公共面只能经限定拼写的适配壳满足——裸名导入
+            // 无法复现（侧信道/cast/元数分派），给出限定拼写指引。
+            let adapter_only = ADAPTER_RULES
+                .iter()
+                .any(|rule| rule.module == module && rule.symbol == symbol)
+                && !ADAPTER_RULES.iter().any(|rule| {
+                    rule.module == module
+                        && rule.symbol == symbol
+                        && rule.shape == AdapterShape::Plain
+                });
+            if adapter_only {
+                return Err(format!(
+                    "STDASSEMBLY.SIGNATURE_UNVERIFIED: {module}.{symbol}: adapter face has no bare-name spelling; call it qualified as {module}.{symbol}(...)"
+                )
+                .into());
+            }
+            Err(error)
+        }
+    }
+}
+
+/// 公共面查询（T-11 wildcard 裸名归属）：模块公共 .at 是否声明该符号。
+/// 只读事实查询，不产生证明。
+pub fn public_symbol_exists(module: &str, name: &str) -> bool {
+    let Ok(root) = super::loader::repo_stdlib_root() else {
+        return false;
+    };
+    let Ok(text) = std::fs::read_to_string(root.join(format!("{module}.at"))) else {
+        return false;
+    };
+    let layer =
+        super::loader::parse_layer(&text, LayerKind::Public, format!("stdlib/auto/{module}.at"));
+    layer
+        .symbols
+        .iter()
+        .any(|entry| entry.is_pub && entry.name == name)
 }
 
 /// 按运行形态定位 producer 源并解析真实定义（含 `pub use` 再导出链）。
