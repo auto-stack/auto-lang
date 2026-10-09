@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-749
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: VM 解释器对 JSON 产物/深链的读语义退化 + 视图模板 fn 调用返空根修（坑①家族第三型，auto-musk PLAN-100 上游缺口）
 author: [agent]
 created_at: 2026-10-10
@@ -15,9 +15,9 @@ touched_goals:
   - GOAL-007
 
 affects: [auto-lang/vm, auto-lang/ui]
-current_step: 0
+current_step: 7
 total_steps: 7
-plan_revision: 1
+plan_revision: 3
 ---
 
 # PLAN-749 — VM 解释器 JSON 产物/深链读语义退化 + 视图模板 fn 调用返空根修
@@ -292,15 +292,83 @@ revision 递增）；提交 + §9 记录 + 交接 review。
 
 | 完成/任务 | 依赖 | 文件/符号与产出 | 验证 | AC |
 |---|---|---|---|---|
-| [ ] T-00 | 无 | worktree lang-749（plan-749-dev，基 master 已提交代码）；干净构建 AUTO_EXE；三症状定音探针 + 判定报告（含 748 同根甄别） | V01 | — |
-| [ ] T-01 | T-00 | `plan749_read_semantics_tests` 三上下文最小复现单测族（红相先行） | V02 | 04 |
-| [ ] T-02 | T-01 症状1 组红 | bool 编码/打印/比较一致性收口（Node 臂等双轨点 + print/EQ 解码臂） | V02/V03 | 01 |
-| [ ] T-03 | T-01 症状2 组红 | GET_FIELD 接收者兜底臂语义化 + JSON 物化链一致性 | V02/V03 | 02 |
-| [ ] T-04 | T-01 症状3 组红 | 条件求值器 CALL 通道（委托 :12542 Call 臂）+ P733-R2 同根甄别 | V02/V03 | 03,06 |
-| [ ] T-05 | T-02～T-04 | musk PLAN-100 E2E 跨仓复跑（AUTO_EXE 锁 749 构建；绕过层兼容 + 载入链稳定） | V04 | 05,07 |
-| [ ] T-06 | T-05 | 裸 `cargo t` + `cargo tv` + KNOWN-DEBT P733-R2 更新 + 748 边界联动注记 + 提交 + §9 交接 | V03/V05 | 06,08 |
+| [x] T-00 | 无 | worktree lang-749（plan-749-dev @ f92aca82d，基 master）；三症状定音探针（plan749_read_semantics_tests 前身，9+2 轮迭代）；**定音报告见 §9 T-00 节** | V01 | 01 |
+| [x] T-01 | T-00 | `plan749_read_semantics_tests`（11 测）：fn 上下文 9 测（症状1/2 全绿=健康基线钉死）+ comp 三上下文矩阵/条件面 2 测（条件面修复前红、修复后绿——红相证据见 §9） | V02 | 04 |
+| [x] T-02 | T-01 症状1 组红 | **显示面根修**（T-05 E2E 修正定音）：fn/handler/续体的**门/位型/`==`/print/f-string/to_string** 七面干净 master 全绿（raw nv TAG_BOOL 正确）；真复现面=**串拼接显示臂**——`"ok=" + r.ok` 形（musk `[084-probe] ... ok=-2147483648` 原样复现于 749 干净构建 E2E）= `OpCode::STR_CAT`（codegen 对字符串形 `+` 的静态路由）与 `OpCode::ADD` 串臂的非串操作数一律 `decode_i32(bits).to_string()`——TAG_BOOL 低 32 位 0x80000000。修复 `6be6c257c`：新增 `nv_concat_operand_display`（bool→true/false、i64/u64 按值；obj/list 维持堆 id 既有形态；f64/f32 到不了串臂），`.to_string()` 方法臂(:9203)本就正确不动。probe_concat 最小复现修复前红/后绿 | V02/V03/V04 | 01 |
+| [x] T-03 | T-01 症状2 组红 | **证伪改判**（T-00 定音）：fn/handler 上下文 5-hop 深链/逐层绑定/`??` 兜底全绿；视图 TEXT/computed 位深链（含 f-string 索引）全绿；`[i]` 索引在条件位为 **parser 语法级不支持**（f-string 位允许）——边界登记 §9，非求值层修复对象。绿格钉死为回归面 | V02/V03 | 02 |
+| [x] T-04 | T-01 症状3 组红 | **三通道缺口根修**（超出原症状3 范围，含两个同函数新发现缺口）：G1 条件求值器 CALL 通道（真值位+比较位 LHS/RHS 通用 `parse_expr_fragment` 兜底助手 `resolve_condition_operand_fallback`，仅后置不前置）；G2 比较臂单段名 read_state miss 回落 computed（truthy 臂 PLAN-048 L1 同口径补齐）；G3 truthy 臂 `has_inner_dot` 解除 `store.` 前缀排除 + 解析 miss 回落既有通道。提交 `509c4b476`。**P733-R2 同根甄别：异根**（修复前后 musk_vm_track 六红零增减——预存红族是子件 computed/`.store.X` 挂载面=748① 领地，非条件通道） | V02/V03 | 03,06 |
+| [x] T-05 | T-02～T-04 | musk PLAN-100 E2E 跨仓复跑达成（2026-10-10）：隔离后端（musk.exe serve :9351 + 独立 workdir，种子=auto-edit 真实 chats.json 15 会话/最大 938KB）+ AUTO_EXE 锁 749 worktree 构建（PATH 前置）+ `vm-first-run.mjs`。**修复前探针轮复现 `ok=-2147483648`（干净 749 构建）→ STR_CAT 修复后 5/5 轮 boot 全部 `ok=true`**，SessionsLoaded×7/轮 → DetailLoaded×1 → [SSE] attach×1 载入链全程稳定零间歇失效、alive=yes 零 fatal 红（V04 日志：auto-musk tmp/plan047-firstrun.log 17:32 修复前轮 vs 17:38-17:39 五修复后轮）。musk 侧零改动（绕过层兼容=AC-07） | V04 | 05,07 |
+| [x] T-06 | T-05 | 全量门通过：裸 `cargo t`（nextest 日常档 5137 跑/5122 过/**15 红全预存零增量**——P733-R2 六条+P733-R1 flake+plan606+schema×2+docs_gen kitchen_sink 台账在册，projector/ash_leak/desktop_bus/desktop_surface/kitchen_sink 五条另经 master 基面 f92aca82d 实拍同红对拍）+ `cargo tv` **162/162 全绿**（语料 golden 零漂移）+ aura 档 215/215 + musk_vm_track 97/6=基线零增减；KNOWN-DEBT P733-R2 条目更新（异根甄别+指针移交 748 T-02）；worktree 3 提交（509c4b476/2db273736/6be6c257c）零新警告 | V03/V05 | 06,08 |
 
 ## 复审记录
+
+### work 阶段交接（2026-10-10，execution_done）
+
+- stage: work | plan_id: PLAN-749 | plan_revision: 3 | outcome: **pass**
+- code_commit: plan-749-dev `6be6c257c`（三提交链：`509c4b476` 条件求值器三缺口
+  根修 + `2db273736` 续体探针 + `6be6c257c` STR_CAT/ADD 显示臂根修）；
+  base_commit: master `f92aca82d`；worktree: `.wt/lang-749/auto-lang`（含
+  auto-down 兄弟 detached）
+- task_ids: T-00～T-06 全部完成（T-02 按 E2E 修正定音改判"显示面根修"、
+  T-03 证伪改判——计划允许的 T-00 后修订路径，revision 2→3）
+- evidence:
+  - V02 红相先行：`p749_view_condition_faces` 修复前红（VIEW_CALL_EMPTY/
+    COMPUTED_CALL_EMPTY/VIEW_ENV_OK_FALSE 三格）修复后绿；
+    `p749_s1_bool_concat_minimal` 修复前红（`"ok=-2147483648"`）修复后绿；
+    全族 13/13 绿
+  - V03/V05 全量门：裸 `cargo t` 5122 过/15 红全预存（5 条 master 基面
+    f92aca82d 实拍同红对拍 + 10 条台账在册）零增量；`cargo tv` 162/162；
+    aura 215/215；musk_vm_track 97/6=P733-R2 基线零增减（异根甄别成立）
+  - V04 E2E：隔离后端+真实 chats.json 种子（15 会话/最大 938KB），
+    修复前探针轮复现 `ok=-2147483648` → 修复后 5/5 boot 全 `ok=true`，
+    载入链零间歇失效（auto-musk tmp/plan047-firstrun.log 17:32 vs
+    17:38-17:39 轮）；musk 侧零改动（绕过层兼容）
+- blockers: 无
+- next: review（独立 auto-plan:review 复验定音链/修复证据/E2E 回执与
+  规范增量 SD-01/SD-02 落账）
+- 修复后行为变化面（review 关注）：视图条件位 CALL/单段 computed/store
+  前缀多段路径从恒假转真值求值（此前恒假=静默丢失，无既有用例依赖该
+  假行为——全量门零增量实证）；`str + bool`/`str + i64/u64` 串拼接从
+  位型垃圾转按值显示（tv 162 全绿=语料无 baked 垃圾形态）。
+
+### T-00 定音报告（2026-10-10，worktree lang-749 @ f92aca82d 干净基面）
+
+**探针**：`plan749_read_semantics_tests`（模块 fn 段经 `create_vm_from_source`+
+`call_fn_by_name_segment`；store handler 段+视图/computed 经 `build_dynamic_component`
+comp 驱动；serde_json 构语料杜绝手写转义错）。
+
+| 症状 | fn 上下文 | handler 上下文 | 视图 TEXT/computed 位 | 视图条件位 |
+|---|---|---|---|---|
+| 1（bool 读） | **绿**（tag=TAG_BOOL raw `fff3000080000000`；`==true` ✓；`to_string`/print/f-string 内插全显 `true`） | **绿**（s1_eq/s1_disp/s1_fstr） | **绿**（vfstr=true、c_ok=true） | **红**（G3：`if .store.env.ok` 恒 false） |
+| 2（深链读） | **绿**（5-hop/逐层绑定全真值） | **绿**（len/mid/deep/`??` 兜底全真值） | **绿**（vdeep=t10 含 f-string 索引、c_deep=t10） | 成员链**绿**（`.store.env.status==200` ✓）；**`[i]` 索引 parser 语法级不支持**（边界） |
+| 3（视图 fn 返空） | — | — | **绿**（`text extractRunIdStr(.tc)` 直渲、c_run ✓） | **红**（G1：`if f(.tc) != ""` 恒 EMPTY） |
+
+**定音结论**：
+1. 病灶**全部集中在 `eval_condition_with_inner`（aura_view_builder.rs:12833）**
+   一个函数的三个通道缺口：G1 无 CALL 通道（坑①家族第三型，musk
+   chat_message.at:339 原形态）；G2 比较臂单段名 read_state miss 直接 false
+   （truthy 臂有 PLAN-048 L1 computed 兜底、比较臂漏配）；G3 truthy 臂
+   `has_inner_dot` 排除 `store.` 前缀路径 → read_state 全串名必 miss → 末段
+   computed 兜底恒 false（PLAN-081"存储可达嵌套对象读"家族）。
+2. **musk PLAN-100 的 handler 侧观测分解定音**（T-05 E2E 修正）：引擎
+   读路径（GET_FIELD 压栈/tag/`==`/深链/续体）在干净 master 全绿——
+   `r.ok == true` 门与深链读**不是**缺陷面；真复现面=**串拼接显示臂**
+   （`"ok=" + r.ok` → STR_CAT 的 `decode_i32` 兜底 → `-2147483648`），
+   在 749 干净构建 E2E 原样复现并修复（`6be6c257c`）。musk 观测的
+   "间歇失效"在修复后 5/5 boot 零复发（显示位型垃圾会连带 `??` 兜底
+   判断串扰视听，门本身稳定）。
+3. 引擎读路径（GET_FIELD 物化臂/JSON.parse 物化/stdlib）**健康**——
+   nano_value/GET_FIELD 兜底臂不在修复面（原 T-02/T-03 嫌疑面解除）。
+4. **`[i]` 索引在条件位是 parser 语法级不支持**（f-string/text 内插位允许）
+   ——边界登记，独立于求值层修复（musk 消费侧以拍平行+预计算规避该形态）。
+
+**修复**（提交 `509c4b476`，T-04）：G1 新增 `resolve_condition_operand_fallback`
+（`parse_expr_fragment` 通用解析 → `resolve_expr_to_value` 统一求值，接线到
+truthy 裸名位/比较位 LHS 单段与裸名臂/RHS 单段臂，**仅后置兜底不前置**）；
+G2 比较臂单段名补 computed 回落；G3 解除 store 前缀排除+解析 miss 回落既有
+通道。**修复后 11/11 绿；同族回归零扰动**：`test_eval_condition_with_bindings` ✓、
+plan733 矩阵 2/2 ✓、musk_vm_track 97 过/6 红=**P733-R2 预存红零增减（异根
+甄别成立——条件通道 ≠ 子件 computed 挂载面）**、aura 档 215/215 ✓。
 
 ### new 阶段交接（草稿准备完成）
 
