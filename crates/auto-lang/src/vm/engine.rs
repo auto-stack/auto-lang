@@ -1958,6 +1958,28 @@ impl AutoVM {
         }
     }
 
+    /// PLAN-749 T-02：ADD 串拼接臂的非串操作数显示。此前一律
+    /// `decode_i32(bits).to_string()`——TAG_BOOL 低 32 位 0x80000000 →
+    /// `"-2147483648"`（musk PLAN-100 E2E `[084-probe] ... ok=-2147483648`
+    /// 实锤），TAG_I64/U64 截断为低 32 位同族垃圾。bool/宽整型按值显示；
+    /// f64/f32 到不了串臂（ADD 前置数值臂已拦截）；obj/list 维持既有
+    /// 堆 id 数值形态（display 语义变更不在本修复面）。
+    fn nv_concat_operand_display(nv: auto_val::NanoValue) -> String {
+        if auto_val::is_bool(nv) {
+            if auto_val::decode_bool(nv) {
+                "true".to_string()
+            } else {
+                "false".to_string()
+            }
+        } else if auto_val::is_i64(nv) {
+            auto_val::decode_i64(nv).to_string()
+        } else if auto_val::is_u64(nv) {
+            auto_val::decode_u64(nv).to_string()
+        } else {
+            auto_val::decode_i32(nv).to_string()
+        }
+    }
+
     fn nv_is_numeric(nv: auto_val::NanoValue) -> bool {
         // PLAN-591 T9:补 is_i64——dep 方法返回的宽整型走 push_i64_vm
         // (TAG_I64),此前 EQ/数值谓词恒 false(uuid 勘测 get_version_num
@@ -5110,13 +5132,13 @@ impl AutoVM {
                             // Plan 390 §15 H3b: heap ref rendered as its id
                             // (explicit, not the low-32 decode coincidence).
                             auto_val::decode_object(left_nv).to_string()
-                        } else { auto_val::decode_i32(left_nv).to_string() };
+                        } else { Self::nv_concat_operand_display(left_nv) };
                         let right_str = if auto_val::is_string(right_nv) {
                             let idx = auto_val::decode_string(right_nv) as usize;
                             strings.get(idx).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
                         } else if auto_val::is_object(right_nv) {
                             auto_val::decode_object(right_nv).to_string()
-                        } else { auto_val::decode_i32(right_nv).to_string() };
+                        } else { Self::nv_concat_operand_display(right_nv) };
                         drop(strings);
                         let result = format!("{}{}", left_str, right_str);
                         self.rc_release(left_nv);
@@ -7220,14 +7242,14 @@ impl AutoVM {
                             let strings = self.strings.read().unwrap();
                             strings.get(idx).cloned().unwrap_or_default()
                         } else {
-                            auto_val::decode_i32(a_bits).to_string().into_bytes()
+                            Self::nv_concat_operand_display(a_bits).into_bytes()
                         };
                         let b_str = if auto_val::is_string(b_bits) {
                             let idx = auto_val::decode_string(b_bits) as usize;
                             let strings = self.strings.read().unwrap();
                             strings.get(idx).cloned().unwrap_or_default()
                         } else {
-                            auto_val::decode_i32(b_bits).to_string().into_bytes()
+                            Self::nv_concat_operand_display(b_bits).into_bytes()
                         };
                         // Plan 419 Phase 2: 操作数 stake 随消费死亡（读完再放）。
                         self.rc_release(a_bits);

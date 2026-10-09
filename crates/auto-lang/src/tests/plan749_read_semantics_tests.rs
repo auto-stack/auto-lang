@@ -200,6 +200,36 @@ fn probe_print() {
     );
 }
 
+/// S1-e0：**ADD 强转面**（E2E 实锤复现通道）——`"ok=" + r.ok`（无显式
+/// to_string）必须显示 "true"。musk E2E `[084-probe] DetailLoaded arrived
+/// ok=-2147483648` 即此形态（str + bool 强转臂 decode_i32(TAG_BOOL)）。
+#[test]
+fn p749_s1_bool_concat_minimal() {
+    let code = r#"
+fn probe_concat() str {
+    let r = JSON.parse("{\"ok\":true}")
+    return "ok=" + r.ok
+}
+fn probe_concat_nc() str {
+    let r2 = JSON.parse("{\"ok\":true}")
+    return "ok=" + (r2.ok ?? "?")
+}
+"#;
+    let (vm, _) = p749_compile(code);
+    let got = p749_call_str(&vm, "probe_concat").expect("segment");
+    eprintln!("[s1_concat] returned str = {got:?}");
+    assert_eq!(
+        got, "ok=true",
+        "str + bool coercion must render true (E2E 实锤 -2147483648 面)"
+    );
+    let got2 = p749_call_str(&vm, "probe_concat_nc").expect("segment");
+    eprintln!("[s1_concat_nc] returned str = {got2:?}");
+    assert_eq!(
+        got2, "ok=true",
+        "str + (bool ?? alt) coercion must render true"
+    );
+}
+
 /// S1-e：f-string 内插面——`f"ok=${r.ok}"` 必须内插 "true"（musk print 垃圾
 /// 的另一候选通道：f-string 内插对 bool 的显示臂）。
 #[test]
