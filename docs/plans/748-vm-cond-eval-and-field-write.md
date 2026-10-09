@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-748
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: VM 三断点修复 + vm 轨 iced 渲染器四件缺陷（musk PLAN-101 + jade-edit 供料，双 phase）
 author: [agent]
 created_at: 2026-10-10
@@ -17,9 +17,9 @@ touched_goals:
   - GOAL-007
 
 affects: [auto-lang/vm, auto-lang/ui]
-current_step: 0
+current_step: 1
 total_steps: 12
-plan_revision: 3
+plan_revision: 4
 ---
 
 # PLAN-748 — VM 三断点修复 + vm 轨 iced 渲染器四件缺陷（双 phase）
@@ -569,10 +569,10 @@ examples 无使用例）+ jade 撤层双轨像素等值（jade 侧，AC-14）。
 
 | 完成/任务 | 依赖 | 文件/符号与产出 | 验证 | AC |
 |---|---|---|---|---|
-| [ ] T-00 | 无 | worktree lang-748（plan-748-dev，基 master 7bd28888b）；干净构建 AUTO_EXE；三断点定音探针套件 + 判定报告 | V01 | 01 |
-| [ ] T-01 | T-00 ②定音 | intercept_error/catch 目标或帧协议面修复 + spike 测试 | V02/V03 | 02 |
-| [ ] T-02 | T-00 ①定音 | 子件挂载面或求值器臂修复 + 条件矩阵单测（含 P733-R2 同根判定） | V02/V03 | 03 |
-| [ ] T-03 | T-00 ③核验 | extract_style_with 收口 + WARN 对齐 | V03 | 04 |
+| [x] T-00 | 无 | worktree lang-748（plan-748-dev，基 master **e5a77106a**——重取基面含 PLAN-749 G1-G3/STR_CAT 修复，待澄清#6 前置落实）；探针 `plan748_breakpoint_probes`（提交 e9d953ec4）；**定音报告见 §9 T-00 节** | V01 | 01 |
+| [x] T-01 | T-00 ②定音 | **证伪改判**（T-00 定音）：fn 段三臂（静态 `W:5`/动态 `D:6`/无 await `N:7`）全绿 + E2E 完整管线（handler_App_Init resumed to completion，静态写 marker=W:5）绿——musk 101 §10① 观测为 dirty 构建陈旧（v0.4.2-2730-dirty vs e5a77106a 之间的修复，749 E2E 同管线佐证）；无修复对象，探针钉死为回归面（AC-02 按 AC-01"或证伪并改判"条款关闭） | V01/V02 | 02 |
+| [ ] T-02 | T-00 ①定音 | **范围收缩改判**（T-00 定音）：根件上下文三形态（裸 binding/循环成员 `if w.current`/store 混合 `.store.sel_id == w.id`）全绿——断点①的根件面证伪；**唯一在案红 = 子件挂载上下文（musk workspace_selector 即子件形态）= P733-R2 预存红族六条**（musK_vm_track p053_1/p053_4/p053_6/p054）——修复对象 = 路线 A（computed 表/store 别名快照的子件挂载，vm_bridge new_from_decls 一带 + handler_codegen 快照机制）；求值器补臂（路线 B）被根件绿否证 | V02/V03 | 03 |
+| [x] T-03 | T-00 ③核验 | **证伪改判**（T-00 定音）：动态 style 字段引用在 row/checkbox/progress 三元素全部产出（`style: .store.X` → Style 载体 BorderColor/TextColor/BackgroundColor 枚举实拍）——计划 §4 静态臂清单（checkbox :8326/progress :8265）与现 master 实态不符（相关臂已收口）；musk 101 §10③ 观测为 dirty 构建陈旧。**残留小项**：Style::parse 词表丢弃的非 button 臂 WARN 对齐（独立于断点③复现与否，静默丢弃面仍在——T-11 收口时顺手或另立小项） | V01/V03 | 04 |
 | [ ] T-04 | T-01～T-03 | musk 101 双 variant 跨仓对拍（AUTO_EXE 锁 748 构建） | V04 | 05 |
 | [ ] T-05 | T-04 | 全量门 + 提交 + §9 记录 + KNOWN-DEBT 更新 + owned 清理 | V03/V05 | 06,07 |
 | [ ] T-06 | 无（与 T-00 同 worktree，可并行/先行） | 四件定音探针（供料复现形 headless dump + 类序三变体树 diff）+ 判定报告（件四确证豁免） | V06 | 08,09,10 |
@@ -583,6 +583,41 @@ examples 无使用例）+ jade 撤层双轨像素等值（jade 侧，AC-14）。
 | [ ] T-11 | T-07～T-10 | 既有面零漂移（008/041/gallery）+ jade 撤层跨仓复验 + 裸 cargo t 全量门 + KNOWN-DEBT 更新 + 提交 | V08/V09/V10 | 12,13,14,15 |
 
 ## 复审记录
+
+### T-00 定音报告（2026-10-10，worktree lang-748 @ e5a77106a 干净基面，含 PLAN-749）
+
+**探针**：`crates/auto-lang/src/tests/plan748_breakpoint_probes.rs`（提交 e9d953ec4）
+——fn 段（`create_vm_from_source`+`call_fn_by_name_segment`+Parked/Resume 骨架）、
+comp（`build_dynamic_component`）、E2E（`auto run --render=vm` + pac.at 工程 +
+本地 HTTP server，749 T-05 同款）。基面 = master e5a77106a（含 749 G1-G3 条件
+求值器修复与 STR_CAT/ADD 显示修复）——待澄清#6 的重取基面前置已落实。
+
+| 断点 | fn 段 | comp 根件 | E2E 完整管线 | 定音 |
+|---|---|---|---|---|
+| ①条件成员访问 | — | **绿**（CUR:A/NC:B/SEL:A/NSEL:B 三形态全对） | — | 根件面证伪；**唯一在案红=子件挂载面=P733-R2 六红**（workspace_selector 即子件形态） |
+| ②续体静态写 | **绿**（静态 W:5/动态 D:6/无 await N:7） | in-proc 不泵 Http 续体（harness 边界：server 已应答而 marker 恒 unset，静态/动态同败——非断点形态） | **绿**（`[p748-e2e] STATIC marker=W:5` + `handler_App_Init resumed to completion (waited 1.06s)`） | **证伪**——dirty 构建陈旧 |
+| ③动态 style | — | **绿**（row/checkbox/progress 动态引用全产出枚举载体） | — | **证伪**——静态臂清单与 master 实态不符 |
+
+**结论**：musk PLAN-101 三断点观测（2026-10-09，v0.4.2-2730-g91ae002d3-dirty）
+在干净 master e5a77106a 上**全部不复现**（①的根件面/②③ 全部）——其间 749
+合并与更早修复已覆盖，或观测本身来自 dirty 构建/WIP。计划按待澄清#3 条款
+修订：T-01/T-03 证伪改判（探针钉死为回归面）、T-02 收缩为 P733-R2 子件挂载
+面修复（唯一真实在案缺陷面）。T-04 跨仓对拍价值相应收缩为"musk 真实代码
+在新构建上运行确认"（回退版三形态已被本探针等价语料覆盖证明）。
+
+### work 阶段性交接（2026-10-10，executing——T-00 完成，T-02/Phase 2 续）
+
+- stage: work | plan_id: PLAN-748 | plan_revision: 4 | outcome: pass（T-00 单元）
+- code_commit: plan-748-dev `e9d953ec4`（T-00 探针）；base: master `e5a77106a`
+- task_ids: T-00 ✓、T-01 ✓（证伪改判）、T-03 ✓（证伪改判）；T-02/T-04/T-05/
+  T-06～T-11 待续
+- evidence: §T-00 定音报告（fn/comp/E2E 三层）；探针 7 测（5 绿 + 2 证伪改判
+  留档：handler 两臂红 = comp harness in-proc 不泵 Http 续体的 harness 边界
+  登记，非引擎缺陷——E2E 层同形态绿）
+- blockers: 无
+- next: T-02（P733-R2 子件挂载面修复——p053_1 两测为入口单变量收敛，
+  KNOWN-DEBT P733-R2 指针）→ T-04 收缩版跨仓确认 → T-05 门禁；Phase 2
+  （T-06～T-11 jade 四件）按计划可先行/续后
 
 ### new 阶段交接（草稿准备完成）
 
