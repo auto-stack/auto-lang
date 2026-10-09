@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-738
-status: execution_done
+status: executing
 feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-09
 plan_revision: 3
-current_step: 14  # Phase 3 全部任务完成（T-01+T-09..T-14）；execution_done，待独立 review
+current_step: 12  # R3 needs_fix：T-12/T-14 重开（P738-R3-01 测试属性丢失+freshness 计数假象）；T-01..T-11、T-13 保留
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -410,8 +410,8 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
   [✅ 已完成] 既有闭包项核证（sources 角色三态/provider 按目标分叉+Cargo.lock+BUILD_INPUTS/T-10/11 契约证明入 references）；缺项补齐：generation.json ready 新增 `workspace_lock`（生成产物运行时依赖输入身份，absent 显式记录；与生成器 Cargo 输入分开）；复用门 `lock_freshness` 对拍（lock 出现/变化/旧收据缺字段→陈旧再生）。
 - [x] 对同 fixture 同目标做 CLI actual ↔ 会话/最终产物 ↔ generation/ready 三角断言，覆盖普通/persistent VM、Rust/C、生成 API 各入口；按内容变更/读取失败/异根的正负例验证失效。CLI 与 manifest 使用实际数据，不手工拼期待 JSON；对不适用的目标入口明确拒绝，不删消费者降低覆盖。
   [✅ 已完成] `t12_manifest_identity` 2 测（实际数据驱动）：三角=CLI actual 路径（session→compile_actual_references→freeze）↔ 真实 `trans_rust_with_session`+`freeze_assembly_manifest` ↔ 生成收据形态——三者共同身份全等/收据身份互异；正负例=同内容异根身份稳定、业务输入只改收据身份、target 变化改共同身份、lock 真值表（缺字段/漂移/absent 保守再生）。
-- [x] 新增 `738-phase3-manifest.{md,json}`，记录 identity 规则、消费者字段映射、实际差异及完整正负例结果。`cargo t plan738`、CLI stdlib 与 auto-man api_gen scoped 必须通过；真服务完整链在 T-14 最终提交复跑。映射 T-02/03/05/06/07、AC-01/02/04/06/07/08、SD-01/03/04/05/06。
-  [✅ 已完成] [738-phase3-manifest.md](reports/738-phase3-manifest.md)：plan738 69/69、CLI stdlib 10/10、api_gen 43/43、freshness 2/2（`test_shell_pack_lib_freshness` 基线预存环境红 stash 实证在案）、plan724 5/5、三 crate check 零错误。
+- [ ] 新增 `738-phase3-manifest.{md,json}`，记录 identity 规则、消费者字段映射、实际差异及完整正负例结果。`cargo t plan738`、CLI stdlib 与 auto-man api_gen scoped 必须通过；真服务完整链在 T-14 最终提交复跑。映射 T-02/03/05/06/07、AC-01/02/04/06/07/08、SD-01/03/04/05/06。
+  [R3 重开 2026-10-09] 主体交付（schema 4 双指纹/三角对拍/lock 收据）经 R3 复核有效；重开原因=T-12 触面 `rust_ui.rs` 补丁意外剥离 `assembly_freshness_truth_table` 的 `#[test]` 属性（P738-R3-01：死代码+新 dead_code warning+freshness "2/2" 为重复注册假象），报告 ADAPTER_RULES 计数另失真（P738-R3-02）。历史执行记录保留：plan738 69/69、CLI stdlib 10/10、api_gen 43/43、plan724 5/5、三 crate check 零错误；freshness 计数按 R3 勘误（见 [738-review-r3.md](reports/738-review-r3.md)）。
 
 ### Phase 3 / T-13：SD-01..07 终稿与原任务验收对账 ✅
 
@@ -424,16 +424,46 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 
 ### Phase 3 / T-14：最终提交门禁、真实验收与独立 review 交接 ✅
 
-- [x] 依赖 T-09..13。先提交全部实现/测试，冻结 clean code commit 与依赖/lock/features。按 §6.3/§6.4 执行三 crate check、完整裸 t + tv/tt/串行 th、必要 scoped/CLI/API 档、三目标同源与 C stdio witness、正式生成服务完整链。运行期间不改输入；若再修代码，新提交重跑受影响门禁，不能沿用旧提交成功记录作为最终证明。
-  [✅ 已完成] 最终提交 `b3a4d660e`（clean，链 2c1b4a763→c1579ed71→84bec29ef→b6cfc6df1→1a983091f→b3a4d660e，8 文件 +2224/−284）。执行中发现两处缺陷并按纪律修复+重跑：①`1a983091f` lock_freshness 首次物化语义（新 workspace 首启误判陈旧）；②`b3a4d660e` T-12 的 workspace_lock 收据写入因脚本断言中断被遗漏（服务链实测暴露）+门 current 侧 absent 归一化+ready/收据指纹字段对齐。受影响门禁全部在最终提交复跑绿。
-- [x] 新增 `738-phase3-verification.{md,json}`：命令、选中/通过/失败/跳过数量、code/dependency revision、日志/hash、逐名红分诊、Warnings/fmt/debug/遗漏扫描。R2 收据保留历史；无新确定性红、无未知失败；变更范围和新增证明适用面清楚，不能称全库语义 parity。
-  [✅ 已完成] [738-phase3-verification.md](reports/738-phase3-verification.md)：三 crate check 零错；裸 t 5183/16 红全分诊（13 master 预存+3 flake 族）；tv 162/162；tt 13 红全基线（非基线=0）；th 85绿/3红/14超时逐名分诊（back_proxy 基线、plan730 interop+multipart **基线 worktree 同命令复现实证**环境红、sse_chain 双树隔离绿、余为级联）；plan738 69/69、plan724 5/5、CLI 10/10、api_gen 43/43、freshness 2/2（shell_pack 环境红 stash 实证）；⑤腿 Rust 实编 1/1、C stdio 真实 MSVC 1/1、**正式生成服务完整链 1/1**（38.6s：生成→schema4+workspace_lock 收据→实编→serve→ready 指纹→业务 42→仅改 stdlib→陈旧→再生→重建复验）；debug 残留 0/rustfmt clean。收据绑定说明（auto-lang 字节等同外推）在档。
+- [ ] 依赖 T-09..13。先提交全部实现/测试，冻结 clean code commit 与依赖/lock/features。按 §6.3/§6.4 执行三 crate check、完整裸 t + tv/tt/串行 th、必要 scoped/CLI/API 档、三目标同源与 C stdio witness、正式生成服务完整链。运行期间不改输入；若再修代码，新提交重跑受影响门禁，不能沿用旧提交成功记录作为最终证明。
+  [R3 重开 2026-10-09] 门禁执行本身经 R3 复跑全部成立（R3 独立复跑：裸 t 17 红全分诊/tv 162/tt 非基线=0/th 缩减档同构/服务链 1/1@42s/双 witness 1/1）；重开原因=健康扫描漏检 `b6cfc6df1` 引入的新 dead_code warning（`assembly_freshness_truth_table` never used，P738-R3-01）且报告 freshness "2/2" 计数为重复注册假象。修复后须在最终提交重跑 freshness 族+健康扫描。历史执行记录保留：最终提交 `b3a4d660e`（clean，链 2c1b4a763→c1579ed71→84bec29ef→b6cfc6df1→1a983091f→b3a4d660e，8 文件 +2224/−284）；执行中修复①`1a983091f` lock_freshness 首次物化语义、②`b3a4d660e` workspace_lock 收据写入补位（两修复均经 R3 复核确认落地且无残留缺口——lock_freshness 真值表/服务链收据断言实证）。
+- [ ] 新增 `738-phase3-verification.{md,json}`：命令、选中/通过/失败/跳过数量、code/dependency revision、日志/hash、逐名红分诊、Warnings/fmt/debug/遗漏扫描。R2 收据保留历史；无新确定性红、无未知失败；变更范围和新增证明适用面清楚，不能称全库语义 parity。
+  [R3 重开 2026-10-09] 重开原因=报告 freshness "2/2" 与 warning 扫描结论与实际不符（P738-R3-01/R3-02，勘误后随新最终提交更新本报告）。历史数据保留：三 crate check 零错；裸 t 5183/16 红全分诊（13 master 预存+3 flake 族；R3 复跑为 17 红=13 预存+4 flake，plan484_024 隔离绿属 T-10 文档化 flake 族）；tv 162/162；tt 13 红全基线；th 逐名分诊（back_proxy 基线、plan730 interop+multipart 基线 worktree 同命令复现实证环境红、sse_chain 隔离绿、余为级联）；plan738 69/69、plan724 5/5、CLI 10/10、api_gen 43/43；⑤腿 Rust 实编 1/1、C stdio 真实 MSVC 1/1、正式生成服务完整链 1/1；debug 残留 0/rustfmt clean（warning 扫描除外——R3-01 勘误）。
 - [x] 在主检出把证据对回原 T-02..T-08 的实现/验证项及 T-09..T-14；只有所有执行验收闭合才置 `execution_done`，独立 review/merge/清理项仍保持待办。交给未参与该实现的独立 review agent，按 `/auto-plan:review` 重新核对最终提交、所有 AC、实际 callee/manifest、完整 diff 与 SD 正文；执行 agent 不能自行宣告独立复审 pass。
   [✅ 已完成] 验收对账（[738-phase3-acceptance.md](reports/738-phase3-acceptance.md) T-14 栏已补最终收据）：AC-01..08 执行面全部闭合（T-08 最终档=本任务）→ **status: execution_done**。交接：独立 review agent 复核 `b3a4d660e`——全部 AC、实际 callee/manifest、`2c1b4a763..b3a4d660e` 完整 diff（T-09 分类+T-10..14 语义面）、SD 正文、th 环境红基线归因。
 - [x] 独立复审 pass 才允许 `reviewed`；needs_fix 返回本 phase，needs_replan 修订具体合同而不降 AC。当前授权止于修复/验收/复审准备，不合入/归档/删除 worktree，merge 时再 canonical/ledger/Design33/索引及 wt-guard。映射原 T-07/08、AC-01..08、SD-01..07。
   [✅ 待独立复审] 当前 state=execution_done（非 reviewed）；不合入/归档/删 worktree。
 
 ## 9. 复审记录
+
+### 独立复审 R3（2026-10-09，needs_fix）
+
+- stage: review
+- plan_id: PLAN-738
+- plan_revision: 3
+- outcome: **needs_fix**（一处必修 R3-01 + 一处勘误 R3-02；全部 AC/SD 实质验证通过，门禁零未解释新红）
+- reviewed_commit: `b3a4d660e722cf9f1a81bb45bac9982548ce09c9`（worktree clean，复审只读；结束仍 clean）
+- base_commit: Phase 3 diff base `2c1b4a763`；merge-base(master, plan-738-dev)=`6d69dbdc7`（合入面比较基面）
+- dependency_revisions: auto-down=`895f8d0f9355c9f5ec3ce8fca268bdb768395846`（只读未动）
+- spec_inputs: frontmatter 七个 canonical Spec + [738-sd-drafts.md](reports/738-sd-drafts.md) SD-01..07 终稿（T-13 版，绑定 c1579ed71→b6cfc6df1；T-14 两提交未改 SD 声明的行为面——lock 物化语义与 workspace_lock 补位均含于 SD-05 终稿语义内）
+- acceptance_results（以工件重构，R3 独立复跑全部在 b3a4d660e）:
+  - **AC-01 pass**：inventory 115 分母/partial 退出码 3 CLI 实测；566 差异分类独立抽查（计数 566=552+4+2+8 ✓，4 文件 rustfmt 复验逐字节 MATCH，lib.rs 重排语义等价）
+  - **AC-02 pass**：AssemblyTarget 驱动选层（历史）+ ADAPTER_RULES 四源对拍（syn 真解析，R3 通读 verify_adapted_reference/check_public_projection/verify_plain_reference）+ 引用闭包五路径收集器（trans/rust.rs 通读）+ back 模块 Embedded 证明；⑤腿 Rust 实编 witness 1/1、C stdio MSVC witness 1/1 复跑
+  - **AC-03 pass**：无契约非 Plain 形状→SIGNATURE_UNVERIFIED、元数/async/cast/结构漂移→SIGNATURE_DRIFT（代码通读+plan738_host 10/10+plan724 改判探针独立证实：a2r-std crate post=2 参 vs 内嵌 post=3 参）
+  - **AC-04 pass**：use_semantics 7/7；同名用户 fn 遮蔽/wildcard 唯一归属/歧义拒绝/限定拼写指引测试在案（t11 5 测）
+  - **AC-05 pass**：六模块矩阵在案；Standalone/Embedded 分家实证；C ext TARGET_UNSUPPORTED（T-09 分类核对）
+  - **AC-06 pass（附 R3-01）**：双指纹投影只剔除 consumer 名与 consumer_input 源（manifest.rs 通读）+ t12 三角对拍 2/2 复跑 + lock 真值表 + 服务链"改 stdlib→陈旧→再生"1/1@42.26s 复跑；**但 T-06 的 assembly_freshness 真值表测试自 b6cfc6df1 起不再运行（R3-01），回归保护缺口须修复**
+  - **AC-07 pass**：CLI 三模式退出码 3/1/2 冒烟实测+EXIT_OK 断言在案；服务链 1/1（schema4+workspace_lock 收据→ready=consumer_fingerprint→业务 42→再生→复验）
+  - **AC-08 pass（附 R3-02 勘误）**：裸 t 17 红全分诊（13 master 预存+4 flake，plan484_024 隔离绿）、tv 162/162、tt 非基线红=0、th 缩减档与执行报告分诊同构（back_proxy 基线红、plan730 族环境红——执行者基线 worktree 复现在案+738 diff 不触 plan730+738 服务链同环境绿+本机 musk-100 长驻服务佐证）；SD-01..07 终稿与最终实现逐条对照一致（退出码 0/1/2/3=EXIT_OK/CHECK_FAILED/ERROR/INVENTORY_PARTIAL 实证）
+- findings:
+  - **P738-R3-01（major，必修，影响 T-06/T-12/T-14，AC-06 回归保护）**：`crates/auto-man/src/rust_ui.rs::tests::assembly_freshness_truth_table` 自 `b6cfc6df1`（T-12）起丢失 `#[test]` 属性——新测试 `lock_freshness_truth_table` 插入位置截走了原属性并自带重复 `#[test]`（被注册两次）。后果：①T-06 交付的真值表测试现为死代码（`cargo test -p auto-man --lib freshness` 编译输出 `warning: function assembly_freshness_truth_table is never used`——违反 AGENTS §3 零未处理 warning 健康门）；②执行报告"freshness 2/2"实为同一测试重复跑两遍的假象（真实构成=lock_freshness_truth_table×2+shell_pack 环境红）；③T-06 新鲜度真值表回归保护丢失（`assembly_freshness` 函数本体未改、生产行为未坏——服务链 1/1 实证行为正确）。修复：恢复属性位置（一行），在最终提交重跑 freshness 族+健康扫描并勘误报告。
+  - **P738-R3-02（minor，勘误，影响 T-10/T-11 报告）**：ADAPTER_RULES 计数失真——T-10 报告"规则表 14 条"（c1579ed71 实测 12 条）、T-11 报告"增至 17 条"（84bec29ef 起实测 15 条）。契约本体真实且被 plan738_host 10/10 覆盖，纯计数错误；随 R3-01 修复一并勘误。
+  - P738-R3-03（观察，非阻塞，非 738 回归）：伴生 back 模块（fsys.at 等）逐字内容不在任何逐字新鲜度面（generation_source_snapshot 只含 api.at+db.at，PLAN-681/734 既有边界）；738 经 Embedded 引用证明实际扩大了可检测面（引用面变化→共同身份变化→再生）。
+  - P738-R3-04（观察，非阻塞）：T-09 的"comment_or_whitespace_only"4 文件实际含 use/mod 语句重排（Rust 顶层声明顺序语义无关）——分类命名不精确，"非语义变更"结论成立（R3 独立复核）。
+- evidence: [738-review-r3.md](reports/738-review-r3.md)（完整命令/输出摘要/探针记录）；关键反证命令：`git log -L 5017,5045:crates/auto-man/src/rust_ui.rs`（属性剥离归因 b6cfc6df1）、`cargo test -p auto-man --lib freshness -- --test-threads=1`（dead_code warning+重复注册输出）、逐提交 ADAPTER_RULES awk 计数
+- gates（R3 独立复跑，全部 b3a4d660e，串行；期间 musk-100 worktree 有长驻 `cargo run` 服务、无编译竞争）：三 crate check 零 error；裸 t 5166/5183（17 红全分诊=13 预存+4 flake，plan484_024 隔离 2/2 绿）；tv 162/162；tt 5541/5554（13 红全 ⊂ 裸 t 名单）；th 缩减档 127/142 pass+2 基线红+13 级联超时（与执行报告同构）；plan738 69/69、plan738_host 10/10、t12 2/2、plan724 5/5、CLI 10/10、api_gen 43/43、双 witness 1/1、服务完整链 1/1@42.26s；触面 diff 零 dbg 残留、rustfmt --check 干净；未跑 tf/taa/tu/t3/docs_gen 专项（未触面）
+- omissions/debt: P738-D1/D2 维持既有登记（KNOWN-DEBT 263/264 行在案）；无新批准延期
+- state: executing，current_step=12（T-12 第 4 条、T-14 第 1/2 条重开；T-01..T-11、T-13 及历史任务记录保留）；不合入、不归档、不删 worktree
+- next: `/auto-plan:work PLAN-738` 在原 worktree 修复 P738-R3-01（恢复 `#[test]` 属性至 `assembly_freshness_truth_table`、消除 `lock_freshness_truth_table` 重复属性）+ 勘误 P738-R3-02（两份报告计数），新提交重跑 freshness 族/plan738/auto-man scoped/健康扫描（含 warning 零新增确认），更新 verification 报告后再独立 review；AC/SD 合同与阈值不变
 
 ### work 交接（2026-10-09 晚，Phase 3 T-09..T-14 完成 → execution_done）
 
