@@ -443,7 +443,7 @@ pub fn run_with_capture_and_path(code: &str, path: &str) -> AutoResult<(String, 
             block_on_autovm_local(async { execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout, _, _)| (r, stdout)) })
         })
         .expect("Failed to spawn execution thread");
-    handle.join().unwrap()
+    join_execution(handle)
 }
 
 /// Run AutoLang code with stdout capture and return the disassembled bytecode.
@@ -461,14 +461,29 @@ pub fn run_with_capture_and_bytecode_with_meta(
     Vec<crate::vm::disasm::DisasmLine>,
     crate::vm::disasm::BytecodeMeta,
 )> {
+    run_with_capture_and_bytecode_with_deadline(code, None)
+}
+
+/// PLAN-746 (PG-MEM-1): like [`run_with_capture_and_bytecode_with_meta`] but
+/// installs a cooperative execution deadline. Playground /api/run uses this
+/// to bound runaway programs; `None` keeps unlimited execution.
+pub fn run_with_capture_and_bytecode_with_deadline(
+    code: &str,
+    deadline: Option<std::time::Instant>,
+) -> AutoResult<(
+    String,
+    String,
+    Vec<crate::vm::disasm::DisasmLine>,
+    crate::vm::disasm::BytecodeMeta,
+)> {
     let code = code.to_string();
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            block_on_autovm_local(async { execute_autovm(&code, true).await })
+            block_on_autovm_local(async { execute_autovm_with_deadline(&code, true, None, deadline).await })
         })
         .expect("Failed to spawn execution thread");
-    handle.join().unwrap()
+    join_execution(handle)
 }
 
 /// Run AutoLang code with stdout capture and source path, returning bytecode.
@@ -489,15 +504,45 @@ pub fn run_with_capture_and_path_and_bytecode_with_meta(
     Vec<crate::vm::disasm::DisasmLine>,
     crate::vm::disasm::BytecodeMeta,
 )> {
+    run_with_capture_and_path_and_bytecode_with_deadline(code, path, None)
+}
+
+/// PLAN-746 (PG-MEM-1): path variant of [`run_with_capture_and_bytecode_with_deadline`]
+/// (playground project runs — `use db` resolution needs the source path).
+pub fn run_with_capture_and_path_and_bytecode_with_deadline(
+    code: &str,
+    path: &str,
+    deadline: Option<std::time::Instant>,
+) -> AutoResult<(
+    String,
+    String,
+    Vec<crate::vm::disasm::DisasmLine>,
+    crate::vm::disasm::BytecodeMeta,
+)> {
     let code = code.to_string();
     let path = path.to_string();
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            block_on_autovm_local(async { execute_autovm_with_path(&code, true, Some(&path)).await })
+            block_on_autovm_local(async { execute_autovm_with_deadline(&code, true, Some(&path), deadline).await })
         })
         .expect("Failed to spawn execution thread");
-    handle.join().unwrap()
+    join_execution(handle)
+}
+
+/// PLAN-746 (PG-MEM-1 / SD-04): join an execution thread without panicking.
+/// A panic inside the VM execution thread (e.g. a parser bug on hostile
+/// input) surfaces as a clean `Err` instead of an `unwrap` panic bubbling
+/// up through the caller (previously axum turned that into a bare 500).
+fn join_execution<T: Send + 'static>(
+    handle: std::thread::JoinHandle<AutoResult<T>>,
+) -> AutoResult<T> {
+    match handle.join() {
+        Ok(r) => r,
+        Err(_) => Err(crate::error::AutoError::Msg(
+            "execution thread panicked".to_string(),
+        )),
+    }
 }
 
 /// Run AutoLang code using AutoVM (bytecode VM)
@@ -522,7 +567,7 @@ pub fn run_autovm(code: &str) -> AutoResult<String> {
             block_on_autovm_local(async { execute_autovm(&code, false).await.map(|(r, _, _, _)| r) })
         })
         .expect("Failed to spawn execution thread");
-    handle.join().unwrap()
+    join_execution(handle)
 }
 
 /// Plan 177: Run AutoVM with stdout capture for testing
@@ -534,7 +579,7 @@ pub fn run_autovm_capture(code: &str) -> AutoResult<(String, String)> {
             block_on_autovm_local(async { execute_autovm(&code, true).await.map(|(r, stdout, _, _)| (r, stdout)) })
         })
         .expect("Failed to spawn execution thread");
-    handle.join().unwrap()
+    join_execution(handle)
 }
 
 /// Find the source span of a `use ... : symbol` statement in source code
@@ -1266,6 +1311,19 @@ async fn execute_autovm_with_path(
     capture: bool,
     path: Option<&str>,
 ) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>, crate::vm::disasm::BytecodeMeta)> {
+    execute_autovm_with_deadline(code, capture, path, None).await
+}
+
+/// PLAN-746 (PG-MEM-1): like [`execute_autovm_with_path`] but installs a
+/// cooperative execution deadline on the VM. Once the deadline passes,
+/// run_task_loop terminates all tasks with a synthetic "ExecutionTimeout"
+/// error instead of letting a runaway program spin forever.
+async fn execute_autovm_with_deadline(
+    code: &str,
+    capture: bool,
+    path: Option<&str>,
+    deadline: Option<std::time::Instant>,
+) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>, crate::vm::disasm::BytecodeMeta)> {
     // Plan 560 T03: 脚本模式管线激活——`.as` 源经 s2s lowering（糖→桥，
     // W2 规则表自 T05 起逐条入住）后走正常编译管线；`#[rust]` 行首
     // pragma 预检保留原源（显式压回，555 八格矩阵的压回通道）。
@@ -1677,6 +1735,8 @@ async fn execute_autovm_with_path(
         let vm = AutoVM::new(flash, 8192);
         (vm, None)
     };
+    // PLAN-746 (PG-MEM-1): cooperative execution deadline (None = unlimited).
+    vm.set_deadline(deadline);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
     vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
@@ -5148,7 +5208,7 @@ fn run_with_path(code: &str, path: &str) -> AutoResult<String> {
             })
         })
         .expect("Failed to spawn execution thread");
-    handle.join().unwrap()
+    join_execution(handle)
 }
 
 /// Plan 199 Phase 5: Debug an Auto program with GDB-style interactive debugger

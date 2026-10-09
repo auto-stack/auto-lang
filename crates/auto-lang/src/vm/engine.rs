@@ -540,6 +540,13 @@ pub struct AutoVM {
     // system()/system_status()/export()/exit() natives forward to it.
     // None for pure-AutoLang use (backward compatible).
     pub host: Option<crate::host::SharedHost>,
+
+    // PLAN-746 (PG-MEM-1): optional cooperative execution deadline. When
+    // set, run_task_loop terminates all tasks once the Instant passes and
+    // surfaces a synthetic `last_error` ("ExecutionTimeout...") so callers
+    // get a clean error instead of a runaway execution. None = unlimited
+    // (default; zero behavior change for existing callers).
+    pub deadline: Option<std::time::Instant>,
 }
 
 // Plan 124: Future value for async operations
@@ -868,7 +875,16 @@ impl AutoVM {
             )),
             trace: Arc::new(std::sync::Mutex::new(None)),
             host: None,
+            // PLAN-746: no deadline by default (unlimited execution).
+            deadline: None,
         }
+    }
+
+    /// PLAN-746 (PG-MEM-1): install a cooperative execution deadline. The VM
+    /// checks it on every run_task_loop sweep; once passed, all tasks are
+    /// terminated with a synthetic "ExecutionTimeout" last_error.
+    pub fn set_deadline(&mut self, deadline: Option<std::time::Instant>) {
+        self.deadline = deadline;
     }
 
     /// Plan 011 (MS3-B): Install a shell host so that `system()` /
@@ -3234,6 +3250,25 @@ impl AutoVM {
 
             if tasks.is_empty() {
                 break; // No tasks left, exit VM
+            }
+
+            // PLAN-746 (PG-MEM-1): cooperative execution deadline. Once
+            // passed, terminate every remaining task with a synthetic
+            // timeout error so callers see a clean failure instead of a
+            // runaway execution that never returns (and keeps allocating).
+            if let Some(dl) = self.deadline {
+                if std::time::Instant::now() >= dl {
+                    for (_id, task_mutex) in &tasks {
+                        let mut t = task_mutex.lock().await;
+                        if t.status != TaskStatus::Terminated {
+                            t.last_error = Some(
+                                "ExecutionTimeout: execution deadline exceeded".to_string(),
+                            );
+                            t.status = TaskStatus::Terminated;
+                        }
+                    }
+                    break;
+                }
             }
 
             for (_id, task_mutex) in tasks {

@@ -475,3 +475,7 @@ mod plan707_wait_tests;
 #[cfg(test)]
 mod plan707_stream_tests;
 // scratch diagnostics (T-01, remove before landing)
+// PLAN-746 (PG-MEM-1)：协作式执行截止——死循环确定超时返回、充裕截止
+// 正常行为不变、执行线程 panic 干净 Err（SD-04）。
+#[cfg(test)]
+mod plan746_pg_mem_tests;
