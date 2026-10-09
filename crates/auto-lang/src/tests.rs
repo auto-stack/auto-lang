@@ -299,6 +299,9 @@ mod plan615_calc_prog_tests;
 // PLAN-733 T-01: VM 运行时模块级 fn 调用语义最小复现矩阵（handler 域/computed 面）。
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan733_fn_call_semantics_tests;
+// PLAN-749 T-00/T-01: VM 读语义三症状最小复现矩阵（bool 位型/深链/视图 CALL）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan749_read_semantics_tests;
 // Plan 046 (auto-musk T2): obj receiver method family regression corpus.
 #[cfg(test)]
 mod plan046_obj_natives_tests;

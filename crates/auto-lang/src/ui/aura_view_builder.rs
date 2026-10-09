@@ -12906,14 +12906,20 @@ let tabs_inner = View::Row {
             // need field-by-field resolution (read_state only looks up a
             // single field name, so `read_state("note.pinned")` fails).
             let path = &cond[1..];
-            let has_inner_dot = path.contains('.') && !path.starts_with("store.");
+            // PLAN-749 G3: store 前缀多段路径（`.store.env.ok`——存储可达
+            // 嵌套对象读，PLAN-081 家族）此前被排除在 expr 通道外，只能落
+            // read_state 全串名必 miss → 末段 computed 兜底 → 恒 false。
+            // resolve_expr_to_value 的 Dot 臂含 Ident("store") 特判（比较臂
+            // 同款通道实测工作），解除排除。
+            let has_inner_dot = path.contains('.');
             if has_inner_dot {
                 if let Some(expr) = Self::parse_dot_path_to_expr(cond) {
-                    return self.resolve_expr_to_value(&expr, bindings)
-                        .map(|v| v.as_bool())
-                        .unwrap_or(false);
+                    if let Some(v) = self.resolve_expr_to_value(&expr, bindings) {
+                        return v.as_bool();
+                    }
                 }
-                return false;
+                // expr 解析/求值 miss 不再硬 false——回落下方 read_state +
+                // computed 既有通道（语义只增不减）。
             }
             // PLAN-055: 裸 computed 真值判定兜底——`if .hasTime` / `if .isUser`
             // 一类视图级条件引用的是 computed（widget computed{} 表），不是
@@ -12948,7 +12954,13 @@ let tabs_inner = View::Row {
             // PLAN-048 L1: bare `store.X` computed truthy check — same
             // computed-table fallback as the operator path above.
             let name = cond.strip_prefix("store.").unwrap_or(cond);
-            return self.eval_computed(name, bindings)
+            if let Some(v) = self.eval_computed(name, bindings) {
+                return v.as_bool();
+            }
+            // PLAN-749 G1: fn 调用真值位兜底（`if extractRunId(.tc)` 形——
+            // musk chat_message.at:339 坑①家族第三型：同 fn 在 computed/
+            // text 位工作、条件位此前静默返空）。
+            return self.resolve_condition_operand_fallback(cond, bindings)
                 .map(|v| v.as_bool())
                 .unwrap_or(false);
         };
@@ -13010,7 +13022,29 @@ let tabs_inner = View::Row {
                         lhs_nil = matches!(v, Value::Nil | Value::Null);
                         value_to_display_string(&v)
                     }
-                    Err(_) => return false,
+                    Err(_) => {
+                        // PLAN-749 G2: 单段名 read_state miss 回落 computed
+                        // （truthy 臂 PLAN-048 L1 同口径——比较臂此前漏配，
+                        // `if .c_run != ""` 类单段 computed 比较恒假）。
+                        let cname = name.strip_prefix("store.").unwrap_or(name);
+                        match self.eval_computed(cname, bindings) {
+                            Some(v) => {
+                                lhs_nil = matches!(v, Value::Nil | Value::Null);
+                                value_to_display_string(&v)
+                            }
+                            None => {
+                                // PLAN-749 G1: CALL/方法链比较位兜底
+                                // （`if extractRunId(.tc) != ""` 形）。
+                                match self.resolve_condition_operand_fallback(lhs, bindings) {
+                                    Some(v) => {
+                                        lhs_nil = matches!(v, Value::Nil | Value::Null);
+                                        value_to_display_string(&v)
+                                    }
+                                    None => return false,
+                                }
+                            }
+                        }
+                    }
                 }
             }
         } else {
@@ -13032,7 +13066,19 @@ let tabs_inner = View::Row {
                         lhs_nil = matches!(v, Value::Nil | Value::Null);
                         value_to_display_string(&v)
                     }
-                    None => return false,
+                    None => {
+                        // PLAN-749 G1: fn 调用比较位兜底——裸名臂的实参段
+                        // （`extractRunId(.tc)` 类 CALL 不以 '.' 开头，此前落
+                        // 本臂 read_state/eval_computed 全 miss → 恒 false，
+                        // musk chat_message.at:339 坑①家族第三型）。
+                        match self.resolve_condition_operand_fallback(lhs, bindings) {
+                            Some(v) => {
+                                lhs_nil = matches!(v, Value::Nil | Value::Null);
+                                value_to_display_string(&v)
+                            }
+                            None => return false,
+                        }
+                    }
                 },
             }
         };
@@ -13068,7 +13114,26 @@ let tabs_inner = View::Row {
                         rhs_nil = matches!(v, Value::Nil | Value::Null);
                         value_to_display_string(&v)
                     }
-                    Err(_) => return false,
+                    Err(_) => {
+                        // PLAN-749 G2/G1：RHS 单段名与 LHS 同口径（computed
+                        // 表 + CALL 兜底——此前 RHS 单段 miss 直接 false）。
+                        let cname = name.strip_prefix("store.").unwrap_or(name);
+                        match self.eval_computed(cname, bindings) {
+                            Some(v) => {
+                                rhs_nil = matches!(v, Value::Nil | Value::Null);
+                                value_to_display_string(&v)
+                            }
+                            None => {
+                                match self.resolve_condition_operand_fallback(rhs, bindings) {
+                                    Some(v) => {
+                                        rhs_nil = matches!(v, Value::Nil | Value::Null);
+                                        value_to_display_string(&v)
+                                    }
+                                    None => return false,
+                                }
+                            }
+                        }
+                    }
                 }
             }
         } else {
@@ -13120,6 +13185,35 @@ let tabs_inner = View::Row {
             }
             _ => false,
         }
+    }
+
+    /// PLAN-749 G1/G2：条件操作数既有通道（binding/state/computed/len）全
+    /// miss 后的通用兜底——整段按表达式 fragment 解析（CALL/方法链/索引/
+    /// 混合形态）后经 resolve_expr_to_value 统一求值（其 Call 臂含
+    /// bridge.call_vm_fn 与 t()/style recipe 通道、Dot 臂含 store 特判）。
+    /// 仅兜底不前置：既有绿臂语义零扰动；解析失败回 None（调用方落原
+    /// false 语义）。
+    fn resolve_condition_operand_fallback(
+        &self,
+        src: &str,
+        bindings: &Bindings,
+    ) -> Option<Value> {
+        let trimmed = src.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        // 操作数不该再含比较/逻辑操作符（外层已拆分）——防御性跳过，
+        // 避免把复合条件当单表达式误解析。
+        if [
+            " == ", " != ", " && ", " || ", " > ", " < ", " >= ", " <= ",
+        ]
+        .iter()
+        .any(|op| trimmed.contains(op))
+        {
+            return None;
+        }
+        let expr = crate::parser::Parser::parse_expr_fragment(trimmed)?;
+        self.resolve_expr_to_value(&expr, bindings)
     }
 
     /// Resolve `${.field}` interpolation patterns in a literal string.
