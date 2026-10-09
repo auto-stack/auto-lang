@@ -1,7 +1,7 @@
 ---
 plan_id: PLAN-748
 status: drafting               # drafting → executing → execution_done → reviewed → archived
-feature_name: VM 模板条件求值/续体字段写/动态样式三断点修复（auto-musk PLAN-101 上游缺口）
+feature_name: VM 三断点修复 + vm 轨 iced 渲染器四件缺陷（musk PLAN-101 + jade-edit 供料，双 phase）
 author: [agent]
 created_at: 2026-10-10
 updated_at: 2026-10-10
@@ -9,22 +9,30 @@ updated_at: 2026-10-10
 # /auto-plan:review 结束时填写：
 supersedes_spec_components:
   - docs/specs/auto-lang/vm/architecture.md
-new_spec_components: []
+  - docs/specs/auto-lang/ui/overview.md#items-stretch-两阶段行语义（PLAN-655）
+new_spec_components:
+  - docs/specs/auto-lang/ui/overview.md#scrollable-显式高与类序无关（PLAN-748）
+  - docs/specs/auto-lang/ui/overview.md#autodown-editor-引擎-parity（PLAN-748）
 touched_goals:
   - GOAL-007
 
-affects: [auto-lang/vm]
+affects: [auto-lang/vm, auto-lang/ui]
 current_step: 0
-total_steps: 6
-plan_revision: 1
+total_steps: 12
+plan_revision: 2
 ---
 
-# PLAN-748 — VM 模板条件求值/续体字段写/动态样式三断点修复
+# PLAN-748 — VM 三断点修复 + vm 轨 iced 渲染器四件缺陷（双 phase）
 
 ## 变更摘要
 
+本计划双 phase，各自独立可执行/可复审，同 worktree 按序执行；两 phase
+**无代码依赖**（Phase 2 不依赖 Phase 1 三断点修复，可先行）。
+
+### Phase 1 — VM 模板条件求值/续体字段写/动态样式三断点（auto-musk PLAN-101 供料，T-00～T-05）
+
 auto-musk PLAN-101（2026-10-09 实机）登记了三个 VM 渲染/执行引擎断点并
-以 workaround 绕开（musk `docs/plans/101` §10），本计划在 auto-lang 侧
+以 workaround 绕开（musk `docs/plans/101` §10），本 phase 在 auto-lang 侧
 根修：
 
 1. **模板 `if` 条件成员访问恒假**——`for` 循环行数据的 `if w.is_current`
@@ -38,6 +46,41 @@ auto-musk PLAN-101（2026-10-09 实机）登记了三个 VM 渲染/执行引擎�
 
 修复后 musk 101 的绕开代码（mark 预拼 / JSON 克隆+动态键 / 静态样式串）
 **回退为直读条件并双端对拍通过**（101 §10 收口候选）。
+
+### Phase 2 — vm 轨 iced 渲染器四件缺陷（jade-edit 供料，T-06～T-11；2026-10-10 增补，plan_revision 2）
+
+jade-edit 供料包（jade-edit `docs/upstream/2026-10-09-vm-layout-stretch-supply.md`
+，证据截图 jade `e2e/.runtime/exp5..13*.png`，exp5=健康基线对照）登记
+四个「vue 轨 CSS 渲染正常、vm 轨 iced 解释渲染破」的双轨差异，锚点在
+iced 渲染器与 autodown_editor 官方件：
+
+1. **件一（布局）**：`items-stretch` 行不交叉轴拉伸 Shrink 高子项——
+   StretchLine final 遍声称对 Shrink 高子项以 `min_h=effective` 落位
+   （stretch_line.rs 头注「CSS align-items:stretch 语义原语化」），
+   实际未兑现——子项几何/背景止于自身内容高，行本身 flex-1 满高正常
+   （jade 实测侧栏 bg 底边 550/786，行满高）。
+2. **件二（布局）**：`overflow-y-auto` col（view builder 转写
+   `View::Scrollable`）挂显式高 `h-full` → 子树零几何（MCP snapshot
+   节点在、屏幕零像素），且**类序敏感**：h-full 类串首位=整个应用降级
+   为无样式巨字布局、末位=仅本子树消失。同位 `flex-1`（经
+   axis_fix_col_child 转写 Height(Full)）正常——显式类与转写产物在
+   Scrollable 上行为分叉是定位线索。类序不应影响渲染结果。
+3. **件三（布局）**：StretchLine 主轴配给挤掉末位定宽子项——
+   items-stretch 行三直接子 `[定宽A, FillPortion B, 定宽C]`：B 越界
+   占满整行，C 配到≈0 宽，行 overflow-hidden 下完全不可见（jade 右栏
+   检索/反链/标签面板开即不可见：backlinks_open=true、面板行在快照、
+   零渲染）。与 C 宽度类形态（w-72 与 w-[288px] 同败）、与 overflow/
+   显式高/if 包装均无关。期望 B = 行宽 − A − C（flex third-pass 定宽
+   预留）。
+4. **件四（呈现缺口）**：`autodown_editor` vm 件缺引擎 wrapper padding
+   （auto-down/engine 边界）——vue 轨 padding 由引擎 CSS 承担
+   （autodown-editor.css:103 `.autodown-editor-content-wrapper
+   padding:1rem 1.25rem`，editor/index.ts:1 随组件导入）；vm 轨官方件
+   无此层，正文贴死分隔线。正根修：vm 件内建复刻该 padding。
+
+验收锚点：jade-edit **撤 workaround 层后**（侧栏回单层 overflow-y-auto
+col、编辑器去 padding 容器——jade commit 4b398a4 两层 workaround）双轨
+逐像素同构 + 右栏面板可见 + 现有全部门绿。
 
 ## 目标
 
@@ -56,6 +99,20 @@ auto-musk PLAN-101（2026-10-09 实机）登记了三个 VM 渲染/执行引擎�
 6. 既有回归零新增红（tv/tf/RC + daily 对拍；**master 预存红 P733-R2 六条
    为零增减基线，不是本计划修复对象**）。
 
+### Phase 2 目标（jade-edit 供料四件）
+
+7. 件一/二/三在干净 master 基面复现定音（供料观测来自 release
+   v0.4.2-2747-gab7a650bd 构建——stretch 代码与现 HEAD 一致，仍须干净
+   基面重取；件四为确证呈现缺口，无需定音直接修）。
+8. 件一：items-stretch 行内 Shrink 高子项（含 overflow-y-auto col）的
+   几何/背景拉伸到行高（复现形左 col 高 = 行高）。
+9. 件二：overflow-y-auto col 挂显式高（h-full/h-*）子树几何非零，且
+   **任意类序渲染等价**（首位/末位/乱序 golden 对照全同）。
+10. 件三：`[定宽, flex-1, 定宽]` 行 flex 子宽 = 行宽 − Σ定宽 − spacing，
+    定宽子不塌 0 宽（右栏面板可见）。
+11. 件四：vm autodown_editor 内建引擎等值 wrapper padding（1rem/
+    1.25rem = 上下 16 / 左右 20 逻辑 px）。
+
 ### 非目标
 
 - 不改 a2vue/web 生成器面（style "四形态"是 web 轨语义登记，VM 解释器
@@ -66,6 +123,17 @@ auto-musk PLAN-101（2026-10-09 实机）登记了三个 VM 渲染/执行引擎�
   本计划 worktree 基面恒钉 master 已提交代码。
 - 不动 park/resume 协议本身（Stakes/RC 敏感区，419/510/624/733 四轮
   修过；修复落在错误处理/求值侧，非弹栈侧）。
+
+### Phase 2 非目标
+
+- 不改 vue/web 轨与 auto-down 引擎 CSS（件四 padding 数值锚在引擎侧
+  autodown-editor.css，vue 轨渲染链零改动）。
+- 不在 jade-edit 仓内修任何代码（上游根修，jade 侧只做撤层复验——
+  669/682 先例流程；复验依赖 jade 会话协调，见 §10）。
+- 不推倒 StretchLine 两阶段架构本体与 line_fill_height 语义（修复落在
+  final 遍落位载体、配给数学与 Scrollable 高解析，PLAN-655 语义保持）。
+- 不做 iced 引擎级 flex 补丁/升级（PLAN-655 非目标第 5 条裁定延续：
+  iced `Length::Shrink` 忽略 limits.min 等引擎级行为在渲染器层补偿）。
 
 ## 架构方案
 
@@ -87,6 +155,28 @@ T-02 断点①修复（按定音：eval_computed/store 别名展平挂载面或
 T-03 断点③收口 + 词表 WARN 对齐
 T-04 跨仓回退对拍（musk 101 workaround 回退版 probe + ui-parity）
 T-05 全量门 + 提交 + 交接
+
+Phase 2（jade 供料四件，与 Phase 1 无代码依赖，可先行）：
+T-06 复现定音（干净 master 基面 + 供料复现形四件 headless/运行态探针）
+  ├─ 件一 probe：StretchLine final 遍逐子项入射 limits 与产出 node 尺寸
+  │  dump——min_h=effective 死于哪个包装层（iced Length::Shrink resolve
+  │  忽略 limits.min 嫌疑；对照 008 同构行 layout_tests.rs:2939 差异定位）
+  ├─ 件二 probe：同视图类序三变体（h-full 首位/末位/flex-1 替代）三层树
+  │  diff（Style::parse → AbstractView → widget Length）——顺序敏感层
+  │  定位 + 首位全局降级机制（全局副作用/静默 panic 定罪）
+  ├─ 件三 probe：宽度探测遍逐子项 fill_portion 判定值 + available 扣减
+  │  序列 + row 子项包装链外层 Length dump（flex-1 col 的 width=Full
+  │  载体是否在包装链上丢失）
+  └─ 件四：确证缺口（widget.rs 全模块零 padding 载体 vs 引擎 css:103）
+     直接进修复
+T-07 件一修复（交叉轴拉伸兑现；显式定高落位候选，不引入 Fill 包装回
+  无界语境——P642-D12 红线）
+T-08 件二修复（build_scrollable 显式高子树零几何 + 类序无关性收口）
+T-09 件三修复（主轴配给定宽预留；build_row 组装期显式传入子项主轴语义
+  三元组候选，摆脱 widget 包装层 Length 反推）
+T-10 件四修复（autodown_editor vm 件内建 wrapper padding 16/20px）
+T-11 判绿收口（iced 布局单测 + 乱序等价 golden + 041/gallery 像素对照
+  + jade 撤层跨仓复验 + 全量门 + KNOWN-DEBT 更新）
 ```
 
 ## 需求分析与背景调查
@@ -166,6 +256,103 @@ vm/codegen.rs `139f1baea40fa564`、handler_codegen.rs `408566622fe0d7fb`。
 - 观测约束：musk 全部实机证据来自 dirty 构建 + 当日 master 正被活跃
   开发，**T-00 干净基面重取是硬门槛**，不得直接引用 101 的观测定罪。
 
+### Phase 2 授权与供料（2026-10-10 增补，plan_revision 2）
+
+用户 2026-10-10 指示：jade-edit 供料的 vm 轨 iced 渲染器四件缺陷
+（三件布局 + 一件呈现缺口），供料包 jade-edit
+`docs/upstream/2026-10-09-vm-layout-stretch-supply.md` 全文 + 证据截图
+jade `e2e/.runtime/exp5..13*.png`（exp5=健康基线对照，2026-10-10 在位
+核验），「走 auto-lang 自身 plan 流程立项，不直接改 jade-edit」「把
+上述问题更新到计划 748 里，作为独立的新 phase」。同 Phase 1：本增补
+属起草；work 授权待用户确认计划后另行给出。
+
+### Phase 2 已取证事实（jade-edit 实测，2026-10-08/09）
+
+证据载体 release `auto 0.1.0+v0.4.2-2747-gab7a650bd`（2026-10-08 构建
+）；供料复验时 auto-lang HEAD `1b05d3d44`——**stretch 代码与 2747 内涵
+一致**（ab7a650bd 为 HEAD 祖先，此后 renderer.rs/stretch_line.rs 仅
+focus/resize/fit 三件无关修复）。jade 侧实验均在 `auto run -r vm`
+merged 形态 + PrintWindow 截图 + 像素测量取得；jade-edit `src/front/
+app.at` 双轨单源（vue=CSS 渲染正常，vm=iced 解释渲染破）。
+
+| 件 | 症状 | 对照正常形态 |
+|---|---|---|
+| 一 | stretch 行 Shrink 高子项止于内容高（窗口 1113×786，侧栏 bg-card 底边 y=550=树内容底，行本身 flex-1 满高） | 行高解析正确；vue 轨 CSS align-items:stretch 正常 |
+| 二 | overflow-y-auto col + h-full：末位类序→col 背景/几何拉满行高但子树全部消失（快照节点在、屏幕零像素）；首位类序→整个应用降级无样式（menubar 默认字号巨大化、其余子树不渲染） | 同位 flex-1（axis_fix 转写 Height(Full)）正常；jade workaround 用宿主 h-full + 内层 flex-1 滚动避开 |
+| 三 | [定宽A, FillPortion B, 定宽C]：B 越界占满整行、C≈0 宽，行 overflow-hidden 下完全不可见；vm_matrix 测不出（快照断言不含几何） | 两子行 [定宽, flex-1] 正常（jade 主布局在用） |
+| 四 | vm 编辑器正文贴死分隔线 | vue 轨引擎 CSS wrapper padding（1rem/1.25rem）承担 |
+
+jade 侧 workaround（已验证双轨等值，上游修复后撤层复验，jade commit
+4b398a4）：①侧栏拆宿主 h-full col（无 overflow）+ 内层 flex-1
+overflow-y-auto col；②编辑器外包 px-5 py-4 容器 + 任意变体
+`[&_.autodown-editor-content-wrapper]:p-0` 清零引擎层（vue 轨 specificity
+(0,2,0)>(0,1,0) 构建产物核验；vm 轨变体天然 no-op）。
+
+### Phase 2 代码定位（master @ 7bd28888b 工作区实读，2026-10-10；所引区块在主检出在途 WIP hunks 之前，与已提交 master 行号一致）
+
+- **件一/件三（stretch_line.rs + build_row）**：
+  `crates/auto-lang/src/ui/iced/stretch_line.rs` 头注 :1-25 声明
+  「CSS align-items:stretch 语义原语化」；final 遍 :164-193 对 Shrink
+  高子项 `min_h=effective`（:171-175）+ max=effective 落位——**嫌疑：
+  iced 0.14 `Length::Shrink` resolve 忽略 limits.min**，且子项实际
+  载体是 Scrollable/背景 Container 包装链（needs_visual_wrap）而非
+  裸子项，min 高在哪层死掉待 probe。宽度探测遍 :110-142：非 fill
+  子项按序吃自然宽、fill 子项均分剩余——`fill_portion`（:70-76）读
+  **widget 层 Length**（`c.as_widget().size().width`）；row 子项经
+  apply_*_style/包装链后外层 Length 可能不再反映 style 语义（flex-1
+  col 的 width=Full 载体丢失 → 被判非 fill → 按内容宽吃满 available
+  → 末位定宽子被 max 钳 0——与「B 越界占满、C≈0」症状吻合，待
+  probe 证实）。build_row StretchLine 分支 renderer.rs:2527-2561
+  （line_fill_height :2533-2536）。
+- **件二（转写链 + build_scrollable）**：aura_view_builder.rs:2716-2742
+  （needs_scroll → `View::Scrollable`，**style 整串 clone** 含全部类）
+  → renderer.rs build_scrollable :2738-2886——显式高臂 :2840-2863
+  （Full/Screen → `s.height(Length::Fill)` :2844-2846）、max-h cap 臂
+  :2815-2826 注释 + :2879-2885（Shrink + Container::max_height 封顶，
+  供料疑点所在）。对照正常路径 axis_fix_col_child renderer.rs:1141-1156
+  （flex-1 → 类级 `StyleClass::Height(Full)` 转写）——**显式 h-full
+  类与转写产物在 StyleClass 层同值，from_style 后应同 Length；分叉
+  说明分叉点在类→Length 之后的某层（或转写时序差）**。类序敏感先例：
+  iced_adapter.rs:1181-1193 Flex1→width=Full 注释明言「avoiding
+  order-dependency between flex-1 and overflow-y-auto in the class
+  list」（Plan 370 Issue 1）——IcedStyle 层曾做过一次类序去敏，件二
+  疑似同族残余在别层（Style 解析/merged_with_variant/vm 侧 style 串
+  装配待查）；**首位=全局降级**（menubar 巨字号、其余子树不渲染）
+  指向带全局副作用的分支或被吞 panic，须 probe 定罪，不得猜。
+- **件四（autodown_editor）**：vm 件 `crates/auto-lang/src/ui/
+  autodown_editor/`（widget.rs 766 行/core.rs 8351 行/mod.rs，**全模块
+  零 padding 载体**——grep 实证）；vue 轨对照 auto-down 引擎
+  `autodown/packages/engine/src/editor/styles/autodown-editor.css:103`
+  `.autodown-editor-content-wrapper { flex:1; padding:1rem 1.25rem;
+  overflow-y:auto; … }`（经 editor/index.ts:1 随组件导入；1rem=16、
+  1.25rem=20 逻辑 px）。DSL 侧注册 aura/schema.rs:3111；examples/ui
+  无使用例（jade-edit 为唯一实机消费者——仓内判绿须自带最小 fixture
+  /单测，像素对照依赖 jade 跨仓复验）。
+
+### Phase 2 风险与约束（供料包修复约束四条 + 本仓两条）
+
+1. **P642-D12 不回归**（供料约束 1）：StretchLine 两阶段存在的理由
+   就是 scroll 内容臂（无界）下 Fill 包装塌缩 0 高（008 定价卡前科）
+   ——件一/件三修法不得把 Fill 拉伸产物放回无界祖先语境（显式
+   Fixed(effective) 落位候选天然满足：effective 在无界语境=内容高，
+   恒有界）。
+2. **类序无关性**（供料约束 2）：件二首位/末位分叉说明存在顺序敏感
+   路径；修复后**任意类序等价**——golden/像素对照必须加乱序案
+   （h-full × flex-1 × overflow-y-auto × 尺寸/背景类的排列组合）。
+3. **PLAN-655 既有语义保持**（供料约束 3）：line_fill_height（定高行
+   吃满有界入射、无界回落 auto，stretch_line.rs:58-66 纯函数单测）与
+   041 auto-edit 主行既有绿面（layout_tests.rs:2907- PLAN-655 段 +
+   fix-stretch-fill 回归面）零漂移。
+4. 判绿面（供料约束 4）：iced 档布局单测（三件各一）+ ui-gallery/041
+   像素对照 + jade 侧复验（jade vm 矩阵 merged 臂 + 供料包复现形——
+   jade 仓跨仓动作，见 §10）。
+5. **主检出 WIP 同文件冲突**：Phase 2 触 renderer.rs/aura_view_builder.rs
+   ——与上文主检出媒体引擎 WIP 8 文件**同文件**；worktree 基面恒钉
+   master 已提交代码，rebase 前与 WIP owner 协调（同 Phase 1 前置面）。
+6. **iced 引擎级行为边界**：件一根因若为 iced `Length::Shrink` 忽略
+   limits.min 的引擎级行为，修复在渲染器层补偿（自持落位），不开
+   iced fork/升级（PLAN-655 非目标第 5 条既有裁定延续）。
+
 ## 详细设计
 
 ### T-00 定音探针（判定产物：定音报告，含每断点根因层 + 修复路线）
@@ -236,6 +423,106 @@ plan702/705/707/711 segment 面 / plan733 矩阵 / musk_vm_track——
 有对拍 case）+ daily 回归与 master 基线逐名对拍。提交 + §9 记录 +
 KNOWN-DEBT-AND-RISKS.md 条目更新（三断点销账/新边界）。
 
+### Phase 2 设计（T-06～T-11）
+
+#### T-06 复现定音（判定产物：四件定音报告）
+
+1. **基面**：与 T-00 同 worktree 复用（lang-748，干净 master 构建
+   AUTO_EXE）——供料观测同样来自 release 构建，干净基面重取是硬门槛。
+2. **件一 probe**：供料复现形（`col h-full w-full > row flex-1
+   items-stretch w-full > [w-56 bg-card overflow-y-auto 短内容,
+   flex-1 多行内容]`）headless 布局 dump——StretchLine final 遍逐子项
+   入射 limits 与产出 node 尺寸 + 子项包装链逐层 Length/min 解析；
+   对照 008 同构行测试形态（layout_tests.rs:2939）差异定位。定音：
+   min_h=effective 死于哪层（Scrollable viewport 高解析 / 背景容器
+   Shrink resolve / min 未传到内容臂）。
+3. **件二 probe**：同视图三变体（h-full 首位 / h-full 末位 / flex-1
+   替代）三层树 diff（`Style::parse` 结果 → AbstractView → widget
+   Length 集合）；首位全局降级变体加 stderr/panic 捕获定罪全局副作用
+   层。定音：顺序敏感层 + 显式高子树零几何机制（两者可能同层或分属
+   两层）。
+4. **件三 probe**：`[w-56, flex-1, w-72]` 复现形 dump 宽度探测遍逐子项
+   fill_portion 判定值 + available 扣减序列 + final_w 终值；并 dump
+   row 子项 widget 树外层 Length（验证 flex-1 col 的 width=Full 是否
+   在包装链上丢失）。w-72 与 w-[288px] 双宽度类形态各跑一遍（供料
+   称同败——若同败则与类解析无关，异败则先修类解析）。
+5. **判定纪律**：同 Phase 1——每件输出「根因层（文件:符号）+ 修复
+   路线（A/B 案）+ 回归面」；证据不足扩探针不猜。件四豁免定音
+   （缺口确证），直接进 T-10。
+
+#### T-07 件一修复（交叉轴拉伸兑现）
+
+按定音二选一：
+- **路线 A（StretchLine 自持落位）**：final 遍对 Shrink 高子项不再
+  依赖 limits.min 传递——以已解析的 effective 显式定高落位（候选：
+  包装 Fixed(effective) 高容器或等价注入，Shrink→Fixed 语义 = CSS
+  auto 高项拉伸到行高，Fixed/Fill 高子项行为不变）。约束 1 合规：
+  注入值恒有界（无界语境 effective=内容高），非 Fill——不触碰
+  P642-D12。
+- **路线 B（子项载体层补偿）**：若定音显示仅特定载体（Scrollable/
+  背景容器包装链）忽略 min——在 build_scrollable/apply_*_style 对应
+  分支补偿 min 高传递（影响面更大，须全量 stretch 回归面护航）。
+判绿：复现形左 col 高=行高（含 bg 拉伸像素证）；008/041/gallery 既有
+stretch 面零漂移。
+
+#### T-08 件二修复（显式高 Scrollable + 类序无关）
+
+按定音落点修两症（可同根合并修）：
+- **子树零几何**：build_scrollable 显式高分支（:2840-2863 一带）对
+  Height(Full/Fixed) 入射的内容高解析修复；若与件一路线 B 同根则合并。
+- **类序敏感**：顺序敏感层去敏（对齐 Plan 370 Issue 1 的 from_style
+  先例手法——类集语义在解析层归一，不依赖类串顺序）；首位全局降级
+  若为独立全局副作用分支则单独根修。
+判绿：三变体（首位/末位/flex-1）渲染等价 + 乱序 golden 案全绿；子树
+几何非零（MCP snapshot + PrintWindow 像素双证）。
+
+#### T-09 件三修复（主轴配给定宽预留）
+
+按定音二选一：
+- **路线 A（组装期显式语义，结构性根治候选）**：build_row
+  StretchLine 分支组装 items 时以 style 层 IcedSize 语义显式传入子项
+  主轴三元组（element, main_fill: Option<f32>, fixed_w: Option<f32>）
+  ，配给数学显式预留定宽（B = 行宽 − Σ定宽 − spacing）——摆脱对
+  widget 包装层 Length 的反推，包装链变化不再影响配给判定。
+- **路线 B（fill_portion 判定/配给数学最小修正）**：若定音显示
+  Length 载体未丢失而是探测遍扣减序或公式错——最小修正
+  stretch_line.rs :110-142。
+判绿：复现形 B=行宽−A−C 且 C=288（w-72）；两子行 [定宽, flex-1]
+既有行为零漂移。
+
+#### T-10 件四修复（autodown_editor wrapper padding）
+
+vm 件内建复刻引擎 wrapper padding：内容层 padding 上下 16 / 左右 20
+逻辑 px（对齐 autodown-editor.css:103 `padding:1rem 1.25rem`）；滚动
+语义对齐 CSS（padding 在滚动内容上、随滚动参与范围——引擎 wrapper
+自身 overflow-y:auto + padding 的等价形态）。不动 vue 轨/引擎 CSS；
+数值以引擎侧为单一真源（引擎常量可导则引用，不可导则注释锚定 css
+行号）。判绿：vm 侧快照/单测 padding 断言（仓内自带最小 fixture，
+examples 无使用例）+ jade 撤层双轨像素等值（jade 侧，AC-14）。
+
+#### T-11 判绿收口与跨仓复验
+
+1. iced 档布局单测三件各一（挂 layout_tests.rs PLAN-655 段后，
+   plan748 前缀）+ 件二乱序等价 golden 案；
+2. 041-auto-edit 像素对照 + gallery 围栏（autoui-verifier
+   test_widgets_gallery_vm.py）零漂移——重负载走机器级单实例闸门，
+   主检出单实例；
+3. jade 撤层跨仓复验（jade-edit 仓，用户/jade 会话协调）：撤两层
+   workaround（commit 4b398a4）→ vm_matrix merged 臂全绿 + 供料四
+   复现形正确 + 双轨 PrintWindow 逐像素同构 + 右栏面板可见；
+4. 全量门：裸 `cargo t`（per-plan 复审门禁，fix-test-tiering——
+   ui/iced renderer 面无专档触面）+ 预存红零增减对拍 +
+   KNOWN-DEBT-AND-RISKS.md 更新（四件销账/新边界）。
+
+### 规范增量
+
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-01 | modify | docs/specs/auto-lang/vm/architecture.md | before：三断点现状（条件成员访问/续体静态写/动态 style 半支持）；after：按 T-00 定音后的求值/续体/样式通道语义定稿（review 时绑定） | PLAN-101 三断点 | AC-01..07 |
+| SD-02 | modify | docs/specs/auto-lang/ui/overview.md#items-stretch-两阶段行语义（PLAN-655） | before：final 遍「Shrink 高子项以 min_h=effective 落位」+「Fill/FillPortion 按份均分剩余宽」（声明未兑现于包装链/多定宽子形态）；after：交叉轴拉伸对全部子项形态（含 overflow-y-auto col 与背景包装链）实测兑现（显式定高落位，不依赖 limits.min 传递）；主轴配给显式预留定宽子（flex 子宽 = 行宽 − Σ定宽 − spacing，配给判定以 style 层主轴语义为准，非 widget 包装层 Length） | 件一/件三语义未兑现实测；供料约束 1/3 | AC-08, AC-10, AC-12, AC-13 |
+| SD-03 | add | docs/specs/auto-lang/ui/overview.md（Scrollable 显式高与类序无关小节） | before：无（build_scrollable 显式高 × 类序行为未登记）；after：overflow-y-auto col 挂显式高（h-*/h-full）子树几何非零 + **任意类序渲染等价**为 enduring 不变式（乱序 golden 守护） | 件二；供料约束 2 | AC-09 |
+| SD-04 | add | docs/specs/auto-lang/ui/overview.md（autodown_editor 引擎 parity 小节） | before：vm 件无 wrapper padding 语义登记；after：vm autodown_editor 内建引擎 CSS 等值 wrapper padding（1rem/1.25rem，单一真源 = 引擎 autodown-editor.css:103） | 件四双轨呈现缺口 | AC-11 |
+
 ## 测试设计
 
 | 验证 | 命令/方法 | 期望 |
@@ -245,6 +532,11 @@ KNOWN-DEBT-AND-RISKS.md 条目更新（三断点销账/新边界）。
 | V03 全量回归 | `cargo test`（tv/tf/RC/segment/plan733/musk_vm_track） | 零新增红；预存红六条零增减（若同根修复则改判并说明） |
 | V04 跨仓对拍 | musk 101 workaround/回退双 variant probe + ui-parity | 双 variant 同绿；musk 无新增红 |
 | V05 daily 对拍 | daily 回归 vs master 基线逐名 | 零增减 |
+| V06 P2 定音探针 | T-06 探针套件（headless 布局 dump + 三层树 diff + 类序变体） | 件一/二/三根因层判定报告；干净基面复现成功（件四豁免——确证缺口） |
+| V07 P2 布局单测 | plan748 前缀布局单测（件一/二/三复现形各一 + 件二乱序 golden + 件四 padding 断言） | 修复前红（绑定定音复现形态）、修复后绿；乱序案任意排列等价 |
+| V08 P2 既有面零漂移 | layout_tests PLAN-655 段 + line_fill_height 单测 + 041 像素对照 + gallery 围栏 | line_fill_height/008 同构行/041 主行零漂移 |
+| V09 P2 跨仓复验 | jade 撤层（4b398a4 两层 workaround）后 vm_matrix merged 臂 + 供料四复现形 + 双轨 PrintWindow 像素对照 | 全绿/复现形正确/双轨同构/右栏面板可见 |
+| V10 P2 全量门 | 裸 `cargo t`（复审门禁）+ 预存红零增减对拍 | 零新增红 |
 
 ## 验收标准
 
@@ -257,6 +549,14 @@ KNOWN-DEBT-AND-RISKS.md 条目更新（三断点销账/新边界）。
 | AC-05 | musk 101 回退版（直读条件）在本计划构建跨仓 probe 全绿 | V04 |
 | AC-06 | 全量零新增红；预存红零增减（或同根改判记录在案） | V03/V05 |
 | AC-07 | 禁静默兜底补丁：三修复点均可在单测中观测到真值行为差异（非"看起来有臂"） | review 绑定代码+测试 |
+| AC-08 | items-stretch 行内 Shrink 高子项（含 overflow-y-auto col）几何/背景拉伸到行高（供料复现形左 col 高 = 行高） | V06/V07/V08 |
+| AC-09 | overflow-y-auto col 挂显式高（h-full/h-*）子树几何非零；任意类序（首位/末位/乱序）渲染等价，无全局降级形态 | V06/V07 |
+| AC-10 | `[定宽, flex-1, 定宽]` 行 flex 子宽 = 行宽 − Σ定宽 − spacing，定宽子不塌 0 宽（jade 右栏面板可见） | V06/V07/V09 |
+| AC-11 | vm autodown_editor 内建 wrapper padding 与引擎 CSS 等值（上下 16 / 左右 20 逻辑 px） | V07/V09 |
+| AC-12 | P642-D12 不回归：scroll 内容臂（无界）语境 stretch 行为零漂移（008 定价卡族测试零漂移） | V08 |
+| AC-13 | PLAN-655 语义保持：line_fill_height 单测与 041 auto-edit 主行像素对照零漂移 | V08 |
+| AC-14 | jade 撤两层 workaround（4b398a4）后双轨逐像素同构 + vm_matrix merged 臂全绿 + 右栏面板可见 | V09 |
+| AC-15 | Phase 2 全量门零新增红、预存红零增减；四修复点均有可观测行为差异的单测（禁静默兜底，同 AC-07 纪律） | V10/review |
 
 ## 执行步骤
 
@@ -268,6 +568,12 @@ KNOWN-DEBT-AND-RISKS.md 条目更新（三断点销账/新边界）。
 | [ ] T-03 | T-00 ③核验 | extract_style_with 收口 + WARN 对齐 | V03 | 04 |
 | [ ] T-04 | T-01～T-03 | musk 101 双 variant 跨仓对拍（AUTO_EXE 锁 748 构建） | V04 | 05 |
 | [ ] T-05 | T-04 | 全量门 + 提交 + §9 记录 + KNOWN-DEBT 更新 + owned 清理 | V03/V05 | 06,07 |
+| [ ] T-06 | 无（与 T-00 同 worktree，可并行/先行） | 四件定音探针（供料复现形 headless dump + 类序三变体树 diff）+ 判定报告（件四确证豁免） | V06 | 08,09,10 |
+| [ ] T-07 | T-06 件一定音 | stretch_line/载体层交叉轴拉伸修复（Fixed(effective) 落位或 min 传递补偿）+ 复现形单测 | V07/V08 | 08,12,13 |
+| [ ] T-08 | T-06 件二定音 | build_scrollable 显式高子树零几何 + 类序无关修复（顺序敏感层去敏）+ 乱序 golden | V07 | 09 |
+| [ ] T-09 | T-06 件三定音 | 主轴配给定宽预留修复（组装期主轴语义三元组或配给数学最小修正）+ 复现形单测 | V07/V08 | 10,12,13 |
+| [ ] T-10 | 无（件四豁免定音） | autodown_editor vm 件内建 wrapper padding（16/20px，锚引擎 css:103）+ padding 断言单测 | V07 | 11 |
+| [ ] T-11 | T-07～T-10 | 既有面零漂移（008/041/gallery）+ jade 撤层跨仓复验 + 裸 cargo t 全量门 + KNOWN-DEBT 更新 + 提交 | V08/V09/V10 | 12,13,14,15 |
 
 ## 复审记录
 
@@ -285,6 +591,28 @@ KNOWN-DEBT-AND-RISKS.md 条目更新（三断点销账/新边界）。
   master 单测/预存红实跑）；基线 hash 与 733 先例。
 - review_authority: 独立 auto-plan:review 复验定音报告与修复证据。
 
+### new 阶段交接（Phase 2 增补，plan_revision 2，2026-10-10）
+
+- stage: new
+- plan_id: PLAN-748
+- plan_revision: 2
+- outcome: pass
+- next: work（Phase 1+2 同 worktree（lang-748）按序执行；两 phase 无
+  代码依赖，Phase 2 可先行；主检出 WIP owner 协调为 work 前置面不变）
+- changed_tasks: T-06～T-11（新增，total_steps 6→12）
+- changed_acceptance: AC-08～AC-15（新增）；AC-01..07 / T-00..05 /
+  V01..05 原样保留（Phase 1 既有授权与契约不动）
+- evidence: 供料包全文（jade-edit docs/upstream/2026-10-09-vm-layout-
+  stretch-supply.md）+ 证据截图 exp5..13 在位核验（2026-10-10）+ 四件
+  代码锚点 master 工作区实读（stretch_line.rs 头注/final 遍/探测遍、
+  build_row StretchLine 分支、build_scrollable 显式高与 cap 臂、
+  axis_fix_col_child、aura_view_builder needs_scroll 转写、autodown_
+  editor 模块零 padding 载体、引擎 autodown-editor.css:103——行号区块
+  均在主检出在途 WIP hunks 之前，与已提交 master 一致）；jade
+  workaround commit 4b398a4（撤层复验锚点）。
+- review_authority: 独立 auto-plan:review 复验 Phase 2 定音报告、修复
+  证据与 jade 撤层复验回执。
+
 ## 待澄清事项
 
 1. **主检出 WIP owner 协调**（owner=用户/WIP 所属会话）：master 8 文件
@@ -297,3 +625,12 @@ KNOWN-DEBT-AND-RISKS.md 条目更新（三断点销账/新边界）。
 3. **dirty 构建污染面**（owner=T-00）：101 的三项观测若部分在干净基面
    不复现（WIP 引入或已修），按实际定音收缩范围——计划允许 T-00 后
    修订任务/验收（revision 递增），不预设结论。
+4. **jade 撤层复验时点与 owner**（owner=用户/jade-edit 会话；Phase 2）：
+   AC-14 依赖 jade 仓撤两层 workaround（commit 4b398a4）后复验——上游
+   修复合入并可被 jade 取用（构建发布或指定 AUTO_EXE）后，jade 侧
+   **零改动**撤层复验；若复验失败回投本计划 reopening（669/682 先例
+   流程）。auto-lang 侧 T-11 以本仓门禁先行收口，不阻塞 jade 时点。
+5. **gallery 像素对照基建确认**（owner=T-06/T-11；Phase 2）：判绿面
+   引用 autoui-verifier 既有脚本（test_widgets_gallery_vm.py /
+   test_vue_playwright.mjs）；若 stretch 改动波及 gallery 视口 frame
+   用例，围栏跑在主检出单实例（重负载机器级闸门，PLAN-726 T-02）。
