@@ -7710,7 +7710,9 @@ pub(crate) fn async_http_result_ready(request_id: u64) -> bool {
 /// reqwest — the app's library pane silently stayed empty (PLAN-617 §9.20).
 /// With the base set, VM mode consumes the identical backend as the browser.
 /// Absolute URLs and the env being unset are passed through unchanged.
-fn resolve_http_base_url(url: &str) -> String {
+/// PLAN-099 T-05: `pub(crate)`——iced 渲染器 `load_image_bytes` 的相对图片
+/// URL（`/api/canvas/frame?...`）复用同一展开，双端同词汇。
+pub(crate) fn resolve_http_base_url(url: &str) -> String {
     if !url.starts_with('/') {
         return url.to_string();
     }

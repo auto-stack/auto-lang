@@ -7991,6 +7991,11 @@ pub(crate) fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
     if url.starts_with("/api/__auto/media/") {
         return crate::ui::image_pipeline::resolve_media_uri(url);
     }
+    // PLAN-099 T-05：相对 URL（`/` 开头）按 `AUTO_HTTP_BASE`/`AUTO_HTTP_PORT`
+    // 展开为绝对地址（复用 stdlib 单源助手——与 VM 轨 `Http.get` 同一词汇）。
+    // 此前相对路径落本地文件臂恒失败：VM 壳无页面源，musk 面板帧区
+    // `/api/canvas/frame?...` 永远读不到（web 轨浏览器 origin 正常，实测恒 "?"）。
+    let url: &str = &crate::vm::ffi::stdlib::resolve_http_base_url(url);
     use std::collections::HashMap;
     use std::sync::Mutex;
 
