@@ -31,6 +31,13 @@ const OUT_DIR = path.join(REPO_ROOT, 'website/public/playground-data')
 const OUT_FILE = path.join(OUT_DIR, 'notes.json')
 // 第二输出（Plan 582 T12）：后端 /api/examples 单一事实源——examples.rs 启动探测读取。
 const OUT_FILE_BACKEND = path.join(REPO_ROOT, 'crates/auto-playground/notes.json')
+// 第三输出：独立 SPA 宿主（auto-playground 后端自服务页）静态资产——
+// useNotes 默认 base `/playground-data/notes.json`，vite build 自 public/ 拷入 dist。
+// 目录在 frontend/.gitignore 已预留（public/playground-data/），生成物不入库。
+const OUT_FILE_SPA = path.join(
+  REPO_ROOT,
+  'crates/auto-playground/frontend/public/playground-data/notes.json'
+)
 
 // ── 通用工具 ──────────────────────────────────────────────────────────
 
@@ -532,6 +539,8 @@ function writeManifest(manifest) {
   fs.writeFileSync(OUT_FILE, json, 'utf8')
   fs.mkdirSync(path.dirname(OUT_FILE_BACKEND), { recursive: true })
   fs.writeFileSync(OUT_FILE_BACKEND, json, 'utf8')
+  fs.mkdirSync(path.dirname(OUT_FILE_SPA), { recursive: true })
+  fs.writeFileSync(OUT_FILE_SPA, json, 'utf8')
 }
 
 if (process.argv.includes('--check')) {
@@ -542,6 +551,7 @@ if (process.argv.includes('--check')) {
   const lines = [
     `manifest → ${relRoot(OUT_FILE)}`,
     `manifest → ${relRoot(OUT_FILE_BACKEND)}（后端 /api/examples 事实源）`,
+    `manifest → ${relRoot(OUT_FILE_SPA)}（独立 SPA 宿主静态资产）`,
   ]
   for (const g of manifest.groups) lines.push(`  ${g.id.padEnd(22)} ${String(g.notes.length).padStart(4)}  ${g.title}`)
   lines.push(
