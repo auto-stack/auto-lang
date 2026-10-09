@@ -257,6 +257,27 @@ RUST_BACKTRACE 分支保底开发态栈回溯。
 - **Spec 影响**：bugfix 无 spec 改写；`affects: [auto-lang/ui]`；
   supersedes/new_components 空，touched_goals 空。
 
+### 规范增量（2026-10-09 复审补记，legacy 计划按已验证实现补档）
+
+无 canonical spec 改写（retire/modify/add 全空）——本计划为行为缺陷根修：
+`ui.focus` 消费块的运行时行为恢复到 PLAN-095 T-04 的**既定意图**（快照/聚焦
+语义零变化）；panic hook 沿用 PLAN-575 D1「只追加日志」契约，容错打印仅改变
+打印失败时的进程存活语义。`supersedes_spec_components`/`new_spec_components`/
+`touched_goals` 留空即为本节书面解释；受影响面 `affects: [auto-lang/ui]`
+（运行时缺陷归属，非规约条目变更）。规约冻结验证：`git diff 7656885a3
+95e7169be -- docs/specs/` 为空（零 spec 文件触及）。
+
+---
+
+**2026-10-09 /auto-plan:review 正式复审（用户显式要求补记；archived 终态不翻转）**
+
+`stage: review | plan_id: PLAN-747 | plan_revision: 1（无显式修订号，按初版归一化） | outcome: pass | reviewed_commit: 95e7169be（merge，parents 189eec0c6+7656885a3；实现提交 7656885a3 ∈ HEAD 祖先已验） | base_commit: 139486040（骨架提交，diff base） | dependency_revisions: auto-down 895f8d0（组内兄弟，未触及） | spec_inputs: docs/specs/ 零输入（空 delta，见规范增量节） | acceptance_results: AC-1 pass / AC-2 pass（局限记档） / AC-3 pass / AC-4 pass / AC-5 pass | findings: F-1 流程性（非缺陷）——本次复审在归档后由实施会话补跑，独立性受限，已按 skill 规定从制品重建结论而非采信执行摘要；F-2 非阻塞——AC-2 的 __focus_result 未在 e2e 直接断言（组合覆盖，T-06 已诚实记档）；F-3 信息项——复核时点审计日志 +1 行为 code=0 site=main_return 干净退出（15:20:16，e2e 尾期实例正常收尾），非 panic，AC-1 口径不受影响 | evidence: ① 受测提交 7656885a3 与 HEAD 两实现文件逐字节一致（git diff --stat 为空）→ worktree 内全部验证按 skill"unchanged code 复用+显式理由"承接到 HEAD；② 审计日志（%LOCALAPPDATA%/auto-desktop/exit-audit.log，运行时落盘的独立制品）10-09 当日 4611 例风暴 vs 会话窗零 panic 增量（7714 基线后唯一新增为干净退出行）；③ HEAD 源位核证：focus_pending_step@renderer.rs:3484、print_panic_tolerant/backtrace_requested@stdlib.rs:1002/1012、4 项回归测在案；④ 裸 cargo t 对照（worktree vs master 各 30 预存红、图表面换位 flake 双向交叉验证均过）记于 T-05c；⑤ 脏树清点：8 文件未提交改动全属并发 media 会话（music-player/mpv 面），与 PLAN-747 实现零重叠——本计划实现全部已提交，pass 绑定 HEAD 成立；脏改动归属路由至该会话处置，不入本计划 | next: 无需返工；维持 archived 终态；观察项 P747-D1（静默崩溃族）在 KNOWN-DEBT-AND-RISKS.md 随访`
+
+**独立性声明（skill 条款）**：本复审在实施会话内执行，不声称角色独立；
+结论从可复核制品（git 祖先/字节一致性、运行时审计日志、源位核验、
+既有门禁回执）重建，未复跑需重建二进制的检查（理由：受测提交与 HEAD
+字节一致 + 主检出当前被并发会话 WIP 占用，重建必引入跨会话污染）。
+
 ## 待澄清事项
 
 （无——上游报告即完整授权：jade 侧「修复落地后告诉我一声，我会回注 PLAN-039 并补跑三件
