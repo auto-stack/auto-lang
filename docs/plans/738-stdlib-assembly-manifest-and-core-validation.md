@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-09
 plan_revision: 3
-current_step: 5  # Phase 3：T-01/T-09..T-12 完成；T-02..T-08 验收对账与 T-13/T-14 待闭合
+current_step: 6  # Phase 3：T-01/T-09..T-13 完成；仅 T-14（最终门禁+独立 review 交接）待执行
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -413,11 +413,14 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - [x] 新增 `738-phase3-manifest.{md,json}`，记录 identity 规则、消费者字段映射、实际差异及完整正负例结果。`cargo t plan738`、CLI stdlib 与 auto-man api_gen scoped 必须通过；真服务完整链在 T-14 最终提交复跑。映射 T-02/03/05/06/07、AC-01/02/04/06/07/08、SD-01/03/04/05/06。
   [✅ 已完成] [738-phase3-manifest.md](reports/738-phase3-manifest.md)：plan738 69/69、CLI stdlib 10/10、api_gen 43/43、freshness 2/2（`test_shell_pack_lib_freshness` 基线预存环境红 stash 实证在案）、plan724 5/5、三 crate check 零错误。
 
-### Phase 3 / T-13：SD-01..07 终稿与原任务验收对账
+### Phase 3 / T-13：SD-01..07 终稿与原任务验收对账 ✅
 
-- [ ] 依赖 T-09..12。修订主检出 `docs/plans/reports/738-sd-drafts.md`，形成对当前 canonical 可应用的新增/替换正文和位置；保留七条 SD ID 与 frontmatter spec-impact。纠正 SD-06 的退出码；核对 manifest 字段/共同身份、strict 验证等级、动态引用边界、真实生成依赖与 D3a/D3b 能力声明，不将草稿规范降到当前缺陷行为。
-- [ ] 新增 `738-phase3-acceptance.md`，逐条列 AC-01..08 → 原 T-01..08 / 新 T-09..14 → 最终代码/反例/日志 → SD-01..07；T-14 最终门禁栏先明确待补，待 T-14 完成再填最终收据，不在此提前宣告全 AC pass。重验完整 inventory 与六格公共 fn/method/type/field 分母，不以 call 单站点代替完整分母。已完成旧项可据最新证据勾选；缺项明确留开，不能因新 phase 完成就批量关闭原任务。
-- [ ] 完成条件：正文准确、所有 AC/SD 均有任务与证据，未批准遗漏不转债务。本步骤只改计划/报告，不发布 canonical/ledger，不跑 Cargo/docs_gen；映射原 T-02/06/07/08、AC-01/05/07/08、SD-01..07。
+- [x] 依赖 T-09..12。修订主检出 `docs/plans/reports/738-sd-drafts.md`，形成对当前 canonical 可应用的新增/替换正文和位置；保留七条 SD ID 与 frontmatter spec-impact。纠正 SD-06 的退出码；核对 manifest 字段/共同身份、strict 验证等级、动态引用边界、真实生成依赖与 D3a/D3b 能力声明，不将草稿规范降到当前缺陷行为。
+  [✅ 已完成] SD 终稿重绑 Phase 3 提交链（2c1b4a763→c1579ed71→84bec29ef→b6cfc6df1）：SD-01 升 schema 4 双指纹+Resolved-only 非成功依据；SD-02 增运行形态分家+适配契约注册表+json.is_valid 漂移如实上报；SD-03 增核心导入闭包；SD-04 增闭包全路径+面外边界显式化；SD-05 增 consumer_fingerprint 统一/back 模块闭包/workspace lock；SD-06 退出码纠正为 2=错误、3=partial（以代码为准）；SD-07 维持 D3a/D3b 边界。七条 SD ID 与 frontmatter spec-impact 不变。
+- [x] 新增 `738-phase3-acceptance.md`，逐条列 AC-01..08 → 原 T-01..08 / 新 T-09..14 → 最终代码/反例/日志 → SD-01..07；T-14 最终门禁栏先明确待补，待 T-14 完成再填最终收据，不在此提前宣告全 AC pass。重验完整 inventory 与六格公共 fn/method/type/field 分母，不以 call 单站点代替完整分母。已完成旧项可据最新证据勾选；缺项明确留开，不能因新 phase 完成就批量关闭原任务。
+  [✅ 已完成] [738-phase3-acceptance.md](reports/738-phase3-acceptance.md)：AC-01..08 逐条→任务→证据→SD；T-14 栏全部标"待补"不提前宣告；分母重验锚 inventory/矩阵面（115 .at 分母+六模块全格）非 call 单站点；原 T-02..T-08 逐项对账（T-08 留待 T-14 最终档闭合）；P738-D1/D2 边界显式引用不转新债务。
+- [x] 完成条件：正文准确、所有 AC/SD 均有任务与证据，未批准遗漏不转债务。本步骤只改计划/报告，不发布 canonical/ledger，不跑 Cargo/docs_gen；映射原 T-02/06/07/08、AC-01/05/07/08、SD-01..07。
+  [✅ 已完成] 本步骤零 Cargo/docs_gen；canonical/ledger 留 merge 阶段。
 
 ### Phase 3 / T-14：最终提交门禁、真实验收与独立 review 交接
 
