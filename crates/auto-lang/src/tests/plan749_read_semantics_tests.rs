@@ -436,6 +436,10 @@ fn extractRunIdStr(tc str) str {{
     }}
 }}
 
+fn hasRunId(tc str) bool {{
+    tc != ""
+}}
+
 widget App {{
     model {{
         var tc str = "run_9"
@@ -464,6 +468,14 @@ widget App {{
                 text "VIEW_CALL_NONEMPTY"
             }} else {{
                 text "VIEW_CALL_EMPTY"
+            }}
+            // 真值位（G1 布线）：fn 调用解析后按既有**严格布尔**语义判真
+            //（Value::as_bool :776——Str 恒 false，与 `if somestr` 既有行为
+            // 一致）；故用 bool 返回型 fn 钉布线。
+            if hasRunId(.tc) {{
+                text "TRUTHY_CALL_TRUE"
+            }} else {{
+                text "TRUTHY_CALL_FALSE"
             }}
             if .c_run != "" {{
                 text "COMPUTED_CALL_NONEMPTY"
@@ -682,6 +694,11 @@ fn p749_view_condition_faces() {
         debug.contains("VIEW_CALL_NONEMPTY") && !debug.contains("VIEW_CALL_EMPTY"),
         "view condition `if extractRunIdStr(.tc) != \"\"` must take non-empty \
          branch (musk chat_message.at:339 同构——修复前恒走 EMPTY 臂)",
+    );
+    assert!(
+        debug.contains("TRUTHY_CALL_TRUE") && !debug.contains("TRUTHY_CALL_FALSE"),
+        "view truthy fn call (`if hasRunId(.tc)`) must take true branch \
+         (G1 真值位布线——AC-03 条件位/真值位双面；严格布尔语义见注释)",
     );
     assert!(
         debug.contains("COMPUTED_CALL_NONEMPTY")
