@@ -4009,7 +4009,7 @@ pub(crate) fn backend_generation_is_fresh(project_dir: &Path) -> bool {
     // 复用 → 走再生臂）。
     let recorded_assembly = record
         .get("assembly")
-        .and_then(|a| a.get("fingerprint"))
+        .and_then(|a| a.get("consumer_fingerprint"))
         .and_then(|f| f.as_str());
     let current_assembly = crate::api_gen::current_generated_api_assembly(project_dir)
         .ok()
@@ -4020,9 +4020,12 @@ pub(crate) fn backend_generation_is_fresh(project_dir: &Path) -> bool {
     // PLAN-738 T-12：生成 workspace lock 身份对拍——生成产物运行时依赖
     // 输入变化（lock 出现/更新）即陈旧；旧收据无此字段=不可核验，保守再生。
     let recorded_lock = record.get("workspace_lock").and_then(|v| v.as_str());
+    // current 侧 lock 未建与收据 "absent" 同词汇——归一化后对拍，避免
+    // 表示层差异（None vs "absent"）伪造陈旧。
     let current_lock = std::fs::read(ensure_shared_workspace(project_dir).join("Cargo.lock"))
         .ok()
-        .map(|bytes| format!("{:x}", crate::api_gen::fnv1a(&bytes)));
+        .map(|bytes| format!("{:x}", crate::api_gen::fnv1a(&bytes)))
+        .or_else(|| Some("absent".to_string()));
     lock_freshness(recorded_lock, current_lock.as_deref())
 }
 

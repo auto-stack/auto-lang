@@ -1065,6 +1065,13 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         let scaffold = std::env::var("AUTO_A2R_BODY")
             .map(|v| v == "0")
             .unwrap_or(false);
+        // PLAN-738 T-12：生成 workspace 实际 lock 身份——生成产物的运行时
+        // 依赖输入，与生成器自身 Cargo 输入（manifest provider 面）分开
+        // 记录；未建 lock 时记 absent，复用门在 lock 出现/变化时判陈旧。
+        let workspace_lock =
+            std::fs::read(crate::rust_ui::ensure_shared_workspace(root_dir).join("Cargo.lock"))
+                .map(|bytes| format!("{:x}", fnv1a(&bytes)))
+                .unwrap_or_else(|_| "absent".into());
         // A receipt must identify the assembly it actually used. Failure to
         // locate/hash stdlib is an error, never a reusable null identity.
         let record = serde_json::json!({
@@ -1077,6 +1084,7 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
             "source_hashes": sources,
             "assembly": assembly,
             "scaffold": scaffold,
+            "workspace_lock": workspace_lock,
         });
         std::fs::write(rust_dir.join("generation.json"), record.to_string())
             .map_err(|e| format!("cannot write generation receipt: {e}"))?;
@@ -7474,7 +7482,7 @@ mod plan738_generated_service {
             .unwrap()
         };
         let receipt = read_receipt();
-        assert_eq!(receipt["assembly"]["schema_version"], 3);
+        assert_eq!(receipt["assembly"]["schema_version"], 4); // PLAN-738 T-12：双重身份 schema 4
         assert!(receipt["assembly"]["references"]
             .as_array()
             .unwrap()
@@ -7543,7 +7551,7 @@ mod plan738_generated_service {
                 std::thread::sleep(Duration::from_millis(25));
             }
         };
-        let server = start(&receipt["assembly"]["fingerprint"]);
+        let server = start(&receipt["assembly"]["consumer_fingerprint"]); // 与服务烘焙常量同身份（T-12）
         drop(server);
         let public = local_stdlib.join("json.at");
         let mut text = std::fs::read_to_string(&public).unwrap();
@@ -7565,7 +7573,7 @@ mod plan738_generated_service {
         );
         assert!(crate::rust_ui::backend_generation_is_fresh(&root));
         build();
-        let server = start(&regenerated["assembly"]["fingerprint"]);
+        let server = start(&regenerated["assembly"]["consumer_fingerprint"]); // 同身份（T-12）
         drop(server);
     }
 }
