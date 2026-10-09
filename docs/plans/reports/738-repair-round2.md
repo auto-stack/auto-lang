@@ -50,6 +50,24 @@
 
 ## 收口条件
 
-本轮已完成：稳定代码验证、服务验收从头重跑（绑定 `b838f5f16`）、host 门两处形状修复、scoped 门禁与 fmt。生成服务验收证据链就此闭合（不再以 service6 中途重叠轮为准）。
+本轮已完成：稳定代码验证、服务验收从头重跑（绑定 `b838f5f16`）、host 门两处形状修复、scoped 门禁与 fmt、C 收口（三目标同源 witness + C stdio 直接绑定 witness + ext 面负测 + c.* 解析臂）、引用闭包审计记档、SD-01..07 沉淀稿（`738-sd-drafts.md`）。
 
-仍待完成：实际 callee/来源闭包与方法/别名/依赖的遗漏审计，manifest 全消费者一致性及生成 consumer 的实际构建依赖/feature 绑定，C IO 正证与 VM=41 同轮重验，最终 `t/tv/tt/th` 与既有红双树分诊、完整 SD 正文和新提交上的独立复审。T-02..T-08 仍打开，不以本记录清偿所有 R1..R9。
+## R2 全档收口（2026-10-09 下午，worktree `2c1b4a763`）
+
+裸 `cargo t` 全档暴露 R2 未验证面（前次交接只跑了 scoped 族），按类修复并全部 master 逐名对照：
+
+1. **生产契约回填**（§5.3 既有能力不降级）：R2 严格门的执行前校验要求被引用核心符号有独立契约；`register_shim_by_name` 族本无类型元数据。新增 `NativeInterface::declare_contract_identity`(+方法 receiver 变体)，在 production() 全部绑定/覆盖后落位（inventory 推导、`register_static/register/merge` 均撤销同 ID 契约——落位次序是正确性前提，已被新回归测试 `declared_contract_identities_resolve` 冻结）。补 http 十面（get/get_stream/request/transfer_{download,error,wait,cancel}/file_response/upload_error/upload_metadata、stream_next/is_done 带 receiver）+ json.is_valid + encode/decode[T] 泛型身份（wire 适配记入 error_shape）。
+2. **冗余 merge 撤销修复**：`execute_autovm` 对 production() VM 再 merge 一个无契约部分接口（历史重复注册），按 R2 撤销语义删掉了全部声明契约——移除该块；back_proxy 同型只保留 panic_hard 额外面。
+3. **CLOSURE 字节码走查对齐**：disasm/walker 按 4 字节算 CLOSURE 操作数，引擎真实前进为 6+captures×6（捕获描述符 u32 名+u16 槽）——错位致 `verify_linked_native_closure` 误报 INVALID_BYTECODE，plan624 P2/plan536 t12 两真回归（master 绿/bisect 定位到 R2 主体提交）即此根因。修复后双绿且执行前校验保持开启。
+4. **C 目标装配**：`c.*` 声明命名空间解析臂（`stdlib/c/<name>.c.at` 仅 C 会话可见，README 记载合同）；`emit_c_assembly` 跳过 stdlib auto.* 模块产物（C provider=c.*+libc，与 Rust 发射项目过滤对称）；CTrans `c_opaque_types`（`*FILE`→`FILE*` 按名渲染）+ `stdlib_ext_types` 静态面 `STDASSEMBLY.TARGET_UNSUPPORTED` 诚实诊断（ext body 无 C 发射，不产坏 C）；C IO witness 定形为直接 c.stdio 绑定（真实 MSVC 实编实跑 'A'→65，`FILE*` 保真断言）+ ext 面负测。三目标同源 witness（VM=41/Rust=42/C=43）同轮全绿。
+5. **Rust 发射适配壳**：host 门解包 Await/Cast/(async)Block 包装（post_sync 状态侧信道、`last_status() as i64`、三参 post 元数分派）；AsyncHTTPStream→HTTPStream 流面、(status,body) 元组→str、u16/u32 等标量适配变体记录；包装面元数/mode 错配降级 **Resolved** 证明（不冒称 SignatureChecked）。
+6. **14_modules 002/004 金样更新**：a2r-std 无 io/net 模块——旧金样的 `use a2r_std::io::{say}` 属幻影映射（文本对比金样从未编译）；R2 的模块级 unsupported 丢弃为诚实行为，金样按实测输出（`.wrong.rs`）更新。plan724 元数分派/流分派/golden 全绿。
+7. **引用闭包审计记档**：Rust 发射收集面=call() 单站点（`module.symbol` 主面，六核心 strict 面覆盖）；329 个 `a2r_std::` 发射点为生成胶水/非六核心映射（diff/frame 等），不在 strict 面不收集证明——边界如实记档，非缺口。
+8. **fmt 收口**：本提交顺带入库约 530 文件的 bulk rustfmt（R2 会话遗留的工作树改动，经抽查为纯格式化；下午全部门禁均跑在含该状态的树上，提交内容=验证内容）；今日触面的 HEAD-干净文件逐一格式化，金样文件不动。
+
+**最终门禁**（全在 worktree，绑定 `2c1b4a763`）：
+- 裸 t（--no-fail-fast 全 5171）：5153 绿/18 红——全部分诊：13 master 预存（musk p053/p054×6、desktop_protocol、iced renderer×2、ash_leak、schema_drift×2、docs_gen、plan606_029——今晨逐名在 master 实证同红）+ 4 隔离绿负载 flake（plan484_024、plan502、plan707_client、clipboard——本树隔离复跑双绿）+ plan707 已档 flake。
+- tv 162/162；tt 修复后余 musk 预存 + plan730_raw_receive 隔离绿 flake；th 余 back_proxy `routes_corpora_data_face`（master 同红）+ `031_native_ns_session` 次序 flake（过滤复跑绿）。
+- plan738 57/57；api_gen 43/43；module_cache/native_registry/use_semantics/autovm_persistent/CLI 同绿；服务验收（--features test-http-e2e）最终提交重跑 1/1。
+
+仍待完成：manifest 全消费者一致性专项对拍（CLI --actual vs 会话 manifest vs 收据指纹的三角断言测试）、callee/闭包遗漏审计的独立复审确认、完整 SD 正文终稿对齐 canonical 现状、新提交上的独立复审。T-02..T-08 仍打开。

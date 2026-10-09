@@ -327,6 +327,18 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 
 ## 9. 复审记录
 
+### work 交接（2026-10-09 下午，R2 全档收口 → executing 继续）
+
+- stage: work
+- plan_id: PLAN-738
+- plan_revision: 2
+- outcome: pass（裸 t 全档分诊暴露的 R2 缺口按类修复完毕：生产契约回填/冗余 merge 撤销/CLOSURE 走查对齐（plan624/536 两真回归根因）/C 目标 c.* 解析与 ext 面诚实诊断/Rust 适配壳/金样更新；最终门禁+服务验收绑定最终提交全绿。T-02..T-08 整体仍打开）
+- code_commit: worktree plan-738-dev `b838f5f16` → `2c1b4a763`（566 files：含 R2 会话遗留的约 530 文件 bulk rustfmt——抽查纯格式化、全部下午门禁跑在含该状态树上；提交后 clean）
+- task_ids: T-02..T-08 修复推进（无勾选变更，current_step 保持 1/8）
+- evidence: [738-repair-round2.md](reports/738-repair-round2.md) "R2 全档收口"节 + [738-sd-drafts.md](reports/738-sd-drafts.md)；裸 t 5171 全跑 18 红全分诊（13 master 预存今晨逐名实证+4 隔离绿 flake+1 已档 plan707）；tv 162/162；tt/th 余预存与复跑绿 flake；plan738 57/57、api_gen 43/43；三目标同源 witness（VM41/Rust42/C43）+ C stdio 直接绑定 witness（真实 MSVC 65）+ ext 面负测；服务验收 --features test-http-e2e 最终提交 1/1
+- blockers: 无阻塞。要点教训：①服务验收测试门控在 test-http-e2e feature，漏 feature=0 测试假绿；②契约声明必须在 production() 全部覆盖后落位（inventory/register/merge 均撤销同 ID）；③VM 契约走查的操作数模型必须与引擎逐 opcode 对齐（CLOSURE 变长捕获描述符）
+- next: manifest 全消费者一致性专项对拍 + 遗漏审计独立复审确认 + SD 终稿对齐 canonical → 新提交独立复审；本轮不合入/归档
+
 ### work 交接（2026-10-09，R2 稳定树验证+服务验收从头重跑 → executing 继续）
 
 - stage: work
