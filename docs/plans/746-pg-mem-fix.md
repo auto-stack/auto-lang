@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-746
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: pg-mem-fix
 author: [agent]
 created_at: 2026-10-09
@@ -12,8 +12,8 @@ supersedes_spec_components: []
 new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
-affects: [auto-playground, auto-lang/vm]
-current_step: 5
+affects: [auto-playground, auto-lang/vm, playground-vue]
+current_step: 7
 total_steps: 7
 ---
 
@@ -230,7 +230,7 @@ total_steps: 7
   commit e1cb8632f。AC-04
 - [x] T-04 基线 profiling 与修复：全量走查分桶采样定位保留源；真泄露修、
   工作集型记 SD-04 注记。验证：对比报告（修复前后 RSS 曲线）。AC-03
-- [ ] T-05 playground e2e 增补：frontend/tests 超时 spec + demo 回归。
+- [x] T-05 playground e2e 增补：frontend/tests 超时 spec + demo 回归（含 F-746-R1 拦截断言）。
   验证：`npx playwright test tests/run-timeout.spec.ts` 4/4 绿（12s）。
   注：worktree 走查期发现的端口互踩/旧二进制残留为环境事故非代码缺陷
   （干净服务单发+并发均正确）。AC-04
@@ -245,6 +245,14 @@ total_steps: 7
 
 ## 9. 复审记录
 
+- 2026-10-09 `stage: review | PLAN-746 | r1 | outcome: pass | reviewed d7ae203e2 |
+  base 394f90919 | dep auto-down @895f8d0 | acceptance_results: AC-01 pass（8 单测重跑）/
+  AC-02 pass/AC-03 pass（后端码自走查后未变，证据复用有效）/AC-04 pass（F-746-R1 修复后
+  4 慢例输出与修复前逐字节一致+e2e 5/5）/AC-05 pass（后端零变更，前端 delta 由 e2e 档覆盖；
+  tv 162/162 重跑）/AC-06 pass（SD-01..04 文本核验，宿主行为补记）|
+  findings: F-746-R1 resolved（timeout_secs=60 宿主显式请求+拦截断言固化）|
+  evidence: d7ae203e2 diff、e2e run-timeout 5/5、4 慢例 TAP 对照、spec 预埋文本 |
+  next: merge`
 - 2026-10-09 `stage: review | PLAN-746 | r1 | outcome: needs_fix | reviewed b5f11e6c0 |
   base 394f90919 | dep auto-down @895f8d0 | acceptance: AC-01/02/05/06 pass（单测/tv/红集对拍/
   spec 增量核验）；AC-03 内存数据有效；AC-04 与"0 异常"判定 needs_fix |
