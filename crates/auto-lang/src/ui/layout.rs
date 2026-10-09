@@ -119,7 +119,13 @@ pub fn usable_rect(viewport: iced::Rectangle, reserved: ReservedEdges) -> iced::
 
 /// 非纯薄应用层（Plan 463 T4）：把 `layout()` 结果写回 WM —— rect 的唯一
 /// 批量写点（R9：排布是 WM 策略；单窗交互路径不经此）。free 模式为恒等
-/// 写回（用户位置即真值）。窗口级 `window_size` 同步（响应式布局消费）。
+/// 写回（用户位置即真值）。窗口级 `window_size` 同步（响应式布局消费；
+/// fit 窗除外——保持内容尺寸语义）。
+///
+/// fit 窗（Plan 504/512 `window: "fit"`）排布落位：不铺满排布格，按内容
+/// 外沿在格内居中（2026-10-09 用户反馈：日历等小个子 app 在并列窗格中
+/// 默认居中）；fit 测量回落（renderer `apply_fit_measured`）排布模式下
+/// 复用本轮写回完成再居中。
 ///
 /// Plan 473 T5：NativeSlot 作为不透明布局单元参与同一轮排布——以伪 Wid
 /// （[`NATIVE_SLOT_WID_FLAG`] 段）进 `layout()`，输出换算回槽位本地矩形
@@ -127,12 +133,13 @@ pub fn usable_rect(viewport: iced::Rectangle, reserved: ReservedEdges) -> iced::
 /// win32 set_bounds → slot_rect 回写）。free 模式槽位恒等（用户位置即真值）。
 /// min-size 估计不足时 best-effort 向可用区内扩张（C3；估计值为物理像素，
 /// 缩放屏下近似）。
-pub fn apply_layout(
-    wm: &mut crate::ui::session::WmState,
-    viewport: iced::Rectangle,
-    reserved: ReservedEdges,
-) {
-    let usable = usable_rect(viewport, reserved);
+/// 排布输入快照（[`WindowState`] 文档所指的派生点）：当前分区可见成员 +
+/// Plan 473 T5 槽位伪 Wid 尾随（z 序视为最高一层；focused 恒 false——槽位
+/// 不参与 MasterStack master 位竞争；free 模式槽位不参与排布）。
+/// [`apply_layout`] 与 fit 测量落位（iced renderer `apply_fit_measured`）
+/// 共用同一过滤规则——Plan 472 T2 只排当前分区；PLAN-012 W1 常驻隐藏窗
+/// 不占布局槽位。
+pub fn snapshot(wm: &crate::ui::session::WmState) -> Vec<WindowState> {
     let mut snaps: Vec<WindowState> = wm
         .z_order
         .iter()
@@ -153,21 +160,39 @@ pub fn apply_layout(
             })
         })
         .collect();
-    // Plan 473 T5：槽位追加在窗口之后（z 序视为最高一层；focused 恒 false
-    // ——槽位不参与 MasterStack master 位竞争）。free 模式槽位恒等（用户
-    // 位置即真值），不参与排布、不产生同步项。
-    let slot_ids: Vec<crate::ui::native_dock::NativeSlotId> =
-        wm.native_slot_local_rects.keys().copied().collect();
     if wm.layout != LayoutMode::Free {
-        for id in &slot_ids {
+        for id in wm.native_slot_local_rects.keys().copied() {
             snaps.push(WindowState {
-                wid: native_slot_pseudo_wid(*id),
-                rect: wm.native_slot_local_rects[id],
+                wid: native_slot_pseudo_wid(id),
+                rect: wm.native_slot_local_rects[&id],
                 focused: false,
             });
         }
     }
-    for (wid, r) in layout(wm.layout, &snaps, viewport, reserved) {
+    snaps
+}
+
+/// 外沿尺寸 `outer` 的窗在容器 `container` 内居中（某向超出时该向钳为容器
+/// 尺寸并锚容器左上——铺满退化；本仓 fit 窗排布格落位专用）。
+pub fn centered_in_rect(container: iced::Rectangle, outer: iced::Size) -> iced::Rectangle {
+    let w = outer.width.min(container.width);
+    let h = outer.height.min(container.height);
+    iced::Rectangle::new(
+        iced::Point::new(
+            container.x + (container.width - w) / 2.0,
+            container.y + (container.height - h) / 2.0,
+        ),
+        iced::Size::new(w, h),
+    )
+}
+
+pub fn apply_layout(
+    wm: &mut crate::ui::session::WmState,
+    viewport: iced::Rectangle,
+    reserved: ReservedEdges,
+) {
+    let usable = usable_rect(viewport, reserved);
+    for (wid, r) in layout(wm.layout, &snapshot(wm), viewport, reserved) {
         if wid.0 & crate::ui::session::WmState::NATIVE_SLOT_WID_FLAG != 0 {
             let id = crate::ui::native_dock::NativeSlotId(
                 wid.0 & !crate::ui::session::WmState::NATIVE_SLOT_WID_FLAG,
@@ -204,8 +229,24 @@ pub fn apply_layout(
             continue;
         }
         if let Some(v) = wm.wins.get_mut(&wid) {
-            *v.rect.borrow_mut() = r;
-            *v.window_size.borrow_mut() = iced::Size::new(r.width, r.height);
+            // Plan 504/512 fit 窗：排布格内不铺满——按当前内容外沿（内容
+            // 尺寸 + chrome）在窗格内居中（小于窗格时；≥窗格该向钳为窗格
+            // = 铺满退化）。`window_size` 保持内容尺寸语义（fit 迟滞
+            // decide_fit_resize 消费），不随窗格覆盖；首测前为启动尺寸，
+            // 测量回落臂（renderer apply_fit_measured）同规则再居中校正。
+            // 最大化窗豁免（铺满语义不受 fit 收缩影响）。
+            if v.fit_enabled.get() && !v.maximized.get() {
+                use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
+                let content = *v.window_size.borrow();
+                let outer = iced::Size::new(
+                    content.width + 2.0 * BORDER,
+                    content.height + TITLEBAR_H + 2.0 * BORDER,
+                );
+                *v.rect.borrow_mut() = centered_in_rect(r, outer);
+            } else {
+                *v.rect.borrow_mut() = r;
+                *v.window_size.borrow_mut() = iced::Size::new(r.width, r.height);
+            }
         }
     }
 }
@@ -786,5 +827,75 @@ mod tests {
         // Grid 只排当前分区：B 独占可用区；A（隐分区）保持用户几何。
         assert_rect(rb, 0.0, 0.0, 1280.0, 744.0);
         assert_rect(ra, 0.0, 0.0, 100.0, 100.0);
+    }
+
+    // ---- 排布 fit 窗落位：格内居中（2026-10-09 用户反馈）----
+
+    #[test]
+    fn apply_layout_fit_window_centered_in_pane() {
+        use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
+        use crate::ui::session::{AppId, WmState};
+        let mut wm = WmState::new();
+        let _a = wm.add_win(AppId(1), "A".into(), rect(0.0, 0.0, 100.0, 100.0));
+        let _b = wm.add_win(AppId(2), "B".into(), rect(0.0, 0.0, 100.0, 100.0));
+        {
+            let b = wm.wins.get_mut(&Wid(2)).unwrap();
+            b.fit_enabled.set(true);
+            *b.window_size.borrow_mut() = iced::Size::new(460.0, 540.0);
+        }
+        wm.layout = LayoutMode::Grid;
+        apply_layout(&mut wm, VIEWPORT, ReservedEdges::taskbar());
+        // Grid 2 窗：左右均分（各 640x744）。A 常规铺满本格；B fit 窗按
+        // 内容外沿（+2·BORDER / +TITLEBAR_H+2·BORDER）在右格居中，
+        // window_size 保持内容语义不被窗格覆盖。
+        let ra = *wm.wins[&Wid(1)].rect.borrow();
+        assert_rect(ra, 0.0, 0.0, 640.0, 744.0);
+        let outer_w = 460.0 + 2.0 * BORDER;
+        let outer_h = 540.0 + TITLEBAR_H + 2.0 * BORDER;
+        let rb = *wm.wins[&Wid(2)].rect.borrow();
+        assert_rect(
+            rb,
+            640.0 + (640.0 - outer_w) / 2.0,
+            (744.0 - outer_h) / 2.0,
+            outer_w,
+            outer_h,
+        );
+        assert_eq!(*wm.wins[&Wid(2)].window_size.borrow(), iced::Size::new(460.0, 540.0));
+    }
+
+    #[test]
+    fn apply_layout_fit_window_larger_than_pane_fills_pane() {
+        use crate::ui::session::{AppId, WmState};
+        let mut wm = WmState::new();
+        let _a = wm.add_win(AppId(1), "A".into(), rect(0.0, 0.0, 100.0, 100.0));
+        {
+            let a = wm.wins.get_mut(&Wid(1)).unwrap();
+            a.fit_enabled.set(true);
+            *a.window_size.borrow_mut() = iced::Size::new(4000.0, 3000.0);
+        }
+        wm.layout = LayoutMode::Grid;
+        apply_layout(&mut wm, VIEWPORT, ReservedEdges::taskbar());
+        // 外沿超出窗格 → 该向钳为窗格（铺满退化，锚格左上）。
+        let ra = *wm.wins[&Wid(1)].rect.borrow();
+        assert_rect(ra, 0.0, 0.0, 1280.0, 744.0);
+    }
+
+    #[test]
+    fn apply_layout_maximized_fit_window_fills_pane() {
+        use crate::ui::session::{AppId, WmState};
+        let mut wm = WmState::new();
+        let _a = wm.add_win(AppId(1), "A".into(), rect(0.0, 0.0, 100.0, 100.0));
+        {
+            let a = wm.wins.get_mut(&Wid(1)).unwrap();
+            a.fit_enabled.set(true);
+            a.maximized.set(true);
+            *a.window_size.borrow_mut() = iced::Size::new(460.0, 540.0);
+        }
+        wm.layout = LayoutMode::Grid;
+        apply_layout(&mut wm, VIEWPORT, ReservedEdges::taskbar());
+        // 最大化豁免：不居中、铺满窗格；window_size 随窗格（常规语义）。
+        let ra = *wm.wins[&Wid(1)].rect.borrow();
+        assert_rect(ra, 0.0, 0.0, 1280.0, 744.0);
+        assert_eq!(*wm.wins[&Wid(1)].window_size.borrow(), iced::Size::new(1280.0, 744.0));
     }
 }

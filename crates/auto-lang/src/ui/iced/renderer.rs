@@ -15295,33 +15295,45 @@ fn apply_fit_measured(
             *entry.fit_last_applied.borrow_mut() = Some(content);
             task = iced::window::resize(os_win, content);
             done = true;
-        } else if let Some(host) = state.host.as_ref() {
+        } else {
             // desktop：虚拟窗矩形（内容 + 标题条 + 边框 = chrome 外沿）。
-            if let Some((_, v)) = host
-                .wm
-                .wins
-                .iter()
-                .find(|(_, v)| v.app == app_id && v.fit_pending.get())
-            {
-                use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
-                let usable = crate::ui::layout::usable_rect(
-                    state.host_viewport(),
-                    state.desktop.dock_edges,
-                );
-                let w = (content.width + 2.0 * BORDER).min(usable.width);
-                let h = (content.height + TITLEBAR_H + 2.0 * BORDER).min(usable.height);
-                {
-                    let mut r = v.rect.borrow_mut();
-                    r.width = w;
-                    r.height = h;
-                    // 位置优先不变；右/下越界回挪（尺寸已 clamp 进可用区）。
-                    r.x = r.x.max(usable.x).min(usable.x + usable.width - w);
-                    r.y = r.y.max(usable.y).min(usable.y + usable.height - h);
+            // 坐标系先取（viewport/edges 共享借阅在 as_mut 前终结）。
+            let viewport = state.host_viewport();
+            let edges = state.desktop.dock_edges;
+            let usable = crate::ui::layout::usable_rect(viewport, edges);
+            if let Some(host) = state.host.as_mut() {
+                let hit = host
+                    .wm
+                    .wins
+                    .iter()
+                    .find(|(_, v)| v.app == app_id && v.fit_pending.get())
+                    .map(|(wid, _)| *wid);
+                if let Some(wid) = hit {
+                    use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
+                    let w = (content.width + 2.0 * BORDER).min(usable.width);
+                    let h = (content.height + TITLEBAR_H + 2.0 * BORDER).min(usable.height);
+                    {
+                        let v = host.wm.wins.get_mut(&wid).expect("fit hit wid");
+                        v.fit_pending.set(false);
+                        v.fit_dirty.set(false);
+                        *v.window_size.borrow_mut() = content;
+                    }
+                    if host.wm.layout != crate::ui::layout::LayoutMode::Free {
+                        // 排布模式：矩形统一由 apply_layout 一轮写回——fit 窗
+                        // 按内容外沿在排布格内居中（2026-10-09 用户裁定：日历
+                        // 等小个子 app 窗格默认居中；此臂只更新 window_size）。
+                        crate::ui::layout::apply_layout(&mut host.wm, viewport, edges);
+                    } else {
+                        // free：原位收缩（位置优先不变；右/下越界回挪）。
+                        let v = host.wm.wins.get_mut(&wid).expect("fit hit wid");
+                        let mut r = v.rect.borrow_mut();
+                        r.width = w;
+                        r.height = h;
+                        r.x = r.x.max(usable.x).min(usable.x + usable.width - w);
+                        r.y = r.y.max(usable.y).min(usable.y + usable.height - h);
+                    }
+                    done = true;
                 }
-                v.fit_pending.set(false);
-                v.fit_dirty.set(false);
-                *v.window_size.borrow_mut() = content;
-                done = true;
             }
         }
         // Plan 512：动态重测臂——首测已完成的 fit 窗按滞回决策双向跟随
@@ -15349,33 +15361,56 @@ fn apply_fit_measured(
                     task = iced::window::resize(os_win, size);
                     done = true;
                 }
-            } else if let Some(host) = state.host.as_ref() {
-                if let Some((_, v)) = host.wm.wins.iter().find(|(_, v)| {
-                    v.app == app_id && v.fit_enabled.get() && !v.fit_pending.get() && v.fit_dirty.get()
-                }) {
-                    v.fit_dirty.set(false);
-                    let cur = *v.window_size.borrow();
-                    if let Some(content2) = decide_fit_resize(
-                        (cur.width, cur.height),
-                        measured_wh,
-                        v.fit_user_locked.get(),
-                    ) {
-                        use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
-                        let usable = crate::ui::layout::usable_rect(
-                            state.host_viewport(),
-                            state.desktop.dock_edges,
-                        );
-                        let w = (content2.width + 2.0 * BORDER).min(usable.width);
-                        let h = (content2.height + TITLEBAR_H + 2.0 * BORDER).min(usable.height);
-                        {
-                            let mut r = v.rect.borrow_mut();
-                            r.width = w;
-                            r.height = h;
-                            r.x = r.x.max(usable.x).min(usable.x + usable.width - w);
-                            r.y = r.y.max(usable.y).min(usable.y + usable.height - h);
+            } else {
+                // desktop 动态重测臂（坐标系先取，同首测臂）。
+                let viewport = state.host_viewport();
+                let edges = state.desktop.dock_edges;
+                let usable = crate::ui::layout::usable_rect(viewport, edges);
+                if let Some(host) = state.host.as_mut() {
+                    let hit = host
+                        .wm
+                        .wins
+                        .iter()
+                        .find(|(_, v)| {
+                            v.app == app_id
+                                && v.fit_enabled.get()
+                                && !v.fit_pending.get()
+                                && v.fit_dirty.get()
+                        })
+                        .map(|(wid, _)| *wid);
+                    if let Some(wid) = hit {
+                        let content2 = {
+                            let v = host.wm.wins.get_mut(&wid).expect("fit re hit wid");
+                            v.fit_dirty.set(false);
+                            let cur = *v.window_size.borrow();
+                            decide_fit_resize(
+                                (cur.width, cur.height),
+                                measured_wh,
+                                v.fit_user_locked.get(),
+                            )
+                        };
+                        if let Some(content2) = content2 {
+                            use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
+                            let w = (content2.width + 2.0 * BORDER).min(usable.width);
+                            let h = (content2.height + TITLEBAR_H + 2.0 * BORDER).min(usable.height);
+                            {
+                                let v = host.wm.wins.get_mut(&wid).expect("fit re hit wid");
+                                *v.window_size.borrow_mut() = content2;
+                            }
+                            if host.wm.layout != crate::ui::layout::LayoutMode::Free {
+                                // 排布模式：再居中走 apply_layout 统一写回（同首测臂）。
+                                crate::ui::layout::apply_layout(&mut host.wm, viewport, edges);
+                            } else {
+                                // free：原位收缩（位置优先不变；右/下越界回挪）。
+                                let v = host.wm.wins.get_mut(&wid).expect("fit re hit wid");
+                                let mut r = v.rect.borrow_mut();
+                                r.width = w;
+                                r.height = h;
+                                r.x = r.x.max(usable.x).min(usable.x + usable.width - w);
+                                r.y = r.y.max(usable.y).min(usable.y + usable.height - h);
+                            }
+                            done = true;
                         }
-                        *v.window_size.borrow_mut() = content2;
-                        done = true;
                     }
                 }
             }
