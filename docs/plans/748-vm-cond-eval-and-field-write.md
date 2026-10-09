@@ -571,7 +571,7 @@ examples 无使用例）+ jade 撤层双轨像素等值（jade 侧，AC-14）。
 |---|---|---|---|---|
 | [x] T-00 | 无 | worktree lang-748（plan-748-dev，基 master **e5a77106a**——重取基面含 PLAN-749 G1-G3/STR_CAT 修复，待澄清#6 前置落实）；探针 `plan748_breakpoint_probes`（提交 e9d953ec4）；**定音报告见 §9 T-00 节** | V01 | 01 |
 | [x] T-01 | T-00 ②定音 | **证伪改判**（T-00 定音）：fn 段三臂（静态 `W:5`/动态 `D:6`/无 await `N:7`）全绿 + E2E 完整管线（handler_App_Init resumed to completion，静态写 marker=W:5）绿——musk 101 §10① 观测为 dirty 构建陈旧（v0.4.2-2730-dirty vs e5a77106a 之间的修复，749 E2E 同管线佐证）；无修复对象，探针钉死为回归面（AC-02 按 AC-01"或证伪并改判"条款关闭） | V01/V02 | 02 |
-| [ ] T-02 | T-00 ①定音 | **范围收缩改判**（T-00 定音）：根件上下文三形态（裸 binding/循环成员 `if w.current`/store 混合 `.store.sel_id == w.id`）全绿——断点①的根件面证伪；**唯一在案红 = 子件挂载上下文（musk workspace_selector 即子件形态）= P733-R2 预存红族六条**（musK_vm_track p053_1/p053_4/p053_6/p054）——修复对象 = 路线 A（computed 表/store 别名快照的子件挂载，vm_bridge new_from_decls 一带 + handler_codegen 快照机制）；求值器补臂（路线 B）被根件绿否证 | V02/V03 | 03 |
+| [ ] T-02 | T-00 ①定音 | **范围收缩改判**（T-00 定音）+**首腿已修**（`2e2164b5e`）：根件三形态绿证伪根件面；真红族分解——**三腿同根已翻绿**：p053_1 两红 + p053_6 = `.store.X` 泛名展平空快照拒展平（resolve_expr_to_value Dot 臂与 read_state/store_source_field 三套口径不一致，Plan 633 搭车语义）→ Dot(Dot(self,store),X) 无条件展平修复（musk_vm_track 97/6→100/3；plan733 2/2+plan749 13/13+aura 215/215+tv 162/162 零回归）。**剩余**：p054×2（图标子件渲染进 button 内容子树/ml_auto+tint——挂载面续修）归 T-02；p053_4（merged `#[api]` CALL_NAT 3142 发射）**异根改派**（codegen 面，KNOWN-DEBT 另立条目） | V02/V03 | 03 |
 | [x] T-03 | T-00 ③核验 | **证伪改判**（T-00 定音）：动态 style 字段引用在 row/checkbox/progress 三元素全部产出（`style: .store.X` → Style 载体 BorderColor/TextColor/BackgroundColor 枚举实拍）——计划 §4 静态臂清单（checkbox :8326/progress :8265）与现 master 实态不符（相关臂已收口）；musk 101 §10③ 观测为 dirty 构建陈旧。**残留小项**：Style::parse 词表丢弃的非 button 臂 WARN 对齐（独立于断点③复现与否，静默丢弃面仍在——T-11 收口时顺手或另立小项） | V01/V03 | 04 |
 | [ ] T-04 | T-01～T-03 | musk 101 双 variant 跨仓对拍（AUTO_EXE 锁 748 构建） | V04 | 05 |
 | [ ] T-05 | T-04 | 全量门 + 提交 + §9 记录 + KNOWN-DEBT 更新 + owned 清理 | V03/V05 | 06,07 |
@@ -615,9 +615,10 @@ comp（`build_dynamic_component`）、E2E（`auto run --render=vm` + pac.at 工�
   留档：handler 两臂红 = comp harness in-proc 不泵 Http 续体的 harness 边界
   登记，非引擎缺陷——E2E 层同形态绿）
 - blockers: 无
-- next: T-02（P733-R2 子件挂载面修复——p053_1 两测为入口单变量收敛，
-  KNOWN-DEBT P733-R2 指针）→ T-04 收缩版跨仓确认 → T-05 门禁；Phase 2
-  （T-06～T-11 jade 四件）按计划可先行/续后
+- next: T-02 续腿（p054×2 图标子件渲染面）→ T-04 收缩版跨仓确认 → T-05
+  门禁；Phase 2（T-06～T-11 jade 四件）按计划可先行/续后
+- T-02 首腿增量（2026-10-10 续）：`.store.X` 泛名展平根修 `2e2164b5e`
+  （P733-R2 三红翻绿 p053_1×2+p053_6；p053_4 异根改派；p054×2 续修）
 
 ### new 阶段交接（草稿准备完成）
 
