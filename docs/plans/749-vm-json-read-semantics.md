@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-749
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed             # drafting → executing → execution_done → reviewed → archived
 feature_name: VM 解释器对 JSON 产物/深链的读语义退化 + 视图模板 fn 调用返空根修（坑①家族第三型，auto-musk PLAN-100 上游缺口）
 author: [agent]
 created_at: 2026-10-10
@@ -17,7 +17,7 @@ touched_goals:
 affects: [auto-lang/vm, auto-lang/ui]
 current_step: 7
 total_steps: 7
-plan_revision: 3
+plan_revision: 4
 ---
 
 # PLAN-749 — VM 解释器 JSON 产物/深链读语义退化 + 视图模板 fn 调用返空根修
@@ -258,12 +258,12 @@ KNOWN-DEBT-AND-RISKS.md P733-R2 条目更新（同根收敛或边界登记）；
 联动注记**（若 T-00 甄别出 748①/② 同根链路，748 修订其 T-00/T-02 范围，
 revision 递增）；提交 + §9 记录 + 交接 review。
 
-### 规范增量
+### 规范增量（rv4 review 校准——按定音后实态改写 SD-01，SD-02 细化）
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | modify | docs/specs/auto-lang/vm/architecture.md | before：JSON.parse 产物读语义无契约成文（bool 打标/深链读/三上下文一致性未规定）；after：成文"JSON 产物读语义契约"——bool 字段读值三上下文一致为 TAG_BOOL、深链读真值或干净 None、接收者 tag 分派表与兜底语义 | 症状1/2 是契约缺位导致的实现双轨 | AC-01/02/06 |
-| SD-02 | modify | docs/specs/auto-lang/vm/design/vm-fn-call-semantics.md | before：已知边界③登记 fn 调用语义残腿（P733-R2 指针）；after：视图条件位 CALL 通道语义并入契约（委托 resolve_expr_to_value Call 臂），坑①家族第三型关闭，边界③按 T-04 甄别结果收敛或改写 | 症状3 根修 + 债务台账销账 | AC-03/04 |
+| SD-01 | modify | docs/specs/auto-lang/vm/architecture.md | before：串拼接（STR_CAT/ADD 串臂）非串操作数无显示契约成文（实现一律 decode_i32——bool/宽整型位型垃圾）；after：成文"串拼接显示契约"——非串操作数按 tag 值显示（bool→true/false、i64/u64 按值、obj/list 维持堆 id 既有形态）；并登记"JSON 产物读语义三上下文验证事实"（GET_FIELD/JSON.parse 物化/深链/续体读路径经 plan749 矩阵+musk E2E 验证为既有正确契约，无实现改动——原草案拟定的"读语义契约改写"按 T-00 定音收缩为验证事实登记） | 症状1 根修落在显示臂而非读臂（T-00/T-05 定音） | AC-01/02/06 |
+| SD-02 | modify | docs/specs/auto-lang/vm/design/vm-fn-call-semantics.md | before：已知边界③登记 fn 调用语义残腿（P733-R2 指针）；after：视图条件位 CALL 通道并入契约——`if f(x)` 真值位与 `if f(x) != y` 比较位经通用 fragment 解析兜底委托 resolve_expr_to_value（仅后置不前置；真值位沿用既有严格布尔语义 Str→false）；坑①家族第三型（视图模板 fn 返空）关闭；边界③按 P733-R2 异根甄别改写（残腿=子件 computed 挂载面，指针移交 PLAN-748 T-02） | 症状3 根修 + G2/G3 同函数缺口 + 债务台账销账 | AC-03/04 |
 
 ## 测试设计
 
@@ -301,6 +301,60 @@ revision 递增）；提交 + §9 记录 + 交接 review。
 | [x] T-06 | T-05 | 全量门通过：裸 `cargo t`（nextest 日常档 5137 跑/5122 过/**15 红全预存零增量**——P733-R2 六条+P733-R1 flake+plan606+schema×2+docs_gen kitchen_sink 台账在册，projector/ash_leak/desktop_bus/desktop_surface/kitchen_sink 五条另经 master 基面 f92aca82d 实拍同红对拍）+ `cargo tv` **162/162 全绿**（语料 golden 零漂移）+ aura 档 215/215 + musk_vm_track 97/6=基线零增减；KNOWN-DEBT P733-R2 条目更新（异根甄别+指针移交 748 T-02）；worktree 3 提交（509c4b476/2db273736/6be6c257c）零新警告 | V03/V05 | 06,08 |
 
 ## 复审记录
+
+### review 阶段（2026-10-10，rv4，outcome: pass）
+
+- stage: review | plan_id: PLAN-749 | plan_revision: 4 | **outcome: pass**
+- reviewed_commit: `79ece2f37`（plan-749-dev 链尖：509c4b476 → 2db273736 →
+  6be6c257c → 79ece2f37 review 测试补钉）；base_commit: master `f92aca82d`；
+  worktree `.wt/lang-749/auto-lang` 干净；dependency_revisions: auto-down
+  detached 兄弟（只读）；spec_inputs: vm/architecture.md、vm/design/
+  vm-fn-call-semantics.md 已知边界节
+- **独立性声明**：本复审在实施会话内进行（用户授权链 work→review→merge），
+  裁决从工件重建——diff 全量重读、对抗性补测、门禁同配置重跑——不采信
+  执行者自述。
+- acceptance_results:
+  - AC-01 **pass**（三上下文 bool 一致+显示：s1 族 5 测 + E2E 5/5 `ok=true`；
+    concat 探针前红 `"ok=-2147483648"` → 后绿 `"ok=true"` 在案）
+  - AC-02 **pass**（s2 族 4 测 + handler matrix + 视图 vdeep/c_deep 全真值；
+    `[i]` 条件位=parser 语法边界 F-3 登记，非读语义问题）
+  - AC-03 **pass**（条件位 VIEW_CALL_NONEMPTY + **真值位 TRUTHY_CALL_TRUE**
+    ——F-1 补钉后双面钉死，严格布尔语义注记在测试内）
+  - AC-04 **pass**（`plan749_read_semantics_tests` 13 测；红相证据：
+    view_condition_faces 修复前 VIEW_CALL_EMPTY/COMPUTED_CALL_EMPTY/
+    VIEW_ENV_OK_FALSE 三格 + concat 前红，work 阶段日志在案）
+  - AC-05 **pass**（E2E：修复前探针轮复现 -2147483648 → 修复后 5/5 boot
+    `ok=true`，SessionsLoaded→DetailLoaded→SSE attach 零间歇失效；
+    auto-musk tmp/plan047-firstrun.log 17:32 vs 17:38-17:39 轮）
+  - AC-06 **pass**（reviewed commit 全量门 5137 跑/5122 过/15 红全预存零增量
+    ——5 条经 master 基面 f92aca82d 实拍同红（projector/ash_leak/
+    desktop_bus/desktop_surface/docs_gen kitchen_sink）、10 条台账在册
+    （P733-R2 六条+plan606+schema×2+flake 族 plan502/plan707 轮替两测）；
+    P733-R2 修复前后 97/6 零增减=异根改判在案）
+  - AC-07 **pass**（musk 侧零改动，E2E probe 全绿——绕过层兼容）
+  - AC-08 **pass**（修复=值正确求值通道/按 tag 显示，fallback miss 回
+    None→原 false 语义，无默认值塌缩）
+- findings:
+  - **F-1（已修，79ece2f37）**：AC-03"真值位"验收维度原无测试钉——复审
+    补测首版探针期望 Str 真值为 true 系**期望错误**（既有严格布尔语义
+    `Value::as_bool` value.rs:776——Str 恒 false），G1 真值位布线本身工作
+    正常；补 bool 返回型 fn（hasRunId）探针钉死布线并注记严格语义。
+  - **F-2（非阻塞注记）**：`nv_concat_operand_display` 文档注释写"ADD 串
+    拼接臂"实际 STR_CAT/ADD 双臂共用；"f64/f32 到不了串臂"对 ADD 成立，
+    STR_CAT 的 f32 操作数落 i32 分支=预存垃圾行为未变（else 分支与旧码
+    同字节）——`str + f32` 显示面预存缺口，musk 面未触发，独立后续观察。
+  - **F-3（非阻塞边界）**：`[i]` 索引在视图条件位是 parser 语法级不支持
+    （f-string/text 内插位允许）——独立 parser 层缺口，musk 以拍平行+
+    预计算规避；如需支持另立计划。
+  - **F-4（非阻塞注记）**：RHS 裸名 CALL 形态（`x == f(y)`）仍回落字面量
+    串比较——预存缺口未扩大（本次只补 LHS/单段/RHS 点前缀臂），musk 面
+    为 LHS 形态。
+- evidence: diff 全量重读（engine.rs 两臂+harness / aura_view_builder 四臂
+  +helper）；p749 族 13/13 重跑；aura 档 215/215 重跑；全量门同配置重跑
+  （56.1s，5122/15 与 work 阶段 6be6c257c 同计数——复用声明：reviewed
+  commit 对 6be6c257c 仅测试增量，全量门已在 reviewed commit 原位重跑非
+  复用）；cargo tv 162/162 原位重跑
+- next: merge（用户已授权链式执行）
 
 ### work 阶段交接（2026-10-10，execution_done）
 
