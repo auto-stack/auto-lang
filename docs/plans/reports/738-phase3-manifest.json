@@ -1,0 +1,35 @@
+{
+ "schema_version": 1,
+ "plan_id": "PLAN-738",
+ "plan_revision": 3,
+ "task": "T-12",
+ "identity_model": {
+  "manifest_schema": 4,
+  "fingerprint": "consumer-neutral projection (consumer name emptied, consumer_input sources removed)",
+  "consumer_fingerprint": "full payload (legacy schema-3 single-fingerprint semantics)",
+  "migration": "freshness gate/baked const/in-flight check all switched to consumer_fingerprint (same-consumer cross-time semantics unchanged); cross-consumer assertions use fingerprint"
+ },
+ "workspace_lock_receipt": {
+  "field": "generation.json workspace_lock",
+  "absent": "recorded explicitly",
+  "gate": "lock_freshness (mismatch/appear/missing-field -> stale -> regenerate)"
+ },
+ "triangle": {
+  "fixture": "temp main.at use auto.json: parse, target rust",
+  "consumers": [
+   "stdlib-inspect (CLI actual path)",
+   "compiler (trans_rust_with_session + freeze_assembly_manifest)",
+   "api-generation (+business inputs)"
+  ],
+  "result": "assembly fingerprints all equal; consumer fingerprints all distinct"
+ },
+ "gates": {
+  "plan738": "69/69",
+  "cli_stdlib": "10/10",
+  "api_gen": "43/43",
+  "freshness": "2/2 + shell_pack pre-existing env red (stash-verified on T-11 base)",
+  "plan724": "5/5"
+ },
+ "commit": "b6cfc6df1",
+ "report": "docs/plans/reports/738-phase3-manifest.md"
+}

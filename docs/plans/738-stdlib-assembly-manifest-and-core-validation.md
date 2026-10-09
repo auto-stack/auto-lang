@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-09
 plan_revision: 3
-current_step: 4  # Phase 3：T-01/T-09/T-10/T-11 完成；T-02..T-08 验收对账与 T-12..T-14 待闭合
+current_step: 5  # Phase 3：T-01/T-09..T-12 完成；T-02..T-08 验收对账与 T-13/T-14 待闭合
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -402,12 +402,16 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - [x] 新增 `738-phase3-reference-audit.{md,json}`，逐路径关联入口、collector、最终 callee、proof、测试与例外边界；执行 `cargo t plan738`、use_semantics/native_registry/autovm_persistent 等实际触面 scoped 族。完成条件：六核心引用闭包无未经证明的放行，VM preflight 结果和最终 manifest 无陈旧证明。映射 T-02/03/04/07、AC-01..05/07/08、SD-01..05/07。
   [✅ 已完成] [738-phase3-reference-audit.md](reports/738-phase3-reference-audit.md) + [json](reports/738-phase3-reference-audit.json)：plan738 67/67（t11_reference_closure 5 测）、plan724 5/5、api_gen 43/43、freshness 1/1、tt 非基线红=0（15 红全分诊）、use_semantics/native_registry/autovm_persistent/module_cache 7/13/20/16 全绿；VM 闭包走查沿用 R2 已闭合路径在案。
 
-### Phase 3 / T-12：manifest 共同身份与多消费者三角对拍
+### Phase 3 / T-12：manifest 共同身份与多消费者三角对拍 ✅
 
-- [ ] 依赖 T-10/11。触面：`stdlib_assembly/manifest.rs::{AssemblyManifest::freeze,...}`、`CompileSession`/batch/persistent 最终快照、`trans/{rust,c}.rs`、`lib.rs`、`auto/src/cmd_stdlib.rs` actual/check、`auto-man/src/api_gen.rs::{generated_api_assembly,current_generated_api_assembly,...}`、`rust_ui.rs` 新鲜度门与正式服务 ready。先记录共同 identity/消费者 receipt 投影、schema 兼容和已有收据迁移规则；未知/旧不完整快照须明确陈旧或拒绝。
-- [ ] 按 §5.8/§6.4 完成内容闭包和身份缺项：public/实际选定层/缺失状态、依赖关系、最终引用证明、provider schema/实现、target/environment/features。核验生成 workspace 实际采用的 Cargo.lock/依赖/features，不把生成器的 Cargo 输入冒称生成服务输入。无须新增一套通用包解析器；在既有生成/构建/启动入口闭合本期依赖身份。
-- [ ] 对同 fixture 同目标做 CLI actual ↔ 会话/最终产物 ↔ generation/ready 三角断言，覆盖普通/persistent VM、Rust/C、生成 API 各入口；按内容变更/读取失败/异根的正负例验证失效。CLI 与 manifest 使用实际数据，不手工拼期待 JSON；对不适用的目标入口明确拒绝，不删消费者降低覆盖。
-- [ ] 新增 `738-phase3-manifest.{md,json}`，记录 identity 规则、消费者字段映射、实际差异及完整正负例结果。`cargo t plan738`、CLI stdlib 与 auto-man api_gen scoped 必须通过；真服务完整链在 T-14 最终提交复跑。映射 T-02/03/05/06/07、AC-01/02/04/06/07/08、SD-01/03/04/05/06。
+- [x] 依赖 T-10/11。触面：`stdlib_assembly/manifest.rs::{AssemblyManifest::freeze,...}`、`CompileSession`/batch/persistent 最终快照、`trans/{rust,c}.rs`、`lib.rs`、`auto/src/cmd_stdlib.rs` actual/check、`auto-man/src/api_gen.rs::{generated_api_assembly,current_generated_api_assembly,...}`、`rust_ui.rs` 新鲜度门与正式服务 ready。先记录共同 identity/消费者 receipt 投影、schema 兼容和已有收据迁移规则；未知/旧不完整快照须明确陈旧或拒绝。
+  [✅ 已完成] worktree `b6cfc6df1`（基线 `84bec29ef`）：**schema 3→4 双指纹**——`fingerprint`=共同装配身份（consumer 名置空+consumer_input 源剔除的中立投影哈希）、`consumer_fingerprint`=消费者收据身份（全量 payload，=旧单指纹语义）；迁移规则=新鲜度门/api_gen 烘焙常量/在途核对全部切 `consumer_fingerprint()`（同消费者跨时语义零变化），跨消费者断言用 `fingerprint()`；未知/旧快照维持保守再生真值表。
+- [x] 按 §5.8/§6.4 完成内容闭包和身份缺项：public/实际选定层/缺失状态、依赖关系、最终引用证明、provider schema/实现、target/environment/features。核验生成 workspace 实际采用的 Cargo.lock/依赖/features，不把生成器的 Cargo 输入冒称生成服务输入。无须新增一套通用包解析器；在既有生成/构建/启动入口闭合本期依赖身份。
+  [✅ 已完成] 既有闭包项核证（sources 角色三态/provider 按目标分叉+Cargo.lock+BUILD_INPUTS/T-10/11 契约证明入 references）；缺项补齐：generation.json ready 新增 `workspace_lock`（生成产物运行时依赖输入身份，absent 显式记录；与生成器 Cargo 输入分开）；复用门 `lock_freshness` 对拍（lock 出现/变化/旧收据缺字段→陈旧再生）。
+- [x] 对同 fixture 同目标做 CLI actual ↔ 会话/最终产物 ↔ generation/ready 三角断言，覆盖普通/persistent VM、Rust/C、生成 API 各入口；按内容变更/读取失败/异根的正负例验证失效。CLI 与 manifest 使用实际数据，不手工拼期待 JSON；对不适用的目标入口明确拒绝，不删消费者降低覆盖。
+  [✅ 已完成] `t12_manifest_identity` 2 测（实际数据驱动）：三角=CLI actual 路径（session→compile_actual_references→freeze）↔ 真实 `trans_rust_with_session`+`freeze_assembly_manifest` ↔ 生成收据形态——三者共同身份全等/收据身份互异；正负例=同内容异根身份稳定、业务输入只改收据身份、target 变化改共同身份、lock 真值表（缺字段/漂移/absent 保守再生）。
+- [x] 新增 `738-phase3-manifest.{md,json}`，记录 identity 规则、消费者字段映射、实际差异及完整正负例结果。`cargo t plan738`、CLI stdlib 与 auto-man api_gen scoped 必须通过；真服务完整链在 T-14 最终提交复跑。映射 T-02/03/05/06/07、AC-01/02/04/06/07/08、SD-01/03/04/05/06。
+  [✅ 已完成] [738-phase3-manifest.md](reports/738-phase3-manifest.md)：plan738 69/69、CLI stdlib 10/10、api_gen 43/43、freshness 2/2（`test_shell_pack_lib_freshness` 基线预存环境红 stash 实证在案）、plan724 5/5、三 crate check 零错误。
 
 ### Phase 3 / T-13：SD-01..07 终稿与原任务验收对账
 
