@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-738
-status: executing
+status: execution_done
 feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-09
 plan_revision: 3
-current_step: 6  # Phase 3：T-01/T-09..T-13 完成；仅 T-14（最终门禁+独立 review 交接）待执行
+current_step: 14  # Phase 3 全部任务完成（T-01+T-09..T-14）；execution_done，待独立 review
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -422,12 +422,16 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - [x] 完成条件：正文准确、所有 AC/SD 均有任务与证据，未批准遗漏不转债务。本步骤只改计划/报告，不发布 canonical/ledger，不跑 Cargo/docs_gen；映射原 T-02/06/07/08、AC-01/05/07/08、SD-01..07。
   [✅ 已完成] 本步骤零 Cargo/docs_gen；canonical/ledger 留 merge 阶段。
 
-### Phase 3 / T-14：最终提交门禁、真实验收与独立 review 交接
+### Phase 3 / T-14：最终提交门禁、真实验收与独立 review 交接 ✅
 
-- [ ] 依赖 T-09..13。先提交全部实现/测试，冻结 clean code commit 与依赖/lock/features。按 §6.3/§6.4 执行三 crate check、完整裸 t + tv/tt/串行 th、必要 scoped/CLI/API 档、三目标同源与 C stdio witness、正式生成服务完整链。运行期间不改输入；若再修代码，新提交重跑受影响门禁，不能沿用旧提交成功记录作为最终证明。
-- [ ] 新增 `738-phase3-verification.{md,json}`：命令、选中/通过/失败/跳过数量、code/dependency revision、日志/hash、逐名红分诊、Warnings/fmt/debug/遗漏扫描。R2 收据保留历史；无新确定性红、无未知失败；变更范围和新增证明适用面清楚，不能称全库语义 parity。
-- [ ] 在主检出把证据对回原 T-02..T-08 的实现/验证项及 T-09..T-14；只有所有执行验收闭合才置 `execution_done`，独立 review/merge/清理项仍保持待办。交给未参与该实现的独立 review agent，按 `/auto-plan:review` 重新核对最终提交、所有 AC、实际 callee/manifest、完整 diff 与 SD 正文；执行 agent 不能自行宣告独立复审 pass。
-- [ ] 独立复审 pass 才允许 `reviewed`；needs_fix 返回本 phase，needs_replan 修订具体合同而不降 AC。当前授权止于修复/验收/复审准备，不合入/归档/删除 worktree，merge 时再 canonical/ledger/Design33/索引及 wt-guard。映射原 T-07/08、AC-01..08、SD-01..07。
+- [x] 依赖 T-09..13。先提交全部实现/测试，冻结 clean code commit 与依赖/lock/features。按 §6.3/§6.4 执行三 crate check、完整裸 t + tv/tt/串行 th、必要 scoped/CLI/API 档、三目标同源与 C stdio witness、正式生成服务完整链。运行期间不改输入；若再修代码，新提交重跑受影响门禁，不能沿用旧提交成功记录作为最终证明。
+  [✅ 已完成] 最终提交 `b3a4d660e`（clean，链 2c1b4a763→c1579ed71→84bec29ef→b6cfc6df1→1a983091f→b3a4d660e，8 文件 +2224/−284）。执行中发现两处缺陷并按纪律修复+重跑：①`1a983091f` lock_freshness 首次物化语义（新 workspace 首启误判陈旧）；②`b3a4d660e` T-12 的 workspace_lock 收据写入因脚本断言中断被遗漏（服务链实测暴露）+门 current 侧 absent 归一化+ready/收据指纹字段对齐。受影响门禁全部在最终提交复跑绿。
+- [x] 新增 `738-phase3-verification.{md,json}`：命令、选中/通过/失败/跳过数量、code/dependency revision、日志/hash、逐名红分诊、Warnings/fmt/debug/遗漏扫描。R2 收据保留历史；无新确定性红、无未知失败；变更范围和新增证明适用面清楚，不能称全库语义 parity。
+  [✅ 已完成] [738-phase3-verification.md](reports/738-phase3-verification.md)：三 crate check 零错；裸 t 5183/16 红全分诊（13 master 预存+3 flake 族）；tv 162/162；tt 13 红全基线（非基线=0）；th 85绿/3红/14超时逐名分诊（back_proxy 基线、plan730 interop+multipart **基线 worktree 同命令复现实证**环境红、sse_chain 双树隔离绿、余为级联）；plan738 69/69、plan724 5/5、CLI 10/10、api_gen 43/43、freshness 2/2（shell_pack 环境红 stash 实证）；⑤腿 Rust 实编 1/1、C stdio 真实 MSVC 1/1、**正式生成服务完整链 1/1**（38.6s：生成→schema4+workspace_lock 收据→实编→serve→ready 指纹→业务 42→仅改 stdlib→陈旧→再生→重建复验）；debug 残留 0/rustfmt clean。收据绑定说明（auto-lang 字节等同外推）在档。
+- [x] 在主检出把证据对回原 T-02..T-08 的实现/验证项及 T-09..T-14；只有所有执行验收闭合才置 `execution_done`，独立 review/merge/清理项仍保持待办。交给未参与该实现的独立 review agent，按 `/auto-plan:review` 重新核对最终提交、所有 AC、实际 callee/manifest、完整 diff 与 SD 正文；执行 agent 不能自行宣告独立复审 pass。
+  [✅ 已完成] 验收对账（[738-phase3-acceptance.md](reports/738-phase3-acceptance.md) T-14 栏已补最终收据）：AC-01..08 执行面全部闭合（T-08 最终档=本任务）→ **status: execution_done**。交接：独立 review agent 复核 `b3a4d660e`——全部 AC、实际 callee/manifest、`2c1b4a763..b3a4d660e` 完整 diff（T-09 分类+T-10..14 语义面）、SD 正文、th 环境红基线归因。
+- [x] 独立复审 pass 才允许 `reviewed`；needs_fix 返回本 phase，needs_replan 修订具体合同而不降 AC。当前授权止于修复/验收/复审准备，不合入/归档/删除 worktree，merge 时再 canonical/ledger/Design33/索引及 wt-guard。映射原 T-07/08、AC-01..08、SD-01..07。
+  [✅ 待独立复审] 当前 state=execution_done（非 reviewed）；不合入/归档/删 worktree。
 
 ## 9. 复审记录
 
