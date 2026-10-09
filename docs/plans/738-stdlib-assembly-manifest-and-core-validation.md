@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-09
 plan_revision: 3
-current_step: 1  # Phase 3 待执行；T-01 保留完成，T-02..T-08 及新增 T-09..T-14 尚未闭合
+current_step: 2  # Phase 3：T-01 与 T-09 完成；T-02..T-08 验收对账与 T-10..T-14 待闭合
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -375,11 +375,14 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
   入口就绪：status=execution_done，worktree `e4425b673` clean，复审证据齐备（§9 交接+验证报告）。SD 沉淀稿=起草时 SD-01..07 提案维持（merge 阶段执行）。
 - [ ] 清理前lang-738两兄弟各wt-guard clean；tf仅merge到期主检出单实例。全AC闭合才reviewed/archived。
 
-### Phase 3 / T-09：冻结入场版本并核清批量格式化范围
+### Phase 3 / T-09：冻结入场版本并核清批量格式化范围 ✅
 
-- [ ] 依赖 T-01 与 R2 提交。复核 `2c1b4a763`、worktree clean、auto-down 版本和基线收据；审计 `2c1b4a763^..2c1b4a763` 全部 566 文件，并记录最终合入 diff 的比较基面。
-- [ ] 按功能修复、纯格式、金样/生成资产、其他语义变化逐文件分类，给可复核依据。对声称纯格式的文件用同版本 formatter/归一化前后等价等适用方法完整核对；格式混合功能文件须单独提取语义差异审查，不能一律标纯 fmt。确认后的格式变更可保留并纳入完整复审，或用后续提交缩减无关改动；不要求重写已记录提交，不丢 R2 实现。
-- [ ] 新增 `docs/plans/reports/738-phase3-scope.{md,json}`，记录基面/文件清单/hash/分类/待审语义项。完成条件：每个变更文件均有归属，不存在未知语义差异。映射 T-08、AC-08、SD-01..07 的证据边界；本任务不靠全档测试验证格式性质。
+- [x] 依赖 T-01 与 R2 提交。复核 `2c1b4a763`、worktree clean、auto-down 版本和基线收据；审计 `2c1b4a763^..2c1b4a763` 全部 566 文件，并记录最终合入 diff 的比较基面。
+  [✅ 已完成] 2026-10-09 worktree clean @`plan-738-dev@2c1b4a763`、auto-down `895f8d0` 未动，与 [738-phase3-baseline.json](reports/738-phase3-baseline.json) 一致；566 文件全部 Modified `.rs`（crates/auto-lang 内，无增删）；合入比较基面=merge-base `6d69dbdc7`（分支自基面 19 提交）。
+- [x] 按功能修复、纯格式、金样/生成资产、其他语义变化逐文件分类，给可复核依据。对声称纯格式的文件用同版本 formatter/归一化前后等价等适用方法完整核对；格式混合功能文件须单独提取语义差异审查，不能一律标纯 fmt。确认后的格式变更可保留并纳入完整复审，或用后续提交缩减无关改动；不要求重写已记录提交，不丢 R2 实现。
+  [✅ 已完成] rustfmt 1.9.0-stable/默认配置/edition 2021 逐文件机械等价：**552 纯格式（父 blob 格式化后与子 blob 逐字节相等；37 个 mod 声明根文件经整树解包原地格式化）**+4 注释/空白级（去注释归一后代码令牌等价）+2 a2r 金样（幻影 `a2r_std::io` 导入移除）+**8 功能修复**（native.rs 契约 API/host.rs 适配壳/emission+c.rs C 诚实面/compile.rs c.* 命名空间/disasm.rs CLOSURE 走查/trans_rust.rs 模块级 unsupported/back_proxy.rs 冗余撤销）——8 功能文件与 R2 报告逐项对账一致，无未声明语义变更；host.rs 包装豁免/Resolved-only 臂确认为 T-10 触面。
+- [x] 新增 `docs/plans/reports/738-phase3-scope.{md,json}`，记录基面/文件清单/hash/分类/待审语义项。完成条件：每个变更文件均有归属，不存在未知语义差异。映射 T-08、AC-08、SD-01..07 的证据边界；本任务不靠全档测试验证格式性质。
+  [✅ 已完成] [738-phase3-scope.md](reports/738-phase3-scope.md) + [738-phase3-scope.json](reports/738-phase3-scope.json)（566 条逐文件 parent/child SHA256+分类+依据；审计脚本 738-phase3-scope.audit.py 可重跑）。
 
 ### Phase 3 / T-10：修复 Rust strict 门并证明合法适配链
 
