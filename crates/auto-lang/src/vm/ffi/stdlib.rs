@@ -963,23 +963,69 @@ pub fn exit_audit(code: i32, site: &str) {
 /// panic 惯例退出码；site=panic，尽力携带消息+位置）再调既有 hook。被
 /// catch_unwind 捕获的 panic 同样落笔（进程未退时审计行与存活事实并存，
 /// 归因时以"审计行 + 进程死亡"组合判读）。
+///
+/// PLAN-747：打印腿改容错分派——RUST_BACKTRACE 未置位（自动化/常态）走
+/// [`print_panic_tolerant`]，RUST_BACKTRACE 置位（开发态要栈）保留原生
+/// `prev`。原生 hook 的打印走 stderr，管道关闭（os error 232，驱动方已
+/// 断开）/资源枯竭（os error 1450，多实例并发）时 `_eprint` 自身 panic →
+/// panic-in-panic → abort（fastfail 7），桌面实例以 0xCFFFFFFF 消失
+/// （2026-10-09 退出审计 133 例打印失败 panic 实证 = WER c0000409 家族）。
 pub fn install_exit_audit_panic_hook() {
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let msg = info
-            .payload()
-            .downcast_ref::<&str>()
-            .map(|s| s.to_string())
-            .or_else(|| info.payload().downcast_ref::<String>().cloned())
-            .unwrap_or_else(|| "non-str payload".to_string());
-        let loc = info
-            .location()
-            .map(|l| format!("{}:{}", l.file(), l.line()))
-            .unwrap_or_default();
-        let one_line = format!("panic msg={} loc={}", msg.replace('\n', " "), loc);
+        let one_line = format!(
+            "panic msg={} loc={}",
+            panic_payload_str(info).replace('\n', " "),
+            info.location()
+                .map(|l| format!("{}:{}", l.file(), l.line()))
+                .unwrap_or_default()
+        );
         exit_audit(101, &one_line);
-        prev(info);
+        if backtrace_requested() {
+            prev(info);
+        } else {
+            print_panic_tolerant(info);
+        }
     }));
+}
+
+/// panic payload 的字符串视图（&str/String downcast，非 str 载荷回退占位）。
+fn panic_payload_str(info: &std::panic::PanicHookInfo<'_>) -> String {
+    info.payload()
+        .downcast_ref::<&str>()
+        .map(|s| s.to_string())
+        .or_else(|| info.payload().downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "non-str payload".to_string())
+}
+
+/// 是否请求 backtrace：`RUST_BACKTRACE` 置位且非 "0"（与 std 默认 hook 同口径）。
+fn backtrace_requested() -> bool {
+    std::env::var_os("RUST_BACKTRACE")
+        .map(|v| v != "0")
+        .unwrap_or(false)
+}
+
+/// PLAN-747 容错 panic 打印：自组默认格式（thread 名 + 位置 + 消息 +
+/// RUST_BACKTRACE 提示行），`write_all`/`flush` 的 io::Error 一律吞掉——
+/// 打印失败绝不升级为 panic-in-panic/abort（与 std `_eprint` 的
+/// panic-on-failure 语义唯一差异点，仅丢失 backtrace 能力）。
+fn print_panic_tolerant(info: &std::panic::PanicHookInfo<'_>) {
+    let name = std::thread::current().name().unwrap_or("<unnamed>").to_string();
+    let loc = info
+        .location()
+        .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+        .unwrap_or_else(|| "unknown location".to_string());
+    let text = format_panic_report(&name, &loc, &panic_payload_str(info));
+    let mut err = std::io::stderr().lock();
+    let _ = err.write_all(text.as_bytes());
+    let _ = err.flush();
+}
+
+/// 容错报告文本（默认 hook 同形：thread 名/位置/消息/提示行）。
+fn format_panic_report(thread_name: &str, location: &str, message: &str) -> String {
+    format!(
+        "thread '{thread_name}' panicked at {location}:\n{message}\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+    )
 }
 
 /// Exit the process with a code
@@ -1050,6 +1096,35 @@ mod exit_audit_tests {
             "审计行应含 code=101 与 panic 消息，实得: {content:?}"
         );
         let _ = fs::remove_file(&path);
+    }
+
+    /// PLAN-747：容错报告文本与默认 hook 同形（thread 名/位置/消息/提示行）。
+    #[test]
+    fn plan747_format_panic_report_shape() {
+        let text = format_panic_report("main", "src\\app.rs:42:13", "boom");
+        assert!(text.starts_with("thread 'main' panicked at src\\app.rs:42:13:\n"));
+        assert!(text.contains("\nboom\n"));
+        assert!(text.contains("note: run with `RUST_BACKTRACE=1`"));
+        assert!(text.ends_with('\n'));
+    }
+
+    /// PLAN-747：backtrace 请求判定与 std 默认 hook 同口径（未设/"0" = 否，
+    /// 其余 = 是）。env 恢复保证不影响后续测试。
+    #[test]
+    fn plan747_backtrace_requested_env_states() {
+        let saved = std::env::var_os("RUST_BACKTRACE");
+        std::env::remove_var("RUST_BACKTRACE");
+        assert!(!backtrace_requested(), "未设 = 容错打印");
+        std::env::set_var("RUST_BACKTRACE", "0");
+        assert!(!backtrace_requested(), "\"0\" = 容错打印");
+        std::env::set_var("RUST_BACKTRACE", "1");
+        assert!(backtrace_requested(), "\"1\" = 原生 hook");
+        std::env::set_var("RUST_BACKTRACE", "full");
+        assert!(backtrace_requested(), "\"full\" = 原生 hook");
+        match saved {
+            Some(v) => std::env::set_var("RUST_BACKTRACE", v),
+            None => std::env::remove_var("RUST_BACKTRACE"),
+        }
     }
 
     /// 探针子进程模式：env 置位时真调 shim_process_exit(7)——进程在
