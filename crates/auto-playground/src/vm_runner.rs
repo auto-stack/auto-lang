@@ -27,10 +27,10 @@ fn meta_to_json(meta: auto_lang::vm::disasm::BytecodeMeta) -> Option<serde_json:
     serde_json::to_value(meta).ok()
 }
 
-pub fn run_source(source: &str) -> RunResult {
+pub fn run_source(source: &str, deadline: Option<std::time::Instant>) -> RunResult {
     let start = Instant::now();
 
-    let (result, stdout, bytecode, meta) = match auto_lang::run_with_capture_and_bytecode_with_meta(source) {
+    let (result, stdout, bytecode, meta) = match auto_lang::run_with_capture_and_bytecode_with_deadline(source, deadline) {
         Ok((res, out, bc, meta)) => (res, out, disasm_to_json(bc), meta_to_json(meta)),
         Err(e) => (
             String::new(),
@@ -58,13 +58,15 @@ pub fn run_source(source: &str) -> RunResult {
 pub fn run_files_project(
     source: &str,
     files: Vec<crate::project::ProjectFile>,
+    deadline: Option<std::time::Instant>,
 ) -> RunResult {
     let start = Instant::now();
 
     let outcome = crate::project::prepare_files_temp_dir(source, &files).and_then(|(dir, entry_path)| {
-        let run = auto_lang::run_with_capture_and_path_and_bytecode_with_meta(
+        let run = auto_lang::run_with_capture_and_path_and_bytecode_with_deadline(
             source,
             &entry_path.to_string_lossy(),
+            deadline,
         );
         let _ = std::fs::remove_dir_all(&dir);
         Ok::<_, crate::error::AppError>(run)
@@ -94,6 +96,7 @@ pub fn run_project_source(
     source: &str,
     project_dir: &str,
     files: Option<Vec<crate::project::ProjectFile>>,
+    deadline: Option<std::time::Instant>,
 ) -> RunResult {
     let start = Instant::now();
 
@@ -120,9 +123,10 @@ pub fn run_project_source(
         None => examples_dir.join(project_dir).join("main.at"),
     };
 
-    let (result, stdout, bytecode, meta) = match auto_lang::run_with_capture_and_path_and_bytecode_with_meta(
+    let (result, stdout, bytecode, meta) = match auto_lang::run_with_capture_and_path_and_bytecode_with_deadline(
         source,
         &entry_path.to_string_lossy(),
+        deadline,
     ) {
         Ok((res, out, bc, meta)) => (res, out, disasm_to_json(bc), meta_to_json(meta)),
         Err(e) => (
