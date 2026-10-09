@@ -12333,6 +12333,18 @@ let tabs_inner = View::Row {
                 // Plan 370 D-GAP-4: handle .store.X path — flatten to read root state X.
                 // Store fields are merged into root state as bare names.
                 if let Expr::Dot(inner_obj, store_alias) = object.as_ref() {
+                    // PLAN-748 T-02：泛名 `store` 别名无条件展平——与
+                    // read_state（无条件剥 "store." 前缀）和 store_source_field
+                    //（泛名无条件）同口径。空快照（无 store 工程）拒展平使
+                    // `.store.X` 实参链整链断裂（P733-R2 p053_1 两红根因：
+                    // 无 store 声明语料的 musk 同构 `.store.messages`
+                    // computed 链在子件/根件均 None）；真名限定仍走快照门
+                    //（PLAN-633 语义保持）。
+                    if matches!(inner_obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self")
+                        && store_alias.as_str() == "store"
+                    {
+                        return self.read_state(field.as_str()).ok();
+                    }
                     // PLAN-633: 同上——真名限定形态与 `.store.X` 同读根态。
                     if matches!(inner_obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self")
                         && (crate::ui::handler_codegen::view_store_alias_real_name(
