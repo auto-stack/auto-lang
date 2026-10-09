@@ -59,4 +59,26 @@ test.describe('Run execution deadline', () => {
     const body = await res.json();
     expect(body.stdout).toContain('3');
   });
+
+  test('UI Run requests timeout_secs=60 (F-746-R1: slow legit examples)', async ({
+    page,
+  }) => {
+    // 官方宿主必须显式请求 60s 上限——否则合法慢示例（parity C/sync-http
+    // 族 ~10.5s）会被服务端默认 10s 截止截断。
+    let runPayload: any = null;
+    page.on('request', (req) => {
+      if (req.url().endsWith('/api/run') && req.method() === 'POST') {
+        runPayload = req.postDataJSON();
+      }
+    });
+    await page.goto('/');
+    await page.waitForSelector('.cm-content', { timeout: 10000 });
+    await page.click('.run-btn');
+    await page.waitForResponse(
+      (res) => res.url().endsWith('/api/run') && res.status() === 200,
+      { timeout: 15000 },
+    );
+    expect(runPayload).not.toBeNull();
+    expect(runPayload.timeout_secs).toBe(60);
+  });
 });

@@ -81,6 +81,9 @@ export function usePlaygroundFull() {
   // one (manifest notes, Plan 582) the backend materializes them in a temp dir
   // and resolves modules relative to `entry` (main.at or the active/first file).
   function projectRequestBody(body: Record<string, unknown>) {
+    // PLAN-746 (F-746-R1): 合法慢示例（parity C/sync-http 族 ~10.5s）需要
+    // 高于服务端默认 10s 的执行上限——宿主显式请求 60s（服务端 clamp 上限）。
+    body.timeout_secs = 60;
     if (projectDir.value) {
       syncActiveBuffer();
       body.project_dir = projectDir.value;

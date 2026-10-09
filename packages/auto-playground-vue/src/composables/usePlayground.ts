@@ -89,6 +89,10 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
 
   /** 项目运行/转译请求体：files 非空时以 main.at（或首文件，Plan 582 parity）为 entry。 */
   function projectRequestBody(body: Record<string, unknown>) {
+    // PLAN-746 (F-746-R1): 合法慢示例（parity C/sync-http 族 ~10.5s）需要
+    // 高于服务端默认 10s 的执行上限——宿主显式请求 60s（服务端 clamp 上限），
+    // 失控程序仍被 VM 协作式截止兜住（内存安全不回归）。
+    body.timeout_secs = 60;
     if (projectDir.value) body.project_dir = projectDir.value;
     if (projectFiles.value.length > 0) {
       body.files = projectFiles.value;
