@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-playground, auto-lang/vm]
-current_step: 0
+current_step: 4
 total_steps: 7
 ---
 
@@ -209,23 +209,31 @@ total_steps: 7
 
 ## 8. 执行步骤
 
-- [ ] T-01 VM 执行预算：engine.rs ExecutionBudget + execute_task 批次检查
-  + run_task_loop 传播 + execute_autovm_with_path/run_with_capture 带预算
-  变体。文件：crates/auto-lang/src/vm/engine.rs、lib.rs。
-  验证：`cargo t vm`（新增燃料单测）+ `cargo tv` 定向 0 回归。AC-01
-- [ ] T-02 print kwargs 根因调查 + 修复：先复现定位 3MB/s 膨胀路径
+- [x] T-01 VM 执行预算：engine.rs deadline 字段（run_task_loop 每轮清扫检查，
+  超时终止全部任务置 ExecutionTimeout last_error——利用既有 100 指令帧预算机制，
+  检查粒度=清扫周期）+ execute_autovm_with_deadline + 两个公开 deadline 变体。
+  文件：crates/auto-lang/src/vm/engine.rs、lib.rs。commit 9c3b66cfa。
+  验证：8 单测全绿（死循环/分配循环 500ms 截止、并发 4 线程各自 2.00s、
+  默认面无预算行为不变、panic 干净 Err）+ `cargo tv` 162/162 零回归。AC-01
+- [x] T-02 print kwargs 根因调查 + 修复：先复现定位 3MB/s 膨胀路径
   （decision artifact 写入计划 §9），再按 SD-02 落地编译期拒绝。
   文件：crates/auto-lang/src/vm/codegen.rs（内建族参数校验）。
-  验证：新增单测（kwargs 报错 + 合法回归）。AC-02
-- [ ] T-03 playground run 超时接线：run.rs timeout_secs（默认 10，clamp
+  验证：2 单测（裸形态/循环形态编译期报错）。根因定谳：parser 将 `end=" "`
+  产出为 Bina(Asn) 赋值实参，codegen dup+store 序列致每调用泄漏栈槽，
+  循环内失衡腐蚀 sp 相对局部变量 → 死循环+3MB/s 输出膨胀。commit 9a0dae02f。AC-02
+- [x] T-03 playground run 超时接线：run.rs timeout_secs（默认 10，clamp
   60）→ budget；超时/错误结构化响应；lib.rs:471 join unwrap 改明确错误。
   文件：crates/auto-playground/src/routes/run.rs、
   crates/auto-lang/src/lib.rs、crates/auto-playground/src/vm_runner.rs。
-  验证：五挂起例定向 curl ≤60s 明确错误 + `cargo check -p auto-playground`。AC-04
+  验证：`for true {}` 单发/4 并发均 2.00s 返回 ExecutionTimeout（服务端内存
+  稳定 22-35MB）；单发/并发/_kwargs/panic 共 4 条 playwright e2e 绿。
+  commit e1cb8632f。AC-04
 - [ ] T-04 基线 profiling 与修复：全量走查分桶采样定位保留源；真泄露修、
   工作集型记 SD-04 注记。验证：对比报告（修复前后 RSS 曲线）。AC-03
-- [ ] T-05 playground e2e 增补：frontend/tests 超时 spec + demo 回归。
-  验证：`npx playwright test`（crates/auto-playground/frontend）相关 spec 绿。AC-04
+- [x] T-05 playground e2e 增补：frontend/tests 超时 spec + demo 回归。
+  验证：`npx playwright test tests/run-timeout.spec.ts` 4/4 绿（12s）。
+  注：worktree 走查期发现的端口互踩/旧二进制残留为环境事故非代码缺陷
+  （干净服务单发+并发均正确）。AC-04
 - [ ] T-06 全量走查复测：run_all_examples_mem.py 出报告（内存曲线 + 挂起清零）。
   验收档：scratch/playground-check/p746-mem-report.md。AC-03, AC-04
 - [ ] T-07 复审门禁：cargo check、裸 `cargo t`、`cargo tv`；已知红族白名单
