@@ -19,7 +19,7 @@ touched_goals:
 affects: [auto-lang/vm, auto-lang/ui]
 current_step: 0
 total_steps: 12
-plan_revision: 2
+plan_revision: 3
 ---
 
 # PLAN-748 — VM 三断点修复 + vm 轨 iced 渲染器四件缺陷（双 phase）
@@ -123,6 +123,13 @@ col、编辑器去 padding 容器——jade commit 4b398a4 两层 workaround）�
   本计划 worktree 基面恒钉 master 已提交代码。
 - 不动 park/resume 协议本身（Stakes/RC 敏感区，419/510/624/733 四轮
   修过；修复落在错误处理/求值侧，非弹栈侧）。
+- **不处理 PLAN-100 三型读语义病灶**（信封 bool 位型读 / handler 深链读
+  MISS / 视图模板 fn 调用返空坑①家族）——已立 **PLAN-749** 根修
+  （2026-10-10 分流裁定，749 §4 边界判定）。症状3（视图 CALL 返空）与
+  本计划断点①已证异根：①走 `resolve_binding_path` 臂（binding 挂载面），
+  749 症状3 走裸名兜底臂（`eval_condition_with_inner` 无 CALL 通道）——
+  同函数不同臂，修复面不重叠。两计划严格串行（同碰 engine.rs/
+  aura_view_builder.rs），顺序见待澄清#6。
 
 ### Phase 2 非目标
 
@@ -613,6 +620,20 @@ examples 无使用例）+ jade 撤层双轨像素等值（jade 侧，AC-14）。
 - review_authority: 独立 auto-plan:review 复验 Phase 2 定音报告、修复
   证据与 jade 撤层复验回执。
 
+### 边界增补（plan_revision 3，2026-10-10）
+
+- stage: new
+- plan_id: PLAN-748
+- plan_revision: 3
+- outcome: pass（边界澄清，非语义范围变更：Phase 1/2 任务、验收、授权
+  原样不动）
+- next: 不变（work 待用户确认）
+- changed_tasks: 无新增（仅非目标排除项 + 待澄清#6）
+- changed_acceptance: 无
+- evidence: auto-os 转交的 auto-musk PLAN-100 三型读语义病灶经本仓
+  2026-10-10 实读分流（症状3 与断点①同函数不同臂确证异根），立
+  PLAN-749 根修——749 §4"与 PLAN-748 的边界判定"五条依据为决策记录。
+
 ## 待澄清事项
 
 1. **主检出 WIP owner 协调**（owner=用户/WIP 所属会话）：master 8 文件
@@ -634,3 +655,12 @@ examples 无使用例）+ jade 撤层双轨像素等值（jade 侧，AC-14）。
    引用 autoui-verifier 既有脚本（test_widgets_gallery_vm.py /
    test_vue_playwright.mjs）；若 stretch 改动波及 gallery 视口 frame
    用例，围栏跑在主检出单实例（重负载机器级闸门，PLAN-726 T-02）。
+6. **与 PLAN-749 的同根甄别与执行顺序**（owner=用户/T-00；2026-10-10
+   分流裁定增补）：PLAN-749（JSON 产物/深链读语义 + 视图 fn 返空坑①
+   家族根修）与本计划存在两条**候选**同根链路——断点①的 bool 条件观测
+   可能被 749 症状1（NaN-box bool 位型读）污染；断点②的 SET_FIELD Err
+   可能与 749 症状2（JSON 产物物化/解包异常）同链。建议 **749 先行**、
+   本计划 T-00 定音在 749 合入后重取基线（若用户裁定本计划先行——含
+   Phase 2 可先行不受影响——T-00 定音须显式甄别值层污染，交叉引用 749
+   定音报告）；两计划同碰 engine.rs/aura_view_builder.rs，**严禁并行
+   worktree 同时改同文件**。
