@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "plan_id": "PLAN-738",
+  "plan_revision": 3,
+  "stage": "review",
+  "review": "R5",
+  "outcome": "needs_fix",
+  "observed_at": "2026-10-10",
+  "reviewed_commit": "9c255993b2a3163740cf886349013c7bea6aae32",
+  "phase_diff_base": "2c1b4a763280b3994f51b441714b4f2120328fb3",
+  "merge_base": "6d69dbdc78d99f23ba90a37c9559f7fb54dd7be3",
+  "observed_master": "f92aca82d3b958d0c334b8a3860d986dde5464ef",
+  "auto_down_commit": "895f8d0f9355c9f5ec3ce8fca268bdb768395846",
+  "final_implementation_clean": true,
+  "spec_and_delta_sha256": {
+    "docs/specs/overview.md": "bfa32c63e5c0cf8902049f46cbe98dfafa38516ee634309d68f176e9692482b3",
+    "docs/specs/stdlib/project.md": "cd3d00bac3b2c7df1ac0320321c69fee37965fa40395d725656f7bc07114e26c",
+    "docs/specs/stdlib/design/backend-assembly.md": "8c25d12cae4ed3a4f1d5a83a1fdbf70c4f6424528b4cbf7bc1c18b5f8054c9ea",
+    "docs/specs/auto-lang/frontend/design/module-resolution.md": "fd110c6fb836795893b76c0709d280262362dc66be3b9a56b2ba3fdf2aa50d7f",
+    "docs/specs/auto-lang/trans/overview.md": "aabb0e631519721d4f5bb6def129d747177d5406bb4105f1bfea3f427ae323cb",
+    "docs/specs/auto-lang/runtime/design/networking-stdlib.md": "356436040c868450c6a73a49f27b9f0dd5af29342a3e93395fcd10f19529279e",
+    "docs/specs/auto-man/design/api-generation-integrity.md": "b66721c99150e39f2b86c4689c976a77c4ed934cf1ff1aef98667ded91fc225a",
+    "docs/specs/auto-cli/project.md": "7af13cc3e86b0df2397fad6b7d0136ae7503b058f2f2853fc86f771889e1a0ad",
+    "docs/plans/reports/738-sd-drafts.md": "72558019bad702e9ae411ee047c011643c1689fb06a9dab1ff61318b98cfdf19"
+  },
+  "sd_frozen_git_commit": "1b05d3d441830e855f0eae837a813b9820cd83e5",
+  "cargo_lock_sha256": "8b2b3290edb132afaf533f7a27d927ae916d0e4e6603416223cd038093b37ba4",
+  "log_sha256": {
+    ".review738-r5-plan738.log": "1f962168f207b30c587d66165ae39167ad64cbec625e26e5744b165a37fd0bd3",
+    ".review738-r5-t.log": "6b82ba0976324480116357694df7e10da5d167b50f97e74bb1dc5e71107907ef",
+    ".review738-r5-tv.log": "52299d552986b8330e5d823b68d19caa9de7b4e01fd46fb6d8d6cf2229565d00",
+    ".review738-r5-tt.log": "6b7fd9cd31ec8bfe429df761968eb24cca2ea886dd93050370a71f56ad94d8c2",
+    ".review738-r5-flake.log": "4c7cf717be686febc41d28faf7a7d2c17a080717f7c06c16ef99511c5a1abedb",
+    ".review738-r5-check.log": "fcb15a13ac612ee56a5e37a0d546ff904cbf07f098ad60efb675860bfa060911",
+    ".review738-r5-fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    ".review738-r5-lock-probe.log": "c9a3131b5f940d97bb18ffcb0dbf0eb2796c53cd2b448a2562cd115fbf871ac3",
+    ".review738-r5-receiver-baseline.log": "360b63be9eaeb88314ef06a13fd58b31066bda1cd2c366c06f1bfa70111a15dd",
+    ".review738-r5-receiver-drift.log": "a459df4d3d8b32f77f34d51569f2281e193801f814891f2d03947e3f4911d820",
+    ".review738-r5-qualified.log": "3387cc7c34611782690f4edba242b06fce26e49d003649c215c792cde5be5cb4",
+    ".review738-r5-alias.log": "ca597ced7328fe954e59977eacfa479a22d77e180afa89c7c95a535314dee738"
+  },
+  "results": {
+    "plan738": {
+      "run": 69,
+      "passed": 69,
+      "seconds": 76.729
+    },
+    "daily": {
+      "run": 5183,
+      "passed": 5167,
+      "failed": 16,
+      "seconds": 104.909,
+      "exit_code": 100
+    },
+    "tv": {
+      "run": 162,
+      "passed": 162,
+      "seconds": 2.253,
+      "exit_code": 0
+    },
+    "tt": {
+      "run": 5554,
+      "passed": 5540,
+      "failed": 14,
+      "seconds": 139.521,
+      "exit_code": 100
+    },
+    "plan484_isolated": {
+      "run": 2,
+      "passed": 2,
+      "seconds": 0.332,
+      "exit_code": 0
+    },
+    "three_crate_check_exit": 0,
+    "rustfmt_exit": 0,
+    "diff_check_exit": 0
+  },
+  "daily_failure_names": [
+    "auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_1_widget_computed::widget_computed_passthrough_survives_reeval",
+    "auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_1_widget_computed::widget_computed_store_arg_helper_chain",
+    "auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_4_merged_api_warning::merged_mode_api_call_emits_warn_opcode",
+    "auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_6_widget_content::widget_obj_arg_field_read_in_helper",
+    "auto-lang tests::musk_vm_track_tests::musk_vm_track_p054_t1_title_content_subtree::icon_component_child_renders_in_button_content_subtree",
+    "auto-lang tests::musk_vm_track_tests::musk_vm_track_p054_t4_styles::icon_component_class_prop_carries_ml_auto_and_tint",
+    "auto-lang tests::plan502_diagram_tests::plan502_m3_layout_geometry_e2e",
+    "auto-lang tests::plan606_gallery_tests::plan606_gallery_tests::test_029_photo_gallery_thumbnails_render_with_resolved_src_and_cover_fit",
+    "auto-lang tests::plan707_client_tests::plan707_client_manual_next_is_done_close",
+    "auto-lang ui::desktop_protocol::client_runtime::tests::projector_counter_layout_and_hits",
+    "auto-lang ui::iced::renderer::tests::desktop_bus_inbox_drains_through_real_arms",
+    "auto-lang ui::iced::renderer::tests::desktop_surface_merge_dedupe_and_injection",
+    "auto-lang vm::ffi::term_engine::ash_leak_probe::ash_stream_leak_probe",
+    "auto-lang::docs_gen kitchen_sink_page_in_sync",
+    "auto-lang::schema_drift queue_coverage_drift_fence",
+    "auto-lang::schema_drift schema_drift_fence"
+  ],
+  "tt_failure_names": [
+    "auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_1_widget_computed::widget_computed_passthrough_survives_reeval",
+    "auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_1_widget_computed::widget_computed_store_arg_helper_chain",
+    "auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_4_merged_api_warning::merged_mode_api_call_emits_warn_opcode",
+    "auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_6_widget_content::widget_obj_arg_field_read_in_helper",
+    "auto-lang tests::musk_vm_track_tests::musk_vm_track_p054_t1_title_content_subtree::icon_component_child_renders_in_button_content_subtree",
+    "auto-lang tests::musk_vm_track_tests::musk_vm_track_p054_t4_styles::icon_component_class_prop_carries_ml_auto_and_tint",
+    "auto-lang tests::plan484_chart_component_tests::plan484_smoke::plan484_024_charts_streaming_recompute",
+    "auto-lang tests::plan502_diagram_tests::plan502_m3_layout_geometry_e2e",
+    "auto-lang tests::plan606_gallery_tests::plan606_gallery_tests::test_029_photo_gallery_thumbnails_render_with_resolved_src_and_cover_fit",
+    "auto-lang tests::plan707_client_tests::plan707_client_manual_next_is_done_close",
+    "auto-lang ui::desktop_protocol::client_runtime::tests::projector_counter_layout_and_hits",
+    "auto-lang ui::iced::renderer::tests::desktop_bus_inbox_drains_through_real_arms",
+    "auto-lang ui::iced::renderer::tests::desktop_surface_merge_dedupe_and_injection",
+    "auto-lang vm::ffi::term_engine::ash_leak_probe::ash_stream_leak_probe"
+  ],
+  "probes": {
+    "lock": {
+      "command": "python docs/plans/reports/738-review-r5-probe.py",
+      "expected": "reject later lock drift",
+      "actual": "recorded_lock=absent; first materialization fresh=true; later dependency version drift fresh=true",
+      "negative_assertion_exit": 101,
+      "source_restored_exact_bytes": true
+    },
+    "receiver": {
+      "command": "target/debug/auto.exe stdlib inspect --actual <fixture> --target rust --format json --check",
+      "source": "use auto.json; fn main() { let v = json.parse(\"{}\"); let n = v.len(); print(n) }",
+      "declaration_mutation": "pub fn JsonValue.len(self JsonValue) int; -> str;",
+      "baseline_exit": 0,
+      "drift_exit": 0,
+      "drift_status": "pass",
+      "violations": [],
+      "proof_symbols": [
+        "json.parse"
+      ],
+      "cli_sha256": "7c5e5e59fa57a4ea1546deb9cf8d533a1d2262cfb683ff3091093180cafb7ff0",
+      "cli_relevant_provider_bytes_verified": {
+        "host_rs_fnv": "6129932843287186388",
+        "trans_rust_rs_fnv": "15583843421651482409",
+        "match_reviewed_sources": true
+      }
+    }
+  },
+  "acceptance_results": {
+    "AC-01": "pass",
+    "AC-02": "partial",
+    "AC-03": "fail",
+    "AC-04": "partial",
+    "AC-05": "partial",
+    "AC-06": "fail",
+    "AC-07": "fail",
+    "AC-08": "fail"
+  },
+  "reused_positive_evidence": "R3 b3a4d660e HTTP/service/witness; R4 9c255993b API/freshness. Code/dependencies unchanged; does not cover newly found negative cases.",
+  "reopened_tasks": [
+    "T-11",
+    "T-12",
+    "T-13",
+    "T-14"
+  ],
+  "complete_task_count": 3,
+  "independence": "Participated in early implementation and rv3 planning, not Phase 3 implementation; supplemental artifact/behavior review, not a new fully independent context."
+}

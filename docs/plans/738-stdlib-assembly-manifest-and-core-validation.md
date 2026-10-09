@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-738
-status: reviewed
+status: executing
 feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-10
 plan_revision: 3
-current_step: 14  # R4 独立复审 pass（R3-01/02 修复确证、受影响门禁全绿，reviewed_commit=9c255993b）→ reviewed；merge 待授权
+current_step: 3  # R5 needs_fix；T-01/T-09/T-10 完成，T-11..T-14 重开；原 T-02..T-08 未勾选，按实际完成任务重算
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -36,6 +36,8 @@ affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persisten
 这是D3基础和核心门禁，不承诺全标准库所有符号跨后台语义相同，不批量实现当前缺失的Rust net/io、C HTTP或浏览器监听。非核心模块先清点和记录验证等级，进一步签名/ABI和语义parity作为D3b。全actor/CPU/内置TLS/通用WS不在本期。
 
 **当前执行入口：Revision 3 / Phase 3「最终契约修复与验收收口」**，见 §5.8、§6.4、§8 的 T-09..T-14。继续原 `plan-738-dev` worktree，以 `2c1b4a763` 为入场实现基线；保留 R2 服务验收和三目标 witness 收据，补 strict 适配证明、引用闭包与 manifest 对拍、SD 终稿及最终独立复审。AC-01..08、SD-01..07 的范围和通过阈值不变；仍不合入/归档。
+
+**2026-10-10 R5 补充复审：needs_fix。** 当前修复基线为既有 worktree `9c255993b`，保留 T-09/T-10 与所有历史代码/正例，不回滚到 R2。必修项=首次 lock 物化豁免永久放行后续漂移、公开 JsonValue receiver 方法未进入 strict 门、消费者三角验收使用 clone 替代实际生成器且缺 VM/C 对拍。重开 T-11..T-14，详见 [738-review-r5.md](reports/738-review-r5.md)。原 R4 pass 保留历史，本轮反例使整体通过结论失效；修复属于现有 revision 3 合同，不增 revision、不降 AC。
 
 ## 1. 目标
 
@@ -393,50 +395,77 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - [x] 在现有 `host.rs` 测试及 `plan738_stdlib_assembly_tests.rs`/相关 trans 族补正负例；Standalone/Embedded 分别真实编译适配 witness，有可观察返回/状态断言。开发运行 `cargo t plan738`、触及 adapter 的 scoped 族和 `cargo test -p auto-man --lib api_gen -- --test-threads=1`。新报告 `738-phase3-strict.md` 记录旧失败/新成功及拒绝位置。映射 T-03/04/07、AC-02/03/05/07/08、SD-01/02/04/05/07。
   [✅ 已完成] [738-phase3-strict.md](reports/738-phase3-strict.md)：plan738 62/62（host 新 5 测正负例）、plan724 5/5、api_gen 43/43、e2e witness 3/3（Standalone build_and_run 实编实跑断言 auth 200/body；Embedded 内嵌 3 参 post+post_sync+post_bearer_sync 可观察返回）、tt 全档 15 红全分诊（11 文档化 master 预存+4 负载 flake 含 plan730 隔离复跑绿）零新增确定性红、use_semantics 7/7、module_cache 16/16、rustfmt 干净。
 
-### Phase 3 / T-11：实际 callee 与引用闭包完整性审计/修复 ✅
+### Phase 3 / T-11：实际 callee 与引用闭包完整性审计/修复（R5 重开）
 
-- [x] 依赖 T-10。触面：`stdlib_assembly/reference.rs::verify_linked_native_closure`、`trans/rust.rs` 的 call/use/receiver 分派、`compile.rs` 的来源记录、`lib.rs` VM/Rust/C 入口、`autovm_persistent.rs`、`auto-man/src/api_gen.rs::generated_api_assembly` 的 endpoint/db/helper 消费。列出所有进入六核心 producer 的实际路径，核对 329 个发射点的分类依据；明确哪些确为胶水/面外，哪些需追踪。
+> R5：以下完成说明保留为历史执行证据；本任务尚未满足最新复审，修复要求见 §9 R5 与 738-review-r5.md。
+
+- [ ] 依赖 T-10。触面：`stdlib_assembly/reference.rs::verify_linked_native_closure`、`trans/rust.rs` 的 call/use/receiver 分派、`compile.rs` 的来源记录、`lib.rs` VM/Rust/C 入口、`autovm_persistent.rs`、`auto-man/src/api_gen.rs::generated_api_assembly` 的 endpoint/db/helper 消费。列出所有进入六核心 producer 的实际路径，核对 329 个发射点的分类依据；明确哪些确为胶水/面外，哪些需追踪。
   [✅ 已完成] worktree `84bec29ef`（基线 `c1579ed71`）：139 处六核心 FQN 引用按 11 组发射臂逐类归属（报告 §1 表）；「329 发射点均属胶水/面外」声明不成立——四类用户可达形状（Dot 模块臂/裸名流族/三段 auto.core.method/for-in 反糖）全部接入 strict 收集，#1/#6/#9 确面外，#4 legacy 别名与 #11 接收者面按既有 P738-D2/第四绑定面债务显式记边界。
-- [x] 用具名/通配/别名/再导出/裸名/方法/Auto body 依赖及生成 db/helper fixture 对照：同一核心调用跨合法写法仍收集同一来源 identity；替换独立 producer 合同或 callee 后，每条真实路径都必须拒绝。补遗漏；同名用户符号及未调用 unsupported 导入不误拒。动态路径不能以 AST 未出现 `module.symbol` 为排除依据，需实际绑定证据或明确拒绝理由。
+- [ ] 用具名/通配/别名/再导出/裸名/方法/Auto body 依赖及生成 db/helper fixture 对照：同一核心调用跨合法写法仍收集同一来源 identity；替换独立 producer 合同或 callee 后，每条真实路径都必须拒绝。补遗漏；同名用户符号及未调用 unsupported 导入不误拒。动态路径不能以 AST 未出现 `module.symbol` 为排除依据，需实际绑定证据或明确拒绝理由。
   [✅ 已完成] 新闭包七项：`verify_rust_import` 具名导入绑定+签名（纯适配面符号拒绝+限定拼写指引——旧路径裸调用发射无壳破损产物静默漂移）；裸名调用限定重建验证；wildcard 公共面唯一归属/多模块歧义拒绝/§5.3 不越界；用户同名 fn 遮蔽优先；Bina 三段 io 等幻影诚实拒绝；for-in 流反糖验证（AsyncHTTPStream 参数 facade 契约视图）；**api_gen db/伴生 back 模块 Embedded 证明并入 manifest**（原 Standalone 默认+丢弃证明）；ADAPTER_RULES 增至 15 条（stream 三件套 async 面；R3-02 勘误：初稿误记 17）。
-- [x] 新增 `738-phase3-reference-audit.{md,json}`，逐路径关联入口、collector、最终 callee、proof、测试与例外边界；执行 `cargo t plan738`、use_semantics/native_registry/autovm_persistent 等实际触面 scoped 族。完成条件：六核心引用闭包无未经证明的放行，VM preflight 结果和最终 manifest 无陈旧证明。映射 T-02/03/04/07、AC-01..05/07/08、SD-01..05/07。
+- [ ] 新增 `738-phase3-reference-audit.{md,json}`，逐路径关联入口、collector、最终 callee、proof、测试与例外边界；执行 `cargo t plan738`、use_semantics/native_registry/autovm_persistent 等实际触面 scoped 族。完成条件：六核心引用闭包无未经证明的放行，VM preflight 结果和最终 manifest 无陈旧证明。映射 T-02/03/04/07、AC-01..05/07/08、SD-01..05/07。
   [✅ 已完成] [738-phase3-reference-audit.md](reports/738-phase3-reference-audit.md) + [json](reports/738-phase3-reference-audit.json)：plan738 67/67（t11_reference_closure 5 测）、plan724 5/5、api_gen 43/43、freshness 1/1、tt 非基线红=0（15 红全分诊）、use_semantics/native_registry/autovm_persistent/module_cache 7/13/20/16 全绿；VM 闭包走查沿用 R2 已闭合路径在案。
 
-### Phase 3 / T-12：manifest 共同身份与多消费者三角对拍 ✅
+### Phase 3 / T-12：manifest 共同身份与多消费者三角对拍（R5 重开）
 
-- [x] 依赖 T-10/11。触面：`stdlib_assembly/manifest.rs::{AssemblyManifest::freeze,...}`、`CompileSession`/batch/persistent 最终快照、`trans/{rust,c}.rs`、`lib.rs`、`auto/src/cmd_stdlib.rs` actual/check、`auto-man/src/api_gen.rs::{generated_api_assembly,current_generated_api_assembly,...}`、`rust_ui.rs` 新鲜度门与正式服务 ready。先记录共同 identity/消费者 receipt 投影、schema 兼容和已有收据迁移规则；未知/旧不完整快照须明确陈旧或拒绝。
+> R5：以下完成说明保留为历史执行证据；本任务尚未满足最新复审，修复要求见 §9 R5 与 738-review-r5.md。
+
+- [ ] 依赖 T-10/11。触面：`stdlib_assembly/manifest.rs::{AssemblyManifest::freeze,...}`、`CompileSession`/batch/persistent 最终快照、`trans/{rust,c}.rs`、`lib.rs`、`auto/src/cmd_stdlib.rs` actual/check、`auto-man/src/api_gen.rs::{generated_api_assembly,current_generated_api_assembly,...}`、`rust_ui.rs` 新鲜度门与正式服务 ready。先记录共同 identity/消费者 receipt 投影、schema 兼容和已有收据迁移规则；未知/旧不完整快照须明确陈旧或拒绝。
   [✅ 已完成] worktree `b6cfc6df1`（基线 `84bec29ef`）：**schema 3→4 双指纹**——`fingerprint`=共同装配身份（consumer 名置空+consumer_input 源剔除的中立投影哈希）、`consumer_fingerprint`=消费者收据身份（全量 payload，=旧单指纹语义）；迁移规则=新鲜度门/api_gen 烘焙常量/在途核对全部切 `consumer_fingerprint()`（同消费者跨时语义零变化），跨消费者断言用 `fingerprint()`；未知/旧快照维持保守再生真值表。
-- [x] 按 §5.8/§6.4 完成内容闭包和身份缺项：public/实际选定层/缺失状态、依赖关系、最终引用证明、provider schema/实现、target/environment/features。核验生成 workspace 实际采用的 Cargo.lock/依赖/features，不把生成器的 Cargo 输入冒称生成服务输入。无须新增一套通用包解析器；在既有生成/构建/启动入口闭合本期依赖身份。
+- [ ] 按 §5.8/§6.4 完成内容闭包和身份缺项：public/实际选定层/缺失状态、依赖关系、最终引用证明、provider schema/实现、target/environment/features。核验生成 workspace 实际采用的 Cargo.lock/依赖/features，不把生成器的 Cargo 输入冒称生成服务输入。无须新增一套通用包解析器；在既有生成/构建/启动入口闭合本期依赖身份。
   [✅ 已完成] 既有闭包项核证（sources 角色三态/provider 按目标分叉+Cargo.lock+BUILD_INPUTS/T-10/11 契约证明入 references）；缺项补齐：generation.json ready 新增 `workspace_lock`（生成产物运行时依赖输入身份，absent 显式记录；与生成器 Cargo 输入分开）；复用门 `lock_freshness` 对拍（lock 出现/变化/旧收据缺字段→陈旧再生）。
-- [x] 对同 fixture 同目标做 CLI actual ↔ 会话/最终产物 ↔ generation/ready 三角断言，覆盖普通/persistent VM、Rust/C、生成 API 各入口；按内容变更/读取失败/异根的正负例验证失效。CLI 与 manifest 使用实际数据，不手工拼期待 JSON；对不适用的目标入口明确拒绝，不删消费者降低覆盖。
+- [ ] 对同 fixture 同目标做 CLI actual ↔ 会话/最终产物 ↔ generation/ready 三角断言，覆盖普通/persistent VM、Rust/C、生成 API 各入口；按内容变更/读取失败/异根的正负例验证失效。CLI 与 manifest 使用实际数据，不手工拼期待 JSON；对不适用的目标入口明确拒绝，不删消费者降低覆盖。
   [✅ 已完成] `t12_manifest_identity` 2 测（实际数据驱动）：三角=CLI actual 路径（session→compile_actual_references→freeze）↔ 真实 `trans_rust_with_session`+`freeze_assembly_manifest` ↔ 生成收据形态——三者共同身份全等/收据身份互异；正负例=同内容异根身份稳定、业务输入只改收据身份、target 变化改共同身份、lock 真值表（缺字段/漂移/absent 保守再生）。
-- [x] 新增 `738-phase3-manifest.{md,json}`，记录 identity 规则、消费者字段映射、实际差异及完整正负例结果。`cargo t plan738`、CLI stdlib 与 auto-man api_gen scoped 必须通过；真服务完整链在 T-14 最终提交复跑。映射 T-02/03/05/06/07、AC-01/02/04/06/07/08、SD-01/03/04/05/06。
+- [ ] 新增 `738-phase3-manifest.{md,json}`，记录 identity 规则、消费者字段映射、实际差异及完整正负例结果。`cargo t plan738`、CLI stdlib 与 auto-man api_gen scoped 必须通过；真服务完整链在 T-14 最终提交复跑。映射 T-02/03/05/06/07、AC-01/02/04/06/07/08、SD-01/03/04/05/06。
   [✅ 已完成·R3 修复重闭] [738-phase3-manifest.md](reports/738-phase3-manifest.md)：R3 复审发现 T-12 插入 lock 真值表测试时截走 `assembly_freshness_truth_table` 的 `#[test]` 属性（真值表变死代码、"freshness 2/2"为同测试跑两遍假象）——修复见 worktree `9c255993b`（属性复位，双真值表独立运行，`--tests` 下 never-used warning 基线 1→0）；ADAPTER_RULES 计数勘误 12/15（R3-02，报告三处+计划两处）。重跑：freshness 双真值表绿+shell_pack 环境红在案、api_gen 43/43、check 零 error。
   [R3 重开 2026-10-09] 主体交付（schema 4 双指纹/三角对拍/lock 收据）经 R3 复核有效；重开原因=T-12 触面 `rust_ui.rs` 补丁意外剥离 `assembly_freshness_truth_table` 的 `#[test]` 属性（P738-R3-01：死代码+新 dead_code warning+freshness "2/2" 为重复注册假象），报告 ADAPTER_RULES 计数另失真（P738-R3-02）。历史执行记录保留：plan738 69/69、CLI stdlib 10/10、api_gen 43/43、plan724 5/5、三 crate check 零错误；freshness 计数按 R3 勘误（见 [738-review-r3.md](reports/738-review-r3.md)）。
 
-### Phase 3 / T-13：SD-01..07 终稿与原任务验收对账 ✅
+### Phase 3 / T-13：SD-01..07 终稿与原任务验收对账（R5 重开）
 
-- [x] 依赖 T-09..12。修订主检出 `docs/plans/reports/738-sd-drafts.md`，形成对当前 canonical 可应用的新增/替换正文和位置；保留七条 SD ID 与 frontmatter spec-impact。纠正 SD-06 的退出码；核对 manifest 字段/共同身份、strict 验证等级、动态引用边界、真实生成依赖与 D3a/D3b 能力声明，不将草稿规范降到当前缺陷行为。
+> R5：以下完成说明保留为历史执行证据；本任务尚未满足最新复审，修复要求见 §9 R5 与 738-review-r5.md。
+
+- [ ] 依赖 T-09..12。修订主检出 `docs/plans/reports/738-sd-drafts.md`，形成对当前 canonical 可应用的新增/替换正文和位置；保留七条 SD ID 与 frontmatter spec-impact。纠正 SD-06 的退出码；核对 manifest 字段/共同身份、strict 验证等级、动态引用边界、真实生成依赖与 D3a/D3b 能力声明，不将草稿规范降到当前缺陷行为。
   [✅ 已完成] SD 终稿重绑 Phase 3 提交链（2c1b4a763→c1579ed71→84bec29ef→b6cfc6df1）：SD-01 升 schema 4 双指纹+Resolved-only 非成功依据；SD-02 增运行形态分家+适配契约注册表+json.is_valid 漂移如实上报；SD-03 增核心导入闭包；SD-04 增闭包全路径+面外边界显式化；SD-05 增 consumer_fingerprint 统一/back 模块闭包/workspace lock；SD-06 退出码纠正为 2=错误、3=partial（以代码为准）；SD-07 维持 D3a/D3b 边界。七条 SD ID 与 frontmatter spec-impact 不变。
-- [x] 新增 `738-phase3-acceptance.md`，逐条列 AC-01..08 → 原 T-01..08 / 新 T-09..14 → 最终代码/反例/日志 → SD-01..07；T-14 最终门禁栏先明确待补，待 T-14 完成再填最终收据，不在此提前宣告全 AC pass。重验完整 inventory 与六格公共 fn/method/type/field 分母，不以 call 单站点代替完整分母。已完成旧项可据最新证据勾选；缺项明确留开，不能因新 phase 完成就批量关闭原任务。
+- [ ] 新增 `738-phase3-acceptance.md`，逐条列 AC-01..08 → 原 T-01..08 / 新 T-09..14 → 最终代码/反例/日志 → SD-01..07；T-14 最终门禁栏先明确待补，待 T-14 完成再填最终收据，不在此提前宣告全 AC pass。重验完整 inventory 与六格公共 fn/method/type/field 分母，不以 call 单站点代替完整分母。已完成旧项可据最新证据勾选；缺项明确留开，不能因新 phase 完成就批量关闭原任务。
   [✅ 已完成] [738-phase3-acceptance.md](reports/738-phase3-acceptance.md)：AC-01..08 逐条→任务→证据→SD；T-14 栏全部标"待补"不提前宣告；分母重验锚 inventory/矩阵面（115 .at 分母+六模块全格）非 call 单站点；原 T-02..T-08 逐项对账（T-08 留待 T-14 最终档闭合）；P738-D1/D2 边界显式引用不转新债务。
-- [x] 完成条件：正文准确、所有 AC/SD 均有任务与证据，未批准遗漏不转债务。本步骤只改计划/报告，不发布 canonical/ledger，不跑 Cargo/docs_gen；映射原 T-02/06/07/08、AC-01/05/07/08、SD-01..07。
+- [ ] 完成条件：正文准确、所有 AC/SD 均有任务与证据，未批准遗漏不转债务。本步骤只改计划/报告，不发布 canonical/ledger，不跑 Cargo/docs_gen；映射原 T-02/06/07/08、AC-01/05/07/08、SD-01..07。
   [✅ 已完成] 本步骤零 Cargo/docs_gen；canonical/ledger 留 merge 阶段。
 
-### Phase 3 / T-14：最终提交门禁、真实验收与独立 review 交接 ✅
+### Phase 3 / T-14：最终提交门禁、真实验收与独立 review 交接（R5 重开）
 
-- [x] 依赖 T-09..13。先提交全部实现/测试，冻结 clean code commit 与依赖/lock/features。按 §6.3/§6.4 执行三 crate check、完整裸 t + tv/tt/串行 th、必要 scoped/CLI/API 档、三目标同源与 C stdio witness、正式生成服务完整链。运行期间不改输入；若再修代码，新提交重跑受影响门禁，不能沿用旧提交成功记录作为最终证明。
+> R5：以下完成说明保留为历史执行证据；本任务尚未满足最新复审，修复要求见 §9 R5 与 738-review-r5.md。
+
+- [ ] 依赖 T-09..13。先提交全部实现/测试，冻结 clean code commit 与依赖/lock/features。按 §6.3/§6.4 执行三 crate check、完整裸 t + tv/tt/串行 th、必要 scoped/CLI/API 档、三目标同源与 C stdio witness、正式生成服务完整链。运行期间不改输入；若再修代码，新提交重跑受影响门禁，不能沿用旧提交成功记录作为最终证明。
   [✅ 已完成·R3 修复重闭] 原 `b3a4d660e` 收据在案；R3 needs_fix 后新提交 `9c255993b`（R3-01 一行属性复位）按纪律重跑受影响门禁：freshness 双真值表真实运行绿（shell_pack 环境红在案）、api_gen 43/43、auto-man check 零 error、`--tests` never-used 基线 1→0、rustfmt clean。
   [R3 重开 2026-10-09] 门禁执行本身经 R3 复跑全部成立（R3 独立复跑：裸 t 17 红全分诊/tv 162/tt 非基线=0/th 缩减档同构/服务链 1/1@42s/双 witness 1/1）；重开原因=健康扫描漏检 `b6cfc6df1` 引入的新 dead_code warning（`assembly_freshness_truth_table` never used，P738-R3-01）且报告 freshness "2/2" 计数为重复注册假象。修复后须在最终提交重跑 freshness 族+健康扫描。历史执行记录保留：最终提交 `b3a4d660e`（clean，链 2c1b4a763→c1579ed71→84bec29ef→b6cfc6df1→1a983091f→b3a4d660e，8 文件 +2224/−284）；执行中修复①`1a983091f` lock_freshness 首次物化语义、②`b3a4d660e` workspace_lock 收据写入补位（两修复均经 R3 复核确认落地且无残留缺口——lock_freshness 真值表/服务链收据断言实证）。
-- [x] 新增 `738-phase3-verification.{md,json}`：命令、选中/通过/失败/跳过数量、code/dependency revision、日志/hash、逐名红分诊、Warnings/fmt/debug/遗漏扫描。R2 收据保留历史；无新确定性红、无未知失败；变更范围和新增证明适用面清楚，不能称全库语义 parity。
+- [ ] 新增 `738-phase3-verification.{md,json}`：命令、选中/通过/失败/跳过数量、code/dependency revision、日志/hash、逐名红分诊、Warnings/fmt/debug/遗漏扫描。R2 收据保留历史；无新确定性红、无未知失败；变更范围和新增证明适用面清楚，不能称全库语义 parity。
   [✅ 已完成·R3 修复重闭] 原 `b3a4d660e` 收据（[738-phase3-verification.md](reports/738-phase3-verification.md)）保留；R3 勘误（ADAPTER_RULES 12/15）已回写 strict/reference-audit 报告与本计划；独立复审 [738-review-r3.md](reports/738-review-r3.md) 证据在案。
   [R3 重开 2026-10-09] 重开原因=报告 freshness "2/2" 与 warning 扫描结论与实际不符（P738-R3-01/R3-02，勘误后随新最终提交更新本报告）。历史数据保留：三 crate check 零错；裸 t 5183/16 红全分诊（13 master 预存+3 flake 族；R3 复跑为 17 红=13 预存+4 flake，plan484_024 隔离绿属 T-10 文档化 flake 族）；tv 162/162；tt 13 红全基线；th 逐名分诊（back_proxy 基线、plan730 interop+multipart 基线 worktree 同命令复现实证环境红、sse_chain 隔离绿、余为级联）；plan738 69/69、plan724 5/5、CLI 10/10、api_gen 43/43；⑤腿 Rust 实编 1/1、C stdio 真实 MSVC 1/1、正式生成服务完整链 1/1；debug 残留 0/rustfmt clean（warning 扫描除外——R3-01 勘误）。
-- [x] 在主检出把证据对回原 T-02..T-08 的实现/验证项及 T-09..T-14；只有所有执行验收闭合才置 `execution_done`，独立 review/merge/清理项仍保持待办。交给未参与该实现的独立 review agent，按 `/auto-plan:review` 重新核对最终提交、所有 AC、实际 callee/manifest、完整 diff 与 SD 正文；执行 agent 不能自行宣告独立复审 pass。
+- [ ] 在主检出把证据对回原 T-02..T-08 的实现/验证项及 T-09..T-14；只有所有执行验收闭合才置 `execution_done`，独立 review/merge/清理项仍保持待办。交给未参与该实现的独立 review agent，按 `/auto-plan:review` 重新核对最终提交、所有 AC、实际 callee/manifest、完整 diff 与 SD 正文；执行 agent 不能自行宣告独立复审 pass。
   [✅ 已完成] 验收对账（[738-phase3-acceptance.md](reports/738-phase3-acceptance.md) T-14 栏已补最终收据）：AC-01..08 执行面全部闭合（T-08 最终档=本任务）→ **status: execution_done**。交接：独立 review agent 复核 `b3a4d660e`——全部 AC、实际 callee/manifest、`2c1b4a763..b3a4d660e` 完整 diff（T-09 分类+T-10..14 语义面）、SD 正文、th 环境红基线归因。
-- [x] 独立复审 pass 才允许 `reviewed`；needs_fix 返回本 phase，needs_replan 修订具体合同而不降 AC。当前授权止于修复/验收/复审准备，不合入/归档/删除 worktree，merge 时再 canonical/ledger/Design33/索引及 wt-guard。映射原 T-07/08、AC-01..08、SD-01..07。
+- [ ] 独立复审 pass 才允许 `reviewed`；needs_fix 返回本 phase，needs_replan 修订具体合同而不降 AC。当前授权止于修复/验收/复审准备，不合入/归档/删除 worktree，merge 时再 canonical/ledger/Design33/索引及 wt-guard。映射原 T-07/08、AC-01..08、SD-01..07。
   [✅ R4 独立复审 pass 2026-10-10] 当前 state=reviewed（R3 全 AC/SD 实现面 pass + R4 定向复核 R3-01/02 修复与受影响门禁）；不合入/归档/删 worktree（merge 待授权）。
 
 ## 9. 复审记录
+
+### 补充复审 R5（2026-10-10，needs_fix → work）
+
+- stage: review
+- plan_id: PLAN-738
+- plan_revision: 3（验收合同未变，本次发现缺口与回退进度不增 revision）
+- outcome: **needs_fix**（两个实际反例 + 一项消费者验收未完成；原 R3/R4 pass 记录保留，但不再代表当前整体满足合同）
+- reviewed_commit: `9c255993b2a3163740cf886349013c7bea6aae32`，入场 clean，临时审查测试 exact bytes 恢复后 clean；本轮零最终实现 diff。
+- base_commit: Phase 3 diff base=`2c1b4a763280b3994f51b441714b4f2120328fb3`；merge-base=`6d69dbdc78d99f23ba90a37c9559f7fb54dd7be3`；observed_master=`49f17c5362591e63b5f42040602028c852201fb4`。
+- dependency_revisions: auto-down=`895f8d0f9355c9f5ec3ce8fca268bdb768395846`；Cargo/Spec/SD 与 CLI 文件身份、日志 hash 见 [738-review-r5-baseline.json](reports/738-review-r5-baseline.json)。
+- spec_inputs: frontmatter 七 canonical + Specs overview；SD 冻结版本=`1b05d3d441830e855f0eae837a813b9820cd83e5:docs/plans/reports/738-sd-drafts.md`，SHA256=`72558019bad702e9ae411ee047c011643c1689fb06a9dab1ff61318b98cfdf19`，本次 **not approved**；影响路径/GOAL-003 保留，未发布 canonical/ledger。
+- acceptance_results: AC-01 pass（清点面） / AC-02 partial / AC-03 fail / AC-04 partial / AC-05 partial / AC-06 fail / AC-07 fail / AC-08 fail；逐项映射见 [738-review-r5.md](reports/738-review-r5.md)。
+- findings: P738-R5-01（P1：recorded lock=absent 对后续任意 lock 内容仍 fresh）；P738-R5-02（P1：公开 JsonValue.len 返回类型漂移，实际 CLI --actual --check 仍 exit 0，仅有 parse proof）；P738-R5-03（P2：生成消费者 clone CLI manifest，丢弃转译 Result，缺普通/persistent VM 与 C 真入口共同身份对拍）。这些属于原 AC，登记不等于批准转 D3b。
+- evidence: [复审报告](reports/738-review-r5.md) + [可重跑 lock 反例脚本](reports/738-review-r5-probe.py) + baseline JSON；临时探针调用正式 generate_api 和实际 backend_generation_is_fresh，期望拒绝后续依赖版本改变而实际 fresh=true，负面断言失败。receiver 反例使用隔离 stdlib 根与实际 CLI，编入 CLI 的 host/collector FNV 与 reviewed 源码 bytes 一致。
+- gates: 本轮 plan738=69/69；裸 t=5183 run/5167 pass/16 既有红族；tv=162/162；tt=5554 run/5540 pass/14 红（13 同日常红+plan484_024 已档 flake，隔离复跑 2/2）；三 crate check 零 error；8 触面 rustfmt 与 diff check 通过。原 R3/R4 HTTP/服务/witness/API/freshness 正例按实现/依赖未变显式复用，本轮未重复这些正例，也不以其替代本轮新反例。tf/taa/tu 不触发。
+- independence: 本会话参与过早期实现和 R3 计划修订，未参与 Phase 3 实现；本次为从源码/反例重构的补充复查，不冒称新的完全独立上下文。后续最终 pass 仍须独立上下文审查修复提交。
+- omissions/debt: 六核心 receiver 路径不是已批准 D3b；T-12 两个局部身份测试不是全消费者验收；SD-04/05 与验收对账须随修复纠正，acceptance.md 的 ADAPTER_RULES 17→实际 15 勘误亦未同步。
+- state: executing，T-11..T-14 重开；T-01/T-09/T-10 保留完成，原 T-02..T-08 未勾选，current_step 按实际任务标记重算为 3/14；代码、正例和历史进度不删除。
+- next: `/auto-plan:work PLAN-738` 在原 worktree 修复 R5-01/02、补 R5-03 真实消费者验收，对齐 SD/AC 报告，新最终提交重跑受影响门禁与正式服务验收，再独立 review；本轮不修实现、不合入、不归档、不清理 worktree。
 
 ### 独立复审 R4（2026-10-10，pass → reviewed）
 
