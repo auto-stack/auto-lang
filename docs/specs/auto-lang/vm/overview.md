@@ -95,6 +95,34 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
   保持。回归锚：`test/vm/99_short_circuit/`（短路矩阵副作用计数/calc
   eval_expr 全文/负索引共存三件）+ `plan615_calc_prog_tests`。
 
+## 串拼接与 JSON 产物读语义（plan-749）
+
+**串拼接显示契约**（PLAN-749 T-02 根修；此前两臂一律 `decode_i32(bits).to_string()`
+——TAG_BOOL 低 32 位 0x80000000 显示为 `-2147483648`，musk PLAN-100 E2E
+`ok=-2147483648` 实锤；i64/u64 截断同族）：
+
+- **规则**：串拼接（`OpCode::STR_CAT`——codegen 对字符串形 `+` 的静态路由；
+  及 `OpCode::ADD` 串臂）的非串操作数**按 tag 值显示**——bool→`true`/`false`、
+  i64/u64→按值、i32→数值；obj/list 维持堆 id 数值形态（既有语义，display
+  语义变更非本案面）。`.to_string()` 方法臂（:9203 一带）本就按 tag 值显示，
+  与本契约对齐。null 拼接 = 显式类型错（Plan 550 守卫不变）。
+- **数值拦截**：ADD 的 f64/f32 前置数值臂在串臂之前——`f64 + str` 走数值
+  提升而非拼接（既有语义）；STR_CAT 的 f32 操作数落 i32 分支为**预存观察项**
+  （`str + f32` 位型垃圾，musk 面未触发，未修）。
+- 回归锚：`plan749_read_semantics_tests::p749_s1_bool_concat_minimal`。
+
+**JSON 产物读语义（验证事实，无实现改动）**：GET_FIELD 物化臂（ObjectData/
+GenericInstanceData bool 压栈 `encode_bool`——Plan 402 口径）、`json.parse`
+物化（`__json_object` GenericInstanceData + ListData）、≥5 hop 深链、
+`??` 兜底、park-resume 续体读（Http 完成后 handler 续体内 parse+读）经
+PLAN-749 三上下文矩阵（fn 同步/handler 同步/handler 续体/视图/computed）
++ musk E2E（真实 chats.json 种子 15 会话最大 938KB，5/5 boot 载入链
+`ok=true` 零间歇失效）**验证为既有正确契约**。musk 观测的
+`r.ok → -2147483648` 与"深链全 MISS"定音为显示臂缺陷与 dirty 构建观测，
+非读路径缺陷。视图条件位读语义（含 `.store.X.Y` 真值路径/单段 computed
+比较）归 fn 调用语义契约（`design/vm-fn-call-semantics.md`）与视图条件
+求值通道（PLAN-749 G1-G3）。
+
 ## RC 生命周期协议（plan-604）
 
 Plan 419「copy-on-load 所有权协议」+ PLAN-062 T12 stake 影子账本的**结算语义**单点记载（SD-01；KD-VM1 根因即「struct 字面量经容器写的 stake 结算语义无记载」导致的实现缺口，plan-604 补全）。

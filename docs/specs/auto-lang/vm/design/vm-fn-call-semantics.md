@@ -4,7 +4,7 @@
 
 VM 渲染目标（`--render=vm`）下，.at 源内对**模块级 fn** 的两类调用域的语义契约与已知边界：
 store handler 域（含 timer/lifecycle 派发）与视图 computed 域（表达式 computed，含
-`use`/`use.web.fn` 导入形态）。契约锚定：PLAN-733（2026-10-02）；矩阵实证 = 进程内
+`use`/`use.web.fn` 导入形态）。契约锚定：PLAN-733（2026-10-02）、PLAN-749（2026-10-10，视图条件位通道增补）；矩阵实证 = 进程内
 `plan733_fn_call_semantics_tests`（全参型 × 同文件/跨模块 × 消费原语）+ 二进制级探针
 （`D:/autostack/.demo/lang-733/`，真机 `auto run --render=vm` + MCP 快照直读）。
 
@@ -35,6 +35,7 @@ store handler 域（含 timer/lifecycle 派发）与视图 computed 域（表达
 | 视图 computed（表达式） | fn 调用，**列表实参（状态字段读/prop 读）** | ✅ 真值渲染（PLAN-733 修复：`call_vm_fn` 栈编码 encode_list→encode_object） | `cc2`；修复前恒空（musk 附页①"computed 内函数调用❌恒空"运行时根因） |
 | store handler 域 | 同文件 fn 裸调用，**跨模块同名歧义**（同名 fn 另存于其他模块） | ✅ own-module 绑定（PLAN-733 修复：store_scope_module——合成 store handler/computed 隐藏 fn 时设 codegen 绑定域，resolve_call_symbol 步骤 2.5 路径） | `f_dup` 格 + musk 实链（修复前 `Undefined symbol: <bare>` 整链接失败，canvasProgressRows 内联实验实测） |
 | 视图（模板/行文本） | `t(<动态键>)` i18n 查表（`t(r.label_key)` / `t("prefix_" + r.state)`） | ✅ 真值渲染（PLAN-733 修复：t 臂动态键解析——此前非字面量键落空→行文本空被过滤） | musk 实链收据「启动预览 已可见」（t 动态键两形态全真值） |
+| 视图模板**条件位**（`if f(x) != ""` 比较 / `if f(x)` 真值 / `if .computed_x != y` 单段 computed 比较 / `if .store.X.Y` 存储可达真值） | ✅ 真值（PLAN-749 根修三通道缺口：G1 条件操作数通用 fragment 解析兜底 `resolve_condition_operand_fallback` 委托 `resolve_expr_to_value`（仅后置不前置）；G2 比较臂单段名补 computed 回落（对齐 truthy 臂 PLAN-048 L1）；G3 truthy 臂解除 `store.` 前缀多段路径排除。真值位沿用既有**严格布尔**语义 `Value::as_bool`——Str 恒 false） | `plan749_read_semantics_tests::p749_view_condition_faces`（VIEW_CALL/TRUTHY_CALL/COMPUTED_CALL/VIEW_ENV_OK 四格）+ musk chat_message.at:339 坑①家族第三型关闭 |
 | 块体 computed | 隐藏 VM fn（`__computed_<W>_<p>`，Plan 448 H2） | ✅ 真值（`call_computed_fn` 路径） | 既有 plan448 面 |
 
 ## 已知边界（登记，非本契约承诺面）
@@ -47,9 +48,9 @@ store handler 域（含 timer/lifecycle 派发）与视图 computed 域（表达
    派发 handler（`call_widget_handler` 直发形态）时 handler 收到 0。既有已知约定；
    主链（视图动作/MCP action）只传标量。需要时应走 `call_vm_fn`（正确编码）。
 3. **预存红族 musk_vm_track p053_1/p053_4/p053_6/p054**（master 3053f1fdf 基线即红，
-   PLAN-733 修复前后零行为变化）：computed 链式 helper 的深层腿（子件 override 态
-   `.store.X` 解析链等）未随本案绿；其断言面（musk chats 消息列表 computed 形态）
-   作为后续计划指针。
+   PLAN-733 修复前后零行为变化；**PLAN-749 复审异根甄别**：视图条件通道三缺口
+   修复后本族仍 97/6 零增减——残腿属子件 computed 挂载面[=PLAN-748 断点①同域]，
+   非条件通道/调用语义；指针移交 **PLAN-748 T-02**）。
 4. **视图 `.x.length` 模板成员链**（附页①矩阵⑤表现层）：engine GET_FIELD 的
    ListData `.length` 臂已存在（plan-022），视图侧 Rust 求值器 `materialize_obj_ref`
    对 ListData 引用原样透传（只物化对象）——模板位 `.length` 求值链未全覆盖，
@@ -58,5 +59,6 @@ store handler 域（含 timer/lifecycle 派发）与视图 computed 域（表达
 ## 维护
 
 - 矩阵回归锚：`crates/auto-lang/src/tests/plan733_fn_call_semantics_tests.rs`
+- 条件位通道回归锚：`crates/auto-lang/src/tests/plan749_read_semantics_tests.rs`（三上下文 13 测：bool 位型/串拼接显示/深链/续体/视图条件四格）
   （日常档 `cargo t` 面，`ui-iced` feature）。
 - 改 `call_vm_fn` 实参编码/新增堆引用实参形态时，先对照本矩阵补格，再动实现。
