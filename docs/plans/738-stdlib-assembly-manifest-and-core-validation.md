@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-738
-status: execution_done
+status: reviewed
 feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
-updated_at: 2026-10-09
+updated_at: 2026-10-10
 plan_revision: 3
-current_step: 14  # R3 needs_fix 两项已修复（9c255993b：R3-01 测试属性复位+R3-02 计数勘误），重开项重闭；execution_done 待 R4 独立复审
+current_step: 14  # R4 独立复审 pass（R3-01/02 修复确证、受影响门禁全绿，reviewed_commit=9c255993b）→ reviewed；merge 待授权
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -434,9 +434,31 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - [x] 在主检出把证据对回原 T-02..T-08 的实现/验证项及 T-09..T-14；只有所有执行验收闭合才置 `execution_done`，独立 review/merge/清理项仍保持待办。交给未参与该实现的独立 review agent，按 `/auto-plan:review` 重新核对最终提交、所有 AC、实际 callee/manifest、完整 diff 与 SD 正文；执行 agent 不能自行宣告独立复审 pass。
   [✅ 已完成] 验收对账（[738-phase3-acceptance.md](reports/738-phase3-acceptance.md) T-14 栏已补最终收据）：AC-01..08 执行面全部闭合（T-08 最终档=本任务）→ **status: execution_done**。交接：独立 review agent 复核 `b3a4d660e`——全部 AC、实际 callee/manifest、`2c1b4a763..b3a4d660e` 完整 diff（T-09 分类+T-10..14 语义面）、SD 正文、th 环境红基线归因。
 - [x] 独立复审 pass 才允许 `reviewed`；needs_fix 返回本 phase，needs_replan 修订具体合同而不降 AC。当前授权止于修复/验收/复审准备，不合入/归档/删除 worktree，merge 时再 canonical/ledger/Design33/索引及 wt-guard。映射原 T-07/08、AC-01..08、SD-01..07。
-  [✅ 待独立复审] 当前 state=execution_done（非 reviewed）；不合入/归档/删 worktree。
+  [✅ R4 独立复审 pass 2026-10-10] 当前 state=reviewed（R3 全 AC/SD 实现面 pass + R4 定向复核 R3-01/02 修复与受影响门禁）；不合入/归档/删 worktree（merge 待授权）。
 
 ## 9. 复审记录
+
+### 独立复审 R4（2026-10-10，pass → reviewed）
+
+- stage: review
+- plan_id: PLAN-738
+- plan_revision: 3
+- outcome: **pass**（R3 两项 findings 修复确证、受影响门禁全绿、无新引入问题；R3 已对全部 AC/SD 实现面 pass，R4 pass 即整体 reviewed）
+- reviewed_commit: `9c255993b2a3163740cf886349013c7bea6aae32`（worktree clean，复审只读，结束仍 clean）
+- base_commit: R3 reviewed `b3a4d660e`（R4 diff 基准）；Phase 3 diff base `2c1b4a763`；merge-base(master, plan-738-dev)=`6d69dbdc7`
+- dependency_revisions: auto-down=`895f8d0f9355c9f5ec3ce8fca268bdb768395846`（只读未动，clean 复核）
+- spec_inputs: 沿用 R3 基线（frontmatter 七 canonical + SD-01..07 终稿）——R3 修复只动测试属性与文档勘误、无 SD 语义变化（diff 证明），R3 spec_inputs 不失效
+- R3-01 闭合确证（major）:
+  - `git diff b3a4d660e..9c255993b` = 仅 `crates/auto-man/src/rust_ui.rs` 2+/2−（`#[test]`+doc 从 `lock_freshness_truth_table` 前移回 `assembly_freshness_truth_table` 前）
+  - 属性结构正确：两测试各带独立 doc + 单个 `#[test]`（rust_ui.rs L5019-5023 / L5035-5037），无重复属性、无死代码
+  - `cargo check -p auto-man --tests` 中 assembly/lock truth_table never-used warning=0（grep 零匹配）
+  - `cargo test -p auto-man --lib freshness -- --test-threads=1` = 3 测：`assembly_freshness_truth_table ... ok`、`lock_freshness_truth_table ... ok`（**两个不同测试名各自独立运行**）+ `test_shell_pack_lib_freshness FAILED`（R3 在案环境红，同名同 panic 复现，非回归）
+- R3-02 闭合确证（minor）: ADAPTER_RULES 逐提交 awk 实测 = c1579ed71:12、84bec29ef/b6cfc6df1/b3a4d660e/9c255993b:15；勘误回写三处核对——strict.md「规则表 12 条（初稿误记 14）」、reference-audit.md「增补至 15 条（初稿误记 17）」、reference-audit.json `"adapter_rules_total": 15`；本计划 T-10/T-11 勘误注记在案
+- acceptance_results: AC-01..08 / SD-01..07 维持 R3 pass——修复 diff 全部位于 `#[cfg(test)] mod tests`（纯测试属性移动，零生产语义变更，diff 证明），R3 各 AC 结论未被扰动；R3-03/04 非阻塞观察在案（伴生模块新鲜度面=681/734 既有边界、T-09 分类命名不精确但结论成立），无需本轮处理
+- findings: **P738-R4-01（观察，非阻塞，非 738 回归）**：`cargo check -p auto-man --tests` 的集成测试目标 `crates/auto-man/tests/plan734_commands_fixture.rs` 编译失败（E0433 `api::echo` 无 `mod api` 声明等 5 错）——Plan 734 提交 `036312096` 引入、系 merge-base `6d69dbdc7` 祖先（master 预存）；738 全程 diff 未触 `crates/auto-man/tests/`（实测空 diff），738 门禁均编译 lib 测试目标不受影响（R3 三 crate check 不含 --tests 亦未触）。建议路由 plan734 归属面 L0 修复，不阻塞 738
+- evidence（全部 9c255993b worktree 实跑，2026-10-10 串行）: 三 crate check（`cargo check -p auto-lang -p auto-man -p auto`）零 error；`cargo test -p auto-man --lib api_gen -- --test-threads=1` 43 passed/1 ignored/0 failed；`cargo t plan724` 5/5；`cargo t plan738` 69/69（39.9s）；`cargo tv` 162/162；rustfmt `--edition 2021 --check` rust_ui.rs 干净；freshness 族见上。未跑 tf（批量回归档非 per-plan 门禁）/taa/tu/t3/docs_gen（未触面）
+- state: **reviewed**（current_step 14/14；不合入、不归档、不删 worktree）
+- next: merge（待授权）——`/auto-plan:merge` 沉淀 canonical/ledger/Design33/索引、归档、wt-guard 清理；P738-R4-01 观察项随 merge 收尾路由
 
 ### work 修复交接（2026-10-10，R3 needs_fix 修复 → execution_done）
 
