@@ -54,7 +54,14 @@ fn plan724_golden_http_client_async() {
 }
 
 /// T-06 发射断言（golden 之外的关键形状钉，防 expected 漂移掩盖回归）：
-/// async 上下文两参 post 必须走 post_async，三参认证必须走 _async 内核面。
+/// async 上下文两参 post 必须走 post_async。三参认证面（arity-dispatch
+/// 解构壳）在 PLAN-738 T-10 strict 门下按运行形态分家：producer（3 参
+/// async post）只存在于内嵌镜像（crates/auto-lang/src/a2r_std.rs），故
+/// Standalone 转译不再发射该壳——a2r-std crate 本就无此符号，旧文本
+/// 断言冻结的是一个从未可编译的形状。合法认证用法在 Standalone 下走
+/// post_sync/post_sync_async 侧信道面（golden + e2e 在案）；Embedded
+/// 元数分派的完整证明见 plan738_host::
+/// arity_dispatch_post_proves_only_under_embedded。
 #[test]
 fn plan724_probe_post_arity_dispatch_shapes() {
     let async_src = r#"
@@ -63,7 +70,6 @@ fn fetch(url str) ~str {
     return str.from_bytes(res.body_bytes())
 }
 fn main() {
-    let a = http.post("http://x", "y", "key")
     let b = http.post("http://x", "y")
     let c = fetch("http://x").await
 }
@@ -75,10 +81,25 @@ fn main() {
         code.contains("a2r_std::http::post_async("),
         "2-arg post in async ctx must lower to post_async:\n{code}"
     );
-    // 三参 post → 历史 HttpResponse 认证面（不冲突）
+    // 三参认证面（Standalone）→ strict 门诚实拒绝（a2r-std 无 3 参 post）。
+    let auth_src = r#"
+fn main() {
+    let a = http.post("http://x", "y", "key")
+}
+"#;
+    let rejected = match crate::trans::rust::transpile_rust("probe_auth", auth_src) {
+        Err(e) => e,
+        Ok(_) => panic!("3-arg post under standalone must be rejected, got a product"),
+    };
     assert!(
-        code.contains("a2r_std::http::post("),
-        "3-arg post must keep the auth HttpResponse face:\n{code}"
+        rejected
+            .to_string()
+            .contains("STDASSEMBLY.SIGNATURE_UNVERIFIED"),
+        "3-arg post under standalone must be rejected honestly: {rejected}"
+    );
+    assert!(
+        rejected.to_string().contains("arity-dispatch"),
+        "{rejected}"
     );
 }
 

@@ -385,7 +385,7 @@ pub fn public_native_name(module: &str, sym: &SymbolEntry) -> String {
     canonical_native_name(module, sym)
 }
 
-fn normalize_host_type(ty: &str) -> String {
+pub(crate) fn normalize_host_type(ty: &str) -> String {
     let ty = ty.replace(' ', "");
     match ty.as_str() {
         "String" | "&str" | "str" | "Str" => "str".into(),

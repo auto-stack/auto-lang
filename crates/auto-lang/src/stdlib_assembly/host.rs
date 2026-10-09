@@ -1,5 +1,13 @@
 //! Rust producer evidence is read from the selected producer's Rust AST.
 //! Routing alone and provider catalog claims cannot establish a signature.
+//!
+//! rv3 §5.8.1（T-10）：发射侧适配（数值 cast / 状态侧信道包装 / 三参
+//! 元数分派 / async 流 facade）不再因「形状像包装」豁免。每条适配必须
+//! 命中 [`ADAPTER_RULES`] 中独立声明的契约，且三方一致才得
+//! SignatureChecked：发射结构与契约逐项对拍（callee/元数/await/形状）、
+//! producer 实形与契约对拍（async/参数/返回结构）、公共声明与适配投影
+//! 对拍。无契约的包装形状报 `SIGNATURE_UNVERIFIED`，与契约不符的漂移
+//! 报 `SIGNATURE_DRIFT`；不存在 Resolved-only 放行臂。
 use super::model::{LayerKind, ParseStatus, VerificationLevel};
 use super::reference::ReferenceProof;
 
@@ -8,6 +16,486 @@ pub enum RustRuntime {
     #[default]
     Standalone,
     Embedded,
+}
+
+impl RustRuntime {
+    fn label(self) -> &'static str {
+        match self {
+            RustRuntime::Standalone => "standalone",
+            RustRuntime::Embedded => "embedded",
+        }
+    }
+}
+
+// ===== 发射侧适配契约注册表（独立可检查；每条对应一档冻结的发射形状）=====
+
+/// 观察到的发射形状类别。非 `Plain` 形状必须有对应契约条目。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AdapterShape {
+    /// 直接调用（可在调用点携带 `.await`）。
+    Plain,
+    /// `<callee>(..) as i64` 数值面转换。
+    ScalarCast,
+    /// `{ let r = <callee>(..)[.await]; set_last_status(r.0); r.1 }`
+    /// ——PLAN-724 状态侧信道：body 选中为公共返回，status 进 thread-local。
+    StatusSideChannel,
+    /// `async { let (s,b,e,k) = <callee>(..).await; HttpResponse{..} }`
+    /// ——PLAN-724 T-06 三参认证 tuple 元数分派（历史 HttpResponse 面）。
+    ArityDispatchAsyncBlock,
+}
+
+/// producer 返回结构与公共返回的映射方式（契约声明，非类型名猜测）。
+enum ProducerReturn {
+    /// 可直接逻辑化的标量（`logical_type` 词汇）。
+    Scalar(&'static str),
+    /// producer 返回 `(int, str)`：body 元素为公共返回，status 进侧信道。
+    StatusBodyTuple,
+    /// producer 返回 `(int, str, str, str)`：整体重组为 HttpResponse 构造。
+    AuthTuple4,
+    /// producer 返回 facade 类型，公共面按契约映射（如 AsyncHTTPStream →
+    /// HTTPStream：await 消费后同一逻辑流面）。
+    Facade { producer: &'static str },
+}
+
+enum RuntimeSpec {
+    Both,
+    Standalone,
+    Embedded,
+}
+
+struct AdapterRule {
+    shape: AdapterShape,
+    module: &'static str,
+    symbol: &'static str,
+    runtime: RuntimeSpec,
+    /// 发射内实际调用的 callee 裸名（`a2r_std::<module>::<callee>` 末段）。
+    callee: &'static str,
+    /// 发射传给 producer 的元数（= producer 参数数）。
+    arity: usize,
+    /// 发射主调用 `.await` 的存在性。
+    awaited: bool,
+    /// producer 的 async 性。
+    producer_async: bool,
+    producer_return: ProducerReturn,
+    /// 公共声明参数面（逻辑类型；不含历史扩展位）。
+    public_params: &'static [&'static str],
+    /// 契约冻结的历史扩展参数位（PLAN-724 三参 post 的 api_key——公共
+    /// 声明无此位，适配层单独声明，不复制公共签名充作证据）。
+    extension_params: &'static [&'static str],
+    public_return: &'static str,
+}
+
+const ADAPTER_RULES: &[AdapterRule] = &[
+    // —— PLAN-724 状态侧信道族（body 选中 / status 进 thread-local）——
+    AdapterRule {
+        shape: AdapterShape::StatusSideChannel,
+        module: "http",
+        symbol: "post_sync",
+        runtime: RuntimeSpec::Both,
+        callee: "post_sync",
+        arity: 3,
+        awaited: false,
+        producer_async: false,
+        producer_return: ProducerReturn::StatusBodyTuple,
+        public_params: &["str", "str", "str"],
+        extension_params: &[],
+        public_return: "str",
+    },
+    AdapterRule {
+        shape: AdapterShape::StatusSideChannel,
+        module: "http",
+        symbol: "post_sync",
+        runtime: RuntimeSpec::Both,
+        callee: "post_sync_async",
+        arity: 3,
+        awaited: true,
+        producer_async: true,
+        producer_return: ProducerReturn::StatusBodyTuple,
+        public_params: &["str", "str", "str"],
+        extension_params: &[],
+        public_return: "str",
+    },
+    AdapterRule {
+        shape: AdapterShape::StatusSideChannel,
+        module: "http",
+        symbol: "get_sync",
+        runtime: RuntimeSpec::Both,
+        callee: "get_sync",
+        arity: 1,
+        awaited: false,
+        producer_async: false,
+        producer_return: ProducerReturn::StatusBodyTuple,
+        public_params: &["str"],
+        extension_params: &[],
+        public_return: "str",
+    },
+    AdapterRule {
+        shape: AdapterShape::StatusSideChannel,
+        module: "http",
+        symbol: "get_sync",
+        runtime: RuntimeSpec::Both,
+        callee: "get_sync_async",
+        arity: 1,
+        awaited: true,
+        producer_async: true,
+        producer_return: ProducerReturn::StatusBodyTuple,
+        public_params: &["str"],
+        extension_params: &[],
+        public_return: "str",
+    },
+    // post_bearer 的 async producer 只在内嵌镜像（crates/auto-lang/src/
+    // a2r_std.rs）；standalone 无此面——契约限定 Embedded，不冒称 Both。
+    AdapterRule {
+        shape: AdapterShape::StatusSideChannel,
+        module: "http",
+        symbol: "post_bearer",
+        runtime: RuntimeSpec::Embedded,
+        callee: "post_bearer",
+        arity: 3,
+        awaited: true,
+        producer_async: true,
+        producer_return: ProducerReturn::StatusBodyTuple,
+        public_params: &["str", "str", "str"],
+        extension_params: &[],
+        public_return: "str",
+    },
+    AdapterRule {
+        shape: AdapterShape::StatusSideChannel,
+        module: "http",
+        symbol: "post_bearer_sync",
+        runtime: RuntimeSpec::Both,
+        callee: "post_bearer_sync",
+        arity: 3,
+        awaited: false,
+        producer_async: false,
+        producer_return: ProducerReturn::StatusBodyTuple,
+        public_params: &["str", "str", "str"],
+        extension_params: &[],
+        public_return: "str",
+    },
+    AdapterRule {
+        shape: AdapterShape::StatusSideChannel,
+        module: "http",
+        symbol: "post_bearer_sync",
+        runtime: RuntimeSpec::Both,
+        callee: "post_bearer_sync_async",
+        arity: 3,
+        awaited: true,
+        producer_async: true,
+        producer_return: ProducerReturn::StatusBodyTuple,
+        public_params: &["str", "str", "str"],
+        extension_params: &[],
+        public_return: "str",
+    },
+    // —— 状态读取数值面（producer u32/i32 → 发射 i64 化为公共 int）——
+    AdapterRule {
+        shape: AdapterShape::ScalarCast,
+        module: "http",
+        symbol: "last_status",
+        runtime: RuntimeSpec::Both,
+        callee: "last_status",
+        arity: 0,
+        awaited: false,
+        producer_async: false,
+        producer_return: ProducerReturn::Scalar("int"),
+        public_params: &[],
+        extension_params: &[],
+        public_return: "int",
+    },
+    // —— PLAN-724 T-06 三参认证 tuple 元数分派：3 参 async post（producer
+    // 仅内嵌镜像有）→ (status, body, error, kind) 重组 HttpResponse。公共
+    // 声明为两参 post；api_key 位由契约单独冻结。——
+    AdapterRule {
+        shape: AdapterShape::ArityDispatchAsyncBlock,
+        module: "http",
+        symbol: "post",
+        runtime: RuntimeSpec::Embedded,
+        callee: "post",
+        arity: 3,
+        awaited: true,
+        producer_async: true,
+        producer_return: ProducerReturn::AuthTuple4,
+        public_params: &["str", "str"],
+        extension_params: &["str"],
+        public_return: "Response",
+    },
+    // —— async 流 facade：producer 产出 facade 类型（AsyncHTTPStream），
+    // await 消费后对公共面按名映射为 HTTPStream。同步面为同名直接调用，
+    // 走通用严格路径，无需契约。——
+    AdapterRule {
+        shape: AdapterShape::Plain,
+        module: "http",
+        symbol: "get_stream",
+        runtime: RuntimeSpec::Both,
+        callee: "get_stream_async",
+        arity: 1,
+        awaited: true,
+        producer_async: true,
+        producer_return: ProducerReturn::Facade {
+            producer: "AsyncHTTPStream",
+        },
+        public_params: &["str"],
+        extension_params: &[],
+        public_return: "HTTPStream",
+    },
+    AdapterRule {
+        shape: AdapterShape::Plain,
+        module: "http",
+        symbol: "post_stream",
+        runtime: RuntimeSpec::Both,
+        callee: "post_stream_async",
+        arity: 2,
+        awaited: true,
+        producer_async: true,
+        producer_return: ProducerReturn::Facade {
+            producer: "AsyncHTTPStream",
+        },
+        public_params: &["str", "str"],
+        extension_params: &[],
+        public_return: "HTTPStream",
+    },
+    AdapterRule {
+        shape: AdapterShape::Plain,
+        module: "http",
+        symbol: "post_stream_with_headers",
+        runtime: RuntimeSpec::Both,
+        callee: "post_stream_with_headers_async",
+        arity: 3,
+        awaited: true,
+        producer_async: true,
+        producer_return: ProducerReturn::Facade {
+            producer: "AsyncHTTPStream",
+        },
+        public_params: &["str", "str", "str"],
+        extension_params: &[],
+        public_return: "HTTPStream",
+    },
+];
+
+/// 结构观察结果：发射文本中可独立复核的事实。
+struct Emission {
+    shape: AdapterShape,
+    /// 主调用 callee 裸名（`a2r_std::<module>::<name>` 末段）。
+    callee: String,
+    /// 主调用实参数。
+    arity: usize,
+    /// 主调用 `.await` 存在性（含包装块内）。
+    awaited: bool,
+    /// ScalarCast 的目标已逻辑化为 int。
+    cast_to_int: bool,
+}
+
+fn unproved(module: &str, symbol: &str, detail: &str) -> crate::error::AutoError {
+    format!("STDASSEMBLY.SIGNATURE_UNVERIFIED: {module}.{symbol}: {detail}").into()
+}
+
+fn drifted(module: &str, symbol: &str, detail: &str) -> crate::error::AutoError {
+    format!("STDASSEMBLY.SIGNATURE_DRIFT: {module}.{symbol}: {detail}").into()
+}
+
+/// 观察发射表达式的结构。任何无法归入已知形状的表达都视为无证明。
+fn observe_emission(module: &str, symbol: &str, emitted: &str) -> crate::AutoResult<Emission> {
+    let detail = "adapter expression requires independent proof";
+    let mut expression: syn::Expr = syn::parse_str(emitted).map_err(|e| {
+        unproved(
+            module,
+            symbol,
+            &format!("emitted expression cannot be inspected: {e}"),
+        )
+    })?;
+    let mut shape = AdapterShape::Plain;
+    let mut cast_to_int = false;
+    // ScalarCast：`<call>() as i64`（cast 目标必须逻辑化为 int——公共面
+    // 即 int；cast 到其它宽度/类型不是本契约的一部分）。
+    if let syn::Expr::Cast(cast) = expression {
+        match logical_type(&cast.ty).as_deref() {
+            Some("int") => cast_to_int = true,
+            _ => return Err(unproved(module, symbol, "cast target is not the int face")),
+        }
+        shape = AdapterShape::ScalarCast;
+        expression = *cast.expr;
+    }
+    // 调用点 await（Plain async 面）。
+    let mut awaited = false;
+    if let syn::Expr::Await(await_expr) = expression {
+        awaited = true;
+        expression = *await_expr.base;
+    }
+    match &expression {
+        syn::Expr::Async(async_block) => {
+            shape = AdapterShape::ArityDispatchAsyncBlock;
+            let call = observe_arity_dispatch_block(module, symbol, &async_block.block)?;
+            expression = syn::Expr::Call(call);
+            awaited = true;
+        }
+        syn::Expr::Block(block) => {
+            if shape == AdapterShape::Plain {
+                shape = AdapterShape::StatusSideChannel;
+                let (call, inner_awaited) =
+                    observe_side_channel_block(module, symbol, &block.block)?;
+                awaited = inner_awaited;
+                expression = syn::Expr::Call(call);
+            }
+        }
+        _ => {}
+    }
+    let syn::Expr::Call(call) = expression else {
+        return Err(unproved(module, symbol, detail));
+    };
+    let syn::Expr::Path(path) = *call.func else {
+        return Err(drifted(
+            module,
+            symbol,
+            "emission calls through a non-path callee",
+        ));
+    };
+    let names: Vec<_> = path
+        .path
+        .segments
+        .iter()
+        .map(|p| p.ident.to_string())
+        .collect();
+    if names.len() != 3 || names[0] != "a2r_std" || names[1] != module {
+        return Err(drifted(
+            module,
+            symbol,
+            &format!(
+                "selected callee path {:?} is not the a2r_std::{module} face",
+                names
+            ),
+        ));
+    }
+    Ok(Emission {
+        shape,
+        callee: names[2].clone(),
+        arity: call.args.len(),
+        awaited,
+        cast_to_int,
+    })
+}
+
+/// `async { let (s, b, e, k) = <call>(..).await; HttpResponse { s, b, e, k } }`
+/// ——块内必须恰为一条 tuple 解构主调用 + 一条 HttpResponse 字段构造，
+/// 字段名与解构名一致（shorthand）。返回主调用。
+fn observe_arity_dispatch_block(
+    module: &str,
+    symbol: &str,
+    block: &syn::Block,
+) -> crate::AutoResult<syn::ExprCall> {
+    let detail = "unrecognized arity-dispatch block structure (no independently checkable adapter)";
+    let [syn::Stmt::Local(local), syn::Stmt::Expr(tail, None)] = block.stmts.as_slice() else {
+        return Err(unproved(module, symbol, detail));
+    };
+    let syn::Pat::Tuple(pattern) = &local.pat else {
+        return Err(unproved(module, symbol, detail));
+    };
+    let names: Vec<String> = pattern
+        .elems
+        .iter()
+        .filter_map(|elem| match elem {
+            syn::Pat::Ident(ident) => Some(ident.ident.to_string()),
+            _ => None,
+        })
+        .collect();
+    if names.len() != 4 || pattern.elems.len() != 4 {
+        return Err(unproved(module, symbol, detail));
+    }
+    let init_expr = local.init.as_ref().map(|init| init.expr.as_ref());
+    let Some(syn::Expr::Await(await_expr)) = init_expr else {
+        return Err(unproved(module, symbol, detail));
+    };
+    let syn::Expr::Call(call) = &*await_expr.base else {
+        return Err(unproved(module, symbol, detail));
+    };
+    let syn::Expr::Struct(construct) = tail else {
+        return Err(unproved(module, symbol, detail));
+    };
+    if !construct.path.is_ident("HttpResponse") || construct.fields.len() != 4 {
+        return Err(unproved(module, symbol, detail));
+    }
+    for field in &construct.fields {
+        // shorthand 字段（无显式值）：成员名即解构名。
+        let member = match &field.member {
+            syn::Member::Named(ident) => ident.to_string(),
+            _ => return Err(unproved(module, symbol, detail)),
+        };
+        if field.colon_token.is_some() || !names.contains(&member) {
+            return Err(unproved(module, symbol, detail));
+        }
+    }
+    Ok(call.clone())
+}
+
+/// `{ let r = <call>(..)[.await]; set_last_status(r.0); r.1 }`——块内必须
+/// 恰为：绑定主调用、把 tuple 首元写入侧信道、尾表达式取 tuple 次元。
+fn observe_side_channel_block(
+    module: &str,
+    symbol: &str,
+    block: &syn::Block,
+) -> crate::AutoResult<(syn::ExprCall, bool)> {
+    let detail = "unrecognized side-channel block structure (no independently checkable adapter)";
+    let [syn::Stmt::Local(local), syn::Stmt::Expr(status_call, Some(_)), tail] =
+        block.stmts.as_slice()
+    else {
+        return Err(unproved(module, symbol, detail));
+    };
+    let syn::Pat::Ident(binding) = &local.pat else {
+        return Err(unproved(module, symbol, detail));
+    };
+    let bound = binding.ident.to_string();
+    let Some(init) = local.init.as_ref() else {
+        return Err(unproved(module, symbol, detail));
+    };
+    let (primary, awaited) = match init.expr.as_ref() {
+        syn::Expr::Await(await_expr) => match &*await_expr.base {
+            syn::Expr::Call(call) => (call.clone(), true),
+            _ => return Err(unproved(module, symbol, detail)),
+        },
+        syn::Expr::Call(call) => (call.clone(), false),
+        _ => return Err(unproved(module, symbol, detail)),
+    };
+    // set_last_status(<bound>.0) —— 与主调用同一身份的 tuple 首元进侧信道。
+    let syn::Expr::Call(status) = status_call else {
+        return Err(unproved(module, symbol, detail));
+    };
+    let is_status_call = matches!(
+        status.func.as_ref(),
+        syn::Expr::Path(path)
+            if path.path.segments.len() == 3
+                && path.path.segments[0].ident == "a2r_std"
+                && path.path.segments[1].ident == "http"
+                && path.path.segments[2].ident == "set_last_status"
+    );
+    fn tuple_index(field: &syn::ExprField) -> Option<u32> {
+        match &field.member {
+            syn::Member::Unnamed(index) => Some(index.index),
+            syn::Member::Named(_) => None,
+        }
+    }
+    let arg_is_bound_zero = match status.args.first() {
+        Some(syn::Expr::Field(field)) => {
+            tuple_index(field) == Some(0)
+                && matches!(&*field.base, syn::Expr::Path(p)
+                    if p.path.is_ident(bound.as_str()))
+        }
+        _ => false,
+    };
+    if !is_status_call || status.args.len() != 1 || !arg_is_bound_zero {
+        return Err(unproved(module, symbol, detail));
+    }
+    // 尾表达式 <bound>.1 —— body 元素成为公共返回。
+    let tail_selects_body = match tail {
+        syn::Stmt::Expr(syn::Expr::Field(field), None) => {
+            tuple_index(field) == Some(1)
+                && matches!(&*field.base, syn::Expr::Path(p)
+                    if p.path.is_ident(bound.as_str()))
+        }
+        _ => false,
+    };
+    if !tail_selects_body {
+        return Err(unproved(module, symbol, detail));
+    }
+    Ok((primary, awaited))
 }
 
 pub fn verify_rust_reference(
@@ -33,81 +521,455 @@ pub fn verify_rust_reference(
     else {
         return Ok(None); // Private legacy helpers do not inherit a public claim.
     };
-    let mut expression: syn::Expr = syn::parse_str(emitted)
-        .map_err(|e| format!("STDASSEMBLY.SIGNATURE_UNVERIFIED: {module}.{symbol}: emitted expression cannot be inspected: {e}"))?;
-    // §5.7：async 是签名证据的一部分。async 上下文的 Call 臂会自动追加
-    // `.await`；解包该等待点，随后与 producer asyncness 双向核对（错配=漂移），
-    // 不做一刀切拒绝。
-    let mut awaited = false;
-    let mut adapters: Vec<&'static str> = Vec::new();
-    if let syn::Expr::Await(await_expr) = expression {
-        expression = *await_expr.base;
-        awaited = true;
-    }
-    // 发射侧适配壳：`last_status() as i64` 的数值面转换。
-    while let syn::Expr::Cast(cast) = expression {
-        expression = *cast.expr;
-        adapters.push("scalar cast adapter");
-    }
-    // 发射侧适配壳：post/status 包装块 `{ let __resp = <主调用>.await;
-    // set_last_status(..); __resp.1 }` 与 PLAN-724 三参元数分派的
-    // `async { let (..) = post(..).await; HttpResponse { .. } }`——校验
-    // 块内主调用；状态侧信道/元数分派面记为适配变体（§5.3 单独记录）。
-    let mut wrapped = false;
-    if let syn::Expr::Async(async_block) = expression {
-        expression = syn::Expr::Block(syn::ExprBlock {
-            attrs: Vec::new(),
-            label: None,
-            block: async_block.block,
-        });
-        wrapped = true;
-    }
-    if let syn::Expr::Block(block) = expression {
-        wrapped = true;
-        let primary = block.block.stmts.iter().find_map(|stmt| match stmt {
-            syn::Stmt::Local(local) => {
-                let init = local.init.as_ref()?;
-                let mut expr = init.expr.as_ref();
-                if let syn::Expr::Await(await_expr) = expr {
-                    expr = await_expr.base.as_ref();
-                    awaited = true;
-                }
-                match expr {
-                    syn::Expr::Call(call) => Some(call.clone()),
-                    _ => None,
-                }
+    let emission = observe_emission(module, symbol, emitted)?;
+    let rule = ADAPTER_RULES.iter().find(|rule| {
+        rule.module == module
+            && rule.symbol == symbol
+            && rule.shape == emission.shape
+            && rule.callee == emission.callee
+            && match (&rule.runtime, runtime) {
+                (RuntimeSpec::Both, _) => true,
+                (RuntimeSpec::Standalone, RustRuntime::Standalone) => true,
+                (RuntimeSpec::Embedded, RustRuntime::Embedded) => true,
+                _ => false,
             }
-            _ => None,
-        });
-        match primary {
-            Some(call) => {
-                adapters.push("wrapper block (status side-channel adapter)");
-                expression = syn::Expr::Call(call);
-            }
-            None => {
-                return Err(format!("STDASSEMBLY.SIGNATURE_UNVERIFIED: {module}.{symbol}: adapter expression requires independent proof").into());
-            }
+    });
+    let Some(rule) = rule else {
+        if emission.shape == AdapterShape::Plain {
+            // Plain 形状无适配契约也可走通用严格路径（callee/元数/async/
+            // 签名全部对拍）；契约只约束带适配的形状。
+            return verify_plain_reference(
+                module,
+                symbol,
+                &emission,
+                runtime,
+                declaration,
+                &layer,
+                public,
+            );
+        }
+        return Err(unproved(
+            module,
+            symbol,
+            &format!(
+                "no declared adapter contract for {} shape / callee {} under {} runtime",
+                emission.shape_label(),
+                emission.callee,
+                runtime.label()
+            ),
+        ));
+    };
+    verify_adapted_reference(
+        module,
+        symbol,
+        &emission,
+        runtime,
+        declaration,
+        &layer,
+        public,
+        rule,
+    )
+}
+
+impl Emission {
+    fn shape_label(&self) -> &'static str {
+        match self.shape {
+            AdapterShape::Plain => "plain",
+            AdapterShape::ScalarCast => "scalar-cast",
+            AdapterShape::StatusSideChannel => "status-side-channel",
+            AdapterShape::ArityDispatchAsyncBlock => "arity-dispatch-async-block",
         }
     }
-    let syn::Expr::Call(call) = expression else {
-        return Err(format!("STDASSEMBLY.SIGNATURE_UNVERIFIED: {module}.{symbol}: adapter expression requires independent proof").into());
-    };
-    let syn::Expr::Path(path) = *call.func else {
-        return Err(format!("STDASSEMBLY.PROVIDER_CLAIM_NO_CALLEE: {module}.{symbol}").into());
-    };
-    let names: Vec<_> = path
-        .path
-        .segments
-        .iter()
-        .map(|p| p.ident.to_string())
-        .collect();
-    if names.len() != 3 || names[0] != "a2r_std" || names[1] != module {
-        return Err(format!(
-            "STDASSEMBLY.PROVIDER_CLAIM_NO_CALLEE: {module}.{symbol}: selected {names:?}"
-        )
-        .into());
+}
+
+/// 契约驱动验证：发射 ↔ 契约 ↔ producer ↔ 公共声明四方一致。
+#[allow(clippy::too_many_arguments)]
+fn verify_adapted_reference(
+    module: &str,
+    symbol: &str,
+    emission: &Emission,
+    runtime: RustRuntime,
+    declaration: String,
+    layer: &super::model::LayerInventory,
+    public: &super::model::SymbolEntry,
+    rule: &AdapterRule,
+) -> crate::AutoResult<Option<ReferenceProof>> {
+    // 1. 发射结构 ↔ 契约。
+    if emission.arity != rule.arity {
+        return Err(drifted(
+            module,
+            symbol,
+            &format!(
+                "emitted arity {} does not match the declared adapter contract arity {}",
+                emission.arity, rule.arity
+            ),
+        ));
     }
-    let callee = &names[2];
+    if emission.awaited != rule.awaited {
+        return Err(drifted(
+            module,
+            symbol,
+            &format!(
+                "await mode (emission awaited={}) does not match the declared adapter contract (awaited={})",
+                emission.awaited, rule.awaited
+            ),
+        ));
+    }
+    if rule.shape == AdapterShape::ScalarCast && !emission.cast_to_int {
+        return Err(drifted(
+            module,
+            symbol,
+            "cast adapter no longer targets the int face",
+        ));
+    }
+    // 2. producer 实形 ↔ 契约。
+    let (producer_id, producer) = resolve_runtime_producer(module, &emission.callee, runtime)?;
+    let producer_async = producer.sig.asyncness.is_some();
+    if producer_async != rule.producer_async {
+        return Err(drifted(
+            module,
+            symbol,
+            &format!(
+                "producer async={} does not match the declared adapter contract (async={})",
+                producer_async, rule.producer_async
+            ),
+        ));
+    }
+    if !producer.sig.generics.params.is_empty() {
+        return Err(unproved(
+            module,
+            symbol,
+            "generic producer has no adapter contract",
+        ));
+    }
+    let mut adapters: Vec<&'static str> = Vec::new();
+    let mut parameters = Vec::new();
+    for parameter in &producer.sig.inputs {
+        let syn::FnArg::Typed(parameter) = parameter else {
+            return Err(unproved(
+                module,
+                symbol,
+                "producer receiver has no adapter contract",
+            ));
+        };
+        if is_asref_str_view(&parameter.ty) {
+            // §5.3：兼容 lowering 的参数适配变体单独记录，不冒称同形。
+            adapters.push("impl AsRef<str> view adapter");
+        }
+        parameters.push(logical_type(&parameter.ty).ok_or_else(|| {
+            unproved(
+                module,
+                symbol,
+                &format!("producer parameter representation: {producer_id}"),
+            )
+        })?);
+    }
+    if parameters.len() != rule.arity {
+        return Err(drifted(
+            module,
+            symbol,
+            &format!(
+                "producer arity {} does not match the declared adapter contract arity {}",
+                parameters.len(),
+                rule.arity
+            ),
+        ));
+    }
+    // 参数双源：producer 逻辑面 == 公共参数面 + 契约扩展位。
+    let mut declared_params = rule.public_params.to_vec();
+    declared_params.extend_from_slice(rule.extension_params);
+    if parameters != declared_params {
+        return Err(drifted(
+            module,
+            symbol,
+            &format!(
+                "producer parameter face {parameters:?} does not match the declared adapter projection {declared_params:?}"
+            ),
+        ));
+    }
+    // producer 返回结构 ↔ 契约。
+    match &rule.producer_return {
+        ProducerReturn::Scalar(expected) => {
+            let returns = producer_return_logical(&producer.sig).ok_or_else(|| {
+                unproved(
+                    module,
+                    symbol,
+                    &format!("producer return representation: {producer_id}"),
+                )
+            })?;
+            if returns != *expected {
+                return Err(drifted(
+                    module,
+                    symbol,
+                    &format!("producer return {returns} does not match the declared adapter scalar {expected}"),
+                ));
+            }
+        }
+        ProducerReturn::StatusBodyTuple => {
+            check_tuple_return(module, symbol, &producer.sig, &["int", "str"])?;
+        }
+        ProducerReturn::AuthTuple4 => {
+            check_tuple_return(module, symbol, &producer.sig, &["int", "str", "str", "str"])?;
+        }
+        ProducerReturn::Facade { producer: facade } => {
+            let segment = producer_return_segment(&producer.sig).ok_or_else(|| {
+                unproved(
+                    module,
+                    symbol,
+                    &format!("producer return representation: {producer_id}"),
+                )
+            })?;
+            if segment != *facade {
+                return Err(drifted(
+                    module,
+                    symbol,
+                    &format!("producer return facade {segment} does not match the declared adapter facade {facade}"),
+                ));
+            }
+            adapters.push("async stream facade (awaited consumption)");
+        }
+    }
+    let mut returns = rule.public_return.to_string();
+    match rule.shape {
+        AdapterShape::StatusSideChannel => {
+            adapters.push("(status, body) tuple adapter; body selected, status to side-channel");
+        }
+        AdapterShape::ArityDispatchAsyncBlock => {
+            adapters.push("arity-dispatch adapter; auth tuple reconstructed as HttpResponse");
+        }
+        AdapterShape::ScalarCast => {
+            adapters.push("scalar cast adapter (int width normalization)");
+        }
+        AdapterShape::Plain => {}
+    }
+    let mut error_shape = "Rust return value".to_string();
+    if rule.producer_async {
+        error_shape.push_str("; async producer consumed at call-site await");
+    }
+    for adapter in &adapters {
+        error_shape.push_str("; ");
+        error_shape.push_str(adapter);
+    }
+    let contract = crate::vm::native::NativeContract {
+        parameter_modes: parameters.iter().map(|_| "View".into()).collect(),
+        parameters,
+        returns,
+        producer: format!("{}::{}", producer_id, emission.callee),
+        receiver: None,
+        is_static: false,
+        generics: Vec::new(),
+        error_shape,
+    };
+    // 3. 公共声明 ↔ 适配投影（扩展位由契约冻结，不与公共声明对拍）。
+    check_public_projection(module, symbol, public, &contract, rule)?;
+    Ok(Some(ReferenceProof {
+        module: module.into(),
+        symbol: symbol.into(),
+        declaration,
+        declaration_hash: layer.content_hash,
+        producer: contract.producer.clone(),
+        native_id: None,
+        callee: format!("a2r_std::{module}::{}", emission.callee),
+        verification: VerificationLevel::SignatureChecked,
+        public_signature: public.signature.clone().unwrap(),
+        selected_adapter: contract,
+    }))
+}
+
+/// 公共声明与适配投影对拍：参数前缀逐位相等、返回相等；契约扩展位只
+/// 记录在 error_shape（公共声明没有该位，不能复制公共签名充作证据）。
+fn check_public_projection(
+    module: &str,
+    symbol: &str,
+    public: &super::model::SymbolEntry,
+    contract: &crate::vm::native::NativeContract,
+    rule: &AdapterRule,
+) -> crate::AutoResult<()> {
+    let signature = public
+        .signature
+        .as_ref()
+        .ok_or_else(|| unproved(module, symbol, "source logical signature missing"))?;
+    let projection = super::model::LogicalSignature {
+        generics: Vec::new(),
+        parameters: rule.public_params.iter().map(|p| p.to_string()).collect(),
+        parameter_modes: rule.public_params.iter().map(|_| "View".into()).collect(),
+        returns: rule.public_return.to_string(),
+        is_static: false,
+        has_self: false,
+        attributes: Vec::new(),
+    };
+    if signature.parameters != projection.parameters
+        || signature.parameter_modes != projection.parameter_modes
+        || signature.generics != projection.generics
+        || signature.attributes.iter().any(|attr| attr != "vm")
+    {
+        return Err(drifted(
+            module,
+            symbol,
+            &format!(
+                "public declaration does not match the adapter projection {:?} -> {:?}",
+                signature.parameters, projection.parameters
+            ),
+        ));
+    }
+    let source_ret = super::validate::normalize_host_type(&signature.returns);
+    let host_ret = super::validate::normalize_host_type(&contract.returns);
+    if source_ret != host_ret {
+        return Err(drifted(
+            module,
+            symbol,
+            &format!("public return {source_ret} does not match the adapter return {host_ret}"),
+        ));
+    }
+    if public.kind == super::model::SymbolKind::Method {
+        let owner = public.name.split('.').next().unwrap_or("");
+        if signature.is_static || contract.receiver.as_deref() != Some(owner) {
+            return Err(drifted(
+                module,
+                symbol,
+                "independent receiver/static contract unavailable",
+            ));
+        }
+    }
+    if public.arity != rule.public_params.len() {
+        return Err(drifted(
+            module,
+            symbol,
+            &format!(
+                "public arity {} does not match the adapter projection arity {}",
+                public.arity,
+                rule.public_params.len()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// Plain 形状的通用严格路径：无适配契约也必须完整对拍 callee/async/
+/// 元数/签名——不存在 Resolved-only 放行。
+#[allow(clippy::too_many_arguments)]
+fn verify_plain_reference(
+    module: &str,
+    symbol: &str,
+    emission: &Emission,
+    runtime: RustRuntime,
+    declaration: String,
+    layer: &super::model::LayerInventory,
+    public: &super::model::SymbolEntry,
+) -> crate::AutoResult<Option<ReferenceProof>> {
+    let (producer_id, producer) = resolve_runtime_producer(module, &emission.callee, runtime)?;
+    let producer_async = producer.sig.asyncness.is_some();
+    if producer_async != emission.awaited {
+        return Err(drifted(
+            module,
+            symbol,
+            &format!(
+                "async mode mismatch (producer async={producer_async}, emission awaited={}): {}",
+                emission.awaited, producer_id
+            ),
+        ));
+    }
+    if !producer.sig.generics.params.is_empty() {
+        return Err(unproved(
+            module,
+            symbol,
+            &format!(
+                "{producer_id}::{}: generic adapter unavailable",
+                emission.callee
+            ),
+        ));
+    }
+    let mut adapters: Vec<&'static str> = Vec::new();
+    let mut parameters = Vec::new();
+    for parameter in &producer.sig.inputs {
+        let syn::FnArg::Typed(parameter) = parameter else {
+            return Err(unproved(
+                module,
+                symbol,
+                &format!("{producer_id}::{}: receiver", emission.callee),
+            ));
+        };
+        if is_asref_str_view(&parameter.ty) {
+            adapters.push("impl AsRef<str> view adapter");
+        }
+        parameters.push(logical_type(&parameter.ty).ok_or_else(|| {
+            unproved(
+                module,
+                symbol,
+                &format!(
+                    "{producer_id}::{}: parameter representation",
+                    emission.callee
+                ),
+            )
+        })?);
+    }
+    let mut returns = producer_return_logical(&producer.sig).ok_or_else(|| {
+        unproved(
+            module,
+            symbol,
+            &format!("{producer_id}::{}: return representation", emission.callee),
+        )
+    })?;
+    let mut error_shape = "Rust return value".to_string();
+    // The selected parse implementation uses serde_json::Value::Null as its
+    // nullable payload. This representation is identified explicitly.
+    if module == "json" && symbol == "parse" && emission.callee == "parse" && returns == "JsonValue"
+    {
+        returns = "JsonValue?".into();
+        error_shape = "Value::Null sentinel on parse failure".into();
+    }
+    if producer_async {
+        error_shape.push_str("; async producer consumed at call-site await");
+    }
+    for adapter in &adapters {
+        error_shape.push_str("; ");
+        error_shape.push_str(adapter);
+    }
+    if emission.arity != parameters.len() {
+        return Err(drifted(
+            module,
+            symbol,
+            "emitted arity / Rust producer arity",
+        ));
+    }
+    let contract = crate::vm::native::NativeContract {
+        parameter_modes: parameters.iter().map(|_| "View".into()).collect(),
+        parameters,
+        returns,
+        producer: format!("{}::{}", producer_id, emission.callee),
+        receiver: None,
+        is_static: false,
+        generics: Vec::new(),
+        error_shape,
+    };
+    super::validate::signature_matches(module, public, &contract, LayerKind::Public).map_err(
+        |reason| {
+            format!(
+                "STDASSEMBLY.SIGNATURE_DRIFT: {declaration}: {module}.{symbol} / {}: {reason}",
+                contract.producer
+            )
+        },
+    )?;
+    Ok(Some(ReferenceProof {
+        module: module.into(),
+        symbol: symbol.into(),
+        declaration,
+        declaration_hash: layer.content_hash,
+        producer: contract.producer.clone(),
+        native_id: None,
+        callee: format!("a2r_std::{module}::{}", emission.callee),
+        verification: VerificationLevel::SignatureChecked,
+        public_signature: public.signature.clone().unwrap(),
+        selected_adapter: contract,
+    }))
+}
+
+/// 按运行形态定位 producer 源并解析真实定义（含 `pub use` 再导出链）。
+fn resolve_runtime_producer(
+    module: &str,
+    callee: &str,
+    runtime: RustRuntime,
+) -> crate::AutoResult<(String, syn::ItemFn)> {
     let (producer_id, producer_text, nested) = match (runtime, module) {
         (RustRuntime::Standalone, "json") => (
             "crates/a2r-std/src/json.rs",
@@ -130,10 +992,11 @@ pub fn verify_rust_reference(
             true,
         ),
         _ => {
-            return Err(format!(
-                "STDASSEMBLY.SIGNATURE_UNVERIFIED: {module}.{symbol}: no inspected Rust producer"
-            )
-            .into())
+            return Err(unproved(
+                module,
+                callee,
+                "no inspected Rust producer for this module/runtime",
+            ))
         }
     };
     let file = syn::parse_file(producer_text)
@@ -151,150 +1014,93 @@ pub fn verify_rust_reference(
     } else {
         file.items.as_slice()
     };
-    let producer = resolve_producer(producer_id, items, callee.as_str(), REEXPORT_DEPTH)
-        .ok_or_else(|| {
+    let producer =
+        resolve_producer(producer_id, items, callee, REEXPORT_DEPTH).ok_or_else(|| {
             format!(
-                "STDASSEMBLY.PROVIDER_CLAIM_NO_CALLEE: {module}.{symbol}: {producer_id}::{callee}"
+                "STDASSEMBLY.PROVIDER_CLAIM_NO_CALLEE: {module}.{callee}: {producer_id}::{callee}"
             )
         })?;
-    let producer_async = producer.1.sig.asyncness.is_some();
-    if producer_async != awaited && !wrapped {
-        // 包装壳（元数分派/侧信道）内含 PLAN-724 冻结的发射语义——其内部
-        // await/producer 相干性属 724 合同，不以 738 签名面拒绝；降级为
-        // Resolved 证明（见下方元数分派臂），普通形状仍严格双向核对。
-        return Err(format!(
-            "STDASSEMBLY.SIGNATURE_DRIFT: {module}.{symbol}: async mode mismatch (producer async={producer_async}, emission awaited={awaited}): {}",
-            producer.0
-        )
-        .into());
+    Ok(producer)
+}
+
+fn producer_return_logical(signature: &syn::Signature) -> Option<String> {
+    match &signature.output {
+        syn::ReturnType::Default => Some("void".into()),
+        syn::ReturnType::Type(_, ty) => logical_type(ty),
     }
-    let mode_variant = producer_async != awaited;
-    if !producer.1.sig.generics.params.is_empty() {
-        return Err(format!(
-            "STDASSEMBLY.SIGNATURE_UNVERIFIED: {}::{callee}: generic adapter unavailable",
-            producer.0
-        )
-        .into());
-    }
-    let mut parameters = Vec::new();
-    for parameter in &producer.1.sig.inputs {
-        let syn::FnArg::Typed(parameter) = parameter else {
-            return Err(format!(
-                "STDASSEMBLY.SIGNATURE_UNVERIFIED: {}::{callee}: receiver",
-                producer.0
-            )
-            .into());
-        };
-        if is_asref_str_view(&parameter.ty) {
-            // §5.3：兼容 lowering 的参数适配变体单独记录，不冒称同形。
-            adapters.push("impl AsRef<str> view adapter");
-        }
-        parameters.push(logical_type(&parameter.ty).ok_or_else(|| {
-            format!(
-                "STDASSEMBLY.SIGNATURE_UNVERIFIED: {}::{callee}: parameter representation",
-                producer.0
-            )
-        })?);
-    }
-    let mut returns = match &producer.1.sig.output {
-        syn::ReturnType::Default => "void".into(),
-        syn::ReturnType::Type(_, ty) => match logical_type(ty) {
-            Some(text) => text,
-            // async 流 facade：get_stream_async 返回 AsyncHTTPStream，公共
-            // 面为 HTTPStream——await 消费后同一逻辑流面；适配变体记录。
-            None if matches!(&**ty, syn::Type::Path(path)
-                if path.path.segments.last().is_some_and(|s| s.ident == "AsyncHTTPStream")) =>
-            {
-                adapters.push("async stream facade (awaited consumption)");
-                "HTTPStream".into()
-            }
-            // post_sync 族 (status, body) 元组面：包装壳选取 body 元素对齐
-            // 公共 str 返回；状态进侧信道——适配变体记录。
-            None if matches!(&**ty, syn::Type::Tuple(tuple)
-                if tuple.elems.len() == 2
-                    && logical_type(&tuple.elems[0]).as_deref() == Some("int")
-                    && logical_type(&tuple.elems[1]).as_deref() == Some("str")) =>
-            {
-                adapters
-                    .push("(status, body) tuple adapter; body selected, status to side-channel");
-                "str".into()
-            }
-            None => {
-                return Err(format!(
-                    "STDASSEMBLY.SIGNATURE_UNVERIFIED: {}::{callee}: return representation",
-                    producer.0
-                )
-                .into());
-            }
+}
+
+fn producer_return_segment(signature: &syn::Signature) -> Option<String> {
+    match &signature.output {
+        syn::ReturnType::Type(_, ty) => match ty.as_ref() {
+            syn::Type::Path(path) => path
+                .path
+                .segments
+                .last()
+                .map(|segment| segment.ident.to_string()),
+            _ => None,
         },
+        _ => None,
+    }
+}
+
+/// producer 返回必须是逻辑形状逐位匹配的 tuple（契约声明，非猜测）。
+fn check_tuple_return(
+    module: &str,
+    symbol: &str,
+    signature: &syn::Signature,
+    expected: &[&str],
+) -> crate::AutoResult<()> {
+    let syn::ReturnType::Type(_, ty) = &signature.output else {
+        return Err(drifted(
+            module,
+            symbol,
+            &format!(
+                "producer return is not the declared {}-tuple",
+                expected.len()
+            ),
+        ));
     };
-    let mut error_shape = "Rust return value".to_string();
-    // The selected parse implementation uses serde_json::Value::Null as its
-    // nullable payload. This representation is identified explicitly.
-    if module == "json" && symbol == "parse" && callee == "parse" && returns == "JsonValue" {
-        returns = "JsonValue?".into();
-        error_shape = "Value::Null sentinel on parse failure".into();
-    }
-    if producer_async {
-        error_shape.push_str("; async producer consumed at call-site await");
-    }
-    for adapter in &adapters {
-        error_shape.push_str("; ");
-        error_shape.push_str(adapter);
-    }
-    let contract = crate::vm::native::NativeContract {
-        parameter_modes: parameters.iter().map(|_| "View".into()).collect(),
-        parameters,
-        returns,
-        producer: format!("{}::{callee}", producer.0),
-        receiver: None,
-        is_static: false,
-        generics: Vec::new(),
-        error_shape,
+    let syn::Type::Tuple(tuple) = ty.as_ref() else {
+        return Err(drifted(
+            module,
+            symbol,
+            &format!(
+                "producer return is not the declared {}-tuple",
+                expected.len()
+            ),
+        ));
     };
-    if call.args.len() != contract.parameters.len() {
-        // PLAN-724 T-06 冻结的元数分派历史面（如三参 post 的 auth tuple
-        // 臂）：发射壳自带约定形状，不与公共二元数签名对拍——降级为
-        // Resolved 证明并记录变体，不冒称 SignatureChecked。
-        if wrapped || mode_variant {
-            return Ok(Some(ReferenceProof {
-                module: module.into(),
-                symbol: symbol.into(),
-                declaration,
-                declaration_hash: layer.content_hash,
-                producer: contract.producer.clone(),
-                native_id: None,
-                callee: names.join("::"),
-                verification: VerificationLevel::Resolved,
-                public_signature: public.signature.clone().unwrap(),
-                selected_adapter: contract,
-            }));
-        }
-        return Err(format!(
-            "STDASSEMBLY.SIGNATURE_DRIFT: {module}.{symbol}: emitted arity / Rust producer arity"
-        )
-        .into());
+    if tuple.elems.len() != expected.len() {
+        return Err(drifted(
+            module,
+            symbol,
+            &format!(
+                "producer tuple arity {} does not match the declared adapter tuple {}",
+                tuple.elems.len(),
+                expected.len()
+            ),
+        ));
     }
-    super::validate::signature_matches(module, public, &contract, LayerKind::Public).map_err(
-        |reason| {
-            format!(
-                "STDASSEMBLY.SIGNATURE_DRIFT: {declaration}: {module}.{symbol} / {}: {reason}",
-                contract.producer
+    for (index, (element, expected)) in tuple.elems.iter().zip(expected).enumerate() {
+        let logical = logical_type(element).ok_or_else(|| {
+            unproved(
+                module,
+                symbol,
+                &format!("producer tuple element {index} representation"),
             )
-        },
-    )?;
-    Ok(Some(ReferenceProof {
-        module: module.into(),
-        symbol: symbol.into(),
-        declaration,
-        declaration_hash: layer.content_hash,
-        producer: contract.producer.clone(),
-        native_id: None,
-        callee: names.join("::"),
-        verification: VerificationLevel::SignatureChecked,
-        public_signature: public.signature.clone().unwrap(),
-        selected_adapter: contract,
-    }))
+        })?;
+        if logical != *expected {
+            return Err(drifted(
+                module,
+                symbol,
+                &format!(
+                    "producer tuple element {index} is {logical}, declared adapter expects {expected}"
+                ),
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// 再导出跟随的最大深度：内嵌镜像 → 独立 crate 模块层 → 定义文件。
@@ -602,5 +1408,198 @@ mod plan738_host {
         .unwrap_err();
         assert!(error.to_string().contains("SIGNATURE_DRIFT"), "{error}");
         assert!(error.to_string().contains("awaited=true"), "{error}");
+    }
+
+    #[test]
+    fn side_channel_wrapper_needs_declared_contract_and_matches_it() {
+        // 合法形状：post_sync 异步面（三参 + .await + set_last_status + __resp.1）。
+        let proof = verify_rust_reference(
+            "http",
+            "post_sync",
+            "{ let __resp = a2r_std::http::post_sync_async(\"u\", \"b\", \"k\").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }",
+            RustRuntime::Standalone,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(proof.callee, "a2r_std::http::post_sync_async");
+        assert_eq!(proof.selected_adapter.returns, "str");
+        assert_eq!(proof.selected_adapter.parameters, ["str", "str", "str"]);
+        assert!(proof.selected_adapter.error_shape.contains("side-channel"));
+        assert_eq!(proof.verification, VerificationLevel::SignatureChecked);
+        // 契约元数漂移：包装内只传 2 参。
+        let arity = verify_rust_reference(
+            "http",
+            "post_sync",
+            "{ let __resp = a2r_std::http::post_sync_async(\"u\", \"b\").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }",
+            RustRuntime::Standalone,
+        )
+        .unwrap_err();
+        assert!(arity.to_string().contains("SIGNATURE_DRIFT"), "{arity}");
+        assert!(
+            arity
+                .to_string()
+                .contains("declared adapter contract arity"),
+            "{arity}"
+        );
+        // 契约 await 漂移：异步 callee 缺 .await（旧 Resolved-only 放行位）。
+        let await_drift = verify_rust_reference(
+            "http",
+            "post_sync",
+            "{ let __resp = a2r_std::http::post_sync_async(\"u\", \"b\", \"k\"); a2r_std::http::set_last_status(__resp.0); __resp.1 }",
+            RustRuntime::Standalone,
+        )
+        .unwrap_err();
+        assert!(
+            await_drift.to_string().contains("SIGNATURE_DRIFT"),
+            "{await_drift}"
+        );
+        assert!(
+            await_drift.to_string().contains("await mode"),
+            "{await_drift}"
+        );
+        // 结构漂移：侧信道写入 tuple 次元（__resp.1）而非首元。
+        let structure = verify_rust_reference(
+            "http",
+            "post_sync",
+            "{ let __resp = a2r_std::http::post_sync_async(\"u\", \"b\", \"k\").await; a2r_std::http::set_last_status(__resp.1); __resp.1 }",
+            RustRuntime::Standalone,
+        )
+        .unwrap_err();
+        assert!(
+            structure.to_string().contains("SIGNATURE_UNVERIFIED"),
+            "{structure}"
+        );
+    }
+
+    #[test]
+    fn unknown_wrapper_shape_has_no_contract_and_is_rejected() {
+        // 无契约的包装：get 不是侧信道符号——块形状查无契约（旧路径会以
+        // Resolved-only 放行，现按 §5.8.1 拒绝）。
+        let error = verify_rust_reference(
+            "http",
+            "get",
+            "{ let __resp = a2r_std::http::get(\"u\"); __resp }",
+            RustRuntime::Standalone,
+        )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("SIGNATURE_UNVERIFIED"),
+            "{error}"
+        );
+        assert!(
+            error
+                .to_string()
+                .contains("unrecognized side-channel block structure"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn arity_dispatch_post_proves_only_under_embedded() {
+        let emitted =
+            "async { let (status, body, error, kind) = a2r_std::http::post(\"u\", \"b\", \"k\").await; HttpResponse { status, body, error, kind } }";
+        // Embedded：3 参 async post producer 存在——完整证明 + 扩展位记录。
+        let proof = verify_rust_reference("http", "post", emitted, RustRuntime::Embedded)
+            .unwrap()
+            .unwrap();
+        assert_eq!(proof.callee, "a2r_std::http::post");
+        assert_eq!(proof.producer, "crates/auto-lang/src/a2r_std.rs::post");
+        assert_eq!(proof.selected_adapter.returns, "Response");
+        assert_eq!(proof.selected_adapter.parameters, ["str", "str", "str"]);
+        assert_eq!(proof.public_signature.parameters, ["str", "str"]);
+        assert!(proof
+            .selected_adapter
+            .error_shape
+            .contains("arity-dispatch adapter"));
+        assert_eq!(proof.verification, VerificationLevel::SignatureChecked);
+        // Standalone：a2r-std crate 无 3 参 post——不再 Resolved-only 放行。
+        let standalone =
+            verify_rust_reference("http", "post", emitted, RustRuntime::Standalone).unwrap_err();
+        assert!(
+            standalone.to_string().contains("SIGNATURE_UNVERIFIED"),
+            "{standalone}"
+        );
+        assert!(
+            standalone
+                .to_string()
+                .contains("no declared adapter contract"),
+            "{standalone}"
+        );
+        // 契约元数漂移：块内只传 2 参（对 Embedded producer 也是漂移）。
+        let drift = verify_rust_reference(
+            "http",
+            "post",
+            "async { let (status, body, error, kind) = a2r_std::http::post(\"u\", \"b\").await; HttpResponse { status, body, error, kind } }",
+            RustRuntime::Embedded,
+        )
+        .unwrap_err();
+        assert!(drift.to_string().contains("SIGNATURE_DRIFT"), "{drift}");
+    }
+
+    #[test]
+    fn cast_adapter_targets_int_face_only() {
+        let proof = verify_rust_reference(
+            "http",
+            "last_status",
+            "a2r_std::http::last_status() as i64",
+            RustRuntime::Standalone,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(proof.selected_adapter.returns, "int");
+        assert_eq!(proof.verification, VerificationLevel::SignatureChecked);
+        // cast 到非 int 面（float）：契约不存在该适配。
+        let drift = verify_rust_reference(
+            "http",
+            "last_status",
+            "a2r_std::http::last_status() as f64",
+            RustRuntime::Standalone,
+        )
+        .unwrap_err();
+        assert!(
+            drift.to_string().contains("SIGNATURE_UNVERIFIED"),
+            "{drift}"
+        );
+        assert!(drift.to_string().contains("cast target"), "{drift}");
+    }
+
+    #[test]
+    fn stream_facade_contract_maps_async_producer_to_public_face() {
+        let proof = verify_rust_reference(
+            "http",
+            "get_stream",
+            "a2r_std::http::get_stream_async(\"u\").await",
+            RustRuntime::Standalone,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(proof.selected_adapter.returns, "HTTPStream");
+        assert!(proof
+            .selected_adapter
+            .error_shape
+            .contains("async stream facade"));
+        assert_eq!(proof.verification, VerificationLevel::SignatureChecked);
+        // facade 规则按 callee 命中：同步面走通用严格路径（HTTPStream 直接
+        // 逻辑化），不带 facade 记录。
+        let sync = verify_rust_reference(
+            "http",
+            "get_stream",
+            "a2r_std::http::get_stream(\"u\")",
+            RustRuntime::Standalone,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(sync.selected_adapter.returns, "HTTPStream");
+        assert!(!sync.selected_adapter.error_shape.contains("facade"));
+        // async callee 缺 await（facade 依赖 await 消费）→ 漂移。
+        let drift = verify_rust_reference(
+            "http",
+            "get_stream",
+            "a2r_std::http::get_stream_async(\"u\")",
+            RustRuntime::Standalone,
+        )
+        .unwrap_err();
+        assert!(drift.to_string().contains("SIGNATURE_DRIFT"), "{drift}");
+        assert!(drift.to_string().contains("await mode"), "{drift}");
     }
 }

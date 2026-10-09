@@ -5275,24 +5275,41 @@ impl RustTrans {
                                 };
                                 self.a2r_std_used.set(true);
                                 let needs_await = m == "post_bearer" || self.in_async_ctx.get();
-                                write!(out, "{{ let __resp = {}(", func_name)?;
+                                // PLAN-738 T-10：该臂在 fn expr 内直接发射侧信道壳，
+                                // 不经 call() 的验证钩子——先收集发射文本，走同一
+                                // strict 门（无证明/漂移均拒绝），再落线。
+                                let mut emitted = Vec::new();
+                                write!(emitted, "{{ let __resp = {}(", func_name)?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 {
-                                        write!(out, ", ")?;
+                                        write!(emitted, ", ")?;
                                     }
                                     if let Arg::Pos(expr) = arg {
-                                        self.expr_as_str(expr, out)?;
+                                        self.expr_as_str(expr, &mut emitted)?;
                                     }
                                 }
                                 if needs_await {
-                                    write!(out, ").await")?;
+                                    write!(emitted, ").await")?;
                                 } else {
-                                    write!(out, ")")?;
+                                    write!(emitted, ")")?;
                                 }
                                 write!(
-                                    out,
+                                    emitted,
                                     "; a2r_std::http::set_last_status(__resp.0); __resp.1 }}"
                                 )?;
+                                let emitted =
+                                    String::from_utf8(emitted).map_err(|e| e.to_string())?;
+                                if let Some(proof) =
+                                    crate::stdlib_assembly::host::verify_rust_reference(
+                                        "http",
+                                        m,
+                                        &emitted,
+                                        self.assembly_runtime,
+                                    )?
+                                {
+                                    self.assembly_references.push(proof);
+                                }
+                                write!(out, "{}", emitted)?;
                                 return Ok(());
                             }
                         }
