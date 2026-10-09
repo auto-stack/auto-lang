@@ -112,3 +112,25 @@ fn plan746_print_kwargs_loop_shape_fails_fast() {
         "error should mention keyword arguments"
     );
 }
+
+#[test]
+fn plan746_concurrent_deadlines_independent() {
+    // 并发死循环各自的 deadline 独立生效（playground 场景: 多请求同发）。
+    let mut handles = vec![];
+    for _ in 0..4 {
+        handles.push(std::thread::spawn(|| {
+            let dl = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            let start = std::time::Instant::now();
+            let r = crate::run_with_capture_and_bytecode_with_deadline("for true {}", Some(dl));
+            (start.elapsed(), r.map(|(res, out, _, _)| (res, out.len())).map_err(|e| e.to_string()))
+        }));
+    }
+    for h in handles {
+        let (elapsed, r) = h.join().unwrap();
+        assert!(
+            r.err().map(|e| e.contains("ExecutionTimeout")).unwrap_or(false),
+            "expected ExecutionTimeout"
+        );
+        assert!(elapsed < std::time::Duration::from_secs(10), "deadline not enforced: {elapsed:?}");
+    }
+}
