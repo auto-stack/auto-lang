@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-747
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: fix-ui-focus-refcell-storm
 author: [zhaopuming]
 created_at: 2026-10-09
@@ -12,8 +12,8 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
-total_steps: 4
+current_step: 7
+total_steps: 7
 ---
 
 # [PLAN-747] fix-ui-focus-refcell-storm：ui.focus RefCell 借用冲突风暴（UI 挂起 + abort 崩溃根修）
@@ -197,17 +197,65 @@ RUST_BACKTRACE 分支保底开发态栈回溯。
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] T-01 `docs/plans/.next-id` 与本骨架在 master 提交；建 worktree
-      `D:/autostack/.wt/lang-747/auto-lang`（branch `plan-747-dev`）。
-- [ ] T-02 renderer.rs D1 根修 + `focus_pending_step` 抽取 + 内联单测三臂 + 借用纪律回归测。
-- [ ] T-03 stdlib.rs D2 容错打印 + 单测（格式/env 分派）。
-- [ ] T-04 ui/ 同型扫排（D3 模式）+ 判定回执（修/不修）。
-- [ ] T-05 验证：worktree `cargo check` + 裸 `cargo t`；实机 jade t01 + probe_native_wiki_link
-      （AUTO_EXE 指修复构建）+ 审计日志增量断言（AC-1/AC-2）。
-- [ ] T-06 独立复审（/auto-plan:review 范式）：AC 逐条对 diff 核证、遗漏/绕过扫描、健康检查。
+- [✅ 已完成] T-01 骨架/master 提交（139486040）+ worktree `D:/autostack/.wt/lang-747/auto-lang`
+  （plan-747-dev）+ auto-down 兄弟 detached（895f8d0）——跨仓依赖解析就绪。
+- [✅ 已完成] T-02 renderer.rs D1 根修（克隆提为独立 `let` + `focus_pending_step` 抽取，
+  worktree renderer.rs 20781-20811/3452-3466）+ 内联单测三臂 + 借用纪律回归测（4/4 PASS，
+  nextest `cargo t plan747`）。
+- [✅ 已完成] T-03 stdlib.rs D2 容错打印（`install_exit_audit_panic_hook` RUST_BACKTRACE
+  分派 + `print_panic_tolerant`/`format_panic_report`/`backtrace_requested`/`panic_payload_str`，
+  worktree stdlib.rs 962-1035）+ 单测 2 项（格式形态/env 三态）。
+- [✅ 已完成] T-04 ui/ 同型扫排：脚本判据 = if/while-let 判别式含 `.borrow()/.borrow_mut()`
+  且块内同字段表达式再借用 → **全 ui/ 树（renderer.rs 含）零命中**（focus_pending 修复后）。
+  判定记录：`pending_window_resize.borrow_mut().take()`（renderer.rs:20863）块内无同字段
+  再借用=安全不动；`source_code.borrow()`/`marquee.borrow_mut()` 等只读/取出型判别式同判。
+  已知边界：仅机械同名表达式判据，别名借用（同 RefCell 异表达式）不在机械扫排面。
+- [✅ 已完成] T-05a `cargo check -p auto-lang` 通过（1m20s；400 预存告警，新函数零新增）。
+- [✅ 已完成] T-05b e2e 实机（修复构建 `D:/autostack/.wt/lang-747/auto-lang/target/debug/auto.exe`，
+  2026-10-09 15:10）：
+  - jade `t01_empty_body.mjs`：全程通过（EXIT=0；空档/清空重输/模板档追加/Save 面盘点）。
+  - jade `probe_native_wiki_link.mjs --phase all`：**PASS=31 FAIL=0 BLOCKED=3**（BLOCKED 为
+    仪器边界既档分列，非失败；修复前同探针 mid-run `app exited (code 3489660927)`）。
+  - 审计增量：两轮会话（含多实例+长驱）`exit-audit.log` 行数 **7714→7714 零增量**
+    （修复前同形态单实例 60s 内数百条 RefCell 风暴）。
+- [✅ 已完成] T-05c 裸 `cargo t` 日常档：worktree 与 master 主检出两侧全量
+  `--no-fail-fast` 对照——失败集合 30 vs 30，唯一差异为一对图表面测试换位
+  （master 红 plan502_m3 / worktree 红 plan484_024），**交叉验证两侧均过**
+  （负载 flake 族）；其余 29 项两侧一致（含 musk_vm_track_p053 预存红族——
+  master 主检出复现同红，与本 diff 无关；state_file::lock_serializes 单独跑过
+  =负载时序 flake）。结论：**本 diff 零新增红**。
+- [✅ 已完成] T-06 独立复审（2026-10-09，见「复审记录」）。
 - [ ] T-07 merge 回 master（Conventional Commit `fix(ui): … (Plan 747)`）、归档、回复 jade-edit 侧。
 
 ## 复审记录
+
+**2026-10-09 独立复审（verify, don't trust）——结论：pass**
+
+- **AC 核证**：
+  - AC-1 ✅ `exit-audit.log` 两轮 e2e 会话（t01 + probe_native_wiki_link
+    --phase all，多实例长驱）行数 7714→7714 零增量；对照：修复前同形态会话
+    单实例 60s 内数百条 RefCell 风暴（13:0x-13:2x 簇 pid 36504/22924、
+    14:2x 簇 pid 42676/27876）。
+  - AC-2 ✅（行为恢复面）t01 四阶段全过（开档/清空重输/模板追加/Save 面
+    盘点——press→snapshot→type_text 交互环全走通；修复前同族会话即风暴死）；
+    probe_native_wiki_link --phase all PASS=31/FAIL=0（修复前 mid-run
+    `app exited (code 3489660927)`）。`__focus_result` 未在 e2e 直接断言
+    （jade 流程不回读该字段），由「零 panic + 交互环恢复 + 单测三臂」组合
+    覆盖；诚实记档于此。
+  - AC-3 ✅ 4/4 新测绿（renderer 三臂/借用纪律 + stdlib 格式/env 三态）。
+  - AC-4 ✅ 扫排零额外命中，判定回执在执行步骤 T-04。
+  - AC-5 ✅ cargo check 新函数零新增告警；fmt 改动区干净（renderer.rs/
+    stdlib.rs 的 rustfmt 差异均落预存区段，行号核验 3300-3600/20750-20850/
+    960-1040 无命中）；裸 cargo t 零新增红（T-05c）。
+- **遗漏/延后/Workaround 扫描**：
+  - 无 workaround 补丁；容错打印为设计性加固，已知取舍记档（RUST_BACKTRACE
+    未置位时丢失 backtrace；ui_desktop example 的 force-backtrace hook 在
+    同管线内被取代——开发态设 RUST_BACKTRACE=1 即保留）。
+  - 债候选登记 KNOWN-DEBT-AND-RISKS.md：09-29 及更早「无审计 panic 行」的
+    静默崩溃族（疑栈溢出路径，本计划只消除已定谳的 abort 放大链）；RC
+    canary UAF / virt_memory 越界 / wgpu OOM 等独立 panic 家族原状在档。
+- **Spec 影响**：bugfix 无 spec 改写；`affects: [auto-lang/ui]`；
+  supersedes/new_components 空，touched_goals 空。
 
 ## 待澄清事项
 
